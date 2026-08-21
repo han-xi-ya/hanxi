@@ -6,4 +6,39 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-Object.freeze($Create.Events);
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as extapi$0 from "../../../../../hubkit/internal/extapi/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as instance$0 from "../../../../../hubkit/internal/modules/frpc/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as version$0 from "../../../../../hubkit/internal/modules/frpc/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as lan$0 from "../../../../../hubkit/internal/modules/lan/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as portscan$0 from "../../../../../hubkit/internal/modules/portscan/models.js";
+
+function configure() {
+    Object.freeze(Object.assign($Create.Events, {
+        "ext:changed": $$createType0,
+        "frpc:instance-log": $$createType1,
+        "frpc:instance-state": $$createType2,
+        "frpc:version-download": $$createType3,
+        "lan:progress": $$createType4,
+        "portscan:progress": $$createType5,
+    }));
+}
+
+// Private type creation functions
+const $$createType0 = extapi$0.NavEntry.createFrom;
+const $$createType1 = instance$0.LogEntry.createFrom;
+const $$createType2 = instance$0.Snapshot.createFrom;
+const $$createType3 = version$0.DownloadProgress.createFrom;
+const $$createType4 = lan$0.LanProgress.createFrom;
+const $$createType5 = portscan$0.ScanProgress.createFrom;
+
+configure();

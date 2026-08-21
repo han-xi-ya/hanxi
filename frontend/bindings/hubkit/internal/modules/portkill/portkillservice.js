@@ -4,7 +4,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -18,7 +18,9 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.KillResult>}
  */
 export function KillProcess(pid, exePath, startedAtUnix) {
-    return $Call.ByID(2649245811, pid, exePath, startedAtUnix);
+    return $Call.ByID(2649245811, pid, exePath, startedAtUnix).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
 }
 
 /**
@@ -27,22 +29,33 @@ export function KillProcess(pid, exePath, startedAtUnix) {
  * @returns {$CancellablePromise<$models.KillResult>}
  */
 export function KillProcessElevated(pid) {
-    return $Call.ByID(2779334205, pid);
+    return $Call.ByID(2779334205, pid).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
 }
 
 /**
  * ListListeningPorts 列举当前系统处于 LISTEN / 占用的常见活跃端口
- * @returns {$CancellablePromise<$models.PortOccupant[] | null>}
+ * @returns {$CancellablePromise<$models.PortOccupant[]>}
  */
 export function ListListeningPorts() {
-    return $Call.ByID(3594736545);
+    return $Call.ByID(3594736545).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
  * QueryPort 查询指定端口号的占用情况 (TCP + UDP)
  * @param {number} port
- * @returns {$CancellablePromise<$models.PortOccupant[] | null>}
+ * @returns {$CancellablePromise<$models.PortOccupant[]>}
  */
 export function QueryPort(port) {
-    return $Call.ByID(1324470625, port);
+    return $Call.ByID(1324470625, port).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
+
+// Private type creation functions
+const $$createType0 = $models.KillResult.createFrom;
+const $$createType1 = $models.PortOccupant.createFrom;
+const $$createType2 = $Create.Array($$createType1);

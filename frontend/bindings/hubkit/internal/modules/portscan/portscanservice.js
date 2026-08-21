@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -17,10 +17,12 @@ import * as $models from "./models.js";
 
 /**
  * GetPresets 返回常见预设端口组合
- * @returns {$CancellablePromise<$models.PresetGroup[] | null>}
+ * @returns {$CancellablePromise<$models.PresetGroup[]>}
  */
 export function GetPresets() {
-    return $Call.ByID(136184176);
+    return $Call.ByID(136184176).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
@@ -29,7 +31,9 @@ export function GetPresets() {
  * @returns {$CancellablePromise<$models.ScanSummary | null>}
  */
 export function StartScan(req) {
-    return $Call.ByID(1111344797, req);
+    return $Call.ByID(1111344797, req).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
@@ -40,3 +44,9 @@ export function StartScan(req) {
 export function StopScan(taskID) {
     return $Call.ByID(2581762785, taskID);
 }
+
+// Private type creation functions
+const $$createType0 = $models.PresetGroup.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $models.ScanSummary.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);

@@ -8,32 +8,10 @@ export {
 };
 
 export {
-    PortStatus
+    PortResult,
+    PortStatus,
+    PresetGroup,
+    ScanProgress,
+    ScanRequest,
+    ScanSummary
 } from "./models.js";
-
-import * as $models from "./models.js";
-
-/**
- * PortResult 单端口探测结果
- * @typedef {$models.PortResult} PortResult
- */
-
-/**
- * PresetGroup 常用预设端口分组
- * @typedef {$models.PresetGroup} PresetGroup
- */
-
-/**
- * ScanProgress 实时扫描进度推送
- * @typedef {$models.ScanProgress} ScanProgress
- */
-
-/**
- * ScanRequest 端口扫描请求
- * @typedef {$models.ScanRequest} ScanRequest
- */
-
-/**
- * ScanSummary 扫描任务最终汇总
- * @typedef {$models.ScanSummary} ScanSummary
- */

@@ -79,10 +79,27 @@ func ParsePortRange(raw string) ([]int, error) {
 }
 
 // Scanner 纯原生极轻量端口扫描引擎 (0 外部依赖，0 堆常驻内存)
-type Scanner struct{}
+type Scanner struct {
+	httpClient *http.Client
+}
 
 func NewScanner() *Scanner {
-	return &Scanner{}
+	tr := &http.Transport{
+		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+		DisableKeepAlives:     true,
+		MaxIdleConns:          0,
+		ResponseHeaderTimeout: 1000 * time.Millisecond,
+		DialContext: (&net.Dialer{
+			Timeout: 600 * time.Millisecond,
+		}).DialContext,
+	}
+
+	return &Scanner{
+		httpClient: &http.Client{
+			Transport: tr,
+			Timeout:   1200 * time.Millisecond,
+		},
+	}
 }
 
 // KnownPortServices 常用端口默认服务推断表
@@ -132,31 +149,33 @@ func (s *Scanner) ExecuteScan(
 	ports []int,
 	timeout time.Duration,
 	concurrency int,
+	rateLimitMs int,
 	deepDetect bool,
 	progressCallback func(p ScanProgress),
 ) (*ScanSummary, error) {
 	if concurrency <= 0 {
-		concurrency = 100
+		concurrency = 30
 	}
-	if concurrency > 500 {
-		concurrency = 500
+	if concurrency > 2000 {
+		concurrency = 2000
 	}
 	if timeout <= 0 {
-		timeout = 800 * time.Millisecond
+		timeout = 600 * time.Millisecond
 	}
 
 	startTime := time.Now()
 	total := len(ports)
 	var scannedCount int64
 	var foundOpenCount int64
+	var lastEmitTime int64 // 纳秒时间戳，用于高频限流
 
 	var (
 		mu        sync.Mutex
 		openPorts []PortResult
 	)
 
-	// 任务池队列
-	portChan := make(chan int, concurrency*2)
+	// 任务池队列（容量加大，避免阻塞）
+	portChan := make(chan int, 4096)
 	go func() {
 		defer close(portChan)
 		for _, p := range ports {
@@ -181,6 +200,15 @@ func (s *Scanner) ExecuteScan(
 					if !ok {
 						return
 					}
+					if ctx.Err() != nil {
+						return
+					}
+
+					// 微延迟防封机制（防防火墙/SYN Flood）
+					if rateLimitMs > 0 {
+						time.Sleep(time.Duration(rateLimitMs) * time.Millisecond)
+					}
+
 					res := s.probePort(ctx, target, p, timeout, deepDetect)
 					curScanned := atomic.AddInt64(&scannedCount, 1)
 
@@ -193,18 +221,25 @@ func (s *Scanner) ExecuteScan(
 						latestOpen = &res
 					}
 
-					if progressCallback != nil {
-						pct := float64(curScanned) / float64(total) * 100
-						progressCallback(ScanProgress{
-							TaskID:     taskID,
-							Target:     target,
-							Scanned:    int(curScanned),
-							Total:      total,
-							Percent:    pct,
-							FoundOpen:  int(atomic.LoadInt64(&foundOpenCount)),
-							LatestPort: latestOpen,
-							IsFinished: false,
-						})
+					if progressCallback != nil && ctx.Err() == nil {
+						now := time.Now().UnixNano()
+						last := atomic.LoadInt64(&lastEmitTime)
+						// 节流策略：发现新开放端口必推；否则至少间隔 100ms 推一次，或者最后全部扫完时推一次
+						shouldEmit := (latestOpen != nil) || (now-last >= int64(100*time.Millisecond)) || (curScanned == int64(total))
+
+						if shouldEmit && atomic.CompareAndSwapInt64(&lastEmitTime, last, now) {
+							pct := float64(curScanned) / float64(total) * 100
+							progressCallback(ScanProgress{
+								TaskID:     taskID,
+								Target:     target,
+								Scanned:    int(curScanned),
+								Total:      total,
+								Percent:    pct,
+								FoundOpen:  int(atomic.LoadInt64(&foundOpenCount)),
+								LatestPort: latestOpen,
+								IsFinished: false,
+							})
+						}
 					}
 				}
 			}
@@ -230,7 +265,7 @@ func (s *Scanner) ExecuteScan(
 		DurationMs: time.Since(startTime).Milliseconds(),
 	}
 
-	if progressCallback != nil {
+	if progressCallback != nil && ctx.Err() == nil {
 		progressCallback(ScanProgress{
 			TaskID:     taskID,
 			Target:     target,
@@ -247,6 +282,10 @@ func (s *Scanner) ExecuteScan(
 
 // probePort 探测单个端口
 func (s *Scanner) probePort(ctx context.Context, target string, port int, timeout time.Duration, deepDetect bool) PortResult {
+	if ctx.Err() != nil {
+		return PortResult{Port: port, Status: PortClosed}
+	}
+
 	addr := net.JoinHostPort(target, strconv.Itoa(port))
 	start := time.Now()
 
@@ -275,8 +314,8 @@ func (s *Scanner) probePort(ctx context.Context, target string, port int, timeou
 		res.Service = "unknown"
 	}
 
-	// 2. 极轻量原生应用层指纹探针（毫秒级，0 内存占用）：HTTP Title / SSH / Redis / MySQL / SMTP / FTP
-	if deepDetect {
+	// 2. 如果开启服务探测，并且 ctx 未取消
+	if deepDetect && ctx.Err() == nil {
 		s.lightweightProbe(ctx, target, port, timeout, &res)
 	}
 
@@ -285,15 +324,17 @@ func (s *Scanner) probePort(ctx context.Context, target string, port int, timeou
 
 // lightweightProbe 极轻量原生探针，快速提取常见服务特征，0 内存常驻
 func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int, timeout time.Duration, res *PortResult) {
+	if ctx.Err() != nil {
+		return
+	}
 	addr := net.JoinHostPort(target, strconv.Itoa(port))
 
-	// 1. 尝试主动握手/被动 Banner 探测 (SSH / FTP / SMTP / MySQL)
+	// 1. 尝试主动握手/被动 Banner 探测 (SSH / FTP / SMTP / MySQL / Redis)
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err == nil {
 		_ = conn.SetDeadline(time.Now().Add(timeout))
 
-		// 如果是 Redis 端口或未知端口，可尝试发送 PING\r\n
 		if port == 6379 {
 			_, _ = conn.Write([]byte("PING\r\n"))
 		}
@@ -328,6 +369,10 @@ func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int,
 		}
 	}
 
+	if ctx.Err() != nil {
+		return
+	}
+
 	// 2. HTTP / HTTPS 标题与 Server 头探测
 	isTLS := (port == 443 || port == 8443)
 	schema := "http"
@@ -336,17 +381,10 @@ func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int,
 	}
 	url := fmt.Sprintf("%s://%s:%d/", schema, target, port)
 
-	client := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
-
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err == nil {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (HubKit)")
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err == nil {
 			defer resp.Body.Close()
 			res.Service = schema

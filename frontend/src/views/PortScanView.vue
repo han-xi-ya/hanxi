@@ -6,8 +6,10 @@ import { Events } from '@wailsio/runtime'
 
 const target = ref('127.0.0.1')
 const portRange = ref('80,443,3000,5000,5173,8000,8080,8081,8443,8888,9000')
-const timeoutMs = ref(800)
-const concurrency = ref(100)
+const scanMode = ref<'safe' | 'normal' | 'fast'>('safe')
+const timeoutMs = ref(600)
+const concurrency = ref(30)
+const rateLimitMs = ref(10)
 const deepDetect = ref(true)
 
 const presets = ref<PresetGroup[]>([])
@@ -26,6 +28,22 @@ let unregEvent: (() => void) | null = null
 function showToast(msg: string) {
   toastMsg.value = msg
   setTimeout(() => { toastMsg.value = '' }, 2500)
+}
+
+function onModeChange() {
+  if (scanMode.value === 'safe') {
+    concurrency.value = 20
+    timeoutMs.value = 800
+    rateLimitMs.value = 15
+  } else if (scanMode.value === 'normal') {
+    concurrency.value = 50
+    timeoutMs.value = 600
+    rateLimitMs.value = 0
+  } else if (scanMode.value === 'fast') {
+    concurrency.value = 200
+    timeoutMs.value = 400
+    rateLimitMs.value = 0
+  }
 }
 
 async function loadPresets() {
@@ -64,8 +82,9 @@ async function startScan() {
     const summary = await PortScanAPI.PortScanService.StartScan({
       target: target.value.trim(),
       portRange: portRange.value.trim(),
-      timeoutMs: Number(timeoutMs.value) || 800,
-      concurrency: Number(concurrency.value) || 100,
+      timeoutMs: Number(timeoutMs.value) || 600,
+      concurrency: Number(concurrency.value) || 30,
+      rateLimitMs: Number(rateLimitMs.value) || 0,
       deepDetect: Boolean(deepDetect.value),
     })
 
@@ -84,11 +103,10 @@ async function startScan() {
 }
 
 async function stopScan() {
-  if (!currentTaskId.value) return
   try {
-    await PortScanAPI.PortScanService.StopScan(currentTaskId.value)
+    await PortScanAPI.PortScanService.StopScan(currentTaskId.value || 'current')
     scanning.value = false
-    showToast('已请求终止扫描')
+    showToast('已终止扫描')
   } catch (e: any) {
     showToast(`停止失败: ${e?.message ?? e}`)
   }
@@ -109,6 +127,7 @@ function openInBrowser(port: number) {
 
 onMounted(() => {
   loadPresets()
+  onModeChange()
 
   // 监听后端流式进度推送
   unregEvent = Events.On('portscan:progress', (event: any) => {
@@ -140,7 +159,7 @@ onUnmounted(() => {
     <div class="header-row">
       <div>
         <h1>端口扫描与服务识别</h1>
-        <p class="subtitle">高并发 TCP 探测，集成 Nmap 深度指纹识别，支持自定义区间与一键预设。</p>
+        <p class="subtitle">高并发 TCP 探测，集成轻量服务指纹识别，支持温和防封模式与全量端口探测。</p>
       </div>
       <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
@@ -194,9 +213,19 @@ onUnmounted(() => {
       <!-- 高级设置与操作条 -->
       <div class="action-bar">
         <div class="options-group">
+          <!-- 扫描模式切换 -->
+          <div class="mode-selector">
+            <span class="param-title">模式:</span>
+            <select v-model="scanMode" class="select-input" :disabled="scanning" @change="onModeChange">
+              <option value="safe">🍃 温和防封 (公网/云服务器推荐)</option>
+              <option value="normal">⚡ 平衡模式 (局域网/开发联调)</option>
+              <option value="fast">🚀 极速并发 (内网/全端口)</option>
+            </select>
+          </div>
+
           <label class="checkbox-label" title="自动探测 Web 标题、SSH、Redis、MySQL 等服务特征">
             <input type="checkbox" v-model="deepDetect" :disabled="scanning" />
-            <span>✨ 服务指纹与 Banner 识别</span>
+            <span>✨ 指纹识别</span>
           </label>
 
           <div class="param-item">
@@ -207,7 +236,13 @@ onUnmounted(() => {
 
           <div class="param-item">
             <span class="param-title">并发:</span>
-            <input v-model.number="concurrency" type="number" step="20" min="10" max="500" class="input num-input" :disabled="scanning" />
+            <input v-model.number="concurrency" type="number" step="10" min="5" max="2000" class="input num-input" :disabled="scanning" />
+          </div>
+
+          <div class="param-item" v-if="rateLimitMs > 0">
+            <span class="param-title">防封微延:</span>
+            <input v-model.number="rateLimitMs" type="number" step="5" min="0" max="500" class="input num-input" :disabled="scanning" />
+            <span class="unit">ms</span>
           </div>
         </div>
 
@@ -325,12 +360,13 @@ onUnmounted(() => {
 .form-group label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .target-input-row { display: flex; gap: 8px; }
 
-.input {
+.input, .select-input {
   background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 6px;
   padding: 8px 12px; font-size: 13px; color: var(--text-main); font-family: inherit; width: 100%;
 }
-.input:focus { outline: none; border-color: var(--accent); }
-.num-input { width: 75px; text-align: center; }
+.select-input { width: auto; font-size: 12px; padding: 6px 10px; cursor: pointer; }
+.input:focus, .select-input:focus { outline: none; border-color: var(--accent); }
+.num-input { width: 70px; text-align: center; }
 
 .presets-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .preset-label { font-size: 12px; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
@@ -345,7 +381,8 @@ onUnmounted(() => {
   display: flex; justify-content: space-between; align-items: center; padding-top: 6px;
   border-top: 1px solid var(--border-color); flex-wrap: wrap; gap: 12px;
 }
-.options-group { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.options-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.mode-selector { display: flex; align-items: center; gap: 6px; }
 .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text-main); }
 .param-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
 .unit { font-size: 11px; }

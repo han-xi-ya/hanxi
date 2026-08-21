@@ -7,14 +7,7 @@ export {
     PortKillService
 };
 
-import * as $models from "./models.js";
-
-/**
- * KillResult 查杀操作反馈结果
- * @typedef {$models.KillResult} KillResult
- */
-
-/**
- * PortOccupant 端口占用实体模型
- * @typedef {$models.PortOccupant} PortOccupant
- */
+export {
+    KillResult,
+    PortOccupant
+} from "./models.js";

@@ -4,7 +4,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -20,19 +20,23 @@ export function Cancel() {
 
 /**
  * GetSubnets 列出所有可用于扫描的候选网卡子网，支持常见掩码计算
- * @returns {$CancellablePromise<$models.SubnetInfo[] | null>}
+ * @returns {$CancellablePromise<$models.SubnetInfo[]>}
  */
 export function GetSubnets() {
-    return $Call.ByID(1639537682);
+    return $Call.ByID(1639537682).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
 }
 
 /**
  * Scan 执行并发网段/IP范围扫描
  * @param {string} targetRange
- * @returns {$CancellablePromise<$models.DeviceInfo[] | null>}
+ * @returns {$CancellablePromise<$models.DeviceInfo[]>}
  */
 export function Scan(targetRange) {
-    return $Call.ByID(345668133, targetRange);
+    return $Call.ByID(345668133, targetRange).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType3($result);
+    }));
 }
 
 /**
@@ -44,3 +48,9 @@ export function Scan(targetRange) {
 export function SetRemark(key, remark) {
     return $Call.ByID(1067643896, key, remark);
 }
+
+// Private type creation functions
+const $$createType0 = $models.SubnetInfo.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $models.DeviceInfo.createFrom;
+const $$createType3 = $Create.Array($$createType2);

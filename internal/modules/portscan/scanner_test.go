@@ -65,6 +65,7 @@ func TestScannerScanLocalPort(t *testing.T) {
 		[]int{port, port + 1},
 		500*time.Millisecond,
 		10,
+		0,
 		false,
 		nil,
 	)

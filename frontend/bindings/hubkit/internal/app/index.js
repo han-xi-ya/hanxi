@@ -7,9 +7,6 @@ export {
     AppService
 };
 
-import * as $models from "./models.js";
-
-/**
- * AppInfo 前端关于页/首页展示的应用信息。
- * @typedef {$models.AppInfo} AppInfo
- */
+export {
+    AppInfo
+} from "./models.js";

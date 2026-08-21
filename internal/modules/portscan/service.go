@@ -53,7 +53,7 @@ func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {
 
 	timeout := time.Duration(req.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
-		timeout = 800 * time.Millisecond
+		timeout = 600 * time.Millisecond
 	}
 
 	summary, err := s.scanner.ExecuteScan(
@@ -63,6 +63,7 @@ func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {
 		ports,
 		timeout,
 		req.Concurrency,
+		req.RateLimitMs,
 		req.DeepDetect,
 		func(p ScanProgress) {
 			if app := application.Get(); app != nil && app.Event != nil {
