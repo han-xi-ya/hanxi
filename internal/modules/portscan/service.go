@@ -27,6 +27,13 @@ func (s *PortScanService) GetPresets() []PresetGroup {
 	return GetPresets()
 }
 
+// CheckEgressIP 探测当前扫描配置（直连或代理）下的实际发包出网 IP
+func (s *PortScanService) CheckEgressIP(proxyURL string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3500*time.Millisecond)
+	defer cancel()
+	return s.scanner.QueryEgressIP(ctx, proxyURL, 3000*time.Millisecond)
+}
+
 // StartScan 启动端口扫描任务（异步），通过 Wails 事件 "portscan:progress" 实时推送进度
 func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {
 	target := strings.TrimSpace(req.Target)
@@ -61,6 +68,7 @@ func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {
 		taskID,
 		target,
 		ports,
+		req.ProxyURL,
 		timeout,
 		req.Concurrency,
 		req.RateLimitMs,

@@ -13,6 +13,7 @@ const (
 type ScanRequest struct {
 	Target      string `json:"target"`      // 目标 IP 或 域名 (如 127.0.0.1, 192.168.1.1, baidu.com)
 	PortRange   string `json:"portRange"`   // 端口表达式 (如 "80,443,8080-8090")
+	ProxyURL    string `json:"proxyUrl"`    // 可选代理 (如 socks5://127.0.0.1:7890 或 http://127.0.0.1:7890)
 	TimeoutMs   int    `json:"timeoutMs"`   // 单端口连接超时(ms)，默认 600
 	Concurrency int    `json:"concurrency"` // 并发协程数，默认 30
 	RateLimitMs int    `json:"rateLimitMs"` // 单 Worker 发包微延迟(ms)，温和防封模式推荐 5~15ms

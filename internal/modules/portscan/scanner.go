@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -15,7 +16,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
+
+// ContextDialer 抽象接口，统一标准 net.Dialer 和 proxy.ContextDialer
+type ContextDialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
 
 // ParsePortRange 解析诸如 "80,443,8000-8005" 的端口字符串，返回去重有序的端口切片
 func ParsePortRange(raw string) ([]int, error) {
@@ -78,27 +86,176 @@ func ParsePortRange(raw string) ([]int, error) {
 	return ports, nil
 }
 
-// Scanner 纯原生极轻量端口扫描引擎 (0 外部依赖，0 堆常驻内存)
-type Scanner struct {
-	httpClient *http.Client
-}
+// Scanner 纯原生极轻量端口扫描引擎 (0 外部重依赖，0 堆常驻内存)
+type Scanner struct{}
 
 func NewScanner() *Scanner {
-	tr := &http.Transport{
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-		DisableKeepAlives:     true,
-		MaxIdleConns:          0,
-		ResponseHeaderTimeout: 1000 * time.Millisecond,
-		DialContext: (&net.Dialer{
-			Timeout: 600 * time.Millisecond,
-		}).DialContext,
+	return &Scanner{}
+}
+
+// QueryEgressIP 测试指定代理或直连下的实际出网 IP
+func (s *Scanner) QueryEgressIP(ctx context.Context, proxyURL string, timeout time.Duration) (string, error) {
+	if timeout <= 0 {
+		timeout = 3000 * time.Millisecond
 	}
 
-	return &Scanner{
-		httpClient: &http.Client{
-			Transport: tr,
-			Timeout:   1200 * time.Millisecond,
-		},
+	_, httpClient, err := s.createDialerAndHTTPClient(proxyURL, timeout)
+	if err != nil {
+		return "", err
+	}
+
+	// 高可用 IP 查询接口列表 (返回纯文本 IP)
+	ipProviders := []string{
+		"https://api.ipify.org",
+		"https://ifconfig.me/ip",
+		"https://icanhazip.com",
+		"https://ip.3322.net",
+		"https://ddns.oray.com/checkip",
+	}
+
+	var lastErr error
+	for _, u := range ipProviders {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("User-Agent", "curl/8.0.0")
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		body, err := bufio.NewReader(resp.Body).ReadString('\n')
+		resp.Body.Close()
+		if err != nil && len(body) == 0 {
+			lastErr = err
+			continue
+		}
+
+		ipStr := strings.TrimSpace(body)
+		if ip := net.ParseIP(ipStr); ip != nil {
+			return ip.String(), nil
+		}
+		// 备用正则匹配
+		matches := regexp.MustCompile(`(?:[0-9]{1,3}\.){3}[0-9]{1,3}`).FindString(body)
+		if matches != "" && net.ParseIP(matches) != nil {
+			return matches, nil
+		}
+	}
+
+	if lastErr != nil {
+		return "", fmt.Errorf("探测出网IP失败: %w", lastErr)
+	}
+	return "", fmt.Errorf("未能获取到有效的公网IP")
+}
+
+// createDialerAndHTTPClient 创建支持直接直连或 SOCKS5 / HTTP 代理的探测器
+func (s *Scanner) createDialerAndHTTPClient(proxyStr string, timeout time.Duration) (ContextDialer, *http.Client, error) {
+	baseDialer := &net.Dialer{
+		Timeout: timeout,
+	}
+
+	var dialer ContextDialer = baseDialer
+	proxyStr = strings.TrimSpace(proxyStr)
+
+	var transport *http.Transport
+
+	if proxyStr != "" {
+		// 容错：如果用户只输入了 127.0.0.1:7890，默认当作 socks5 处理
+		if !strings.Contains(proxyStr, "://") {
+			proxyStr = "socks5://" + proxyStr
+		}
+
+		u, err := url.Parse(proxyStr)
+		if err != nil {
+			return nil, nil, fmt.Errorf("代理地址格式无效: %w", err)
+		}
+
+		switch strings.ToLower(u.Scheme) {
+		case "socks5", "socks5h":
+			var auth *proxy.Auth
+			if u.User != nil {
+				auth = &proxy.Auth{
+					User: u.User.Username(),
+				}
+				if pwd, ok := u.User.Password(); ok {
+					auth.Password = pwd
+				}
+			}
+			socksDialer, err := proxy.SOCKS5("tcp", u.Host, auth, baseDialer)
+			if err != nil {
+				return nil, nil, fmt.Errorf("创建 SOCKS5 代理失败: %w", err)
+			}
+			if cd, ok := socksDialer.(ContextDialer); ok {
+				dialer = cd
+			} else {
+				dialer = &socks5ContextAdapter{dialer: socksDialer}
+			}
+
+			transport = &http.Transport{
+				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+				DisableKeepAlives:     true,
+				MaxIdleConns:          0,
+				ResponseHeaderTimeout: timeout,
+				DialContext:           dialer.DialContext,
+			}
+
+		case "http", "https":
+			transport = &http.Transport{
+				Proxy:                 http.ProxyURL(u),
+				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+				DisableKeepAlives:     true,
+				MaxIdleConns:          0,
+				ResponseHeaderTimeout: timeout,
+				DialContext:           baseDialer.DialContext,
+			}
+			// HTTP 代理直接使用 transport 的 DialContext（注意：常规 HTTP CONNECT 代理主要用于 HTTP 探测）
+			dialer = baseDialer
+
+		default:
+			return nil, nil, fmt.Errorf("不支持的代理协议: %s (仅支持 socks5 / http)", u.Scheme)
+		}
+	} else {
+		transport = &http.Transport{
+			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+			DisableKeepAlives:     true,
+			MaxIdleConns:          0,
+			ResponseHeaderTimeout: timeout,
+			DialContext:           baseDialer.DialContext,
+		}
+	}
+
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   timeout * 2,
+	}
+
+	return dialer, httpClient, nil
+}
+
+type socks5ContextAdapter struct {
+	dialer proxy.Dialer
+}
+
+func (a *socks5ContextAdapter) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	type result struct {
+		conn net.Conn
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		conn, err := a.dialer.Dial(network, address)
+		ch <- result{conn: conn, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ch:
+		return res.conn, res.err
 	}
 }
 
@@ -147,6 +304,7 @@ func (s *Scanner) ExecuteScan(
 	taskID string,
 	target string,
 	ports []int,
+	proxyURL string,
 	timeout time.Duration,
 	concurrency int,
 	rateLimitMs int,
@@ -163,18 +321,23 @@ func (s *Scanner) ExecuteScan(
 		timeout = 600 * time.Millisecond
 	}
 
+	dialer, httpClient, err := s.createDialerAndHTTPClient(proxyURL, timeout)
+	if err != nil {
+		return nil, err
+	}
+
 	startTime := time.Now()
 	total := len(ports)
 	var scannedCount int64
 	var foundOpenCount int64
-	var lastEmitTime int64 // 纳秒时间戳，用于高频限流
+	var lastEmitTime int64
 
 	var (
 		mu        sync.Mutex
 		openPorts []PortResult
 	)
 
-	// 任务池队列（容量加大，避免阻塞）
+	// 任务池队列
 	portChan := make(chan int, 4096)
 	go func() {
 		defer close(portChan)
@@ -204,12 +367,12 @@ func (s *Scanner) ExecuteScan(
 						return
 					}
 
-					// 微延迟防封机制（防防火墙/SYN Flood）
+					// 微延迟防封机制
 					if rateLimitMs > 0 {
 						time.Sleep(time.Duration(rateLimitMs) * time.Millisecond)
 					}
 
-					res := s.probePort(ctx, target, p, timeout, deepDetect)
+					res := s.probePort(ctx, dialer, httpClient, target, p, timeout, deepDetect)
 					curScanned := atomic.AddInt64(&scannedCount, 1)
 
 					var latestOpen *PortResult
@@ -224,7 +387,6 @@ func (s *Scanner) ExecuteScan(
 					if progressCallback != nil && ctx.Err() == nil {
 						now := time.Now().UnixNano()
 						last := atomic.LoadInt64(&lastEmitTime)
-						// 节流策略：发现新开放端口必推；否则至少间隔 100ms 推一次，或者最后全部扫完时推一次
 						shouldEmit := (latestOpen != nil) || (now-last >= int64(100*time.Millisecond)) || (curScanned == int64(total))
 
 						if shouldEmit && atomic.CompareAndSwapInt64(&lastEmitTime, last, now) {
@@ -281,7 +443,7 @@ func (s *Scanner) ExecuteScan(
 }
 
 // probePort 探测单个端口
-func (s *Scanner) probePort(ctx context.Context, target string, port int, timeout time.Duration, deepDetect bool) PortResult {
+func (s *Scanner) probePort(ctx context.Context, dialer ContextDialer, httpClient *http.Client, target string, port int, timeout time.Duration, deepDetect bool) PortResult {
 	if ctx.Err() != nil {
 		return PortResult{Port: port, Status: PortClosed}
 	}
@@ -289,9 +451,8 @@ func (s *Scanner) probePort(ctx context.Context, target string, port int, timeou
 	addr := net.JoinHostPort(target, strconv.Itoa(port))
 	start := time.Now()
 
-	// 1. TCP 快速建立连接探测
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	// 1. TCP 建立连接探测
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	latency := time.Since(start).Milliseconds()
 
 	if err != nil {
@@ -316,22 +477,21 @@ func (s *Scanner) probePort(ctx context.Context, target string, port int, timeou
 
 	// 2. 如果开启服务探测，并且 ctx 未取消
 	if deepDetect && ctx.Err() == nil {
-		s.lightweightProbe(ctx, target, port, timeout, &res)
+		s.lightweightProbe(ctx, dialer, httpClient, target, port, timeout, &res)
 	}
 
 	return res
 }
 
-// lightweightProbe 极轻量原生探针，快速提取常见服务特征，0 内存常驻
-func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int, timeout time.Duration, res *PortResult) {
+// lightweightProbe 极轻量探针，快速提取服务特征
+func (s *Scanner) lightweightProbe(ctx context.Context, dialer ContextDialer, httpClient *http.Client, target string, port int, timeout time.Duration, res *PortResult) {
 	if ctx.Err() != nil {
 		return
 	}
 	addr := net.JoinHostPort(target, strconv.Itoa(port))
 
 	// 1. 尝试主动握手/被动 Banner 探测 (SSH / FTP / SMTP / MySQL / Redis)
-	d := net.Dialer{Timeout: timeout}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err == nil {
 		_ = conn.SetDeadline(time.Now().Add(timeout))
 
@@ -369,7 +529,7 @@ func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int,
 		}
 	}
 
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || httpClient == nil {
 		return
 	}
 
@@ -384,7 +544,7 @@ func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int,
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err == nil {
 		req.Header.Set("User-Agent", "Mozilla/5.0 (HubKit)")
-		resp, err := s.httpClient.Do(req)
+		resp, err := httpClient.Do(req)
 		if err == nil {
 			defer resp.Body.Close()
 			res.Service = schema

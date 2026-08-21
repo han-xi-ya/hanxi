@@ -4,367 +4,64 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Create as $Create } from "@wailsio/runtime";
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import * as platform$0 from "../../platform/models.js";
 
 /**
  * HopInfo 路由追踪单个跳跃节点
+ * @typedef {Object} HopInfo
+ * @property {number} hop
+ * @property {string} ip
+ * @property {string} hostname
+ * @property {number} rttMs
+ * @property {boolean} success
  */
-export class HopInfo {
-    /**
-     * Creates a new HopInfo instance.
-     * @param {Partial<HopInfo>} [$$source = {}] - The source object to create the HopInfo.
-     */
-    constructor($$source = {}) {
-        if (!("hop" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["hop"] = 0;
-        }
-        if (!("ip" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["ip"] = "";
-        }
-        if (!("hostname" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["hostname"] = "";
-        }
-        if (!("rttMs" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["rttMs"] = 0;
-        }
-        if (!("success" in $$source)) {
-            /**
-             * @member
-             * @type {boolean}
-             */
-            this["success"] = false;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new HopInfo instance from a string or object.
-     * @param {any} [$$source = {}]
-     * @returns {HopInfo}
-     */
-    static createFrom($$source = {}) {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new HopInfo(/** @type {Partial<HopInfo>} */($$parsedSource));
-    }
-}
 
 /**
  * NetworkOverview 综合 IP 与网络详情
+ * @typedef {Object} NetworkOverview
+ * @property {string} publicIpv4 - 出口公网信息
+ * @property {string} publicIpv6
+ * @property {string} sourceV4
+ * @property {string} sourceV6
+ * @property {string} fetchedAt
+ * @property {platform$0.Adapter[] | null} adapters - 本机物理与虚拟网卡详情列表
  */
-export class NetworkOverview {
-    /**
-     * Creates a new NetworkOverview instance.
-     * @param {Partial<NetworkOverview>} [$$source = {}] - The source object to create the NetworkOverview.
-     */
-    constructor($$source = {}) {
-        if (!("publicIpv4" in $$source)) {
-            /**
-             * 出口公网信息
-             * @member
-             * @type {string}
-             */
-            this["publicIpv4"] = "";
-        }
-        if (!("publicIpv6" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["publicIpv6"] = "";
-        }
-        if (!("sourceV4" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["sourceV4"] = "";
-        }
-        if (!("sourceV6" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["sourceV6"] = "";
-        }
-        if (!("fetchedAt" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["fetchedAt"] = "";
-        }
-        if (!("adapters" in $$source)) {
-            /**
-             * 本机物理与虚拟网卡详情列表
-             * @member
-             * @type {platform$0.Adapter[]}
-             */
-            this["adapters"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new NetworkOverview instance from a string or object.
-     * @param {any} [$$source = {}]
-     * @returns {NetworkOverview}
-     */
-    static createFrom($$source = {}) {
-        const $$createField5_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("adapters" in $$parsedSource) {
-            $$parsedSource["adapters"] = $$createField5_0($$parsedSource["adapters"]);
-        }
-        return new NetworkOverview(/** @type {Partial<NetworkOverview>} */($$parsedSource));
-    }
-}
 
 /**
  * PingResult 单次 Ping 的返回结果
+ * @typedef {Object} PingResult
+ * @property {number} seq
+ * @property {string} ip
+ * @property {number} rttMs
+ * @property {boolean} success
+ * @property {number} ttl
+ * @property {string} errorMsg
  */
-export class PingResult {
-    /**
-     * Creates a new PingResult instance.
-     * @param {Partial<PingResult>} [$$source = {}] - The source object to create the PingResult.
-     */
-    constructor($$source = {}) {
-        if (!("seq" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["seq"] = 0;
-        }
-        if (!("ip" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["ip"] = "";
-        }
-        if (!("rttMs" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["rttMs"] = 0;
-        }
-        if (!("success" in $$source)) {
-            /**
-             * @member
-             * @type {boolean}
-             */
-            this["success"] = false;
-        }
-        if (!("ttl" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["ttl"] = 0;
-        }
-        if (!("errorMsg" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["errorMsg"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new PingResult instance from a string or object.
-     * @param {any} [$$source = {}]
-     * @returns {PingResult}
-     */
-    static createFrom($$source = {}) {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new PingResult(/** @type {Partial<PingResult>} */($$parsedSource));
-    }
-}
 
 /**
  * PingSummary Ping 统计概要
+ * @typedef {Object} PingSummary
+ * @property {string} target
+ * @property {string} ip
+ * @property {number} sent
+ * @property {number} received
+ * @property {number} lost
+ * @property {number} lossRate
+ * @property {number} minRtt
+ * @property {number} maxRtt
+ * @property {number} avgRtt
+ * @property {PingResult[] | null} results
  */
-export class PingSummary {
-    /**
-     * Creates a new PingSummary instance.
-     * @param {Partial<PingSummary>} [$$source = {}] - The source object to create the PingSummary.
-     */
-    constructor($$source = {}) {
-        if (!("target" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["target"] = "";
-        }
-        if (!("ip" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["ip"] = "";
-        }
-        if (!("sent" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["sent"] = 0;
-        }
-        if (!("received" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["received"] = 0;
-        }
-        if (!("lost" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["lost"] = 0;
-        }
-        if (!("lossRate" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["lossRate"] = 0;
-        }
-        if (!("minRtt" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["minRtt"] = 0;
-        }
-        if (!("maxRtt" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["maxRtt"] = 0;
-        }
-        if (!("avgRtt" in $$source)) {
-            /**
-             * @member
-             * @type {number}
-             */
-            this["avgRtt"] = 0;
-        }
-        if (!("results" in $$source)) {
-            /**
-             * @member
-             * @type {PingResult[]}
-             */
-            this["results"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new PingSummary instance from a string or object.
-     * @param {any} [$$source = {}]
-     * @returns {PingSummary}
-     */
-    static createFrom($$source = {}) {
-        const $$createField9_0 = $$createType3;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("results" in $$parsedSource) {
-            $$parsedSource["results"] = $$createField9_0($$parsedSource["results"]);
-        }
-        return new PingSummary(/** @type {Partial<PingSummary>} */($$parsedSource));
-    }
-}
 
 /**
  * TracerouteSummary 路由追踪完整结果
+ * @typedef {Object} TracerouteSummary
+ * @property {string} target
+ * @property {string} ip
+ * @property {HopInfo[] | null} hops
+ * @property {boolean} complete
  */
-export class TracerouteSummary {
-    /**
-     * Creates a new TracerouteSummary instance.
-     * @param {Partial<TracerouteSummary>} [$$source = {}] - The source object to create the TracerouteSummary.
-     */
-    constructor($$source = {}) {
-        if (!("target" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["target"] = "";
-        }
-        if (!("ip" in $$source)) {
-            /**
-             * @member
-             * @type {string}
-             */
-            this["ip"] = "";
-        }
-        if (!("hops" in $$source)) {
-            /**
-             * @member
-             * @type {HopInfo[]}
-             */
-            this["hops"] = [];
-        }
-        if (!("complete" in $$source)) {
-            /**
-             * @member
-             * @type {boolean}
-             */
-            this["complete"] = false;
-        }
 
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new TracerouteSummary instance from a string or object.
-     * @param {any} [$$source = {}]
-     * @returns {TracerouteSummary}
-     */
-    static createFrom($$source = {}) {
-        const $$createField2_0 = $$createType5;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("hops" in $$parsedSource) {
-            $$parsedSource["hops"] = $$createField2_0($$parsedSource["hops"]);
-        }
-        return new TracerouteSummary(/** @type {Partial<TracerouteSummary>} */($$parsedSource));
-    }
-}
-
-// Private type creation functions
-const $$createType0 = platform$0.Adapter.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = PingResult.createFrom;
-const $$createType3 = $Create.Array($$createType2);
-const $$createType4 = HopInfo.createFrom;
-const $$createType5 = $Create.Array($$createType4);
+// In interface mode, this file is likely to contain just comments.
+// We add a dummy export statement to ensure it is recognised as an ES module.
+export {};

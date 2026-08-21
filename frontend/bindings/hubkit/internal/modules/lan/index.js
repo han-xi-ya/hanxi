@@ -7,8 +7,19 @@ export {
     LanService
 };
 
-export {
-    DeviceInfo,
-    LanProgress,
-    SubnetInfo
-} from "./models.js";
+import * as $models from "./models.js";
+
+/**
+ * DeviceInfo 局域网活跃设备信息
+ * @typedef {$models.DeviceInfo} DeviceInfo
+ */
+
+/**
+ * LanProgress 实时扫描进度
+ * @typedef {$models.LanProgress} LanProgress
+ */
+
+/**
+ * SubnetInfo 候选网卡/子网信息
+ * @typedef {$models.SubnetInfo} SubnetInfo
+ */

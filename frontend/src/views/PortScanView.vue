@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as PortScanAPI from '../../bindings/hubkit/internal/modules/portscan'
-import type { PresetGroup, PortResult, ScanSummary } from '../../bindings/hubkit/internal/modules/portscan/models'
+import type { PresetGroup, PortResult } from '../../bindings/hubkit/internal/modules/portscan/models'
 import { Events } from '@wailsio/runtime'
 
 const target = ref('127.0.0.1')
 const portRange = ref('80,443,3000,5000,5173,8000,8080,8081,8443,8888,9000')
+const proxyUrl = ref('')
+const currentEgressIP = ref('')
+const detectingIP = ref(false)
 const scanMode = ref<'safe' | 'normal' | 'fast'>('safe')
 const timeoutMs = ref(600)
 const concurrency = ref(30)
@@ -24,6 +27,7 @@ const errorMessage = ref('')
 const toastMsg = ref('')
 
 let unregEvent: (() => void) | null = null
+let debounceTimer: any = null
 
 function showToast(msg: string) {
   toastMsg.value = msg
@@ -55,6 +59,19 @@ async function loadPresets() {
   }
 }
 
+async function checkEgressIP() {
+  detectingIP.value = true
+  try {
+    const ip = await PortScanAPI.PortScanService.CheckEgressIP(proxyUrl.value.trim())
+    currentEgressIP.value = ip || '未获取到'
+  } catch (e: any) {
+    currentEgressIP.value = '检测失败'
+    console.warn('Egress IP check failed:', e)
+  } finally {
+    detectingIP.value = false
+  }
+}
+
 function applyPreset(p: PresetGroup) {
   portRange.value = p.ports
   showToast(`已应用预设：${p.name}`)
@@ -82,6 +99,7 @@ async function startScan() {
     const summary = await PortScanAPI.PortScanService.StartScan({
       target: target.value.trim(),
       portRange: portRange.value.trim(),
+      proxyUrl: proxyUrl.value.trim(),
       timeoutMs: Number(timeoutMs.value) || 600,
       concurrency: Number(concurrency.value) || 30,
       rateLimitMs: Number(rateLimitMs.value) || 0,
@@ -125,9 +143,18 @@ function openInBrowser(port: number) {
   window.open(`${proto}://${host}:${port}`, '_blank')
 }
 
+// 监听代理输入变化，防抖自动重新探测出网 IP
+watch(proxyUrl, () => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    checkEgressIP()
+  }, 600)
+})
+
 onMounted(() => {
   loadPresets()
   onModeChange()
+  checkEgressIP()
 
   // 监听后端流式进度推送
   unregEvent = Events.On('portscan:progress', (event: any) => {
@@ -159,7 +186,7 @@ onUnmounted(() => {
     <div class="header-row">
       <div>
         <h1>端口扫描与服务识别</h1>
-        <p class="subtitle">高并发 TCP 探测，集成轻量服务指纹识别，支持温和防封模式与全量端口探测。</p>
+        <p class="subtitle">高并发 TCP 探测，集成轻量服务指纹识别，支持中继代理与出网源 IP 实时核验。</p>
       </div>
       <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
@@ -210,6 +237,34 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <!-- 代理与出网 IP 状态条 -->
+      <div class="egress-bar">
+        <div class="egress-left">
+          <div class="param-item proxy-item" title="通过 SOCKS5 代理中继扫描流量，隐藏本机真实 IP（例如 socks5://127.0.0.1:7890）">
+            <span class="param-title">🛡️ 代理中继:</span>
+            <input
+              v-model="proxyUrl"
+              type="text"
+              class="input proxy-input"
+              placeholder="留空直连 / socks5://127.0.0.1:7890"
+              :disabled="scanning"
+            />
+          </div>
+
+          <!-- 实时出网 IP 提示卡片 -->
+          <div class="egress-indicator" :class="{ 'is-proxy': !!proxyUrl.trim() }">
+            <span class="indicator-label">本次出网探测 IP:</span>
+            <span class="indicator-ip" v-if="!detectingIP">
+              <strong>{{ currentEgressIP || '探测中...' }}</strong>
+              <span v-if="proxyUrl.trim()" class="proxy-badge">已代理</span>
+              <span v-else class="direct-badge">直连</span>
+            </span>
+            <span class="indicator-loading" v-else>🔄 正在核验出网 IP...</span>
+            <button class="btn-refresh" title="重新测试出网 IP" :disabled="detectingIP || scanning" @click="checkEgressIP">↻</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 高级设置与操作条 -->
       <div class="action-bar">
         <div class="options-group">
@@ -240,7 +295,7 @@ onUnmounted(() => {
           </div>
 
           <div class="param-item" v-if="rateLimitMs > 0">
-            <span class="param-title">防封微延:</span>
+            <span class="param-title">微延:</span>
             <input v-model.number="rateLimitMs" type="number" step="5" min="0" max="500" class="input num-input" :disabled="scanning" />
             <span class="unit">ms</span>
           </div>
@@ -279,6 +334,7 @@ onUnmounted(() => {
         <div class="header-left">
           <h2>开放端口列表 ({{ openPorts.length }})</h2>
           <span v-if="openPorts.length > 0" class="badge-tag">Target: {{ target }}</span>
+          <span v-if="openPorts.length > 0 && currentEgressIP" class="badge-tag source-tag">Source IP: {{ currentEgressIP }}</span>
         </div>
         <div class="header-actions" v-if="openPorts.length > 0">
           <button class="btn btn-secondary btn-small" @click="copyOpenPorts">📋 复制全部端口</button>
@@ -367,6 +423,7 @@ onUnmounted(() => {
 .select-input { width: auto; font-size: 12px; padding: 6px 10px; cursor: pointer; }
 .input:focus, .select-input:focus { outline: none; border-color: var(--accent); }
 .num-input { width: 70px; text-align: center; }
+.proxy-input { width: 230px; font-size: 12px; padding: 5px 8px; }
 
 .presets-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .preset-label { font-size: 12px; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
@@ -377,12 +434,35 @@ onUnmounted(() => {
 }
 .preset-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
 
+/* 出网 IP 指示条 */
+.egress-bar {
+  background: var(--bg-app); border: 1px solid var(--border-color);
+  border-radius: 6px; padding: 8px 12px;
+}
+.egress-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.egress-indicator {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  background: var(--bg-sidebar); border: 1px solid var(--border-color);
+  padding: 4px 10px; border-radius: 6px;
+}
+.indicator-label { color: var(--text-muted); }
+.indicator-ip { font-family: Consolas, monospace; color: var(--accent); display: flex; align-items: center; gap: 6px; }
+.indicator-loading { color: var(--text-subtle); font-size: 11px; }
+.proxy-badge { background: #dafbe1; color: #1a7f37; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.direct-badge { background: var(--bg-hover); color: var(--text-muted); font-size: 10px; padding: 1px 5px; border-radius: 3px; }
+.btn-refresh {
+  background: transparent; border: none; cursor: pointer; color: var(--text-muted);
+  font-size: 14px; padding: 0 2px; line-height: 1; transition: color 0.15s;
+}
+.btn-refresh:hover:not(:disabled) { color: var(--accent); }
+
 .action-bar {
   display: flex; justify-content: space-between; align-items: center; padding-top: 6px;
   border-top: 1px solid var(--border-color); flex-wrap: wrap; gap: 12px;
 }
 .options-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .mode-selector { display: flex; align-items: center; gap: 6px; }
+.proxy-item { display: flex; align-items: center; gap: 6px; }
 .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text-main); }
 .param-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
 .unit { font-size: 11px; }
@@ -406,6 +486,7 @@ onUnmounted(() => {
 .card-header h2 { font-size: 14px; font-weight: 600; margin: 0; }
 .header-left { display: flex; align-items: center; gap: 8px; }
 .badge-tag { font-size: 11px; background: var(--bg-hover); padding: 2px 8px; border-radius: 4px; color: var(--text-subtle); }
+.source-tag { color: var(--accent); border: 1px solid var(--accent); font-family: Consolas, monospace; }
 
 .table-container { border: 1px solid var(--border-color); border-radius: 6px; overflow: auto; max-height: 480px; }
 .tbl { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }

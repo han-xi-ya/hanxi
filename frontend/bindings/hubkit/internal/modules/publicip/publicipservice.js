@@ -4,7 +4,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -16,9 +16,7 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.NetworkOverview>}
  */
 export function GetNetworkOverview(forceRefresh) {
-    return $Call.ByID(3333703889, forceRefresh).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
-    }));
+    return $Call.ByID(3333703889, forceRefresh);
 }
 
 /**
@@ -28,9 +26,7 @@ export function GetNetworkOverview(forceRefresh) {
  * @returns {$CancellablePromise<$models.PingSummary>}
  */
 export function PingTarget(target, count) {
-    return $Call.ByID(4267404993, target, count).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
-    }));
+    return $Call.ByID(4267404993, target, count);
 }
 
 /**
@@ -40,12 +36,5 @@ export function PingTarget(target, count) {
  * @returns {$CancellablePromise<$models.TracerouteSummary>}
  */
 export function TraceRoute(target, maxHops) {
-    return $Call.ByID(2608082106, target, maxHops).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
-    }));
+    return $Call.ByID(2608082106, target, maxHops);
 }
-
-// Private type creation functions
-const $$createType0 = $models.NetworkOverview.createFrom;
-const $$createType1 = $models.PingSummary.createFrom;
-const $$createType2 = $models.TracerouteSummary.createFrom;

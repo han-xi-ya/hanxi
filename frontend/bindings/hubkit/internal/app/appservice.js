@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -24,29 +24,23 @@ import * as $models from "./models.js";
  * @returns {$CancellablePromise<$models.AppInfo>}
  */
 export function GetAppInfo() {
-    return $Call.ByID(2798046905).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
-    }));
+    return $Call.ByID(2798046905);
 }
 
 /**
  * GetNavs 返回前端左侧导航（核心 + 已启用扩展）。
- * @returns {$CancellablePromise<extapi$0.NavEntry[]>}
+ * @returns {$CancellablePromise<extapi$0.NavEntry[] | null>}
  */
 export function GetNavs() {
-    return $Call.ByID(3041244904).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
-    }));
+    return $Call.ByID(3041244904);
 }
 
 /**
  * ListModules 返回模块清单与启用状态（设置页）。
- * @returns {$CancellablePromise<extapi$0.ModuleInfo[]>}
+ * @returns {$CancellablePromise<extapi$0.ModuleInfo[] | null>}
  */
 export function ListModules() {
-    return $Call.ByID(911257607).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType4($result);
-    }));
+    return $Call.ByID(911257607);
 }
 
 /**
@@ -89,15 +83,5 @@ export function OpenSystemEnvSettings() {
  * @returns {$CancellablePromise<extapi$0.ModuleInfo | null>}
  */
 export function SetModuleEnabled(id, enabled) {
-    return $Call.ByID(3713314263, id, enabled).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType5($result);
-    }));
+    return $Call.ByID(3713314263, id, enabled);
 }
-
-// Private type creation functions
-const $$createType0 = $models.AppInfo.createFrom;
-const $$createType1 = extapi$0.NavEntry.createFrom;
-const $$createType2 = $Create.Array($$createType1);
-const $$createType3 = extapi$0.ModuleInfo.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = $Create.Nullable($$createType3);

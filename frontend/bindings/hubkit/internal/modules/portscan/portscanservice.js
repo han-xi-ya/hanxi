@@ -9,20 +9,27 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
+ * CheckEgressIP 探测当前扫描配置（直连或代理）下的实际发包出网 IP
+ * @param {string} proxyURL
+ * @returns {$CancellablePromise<string>}
+ */
+export function CheckEgressIP(proxyURL) {
+    return $Call.ByID(3548401934, proxyURL);
+}
+
+/**
  * GetPresets 返回常见预设端口组合
- * @returns {$CancellablePromise<$models.PresetGroup[]>}
+ * @returns {$CancellablePromise<$models.PresetGroup[] | null>}
  */
 export function GetPresets() {
-    return $Call.ByID(136184176).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
-    }));
+    return $Call.ByID(136184176);
 }
 
 /**
@@ -31,9 +38,7 @@ export function GetPresets() {
  * @returns {$CancellablePromise<$models.ScanSummary | null>}
  */
 export function StartScan(req) {
-    return $Call.ByID(1111344797, req).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType3($result);
-    }));
+    return $Call.ByID(1111344797, req);
 }
 
 /**
@@ -44,9 +49,3 @@ export function StartScan(req) {
 export function StopScan(taskID) {
     return $Call.ByID(2581762785, taskID);
 }
-
-// Private type creation functions
-const $$createType0 = $models.PresetGroup.createFrom;
-const $$createType1 = $Create.Array($$createType0);
-const $$createType2 = $models.ScanSummary.createFrom;
-const $$createType3 = $Create.Nullable($$createType2);

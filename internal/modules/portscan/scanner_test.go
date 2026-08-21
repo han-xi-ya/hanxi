@@ -63,6 +63,7 @@ func TestScannerScanLocalPort(t *testing.T) {
 		"test_1",
 		"127.0.0.1",
 		[]int{port, port + 1},
+		"",
 		500*time.Millisecond,
 		10,
 		0,

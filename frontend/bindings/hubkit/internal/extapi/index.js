@@ -4,7 +4,17 @@
 
 export {
     Level,
-    ModuleInfo,
-    NavEntry,
     NavSection
 } from "./models.js";
+
+import * as $models from "./models.js";
+
+/**
+ * ModuleInfo 模块元信息。
+ * @typedef {$models.ModuleInfo} ModuleInfo
+ */
+
+/**
+ * NavEntry 描述左侧导航中的一项（前端据此注册路由）。
+ * @typedef {$models.NavEntry} NavEntry
+ */

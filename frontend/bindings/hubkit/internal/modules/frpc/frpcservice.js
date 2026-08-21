@@ -10,7 +10,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -55,21 +55,17 @@ export function GenerateToml(p) {
  * @returns {$CancellablePromise<domain$0.Project | null>}
  */
 export function GetProject(id) {
-    return $Call.ByID(3606904391, id).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
-    }));
+    return $Call.ByID(3606904391, id);
 }
 
 /**
  * GetProjectLogs 拉取项目实例最近日志（lastN <= 0 返回全部缓冲）。
  * @param {string} id
  * @param {number} lastN
- * @returns {$CancellablePromise<string[]>}
+ * @returns {$CancellablePromise<string[] | null>}
  */
 export function GetProjectLogs(id, lastN) {
-    return $Call.ByID(2550889948, id, lastN).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
-    }));
+    return $Call.ByID(2550889948, id, lastN);
 }
 
 /**
@@ -77,49 +73,39 @@ export function GetProjectLogs(id, lastN) {
  * @returns {$CancellablePromise<version$0.FrpVersionInfo>}
  */
 export function ImportLocalFrpc() {
-    return $Call.ByID(2113418499).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType3($result);
-    }));
+    return $Call.ByID(2113418499);
 }
 
 /**
  * ListInstalledVersions 获取本地已安装版本列表
- * @returns {$CancellablePromise<version$0.FrpVersionInfo[]>}
+ * @returns {$CancellablePromise<version$0.FrpVersionInfo[] | null>}
  */
 export function ListInstalledVersions() {
-    return $Call.ByID(2732803105).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType4($result);
-    }));
+    return $Call.ByID(2732803105);
 }
 
 /**
  * ListInstanceStates 返回全部项目实例状态（含已停止的历史实例）。
- * @returns {$CancellablePromise<instance$0.Snapshot[]>}
+ * @returns {$CancellablePromise<instance$0.Snapshot[] | null>}
  */
 export function ListInstanceStates() {
-    return $Call.ByID(2425021763).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType6($result);
-    }));
+    return $Call.ByID(2425021763);
 }
 
 /**
  * ListProjects 返回全部 frpc 项目
- * @returns {$CancellablePromise<domain$0.Project[]>}
+ * @returns {$CancellablePromise<domain$0.Project[] | null>}
  */
 export function ListProjects() {
-    return $Call.ByID(1588642172).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType7($result);
-    }));
+    return $Call.ByID(1588642172);
 }
 
 /**
  * ListReleases 获取远程可用版本列表（GitHub 官方源 + 镜像回退，10 分钟缓存）
- * @returns {$CancellablePromise<version$0.FrpRelease[]>}
+ * @returns {$CancellablePromise<version$0.FrpRelease[] | null>}
  */
 export function ListReleases() {
-    return $Call.ByID(2381381988).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType9($result);
-    }));
+    return $Call.ByID(2381381988);
 }
 
 /**
@@ -128,9 +114,7 @@ export function ListReleases() {
  * @returns {$CancellablePromise<domain$0.Project>}
  */
 export function ParseToml(content) {
-    return $Call.ByID(1525046141, content).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
-    }));
+    return $Call.ByID(1525046141, content);
 }
 
 /**
@@ -148,9 +132,7 @@ export function RemoveVersion(targetVersion) {
  * @returns {$CancellablePromise<domain$0.Project>}
  */
 export function SaveProject(p) {
-    return $Call.ByID(1314615508, p).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
-    }));
+    return $Call.ByID(1314615508, p);
 }
 
 /**
@@ -171,15 +153,3 @@ export function StartProject(id) {
 export function StopProject(id) {
     return $Call.ByID(1466787459, id);
 }
-
-// Private type creation functions
-const $$createType0 = domain$0.Project.createFrom;
-const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = $Create.Array($Create.Any);
-const $$createType3 = version$0.FrpVersionInfo.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = instance$0.Snapshot.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $Create.Array($$createType0);
-const $$createType8 = version$0.FrpRelease.createFrom;
-const $$createType9 = $Create.Array($$createType8);
