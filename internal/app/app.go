@@ -9,6 +9,7 @@ import (
 	"hubkit/internal/extapi"
 	"hubkit/internal/logging"
 	"hubkit/internal/modules/frpc"
+	"hubkit/internal/modules/frpc/instance"
 	"hubkit/internal/modules/frpc/version"
 	"hubkit/internal/modules/lan"
 	"hubkit/internal/modules/portkill"
@@ -27,6 +28,8 @@ func RegisterEvents() {
 	application.RegisterEvent[extapi.NavEntry]("ext:changed")
 	application.RegisterEvent[lan.LanProgress]("lan:progress")
 	application.RegisterEvent[version.DownloadProgress]("frpc:version-download")
+	application.RegisterEvent[instance.Snapshot]("frpc:instance-state")
+	application.RegisterEvent[instance.LogEntry]("frpc:instance-log")
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。

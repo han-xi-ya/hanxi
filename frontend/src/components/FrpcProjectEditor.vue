@@ -128,7 +128,7 @@ function refreshPreview() {
   }, 350)
 }
 
-watch(() => draft, refreshPreview, { deep: true })
+watch(() => draft, refreshPreview, { deep: true, immediate: true })
 
 function isDraftValid(): boolean {
   if (!draft.name.trim()) { errorMsg.value = '请填写项目名称'; return false }

@@ -1,7 +1,10 @@
 // Package docgen 负责 frp 配置 TOML 的生成与解析。
 //
-// 生成目标：frp v1.x 标准新格式（[core] + [[proxies]]，camelCase 字段）。
-// 解析兼容：v1.x 新格式与 v0.x 旧格式（[common] + snake_case）均可读回。
+// 生成目标：frp v0.53+ 标准 TOML 格式（顶层 serverAddr/serverPort +
+// [auth] / [log] / [transport] 子段 + [[proxies]] 数组，camelCase 字段）。
+// 注意：v0.52 时代的 [core] 包裹段在 v0.53 已被移除，本项目不生成也不接受该格式。
+//
+// 解析兼容：v0.53+ 新格式与 v0.x 旧格式（[common] + snake_case）均可读回。
 package docgen
 
 import (
@@ -15,25 +18,25 @@ import (
 )
 
 // ---------------------------
-// 生成用结构（v1.x 格式）
+// 生成/解析共用结构（v0.53+ 格式）
 // ---------------------------
 
-type tomlCore struct {
-	ServerAddr string        `toml:"serverAddr"`
-	ServerPort int           `toml:"serverPort"`
-	Token      string        `toml:"token"`
-	TLSEnable  bool          `toml:"tlsEnable"`
-	Transport  tomlTransport `toml:"transport"`
-	Log        tomlLog       `toml:"log"`
-}
-
-type tomlTransport struct {
-	UseEncryption  bool `toml:"useEncryption"`
-	UseCompression bool `toml:"useCompression"`
+type tomlAuth struct {
+	Method string `toml:"method"` // token | oidc（默认 token）
+	Token  string `toml:"token"`
 }
 
 type tomlLog struct {
 	Level string `toml:"level"`
+}
+
+type tomlTLS struct {
+	Enable *bool `toml:"enable"`
+}
+
+type tomlServerTransport struct {
+	Protocol string  `toml:"protocol"` // tcp/kcp/quic/websocket/wss
+	TLS      tomlTLS `toml:"tls"`
 }
 
 type tomlProxy struct {
@@ -41,52 +44,68 @@ type tomlProxy struct {
 	Type          string             `toml:"type"`
 	LocalIP       string             `toml:"localIP"`
 	LocalPort     int                `toml:"localPort"`
-	RemotePort    int                `toml:"remotePort,omitempty"`
+	RemotePort    *int               `toml:"remotePort,omitempty"` // 仅 tcp/udp 输出；其他类型省略（frp 拒绝 stcp/xtcp 携带 remotePort）
 	CustomDomains []string           `toml:"customDomains,omitempty"`
 	Subdomain     string             `toml:"subdomain,omitempty"`
 	SecretKey     string             `toml:"secretKey,omitempty"`
-	Transport     tomlProxyTransport `toml:"transport,omitempty"`
+	Transport     tomlProxyTransport `toml:"transport"`
 }
 
 type tomlProxyTransport struct {
-	UseEncryption bool `toml:"useEncryption"`
+	UseEncryption  bool `toml:"useEncryption"`
+	UseCompression bool `toml:"useCompression"`
 }
 
-type tomlRoot struct {
-	Core    tomlCore    `toml:"core"`
-	Proxies []tomlProxy `toml:"proxies"`
+// tomlFile v0.53+ 文件骨架（顶层字段 + 各子段）
+type tomlFile struct {
+	ServerAddr string          `toml:"serverAddr"`
+	ServerPort int             `toml:"serverPort"`
+	Auth       tomlAuth        `toml:"auth"`
+	Log        tomlLog         `toml:"log"`
+	Transport  tomlServerTransport `toml:"transport"`
+	Proxies    []tomlProxy     `toml:"proxies"`
 }
 
-// Generate 将项目领域模型序列化为 frp v1.x TOML 配置内容
+// ---------------------------
+// 生成
+// ---------------------------
+
+// Generate 将项目领域模型序列化为 frp v0.53+ TOML 配置内容。
+//
+// v0.53+ 移除了客户端级加密/压缩开关（仅存在于 proxy 级 transport 子段），
+// 因此项目级 Server.UseEncryption/UseCompression 将传播到每一条代理规则，
+// 保持"项目级开关"的用户语义。
 func Generate(p *domain.Project) (string, error) {
-	if strings.TrimSpace(p.Server.ServerAddr) == "" {
+	server := p.Server
+	if strings.TrimSpace(server.ServerAddr) == "" {
 		return "", fmt.Errorf("服务端地址 serverAddr 不能为空")
 	}
-	if p.Server.ServerPort <= 0 || p.Server.ServerPort > 65535 {
-		return "", fmt.Errorf("服务端端口 serverPort 无效: %d", p.Server.ServerPort)
+	if server.ServerPort <= 0 || server.ServerPort > 65535 {
+		return "", fmt.Errorf("服务端端口 serverPort 无效: %d", server.ServerPort)
 	}
 
-	logLevel := p.Server.LogLevel
+	logLevel := server.LogLevel
 	if logLevel == "" {
 		logLevel = "info"
 	}
+	tlsEnable := server.TLSEnable
 
-	root := tomlRoot{
-		Core: tomlCore{
-			ServerAddr: p.Server.ServerAddr,
-			ServerPort: p.Server.ServerPort,
-			Token:      p.Server.Token,
-			TLSEnable:  p.Server.TLSEnable,
-			Transport: tomlTransport{
-				UseEncryption:  p.Server.UseEncryption,
-				UseCompression: p.Server.UseCompression,
-			},
-			Log: tomlLog{Level: logLevel},
+	seen := make(map[string]bool, len(p.Proxies))
+	root := tomlFile{
+		ServerAddr: strings.TrimSpace(server.ServerAddr),
+		ServerPort: server.ServerPort,
+		Auth: tomlAuth{
+			Method: "token",
+			Token:  server.Token,
+		},
+		Log: tomlLog{Level: logLevel},
+		Transport: tomlServerTransport{
+			Protocol: "tcp",
+			TLS:      tomlTLS{Enable: &tlsEnable},
 		},
 		Proxies: make([]tomlProxy, 0, len(p.Proxies)),
 	}
 
-	seen := make(map[string]bool, len(p.Proxies))
 	for i, pr := range p.Proxies {
 		name := strings.TrimSpace(pr.Name)
 		if name == "" {
@@ -96,33 +115,54 @@ func Generate(p *domain.Project) (string, error) {
 			return "", fmt.Errorf("代理规则名称重复: %s", name)
 		}
 		seen[name] = true
+
 		switch pr.Type {
 		case "tcp", "udp", "http", "https", "stcp", "xtcp":
 		default:
 			return "", fmt.Errorf("代理规则 %s 类型不支持: %s", name, pr.Type)
 		}
+		if pr.LocalPort <= 0 || pr.LocalPort > 65535 {
+			return "", fmt.Errorf("规则 %s 的本地端口无效", name)
+		}
+		if (pr.Type == "tcp" || pr.Type == "udp") && (pr.RemotePort <= 0 || pr.RemotePort > 65535) {
+			return "", fmt.Errorf("规则 %s 的远程端口无效", name)
+		}
 
-		root.Proxies = append(root.Proxies, tomlProxy{
+		proxy := tomlProxy{
 			Name:          name,
 			Type:          pr.Type,
 			LocalIP:       pruneLocalIP(pr.LocalIP),
 			LocalPort:     pr.LocalPort,
-			RemotePort:    pr.RemotePort,
 			CustomDomains: pr.CustomDomains,
 			Subdomain:     pr.Subdomain,
 			SecretKey:     pr.SecretKey,
 			Transport: tomlProxyTransport{
-				UseEncryption: pr.EncryptTransport,
+				UseEncryption:  pr.EncryptTransport || server.UseEncryption,
+				UseCompression: server.UseCompression,
 			},
-		})
+		}
+		if pr.Type == "tcp" || pr.Type == "udp" {
+			port := pr.RemotePort
+			proxy.RemotePort = &port
+		}
+		root.Proxies = append(root.Proxies, proxy)
 	}
 
 	var buf bytes.Buffer
 	enc := toml.NewEncoder(&buf)
+	enc.Indent = "  "
 	if err := enc.Encode(root); err != nil {
 		return "", fmt.Errorf("toml encode: %w", err)
 	}
 	return buf.String(), nil
+}
+
+// derefInt 解引用可选 int（TOML omitempty 载体）；nil 返回 0。
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 func pruneLocalIP(ip string) string {
@@ -133,62 +173,62 @@ func pruneLocalIP(ip string) string {
 }
 
 // ---------------------------
-// 解析结构（兼容 v1.x 与 v0.x）
+// 解析
 // ---------------------------
 
-// tomlCoreLegacy frp v0.x 的 [common] 段
-type tomlCoreLegacy struct {
-	ServerAddr     string `toml:"server_addr"`
-	ServerPort     int    `toml:"server_port"`
-	Token          string `toml:"token"`
-	TLSEnable      bool   `toml:"tls_enable"`
-	UseEncryption  bool   `toml:"use_encryption"`
-	UseCompression bool   `toml:"use_compression"`
-	LogLevel       string `toml:"log_level"`
-}
-
-type tomlProxyLegacy struct {
-	Name          string   `toml:"name"`
-	Type          string   `toml:"type"`
-	LocalIP       string   `toml:"local_ip"`
-	LocalPort     int      `toml:"local_port"`
-	RemotePort    int      `toml:"remote_port"`
-	Subdomain     string   `toml:"subdomain"`
-	SecretKey     string   `toml:"secret_key"`
-	CustomDomains []string `toml:"custom_domains"`
-}
-
-// tomlFile 新格式解析骨架（v1.x：[core] + camelCase）
-type tomlFile struct {
-	Core    tomlCore    `toml:"core"`
-	Proxies []tomlProxy `toml:"proxies"`
-}
-
-// tomlFileLegacy 旧格式解析骨架（v0.x：[common] + snake_case）
+// tomlFileLegacy frp v0.x 的 [common] + snake_case 骨架
 type tomlFileLegacy struct {
-	Common  tomlCoreLegacy    `toml:"common"`
-	Proxies []tomlProxyLegacy `toml:"proxies"`
+	Common struct {
+		ServerAddr     string `toml:"server_addr"`
+		ServerPort     int    `toml:"server_port"`
+		Token          string `toml:"token"`
+		TLSEnable      bool   `toml:"tls_enable"`
+		UseEncryption  bool   `toml:"use_encryption"`
+		UseCompression bool   `toml:"use_compression"`
+		LogLevel       string `toml:"log_level"`
+	} `toml:"common"`
+	Proxies []struct {
+		Name          string   `toml:"name"`
+		Type          string   `toml:"type"`
+		LocalIP       string   `toml:"local_ip"`
+		LocalPort     int      `toml:"local_port"`
+		RemotePort    int      `toml:"remote_port"`
+		Subdomain     string   `toml:"subdomain"`
+		SecretKey     string   `toml:"secret_key"`
+		CustomDomains []string `toml:"custom_domains"`
+	} `toml:"proxies"`
 }
 
-// Parse 读取 TOML 配置内容回领域模型（v1.x 新格式与 v0.x 旧格式均可）
+// Parse 读取 TOML 配置内容回领域模型。
+// 支持 v0.53+ 新格式（顶层 + [auth]/[log]/[transport] + [[proxies]]）与
+// v0.x 旧格式（[common] + snake_case）。
 func Parse(content string) (domain.Project, error) {
-	// 1. 先尝试新格式 v1.x
+	// 1. 新格式 v0.53+
 	var tf tomlFile
 	if err := toml.Unmarshal([]byte(content), &tf); err != nil {
 		return domain.Project{}, fmt.Errorf("toml 解析失败: %w", err)
 	}
-	if tf.Core.ServerAddr != "" {
-		return projectFromProxies(serverFromNew(tf.Core), tf.Proxies), nil
+	if tf.ServerAddr != "" {
+		return projectFromNew(tf), nil
 	}
 
-	// 2. 再尝试旧格式 v0.x
+	// 2. 旧格式 v0.x
 	var tfl tomlFileLegacy
 	if err := toml.Unmarshal([]byte(content), &tfl); err != nil {
 		return domain.Project{}, fmt.Errorf("toml 解析失败: %w", err)
 	}
-	if tfl.Common.ServerAddr != "" {
+	c := tfl.Common
+	if c.ServerAddr != "" {
 		proj := domain.Project{
-			Server:  serverFromLegacy(tfl.Common),
+			Server: domain.ServerConfig{
+				ServerAddr:     c.ServerAddr,
+				ServerPort:     c.ServerPort,
+				Token:          c.Token,
+				TLSEnable:      c.TLSEnable,
+				UseEncryption:  c.UseEncryption,
+				UseCompression: c.UseCompression,
+				LogLevel:       c.LogLevel,
+			},
 			Proxies: make([]domain.ProxyRule, 0, len(tfl.Proxies)),
 		}
 		for _, p := range tfl.Proxies {
@@ -206,52 +246,51 @@ func Parse(content string) (domain.Project, error) {
 		return proj, nil
 	}
 
-	return domain.Project{}, fmt.Errorf("未识别到 [core] 或 [common] 配置段")
+	return domain.Project{}, fmt.Errorf("未识别到有效的 frp 配置（缺少 serverAddr / server_addr）")
 }
 
-func projectFromProxies(server domain.ServerConfig, newProxies []tomlProxy) domain.Project {
-	proj := domain.Project{
-		Server:  server,
-		Proxies: make([]domain.ProxyRule, 0, len(newProxies)),
+// projectFromNew 从 v0.53+ 结构提取领域模型。
+// 项目级加密/压缩开关为聚合值：仅当全部代理一致开启时才回填为 true。
+func projectFromNew(tf tomlFile) domain.Project {
+	tlsOn := true
+	if tf.Transport.TLS.Enable != nil {
+		tlsOn = *tf.Transport.TLS.Enable
 	}
-	for _, p := range newProxies {
+
+	proj := domain.Project{
+		Server: domain.ServerConfig{
+			ServerAddr: tf.ServerAddr,
+			ServerPort: tf.ServerPort,
+			Token:      tf.Auth.Token,
+			TLSEnable:  tlsOn,
+			LogLevel:   tf.Log.Level,
+		},
+		Proxies: make([]domain.ProxyRule, 0, len(tf.Proxies)),
+	}
+	allEnc, anyEnc := true, false
+	allCmp, anyCmp := true, false
+	for _, p := range tf.Proxies {
+		allEnc = allEnc && p.Transport.UseEncryption
+		anyEnc = anyEnc || p.Transport.UseEncryption
+		allCmp = allCmp && p.Transport.UseCompression
+		anyCmp = anyCmp || p.Transport.UseCompression
 		proj.Proxies = append(proj.Proxies, domain.ProxyRule{
 			Name:             p.Name,
 			Type:             p.Type,
 			LocalIP:          pruneLocalIP(p.LocalIP),
 			LocalPort:        p.LocalPort,
-			RemotePort:       p.RemotePort,
+			RemotePort:       derefInt(p.RemotePort),
 			CustomDomains:    p.CustomDomains,
 			Subdomain:        p.Subdomain,
 			SecretKey:        p.SecretKey,
 			EncryptTransport: p.Transport.UseEncryption,
 		})
 	}
+	if len(tf.Proxies) > 0 && allEnc && anyEnc {
+		proj.Server.UseEncryption = true
+	}
+	if len(tf.Proxies) > 0 && allCmp && anyCmp {
+		proj.Server.UseCompression = true
+	}
 	return proj
-}
-
-// serverFromNew 从 v1.x 结构提取 ServerConfig
-func serverFromNew(c tomlCore) domain.ServerConfig {
-	return domain.ServerConfig{
-		ServerAddr:     c.ServerAddr,
-		ServerPort:     c.ServerPort,
-		Token:          c.Token,
-		TLSEnable:      c.TLSEnable,
-		UseEncryption:  c.Transport.UseEncryption,
-		UseCompression: c.Transport.UseCompression,
-		LogLevel:       c.Log.Level,
-	}
-}
-
-// serverFromLegacy 从 v0.x [common] 结构提取 ServerConfig
-func serverFromLegacy(c tomlCoreLegacy) domain.ServerConfig {
-	return domain.ServerConfig{
-		ServerAddr:     c.ServerAddr,
-		ServerPort:     c.ServerPort,
-		Token:          c.Token,
-		TLSEnable:      c.TLSEnable,
-		UseEncryption:  c.UseEncryption,
-		UseCompression: c.UseCompression,
-		LogLevel:       c.LogLevel,
-	}
 }

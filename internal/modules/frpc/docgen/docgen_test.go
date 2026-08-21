@@ -34,14 +34,12 @@ func TestGenerateRoundTrip(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	// 关键格式断言
+	// 关键格式断言（v0.53+：顶层字段 + 子段，无 [core] 包裹）
 	for _, want := range []string{
-		"[core]",
 		`serverAddr = "frp.example.com"`,
 		"serverPort = 7000",
+		"method = \"token\"",
 		`token = "secret-token"`,
-		"tlsEnable = true",
-		"useEncryption = true",
 		"[[proxies]]",
 		`name = "ssh"`,
 		"remotePort = 6000",
@@ -49,6 +47,14 @@ func TestGenerateRoundTrip(t *testing.T) {
 		if !strings.Contains(tomlText, want) {
 			t.Errorf("generated toml missing %q\n---\n%s", want, tomlText)
 		}
+	}
+	// v0.53+ 无 [core] 包裹段
+	if strings.Contains(tomlText, "[core]") {
+		t.Errorf("v0.53+ format must not contain [core] section\n---\n%s", tomlText)
+	}
+	// 项目级加密传播到代理 transport 子段
+	if !strings.Contains(tomlText, "useEncryption = true") {
+		t.Errorf("proxy-level useEncryption missing\n---\n%s", tomlText)
 	}
 
 	// 回读闭环

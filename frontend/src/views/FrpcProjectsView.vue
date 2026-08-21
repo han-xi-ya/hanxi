@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { Events } from '@wailsio/runtime'
 import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservice'
 import type { Project } from '../../bindings/hubkit/internal/domain/models'
+import type { Snapshot } from '../../bindings/hubkit/internal/modules/frpc/instance/models'
 import FrpcProjectEditor from '../components/FrpcProjectEditor.vue'
 
 const projects = ref<Project[]>([])
@@ -14,10 +16,68 @@ const editorOpen = ref(false)
 const editingProject = ref<Project | null>(null)
 const installedVersions = ref<string[]>([])
 
+// 实例状态：projectId → 最新快照
+const instances = ref<Record<string, Snapshot>>({})
+const starting = ref<Set<string>>(new Set()) // 启动请求进行中（防重复点击）
+
+// 日志抽屉
+const drawerOpen = ref(false)
+const drawerProjectId = ref('')
+const logLines = ref<string[]>([])
+const logLoading = ref(false)
+const logError = ref('')
+const logAutoScroll = ref(true)
+const logBodyRef = ref<HTMLElement | null>(null)
+
+// 运行时长每秒刷新
+const nowTick = ref(Date.now())
+let tickTimer: ReturnType<typeof setInterval> | null = null
+
 function showToast(msg: string) {
   toastMsg.value = msg
   setTimeout(() => { toastMsg.value = '' }, 2500)
 }
+
+function projectName(id: string): string {
+  return projects.value.find(p => p.id === id)?.name ?? id
+}
+
+// stripAnsi 剥离 frpc 输出的 ANSI 色码（\x1b[1;34m 等）
+function stripAnsi(s: string): string {
+  return s.replace(/\[[\d;]*m/g, '')
+}
+
+// cleanLines 剥离色码后的日志（保留原行做样式判断）
+const displayLines = computed(() => logLines.value.map(l => stripAnsi(l)))
+
+function stateOf(p: Project): Snapshot | undefined {
+  return instances.value[p.id]
+}
+
+function isActive(p: Project): boolean {
+  const s = stateOf(p)
+  return s?.state === 'running' || s?.state === 'starting'
+}
+
+function runningDuration(s: Snapshot | undefined): string {
+  if (!s || s.state !== 'running' || !s.startedAt) return ''
+  const start = new Date(s.startedAt).getTime()
+  const secs = Math.max(0, Math.floor((nowTick.value - start) / 1000))
+  if (secs < 60) return `${secs}s`
+  const m = Math.floor(secs / 60)
+  if (m < 60) return `${m}m ${secs % 60}s`
+  return `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
+const stateBadge = computed(() => (p: Project): { cls: string; text: string; dot: string } => {
+  const s = stateOf(p)
+  switch (s?.state) {
+    case 'running': return { cls: 'running', text: `运行中 · ${runningDuration(s)}`, dot: '#2da44e' }
+    case 'starting': return { cls: 'starting', text: '启动中…', dot: '#d4a72c' }
+    case 'failed': return { cls: 'failed', text: '启动失败', dot: '#cf222e' }
+    default: return { cls: 'stopped', text: '未启动', dot: '#c1c7cd' }
+  }
+})
 
 async function loadProjects() {
   loading.value = true
@@ -28,6 +88,17 @@ async function loadProjects() {
     errorMsg.value = `加载项目失败: ${e?.message ?? e}`
   } finally {
     loading.value = false
+  }
+}
+
+async function loadInstances() {
+  try {
+    const snaps = (await FrpcAPI.ListInstanceStates()) ?? []
+    const map: Record<string, Snapshot> = {}
+    for (const s of snaps) map[s.projectId] = s
+    instances.value = map
+  } catch (e) {
+    // 静默：状态为空也可接受
   }
 }
 
@@ -55,12 +126,40 @@ async function onSaved() {
   await loadProjects()
 }
 
+async function toggleStart(p: Project) {
+  if (starting.value.has(p.id) || stateOf(p)?.state === 'starting' || stateOf(p)?.state === 'running') {
+    // 运行中：停止
+    if (stateOf(p)?.state !== 'running') return
+    try {
+      await FrpcAPI.StopProject(p.id)
+      showToast(`已停止「${p.name}」`)
+    } catch (e: any) {
+      showToast(`停止失败: ${e?.message ?? e}`)
+    }
+    return
+  }
+  starting.value.add(p.id)
+  try {
+    await FrpcAPI.StartProject(p.id)
+    showToast(`正在启动「${p.name}」…`)
+  } catch (e: any) {
+    showToast(`启动失败: ${e?.message ?? e}`)
+    await loadInstances() // 同步失败态
+  } finally {
+    starting.value.delete(p.id)
+  }
+}
+
 async function deleteProject(p: Project) {
+  if (isActive(p)) {
+    showToast('请先停止实例再删除项目')
+    return
+  }
   if (!window.confirm(`确定删除项目「${p.name}」？\n配置将被永久移除。`)) return
   try {
     await FrpcAPI.DeleteProject(p.id)
     showToast(`已删除「${p.name}」`)
-    await loadProjects()
+    await Promise.all([loadProjects(), loadInstances()])
   } catch (e: any) {
     showToast(`删除失败: ${e?.message ?? e}`)
   }
@@ -72,8 +171,70 @@ function typeCount(p: Project): string {
   return [...map.entries()].map(([t, n]) => `${t}×${n}`).join(' · ')
 }
 
+// ---------- 日志抽屉 ----------
+
+// 事件行缓冲基线：拉取返回前可能已收到事件行，用基线合并避免丢行
+let logPullBaseline = 0
+
+async function openLogs(p: Project) {
+  drawerProjectId.value = p.id
+  logPullBaseline = logLines.value.length // 记录拉取前已缓冲的事件行
+  logError.value = ''
+  logLoading.value = true
+  drawerOpen.value = true
+  try {
+    const initial = (await FrpcAPI.GetProjectLogs(p.id, 500)) ?? []
+    // 先到的事件行（baseline 之后）追加在初始快照之后
+    logLines.value = [...initial, ...logLines.value.slice(logPullBaseline)]
+  } catch (e: any) {
+    logError.value = `拉取日志失败: ${e?.message ?? e}`
+  } finally {
+    logLoading.value = false
+    await scrollToBottom()
+  }
+}
+
+function closeLogs() {
+  drawerOpen.value = false
+  drawerProjectId.value = ''
+}
+
+async function scrollToBottom() {
+  await nextTick()
+  const el = logBodyRef.value
+  if (el && logAutoScroll.value) el.scrollTop = el.scrollHeight
+}
+
+function clearLogs() {
+  logLines.value = []
+}
+
 onMounted(async () => {
-  await Promise.all([loadProjects(), loadInstalledVersions()])
+  await Promise.all([loadProjects(), loadInstances(), loadInstalledVersions()])
+
+  unlistenState = Events.On('frpc:instance-state', (event: any) => {
+    const snap = event?.data as Snapshot
+    if (!snap?.projectId) return
+    instances.value = { ...instances.value, [snap.projectId]: snap }
+  })
+  unlistenLog = Events.On('frpc:instance-log', (event: any) => {
+    const entry = event?.data
+    if (!entry?.projectId || entry.projectId !== drawerProjectId.value) return
+    logLines.value.push(entry.line)
+    if (logLines.value.length > 5000) logLines.value = logLines.value.slice(-1000)
+    void scrollToBottom()
+  })
+
+  tickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
+})
+
+let unlistenState: (() => void) | null = null
+let unlistenLog: (() => void) | null = null
+
+onUnmounted(() => {
+  unlistenState?.()
+  unlistenLog?.()
+  if (tickTimer) clearInterval(tickTimer)
 })
 </script>
 
@@ -93,14 +254,14 @@ onMounted(async () => {
       <div class="header-row">
         <div>
           <h1>frpc 项目</h1>
-          <p class="subtitle">项目 = 一份 frp 配置。可为每个项目绑定独立版本，支持 TCP/UDP/HTTP/HTTPS/STCP/XTCP 隧道，多实例并行互不干扰。</p>
+          <p class="subtitle">项目 = 一份 frp 配置。每个项目独立 frpc.exe 进程运行，退出 HubKit 时内核连带清理，杜绝孤儿进程。</p>
         </div>
         <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
       </div>
 
       <div class="control-panel">
         <div class="meta-info">
-          <span>共 {{ projects.length }} 个项目</span>
+          <span>共 {{ projects.length }} 个项目 · {{ Object.keys(instances).filter(id => instances[id]?.state === 'running').length }} 个运行中</span>
         </div>
         <button class="btn btn-primary" @click="openCreate">+ 新建项目</button>
       </div>
@@ -114,14 +275,16 @@ onMounted(async () => {
       </div>
 
       <div class="project-grid">
-        <div v-for="p in projects" :key="p.id" class="project-card">
+        <div v-for="p in projects" :key="p.id" class="project-card" :class="{ active: isActive(p) }">
           <div class="proj-top">
             <div class="proj-title-box">
               <span class="proj-name">{{ p.name }}</span>
               <span v-if="p.version" class="badge badge-version">{{ p.version }}</span>
               <span v-else class="badge badge-unbound">未绑定版本</span>
             </div>
-            <span class="proj-status stopped"><span class="dot"></span>未启动</span>
+            <span class="proj-status" :class="stateBadge(p).cls" :title="stateOf(p)?.error || ''">
+              <span class="dot" :style="{ background: stateBadge(p).dot }"></span>{{ stateBadge(p).text }}
+            </span>
           </div>
 
           <div class="proj-server">
@@ -136,23 +299,55 @@ onMounted(async () => {
           <div class="proj-proxies">
             <span class="proxies-label">{{ (p.proxies ?? []).length }} 条规则</span>
             <span v-if="(p.proxies ?? []).length" class="proxies-types">{{ typeCount(p) }}</span>
+            <span v-if="stateOf(p)?.pid" class="proxy-pid">PID {{ stateOf(p)?.pid }}</span>
           </div>
 
+          <div v-if="stateOf(p)?.error" class="proj-error">{{ stateOf(p)?.error }}</div>
+
           <div class="proj-actions">
-            <button class="btn btn-secondary btn-small" :disabled="!p.version" title="多实例启停（M4.3 落地）">
-              ▶ 启动
-            </button>
-            <button class="btn btn-secondary btn-small" @click="openEdit(p)">编辑</button>
-            <button class="btn btn-danger-outline btn-small" @click="deleteProject(p)">删除</button>
+            <template v-if="stateOf(p)?.state === 'running'">
+              <button class="btn btn-stop btn-small" @click="toggleStart(p)">■ 停止</button>
+            </template>
+            <template v-else>
+              <button
+                class="btn btn-primary btn-small"
+                :disabled="starting.has(p.id) || stateOf(p)?.state === 'starting'"
+                @click="toggleStart(p)"
+              >{{ starting.has(p.id) || stateOf(p)?.state === 'starting' ? '启动中…' : '▶ 启动' }}</button>
+            </template>
+            <button class="btn btn-secondary btn-small" @click="openLogs(p)">日志</button>
+            <button class="btn btn-secondary btn-small" :disabled="isActive(p)" @click="openEdit(p)">编辑</button>
+            <button class="btn btn-danger-outline btn-small" :disabled="isActive(p)" @click="deleteProject(p)">删除</button>
           </div>
         </div>
       </div>
     </template>
+
+    <!-- 日志抽屉 -->
+    <div v-if="drawerOpen" class="log-drawer">
+      <div class="log-drawer-head">
+        <span class="log-drawer-title">日志 · {{ projectName(drawerProjectId) }}</span>
+        <div class="log-drawer-tools">
+          <label class="auto-scroll"><input v-model="logAutoScroll" type="checkbox" />自动滚动</label>
+          <button class="btn btn-secondary btn-small" @click="clearLogs">清屏</button>
+          <button class="btn btn-secondary btn-small" @click="openLogs(projects.find(x => x.id === drawerProjectId) as any)">刷新</button>
+          <button class="btn btn-secondary btn-small" @click="closeLogs">✕ 收起</button>
+        </div>
+      </div>
+      <div v-if="logError" class="log-error">{{ logError }}</div>
+      <div ref="logBodyRef" class="log-body" @scroll.passive="logAutoScroll = ($event.target as HTMLElement).scrollTop + ($event.target as HTMLElement).clientHeight >= ($event.target as HTMLElement).scrollHeight - 40">
+        <template v-if="displayLines.length">
+          <div v-for="(line, i) in displayLines" :key="i" class="log-line" :class="{ 'log-warn': /\[W\]|WARN|error|fail/i.test(line) }">{{ line }}</div>
+        </template>
+        <div v-else class="log-empty">{{ logLoading ? '加载中…' : '暂无日志输出' }}</div>
+      </div>
+    </div>
+    <div v-if="drawerOpen" class="drawer-backdrop" @click="closeLogs"></div>
   </section>
 </template>
 
 <style scoped>
-.projects-page { display: flex; flex-direction: column; gap: 16px; }
+.projects-page { display: flex; flex-direction: column; gap: 16px; height: 100%; }
 .header-row { display: flex; justify-content: space-between; align-items: center; }
 .subtitle { color: var(--text-muted); font-size: 13px; margin: 4px 0 0; }
 .toast { background: var(--text-main); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; animation: fadeIn 0.2s ease; }
@@ -174,18 +369,21 @@ onMounted(async () => {
   padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: box-shadow 0.15s ease;
 }
 .project-card:hover { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); }
+.project-card.active { border-color: rgba(45, 164, 78, 0.55); box-shadow: 0 0 0 1px rgba(45, 164, 78, 0.25); }
 
-.proj-top { display: flex; justify-content: space-between; align-items: center; }
+.proj-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .proj-title-box { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .proj-name { font-size: 15px; font-weight: 600; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; white-space: nowrap; }
 .badge-version { background: #ddf4ff; color: #0969da; }
 .badge-unbound { background: var(--bg-hover); color: var(--text-muted); }
 
-.proj-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.proj-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; flex-shrink: 0; }
 .proj-status .dot { width: 8px; height: 8px; border-radius: 50%; }
 .proj-status.stopped { color: var(--text-subtle); }
-.proj-status.stopped .dot { background: #c1c7cd; }
+.proj-status.running { color: #1a7f37; font-weight: 600; }
+.proj-status.starting { color: #9a6700; }
+.proj-status.failed { color: var(--danger); }
 
 .proj-server { display: flex; align-items: center; justify-content: space-between; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; }
 .server-addr { font-family: Consolas, monospace; font-size: 12px; color: var(--text-main); }
@@ -195,18 +393,46 @@ onMounted(async () => {
 .proj-proxies { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
 .proxies-label { font-weight: 600; }
 .proxies-types { color: var(--text-subtle); }
+.proxy-pid { margin-left: auto; font-family: Consolas, monospace; font-size: 11px; color: var(--text-subtle); }
+
+.proj-error { font-size: 12px; color: var(--danger); background: #ffebe9; border: 1px solid rgba(207,34,46,.15); border-radius: 6px; padding: 6px 10px; }
 
 .proj-actions { display: flex; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px; }
 
 .btn { padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-hover); }
-.btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); margin-right: auto; }
-.btn-secondary:hover { background: var(--bg-hover); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
+.btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
+.btn-stop { background: #fff; border-color: #ff8170; color: var(--danger); }
+.btn-stop:hover { background: #ffebe9; }
 .btn-small { padding: 4px 12px; font-size: 12px; }
-.btn-danger-outline { background: #fff; border-color: #ff8170; color: var(--danger); }
-.btn-danger-outline:hover { background: #ffebe9; }
+.btn-danger-outline { background: #fff; border-color: #ff8170; color: var(--danger); margin-left: auto; }
+.btn-danger-outline:hover:not(:disabled) { background: #ffebe9; }
+
+/* 日志抽屉 */
+.log-drawer {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 42%;
+  background: #0f172a; color: #e2e8f0; border-radius: 10px 10px 0 0;
+  display: flex; flex-direction: column; z-index: 50; overflow: hidden;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
+}
+.drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.25); }
+.log-drawer-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; background: #1e293b; border-bottom: 1px solid #334155;
+}
+.log-drawer-title { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.log-drawer-tools { display: flex; align-items: center; gap: 8px; }
+.log-drawer-tools .auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #94a3b8; cursor: pointer; }
+.log-drawer-tools .btn-secondary { background: transparent; border-color: #475569; color: #cbd5e1; }
+.log-drawer-tools .btn-secondary:hover:not(:disabled) { background: #334155; }
+.log-error { padding: 8px 14px; color: #fca5a5; font-size: 12px; background: rgba(207,34,46,.15); }
+.log-body { flex: 1; overflow-y: auto; padding: 10px 14px; font-family: Consolas, monospace; font-size: 12px; line-height: 1.6; }
+.log-line { white-space: pre-wrap; word-break: break-all; color: #cbd5e1; }
+.log-line.log-warn { color: #fbbf24; }
+.log-empty { color: #64748b; text-align: center; padding: 24px 0; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 </style>
