@@ -34,6 +34,33 @@ async function openFolder(path?: string) {
   }
 }
 
+async function openHosts() {
+  try {
+    await AppAPI.AppService.OpenHostsFile()
+    showToast('已调起编辑器打开 hosts 文件')
+  } catch (e: any) {
+    showToast(`打开 hosts 失败: ${e?.message ?? e}`)
+  }
+}
+
+async function openNetworkPanel() {
+  try {
+    await AppAPI.AppService.OpenNetworkConnections()
+    showToast('已打开网络连接面板')
+  } catch (e: any) {
+    showToast(`打开网络面板失败: ${e?.message ?? e}`)
+  }
+}
+
+async function openEnvSettings() {
+  try {
+    await AppAPI.AppService.OpenSystemEnvSettings()
+    showToast('已打开环境变量设置')
+  } catch (e: any) {
+    showToast(`打开环境变量失败: ${e?.message ?? e}`)
+  }
+}
+
 async function toggle(m: ModuleInfo) {
   toggling.value = m.id
   err.value = ''
@@ -118,6 +145,51 @@ onMounted(refresh)
       </div>
     </div>
 
+    <!-- 开发者系统快捷直达 -->
+    <div class="section-card">
+      <div class="card-header">
+        <div>
+          <h2>系统快捷直达 (System Quick Launch)</h2>
+          <p class="hint">一键调起 Windows 常用系统配置文件与网络管理组件。</p>
+        </div>
+      </div>
+
+      <div class="dir-grid">
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">系统 hosts 文件</span>
+              <span class="dir-badge">域名映射</span>
+            </div>
+            <code class="dir-path">C:\Windows\System32\drivers\etc\hosts</code>
+          </div>
+          <button class="btn btn-primary-alt btn-small" @click="openHosts">📝 记事本编辑</button>
+        </div>
+
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">网络适配器管理</span>
+              <span class="dir-badge">ncpa.cpl</span>
+            </div>
+            <code class="dir-path">控制面板 · 网络连接列表</code>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="openNetworkPanel">🌐 打开管理</button>
+        </div>
+
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">系统环境变量</span>
+              <span class="dir-badge">sysdm.cpl</span>
+            </div>
+            <code class="dir-path">Path 与用户/系统变量配置</code>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="openEnvSettings">⚙️ 打开设置</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 模块管理 -->
     <div class="section-card">
       <div class="card-header">
@@ -196,6 +268,8 @@ onMounted(refresh)
 .status-tag.off { background: #ffebe9; color: var(--danger); }
 
 .btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
+.btn-primary-alt { background: #0969da; color: #fff; border-color: #0969da; }
+.btn-primary-alt:hover:not(:disabled) { background: #0854ad; }
 .btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
 .btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
 .btn-small { padding: 4px 10px; font-size: 12px; white-space: nowrap; }

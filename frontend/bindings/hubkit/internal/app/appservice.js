@@ -44,12 +44,36 @@ export function ListModules() {
 }
 
 /**
+ * OpenHostsFile 使用系统默认记事本或编辑器打开系统的 hosts 文件
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenHostsFile() {
+    return $Call.ByID(1586761471);
+}
+
+/**
+ * OpenNetworkConnections 打开系统网络连接适配器控制面板 (ncpa.cpl)
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenNetworkConnections() {
+    return $Call.ByID(1629965701);
+}
+
+/**
  * OpenPath 在系统资源管理器中打开指定目录或选中文件
  * @param {string} targetPath
  * @returns {$CancellablePromise<void>}
  */
 export function OpenPath(targetPath) {
     return $Call.ByID(3453239021, targetPath);
+}
+
+/**
+ * OpenSystemEnvSettings 打开系统环境变量设置面板
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenSystemEnvSettings() {
+    return $Call.ByID(1125854863);
 }
 
 /**

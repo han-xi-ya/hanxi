@@ -72,6 +72,48 @@ func (s *AppService) OpenPath(targetPath string) error {
 	return cmd.Start()
 }
 
+// OpenHostsFile 使用系统默认记事本或编辑器打开系统的 hosts 文件
+func (s *AppService) OpenHostsFile() error {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		systemRoot := os.Getenv("SystemRoot")
+		if systemRoot == "" {
+			systemRoot = `C:\Windows`
+		}
+		hostsPath := fmt.Sprintf(`%s\System32\drivers\etc\hosts`, systemRoot)
+		cmd = exec.Command("notepad.exe", hostsPath)
+	} else if runtime.GOOS == "darwin" {
+		cmd = exec.Command("open", "-e", "/etc/hosts")
+	} else {
+		cmd = exec.Command("xdg-open", "/etc/hosts")
+	}
+	return cmd.Start()
+}
+
+// OpenNetworkConnections 打开系统网络连接适配器控制面板 (ncpa.cpl)
+func (s *AppService) OpenNetworkConnections() error {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("control.exe", "ncpa.cpl")
+	} else if runtime.GOOS == "darwin" {
+		cmd = exec.Command("open", "/System/Library/PreferencePanes/Network.prefPane")
+	} else {
+		cmd = exec.Command("nm-connection-editor")
+	}
+	return cmd.Start()
+}
+
+// OpenSystemEnvSettings 打开系统环境变量设置面板
+func (s *AppService) OpenSystemEnvSettings() error {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("rundll32.exe", "sysdm.cpl,EditEnvironmentVariables")
+	} else {
+		return fmt.Errorf("当前系统不支持快捷打开环境变量")
+	}
+	return cmd.Start()
+}
+
 // GetNavs 返回前端左侧导航（核心 + 已启用扩展）。
 func (s *AppService) GetNavs() []extapi.NavEntry {
 	return s.registry.GetEnabledNavs()

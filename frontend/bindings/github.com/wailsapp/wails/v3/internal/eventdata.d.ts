@@ -17,6 +17,9 @@ import type * as version$0 from "../../../../../hubkit/internal/modules/frpc/ver
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as lan$0 from "../../../../../hubkit/internal/modules/lan/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as portscan$0 from "../../../../../hubkit/internal/modules/portscan/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
@@ -26,6 +29,7 @@ declare module "@wailsio/runtime" {
             "frpc:instance-state": instance$0.Snapshot;
             "frpc:version-download": version$0.DownloadProgress;
             "lan:progress": lan$0.LanProgress;
+            "portscan:progress": portscan$0.ScanProgress;
         }
     }
 }
