@@ -20,6 +20,12 @@ const installedVersions = ref<string[]>([])
 const instances = ref<Record<string, Snapshot>>({})
 const starting = ref<Set<string>>(new Set()) // 启动请求进行中（防重复点击）
 
+// 导入 Modal 状态
+const importModalOpen = ref(false)
+const importType = ref<'link' | 'toml'>('link')
+const importContent = ref('')
+const importError = ref('')
+
 // 日志抽屉
 const drawerOpen = ref(false)
 const drawerProjectId = ref('')
@@ -44,7 +50,7 @@ function projectName(id: string): string {
 
 // stripAnsi 剥离 frpc 输出的 ANSI 色码（\x1b[1;34m 等）
 function stripAnsi(s: string): string {
-  return s.replace(/\[[\d;]*m/g, '')
+  return s.replace(/ \[[\d;]*m/g, '')
 }
 
 // cleanLines 剥离色码后的日志（保留原行做样式判断）
@@ -132,6 +138,90 @@ function copyProject(p: Project) {
   }
   editingProject.value = cloned
   editorOpen.value = true
+}
+
+function exportProjectShareLink(p: Project) {
+  const sharePayload = {
+    name: p.name,
+    server: {
+      serverAddr: p.server.serverAddr,
+      serverPort: p.server.serverPort,
+      token: p.server.token,
+      tlsEnable: p.server.tlsEnable,
+      useEncryption: p.server.useEncryption,
+      useCompression: p.server.useCompression,
+      logLevel: p.server.logLevel,
+    },
+    proxies: p.proxies,
+  }
+  const jsonStr = JSON.stringify(sharePayload)
+  const b64 = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))))
+  const link = `frp://${b64}`
+  navigator.clipboard.writeText(link)
+  showToast(`已复制「${p.name}」分享链接 (frp://...)`)
+}
+
+function openImportModal() {
+  importContent.value = ''
+  importError.value = ''
+  importType.value = 'link'
+  importModalOpen.value = true
+}
+
+async function parseAndImport() {
+  importError.value = ''
+  const raw = importContent.value.trim()
+  if (!raw) {
+    importError.value = '请粘贴导入内容'
+    return
+  }
+
+  try {
+    let targetProject: Project | null = null
+
+    if (importType.value === 'link' || raw.startsWith('frp://')) {
+      const b64 = raw.replace(/^frp:\/\//, '').trim()
+      const jsonStr = decodeURIComponent(atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''))
+      const parsed = JSON.parse(jsonStr)
+      targetProject = {
+        id: '',
+        name: parsed.name ? `${parsed.name} (导入)` : '导入项目',
+        version: '',
+        createdAt: '',
+        updatedAt: '',
+        server: parsed.server || {
+          serverAddr: parsed.serverAddr || '',
+          serverPort: parsed.serverPort || 7000,
+          token: parsed.token || parsed.authToken || '',
+          tlsEnable: parsed.tlsEnable ?? false,
+          useEncryption: parsed.useEncryption ?? true,
+          useCompression: parsed.useCompression ?? false,
+          logLevel: parsed.logLevel || 'info',
+        },
+        proxies: parsed.proxies || [],
+      }
+    } else {
+      // TOML 格式导入
+      const p = await FrpcAPI.ParseToml(raw)
+      targetProject = {
+        ...p,
+        id: '',
+        name: '导入项目 (TOML)',
+        version: '',
+        createdAt: '',
+        updatedAt: '',
+      }
+    }
+
+    if (targetProject) {
+      importModalOpen.value = false
+      editingProject.value = targetProject
+      editorOpen.value = true
+      showToast('配置已解析，请核对并保存')
+    }
+  } catch (err: any) {
+    importError.value = `解析失败: ${err.message || err}`
+  }
 }
 
 async function onSaved() {
@@ -330,7 +420,10 @@ onUnmounted(() => {
         <div class="meta-info">
           <span>共 {{ projects.length }} 个项目 · {{ Object.keys(instances).filter(id => instances[id]?.state === 'running').length }} 个运行中</span>
         </div>
-        <button class="btn btn-primary" @click="openCreate">+ 新建项目</button>
+        <div class="control-actions">
+          <button class="btn btn-secondary" @click="openImportModal">⬇ 导入配置 / 链接</button>
+          <button class="btn btn-primary" @click="openCreate">+ 新建项目</button>
+        </div>
       </div>
 
       <div v-if="errorMsg" class="error-box">{{ errorMsg }}</div>
@@ -338,7 +431,10 @@ onUnmounted(() => {
       <div v-if="projects.length === 0 && !loading" class="empty-state">
         <div class="empty-icon">⧉</div>
         <p>还没有 frp 项目</p>
-        <button class="btn btn-primary" @click="openCreate">创建第一个项目</button>
+        <div class="empty-actions">
+          <button class="btn btn-secondary" @click="openImportModal">导入已有配置</button>
+          <button class="btn btn-primary" @click="openCreate">创建第一个项目</button>
+        </div>
       </div>
 
       <div class="project-grid">
@@ -403,12 +499,43 @@ onUnmounted(() => {
             </template>
             <button class="btn btn-secondary btn-small" @click="openLogs(p)">日志</button>
             <button class="btn btn-secondary btn-small" :disabled="isActive(p)" @click="openEdit(p)">编辑</button>
+            <button class="btn btn-secondary btn-small" title="生成并复制 frp:// 分享链接" @click="exportProjectShareLink(p)">⚡ 分享</button>
             <button class="btn btn-secondary btn-small" @click="copyProject(p)">复制</button>
             <button class="btn btn-danger-outline btn-small" :disabled="isActive(p)" @click="deleteProject(p)">删除</button>
           </div>
         </div>
       </div>
     </template>
+
+    <!-- 导入弹窗 -->
+    <div v-if="importModalOpen" class="modal-backdrop" @click.self="importModalOpen = false">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3>导入 frpc 配置</h3>
+          <button class="btn-close" @click="importModalOpen = false">✕</button>
+        </div>
+        <div v-if="importError" class="error-box" style="margin: 12px 20px 0;">{{ importError }}</div>
+        <div class="modal-body">
+          <div class="import-tabs">
+            <button class="tab-btn" :class="{ active: importType === 'link' }" @click="importType = 'link'">分享链接 (frp://...)</button>
+            <button class="tab-btn" :class="{ active: importType === 'toml' }" @click="importType = 'toml'">TOML 配置文本</button>
+          </div>
+          <label class="form-item">
+            <span>{{ importType === 'link' ? '粘贴 frp:// 分享链接' : '粘贴 frpc.toml 文件内容' }}</span>
+            <textarea
+              v-model="importContent"
+              class="input textarea"
+              :placeholder="importType === 'link' ? '例如: frp://eyJzZXJ2ZXIiOnsic2VydmVyQWRkciI...' : 'serverAddr = &quot;x.x.x.x&quot;\nserverPort = 7000\n...'"
+              rows="6"
+            ></textarea>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="importModalOpen = false">取消</button>
+          <button class="btn btn-primary" @click="parseAndImport">解析并进入编辑</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 日志抽屉 -->
     <div v-if="drawerOpen" class="log-drawer">
@@ -444,11 +571,13 @@ onUnmounted(() => {
   background: var(--bg-sidebar); border: 1px solid var(--border-color);
   padding: 12px 16px; border-radius: 8px;
 }
+.control-actions { display: flex; gap: 10px; }
 .meta-info { font-size: 13px; color: var(--text-muted); }
 .error-box { padding: 10px 14px; background: #ffebe9; color: var(--danger); border: 1px solid rgba(207, 34, 46, 0.2); border-radius: 6px; font-size: 13px; }
 
 .empty-state { text-align: center; padding: 56px 0; color: var(--text-subtle); display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .empty-icon { font-size: 40px; }
+.empty-actions { display: flex; gap: 12px; margin-top: 8px; }
 
 .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
 .project-card {
@@ -524,7 +653,45 @@ onUnmounted(() => {
 
 .proj-error { font-size: 12px; color: var(--danger); background: #ffebe9; border: 1px solid rgba(207,34,46,.15); border-radius: 6px; padding: 6px 10px; }
 
-.proj-actions { display: flex; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px; }
+.proj-actions { display: flex; gap: 6px; border-top: 1px solid var(--border-color); padding-top: 12px; flex-wrap: wrap; }
+
+/* Modal 弹窗 */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-card {
+  background: #fff; border-radius: 10px; width: 480px; max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); overflow: hidden;
+}
+.modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; border-bottom: 1px solid var(--border-color);
+}
+.modal-head h3 { margin: 0; font-size: 16px; color: var(--text-main); }
+.btn-close { background: transparent; border: none; font-size: 16px; cursor: pointer; color: var(--text-muted); }
+.modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.modal-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-sidebar);
+}
+
+.import-tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 8px; }
+.tab-btn {
+  padding: 8px 16px; background: transparent; border: none; font-size: 13px;
+  color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent;
+}
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+.textarea {
+  padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px;
+  font-family: Consolas, monospace; font-size: 12px; width: 100%; box-sizing: border-box;
+  background: var(--bg-app); color: var(--text-main); resize: vertical;
+}
+.textarea:focus { border-color: var(--accent); outline: none; background: #fff; }
+
+.form-item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
 
 .btn { padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -534,7 +701,7 @@ onUnmounted(() => {
 .btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
 .btn-stop { background: #fff; border-color: #ff8170; color: var(--danger); }
 .btn-stop:hover { background: #ffebe9; }
-.btn-small { padding: 4px 12px; font-size: 12px; }
+.btn-small { padding: 4px 10px; font-size: 12px; }
 .btn-danger-outline { background: #fff; border-color: #ff8170; color: var(--danger); margin-left: auto; }
 .btn-danger-outline:hover:not(:disabled) { background: #ffebe9; }
 
@@ -547,19 +714,20 @@ onUnmounted(() => {
 }
 .drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.25); }
 .log-drawer-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 14px; background: #1e293b; border-bottom: 1px solid #334155;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px; background: #1e293b; border-bottom: 1px solid #334155;
 }
-.log-drawer-title { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.log-drawer-title { font-size: 13px; font-weight: 600; color: #f1f5f9; }
 .log-drawer-tools { display: flex; align-items: center; gap: 8px; }
-.log-drawer-tools .auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #94a3b8; cursor: pointer; }
-.log-drawer-tools .btn-secondary { background: transparent; border-color: #475569; color: #cbd5e1; }
-.log-drawer-tools .btn-secondary:hover:not(:disabled) { background: #334155; }
-.log-error { padding: 8px 14px; color: #fca5a5; font-size: 12px; background: rgba(207,34,46,.15); }
-.log-body { flex: 1; overflow-y: auto; padding: 10px 14px; font-family: Consolas, monospace; font-size: 12px; line-height: 1.6; }
+.auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #94a3b8; cursor: pointer; }
+.auto-scroll input { accent-color: var(--accent); }
+.log-error { padding: 6px 16px; background: #450a0a; color: #fca5a5; font-size: 12px; }
+.log-body {
+  flex: 1; overflow-y: auto; padding: 12px 16px;
+  font-family: Consolas, monospace; font-size: 12px; line-height: 1.55;
+  user-select: text;
+}
 .log-line { white-space: pre-wrap; word-break: break-all; color: #cbd5e1; }
-.log-line.log-warn { color: #fbbf24; }
-.log-empty { color: #64748b; text-align: center; padding: 24px 0; }
-
-@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.log-warn { color: #fde047; }
+.log-empty { color: #64748b; text-align: center; padding: 32px 0; }
 </style>
