@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "HubKit",
+			"FileDescription": "HubKit – frpc 联调与网络工具箱",
+			"LegalCopyright": "© 2026, HubKit",
+			"ProductName": "HubKit",
+			"Comments": "frpc 内网穿透开发工具箱"
+		}
+	}
+}
