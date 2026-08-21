@@ -1,20 +1,29 @@
-// Package publicip 内置扩展：公网 IP（MVP 阶段仅注册导航与权限声明，功能在 M2 实现）。
 package publicip
 
-import "hubkit/internal/extapi"
+import (
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"hubkit/internal/extapi"
+	"hubkit/internal/platform"
+)
 
 const ID = "publicip"
 
-type Module struct{}
+type Module struct {
+	svc *PublicIPService
+}
 
-func New() extapi.Module { return &Module{} }
+func New(plat platform.Platform) extapi.Module {
+	return &Module{
+		svc: NewPublicIPService(plat),
+	}
+}
 
 func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
-		Name:        "公网 IP",
+		Name:        "IP 查看",
 		Version:     "0.1.0",
-		Description: "查询并展示公网 IPv4/IPv6 地址",
+		Description: "查看公网 IPv4/IPv6、局域网 IP、临时 IPv6、网关与 DNS",
 		Author:      "HubKit",
 		Level:       extapi.LevelBuiltin,
 	}
@@ -23,7 +32,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{
 		ID:      ID,
-		Title:   "公网 IP",
+		Title:   "IP 查看",
 		Route:   "/ext/publicip",
 		Icon:    "≋",
 		Section: extapi.SectionExt,
@@ -31,7 +40,11 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}}
 }
 
-func (e *Module) Services() []extapi.Service { return nil }
+func (e *Module) Services() []extapi.Service {
+	return []extapi.Service{
+		application.NewService(e.svc),
+	}
+}
 
 func (e *Module) Permissions() []extapi.Permission {
 	return []extapi.Permission{extapi.PermNetwork}

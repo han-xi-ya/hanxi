@@ -123,6 +123,7 @@ hubkit/
 - [docs/PRD.md](docs/PRD.md) —— 产品需求与技术方案（v0.4）
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) —— 架构设计（分层、模块框架、平台隔离、附录 A–D）
 - [docs/DEVPLAN.md](docs/DEVPLAN.md) —— 开发计划与里程碑路线图（M0–M5）
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) —— 本地开发、构建与运行指南
 
 ## 参考项目
 

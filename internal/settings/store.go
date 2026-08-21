@@ -10,12 +10,13 @@ import (
 
 // AppSettings 应用全局配置模型
 type AppSettings struct {
-	Theme         string          `json:"theme"`         // "light" | "dark" | "system"
-	Language      string          `json:"language"`      // "zh-CN" | "en-US"
-	AutoStart     bool            `json:"autoStart"`     // 开机自启
-	MinimizeToTray bool           `json:"minimizeToTray"`// 关闭时最小化到托盘
-	LogRetainDays int             `json:"logRetainDays"` // 日志保留天数（默认 7）
-	Modules       map[string]bool `json:"modules"`       // 各模块启用状态 map[moduleId]enabled
+	Theme          string            `json:"theme"`          // "light" | "dark" | "system"
+	Language       string            `json:"language"`       // "zh-CN" | "en-US"
+	AutoStart      bool              `json:"autoStart"`      // 开机自启
+	MinimizeToTray bool              `json:"minimizeToTray"` // 关闭时最小化到托盘
+	LogRetainDays  int               `json:"logRetainDays"`  // 日志保留天数（默认 7）
+	Modules        map[string]bool   `json:"modules"`        // 各模块启用状态 map[moduleId]enabled
+	LanRemarks     map[string]string `json:"lanRemarks"`     // 局域网 IP/MAC 备注 map[identifier]remark
 }
 
 func DefaultSettings() AppSettings {
@@ -26,6 +27,7 @@ func DefaultSettings() AppSettings {
 		MinimizeToTray: true,
 		LogRetainDays:  7,
 		Modules:        make(map[string]bool),
+		LanRemarks:     make(map[string]string),
 	}
 }
 
@@ -66,6 +68,9 @@ func (s *Store) load() error {
 	if data.Modules == nil {
 		data.Modules = make(map[string]bool)
 	}
+	if data.LanRemarks == nil {
+		data.LanRemarks = make(map[string]string)
+	}
 	s.data = data
 	return nil
 }
@@ -79,6 +84,10 @@ func (s *Store) Get() AppSettings {
 	cp.Modules = make(map[string]bool, len(s.data.Modules))
 	for k, v := range s.data.Modules {
 		cp.Modules[k] = v
+	}
+	cp.LanRemarks = make(map[string]string, len(s.data.LanRemarks))
+	for k, v := range s.data.LanRemarks {
+		cp.LanRemarks[k] = v
 	}
 	return cp
 }
@@ -110,6 +119,32 @@ func (s *Store) SetModuleEnabled(moduleId string, enabled bool) error {
 			cfg.Modules = make(map[string]bool)
 		}
 		cfg.Modules[moduleId] = enabled
+	})
+}
+
+// GetLanRemarks 获取所有 IP/MAC 备注
+func (s *Store) GetLanRemarks() map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	res := make(map[string]string, len(s.data.LanRemarks))
+	for k, v := range s.data.LanRemarks {
+		res[k] = v
+	}
+	return res
+}
+
+// SetLanRemark 设置单个 IP 或 MAC 的备注并落盘
+func (s *Store) SetLanRemark(key, remark string) error {
+	return s.Update(func(cfg *AppSettings) {
+		if cfg.LanRemarks == nil {
+			cfg.LanRemarks = make(map[string]string)
+		}
+		if remark == "" {
+			delete(cfg.LanRemarks, key)
+		} else {
+			cfg.LanRemarks[key] = remark
+		}
 	})
 }
 

@@ -8,11 +8,19 @@ import type { Events } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as extapi$0 from "../../../../../hubkit/internal/extapi/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$0 from "../../../../../hubkit/internal/modules/frpc/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as lan$0 from "../../../../../hubkit/internal/modules/lan/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "ext:changed": extapi$0.NavEntry;
+            "frpc:version-download": version$0.DownloadProgress;
+            "lan:progress": lan$0.LanProgress;
         }
     }
 }

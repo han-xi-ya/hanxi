@@ -42,18 +42,28 @@ const (
 	TCPStateUnknown     TCPState = "UNKNOWN"
 )
 
+// IPv6Detail 详细 IPv6 地址（公网、临时、链路本地）
+type IPv6Detail struct {
+	Address     string `json:"address"`
+	Type        string `json:"type"` // "Public" (公网/主地址) | "Temporary" (临时隐私地址) | "LinkLocal" (链路本地)
+	IsTemporary bool   `json:"isTemporary"`
+}
+
 // Adapter 网卡信息
 type Adapter struct {
-	Index        uint32   `json:"index"`
-	Name         string   `json:"name"`
-	Description  string   `json:"description"`
-	MAC          string   `json:"mac"`
-	IPv4         []string `json:"ipv4"`
-	IPv6         []string `json:"ipv6"`
-	Gateway      string   `json:"gateway"`
-	IsPhysical   bool     `json:"isPhysical"`
-	IsLoopback   bool     `json:"isLoopback"`
-	IsUp         bool     `json:"isUp"`
+	Index       uint32       `json:"index"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	MAC         string       `json:"mac"`
+	IPv4        []string     `json:"ipv4"`
+	IPv6        []string     `json:"ipv6"`
+	IPv6Details []IPv6Detail `json:"ipv6Details"`
+	Gateway     string       `json:"gateway"`
+	IPv6Gateway string       `json:"ipv6Gateway"`
+	DNSServers  []string     `json:"dnsServers"`
+	IsPhysical  bool         `json:"isPhysical"`
+	IsLoopback  bool         `json:"isLoopback"`
+	IsUp        bool         `json:"isUp"`
 }
 
 // Neighbor 邻居表/ARP 缓存项

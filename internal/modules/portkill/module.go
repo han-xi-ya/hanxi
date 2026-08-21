@@ -1,13 +1,23 @@
-// Package portkill 内置扩展：释放端口（MVP 阶段仅注册导航与权限声明，功能在 M3 实现）。
+// Package portkill 内置扩展：释放端口
 package portkill
 
-import "hubkit/internal/extapi"
+import (
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"hubkit/internal/extapi"
+	"hubkit/internal/platform"
+)
 
 const ID = "portkill"
 
-type Module struct{}
+type Module struct {
+	svc *PortKillService
+}
 
-func New() extapi.Module { return &Module{} }
+func New(plat platform.Platform) extapi.Module {
+	return &Module{
+		svc: NewPortKillService(plat),
+	}
+}
 
 func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
@@ -31,7 +41,11 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}}
 }
 
-func (e *Module) Services() []extapi.Service { return nil }
+func (e *Module) Services() []extapi.Service {
+	return []extapi.Service{
+		application.NewService(e.svc),
+	}
+}
 
 func (e *Module) Permissions() []extapi.Permission {
 	return []extapi.Permission{extapi.PermKillProcess}
