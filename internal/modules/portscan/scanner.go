@@ -15,8 +15,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/lcvvvv/gonmap"
 )
 
 // ParsePortRange 解析诸如 "80,443,8000-8005" 的端口字符串，返回去重有序的端口切片
@@ -80,23 +78,11 @@ func ParsePortRange(raw string) ([]int, error) {
 	return ports, nil
 }
 
-// Scanner 端口扫描引擎
-type Scanner struct {
-	gonmapScanner *gonmap.Nmap
-	initOnce      sync.Once
-}
+// Scanner 纯原生极轻量端口扫描引擎 (0 外部依赖，0 堆常驻内存)
+type Scanner struct{}
 
 func NewScanner() *Scanner {
-	// 注意：不在这里调用 gonmap.New()，启动内存保持 ~25MB
 	return &Scanner{}
-}
-
-// getGonmap 懒加载 gonmap 实例（仅在用户真正勾选深度扫描时触发初始化）
-func (s *Scanner) getGonmap() *gonmap.Nmap {
-	s.initOnce.Do(func() {
-		s.gonmapScanner = gonmap.New()
-	})
-	return s.gonmapScanner
 }
 
 // KnownPortServices 常用端口默认服务推断表
@@ -289,52 +275,29 @@ func (s *Scanner) probePort(ctx context.Context, target string, port int, timeou
 		res.Service = "unknown"
 	}
 
-	// 2. 极轻量应用层探针（毫秒级，0 内存占用）：HTTP Title / SSH Banner / Redis / MySQL 初筛
-	s.lightweightProbe(ctx, target, port, timeout, &res)
-
-	// 3. 如果用户显式勾选了深度探测，且轻量探针未获取到充足信息，才调用 gonmap 规则库
-	if deepDetect && (res.Banner == "" || res.Service == "unknown") {
-		gn := s.getGonmap()
-		if gn != nil {
-			nmapStatus, response := gn.ScanTimeout(target, port, timeout*2)
-			if nmapStatus == gonmap.Matched && response != nil && response.FingerPrint != nil {
-				if response.FingerPrint.Service != "" {
-					res.Service = response.FingerPrint.Service
-				}
-				parts := []string{}
-				if response.FingerPrint.ProductName != "" {
-					parts = append(parts, response.FingerPrint.ProductName)
-				}
-				if response.FingerPrint.Version != "" {
-					parts = append(parts, response.FingerPrint.Version)
-				}
-				if response.FingerPrint.Info != "" {
-					parts = append(parts, response.FingerPrint.Info)
-				}
-				if len(parts) > 0 {
-					res.Banner = strings.Join(parts, " ")
-				}
-				if response.FingerPrint.OperatingSystem != "" {
-					res.Fingerprint = "OS: " + response.FingerPrint.OperatingSystem
-				} else if response.FingerPrint.DeviceType != "" {
-					res.Fingerprint = "Device: " + response.FingerPrint.DeviceType
-				}
-			}
-		}
+	// 2. 极轻量原生应用层指纹探针（毫秒级，0 内存占用）：HTTP Title / SSH / Redis / MySQL / SMTP / FTP
+	if deepDetect {
+		s.lightweightProbe(ctx, target, port, timeout, &res)
 	}
 
 	return res
 }
 
-// lightweightProbe 极轻量探针，无需预加载庞大规则库即可识别主流 Web 与常用服务
+// lightweightProbe 极轻量原生探针，快速提取常见服务特征，0 内存常驻
 func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int, timeout time.Duration, res *PortResult) {
 	addr := net.JoinHostPort(target, strconv.Itoa(port))
 
-	// 1. 尝试读取被动 Banner (SSH / FTP / SMTP / MySQL 在建立连接时会主动发送问候语)
+	// 1. 尝试主动握手/被动 Banner 探测 (SSH / FTP / SMTP / MySQL)
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err == nil {
-		_ = conn.SetReadDeadline(time.Now().Add(timeout))
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+
+		// 如果是 Redis 端口或未知端口，可尝试发送 PING\r\n
+		if port == 6379 {
+			_, _ = conn.Write([]byte("PING\r\n"))
+		}
+
 		buf := make([]byte, 256)
 		n, _ := conn.Read(buf)
 		_ = conn.Close()
@@ -344,6 +307,10 @@ func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int,
 			if strings.HasPrefix(greeting, "SSH-") {
 				res.Service = "ssh"
 				res.Banner = greeting
+				return
+			} else if strings.HasPrefix(greeting, "+PONG") || strings.Contains(greeting, "NOAUTH") || strings.Contains(greeting, "-ERR") {
+				res.Service = "redis"
+				res.Banner = "Redis Server"
 				return
 			} else if strings.HasPrefix(greeting, "220") {
 				if strings.Contains(strings.ToLower(greeting), "ftp") {
@@ -355,13 +322,13 @@ func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int,
 				return
 			} else if n > 5 && (bytes.Contains(buf[:n], []byte("mysql")) || bytes.Contains(buf[:n], []byte("MariaDB"))) {
 				res.Service = "mysql"
-				res.Banner = "MySQL Handshake"
+				res.Banner = "MySQL / MariaDB"
 				return
 			}
 		}
 	}
 
-	// 2. HTTP / HTTPS Title 探测
+	// 2. HTTP / HTTPS 标题与 Server 头探测
 	isTLS := (port == 443 || port == 8443)
 	schema := "http"
 	if isTLS {
@@ -378,14 +345,13 @@ func (s *Scanner) lightweightProbe(ctx context.Context, target string, port int,
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err == nil {
-		req.Header.Set("User-Agent", "Mozilla/5.0 HubKit/1.0")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (HubKit)")
 		resp, err := client.Do(req)
 		if err == nil {
 			defer resp.Body.Close()
 			res.Service = schema
 
 			server := resp.Header.Get("Server")
-			// 读取前 1024 字节提取网页 title
 			scanner := bufio.NewScanner(resp.Body)
 			var bodyBuf bytes.Buffer
 			for scanner.Scan() {

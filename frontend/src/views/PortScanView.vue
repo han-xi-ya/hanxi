@@ -8,7 +8,7 @@ const target = ref('127.0.0.1')
 const portRange = ref('80,443,3000,5000,5173,8000,8080,8081,8443,8888,9000')
 const timeoutMs = ref(800)
 const concurrency = ref(100)
-const deepDetect = ref(false)
+const deepDetect = ref(true)
 
 const presets = ref<PresetGroup[]>([])
 const scanning = ref(false)
@@ -194,9 +194,9 @@ onUnmounted(() => {
       <!-- 高级设置与操作条 -->
       <div class="action-bar">
         <div class="options-group">
-          <label class="checkbox-label" title="使用 gonmap 进行深度应用层握手与版本特征提取">
+          <label class="checkbox-label" title="自动探测 Web 标题、SSH、Redis、MySQL 等服务特征">
             <input type="checkbox" v-model="deepDetect" :disabled="scanning" />
-            <span>✨ Nmap 服务指纹与版本识别</span>
+            <span>✨ 服务指纹与 Banner 识别</span>
           </label>
 
           <div class="param-item">
