@@ -121,6 +121,19 @@ function openEdit(p: Project) {
   editorOpen.value = true
 }
 
+function copyProject(p: Project) {
+  // 深度复制一份项目配置，清空 id，名称添加后缀，直接打开编辑页供用户修改保存
+  const cloned: Project = {
+    ...JSON.parse(JSON.stringify(p)),
+    id: '', // 空 ID 表示新建，保存时将生成新 ID
+    name: `${p.name} (副本)`,
+    createdAt: '',
+    updatedAt: '',
+  }
+  editingProject.value = cloned
+  editorOpen.value = true
+}
+
 async function onSaved() {
   editorOpen.value = false
   await loadProjects()
@@ -169,6 +182,60 @@ function typeCount(p: Project): string {
   const map = new Map<string, number>()
   for (const r of p.proxies ?? []) map.set(r.type, (map.get(r.type) ?? 0) + 1)
   return [...map.entries()].map(([t, n]) => `${t}×${n}`).join(' · ')
+}
+
+// 格式化展示规则穿透目标地址及链接
+interface ProxyEndpoint {
+  name: string
+  type: string
+  local: string
+  remoteDisplay: string
+  url?: string
+}
+
+function resolveEndpoints(p: Project): ProxyEndpoint[] {
+  const serverHost = p.server?.serverAddr || '127.0.0.1'
+  return (p.proxies ?? []).map(r => {
+    const local = `${r.localIp || '127.0.0.1'}:${r.localPort}`
+    let remoteDisplay = ''
+    let url: string | undefined
+
+    if (r.type === 'http' || r.type === 'https') {
+      const proto = r.type
+      if (r.customDomains && r.customDomains.length > 0) {
+        const domain = r.customDomains[0]
+        remoteDisplay = domain + (r.customDomains.length > 1 ? ` (+${r.customDomains.length - 1})` : '')
+        url = `${proto}://${domain}`
+      } else if (r.subdomain) {
+        remoteDisplay = `${r.subdomain}.${serverHost}`
+        url = `${proto}://${r.subdomain}.${serverHost}`
+      } else {
+        remoteDisplay = `${proto}://${serverHost}`
+        url = `${proto}://${serverHost}`
+      }
+    } else if (r.type === 'tcp' || r.type === 'udp') {
+      remoteDisplay = `${serverHost}:${r.remotePort}`
+    } else if (r.type === 'stcp' || r.type === 'xtcp') {
+      remoteDisplay = `p2p:${r.name}`
+    } else {
+      remoteDisplay = r.type
+    }
+
+    return {
+      name: r.name,
+      type: r.type,
+      local,
+      remoteDisplay,
+      url,
+    }
+  })
+}
+
+function copyEndpoint(ep: ProxyEndpoint) {
+  const text = ep.url || ep.remoteDisplay
+  if (!text) return
+  navigator.clipboard.writeText(text)
+  showToast(`已复制: ${text}`)
 }
 
 // ---------- 日志抽屉 ----------
@@ -302,6 +369,25 @@ onUnmounted(() => {
             <span v-if="stateOf(p)?.pid" class="proxy-pid">PID {{ stateOf(p)?.pid }}</span>
           </div>
 
+          <!-- 运行态/常态规则目标与快捷直达列表 -->
+          <div v-if="(p.proxies ?? []).length" class="endpoints-box">
+            <div v-for="ep in resolveEndpoints(p)" :key="ep.name" class="endpoint-row">
+              <div class="ep-left">
+                <span class="ep-badge" :class="ep.type">{{ ep.type.toUpperCase() }}</span>
+                <span class="ep-name" :title="ep.name">{{ ep.name }}</span>
+              </div>
+              <div class="ep-flow">
+                <span class="ep-local" :title="ep.local">{{ ep.local }}</span>
+                <span class="ep-arrow">➜</span>
+                <span class="ep-remote" :title="ep.url || ep.remoteDisplay">
+                  <a v-if="ep.url && isActive(p)" :href="ep.url" target="_blank" class="ep-link">{{ ep.remoteDisplay }}</a>
+                  <span v-else>{{ ep.remoteDisplay }}</span>
+                </span>
+              </div>
+              <button class="btn-copy-mini" title="复制远程访问地址" @click="copyEndpoint(ep)">⧉</button>
+            </div>
+          </div>
+
           <div v-if="stateOf(p)?.error" class="proj-error">{{ stateOf(p)?.error }}</div>
 
           <div class="proj-actions">
@@ -317,6 +403,7 @@ onUnmounted(() => {
             </template>
             <button class="btn btn-secondary btn-small" @click="openLogs(p)">日志</button>
             <button class="btn btn-secondary btn-small" :disabled="isActive(p)" @click="openEdit(p)">编辑</button>
+            <button class="btn btn-secondary btn-small" @click="copyProject(p)">复制</button>
             <button class="btn btn-danger-outline btn-small" :disabled="isActive(p)" @click="deleteProject(p)">删除</button>
           </div>
         </div>
@@ -394,6 +481,46 @@ onUnmounted(() => {
 .proxies-label { font-weight: 600; }
 .proxies-types { color: var(--text-subtle); }
 .proxy-pid { margin-left: auto; font-family: Consolas, monospace; font-size: 11px; color: var(--text-subtle); }
+
+/* 规则端点简略展示 */
+.endpoints-box {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-app); border: 1px solid var(--border-color);
+  border-radius: 6px; padding: 8px 10px; max-height: 140px; overflow-y: auto;
+}
+.endpoint-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 12px; font-family: Consolas, monospace;
+}
+.ep-left { display: flex; align-items: center; gap: 6px; min-width: 80px; }
+.ep-badge {
+  font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px;
+  background: var(--bg-hover); color: var(--text-muted);
+}
+.ep-badge.http, .ep-badge.https { background: #ddf4ff; color: #0969da; }
+.ep-badge.tcp { background: #dafbe1; color: var(--success); }
+.ep-badge.udp { background: #fff8c5; color: #9a6700; }
+.ep-name {
+  font-family: inherit; font-size: 11px; color: var(--text-muted);
+  max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ep-flow {
+  display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
+  justify-content: flex-start;
+}
+.ep-local { color: var(--text-subtle); font-size: 11px; }
+.ep-arrow { font-size: 10px; color: var(--text-subtle); }
+.ep-remote {
+  color: var(--text-main); font-weight: 600; font-size: 11px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ep-link { color: var(--accent); text-decoration: none; }
+.ep-link:hover { text-decoration: underline; }
+.btn-copy-mini {
+  background: transparent; border: none; cursor: pointer; font-size: 12px;
+  color: var(--text-subtle); padding: 0 2px; flex-shrink: 0;
+}
+.btn-copy-mini:hover { color: var(--accent); }
 
 .proj-error { font-size: 12px; color: var(--danger); background: #ffebe9; border: 1px solid rgba(207,34,46,.15); border-radius: 6px; padding: 6px 10px; }
 

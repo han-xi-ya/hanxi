@@ -9,6 +9,12 @@
  * @property {string} version
  * @property {string} goos
  * @property {string} goarch
+ * @property {string} mode
+ * @property {string} baseDir
+ * @property {string} configDir
+ * @property {string} logsDir
+ * @property {string} versionsDir
+ * @property {string} runtimeDir
  */
 
 // In interface mode, this file is likely to contain just comments.

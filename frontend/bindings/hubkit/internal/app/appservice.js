@@ -44,6 +44,15 @@ export function ListModules() {
 }
 
 /**
+ * OpenPath 在系统资源管理器中打开指定目录或选中文件
+ * @param {string} targetPath
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenPath(targetPath) {
+    return $Call.ByID(3453239021, targetPath);
+}
+
+/**
  * SetModuleEnabled 设置页开关模块；启用/禁用成功返回最新元信息。
  * @param {string} id
  * @param {boolean} enabled

@@ -18,3 +18,23 @@ import * as $models from "./models.js";
 export function GetNetworkOverview(forceRefresh) {
     return $Call.ByID(3333703889, forceRefresh);
 }
+
+/**
+ * PingTarget 对目标域名或 IP 执行探测（默认探测 4 次）
+ * @param {string} target
+ * @param {number} count
+ * @returns {$CancellablePromise<$models.PingSummary>}
+ */
+export function PingTarget(target, count) {
+    return $Call.ByID(4267404993, target, count);
+}
+
+/**
+ * TraceRoute 执行路由追踪（基于 tracert / 本地探测，最大 30 跳）
+ * @param {string} target
+ * @param {number} maxHops
+ * @returns {$CancellablePromise<$models.TracerouteSummary>}
+ */
+export function TraceRoute(target, maxHops) {
+    return $Call.ByID(2608082106, target, maxHops);
+}

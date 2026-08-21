@@ -7,6 +7,16 @@
 import * as platform$0 from "../../platform/models.js";
 
 /**
+ * HopInfo 路由追踪单个跳跃节点
+ * @typedef {Object} HopInfo
+ * @property {number} hop
+ * @property {string} ip
+ * @property {string} hostname
+ * @property {number} rttMs
+ * @property {boolean} success
+ */
+
+/**
  * NetworkOverview 综合 IP 与网络详情
  * @typedef {Object} NetworkOverview
  * @property {string} publicIpv4 - 出口公网信息
@@ -15,6 +25,41 @@ import * as platform$0 from "../../platform/models.js";
  * @property {string} sourceV6
  * @property {string} fetchedAt
  * @property {platform$0.Adapter[] | null} adapters - 本机物理与虚拟网卡详情列表
+ */
+
+/**
+ * PingResult 单次 Ping 的返回结果
+ * @typedef {Object} PingResult
+ * @property {number} seq
+ * @property {string} ip
+ * @property {number} rttMs
+ * @property {boolean} success
+ * @property {number} ttl
+ * @property {string} errorMsg
+ */
+
+/**
+ * PingSummary Ping 统计概要
+ * @typedef {Object} PingSummary
+ * @property {string} target
+ * @property {string} ip
+ * @property {number} sent
+ * @property {number} received
+ * @property {number} lost
+ * @property {number} lossRate
+ * @property {number} minRtt
+ * @property {number} maxRtt
+ * @property {number} avgRtt
+ * @property {PingResult[] | null} results
+ */
+
+/**
+ * TracerouteSummary 路由追踪完整结果
+ * @typedef {Object} TracerouteSummary
+ * @property {string} target
+ * @property {string} ip
+ * @property {HopInfo[] | null} hops
+ * @property {boolean} complete
  */
 
 // In interface mode, this file is likely to contain just comments.

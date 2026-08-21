@@ -53,7 +53,7 @@ tasks:
           ARCH: '{{.ARCH}}'
       - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" ./cmd/hubkit'
       # 清理主包目录与根部残留的 syso（Go 只自动链接 main 包目录内的 .syso）
-      - cmd: powershell Remove-Item ../cmd/hubkit/wails_windows_amd64.syso,../wails_windows_amd64.syso -ErrorAction SilentlyContinue
+      - cmd: powershell -Command "if (Test-Path ../cmd/hubkit/wails_windows_amd64.syso) { Remove-Item ../cmd/hubkit/wails_windows_amd64.syso }; if (Test-Path ../wails_windows_amd64.syso) { Remove-Item ../wails_windows_amd64.syso }"
         platforms: [windows]
       - cmd: rm -f ../cmd/hubkit/wails_windows_amd64.syso ../wails_windows_amd64.syso
         platforms: [linux, darwin]

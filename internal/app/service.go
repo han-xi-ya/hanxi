@@ -1,18 +1,29 @@
 package app
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
+	"strings"
 
 	"hubkit/internal/domain"
 	"hubkit/internal/extapi"
+	"hubkit/internal/settings"
 )
 
 // AppInfo 前端关于页/首页展示的应用信息。
 type AppInfo struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-	GOOS    string `json:"goos"`
-	GOARCH  string `json:"goarch"`
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	GOOS        string `json:"goos"`
+	GOARCH      string `json:"goarch"`
+	Mode        string `json:"mode"`
+	BaseDir     string `json:"baseDir"`
+	ConfigDir   string `json:"configDir"`
+	LogsDir     string `json:"logsDir"`
+	VersionsDir string `json:"versionsDir"`
+	RuntimeDir  string `json:"runtimeDir"`
 }
 
 // AppService 是暴露给前端的基础服务：
@@ -26,7 +37,39 @@ func NewAppService(registry *extapi.Registry) *AppService {
 }
 
 func (s *AppService) GetAppInfo() AppInfo {
-	return AppInfo{Name: Name, Version: Version, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}
+	paths := settings.GetPaths()
+	return AppInfo{
+		Name:        Name,
+		Version:     Version,
+		GOOS:        runtime.GOOS,
+		GOARCH:      runtime.GOARCH,
+		Mode:        string(paths.Mode()),
+		BaseDir:     paths.BaseDir(),
+		ConfigDir:   paths.ConfigDir(),
+		LogsDir:     paths.LogsDir(),
+		VersionsDir: paths.VersionsDir(),
+		RuntimeDir:  paths.RuntimeDir(),
+	}
+}
+
+// OpenPath 在系统资源管理器中打开指定目录或选中文件
+func (s *AppService) OpenPath(targetPath string) error {
+	targetPath = strings.TrimSpace(targetPath)
+	if targetPath == "" {
+		return fmt.Errorf("路径不能为空")
+	}
+	// 确保目录存在
+	_ = os.MkdirAll(targetPath, 0755)
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("explorer.exe", targetPath)
+	} else if runtime.GOOS == "darwin" {
+		cmd = exec.Command("open", targetPath)
+	} else {
+		cmd = exec.Command("xdg-open", targetPath)
+	}
+	return cmd.Start()
 }
 
 // GetNavs 返回前端左侧导航（核心 + 已启用扩展）。

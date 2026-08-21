@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservice'
+import * as AppAPI from '../../bindings/hubkit/internal/app'
 import type { FrpRelease, FrpVersionInfo, DownloadProgress } from '../../bindings/hubkit/internal/modules/frpc/version/models'
 
 const releases = ref<FrpRelease[]>([])
@@ -101,6 +102,14 @@ async function importLocal() {
   }
 }
 
+async function openExeFolder(path: string) {
+  try {
+    await AppAPI.AppService.OpenPath(path)
+  } catch (e: any) {
+    showToast(`打开目录失败: ${e?.message ?? e}`)
+  }
+}
+
 async function removeVersion(v: FrpVersionInfo) {
   const versionShort = v.version.replace(/^v/, '')
   if (!window.confirm(`确定卸载 frpc ${versionShort}？\n该版本不可恢复（删除隔离目录）。`)) return
@@ -182,7 +191,8 @@ onUnmounted(() => {
           <div class="meta-line" v-if="v.sha256"><span class="k">SHA256</span><code class="mono short">{{ v.sha256 }}</code></div>
         </div>
         <div class="inst-actions">
-          <button class="btn btn-danger-outline" @click="removeVersion(v)">卸载</button>
+          <button class="btn btn-secondary btn-small" @click="openExeFolder(v.exePath)">📂 打开位置</button>
+          <button class="btn btn-danger-outline btn-small" @click="removeVersion(v)">卸载</button>
         </div>
       </div>
     </div>
@@ -296,7 +306,7 @@ onUnmounted(() => {
 .meta-line .k { color: var(--text-subtle); width: 58px; flex-shrink: 0; }
 .mono { font-family: Consolas, monospace; font-size: 12px; color: var(--text-muted); word-break: break-all; }
 .mono.short { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
-.inst-actions { display: flex; justify-content: flex-end; }
+.inst-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* 远程版本表格 */
 .table-container { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }

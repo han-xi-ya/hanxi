@@ -10,6 +10,26 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * HopInfo 路由追踪单个跳跃节点
+ * @typedef {$models.HopInfo} HopInfo
+ */
+
+/**
  * NetworkOverview 综合 IP 与网络详情
  * @typedef {$models.NetworkOverview} NetworkOverview
+ */
+
+/**
+ * PingResult 单次 Ping 的返回结果
+ * @typedef {$models.PingResult} PingResult
+ */
+
+/**
+ * PingSummary Ping 统计概要
+ * @typedef {$models.PingSummary} PingSummary
+ */
+
+/**
+ * TracerouteSummary 路由追踪完整结果
+ * @typedef {$models.TracerouteSummary} TracerouteSummary
  */
