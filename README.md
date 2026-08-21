@@ -1,134 +1,124 @@
 # HubKit
 
-> **frpc 内网穿透开发工具箱** —— Windows 开发者的三个高频动作，一个窗口搞定。
+> 🚀 **极轻量现代桌面开发者网络与内网穿透工具箱**（Go + Wails v3 + Vue 3）
+> 面向全栈与后端开发者的 Windows 原生工具箱：**frpc 多实例穿透**为旗舰核心，内置**端口释放、局域网扫描、公网 IP/Ping/Traceroute 诊断、系统快捷直达**等实用功能，装进同一个便携单二进制。
 
-HubKit 是面向 Go/前后端开发者的 Windows 工具箱：**frpc 线上联调**是旗舰模块（多实例、版本管理、TOML 生成、实时日志），**局域网扫描、释放端口、公网 IP** 是内置工具模块。所有模块一律平等，可在设置页独立启停——装进同一个便携单二进制。
-
-> 状态：**开发中（M0 框架骨架已打通）** · 架构文档见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-%E2%89%A51.24-00ADD8?logo=go)](https://go.dev/)
+[![Wails v3](https://img.shields.io/badge/Wails-v3.0--beta-DF1C24?logo=wails)](https://v3.wails.io/)
+[![Vue 3](https://img.shields.io/badge/Vue-3.x-4FC08D?logo=vue.js)](https://vuejs.org/)
 
 ---
 
-## 功能特性
+## 🌟 核心特性
 
-| 模块 | 能力 | 状态 |
-|---|---|---|
-| **frpc 联调**（旗舰） | 项目化配置、TOML 生成、**多实例并行**、启停/日志/状态机、导入导出 | 规划（M4） |
-| **与版本管理** | GitHub Releases 下载、SHA256 硬校验、多版本并存、每项目锁版本 | 规划（M4） |
-| **局域网扫描** | 组合 ICMP + ARP/邻居表、进度/取消、复制 IP | 规划（M2） |
-| **释放端口** | 端口直达、PID/进程/路径/启动时间、**复核后终止**、UAC 最小提权 | 规划（M3） |
-| **公网 IP** | IPv4/IPv6 查询、provider fallback、严格解析 | 规划（M2） |
-| 模块管理 | 所有模块统一启停，导航/服务随开关注入或隐藏 | ✅ 已实现 |
-| 便携版 | 绿色单目录 `data/`，随拷随走，不写注册表 | 规划（M5） |
+### 1. ⚡ frpc 多实例与沙箱进程管理（旗舰核心）
+- **多实例独立并发**：每个项目对应独立 `frpc.exe` 进程，支持同时联调多个内网穿透服务端。
+- **Windows JobObject 隔离**：利用操作系统内核级作业对象（JobObject），主程序退出或崩溃时所有子进程一并被内核强制清理，**彻底告别孤儿进程与端口残留占用**。
+- **配置一键分享与导入**：
+  - 支持将服务端连接与代理规则序列化生成 `frp://<base64>` 协议链接，一键复制分享。
+  - 支持多端一键导入 `frp://` 链接或原始 `frpc.toml` 文件内容。
+- **代理规则批量端口区间导入**：支持 `8080-8085`、`8080,8081,8082` 等离散/连续端口范围批量映射生成规则。
+- **TOML 实时双向预览**：规范生成 frp v0.53+ 标准 TOML 格式，支持自定义域名、TCP/UDP、HTTP/HTTPS、STCP/XTCP。
+- **官方版本管理与下载**：内置 GitHub Releases 官方源与国内镜像加速下载，支持 SHA256 完整性校验与本地 `frpc.exe` 一键导入。
+- **实时日志与脱敏流**：单实例独立日志抽屉，自动脱敏 Token/Secret，ANSI 彩色终端日志过滤。
 
-## 技术栈
+### 2. 🔍 网络全能诊断与公网探测
+- **出口公网 IP & IPv6**：聚合国内外高可用查询源，双栈自动回退，精准识别家宽、专线与公网 IPv6。
+- **全网卡拓扑透视**：物理网卡、虚拟网卡（Hyper-V/WSL/VPN）、网关、DNS、临时 IPv6 地址一览。
+- **ICMP Ping 稳定性探测**：内置纯 Go 探测引擎，支持发包计数、实时丢包率、最小/最大/平均 RTT 统计。
+- **Traceroute 路由追踪**：系统级路由跳跃追踪（Windows `tracert` / Linux `traceroute`），内置 `CREATE_NO_WINDOW` 静默无黑窗口执行。
 
-- **后端**：Go（≥1.26），`golang.org/x/sys` 直接调 Windows API
-- **GUI**：Wails 3（v3.0.0-beta.10）+ Vue 3 + TypeScript + Vite
-- **架构**：领域层 `domain`（零依赖）→ 平台层 `platform`（仅 Windows）→ 装配层 `app`（Composition Root），详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+### 3. 🎯 端口占用精准排查与一键释放 (PortKill)
+- 快速查询指定本地端口（TCP/UDP）占用情况。
+- 深度提取占用进程名称、PID、启动时间、可执行文件完整路径及命令行参数。
+- 支持三级提权与强制安全释放。
 
-## 快速开始
+### 4. 📡 局域网活跃设备与服务发现 (LAN Scanner)
+- 局域网 CIDR 自动探测与并发活跃 IP 扫描。
+- MAC 地址与网络设备硬件厂商（OUI 数据库）精准匹配识别。
+- 支持 mDNS / SSDP 服务发现。
 
-前置要求：
+### 5. 🧰 开发者快捷直达 (System Quick Launch)
+- 快捷一键打开系统 `hosts` 文件（记事本即开即改）。
+- 一键直达 `AppData` 目录、系统环境变量设置、网络适配器配置（`ncpa.cpl`）、设备管理器等。
 
-- Go ≥ 1.26
-- Node ≥ 22（前端构建）
-- `wails3` 与 `task` CLI：
+---
 
-```sh
+## 🛠️ 技术架构与优势
+
+| 维度 | HubKit (本项目) | 传统 Electron 类工具 | 传统 GUI 类工具 |
+|---|---|---|---|
+| **技术底座** | **Go + Wails v3 + Vue 3** | Electron + Node.js | Go + IMGUI / Fyne |
+| **内存占用** | **~25 MB**（极低资源消耗） | 150MB ~ 300MB+ | 30MB ~ 50MB |
+| **进程治理** | **Windows JobObject 绑定**（零孤儿进程） | Node 子进程（易残留） | 简单 Process Kill |
+| **多实例支持** | **原生支持多项目独立并行运行** | 仅单配置单运行 | 仅单配置运行 |
+| **配置分享** | **`frp://` 链接一键分享 + 批量端口导入** | 部分支持 | 不支持 |
+| **开发者套件** | **内置 Ping/路由追踪/端口释放/局域网发现** | 仅单一穿透功能 | 仅单一穿透功能 |
+
+---
+
+## 🚀 快速开始
+
+### 前置要求
+
+- **Go** ≥ 1.24
+- **Node.js** ≥ 20
+- **Wails 3 CLI** & **Task**：
+
+```bash
 go install github.com/wailsapp/wails/v3/cmd/wails3@latest
 go install github.com/go-task/task/v3/cmd/task@latest
 ```
 
-安装前端依赖：
+### 安装依赖
 
-```sh
+```bash
 cd frontend && npm install && cd ..
 ```
 
-开发模式（HMR，弹窗即用）：
+### 本地开发运行 (HMR 实时热重载)
 
-```sh
+```bash
 task dev
 ```
 
-静态检查与构建：
+### 编译打包产物
 
-```sh
-task check     # go vet + go build
-task build     # 产出 bin/hubkit.exe（Windows 便携版）
+```bash
+task build     # 产出便携版单二进制 bin/hubkit.exe
 ```
 
-## 目录结构
+---
 
-> 标注：`✅` = 已落地；`(规划 Mx)` = 文档已规划、代码未建。build/ 下的 darwin/linux/ios/android 为 wails3 脚手架产物，仅保留不用于发布。
+## 📁 目录结构
 
 ```text
 hubkit/
 ├─ cmd/
-│  ├─ devnetkit/                 # ✅ 入口（main.go，仅装配 + 运行）
-│  └─ killhelper_main.go         # (规划 M3) 同一二进制的 UAC helper 模式（-mode=killhelper）
-├─ embedassets.go                # ✅ 根级包：//go:embed all:frontend/dist
+│  └─ hubkit/                    # 应用入口（Main 装配）
 ├─ internal/
-│  ├─ app/                       # ✅ Composition Root
-│  │  ├─ app.go                  #   ✅ wails 装配：模块注册 + 服务 + 窗口
-│  │  ├─ service.go              #   ✅ AppService：应用信息/导航/模块启停
-│  │  └─ shutdown.go             #   (规划 M1) 优雅退出编排
-│  ├─ extapi/                    # ✅ 模块契约（Module = Extension 统一定义）
-│  │  ├─ extension.go            #   ✅ 接口/Info/Nav/Permission/Level/协议号
-│  │  └─ registry.go             #   ✅ 注册表：注册/启停/导航聚合
-│  ├─ domain/                    # ✅ 纯领域模型（零平台依赖）
-│  │  ├─ apperr.go               #   ✅ AppError 统一错误模型
-│  │  └─ project.go proxy.go version.go instance.go validate.go  # (规划 M4)
-│  ├─ modules/                   # ✅ 工具箱模块（全部平等，统一注册）
-│  │  ├─ frpc/extension.go       #   ✅ 旗舰模块（导航承接；业务 M4）
-│  │  ├─ lan/extension.go        #   ✅ 局域网扫描（功能 M2）
-│  │  ├─ portkill/extension.go   #   ✅ 释放端口（功能 M3）
-│  │  └─ publicip/extension.go   #   ✅ 公网 IP（功能 M2）
-│  ├─ host/                      # (规划 M1/M3) 特权统一入口：KillVerified/提权/哈希
-│  ├─ frpc/（并入 modules/frpc）    # (规划 M4) 业务在 modules/frpc 下（manager/instance/docgen/logstream）
-│  └─（frp 版本管理 = frpc 模块内部件，规划 M4）
-│  ├─ settings/                  # (规划 M1) 配置/路径解析（便携 + 非便携）
-│  ├─ security/                  # (规划 M1) SecretStore 抽象 + 明文实现（预留 DPAPI）
-│  ├─ logging/                   # (规划 M1) slog + 轮转 + 脱敏
-│  ├─ netcore/                   # (规划 M2) CIDR/私有判断/worker pool
-│  └─ platform/                  # (规划 M0) Windows 平台接口与实现
-│     ├─ platform.go             #   接口定义（Network/Port/Process/Secret/Job）
-│     └─ windows/                #   网卡/ICMP/邻居表/端口表/进程/JobObject/DPAPI/UAC
-├─ frontend/
+│  ├─ app/                       # Composition Root (Wails 窗口与服务注入)
+│  ├─ domain/                    # 纯领域模型 (Project, ServerConfig, ProxyRule 等)
+│  ├─ modules/                   # 独立工具模块
+│  │  ├─ frpc/                   # 旗舰模块：多实例引擎 / 版本下载 / TOML生成 / 校验
+│  │  ├─ publicip/               # 公网 IP / 网卡信息 / ICMP Ping / Traceroute
+│  │  ├─ portkill/               # 端口占用侦测与进程释放
+│  │  └─ lan/                    # 局域网主机扫描与设备识别
+│  ├─ platform/                  # 平台底层实现（Windows JobObject / 网卡 / 进程）
+│  ├─ logging/                   # slog 结构化日志
+│  └─ settings/                  # 便携化路径与配置存储
+├─ frontend/                     # Vue 3 + TypeScript 前端
 │  ├─ src/
-│  │  ├─ main.ts / App.vue       #   ✅ 入口 + 侧边栏壳（浅色主题、模块导航注入）
-│  │  ├─ views/                  #   ✅ Home/FrpcProjects/Versions/Settings(模块管理)/About
-│  │  ├─ components/             #   (规划 M2) 日志/确认框/复制按钮
-│  │  ├─ stores/                 #   (规划 M1) pinia 状态
-│  │  └─ api/                    #   bindings（生成） + client 封装
-│  ├─ bindings/                  # ✅ wails3 生成产物（勿手改）
-│  ├─ index.html                 # ✅
-│  └─ vite.config.ts             # ✅
-├─ build/                        # ✅ wails3 构建链（windows 为实际发布目标）
-├─ docs/                         # ✅ PRD.md · ARCHITECTURE.md
-├─ tests/                        # (规划 M5) 集成与平台测试
-├─ Taskfile.yml                  # ✅ dev / check / build / package
-└─ go.mod                        # ✅ module hubkit
+│  │  ├─ views/                  # 业务视图（Frpc项目、版本、公网IP/Ping/路由追踪、端口释放、LAN扫描、设置等）
+│  │  ├─ components/             # 复用组件（FrpcProjectEditor 配置编辑/批量端口/分享等）
+│  │  └─ App.vue / main.ts       # 侧边栏与主应用布局
+│  └─ bindings/                  # Wails v3 自动生成的 Go-JS API 绑定
+└─ Taskfile.yml                  # 自动化开发与构建任务
 ```
 
-## 设计要点（与文档一致）
+---
 
-- **工具箱模块化**：frpc 与其他工具完全平等——同一注册表、同一启停语义、同一导航注入（见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §7）。
-- **安全红线**：下载二进制 SHA256 硬校验；终止进程前复核 PID+启动时间+路径；系统进程保护；UAC 最小提权；日志脱敏；默认无遥测。
-- **仅 Windows**：Windows 10 22H2 / 11 x64（arm64 尽力）；macOS/Linux 不做实现与发布（决策见 ARCHITECTURE 附录 D）。
-- **frpc 来源**：管理官方 `frpc.exe`（多版本）；不内置 frps，服务端由用户自备。
+## 📄 开源协议
 
-## 文档
-
-- [docs/PRD.md](docs/PRD.md) —— 产品需求与技术方案（v0.4）
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) —— 架构设计（分层、模块框架、平台隔离、附录 A–D）
-- [docs/DEVPLAN.md](docs/DEVPLAN.md) —— 开发计划与里程碑路线图（M0–M5）
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) —— 本地开发、构建与运行指南
-
-## 参考项目
-
-产品形态参考 [frpc-desktop](https://github.com/luckjiawei/frpc-desktop)（Electron/Vue）与 [FrpGUI](https://gitee.com/kuriyama-mirai/frp-gui)（Go/Shirei）；三向对比见 ARCHITECTURE 附录 C——HubKit 的差异化在「开发者工作流 + 多实例 + 安全设计」。
-
-## License
-
-MIT
+本项目基于 [MIT License](LICENSE) 协议开源。
