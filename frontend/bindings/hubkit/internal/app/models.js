@@ -17,6 +17,14 @@
  * @property {string} runtimeDir
  */
 
+/**
+ * LogFileInfo 日志文件基本元数据
+ * @typedef {Object} LogFileInfo
+ * @property {string} name
+ * @property {number} size
+ * @property {string} modTime
+ */
+
 // In interface mode, this file is likely to contain just comments.
 // We add a dummy export statement to ensure it is recognised as an ES module.
 export {};

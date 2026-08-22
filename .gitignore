@@ -13,3 +13,6 @@ data/
 
 # Windows syso 构建中间产物（扫描 main 包目录时自动化生成）
 *.syso
+
+.idea/
+.vscode/

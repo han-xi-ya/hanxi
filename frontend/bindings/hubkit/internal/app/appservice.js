@@ -21,6 +21,14 @@ import * as extapi$0 from "../extapi/models.js";
 import * as $models from "./models.js";
 
 /**
+ * ClearLogs 清除所有历史日志（保留当天的）
+ * @returns {$CancellablePromise<void>}
+ */
+export function ClearLogs() {
+    return $Call.ByID(1043740524);
+}
+
+/**
  * @returns {$CancellablePromise<$models.AppInfo>}
  */
 export function GetAppInfo() {
@@ -33,6 +41,14 @@ export function GetAppInfo() {
  */
 export function GetNavs() {
     return $Call.ByID(3041244904);
+}
+
+/**
+ * ListLogFiles 获取日志目录下的所有日志文件列表（按时间倒序排列）
+ * @returns {$CancellablePromise<$models.LogFileInfo[] | null>}
+ */
+export function ListLogFiles() {
+    return $Call.ByID(528130055);
 }
 
 /**
@@ -74,6 +90,16 @@ export function OpenPath(targetPath) {
  */
 export function OpenSystemEnvSettings() {
     return $Call.ByID(1125854863);
+}
+
+/**
+ * ReadLogContent 读取指定日志文件的内容（限制最大行数避免内存溢出，默认倒序取最新行）
+ * @param {string} fileName
+ * @param {number} maxLines
+ * @returns {$CancellablePromise<string>}
+ */
+export function ReadLogContent(fileName, maxLines) {
+    return $Call.ByID(3816766177, fileName, maxLines);
 }
 
 /**

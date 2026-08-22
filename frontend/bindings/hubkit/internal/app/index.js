@@ -13,3 +13,8 @@ import * as $models from "./models.js";
  * AppInfo 前端关于页/首页展示的应用信息。
  * @typedef {$models.AppInfo} AppInfo
  */
+
+/**
+ * LogFileInfo 日志文件基本元数据
+ * @typedef {$models.LogFileInfo} LogFileInfo
+ */

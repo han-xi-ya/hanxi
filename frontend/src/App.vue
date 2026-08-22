@@ -7,6 +7,7 @@ import FrpcProjectsView from './views/FrpcProjectsView.vue'
 import VersionsView from './views/VersionsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import AboutView from './views/AboutView.vue'
+import LogsView from './views/LogsView.vue'
 import LanScannerView from './views/LanScannerView.vue'
 import PublicIpView from './views/PublicIpView.vue'
 import PortKillView from './views/PortKillView.vue'
@@ -24,6 +25,7 @@ const CORE_VIEWS: Record<string, unknown> = {
   '/ext/wechat': WechatBotView,
   '/ext/publicip': PublicIpView,
   '/ext/portkill': PortKillView,
+  '/logs': LogsView,
   '/settings': SettingsView,
   '/about': AboutView,
 }
@@ -33,6 +35,7 @@ const SYSTEM_NAV = [
 ]
 
 const BOTTOM_NAV = [
+  { route: '/logs', title: '日志', icon: '📋' },
   { route: '/settings', title: '设置', icon: '⚙' },
   { route: '/about', title: '关于', icon: 'ⓘ' },
 ]
