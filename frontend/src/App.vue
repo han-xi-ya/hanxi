@@ -11,6 +11,7 @@ import LanScannerView from './views/LanScannerView.vue'
 import PublicIpView from './views/PublicIpView.vue'
 import PortKillView from './views/PortKillView.vue'
 import PortScanView from './views/PortScanView.vue'
+import WechatBotView from './views/WechatBotView.vue'
 import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
 
 // 核心与内置功能视图路由映射
@@ -20,6 +21,7 @@ const CORE_VIEWS: Record<string, unknown> = {
   '/versions': VersionsView,
   '/ext/lan': LanScannerView,
   '/ext/portscan': PortScanView,
+  '/ext/wechat': WechatBotView,
   '/ext/publicip': PublicIpView,
   '/ext/portkill': PortKillView,
   '/settings': SettingsView,

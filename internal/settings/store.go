@@ -8,6 +8,17 @@ import (
 	"sync"
 )
 
+// WechatConfig 微信 ClawBot 配置
+type WechatConfig struct {
+	BotToken              string `json:"botToken"`
+	IlinkBotID            string `json:"ilinkBotId"`
+	IlinkUserID           string `json:"ilinkUserId"`
+	ContextToken          string `json:"contextToken"`
+	ContextTokenUpdatedAt string `json:"contextTokenUpdatedAt"`
+	TargetUserID          string `json:"targetUserId"`
+	BaseURL               string `json:"baseUrl"`
+}
+
 // AppSettings 应用全局配置模型
 type AppSettings struct {
 	Theme          string            `json:"theme"`          // "light" | "dark" | "system"
@@ -17,6 +28,7 @@ type AppSettings struct {
 	LogRetainDays  int               `json:"logRetainDays"`  // 日志保留天数（默认 7）
 	Modules        map[string]bool   `json:"modules"`        // 各模块启用状态 map[moduleId]enabled
 	LanRemarks     map[string]string `json:"lanRemarks"`     // 局域网 IP/MAC 备注 map[identifier]remark
+	Wechat         WechatConfig      `json:"wechat"`         // 微信机器人配置
 }
 
 func DefaultSettings() AppSettings {
@@ -28,6 +40,9 @@ func DefaultSettings() AppSettings {
 		LogRetainDays:  7,
 		Modules:        make(map[string]bool),
 		LanRemarks:     make(map[string]string),
+		Wechat: WechatConfig{
+			BaseURL: "https://ilinkai.weixin.qq.com",
+		},
 	}
 }
 
@@ -145,6 +160,20 @@ func (s *Store) SetLanRemark(key, remark string) error {
 		} else {
 			cfg.LanRemarks[key] = remark
 		}
+	})
+}
+
+// GetWechatConfig 获取微信机器人配置
+func (s *Store) GetWechatConfig() WechatConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.Wechat
+}
+
+// SetWechatConfig 更新微信机器人配置并原子落盘
+func (s *Store) SetWechatConfig(cfg WechatConfig) error {
+	return s.Update(func(c *AppSettings) {
+		c.Wechat = cfg
 	})
 }
 

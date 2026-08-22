@@ -15,6 +15,7 @@ import (
 	"hubkit/internal/modules/portkill"
 	"hubkit/internal/modules/portscan"
 	"hubkit/internal/modules/publicip"
+	"hubkit/internal/modules/wechat"
 	"hubkit/internal/platform/windows"
 	"hubkit/internal/settings"
 )
@@ -29,6 +30,8 @@ func RegisterEvents() {
 	application.RegisterEvent[extapi.NavEntry]("ext:changed")
 	application.RegisterEvent[lan.LanProgress]("lan:progress")
 	application.RegisterEvent[portscan.ScanProgress]("portscan:progress")
+	application.RegisterEvent[wechat.InboundMessage]("wechat:message-received")
+	application.RegisterEvent[map[string]string]("wechat:context-token-updated")
 	application.RegisterEvent[version.DownloadProgress]("frpc:version-download")
 	application.RegisterEvent[instance.Snapshot]("frpc:instance-state")
 	application.RegisterEvent[instance.LogEntry]("frpc:instance-log")
@@ -67,7 +70,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	registry := extapi.NewRegistry(store)
 
 	// 5. 工具箱模块统一注册：frpc 与其余工具完全平等，均可启停
-	if err := registry.Register(frpc.New(plat), lan.New(plat, store), portkill.New(plat), portscan.New(), publicip.New(plat)); err != nil {
+	if err := registry.Register(frpc.New(plat), lan.New(plat, store), portkill.New(plat), portscan.New(), publicip.New(plat), wechat.New(store)); err != nil {
 		panic(err) // 内建模块注册失败属于编程错误，直接暴露
 	}
 
