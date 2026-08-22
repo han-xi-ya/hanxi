@@ -1,20 +1,22 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as AppAPI from '../../bindings/hubkit/internal/app'
 import type { ModuleInfo, NavEntry } from '../../bindings/hubkit/internal/extapi/models'
 import type { AppInfo } from '../../bindings/hubkit/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
 }>()
 
-const modules = ref<ModuleInfo[]>([])
-const navs = ref<NavEntry[]>([])
+const { showToast } = useToast()
+
+const modules = shallowRef<ModuleInfo[]>([])
+const navs = shallowRef<NavEntry[]>([])
 const appInfo = ref<AppInfo | null>(null)
 const toggling = ref<string | null>(null)
-const toastMsg = ref('')
 let unlistenExtChanged: (() => void) | null = null
 
 // 模块图标与首选路由映射
@@ -25,11 +27,6 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   wechat: { icon: '💬', route: '/ext/wechat' },
   publicip: { icon: '≋', route: '/ext/publicip' },
   portkill: { icon: '✕', route: '/ext/portkill' },
-}
-
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => { toastMsg.value = '' }, 2500)
 }
 
 async function loadData() {
@@ -75,7 +72,7 @@ async function toggle(m: ModuleInfo) {
     showToast(nextState ? `已启用「${m.name}」` : `已停用「${m.name}」，已回收运行时资源`)
     await loadData()
     // 主动触发前端总线广播，确保侧边栏 App.vue 即时拉取导航热更新
-    ;(Events.Emit as any)('ext:changed')
+    Events.Emit('ext:changed', { id: m.id, title: m.name, route: '', icon: '', section: 'ext' as any, order: 0 })
   } catch (err: unknown) {
     showToast(`操作失败: ${getErrorMessage(err)}`)
   } finally {
@@ -124,8 +121,6 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-
-    <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
 
     <!-- 已启用的功能 -->
     <div class="section-container">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, markRaw, onMounted, onUnmounted } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as AppAPI from '../bindings/hubkit/internal/app'
 import type { NavEntry } from '../bindings/hubkit/internal/extapi/models'
@@ -15,20 +15,23 @@ import PortKillView from './views/PortKillView.vue'
 import PortScanView from './views/PortScanView.vue'
 import WechatBotView from './views/WechatBotView.vue'
 import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
+import { useToast } from './composables/useToast'
 
-// 核心与内置功能视图路由映射
-const CORE_VIEWS: Record<string, unknown> = {
-  '/': HomeView,
-  '/frpc': FrpcProjectsView,
-  '/versions': VersionsView,
-  '/ext/lan': LanScannerView,
-  '/ext/portscan': PortScanView,
-  '/ext/wechat': WechatBotView,
-  '/ext/publicip': PublicIpView,
-  '/ext/portkill': PortKillView,
-  '/logs': LogsView,
-  '/settings': SettingsView,
-  '/about': AboutView,
+const { toastMsg } = useToast()
+
+// 核心与内置功能视图路由映射（使用 markRaw 避免深度响应式包装）
+const CORE_VIEWS: Record<string, any> = {
+  '/': markRaw(HomeView),
+  '/frpc': markRaw(FrpcProjectsView),
+  '/versions': markRaw(VersionsView),
+  '/ext/lan': markRaw(LanScannerView),
+  '/ext/portscan': markRaw(PortScanView),
+  '/ext/wechat': markRaw(WechatBotView),
+  '/ext/publicip': markRaw(PublicIpView),
+  '/ext/portkill': markRaw(PortKillView),
+  '/logs': markRaw(LogsView),
+  '/settings': markRaw(SettingsView),
+  '/about': markRaw(AboutView),
 }
 
 // 路由与后端模块 ID 对应关系（用于路由切换时的零开销按需懒加载）
@@ -181,7 +184,17 @@ onUnmounted(() => {
 
     <!-- 右侧内容主视口 -->
     <main class="content-area">
-      <component :is="currentView" :title="currentExt?.title" @navigate="navigateTo" />
+      <div v-if="toastMsg" class="global-toast">{{ toastMsg }}</div>
+      <Transition name="page-fade" mode="out-in">
+        <KeepAlive :max="10">
+          <component
+            :is="currentView"
+            :key="activeRoute"
+            :title="currentExt?.title"
+            @navigate="navigateTo"
+          />
+        </KeepAlive>
+      </Transition>
     </main>
   </div>
 </template>
@@ -381,5 +394,49 @@ onUnmounted(() => {
   line-height: 1.6;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* 全局轻量 Toast 提示 */
+.global-toast {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  background: rgba(31, 35, 40, 0.92);
+  backdrop-filter: blur(8px);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  animation: toastFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 9999;
+  pointer-events: none;
+}
+
+@keyframes toastFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 页面切换平滑过渡动画 */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 </style>

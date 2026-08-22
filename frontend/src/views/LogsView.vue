@@ -1,26 +1,23 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import * as AppAPI from '../../bindings/hubkit/internal/app'
 import type { LogFileInfo } from '../../bindings/hubkit/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
 
-const logFiles = ref<LogFileInfo[]>([])
+const { showToast } = useToast()
+
+const logFiles = shallowRef<LogFileInfo[]>([])
 const selectedFile = ref<string>('')
-const logContent = ref<string>('')
+const logContent = shallowRef<string>('')
 const loading = ref(false)
 const autoRefresh = ref(true)
 const searchKeyword = ref('')
 const maxLines = ref(300)
-const toastMsg = ref('')
 const logContainerRef = ref<HTMLPreElement | null>(null)
 
-let timer: any = null
+let timer: ReturnType<typeof setInterval> | null = null
 let currentRequestId = 0
-
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => { toastMsg.value = '' }, 2500)
-}
 
 async function loadFileList() {
   try {
@@ -132,7 +129,6 @@ onUnmounted(() => {
         <h1>运行日志</h1>
         <p class="subtitle">实时查看应用运行日志、脱敏记录与底层组件状态 (存储于 %APPDATA%/HubKit/logs)。</p>
       </div>
-      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
 
     <!-- 顶部工具栏 -->

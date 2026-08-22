@@ -3,6 +3,10 @@ import { ref, onMounted, computed } from 'vue'
 import * as PublicIpAPI from '../../bindings/hubkit/internal/modules/publicip'
 import type { NetworkOverview, PingSummary, TracerouteSummary } from '../../bindings/hubkit/internal/modules/publicip/models'
 import type { Adapter } from '../../bindings/hubkit/internal/platform/models'
+import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
+
+const { showToast } = useToast()
 
 const activeTab = ref<'ip' | 'ping' | 'traceroute'>('ip')
 
@@ -10,7 +14,6 @@ const activeTab = ref<'ip' | 'ping' | 'traceroute'>('ip')
 const overview = ref<NetworkOverview | null>(null)
 const loading = ref(false)
 const errorMsg = ref('')
-const toastMsg = ref('')
 
 // 2. Ping 探测状态
 const pingTargetInput = ref('1.1.1.1')
@@ -31,8 +34,8 @@ async function loadNetworkInfo(force = false) {
   errorMsg.value = ''
   try {
     overview.value = await PublicIpAPI.PublicIPService.GetNetworkOverview(force)
-  } catch (e: any) {
-    errorMsg.value = `获取网络配置信息失败: ${e?.message ?? e}`
+  } catch (e: unknown) {
+    errorMsg.value = `获取网络配置信息失败: ${getErrorMessage(e)}`
   } finally {
     loading.value = false
   }
@@ -44,8 +47,8 @@ async function runPing() {
   pingError.value = ''
   try {
     pingResult.value = await PublicIpAPI.PublicIPService.PingTarget(pingTargetInput.value.trim(), pingCount.value)
-  } catch (e: any) {
-    pingError.value = `Ping 执行失败: ${e?.message ?? e}`
+  } catch (e: unknown) {
+    pingError.value = `Ping 执行失败: ${getErrorMessage(e)}`
   } finally {
     pingLoading.value = false
   }
@@ -57,8 +60,8 @@ async function runTraceroute() {
   traceError.value = ''
   try {
     traceResult.value = await PublicIpAPI.PublicIPService.TraceRoute(traceTargetInput.value.trim(), traceMaxHops.value)
-  } catch (e: any) {
-    traceError.value = `路由追踪执行失败: ${e?.message ?? e}`
+  } catch (e: unknown) {
+    traceError.value = `路由追踪执行失败: ${getErrorMessage(e)}`
   } finally {
     traceLoading.value = false
   }
@@ -67,10 +70,7 @@ async function runTraceroute() {
 function copyText(text: string, label: string) {
   if (!text) return
   navigator.clipboard.writeText(text)
-  toastMsg.value = `已复制 ${label}: ${text}`
-  setTimeout(() => {
-    toastMsg.value = ''
-  }, 2000)
+  showToast(`已复制 ${label}: ${text}`)
 }
 
 function quickPing(ip: string) {
@@ -104,7 +104,6 @@ onMounted(() => loadNetworkInfo(false))
         <h1>网络与 IP 诊断</h1>
         <p class="subtitle">综合展示公网/内网 IP、网卡与网关 DNS，提供毫秒级 ICMP Ping 探测与路由跳跃追踪 (Traceroute)。</p>
       </div>
-      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
 
     <!-- 顶部导航 Tab 分页 -->

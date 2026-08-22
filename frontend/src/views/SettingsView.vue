@@ -2,20 +2,18 @@
 import { ref, onMounted } from 'vue'
 import * as AppAPI from '../../bindings/hubkit/internal/app'
 import type { AppInfo } from '../../bindings/hubkit/internal/app/models'
+import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
+
+const { showToast } = useToast()
 
 const appInfo = ref<AppInfo | null>(null)
-const toastMsg = ref('')
-
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => { toastMsg.value = '' }, 2500)
-}
 
 async function refresh() {
   try {
     appInfo.value = await AppAPI.AppService.GetAppInfo()
-  } catch (e: any) {
-    showToast(`获取系统信息失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`获取系统信息失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -23,8 +21,8 @@ async function openFolder(path?: string) {
   if (!path) return
   try {
     await AppAPI.AppService.OpenPath(path)
-  } catch (e: any) {
-    showToast(`打开目录失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`打开目录失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -32,8 +30,8 @@ async function openHosts() {
   try {
     await AppAPI.AppService.OpenHostsFile()
     showToast('已调起编辑器打开 hosts 文件')
-  } catch (e: any) {
-    showToast(`打开 hosts 失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`打开 hosts 失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -41,8 +39,8 @@ async function openNetworkPanel() {
   try {
     await AppAPI.AppService.OpenNetworkConnections()
     showToast('已打开网络连接面板')
-  } catch (e: any) {
-    showToast(`打开网络面板失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`打开网络面板失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -50,8 +48,8 @@ async function openEnvSettings() {
   try {
     await AppAPI.AppService.OpenSystemEnvSettings()
     showToast('已打开环境变量设置')
-  } catch (e: any) {
-    showToast(`打开环境变量失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`打开环境变量失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -65,7 +63,6 @@ onMounted(refresh)
         <h1>设置</h1>
         <p class="subtitle">查看系统存储目录、运行模式与开发者快捷工具直达。</p>
       </div>
-      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
 
     <!-- 系统与数据目录快捷访问 -->

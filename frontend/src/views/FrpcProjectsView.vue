@@ -1,24 +1,26 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservice'
 import type { Project } from '../../bindings/hubkit/internal/domain/models'
 import type { Snapshot } from '../../bindings/hubkit/internal/modules/frpc/instance/models'
 import FrpcProjectEditor from '../components/FrpcProjectEditor.vue'
 import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
 
-const projects = ref<Project[]>([])
+const { showToast } = useToast()
+
+const projects = shallowRef<Project[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
-const toastMsg = ref('')
 
 // 编辑器状态：null = 关闭；{project: null} = 新建；{project} = 编辑
 const editorOpen = ref(false)
 const editingProject = ref<Project | null>(null)
-const installedVersions = ref<string[]>([])
+const installedVersions = shallowRef<string[]>([])
 
 // 实例状态：projectId → 最新快照
-const instances = ref<Record<string, Snapshot>>({})
+const instances = shallowRef<Record<string, Snapshot>>({})
 const starting = ref<Set<string>>(new Set()) // 启动请求进行中（防重复点击）
 
 // 导入 Modal 状态
@@ -30,7 +32,7 @@ const importError = ref('')
 // 日志抽屉
 const drawerOpen = ref(false)
 const drawerProjectId = ref('')
-const logLines = ref<string[]>([])
+const logLines = shallowRef<string[]>([])
 const logLoading = ref(false)
 const logError = ref('')
 const logAutoScroll = ref(true)
@@ -39,11 +41,8 @@ const logBodyRef = ref<HTMLElement | null>(null)
 // 运行时长每秒刷新
 const nowTick = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | null = null
-
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => { toastMsg.value = '' }, 2500)
-}
+let unlistenState: (() => void) | null = null
+let unlistenLog: (() => void) | null = null
 
 function projectName(id: string): string {
   return projects.value.find(p => p.id === id)?.name ?? id
@@ -370,29 +369,34 @@ function clearLogs() {
 onMounted(async () => {
   await Promise.all([loadProjects(), loadInstances(), loadInstalledVersions()])
 
-  unlistenState = Events.On('frpc:instance-state', (event: any) => {
-    const snap = event?.data as Snapshot
+  unlistenState = Events.On('frpc:instance-state', (event: { data?: Snapshot }) => {
+    const snap = event?.data
     if (!snap?.projectId) return
     instances.value = { ...instances.value, [snap.projectId]: snap }
   })
-  unlistenLog = Events.On('frpc:instance-log', (event: any) => {
+  unlistenLog = Events.On('frpc:instance-log', (event: { data?: { projectId: string; line: string } }) => {
     const entry = event?.data
     if (!entry?.projectId || entry.projectId !== drawerProjectId.value) return
-    logLines.value.push(entry.line)
-    if (logLines.value.length > 5000) logLines.value = logLines.value.slice(-1000)
+    logLines.value = [...logLines.value, entry.line].slice(-2000)
     void scrollToBottom()
   })
 
   tickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
 })
 
-let unlistenState: (() => void) | null = null
-let unlistenLog: (() => void) | null = null
-
 onUnmounted(() => {
-  unlistenState?.()
-  unlistenLog?.()
-  if (tickTimer) clearInterval(tickTimer)
+  if (unlistenState) {
+    unlistenState()
+    unlistenState = null
+  }
+  if (unlistenLog) {
+    unlistenLog()
+    unlistenLog = null
+  }
+  if (tickTimer) {
+    clearInterval(tickTimer)
+    tickTimer = null
+  }
 })
 </script>
 
@@ -414,7 +418,6 @@ onUnmounted(() => {
           <h1>frpc 项目</h1>
           <p class="subtitle">项目 = 一份 frp 配置。每个项目独立 frpc.exe 进程运行，退出 HubKit 时内核连带清理，杜绝孤儿进程。</p>
         </div>
-        <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
       </div>
 
       <div class="control-panel">

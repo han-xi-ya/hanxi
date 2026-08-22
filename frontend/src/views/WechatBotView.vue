@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import QRCode from 'qrcode'
 import { Events } from '@wailsio/runtime'
 import * as WechatAPI from '../../bindings/hubkit/internal/modules/wechat'
@@ -24,7 +24,7 @@ const qrDataUrl = ref<string>('')
 const qrLoading = ref(false)
 const qrStatusText = ref('')
 const qrStatusType = ref<'wait' | 'scaned' | 'confirmed' | 'expired' | 'error' | ''>('')
-let qrPollTimer: any = null
+let qrPollTimer: ReturnType<typeof setInterval> | null = null
 
 // 消息发送相关
 const toUserId = ref('')
@@ -39,14 +39,21 @@ const isRefreshingToken = ref(false)
 const isTogglingListener = ref(false)
 
 // 消息日志流
-const messageLogs = ref<Array<{ time: string; type: 'in' | 'out' | 'sys'; text: string; detail?: string }>>([])
+export interface MessageLogEntry {
+  id: string
+  time: string
+  type: 'in' | 'out' | 'sys'
+  text: string
+  detail?: string
+}
 
+const messageLogs = shallowRef<MessageLogEntry[]>([])
+
+let logSeq = 0
 function addLog(type: 'in' | 'out' | 'sys', text: string, detail?: string) {
   const time = new Date().toLocaleTimeString()
-  messageLogs.value.unshift({ time, type, text, detail })
-  if (messageLogs.value.length > 100) {
-    messageLogs.value.pop()
-  }
+  const entry: MessageLogEntry = { id: `${Date.now()}-${++logSeq}`, time, type, text, detail }
+  messageLogs.value = [entry, ...messageLogs.value].slice(0, 100)
 }
 
 async function loadState() {
@@ -279,8 +286,8 @@ async function handleClearCredentials() {
   }
 }
 
-let unlistenContextToken: any = null
-let unlistenMessage: any = null
+let unlistenContextToken: (() => void) | null = null
+let unlistenMessage: (() => void) | null = null
 
 onMounted(async () => {
   await loadState()
@@ -288,11 +295,13 @@ onMounted(async () => {
   // 监听来自后端的事件
   unlistenContextToken = Events.On('wechat:context-token-updated', (ev: any) => {
     loadState()
-    addLog('sys', '接收到新 Context Token', ev.data?.contextToken?.substring(0, 16) + '...')
+    if (ev?.data?.contextToken) {
+      addLog('sys', '接收到新 Context Token', ev.data.contextToken.substring(0, 16) + '...')
+    }
   })
 
   unlistenMessage = Events.On('wechat:message-received', (ev: any) => {
-    const msg = ev.data as InboundMessage
+    const msg = ev?.data as InboundMessage | undefined
     if (msg) {
       if (msg.type === 1) {
         addLog('in', `收到文字: ${msg.text}`, `From: ${msg.from}`)
@@ -305,8 +314,14 @@ onMounted(async () => {
 
 onUnmounted(() => {
   stopQRPoll()
-  if (unlistenContextToken) unlistenContextToken()
-  if (unlistenMessage) unlistenMessage()
+  if (unlistenContextToken) {
+    unlistenContextToken()
+    unlistenContextToken = null
+  }
+  if (unlistenMessage) {
+    unlistenMessage()
+    unlistenMessage = null
+  }
 })
 </script>
 
@@ -528,8 +543,8 @@ onUnmounted(() => {
             </div>
 
             <div
-              v-for="(log, idx) in messageLogs"
-              :key="idx"
+              v-for="log in messageLogs"
+              :key="log.id"
               class="log-item"
               :class="log.type"
             >

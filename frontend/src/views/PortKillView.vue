@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, shallowRef, onMounted } from 'vue'
 import * as PortKillAPI from '../../bindings/hubkit/internal/modules/portkill'
 import type { PortOccupant, KillResult } from '../../bindings/hubkit/internal/modules/portkill/models'
+import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
+
+const { showToast } = useToast()
 
 const inputPort = ref<number | ''>('')
 const loading = ref(false)
-const occupants = ref<PortOccupant[]>([])
-const listeningList = ref<PortOccupant[]>([])
+const occupants = shallowRef<PortOccupant[]>([])
+const listeningList = shallowRef<PortOccupant[]>([])
 const searching = ref(false)
-const toastMsg = ref('')
 const errorMsg = ref('')
 
 // 快捷端口预设
@@ -18,21 +21,14 @@ const QUICK_PORTS = [80, 443, 3000, 5173, 8080, 8000, 3306, 6379, 27017]
 const targetToKill = ref<PortOccupant | null>(null)
 const killing = ref(false)
 
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => {
-    toastMsg.value = ''
-  }, 2500)
-}
-
 async function loadListeningPorts() {
   loading.value = true
   errorMsg.value = ''
   try {
     const list = await PortKillAPI.PortKillService.ListListeningPorts()
     listeningList.value = list ?? []
-  } catch (e: any) {
-    errorMsg.value = `获取端口占用列表失败: ${e?.message ?? e}`
+  } catch (e: unknown) {
+    errorMsg.value = `获取端口占用列表失败: ${getErrorMessage(e)}`
   } finally {
     loading.value = false
   }
@@ -54,8 +50,8 @@ async function searchPort(portVal?: number) {
     if (occupants.value.length === 0) {
       showToast(`端口 ${p} 当前未被占用`)
     }
-  } catch (e: any) {
-    errorMsg.value = `查询端口失败: ${e?.message ?? e}`
+  } catch (e: unknown) {
+    errorMsg.value = `查询端口失败: ${getErrorMessage(e)}`
   } finally {
     searching.value = false
   }
@@ -102,8 +98,8 @@ async function doKill(occ: PortOccupant) {
     } else {
       showToast(`查杀失败: ${res.errorMessage}`)
     }
-  } catch (e: any) {
-    showToast(`操作异常: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`操作异常: ${getErrorMessage(e)}`)
   } finally {
     killing.value = false
   }
@@ -131,7 +127,6 @@ onMounted(() => {
         <h1>释放端口</h1>
         <p class="subtitle">精准定位端口占用进程，防 PID 复用令牌复核，支持 UAC 提权快速释放。</p>
       </div>
-      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
 
     <!-- 端口精准搜索与快捷标签 -->

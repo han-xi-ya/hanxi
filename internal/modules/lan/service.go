@@ -151,10 +151,10 @@ func parseTargets(targetInput string) ([]string, error) {
 		}
 
 		targets := make([]string, 0, count)
+		var tmp [4]byte
 		for val := startInt; val <= endInt; val++ {
-			tmp := make(net.IP, 4)
-			binary.BigEndian.PutUint32(tmp, val)
-			targets = append(targets, tmp.String())
+			binary.BigEndian.PutUint32(tmp[:], val)
+			targets = append(targets, net.IP(tmp[:]).String())
 		}
 		return targets, nil
 	}
@@ -190,15 +190,15 @@ func parseTargets(targetInput string) ([]string, error) {
 	targets := make([]string, 0, numHosts)
 	baseInt := binary.BigEndian.Uint32(baseIP)
 
+	var tmp [4]byte
 	for i := 0; i < numHosts; i++ {
-		curInt := baseInt + uint32(i)
-		tmp := make(net.IP, 4)
-		binary.BigEndian.PutUint32(tmp, curInt)
 		// 排除网络地址与广播地址（若规模 >= /24）
 		if numHosts >= 4 && (i == 0 || i == numHosts-1) {
 			continue
 		}
-		targets = append(targets, tmp.String())
+		curInt := baseInt + uint32(i)
+		binary.BigEndian.PutUint32(tmp[:], curInt)
+		targets = append(targets, net.IP(tmp[:]).String())
 	}
 
 	return targets, nil

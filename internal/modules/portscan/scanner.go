@@ -312,7 +312,15 @@ var KnownPortServices = map[int]string{
 	27017: "mongodb",
 }
 
-var titleRegex = regexp.MustCompile(`(?i)<title>(.*?)</title>`)
+var (
+	titleRegex = regexp.MustCompile(`(?i)<title>(.*?)</title>`)
+	bufPool    = sync.Pool{
+		New: func() any {
+			b := make([]byte, 512)
+			return &b
+		},
+	}
+)
 
 // ExecuteScan 运行高并发扫描任务
 func (s *Scanner) ExecuteScan(
@@ -518,12 +526,14 @@ func (s *Scanner) lightweightProbe(ctx context.Context, dialer ContextDialer, ht
 			}
 		}
 
-		buf := make([]byte, 256)
+		bufPtr := bufPool.Get().(*[]byte)
+		buf := *bufPtr
 		n, _ := conn.Read(buf)
 		_ = conn.Close()
 
 		if n > 0 {
 			greeting := string(bytes.TrimSpace(buf[:n]))
+			bufPool.Put(bufPtr)
 			if strings.HasPrefix(greeting, "SSH-") {
 				res.Service = "ssh"
 				res.Banner = greeting
@@ -545,6 +555,8 @@ func (s *Scanner) lightweightProbe(ctx context.Context, dialer ContextDialer, ht
 				res.Banner = "MySQL / MariaDB"
 				return
 			}
+		} else {
+			bufPool.Put(bufPtr)
 		}
 	}
 

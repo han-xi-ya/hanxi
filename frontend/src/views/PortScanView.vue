@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
 import * as PortScanAPI from '../../bindings/hubkit/internal/modules/portscan'
 import type { PresetGroup, PortResult } from '../../bindings/hubkit/internal/modules/portscan/models'
 import { Events } from '@wailsio/runtime'
 import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
+
+const { showToast } = useToast()
 
 const target = ref('127.0.0.1')
 const portRange = ref('80,443,3000,5000,5173,8000,8080,8081,8443,8888,9000')
@@ -16,24 +19,18 @@ const concurrency = ref(30)
 const rateLimitMs = ref(10)
 const deepDetect = ref(true)
 
-const presets = ref<PresetGroup[]>([])
+const presets = shallowRef<PresetGroup[]>([])
 const scanning = ref(false)
 const currentTaskId = ref('')
 const progressScanned = ref(0)
 const progressTotal = ref(0)
 const progressPercent = ref(0)
-const openPorts = ref<PortResult[]>([])
+const openPorts = shallowRef<PortResult[]>([])
 const durationMs = ref(0)
 const errorMessage = ref('')
-const toastMsg = ref('')
 
 let unregEvent: (() => void) | null = null
-let debounceTimer: any = null
-
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => { toastMsg.value = '' }, 2500)
-}
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function onModeChange() {
   if (scanMode.value === 'safe') {
@@ -167,17 +164,24 @@ onMounted(() => {
     progressPercent.value = Math.round(p.percent)
 
     if (p.latestPort && p.latestPort.status === 'open') {
-      if (!openPorts.value.some(item => item.port === p.latestPort.port)) {
-        openPorts.value.push(p.latestPort)
-        openPorts.value.sort((a, b) => a.port - b.port)
+      const currentList = openPorts.value
+      if (!currentList.some(item => item.port === p.latestPort.port)) {
+        const nextList = [...currentList, p.latestPort]
+        nextList.sort((a, b) => a.port - b.port)
+        openPorts.value = nextList
       }
     }
   })
 })
 
 onUnmounted(() => {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
+  }
   if (unregEvent) {
     unregEvent()
+    unregEvent = null
   }
 })
 </script>
@@ -189,7 +193,6 @@ onUnmounted(() => {
         <h1>端口扫描与服务识别</h1>
         <p class="subtitle">高并发 TCP 探测，集成轻量服务指纹识别，支持中继代理与出网源 IP 实时核验。</p>
       </div>
-      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
 
     <!-- 控制面板卡片 -->

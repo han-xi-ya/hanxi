@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, nextTick } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as LanAPI from '../../bindings/hubkit/internal/modules/lan'
 import type { SubnetInfo, DeviceInfo, LanProgress } from '../../bindings/hubkit/internal/modules/lan/models'
+import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
 
-const subnets = ref<SubnetInfo[]>([])
+const { showToast } = useToast()
+
+const subnets = shallowRef<SubnetInfo[]>([])
 const selectedCidr = ref('')
 const scanning = ref(false)
-const progress = ref<LanProgress>({ scanned: 0, total: 254, found: 0 } as any)
-const devices = ref<DeviceInfo[]>([])
+const progress = ref<LanProgress>({ scanned: 0, total: 254, found: 0 })
+const devices = shallowRef<DeviceInfo[]>([])
 const errorMsg = ref('')
-const toastMsg = ref('')
 
 // 行内编辑备注状态
 const editingKey = ref<string | null>(null)
@@ -19,13 +22,6 @@ const remarkInputRef = ref<HTMLInputElement | null>(null)
 
 let unlistenProgress: (() => void) | null = null
 
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => {
-    toastMsg.value = ''
-  }, 2000)
-}
-
 async function loadSubnets() {
   try {
     const list = await LanAPI.LanService.GetSubnets()
@@ -33,8 +29,8 @@ async function loadSubnets() {
     if (subnets.value.length > 0 && !selectedCidr.value) {
       selectedCidr.value = subnets.value[0].cidr
     }
-  } catch (e: any) {
-    errorMsg.value = `获取网卡子网失败: ${e?.message ?? e}`
+  } catch (err: unknown) {
+    errorMsg.value = `获取网卡子网失败: ${getErrorMessage(err)}`
   }
 }
 
@@ -52,7 +48,7 @@ async function startScan() {
   scanning.value = true
   errorMsg.value = ''
   devices.value = []
-  progress.value = { scanned: 0, total: 254, found: 0 } as any
+  progress.value = { scanned: 0, total: 254, found: 0 }
 
   try {
     const res = await LanAPI.LanService.Scan(range)
@@ -60,8 +56,8 @@ async function startScan() {
     if (devices.value.length === 0) {
       showToast('扫描完成，未探测到在线设备')
     }
-  } catch (e: any) {
-    errorMsg.value = `扫描异常: ${e?.message ?? e}`
+  } catch (err: unknown) {
+    errorMsg.value = `扫描异常: ${getErrorMessage(err)}`
   } finally {
     scanning.value = false
   }
@@ -70,8 +66,8 @@ async function startScan() {
 async function stopScan() {
   try {
     await LanAPI.LanService.Cancel()
-  } catch (e) {
-    console.error('Cancel failed', e)
+  } catch (err: unknown) {
+    console.error('Cancel failed', err)
   } finally {
     scanning.value = false
   }
@@ -102,11 +98,11 @@ async function saveRemark(dev: DeviceInfo) {
 
   try {
     await LanAPI.LanService.SetRemark(key, newRemark)
-    // 同时更新当前列表中的显示
-    dev.remark = newRemark
+    // 更新浅响应式设备列表
+    devices.value = devices.value.map(d => (d.ip === dev.ip ? { ...d, remark: newRemark } : d))
     showToast(newRemark ? '备注已保存' : '备注已清除')
-  } catch (e: any) {
-    showToast(`保存失败: ${e?.message ?? e}`)
+  } catch (err: unknown) {
+    showToast(`保存失败: ${getErrorMessage(err)}`)
   }
 }
 
@@ -119,9 +115,9 @@ onMounted(async () => {
   await loadSubnets()
 
   // 监听扫描实时进度推流
-  unlistenProgress = Events.On('lan:progress', (event: any) => {
-    if (event.data) {
-      progress.value = event.data as LanProgress
+  unlistenProgress = Events.On('lan:progress', (event: { data?: LanProgress }) => {
+    if (event?.data) {
+      progress.value = event.data
     }
   })
 })
@@ -129,6 +125,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (unlistenProgress) {
     unlistenProgress()
+    unlistenProgress = null
   }
 })
 </script>
@@ -140,7 +137,6 @@ onUnmounted(() => {
         <h1>局域网扫描</h1>
         <p class="subtitle">支持标准 CIDR 子网 (如 /24、/22) 与自定义 IP 范围扫描，毫秒级探测活跃设备与持久化备注。</p>
       </div>
-      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
 
     <!-- 顶部操作栏 -->
