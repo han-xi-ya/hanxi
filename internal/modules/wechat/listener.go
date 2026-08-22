@@ -19,32 +19,9 @@ type updatesReq struct {
 	GetUpdatesBuf        string   `json:"get_updates_buf"`
 }
 
-type inboundRawItem struct {
-	Type     int `json:"type"`
-	TextItem *struct {
-		Text string `json:"text"`
-	} `json:"text_item,omitempty"`
-	ImageItem *struct {
-		Media struct {
-			EncryptQueryParam string `json:"encrypt_query_param"`
-			AESKey            string `json:"aes_key"`
-		} `json:"media"`
-	} `json:"image_item,omitempty"`
-	FileItem *struct {
-		FileName string `json:"file_name"`
-	} `json:"file_item,omitempty"`
-}
-
-type inboundRawMsg struct {
-	FromUserID   string           `json:"from_user_id"`
-	ToUserID     string           `json:"to_user_id"`
-	ContextToken string           `json:"context_token"`
-	ItemList     []inboundRawItem `json:"item_list"`
-}
-
 type updatesResp struct {
 	GetUpdatesBuf string          `json:"get_updates_buf"`
-	Msgs          []inboundRawMsg `json:"msgs"`
+	Msgs          []InboundRawMsg `json:"msgs"`
 	Ret           int             `json:"ret"`
 	ErrMsg        string          `json:"errmsg"`
 }
@@ -142,13 +119,15 @@ func (l *Listener) FetchUpdatesOnce(ctx context.Context, botToken string) (strin
 		if msg.ContextToken != "" {
 			latestToken = msg.ContextToken
 			// 自动持久化
-			_ = l.store.Update(func(c *settings.AppSettings) {
+			if err := l.store.Update(func(c *settings.AppSettings) {
 				c.Wechat.ContextToken = latestToken
 				c.Wechat.ContextTokenUpdatedAt = nowStr
 				if msg.FromUserID != "" && c.Wechat.TargetUserID == "" {
 					c.Wechat.TargetUserID = msg.FromUserID
 				}
-			})
+			}); err != nil {
+				slog.Warn("failed to persist updated wechat context_token", "err", err)
+			}
 
 			// 广播 Wails 事件
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -210,13 +189,15 @@ func (l *Listener) pollLoop(ctx context.Context, botToken string) {
 		nowStr := time.Now().Format("2006-01-02 15:04:05")
 		for _, msg := range resp.Msgs {
 			if msg.ContextToken != "" {
-				_ = l.store.Update(func(c *settings.AppSettings) {
+				if err := l.store.Update(func(c *settings.AppSettings) {
 					c.Wechat.ContextToken = msg.ContextToken
 					c.Wechat.ContextTokenUpdatedAt = nowStr
 					if msg.FromUserID != "" && c.Wechat.TargetUserID == "" {
 						c.Wechat.TargetUserID = msg.FromUserID
 					}
-				})
+				}); err != nil {
+					slog.Warn("failed to persist updated wechat context_token", "err", err)
+				}
 
 				if app := application.Get(); app != nil && app.Event != nil {
 					app.Event.Emit("wechat:context-token-updated", map[string]string{
@@ -232,7 +213,7 @@ func (l *Listener) pollLoop(ctx context.Context, botToken string) {
 	}
 }
 
-func (l *Listener) dispatchInboundMsg(msg inboundRawMsg, nowStr string) {
+func (l *Listener) dispatchInboundMsg(msg InboundRawMsg, nowStr string) {
 	for _, item := range msg.ItemList {
 		inMsg := InboundMessage{
 			From: msg.FromUserID,

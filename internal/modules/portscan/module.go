@@ -1,6 +1,8 @@
 package portscan
 
 import (
+	"context"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"hubkit/internal/extapi"
 )
@@ -50,3 +52,17 @@ func (m *Module) Permissions() []extapi.Permission {
 }
 
 func (m *Module) Protocol() int { return 1 }
+
+func (m *Module) OnInit(ctx context.Context) error {
+	return nil
+}
+
+func (m *Module) OnDestroy() error {
+	// 停用模块时强制终止所有正在进行的扫描
+	m.svc.StopScan("")
+	return nil
+}
+
+func (m *Module) IsInitialized() bool {
+	return true
+}

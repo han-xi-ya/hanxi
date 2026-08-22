@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as PortScanAPI from '../../bindings/hubkit/internal/modules/portscan'
 import type { PresetGroup, PortResult } from '../../bindings/hubkit/internal/modules/portscan/models'
 import { Events } from '@wailsio/runtime'
+import { getErrorMessage } from '../utils/errors'
 
 const target = ref('127.0.0.1')
 const portRange = ref('80,443,3000,5000,5173,8000,8080,8081,8443,8888,9000')
@@ -54,8 +55,8 @@ async function loadPresets() {
   try {
     const list = await PortScanAPI.PortScanService.GetPresets()
     presets.value = list ?? []
-  } catch (e: any) {
-    console.error('Failed to load portscan presets:', e)
+  } catch (err: unknown) {
+    console.error('Failed to load portscan presets:', err)
   }
 }
 
@@ -64,9 +65,9 @@ async function checkEgressIP() {
   try {
     const ip = await PortScanAPI.PortScanService.CheckEgressIP(proxyUrl.value.trim())
     currentEgressIP.value = ip || '未获取到'
-  } catch (e: any) {
+  } catch (err: unknown) {
     currentEgressIP.value = '检测失败'
-    console.warn('Egress IP check failed:', e)
+    console.warn('Egress IP check failed:', err)
   } finally {
     detectingIP.value = false
   }
@@ -113,8 +114,8 @@ async function startScan() {
       progressScanned.value = summary.totalPorts
       progressPercent.value = 100
     }
-  } catch (e: any) {
-    errorMessage.value = e?.message ?? String(e)
+  } catch (err: unknown) {
+    errorMessage.value = getErrorMessage(err)
   } finally {
     scanning.value = false
   }
@@ -125,8 +126,8 @@ async function stopScan() {
     await PortScanAPI.PortScanService.StopScan(currentTaskId.value || 'current')
     scanning.value = false
     showToast('已终止扫描')
-  } catch (e: any) {
-    showToast(`停止失败: ${e?.message ?? e}`)
+  } catch (err: unknown) {
+    showToast(`停止失败: ${getErrorMessage(err)}`)
   }
 }
 

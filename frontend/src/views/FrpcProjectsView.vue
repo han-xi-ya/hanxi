@@ -5,6 +5,7 @@ import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservic
 import type { Project } from '../../bindings/hubkit/internal/domain/models'
 import type { Snapshot } from '../../bindings/hubkit/internal/modules/frpc/instance/models'
 import FrpcProjectEditor from '../components/FrpcProjectEditor.vue'
+import { getErrorMessage } from '../utils/errors'
 
 const projects = ref<Project[]>([])
 const loading = ref(false)
@@ -90,8 +91,8 @@ async function loadProjects() {
   errorMsg.value = ''
   try {
     projects.value = (await FrpcAPI.ListProjects()) ?? []
-  } catch (e: any) {
-    errorMsg.value = `加载项目失败: ${e?.message ?? e}`
+  } catch (err: unknown) {
+    errorMsg.value = `加载项目失败: ${getErrorMessage(err)}`
   } finally {
     loading.value = false
   }
@@ -103,7 +104,7 @@ async function loadInstances() {
     const map: Record<string, Snapshot> = {}
     for (const s of snaps) map[s.projectId] = s
     instances.value = map
-  } catch (e) {
+  } catch {
     // 静默：状态为空也可接受
   }
 }
@@ -112,7 +113,7 @@ async function loadInstalledVersions() {
   try {
     const list = (await FrpcAPI.ListInstalledVersions()) ?? []
     installedVersions.value = list.map(v => v.version)
-  } catch (e) {
+  } catch {
     installedVersions.value = []
   }
 }
@@ -219,8 +220,8 @@ async function parseAndImport() {
       editorOpen.value = true
       showToast('配置已解析，请核对并保存')
     }
-  } catch (err: any) {
-    importError.value = `解析失败: ${err.message || err}`
+  } catch (err: unknown) {
+    importError.value = `解析失败: ${getErrorMessage(err)}`
   }
 }
 
@@ -236,8 +237,8 @@ async function toggleStart(p: Project) {
     try {
       await FrpcAPI.StopProject(p.id)
       showToast(`已停止「${p.name}」`)
-    } catch (e: any) {
-      showToast(`停止失败: ${e?.message ?? e}`)
+    } catch (err: unknown) {
+      showToast(`停止失败: ${getErrorMessage(err)}`)
     }
     return
   }
@@ -245,8 +246,8 @@ async function toggleStart(p: Project) {
   try {
     await FrpcAPI.StartProject(p.id)
     showToast(`正在启动「${p.name}」…`)
-  } catch (e: any) {
-    showToast(`启动失败: ${e?.message ?? e}`)
+  } catch (err: unknown) {
+    showToast(`启动失败: ${getErrorMessage(err)}`)
     await loadInstances() // 同步失败态
   } finally {
     starting.value.delete(p.id)
@@ -263,8 +264,8 @@ async function deleteProject(p: Project) {
     await FrpcAPI.DeleteProject(p.id)
     showToast(`已删除「${p.name}」`)
     await Promise.all([loadProjects(), loadInstances()])
-  } catch (e: any) {
-    showToast(`删除失败: ${e?.message ?? e}`)
+  } catch (err: unknown) {
+    showToast(`删除失败: ${getErrorMessage(err)}`)
   }
 }
 
@@ -343,8 +344,8 @@ async function openLogs(p: Project) {
     const initial = (await FrpcAPI.GetProjectLogs(p.id, 500)) ?? []
     // 先到的事件行（baseline 之后）追加在初始快照之后
     logLines.value = [...initial, ...logLines.value.slice(logPullBaseline)]
-  } catch (e: any) {
-    logError.value = `拉取日志失败: ${e?.message ?? e}`
+  } catch (err: unknown) {
+    logError.value = `拉取日志失败: ${getErrorMessage(err)}`
   } finally {
     logLoading.value = false
     await scrollToBottom()

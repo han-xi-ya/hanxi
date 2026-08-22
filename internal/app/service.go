@@ -60,8 +60,12 @@ func (s *AppService) OpenPath(targetPath string) error {
 	if targetPath == "" {
 		return fmt.Errorf("路径不能为空")
 	}
-	// 确保目录存在
-	_ = os.MkdirAll(targetPath, 0755)
+	// 若路径不存在，尝试创建（目录场景）
+	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(targetPath, 0755); err != nil {
+			return fmt.Errorf("创建目录失败: %w", err)
+		}
+	}
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
@@ -211,6 +215,11 @@ func (s *AppService) ClearLogs() error {
 		}
 	}
 	return nil
+}
+
+// EnsureModuleActive 确保指定模块已按需完成懒初始化（在进入模块路由时调用）
+func (s *AppService) EnsureModuleActive(moduleID string) error {
+	return s.registry.EnsureActive(strings.TrimSpace(moduleID))
 }
 
 // ListModules 返回模块清单与启用状态（设置页）。

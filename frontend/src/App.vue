@@ -30,6 +30,17 @@ const CORE_VIEWS: Record<string, unknown> = {
   '/about': AboutView,
 }
 
+// 路由与后端模块 ID 对应关系（用于路由切换时的零开销按需懒加载）
+const ROUTE_MODULE_MAP: Record<string, string> = {
+  '/frpc': 'frpc',
+  '/versions': 'frpc',
+  '/ext/lan': 'lan',
+  '/ext/portscan': 'portscan',
+  '/ext/wechat': 'wechat',
+  '/ext/publicip': 'publicip',
+  '/ext/portkill': 'portkill',
+}
+
 const SYSTEM_NAV = [
   { route: '/', title: '首页', icon: '⌂' },
 ]
@@ -43,6 +54,20 @@ const BOTTOM_NAV = [
 const navs = ref<NavEntry[]>([])
 const activeRoute = ref('/')
 const backendReady = ref(false)
+
+async function navigateTo(route: string) {
+  activeRoute.value = route
+  const modID = ROUTE_MODULE_MAP[route]
+  if (modID) {
+    try {
+      if ((AppAPI.AppService as any).EnsureModuleActive) {
+        await (AppAPI.AppService as any).EnsureModuleActive(modID)
+      }
+    } catch (e) {
+      console.warn(`Lazy activate module ${modID} failed:`, e)
+    }
+  }
+}
 
 const currentView = computed(() => {
   const v = CORE_VIEWS[activeRoute.value]
@@ -83,7 +108,7 @@ onMounted(async () => {
           :key="n.route"
           class="nav-item"
           :class="{ active: activeRoute === n.route }"
-          @click="activeRoute = n.route"
+          @click="navigateTo(n.route)"
         >
           <span class="nav-icon">{{ n.icon }}</span>
           <span class="nav-text">{{ n.title }}</span>
@@ -97,7 +122,7 @@ onMounted(async () => {
           :key="n.route"
           class="nav-item"
           :class="{ active: activeRoute === n.route }"
-          @click="activeRoute = n.route"
+          @click="navigateTo(n.route)"
         >
           <span class="nav-icon">{{ n.icon }}</span>
           <span class="nav-text">{{ n.title }}</span>
@@ -111,7 +136,7 @@ onMounted(async () => {
           :key="n.route"
           class="nav-item"
           :class="{ active: activeRoute === n.route }"
-          @click="activeRoute = n.route"
+          @click="navigateTo(n.route)"
         >
           <span class="nav-icon">{{ n.icon }}</span>
           <span class="nav-text">{{ n.title }}</span>

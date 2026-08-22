@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import * as AppAPI from '../../bindings/hubkit/internal/app'
 import type { LogFileInfo } from '../../bindings/hubkit/internal/app/models'
+import { getErrorMessage } from '../utils/errors'
 
 const logFiles = ref<LogFileInfo[]>([])
 const selectedFile = ref<string>('')
@@ -14,6 +15,7 @@ const toastMsg = ref('')
 const logContainerRef = ref<HTMLPreElement | null>(null)
 
 let timer: any = null
+let currentRequestId = 0
 
 function showToast(msg: string) {
   toastMsg.value = msg
@@ -27,16 +29,22 @@ async function loadFileList() {
     if (logFiles.value.length > 0 && !selectedFile.value) {
       selectedFile.value = logFiles.value[0].name
     }
-  } catch (e: any) {
-    showToast(`获取日志列表失败: ${e?.message ?? e}`)
+  } catch (err: unknown) {
+    showToast(`获取日志列表失败: ${getErrorMessage(err)}`)
   }
 }
 
 async function fetchContent(scrollBottom = false) {
   if (!selectedFile.value) return
+  const reqId = ++currentRequestId
+  const targetFile = selectedFile.value
   loading.value = true
   try {
-    const text = await AppAPI.AppService.ReadLogContent(selectedFile.value, maxLines.value)
+    const text = await AppAPI.AppService.ReadLogContent(targetFile, maxLines.value)
+    // 防竞态：丢弃过期的响应
+    if (reqId !== currentRequestId || selectedFile.value !== targetFile) {
+      return
+    }
     logContent.value = text ?? ''
     if (scrollBottom) {
       nextTick(() => {
@@ -45,10 +53,14 @@ async function fetchContent(scrollBottom = false) {
         }
       })
     }
-  } catch (e: any) {
-    showToast(`读取日志内容失败: ${e?.message ?? e}`)
+  } catch (err: unknown) {
+    if (reqId === currentRequestId) {
+      showToast(`读取日志内容失败: ${getErrorMessage(err)}`)
+    }
   } finally {
-    loading.value = false
+    if (reqId === currentRequestId) {
+      loading.value = false
+    }
   }
 }
 
@@ -69,8 +81,8 @@ async function openLogFolder() {
     if (info?.logsDir) {
       await AppAPI.AppService.OpenPath(info.logsDir)
     }
-  } catch (e: any) {
-    showToast(`打开日志目录失败: ${e?.message ?? e}`)
+  } catch (err: unknown) {
+    showToast(`打开日志目录失败: ${getErrorMessage(err)}`)
   }
 }
 
@@ -80,8 +92,8 @@ async function clearLogs() {
     showToast('已清理历史日志')
     await loadFileList()
     await fetchContent(true)
-  } catch (e: any) {
-    showToast(`清理日志失败: ${e?.message ?? e}`)
+  } catch (err: unknown) {
+    showToast(`清理日志失败: ${getErrorMessage(err)}`)
   }
 }
 
@@ -103,6 +115,13 @@ onMounted(async () => {
       fetchContent(false)
     }
   }, 2500)
+})
+
+onUnmounted(() => {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
 })
 </script>
 

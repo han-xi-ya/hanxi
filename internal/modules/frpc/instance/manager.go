@@ -74,6 +74,14 @@ func (m *Manager) StopAll() {
 	}
 }
 
+// Shutdown 彻底停止并清空所有实例缓存
+func (m *Manager) Shutdown() {
+	m.StopAll()
+	m.mu.Lock()
+	m.instances = make(map[string]*Instance)
+	m.mu.Unlock()
+}
+
 // Remove 删除实例（项目删除时调用；调用前应先 Stop）。
 func (m *Manager) Remove(projectID string) {
 	m.mu.Lock()

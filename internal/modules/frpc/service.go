@@ -273,3 +273,10 @@ func (s *FrpcService) GetProjectLogs(id string, lastN int) ([]string, error) {
 	}
 	return logs, nil
 }
+
+// Shutdown 销毁实例引擎，终止所有正在运行的 frpc 子进程
+func (s *FrpcService) Shutdown() {
+	if s.engine != nil {
+		s.engine.Shutdown()
+	}
+}

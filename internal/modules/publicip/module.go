@@ -1,6 +1,8 @@
 package publicip
 
 import (
+	"context"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"hubkit/internal/extapi"
 	"hubkit/internal/platform"
@@ -51,3 +53,15 @@ func (e *Module) Permissions() []extapi.Permission {
 }
 
 func (e *Module) Protocol() int { return 1 }
+
+func (e *Module) OnInit(ctx context.Context) error {
+	return nil
+}
+
+func (e *Module) OnDestroy() error {
+	return nil
+}
+
+func (e *Module) IsInitialized() bool {
+	return true
+}

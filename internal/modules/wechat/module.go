@@ -1,6 +1,8 @@
 package wechat
 
 import (
+	"context"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"hubkit/internal/extapi"
 	"hubkit/internal/settings"
@@ -51,3 +53,17 @@ func (m *Module) Permissions() []extapi.Permission {
 }
 
 func (m *Module) Protocol() int { return 1 }
+
+func (m *Module) OnInit(ctx context.Context) error {
+	m.svc.InitOnDemand()
+	return nil
+}
+
+func (m *Module) OnDestroy() error {
+	m.svc.Destroy()
+	return nil
+}
+
+func (m *Module) IsInitialized() bool {
+	return true
+}

@@ -4,6 +4,8 @@
 package frpc
 
 import (
+	"context"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"hubkit/internal/extapi"
@@ -47,3 +49,16 @@ func (e *Module) Services() []extapi.Service {
 func (e *Module) Permissions() []extapi.Permission { return nil }
 
 func (e *Module) Protocol() int { return 1 }
+
+func (e *Module) OnInit(ctx context.Context) error {
+	return nil
+}
+
+func (e *Module) OnDestroy() error {
+	e.svc.Shutdown()
+	return nil
+}
+
+func (e *Module) IsInitialized() bool {
+	return true
+}

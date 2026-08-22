@@ -1,6 +1,8 @@
 package lan
 
 import (
+	"context"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"hubkit/internal/extapi"
 	"hubkit/internal/platform"
@@ -52,3 +54,18 @@ func (e *Module) Permissions() []extapi.Permission {
 }
 
 func (e *Module) Protocol() int { return 1 }
+
+func (e *Module) OnInit(ctx context.Context) error {
+	// 懒加载初始化：无需分配重型常驻资源
+	return nil
+}
+
+func (e *Module) OnDestroy() error {
+	// 停用模块时强制取消正在进行的任何扫描操作并释放上下文
+	e.svc.Cancel()
+	return nil
+}
+
+func (e *Module) IsInitialized() bool {
+	return true
+}

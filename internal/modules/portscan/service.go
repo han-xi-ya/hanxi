@@ -49,8 +49,12 @@ func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {
 	taskID := fmt.Sprintf("scan_%d", time.Now().UnixNano())
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelMap.Store(taskID, cancel)
-	// 同时将 "current" 指向最新任务，确保即使 taskID 未传到前端也能随时停下
-	s.cancelMap.Store("current", cancel)
+	// 同时将 "current" 指向最新任务，若存在上一个未结束的任务则主动触发取消
+	if oldCancel, loaded := s.cancelMap.Swap("current", cancel); loaded && oldCancel != nil {
+		if c, ok := oldCancel.(context.CancelFunc); ok {
+			c()
+		}
+	}
 
 	defer func() {
 		s.cancelMap.Delete(taskID)

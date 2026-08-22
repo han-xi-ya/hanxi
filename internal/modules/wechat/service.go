@@ -22,18 +22,26 @@ func NewWechatService(store *settings.Store) *WechatService {
 	client := NewClient(cfg.BaseURL)
 	listener := NewListener(client, store)
 
-	// 如果应用启动时已存在登录凭据，自动拉起长轮询监听
-	if cfg.BotToken != "" {
-		go func() {
-			_ = listener.Start()
-		}()
-	}
-
 	return &WechatService{
 		client:   client,
 		listener: listener,
 		store:    store,
 	}
+}
+
+// InitOnDemand 按需懒初始化：用户进入页面或首次调用时才根据配置拉起后台监听
+func (s *WechatService) InitOnDemand() {
+	cfg := s.store.GetWechatConfig()
+	if cfg.BotToken != "" && !s.listener.IsRunning() {
+		go func() {
+			_ = s.listener.Start()
+		}()
+	}
+}
+
+// Destroy 销毁模块并彻底释放 Goroutine
+func (s *WechatService) Destroy() {
+	s.listener.Stop()
 }
 
 // GetState 获取当前模块状态

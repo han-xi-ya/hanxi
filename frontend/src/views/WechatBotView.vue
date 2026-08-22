@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { Events } from '@wailsio/runtime'
 import * as WechatAPI from '../../bindings/hubkit/internal/modules/wechat'
 import type { WechatState, QRInfo, InboundMessage } from '../../bindings/hubkit/internal/modules/wechat/models'
+import { getErrorMessage } from '../utils/errors'
 
 const state = ref<WechatState>({
   isLoggedIn: false,
@@ -59,7 +60,7 @@ async function loadState() {
         toUserId.value = res.ilinkUserId
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Failed to load state:', err)
   }
 }
@@ -98,8 +99,8 @@ async function fetchQRCode() {
       qrStatusText.value = '获取二维码失败，请重试'
       qrStatusType.value = 'error'
     }
-  } catch (err: any) {
-    qrStatusText.value = `获取失败: ${err?.message || err}`
+  } catch (err: unknown) {
+    qrStatusText.value = `获取失败: ${getErrorMessage(err)}`
     qrStatusType.value = 'error'
   } finally {
     qrLoading.value = false
@@ -130,7 +131,7 @@ function startQRPoll(qrcode: string) {
           fetchQRCode()
         }
       }
-    } catch (err: any) {
+    } catch {
       // 轮询异常不打断
     } finally {
       isChecking = false
@@ -153,9 +154,10 @@ async function handleRefreshToken() {
     await loadState()
     sendNotice.value = { text: 'Context Token 刷新成功！会话已激活', type: 'success' }
     addLog('sys', 'Context Token 刷新成功', token.substring(0, 16) + '...')
-  } catch (err: any) {
-    sendNotice.value = { text: `刷新失败: ${err?.message || err}`, type: 'error' }
-    addLog('sys', 'Context Token 刷新失败', err?.message || String(err))
+  } catch (err: unknown) {
+    const errMsg = getErrorMessage(err)
+    sendNotice.value = { text: `刷新失败: ${errMsg}`, type: 'error' }
+    addLog('sys', 'Context Token 刷新失败', errMsg)
   } finally {
     isRefreshingToken.value = false
   }
@@ -172,8 +174,8 @@ async function handleToggleListener() {
       addLog('sys', '已启动后台长轮询监听')
     }
     await loadState()
-  } catch (err: any) {
-    sendNotice.value = { text: `切换监听失败: ${err?.message || err}`, type: 'error' }
+  } catch (err: unknown) {
+    sendNotice.value = { text: `切换监听失败: ${getErrorMessage(err)}`, type: 'error' }
   } finally {
     isTogglingListener.value = false
   }
@@ -192,9 +194,10 @@ async function handleSendText() {
     sendNotice.value = { text: '文字消息发送成功！', type: 'success' }
     addLog('out', `发送文字: ${content}`, `To: ${target}`)
     textContent.value = ''
-  } catch (err: any) {
-    sendNotice.value = { text: `发送失败: ${err?.message || err}`, type: 'error' }
-    addLog('sys', `文字发送失败: ${err?.message || err}`)
+  } catch (err: unknown) {
+    const errMsg = getErrorMessage(err)
+    sendNotice.value = { text: `发送失败: ${errMsg}`, type: 'error' }
+    addLog('sys', `文字发送失败: ${errMsg}`)
   } finally {
     isSending.value = false
   }
@@ -206,16 +209,17 @@ async function handleSendImage() {
   sendNotice.value = null
 
   const target = toUserId.value.trim()
-  const filePath = imagePath.value.trim()
+  const filePathVal = imagePath.value.trim()
 
   try {
-    await WechatAPI.WechatService.SendImageMessage(target, filePath)
+    await WechatAPI.WechatService.SendImageMessage(target, filePathVal)
     sendNotice.value = { text: '图片加密上传并发送成功！', type: 'success' }
-    addLog('out', `发送图片: ${filePath}`, `To: ${target}`)
+    addLog('out', `发送图片: ${filePathVal}`, `To: ${target}`)
     imagePath.value = ''
-  } catch (err: any) {
-    sendNotice.value = { text: `发送图片失败: ${err?.message || err}`, type: 'error' }
-    addLog('sys', `图片发送失败: ${err?.message || err}`)
+  } catch (err: unknown) {
+    const errMsg = getErrorMessage(err)
+    sendNotice.value = { text: `发送图片失败: ${errMsg}`, type: 'error' }
+    addLog('sys', `图片发送失败: ${errMsg}`)
   } finally {
     isSending.value = false
   }
@@ -227,7 +231,7 @@ async function handleChooseImageFile() {
     if (selectedPath) {
       imagePath.value = selectedPath
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Pick image error:', err)
   }
 }
@@ -238,7 +242,7 @@ async function handleChooseFile() {
     if (selectedPath) {
       filePath.value = selectedPath
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Pick file error:', err)
   }
 }
@@ -256,9 +260,10 @@ async function handleSendFile() {
     sendNotice.value = { text: '文件加密上传并发送成功！', type: 'success' }
     addLog('out', `发送文件: ${targetPath}`, `To: ${target}`)
     filePath.value = ''
-  } catch (err: any) {
-    sendNotice.value = { text: `发送文件失败: ${err?.message || err}`, type: 'error' }
-    addLog('sys', `文件发送失败: ${err?.message || err}`)
+  } catch (err: unknown) {
+    const errMsg = getErrorMessage(err)
+    sendNotice.value = { text: `发送文件失败: ${errMsg}`, type: 'error' }
+    addLog('sys', `文件发送失败: ${errMsg}`)
   } finally {
     isSending.value = false
   }

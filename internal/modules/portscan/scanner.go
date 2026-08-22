@@ -20,6 +20,15 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+const (
+	DefaultScanConcurrency = 30
+	MaxScanConcurrency     = 2000
+	DefaultScanTimeout     = 600 * time.Millisecond
+	DefaultEgressTimeout   = 3000 * time.Millisecond
+	MaxPortNumber          = 65535
+	MinPortNumber          = 1
+)
+
 // ContextDialer 抽象接口，统一标准 net.Dialer 和 proxy.ContextDialer
 type ContextDialer interface {
 	DialContext(ctx context.Context, network, address string) (net.Conn, error)
@@ -54,7 +63,7 @@ func ParsePortRange(raw string) ([]int, error) {
 			if start > end {
 				start, end = end, start
 			}
-			if start < 1 || end > 65535 {
+			if start < MinPortNumber || end > MaxPortNumber {
 				return nil, fmt.Errorf("端口超出合法范围 (1-65535): %d-%d", start, end)
 			}
 			for p := start; p <= end; p++ {
@@ -68,7 +77,7 @@ func ParsePortRange(raw string) ([]int, error) {
 			if err != nil {
 				return nil, fmt.Errorf("无效的端口: %s", part)
 			}
-			if p < 1 || p > 65535 {
+			if p < MinPortNumber || p > MaxPortNumber {
 				return nil, fmt.Errorf("端口超出合法范围 (1-65535): %d", p)
 			}
 			if !seen[p] {
@@ -96,7 +105,7 @@ func NewScanner() *Scanner {
 // QueryEgressIP 测试指定代理或直连下的实际出网 IP
 func (s *Scanner) QueryEgressIP(ctx context.Context, proxyURL string, timeout time.Duration) (string, error) {
 	if timeout <= 0 {
-		timeout = 3000 * time.Millisecond
+		timeout = DefaultEgressTimeout
 	}
 
 	_, httpClient, err := s.createDialerAndHTTPClient(proxyURL, timeout)
@@ -253,6 +262,13 @@ func (a *socks5ContextAdapter) DialContext(ctx context.Context, network, address
 
 	select {
 	case <-ctx.Done():
+		// 若 context 取消或超时，启动后台接收 Goroutine，在连接建立成功后立即关闭，防止 socket 孤立泄露
+		go func() {
+			res := <-ch
+			if res.conn != nil {
+				_ = res.conn.Close()
+			}
+		}()
 		return nil, ctx.Err()
 	case res := <-ch:
 		return res.conn, res.err
@@ -312,13 +328,13 @@ func (s *Scanner) ExecuteScan(
 	progressCallback func(p ScanProgress),
 ) (*ScanSummary, error) {
 	if concurrency <= 0 {
-		concurrency = 30
+		concurrency = DefaultScanConcurrency
 	}
-	if concurrency > 2000 {
-		concurrency = 2000
+	if concurrency > MaxScanConcurrency {
+		concurrency = MaxScanConcurrency
 	}
 	if timeout <= 0 {
-		timeout = 600 * time.Millisecond
+		timeout = DefaultScanTimeout
 	}
 
 	dialer, httpClient, err := s.createDialerAndHTTPClient(proxyURL, timeout)
@@ -496,7 +512,10 @@ func (s *Scanner) lightweightProbe(ctx context.Context, dialer ContextDialer, ht
 		_ = conn.SetDeadline(time.Now().Add(timeout))
 
 		if port == 6379 {
-			_, _ = conn.Write([]byte("PING\r\n"))
+			if _, err := conn.Write([]byte("PING\r\n")); err != nil {
+				_ = conn.Close()
+				return
+			}
 		}
 
 		buf := make([]byte, 256)

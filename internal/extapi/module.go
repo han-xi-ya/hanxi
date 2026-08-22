@@ -12,7 +12,11 @@
 // 数据面会改为 JSON-RPC，界面入口由宿主提供）。
 package extapi
 
-import "github.com/wailsapp/wails/v3/pkg/application"
+import (
+	"context"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
 
 // Service 是 wails 服务的别名，避免扩展包直接依赖 wails。
 type Service = application.Service
@@ -61,6 +65,7 @@ type ModuleInfo struct {
 	Level       Level  `json:"level"`
 	Removable   bool   `json:"removable"` // 仅 LevelExternal 为 true
 	Enabled     bool   `json:"enabled"`
+	Initialized bool   `json:"initialized"` // 当前是否已被按需分配运行时资源
 }
 
 // Permission 声明扩展所需的能力。运行期由宿主白名单校验，
@@ -73,7 +78,7 @@ const (
 	PermNetwork     Permission = "network"      // 出站网络访问
 )
 
-// Module 是扩展契约。
+// Module 是扩展契约（支持单体零开销懒加载生命周期）。
 type Module interface {
 	// Info 返回元信息；ID 必须全局唯一。
 	Info() ModuleInfo
@@ -85,4 +90,12 @@ type Module interface {
 	Permissions() []Permission
 	// Protocol 返回扩展契约版本，未来子进程插件用于版本握手。
 	Protocol() int
+
+	// --- 懒加载生命周期钩子 ---
+	// OnInit 在模块首次被用户激活/使用时调用（分配内存缓存、初始化连接、启动后台任务等）
+	OnInit(ctx context.Context) error
+	// OnDestroy 在模块被用户停用/应用退出时调用（关闭后台协程、释放连接、清空内存缓存）
+	OnDestroy() error
+	// IsInitialized 查询模块当前是否已分配运行时资源
+	IsInitialized() bool
 }
