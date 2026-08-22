@@ -21,20 +21,20 @@ import * as extapi$0 from "../extapi/models.js";
 import * as $models from "./models.js";
 
 /**
- * EnsureModuleActive 确保指定模块已按需完成懒初始化
- * @param {string} moduleID
- * @returns {$CancellablePromise<void>}
- */
-export function EnsureModuleActive(moduleID) {
-    return $Call.ByName("hubkit/internal/app.AppService.EnsureModuleActive", moduleID);
-}
-
-/**
  * ClearLogs 清除所有历史日志（保留当天的）
  * @returns {$CancellablePromise<void>}
  */
 export function ClearLogs() {
     return $Call.ByID(1043740524);
+}
+
+/**
+ * EnsureModuleActive 确保指定模块已按需完成懒初始化（在进入模块路由时调用）
+ * @param {string} moduleID
+ * @returns {$CancellablePromise<void>}
+ */
+export function EnsureModuleActive(moduleID) {
+    return $Call.ByID(1313718066, moduleID);
 }
 
 /**

@@ -35,6 +35,7 @@ export const Level = {
  * @property {Level} level
  * @property {boolean} removable - 仅 LevelExternal 为 true
  * @property {boolean} enabled
+ * @property {boolean} initialized - 当前是否已被按需分配运行时资源
  */
 
 /**

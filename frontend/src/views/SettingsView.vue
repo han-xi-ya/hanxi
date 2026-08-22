@@ -1,14 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import * as AppAPI from '../../bindings/hubkit/internal/app'
-import type { ModuleInfo } from '../../bindings/hubkit/internal/extapi/models'
 import type { AppInfo } from '../../bindings/hubkit/internal/app/models'
 
-// 模块管理（MVP）：每个模块（含 frpc 核心）统一启停；
-const modules = ref<ModuleInfo[]>([])
 const appInfo = ref<AppInfo | null>(null)
-const toggling = ref<string | null>(null)
-const err = ref('')
 const toastMsg = ref('')
 
 function showToast(msg: string) {
@@ -17,12 +12,11 @@ function showToast(msg: string) {
 }
 
 async function refresh() {
-  const [mods, info] = await Promise.all([
-    AppAPI.AppService.ListModules(),
-    AppAPI.AppService.GetAppInfo(),
-  ])
-  modules.value = mods ?? []
-  appInfo.value = info
+  try {
+    appInfo.value = await AppAPI.AppService.GetAppInfo()
+  } catch (e: any) {
+    showToast(`获取系统信息失败: ${e?.message ?? e}`)
+  }
 }
 
 async function openFolder(path?: string) {
@@ -61,21 +55,6 @@ async function openEnvSettings() {
   }
 }
 
-async function toggle(m: ModuleInfo) {
-  toggling.value = m.id
-  err.value = ''
-  try {
-    const updated = await AppAPI.AppService.SetModuleEnabled(m.id, !m.enabled)
-    if (updated) {
-      await refresh()
-    }
-  } catch (e: any) {
-    err.value = String(e?.message ?? e)
-  } finally {
-    toggling.value = null
-  }
-}
-
 onMounted(refresh)
 </script>
 
@@ -84,7 +63,7 @@ onMounted(refresh)
     <div class="header-row">
       <div>
         <h1>设置</h1>
-        <p class="subtitle">管理系统目录快捷访问与扩展功能模块启停状态。</p>
+        <p class="subtitle">查看系统存储目录、运行模式与开发者快捷工具直达。</p>
       </div>
       <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
     </div>
@@ -189,39 +168,6 @@ onMounted(refresh)
         </div>
       </div>
     </div>
-
-    <!-- 模块管理 -->
-    <div class="section-card">
-      <div class="card-header">
-        <div>
-          <h2>模块管理</h2>
-          <p class="hint">工具箱所有能力都是模块，统一启停。停用后界面立即隐藏，后端拒绝调用；持久化配置实时生效。</p>
-        </div>
-      </div>
-      <p v-if="err" class="err">{{ err }}</p>
-
-      <div class="table-container">
-        <table class="tbl">
-          <thead>
-            <tr><th>模块</th><th>版本</th><th>级别</th><th>说明</th><th>状态</th><th style="width: 90px;">操作</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="m in modules" :key="m.id">
-              <td><strong>{{ m.name }}</strong> <code class="mono-code">{{ m.id }}</code></td>
-              <td>v{{ m.version }}</td>
-              <td>{{ m.level }}</td>
-              <td class="desc">{{ m.description }}</td>
-              <td><span :class="['status-tag', m.enabled ? 'ok' : 'off']">{{ m.enabled ? '已启用' : '已停用' }}</span></td>
-              <td>
-                <button class="btn btn-secondary btn-small" :disabled="toggling === m.id" @click="toggle(m)">
-                  {{ m.enabled ? '停用' : '启用' }}
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
   </section>
 </template>
 
@@ -255,23 +201,10 @@ onMounted(refresh)
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
 }
 
-.table-container { border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
-.tbl { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
-.tbl th { background: var(--bg-app); padding: 10px 12px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
-.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); color: var(--text-main); }
-.tbl tr:last-child td { border-bottom: none; }
-.mono-code { font-family: Consolas, monospace; font-size: 11px; color: var(--text-muted); margin-left: 4px; }
-.desc { color: var(--text-muted); font-size: 12px; }
-
-.status-tag { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
-.status-tag.ok { background: #dafbe1; color: var(--success); }
-.status-tag.off { background: #ffebe9; color: var(--danger); }
-
 .btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
 .btn-primary-alt { background: #0969da; color: #fff; border-color: #0969da; }
 .btn-primary-alt:hover:not(:disabled) { background: #0854ad; }
 .btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
 .btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
 .btn-small { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
-.err { color: var(--danger); font-size: 12px; }
 </style>

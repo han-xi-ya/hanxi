@@ -37,6 +37,14 @@ export function ClearCredentials() {
 }
 
 /**
+ * Destroy 销毁模块并彻底释放 Goroutine
+ * @returns {$CancellablePromise<void>}
+ */
+export function Destroy() {
+    return $Call.ByID(3088660398);
+}
+
+/**
  * GetLoginQRCode 获取微信登录二维码
  * @returns {$CancellablePromise<$models.QRInfo | null>}
  */
@@ -50,6 +58,14 @@ export function GetLoginQRCode() {
  */
 export function GetState() {
     return $Call.ByID(514691581);
+}
+
+/**
+ * InitOnDemand 按需懒初始化：用户进入页面或首次调用时才根据配置拉起后台监听
+ * @returns {$CancellablePromise<void>}
+ */
+export function InitOnDemand() {
+    return $Call.ByID(3967643708);
 }
 
 /**

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { Events } from '@wailsio/runtime'
 import * as AppAPI from '../bindings/hubkit/internal/app'
 import type { NavEntry } from '../bindings/hubkit/internal/extapi/models'
 import HomeView from './views/HomeView.vue'
@@ -54,6 +55,25 @@ const BOTTOM_NAV = [
 const navs = ref<NavEntry[]>([])
 const activeRoute = ref('/')
 const backendReady = ref(false)
+let unlistenExtChanged: (() => void) | null = null
+
+async function refreshNavs() {
+  try {
+    const list = await AppAPI.AppService.GetNavs()
+    navs.value = list ?? []
+
+    // 如果当前所在路由对应的是已被禁用的扩展，则平滑重定向回首页
+    const currentModID = ROUTE_MODULE_MAP[activeRoute.value]
+    if (currentModID) {
+      const isRouteAvailable = navs.value.some(n => n.route === activeRoute.value)
+      if (!isRouteAvailable && activeRoute.value !== '/' && activeRoute.value !== '/settings' && activeRoute.value !== '/logs' && activeRoute.value !== '/about') {
+        activeRoute.value = '/'
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load navigation:', err)
+  }
+}
 
 async function navigateTo(route: string) {
   activeRoute.value = route
@@ -80,11 +100,21 @@ const currentExt = computed(() => navs.value.find(n => n.route === activeRoute.v
 
 onMounted(async () => {
   try {
-    navs.value = (await AppAPI.AppService.GetNavs()) ?? []
-  } catch (err) {
-    console.error('Failed to load navigation:', err)
+    await refreshNavs()
   } finally {
     backendReady.value = true
+  }
+
+  // 监听后端模块开关与导航热更新事件
+  unlistenExtChanged = Events.On('ext:changed', () => {
+    refreshNavs()
+  })
+})
+
+onUnmounted(() => {
+  if (unlistenExtChanged) {
+    unlistenExtChanged()
+    unlistenExtChanged = null
   }
 })
 </script>
@@ -151,7 +181,7 @@ onMounted(async () => {
 
     <!-- 右侧内容主视口 -->
     <main class="content-area">
-      <component :is="currentView" :title="currentExt?.title" />
+      <component :is="currentView" :title="currentExt?.title" @navigate="navigateTo" />
     </main>
   </div>
 </template>

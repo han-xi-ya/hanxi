@@ -136,6 +136,14 @@ export function SaveProject(p) {
 }
 
 /**
+ * Shutdown 销毁实例引擎，终止所有正在运行的 frpc 子进程
+ * @returns {$CancellablePromise<void>}
+ */
+export function Shutdown() {
+    return $Call.ByID(715819164);
+}
+
+/**
  * StartProject 启动项目实例：解析绑定版本 → 生成 TOML 落盘 → 拉起 frpc.exe 并绑定 JobObject。
  * 启动后状态/日志经事件 frpc:instance-state / frpc:instance-log 持续推送。
  * @param {string} id

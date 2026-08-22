@@ -12,6 +12,8 @@ import (
 	"hubkit/internal/domain"
 	"hubkit/internal/extapi"
 	"hubkit/internal/settings"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // AppInfo 前端关于页/首页展示的应用信息。
@@ -234,6 +236,12 @@ func (s *AppService) SetModuleEnabled(id string, enabled bool) (*extapi.ModuleIn
 		ae.Cause = err
 		return nil, ae
 	}
+
+	// 广播扩展与导航变化事件，通知前端实时热更新侧边栏与页面
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("ext:changed")
+	}
+
 	info := s.registry.List()
 	for i := range info {
 		if info[i].ID == id {
