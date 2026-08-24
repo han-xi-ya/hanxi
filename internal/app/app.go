@@ -28,6 +28,9 @@ const (
 	Version = "0.1.0"
 )
 
+// mainWindow 主窗口引用，供单实例第二启动回调聚焦使用
+var mainWindow *application.WebviewWindow
+
 // RegisterEvents 注册类型化事件（wails3 绑定生成器会据此生成 TS API）。
 func RegisterEvents() {
 	application.RegisterEvent[extapi.NavEntry]("ext:changed")
@@ -118,6 +121,18 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		Description: "frpc 内网穿透开发客户端：多实例联调、局域网扫描、释放端口",
 		Services:    services,
 		Assets:      assets,
+		// 单实例锁: 重复启动时 Wails 以 ExitCode 静默退出第二实例,
+		// 避免旧实例在后台长期驻留内存导致任务管理器出现多个同名进程
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.hubkit.desktop",
+			// 第二实例启动时, 聚焦展示已有主窗口
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				if mainWindow != nil {
+					mainWindow.Show()
+					mainWindow.Focus()
+				}
+			},
+		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
@@ -138,6 +153,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		BackgroundColour: application.NewRGB(245, 246, 248),
 		URL:              "/",
 	})
+	mainWindow = win
 
 	// 注册窗口关闭拦截钩子：如果开启了“关闭时最小化到托盘”，则隐藏窗口代替退出
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {

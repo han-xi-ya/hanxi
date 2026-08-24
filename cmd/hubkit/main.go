@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/debug"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/sys/windows"
@@ -27,6 +28,11 @@ func main() {
 	}
 
 	// 2. 正常 GUI 主程序模式
+	// 软内存上限: 堆占用超过 256MB 时 GC 更激进地把空闲页归还给操作系统。
+	// Go 默认行为是堆页几乎不主动归还, 长时间运行 (frpc 联调/大文件快传等)
+	// 后任务管理器中的内存占用会只涨不降; 该上限为软限制, 超限仅提高 GC 频率不 OOM。
+	debug.SetMemoryLimit(256 << 20)
+
 	app.RegisterEvents()
 
 	a, cleanup := app.New(application.AssetOptions{
