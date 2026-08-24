@@ -75,6 +75,8 @@
     .btn:hover { background: var(--card-hover); }
     .btn-primary { background: var(--primary); color: #fff; border-color: transparent; }
     .btn-primary:hover { background: var(--primary-hover); }
+    .btn-danger { background: #da3633; color: #fff; border-color: transparent; }
+    .btn-danger:hover { background: #b62324; }
     .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
 
     /* 投递面板 & 上传面板 */
@@ -149,7 +151,10 @@
       <div class="progress-bar" id="progressBar">
         <div class="progress-fill" id="progressFill"></div>
       </div>
-      <div id="uploadStatus" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; text-align: right;"></div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px;">
+        <button id="btnCancelUpload" class="btn btn-danger btn-sm hidden" onclick="cancelUpload()">⛔ 取消上传</button>
+        <div id="uploadStatus" style="font-size: 0.8rem; color: var(--text-muted); text-align: right; flex: 1;"></div>
+      </div>
     </div>
 
     <!-- 文件浏览器 -->
@@ -370,29 +375,97 @@
 
     const CHUNK = 4 * 1024 * 1024; // 4MB 分片，刷新/断线后重新选择同一文件可断点续传
 
+    // 上传全局上下文: 支持取消当前上传并清理已传分片
+    const uploadCtx = { active: false, xhr: null, cancelled: false, fileKey: '' };
+
+    class UploadCancelledError extends Error {
+      constructor() { super('已取消'); this.name = 'UploadCancelledError'; }
+    }
+
+    function cancelUpload() {
+      if (!uploadCtx.active || uploadCtx.cancelled) return;
+      uploadCtx.cancelled = true;
+      if (uploadCtx.xhr) uploadCtx.xhr.abort();
+      document.getElementById('uploadStatus').innerText = '正在取消并清理已传分片…';
+    }
+
+    // XHR POST 封装: 兼容性最稳 (避免部分浏览器 fetch Blob body 挂起)
+    function xhrPost(url, body, extraHeaders, onProgress) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        uploadCtx.xhr = xhr;
+        xhr.open('POST', url, true);
+        for (const k in (extraHeaders || {})) xhr.setRequestHeader(k, extraHeaders[k]);
+        if (onProgress && xhr.upload) {
+          xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+        }
+        xhr.onload = () => {
+          uploadCtx.xhr = null;
+          if (uploadCtx.cancelled) { reject(new UploadCancelledError()); return; }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            let data = null;
+            try { data = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch (e) { /* 非 JSON 响应 */ }
+            resolve(data);
+          } else {
+            // 409 {reset:true} 表示分片偏移错位, 附带实际长度供前端清片重传
+            let data = null;
+            try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) { /* 忽略 */ }
+            const err = new Error((data && data.reason) || xhr.responseText || `HTTP ${xhr.status}`);
+            if (data && data.reset) { err.reset = true; err.uploaded = data.uploaded; }
+            reject(err);
+          }
+        };
+        xhr.onerror = () => { uploadCtx.xhr = null; reject(new Error('网络传输中断')); };
+        // 取消时先置 cancelled 再 abort(), onabort 负责让 Promise 落定
+        xhr.onabort = () => { uploadCtx.xhr = null; reject(new UploadCancelledError()); };
+        xhr.ontimeout = () => { uploadCtx.xhr = null; reject(new Error('传输超时，可重新选择文件续传')); };
+        xhr.timeout = 60000; // 1 分钟兜底
+        xhr.send(body);
+      });
+    }
+
     async function uploadFiles(files) {
       const progressBar = document.getElementById('progressBar');
       const progressFill = document.getElementById('progressFill');
       const statusEl = document.getElementById('uploadStatus');
+      const cancelBtn = document.getElementById('btnCancelUpload');
 
       progressBar.style.display = 'block';
       progressFill.style.width = '0%';
+      cancelBtn.classList.remove('hidden');
+      uploadCtx.active = true;
+      uploadCtx.cancelled = false;
+      uploadCtx.fileKey = '';
 
       for (let i = 0; i < files.length; i++) {
+        if (uploadCtx.cancelled) break;
         const file = files[i];
         statusEl.innerText = `正在上传 (${i+1}/${files.length}): ${file.name}...`;
         try {
           await uploadFileResumable(file, progressFill, statusEl);
+          statusEl.innerText = `✓ ${file.name} 上传完成`;
         } catch (err) {
-          alert(`上传 ${file.name} 失败: ` + err.message);
+          if (err instanceof UploadCancelledError) {
+            // 取消上传: 清理该文件的已传分片 (幂等)
+            if (uploadCtx.fileKey) {
+              try { await fetch(`/api/upload/abort?${uploadCtx.fileKey}`, { method: 'DELETE' }); } catch (e) { /* 忽略 */ }
+            }
+            statusEl.innerText = `已取消 ${file.name}，已传分片已清理`;
+            break;
+          }
+          alert(`上传 ${file.name} 失败: ${err.message}`);
         }
       }
 
-      statusEl.innerText = '上传完成！';
+      uploadCtx.active = false;
+      uploadCtx.xhr = null;
+      cancelBtn.classList.add('hidden');
+      if (!uploadCtx.cancelled) statusEl.innerText = '全部上传完成！';
       setTimeout(() => {
         progressBar.style.display = 'none';
         statusEl.innerText = '';
-      }, 2000);
+        progressFill.style.width = '0%';
+      }, 2500);
       loadDirectory(currentPath);
     }
 
@@ -402,6 +475,8 @@
       if (size <= 0) throw new Error('文件为空');
       const mod = file.lastModified || 1;
       const q = `dir=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(file.name)}&size=${size}&mod=${mod}`;
+      uploadCtx.fileKey = q;
+      const totalChunks = Math.max(1, Math.ceil(size / CHUNK));
 
       // 1. 查询服务器已有的分片进度 (刷新后重新选择同一文件自动续传)
       let uploaded = 0;
@@ -409,29 +484,48 @@
         const st = await fetch(`/api/upload/status?${q}`).then(r => r.json());
         if (st && st.exists && st.uploaded > 0 && st.uploaded < size) {
           uploaded = st.uploaded;
-          statusEl.innerText += `（检测到 ${formatBytes(uploaded)} 已传部分，继续续传…）`;
+          statusEl.innerText = `正在上传: ${file.name}（检测到 ${formatBytes(uploaded)} 已传部分，继续续传…）`;
         }
       } catch (e) { /* 查询失败则从零开始 */ }
 
-      // 2. 逐分片追加传输
+      // 2. 逐分片追加传输 (offset 与服务器片长度对齐, 错位则清片从零重传)
+      let chunkNo = Math.floor(uploaded / CHUNK) + 1;
       while (uploaded < size) {
-        const chunk = file.slice(uploaded, Math.min(uploaded + CHUNK, size));
-        const res = await fetch(`/api/upload/append?${q}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: chunk
-        });
-        if (!res.ok) throw new Error((await res.text().catch(() => '')) || '网络传输失败');
-        const j = await res.json().catch(() => null);
-        uploaded = (j && j.uploaded) ? j.uploaded : Math.min(uploaded + CHUNK, size);
+        if (uploadCtx.cancelled) throw new UploadCancelledError();
+        const end = Math.min(uploaded + CHUNK, size);
+        const chunk = file.slice(uploaded, end);
 
+        statusEl.innerText = `正在上传: ${file.name}（分片 ${chunkNo}/${totalChunks}）`;
+        let j;
+        try {
+          j = await xhrPost(`/api/upload/append?${q}&offset=${uploaded}`, chunk, { 'Content-Type': 'application/octet-stream' },
+            (loaded) => {
+              const p = Math.round(((uploaded + loaded) / size) * 100);
+              progressFill.style.width = Math.min(p, 100) + '%';
+            });
+        } catch (err) {
+          if (err instanceof UploadCancelledError) throw err;
+          if (err.reset) {
+            // 服务器片文件比预期多/少: 残留分片 (超时写了一半), 删除后从零续传保证数据一致
+            await fetch(`/api/upload/abort?${q}`, { method: 'DELETE' }).catch(() => {});
+            uploaded = 0;
+            chunkNo = 1;
+            statusEl.innerText = `正在上传: ${file.name}（检测到残留分片，已自动重传…）`;
+            continue;
+          }
+          throw err; // 提示超时/断网, 用户可重选文件续传
+        }
+
+        uploaded = (j && j.uploaded) ? j.uploaded : end;
         const percent = Math.round((uploaded / size) * 100);
         progressFill.style.width = Math.min(percent, 100) + '%';
+        chunkNo++;
       }
 
       // 3. 合并为正式文件
-      const done = await fetch(`/api/upload/complete?${q}`, { method: 'POST' });
-      if (!done.ok) throw new Error((await done.text().catch(() => '')) || '合并文件失败');
+      if (uploadCtx.cancelled) throw new UploadCancelledError();
+      statusEl.innerText = `正在合并: ${file.name}…`;
+      await xhrPost(`/api/upload/complete?${q}`, null, null, null);
     }
 
     function refreshList() {

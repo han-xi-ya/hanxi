@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -135,6 +136,123 @@ func TestFileshareUploadAndDrop(t *testing.T) {
 	}
 }
 
+// 分片偏移错位兜底: 超时/中断在服务器残留部分字节时, 追加必须 409 拒绝并提示清片重传
+func TestFileshareAppendOffsetMismatch(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "fileshare_offset_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := ShareConfig{Port: 0, SharePath: tempDir, AllowUpload: true}
+	server := NewServer(cfg, nil, nil)
+
+	name := "offset.bin"
+	base := "dir=&name=" + name + "&size=16&mod=1700000000000"
+
+	// 1. 先传 10 字节 (模拟超时滞留了半个分片)
+	req := httptest.NewRequest(http.MethodPost, "/api/upload/append?"+base+"&offset=0", bytes.NewReader([]byte("0123456789")))
+	wr := httptest.NewRecorder()
+	server.handleUploadAppend(wr, req)
+	if wr.Code != http.StatusOK {
+		t.Fatalf("seed append failed: %d %s", wr.Code, wr.Body.String())
+	}
+
+	// 2. 客户端用过期偏移重试 (以为只传了 5 字节) -> 必须 409 且携带实际长度
+	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+base+"&offset=5", strings.NewReader("xxxxx"))
+	wr = httptest.NewRecorder()
+	server.handleUploadAppend(wr, req)
+	if wr.Code != http.StatusConflict {
+		t.Fatalf("expected 409 on offset mismatch, got %d %s", wr.Code, wr.Body.String())
+	}
+	var j map[string]any
+	if err := json.Unmarshal(wr.Body.Bytes(), &j); err != nil {
+		t.Fatalf("bad 409 body: %v", err)
+	}
+	if j["reset"] != true || j["uploaded"] != float64(10) {
+		t.Errorf("expected reset=true uploaded=10, got %v", j)
+	}
+
+	// 3. 对齐偏移续传正常追加 (重叠的 5 字节不被重复写入)
+	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+base+"&offset=10", strings.NewReader("abcdef"))
+	wr = httptest.NewRecorder()
+	server.handleUploadAppend(wr, req)
+	if wr.Code != http.StatusOK {
+		t.Fatalf("aligned append failed: %d %s", wr.Code, wr.Body.String())
+	}
+
+	finalData, _ := os.ReadFile(filepath.Join(tempDir, name+".part.16.1700000000000"))
+	if string(finalData) != "0123456789abcdef" {
+		t.Errorf("part content corrupted by mismatched append: %q", string(finalData))
+	}
+}
+
+// 取消上传: 已传分片必须被清理 (DELETE /api/upload/abort 幂等)
+func TestFileshareUploadAbort(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "fileshare_abort_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	cfg := ShareConfig{
+		Port:          0,
+		SharePath:     tempDir,
+		AllowUpload:   true,
+		AllowTextDrop: true,
+	}
+	server := NewServer(cfg, nil, nil)
+
+	name := "cancel.bin"
+	q := "dir=&name=" + name + "&size=16&mod=1700000000000"
+
+	// 1. 追加 8 字节, 产生临时分片文件
+	req := httptest.NewRequest(http.MethodPost, "/api/upload/append?"+q, bytes.NewReader([]byte("01234567")))
+	wr := httptest.NewRecorder()
+	server.handleUploadAppend(wr, req)
+	if wr.Code != http.StatusOK {
+		t.Fatalf("append failed: %d %s", wr.Code, wr.Body.String())
+	}
+
+	entries, err := os.ReadDir(tempDir)
+	if err != nil || len(entries) != 1 || entries[0].Name() != name+".part.16.1700000000000" {
+		t.Fatalf("expected part file before abort, got: %v err=%v", entries, err)
+	}
+
+	// 2. abort 清理分片
+	req = httptest.NewRequest(http.MethodDelete, "/api/upload/abort?"+q, nil)
+	wr = httptest.NewRecorder()
+	server.handleUploadAbort(wr, req)
+	if wr.Code != http.StatusOK {
+		t.Fatalf("abort failed: %d %s", wr.Code, wr.Body.String())
+	}
+
+	entries, _ = os.ReadDir(tempDir)
+	if len(entries) != 0 {
+		t.Errorf("expected part file removed after abort, got: %v", entries)
+	}
+
+	// 3. 再次查询进度: 已传部分归零 (断点续传从 0 开始)
+	req = httptest.NewRequest(http.MethodGet, "/api/upload/status?"+q, nil)
+	wr = httptest.NewRecorder()
+	server.handleUploadStatus(wr, req)
+	var st map[string]any
+	if err := json.Unmarshal(wr.Body.Bytes(), &st); err != nil {
+		t.Fatalf("bad status response: %v", err)
+	}
+	if st["exists"] != false || st["uploaded"] != float64(0) {
+		t.Errorf("expected reset status after abort, got %v", st)
+	}
+
+	// 4. abort 幂等: 对不存在的分片再次 abort 仍应成功
+	req = httptest.NewRequest(http.MethodDelete, "/api/upload/abort?"+q, nil)
+	wr = httptest.NewRecorder()
+	server.handleUploadAbort(wr, req)
+	if wr.Code != http.StatusOK {
+		t.Errorf("idempotent abort failed: %d %s", wr.Code, wr.Body.String())
+	}
+}
+
 func TestFileshareChunkedResumableUpload(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "fileshare_resume_test_*")
 	if err != nil {
@@ -170,7 +288,7 @@ func TestFileshareChunkedResumableUpload(t *testing.T) {
 	}
 
 	// 2. 追加前半部分 (10 字节), 模拟已传进度
-	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+q(), bytes.NewReader([]byte(content[:10])))
+	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+q()+"&offset=0", bytes.NewReader([]byte(content[:10])))
 	wr = httptest.NewRecorder()
 	server.handleUploadAppend(wr, req)
 	if wr.Code != http.StatusOK {
@@ -189,7 +307,7 @@ func TestFileshareChunkedResumableUpload(t *testing.T) {
 	}
 
 	// 4. 追加剩余部分 (6 字节), 模拟续传后的第二段
-	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+q(), bytes.NewReader([]byte(content[10:])))
+	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+q()+"&offset=10", bytes.NewReader([]byte(content[10:])))
 	wr = httptest.NewRecorder()
 	server.handleUploadAppend(wr, req)
 	if wr.Code != http.StatusOK {

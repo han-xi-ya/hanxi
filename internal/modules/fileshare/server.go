@@ -98,6 +98,7 @@ func (s *Server) Start() (int, error) {
 	mux.HandleFunc("/api/upload/status", s.handleUploadStatus)
 	mux.HandleFunc("/api/upload/append", s.handleUploadAppend)
 	mux.HandleFunc("/api/upload/complete", s.handleUploadComplete)
+	mux.HandleFunc("/api/upload/abort", s.handleUploadAbort)
 	mux.HandleFunc("/api/drop", s.handleDrop)
 	mux.HandleFunc("/api/stats", s.handleStats)
 
@@ -206,8 +207,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // handleConfig 返回公共配置
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	json.NewEncoder(w).Encode(map[string]any{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"allowUpload":     s.config.AllowUpload,
 		"allowTextDrop":   s.config.AllowTextDrop,
 		"maxUploadSizeMB": s.config.MaxUploadSizeMB,
@@ -280,8 +280,7 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	json.NewEncoder(w).Encode(result)
+	writeJSON(w, http.StatusOK, result)
 }
 
 // handleDownload 处理文件强制下载 (原生支持 HTTP Range 断点续传)
@@ -451,7 +450,7 @@ func (s *Server) handleUploadStatus(w http.ResponseWriter, r *http.Request) {
 	if info, err := os.Stat(full); err == nil && !info.IsDir() {
 		result = map[string]any{"exists": true, "uploaded": info.Size()}
 	}
-	writeJSON(w, result)
+	writeJSON(w, http.StatusOK, result)
 }
 
 // handleUploadAppend 追加一个二进制分片到临时片文件 (支持断点续传)
@@ -465,10 +464,24 @@ func (s *Server) handleUploadAppend(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	size, _ := strconv.ParseInt(r.URL.Query().Get("size"), 10, 64)
 	mod, _ := strconv.ParseInt(r.URL.Query().Get("mod"), 10, 64)
+	// 客户端当前续传起点: 必须与片文件实际长度严格对齐, 防止超时重试导致重复写入损坏文件
+	offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
 
 	full, err := s.uploadPartPath(dir, name, size, mod)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// 偏移量校验: 不匹配说明有残留分片滞留 (中断/超时写了一半), 返回实际长度让前端清片重传
+	if info, statErr := os.Stat(full); statErr == nil && !info.IsDir() {
+		if info.Size() != offset {
+			writeJSON(w, http.StatusConflict, map[string]any{"uploaded": info.Size(), "reset": true})
+			return
+		}
+	} else if offset > 0 {
+		// 片文件已不存在 (如被 abort), 从零开始
+		writeJSON(w, http.StatusConflict, map[string]any{"uploaded": 0, "reset": true})
 		return
 	}
 
@@ -490,7 +503,26 @@ func (s *Server) handleUploadAppend(w http.ResponseWriter, r *http.Request) {
 	if info, err := os.Stat(full); err == nil {
 		total = info.Size()
 	}
-	writeJSON(w, map[string]any{"uploaded": total})
+	writeJSON(w, http.StatusOK, map[string]any{"uploaded": total})
+}
+
+// handleUploadAbort 取消上传: 删除已追加的临时片文件 (幂等，无片文件也返回成功)
+func (s *Server) handleUploadAbort(w http.ResponseWriter, r *http.Request) {
+	dir := r.URL.Query().Get("dir")
+	name := r.URL.Query().Get("name")
+	size, _ := strconv.ParseInt(r.URL.Query().Get("size"), 10, 64)
+	mod, _ := strconv.ParseInt(r.URL.Query().Get("mod"), 10, 64)
+
+	full, err := s.uploadPartPath(dir, name, size, mod)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
+		http.Error(w, "清理片文件失败: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 // handleUploadComplete 将临时片文件合并为正式文件并计入统计
@@ -534,13 +566,17 @@ func (s *Server) handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 		Success:   true,
 	})
 
-	writeJSON(w, map[string]any{"success": true, "name": filepath.Base(finalPath)})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "name": filepath.Base(finalPath)})
 }
 
-// writeJSON 快速写出 JSON 响应
-func writeJSON(w http.ResponseWriter, data any) {
+// writeJSON 显式 Content-Length 写出 JSON 响应
+// (避免隐式 chunked 流式响应在部分 WebView/移动浏览器环境挂起)
+func writeJSON(w http.ResponseWriter, status int, data any) {
+	body, _ := json.Marshal(data)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	json.NewEncoder(w).Encode(data)
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
 }
 
 // handleDrop 处理移动端投递文本/URL
@@ -590,11 +626,7 @@ func (s *Server) handleDrop(w http.ResponseWriter, r *http.Request) {
 	// 先完整写出成功响应 (显式 Content-Length，避免移动端浏览器对 chunked
 	// 响应断开过早而误报网络异常)，再异步触发联动回调，防止回调阻塞或
 	// 异常导致响应无法送达
-	respBody, _ := json.Marshal(map[string]any{"success": true, "id": item.ID})
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Length", strconv.Itoa(len(respBody)))
-	w.WriteHeader(http.StatusOK)
-	w.Write(respBody)
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "id": item.ID})
 
 	if s.onDropHook != nil {
 		itemCopy := item
@@ -693,8 +725,7 @@ func (s *Server) currentRates() (upRate, downRate float64) {
 // handleStats 返回实时传输统计 (供 Web 端轮询展示)
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	upRate, downRate := s.currentRates()
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	json.NewEncoder(w).Encode(map[string]any{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"activeConnections": atomic.LoadInt64(&s.activeConnections),
 		"uploadCount":       atomic.LoadInt64(&s.uploadCount),
 		"downloadCount":     atomic.LoadInt64(&s.downloadCount),
