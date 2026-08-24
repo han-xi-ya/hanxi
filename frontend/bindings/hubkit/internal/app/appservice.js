@@ -38,7 +38,6 @@ export function EnsureModuleActive(moduleID) {
 }
 
 /**
- * GetAppInfo
  * @returns {$CancellablePromise<$models.AppInfo>}
  */
 export function GetAppInfo() {
@@ -50,16 +49,7 @@ export function GetAppInfo() {
  * @returns {$CancellablePromise<$models.GeneralSettings>}
  */
 export function GetGeneralSettings() {
-    return $Call.ByName("hubkit/internal/app.AppService.GetGeneralSettings");
-}
-
-/**
- * SetGeneralSettings 保存常规配置
- * @param {$models.GeneralSettings} settings
- * @returns {$CancellablePromise<void>}
- */
-export function SetGeneralSettings(settings) {
-    return $Call.ByName("hubkit/internal/app.AppService.SetGeneralSettings", settings);
+    return $Call.ByID(1106352783);
 }
 
 /**
@@ -127,6 +117,15 @@ export function OpenSystemEnvSettings() {
  */
 export function ReadLogContent(fileName, maxLines) {
     return $Call.ByID(3816766177, fileName, maxLines);
+}
+
+/**
+ * SetGeneralSettings 保存常规配置
+ * @param {$models.GeneralSettings} gen
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetGeneralSettings(gen) {
+    return $Call.ByID(51722083, gen);
 }
 
 /**

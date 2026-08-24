@@ -414,7 +414,10 @@ onMounted(async () => {
   unlistenLog = Events.On('frpc:instance-log', (event: { data?: { projectId: string; line: string } }) => {
     const entry = event?.data
     if (!entry?.projectId || entry.projectId !== drawerProjectId.value) return
-    logLines.value = [...logLines.value, entry.line].slice(-2000)
+    logLines.value.push(entry.line)
+    if (logLines.value.length > 2000) {
+      logLines.value.splice(0, logLines.value.length - 2000)
+    }
     void scrollToBottom()
   })
 

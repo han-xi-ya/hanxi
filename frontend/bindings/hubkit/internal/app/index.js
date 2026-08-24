@@ -15,6 +15,11 @@ import * as $models from "./models.js";
  */
 
 /**
+ * GeneralSettings 前端通用设置模型
+ * @typedef {$models.GeneralSettings} GeneralSettings
+ */
+
+/**
  * LogFileInfo 日志文件基本元数据
  * @typedef {$models.LogFileInfo} LogFileInfo
  */

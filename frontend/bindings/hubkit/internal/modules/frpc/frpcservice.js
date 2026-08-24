@@ -154,7 +154,7 @@ export function StartProject(id) {
 }
 
 /**
- * StopProject 停止项目实例（幂等）。
+ * StopProject 停止项目实例（幂等），并清除生成的运行时临时配置。
  * @param {string} id
  * @returns {$CancellablePromise<void>}
  */
