@@ -323,11 +323,15 @@ interface ProxyEndpoint {
 function resolveEndpoints(p: Project): ProxyEndpoint[] {
   const serverHost = p.server?.serverAddr || '127.0.0.1'
   return (p.proxies ?? []).map(r => {
-    const local = `${r.localIp || '127.0.0.1'}:${r.localPort}`
+    let local = `${r.localIp || '127.0.0.1'}:${r.localPort}`
     let remoteDisplay = ''
     let url: string | undefined
+    const isVisitor = r.role === 'visitor'
 
-    if (r.type === 'http' || r.type === 'https') {
+    if (isVisitor) {
+      local = `${r.bindAddr || '127.0.0.1'}:${r.bindPort}`
+      remoteDisplay = `service:${r.serverName}`
+    } else if (r.type === 'http' || r.type === 'https') {
       const proto = r.type
       if (r.customDomains && r.customDomains.length > 0) {
         const domain = r.customDomains[0]
@@ -350,7 +354,7 @@ function resolveEndpoints(p: Project): ProxyEndpoint[] {
 
     return {
       name: r.name,
-      type: r.type,
+      type: isVisitor ? `${r.type}-visitor` : r.type,
       local,
       remoteDisplay,
       url,

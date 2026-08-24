@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, nextTick } from 'vue'
 import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservice'
 import type { Project, ProxyRule } from '../../bindings/hubkit/internal/domain/models'
 
@@ -13,37 +13,66 @@ const toastMsg = ref('')
 const saving = ref(false)
 const errorMsg = ref('')
 
-// 扩展类型：编辑态追加 customDomains 的文本输入载体
+// 编辑模式：form (表单) | toml (源码)
+const editorMode = ref<'form' | 'toml'>('form')
+const rawTomlContent = ref('')
+const tomlParseError = ref('')
+
+// 扩展类型：编辑态包含完整的高级属性与交互控制
 interface EditableProxy {
   name: string
   type: string
+  role: string // "" | "server" | "visitor"
   localIp: string
   localPort: number
   remotePort: number
   customDomains: string[]
   subdomain: string
   secretKey: string
+  serverName: string
+  bindAddr: string
+  bindPort: number
+  hostHeaderRewrite: string
+  proxyProtocolVersion: string
+  bandwidthLimit: string
   encryptTransport: boolean
   customDomainsText: string
+  showAdvanced?: boolean
 }
 
 function toEditable(r: ProxyRule): EditableProxy {
   return {
     name: r.name ?? '',
     type: r.type ?? 'tcp',
+    role: r.role ?? 'server',
     localIp: r.localIp ?? '127.0.0.1',
     localPort: r.localPort ?? 0,
     remotePort: r.remotePort ?? 0,
     customDomains: [...(r.customDomains ?? [])],
     subdomain: r.subdomain ?? '',
     secretKey: r.secretKey ?? '',
+    serverName: r.serverName ?? '',
+    bindAddr: r.bindAddr ?? '127.0.0.1',
+    bindPort: r.bindPort ?? 0,
+    hostHeaderRewrite: r.hostHeaderRewrite ?? '',
+    proxyProtocolVersion: r.proxyProtocolVersion ?? '',
+    bandwidthLimit: r.bandwidthLimit ?? '',
     encryptTransport: r.encryptTransport ?? false,
     customDomainsText: (r.customDomains ?? []).join(', '),
+    showAdvanced: Boolean(r.hostHeaderRewrite || r.proxyProtocolVersion || r.bandwidthLimit),
   }
 }
 
 // 本地编辑副本
-const draft = reactive<{ id: string; name: string; version: string; createdAt: string; updatedAt: string; server: Project['server']; proxies: EditableProxy[] }>({
+const draft = reactive<{
+  id: string
+  name: string
+  version: string
+  createdAt: string
+  updatedAt: string
+  server: Project['server']
+  proxies: EditableProxy[]
+}>({
   id: props.project?.id ?? '',
   name: props.project?.name ?? '',
   version: props.project?.version ?? '',
@@ -53,6 +82,8 @@ const draft = reactive<{ id: string; name: string; version: string; createdAt: s
     serverAddr: props.project?.server?.serverAddr ?? '',
     serverPort: props.project?.server?.serverPort ?? 7000,
     token: props.project?.server?.token ?? '',
+    protocol: props.project?.server?.protocol ?? 'tcp',
+    proxyUrl: props.project?.server?.proxyUrl ?? '',
     tlsEnable: props.project?.server?.tlsEnable ?? false,
     useEncryption: props.project?.server?.useEncryption ?? true,
     useCompression: props.project?.server?.useCompression ?? false,
@@ -60,11 +91,36 @@ const draft = reactive<{ id: string; name: string; version: string; createdAt: s
   },
   proxies: props.project?.proxies?.length
     ? props.project.proxies.map(toEditable)
-    : [toEditable({ name: '', type: 'tcp', localIp: '127.0.0.1', localPort: 8080, remotePort: 0, customDomains: [], subdomain: '', secretKey: '', encryptTransport: false } as ProxyRule)],
+    : [toEditable({
+        name: '',
+        type: 'tcp',
+        role: 'server',
+        localIp: '127.0.0.1',
+        localPort: 8080,
+        remotePort: 0,
+        customDomains: [],
+        subdomain: '',
+        secretKey: '',
+        serverName: '',
+        bindAddr: '127.0.0.1',
+        bindPort: 0,
+        hostHeaderRewrite: '',
+        proxyProtocolVersion: '',
+        bandwidthLimit: '',
+        encryptTransport: false,
+      } as ProxyRule)],
 })
 
+const showServerAdvanced = ref(Boolean(draft.server.protocol && draft.server.protocol !== 'tcp' || draft.server.proxyUrl))
 const tomlPreview = ref('')
 const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error']
+const PROTOCOLS = [
+  { label: 'TCP (标准默认)', value: 'tcp' },
+  { label: 'KCP (UDP 抗丢包)', value: 'kcp' },
+  { label: 'QUIC (极速 UDP)', value: 'quic' },
+  { label: 'WebSocket (穿透反代)', value: 'websocket' },
+  { label: 'WSS (TLS WebSocket)', value: 'wss' },
+]
 
 // 批量端口添加 Modal 状态
 const batchModalOpen = ref(false)
@@ -83,7 +139,24 @@ function showToast(msg: string) {
 }
 
 function newProxy(): EditableProxy {
-  return toEditable({ name: '', type: 'tcp', localIp: '127.0.0.1', localPort: 8080, remotePort: 0, customDomains: [], subdomain: '', secretKey: '', encryptTransport: false } as ProxyRule)
+  return toEditable({
+    name: '',
+    type: 'tcp',
+    role: 'server',
+    localIp: '127.0.0.1',
+    localPort: 8080,
+    remotePort: 0,
+    customDomains: [],
+    subdomain: '',
+    secretKey: '',
+    serverName: '',
+    bindAddr: '127.0.0.1',
+    bindPort: 0,
+    hostHeaderRewrite: '',
+    proxyProtocolVersion: '',
+    bandwidthLimit: '',
+    encryptTransport: false,
+  } as ProxyRule)
 }
 
 function addProxy() {
@@ -159,14 +232,22 @@ function applyBatchPorts() {
     added.push({
       name: ruleName,
       type: batchForm.type,
+      role: 'server',
       localIp: batchForm.localIp.trim() || '127.0.0.1',
       localPort: lp,
       remotePort: rp,
       customDomains: [],
       subdomain: '',
       secretKey: '',
+      serverName: '',
+      bindAddr: '127.0.0.1',
+      bindPort: 0,
+      hostHeaderRewrite: '',
+      proxyProtocolVersion: '',
+      bandwidthLimit: '',
       encryptTransport: false,
       customDomainsText: '',
+      showAdvanced: false,
     })
   }
 
@@ -182,13 +263,40 @@ function applyBatchPorts() {
   showToast(`已批量添加 ${added.length} 条端口规则`)
 }
 
-function typeHint(type: string): string {
-  switch (type) {
-    case 'tcp': case 'udp': return '远程端口 (1-65535)'
-    case 'http': case 'https': return '自定义域名逗号分隔'
-    case 'stcp': case 'xtcp': return '共享密钥（对端配置 serverName 指向本规则）'
-    default: return ''
+function onTypeChange(r: EditableProxy) {
+  if (r.type === 'stcp-visitor' || r.type === 'xtcp-visitor') {
+    r.role = 'visitor'
+    if (!r.bindPort) r.bindPort = r.localPort || 9000
+    if (!r.bindAddr) r.bindAddr = '127.0.0.1'
+  } else {
+    r.role = 'server'
   }
+  refreshPreview()
+}
+
+function getRuleSelectType(r: EditableProxy): string {
+  if (r.role === 'visitor') {
+    return r.type === 'xtcp' ? 'xtcp-visitor' : 'stcp-visitor'
+  }
+  return r.type
+}
+
+function setRuleSelectType(r: EditableProxy, val: string) {
+  if (val === 'stcp-visitor') {
+    r.type = 'stcp'
+    r.role = 'visitor'
+    if (!r.bindPort) r.bindPort = r.localPort || 9000
+    if (!r.bindAddr) r.bindAddr = '127.0.0.1'
+  } else if (val === 'xtcp-visitor') {
+    r.type = 'xtcp'
+    r.role = 'visitor'
+    if (!r.bindPort) r.bindPort = r.localPort || 9000
+    if (!r.bindAddr) r.bindAddr = '127.0.0.1'
+  } else {
+    r.type = val
+    r.role = 'server'
+  }
+  refreshPreview()
 }
 
 function toPayload(): Project {
@@ -198,12 +306,31 @@ function toPayload(): Project {
     version: draft.version,
     createdAt: draft.createdAt,
     updatedAt: draft.updatedAt,
-    server: { ...draft.server },
+    server: {
+      serverAddr: draft.server.serverAddr.trim(),
+      serverPort: draft.server.serverPort,
+      token: draft.server.token,
+      protocol: draft.server.protocol || 'tcp',
+      proxyUrl: draft.server.proxyUrl?.trim() || '',
+      tlsEnable: draft.server.tlsEnable,
+      useEncryption: draft.server.useEncryption,
+      useCompression: draft.server.useCompression,
+      logLevel: draft.server.logLevel || 'info',
+    },
     proxies: draft.proxies.map(r => {
-      const { customDomainsText, ...rest } = r
+      const { customDomainsText, showAdvanced, ...rest } = r
       void customDomainsText
+      void showAdvanced
       return {
         ...rest,
+        name: r.name.trim(),
+        role: r.role || 'server',
+        localIp: r.localIp?.trim() || '127.0.0.1',
+        serverName: r.serverName?.trim() || '',
+        bindAddr: r.bindAddr?.trim() || '127.0.0.1',
+        hostHeaderRewrite: r.hostHeaderRewrite?.trim() || '',
+        proxyProtocolVersion: r.proxyProtocolVersion?.trim() || '',
+        bandwidthLimit: r.bandwidthLimit?.trim() || '',
         customDomains: customDomainsText
           ? customDomainsText.split(',').map(s => s.trim()).filter(Boolean)
           : [],
@@ -214,6 +341,7 @@ function toPayload(): Project {
 
 let previewTimer: ReturnType<typeof setTimeout> | null = null
 function refreshPreview() {
+  if (editorMode.value === 'toml') return
   if (previewTimer) clearTimeout(previewTimer)
   previewTimer = setTimeout(async () => {
     try {
@@ -221,23 +349,69 @@ function refreshPreview() {
     } catch (e: any) {
       tomlPreview.value = `# 配置校验中: ${e?.message ?? e}`
     }
-  }, 350)
+  }, 250)
 }
 
 watch(() => draft, refreshPreview, { deep: true, immediate: true })
+
+async function switchMode(target: 'form' | 'toml') {
+  if (target === editorMode.value) return
+  if (target === 'toml') {
+    // 表单 -> 源码模式：生成 TOML
+    try {
+      rawTomlContent.value = await FrpcAPI.GenerateToml(toPayload() as any)
+      tomlParseError.value = ''
+      editorMode.value = 'toml'
+    } catch (err: any) {
+      errorMsg.value = `切换至源码模式失败（当前表单有误）: ${err?.message || err}`
+    }
+  } else {
+    // 源码 -> 表单模式：解析 TOML 还原
+    try {
+      const parsed = await FrpcAPI.ParseToml(rawTomlContent.value)
+      // 更新 draft
+      draft.server = {
+        serverAddr: parsed.server.serverAddr || '',
+        serverPort: parsed.server.serverPort || 7000,
+        token: parsed.server.token || '',
+        protocol: parsed.server.protocol || 'tcp',
+        proxyUrl: parsed.server.proxyUrl || '',
+        tlsEnable: parsed.server.tlsEnable ?? false,
+        useEncryption: parsed.server.useEncryption ?? true,
+        useCompression: parsed.server.useCompression ?? false,
+        logLevel: parsed.server.logLevel || 'info',
+      }
+      draft.proxies = (parsed.proxies || []).map(toEditable)
+      tomlParseError.value = ''
+      editorMode.value = 'form'
+      refreshPreview()
+    } catch (err: any) {
+      tomlParseError.value = `TOML 语法错误，无法切回表单: ${err?.message || err}`
+    }
+  }
+}
 
 function isDraftValid(): boolean {
   if (!draft.name.trim()) { errorMsg.value = '请填写项目名称'; return false }
   if (!draft.server.serverAddr.trim()) { errorMsg.value = '请填写服务端地址'; return false }
   for (const r of draft.proxies) {
-    if (!r.name.trim()) { errorMsg.value = '存在未命名的代理规则'; return false }
-    if (!r.localPort || r.localPort < 1 || r.localPort > 65535) { errorMsg.value = `规则 ${r.name} 的本地端口无效`; return false }
+    if (!r.name.trim()) { errorMsg.value = '存在未命名的规则'; return false }
+    if (r.role === 'visitor') {
+      if (!r.serverName.trim()) { errorMsg.value = `访客规则「${r.name}」必须指定目标服务端服务名 (serverName)`; return false }
+      if (!r.bindPort || r.bindPort < 1 || r.bindPort > 65535) { errorMsg.value = `访客规则「${r.name}」的本地监听端口 (bindPort) 无效`; return false }
+    } else {
+      if (!r.localPort || r.localPort < 1 || r.localPort > 65535) { errorMsg.value = `规则「${r.name}」的本地端口无效`; return false }
+      if ((r.type === 'tcp' || r.type === 'udp') && (!r.remotePort || r.remotePort < 1 || r.remotePort > 65535)) {
+        errorMsg.value = `规则「${r.name}」的公网远程端口 (remotePort) 无效`; return false
+      }
+    }
   }
   return true
 }
 
 function copyPreview() {
-  navigator.clipboard.writeText(tomlPreview.value)
+  const content = editorMode.value === 'toml' ? rawTomlContent.value : tomlPreview.value
+  navigator.clipboard.writeText(content)
   showToast('TOML 已复制')
 }
 
@@ -246,15 +420,7 @@ function copyShareLink() {
   const p = toPayload()
   const sharePayload = {
     name: p.name,
-    server: {
-      serverAddr: p.server.serverAddr,
-      serverPort: p.server.serverPort,
-      token: p.server.token,
-      tlsEnable: p.server.tlsEnable,
-      useEncryption: p.server.useEncryption,
-      useCompression: p.server.useCompression,
-      logLevel: p.server.logLevel,
-    },
+    server: p.server,
     proxies: p.proxies,
   }
   const jsonStr = JSON.stringify(sharePayload)
@@ -265,11 +431,36 @@ function copyShareLink() {
 }
 
 async function save() {
-  if (!isDraftValid()) return
-  saving.value = true
   errorMsg.value = ''
+  saving.value = true
+
   try {
-    const saved = await FrpcAPI.SaveProject(toPayload())
+    let payload: Project
+    if (editorMode.value === 'toml') {
+      // 源码模式下保存：先校验并解析
+      const parsed = await FrpcAPI.ParseToml(rawTomlContent.value)
+      if (!draft.name.trim()) {
+        errorMsg.value = '请填写顶部项目名称'
+        saving.value = false
+        return
+      }
+      payload = {
+        ...parsed,
+        id: draft.id,
+        name: draft.name.trim(),
+        version: draft.version,
+        createdAt: draft.createdAt,
+        updatedAt: draft.updatedAt,
+      }
+    } else {
+      if (!isDraftValid()) {
+        saving.value = false
+        return
+      }
+      payload = toPayload()
+    }
+
+    const saved = await FrpcAPI.SaveProject(payload)
     showToast('项目已保存')
     emit('saved', saved)
   } catch (e: any) {
@@ -285,19 +476,36 @@ function cancel() { emit('cancel') }
 <template>
   <section class="page editor-page">
     <div class="header-row">
-      <div>
-        <h1>{{ draft.id ? '编辑项目' : '新建项目' }}</h1>
-        <p class="subtitle">配置服务端连接与代理规则，右侧实时预览生成的 frpc TOML 配置。</p>
+      <div class="title-with-mode">
+        <div>
+          <h1>{{ draft.id ? '编辑项目' : '新建项目' }}</h1>
+          <p class="subtitle">全面支持 FRP v0.53+ TOML 标准规范、STCP/XTCP 访客端模式与高级传输优化。</p>
+        </div>
+        <!-- 模式切换 Tabs -->
+        <div class="mode-tabs">
+          <button
+            class="mode-btn"
+            :class="{ active: editorMode === 'form' }"
+            @click="switchMode('form')"
+          >📝 可视化表单</button>
+          <button
+            class="mode-btn"
+            :class="{ active: editorMode === 'toml' }"
+            @click="switchMode('toml')"
+          >⚙️ TOML 源码模式</button>
+        </div>
       </div>
       <div class="header-actions">
-        <button class="btn btn-secondary btn-small" @click="copyShareLink">⚡ 生成分享链接</button>
+        <button class="btn btn-secondary btn-small" @click="copyShareLink">⚡ 分享链接</button>
         <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
       </div>
     </div>
 
     <div v-if="errorMsg" class="error-box">{{ errorMsg }}</div>
+    <div v-if="tomlParseError" class="error-box">{{ tomlParseError }}</div>
 
-    <div class="editor-layout">
+    <!-- 模式 1：可视化表单布局 -->
+    <div v-if="editorMode === 'form'" class="editor-layout">
       <!-- 左列：表单 -->
       <div class="editor-main">
         <!-- 基本信息 -->
@@ -306,7 +514,7 @@ function cancel() { emit('cancel') }
           <div class="form-grid">
             <label class="form-item">
               <span>项目名称 <em>*</em></span>
-              <input v-model="draft.name" class="input" placeholder="如：生产联调" maxlength="30" />
+              <input v-model="draft.name" class="input" placeholder="如：联调环境 / 远程桌面" maxlength="30" />
             </label>
             <label class="form-item">
               <span>绑定 frp 版本</span>
@@ -320,19 +528,25 @@ function cancel() { emit('cancel') }
 
         <!-- 服务端连接 -->
         <div class="card">
-          <h3 class="card-title">服务端连接</h3>
+          <div class="card-head">
+            <h3 class="card-title">服务端连接</h3>
+            <button
+              class="btn-text"
+              @click="showServerAdvanced = !showServerAdvanced"
+            >{{ showServerAdvanced ? '▲ 收起高级连接参数' : '▼ 展开高级连接参数 (KCP/QUIC/跳板)' }}</button>
+          </div>
           <div class="form-grid">
             <label class="form-item">
               <span>服务器地址 <em>*</em></span>
-              <input v-model="draft.server.serverAddr" class="input" placeholder="frp.example.com 或 IP" />
+              <input v-model="draft.server.serverAddr" class="input" placeholder="frp.example.com 或 1.2.3.4" />
             </label>
             <label class="form-item">
               <span>服务器端口</span>
               <input v-model.number="draft.server.serverPort" type="number" class="input" min="1" max="65535" />
             </label>
             <label class="form-item">
-              <span>鉴权令牌 (token)</span>
-              <input v-model="draft.server.token" class="input" type="password" placeholder="与服务端一致" />
+              <span>鉴权令牌 (Token)</span>
+              <input v-model="draft.server.token" class="input" type="password" placeholder="与 frps.toml 的 token 一致" />
             </label>
             <label class="form-item">
               <span>日志级别</span>
@@ -341,26 +555,43 @@ function cancel() { emit('cancel') }
               </select>
             </label>
           </div>
+
+          <!-- 高级连接选项 -->
+          <div v-if="showServerAdvanced" class="advanced-box">
+            <div class="form-grid">
+              <label class="form-item">
+                <span>底层传输协议 (transport.protocol)</span>
+                <select v-model="draft.server.protocol" class="input">
+                  <option v-for="p in PROTOCOLS" :key="p.value" :value="p.value">{{ p.label }}</option>
+                </select>
+              </label>
+              <label class="form-item">
+                <span>上游连接代理 (transport.proxyURL)</span>
+                <input v-model="draft.server.proxyUrl" class="input" placeholder="socks5://127.0.0.1:1080 或 http://..." />
+              </label>
+            </div>
+          </div>
+
           <div class="toggle-row">
             <label class="toggle-item">
               <input v-model="draft.server.tlsEnable" type="checkbox" />
-              <span>启用 TLS 加密传输</span>
+              <span>启用 TLS 传输层加密</span>
             </label>
             <label class="toggle-item">
               <input v-model="draft.server.useEncryption" type="checkbox" />
-              <span>传输层加密</span>
+              <span>报文加密 (useEncryption)</span>
             </label>
             <label class="toggle-item">
               <input v-model="draft.server.useCompression" type="checkbox" />
-              <span>传输层压缩</span>
+              <span>报文压缩 (useCompression)</span>
             </label>
           </div>
         </div>
 
-        <!-- 代理规则 -->
+        <!-- 代理与访客规则 -->
         <div class="card">
           <div class="card-head">
-            <h3 class="card-title">代理规则 ({{ draft.proxies.length }})</h3>
+            <h3 class="card-title">穿透规则列表 ({{ draft.proxies.length }})</h3>
             <div class="card-head-tools">
               <button class="btn btn-secondary btn-small" @click="openBatchModal">⚡ 批量端口导入</button>
               <button class="btn btn-secondary btn-small" @click="addProxy">+ 添加规则</button>
@@ -368,51 +599,160 @@ function cancel() { emit('cancel') }
           </div>
 
           <div class="proxy-list">
-            <div v-for="(r, i) in draft.proxies" :key="i" class="proxy-row">
+            <div v-for="(r, i) in draft.proxies" :key="i" class="proxy-row" :class="{ 'is-visitor': r.role === 'visitor' }">
               <div class="proxy-head">
                 <span class="proxy-index">#{{ i + 1 }}</span>
-                <input v-model="r.name" class="input input-name" placeholder="规则名称" maxlength="30" />
-                <select v-model="r.type" class="input input-type">
-                  <option v-for="t in ['tcp','udp','http','https','stcp','xtcp']" :key="t" :value="t">{{ t.toUpperCase() }}</option>
+                <input v-model="r.name" class="input input-name" placeholder="规则唯一标识 (name)" maxlength="30" />
+
+                <select
+                  :value="getRuleSelectType(r)"
+                  @change="setRuleSelectType(r, ($event.target as HTMLSelectElement).value)"
+                  class="input input-type"
+                >
+                  <optgroup label="被访端 / 普通代理 (Proxies)">
+                    <option value="tcp">TCP 端口映射</option>
+                    <option value="udp">UDP 端口映射</option>
+                    <option value="http">HTTP 网站</option>
+                    <option value="https">HTTPS 网站</option>
+                    <option value="stcp">STCP 安全点对点服务</option>
+                    <option value="xtcp">XTCP P2P 直连服务</option>
+                  </optgroup>
+                  <optgroup label="访客端 / 对端接入 (Visitors)">
+                    <option value="stcp-visitor">STCP 访客端 (Visitor 接收端)</option>
+                    <option value="xtcp-visitor">XTCP 访客端 (Visitor 接收端)</option>
+                  </optgroup>
                 </select>
+
+                <button
+                  class="btn-text btn-adv-toggle"
+                  @click="r.showAdvanced = !r.showAdvanced"
+                  title="展开/收起 Host重写、限速、ProxyProtocol"
+                >{{ r.showAdvanced ? '▲ 简略' : '⚙️ 高级' }}</button>
                 <button class="btn-remove" title="删除该规则" @click="removeProxy(i)">✕</button>
               </div>
-              <div class="proxy-fields">
-                <label class="form-item n1"><span>本地 IP</span>
-                  <input v-model="r.localIp" class="input" placeholder="127.0.0.1" /></label>
-                <label class="form-item n1"><span>本地端口</span>
-                  <input v-model.number="r.localPort" type="number" class="input" min="1" max="65535" /></label>
-                <label class="form-item n2">
-                  <span>{{ typeHint(r.type).replace(' (1-65535)', '') }}</span>
-                  <template v-if="r.type === 'http' || r.type === 'https'">
-                    <input v-model="r.customDomainsText" class="input" placeholder="dev.example.com, api.example.com" />
+
+              <!-- 访客端 (Visitor) 专属表单 -->
+              <template v-if="r.role === 'visitor'">
+                <div class="proxy-fields visitor-fields">
+                  <label class="form-item">
+                    <span>目标服务名 (serverName) <em>*</em></span>
+                    <input v-model="r.serverName" class="input" placeholder="对端配置的规则 name" />
+                  </label>
+                  <label class="form-item">
+                    <span>访问密钥 (secretKey) <em>*</em></span>
+                    <input v-model="r.secretKey" class="input" type="password" placeholder="需与对端一致" />
+                  </label>
+                  <label class="form-item">
+                    <span>本地监听 IP (bindAddr)</span>
+                    <input v-model="r.bindAddr" class="input" placeholder="127.0.0.1" />
+                  </label>
+                  <label class="form-item">
+                    <span>本地监听端口 (bindPort) <em>*</em></span>
+                    <input v-model.number="r.bindPort" type="number" class="input" min="1" max="65535" placeholder="如 9000" />
+                  </label>
+                </div>
+              </template>
+
+              <!-- 普通代理端 (Server Proxy) 表单 -->
+              <template v-else>
+                <div class="proxy-fields">
+                  <label class="form-item n1">
+                    <span>本地 IP</span>
+                    <input v-model="r.localIp" class="input" placeholder="127.0.0.1" />
+                  </label>
+                  <label class="form-item n1">
+                    <span>本地端口 <em>*</em></span>
+                    <input v-model.number="r.localPort" type="number" class="input" min="1" max="65535" />
+                  </label>
+
+                  <!-- STCP/XTCP 服务端 -->
+                  <template v-if="r.type === 'stcp' || r.type === 'xtcp'">
+                    <label class="form-item n2">
+                      <span>安全共享密钥 (secretKey) <em>*</em></span>
+                      <input v-model="r.secretKey" class="input" placeholder="访客端连接时需校验此密钥" />
+                    </label>
                   </template>
-                  <template v-else-if="r.type === 'stcp' || r.type === 'xtcp'">
-                    <input v-model="r.secretKey" class="input" placeholder="共享密钥" />
+
+                  <!-- HTTP/HTTPS 域名配置 -->
+                  <template v-else-if="r.type === 'http' || r.type === 'https'">
+                    <label class="form-item n2">
+                      <span>自定义域名 (customDomains，逗号分隔)</span>
+                      <input v-model="r.customDomainsText" class="input" placeholder="dev.example.com, test.example.com" />
+                    </label>
+                    <label class="form-item n1">
+                      <span>二级子域名</span>
+                      <input v-model="r.subdomain" class="input" placeholder="如 web" />
+                    </label>
                   </template>
+
+                  <!-- TCP/UDP 远程端口 -->
                   <template v-else>
-                    <input v-model.number="r.remotePort" type="number" class="input" min="0" max="65535" placeholder="远程端口" />
+                    <label class="form-item n2">
+                      <span>公网远程端口 (remotePort) <em>*</em></span>
+                      <input v-model.number="r.remotePort" type="number" class="input" min="1" max="65535" placeholder="公网暴露端口" />
+                    </label>
                   </template>
-                </label>
-                <label class="form-item n1" v-if="r.type === 'http' || r.type === 'https'">
-                  <span>子域名</span>
-                  <input v-model="r.subdomain" class="input" placeholder="sub" />
-                </label>
+                </div>
+              </template>
+
+              <!-- 单条规则的高级参数抽屉 -->
+              <div v-if="r.showAdvanced" class="rule-advanced-box">
+                <div class="form-grid">
+                  <label class="form-item" v-if="r.type === 'http' || r.type === 'https'">
+                    <span>Host 请求头重写 (hostHeaderRewrite)</span>
+                    <input v-model="r.hostHeaderRewrite" class="input" placeholder="如 localhost:3000 或 dev.local" />
+                  </label>
+                  <label class="form-item" v-if="r.role !== 'visitor'">
+                    <span>真实 IP 透传 (proxyProtocolVersion)</span>
+                    <select v-model="r.proxyProtocolVersion" class="input">
+                      <option value="">关闭 (默认)</option>
+                      <option value="v1">v1 (文本头)</option>
+                      <option value="v2">v2 (二进制头)</option>
+                    </select>
+                  </label>
+                  <label class="form-item" v-if="r.role !== 'visitor'">
+                    <span>带宽限速 (bandwidthLimit)</span>
+                    <input v-model="r.bandwidthLimit" class="input" placeholder="如 1MB, 500KB" />
+                  </label>
+                  <label class="toggle-item inline-check" v-if="r.role !== 'visitor'">
+                    <input v-model="r.encryptTransport" type="checkbox" />
+                    <span>独立启用传输加密 (覆盖全局)</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 右列：TOML 预览 -->
+      <!-- 右列：TOML 实时预览 -->
       <div class="editor-side">
         <div class="card preview-card">
           <div class="card-head">
-            <h3 class="card-title">TOML 预览</h3>
+            <h3 class="card-title">TOML 实时预览</h3>
             <button class="btn btn-secondary btn-small" @click="copyPreview">复制</button>
           </div>
           <pre class="toml-pre">{{ tomlPreview || '# 填写后自动生成配置...' }}</pre>
         </div>
+      </div>
+    </div>
+
+    <!-- 模式 2：TOML 源码直接编辑模式 -->
+    <div v-else class="toml-editor-layout">
+      <div class="card toml-edit-card">
+        <div class="card-head">
+          <div>
+            <h3 class="card-title">TOML 源码直接编辑</h3>
+            <p class="card-desc">高级用户可在此直接编写、粘贴标准 frpc.toml 文件内容。系统将自动进行无损语法校验与语义映射。</p>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="copyPreview">复制全文</button>
+        </div>
+        <textarea
+          v-model="rawTomlContent"
+          class="raw-toml-textarea"
+          spellcheck="false"
+          placeholder="serverAddr = &quot;x.x.x.x&quot;&#10;serverPort = 7000&#10;..."
+        ></textarea>
       </div>
     </div>
 
@@ -468,10 +808,23 @@ function cancel() { emit('cancel') }
 <style scoped>
 .editor-page { display: flex; flex-direction: column; gap: 16px; }
 .header-row { display: flex; justify-content: space-between; align-items: center; }
-.header-actions { display: flex; align-items: center; gap: 12px; }
+.title-with-mode { display: flex; align-items: center; gap: 24px; }
 .subtitle { color: var(--text-muted); font-size: 13px; margin: 4px 0 0; }
+.header-actions { display: flex; align-items: center; gap: 12px; }
 .toast { background: var(--text-main); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; animation: fadeIn 0.2s ease; }
 .error-box { padding: 10px 14px; background: #ffebe9; color: var(--danger); border: 1px solid rgba(207, 34, 46, 0.2); border-radius: 6px; font-size: 13px; }
+
+/* 模式切换 Tabs */
+.mode-tabs {
+  display: flex; background: var(--bg-sidebar); border: 1px solid var(--border-color);
+  border-radius: 8px; padding: 3px; gap: 2px;
+}
+.mode-btn {
+  border: none; background: transparent; padding: 6px 14px; font-size: 13px;
+  color: var(--text-muted); border-radius: 6px; cursor: pointer; font-weight: 500;
+  transition: all 0.15s ease;
+}
+.mode-btn.active { background: #fff; color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 
 .editor-layout { display: grid; grid-template-columns: 1fr 420px; gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .editor-layout { grid-template-columns: 1fr; } }
@@ -481,6 +834,7 @@ function cancel() { emit('cancel') }
 
 .card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
 .card-title { font-size: 14px; font-weight: 600; color: var(--text-muted); margin: 0 0 12px; }
+.card-desc { font-size: 12px; color: var(--text-subtle); margin: 4px 0 0; }
 .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .card-head .card-title { margin: 0; }
 .card-head-tools { display: flex; gap: 8px; }
@@ -491,25 +845,43 @@ function cancel() { emit('cancel') }
 .input {
   padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px;
   font-size: 13px; background: #fff; color: var(--text-main); width: 100%;
+  box-sizing: border-box;
 }
 .input:focus { border-color: var(--accent); outline: none; }
 
-.toggle-row { display: flex; gap: 20px; margin-top: 12px; }
+.btn-text { background: transparent; border: none; font-size: 12px; color: var(--accent); cursor: pointer; padding: 2px 4px; }
+.btn-text:hover { text-decoration: underline; }
+.btn-adv-toggle { font-size: 12px; }
+
+.advanced-box {
+  background: var(--bg-app); border: 1px dashed var(--border-color);
+  border-radius: 6px; padding: 12px; margin-top: 12px;
+}
+.rule-advanced-box {
+  background: #fff; border: 1px solid var(--border-color);
+  border-radius: 6px; padding: 10px 12px; margin-top: 10px;
+}
+
+.toggle-row { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
 .toggle-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-main); cursor: pointer; }
 .toggle-item input { accent-color: var(--accent); }
+.inline-check { margin-top: 20px; }
 
 /* 代理规则 */
 .proxy-list { display: flex; flex-direction: column; gap: 12px; }
 .proxy-row { border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background: var(--bg-app); }
+.proxy-row.is-visitor { border-left: 3px solid #8250df; background: #faf9ff; }
 .proxy-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .proxy-index { font-size: 11px; color: var(--text-subtle); font-weight: 700; }
 .input-name { max-width: 180px; }
-.input-type { max-width: 110px; }
+.input-type { max-width: 210px; }
 .btn-remove { width: 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 6px; background: #fff; color: var(--text-subtle); cursor: pointer; font-size: 11px; margin-left: auto; }
 .btn-remove:hover { border-color: var(--danger); color: var(--danger); }
+
 .proxy-fields { display: grid; grid-template-columns: 1fr 1fr 1.5fr 1fr; gap: 10px; }
 .proxy-fields .n1 { grid-column: span 1; }
 .proxy-fields .n2 { grid-column: span 2; }
+.visitor-fields { display: grid; grid-template-columns: 1.2fr 1.2fr 1fr 1fr; gap: 10px; }
 
 /* TOML 预览 */
 .toml-pre {
@@ -517,6 +889,16 @@ function cancel() { emit('cancel') }
   font-family: Consolas, monospace; font-size: 12px; line-height: 1.55;
   max-height: 560px; overflow: auto; white-space: pre; user-select: text;
 }
+
+/* 源码模式编辑器 */
+.toml-editor-layout { width: 100%; }
+.toml-edit-card { display: flex; flex-direction: column; height: 620px; }
+.raw-toml-textarea {
+  flex: 1; margin-top: 10px; padding: 14px; background: #0f172a; color: #e2e8f0;
+  border-radius: 6px; font-family: Consolas, monospace; font-size: 13px; line-height: 1.6;
+  border: 1px solid var(--border-color); resize: none; outline: none; width: 100%; box-sizing: border-box;
+}
+.raw-toml-textarea:focus { border-color: var(--accent); }
 
 .footer-actions { display: flex; justify-content: flex-end; gap: 12px; padding: 12px 0 24px; }
 

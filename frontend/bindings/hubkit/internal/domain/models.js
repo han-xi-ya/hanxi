@@ -16,21 +16,29 @@
  */
 
 /**
- * ProxyRule 一条隧道代理规则。
- * 依据 type 不同，字段使用规则：
+ * ProxyRule 一条隧道代理规则（支持服务端代理与访客端 Visitor）。
+ * 依据 type 和 role 不同，字段使用规则：
  * 
- * 	tcp/udp:  LocalIP/localPort + RemotePort
- * 	http/https: LocalIP/localPort + CustomDomains 或 Subdomain
- * 	stcp/xtcp:  LocalIP/localPort + SecretKey（对端再配置 serverName 指向本规则名）
+ * 	tcp/udp:     LocalIP/LocalPort + RemotePort
+ * 	http/https:  LocalIP/LocalPort + CustomDomains 或 Subdomain (可选 HostHeaderRewrite)
+ * 	stcp/xtcp (被访端): LocalIP/LocalPort + SecretKey
+ * 	stcp/xtcp (访客端): Role="visitor", ServerName + SecretKey + BindAddr/BindPort
  * @typedef {Object} ProxyRule
  * @property {string} name - 规则唯一名称（frp 内唯一标识）
  * @property {string} type - tcp | udp | http | https | stcp | xtcp
+ * @property {string} role - "" 或 "proxy" (被访端/代理) | "visitor" (访客端)
  * @property {string} localIp - 本地服务地址（默认 127.0.0.1）
  * @property {number} localPort - 本地服务端口
  * @property {number} remotePort - 服务端公网端口（tcp/udp 必填）
  * @property {string[] | null} customDomains - 自定义域名（http/https）
  * @property {string} subdomain - 二级域名（http/https，依托服务端泛解析）
  * @property {string} secretKey - stcp/xtcp 共享密钥
+ * @property {string} serverName - visitor 关联的目标服务端规则名 (仅 visitor 生效)
+ * @property {string} bindAddr - visitor 本地监听地址 (默认 127.0.0.1)
+ * @property {number} bindPort - visitor 本地监听端口 (仅 visitor 必填)
+ * @property {string} hostHeaderRewrite - HTTP 请求 Host 头重写 (http/https)
+ * @property {string} proxyProtocolVersion - "" | "v1" | "v2" 真实 IP 透传
+ * @property {string} bandwidthLimit - 带宽限速，如 "1MB", "500KB"
  * @property {boolean} encryptTransport - 规则级传输加密（覆盖全局）
  */
 
@@ -40,6 +48,8 @@
  * @property {string} serverAddr - 服务器地址（IP 或域名）
  * @property {number} serverPort - 服务器端口（默认 7000）
  * @property {string} token - 鉴权令牌
+ * @property {string} protocol - 传输协议：tcp(默认) | kcp | quic | websocket | wss
+ * @property {string} proxyUrl - 经由代理连接服务端: socks5://... | http://...
  * @property {boolean} tlsEnable - 启用 TLS 加密传输
  * @property {boolean} useEncryption - 传输层加密
  * @property {boolean} useCompression - 传输层压缩

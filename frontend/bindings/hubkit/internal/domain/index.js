@@ -11,12 +11,13 @@ import * as $models from "./models.js";
  */
 
 /**
- * ProxyRule 一条隧道代理规则。
- * 依据 type 不同，字段使用规则：
+ * ProxyRule 一条隧道代理规则（支持服务端代理与访客端 Visitor）。
+ * 依据 type 和 role 不同，字段使用规则：
  * 
- * 	tcp/udp:  LocalIP/localPort + RemotePort
- * 	http/https: LocalIP/localPort + CustomDomains 或 Subdomain
- * 	stcp/xtcp:  LocalIP/localPort + SecretKey（对端再配置 serverName 指向本规则名）
+ * 	tcp/udp:     LocalIP/LocalPort + RemotePort
+ * 	http/https:  LocalIP/LocalPort + CustomDomains 或 Subdomain (可选 HostHeaderRewrite)
+ * 	stcp/xtcp (被访端): LocalIP/LocalPort + SecretKey
+ * 	stcp/xtcp (访客端): Role="visitor", ServerName + SecretKey + BindAddr/BindPort
  * @typedef {$models.ProxyRule} ProxyRule
  */
 
