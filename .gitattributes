@@ -1,0 +1,14 @@
+# 统一仓库行尾策略：文本文件一律以 LF 入库（Windows 检出时可选 CRLF 由各工具处理）
+* text=auto
+*.go text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.vue text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
