@@ -113,7 +113,7 @@ func parseSendMessageError(msgType string, ret int, errMsg string) error {
 	var friendlyTip string
 	switch ret {
 	case -2:
-		friendlyTip = "会话尚未建立或已失效 (prepare failed)。微信官方限制机器人无法主动发起新会话，请使用目标微信号先在微信中主动给机器人发送一条任意消息（如发送“你好”），待 HubKit 捕获最新会话凭据后再发送。"
+		friendlyTip = "会话尚未建立或已失效 (prepare failed)。微信 ClawBot 限制：1. 绑定后需主动发起一次对话；2. 每下发 10 次消息需主动对话一次；3. 每隔 24 小时需主动对话一次。请使用目标微信号在微信中发送一条任意消息激活会话。"
 	case -1:
 		friendlyTip = "系统繁忙或参数异常，请稍后重试。"
 	case 40001, 40014:

@@ -393,12 +393,17 @@ onUnmounted(() => {
     </div>
 
     <!-- 微信主动发消息激活引导提示 -->
-    <div v-if="state.isLoggedIn && !state.contextToken" class="session-guide-card">
+    <div class="session-guide-card">
       <div class="guide-icon">💡</div>
       <div class="guide-body">
-        <div class="guide-title">会话激活提示 (微信协议限制)</div>
+        <div class="guide-title">微信 ClawBot 协议与会话限制说明</div>
         <div class="guide-desc">
-          受腾讯微信安全策略限制，机器人无法对微信用户发起全新会话。请<strong>使用手机微信主动向该机器人发送任意一条消息</strong>（如发送“1”或“你好”），HubKit 后台捕获到会话凭据（Context Token）后即可正常发送文字、图片和文件。
+          <ul class="guide-list">
+            <li><strong>绑定限制</strong>：初始化需要主动扫码绑定，且<strong>一个微信号只能绑定一个 ClawBot</strong>。</li>
+            <li><strong>初次建联</strong>：绑定后需微信端<strong>主动发起一次对话</strong>（如发任意消息），才能下发消息。</li>
+            <li><strong>频次限制</strong>：每下发 <strong>10 次消息</strong>后，需要微信端主动发起一次对话刷新会话。</li>
+            <li><strong>有效周期</strong>：每隔 <strong>24 小时</strong>，也需要有一次主动对话以维持长效激活。</li>
+          </ul>
         </div>
       </div>
     </div>
@@ -1076,6 +1081,18 @@ onUnmounted(() => {
   font-size: 12px;
   line-height: 1.5;
   color: #1e3a8a;
+}
+
+.guide-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.guide-list li {
+  line-height: 1.6;
 }
 
 .guide-desc strong {
