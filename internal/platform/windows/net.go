@@ -7,8 +7,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"os/exec"
-	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -33,45 +31,72 @@ func NewNetworkAPI() platform.NetworkAPI {
 }
 
 // Adapters 列举本机可用网卡与完整配置（包含网关、DNS、临时与永久 IPv6）
+// 优化：采用 Windows 原生 Win32 API GetAdaptersAddresses（亚毫秒级直接内存调用），彻底替代起子进程执行 PowerShell/WMI 导致的数秒延迟
 func (n *NetworkImpl) Adapters() ([]platform.Adapter, error) {
-	ifaces, err := net.Interfaces()
+	var size uint32 = 15000
+	var buf []byte
+	var err error
+
+	// 循环重试以确保分配足够缓冲区
+	var pAddresses *windows.IpAdapterAddresses
+	flags := uint32(windows.GAA_FLAG_INCLUDE_GATEWAYS | windows.GAA_FLAG_INCLUDE_PREFIX)
+
+	for i := 0; i < 3; i++ {
+		buf = make([]byte, size)
+		pAddresses = (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0]))
+		err = windows.GetAdaptersAddresses(windows.AF_UNSPEC, flags, 0, pAddresses, &size)
+		if err == nil {
+			break
+		}
+		if err != windows.ERROR_BUFFER_OVERFLOW {
+			return nil, fmt.Errorf("GetAdaptersAddresses failed: %w", err)
+		}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("net.Interfaces failed: %w", err)
+		return nil, fmt.Errorf("GetAdaptersAddresses failed after retry: %w", err)
 	}
 
-	// 1. 获取系统 IPv6 临时/主地址分类映射
-	ipv6Types := getWindowsIPv6Types()
+	var result []platform.Adapter
 
-	// 2. 获取各网卡绑定的网关与 DNS 配置
-	gateways, dnsMap := getWindowsGatewaysAndDNS()
-
-	result := make([]platform.Adapter, 0, len(ifaces))
-	for _, iface := range ifaces {
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
+	for curr := pAddresses; curr != nil; curr = curr.Next {
+		// 网卡名称与描述
+		name := windows.UTF16PtrToString(curr.FriendlyName)
+		desc := windows.UTF16PtrToString(curr.Description)
+		if name == "" {
+			name = windows.BytePtrToString(curr.AdapterName)
+		}
+		if desc == "" {
+			desc = name
 		}
 
+		// MAC 地址
+		var macStr string
+		if curr.PhysicalAddressLength > 0 && curr.PhysicalAddressLength <= 8 {
+			macBytes := curr.PhysicalAddress[:curr.PhysicalAddressLength]
+			macStr = net.HardwareAddr(macBytes).String()
+		}
+
+		// 单播 IP 列表 (IPv4 / IPv6)
 		var ipv4List, ipv6List []string
 		var ipv6Details []platform.IPv6Detail
 
-		for _, a := range addrs {
-			ipNet, ok := a.(*net.IPNet)
-			if !ok {
+		for u := curr.FirstUnicastAddress; u != nil; u = u.Next {
+			ip := u.Address.IP()
+			if ip == nil {
 				continue
 			}
-			if ip4 := ipNet.IP.To4(); ip4 != nil {
+
+			if ip4 := ip.To4(); ip4 != nil {
 				ipv4List = append(ipv4List, ip4.String())
-			} else if ip6 := ipNet.IP.To16(); ip6 != nil {
+			} else if ip6 := ip.To16(); ip6 != nil {
 				ipStr := ip6.String()
 				ipv6List = append(ipv6List, ipStr)
 
-				// 解析 IPv6 属性
 				v6Type := "Public"
 				isTemp := false
 				if ip6.IsLinkLocalUnicast() {
 					v6Type = "LinkLocal"
-				} else if origin, ok := ipv6Types[ipStr]; ok && origin == "Temporary" {
+				} else if u.SuffixOrigin == windows.IpSuffixOriginRandom {
 					v6Type = "Temporary"
 					isTemp = true
 				}
@@ -84,140 +109,51 @@ func (n *NetworkImpl) Adapters() ([]platform.Adapter, error) {
 			}
 		}
 
-		isLoopback := (iface.Flags & net.FlagLoopback) != 0
-		isUp := (iface.Flags & net.FlagUp) != 0
-		isPhysical := !isLoopback && len(iface.HardwareAddr) > 0
-
-		gw := gateways[iface.Name]
-		if gw.v4 == "" {
-			gw = gateways[iface.HardwareAddr.String()]
+		// 网关列表 (IPv4 / IPv6)
+		var gwV4, gwV6 string
+		for g := curr.FirstGatewayAddress; g != nil; g = g.Next {
+			ip := g.Address.IP()
+			if ip == nil {
+				continue
+			}
+			if ip4 := ip.To4(); ip4 != nil && gwV4 == "" {
+				gwV4 = ip4.String()
+			} else if ip6 := ip.To16(); ip6 != nil && ip.To4() == nil && gwV6 == "" {
+				gwV6 = ip6.String()
+			}
 		}
 
-		dnsList := dnsMap[iface.Name]
-		if len(dnsList) == 0 {
-			dnsList = dnsMap[iface.HardwareAddr.String()]
+		// DNS 服务器列表
+		var dnsList []string
+		for d := curr.FirstDnsServerAddress; d != nil; d = d.Next {
+			ip := d.Address.IP()
+			if ip != nil {
+				dnsList = append(dnsList, ip.String())
+			}
 		}
+
+		isLoopback := curr.IfType == windows.IF_TYPE_SOFTWARE_LOOPBACK
+		isPhysical := (curr.IfType == windows.IF_TYPE_ETHERNET_CSMACD || curr.IfType == windows.IF_TYPE_IEEE80211) && !isLoopback
+		isUp := curr.OperStatus == windows.IfOperStatusUp
 
 		result = append(result, platform.Adapter{
-			Index:       uint32(iface.Index),
-			Name:        iface.Name,
-			Description: iface.Name,
-			MAC:         iface.HardwareAddr.String(),
+			Index:       curr.IfIndex,
+			Name:        name,
+			Description: desc,
+			MAC:         macStr,
 			IPv4:        ipv4List,
 			IPv6:        ipv6List,
 			IPv6Details: ipv6Details,
-			Gateway:     gw.v4,
-			IPv6Gateway: gw.v6,
+			Gateway:     gwV4,
+			IPv6Gateway: gwV6,
 			DNSServers:  dnsList,
 			IsPhysical:  isPhysical,
 			IsLoopback:  isLoopback,
 			IsUp:        isUp,
 		})
 	}
+
 	return result, nil
-}
-
-type gwPair struct {
-	v4 string
-	v6 string
-}
-
-// getWindowsGatewaysAndDNS 通过 netsh / PowerShell 快速读取网卡网关与 DNS 服务器
-func getWindowsGatewaysAndDNS() (map[string]gwPair, map[string][]string) {
-	gateways := make(map[string]gwPair)
-	dnsMap := make(map[string][]string)
-
-	// 使用 PowerShell 读取适配器网关与 DNS
-	psCmd := `Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' | ForEach-Object {
-		$gws = ($_.DefaultIPGateway -join ',')
-		$dns = ($_.DNSServerSearchOrder -join ',')
-		Write-Output "$($_.Description)|$($_.MACAddress)|$gws|$dns"
-	}`
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psCmd)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-
-	out, err := cmd.Output()
-	if err != nil {
-		return gateways, dnsMap
-	}
-
-	lines := strings.Split(string(out), "\n")
-	for _, l := range lines {
-		l = strings.TrimSpace(l)
-		if l == "" {
-			continue
-		}
-		parts := strings.Split(l, "|")
-		if len(parts) < 4 {
-			continue
-		}
-		desc, mac, gwStr, dnsStr := parts[0], parts[1], parts[2], parts[3]
-
-		var pair gwPair
-		for _, g := range strings.Split(gwStr, ",") {
-			g = strings.TrimSpace(g)
-			if g == "" {
-				continue
-			}
-			if net.ParseIP(g).To4() != nil && pair.v4 == "" {
-				pair.v4 = g
-			} else if pair.v6 == "" {
-				pair.v6 = g
-			}
-		}
-
-		var dnsList []string
-		for _, d := range strings.Split(dnsStr, ",") {
-			d = strings.TrimSpace(d)
-			if d != "" {
-				dnsList = append(dnsList, d)
-			}
-		}
-
-		if mac != "" {
-			macStd := strings.ToLower(strings.ReplaceAll(mac, "-", ":"))
-			gateways[macStd] = pair
-			dnsMap[macStd] = dnsList
-		}
-		if desc != "" {
-			gateways[desc] = pair
-			dnsMap[desc] = dnsList
-		}
-	}
-
-	return gateways, dnsMap
-}
-
-// getWindowsIPv6Types 查询各 IPv6 地址的 SuffixOrigin（识别是否为临时地址）
-func getWindowsIPv6Types() map[string]string {
-	res := make(map[string]string)
-	psCmd := `Get-NetIPAddress -AddressFamily IPv6 | ForEach-Object { Write-Output "$($_.IPAddress)|$($_.SuffixOrigin)" }`
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psCmd)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-
-	out, err := cmd.Output()
-	if err != nil {
-		return res
-	}
-
-	for _, l := range strings.Split(string(out), "\n") {
-		l = strings.TrimSpace(l)
-		if l == "" {
-			continue
-		}
-		parts := strings.Split(l, "|")
-		if len(parts) >= 2 {
-			ip := strings.Split(parts[0], "%")[0] // 去掉 scope id 如 %13
-			origin := parts[1]
-			// SuffixOrigin 5 表示 Random (临时隐私地址)，4 表示 Link / DHCP / Manual
-			if origin == "5" || strings.EqualFold(origin, "Random") {
-				res[ip] = "Temporary"
-			} else {
-				res[ip] = "Public"
-			}
-		}
-	}
-	return res
 }
 
 // DefaultAdapter 获取带有默认路由/主 IP 的网卡
