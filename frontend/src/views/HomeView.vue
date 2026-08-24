@@ -22,6 +22,8 @@ let unlistenExtChanged: (() => void) | null = null
 // 模块图标与首选路由映射
 const MODULE_META: Record<string, { icon: string; route: string }> = {
   frpc: { icon: '⚡', route: '/frpc' },
+  fileshare: { icon: '📁', route: '/ext/fileshare' },
+  memo: { icon: '📝', route: '/ext/memo' },
   lan: { icon: '◉', route: '/ext/lan' },
   portscan: { icon: '🔍', route: '/ext/portscan' },
   wechat: { icon: '💬', route: '/ext/wechat' },

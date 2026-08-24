@@ -13,6 +13,8 @@ import PublicIpView from './views/PublicIpView.vue'
 import PortKillView from './views/PortKillView.vue'
 import PortScanView from './views/PortScanView.vue'
 import WechatBotView from './views/WechatBotView.vue'
+import FileShareView from './views/FileShareView.vue'
+import MemoView from './views/MemoView.vue'
 import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
 import { useToast } from './composables/useToast'
 
@@ -22,6 +24,8 @@ const { toastMsg } = useToast()
 const CORE_VIEWS: Record<string, any> = {
   '/': markRaw(HomeView),
   '/frpc': markRaw(FrpcProjectsView),
+  '/ext/fileshare': markRaw(FileShareView),
+  '/ext/memo': markRaw(MemoView),
   '/ext/lan': markRaw(LanScannerView),
   '/ext/portscan': markRaw(PortScanView),
   '/ext/wechat': markRaw(WechatBotView),
@@ -35,6 +39,8 @@ const CORE_VIEWS: Record<string, any> = {
 // 路由与后端模块 ID 对应关系（用于路由切换时的零开销按需懒加载）
 const ROUTE_MODULE_MAP: Record<string, string> = {
   '/frpc': 'frpc',
+  '/ext/fileshare': 'fileshare',
+  '/ext/memo': 'memo',
   '/ext/lan': 'lan',
   '/ext/portscan': 'portscan',
   '/ext/wechat': 'wechat',
