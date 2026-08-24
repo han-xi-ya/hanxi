@@ -41,9 +41,5 @@ tasks:
       - go vet ./ ./cmd/... ./internal/...
       - go build ./ ./cmd/... ./internal/...
 
-  compress:
-    summary: "Compress bin/hubkit.exe using UPX (--best)"
-    cmds:
-      - cmd /c scripts\build_and_compress.bat
-
+  
 

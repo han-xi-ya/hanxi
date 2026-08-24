@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 
-title HubKit Build and UPX Package Tool
+title HubKit Build and Package Tool
 
 echo =======================================================
-echo          HubKit Build and UPX Compression
+echo          HubKit Build and Portable Package
 echo =======================================================
 echo.
 
@@ -38,7 +38,10 @@ if %errorlevel% neq 0 (
 )
 
 :: 3. Build frontend and backend
-echo [2/4] Building production binary...
+:: 注: 生产构建已通过 Taskfile 的 -ldflags="-w -s -H windowsgui" 去除符号表/DWARF 减体积。
+::     不再使用 UPX 压缩 —— UPX 运行时需在内存中解压完整原始镜像且无法换出,
+::     实测工作集比未压缩版本高出数倍 (9MB → 90MB+), 属纯亏。
+echo [2/3] Building production binary...
 if not exist "frontend\node_modules" (
     echo Installing frontend dependencies...
     cd frontend && npm install && cd ..
@@ -56,26 +59,9 @@ if not exist "bin\hubkit.exe" (
     goto :error
 )
 
-:: 4. UPX compression
+:: 4. Assemble portable distribution
 echo.
-echo [3/4] Running UPX compression (--best)...
-set "UPX_BIN=build\tools\upx.exe"
-if not exist "%UPX_BIN%" (
-    where upx >nul 2>&1
-    if %errorlevel% equ 0 (
-        set "UPX_BIN=upx"
-    ) else (
-        echo [WARN] build\tools\upx.exe not found, skipping UPX compression.
-        goto :package
-    )
-)
-
-"%UPX_BIN%" --best bin\hubkit.exe
-
-:package
-:: 5. Assemble portable distribution
-echo.
-echo [4/4] Assembling portable package...
+echo [3/3] Assembling portable package...
 if not exist "bin\portable" mkdir "bin\portable"
 if not exist "bin\portable\data" mkdir "bin\portable\data"
 
@@ -84,7 +70,7 @@ copy /y "README.md" "bin\portable\README.md" >nul
 
 echo.
 echo =======================================================
-echo  [SUCCESS] Build and UPX compression completed!
+echo  [SUCCESS] Build and package completed!
 echo =======================================================
 echo  - Standalone Executable : bin\hubkit.exe
 echo  - Portable Directory    : bin\portable\ (with data\ flag)

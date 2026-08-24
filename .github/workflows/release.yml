@@ -54,18 +54,6 @@ jobs:
         shell: pwsh
         run: |
           task build
-
-      - name: Compress Binary with UPX
-        shell: pwsh
-        run: |
-          if (Test-Path build/tools/upx.exe) {
-            Write-Host "Compressing bin/hubkit.exe using build/tools/upx.exe --best..."
-            & build/tools/upx.exe --best bin/hubkit.exe
-          } else {
-            Write-Host "Installing UPX via choco for compression..."
-            choco install upx -y --no-progress
-            upx --best bin/hubkit.exe
-          }
           Get-Item bin/hubkit.exe | Select-Object Name, Length
 
       - name: Package Portable ZIP & Compute Checksum
