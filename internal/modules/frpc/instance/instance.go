@@ -35,12 +35,25 @@ const (
 	StateFailed   State = "failed"   // 启动失败 / 异常退出
 )
 
+// ConnState frpc 细粒度网络连接状态
+type ConnState string
+
+const (
+	ConnStateIdle         ConnState = "idle"         // 未连接/停止
+	ConnStateConnecting   ConnState = "connecting"   // 正在握手连接服务端
+	ConnStateConnected    ConnState = "connected"    // 握手成功，穿透正常工作
+	ConnStateAuthFailed   ConnState = "auth_failed"  // Token 或认证错误
+	ConnStateReconnecting ConnState = "reconnecting" // 网络中断/服务端重连中
+	ConnStateError        ConnState = "error"        // 协议或配置严重错误
+)
+
 // Snapshot 实例状态快照：事件推送与前端渲染共用同一模型。
 type Snapshot struct {
 	ProjectID   string    `json:"projectId"`
 	ProjectName string    `json:"projectName"`
 	Version     string    `json:"version"`
 	State       State     `json:"state"`
+	ConnState   ConnState `json:"connState"`
 	PID         uint32    `json:"pid"`
 	ExitCode    int       `json:"exitCode"`
 	Error       string    `json:"error"`
@@ -85,21 +98,20 @@ type Callbacks struct {
 }
 
 // Instance 单个项目的运行实例。
-// 字段访问：state/pid/exitCode 等状态字段受 mu 保护；
-// cmd/job/stopping 由 Start/Stop 临界区（startMu）串行维护，wait goroutine 只读。
 type Instance struct {
 	projectID   string
 	projectName string
 
-	mu      sync.Mutex
-	state   State
-	version string
-	pid     uint32
-	exitCode int
-	errMsg   string
+	mu        sync.Mutex
+	state     State
+	connState ConnState
+	version   string
+	pid       uint32
+	exitCode  int
+	errMsg    string
 	startedAt time.Time
 	stoppedAt time.Time
-	stopping bool // 手动停止标记：防止 kill 后误判为异常退出
+	stopping  bool // 手动停止标记：防止 kill 后误判为异常退出
 
 	startMu sync.Mutex // Start/Stop 互斥临界区
 	cmd     *exec.Cmd
@@ -117,6 +129,7 @@ func newInstance(opts StartOptions, jobAPI platform.JobAPI, cb Callbacks) *Insta
 		projectName: opts.ProjectName,
 		version:     opts.Version,
 		state:       StateStopped,
+		connState:   ConnStateIdle,
 		redact:      append([]string(nil), opts.Redact...),
 		logs:        newRingBuffer(logCapacity),
 		cb:          cb,
@@ -125,7 +138,6 @@ func newInstance(opts StartOptions, jobAPI platform.JobAPI, cb Callbacks) *Insta
 }
 
 // Start 启动/重启实例：创建子进程 → 绑定 JobObject → 状态 running。
-// 任一步失败即回滚：杀掉已启动进程并转 failed，不留孤儿。
 func (in *Instance) Start(opts StartOptions) error {
 	in.startMu.Lock()
 	defer in.startMu.Unlock()
@@ -140,28 +152,28 @@ func (in *Instance) Start(opts StartOptions) error {
 	in.stopping = false
 	in.mu.Unlock()
 
-	in.transition(StateStarting, "")
+	in.transition(StateStarting, ConnStateConnecting, "")
 
 	cmd := exec.Command(opts.FrpcExe, "-c", opts.ConfigPath)
 	cmd.Dir = filepath.Dir(opts.FrpcExe)
 	hideWindow(cmd) // 不弹黑窗口（CREATE_NO_WINDOW）
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		in.transition(StateFailed, "打开进程输出管道失败: "+err.Error())
+		in.transition(StateFailed, ConnStateError, "打开进程输出管道失败: "+err.Error())
 		return err
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		in.transition(StateFailed, "打开进程错误管道失败: "+err.Error())
+		in.transition(StateFailed, ConnStateError, "打开进程错误管道失败: "+err.Error())
 		return err
 	}
 	if err := cmd.Start(); err != nil {
-		in.transition(StateFailed, "进程启动失败: "+err.Error())
+		in.transition(StateFailed, ConnStateError, "进程启动失败: "+err.Error())
 		return err
 	}
 
 	in.mu.Lock()
-	in.cmd = cmd          // 立即登记，保证 Starting 窗口内 Stop 可触达进程
+	in.cmd = cmd // 立即登记
 	in.pid = uint32(cmd.Process.Pid)
 	in.exitCode = 0
 	in.errMsg = ""
@@ -169,20 +181,18 @@ func (in *Instance) Start(opts StartOptions) error {
 	in.stoppedAt = time.Time{}
 	in.mu.Unlock()
 
-	// JobObject 绑定：句柄随 HubKit 退出关闭 → 内核强杀整个进程树（防孤儿兜底）。
-	// 创建或绑定失败视为致命：拒绝裸跑 frpc（宁可启动失败也不留失控进程）。
 	job, jerr := in.jobAPI.Create()
 	if jerr != nil {
 		_ = cmd.Process.Kill()
 		go in.wait()
-		in.transition(StateFailed, "创建 Job Object 失败: "+jerr.Error())
+		in.transition(StateFailed, ConnStateError, "创建 Job Object 失败: "+jerr.Error())
 		return fmt.Errorf("创建 Job Object 失败: %w", jerr)
 	}
 	if aerr := job.Assign(in.pid); aerr != nil {
 		job.Close()
 		_ = cmd.Process.Kill()
 		go in.wait()
-		in.transition(StateFailed, "JobObject 绑定失败: "+aerr.Error())
+		in.transition(StateFailed, ConnStateError, "JobObject 绑定失败: "+aerr.Error())
 		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
 	}
 
@@ -193,12 +203,11 @@ func (in *Instance) Start(opts StartOptions) error {
 	go in.pump(stdout)
 	go in.pump(stderr)
 	go in.wait()
-	in.transition(StateRunning, "")
+	in.transition(StateRunning, ConnStateConnecting, "")
 	return nil
 }
 
-// Stop 停止实例：优先 TerminateJobObject 连子进程一起强杀，回退 TerminateProcess。
-// 幂等：非运行中的实例直接返回。
+// Stop 停止实例
 func (in *Instance) Stop() error {
 	in.startMu.Lock()
 	defer in.startMu.Unlock()
@@ -214,7 +223,7 @@ func (in *Instance) Stop() error {
 
 	if job != nil {
 		if err := job.Terminate(1); err == nil {
-			return nil // wait goroutine 将收尾状态
+			return nil
 		}
 	}
 	if cmd != nil && cmd.Process != nil {
@@ -230,12 +239,12 @@ func (in *Instance) Snapshot() Snapshot {
 	return in.snapshotLocked()
 }
 
-// Logs 返回最近 n 行日志（n <= 0 时全部）。
+// Logs 返回最近 n 行日志。
 func (in *Instance) Logs(n int) []string {
 	return in.logs.Last(n)
 }
 
-// RunningFrom 已运行时长；未运行时返回 0。
+// RunningFrom 已运行时长
 func (in *Instance) RunningDuration() time.Duration {
 	in.mu.Lock()
 	defer in.mu.Unlock()
@@ -245,8 +254,6 @@ func (in *Instance) RunningDuration() time.Duration {
 	return time.Since(in.startedAt)
 }
 
-// ---------- 内部实现 ----------
-
 // snapshotLocked 前置条件：已持 in.mu。
 func (in *Instance) snapshotLocked() Snapshot {
 	return Snapshot{
@@ -254,6 +261,7 @@ func (in *Instance) snapshotLocked() Snapshot {
 		ProjectName: in.projectName,
 		Version:     in.version,
 		State:       in.state,
+		ConnState:   in.connState,
 		PID:         in.pid,
 		ExitCode:    in.exitCode,
 		Error:       in.errMsg,
@@ -262,11 +270,12 @@ func (in *Instance) snapshotLocked() Snapshot {
 	}
 }
 
-// transition 切换状态并通知回调（锁外执行回调，避免阻塞状态访问方）。
-func (in *Instance) transition(s State, errMsg string) {
+// transition 切换状态并通知回调
+func (in *Instance) transition(s State, cs ConnState, errMsg string) {
 	var snap Snapshot
 	in.mu.Lock()
 	in.state = s
+	in.connState = cs
 	in.errMsg = errMsg
 	if s == StateRunning {
 		in.stoppedAt = time.Time{}
@@ -283,7 +292,24 @@ func (in *Instance) transition(s State, errMsg string) {
 	}
 }
 
-// wait 阻塞等待进程退出，回收资源并结算最终状态。
+// updateConnState 仅更新细粒度连接状态并广播
+func (in *Instance) updateConnState(cs ConnState) {
+	var snap Snapshot
+	in.mu.Lock()
+	if in.connState == cs || in.state != StateRunning {
+		in.mu.Unlock()
+		return
+	}
+	in.connState = cs
+	snap = in.snapshotLocked()
+	in.mu.Unlock()
+
+	if in.cb.OnState != nil {
+		in.cb.OnState(snap)
+	}
+}
+
+// wait 阻塞等待进程退出
 func (in *Instance) wait() {
 	err := in.cmd.Wait()
 	code := 0
@@ -305,15 +331,12 @@ func (in *Instance) wait() {
 
 	switch {
 	case stopped:
-		// 手动停止（含 JobObject 绑定失败后 Kill 的场景）：消息由发起方决定
-		in.transition(StateStopped, "已手动停止")
+		in.transition(StateStopped, ConnStateIdle, "已手动停止")
 	case code == 0 && prev == StateRunning:
-		in.transition(StateStopped, "")
+		in.transition(StateStopped, ConnStateIdle, "")
 	case prev != StateFailed:
-		// 自然异常退出，或启动瞬间崩溃
-		in.transition(StateFailed, fmt.Sprintf("frpc 进程异常退出（退出码 %d）", code))
+		in.transition(StateFailed, ConnStateError, fmt.Sprintf("frpc 进程异常退出（退出码 %d）", code))
 	default:
-		// 启动失败路径（JobObject 绑定失败等）：保留更精确的错误信息，只刷新快照
 		in.mu.Lock()
 		snap := in.snapshotLocked()
 		in.mu.Unlock()
@@ -329,16 +352,36 @@ func (in *Instance) pump(r io.Reader) {
 	for {
 		line, err := br.ReadString('\n')
 		if line != "" {
-			in.writeLog(line)
+			in.inspectAndWriteLog(line)
 		}
-		if err != nil { // io.EOF 或管道损坏
+		if err != nil {
 			return
 		}
 	}
 }
 
-// writeLog 统一入口：脱敏 → 环形缓冲 → 回调。
-func (in *Instance) writeLog(line string) {
+// inspectAndWriteLog 统一入口：连接状态关键词嗅探 → 脱敏 → 环形缓冲 → 回调。
+func (in *Instance) inspectAndWriteLog(line string) {
+	lower := strings.ToLower(line)
+
+	// 嗅探 frpc 日志中的连接特征词
+	if strings.Contains(lower, "login to server success") ||
+		strings.Contains(lower, "start proxy success") ||
+		strings.Contains(lower, "work connection success") {
+		in.updateConnState(ConnStateConnected)
+	} else if strings.Contains(lower, "authorization failed") ||
+		strings.Contains(lower, "token is not correct") ||
+		strings.Contains(lower, "token is empty") ||
+		strings.Contains(lower, "user or token not matched") {
+		in.updateConnState(ConnStateAuthFailed)
+	} else if strings.Contains(lower, "connect to server error") ||
+		strings.Contains(lower, "try to reconnect") ||
+		strings.Contains(lower, "i/o timeout") ||
+		strings.Contains(lower, "connection refused") ||
+		strings.Contains(lower, "wait until next retry") {
+		in.updateConnState(ConnStateReconnecting)
+	}
+
 	in.mu.Lock()
 	redact := append([]string(nil), in.redact...)
 	in.mu.Unlock()
@@ -350,7 +393,7 @@ func (in *Instance) writeLog(line string) {
 	}
 }
 
-// redactText 将秘密串替换为 ***，防止 token 泄漏进日志与日志回放。
+// redactText 将秘密串替换为 ***
 func redactText(line string, secrets []string) string {
 	for _, s := range secrets {
 		if s != "" && strings.Contains(line, s) {

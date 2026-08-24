@@ -322,13 +322,24 @@ func (m *Manager) tryFetchChecksum(version string) string {
 	return ""
 }
 
-// downloadTo 依次尝试候选 URL 下载到临时文件（follow redirect）
+// downloadTo 依次尝试候选 URL 下载到临时文件，支持重试与镜像故障转移
 func (m *Manager) downloadTo(urls []string, dest string, onProgress func(done int64)) error {
-	for _, u := range urls {
-		err := m.tryDownloadSingle(u, dest, onProgress)
-		if err == nil {
-			return nil
+	const maxRetries = 2
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * time.Second)
 		}
+		for _, u := range urls {
+			err := m.tryDownloadSingle(u, dest, onProgress)
+			if err == nil {
+				return nil
+			}
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("所有下载源与重试均失败: %w", lastErr)
 	}
 	return fmt.Errorf("所有下载源均失败")
 }

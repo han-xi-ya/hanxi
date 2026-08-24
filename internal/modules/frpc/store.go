@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"hubkit/internal/domain"
+	"hubkit/internal/platform/windows"
 )
+
+const dpapiPrefix = "dpapi:"
 
 // frpcStore 项目存储：以单 JSON 文件原子读写持久化全部 frpc 项目。
 // 位置：<dataDir>/frpc/projects.json（与版本隔离目录同根，方便整体拷贝搬迁）。
@@ -45,10 +49,18 @@ func (s *frpcStore) load() error {
 	if err := json.Unmarshal(bytes, &data); err != nil {
 		return fmt.Errorf("corrupt frpc projects.json: %w", err)
 	}
-	// 兼容旧数据保底：无 ID 的项目自动补 ID
+	// 兼容与解密：自动解密 DPAPI 加密的 Token，无 ID 的项目自动补 ID
 	for _, p := range data.Projects {
 		if p.ID == "" {
 			p.ID = newProjectID()
+		}
+		// 若 Token 使用 DPAPI 加密，则在内存中解密为明文
+		if strings.HasPrefix(p.Server.Token, dpapiPrefix) {
+			cipher := strings.TrimPrefix(p.Server.Token, dpapiPrefix)
+			plain, err := windows.DPAPIDecrypt(cipher)
+			if err == nil {
+				p.Server.Token = string(plain)
+			}
 		}
 		s.projects[p.ID] = p
 	}
@@ -62,7 +74,15 @@ func (s *frpcStore) saveLocked() error {
 	}
 	list := make([]domain.Project, 0, len(s.projects))
 	for _, p := range s.projects {
-		list = append(list, p)
+		// 落盘保护：克隆对象并将敏感 Token 加密为 DPAPI 密文
+		item := p
+		if item.Server.Token != "" {
+			cipher, err := windows.DPAPIEncrypt([]byte(item.Server.Token))
+			if err == nil {
+				item.Server.Token = dpapiPrefix + cipher
+			}
+		}
+		list = append(list, item)
 	}
 	data := struct {
 		Projects  []domain.Project `json:"projects"`

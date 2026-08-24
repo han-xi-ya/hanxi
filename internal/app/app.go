@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"hubkit/internal/extapi"
 	"hubkit/internal/logging"
@@ -75,7 +76,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	}
 
 	services := []application.Service{
-		application.NewService(NewAppService(registry)),
+		application.NewService(NewAppService(registry, store)),
 	}
 	services = append(services, registry.EnabledServices()...)
 
@@ -89,12 +90,46 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		},
 	})
 
-	a.Window.NewWithOptions(application.WebviewWindowOptions{
+	win := a.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            Name,
 		Width:            1200,
 		Height:           780,
 		BackgroundColour: application.NewRGB(245, 246, 248),
 		URL:              "/",
+	})
+
+	// 注册窗口关闭拦截钩子：如果开启了“关闭时最小化到托盘”，则隐藏窗口代替退出
+	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
+		minimizeToTray := true
+		if store != nil {
+			minimizeToTray = store.Get().MinimizeToTray
+		}
+		if minimizeToTray {
+			e.Cancel()
+			win.Hide()
+		}
+	})
+
+	// 创建系统托盘 (Systray)
+	tray := a.SystemTray.New()
+	tray.SetTooltip(Name + " - 内网穿透与网络工具箱")
+	trayMenu := a.NewMenu()
+	trayMenu.Add("显示 " + Name).OnClick(func(ctx *application.Context) {
+		win.Show()
+		win.Focus()
+	})
+	trayMenu.AddSeparator()
+	trayMenu.Add("退出").OnClick(func(ctx *application.Context) {
+		a.Quit()
+	})
+	tray.SetMenu(trayMenu)
+	tray.OnDoubleClick(func() {
+		if win.IsVisible() {
+			win.Hide()
+		} else {
+			win.Show()
+			win.Focus()
+		}
 	})
 
 	cleanup := func() {

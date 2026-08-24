@@ -11,6 +11,7 @@ import (
 
 	"hubkit/internal/domain"
 	"hubkit/internal/extapi"
+	"hubkit/internal/platform/windows"
 	"hubkit/internal/settings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -34,10 +35,11 @@ type AppInfo struct {
 // 应用信息、模块清单与导航（扩展注入的入口）。
 type AppService struct {
 	registry *extapi.Registry
+	store    *settings.Store
 }
 
-func NewAppService(registry *extapi.Registry) *AppService {
-	return &AppService{registry: registry}
+func NewAppService(registry *extapi.Registry, store *settings.Store) *AppService {
+	return &AppService{registry: registry, store: store}
 }
 
 func (s *AppService) GetAppInfo() AppInfo {
@@ -249,4 +251,52 @@ func (s *AppService) SetModuleEnabled(id string, enabled bool) (*extapi.ModuleIn
 		}
 	}
 	return nil, nil
+}
+
+// GeneralSettings 前端通用设置模型
+type GeneralSettings struct {
+	AutoStart      bool `json:"autoStart"`
+	MinimizeToTray bool `json:"minimizeToTray"`
+	LogRetainDays  int  `json:"logRetainDays"`
+}
+
+// GetGeneralSettings 获取常规配置（开机自启、最小化托盘等）
+func (s *AppService) GetGeneralSettings() GeneralSettings {
+	if s.store == nil {
+		return GeneralSettings{
+			AutoStart:      false,
+			MinimizeToTray: true,
+			LogRetainDays:  7,
+		}
+	}
+	cfg := s.store.Get()
+	// 如果在 Windows 平台，以注册表的实际状态同步
+	if runtime.GOOS == "windows" {
+		cfg.AutoStart = windows.IsAutoStart()
+	}
+	return GeneralSettings{
+		AutoStart:      cfg.AutoStart,
+		MinimizeToTray: cfg.MinimizeToTray,
+		LogRetainDays:  cfg.LogRetainDays,
+	}
+}
+
+// SetGeneralSettings 保存常规配置
+func (s *AppService) SetGeneralSettings(gen GeneralSettings) error {
+	if runtime.GOOS == "windows" {
+		if err := windows.SetAutoStart(gen.AutoStart); err != nil {
+			return fmt.Errorf("设置开机自启动失败: %w", err)
+		}
+	}
+
+	if s.store != nil {
+		return s.store.Update(func(cfg *settings.AppSettings) {
+			cfg.AutoStart = gen.AutoStart
+			cfg.MinimizeToTray = gen.MinimizeToTray
+			if gen.LogRetainDays > 0 {
+				cfg.LogRetainDays = gen.LogRetainDays
+			}
+		})
+	}
+	return nil
 }

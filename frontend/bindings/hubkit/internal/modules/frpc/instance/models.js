@@ -16,12 +16,28 @@
  * @property {string} projectName
  * @property {string} version
  * @property {State} state
+ * @property {ConnState} [connState]
  * @property {number} pid
  * @property {number} exitCode
  * @property {string} error
  * @property {string} startedAt
  * @property {string} stoppedAt
  */
+
+/**
+ * ConnState frpc 细粒度网络连接状态
+ * @readonly
+ * @enum {string}
+ */
+export const ConnState = {
+    $zero: "",
+    ConnStateIdle: "idle",
+    ConnStateConnecting: "connecting",
+    ConnStateConnected: "connected",
+    ConnStateAuthFailed: "auth_failed",
+    ConnStateReconnecting: "reconnecting",
+    ConnStateError: "error",
+};
 
 /**
  * State 实例生命周期状态机：stopped → starting → running → (stopped | failed)

@@ -75,10 +75,47 @@ function runningDuration(s: Snapshot | undefined): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
-const stateBadge = computed(() => (p: Project): { cls: string; text: string; dot: string } => {
+const stateBadge = computed(() => (p: Project): { cls: string; text: string; dot: string; connInfo?: string } => {
   const s = stateOf(p)
   switch (s?.state) {
-    case 'running': return { cls: 'running', text: `运行中 · ${runningDuration(s)}`, dot: '#2da44e' }
+    case 'running': {
+      let connDesc = ''
+      let dotColor = '#2da44e'
+      let statusCls = 'running'
+
+      switch (s.connState) {
+        case 'connected':
+          connDesc = '已连接服务端'
+          dotColor = '#2da44e'
+          break
+        case 'connecting':
+          connDesc = '握手中…'
+          dotColor = '#d4a72c'
+          statusCls = 'starting'
+          break
+        case 'auth_failed':
+          connDesc = '鉴权失败 (Token错误)'
+          dotColor = '#cf222e'
+          statusCls = 'failed'
+          break
+        case 'reconnecting':
+          connDesc = '重连服务端中…'
+          dotColor = '#d4a72c'
+          statusCls = 'starting'
+          break
+        case 'error':
+          connDesc = '连接异常'
+          dotColor = '#cf222e'
+          statusCls = 'failed'
+          break
+      }
+
+      const text = connDesc
+        ? `${connDesc} · ${runningDuration(s)}`
+        : `运行中 · ${runningDuration(s)}`
+
+      return { cls: statusCls, text, dot: dotColor, connInfo: connDesc }
+    }
     case 'starting': return { cls: 'starting', text: '启动中…', dot: '#d4a72c' }
     case 'failed': return { cls: 'failed', text: '启动失败', dot: '#cf222e' }
     default: return { cls: 'stopped', text: '未启动', dot: '#c1c7cd' }

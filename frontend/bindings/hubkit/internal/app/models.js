@@ -18,6 +18,14 @@
  */
 
 /**
+ * GeneralSettings 前端通用设置模型
+ * @typedef {Object} GeneralSettings
+ * @property {boolean} autoStart
+ * @property {boolean} minimizeToTray
+ * @property {number} logRetainDays
+ */
+
+/**
  * LogFileInfo 日志文件基本元数据
  * @typedef {Object} LogFileInfo
  * @property {string} name

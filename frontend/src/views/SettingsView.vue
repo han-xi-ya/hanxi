@@ -8,12 +8,38 @@ import { useToast } from '../composables/useToast'
 const { showToast } = useToast()
 
 const appInfo = ref<AppInfo | null>(null)
+const autoStart = ref(false)
+const minimizeToTray = ref(true)
+const logRetainDays = ref(7)
+const savingGeneral = ref(false)
 
 async function refresh() {
   try {
     appInfo.value = await AppAPI.AppService.GetAppInfo()
+    const gen = await AppAPI.AppService.GetGeneralSettings()
+    autoStart.value = gen.autoStart
+    minimizeToTray.value = gen.minimizeToTray
+    logRetainDays.value = gen.logRetainDays || 7
   } catch (e: unknown) {
     showToast(`获取系统信息失败: ${getErrorMessage(e)}`)
+  }
+}
+
+async function updateGeneralSettings() {
+  savingGeneral.value = true
+  try {
+    await AppAPI.AppService.SetGeneralSettings({
+      autoStart: autoStart.value,
+      minimizeToTray: minimizeToTray.value,
+      logRetainDays: Number(logRetainDays.value) || 7,
+    })
+    showToast('常规偏好设置已更新')
+  } catch (e: unknown) {
+    showToast(`保存设置失败: ${getErrorMessage(e)}`)
+    // 回滚刷新
+    await refresh()
+  } finally {
+    savingGeneral.value = false
   }
 }
 
@@ -61,7 +87,46 @@ onMounted(refresh)
     <div class="header-row">
       <div>
         <h1>设置</h1>
-        <p class="subtitle">查看系统存储目录、运行模式与开发者快捷工具直达。</p>
+        <p class="subtitle">查看系统存储目录、常规运行偏好与开发者快捷工具直达。</p>
+      </div>
+    </div>
+
+    <!-- 常规设置与系统常驻 -->
+    <div class="section-card">
+      <div class="card-header">
+        <div>
+          <h2>常规与运行偏好 (General Preferences)</h2>
+          <p class="hint">配置 Windows 系统开机自启、关闭窗口行为与日志轮转策略。</p>
+        </div>
+      </div>
+
+      <div class="pref-list">
+        <label class="pref-item">
+          <div class="pref-info">
+            <span class="pref-title">开机自动启动</span>
+            <span class="pref-desc">开启后将在 Windows 启动时以最小化模式静默常驻后台</span>
+          </div>
+          <input type="checkbox" v-model="autoStart" @change="updateGeneralSettings" :disabled="savingGeneral" class="switch" />
+        </label>
+
+        <label class="pref-item">
+          <div class="pref-info">
+            <span class="pref-title">关闭主窗口时最小化到系统托盘</span>
+            <span class="pref-desc">点击右上角关闭按钮时保留后台托盘与已启动的 frpc 实例，而不是直接退出</span>
+          </div>
+          <input type="checkbox" v-model="minimizeToTray" @change="updateGeneralSettings" :disabled="savingGeneral" class="switch" />
+        </label>
+
+        <div class="pref-item">
+          <div class="pref-info">
+            <span class="pref-title">脱敏运行日志保留天数</span>
+            <span class="pref-desc">自动清理过期日志文件，避免长期运行占用过多磁盘空间</span>
+          </div>
+          <div class="input-inline">
+            <input type="number" v-model.number="logRetainDays" @change="updateGeneralSettings" min="1" max="90" class="input-number" />
+            <span class="input-unit">天</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -181,6 +246,28 @@ onMounted(refresh)
 .card-header h2 { font-size: 15px; font-weight: 600; margin: 0; }
 .hint { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; }
 .mode-tag { color: var(--accent); }
+
+.pref-list {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.pref-item {
+  background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 6px;
+  padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  cursor: pointer;
+}
+.pref-info { display: flex; flex-direction: column; gap: 2px; }
+.pref-title { font-size: 13px; font-weight: 600; color: var(--text-main); }
+.pref-desc { font-size: 11px; color: var(--text-muted); }
+
+.switch {
+  width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent);
+}
+.input-inline { display: flex; align-items: center; gap: 6px; }
+.input-number {
+  width: 60px; padding: 4px 8px; border: 1px solid var(--border-color);
+  border-radius: 4px; background: var(--bg-card); color: var(--text-main); font-size: 13px;
+}
+.input-unit { font-size: 12px; color: var(--text-muted); }
 
 .dir-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px;

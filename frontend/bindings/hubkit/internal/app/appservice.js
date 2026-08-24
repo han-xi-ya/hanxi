@@ -38,10 +38,28 @@ export function EnsureModuleActive(moduleID) {
 }
 
 /**
+ * GetAppInfo
  * @returns {$CancellablePromise<$models.AppInfo>}
  */
 export function GetAppInfo() {
     return $Call.ByID(2798046905);
+}
+
+/**
+ * GetGeneralSettings 获取常规配置（开机自启、最小化托盘等）
+ * @returns {$CancellablePromise<$models.GeneralSettings>}
+ */
+export function GetGeneralSettings() {
+    return $Call.ByName("hubkit/internal/app.AppService.GetGeneralSettings");
+}
+
+/**
+ * SetGeneralSettings 保存常规配置
+ * @param {$models.GeneralSettings} settings
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetGeneralSettings(settings) {
+    return $Call.ByName("hubkit/internal/app.AppService.SetGeneralSettings", settings);
 }
 
 /**

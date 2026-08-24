@@ -249,11 +249,15 @@ func (s *FrpcService) StartProject(id string) error {
 	return nil
 }
 
-// StopProject 停止项目实例（幂等）。
+// StopProject 停止项目实例（幂等），并清除生成的运行时临时配置。
 func (s *FrpcService) StopProject(id string) error {
-	if err := s.engine.Stop(strings.TrimSpace(id)); err != nil {
+	id = strings.TrimSpace(id)
+	if err := s.engine.Stop(id); err != nil {
 		return fmt.Errorf("停止实例失败: %w", err)
 	}
+	// 立即擦除生成的临时 TOML 配置文件，防止敏感 Token 闲置残留
+	cfgPath := filepath.Join(s.runDir, projectConfigName(id))
+	_ = os.Remove(cfgPath)
 	return nil
 }
 
