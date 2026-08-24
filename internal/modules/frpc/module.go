@@ -35,8 +35,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "frpc-projects", Title: "frpc 项目", Route: "/frpc", Icon: "⧉", Section: extapi.SectionCore, Order: 10},
-		{ID: "frpc-versions", Title: "版本管理", Route: "/versions", Icon: "⬇", Section: extapi.SectionCore, Order: 20},
+		{ID: "frpc-projects", Title: "frpc 穿透", Route: "/frpc", Icon: "⧉", Section: extapi.SectionCore, Order: 10},
 	}
 }
 

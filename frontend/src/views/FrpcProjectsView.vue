@@ -5,10 +5,14 @@ import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservic
 import type { Project } from '../../bindings/hubkit/internal/domain/models'
 import type { Snapshot } from '../../bindings/hubkit/internal/modules/frpc/instance/models'
 import FrpcProjectEditor from '../components/FrpcProjectEditor.vue'
+import FrpcVersionsTab from '../components/FrpcVersionsTab.vue'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 
 const { showToast } = useToast()
+
+// 顶层主选项卡：projects = 项目列表，versions = 版本管理
+const activeMainTab = ref<'projects' | 'versions'>('projects')
 
 const projects = shallowRef<Project[]>([])
 const loading = ref(false)
@@ -459,97 +463,121 @@ onUnmounted(() => {
     <template v-else>
       <div class="header-row">
         <div>
-          <h1>frpc 项目</h1>
-          <p class="subtitle">项目 = 一份 frp 配置。每个项目独立 frpc.exe 进程运行，退出 HubKit 时内核连带清理，杜绝孤儿进程。</p>
+          <h1>frpc 穿透</h1>
+          <p class="subtitle">支持多实例隔离运行与版本管理。退出 HubKit 时内核连带清理，杜绝孤儿进程。</p>
+        </div>
+        <div class="main-tab-nav">
+          <button
+            class="main-tab-btn"
+            :class="{ active: activeMainTab === 'projects' }"
+            @click="activeMainTab = 'projects'"
+          >
+            ⧉ 穿透项目
+          </button>
+          <button
+            class="main-tab-btn"
+            :class="{ active: activeMainTab === 'versions' }"
+            @click="activeMainTab = 'versions'"
+          >
+            📦 版本管理
+          </button>
         </div>
       </div>
 
-      <div class="control-panel">
-        <div class="meta-info">
-          <span>共 {{ projects.length }} 个项目 · {{ Object.keys(instances).filter(id => instances[id]?.state === 'running').length }} 个运行中</span>
-        </div>
-        <div class="control-actions">
-          <button class="btn btn-secondary" @click="openImportModal">⬇ 导入配置 / 链接</button>
-          <button class="btn btn-primary" @click="openCreate">+ 新建项目</button>
-        </div>
+      <!-- 版本管理 Tab -->
+      <div v-show="activeMainTab === 'versions'" class="tab-body">
+        <FrpcVersionsTab @version-changed="loadInstalledVersions" />
       </div>
 
-      <div v-if="errorMsg" class="error-box">{{ errorMsg }}</div>
-
-      <div v-if="projects.length === 0 && !loading" class="empty-state">
-        <div class="empty-icon">⧉</div>
-        <p>还没有 frp 项目</p>
-        <div class="empty-actions">
-          <button class="btn btn-secondary" @click="openImportModal">导入已有配置</button>
-          <button class="btn btn-primary" @click="openCreate">创建第一个项目</button>
+      <!-- 项目管理 Tab -->
+      <div v-show="activeMainTab === 'projects'" class="tab-body">
+        <div class="control-panel">
+          <div class="meta-info">
+            <span>共 {{ projects.length }} 个项目 · {{ Object.keys(instances).filter(id => instances[id]?.state === 'running').length }} 个运行中</span>
+          </div>
+          <div class="control-actions">
+            <button class="btn btn-secondary" @click="openImportModal">⬇ 导入配置 / 链接</button>
+            <button class="btn btn-primary" @click="openCreate">+ 新建项目</button>
+          </div>
         </div>
-      </div>
 
-      <div class="project-grid">
-        <div v-for="p in projects" :key="p.id" class="project-card" :class="{ active: isActive(p) }">
-          <div class="proj-top">
-            <div class="proj-title-box">
-              <span class="proj-name">{{ p.name }}</span>
-              <span v-if="p.version" class="badge badge-version">{{ p.version }}</span>
-              <span v-else class="badge badge-unbound">未绑定版本</span>
-            </div>
-            <span class="proj-status" :class="stateBadge(p).cls" :title="stateOf(p)?.error || ''">
-              <span class="dot" :style="{ background: stateBadge(p).dot }"></span>{{ stateBadge(p).text }}
-            </span>
+        <div v-if="errorMsg" class="error-box">{{ errorMsg }}</div>
+
+        <div v-if="projects.length === 0 && !loading" class="empty-state">
+          <div class="empty-icon">⧉</div>
+          <p>还没有 frp 项目</p>
+          <div class="empty-actions">
+            <button class="btn btn-secondary" @click="openImportModal">导入已有配置</button>
+            <button class="btn btn-primary" @click="openCreate">创建第一个项目</button>
           </div>
+        </div>
 
-          <div class="proj-server">
-            <span class="server-addr">{{ p.server.serverAddr }}:{{ p.server.serverPort }}</span>
-            <span class="server-flags">
-              <span v-if="p.server.tlsEnable" class="flag">TLS</span>
-              <span v-if="p.server.useEncryption" class="flag">加密</span>
-              <span v-if="p.server.useCompression" class="flag">压缩</span>
-            </span>
-          </div>
-
-          <div class="proj-proxies">
-            <span class="proxies-label">{{ (p.proxies ?? []).length }} 条规则</span>
-            <span v-if="(p.proxies ?? []).length" class="proxies-types">{{ typeCount(p) }}</span>
-            <span v-if="stateOf(p)?.pid" class="proxy-pid">PID {{ stateOf(p)?.pid }}</span>
-          </div>
-
-          <!-- 运行态/常态规则目标与快捷直达列表 -->
-          <div v-if="(p.proxies ?? []).length" class="endpoints-box">
-            <div v-for="ep in resolveEndpoints(p)" :key="ep.name" class="endpoint-row">
-              <div class="ep-left">
-                <span class="ep-badge" :class="ep.type">{{ ep.type.toUpperCase() }}</span>
-                <span class="ep-name" :title="ep.name">{{ ep.name }}</span>
+        <div class="project-grid">
+          <div v-for="p in projects" :key="p.id" class="project-card" :class="{ active: isActive(p) }">
+            <div class="proj-top">
+              <div class="proj-title-box">
+                <span class="proj-name">{{ p.name }}</span>
+                <span v-if="p.version" class="badge badge-version">{{ p.version }}</span>
+                <span v-else class="badge badge-unbound">未绑定版本</span>
               </div>
-              <div class="ep-flow">
-                <span class="ep-local" :title="ep.local">{{ ep.local }}</span>
-                <span class="ep-arrow">➜</span>
-                <span class="ep-remote" :title="ep.url || ep.remoteDisplay">
-                  <a v-if="ep.url && isActive(p)" :href="ep.url" target="_blank" class="ep-link">{{ ep.remoteDisplay }}</a>
-                  <span v-else>{{ ep.remoteDisplay }}</span>
-                </span>
-              </div>
-              <button class="btn-copy-mini" title="复制远程访问地址" @click="copyEndpoint(ep)">⧉</button>
+              <span class="proj-status" :class="stateBadge(p).cls" :title="stateOf(p)?.error || ''">
+                <span class="dot" :style="{ background: stateBadge(p).dot }"></span>{{ stateBadge(p).text }}
+              </span>
             </div>
-          </div>
 
-          <div v-if="stateOf(p)?.error" class="proj-error">{{ stateOf(p)?.error }}</div>
+            <div class="proj-server">
+              <span class="server-addr">{{ p.server.serverAddr }}:{{ p.server.serverPort }}</span>
+              <span class="server-flags">
+                <span v-if="p.server.tlsEnable" class="flag">TLS</span>
+                <span v-if="p.server.useEncryption" class="flag">加密</span>
+                <span v-if="p.server.useCompression" class="flag">压缩</span>
+              </span>
+            </div>
 
-          <div class="proj-actions">
-            <template v-if="stateOf(p)?.state === 'running'">
-              <button class="btn btn-stop btn-small" @click="toggleStart(p)">■ 停止</button>
-            </template>
-            <template v-else>
-              <button
-                class="btn btn-primary btn-small"
-                :disabled="starting.has(p.id) || stateOf(p)?.state === 'starting'"
-                @click="toggleStart(p)"
-              >{{ starting.has(p.id) || stateOf(p)?.state === 'starting' ? '启动中…' : '▶ 启动' }}</button>
-            </template>
-            <button class="btn btn-secondary btn-small" @click="openLogs(p)">日志</button>
-            <button class="btn btn-secondary btn-small" :disabled="isActive(p)" @click="openEdit(p)">编辑</button>
-            <button class="btn btn-secondary btn-small" title="生成并复制 frp:// 分享链接" @click="exportProjectShareLink(p)">⚡ 分享</button>
-            <button class="btn btn-secondary btn-small" @click="copyProject(p)">复制</button>
-            <button class="btn btn-danger-outline btn-small" :disabled="isActive(p)" @click="deleteProject(p)">删除</button>
+            <div class="proj-proxies">
+              <span class="proxies-label">{{ (p.proxies ?? []).length }} 条规则</span>
+              <span v-if="(p.proxies ?? []).length" class="proxies-types">{{ typeCount(p) }}</span>
+              <span v-if="stateOf(p)?.pid" class="proxy-pid">PID {{ stateOf(p)?.pid }}</span>
+            </div>
+
+            <!-- 运行态/常态规则目标与快捷直达列表 -->
+            <div v-if="(p.proxies ?? []).length" class="endpoints-box">
+              <div v-for="ep in resolveEndpoints(p)" :key="ep.name" class="endpoint-row">
+                <div class="ep-left">
+                  <span class="ep-badge" :class="ep.type">{{ ep.type.toUpperCase() }}</span>
+                  <span class="ep-name" :title="ep.name">{{ ep.name }}</span>
+                </div>
+                <div class="ep-flow">
+                  <span class="ep-local" :title="ep.local">{{ ep.local }}</span>
+                  <span class="ep-arrow">➜</span>
+                  <span class="ep-remote" :title="ep.url || ep.remoteDisplay">
+                    <a v-if="ep.url && isActive(p)" :href="ep.url" target="_blank" class="ep-link">{{ ep.remoteDisplay }}</a>
+                    <span v-else>{{ ep.remoteDisplay }}</span>
+                  </span>
+                </div>
+                <button class="btn-copy-mini" title="复制远程访问地址" @click="copyEndpoint(ep)">⧉</button>
+              </div>
+            </div>
+
+            <div v-if="stateOf(p)?.error" class="proj-error">{{ stateOf(p)?.error }}</div>
+
+            <div class="proj-actions">
+              <template v-if="stateOf(p)?.state === 'running'">
+                <button class="btn btn-stop btn-small" @click="toggleStart(p)">■ 停止</button>
+              </template>
+              <template v-else>
+                <button
+                  class="btn btn-primary btn-small"
+                  :disabled="starting.has(p.id) || stateOf(p)?.state === 'starting'"
+                  @click="toggleStart(p)"
+                >{{ starting.has(p.id) || stateOf(p)?.state === 'starting' ? '启动中…' : '▶ 启动' }}</button>
+              </template>
+              <button class="btn btn-secondary btn-small" @click="openLogs(p)">日志</button>
+              <button class="btn btn-secondary btn-small" :disabled="isActive(p)" @click="openEdit(p)">编辑</button>
+              <button class="btn btn-secondary btn-small" title="生成并复制 frp:// 分享链接" @click="exportProjectShareLink(p)">⚡ 分享</button>
+              <button class="btn btn-secondary btn-small" @click="copyProject(p)">复制</button>
+              <button class="btn btn-danger-outline btn-small" :disabled="isActive(p)" @click="deleteProject(p)">删除</button>
+            </div>
           </div>
         </div>
       </div>
@@ -613,6 +641,39 @@ onUnmounted(() => {
 .header-row { display: flex; justify-content: space-between; align-items: center; }
 .subtitle { color: var(--text-muted); font-size: 13px; margin: 4px 0 0; }
 .toast { background: var(--text-main); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; animation: fadeIn 0.2s ease; }
+
+.main-tab-nav {
+  display: flex;
+  background: var(--bg-hover);
+  padding: 3px;
+  border-radius: 8px;
+  gap: 2px;
+}
+.main-tab-btn {
+  background: transparent;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.main-tab-btn:hover {
+  color: var(--text-main);
+}
+.main-tab-btn.active {
+  background: var(--bg-app);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
 .control-panel {
   display: flex; align-items: center; justify-content: space-between;

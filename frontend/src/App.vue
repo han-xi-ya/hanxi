@@ -5,7 +5,6 @@ import * as AppAPI from '../bindings/hubkit/internal/app'
 import type { NavEntry } from '../bindings/hubkit/internal/extapi/models'
 import HomeView from './views/HomeView.vue'
 import FrpcProjectsView from './views/FrpcProjectsView.vue'
-import VersionsView from './views/VersionsView.vue'
 import SettingsView from './views/SettingsView.vue'
 import AboutView from './views/AboutView.vue'
 import LogsView from './views/LogsView.vue'
@@ -23,7 +22,6 @@ const { toastMsg } = useToast()
 const CORE_VIEWS: Record<string, any> = {
   '/': markRaw(HomeView),
   '/frpc': markRaw(FrpcProjectsView),
-  '/versions': markRaw(VersionsView),
   '/ext/lan': markRaw(LanScannerView),
   '/ext/portscan': markRaw(PortScanView),
   '/ext/wechat': markRaw(WechatBotView),
@@ -37,7 +35,6 @@ const CORE_VIEWS: Record<string, any> = {
 // 路由与后端模块 ID 对应关系（用于路由切换时的零开销按需懒加载）
 const ROUTE_MODULE_MAP: Record<string, string> = {
   '/frpc': 'frpc',
-  '/versions': 'frpc',
   '/ext/lan': 'lan',
   '/ext/portscan': 'portscan',
   '/ext/wechat': 'wechat',
