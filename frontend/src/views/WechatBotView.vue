@@ -1,81 +1,154 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import QRCode from 'qrcode'
 import { Events } from '@wailsio/runtime'
 import * as WechatAPI from '../../bindings/hubkit/internal/modules/wechat'
-import type { WechatState, QRInfo, InboundMessage } from '../../bindings/hubkit/internal/modules/wechat/models'
+import type { WechatAccountState, QRInfo, InboundMessage } from '../../bindings/hubkit/internal/modules/wechat/models'
 import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
 
-const state = ref<WechatState>({
-  isLoggedIn: false,
-  botToken: '',
-  ilinkBotId: '',
-  ilinkUserId: '',
-  contextToken: '',
-  contextTokenUpdatedAt: '',
-  targetUserId: '',
-  isListening: false
+const { showToast } = useToast()
+
+// 账号列表与当前选中账号
+const accounts = ref<WechatAccountState[]>([])
+const selectedAccountId = ref<string>('')
+
+// 当前选中的账号对象
+const currentAccount = computed<WechatAccountState | null>(() => {
+  if (!accounts.value || accounts.value.length === 0) return null
+  return accounts.value.find(a => a.id === selectedAccountId.value) || accounts.value[0]
 })
 
-// 登录二维码相关
+// 聊天消息实体
+export interface ChatMessage {
+  id: string
+  accountId: string
+  time: string
+  direction: 'in' | 'out' | 'sys'
+  msgType: 'text' | 'image' | 'file' | 'system'
+  senderName?: string
+  content: string
+  filePath?: string
+  fileName?: string
+  status?: 'sending' | 'sent' | 'failed'
+  error?: string
+}
+
+// 消息列表（按会话隔离）
+const chatMessages = ref<ChatMessage[]>([])
+const messageContainer = ref<HTMLDivElement | null>(null)
+
+// 输入框与发送状态
+const inputText = ref('')
+const isSending = ref(false)
+const toUserIdInput = ref('')
+const isEditingTargetUser = ref(false)
+
+// 侧边栏折叠状态
+const isSidebarCollapsed = ref(false)
+
+// 规则横幅折叠状态
+const showRulesBanner = ref(true)
+
+// 扫码绑定弹窗状态
+const showBindModal = ref(false)
+const bindRemarkName = ref('')
 const qrInfo = ref<QRInfo | null>(null)
-const qrCanvas = ref<HTMLCanvasElement | null>(null)
-const qrDataUrl = ref<string>('')
+const qrDataUrl = ref('')
 const qrLoading = ref(false)
 const qrStatusText = ref('')
 const qrStatusType = ref<'wait' | 'scaned' | 'confirmed' | 'expired' | 'error' | ''>('')
 let qrPollTimer: ReturnType<typeof setInterval> | null = null
 
-// 消息发送相关
-const toUserId = ref('')
-const textContent = ref('')
-const imagePath = ref('')
-const filePath = ref('')
-const isSending = ref(false)
-const sendNotice = ref<{ text: string; type: 'success' | 'error' | 'info' } | null>(null)
+// 账号重命名模态状态
+const showRenameModal = ref(false)
+const renameTargetId = ref('')
+const renameNewVal = ref('')
 
-// 刷新与监听
+// 刷新状态
 const isRefreshingToken = ref(false)
-const isTogglingListener = ref(false)
 
-// 消息日志流
-export interface MessageLogEntry {
-  id: string
-  time: string
-  type: 'in' | 'out' | 'sys'
-  text: string
-  detail?: string
+// 自动平滑滚动到底部
+function scrollToBottom(smooth = false) {
+  nextTick(() => {
+    if (messageContainer.value) {
+      messageContainer.value.scrollTo({
+        top: messageContainer.value.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      })
+    }
+  })
 }
 
-const messageLogs = shallowRef<MessageLogEntry[]>([])
-
-let logSeq = 0
-function addLog(type: 'in' | 'out' | 'sys', text: string, detail?: string) {
-  const time = new Date().toLocaleTimeString()
-  const entry: MessageLogEntry = { id: `${Date.now()}-${++logSeq}`, time, type, text, detail }
-  messageLogs.value = [entry, ...messageLogs.value].slice(0, 100)
-}
-
-async function loadState() {
+// 加载账号列表
+async function loadAccounts(autoSelectLatest = false) {
   try {
-    const res = await WechatAPI.WechatService.GetState()
-    if (res) {
-      state.value = res
-      if (res.targetUserId && !toUserId.value) {
-        toUserId.value = res.targetUserId
-      } else if (res.ilinkUserId && !toUserId.value) {
-        toUserId.value = res.ilinkUserId
+    const list = await WechatAPI.WechatService.ListAccounts()
+    accounts.value = list || []
+
+    if (accounts.value.length > 0) {
+      if (autoSelectLatest) {
+        selectedAccountId.value = accounts.value[accounts.value.length - 1].id
+      } else if (!selectedAccountId.value || !accounts.value.some(a => a.id === selectedAccountId.value)) {
+        selectedAccountId.value = accounts.value[0].id
       }
+      syncTargetUserInput()
+    } else {
+      selectedAccountId.value = ''
     }
   } catch (err: unknown) {
-    console.error('Failed to load state:', err)
+    showToast(`获取账号列表失败: ${getErrorMessage(err)}`)
   }
+}
+
+function syncTargetUserInput() {
+  if (currentAccount.value) {
+    toUserIdInput.value = currentAccount.value.targetUserId || currentAccount.value.ilinkUserId || ''
+  }
+}
+
+function handleSelectAccount(id: string) {
+  selectedAccountId.value = id
+  isEditingTargetUser.value = false
+  syncTargetUserInput()
+  scrollToBottom()
+}
+
+// 当前账号的消息列表
+const currentMessages = computed(() => {
+  if (!currentAccount.value) return []
+  return chatMessages.value.filter(m => m.accountId === currentAccount.value?.id)
+})
+
+// 添加一条消息并滚动
+function appendMessage(msg: ChatMessage) {
+  chatMessages.value.push(msg)
+  if (chatMessages.value.length > 300) {
+    chatMessages.value = chatMessages.value.slice(-200)
+  }
+  scrollToBottom(true)
+}
+
+// 扫码绑定相关
+function openBindModal() {
+  bindRemarkName.value = `微信助手 ${accounts.value.length + 1}`
+  qrInfo.value = null
+  qrDataUrl.value = ''
+  qrStatusText.value = ''
+  qrStatusType.value = ''
+  showBindModal.value = true
+  fetchQRCode()
+}
+
+function closeBindModal() {
+  stopQRPoll()
+  showBindModal.value = false
 }
 
 async function fetchQRCode() {
   stopQRPoll()
   qrLoading.value = true
-  qrStatusText.value = '正在拉取微信二维码…'
+  qrStatusText.value = '正在向微信 iLink 请求登录二维码…'
   qrStatusType.value = 'wait'
   qrInfo.value = null
   qrDataUrl.value = ''
@@ -84,18 +157,14 @@ async function fetchQRCode() {
     const res = await WechatAPI.WechatService.GetLoginQRCode()
     if (res && (res.qrcodeUrl || res.qrcode)) {
       qrInfo.value = res
-      qrStatusText.value = '请使用手机微信扫码授权'
+      qrStatusText.value = '请使用手机微信扫码授权绑定'
 
-      // 使用 QRCode 将 qrcode 字符串渲染为 base64 图片，确保免外网 CDN 或防盗链影响 100% 显示
       const qrContent = res.qrcodeUrl || res.qrcode
       try {
         qrDataUrl.value = await QRCode.toDataURL(qrContent, {
           width: 200,
           margin: 1,
-          color: {
-            dark: '#000000',
-            light: '#ffffff'
-          }
+          color: { dark: '#1f2328', light: '#ffffff' }
         })
       } catch (qrErr) {
         console.error('Render QR error:', qrErr)
@@ -120,17 +189,32 @@ function startQRPoll(qrcode: string) {
     if (isChecking) return
     isChecking = true
     try {
-      const res = await WechatAPI.WechatService.CheckQRStatus(qrcode)
+      const remark = bindRemarkName.value.trim()
+      const res = await WechatAPI.WechatService.CheckQRStatus(qrcode, remark)
       if (res) {
         if (res.status === 'scaned') {
-          qrStatusText.value = '已扫码，请在手机上点击确认登录'
+          qrStatusText.value = '已扫码，请在手机上确认授权'
           qrStatusType.value = 'scaned'
         } else if (res.status === 'confirmed') {
-          qrStatusText.value = '登录成功！凭据已自动保存'
+          qrStatusText.value = '绑定成功！已加入列表并启动监听'
           qrStatusType.value = 'confirmed'
           stopQRPoll()
-          await loadState()
-          addLog('sys', '微信登录成功，已自动启动后台消息与 Token 监听', `Bot ID: ${res.ilinkBotId}`)
+
+          await loadAccounts(true)
+          setTimeout(() => {
+            closeBindModal()
+            showToast('新微信机器人绑定成功！')
+            if (currentAccount.value) {
+              appendMessage({
+                id: `${Date.now()}-bind-ok`,
+                accountId: currentAccount.value.id,
+                time: new Date().toLocaleTimeString(),
+                direction: 'sys',
+                msgType: 'system',
+                content: `🎉 账号「${currentAccount.value.remarkName}」绑定成功！请在手机微信给机器人发送任意消息以激活首条会话 Token。`
+              })
+            }
+          }, 800)
         } else if (res.status === 'expired') {
           qrStatusText.value = '二维码已过期，正在刷新…'
           qrStatusType.value = 'expired'
@@ -139,7 +223,7 @@ function startQRPoll(qrcode: string) {
         }
       }
     } catch {
-      // 轮询异常不打断
+      // 轮询静默
     } finally {
       isChecking = false
     }
@@ -153,429 +237,732 @@ function stopQRPoll() {
   }
 }
 
-async function handleRefreshToken() {
-  isRefreshingToken.value = true
-  sendNotice.value = null
+// 切换当前账号监听
+async function toggleAccountListener(acc: WechatAccountState) {
   try {
-    const token = await WechatAPI.WechatService.RefreshContextToken()
-    await loadState()
-    sendNotice.value = { text: 'Context Token 刷新成功！会话已激活', type: 'success' }
-    addLog('sys', 'Context Token 刷新成功', token.substring(0, 16) + '...')
+    if (acc.isListening) {
+      await WechatAPI.WechatService.StopAccountListener(acc.id)
+      acc.isListening = false
+      showToast(`已停止「${acc.remarkName}」的消息监听`)
+    } else {
+      await WechatAPI.WechatService.StartAccountListener(acc.id)
+      acc.isListening = true
+      showToast(`已启动「${acc.remarkName}」的后台监听`)
+    }
+    await loadAccounts()
+  } catch (err: unknown) {
+    showToast(`切换监听失败: ${getErrorMessage(err)}`)
+  }
+}
+
+// 手动刷新指定账号的 Context Token
+async function refreshContextToken() {
+  if (!currentAccount.value) return
+  isRefreshingToken.value = true
+  try {
+    const token = await WechatAPI.WechatService.RefreshAccountContextToken(currentAccount.value.id)
+    await loadAccounts()
+    showToast('Context Token 刷新成功！会话已激活')
+    appendMessage({
+      id: `${Date.now()}-token-refreshed`,
+      accountId: currentAccount.value.id,
+      time: new Date().toLocaleTimeString(),
+      direction: 'sys',
+      msgType: 'system',
+      content: `🔄 Context Token 刷新成功: ${token.substring(0, 16)}...`
+    })
   } catch (err: unknown) {
     const errMsg = getErrorMessage(err)
-    sendNotice.value = { text: `刷新失败: ${errMsg}`, type: 'error' }
-    addLog('sys', 'Context Token 刷新失败', errMsg)
+    showToast(`刷新失败: ${errMsg}`)
+    appendMessage({
+      id: `${Date.now()}-token-fail`,
+      accountId: currentAccount.value.id,
+      time: new Date().toLocaleTimeString(),
+      direction: 'sys',
+      msgType: 'system',
+      content: `❌ Context Token 刷新失败: ${errMsg}`
+    })
   } finally {
     isRefreshingToken.value = false
   }
 }
 
-async function handleToggleListener() {
-  isTogglingListener.value = true
+// 保存修改的目标用户 ID
+async function saveTargetUserId() {
+  if (!currentAccount.value) return
   try {
-    if (state.value.isListening) {
-      await WechatAPI.WechatService.StopListener()
-      addLog('sys', '已停止后台监听消息')
-    } else {
-      await WechatAPI.WechatService.StartListener()
-      addLog('sys', '已启动后台长轮询监听')
-    }
-    await loadState()
+    await WechatAPI.WechatService.UpdateAccount(
+      currentAccount.value.id,
+      currentAccount.value.remarkName,
+      toUserIdInput.value.trim(),
+      currentAccount.value.baseUrl
+    )
+    isEditingTargetUser.value = false
+    await loadAccounts()
+    showToast('默认目标用户 ID 更新成功')
   } catch (err: unknown) {
-    sendNotice.value = { text: `切换监听失败: ${getErrorMessage(err)}`, type: 'error' }
-  } finally {
-    isTogglingListener.value = false
+    showToast(`更新失败: ${getErrorMessage(err)}`)
   }
 }
 
+// 打开重命名弹窗
+function openRenameModal(acc: WechatAccountState) {
+  renameTargetId.value = acc.id
+  renameNewVal.value = acc.remarkName
+  showRenameModal.value = true
+}
+
+async function saveAccountRename() {
+  if (!renameTargetId.value || !renameNewVal.value.trim()) return
+  try {
+    const target = accounts.value.find(a => a.id === renameTargetId.value)
+    if (target) {
+      await WechatAPI.WechatService.UpdateAccount(
+        target.id,
+        renameNewVal.value.trim(),
+        target.targetUserId,
+        target.baseUrl
+      )
+      showRenameModal.value = false
+      await loadAccounts()
+      showToast('账号备注修改成功')
+    }
+  } catch (err: unknown) {
+    showToast(`重命名失败: ${getErrorMessage(err)}`)
+  }
+}
+
+// 删除账号
+async function handleDeleteAccount(acc: WechatAccountState) {
+  if (confirm(`确定要解绑并删除微信机器人「${acc.remarkName}」吗？`)) {
+    try {
+      await WechatAPI.WechatService.DeleteAccount(acc.id)
+      await loadAccounts()
+      showToast(`账号「${acc.remarkName}」已删除`)
+    } catch (err: unknown) {
+      showToast(`删除失败: ${getErrorMessage(err)}`)
+    }
+  }
+}
+
+// 发送文字消息
 async function handleSendText() {
-  if (!textContent.value.trim()) return
-  isSending.value = true
-  sendNotice.value = null
+  if (!currentAccount.value || !inputText.value.trim() || isSending.value) return
+  const text = inputText.value.trim()
+  const acc = currentAccount.value
+  const targetUser = toUserIdInput.value.trim() || acc.targetUserId || acc.ilinkUserId
 
-  const target = toUserId.value.trim()
-  const content = textContent.value.trim()
+  if (!targetUser) {
+    showToast('请先填写目标微信用户的 User ID')
+    return
+  }
+
+  isSending.value = true
+  const msgId = `${Date.now()}-out-text`
+  inputText.value = ''
+
+  appendMessage({
+    id: msgId,
+    accountId: acc.id,
+    time: new Date().toLocaleTimeString(),
+    direction: 'out',
+    msgType: 'text',
+    content: text,
+    status: 'sending'
+  })
 
   try {
-    await WechatAPI.WechatService.SendTextMessage(target, content)
-    sendNotice.value = { text: '文字消息发送成功！', type: 'success' }
-    addLog('out', `发送文字: ${content}`, `To: ${target}`)
-    textContent.value = ''
+    await WechatAPI.WechatService.SendTextMessage(acc.id, targetUser, text)
+    const sent = chatMessages.value.find(m => m.id === msgId)
+    if (sent) sent.status = 'sent'
   } catch (err: unknown) {
     const errMsg = getErrorMessage(err)
-    sendNotice.value = { text: `发送失败: ${errMsg}`, type: 'error' }
-    addLog('sys', `文字发送失败: ${errMsg}`)
+    const sent = chatMessages.value.find(m => m.id === msgId)
+    if (sent) {
+      sent.status = 'failed'
+      sent.error = errMsg
+    }
+    appendMessage({
+      id: `${Date.now()}-err`,
+      accountId: acc.id,
+      time: new Date().toLocaleTimeString(),
+      direction: 'sys',
+      msgType: 'system',
+      content: `❌ 文字发送失败: ${errMsg}`
+    })
   } finally {
     isSending.value = false
   }
 }
 
+// 发送图片消息
 async function handleSendImage() {
-  if (!imagePath.value.trim()) return
-  isSending.value = true
-  sendNotice.value = null
-
-  const target = toUserId.value.trim()
-  const filePathVal = imagePath.value.trim()
+  if (!currentAccount.value || isSending.value) return
+  const acc = currentAccount.value
+  const targetUser = toUserIdInput.value.trim() || acc.targetUserId || acc.ilinkUserId
+  if (!targetUser) {
+    showToast('请先填写目标微信用户的 User ID')
+    return
+  }
 
   try {
-    await WechatAPI.WechatService.SendImageMessage(target, filePathVal)
-    sendNotice.value = { text: '图片加密上传并发送成功！', type: 'success' }
-    addLog('out', `发送图片: ${filePathVal}`, `To: ${target}`)
-    imagePath.value = ''
+    const filePath = await WechatAPI.WechatService.PickImageDialog()
+    if (!filePath) return
+
+    isSending.value = true
+    const msgId = `${Date.now()}-out-img`
+    appendMessage({
+      id: msgId,
+      accountId: acc.id,
+      time: new Date().toLocaleTimeString(),
+      direction: 'out',
+      msgType: 'image',
+      content: `[图片] ${filePath}`,
+      filePath,
+      status: 'sending'
+    })
+
+    await WechatAPI.WechatService.SendImageMessage(acc.id, targetUser, filePath)
+    const sent = chatMessages.value.find(m => m.id === msgId)
+    if (sent) sent.status = 'sent'
+    showToast('图片加密上传并下发成功')
   } catch (err: unknown) {
     const errMsg = getErrorMessage(err)
-    sendNotice.value = { text: `发送图片失败: ${errMsg}`, type: 'error' }
-    addLog('sys', `图片发送失败: ${errMsg}`)
+    showToast(`图片发送失败: ${errMsg}`)
+    appendMessage({
+      id: `${Date.now()}-err-img`,
+      accountId: acc.id,
+      time: new Date().toLocaleTimeString(),
+      direction: 'sys',
+      msgType: 'system',
+      content: `❌ 图片下发失败: ${errMsg}`
+    })
   } finally {
     isSending.value = false
   }
 }
 
-async function handleChooseImageFile() {
-  try {
-    const selectedPath = await WechatAPI.WechatService.PickImageDialog()
-    if (selectedPath) {
-      imagePath.value = selectedPath
-    }
-  } catch (err: unknown) {
-    console.error('Pick image error:', err)
-  }
-}
-
-async function handleChooseFile() {
-  try {
-    const selectedPath = await WechatAPI.WechatService.PickFileDialog()
-    if (selectedPath) {
-      filePath.value = selectedPath
-    }
-  } catch (err: unknown) {
-    console.error('Pick file error:', err)
-  }
-}
-
+// 发送文件消息
 async function handleSendFile() {
-  if (!filePath.value.trim()) return
-  isSending.value = true
-  sendNotice.value = null
-
-  const target = toUserId.value.trim()
-  const targetPath = filePath.value.trim()
+  if (!currentAccount.value || isSending.value) return
+  const acc = currentAccount.value
+  const targetUser = toUserIdInput.value.trim() || acc.targetUserId || acc.ilinkUserId
+  if (!targetUser) {
+    showToast('请先填写目标微信用户的 User ID')
+    return
+  }
 
   try {
-    await WechatAPI.WechatService.SendFileMessage(target, targetPath)
-    sendNotice.value = { text: '文件加密上传并发送成功！', type: 'success' }
-    addLog('out', `发送文件: ${targetPath}`, `To: ${target}`)
-    filePath.value = ''
+    const filePath = await WechatAPI.WechatService.PickFileDialog()
+    if (!filePath) return
+
+    const fileName = filePath.split(/[/\\]/).pop() || filePath
+    isSending.value = true
+    const msgId = `${Date.now()}-out-file`
+    appendMessage({
+      id: msgId,
+      accountId: acc.id,
+      time: new Date().toLocaleTimeString(),
+      direction: 'out',
+      msgType: 'file',
+      content: `[文件] ${fileName}`,
+      fileName,
+      filePath,
+      status: 'sending'
+    })
+
+    await WechatAPI.WechatService.SendFileMessage(acc.id, targetUser, filePath)
+    const sent = chatMessages.value.find(m => m.id === msgId)
+    if (sent) sent.status = 'sent'
+    showToast('文件加密上传并下发成功')
   } catch (err: unknown) {
     const errMsg = getErrorMessage(err)
-    sendNotice.value = { text: `发送文件失败: ${errMsg}`, type: 'error' }
-    addLog('sys', `文件发送失败: ${errMsg}`)
+    showToast(`文件发送失败: ${errMsg}`)
+    appendMessage({
+      id: `${Date.now()}-err-file`,
+      accountId: acc.id,
+      time: new Date().toLocaleTimeString(),
+      direction: 'sys',
+      msgType: 'system',
+      content: `❌ 文件下发失败: ${errMsg}`
+    })
   } finally {
     isSending.value = false
   }
 }
 
-async function handleClearCredentials() {
-  if (confirm('确定要清除已保存的微信登录凭据吗？')) {
-    await WechatAPI.WechatService.ClearCredentials()
-    await loadState()
-    qrInfo.value = null
-    qrStatusText.value = ''
-    addLog('sys', '微信凭据已清除')
+// 键盘快捷键处理 (Enter 发送，Shift+Enter 换行)
+function handleKeydown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    handleSendText()
   }
 }
 
+// 清屏当前会话消息
+function clearCurrentChat() {
+  if (!currentAccount.value) return
+  chatMessages.value = chatMessages.value.filter(m => m.accountId !== currentAccount.value?.id)
+  showToast('当前会话消息流已清空')
+}
+
+// 字符串生成头像颜色（美观柔和色板）
+function getAvatarColor(str: string): string {
+  if (!str) return '#10b981'
+  const colors = [
+    '#2563eb', '#059669', '#d97706', '#dc2626',
+    '#7c3aed', '#0891b2', '#4f46e5', '#db2777'
+  ]
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return colors[Math.abs(hash) % colors.length]
+}
+
+// 事件监听清理
 let unlistenContextToken: (() => void) | null = null
 let unlistenMessage: (() => void) | null = null
 
 onMounted(async () => {
-  await loadState()
+  await loadAccounts()
 
-  // 监听来自后端的事件
+  // 监听 Token 刷新事件
   unlistenContextToken = Events.On('wechat:context-token-updated', (ev: any) => {
-    loadState()
-    if (ev?.data?.contextToken) {
-      addLog('sys', '接收到新 Context Token', ev.data.contextToken.substring(0, 16) + '...')
+    loadAccounts()
+    const payload = ev?.data
+    if (payload?.accountId) {
+      appendMessage({
+        id: `${Date.now()}-ctx-upd`,
+        accountId: payload.accountId,
+        time: new Date().toLocaleTimeString(),
+        direction: 'sys',
+        msgType: 'system',
+        content: `⚡ 自动捕获到最新 Context Token (用户 ${payload.fromUserId || '微信'}), 会话保持激活`
+      })
     }
   })
 
+  // 监听入站消息
   unlistenMessage = Events.On('wechat:message-received', (ev: any) => {
     const msg = ev?.data as InboundMessage | undefined
     if (msg) {
-      if (msg.type === 1) {
-        addLog('in', `收到文字: ${msg.text}`, `From: ${msg.from}`)
-      } else {
-        addLog('in', `收到媒体消息 (type=${msg.type})`, `From: ${msg.from}`)
+      const targetAccId = msg.accountId || selectedAccountId.value || (accounts.value[0]?.id ?? '')
+      let msgType: ChatMessage['msgType'] = 'text'
+      let content = msg.text || ''
+
+      if (msg.type === 2) {
+        msgType = 'image'
+        content = '[图片消息]'
+      } else if (msg.type === 4) {
+        msgType = 'file'
+        content = `[文件] ${msg.fileName || '未知文件'}`
       }
+
+      appendMessage({
+        id: `${Date.now()}-${Math.random()}`,
+        accountId: targetAccId,
+        time: msg.time || new Date().toLocaleTimeString(),
+        direction: 'in',
+        msgType,
+        senderName: msg.from,
+        content,
+        fileName: msg.fileName
+      })
     }
   })
 })
 
 onUnmounted(() => {
   stopQRPoll()
-  if (unlistenContextToken) {
-    unlistenContextToken()
-    unlistenContextToken = null
-  }
-  if (unlistenMessage) {
-    unlistenMessage()
-    unlistenMessage = null
-  }
+  if (unlistenContextToken) unlistenContextToken()
+  if (unlistenMessage) unlistenMessage()
 })
 </script>
 
 <template>
-  <div class="wechat-page">
-    <div class="header-row">
-      <div>
-        <h1 class="page-title">💬 微信 ClawBot</h1>
-        <p class="page-desc">基于腾讯 iLink Bot 协议的高性能微信网关，支持扫码授权、AES-128 加密图文推送与会话管理</p>
-      </div>
-
-      <div class="header-actions">
-        <button
-          v-if="state.isLoggedIn"
-          class="btn-secondary danger"
-          @click="handleClearCredentials"
-        >
-          退出/清除凭据
-        </button>
-      </div>
-    </div>
-
-    <!-- 顶部状态栏卡片 -->
-    <div class="card status-overview">
-      <div class="status-col">
-        <span class="label">登录状态</span>
-        <div class="value-badge" :class="{ success: state.isLoggedIn, offline: !state.isLoggedIn }">
-          <span class="dot"></span>
-          {{ state.isLoggedIn ? '已登录 iLink 微信' : '未登录' }}
+  <div class="wechat-page-root">
+    <!-- 经典微信桌面端双栏工作台 -->
+    <div class="chat-workbench">
+      <!-- 1. 左侧：账号与会话管理栏 -->
+      <aside class="sidebar-pane" :class="{ collapsed: isSidebarCollapsed }">
+        <!-- 侧边栏头部 -->
+        <div class="sidebar-header">
+          <div v-if="!isSidebarCollapsed" class="sidebar-title">
+            <span class="logo-emoji">🤖</span>
+            <h3>微信机器人</h3>
+          </div>
+          <div class="sidebar-header-actions">
+            <button
+              v-if="!isSidebarCollapsed"
+              class="btn-bind-account"
+              @click="openBindModal"
+              title="扫码绑定新微信账号"
+            >
+              <span class="plus-icon">+</span> 绑定账号
+            </button>
+            <button
+              class="btn-toggle-sidebar"
+              :title="isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+              @click="isSidebarCollapsed = !isSidebarCollapsed"
+            >
+              {{ isSidebarCollapsed ? '▶' : '◀' }}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div class="status-col">
-        <span class="label">Bot ID / User ID</span>
-        <span class="value-text monospace" :title="state.ilinkUserId">
-          {{ state.ilinkBotId ? `${state.ilinkBotId} (${state.ilinkUserId.split('@')[0]})` : '无' }}
-        </span>
-      </div>
-
-      <div class="status-col">
-        <span class="label">会话 Context Token</span>
-        <div class="token-row">
-          <span class="value-text monospace" :title="state.contextToken">
-            {{ state.contextToken ? `${state.contextToken.substring(0, 18)}…` : '尚未激活' }}
-          </span>
-          <button
-            v-if="!state.isListening"
-            class="btn-refresh"
-            :disabled="!state.isLoggedIn || isRefreshingToken"
-            @click="handleRefreshToken"
-            title="拉取最新 Context Token"
-          >
-            {{ isRefreshingToken ? '拉取中…' : '↻ 刷新' }}
-          </button>
-        </div>
-      </div>
-
-      <div class="status-col">
-        <span class="label">后台消息监听</span>
-        <button
-          class="btn-toggle"
-          :class="{ active: state.isListening }"
-          :disabled="!state.isLoggedIn || isTogglingListener"
-          @click="handleToggleListener"
-        >
-          {{ state.isListening ? '● 监听中 (点击停止)' : '○ 启动监听' }}
-        </button>
-      </div>
-    </div>
-
-    <!-- 微信主动发消息激活引导提示 -->
-    <div class="session-guide-card">
-      <div class="guide-icon">💡</div>
-      <div class="guide-body">
-        <div class="guide-title">微信 ClawBot 协议与会话限制说明</div>
-        <div class="guide-desc">
-          <ul class="guide-list">
-            <li><strong>绑定限制</strong>：初始化需要主动扫码绑定，且<strong>一个微信号只能绑定一个 ClawBot</strong>。</li>
-            <li><strong>初次建联</strong>：绑定后需微信端<strong>主动发起一次对话</strong>（如发任意消息），才能下发消息。</li>
-            <li><strong>频次限制</strong>：每下发 <strong>10 次消息</strong>后，需要微信端主动发起一次对话刷新会话。</li>
-            <li><strong>有效周期</strong>：每隔 <strong>24 小时</strong>，也需要有一次主动对话以维持长效激活。</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- 通知提示 -->
-    <div v-if="sendNotice" class="notice-banner" :class="sendNotice.type">
-      {{ sendNotice.text }}
-    </div>
-
-    <!-- 主交互区域：左侧登录与操作 / 右侧消息调试与日志 -->
-    <div class="main-grid">
-      <!-- 左侧：扫码登录与目标用户设置 -->
-      <div class="left-pane">
-        <!-- 扫码登录卡片 -->
-        <div class="card login-card" v-if="!state.isLoggedIn || qrInfo">
-          <div class="card-header">
-            <h3>🔑 扫码登录微信机器人</h3>
-            <button class="btn-primary small" :disabled="qrLoading" @click="fetchQRCode">
-              {{ qrLoading ? '拉取中…' : (qrInfo ? '重新获取' : '获取登录二维码') }}
+        <!-- 账号列表容器 -->
+        <div class="account-list-scroll">
+          <div v-if="accounts.length === 0" class="empty-accounts">
+            <div class="empty-icon">📱</div>
+            <div v-if="!isSidebarCollapsed" class="empty-text">暂无绑定的微信账号</div>
+            <button class="btn-empty-bind" @click="openBindModal" :title="'立即扫码绑定'">
+              {{ isSidebarCollapsed ? '+' : '立即扫码绑定' }}
             </button>
           </div>
 
-          <div class="qr-container">
-            <div v-if="qrInfo" class="qr-box">
-              <img
-                v-if="qrDataUrl"
-                :src="qrDataUrl"
-                alt="微信登录二维码"
-                class="qr-image"
-              />
-              <img
-                v-else-if="qrInfo.qrcodeUrl"
-                :src="qrInfo.qrcodeUrl"
-                alt="微信登录二维码"
-                class="qr-image"
-              />
-              <div class="qr-status-tag" :class="qrStatusType">
+          <div
+            v-for="acc in accounts"
+            :key="acc.id"
+            class="account-item-card"
+            :class="{ active: acc.id === currentAccount?.id, 'is-mini': isSidebarCollapsed }"
+            :title="isSidebarCollapsed ? `${acc.remarkName} (${acc.isListening ? '监听中' : '未监听'})` : undefined"
+            @click="handleSelectAccount(acc.id)"
+          >
+            <!-- 账号头像 (对应备注的微信号) -->
+            <div class="bot-avatar" :style="{ backgroundColor: getAvatarColor(acc.remarkName || acc.id) }">
+              {{ (acc.remarkName || '微').slice(0, 1) }}
+              <span
+                class="status-dot-badge"
+                :class="{ online: acc.isListening, offline: !acc.isListening }"
+                :title="acc.isListening ? '监听中' : '未监听'"
+              ></span>
+            </div>
+
+            <!-- 账号信息摘要 (展开状态下显示) -->
+            <template v-if="!isSidebarCollapsed">
+              <div class="account-meta">
+                <div class="meta-row-main">
+                  <span class="bot-remark" :title="acc.remarkName">{{ acc.remarkName }}</span>
+                  <span class="token-status-badge" :class="{ ready: !!acc.contextToken }">
+                    {{ acc.contextToken ? '已建联' : '待激活' }}
+                  </span>
+                </div>
+                <div class="meta-row-sub">
+                  <span class="account-sub-id" :title="acc.ilinkUserId || acc.id">
+                    {{ acc.ilinkUserId ? acc.ilinkUserId.split('@')[0] : acc.id }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 悬浮快捷操作按钮组 -->
+              <div class="hover-actions-group" @click.stop>
+                <button
+                  class="action-icon-btn"
+                  :title="acc.isListening ? '暂停监听' : '启动监听'"
+                  @click="toggleAccountListener(acc)"
+                >
+                  {{ acc.isListening ? '⏸' : '▶' }}
+                </button>
+                <button class="action-icon-btn" title="重命名" @click="openRenameModal(acc)">✏️</button>
+                <button class="action-icon-btn danger" title="删除账号" @click="handleDeleteAccount(acc)">🗑️</button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 2. 右侧：主聊天视口 -->
+      <main class="chat-main-pane">
+        <!-- 未选中任何账号占位 -->
+        <div v-if="!currentAccount" class="no-selection-placeholder">
+          <div class="ph-icon">💬</div>
+          <h3>选择或绑定一个微信机器人</h3>
+          <p>在左侧选择账号即可发起消息下发或查看会话流</p>
+          <button class="btn-bind-account large" @click="openBindModal">+ 扫码绑定新微信</button>
+        </div>
+
+        <template v-else>
+          <!-- 2.1 聊天窗口顶部导航栏 (Chat Header) -->
+          <header class="chat-header">
+            <div class="header-left">
+              <button
+                v-if="isSidebarCollapsed"
+                class="btn-expand-header"
+                title="展开侧边栏"
+                @click="isSidebarCollapsed = false"
+              >
+                📑
+              </button>
+              <div class="header-avatar" :style="{ backgroundColor: getAvatarColor(currentAccount.remarkName) }">
+                {{ (currentAccount.remarkName || '微').slice(0, 1) }}
+              </div>
+              <div class="header-info">
+                <div class="header-title-line">
+                  <span class="bot-name">{{ currentAccount.remarkName }}</span>
+                  <span class="listen-badge" :class="{ online: currentAccount.isListening }">
+                    <span class="listen-dot"></span>
+                    {{ currentAccount.isListening ? '实时长轮询中' : '未开启监听' }}
+                  </span>
+                </div>
+                <div class="header-target-bar">
+                  <span class="target-label">目标用户:</span>
+                  <template v-if="!isEditingTargetUser">
+                    <span class="target-val" :title="toUserIdInput || '点击修改目标微信用户'">
+                      {{ toUserIdInput || currentAccount.ilinkUserId || '未配置目标' }}
+                    </span>
+                    <button class="btn-edit-link" @click="isEditingTargetUser = true">修改</button>
+                  </template>
+                  <template v-else>
+                    <input
+                      type="text"
+                      v-model="toUserIdInput"
+                      class="target-input-inline"
+                      placeholder="输入目标微信 User ID"
+                      @keydown.enter="saveTargetUserId"
+                    />
+                    <button class="btn-save-inline" @click="saveTargetUserId">保存</button>
+                    <button class="btn-cancel-inline" @click="isEditingTargetUser = false">取消</button>
+                  </template>
+                </div>
+              </div>
+            </div>
+
+            <div class="header-right-actions">
+              <button
+                v-if="!currentAccount.isListening"
+                class="btn-hdr-action"
+                :disabled="isRefreshingToken"
+                @click="refreshContextToken"
+                title="手动请求最新 Context Token"
+              >
+                {{ isRefreshingToken ? '↻ 刷新中…' : '↻ 刷新凭据' }}
+              </button>
+              <button
+                class="btn-hdr-action primary-toggle"
+                :class="{ active: currentAccount.isListening }"
+                @click="toggleAccountListener(currentAccount)"
+              >
+                {{ currentAccount.isListening ? '停止监听' : '启动监听' }}
+              </button>
+            </div>
+          </header>
+
+          <!-- 2.2 微信限制规则说明条 (可折叠) -->
+          <div v-if="showRulesBanner" class="clawbot-rules-strip">
+            <div class="rules-content">
+              <span class="rules-tag">💡 微信协议规范</span>
+              <span class="rule-text">① 单微信号限绑1个Bot</span>
+              <span class="rule-sep">·</span>
+              <span class="rule-text">② 初次需手机微信主动发任意消息建联</span>
+              <span class="rule-sep">·</span>
+              <span class="rule-text">③ 每下发10次或超24h需主动发消息续期会话</span>
+            </div>
+            <button class="btn-close-strip" @click="showRulesBanner = false" title="关闭提示">✕</button>
+          </div>
+
+          <!-- 2.3 气泡消息流区域 (Message Stream) -->
+          <div ref="messageContainer" class="chat-flow-scroll">
+            <div v-if="currentMessages.length === 0" class="flow-empty-box">
+              <div class="empty-bubble-icon">💬</div>
+              <div class="empty-title">当前会话暂无消息</div>
+              <div class="empty-desc">可在下方输入文字、发送图片或文件，开始与微信端交互</div>
+            </div>
+
+            <template v-for="msg in currentMessages" :key="msg.id">
+              <!-- 系统消息胶囊 -->
+              <div v-if="msg.direction === 'sys'" class="bubble-row system-row">
+                <div class="system-pill">
+                  <span class="pill-text">{{ msg.content }}</span>
+                  <span class="pill-time">{{ msg.time }}</span>
+                </div>
+              </div>
+
+              <!-- 手机微信端发来的消息 (左侧灰色气泡：展示备注名与对应头像) -->
+              <div v-else-if="msg.direction === 'in'" class="bubble-row inbound-row">
+                <div
+                  class="msg-avatar-icon peer-avatar"
+                  :style="{ backgroundColor: getAvatarColor(currentAccount.remarkName) }"
+                >
+                  {{ (currentAccount.remarkName || '微').slice(0, 1) }}
+                </div>
+                <div class="bubble-column">
+                  <div class="bubble-info-header">
+                    <span class="sender-title">{{ currentAccount.remarkName || msg.senderName || '微信联系人' }}</span>
+                    <span class="msg-timestamp">{{ msg.time }}</span>
+                  </div>
+                  <div class="bubble-box inbound-bubble">
+                    <template v-if="msg.msgType === 'text'">
+                      <p class="bubble-text">{{ msg.content }}</p>
+                    </template>
+                    <template v-else-if="msg.msgType === 'file'">
+                      <div class="file-card-preview">
+                        <span class="file-icon-box">📁</span>
+                        <div class="file-info-group">
+                          <span class="file-main-name">{{ msg.fileName || '微信文件' }}</span>
+                          <span class="file-sub-type">微信接收附件</span>
+                        </div>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <p class="media-tip">📷 {{ msg.content }}</p>
+                    </template>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 电脑端 HubKit 机器人下发出去的消息 (右侧微信经典绿气泡：电脑是机器人一方) -->
+              <div v-else-if="msg.direction === 'out'" class="bubble-row outbound-row">
+                <div class="bubble-column align-right">
+                  <div class="bubble-info-header justify-end">
+                    <span class="msg-timestamp">{{ msg.time }}</span>
+                    <span class="sender-title robot-sender-title">🤖 HubKit 机器人</span>
+                  </div>
+                  <div class="bubble-box outbound-bubble">
+                    <template v-if="msg.msgType === 'text'">
+                      <p class="bubble-text">{{ msg.content }}</p>
+                    </template>
+                    <template v-else-if="msg.msgType === 'image'">
+                      <div class="media-card-preview">
+                        <span class="media-icon-box">🖼️</span>
+                        <div class="media-info-group">
+                          <span class="media-main-name">图片消息 (AES加密下发)</span>
+                          <span class="media-sub-path" :title="msg.filePath">{{ msg.filePath }}</span>
+                        </div>
+                      </div>
+                    </template>
+                    <template v-else-if="msg.msgType === 'file'">
+                      <div class="file-card-preview out">
+                        <span class="file-icon-box">📁</span>
+                        <div class="file-info-group">
+                          <span class="file-main-name">{{ msg.fileName || '文件附件' }}</span>
+                          <span class="file-sub-path" :title="msg.filePath">{{ msg.filePath }}</span>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                  <div v-if="msg.status === 'sending'" class="msg-send-status sending">发送中…</div>
+                  <div v-else-if="msg.status === 'failed'" class="msg-send-status failed" :title="msg.error">⚠️ 发送失败</div>
+                </div>
+                <div class="msg-avatar-icon my-avatar robot-avatar-box">
+                  🤖
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- 2.4 底部富交互输入区 (Chat Input Area) -->
+          <footer class="chat-input-area">
+            <!-- 顶部工具按钮条 -->
+            <div class="input-toolbar-row">
+              <button class="toolbar-btn" :disabled="isSending" @click="handleSendImage" title="选择本地图片并通过微信加密通道发送">
+                <span class="tb-icon">🖼️</span> 发送图片
+              </button>
+              <button class="toolbar-btn" :disabled="isSending" @click="handleSendFile" title="选择任意本地文件并通过微信加密通道发送">
+                <span class="tb-icon">📁</span> 发送文件
+              </button>
+              <div class="tb-spacer"></div>
+              <button class="toolbar-btn text-danger" @click="clearCurrentChat" title="清空当前消息窗口">
+                🧹 清屏
+              </button>
+            </div>
+
+            <!-- 多行输入框 -->
+            <div class="input-textarea-wrapper">
+              <textarea
+                v-model="inputText"
+                class="wechat-textarea"
+                placeholder="输入要下发给微信的消息，按 Enter 发送，Shift + Enter 换行…"
+                rows="3"
+                @keydown="handleKeydown"
+              ></textarea>
+            </div>
+
+            <!-- 底部发送按钮栏 -->
+            <div class="input-footer-row">
+              <span class="shortcut-tip">按 Enter 发送 · Shift+Enter 换行</span>
+              <button
+                class="btn-send-message"
+                :disabled="!inputText.trim() || isSending"
+                @click="handleSendText"
+              >
+                {{ isSending ? '发送中…' : '发送 (S)' }}
+              </button>
+            </div>
+          </footer>
+        </template>
+      </main>
+    </div>
+
+    <!-- 扫码绑定模态框 (QR Bind Modal) -->
+    <div v-if="showBindModal" class="custom-modal-backdrop" @click.self="closeBindModal">
+      <div class="custom-modal-card">
+        <div class="cmodal-header">
+          <div class="cmodal-title">
+            <span>📱</span> 扫码绑定微信机器人
+          </div>
+          <button class="cmodal-close" @click="closeBindModal">✕</button>
+        </div>
+
+        <div class="cmodal-body">
+          <div class="form-item-block">
+            <label class="form-label">机器人备注名</label>
+            <input
+              type="text"
+              v-model="bindRemarkName"
+              placeholder="例如: 告警通知号 / 客户群机器人"
+              class="form-text-input"
+            />
+          </div>
+
+          <div class="qr-render-container">
+            <div v-if="qrLoading" class="qr-state-box">
+              <span class="qr-spinner">⏳</span>
+              <p>正在生成微信登录二维码…</p>
+            </div>
+            <div v-else-if="qrDataUrl" class="qr-success-box">
+              <img :src="qrDataUrl" alt="微信登录二维码" class="qr-canvas-img" />
+              <div class="qr-badge-pill" :class="qrStatusType">
                 {{ qrStatusText }}
               </div>
             </div>
-            <div v-else class="qr-empty">
-              <span class="qr-placeholder-icon">📱</span>
-              <p>点击上方按钮获取登录二维码</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 发送消息卡片 -->
-        <div class="card message-card">
-          <div class="card-header">
-            <h3>✉️ 发送微信消息</h3>
-          </div>
-
-          <div class="form-group">
-            <label>目标微信用户 ID (To User ID)</label>
-            <input
-              type="text"
-              v-model="toUserId"
-              placeholder="例如: o9cq80181gxNW4KH9_X4EREc3-BM@im.wechat"
-              class="input-text monospace"
-            />
-            <small class="tip">通常为你微信扫码登录后的 User ID，也可给其他已在对话列表中的微信用户发消息</small>
-          </div>
-
-          <!-- 发送文字 Tab -->
-          <div class="message-section">
-            <h4 class="sub-title">1. 发送文本消息</h4>
-            <div class="text-send-box">
-              <textarea
-                v-model="textContent"
-                placeholder="输入要发送给微信的文字内容 (支持换行与 Markdown / 代码片段)…"
-                rows="3"
-                class="input-textarea"
-              ></textarea>
-              <button
-                class="btn-primary send-btn"
-                :disabled="!state.isLoggedIn || !textContent.trim() || isSending"
-                @click="handleSendText"
-              >
-                {{ isSending ? '发送中…' : '发送文字' }}
-              </button>
+            <div v-else class="qr-state-box">
+              <p class="qr-err-text">{{ qrStatusText || '拉取二维码失败' }}</p>
+              <button class="btn-retry-qr" @click="fetchQRCode">重新获取</button>
             </div>
           </div>
 
-          <!-- 发送图片 Tab -->
-          <div class="message-section">
-            <h4 class="sub-title">2. 发送图片消息 (AES-128-ECB 加密上传)</h4>
-            <div class="image-send-box">
-              <div class="file-picker-row">
-                <input
-                  type="text"
-                  v-model="imagePath"
-                  placeholder="本地图片绝对路径或点击右侧浏览选择"
-                  class="input-text monospace"
-                />
-                <button type="button" class="btn-file-select" @click="handleChooseImageFile">
-                  🖼️ 浏览…
-                </button>
-              </div>
-              <div class="image-action-row">
-                <small class="tip">微信图片媒体类型 (media_type=1)，经 AES 加密上传 Nova CDN</small>
-                <button
-                  class="btn-primary send-btn"
-                  :disabled="!state.isLoggedIn || !imagePath.trim() || isSending"
-                  @click="handleSendImage"
-                >
-                  {{ isSending ? '上传中…' : '加密上传并发送图片' }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- 发送任意文件 Tab -->
-          <div class="message-section">
-            <h4 class="sub-title">3. 发送文件附件 (任意文档/压缩包/安装包)</h4>
-            <div class="image-send-box">
-              <div class="file-picker-row">
-                <input
-                  type="text"
-                  v-model="filePath"
-                  placeholder="本地文件绝对路径 (如 ZIP、PDF、TXT 等) 或点击右侧浏览选择"
-                  class="input-text monospace"
-                />
-                <button type="button" class="btn-file-select" @click="handleChooseFile">
-                  📁 浏览…
-                </button>
-              </div>
-              <div class="image-action-row">
-                <small class="tip">微信文件媒体类型 (media_type=3)，支持任意格式文件加密上传</small>
-                <button
-                  class="btn-primary send-btn"
-                  :disabled="!state.isLoggedIn || !filePath.trim() || isSending"
-                  @click="handleSendFile"
-                >
-                  {{ isSending ? '上传中…' : '加密上传并发送文件' }}
-                </button>
-              </div>
-            </div>
+          <div class="cmodal-hints">
+            <div>1. 请使用待绑定的微信号扫码并授权登录；</div>
+            <div>2. 授权成功后系统自动保存凭据并启动独立后台长轮询监听。</div>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- 右侧：实时日志与事件流 -->
-      <div class="right-pane">
-        <div class="card log-card">
-          <div class="card-header">
-            <h3>📜 实时消息与事件流</h3>
-            <button class="btn-clear" @click="messageLogs = []">清空</button>
+    <!-- 账号重命名模态框 (Rename Modal) -->
+    <div v-if="showRenameModal" class="custom-modal-backdrop" @click.self="showRenameModal = false">
+      <div class="custom-modal-card mini">
+        <div class="cmodal-header">
+          <div class="cmodal-title">
+            <span>✏️</span> 修改账号备注
           </div>
-
-          <div class="log-stream">
-            <div v-if="messageLogs.length === 0" class="log-empty">
-              <span>暂无消息或事件记录</span>
-            </div>
-
-            <div
-              v-for="log in messageLogs"
-              :key="log.id"
-              class="log-item"
-              :class="log.type"
-            >
-              <div class="log-meta">
-                <span class="log-time">{{ log.time }}</span>
-                <span class="log-badge" :class="log.type">
-                  {{ log.type === 'in' ? '接收' : (log.type === 'out' ? '发出' : '系统') }}
-                </span>
-              </div>
-              <div class="log-content">
-                <span class="log-text">{{ log.text }}</span>
-                <span v-if="log.detail" class="log-detail">{{ log.detail }}</span>
-              </div>
-            </div>
+          <button class="cmodal-close" @click="showRenameModal = false">✕</button>
+        </div>
+        <div class="cmodal-body">
+          <div class="form-item-block">
+            <label class="form-label">新备注名称</label>
+            <input
+              type="text"
+              v-model="renameNewVal"
+              placeholder="输入备注名称…"
+              class="form-text-input"
+              @keydown.enter="saveAccountRename"
+            />
+          </div>
+          <div class="cmodal-actions-bar">
+            <button class="btn-cancel" @click="showRenameModal = false">取消</button>
+            <button class="btn-submit" @click="saveAccountRename">确定</button>
           </div>
         </div>
       </div>
@@ -584,538 +971,1090 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.wechat-page {
+.wechat-page-root {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 1200px;
-  margin: 0 auto;
+  height: calc(100vh - 48px);
+  position: relative;
+  user-select: none;
 }
 
-.header-row {
+/* 主双栏容器 */
+.chat-workbench {
+  display: flex;
+  flex: 1;
+  background: var(--bg-sidebar, #ffffff);
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e4e7eb);
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+
+/* 1. 左侧账号栏 */
+.sidebar-pane {
+  width: 270px;
+  background: #f8fafc;
+  border-right: 1px solid var(--border-color, #e4e7eb);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-pane.collapsed {
+  width: 64px;
+}
+
+.sidebar-header {
+  padding: 12px 10px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px solid var(--border-color, #e4e7eb);
+  background: var(--bg-sidebar, #ffffff);
+  min-height: 48px;
 }
 
-.page-title {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 4px;
-  color: var(--text-main);
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.page-desc {
+.btn-toggle-sidebar {
+  background: transparent;
+  border: 1px solid var(--border-color, #e4e7eb);
+  border-radius: 4px;
+  color: var(--text-muted, #656d76);
+  font-size: 11px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-toggle-sidebar:hover {
+  background: var(--bg-hover, #f0f2f5);
+  color: var(--text-main, #1f2328);
+}
+
+.btn-expand-header {
+  background: transparent;
+  border: 1px solid var(--border-color, #e4e7eb);
+  border-radius: 4px;
   font-size: 13px;
-  color: var(--text-muted);
+  padding: 3px 6px;
+  cursor: pointer;
+  margin-right: 4px;
+  transition: background 0.15s ease;
+}
+
+.btn-expand-header:hover {
+  background: var(--bg-hover, #f0f2f5);
+}
+
+.sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.logo-emoji {
+  font-size: 16px;
+}
+
+.sidebar-title h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main, #1f2328);
   margin: 0;
 }
 
-.card {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 16px 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+.btn-bind-account {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
 }
 
-.card-header {
+.btn-bind-account:hover {
+  background: #059669;
+}
+
+.btn-bind-account.large {
+  padding: 8px 18px;
+  font-size: 13px;
+  margin-top: 14px;
+}
+
+.account-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.empty-accounts {
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  padding: 32px 8px;
+  text-align: center;
+  color: var(--text-muted, #656d76);
+}
+
+.empty-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.empty-text {
+  font-size: 13px;
   margin-bottom: 12px;
 }
 
-.card-header h3 {
-  font-size: 14px;
+.btn-empty-bind {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.account-item-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: transparent;
+  position: relative;
+}
+
+.account-item-card.is-mini {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.account-item-card:hover {
+  background: #edf2f7;
+}
+
+.account-item-card.active {
+  background: #e2e8f0;
+}
+
+.bot-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 600;
-  margin: 0;
-  color: var(--text-main);
+  font-size: 15px;
+  position: relative;
+  flex-shrink: 0;
 }
 
-/* 顶部状态总览 */
-.status-overview {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  padding: 12px 18px;
-  background: #ffffff;
+.status-dot-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
 }
 
-.status-col {
+.status-dot-badge.online {
+  background: #10b981;
+}
+
+.status-dot-badge.offline {
+  background: #94a3b8;
+}
+
+.account-meta {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 3px;
+}
+
+.meta-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 4px;
 }
 
-.status-col .label {
-  font-size: 11px;
+.bot-remark {
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-subtle);
-  text-transform: uppercase;
+  color: var(--text-main, #1f2328);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.value-badge {
+.token-status-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.token-status-badge.ready {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.meta-row-sub {
+  display: flex;
+  align-items: center;
+}
+
+.account-sub-id {
+  font-size: 11px;
+  color: var(--text-subtle, #8c959f);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: Consolas, monospace;
+}
+
+.hover-actions-group {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.account-item-card:hover .hover-actions-group {
+  display: flex;
+}
+
+.action-icon-btn {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted, #656d76);
+  transition: all 0.1s;
+}
+
+.action-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.action-icon-btn.danger:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* 2. 右侧主聊天区域 */
+.chat-main-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  position: relative;
+  min-width: 0;
+}
+
+.no-selection-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #656d76);
+  text-align: center;
+  padding: 32px;
+}
+
+.ph-icon {
+  font-size: 44px;
+  margin-bottom: 12px;
+  opacity: 0.7;
+}
+
+.no-selection-placeholder h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main, #1f2328);
+  margin: 0 0 6px;
+}
+
+.no-selection-placeholder p {
+  font-size: 13px;
+  color: var(--text-subtle, #8c959f);
+  margin: 0;
+}
+
+/* 聊天顶部栏 */
+.chat-header {
+  height: 54px;
+  padding: 0 18px;
+  background: var(--bg-sidebar, #ffffff);
+  border-bottom: 1px solid var(--border-color, #e4e7eb);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.header-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bot-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main, #1f2328);
+}
+
+.listen-badge {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #64748b;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 12px;
-  width: fit-content;
+  gap: 4px;
 }
 
-.value-badge.success {
-  background: rgba(26, 127, 55, 0.1);
-  color: var(--success);
+.listen-badge.online {
+  background: #d1fae5;
+  color: #059669;
 }
 
-.value-badge.offline {
-  background: rgba(140, 149, 159, 0.15);
-  color: var(--text-muted);
-}
-
-.value-badge .dot {
+.listen-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
 
-.value-text {
+.header-target-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
-  color: var(--text-main);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.monospace {
-  font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
+.target-label {
+  color: var(--text-subtle, #8c959f);
 }
 
-.token-row {
+.target-val {
+  color: var(--text-main, #1f2328);
+  font-family: Consolas, monospace;
+}
+
+.btn-edit-link {
+  background: transparent;
+  border: none;
+  color: var(--accent, #2f6fed);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 11px;
+}
+
+.target-input-inline {
+  padding: 2px 6px;
+  border: 1px solid var(--border-color, #e4e7eb);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: Consolas, monospace;
+  width: 200px;
+  outline: none;
+}
+
+.target-input-inline:focus {
+  border-color: var(--accent, #2f6fed);
+}
+
+.btn-save-inline {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn-cancel-inline {
+  background: #e2e8f0;
+  color: #475569;
+  border: none;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.header-right-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.btn-refresh {
-  padding: 2px 6px;
-  font-size: 11px;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-.btn-toggle {
-  padding: 4px 10px;
+.btn-hdr-action {
+  background: var(--bg-sidebar, #ffffff);
+  border: 1px solid var(--border-color, #e4e7eb);
+  padding: 5px 12px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-hover);
-  color: var(--text-muted);
+  color: var(--text-main, #1f2328);
   cursor: pointer;
-  width: fit-content;
+  transition: all 0.15s ease;
 }
 
-.btn-toggle.active {
-  background: rgba(47, 111, 237, 0.1);
-  color: var(--accent);
-  border-color: rgba(47, 111, 237, 0.3);
+.btn-hdr-action:hover {
+  background: var(--bg-hover, #f0f2f5);
 }
 
-/* 主网格 */
-.main-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  align-items: start;
+.btn-hdr-action.primary-toggle.active {
+  background: #d1fae5;
+  border-color: #10b981;
+  color: #059669;
 }
 
-.left-pane, .right-pane {
+/* 微信规则条 */
+.clawbot-rules-strip {
+  background: #fffbeb;
+  border-bottom: 1px solid #fef3c7;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.rules-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rules-tag {
+  font-weight: 600;
+  color: #d97706;
+}
+
+.rule-sep {
+  color: #fcd34d;
+}
+
+.btn-close-strip {
+  background: transparent;
+  border: none;
+  color: #92400e;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* 消息流主体 */
+.chat-flow-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
-/* 扫码卡片 */
-.qr-container {
+.flow-empty-box {
+  margin: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 180px;
-  background: var(--bg-app);
-  border-radius: 6px;
-  padding: 16px;
+  color: var(--text-muted, #656d76);
+  text-align: center;
 }
 
-.qr-box {
+.empty-bubble-icon {
+  font-size: 36px;
+  margin-bottom: 6px;
+  opacity: 0.5;
+}
+
+.empty-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main, #1f2328);
+}
+
+.empty-desc {
+  font-size: 12px;
+  color: var(--text-subtle, #8c959f);
+  margin-top: 4px;
+}
+
+/* 消息行 */
+.bubble-row {
+  display: flex;
+  gap: 10px;
+  max-width: 80%;
+}
+
+.bubble-row.system-row {
+  align-self: center;
+  max-width: 90%;
+  margin: 2px 0;
+}
+
+.system-pill {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--text-muted, #656d76);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pill-time {
+  font-size: 10px;
+  color: var(--text-subtle, #8c959f);
+}
+
+.bubble-row.inbound-row {
+  align-self: flex-start;
+}
+
+.bubble-row.outbound-row {
+  align-self: flex-end;
+  flex-direction: row;
+}
+
+.robot-sender-title {
+  color: var(--accent, #2f6fed);
+  font-weight: 500;
+}
+
+.robot-avatar-box {
+  background: #2563eb !important;
+  font-size: 16px;
+}
+
+.msg-avatar-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.peer-avatar {
+  background: #64748b;
+}
+
+.bubble-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bubble-column.align-right {
+  align-items: flex-end;
+}
+
+.bubble-info-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-subtle, #8c959f);
+}
+
+.bubble-info-header.justify-end {
+  justify-content: flex-end;
+}
+
+.bubble-box {
+  padding: 9px 13px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+  user-select: text;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.inbound-bubble {
+  background: var(--bg-sidebar, #ffffff);
+  border: 1px solid var(--border-color, #e4e7eb);
+  color: var(--text-main, #1f2328);
+  border-top-left-radius: 2px;
+}
+
+.outbound-bubble {
+  background: #95ec69;
+  color: #1a1a1a;
+  border-top-right-radius: 2px;
+}
+
+.bubble-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.file-card-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.file-card-preview.out {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.file-icon-box {
+  font-size: 22px;
+}
+
+.file-info-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-main-name {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.file-sub-type {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.file-sub-path {
+  font-size: 10px;
+  color: #475569;
+  font-family: Consolas, monospace;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-card-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.media-icon-box {
+  font-size: 20px;
+}
+
+.media-info-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.media-main-name {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.media-sub-path {
+  font-size: 10px;
+  font-family: Consolas, monospace;
+  opacity: 0.8;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-tip {
+  margin: 0;
+}
+
+.msg-send-status {
+  font-size: 11px;
+}
+
+.msg-send-status.sending {
+  color: var(--text-subtle, #8c959f);
+}
+
+.msg-send-status.failed {
+  color: var(--danger, #cf222e);
+}
+
+/* 3. 底部输入区 */
+.chat-input-area {
+  height: 155px;
+  background: var(--bg-sidebar, #ffffff);
+  border-top: 1px solid var(--border-color, #e4e7eb);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.input-toolbar-row {
+  padding: 6px 14px 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-btn {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--text-main, #1f2328);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s ease;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg-hover, #f0f2f5);
+}
+
+.toolbar-btn.text-danger:hover {
+  color: var(--danger, #cf222e);
+  background: #fee2e2;
+}
+
+.tb-icon {
+  font-size: 13px;
+}
+
+.tb-spacer {
+  flex: 1;
+}
+
+.input-textarea-wrapper {
+  flex: 1;
+  padding: 0 14px;
+}
+
+.wechat-textarea {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 13px;
+  color: var(--text-main, #1f2328);
+  font-family: inherit;
+  line-height: 1.5;
+  background: transparent;
+}
+
+.input-footer-row {
+  padding: 4px 14px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.shortcut-tip {
+  font-size: 11px;
+  color: var(--text-subtle, #8c959f);
+}
+
+.btn-send-message {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  padding: 5px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-send-message:hover {
+  background: #059669;
+}
+
+.btn-send-message:disabled {
+  background: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* 4. 模态弹窗 */
+.custom-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-modal-card {
+  width: 360px;
+  background: var(--bg-sidebar, #ffffff);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  animation: modalIn 0.18s ease-out;
+}
+
+.custom-modal-card.mini {
+  width: 300px;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.cmodal-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #e4e7eb);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cmodal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main, #1f2328);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cmodal-close {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  color: var(--text-subtle, #8c959f);
+  cursor: pointer;
+}
+
+.cmodal-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-item-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-main, #1f2328);
+}
+
+.form-text-input {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color, #e4e7eb);
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.form-text-input:focus {
+  border-color: #10b981;
+}
+
+.qr-render-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px dashed var(--border-color, #e4e7eb);
+  padding: 12px;
+}
+
+.qr-state-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #656d76);
+  font-size: 12px;
+  gap: 8px;
+}
+
+.qr-spinner {
+  font-size: 24px;
+}
+
+.qr-success-box {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
 }
 
-.qr-image {
-  width: 160px;
-  height: 160px;
+.qr-canvas-img {
+  width: 170px;
+  height: 170px;
   border-radius: 6px;
-  border: 1px solid var(--border-color);
-  background: #ffffff;
-  padding: 6px;
+  border: 1px solid var(--border-color, #e4e7eb);
 }
 
-.qr-status-tag {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
+.qr-badge-pill {
+  font-size: 11px;
+  padding: 3px 10px;
   border-radius: 12px;
-  background: #eef2ff;
-  color: var(--accent);
+  background: #e2e8f0;
+  color: #475569;
 }
 
-.qr-status-tag.scaned {
-  background: #fff8e6;
-  color: #b45309;
-}
-
-.qr-status-tag.confirmed {
-  background: #def7ec;
-  color: #03543f;
-}
-
-.qr-status-tag.expired, .qr-status-tag.error {
-  background: #fde8e8;
-  color: #9b1c1c;
-}
-
-.qr-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-subtle);
-  font-size: 12px;
-}
-
-.qr-placeholder-icon {
-  font-size: 32px;
-  opacity: 0.5;
-}
-
-/* 消息发送表单 */
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.form-group label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.tip {
-  font-size: 11px;
-  color: var(--text-subtle);
-}
-
-.input-text, .input-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 10px;
-  font-size: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: #ffffff;
-  color: var(--text-main);
-  outline: none;
-}
-
-.input-text:focus, .input-textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(47, 111, 237, 0.15);
-}
-
-.sub-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin: 0 0 8px;
-}
-
-.message-section {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
-}
-
-.text-send-box {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.send-btn {
-  align-self: flex-end;
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--accent);
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.send-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.file-picker-row {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-file-select {
-  flex: 0 0 auto;
-  padding: 8px 12px;
-  font-size: 12px;
-  background: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-
-.image-action-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 8px;
-}
-
-/* 按钮通用 */
-.btn-primary {
-  background: var(--accent);
-  color: #ffffff;
-  border: none;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-primary.small {
-  padding: 4px 8px;
-  font-size: 11px;
-}
-
-.btn-secondary {
-  background: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.btn-secondary.danger {
-  color: var(--danger);
-}
-
-.btn-clear {
-  background: transparent;
-  border: none;
-  font-size: 11px;
-  color: var(--text-subtle);
-  cursor: pointer;
-}
-
-.btn-clear:hover {
-  color: var(--danger);
-}
-
-/* 日志面板 */
-.log-card {
-  height: 520px;
-  display: flex;
-  flex-direction: column;
-}
-
-.log-stream {
-  flex: 1;
-  overflow-y: auto;
-  background: #1e1e1e;
-  border-radius: 6px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.log-empty {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  color: #6e7681;
-  font-size: 12px;
-}
-
-.log-item {
-  font-size: 11px;
-  font-family: 'Consolas', 'Menlo', 'Monaco', monospace;
-  padding: 4px 6px;
-  border-radius: 4px;
-  background: #252526;
-  border-left: 3px solid #6e7681;
-}
-
-.log-item.in {
-  border-left-color: #3fb950;
-}
-
-.log-item.out {
-  border-left-color: #58a6ff;
-}
-
-.log-item.sys {
-  border-left-color: #d29922;
-}
-
-.log-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-
-.log-time {
-  color: #8b949e;
-}
-
-.log-badge {
-  font-size: 10px;
-  padding: 1px 4px;
-  border-radius: 3px;
-  color: #ffffff;
-  background: #484f58;
-}
-
-.log-badge.in {
-  background: #238636;
-}
-
-.log-badge.out {
-  background: #1f6feb;
-}
-
-.log-badge.sys {
-  background: #9e6a03;
-}
-
-.log-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.log-text {
-  color: #e6edf3;
-  word-break: break-all;
-}
-
-.log-detail {
-  color: #8b949e;
-  font-size: 10px;
-}
-
-/* 会话激活提示卡片 */
-.session-guide-card {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 12px 16px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
-}
-
-.guide-icon {
-  font-size: 20px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.guide-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.guide-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e40af;
-}
-
-.guide-desc {
-  font-size: 12px;
-  line-height: 1.5;
-  color: #1e3a8a;
-}
-
-.guide-list {
-  margin: 0;
-  padding-left: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.guide-list li {
-  line-height: 1.6;
-}
-
-.guide-desc strong {
+.qr-badge-pill.scaned {
+  background: #dbeafe;
   color: #1d4ed8;
 }
 
-/* 通知条 */
-.notice-banner {
-  padding: 8px 12px;
+.qr-badge-pill.confirmed {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.qr-badge-pill.expired,
+.qr-badge-pill.error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.btn-retry-qr {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cmodal-hints {
+  font-size: 11px;
+  color: var(--text-subtle, #8c959f);
+  line-height: 1.5;
+}
+
+.cmodal-actions-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.btn-cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid var(--border-color, #e4e7eb);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-submit {
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  padding: 4px 14px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
-}
-
-.notice-banner.success {
-  background: #def7ec;
-  color: #03543f;
-  border: 1px solid #bcf0da;
-}
-
-.notice-banner.error {
-  background: #fde8e8;
-  color: #9b1c1c;
-  border: 1px solid #fbd5d5;
+  cursor: pointer;
 }
 </style>

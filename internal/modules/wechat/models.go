@@ -16,27 +16,45 @@ type QRStatus struct {
 	Message     string `json:"message,omitempty"`
 }
 
-// WechatState 模块当前运行时状态
-type WechatState struct {
-	IsLoggedIn            bool   `json:"isLoggedIn"`
+// WechatAccountState 微信单账号运行时状态模型
+type WechatAccountState struct {
+	ID                    string `json:"id"`
+	RemarkName            string `json:"remarkName"`
 	BotToken              string `json:"botToken"`
 	IlinkBotID            string `json:"ilinkBotId"`
 	IlinkUserID           string `json:"ilinkUserId"`
 	ContextToken          string `json:"contextToken"`
 	ContextTokenUpdatedAt string `json:"contextTokenUpdatedAt"`
 	TargetUserID          string `json:"targetUserId"`
+	BaseURL               string `json:"baseUrl"`
+	CreatedAt             string `json:"createdAt"`
 	IsListening           bool   `json:"isListening"`
+}
+
+// WechatState 模块当前运行时状态（兼容旧版接口）
+type WechatState struct {
+	IsLoggedIn            bool                 `json:"isLoggedIn"`
+	BotToken              string               `json:"botToken"`
+	IlinkBotID            string               `json:"ilinkBotId"`
+	IlinkUserID           string               `json:"ilinkUserId"`
+	ContextToken          string               `json:"contextToken"`
+	ContextTokenUpdatedAt string               `json:"contextTokenUpdatedAt"`
+	TargetUserID          string               `json:"targetUserId"`
+	IsListening           bool                 `json:"isListening"`
+	Accounts              []WechatAccountState `json:"accounts"`
 }
 
 // SendMessageReq 发送消息请求
 type SendMessageReq struct {
-	ToUserID string `json:"toUserId"`
-	Content  string `json:"content"`
-	FilePath string `json:"filePath,omitempty"`
+	AccountID string `json:"accountId,omitempty"`
+	ToUserID  string `json:"toUserId"`
+	Content   string `json:"content"`
+	FilePath  string `json:"filePath,omitempty"`
 }
 
 // InboundMessage 接收到的消息（业务实体）
 type InboundMessage struct {
+	AccountID string `json:"accountId"`
 	From      string `json:"from"`
 	Type      int    `json:"type"` // 1: Text, 2: Image, 3: Voice, 4: File, 5: Video
 	Text      string `json:"text,omitempty"`

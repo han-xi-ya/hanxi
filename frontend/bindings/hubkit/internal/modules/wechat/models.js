@@ -5,6 +5,7 @@
 /**
  * InboundMessage 接收到的消息（业务实体）
  * @typedef {Object} InboundMessage
+ * @property {string} accountId
  * @property {string} from
  * @property {number} type - 1: Text, 2: Image, 3: Voice, 4: File, 5: Video
  * @property {string} [text]
@@ -32,7 +33,23 @@
  */
 
 /**
- * WechatState 模块当前运行时状态
+ * WechatAccountState 微信单账号运行时状态模型
+ * @typedef {Object} WechatAccountState
+ * @property {string} id
+ * @property {string} remarkName
+ * @property {string} botToken
+ * @property {string} ilinkBotId
+ * @property {string} ilinkUserId
+ * @property {string} contextToken
+ * @property {string} contextTokenUpdatedAt
+ * @property {string} targetUserId
+ * @property {string} baseUrl
+ * @property {string} createdAt
+ * @property {boolean} isListening
+ */
+
+/**
+ * WechatState 模块当前运行时状态（兼容旧版接口）
  * @typedef {Object} WechatState
  * @property {boolean} isLoggedIn
  * @property {string} botToken
@@ -42,6 +59,7 @@
  * @property {string} contextTokenUpdatedAt
  * @property {string} targetUserId
  * @property {boolean} isListening
+ * @property {WechatAccountState[] | null} accounts
  */
 
 // In interface mode, this file is likely to contain just comments.

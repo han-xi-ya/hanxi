@@ -25,6 +25,11 @@ import * as $models from "./models.js";
  */
 
 /**
- * WechatState 模块当前运行时状态
+ * WechatAccountState 微信单账号运行时状态模型
+ * @typedef {$models.WechatAccountState} WechatAccountState
+ */
+
+/**
+ * WechatState 模块当前运行时状态（兼容旧版接口）
  * @typedef {$models.WechatState} WechatState
  */
