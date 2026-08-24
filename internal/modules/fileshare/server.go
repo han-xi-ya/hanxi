@@ -169,6 +169,22 @@ func (s *Server) IsRunning() bool {
 // connTracker 连接中间件
 func (s *Server) connTracker(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 跨域支持 (用于局域网不同端访问)
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// 移动端浏览器 (iOS Safari/WKWebView、安卓 Chrome) 对 HTTP keep-alive
+		// 连接复用存在已知挂起缺陷: 分片上传多请求打到同一连接时可能永久 hang。
+		// 强制每个请求独立连接，根治该问题 (局域网内握手开销可忽略)。
+		if isMobileUA(r.Header.Get("User-Agent")) {
+			r.Close = true
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		// 轮询性请求不计入活跃连接数，避免统计面板自身虚高
 		if r.URL.Path == "/api/stats" {
 			next.ServeHTTP(w, r)
@@ -177,17 +193,18 @@ func (s *Server) connTracker(next http.Handler) http.Handler {
 		atomic.AddInt64(&s.activeConnections, 1)
 		defer atomic.AddInt64(&s.activeConnections, -1)
 
-		// 跨域支持 (用于局域网不同端访问)
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isMobileUA 判断是否为移动端浏览器 (含 iPad 桌面模式 WKWebView)
+func isMobileUA(ua string) bool {
+	lower := strings.ToLower(ua)
+	return strings.Contains(lower, "iphone") ||
+		strings.Contains(lower, "ipad") ||
+		strings.Contains(lower, "ipod") ||
+		strings.Contains(lower, "android") ||
+		strings.Contains(lower, "mobile")
 }
 
 // handleIndex 提供嵌入式 Web 前端

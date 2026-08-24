@@ -397,7 +397,15 @@
         xhr.open('POST', url, true);
         for (const k in (extraHeaders || {})) xhr.setRequestHeader(k, extraHeaders[k]);
         if (onProgress && xhr.upload) {
-          xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+          // 节流: iOS 移动浏览器高频 progress 事件 + 频繁 DOM 写入会显著拖慢上传
+          let last = 0;
+          xhr.upload.onprogress = (e) => {
+            if (!e.lengthComputable) return;
+            const now = Date.now();
+            if (now - last < 100) return;
+            last = now;
+            onProgress(e.loaded, e.total);
+          };
         }
         xhr.onload = () => {
           uploadCtx.xhr = null;

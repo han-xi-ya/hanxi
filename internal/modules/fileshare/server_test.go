@@ -136,6 +136,25 @@ func TestFileshareUploadAndDrop(t *testing.T) {
 	}
 }
 
+// 移动端浏览器需强制独立连接 (keep-alive 复用挂起缺陷), UA 判定必须可靠
+func TestFileshareIsMobileUA(t *testing.T) {
+	cases := []struct {
+		ua   string
+		want bool
+	}{
+		{"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1", true},
+		{"Mozilla/5.0 (iPad; CPU OS 16_6 like Mac OS X) AppleWebKit/605.1.15 Version/16.6 Mobile/15E148 Safari/604.1", true},
+		{"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36", true},
+		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36", false},
+		{"", false},
+	}
+	for i, c := range cases {
+		if got := isMobileUA(c.ua); got != c.want {
+			t.Errorf("case %d: isMobileUA(%q) = %v, want %v", i, c.ua, got, c.want)
+		}
+	}
+}
+
 // 分片偏移错位兜底: 超时/中断在服务器残留部分字节时, 追加必须 409 拒绝并提示清片重传
 func TestFileshareAppendOffsetMismatch(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "fileshare_offset_test_*")
