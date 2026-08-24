@@ -99,13 +99,32 @@ func (c *Client) SendTextMessage(ctx context.Context, botToken, contextToken, to
 	var resp sendMessageResp
 	err := c.post(ctx, "/ilink/bot/sendmessage", botToken, payload, &resp)
 	if err != nil {
-		return fmt.Errorf("send text message failed: %w", err)
+		return fmt.Errorf("发送文字消息网络请求失败: %w", err)
 	}
 	if resp.Ret != 0 && resp.Ret != 200 {
-		return fmt.Errorf("send text message server error: ret=%d, errmsg=%s", resp.Ret, resp.ErrMsg)
+		return parseSendMessageError("文字", resp.Ret, resp.ErrMsg)
 	}
 
 	return nil
+}
+
+// parseSendMessageError 解析微信 iLink 服务端返回的错误码并输出对开发者极度友好的诊断提示
+func parseSendMessageError(msgType string, ret int, errMsg string) error {
+	var friendlyTip string
+	switch ret {
+	case -2:
+		friendlyTip = "会话尚未建立或已失效 (prepare failed)。微信官方限制机器人无法主动发起新会话，请使用目标微信号先在微信中主动给机器人发送一条任意消息（如发送“你好”），待 HubKit 捕获最新会话凭据后再发送。"
+	case -1:
+		friendlyTip = "系统繁忙或参数异常，请稍后重试。"
+	case 40001, 40014:
+		friendlyTip = "Bot Token 无效或已过期，请重新扫码登录授权。"
+	case 40003:
+		friendlyTip = "目标微信用户 ID (To User ID) 无效或不存在。"
+	default:
+		friendlyTip = "微信服务器返回异常，请确认网络连接及会话状态。"
+	}
+
+	return fmt.Errorf("微信服务器拒绝发送%s (ret=%d, errmsg=%s): %s", msgType, ret, errMsg, friendlyTip)
 }
 
 // SendImageMessage 发送图片消息
@@ -158,10 +177,10 @@ func (c *Client) SendImageMessage(ctx context.Context, botToken, contextToken, t
 	var resp sendMessageResp
 	err = c.post(ctx, "/ilink/bot/sendmessage", botToken, payload, &resp)
 	if err != nil {
-		return fmt.Errorf("send image message failed: %w", err)
+		return fmt.Errorf("发送图片消息网络请求失败: %w", err)
 	}
 	if resp.Ret != 0 && resp.Ret != 200 {
-		return fmt.Errorf("send image message server error: ret=%d, errmsg=%s", resp.Ret, resp.ErrMsg)
+		return parseSendMessageError("图片", resp.Ret, resp.ErrMsg)
 	}
 
 	return nil
@@ -218,10 +237,10 @@ func (c *Client) SendFileMessage(ctx context.Context, botToken, contextToken, to
 	var resp sendMessageResp
 	err = c.post(ctx, "/ilink/bot/sendmessage", botToken, payload, &resp)
 	if err != nil {
-		return fmt.Errorf("send file message failed: %w", err)
+		return fmt.Errorf("发送文件消息网络请求失败: %w", err)
 	}
 	if resp.Ret != 0 && resp.Ret != 200 {
-		return fmt.Errorf("send file message server error: ret=%d, errmsg=%s", resp.Ret, resp.ErrMsg)
+		return parseSendMessageError("文件", resp.Ret, resp.ErrMsg)
 	}
 
 	return nil
