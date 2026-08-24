@@ -35,35 +35,55 @@ type tomlTLS struct {
 }
 
 type tomlServerTransport struct {
-	Protocol string  `toml:"protocol"` // tcp/kcp/quic/websocket/wss
+	Protocol string  `toml:"protocol,omitempty"` // tcp/kcp/quic/websocket/wss (缺省默认 tcp)
+	ProxyURL string  `toml:"proxyURL,omitempty"` // socks5://... 或 http://...
 	TLS      tomlTLS `toml:"tls"`
 }
 
 type tomlProxy struct {
-	Name          string             `toml:"name"`
-	Type          string             `toml:"type"`
-	LocalIP       string             `toml:"localIP"`
-	LocalPort     int                `toml:"localPort"`
-	RemotePort    *int               `toml:"remotePort,omitempty"` // 仅 tcp/udp 输出；其他类型省略（frp 拒绝 stcp/xtcp 携带 remotePort）
-	CustomDomains []string           `toml:"customDomains,omitempty"`
-	Subdomain     string             `toml:"subdomain,omitempty"`
-	SecretKey     string             `toml:"secretKey,omitempty"`
-	Transport     tomlProxyTransport `toml:"transport"`
+	Name              string             `toml:"name"`
+	Type              string             `toml:"type"`
+	LocalIP           string             `toml:"localIP"`
+	LocalPort         int                `toml:"localPort"`
+	RemotePort        *int               `toml:"remotePort,omitempty"` // 仅 tcp/udp 输出；其他类型省略
+	CustomDomains     []string           `toml:"customDomains,omitempty"`
+	Subdomain         string             `toml:"subdomain,omitempty"`
+	SecretKey         string             `toml:"secretKey,omitempty"`
+	HostHeaderRewrite string             `toml:"hostHeaderRewrite,omitempty"`
+	Transport         tomlProxyTransport `toml:"transport"`
 }
 
 type tomlProxyTransport struct {
+	UseEncryption        bool   `toml:"useEncryption"`
+	UseCompression       bool   `toml:"useCompression"`
+	ProxyProtocolVersion string `toml:"proxyProtocolVersion,omitempty"` // "" | "v1" | "v2"
+	BandwidthLimit       string `toml:"bandwidthLimit,omitempty"`       // "1MB", "500KB"
+}
+
+type tomlVisitor struct {
+	Name      string               `toml:"name"`
+	Type      string               `toml:"type"` // stcp | xtcp
+	ServerName string              `toml:"serverName"`
+	SecretKey string               `toml:"secretKey,omitempty"`
+	BindAddr  string               `toml:"bindAddr"`
+	BindPort  int                  `toml:"bindPort"`
+	Transport tomlVisitorTransport `toml:"transport"`
+}
+
+type tomlVisitorTransport struct {
 	UseEncryption  bool `toml:"useEncryption"`
 	UseCompression bool `toml:"useCompression"`
 }
 
 // tomlFile v0.53+ 文件骨架（顶层字段 + 各子段）
 type tomlFile struct {
-	ServerAddr string          `toml:"serverAddr"`
-	ServerPort int             `toml:"serverPort"`
-	Auth       tomlAuth        `toml:"auth"`
-	Log        tomlLog         `toml:"log"`
+	ServerAddr string              `toml:"serverAddr"`
+	ServerPort int                 `toml:"serverPort"`
+	Auth       tomlAuth            `toml:"auth"`
+	Log        tomlLog             `toml:"log"`
 	Transport  tomlServerTransport `toml:"transport"`
-	Proxies    []tomlProxy     `toml:"proxies"`
+	Proxies    []tomlProxy         `toml:"proxies,omitempty"`
+	Visitors   []tomlVisitor       `toml:"visitors,omitempty"`
 }
 
 // ---------------------------
@@ -90,6 +110,11 @@ func Generate(p *domain.Project) (string, error) {
 	}
 	tlsEnable := server.TLSEnable
 
+	protocol := strings.TrimSpace(server.Protocol)
+	if protocol == "" {
+		protocol = "tcp"
+	}
+
 	seen := make(map[string]bool, len(p.Proxies))
 	root := tomlFile{
 		ServerAddr: strings.TrimSpace(server.ServerAddr),
@@ -100,10 +125,12 @@ func Generate(p *domain.Project) (string, error) {
 		},
 		Log: tomlLog{Level: logLevel},
 		Transport: tomlServerTransport{
-			Protocol: "tcp",
+			Protocol: protocol,
+			ProxyURL: strings.TrimSpace(server.ProxyURL),
 			TLS:      tomlTLS{Enable: &tlsEnable},
 		},
-		Proxies: make([]tomlProxy, 0, len(p.Proxies)),
+		Proxies:  make([]tomlProxy, 0),
+		Visitors: make([]tomlVisitor, 0),
 	}
 
 	for i, pr := range p.Proxies {
@@ -121,6 +148,42 @@ func Generate(p *domain.Project) (string, error) {
 		default:
 			return "", fmt.Errorf("代理规则 %s 类型不支持: %s", name, pr.Type)
 		}
+
+		// 判断是否为 Visitor 访客端模式
+		if pr.Role == "visitor" {
+			if pr.Type != "stcp" && pr.Type != "xtcp" {
+				return "", fmt.Errorf("访客端规则 %s 仅支持 stcp 或 xtcp 类型，当前为: %s", name, pr.Type)
+			}
+			serverName := strings.TrimSpace(pr.ServerName)
+			if serverName == "" {
+				return "", fmt.Errorf("访客端规则 %s 的目标服务名 serverName 不能为空", name)
+			}
+			if pr.BindPort <= 0 || pr.BindPort > 65535 {
+				return "", fmt.Errorf("访客端规则 %s 的本地绑定端口 bindPort 无效", name)
+			}
+
+			bindAddr := strings.TrimSpace(pr.BindAddr)
+			if bindAddr == "" {
+				bindAddr = "127.0.0.1"
+			}
+
+			visitor := tomlVisitor{
+				Name:       name,
+				Type:       pr.Type,
+				ServerName: serverName,
+				SecretKey:  pr.SecretKey,
+				BindAddr:   bindAddr,
+				BindPort:   pr.BindPort,
+				Transport: tomlVisitorTransport{
+					UseEncryption:  pr.EncryptTransport || server.UseEncryption,
+					UseCompression: server.UseCompression,
+				},
+			}
+			root.Visitors = append(root.Visitors, visitor)
+			continue
+		}
+
+		// 普通代理规则 (Proxy)
 		if pr.LocalPort <= 0 || pr.LocalPort > 65535 {
 			return "", fmt.Errorf("规则 %s 的本地端口无效", name)
 		}
@@ -129,16 +192,19 @@ func Generate(p *domain.Project) (string, error) {
 		}
 
 		proxy := tomlProxy{
-			Name:          name,
-			Type:          pr.Type,
-			LocalIP:       pruneLocalIP(pr.LocalIP),
-			LocalPort:     pr.LocalPort,
-			CustomDomains: pr.CustomDomains,
-			Subdomain:     pr.Subdomain,
-			SecretKey:     pr.SecretKey,
+			Name:              name,
+			Type:              pr.Type,
+			LocalIP:           pruneLocalIP(pr.LocalIP),
+			LocalPort:         pr.LocalPort,
+			CustomDomains:     pr.CustomDomains,
+			Subdomain:         pr.Subdomain,
+			SecretKey:         pr.SecretKey,
+			HostHeaderRewrite: strings.TrimSpace(pr.HostHeaderRewrite),
 			Transport: tomlProxyTransport{
-				UseEncryption:  pr.EncryptTransport || server.UseEncryption,
-				UseCompression: server.UseCompression,
+				UseEncryption:        pr.EncryptTransport || server.UseEncryption,
+				UseCompression:       server.UseCompression,
+				ProxyProtocolVersion: strings.TrimSpace(pr.ProxyProtocolVersion),
+				BandwidthLimit:       strings.TrimSpace(pr.BandwidthLimit),
 			},
 		}
 		if pr.Type == "tcp" || pr.Type == "udp" {
@@ -257,39 +323,78 @@ func projectFromNew(tf tomlFile) domain.Project {
 		tlsOn = *tf.Transport.TLS.Enable
 	}
 
+	proto := tf.Transport.Protocol
+	if proto == "" {
+		proto = "tcp"
+	}
+
 	proj := domain.Project{
 		Server: domain.ServerConfig{
 			ServerAddr: tf.ServerAddr,
 			ServerPort: tf.ServerPort,
 			Token:      tf.Auth.Token,
+			Protocol:   proto,
+			ProxyURL:   tf.Transport.ProxyURL,
 			TLSEnable:  tlsOn,
 			LogLevel:   tf.Log.Level,
 		},
-		Proxies: make([]domain.ProxyRule, 0, len(tf.Proxies)),
+		Proxies: make([]domain.ProxyRule, 0, len(tf.Proxies)+len(tf.Visitors)),
 	}
 	allEnc, anyEnc := true, false
 	allCmp, anyCmp := true, false
+
+	// 解析 Proxies
 	for _, p := range tf.Proxies {
 		allEnc = allEnc && p.Transport.UseEncryption
 		anyEnc = anyEnc || p.Transport.UseEncryption
 		allCmp = allCmp && p.Transport.UseCompression
 		anyCmp = anyCmp || p.Transport.UseCompression
 		proj.Proxies = append(proj.Proxies, domain.ProxyRule{
-			Name:             p.Name,
-			Type:             p.Type,
-			LocalIP:          pruneLocalIP(p.LocalIP),
-			LocalPort:        p.LocalPort,
-			RemotePort:       derefInt(p.RemotePort),
-			CustomDomains:    p.CustomDomains,
-			Subdomain:        p.Subdomain,
-			SecretKey:        p.SecretKey,
-			EncryptTransport: p.Transport.UseEncryption,
+			Name:                 p.Name,
+			Type:                 p.Type,
+			Role:                 "server",
+			LocalIP:              pruneLocalIP(p.LocalIP),
+			LocalPort:            p.LocalPort,
+			RemotePort:           derefInt(p.RemotePort),
+			CustomDomains:        p.CustomDomains,
+			Subdomain:            p.Subdomain,
+			SecretKey:            p.SecretKey,
+			HostHeaderRewrite:    p.HostHeaderRewrite,
+			ProxyProtocolVersion: p.Transport.ProxyProtocolVersion,
+			BandwidthLimit:       p.Transport.BandwidthLimit,
+			EncryptTransport:     p.Transport.UseEncryption,
 		})
 	}
-	if len(tf.Proxies) > 0 && allEnc && anyEnc {
+
+	// 解析 Visitors
+	for _, v := range tf.Visitors {
+		allEnc = allEnc && v.Transport.UseEncryption
+		anyEnc = anyEnc || v.Transport.UseEncryption
+		allCmp = allCmp && v.Transport.UseCompression
+		anyCmp = anyCmp || v.Transport.UseCompression
+
+		bindAddr := v.BindAddr
+		if bindAddr == "" {
+			bindAddr = "127.0.0.1"
+		}
+
+		proj.Proxies = append(proj.Proxies, domain.ProxyRule{
+			Name:             v.Name,
+			Type:             v.Type,
+			Role:             "visitor",
+			ServerName:       v.ServerName,
+			SecretKey:        v.SecretKey,
+			BindAddr:         bindAddr,
+			BindPort:         v.BindPort,
+			EncryptTransport: v.Transport.UseEncryption,
+		})
+	}
+
+	totalRules := len(tf.Proxies) + len(tf.Visitors)
+	if totalRules > 0 && allEnc && anyEnc {
 		proj.Server.UseEncryption = true
 	}
-	if len(tf.Proxies) > 0 && allCmp && anyCmp {
+	if totalRules > 0 && allCmp && anyCmp {
 		proj.Server.UseCompression = true
 	}
 	return proj

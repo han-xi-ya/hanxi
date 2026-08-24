@@ -19,26 +19,36 @@ type ServerConfig struct {
 	ServerAddr     string `json:"serverAddr"`     // 服务器地址（IP 或域名）
 	ServerPort     int    `json:"serverPort"`     // 服务器端口（默认 7000）
 	Token          string `json:"token"`          // 鉴权令牌
+	Protocol       string `json:"protocol"`       // 传输协议：tcp(默认) | kcp | quic | websocket | wss
+	ProxyURL       string `json:"proxyUrl"`       // 经由代理连接服务端: socks5://... | http://...
 	TLSEnable      bool   `json:"tlsEnable"`      // 启用 TLS 加密传输
 	UseEncryption  bool   `json:"useEncryption"`  // 传输层加密
 	UseCompression bool   `json:"useCompression"` // 传输层压缩
 	LogLevel       string `json:"logLevel"`       // 日志级别 trace/debug/info/warn/error
 }
 
-// ProxyRule 一条隧道代理规则。
-// 依据 type 不同，字段使用规则：
+// ProxyRule 一条隧道代理规则（支持服务端代理与访客端 Visitor）。
+// 依据 type 和 role 不同，字段使用规则：
 //
-//	tcp/udp:  LocalIP/localPort + RemotePort
-//	http/https: LocalIP/localPort + CustomDomains 或 Subdomain
-//	stcp/xtcp:  LocalIP/localPort + SecretKey（对端再配置 serverName 指向本规则名）
+//	tcp/udp:     LocalIP/LocalPort + RemotePort
+//	http/https:  LocalIP/LocalPort + CustomDomains 或 Subdomain (可选 HostHeaderRewrite)
+//	stcp/xtcp (被访端): LocalIP/LocalPort + SecretKey
+//	stcp/xtcp (访客端): Role="visitor", ServerName + SecretKey + BindAddr/BindPort
 type ProxyRule struct {
-	Name             string   `json:"name"`             // 规则唯一名称（frp 内唯一标识）
-	Type             string   `json:"type"`             // tcp | udp | http | https | stcp | xtcp
-	LocalIP          string   `json:"localIp"`          // 本地服务地址（默认 127.0.0.1）
-	LocalPort        int      `json:"localPort"`        // 本地服务端口
-	RemotePort       int      `json:"remotePort"`       // 服务端公网端口（tcp/udp 必填）
-	CustomDomains    []string `json:"customDomains"`    // 自定义域名（http/https）
-	Subdomain        string   `json:"subdomain"`        // 二级域名（http/https，依托服务端泛解析）
-	SecretKey        string   `json:"secretKey"`        // stcp/xtcp 共享密钥
-	EncryptTransport bool     `json:"encryptTransport"` // 规则级传输加密（覆盖全局）
+	Name                 string   `json:"name"`                 // 规则唯一名称（frp 内唯一标识）
+	Type                 string   `json:"type"`                 // tcp | udp | http | https | stcp | xtcp
+	Role                 string   `json:"role"`                 // "" 或 "proxy" (被访端/代理) | "visitor" (访客端)
+	LocalIP              string   `json:"localIp"`              // 本地服务地址（默认 127.0.0.1）
+	LocalPort            int      `json:"localPort"`            // 本地服务端口
+	RemotePort           int      `json:"remotePort"`           // 服务端公网端口（tcp/udp 必填）
+	CustomDomains        []string `json:"customDomains"`        // 自定义域名（http/https）
+	Subdomain            string   `json:"subdomain"`            // 二级域名（http/https，依托服务端泛解析）
+	SecretKey            string   `json:"secretKey"`            // stcp/xtcp 共享密钥
+	ServerName           string   `json:"serverName"`           // visitor 关联的目标服务端规则名 (仅 visitor 生效)
+	BindAddr             string   `json:"bindAddr"`             // visitor 本地监听地址 (默认 127.0.0.1)
+	BindPort             int      `json:"bindPort"`             // visitor 本地监听端口 (仅 visitor 必填)
+	HostHeaderRewrite    string   `json:"hostHeaderRewrite"`    // HTTP 请求 Host 头重写 (http/https)
+	ProxyProtocolVersion string   `json:"proxyProtocolVersion"` // "" | "v1" | "v2" 真实 IP 透传
+	BandwidthLimit       string   `json:"bandwidthLimit"`       // 带宽限速，如 "1MB", "500KB"
+	EncryptTransport     bool     `json:"encryptTransport"`     // 规则级传输加密（覆盖全局）
 }

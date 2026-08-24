@@ -14,15 +14,18 @@ func sampleProject() *domain.Project {
 			ServerAddr:     "frp.example.com",
 			ServerPort:     7000,
 			Token:          "secret-token",
+			Protocol:       "kcp",
+			ProxyURL:       "socks5://127.0.0.1:1080",
 			TLSEnable:      true,
 			UseEncryption:  true,
 			UseCompression: false,
 			LogLevel:       "info",
 		},
 		Proxies: []domain.ProxyRule{
-			{Name: "ssh", Type: "tcp", LocalIP: "127.0.0.1", LocalPort: 22, RemotePort: 6000},
-			{Name: "web", Type: "http", LocalIP: "192.168.1.5", LocalPort: 8080, CustomDomains: []string{"dev.example.com"}},
+			{Name: "ssh", Type: "tcp", LocalIP: "127.0.0.1", LocalPort: 22, RemotePort: 6000, ProxyProtocolVersion: "v2", BandwidthLimit: "1MB"},
+			{Name: "web", Type: "http", LocalIP: "192.168.1.5", LocalPort: 8080, CustomDomains: []string{"dev.example.com"}, HostHeaderRewrite: "dev.local"},
 			{Name: "secret-sock", Type: "stcp", LocalIP: "127.0.0.1", LocalPort: 9000, SecretKey: "sk-123"},
+			{Name: "visitor-sock", Type: "stcp", Role: "visitor", ServerName: "secret-sock", SecretKey: "sk-123", BindAddr: "127.0.0.1", BindPort: 19000},
 		},
 	}
 }
@@ -40,9 +43,18 @@ func TestGenerateRoundTrip(t *testing.T) {
 		"serverPort = 7000",
 		"method = \"token\"",
 		`token = "secret-token"`,
+		`protocol = "kcp"`,
+		`proxyURL = "socks5://127.0.0.1:1080"`,
 		"[[proxies]]",
 		`name = "ssh"`,
 		"remotePort = 6000",
+		`proxyProtocolVersion = "v2"`,
+		`bandwidthLimit = "1MB"`,
+		`hostHeaderRewrite = "dev.local"`,
+		"[[visitors]]",
+		`name = "visitor-sock"`,
+		`serverName = "secret-sock"`,
+		"bindPort = 19000",
 	} {
 		if !strings.Contains(tomlText, want) {
 			t.Errorf("generated toml missing %q\n---\n%s", want, tomlText)
@@ -65,23 +77,32 @@ func TestGenerateRoundTrip(t *testing.T) {
 	if back.Server.ServerAddr != "frp.example.com" {
 		t.Errorf("ServerAddr mismatch: %q", back.Server.ServerAddr)
 	}
+	if back.Server.Protocol != "kcp" {
+		t.Errorf("Protocol mismatch: %q", back.Server.Protocol)
+	}
+	if back.Server.ProxyURL != "socks5://127.0.0.1:1080" {
+		t.Errorf("ProxyURL mismatch: %q", back.Server.ProxyURL)
+	}
 	if back.Server.Token != "secret-token" {
 		t.Errorf("Token mismatch: %q", back.Server.Token)
 	}
 	if !back.Server.UseEncryption {
 		t.Error("UseEncryption should survive round trip")
 	}
-	if len(back.Proxies) != 3 {
-		t.Fatalf("expected 3 proxies, got %d", len(back.Proxies))
+	if len(back.Proxies) != 4 {
+		t.Fatalf("expected 4 proxies, got %d", len(back.Proxies))
 	}
-	if back.Proxies[0].Type != "tcp" || back.Proxies[0].RemotePort != 6000 {
+	if back.Proxies[0].Type != "tcp" || back.Proxies[0].RemotePort != 6000 || back.Proxies[0].ProxyProtocolVersion != "v2" || back.Proxies[0].BandwidthLimit != "1MB" {
 		t.Errorf("proxy[0] mismatch: %+v", back.Proxies[0])
 	}
-	if back.Proxies[1].Type != "http" || len(back.Proxies[1].CustomDomains) != 1 {
+	if back.Proxies[1].Type != "http" || len(back.Proxies[1].CustomDomains) != 1 || back.Proxies[1].HostHeaderRewrite != "dev.local" {
 		t.Errorf("proxy[1] mismatch: %+v", back.Proxies[1])
 	}
 	if back.Proxies[2].SecretKey != "sk-123" {
 		t.Errorf("proxy[2] SecretKey mismatch: %v", back.Proxies[2])
+	}
+	if back.Proxies[3].Role != "visitor" || back.Proxies[3].ServerName != "secret-sock" || back.Proxies[3].BindPort != 19000 {
+		t.Errorf("proxy[3] visitor mismatch: %+v", back.Proxies[3])
 	}
 }
 
