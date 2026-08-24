@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HubKit 局域网快传站</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --card-hover: #1c2128;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --primary: #238636;
+      --primary-hover: #2ea043;
+      --accent: #58a6ff;
+      --danger: #f85149;
+      --toast-bg: rgba(22, 27, 34, 0.95);
+      --toast-border: #30363d;
+      --radius: 8px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f8fa;
+        --card-bg: #ffffff;
+        --card-hover: #f3f4f6;
+        --border: #d0d7de;
+        --text: #1f2328;
+        --text-muted: #656d76;
+        --primary: #1f883d;
+        --primary-hover: #1a7f37;
+        --accent: #0969da;
+        --danger: #cf222e;
+        --toast-bg: rgba(255, 255, 255, 0.96);
+        --toast-border: #d0d7de;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font); }
+    body { background-color: var(--bg); color: var(--text); padding: 16px; line-height: 1.5; min-height: 100vh; }
+    .container { max-width: 900px; margin: 0 auto; }
+    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 1.25rem; font-weight: 600; }
+    .badge { font-size: 0.75rem; background: var(--border); padding: 2px 8px; border-radius: 12px; color: var(--text-muted); }
+
+    /* 实时传输统计条 */
+    .stats-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: 0.8rem; color: var(--text-muted); padding: 8px 14px; margin-bottom: 16px; background: rgba(127,127,127,0.07); border: 1px solid rgba(127,127,127,0.14); border-radius: var(--radius); }
+    .stats-bar .stat { display: inline-flex; align-items: center; gap: 5px; }
+    .stats-bar .val { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--text); font-weight: 600; }
+    .stats-bar .up { color: #10b981; }
+    .stats-bar .down { color: #3b82f6; }
+    .stats-bar .dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 6px var(--primary); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+    /* 路径导航 */
+    .breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.9rem; margin-bottom: 12px; padding: 6px 12px; background: rgba(127,127,127,0.08); border-radius: var(--radius); }
+    .crumb-item { color: var(--accent); cursor: pointer; text-decoration: none; }
+    .crumb-item:hover { text-decoration: underline; }
+    .crumb-sep { color: var(--text-muted); }
+
+    /* 文件列表 */
+    .file-list { display: flex; flex-direction: column; gap: 6px; }
+    .file-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: var(--radius); border: 1px solid transparent; background: rgba(127,127,127,0.03); transition: all 0.2s; }
+    .file-item:hover { background: var(--card-hover); border-color: var(--border); }
+    .file-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+    .file-icon { font-size: 1.25rem; flex-shrink: 0; }
+    .file-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .file-name.is-dir { color: var(--accent); font-weight: 600; }
+    .file-meta { font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 12px; flex-shrink: 0; align-items: center; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--card-bg); color: var(--text); font-size: 0.85rem; font-weight: 500; cursor: pointer; text-decoration: none; transition: background 0.15s; }
+    .btn:hover { background: var(--card-hover); }
+    .btn-primary { background: var(--primary); color: #fff; border-color: transparent; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+
+    /* 投递面板 & 上传面板 */
+    .dropzone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 24px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+    .dropzone.dragover { border-color: var(--accent); background: rgba(88,166,255,0.08); }
+    .input-textarea { width: 100%; min-height: 80px; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.9rem; resize: vertical; margin-bottom: 8px; }
+    .input-textarea:focus { outline: none; border-color: var(--accent); }
+
+    .progress-bar { width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 10px; display: none; }
+    .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s; }
+
+    .empty-tip { text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.9rem; }
+    .hidden { display: none !important; }
+
+    /* 全局轻量 Toast 提示 */
+    .toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+    .toast { background: var(--toast-bg); backdrop-filter: blur(8px); border: 1px solid var(--toast-border); color: var(--text); padding: 10px 18px; border-radius: var(--radius); font-size: 0.85rem; box-shadow: 0 6px 16px rgba(0,0,0,0.25); animation: toastIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; }
+    .toast.toast-success { border-color: var(--primary); }
+    .toast.toast-error { border-color: var(--danger); color: var(--danger); box-shadow: 0 6px 16px rgba(207, 34, 46, 0.15); }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-8px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  </style>
+</head>
+<body>
+  <div class="toast-container" id="toastContainer"></div>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <span>📁 HubKit 快传</span>
+        <span class="badge" id="connStatus">局域网直连</span>
+      </div>
+      <div id="authArea">
+        <button class="btn btn-sm" onclick="refreshList()">🔄 刷新</button>
+      </div>
+    </header>
+
+    <!-- 实时传输统计 -->
+    <div class="stats-bar" id="statsBar">
+      <span class="stat"><span class="dot-live"></span> 活跃连接 <span class="val" id="statConn">0</span></span>
+      <span class="stat">上传速度 <span class="val up" id="statUpRate">0 B/s</span></span>
+      <span class="stat">下载速度 <span class="val down" id="statDownRate">0 B/s</span></span>
+      <span class="stat">累计上传 <span class="val up" id="statUpBytes">0 B</span></span>
+      <span class="stat">累计下载 <span class="val down" id="statDownBytes">0 B</span></span>
+      <span class="stat">上传/下载文件 <span class="val" id="statCounts">0 / 0</span></span>
+    </div>
+
+    <!-- 文本/链接极速投递 -->
+    <div class="card" id="textDropCard">
+      <div class="card-title">
+        <span>💬 极速投递文本/链接至电脑</span>
+      </div>
+      <textarea
+        id="dropContent"
+        class="input-textarea"
+        placeholder="粘贴文本、命令、URL 或代码片段，点击发送直达电脑... (支持快捷键 Ctrl+Enter 发送)"
+        onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){submitTextDrop(event);event.preventDefault();}"
+      ></textarea>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button id="btnDropSubmit" class="btn btn-primary btn-sm" onclick="submitTextDrop(event)">🚀 发送投递</button>
+      </div>
+    </div>
+
+    <!-- 上传区域 (受控显示) -->
+    <div class="card" id="uploadCard">
+      <div class="card-title">
+        <span>⬆️ 上传文件到当前目录</span>
+      </div>
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+        <p>📂 点击选择文件，或将文件拖拽至此处</p>
+        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">支持批量上传与超大文件流式传输</p>
+      </div>
+      <input type="file" id="fileInput" multiple style="display: none;" onchange="handleFileSelect(event)">
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div id="uploadStatus" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 6px; text-align: right;"></div>
+    </div>
+
+    <!-- 文件浏览器 -->
+    <div class="card">
+      <div class="card-title">
+        <span>📂 文件列表</span>
+      </div>
+      <div class="breadcrumb" id="breadcrumb"></div>
+      <div class="file-list" id="fileList">
+        <div class="empty-tip">正在加载文件...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentPath = '';
+    let serverConfig = { allowUpload: true, allowTextDrop: true };
+
+    async function init() {
+      setupDropzone();
+      await fetchConfig();
+      await loadDirectory('');
+      refreshStats();
+      setInterval(refreshStats, 2000);
+    }
+
+    // 实时传输统计轮询 (活跃连接 / 实时速度 / 累计流量)
+    async function refreshStats() {
+      try {
+        const res = await fetch('/api/stats');
+        if (!res.ok) throw new Error(res.statusText);
+        const s = await res.json();
+        document.getElementById('statsBar').style.opacity = '1';
+        document.getElementById('statConn').innerText = s.activeConnections;
+        document.getElementById('statUpRate').innerText = formatSpeed(s.uploadRate);
+        document.getElementById('statDownRate').innerText = formatSpeed(s.downloadRate);
+        document.getElementById('statUpBytes').innerText = formatBytes(s.uploadBytes);
+        document.getElementById('statDownBytes').innerText = formatBytes(s.downloadBytes);
+        document.getElementById('statCounts').innerText = `${s.uploadCount} / ${s.downloadCount}`;
+      } catch (e) {
+        document.getElementById('statsBar').style.opacity = '0.4';
+      }
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const v = bytes / Math.pow(1024, i);
+      return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i];
+    }
+
+    function formatSpeed(bps) {
+      return formatBytes(bps) + '/s';
+    }
+
+    async function fetchConfig() {
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          serverConfig = await res.json();
+          if (!serverConfig.allowUpload) {
+            document.getElementById('uploadCard').classList.add('hidden');
+          }
+          if (!serverConfig.allowTextDrop) {
+            document.getElementById('textDropCard').classList.add('hidden');
+          }
+        }
+      } catch (e) {
+        console.warn('获取配置失败:', e);
+      }
+    }
+
+    async function loadDirectory(path) {
+      currentPath = path;
+      renderBreadcrumb(path);
+      const listEl = document.getElementById('fileList');
+      listEl.innerHTML = '<div class="empty-tip">正在加载...</div>';
+
+      try {
+        const res = await fetch('/api/list?path=' + encodeURIComponent(path));
+        if (!res.ok) throw new Error('加载目录失败');
+        const entries = await res.json();
+
+        if (!entries || entries.length === 0) {
+          listEl.innerHTML = '<div class="empty-tip">此目录下没有文件</div>';
+          return;
+        }
+
+        listEl.innerHTML = '';
+        entries.forEach(entry => {
+          const item = document.createElement('div');
+          item.className = 'file-item';
+
+          const icon = entry.isDir ? '📁' : getFileIcon(entry.ext);
+          // 目录点击进入浏览；文件点击浏览器内联预览 (图片/视频/PDF/文本)，下载走下载按钮
+          const clickAction = entry.isDir
+            ? `loadDirectory('${entry.path}')`
+            : `openFile(this)`;
+
+          item.innerHTML = `
+            <div class="file-info" data-path="${escapeHtml(entry.path)}" onclick="${clickAction}" title="${entry.isDir ? '点击进入目录' : '点击在新标签页预览'}">
+              <span class="file-icon">${icon}</span>
+              <span class="file-name ${entry.isDir ? 'is-dir' : ''}">${escapeHtml(entry.name)}</span>
+            </div>
+            <div class="file-meta">
+              <span>${entry.isDir ? '目录' : entry.sizeHuman}</span>
+              ${!entry.isDir ? `<a href="/api/download?path=${encodeURIComponent(entry.path)}" download="${escapeHtml(entry.name)}" title="强制下载到本机" class="btn btn-sm">⬇️ 下载</a>` : ''}
+            </div>
+          `;
+          listEl.appendChild(item);
+        });
+      } catch (err) {
+        listEl.innerHTML = `<div class="empty-tip" style="color: var(--danger);">加载失败: ${err.message}</div>`;
+      }
+    }
+
+    function renderBreadcrumb(path) {
+      const el = document.getElementById('breadcrumb');
+      const parts = path ? path.split('/').filter(Boolean) : [];
+
+      let html = `<span class="crumb-item" onclick="loadDirectory('')">根目录</span>`;
+      let accumulated = '';
+
+      parts.forEach((p, idx) => {
+        accumulated += (idx === 0 ? '' : '/') + p;
+        const cur = accumulated;
+        html += ` <span class="crumb-sep">/</span> <span class="crumb-item" onclick="loadDirectory('${cur}')">${escapeHtml(p)}</span>`;
+      });
+      el.innerHTML = html;
+    }
+
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.innerText = msg;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.2s, transform 0.2s';
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-6px)';
+        setTimeout(() => toast.remove(), 200);
+      }, 3000);
+    }
+
+    async function submitTextDrop(e) {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      const input = document.getElementById('dropContent');
+      const btn = document.getElementById('btnDropSubmit');
+      const val = input.value.trim();
+      if (!val) {
+        showToast('请输入要投递的内容', 'error');
+        input.focus();
+        return;
+      }
+
+      const origText = btn.innerText;
+      btn.disabled = true;
+      btn.innerText = '正在发送…';
+
+      // 15 秒超时保护：服务端已接收但响应迟迟未达时给出明确提示
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const res = await fetch('/api/drop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: val }),
+          signal: controller.signal
+        });
+        clearTimeout(timer);
+        if (res.ok) {
+          showToast('🎉 投递成功！电脑端已即时接收并收录', 'success');
+          input.value = '';
+        } else {
+          const errMsg = await res.text().catch(() => res.statusText);
+          showToast('投递失败: ' + errMsg, 'error');
+        }
+      } catch (err) {
+        clearTimeout(timer);
+        if (err && err.name === 'AbortError') {
+          showToast('响应超时：内容可能已送达，请到电脑端确认收件箱', 'error');
+        } else {
+          showToast('网络异常，发送失败: ' + (err && err.message ? err.message : err), 'error');
+        }
+      } finally {
+        btn.disabled = false;
+        btn.innerText = origText;
+      }
+    }
+
+    function setupDropzone() {
+      const dropzone = document.getElementById('dropzone');
+      ['dragenter', 'dragover'].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+          e.preventDefault();
+          dropzone.classList.add('dragover');
+        });
+      });
+      ['dragleave', 'drop'].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+          e.preventDefault();
+          dropzone.classList.remove('dragover');
+        });
+      });
+      dropzone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) uploadFiles(files);
+      });
+    }
+
+    function handleFileSelect(e) {
+      const files = e.target.files;
+      if (files.length > 0) uploadFiles(files);
+    }
+
+    const CHUNK = 4 * 1024 * 1024; // 4MB 分片，刷新/断线后重新选择同一文件可断点续传
+
+    async function uploadFiles(files) {
+      const progressBar = document.getElementById('progressBar');
+      const progressFill = document.getElementById('progressFill');
+      const statusEl = document.getElementById('uploadStatus');
+
+      progressBar.style.display = 'block';
+      progressFill.style.width = '0%';
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        statusEl.innerText = `正在上传 (${i+1}/${files.length}): ${file.name}...`;
+        try {
+          await uploadFileResumable(file, progressFill, statusEl);
+        } catch (err) {
+          alert(`上传 ${file.name} 失败: ` + err.message);
+        }
+      }
+
+      statusEl.innerText = '上传完成！';
+      setTimeout(() => {
+        progressBar.style.display = 'none';
+        statusEl.innerText = '';
+      }, 2000);
+      loadDirectory(currentPath);
+    }
+
+    // 断点续传: 查询进度 -> 逐分片追加 -> 合并为正式文件
+    async function uploadFileResumable(file, progressFill, statusEl) {
+      const size = file.size;
+      if (size <= 0) throw new Error('文件为空');
+      const mod = file.lastModified || 1;
+      const q = `dir=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(file.name)}&size=${size}&mod=${mod}`;
+
+      // 1. 查询服务器已有的分片进度 (刷新后重新选择同一文件自动续传)
+      let uploaded = 0;
+      try {
+        const st = await fetch(`/api/upload/status?${q}`).then(r => r.json());
+        if (st && st.exists && st.uploaded > 0 && st.uploaded < size) {
+          uploaded = st.uploaded;
+          statusEl.innerText += `（检测到 ${formatBytes(uploaded)} 已传部分，继续续传…）`;
+        }
+      } catch (e) { /* 查询失败则从零开始 */ }
+
+      // 2. 逐分片追加传输
+      while (uploaded < size) {
+        const chunk = file.slice(uploaded, Math.min(uploaded + CHUNK, size));
+        const res = await fetch(`/api/upload/append?${q}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: chunk
+        });
+        if (!res.ok) throw new Error((await res.text().catch(() => '')) || '网络传输失败');
+        const j = await res.json().catch(() => null);
+        uploaded = (j && j.uploaded) ? j.uploaded : Math.min(uploaded + CHUNK, size);
+
+        const percent = Math.round((uploaded / size) * 100);
+        progressFill.style.width = Math.min(percent, 100) + '%';
+      }
+
+      // 3. 合并为正式文件
+      const done = await fetch(`/api/upload/complete?${q}`, { method: 'POST' });
+      if (!done.ok) throw new Error((await done.text().catch(() => '')) || '合并文件失败');
+    }
+
+    function refreshList() {
+      loadDirectory(currentPath);
+    }
+
+    function downloadFile(path, name) {
+      window.location.href = `/api/download?path=${encodeURIComponent(path)}`;
+    }
+
+    // 点击文件名：浏览器新标签页内联预览 (图片/视频/PDF/文本等直接打开)
+    function openFile(el) {
+      const path = el.getAttribute('data-path');
+      if (!path) return;
+      window.open('/api/open?path=' + encodeURIComponent(path), '_blank');
+    }
+
+    function getFileIcon(ext) {
+      const map = {
+        '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.gif': '🖼️', '.svg': '🖼️',
+        '.mp4': '🎬', '.mkv': '🎬', '.avi': '🎬', '.mov': '🎬',
+        '.mp3': '🎵', '.wav': '🎵', '.flac': '🎵',
+        '.zip': '📦', '.rar': '📦', '.7z': '📦', '.tar': '📦', '.gz': '📦',
+        '.pdf': '📄', '.doc': '📄', '.docx': '📄', '.txt': '📄', '.md': '📄',
+        '.json': '🔧', '.go': '💻', '.js': '💻', '.ts': '💻', '.vue': '💻', '.html': '💻'
+      };
+      return map[ext] || '📄';
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[m]);
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>
