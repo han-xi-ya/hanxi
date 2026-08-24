@@ -9,10 +9,12 @@ import (
 
 	"hubkit/internal/extapi"
 	"hubkit/internal/logging"
+	"hubkit/internal/modules/fileshare"
 	"hubkit/internal/modules/frpc"
 	"hubkit/internal/modules/frpc/instance"
 	"hubkit/internal/modules/frpc/version"
 	"hubkit/internal/modules/lan"
+	"hubkit/internal/modules/memo"
 	"hubkit/internal/modules/portkill"
 	"hubkit/internal/modules/portscan"
 	"hubkit/internal/modules/publicip"
@@ -36,6 +38,10 @@ func RegisterEvents() {
 	application.RegisterEvent[version.DownloadProgress]("frpc:version-download")
 	application.RegisterEvent[instance.Snapshot]("frpc:instance-state")
 	application.RegisterEvent[instance.LogEntry]("frpc:instance-log")
+	application.RegisterEvent[fileshare.ServerStatus]("fileshare:status")
+	application.RegisterEvent[fileshare.TransferEvent]("fileshare:transfer")
+	application.RegisterEvent[fileshare.DropItem]("fileshare:text-dropped")
+	application.RegisterEvent[any]("memo:changed")
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
@@ -70,8 +76,35 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	// 4. 初始化模块注册表并注入持久化 Store
 	registry := extapi.NewRegistry(store)
 
-	// 5. 工具箱模块统一注册：frpc 与其余工具完全平等，均可启停
-	if err := registry.Register(frpc.New(plat), lan.New(plat, store), portkill.New(plat), portscan.New(), publicip.New(plat), wechat.New(store)); err != nil {
+	// 5. 初始化 fileshare 与 memo 模块并建立数据互联
+	fileShareModule := fileshare.New(plat)
+	memoModule, err := memo.New(paths)
+	if err != nil {
+		slog.Error("failed to init memo module", "err", err)
+	}
+
+	// 建立从 fileshare 自动将投递文本写入 memo 的联动管道
+	if mMod, ok := memoModule.(*memo.Module); ok && mMod != nil {
+		if fsMod, ok := fileShareModule.(*fileshare.Module); ok && fsMod != nil {
+			fsMod.Service().SetMemoHook(mMod.GetService().QuickCreate)
+		}
+	}
+
+	// 6. 工具箱模块统一注册：frpc 与其余工具完全平等，均可启停
+	modulesToRegister := []extapi.Module{
+		frpc.New(plat),
+		lan.New(plat, store),
+		portkill.New(plat),
+		portscan.New(),
+		publicip.New(plat),
+		wechat.New(store),
+		fileShareModule,
+	}
+	if memoModule != nil {
+		modulesToRegister = append(modulesToRegister, memoModule)
+	}
+
+	if err := registry.Register(modulesToRegister...); err != nil {
 		panic(err) // 内建模块注册失败属于编程错误，直接暴露
 	}
 
@@ -89,6 +122,14 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 	})
+
+	// 将 Wails App 引用注入给需要的服务，以便向前端推送事件
+	if fsMod, ok := fileShareModule.(*fileshare.Module); ok && fsMod != nil {
+		fsMod.Service().SetWailsApp(a)
+	}
+	if mMod, ok := memoModule.(*memo.Module); ok && mMod != nil {
+		mMod.GetService().SetWailsApp(a)
+	}
 
 	win := a.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            Name,
