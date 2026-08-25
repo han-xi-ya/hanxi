@@ -15,6 +15,7 @@ import PortScanView from './views/PortScanView.vue'
 import WechatBotView from './views/WechatBotView.vue'
 import FileShareView from './views/FileShareView.vue'
 import MemoView from './views/MemoView.vue'
+import WifiView from './views/WifiView.vue'
 import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
 import { useToast } from './composables/useToast'
 
@@ -31,6 +32,7 @@ const CORE_VIEWS: Record<string, any> = {
   '/ext/wechat': markRaw(WechatBotView),
   '/ext/publicip': markRaw(PublicIpView),
   '/ext/portkill': markRaw(PortKillView),
+  '/ext/wifi': markRaw(WifiView),
   '/logs': markRaw(LogsView),
   '/settings': markRaw(SettingsView),
   '/about': markRaw(AboutView),
@@ -46,6 +48,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/wechat': 'wechat',
   '/ext/publicip': 'publicip',
   '/ext/portkill': 'portkill',
+  '/ext/wifi': 'wifi',
 }
 
 const SYSTEM_NAV = [

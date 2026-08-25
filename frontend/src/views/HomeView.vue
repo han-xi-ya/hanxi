@@ -29,6 +29,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   wechat: { icon: '💬', route: '/ext/wechat' },
   publicip: { icon: '≋', route: '/ext/publicip' },
   portkill: { icon: '✕', route: '/ext/portkill' },
+  wifi: { icon: '📶', route: '/ext/wifi' },
 }
 
 async function loadData() {

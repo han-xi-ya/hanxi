@@ -19,6 +19,7 @@ import (
 	"hubkit/internal/modules/portscan"
 	"hubkit/internal/modules/publicip"
 	"hubkit/internal/modules/wechat"
+	"hubkit/internal/modules/wifi"
 	"hubkit/internal/platform/windows"
 	"hubkit/internal/settings"
 )
@@ -100,6 +101,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		portkill.New(plat),
 		portscan.New(),
 		publicip.New(plat),
+		wifi.New(),
 		wechat.New(store),
 		fileShareModule,
 	}
