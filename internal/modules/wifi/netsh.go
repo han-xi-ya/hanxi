@@ -4,7 +4,19 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 )
+
+const createNoWindow = 0x08000000 // CREATE_NO_WINDOW: 避免 Windows 弹出 cmd 黑框
+
+func runCommandSilent(name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: createNoWindow,
+	}
+	return cmd.Output()
+}
 
 // GetAllWiFiPasswords 获取本机所有已保存 WiFi 的 SSID 和明文密码
 func GetAllWiFiPasswords() ([]Profile, error) {
@@ -26,7 +38,7 @@ func GetAllWiFiPasswords() ([]Profile, error) {
 
 // getSavedSSIDs 获取本机已保存的所有 WiFi 名称
 func getSavedSSIDs() ([]string, error) {
-	out, err := exec.Command("netsh", "wlan", "show", "profiles").Output()
+	out, err := runCommandSilent("netsh", "wlan", "show", "profiles")
 	if err != nil {
 		return nil, err
 	}
@@ -48,8 +60,8 @@ func getSavedSSIDs() ([]string, error) {
 
 // getPasswordForSSID 查询指定 WiFi 的明文密码
 func getPasswordForSSID(ssid string) (string, error) {
-	out, err := exec.Command("netsh", "wlan", "show", "profile",
-		fmt.Sprintf("name=%s", ssid), "key=clear").Output()
+	out, err := runCommandSilent("netsh", "wlan", "show", "profile",
+		fmt.Sprintf("name=%s", ssid), "key=clear")
 	if err != nil {
 		return "", err
 	}
