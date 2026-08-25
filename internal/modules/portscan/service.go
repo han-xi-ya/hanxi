@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"hubkit/internal/notify"
 )
 
 // PortScanService 暴露给前端的端口扫描服务
@@ -83,6 +84,10 @@ func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {
 			}
 		},
 	)
+
+	if err == nil && summary != nil {
+		notify.Success("portscan", "端口扫描完成", fmt.Sprintf("目标 %s 扫描完成，共开放 %d 个端口（耗时 %dms）", target, len(summary.OpenPorts), summary.DurationMs), "/ext/portscan")
+	}
 
 	return summary, err
 }

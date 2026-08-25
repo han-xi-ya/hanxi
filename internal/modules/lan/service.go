@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"hubkit/internal/notify"
 	"hubkit/internal/platform"
 	"hubkit/internal/settings"
 )
@@ -370,6 +371,8 @@ func (s *LanService) Scan(targetRange string) ([]DeviceInfo, error) {
 		}
 		return foundDevices[i].IP < foundDevices[j].IP
 	})
+
+	notify.Success("lan", "局域网扫描完成", fmt.Sprintf("扫描完成，共发现 %d 台活跃设备", len(foundDevices)), "/ext/lan")
 
 	return foundDevices, nil
 }

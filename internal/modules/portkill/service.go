@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"hubkit/internal/notify"
 	"hubkit/internal/platform"
 )
 
@@ -172,6 +173,7 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 
 	err := s.plat.Process().KillVerified(ctx, token, true)
 	if err == nil {
+		notify.Success("portkill", "进程已终止", fmt.Sprintf("已成功终止进程 PID: %d (%s)", pid, exePath), "/portkill")
 		return KillResult{Success: true}
 	}
 

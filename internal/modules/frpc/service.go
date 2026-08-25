@@ -14,6 +14,7 @@ import (
 	"hubkit/internal/modules/frpc/docgen"
 	"hubkit/internal/modules/frpc/instance"
 	"hubkit/internal/modules/frpc/version"
+	"hubkit/internal/notify"
 	"hubkit/internal/platform"
 	"hubkit/internal/settings"
 )
@@ -52,6 +53,24 @@ func (s *FrpcService) emitInstanceState(snap instance.Snapshot) {
 	slog.Debug("frpc instance state", "project", snap.ProjectID, "state", snap.State, "pid", snap.PID)
 	if app := application.Get(); app != nil && app.Event != nil {
 		app.Event.Emit("frpc:instance-state", snap)
+	}
+
+	// 触发系统全局通知
+	name := snap.ProjectName
+	if name == "" {
+		name = snap.ProjectID
+	}
+	switch snap.ConnState {
+	case instance.ConnStateConnected:
+		notify.Success("frpc", "穿透连接建立", fmt.Sprintf("项目「%s」穿透已成功建立连接", name), "/frpc")
+	case instance.ConnStateAuthFailed:
+		notify.Error("frpc", "穿透认证失败", fmt.Sprintf("项目「%s」认证失败，请检查 Token 或鉴权配置", name), "/frpc")
+	case instance.ConnStateReconnecting:
+		notify.Warning("frpc", "穿透重连中", fmt.Sprintf("项目「%s」网络断开，正在尝试重新连接服务端...", name), "/frpc")
+	}
+
+	if snap.State == instance.StateFailed && snap.Error != "" {
+		notify.Error("frpc", "实例运行异常", fmt.Sprintf("项目「%s」异常退出: %s", name, snap.Error), "/frpc")
 	}
 }
 
@@ -96,9 +115,13 @@ func (s *FrpcService) DownloadVersion(targetVersion string) (string, error) {
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("frpc:version-download", p)
 			}
+			if p.Stage == "done" {
+				notify.Success("frpc", "版本下载成功", fmt.Sprintf("frpc %s 已成功安装并就绪", p.Version), "/frpc")
+			}
 		}
 		if err := s.manager.Download(targetVersion, emit); err != nil {
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
+			notify.Error("frpc", "版本下载失败", fmt.Sprintf("frpc %s 下载失败: %v", targetVersion, err), "/frpc")
 		}
 	}()
 

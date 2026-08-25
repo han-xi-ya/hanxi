@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"hubkit/internal/notify"
 	"hubkit/internal/settings"
 )
 
@@ -255,15 +256,20 @@ func (l *Listener) dispatchInboundMsg(msg InboundRawMsg, nowStr string) {
 			Type:      item.Type,
 			Time:      nowStr,
 		}
+		summary := "收到新的微信消息"
 		if item.TextItem != nil {
 			inMsg.Text = item.TextItem.Text
+			summary = item.TextItem.Text
 		}
 		if item.FileItem != nil {
 			inMsg.FileName = item.FileItem.FileName
+			summary = fmt.Sprintf("[文件] %s", item.FileItem.FileName)
 		}
 
 		if app := application.Get(); app != nil && app.Event != nil {
 			app.Event.Emit("wechat:message-received", inMsg)
 		}
+
+		notify.Info("wechat", "收到微信消息", fmt.Sprintf("来自 %s: %s", msg.FromUserID, summary), "/ext/wechat")
 	}
 }
