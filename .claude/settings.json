@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(wails3 generate bindings)",
+      "Bash(go build *)",
+      "Bash(go test *)"
+    ]
+  }
+}
