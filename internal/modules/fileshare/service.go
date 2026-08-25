@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"hubkit/internal/notify"
 	"hubkit/internal/platform"
 )
 
@@ -97,6 +98,8 @@ func (s *FileShareService) StartServer() (ServerStatus, error) {
 
 	server := NewServer(s.config, func(item DropItem) {
 		s.emitEvent("fileshare:text-dropped", item)
+		notify.Info("fileshare", "收到文本投递", fmt.Sprintf("来自 %s: %s", item.SenderIP, item.Content), "/ext/fileshare")
+
 		s.mu.RLock()
 		autoSave := s.config.AutoSaveToMemo
 		hook := s.onDropToMemo
@@ -111,6 +114,9 @@ func (s *FileShareService) StartServer() (ServerStatus, error) {
 		}
 	}, func(evt TransferEvent) {
 		s.emitEvent("fileshare:transfer", evt)
+		if evt.Type == "upload" && evt.Success {
+			notify.Success("fileshare", "文件上传完成", fmt.Sprintf("来自 %s: %s", evt.ClientIP, evt.Filename), "/ext/fileshare")
+		}
 		// 每次传输后同步推送最新状态，保证电脑端统计卡实时刷新
 		s.mu.RLock()
 		status := s.getStatusLocked()

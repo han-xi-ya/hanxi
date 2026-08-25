@@ -20,6 +20,7 @@ import (
 	"hubkit/internal/modules/publicip"
 	"hubkit/internal/modules/wechat"
 	"hubkit/internal/modules/wifi"
+	"hubkit/internal/notify"
 	"hubkit/internal/platform/windows"
 	"hubkit/internal/settings"
 )
@@ -46,6 +47,7 @@ func RegisterEvents() {
 	application.RegisterEvent[fileshare.TransferEvent]("fileshare:transfer")
 	application.RegisterEvent[fileshare.DropItem]("fileshare:text-dropped")
 	application.RegisterEvent[any]("memo:changed")
+	application.RegisterEvent[notify.Notification]("notify:received")
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
@@ -115,6 +117,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 
 	services := []application.Service{
 		application.NewService(NewAppService(registry, store)),
+		application.NewService(notify.NewNotificationService()),
 	}
 	services = append(services, registry.EnabledServices()...)
 
@@ -156,6 +159,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		URL:              "/",
 	})
 	mainWindow = win
+	notify.GetHub().SetWailsContext(a, win)
 
 	// 注册窗口关闭拦截钩子：如果开启了“关闭时最小化到托盘”，则隐藏窗口代替退出
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {

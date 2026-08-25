@@ -17,9 +17,14 @@ import FileShareView from './views/FileShareView.vue'
 import MemoView from './views/MemoView.vue'
 import WifiView from './views/WifiView.vue'
 import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
+import NotificationToast from './components/NotificationToast.vue'
+import NotificationDrawer from './components/NotificationDrawer.vue'
+import { useNotification } from './composables/useNotification'
+import type { Notification } from '../bindings/hubkit/internal/notify/models'
 import { useToast } from './composables/useToast'
 
 const { toastMsg } = useToast()
+const { unreadCount, toggleDrawer, loadHistory, pushToast } = useNotification()
 
 // 核心与内置功能视图路由映射（使用 markRaw 避免深度响应式包装）
 const CORE_VIEWS: Record<string, any> = {
@@ -65,6 +70,7 @@ const navs = ref<NavEntry[]>([])
 const activeRoute = ref('/')
 const backendReady = ref(false)
 let unlistenExtChanged: (() => void) | null = null
+let unlistenNotify: (() => void) | null = null
 
 async function refreshNavs() {
   try {
@@ -110,6 +116,7 @@ const currentExt = computed(() => navs.value.find(n => n.route === activeRoute.v
 onMounted(async () => {
   try {
     await refreshNavs()
+    await loadHistory()
   } finally {
     backendReady.value = true
   }
@@ -118,12 +125,25 @@ onMounted(async () => {
   unlistenExtChanged = Events.On('ext:changed', () => {
     refreshNavs()
   })
+
+  // 监听全局统一通知事件
+  unlistenNotify = Events.On('notify:received', (evt: any) => {
+    console.log('[App.vue] notify:received triggered:', evt)
+    const data = evt?.data !== undefined ? evt.data : evt
+    if (data) {
+      pushToast(data as Notification)
+    }
+  })
 })
 
 onUnmounted(() => {
   if (unlistenExtChanged) {
     unlistenExtChanged()
     unlistenExtChanged = null
+  }
+  if (unlistenNotify) {
+    unlistenNotify()
+    unlistenNotify = null
   }
 })
 </script>
@@ -170,6 +190,17 @@ onUnmounted(() => {
 
       <!-- 底部固定设置与状态 -->
       <nav class="nav-section bottom-nav">
+        <!-- 通知中心入口按钮 -->
+        <button
+          class="nav-item notif-nav-btn"
+          @click="toggleDrawer"
+          title="通知中心"
+        >
+          <span class="nav-icon">🔔</span>
+          <span class="nav-text">通知中心</span>
+          <span v-if="unreadCount > 0" class="nav-badge">{{ unreadCount }}</span>
+        </button>
+
         <button
           v-for="n in BOTTOM_NAV"
           :key="n.route"
@@ -190,6 +221,12 @@ onUnmounted(() => {
 
     <!-- 右侧内容主视口 -->
     <main class="content-area">
+      <!-- 统一通知浮层 Toast -->
+      <NotificationToast @navigate="navigateTo" />
+
+      <!-- 统一通知抽屉 Drawer -->
+      <NotificationDrawer @navigate="navigateTo" />
+
       <div v-if="toastMsg" class="global-toast">{{ toastMsg }}</div>
       <Transition name="page-fade" mode="out-in">
         <KeepAlive :max="10">
@@ -350,6 +387,16 @@ onUnmounted(() => {
 
 .nav-text {
   flex: 1;
+}
+
+.nav-badge {
+  background: var(--danger);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  line-height: 1.2;
 }
 
 /* 状态条 */

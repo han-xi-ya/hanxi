@@ -26,6 +26,9 @@ import type * as portscan$0 from "../../../../../hubkit/internal/modules/portsca
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as wechat$0 from "../../../../../hubkit/internal/modules/wechat/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as notify$0 from "../../../../../hubkit/internal/notify/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
@@ -39,6 +42,7 @@ declare module "@wailsio/runtime" {
             "frpc:version-download": version$0.DownloadProgress;
             "lan:progress": lan$0.LanProgress;
             "memo:changed": any;
+            "notify:received": notify$0.Notification;
             "portscan:progress": portscan$0.ScanProgress;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;

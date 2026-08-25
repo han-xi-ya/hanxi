@@ -120,6 +120,23 @@ export function ReadLogContent(fileName, maxLines) {
 }
 
 /**
+ * SendDelayedTestNotification 延迟指定秒数后发送通知（专用于测试最小化/后台时的 Windows 原生桌面通知气泡）
+ * @param {number} delaySeconds
+ * @returns {$CancellablePromise<void>}
+ */
+export function SendDelayedTestNotification(delaySeconds) {
+    return $Call.ByID(4208362153, delaySeconds);
+}
+
+/**
+ * SendTestNotification 发送一条测试通知 (用于在设置页面测试前后台通知效果)
+ * @returns {$CancellablePromise<void>}
+ */
+export function SendTestNotification() {
+    return $Call.ByID(1830264007);
+}
+
+/**
  * SetGeneralSettings 保存常规配置
  * @param {$models.GeneralSettings} gen
  * @returns {$CancellablePromise<void>}

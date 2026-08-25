@@ -4,8 +4,10 @@ import * as AppAPI from '../../bindings/hubkit/internal/app'
 import type { AppInfo } from '../../bindings/hubkit/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useNotification } from '../composables/useNotification'
 
 const { showToast } = useToast()
+const { pushToast } = useNotification()
 
 const appInfo = ref<AppInfo | null>(null)
 const autoStart = ref(false)
@@ -76,6 +78,33 @@ async function openEnvSettings() {
     showToast('已打开环境变量设置')
   } catch (e: unknown) {
     showToast(`打开环境变量失败: ${getErrorMessage(e)}`)
+  }
+}
+
+async function triggerTestNotification() {
+  try {
+    await AppAPI.AppService.SendTestNotification()
+  } catch (e: unknown) {
+    showToast(`后端通知分发异常: ${getErrorMessage(e)}`)
+  }
+  pushToast({
+    id: `test_${Date.now()}`,
+    moduleId: 'system',
+    title: 'HubKit 前台通知',
+    message: '窗口激活时展示的应用内浮动卡片测试成功！',
+    level: 'success',
+    route: '/settings',
+    timestamp: Date.now(),
+    read: false,
+  })
+}
+
+async function triggerDelayedTestNotification() {
+  try {
+    await AppAPI.AppService.SendDelayedTestNotification(4)
+    showToast('已设定 4 秒倒计时！请立即将主窗口最小化或点击右上角关闭(后台)，稍后将弹出 Windows 原生气泡通知')
+  } catch (e: unknown) {
+    showToast(`触发延迟测试通知失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -228,6 +257,20 @@ onMounted(refresh)
           </div>
           <button class="btn btn-secondary btn-small" @click="openEnvSettings">⚙️ 打开设置</button>
         </div>
+
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">通知通道测试</span>
+              <span class="dir-badge">Native & Toast</span>
+            </div>
+            <code class="dir-path">前台卡片测试 & 后台 4s 倒计时气泡测试</code>
+          </div>
+          <div class="btn-group-inline">
+            <button class="btn btn-secondary btn-small" @click="triggerTestNotification" title="前台即时测试">🔔 前台卡片</button>
+            <button class="btn btn-primary-alt btn-small" @click="triggerDelayedTestNotification" title="4秒倒计时后派发，用于最小化后测试原生系统通知">⏱️ 4秒后后台气泡</button>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -290,5 +333,6 @@ onMounted(refresh)
 .btn-primary-alt:hover:not(:disabled) { background: #0854ad; }
 .btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
 .btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
+.btn-group-inline { display: flex; align-items: center; gap: 6px; }
 .btn-small { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
 </style>
