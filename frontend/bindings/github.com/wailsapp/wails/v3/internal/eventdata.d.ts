@@ -7,10 +7,16 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as everything$0 from "../../../../../hubkit/internal/modules/everything/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as instance$0 from "../../../../../hubkit/internal/modules/everything/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as fileshare$0 from "../../../../../hubkit/internal/modules/fileshare/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$0 from "../../../../../hubkit/internal/modules/frpc/instance/models.js";
+import type * as instance$1 from "../../../../../hubkit/internal/modules/frpc/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as version$0 from "../../../../../hubkit/internal/modules/frpc/version/models.js";
@@ -19,7 +25,7 @@ import type * as version$0 from "../../../../../hubkit/internal/modules/frpc/ver
 import type * as lan$0 from "../../../../../hubkit/internal/modules/lan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$1 from "../../../../../hubkit/internal/modules/markeron/instance/models.js";
+import type * as instance$2 from "../../../../../hubkit/internal/modules/markeron/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as version$1 from "../../../../../hubkit/internal/modules/markeron/version/models.js";
@@ -36,15 +42,17 @@ import type * as notify$0 from "../../../../../hubkit/internal/notify/models.js"
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "everything:download": everything$0.DownloadTicket;
+            "everything:instance-state": instance$0.Snapshot;
             "ext:changed": void;
             "fileshare:status": fileshare$0.ServerStatus;
             "fileshare:text-dropped": fileshare$0.DropItem;
             "fileshare:transfer": fileshare$0.TransferEvent;
-            "frpc:instance-log": instance$0.LogEntry;
-            "frpc:instance-state": instance$0.Snapshot;
+            "frpc:instance-log": instance$1.LogEntry;
+            "frpc:instance-state": instance$1.Snapshot;
             "frpc:version-download": version$0.DownloadProgress;
             "lan:progress": lan$0.LanProgress;
-            "markeron:instance-state": instance$1.Snapshot;
+            "markeron:instance-state": instance$2.Snapshot;
             "markeron:version-download": version$1.DownloadProgress;
             "memo:changed": void;
             "notify:received": notify$0.Notification;
