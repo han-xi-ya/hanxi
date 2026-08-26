@@ -32,10 +32,8 @@ export function useNotification() {
     }
   }
 
-  function pushToast(n: any) {
-    if (!n) return
-    const item: Notification = Array.isArray(n) ? n[0] : n
-    if (!item || typeof item !== 'object') return
+  function pushToast(item: Notification) {
+    if (!item) return
 
     // 补齐缺失字段
     if (!item.id) {

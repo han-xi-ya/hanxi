@@ -61,19 +61,18 @@ func (h *Hub) Emit(n *Notification) {
 	h.mu.Unlock()
 
 	// 1. 广播 Wails 事件给前端 (通知前端组件和未读红点)
+	// 注意: RegisterEvent[notify.Notification] 注册的是值类型，Emit 必须传值
+	// (传 *Notification 指针会因注册类型严格校验失败而被 Wails 取消丢弃)
 	if appRef != nil && appRef.Event != nil {
-		appRef.Event.Emit("notify:received", n)
+		appRef.Event.Emit("notify:received", *n)
 	} else if app := application.Get(); app != nil && app.Event != nil {
-		app.Event.Emit("notify:received", n)
+		app.Event.Emit("notify:received", *n)
 	}
 
 	// 2. 检查窗口是否在后台/最小化，若在后台则触发 Windows 原生系统 Toast
-	isBg := false
-	if winRef != nil {
-		isBg = !winRef.IsVisible() || winRef.IsMinimised()
-	}
+	isBg := winRef != nil && (!winRef.IsVisible() || winRef.IsMinimised())
 	if isBg {
-		showNativeToast(n, winRef)
+		showNativeToast(n)
 	}
 }
 

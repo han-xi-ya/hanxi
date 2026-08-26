@@ -71,7 +71,6 @@ const activeRoute = ref('/')
 const backendReady = ref(false)
 let unlistenExtChanged: (() => void) | null = null
 let unlistenNotify: (() => void) | null = null
-let unlistenWechatMsg: (() => void) | null = null
 
 async function refreshNavs() {
   try {
@@ -127,47 +126,11 @@ onMounted(async () => {
     refreshNavs()
   })
 
-  // 监听全局统一通知事件
-  unlistenNotify = Events.On('notify:received', (evt: any) => {
-    console.log('[App.vue] notify:received triggered raw event:', evt)
-    // 兼容 Wails v3 多种事件结构
-    let data = evt
-    if (evt && typeof evt === 'object') {
-      if ('data' in evt) {
-        data = evt.data
-      }
-    }
-    if (Array.isArray(data)) {
-      data = data[0]
-    }
-    if (data && typeof data === 'object') {
-      console.log('[App.vue] pushToast with payload:', data)
-      pushToast(data as Notification)
-    }
-  })
-
-  // 专属双重保险：监听微信入站消息，即便处于其他页面也即时弹窗
-  unlistenWechatMsg = Events.On('wechat:message-received', (evt: any) => {
-    console.log('[App.vue] wechat:message-received event:', evt)
-    let msg = evt
-    if (evt && typeof evt === 'object' && 'data' in evt) {
-      msg = evt.data
-    }
-    if (Array.isArray(msg)) {
-      msg = msg[0]
-    }
-    if (msg && typeof msg === 'object') {
-      const summary = msg.text || (msg.fileName ? `[文件] ${msg.fileName}` : '收到新的微信消息')
-      pushToast({
-        id: `wechat_${Date.now()}`,
-        moduleId: 'wechat',
-        title: '收到新的微信消息',
-        message: summary,
-        level: 'info',
-        route: '/ext/wechat',
-        timestamp: Date.now(),
-        read: false,
-      })
+  // 监听全局统一通知事件（唯一顶层监听，承接全模块通知）
+  // Wails runtime 回调恒为 { name, data } 包装，data 即后端 emit 载荷
+  unlistenNotify = Events.On('notify:received', (event: { data?: Notification }) => {
+    if (event?.data) {
+      pushToast(event.data)
     }
   })
 })
@@ -180,10 +143,6 @@ onUnmounted(() => {
   if (unlistenNotify) {
     unlistenNotify()
     unlistenNotify = null
-  }
-  if (unlistenWechatMsg) {
-    unlistenWechatMsg()
-    unlistenWechatMsg = null
   }
 })
 </script>

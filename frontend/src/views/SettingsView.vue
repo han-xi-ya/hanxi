@@ -4,10 +4,8 @@ import * as AppAPI from '../../bindings/hubkit/internal/app'
 import type { AppInfo } from '../../bindings/hubkit/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
-import { useNotification } from '../composables/useNotification'
 
 const { showToast } = useToast()
-const { pushToast } = useNotification()
 
 const appInfo = ref<AppInfo | null>(null)
 const autoStart = ref(false)
@@ -83,18 +81,7 @@ async function openEnvSettings() {
 
 async function triggerTestNotification() {
   try {
-    // 立即通过前端通知管道弹出卡片 (确保前台响应零延迟)
-    pushToast({
-      id: `test_${Date.now()}`,
-      moduleId: 'system',
-      title: 'HubKit 统一通知',
-      message: '这是一条即时测试通知：窗口激活时为应用内卡片！',
-      level: 'success',
-      route: '/settings',
-      timestamp: Date.now(),
-      read: false,
-    })
-    // 同时派发给后端通知中心记录历史与总线广播
+    // 走完整统一通知管道：后端 notify → notify:received 事件 → 顶层卡片
     await AppAPI.AppService.SendTestNotification()
   } catch (e: unknown) {
     showToast(`后端通知分发异常: ${getErrorMessage(e)}`)
