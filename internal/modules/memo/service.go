@@ -270,10 +270,11 @@ func (s *MemoService) Delete(id string) error {
 }
 
 func (s *MemoService) emitChanged() {
+	// memo:changed 以 Void 注册（无载荷事件），Emit 不带任何数据参数
 	if s.wailsApp != nil && s.wailsApp.Event != nil {
-		s.wailsApp.Event.Emit("memo:changed", nil)
+		s.wailsApp.Event.Emit("memo:changed")
 	} else if app := application.Get(); app != nil && app.Event != nil {
-		app.Event.Emit("memo:changed", nil)
+		app.Event.Emit("memo:changed")
 	}
 }
 

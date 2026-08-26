@@ -35,7 +35,9 @@ var mainWindow *application.WebviewWindow
 
 // RegisterEvents 注册类型化事件（wails3 绑定生成器会据此生成 TS API）。
 func RegisterEvents() {
-	application.RegisterEvent[extapi.NavEntry]("ext:changed")
+	// ext:changed / memo:changed 是无载荷事件，必须用 Void 注册：
+	// 若注册具体类型而 Emit 不带载荷，会因 Wails 严格类型校验被静默丢弃。
+	application.RegisterEvent[application.Void]("ext:changed")
 	application.RegisterEvent[lan.LanProgress]("lan:progress")
 	application.RegisterEvent[portscan.ScanProgress]("portscan:progress")
 	application.RegisterEvent[wechat.InboundMessage]("wechat:message-received")
@@ -46,7 +48,7 @@ func RegisterEvents() {
 	application.RegisterEvent[fileshare.ServerStatus]("fileshare:status")
 	application.RegisterEvent[fileshare.TransferEvent]("fileshare:transfer")
 	application.RegisterEvent[fileshare.DropItem]("fileshare:text-dropped")
-	application.RegisterEvent[any]("memo:changed")
+	application.RegisterEvent[application.Void]("memo:changed")
 	application.RegisterEvent[notify.Notification]("notify:received")
 }
 

@@ -7,9 +7,6 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as extapi$0 from "../../../../../hubkit/internal/extapi/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
 import type * as fileshare$0 from "../../../../../hubkit/internal/modules/fileshare/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -33,7 +30,7 @@ import type * as notify$0 from "../../../../../hubkit/internal/notify/models.js"
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "ext:changed": extapi$0.NavEntry;
+            "ext:changed": void;
             "fileshare:status": fileshare$0.ServerStatus;
             "fileshare:text-dropped": fileshare$0.DropItem;
             "fileshare:transfer": fileshare$0.TransferEvent;
@@ -41,7 +38,7 @@ declare module "@wailsio/runtime" {
             "frpc:instance-state": instance$0.Snapshot;
             "frpc:version-download": version$0.DownloadProgress;
             "lan:progress": lan$0.LanProgress;
-            "memo:changed": any;
+            "memo:changed": void;
             "notify:received": notify$0.Notification;
             "portscan:progress": portscan$0.ScanProgress;
             "wechat:context-token-updated": { [_ in string]?: string } | null;

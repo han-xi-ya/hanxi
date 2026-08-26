@@ -74,8 +74,7 @@ async function toggle(m: ModuleInfo) {
     await AppAPI.AppService.SetModuleEnabled(m.id, nextState)
     showToast(nextState ? `已启用「${m.name}」` : `已停用「${m.name}」，已回收运行时资源`)
     await loadData()
-    // 主动触发前端总线广播，确保侧边栏 App.vue 即时拉取导航热更新
-    Events.Emit('ext:changed', { id: m.id, title: m.name, route: '', icon: '', section: 'ext' as any, order: 0 })
+    // 后端 SetModuleEnabled 已通过 ext:changed 事件广播导航热更新，前端无需重复补发
   } catch (err: unknown) {
     showToast(`操作失败: ${getErrorMessage(err)}`)
   } finally {
