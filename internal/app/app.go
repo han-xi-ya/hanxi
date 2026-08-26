@@ -27,7 +27,7 @@ import (
 
 const (
 	Name    = "HubKit"
-	Version = "0.1.0"
+	Version = "0.2.0"
 )
 
 // mainWindow 主窗口引用，供单实例第二启动回调聚焦使用
