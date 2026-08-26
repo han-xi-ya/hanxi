@@ -30,6 +30,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   publicip: { icon: '≋', route: '/ext/publicip' },
   portkill: { icon: '✕', route: '/ext/portkill' },
   wifi: { icon: '📶', route: '/ext/wifi' },
+  markeron: { icon: '✎', route: '/ext/markeron' },
 }
 
 async function loadData() {
