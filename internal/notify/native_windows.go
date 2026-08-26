@@ -6,16 +6,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os/exec"
+	"strings"
 	"syscall"
 	"unicode/utf16"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 const createNoWindow = 0x08000000 // CREATE_NO_WINDOW
 
 // showNativeToast 在 Windows 最小化或后台时发送系统通知
-func showNativeToast(n *Notification, win *application.WebviewWindow) {
+func showNativeToast(n *Notification) {
 	go sendWindowsNotification(n.Title, fmt.Sprintf("[%s] %s", n.ModuleID, n.Message))
 }
 
@@ -48,16 +47,18 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 }
 
 func escapePS(s string) string {
-	res := ""
+	var b strings.Builder
 	for _, r := range s {
-		if r == '"' || r == '`' || r == '$' {
-			res += "`" + string(r)
-		} else if r == '\n' || r == '\r' {
-			res += " "
-		} else {
-			res += string(r)
+		switch r {
+		case '"', '`', '$':
+			b.WriteRune('`')
+			b.WriteRune(r)
+		case '\n', '\r':
+			b.WriteRune(' ')
+		default:
+			b.WriteRune(r)
 		}
 	}
-	return res
+	return b.String()
 }
 
