@@ -32,20 +32,44 @@ export function useNotification() {
     }
   }
 
-  function pushToast(n: Notification) {
+  function pushToast(n: any) {
+    if (!n) return
+    const item: Notification = Array.isArray(n) ? n[0] : n
+    if (!item || typeof item !== 'object') return
+
+    // 补齐缺失字段
+    if (!item.id) {
+      item.id = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+    }
+    if (!item.title) {
+      item.title = '系统通知'
+    }
+    if (!item.level) {
+      item.level = 'info'
+    }
+
     // 检查历史列表中是否已有（防重复）
-    const existsIndex = notifications.value.findIndex((item) => item.id === n.id)
+    const existsIndex = notifications.value.findIndex((existing) => existing.id === item.id)
     if (existsIndex >= 0) {
-      notifications.value[existsIndex] = n
+      notifications.value[existsIndex] = item
     } else {
-      notifications.value.unshift(n)
+      notifications.value.unshift(item)
       if (notifications.value.length > 100) {
         notifications.value.pop()
       }
     }
 
     // 构造前台浮动卡片 Toast
-    const toast: ToastItem = { ...n }
+    const toast: ToastItem = {
+      id: item.id,
+      moduleId: item.moduleId || 'system',
+      title: item.title,
+      message: item.message || '',
+      level: item.level || 'info',
+      route: item.route || '',
+      timestamp: item.timestamp || Date.now(),
+      read: item.read || false,
+    }
     toast.timer = setTimeout(() => {
       removeToast(toast.id)
     }, 5000)

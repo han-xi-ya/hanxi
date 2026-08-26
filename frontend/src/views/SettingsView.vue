@@ -83,20 +83,22 @@ async function openEnvSettings() {
 
 async function triggerTestNotification() {
   try {
+    // 立即通过前端通知管道弹出卡片 (确保前台响应零延迟)
+    pushToast({
+      id: `test_${Date.now()}`,
+      moduleId: 'system',
+      title: 'HubKit 统一通知',
+      message: '这是一条即时测试通知：窗口激活时为应用内卡片！',
+      level: 'success',
+      route: '/settings',
+      timestamp: Date.now(),
+      read: false,
+    })
+    // 同时派发给后端通知中心记录历史与总线广播
     await AppAPI.AppService.SendTestNotification()
   } catch (e: unknown) {
     showToast(`后端通知分发异常: ${getErrorMessage(e)}`)
   }
-  pushToast({
-    id: `test_${Date.now()}`,
-    moduleId: 'system',
-    title: 'HubKit 前台通知',
-    message: '窗口激活时展示的应用内浮动卡片测试成功！',
-    level: 'success',
-    route: '/settings',
-    timestamp: Date.now(),
-    read: false,
-  })
 }
 
 async function triggerDelayedTestNotification() {

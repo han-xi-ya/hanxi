@@ -3,9 +3,11 @@
 package notify
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os/exec"
 	"syscall"
+	"unicode/utf16"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -17,19 +19,27 @@ func showNativeToast(n *Notification, win *application.WebviewWindow) {
 	go sendWindowsNotification(n.Title, fmt.Sprintf("[%s] %s", n.ModuleID, n.Message))
 }
 
-// sendWindowsNotification 使用 PowerShell 脚本极速触发 Windows 10/11 原生 Toast 通知
+// sendWindowsNotification 使用 PowerShell WinRT API 触发 Windows 10/11 原生 Toast 通知
 func sendWindowsNotification(title, message string) {
-	psScript := fmt.Sprintf(`[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+	psScript := fmt.Sprintf(`[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
 $template = [Windows.UI.Notifications.ToastTemplateType]::ToastText02
 $xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent($template)
 $textNodes = $xml.GetElementsByTagName("text")
-$textNodes.Item(0).AppendChild($xml.CreateTextNode("%s")) > $null
-$textNodes.Item(1).AppendChild($xml.CreateTextNode("%s")) > $null
+$textNodes.Item(0).AppendChild($xml.CreateTextNode("%s")) | Out-Null
+$textNodes.Item(1).AppendChild($xml.CreateTextNode("%s")) | Out-Null
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("HubKit").Show($toast)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe").Show($toast)
 `, escapePS(title), escapePS(message))
 
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psScript)
+	utf16Units := utf16.Encode([]rune(psScript))
+	bytes := make([]byte, len(utf16Units)*2)
+	for i, u := range utf16Units {
+		bytes[i*2] = byte(u)
+		bytes[i*2+1] = byte(u >> 8)
+	}
+	encoded := base64.StdEncoding.EncodeToString(bytes)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: createNoWindow,
@@ -50,3 +60,4 @@ func escapePS(s string) string {
 	}
 	return res
 }
+

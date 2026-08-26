@@ -270,6 +270,17 @@ func (l *Listener) dispatchInboundMsg(msg InboundRawMsg, nowStr string) {
 			app.Event.Emit("wechat:message-received", inMsg)
 		}
 
-		notify.Info("wechat", "收到微信消息", fmt.Sprintf("来自 %s: %s", msg.FromUserID, summary), "/ext/wechat")
+		// 优先获取账号备注名称，绝不回退为冗长的 TargetUserID/FromUserID/原始 Hash
+		displayName := "微信机器人"
+		if acc, ok := l.store.GetWechatAccountByID(l.accountID); ok && acc.RemarkName != "" {
+			displayName = acc.RemarkName
+		} else {
+			cfg := l.store.GetWechatConfig()
+			if cfg.IlinkBotID != "" {
+				displayName = "微信机器人"
+			}
+		}
+
+		notify.Info("wechat", fmt.Sprintf("微信消息 (%s)", displayName), summary, "/ext/wechat")
 	}
 }

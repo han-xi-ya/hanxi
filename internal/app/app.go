@@ -121,6 +121,9 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	}
 	services = append(services, registry.EnabledServices()...)
 
+	// 自动预初始化微信等常驻监听型后台模块，确保即便未打开对应前端页面也能实时监听入站消息
+	_ = registry.EnsureActive("wechat")
+
 	a := application.New(application.Options{
 		Name:        Name,
 		Description: "frpc 内网穿透开发客户端：多实例联调、局域网扫描、释放端口",

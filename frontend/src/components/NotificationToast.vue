@@ -35,29 +35,31 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 </script>
 
 <template>
-  <div class="toast-stack">
-    <TransitionGroup name="toast-slide">
-      <div
-        v-for="t in activeToasts"
-        :key="t.id"
-        class="toast-card"
-        :class="[`toast-${t.level}`]"
-        @click="handleToastClick(t)"
-      >
-        <div class="toast-indicator">
-          <span class="icon">{{ getLevelIcon(t.level) }}</span>
-        </div>
-        <div class="toast-body">
-          <div class="toast-header">
-            <span class="toast-module">[{{ t.moduleId }}]</span>
-            <strong class="toast-title">{{ t.title }}</strong>
+  <Teleport to="body">
+    <div class="toast-stack" v-if="activeToasts.length > 0">
+      <TransitionGroup name="toast-slide">
+        <div
+          v-for="t in activeToasts"
+          :key="t.id"
+          class="toast-card"
+          :class="[`toast-${t.level}`]"
+          @click="handleToastClick(t)"
+        >
+          <div class="toast-indicator">
+            <span class="icon">{{ getLevelIcon(t.level) }}</span>
           </div>
-          <p class="toast-msg">{{ t.message }}</p>
+          <div class="toast-body">
+            <div class="toast-header">
+              <span class="toast-module">[{{ t.moduleId }}]</span>
+              <strong class="toast-title">{{ t.title }}</strong>
+            </div>
+            <p class="toast-msg">{{ t.message }}</p>
+          </div>
+          <button class="toast-close" @click="handleClose($event, t)" title="关闭">✕</button>
         </div>
-        <button class="toast-close" @click="handleClose($event, t)" title="关闭">✕</button>
-      </div>
-    </TransitionGroup>
-  </div>
+      </TransitionGroup>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -68,7 +70,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 10000;
+  z-index: 999999;
   pointer-events: none;
   width: 320px;
   max-width: calc(100vw - 40px);

@@ -46,72 +46,74 @@ function handleItemClick(item: Notification) {
 </script>
 
 <template>
-  <div>
-    <!-- 遮罩 -->
-    <Transition name="fade">
-      <div v-if="drawerVisible" class="drawer-overlay" @click="closeDrawer"></div>
-    </Transition>
+  <Teleport to="body">
+    <div>
+      <!-- 遮罩 -->
+      <Transition name="fade">
+        <div v-if="drawerVisible" class="drawer-overlay" @click="closeDrawer"></div>
+      </Transition>
 
-    <!-- 抽屉主体 -->
-    <Transition name="drawer-slide">
-      <aside v-if="drawerVisible" class="notification-drawer">
-        <div class="drawer-header">
-          <div class="header-left">
-            <h3>🔔 通知中心</h3>
-            <span v-if="unreadCount > 0" class="badge-unread">{{ unreadCount }} 未读</span>
-          </div>
-          <div class="header-actions">
-            <button
-              v-if="notifications.length > 0"
-              class="btn-text"
-              @click="markAllAsRead"
-              title="全部设为已读"
-            >
-              全部已读
-            </button>
-            <button
-              v-if="notifications.length > 0"
-              class="btn-text"
-              @click="clearHistory"
-              title="清空所有通知"
-            >
-              清空
-            </button>
-            <button class="btn-close" @click="closeDrawer">✕</button>
-          </div>
-        </div>
-
-        <!-- 列表容器 -->
-        <div class="drawer-body">
-          <div v-if="notifications.length === 0" class="empty-state">
-            <div class="empty-icon">📭</div>
-            <p>暂无任何通知</p>
-          </div>
-
-          <div v-else class="notif-list">
-            <div
-              v-for="item in notifications"
-              :key="item.id"
-              class="notif-item"
-              :class="{ unread: !item.read }"
-              @click="handleItemClick(item)"
-            >
-              <div class="notif-top">
-                <div class="notif-meta">
-                  <span class="level-icon">{{ getLevelIcon(item.level) }}</span>
-                  <span class="mod-tag">[{{ item.moduleId }}]</span>
-                  <strong class="title">{{ item.title }}</strong>
-                </div>
-                <span class="time">{{ formatTime(item.timestamp) }}</span>
-              </div>
-              <p class="msg">{{ item.message }}</p>
-              <div v-if="!item.read" class="unread-dot" title="未读"></div>
+      <!-- 抽屉主体 -->
+      <Transition name="drawer-slide">
+        <aside v-if="drawerVisible" class="notification-drawer">
+          <div class="drawer-header">
+            <div class="header-left">
+              <h3>🔔 通知中心</h3>
+              <span v-if="unreadCount > 0" class="badge-unread">{{ unreadCount }} 未读</span>
+            </div>
+            <div class="header-actions">
+              <button
+                v-if="notifications.length > 0"
+                class="btn-text"
+                @click="markAllAsRead"
+                title="全部设为已读"
+              >
+                全部已读
+              </button>
+              <button
+                v-if="notifications.length > 0"
+                class="btn-text"
+                @click="clearHistory"
+                title="清空所有通知"
+              >
+                清空
+              </button>
+              <button class="btn-close" @click="closeDrawer">✕</button>
             </div>
           </div>
-        </div>
-      </aside>
-    </Transition>
-  </div>
+
+          <!-- 列表容器 -->
+          <div class="drawer-body">
+            <div v-if="notifications.length === 0" class="empty-state">
+              <div class="empty-icon">📭</div>
+              <p>暂无任何通知</p>
+            </div>
+
+            <div v-else class="notif-list">
+              <div
+                v-for="item in notifications"
+                :key="item.id"
+                class="notif-item"
+                :class="{ unread: !item.read }"
+                @click="handleItemClick(item)"
+              >
+                <div class="notif-top">
+                  <div class="notif-meta">
+                    <span class="level-icon">{{ getLevelIcon(item.level) }}</span>
+                    <span class="mod-tag">[{{ item.moduleId }}]</span>
+                    <strong class="title">{{ item.title }}</strong>
+                  </div>
+                  <span class="time">{{ formatTime(item.timestamp) }}</span>
+                </div>
+                <p class="msg">{{ item.message }}</p>
+                <div v-if="!item.read" class="unread-dot" title="未读"></div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </Transition>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
