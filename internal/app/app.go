@@ -9,6 +9,8 @@ import (
 
 	"hubkit/internal/extapi"
 	"hubkit/internal/logging"
+	"hubkit/internal/modules/everything"
+	everythinginstance "hubkit/internal/modules/everything/instance"
 	"hubkit/internal/modules/fileshare"
 	"hubkit/internal/modules/frpc"
 	"hubkit/internal/modules/frpc/instance"
@@ -55,6 +57,8 @@ func RegisterEvents() {
 	application.RegisterEvent[notify.Notification]("notify:received")
 	application.RegisterEvent[markeronversion.DownloadProgress]("markeron:version-download")
 	application.RegisterEvent[markeroninstance.Snapshot]("markeron:instance-state")
+	application.RegisterEvent[everything.DownloadTicket]("everything:download")
+	application.RegisterEvent[everythinginstance.Snapshot]("everything:instance-state")
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
@@ -107,6 +111,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	modulesToRegister := []extapi.Module{
 		frpc.New(plat),
 		markeron.New(plat),
+		everything.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
