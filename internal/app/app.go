@@ -14,6 +14,9 @@ import (
 	"hubkit/internal/modules/frpc/instance"
 	"hubkit/internal/modules/frpc/version"
 	"hubkit/internal/modules/lan"
+	"hubkit/internal/modules/markeron"
+	markeroninstance "hubkit/internal/modules/markeron/instance"
+	markeronversion "hubkit/internal/modules/markeron/version"
 	"hubkit/internal/modules/memo"
 	"hubkit/internal/modules/portkill"
 	"hubkit/internal/modules/portscan"
@@ -50,6 +53,8 @@ func RegisterEvents() {
 	application.RegisterEvent[fileshare.DropItem]("fileshare:text-dropped")
 	application.RegisterEvent[application.Void]("memo:changed")
 	application.RegisterEvent[notify.Notification]("notify:received")
+	application.RegisterEvent[markeronversion.DownloadProgress]("markeron:version-download")
+	application.RegisterEvent[markeroninstance.Snapshot]("markeron:instance-state")
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
@@ -101,6 +106,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	// 6. 工具箱模块统一注册：frpc 与其余工具完全平等，均可启停
 	modulesToRegister := []extapi.Module{
 		frpc.New(plat),
+		markeron.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
