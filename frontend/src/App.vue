@@ -16,6 +16,7 @@ import WechatBotView from './views/WechatBotView.vue'
 import FileShareView from './views/FileShareView.vue'
 import MemoView from './views/MemoView.vue'
 import MarkerOnView from './views/MarkerOnView.vue'
+import EverythingView from './views/EverythingView.vue'
 import WifiView from './views/WifiView.vue'
 import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
 import NotificationToast from './components/NotificationToast.vue'
@@ -40,6 +41,7 @@ const CORE_VIEWS: Record<string, any> = {
   '/ext/portkill': markRaw(PortKillView),
   '/ext/wifi': markRaw(WifiView),
   '/ext/markeron': markRaw(MarkerOnView),
+  '/ext/everything': markRaw(EverythingView),
   '/logs': markRaw(LogsView),
   '/settings': markRaw(SettingsView),
   '/about': markRaw(AboutView),
@@ -57,6 +59,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/portkill': 'portkill',
   '/ext/wifi': 'wifi',
   '/ext/markeron': 'markeron',
+  '/ext/everything': 'everything',
 }
 
 const SYSTEM_NAV = [
