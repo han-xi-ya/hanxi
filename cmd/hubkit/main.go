@@ -19,6 +19,7 @@ import (
 func main() {
 	modeFlag := flag.String("mode", "", "run mode: empty for GUI, 'killhelper' for elevated process terminator")
 	pidFlag := flag.Uint("pid", 0, "target PID for killhelper mode")
+	minimizedFlag := flag.Bool("minimized", false, "start with the main window hidden in the system tray")
 	flag.Parse()
 
 	// 1. 如果是 UAC 提权 Helper 模式，以极简逻辑执行并退出
@@ -37,6 +38,8 @@ func main() {
 
 	a, cleanup := app.New(application.AssetOptions{
 		Handler: application.AssetFileServerFS(embedassets.FS),
+	}, app.Options{
+		StartMinimized: *minimizedFlag,
 	})
 	defer cleanup()
 

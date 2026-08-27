@@ -15,9 +15,9 @@ import (
 	"hubkit/internal/modules/ccswitch"
 	ccswitchinstance "hubkit/internal/modules/ccswitch/instance"
 	ccswitchversion "hubkit/internal/modules/ccswitch/version"
+	"hubkit/internal/modules/envcheck"
 	"hubkit/internal/modules/everything"
 	everythinginstance "hubkit/internal/modules/everything/instance"
-	"hubkit/internal/modules/envcheck"
 	"hubkit/internal/modules/fileshare"
 	"hubkit/internal/modules/flclash"
 	flclashinstance "hubkit/internal/modules/flclash/instance"
@@ -77,9 +77,14 @@ func RegisterEvents() {
 	application.RegisterEvent[flclashinstance.Snapshot]("flclash:instance-state")
 }
 
+// Options 控制应用启动时行为。
+type Options struct {
+	StartMinimized bool
+}
+
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
 // assets 由 cmd/hubkit 通过 embed 提供前端产物。
-func New(assets application.AssetOptions) (*application.App, func()) {
+func New(assets application.AssetOptions, options Options) (*application.App, func()) {
 	// 1. 初始化平台原语
 	plat, err := windows.New()
 	if err != nil {
@@ -172,8 +177,8 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		OnShutdown: func() {
 			registry.ShutdownAll()
 		},
-		Services:    services,
-		Assets:      assets,
+		Services: services,
+		Assets:   assets,
 		// 单实例锁: 重复启动时 Wails 以 ExitCode 静默退出第二实例,
 		// 避免旧实例在后台长期驻留内存导致任务管理器出现多个同名进程
 		SingleInstance: &application.SingleInstanceOptions{
@@ -205,6 +210,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		Height:           780,
 		BackgroundColour: application.NewRGB(245, 246, 248),
 		URL:              "/",
+		Hidden:           options.StartMinimized,
 	})
 	mainWindow = win
 	notify.GetHub().SetWailsContext(a, win)
