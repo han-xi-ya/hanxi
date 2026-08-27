@@ -21,12 +21,16 @@ const QUICK_PORTS = [80, 443, 3000, 5173, 8080, 8000, 3306, 6379, 27017]
 const targetToKill = ref<PortOccupant | null>(null)
 const killing = ref(false)
 
+function sortReleasableFirst(list: PortOccupant[]) {
+  return [...list].sort((a, b) => Number(a.isProtected) - Number(b.isProtected))
+}
+
 async function loadListeningPorts() {
   loading.value = true
   errorMsg.value = ''
   try {
     const list = await PortKillAPI.PortKillService.ListListeningPorts()
-    listeningList.value = list ?? []
+    listeningList.value = sortReleasableFirst(list ?? [])
   } catch (e: unknown) {
     errorMsg.value = `获取端口占用列表失败: ${getErrorMessage(e)}`
   } finally {
@@ -46,7 +50,7 @@ async function searchPort(portVal?: number) {
   errorMsg.value = ''
   try {
     const res = await PortKillAPI.PortKillService.QueryPort(p)
-    occupants.value = res ?? []
+    occupants.value = sortReleasableFirst(res ?? [])
     if (occupants.value.length === 0) {
       showToast(`端口 ${p} 当前未被占用`)
     }
