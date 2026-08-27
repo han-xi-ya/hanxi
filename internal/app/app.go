@@ -9,6 +9,9 @@ import (
 
 	"hubkit/internal/extapi"
 	"hubkit/internal/logging"
+	"hubkit/internal/modules/bcu"
+	bcuinstance "hubkit/internal/modules/bcu/instance"
+	bcuversion "hubkit/internal/modules/bcu/version"
 	"hubkit/internal/modules/ccswitch"
 	ccswitchinstance "hubkit/internal/modules/ccswitch/instance"
 	ccswitchversion "hubkit/internal/modules/ccswitch/version"
@@ -64,6 +67,8 @@ func RegisterEvents() {
 	application.RegisterEvent[everythinginstance.Snapshot]("everything:instance-state")
 	application.RegisterEvent[ccswitchversion.DownloadProgress]("ccswitch:version-download")
 	application.RegisterEvent[ccswitchinstance.Snapshot]("ccswitch:instance-state")
+	application.RegisterEvent[bcuversion.DownloadProgress]("bcu:version-download")
+	application.RegisterEvent[bcuinstance.Snapshot]("bcu:instance-state")
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
@@ -118,6 +123,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		markeron.New(plat),
 		everything.New(plat),
 		ccswitch.New(plat),
+		bcu.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
