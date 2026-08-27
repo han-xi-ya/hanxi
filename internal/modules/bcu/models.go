@@ -13,3 +13,9 @@ type QuitOutcome struct {
 	External bool   `json:"external"` // true = 当前为外部实例，未越权终止
 	Message  string `json:"message"`  // 面向用户的执行说明
 }
+
+// DotnetEnv 本机 .NET 桌面运行时环境探测结果（框架依赖变体的推荐依据）。
+type DotnetEnv struct {
+	DesktopVersions []string `json:"desktopVersions"` // 已装 Microsoft.WindowsDesktop.App 版本（如 ["8.0.13"]）
+	HasNet8         bool     `json:"hasNet8"`         // 是否装有 .NET 8 桌面运行时（BCU 6.x 目标框架）
+}

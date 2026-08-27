@@ -32,12 +32,16 @@ var apiBaseURLs = []string{
 	"https://ghproxy.net/https://api.github.com",
 }
 
-// assetVersionRe 从资产名提取完整版本号：
+// assetVersionRe 从自包含便携资产名提取完整版本号：
 // BCUninstaller_6.2.0_portable.zip / BCUninstaller_6.1.0.1_portable.zip /
 // BCUninstaller_6.0.0_portable-x64.zip——后缀 -x64 与无后缀两种形态并存。
-// 天然排除 net8.0-windows10...zip（framework-dependent 变体）、setup.exe、
-// Localisation_Pack.zip。
+// 天然排除 setup.exe、Localisation_Pack.zip。
 var assetVersionRe = regexp.MustCompile(`(?i)^bcuninstaller_([0-9]+(?:\.[0-9]+)+)_portable(?:-x64)?\.zip$`)
+
+// fddVersionRe 从框架依赖资产名提取完整版本号与目标框架：
+// BCUninstaller_6.2.0_net8.0-windows10.0.18362.0.zip → 6.2.0, net8.0。
+// 目标框架返回出来用于"是否有对应桌面运行时"的推荐判断（net6/net8 不同）。
+var fddVersionRe = regexp.MustCompile(`(?i)^bcuninstaller_([0-9]+(?:\.[0-9]+)+)_(net[0-9]+\.[0-9]+)-windows[0-9.]+\.zip$`)
 
 // plainVersionRe 规整版本号（3~4 段纯数字，如 6.2.0 / 6.1.0.1）
 var plainVersionRe = regexp.MustCompile(`^\d+(\.\d+){2,3}$`)
@@ -156,42 +160,56 @@ func parseReleasesBody(body []byte) ([]BCURelease, error) {
 		if r.Draft {
 			continue
 		}
-		var best *asset
-		var bestVer string
-		for i := range r.Assets {
-			a := &r.Assets[i]
-			m := assetVersionRe.FindStringSubmatch(a.Name)
-			if m == nil {
-				continue
-			}
-			if !plainVersionRe.MatchString(m[1]) {
-				continue
-			}
-			if !matchTagPrefix(r.TagName, m[1]) {
-				continue
-			}
-			best, bestVer = a, m[1]
-			break
-		}
-		if best == nil {
+		// 主资产：自包含便携版（缺失/无 digest 则整个 release 不入列表——
+		// 首选形态的完整性不能降级）
+		portable, portableVer := pickAsset(r.Assets, r.TagName, assetVersionRe)
+		if portable == nil {
 			continue
 		}
-		sha := strings.TrimPrefix(strings.ToLower(best.Digest), digestPrefix)
-		if len(sha) != 64 {
-			continue
-		}
-		list = append(list, BCURelease{
-			Version:   bestVer,
+		rel := BCURelease{
+			Version:   portableVer,
 			Tag:       r.TagName,
 			Published: r.PublishedAt,
 			IsPre:     r.Prerelease,
-			AssetName: best.Name,
-			AssetURL:  best.URL,
-			Size:      best.Size,
-			SHA256:    sha,
-		})
+			AssetName: portable.Name,
+			AssetURL:  portable.URL,
+			Size:      portable.Size,
+			SHA256:    strings.TrimPrefix(strings.ToLower(portable.Digest), digestPrefix),
+		}
+		// 可选增强：框架依赖变体（digest 缺失则变体不可用，不影响主资产）
+		if fdd, _ := pickAsset(r.Assets, r.TagName, fddVersionRe); fdd != nil {
+			rel.FddName = fdd.Name
+			rel.FddURL = fdd.URL
+			rel.FddSize = fdd.Size
+			rel.FddSHA256 = strings.TrimPrefix(strings.ToLower(fdd.Digest), digestPrefix)
+		}
+		list = append(list, rel)
 	}
 	return list, nil
+}
+
+// pickAsset 按资产名正则与 tag 一致性选出合格资产：
+// 版本号须为规整 3~4 段且与 tag 按段前缀一致；digest 必须完整（64 位 hex）。
+func pickAsset(assets []asset, tag string, nameRe *regexp.Regexp) (*asset, string) {
+	for i := range assets {
+		a := &assets[i]
+		m := nameRe.FindStringSubmatch(a.Name)
+		if m == nil {
+			continue
+		}
+		if !plainVersionRe.MatchString(m[1]) {
+			continue
+		}
+		if !matchTagPrefix(tag, m[1]) {
+			continue
+		}
+		sha := strings.TrimPrefix(strings.ToLower(a.Digest), digestPrefix)
+		if len(sha) != 64 {
+			continue
+		}
+		return a, m[1]
+	}
+	return nil, ""
 }
 
 var remoteCache = &releaseCache{}

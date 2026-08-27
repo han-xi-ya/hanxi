@@ -100,7 +100,8 @@ func (m *Manager) ListInstalled() ([]BCUVersionInfo, error) {
 	return list, nil
 }
 
-// Download 下载自包含便携 zip 并解压安装到 versions/bcu_X.Y.Z/。
+// Download 下载指定变体的 zip 并解压安装到 versions/bcu_X.Y.Z/。
+// variant 取值 VariantPortable（自包含）/ VariantFdd（框架依赖精简版）。
 // 完整性四层兜底：
 //  1. 官方 sha256 校验（第一主依据）；
 //  2. 下载落盘字节数 == release API 声明的 size（防截断/代理篡改）；
@@ -108,14 +109,17 @@ func (m *Manager) ListInstalled() ([]BCUVersionInfo, error) {
 //  4. 提取后布局自检（BCUninstaller.exe 非空），失败清理目录。
 //
 // onProgress 可选：实时上报各阶段进度（下载字节、校验、解压）。
-func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) error {
+func (m *Manager) Download(version, variant string, onProgress func(p DownloadProgress)) error {
+	if variant == "" {
+		variant = VariantPortable
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
-			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
+			onProgress(DownloadProgress{Version: version, Variant: variant, Stage: stage, Done: done, Total: total, Message: msg})
 		}
 	}
 
-	// 1. 解析目标版本对应的远程资产
+	// 1. 解析目标版本对应变体的远程资产
 	releases, err := remoteCache.get()
 	if err != nil {
 		emit("error", 0, 0, fmt.Sprintf("获取远程版本列表失败: %v", err))
@@ -133,6 +137,18 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 		emit("error", 0, 0, err.Error())
 		return err
 	}
+	name, size, sha := rel.AssetName, rel.Size, rel.SHA256
+	if variant == VariantFdd {
+		if rel.FddName == "" {
+			err := fmt.Errorf("版本 %s 无框架依赖变体（可能未附带或缺失官方哈希）", version)
+			emit("error", 0, 0, err.Error())
+			return err
+		}
+		name, size, sha = rel.FddName, rel.FddSize, rel.FddSHA256
+	} else if variant != VariantPortable {
+		emit("error", 0, 0, fmt.Sprintf("未知变体: %s", variant))
+		return fmt.Errorf("未知变体: %s", variant)
+	}
 
 	tmpZip, err := os.CreateTemp("", "hubkit-bcu-*.zip")
 	if err != nil {
@@ -143,30 +159,30 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 	tmpZip.Close()
 
 	// 2. 下载 zip（直连 + 镜像逐个回退；tag 与资产版本不同形，用 release 自带 tag 拼路径）
-	emit("downloading", 0, rel.Size, "")
-	if err := downloadTo(m.client, assetMirrors(rel.Tag, rel.AssetName), tmpZipPath, func(done int64) {
-		emit("downloading", done, rel.Size, "")
+	emit("downloading", 0, size, "")
+	if err := downloadTo(m.client, assetMirrors(rel.Tag, name), tmpZipPath, func(done int64) {
+		emit("downloading", done, size, "")
 	}); err != nil {
-		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", err))
+		emit("error", 0, size, fmt.Sprintf("下载失败: %v", err))
 		return err
 	}
 
 	// 3. 字节数校验
 	actual, err := fileSize(tmpZipPath)
 	if err != nil {
-		emit("error", 0, rel.Size, fmt.Sprintf("读取临时文件失败: %v", err))
+		emit("error", 0, size, fmt.Sprintf("读取临时文件失败: %v", err))
 		return err
 	}
-	if actual != rel.Size {
-		err := fmt.Errorf("下载不完整：期望 %d 字节，实际 %d 字节", rel.Size, actual)
-		emit("error", 0, rel.Size, err.Error())
+	if actual != size {
+		err := fmt.Errorf("下载不完整：期望 %d 字节，实际 %d 字节", size, actual)
+		emit("error", 0, size, err.Error())
 		return err
 	}
 
 	// 4. 官方 sha256 校验
 	emit("verify", 0, 0, "")
-	if err := verifySHA256(tmpZipPath, rel.SHA256); err != nil {
-		emit("error", 0, rel.Size, err.Error())
+	if err := verifySHA256(tmpZipPath, sha); err != nil {
+		emit("error", 0, size, err.Error())
 		return fmt.Errorf("官方哈希校验失败（下载文件疑似被篡改或损坏）: %w", err)
 	}
 
@@ -181,10 +197,11 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 	// 6. 落盘元信息
 	meta := map[string]any{
 		"installedAt":  time.Now().Format("2006-01-02 15:04:05"),
-		"source":       rel.AssetName,
-		"zipSize":      rel.Size,
+		"source":       name,
+		"variant":      variant,
+		"zipSize":      size,
 		"zipSHA256":    fileSHA256(tmpZipPath),
-		"assetSHA256":  rel.SHA256,
+		"assetSHA256":  sha,
 		"verifiedHash": true,
 	}
 	_ = writeJSON(filepath.Join(targetDir, "meta.json"), meta)

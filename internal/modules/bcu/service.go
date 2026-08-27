@@ -160,14 +160,19 @@ func (s *BCUService) ListInstalledVersions() ([]version.BCUVersionInfo, error) {
 	return s.manager.ListInstalled()
 }
 
-// DownloadVersion 后台下载指定版本：立即返回，全程经事件 bcu:version-download 推送进度。
-func (s *BCUService) DownloadVersion(targetVersion string) (string, error) {
+// DownloadVersion 后台下载指定版本（variant：portable/fdd）：立即返回，
+// 全程经事件 bcu:version-download 推送进度（载荷带变体标识，前端按版本+变体索引）。
+func (s *BCUService) DownloadVersion(targetVersion, variant string) (string, error) {
 	targetVersion = strings.TrimSpace(targetVersion)
+	if variant == "" {
+		variant = version.VariantPortable
+	}
 
 	s.downloadMu.Lock()
 	defer s.downloadMu.Unlock()
 
-	// 已安装则直接返回，避免重复下载
+	// 已安装则直接返回，避免重复下载（同一版本只允许一种形态落盘，
+	// 目录 bcu_X.Y.Z 为两变体共享安装目标）
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
 		for _, v := range installed {
@@ -179,21 +184,34 @@ func (s *BCUService) DownloadVersion(targetVersion string) (string, error) {
 
 	go func() {
 		emit := func(p version.DownloadProgress) {
-			slog.Debug("bcu download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
+			slog.Debug("bcu download progress", "version", p.Version, "variant", p.Variant, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("bcu:version-download", p)
 			}
 			if p.Stage == "done" {
-				notify.Success("bcu", "版本下载成功", fmt.Sprintf("BCU %s 已成功安装", p.Version), "/ext/bcu")
+				label := "便携版"
+				if p.Variant == version.VariantFdd {
+					label = "精简版"
+				}
+				notify.Success("bcu", "版本下载成功", fmt.Sprintf("BCU %s（%s）已成功安装", p.Version, label), "/ext/bcu")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
-			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
+		if err := s.manager.Download(targetVersion, variant, emit); err != nil {
+			emit(version.DownloadProgress{Version: targetVersion, Variant: variant, Stage: "error", Message: err.Error()})
 			notify.Error("bcu", "版本下载失败", fmt.Sprintf("BCU %s 下载失败: %v", targetVersion, err), "/ext/bcu")
 		}
 	}()
 
 	return "started", nil
+}
+
+// GetDotnetEnvironment 探测本机 .NET 桌面运行时（框架依赖变体的可用性与推荐依据）。
+func (s *BCUService) GetDotnetEnvironment() (DotnetEnv, error) {
+	vers := version.DesktopRuntimeVersions()
+	return DotnetEnv{
+		DesktopVersions: vers,
+		HasNet8:         version.HasDesktopRuntimeMajor(vers, "8"),
+	}, nil
 }
 
 // RemoveVersion 卸载指定版本（正在运行的版本拒绝卸载）。

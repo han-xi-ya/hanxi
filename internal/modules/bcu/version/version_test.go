@@ -79,8 +79,8 @@ func fakeReleasesJSON(t *testing.T) []byte {
 }
 
 // TestParseReleasesBody 解析过滤：
-// 6.2.0 / 6.1.0.1 / 6.0.0 入列表（正确型态），tag 与资产版本不一致的 v9.9 丢弃，
-// 缺 digest 的 v5.8 丢弃；v5.9 预发布保留。
+// 6.2.0 双变体齐备（portable+fdd）；6.1.0.1 仅 portable；6.0.0 portable-x64+fdd；
+// version tag 与资产版本不一致的 v9.9 丢弃；缺 digest 的 v5.8 丢弃；v5.9 预发布保留。
 func TestParseReleasesBody(t *testing.T) {
 	list, err := parseReleasesBody(fakeReleasesJSON(t))
 	if err != nil {
@@ -97,11 +97,18 @@ func TestParseReleasesBody(t *testing.T) {
 		v.Size != 76000000 || v.IsPre {
 		t.Errorf("6.2.0 解析错误: %+v", v)
 	}
+	if v := byVer["6.2.0"]; v.FddName != "BCUninstaller_6.2.0_net8.0-windows10.0.18362.0.zip" ||
+		v.FddSize != 12000000 || len(v.FddSHA256) != 64 {
+		t.Errorf("6.2.0 fdd 变体解析错误: %+v", v)
+	}
 	if v := byVer["6.1.0.1"]; v.Tag != "v6.1" {
 		t.Errorf("6.1.0.1 解析错误: %+v", v)
 	}
-	if v := byVer["6.0.0"]; !strings.Contains(v.AssetName, "portable-x64") {
-		t.Errorf("6.0.0 便携资产型态错误: %+v", v)
+	if v := byVer["6.1.0.1"]; v.FddName != "" {
+		t.Errorf("6.1.0.1 不应有 fdd 变体（样例未提供）: %+v", v)
+	}
+	if v := byVer["6.0.0"]; !strings.Contains(v.AssetName, "portable-x64") || v.FddName == "" {
+		t.Errorf("6.0.0 便携资产/fdd 变体错误: %+v", v)
 	}
 	if v, ok := byVer["5.9.0"]; !ok || !v.IsPre {
 		t.Errorf("预发布版本应保留并标记 IsPre: %+v", v)
@@ -112,12 +119,75 @@ func TestParseReleasesBody(t *testing.T) {
 		}
 	}
 	for _, r := range list {
-		if strings.Contains(r.AssetName, "setup") || strings.Contains(r.AssetName, "net8.0") {
-			t.Errorf("混入非便携资产: %s", r.AssetName)
+		if strings.Contains(r.AssetName, "setup") || strings.Contains(r.AssetName, "net") {
+			t.Errorf("主资产混入非自包含便携条目: %s", r.AssetName)
 		}
 		if len(r.SHA256) != 64 {
 			t.Errorf("sha256 格式异常: %q", r.SHA256)
 		}
+	}
+}
+
+// TestParseReleasesFDDFilter fdd 变体过滤：
+//  1. fdd 资产 digest 缺失 → 变体不可用但主资产仍入列表；
+//  2. fdd 资产版本与 tag 不一致 → 不吸附为变体。
+func TestParseReleasesFDDFilter(t *testing.T) {
+	h := func(ch byte) string { return "sha256:" + strings.Repeat(string(ch), 64) }
+	body := `[
+  {"tag_name": "v6.2", "prerelease": false, "draft": false, "assets": [
+    {"name": "BCUninstaller_6.2.0_portable.zip", "url": "u1", "size": 1, "digest": "` + h('a') + `"},
+    {"name": "BCUninstaller_6.2.0_net8.0-windows10.0.18362.0.zip", "url": "u2", "size": 2}
+  ]},
+  {"tag_name": "v6.1", "prerelease": false, "draft": false, "assets": [
+    {"name": "BCUninstaller_6.1.0.1_portable.zip", "url": "u3", "size": 3, "digest": "` + h('b') + `"},
+    {"name": "BCUninstaller_9.9.0_net8.0-windows10.0.18362.0.zip", "url": "u4", "size": 4, "digest": "` + h('c') + `"}
+  ]}
+]`
+	list, err := parseReleasesBody([]byte(body))
+	if err != nil {
+		t.Fatalf("parseReleasesBody: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("期望 2 个版本，实际 %d", len(list))
+	}
+	if v := list[0]; v.Version != "6.2.0" || v.FddName != "" {
+		t.Errorf("缺 digest 的 fdd 不应收录: %+v", v)
+	}
+	if v := list[1]; v.Version != "6.1.0.1" || v.FddName != "" {
+		t.Errorf("tag 不一致的 fdd 不应吸附: %+v", v)
+	}
+}
+
+// TestDotnetVersions 目录枚举：合法版本收录、噪声目录忽略。
+func TestDotnetVersions(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"8.0.13", "9.0.1", "6.0.36-blah", "not-a-version", "8.0"} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	vers := desktopRuntimeVersionsUnder(dir)
+	want := []string{"8.0", "8.0.13", "9.0.1"}
+	if len(vers) != len(want) {
+		t.Fatalf("版本枚举 = %v, 期望 %v", vers, want)
+	}
+	for i := range want {
+		if vers[i] != want[i] {
+			t.Fatalf("版本枚举排序错误: %v", vers)
+		}
+	}
+	if !HasDesktopRuntimeMajor(vers, "8") {
+		t.Error("装有 8.0.13 应判定 hasNet8")
+	}
+	if HasDesktopRuntimeMajor(vers, "7") {
+		t.Error("未装 7.x 不应误判")
+	}
+	// 目录不存在 = 未安装
+	if got := desktopRuntimeVersionsUnder(filepath.Join(dir, "nope")); got != nil {
+		t.Errorf("不存在目录应返回 nil, 实际 %v", got)
 	}
 }
 
