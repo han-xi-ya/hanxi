@@ -23,6 +23,14 @@ import * as version$0 from "./version/models.js";
 import * as $models from "./models.js";
 
 /**
+ * CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function CreateDesktopShortcut() {
+    return $Call.ByID(3925020656);
+}
+
+/**
  * DownloadVersion 后台下载指定版本：立即返回，全程经事件 markeron:version-download 推送进度。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
@@ -37,6 +45,14 @@ export function DownloadVersion(targetVersion) {
  */
 export function GetActiveVersion() {
     return $Call.ByID(2712815708);
+}
+
+/**
+ * GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetFollowOnExit() {
+    return $Call.ByID(3055385814);
 }
 
 /**
@@ -64,6 +80,14 @@ export function ListReleases() {
 }
 
 /**
+ * OpenRepository 用默认浏览器打开上游仓库页面。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenRepository() {
+    return $Call.ByID(16251378);
+}
+
+/**
  * RemoveVersion 卸载指定版本（正在运行的版本拒绝卸载）
  * @param {string} targetVersion
  * @returns {$CancellablePromise<void>}
@@ -73,12 +97,29 @@ export function RemoveVersion(targetVersion) {
 }
 
 /**
+ * RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function RepositoryURL() {
+    return $Call.ByID(2347212051);
+}
+
+/**
  * SetActiveVersion 设定使用版本（先校验已安装，再持久化）
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
 export function SetActiveVersion(targetVersion) {
     return $Call.ByID(61158640, targetVersion);
+}
+
+/**
+ * SetFollowOnExit 设定开关（下次启动生效）。
+ * @param {boolean} b
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetFollowOnExit(b) {
+    return $Call.ByID(338896202, b);
 }
 
 /**

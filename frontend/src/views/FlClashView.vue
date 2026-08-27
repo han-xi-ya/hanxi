@@ -2,31 +2,31 @@
 // 状态 / 版本管理 / 下载进度 / 时长 ticker / 生命周期
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as MarkerAPI from '../../bindings/hubkit/internal/modules/markeron/markeronservice'
-import * as AppAPI from '../../bindings/hubkit/internal/app'
-import type { DownloadProgress, MarkerRelease, MarkerVersionInfo } from '../../bindings/hubkit/internal/modules/markeron/version/models'
-import type { Snapshot } from '../../bindings/hubkit/internal/modules/markeron/instance/models'
-import type { ToggleOutcome, StopOutcome } from '../../bindings/hubkit/internal/modules/markeron/models'
+import * as FlClashAPI from '../../bindings/hubkit/internal/modules/flclash/flclashservice'
+import type { FlClashRelease, FlClashVersionInfo } from '../../bindings/hubkit/internal/modules/flclash/version/models'
+import type { Snapshot } from '../../bindings/hubkit/internal/modules/flclash/instance/models'
+import type { ControlOutcome, QuitOutcome } from '../../bindings/hubkit/internal/modules/flclash/models'
+import type { DownloadProgress } from '../../bindings/hubkit/internal/modules/flclash/version/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
 // ---------- 状态 ----------
 const snap = ref<Snapshot | null>(null)
-const releases = ref<MarkerRelease[]>([])
-const installed = ref<MarkerVersionInfo[]>([])
+const releases = ref<FlClashRelease[]>([])
+const installed = ref<FlClashVersionInfo[]>([])
 const activeVersion = ref('')
 const loading = ref(false)
-const errorMsg = ref('')
+const listError = ref('')
 const busy = ref(false)
 const uptimeSec = ref(0)
 
-// 下载进度 map: version -> progress
+// 下载进度 map（按版本索引）
 const downloading = ref<Record<string, DownloadProgress>>({})
 
 const { showToast } = useToast()
 
-// 顶层主选项卡：annotate = 标注开关，versions = 版本管理（与 frpc 的 projects/versions 同构）
-const activeMainTab = ref<'annotate' | 'versions'>('annotate')
+// 顶层主选项卡：console = 控制台，versions = 版本管理（与 frpc/markeron/everything 同构）
+const activeMainTab = ref<'console' | 'versions'>('console')
 
 let unlistenDownload: (() => void) | null = null
 let unlistenState: (() => void) | null = null
@@ -37,11 +37,10 @@ let tickTimer: ReturnType<typeof setInterval> | null = null
 const state = computed(() => snap.value?.state ?? '')
 const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
 const isExternal = computed(() => state.value === 'external')
-const drawing = computed(() => !!snap.value?.drawing)
 
 const stateText = computed(() => {
   switch (state.value) {
-    case 'running': return drawing.value ? '标注已开启' : '已启动（未标注）'
+    case 'running': return '运行中'
     case 'starting': return '启动中…'
     case 'failed': return '异常退出'
     case 'external': return '外部运行'
@@ -49,86 +48,49 @@ const stateText = computed(() => {
   }
 })
 
-// 主按钮六态矩阵（状态 × 文案 × 样式，见实施计划 §8.2）
-const toggleLabel = computed(() => {
-  if (busy.value) return '处理中…'
-  switch (state.value) {
-    case 'starting': return '启动中…'
-    case 'running': return drawing.value ? '退出标注' : '开启标注'
-    case 'external': return '切换标注'
-    case 'failed': return '重试启动'
-    default: return '启动 MarkerOn'
-  }
-})
+const runningVersion = computed(() => snap.value?.version ?? '')
 
-const toggleSubLabel = computed(() => {
-  if (busy.value) return '正在切换标注状态…'
-  switch (state.value) {
-    case 'running': return drawing.value ? '桌面覆盖层已开启，点击关闭' : 'MarkerOn 已在后台运行'
-    case 'external': return '外部实例状态未知，点击切换'
-    case 'failed': return '上次异常退出，点击重新启动'
-    case 'starting': return '等待 MarkerOn 就绪（≤20 秒）'
-    default: return '后台静默运行，不进入标注'
-  }
-})
-
-const toggleClass = computed(() => {
-  switch (state.value) {
-    case 'running': return drawing.value ? 'btn-toggle-active' : 'btn-toggle-outline'
-    case 'external': return 'btn-toggle-warn'
-    case 'failed': return 'btn-toggle-danger'
-    default: return 'btn-toggle-primary'
-  }
-})
-
-const toggleDisabled = computed(() =>
-  busy.value || state.value === 'starting' || (isExternal.value && installed.value.length === 0))
-
-const toggleHint = computed(() => {
-  if (isExternal.value && installed.value.length === 0) {
-    return '外部实例无法代为切换（无可用信使程序），请使用快捷键 Ctrl+Shift+D'
-  }
-  return ''
+// 打开安装目录目标：优先当前运行版本，其次 active 版本，最后任一已装
+const openDirVersion = computed(() => {
+  const prefer = state.value === 'running' && runningVersion.value ? runningVersion.value : activeVersion.value
+  return installed.value.find(v => v.version === prefer) ?? installed.value[0] ?? null
 })
 
 // 条件提示条（三个变体互斥）
 const banner = computed(() => {
   if (state.value === 'external') {
-    return { cls: 'banner-warn', text: '检测到外部 MarkerOn 实例（非 HubKit 托管）。可切换标注；如需彻底退出请在 MarkerOn 托盘操作。' }
+    return {
+      cls: 'banner-warn',
+      text: '检测到外部 FlClash 实例（非 HubKit 托管）。可唤起其窗口；如需彻底退出请在 FlClash 托盘操作。',
+    }
   }
   if (state.value === 'failed') {
-    return { cls: 'banner-error', text: snap.value?.error || 'MarkerOn 异常退出' }
+    return { cls: 'banner-error', text: snap.value?.error || 'FlClash 异常退出' }
   }
-  if (state.value === 'running' && drawing.value) {
-    return { cls: 'banner-ok', text: '标注已开启，可将屏幕涂画演示；再次点击开关或按 Ctrl+Shift+D 退出。' }
+  if (state.value === 'running') {
+    return {
+      cls: 'banner-ok',
+      text: 'FlClash 正在运行：代理配置在其窗口内操作（配置数据在 %APPDATA% 用户目录，各版本共享）。闲置 3 分钟自动退出。',
+    }
   }
   return null
 })
 
-// 打开安装目录目标：优先当前运行版本，其次 active 版本，最后任一已装
-const openDirVersion = computed(() => {
-  const prefer = state.value === 'running' && snap.value?.version ? snap.value.version : activeVersion.value
-  return installed.value.find(v => v.version === prefer) ?? installed.value[0] ?? null
-})
-
-// 远程最新稳定版（首个非预发布）
-const latestVersion = computed(() => releases.value.find(r => !r.isPre)?.version ?? '')
-
 // ---------- 数据加载 ----------
 async function loadVersions() {
   loading.value = true
-  errorMsg.value = ''
+  listError.value = ''
   try {
     const [remote, local, active] = await Promise.all([
-      MarkerAPI.ListReleases(),
-      MarkerAPI.ListInstalledVersions(),
-      MarkerAPI.GetActiveVersion(),
+      FlClashAPI.ListReleases(),
+      FlClashAPI.ListInstalledVersions(),
+      FlClashAPI.GetActiveVersion(),
     ])
     releases.value = remote ?? []
     installed.value = local ?? []
     activeVersion.value = active ?? ''
   } catch (e) {
-    errorMsg.value = `获取版本列表失败: ${getErrorMessage(e)}`
+    listError.value = `获取版本列表失败: ${getErrorMessage(e)}`
   } finally {
     loading.value = false
   }
@@ -136,13 +98,14 @@ async function loadVersions() {
 
 async function refreshStatus() {
   try {
-    snap.value = await MarkerAPI.GetStatus()
+    snap.value = await FlClashAPI.GetStatus()
   } catch (e) {
     // 轮询静默失败：保留上次快照即可
-    console.warn('markeron GetStatus failed:', getErrorMessage(e))
+    console.warn('flclash GetStatus failed:', getErrorMessage(e))
   }
 }
 
+// ---------- 格式化 ----------
 function fmtSize(bytes: number): string {
   if (!bytes) return '—'
   if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -169,21 +132,21 @@ function stepOf(p: DownloadProgress): number {
   return Math.min(99, Math.round((p.done / p.total) * 100))
 }
 
-function statusOf(rel: MarkerRelease): 'installed' | 'downloading' | 'error' | 'idle' {
+function statusOf(rel: FlClashRelease): 'installed' | 'downloading' | 'error' | 'idle' {
   const p = downloading.value[rel.version]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
-  const hit = installed.value.find(v => v.version.replace(/^v/, '') === rel.version.replace(/^v/, ''))
+  const hit = installed.value.find(v => v.version === rel.version)
   return hit ? 'installed' : 'idle'
 }
 
-// ---------- 操作 ----------
-async function toggleAnnotate() {
-  if (toggleDisabled.value || busy.value) return
+// ---------- 控制操作 ----------
+async function openWindow() {
+  if (busy.value) return
   busy.value = true
   try {
-    const out: ToggleOutcome = await MarkerAPI.ToggleAnnotate()
+    const out: ControlOutcome = await FlClashAPI.OpenWindow()
     showToast(out.message)
-    await Promise.all([refreshStatus(), loadVersions()])
+    await refreshStatus()
   } catch (e) {
     showToast(getErrorMessage(e))
     await refreshStatus()
@@ -192,29 +155,25 @@ async function toggleAnnotate() {
   }
 }
 
-async function stopAnnotate() {
+async function quitFlClash() {
+  if (busy.value) return
   busy.value = true
   try {
-    const out: StopOutcome = await MarkerAPI.StopAnnotate()
+    const out: QuitOutcome = await FlClashAPI.Quit()
     showToast(out.message)
     await refreshStatus()
   } catch (e) {
-    showToast(`停止失败: ${getErrorMessage(e)}`)
+    showToast(`退出失败: ${getErrorMessage(e)}`)
+    await refreshStatus()
   } finally {
     busy.value = false
   }
 }
 
-// 下载最新稳定版（首次使用空态入口；渲染与点击之间远程列表可能刷新，故动态查找）
-function downloadLatest() {
-  const target = releases.value.find(r => r.version === latestVersion.value)
-  if (!target) return
-  download(target)
-}
-
-async function download(rel: MarkerRelease) {
+// ---------- 版本管理操作 ----------
+async function download(rel: FlClashRelease) {
   try {
-    const res = await MarkerAPI.DownloadVersion(rel.version)
+    const res = await FlClashAPI.DownloadVersion(rel.version)
     if (res === 'already-installed') {
       showToast(`版本 ${rel.version} 已安装`)
       await loadVersions()
@@ -224,9 +183,9 @@ async function download(rel: MarkerRelease) {
   }
 }
 
-async function setActive(v: MarkerVersionInfo) {
+async function setActive(v: FlClashVersionInfo) {
   try {
-    const ver = await MarkerAPI.SetActiveVersion(v.version)
+    const ver = await FlClashAPI.SetActiveVersion(v.version)
     activeVersion.value = ver
     showToast(`已将 ${ver} 设为使用版本`)
   } catch (e) {
@@ -234,25 +193,37 @@ async function setActive(v: MarkerVersionInfo) {
   }
 }
 
-// 打开安装目录：必须传「目录」路径而非 exe——explorer.exe 收文件参数会执行文件
-// （对 MarkerOn.exe 会直接拉起实例），收目录才稳定打开文件夹窗口
 async function openDir(path: string) {
   try {
-    await AppAPI.AppService.OpenPath(path)
+    await FlClashAPI.OpenDir(path)
   } catch (e) {
     showToast(`打开目录失败: ${getErrorMessage(e)}`)
   }
 }
 
-async function removeVersion(v: MarkerVersionInfo) {
-  const versionShort = v.version.replace(/^v/, '')
-  if (!window.confirm(`确定卸载 MarkerOn ${versionShort}？\n该版本隔离目录及其便携数据将被删除，不可恢复。`)) return
+async function removeVersion(v: FlClashVersionInfo) {
+  if (!window.confirm(`确定卸载 FlClash ${v.version}？\n该版本隔离目录将被删除，不可恢复。\n（%APPDATA% 下的代理配置不受影响，后续版本继续共用）`)) return
   try {
-    await MarkerAPI.RemoveVersion(v.version)
-    showToast(`已卸载 ${versionShort}`)
+    await FlClashAPI.RemoveVersion(v.version)
+    showToast(`已卸载 ${v.version}`)
     await loadVersions()
   } catch (e) {
     showToast(`卸载失败: ${getErrorMessage(e)}`)
+  }
+}
+
+async function importLocal() {
+  const path = window.prompt('请输入 FlClash 安装目录完整路径（便携目录，含 FlClash.exe）\n提示：代理配置在 %APPDATA%，与安装位置无关')
+  if (!path) return
+  try {
+    busy.value = true
+    const info = await FlClashAPI.ImportLocal(path.trim())
+    showToast(`已导入 FlClash ${info.version}`)
+    await loadVersions()
+  } catch (e) {
+    showToast(`导入失败: ${getErrorMessage(e)}`)
+  } finally {
+    busy.value = false
   }
 }
 
@@ -283,7 +254,7 @@ const repoUrl = ref('')
 
 async function loadExtras() {
   try {
-    const [f, u] = await Promise.all([MarkerAPI.GetFollowOnExit(), MarkerAPI.RepositoryURL()])
+    const [f, u] = await Promise.all([FlClashAPI.GetFollowOnExit(), FlClashAPI.RepositoryURL()])
     followOnExit.value = f
     repoUrl.value = u
   } catch (e) {
@@ -293,7 +264,7 @@ async function loadExtras() {
 
 async function onFollowToggle() {
   try {
-    await MarkerAPI.SetFollowOnExit(!followOnExit.value)
+    await FlClashAPI.SetFollowOnExit(!followOnExit.value)
     showToast(followOnExit.value ? '已开启：HubKit 退出时一并关闭该工具' : '已关闭：HubKit 退出不影响该工具，继续独立运行（下次启动生效）')
   } catch (e) {
     showToast('设置失败: ' + getErrorMessage(e))
@@ -303,7 +274,7 @@ async function onFollowToggle() {
 
 async function createShortcut() {
   try {
-    await MarkerAPI.CreateDesktopShortcut()
+    await FlClashAPI.CreateDesktopShortcut()
     showToast('桌面快捷方式已创建（指向当前使用版本）')
   } catch (e) {
     showToast('创建快捷方式失败: ' + getErrorMessage(e))
@@ -338,7 +309,7 @@ async function copyRepo() {
 
 async function openRepo() {
   try {
-    await MarkerAPI.OpenRepository()
+    await FlClashAPI.OpenRepository()
   } catch (e) {
     showToast('打开失败: ' + getErrorMessage(e))
   }
@@ -346,21 +317,21 @@ async function openRepo() {
 
 // ---------- 生命周期 ----------
 onMounted(async () => {
-  unlistenDownload = Events.On('markeron:version-download', (event: any) => {
-    const p = event.data as DownloadProgress
-    if (!p || !p.version) return
-    downloading.value = { ...downloading.value, [p.version]: p }
-    if (p.stage === 'done') {
+  unlistenDownload = Events.On('flclash:version-download', (event: any) => {
+    const t = event.data as DownloadProgress
+    if (!t || !t.version) return
+    downloading.value = { ...downloading.value, [t.version]: t }
+    if (t.stage === 'done') {
       setTimeout(() => {
         const next = { ...downloading.value }
-        delete next[p.version]
+        delete next[t.version]
         downloading.value = next
       }, 800)
       loadVersions()
     }
   })
 
-  unlistenState = Events.On('markeron:instance-state', (event: any) => {
+  unlistenState = Events.On('flclash:instance-state', (event: any) => {
     const s = event.data as Snapshot
     if (!s) return
     snap.value = s
@@ -388,19 +359,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="page markeron-view">
+  <section class="page flclash-view">
     <div class="header-row">
       <div>
-        <h1>MarkerOn 桌面标注</h1>
-        <p class="subtitle">一键进入桌面标注态；版本与运行状态统一管理。</p>
+        <h1>FlClash</h1>
+        <p class="subtitle">托管 Clash 系代理客户端 FlClash：版本管理、启停与窗口唤起。</p>
       </div>
       <div class="main-tab-nav">
         <button
           class="main-tab-btn"
-          :class="{ active: activeMainTab === 'annotate' }"
-          @click="activeMainTab = 'annotate'"
+          :class="{ active: activeMainTab === 'console' }"
+          @click="activeMainTab = 'console'"
         >
-          ✎ 标注开关
+          ⚡ 控制台
         </button>
         <button
           class="main-tab-btn"
@@ -412,79 +383,61 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="errorMsg" class="error-box">{{ errorMsg }}</div>
+    <div v-if="listError" class="error-box">{{ listError }}</div>
 
-    <!-- 标注开关 Tab -->
-    <div v-show="activeMainTab === 'annotate'" class="tab-body">
-    <!-- 标注状态卡（核心） -->
-    <div class="annotate-card">
-      <!-- 左：开关按钮 + 副操作 -->
-      <div class="action-zone">
-        <button
-          class="btn-toggle-big"
-          :class="toggleClass"
-          :disabled="toggleDisabled"
-          :title="toggleHint"
-          @click="toggleAnnotate"
-        >
-          <span class="toggle-icon">✎</span>
-          <span class="toggle-main">{{ toggleLabel }}</span>
-          <span class="toggle-sub">{{ toggleSubLabel }}</span>
-        </button>
-        <div class="action-row">
-          <button
-            v-if="isRunningOrStarting"
-            class="btn btn-secondary btn-small"
-            :disabled="busy"
-            @click="stopAnnotate"
-          >停止标注</button>
-          <button
-            v-if="openDirVersion"
-            class="btn btn-secondary btn-small"
-            @click="openDir(openDirVersion!.dir)"
-          >打开安装目录</button>
-        </div>
-      </div>
-
-      <!-- 右：详情区 -->
-      <div class="detail-zone">
-        <div class="status-badge-row">
-          <span class="status-light" :class="state"></span>
+    <!-- 控制台 Tab -->
+    <div v-show="activeMainTab === 'console'" class="tab-body">
+    <!-- 顶部整合条：状态 + 启停按钮，一行内解决问题 -->
+    <div class="control-bar">
+      <div class="control-top">
+        <div class="control-status">
+          <span class="fl-status-light" :class="state"></span>
           <span class="status-word">{{ stateText }}</span>
-          <template v-if="isRunningOrStarting && snap?.version">
-            <span class="ver-pill">v{{ snap.version }}</span>
+          <template v-if="isRunningOrStarting && runningVersion">
+            <span class="ver-pill">{{ runningVersion }}</span>
             <span v-if="snap?.pid" class="mono pid-tag">PID {{ snap.pid }}</span>
           </template>
+          <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
         </div>
-
-        <div class="detail-line" v-if="state === 'running'">
-          已运行 <strong>{{ fmtDuration(uptimeSec) }}</strong>
-          <span v-if="!drawing" class="hint-dim">—— 后台待命，点击「开启标注」显示覆盖层</span>
+        <div class="control-btns">
+          <button
+            class="btn btn-secondary btn-small"
+            :disabled="busy || state === 'starting'"
+            :title="state === 'running' ? '唤起窗口' : state === 'starting' ? '启动中…' : '启动 FlClash 并打开窗口'"
+            @click="openWindow"
+          >🗔 打开窗口</button>
+          <button
+            class="btn btn-danger-outline btn-small"
+            :disabled="busy || (state !== 'running' && state !== 'starting' && !isExternal)"
+            :title="isExternal ? '外部实例请在 FlClash 托盘退出' : '关闭窗口消息（驻留托盘设置下会兜底强杀）'"
+            @click="quitFlClash"
+          >⏻ 退出</button>
         </div>
-        <div class="detail-line" v-else-if="state === 'stopped'">
-          点击「启动 MarkerOn」后台运行；随后用「开启标注」或 Ctrl+Shift+D 进入标注态
-        </div>
-        <div class="detail-line" v-else-if="state === 'starting'">
-          正在拉起 MarkerOn 主实例（约 1~3 秒）
-        </div>
-        <div class="detail-line" v-else-if="state === 'failed'">
-          请查看上方提示条；确认已安装 WebView2 Runtime 后重试
-        </div>
-        <div class="detail-line" v-else-if="state === 'external'">
-          非 HubKit 托管的 MarkerOn 实例正在运行
-        </div>
-
-        <div class="kbd-row">
-          <span class="kbd-chip">Ctrl+Shift+D</span> 切换标注 ·
-          <span class="kbd-chip">Ctrl+Shift+C</span> 清空涂鸦 ·
-          <span class="kbd-chip">Ctrl+Shift+X</span> 穿透点击
-        </div>
-        <div class="hint-dim honesty-hint">按钮与快捷键等效；若状态与桌面实际不符（可能经快捷键直接操作过），再按一次开关即可。</div>
       </div>
     </div>
 
-    <!-- 条件提示条 -->
-    <div v-if="banner" class="hint-banner" :class="banner.cls">{{ banner.text }}</div>
+    <!-- 条件提示条 / 引导行 -->
+    <div v-if="banner" class="hint-banner slim" :class="banner.cls">{{ banner.text }}</div>
+    <div v-else-if="state === 'stopped'" class="hint-line">
+      尚未运行：点击「打开窗口」启动 FlClash，代理配置在它的窗口内完成。配置存于 %APPDATA% 用户目录，与版本切换无关；闲置 3 分钟自动退出。
+    </div>
+    <div v-else-if="state === 'starting'" class="hint-line">正在拉起 FlClash（约 1~3 秒）…</div>
+
+    <!-- 说明卡 -->
+    <div class="info-card">
+      <div class="info-title">什么是 FlClash</div>
+      <p>
+        FlClash 是跨平台 Clash 系代理客户端（Flutter 构建，Windows 便携免安装）（上游 <a
+          class="inline-link"
+          href="https://github.com/chen08209/FlClash"
+          target="_blank"
+          rel="noopener"
+        >chen08209/FlClash</a>，MIT）。本模块仅托管其运行：版本下载自官方 GitHub Releases（官方 sha256 四层校验），启停受 JobObject 管控。
+      </p>
+      <p class="hint-dim">
+        已装多个版本时，在「版本管理」设为使用即可切换；代理配置数据（%APPDATA%）各版本共享，不影响你现有的订阅与节点。
+      </p>
+    </div>
     </div>
 
 
@@ -506,13 +459,14 @@ onUnmounted(() => {
     </div>
     <!-- 版本管理 Tab -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
-    <!-- 版本区 -->
     <div class="control-panel">
       <div class="meta-info">
-        <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程可用 {{ releases.length }} 个版本</span>
-        <span class="hint-dim">便携包下载自上游 ifer47/markeron；SmartScreen 拦截时选「更多信息 → 仍要运行」</span>
+        <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程版本 {{ releases.length }} 个</span>
+        <span class="hint-dim">便携包下载自 GitHub Releases（Windows-Portable.zip，官方 digest 校验）；或「导入本地」把你机器上已有的安装版/绿色版收纳进来</span>
+        <span class="hint-dim">上游另有 SHA256SUMS 清单资产；本模块以 GitHub API digest 为校验主依据（四层完整性）</span>
       </div>
       <div class="btn-group">
+        <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地安装</button>
         <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadVersions">
           {{ loading ? '刷新中…' : '↻ 刷新远程列表' }}
         </button>
@@ -522,15 +476,12 @@ onUnmounted(() => {
     <!-- 已安装版本 -->
     <div class="section-title"><h3>已安装版本 ({{ installed.length }})</h3></div>
 
-    <!-- 首次使用空态：一键下载最新稳定版 -->
-    <div v-if="installed.length === 0 && latestVersion" class="empty-state first-use">
-      <p>尚未安装 MarkerOn —— 下载官方便携版后即可一键标注</p>
-      <button class="btn btn-primary" @click="downloadLatest()">
-        下载最新版 {{ latestVersion }}
+    <div v-if="installed.length === 0" class="empty-state first-use">
+      <p>尚未安装 FlClash —— 下载官方便携版，或「导入本地安装」把现有 FlClash 收纳进来</p>
+      <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
+        下载最新版 {{ releases[0].version }}
       </button>
-    </div>
-    <div v-else-if="installed.length === 0" class="empty-hint">
-      尚未安装任何 MarkerOn 版本，且远程列表暂不可用——请稍后点击「↻ 刷新远程列表」重试
+      <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新远程列表</button>
     </div>
 
     <div class="installed-grid">
@@ -539,22 +490,23 @@ onUnmounted(() => {
           <span class="ver-tag">{{ v.version }}</span>
           <div class="inst-badges">
             <span v-if="activeVersion === v.version" class="badge badge-active">使用中</span>
-            <span v-else-if="state === 'running' && snap?.version === v.version" class="badge badge-running">运行中</span>
+            <span v-else-if="state === 'running' && runningVersion === v.version" class="badge badge-running">运行中</span>
+            <span v-if="v.isImport" class="badge badge-import">本地导入</span>
             <span v-else class="badge badge-official">官方下载</span>
           </div>
         </div>
         <div class="inst-meta">
           <div class="meta-line"><span class="k">路径</span><code class="mono">{{ v.exePath }}</code></div>
           <div class="meta-line"><span class="k">大小</span><span>{{ fmtSize(v.size) }} · 安装于 {{ v.installedAt }}</span></div>
-          <div class="meta-line" v-if="v.sha256"><span class="k">SHA256</span><code class="mono short">{{ v.sha256.slice(0, 12) }}…</code></div>
+          <div class="meta-line" v-if="v.isImport && v.source"><span class="k">来源</span><span class="hint-dim">{{ v.source }}</span></div>
         </div>
         <div class="inst-actions">
           <button v-if="activeVersion !== v.version" class="btn btn-primary btn-small" @click="setActive(v)">设为使用</button>
           <button class="btn btn-secondary btn-small" @click="openDir(v.dir)">📂 打开位置</button>
           <button
             class="btn btn-danger-outline btn-small"
-            :disabled="state === 'running' && snap?.version === v.version"
-            :title="state === 'running' && snap?.version === v.version ? '请先停止标注' : ''"
+            :disabled="state === 'running' && runningVersion === v.version"
+            :title="state === 'running' && runningVersion === v.version ? '请先退出 FlClash' : ''"
             @click="removeVersion(v)"
           >卸载</button>
         </div>
@@ -567,7 +519,7 @@ onUnmounted(() => {
       <table class="tbl">
         <thead>
           <tr>
-            <th style="width: 130px;">版本</th>
+            <th style="width: 140px;">版本</th>
             <th style="width: 170px;">状态</th>
             <th style="width: 90px;">大小</th>
             <th style="width: 110px;">发布时间</th>
@@ -578,15 +530,14 @@ onUnmounted(() => {
           <tr v-for="rel in releases" :key="rel.version">
             <td>
               <strong class="ver-name">{{ rel.version }}</strong>
-              <span v-if="rel.version === latestVersion" class="badge badge-newest">最新</span>
               <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
             </td>
             <td>
-              <!-- 注意：类名刻意用 ver-status 而非 status-dot——App.vue 全局样式里已有 .status-dot（7px 圆点），会压扁表格徽标 -->
-              <span v-if="statusOf(rel) === 'installed'" class="ver-status installed">已安装</span>
-              <span v-else-if="statusOf(rel) === 'downloading'" class="ver-status downloading">下载中</span>
-              <span v-else-if="statusOf(rel) === 'error'" class="ver-status error">失败</span>
-              <span v-else class="ver-status idle">可安装</span>
+              <!-- 类名刻意用 fl-status（含 fl- 前缀）——App.vue 全局样式有 .status-dot（7px），防碰撞压扁徽标 -->
+              <span v-if="statusOf(rel) === 'installed'" class="fl-ver-status installed">已安装</span>
+              <span v-else-if="statusOf(rel) === 'downloading'" class="fl-ver-status downloading">下载中</span>
+              <span v-else-if="statusOf(rel) === 'error'" class="fl-ver-status error">失败</span>
+              <span v-else class="fl-ver-status idle">可安装</span>
             </td>
             <td>{{ fmtSize(rel.size) }}</td>
             <td>{{ fmtDate(rel.published) }}</td>
@@ -598,7 +549,7 @@ onUnmounted(() => {
                 <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
               </div>
               <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
-                <span v-if="downloading[rel.version]!.stage === 'extract'">解压安装…</span>
+                <span v-if="['verify', 'extract'].includes(downloading[rel.version]!.stage)">校验解压安装…</span>
                 <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
               </div>
               <button
@@ -611,7 +562,7 @@ onUnmounted(() => {
             </td>
           </tr>
           <tr v-if="releases.length === 0 && !loading">
-            <td colspan="5" class="empty-hint">无法加载远程版本列表（GitHub 可能被限流），可稍后点击「↻ 刷新远程列表」重试</td>
+            <td colspan="5" class="empty-hint">无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试</td>
           </tr>
         </tbody>
       </table>
@@ -621,13 +572,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.markeron-view { display: flex; flex-direction: column; gap: 14px; }
+.flclash-view { display: flex; flex-direction: column; gap: 14px; }
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
 .header-row h1 { margin: 0 0 6px; }
 .subtitle { color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.6; }
 .error-box { padding: 10px 14px; background: #ffebe9; color: var(--danger); border: 1px solid rgba(207, 34, 46, 0.2); border-radius: 6px; font-size: 13px; }
 
-/* 顶层主选项卡（与 FrpcProjectsView 同款） */
+/* 顶层主选项卡（与 EverythingView 同款） */
 .main-tab-nav {
   display: flex;
   background: var(--bg-hover);
@@ -655,71 +606,37 @@ onUnmounted(() => {
 }
 .tab-body { display: flex; flex-direction: column; gap: 16px; }
 
-/* ---------- 标注状态卡 ---------- */
-.annotate-card {
+/* ---------- 顶部整合控制条 ---------- */
+.control-bar {
   background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 10px;
-  padding: 20px; display: flex; gap: 28px; flex-wrap: wrap;
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
 }
-
-/* 左：大开关按钮 */
-.action-zone { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 220px; flex-shrink: 0; }
-.btn-toggle-big {
-  width: 200px; height: 96px; border-radius: 10px; border: 1px solid transparent;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  cursor: pointer; transition: all 0.15s ease; position: relative;
-}
-.btn-toggle-big:disabled { opacity: 0.55; cursor: not-allowed; }
-.toggle-icon { font-size: 20px; line-height: 1; }
-.toggle-main { font-size: 16px; font-weight: 600; }
-.toggle-sub { font-size: 11px; color: var(--text-muted); }
-
-.btn-toggle-primary { background: var(--accent); color: #fff; }
-.btn-toggle-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-toggle-primary .toggle-sub { color: rgba(255,255,255,.85); }
-
-.btn-toggle-outline { background: #fff; border-color: var(--accent); color: var(--accent); }
-.btn-toggle-outline:hover:not(:disabled) { background: var(--bg-active); }
-
-.btn-toggle-active { background: var(--accent); color: #fff; box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.15); }
-.btn-toggle-active:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-toggle-active .toggle-sub { color: rgba(255,255,255,.85); }
-
-.btn-toggle-warn { background: #fff8c5; border-color: #bf8700; color: #9a6700; }
-.btn-toggle-warn:hover:not(:disabled) { background: #fff3a8; }
-
-.btn-toggle-danger { background: #fff; border-color: var(--danger); color: var(--danger); }
-.btn-toggle-danger:hover:not(:disabled) { background: #ffebe9; }
-
-.action-row { display: flex; gap: 8px; }
-
-/* 右：详情区 */
-.detail-zone { flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 10px; justify-content: center; }
-.status-badge-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-/* 注意：此处是状态卡信号灯，类名刻意用 status-light，与远程表格徽标 status-dot 隔离——同页共用一类名会互相污染样式 */
-.status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--text-subtle); flex-shrink: 0; }
-.status-light.running { background: var(--success); box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.15); }
-.status-light.starting { background: var(--accent); animation: pulse 1s infinite; }
-.status-light.external { background: #9a6700; box-shadow: 0 0 0 3px rgba(154, 103, 0, 0.15); }
-.status-light.failed { background: var(--danger); box-shadow: 0 0 0 3px rgba(207, 34, 46, 0.15); }
-.status-word { font-size: 16px; font-weight: 700; color: var(--text-main); }
+.control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* 信号灯类名带 fl- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
+.fl-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--text-subtle); flex-shrink: 0; }
+.fl-status-light.running { background: var(--success); box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.15); }
+.fl-status-light.starting { background: var(--accent); animation: pulse 1s infinite; }
+.fl-status-light.external { background: #9a6700; box-shadow: 0 0 0 3px rgba(154, 103, 0, 0.15); }
+.fl-status-light.failed { background: var(--danger); box-shadow: 0 0 0 3px rgba(207, 34, 46, 0.15); }
+.status-word { font-size: 15px; font-weight: 700; color: var(--text-main); }
 .ver-pill { font-family: Consolas, monospace; font-size: 12px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 8px; color: var(--text-main); }
 .pid-tag { font-size: 11px; color: var(--text-subtle); }
+.uptime-tag { font-size: 11px; color: var(--text-subtle); }
+.control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
-.detail-line { font-size: 13px; color: var(--text-muted); }
-.detail-line strong { color: var(--text-main); font-family: Consolas, monospace; }
-
-.kbd-row { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.kbd-chip {
-  font-family: Consolas, monospace; font-size: 11px; background: #fff;
-  border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px; color: var(--text-main);
-}
-.honesty-hint { font-size: 11px; }
-
-/* ---------- 提示条 ---------- */
+/* ---------- 提示条与说明卡 ---------- */
 .hint-banner { padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
+.hint-banner.slim { padding: 8px 12px; font-size: 12px; }
 .banner-warn { background: #fff8c5; border-color: rgba(191, 135, 0, 0.3); color: #9a6700; }
 .banner-error { background: #ffebe9; border-color: rgba(207, 34, 46, 0.25); color: var(--danger); }
 .banner-ok { background: #dafbe1; border-color: rgba(26, 127, 55, 0.2); color: #1a7f37; }
+.hint-line { font-size: 12px; color: var(--text-subtle); padding-left: 2px; }
+.info-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; }
+.info-card p { margin: 0; line-height: 1.7; }
+.info-title { font-weight: 600; color: var(--text-main); }
+.inline-link { color: var(--accent); text-decoration: none; }
+.inline-link:hover { text-decoration: underline; }
 
 /* ---------- 通用按钮 ---------- */
 .btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
@@ -754,7 +671,7 @@ onUnmounted(() => {
 .empty-state p { margin: 0; color: var(--text-muted); font-size: 13px; }
 
 /* ---------- 已安装卡片 ---------- */
-.installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 .installed-card {
   background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px;
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color 0.15s ease;
@@ -766,15 +683,14 @@ onUnmounted(() => {
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
 .badge-active { background: #dafbe1; color: #1a7f37; }
 .badge-running { background: #ddf4ff; color: #0969da; }
+.badge-import { background: #ddf4ff; color: #0969da; }
 .badge-official { background: #eaeef2; color: #656d76; }
-.badge-newest { background: var(--bg-active); color: var(--accent); }
 .badge-pre { background: #fff8c5; color: #9a6700; margin-left: 4px; }
 
 .inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .meta-line { display: flex; gap: 8px; color: var(--text-muted); align-items: baseline; }
 .meta-line .k { color: var(--text-subtle); width: 44px; flex-shrink: 0; }
 .mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; word-break: break-all; }
-.mono.short { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .inst-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
 
@@ -786,12 +702,12 @@ onUnmounted(() => {
 .tbl tr:last-child td { border-bottom: none; }
 .ver-name { font-family: Consolas, monospace; }
 
-.ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
-.ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.ver-status.installed::before { background: #2da44e; }
-.ver-status.downloading::before { background: #0969da; animation: pulse 1s infinite; }
-.ver-status.error::before { background: #cf222e; }
-.ver-status.idle::before { background: #8c959f; }
+.fl-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.fl-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.fl-ver-status.installed::before { background: #2da44e; }
+.fl-ver-status.downloading::before { background: #0969da; animation: pulse 1s infinite; }
+.fl-ver-status.error::before { background: #cf222e; }
+.fl-ver-status.idle::before { background: #8c959f; }
 
 .download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
 .dl-bar-wrap { flex: 1; height: 6px; background: #e1e4e8; border-radius: 3px; overflow: hidden; }

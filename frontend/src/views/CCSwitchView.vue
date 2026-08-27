@@ -247,6 +247,74 @@ function stopTimers() {
   uptimeSec.value = 0
 }
 
+
+// ---------- 联动开关 / 桌面快捷方式 / GitHub 仓库 ----------
+const followOnExit = ref(true)
+const repoUrl = ref('')
+
+async function loadExtras() {
+  try {
+    const [f, u] = await Promise.all([CCSwitchAPI.GetFollowOnExit(), CCSwitchAPI.RepositoryURL()])
+    followOnExit.value = f
+    repoUrl.value = u
+  } catch (e) {
+    console.warn('loadExtras failed:', getErrorMessage(e))
+  }
+}
+
+async function onFollowToggle() {
+  try {
+    await CCSwitchAPI.SetFollowOnExit(!followOnExit.value)
+    showToast(followOnExit.value ? '已开启：HubKit 退出时一并关闭该工具' : '已关闭：HubKit 退出不影响该工具，继续独立运行（下次启动生效）')
+  } catch (e) {
+    showToast('设置失败: ' + getErrorMessage(e))
+    followOnExit.value = !followOnExit.value // 失败回滚
+  }
+}
+
+async function createShortcut() {
+  try {
+    await CCSwitchAPI.CreateDesktopShortcut()
+    showToast('桌面快捷方式已创建（指向当前使用版本）')
+  } catch (e) {
+    showToast('创建快捷方式失败: ' + getErrorMessage(e))
+  }
+}
+
+async function copyRepo() {
+  const text = repoUrl.value
+  const fallback = (): boolean => {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  }
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else if (!fallback()) {
+      throw new Error('execCommand 不可用')
+    }
+  } catch (e) {
+    showToast('复制失败: ' + getErrorMessage(e))
+    return
+  }
+  showToast('仓库地址已复制')
+}
+
+async function openRepo() {
+  try {
+    await CCSwitchAPI.OpenRepository()
+  } catch (e) {
+    showToast('打开失败: ' + getErrorMessage(e))
+  }
+}
+
 // ---------- 生命周期 ----------
 onMounted(async () => {
   unlistenDownload = Events.On('ccswitch:version-download', (event: any) => {
@@ -270,7 +338,7 @@ onMounted(async () => {
     if (s.state !== 'running') uptimeSec.value = 0
   })
 
-  await Promise.all([refreshStatus(), loadVersions()])
+  await Promise.all([refreshStatus(), loadVersions(), loadExtras()])
 })
 
 // KeepAlive：页面激活时恢复轮询并立即刷新一帧，退后台时暂停避免空转
@@ -372,6 +440,23 @@ onUnmounted(() => {
     </div>
     </div>
 
+
+    <!-- 联动与辅助设置卡 -->
+    <div class="extras-card">
+      <div class="extras-row">
+        <label class="toggle-label">
+          <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
+          <span>随 HubKit 一起关闭 <span class="hint-dim">（关闭后 HubKit 退出完全不影响该工具）</span></span>
+        </label>
+        <button class="btn btn-secondary btn-small" @click="createShortcut">🖥 创建桌面快捷方式</button>
+      </div>
+      <div class="repo-row">
+        <span class="k">GitHub 仓库</span>
+        <code class="mono repo-addr">{{ repoUrl }}</code>
+        <button class="link-btn" @click="copyRepo">复制</button>
+        <button class="link-btn" @click="openRepo">浏览器打开</button>
+      </div>
+    </div>
     <!-- 版本管理 Tab -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
     <div class="control-panel">
@@ -635,3 +720,11 @@ onUnmounted(() => {
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 </style>
+/* ---------- 联动与辅助设置卡 ---------- */
+.extras-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main); cursor: pointer; }
+.toggle-label input { width: 15px; height: 15px; cursor: pointer; }
+.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+.repo-row .k { color: var(--text-subtle); flex-shrink: 0; }
+.repo-addr { flex: 1; min-width: 220px; }

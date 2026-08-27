@@ -19,7 +19,9 @@ import MarkerOnView from './views/MarkerOnView.vue'
 import EverythingView from './views/EverythingView.vue'
 import CCSwitchView from './views/CCSwitchView.vue'
 import BCUView from './views/BCUView.vue'
+import FlClashView from './views/FlClashView.vue'
 import WifiView from './views/WifiView.vue'
+import EnvCheckView from './views/EnvCheckView.vue'
 import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import NotificationDrawer from './components/NotificationDrawer.vue'
@@ -46,6 +48,8 @@ const CORE_VIEWS: Record<string, any> = {
   '/ext/everything': markRaw(EverythingView),
   '/ext/ccswitch': markRaw(CCSwitchView),
   '/ext/bcu': markRaw(BCUView),
+  '/ext/flclash': markRaw(FlClashView),
+  '/ext/envcheck': markRaw(EnvCheckView),
   '/logs': markRaw(LogsView),
   '/settings': markRaw(SettingsView),
   '/about': markRaw(AboutView),
@@ -66,6 +70,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/everything': 'everything',
   '/ext/ccswitch': 'ccswitch',
   '/ext/bcu': 'bcu',
+  '/ext/flclash': 'flclash',
+  '/ext/envcheck': 'envcheck',
 }
 
 const SYSTEM_NAV = [

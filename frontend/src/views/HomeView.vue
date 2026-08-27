@@ -34,6 +34,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   everything: { icon: '🔎', route: '/ext/everything' },
   ccswitch: { icon: '🔀', route: '/ext/ccswitch' },
   bcu: { icon: '🧹', route: '/ext/bcu' },
+  flclash: { icon: '⚡', route: '/ext/flclash' },
 }
 
 async function loadData() {

@@ -28,19 +28,25 @@ import type * as instance$2 from "../../../../../hubkit/internal/modules/everyth
 import type * as fileshare$0 from "../../../../../hubkit/internal/modules/fileshare/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$3 from "../../../../../hubkit/internal/modules/frpc/instance/models.js";
+import type * as instance$3 from "../../../../../hubkit/internal/modules/flclash/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$2 from "../../../../../hubkit/internal/modules/frpc/version/models.js";
+import type * as version$2 from "../../../../../hubkit/internal/modules/flclash/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as instance$4 from "../../../../../hubkit/internal/modules/frpc/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$3 from "../../../../../hubkit/internal/modules/frpc/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as lan$0 from "../../../../../hubkit/internal/modules/lan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$4 from "../../../../../hubkit/internal/modules/markeron/instance/models.js";
+import type * as instance$5 from "../../../../../hubkit/internal/modules/markeron/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$3 from "../../../../../hubkit/internal/modules/markeron/version/models.js";
+import type * as version$4 from "../../../../../hubkit/internal/modules/markeron/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as portscan$0 from "../../../../../hubkit/internal/modules/portscan/models.js";
@@ -64,12 +70,14 @@ declare module "@wailsio/runtime" {
             "fileshare:status": fileshare$0.ServerStatus;
             "fileshare:text-dropped": fileshare$0.DropItem;
             "fileshare:transfer": fileshare$0.TransferEvent;
-            "frpc:instance-log": instance$3.LogEntry;
-            "frpc:instance-state": instance$3.Snapshot;
-            "frpc:version-download": version$2.DownloadProgress;
+            "flclash:instance-state": instance$3.Snapshot;
+            "flclash:version-download": version$2.DownloadProgress;
+            "frpc:instance-log": instance$4.LogEntry;
+            "frpc:instance-state": instance$4.Snapshot;
+            "frpc:version-download": version$3.DownloadProgress;
             "lan:progress": lan$0.LanProgress;
-            "markeron:instance-state": instance$4.Snapshot;
-            "markeron:version-download": version$3.DownloadProgress;
+            "markeron:instance-state": instance$5.Snapshot;
+            "markeron:version-download": version$4.DownloadProgress;
             "memo:changed": void;
             "notify:received": notify$0.Notification;
             "portscan:progress": portscan$0.ScanProgress;

@@ -25,6 +25,14 @@ import * as version$0 from "./version/models.js";
 import * as $models from "./models.js";
 
 /**
+ * CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function CreateDesktopShortcut() {
+    return $Call.ByID(2744948662);
+}
+
+/**
  * DownloadVersion 后台下载指定版本（variant：portable/fdd）：立即返回，
  * 全程经事件 bcu:version-download 推送进度（载荷带变体标识，前端按版本+变体索引）。
  * @param {string} targetVersion
@@ -49,6 +57,14 @@ export function GetActiveVersion() {
  */
 export function GetDotnetEnvironment() {
     return $Call.ByID(2302663043);
+}
+
+/**
+ * GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetFollowOnExit() {
+    return $Call.ByID(3676060468);
 }
 
 /**
@@ -97,6 +113,14 @@ export function OpenDir(dir) {
 }
 
 /**
+ * OpenRepository 用默认浏览器打开上游仓库页面。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenRepository() {
+    return $Call.ByID(1905805724);
+}
+
+/**
  * OpenWindow 窗口唤起编排中枢：
  *   - external：任一已装 exe 充当单实例信使，BCU 第二实例 SetForegroundWindow 唤主窗口；
  *   - running：自有实例直接信使唤窗；
@@ -126,12 +150,29 @@ export function RemoveVersion(targetVersion) {
 }
 
 /**
+ * RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function RepositoryURL() {
+    return $Call.ByID(1543296013);
+}
+
+/**
  * SetActiveVersion 设定使用版本（先校验已安装，再持久化）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
 export function SetActiveVersion(targetVersion) {
     return $Call.ByID(1763737414, targetVersion);
+}
+
+/**
+ * SetFollowOnExit 设定开关（下次启动生效）。
+ * @param {boolean} b
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetFollowOnExit(b) {
+    return $Call.ByID(3755650568, b);
 }
 
 /**
