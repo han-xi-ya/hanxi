@@ -32,6 +32,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   wifi: { icon: '📶', route: '/ext/wifi' },
   markeron: { icon: '✎', route: '/ext/markeron' },
   everything: { icon: '🔎', route: '/ext/everything' },
+  ccswitch: { icon: '🔀', route: '/ext/ccswitch' },
 }
 
 async function loadData() {
