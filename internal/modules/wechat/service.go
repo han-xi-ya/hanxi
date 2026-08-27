@@ -491,3 +491,18 @@ func (s *WechatService) RefreshContextToken() (string, error) {
 	}
 	return s.RefreshAccountContextToken(accounts[0].ID)
 }
+
+// GetPendingMessages 取走指定账号后台积累的未读消息（消费后清空，供前端页面重新挂载时补取）
+func (s *WechatService) GetPendingMessages(accountID string) []InboundMessage {
+	accountID = strings.TrimSpace(accountID)
+	if accountID == "" {
+		return nil
+	}
+	s.mu.RLock()
+	l, ok := s.listeners[accountID]
+	s.mu.RUnlock()
+	if !ok || l == nil {
+		return nil
+	}
+	return l.DrainMsgBuf()
+}

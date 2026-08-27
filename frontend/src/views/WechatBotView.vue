@@ -527,6 +527,31 @@ let unlistenMessage: (() => void) | null = null
 onMounted(async () => {
   await loadAccounts()
 
+  // 补取后台监听期间（前端未挂载时）积累的离线消息
+  for (const acc of accounts.value) {
+    try {
+      const pending = await WechatAPI.WechatService.GetPendingMessages(acc.id)
+      if (!pending || pending.length === 0) continue
+      for (const msg of pending) {
+        let msgType: ChatMessage['msgType'] = 'text'
+        let content = msg.text || ''
+        if (msg.type === 2) { msgType = 'image'; content = '[图片消息]' }
+        else if (msg.type === 4) { msgType = 'file'; content = `[文件] ${msg.fileName || '未知文件'}` }
+        chatMessages.value.push({
+          id: `${msg.time}-${Math.random()}`,
+          accountId: msg.accountId || acc.id,
+          time: msg.time || '',
+          direction: 'in',
+          msgType,
+          senderName: msg.from,
+          content,
+          fileName: msg.fileName
+        })
+      }
+    } catch { /* 静默，不影响主流程 */ }
+  }
+  scrollToBottom()
+
   // 监听 Token 刷新事件
   unlistenContextToken = Events.On('wechat:context-token-updated', (ev: any) => {
     loadAccounts()

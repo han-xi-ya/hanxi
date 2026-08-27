@@ -51,6 +51,15 @@ export function GetLoginQRCode() {
 }
 
 /**
+ * GetPendingMessages 取走指定账号后台积累的未读消息（消费后清空，供前端页面重新挂载时补取）
+ * @param {string} accountID
+ * @returns {$CancellablePromise<$models.InboundMessage[] | null>}
+ */
+export function GetPendingMessages(accountID) {
+    return $Call.ByID(244817179, accountID);
+}
+
+/**
  * GetState 获取全局/主账号运行时状态（兼容旧前端接口）
  * @returns {$CancellablePromise<$models.WechatState>}
  */
