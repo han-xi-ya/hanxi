@@ -15,8 +15,8 @@ const (
 	siteBase             = "https://www.voidtools.com"
 	downloadsPageURL     = siteBase + "/downloads/"
 	userAgent            = "HubKit/0.2"
-	assetURLFormat       = siteBase + "/Everything-%s.x64.zip"      // 官方资产命名模板（已用 HEAD 实测稳定）
-	shaURLFormat         = siteBase + "/Everything-%s.sha256"       // 官方 sha256 清单（每版本一份）
+	assetURLFormat       = siteBase + "/Everything-%s.x64.zip" // 官方资产命名模板（已用 HEAD 实测稳定）
+	shaURLFormat         = siteBase + "/Everything-%s.sha256"  // 官方 sha256 清单（每版本一份）
 	probeTimeout         = 10 * time.Second
 	cacheTTL             = 10 * time.Minute // 远程槽位内存缓存时长
 	maxPageBody          = 4 << 20          // 下载页 HTML 上限（页面实际约百 KB 级）

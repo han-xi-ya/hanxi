@@ -25,4 +25,3 @@ func (s *AppService) SendDelayedTestNotification(delaySeconds int) {
 		notify.Success("system", "HubKit 后台桌面通知", fmt.Sprintf("这是 %d 秒前触发的延迟通知：成功在后台/最小化时弹出 Windows 原生桌面气泡！", delaySeconds), "/settings")
 	}()
 }
-

@@ -211,6 +211,7 @@ func TestOpenWindowMessenger(t *testing.T) {
 // TestQuitGracefulAndForceKillFallback Quit 两条路径：
 //  1. -quit 信使后进程自然退出 → stopped（优雅路径）；
 //  2. 进程赖着不走 → 超时后强杀兜底 → stopped。
+//
 // 测试压缩 quitGracePeriod 避免 5s 真等待。
 func TestQuitGracefulAndForceKillFallback(t *testing.T) {
 	oldGrace := quitGracePeriod
