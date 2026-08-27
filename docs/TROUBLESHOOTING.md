@@ -204,3 +204,17 @@ cc-switch 模块（托管 Tauri 2 应用）的三条硬核实测结论——都�
   - 退出 = `FindWindowW(sic, siw)` → `PostMessage(WM_CLOSE)` → 宽限轮询（2s，包级变量供单测压缩）→ JobObject 强杀兜底；`stopping` 标记必须在发消息前置位，防 wait() 误判异常退出；
   - 便携 zip = 单 exe + `portable.ini` 标记（仅用于禁用内置 Updater，**数据目录仍是 `~/.cc-switch`，不随 exe 走**）——导入本地只需搬 exe，配置天然跨版本共享。
 - **避坑建议**：托管任何"自动更新"类上游工具前，先确认官方绿色版的 Updater 开关机制（此处 portable.ini）；`FindWindowW` 的类名/窗口名必须与插件源码一致（错一个字符静默 no-op，表现为"退出按钮毫无反应"）。
+
+---
+
+### 9. 托管 .NET WinForms 应用：tag/资产版本不同形 + Global 互斥体 + EnumWindows 退出
+
+BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名想当然"都会翻车：
+
+- **问题现象**：① GitHub tag 只有两段（`v6.2`）而真实版本在资产名里（`BCUninstaller_6.2.0_portable.zip` / `6.1.0.1` 四段），按 tag 做版本号会得到 6.2 与 6.2.0 并存的双重身份；② 单实例互斥体是 `Global\BCU-singleinstance`（带 `Global\` 前缀）；③ WinForms 窗口类名不可预测（进程内注册随机类），无法像 tauri 那样 FindWindowW 固定类名。
+- **排查过程**：源码实证——`EntryPoint.cs` 的 `MUTEX_NAME` 常量与 `HandleBeingSecondInstance`（第二实例枚举进程 → `SetForegroundWindow(MainWindowHandle)` 唤窗）；`Directory.Build.props` 证实 `net8.0-windows` 目标框架，76MB portable 资产是 self-contained（运行时内置）。
+- **正确做法与标准修复方案**：
+  - 版本号以资产名为准（正则 `BCUninstaller_(\d+(\.\d+)+)_portable(?:-x64)?\.zip`），tag 只做按段前缀一致性校验（`v6.2` vs `6.2.0` → tag 段是资产版本的前缀），防未来串版；
+  - probe 用 `OpenMutex(SYNCHRONIZE, "Global\BCU-singleinstance")`（Global 前缀要原样拼进字符串）；唤窗直接无参拉起 exe 作信使（比 CC Switch 更简单，不用窗口类名）；
+  - 退出与窗口探测走 `EnumWindows` + `GetWindowThreadProcessId` 按 PID 过滤（回调里 `syscall.NewCallback` 同步枚举，命中即 PostMessage WM_CLOSE 后停止）；空闲退出的"窗口豁免"信号 = 该 PID 存在 `IsWindowVisible` 顶层窗口——最小化到任务栏不算豁免。
+- **避坑建议**：便携数据若与 exe 同目录（BCU 的 `BCUninstaller.settings`），ImportLocal 用**黑名单整搬**（只排 tmp/wal/desktop.ini），别用 everything 的白名单模式套；自包含 .NET 应用冷启动慢于 tauri，WaitReady 超时相应放宽（25s）。
