@@ -5,7 +5,7 @@ import { Events } from '@wailsio/runtime'
 import * as BCUAPI from '../../bindings/hubkit/internal/modules/bcu/bcuservice'
 import type { BCURelease, BCUVersionInfo } from '../../bindings/hubkit/internal/modules/bcu/version/models'
 import type { Snapshot } from '../../bindings/hubkit/internal/modules/bcu/instance/models'
-import type { ControlOutcome, QuitOutcome } from '../../bindings/hubkit/internal/modules/bcu/models'
+import type { ControlOutcome, QuitOutcome, DotnetEnv } from '../../bindings/hubkit/internal/modules/bcu/models'
 import type { DownloadProgress } from '../../bindings/hubkit/internal/modules/bcu/version/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
@@ -20,8 +20,19 @@ const listError = ref('')
 const busy = ref(false)
 const uptimeSec = ref(0)
 
-// 下载进度 map（按版本索引）
+// 下载进度 map（版本+变体复合索引，防同版本双变体互相覆盖）
 const downloading = ref<Record<string, DownloadProgress>>({})
+
+// .NET 桌面运行时环境（框架依赖变体的可用性与推荐依据）
+const dotnetEnv = ref<DotnetEnv | null>(null)
+const envLoading = ref(false)
+
+// 推荐变体：有 .NET 8 桌面运行时 → 推荐精简版（省 ~60MB）；
+// 无 → 推荐自包含便携版（免依赖永远能跑）。null 环境未加载完毕。
+const recommendedVariant = computed<'portable' | 'fdd' | null>(() => {
+  if (!dotnetEnv.value) return null
+  return dotnetEnv.value.hasNet8 ? 'fdd' : 'portable'
+})
 
 const { showToast } = useToast()
 
@@ -126,11 +137,34 @@ function stepOf(p: DownloadProgress): number {
   return Math.min(99, Math.round((p.done / p.total) * 100))
 }
 
-function statusOf(rel: BCURelease): 'installed' | 'downloading' | 'error' | 'idle' {
-  const p = downloading.value[rel.version]
+function statusOf(rel: BCURelease, variant: 'portable' | 'fdd'): 'installed' | 'downloading' | 'error' | 'idle' {
+  const p = downloading.value[`${rel.version}|${variant}`]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
+  // 同版本任一形态已装则该版本整体视为已装（目录共享）
   const hit = installed.value.find(v => v.version === rel.version)
   return hit ? 'installed' : 'idle'
+}
+
+// 状态列的整体判定：任一形态 downloading/error 即反映（双变体并存场景）
+const VARIANTS = ['portable', 'fdd'] as const
+
+function statusOverall(rel: BCURelease): 'installed' | 'downloading' | 'error' | 'idle' {
+  for (const v of VARIANTS) {
+    const s = statusOf(rel, v)
+    if (s === 'downloading' || s === 'error') return s
+  }
+  return statusOf(rel, 'portable')
+}
+
+async function loadDotnetEnv() {
+  envLoading.value = true
+  try {
+    dotnetEnv.value = await BCUAPI.GetDotnetEnvironment()
+  } catch (e) {
+    console.warn('bcu GetDotnetEnvironment failed:', getErrorMessage(e))
+  } finally {
+    envLoading.value = false
+  }
 }
 
 // ---------- 控制操作 ----------
@@ -165,9 +199,13 @@ async function quitBCU() {
 }
 
 // ---------- 版本管理操作 ----------
-async function download(rel: BCURelease) {
+function variantLabel(variant: string): string {
+  return variant === 'fdd' ? '精简版' : '便携版'
+}
+
+async function download(rel: BCURelease, variant: string) {
   try {
-    const res = await BCUAPI.DownloadVersion(rel.version)
+    const res = await BCUAPI.DownloadVersion(rel.version, variant)
     if (res === 'already-installed') {
       showToast(`版本 ${rel.version} 已安装`)
       await loadVersions()
@@ -175,6 +213,11 @@ async function download(rel: BCURelease) {
   } catch (e) {
     showToast(`下载失败: ${getErrorMessage(e)}`)
   }
+}
+
+// 列内推荐变体的下载按钮样式与提示
+function isRecommended(rel: BCURelease, variant: string): boolean {
+  return recommendedVariant.value === variant && !!rel.fddName
 }
 
 async function setActive(v: BCUVersionInfo) {
@@ -246,11 +289,12 @@ onMounted(async () => {
   unlistenDownload = Events.On('bcu:version-download', (event: any) => {
     const t = event.data as DownloadProgress
     if (!t || !t.version) return
-    downloading.value = { ...downloading.value, [t.version]: t }
+    const key = `${t.version}|${t.variant || 'portable'}`
+    downloading.value = { ...downloading.value, [key]: t }
     if (t.stage === 'done') {
       setTimeout(() => {
         const next = { ...downloading.value }
-        delete next[t.version]
+        delete next[key]
         downloading.value = next
       }, 800)
       loadVersions()
@@ -264,7 +308,7 @@ onMounted(async () => {
     if (s.state !== 'running') uptimeSec.value = 0
   })
 
-  await Promise.all([refreshStatus(), loadVersions()])
+  await Promise.all([refreshStatus(), loadVersions(), loadDotnetEnv()])
 })
 
 // KeepAlive：页面激活时恢复轮询并立即刷新一帧，退后台时暂停避免空转
@@ -371,8 +415,18 @@ onUnmounted(() => {
     <div class="control-panel">
       <div class="meta-info">
         <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程版本 {{ releases.length }} 个</span>
-        <span class="hint-dim">便携包下载自 GitHub Releases（Windows 自包含，官方 digest 校验）；或「导入本地」把现有便携安装连同卸载历史整套收纳</span>
+        <span class="hint-dim">两种形态：自包含便携版（内嵌 .NET 运行时，76MB）+ 精简版（框架依赖，12MB，需本机 .NET 8 桌面运行时）——均经官方 digest 四层校验</span>
         <span class="hint-dim">2024 年末前的旧版本无官方哈希不入列表（完整性第一优先）；6.1 起资产版本号与 tag 对齐校验防串版</span>
+        <!-- .NET 环境徽标：决定推荐变体 -->
+        <span v-if="envLoading" class="hint-dim">正在检测本机 .NET 桌面运行时…</span>
+        <span v-else-if="dotnetEnv" class="dotnet-banner" :class="dotnetEnv.hasNet8 ? 'ok' : 'warn'">
+          <template v-if="dotnetEnv.hasNet8">
+            本机已装 .NET 8 桌面运行时（{{ dotnetEnv.desktopVersions?.join(' / ') }}）→ 推荐下载<b>精简版</b>（12MB，省约 60MB）
+          </template>
+          <template v-else>
+            未检测到 .NET 8 桌面运行时 → 推荐下载<b>自包含便携版</b>（76MB，免依赖）。精简版安装后会无法启动
+          </template>
+        </span>
       </div>
       <div class="btn-group">
         <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地安装</button>
@@ -387,7 +441,14 @@ onUnmounted(() => {
 
     <div v-if="installed.length === 0" class="empty-state first-use">
       <p>尚未安装 BCU —— 下载官方便携版，或「导入本地安装」把现有 BCU 收纳进来</p>
-      <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
+      <button
+        v-if="releases.length && recommendedVariant"
+        class="btn btn-primary"
+        @click="download(releases[0], recommendedVariant)"
+      >
+        下载最新版 {{ releases[0].version }}（{{ variantLabel(recommendedVariant) }}，推荐）
+      </button>
+      <button v-else-if="releases.length" class="btn btn-primary" @click="download(releases[0], 'portable')">
         下载最新版 {{ releases[0].version }}
       </button>
       <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新远程列表</button>
@@ -443,31 +504,52 @@ onUnmounted(() => {
             </td>
             <td>
               <!-- 类名刻意用 bcu-status（含 bcu- 前缀）——App.vue 全局样式有 .status-dot（7px），防碰撞压扁徽标 -->
-              <span v-if="statusOf(rel) === 'installed'" class="bcu-ver-status installed">已安装</span>
-              <span v-else-if="statusOf(rel) === 'downloading'" class="bcu-ver-status downloading">下载中</span>
-              <span v-else-if="statusOf(rel) === 'error'" class="bcu-ver-status error">失败</span>
+              <span v-if="statusOverall(rel) === 'installed'" class="bcu-ver-status installed">已安装</span>
+              <span v-else-if="statusOverall(rel) === 'downloading'" class="bcu-ver-status downloading">下载中</span>
+              <span v-else-if="statusOverall(rel) === 'error'" class="bcu-ver-status error">失败</span>
               <span v-else class="bcu-ver-status idle">可安装</span>
             </td>
             <td>{{ fmtSize(rel.size) }}</td>
             <td>{{ fmtDate(rel.published) }}</td>
             <td>
-              <div v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'" class="download-cell">
-                <div class="dl-bar-wrap">
-                  <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
+              <template v-if="statusOf(rel, 'portable') === 'installed'">
+                <span class="btn btn-ghost btn-small">已安装</span>
+              </template>
+              <template v-else>
+                <!-- 双变体下载：推荐项主按钮高亮 -->
+                <div class="variant-btns">
+                  <button
+                    :class="['btn btn-small', isRecommended(rel, 'portable') || recommendedVariant === null ? 'btn-primary' : 'btn-secondary']"
+                    :disabled="statusOf(rel, 'portable') === 'downloading' || (!rel.fddName && statusOf(rel, 'fdd') === 'downloading')"
+                    @click="download(rel, 'portable')"
+                  >便携版 {{ fmtSize(rel.size) }}</button>
+                  <button
+                    v-if="rel.fddName"
+                    :class="['btn btn-small', isRecommended(rel, 'fdd') ? 'btn-primary' : 'btn-secondary']"
+                    :disabled="statusOf(rel, 'fdd') === 'downloading' || statusOf(rel, 'portable') === 'downloading'"
+                    @click="download(rel, 'fdd')"
+                  >精简版 {{ rel.fddSize ? fmtSize(rel.fddSize) : '' }}</button>
                 </div>
-                <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
-              </div>
-              <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
-                <span v-if="['verify', 'extract'].includes(downloading[rel.version]!.stage)">校验解压安装…</span>
-                <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
-              </div>
-              <button
-                v-if="statusOf(rel) === 'idle'"
-                class="btn btn-primary btn-small"
-                @click="download(rel)"
-              >下载安装</button>
-              <span v-if="statusOf(rel) === 'installed'" class="btn btn-ghost btn-small">已安装</span>
-              <a v-if="statusOf(rel) === 'error'" class="retry-link" @click="download(rel)">重试</a>
+                <div v-if="statusOf(rel, 'portable') === 'downloading' || statusOf(rel, 'fdd') === 'downloading'" class="variant-progress">
+                  <template v-for="v in VARIANTS" :key="v">
+                    <div v-if="statusOf(rel, v) === 'downloading'" class="dl-meta-text">
+                      <span v-if="['verify', 'extract'].includes(downloading[`${rel.version}|${v}`]!.stage)">
+                        {{ variantLabel(v) }}校验解压安装…
+                      </span>
+                      <span v-else-if="downloading[`${rel.version}|${v}`]!.stage === 'downloading'" class="download-cell">
+                        <div class="dl-bar-wrap">
+                          <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[`${rel.version}|${v}`]!)}%` }"></div>
+                        </div>
+                        <span class="dl-percent">{{ stepOf(downloading[`${rel.version}|${v}`]!) }}%</span>
+                      </span>
+                      <span v-else class="dl-error" :title="downloading[`${rel.version}|${v}`]!.message">
+                        {{ downloading[`${rel.version}|${v}`]!.message }}
+                      </span>
+                      <a class="retry-link" @click="download(rel, v)">重试</a>
+                    </div>
+                  </template>
+                </div>
+              </template>
             </td>
           </tr>
           <tr v-if="releases.length === 0 && !loading">
@@ -626,6 +708,15 @@ onUnmounted(() => {
 .dl-error { color: var(--danger); font-size: 11px; }
 .retry-link { color: var(--accent); font-size: 12px; cursor: pointer; margin-left: 8px; }
 .retry-link:hover { text-decoration: underline; }
+
+/* ---------- 双变体下载与 .NET 环境徽标 ---------- */
+.variant-btns { display: flex; gap: 6px; align-items: center; }
+.variant-progress { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.variant-progress .dl-meta-text { font-size: 11px; }
+.dotnet-banner { font-size: 12px; padding: 4px 10px; border-radius: 6px; border: 1px solid transparent; max-width: 680px; }
+.dotnet-banner.ok { background: #dafbe1; color: #1a7f37; border-color: rgba(26, 127, 55, 0.2); }
+.dotnet-banner.warn { background: #fff8c5; color: #9a6700; border-color: rgba(191, 135, 0, 0.3); }
+.dotnet-banner b { font-weight: 700; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 </style>

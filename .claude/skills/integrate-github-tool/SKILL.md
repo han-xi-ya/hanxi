@@ -86,6 +86,7 @@ internal/modules/<mod>/
 
 | 特征 | 参照模块 | 关键文件 |
 |---|---|---|
+| 多形态发布资产（自包含+框架依赖变体+环境推荐） | bcu | version/remote.go pickAsset / dotnet_windows.go 环境探测 |
 | GitHub releases 无官方哈希 | markeron | version/downloader.go 三层校验 |
 | 官网下载+官方 manifest 哈希 | everything | version/remote.go 网页解析+快照兜底 |
 | GitHub digest 官方 sha256+tauri 单实例 | **ccswitch（主模板）** | remote.go/instance/** |

@@ -11,6 +11,13 @@
  */
 
 /**
+ * DotnetEnv 本机 .NET 桌面运行时环境探测结果（框架依赖变体的推荐依据）。
+ * @typedef {Object} DotnetEnv
+ * @property {string[] | null} desktopVersions - 已装 Microsoft.WindowsDesktop.App 版本（如 ["8.0.13"]）
+ * @property {boolean} hasNet8 - 是否装有 .NET 8 桌面运行时（BCU 6.x 目标框架）
+ */
+
+/**
  * QuitOutcome 退出执行结果。
  * @typedef {Object} QuitOutcome
  * @property {boolean} stopped - 是否真正终止了自有实例

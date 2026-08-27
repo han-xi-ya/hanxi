@@ -6,6 +6,10 @@ import * as $models from "./models.js";
 
 /**
  * BCURelease 远程 GitHub Release 中可用的 BCU Windows 便携版。
+ * 两个发布变体：
+ *   - 自包含便携版（_portable.zip，内嵌 .NET 运行时，免依赖，约 76MB）——主资产；
+ *   - 框架依赖版（_net8.0-windows...zip，需系统已装 .NET 桌面运行时，约 12MB）——可选增强，
+ *     digest 缺失时不提供（FddName 为空）。
  * @typedef {$models.BCURelease} BCURelease
  */
 

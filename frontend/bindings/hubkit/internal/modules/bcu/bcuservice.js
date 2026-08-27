@@ -25,12 +25,14 @@ import * as version$0 from "./version/models.js";
 import * as $models from "./models.js";
 
 /**
- * DownloadVersion 后台下载指定版本：立即返回，全程经事件 bcu:version-download 推送进度。
+ * DownloadVersion 后台下载指定版本（variant：portable/fdd）：立即返回，
+ * 全程经事件 bcu:version-download 推送进度（载荷带变体标识，前端按版本+变体索引）。
  * @param {string} targetVersion
+ * @param {string} variant
  * @returns {$CancellablePromise<string>}
  */
-export function DownloadVersion(targetVersion) {
-    return $Call.ByID(3875127356, targetVersion);
+export function DownloadVersion(targetVersion, variant) {
+    return $Call.ByID(3875127356, targetVersion, variant);
 }
 
 /**
@@ -39,6 +41,14 @@ export function DownloadVersion(targetVersion) {
  */
 export function GetActiveVersion() {
     return $Call.ByID(2438520434);
+}
+
+/**
+ * GetDotnetEnvironment 探测本机 .NET 桌面运行时（框架依赖变体的可用性与推荐依据）。
+ * @returns {$CancellablePromise<$models.DotnetEnv>}
+ */
+export function GetDotnetEnvironment() {
+    return $Call.ByID(2302663043);
 }
 
 /**

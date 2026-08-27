@@ -15,6 +15,11 @@ import * as $models from "./models.js";
  */
 
 /**
+ * DotnetEnv 本机 .NET 桌面运行时环境探测结果（框架依赖变体的推荐依据）。
+ * @typedef {$models.DotnetEnv} DotnetEnv
+ */
+
+/**
  * QuitOutcome 退出执行结果。
  * @typedef {$models.QuitOutcome} QuitOutcome
  */
