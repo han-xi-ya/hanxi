@@ -24,9 +24,6 @@ import (
 const (
 	readyTimeout  = 20 * time.Second // 冷启动就绪上限（Flutter 首拉起约 1~3s，放宽覆盖弱机）
 	watchInterval = 5 * time.Second  // 外部实例感知轮询间隔
-
-	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 HubKit 发起操作且主窗口未开
-	idleCheckTick = 30 * time.Second
 )
 
 // FlClashService 向前端暴露 FlClash 版本管理与窗口唤起能力。
@@ -42,9 +39,6 @@ type FlClashService struct {
 	watchMu    sync.Mutex
 	watching   bool
 	watchStop  chan struct{}
-
-	idleMu       sync.Mutex
-	lastActivity time.Time // 最近一次 HubKit 发起的使用（打开窗口）；GetStatus 轮询不计
 }
 
 func NewFlClashService(plat platform.Platform) *FlClashService {
@@ -54,7 +48,6 @@ func NewFlClashService(plat platform.Platform) *FlClashService {
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newFlClashStore(paths.DataDir()),
 	}
-	svc.lastActivity = time.Now()
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewFlClashProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
 	})
@@ -74,7 +67,7 @@ func (s *FlClashService) emitInstanceState(snap instance.Snapshot) {
 	}
 }
 
-// activate 启动后台外部实例感知与空闲退出巡检（共用同一 watchStop 生命周期）。
+// activate 启动后台外部实例感知。
 // （自有实例的存活由引擎 hold 的进程句柄感知，不需要轮询。）
 func (s *FlClashService) activate() {
 	s.watchMu.Lock()
@@ -97,56 +90,11 @@ func (s *FlClashService) activate() {
 			}
 		}
 	}()
-	go func() {
-		t := time.NewTicker(idleCheckTick)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				s.idleCheck()
-			}
-		}
-	}()
 }
 
-// touch 记录一次 HubKit 发起的实例使用（打开窗口算；状态轮询不算）。
-func (s *FlClashService) touch() {
-	s.idleMu.Lock()
-	s.lastActivity = time.Now()
-	s.idleMu.Unlock()
-}
-
-// idleCheck 空闲自动退出巡检：仅退出自己托管的实例。
-// 豁免两个场景：主窗口正在显示（用户可能正在用）、实例不是我们托管的（external）。
-// 最小化到任务栏/驻托盘不算豁免——无人操作 3 分钟即退出是明确需求。
-func (s *FlClashService) idleCheck() {
-	s.idleMu.Lock()
-	idle := time.Since(s.lastActivity)
-	s.idleMu.Unlock()
-
-	snap := s.engine.Snapshot()
-	if !shouldIdleQuit(snap, s.engine.IsMainWindowOpen(), idle) {
-		return
-	}
-	slog.Info("flclash idle auto-quit", "idle", idle.Truncate(time.Second))
-	if err := s.engine.Quit(); err != nil {
-		slog.Warn("flclash idle auto-quit failed", "err", err)
-		return
-	}
-	notify.Info("flclash", "已自动退出", "FlClash 已空闲 3 分钟，自动退出以释放内存", "/ext/flclash")
-}
-
-// shouldIdleQuit 空闲退出判定（纯函数，便于单测穷举）。
-func shouldIdleQuit(snap instance.Snapshot, windowOpen bool, idle time.Duration) bool {
-	if snap.State != instance.StateRunning || snap.External {
-		return false
-	}
-	if windowOpen {
-		return false // 主窗口开着 = 用户可能正在用
-	}
-	return idle >= idleQuitAfter
+// shouldIdleQuit 固化代理不因空闲自动退出的产品约束；生产代码不启动空闲巡检。
+func shouldIdleQuit(instance.Snapshot, bool, time.Duration) bool {
+	return false
 }
 
 // ---------- 版本管理（委托 manager） ----------
@@ -272,7 +220,6 @@ func (s *FlClashService) GetStatus() (instance.Snapshot, error) {
 //   - running：自有实例同样直操作窗口；
 //   - stopped/failed：解析 active 版本直接无参启动（FlClash 启动即开窗）。
 func (s *FlClashService) OpenWindow() (ControlOutcome, error) {
-	s.touch() // 用户主动打开 = 使用记录，重置空闲倒计时
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
