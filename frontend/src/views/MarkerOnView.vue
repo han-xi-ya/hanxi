@@ -416,75 +416,63 @@ onUnmounted(() => {
 
     <!-- 标注开关 Tab -->
     <div v-show="activeMainTab === 'annotate'" class="tab-body">
-    <!-- 标注状态卡（核心） -->
-    <div class="annotate-card">
-      <!-- 左：开关按钮 + 副操作 -->
-      <div class="action-zone">
-        <button
-          class="btn-toggle-big"
-          :class="toggleClass"
-          :disabled="toggleDisabled"
-          :title="toggleHint"
-          @click="toggleAnnotate"
-        >
-          <span class="toggle-icon">✎</span>
-          <span class="toggle-main">{{ toggleLabel }}</span>
-          <span class="toggle-sub">{{ toggleSubLabel }}</span>
-        </button>
-        <div class="action-row">
-          <button
-            v-if="isRunningOrStarting"
-            class="btn btn-secondary btn-small"
-            :disabled="busy"
-            @click="stopAnnotate"
-          >停止标注</button>
-          <button
-            v-if="openDirVersion"
-            class="btn btn-secondary btn-small"
-            @click="openDir(openDirVersion!.dir)"
-          >打开安装目录</button>
-        </div>
-      </div>
-
-      <!-- 右：详情区 -->
-      <div class="detail-zone">
-        <div class="status-badge-row">
+    <!-- 紧凑控制台：结构与其他托管工具保持一致 -->
+    <div class="control-bar">
+      <div class="control-top">
+        <div class="control-status">
           <span class="status-light" :class="state"></span>
           <span class="status-word">{{ stateText }}</span>
           <template v-if="isRunningOrStarting && snap?.version">
             <span class="ver-pill">v{{ snap.version }}</span>
             <span v-if="snap?.pid" class="mono pid-tag">PID {{ snap.pid }}</span>
           </template>
+          <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
         </div>
-
-        <div class="detail-line" v-if="state === 'running'">
-          已运行 <strong>{{ fmtDuration(uptimeSec) }}</strong>
-          <span v-if="!drawing" class="hint-dim">—— 后台待命，点击「开启标注」显示覆盖层</span>
+        <div class="control-btns">
+          <button
+            class="btn btn-small annotate-toggle"
+            :class="toggleClass"
+            :disabled="toggleDisabled"
+            :title="toggleHint || toggleSubLabel"
+            @click="toggleAnnotate"
+          >✎ {{ toggleLabel }}</button>
+          <button
+            v-if="isRunningOrStarting"
+            class="btn btn-danger-outline btn-small"
+            :disabled="busy"
+            @click="stopAnnotate"
+          >⏻ 停止</button>
+          <button
+            v-if="openDirVersion"
+            class="btn btn-secondary btn-small"
+            @click="openDir(openDirVersion!.dir)"
+          >📂 打开位置</button>
         </div>
-        <div class="detail-line" v-else-if="state === 'stopped'">
-          点击「启动 MarkerOn」后台运行；随后用「开启标注」或 Ctrl+Shift+D 进入标注态
-        </div>
-        <div class="detail-line" v-else-if="state === 'starting'">
-          正在拉起 MarkerOn 主实例（约 1~3 秒）
-        </div>
-        <div class="detail-line" v-else-if="state === 'failed'">
-          请查看上方提示条；确认已安装 WebView2 Runtime 后重试
-        </div>
-        <div class="detail-line" v-else-if="state === 'external'">
-          非 HubKit 托管的 MarkerOn 实例正在运行
-        </div>
-
-        <div class="kbd-row">
-          <span class="kbd-chip">Ctrl+Shift+D</span> 切换标注 ·
-          <span class="kbd-chip">Ctrl+Shift+C</span> 清空涂鸦 ·
-          <span class="kbd-chip">Ctrl+Shift+X</span> 穿透点击
-        </div>
-        <div class="hint-dim honesty-hint">按钮与快捷键等效；若状态与桌面实际不符（可能经快捷键直接操作过），再按一次开关即可。</div>
+      </div>
+      <div class="control-detail">
+        <span v-if="state === 'running' && !drawing">MarkerOn 正在后台待命，点击「开启标注」显示桌面覆盖层。</span>
+        <span v-else-if="state === 'running' && drawing">桌面覆盖层已开启，可直接进行屏幕标注。</span>
+        <span v-else-if="state === 'stopped'">点击「启动 MarkerOn」后台运行，随后可开启桌面标注。</span>
+        <span v-else-if="state === 'starting'">正在拉起 MarkerOn 主实例（约 1~3 秒）…</span>
+        <span v-else-if="state === 'failed'">请确认已安装 WebView2 Runtime 后重试。</span>
+        <span v-else-if="state === 'external'">非 HubKit 托管的 MarkerOn 实例正在运行。</span>
       </div>
     </div>
 
     <!-- 条件提示条 -->
-    <div v-if="banner" class="hint-banner" :class="banner.cls">{{ banner.text }}</div>
+    <div v-if="banner" class="hint-banner slim" :class="banner.cls">{{ banner.text }}</div>
+
+    <details class="info-details">
+      <summary class="info-summary">快捷键与使用说明</summary>
+      <div class="info-body">
+        <div class="kbd-row">
+          <span class="kbd-chip">Ctrl+Shift+D</span> 切换标注
+          <span class="kbd-chip">Ctrl+Shift+C</span> 清空涂鸦
+          <span class="kbd-chip">Ctrl+Shift+X</span> 穿透点击
+        </div>
+        <p class="hint-dim">按钮与快捷键等效；若状态与桌面实际不符，重新切换一次即可同步。</p>
+      </div>
+    </details>
     </div>
 
 
@@ -621,7 +609,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.markeron-view { display: flex; flex-direction: column; gap: 14px; }
+.markeron-view { display: flex; flex-direction: column; gap: 10px; }
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
 .header-row h1 { margin: 0 0 6px; }
 .subtitle { color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.6; }
@@ -653,73 +641,51 @@ onUnmounted(() => {
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
-.tab-body { display: flex; flex-direction: column; gap: 16px; }
+.tab-body { display: flex; flex-direction: column; gap: 10px; }
 
-/* ---------- 标注状态卡 ---------- */
-.annotate-card {
+/* ---------- 顶部整合控制条 ---------- */
+.control-bar {
   background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 10px;
-  padding: 20px; display: flex; gap: 28px; flex-wrap: wrap;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
 }
-
-/* 左：大开关按钮 */
-.action-zone { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 220px; flex-shrink: 0; }
-.btn-toggle-big {
-  width: 200px; height: 96px; border-radius: 10px; border: 1px solid transparent;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  cursor: pointer; transition: all 0.15s ease; position: relative;
-}
-.btn-toggle-big:disabled { opacity: 0.55; cursor: not-allowed; }
-.toggle-icon { font-size: 20px; line-height: 1; }
-.toggle-main { font-size: 16px; font-weight: 600; }
-.toggle-sub { font-size: 11px; color: var(--text-muted); }
-
-.btn-toggle-primary { background: var(--accent); color: #fff; }
-.btn-toggle-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-toggle-primary .toggle-sub { color: rgba(255,255,255,.85); }
-
+.control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.control-detail { font-size: 12px; color: var(--text-subtle); }
+.uptime-tag { font-size: 11px; color: var(--text-subtle); }
+.annotate-toggle { min-width: 108px; }
+.btn-toggle-primary, .btn-toggle-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-toggle-primary:hover:not(:disabled), .btn-toggle-active:hover:not(:disabled) { background: var(--accent-hover); }
 .btn-toggle-outline { background: #fff; border-color: var(--accent); color: var(--accent); }
 .btn-toggle-outline:hover:not(:disabled) { background: var(--bg-active); }
-
-.btn-toggle-active { background: var(--accent); color: #fff; box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.15); }
-.btn-toggle-active:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-toggle-active .toggle-sub { color: rgba(255,255,255,.85); }
-
 .btn-toggle-warn { background: #fff8c5; border-color: #bf8700; color: #9a6700; }
-.btn-toggle-warn:hover:not(:disabled) { background: #fff3a8; }
-
 .btn-toggle-danger { background: #fff; border-color: var(--danger); color: var(--danger); }
-.btn-toggle-danger:hover:not(:disabled) { background: #ffebe9; }
 
-.action-row { display: flex; gap: 8px; }
-
-/* 右：详情区 */
-.detail-zone { flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 10px; justify-content: center; }
-.status-badge-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-/* 注意：此处是状态卡信号灯，类名刻意用 status-light，与远程表格徽标 status-dot 隔离——同页共用一类名会互相污染样式 */
+/* ---------- 状态与说明 ---------- */
 .status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--text-subtle); flex-shrink: 0; }
 .status-light.running { background: var(--success); box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.15); }
 .status-light.starting { background: var(--accent); animation: pulse 1s infinite; }
 .status-light.external { background: #9a6700; box-shadow: 0 0 0 3px rgba(154, 103, 0, 0.15); }
 .status-light.failed { background: var(--danger); box-shadow: 0 0 0 3px rgba(207, 34, 46, 0.15); }
-.status-word { font-size: 16px; font-weight: 700; color: var(--text-main); }
+.status-word { font-size: 15px; font-weight: 700; color: var(--text-main); }
 .ver-pill { font-family: Consolas, monospace; font-size: 12px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 8px; color: var(--text-main); }
 .pid-tag { font-size: 11px; color: var(--text-subtle); }
 
-.detail-line { font-size: 13px; color: var(--text-muted); }
-.detail-line strong { color: var(--text-main); font-family: Consolas, monospace; }
-
-.kbd-row { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.kbd-chip {
-  font-family: Consolas, monospace; font-size: 11px; background: #fff;
-  border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px; color: var(--text-main);
-}
-.honesty-hint { font-size: 11px; }
-
-/* ---------- 提示条 ---------- */
 .hint-banner { padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
+.hint-banner.slim { padding: 8px 12px; font-size: 12px; }
 .banner-warn { background: #fff8c5; border-color: rgba(191, 135, 0, 0.3); color: #9a6700; }
 .banner-error { background: #ffebe9; border-color: rgba(207, 34, 46, 0.25); color: var(--danger); }
 .banner-ok { background: #dafbe1; border-color: rgba(26, 127, 55, 0.2); color: #1a7f37; }
+.info-details { border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-sidebar); overflow: hidden; }
+.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
+.info-summary::-webkit-details-marker { display: none; }
+.info-summary::after { content: '▸'; font-size: 10px; margin-left: auto; transition: transform 0.15s; }
+.info-details[open] .info-summary { border-bottom: 1px solid var(--border-color); }
+.info-details[open] .info-summary::after { transform: rotate(90deg); }
+.info-body { padding: 8px 12px; font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; }
+.info-body p { margin: 0; line-height: 1.6; }
+.kbd-row { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kbd-chip { font-family: Consolas, monospace; font-size: 11px; background: #fff; border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 8px; color: var(--text-main); }
 
 /* ---------- 通用按钮 ---------- */
 .btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
@@ -802,8 +768,6 @@ onUnmounted(() => {
 .retry-link { color: var(--accent); font-size: 12px; cursor: pointer; margin-left: 8px; }
 .retry-link:hover { text-decoration: underline; }
 
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-</style>
 /* ---------- 联动与辅助设置卡 ---------- */
 .extras-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
 .extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -812,3 +776,8 @@ onUnmounted(() => {
 .repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 .repo-row .k { color: var(--text-subtle); flex-shrink: 0; }
 .repo-addr { flex: 1; min-width: 220px; }
+.link-btn { background: transparent; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0 2px; }
+.link-btn:hover { text-decoration: underline; }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+</style>
