@@ -218,3 +218,14 @@ BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名�
   - probe 用 `OpenMutex(SYNCHRONIZE, "Global\BCU-singleinstance")`（Global 前缀要原样拼进字符串）；唤窗直接无参拉起 exe 作信使（比 CC Switch 更简单，不用窗口类名）；
   - 退出与窗口探测走 `EnumWindows` + `GetWindowThreadProcessId` 按 PID 过滤（回调里 `syscall.NewCallback` 同步枚举，命中即 PostMessage WM_CLOSE 后停止）；空闲退出的"窗口豁免"信号 = 该 PID 存在 `IsWindowVisible` 顶层窗口——最小化到任务栏不算豁免。
 - **避坑建议**：便携数据若与 exe 同目录（BCU 的 `BCUninstaller.settings`），ImportLocal 用**黑名单整搬**（只排 tmp/wal/desktop.ini），别用 everything 的白名单模式套；自包含 .NET 应用冷启动慢于 tauri，WaitReady 超时相应放宽（25s）。
+
+---
+
+### 10. 应用退出钩子未接线：托管的工具进程不随 HubKit 退出而关闭
+
+- **问题现象**：从托盘退出 HubKit（或关闭窗口退出）后，FlClash / BCU 等模块托管的工具进程仍存活——用户"正在上网（代理）"或"正在卸载"时关闭 HubKit，工具的窗口与进程独立残留，体验突兀（"不随着 hubkit 结束而关闭"）。
+- **排查过程**：逐步核对了三条理论防线——①各模块 Engine 的 JobObject KILL_ON_JOB_CLOSE 兜底（创建/Assign 正常）；②Shutdown 链：`Registry.ShutdownAll()` 早已实现（遍历 initialized 模块调 OnDestroy→engine.Stop→job.Terminate）；③**致命发现：`ShutdownAll` 从未被任何地方调用**——`OnDestroy` 只在 registry.SetEnabled(false)（用户停用插件）时触发，app.go 的 `Options` 里既没有 OnShutdown 钩子也没有退出前清理。
+- **正确做法与标准修复方案**：在 `application.New` 的 `Options.OnShutdown`（wails 阻塞式退出钩子，优雅退出路径都会走到）里调 `registry.ShutdownAll()`——所有已初始化模块先 OnDestroy（JobObject Terminate 连根带走工具进程树），主进程才结束。强杀/崩溃场景仍由 JobObject 句柄关闭时的内核 KILL_ON_JOB_CLOSE 兜底。
+- **避坑建议**：凡新增"模块退出清理"接口，必须当场核实它的调用点是否在应用退出路径上被接线（grep 调用计数）；只剩内核兜底的架构在优雅退出路径上会漏掉一切需要握手收尾的资源。已知边界：被托管工具 UAC 提权派生的子进程（如卸载器的提权清理器）会 breakaway 出 JobObject，内核级兜底也杀不掉——此类工具退出前尽量在其窗口内先完成操作。
+
+---
