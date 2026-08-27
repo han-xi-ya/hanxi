@@ -25,9 +25,10 @@ func (p *fakeProbe) WaitForMarkerOnReady(time.Duration) bool { return p.ready }
 
 type fakeJob struct{ assignErr error }
 
-func (f *fakeJob) Assign(pid uint32) error     { return f.assignErr }
-func (f *fakeJob) Close() error                { return nil }
-func (f *fakeJob) Terminate(code uint32) error { return nil }
+func (f *fakeJob) Assign(pid uint32) error        { return f.assignErr }
+func (f *fakeJob) Close() error                   { return nil }
+func (f *fakeJob) Terminate(code uint32) error    { return nil }
+func (f *fakeJob) SetAllowKillOnClose(bool) error { return nil }
 
 // fakeJobAPI 通过 createErr 控制 Create 失败，job.assignErr 控制 Assign 失败。
 type fakeJobAPI struct {

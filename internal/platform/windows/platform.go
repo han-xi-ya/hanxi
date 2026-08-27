@@ -37,3 +37,15 @@ func (p *WindowsPlatform) Process() platform.ProcessAPI {
 func (p *WindowsPlatform) Job() platform.JobAPI {
 	return p.job
 }
+
+func (p *WindowsPlatform) DesktopDir() (string, error) {
+	return DesktopDir()
+}
+
+func (p *WindowsPlatform) CreateDesktopShortcut(name, target, workDir string) error {
+	return CreateDesktopShortcut(name, target, workDir)
+}
+
+func (p *WindowsPlatform) OpenURL(url string) error {
+	return OpenURL(url)
+}

@@ -112,6 +112,10 @@ type Job interface {
 	Assign(pid uint32) error
 	Close() error
 	Terminate(exitCode uint32) error
+	// SetAllowKillOnClose 动态调整 KILL_ON_JOB_CLOSE 限制：
+	// true（默认，创建即启用）= HubKit 退出/崩溃时内核连带杀 Job 内进程；
+	// false = 工具独立运行，HubKit 退出完全不影响它（"不随 HubKit 关闭"开关）。
+	SetAllowKillOnClose(enabled bool) error
 }
 
 // NetworkAPI 网络与接口抽象
@@ -146,4 +150,10 @@ type Platform interface {
 	Port() PortAPI
 	Process() ProcessAPI
 	Job() JobAPI
+	// DesktopDir 返回当前用户桌面目录（供便携工具的桌面快捷方式落点）
+	DesktopDir() (string, error)
+	// CreateDesktopShortcut 在桌面创建快捷方式（同名覆盖）
+	CreateDesktopShortcut(name, target, workDir string) error
+	// OpenURL 以默认浏览器打开链接
+	OpenURL(url string) error
 }

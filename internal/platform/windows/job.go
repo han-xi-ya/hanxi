@@ -93,3 +93,33 @@ func (wj *windowsJob) Terminate(exitCode uint32) error {
 	}
 	return nil
 }
+
+// SetAllowKillOnClose 动态切换 KILL_ON_JOB_CLOSE（见 platform.Job 接口注释）。
+// 对已 Assign 的进程依旧生效：SetInformationJobObject 可随时重设限制位。
+func (wj *windowsJob) SetAllowKillOnClose(enabled bool) error {
+	wj.mu.Lock()
+	defer wj.mu.Unlock()
+
+	if wj.hJob == 0 {
+		return fmt.Errorf("job is already closed")
+	}
+	var flags uint32
+	if enabled {
+		flags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	}
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
+		BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{
+			LimitFlags: flags,
+		},
+	}
+	_, err := windows.SetInformationJobObject(
+		wj.hJob,
+		windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&info)),
+		uint32(unsafe.Sizeof(info)),
+	)
+	if err != nil {
+		return fmt.Errorf("SetInformationJobObject failed: %w", err)
+	}
+	return nil
+}
