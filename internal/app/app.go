@@ -84,6 +84,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	plat, err := windows.New()
 	if err != nil {
 		slog.Error("failed to init windows platform", "err", err)
+		panic(err)
 	}
 
 	// 2. 初始化路径与配置存储
@@ -91,6 +92,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	store, err := settings.NewStore(paths.ConfigFile())
 	if err != nil {
 		slog.Error("failed to load settings store", "err", err)
+		panic(err)
 	}
 
 	// 3. 初始化日志脱敏系统

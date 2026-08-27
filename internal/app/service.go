@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -164,13 +165,9 @@ func (s *AppService) ListLogFiles() ([]LogFileInfo, error) {
 	}
 
 	// 按修改时间倒序
-	for i := 0; i < len(list)-1; i++ {
-		for j := i + 1; j < len(list); j++ {
-			if list[i].ModTime < list[j].ModTime {
-				list[i], list[j] = list[j], list[i]
-			}
-		}
-	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ModTime > list[j].ModTime
+	})
 
 	return list, nil
 }

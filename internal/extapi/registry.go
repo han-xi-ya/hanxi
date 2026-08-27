@@ -3,6 +3,7 @@ package extapi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -168,7 +169,9 @@ func (r *Registry) SetEnabled(id string, enabled bool) error {
 
 	if !enabled && wrapper.initialized {
 		// 1. 调用模块自身析构
-		_ = wrapper.Module.OnDestroy()
+		if err := wrapper.Module.OnDestroy(); err != nil {
+			slog.Warn("registry: OnDestroy failed", "module", id, "err", err)
+		}
 		wrapper.initialized = false
 
 		// 2. 主动触发 Go 垃圾回收并将空闲虚拟内存立即交还操作系统
@@ -193,7 +196,9 @@ func (r *Registry) ShutdownAll() {
 	for _, w := range r.modules {
 		w.mu.Lock()
 		if w.initialized {
-			_ = w.Module.OnDestroy()
+			if err := w.Module.OnDestroy(); err != nil {
+				slog.Warn("registry: ShutdownAll OnDestroy failed", "err", err)
+			}
 			w.initialized = false
 		}
 		w.mu.Unlock()

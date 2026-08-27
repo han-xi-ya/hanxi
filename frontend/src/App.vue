@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, markRaw, onMounted, onUnmounted } from 'vue'
+import type { Component } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as AppAPI from '../bindings/hubkit/internal/app'
+import { EnsureModuleActive } from '../bindings/hubkit/internal/app/appservice.js'
 import type { NavEntry } from '../bindings/hubkit/internal/extapi/models'
 import HomeView from './views/HomeView.vue'
 import FrpcProjectsView from './views/FrpcProjectsView.vue'
@@ -33,7 +35,7 @@ const { toastMsg } = useToast()
 const { unreadCount, toggleDrawer, loadHistory, pushToast } = useNotification()
 
 // 核心与内置功能视图路由映射（使用 markRaw 避免深度响应式包装）
-const CORE_VIEWS: Record<string, any> = {
+const CORE_VIEWS: Record<string, Component> = {
   '/': markRaw(HomeView),
   '/frpc': markRaw(FrpcProjectsView),
   '/ext/fileshare': markRaw(FileShareView),
@@ -113,9 +115,7 @@ async function navigateTo(route: string) {
   const modID = ROUTE_MODULE_MAP[route]
   if (modID) {
     try {
-      if ((AppAPI.AppService as any).EnsureModuleActive) {
-        await (AppAPI.AppService as any).EnsureModuleActive(modID)
-      }
+      await EnsureModuleActive(modID)
     } catch (e) {
       console.warn(`Lazy activate module ${modID} failed:`, e)
     }

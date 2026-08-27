@@ -3,6 +3,7 @@ package wechat
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 )
 
@@ -48,7 +49,7 @@ func (c *Client) FetchLoginQRCode(ctx context.Context) (*QRInfo, error) {
 
 // PollQRStatus 查询指定二维码的当前状态（单次长轮询，推荐超时 35s）
 func (c *Client) PollQRStatus(ctx context.Context, qrcode string) (*QRStatus, error) {
-	endpoint := fmt.Sprintf("/ilink/bot/get_qrcode_status?qrcode=%s", qrcode)
+	endpoint := fmt.Sprintf("/ilink/bot/get_qrcode_status?qrcode=%s", url.QueryEscape(qrcode))
 
 	// 单次请求设置 35 秒超时
 	pollCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
