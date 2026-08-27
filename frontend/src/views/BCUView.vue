@@ -75,7 +75,7 @@ const banner = computed(() => {
   if (state.value === 'running') {
     return {
       cls: 'banner-ok',
-      text: 'BCU 正在运行：批量卸载在其窗口内完成，设置数据（BCUninstaller.settings）保存在版本目录内。闲置 3 分钟自动退出。',
+      text: 'BCU 正在运行：批量卸载在其窗口内完成，设置数据（BCUninstaller.settings）保存在版本目录内。',
     }
   }
   return null
@@ -457,27 +457,19 @@ onUnmounted(() => {
     <!-- 条件提示条 / 引导行 -->
     <div v-if="banner" class="hint-banner slim" :class="banner.cls">{{ banner.text }}</div>
     <div v-else-if="state === 'stopped'" class="hint-line">
-      尚未运行：点击「打开窗口」启动 BCU，批量卸载在其窗口内完成。便携包自含 .NET 运行时（约 76MB），无需系统预装；闲置 3 分钟自动退出。
+      尚未运行：点击「打开窗口」启动 BCU，批量卸载在其窗口内完成。便携包自含 .NET 运行时（约 76MB），无需系统预装。
     </div>
     <div v-else-if="state === 'starting'" class="hint-line">正在拉起 BCU（自包含 .NET 首次启动约 3~10 秒）…</div>
 
-    <!-- 说明卡 -->
-    <div class="info-card">
-      <div class="info-title">什么是 Bulk Crap Uninstaller</div>
-      <p>
-        BCU 是开源的批量卸载工具（上游 <a
-          class="inline-link"
-          href="https://github.com/BCUninstaller/Bulk-Crap-Uninstaller"
-          target="_blank"
-          rel="noopener"
-        >BCUninstaller/Bulk-Crap-Uninstaller</a>，Apache-2.0）：静默卸载、残留清理、孤儿检测、开机项管理一站式完成。本模块仅托管其运行：版本下载自官方 GitHub Releases（digest 官方 sha256 四层校验），启停受 JobObject 管控。
-      </p>
-      <p class="hint-dim">
-        版本目录携带各自独立的 BCUninstaller.settings（卸载历史与偏好），「导入本地」会把现有便携安装整套搬入；「设为使用」即可在多个版本间切换。
-      </p>
+    <!-- 说明卡（可折叠） -->
+    <details class="info-details">
+      <summary class="info-summary">什么是 BCU</summary>
+      <div class="info-body">
+        <p>开源批量卸载工具（<a class="inline-link" href="https://github.com/BCUninstaller/Bulk-Crap-Uninstaller" target="_blank" rel="noopener">BCUninstaller/Bulk-Crap-Uninstaller</a>，Apache-2.0）：静默卸载、残留清理、孤儿检测、开机项管理一站式完成。版本下载自官方 GitHub Releases（sha256 四层校验），启停受 JobObject 管控。</p>
+        <p class="hint-dim">版本目录携带各自独立的 BCUninstaller.settings，「导入本地」整套搬入；「设为使用」在多版本间切换。</p>
+      </div>
+    </details>
     </div>
-    </div>
-
 
     <!-- 联动与辅助设置卡 -->
     <div class="extras-card">
@@ -648,7 +640,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.bcu-view { display: flex; flex-direction: column; gap: 14px; }
+.bcu-view { display: flex; flex-direction: column; gap: 10px; }
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
 .header-row h1 { margin: 0 0 6px; }
 .subtitle { color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.6; }
@@ -680,12 +672,12 @@ onUnmounted(() => {
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
-.tab-body { display: flex; flex-direction: column; gap: 16px; }
+.tab-body { display: flex; flex-direction: column; gap: 10px; }
 
 /* ---------- 顶部整合控制条 ---------- */
 .control-bar {
   background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 10px;
-  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 10px;
 }
 .control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -708,11 +700,28 @@ onUnmounted(() => {
 .banner-error { background: #ffebe9; border-color: rgba(207, 34, 46, 0.25); color: var(--danger); }
 .banner-ok { background: #dafbe1; border-color: rgba(26, 127, 55, 0.2); color: #1a7f37; }
 .hint-line { font-size: 12px; color: var(--text-subtle); padding-left: 2px; }
-.info-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; }
-.info-card p { margin: 0; line-height: 1.7; }
-.info-title { font-weight: 600; color: var(--text-main); }
+/* ---------- 折叠说明 ---------- */
+.info-details { border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-sidebar); overflow: hidden; }
+.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 4px; user-select: none; }
+.info-summary::-webkit-details-marker { display: none; }
+.info-details[open] .info-summary { border-bottom: 1px solid var(--border-color); }
+.info-summary::after { content: '▸'; font-size: 10px; transition: transform 0.15s; margin-left: auto; }
+.info-details[open] .info-summary::after { transform: rotate(90deg); }
+.info-body { padding: 8px 12px; font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 4px; }
+.info-body p { margin: 0; line-height: 1.6; }
 .inline-link { color: var(--accent); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
+
+/* ---------- 联动与辅助设置卡 ---------- */
+.extras-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main); cursor: pointer; }
+.toggle-label input { width: 15px; height: 15px; cursor: pointer; }
+.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+.repo-row .k { color: var(--text-subtle); flex-shrink: 0; }
+.repo-addr { flex: 1; min-width: 220px; }
+.link-btn { background: transparent; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0 2px; }
+.link-btn:hover { text-decoration: underline; }
 
 /* ---------- 通用按钮 ---------- */
 .btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
@@ -805,11 +814,3 @@ onUnmounted(() => {
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 </style>
-/* ---------- 联动与辅助设置卡 ---------- */
-.extras-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-.extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main); cursor: pointer; }
-.toggle-label input { width: 15px; height: 15px; cursor: pointer; }
-.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
-.repo-row .k { color: var(--text-subtle); flex-shrink: 0; }
-.repo-addr { flex: 1; min-width: 220px; }

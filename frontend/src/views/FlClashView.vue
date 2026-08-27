@@ -70,7 +70,7 @@ const banner = computed(() => {
   if (state.value === 'running') {
     return {
       cls: 'banner-ok',
-      text: 'FlClash 正在运行：代理配置在其窗口内操作（配置数据在 %APPDATA% 用户目录，各版本共享）。闲置 3 分钟自动退出。',
+      text: 'FlClash 正在运行：代理配置在其窗口内操作（配置数据在 %APPDATA% 用户目录，各版本共享）。',
     }
   }
   return null
@@ -419,13 +419,14 @@ onUnmounted(() => {
     <!-- 条件提示条 / 引导行 -->
     <div v-if="banner" class="hint-banner slim" :class="banner.cls">{{ banner.text }}</div>
     <div v-else-if="state === 'stopped'" class="hint-line">
-      尚未运行：点击「打开窗口」启动 FlClash，代理配置在它的窗口内完成。配置存于 %APPDATA% 用户目录，与版本切换无关；闲置 3 分钟自动退出。
+      尚未运行：点击「打开窗口」启动 FlClash，代理配置在它的窗口内完成。配置存于 %APPDATA% 用户目录，与版本切换无关。
     </div>
     <div v-else-if="state === 'starting'" class="hint-line">正在拉起 FlClash（约 1~3 秒）…</div>
 
-    <!-- 说明卡 -->
-    <div class="info-card">
-      <div class="info-title">什么是 FlClash</div>
+    <!-- 说明卡（折叠） -->
+    <details class="info-details">
+      <summary class="info-summary">关于 FlClash</summary>
+      <div class="info-body">
       <p>
         FlClash 是跨平台 Clash 系代理客户端（Flutter 构建，Windows 便携免安装）（上游 <a
           class="inline-link"
@@ -437,7 +438,8 @@ onUnmounted(() => {
       <p class="hint-dim">
         已装多个版本时，在「版本管理」设为使用即可切换；代理配置数据（%APPDATA%）各版本共享，不影响你现有的订阅与节点。
       </p>
-    </div>
+      </div>
+    </details>
     </div>
 
 
@@ -572,7 +574,7 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.flclash-view { display: flex; flex-direction: column; gap: 14px; }
+.flclash-view { display: flex; flex-direction: column; gap: 10px; }
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
 .header-row h1 { margin: 0 0 6px; }
 .subtitle { color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.6; }
@@ -604,12 +606,12 @@ onUnmounted(() => {
   font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
-.tab-body { display: flex; flex-direction: column; gap: 16px; }
+.tab-body { display: flex; flex-direction: column; gap: 10px; }
 
 /* ---------- 顶部整合控制条 ---------- */
 .control-bar {
   background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 10px;
-  padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 10px;
 }
 .control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -632,8 +634,14 @@ onUnmounted(() => {
 .banner-error { background: #ffebe9; border-color: rgba(207, 34, 46, 0.25); color: var(--danger); }
 .banner-ok { background: #dafbe1; border-color: rgba(26, 127, 55, 0.2); color: #1a7f37; }
 .hint-line { font-size: 12px; color: var(--text-subtle); padding-left: 2px; }
-.info-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; }
-.info-card p { margin: 0; line-height: 1.7; }
+.info-details { border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-sidebar); overflow: hidden; }
+.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
+.info-summary::-webkit-details-marker { display: none; }
+.info-summary::after { content: '▸'; font-size: 10px; margin-left: auto; transition: transform 0.15s; }
+.info-details[open] .info-summary { border-bottom: 1px solid var(--border-color); }
+.info-details[open] .info-summary::after { transform: rotate(90deg); }
+.info-body { padding: 8px 12px; font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 4px; }
+.info-body p { margin: 0; line-height: 1.6; }
 .info-title { font-weight: 600; color: var(--text-main); }
 .inline-link { color: var(--accent); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
@@ -719,7 +727,7 @@ onUnmounted(() => {
 .retry-link:hover { text-decoration: underline; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-</style>
+
 /* ---------- 联动与辅助设置卡 ---------- */
 .extras-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
 .extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -728,3 +736,6 @@ onUnmounted(() => {
 .repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
 .repo-row .k { color: var(--text-subtle); flex-shrink: 0; }
 .repo-addr { flex: 1; min-width: 220px; }
+.link-btn { background: transparent; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0 2px; }
+.link-btn:hover { text-decoration: underline; }
+</style>
