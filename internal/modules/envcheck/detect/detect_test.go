@@ -30,6 +30,17 @@ func TestDetectOne(t *testing.T) {
 		}
 	})
 
+	t.Run("grpc-go-missing-hint", func(t *testing.T) {
+		withSeams(t,
+			func(string) (string, error) { return "", errors.New("not found") },
+			nil,
+		)
+		info := DetectOne(context.Background(), goGRPCDetector{})
+		if info.Status != StatusMissing || !strings.Contains(info.Hint, "go install") || !strings.Contains(info.Hint, "go.mod") {
+			t.Fatalf("unexpected grpc-go missing result: %+v", info)
+		}
+	})
+
 	t.Run("store-stub", func(t *testing.T) {
 		withSeams(t,
 			func(name string) (string, error) {
@@ -110,13 +121,13 @@ func TestIsStoreStub(t *testing.T) {
 	}
 }
 
-// TestRegistry 注册表完整性：7 个探测器、Name 无重复、按字典序排序。
+// TestRegistry 注册表完整性：8 个探测器、Name 无重复、按字典序排序。
 func TestRegistry(t *testing.T) {
 	ds := Detectors()
-	if len(ds) != 7 {
-		t.Fatalf("Detectors() len = %d, want 7", len(ds))
+	if len(ds) != 8 {
+		t.Fatalf("Detectors() len = %d, want 8", len(ds))
 	}
-	want := []string{"git", "go", "java", "node", "npm", "pnpm", "python"}
+	want := []string{"git", "go", "java", "node", "npm", "pnpm", "protoc-gen-go-grpc", "python"}
 	for i, d := range ds {
 		if d.Name() != want[i] {
 			t.Errorf("Detectors()[%d] = %s, want %s", i, d.Name(), want[i])
@@ -138,8 +149,8 @@ func TestRunAll(t *testing.T) {
 		},
 	)
 	results := RunAll(context.Background())
-	if len(results) != 7 {
-		t.Fatalf("RunAll len = %d, want 7", len(results))
+	if len(results) != 8 {
+		t.Fatalf("RunAll len = %d, want 8", len(results))
 	}
 	byName := map[string]ToolInfo{}
 	for _, r := range results {
@@ -150,6 +161,48 @@ func TestRunAll(t *testing.T) {
 	}
 	if v := byName["git"]; v.Status != StatusError {
 		t.Errorf("git result unexpected: %+v", v)
+	}
+	if results[0].Name != "node" || results[0].Status != StatusInstalled {
+		t.Errorf("installed tool should sort first, got: %+v", results[0])
+	}
+}
+
+func TestRunAllStatusOrder(t *testing.T) {
+	withSeams(t,
+		func(name string) (string, error) {
+			switch name {
+			case "git", "node":
+				return `C:\fake\` + name + ".exe", nil
+			default:
+				return "", errors.New("not found")
+			}
+		},
+		func(_ context.Context, exe string, _ []string) (string, error) {
+			switch exe {
+			case `C:\fake\node.exe`:
+				return "v20.15.1\n", nil
+			case `C:\fake\git.exe`:
+				return "", errors.New("boom")
+			default:
+				return "", errors.New("unexpected executable")
+			}
+		},
+	)
+
+	results := RunAll(context.Background())
+	seenNonInstalled := false
+	seenMissing := false
+	for _, result := range results {
+		if result.Status != StatusInstalled {
+			seenNonInstalled = true
+		} else if seenNonInstalled {
+			t.Fatalf("installed result appeared after unavailable result: %+v", results)
+		}
+		if result.Status == StatusMissing {
+			seenMissing = true
+		} else if seenMissing {
+			t.Fatalf("non-missing result appeared after missing result: %+v", results)
+		}
 	}
 }
 

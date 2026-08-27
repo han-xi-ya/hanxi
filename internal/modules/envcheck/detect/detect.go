@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -23,6 +24,9 @@ func DetectOne(ctx context.Context, d Detector) ToolInfo {
 		Display: d.Display(),
 		Status:  StatusMissing,
 		Hint:    fmt.Sprintf("未在 PATH 中找到 %s，请安装后将可执行文件所在目录加入系统 PATH", d.Display()),
+	}
+	if mh, ok := d.(MissingHintAware); ok {
+		info.Hint = mh.MissingHint()
 	}
 
 	exe, err := lookPath(d.Name())
@@ -73,7 +77,27 @@ func RunAll(ctx context.Context) []ToolInfo {
 		}(i, d)
 	}
 	wg.Wait()
+	sort.SliceStable(results, func(i, j int) bool {
+		return statusRank(results[i].Status) < statusRank(results[j].Status)
+	})
 	return results
+}
+
+// statusRank 将可正常使用的环境排在前面，未安装和异常环境统一放到末尾。
+// 同一状态内保持注册表原有的 Name 字典序。
+func statusRank(status Status) int {
+	switch status {
+	case StatusInstalled:
+		return 0
+	case StatusError:
+		return 1
+	case StatusStoreStub:
+		return 2
+	case StatusMissing:
+		return 3
+	default:
+		return 4
+	}
 }
 
 // RunOne 按注册名探测单个工具，未知名返回错误。

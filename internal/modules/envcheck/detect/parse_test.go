@@ -30,6 +30,9 @@ func TestParseVersions(t *testing.T) {
 		{"go-release", goDetector{}, "go version go1.22.5 windows/amd64", "1.22.5"},
 		{"go-devel", goDetector{}, "go version devel go1.24-8a0e33a linux/amd64", "1.24"},
 		{"go-garbage", goDetector{}, "go version unknown", ""},
+		{"grpc-go-plugin", goGRPCDetector{}, "protoc-gen-go-grpc 1.5.1", "1.5.1"},
+		{"grpc-go-plugin-v-prefix", goGRPCDetector{}, "protoc-gen-go-grpc v1.3.0", "1.3.0"},
+		{"grpc-go-plugin-garbage", goGRPCDetector{}, "unknown grpc tool", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 开发环境检测：并发探测本机工具链（git/node/java/python/npm/pnpm/go）的路径与版本。
+// 开发环境检测：并发探测本机工具链（git/node/java/python/npm/pnpm/go），
+// 并检测 Go gRPC 的 protoc-gen-go-grpc 代码生成插件。
 // 无事件、无轮询：进入页面自动检测一次（KeepAlive 缓存后不重复），刷新靠按钮。
 import { ref, computed, onMounted } from 'vue'
 import * as EnvCheckAPI from '../../bindings/hubkit/internal/modules/envcheck/envcheckservice'
@@ -49,7 +50,10 @@ onMounted(refresh) // 首次进入自动检测；KeepAlive 缓存组件，onMoun
     <div class="header-row">
       <div>
         <h1>开发环境检测</h1>
-        <p class="subtitle">探测本机开发工具链的安装路径与版本：git · node · java · python · npm · pnpm · go。</p>
+        <p class="subtitle">
+          探测本机开发工具链的安装路径与版本：git · node · java · python · npm · pnpm · go · Go gRPC。
+          Go gRPC 检测项指 <code>protoc-gen-go-grpc</code> 代码生成插件；项目运行时依赖仍由各项目的 <code>go.mod</code> 管理。
+        </p>
       </div>
       <div class="btn-group">
         <span v-if="everLoaded" class="stat-text">
