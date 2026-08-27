@@ -15,14 +15,16 @@ type markeronStore struct {
 	filePath      string
 	mu            sync.RWMutex
 	activeVersion string
+	followOnExit  bool // 默认 true：随 HubKit 退出一起关闭；false：独立运行
 }
 
 type markeronConfig struct {
 	ActiveVersion string `json:"activeVersion"`
+	FollowOnExit  *bool  `json:"followOnExit"`
 }
 
 func newMarkeronStore(dir string) *markeronStore {
-	s := &markeronStore{filePath: filepath.Join(dir, "markeron.json")}
+	s := &markeronStore{filePath: filepath.Join(dir, "markeron.json"), followOnExit: true}
 	_ = s.load()
 	return s
 }
@@ -44,6 +46,7 @@ func (s *markeronStore) load() error {
 		return nil
 	}
 	s.activeVersion = cfg.ActiveVersion
+	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
 	return nil
 }
 
@@ -52,7 +55,7 @@ func (s *markeronStore) saveLocked() error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	bytes, err := json.MarshalIndent(markeronConfig{ActiveVersion: s.activeVersion}, "", "  ")
+	bytes, err := json.MarshalIndent(markeronConfig{ActiveVersion: s.activeVersion, FollowOnExit: &s.followOnExit}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -79,5 +82,20 @@ func (s *markeronStore) SetActive(version string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.activeVersion = version
+	return s.saveLocked()
+}
+
+// GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+func (s *markeronStore) GetFollowOnExit() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.followOnExit
+}
+
+// SetFollowOnExit 设定开关并立即落盘。
+func (s *markeronStore) SetFollowOnExit(b bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.followOnExit = b
 	return s.saveLocked()
 }

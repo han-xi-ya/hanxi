@@ -52,7 +52,7 @@ func TestVersionCompare(t *testing.T) {
 		a, b string
 		want int
 	}{
-		{"v2.10.0", "v2.9.4", 1},  // 字典序会误判 2.10.0 < 2.9.4
+		{"v2.10.0", "v2.9.4", 1}, // 字典序会误判 2.10.0 < 2.9.4
 		{"v2.9.4", "v2.10.0", -1},
 		{"v3.0.0", "v3.0.0", 0},
 		{"2.9.4", "v2.9.4", 0}, // 前缀 v 容错
@@ -61,5 +61,20 @@ func TestVersionCompare(t *testing.T) {
 		if got := versionCompare(c.a, c.b); got != c.want {
 			t.Errorf("versionCompare(%s, %s) = %d, want %d", c.a, c.b, got, c.want)
 		}
+	}
+}
+
+// TestFollowOnExitDefaultAndPersist 联动开关：缺省 true，设 false 落盘重载保持。
+func TestFollowOnExitDefaultAndPersist(t *testing.T) {
+	dir := t.TempDir()
+	s := newMarkeronStore(dir)
+	if !s.GetFollowOnExit() {
+		t.Fatal("默认应为 true（随 HubKit 关闭）")
+	}
+	if err := s.SetFollowOnExit(false); err != nil {
+		t.Fatalf("SetFollowOnExit: %v", err)
+	}
+	if s2 := newMarkeronStore(dir); s2.GetFollowOnExit() {
+		t.Fatal("重载后应保持 false")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -319,7 +320,7 @@ func (s *BCUService) OpenWindow() (ControlOutcome, error) {
 		if err != nil {
 			return ControlOutcome{}, err
 		}
-		if err := s.engine.Start(instance.StartOptions{Version: v, Exe: exe}); err != nil {
+		if err := s.engine.Start(instance.StartOptions{Version: v, Exe: exe, Detached: !s.store.GetFollowOnExit()}); err != nil {
 			return ControlOutcome{}, fmt.Errorf("启动 BCU 失败: %w", err)
 		}
 		if !s.engine.WaitReady(readyTimeout) {
@@ -359,7 +360,9 @@ func (s *BCUService) Shutdown() {
 		s.watching = false
 	}
 	s.watchMu.Unlock()
-	_ = s.engine.Stop()
+	if s.store.GetFollowOnExit() {
+		_ = s.engine.Stop() // 联动开启才杀；关闭则完全不影响工具（Job 已解除 kill-on-close）
+	}
 }
 
 // ---------- 版本解析 ----------
@@ -397,4 +400,35 @@ func (s *BCUService) resolveInstalledExeAny() (string, error) {
 		return "", fmt.Errorf("尚未安装任何 BCU 版本，无法代为唤起外部实例窗口")
 	}
 	return installed[0].ExePath, nil
+}
+
+// ---------- 联动开关与桌面辅助 ----------
+
+// GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+func (s *BCUService) GetFollowOnExit() (bool, error) {
+	return s.store.GetFollowOnExit(), nil
+}
+
+// SetFollowOnExit 设定开关（下次启动生效）。
+func (s *BCUService) SetFollowOnExit(b bool) error {
+	return s.store.SetFollowOnExit(b)
+}
+
+// CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
+func (s *BCUService) CreateDesktopShortcut() error {
+	_, exe, err := s.resolveActiveVersion()
+	if err != nil {
+		return err
+	}
+	return s.plat.CreateDesktopShortcut("BC 卸载工具", exe, filepath.Dir(exe))
+}
+
+// RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
+func (s *BCUService) RepositoryURL() (string, error) {
+	return version.RepoURL(), nil
+}
+
+// OpenRepository 用默认浏览器打开上游仓库页面。
+func (s *BCUService) OpenRepository() error {
+	return s.plat.OpenURL(version.RepoURL())
 }

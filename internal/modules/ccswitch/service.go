@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -304,7 +305,7 @@ func (s *CCSwitchService) OpenWindow() (ControlOutcome, error) {
 		if err != nil {
 			return ControlOutcome{}, err
 		}
-		if err := s.engine.Start(instance.StartOptions{Version: v, Exe: exe}); err != nil {
+		if err := s.engine.Start(instance.StartOptions{Version: v, Exe: exe, Detached: !s.store.GetFollowOnExit()}); err != nil {
 			return ControlOutcome{}, fmt.Errorf("启动 CC Switch 失败: %w", err)
 		}
 		if !s.engine.WaitReady(readyTimeout) {
@@ -344,7 +345,9 @@ func (s *CCSwitchService) Shutdown() {
 		s.watching = false
 	}
 	s.watchMu.Unlock()
-	_ = s.engine.Stop()
+	if s.store.GetFollowOnExit() {
+		_ = s.engine.Stop() // 联动开启才杀；关闭则完全不影响工具（Job 已解除 kill-on-close）
+	}
 }
 
 // ---------- 版本解析 ----------
@@ -403,4 +406,35 @@ func versionCompare(a, b string) int {
 		}
 	}
 	return 0
+}
+
+// ---------- 联动开关与桌面辅助 ----------
+
+// GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+func (s *CCSwitchService) GetFollowOnExit() (bool, error) {
+	return s.store.GetFollowOnExit(), nil
+}
+
+// SetFollowOnExit 设定开关（下次启动生效）。
+func (s *CCSwitchService) SetFollowOnExit(b bool) error {
+	return s.store.SetFollowOnExit(b)
+}
+
+// CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
+func (s *CCSwitchService) CreateDesktopShortcut() error {
+	_, exe, err := s.resolveActiveVersion()
+	if err != nil {
+		return err
+	}
+	return s.plat.CreateDesktopShortcut("CC Switch", exe, filepath.Dir(exe))
+}
+
+// RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
+func (s *CCSwitchService) RepositoryURL() (string, error) {
+	return version.RepoURL(), nil
+}
+
+// OpenRepository 用默认浏览器打开上游仓库页面。
+func (s *CCSwitchService) OpenRepository() error {
+	return s.plat.OpenURL(version.RepoURL())
 }

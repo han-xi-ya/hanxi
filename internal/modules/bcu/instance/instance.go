@@ -40,7 +40,9 @@ type Snapshot struct {
 // StartOptions 启动参数：由 service 层解析版本后填充。
 type StartOptions struct {
 	Version string // 绑定版本（如 6.2.0）
-	Exe     string // BCUninstaller.exe 绝对路径（版本隔离目录内）
+	// Detached 独立运行：解除 JobObject 退出联动（HubKit 关闭完全不影响工具）。
+	Detached bool
+	Exe      string // BCUninstaller.exe 绝对路径（版本隔离目录内）
 }
 
 func (o StartOptions) validate() error {
@@ -135,6 +137,16 @@ func (e *Engine) Start(opts StartOptions) error {
 		go e.wait()
 		e.transition(StateFailed, "JobObject 绑定失败: "+aerr.Error())
 		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
+	}
+	if opts.Detached {
+		// 解除退出联动：HubKit 退出/崩溃不再连带杀本实例（"不随 HubKit 关闭"开关）
+		if derr := job.SetAllowKillOnClose(false); derr != nil {
+			job.Close()
+			_ = cmd.Process.Kill()
+			go e.wait()
+			e.transition(StateFailed, "解除退出联动失败: "+derr.Error())
+			return fmt.Errorf("解除退出联动失败: %w", derr)
+		}
 	}
 
 	e.mu.Lock()

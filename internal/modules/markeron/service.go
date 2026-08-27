@@ -3,6 +3,7 @@ package markeron
 import (
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,9 +20,9 @@ import (
 )
 
 const (
-	readyTimeout  = 20 * time.Second      // 冷启动就绪上限（互斥体出现）
+	readyTimeout  = 20 * time.Second       // 冷启动就绪上限（互斥体出现）
 	settleDelay   = 800 * time.Millisecond // 互斥体就绪 → WM_COPYDATA 消息窗口注册完毕的缓冲，之后信使才可靠
-	watchInterval = 5 * time.Second       // 外部实例感知轮询间隔
+	watchInterval = 5 * time.Second        // 外部实例感知轮询间隔
 )
 
 // MarkerOnService 向前端暴露 MarkerOn 版本管理与标注开关能力。
@@ -218,7 +219,7 @@ func (s *MarkerOnService) ToggleAnnotate() (ToggleOutcome, error) {
 		if err != nil {
 			return ToggleOutcome{}, err
 		}
-		if err := s.engine.Start(instance.StartOptions{Version: v, Exe: exe}); err != nil {
+		if err := s.engine.Start(instance.StartOptions{Version: v, Exe: exe, Detached: !s.store.GetFollowOnExit()}); err != nil {
 			return ToggleOutcome{}, fmt.Errorf("启动 MarkerOn 失败: %w", err)
 		}
 		if !s.engine.WaitReady(readyTimeout) {
@@ -262,7 +263,9 @@ func (s *MarkerOnService) Shutdown() {
 		s.watching = false
 	}
 	s.watchMu.Unlock()
-	_ = s.engine.Stop()
+	if s.store.GetFollowOnExit() {
+		_ = s.engine.Stop() // 联动开启才杀；关闭则完全不影响工具（Job 已解除 kill-on-close）
+	}
 }
 
 // ---------- 版本解析 ----------
@@ -321,4 +324,35 @@ func versionCompare(a, b string) int {
 		}
 	}
 	return 0
+}
+
+// ---------- 联动开关与桌面辅助 ----------
+
+// GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+func (s *MarkerOnService) GetFollowOnExit() (bool, error) {
+	return s.store.GetFollowOnExit(), nil
+}
+
+// SetFollowOnExit 设定开关（下次启动生效）。
+func (s *MarkerOnService) SetFollowOnExit(b bool) error {
+	return s.store.SetFollowOnExit(b)
+}
+
+// CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
+func (s *MarkerOnService) CreateDesktopShortcut() error {
+	_, exe, err := s.resolveActiveVersion()
+	if err != nil {
+		return err
+	}
+	return s.plat.CreateDesktopShortcut("MarkerOn 标注", exe, filepath.Dir(exe))
+}
+
+// RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
+func (s *MarkerOnService) RepositoryURL() (string, error) {
+	return version.RepoURL(), nil
+}
+
+// OpenRepository 用默认浏览器打开上游仓库页面。
+func (s *MarkerOnService) OpenRepository() error {
+	return s.plat.OpenURL(version.RepoURL())
 }

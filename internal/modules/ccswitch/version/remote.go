@@ -24,6 +24,9 @@ const (
 	digestPrefix = "sha256:"
 )
 
+// RepoURL 上游仓库地址（前端展示/复制/一键浏览器打开）。
+func RepoURL() string { return "https://github.com/" + repoOwner + "/" + repoName }
+
 // 拉取 GitHub API 的候选前缀：直连优先，镜像逐个回退（与 markeron 同组）
 var apiBaseURLs = []string{
 	"https://api.github.com",
