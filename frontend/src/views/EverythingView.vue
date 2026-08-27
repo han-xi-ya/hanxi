@@ -133,8 +133,8 @@ const banner = computed(() => {
     return {
       cls: 'banner-ok',
       text: snap.value?.mode === 'background'
-        ? 'Everything 在后台驻留建索引：搜索窗口秒开、内嵌搜索可用。空闲 5 分钟将自动退出，再次搜索自动重启。'
-        : 'Everything 正在运行。关闭搜索窗口不会退出实例（继续后台驻留）；空闲 5 分钟自动退出。',
+        ? 'Everything 在后台驻留建索引：搜索窗口秒开、内嵌搜索可用。空闲 3 分钟将自动退出，再次搜索自动重启。'
+        : 'Everything 正在运行。关闭搜索窗口不会退出实例（继续后台驻留）；空闲 3 分钟自动退出。',
     }
   }
   return null
@@ -599,7 +599,7 @@ onUnmounted(() => {
     <!-- 条件提示条 / 引导行 -->
     <div v-if="banner" class="hint-banner slim" :class="banner.cls">{{ banner.text }}</div>
     <div v-else-if="state === 'stopped'" class="hint-line">
-      尚未运行：上方直接输入关键词即会搜索（首次自动拉起后台实例，约 1~3 秒）；「启动后台」常驻索引、「打开窗口」直接现搜。空闲 5 分钟自动退出。
+      尚未运行：上方直接输入关键词即会搜索（首次自动拉起后台实例，约 1~3 秒）；「启动后台」常驻索引、「打开窗口」直接现搜。空闲 3 分钟自动退出。
     </div>
     <div v-else-if="state === 'starting'" class="hint-line">正在拉起 Everything 实例（约 1~3 秒）…</div>
 

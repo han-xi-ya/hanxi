@@ -26,7 +26,7 @@ const (
 	watchInterval     = 5 * time.Second  // 外部实例感知轮询间隔
 	searchResultLimit = 300              // 单次内嵌搜索上限（与 evsearch.maxResults 对齐）
 
-	idleQuitAfter = 5 * time.Minute // 空闲自动退出阈值：无 HubKit 发起操作且搜索窗口未开
+	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 HubKit 发起操作且搜索窗口未开
 	idleCheckTick = 30 * time.Second
 )
 
@@ -143,7 +143,7 @@ func (s *EverythingService) idleCheck() {
 		slog.Warn("everything idle auto-quit failed", "err", err)
 		return
 	}
-	notify.Info("everything", "已自动退出", "Everything 已空闲 5 分钟，自动退出以释放内存；再次搜索会自动重启", "/ext/everything")
+	notify.Info("everything", "已自动退出", "Everything 已空闲 3 分钟，自动退出以释放内存；再次搜索会自动重启", "/ext/everything")
 }
 
 // shouldIdleQuit 空闲退出判定（纯函数，便于单测穷举）。
