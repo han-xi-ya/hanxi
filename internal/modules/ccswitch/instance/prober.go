@@ -23,4 +23,7 @@ type CCSwitchProbe interface {
 	IsRunning() bool
 	// WaitForReady 轮询等待互斥体出现（实例就绪），超时返回 false。
 	WaitForReady(timeout time.Duration) bool
+	// IsMainWindowOpen 主窗口是否可见——空闲自动退出的豁免信号
+	// （窗口开着说明用户可能正在其中操作；关窗驻托盘/纯托盘态返回 false）。
+	IsMainWindowOpen() bool
 }

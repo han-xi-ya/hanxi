@@ -16,12 +16,14 @@ import (
 // ---------- 测试用 fake（探针与 Job 注入） ----------
 
 type fakeProbe struct {
-	running bool // IsRunning 返回值
-	ready   bool // WaitForReady 立即返回值
+	running    bool // IsRunning 返回值
+	ready      bool // WaitForReady 立即返回值
+	windowOpen bool // IsMainWindowOpen 返回值（空闲退出豁免信号）
 }
 
 func (p *fakeProbe) IsRunning() bool                 { return p.running }
 func (p *fakeProbe) WaitForReady(time.Duration) bool { return p.ready }
+func (p *fakeProbe) IsMainWindowOpen() bool          { return p.windowOpen }
 
 type fakeJob struct{ assignErr error }
 

@@ -23,6 +23,9 @@ import (
 const (
 	readyTimeout  = 20 * time.Second // 冷启动就绪上限（单实例互斥体出现）
 	watchInterval = 5 * time.Second  // 外部实例感知轮询间隔
+
+	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 HubKit 发起操作且主窗口未开
+	idleCheckTick = 30 * time.Second
 )
 
 // CCSwitchService 向前端暴露 CC Switch 版本管理与窗口唤起能力。
@@ -38,6 +41,9 @@ type CCSwitchService struct {
 	watchMu    sync.Mutex
 	watching   bool
 	watchStop  chan struct{}
+
+	idleMu       sync.Mutex
+	lastActivity time.Time // 最近一次 HubKit 发起的使用（打开窗口）；GetStatus 轮询不计
 }
 
 func NewCCSwitchService(plat platform.Platform) *CCSwitchService {
@@ -47,6 +53,7 @@ func NewCCSwitchService(plat platform.Platform) *CCSwitchService {
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newCCSwitchStore(paths.DataDir()),
 	}
+	svc.lastActivity = time.Now()
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewCCProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
 	})
@@ -89,6 +96,57 @@ func (s *CCSwitchService) activate() {
 			}
 		}
 	}()
+	// 空闲退出巡检与外部感知共用同一个 watchStop 生命周期
+	go func() {
+		t := time.NewTicker(idleCheckTick)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				s.idleCheck()
+			}
+		}
+	}()
+}
+
+// touch 记录一次 HubKit 发起的实例使用（打开窗口算；状态轮询不算）。
+func (s *CCSwitchService) touch() {
+	s.idleMu.Lock()
+	s.lastActivity = time.Now()
+	s.idleMu.Unlock()
+}
+
+// idleCheck 空闲自动退出巡检：仅退出自己托管的实例。
+// 豁免两个场景：主窗口正在显示（用户可能正在用）、实例不是我们托管的（external）。
+// 用户侧"关窗驻托盘"（窗口隐藏）不豁免——无人操作 3 分钟即退出是明确需求。
+func (s *CCSwitchService) idleCheck() {
+	s.idleMu.Lock()
+	idle := time.Since(s.lastActivity)
+	s.idleMu.Unlock()
+
+	snap := s.engine.Snapshot()
+	if !shouldIdleQuit(snap, s.engine.IsMainWindowOpen(), idle) {
+		return
+	}
+	slog.Info("ccswitch idle auto-quit", "idle", idle.Truncate(time.Second))
+	if err := s.engine.Quit(); err != nil {
+		slog.Warn("ccswitch idle auto-quit failed", "err", err)
+		return
+	}
+	notify.Info("ccswitch", "已自动退出", "CC Switch 已空闲 3 分钟，自动退出以释放内存", "/ext/ccswitch")
+}
+
+// shouldIdleQuit 空闲退出判定（纯函数，便于单测穷举）。
+func shouldIdleQuit(snap instance.Snapshot, windowOpen bool, idle time.Duration) bool {
+	if snap.State != instance.StateRunning || snap.External {
+		return false
+	}
+	if windowOpen {
+		return false // 主窗口开着 = 用户可能正在用
+	}
+	return idle >= idleQuitAfter
 }
 
 // ---------- 版本管理（委托 manager） ----------
@@ -215,6 +273,7 @@ func (s *CCSwitchService) GetStatus() (instance.Snapshot, error) {
 //   - running：自有实例直接信使唤窗；
 //   - stopped/failed：解析 active 版本直接无参启动（CC Switch 唯一启动语义即开窗）。
 func (s *CCSwitchService) OpenWindow() (ControlOutcome, error) {
+	s.touch() // 用户主动打开 = 使用记录，重置空闲倒计时
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 

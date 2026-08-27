@@ -3,7 +3,9 @@
 package instance
 
 import (
+	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -43,4 +45,21 @@ func (p *windowsCCProbe) WaitForReady(timeout time.Duration) bool {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// IsMainWindowOpen 主窗口是否可见：FindWindowW（-sic 类名）命中且 IsWindowVisible。
+// 关窗驻托盘时窗口仅被 hide（FindWindowW 仍可命中但不可见）——
+// 恰是"无人操作 3 分钟即退出"想要覆盖的场。
+func (p *windowsCCProbe) IsMainWindowOpen() bool {
+	cls, _ := syscall.UTF16PtrFromString(classCCSwitch)
+	name, _ := syscall.UTF16PtrFromString(nameCCSwitch)
+	hwnd, _, _ := procFindWnd.Call(
+		uintptr(unsafe.Pointer(cls)),
+		uintptr(unsafe.Pointer(name)),
+	)
+	if hwnd == 0 {
+		return false
+	}
+	visible, _, _ := procIsWinVisible.Call(hwnd)
+	return visible != 0
 }

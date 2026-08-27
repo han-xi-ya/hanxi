@@ -70,7 +70,7 @@ const banner = computed(() => {
   if (state.value === 'running') {
     return {
       cls: 'banner-ok',
-      text: 'CC Switch 正在运行：供应商切换在其窗口内操作（作用于 ~/.cc-switch 配置，跨版本共享）。',
+      text: 'CC Switch 正在运行：供应商切换在其窗口内操作（作用于 ~/.cc-switch 配置，跨版本共享）。闲置 3 分钟自动退出。',
     }
   }
   return null
@@ -351,7 +351,7 @@ onUnmounted(() => {
     <!-- 条件提示条 / 引导行 -->
     <div v-if="banner" class="hint-banner slim" :class="banner.cls">{{ banner.text }}</div>
     <div v-else-if="state === 'stopped'" class="hint-line">
-      尚未运行：点击「打开窗口」启动 CC Switch，供应商切换在它的窗口内完成。配置恒存于 ~/.cc-switch，与托管版本切换无关；用 HubKit 退出时窗口与进程一并关闭。
+      尚未运行：点击「打开窗口」启动 CC Switch，供应商切换在它的窗口内完成。配置恒存于 ~/.cc-switch，与托管版本切换无关；闲置 3 分钟自动退出。
     </div>
     <div v-else-if="state === 'starting'" class="hint-line">正在拉起 CC Switch（约 1~3 秒）…</div>
 

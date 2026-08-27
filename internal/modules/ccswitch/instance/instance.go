@@ -300,6 +300,11 @@ func (e *Engine) WaitReady(timeout time.Duration) bool {
 	return e.probe.WaitForReady(timeout)
 }
 
+// IsMainWindowOpen 主窗口是否可见——空闲自动退出的豁免信号。
+func (e *Engine) IsMainWindowOpen() bool {
+	return e.probe.IsMainWindowOpen()
+}
+
 // RunningDuration 自有实例已运行时长。
 func (e *Engine) RunningDuration() time.Duration {
 	e.mu.Lock()

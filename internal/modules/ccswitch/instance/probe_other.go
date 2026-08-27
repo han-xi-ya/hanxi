@@ -12,3 +12,4 @@ func NewCCProbe() CCSwitchProbe { return &noopProbe{} }
 
 func (p *noopProbe) IsRunning() bool                 { return false }
 func (p *noopProbe) WaitForReady(time.Duration) bool { return false }
+func (p *noopProbe) IsMainWindowOpen() bool          { return false }

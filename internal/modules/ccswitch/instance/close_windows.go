@@ -8,9 +8,10 @@ import (
 )
 
 var (
-	modUser32   = syscall.NewLazyDLL("user32.dll")
-	procFindWnd = modUser32.NewProc("FindWindowW")
-	procPostMsg = modUser32.NewProc("PostMessageW")
+	modUser32        = syscall.NewLazyDLL("user32.dll")
+	procFindWnd      = modUser32.NewProc("FindWindowW")
+	procPostMsg      = modUser32.NewProc("PostMessageW")
+	procIsWinVisible = modUser32.NewProc("IsWindowVisible")
 )
 
 const (
