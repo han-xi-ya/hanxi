@@ -1,23 +1,26 @@
-package version
+// Package versioncmp 提供工具版本号通用比较：
+// 多个托管模块（everything / bcu 及后续集成）都要按"哪个已装版本最新"排序，
+// 抽取共享避免复制。从 everything 模块原样提取，行为向后一致。
+package versioncmp
 
 import (
 	"strconv"
 	"strings"
 )
 
-// CompareVersions 比较两个 Everything 版本号（无 v 前缀，如 "1.5.0.1422b"）。
+// Compare 比较两个版本号（无 v 前缀，如 "1.5.0.1422b" 或 "6.2.0" / "6.1.0.1"）。
 // 返回 1（a 更新）/ 0（相等）/ -1（b 更新）。
 // 规则：逐段数字作数值比较；段内尾部字母按字典序并视为比纯数字段更新
 // （"1422" < "1422a" < "1422b"，与 voidtools 的修正版发布节奏一致）；
-// 段数不同时先逐段比完，均相等则段多者胜。非规范段整体退化字典序（正常数据不可达）。
-func CompareVersions(a, b string) int {
-	sa, okA := splitVersion(a)
-	sb, okB := splitVersion(b)
+// 段数不同时先逐段比完，均相等则段多者胜（"6.2.0" < "6.2.0.1"）。
+// 非规范段整体退化字典序（正常数据不可达）。
+func Compare(a, b string) int {
+	sa, okA := split(a)
+	sb, okB := split(b)
 	if !okA || !okB {
 		return strings.Compare(a, b)
 	}
-	n := min(len(sa), len(sb))
-	for i := 0; i < n; i++ {
+	for i := range min(len(sa), len(sb)) {
 		if sa[i].num != sb[i].num {
 			if sa[i].num > sb[i].num {
 				return 1
@@ -45,9 +48,9 @@ type verSeg struct {
 	alpha string // 段内尾部纯字母（纯数字段为空串，字典序最小）
 }
 
-// splitVersion 把版本号切成段。段内格式：数字前缀 + 可选纯字母后缀（如 "1422b"）。
+// split 把版本号切成段。段内格式：数字前缀 + 可选纯字母后缀（如 "1422b"）。
 // 任一段不符合即整体返回 ok=false（调用方退化字典序兜底）。
-func splitVersion(v string) ([]verSeg, bool) {
+func split(v string) ([]verSeg, bool) {
 	parts := strings.Split(v, ".")
 	segs := make([]verSeg, 0, len(parts))
 	for _, p := range parts {

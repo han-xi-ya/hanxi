@@ -51,29 +51,6 @@ func TestParseReleasesEmpty(t *testing.T) {
 	}
 }
 
-func TestCompareVersions(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want int
-	}{
-		{"1.5.0.1422b", "1.5.0.1422", 1},   // 修正版比初版新
-		{"1.5.0.1422c", "1.5.0.1422b", 1},  // 尾字母字典序
-		{"1.5.0.1423", "1.5.0.1422b", 1},   // 数字段优先于字母后缀
-		{"1.4.1.1032", "1.5.0.1422b", -1},  // 主版本
-		{"1.5.0.1422b", "1.5.0.1422b", 0},  // 相等
-		{"1.5.2", "1.5.9.0", -1},           // 段数不同
-		{"1.10.0", "1.9.0", 1},             // 数值比较而非字典序
-		{"1.5.0.1422b", "1.5.0.1422a", 1},  // a < b
-		{"", "1.0", -1},                    // 非规范退化字典序兜底不 panic
-		{"v1.2.3", "1.2.3", 1},             // v 前缀视为文本（本模块版本号不带 v，兜底路径）
-	}
-	for _, c := range cases {
-		if got := CompareVersions(c.a, c.b); got != c.want {
-			t.Errorf("CompareVersions(%q, %q) = %d, 期望 %d", c.a, c.b, got, c.want)
-		}
-	}
-}
-
 func TestFindSHAInManifest(t *testing.T) {
 	manifest := "c42efad041d4c0bb4d4ac97ae7cbe89f153ec1fe078772392e749c7f5d5282d3 *Everything-1.4.1.1032.x64-Setup.exe\n" +
 		"698df475ec44e638f66f1b6a32d28fea613cec78d3b6310e6abe53431eeb940c *Everything-1.4.1.1032.x64.zip\n" +

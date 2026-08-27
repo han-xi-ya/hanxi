@@ -18,6 +18,7 @@ import (
 	evversion "hubkit/internal/modules/everything/version"
 	"hubkit/internal/notify"
 	"hubkit/internal/platform"
+	"hubkit/internal/platform/versioncmp"
 	"hubkit/internal/settings"
 )
 
@@ -483,7 +484,7 @@ func (s *EverythingService) resolveActiveVersion() (string, string, error) {
 		return "", "", fmt.Errorf("尚未安装任何 Everything 版本，请先在版本管理下载或导入")
 	}
 	sort.Slice(installed, func(i, j int) bool {
-		return evversion.CompareVersions(installed[i].Version, installed[j].Version) > 0
+		return versioncmp.Compare(installed[i].Version, installed[j].Version) > 0
 	})
 	latest := installed[0]
 	return latest.Version, latest.ExePath, nil
