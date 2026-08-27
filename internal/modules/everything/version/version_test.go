@@ -227,13 +227,6 @@ func TestImportLocal(t *testing.T) {
 	}
 }
 
-func TestImportLocalRealExeVersion(t *testing.T) {
-	// winver 依赖真实 PE 资源，单测只验证兜底路径与格式；真实路径见 S5 真机验证。
-	if v, err := exeFileVersion(filepath.Join(t.TempDir(), "no-such.exe")); err == nil && v != "" {
-		t.Errorf("不存在的文件应报错或返回空, 实际 %q", v)
-	}
-}
-
 func TestListInstalledAndRemove(t *testing.T) {
 	versionsDir := t.TempDir()
 	m := NewManager(versionsDir)

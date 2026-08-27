@@ -1,6 +1,10 @@
 //go:build windows
 
-package version
+// Package versioninfo 读取 Windows PE 文件的字符串版本资源（StringFileInfo 的 FileVersion 字段）。
+//
+// 从 everything 模块提取共享：two 个工具托管模块（everything / ccswitch）的本地导入
+// 均需要从 exe 读真实版本号做版本识别，任何新模块需要同等能力时直接复用本包。
+package versioninfo
 
 import (
 	"fmt"
@@ -17,10 +21,10 @@ var (
 	procVQV    = modVersion.NewProc("VerQueryValueW")
 )
 
-// exeFileVersion 读取 PE 文件的字符串 FileVersion（如 "1.5.0.1422b"）。
+// FileVersion 读取 PE 文件的字符串 FileVersion（如 "3.20.0"）。
 // 必须走 StringFileInfo 字符串表而非 VS_FIXEDFILEINFO 数值——
 // alpha 修订后缀（1422b 的 b）只能由字符串表示，数值型只有 4×16bit 段。
-func exeFileVersion(path string) (string, error) {
+func FileVersion(path string) (string, error) {
 	p, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return "", err
@@ -70,14 +74,11 @@ func exeFileVersion(path string) (string, error) {
 		return "", win32Err("VerQueryValueW(FileVersion)", e1)
 	}
 	// 两个实测坑（Everything.exe 1.5.0.1422b）：
-	//  1. VerQueryValueW 的 valLen 对此值返回【字符数】而非字节数——按“字节/2”切会截断成 “1.5.0.”；
+	//  1. VerQueryValueW 的 valLen 对此值返回【字符数】而非字节数——按"字节/2"切会截断成 "1.5.0."；
 	//  2. utf16.Decode 不因 NUL 停——裸解码会把 szValue 之后的下一个条目头字节吞进字符串。
 	// 正确姿势：windows.UTF16ToString（首个 NUL 截断）+ 可用长度封顶（指针到缓冲末端的距离）。
 	avail := uintptr(len(buf)) - (uintptr(valPtr) - uintptr(unsafe.Pointer(&buf[0])))
-	maxUnits := avail / 2
-	if maxUnits > 512 {
-		maxUnits = 512 // 版本字符串不可能超长，防御性封顶
-	}
+	maxUnits := min(avail/2, 512) // 版本字符串不可能超长，防御性封顶
 	units := unsafe.Slice((*uint16)(valPtr), maxUnits)
 	return windows.UTF16ToString(units), nil
 }

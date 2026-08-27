@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"hubkit/internal/platform/versioninfo"
 )
 
 const (
@@ -139,7 +141,7 @@ func (m *Manager) ImportLocal(srcDir string) (EverythingVersionInfo, error) {
 		return EverythingVersionInfo{}, err
 	}
 
-	version, vErr := exeFileVersion(srcExe)
+	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !plainVersionRe.MatchString(version) {
 		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与 frpc ImportLocal 同构
 		version = "imported-" + time.Now().Format("20060102-150405")
