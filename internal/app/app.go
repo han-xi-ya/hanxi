@@ -9,6 +9,9 @@ import (
 
 	"hubkit/internal/extapi"
 	"hubkit/internal/logging"
+	"hubkit/internal/modules/ccswitch"
+	ccswitchinstance "hubkit/internal/modules/ccswitch/instance"
+	ccswitchversion "hubkit/internal/modules/ccswitch/version"
 	"hubkit/internal/modules/everything"
 	everythinginstance "hubkit/internal/modules/everything/instance"
 	"hubkit/internal/modules/fileshare"
@@ -59,6 +62,8 @@ func RegisterEvents() {
 	application.RegisterEvent[markeroninstance.Snapshot]("markeron:instance-state")
 	application.RegisterEvent[everything.DownloadTicket]("everything:download")
 	application.RegisterEvent[everythinginstance.Snapshot]("everything:instance-state")
+	application.RegisterEvent[ccswitchversion.DownloadProgress]("ccswitch:version-download")
+	application.RegisterEvent[ccswitchinstance.Snapshot]("ccswitch:instance-state")
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
@@ -112,6 +117,7 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		frpc.New(plat),
 		markeron.New(plat),
 		everything.New(plat),
+		ccswitch.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
