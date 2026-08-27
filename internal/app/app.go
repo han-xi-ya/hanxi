@@ -17,7 +17,11 @@ import (
 	ccswitchversion "hubkit/internal/modules/ccswitch/version"
 	"hubkit/internal/modules/everything"
 	everythinginstance "hubkit/internal/modules/everything/instance"
+	"hubkit/internal/modules/envcheck"
 	"hubkit/internal/modules/fileshare"
+	"hubkit/internal/modules/flclash"
+	flclashinstance "hubkit/internal/modules/flclash/instance"
+	flclashversion "hubkit/internal/modules/flclash/version"
 	"hubkit/internal/modules/frpc"
 	"hubkit/internal/modules/frpc/instance"
 	"hubkit/internal/modules/frpc/version"
@@ -69,6 +73,8 @@ func RegisterEvents() {
 	application.RegisterEvent[ccswitchinstance.Snapshot]("ccswitch:instance-state")
 	application.RegisterEvent[bcuversion.DownloadProgress]("bcu:version-download")
 	application.RegisterEvent[bcuinstance.Snapshot]("bcu:instance-state")
+	application.RegisterEvent[flclashversion.DownloadProgress]("flclash:version-download")
+	application.RegisterEvent[flclashinstance.Snapshot]("flclash:instance-state")
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
@@ -124,11 +130,13 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 		everything.New(plat),
 		ccswitch.New(plat),
 		bcu.New(plat),
+		flclash.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
 		publicip.New(plat),
 		wifi.New(),
+		envcheck.New(),
 		wechat.New(store),
 		fileShareModule,
 	}
@@ -152,6 +160,13 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	a := application.New(application.Options{
 		Name:        Name,
 		Description: "frpc 内网穿透开发客户端：多实例联调、局域网扫描、释放端口",
+		// 应用退出统一清理：所有已初始化模块先走 OnDestroy（托管的工具
+		// 进程被 JobObject Terminate 连根带走）。OnShutdown 阻塞至返回，
+		// 保证 FlClash/BCU 等工具不残留孤儿进程（曾因未接线此钩子导致
+		// 托盘退出后工具继续存活——"正在上网/正在卸载突然关闭"的悖论）。
+		OnShutdown: func() {
+			registry.ShutdownAll()
+		},
 		Services:    services,
 		Assets:      assets,
 		// 单实例锁: 重复启动时 Wails 以 ExitCode 静默退出第二实例,
