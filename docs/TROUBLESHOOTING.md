@@ -12,7 +12,8 @@
 4. [后端：DPAPI 凭据加密与临时配置文件生命周期](#4-后端dpapi-凭据加密与临时配置文件生命周期)
 5. [Git：规范化中文原子提交](#5-git规范化中文原子提交)
 6. [构建：UPX 压缩 Go 程序导致运行时内存暴涨](#6-构建upx-压缩-go-程序导致运行时内存暴涨)
-7. [WiFi 密码：netsh 解析三连坑（GBK 编码 / $ 行锚 / 提权输出通道）](#8-wifi-密码netsh-解析三连坑gbk-编码--行锚--提权输出通道)
+7. [WiFi 密码：netsh 解析三连坑（GBK 编码 / $ 行锚 / 提权输出通道）](#7-wifi-密码netsh-解析三连坑gbk-编码--行锚--提权输出通道)
+8. [托管 Tauri 应用：单实例互斥体契约 / GitHub digest 校验 / 关窗退出语义](#8-托管-tauri-应用单实例互斥体契约--github-digest-校验--关窗退出语义)
 
 ---
 
@@ -185,3 +186,21 @@
 - **排查过程**：单测全部走引擎直调从未经过 service 编排层，因此 CI 全绿；真机复现后按调用链 grep 各入口方法的锁首行，锁定 Search→StartBackground 重入。
 - **正确做法与标准修复方案**：凡"编排中枢"模式的 service（frpc/markeron/everything 同构），每个可能被编排方法调用的公开入口一律拆成公开带锁壳 + `xxxLocked` 无锁实现，编排方恒调用 Locked 版；在 Locked 版函数头写注释标注"controlMu 不是可重入锁，嵌套调用会死锁"，警示后来者新增编排路径时沿用约定。
 - **避坑建议**：服务层采用单一编排锁时，把「锁 + 私有无锁实现」的拆分作为模板纪律；出现"点一下就再也不动"的症状，第一时间怀疑锁重入而非网络/超时。
+
+---
+
+### 8. 托管 Tauri 应用：单实例互斥体契约 / GitHub digest 校验 / 关窗退出语义
+
+cc-switch 模块（托管 Tauri 2 应用）的三条硬核实测结论——都是"不看源码就会想当然"的坑，任何托管 Tauri 应用的模块（未来第四个托盘工具）直接沿用。
+
+- **问题现象**：托管一个没有 CLI 的 Tauri 应用时，三个问题没有现成答案：① 外部实例如何探测（不能猜注册表）；② 下载资产如何做官方级完整性校验；③ "退出"按钮拿什么做优雅退出。
+- **排查过程**（上游源码 + GitHub API 实测）：
+  1. `tauri-plugin-single-instance` 在 Windows 上的互斥体命名是 **`{identifier}-sim`**（无 `Local\` 前缀），窗口类是 `{identifier}-sic`、窗口名是 `{identifier}-siw`。`identifier` 来自 `tauri.conf.json`（cc-switch 为 `com.ccswitch.desktop`）；仅当依赖启用 `semver` feature 时名字才附加版本号（默认关，跨版本恒定）。→ 探测直接用 `OpenMutex(SYNCHRONIZE)`，与 markeron 同构。
+  2. GitHub Releases API 的资产对象自带 **`digest: "sha256:<hex>"`** 字段（官方计算）。比 Everything 官网要猜 manifest URL 强一档——sha256 校验成为下载四层完整性的第一主依据。注意 `browser_download_url` 走 github.com→release-assets.githubusercontent.com 重定向，Git Bash + 弱网下 curl 可能 DNS 失败，但 Go 的 http.Client 正常。
+  3. Tauri 的"关窗"行为由应用自己在 `on_window_event(CloseRequested)` 里决定（cc-switch 按用户设置 exit(0) 或 hide 驻托盘）→ 外部发 `WM_CLOSE` 只保证"尽力优雅"，**必须带宽限超时 + JobObject Terminate 兜底**；SQLite(WAL) + 原子写配置让进程级强杀是安全的。
+- **正确做法**：
+  - 探测 = 互斥体（构建期从上游 `Cargo.toml` + `tauri.conf.json` 确认 identifier 与 feature 开关，别猜）；
+  - 打开窗口 = 无参二次拉起 exe（单实例插件回调无条件 show+focus 主窗口，信使进程 Start+Release 不 Wait、不进 Job）；
+  - 退出 = `FindWindowW(sic, siw)` → `PostMessage(WM_CLOSE)` → 宽限轮询（2s，包级变量供单测压缩）→ JobObject 强杀兜底；`stopping` 标记必须在发消息前置位，防 wait() 误判异常退出；
+  - 便携 zip = 单 exe + `portable.ini` 标记（仅用于禁用内置 Updater，**数据目录仍是 `~/.cc-switch`，不随 exe 走**）——导入本地只需搬 exe，配置天然跨版本共享。
+- **避坑建议**：托管任何"自动更新"类上游工具前，先确认官方绿色版的 Updater 开关机制（此处 portable.ini）；`FindWindowW` 的类名/窗口名必须与插件源码一致（错一个字符静默 no-op，表现为"退出按钮毫无反应"）。
