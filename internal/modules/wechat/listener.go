@@ -27,6 +27,8 @@ type updatesResp struct {
 	ErrMsg        string          `json:"errmsg"`
 }
 
+const msgBufMax = 100
+
 // Listener 负责长轮询获取微信消息并提取/刷新 ContextToken
 type Listener struct {
 	accountID  string
@@ -36,6 +38,7 @@ type Listener struct {
 	running    atomic.Bool
 	mu         sync.Mutex
 	updatesBuf string
+	msgBuf     []InboundMessage // 有界环形缓冲，供前端重新挂载时拉取
 }
 
 func NewListener(accountID string, client *Client, store *settings.Store) *Listener {
@@ -100,11 +103,15 @@ func (l *Listener) FetchUpdatesOnce(ctx context.Context, botToken string) (strin
 		return "", fmt.Errorf("bot_token 不能为空")
 	}
 
+	l.mu.Lock()
+	buf := l.updatesBuf
+	l.mu.Unlock()
+
 	req := updatesReq{
 		BotToken:             botToken,
 		LongPollingTimeoutMs: 25000, // 给腾讯长轮询留出足够响应时间 (25s)
 		BaseInfo:             defaultBaseInfo(),
-		GetUpdatesBuf:        l.updatesBuf,
+		GetUpdatesBuf:        buf,
 	}
 
 	var resp updatesResp
@@ -118,7 +125,9 @@ func (l *Listener) FetchUpdatesOnce(ctx context.Context, botToken string) (strin
 	}
 
 	if resp.GetUpdatesBuf != "" {
+		l.mu.Lock()
 		l.updatesBuf = resp.GetUpdatesBuf
+		l.mu.Unlock()
 	}
 
 	var latestToken string
@@ -182,11 +191,15 @@ func (l *Listener) pollLoop(ctx context.Context, botToken string) {
 		default:
 		}
 
+		l.mu.Lock()
+		buf := l.updatesBuf
+		l.mu.Unlock()
+
 		req := updatesReq{
 			BotToken:             botToken,
 			LongPollingTimeoutMs: 35000,
 			BaseInfo:             defaultBaseInfo(),
-			GetUpdatesBuf:        l.updatesBuf,
+			GetUpdatesBuf:        buf,
 		}
 
 		var resp updatesResp
@@ -205,7 +218,9 @@ func (l *Listener) pollLoop(ctx context.Context, botToken string) {
 		}
 
 		if resp.GetUpdatesBuf != "" {
+			l.mu.Lock()
 			l.updatesBuf = resp.GetUpdatesBuf
+			l.mu.Unlock()
 		}
 
 		nowStr := time.Now().Format("2006-01-02 15:04:05")
@@ -270,6 +285,14 @@ func (l *Listener) dispatchInboundMsg(msg InboundRawMsg, nowStr string) {
 			app.Event.Emit("wechat:message-received", inMsg)
 		}
 
+		// 写入有界缓冲，供前端重新挂载时补取离线消息
+		l.mu.Lock()
+		l.msgBuf = append(l.msgBuf, inMsg)
+		if len(l.msgBuf) > msgBufMax {
+			l.msgBuf = l.msgBuf[len(l.msgBuf)-msgBufMax:]
+		}
+		l.mu.Unlock()
+
 		// 优先获取账号备注名称，绝不回退为冗长的 TargetUserID/FromUserID/原始 Hash
 		displayName := "微信机器人"
 		if acc, ok := l.store.GetWechatAccountByID(l.accountID); ok && acc.RemarkName != "" {
@@ -283,4 +306,16 @@ func (l *Listener) dispatchInboundMsg(msg InboundRawMsg, nowStr string) {
 
 		notify.Info("wechat", fmt.Sprintf("微信消息 (%s)", displayName), summary, "/ext/wechat")
 	}
+}
+
+// DrainMsgBuf 取走缓冲区中所有消息（消费后清空）
+func (l *Listener) DrainMsgBuf() []InboundMessage {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.msgBuf) == 0 {
+		return nil
+	}
+	out := l.msgBuf
+	l.msgBuf = nil
+	return out
 }

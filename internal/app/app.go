@@ -98,7 +98,10 @@ func New(assets application.AssetOptions) (*application.App, func()) {
 	if store != nil {
 		cfg = store.Get()
 	}
-	_, logCleanup, _ := logging.InitLogger(paths.LogsDir(), cfg.LogRetainDays)
+	_, logCleanup, err := logging.InitLogger(paths.LogsDir(), cfg.LogRetainDays)
+	if err != nil {
+		slog.Warn("failed to init logger", "err", err)
+	}
 
 	slog.Info("HubKit starting",
 		"mode", paths.Mode(),

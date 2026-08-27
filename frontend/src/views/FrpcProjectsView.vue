@@ -54,7 +54,7 @@ function projectName(id: string): string {
 
 // stripAnsi 剥离 frpc 输出的 ANSI 色码（\x1b[1;34m 等）
 function stripAnsi(s: string): string {
-  return s.replace(/ \[[\d;]*m/g, '')
+  return s.replace(/\x1b\[[\d;]*m/g, '')
 }
 
 // cleanLines 剥离色码后的日志（保留原行做样式判断）
