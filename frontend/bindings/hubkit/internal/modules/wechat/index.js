@@ -10,6 +10,10 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * @typedef {$models.AttachmentActionResult} AttachmentActionResult
+ */
+
+/**
  * InboundMessage 接收到的消息（业务实体）
  * @typedef {$models.InboundMessage} InboundMessage
  */

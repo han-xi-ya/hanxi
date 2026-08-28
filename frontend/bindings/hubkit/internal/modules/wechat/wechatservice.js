@@ -84,6 +84,15 @@ export function ListAccounts() {
 }
 
 /**
+ * OpenInboundFile 下载微信入站文件到临时目录，并用系统默认程序打开。
+ * @param {string} attachmentID
+ * @returns {$CancellablePromise<$models.AttachmentActionResult>}
+ */
+export function OpenInboundFile(attachmentID) {
+    return $Call.ByID(2698183743, attachmentID);
+}
+
+/**
  * PickFileDialog 打开系统原生文件选择对话框选择任意文件并返回真实绝对路径
  * @returns {$CancellablePromise<string>}
  */
@@ -114,6 +123,15 @@ export function RefreshAccountContextToken(accountID) {
  */
 export function RefreshContextToken() {
     return $Call.ByID(523220683);
+}
+
+/**
+ * SaveInboundFile 弹出另存为对话框并保存微信入站文件。
+ * @param {string} attachmentID
+ * @returns {$CancellablePromise<$models.AttachmentActionResult>}
+ */
+export function SaveInboundFile(attachmentID) {
+    return $Call.ByID(2263753932, attachmentID);
 }
 
 /**

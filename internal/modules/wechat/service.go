@@ -3,6 +3,8 @@ package wechat
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +17,7 @@ import (
 type WechatService struct {
 	defaultClient *Client
 	listeners     map[string]*Listener
+	attachments   *attachmentStore
 	mu            sync.RWMutex
 	store         *settings.Store
 }
@@ -30,6 +33,7 @@ func NewWechatService(store *settings.Store) *WechatService {
 	svc := &WechatService{
 		defaultClient: defaultClient,
 		listeners:     make(map[string]*Listener),
+		attachments:   newAttachmentStore(),
 		store:         store,
 	}
 
@@ -63,6 +67,7 @@ func (s *WechatService) Destroy() {
 		l.Stop()
 	}
 	s.listeners = make(map[string]*Listener)
+	s.attachments.clear()
 }
 
 // ListAccounts 获取所有账号及其运行时状态
@@ -146,6 +151,7 @@ func (s *WechatService) DeleteAccount(id string) error {
 	}
 
 	s.StopAccountListener(id)
+	s.attachments.deleteAccount(id)
 	return s.store.DeleteWechatAccount(id)
 }
 
@@ -168,7 +174,7 @@ func (s *WechatService) StartAccountListener(accountID string) error {
 	l, exists := s.listeners[accountID]
 	if !exists {
 		client := s.getClientForAccount(acc.BaseURL)
-		l = NewListener(accountID, client, s.store)
+		l = NewListener(accountID, client, s.store, s.attachments)
 		s.listeners[accountID] = l
 	}
 	s.mu.Unlock()
@@ -269,7 +275,7 @@ func (s *WechatService) RefreshAccountContextToken(accountID string) (string, er
 	l, exists := s.listeners[accountID]
 	if !exists {
 		client := s.getClientForAccount(acc.BaseURL)
-		l = NewListener(accountID, client, s.store)
+		l = NewListener(accountID, client, s.store, s.attachments)
 		s.listeners[accountID] = l
 	}
 	s.mu.Unlock()
@@ -426,6 +432,80 @@ func (s *WechatService) SendFileMessage(accountID, toUserID, filePath string) er
 	defer cancel()
 
 	return client.SendFileMessage(ctx, acc.BotToken, acc.ContextToken, toUserID, filePath)
+}
+
+// SaveInboundFile 弹出另存为对话框并保存微信入站文件。
+func (s *WechatService) SaveInboundFile(attachmentID string) (AttachmentActionResult, error) {
+	attachment, ok := s.attachments.get(attachmentID)
+	if !ok {
+		return AttachmentActionResult{}, fmt.Errorf("附件不存在或已过期")
+	}
+
+	app := application.Get()
+	if app == nil {
+		return AttachmentActionResult{}, fmt.Errorf("application instance not available")
+	}
+	dialog := app.Dialog.SaveFileWithOptions(&application.SaveFileDialogOptions{
+		Title:    "保存微信文件",
+		Filename: attachment.FileName,
+	})
+	if downloads := defaultDownloadsDir(); downloads != "" {
+		dialog.SetDirectory(downloads)
+	}
+	target, err := dialog.PromptForSingleSelection()
+	if err != nil {
+		return AttachmentActionResult{}, err
+	}
+	if strings.TrimSpace(target) == "" {
+		return AttachmentActionResult{Canceled: true}, nil
+	}
+
+	ctx, cancel := attachmentTimeout()
+	defer cancel()
+	data, err := s.getClientForAttachment(attachment).DownloadInboundFile(ctx, attachment.Media, attachment.FileSize)
+	if err != nil {
+		return AttachmentActionResult{}, err
+	}
+	if err := writeFileAtomically(target, data); err != nil {
+		return AttachmentActionResult{}, err
+	}
+	return AttachmentActionResult{Path: target}, nil
+}
+
+// OpenInboundFile 下载微信入站文件到临时目录，并用系统默认程序打开。
+func (s *WechatService) OpenInboundFile(attachmentID string) (AttachmentActionResult, error) {
+	attachment, ok := s.attachments.get(attachmentID)
+	if !ok {
+		return AttachmentActionResult{}, fmt.Errorf("附件不存在或已过期")
+	}
+
+	ctx, cancel := attachmentTimeout()
+	defer cancel()
+	data, err := s.getClientForAttachment(attachment).DownloadInboundFile(ctx, attachment.Media, attachment.FileSize)
+	if err != nil {
+		return AttachmentActionResult{}, err
+	}
+
+	dir, err := os.MkdirTemp("", "hubkit-wechat-")
+	if err != nil {
+		return AttachmentActionResult{}, fmt.Errorf("创建临时目录失败: %w", err)
+	}
+	target := filepath.Join(dir, attachment.FileName)
+	if err := writeFileAtomically(target, data); err != nil {
+		os.RemoveAll(dir)
+		return AttachmentActionResult{}, err
+	}
+	if err := openAttachmentFile(target); err != nil {
+		return AttachmentActionResult{Path: target}, fmt.Errorf("文件已下载到 %s，但打开失败: %w", target, err)
+	}
+	return AttachmentActionResult{Path: target}, nil
+}
+
+func (s *WechatService) getClientForAttachment(attachment inboundAttachment) *Client {
+	if acc, ok := s.store.GetWechatAccountByID(attachment.AccountID); ok {
+		return s.getClientForAccount(acc.BaseURL)
+	}
+	return s.defaultClient
 }
 
 // PickImageDialog 打开系统原生文件选择对话框选择图片并返回真实绝对路径

@@ -31,21 +31,23 @@ const msgBufMax = 100
 
 // Listener 负责长轮询获取微信消息并提取/刷新 ContextToken
 type Listener struct {
-	accountID  string
-	client     *Client
-	store      *settings.Store
-	cancel     context.CancelFunc
-	running    atomic.Bool
-	mu         sync.Mutex
-	updatesBuf string
-	msgBuf     []InboundMessage // 有界环形缓冲，供前端重新挂载时拉取
+	accountID   string
+	client      *Client
+	store       *settings.Store
+	attachments *attachmentStore
+	cancel      context.CancelFunc
+	running     atomic.Bool
+	mu          sync.Mutex
+	updatesBuf  string
+	msgBuf      []InboundMessage // 有界环形缓冲，供前端重新挂载时拉取
 }
 
-func NewListener(accountID string, client *Client, store *settings.Store) *Listener {
+func NewListener(accountID string, client *Client, store *settings.Store, attachments *attachmentStore) *Listener {
 	return &Listener{
-		accountID: accountID,
-		client:    client,
-		store:     store,
+		accountID:   accountID,
+		client:      client,
+		store:       store,
+		attachments: attachments,
 	}
 }
 
@@ -277,8 +279,26 @@ func (l *Listener) dispatchInboundMsg(msg InboundRawMsg, nowStr string) {
 			summary = item.TextItem.Text
 		}
 		if item.FileItem != nil {
-			inMsg.FileName = item.FileItem.FileName
-			summary = fmt.Sprintf("[文件] %s", item.FileItem.FileName)
+			inMsg.FileName = sanitizeInboundFileName(item.FileItem.FileName)
+			inMsg.FileSize = int64(item.FileItem.Len)
+			summary = fmt.Sprintf("[文件] %s", inMsg.FileName)
+			if l.attachments == nil {
+				inMsg.AttachmentError = "附件服务未初始化"
+			} else if attachmentID, err := l.attachments.register(l.accountID, *item.FileItem); err != nil {
+				inMsg.AttachmentError = err.Error()
+				slog.Warn("wechat inbound file is not downloadable",
+					"accountId", l.accountID,
+					"fileName", inMsg.FileName,
+					"fileSize", inMsg.FileSize,
+					"encryptType", item.FileItem.Media.EncryptType,
+					"queryLength", len(item.FileItem.Media.EncryptQueryParam),
+					"aesKeyLength", len(item.FileItem.Media.AESKey),
+					"err", err,
+				)
+			} else {
+				inMsg.AttachmentID = attachmentID
+				inMsg.Downloadable = true
+			}
 		}
 
 		if app := application.Get(); app != nil && app.Event != nil {

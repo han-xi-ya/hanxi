@@ -30,6 +30,10 @@ export interface ChatMessage {
   content: string
   filePath?: string
   fileName?: string
+  fileSize?: number
+  attachmentId?: string
+  downloadable?: boolean
+  attachmentError?: string
   status?: 'sending' | 'sent' | 'failed'
   error?: string
 }
@@ -41,6 +45,7 @@ const messageContainer = ref<HTMLDivElement | null>(null)
 // 输入框与发送状态
 const inputText = ref('')
 const isSending = ref(false)
+const attachmentAction = ref<Record<string, 'opening' | 'saving' | undefined>>({})
 const toUserIdInput = ref('')
 const isEditingTargetUser = ref(false)
 
@@ -491,6 +496,30 @@ async function handleSendFile() {
   }
 }
 
+async function handleInboundFileAction(msg: ChatMessage, action: 'open' | 'save') {
+  if (!msg.attachmentId || !msg.downloadable || attachmentAction.value[msg.attachmentId]) return
+  attachmentAction.value[msg.attachmentId] = action === 'open' ? 'opening' : 'saving'
+  try {
+    const result = action === 'open'
+      ? await WechatAPI.WechatService.OpenInboundFile(msg.attachmentId)
+      : await WechatAPI.WechatService.SaveInboundFile(msg.attachmentId)
+    if (!result?.canceled) {
+      showToast(action === 'open' ? '文件已打开' : `文件已保存到 ${result?.path || ''}`)
+    }
+  } catch (err: unknown) {
+    showToast(`${action === 'open' ? '打开' : '保存'}文件失败: ${getErrorMessage(err)}`)
+  } finally {
+    attachmentAction.value[msg.attachmentId] = undefined
+  }
+}
+
+function formatFileSize(size?: number): string {
+  if (!size || size <= 0) return '微信接收附件'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
 // 键盘快捷键处理 (Enter 发送，Shift+Enter 换行)
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -545,7 +574,11 @@ onMounted(async () => {
           msgType,
           senderName: msg.from,
           content,
-          fileName: msg.fileName
+          fileName: msg.fileName,
+          fileSize: msg.fileSize,
+          attachmentId: msg.attachmentId,
+          downloadable: msg.downloadable,
+          attachmentError: msg.attachmentError
         })
       }
     } catch { /* 静默，不影响主流程 */ }
@@ -592,7 +625,11 @@ onMounted(async () => {
         msgType,
         senderName: msg.from,
         content,
-        fileName: msg.fileName
+        fileName: msg.fileName,
+        fileSize: msg.fileSize,
+        attachmentId: msg.attachmentId,
+        downloadable: msg.downloadable,
+        attachmentError: msg.attachmentError
       })
     }
   })
@@ -821,11 +858,29 @@ onUnmounted(() => {
                       <p class="bubble-text">{{ msg.content }}</p>
                     </template>
                     <template v-else-if="msg.msgType === 'file'">
-                      <div class="file-card-preview">
+                      <div class="file-card-preview inbound-file-card">
                         <span class="file-icon-box">📁</span>
                         <div class="file-info-group">
                           <span class="file-main-name">{{ msg.fileName || '微信文件' }}</span>
-                          <span class="file-sub-type">微信接收附件</span>
+                          <span class="file-sub-type" :title="msg.attachmentError">
+                            {{ msg.downloadable ? formatFileSize(msg.fileSize) : (msg.attachmentError || '附件不可用') }}
+                          </span>
+                        </div>
+                        <div class="file-actions">
+                          <button
+                            class="file-action-btn"
+                            :disabled="!msg.downloadable || !msg.attachmentId || !!attachmentAction[msg.attachmentId || '']"
+                            @click="handleInboundFileAction(msg, 'open')"
+                          >
+                            {{ attachmentAction[msg.attachmentId || ''] === 'opening' ? '打开中…' : '打开' }}
+                          </button>
+                          <button
+                            class="file-action-btn"
+                            :disabled="!msg.downloadable || !msg.attachmentId || !!attachmentAction[msg.attachmentId || '']"
+                            @click="handleInboundFileAction(msg, 'save')"
+                          >
+                            {{ attachmentAction[msg.attachmentId || ''] === 'saving' ? '保存中…' : '保存' }}
+                          </button>
                         </div>
                       </div>
                     </template>
@@ -1702,6 +1757,36 @@ onUnmounted(() => {
 
 .file-card-preview.out {
   background: rgba(0, 0, 0, 0.06);
+}
+
+.inbound-file-card {
+  min-width: 310px;
+}
+
+.file-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.file-action-btn {
+  border: 1px solid var(--border-color, #d0d7de);
+  background: var(--bg-main, #fff);
+  color: var(--text-main, #24292f);
+  border-radius: 5px;
+  padding: 4px 9px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.file-action-btn:hover:not(:disabled) {
+  border-color: #07c160;
+  color: #07883f;
+}
+
+.file-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .file-icon-box {

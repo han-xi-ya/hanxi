@@ -1,5 +1,12 @@
 package wechat
 
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"strconv"
+)
+
 // QRInfo 微信登录二维码信息
 type QRInfo struct {
 	QRCode    string `json:"qrcode"`
@@ -52,15 +59,24 @@ type SendMessageReq struct {
 	FilePath  string `json:"filePath,omitempty"`
 }
 
+type AttachmentActionResult struct {
+	Path     string `json:"path,omitempty"`
+	Canceled bool   `json:"canceled,omitempty"`
+}
+
 // InboundMessage 接收到的消息（业务实体）
 type InboundMessage struct {
-	AccountID string `json:"accountId"`
-	From      string `json:"from"`
-	Type      int    `json:"type"` // 1: Text, 2: Image, 3: Voice, 4: File, 5: Video
-	Text      string `json:"text,omitempty"`
-	MediaPath string `json:"mediaPath,omitempty"`
-	FileName  string `json:"fileName,omitempty"`
-	Time      string `json:"time"`
+	AccountID       string `json:"accountId"`
+	From            string `json:"from"`
+	Type            int    `json:"type"` // 1: Text, 2: Image, 3: Voice, 4: File, 5: Video
+	Text            string `json:"text,omitempty"`
+	MediaPath       string `json:"mediaPath,omitempty"`
+	FileName        string `json:"fileName,omitempty"`
+	FileSize        int64  `json:"fileSize,omitempty"`
+	AttachmentID    string `json:"attachmentId,omitempty"`
+	Downloadable    bool   `json:"downloadable,omitempty"`
+	AttachmentError string `json:"attachmentError,omitempty"`
+	Time            string `json:"time"`
 }
 
 // InboundTextPayload 文本消息载荷
@@ -70,15 +86,48 @@ type InboundTextPayload struct {
 
 // InboundMediaPayload 媒体资源载荷
 type InboundMediaPayload struct {
-	Media struct {
-		EncryptQueryParam string `json:"encrypt_query_param"`
-		AESKey            string `json:"aes_key"`
-	} `json:"media"`
+	Media InboundMedia `json:"media"`
+}
+
+// InboundMedia 微信媒体下载凭据（仅后端使用，不透传前端）
+type InboundMedia struct {
+	EncryptQueryParam string `json:"encrypt_query_param"`
+	AESKey            string `json:"aes_key"`
+	EncryptType       int    `json:"encrypt_type"`
+}
+
+// InboundFileSize 兼容微信将文件长度编码为 JSON 字符串或整数。
+type InboundFileSize int64
+
+func (s *InboundFileSize) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		*s = 0
+		return nil
+	}
+
+	var text string
+	if data[0] == '"' {
+		if err := json.Unmarshal(data, &text); err != nil {
+			return fmt.Errorf("parse file size string: %w", err)
+		}
+	} else {
+		text = string(data)
+	}
+
+	value, err := strconv.ParseInt(text, 10, 64)
+	if err != nil || value < 0 {
+		return fmt.Errorf("invalid file size %q", text)
+	}
+	*s = InboundFileSize(value)
+	return nil
 }
 
 // InboundFilePayload 文件消息载荷
 type InboundFilePayload struct {
-	FileName string `json:"file_name"`
+	Media    InboundMedia    `json:"media"`
+	FileName string          `json:"file_name"`
+	Len      InboundFileSize `json:"len"`
 }
 
 // InboundRawItem 原始单条消息元素
@@ -96,4 +145,3 @@ type InboundRawMsg struct {
 	ContextToken string           `json:"context_token"`
 	ItemList     []InboundRawItem `json:"item_list"`
 }
-
