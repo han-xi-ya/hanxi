@@ -32,3 +32,17 @@ func TestFileVersionRealPE(t *testing.T) {
 		t.Errorf("版本字符串格式异常: %q", v)
 	}
 }
+
+func TestProductNameRealPE(t *testing.T) {
+	exe := filepath.Join(os.Getenv("WINDIR"), "System32", "notepad.exe")
+	if _, err := os.Stat(exe); err != nil {
+		t.Skipf("系统无 notepad.exe: %v", err)
+	}
+	name, err := ProductName(exe)
+	if err != nil {
+		t.Fatalf("ProductName(notepad.exe): %v", err)
+	}
+	if strings.TrimSpace(name) == "" {
+		t.Error("ProductName 不应为空")
+	}
+}

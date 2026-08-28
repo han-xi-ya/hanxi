@@ -21,10 +21,13 @@ var (
 	procVQV    = modVersion.NewProc("VerQueryValueW")
 )
 
-// FileVersion 读取 PE 文件的字符串 FileVersion（如 "3.20.0"）。
-// 必须走 StringFileInfo 字符串表而非 VS_FIXEDFILEINFO 数值——
-// alpha 修订后缀（1422b 的 b）只能由字符串表示，数值型只有 4×16bit 段。
-func FileVersion(path string) (string, error) {
+// StringValue 读取 PE 文件 StringFileInfo 中的指定字符串字段。
+// 常用字段包括 FileVersion、ProductName；必须走字符串表而非 VS_FIXEDFILEINFO，
+// 因为版本后缀等信息只能由字符串值完整表达。
+func StringValue(path, key string) (string, error) {
+	if key == "" {
+		return "", fmt.Errorf("版本资源字段不能为空")
+	}
 	p, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return "", err
@@ -57,7 +60,7 @@ func FileVersion(path string) (string, error) {
 		return "", win32Err("VerQueryValueW(Translation)", e1)
 	}
 	pairs := unsafe.Slice((*uint16)(transPtr), 4/2)
-	subBlock, err := syscall.UTF16PtrFromString(fmt.Sprintf(`\StringFileInfo\%04X%04X\FileVersion`, pairs[0], pairs[1]))
+	subBlock, err := syscall.UTF16PtrFromString(fmt.Sprintf(`\StringFileInfo\%04X%04X\%s`, pairs[0], pairs[1], key))
 	if err != nil {
 		return "", err
 	}
@@ -81,6 +84,16 @@ func FileVersion(path string) (string, error) {
 	maxUnits := min(avail/2, 512) // 版本字符串不可能超长，防御性封顶
 	units := unsafe.Slice((*uint16)(valPtr), maxUnits)
 	return windows.UTF16ToString(units), nil
+}
+
+// FileVersion 读取 PE 文件的字符串 FileVersion（如 "3.20.0"）。
+func FileVersion(path string) (string, error) {
+	return StringValue(path, "FileVersion")
+}
+
+// ProductName 读取 PE 文件的字符串 ProductName。
+func ProductName(path string) (string, error) {
+	return StringValue(path, "ProductName")
 }
 
 func win32Err(api string, e1 error) error {
