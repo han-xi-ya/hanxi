@@ -58,6 +58,12 @@ import type * as version$5 from "../../../../../hubkit/internal/modules/markeron
 import type * as portscan$0 from "../../../../../hubkit/internal/modules/portscan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as instance$7 from "../../../../../hubkit/internal/modules/snipaste/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$6 from "../../../../../hubkit/internal/modules/snipaste/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as wechat$0 from "../../../../../hubkit/internal/modules/wechat/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -89,6 +95,8 @@ declare module "@wailsio/runtime" {
             "memo:changed": void;
             "notify:received": notify$0.Notification;
             "portscan:progress": portscan$0.ScanProgress;
+            "snipaste:instance-state": instance$7.Snapshot;
+            "snipaste:version-download": version$6.DownloadProgress;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
         }

@@ -36,6 +36,9 @@ import (
 	"hubkit/internal/modules/portkill"
 	"hubkit/internal/modules/portscan"
 	"hubkit/internal/modules/publicip"
+	"hubkit/internal/modules/snipaste"
+	snipasteinstance "hubkit/internal/modules/snipaste/instance"
+	snipasteversion "hubkit/internal/modules/snipaste/version"
 	"hubkit/internal/modules/wechat"
 	"hubkit/internal/modules/wifi"
 	"hubkit/internal/notify"
@@ -74,6 +77,8 @@ func RegisterEvents() {
 	application.RegisterEvent[everythinginstance.Snapshot]("everything:instance-state")
 	application.RegisterEvent[ccswitchversion.DownloadProgress]("ccswitch:version-download")
 	application.RegisterEvent[ccswitchinstance.Snapshot]("ccswitch:instance-state")
+	application.RegisterEvent[snipasteversion.DownloadProgress]("snipaste:version-download")
+	application.RegisterEvent[snipasteinstance.Snapshot]("snipaste:instance-state")
 	application.RegisterEvent[mangodiskversion.DownloadProgress]("mangodisk:version-download")
 	application.RegisterEvent[mangodiskinstance.Snapshot]("mangodisk:instance-state")
 	application.RegisterEvent[bcuversion.DownloadProgress]("bcu:version-download")
@@ -144,6 +149,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		markeron.New(plat),
 		everything.New(plat),
 		ccswitch.New(plat),
+		snipaste.New(plat),
 		mangodisk.New(plat),
 		bcu.New(plat),
 		flclash.New(plat),
@@ -176,10 +182,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	a := application.New(application.Options{
 		Name:        Name,
 		Description: "frpc 内网穿透开发客户端：多实例联调、局域网扫描、释放端口",
-		// 应用退出统一清理：所有已初始化模块先走 OnDestroy（托管的工具
-		// 进程被 JobObject Terminate 连根带走）。OnShutdown 阻塞至返回，
-		// 保证 FlClash/BCU 等工具不残留孤儿进程（曾因未接线此钩子导致
-		// 托盘退出后工具继续存活——"正在上网/正在卸载突然关闭"的悖论）。
+		// 应用退出统一清理：所有已初始化模块先走 OnDestroy。JobObject 托管工具
+		// 会连带退出；Snipaste 等明确脱管的桌面工具由模块契约保留原生托盘与快捷键。
+		// OnShutdown 阻塞至返回，保证需要回收的工具不残留孤儿进程。
 		OnShutdown: func() {
 			registry.ShutdownAll()
 		},

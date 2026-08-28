@@ -33,6 +33,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   markeron: { icon: '✎', route: '/ext/markeron' },
   everything: { icon: '🔎', route: '/ext/everything' },
   ccswitch: { icon: '🔀', route: '/ext/ccswitch' },
+  snipaste: { icon: '✂', route: '/ext/snipaste' },
   mangodisk: { icon: '🥭', route: '/ext/mangodisk' },
   bcu: { icon: '🧹', route: '/ext/bcu' },
   flclash: { icon: '⚡', route: '/ext/flclash' },
