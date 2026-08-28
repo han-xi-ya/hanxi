@@ -43,10 +43,16 @@ import type * as version$3 from "../../../../../hubkit/internal/modules/frpc/ver
 import type * as lan$0 from "../../../../../hubkit/internal/modules/lan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$5 from "../../../../../hubkit/internal/modules/markeron/instance/models.js";
+import type * as instance$5 from "../../../../../hubkit/internal/modules/mangodisk/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$4 from "../../../../../hubkit/internal/modules/markeron/version/models.js";
+import type * as version$4 from "../../../../../hubkit/internal/modules/mangodisk/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as instance$6 from "../../../../../hubkit/internal/modules/markeron/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$5 from "../../../../../hubkit/internal/modules/markeron/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as portscan$0 from "../../../../../hubkit/internal/modules/portscan/models.js";
@@ -76,8 +82,10 @@ declare module "@wailsio/runtime" {
             "frpc:instance-state": instance$4.Snapshot;
             "frpc:version-download": version$3.DownloadProgress;
             "lan:progress": lan$0.LanProgress;
-            "markeron:instance-state": instance$5.Snapshot;
-            "markeron:version-download": version$4.DownloadProgress;
+            "mangodisk:instance-state": instance$5.Snapshot;
+            "mangodisk:version-download": version$4.DownloadProgress;
+            "markeron:instance-state": instance$6.Snapshot;
+            "markeron:version-download": version$5.DownloadProgress;
             "memo:changed": void;
             "notify:received": notify$0.Notification;
             "portscan:progress": portscan$0.ScanProgress;
