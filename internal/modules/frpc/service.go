@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -27,7 +29,7 @@ type FrpcService struct {
 	store   *frpcStore
 	engine  *instance.Manager
 
-	runDir     string // 实例配置落盘目录（RuntimeDir）
+	runDir     string     // 实例配置落盘目录（RuntimeDir）
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 }
 
@@ -89,6 +91,51 @@ func (s *FrpcService) ListReleases() ([]version.FrpRelease, error) {
 // ListInstalledVersions 获取本地已安装版本列表
 func (s *FrpcService) ListInstalledVersions() ([]version.FrpVersionInfo, error) {
 	return s.manager.ListInstalled()
+}
+
+// OpenDir 在系统文件管理器中打开 frpc.exe 所在目录。
+func (s *FrpcService) OpenDir(exePath string) error {
+	dir, err := resolveExeDir(exePath)
+	if err != nil {
+		return err
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer.exe", dir)
+	case "darwin":
+		cmd = exec.Command("open", dir)
+	default:
+		cmd = exec.Command("xdg-open", dir)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("打开 frpc 所在目录失败: %w", err)
+	}
+	return nil
+}
+
+func resolveExeDir(exePath string) (string, error) {
+	exePath = strings.TrimSpace(exePath)
+	if exePath == "" {
+		return "", fmt.Errorf("frpc 可执行文件路径不能为空")
+	}
+
+	exePath = filepath.Clean(exePath)
+	info, err := os.Stat(exePath)
+	if err != nil {
+		return "", fmt.Errorf("frpc 可执行文件不存在或不可访问: %s", exePath)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("目标不是 frpc 可执行文件: %s", exePath)
+	}
+
+	dir := filepath.Dir(exePath)
+	dirInfo, err := os.Stat(dir)
+	if err != nil || !dirInfo.IsDir() {
+		return "", fmt.Errorf("frpc 所在目录不存在或不可访问: %s", dir)
+	}
+	return dir, nil
 }
 
 // DownloadVersion 后台下载指定版本：立即返回，全程经由事件 frpc:version-download 推送进度。

@@ -109,6 +109,15 @@ export function ListReleases() {
 }
 
 /**
+ * OpenDir 在系统文件管理器中打开 frpc.exe 所在目录。
+ * @param {string} exePath
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenDir(exePath) {
+    return $Call.ByID(842829545, exePath);
+}
+
+/**
  * ParseToml 从用户粘贴/导入的 frp TOML 配置解析回领域模型（兼容 v1.x 与 v0.x 格式）
  * @param {string} content
  * @returns {$CancellablePromise<domain$0.Project>}

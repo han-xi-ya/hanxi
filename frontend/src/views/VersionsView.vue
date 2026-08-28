@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservice'
-import * as AppAPI from '../../bindings/hubkit/internal/app'
 import type { FrpRelease, FrpVersionInfo, DownloadProgress } from '../../bindings/hubkit/internal/modules/frpc/version/models'
 
 const releases = ref<FrpRelease[]>([])
@@ -104,9 +103,9 @@ async function importLocal() {
 
 async function openExeFolder(path: string) {
   try {
-    await AppAPI.AppService.OpenPath(path)
+    await FrpcAPI.OpenDir(path)
   } catch (e: any) {
-    showToast(`打开目录失败: ${e?.message ?? e}`)
+    showToast(`打开所在目录失败: ${e?.message ?? e}`)
   }
 }
 
@@ -218,10 +217,10 @@ onUnmounted(() => {
               <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
             </td>
             <td>
-              <span v-if="statusOf(rel) === 'installed'" class="status-dot installed">已安装</span>
-              <span v-else-if="statusOf(rel) === 'downloading'" class="status-dot downloading">下载中</span>
-              <span v-else-if="statusOf(rel) === 'error'" class="status-dot error">失败</span>
-              <span v-else class="status-dot idle">可安装</span>
+              <span v-if="statusOf(rel) === 'installed'" class="frpc-version-status installed">已安装</span>
+              <span v-else-if="statusOf(rel) === 'downloading'" class="frpc-version-status downloading">下载中</span>
+              <span v-else-if="statusOf(rel) === 'error'" class="frpc-version-status error">失败</span>
+              <span v-else class="frpc-version-status idle">可安装</span>
             </td>
             <td>{{ fmtSize(rel.size) }}</td>
             <td>{{ fmtDate(rel.published) }}</td>
@@ -316,11 +315,12 @@ onUnmounted(() => {
 .tbl tr:last-child td { border-bottom: none; }
 .ver-name { font-family: Consolas, monospace; }
 
-.status-dot { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
-.status-dot.installed { background: #dafbe1; color: var(--success); }
-.status-dot.downloading { background: #ddf4ff; color: #0969da; }
-.status-dot.error { background: #ffebe9; color: var(--danger); }
-.status-dot.idle { background: var(--bg-hover); color: var(--text-muted); }
+.frpc-version-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+.frpc-version-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 7px; }
+.frpc-version-status.installed::before { background: var(--success); }
+.frpc-version-status.downloading::before { background: #0969da; }
+.frpc-version-status.error::before { background: var(--danger); }
+.frpc-version-status.idle::before { background: var(--text-subtle); }
 
 .download-cell { display: flex; align-items: center; gap: 8px; min-width: 150px; }
 .dl-bar-wrap { flex: 1; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
