@@ -1,575 +1,126 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>HubKit 局域网快传站</title>
-  <style>
-    :root {
-      --bg: #0d1117;
-      --card-bg: #161b22;
-      --card-hover: #1c2128;
-      --border: #30363d;
-      --text: #e6edf3;
-      --text-muted: #8b949e;
-      --primary: #238636;
-      --primary-hover: #2ea043;
-      --accent: #58a6ff;
-      --danger: #f85149;
-      --toast-bg: rgba(22, 27, 34, 0.95);
-      --toast-border: #30363d;
-      --radius: 8px;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #f6f8fa;
-        --card-bg: #ffffff;
-        --card-hover: #f3f4f6;
-        --border: #d0d7de;
-        --text: #1f2328;
-        --text-muted: #656d76;
-        --primary: #1f883d;
-        --primary-hover: #1a7f37;
-        --accent: #0969da;
-        --danger: #cf222e;
-        --toast-bg: rgba(255, 255, 255, 0.96);
-        --toast-border: #d0d7de;
-      }
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: var(--font); }
-    body { background-color: var(--bg); color: var(--text); padding: 16px; line-height: 1.5; min-height: 100vh; }
-    .container { max-width: 900px; margin: 0 auto; }
-    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
-    .brand { display: flex; align-items: center; gap: 10px; font-size: 1.25rem; font-weight: 600; }
-    .badge { font-size: 0.75rem; background: var(--border); padding: 2px 8px; border-radius: 12px; color: var(--text-muted); }
-
-    /* 实时传输统计条 */
-    .stats-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; font-size: 0.8rem; color: var(--text-muted); padding: 8px 14px; margin-bottom: 16px; background: rgba(127,127,127,0.07); border: 1px solid rgba(127,127,127,0.14); border-radius: var(--radius); }
-    .stats-bar .stat { display: inline-flex; align-items: center; gap: 5px; }
-    .stats-bar .val { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--text); font-weight: 600; }
-    .stats-bar .up { color: #10b981; }
-    .stats-bar .down { color: #3b82f6; }
-    .stats-bar .dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 6px var(--primary); animation: pulse 1.2s ease-in-out infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-
-    /* 路径导航 */
-    .breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.9rem; margin-bottom: 12px; padding: 6px 12px; background: rgba(127,127,127,0.08); border-radius: var(--radius); }
-    .crumb-item { color: var(--accent); cursor: pointer; text-decoration: none; }
-    .crumb-item:hover { text-decoration: underline; }
-    .crumb-sep { color: var(--text-muted); }
-
-    /* 文件列表 */
-    .file-list { display: flex; flex-direction: column; gap: 6px; }
-    .file-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: var(--radius); border: 1px solid transparent; background: rgba(127,127,127,0.03); transition: all 0.2s; }
-    .file-item:hover { background: var(--card-hover); border-color: var(--border); }
-    .file-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
-    .file-icon { font-size: 1.25rem; flex-shrink: 0; }
-    .file-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-    .file-name.is-dir { color: var(--accent); font-weight: 600; }
-    .file-meta { font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 12px; flex-shrink: 0; align-items: center; }
-
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--card-bg); color: var(--text); font-size: 0.85rem; font-weight: 500; cursor: pointer; text-decoration: none; transition: background 0.15s; }
-    .btn:hover { background: var(--card-hover); }
-    .btn-primary { background: var(--primary); color: #fff; border-color: transparent; }
-    .btn-primary:hover { background: var(--primary-hover); }
-    .btn-danger { background: #da3633; color: #fff; border-color: transparent; }
-    .btn-danger:hover { background: #b62324; }
-    .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
-
-    /* 投递面板 & 上传面板 */
-    .dropzone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 24px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
-    .dropzone.dragover { border-color: var(--accent); background: rgba(88,166,255,0.08); }
-    .input-textarea { width: 100%; min-height: 80px; padding: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 0.9rem; resize: vertical; margin-bottom: 8px; }
-    .input-textarea:focus { outline: none; border-color: var(--accent); }
-
-    .progress-bar { width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 10px; display: none; }
-    .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s; }
-
-    .empty-tip { text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.9rem; }
-    .hidden { display: none !important; }
-
-    /* 全局轻量 Toast 提示 */
-    .toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-    .toast { background: var(--toast-bg); backdrop-filter: blur(8px); border: 1px solid var(--toast-border); color: var(--text); padding: 10px 18px; border-radius: var(--radius); font-size: 0.85rem; box-shadow: 0 6px 16px rgba(0,0,0,0.25); animation: toastIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; }
-    .toast.toast-success { border-color: var(--primary); }
-    .toast.toast-error { border-color: var(--danger); color: var(--danger); box-shadow: 0 6px 16px rgba(207, 34, 46, 0.15); }
-    @keyframes toastIn { from { opacity: 0; transform: translateY(-8px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f3f7f8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#071318" media="(prefers-color-scheme: dark)">
+  <title>HubKit 快传</title>
+  <link rel="stylesheet" href="/assets/app.css">
+  <script type="module" src="/assets/js/app.js"></script>
 </head>
 <body>
-  <div class="toast-container" id="toastContainer"></div>
-  <div class="container">
-    <header>
-      <div class="brand">
-        <span>📁 HubKit 快传</span>
-        <span class="badge" id="connStatus">局域网直连</span>
-      </div>
-      <div id="authArea">
-        <button class="btn btn-sm" onclick="refreshList()">🔄 刷新</button>
+  <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="HubKit 快传首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M7 7h10M14 4l3 3-3 3M17 17H7M10 14l-3 3 3 3"/></svg>
+        </span>
+        <span>
+          <strong>HubKit 快传</strong>
+          <small>局域网文件与文本工作台</small>
+        </span>
+      </a>
+      <div class="topbar-actions">
+        <span id="connectionBadge" class="connection-badge">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="connectionText">局域网直连</span>
+        </span>
+        <button id="refreshButton" class="button button-secondary" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>
+          刷新文件
+        </button>
       </div>
     </header>
 
-    <!-- 实时传输统计 -->
-    <div class="stats-bar" id="statsBar">
-      <span class="stat"><span class="dot-live"></span> 活跃连接 <span class="val" id="statConn">0</span></span>
-      <span class="stat">上传速度 <span class="val up" id="statUpRate">0 B/s</span></span>
-      <span class="stat">下载速度 <span class="val down" id="statDownRate">0 B/s</span></span>
-      <span class="stat">累计上传 <span class="val up" id="statUpBytes">0 B</span></span>
-      <span class="stat">累计下载 <span class="val down" id="statDownBytes">0 B</span></span>
-      <span class="stat">上传/下载文件 <span class="val" id="statCounts">0 / 0</span></span>
-    </div>
+    <main>
+      <section id="statsRegion" class="stats-grid" aria-label="实时传输概览">
+        <article class="stat-card stat-card-primary">
+          <span class="stat-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </span>
+          <div><span class="stat-label">活跃连接</span><strong id="statConn" class="stat-value">0</strong><small id="statsStatus">实时在线</small></div>
+        </article>
+        <article class="stat-card">
+          <span class="stat-icon stat-icon-cyan" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8 4v16M4 8l4-4 4 4M16 20V4M12 16l4 4 4-4"/></svg>
+          </span>
+          <div><span class="stat-label">当前速率</span><strong class="stat-value stat-pair"><span id="statUpRate" class="upload-color">↑ 0 B/s</span><span id="statDownRate" class="download-color">↓ 0 B/s</span></strong><small>上传 / 下载</small></div>
+        </article>
+        <article class="stat-card">
+          <span class="stat-icon stat-icon-blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 17l5-5 4 4 7-8M16 8h4v4"/></svg>
+          </span>
+          <div><span class="stat-label">累计流量</span><strong class="stat-value stat-pair"><span id="statUpBytes" class="upload-color">↑ 0 B</span><span id="statDownBytes" class="download-color">↓ 0 B</span></strong><small>本次服务会话</small></div>
+        </article>
+        <article class="stat-card">
+          <span class="stat-icon stat-icon-violet" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16v12H4zM8 3h8v4M8 12h8"/></svg>
+          </span>
+          <div><span class="stat-label">完成文件</span><strong id="statCounts" class="stat-value">0 / 0</strong><small>上传 / 下载</small></div>
+        </article>
+      </section>
 
-    <!-- 文本/链接极速投递 -->
-    <div class="card" id="textDropCard">
-      <div class="card-title">
-        <span>💬 极速投递文本/链接至电脑</span>
-      </div>
-      <textarea
-        id="dropContent"
-        class="input-textarea"
-        placeholder="粘贴文本、命令、URL 或代码片段，点击发送直达电脑... (支持快捷键 Ctrl+Enter 发送)"
-        onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){submitTextDrop(event);event.preventDefault();}"
-      ></textarea>
-      <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <button id="btnDropSubmit" class="btn btn-primary btn-sm" onclick="submitTextDrop(event)">🚀 发送投递</button>
-      </div>
-    </div>
+      <section id="actionsGrid" class="actions-grid" aria-label="快捷传输操作">
+        <article id="textDropCard" class="panel action-panel">
+          <div class="panel-heading">
+            <span class="panel-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 4zM8 9h8M8 13h5"/></svg></span>
+            <div><h2>投递文本或链接</h2><p>发送到电脑端投递箱，可粘贴命令、网址和代码片段。</p></div>
+          </div>
+          <label class="sr-only" for="dropContent">要发送的文本或链接</label>
+          <textarea id="dropContent" class="textarea" placeholder="输入或粘贴内容…"></textarea>
+          <div class="panel-footer">
+            <span class="shortcut-hint"><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd></span>
+            <button id="dropSubmitButton" class="button button-primary" type="button">发送到电脑</button>
+          </div>
+        </article>
 
-    <!-- 上传区域 (受控显示) -->
-    <div class="card" id="uploadCard">
-      <div class="card-title">
-        <span>⬆️ 上传文件到当前目录</span>
-      </div>
-      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-        <p>📂 点击选择文件，或将文件拖拽至此处</p>
-        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">支持批量上传与超大文件流式传输</p>
-      </div>
-      <input type="file" id="fileInput" multiple style="display: none;" onchange="handleFileSelect(event)">
-      <div class="progress-bar" id="progressBar">
-        <div class="progress-fill" id="progressFill"></div>
-      </div>
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px;">
-        <button id="btnCancelUpload" class="btn btn-danger btn-sm hidden" onclick="cancelUpload()">⛔ 取消上传</button>
-        <div id="uploadStatus" style="font-size: 0.8rem; color: var(--text-muted); text-align: right; flex: 1;"></div>
-      </div>
-    </div>
+        <article id="uploadCard" class="panel action-panel">
+          <div class="panel-heading">
+            <span class="panel-icon panel-icon-upload" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span>
+            <div><h2>上传到当前目录</h2><p id="uploadTarget">目标：根目录</p></div>
+          </div>
+          <label id="dropzone" class="dropzone" for="fileInput">
+            <input id="fileInput" class="visually-hidden-input" type="file" multiple>
+            <span class="dropzone-visual" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3zM12 17v-6M9 14l3-3 3 3"/></svg></span>
+            <strong>选择文件上传</strong>
+            <span>桌面端也可以拖放文件到这里</span>
+          </label>
+          <div id="uploadTask" class="upload-task hidden" aria-live="polite">
+            <div class="upload-task-heading"><strong id="uploadFileName">准备上传</strong><span id="uploadPercent">0%</span></div>
+            <div id="uploadProgress" class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="uploadProgressFill"></span></div>
+            <div class="upload-task-meta"><span id="uploadStatus">等待开始</span><span id="uploadSummary"></span></div>
+          </div>
+          <div class="panel-footer upload-footer">
+            <span id="uploadLimit" class="helper-text">支持批量与超大文件流式上传</span>
+            <button id="cancelUploadButton" class="button button-danger hidden" type="button">取消上传</button>
+          </div>
+        </article>
+      </section>
 
-    <!-- 文件浏览器 -->
-    <div class="card">
-      <div class="card-title">
-        <span>📂 文件列表</span>
-      </div>
-      <div class="breadcrumb" id="breadcrumb"></div>
-      <div class="file-list" id="fileList">
-        <div class="empty-tip">正在加载文件...</div>
-      </div>
-    </div>
+      <section class="panel browser-panel" aria-labelledby="browserTitle">
+        <div class="browser-heading">
+          <div class="panel-heading compact-heading">
+            <span class="panel-icon panel-icon-folder" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z"/></svg></span>
+            <div><h2 id="browserTitle">共享文件</h2><p>点击文件预览，或直接下载到当前设备。</p></div>
+          </div>
+          <span id="itemCount" class="count-badge">加载中</span>
+        </div>
+        <nav id="breadcrumb" class="breadcrumb" aria-label="当前目录"></nav>
+        <div id="fileList" class="file-list" aria-live="polite">
+          <div class="state-message"><span class="spinner" aria-hidden="true"></span><strong>正在加载文件</strong></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <span>设备需连接同一局域网</span>
+      <span aria-hidden="true">·</span>
+      <span>传输内容仅在本地网络中流转</span>
+    </footer>
   </div>
-
-  <script>
-    let currentPath = '';
-    let serverConfig = { allowUpload: true, allowTextDrop: true };
-
-    async function init() {
-      setupDropzone();
-      await fetchConfig();
-      await loadDirectory('');
-      refreshStats();
-      setInterval(refreshStats, 2000);
-    }
-
-    // 实时传输统计轮询 (活跃连接 / 实时速度 / 累计流量)
-    async function refreshStats() {
-      try {
-        const res = await fetch('/api/stats');
-        if (!res.ok) throw new Error(res.statusText);
-        const s = await res.json();
-        document.getElementById('statsBar').style.opacity = '1';
-        document.getElementById('statConn').innerText = s.activeConnections;
-        document.getElementById('statUpRate').innerText = formatSpeed(s.uploadRate);
-        document.getElementById('statDownRate').innerText = formatSpeed(s.downloadRate);
-        document.getElementById('statUpBytes').innerText = formatBytes(s.uploadBytes);
-        document.getElementById('statDownBytes').innerText = formatBytes(s.downloadBytes);
-        document.getElementById('statCounts').innerText = `${s.uploadCount} / ${s.downloadCount}`;
-      } catch (e) {
-        document.getElementById('statsBar').style.opacity = '0.4';
-      }
-    }
-
-    function formatBytes(bytes) {
-      if (!bytes || bytes <= 0) return '0 B';
-      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-      const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-      const v = bytes / Math.pow(1024, i);
-      return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i];
-    }
-
-    function formatSpeed(bps) {
-      return formatBytes(bps) + '/s';
-    }
-
-    async function fetchConfig() {
-      try {
-        const res = await fetch('/api/config');
-        if (res.ok) {
-          serverConfig = await res.json();
-          if (!serverConfig.allowUpload) {
-            document.getElementById('uploadCard').classList.add('hidden');
-          }
-          if (!serverConfig.allowTextDrop) {
-            document.getElementById('textDropCard').classList.add('hidden');
-          }
-        }
-      } catch (e) {
-        console.warn('获取配置失败:', e);
-      }
-    }
-
-    async function loadDirectory(path) {
-      currentPath = path;
-      renderBreadcrumb(path);
-      const listEl = document.getElementById('fileList');
-      listEl.innerHTML = '<div class="empty-tip">正在加载...</div>';
-
-      try {
-        const res = await fetch('/api/list?path=' + encodeURIComponent(path));
-        if (!res.ok) throw new Error('加载目录失败');
-        const entries = await res.json();
-
-        if (!entries || entries.length === 0) {
-          listEl.innerHTML = '<div class="empty-tip">此目录下没有文件</div>';
-          return;
-        }
-
-        listEl.innerHTML = '';
-        entries.forEach(entry => {
-          const item = document.createElement('div');
-          item.className = 'file-item';
-
-          const icon = entry.isDir ? '📁' : getFileIcon(entry.ext);
-          // 目录点击进入浏览；文件点击浏览器内联预览 (图片/视频/PDF/文本)，下载走下载按钮
-          const clickAction = entry.isDir
-            ? `loadDirectory('${entry.path}')`
-            : `openFile(this)`;
-
-          item.innerHTML = `
-            <div class="file-info" data-path="${escapeHtml(entry.path)}" onclick="${clickAction}" title="${entry.isDir ? '点击进入目录' : '点击在新标签页预览'}">
-              <span class="file-icon">${icon}</span>
-              <span class="file-name ${entry.isDir ? 'is-dir' : ''}">${escapeHtml(entry.name)}</span>
-            </div>
-            <div class="file-meta">
-              <span>${entry.isDir ? '目录' : entry.sizeHuman}</span>
-              ${!entry.isDir ? `<a href="/api/download?path=${encodeURIComponent(entry.path)}" download="${escapeHtml(entry.name)}" title="强制下载到本机" class="btn btn-sm">⬇️ 下载</a>` : ''}
-            </div>
-          `;
-          listEl.appendChild(item);
-        });
-      } catch (err) {
-        listEl.innerHTML = `<div class="empty-tip" style="color: var(--danger);">加载失败: ${err.message}</div>`;
-      }
-    }
-
-    function renderBreadcrumb(path) {
-      const el = document.getElementById('breadcrumb');
-      const parts = path ? path.split('/').filter(Boolean) : [];
-
-      let html = `<span class="crumb-item" onclick="loadDirectory('')">根目录</span>`;
-      let accumulated = '';
-
-      parts.forEach((p, idx) => {
-        accumulated += (idx === 0 ? '' : '/') + p;
-        const cur = accumulated;
-        html += ` <span class="crumb-sep">/</span> <span class="crumb-item" onclick="loadDirectory('${cur}')">${escapeHtml(p)}</span>`;
-      });
-      el.innerHTML = html;
-    }
-
-    function showToast(msg, type = 'info') {
-      const container = document.getElementById('toastContainer');
-      const toast = document.createElement('div');
-      toast.className = `toast toast-${type}`;
-      toast.innerText = msg;
-      container.appendChild(toast);
-      setTimeout(() => {
-        toast.style.transition = 'opacity 0.2s, transform 0.2s';
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(-6px)';
-        setTimeout(() => toast.remove(), 200);
-      }, 3000);
-    }
-
-    async function submitTextDrop(e) {
-      if (e && typeof e.preventDefault === 'function') e.preventDefault();
-      const input = document.getElementById('dropContent');
-      const btn = document.getElementById('btnDropSubmit');
-      const val = input.value.trim();
-      if (!val) {
-        showToast('请输入要投递的内容', 'error');
-        input.focus();
-        return;
-      }
-
-      const origText = btn.innerText;
-      btn.disabled = true;
-      btn.innerText = '正在发送…';
-
-      // 15 秒超时保护：服务端已接收但响应迟迟未达时给出明确提示
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15000);
-
-      try {
-        const res = await fetch('/api/drop', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: val }),
-          signal: controller.signal
-        });
-        clearTimeout(timer);
-        if (res.ok) {
-          showToast('🎉 投递成功！电脑端已即时接收并收录', 'success');
-          input.value = '';
-        } else {
-          const errMsg = await res.text().catch(() => res.statusText);
-          showToast('投递失败: ' + errMsg, 'error');
-        }
-      } catch (err) {
-        clearTimeout(timer);
-        if (err && err.name === 'AbortError') {
-          showToast('响应超时：内容可能已送达，请到电脑端确认收件箱', 'error');
-        } else {
-          showToast('网络异常，发送失败: ' + (err && err.message ? err.message : err), 'error');
-        }
-      } finally {
-        btn.disabled = false;
-        btn.innerText = origText;
-      }
-    }
-
-    function setupDropzone() {
-      const dropzone = document.getElementById('dropzone');
-      ['dragenter', 'dragover'].forEach(name => {
-        dropzone.addEventListener(name, (e) => {
-          e.preventDefault();
-          dropzone.classList.add('dragover');
-        });
-      });
-      ['dragleave', 'drop'].forEach(name => {
-        dropzone.addEventListener(name, (e) => {
-          e.preventDefault();
-          dropzone.classList.remove('dragover');
-        });
-      });
-      dropzone.addEventListener('drop', (e) => {
-        const files = e.dataTransfer.files;
-        if (files.length > 0) uploadFiles(files);
-      });
-    }
-
-    function handleFileSelect(e) {
-      const files = e.target.files;
-      if (files.length > 0) uploadFiles(files);
-    }
-
-    const CHUNK = 4 * 1024 * 1024; // 4MB 分片，刷新/断线后重新选择同一文件可断点续传
-
-    // 上传全局上下文: 支持取消当前上传并清理已传分片
-    const uploadCtx = { active: false, xhr: null, cancelled: false, fileKey: '' };
-
-    class UploadCancelledError extends Error {
-      constructor() { super('已取消'); this.name = 'UploadCancelledError'; }
-    }
-
-    function cancelUpload() {
-      if (!uploadCtx.active || uploadCtx.cancelled) return;
-      uploadCtx.cancelled = true;
-      if (uploadCtx.xhr) uploadCtx.xhr.abort();
-      document.getElementById('uploadStatus').innerText = '正在取消并清理已传分片…';
-    }
-
-    // XHR POST 封装: 兼容性最稳 (避免部分浏览器 fetch Blob body 挂起)
-    function xhrPost(url, body, extraHeaders, onProgress) {
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        uploadCtx.xhr = xhr;
-        xhr.open('POST', url, true);
-        for (const k in (extraHeaders || {})) xhr.setRequestHeader(k, extraHeaders[k]);
-        if (onProgress && xhr.upload) {
-          // 节流: iOS 移动浏览器高频 progress 事件 + 频繁 DOM 写入会显著拖慢上传
-          let last = 0;
-          xhr.upload.onprogress = (e) => {
-            if (!e.lengthComputable) return;
-            const now = Date.now();
-            if (now - last < 100) return;
-            last = now;
-            onProgress(e.loaded, e.total);
-          };
-        }
-        xhr.onload = () => {
-          uploadCtx.xhr = null;
-          if (uploadCtx.cancelled) { reject(new UploadCancelledError()); return; }
-          if (xhr.status >= 200 && xhr.status < 300) {
-            let data = null;
-            try { data = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch (e) { /* 非 JSON 响应 */ }
-            resolve(data);
-          } else {
-            // 409 {reset:true} 表示分片偏移错位, 附带实际长度供前端清片重传
-            let data = null;
-            try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) { /* 忽略 */ }
-            const err = new Error((data && data.reason) || xhr.responseText || `HTTP ${xhr.status}`);
-            if (data && data.reset) { err.reset = true; err.uploaded = data.uploaded; }
-            reject(err);
-          }
-        };
-        xhr.onerror = () => { uploadCtx.xhr = null; reject(new Error('网络传输中断')); };
-        // 取消时先置 cancelled 再 abort(), onabort 负责让 Promise 落定
-        xhr.onabort = () => { uploadCtx.xhr = null; reject(new UploadCancelledError()); };
-        xhr.ontimeout = () => { uploadCtx.xhr = null; reject(new Error('传输超时，可重新选择文件续传')); };
-        xhr.timeout = 60000; // 1 分钟兜底
-        xhr.send(body);
-      });
-    }
-
-    async function uploadFiles(files) {
-      const progressBar = document.getElementById('progressBar');
-      const progressFill = document.getElementById('progressFill');
-      const statusEl = document.getElementById('uploadStatus');
-      const cancelBtn = document.getElementById('btnCancelUpload');
-
-      progressBar.style.display = 'block';
-      progressFill.style.width = '0%';
-      cancelBtn.classList.remove('hidden');
-      uploadCtx.active = true;
-      uploadCtx.cancelled = false;
-      uploadCtx.fileKey = '';
-
-      for (let i = 0; i < files.length; i++) {
-        if (uploadCtx.cancelled) break;
-        const file = files[i];
-        statusEl.innerText = `正在上传 (${i+1}/${files.length}): ${file.name}...`;
-        try {
-          await uploadFileResumable(file, progressFill, statusEl);
-          statusEl.innerText = `✓ ${file.name} 上传完成`;
-        } catch (err) {
-          if (err instanceof UploadCancelledError) {
-            // 取消上传: 清理该文件的已传分片 (幂等)
-            if (uploadCtx.fileKey) {
-              try { await fetch(`/api/upload/abort?${uploadCtx.fileKey}`, { method: 'DELETE' }); } catch (e) { /* 忽略 */ }
-            }
-            statusEl.innerText = `已取消 ${file.name}，已传分片已清理`;
-            break;
-          }
-          alert(`上传 ${file.name} 失败: ${err.message}`);
-        }
-      }
-
-      uploadCtx.active = false;
-      uploadCtx.xhr = null;
-      cancelBtn.classList.add('hidden');
-      if (!uploadCtx.cancelled) statusEl.innerText = '全部上传完成！';
-      setTimeout(() => {
-        progressBar.style.display = 'none';
-        statusEl.innerText = '';
-        progressFill.style.width = '0%';
-      }, 2500);
-      loadDirectory(currentPath);
-    }
-
-    // 断点续传: 查询进度 -> 逐分片追加 -> 合并为正式文件
-    async function uploadFileResumable(file, progressFill, statusEl) {
-      const size = file.size;
-      if (size <= 0) throw new Error('文件为空');
-      const mod = file.lastModified || 1;
-      const q = `dir=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(file.name)}&size=${size}&mod=${mod}`;
-      uploadCtx.fileKey = q;
-      const totalChunks = Math.max(1, Math.ceil(size / CHUNK));
-
-      // 1. 查询服务器已有的分片进度 (刷新后重新选择同一文件自动续传)
-      let uploaded = 0;
-      try {
-        const st = await fetch(`/api/upload/status?${q}`).then(r => r.json());
-        if (st && st.exists && st.uploaded > 0 && st.uploaded < size) {
-          uploaded = st.uploaded;
-          statusEl.innerText = `正在上传: ${file.name}（检测到 ${formatBytes(uploaded)} 已传部分，继续续传…）`;
-        }
-      } catch (e) { /* 查询失败则从零开始 */ }
-
-      // 2. 逐分片追加传输 (offset 与服务器片长度对齐, 错位则清片从零重传)
-      let chunkNo = Math.floor(uploaded / CHUNK) + 1;
-      while (uploaded < size) {
-        if (uploadCtx.cancelled) throw new UploadCancelledError();
-        const end = Math.min(uploaded + CHUNK, size);
-        const chunk = file.slice(uploaded, end);
-
-        statusEl.innerText = `正在上传: ${file.name}（分片 ${chunkNo}/${totalChunks}）`;
-        let j;
-        try {
-          j = await xhrPost(`/api/upload/append?${q}&offset=${uploaded}`, chunk, { 'Content-Type': 'application/octet-stream' },
-            (loaded) => {
-              const p = Math.round(((uploaded + loaded) / size) * 100);
-              progressFill.style.width = Math.min(p, 100) + '%';
-            });
-        } catch (err) {
-          if (err instanceof UploadCancelledError) throw err;
-          if (err.reset) {
-            // 服务器片文件比预期多/少: 残留分片 (超时写了一半), 删除后从零续传保证数据一致
-            await fetch(`/api/upload/abort?${q}`, { method: 'DELETE' }).catch(() => {});
-            uploaded = 0;
-            chunkNo = 1;
-            statusEl.innerText = `正在上传: ${file.name}（检测到残留分片，已自动重传…）`;
-            continue;
-          }
-          throw err; // 提示超时/断网, 用户可重选文件续传
-        }
-
-        uploaded = (j && j.uploaded) ? j.uploaded : end;
-        const percent = Math.round((uploaded / size) * 100);
-        progressFill.style.width = Math.min(percent, 100) + '%';
-        chunkNo++;
-      }
-
-      // 3. 合并为正式文件
-      if (uploadCtx.cancelled) throw new UploadCancelledError();
-      statusEl.innerText = `正在合并: ${file.name}…`;
-      await xhrPost(`/api/upload/complete?${q}`, null, null, null);
-    }
-
-    function refreshList() {
-      loadDirectory(currentPath);
-    }
-
-    function downloadFile(path, name) {
-      window.location.href = `/api/download?path=${encodeURIComponent(path)}`;
-    }
-
-    // 点击文件名：浏览器新标签页内联预览 (图片/视频/PDF/文本等直接打开)
-    function openFile(el) {
-      const path = el.getAttribute('data-path');
-      if (!path) return;
-      window.open('/api/open?path=' + encodeURIComponent(path), '_blank');
-    }
-
-    function getFileIcon(ext) {
-      const map = {
-        '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️', '.gif': '🖼️', '.svg': '🖼️',
-        '.mp4': '🎬', '.mkv': '🎬', '.avi': '🎬', '.mov': '🎬',
-        '.mp3': '🎵', '.wav': '🎵', '.flac': '🎵',
-        '.zip': '📦', '.rar': '📦', '.7z': '📦', '.tar': '📦', '.gz': '📦',
-        '.pdf': '📄', '.doc': '📄', '.docx': '📄', '.txt': '📄', '.md': '📄',
-        '.json': '🔧', '.go': '💻', '.js': '💻', '.ts': '💻', '.vue': '💻', '.html': '💻'
-      };
-      return map[ext] || '📄';
-    }
-
-    function escapeHtml(str) {
-      return String(str).replace(/[&<>"']/g, m => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      })[m]);
-    }
-
-    window.onload = init;
-  </script>
 </body>
 </html>

@@ -74,6 +74,9 @@ func (s *FileShareService) SaveConfig(cfg ShareConfig) error {
 	if cfg.SharePath == "" {
 		return fmt.Errorf("共享目录不能为空")
 	}
+	if cfg.MaxUploadSizeMB < 0 {
+		return fmt.Errorf("单文件上传上限不能小于 0")
+	}
 	info, err := os.Stat(cfg.SharePath)
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("共享目录不存在或不可读: %s", cfg.SharePath)

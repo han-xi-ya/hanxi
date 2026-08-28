@@ -3,8 +3,10 @@ package fileshare
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
-	"mime/multipart"
+	"io/fs"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,7 +14,182 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hubkit/internal/modules/fileshare/web"
 )
+
+func TestFileshareWebAssets(t *testing.T) {
+	server := NewServer(ShareConfig{}, nil, nil)
+	assetsFS, err := fs.Sub(web.DistFS, "assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/assets/", server.handleAssets(http.StripPrefix("/assets/", http.FileServer(http.FS(assetsFS)))))
+	mux.HandleFunc("/", server.handleIndex)
+
+	tests := []struct {
+		name        string
+		method      string
+		path        string
+		status      int
+		mediaType   string
+		bodyContain string
+	}{
+		{name: "index", method: http.MethodGet, path: "/", status: http.StatusOK, mediaType: "text/html", bodyContain: "/assets/js/app.js"},
+		{name: "stylesheet", method: http.MethodGet, path: "/assets/app.css", status: http.StatusOK, mediaType: "text/css", bodyContain: ".stats-grid"},
+		{name: "app module", method: http.MethodGet, path: "/assets/js/app.js", status: http.StatusOK, mediaType: "text/javascript", bodyContain: "createFileBrowser"},
+		{name: "upload module", method: http.MethodGet, path: "/assets/js/upload.js", status: http.StatusOK, mediaType: "text/javascript", bodyContain: "XMLHttpRequest"},
+		{name: "head", method: http.MethodHead, path: "/assets/app.css", status: http.StatusOK, mediaType: "text/css"},
+		{name: "method rejected", method: http.MethodPost, path: "/assets/app.css", status: http.StatusMethodNotAllowed},
+		{name: "directory rejected", method: http.MethodGet, path: "/assets/", status: http.StatusNotFound},
+		{name: "missing asset", method: http.MethodGet, path: "/assets/missing.css", status: http.StatusNotFound},
+		{name: "unknown page", method: http.MethodGet, path: "/missing", status: http.StatusNotFound},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			if rec.Code != tc.status {
+				t.Fatalf("status=%d want=%d body=%s", rec.Code, tc.status, rec.Body.String())
+			}
+			if tc.mediaType != "" {
+				got, _, err := mime.ParseMediaType(rec.Header().Get("Content-Type"))
+				if err != nil || got != tc.mediaType {
+					t.Fatalf("Content-Type=%q want=%q err=%v", rec.Header().Get("Content-Type"), tc.mediaType, err)
+				}
+			}
+			if tc.bodyContain != "" && !strings.Contains(rec.Body.String(), tc.bodyContain) {
+				t.Fatalf("body missing %q", tc.bodyContain)
+			}
+		})
+	}
+
+	indexReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	indexRec := httptest.NewRecorder()
+	mux.ServeHTTP(indexRec, indexReq)
+	for _, inline := range []string{"onclick=", "onchange=", "onkeydown="} {
+		if strings.Contains(indexRec.Body.String(), inline) {
+			t.Fatalf("index still contains inline handler %q", inline)
+		}
+	}
+}
+
+func TestFileshareIndexDisablesBrowserCache(t *testing.T) {
+	server := NewServer(ShareConfig{}, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.handleIndex(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Cache-Control"); !strings.Contains(got, "no-store") {
+		t.Fatalf("Cache-Control=%q, want no-store", got)
+	}
+}
+
+func TestByteCountingReaderReportsStreamingProgress(t *testing.T) {
+	var counted int64
+	reader := &byteCountingReader{
+		reader: strings.NewReader("streaming"),
+		onRead: func(n int64) {
+			counted += n
+		},
+	}
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "streaming" || counted != int64(len(content)) {
+		t.Fatalf("content=%q counted=%d", content, counted)
+	}
+}
+
+func TestFileshareSingleStreamUploadValidationAndCleanup(t *testing.T) {
+	tempDir := t.TempDir()
+	server := NewServer(ShareConfig{
+		SharePath:       tempDir,
+		AllowUpload:     true,
+		MaxUploadSizeMB: 1,
+	}, nil, nil)
+
+	tests := []struct {
+		name string
+		url  string
+		body string
+		code int
+	}{
+		{
+			name: "short body",
+			url:  "/api/upload?dir=&name=short.bin&size=10",
+			body: "short",
+			code: http.StatusBadRequest,
+		},
+		{
+			name: "declared over limit",
+			url:  "/api/upload?dir=&name=large.bin&size=1048577",
+			body: "x",
+			code: http.StatusRequestEntityTooLarge,
+		},
+		{
+			name: "path traversal",
+			url:  "/api/upload?dir=..%2Foutside&name=escape.bin&size=1",
+			body: "x",
+			code: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tc.url, strings.NewReader(tc.body))
+			rec := httptest.NewRecorder()
+			server.handleUpload(rec, req)
+			if rec.Code != tc.code {
+				t.Fatalf("status=%d want=%d body=%s", rec.Code, tc.code, rec.Body.String())
+			}
+		})
+	}
+
+	entries, err := os.ReadDir(tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed uploads left files behind: %v", entries)
+	}
+}
+
+func TestFileshareSingleStreamUploadAvoidsOverwrite(t *testing.T) {
+	tempDir := t.TempDir()
+	server := NewServer(ShareConfig{SharePath: tempDir, AllowUpload: true}, nil, nil)
+	if err := os.WriteFile(filepath.Join(tempDir, "same.txt"), []byte("old"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	body := "new"
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/upload?dir=&name=same.txt&size=3",
+		strings.NewReader(body),
+	)
+	rec := httptest.NewRecorder()
+	server.handleUpload(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload failed: %d %s", rec.Code, rec.Body.String())
+	}
+	if got, _ := os.ReadFile(filepath.Join(tempDir, "same.txt")); string(got) != "old" {
+		t.Fatalf("existing file overwritten: %q", got)
+	}
+	matches, err := filepath.Glob(filepath.Join(tempDir, "same (*).txt"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("renamed upload not found: %v err=%v", matches, err)
+	}
+	if got, _ := os.ReadFile(matches[0]); string(got) != body {
+		t.Fatalf("renamed upload content=%q", got)
+	}
+}
 
 func TestFilesharePathSecurity(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "fileshare_test_*")
@@ -107,18 +284,11 @@ func TestFileshareUploadAndDrop(t *testing.T) {
 		t.Fatalf("drop hook was not called within timeout")
 	}
 
-	// 测试 2: 文件流式上传 API (/api/upload)
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, err := writer.CreateFormFile("file", "test_stream.txt")
-	if err != nil {
-		t.Fatalf("failed to create form file: %v", err)
-	}
-	_, _ = io.WriteString(part, "Hello HubKit Streaming File Upload")
-	_ = writer.Close()
-
-	uploadReq := httptest.NewRequest(http.MethodPost, "/api/upload", body)
-	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	// 测试 2: 单次二进制流式上传 API (/api/upload)
+	content := []byte("Hello HubKit Streaming File Upload")
+	query := fmt.Sprintf("dir=&name=test_stream.txt&size=%d", len(content))
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/upload?"+query, bytes.NewReader(content))
+	uploadReq.Header.Set("Content-Type", "application/octet-stream")
 	uploadRec := httptest.NewRecorder()
 	server.handleUpload(uploadRec, uploadReq)
 
@@ -127,239 +297,71 @@ func TestFileshareUploadAndDrop(t *testing.T) {
 	}
 
 	uploadedFile := filepath.Join(tempDir, "test_stream.txt")
-	content, err := os.ReadFile(uploadedFile)
+	uploadedContent, err := os.ReadFile(uploadedFile)
 	if err != nil {
 		t.Fatalf("uploaded file not found on disk: %v", err)
 	}
-	if string(content) != "Hello HubKit Streaming File Upload" {
-		t.Errorf("uploaded content mismatch: %s", string(content))
+	if string(uploadedContent) != "Hello HubKit Streaming File Upload" {
+		t.Errorf("uploaded content mismatch: %s", string(uploadedContent))
 	}
 }
 
-// 移动端浏览器需强制独立连接 (keep-alive 复用挂起缺陷), UA 判定必须可靠
-func TestFileshareIsMobileUA(t *testing.T) {
-	cases := []struct {
-		ua   string
-		want bool
-	}{
-		{"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1", true},
-		{"Mozilla/5.0 (iPad; CPU OS 16_6 like Mac OS X) AppleWebKit/605.1.15 Version/16.6 Mobile/15E148 Safari/604.1", true},
-		{"Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36", true},
-		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36", false},
-		{"", false},
+func TestProgressTimeoutReaderRefreshesReadDeadline(t *testing.T) {
+	deadlineSet := false
+	writer := &deadlineResponseWriter{
+		ResponseRecorder: httptest.NewRecorder(),
+		setReadDeadline: func(deadline time.Time) error {
+			deadlineSet = deadline.After(time.Now())
+			return nil
+		},
 	}
-	for i, c := range cases {
-		if got := isMobileUA(c.ua); got != c.want {
-			t.Errorf("case %d: isMobileUA(%q) = %v, want %v", i, c.ua, got, c.want)
+	reader := &progressTimeoutReader{
+		reader:     strings.NewReader("chunk"),
+		controller: http.NewResponseController(writer),
+		timeout:    time.Second,
+	}
+	buf := make([]byte, 5)
+	n, err := reader.Read(buf)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !deadlineSet {
+		t.Fatal("read deadline was not refreshed")
+	}
+	if n != 5 || string(buf) != "chunk" {
+		t.Fatalf("unexpected read: n=%d data=%q", n, string(buf))
+	}
+}
+
+type deadlineResponseWriter struct {
+	*httptest.ResponseRecorder
+	setReadDeadline func(time.Time) error
+}
+
+func (w *deadlineResponseWriter) SetReadDeadline(deadline time.Time) error {
+	return w.setReadDeadline(deadline)
+}
+
+func TestFileshareCleanupExpiredUploadTemps(t *testing.T) {
+	tempDir := t.TempDir()
+	server := NewServer(ShareConfig{SharePath: tempDir}, nil, nil)
+	oldTemp := filepath.Join(tempDir, ".hubkit-upload-old.tmp")
+	newTemp := filepath.Join(tempDir, ".hubkit-upload-new.tmp")
+	normal := filepath.Join(tempDir, "notes.tmp")
+	for _, path := range []string{oldTemp, newTemp, normal} {
+		if err := os.WriteFile(path, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
 		}
 	}
-}
-
-// 分片偏移错位兜底: 超时/中断在服务器残留部分字节时, 追加必须 409 拒绝并提示清片重传
-func TestFileshareAppendOffsetMismatch(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "fileshare_offset_test_*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
+	now := time.Now()
+	_ = os.Chtimes(oldTemp, now.Add(-25*time.Hour), now.Add(-25*time.Hour))
+	server.cleanupExpiredUploadTemps(now)
+	if _, err := os.Stat(oldTemp); !os.IsNotExist(err) {
+		t.Fatalf("expired upload temp not removed: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
-
-	cfg := ShareConfig{Port: 0, SharePath: tempDir, AllowUpload: true}
-	server := NewServer(cfg, nil, nil)
-
-	name := "offset.bin"
-	base := "dir=&name=" + name + "&size=16&mod=1700000000000"
-
-	// 1. 先传 10 字节 (模拟超时滞留了半个分片)
-	req := httptest.NewRequest(http.MethodPost, "/api/upload/append?"+base+"&offset=0", bytes.NewReader([]byte("0123456789")))
-	wr := httptest.NewRecorder()
-	server.handleUploadAppend(wr, req)
-	if wr.Code != http.StatusOK {
-		t.Fatalf("seed append failed: %d %s", wr.Code, wr.Body.String())
-	}
-
-	// 2. 客户端用过期偏移重试 (以为只传了 5 字节) -> 必须 409 且携带实际长度
-	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+base+"&offset=5", strings.NewReader("xxxxx"))
-	wr = httptest.NewRecorder()
-	server.handleUploadAppend(wr, req)
-	if wr.Code != http.StatusConflict {
-		t.Fatalf("expected 409 on offset mismatch, got %d %s", wr.Code, wr.Body.String())
-	}
-	var j map[string]any
-	if err := json.Unmarshal(wr.Body.Bytes(), &j); err != nil {
-		t.Fatalf("bad 409 body: %v", err)
-	}
-	if j["reset"] != true || j["uploaded"] != float64(10) {
-		t.Errorf("expected reset=true uploaded=10, got %v", j)
-	}
-
-	// 3. 对齐偏移续传正常追加 (重叠的 5 字节不被重复写入)
-	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+base+"&offset=10", strings.NewReader("abcdef"))
-	wr = httptest.NewRecorder()
-	server.handleUploadAppend(wr, req)
-	if wr.Code != http.StatusOK {
-		t.Fatalf("aligned append failed: %d %s", wr.Code, wr.Body.String())
-	}
-
-	finalData, _ := os.ReadFile(filepath.Join(tempDir, name+".part.16.1700000000000"))
-	if string(finalData) != "0123456789abcdef" {
-		t.Errorf("part content corrupted by mismatched append: %q", string(finalData))
-	}
-}
-
-// 取消上传: 已传分片必须被清理 (DELETE /api/upload/abort 幂等)
-func TestFileshareUploadAbort(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "fileshare_abort_test_*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	cfg := ShareConfig{
-		Port:          0,
-		SharePath:     tempDir,
-		AllowUpload:   true,
-		AllowTextDrop: true,
-	}
-	server := NewServer(cfg, nil, nil)
-
-	name := "cancel.bin"
-	q := "dir=&name=" + name + "&size=16&mod=1700000000000"
-
-	// 1. 追加 8 字节, 产生临时分片文件
-	req := httptest.NewRequest(http.MethodPost, "/api/upload/append?"+q, bytes.NewReader([]byte("01234567")))
-	wr := httptest.NewRecorder()
-	server.handleUploadAppend(wr, req)
-	if wr.Code != http.StatusOK {
-		t.Fatalf("append failed: %d %s", wr.Code, wr.Body.String())
-	}
-
-	entries, err := os.ReadDir(tempDir)
-	if err != nil || len(entries) != 1 || entries[0].Name() != name+".part.16.1700000000000" {
-		t.Fatalf("expected part file before abort, got: %v err=%v", entries, err)
-	}
-
-	// 2. abort 清理分片
-	req = httptest.NewRequest(http.MethodDelete, "/api/upload/abort?"+q, nil)
-	wr = httptest.NewRecorder()
-	server.handleUploadAbort(wr, req)
-	if wr.Code != http.StatusOK {
-		t.Fatalf("abort failed: %d %s", wr.Code, wr.Body.String())
-	}
-
-	entries, _ = os.ReadDir(tempDir)
-	if len(entries) != 0 {
-		t.Errorf("expected part file removed after abort, got: %v", entries)
-	}
-
-	// 3. 再次查询进度: 已传部分归零 (断点续传从 0 开始)
-	req = httptest.NewRequest(http.MethodGet, "/api/upload/status?"+q, nil)
-	wr = httptest.NewRecorder()
-	server.handleUploadStatus(wr, req)
-	var st map[string]any
-	if err := json.Unmarshal(wr.Body.Bytes(), &st); err != nil {
-		t.Fatalf("bad status response: %v", err)
-	}
-	if st["exists"] != false || st["uploaded"] != float64(0) {
-		t.Errorf("expected reset status after abort, got %v", st)
-	}
-
-	// 4. abort 幂等: 对不存在的分片再次 abort 仍应成功
-	req = httptest.NewRequest(http.MethodDelete, "/api/upload/abort?"+q, nil)
-	wr = httptest.NewRecorder()
-	server.handleUploadAbort(wr, req)
-	if wr.Code != http.StatusOK {
-		t.Errorf("idempotent abort failed: %d %s", wr.Code, wr.Body.String())
-	}
-}
-
-func TestFileshareChunkedResumableUpload(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "fileshare_resume_test_*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	cfg := ShareConfig{
-		Port:          0,
-		SharePath:     tempDir,
-		AllowUpload:   true,
-		AllowTextDrop: true,
-	}
-	server := NewServer(cfg, nil, nil)
-
-	name := "resume.bin"
-	content := "0123456789abcdef" // 16 字节
-
-	q := func() string {
-		return "dir=&name=" + name + "&size=16&mod=1700000000000"
-	}
-
-	// 1. 初始状态: 无已传进度
-	req := httptest.NewRequest(http.MethodGet, "/api/upload/status?"+q(), nil)
-	wr := httptest.NewRecorder()
-	server.handleUploadStatus(wr, req)
-	var st map[string]any
-	if err := json.Unmarshal(wr.Body.Bytes(), &st); err != nil {
-		t.Fatalf("bad status response: %v", err)
-	}
-	if st["exists"] != false {
-		t.Errorf("expected exists=false initially, got %v", st["exists"])
-	}
-
-	// 2. 追加前半部分 (10 字节), 模拟已传进度
-	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+q()+"&offset=0", bytes.NewReader([]byte(content[:10])))
-	wr = httptest.NewRecorder()
-	server.handleUploadAppend(wr, req)
-	if wr.Code != http.StatusOK {
-		t.Fatalf("append failed: %d %s", wr.Code, wr.Body.String())
-	}
-
-	// 3. 再次查询: 应返回已传 10 字节
-	req = httptest.NewRequest(http.MethodGet, "/api/upload/status?"+q(), nil)
-	wr = httptest.NewRecorder()
-	server.handleUploadStatus(wr, req)
-	if err := json.Unmarshal(wr.Body.Bytes(), &st); err != nil {
-		t.Fatalf("bad status response: %v", err)
-	}
-	if st["exists"] != true || st["uploaded"] != float64(10) {
-		t.Errorf("expected uploaded=10, got %v", st)
-	}
-
-	// 4. 追加剩余部分 (6 字节), 模拟续传后的第二段
-	req = httptest.NewRequest(http.MethodPost, "/api/upload/append?"+q()+"&offset=10", bytes.NewReader([]byte(content[10:])))
-	wr = httptest.NewRecorder()
-	server.handleUploadAppend(wr, req)
-	if wr.Code != http.StatusOK {
-		t.Fatalf("append 2 failed: %d %s", wr.Code, wr.Body.String())
-	}
-
-	// 5. 临时片文件不应出现在目录列表
-	entries, err := os.ReadDir(tempDir)
-	if err != nil {
-		t.Fatalf("readdir failed: %v", err)
-	}
-	if len(entries) != 1 || entries[0].Name() != name+".part.16.1700000000000" {
-		t.Errorf("expected part file only, got: %v", entries)
-	}
-
-	// 6. 完成合并
-	req = httptest.NewRequest(http.MethodPost, "/api/upload/complete?"+q(), nil)
-	wr = httptest.NewRecorder()
-	server.handleUploadComplete(wr, req)
-	if wr.Code != http.StatusOK {
-		t.Fatalf("complete failed: %d %s", wr.Code, wr.Body.String())
-	}
-
-	// 7. 最终文件内容完整且无残留片文件
-	finalContent, err := os.ReadFile(filepath.Join(tempDir, name))
-	if err != nil {
-		t.Fatalf("final file not found: %v", err)
-	}
-	if string(finalContent) != content {
-		t.Errorf("final content mismatch: %q", string(finalContent))
-	}
-	entries, _ = os.ReadDir(tempDir)
-	if len(entries) != 1 || entries[0].Name() != name {
-		t.Errorf("expected only final file, got: %v", entries)
+	for _, path := range []string{newTemp, normal} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("valid file removed: %s: %v", path, err)
+		}
 	}
 }

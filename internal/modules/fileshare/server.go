@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -26,6 +27,44 @@ type ratePoint struct {
 	down int64 // 该时刻累计下载字节
 }
 
+const (
+	uploadTempTTL           = 24 * time.Hour
+	streamUploadIdleTimeout = 2 * time.Minute
+	streamUploadBufferSize  = 1024 * 1024
+)
+
+type uploadParams struct {
+	dir  string
+	name string
+	size int64
+}
+
+type progressTimeoutReader struct {
+	reader     io.Reader
+	controller *http.ResponseController
+	timeout    time.Duration
+}
+
+func (r *progressTimeoutReader) Read(p []byte) (int, error) {
+	if err := r.controller.SetReadDeadline(time.Now().Add(r.timeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return 0, fmt.Errorf("设置上传停滞超时失败: %w", err)
+	}
+	return r.reader.Read(p)
+}
+
+type byteCountingReader struct {
+	reader io.Reader
+	onRead func(int64)
+}
+
+func (r *byteCountingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if n > 0 && r.onRead != nil {
+		r.onRead(int64(n))
+	}
+	return n, err
+}
+
 // Server 局域网 HTTP 文件与文本传输引擎
 type Server struct {
 	config    ShareConfig
@@ -34,7 +73,9 @@ type Server struct {
 	startedAt time.Time
 	statsQuit chan struct{} // 关闭速率采样协程
 
-	mu                sync.RWMutex
+	mu        sync.RWMutex
+	publishMu sync.Mutex
+
 	activeConnections int64
 	uploadCount       int64
 	downloadCount     int64
@@ -42,7 +83,6 @@ type Server struct {
 	downBytes         int64 // 累计下载字节
 	ratePoints        []ratePoint
 	dropInbox         []DropItem
-	events            []TransferEvent
 
 	onDropHook     func(item DropItem)
 	onTransferHook func(event TransferEvent)
@@ -53,7 +93,6 @@ func NewServer(cfg ShareConfig, onDrop func(DropItem), onTransfer func(TransferE
 	return &Server{
 		config:         cfg,
 		dropInbox:      make([]DropItem, 0),
-		events:         make([]TransferEvent, 0),
 		onDropHook:     onDrop,
 		onTransferHook: onTransfer,
 	}
@@ -89,23 +128,27 @@ func (s *Server) Start() (int, error) {
 	s.startedAt = time.Now()
 
 	mux := http.NewServeMux()
+	assetFS, err := fs.Sub(web.DistFS, "assets")
+	if err != nil {
+		listener.Close()
+		s.listener = nil
+		return 0, fmt.Errorf("加载快传静态资源失败: %w", err)
+	}
+	mux.Handle("/assets/", s.handleAssets(http.StripPrefix("/assets/", http.FileServer(http.FS(assetFS)))))
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/list", s.handleList)
 	mux.HandleFunc("/api/download", s.handleDownload)
 	mux.HandleFunc("/api/open", s.handleOpen)
 	mux.HandleFunc("/api/upload", s.handleUpload)
-	mux.HandleFunc("/api/upload/status", s.handleUploadStatus)
-	mux.HandleFunc("/api/upload/append", s.handleUploadAppend)
-	mux.HandleFunc("/api/upload/complete", s.handleUploadComplete)
-	mux.HandleFunc("/api/upload/abort", s.handleUploadAbort)
 	mux.HandleFunc("/api/drop", s.handleDrop)
 	mux.HandleFunc("/api/stats", s.handleStats)
 
 	s.server = &http.Server{
-		Handler:      s.connTracker(mux),
-		ReadTimeout:  0, // 大文件上传无限制
-		WriteTimeout: 0, // 大文件下载无限制
+		Handler:           s.connTracker(mux),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       0, // 大文件上传无限制
+		WriteTimeout:      0, // 大文件下载无限制
 	}
 
 	go func() {
@@ -114,8 +157,9 @@ func (s *Server) Start() (int, error) {
 		}
 	}()
 
-	// 启动每秒速率采样协程
+	// 启动速率采样并清理旧进程遗留的上传临时文件
 	s.statsQuit = make(chan struct{})
+	go s.cleanupExpiredUploadTemps(time.Now())
 	go s.samplingLoop()
 
 	return actualPort, nil
@@ -171,14 +215,14 @@ func (s *Server) connTracker(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 跨域支持 (用于局域网不同端访问)
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-		// 移动端浏览器 (iOS Safari/WKWebView、安卓 Chrome) 对 HTTP keep-alive
-		// 连接复用存在已知挂起缺陷: 分片上传多请求打到同一连接时可能永久 hang。
-		// 强制每个请求独立连接，根治该问题 (局域网内握手开销可忽略)。
-		if isMobileUA(r.Header.Get("User-Agent")) {
+		// 上传请求统一使用独立连接，避免 Safari/WKWebView 长连接状态异常。
+		// 单次流只有一个长请求，不会产生反复建连开销。
+		if r.URL.Path == "/api/upload" {
 			r.Close = true
+			w.Header().Set("Connection", "close")
 		}
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -197,14 +241,21 @@ func (s *Server) connTracker(next http.Handler) http.Handler {
 	})
 }
 
-// isMobileUA 判断是否为移动端浏览器 (含 iPad 桌面模式 WKWebView)
-func isMobileUA(ua string) bool {
-	lower := strings.ToLower(ua)
-	return strings.Contains(lower, "iphone") ||
-		strings.Contains(lower, "ipad") ||
-		strings.Contains(lower, "ipod") ||
-		strings.Contains(lower, "android") ||
-		strings.Contains(lower, "mobile")
+// handleAssets 提供嵌入式 CSS 与 JavaScript 静态资源
+func (s *Server) handleAssets(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path == "" || r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // handleIndex 提供嵌入式 Web 前端
@@ -219,6 +270,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.Write(content)
 }
 
@@ -271,8 +325,8 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]FileEntry, 0, len(entries))
 	for _, e := range entries {
-		// 隐藏断点续传的临时分片文件 (.part.<size>.<mod>)
-		if strings.Contains(e.Name(), ".part.") {
+		// 隐藏正在接收的单次流上传临时文件
+		if isUploadTempName(e.Name()) {
 			continue
 		}
 		info, err := e.Info()
@@ -351,239 +405,155 @@ func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, fullPath stri
 	s.recordBytes("down", atomic.LoadInt64(&cw.n))
 }
 
-// handleUpload 流式接收多文件上传
+// handleUpload 以单个二进制请求流式接收文件。
+// 请求体不会整体进入内存；先写入隐藏临时文件，完整校验后再原子发布。
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "请求方法不支持", http.StatusMethodNotAllowed)
+		return
+	}
 	if !s.config.AllowUpload {
 		http.Error(w, "服务器未开启文件上传权限", http.StatusForbidden)
 		return
 	}
 
-	mr, err := r.MultipartReader()
+	p, err := s.parseUploadParams(r)
 	if err != nil {
-		http.Error(w, "无效的表单流: "+err.Error(), http.StatusBadRequest)
+		uploadParamError(w, err)
+		return
+	}
+	if r.ContentLength >= 0 && r.ContentLength != p.size {
+		http.Error(w, "请求体大小与文件声明不一致", http.StatusBadRequest)
 		return
 	}
 
-	targetDir := s.config.SharePath
+	targetDir, err := s.resolveSafePath(p.dir)
+	if err != nil {
+		uploadParamError(w, err)
+		return
+	}
+	info, err := os.Stat(targetDir)
+	if err != nil || !info.IsDir() {
+		http.Error(w, "上传目录不存在或不可读", http.StatusBadRequest)
+		return
+	}
 
-	for {
-		part, err := mr.NextPart()
-		if errors.Is(err, io.EOF) {
-			break
+	filename := filepath.Base(p.name)
+
+	temp, err := os.CreateTemp(targetDir, ".hubkit-upload-*.tmp")
+	if err != nil {
+		http.Error(w, "无法创建上传临时文件: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tempPath := temp.Name()
+	published := false
+	defer func() {
+		_ = temp.Close()
+		if !published {
+			_ = os.Remove(tempPath)
 		}
-		if err != nil {
-			http.Error(w, "读取上传流异常: "+err.Error(), http.StatusBadRequest)
-			return
+	}()
+
+	controller := http.NewResponseController(w)
+	limited := http.MaxBytesReader(w, r.Body, p.size)
+	idleReader := &progressTimeoutReader{
+		reader:     limited,
+		controller: controller,
+		timeout:    streamUploadIdleTimeout,
+	}
+	reader := &byteCountingReader{
+		reader: idleReader,
+		onRead: func(n int64) {
+			s.recordBytes("up", n)
+		},
+	}
+	buf := make([]byte, streamUploadBufferSize)
+	written, copyErr := io.CopyBuffer(temp, reader, buf)
+	if err := controller.SetReadDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		copyErr = errors.Join(copyErr, fmt.Errorf("清除上传停滞超时失败: %w", err))
+	}
+	closeErr := temp.Close()
+
+	if copyErr != nil || closeErr != nil || written != p.size {
+		if copyErr == nil {
+			copyErr = closeErr
 		}
-
-		if part.FormName() == "path" {
-			subPathBytes, _ := io.ReadAll(part)
-			resolved, err := s.resolveSafePath(string(subPathBytes))
-			if err == nil {
-				targetDir = resolved
-			}
-			part.Close()
-			continue
+		if copyErr == nil {
+			copyErr = fmt.Errorf("实际接收 %d 字节，声明 %d 字节", written, p.size)
 		}
-
-		if part.FormName() == "file" && part.FileName() != "" {
-			filename := filepath.Base(part.FileName())
-			savePath := filepath.Join(targetDir, filename)
-
-			// 防重名覆盖策略: 若存在同名文件，添加 (1), (2) 后缀
-			savePath = getNonConflictingPath(savePath)
-
-			dst, err := os.OpenFile(savePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-			if err != nil {
-				part.Close()
-				http.Error(w, "无法写入磁盘: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			// 流式零拷贝写入，内存恒定
-			written, copyErr := io.Copy(dst, part)
-			dst.Close()
-			part.Close()
-
-			if copyErr != nil {
-				s.logEvent(TransferEvent{
-					Type:      "upload",
-					Filename:  filename,
-					Size:      written,
-					ClientIP:  getClientIP(r),
-					Timestamp: time.Now(),
-					Success:   false,
-					ErrorMsg:  copyErr.Error(),
-				})
-				http.Error(w, "上传写入中断: "+copyErr.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			atomic.AddInt64(&s.uploadCount, 1)
-			s.recordBytes("up", written)
-			s.logEvent(TransferEvent{
-				Type:      "upload",
-				Filename:  filename,
-				Size:      written,
-				ClientIP:  getClientIP(r),
-				Timestamp: time.Now(),
-				Success:   true,
-			})
-		}
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Upload success"))
-}
-
-// uploadPartName 依据文件指纹构造断点续传临时片文件名
-func uploadPartName(name string, size, mod int64) string {
-	return fmt.Sprintf("%s.part.%d.%d", name, size, mod)
-}
-
-// uploadPartPath 解析分片相对路径并做防穿越校验
-func (s *Server) uploadPartPath(dir, name string, size, mod int64) (string, error) {
-	if name == "" || name == "." || name == ".." || size <= 0 || mod <= 0 {
-		return "", errors.New("上传参数不合法")
-	}
-	partName := uploadPartName(filepath.Base(name), size, mod)
-	return s.resolveSafePath(filepath.ToSlash(filepath.Join(dir, partName)))
-}
-
-// handleUploadStatus 查询目标文件的断点续传进度
-func (s *Server) handleUploadStatus(w http.ResponseWriter, r *http.Request) {
-	dir := r.URL.Query().Get("dir")
-	name := r.URL.Query().Get("name")
-	size, _ := strconv.ParseInt(r.URL.Query().Get("size"), 10, 64)
-	mod, _ := strconv.ParseInt(r.URL.Query().Get("mod"), 10, 64)
-
-	full, err := s.uploadPartPath(dir, name, size, mod)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.logEvent(TransferEvent{
+			Type:      "upload",
+			Filename:  filename,
+			Size:      written,
+			ClientIP:  getClientIP(r),
+			Timestamp: time.Now(),
+			Success:   false,
+			ErrorMsg:  copyErr.Error(),
+		})
+		http.Error(w, "上传写入中断: "+copyErr.Error(), http.StatusBadRequest)
 		return
 	}
 
-	result := map[string]any{"exists": false, "uploaded": 0}
-	if info, err := os.Stat(full); err == nil && !info.IsDir() {
-		result = map[string]any{"exists": true, "uploaded": info.Size()}
-	}
-	writeJSON(w, http.StatusOK, result)
-}
-
-// handleUploadAppend 追加一个二进制分片到临时片文件 (支持断点续传)
-func (s *Server) handleUploadAppend(w http.ResponseWriter, r *http.Request) {
-	if !s.config.AllowUpload {
-		http.Error(w, "服务器未开启文件上传权限", http.StatusForbidden)
+	s.publishMu.Lock()
+	finalPath := getNonConflictingPath(filepath.Join(targetDir, filename))
+	renameErr := os.Rename(tempPath, finalPath)
+	s.publishMu.Unlock()
+	if renameErr != nil {
+		http.Error(w, "发布上传文件失败: "+renameErr.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	dir := r.URL.Query().Get("dir")
-	name := r.URL.Query().Get("name")
-	size, _ := strconv.ParseInt(r.URL.Query().Get("size"), 10, 64)
-	mod, _ := strconv.ParseInt(r.URL.Query().Get("mod"), 10, 64)
-	// 客户端当前续传起点: 必须与片文件实际长度严格对齐, 防止超时重试导致重复写入损坏文件
-	offset, _ := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
-
-	full, err := s.uploadPartPath(dir, name, size, mod)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// 偏移量校验: 不匹配说明有残留分片滞留 (中断/超时写了一半), 返回实际长度让前端清片重传
-	if info, statErr := os.Stat(full); statErr == nil && !info.IsDir() {
-		if info.Size() != offset {
-			writeJSON(w, http.StatusConflict, map[string]any{"uploaded": info.Size(), "reset": true})
-			return
-		}
-	} else if offset > 0 {
-		// 片文件已不存在 (如被 abort), 从零开始
-		writeJSON(w, http.StatusConflict, map[string]any{"uploaded": 0, "reset": true})
-		return
-	}
-
-	f, err := os.OpenFile(full, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		http.Error(w, "无法写入磁盘: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	n, copyErr := io.Copy(f, r.Body)
-	f.Close()
-	if copyErr != nil {
-		http.Error(w, "写入中断: "+copyErr.Error(), http.StatusInternalServerError)
-		return
-	}
-	s.recordBytes("up", n)
-
-	// 返回片文件当前累计大小，前端据此跳过分片
-	total := n
-	if info, err := os.Stat(full); err == nil {
-		total = info.Size()
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"uploaded": total})
-}
-
-// handleUploadAbort 取消上传: 删除已追加的临时片文件 (幂等，无片文件也返回成功)
-func (s *Server) handleUploadAbort(w http.ResponseWriter, r *http.Request) {
-	dir := r.URL.Query().Get("dir")
-	name := r.URL.Query().Get("name")
-	size, _ := strconv.ParseInt(r.URL.Query().Get("size"), 10, 64)
-	mod, _ := strconv.ParseInt(r.URL.Query().Get("mod"), 10, 64)
-
-	full, err := s.uploadPartPath(dir, name, size, mod)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := os.Remove(full); err != nil && !os.IsNotExist(err) {
-		http.Error(w, "清理片文件失败: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"success": true})
-}
-
-// handleUploadComplete 将临时片文件合并为正式文件并计入统计
-func (s *Server) handleUploadComplete(w http.ResponseWriter, r *http.Request) {
-	if !s.config.AllowUpload {
-		http.Error(w, "服务器未开启文件上传权限", http.StatusForbidden)
-		return
-	}
-
-	dir := r.URL.Query().Get("dir")
-	name := r.URL.Query().Get("name")
-	size, _ := strconv.ParseInt(r.URL.Query().Get("size"), 10, 64)
-	mod, _ := strconv.ParseInt(r.URL.Query().Get("mod"), 10, 64)
-
-	full, err := s.uploadPartPath(dir, name, size, mod)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	partInfo, err := os.Stat(full)
-	if err != nil {
-		http.Error(w, "片文件不存在，无法完成: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// 合并目标：与片文件同目录，正式文件名 (存在同名则自动加后缀)
-	finalPath := getNonConflictingPath(filepath.Join(filepath.Dir(full), filepath.Base(name)))
-	if err := os.Rename(full, finalPath); err != nil {
-		http.Error(w, "合并文件失败: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	published = true
 
 	atomic.AddInt64(&s.uploadCount, 1)
 	s.logEvent(TransferEvent{
 		Type:      "upload",
 		Filename:  filepath.Base(finalPath),
-		Size:      partInfo.Size(),
+		Size:      written,
 		ClientIP:  getClientIP(r),
 		Timestamp: time.Now(),
 		Success:   true,
 	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"name":    filepath.Base(finalPath),
+		"size":    written,
+	})
+}
 
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "name": filepath.Base(finalPath)})
+func isUploadTempName(name string) bool {
+	return strings.HasPrefix(name, ".hubkit-upload-") && strings.HasSuffix(name, ".tmp")
+}
+
+func parsePositiveInt64(value, field string) (int64, error) {
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s 参数不合法", field)
+	}
+	return n, nil
+}
+
+func (s *Server) parseUploadParams(r *http.Request) (uploadParams, error) {
+	q := r.URL.Query()
+	p := uploadParams{dir: q.Get("dir"), name: q.Get("name")}
+	if p.name == "" || p.name == "." || p.name == ".." {
+		return p, errors.New("name 参数不合法")
+	}
+	var err error
+	if p.size, err = parsePositiveInt64(q.Get("size"), "size"); err != nil {
+		return p, err
+	}
+	if maxMB := s.config.MaxUploadSizeMB; maxMB > 0 && (maxMB > (1<<63-1)/(1024*1024) || p.size > maxMB*1024*1024) {
+		return p, fmt.Errorf("文件超过 %d MB 上传限制", maxMB)
+	}
+	return p, nil
+}
+
+func uploadParamError(w http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	if strings.Contains(err.Error(), "上传限制") {
+		status = http.StatusRequestEntityTooLarge
+	}
+	http.Error(w, err.Error(), status)
 }
 
 // writeJSON 显式 Content-Length 写出 JSON 响应
@@ -654,15 +624,8 @@ func (s *Server) handleDrop(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// logEvent 记录审计日志
+// logEvent 转发传输审计事件
 func (s *Server) logEvent(event TransferEvent) {
-	s.mu.Lock()
-	s.events = append([]TransferEvent{event}, s.events...)
-	if len(s.events) > 50 {
-		s.events = s.events[:50]
-	}
-	s.mu.Unlock()
-
 	if s.onTransferHook != nil {
 		s.onTransferHook(event)
 	}
@@ -692,6 +655,29 @@ func (s *Server) samplingLoop() {
 			return
 		}
 	}
+}
+
+func (s *Server) cleanupExpiredUploadTemps(now time.Time) {
+	s.mu.RLock()
+	root := s.config.SharePath
+	s.mu.RUnlock()
+	if root == "" {
+		return
+	}
+	cutoff := now.Add(-uploadTempTTL)
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() || !isUploadTempName(entry.Name()) {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil || !info.Mode().IsRegular() || !info.ModTime().Before(cutoff) {
+			return nil
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("[fileshare] cleanup upload temp %s failed: %v\n", path, err)
+		}
+		return nil
+	})
 }
 
 func (s *Server) sampleRatePoint() {
