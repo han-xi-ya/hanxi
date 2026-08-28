@@ -20,6 +20,7 @@ import MemoView from './views/MemoView.vue'
 import MarkerOnView from './views/MarkerOnView.vue'
 import EverythingView from './views/EverythingView.vue'
 import CCSwitchView from './views/CCSwitchView.vue'
+import MangoDiskView from './views/MangoDiskView.vue'
 import BCUView from './views/BCUView.vue'
 import FlClashView from './views/FlClashView.vue'
 import WifiView from './views/WifiView.vue'
@@ -49,6 +50,7 @@ const CORE_VIEWS: Record<string, Component> = {
   '/ext/markeron': markRaw(MarkerOnView),
   '/ext/everything': markRaw(EverythingView),
   '/ext/ccswitch': markRaw(CCSwitchView),
+  '/ext/mangodisk': markRaw(MangoDiskView),
   '/ext/bcu': markRaw(BCUView),
   '/ext/flclash': markRaw(FlClashView),
   '/ext/envcheck': markRaw(EnvCheckView),
@@ -71,6 +73,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/markeron': 'markeron',
   '/ext/everything': 'everything',
   '/ext/ccswitch': 'ccswitch',
+  '/ext/mangodisk': 'mangodisk',
   '/ext/bcu': 'bcu',
   '/ext/flclash': 'flclash',
   '/ext/envcheck': 'envcheck',

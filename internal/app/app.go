@@ -26,6 +26,9 @@ import (
 	"hubkit/internal/modules/frpc/instance"
 	"hubkit/internal/modules/frpc/version"
 	"hubkit/internal/modules/lan"
+	"hubkit/internal/modules/mangodisk"
+	mangodiskinstance "hubkit/internal/modules/mangodisk/instance"
+	mangodiskversion "hubkit/internal/modules/mangodisk/version"
 	"hubkit/internal/modules/markeron"
 	markeroninstance "hubkit/internal/modules/markeron/instance"
 	markeronversion "hubkit/internal/modules/markeron/version"
@@ -71,6 +74,8 @@ func RegisterEvents() {
 	application.RegisterEvent[everythinginstance.Snapshot]("everything:instance-state")
 	application.RegisterEvent[ccswitchversion.DownloadProgress]("ccswitch:version-download")
 	application.RegisterEvent[ccswitchinstance.Snapshot]("ccswitch:instance-state")
+	application.RegisterEvent[mangodiskversion.DownloadProgress]("mangodisk:version-download")
+	application.RegisterEvent[mangodiskinstance.Snapshot]("mangodisk:instance-state")
 	application.RegisterEvent[bcuversion.DownloadProgress]("bcu:version-download")
 	application.RegisterEvent[bcuinstance.Snapshot]("bcu:instance-state")
 	application.RegisterEvent[flclashversion.DownloadProgress]("flclash:version-download")
@@ -139,6 +144,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		markeron.New(plat),
 		everything.New(plat),
 		ccswitch.New(plat),
+		mangodisk.New(plat),
 		bcu.New(plat),
 		flclash.New(plat),
 		lan.New(plat, store),
