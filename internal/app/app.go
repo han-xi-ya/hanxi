@@ -33,6 +33,7 @@ import (
 	markeroninstance "hubkit/internal/modules/markeron/instance"
 	markeronversion "hubkit/internal/modules/markeron/version"
 	"hubkit/internal/modules/memo"
+	"hubkit/internal/modules/nanazip"
 	"hubkit/internal/modules/portkill"
 	"hubkit/internal/modules/portscan"
 	"hubkit/internal/modules/publicip"
@@ -85,6 +86,8 @@ func RegisterEvents() {
 	application.RegisterEvent[bcuinstance.Snapshot]("bcu:instance-state")
 	application.RegisterEvent[flclashversion.DownloadProgress]("flclash:version-download")
 	application.RegisterEvent[flclashinstance.Snapshot]("flclash:instance-state")
+	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
+	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 }
 
 // Options 控制应用启动时行为。
@@ -150,6 +153,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		everything.New(plat),
 		ccswitch.New(plat),
 		snipaste.New(plat),
+		nanazip.New(plat),
 		mangodisk.New(plat),
 		bcu.New(plat),
 		flclash.New(plat),
