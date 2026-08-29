@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"hubkit/internal/platform/apppackage"
 )
 
 // 通用平台错误定义
@@ -150,6 +152,8 @@ type Platform interface {
 	Port() PortAPI
 	Process() ProcessAPI
 	Job() JobAPI
+	// AppPackage 管理当前用户注册的 Windows 应用包。
+	AppPackage() apppackage.API
 	// DesktopDir 返回当前用户桌面目录（供便携工具的桌面快捷方式落点）
 	DesktopDir() (string, error)
 	// CreateDesktopShortcut 在桌面创建快捷方式（同名覆盖）

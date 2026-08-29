@@ -4,21 +4,24 @@ package windows
 
 import (
 	"hubkit/internal/platform"
+	"hubkit/internal/platform/apppackage"
 )
 
 type WindowsPlatform struct {
-	network platform.NetworkAPI
-	port    platform.PortAPI
-	process platform.ProcessAPI
-	job     platform.JobAPI
+	network    platform.NetworkAPI
+	port       platform.PortAPI
+	process    platform.ProcessAPI
+	job        platform.JobAPI
+	appPackage apppackage.API
 }
 
 func New() (platform.Platform, error) {
 	return &WindowsPlatform{
-		network: NewNetworkAPI(),
-		port:    NewPortAPI(),
-		process: NewProcessAPI(),
-		job:     NewJobAPI(),
+		network:    NewNetworkAPI(),
+		port:       NewPortAPI(),
+		process:    NewProcessAPI(),
+		job:        NewJobAPI(),
+		appPackage: NewAppPackageAPI(),
 	}, nil
 }
 
@@ -36,6 +39,10 @@ func (p *WindowsPlatform) Process() platform.ProcessAPI {
 
 func (p *WindowsPlatform) Job() platform.JobAPI {
 	return p.job
+}
+
+func (p *WindowsPlatform) AppPackage() apppackage.API {
+	return p.appPackage
 }
 
 func (p *WindowsPlatform) DesktopDir() (string, error) {
