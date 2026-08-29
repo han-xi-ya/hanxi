@@ -55,6 +55,9 @@ import type * as instance$6 from "../../../../../hubkit/internal/modules/markero
 import type * as version$5 from "../../../../../hubkit/internal/modules/markeron/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as nanazip$0 from "../../../../../hubkit/internal/modules/nanazip/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as portscan$0 from "../../../../../hubkit/internal/modules/portscan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -93,6 +96,8 @@ declare module "@wailsio/runtime" {
             "markeron:instance-state": instance$6.Snapshot;
             "markeron:version-download": version$5.DownloadProgress;
             "memo:changed": void;
+            "nanazip:operation-progress": nanazip$0.OperationProgress;
+            "nanazip:package-snapshot": nanazip$0.PackageSnapshot;
             "notify:received": notify$0.Notification;
             "portscan:progress": portscan$0.ScanProgress;
             "snipaste:instance-state": instance$7.Snapshot;

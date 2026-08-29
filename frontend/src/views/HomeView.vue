@@ -34,6 +34,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   everything: { icon: '🔎', route: '/ext/everything' },
   ccswitch: { icon: '🔀', route: '/ext/ccswitch' },
   snipaste: { icon: '✂', route: '/ext/snipaste' },
+  nanazip: { icon: 'NZ', route: '/ext/nanazip' },
   mangodisk: { icon: '🥭', route: '/ext/mangodisk' },
   bcu: { icon: '🧹', route: '/ext/bcu' },
   flclash: { icon: '⚡', route: '/ext/flclash' },
