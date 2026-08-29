@@ -1,11 +1,11 @@
 ---
 name: integrate-github-tool
-description: 把 GitHub 上的桌面/CLI 工具集成进 HubKit（托管模式：版本管理+JobObject 启停+前端控制台）。用户提供 GitHub 地址说"集成到 hubkit"时使用。已用本模式落地 markeron、everything、ccswitch 三个模块。
+description: 把 GitHub 上的桌面/CLI 工具集成进 Hanxi（托管模式：版本管理+JobObject 启停+前端控制台）。用户提供 GitHub 地址说"集成到 hanxi"时使用。已用本模式落地 markeron、everything、ccswitch 三个模块。
 ---
 
-# 集成 GitHub 工具进 HubKit（托管模式）
+# 集成 GitHub 工具进 Hanxi（托管模式）
 
-用户给出 GitHub 地址要求"把 XX 集成到 hubkit"时，按本 skill 执行。已落地先例：**markeron**（GitHub releases、无官方哈希）、**everything**（官网下载、ini 改写藏托盘）、**ccswitch**（GitHub digest 官方 sha256、tauri 单实例互斥体）——新模块优先对照 ccswitch 模板（最新最完整）。
+用户给出 GitHub 地址要求"把 XX 集成到 hanxi"时，按本 skill 执行。已落地先例：**markeron**（GitHub releases、无官方哈希）、**everything**（官网下载、ini 改写藏托盘）、**ccswitch**（GitHub digest 官方 sha256、tauri 单实例互斥体）——新模块优先对照 ccswitch 模板（最新最完整）。
 
 ## 阶段 0：上游侦查（先查后问，全部要实证）
 
@@ -31,7 +31,7 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/contents/<file>" -H "Accept
 
 ## 决策点：集成范围
 
-侦查后若存在"内嵌核心功能"的分叉（如 everything 的内嵌搜索），用 AskUserQuestion 给两选项并**把纯托管设为 Recommended**（上游界面已完整，内嵌重做性价比低；内嵌还会把上游的配置数据纳入 HubKit 直接改写，风险高）。用户拍板后进入模板实施；决策记录写进模块 package 注释。
+侦查后若存在"内嵌核心功能"的分叉（如 everything 的内嵌搜索），用 AskUserQuestion 给两选项并**把纯托管设为 Recommended**（上游界面已完整，内嵌重做性价比低；内嵌还会把上游的配置数据纳入 Hanxi 直接改写，风险高）。用户拍板后进入模板实施；决策记录写进模块 package 注释。
 
 ## 阶段 1-2：Go 子包（照 ccswitch 模板文件清单）
 

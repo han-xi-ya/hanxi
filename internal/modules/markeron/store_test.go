@@ -69,7 +69,7 @@ func TestFollowOnExitDefaultAndPersist(t *testing.T) {
 	dir := t.TempDir()
 	s := newMarkeronStore(dir)
 	if !s.GetFollowOnExit() {
-		t.Fatal("默认应为 true（随 HubKit 关闭）")
+		t.Fatal("默认应为 true（随 Hanxi 关闭）")
 	}
 	if err := s.SetFollowOnExit(false); err != nil {
 		t.Fatalf("SetFollowOnExit: %v", err)

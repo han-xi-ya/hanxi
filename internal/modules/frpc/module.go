@@ -1,5 +1,5 @@
-// Package frpc 内置模块：frpc 联调（产品核心）。
-// 与 lan/portkill/publicip 完全平等的模块——统一注册、统一启停。
+// Package frpc 提供 frp 内网穿透项目、多实例与版本管理能力。
+// 它与其他工具模块平等注册、启停和释放资源。
 // 已落地 M4.1 版本管理引擎；M4.2~M4.5 的 TOML 生成、多实例进程管理、日志流持续推进。
 package frpc
 
@@ -8,8 +8,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "frpc"
@@ -27,8 +27,8 @@ func (e *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "frpc 联调",
 		Version:     "0.1.0",
-		Description: "核心模块：frp 内网穿透项目、多实例、版本管理",
-		Author:      "HubKit",
+		Description: "管理 frp 内网穿透项目、多实例进程与本地版本",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

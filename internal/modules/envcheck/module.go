@@ -9,7 +9,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
+	"hanxi/internal/extapi"
 )
 
 const ID = "envcheck"
@@ -30,7 +30,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "开发环境检测",
 		Version:     "0.1.0",
 		Description: "检测本机开发工具链（git/node/java/python/npm/pnpm/go）的安装路径与版本",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

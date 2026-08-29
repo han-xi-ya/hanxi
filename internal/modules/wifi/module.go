@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/extapi"
+	"hanxi/internal/extapi"
 )
 
 const ID = "wifi"
@@ -25,7 +25,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "WiFi 密码",
 		Version:     "0.1.0",
 		Description: "查看本机已保存的 Wi-Fi 网络明文密码",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

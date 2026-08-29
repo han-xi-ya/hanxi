@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"hubkit/internal/modules/flclash/instance"
+	"hanxi/internal/modules/flclash/instance"
 )
 
 // TestShouldIdleQuitDisabled 固化代理实例不因空闲自动退出的产品约束。

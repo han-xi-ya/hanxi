@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"hubkit/internal/notify"
+	"hanxi/internal/notify"
 )
 
 func TestNotifyHub(t *testing.T) {

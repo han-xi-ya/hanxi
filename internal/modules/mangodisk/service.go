@@ -13,12 +13,12 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/modules/mangodisk/instance"
-	"hubkit/internal/modules/mangodisk/version"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/versioncmp"
-	"hubkit/internal/settings"
+	"hanxi/internal/modules/mangodisk/instance"
+	"hanxi/internal/modules/mangodisk/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/settings"
 )
 
 const (

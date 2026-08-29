@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "publicip"
@@ -26,7 +26,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "IP 查看",
 		Version:     "0.1.0",
 		Description: "查看公网 IPv4/IPv6、局域网 IP、临时 IPv6、网关与 DNS",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

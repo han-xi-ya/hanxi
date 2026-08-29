@@ -14,7 +14,7 @@ import (
 const (
 	repoOwner  = "harry0703"
 	repoName   = "MangoDisk"
-	userAgent  = "HubKit/0.2"
+	userAgent  = "Hanxi/0.2"
 	releaseURL = "https://api.github.com/repos/" + repoOwner + "/" + repoName + "/releases?per_page=60"
 	cacheTTL   = 10 * time.Minute
 )

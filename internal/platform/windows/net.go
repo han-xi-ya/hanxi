@@ -12,7 +12,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 var (
@@ -273,7 +273,7 @@ func (n *NetworkImpl) Ping(ctx context.Context, ipStr string, timeout time.Durat
 	defer procIcmpCloseHandle.Call(hIcmp)
 
 	destIP := binary.LittleEndian.Uint32(ip)
-	sendData := []byte("hubkit-ping")
+	sendData := []byte("hanxi-ping")
 	replyBufSize := unsafe.Sizeof(icmpEchoReply{}) + uintptr(len(sendData)) + 8
 	replyBuf := make([]byte, replyBufSize)
 

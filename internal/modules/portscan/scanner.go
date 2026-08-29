@@ -574,7 +574,7 @@ func (s *Scanner) lightweightProbe(ctx context.Context, dialer ContextDialer, ht
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err == nil {
-		req.Header.Set("User-Agent", "Mozilla/5.0 (HubKit)")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Hanxi)")
 		resp, err := httpClient.Do(req)
 		if err == nil {
 			defer resp.Body.Close()

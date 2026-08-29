@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hubkit/internal/modules/snipaste/version"
+	"hanxi/internal/modules/snipaste/version"
 )
 
 func TestSnipasteStoreRoundTripAndDamageTolerance(t *testing.T) {

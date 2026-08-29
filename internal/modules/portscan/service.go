@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/notify"
+	"hanxi/internal/notify"
 )
 
 // PortScanService 暴露给前端的端口扫描服务

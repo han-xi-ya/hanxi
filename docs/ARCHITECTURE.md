@@ -1,7 +1,8 @@
-# HubKit 技术架构设计规范
+# Hanxi 技术架构设计规范
 
-> **版本**：v1.0  
-> **更新日期**：2026-08-24  
+> **产品定位**：开源工具工作台
+> **产品版本**：v0.3.0
+> **更新日期**：2026-08-29
 > **技术基线**：Go ≥1.24 + Wails v3 + Vue 3 + TypeScript + TailwindCSS  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture)
 
@@ -9,7 +10,7 @@
 
 ## 1. 总体架构分层
 
-HubKit 严格遵循整洁架构原则，分层自上而下单向依赖，禁止反向或跨层违规调用：
+Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止反向或跨层违规调用：
 
 ```text
 ┌────────────────────────────────────────────────────────┐
@@ -73,7 +74,7 @@ type Module interface {
 
 ### 2.2 frpc 多实例引擎与进程沙箱 (`internal/modules/frpc`)
 
-1. **Windows JobObject 绑定**：每个启动的 `frpc.exe` 进程均调用 `internal/platform/windows.AssignProcessToJob()` 关联到作业对象，设置 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`。即使 HubKit 异常退出，操作系统内核也会强制清理所有子进程。
+1. **Windows JobObject 绑定**：每个启动的 `frpc.exe` 进程均调用 `internal/platform/windows.AssignProcessToJob()` 关联到作业对象，设置 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`。即使 Hanxi 异常退出，操作系统内核也会强制清理所有子进程。
 2. **连接状态嗅探**：`Instance` 在读取标准输出/错误流时实时分析特征词（如 `login to server success`, `authorization failed`, `connect to server error`），实时更新 `ConnState` 并通过 Wails Event 推送到前端。
 3. **DPAPI 凭据加密与临时文件治理**：
    - 存储持久化时，调用 `platform/windows.DPAPIEncrypt()` 将 Token 转换为 DPAPI 密文落盘；
@@ -81,7 +82,7 @@ type Module interface {
 
 ### 2.3 平台底层实现 (`internal/platform/windows`)
 
-- **`autostart.go`**：管理注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\HubKit` 实现开机静默启动。
+- **`autostart.go`**：管理注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Hanxi` 实现开机静默启动。
 - **`dpapi.go`**：封装 Windows `CryptProtectData` 与 `CryptUnprotectData`。
 - **`job_windows.go`**：封装 Windows JobObject 作业对象原语。
 - **`process_windows.go`**：基于 `OpenProcess` 与 `QueryFullProcessImageNameW` 获取进程路径与启动时间，用于防误杀校验。
@@ -91,7 +92,9 @@ type Module interface {
 
 ## 3. 持久化与便携化设计 (`internal/settings`)
 
+> Hanxi v0.3.0 是品牌断代版本：源码命名空间、应用标识、进程名、自启项、单实例 ID 和标准数据目录均使用 Hanxi，不探测或迁移旧产品数据。
+
 - **路径判定**：
   - 启动时若在可执行文件同级目录检测到 `data/` 目录，则判定为 **Portable 便携模式**，所有数据、日志、版本文件均存放在 `data/` 下；
-  - 否则进入 **Standard 标准模式**，数据存储在 `%APPDATA%/HubKit/`。
+  - 否则进入 **Standard 标准模式**，数据存储在 `%APPDATA%/Hanxi/`。
 - **并发安全原子写**：配置保存采用“写入临时文件 + `os.Rename`”策略，杜绝因程序异常断电造成 JSON 文件损坏。

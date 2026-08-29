@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/extapi"
+	"hanxi/internal/extapi"
 )
 
 const ID = "portscan"
@@ -25,7 +25,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 		Name:        "端口扫描与指纹",
 		Version:     "0.1.0",
 		Description: "高并发多端口快速扫描，集成 Nmap 深度服务指纹识别",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

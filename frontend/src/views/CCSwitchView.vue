@@ -2,11 +2,11 @@
 // 状态 / 版本管理 / 下载进度 / 时长 ticker / 生命周期
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as CCSwitchAPI from '../../bindings/hubkit/internal/modules/ccswitch/ccswitchservice'
-import type { CCRelease, CCVersionInfo } from '../../bindings/hubkit/internal/modules/ccswitch/version/models'
-import type { Snapshot } from '../../bindings/hubkit/internal/modules/ccswitch/instance/models'
-import type { ControlOutcome, QuitOutcome } from '../../bindings/hubkit/internal/modules/ccswitch/models'
-import type { DownloadProgress } from '../../bindings/hubkit/internal/modules/ccswitch/version/models'
+import * as CCSwitchAPI from '../../bindings/hanxi/internal/modules/ccswitch/ccswitchservice'
+import type { CCRelease, CCVersionInfo } from '../../bindings/hanxi/internal/modules/ccswitch/version/models'
+import type { Snapshot } from '../../bindings/hanxi/internal/modules/ccswitch/instance/models'
+import type { ControlOutcome, QuitOutcome } from '../../bindings/hanxi/internal/modules/ccswitch/models'
+import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/ccswitch/version/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
@@ -61,7 +61,7 @@ const banner = computed(() => {
   if (state.value === 'external') {
     return {
       cls: 'banner-warn',
-      text: '检测到外部 CC Switch 实例（非 HubKit 托管）。可唤起其窗口；如需彻底退出请在 CC Switch 托盘操作。',
+      text: '检测到外部 CC Switch 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 CC Switch 托盘操作。',
     }
   }
   if (state.value === 'failed') {
@@ -265,7 +265,7 @@ async function loadExtras() {
 async function onFollowToggle() {
   try {
     await CCSwitchAPI.SetFollowOnExit(!followOnExit.value)
-    showToast(followOnExit.value ? '已开启：HubKit 退出时一并关闭该工具' : '已关闭：HubKit 退出不影响该工具，继续独立运行（下次启动生效）')
+    showToast(followOnExit.value ? '已开启：Hanxi 退出时一并关闭该工具' : '已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
   } catch (e) {
     showToast('设置失败: ' + getErrorMessage(e))
     followOnExit.value = !followOnExit.value // 失败回滚
@@ -439,7 +439,7 @@ onUnmounted(() => {
       <div class="extras-row">
         <label class="toggle-label">
           <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
-          <span>随 HubKit 一起关闭 <span class="hint-dim">（关闭后 HubKit 退出完全不影响该工具）</span></span>
+          <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具）</span></span>
         </label>
         <button class="btn btn-secondary btn-small" @click="createShortcut">🖥 创建桌面快捷方式</button>
       </div>
@@ -456,7 +456,7 @@ onUnmounted(() => {
       <div class="meta-info">
         <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程版本 {{ releases.length }} 个</span>
         <span class="hint-dim">便携包下载自 GitHub Releases（Windows-Portable.zip，官方 digest 校验）；或「导入本地」把你机器上已有的安装版/绿色版收纳进来</span>
-        <span class="hint-dim">绿色版标记（portable.ini）随包内置，向上游 Updater 已禁用，更新由 HubKit 版本管理统一接管</span>
+        <span class="hint-dim">绿色版标记（portable.ini）随包内置，向上游 Updater 已禁用，更新由 Hanxi 版本管理统一接管</span>
       </div>
       <div class="btn-group">
         <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地安装</button>

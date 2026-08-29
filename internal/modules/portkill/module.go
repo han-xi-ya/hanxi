@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "portkill"
@@ -26,7 +26,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "释放端口",
 		Version:     "0.1.0",
 		Description: "按端口定位占用进程，复核后安全结束",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

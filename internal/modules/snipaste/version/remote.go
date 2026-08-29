@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform/versioncmp"
+	"hanxi/internal/platform/versioncmp"
 )
 
 const (
 	officialSiteURL  = "https://www.snipaste.com/"
 	downloadsPageURL = "https://www.snipaste.com/download.html"
 	sha1ManifestURL  = "https://dl.snipaste.com/sha-1.txt"
-	userAgent        = "HubKit/0.2"
+	userAgent        = "Hanxi/0.2"
 	cacheTTL         = 10 * time.Minute
 	probeTimeout     = 12 * time.Second
 	maxPageBody      = 4 << 20

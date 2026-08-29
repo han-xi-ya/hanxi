@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"hubkit/internal/modules/fileshare/web"
+	"hanxi/internal/modules/fileshare/web"
 )
 
 // ratePoint 速率采样点 (保存某个时刻的累计传输字节数)
@@ -440,7 +440,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	filename := filepath.Base(p.name)
 
-	temp, err := os.CreateTemp(targetDir, ".hubkit-upload-*.tmp")
+	temp, err := os.CreateTemp(targetDir, ".hanxi-upload-*.tmp")
 	if err != nil {
 		http.Error(w, "无法创建上传临时文件: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -521,7 +521,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func isUploadTempName(name string) bool {
-	return strings.HasPrefix(name, ".hubkit-upload-") && strings.HasSuffix(name, ".tmp")
+	return strings.HasPrefix(name, ".hanxi-upload-") && strings.HasSuffix(name, ".tmp")
 }
 
 func parsePositiveInt64(value, field string) (int64, error) {

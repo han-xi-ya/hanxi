@@ -14,7 +14,7 @@ import (
 const (
 	repoOwner  = "chen08209"
 	repoName   = "FlClash"
-	userAgent  = "HubKit/0.2"
+	userAgent  = "Hanxi/0.2"
 	releaseURL = "https://api.github.com/repos/" + repoOwner + "/" + repoName + "/releases?per_page=60"
 
 	// cacheTTL 远程 Release 列表内存缓存时长（规避 GitHub 未认证 60 次/小时限流）

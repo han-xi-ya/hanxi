@@ -2,13 +2,13 @@ version: '3'
 
 # Build source of truth: keep product identity here.
 info:
-  companyName: "HubKit"
-  productName: "HubKit"
-  productIdentifier: "com.hubkit.app"
-  description: "frpc 内网穿透开发工具箱：多实例联调、局域网扫描、端口查杀"
-  copyright: "(c) 2026, HubKit"
-  comments: "frpc 内网穿透开发工具箱"
-  version: "0.1.0"
+  companyName: "Hanxi"
+  productName: "Hanxi"
+  productIdentifier: "io.hanxi.desktop"
+  description: "集中安装、管理与运行常用开源软件"
+  copyright: "© 2026 Hanxi"
+  comments: "开源工具工作台"
+  version: "0.3.0"
 
 # Dev mode configuration
 dev_mode:

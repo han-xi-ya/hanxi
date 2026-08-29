@@ -14,7 +14,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"hubkit/internal/domain"
+	"hanxi/internal/domain"
 )
 
 // ---------------------------
@@ -61,13 +61,13 @@ type tomlProxyTransport struct {
 }
 
 type tomlVisitor struct {
-	Name      string               `toml:"name"`
-	Type      string               `toml:"type"` // stcp | xtcp
-	ServerName string              `toml:"serverName"`
-	SecretKey string               `toml:"secretKey,omitempty"`
-	BindAddr  string               `toml:"bindAddr"`
-	BindPort  int                  `toml:"bindPort"`
-	Transport tomlVisitorTransport `toml:"transport"`
+	Name       string               `toml:"name"`
+	Type       string               `toml:"type"` // stcp | xtcp
+	ServerName string               `toml:"serverName"`
+	SecretKey  string               `toml:"secretKey,omitempty"`
+	BindAddr   string               `toml:"bindAddr"`
+	BindPort   int                  `toml:"bindPort"`
+	Transport  tomlVisitorTransport `toml:"transport"`
 }
 
 type tomlVisitorTransport struct {

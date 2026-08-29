@@ -7,49 +7,45 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/logging"
-	"hubkit/internal/modules/bcu"
-	bcuinstance "hubkit/internal/modules/bcu/instance"
-	bcuversion "hubkit/internal/modules/bcu/version"
-	"hubkit/internal/modules/ccswitch"
-	ccswitchinstance "hubkit/internal/modules/ccswitch/instance"
-	ccswitchversion "hubkit/internal/modules/ccswitch/version"
-	"hubkit/internal/modules/envcheck"
-	"hubkit/internal/modules/everything"
-	everythinginstance "hubkit/internal/modules/everything/instance"
-	"hubkit/internal/modules/fileshare"
-	"hubkit/internal/modules/flclash"
-	flclashinstance "hubkit/internal/modules/flclash/instance"
-	flclashversion "hubkit/internal/modules/flclash/version"
-	"hubkit/internal/modules/frpc"
-	"hubkit/internal/modules/frpc/instance"
-	"hubkit/internal/modules/frpc/version"
-	"hubkit/internal/modules/lan"
-	"hubkit/internal/modules/mangodisk"
-	mangodiskinstance "hubkit/internal/modules/mangodisk/instance"
-	mangodiskversion "hubkit/internal/modules/mangodisk/version"
-	"hubkit/internal/modules/markeron"
-	markeroninstance "hubkit/internal/modules/markeron/instance"
-	markeronversion "hubkit/internal/modules/markeron/version"
-	"hubkit/internal/modules/memo"
-	"hubkit/internal/modules/nanazip"
-	"hubkit/internal/modules/portkill"
-	"hubkit/internal/modules/portscan"
-	"hubkit/internal/modules/publicip"
-	"hubkit/internal/modules/snipaste"
-	snipasteinstance "hubkit/internal/modules/snipaste/instance"
-	snipasteversion "hubkit/internal/modules/snipaste/version"
-	"hubkit/internal/modules/wechat"
-	"hubkit/internal/modules/wifi"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform/windows"
-	"hubkit/internal/settings"
-)
-
-const (
-	Name    = "HubKit"
-	Version = "0.2.0"
+	"hanxi/internal/extapi"
+	"hanxi/internal/logging"
+	"hanxi/internal/modules/bcu"
+	bcuinstance "hanxi/internal/modules/bcu/instance"
+	bcuversion "hanxi/internal/modules/bcu/version"
+	"hanxi/internal/modules/ccswitch"
+	ccswitchinstance "hanxi/internal/modules/ccswitch/instance"
+	ccswitchversion "hanxi/internal/modules/ccswitch/version"
+	"hanxi/internal/modules/envcheck"
+	"hanxi/internal/modules/everything"
+	everythinginstance "hanxi/internal/modules/everything/instance"
+	"hanxi/internal/modules/fileshare"
+	"hanxi/internal/modules/flclash"
+	flclashinstance "hanxi/internal/modules/flclash/instance"
+	flclashversion "hanxi/internal/modules/flclash/version"
+	"hanxi/internal/modules/frpc"
+	"hanxi/internal/modules/frpc/instance"
+	"hanxi/internal/modules/frpc/version"
+	"hanxi/internal/modules/lan"
+	"hanxi/internal/modules/mangodisk"
+	mangodiskinstance "hanxi/internal/modules/mangodisk/instance"
+	mangodiskversion "hanxi/internal/modules/mangodisk/version"
+	"hanxi/internal/modules/markeron"
+	markeroninstance "hanxi/internal/modules/markeron/instance"
+	markeronversion "hanxi/internal/modules/markeron/version"
+	"hanxi/internal/modules/memo"
+	"hanxi/internal/modules/nanazip"
+	"hanxi/internal/modules/portkill"
+	"hanxi/internal/modules/portscan"
+	"hanxi/internal/modules/publicip"
+	"hanxi/internal/modules/snipaste"
+	snipasteinstance "hanxi/internal/modules/snipaste/instance"
+	snipasteversion "hanxi/internal/modules/snipaste/version"
+	"hanxi/internal/modules/wechat"
+	"hanxi/internal/modules/wifi"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform/windows"
+	"hanxi/internal/product"
+	"hanxi/internal/settings"
 )
 
 // mainWindow 主窗口引用，供单实例第二启动回调聚焦使用
@@ -96,7 +92,7 @@ type Options struct {
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
-// assets 由 cmd/hubkit 通过 embed 提供前端产物。
+// assets 由 cmd/hanxi 通过 embed 提供前端产物。
 func New(assets application.AssetOptions, options Options) (*application.App, func()) {
 	// 1. 初始化平台原语
 	plat, err := windows.New()
@@ -123,10 +119,10 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		slog.Warn("failed to init logger", "err", err)
 	}
 
-	slog.Info("HubKit starting",
+	slog.Info("Hanxi starting",
 		"mode", paths.Mode(),
 		"baseDir", paths.BaseDir(),
-		"version", Version,
+		"version", product.Version,
 	)
 
 	// 4. 初始化模块注册表并注入持久化 Store
@@ -184,8 +180,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	_ = registry.EnsureActive("wechat")
 
 	a := application.New(application.Options{
-		Name:        Name,
-		Description: "frpc 内网穿透开发客户端：多实例联调、局域网扫描、释放端口",
+		Name:        product.Name,
+		Description: product.Description,
 		// 应用退出统一清理：所有已初始化模块先走 OnDestroy。JobObject 托管工具
 		// 会连带退出；Snipaste 等明确脱管的桌面工具由模块契约保留原生托盘与快捷键。
 		// OnShutdown 阻塞至返回，保证需要回收的工具不残留孤儿进程。
@@ -197,7 +193,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		// 单实例锁: 重复启动时 Wails 以 ExitCode 静默退出第二实例,
 		// 避免旧实例在后台长期驻留内存导致任务管理器出现多个同名进程
 		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID: "com.hubkit.desktop",
+			UniqueID: product.Identifier,
 			// 第二实例启动时, 聚焦展示已有主窗口
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
 				if mainWindow != nil {
@@ -220,7 +216,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	}
 
 	win := a.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            Name,
+		Title:            product.Name,
 		Width:            1200,
 		Height:           780,
 		BackgroundColour: application.NewRGB(245, 246, 248),
@@ -244,9 +240,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 
 	// 创建系统托盘 (Systray)
 	tray := a.SystemTray.New()
-	tray.SetTooltip(Name + " - 内网穿透与网络工具箱")
+	tray.SetTooltip(product.Name + " - " + product.Tagline)
 	trayMenu := a.NewMenu()
-	trayMenu.Add("显示 " + Name).OnClick(func(ctx *application.Context) {
+	trayMenu.Add("显示 " + product.Name).OnClick(func(ctx *application.Context) {
 		win.Show()
 		win.Focus()
 	})

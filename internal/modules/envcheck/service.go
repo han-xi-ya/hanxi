@@ -3,7 +3,7 @@ package envcheck
 import (
 	"context"
 
-	"hubkit/internal/modules/envcheck/detect"
+	"hanxi/internal/modules/envcheck/detect"
 )
 
 // EnvCheckService Wails 绑定服务：开发工具链版本探测。

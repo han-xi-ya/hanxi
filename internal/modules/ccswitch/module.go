@@ -11,8 +11,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "ccswitch"
@@ -31,7 +31,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "CC Switch",
 		Version:     "0.1.0",
 		Description: "收纳 Claude Code / Codex 多供应商切换工具 CC Switch：版本管理、JobObject 托管启停与窗口唤起",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

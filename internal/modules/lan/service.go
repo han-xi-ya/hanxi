@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/settings"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/settings"
 )
 
 // DeviceInfo 局域网活跃设备信息

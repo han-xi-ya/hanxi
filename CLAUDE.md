@@ -1,4 +1,4 @@
-# HubKit 项目规范与 Claude Code 指令
+# Hanxi 项目规范与 Claude Code 指令
 
 ## 📌 核心原则与提交规范
 

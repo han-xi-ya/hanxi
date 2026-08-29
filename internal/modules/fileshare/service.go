@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
 )
 
 // FileShareService 面向 Wails 前端与核心调度的服务层

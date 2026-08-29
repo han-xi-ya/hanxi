@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"hubkit/internal/platform/versioncmp"
-	"hubkit/internal/platform/versioninfo"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/versioninfo"
 )
 
 const (
@@ -139,7 +139,7 @@ func (m *Manager) Download(targetVersion string, onProgress func(DownloadProgres
 		return fmt.Errorf("官网版本列表中不存在 %s", version)
 	}
 	if rel.OfficialHash == "" && rel.Size <= 0 {
-		return fmt.Errorf("官网未提供版本 %s 的可验证哈希或文件大小，HubKit 拒绝安装", version)
+		return fmt.Errorf("官网未提供版本 %s 的可验证哈希或文件大小，Hanxi 拒绝安装", version)
 	}
 
 	if err := os.MkdirAll(m.versionsDir, 0755); err != nil {

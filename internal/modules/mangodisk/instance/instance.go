@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 // State 引擎状态机：stopped → starting → running → (stopped | failed | external)
@@ -41,7 +41,7 @@ type Snapshot struct {
 // StartOptions 启动参数：由 service 层解析版本后填充。
 type StartOptions struct {
 	Version string // 绑定版本 vX.Y.Z
-	// Detached 独立运行：解除 JobObject 退出联动（HubKit 关闭完全不影响工具）。
+	// Detached 独立运行：解除 JobObject 退出联动（Hanxi 关闭完全不影响工具）。
 	Detached bool
 	Exe      string // MangoDisk portable EXE 绝对路径（版本隔离目录内）
 }
@@ -140,7 +140,7 @@ func (e *Engine) Start(opts StartOptions) error {
 		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
 	}
 	if opts.Detached {
-		// 解除退出联动：HubKit 退出/崩溃不再连带杀本实例（"不随 HubKit 关闭"开关）
+		// 解除退出联动：Hanxi 退出/崩溃不再连带杀本实例（"不随 Hanxi 关闭"开关）
 		if derr := job.SetAllowKillOnClose(false); derr != nil {
 			job.Close()
 			_ = cmd.Process.Kill()
@@ -183,7 +183,7 @@ func (e *Engine) OpenWindow(exe string) (opened bool, err error) {
 // Quit 退出自有实例（幂等；external/stopped 状态无自有进程，直接返回 nil）：
 //  1. 通过 Tauri signal window 取得实例 PID，向该 PID 的顶层窗口投递 WM_CLOSE；
 //  2. 宽限 closeGracePeriod 轮询进程自然退出；
-//  3. 超时后仅对 HubKit 自有 JobObject 强杀兜底。
+//  3. 超时后仅对 Hanxi 自有 JobObject 强杀兜底。
 func (e *Engine) Quit() error {
 	e.startMu.Lock()
 	defer e.startMu.Unlock()

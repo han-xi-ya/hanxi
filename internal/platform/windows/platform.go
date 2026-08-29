@@ -3,8 +3,8 @@
 package windows
 
 import (
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/apppackage"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/apppackage"
 )
 
 type WindowsPlatform struct {

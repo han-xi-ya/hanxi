@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted, onUnmounted, nextTick } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as LanAPI from '../../bindings/hubkit/internal/modules/lan'
-import type { SubnetInfo, DeviceInfo, LanProgress } from '../../bindings/hubkit/internal/modules/lan/models'
+import * as LanAPI from '../../bindings/hanxi/internal/modules/lan'
+import type { SubnetInfo, DeviceInfo, LanProgress } from '../../bindings/hanxi/internal/modules/lan/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 

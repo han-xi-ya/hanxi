@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform/versioncmp"
+	"hanxi/internal/platform/versioncmp"
 )
 
 const (
 	repoOwner    = "M2Team"
 	repoName     = "NanaZip"
-	userAgent    = "HubKit/0.2"
+	userAgent    = "Hanxi/0.2"
 	cacheTTL     = 10 * time.Minute
 	digestPrefix = "sha256:"
 )

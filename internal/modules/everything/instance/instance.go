@@ -1,7 +1,7 @@
 // Package instance 实现 Everything 单实例运行引擎：
 //
 // Everything 由本引擎启动后绑定 Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），
-// HubKit 无论以何种方式退出，内核都会连带终止 Everything 进程树，杜绝孤儿驻留。
+// Hanxi 无论以何种方式退出，内核都会连带终止 Everything 进程树，杜绝孤儿驻留。
 //
 // 与 markeron 引擎的两点本质差异：
 //   - Everything 无"标注开关"语义，本引擎提供三操作：后台启动（-startup）、
@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 // State 引擎状态机：stopped → starting → running → (stopped | failed | external)
@@ -131,7 +131,7 @@ func (e *Engine) Start(opts StartOptions) error {
 
 	e.transition(StateStarting, "")
 
-	// 内嵌托管：隐藏 Everything 托盘图标——实例启停/唤窗全由 HubKit 按钮接管。
+	// 内嵌托管：隐藏 Everything 托盘图标——实例启停/唤窗全由 Hanxi 按钮接管。
 	// 失败静默容忍：托盘可见不影响功能，仅少一层"纯内嵌"观感。
 	_ = ensureHiddenTray(filepath.Join(filepath.Dir(opts.Exe), "Everything.ini"))
 

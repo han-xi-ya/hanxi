@@ -65,7 +65,7 @@ func CreateDesktopShortcut(name, target, workDir string) error {
 	defer runtime.UnlockOSThread()
 	coInitErr := ole.CoInitializeEx(0, ole.COINIT_APARTMENTTHREADED)
 	if coInitErr != nil {
-		// RPC_E_CHANGED_MODE(0x80010106)：线程已被其他模式初始化（如 HubKit 主线程 MTA）——
+		// RPC_E_CHANGED_MODE(0x80010106)：线程已被其他模式初始化（如 Hanxi 主线程 MTA）——
 		// 借用现有状态继续；其余错误直接返回
 		if oe, ok := coInitErr.(*ole.OleError); !ok || oe.Code() != 0x80010106 {
 			return fmt.Errorf("COM 初始化失败: %w", coInitErr)

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"hubkit/internal/modules/ccswitch/instance"
+	"hanxi/internal/modules/ccswitch/instance"
 )
 
 // TestShouldIdleQuit 空闲退出判定穷举：仅"自有 running + 主窗口未开 + 超阈值"才退出。

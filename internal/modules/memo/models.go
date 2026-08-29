@@ -7,10 +7,10 @@ type MemoItem struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
 	Content   string    `json:"content"`
-	Tags      []string  `json:"tags"`      // 标签数组 (如 ["#SQL", "#Token", "#Todo"])
-	IsPinned  bool      `json:"isPinned"`  // 是否置顶
-	IsMasked  bool      `json:"isMasked"`  // 是否敏感脱敏遮罩 (如 API Key / Token)
-	ColorTag  string    `json:"colorTag"`  // 侧边色彩标识 (如 "blue", "green", "amber", "purple", "rose")
+	Tags      []string  `json:"tags"`     // 标签数组 (如 ["#SQL", "#Token", "#Todo"])
+	IsPinned  bool      `json:"isPinned"` // 是否置顶
+	IsMasked  bool      `json:"isMasked"` // 是否敏感脱敏遮罩 (如 API Key / Token)
+	ColorTag  string    `json:"colorTag"` // 侧边色彩标识 (如 "blue", "green", "amber", "purple", "rose")
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }

@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
 )
 
 // PortOccupant 端口占用实体模型

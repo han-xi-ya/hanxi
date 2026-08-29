@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"unicode/utf16"
 
-	"hubkit/internal/platform/apppackage"
+	"hanxi/internal/platform/apppackage"
 )
 
 const (
@@ -135,7 +135,7 @@ func (a *windowsAppPackageAPI) run(ctx context.Context, req appPackageRequest) (
 		return appPackageResponse{}, &apppackage.Error{Code: apppackage.CodePowerShellAbsent, Message: "系统 Windows PowerShell 不可用", Cause: err}
 	}
 	req.ProtocolVersion = appPackageProtocolVersion
-	req.RequestID = fmt.Sprintf("hubkit-%d", a.sequence.Add(1))
+	req.RequestID = fmt.Sprintf("hanxi-%d", a.sequence.Add(1))
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return appPackageResponse{}, &apppackage.Error{Code: apppackage.CodeProtocol, Message: "生成包管理请求失败", Cause: err}

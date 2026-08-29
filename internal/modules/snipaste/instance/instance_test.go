@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 type fakeJob struct {
@@ -75,7 +75,7 @@ func TestVerifyTokenRejectsPathMismatch(t *testing.T) {
 func TestQuitForcesOwnedJobAfterGrace(t *testing.T) {
 	job := &fakeJob{}
 	started := time.Now()
-	proc := &fakeProcessAPI{info: platform.ProcInfo{PID: 42, ExePath: `C:\HubKit\Snipaste.exe`, StartedAt: started}}
+	proc := &fakeProcessAPI{info: platform.ProcInfo{PID: 42, ExePath: `C:\Hanxi\Snipaste.exe`, StartedAt: started}}
 	engine := NewEngine(fakeJobAPI{job: job}, proc, Callbacks{})
 	engine.state = StateRunning
 	engine.pid = 42

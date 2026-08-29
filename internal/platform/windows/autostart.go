@@ -12,7 +12,7 @@ import (
 )
 
 const runKeyPath = `Software\Microsoft\Windows\CurrentVersion\Run`
-const runValueName = `HubKit`
+const runValueName = `Hanxi`
 
 // SetAutoStart 设置或移除 Windows 当前用户的开机自启动注册表项
 func SetAutoStart(enable bool) error {

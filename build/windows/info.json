@@ -1,15 +1,15 @@
 {
-	"fixed": {
-		"file_version": "0.2.0"
-	},
-	"info": {
-		"0000": {
-			"ProductVersion": "0.2.0",
-			"CompanyName": "HubKit",
-			"FileDescription": "HubKit – frpc 联调与网络工具箱",
-			"LegalCopyright": "© 2026, HubKit",
-			"ProductName": "HubKit",
-			"Comments": "frpc 内网穿透开发工具箱"
-		}
-	}
+  "fixed": {
+    "file_version": "0.3.0"
+  },
+  "info": {
+    "0000": {
+      "ProductVersion": "0.3.0",
+      "CompanyName": "Hanxi",
+      "FileDescription": "Hanxi - 开源工具工作台",
+      "LegalCopyright": "© 2026 Hanxi",
+      "ProductName": "Hanxi",
+      "Comments": "集中安装、管理与运行常用开源软件"
+    }
+  }
 }

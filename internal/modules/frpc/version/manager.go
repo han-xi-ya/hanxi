@@ -120,7 +120,7 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 	}
 
 	zipURLs := m.assetMirrors(version, rel.AssetName)
-	tmpZip, err := os.CreateTemp("", "hubkit-frp-*.zip")
+	tmpZip, err := os.CreateTemp("", "hanxi-frp-*.zip")
 	if err != nil {
 		return err
 	}

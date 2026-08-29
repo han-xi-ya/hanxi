@@ -10,8 +10,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "everything"
@@ -30,7 +30,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "Everything 搜索",
 		Version:     "0.1.0",
 		Description: "收纳文件搜索工具 Everything：版本管理、后台索引托管与内嵌秒级文件搜索",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

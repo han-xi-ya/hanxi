@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservice'
-import type { FrpRelease, FrpVersionInfo, DownloadProgress } from '../../bindings/hubkit/internal/modules/frpc/version/models'
+import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
+import type { FrpRelease, FrpVersionInfo, DownloadProgress } from '../../bindings/hanxi/internal/modules/frpc/version/models'
 
 const releases = ref<FrpRelease[]>([])
 const installed = ref<FrpVersionInfo[]>([])

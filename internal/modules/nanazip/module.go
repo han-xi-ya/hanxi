@@ -6,8 +6,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "nanazip"
@@ -17,7 +17,7 @@ type Module struct{ svc *NanaZipService }
 func New(plat platform.Platform) extapi.Module { return &Module{svc: NewNanaZipService(plat)} }
 
 func (m *Module) Info() extapi.ModuleInfo {
-	return extapi.ModuleInfo{ID: ID, Name: "NanaZip", Version: "0.1.0", Description: "安装、升级和卸载 NanaZip 官方 stable MSIX 完整版", Author: "HubKit", Level: extapi.LevelBuiltin}
+	return extapi.ModuleInfo{ID: ID, Name: "NanaZip", Version: "0.1.0", Description: "安装、升级和卸载 NanaZip 官方 stable MSIX 完整版", Author: "Hanxi", Level: extapi.LevelBuiltin}
 }
 
 func (m *Module) Nav() []extapi.NavEntry {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, watch, nextTick } from 'vue'
-import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservice'
-import type { Project, ProxyRule } from '../../bindings/hubkit/internal/domain/models'
+import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
+import type { Project, ProxyRule } from '../../bindings/hanxi/internal/domain/models'
 
 const props = defineProps<{
   project: Project | null

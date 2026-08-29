@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 // NetworkOverview 综合 IP 与网络详情
@@ -193,16 +193,16 @@ type PingResult struct {
 
 // PingSummary Ping 统计概要
 type PingSummary struct {
-	Target       string       `json:"target"`
-	IP           string       `json:"ip"`
-	Sent         int          `json:"sent"`
-	Received     int          `json:"received"`
-	Lost         int          `json:"lost"`
-	LossRate     float64      `json:"lossRate"`
-	MinRTT       float64      `json:"minRtt"`
-	MaxRTT       float64      `json:"maxRtt"`
-	AvgRTT       float64      `json:"avgRtt"`
-	Results      []PingResult `json:"results"`
+	Target   string       `json:"target"`
+	IP       string       `json:"ip"`
+	Sent     int          `json:"sent"`
+	Received int          `json:"received"`
+	Lost     int          `json:"lost"`
+	LossRate float64      `json:"lossRate"`
+	MinRTT   float64      `json:"minRtt"`
+	MaxRTT   float64      `json:"maxRtt"`
+	AvgRTT   float64      `json:"avgRtt"`
+	Results  []PingResult `json:"results"`
 }
 
 // PingTarget 对目标域名或 IP 执行探测（默认探测 4 次）

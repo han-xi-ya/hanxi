@@ -13,12 +13,12 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/modules/bcu/instance"
-	"hubkit/internal/modules/bcu/version"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/versioncmp"
-	"hubkit/internal/settings"
+	"hanxi/internal/modules/bcu/instance"
+	"hanxi/internal/modules/bcu/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/settings"
 )
 
 const (
@@ -351,7 +351,7 @@ func (s *BCUService) resolveInstalledExeAny() (string, error) {
 
 // ---------- 联动开关与桌面辅助 ----------
 
-// GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
 func (s *BCUService) GetFollowOnExit() (bool, error) {
 	return s.store.GetFollowOnExit(), nil
 }

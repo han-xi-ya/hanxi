@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/extapi"
-	"hubkit/internal/settings"
+	"hanxi/internal/extapi"
+	"hanxi/internal/settings"
 )
 
 const ID = "memo"
@@ -35,7 +35,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 		Name:        "极客随手记",
 		Version:     "0.1.0",
 		Description: "极轻量本地持久化备忘录与临时代码片段站，支持标签云、置顶与敏感脱敏",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

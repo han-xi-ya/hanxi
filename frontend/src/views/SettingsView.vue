@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import * as AppAPI from '../../bindings/hubkit/internal/app'
-import type { AppInfo } from '../../bindings/hubkit/internal/app/models'
+import * as AppAPI from '../../bindings/hanxi/internal/app'
+import type { AppInfo } from '../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 

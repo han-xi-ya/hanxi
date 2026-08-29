@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	defaultBaseURL   = "https://ilinkai.weixin.qq.com"
-	defaultCDNBase   = "https://novac2c.cdn.weixin.qq.com/c2c"
-	ilinkAppID       = "bot"
-	ilinkClientVer   = "132102" // (2<<16)|(4<<8)|6 => 2.4.6
-	defaultBotAgent  = "OpenClaw"
-	defaultChanVer   = "2.4.6"
+	defaultBaseURL  = "https://ilinkai.weixin.qq.com"
+	defaultCDNBase  = "https://novac2c.cdn.weixin.qq.com/c2c"
+	ilinkAppID      = "bot"
+	ilinkClientVer  = "132102" // (2<<16)|(4<<8)|6 => 2.4.6
+	defaultBotAgent = "OpenClaw"
+	defaultChanVer  = "2.4.6"
 )
 
 // BaseInfo 微信 iLink 基础载荷

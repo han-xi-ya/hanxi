@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted } from 'vue'
 import QRCode from 'qrcode'
-import * as WifiAPI from '../../bindings/hubkit/internal/modules/wifi'
-import type { Profile } from '../../bindings/hubkit/internal/modules/wifi/models'
+import * as WifiAPI from '../../bindings/hanxi/internal/modules/wifi'
+import type { Profile } from '../../bindings/hanxi/internal/modules/wifi/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 

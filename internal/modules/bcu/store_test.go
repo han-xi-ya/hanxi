@@ -9,7 +9,7 @@ func TestFollowOnExitDefaultAndPersist(t *testing.T) {
 
 	s := newBCUStore(dir)
 	if !s.GetFollowOnExit() {
-		t.Fatal("新 store 的 followOnExit 默认应为 true（随 HubKit 关闭）")
+		t.Fatal("新 store 的 followOnExit 默认应为 true（随 Hanxi 关闭）")
 	}
 
 	if err := s.SetFollowOnExit(false); err != nil {

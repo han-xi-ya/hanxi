@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as AppAPI from '../../bindings/hubkit/internal/app'
-import type { ModuleInfo, NavEntry } from '../../bindings/hubkit/internal/extapi/models'
-import type { AppInfo } from '../../bindings/hubkit/internal/app/models'
+import * as AppAPI from '../../bindings/hanxi/internal/app'
+import type { ModuleInfo, NavEntry } from '../../bindings/hanxi/internal/extapi/models'
+import type { AppInfo } from '../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 

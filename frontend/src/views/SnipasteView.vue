@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as SnipasteAPI from '../../bindings/hubkit/internal/modules/snipaste/snipasteservice'
-import type { LaunchOutcome, QuitOutcome } from '../../bindings/hubkit/internal/modules/snipaste/models'
-import type { Snapshot } from '../../bindings/hubkit/internal/modules/snipaste/instance/models'
-import type { DownloadProgress, SnipasteRelease, SnipasteVersionInfo } from '../../bindings/hubkit/internal/modules/snipaste/version/models'
+import * as SnipasteAPI from '../../bindings/hanxi/internal/modules/snipaste/snipasteservice'
+import type { LaunchOutcome, QuitOutcome } from '../../bindings/hanxi/internal/modules/snipaste/models'
+import type { Snapshot } from '../../bindings/hanxi/internal/modules/snipaste/instance/models'
+import type { DownloadProgress, SnipasteRelease, SnipasteVersionInfo } from '../../bindings/hanxi/internal/modules/snipaste/version/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
@@ -114,7 +114,7 @@ async function launch() {
 
 async function quitProcess() {
   if (busy.value || !ownedRunning.value) return
-  if (!window.confirm('HubKit 会先向本会话启动的 Snipaste 发送关闭请求；若未在宽限期内退出，将自动强制结束。强制结束可能丢失未落盘状态。外部实例不受影响。')) return
+  if (!window.confirm('Hanxi 会先向本会话启动的 Snipaste 发送关闭请求；若未在宽限期内退出，将自动强制结束。强制结束可能丢失未落盘状态。外部实例不受影响。')) return
   busy.value = true
   controlResult.value = null
   try {
@@ -411,9 +411,9 @@ onUnmounted(() => {
       <article class="info-panel">
         <h2>运行边界</h2>
         <ul>
-          <li>HubKit 只控制当前会话直接启动并成功登记的 Snipaste 进程。</li>
-          <li>外部或上个 HubKit 会话启动的实例不会被认领，也不会被退出。</li>
-          <li>退出 HubKit 或停用本模块后，Snipaste 仍会保留托盘与全局快捷键。</li>
+          <li>Hanxi 只控制当前会话直接启动并成功登记的 Snipaste 进程。</li>
+          <li>外部或上个 Hanxi 会话启动的实例不会被认领，也不会被退出。</li>
+          <li>退出 Hanxi 或停用本模块后，Snipaste 仍会保留托盘与全局快捷键。</li>
           <li>页面退出会先发送尽力关闭请求，超时后强制结束。</li>
         </ul>
         <button class="text-link" @click="openSite">打开 Snipaste 官网<span v-if="siteURL"> · {{ siteURL }}</span></button>

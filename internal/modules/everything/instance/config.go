@@ -6,7 +6,7 @@ import (
 )
 
 // ensureHiddenTray 托管实例启动前确保其托盘图标隐藏（show_tray_icon=0）：
-// Everything 内嵌进 HubKit 后，启停/唤窗全由 HubKit 按钮负责，托盘图标是多余的视觉噪音，
+// Everything 内嵌进 Hanxi 后，启停/唤窗全由 Hanxi 按钮负责，托盘图标是多余的视觉噪音，
 // 隐藏后关闭搜索窗也不会误触托盘退出路径（实例仍驻留后台）。
 //
 // Everything.ini 是 key=value 行式文件（单 [Everything] 段）：

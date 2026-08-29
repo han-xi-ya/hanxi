@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/settings"
+	"hanxi/internal/settings"
 )
 
 // WechatService 暴露给 Wails 前端的服务（支持多微信账号并发管理与收发路由）
@@ -486,7 +486,7 @@ func (s *WechatService) OpenInboundFile(attachmentID string) (AttachmentActionRe
 		return AttachmentActionResult{}, err
 	}
 
-	dir, err := os.MkdirTemp("", "hubkit-wechat-")
+	dir, err := os.MkdirTemp("", "hanxi-wechat-")
 	if err != nil {
 		return AttachmentActionResult{}, fmt.Errorf("创建临时目录失败: %w", err)
 	}

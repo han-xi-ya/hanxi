@@ -12,13 +12,13 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/domain"
-	"hubkit/internal/modules/frpc/docgen"
-	"hubkit/internal/modules/frpc/instance"
-	"hubkit/internal/modules/frpc/version"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/settings"
+	"hanxi/internal/domain"
+	"hanxi/internal/modules/frpc/docgen"
+	"hanxi/internal/modules/frpc/instance"
+	"hanxi/internal/modules/frpc/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/settings"
 )
 
 // FrpcService 向前端暴露 frp 版本管理与项目实例管理能力

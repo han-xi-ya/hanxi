@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"hubkit/internal/modules/bcu/instance"
+	"hanxi/internal/modules/bcu/instance"
 )
 
 // TestShouldIdleQuitDisabled 固化 BCU 不因空闲自动退出的产品约束。

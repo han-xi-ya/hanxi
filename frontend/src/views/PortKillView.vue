@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted } from 'vue'
-import * as PortKillAPI from '../../bindings/hubkit/internal/modules/portkill'
-import type { PortOccupant, KillResult } from '../../bindings/hubkit/internal/modules/portkill/models'
+import * as PortKillAPI from '../../bindings/hanxi/internal/modules/portkill'
+import type { PortOccupant, KillResult } from '../../bindings/hanxi/internal/modules/portkill/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 

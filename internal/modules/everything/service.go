@@ -13,13 +13,13 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	evinstance "hubkit/internal/modules/everything/instance"
-	evsearch "hubkit/internal/modules/everything/search"
-	evversion "hubkit/internal/modules/everything/version"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/versioncmp"
-	"hubkit/internal/settings"
+	evinstance "hanxi/internal/modules/everything/instance"
+	evsearch "hanxi/internal/modules/everything/search"
+	evversion "hanxi/internal/modules/everything/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/settings"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 	watchInterval     = 5 * time.Second  // 外部实例感知轮询间隔
 	searchResultLimit = 300              // 单次内嵌搜索上限（与 evsearch.maxResults 对齐）
 
-	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 HubKit 发起操作且搜索窗口未开
+	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 Hanxi 发起操作且搜索窗口未开
 	idleCheckTick = 30 * time.Second
 )
 
@@ -46,7 +46,7 @@ type EverythingService struct {
 	watchStop  chan struct{}
 
 	idleMu       sync.Mutex
-	lastActivity time.Time // 最近一次 HubKit 发起的使用（搜索/开窗/启动）；GetStatus 轮询不计
+	lastActivity time.Time // 最近一次 Hanxi 发起的使用（搜索/开窗/启动）；GetStatus 轮询不计
 }
 
 func NewEverythingService(plat platform.Platform) *EverythingService {
@@ -121,7 +121,7 @@ func (s *EverythingService) activate() {
 	}()
 }
 
-// touch 记录一次 HubKit 发起的实例使用（搜索/开窗/启动都算；状态轮询不算）。
+// touch 记录一次 Hanxi 发起的实例使用（搜索/开窗/启动都算；状态轮询不算）。
 func (s *EverythingService) touch() {
 	s.idleMu.Lock()
 	s.lastActivity = time.Now()

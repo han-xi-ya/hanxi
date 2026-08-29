@@ -4,8 +4,8 @@ package portscan
 type PortStatus string
 
 const (
-	PortOpen    PortStatus = "open"
-	PortClosed  PortStatus = "closed"
+	PortOpen     PortStatus = "open"
+	PortClosed   PortStatus = "closed"
 	PortFiltered PortStatus = "filtered"
 )
 
@@ -32,15 +32,15 @@ type PortResult struct {
 
 // ScanProgress 实时扫描进度推送
 type ScanProgress struct {
-	TaskID      string      `json:"taskId"`
-	Target      string      `json:"target"`
-	Scanned     int         `json:"scanned"`
-	Total       int         `json:"total"`
-	Percent     float64     `json:"percent"`
-	FoundOpen   int         `json:"foundOpen"`
-	LatestPort  *PortResult `json:"latestPort,omitempty"` // 最新发现的开放端口
-	IsFinished  bool        `json:"isFinished"`
-	Error       string      `json:"error,omitempty"`
+	TaskID     string      `json:"taskId"`
+	Target     string      `json:"target"`
+	Scanned    int         `json:"scanned"`
+	Total      int         `json:"total"`
+	Percent    float64     `json:"percent"`
+	FoundOpen  int         `json:"foundOpen"`
+	LatestPort *PortResult `json:"latestPort,omitempty"` // 最新发现的开放端口
+	IsFinished bool        `json:"isFinished"`
+	Error      string      `json:"error,omitempty"`
 }
 
 // ScanSummary 扫描任务最终汇总

@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
-	"hubkit/internal/settings"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
+	"hanxi/internal/settings"
 )
 
 const ID = "lan"
@@ -27,7 +27,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "局域网扫描",
 		Version:     "0.1.0",
 		Description: "扫描局域网在线设备、备注设备信息并快速复制 IP",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

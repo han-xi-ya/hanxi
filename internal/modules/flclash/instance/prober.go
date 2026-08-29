@@ -1,7 +1,7 @@
 // Package instance 实现 FlClash 单实例运行引擎：
 //
 // FlClash（Flutter 桌面代理客户端）由本引擎启动后绑定 Windows Job Object
-// （JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），HubKit 退出时内核连带终止进程树。
+// （JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），Hanxi 退出时内核连带终止进程树。
 //
 // 上游契约（lib/common/lock.dart + window.dart 源码实证）：
 //   - 单实例 = 文件锁（%APPDATA%\应用数据目录下的 lock 文件经 RandomAccessFile.lock），

@@ -51,11 +51,11 @@ tasks:
       - task: generate:syso
         vars:
           ARCH: '{{.ARCH}}'
-      - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" ./cmd/hubkit'
+      - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" ./cmd/hanxi'
       # 清理主包目录与根部残留的 syso（Go 只自动链接 main 包目录内的 .syso）
-      - cmd: powershell -Command "if (Test-Path ../cmd/hubkit/wails_windows_amd64.syso) { Remove-Item ../cmd/hubkit/wails_windows_amd64.syso }; if (Test-Path ../wails_windows_amd64.syso) { Remove-Item ../wails_windows_amd64.syso }"
+      - cmd: powershell -Command "if (Test-Path ../cmd/hanxi/wails_windows_amd64.syso) { Remove-Item ../cmd/hanxi/wails_windows_amd64.syso }; if (Test-Path ../wails_windows_amd64.syso) { Remove-Item ../wails_windows_amd64.syso }"
         platforms: [windows]
-      - cmd: rm -f ../cmd/hubkit/wails_windows_amd64.syso ../wails_windows_amd64.syso
+      - cmd: rm -f ../cmd/hanxi/wails_windows_amd64.syso ../wails_windows_amd64.syso
         platforms: [linux, darwin]
     vars:
       # 去符号表/DWARF (-s -w)：panic 栈/运行时报错仍完整 (Go pclntab 不依赖符号表)，
@@ -89,7 +89,7 @@ tasks:
       - docker run --rm -v "{{.ROOT_DIR}}:/app" {{.DOCKER_MOUNTS}} -e APP_NAME="{{.APP_NAME}}" {{if .EXTRA_TAGS}}-e EXTRA_TAGS="{{.EXTRA_TAGS}}"{{end}} {{if eq .OBFUSCATED "true"}}-e OBFUSCATED=true{{end}} {{if .GARBLE_ARGS}}-e GARBLE_ARGS="{{.GARBLE_ARGS}}"{{end}} {{.CROSS_IMAGE}} windows {{.DOCKER_ARCH}}
       - cmd: docker run --rm -v "{{.ROOT_DIR}}:/app" alpine chown -R $(id -u):$(id -g) /app/bin
         platforms: [linux, darwin]
-      - rm -f cmd/hubkit/*.syso wails_windows_amd64.syso
+      - rm -f cmd/hanxi/*.syso wails_windows_amd64.syso
     vars:
       DOCKER_ARCH: '{{.ARCH | default "amd64"}}'
       # Generate Docker volume mounts: Go module cache + go.mod replace directives
@@ -108,10 +108,10 @@ tasks:
       INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "machine"}}'
 
   generate:syso:
-    summary: Generates Windows `.syso` file into the main package dir (cmd/hubkit)
+    summary: Generates Windows `.syso` file into the main package dir (cmd/hanxi)
     dir: build
     cmds:
-      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../cmd/hubkit/wails_windows_{{.ARCH}}.syso
+      - wails3 generate syso -arch {{.ARCH}} -icon windows/icon.ico -manifest windows/wails.exe.manifest -info windows/info.json -out ../cmd/hanxi/wails_windows_{{.ARCH}}.syso
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
 
@@ -123,6 +123,8 @@ tasks:
     preconditions:
       - sh: '[ "{{.INSTALL_SCOPE}}" = "user" ] || [ "{{.INSTALL_SCOPE}}" = "machine" ]'
         msg: "INSTALL_SCOPE must be 'user' or 'machine', got '{{.INSTALL_SCOPE}}'"
+      - sh: 'command -v makensis >/dev/null 2>&1'
+        msg: "makensis is required for NSIS packaging. Install NSIS and add it to PATH."
     cmds:
       # Create the Microsoft WebView2 bootstrapper if it doesn't exist
       - wails3 generate webview2bootstrapper -dir "{{.ROOT_DIR}}/build/windows/nsis"
@@ -141,22 +143,14 @@ tasks:
     summary: Creates an MSIX package
     deps:
       - task: build
+    preconditions:
+      - sh: 'command -v makeappx >/dev/null 2>&1 || command -v makeappx.exe >/dev/null 2>&1'
+        msg: "makeappx is required for MSIX packaging. Install the Windows SDK and add makeappx to PATH."
     cmds:
-      - |-
-        wails3 tool msix \
-          --config "{{.ROOT_DIR}}/wails.json" \
-          --name "{{.APP_NAME}}" \
-          --executable "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe" \
-          --arch "{{.ARCH}}" \
-          --out "{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}-{{.ARCH}}.msix" \
-          {{if .CERT_PATH}}--cert "{{.CERT_PATH}}"{{end}} \
-          {{if .PUBLISHER}}--publisher "{{.PUBLISHER}}"{{end}} \
-          {{if .USE_MSIX_TOOL}}--use-msix-tool{{else}}--use-makeappx{{end}}
+      - cmd: powershell -Command "$stage='{{.ROOT_DIR}}\bin\msix-stage'; if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }; New-Item -ItemType Directory -Force $stage | Out-Null; Copy-Item '{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe' $stage; Copy-Item '{{.ROOT_DIR}}\build\windows\msix\app_manifest.xml' (Join-Path $stage 'AppxManifest.xml'); if (Test-Path '{{.ROOT_DIR}}\build\windows\msix\Assets') { Copy-Item -Recurse '{{.ROOT_DIR}}\build\windows\msix\Assets' $stage }; makeappx pack /d $stage /p '{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}-{{.ARCH}}.msix' /o"
+        platforms: [windows]
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
-      CERT_PATH: '{{.CERT_PATH | default ""}}'
-      PUBLISHER: '{{.PUBLISHER | default ""}}'
-      USE_MSIX_TOOL: '{{.USE_MSIX_TOOL | default "false"}}'
 
   install:msix:tools:
     summary: Installs tools required for MSIX packaging

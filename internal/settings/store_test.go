@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hubkit/internal/settings"
+	"hanxi/internal/settings"
 )
 
 func TestStorePersistence(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "hubkit-test-settings-*")
+	tmpDir, err := os.MkdirTemp("", "hanxi-test-settings-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp failed: %v", err)
 	}

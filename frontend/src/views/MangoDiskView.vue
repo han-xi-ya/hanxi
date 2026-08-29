@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as MangoDiskAPI from '../../bindings/hubkit/internal/modules/mangodisk/mangodiskservice'
-import type { Snapshot } from '../../bindings/hubkit/internal/modules/mangodisk/instance/models'
-import type { ControlOutcome, QuitOutcome } from '../../bindings/hubkit/internal/modules/mangodisk/models'
-import type { DownloadProgress, MangoDiskRelease, MangoDiskVersionInfo } from '../../bindings/hubkit/internal/modules/mangodisk/version/models'
+import * as MangoDiskAPI from '../../bindings/hanxi/internal/modules/mangodisk/mangodiskservice'
+import type { Snapshot } from '../../bindings/hanxi/internal/modules/mangodisk/instance/models'
+import type { ControlOutcome, QuitOutcome } from '../../bindings/hanxi/internal/modules/mangodisk/models'
+import type { DownloadProgress, MangoDiskRelease, MangoDiskVersionInfo } from '../../bindings/hanxi/internal/modules/mangodisk/version/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
@@ -36,7 +36,7 @@ const currentInstalled = computed(() => installed.value.find(item => item.versio
 const banner = computed(() => {
   if (currentInstalled.value?.integrity === 'drifted') return { cls: 'md-banner-warn', text: currentInstalled.value.integrityNote }
   if (currentInstalled.value?.integrity === 'invalid') return { cls: 'md-banner-error', text: currentInstalled.value.integrityNote }
-  if (state.value === 'external') return { cls: 'md-banner-warn', text: '检测到安装版、portable 或其他版本的外部实例。HubKit 可唤起窗口，但不会强制终止它。' }
+  if (state.value === 'external') return { cls: 'md-banner-warn', text: '检测到安装版、portable 或其他版本的外部实例。Hanxi 可唤起窗口，但不会强制终止它。' }
   if (state.value === 'failed') return { cls: 'md-banner-error', text: snap.value?.error || 'MangoDisk 异常退出' }
   if (state.value === 'running') return { cls: 'md-banner-ok', text: 'MangoDisk 正在运行；磁盘扫描、清理与系统设置均在原版窗口内完成。' }
   return null
@@ -121,13 +121,13 @@ async function setActive(item: MangoDiskVersionInfo) {
 }
 
 async function removeVersion(item: MangoDiskVersionInfo) {
-  if (!window.confirm(`确定卸载 MangoDisk ${item.version}？\n仅删除 HubKit 版本目录，不会删除 %LOCALAPPDATA%\\app.mangodisk.desktop 中的数据。`)) return
+  if (!window.confirm(`确定卸载 MangoDisk ${item.version}？\n仅删除 Hanxi 版本目录，不会删除 %LOCALAPPDATA%\\app.mangodisk.desktop 中的数据。`)) return
   try { await MangoDiskAPI.RemoveVersion(item.version); showToast(`已卸载 ${item.version}`); await loadVersions() }
   catch (error) { showToast(`卸载失败：${getErrorMessage(error)}`) }
 }
 
 async function importLocal() {
-  const path = window.prompt('请输入本地 MangoDisk EXE 完整路径。HubKit 只导入该 EXE，不搬运用户数据。')
+  const path = window.prompt('请输入本地 MangoDisk EXE 完整路径。Hanxi 只导入该 EXE，不搬运用户数据。')
   if (!path) return
   try { const item = await MangoDiskAPI.ImportLocal(path.trim()); showToast(`已导入 ${item.version}`); await loadVersions() }
   catch (error) { showToast(`导入失败：${getErrorMessage(error)}`) }
@@ -203,7 +203,7 @@ onUnmounted(() => { stopPolling(); unlistenDownload?.(); unlistenState?.() })
           <div class="md-app-mark" aria-hidden="true">M</div>
           <div class="md-control-copy">
             <strong>{{ currentVersion }}</strong>
-            <span>{{ isExternal ? '非 HubKit 托管' : isRunningOrStarting ? `PID ${snap?.pid || '—'} · ${fmtDuration(uptimeSec)}` : '等待启动' }}</span>
+            <span>{{ isExternal ? '非 Hanxi 托管' : isRunningOrStarting ? `PID ${snap?.pid || '—'} · ${fmtDuration(uptimeSec)}` : '等待启动' }}</span>
           </div>
         </div>
         <div class="md-actions">
@@ -213,7 +213,7 @@ onUnmounted(() => { stopPolling(); unlistenDownload?.(); unlistenState?.() })
       </section>
 
       <section class="md-panel md-settings">
-        <div><strong>退出联动</strong><span>HubKit 退出时关闭自己托管的 MangoDisk；外部实例不受影响。</span></div>
+        <div><strong>退出联动</strong><span>Hanxi 退出时关闭自己托管的 MangoDisk；外部实例不受影响。</span></div>
         <div class="md-settings-actions">
           <button class="md-btn" :disabled="busy || !installed.length" @click="createShortcut">创建桌面快捷方式</button>
           <button class="md-switch" :aria-pressed="followOnExit" @click="toggleFollow"><span></span>{{ followOnExit ? '已开启' : '已关闭' }}</button>
@@ -224,8 +224,8 @@ onUnmounted(() => { stopPolling(); unlistenDownload?.(); unlistenState?.() })
         <h2>托管边界与数据说明</h2>
         <div class="md-note-grid">
           <div><strong>原版能力</strong><span>磁盘扫描、清理、卸载和系统设置继续在 MangoDisk 原版窗口中操作。</span></div>
-          <div><strong>共享数据</strong><span class="md-mono">%LOCALAPPDATA%\app.mangodisk.desktop</span><span>卸载 HubKit 托管版本不会删除该目录。</span></div>
-          <div><strong>内置更新器</strong><span>MangoDisk 自带 updater。若它替换 EXE，HubKit 会标记“文件已漂移”并阻止静默启动。</span></div>
+          <div><strong>共享数据</strong><span class="md-mono">%LOCALAPPDATA%\app.mangodisk.desktop</span><span>卸载 Hanxi 托管版本不会删除该目录。</span></div>
+          <div><strong>内置更新器</strong><span>MangoDisk 自带 updater。若它替换 EXE，Hanxi 会标记“文件已漂移”并阻止静默启动。</span></div>
           <div><strong>运行环境</strong><span>Windows x64 · WebView2 Runtime · Tauri 单实例。</span></div>
         </div>
         <div class="md-license">第三方软件 · <button @click="openRepository">harry0703/MangoDisk</button> · GPL-3.0-only · 运行时从上游 GitHub Releases 下载</div>

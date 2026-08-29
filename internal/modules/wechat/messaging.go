@@ -60,7 +60,7 @@ type sendMessageResp struct {
 
 func generateClientID() string {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return fmt.Sprintf("hubkit-%d-%x", time.Now().Unix(), r.Uint32())
+	return fmt.Sprintf("hanxi-%d-%x", time.Now().Unix(), r.Uint32())
 }
 
 // SendTextMessage 发送文字消息

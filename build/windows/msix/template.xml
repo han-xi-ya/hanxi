@@ -8,27 +8,27 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="devnetkit.exe"
+        Path="hanxi.exe"
         Arguments=""
-        InstallLocation="C:\Program Files\My Company\My Product">
+        InstallLocation="C:\Program Files\Hanxi">
     </Installer>
     <PackageInformation
-        PackageName="My Product"
-        PackageDisplayName="My Product"
-        PublisherName="CN=My Company"
-        PublisherDisplayName="My Company"
-        Version="0.1.0.0"
-        PackageDescription="A devnetkit application">
+        PackageName="Hanxi"
+        PackageDisplayName="Hanxi"
+        PublisherName="CN=Hanxi"
+        PublisherDisplayName="Hanxi"
+        Version="0.3.0.0"
+        PackageDescription="集中安装、管理与运行常用开源软件">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
         </Capabilities>
         <Applications>
             <Application
-                Id="com.example.devnetkit"
-                Description="A devnetkit application"
-                DisplayName="My Product"
-                ExecutableName="devnetkit.exe"
+                Id="io.hanxi.desktop"
+                Description="开源工具工作台"
+                DisplayName="Hanxi"
+                ExecutableName="hanxi.exe"
                 EntryPoint="Windows.FullTrustApplication">
                 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>My Product</DisplayName>
-            <PublisherDisplayName>My Company</PublisherDisplayName>
-            <Description>A devnetkit application</Description>
+            <DisplayName>Hanxi</DisplayName>
+            <PublisherDisplayName>Hanxi</PublisherDisplayName>
+            <Description>集中安装、管理与运行常用开源软件</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="devnetkit.msix" />
+    <SaveLocation PackagePath="hanxi.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

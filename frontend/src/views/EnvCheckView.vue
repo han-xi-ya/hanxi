@@ -3,8 +3,8 @@
 // 并检测 Go gRPC 的 protoc-gen-go-grpc 代码生成插件。
 // 无事件、无轮询：进入页面自动检测一次（KeepAlive 缓存后不重复），刷新靠按钮。
 import { ref, computed, onMounted } from 'vue'
-import * as EnvCheckAPI from '../../bindings/hubkit/internal/modules/envcheck/envcheckservice'
-import type { ToolInfo } from '../../bindings/hubkit/internal/modules/envcheck/detect/models'
+import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/envcheckservice'
+import type { ToolInfo } from '../../bindings/hanxi/internal/modules/envcheck/detect/models'
 import { getErrorMessage } from '../utils/errors'
 
 // ---------- 状态 ----------

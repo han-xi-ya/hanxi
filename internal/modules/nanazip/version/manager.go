@@ -9,7 +9,7 @@ import (
 	"sort"
 	"time"
 
-	"hubkit/internal/platform/versioncmp"
+	"hanxi/internal/platform/versioncmp"
 )
 
 const verificationMode = "github-sha256+size+zip-crc+bundle-identity+app-manifest+architecture"

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
-import * as PortScanAPI from '../../bindings/hubkit/internal/modules/portscan'
-import type { PresetGroup, PortResult } from '../../bindings/hubkit/internal/modules/portscan/models'
+import * as PortScanAPI from '../../bindings/hanxi/internal/modules/portscan'
+import type { PresetGroup, PortResult } from '../../bindings/hanxi/internal/modules/portscan/models'
 import { Events } from '@wailsio/runtime'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'

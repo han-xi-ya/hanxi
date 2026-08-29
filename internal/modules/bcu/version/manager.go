@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"hubkit/internal/platform/versioninfo"
+	"hanxi/internal/platform/versioninfo"
 )
 
 const (
@@ -150,7 +150,7 @@ func (m *Manager) Download(version, variant string, onProgress func(p DownloadPr
 		return fmt.Errorf("未知变体: %s", variant)
 	}
 
-	tmpZip, err := os.CreateTemp("", "hubkit-bcu-*.zip")
+	tmpZip, err := os.CreateTemp("", "hanxi-bcu-*.zip")
 	if err != nil {
 		return err
 	}

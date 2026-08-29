@@ -2,15 +2,15 @@
 import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue'
 import { Events } from '@wailsio/runtime'
 import QRCode from 'qrcode'
-import * as AppAPI from '../../bindings/hubkit/internal/app'
-import * as FileShareAPI from '../../bindings/hubkit/internal/modules/fileshare'
+import * as AppAPI from '../../bindings/hanxi/internal/app'
+import * as FileShareAPI from '../../bindings/hanxi/internal/modules/fileshare'
 import type {
   ShareConfig,
   ServerStatus,
   NetworkEndpoint,
   DropItem,
   TransferEvent
-} from '../../bindings/hubkit/internal/modules/fileshare/models'
+} from '../../bindings/hanxi/internal/modules/fileshare/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted, onUnmounted, computed, nextTick } from 'vue'
-import * as AppAPI from '../../bindings/hubkit/internal/app'
-import type { LogFileInfo } from '../../bindings/hubkit/internal/app/models'
+import * as AppAPI from '../../bindings/hanxi/internal/app'
+import type { LogFileInfo } from '../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 
@@ -127,7 +127,7 @@ onUnmounted(() => {
     <div class="header-row">
       <div>
         <h1>运行日志</h1>
-        <p class="subtitle">实时查看应用运行日志、脱敏记录与底层组件状态 (存储于 %APPDATA%/HubKit/logs)。</p>
+        <p class="subtitle">实时查看应用运行日志、脱敏记录与底层组件状态。</p>
       </div>
     </div>
 

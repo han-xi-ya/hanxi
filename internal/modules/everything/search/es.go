@@ -33,7 +33,7 @@ const (
 	maxZipBody = 8 << 20
 )
 
-var userAgent = "HubKit/0.2"
+var userAgent = "Hanxi/0.2"
 
 // Result 单条搜索结果（ES 输出列的子集，其余列丢弃）。
 type Result struct {
@@ -69,7 +69,7 @@ func EnsureESExe(toolDir string, onProgress func(stage string)) error {
 
 	// 1. 下载 zip 到临时文件（zip 内建 CRC32 在解压读满时强制校验）
 	emit("downloading")
-	tmp, err := os.CreateTemp("", "hubkit-es-*.zip")
+	tmp, err := os.CreateTemp("", "hanxi-es-*.zip")
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func Search(esExe, query string, limit int) ([]Result, error) {
 	}
 
 	// 临时导出文件：读回后删除（300 行 × 数百字节，体积可忽略）
-	tmp, err := os.CreateTemp("", "hubkit-es-*.tsv")
+	tmp, err := os.CreateTemp("", "hanxi-es-*.tsv")
 	if err != nil {
 		return nil, err
 	}

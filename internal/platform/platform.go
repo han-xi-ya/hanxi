@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"hubkit/internal/platform/apppackage"
+	"hanxi/internal/platform/apppackage"
 )
 
 // 通用平台错误定义
@@ -115,8 +115,8 @@ type Job interface {
 	Close() error
 	Terminate(exitCode uint32) error
 	// SetAllowKillOnClose 动态调整 KILL_ON_JOB_CLOSE 限制：
-	// true（默认，创建即启用）= HubKit 退出/崩溃时内核连带杀 Job 内进程；
-	// false = 工具独立运行，HubKit 退出完全不影响它（"不随 HubKit 关闭"开关）。
+	// true（默认，创建即启用）= Hanxi 退出/崩溃时内核连带杀 Job 内进程；
+	// false = 工具独立运行，Hanxi 退出完全不影响它（"不随 Hanxi 关闭"开关）。
 	SetAllowKillOnClose(enabled bool) error
 }
 

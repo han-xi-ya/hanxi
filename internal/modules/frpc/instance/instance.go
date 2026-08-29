@@ -1,7 +1,7 @@
 // Package instance 实现 frpc 多实例运行引擎（M4.3）：
 //
 // 每个项目独立启动一个 frpc.exe 子进程，绑定 Windows Job Object
-// （JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE）——HubKit 无论以何种方式退出，
+// （JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE）——Hanxi 无论以何种方式退出，
 // 内核都会连带强杀整个 frpc 进程树，杜绝孤儿进程占端口。
 //
 // 实例进程的 stdout/stderr 汇入内存环形日志（保留最近 1000 行），
@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 // logCapacity 内存环形日志容量（行）。

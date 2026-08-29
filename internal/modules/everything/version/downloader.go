@@ -51,7 +51,7 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 		rel = enrichLive(rel)
 	}
 
-	tmpZip, err := os.CreateTemp("", "hubkit-everything-*.zip")
+	tmpZip, err := os.CreateTemp("", "hanxi-everything-*.zip")
 	if err != nil {
 		return err
 	}

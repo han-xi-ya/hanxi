@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/domain"
-	"hubkit/internal/platform/windows"
+	"hanxi/internal/domain"
+	"hanxi/internal/platform/windows"
 )
 
 const dpapiPrefix = "dpapi:"

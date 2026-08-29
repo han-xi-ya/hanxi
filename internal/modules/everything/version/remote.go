@@ -14,7 +14,7 @@ import (
 const (
 	siteBase             = "https://www.voidtools.com"
 	downloadsPageURL     = siteBase + "/downloads/"
-	userAgent            = "HubKit/0.2"
+	userAgent            = "Hanxi/0.2"
 	assetURLFormat       = siteBase + "/Everything-%s.x64.zip" // 官方资产命名模板（已用 HEAD 实测稳定）
 	shaURLFormat         = siteBase + "/Everything-%s.sha256"  // 官方 sha256 清单（每版本一份）
 	probeTimeout         = 10 * time.Second

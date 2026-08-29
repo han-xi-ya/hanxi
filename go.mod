@@ -1,4 +1,4 @@
-module hubkit
+module hanxi
 
 go 1.26.0
 

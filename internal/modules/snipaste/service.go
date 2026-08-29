@@ -10,12 +10,12 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/modules/snipaste/instance"
-	"hubkit/internal/modules/snipaste/version"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/versioncmp"
-	"hubkit/internal/settings"
+	"hanxi/internal/modules/snipaste/instance"
+	"hanxi/internal/modules/snipaste/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/settings"
 )
 
 type SnipasteService struct {
@@ -156,7 +156,7 @@ func (s *SnipasteService) Launch() (LaunchOutcome, error) {
 	}
 	return LaunchOutcome{
 		Version: selected,
-		Message: fmt.Sprintf("已启动 Snipaste %s；本会话可手动退出，关闭 HubKit 不会连带结束", selected),
+		Message: fmt.Sprintf("已启动 Snipaste %s；本会话可手动退出，关闭 Hanxi 不会连带结束", selected),
 	}, nil
 }
 
@@ -172,7 +172,7 @@ func (s *SnipasteService) Quit() (QuitOutcome, error) {
 	out := QuitOutcome{Stopped: result.Stopped, Forced: result.Forced, CloseRequested: result.CloseRequested, Method: result.Method}
 	switch result.Method {
 	case "not-managed":
-		out.Message = "当前 HubKit 会话没有可退出的 Snipaste 实例"
+		out.Message = "当前 Hanxi 会话没有可退出的 Snipaste 实例"
 	case "close-request":
 		out.Message = "Snipaste 已在关闭请求后退出"
 	case "already-exited":

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useNotification } from '../composables/useNotification'
-import type { Notification } from '../../bindings/hubkit/internal/notify/models'
+import type { Notification } from '../../bindings/hanxi/internal/notify/models'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as MemoAPI from '../../bindings/hubkit/internal/modules/memo'
+import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
 import type {
   MemoItem,
   MemoFilter,
   MemoStats
-} from '../../bindings/hubkit/internal/modules/memo/models'
+} from '../../bindings/hanxi/internal/modules/memo/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 

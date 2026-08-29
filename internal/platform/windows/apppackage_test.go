@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hubkit/internal/platform/apppackage"
+	"hanxi/internal/platform/apppackage"
 )
 
 type fakeAppPackageExecutor struct {

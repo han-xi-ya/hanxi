@@ -2,11 +2,11 @@
 // 状态 / 版本管理 / 下载进度 / 时长 ticker / 生命周期
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as BCUAPI from '../../bindings/hubkit/internal/modules/bcu/bcuservice'
-import type { BCURelease, BCUVersionInfo } from '../../bindings/hubkit/internal/modules/bcu/version/models'
-import type { Snapshot } from '../../bindings/hubkit/internal/modules/bcu/instance/models'
-import type { ControlOutcome, QuitOutcome, DotnetEnv } from '../../bindings/hubkit/internal/modules/bcu/models'
-import type { DownloadProgress } from '../../bindings/hubkit/internal/modules/bcu/version/models'
+import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
+import type { BCURelease, BCUVersionInfo } from '../../bindings/hanxi/internal/modules/bcu/version/models'
+import type { Snapshot } from '../../bindings/hanxi/internal/modules/bcu/instance/models'
+import type { ControlOutcome, QuitOutcome, DotnetEnv } from '../../bindings/hanxi/internal/modules/bcu/models'
+import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/bcu/version/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
@@ -66,7 +66,7 @@ const banner = computed(() => {
   if (state.value === 'external') {
     return {
       cls: 'banner-warn',
-      text: '检测到外部 BCUninstaller 实例（非 HubKit 托管）。可唤起其窗口；如需彻底退出请在 BCU 窗口内关闭。',
+      text: '检测到外部 BCUninstaller 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 BCU 窗口内关闭。',
     }
   }
   if (state.value === 'failed') {
@@ -302,7 +302,7 @@ async function loadExtras() {
 async function onFollowToggle() {
   try {
     await BCUAPI.SetFollowOnExit(!followOnExit.value)
-    showToast(followOnExit.value ? '已开启：HubKit 退出时一并关闭该工具' : '已关闭：HubKit 退出不影响该工具，继续独立运行（下次启动生效）')
+    showToast(followOnExit.value ? '已开启：Hanxi 退出时一并关闭该工具' : '已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
   } catch (e) {
     showToast('设置失败: ' + getErrorMessage(e))
     followOnExit.value = !followOnExit.value // 失败回滚
@@ -476,7 +476,7 @@ onUnmounted(() => {
       <div class="extras-row">
         <label class="toggle-label">
           <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
-          <span>随 HubKit 一起关闭 <span class="hint-dim">（关闭后 HubKit 退出完全不影响该工具）</span></span>
+          <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具）</span></span>
         </label>
         <button class="btn btn-secondary btn-small" @click="createShortcut">🖥 创建桌面快捷方式</button>
       </div>

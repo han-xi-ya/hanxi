@@ -7,70 +7,70 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$0 from "../../../../../hubkit/internal/modules/bcu/instance/models.js";
+import type * as instance$0 from "../../../../../hanxi/internal/modules/bcu/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$0 from "../../../../../hubkit/internal/modules/bcu/version/models.js";
+import type * as version$0 from "../../../../../hanxi/internal/modules/bcu/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$1 from "../../../../../hubkit/internal/modules/ccswitch/instance/models.js";
+import type * as instance$1 from "../../../../../hanxi/internal/modules/ccswitch/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$1 from "../../../../../hubkit/internal/modules/ccswitch/version/models.js";
+import type * as version$1 from "../../../../../hanxi/internal/modules/ccswitch/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as everything$0 from "../../../../../hubkit/internal/modules/everything/models.js";
+import type * as everything$0 from "../../../../../hanxi/internal/modules/everything/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$2 from "../../../../../hubkit/internal/modules/everything/instance/models.js";
+import type * as instance$2 from "../../../../../hanxi/internal/modules/everything/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as fileshare$0 from "../../../../../hubkit/internal/modules/fileshare/models.js";
+import type * as fileshare$0 from "../../../../../hanxi/internal/modules/fileshare/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$3 from "../../../../../hubkit/internal/modules/flclash/instance/models.js";
+import type * as instance$3 from "../../../../../hanxi/internal/modules/flclash/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$2 from "../../../../../hubkit/internal/modules/flclash/version/models.js";
+import type * as version$2 from "../../../../../hanxi/internal/modules/flclash/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$4 from "../../../../../hubkit/internal/modules/frpc/instance/models.js";
+import type * as instance$4 from "../../../../../hanxi/internal/modules/frpc/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$3 from "../../../../../hubkit/internal/modules/frpc/version/models.js";
+import type * as version$3 from "../../../../../hanxi/internal/modules/frpc/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as lan$0 from "../../../../../hubkit/internal/modules/lan/models.js";
+import type * as lan$0 from "../../../../../hanxi/internal/modules/lan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$5 from "../../../../../hubkit/internal/modules/mangodisk/instance/models.js";
+import type * as instance$5 from "../../../../../hanxi/internal/modules/mangodisk/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$4 from "../../../../../hubkit/internal/modules/mangodisk/version/models.js";
+import type * as version$4 from "../../../../../hanxi/internal/modules/mangodisk/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$6 from "../../../../../hubkit/internal/modules/markeron/instance/models.js";
+import type * as instance$6 from "../../../../../hanxi/internal/modules/markeron/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$5 from "../../../../../hubkit/internal/modules/markeron/version/models.js";
+import type * as version$5 from "../../../../../hanxi/internal/modules/markeron/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as nanazip$0 from "../../../../../hubkit/internal/modules/nanazip/models.js";
+import type * as nanazip$0 from "../../../../../hanxi/internal/modules/nanazip/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as portscan$0 from "../../../../../hubkit/internal/modules/portscan/models.js";
+import type * as portscan$0 from "../../../../../hanxi/internal/modules/portscan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$7 from "../../../../../hubkit/internal/modules/snipaste/instance/models.js";
+import type * as instance$7 from "../../../../../hanxi/internal/modules/snipaste/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$6 from "../../../../../hubkit/internal/modules/snipaste/version/models.js";
+import type * as version$6 from "../../../../../hanxi/internal/modules/snipaste/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as wechat$0 from "../../../../../hubkit/internal/modules/wechat/models.js";
+import type * as wechat$0 from "../../../../../hanxi/internal/modules/wechat/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as notify$0 from "../../../../../hubkit/internal/notify/models.js";
+import type * as notify$0 from "../../../../../hanxi/internal/notify/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {

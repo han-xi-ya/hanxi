@@ -1,7 +1,7 @@
 // Package instance 实现 MarkerOn 单实例运行引擎：
 //
 // MarkerOn 由本引擎启动后绑定 Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），
-// HubKit 无论以何种方式退出（托盘退出/崩溃/强杀），内核都会连带终止 MarkerOn
+// Hanxi 无论以何种方式退出（托盘退出/崩溃/强杀），内核都会连带终止 MarkerOn
 // 及其 WebView2 子进程树，杜绝孤儿标注进程。
 //
 // MarkerOn 无进程内 CLI 与输出协议，本引擎相应做三点适配：
@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 // State 引擎状态机：stopped → starting → running → (stopped | failed | external)
@@ -52,7 +52,7 @@ type Snapshot struct {
 type StartOptions struct {
 	Version string // 绑定版本 vX.Y.Z
 	Exe     string // MarkerOn.exe 绝对路径（版本隔离目录内）
-	// Detached 独立运行：解除 JobObject 退出联动（HubKit 关闭完全不影响工具）。
+	// Detached 独立运行：解除 JobObject 退出联动（Hanxi 关闭完全不影响工具）。
 	Detached bool
 }
 
@@ -153,7 +153,7 @@ func (e *Engine) Start(opts StartOptions) error {
 		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
 	}
 	if opts.Detached {
-		// 解除退出联动：HubKit 退出/崩溃不再连带杀本实例（"不随 HubKit 关闭"开关）
+		// 解除退出联动：Hanxi 退出/崩溃不再连带杀本实例（"不随 Hanxi 关闭"开关）
 		if derr := job.SetAllowKillOnClose(false); derr != nil {
 			job.Close()
 			_ = cmd.Process.Kill()

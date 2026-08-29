@@ -1,7 +1,7 @@
 // Package instance 实现 BCU 单实例运行引擎：
 //
 // BCU（Bulk Crap Uninstaller，.NET 8 WinForms 自包含应用）由本引擎启动后绑定
-// Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），HubKit 退出时内核
+// Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），Hanxi 退出时内核
 // 连带终止进程树，杜绝孤儿驻留。
 //
 // 上游契约（EntryPoint.cs 源码实证）：

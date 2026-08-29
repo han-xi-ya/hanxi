@@ -14,18 +14,18 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/modules/ccswitch/instance"
-	"hubkit/internal/modules/ccswitch/version"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/settings"
+	"hanxi/internal/modules/ccswitch/instance"
+	"hanxi/internal/modules/ccswitch/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/settings"
 )
 
 const (
 	readyTimeout  = 20 * time.Second // 冷启动就绪上限（单实例互斥体出现）
 	watchInterval = 5 * time.Second  // 外部实例感知轮询间隔
 
-	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 HubKit 发起操作且主窗口未开
+	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 Hanxi 发起操作且主窗口未开
 	idleCheckTick = 30 * time.Second
 )
 
@@ -44,7 +44,7 @@ type CCSwitchService struct {
 	watchStop  chan struct{}
 
 	idleMu       sync.Mutex
-	lastActivity time.Time // 最近一次 HubKit 发起的使用（打开窗口）；GetStatus 轮询不计
+	lastActivity time.Time // 最近一次 Hanxi 发起的使用（打开窗口）；GetStatus 轮询不计
 }
 
 func NewCCSwitchService(plat platform.Platform) *CCSwitchService {
@@ -112,7 +112,7 @@ func (s *CCSwitchService) activate() {
 	}()
 }
 
-// touch 记录一次 HubKit 发起的实例使用（打开窗口算；状态轮询不算）。
+// touch 记录一次 Hanxi 发起的实例使用（打开窗口算；状态轮询不算）。
 func (s *CCSwitchService) touch() {
 	s.idleMu.Lock()
 	s.lastActivity = time.Now()
@@ -410,7 +410,7 @@ func versionCompare(a, b string) int {
 
 // ---------- 联动开关与桌面辅助 ----------
 
-// GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
 func (s *CCSwitchService) GetFollowOnExit() (bool, error) {
 	return s.store.GetFollowOnExit(), nil
 }

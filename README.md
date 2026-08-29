@@ -1,7 +1,9 @@
-# HubKit
+# Hanxi
 
-> 🚀 **极轻量现代桌面开发者网络与内网穿透工具箱**（Go + Wails v3 + Vue 3）
-> 面向全栈与后端开发者的 Windows 原生工具箱：以 **frpc 多实例穿透** 为核心，集成了 **微信机器人助手、端口占用释放、Nmap 服务指纹扫描、局域网设备发现、公网 IP/Ping/Traceroute 诊断、系统级快捷直达、运行日志查看** 等高频能力，内置 **Windows DPAPI 凭据加密、JobObject 进程隔离、系统托盘常驻与开机自启**，装进同一个便携单二进制。
+> **开源工具工作台**（Go + Wails v3 + Vue 3）
+> 集中安装、管理与运行常用开源软件。Hanxi 将 frpc、NanaZip、Everything、Snipaste、CCSwitch 等工具以平等模块集成到统一入口，并提供版本管理、进程托管、完整性校验、系统托盘与本地数据管理能力。
+>
+> **v0.3.0 品牌断代**：产品标识、进程名和标准数据目录已切换为 Hanxi，不读取旧版数据、自启项或单实例标识。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-%E2%89%A51.24-00ADD8?logo=go)](https://go.dev/)
@@ -10,9 +12,9 @@
 
 ---
 
-## 🌟 核心特性
+## 🌟 已集成工具
 
-### 1. ⚡ frpc 多实例与沙箱进程管理（旗舰核心）
+### 1. ⚡ frpc 多实例与沙箱进程管理
 - **多实例独立并发**：每个项目对应独立 `frpc.exe` 进程，支持同时联调多个内网穿透服务端。
 - **全协议与精细化配置**：
   - 支持 **TCP / UDP / HTTP / HTTPS / STCP / XTCP** 全类型穿透；
@@ -68,7 +70,7 @@
 
 ## 🛠️ 技术架构与优势
 
-| 维度 | HubKit (本项目) | 传统 Electron 类工具 | 传统 GUI 类工具 |
+| 维度 | Hanxi (本项目) | 传统 Electron 类工具 | 传统 GUI 类工具 |
 |---|---|---|---|
 | **技术底座** | **Go + Wails v3 + Vue 3** | Electron + Node.js | Go + IMGUI / Fyne |
 | **内存占用** | **~20 MB ~ 25 MB**（极低资源消耗） | 150MB ~ 300MB+ | 30MB ~ 50MB |
@@ -112,7 +114,7 @@ task dev
 ### 编译打包产物
 
 ```powershell
-task build     # 产出便携版单二进制 bin/hubkit.exe
+task build     # 产出便携版单二进制 bin/hanxi.exe
 ```
 
 ---
@@ -120,15 +122,15 @@ task build     # 产出便携版单二进制 bin/hubkit.exe
 ## 📁 目录结构
 
 ```text
-hubkit/
+hanxi/
 ├─ cmd/
-│  └─ hubkit/                    # 应用入口（Main 装配与 UAC 提权模式分流）
+│  └─ hanxi/                    # 应用入口（Main 装配与 UAC 提权模式分流）
 ├─ internal/
 │  ├─ app/                       # Composition Root (Wails 窗口、托盘、生命周期与服务注入)
 │  ├─ domain/                    # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                    # 模块插件化抽象（OnInit / OnDestroy / 懒加载注册中心）
 │  ├─ modules/                   # 独立工具模块
-│  │  ├─ frpc/                   # 旗舰模块：多实例引擎 / 版本下载 / TOML生成 / 状态嗅探 / DPAPI存储
+│  │  ├─ frpc/                   # frp 多实例引擎 / 版本下载 / TOML生成 / 状态嗅探 / DPAPI存储
 │  │  ├─ wechat/                 # 微信机器人：扫码登录 / AES加密通信 / 消息推送
 │  │  ├─ portscan/               # 端口扫描：高并发探测 / Gonmap Nmap 服务指纹识别
 │  │  ├─ portkill/               # 端口占用排查 / 进程指纹比对 / UAC 提权释放

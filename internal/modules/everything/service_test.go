@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	evinstance "hubkit/internal/modules/everything/instance"
-	evversion "hubkit/internal/modules/everything/version"
-	"hubkit/internal/platform/windows"
+	evinstance "hanxi/internal/modules/everything/instance"
+	evversion "hanxi/internal/modules/everything/version"
+	"hanxi/internal/platform/windows"
 )
 
 // newTestService 构造临时 versions 目录的 service（引擎用真实平台原语但测试不启动进程）。

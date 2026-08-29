@@ -1,7 +1,7 @@
 // Package instance 实现 CC Switch 单实例运行引擎：
 //
 // CC Switch 由本引擎启动后绑定 Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），
-// HubKit 无论以何种方式退出（托盘退出/崩溃/强杀），内核都会连带终止 CC Switch
+// Hanxi 无论以何种方式退出（托盘退出/崩溃/强杀），内核都会连带终止 CC Switch
 // 及其 WebView2 子进程树，杜绝孤儿驻留。
 //
 // 与 markeron/everything 引擎的适配差异：

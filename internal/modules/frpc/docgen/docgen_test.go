@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"hubkit/internal/domain"
+	"hanxi/internal/domain"
 )
 
 func sampleProject() *domain.Project {

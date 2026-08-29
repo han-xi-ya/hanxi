@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 // State 引擎状态机：stopped → starting → running → (stopped | failed | external)
@@ -40,7 +40,7 @@ type Snapshot struct {
 // StartOptions 启动参数：由 service 层解析版本后填充。
 type StartOptions struct {
 	Version string // 绑定版本（如 6.2.0）
-	// Detached 独立运行：解除 JobObject 退出联动（HubKit 关闭完全不影响工具）。
+	// Detached 独立运行：解除 JobObject 退出联动（Hanxi 关闭完全不影响工具）。
 	Detached bool   // 绑定版本（如 0.8.96）
 	Exe      string // FlClash.exe 绝对路径（版本隔离目录内）
 }
@@ -138,7 +138,7 @@ func (e *Engine) Start(opts StartOptions) error {
 		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
 	}
 	if opts.Detached {
-		// 解除退出联动：HubKit 退出/崩溃不再连带杀本实例（"不随 HubKit 关闭"开关）
+		// 解除退出联动：Hanxi 退出/崩溃不再连带杀本实例（"不随 Hanxi 关闭"开关）
 		if derr := job.SetAllowKillOnClose(false); derr != nil {
 			job.Close()
 			_ = cmd.Process.Kill()

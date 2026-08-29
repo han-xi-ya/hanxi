@@ -12,8 +12,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "bcu"
@@ -32,7 +32,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "BC 卸载工具",
 		Version:     "0.1.0",
 		Description: "收纳批量卸载工具 Bulk Crap Uninstaller：版本管理、JobObject 托管启停与窗口唤起",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

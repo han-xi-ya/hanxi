@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as FrpcAPI from '../../bindings/hubkit/internal/modules/frpc/frpcservice'
-import type { Project } from '../../bindings/hubkit/internal/domain/models'
-import type { Snapshot } from '../../bindings/hubkit/internal/modules/frpc/instance/models'
+import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
+import type { Project } from '../../bindings/hanxi/internal/domain/models'
+import type { Snapshot } from '../../bindings/hanxi/internal/modules/frpc/instance/models'
 import FrpcProjectEditor from '../components/FrpcProjectEditor.vue'
 import FrpcVersionsTab from '../components/FrpcVersionsTab.vue'
 import { getErrorMessage } from '../utils/errors'
@@ -464,7 +464,7 @@ onUnmounted(() => {
       <div class="header-row">
         <div>
           <h1>frpc 穿透</h1>
-          <p class="subtitle">支持多实例隔离运行与版本管理。退出 HubKit 时内核连带清理，杜绝孤儿进程。</p>
+          <p class="subtitle">支持多实例隔离运行与版本管理。退出 Hanxi 时内核连带清理，杜绝孤儿进程。</p>
         </div>
         <div class="main-tab-nav">
           <button

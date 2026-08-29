@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import * as PublicIpAPI from '../../bindings/hubkit/internal/modules/publicip'
-import type { NetworkOverview, PingSummary, TracerouteSummary } from '../../bindings/hubkit/internal/modules/publicip/models'
-import type { Adapter } from '../../bindings/hubkit/internal/platform/models'
+import * as PublicIpAPI from '../../bindings/hanxi/internal/modules/publicip'
+import type { NetworkOverview, PingSummary, TracerouteSummary } from '../../bindings/hanxi/internal/modules/publicip/models'
+import type { Adapter } from '../../bindings/hanxi/internal/platform/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 

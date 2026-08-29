@@ -1,6 +1,6 @@
-# HubKit 前端工程 (Frontend)
+# Hanxi 前端工程 (Frontend)
 
-HubKit 前端基于 **Vue 3 + TypeScript + Vite + TailwindCSS** 构建，配合 Wails v3 实现与 Go 后端的类型安全 RPC 通信与事件驱动。
+Hanxi 前端基于 **Vue 3 + TypeScript + Vite + TailwindCSS** 构建，配合 Wails v3 实现与 Go 后端的类型安全 RPC 通信与事件驱动。
 
 ---
 
@@ -19,7 +19,7 @@ HubKit 前端基于 **Vue 3 + TypeScript + Vite + TailwindCSS** 构建，配合 
 ```text
 frontend/
 ├─ bindings/            # Wails v3 自动生成的 Go 结构体与 RPC 调用绑定
-│  └─ hubkit/internal/  # 包含 app, extapi, modules (frpc, wechat, lan, portscan, portkill, publicip 等)
+│  └─ hanxi/internal/  # 包含 app, extapi, modules (frpc, wechat, lan, portscan, portkill, publicip 等)
 ├─ src/
 │  ├─ components/       # 可复用业务组件
 │  │  ├─ FrpcProjectEditor.vue   # frpc 项目配置编辑器（支持批量端口、高级参数、实时 TOML 预览）

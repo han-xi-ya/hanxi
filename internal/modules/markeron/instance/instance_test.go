@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/windows"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/windows"
 )
 
 // ---------- 测试用 fake（探针与 Job 注入） ----------

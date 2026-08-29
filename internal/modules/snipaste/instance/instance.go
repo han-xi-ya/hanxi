@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 type State string
@@ -142,10 +142,10 @@ func (e *Engine) Start(opts StartOptions) error {
 		_ = job.Terminate(1)
 		_ = job.Close()
 		_ = cmd.Wait()
-		e.transition(StateFailed, "解除 HubKit 退出联动失败: "+err.Error())
+		e.transition(StateFailed, "解除 Hanxi 退出联动失败: "+err.Error())
 		return err
 	}
-	// 关闭 KILL_ON_JOB_CLOSE 后，即使 HubKit 退出时丢失 Job 句柄，Snipaste 也会继续运行。
+	// 关闭 KILL_ON_JOB_CLOSE 后，即使 Hanxi 退出时丢失 Job 句柄，Snipaste 也会继续运行。
 	// 页面手动 Quit 仍可在本会话存活期间通过该 Job 精确终止自有进程树。
 
 	waitDone := make(chan struct{})

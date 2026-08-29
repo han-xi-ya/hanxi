@@ -1,10 +1,16 @@
-# HubKit 踩坑记录与问题排查指南 (Troubleshooting & Best Practices)
+# Hanxi 踩坑记录与问题排查指南 (Troubleshooting & Best Practices)
 
 > 💡 **目的**：记录项目在开发、调试、编译与重构过程中遇到的典型错误、隐性 Bug 与技术陷阱，归纳**正确做法与标准规范**，避免重复踩坑。
 
 ---
 
 ## 目录
+
+### 0. 产品更名：品牌断代必须同步源码、数据目录与安装身份
+- **问题现象与错误原因**：仅替换界面名称会遗留旧的 Go module、Wails bindings、进程名、单实例 ID、Windows 版本资源、NSIS/MSIX 模板和数据目录，导致安装包名称错乱、版本分裂或新旧实例共享状态。
+- **排查过程**：分别扫描源码 import、构建脚本、Windows manifest、安装器模板、发布 workflow、前端 bindings 与 `%APPDATA%` 路径，确认产品身份并非单一字符串。
+- **正确做法与标准修复方案**：品牌断代版本必须统一迁移源码命名空间、`cmd` 入口、bindings、exe/资产名、单实例 ID、自启项和标准数据目录，并集中维护名称、版本、描述与标识符。Hanxi v0.3.0 明确不读取或迁移旧产品数据。
+- **避坑防重犯建议**：发布前执行旧品牌残留扫描，并对运行时版本、PE 资源、NSIS/MSIX 和 Release tag 做一致性校验；真实第三方语义（如 `frpc.exe`、`frp://`）不得机械替换。
 
 1. [前端：Wails v3 事件总线与插件启停热同步](#1-前端wails-v3-事件总线与插件启停热同步)
 2. [前端：大流量日志流内存与 DOM 性能问题](#2-前端大流量日志流内存与-dom-性能问题)
@@ -17,6 +23,12 @@
 9. [Windows 开机自启参数必须与入口解析及窗口状态保持一致](#14-windows-开机自启参数必须与入口解析及窗口状态保持一致)
 
 ---
+
+### 0.1 Windows 安装包验证依赖未进入 PATH
+- **问题现象与错误原因**：`task package INSTALL_SCOPE=user` 完成应用构建后，在调用 `makensis` 时报告 `executable file not found in $PATH`。项目打包任务依赖 NSIS，但本机未安装 NSIS 或安装目录未加入 PATH。
+- **排查过程**：确认 `task build`、Wails bindings、前端构建与 `hanxi.exe` 均成功，失败点仅发生在 `create:nsis:installer` 的 `makensis` 调用。
+- **正确做法与标准修复方案**：安装 NSIS，并确保 `makensis.exe` 可由终端直接调用；随后重新执行 `task package INSTALL_SCOPE=user`。CI 也应显式安装 NSIS，而不是假定 runner 已提供。
+- **避坑防重犯建议**：打包任务增加 `command -v makensis` 前置检查和清晰错误提示，将编译成功与安装包生成成功分开报告。
 
 ### 1. 前端：Wails v3 事件总线与插件启停热同步
 
@@ -56,7 +68,7 @@
 
 ### 3. 后端：Windows 孤儿进程与 JobObject 作业隔离
 
-- **问题现象**：HubKit 异常退出或被任务管理器结束时，启动的 `frpc.exe` 依然在后台运行并占用端口。
+- **问题现象**：Hanxi 异常退出或被任务管理器结束时，启动的 `frpc.exe` 依然在后台运行并占用端口。
 - **错误根源**：Windows 普通 `exec.Command` 生成的子进程生命周期脱离父进程，父进程退出不会触发子进程自动终止。
 - **正确做法**：
   - 在 Windows 下创建内核级 `JobObject`（作业对象），并配置 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 标志位。
@@ -199,7 +211,7 @@
 
 ### 14. Windows 开机自启参数必须与入口解析及窗口状态保持一致
 
-- **问题现象与错误原因**：设置页开启“开机自动启动”后，注册表成功写入 `"HubKit.exe" --minimized`，但用户登录 Windows 时 HubKit 没有驻留。根因是注册表启动命令传入了 `--minimized`，而 `cmd/hubkit/main.go` 未注册该 flag；Go `flag.Parse()` 遇到未知参数会打印错误并直接退出。即使只补参数解析，窗口创建若不消费该状态，开机启动仍会弹出主窗口，与“静默常驻后台”的设置说明不符。
+- **问题现象与错误原因**：设置页开启“开机自动启动”后，注册表成功写入 `"Hanxi.exe" --minimized`，但用户登录 Windows 时 Hanxi 没有驻留。根因是注册表启动命令传入了 `--minimized`，而 `cmd/hanxi/main.go` 未注册该 flag；Go `flag.Parse()` 遇到未知参数会打印错误并直接退出。即使只补参数解析，窗口创建若不消费该状态，开机启动仍会弹出主窗口，与“静默常驻后台”的设置说明不符。
 - **排查过程**：从设置页 RPC 追踪到 `windows.SetAutoStart` 写入的 Run 键命令，再全局搜索 `--minimized`，发现只有写入点、没有解析点；继续检查 Wails `WebviewWindowOptions`，确认可通过 `Hidden` 控制首次创建时不显示窗口。
 - **正确做法与标准修复方案**：入口显式注册 `--minimized`，通过应用启动 `Options` 传入 Composition Root，并将其绑定到 `WebviewWindowOptions.Hidden`；正常手动启动保持默认显示，注册表自启则隐藏主窗口但正常创建托盘。
 - **避坑建议**：任何写入注册表、快捷方式或任务计划程序的 CLI 参数，都必须能在程序入口搜索到对应解析与消费点；修改启动命令后至少执行一次“用完整注册命令直接启动”的契约验证，避免出现注册成功但进程秒退的假成功。
@@ -238,9 +250,9 @@ BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名�
 
 ---
 
-### 10. 应用退出钩子未接线：托管的工具进程不随 HubKit 退出而关闭
+### 10. 应用退出钩子未接线：托管的工具进程不随 Hanxi 退出而关闭
 
-- **问题现象**：从托盘退出 HubKit（或关闭窗口退出）后，FlClash / BCU 等模块托管的工具进程仍存活——用户"正在上网（代理）"或"正在卸载"时关闭 HubKit，工具的窗口与进程独立残留，体验突兀（"不随着 hubkit 结束而关闭"）。
+- **问题现象**：从托盘退出 Hanxi（或关闭窗口退出）后，FlClash / BCU 等模块托管的工具进程仍存活——用户"正在上网（代理）"或"正在卸载"时关闭 Hanxi，工具的窗口与进程独立残留，体验突兀（"不随着 hanxi 结束而关闭"）。
 - **排查过程**：逐步核对了三条理论防线——①各模块 Engine 的 JobObject KILL_ON_JOB_CLOSE 兜底（创建/Assign 正常）；②Shutdown 链：`Registry.ShutdownAll()` 早已实现（遍历 initialized 模块调 OnDestroy→engine.Stop→job.Terminate）；③**致命发现：`ShutdownAll` 从未被任何地方调用**——`OnDestroy` 只在 registry.SetEnabled(false)（用户停用插件）时触发，app.go 的 `Options` 里既没有 OnShutdown 钩子也没有退出前清理。
 - **正确做法与标准修复方案**：在 `application.New` 的 `Options.OnShutdown`（wails 阻塞式退出钩子，优雅退出路径都会走到）里调 `registry.ShutdownAll()`——所有已初始化模块先 OnDestroy（JobObject Terminate 连根带走工具进程树），主进程才结束。强杀/崩溃场景仍由 JobObject 句柄关闭时的内核 KILL_ON_JOB_CLOSE 兜底。
 - **避坑建议**：凡新增"模块退出清理"接口，必须当场核实它的调用点是否在应用退出路径上被接线（grep 调用计数）；只剩内核兜底的架构在优雅退出路径上会漏掉一切需要握手收尾的资源。已知边界：被托管工具 UAC 提权派生的子进程（如卸载器的提权清理器）会 breakaway 出 JobObject，内核级兜底也杀不掉——此类工具退出前尽量在其窗口内先完成操作。

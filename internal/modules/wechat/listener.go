@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/notify"
-	"hubkit/internal/settings"
+	"hanxi/internal/notify"
+	"hanxi/internal/settings"
 )
 
 type updatesReq struct {

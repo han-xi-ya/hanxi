@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"hubkit/internal/modules/nanazip/version"
-	"hubkit/internal/platform/apppackage"
+	"hanxi/internal/modules/nanazip/version"
+	"hanxi/internal/platform/apppackage"
 )
 
 type fakePackages struct {

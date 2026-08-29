@@ -10,8 +10,8 @@ import (
 
 // WechatAccount 微信多账号配置模型
 type WechatAccount struct {
-	ID                    string `json:"id"`                    // 唯一标识 (例如 botId 或 时间戳/UUID)
-	RemarkName            string `json:"remarkName"`            // 备注名称（如“告警通知号”、“个人测试号”）
+	ID                    string `json:"id"`         // 唯一标识 (例如 botId 或 时间戳/UUID)
+	RemarkName            string `json:"remarkName"` // 备注名称（如“告警通知号”、“个人测试号”）
 	BotToken              string `json:"botToken"`
 	IlinkBotID            string `json:"ilinkBotId"`
 	IlinkUserID           string `json:"ilinkUserId"`

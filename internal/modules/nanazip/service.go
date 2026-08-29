@@ -11,12 +11,12 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/modules/nanazip/version"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/apppackage"
-	"hubkit/internal/platform/versioncmp"
-	"hubkit/internal/settings"
+	"hanxi/internal/modules/nanazip/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/apppackage"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/settings"
 )
 
 var packageIdentity = apppackage.Identity{Name: PackageName, Family: PackageFamily, Publisher: Publisher, AppID: MainAppID}

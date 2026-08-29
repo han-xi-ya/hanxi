@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"hubkit/internal/platform/versioninfo"
+	"hanxi/internal/platform/versioninfo"
 )
 
 const (
@@ -140,7 +140,7 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 		return err
 	}
 
-	tmpZip, err := os.CreateTemp("", "hubkit-ccswitch-*.zip")
+	tmpZip, err := os.CreateTemp("", "hanxi-ccswitch-*.zip")
 	if err != nil {
 		return err
 	}

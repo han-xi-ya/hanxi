@@ -7,8 +7,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "mangodisk"
@@ -21,7 +21,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID: ID, Name: "MangoDisk", Version: "0.1.0",
 		Description: "MangoDisk 原版 GUI：官方版本校验、JobObject 托管启停与单实例窗口唤起",
-		Author:      "HubKit", Level: extapi.LevelBuiltin,
+		Author:      "Hanxi", Level: extapi.LevelBuiltin,
 	}
 }
 

@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: '发布版本 Tag（如 v0.1.0）'
+        description: '发布版本 Tag（如 v0.3.0）'
         required: true
-        default: 'v0.1.0'
+        default: 'v0.3.0'
 
 permissions:
   contents: write
@@ -54,29 +54,29 @@ jobs:
         shell: pwsh
         run: |
           task build
-          Get-Item bin/hubkit.exe | Select-Object Name, Length
+          Get-Item bin/hanxi.exe | Select-Object Name, Length
 
       - name: Package Portable ZIP & Compute Checksum
         shell: pwsh
         run: |
           $ver = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "${{ github.event.inputs.tag_name }}" }
-          if (-not $ver) { $ver = "v0.1.0" }
+          if (-not $ver) { $ver = "v0.3.0" }
 
           # 创建便携包发布目录并附带 便携标志 data 目录
-          New-Item -ItemType Directory -Force release/hubkit-portable/data | Out-Null
-          Copy-Item bin/hubkit.exe release/hubkit-portable/hubkit.exe
-          Copy-Item README.md release/hubkit-portable/README.md
+          New-Item -ItemType Directory -Force release/hanxi-portable/data | Out-Null
+          Copy-Item bin/hanxi.exe release/hanxi-portable/hanxi.exe
+          Copy-Item README.md release/hanxi-portable/README.md
 
           # 打包便携版 ZIP
-          $zipName = "hubkit-windows-amd64-portable-$ver.zip"
-          Compress-Archive -Path release/hubkit-portable/* -DestinationPath "release/$zipName" -Force
+          $zipName = "hanxi-windows-amd64-portable-$ver.zip"
+          Compress-Archive -Path release/hanxi-portable/* -DestinationPath "release/$zipName" -Force
 
           # 单独准备独立 exe
-          Copy-Item bin/hubkit.exe "release/hubkit-windows-amd64-$ver.exe"
+          Copy-Item bin/hanxi.exe "release/hanxi-windows-amd64-$ver.exe"
 
           # 生成 SHA256 校验和清单
           cd release
-          Get-FileHash -Algorithm SHA256 "hubkit-windows-amd64-$ver.exe", "$zipName" | ForEach-Object {
+          Get-FileHash -Algorithm SHA256 "hanxi-windows-amd64-$ver.exe", "$zipName" | ForEach-Object {
             "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)"
           } | Out-File -Encoding utf8 "checksums.txt"
 
@@ -88,33 +88,34 @@ jobs:
         run: |
           $ver = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "${{ github.event.inputs.tag_name }}" }
           @"
-          ## 🚀 HubKit $ver 发布说明
+          ## 🚀 Hanxi $ver 发布说明
 
-          HubKit 是一款专为全栈与后端开发者打造的**极轻量现代桌面网络工具箱**（Go + Wails v3 + Vue 3）。
+          Hanxi 是一个面向 Windows 的**开源工具工作台**（Go + Wails v3 + Vue 3），集中安装、管理与运行常用开源软件。
+
+          > **品牌断代说明**：v0.3.0 使用全新的应用标识与 `%APPDATA%/Hanxi/` 数据目录，不读取旧版数据或自启配置。
 
           ### 📦 资产下载与说明
-          - **`hubkit-windows-amd64-portable-$ver.zip`**：**【推荐】绿色便携免安装版**（内置 `data/` 目录，配置/日志/版本均自包含在同级，解压即用）。
-          - **`hubkit-windows-amd64-$ver.exe`**：单独立可执行文件（默认数据落盘在 `%APPDATA%/HubKit/`）。
+          - **`hanxi-windows-amd64-portable-$ver.zip`**：**【推荐】绿色便携免安装版**（内置 `data/` 目录，配置/日志/版本均自包含在同级，解压即用）。
+          - **`hanxi-windows-amd64-$ver.exe`**：单独立可执行文件（默认数据落盘在 `%APPDATA%/Hanxi/`）。
           - **`checksums.txt`**：SHA256 完整性哈希校验清单。
 
-          ### 🌟 核心特性
-          - ⚡ **frpc 旗舰多实例穿透**：支持 TCP/UDP/HTTP/HTTPS/STCP/XTCP，**STCP/XTCP 访客端 (Visitor)** 深度支持，KCP/QUIC/WSS 底层协议，Host 重写与 Proxy Protocol v2。
-          - 📝 **表单 ⇋ TOML 双向实时编辑**：支持可视化表单与原始 TOML 源码无损互转与实时语法校验。
-          - 📦 **版本管理合并**：内置官方 GitHub / 镜像源一键拉取、SHA256 校验与本地导入。
-          - 🔒 **硬件级安全 (DPAPI)**：敏感 Token 硬件加密存储，停机即时擦除临时配置文件。
-          - 🛡️ **进程隔离 (JobObject)**：操作系统内核级进程树绑定，彻底告别孤儿进程与端口占用。
-          - 🧰 **全能开发者套件**：微信机器人助手、Nmap 端口指纹扫描、端口占用精准 UAC 释放、局域网设备发现与网络诊断。
+          ### 🌟 集成工具
+          - **开源软件统一入口**：集中查看、启用、安装和运行已集成工具。
+          - **frpc 穿透管理**：管理 frp 项目、多实例进程、本地版本与运行状态。
+          - **桌面与 CLI 工具托管**：集成 NanaZip、Everything、Snipaste、CCSwitch 等常用开源软件。
+          - **系统与网络工具**：提供环境检测、端口管理、局域网发现、IP 诊断等能力。
+          - **安全进程管理**：通过 DPAPI、JobObject 和完整性校验保护凭据与托管进程。
           "@ | Out-File -Encoding utf8 release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name || github.event.inputs.tag_name }}
-          name: HubKit ${{ github.ref_name || github.event.inputs.tag_name }}
+          name: Hanxi ${{ github.ref_name || github.event.inputs.tag_name }}
           body_path: release_notes.md
           draft: false
           prerelease: false
           files: |
-            release/hubkit-windows-amd64-*.exe
-            release/hubkit-windows-amd64-portable-*.zip
+            release/hanxi-windows-amd64-*.exe
+            release/hanxi-windows-amd64-portable-*.zip
             release/checksums.txt

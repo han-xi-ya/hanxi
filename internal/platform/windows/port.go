@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 var (

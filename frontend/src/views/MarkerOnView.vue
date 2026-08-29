@@ -2,11 +2,11 @@
 // 状态 / 版本管理 / 下载进度 / 时长 ticker / 生命周期
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as MarkerAPI from '../../bindings/hubkit/internal/modules/markeron/markeronservice'
-import * as AppAPI from '../../bindings/hubkit/internal/app'
-import type { DownloadProgress, MarkerRelease, MarkerVersionInfo } from '../../bindings/hubkit/internal/modules/markeron/version/models'
-import type { Snapshot } from '../../bindings/hubkit/internal/modules/markeron/instance/models'
-import type { ToggleOutcome, StopOutcome } from '../../bindings/hubkit/internal/modules/markeron/models'
+import * as MarkerAPI from '../../bindings/hanxi/internal/modules/markeron/markeronservice'
+import * as AppAPI from '../../bindings/hanxi/internal/app'
+import type { DownloadProgress, MarkerRelease, MarkerVersionInfo } from '../../bindings/hanxi/internal/modules/markeron/version/models'
+import type { Snapshot } from '../../bindings/hanxi/internal/modules/markeron/instance/models'
+import type { ToggleOutcome, StopOutcome } from '../../bindings/hanxi/internal/modules/markeron/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
@@ -94,7 +94,7 @@ const toggleHint = computed(() => {
 // 条件提示条（三个变体互斥）
 const banner = computed(() => {
   if (state.value === 'external') {
-    return { cls: 'banner-warn', text: '检测到外部 MarkerOn 实例（非 HubKit 托管）。可切换标注；如需彻底退出请在 MarkerOn 托盘操作。' }
+    return { cls: 'banner-warn', text: '检测到外部 MarkerOn 实例（非 Hanxi 托管）。可切换标注；如需彻底退出请在 MarkerOn 托盘操作。' }
   }
   if (state.value === 'failed') {
     return { cls: 'banner-error', text: snap.value?.error || 'MarkerOn 异常退出' }
@@ -294,7 +294,7 @@ async function loadExtras() {
 async function onFollowToggle() {
   try {
     await MarkerAPI.SetFollowOnExit(!followOnExit.value)
-    showToast(followOnExit.value ? '已开启：HubKit 退出时一并关闭该工具' : '已关闭：HubKit 退出不影响该工具，继续独立运行（下次启动生效）')
+    showToast(followOnExit.value ? '已开启：Hanxi 退出时一并关闭该工具' : '已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
   } catch (e) {
     showToast('设置失败: ' + getErrorMessage(e))
     followOnExit.value = !followOnExit.value // 失败回滚
@@ -455,7 +455,7 @@ onUnmounted(() => {
         <span v-else-if="state === 'stopped'">点击「启动 MarkerOn」后台运行，随后可开启桌面标注。</span>
         <span v-else-if="state === 'starting'">正在拉起 MarkerOn 主实例（约 1~3 秒）…</span>
         <span v-else-if="state === 'failed'">请确认已安装 WebView2 Runtime 后重试。</span>
-        <span v-else-if="state === 'external'">非 HubKit 托管的 MarkerOn 实例正在运行。</span>
+        <span v-else-if="state === 'external'">非 Hanxi 托管的 MarkerOn 实例正在运行。</span>
       </div>
     </div>
 
@@ -481,7 +481,7 @@ onUnmounted(() => {
       <div class="extras-row">
         <label class="toggle-label">
           <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
-          <span>随 HubKit 一起关闭 <span class="hint-dim">（关闭后 HubKit 退出完全不影响该工具）</span></span>
+          <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具）</span></span>
         </label>
         <button class="btn btn-secondary btn-small" @click="createShortcut">🖥 创建桌面快捷方式</button>
       </div>

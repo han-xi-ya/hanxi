@@ -2,9 +2,9 @@
 import { ref, computed, markRaw, onMounted, onUnmounted } from 'vue'
 import type { Component } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as AppAPI from '../bindings/hubkit/internal/app'
-import { EnsureModuleActive } from '../bindings/hubkit/internal/app/appservice.js'
-import type { NavEntry } from '../bindings/hubkit/internal/extapi/models'
+import * as AppAPI from '../bindings/hanxi/internal/app'
+import { EnsureModuleActive } from '../bindings/hanxi/internal/app/appservice.js'
+import type { NavEntry } from '../bindings/hanxi/internal/extapi/models'
 import HomeView from './views/HomeView.vue'
 import FrpcProjectsView from './views/FrpcProjectsView.vue'
 import SettingsView from './views/SettingsView.vue'
@@ -31,7 +31,7 @@ import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import NotificationDrawer from './components/NotificationDrawer.vue'
 import { useNotification } from './composables/useNotification'
-import type { Notification } from '../bindings/hubkit/internal/notify/models'
+import type { Notification } from '../bindings/hanxi/internal/notify/models'
 import { useToast } from './composables/useToast'
 
 const { toastMsg } = useToast()
@@ -179,10 +179,10 @@ onUnmounted(() => {
     <!-- 左侧固定宽度侧边栏 -->
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-mark">HK</span>
+        <span class="brand-mark">HX</span>
         <div class="brand-info">
-          <span class="brand-name">HubKit</span>
-          <span class="brand-desc">开发网络工具箱</span>
+          <span class="brand-name">Hanxi</span>
+          <span class="brand-desc">开源工具工作台</span>
         </div>
       </div>
 
@@ -200,7 +200,7 @@ onUnmounted(() => {
         </button>
 
         <div class="nav-divider" v-if="navs.length > 0"></div>
-        <div class="nav-group-label" v-if="navs.length > 0">功能模块</div>
+        <div class="nav-group-label" v-if="navs.length > 0">工具</div>
 
         <button
           v-for="n in navs"
@@ -240,7 +240,7 @@ onUnmounted(() => {
 
         <div class="status-bar">
           <span class="status-dot" :class="{ online: backendReady }"></span>
-          <span class="status-text">{{ backendReady ? '核心服务在线' : '连接核心中…' }}</span>
+          <span class="status-text">{{ backendReady ? '工作台已就绪' : '正在加载工作台…' }}</span>
         </div>
       </nav>
     </aside>

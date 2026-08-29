@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/windows"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/windows"
 )
 
 // eventRecorder 记录状态迁移与日志回调，便于断言事件序列。
@@ -59,9 +59,9 @@ func newWindowsJobAPI() platform.JobAPI {
 
 type fakeJob struct{ assignErr error }
 
-func (f *fakeJob) Assign(pid uint32) error     { return f.assignErr }
-func (f *fakeJob) Close() error                { return nil }
-func (f *fakeJob) Terminate(code uint32) error { return nil }
+func (f *fakeJob) Assign(pid uint32) error        { return f.assignErr }
+func (f *fakeJob) Close() error                   { return nil }
+func (f *fakeJob) Terminate(code uint32) error    { return nil }
 func (f *fakeJob) SetAllowKillOnClose(bool) error { return nil }
 
 // fakeJobAPI 通过 err 控制 Create 失败，通过 job.assignErr 控制 Assign 失败。
@@ -116,7 +116,7 @@ func TestInstanceLifecycleEcho(t *testing.T) {
 		ProjectName: "echo-proj",
 		Version:     "v0.0.0",
 		FrpcExe:     "cmd",
-		ConfigPath:  "/c echo hubkit-test-line",
+		ConfigPath:  "/c echo hanxi-test-line",
 	})
 	if err != nil {
 		t.Fatalf("Start failed: %v", err)
@@ -133,7 +133,7 @@ func TestInstanceLifecycleEcho(t *testing.T) {
 	logs := in.Logs(0)
 	var found bool
 	for _, l := range logs {
-		if strings.Contains(l, "hubkit-test-line") {
+		if strings.Contains(l, "hanxi-test-line") {
 			found = true
 		}
 	}

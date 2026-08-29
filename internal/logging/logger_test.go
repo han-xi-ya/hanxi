@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"hubkit/internal/logging"
+	"hanxi/internal/logging"
 )
 
 func TestRedactSensitive(t *testing.T) {

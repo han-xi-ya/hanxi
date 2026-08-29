@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
-import * as NotifyAPI from '../../bindings/hubkit/internal/notify'
-import type { Notification } from '../../bindings/hubkit/internal/notify/models'
+import * as NotifyAPI from '../../bindings/hanxi/internal/notify'
+import type { Notification } from '../../bindings/hanxi/internal/notify/models'
 
 export interface ToastItem {
   id: string

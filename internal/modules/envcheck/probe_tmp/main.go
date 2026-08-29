@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"hubkit/internal/modules/envcheck/detect"
+	"hanxi/internal/modules/envcheck/detect"
 )
 
 func main() {

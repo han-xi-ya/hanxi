@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"hubkit/internal/domain"
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform/windows"
-	"hubkit/internal/settings"
+	"hanxi/internal/domain"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform/windows"
+	"hanxi/internal/product"
+	"hanxi/internal/settings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -21,6 +22,8 @@ import (
 // AppInfo 前端关于页/首页展示的应用信息。
 type AppInfo struct {
 	Name        string `json:"name"`
+	Description string `json:"description"`
+	Tagline     string `json:"tagline"`
 	Version     string `json:"version"`
 	GOOS        string `json:"goos"`
 	GOARCH      string `json:"goarch"`
@@ -46,8 +49,10 @@ func NewAppService(registry *extapi.Registry, store *settings.Store) *AppService
 func (s *AppService) GetAppInfo() AppInfo {
 	paths := settings.GetPaths()
 	return AppInfo{
-		Name:        Name,
-		Version:     Version,
+		Name:        product.Name,
+		Description: product.Description,
+		Tagline:     product.Tagline,
+		Version:     product.Version,
 		GOOS:        runtime.GOOS,
 		GOARCH:      runtime.GOARCH,
 		Mode:        string(paths.Mode()),

@@ -188,7 +188,7 @@ tasks:
     generates:
       - frontend/bindings/**/*
     cmds:
-      - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -i ./cmd/hubkit ./internal/...
+      - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -i ./cmd/hanxi ./internal/...
 
   generate:icons:
     # Windows-only：icon.ico 已固化在 build/windows/，跳过 wails3 图标生成（其 darwin 输出在仅 Windows 决策下无意义）。

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"hubkit/internal/platform/versioninfo"
+	"hanxi/internal/platform/versioninfo"
 )
 
 const dirPrefix = "mangodisk_"
@@ -120,7 +120,7 @@ func (m *Manager) Download(version string, onProgress func(DownloadProgress)) er
 		return fmt.Errorf("版本 %s 已安装", version)
 	}
 
-	tmp, err := os.CreateTemp("", "hubkit-mangodisk-*.exe")
+	tmp, err := os.CreateTemp("", "hanxi-mangodisk-*.exe")
 	if err != nil {
 		return err
 	}

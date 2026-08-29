@@ -1,4 +1,4 @@
-# HubKit 开发里程碑与执行现状
+# Hanxi 开发里程碑与执行现状
 
 > **版本**：v1.0  
 > **更新日期**：2026-08-24  
@@ -14,9 +14,9 @@
 | **M1: 基础服务与持久化** | 便携路径检测、配置原子写落盘、slog 凭据自动脱敏、托盘与开机自启 | 🟢 已达成 | `internal/settings`、`internal/logging`、`internal/app` |
 | **M2: 网络诊断与局域网** | 出口 IP/IPv6 查询、网卡拓扑透视、ICMP Ping、Traceroute、LAN 设备发现 | 🟢 已达成 | `internal/modules/publicip`、`internal/modules/lan` |
 | **M3: 端口查杀与安全提权** | IP Helper 端口占有表、进程指纹防误杀复核、Windows 原生 UAC 提权 | 🟢 已达成 | `internal/modules/portkill`、UAC 提权模式 |
-| **M4: frpc 旗舰多实例系统** | 多实例并发、TOML生成、版本管理与重试、DPAPI 凭据加密、连接状态嗅探 | 🟢 已达成 | `internal/modules/frpc` |
+| **M4: frpc 多实例工具** | 多实例并发、TOML生成、版本管理与重试、DPAPI 凭据加密、连接状态嗅探 | 🟢 已达成 | `internal/modules/frpc` |
 | **M5: 扩展生态与工具套件** | 微信机器人助手、Gonmap 端口服务指纹扫描、内置日志查看器 | 🟢 已达成 | `modules/wechat`、`modules/portscan`、日志查看器 |
-| **M6: 极致优化与便携交付** | 按需懒加载零开销架构、关闭最小化托盘常驻、单二进制构建 | 🟢 已达成 | `bin/hubkit.exe`、零内存泄漏保证 |
+| **M6: 极致优化与便携交付** | 按需懒加载零开销架构、关闭最小化托盘常驻、单二进制构建 | 🟢 已达成 | `bin/hanxi.exe`、零内存泄漏保证 |
 
 ---
 
@@ -32,7 +32,7 @@
 - [x] 批量端口区间导入规则生成
 - [x] 官方 GitHub Releases / 镜像拉取，SHA256 校验与 3 次重试机制
 
-### 2.2 开发者网络工具箱 (M2, M3, M5)
+### 2.2 系统与网络工具 (M2, M3, M5)
 - [x] 微信机器人助手（二维码扫码登录、AES 加密通信、长轮询、图文/文件推送）
 - [x] 端口扫描与服务指纹探测（高并发探测、Gonmap 协议与 Nginx/Redis/MySQL 指纹识别）
 - [x] 端口占用快速定位与三级安全释放（原生 UAC 提权支持）

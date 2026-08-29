@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"hanxi/internal/product"
 )
 
 // Mode 运行模式
@@ -11,7 +13,7 @@ type Mode string
 
 const (
 	ModePortable Mode = "portable" // 便携模式：数据完全落在可执行文件同级 data/
-	ModeStandard Mode = "standard" // 标准模式：%APPDATA%/HubKit
+	ModeStandard Mode = "standard" // 标准模式：%APPDATA%/Hanxi
 )
 
 type Paths struct {
@@ -69,14 +71,14 @@ func resolvePaths() *Paths {
 		}
 	}
 
-	// 2. 标准模式：%APPDATA%/HubKit 或 ~/.config/hubkit
+	// 2. 标准模式：%APPDATA%/Hanxi 或 ~/.config/hanxi
 	appData := os.Getenv("APPDATA")
 	var base string
 	if appData != "" {
-		base = filepath.Join(appData, "HubKit")
+		base = filepath.Join(appData, product.DataDirName)
 	} else {
 		home, _ := os.UserHomeDir()
-		base = filepath.Join(home, ".config", "hubkit")
+		base = filepath.Join(home, ".config", product.ExecutableName)
 	}
 
 	return &Paths{

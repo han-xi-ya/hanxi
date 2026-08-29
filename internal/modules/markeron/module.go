@@ -9,8 +9,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "markeron"
@@ -29,7 +29,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Name:        "MarkerOn 标注",
 		Version:     "0.1.0",
 		Description: "收纳屏幕标注工具 MarkerOn：版本管理、JobObject 托管启停与标注开关",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

@@ -12,11 +12,11 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/modules/markeron/instance"
-	"hubkit/internal/modules/markeron/version"
-	"hubkit/internal/notify"
-	"hubkit/internal/platform"
-	"hubkit/internal/settings"
+	"hanxi/internal/modules/markeron/instance"
+	"hanxi/internal/modules/markeron/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/settings"
 )
 
 const (
@@ -328,7 +328,7 @@ func versionCompare(a, b string) int {
 
 // ---------- 联动开关与桌面辅助 ----------
 
-// GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
 func (s *MarkerOnService) GetFollowOnExit() (bool, error) {
 	return s.store.GetFollowOnExit(), nil
 }

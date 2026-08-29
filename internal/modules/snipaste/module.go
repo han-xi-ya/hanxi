@@ -1,6 +1,6 @@
 // Package snipaste 集成 Snipaste 官方 Windows x64 免安装版。
-// Snipaste 为闭源软件，本模块负责官网下载、版本管理，以及当前 HubKit 会话
-// 自有实例的启动/手动退出；模块停用或 HubKit 退出不联动结束 Snipaste。
+// Snipaste 为闭源软件，本模块负责官网下载、版本管理，以及当前 Hanxi 会话
+// 自有实例的启动/手动退出；模块停用或 Hanxi 退出不联动结束 Snipaste。
 package snipaste
 
 import (
@@ -8,8 +8,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"hubkit/internal/extapi"
-	"hubkit/internal/platform"
+	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "snipaste"
@@ -28,7 +28,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 		Name:        "Snipaste",
 		Version:     "0.1.0",
 		Description: "管理并启动 Snipaste 官方 Windows 免安装版，保留原生托盘与快捷键",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }
@@ -48,6 +48,6 @@ func (m *Module) Protocol() int                    { return 1 }
 func (m *Module) OnInit(context.Context) error     { return nil }
 
 // OnDestroy 不终止已启动的 Snipaste：页面手动退出是唯一控制入口，
-// 模块停用或 HubKit 退出仍保留原生托盘与快捷键。
+// 模块停用或 Hanxi 退出仍保留原生托盘与快捷键。
 func (m *Module) OnDestroy() error    { return nil }
 func (m *Module) IsInitialized() bool { return true }

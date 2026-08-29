@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"hubkit/internal/platform"
-	"hubkit/internal/platform/windows"
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/windows"
 )
 
 func TestWindowsPlatform(t *testing.T) {

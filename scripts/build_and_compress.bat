@@ -1,10 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 
-title HubKit Build and Package Tool
+title Hanxi Build and Package Tool
 
 echo =======================================================
-echo          HubKit Build and Portable Package
+echo          Hanxi Build and Portable Package
 echo =======================================================
 echo.
 
@@ -54,8 +54,8 @@ if %errorlevel% neq 0 (
     goto :error
 )
 
-if not exist "bin\hubkit.exe" (
-    echo [ERROR] Output bin\hubkit.exe not found.
+if not exist "bin\hanxi.exe" (
+    echo [ERROR] Output bin\hanxi.exe not found.
     goto :error
 )
 
@@ -65,14 +65,14 @@ echo [3/3] Assembling portable package...
 if not exist "bin\portable" mkdir "bin\portable"
 if not exist "bin\portable\data" mkdir "bin\portable\data"
 
-copy /y "bin\hubkit.exe" "bin\portable\hubkit.exe" >nul
+copy /y "bin\hanxi.exe" "bin\portable\hanxi.exe" >nul
 copy /y "README.md" "bin\portable\README.md" >nul
 
 echo.
 echo =======================================================
 echo  [SUCCESS] Build and package completed!
 echo =======================================================
-echo  - Standalone Executable : bin\hubkit.exe
+echo  - Standalone Executable : bin\hanxi.exe
 echo  - Portable Directory    : bin\portable\ (with data\ flag)
 echo =======================================================
 echo.

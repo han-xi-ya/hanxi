@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onActivated, onMounted, onUnmounted, ref } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as NanaZipAPI from '../../bindings/hubkit/internal/modules/nanazip/nanazipservice'
-import type { OperationProgress, PackageSnapshot } from '../../bindings/hubkit/internal/modules/nanazip/models'
-import type { CachedPackage, Release } from '../../bindings/hubkit/internal/modules/nanazip/version/models'
+import * as NanaZipAPI from '../../bindings/hanxi/internal/modules/nanazip/nanazipservice'
+import type { OperationProgress, PackageSnapshot } from '../../bindings/hanxi/internal/modules/nanazip/models'
+import type { CachedPackage, Release } from '../../bindings/hanxi/internal/modules/nanazip/version/models'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
@@ -141,7 +141,7 @@ onUnmounted(() => { unlistenProgress?.(); unlistenSnapshot?.() })
         <div class="nanazip-overview-main">
           <span class="nanazip-eyebrow">CURRENT USER PACKAGE</span>
           <h2>{{ installed ? `NanaZip ${snapshot?.version}` : '尚未安装 NanaZip' }}</h2>
-          <p>{{ installed ? '当前状态来自 Windows 包数据库，不依赖 HubKit 安装包缓存。' : '从版本资源选择 stable 版本，HubKit 校验官方摘要和包身份后交给 Windows 安装。' }}</p>
+          <p>{{ installed ? '当前状态来自 Windows 包数据库，不依赖 Hanxi 安装包缓存。' : '从版本资源选择 stable 版本，Hanxi 校验官方摘要和包身份后交给 Windows 安装。' }}</p>
           <div class="nanazip-actions">
             <button v-if="installed" class="nanazip-btn primary" :disabled="operationBusy" @click="launch">打开 NanaZip</button>
             <button v-else class="nanazip-btn primary" @click="activeTab = 'versions'">选择版本安装</button>
@@ -163,9 +163,9 @@ onUnmounted(() => { unlistenProgress?.(); unlistenSnapshot?.() })
       </section>
 
       <section class="nanazip-integrations">
-        <article><span>01</span><div><h3>Explorer Shell 集成</h3><p>右键菜单由 MSIX manifest 注册。安装或卸载后若菜单未立即刷新，可重新登录或手动重启 Explorer；HubKit 不会自动中断桌面会话。</p></div></article>
-        <article><span>02</span><div><h3>默认文件关联</h3><p>Windows 控制默认应用选择，HubKit 不静默接管 ZIP、7z、RAR 等关联。</p></div></article>
-        <article><span>03</span><div><h3>运行边界</h3><p>NanaZip 由 Windows 激活，HubKit 不追踪 PID、不绑定 JobObject，关闭 HubKit 不影响 NanaZip。</p></div></article>
+        <article><span>01</span><div><h3>Explorer Shell 集成</h3><p>右键菜单由 MSIX manifest 注册。安装或卸载后若菜单未立即刷新，可重新登录或手动重启 Explorer；Hanxi 不会自动中断桌面会话。</p></div></article>
+        <article><span>02</span><div><h3>默认文件关联</h3><p>Windows 控制默认应用选择，Hanxi 不静默接管 ZIP、7z、RAR 等关联。</p></div></article>
+        <article><span>03</span><div><h3>运行边界</h3><p>NanaZip 由 Windows 激活，Hanxi 不追踪 PID、不绑定 JobObject，关闭 Hanxi 不影响 NanaZip。</p></div></article>
       </section>
     </template>
 
@@ -196,7 +196,7 @@ onUnmounted(() => { unlistenProgress?.(); unlistenSnapshot?.() })
       </section>
     </template>
 
-    <ConfirmDialog :open="!!dialog" :title="dialog?.kind === 'uninstall' ? '卸载 NanaZip' : dialog?.kind === 'downgrade' ? '确认降级' : '移除安装包缓存'" :description="dialog?.kind === 'uninstall' ? '仅卸载当前用户 NanaZip。Explorer 右键菜单可能需要重新登录后完全消失，HubKit 不会自动重启 Explorer。' : dialog?.kind === 'downgrade' ? 'Windows 将使用 ForceUpdateFromAnyVersion 部署旧版本，请先关闭 NanaZip。' : '仅删除 HubKit 保存的可信 MSIXBundle，不会卸载系统中的 NanaZip。'" :confirm-label="dialog?.kind === 'uninstall' ? '卸载 NanaZip' : dialog?.kind === 'downgrade' ? '确认降级' : '移除缓存'" :tone="dialog?.kind === 'uninstall' || dialog?.kind === 'cache' ? 'danger' : 'warning'" :busy="dialogBusy" :details="dialog?.kind === 'downgrade' ? [{label:'当前版本',value:snapshot?.version || '—'},{label:'目标版本',value:dialog?.version || '—'}] : []" @confirm="confirmDialog" @cancel="dialog = null" />
+    <ConfirmDialog :open="!!dialog" :title="dialog?.kind === 'uninstall' ? '卸载 NanaZip' : dialog?.kind === 'downgrade' ? '确认降级' : '移除安装包缓存'" :description="dialog?.kind === 'uninstall' ? '仅卸载当前用户 NanaZip。Explorer 右键菜单可能需要重新登录后完全消失，Hanxi 不会自动重启 Explorer。' : dialog?.kind === 'downgrade' ? 'Windows 将使用 ForceUpdateFromAnyVersion 部署旧版本，请先关闭 NanaZip。' : '仅删除 Hanxi 保存的可信 MSIXBundle，不会卸载系统中的 NanaZip。'" :confirm-label="dialog?.kind === 'uninstall' ? '卸载 NanaZip' : dialog?.kind === 'downgrade' ? '确认降级' : '移除缓存'" :tone="dialog?.kind === 'uninstall' || dialog?.kind === 'cache' ? 'danger' : 'warning'" :busy="dialogBusy" :details="dialog?.kind === 'downgrade' ? [{label:'当前版本',value:snapshot?.version || '—'},{label:'目标版本',value:dialog?.version || '—'}] : []" @confirm="confirmDialog" @cancel="dialog = null" />
   </section>
 </template>
 

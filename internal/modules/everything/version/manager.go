@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"hubkit/internal/platform/versioninfo"
+	"hanxi/internal/platform/versioninfo"
 )
 
 const (

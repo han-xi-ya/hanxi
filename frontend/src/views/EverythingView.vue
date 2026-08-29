@@ -2,11 +2,11 @@
 // 状态 / 内嵌搜索 / 版本管理 / 下载进度 / 时长 ticker / 生命周期
 import { ref, reactive, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { Events } from '@wailsio/runtime'
-import * as EverythingAPI from '../../bindings/hubkit/internal/modules/everything/everythingservice'
-import type { EverythingRelease, EverythingVersionInfo } from '../../bindings/hubkit/internal/modules/everything/version/models'
-import type { Snapshot } from '../../bindings/hubkit/internal/modules/everything/instance/models'
-import type { ControlOutcome, QuitOutcome, DownloadTicket } from '../../bindings/hubkit/internal/modules/everything/models'
-import type { Result } from '../../bindings/hubkit/internal/modules/everything/search/models'
+import * as EverythingAPI from '../../bindings/hanxi/internal/modules/everything/everythingservice'
+import type { EverythingRelease, EverythingVersionInfo } from '../../bindings/hanxi/internal/modules/everything/version/models'
+import type { Snapshot } from '../../bindings/hanxi/internal/modules/everything/instance/models'
+import type { ControlOutcome, QuitOutcome, DownloadTicket } from '../../bindings/hanxi/internal/modules/everything/models'
+import type { Result } from '../../bindings/hanxi/internal/modules/everything/search/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
@@ -34,7 +34,7 @@ const esProgress = ref<DownloadTicket | null>(null)
 // ---------- 结果表列宽（拖拽调整 + localStorage 记忆） ----------
 type ColKey = 'name' | 'path' | 'size' | 'time' | 'action'
 const DEFAULT_COLS: Record<ColKey, number> = { name: 320, path: 420, size: 70, time: 130, action: 118 }
-const COL_STORAGE_KEY = 'hubkit-everything-result-cols'
+const COL_STORAGE_KEY = 'hanxi-everything-result-cols'
 const colWidths = reactive<Record<ColKey, number>>({ ...DEFAULT_COLS })
 const totalColWidth = computed(() => Object.values(colWidths).reduce((a, b) => a + b, 0))
 
@@ -123,7 +123,7 @@ const banner = computed(() => {
   if (state.value === 'external') {
     return {
       cls: 'banner-warn',
-      text: '检测到外部 Everything 实例（非 HubKit 托管）。可唤起其搜索窗口；如需彻底退出请在 Everything 托盘操作。内嵌搜索对默认实例有效。',
+      text: '检测到外部 Everything 实例（非 Hanxi 托管）。可唤起其搜索窗口；如需彻底退出请在 Everything 托盘操作。内嵌搜索对默认实例有效。',
     }
   }
   if (state.value === 'failed') {
@@ -512,7 +512,7 @@ onUnmounted(() => {
     <div class="header-row">
       <div>
         <h1>Everything 搜索</h1>
-        <p class="subtitle">托管 Everything 后台索引与搜索窗口；HubKit 内直接秒搜文件。</p>
+        <p class="subtitle">托管 Everything 后台索引与搜索窗口；Hanxi 内直接秒搜文件。</p>
       </div>
       <div class="main-tab-nav">
         <button

@@ -2,8 +2,8 @@
 import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import QRCode from 'qrcode'
 import { Events } from '@wailsio/runtime'
-import * as WechatAPI from '../../bindings/hubkit/internal/modules/wechat'
-import type { WechatAccountState, QRInfo, InboundMessage } from '../../bindings/hubkit/internal/modules/wechat/models'
+import * as WechatAPI from '../../bindings/hanxi/internal/modules/wechat'
+import type { WechatAccountState, QRInfo, InboundMessage } from '../../bindings/hanxi/internal/modules/wechat/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 
@@ -891,12 +891,12 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <!-- 电脑端 HubKit 机器人下发出去的消息 (右侧微信经典绿气泡：电脑是机器人一方) -->
+              <!-- 电脑端 Hanxi 机器人下发出去的消息 (右侧微信经典绿气泡：电脑是机器人一方) -->
               <div v-else-if="msg.direction === 'out'" class="bubble-row outbound-row">
                 <div class="bubble-column align-right">
                   <div class="bubble-info-header justify-end">
                     <span class="msg-timestamp">{{ msg.time }}</span>
-                    <span class="sender-title robot-sender-title">🤖 HubKit 机器人</span>
+                    <span class="sender-title robot-sender-title">🤖 Hanxi 机器人</span>
                   </div>
                   <div class="bubble-box outbound-bubble">
                     <template v-if="msg.msgType === 'text'">

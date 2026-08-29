@@ -3,7 +3,7 @@ package instance
 import (
 	"sync"
 
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 // Manager 多实例管理器：projectID → Instance。

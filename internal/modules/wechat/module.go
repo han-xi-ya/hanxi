@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/extapi"
-	"hubkit/internal/settings"
+	"hanxi/internal/extapi"
+	"hanxi/internal/settings"
 )
 
 const ID = "wechat"
@@ -26,7 +26,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 		Name:        "微信 ClawBot",
 		Version:     "0.1.0",
 		Description: "微信 iLink 智能机器人网关，支持扫码登录、会话保持、文字与图片多模态加密推送",
-		Author:      "HubKit",
+		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
 }

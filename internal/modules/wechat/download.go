@@ -84,7 +84,7 @@ func writeFileAtomically(target string, data []byte) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("创建保存目录失败: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".hubkit-wechat-*.tmp")
+	tmp, err := os.CreateTemp(dir, ".hanxi-wechat-*.tmp")
 	if err != nil {
 		return fmt.Errorf("创建临时文件失败: %w", err)
 	}

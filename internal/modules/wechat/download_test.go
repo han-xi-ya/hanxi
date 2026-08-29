@@ -11,7 +11,7 @@ import (
 )
 
 func TestDownloadInboundFile(t *testing.T) {
-	plaintext := []byte("hubkit wechat attachment")
+	plaintext := []byte("hanxi wechat attachment")
 	key := []byte("0123456789abcdef")
 	ciphertext, err := aesEcbEncrypt(plaintext, key)
 	if err != nil {

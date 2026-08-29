@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"hubkit/internal/modules/fileshare/web"
+	"hanxi/internal/modules/fileshare/web"
 )
 
 func TestFileshareWebAssets(t *testing.T) {
@@ -265,7 +265,7 @@ func TestFileshareUploadAndDrop(t *testing.T) {
 	}, nil)
 
 	// 测试 1: 文本投递 API (/api/drop)
-	dropReqBody, _ := json.Marshal(map[string]string{"content": "https://hubkit.dev/doc"})
+	dropReqBody, _ := json.Marshal(map[string]string{"content": "https://hanxi.dev/doc"})
 	req := httptest.NewRequest(http.MethodPost, "/api/drop", bytes.NewReader(dropReqBody))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -277,7 +277,7 @@ func TestFileshareUploadAndDrop(t *testing.T) {
 
 	select {
 	case droppedItem := <-droppedCh:
-		if droppedItem.Content != "https://hubkit.dev/doc" || !droppedItem.IsURL {
+		if droppedItem.Content != "https://hanxi.dev/doc" || !droppedItem.IsURL {
 			t.Errorf("unexpected dropped item: %+v", droppedItem)
 		}
 	case <-time.After(2 * time.Second):
@@ -285,7 +285,7 @@ func TestFileshareUploadAndDrop(t *testing.T) {
 	}
 
 	// 测试 2: 单次二进制流式上传 API (/api/upload)
-	content := []byte("Hello HubKit Streaming File Upload")
+	content := []byte("Hello Hanxi Streaming File Upload")
 	query := fmt.Sprintf("dir=&name=test_stream.txt&size=%d", len(content))
 	uploadReq := httptest.NewRequest(http.MethodPost, "/api/upload?"+query, bytes.NewReader(content))
 	uploadReq.Header.Set("Content-Type", "application/octet-stream")
@@ -301,7 +301,7 @@ func TestFileshareUploadAndDrop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("uploaded file not found on disk: %v", err)
 	}
-	if string(uploadedContent) != "Hello HubKit Streaming File Upload" {
+	if string(uploadedContent) != "Hello Hanxi Streaming File Upload" {
 		t.Errorf("uploaded content mismatch: %s", string(uploadedContent))
 	}
 }
@@ -345,8 +345,8 @@ func (w *deadlineResponseWriter) SetReadDeadline(deadline time.Time) error {
 func TestFileshareCleanupExpiredUploadTemps(t *testing.T) {
 	tempDir := t.TempDir()
 	server := NewServer(ShareConfig{SharePath: tempDir}, nil, nil)
-	oldTemp := filepath.Join(tempDir, ".hubkit-upload-old.tmp")
-	newTemp := filepath.Join(tempDir, ".hubkit-upload-new.tmp")
+	oldTemp := filepath.Join(tempDir, ".hanxi-upload-old.tmp")
+	newTemp := filepath.Join(tempDir, ".hanxi-upload-new.tmp")
 	normal := filepath.Join(tempDir, "notes.tmp")
 	for _, path := range []string{oldTemp, newTemp, normal} {
 		if err := os.WriteFile(path, []byte("x"), 0644); err != nil {

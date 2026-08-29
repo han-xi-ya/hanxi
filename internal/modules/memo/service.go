@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"hubkit/internal/settings"
+	"hanxi/internal/settings"
 )
 
 // MemoService 便签业务服务

@@ -15,7 +15,7 @@ type flclashStore struct {
 	filePath      string
 	mu            sync.RWMutex
 	activeVersion string
-	followOnExit  bool // 默认 true：随 HubKit 退出一起关闭；false：独立运行
+	followOnExit  bool // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
 }
 
 type flclashConfig struct {
@@ -85,7 +85,7 @@ func (s *flclashStore) SetActive(version string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 HubKit 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
 func (s *flclashStore) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

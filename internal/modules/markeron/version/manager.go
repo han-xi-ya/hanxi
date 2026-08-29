@@ -130,7 +130,7 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 	}
 
 	zipURLs := m.assetMirrors(version, rel.AssetName)
-	tmpZip, err := os.CreateTemp("", "hubkit-markeron-*.zip")
+	tmpZip, err := os.CreateTemp("", "hanxi-markeron-*.zip")
 	if err != nil {
 		return err
 	}

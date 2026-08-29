@@ -13,7 +13,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
-	"hubkit/internal/platform"
+	"hanxi/internal/platform"
 )
 
 var (
@@ -28,7 +28,7 @@ func NewProcessAPI() platform.ProcessAPI {
 	return &ProcessImpl{}
 }
 
-// IsProtected 判断是否为系统保护/红线进程 (PID 0, PID 4, HubKit 本身)
+// IsProtected 判断是否为系统保护/红线进程 (PID 0, PID 4, Hanxi 本身)
 func (p *ProcessImpl) IsProtected(pid uint32, info platform.ProcInfo) bool {
 	if pid == 0 || pid == 4 {
 		return true
