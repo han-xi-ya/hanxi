@@ -218,6 +218,24 @@
 
 ---
 
+### 15. GitHub Releases 列表响应体会被资产元数据放大
+
+- **问题现象与错误原因**：开发环境检测查询 Git for Windows 近期稳定版时，请求 `releases?per_page=30`，即使只需要 tag、发布时间和预发布状态，GitHub 仍返回每个 Release 的完整 body 与 assets 元数据；实际响应超过 2 MiB，触发客户端响应体安全上限，前端显示“GitHub Releases 响应超过 2097152 字节限制”。
+- **排查过程**：实测同一 API 在 `per_page=10` 时响应约 1.1 MiB、`15` 时约 1.26 MiB、`20` 时约 1.89 MiB，确认失败不是官网不可用，而是请求条数和 GitHub 完整 Release DTO 共同放大了响应体。
+- **正确做法与标准修复方案**：只展示 5 个稳定版时将 API 请求缩小到 `per_page=10`，保留 draft/prerelease/非法 tag 过滤；响应硬上限适度提高到 4 MiB，为上游资产元数据增长留余量，同时继续通过 `io.LimitReader` 防止无界读取。用户下载入口使用 Git 官方网站 `https://git-scm.com/download/win`，版本数据仍使用 Git for Windows 官方 GitHub Releases。
+- **避坑防重犯建议**：使用 GitHub Releases API 前按真实仓库测量响应体，不要按所需字段估算 JSON 大小；`per_page` 应贴近业务展示数量，并保留合理但有限的响应体余量。
+
+---
+
+### 16. Go 与 Node.js 官网版本通道不能靠字符串或历史规律猜测
+
+- **问题现象与错误原因**：Go 的全历史下载 JSON 会返回约 2.2 MiB 文件元数据和预发布版本，而页面只需要当前受支持版本线；Node.js `index.json` 的 `lts` 又是 `false`/字符串联合类型，历史 EOL 版本仍保留 LTS codename。直接抓 Go 全历史、把 Node `lts:false` 当 Current，或按 major 奇偶性推断 LTS，都会造成响应膨胀或通道误判。另一个隐患是 `go version devel go1.28-...` 会被宽松正则误当正式版 `1.28`。
+- **排查过程**：实测 `https://go.dev/dl/?mode=json` 仅约 22 KiB并返回当前两条受支持稳定线，而 `include=all` 约 2.2 MiB；核对 Node Release 工作组 `schedule.json` 后确认 Current/LTS/EOL 必须结合日期判断，不能只看发行索引单个字段。
+- **正确做法与标准修复方案**：Go 使用默认 `mode=json`，要求 `stable=true` 且严格匹配 `goX.Y[.Z]`，将最新两条 minor 线归类为 Stable/Oldstable；Go devel 保留 `-devel` 标识并判为不可严格比较。Node 同时读取官方 `index.json` 与 `schedule.json`，严格接受 `vX.Y.Z` 正式版，按系统日期选择仍受支持的最高 LTS 和当前 Current major；`lts` 用自定义 JSON 联合类型解析。
+- **避坑防重犯建议**：远程版本接口应选贴近产品需求的最小官方数据源；版本通道必须以官方生命周期数据为准并注入时间测试，不能依赖数组顺序、字符串比较或历史奇偶规律。Windows 上执行 `go test -race` 还需要启用 CGO 并安装可用的 C 编译器（如 MinGW-w64 GCC）；仅设置 `CGO_ENABLED=1` 而 PATH 中没有 `gcc` 会在 `runtime/cgo` 阶段失败，这不代表业务测试失败。
+
+---
+
 ### 8. 托管 Tauri 应用：单实例互斥体契约 / GitHub digest 校验 / 关窗退出语义
 
 cc-switch 模块（托管 Tauri 2 应用）的三条硬核实测结论——都是"不看源码就会想当然"的坑，任何托管 Tauri 应用的模块（未来第四个托盘工具）直接沿用。
