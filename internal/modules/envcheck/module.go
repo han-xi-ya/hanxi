@@ -1,7 +1,5 @@
-// Package envcheck 内置模块：开发环境检测
-// （探测本机开发工具链 git/node/java/python/npm/pnpm/go 的安装路径与版本）。
-// 无状态模块（对齐 wifi）：纯 exec 探测、无 store、无事件、无后台协程，
-// 打开页面即实时检测，任何时刻不占用常驻资源。
+// Package envcheck 内置模块：开发环境检测。
+// 探测本机开发工具链，并只读查询 Git for Windows 官网近期稳定版本。
 package envcheck
 
 import (
@@ -10,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"hanxi/internal/extapi"
+	"hanxi/internal/platform"
 )
 
 const ID = "envcheck"
@@ -18,9 +17,9 @@ type Module struct {
 	svc *EnvCheckService
 }
 
-func New() extapi.Module {
+func New(plat platform.Platform) extapi.Module {
 	return &Module{
-		svc: NewEnvCheckService(),
+		svc: NewEnvCheckService(plat),
 	}
 }
 
@@ -28,8 +27,8 @@ func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
 		Name:        "开发环境检测",
-		Version:     "0.1.0",
-		Description: "检测本机开发工具链（git/node/java/python/npm/pnpm/go）的安装路径与版本",
+		Version:     "0.2.0",
+		Description: "检测本机开发工具链，并查询 Git、Go 与 Node.js 官网版本",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
@@ -53,7 +52,7 @@ func (e *Module) Services() []extapi.Service {
 }
 
 func (e *Module) Permissions() []extapi.Permission {
-	return nil
+	return []extapi.Permission{extapi.PermNetwork}
 }
 
 func (e *Module) Protocol() int { return 1 }

@@ -28,7 +28,7 @@ func TestParseVersions(t *testing.T) {
 		{"npm-leading-blank", npmDetector{}, "\n6.14.18\n", "6.14.18"},
 		{"pnpm-plain", pnpmDetector{}, "9.7.1\n", "9.7.1"},
 		{"go-release", goDetector{}, "go version go1.22.5 windows/amd64", "1.22.5"},
-		{"go-devel", goDetector{}, "go version devel go1.24-8a0e33a linux/amd64", "1.24"},
+		{"go-devel", goDetector{}, "go version devel go1.24-8a0e33a linux/amd64", "1.24-devel"},
 		{"go-garbage", goDetector{}, "go version unknown", ""},
 		{"grpc-go-plugin", goGRPCDetector{}, "protoc-gen-go-grpc 1.5.1", "1.5.1"},
 		{"grpc-go-plugin-v-prefix", goGRPCDetector{}, "protoc-gen-go-grpc v1.3.0", "1.3.0"},

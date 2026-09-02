@@ -158,7 +158,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		portscan.New(),
 		publicip.New(plat),
 		wifi.New(),
-		envcheck.New(),
+		envcheck.New(plat),
 		wechat.New(store),
 		fileShareModule,
 	}
