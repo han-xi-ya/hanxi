@@ -1,48 +1,118 @@
 <script setup lang="ts">
-// 开发环境检测：并发探测本机工具链（git/node/java/python/npm/pnpm/go），
-// 并检测 Go gRPC 的 protoc-gen-go-grpc 代码生成插件。
-// 无事件、无轮询：进入页面自动检测一次（KeepAlive 缓存后不重复），刷新靠按钮。
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/envcheckservice'
 import type { ToolInfo } from '../../bindings/hanxi/internal/modules/envcheck/detect/models'
+import type { Overview as GitOverview } from '../../bindings/hanxi/internal/modules/envcheck/gitversion/models'
+import type { Overview as GoOverview } from '../../bindings/hanxi/internal/modules/envcheck/goversion/models'
+import type { Overview as NodeOverview } from '../../bindings/hanxi/internal/modules/envcheck/nodeversion/models'
+import type { Channel } from '../../bindings/hanxi/internal/modules/envcheck/remoteversion/models'
+import OfficialVersionsPanel from '../components/envcheck/OfficialVersionsPanel.vue'
+import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
-// ---------- 状态 ----------
+type OfficialTool = 'git' | 'go' | 'node'
+type NativeOverview = GoOverview | NodeOverview
+interface PanelOverview { channels: Channel[]; isStale: boolean; fetchedAt?: string }
+interface RemoteState { overview: PanelOverview | null; loading: boolean; error: string }
+
 const tools = ref<ToolInfo[]>([])
-const loading = ref(false)
+const localLoading = ref(false)
 const loadError = ref('')
 const everLoaded = ref(false)
+const { showToast } = useToast()
+
+const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
+  git: { overview: null, loading: false, error: '' },
+  go: { overview: null, loading: false, error: '' },
+  node: { overview: null, loading: false, error: '' },
+})
+
+const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: string }> = {
+  git: { heading: 'Git for Windows 官网稳定版', downloadLabel: '打开 Git 官网下载页' },
+  go: { heading: 'Go 官网支持版本', downloadLabel: '打开 Go 官网下载页' },
+  node: { heading: 'Node.js 官网版本', downloadLabel: '打开 Node.js 官网下载页' },
+}
+
+const loading = computed(() => localLoading.value || Object.values(remoteStates).some(state => state.loading))
+const okCount = computed(() => tools.value.filter(tool => tool.status === 'installed').length)
+const totalCount = computed(() => tools.value.length)
 
 async function refresh() {
-  if (loading.value) return // 防重入
-  loading.value = true
+  if (loading.value) return
+  localLoading.value = true
   loadError.value = ''
+  const remotePromises = (['git', 'go', 'node'] as OfficialTool[]).map(tool => refreshOfficial(tool))
   try {
     tools.value = (await EnvCheckAPI.DetectAll()) ?? []
     everLoaded.value = true
-  } catch (e) {
-    loadError.value = `检测失败: ${getErrorMessage(e)}`
+  } catch (error) {
+    loadError.value = `本机环境检测失败: ${getErrorMessage(error)}`
   } finally {
-    loading.value = false
+    localLoading.value = false
+  }
+  await Promise.allSettled(remotePromises)
+}
+
+async function refreshOfficial(tool: OfficialTool) {
+  const state = remoteStates[tool]
+  if (state.loading) return
+  state.loading = true
+  state.error = ''
+  try {
+    if (tool === 'git') {
+      state.overview = adaptGitOverview(await EnvCheckAPI.GetGitForWindowsOverview())
+    } else if (tool === 'go') {
+      state.overview = adaptChannelOverview(await EnvCheckAPI.GetGoOverview())
+    } else {
+      state.overview = adaptChannelOverview(await EnvCheckAPI.GetNodeOverview())
+    }
+  } catch (error) {
+    state.error = `官网版本查询失败: ${getErrorMessage(error)}`
+  } finally {
+    state.loading = false
   }
 }
 
-const okCount = computed(() => tools.value.filter(t => t.status === 'installed').length)
-const totalCount = computed(() => tools.value.length)
+function adaptGitOverview(overview: GitOverview): PanelOverview {
+  return {
+    channels: [{
+      key: 'stable', label: 'Stable', detail: '', relation: overview.relation,
+      releases: (overview.releases ?? []).map(release => ({ version: release.version, published: release.published })),
+    }],
+    isStale: overview.isStale,
+  }
+}
 
-// ---------- 状态渲染映射（颜色与全局 CSS 变量 / BCUView 琥珀警告色对齐）----------
+function adaptChannelOverview(overview: NativeOverview): PanelOverview {
+  return { channels: overview.channels ?? [], isStale: overview.isStale, fetchedAt: overview.fetchedAt }
+}
+
+async function openDownloadPage(tool: OfficialTool) {
+  try {
+    if (tool === 'git') await EnvCheckAPI.OpenGitForWindowsDownloadPage()
+    else if (tool === 'go') await EnvCheckAPI.OpenGoDownloadPage()
+    else await EnvCheckAPI.OpenNodeDownloadPage()
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  }
+}
+
+function isOfficialTool(name: string): name is OfficialTool {
+  return name === 'git' || name === 'go' || name === 'node'
+}
+
 const STATUS_META: Record<string, { text: string; icon: string; cls: string }> = {
-  'installed': { text: '已安装', icon: '✓', cls: 'chip-installed' },
-  'missing': { text: '未安装', icon: '○', cls: 'chip-missing' },
-  'error': { text: '检测失败', icon: '!', cls: 'chip-error' },
+  installed: { text: '已安装', icon: '✓', cls: 'chip-installed' },
+  missing: { text: '未安装', icon: '○', cls: 'chip-missing' },
+  error: { text: '检测失败', icon: '!', cls: 'chip-error' },
   'store-stub': { text: '商店存根', icon: '⚠', cls: 'chip-stub' },
 }
 
-function metaOf(t: ToolInfo) {
-  return STATUS_META[t.status] ?? STATUS_META['error']
+function metaOf(tool: ToolInfo) {
+  return STATUS_META[tool.status] ?? STATUS_META.error
 }
 
-onMounted(refresh) // 首次进入自动检测；KeepAlive 缓存组件，onMounted 仅一次
+onMounted(refresh)
 </script>
 
 <template>
@@ -51,51 +121,47 @@ onMounted(refresh) // 首次进入自动检测；KeepAlive 缓存组件，onMoun
       <div>
         <h1>开发环境检测</h1>
         <p class="subtitle">
-          探测本机开发工具链的安装路径与版本：git · node · java · python · npm · pnpm · go · Go gRPC。
-          Go gRPC 检测项指 <code>protoc-gen-go-grpc</code> 代码生成插件；项目运行时依赖仍由各项目的 <code>go.mod</code> 管理。
+          探测本机开发工具链的安装路径与版本。Git、Go、Node.js 卡片同时查询官方版本；
+          Node.js 分别展示 LTS 与 Current。Hanxi 只打开官网，不直接下载、安装或升级。
         </p>
       </div>
       <div class="btn-group">
-        <span v-if="everLoaded" class="stat-text">
-          ✓ {{ okCount }} / {{ totalCount }} 已安装
-        </span>
+        <span v-if="everLoaded" class="stat-text">✓ {{ okCount }} / {{ totalCount }} 已安装</span>
         <button class="btn btn-primary btn-small" :disabled="loading" @click="refresh">
           {{ loading ? '检测中…' : '↻ 重新检测' }}
         </button>
       </div>
     </div>
 
-    <div v-if="loadError" class="hint-banner banner-error">{{ loadError }}</div>
-
-    <!-- 首次加载空态 -->
-    <div v-if="loading && !everLoaded" class="empty-state">
-      <p>正在检测开发环境（约 1~5 秒）…</p>
+    <div v-if="loadError" class="hint-banner banner-error" role="alert">{{ loadError }}</div>
+    <div v-if="loading && !everLoaded" class="empty-state" aria-live="polite">
+      <p>正在检测开发环境并查询官网版本…</p>
     </div>
 
-    <!-- 工具卡片网格：刷新中保留旧数据原位更新（半透明而非清空） -->
-    <div v-else-if="everLoaded" class="tool-grid" :class="{ refreshing: loading }">
-      <div v-for="t in tools" :key="t.name" class="tool-card" :class="`status-${t.status}`">
+    <div v-else-if="everLoaded" class="tool-grid" :aria-busy="localLoading">
+      <div v-for="tool in tools" :key="tool.name" class="tool-card" :class="[`status-${tool.status}`, { 'local-refreshing': localLoading }]">
         <div class="tool-card-top">
-          <span class="tool-name">{{ t.display }}</span>
-          <span class="status-chip" :class="metaOf(t).cls">
-            {{ metaOf(t).icon }} {{ metaOf(t).text }}
-          </span>
+          <span class="tool-name">{{ tool.display }}</span>
+          <span class="status-chip" :class="metaOf(tool).cls">{{ metaOf(tool).icon }} {{ metaOf(tool).text }}</span>
         </div>
-
         <div class="inst-meta">
-          <div class="meta-line">
-            <span class="k">版本</span>
-            <code class="mono">{{ t.version || '—' }}</code>
-          </div>
-          <div class="meta-line">
-            <span class="k">路径</span>
-            <code class="mono tool-path" :title="t.path || undefined">{{ t.path || '—' }}</code>
-          </div>
+          <div class="meta-line"><span class="k">版本</span><code class="mono">{{ tool.version || '—' }}</code></div>
+          <div class="meta-line"><span class="k">路径</span><code class="mono tool-path" :title="tool.path || undefined">{{ tool.path || '—' }}</code></div>
         </div>
+        <div v-if="tool.hint" class="tool-hint" :class="tool.status === 'store-stub' ? 'hint-warn' : 'hint-error'">{{ tool.hint }}</div>
 
-        <div v-if="t.hint" class="tool-hint" :class="t.status === 'store-stub' ? 'hint-warn' : 'hint-error'">
-          {{ t.hint }}
-        </div>
+        <OfficialVersionsPanel
+          v-if="isOfficialTool(tool.name)"
+          :heading="OFFICIAL_META[tool.name].heading"
+          :download-label="OFFICIAL_META[tool.name].downloadLabel"
+          :channels="remoteStates[tool.name].overview?.channels ?? []"
+          :loading="remoteStates[tool.name].loading"
+          :error="remoteStates[tool.name].error"
+          :stale="remoteStates[tool.name].overview?.isStale ?? false"
+          :fetched-at="remoteStates[tool.name].overview?.fetchedAt"
+          @retry="refreshOfficial(tool.name)"
+          @open="openDownloadPage(tool.name)"
+        />
       </div>
     </div>
   </section>
@@ -106,59 +172,41 @@ onMounted(refresh) // 首次进入自动检测；KeepAlive 缓存组件，onMoun
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .header-row h1 { margin: 0 0 6px; }
 .subtitle { color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.6; }
-.btn-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.btn-group { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
 .stat-text { font-size: 12px; color: var(--text-muted); }
-
-/* ---------- 提示条 ---------- */
 .hint-banner { padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
 .banner-error { background: #ffebe9; border-color: rgba(207, 34, 46, 0.25); color: var(--danger); }
-
-/* ---------- 首次加载空态 ---------- */
-.empty-state {
-  text-align: center; padding: 40px 24px; background: var(--bg-sidebar);
-  border: 1px dashed var(--border-color); border-radius: 8px;
-}
+.empty-state { text-align: center; padding: 40px 24px; background: var(--bg-sidebar); border: 1px dashed var(--border-color); border-radius: 8px; }
 .empty-state p { margin: 0; color: var(--text-muted); font-size: 13px; }
-
-/* ---------- 工具卡片网格 ---------- */
-.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; transition: opacity 0.15s ease; }
-.tool-grid.refreshing { opacity: 0.55; }
-.tool-card {
-  background: var(--bg-sidebar); border: 1px solid var(--border-color);
-  border-left: 3px solid var(--border-color); border-radius: 8px;
-  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
-}
-/* 左缘状态色条：与徽章同色的第二视觉通道 */
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+.tool-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-left: 3px solid var(--border-color); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: opacity 0.15s ease; min-width: 0; }
+.tool-card.local-refreshing { opacity: 0.68; }
 .tool-card.status-installed { border-left-color: #1a7f37; }
 .tool-card.status-missing { border-left-color: #8c959f; }
 .tool-card.status-error { border-left-color: #cf222e; }
 .tool-card.status-store-stub { border-left-color: #9a6700; }
-
 .tool-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .tool-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
-
-.status-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; white-space: nowrap;
-}
+.status-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; white-space: nowrap; }
 .chip-installed { background: #dafbe1; color: #1a7f37; }
 .chip-missing { background: #eaeef2; color: #656d76; }
 .chip-error { background: #ffebe9; color: #cf222e; }
 .chip-stub { background: #fff8c5; color: #9a6700; }
-
 .inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.meta-line { display: flex; gap: 8px; color: var(--text-muted); align-items: baseline; }
+.meta-line { display: flex; gap: 8px; color: var(--text-muted); align-items: baseline; min-width: 0; }
 .meta-line .k { color: var(--text-subtle); width: 36px; flex-shrink: 0; }
-.mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; word-break: break-all; }
-
+.mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; overflow-wrap: anywhere; }
+.tool-path { min-width: 0; }
 .tool-hint { font-size: 12px; border-radius: 5px; padding: 6px 8px; line-height: 1.5; }
 .hint-warn { background: #fff8c5; color: #9a6700; }
 .hint-error { background: #ffebe9; color: var(--danger); }
-
-/* ---------- 通用按钮（与 BCUView 同款） ---------- */
 .btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 .btn-small { padding: 4px 12px; font-size: 12px; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 768px) { .header-row { flex-direction: column; } .btn-group { width: 100%; justify-content: space-between; } }
+@media (pointer: coarse) { .btn { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .tool-card, .btn { transition: none; } }
 </style>
