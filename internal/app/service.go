@@ -38,8 +38,9 @@ type AppInfo struct {
 // AppService 是暴露给前端的基础服务：
 // 应用信息、模块清单与导航（扩展注入的入口）。
 type AppService struct {
-	registry *extapi.Registry
-	store    *settings.Store
+	registry    *extapi.Registry
+	store       *settings.Store
+	trayRebuild func() // 托盘菜单热重建回调（由装配根注入，可能为 nil）
 }
 
 func NewAppService(registry *extapi.Registry, store *settings.Store) *AppService {
@@ -301,4 +302,95 @@ func (s *AppService) SetGeneralSettings(gen GeneralSettings) error {
 		})
 	}
 	return nil
+}
+
+// SetTrayRebuilder 注入托盘菜单热重建回调，仅由装配根（app.New）在托盘创建后调用。
+func (s *AppService) SetTrayRebuilder(fn func()) { s.trayRebuild = fn }
+
+// TrayMenuOption 设置页可选的托盘菜单候选项（托管命令与扩展页面导航）。
+// 自定义外部程序不属候选目录，由前端构造 type=exe 条目随 SetTrayMenu 提交。
+type TrayMenuOption struct {
+	Type       string `json:"type"`       // "command" | "route"
+	Ref        string `json:"ref"`        // command: "moduleId/commandId"；route: 前端路由
+	Label      string `json:"label"`      // 默认显示名
+	ModuleName string `json:"moduleName"` // 所属模块（页面导航为空）
+}
+
+// ListTrayMenuOptions 返回全部可启用的托盘菜单候选项（仅收集已启用模块）。
+func (s *AppService) ListTrayMenuOptions() []TrayMenuOption {
+	out := []TrayMenuOption{}
+	for _, cmd := range s.registry.ListTrayCommands() {
+		out = append(out, TrayMenuOption{Type: settings.TrayItemCommand, Ref: cmd.Key, Label: cmd.Label, ModuleName: cmd.ModuleName})
+	}
+	for _, nav := range s.registry.GetEnabledNavs() {
+		if nav.Section != extapi.SectionExt {
+			continue
+		}
+		out = append(out, TrayMenuOption{Type: settings.TrayItemRoute, Ref: nav.Route, Label: nav.Title})
+	}
+	return out
+}
+
+// GetTrayMenu 返回当前托盘右键菜单配置条目（按保存顺序）。
+func (s *AppService) GetTrayMenu() []settings.TrayMenuItem {
+	if s.store == nil {
+		return []settings.TrayMenuItem{}
+	}
+	return s.store.GetTrayMenu()
+}
+
+// SetTrayMenu 校验并持久化托盘菜单配置，保存成功后立即重建右键菜单热生效。
+func (s *AppService) SetTrayMenu(items []settings.TrayMenuItem) error {
+	cleaned := make([]settings.TrayMenuItem, 0, len(items))
+	for _, it := range items {
+		it.Type = strings.TrimSpace(it.Type)
+		it.Ref = strings.TrimSpace(it.Ref)
+		it.Path = strings.TrimSpace(it.Path)
+		switch it.Type {
+		case settings.TrayItemCommand, settings.TrayItemRoute:
+			if it.Ref == "" {
+				return fmt.Errorf("托盘条目缺少引用（%s）", it.Type)
+			}
+		case settings.TrayItemExe:
+			if it.Path == "" {
+				return fmt.Errorf("外部程序托盘条目缺少路径")
+			}
+		default:
+			return fmt.Errorf("未知托盘条目类型: %q", it.Type)
+		}
+		cleaned = append(cleaned, it)
+	}
+	if s.store == nil {
+		return fmt.Errorf("配置存储不可用")
+	}
+	if err := s.store.SetTrayMenu(cleaned); err != nil {
+		return err
+	}
+	if s.trayRebuild != nil {
+		s.trayRebuild()
+	}
+	return nil
+}
+
+// PickExeFile 弹出系统文件选择框选取外部程序，返回绝对路径（用户取消时为空串）。
+func (s *AppService) PickExeFile() (string, error) {
+	a := application.Get()
+	if a == nil || a.Dialog == nil {
+		return "", fmt.Errorf("对话框服务不可用")
+	}
+	path, err := a.Dialog.OpenFile().
+		CanChooseFiles(true).
+		CanChooseDirectories(false).
+		AddFilter("程序与快捷方式", "*.exe;*.bat;*.cmd;*.lnk").
+		SetTitle("选择要启动的程序").
+		PromptForSingleSelection()
+	if err != nil {
+		// Wails 将用户取消也作为 error 返回（cfd.ErrorCancelled = "cancelled by user"），
+		// 但 cfd 位于 wails 的 internal 包无法导入做哨兵比较，按文案归一化为"取消 → 空串"。
+		if strings.Contains(strings.ToLower(err.Error()), "cancel") {
+			return "", nil
+		}
+		return "", err
+	}
+	return path, nil
 }

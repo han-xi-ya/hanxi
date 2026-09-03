@@ -75,6 +75,7 @@ func RegisterEvents() {
 	// ext:changed / memo:changed 是无载荷事件，必须用 Void 注册：
 	// 若注册具体类型而 Emit 不带载荷，会因 Wails 严格类型校验被静默丢弃。
 	application.RegisterEvent[application.Void]("ext:changed")
+	application.RegisterEvent[string]("tray:navigate")
 	application.RegisterEvent[lan.LanProgress]("lan:progress")
 	application.RegisterEvent[portscan.ScanProgress]("portscan:progress")
 	application.RegisterEvent[wechat.InboundMessage]("wechat:message-received")
@@ -208,8 +209,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		panic(err) // 内建模块注册失败属于编程错误，直接暴露
 	}
 
+	appSvc := NewAppService(registry, store)
 	services := []application.Service{
-		application.NewService(NewAppService(registry, store)),
+		application.NewService(appSvc),
 		application.NewService(notify.NewNotificationService()),
 	}
 	services = append(services, registry.EnabledServices()...)
@@ -276,19 +278,12 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		}
 	})
 
-	// 创建系统托盘 (Systray)
+	// 创建系统托盘 (Systray)：右键菜单按配置动态装配，保存配置后热重建
 	tray := a.SystemTray.New()
 	tray.SetTooltip(product.Name + " - " + product.Tagline)
-	trayMenu := a.NewMenu()
-	trayMenu.Add("显示 " + product.Name).OnClick(func(ctx *application.Context) {
-		win.Show()
-		win.Focus()
-	})
-	trayMenu.AddSeparator()
-	trayMenu.Add("退出").OnClick(func(ctx *application.Context) {
-		a.Quit()
-	})
-	tray.SetMenu(trayMenu)
+	trayMenuBuilder := newTrayMenuBuilder(a, win, tray, registry, store)
+	trayMenuBuilder.Rebuild()
+	appSvc.SetTrayRebuilder(trayMenuBuilder.Rebuild)
 	// 单击托盘图标切换主窗口显隐：隐藏时显示并聚焦，可见时隐藏到托盘
 	tray.OnClick(func() {
 		if win.IsVisible() {
