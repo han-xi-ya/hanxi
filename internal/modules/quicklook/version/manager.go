@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -307,28 +308,38 @@ func extractAll(zipPath, targetDir string) error {
 	defer zr.Close()
 
 	for _, f := range zr.File {
-		name := filepath.FromSlash(strings.ReplaceAll(f.Name, "\\", "/"))
+		// 官方 zip 条目名用反斜杠 "\" 分隔（实测 v4.5.0），标准 zip 惯例为 "/"。
+		// 关键坑：archive/zip 的 FileHeader.IsDir() 仅以"结尾是否为 /"判定，对
+		// "\…\runtimes\" 这类反斜杠结尾的目录条目返回 false → 若沿用 IsDir 会把
+		// 目录误当文件 os.Create 出一个同名 0 字节文件，随后在其下建目录即报
+		// "找不到路径"。故先归一为 "/" 再按尾部斜杠判目录，不依赖 IsDir。
+		norm := strings.ReplaceAll(f.Name, "\\", "/")
+		isDir := strings.HasSuffix(norm, "/") || f.FileInfo().IsDir()
+		// 用 path（纯斜杠语义、跨平台一致）清洗与越界判定，最后才 FromSlash 落地，
+		// 避免 filepath.Clean 把 "/" 换成 "\" 令 "../" 前缀检查在 Windows 上落空。
+		rel := path.Clean(strings.TrimSuffix(norm, "/"))
+		if rel == "." || rel == "/" {
+			continue // 指向目标根的冗余 "."/"" 条目
+		}
 		// ZipSlip 防护：拒绝绝对路径与逃逸出目标目录的条目
-		clean := filepath.Clean(name)
-		if filepath.IsAbs(clean) || clean == ".." ||
-			strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		if path.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, "../") {
 			return fail(fmt.Errorf("zip 含非法路径条目 %q", f.Name))
 		}
-		target := filepath.Join(targetDir, clean)
-		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, 0755); err != nil {
+		target := filepath.Join(targetDir, filepath.FromSlash(rel))
+		if isDir {
+			if err := os.MkdirAll(longPath(target), 0755); err != nil {
 				return fail(err)
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		if err := os.MkdirAll(longPath(filepath.Dir(target)), 0755); err != nil {
 			return fail(err)
 		}
 		rc, err := f.Open()
 		if err != nil {
 			return fail(err)
 		}
-		out, err := os.Create(target)
+		out, err := os.Create(longPath(target))
 		if err != nil {
 			rc.Close()
 			return fail(err)
@@ -378,12 +389,12 @@ func copyTree(src, dst string) error {
 		}
 		target := filepath.Join(dst, rel)
 		if d.IsDir() {
-			return os.MkdirAll(target, 0755)
+			return os.MkdirAll(longPath(target), 0755)
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		if err := os.MkdirAll(longPath(filepath.Dir(target)), 0755); err != nil {
 			return err
 		}
-		return copyFileTo(path, target)
+		return copyFileTo(path, longPath(target))
 	})
 }
 
@@ -392,7 +403,7 @@ func ensureFile(path string) error {
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(longPath(path), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}

@@ -167,6 +167,65 @@ func TestExtractAll(t *testing.T) {
 	}
 }
 
+// TestExtractAllBackslashDirEntries 回归：官方 zip 用反斜杠存目录条目
+// （如 QuickLook.Plugin\...\runtimes\），archive/zip 的 IsDir() 只认结尾 "/" 会漏判，
+// 旧实现据此把目录 os.Create 成 0 字节同名文件，导致其下文件建目录时报"找不到路径"。
+func TestExtractAllBackslashDirEntries(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := makeTestZip(t, map[string]string{
+		exeName:          "fake-exe",
+		portableMarkName: "",
+		nativeMarkName:   "n",
+		`QuickLook.Plugin\QuickLook.Plugin.FontViewer\runtimes\`:                       "",    // 反斜杠结尾目录条目
+		`QuickLook.Plugin\QuickLook.Plugin.FontViewer\runtimes\win-x64\native\lib.dll`: "dll", // 其下文件
+	})
+	dst := filepath.Join(dir, "dst")
+	if err := extractAll(zipPath, dst); err != nil {
+		t.Fatalf("extractAll 反斜杠目录条目: %v", err)
+	}
+	rt := filepath.Join(dst, "QuickLook.Plugin", "QuickLook.Plugin.FontViewer", "runtimes")
+	if fi, err := os.Stat(rt); err != nil || !fi.IsDir() {
+		t.Fatalf("runtimes 应为目录而非误建的 0 字节文件: err=%v", err)
+	}
+	deep := filepath.Join(rt, "win-x64", "native", "lib.dll")
+	if _, err := os.Stat(deep); err != nil {
+		t.Errorf("深层文件未正确落地: %v", err)
+	}
+}
+
+// TestExtractAllRealPortableZip 真机级验证（默认跳过）：设 QL_REAL_ZIP 指向官方
+// QuickLook-*.zip 时，用生产 extractAll 全量解压，断言四层完整性之后的布局自检通过，
+// 且深层 QuickLook.Plugin\...\runtimes 正确落成目录（正是本次线上失败的场景）。
+func TestExtractAllRealPortableZip(t *testing.T) {
+	zipPath := os.Getenv("QL_REAL_ZIP")
+	if zipPath == "" {
+		t.Skip("未设 QL_REAL_ZIP，跳过真包解压验证")
+	}
+	if _, err := os.Stat(zipPath); err != nil {
+		t.Fatalf("真 zip 不存在: %v", err)
+	}
+	dst := filepath.Join(t.TempDir(), "quicklook_real")
+	if err := extractAll(zipPath, dst); err != nil {
+		t.Fatalf("真实便携 zip 解压失败: %v", err)
+	}
+	if err := checkLayout(dst); err != nil {
+		t.Fatalf("真实便携 zip 布局自检失败: %v", err)
+	}
+	rt := filepath.Join(dst, "QuickLook.Plugin", "QuickLook.Plugin.FontViewer", "runtimes")
+	if fi, err := os.Stat(rt); err != nil || !fi.IsDir() {
+		t.Errorf("FontViewer\\runtimes 未正确落成目录: err=%v", err)
+	}
+	// 抽查若干深层插件文件确实落地（非被误建的 0 字节同名文件挡路）
+	for _, sub := range []string{
+		filepath.Join("QuickLook.Plugin", "QuickLook.Plugin.ImageViewer"),
+		filepath.Join("QuickLook.Plugin", "QuickLook.Plugin.PdfViewer"),
+	} {
+		if _, err := os.Stat(filepath.Join(dst, sub)); err != nil {
+			t.Errorf("插件目录缺失 %s: %v", sub, err)
+		}
+	}
+}
+
 func TestExtractAllZipSlip(t *testing.T) {
 	dir := t.TempDir()
 	f, err := os.CreateTemp("", "evil-*.zip")
