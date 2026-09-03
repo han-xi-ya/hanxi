@@ -37,6 +37,15 @@ func parseVersion(raw string) (parsedVersion, bool) {
 	return parsedVersion{major: values[0], minor: values[1], patch: values[2]}, true
 }
 
+// VersionLine 返回版本的 major.minor 版本线标识（如 "1.26"），无法解析时返回空串。
+func VersionLine(raw string) string {
+	parsed, ok := parseVersion(raw)
+	if !ok {
+		return ""
+	}
+	return strconv.FormatUint(parsed.major, 10) + "." + strconv.FormatUint(parsed.minor, 10)
+}
+
 func Compare(a, b string) (int, bool) {
 	left, okLeft := parseVersion(a)
 	right, okRight := parseVersion(b)

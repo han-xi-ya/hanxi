@@ -99,7 +99,7 @@ func (s *EnvCheckService) OpenGitForWindowsDownloadPage() error {
 
 // GetGoOverview 并发查询本机 Go 与官网 Stable/Oldstable 版本。
 func (s *EnvCheckService) GetGoOverview() (goversion.Overview, error) {
-	local, channels, stale, fetchedAt, err := s.getChannelOverview("go", s.goChannels, goversion.Compare)
+	local, channels, stale, fetchedAt, err := s.getChannelOverview("go", s.goChannels, goversion.Compare, goversion.VersionLine)
 	if err != nil {
 		return goversion.Overview{Local: local}, err
 	}
@@ -115,7 +115,7 @@ func (s *EnvCheckService) OpenGoDownloadPage() error {
 
 // GetNodeOverview 并发查询本机 Node.js 与官网 LTS/Current 版本。
 func (s *EnvCheckService) GetNodeOverview() (nodeversion.Overview, error) {
-	local, channels, stale, fetchedAt, err := s.getChannelOverview("node", s.nodeChannels, nodeversion.Compare)
+	local, channels, stale, fetchedAt, err := s.getChannelOverview("node", s.nodeChannels, nodeversion.Compare, nodeversion.VersionLine)
 	if err != nil {
 		return nodeversion.Overview{Local: local}, err
 	}
@@ -160,6 +160,9 @@ func (s *EnvCheckService) GetJavaOverview() (javaversion.Overview, error) {
 			channels[i].RelationDetail = "当前 Java 发行版与 Eclipse Temurin 不同，补丁版本不能直接比较"
 		}
 	}
+	if installed {
+		remoteversion.PrioritizeLocalLine(channels, local.Version, javaversion.VersionLine)
+	}
 	return javaversion.Overview{Local: local, Channels: channels, IsStale: stale, FetchedAt: formatFetchedAt(fetchedAt)}, nil
 }
 
@@ -195,6 +198,9 @@ func (s *EnvCheckService) GetPythonOverview() (pythonversion.Overview, error) {
 			channels[i].Relation = remoteversion.RelationFor(installed, local.Version, latest, pythonversion.Compare)
 		}
 	}
+	if installed {
+		remoteversion.PrioritizeLocalLine(channels, local.Version, pythonversion.VersionLine)
+	}
 	return pythonversion.Overview{Local: local, Channels: channels, IsStale: stale, FetchedAt: formatFetchedAt(fetchedAt)}, nil
 }
 
@@ -207,6 +213,7 @@ func (s *EnvCheckService) getChannelOverview(
 	tool string,
 	fetch func() ([]remoteversion.Channel, bool, time.Time, error),
 	compare func(string, string) (int, bool),
+	lineOf func(string) string,
 ) (detect.ToolInfo, []remoteversion.Channel, bool, time.Time, error) {
 	var (
 		local     detect.ToolInfo
@@ -230,6 +237,9 @@ func (s *EnvCheckService) getChannelOverview(
 			latest = channels[i].Releases[0].Version
 		}
 		channels[i].Relation = remoteversion.RelationFor(installed, local.Version, latest, compare)
+	}
+	if installed {
+		remoteversion.PrioritizeLocalLine(channels, local.Version, lineOf)
 	}
 	return local, channels, stale, fetchedAt, nil
 }

@@ -37,3 +37,14 @@ func TestParseFinalNameStrict(t *testing.T) {
 		t.Fatalf("got=%#v ok=%v", got, ok)
 	}
 }
+
+func TestVersionLine(t *testing.T) {
+	for version, want := range map[string]string{
+		"3.12.4": "3.12", "Python 3.14.7": "3.14", "3.13": "3.13",
+		"": "", "unknown": "", "3.15.0rc1": "",
+	} {
+		if got := VersionLine(version); got != want {
+			t.Fatalf("VersionLine(%q)=%q want %q", version, got, want)
+		}
+	}
+}

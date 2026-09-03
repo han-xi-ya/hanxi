@@ -41,6 +41,15 @@ func parseVersion(raw string) (parsedVersion, bool) {
 	return parsedVersion{feature: parts[0], interim: parts[1], update: parts[2], patch: parts[3], build: parts[4]}, true
 }
 
+// VersionLine 返回版本的 feature 版本线标识（如 "21"，Java 8 的 1.8.0_x 归一为 "8"），无法解析时返回空串。
+func VersionLine(raw string) string {
+	parsed, ok := parseVersion(raw)
+	if !ok {
+		return ""
+	}
+	return strconv.FormatUint(parsed.feature, 10)
+}
+
 // Compare 按 JEP 223 的 feature/interim/update/patch/build 数值序严格比较正式版本。
 func Compare(a, b string) (int, bool) {
 	left, okLeft := parseVersion(a)

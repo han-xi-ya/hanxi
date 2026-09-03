@@ -84,6 +84,15 @@ func canonicalMinor(major, minor uint64) string {
 
 // Compare 严格比较 Python 正式版本。本机 X.Y 输出按 X.Y.0 处理；
 // alpha、beta、rc、dev、vendor 后缀一律拒绝，避免把预发布误判为正式版。
+// VersionLine 返回版本的 major.minor 版本线标识（如 "3.12"），无法解析时返回空串。
+func VersionLine(raw string) string {
+	parsed, ok := parseVersion(raw)
+	if !ok {
+		return ""
+	}
+	return strconv.FormatUint(parsed.major, 10) + "." + strconv.FormatUint(parsed.minor, 10)
+}
+
 func Compare(a, b string) (int, bool) {
 	left, okLeft := parseVersion(a)
 	right, okRight := parseVersion(b)

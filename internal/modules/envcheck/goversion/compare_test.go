@@ -21,3 +21,14 @@ func TestCompare(t *testing.T) {
 		}
 	}
 }
+
+func TestVersionLine(t *testing.T) {
+	for version, want := range map[string]string{
+		"go1.26.8": "1.26", "1.25": "1.25", "1.24.3": "1.24",
+		"": "", "unknown": "", "devel branch": "",
+	} {
+		if got := VersionLine(version); got != want {
+			t.Fatalf("VersionLine(%q)=%q want %q", version, got, want)
+		}
+	}
+}

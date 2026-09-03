@@ -172,6 +172,75 @@ func TestOpenGoAndNodeDownloadPages(t *testing.T) {
 	}
 }
 
+func TestGetChannelOverviewPrioritizesLocalLine(t *testing.T) {
+	svc := NewEnvCheckService(nil)
+	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
+		return detect.ToolInfo{Version: "1.25.12", Status: detect.StatusInstalled}, nil
+	}
+	svc.goChannels = func() ([]remoteversion.Channel, bool, time.Time, error) {
+		return []remoteversion.Channel{
+			{Key: "stable", Releases: []remoteversion.Release{{Version: "1.26.8"}}},
+			{Key: "oldstable", Releases: []remoteversion.Release{{Version: "1.25.13"}}},
+		}, false, time.Time{}, nil
+	}
+	overview, err := svc.GetGoOverview()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := overview.Channels[0]; got.Key != "oldstable" || got.Relation != remoteversion.RelationUpdateAvailable {
+		t.Fatalf("first channel=%#v", got)
+	}
+	if got := overview.Channels[1]; got.Key != "stable" || got.Relation != remoteversion.RelationUpdateAvailable {
+		t.Fatalf("second channel=%#v", got)
+	}
+}
+
+func TestGetNodeOverviewPrioritizesLocalLine(t *testing.T) {
+	svc := NewEnvCheckService(nil)
+	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
+		return detect.ToolInfo{Version: "v26.1.2", Status: detect.StatusInstalled}, nil
+	}
+	svc.nodeChannels = func() ([]remoteversion.Channel, bool, time.Time, error) {
+		return []remoteversion.Channel{
+			{Key: "lts", Releases: []remoteversion.Release{{Version: "24.10.0"}}},
+			{Key: "current", Releases: []remoteversion.Release{{Version: "26.1.3"}}},
+		}, false, time.Time{}, nil
+	}
+	overview, err := svc.GetNodeOverview()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := overview.Channels[0]; got.Key != "current" || got.Relation != remoteversion.RelationUpdateAvailable {
+		t.Fatalf("first channel=%#v", got)
+	}
+	if got := overview.Channels[1]; got.Key != "lts" || got.Relation != remoteversion.RelationAhead {
+		t.Fatalf("second channel=%#v", got)
+	}
+}
+
+func TestGetJavaOverviewPrioritizesFeatureLine(t *testing.T) {
+	svc := NewEnvCheckService(nil)
+	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
+		return detect.ToolInfo{
+			Version: "25.0.1+8", Status: detect.StatusInstalled,
+			Details: &detect.ToolDetails{Java: &detect.JavaDetails{Vendor: "Eclipse Temurin"}},
+		}, nil
+	}
+	svc.javaChannels = func() ([]remoteversion.Channel, bool, time.Time, error) {
+		return []remoteversion.Channel{
+			{Key: "lts", Releases: []remoteversion.Release{{Version: "21.0.6+7"}}},
+			{Key: "feature", Releases: []remoteversion.Release{{Version: "25.0.2+9"}}},
+		}, false, time.Time{}, nil
+	}
+	overview, err := svc.GetJavaOverview()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := overview.Channels[0]; got.Key != "feature" || got.Relation != remoteversion.RelationUpdateAvailable {
+		t.Fatalf("first channel=%#v", got)
+	}
+}
+
 func TestGetJavaOverviewVendorAware(t *testing.T) {
 	svc := NewEnvCheckService(nil)
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
@@ -207,11 +276,15 @@ func TestGetPythonOverviewChannels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !overview.IsStale || overview.Channels[0].Relation != remoteversion.RelationUnknown || overview.Channels[0].RelationDetail == "" {
+	if !overview.IsStale {
 		t.Fatalf("overview=%#v", overview)
 	}
-	if overview.Channels[1].Relation != remoteversion.RelationUpdateAvailable {
-		t.Fatalf("minor relation=%q", overview.Channels[1].Relation)
+	// 本机 3.12.4 所在版本线通道置顶，stable 仍在其后并保留跨线说明。
+	if got := overview.Channels[0]; got.Key != "python-3.12" || got.Relation != remoteversion.RelationUpdateAvailable {
+		t.Fatalf("first channel=%#v", got)
+	}
+	if got := overview.Channels[1]; got.Key != "stable" || got.Relation != remoteversion.RelationUnknown || got.RelationDetail == "" {
+		t.Fatalf("stable channel=%#v", got)
 	}
 }
 
