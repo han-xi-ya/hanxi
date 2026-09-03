@@ -368,6 +368,26 @@ PicLite 模块集成实证——上游 46 个版本全部只发安装器（无�
   4. 对 `-sic/-siw` 消息窗口的 `WM_CLOSE` 从任何模块移除在案：piclite 不接线，其余模块它只是空耗 2s 宽限后仍走强杀；
   5. 上游发版极快（PicLite 三天 1.1.8→1.4.1）：远程列表 `per_page=60` 起步并保留 10 分钟缓存，前端表格无需担忧分页。
 
+### 15. 托管 Keyviz：single-instance 空回调=唤窗契约不存在 + MSI 资产名定制 + 常驻可视化工具无空闲语义
+
+Keyviz 模块集成实证——套用 ccswitch/piclite 模板前必须逐项重新上游实证，本次在"看起来同构"的 tauri v2 应用上撞出三个模板假设全部失真的点：
+
+- **问题现象与错误原因**：
+  1. **单实例插件存在 ≠ 唤窗契约存在**：keyviz 挂了 `tauri-plugin-single-instance`，但回调是空函数 `.plugin(tauri_plugin_single_instance::init(|_, __, ___| {}))`——二次无参拉起只让信使进程发完 WM_COPYDATA 后 `exit(0)`，第一实例无任何 show+focus 动作。照抄模板的 `OpenWindow` 信使路径会得到"按钮按下什么也没发生"的假功能；设置窗口唯一入口是托盘菜单（左键即弹），程序化唤起不存在；
+  2. **MSI 资产命名不跟 tauri 默认**：keyviz 发布 workflow 定制了资产名 `keyviz_2.1.1_windows.msi`——piclite 沉淀的后缀 `_x64_en-US.msi` 匹配模式直接套会一个都匹不到；且 v2 正式版线零便携 zip（唯一 windows.zip 停留在 v2.0.0a3 预发布），zip 路线无从谈起；
+  3. **退出通道为零 + 空闲语义不成立**：退出仅存在于托盘回调 `process::exit(0)`；overlay 主窗口 `visible:false focusable:false`，WM_CLOSE 无可送达目标，`-siw` 消息窗口按 #14 结论不可投（投了净损害）；而"空闲自动退出"在按键可视化这类常驻环境型工具上语义荒谬（运行即在用）——papertodo 已有"整体不接线"先例。
+- **排查过程**：releases 全量扫描（正式版仅 msi/dmg，alpha 才有 zip）→ 真机下载 v2.1.1 msi 核对官方 digest 一致 → `msiexec /a /qn TARGETDIR=` 实测布局 `PFiles\keyviz\keyviz.exe`（单 exe，FileVersion=2.1.1）→ 拉起实测互斥体 `org.keyviz-sim` OpenMutex 命中、`%APPDATA%\org.keyviz\store.json` 落盘、`Stop-Process -Force` 干净终止 → 读 `lib.rs`/`tauri.conf.json`/插件 `windows.rs` 源码实证回调为空、identifier 无 semver、退出/唤窗路径归零。
+- **正确做法与标准修复方案**：
+  - 前端控制台不提供"打开窗口/设置"按钮，banner/hint 如实指引"左键系统托盘图标 → Settings"；引擎删除 OpenWindow/信使路径与 close 信使文件，API 面收敛为 StartKeyviz/Quit/GetStatus；
+  - 资产匹配按上游实证形状精确锚定 `keyviz_{ver}_windows.msi` + 后缀兜底 `_windows.msi`（天然排除 macos.dmg/linux deb/rpm）；MSI 管理提取/四层完整性/递归收割整体复用 piclite 已验证机制，仅换常量与文案；
+  - Quit 直接 JobObject 强杀：store.json autoSave 1s 修改即写盘，强杀不丢历史设置；无 idle watcher、无 IsMainWindowOpen 探针，probe 接口收敛为 IsRunning/WaitForReady 两方法；
+  - 决策记录写入 module package 注释（纯托管、无唤窗、强杀退出、GPL-3.0 仅启动不链接）。
+- **避坑防重犯建议**：
+  1. 侦查清单第 3 项升级为"**读 single-instance 回调源码**判断是否无条件 show+focus"——插件挂载只代表第二实例会自退，唤窗能力取决于回调内容，空回调即契约不存在；
+  2. MSI/zip 资产名模式**逐仓库实测**，不把 piclite/ccswitch 的后缀当作"Tauri 应用通用形状"（tauri 默认命名可被 workflow 任意改名）；
+  3. 常驻环境型工具（可视化/音量管理类）默认不做空闲自动退出，除非上游存在明确的"闲置驻留形态"（如关窗藏托盘）；
+  4. 用户已拍板：上游契约缺失导致的体验退化（无唤窗/强杀退出）在托管模式如实呈现，不 fork 上游补齐（fork 维护成本已明确报价并被否决）。
+
 ### 16. 托管 QuickLook：低级键盘钩子非注入=强杀零残渣 + 命名管道 Quit/Reload 优雅退出通道 + 便携 zip 反斜杠布局
 
 QuickLook（空格预览，托盘 Manager + 全局键盘钩子）集成实证——初判与结论的两次反转，价值在于纠正"系统级热键工具不可托管"的草率假设：
