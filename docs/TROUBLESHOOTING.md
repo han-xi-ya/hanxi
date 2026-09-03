@@ -429,3 +429,16 @@ LiteMonitor（C# WinForms 桌面/任务栏硬件监控）集成实证——"GitH
   3. **seed 上游配置先实证反序列化宽容度**：大小写策略/缺字段行为/文件缺失回退路径决定"最小种子"是否安全，不实证就是全量覆盖用户配置的隐患；
   4. **FileVersion 四段陷阱**：.NET 应用 csproj 常把 `<FileVersion>` 写成 `X.Y.Z.0` 而 tag 是 `X.Y.Z`，任何"PE 版本==目录版本"核对先做归一；
   5. **上游无 LICENSE 文件**（GitHub API `license: null`）的项目：托管模式仅代下载官方 release、不镜像分发，并在前端"关于"卡如实标注——法律姿态透明，风险交用户知情。
+
+### 20. Wails v3 托盘：动态右键菜单重建线程安全与 Dialog 取消语义
+
+实现"可配置托盘右键菜单"时源码实测（v3.0.0-beta.10），两个易误判点：
+
+- **问题现象与误判风险**：
+  1. 想在配置保存后热更新托盘菜单，直觉担心 `tray.SetMenu()` 在非 UI 线程重复调用会崩溃或无效（Win32 菜单句柄归托盘消息线程所有）；
+  2. `Dialog.OpenFile().PromptForSingleSelection()` 用户点"取消"时**不是**返回空串，而是返回 error（internal `cfd.ErrorCancelled = "cancelled by user"`），直接透传给前端会把"取消"渲染成"打开文件选择框失败"。
+- **正确做法与标准修复方案**：
+  - 重建安全：`SystemTray.SetMenu` 内部经 `InvokeSync` marshal 回主线程，Windows 实现 `updateMenu` 是 destroy+`NewPopupMenu` 重建，**任何 goroutine 里可随时重复调用**；本项目 `trayMenuBuilder.Rebuild` 据此实现热更新；
+  - 取消归一化：`cfd` 在 wails 的 `internal/` 包下无法 import 做 `errors.Is` 哨兵比较，只能在 Go 边界按文案 `strings.Contains(lower, "cancel")` 归一化为"取消 → 空串、无错"，前端对空串保持静默；
+  - 附带实测：托盘 `WM_RBUTTONUP` 会先触发 `OnRightClick` 再弹菜单，若两件事都挂会造成重复动作——只设 `SetMenu` 不设 `OnRightClick` 即为标准形态。
+- **避坑防重犯建议**：Wails beta 的菜单/托盘行为勿凭 v2 经验外推，beta.10 的 `updateMenu`/`setMenu` 实现直接读 module cache 源码定夺；对上游 internal 包的 error，Go 侧边界归一化优于前端匹配文案。
