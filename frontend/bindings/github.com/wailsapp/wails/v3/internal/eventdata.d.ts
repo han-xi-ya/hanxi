@@ -58,19 +58,25 @@ import type * as version$5 from "../../../../../hanxi/internal/modules/markeron/
 import type * as nanazip$0 from "../../../../../hanxi/internal/modules/nanazip/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as instance$7 from "../../../../../hanxi/internal/modules/papertodo/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$6 from "../../../../../hanxi/internal/modules/papertodo/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as portscan$0 from "../../../../../hanxi/internal/modules/portscan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$7 from "../../../../../hanxi/internal/modules/recordly/instance/models.js";
+import type * as instance$8 from "../../../../../hanxi/internal/modules/recordly/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$6 from "../../../../../hanxi/internal/modules/recordly/version/models.js";
+import type * as version$7 from "../../../../../hanxi/internal/modules/recordly/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$8 from "../../../../../hanxi/internal/modules/snipaste/instance/models.js";
+import type * as instance$9 from "../../../../../hanxi/internal/modules/snipaste/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$7 from "../../../../../hanxi/internal/modules/snipaste/version/models.js";
+import type * as version$8 from "../../../../../hanxi/internal/modules/snipaste/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as wechat$0 from "../../../../../hanxi/internal/modules/wechat/models.js";
@@ -105,11 +111,13 @@ declare module "@wailsio/runtime" {
             "nanazip:operation-progress": nanazip$0.OperationProgress;
             "nanazip:package-snapshot": nanazip$0.PackageSnapshot;
             "notify:received": notify$0.Notification;
+            "papertodo:instance-state": instance$7.Snapshot;
+            "papertodo:version-download": version$6.DownloadProgress;
             "portscan:progress": portscan$0.ScanProgress;
-            "recordly:instance-state": instance$7.Snapshot;
-            "recordly:version-download": version$6.DownloadProgress;
-            "snipaste:instance-state": instance$8.Snapshot;
-            "snipaste:version-download": version$7.DownloadProgress;
+            "recordly:instance-state": instance$8.Snapshot;
+            "recordly:version-download": version$7.DownloadProgress;
+            "snipaste:instance-state": instance$9.Snapshot;
+            "snipaste:version-download": version$8.DownloadProgress;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
         }

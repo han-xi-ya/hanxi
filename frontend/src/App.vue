@@ -21,6 +21,7 @@ import MarkerOnView from './views/MarkerOnView.vue'
 import EverythingView from './views/EverythingView.vue'
 import CCSwitchView from './views/CCSwitchView.vue'
 import RecordlyView from './views/RecordlyView.vue'
+import PaperTodoView from './views/PaperTodoView.vue'
 import SnipasteView from './views/SnipasteView.vue'
 import NanaZipView from './views/NanaZipView.vue'
 import EarTrumpetView from './views/EarTrumpetView.vue'
@@ -61,6 +62,7 @@ const CORE_VIEWS: Record<string, Component> = {
   '/ext/bcu': markRaw(BCUView),
   '/ext/flclash': markRaw(FlClashView),
   '/ext/recordly': markRaw(RecordlyView),
+  '/ext/papertodo': markRaw(PaperTodoView),
   '/ext/envcheck': markRaw(EnvCheckView),
   '/logs': markRaw(LogsView),
   '/settings': markRaw(SettingsView),
@@ -88,6 +90,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/bcu': 'bcu',
   '/ext/flclash': 'flclash',
   '/ext/recordly': 'recordly',
+  '/ext/papertodo': 'papertodo',
   '/ext/envcheck': 'envcheck',
 }
 
