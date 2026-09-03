@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -186,6 +187,89 @@ func (r *Registry) SetEnabled(id string, enabled bool) error {
 		return r.store.SetModuleEnabled(id, enabled)
 	}
 	return nil
+}
+
+// TrayCommandInfo 托盘命令目录项：设置页候选与托盘装配统一按 Key 引用。
+type TrayCommandInfo struct {
+	Key        string `json:"key"` // "moduleId/commandId" 稳定引用
+	ModuleID   string `json:"moduleId"`
+	ModuleName string `json:"moduleName"`
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+}
+
+// ListTrayCommands 聚合所有已启用模块实现的托盘命令（按模块 ID 升序，命令保持声明顺序）。
+func (r *Registry) ListTrayCommands() []TrayCommandInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	ids := make([]string, 0, len(r.modules))
+	for id := range r.modules {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	var out []TrayCommandInfo
+	for _, id := range ids {
+		w := r.modules[id]
+		if !w.Enabled {
+			continue
+		}
+		provider, ok := w.Module.(TrayCommandsProvider)
+		if !ok {
+			continue
+		}
+		name := w.Module.Info().Name
+		for _, cmd := range provider.TrayCommands() {
+			out = append(out, TrayCommandInfo{
+				Key:        id + "/" + cmd.ID,
+				ModuleID:   id,
+				ModuleName: name,
+				ID:         cmd.ID,
+				Label:      cmd.Label,
+			})
+		}
+	}
+	return out
+}
+
+// RunTrayCommand 按 key 执行托盘命令：要求模块已启用，先完成懒初始化再调用命令 Run。
+// 可安全从宿主后台协程（如托盘点击回调）调用。
+func (r *Registry) RunTrayCommand(ctx context.Context, key string) error {
+	moduleID, cmdID, ok := splitTrayKey(key)
+	if !ok {
+		return fmt.Errorf("registry: invalid tray command key %q", key)
+	}
+
+	r.mu.RLock()
+	w := r.modules[moduleID]
+	r.mu.RUnlock()
+	if w == nil || !w.Enabled {
+		return fmt.Errorf("registry: module %q unknown or disabled", moduleID)
+	}
+	if err := r.EnsureActive(moduleID); err != nil {
+		return err
+	}
+
+	provider, ok := w.Module.(TrayCommandsProvider)
+	if !ok {
+		return fmt.Errorf("registry: module %q provides no tray commands", moduleID)
+	}
+	for _, cmd := range provider.TrayCommands() {
+		if cmd.ID == cmdID && cmd.Run != nil {
+			return cmd.Run(ctx)
+		}
+	}
+	return fmt.Errorf("registry: tray command %q not found in module %q", cmdID, moduleID)
+}
+
+// splitTrayKey 解析 "moduleId/commandId" 形式的托盘命令引用。
+func splitTrayKey(key string) (moduleID, cmdID string, ok bool) {
+	parts := strings.SplitN(strings.TrimSpace(key), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
 }
 
 // ShutdownAll 应用退出时清理所有已初始化的模块

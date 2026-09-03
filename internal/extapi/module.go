@@ -68,6 +68,21 @@ type ModuleInfo struct {
 	Initialized bool   `json:"initialized"` // 当前是否已被按需分配运行时资源
 }
 
+// TrayCommand 模块向宿主托盘暴露的一条可执行命令（如"启动 Snipaste"）。
+// Run 由宿主在独立 goroutine 中调用，实现方需保证自身可重入安全；
+// 命令语义应为"拉起/激活"，对已运行实例的行为由模块自身决定（幂等或聚焦）。
+type TrayCommand struct {
+	ID    string                          // 模块内唯一，如 "launch"
+	Label string                          // 默认菜单显示名，如 "启动 Snipaste"
+	Run   func(ctx context.Context) error // 执行入口
+}
+
+// TrayCommandsProvider 可选契约：希望出现在托盘右键菜单"启动应用"候选项中的
+// 模块实现此接口；未实现的模块不出现在候选目录，契约保持向后兼容。
+type TrayCommandsProvider interface {
+	TrayCommands() []TrayCommand
+}
+
 // Permission 声明扩展所需的能力。运行期由宿主白名单校验，
 // 扩展不得绕过宿主 API（host）直接操作系统资源。
 type Permission string
