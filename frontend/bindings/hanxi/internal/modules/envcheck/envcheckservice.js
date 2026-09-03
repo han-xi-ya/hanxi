@@ -147,3 +147,14 @@ export function OpenNodeDownloadPage() {
 export function OpenPythonDownloadPage() {
     return $Call.ByID(3717582198);
 }
+
+/**
+ * RevealToolPath 在资源管理器中定位该工具探测到的可执行文件。
+ * 前端只允许传注册名，路径由后端探测器基于实机 PATH 解析重新获得，
+ * 不接受前端传入任意路径字符串，避免本模块被用作任意本地路径探测面。
+ * @param {string} name
+ * @returns {$CancellablePromise<void>}
+ */
+export function RevealToolPath(name) {
+    return $Call.ByID(679258983, name);
+}

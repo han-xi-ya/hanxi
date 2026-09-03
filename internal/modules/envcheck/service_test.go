@@ -289,6 +289,41 @@ func TestGetPythonOverviewChannels(t *testing.T) {
 	}
 }
 
+func TestRevealToolPath(t *testing.T) {
+	original := revealInExplorer
+	t.Cleanup(func() { revealInExplorer = original })
+	var revealed []string
+	revealInExplorer = func(path string) error {
+		revealed = append(revealed, path)
+		return nil
+	}
+
+	svc := NewEnvCheckService(nil)
+	svc.detectOne = func(_ context.Context, name string) (detect.ToolInfo, error) {
+		switch name {
+		case "dotnet":
+			return detect.ToolInfo{Display: ".NET", Path: `C:\Program Files\dotnet\dotnet.exe`, Status: detect.StatusInstalled}, nil
+		case "git":
+			return detect.ToolInfo{Display: "Git", Status: detect.StatusMissing}, nil
+		default:
+			return detect.ToolInfo{}, errors.New("未知工具: " + name)
+		}
+	}
+	if err := svc.RevealToolPath(" dotnet "); err != nil || len(revealed) != 1 || revealed[0] != `C:\Program Files\dotnet\dotnet.exe` {
+		t.Fatalf("reveal=%v err=%v", revealed, err)
+	}
+	if err := svc.RevealToolPath("git"); err == nil {
+		t.Fatal("missing tool should error")
+	}
+	if err := svc.RevealToolPath("nope"); err == nil {
+		t.Fatal("unknown tool should error")
+	}
+	revealInExplorer = func(string) error { return errors.New("explorer unavailable") }
+	if err := svc.RevealToolPath("dotnet"); err == nil {
+		t.Fatal("reveal failure should propagate")
+	}
+}
+
 func dotnetService(t *testing.T, local detect.ToolInfo) *EnvCheckService {
 	t.Helper()
 	svc := NewEnvCheckService(nil)

@@ -3,6 +3,8 @@ package envcheck
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -297,6 +299,27 @@ func (s *EnvCheckService) getChannelOverview(
 		remoteversion.PrioritizeLocalLine(channels, local.Version, lineOf)
 	}
 	return local, channels, stale, fetchedAt, nil
+}
+
+// revealInExplorer 为包级函数变量，单测可替换，避免测试中真实唤起 explorer.exe。
+var revealInExplorer = func(path string) error {
+	// /select, 与路径必须是同一个参数，中间逗号是语法的一部分；
+	// 不可直接 explorer.exe <exe>——该语义是"执行"而非"定位"（markeron 事故教训）。
+	return exec.Command("explorer.exe", "/select,"+path).Start()
+}
+
+// RevealToolPath 在资源管理器中定位该工具探测到的可执行文件。
+// 前端只允许传注册名，路径由后端探测器基于实机 PATH 解析重新获得，
+// 不接受前端传入任意路径字符串，避免本模块被用作任意本地路径探测面。
+func (s *EnvCheckService) RevealToolPath(name string) error {
+	local, err := s.detectOne(context.Background(), strings.TrimSpace(name))
+	if err != nil {
+		return fmt.Errorf("探测 %s 失败: %w", name, err)
+	}
+	if local.Status != detect.StatusInstalled || local.Path == "" {
+		return fmt.Errorf("%s 未安装或路径不可用", local.Display)
+	}
+	return revealInExplorer(local.Path)
 }
 
 func (s *EnvCheckService) openURL(name, rawURL string) error {
