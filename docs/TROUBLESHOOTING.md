@@ -290,3 +290,15 @@ BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名�
 - **避坑建议**：凡新增"模块退出清理"接口，必须当场核实它的调用点是否在应用退出路径上被接线（grep 调用计数）；只剩内核兜底的架构在优雅退出路径上会漏掉一切需要握手收尾的资源。已知边界：被托管工具 UAC 提权派生的子进程（如卸载器的提权清理器）会 breakaway 出 JobObject，内核级兜底也杀不掉——此类工具退出前尽量在其窗口内先完成操作。
 
 ---
+### 11. 上游发行侦查：只查 GitHub Releases 会漏掉自托管官方渠道（EarTrumpet）
+
+- **问题现象**：评估集成 EarTrumpet 时，GitHub Releases API 实证"最新 release 停在 1.3.2.0 且所有资产为空"，据此得出"无官方离线包、只能商店跳转、不能做安装"的结论。用户追问后顺 winget 社区仓库摸到上游其实有**活跃的自托管直装渠道**：`https://install.eartrumpet.app/<branch>/EarTrumpet.Package.appinstaller`（在线版本号 2.3.0.20，与商店同步构建，CI 三渠道 AppInstaller/Store/Chocolatey 都在 master main.yml 里）。
+- **排查过程**：`winget search eartrumpet` 命中社区源 `File-New-Project.EarTrumpet 2.3.0.0` → 读 `winget-pkgs` 的 `manifests/f/.../installer.yaml`：`InstallerType: appx`、`InstallerUrl: https://install.eartrumpet.app/...appxbundle`、`InstallerSha256`、`PackageFamilyName: ..._725pr5jq8wr8a`（**与商店版 PFN 后缀不同**）→ curl 线上 appinstaller XML 核实 → 上游 CI 确认 bundle 用 Azure Code Signing 签名。
+- **正确做法与标准修复方案**：
+  - 侦查发行渠道的完整清单必须是：GitHub Releases **和** winget-pkgs 仓库（`manifests/<首字母>/<Publisher>/<Name>/` 目录）+ Chocolatey 社区包 + 官网域名的 appinstaller/下载子域——winget 清单相当于社区审查过的"官方源索引"，是发现隐藏渠道与逐版本 SHA-256 交叉校验源的最佳线索；
+  - 多包身份渠道：检测/启动/卸载全部按渠道身份（PFN+Publisher）各查一遍，并存时警告（两渠道包共享 `Local\{程序集名}-{GUID}` 互斥体——**不同包身份 ≠ 能并行运行**，且配置各存各的 LocalSettings）；
+  - appinstaller 清单必须钉死校验：MainBundle 的 Name、Publisher 与预期常量全等，Bundle URL 主机白名单（防域名接管/清单篡改指向他人包），依赖仅收 https。
+- **避坑建议**：
+  1. Azure Code Signing 签的 MSIX 使用约 3 天短时效证书 + RFC3161 时间戳：`Get-AuthenticodeSignature` 报 Valid，但用当前时钟 `X509Chain.Build` 会报 NotTimeValid（链里叶子已过期），老版 PowerShell 甚至不显示 TimeSigned——判断可信性别只看这两处，以 `Add-AppxPackage` 真机部署为准。本仓库实机（2026-09-03）已成功部署过期证书的 2.3.0.20，证明部署栈接受时间戳组合；`0x800B0101 CERT_E_EXPIRED` 也已归入签名类错误映射。
+  2. **内嵌 PowerShell 协议脚本必须在改动后用临时文件冒烟执行三条路径（成功/已知失败/未知操作）**：apppackage 脚本的错误映射函数里 `[uint32]$exception.HResult` 对负数（.NET HResult 全是有符号 int32，如 -2146233079）在 Windows PowerShell 5.1 直接溢出抛异常，导致**所有错误响应从未成功送达过 Go 侧**（表现为"协议响应无效"而非友好分类错误），单测用 fake executor 完全测不到这层。改用 `$exception.HResult.ToString('X8')` 修复；十六进制字面量 `-band 0xFFFFFFFF` 因 PS 数字字面量类型提升规则也不可靠，别用。
+  3. 每次包操作 = 一次 PowerShell 冷启动（实测 ~1.4s 起，完整查询往返 ~1.8s）：能合并进同一脚本分支的校验绝不要拆成多次 RPC（activate 分支本就查包，Go 侧不要再前置 Query）；多目标查询必须并发（GetStatus 双渠道从串行 3.6s 降到单次延迟）；KeepAlive 页面 onMounted 后必跟一次 onActivated，双刷新要去重。
