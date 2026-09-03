@@ -57,11 +57,12 @@ function relationClass(relation: string) {
           {{ channel.relationDetail || relationText[channel.relation] || relationText.unknown }}
           <span v-if="stale">（基于缓存，仅供参考）</span>
         </p>
+        <!-- 后端仍返回完整近期版本，展示层折叠为仅最新一条；本机所在版本线通道由后端排序置顶。 -->
         <ul v-if="channel.releases?.length" class="release-list">
-          <li v-for="(release, index) in channel.releases" :key="release.version">
-            <span class="release-rank">{{ index === 0 ? '最新' : `近期 ${index + 1}` }}</span>
-            <code class="mono release-version">{{ release.version }}</code>
-            <time v-if="release.published" :datetime="release.published">{{ release.published }}</time>
+          <li>
+            <span class="release-rank">最新</span>
+            <code class="mono release-version">{{ channel.releases[0].version }}</code>
+            <time v-if="channel.releases[0].published" :datetime="channel.releases[0].published">{{ channel.releases[0].published }}</time>
             <span v-else class="date-empty">发布日期未知</span>
           </li>
         </ul>

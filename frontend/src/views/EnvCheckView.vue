@@ -134,8 +134,8 @@ onMounted(refresh)
       <div>
         <h1>开发环境检测</h1>
         <p class="subtitle">
-          探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python 卡片同时查询官方或明确发行方版本；
-          Node.js 分别展示 LTS 与 Current。npm、pnpm 仅提供可复制的手动升级命令，Hanxi 不直接执行安装或升级。
+          探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python 卡片同时查询官方或明确发行方版本：
+          每个通道只展示最新版本，本机已安装的版本线自动排在最前。npm、pnpm 仅提供可复制的手动升级命令，Hanxi 不直接执行安装或升级。
         </p>
       </div>
       <div class="btn-group">
