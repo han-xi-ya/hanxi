@@ -35,6 +35,7 @@ type appPackageRequest struct {
 	PackageFullName string              `json:"packageFullName,omitempty"`
 	ExpectedVersion string              `json:"expectedVersion,omitempty"`
 	AllowDowngrade  bool                `json:"allowDowngrade,omitempty"`
+	Dependencies    []string            `json:"dependencies,omitempty"`
 }
 
 type appPackageResponse struct {
@@ -95,12 +96,17 @@ func (a *windowsAppPackageAPI) Install(ctx context.Context, options apppackage.I
 	if err != nil {
 		return nil, err
 	}
+	deps, err := validateDependencies(options.Dependencies)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := a.run(ctx, appPackageRequest{
 		Operation:       "install",
 		Identity:        options.Expected,
 		PackagePath:     path,
 		ExpectedVersion: options.ExpectedVersion,
 		AllowDowngrade:  options.AllowDowngrade,
+		Dependencies:    deps,
 	})
 	if err != nil {
 		return nil, err
@@ -188,10 +194,36 @@ func validatePackagePath(path string) (string, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return "", &apppackage.Error{Code: apppackage.CodeProtocol, Message: "安装包文件不存在或不是普通文件", Cause: err}
 	}
-	if !strings.EqualFold(filepath.Ext(abs), ".msixbundle") {
-		return "", &apppackage.Error{Code: apppackage.CodeProtocol, Message: "仅允许安装 MSIXBundle 文件"}
+	switch strings.ToLower(filepath.Ext(abs)) {
+	case ".msixbundle", ".appxbundle":
+	default:
+		return "", &apppackage.Error{Code: apppackage.CodeProtocol, Message: "仅允许安装 MSIXBundle/AppxBundle 包"}
 	}
 	return filepath.Clean(abs), nil
+}
+
+// validateDependencies 过滤空项并拒绝含通配/换行的依赖路径；接受本地绝对路径
+// 与 https URL（Add-AppxPackage -DependencyPath 的两种合法输入）。
+func validateDependencies(deps []string) ([]string, error) {
+	if len(deps) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(deps))
+	for _, dep := range deps {
+		dep = strings.TrimSpace(dep)
+		if dep == "" {
+			continue
+		}
+		if strings.ContainsAny(dep, "*?\r\n") {
+			return nil, &apppackage.Error{Code: apppackage.CodeProtocol, Message: "依赖包路径包含非法字符"}
+		}
+		if strings.HasPrefix(dep, "https://") || filepath.IsAbs(dep) {
+			out = append(out, dep)
+			continue
+		}
+		return nil, &apppackage.Error{Code: apppackage.CodeProtocol, Message: "依赖包必须是绝对路径或 https URL"}
+	}
+	return out, nil
 }
 
 func mapAppPackageError(src *appPackageScriptError) error {

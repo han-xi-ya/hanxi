@@ -61,7 +61,11 @@ function New-ScriptError($record) {
     $exception = $record.Exception
     $hresult = ''
     if ($null -ne $exception) {
-        $hresult = ('0x{0:X8}' -f ([uint32]$exception.HResult))
+        # 注意：.NET HResult 是有符号 int32（如 -2146233079）。[uint32] 直接
+        # 转换在 Windows PowerShell 5.1 会溢出抛异常令错误通道自毁；-band
+        # 又受十六进制字面量类型解析影响不可靠。Int32.ToString('X8') 按位
+        # 格式化为 8 位十六进制（0x80131509），两种版本行为一致。
+        $hresult = '0x' + $exception.HResult.ToString('X8')
     }
     $fqid = [string]$record.FullyQualifiedErrorId
     $message = [string]$exception.Message
@@ -70,10 +74,11 @@ function New-ScriptError($record) {
     $retryable = $false
 
     switch -Regex ($hresult + ' ' + $fqid) {
+        'APP_PACKAGE_NOT_INSTALLED' { $code = 'APP_PACKAGE_NOT_INSTALLED'; $friendly = '应用包尚未安装'; break }
         '80070005|AccessDenied' { $code = 'APP_PACKAGE_ACCESS_DENIED'; $friendly = 'Windows 拒绝了当前用户包操作'; break }
-        '80073D02|DeploymentError.*in use' { $code = 'APP_PACKAGE_IN_USE'; $friendly = 'NanaZip 或相关资源正在使用中'; $retryable = $true; break }
+        '80073D02|DeploymentError.*in use' { $code = 'APP_PACKAGE_IN_USE'; $friendly = '目标应用或相关资源正在使用中'; $retryable = $true; break }
         '80073CF3' { $code = 'APP_PACKAGE_DEPENDENCY_MISSING'; $friendly = '应用包依赖或兼容性检查失败'; break }
-        '800B0100|800B0109|80096010' { $code = 'APP_PACKAGE_SIGNATURE_INVALID'; $friendly = '应用包签名验证失败'; break }
+        '800B0100|800B0101|800B0109|80096010' { $code = 'APP_PACKAGE_SIGNATURE_INVALID'; $friendly = '应用包签名验证失败（证书过期或不可信）'; break }
         '800704C7|OperationStopped' { $code = 'APP_PACKAGE_CANCELLED'; $friendly = '包操作已取消'; $retryable = $true; break }
     }
 
@@ -102,13 +107,18 @@ try {
         }
         'install' {
             $path = [string]$request.packagePath
-            if (-not [IO.Path]::IsPathRooted($path) -or [IO.Path]::GetExtension($path) -ine '.msixbundle') {
-                throw '安装包路径必须是绝对 MSIXBundle 文件'
+            $extension = [IO.Path]::GetExtension($path).ToLowerInvariant()
+            if (-not [IO.Path]::IsPathRooted($path) -or @('.msixbundle', '.appxbundle') -notcontains $extension) {
+                throw '安装包路径必须是绝对 MSIXBundle/AppxBundle 文件'
             }
             $parameters = @{
                 Path = $path
                 DeferRegistrationWhenPackagesAreInUse = $true
                 ErrorAction = 'Stop'
+            }
+            $dependencies = @($request.dependencies)
+            if ($dependencies.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$dependencies[0])) {
+                $parameters.DependencyPath = $dependencies
             }
             if ([bool]$request.allowDowngrade) {
                 $parameters.ForceUpdateFromAnyVersion = $true
@@ -133,7 +143,14 @@ try {
         }
         'activate' {
             $package = Find-ExactPackage $request.identity
-            if ($null -eq $package) { throw 'NanaZip 尚未安装' }
+            if ($null -eq $package) {
+                $record = [System.Management.Automation.ErrorRecord]::new(
+                    [System.InvalidOperationException]::new('应用包尚未安装，无法激活'),
+                    'APP_PACKAGE_NOT_INSTALLED',
+                    [System.Management.Automation.ErrorCategory]::ObjectNotFound,
+                    $null)
+                throw $record
+            }
             $appId = [string]$request.identity.appId
             if ([string]::IsNullOrWhiteSpace($appId) -or $appId.Contains('!') -or $appId.Contains('\') -or $appId.Contains('/')) {
                 throw '应用标识无效'

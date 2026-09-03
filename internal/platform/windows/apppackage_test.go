@@ -84,6 +84,65 @@ func TestAppPackageRejectsInvalidPath(t *testing.T) {
 	}
 }
 
+func TestAppPackageAcceptsAppxBundleAndPassesDependencies(t *testing.T) {
+	dir := t.TempDir()
+	bundle := filepath.Join(dir, "tool.appxbundle")
+	if err := os.WriteFile(bundle, []byte("stub"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "powershell.exe")
+	if err := os.WriteFile(exe, []byte("stub"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeAppPackageExecutor{response: func(req appPackageRequest) appPackageResponse {
+		return appPackageResponse{
+			ProtocolVersion: appPackageProtocolVersion, RequestID: req.RequestID, OK: true,
+			Result: appPackageResult{Package: &apppackage.Package{Name: "pkg", Version: "2.3.0.0"}},
+		}
+	}}
+	api := &windowsAppPackageAPI{executable: exe, executor: fake}
+	deps := []string{"https://aka.ms/framework.appx"}
+	pkg, err := api.Install(context.Background(), apppackage.InstallOptions{
+		PackagePath:  bundle,
+		Expected:     apppackage.Identity{Name: "pkg", Family: "pkg_family", Publisher: "CN=test"},
+		Dependencies: deps,
+	})
+	if err != nil || pkg == nil {
+		t.Fatalf("appxbundle 应被接受: %v", err)
+	}
+	var req appPackageRequest
+	if err := json.Unmarshal(fake.gotInput, &req); err != nil {
+		t.Fatal(err)
+	}
+	if len(req.Dependencies) != 1 || req.Dependencies[0] != deps[0] {
+		t.Fatalf("依赖未透传: %#v", req.Dependencies)
+	}
+
+	if _, err := api.Install(context.Background(), apppackage.InstallOptions{
+		PackagePath:  bundle,
+		Expected:     apppackage.Identity{Name: "pkg", Family: "pkg_family", Publisher: "CN=test"},
+		Dependencies: []string{"relative/framework.appx"},
+	}); err == nil {
+		t.Fatal("相对路径依赖应被拒绝")
+	}
+}
+
+func TestAppPackageRejectsNonBundleExtension(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "tool.exe")
+	if err := os.WriteFile(file, []byte("stub"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	api := &windowsAppPackageAPI{}
+	_, err := api.Install(context.Background(), apppackage.InstallOptions{
+		PackagePath: file,
+		Expected:    apppackage.Identity{Name: "pkg", Family: "pkg_family", Publisher: "CN=test"},
+	})
+	var packageErr *apppackage.Error
+	if !errors.As(err, &packageErr) || packageErr.Code != apppackage.CodeProtocol {
+		t.Fatalf("非 bundle 扩展名应被拒绝: %v", err)
+	}
+}
+
 func TestAppPackageMapsScriptError(t *testing.T) {
 	err := mapAppPackageError(&appPackageScriptError{
 		Code: apppackage.CodeInUse, Message: "正在使用", HResult: "0x80073D02", Retryable: true,

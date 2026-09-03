@@ -30,6 +30,9 @@ type InstallOptions struct {
 	Expected        Identity `json:"expected"`
 	ExpectedVersion string   `json:"expectedVersion"`
 	AllowDowngrade  bool     `json:"allowDowngrade"`
+	// Dependencies 是包外依赖（如框架 appx）的本地绝对路径或 https URL 列表，
+	// 透传给 Add-AppxPackage -DependencyPath，供离线/依赖自动解析安装。
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
 // API manages current-user Windows application packages.
