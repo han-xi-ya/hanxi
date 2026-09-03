@@ -4,14 +4,17 @@ import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/env
 import type { ToolInfo } from '../../bindings/hanxi/internal/modules/envcheck/detect/models'
 import type { Overview as GitOverview } from '../../bindings/hanxi/internal/modules/envcheck/gitversion/models'
 import type { Overview as GoOverview } from '../../bindings/hanxi/internal/modules/envcheck/goversion/models'
+import type { Overview as JavaOverview } from '../../bindings/hanxi/internal/modules/envcheck/javaversion/models'
 import type { Overview as NodeOverview } from '../../bindings/hanxi/internal/modules/envcheck/nodeversion/models'
+import type { Overview as PythonOverview } from '../../bindings/hanxi/internal/modules/envcheck/pythonversion/models'
 import type { Channel } from '../../bindings/hanxi/internal/modules/envcheck/remoteversion/models'
 import OfficialVersionsPanel from '../components/envcheck/OfficialVersionsPanel.vue'
+import PackageManagerUpgradeHint from '../components/envcheck/PackageManagerUpgradeHint.vue'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
-type OfficialTool = 'git' | 'go' | 'node'
-type NativeOverview = GoOverview | NodeOverview
+type OfficialTool = 'git' | 'go' | 'node' | 'java' | 'python'
+type NativeOverview = GoOverview | NodeOverview | JavaOverview | PythonOverview
 interface PanelOverview { channels: Channel[]; isStale: boolean; fetchedAt?: string }
 interface RemoteState { overview: PanelOverview | null; loading: boolean; error: string }
 
@@ -25,12 +28,16 @@ const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
   git: { overview: null, loading: false, error: '' },
   go: { overview: null, loading: false, error: '' },
   node: { overview: null, loading: false, error: '' },
+  java: { overview: null, loading: false, error: '' },
+  python: { overview: null, loading: false, error: '' },
 })
 
 const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: string }> = {
   git: { heading: 'Git for Windows 官网稳定版', downloadLabel: '打开 Git 官网下载页' },
   go: { heading: 'Go 官网支持版本', downloadLabel: '打开 Go 官网下载页' },
   node: { heading: 'Node.js 官网版本', downloadLabel: '打开 Node.js 官网下载页' },
+  java: { heading: 'Eclipse Temurin 参考版本', downloadLabel: '打开 Temurin 下载页' },
+  python: { heading: 'Python.org 官方版本', downloadLabel: '打开 Python 官网下载页' },
 }
 
 const loading = computed(() => localLoading.value || Object.values(remoteStates).some(state => state.loading))
@@ -41,7 +48,7 @@ async function refresh() {
   if (loading.value) return
   localLoading.value = true
   loadError.value = ''
-  const remotePromises = (['git', 'go', 'node'] as OfficialTool[]).map(tool => refreshOfficial(tool))
+  const remotePromises = (['git', 'go', 'node', 'java', 'python'] as OfficialTool[]).map(tool => refreshOfficial(tool))
   try {
     tools.value = (await EnvCheckAPI.DetectAll()) ?? []
     everLoaded.value = true
@@ -63,8 +70,12 @@ async function refreshOfficial(tool: OfficialTool) {
       state.overview = adaptGitOverview(await EnvCheckAPI.GetGitForWindowsOverview())
     } else if (tool === 'go') {
       state.overview = adaptChannelOverview(await EnvCheckAPI.GetGoOverview())
-    } else {
+    } else if (tool === 'node') {
       state.overview = adaptChannelOverview(await EnvCheckAPI.GetNodeOverview())
+    } else if (tool === 'java') {
+      state.overview = adaptChannelOverview(await EnvCheckAPI.GetJavaOverview())
+    } else {
+      state.overview = adaptChannelOverview(await EnvCheckAPI.GetPythonOverview())
     }
   } catch (error) {
     state.error = `官网版本查询失败: ${getErrorMessage(error)}`
@@ -91,14 +102,16 @@ async function openDownloadPage(tool: OfficialTool) {
   try {
     if (tool === 'git') await EnvCheckAPI.OpenGitForWindowsDownloadPage()
     else if (tool === 'go') await EnvCheckAPI.OpenGoDownloadPage()
-    else await EnvCheckAPI.OpenNodeDownloadPage()
+    else if (tool === 'node') await EnvCheckAPI.OpenNodeDownloadPage()
+    else if (tool === 'java') await EnvCheckAPI.OpenJavaDownloadPage()
+    else await EnvCheckAPI.OpenPythonDownloadPage()
   } catch (error) {
     showToast(getErrorMessage(error))
   }
 }
 
 function isOfficialTool(name: string): name is OfficialTool {
-  return name === 'git' || name === 'go' || name === 'node'
+  return name === 'git' || name === 'go' || name === 'node' || name === 'java' || name === 'python'
 }
 
 const STATUS_META: Record<string, { text: string; icon: string; cls: string }> = {
@@ -121,8 +134,8 @@ onMounted(refresh)
       <div>
         <h1>开发环境检测</h1>
         <p class="subtitle">
-          探测本机开发工具链的安装路径与版本。Git、Go、Node.js 卡片同时查询官方版本；
-          Node.js 分别展示 LTS 与 Current。Hanxi 只打开官网，不直接下载、安装或升级。
+          探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python 卡片同时查询官方或明确发行方版本；
+          Node.js 分别展示 LTS 与 Current。npm、pnpm 仅提供可复制的手动升级命令，Hanxi 不直接执行安装或升级。
         </p>
       </div>
       <div class="btn-group">
@@ -148,6 +161,10 @@ onMounted(refresh)
           <div class="meta-line"><span class="k">版本</span><code class="mono">{{ tool.version || '—' }}</code></div>
           <div class="meta-line"><span class="k">路径</span><code class="mono tool-path" :title="tool.path || undefined">{{ tool.path || '—' }}</code></div>
         </div>
+        <div v-if="tool.details?.java" class="tool-details">
+          <span>发行版：{{ tool.details.java.vendor || '未知' }}</span>
+          <span v-if="tool.details.java.runtime">运行时：{{ tool.details.java.runtime }}</span>
+        </div>
         <div v-if="tool.hint" class="tool-hint" :class="tool.status === 'store-stub' ? 'hint-warn' : 'hint-error'">{{ tool.hint }}</div>
 
         <OfficialVersionsPanel
@@ -161,6 +178,11 @@ onMounted(refresh)
           :fetched-at="remoteStates[tool.name].overview?.fetchedAt"
           @retry="refreshOfficial(tool.name)"
           @open="openDownloadPage(tool.name)"
+        />
+        <PackageManagerUpgradeHint
+          v-if="tool.name === 'npm' || tool.name === 'pnpm'"
+          :tool="tool.name"
+          :installed="tool.status === 'installed'"
         />
       </div>
     </div>
@@ -198,6 +220,7 @@ onMounted(refresh)
 .mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; overflow-wrap: anywhere; }
 .tool-path { min-width: 0; }
 .tool-hint { font-size: 12px; border-radius: 5px; padding: 6px 8px; line-height: 1.5; }
+.tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
 .hint-warn { background: #fff8c5; color: #9a6700; }
 .hint-error { background: #ffebe9; color: var(--danger); }
 .btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }

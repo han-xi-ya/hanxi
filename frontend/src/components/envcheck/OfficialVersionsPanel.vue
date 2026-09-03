@@ -54,7 +54,7 @@ function relationClass(relation: string) {
           <span v-if="channel.detail" class="channel-detail">{{ channel.detail }}</span>
         </div>
         <p class="relation-text" :class="relationClass(channel.relation)">
-          {{ relationText[channel.relation] ?? relationText.unknown }}
+          {{ channel.relationDetail || relationText[channel.relation] || relationText.unknown }}
           <span v-if="stale">（基于缓存，仅供参考）</span>
         </p>
         <ul v-if="channel.releases?.length" class="release-list">
