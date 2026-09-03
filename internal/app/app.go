@@ -38,6 +38,9 @@ import (
 	"hanxi/internal/modules/portkill"
 	"hanxi/internal/modules/portscan"
 	"hanxi/internal/modules/publicip"
+	"hanxi/internal/modules/recordly"
+	recordlyinstance "hanxi/internal/modules/recordly/instance"
+	recordlyversion "hanxi/internal/modules/recordly/version"
 	"hanxi/internal/modules/snipaste"
 	snipasteinstance "hanxi/internal/modules/snipaste/instance"
 	snipasteversion "hanxi/internal/modules/snipaste/version"
@@ -81,6 +84,8 @@ func RegisterEvents() {
 	application.RegisterEvent[mangodiskinstance.Snapshot]("mangodisk:instance-state")
 	application.RegisterEvent[bcuversion.DownloadProgress]("bcu:version-download")
 	application.RegisterEvent[bcuinstance.Snapshot]("bcu:instance-state")
+	application.RegisterEvent[recordlyversion.DownloadProgress]("recordly:version-download")
+	application.RegisterEvent[recordlyinstance.Snapshot]("recordly:instance-state")
 	application.RegisterEvent[flclashversion.DownloadProgress]("flclash:version-download")
 	application.RegisterEvent[flclashinstance.Snapshot]("flclash:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
@@ -155,6 +160,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		mangodisk.New(plat),
 		bcu.New(plat),
 		flclash.New(plat),
+		recordly.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
