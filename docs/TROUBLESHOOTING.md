@@ -367,3 +367,23 @@ PicLite 模块集成实证——上游 46 个版本全部只发安装器（无�
   3. 遗留核查项：ccswitch/mangodisk/flclash 的 `IsMainWindowOpen`（`-siw` + IsWindowVisible）大概率恒 true，其"空闲自动退出"未生效——真机复验方法：托管启动后关闭主窗口驻托盘，3 分钟内不再操作，观察是否自动退出；若确认失效，按 PicLite 的 PID 枚举探针逐个修正（属独立修复提交，勿混入功能集成）；
   4. 对 `-sic/-siw` 消息窗口的 `WM_CLOSE` 从任何模块移除在案：piclite 不接线，其余模块它只是空耗 2s 宽限后仍走强杀；
   5. 上游发版极快（PicLite 三天 1.1.8→1.4.1）：远程列表 `per_page=60` 起步并保留 10 分钟缓存，前端表格无需担忧分页。
+
+### 16. 托管 QuickLook：低级键盘钩子非注入=强杀零残渣 + 命名管道 Quit/Reload 优雅退出通道 + 便携 zip 反斜杠布局
+
+QuickLook（空格预览，托盘 Manager + 全局键盘钩子）集成实证——初判与结论的两次反转，价值在于纠正"系统级热键工具不可托管"的草率假设：
+
+- **问题现象与错误原因**：
+  1. **把"系统级键盘监听"误判为"系统注入/持久化"**：初查见 `QuickLook.Native32/`（含 Shell32/Everything/DOpus/WoW64HookHelper）与 `QuickLook.Installer/Product.wxs`（WiX MSI），据此断定它是"必须注册进 explorer.exe 的 shell 扩展、强杀留钩子残渣、与 JobObject 沙箱根本冲突"，一度建议**不集成**。实为误判——空格捕获走 `App.xaml.cs→KeystrokeDispatcher` 的 `GlobalKeyboardHook`，其实现是 `SetWindowsHookEx(WH_KEYBOARD_LL,...)`，配合 `SetWinEventHook(...WINEVENT_OUTOFCONTEXT)`；两者都是**进程内钩子，回调跑在 Manager 自身进程，不向任何目标进程注入代码**，原生 helper DLL 也只是被 Manager `LoadLibrary` 加载来查询焦点窗口选中项。WH_KEYBOARD_LL 钩子随持有它的进程终止由内核自动摘除——**强杀同样零残渣**；
+  2. **误以为退出通道为零（套 keyviz #15 先例）**：QuickLook 实际有命名管道服务端 `PipeServerManager`，管道名 `QuickLook.App.Pipe.<当前用户SID>`（.NET `WindowsIdentity.GetCurrent().User.Value`），行协议 `消息|路径|参数`，支持 `Quit`/`Reload`/`Toggle` 等——优雅退出通道现成，比 WM_CLOSE 可靠（其主/托盘窗口常态隐形，WM_CLOSE 无可送达目标）；
+  3. **五资产择一 + zip 反斜杠布局**：每个正式版并列 `.7z/.appx/.exe/.msi/.zip`，唯有 `.zip` 是免安装便携包（`.exe/.msi/.appx` 写系统、`.7z` 标准库解不了）。实测 `QuickLook-4.5.0.zip` 顶层即 `QuickLook.exe + portable.lock + QuickLook.Native{32,64}.dll` 外加 `QuickLook.Plugin\` 子树；且 **zip 条目名用反斜杠 `\` 分隔**（非标准惯例的 `/`），直接 `filepath.Join` 在 Windows 下易生歧义。
+- **排查过程**：`curl` 直连 GitHub API 核对 4.5.0 zip 官方 digest（真机下载 sha256 一致 `852d8bcc…`）；`unzip -l` 实证便携布局与反斜杠；读 `App.xaml.cs`（`EnsureFirstInstance` 裸名互斥体 `QuickLook.App.Mutex`、`OnStartup/OnExit`、`IsPortable=SettingHelper.IsPortableVersion()`）、`GlobalKeyboardHook.cs`（WH_KEYBOARD_LL）、`KeystrokeDispatcher.cs`（OUTOFCONTEXT）、`PipeServerManager.cs`（管道名与消息表）、`SettingHelper.cs`（`portable.lock` 判据、LocalDataPath）逐一坐实。
+- **正确做法与标准修复方案**：
+  - 版本锁 `.zip`：`findPortableAsset` 精确匹配 `QuickLook-<ver>.zip`（小写比对天然排除 7z/appx/exe/msi）；官方 digest 缺失的老版本（≤4.0.2）不入列表；tag 无 `v` 前缀，`plainSemverTag=^\d+\.\d+\.\d+$` 同时挡掉 `latest` 滚动预发布与 `0.3.6.1` 四段；
+  - 解压：`extractAll` 先 `strings.ReplaceAll(f.Name,"\\","/")` 归一再 `filepath.FromSlash/Clean`，落地嵌套目录；布局自检硬要求 `QuickLook.exe`+`portable.lock`+`QuickLook.Native64.dll`，并防御性 `ensureFile(portable.lock)` 保证配置随 exe；ImportLocal **整套目录递归迁移**（配置随便携标记落此目录，与 ccswitch 单 exe 白名单相反）；
+  - 退出：`Quit` = 先向管道投 `Quit`（`OpenProcessToken→GetTokenUser().User.Sid.String()` 拼名，`os.OpenFile` 当文件写，goroutine+dialTimeout 防假死卡住）→ `closeGracePeriod` 内轮询引擎状态自然翻停即返回 → 否则 JobObject `Terminate` 强杀兜底；投递入口抽成包级变量 `sendSignal` 供单测桩，避免测试误伤真机上运行的 QuickLook；额外提供 `Reload`（管道 `Reload`）增值控制；
+  - 生命周期：`followOnExit` 开关（同 keyviz，默认随 Hanxi 退出，关闭则 Detached 独立常驻，贴合其开机常驻本性）；前端不设"打开窗口"假按钮，指引托盘左键开设置（同 keyviz）。
+- **避坑防重犯建议**：
+  1. **"按热键/全局监听"≠"注入/持久化"**：托管前先看钩子类型——`WH_KEYBOARD_LL`/`SetWinEventHook(OUTOFCONTEXT)` 是进程内、随进程清理的可托管；只有 `WH_GETMESSAGE`/`WH_CBT` 或注册表 shell 扩展/`AppInit_DLLs` 才是注入型持久化。别只看仓库里有 `.cpp` 原生工程和 MSI 安装器就判死刑；
+  2. **退出通道别默认"归零"**：keyviz 的"无优雅通道"教训不可外推。先 grep 上游有无命名管道/本地 socket/`-quit` CLI——QuickLook 这类 .NET 托盘应用常用命名管道做单实例 IPC，同一管道往往自带 `Quit`；
+  3. **多资产发布务必真机 `unzip -l` 定布局**：五资产同名不同扩展极易选错；反斜杠 zip 条目（Windows 端打包工具产出常见）务必归一分隔符，否则嵌套项会塌成含 `\` 的畸形文件名；
+  4. **可注入信号 + 可压缩宽限期**：引擎任何"对外发控制消息"的路径都应抽成可替换变量并让单测桩化，否则自动化测试可能对用户真实实例下命令（本模块 `sendSignal`）。
