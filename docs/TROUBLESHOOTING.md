@@ -234,6 +234,20 @@
 - **正确做法与标准修复方案**：Go 使用默认 `mode=json`，要求 `stable=true` 且严格匹配 `goX.Y[.Z]`，将最新两条 minor 线归类为 Stable/Oldstable；Go devel 保留 `-devel` 标识并判为不可严格比较。Node 同时读取官方 `index.json` 与 `schedule.json`，严格接受 `vX.Y.Z` 正式版，按系统日期选择仍受支持的最高 LTS 和当前 Current major；`lts` 用自定义 JSON 联合类型解析。
 - **避坑防重犯建议**：远程版本接口应选贴近产品需求的最小官方数据源；版本通道必须以官方生命周期数据为准并注入时间测试，不能依赖数组顺序、字符串比较或历史奇偶规律。Windows 上执行 `go test -race` 还需要启用 CGO 并安装可用的 C 编译器（如 MinGW-w64 GCC）；仅设置 `CGO_ENABLED=1` 而 PATH 中没有 `gcc` 会在 `runtime/cgo` 阶段失败，这不代表业务测试失败。
 
+### 17. Java 与 Python 的“最新版”必须先限定发行版和版本线
+
+- **问题现象与错误原因**：Java 本机 `java -version` 可能来自 Temurin、Oracle、Microsoft、Corretto、Zulu 等不同发行版，同一 feature line 的补丁号和 build 不能跨 vendor 直接解释为可升级关系；Java 8 还使用 `1.8.0_402-b06` 旧格式。Python 的最新正式版与本机 `major.minor` 维护线也不是同一类升级，直接拿 `3.12.x` 与 `3.14.x` 比较并显示“可用更新”会误导用户把跨 minor 迁移当作普通补丁升级。
+- **排查过程**：核对 Eclipse Adoptium、Python.org 发布记录及 Python Developer Guide 生命周期表，并用 Temurin/Oracle/OpenJ9、Java 8/21、Python bugfix/security/EOL fixture 验证。确认 Java 只有在同 vendor、同 feature line 时才适合比较补丁；Python 只有同 minor line 才适合给出补丁更新关系。
+- **正确做法与标准修复方案**：Java 远程源明确标为 Eclipse Temurin JDK HotSpot GA，展示 LTS 与当前 Feature 通道；本机 detector 提取 vendor/runtime/VM，非 Temurin 或不可识别 vendor 的同 feature 补丁关系返回 unknown 并解释原因。Python 严格过滤正式 CPython `X.Y.Z`，最新稳定版与本机受支持 minor line 分开显示；跨 minor 仅提示存在新版本线，同 minor 才计算 latest/update-available。所有生命周期页面解析都应在结构漂移时明确失败，不能猜测。
+- **避坑防重犯建议**：任何“运行时最新版”功能先定义发行版、通道和可比较边界；不要把版本数值更大等同于安全原位升级。HTML 生命周期源必须配 fixture 契约测试，远程失败时只显示有证据的数据。
+
+### 18. npm 与 pnpm 升级命令取决于安装来源
+
+- **问题现象与错误原因**：`npm install --global npm@latest` 与 `pnpm self-update` 技术上都能升级，但 npm/pnpm 可能由 nvm、fnm、Volta、Corepack、Scoop、Chocolatey 或其他管理器提供。Hanxi 在未知来源下直接执行全局命令，可能覆盖 shim、写入错误 prefix、绕过项目锁定版本或触发权限问题。
+- **排查过程**：对照 npm 官方升级说明和 pnpm 安装/self-update 文档，确认“可查询最新版本”不等于“当前安装可用同一个命令安全升级”；尤其 Corepack 与系统包管理器拥有各自的生命周期和写入位置。
+- **正确做法与标准修复方案**：当前 envcheck 只展示并复制参考命令，不提供后端任意命令执行 RPC、不自动运行、不自动提权；同时提示用户优先遵循原安装管理器。未来若增加应用内升级，必须先识别安装来源、Node 兼容范围、目标写入目录和权限，并由后端生成精确版本白名单计划。
+- **避坑防重犯建议**：不要把前端确认框当安全边界，也不要向 Wails 暴露 executable/args 或自由命令字符串；未知来源、多 PATH 命中、权限或兼容性不明确时默认拒绝自动修改全局环境。
+
 ---
 
 ### 8. 托管 Tauri 应用：单实例互斥体契约 / GitHub digest 校验 / 关窗退出语义
