@@ -30,6 +30,9 @@ import (
 	keyvizinstance "hanxi/internal/modules/keyviz/instance"
 	keyvizversion "hanxi/internal/modules/keyviz/version"
 	"hanxi/internal/modules/lan"
+	"hanxi/internal/modules/litemonitor"
+	litemonitorinstance "hanxi/internal/modules/litemonitor/instance"
+	litemonitorversion "hanxi/internal/modules/litemonitor/version"
 	"hanxi/internal/modules/mangodisk"
 	mangodiskinstance "hanxi/internal/modules/mangodisk/instance"
 	mangodiskversion "hanxi/internal/modules/mangodisk/version"
@@ -108,6 +111,8 @@ func RegisterEvents() {
 	application.RegisterEvent[keyvizinstance.Snapshot]("keyviz:instance-state")
 	application.RegisterEvent[quicklookversion.DownloadProgress]("quicklook:version-download")
 	application.RegisterEvent[quicklookinstance.Snapshot]("quicklook:instance-state")
+	application.RegisterEvent[litemonitorversion.DownloadProgress]("litemonitor:version-download")
+	application.RegisterEvent[litemonitorinstance.Snapshot]("litemonitor:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 }
@@ -185,6 +190,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		piclite.New(plat),
 		keyviz.New(plat),
 		quicklook.New(plat),
+		litemonitor.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
