@@ -345,3 +345,25 @@ BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名�
   - 生命周期全走官方命令信使：探测 `OpenMutex(SYNCHRONIZE, "PaperTodo-SingleInstance-Mutex")`；唤窗/收拢/退出 = 二次拉起携带 `show/hide/exit`（信使进程 Start+Release、不 Wait、不进 Job）；`Quit` 先 exit 信使 + 宽限轮询、超时才 JobObject 强杀——比 tauri 模板的 WM_CLOSE 方案更干净，且天然覆盖"优雅退出保存数据"。
   - 不做空闲自动退出：桌面便签是常驻环境型工具，"3 分钟无人点就收走纸片"与产品语义相反（对照 ccswitch 的 idle 豁免逻辑，这里是整体不接线）。
 - **避坑防重犯建议**：把"上游给官方哈希"当模板常量前，先对目标仓库的 releases JSON 实证 `digest` 键存在性——按模块写死校验策略，别写进共享假设；WPF/.NET 应用的单实例实现五花八门（.NET 自建 Mutex+Pipe、tauri-plugin、Electron lock），互斥体名与唤窗协议必须读源码取实证，不可套 tauri `-sim/-sic` 命名规律猜；绿色应用"数据随 exe"这一条直接决定目录布局、卸载语义与导入语义，侦查清单第 5 项（数据落盘）在单文件应用上要升级为"数据文件清单+归属"逐问。
+
+### 14. 托管安装器-only 的 Tauri 应用（PicLite）：MSI 管理提取路线 + `-siw` 恒可见探针陷阱 + 退出通道归零
+
+PicLite 模块集成实证——上游 46 个版本全部只发安装器（无便携 zip），把托管模板按 zip 思路硬套会连安装都立不起来；连带挖出一条影响既有模块的知识错误：
+
+- **问题现象与错误原因**：
+  1. 上游 Windows 资产只有 NSIS `x64-setup.exe`（`tauri.conf.json` 配 `installMode: perMachine`：要 UAC 提权、写卸载注册表、建公共快捷方式，与托管隔离原则全面冲突）和 WiX `x64_en-US.msi`——没有先例走过的第三条路；
+  2. **`-siw` 消息窗口恒可见陷阱**：`tauri-plugin-single-instance` 源码实证其事件目标窗口创建后立即 `SetWindowLongPtrW(GWL_STYLE, WS_VISIBLE | WS_POPUP)`（注释：必须可见才收得到 WM_PAINT 事件泵），靠 `WS_EX_LAYERED|TOOLWINDOW` 对用户隐形——**`FindWindowW(-sic,-siw)+IsWindowVisible` 恒为 true**，完全不反映主窗口显隐。ccswitch 模板的 `IsMainWindowOpen` 用的正是这个组合（注释还断言"关窗驻托盘时 FindWindowW 仍可命中但不可见"，与插件源码矛盾）→ 依赖它做"空闲自动退出主窗口豁免"的路径在 ccswitch/mangodisk/flclash 同构模块上疑似恒豁免、空闲退出形同虚设（未逐个真机复验，见避坑建议 3）；
+  3. **向 `-siw` 投 WM_CLOSE 是净损害**：插件窗口过程对该消息落 `DefWindowProcW` → DestroyWindow——既不会让应用退出（它不是 tao 窗口、走不到 `CloseRequested`），又拆掉单实例协议的 WM_COPYDATA 载体，此后所有"信使唤窗"失联；
+  4. **退出通道为零**：上游主窗口 `CloseRequested` 无条件 `prevent_close+hide`（关窗驻托盘），连 `RunEvent::ExitRequested` 也在未置 `quitting` 标志时 `prevent_exit`——WM_CLOSE、`app.exit` 类外部信号全部无效，也没有 `-quit` CLI 或管道命令词表（papertodo 路不存在）。
+- **排查过程**：全量 46 版 releases 扫资产形态（零 zip）；`tauri.conf.json`（identifier/installMode/窗口定义）+ `Cargo.toml`（single-instance 无 semver feature）+ `lib.rs` 关窗/退出/托盘路径逐段实证；`msiexec /a` 管理提取真机走通（`PFiles\PicLite\piclite.exe` 直接可跑、`--minimized` 无窗存活、一次性 Go 探针实锤互斥体 `com.piclite.desktop-sim`）；对照插件源码推翻模板注释的可见性断言。
+- **正确做法与标准修复方案**：
+  - **MSI 管理提取（administrative install）**：`msiexec /a <msi> /qn TARGETDIR=<stage>` 只按 Directory 表展开载荷——免管理员、不写注册表、不建快捷方式；管理映像对 ProgramFiles 用固定字面 `PFiles`（不随系统语言变），载荷布局 `<stage>\PFiles\PicLite\piclite.exe`；实现不硬编码层级——递归收割 `piclite.exe` 所在目录平铺进 `versions/piclite_X.Y.Z/`，映像根部自动复制进来的源 msi 副本一并丢弃；msiexec.exe 是 Installer 客户端、`/qn` 下同步到装完才返回（`CombinedOutput` 即可等待），另加 10s 轮询等落盘竞态兜底；完整性四层改为 官方 digest sha256 + 字节数 + Installer cabinet 内建校验 + 布局自检；
+  - **窗口在用信号按 PID 枚举**：`EnumWindows + GetWindowThreadProcessId` 过滤自有 PID 的"可见 + 非 TOOLWINDOW + 尺寸≥80px"顶层窗口（悬浮结果/拖放区任一可见都算在用，豁免语义比"仅主窗口"更保守正确）；引擎仅在 running 态持 PID 时探测；
+  - **Quit 直接 JobObject 强杀**：不投任何窗口消息；数据安全性依据=上游配置前端修改即写盘（`app-profile.json`），进程级终止不丢设置，代价仅为进行中批量压缩中断（前端按钮 title 如实告知）；
+  - 资产名精确锚定 `PicLite_{ver}_x64_en-US.msi`，天然排除 arm64 msi / setup.exe / dmg / deb / AppImage；`-setup.exe` 与 perMachine NSIS 一律不碰。
+- **避坑防重犯建议**：
+  1. 集成侦查清单第 1 项"便携资产"若失败，先验证 `msiexec /a` 再考虑 NSIS 静默安装（Recordly 路线）：Tauri WiX MSI 大多可管理提取出单 exe；NSIS perMachine 则直接出局（提权+注册表副作用）；
+  2. 插件类上游契约（互斥体/窗口/消息）**以插件当前源码为准，不以模板注释为准**——同一插件不同版本行为会变，模板结论迁移前重新实证；
+  3. 遗留核查项：ccswitch/mangodisk/flclash 的 `IsMainWindowOpen`（`-siw` + IsWindowVisible）大概率恒 true，其"空闲自动退出"未生效——真机复验方法：托管启动后关闭主窗口驻托盘，3 分钟内不再操作，观察是否自动退出；若确认失效，按 PicLite 的 PID 枚举探针逐个修正（属独立修复提交，勿混入功能集成）；
+  4. 对 `-sic/-siw` 消息窗口的 `WM_CLOSE` 从任何模块移除在案：piclite 不接线，其余模块它只是空耗 2s 宽限后仍走强杀；
+  5. 上游发版极快（PicLite 三天 1.1.8→1.4.1）：远程列表 `per_page=60` 起步并保留 10 分钟缓存，前端表格无需担忧分页。
