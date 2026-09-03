@@ -26,6 +26,9 @@ import (
 	"hanxi/internal/modules/frpc"
 	"hanxi/internal/modules/frpc/instance"
 	"hanxi/internal/modules/frpc/version"
+	"hanxi/internal/modules/keyviz"
+	keyvizinstance "hanxi/internal/modules/keyviz/instance"
+	keyvizversion "hanxi/internal/modules/keyviz/version"
 	"hanxi/internal/modules/lan"
 	"hanxi/internal/modules/mangodisk"
 	mangodiskinstance "hanxi/internal/modules/mangodisk/instance"
@@ -101,6 +104,8 @@ func RegisterEvents() {
 	application.RegisterEvent[flclashinstance.Snapshot]("flclash:instance-state")
 	application.RegisterEvent[picliteversion.DownloadProgress]("piclite:version-download")
 	application.RegisterEvent[picliteinstance.Snapshot]("piclite:instance-state")
+	application.RegisterEvent[keyvizversion.DownloadProgress]("keyviz:version-download")
+	application.RegisterEvent[keyvizinstance.Snapshot]("keyviz:instance-state")
 	application.RegisterEvent[quicklookversion.DownloadProgress]("quicklook:version-download")
 	application.RegisterEvent[quicklookinstance.Snapshot]("quicklook:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
@@ -178,6 +183,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		recordly.New(plat),
 		papertodo.New(plat),
 		piclite.New(plat),
+		keyviz.New(plat),
 		quicklook.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
