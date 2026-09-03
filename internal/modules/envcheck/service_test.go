@@ -3,6 +3,7 @@ package envcheck
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -285,6 +286,132 @@ func TestGetPythonOverviewChannels(t *testing.T) {
 	}
 	if got := overview.Channels[1]; got.Key != "stable" || got.Relation != remoteversion.RelationUnknown || got.RelationDetail == "" {
 		t.Fatalf("stable channel=%#v", got)
+	}
+}
+
+func dotnetService(t *testing.T, local detect.ToolInfo) *EnvCheckService {
+	t.Helper()
+	svc := NewEnvCheckService(nil)
+	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) { return local, nil }
+	svc.dotnetChannels = func() ([]remoteversion.Channel, bool, time.Time, error) {
+		return []remoteversion.Channel{
+			{Key: "dotnet-10.0", Releases: []remoteversion.Release{{Version: "10.0.1"}}},
+			{Key: "dotnet-9.0", Releases: []remoteversion.Release{{Version: "9.0.8"}}},
+			{Key: "dotnet-8.0", Releases: []remoteversion.Release{{Version: "8.0.16"}}},
+		}, false, time.Time{}, nil
+	}
+	return svc
+}
+
+func TestGetDotNetOverview(t *testing.T) {
+	t.Run("runtime only local line prioritized", func(t *testing.T) {
+		svc := dotnetService(t, detect.ToolInfo{
+			Version: "8.0.13", Status: detect.StatusInstalled,
+			Details: &detect.ToolDetails{DotNet: &detect.DotNetDetails{Runtimes: []string{"8.0.13"}, Desktops: []string{"8.0.13"}}},
+		})
+		overview, err := svc.GetDotNetOverview()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(overview.Channels) != 2 || overview.Channels[0].Key != "dotnet-8.0" || overview.Channels[1].Key != "dotnet-10.0" {
+			t.Fatalf("channels=%v", overview.Channels)
+		}
+		// 本机 8.0.13 < 8.0.16，且跨线到 10.0.1 也是 update-available（SDK 版本不参与比较）。
+		for _, channel := range overview.Channels {
+			if channel.Relation != remoteversion.RelationUpdateAvailable || channel.RelationDetail != "" {
+				t.Fatalf("channel=%#v", channel)
+			}
+		}
+	})
+	t.Run("side by side lines use highest runtime", func(t *testing.T) {
+		// 真实升级场景：8.0.13 与 10.0.11 并排共存，比较与置顶均按最高线。
+		svc := dotnetService(t, detect.ToolInfo{
+			Version: "10.0.400", Status: detect.StatusInstalled,
+			Details: &detect.ToolDetails{DotNet: &detect.DotNetDetails{
+				SDKs:     []string{"10.0.400"},
+				Runtimes: []string{"8.0.13", "10.0.11"},
+			}},
+		})
+		overview, err := svc.GetDotNetOverview()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(overview.Channels) != 1 || overview.Channels[0].Key != "dotnet-10.0" {
+			t.Fatalf("channels=%v", overview.Channels)
+		}
+		if got := overview.Channels[0]; got.Relation != remoteversion.RelationAhead || got.RelationDetail != "" {
+			t.Fatalf("channel=%#v", got)
+		}
+	})
+	t.Run("sdk version not compared", func(t *testing.T) {
+		svc := dotnetService(t, detect.ToolInfo{
+			Version: "9.0.100", Status: detect.StatusInstalled,
+			Details: &detect.ToolDetails{DotNet: &detect.DotNetDetails{SDKs: []string{"9.0.100"}, Runtimes: []string{"9.0.8"}}},
+		})
+		overview, err := svc.GetDotNetOverview()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if overview.Channels[0].Key != "dotnet-9.0" || overview.Channels[0].Relation != remoteversion.RelationLatest {
+			t.Fatalf("first channel=%#v", overview.Channels[0])
+		}
+	})
+	t.Run("missing runtime detail unknown", func(t *testing.T) {
+		svc := dotnetService(t, detect.ToolInfo{
+			Version: "9.0.100", Status: detect.StatusInstalled,
+			Details: &detect.ToolDetails{DotNet: &detect.DotNetDetails{SDKs: []string{"9.0.100"}}},
+		})
+		overview, err := svc.GetDotNetOverview()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if overview.Channels[0].Relation != remoteversion.RelationUnknown || overview.Channels[0].RelationDetail == "" {
+			t.Fatalf("channel=%#v", overview.Channels[0])
+		}
+	})
+	t.Run("eol local line detail", func(t *testing.T) {
+		svc := dotnetService(t, detect.ToolInfo{
+			Version: "6.0.36", Status: detect.StatusInstalled,
+			Details: &detect.ToolDetails{DotNet: &detect.DotNetDetails{Runtimes: []string{"6.0.36"}}},
+		})
+		overview, err := svc.GetDotNetOverview()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(overview.Channels) != 1 || overview.Channels[0].Key != "dotnet-10.0" {
+			t.Fatalf("channels=%v", overview.Channels)
+		}
+		if !strings.Contains(overview.Channels[0].RelationDetail, "超出官方支持范围") {
+			t.Fatalf("detail=%q", overview.Channels[0].RelationDetail)
+		}
+	})
+	t.Run("not installed", func(t *testing.T) {
+		svc := dotnetService(t, detect.ToolInfo{Status: detect.StatusMissing})
+		overview, err := svc.GetDotNetOverview()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if overview.Channels[0].Relation != remoteversion.RelationNotInstalled {
+			t.Fatalf("channel=%#v", overview.Channels[0])
+		}
+	})
+	t.Run("remote failure keeps local", func(t *testing.T) {
+		svc := dotnetService(t, detect.ToolInfo{Version: "8.0.13", Status: detect.StatusInstalled})
+		svc.dotnetChannels = func() ([]remoteversion.Channel, bool, time.Time, error) {
+			return nil, false, time.Time{}, errors.New("offline")
+		}
+		overview, err := svc.GetDotNetOverview()
+		if err == nil || overview.Local.Version != "8.0.13" || len(overview.Channels) != 0 {
+			t.Fatalf("overview=%#v err=%v", overview, err)
+		}
+	})
+}
+
+func TestOpenDotNetDownloadPage(t *testing.T) {
+	opener := &fakeOpener{}
+	svc := NewEnvCheckService(opener)
+	if err := svc.OpenDotNetDownloadPage(); err != nil || opener.url != "https://dotnet.microsoft.com/download/dotnet" {
+		t.Fatalf("url=%q err=%v", opener.url, err)
 	}
 }
 

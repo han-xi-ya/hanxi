@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"hanxi/internal/modules/envcheck/detect"
+	"hanxi/internal/modules/envcheck/dotnetversion"
 	"hanxi/internal/modules/envcheck/gitversion"
 	"hanxi/internal/modules/envcheck/goversion"
 	"hanxi/internal/modules/envcheck/javaversion"
@@ -20,7 +21,7 @@ type urlOpener interface {
 	OpenURL(url string) error
 }
 
-// EnvCheckService Wails 绑定服务：本机开发工具链探测与 Git、Go、Node.js、Java、Python 官网版本查询。
+// EnvCheckService Wails 绑定服务：本机开发工具链探测与 Git、Go、Node.js、Java、Python、.NET 官网版本查询。
 type EnvCheckService struct {
 	opener         urlOpener
 	detectOne      func(context.Context, string) (detect.ToolInfo, error)
@@ -29,6 +30,7 @@ type EnvCheckService struct {
 	nodeChannels   func() ([]remoteversion.Channel, bool, time.Time, error)
 	javaChannels   func() ([]remoteversion.Channel, bool, time.Time, error)
 	pythonChannels pythonversion.MinorChannel
+	dotnetChannels func() ([]remoteversion.Channel, bool, time.Time, error)
 }
 
 func NewEnvCheckService(opener urlOpener) *EnvCheckService {
@@ -40,6 +42,7 @@ func NewEnvCheckService(opener urlOpener) *EnvCheckService {
 		nodeChannels:   nodeversion.Channels,
 		javaChannels:   javaversion.Channels,
 		pythonChannels: pythonversion.ChannelsForLocal,
+		dotnetChannels: dotnetversion.Channels,
 	}
 }
 
@@ -207,6 +210,58 @@ func (s *EnvCheckService) GetPythonOverview() (pythonversion.Overview, error) {
 // OpenPythonDownloadPage 使用系统默认浏览器打开固定 Python 官方下载页。
 func (s *EnvCheckService) OpenPythonDownloadPage() error {
 	return s.openURL("Python", pythonversion.DownloadPageURL())
+}
+
+// GetDotNetOverview 并发查询本机 .NET 与官方 release-metadata 支持线。
+// 卡片展示版本为 SDK 优先，但通道关系统一使用运行时（Microsoft.NETCore.App）版本比较：
+// 官方 latest-runtime 是运行时编号体系（9.0.19），与 SDK 编号（9.0.100）不可直接比较。
+func (s *EnvCheckService) GetDotNetOverview() (dotnetversion.Overview, error) {
+	var (
+		local     detect.ToolInfo
+		localErr  error
+		lines     []remoteversion.Channel
+		stale     bool
+		fetchedAt time.Time
+		remoteErr error
+		wg        sync.WaitGroup
+	)
+	wg.Go(func() { local, localErr = s.detectOne(context.Background(), "dotnet") })
+	wg.Go(func() { lines, stale, fetchedAt, remoteErr = s.dotnetChannels() })
+	wg.Wait()
+	if localErr != nil {
+		return dotnetversion.Overview{}, fmt.Errorf("检测本机 .NET 失败: %w", localErr)
+	}
+	if remoteErr != nil {
+		return dotnetversion.Overview{Local: local}, remoteErr
+	}
+	// 版本关系按本机最高运行时版本线口径比较（Runtimes 由探测器升序归并，末位最高）。
+	runtimeVersion := ""
+	if local.Details != nil && local.Details.DotNet != nil {
+		if runtimes := local.Details.DotNet.Runtimes; len(runtimes) > 0 {
+			runtimeVersion = runtimes[len(runtimes)-1]
+		}
+	}
+	installed := local.Status == detect.StatusInstalled
+	channels, localLineSupported := dotnetversion.SelectChannels(lines, runtimeVersion)
+	for i := range channels {
+		latest := ""
+		if len(channels[i].Releases) > 0 {
+			latest = channels[i].Releases[0].Version
+		}
+		channels[i].Relation = remoteversion.RelationFor(installed, runtimeVersion, latest, dotnetversion.Compare)
+		switch {
+		case installed && runtimeVersion == "":
+			channels[i].RelationDetail = "未能解析本机 .NET 运行时（Microsoft.NETCore.App）版本，无法与官方版本线比较"
+		case installed && !localLineSupported:
+			channels[i].RelationDetail = fmt.Sprintf("本机 .NET %s 版本线已超出官方支持范围，仅展示最新支持线", dotnetversion.VersionLine(runtimeVersion))
+		}
+	}
+	return dotnetversion.Overview{Local: local, Channels: channels, IsStale: stale, FetchedAt: formatFetchedAt(fetchedAt)}, nil
+}
+
+// OpenDotNetDownloadPage 使用系统默认浏览器打开固定 .NET 官方下载页。
+func (s *EnvCheckService) OpenDotNetDownloadPage() error {
+	return s.openURL(".NET", dotnetversion.DownloadPageURL())
 }
 
 func (s *EnvCheckService) getChannelOverview(

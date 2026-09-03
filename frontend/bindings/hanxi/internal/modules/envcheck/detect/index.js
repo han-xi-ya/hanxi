@@ -9,6 +9,13 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * DotNetDetails 描述 dotnet --info 数据行中的 SDK 与共享框架安装清单。
+ * .NET 为并排安装（side-by-side），同一族可共存多个版本线，故各字段为
+ * 去重后的完整列表并按版本升序排列（末位即最高版本）；未安装的族为空。
+ * @typedef {$models.DotNetDetails} DotNetDetails
+ */
+
+/**
  * JavaDetails 描述 java -version 输出中的发行版与运行时信息。
  * @typedef {$models.JavaDetails} JavaDetails
  */

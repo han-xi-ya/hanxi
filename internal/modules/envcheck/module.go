@@ -1,5 +1,5 @@
 // Package envcheck 内置模块：开发环境检测。
-// 探测本机开发工具链，并只读查询 Git、Go、Node.js、Java 与 Python 官方版本。
+// 探测本机开发工具链，并只读查询 Git、Go、Node.js、Java、Python 与 .NET 官方版本。
 package envcheck
 
 import (
@@ -27,8 +27,8 @@ func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
 		Name:        "开发环境检测",
-		Version:     "0.3.0",
-		Description: "检测本机开发工具链，并查询 Git、Go、Node.js、Java 与 Python 官网版本",
+		Version:     "0.4.0",
+		Description: "检测本机开发工具链，并查询 Git、Go、Node.js、Java、Python 与 .NET 官网版本",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

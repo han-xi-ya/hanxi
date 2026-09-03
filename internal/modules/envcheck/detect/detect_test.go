@@ -134,13 +134,13 @@ func TestIsStoreStub(t *testing.T) {
 	}
 }
 
-// TestRegistry 注册表完整性：8 个探测器、Name 无重复、按字典序排序。
+// TestRegistry 注册表完整性：9 个探测器、Name 无重复、按字典序排序。
 func TestRegistry(t *testing.T) {
 	ds := Detectors()
-	if len(ds) != 8 {
-		t.Fatalf("Detectors() len = %d, want 8", len(ds))
+	if len(ds) != 9 {
+		t.Fatalf("Detectors() len = %d, want 9", len(ds))
 	}
-	want := []string{"git", "go", "java", "node", "npm", "pnpm", "protoc-gen-go-grpc", "python"}
+	want := []string{"dotnet", "git", "go", "java", "node", "npm", "pnpm", "protoc-gen-go-grpc", "python"}
 	for i, d := range ds {
 		if d.Name() != want[i] {
 			t.Errorf("Detectors()[%d] = %s, want %s", i, d.Name(), want[i])
@@ -162,8 +162,8 @@ func TestRunAll(t *testing.T) {
 		},
 	)
 	results := RunAll(context.Background())
-	if len(results) != 8 {
-		t.Fatalf("RunAll len = %d, want 8", len(results))
+	if len(results) != 9 {
+		t.Fatalf("RunAll len = %d, want 9", len(results))
 	}
 	byName := map[string]ToolInfo{}
 	for _, r := range results {
