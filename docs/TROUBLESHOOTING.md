@@ -407,3 +407,25 @@ QuickLook（空格预览，托盘 Manager + 全局键盘钩子）集成实证—
   2. **退出通道别默认"归零"**：keyviz 的"无优雅通道"教训不可外推。先 grep 上游有无命名管道/本地 socket/`-quit` CLI——QuickLook 这类 .NET 托盘应用常用命名管道做单实例 IPC，同一管道往往自带 `Quit`；
   3. **多资产发布务必真机 `unzip -l` 定布局**：五资产同名不同扩展极易选错；反斜杠 zip 条目（Windows 端打包工具产出常见）务必归一分隔符，否则嵌套项会塌成含 `\` 的畸形文件名；
   4. **可注入信号 + 可压缩宽限期**：引擎任何"对外发控制消息"的路径都应抽成可替换变量并让单测桩化，否则自动化测试可能对用户真实实例下命令（本模块 `sendSignal`）。
+
+### 17. 托管 LiteMonitor：路径派生互斥体名不可复现 + requireAdministrator 的 740 直拒与 UIPI 边界 + 首启 settings.json 种子关更
+
+LiteMonitor（C# WinForms 桌面/任务栏硬件监控）集成实证——"GitHub releases + 官方 digest"看似 ccswitch 同构，实际单实例/权限/配置三个契约全部变形，逐项记录：
+
+- **问题现象与错误原因**：
+  1. **命名互斥体 ≠ 可探测互斥体**：上游 `Program.cs` 的单实例锁名是 **安装路径派生** 的（`Global\LiteMonitor_SingleInstance_{exe 目录小写、\ : / 空格→_}_Mutex`，超长退哈希、异常退固定回退名）。ccswitch 模板的 `OpenMutex` 探测套路对**外部实例完全失效**——用户自行解压的安装路径不可预知，名称无法构造；第二实例抢锁失败**静默 `return`，无任何 show+focus 回调**，"无参二次拉起"信使语义也不存在（照抄模板会得到无声响的假按钮）。
+  2. **requireAdministrator 清单双重杀伤**：`app.manifest` 活动节点是 `requireAdministrator`。其一，未提权父进程 `CreateProcessW` 直接失败 **`ERROR_ELEVATION_REQUIRED`(740)**——Go `exec.Command` 不会像 ShellExecute `runas` 那样代弹 UAC，Start 得到裸 errno，默认错误文案用户看不懂；其二，若以绕过方式让高权限 LiteMonitor 跑起来而 Hanxi 仍中权限，**UIPI 会静默拦截** Hanxi 发出的 `PostMessage(WM_CLOSE)`/`ShowWindow`/`SetForegroundWindow`（跨完整性级别窗口消息默认禁入），Quit/唤窗全部"调用了没反应"。
+  3. **上游全默认首启与托管打架**：zip **不含 settings.json**（首启由 C# 默认值生成），`AutoCheckUpdate` 默认 `true`——内置更新检查与 Hanxi 版本管理双通道必然冲突；`IsPawnIORequiredByConfig() => IsAnyEnabled("CPU")` 而默认监控项含 CPU，首启可能拉起 PawnIO 内核驱动安装交互（弹窗+可能二次 UAC），无法无人值守。
+  4. **PE FileVersion 四段 ≠ tag 三段**：csproj 显式 `<FileVersion>1.3.6.0</FileVersion>`，`versioninfo.FileVersion` 读出 `1.3.6.0`，与 tag `v1.3.6` 直接比对必假阳——snipaste 先例的同款比对逻辑会拒绝一切正常安装。
+- **排查过程**：GitHub API 实测 29 个 release 全量带 digest 与稳定 `LiteMonitor_v<ver>-win-x64.zip` → 真机下载核对 zip 布局（单层包装目录 36 文件、无 runtime DLL→框架依赖 net8.0-windows、**含 GBK 编码中文文件名条目**、无 settings.json）→ 读 `Program.cs`（互斥体命名与静默退出）、`MainForm_Transparent.cs`/`MainFormBizHelper.cs`（MainForm 类实际定义处；无 FormClosing 拦截、托盘双击=Hide/Show、退出菜单=form.Close()）、`app.manifest`（requireAdministrator）、`SettingsHelper.cs`（BaseDirectory 便携、`PropertyNameCaseInsensitive=true`、缺字段回默认）、`DriverInstaller.cs`（PawnIO 触发条件）逐条坐实。
+- **正确做法与标准修复方案**：
+  - 探测/唤窗整体改走 **FlClash 先例**：`CreateToolhelp32Snapshot` 进程名枚举 + `EnumWindows` 按 PID `SW_RESTORE+SetForegroundWindow`/`postCloseByPID`——外部实例探测、自有实例唤窗、WM_CLOSE 优雅退出三件套统一，不再依赖任何互斥体；
+  - Start 失败经 `elevateHint()` 特判 `syscall.Errno(740)` 输出"请以管理员身份重新启动 Hanxi"指引；控制台 stopped 引导行如实预告"首启弹一次 UAC、可能提示装 PawnIO 驱动"；失败态文案指向 .NET 8 桌面运行时（框架依赖版真实依赖，`GetRuntimeStatus` 探测 `Microsoft.WindowsDesktop.App` 8.x 存在性供前端常驻警示条）；
+  - `seedManagedSettings`：**仅当 settings.json 不存在**时写最小种子 `{"AutoCheckUpdate":false}`——上游反序列化大小写不敏感且缺失字段回属性默认值（源码实证），最小种子=全默认首启+关内置更检查；文件已存在**一字节不动**（用户后续在 LiteMonitor 内改的配置是明确意图，不越权覆盖，everything ini 改写先例的收敛版）；
+  - `normalizeFileVersion()` 仅当第四段为 `0` 时裁剪三段再比对；布局自检锚点弃用 settings.json（zip 不含）改用 `resources/lang/zh.json`；GBK 乱码文件名条目照常读满保 CRC，自检只锚定 exe+语言包不受干扰；ImportLocal 因 settings/themes/plugins 全随 exe 目录，**整套目录递归迁移**（收单层包装目录形态），并跳过 `settings.json.tmp/.bak` 运行期垃圾。
+- **避坑防重犯建议**：
+  1. **侦查清单第 4 项要读互斥体名的构造代码**：名称是否"路径/机器派生"决定探测可行性——固定 identifier 名（tauri/QuickLook）可 OpenMutex，路径派生名只能进程枚举；
+  2. **`grep requestedExecutionLevel` 纳入必查项**：requireAdministrator 应用给出三重预告——740 特判文案、UIPI 下唤窗/关窗仅在 Hanxi 同或更高权限时可靠、首启 UAC 属预期交互；
+  3. **seed 上游配置先实证反序列化宽容度**：大小写策略/缺字段行为/文件缺失回退路径决定"最小种子"是否安全，不实证就是全量覆盖用户配置的隐患；
+  4. **FileVersion 四段陷阱**：.NET 应用 csproj 常把 `<FileVersion>` 写成 `X.Y.Z.0` 而 tag 是 `X.Y.Z`，任何"PE 版本==目录版本"核对先做归一；
+  5. **上游无 LICENSE 文件**（GitHub API `license: null`）的项目：托管模式仅代下载官方 release、不镜像分发，并在前端"关于"卡如实标注——法律姿态透明，风险交用户知情。
