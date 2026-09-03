@@ -1,5 +1,7 @@
 # 第三方软件告知
 
+> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部 15 款托管桌面工具。Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
+
 ## MangoDisk
 
 - 项目：MangoDisk
@@ -52,3 +54,78 @@ Hanxi 对 Recordly 采用用户侧按需下载与独立进程托管：安装器�
 Hanxi 对 PaperTodo 采用用户侧按需下载与独立进程托管：exe 直接来自上游 GitHub Releases（实证上游资产未提供 GitHub 官方 digest，完整性采用镜像直链锚定 + 字节数 + MZ/PE 版本核对 + sha256 下载指纹存档的多层兜底，详见 docs/TROUBLESHOOTING.md），唤窗/收拢/退出全部走上游 SingleInstanceHelper 官方单实例命令通道（show/hide/exit）；Hanxi 不修改、不静态链接、不内嵌 PaperTodo 源码或二进制，便签在原版纸片窗口内编辑，数据（data.json、note-assets.lmdb、plugins/）存于 Hanxi 托管目录且卸载时原地保留。
 
 因 PolyForm Noncommercial 为非商业许可证，本模块的合规红线是**不捆绑、不再分发**：Hanxi 仓库与安装包不包含任何 PaperTodo 二进制，下载行为全部由用户本机直接对上游发起。若未来改为预装或随 Hanxi 再分发，必须先取得上游作者授权（"普通公司统一部署"正是该许可证明文禁止的形态），并随附 PaperTodo 版权与许可证完整声明。
+
+## frp（frpc 客户端）
+
+- 项目：frp
+- 上游仓库：https://github.com/fatedier/frp
+- 许可证：Apache-2.0
+- 发行方式：官方 GitHub Releases（Hanxi 集成国内加速镜像通道），SHA256 完整性校验、指数退避重试，支持本地 `frpc.exe` 导入。
+
+Hanxi 对 frpc 采用多实例独立进程托管：二进制按需从上游获取，实例经 Windows JobObject 绑定启停，Token 经 DPAPI 加密落盘；Hanxi 不修改、不静态链接、不内嵌 frp 源码或二进制，穿透能力均由原版 frpc 提供。当前 Hanxi 仓库和安装包不包含 frpc.exe。若未来改为预装或随 Hanxi 再分发，须随附 Apache-2.0 许可证文本与 NOTICE、声明修改情况并履行相应义务。
+
+## Bulk Crap Uninstaller (BCU)
+
+- 项目：Bulk Crap Uninstaller
+- 上游仓库：https://github.com/BCUninstaller/Bulk-Crap-Uninstaller
+- 许可证：Apache-2.0
+- 发行方式：官方 GitHub Releases 按需下载。
+
+Hanxi 托管原版批量卸载 GUI：受管进程启停、闲置自动退出探测、`Global\BCU-singleinstance` 单实例唤窗、.NET 运行时依赖检测；不修改、不捆绑、不再分发。若未来改为预装或再分发，须履行 Apache-2.0 随附许可证与 NOTICE 义务。
+
+## CC Switch
+
+- 项目：CC Switch（Claude Code / Codex 供应商切换器）
+- 上游仓库：https://github.com/farion1231/cc-switch
+- 许可证：MIT
+- 发行方式：官方 GitHub Releases 按需下载。
+
+Hanxi 纯托管：Tauri 单实例协议唤窗、JobObject 启停与运行态探测；不修改、不捆绑、不再分发。若未来随 Hanxi 捆绑分发，须随附 MIT 许可证文本与版权声明。
+
+## MarkerOn
+
+- 项目：MarkerOn（屏幕标注）
+- 上游仓库：https://github.com/ifer47/markeron
+- 许可证：MIT
+- 发行方式：官方 GitHub Releases 按需下载。
+
+Hanxi 托管原版：标注开关经上游单实例二次拉起实现；不修改、不捆绑、不再分发。若未来捆绑分发，须随附 MIT 许可证文本与版权声明。
+
+## Everything / ES（voidtools）
+
+- 项目：Everything 文件检索、命令行搜索工具 ES (es.exe)
+- 上游站点：https://www.voidtools.com （仅官网分发，非 GitHub）
+- 许可证：Everything 主程序为专有免费软件（voidtools 官网条款免费使用）；ES.exe 为 MIT 许可证开源工具。
+- 发行方式：官网下载，主程序完整性采用官方 sha256 清单锚定 + 多层兜底校验。
+
+Hanxi 除版本托管外，内嵌官方 es.exe 在 Hanxi 控制台内实现秒级文件检索（结果上限 300 条），并提供后台索引托管与打开/定位文件操作。Hanxi 不修改上游二进制、不捆绑、不再分发；主程序托盘、快捷键与索引行为沿用原版。因主程序为专有免费软件，**严禁预装或再分发**。
+
+## Snipaste
+
+- 项目：Snipaste（截图 + 贴图）
+- 官方站点：https://www.snipaste.com ，官方分发：https://download.snipaste.com （闭源免费软件，非 GitHub 开源）
+- 发行方式：官网 zip 归档，官方 sha-1 清单校验。
+
+Hanxi 采用**脱管托管**：保留 Snipaste 原生托盘与全局快捷键，Hanxi 退出时不强杀（截图工具需常驻）；版本下载、启动与运行态由 Hanxi 统一管理。Hanxi 不修改、不捆绑、不再分发，不做任何品牌衍生展示；若未来需随包分发，必须另行取得官方授权。
+
+## GPL-3.0 托管工具（FlClash / Keyviz / QuickLook / PicLite）
+
+- FlClash：https://github.com/chen08209/FlClash —— GPL-3.0（Clash 系跨平台代理客户端；第二实例不唤窗，改用 EnumWindows 置前台）
+- Keyviz：https://github.com/mulaRahul/keyviz —— GPL-3.0（按键可视化；MSI `msiexec /a` 管理提取安装，互斥体探测）
+- QuickLook：https://github.com/QL-Win/QuickLook —— GPL-3.0（空格快速预览；便携 zip 安装，命名管道 Quit/Reload 优雅退出）
+- PicLite：https://github.com/amiaoapp/PicLite —— GPL-3.0（图片/GIF 压缩；`msiexec /a` 管理提取免管理员提权）
+
+Hanxi 对上述工具均采用用户侧按需下载与独立进程托管：二进制直接来自上游 GitHub Releases（GitHub API digest 等多层完整性校验），Hanxi 不修改、不静态链接、不内嵌其源码或二进制，全部功能均由原版 GUI 提供；对应源代码可通过各下载版本对应的上游 tag 获取。
+
+GPL-3.0 合规红线为**不捆绑、不再分发**：当前 Hanxi 仓库和安装包不包含上述任何二进制，下载行为全部由用户本机直连上游发起。若未来改为预装或随 Hanxi 二进制再分发，发布流程必须落实 GPL-3.0 完整许可证文本与对应完整源代码（或书面报价）的提供义务。
+
+## LiteMonitor
+
+- 项目：LiteMonitor（桌面硬件监控）
+- 上游仓库：https://github.com/Diorser/LiteMonitor
+- 许可证：**上游仓库未声明 LICENSE 文件**（截至 2026-09，GitHub API license 字段为空）
+- 发行方式：官方 GitHub Releases 单文件 exe（带 digest），上游主程序清单为 `requireAdministrator`。
+
+Hanxi 采用用户侧按需下载与独立进程托管：针对管理员清单直拒与 UIPI 边界，采用首启配置种子（关自动更新）+ Win32 直操作唤窗方案（详见 docs/TROUBLESHOOTING.md #17）；Hanxi 不修改上游二进制。
+
+**风险说明**：未声明许可证的作品依法默认"保留所有权利"，再分发权不明确。本模块严格执行按需下载、不捆绑、不再分发红线；若未来考虑任何预装方案，必须先在上游取得明确授权或补见许可证声明。

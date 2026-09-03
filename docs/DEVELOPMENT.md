@@ -123,7 +123,7 @@ Hanxi 支持零安装、不写注册表的绿色便携模式：
    ```
 2. 双击运行 `bin/hanxi.exe`；
 3. 程序启动后会自动侦测并切换至 **Portable 便携模式**；
-4. 所有的配置文件（`config.json`）、运行时 TOML、日志（`logs/`）、frpc 各版本文件（`versions/`）将全部落入 `bin/data/` 目录中，随时拷走即用。
+4. 所有的配置文件（`config.json`）、运行时 TOML、日志（`logs/`）、frpc 与各托管工具的版本文件（`versions/`）将全部落入 `bin/data/` 目录中，随时拷走即用。
 
 ---
 
