@@ -44,6 +44,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   piclite: { icon: '🖼️', route: '/ext/piclite' },
   keyviz: { icon: '⌨️', route: '/ext/keyviz' },
   quicklook: { icon: '👁️', route: '/ext/quicklook' },
+  litemonitor: { icon: '📊', route: '/ext/litemonitor' },
 }
 
 async function loadData() {
