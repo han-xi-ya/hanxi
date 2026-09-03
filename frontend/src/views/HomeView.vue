@@ -42,6 +42,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   recordly: { icon: '🎬', route: '/ext/recordly' },
   papertodo: { icon: '📄', route: '/ext/papertodo' },
   piclite: { icon: '🖼️', route: '/ext/piclite' },
+  keyviz: { icon: '⌨️', route: '/ext/keyviz' },
   quicklook: { icon: '👁️', route: '/ext/quicklook' },
 }
 

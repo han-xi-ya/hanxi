@@ -23,6 +23,7 @@ import CCSwitchView from './views/CCSwitchView.vue'
 import RecordlyView from './views/RecordlyView.vue'
 import PaperTodoView from './views/PaperTodoView.vue'
 import PicLiteView from './views/PicLiteView.vue'
+import KeyvizView from './views/KeyvizView.vue'
 import QuickLookView from './views/QuickLookView.vue'
 import SnipasteView from './views/SnipasteView.vue'
 import NanaZipView from './views/NanaZipView.vue'
@@ -66,6 +67,7 @@ const CORE_VIEWS: Record<string, Component> = {
   '/ext/recordly': markRaw(RecordlyView),
   '/ext/papertodo': markRaw(PaperTodoView),
   '/ext/piclite': markRaw(PicLiteView),
+  '/ext/keyviz': markRaw(KeyvizView),
   '/ext/quicklook': markRaw(QuickLookView),
   '/ext/envcheck': markRaw(EnvCheckView),
   '/logs': markRaw(LogsView),
@@ -96,6 +98,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/recordly': 'recordly',
   '/ext/papertodo': 'papertodo',
   '/ext/piclite': 'piclite',
+  '/ext/keyviz': 'keyviz',
   '/ext/quicklook': 'quicklook',
   '/ext/envcheck': 'envcheck',
 }
