@@ -20,6 +20,7 @@ import MemoView from './views/MemoView.vue'
 import MarkerOnView from './views/MarkerOnView.vue'
 import EverythingView from './views/EverythingView.vue'
 import CCSwitchView from './views/CCSwitchView.vue'
+import RecordlyView from './views/RecordlyView.vue'
 import SnipasteView from './views/SnipasteView.vue'
 import NanaZipView from './views/NanaZipView.vue'
 import EarTrumpetView from './views/EarTrumpetView.vue'
@@ -59,6 +60,7 @@ const CORE_VIEWS: Record<string, Component> = {
   '/ext/mangodisk': markRaw(MangoDiskView),
   '/ext/bcu': markRaw(BCUView),
   '/ext/flclash': markRaw(FlClashView),
+  '/ext/recordly': markRaw(RecordlyView),
   '/ext/envcheck': markRaw(EnvCheckView),
   '/logs': markRaw(LogsView),
   '/settings': markRaw(SettingsView),
@@ -85,6 +87,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/mangodisk': 'mangodisk',
   '/ext/bcu': 'bcu',
   '/ext/flclash': 'flclash',
+  '/ext/recordly': 'recordly',
   '/ext/envcheck': 'envcheck',
 }
 

@@ -39,6 +39,7 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   mangodisk: { icon: '🥭', route: '/ext/mangodisk' },
   bcu: { icon: '🧹', route: '/ext/bcu' },
   flclash: { icon: '⚡', route: '/ext/flclash' },
+  recordly: { icon: '🎬', route: '/ext/recordly' },
 }
 
 async function loadData() {
