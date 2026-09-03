@@ -15,6 +15,7 @@ import (
 	"hanxi/internal/modules/ccswitch"
 	ccswitchinstance "hanxi/internal/modules/ccswitch/instance"
 	ccswitchversion "hanxi/internal/modules/ccswitch/version"
+	"hanxi/internal/modules/eartrumpet"
 	"hanxi/internal/modules/envcheck"
 	"hanxi/internal/modules/everything"
 	everythinginstance "hanxi/internal/modules/everything/instance"
@@ -150,6 +151,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		ccswitch.New(plat),
 		snipaste.New(plat),
 		nanazip.New(plat),
+		eartrumpet.New(plat),
 		mangodisk.New(plat),
 		bcu.New(plat),
 		flclash.New(plat),
