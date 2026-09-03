@@ -35,6 +35,9 @@ import (
 	markeronversion "hanxi/internal/modules/markeron/version"
 	"hanxi/internal/modules/memo"
 	"hanxi/internal/modules/nanazip"
+	"hanxi/internal/modules/papertodo"
+	papertodoinstance "hanxi/internal/modules/papertodo/instance"
+	papertodoversion "hanxi/internal/modules/papertodo/version"
 	"hanxi/internal/modules/portkill"
 	"hanxi/internal/modules/portscan"
 	"hanxi/internal/modules/publicip"
@@ -86,6 +89,8 @@ func RegisterEvents() {
 	application.RegisterEvent[bcuinstance.Snapshot]("bcu:instance-state")
 	application.RegisterEvent[recordlyversion.DownloadProgress]("recordly:version-download")
 	application.RegisterEvent[recordlyinstance.Snapshot]("recordly:instance-state")
+	application.RegisterEvent[papertodoversion.DownloadProgress]("papertodo:version-download")
+	application.RegisterEvent[papertodoinstance.Snapshot]("papertodo:instance-state")
 	application.RegisterEvent[flclashversion.DownloadProgress]("flclash:version-download")
 	application.RegisterEvent[flclashinstance.Snapshot]("flclash:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
@@ -161,6 +166,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		bcu.New(plat),
 		flclash.New(plat),
 		recordly.New(plat),
+		papertodo.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
