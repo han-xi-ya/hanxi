@@ -22,6 +22,7 @@ import EverythingView from './views/EverythingView.vue'
 import CCSwitchView from './views/CCSwitchView.vue'
 import SnipasteView from './views/SnipasteView.vue'
 import NanaZipView from './views/NanaZipView.vue'
+import EarTrumpetView from './views/EarTrumpetView.vue'
 import MangoDiskView from './views/MangoDiskView.vue'
 import BCUView from './views/BCUView.vue'
 import FlClashView from './views/FlClashView.vue'
@@ -54,6 +55,7 @@ const CORE_VIEWS: Record<string, Component> = {
   '/ext/ccswitch': markRaw(CCSwitchView),
   '/ext/snipaste': markRaw(SnipasteView),
   '/ext/nanazip': markRaw(NanaZipView),
+  '/ext/eartrumpet': markRaw(EarTrumpetView),
   '/ext/mangodisk': markRaw(MangoDiskView),
   '/ext/bcu': markRaw(BCUView),
   '/ext/flclash': markRaw(FlClashView),
@@ -79,6 +81,7 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/ccswitch': 'ccswitch',
   '/ext/snipaste': 'snipaste',
   '/ext/nanazip': 'nanazip',
+  '/ext/eartrumpet': 'eartrumpet',
   '/ext/mangodisk': 'mangodisk',
   '/ext/bcu': 'bcu',
   '/ext/flclash': 'flclash',
