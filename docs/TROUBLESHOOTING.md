@@ -248,6 +248,13 @@
 - **正确做法与标准修复方案**：当前 envcheck 只展示并复制参考命令，不提供后端任意命令执行 RPC、不自动运行、不自动提权；同时提示用户优先遵循原安装管理器。未来若增加应用内升级，必须先识别安装来源、Node 兼容范围、目标写入目录和权限，并由后端生成精确版本白名单计划。
 - **避坑防重犯建议**：不要把前端确认框当安全边界，也不要向 Wails 暴露 executable/args 或自由命令字符串；未知来源、多 PATH 命中、权限或兼容性不明确时默认拒绝自动修改全局环境。
 
+### 19. .NET 是双编号体系：卡片显示 SDK、版本关系却只能按 runtime 比较
+
+- **问题现象与错误原因**：`.NET` 的官方 `releases-index.json` 中 `latest-release` 是**运行时**编号体系（`9.0.8`），而 `dotnet --version`、多数用户心智与实机 `ToolInfo.Version`（SDK 优先策略）是 **SDK** 编号（`9.0.100`）。两套数字形状同为 `X.Y.Z` 但不可互比：拿本机 SDK `9.0.100` 与通道最新 `9.0.8` 做数值比较会得出"本机领先 92 个补丁"的荒谬 ahead 结论。另外 `dotnet --version` 在纯运行时机器（本机实装即此形态）直接以非零退出报错；`--info` 的节标题与提示语会随系统语言本地化，只有数据行（`Microsoft.NETCore.App 8.0.13 [path]`、`9.0.100 [path]`）语言无关。
+- **排查过程**：本机（无 SDK、仅 8.0.13 运行时 + 桌面运行时）实测 `--version` 失败、`--info` 恒退出 0。首版远程实现凭记忆把索引地址写成 `raw.githubusercontent.com/dotnet/release-metadata/main/releases-index.json`，上线即 HTTP 404——`release-metadata` 是微软 CDN 的路径段而非 GitHub 仓库名，正确来源是 `dotnet/core` 仓库 `release-notes/` 或官方镜像 `builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json`（后者为国内可达的微软官方 CDN，最终采用）。拉取真实数据后才暴露记忆偏差：字段是 `channel-version` 而非 `release-version`；`support-phase` 实测取值为 `active/maintenance/preview/eol`；预览线（如 11.0）**没有 `eol-date` 且 `latest-release/latest-runtime` 带 `-preview.x` 后缀**——若把"必须是 X.Y.Z 正式版"当全局校验，一条在研预览线就能让整个面板永久报错。`raw.githubusercontent.com` 在本机还被连接重置，GitHub 系源对国内网络本就不可靠。
+- **正确做法与标准修复方案**：detector 用 `--info`，只按数据行形状正则提取；`Parse` 返回 SDK 优先版本、`ParseDetails` 按框架族归并最高版本（SDK/Runtime/Desktop/AspNet）。远程比较一律取 `Details.DotNet.Runtime` 对照官方 `latest-runtime`，runtime 解析不出时关系返回 unknown 并说明原因，绝不回退用 SDK 版本；`latest-sdk` 只进通道说明（"LTS · 活跃支持 · SDK 10.0.400 · 支持至 …"）。`normalize` 中 `preview/eol` 分类整条过滤（预览线不套 GA 校验、可无 eol-date），受支持线中 `eol-date` 已过期同样过滤，未知 support-phase/release-type 报错防漂移。本机线不在受支持集合时展示最新线并给 `RelationDetail` 说明"已超出官方支持范围"。修复后以 `HANXI_OFFICIAL_SMOKE=1` 对真实 CDN 完成端到端冒烟。
+- **避坑防重犯建议**：任何"运行时环境"官方版本功能先问版本号数字属于哪个产物体系；远程 provider 的 URL、字段名与枚举值必须以实测拉取的真实数据为准，记忆与文档示例都不可信（本次连字段名都记错）。国内交付优先选微软/官方自有 CDN 而非 GitHub raw；严格校验虽会拦住自己的错误 URL，但也要求预览/过期等合法多态被显式建模。SDK-only/runtime-only/双装三类实机 fixture 都要进测试。
+
 ---
 
 ### 8. 托管 Tauri 应用：单实例互斥体契约 / GitHub digest 校验 / 关窗退出语义
@@ -302,3 +309,27 @@ BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名�
   1. Azure Code Signing 签的 MSIX 使用约 3 天短时效证书 + RFC3161 时间戳：`Get-AuthenticodeSignature` 报 Valid，但用当前时钟 `X509Chain.Build` 会报 NotTimeValid（链里叶子已过期），老版 PowerShell 甚至不显示 TimeSigned——判断可信性别只看这两处，以 `Add-AppxPackage` 真机部署为准。本仓库实机（2026-09-03）已成功部署过期证书的 2.3.0.20，证明部署栈接受时间戳组合；`0x800B0101 CERT_E_EXPIRED` 也已归入签名类错误映射。
   2. **内嵌 PowerShell 协议脚本必须在改动后用临时文件冒烟执行三条路径（成功/已知失败/未知操作）**：apppackage 脚本的错误映射函数里 `[uint32]$exception.HResult` 对负数（.NET HResult 全是有符号 int32，如 -2146233079）在 Windows PowerShell 5.1 直接溢出抛异常，导致**所有错误响应从未成功送达过 Go 侧**（表现为"协议响应无效"而非友好分类错误），单测用 fake executor 完全测不到这层。改用 `$exception.HResult.ToString('X8')` 修复；十六进制字面量 `-band 0xFFFFFFFF` 因 PS 数字字面量类型提升规则也不可靠，别用。
   3. 每次包操作 = 一次 PowerShell 冷启动（实测 ~1.4s 起，完整查询往返 ~1.8s）：能合并进同一脚本分支的校验绝不要拆成多次 RPC（activate 分支本就查包，Go 侧不要再前置 Query）；多目标查询必须并发（GetStatus 双渠道从串行 3.6s 降到单次延迟）；KeepAlive 页面 onMounted 后必跟一次 onActivated，双刷新要去重。
+
+---
+
+### 12. 托管 Electron 应用（Recordly）：NSIS 在线安装器四连坑 + 进程名探测契约
+
+- **问题现象与错误原因**：Recordly 上游 Windows 仅有 electron-builder NSIS 在线安装器（无便携 zip），集成托管连续踩四类坑：
+  1. **`/D=<目录>` 传参坑**：NSIS 规定 `/D=` 必须是命令行最后一个参数且路径**不带引号**；Go 的 `exec.Command` 给含空格路径自动整体加引号，NSIS 取 `/D=` 之后整段时把尾引号算进目录名，安装落到错误目录；
+  2. **oneClick 静默卸载旧安装**：electron-builder NSIS 默认 `oneClick: true`，安装器启动时按 HKCU 卸载注册表 `InstallLocation` **静默卸载上一个安装**——多版本共存目录形同虚设（每装一版抹掉注册表指向的那版），若注册表指向用户自装副本还会被托管动作连带删掉；
+  3. **PE 版本抹平预发布后缀**：`v1.3.5-beta.2` 的 `Recordly.exe` FileVersion 读出 `1.3.5`（electron-builder 把 prerelease 抹平进 Windows 数字版本），按 PE 版本识别 beta 安装必错；
+  4. **空壳 tag**：上游 `v1.3.4` 有 git tag 但 `releases/tags/v1.3.4` 返回 404（打了 tag 从未发布），另有 v1.2.0 缺安装器只剩 blockmap、v1.3.5-beta.2 刻意不发 `latest.yml`——按 tag 给前端列版本会展示下载不到的版本。
+- **排查过程**：`electron-builder.json5` 实证 win target 只有 nsis 且未覆写 oneClick（默认 true）、`artifactName: ${productName}-windows-${arch}.${ext}`；releases API 全量 46 版逐一核对资产名与 digest；GitHub API 交叉验证 tag vs release 存在性；上游 `main.ts`/`updater.ts` 源码实证 `requestSingleInstanceLock` 与 `RECORDLY_DISABLE_AUTO_UPDATES` 官方开关。
+- **正确做法与标准修复方案**：
+  - 静默安装显式接管原始命令行绕开 Go 引号化：`cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `"C:\installer.exe" /S /D=C:\path with space\target`}`（exe 段带引号、`/D=` 段不带）；
+  - 托管目录收敛为**单目录** `versions/recordly`（放弃 recordly_X.Y.Z 多版本布局），"切换版本=覆盖安装"；安装前扫描 HKCU Uninstall 子键做**外部安装卫兵**（`DisplayName=Recordly` 且 `InstallLocation` 真实存在且不在托管目录 → 拒绝安装并指引用户），绝不让 oneClick 抹掉用户自装副本；卸载只 `RemoveAll` 自家目录，**绝不调用 Uninstall.exe**（注册表指向哪套安装不可靠）；
+  - beta 身份以安装时写入 `hanxi-meta.json` 的远程 tag 为准，PE FileVersion 只做兜底；版本比较必须 semver 预发布感知（`1.3.4-beta.1 < 1.3.4 < 1.3.5-beta.2`，数值核心互认函数供 beta/PE 版本互查）；
+  - 远程列表以 `/releases?per_page=60` 为唯一数据源，tag 正则放宽到 `vX.Y.Z(-pre.N)` 后按 `prerelease || tag带后缀` 双依据标 IsPre，stable/beta 双通道（默认 stable），缺 digest/缺安装器资产的残缺发布一律不入列；校验链 = GitHub digest sha256（主）+ 官方 `SHA256SUMS.txt` 交叉比对（第二只眼，网络失败降级放行、两源矛盾硬失败）；
+  - Electron 探测无稳定互斥体名可依赖（Chromium 进程单例对象名不可预期），一律**进程名 `Recordly.exe` + EnumWindows 按进程名过滤**（窗口要求可见且带标题）；`wait()` 判外部接管前先等 ~500ms 让 Chromium 子进程树收敛——进程名探测是树级信号，自有主进程刚退时 helper 残影会被误判成外部实例（ccswitch/bcu 的互斥体方案没有这个问题，这是移植托管模板到 Electron 时的结构性差异）；
+  - 启动注入 `RECORDLY_DISABLE_AUTO_UPDATES=1`（上游官方 env 开关），否则 electron-updater 的 `quitAndInstall` 会按注册表覆写托管目录；WM_CLOSE 必须按进程名过滤，**绝不能** `FindWindow("Chrome_WidgetWin_1")`——那是全体 Chromium 应用共享的窗口类，会误伤用户浏览器。
+- **避坑建议**：
+  1. 托管 NSIS 类上游前先读 `electron-builder.json5` 的 win/nsis 配置判定 oneClick/perMachine/shortcut 默认值，再决定目录布局；"GitHub 有 zip 资产"≠ Windows 便携版（electron-builder 的 `Recordly-x64.zip` 是 macOS 自动更新产物）；
+  2. NSIS 安装器会顺手创建桌面/开始菜单快捷方式（指向托管目录、可绕过 Hanxi 启停），安装成功后立即清理，"桌面快捷方式"作为 Hanxi 侧显式功能提供；上游若存在真托盘语义则另议；
+  3. 未签名安装器的信任链完全押在双源 sha256 上：`SHA256SUMS.txt` 这类官方旁证资产要利用起来，格式解析容忍 GNU（`<hash>  <name>`）与 BSD（`<hash> *<name>`）两式；
+  4. 安装器体积 ~214MB、装后 ~700MB，远大于既有 tauri 模块：下载超时给到分钟级，多版本目录设计前先量磁盘成本；
+  5. Electron 冷启动到主窗口就绪实测 2~10s，`readyTimeout` 给 30s，勿照抄 tauri 的 20s。
