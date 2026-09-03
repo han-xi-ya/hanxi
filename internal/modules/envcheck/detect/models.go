@@ -10,12 +10,25 @@ const (
 	StatusStoreStub Status = "store-stub" // WindowsApps 商店存根（假 python 等）
 )
 
+// ToolDetails 保存只有部分探测器能够提供的结构化详情。
+type ToolDetails struct {
+	Java *JavaDetails `json:"java,omitempty"`
+}
+
+// JavaDetails 描述 java -version 输出中的发行版与运行时信息。
+type JavaDetails struct {
+	Vendor  string `json:"vendor"`
+	Runtime string `json:"runtime"`
+	VM      string `json:"vm"`
+}
+
 // ToolInfo 单个工具的探测结果（Wails 序列化给前端的 JS 模型）。
 type ToolInfo struct {
-	Name    string `json:"name"`    // 注册名（兼可执行文件名）：git/node/java/...
-	Display string `json:"display"` // 前端展示名：Git / Node.js / ...
-	Path    string `json:"path"`    // exec.LookPath 命中的绝对路径（未安装时为空）
-	Version string `json:"version"` // 解析出的版本号（未安装/失败时为空）
-	Status  Status `json:"status"`
-	Hint    string `json:"hint"` // 面向用户的状态说明（installed 时为空）
+	Name    string       `json:"name"`    // 注册名（兼可执行文件名）：git/node/java/...
+	Display string       `json:"display"` // 前端展示名：Git / Node.js / ...
+	Path    string       `json:"path"`    // exec.LookPath 命中的绝对路径（未安装时为空）
+	Version string       `json:"version"` // 解析出的版本号（未安装/失败时为空）
+	Status  Status       `json:"status"`
+	Hint    string       `json:"hint"` // 面向用户的状态说明（installed 时为空）
+	Details *ToolDetails `json:"details,omitempty"`
 }

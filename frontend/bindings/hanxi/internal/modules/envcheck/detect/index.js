@@ -9,6 +9,16 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * JavaDetails 描述 java -version 输出中的发行版与运行时信息。
+ * @typedef {$models.JavaDetails} JavaDetails
+ */
+
+/**
+ * ToolDetails 保存只有部分探测器能够提供的结构化详情。
+ * @typedef {$models.ToolDetails} ToolDetails
+ */
+
+/**
  * ToolInfo 单个工具的探测结果（Wails 序列化给前端的 JS 模型）。
  * @typedef {$models.ToolInfo} ToolInfo
  */

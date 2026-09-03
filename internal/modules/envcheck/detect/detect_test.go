@@ -80,6 +80,19 @@ func TestDetectOne(t *testing.T) {
 		}
 	})
 
+	t.Run("java-structured-details", func(t *testing.T) {
+		withSeams(t,
+			func(name string) (string, error) { return `C:\Java\bin\java.exe`, nil },
+			func(context.Context, string, []string) (string, error) {
+				return "openjdk version \"21.0.2\" 2024-01-16 LTS\nOpenJDK Runtime Environment Temurin-21.0.2+13 (build 21.0.2+13-LTS)\nOpenJDK 64-Bit Server VM Temurin-21.0.2+13 (build 21.0.2+13-LTS, mixed mode)", nil
+			},
+		)
+		info := DetectOne(context.Background(), javaDetector{})
+		if info.Status != StatusInstalled || info.Details == nil || info.Details.Java == nil || info.Details.Java.Vendor != "Eclipse Temurin" {
+			t.Fatalf("unexpected Java details: %+v", info)
+		}
+	})
+
 	t.Run("parse-fail", func(t *testing.T) {
 		withSeams(t,
 			func(name string) (string, error) { return `C:\Program Files\nodejs\node.exe`, nil },

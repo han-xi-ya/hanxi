@@ -19,11 +19,12 @@ type Release struct {
 
 // Channel 表示一个官方发布通道。
 type Channel struct {
-	Key      string    `json:"key"`
-	Label    string    `json:"label"`
-	Detail   string    `json:"detail"`
-	Releases []Release `json:"releases"`
-	Relation Relation  `json:"relation"`
+	Key            string    `json:"key"`
+	Label          string    `json:"label"`
+	Detail         string    `json:"detail"`
+	Releases       []Release `json:"releases"`
+	Relation       Relation  `json:"relation"`
+	RelationDetail string    `json:"relationDetail,omitempty"`
 }
 
 func RelationFor(installed bool, local, latest string, compare func(string, string) (int, bool)) Relation {

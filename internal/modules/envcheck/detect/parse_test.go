@@ -20,6 +20,7 @@ func TestParseVersions(t *testing.T) {
 		{"java-openjdk", javaDetector{}, `openjdk version "17.0.9" 2023-10-17`, "17.0.9"},
 		{"java-1.8", javaDetector{}, `java version "1.8.0_151"`, "1.8.0_151"},
 		{"java-full-block", javaDetector{}, "openjdk version \"21.0.2\" 2024-01-16 LTS\nOpenJDK Runtime Environment Temurin-21.0.2+13 (build 21.0.2+13-LTS)", "21.0.2"},
+		{"java-corretto", javaDetector{}, "openjdk version \"17.0.12\" 2024-07-16 LTS\nOpenJDK Runtime Environment Corretto-17.0.12.7.1 (build 17.0.12+7-LTS)\nOpenJDK 64-Bit Server VM Corretto-17.0.12.7.1 (build 17.0.12+7-LTS, mixed mode, sharing)", "17.0.12"},
 		{"java-garbage", javaDetector{}, "some garble\nno version here", ""},
 		{"python-plain", pythonDetector{}, "Python 3.12.4\n", "3.12.4"},
 		{"python-crlf", pythonDetector{}, "Python 3.9.13\r\n", "3.9.13"},

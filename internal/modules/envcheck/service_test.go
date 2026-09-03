@@ -171,3 +171,57 @@ func TestOpenGoAndNodeDownloadPages(t *testing.T) {
 		t.Fatalf("node url=%q err=%v", opener.url, err)
 	}
 }
+
+func TestGetJavaOverviewVendorAware(t *testing.T) {
+	svc := NewEnvCheckService(nil)
+	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
+		return detect.ToolInfo{
+			Version: "21.0.5+11", Status: detect.StatusInstalled,
+			Details: &detect.ToolDetails{Java: &detect.JavaDetails{Vendor: "Oracle"}},
+		}, nil
+	}
+	svc.javaChannels = func() ([]remoteversion.Channel, bool, time.Time, error) {
+		return []remoteversion.Channel{{Key: "21", Releases: []remoteversion.Release{{Version: "21.0.6+7"}}}}, false, time.Time{}, nil
+	}
+	overview, err := svc.GetJavaOverview()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := overview.Channels[0]; got.Relation != remoteversion.RelationUnknown || got.RelationDetail == "" {
+		t.Fatalf("channel=%#v", got)
+	}
+}
+
+func TestGetPythonOverviewChannels(t *testing.T) {
+	svc := NewEnvCheckService(nil)
+	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
+		return detect.ToolInfo{Version: "3.12.4", Status: detect.StatusInstalled}, nil
+	}
+	svc.pythonChannels = func(string) ([]remoteversion.Channel, bool, time.Time, error) {
+		return []remoteversion.Channel{
+			{Key: "stable", Releases: []remoteversion.Release{{Version: "3.14.1"}}},
+			{Key: "python-3.12", Releases: []remoteversion.Release{{Version: "3.12.11"}}},
+		}, true, time.Date(2026, 9, 2, 12, 0, 0, 0, time.Local), nil
+	}
+	overview, err := svc.GetPythonOverview()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !overview.IsStale || overview.Channels[0].Relation != remoteversion.RelationUnknown || overview.Channels[0].RelationDetail == "" {
+		t.Fatalf("overview=%#v", overview)
+	}
+	if overview.Channels[1].Relation != remoteversion.RelationUpdateAvailable {
+		t.Fatalf("minor relation=%q", overview.Channels[1].Relation)
+	}
+}
+
+func TestOpenJavaAndPythonDownloadPages(t *testing.T) {
+	opener := &fakeOpener{}
+	svc := NewEnvCheckService(opener)
+	if err := svc.OpenJavaDownloadPage(); err != nil || opener.url != "https://adoptium.net/temurin/releases/" {
+		t.Fatalf("java url=%q err=%v", opener.url, err)
+	}
+	if err := svc.OpenPythonDownloadPage(); err != nil || opener.url != "https://www.python.org/downloads/windows/" {
+		t.Fatalf("python url=%q err=%v", opener.url, err)
+	}
+}

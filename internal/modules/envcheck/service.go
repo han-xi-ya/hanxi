@@ -9,7 +9,9 @@ import (
 	"hanxi/internal/modules/envcheck/detect"
 	"hanxi/internal/modules/envcheck/gitversion"
 	"hanxi/internal/modules/envcheck/goversion"
+	"hanxi/internal/modules/envcheck/javaversion"
 	"hanxi/internal/modules/envcheck/nodeversion"
+	"hanxi/internal/modules/envcheck/pythonversion"
 	"hanxi/internal/modules/envcheck/remoteversion"
 )
 
@@ -18,13 +20,15 @@ type urlOpener interface {
 	OpenURL(url string) error
 }
 
-// EnvCheckService Wails 绑定服务：本机开发工具链探测与 Git、Go、Node.js 官网版本查询。
+// EnvCheckService Wails 绑定服务：本机开发工具链探测与 Git、Go、Node.js、Java、Python 官网版本查询。
 type EnvCheckService struct {
 	opener         urlOpener
 	detectOne      func(context.Context, string) (detect.ToolInfo, error)
 	recentReleases func() ([]gitversion.Release, error)
 	goChannels     func() ([]remoteversion.Channel, bool, time.Time, error)
 	nodeChannels   func() ([]remoteversion.Channel, bool, time.Time, error)
+	javaChannels   func() ([]remoteversion.Channel, bool, time.Time, error)
+	pythonChannels pythonversion.MinorChannel
 }
 
 func NewEnvCheckService(opener urlOpener) *EnvCheckService {
@@ -34,6 +38,8 @@ func NewEnvCheckService(opener urlOpener) *EnvCheckService {
 		recentReleases: gitversion.RecentReleases,
 		goChannels:     goversion.Channels,
 		nodeChannels:   nodeversion.Channels,
+		javaChannels:   javaversion.Channels,
+		pythonChannels: pythonversion.ChannelsForLocal,
 	}
 }
 
@@ -121,6 +127,80 @@ func (s *EnvCheckService) GetNodeOverview() (nodeversion.Overview, error) {
 // OpenNodeDownloadPage 使用系统默认浏览器打开固定 Node.js 官方下载页。
 func (s *EnvCheckService) OpenNodeDownloadPage() error {
 	return s.openURL("Node.js", nodeversion.DownloadPageURL())
+}
+
+// GetJavaOverview 并发查询本机 Java 与 Eclipse Temurin GA 版本。
+func (s *EnvCheckService) GetJavaOverview() (javaversion.Overview, error) {
+	var (
+		local     detect.ToolInfo
+		localErr  error
+		channels  []remoteversion.Channel
+		stale     bool
+		fetchedAt time.Time
+		remoteErr error
+		wg        sync.WaitGroup
+	)
+	wg.Go(func() { local, localErr = s.detectOne(context.Background(), "java") })
+	wg.Go(func() { channels, stale, fetchedAt, remoteErr = s.javaChannels() })
+	wg.Wait()
+	if localErr != nil {
+		return javaversion.Overview{}, fmt.Errorf("检测本机 Java 失败: %w", localErr)
+	}
+	if remoteErr != nil {
+		return javaversion.Overview{Local: local}, remoteErr
+	}
+	installed := local.Status == detect.StatusInstalled
+	for i := range channels {
+		latest := ""
+		if len(channels[i].Releases) > 0 {
+			latest = channels[i].Releases[0].Version
+		}
+		channels[i].Relation = javaversion.RelationFor(local, latest)
+		if installed && channels[i].Relation == remoteversion.RelationUnknown {
+			channels[i].RelationDetail = "当前 Java 发行版与 Eclipse Temurin 不同，补丁版本不能直接比较"
+		}
+	}
+	return javaversion.Overview{Local: local, Channels: channels, IsStale: stale, FetchedAt: formatFetchedAt(fetchedAt)}, nil
+}
+
+// OpenJavaDownloadPage 使用系统默认浏览器打开固定 Temurin 下载页。
+func (s *EnvCheckService) OpenJavaDownloadPage() error {
+	return s.openURL("Eclipse Temurin", javaversion.DownloadPageURL())
+}
+
+// GetPythonOverview 查询本机 Python、Python.org 最新稳定版及本机受支持版本线。
+func (s *EnvCheckService) GetPythonOverview() (pythonversion.Overview, error) {
+	local, err := s.detectOne(context.Background(), "python")
+	if err != nil {
+		return pythonversion.Overview{}, fmt.Errorf("检测本机 Python 失败: %w", err)
+	}
+	channels, stale, fetchedAt, remoteErr := s.pythonChannels(local.Version)
+	if remoteErr != nil {
+		return pythonversion.Overview{Local: local}, remoteErr
+	}
+	installed := local.Status == detect.StatusInstalled
+	for i := range channels {
+		latest := ""
+		if len(channels[i].Releases) > 0 {
+			latest = channels[i].Releases[0].Version
+		}
+		if channels[i].Key == "stable" && installed {
+			channels[i].Relation = remoteversion.RelationUnknown
+			channels[i].RelationDetail = "跨 Python minor 版本线不视为普通补丁升级"
+			if result, ok := pythonversion.Compare(local.Version, latest); ok && result == 0 {
+				channels[i].Relation = remoteversion.RelationLatest
+				channels[i].RelationDetail = "本机已是 Python.org 最新稳定版"
+			}
+		} else {
+			channels[i].Relation = remoteversion.RelationFor(installed, local.Version, latest, pythonversion.Compare)
+		}
+	}
+	return pythonversion.Overview{Local: local, Channels: channels, IsStale: stale, FetchedAt: formatFetchedAt(fetchedAt)}, nil
+}
+
+// OpenPythonDownloadPage 使用系统默认浏览器打开固定 Python 官方下载页。
+func (s *EnvCheckService) OpenPythonDownloadPage() error {
+	return s.openURL("Python", pythonversion.DownloadPageURL())
 }
 
 func (s *EnvCheckService) getChannelOverview(

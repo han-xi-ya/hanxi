@@ -53,6 +53,9 @@ func DetectOne(ctx context.Context, d Detector) ToolInfo {
 
 	if v := d.Parse(raw); v != "" {
 		info.Version = v
+		if detailer, ok := d.(DetailAware); ok {
+			info.Details = detailer.ParseDetails(raw)
+		}
 		info.Status = StatusInstalled
 		info.Hint = ""
 		return info

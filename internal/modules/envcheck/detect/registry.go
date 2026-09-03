@@ -19,6 +19,11 @@ type Detector interface {
 	Parse(output string) string
 }
 
+// DetailAware 可选能力：从同一次版本命令输出中提取结构化详情。
+type DetailAware interface {
+	ParseDetails(output string) *ToolDetails
+}
+
 // StubAware 可选能力：判定"假安装"（Microsoft Store 存根）。
 // 仅在版本命令执行失败或输出为空时被 DetectOne 询问，命中则状态升级为 store-stub。
 type StubAware interface {

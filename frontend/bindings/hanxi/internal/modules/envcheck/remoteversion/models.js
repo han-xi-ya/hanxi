@@ -10,6 +10,7 @@
  * @property {string} detail
  * @property {Release[] | null} releases
  * @property {Relation} relation
+ * @property {string} [relationDetail]
  */
 
 /**
