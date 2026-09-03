@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/envcheckservice'
+import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
 import type { ToolInfo } from '../../bindings/hanxi/internal/modules/envcheck/detect/models'
+import type { Overview as DotNetOverview } from '../../bindings/hanxi/internal/modules/envcheck/dotnetversion/models'
 import type { Overview as GitOverview } from '../../bindings/hanxi/internal/modules/envcheck/gitversion/models'
 import type { Overview as GoOverview } from '../../bindings/hanxi/internal/modules/envcheck/goversion/models'
 import type { Overview as JavaOverview } from '../../bindings/hanxi/internal/modules/envcheck/javaversion/models'
@@ -13,8 +15,8 @@ import PackageManagerUpgradeHint from '../components/envcheck/PackageManagerUpgr
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
-type OfficialTool = 'git' | 'go' | 'node' | 'java' | 'python'
-type NativeOverview = GoOverview | NodeOverview | JavaOverview | PythonOverview
+type OfficialTool = 'git' | 'go' | 'node' | 'java' | 'python' | 'dotnet'
+type NativeOverview = GoOverview | NodeOverview | JavaOverview | PythonOverview | DotNetOverview
 interface PanelOverview { channels: Channel[]; isStale: boolean; fetchedAt?: string }
 interface RemoteState { overview: PanelOverview | null; loading: boolean; error: string }
 
@@ -30,6 +32,7 @@ const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
   node: { overview: null, loading: false, error: '' },
   java: { overview: null, loading: false, error: '' },
   python: { overview: null, loading: false, error: '' },
+  dotnet: { overview: null, loading: false, error: '' },
 })
 
 const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: string }> = {
@@ -38,6 +41,7 @@ const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: stri
   node: { heading: 'Node.js 官网版本', downloadLabel: '打开 Node.js 官网下载页' },
   java: { heading: 'Eclipse Temurin 参考版本', downloadLabel: '打开 Temurin 下载页' },
   python: { heading: 'Python.org 官方版本', downloadLabel: '打开 Python 官网下载页' },
+  dotnet: { heading: '.NET 官方支持线', downloadLabel: '打开 .NET 官网下载页' },
 }
 
 const loading = computed(() => localLoading.value || Object.values(remoteStates).some(state => state.loading))
@@ -48,7 +52,7 @@ async function refresh() {
   if (loading.value) return
   localLoading.value = true
   loadError.value = ''
-  const remotePromises = (['git', 'go', 'node', 'java', 'python'] as OfficialTool[]).map(tool => refreshOfficial(tool))
+  const remotePromises = (['git', 'go', 'node', 'java', 'python', 'dotnet'] as OfficialTool[]).map(tool => refreshOfficial(tool))
   try {
     tools.value = (await EnvCheckAPI.DetectAll()) ?? []
     everLoaded.value = true
@@ -74,8 +78,10 @@ async function refreshOfficial(tool: OfficialTool) {
       state.overview = adaptChannelOverview(await EnvCheckAPI.GetNodeOverview())
     } else if (tool === 'java') {
       state.overview = adaptChannelOverview(await EnvCheckAPI.GetJavaOverview())
-    } else {
+    } else if (tool === 'python') {
       state.overview = adaptChannelOverview(await EnvCheckAPI.GetPythonOverview())
+    } else {
+      state.overview = adaptChannelOverview(await EnvCheckAPI.GetDotNetOverview())
     }
   } catch (error) {
     state.error = `官网版本查询失败: ${getErrorMessage(error)}`
@@ -98,20 +104,40 @@ function adaptChannelOverview(overview: NativeOverview): PanelOverview {
   return { channels: overview.channels ?? [], isStale: overview.isStale, fetchedAt: overview.fetchedAt }
 }
 
+// openBCUForUninstall 委托 BCUninstaller 完成运行库卸载：Hanxi 只负责唤起它的窗口，
+// 卸载目标选择与确认全部在 BCU 内完成，本模块继续保持零执行面。
+async function openBCUForUninstall() {
+  try {
+    await BCUAPI.OpenWindow()
+    showToast('已打开 BCUninstaller：在列表中搜索 ".NET" 即可卸载对应运行时版本线')
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  }
+}
+
+async function revealPath(tool: ToolInfo) {
+  try {
+    await EnvCheckAPI.RevealToolPath(tool.name)
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  }
+}
+
 async function openDownloadPage(tool: OfficialTool) {
   try {
     if (tool === 'git') await EnvCheckAPI.OpenGitForWindowsDownloadPage()
     else if (tool === 'go') await EnvCheckAPI.OpenGoDownloadPage()
     else if (tool === 'node') await EnvCheckAPI.OpenNodeDownloadPage()
     else if (tool === 'java') await EnvCheckAPI.OpenJavaDownloadPage()
-    else await EnvCheckAPI.OpenPythonDownloadPage()
+    else if (tool === 'python') await EnvCheckAPI.OpenPythonDownloadPage()
+    else await EnvCheckAPI.OpenDotNetDownloadPage()
   } catch (error) {
     showToast(getErrorMessage(error))
   }
 }
 
 function isOfficialTool(name: string): name is OfficialTool {
-  return name === 'git' || name === 'go' || name === 'node' || name === 'java' || name === 'python'
+  return name === 'git' || name === 'go' || name === 'node' || name === 'java' || name === 'python' || name === 'dotnet'
 }
 
 const STATUS_META: Record<string, { text: string; icon: string; cls: string }> = {
@@ -119,6 +145,26 @@ const STATUS_META: Record<string, { text: string; icon: string; cls: string }> =
   missing: { text: '未安装', icon: '○', cls: 'chip-missing' },
   error: { text: '检测失败', icon: '!', cls: 'chip-error' },
   'store-stub': { text: '商店存根', icon: '⚠', cls: 'chip-stub' },
+}
+
+// joinVersions 并列展示 .NET 并排安装的版本列表（后端已按版本升序去重）。
+function joinVersions(versions?: string[] | null) {
+  return (versions ?? []).join(' / ')
+}
+
+// dotnetExtraLines 返回除版本行首位版本线外、本机仍并排存在的其他 .NET 版本线，
+// 避免"版本 10.0.400"被误读为机器上只有 10。
+function dotnetExtraLines(tool: ToolInfo): string[] {
+  const dotnet = tool.details?.dotnet
+  if (!dotnet) return []
+  const lineOf = (version: string) => /^(\d+\.\d+)/.exec(version)?.[1] ?? ''
+  const primary = lineOf(tool.version || '')
+  const lines = new Set<string>()
+  for (const version of [...(dotnet.runtimes ?? []), ...(dotnet.sdks ?? [])]) {
+    const line = lineOf(version)
+    if (line && line !== primary) lines.add(line)
+  }
+  return [...lines].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 }
 
 function metaOf(tool: ToolInfo) {
@@ -134,8 +180,9 @@ onMounted(refresh)
       <div>
         <h1>开发环境检测</h1>
         <p class="subtitle">
-          探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python 卡片同时查询官方或明确发行方版本：
-          每个通道只展示最新版本，本机已安装的版本线自动排在最前。npm、pnpm 仅提供可复制的手动升级命令，Hanxi 不直接执行安装或升级。
+          探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python、.NET 卡片同时查询官方或明确发行方版本：
+          每个通道只展示最新版本，本机已安装的版本线自动排在最前（.NET 卡片展示 SDK 优先版本，版本关系按运行时口径比较）。
+          npm、pnpm 仅提供可复制的手动升级命令，Hanxi 不直接执行安装或升级。
         </p>
       </div>
       <div class="btn-group">
@@ -158,12 +205,38 @@ onMounted(refresh)
           <span class="status-chip" :class="metaOf(tool).cls">{{ metaOf(tool).icon }} {{ metaOf(tool).text }}</span>
         </div>
         <div class="inst-meta">
-          <div class="meta-line"><span class="k">版本</span><code class="mono">{{ tool.version || '—' }}</code></div>
-          <div class="meta-line"><span class="k">路径</span><code class="mono tool-path" :title="tool.path || undefined">{{ tool.path || '—' }}</code></div>
+          <div class="meta-line">
+            <span class="k">版本</span>
+            <code class="mono">{{ tool.version || '—' }}</code>
+            <span v-if="tool.name === 'dotnet' && dotnetExtraLines(tool).length" class="extra-lines">另装版本线 {{ dotnetExtraLines(tool).join('、') }}</span>
+          </div>
+          <div class="meta-line">
+            <span class="k">路径</span>
+            <button
+              v-if="tool.path && tool.status === 'installed'"
+              class="mono tool-path path-link"
+              :title="`在资源管理器中定位 ${tool.path}`"
+              @click="revealPath(tool)"
+            >{{ tool.path }}</button>
+            <code v-else class="mono tool-path">{{ tool.path || '—' }}</code>
+          </div>
         </div>
         <div v-if="tool.details?.java" class="tool-details">
           <span>发行版：{{ tool.details.java.vendor || '未知' }}</span>
           <span v-if="tool.details.java.runtime">运行时：{{ tool.details.java.runtime }}</span>
+        </div>
+        <div v-if="tool.details?.dotnet" class="tool-details">
+          <span>SDK：{{ joinVersions(tool.details.dotnet.sdks) || '未安装（仅运行时）' }}</span>
+          <span>运行时：{{ joinVersions(tool.details.dotnet.runtimes) || '未知' }}</span>
+          <span v-if="tool.details.dotnet.desktops?.length">桌面运行时：{{ joinVersions(tool.details.dotnet.desktops) }}</span>
+          <span v-if="tool.details.dotnet.aspnet?.length">ASP.NET 运行时：{{ joinVersions(tool.details.dotnet.aspnet) }}</span>
+        </div>
+        <div v-if="tool.name === 'dotnet'" class="tool-actions">
+          <button
+            class="btn btn-secondary btn-small"
+            title="打开 BCUninstaller 自行选择卸载目标；注意卸载 8.0 线会导致依赖它的 BCUninstaller 自身无法启动"
+            @click="openBCUForUninstall"
+          >🗑 用 BCUninstaller 卸载 / 搜索运行库</button>
         </div>
         <div v-if="tool.hint" class="tool-hint" :class="tool.status === 'store-stub' ? 'hint-warn' : 'hint-error'">{{ tool.hint }}</div>
 
@@ -219,6 +292,9 @@ onMounted(refresh)
 .meta-line .k { color: var(--text-subtle); width: 36px; flex-shrink: 0; }
 .mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; overflow-wrap: anywhere; }
 .tool-path { min-width: 0; }
+.path-link { display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--border-color); text-underline-offset: 2px; }
+.path-link:hover { text-decoration-color: var(--accent); color: var(--accent); }
+.path-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tool-hint { font-size: 12px; border-radius: 5px; padding: 6px 8px; line-height: 1.5; }
 .tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
 .hint-warn { background: #fff8c5; color: #9a6700; }
@@ -228,7 +304,11 @@ onMounted(refresh)
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
 .btn-small { padding: 4px 12px; font-size: 12px; }
+.btn-secondary { background: transparent; color: var(--accent); border-color: var(--border-color); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); background: var(--bg-main); }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.extra-lines { margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: 10px; background: #ddf4ff; color: #0969da; font-size: 10px; }
 @media (max-width: 768px) { .header-row { flex-direction: column; } .btn-group { width: 100%; justify-content: space-between; } }
 @media (pointer: coarse) { .btn { min-height: 44px; } }
 @media (prefers-reduced-motion: reduce) { .tool-card, .btn { transition: none; } }
