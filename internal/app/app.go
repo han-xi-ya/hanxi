@@ -44,6 +44,9 @@ import (
 	"hanxi/internal/modules/portkill"
 	"hanxi/internal/modules/portscan"
 	"hanxi/internal/modules/publicip"
+	"hanxi/internal/modules/quicklook"
+	quicklookinstance "hanxi/internal/modules/quicklook/instance"
+	quicklookversion "hanxi/internal/modules/quicklook/version"
 	"hanxi/internal/modules/recordly"
 	recordlyinstance "hanxi/internal/modules/recordly/instance"
 	recordlyversion "hanxi/internal/modules/recordly/version"
@@ -98,6 +101,8 @@ func RegisterEvents() {
 	application.RegisterEvent[flclashinstance.Snapshot]("flclash:instance-state")
 	application.RegisterEvent[picliteversion.DownloadProgress]("piclite:version-download")
 	application.RegisterEvent[picliteinstance.Snapshot]("piclite:instance-state")
+	application.RegisterEvent[quicklookversion.DownloadProgress]("quicklook:version-download")
+	application.RegisterEvent[quicklookinstance.Snapshot]("quicklook:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 }
@@ -173,6 +178,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		recordly.New(plat),
 		papertodo.New(plat),
 		piclite.New(plat),
+		quicklook.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
