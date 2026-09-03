@@ -38,6 +38,9 @@ import (
 	"hanxi/internal/modules/papertodo"
 	papertodoinstance "hanxi/internal/modules/papertodo/instance"
 	papertodoversion "hanxi/internal/modules/papertodo/version"
+	"hanxi/internal/modules/piclite"
+	picliteinstance "hanxi/internal/modules/piclite/instance"
+	picliteversion "hanxi/internal/modules/piclite/version"
 	"hanxi/internal/modules/portkill"
 	"hanxi/internal/modules/portscan"
 	"hanxi/internal/modules/publicip"
@@ -93,6 +96,8 @@ func RegisterEvents() {
 	application.RegisterEvent[papertodoinstance.Snapshot]("papertodo:instance-state")
 	application.RegisterEvent[flclashversion.DownloadProgress]("flclash:version-download")
 	application.RegisterEvent[flclashinstance.Snapshot]("flclash:instance-state")
+	application.RegisterEvent[picliteversion.DownloadProgress]("piclite:version-download")
+	application.RegisterEvent[picliteinstance.Snapshot]("piclite:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 }
@@ -167,6 +172,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		flclash.New(plat),
 		recordly.New(plat),
 		papertodo.New(plat),
+		piclite.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
