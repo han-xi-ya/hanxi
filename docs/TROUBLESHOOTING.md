@@ -333,3 +333,15 @@ BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名�
   3. 未签名安装器的信任链完全押在双源 sha256 上：`SHA256SUMS.txt` 这类官方旁证资产要利用起来，格式解析容忍 GNU（`<hash>  <name>`）与 BSD（`<hash> *<name>`）两式；
   4. 安装器体积 ~214MB、装后 ~700MB，远大于既有 tauri 模块：下载超时给到分钟级，多版本目录设计前先量磁盘成本；
   5. Electron 冷启动到主窗口就绪实测 2~10s，`readyTimeout` 给 30s，勿照抄 tauri 的 20s。
+
+### 13. 托管 WPF 绿色单文件应用（PaperTodo）：GitHub digest 并非全量存在 + 自建单实例命令契约
+
+- **问题现象与错误原因**：按 ccswitch 模板（"缺官方 digest 的 release 不入列表"）集成 PaperTodo 会让版本表**整表为空**——实证 `api.github.com/repos/snownico0722/PaperTodo/releases` 全部资产的 JSON 中根本没有 `digest` 字段；GitHub 的资产 sha256 digest 是 2024 年起**逐批回刷**的可选字段，并非"所有仓库所有资产全量存在"，"实测全量覆盖"的先例结论不能外推。次要坑三枚：上游 tag 为 `v3.31/v3.3/v3.2.1` 混用 2~3 段，字典序会判 `v3.3 > v3.31`；历史上有 `v2.1rc1` 这类 rc tag（带 `prerelease:true`）；win7 变体资产 `…-win7BestEffort-win-x64-self-contained.exe` 与标准完整版同后缀，用"后缀匹配"筛选会误纳。
+- **排查过程**：curl 直连 GitHub API 核对最新与近 30 个 release 的资产 JSON（确认 digest 键缺失、未收录 winget、release body 无哈希）；读上游源码 `src/App.xaml.cs`、`src/SingleInstanceHelper.cs`、`src/StartupCommand.cs` 实证单实例契约为 WPF 自建协议——**裸名互斥体** `PaperTodo-SingleInstance-Mutex`（.NET `new Mutex(name)` 落 Local 会话命名空间，非 tauri 的 `{identifier}-sim` 惯例）+ 命名管道转发**命令行参数**，命令词表 `show|open / hide / toggle / new-todo / new-note / exit|quit`，空参默认 show。数据形态读 README：绿色单文件、`data.json` 等便签数据恒在 exe 同目录。
+- **正确做法与标准修复方案**：
+  - 完整性降级链（不照搬 digest 硬过滤）：下载 URL 恒由 repo+tag+**全名精确匹配**的资产名拼接（`^PaperTodo-v{版本}-win-x64-{self-contained|no-runtime}\.exe$`，锚定整名排除 win7）→ 字节数 == API `size` → MZ 魔数 → `versioninfo.FileVersion` 与目标版本数值核对（可读取而不符即拒，资源缺失降级放行并如实入档）→ 落盘后计算 sha256 写入 `hanxi-meta.json` 作下载指纹；解析层保留 digest 字段识别，上游哪天补上即自动升级为官方哈希硬校验。信任根如实承认：github.com TLS 与镜像运营方。
+  - tag 正则 `^v\d+(\.\d+){1,2}$` + `prerelease` 标志**双重**过滤；版本比较必须数值分段（service 层 versionCompare 同款）。
+  - 单目录覆盖布局（用户拍板）：便签数据与 exe 同目录，多版本目录=每次切版本都要迁移创作内容，风险远大于收益；固定 `versions/papertodo/`，升级=旧 exe 备份 `.bak` → 同目录临时文件原子 rename 换入 → 失败回滚；卸载只删 exe/meta，**数据原地保留**；ImportLocal 必须整套目录随行（与 ccswitch"只搬 exe"不同——数据就在 exe 旁边，只搬 exe 等于丢便签）。
+  - 生命周期全走官方命令信使：探测 `OpenMutex(SYNCHRONIZE, "PaperTodo-SingleInstance-Mutex")`；唤窗/收拢/退出 = 二次拉起携带 `show/hide/exit`（信使进程 Start+Release、不 Wait、不进 Job）；`Quit` 先 exit 信使 + 宽限轮询、超时才 JobObject 强杀——比 tauri 模板的 WM_CLOSE 方案更干净，且天然覆盖"优雅退出保存数据"。
+  - 不做空闲自动退出：桌面便签是常驻环境型工具，"3 分钟无人点就收走纸片"与产品语义相反（对照 ccswitch 的 idle 豁免逻辑，这里是整体不接线）。
+- **避坑防重犯建议**：把"上游给官方哈希"当模板常量前，先对目标仓库的 releases JSON 实证 `digest` 键存在性——按模块写死校验策略，别写进共享假设；WPF/.NET 应用的单实例实现五花八门（.NET 自建 Mutex+Pipe、tauri-plugin、Electron lock），互斥体名与唤窗协议必须读源码取实证，不可套 tauri `-sim/-sic` 命名规律猜；绿色应用"数据随 exe"这一条直接决定目录布局、卸载语义与导入语义，侦查清单第 5 项（数据落盘）在单文件应用上要升级为"数据文件清单+归属"逐问。

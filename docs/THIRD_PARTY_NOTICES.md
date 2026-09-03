@@ -41,3 +41,14 @@ Hanxi 可能在用户侧缓存原始官方 MSIXBundle 以支持安装和升级�
 Hanxi 对 Recordly 采用用户侧按需下载与独立进程托管：安装器直接来自上游 GitHub Releases（GitHub API digest sha256 + 官方 SHA256SUMS.txt 双源校验），经 NSIS `/S /D=` 静默安装进 Hanxi 托管目录，启动时注入官方开关 `RECORDLY_DISABLE_AUTO_UPDATES=1` 禁用上游自动更新；Hanxi 不修改、不静态链接、不内嵌 Recordly 源码或二进制，录制与剪辑功能均由原版 GUI 提供，录屏数据与配置存于 Recordly 自身的 `%APPDATA%\Recordly`。
 
 因 AGPL 附加条款与安装器未签名两点，本模块刻意不做任何"品牌融合"展示（不改名、不套用 Recordly 图标于 Hanxi 自有 UI），风险提示文案如实指向杀毒软件误拦可能。当前 Hanxi 仓库和安装包不包含 Recordly EXE。若未来改为预装或随 Hanxi 二进制再分发，发布流程必须落实 AGPL-3.0 完整许可证文本、对应完整源代码提供义务与上游署名要求，并重新评估未签名二进制的分发责任。
+
+## PaperTodo
+
+- 项目：PaperTodo（极简 Windows 桌面便签，WPF/.NET 10）
+- 上游仓库：https://github.com/snownico0722/PaperTodo
+- 许可证：PolyForm Noncommercial License 1.0.0 + PaperTodo Individual Professional Use Additional Permission 1.0（© 2026 snownico0722）——自然人可免费使用（含工作、自由职业等营利活动）；不得销售本程序或将其作为商业产品/服务提供；**普通公司未经商业许可不得统一安装、部署或向员工分发**；教育、慈善、公共研究与政府机构可免费使用与内部部署；非商业性修改与分发必须保留许可证及原项目声明。
+- 发行方式：官方 GitHub Releases 绿色单文件 exe——`self-contained`（内嵌 .NET 10 运行时）与 `no-runtime`（需系统安装 .NET 10 桌面运行时）双变体，无安装器、无自动更新器。
+
+Hanxi 对 PaperTodo 采用用户侧按需下载与独立进程托管：exe 直接来自上游 GitHub Releases（实证上游资产未提供 GitHub 官方 digest，完整性采用镜像直链锚定 + 字节数 + MZ/PE 版本核对 + sha256 下载指纹存档的多层兜底，详见 docs/TROUBLESHOOTING.md），唤窗/收拢/退出全部走上游 SingleInstanceHelper 官方单实例命令通道（show/hide/exit）；Hanxi 不修改、不静态链接、不内嵌 PaperTodo 源码或二进制，便签在原版纸片窗口内编辑，数据（data.json、note-assets.lmdb、plugins/）存于 Hanxi 托管目录且卸载时原地保留。
+
+因 PolyForm Noncommercial 为非商业许可证，本模块的合规红线是**不捆绑、不再分发**：Hanxi 仓库与安装包不包含任何 PaperTodo 二进制，下载行为全部由用户本机直接对上游发起。若未来改为预装或随 Hanxi 再分发，必须先取得上游作者授权（"普通公司统一部署"正是该许可证明文禁止的形态），并随附 PaperTodo 版权与许可证完整声明。
