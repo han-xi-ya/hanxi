@@ -265,7 +265,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		a.Quit()
 	})
 	tray.SetMenu(trayMenu)
-	tray.OnDoubleClick(func() {
+	// 单击托盘图标切换主窗口显隐：隐藏时显示并聚焦，可见时隐藏到托盘
+	tray.OnClick(func() {
 		if win.IsVisible() {
 			win.Hide()
 		} else {
