@@ -35,6 +35,16 @@
  * @property {string} modTime
  */
 
+/**
+ * TrayMenuOption 设置页可选的托盘菜单候选项（托管命令与扩展页面导航）。
+ * 自定义外部程序不属候选目录，由前端构造 type=exe 条目随 SetTrayMenu 提交。
+ * @typedef {Object} TrayMenuOption
+ * @property {string} type - "command" | "route"
+ * @property {string} ref - command: "moduleId/commandId"；route: 前端路由
+ * @property {string} label - 默认显示名
+ * @property {string} moduleName - 所属模块（页面导航为空）
+ */
+
 // In interface mode, this file is likely to contain just comments.
 // We add a dummy export statement to ensure it is recognised as an ES module.
 export {};

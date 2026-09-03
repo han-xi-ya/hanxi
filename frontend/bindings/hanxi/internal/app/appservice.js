@@ -15,6 +15,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as extapi$0 from "../extapi/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as settings$0 from "../settings/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -61,6 +64,14 @@ export function GetNavs() {
 }
 
 /**
+ * GetTrayMenu 返回当前托盘右键菜单配置条目（按保存顺序）。
+ * @returns {$CancellablePromise<settings$0.TrayMenuItem[] | null>}
+ */
+export function GetTrayMenu() {
+    return $Call.ByID(2718414818);
+}
+
+/**
  * ListLogFiles 获取日志目录下的所有日志文件列表（按时间倒序排列）
  * @returns {$CancellablePromise<$models.LogFileInfo[] | null>}
  */
@@ -74,6 +85,14 @@ export function ListLogFiles() {
  */
 export function ListModules() {
     return $Call.ByID(3944382308);
+}
+
+/**
+ * ListTrayMenuOptions 返回全部可启用的托盘菜单候选项（仅收集已启用模块）。
+ * @returns {$CancellablePromise<$models.TrayMenuOption[] | null>}
+ */
+export function ListTrayMenuOptions() {
+    return $Call.ByID(1683509678);
 }
 
 /**
@@ -107,6 +126,14 @@ export function OpenPath(targetPath) {
  */
 export function OpenSystemEnvSettings() {
     return $Call.ByID(1340710676);
+}
+
+/**
+ * PickExeFile 弹出系统文件选择框选取外部程序，返回绝对路径（用户取消时为空串）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function PickExeFile() {
+    return $Call.ByID(3033369884);
 }
 
 /**
@@ -153,4 +180,22 @@ export function SetGeneralSettings(gen) {
  */
 export function SetModuleEnabled(id, enabled) {
     return $Call.ByID(3661323466, id, enabled);
+}
+
+/**
+ * SetTrayMenu 校验并持久化托盘菜单配置，保存成功后立即重建右键菜单热生效。
+ * @param {settings$0.TrayMenuItem[] | null} items
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetTrayMenu(items) {
+    return $Call.ByID(1571635758, items);
+}
+
+/**
+ * SetTrayRebuilder 注入托盘菜单热重建回调，仅由装配根（app.New）在托盘创建后调用。
+ * @param {any} fn
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetTrayRebuilder(fn) {
+    return $Call.ByID(178488523, fn);
 }

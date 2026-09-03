@@ -150,6 +150,7 @@ declare module "@wailsio/runtime" {
             "recordly:version-download": version$11.DownloadProgress;
             "snipaste:instance-state": instance$13.Snapshot;
             "snipaste:version-download": version$12.DownloadProgress;
+            "tray:navigate": string;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
         }
