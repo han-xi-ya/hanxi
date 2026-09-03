@@ -121,6 +121,7 @@ const activeRoute = ref('/')
 const backendReady = ref(false)
 let unlistenExtChanged: (() => void) | null = null
 let unlistenNotify: (() => void) | null = null
+let unlistenTrayNav: (() => void) | null = null
 
 async function refreshNavs() {
   try {
@@ -181,6 +182,13 @@ onMounted(async () => {
       pushToast(event.data)
     }
   })
+
+  // 监听托盘右键菜单的页面直达请求（载荷为前端路由）
+  unlistenTrayNav = Events.On('tray:navigate', (event: { data?: string }) => {
+    if (typeof event?.data === 'string' && event.data) {
+      navigateTo(event.data)
+    }
+  })
 })
 
 onUnmounted(() => {
@@ -191,6 +199,10 @@ onUnmounted(() => {
   if (unlistenNotify) {
     unlistenNotify()
     unlistenNotify = null
+  }
+  if (unlistenTrayNav) {
+    unlistenTrayNav()
+    unlistenTrayNav = null
   }
 })
 </script>
