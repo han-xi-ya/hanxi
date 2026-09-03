@@ -33,6 +33,23 @@ type WechatConfig struct {
 	BaseURL               string `json:"baseUrl"`
 }
 
+// 托盘菜单项类型常量。
+const (
+	TrayItemCommand = "command" // 托管模块启动命令，Ref = "moduleId/commandId"
+	TrayItemRoute   = "route"   // 打开主窗口模块页面，Ref = 前端路由
+	TrayItemExe     = "exe"     // 启动任意外部程序，Path/Args 自描述
+)
+
+// TrayMenuItem 托盘右键菜单自定义条目（配置切片顺序即菜单显示顺序）。
+type TrayMenuItem struct {
+	Type    string `json:"type"`    // "command" | "route" | "exe"
+	Ref     string `json:"ref"`     // command: "moduleId/commandId"；route: 前端路由；exe 留空
+	Path    string `json:"path"`    // exe: 可执行文件绝对路径；其余留空
+	Args    string `json:"args"`    // exe: 启动参数（空格分隔，支持一对引号包裹含空格参数）；其余留空
+	Label   string `json:"label"`   // 菜单显示名；留空则回退默认名（命令/页面/程序名）
+	Enabled bool   `json:"enabled"` // 是否显示在托盘右键菜单
+}
+
 // AppSettings 应用全局配置模型
 type AppSettings struct {
 	Theme          string            `json:"theme"`          // "light" | "dark" | "system"
@@ -42,6 +59,7 @@ type AppSettings struct {
 	LogRetainDays  int               `json:"logRetainDays"`  // 日志保留天数（默认 7）
 	Modules        map[string]bool   `json:"modules"`        // 各模块启用状态 map[moduleId]enabled
 	LanRemarks     map[string]string `json:"lanRemarks"`     // 局域网 IP/MAC 备注 map[identifier]remark
+	TrayMenu       []TrayMenuItem    `json:"trayMenu"`       // 托盘右键菜单自定义条目（有序）
 	Wechat         WechatConfig      `json:"wechat"`         // 微信机器人遗留配置（向下兼容）
 	WechatAccounts []WechatAccount   `json:"wechatAccounts"` // 微信多账号列表
 }
@@ -55,6 +73,7 @@ func DefaultSettings() AppSettings {
 		LogRetainDays:  7,
 		Modules:        make(map[string]bool),
 		LanRemarks:     make(map[string]string),
+		TrayMenu:       make([]TrayMenuItem, 0),
 		Wechat: WechatConfig{
 			BaseURL: "https://ilinkai.weixin.qq.com",
 		},
@@ -105,6 +124,9 @@ func (s *Store) load() error {
 	if data.WechatAccounts == nil {
 		data.WechatAccounts = make([]WechatAccount, 0)
 	}
+	if data.TrayMenu == nil {
+		data.TrayMenu = make([]TrayMenuItem, 0)
+	}
 
 	// 平滑迁移：若旧版单账号存在有效凭据且多账号列表为空，自动迁移为多账号中的第一项
 	if data.Wechat.BotToken != "" && len(data.WechatAccounts) == 0 {
@@ -148,6 +170,7 @@ func (s *Store) Get() AppSettings {
 	for k, v := range s.data.LanRemarks {
 		cp.LanRemarks[k] = v
 	}
+	cp.TrayMenu = append(make([]TrayMenuItem, 0, len(s.data.TrayMenu)), s.data.TrayMenu...)
 	return cp
 }
 
@@ -305,6 +328,26 @@ func (s *Store) DeleteWechatAccount(id string) error {
 				BaseURL: "https://ilinkai.weixin.qq.com",
 			}
 		}
+	})
+}
+
+// GetTrayMenu 获取托盘右键菜单条目配置副本（按保存顺序）
+func (s *Store) GetTrayMenu() []TrayMenuItem {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	res := make([]TrayMenuItem, len(s.data.TrayMenu))
+	copy(res, s.data.TrayMenu)
+	return res
+}
+
+// SetTrayMenu 保存托盘右键菜单条目配置并原子落盘
+func (s *Store) SetTrayMenu(items []TrayMenuItem) error {
+	if items == nil {
+		items = make([]TrayMenuItem, 0)
+	}
+	return s.Update(func(cfg *AppSettings) {
+		cfg.TrayMenu = items
 	})
 }
 
