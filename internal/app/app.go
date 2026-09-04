@@ -227,7 +227,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		application.NewService(appSvc),
 		application.NewService(notify.NewNotificationService()),
 	}
-	services = append(services, registry.EnabledServices()...)
+	services = append(services, registry.AllServices()...)
 
 	// 自动预初始化微信等常驻监听型后台模块，确保即便未打开对应前端页面也能实时监听入站消息
 	_ = registry.EnsureActive("wechat")

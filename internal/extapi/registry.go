@@ -2,6 +2,7 @@ package extapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"runtime"
@@ -11,13 +12,19 @@ import (
 	"sync"
 )
 
+var (
+	ErrUnknownModule  = errors.New("registry: unknown module")
+	ErrModuleDisabled = errors.New("registry: module disabled")
+)
+
 // StateStorage 状态持久化抽象接口
 type StateStorage interface {
 	IsModuleEnabled(moduleId string, defaultEnabled bool) bool
 	SetModuleEnabled(moduleId string, enabled bool) error
 }
 
-// ModuleWrapper 包装具体模块与其运行时状态
+// ModuleWrapper 包装具体模块与其运行时状态。
+// mu 统一保护 Enabled、initialized 以及生命周期转换。
 type ModuleWrapper struct {
 	Module      Module
 	Enabled     bool
@@ -61,108 +68,134 @@ func (r *Registry) Register(exts ...Module) error {
 		}
 
 		r.modules[id] = &ModuleWrapper{
-			Module:      e,
-			Enabled:     enabled,
-			initialized: false,
+			Module:  e,
+			Enabled: enabled,
 		}
 	}
 	return nil
 }
 
+func (r *Registry) wrapper(id string) (*ModuleWrapper, bool) {
+	r.mu.RLock()
+	wrapper, ok := r.modules[id]
+	r.mu.RUnlock()
+	return wrapper, ok
+}
+
+func (r *Registry) wrappers() []*ModuleWrapper {
+	r.mu.RLock()
+	out := make([]*ModuleWrapper, 0, len(r.modules))
+	for _, wrapper := range r.modules {
+		out = append(out, wrapper)
+	}
+	r.mu.RUnlock()
+	return out
+}
+
 // EnsureActive 确保指定模块已完成懒初始化。在模块页面进入或业务接口调用前统一调用。
 func (r *Registry) EnsureActive(moduleID string) error {
-	r.mu.RLock()
-	wrapper, ok := r.modules[moduleID]
-	r.mu.RUnlock()
-
-	if !ok || !wrapper.Enabled {
-		return nil
+	moduleID = strings.TrimSpace(moduleID)
+	wrapper, ok := r.wrapper(moduleID)
+	if !ok {
+		return fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
 	}
 
 	wrapper.mu.Lock()
 	defer wrapper.mu.Unlock()
 
-	if !wrapper.initialized {
-		if err := wrapper.Module.OnInit(context.Background()); err != nil {
-			return fmt.Errorf("registry: init module %q failed: %w", moduleID, err)
-		}
-		wrapper.initialized = true
+	if !wrapper.Enabled {
+		return fmt.Errorf("%w %q", ErrModuleDisabled, moduleID)
 	}
+	if wrapper.initialized {
+		return nil
+	}
+	if err := wrapper.Module.OnInit(context.Background()); err != nil {
+		return fmt.Errorf("registry: init module %q failed: %w", moduleID, err)
+	}
+	wrapper.initialized = true
 	return nil
 }
 
 // List 返回全部扩展元信息（含启用状态与初始化状态）。
 func (r *Registry) List() []ModuleInfo {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	out := make([]ModuleInfo, 0, len(r.modules))
-	for _, w := range r.modules {
-		info := w.Module.Info()
-		info.Enabled = w.Enabled
-		info.Initialized = w.initialized
+	wrappers := r.wrappers()
+	out := make([]ModuleInfo, 0, len(wrappers))
+	for _, wrapper := range wrappers {
+		wrapper.mu.Lock()
+		info := wrapper.Module.Info()
+		info.Enabled = wrapper.Enabled
+		info.Initialized = wrapper.initialized
+		wrapper.mu.Unlock()
 		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
-// GetEnabledNavs 返回所有已启用模块的导航条目，按 Order 全局排序。
+// GetEnabledNavs 返回所有已启用模块的导航条目，按稳定键全局排序。
 func (r *Registry) GetEnabledNavs() []NavEntry {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
+	wrappers := r.wrappers()
 	var out []NavEntry
-	for _, w := range r.modules {
-		if !w.Enabled {
-			continue
+	for _, wrapper := range wrappers {
+		wrapper.mu.Lock()
+		if wrapper.Enabled {
+			out = append(out, wrapper.Module.Nav()...)
 		}
-		out = append(out, w.Module.Nav()...)
+		wrapper.mu.Unlock()
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Order < out[j].Order })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Order != out[j].Order {
+			return out[i].Order < out[j].Order
+		}
+		if out[i].Section != out[j].Section {
+			return out[i].Section < out[j].Section
+		}
+		if out[i].Route != out[j].Route {
+			return out[i].Route < out[j].Route
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out
 }
 
-// EnabledServices 返回所有模块的 wails service 用于静态注册与路由绑定。
-func (r *Registry) EnabledServices() []Service {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
+// AllServices 返回所有模块的 Wails service，用于启动时静态注册与绑定生成。
+// 服务被静态注册不代表对应模块已启用或已完成运行时初始化。
+func (r *Registry) AllServices() []Service {
+	wrappers := r.wrappers()
 	var out []Service
-	for _, w := range r.modules {
-		out = append(out, w.Module.Services()...)
+	for _, wrapper := range wrappers {
+		out = append(out, wrapper.Module.Services()...)
 	}
 	return out
 }
 
 // IsEnabled 查询扩展启用状态。
 func (r *Registry) IsEnabled(id string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if w, ok := r.modules[id]; ok {
-		return w.Enabled
+	wrapper, ok := r.wrapper(id)
+	if !ok {
+		return false
 	}
-	return false
+	wrapper.mu.Lock()
+	defer wrapper.mu.Unlock()
+	return wrapper.Enabled
 }
 
 // IsActive 查询模块是否已被懒加载激活。
 func (r *Registry) IsActive(id string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if w, ok := r.modules[id]; ok {
-		return w.initialized
+	wrapper, ok := r.wrapper(id)
+	if !ok {
+		return false
 	}
-	return false
+	wrapper.mu.Lock()
+	defer wrapper.mu.Unlock()
+	return wrapper.initialized
 }
 
 // SetEnabled 启停扩展。停用时立即触发 OnDestroy 销毁内部资源并向操作系统归还内存。
 func (r *Registry) SetEnabled(id string, enabled bool) error {
-	r.mu.Lock()
-	wrapper, ok := r.modules[id]
-	r.mu.Unlock()
-
+	wrapper, ok := r.wrapper(id)
 	if !ok {
-		return fmt.Errorf("registry: unknown extension %q", id)
+		return fmt.Errorf("%w %q", ErrUnknownModule, id)
 	}
 
 	wrapper.mu.Lock()
@@ -201,26 +234,32 @@ type TrayCommandInfo struct {
 // ListTrayCommands 聚合所有已启用模块实现的托盘命令（按模块 ID 升序，命令保持声明顺序）。
 func (r *Registry) ListTrayCommands() []TrayCommandInfo {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	ids := make([]string, 0, len(r.modules))
-	for id := range r.modules {
+	wrappers := make(map[string]*ModuleWrapper, len(r.modules))
+	for id, wrapper := range r.modules {
 		ids = append(ids, id)
+		wrappers[id] = wrapper
 	}
+	r.mu.RUnlock()
 	sort.Strings(ids)
 
 	var out []TrayCommandInfo
 	for _, id := range ids {
-		w := r.modules[id]
-		if !w.Enabled {
+		wrapper := wrappers[id]
+		wrapper.mu.Lock()
+		if !wrapper.Enabled {
+			wrapper.mu.Unlock()
 			continue
 		}
-		provider, ok := w.Module.(TrayCommandsProvider)
+		provider, ok := wrapper.Module.(TrayCommandsProvider)
 		if !ok {
+			wrapper.mu.Unlock()
 			continue
 		}
-		name := w.Module.Info().Name
-		for _, cmd := range provider.TrayCommands() {
+		name := wrapper.Module.Info().Name
+		commands := provider.TrayCommands()
+		wrapper.mu.Unlock()
+		for _, cmd := range commands {
 			out = append(out, TrayCommandInfo{
 				Key:        id + "/" + cmd.ID,
 				ModuleID:   id,
@@ -240,22 +279,20 @@ func (r *Registry) RunTrayCommand(ctx context.Context, key string) error {
 	if !ok {
 		return fmt.Errorf("registry: invalid tray command key %q", key)
 	}
-
-	r.mu.RLock()
-	w := r.modules[moduleID]
-	r.mu.RUnlock()
-	if w == nil || !w.Enabled {
-		return fmt.Errorf("registry: module %q unknown or disabled", moduleID)
-	}
 	if err := r.EnsureActive(moduleID); err != nil {
 		return err
 	}
 
-	provider, ok := w.Module.(TrayCommandsProvider)
+	wrapper, _ := r.wrapper(moduleID)
+	wrapper.mu.Lock()
+	provider, ok := wrapper.Module.(TrayCommandsProvider)
 	if !ok {
+		wrapper.mu.Unlock()
 		return fmt.Errorf("registry: module %q provides no tray commands", moduleID)
 	}
-	for _, cmd := range provider.TrayCommands() {
+	commands := provider.TrayCommands()
+	wrapper.mu.Unlock()
+	for _, cmd := range commands {
 		if cmd.ID == cmdID && cmd.Run != nil {
 			return cmd.Run(ctx)
 		}
@@ -272,19 +309,16 @@ func splitTrayKey(key string) (moduleID, cmdID string, ok bool) {
 	return parts[0], parts[1], true
 }
 
-// ShutdownAll 应用退出时清理所有已初始化的模块
+// ShutdownAll 应用退出时清理所有已初始化的模块。
 func (r *Registry) ShutdownAll() {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	for _, w := range r.modules {
-		w.mu.Lock()
-		if w.initialized {
-			if err := w.Module.OnDestroy(); err != nil {
+	for _, wrapper := range r.wrappers() {
+		wrapper.mu.Lock()
+		if wrapper.initialized {
+			if err := wrapper.Module.OnDestroy(); err != nil {
 				slog.Warn("registry: ShutdownAll OnDestroy failed", "err", err)
 			}
-			w.initialized = false
+			wrapper.initialized = false
 		}
-		w.mu.Unlock()
+		wrapper.mu.Unlock()
 	}
 }
