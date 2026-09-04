@@ -383,7 +383,7 @@ async function openRepo() {
 
 // ---------- 生命周期 ----------
 onMounted(async () => {
-  unlistenDownload = Events.On('ddnsgo:version-download', (event: any) => {
+  unlistenDownload = Events.On('ddnsgo:version-download', (event) => {
     const t = event.data as DownloadProgress
     if (!t || !t.version) return
     downloading.value = { ...downloading.value, [t.version]: t }
@@ -397,14 +397,14 @@ onMounted(async () => {
     }
   })
 
-  unlistenState = Events.On('ddnsgo:instance-state', (event: any) => {
+  unlistenState = Events.On('ddnsgo:instance-state', (event) => {
     const s = event.data as Snapshot
     if (!s) return
     snap.value = s
     if (s.state !== 'running') uptimeSec.value = 0
   })
 
-  unlistenLog = Events.On('ddnsgo:instance-log', (event: any) => {
+  unlistenLog = Events.On('ddnsgo:instance-log', (event) => {
     const entry = event.data as { line?: string }
     if (entry?.line) appendLog(entry.line)
   })

@@ -454,7 +454,7 @@ function stopTimers() {
 // ---------- 生命周期 ----------
 onMounted(async () => {
   loadColWidths()
-  unlistenDownload = Events.On('everything:download', (event: any) => {
+  unlistenDownload = Events.On('everything:download', (event) => {
     const t = event.data as DownloadTicket
     if (!t || !t.component) return
     if (t.component === 'es') {
@@ -477,7 +477,7 @@ onMounted(async () => {
     }
   })
 
-  unlistenState = Events.On('everything:instance-state', (event: any) => {
+  unlistenState = Events.On('everything:instance-state', (event) => {
     const s = event.data as Snapshot
     if (!s) return
     snap.value = s

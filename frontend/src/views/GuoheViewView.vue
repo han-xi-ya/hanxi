@@ -296,7 +296,7 @@ async function openSite() {
 
 // ---------- 生命周期 ----------
 onMounted(async () => {
-  unlistenDownload = Events.On('guoheview:version-download', (event: any) => {
+  unlistenDownload = Events.On('guoheview:version-download', (event) => {
     const t = event.data as DownloadProgress
     if (!t || !t.version) return
     downloading.value = { ...downloading.value, [t.version]: t }
@@ -310,7 +310,7 @@ onMounted(async () => {
     }
   })
 
-  unlistenState = Events.On('guoheview:instance-state', (event: any) => {
+  unlistenState = Events.On('guoheview:instance-state', (event) => {
     const s = event.data as Snapshot
     if (!s) return
     snap.value = s

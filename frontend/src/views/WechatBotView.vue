@@ -586,7 +586,7 @@ onMounted(async () => {
   scrollToBottom()
 
   // 监听 Token 刷新事件
-  unlistenContextToken = Events.On('wechat:context-token-updated', (ev: any) => {
+  unlistenContextToken = Events.On('wechat:context-token-updated', (ev) => {
     loadAccounts()
     const payload = ev?.data
     if (payload?.accountId) {
@@ -602,7 +602,7 @@ onMounted(async () => {
   })
 
   // 监听入站消息
-  unlistenMessage = Events.On('wechat:message-received', (ev: any) => {
+  unlistenMessage = Events.On('wechat:message-received', (ev) => {
     const msg = ev?.data as InboundMessage | undefined
     if (msg) {
       const targetAccId = msg.accountId || selectedAccountId.value || (accounts.value[0]?.id ?? '')

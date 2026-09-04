@@ -6,8 +6,8 @@ export function getErrorMessage(err: unknown): string {
   if (typeof err === 'string') return err
   if (err instanceof Error) return err.message
   if (typeof err === 'object') {
-    const obj = err as Record<string, any>
-    if (obj.message && typeof obj.message === 'string') {
+    const obj = err as Record<string, unknown>
+    if (typeof obj.message === 'string') {
       return obj.message
     }
     try {

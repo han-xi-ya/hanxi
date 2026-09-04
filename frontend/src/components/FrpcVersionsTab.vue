@@ -125,7 +125,7 @@ async function removeVersion(v: FrpVersionInfo) {
 }
 
 onMounted(async () => {
-  unlisten = Events.On('frpc:version-download', (event: any) => {
+  unlisten = Events.On('frpc:version-download', (event) => {
     const p = event.data as DownloadProgress
     if (!p || !p.version) return
     downloading.value = { ...downloading.value, [p.version]: p }
