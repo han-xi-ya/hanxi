@@ -35,11 +35,36 @@ tasks:
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
 
-  check:
-    summary: "Static checks: vet + build for Windows (platform decision: Windows-only)"
+  generate:
+    summary: Regenerates dependency metadata and frontend bindings
     cmds:
-      - go vet ./ ./cmd/... ./internal/...
-      - go build ./ ./cmd/... ./internal/...
+      - task: common:go:mod:tidy
+      - task: common:generate:bindings
 
-  
+  verify:tidy:
+    summary: Verifies go.mod and go.sum are tidy
+    cmds:
+      - task: common:go:mod:tidy
+      - git diff --exit-code -- go.mod go.sum
+
+  verify:bindings:
+    summary: Verifies committed Wails bindings are current
+    cmds:
+      - task: common:generate:bindings
+      - git diff --exit-code -- frontend/bindings
+
+  check:
+    summary: Runs repository quality checks
+    cmds:
+      - powershell -NoProfile -Command "if ((gofmt -l cmd internal embedassets.go | Measure-Object).Count -gt 0) { gofmt -l cmd internal embedassets.go; throw '发现未 gofmt 的 Go 文件' }"
+      - go vet ./...
+      - go test -count=1 ./...
+      - task: common:frontend:run
+        vars:
+          SCRIPT: typecheck
+      - task: common:frontend:run
+        vars:
+          SCRIPT: build
+      - task: verify:tidy
+      - task: verify:bindings
 

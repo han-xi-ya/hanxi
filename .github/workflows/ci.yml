@@ -1,7 +1,15 @@
 name: CI
 
 on:
+  pull_request:
+  push:
+    branches:
+      - main
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check-and-test:
@@ -15,40 +23,56 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26.x'
           cache: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.12.0'
           cache: 'npm'
           cache-dependency-path: 'frontend/package-lock.json'
 
       - name: Install Wails v3 CLI & go-task
         shell: pwsh
         run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-          go install github.com/go-task/task/v3/cmd/task@latest
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.10
+          go install github.com/go-task/task/v3/cmd/task@v3.53.1
 
       - name: Install Frontend Dependencies
         shell: pwsh
+        run: npm --prefix frontend ci
+
+      - name: Verify Go Module Metadata
+        shell: pwsh
         run: |
-          cd frontend
-          npm ci
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Verify Wails Bindings
+        shell: pwsh
+        run: |
+          wails3 generate bindings -clean=true -i ./cmd/hanxi ./internal/...
+          git diff --exit-code -- frontend/bindings
 
       - name: Frontend Type Check & Build
         shell: pwsh
         run: |
-          cd frontend
-          npm run build
+          npm --prefix frontend run typecheck
+          npm --prefix frontend run build
 
-      - name: Go Test
+      - name: Go Vet & Test
         shell: pwsh
+        env:
+          CGO_ENABLED: '1'
         run: |
-          go test -v -race ./...
+          go vet ./...
+          go test -count=1 -race ./...
 
       - name: Production Binary Build Verification
         shell: pwsh
-        run: |
-          task build
+        run: task build
+
+      - name: Verify Clean Source Tree
+        shell: pwsh
+        run: git diff --exit-code

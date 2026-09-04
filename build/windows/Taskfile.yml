@@ -34,7 +34,6 @@ tasks:
     summary: Builds the application using native Go cross-compilation
     internal: true
     deps:
-      - task: common:go:mod:tidy
       - task: common:build:frontend
         vars:
           BUILD_FLAGS:
@@ -53,9 +52,9 @@ tasks:
           ARCH: '{{.ARCH}}'
       - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" ./cmd/hanxi'
       # 清理主包目录与根部残留的 syso（Go 只自动链接 main 包目录内的 .syso）
-      - cmd: powershell -Command "if (Test-Path ../cmd/hanxi/wails_windows_amd64.syso) { Remove-Item ../cmd/hanxi/wails_windows_amd64.syso }; if (Test-Path ../wails_windows_amd64.syso) { Remove-Item ../wails_windows_amd64.syso }"
+      - cmd: powershell -Command "if (Test-Path '{{.ROOT_DIR}}/cmd/hanxi/wails_windows_{{.ARCH | default ARCH}}.syso') { Remove-Item '{{.ROOT_DIR}}/cmd/hanxi/wails_windows_{{.ARCH | default ARCH}}.syso' }; if (Test-Path '{{.ROOT_DIR}}/wails_windows_{{.ARCH | default ARCH}}.syso') { Remove-Item '{{.ROOT_DIR}}/wails_windows_{{.ARCH | default ARCH}}.syso' }"
         platforms: [windows]
-      - cmd: rm -f ../cmd/hanxi/wails_windows_amd64.syso ../wails_windows_amd64.syso
+      - cmd: rm -f ../cmd/hanxi/wails_windows_{{.ARCH | default ARCH}}.syso ../wails_windows_{{.ARCH | default ARCH}}.syso
         platforms: [linux, darwin]
     vars:
       # 去符号表/DWARF (-s -w)：panic 栈/运行时报错仍完整 (Go pclntab 不依赖符号表)，

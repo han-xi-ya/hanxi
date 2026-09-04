@@ -86,12 +86,6 @@ tasks:
       - dist/**/*
     deps:
       - task: install:frontend:deps
-      - task: generate:bindings
-        vars:
-          BUILD_FLAGS:
-            ref: .BUILD_FLAGS
-          OBFUSCATED:
-            ref: .OBFUSCATED
     cmds:
       - task: frontend:run
         vars:
@@ -176,8 +170,6 @@ tasks:
   generate:bindings:
     summary: Generates bindings for the frontend
     run: once
-    deps:
-      - task: go:mod:tidy
     sources:
       - "**/*.[jt]s"
       - exclude: frontend/**/*

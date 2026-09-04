@@ -21,20 +21,20 @@ if %errorlevel% neq 0 (
 
 where go >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Go not found. Please install Go 1.24+.
+    echo [ERROR] Go not found. Please install Go 1.26+.
     goto :error
 )
 
 where task >nul 2>&1
 if %errorlevel% neq 0 (
     echo [INFO] go-task not found, installing...
-    go install github.com/go-task/task/v3/cmd/task@latest
+    go install github.com/go-task/task/v3/cmd/task@v3.53.1
 )
 
 where wails3 >nul 2>&1
 if %errorlevel% neq 0 (
     echo [INFO] Wails v3 CLI not found, installing...
-    go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+    go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.10
 )
 
 :: 3. Build frontend and backend
