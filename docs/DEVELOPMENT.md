@@ -11,10 +11,10 @@ Hanxi 采用 **Go + Wails 3 + Vue 3 (TypeScript/Vite)** 架构，仅面向 Windo
 | 工具 / 依赖 | 最低版本 | 说明 |
 |---|---|---|
 | **操作系统** | Windows 10 (22H2+) / Windows 11 x64 | 纯 Windows 原生调用 |
-| **Go** | ≥ 1.22（推荐最新 1.26） | 核心后端与平台 API 调用 |
-| **Node.js** | ≥ 20.x（推荐 22.x LTS） | 前端 Vite 构建与 TypeScript 编译 |
-| **Wails 3 CLI** | `v3.0.0-beta.10`+ | 负责 bindings 生成与 dev 热重载编排 |
-| **Taskfile CLI** | `v3.x` | 统一任务编排执行器 |
+| **Go** | ≥ 1.26 | 核心后端与平台 API 调用 |
+| **Node.js** | ≥ 20.19 或 ≥ 22.12 | 前端 Vite 构建与 TypeScript 编译 |
+| **Wails 3 CLI** | `v3.0.0-beta.10` | 负责 bindings 生成与 dev 热重载编排 |
+| **Taskfile CLI** | `v3.53.1` | 统一任务编排执行器 |
 
 ### 安装全局 CLI 工具
 
@@ -22,10 +22,10 @@ Hanxi 采用 **Go + Wails 3 + Vue 3 (TypeScript/Vite)** 架构，仅面向 Windo
 
 ```powershell
 # 1. 安装 Wails v3 CLI
-go install github.com/wailsapp/wails/v3/cmd/wails3@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.10
 
 # 2. 安装 go-task
-go install github.com/go-task/task/v3/cmd/task@latest
+go install github.com/go-task/task/v3/cmd/task@v3.53.1
 ```
 
 > **提示**：请确保 `%GOPATH%/bin`（通常为 `C:\Users\<你的用户名>\go\bin`）已加入系统环境变量 `PATH`。

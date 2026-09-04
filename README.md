@@ -136,13 +136,13 @@ Hanxi 将 16 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 ### 前置要求
 
 - **操作系统**：Windows 10 (22H2+) / Windows 11 x64
-- **Go** ≥ 1.24
-- **Node.js** ≥ 20.x
+- **Go** ≥ 1.26
+- **Node.js** ≥ 20.19（或 ≥ 22.12）
 - **Wails 3 CLI** & **Task**：
 
 ```powershell
-go install github.com/wailsapp/wails/v3/cmd/wails3@latest
-go install github.com/go-task/task/v3/cmd/task@latest
+go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.10
+go install github.com/go-task/task/v3/cmd/task@v3.53.1
 ```
 
 ### 安装依赖
