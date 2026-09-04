@@ -19,7 +19,7 @@
 | **M6: 极致优化与便携交付** | 按需懒加载零开销架构、关闭最小化托盘常驻、单二进制构建 | 🟢 已达成 | `bin/hanxi.exe`、零内存泄漏保证 |
 | **M7: 桌面协同与局域网套件** | WiFi 密码查看、局域网文件快传、极客随手记（快传联动）、全局通知中心、品牌断代迁移 | 🟢 已达成 | `modules/wifi`、`modules/fileshare`、`modules/memo`、`internal/notify`、`internal/product` |
 | **M8: 开发环境检测增强** | Git/Go/Node/Java/Python/.NET 工具链盘点、官网最新版本通道（按本机版本线置顶）、包管理器升级提示、资源管理器定位安装路径、.NET 并排安装与官方支持线 | 🟢 已达成 | `modules/envcheck`（模块版本 0.4.0）、前端环境页 |
-| **M9: 开源工具托管生态** | 托管模式框架化（`version/`+`instance/` 三件套）并规模化至 15 款桌面工具；五种安装布局（zip/MSI 管理提取/NSIS 静默/MSIX/AppInstaller）；唤窗与退出治理矩阵；第三方许可合规登记 | 🟢 已达成 | `modules/{markeron,everything,ccswitch,snipaste,nanazip,eartrumpet,mangodisk,bcu,flclash,recordly,papertodo,piclite,keyviz,quicklook,litemonitor}`、`platform/apppackage` |
+| **M9: 开源工具托管生态** | 托管模式框架化（`version/`+`instance/` 三件套）并规模化至 17 款桌面工具；五种安装布局（zip/MSI 管理提取/NSIS 静默/MSIX/AppInstaller）；唤窗与退出治理矩阵（含多实例上游进程名探测契约，果核看图）；第三方许可合规登记 | 🟢 已达成 | `modules/{markeron,everything,ccswitch,snipaste,nanazip,eartrumpet,mangodisk,bcu,flclash,recordly,papertodo,piclite,keyviz,quicklook,litemonitor,guoheview,ddnsgo}`、`platform/apppackage` |
 
 ---
 

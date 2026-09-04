@@ -1,7 +1,7 @@
 # Hanxi
 
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
-> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、局域网快传、随手记等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet 等 15 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
+> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、局域网快传、随手记等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go 等 17 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
 > **v0.3.0 品牌断代**：产品标识、进程名和标准数据目录已切换为 Hanxi，不读取旧版数据、自启项或单实例标识。
 
@@ -77,7 +77,7 @@
 
 ### 二、第三方桌面工具托管（托管模式）
 
-Hanxi 将 15 款常用开源/免费桌面工具纳入统一管理。除 frpc 等特例外，托管模块共享同一套标准骨架：
+Hanxi 将 16 款常用开源/免费桌面工具纳入统一管理。除 frpc 等特例外，托管模块共享同一套标准骨架：
 
 - **版本管理**：上游 Releases / 官网清单侦查 → 多层完整性校验（GitHub digest / SHA256SUMS / 官方哈希清单 / 字节数 + PE 版本核对）→ 下载、本地导入与版本删除；
 - **进程托管**：Windows JobObject 绑定的启停引擎、进程枚举/互斥体探测运行态、Win32 唤窗 / 官方单实例命令通道唤起窗口、"跟随 Hanxi 退出"开关、桌面快捷方式创建；
@@ -100,6 +100,8 @@ Hanxi 将 15 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 | **Recordly 开源录屏** | webadderallorg/Recordly | AGPL-3.0（附加条款） | NSIS 静默安装进托管目录、双发布通道切换、注入开关禁用上游自动更新 |
 | **PaperTodo 桌面便签** | snownico0722/PaperTodo | PolyForm Noncommercial 1.0.0 | self-contained / no-runtime 双变体切换，唤窗/收拢/退出走官方命令通道 |
 | **PicLite 图片压缩** | amiaoapp/PicLite | GPL-3.0 | 上游仅提供 MSI：采用 `msiexec /a` 管理提取免管理员提权安装 |
+| **果核看图** | 果核 ghxi.com（官方自建接口分发，非 GitHub） | 闭源免费软件（Certum 签名） | **多实例上游**：无单实例锁→进程名探测 + 按自有 PID 唤窗/关窗；官方发布接口仅 MD5 + 当前版本，便携 zip 顶层包装目录收割 |
+| **ddns-go 动态域名** | jeessy2/ddns-go | MIT | 纯 CLI + Web 面板形态：`DDNS_GO_DAEMON=1` 注入绕开上游服务劫持分支、TCP 端口就绪判定、Quit 前配置写静默期防截断、面板走独立子 Webview 窗口 |
 
 ### 三、桌面系统体验与通用设置
 
@@ -181,7 +183,8 @@ hanxi/
 │  │  │                         # / wifi / envcheck / fileshare / memo
 │  │  └─ 工具托管               # snipaste / everything / quicklook / keyviz / litemonitor
 │  │                            # / ccswitch / markeron / flclash / nanazip / eartrumpet
-│  │                            # / bcu / mangodisk / recordly / papertodo / piclite
+│  │                            # / bcu / mangodisk / recordly / papertodo / piclite / guoheview
+│  │                            # / ddnsgo
 │  │                            # （托管模块标准形态：version/ 版本管理子包 + instance/ 实例引擎子包）
 │  ├─ platform/                 # 平台底层（Windows JobObject / DPAPI / 注册表自启 / IP Helper / Appx 包管理 / Shell 提权）
 │  ├─ logging/                  # slog 结构化日志与凭据自动脱敏

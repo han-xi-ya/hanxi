@@ -23,7 +23,7 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │  internal/app/  Composition Root (应用唯一装配点)       │
 │  - 生命周期管理、系统托盘 (Systray)、关闭拦截、优雅退出│
 │  - AppService (通用设置/日志/导航/关于信息)            │
-│  - 25 个模块统一注册与 Wails 服务注入                  │
+│  - 26 个模块统一注册与 Wails 服务注入                  │
 └──────┬────────────────────┬────────────────────┬───────┘
        │                    │                    │
 ┌──────▼───────────┐ ┌──────▼───────────┐ ┌──────▼───────┐
@@ -105,13 +105,13 @@ internal/modules/<tool>/
 
 **版本管理子包（`version/`）**
 
-- **完整性四层兜底链**（按上游能力择优组合）：GitHub API 资产 `digest` → 官方 `SHA256SUMS.txt` 双源比对 → 官方站哈希清单（如 Snipaste sha-1、voidtools sha256）→ 字节数 + MZ/PE `versioninfo` 版本核对 + sha256 下载指纹存档；
-- **安装布局适配**（免提权优先）：便携 zip 直解 / `msiexec /a` 管理提取（MSI 无 zip 形态，如 PicLite、Keyviz）/ NSIS `/S /D=` 静默安装（Recordly）/ 当前用户 MSIX（`platform/apppackage`，NanaZip）/ AppInstaller 官方直装清单交叉校验（EarTrumpet）；
+- **完整性四层兜底链**（按上游能力择优组合）：GitHub API 资产 `digest` → 官方 `SHA256SUMS.txt` 双源比对 → 官方站哈希清单（如 Snipaste sha-1、voidtools sha256、果核看图官方接口 MD5）→ 字节数 + MZ/PE `versioninfo` 版本核对 + sha256 下载指纹存档；
+- **安装布局适配**（免提权优先）：便携 zip 直解 / 顶层包装目录收割（zip 内 exe 深一层，如果核看图 `GuoheViewPortable/`）/ `msiexec /a` 管理提取（MSI 无 zip 形态，如 PicLite、Keyviz）/ NSIS `/S /D=` 静默安装（Recordly）/ 当前用户 MSIX（`platform/apppackage`，NanaZip）/ AppInstaller 官方直装清单交叉校验（EarTrumpet）；
 - 统一支持本地导入、版本删除与 `*:version-download` 进度事件。
 
 **实例引擎子包（`instance/`）**
 
-- **运行态探测**：进程枚举、命名互斥体探测（Keyviz/PicLite/FlClash 等）、.NET 单实例通道（BCU/PaperTodo）、商店/DSD 注册态（EarTrumpet）；
+- **运行态探测**：进程枚举、命名互斥体探测（Keyviz/PicLite/FlClash 等）、.NET 单实例通道（BCU/PaperTodo）、商店/DSD 注册态（EarTrumpet）；**多实例上游无锁可探**（果核看图二次拉起即新开窗）→ 进程名快照 + EnumWindows 按自有 PID 过滤；
 - **唤窗通道**：官方命令信使（show/hide/exit）、`EnumWindows` 置前台、AUMID 激活、Win32 `ShowWindow/SetForegroundWindow` 直操作，全部先做进程指纹复核（PID+启动时间+路径）防误杀；
 - **进程模型**：默认 JobObject 强绑定；闭源工具脱管（Snipaste）；MSIX/Appx 型不绑 JobObject（NanaZip/EarTrumpet）；
 - **退出治理**：命名管道优雅退出（QuickLook Quit/Reload）→ 命令通道 → 指纹复核强杀（上游事务性写入保证安全）三级策略，支持"跟随 Hanxi 退出"开关（`SetFollowOnExit`）与桌面快捷方式（`platform/windows/shortcut.go`）。

@@ -442,3 +442,38 @@ LiteMonitor（C# WinForms 桌面/任务栏硬件监控）集成实证——"GitH
   - 取消归一化：`cfd` 在 wails 的 `internal/` 包下无法 import 做 `errors.Is` 哨兵比较，只能在 Go 边界按文案 `strings.Contains(lower, "cancel")` 归一化为"取消 → 空串、无错"，前端对空串保持静默；
   - 附带实测：托盘 `WM_RBUTTONUP` 会先触发 `OnRightClick` 再弹菜单，若两件事都挂会造成重复动作——只设 `SetMenu` 不设 `OnRightClick` 即为标准形态。
 - **避坑防重犯建议**：Wails beta 的菜单/托盘行为勿凭 v2 经验外推，beta.10 的 `updateMenu`/`setMenu` 实现直接读 module cache 源码定夺；对上游 internal 包的 error，Go 侧边界归一化优于前端匹配文案。
+
+### 21. 托管果核看图（GuoheView）：多实例上游击穿互斥体探测模板 + 便携 zip 顶层包装目录 + 官方仅 MD5
+
+果核看图是**闭源原生**极速看图器（非 Tauri/Electron/.NET，窗口类 `UiCore_Window` 为其自研 core-ui 框架共享）。真机实测 3.2.7 后，三个与前序托管模板相悖的硬事实：
+
+- **问题现象与误判风险**：
+  1. 家族模板（ccswitch/piclite/everything）探测实例一律首选**命名互斥体** `OpenMutex`。但果核看图是**多实例应用**：二次无参拉起得到的是并存的新窗口，候选互斥体名（`GuoheView`/`MagicView`/`{id}-sim`/`com.guohe.view` 等）`OpenMutex` 全部返回 `ERROR_FILE_NOT_FOUND`——根本不存在单实例锁。若照抄互斥体探测，实例永远探测为"未运行"。
+  2. 官方便携 zip 顶层是**包装目录** `GuoheViewPortable/`（exe 不在 zip 根）。照抄 ccswitch 的 `extractAll`（假定平铺布局）会把整棵目录树原样解进隔离目录，`ResolveExe` 找 `版本目录/GuoheView.exe` 落空、exe 深了一层。
+  3. 上游发布接口（果核自建 `rj.lovestu.com/download/gh_view`，非 GitHub）**只提供 MD5**、无 sha256，且每次只返回**当前版本**（无历史列表）；`config.ini` 的 `[update]` 仅有 `min_check_interval` 节流键，**无官方关闭自动更新开关**。
+- **排查过程**：真机跑便携版 → 二次拉起观察进程数不降、`Get-Process GuoheView` 出现多个 PID；`OpenMutex` 逐一验证候选名全 miss；`WM_CLOSE` 全投递后进程 3 秒归零（证明关窗即退、无托盘驻留，退出通道存在且有效，与 piclite 相反）；解压 zip 观察顶层 `GuoheViewPortable/` 包装目录；解析接口确认 `files[].md5` 而非 `digest`。
+- **正确做法与标准修复方案**：
+  - 探测改**进程名 Toolhelp32 快照 + EnumWindows 按 PID 过滤**（recordly/bcu 同族），彻底放弃互斥体路径；"打开窗口"三分支：自有实例在跑→`SwitchToThisWindow` 聚焦自有 PID 窗口，仅有外部实例→唤回外部窗口或另开**独立**窗口（不进 Job、不随 Hanxi 退出），都没跑→拉起托管实例；
+  - Quit 向**自有 PID** 的窗口投 `WM_CLOSE` + 宽限 + Job 兜底——刻意不按进程名全投：多实例下全名投递会**误伤用户双击图片自开的窗口**（区别于 recordly 单实例全投是安全的）；
+  - `extractAll` 先定位 exe 所在 entry 的父目录作 **payload 根**，只收割根内内容并平铺，根外杂质（如 `README-outside.txt`）一概不收；布局自检要求 exe 非空 **且** `portable.ini` 在场（标记缺失=配置会外溢 `%APPDATA%`，视为损坏）；
+  - 完整性四层以官方 MD5 + HTTPS + 字节数 + zip CRC + 布局自检兜底（注释如实说明 MD5 抗碰撞弱，是上游唯一官方哈希）；`ImportLocal` 缺 `portable.ini` 时**补写官方开关**（该文件程序只读不改，仅标志存在性，语义安全），保证托管实例配置永不外溢；
+  - 无空闲自动退出：多实例下"进程活着=窗口开着=用户在看图"，空闲退出只会打断浏览（与 piclite 关窗藏托盘的空闲豁免语义本质不同）；内置更新器不改写上游配置键，改由页面提示条引导版本管理回 Hanxi，Updater 子进程由 JobObject 继承兜底。
+- **避坑防重犯建议**：托管闭源原生应用**先真机验证有无单实例锁**再选探测方案，别默认家族模板的互斥体路径成立——探测契约由上游实例模型决定，不由模板决定。WM_CLOSE 投递范围务必对齐"是否多实例"：单实例可按名全投，多实例必须按自有 PID 收敛。
+
+### 22. 托管 ddns-go：kardianos 服务劫持后门变量 + 端口冲突僵活 + 裸写配置截断 + 内嵌 iframe SameSite
+
+ddns-go（jeessy2/ddns-go，Go 后台 DDNS + Web 面板）是家族里**第一个纯 CLI 控制台程序 + Web UI**形态的托管对象（此前 markeron/ccswitch/everything 皆 GUI 桌面程序）。源码实证（v6.17.6 main.go / util/user.go / config/config.go / web/login.go）后，四个与既有 GUI 托管模板相悖、且每一个都会造成"看着启动了其实没启动 / 一退就毁用户数据"的硬坑：
+
+- **问题现象与误判风险**：
+  1. **服务劫持**：上游用 `kardianos/service`，`main` 默认分支先查 `s.Status()`——若用户机器上曾用 `ddns-go -s install` 装过同名 **Windows 服务**，裸执行 exe（哪怕只是 Hanxi 想托管拉起一个普通子进程）会被拽进 `s.Run()` 服务控制路径，脱离控制台环境直接失败/秒退。若照搬 GUI 模板"无参拉起即开窗"的假设，托管实例永远起不来。
+  2. **端口冲突僵活**：上游 web 服务 `net.Listen` 失败后**不立即退出**——goroutine 打印"监听端口发生异常"后 `time.Sleep(1 * time.Minute)` 才 `os.Exit(1)`。这击穿了"进程还活着 = 启动成功"的直觉：9876 被外部实例/服务抢绑时，我们的子进程会僵活整整一分钟，状态机若以存活判 running 就是彻底误判。
+  3. **裸写配置截断**：上游 `SaveConfig` 是**裸 `os.WriteFile` 全量覆写** `~/.ddns_go_config.yaml`（非 tmp+rename 原子写）。托管 Quit 走 JobObject `Terminate` 强杀，若恰好撞上用户在面板点"保存"的写窗口，会把用户唯一的域名解析配置**截断成半截坏档**——DDNS 从此静默失效，且文件在用户主目录、Hanxi 不负责备份。
+  4. **内嵌面板 iframe 死路**：管理界面只有 Web（`/`、`/login`）。最初直觉用主窗口 `<iframe>` 内嵌上游页面最省事——但上游登录 Cookie 是 Go 默认 `SameSite`（未显式设置 = `Lax`），跨站 iframe 不发该 Cookie，**登录后立刻掉会话回到登录页**。
+- **排查过程**：通读上游 main.go 启动分支定位 kardianos 劫持路径与那个 sleep-1min 的 web goroutine 错误处理；grep `os.WriteFile`/`SaveConfig` 确认无原子 rename；查 `web/login.go` cookie 构造确认无 `SameSite`/`Secure` 字段；对照 markeron 事故（`explorer.exe <exe>` 会执行该文件）确认"打开安装目录"仍须走模块自有 `OpenDir`。
+- **正确做法与标准修复方案**：
+  - **启动恒注入 `DDNS_GO_DAEMON=1`**（源码实证的官方后门：`os.Getenv("DDNS_GO_DAEMON")==\"1\"` 时直接 `run()`，完全跳过 `service.Status()` 检测）——这是用户机器残留同名服务时托管启动不被劫持的唯一可靠防线，写进 `StartOptions`→`cmd.Env`；
+  - **就绪判定走 TCP 端口探测，不走进程存活**：`Start` 先 `PortOpen(listenAddr)` 预检——端口已开则先甄别（进程名扫描命中 = 外部实例，落 external 不覆盖）再决定接管/报错；预检通过才拉起，拉起后同步轮询 TCP 可连（上限 20s）方判 running，超时即 JobObject 主动终止僵活进程并落 failed。探测层用 flclash 的 `CreateToolhelp32Snapshot` 进程名枚举（ddns-go 无命名互斥体），非模板默认 `OpenMutex`；
+  - **Quit 前置"配置写静默期"**：终止前 stat `~/.ddns_go_config.yaml`，若 mtime 距今 < 1.5s 判定"用户正在保存"，轮询等待至静默（上限 5s）再强杀——把 JobObject 终止撞裸写的概率压到窗口外。`Stop`（应用退出 OnShutdown 通道）**刻意跳过**该等待：主程序退出必须限时返回，宁可不优雅也不能阻塞宿主关闭；
+  - **面板用独立顶层 `WebviewWindow`（`app.Window.NewWithOptions`）而非 iframe**：顶层文档 Cookie 视作第一方，登录态正常；关窗语义 `RegisterHook(WindowClosing)→Cancel+Hide`（保留 WebView2 会话免重复登录，且永不销毁子窗口 → 不触发"最后一个窗口关闭退出应用"策略）；改端口重启用经 `SetURL` 导航到新地址；
+  - 绑定地址恒 `127.0.0.1:port`（上游默认 `:9876` 绑全网卡，会把带 DNS 服务商凭据的面板暴露到局域网），首启即用 `-l 127.0.0.1:9876`；配置沿用上游 `%USERPROFILE%` 固定路径（与用户自跑实例共享同一份，托管即无缝接管）；stdout/stderr 环形日志（复用 `internal/ringbuf` 共享包）经正则脱敏 DNS 凭据（`token/secret/accesskey=…`→`***`，上游 web 日志页有脱敏但 stdout 通道没有）。
+- **避坑防重犯建议**：托管**纯 CLI 后台程序**（非 GUI）前，必读其 main 启动分支——kardianos/service 形态的 Go 工具极易有"检测到已装服务则走 SCM"的劫持路径，常配 `*_DAEMON`/`-d` 类旁路开关，找到它比对抗它省力。端口型 web 工具的"启动成功"信号必须是**端口 TCP 可连**，绝不能用进程存活（僵活/后台化太常见）。任何**裸写用户主目录配置**的上游，托管侧强杀通道前都要加"写静默期"防御——数据在用户目录=你毁的是用户真实资产且无从恢复。内嵌第三方 Web UI 首选独立顶层 Webview，别 iframe：SameSite/CSP/X-Frame-Options 任一项都能让 iframe 静默失效，而顶层窗口天然规避。

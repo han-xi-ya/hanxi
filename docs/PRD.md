@@ -14,7 +14,7 @@
 Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装、管理与运行常用开源软件。产品由两条主线构成：
 
 1. **自建功能模块**：frpc 内网穿透、微信机器人、端口扫描/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、局域网文件快传、极客随手记等，能力原生内置于单二进制；
-2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite 等 15 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台）。
+2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go 等 17 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台）。
 
 所有能力以平等模块身份注册到统一入口，按需懒加载启停。
 
@@ -61,6 +61,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **LiteMonitor 监控** | `litemonitor` | Diorser/LiteMonitor | 上游未声明 | 处理 `requireAdministrator` 直拒与 UIPI 边界、首启配置种子 |
 | **CCSwitch 切换** | `ccswitch` | farion1231/cc-switch | MIT | Tauri 单实例协议唤窗纯托管 |
 | **MarkerOn 标注** | `markeron` | ifer47/markeron | MIT | 单实例二次拉起实现标注开关 |
+| **ddns-go 动态域名** | `ddnsgo` | jeessy2/ddns-go | MIT | 纯 CLI + Web 面板：后门变量绕服务劫持、端口就绪判定、退出配置写静默期、独立子 Webview 面板 |
 | **FlClash 代理** | `flclash` | chen08209/FlClash | GPL-3.0 | 第二实例不唤窗时 EnumWindows 直接置前台 |
 | **NanaZip 压缩** | `nanazip` | M2Team/NanaZip | 多元许可 | **MSIX 安装管理型**：官方 MSIXBundle 当前用户安装/卸载，不绑 JobObject |
 | **EarTrumpet 音量** | `eartrumpet` | File-New-Project/EarTrumpet | MIT+EE 条款 | **官方直装渠道纳管**：AppInstaller 清单 + winget SHA-256 交叉校验、AUMID 激活 |
