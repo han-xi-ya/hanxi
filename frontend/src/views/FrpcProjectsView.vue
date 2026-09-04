@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
 import type { Project } from '../../bindings/hanxi/internal/domain/models'
@@ -36,7 +36,7 @@ const importError = ref('')
 // 日志抽屉
 const drawerOpen = ref(false)
 const drawerProjectId = ref('')
-const logLines = shallowRef<string[]>([])
+const logLines = ref<string[]>([])
 const logLoading = ref(false)
 const logError = ref('')
 const logAutoScroll = ref(true)
@@ -411,6 +411,18 @@ function clearLogs() {
   logLines.value = []
 }
 
+function startTicking() {
+  if (tickTimer) return
+  nowTick.value = Date.now()
+  tickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
+}
+
+function stopTicking() {
+  if (!tickTimer) return
+  clearInterval(tickTimer)
+  tickTimer = null
+}
+
 onMounted(async () => {
   await Promise.all([loadProjects(), loadInstances(), loadInstalledVersions()])
 
@@ -429,8 +441,11 @@ onMounted(async () => {
     void scrollToBottom()
   })
 
-  tickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
+  startTicking()
 })
+
+onActivated(startTicking)
+onDeactivated(stopTicking)
 
 onUnmounted(() => {
   if (unlistenState) {
@@ -441,10 +456,7 @@ onUnmounted(() => {
     unlistenLog()
     unlistenLog = null
   }
-  if (tickTimer) {
-    clearInterval(tickTimer)
-    tickTimer = null
-  }
+  stopTicking()
 })
 </script>
 

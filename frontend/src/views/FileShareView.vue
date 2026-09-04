@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
 import { Events } from '@wailsio/runtime'
 import QRCode from 'qrcode'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
@@ -202,26 +202,8 @@ async function handleClearInbox() {
   }
 }
 
-onMounted(async () => {
-  await loadData()
-
-  unlistenStatus = Events.On('fileshare:status', (ev: any) => {
-    const s: ServerStatus = ev.data || ev
-    status.value = s
-  })
-
-  unlistenTransfer = Events.On('fileshare:transfer', (ev: any) => {
-    const e: TransferEvent = ev.data || ev
-    transferLogs.value = [e, ...transferLogs.value.slice(0, 49)]
-  })
-
-  unlistenDrop = Events.On('fileshare:text-dropped', (ev: any) => {
-    const item: DropItem = ev.data || ev
-    dropInbox.value = [item, ...dropInbox.value]
-    showToast(`收到来自移动端的文本投递: ${item.content.slice(0, 24)}...`)
-  })
-
-  // 每 2 秒轮询服务状态，保证活跃连接与实时速率持续刷新
+function startPolling() {
+  if (pollTimer) return
   pollTimer = window.setInterval(async () => {
     if (!status.value.isRunning) return
     try {
@@ -230,10 +212,40 @@ onMounted(async () => {
       /* 状态获取失败静默，等待下次轮询 */
     }
   }, 2000)
+}
+
+function stopPolling() {
+  if (!pollTimer) return
+  window.clearInterval(pollTimer)
+  pollTimer = null
+}
+
+onMounted(async () => {
+  await loadData()
+
+  unlistenStatus = Events.On('fileshare:status', (ev: { data?: ServerStatus }) => {
+    if (ev.data) status.value = ev.data
+  })
+
+  unlistenTransfer = Events.On('fileshare:transfer', (ev: { data?: TransferEvent }) => {
+    if (ev.data) transferLogs.value = [ev.data, ...transferLogs.value.slice(0, 49)]
+  })
+
+  unlistenDrop = Events.On('fileshare:text-dropped', (ev: { data?: DropItem }) => {
+    const item = ev.data
+    if (!item) return
+    dropInbox.value = [item, ...dropInbox.value]
+    showToast(`收到来自移动端的文本投递: ${item.content.slice(0, 24)}...`)
+  })
+
+  startPolling()
 })
 
+onActivated(startPolling)
+onDeactivated(stopPolling)
+
 onUnmounted(() => {
-  if (pollTimer) window.clearInterval(pollTimer)
+  stopPolling()
   if (unlistenStatus) unlistenStatus()
   if (unlistenTransfer) unlistenTransfer()
   if (unlistenDrop) unlistenDrop()

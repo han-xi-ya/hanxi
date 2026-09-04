@@ -155,7 +155,7 @@ onMounted(() => {
   checkEgressIP()
 
   // 监听后端流式进度推送
-  unregEvent = Events.On('portscan:progress', (event: any) => {
+  unregEvent = Events.On('portscan:progress', (event) => {
     const p = event?.data
     if (!p) return
     currentTaskId.value = p.taskId
@@ -163,10 +163,11 @@ onMounted(() => {
     progressTotal.value = p.total
     progressPercent.value = Math.round(p.percent)
 
-    if (p.latestPort && p.latestPort.status === 'open') {
+    const latestPort = p.latestPort
+    if (latestPort?.status === 'open') {
       const currentList = openPorts.value
-      if (!currentList.some(item => item.port === p.latestPort.port)) {
-        const nextList = [...currentList, p.latestPort]
+      if (!currentList.some(item => item.port === latestPort.port)) {
+        const nextList = [...currentList, latestPort]
         nextList.sort((a, b) => a.port - b.port)
         openPorts.value = nextList
       }

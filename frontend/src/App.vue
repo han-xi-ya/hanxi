@@ -42,8 +42,9 @@ import NotificationDrawer from './components/NotificationDrawer.vue'
 import { useNotification } from './composables/useNotification'
 import type { Notification } from '../bindings/hanxi/internal/notify/models'
 import { useToast } from './composables/useToast'
+import { getErrorMessage } from './utils/errors'
 
-const { toastMsg } = useToast()
+const { toastMsg, showToast } = useToast()
 const { unreadCount, toggleDrawer, loadHistory, pushToast } = useNotification()
 
 // 核心与内置功能视图路由映射（使用 markRaw 避免深度响应式包装）
@@ -128,6 +129,7 @@ const backendReady = ref(false)
 let unlistenExtChanged: (() => void) | null = null
 let unlistenNotify: (() => void) | null = null
 let unlistenTrayNav: (() => void) | null = null
+let navigationRequestID = 0
 
 async function refreshNavs() {
   try {
@@ -148,14 +150,20 @@ async function refreshNavs() {
 }
 
 async function navigateTo(route: string) {
-  activeRoute.value = route
+  const requestID = ++navigationRequestID
   const modID = ROUTE_MODULE_MAP[route]
   if (modID) {
     try {
       await EnsureModuleActive(modID)
-    } catch (e) {
-      console.warn(`Lazy activate module ${modID} failed:`, e)
+    } catch (err: unknown) {
+      if (requestID === navigationRequestID) {
+        showToast(`模块初始化失败: ${getErrorMessage(err)}`)
+      }
+      return
     }
+  }
+  if (requestID === navigationRequestID) {
+    activeRoute.value = route
   }
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, onActivated, onDeactivated, computed, nextTick } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { LogFileInfo } from '../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
@@ -102,24 +102,32 @@ const filteredLines = computed(() => {
   return lines.filter(l => l.toLowerCase().includes(kw))
 })
 
-onMounted(async () => {
-  await loadFileList()
-  if (selectedFile.value) {
-    await fetchContent(true)
-  }
+function startPolling() {
+  if (timer) return
   timer = setInterval(() => {
     if (autoRefresh.value && selectedFile.value) {
       fetchContent(false)
     }
   }, 2500)
+}
+
+function stopPolling() {
+  if (!timer) return
+  clearInterval(timer)
+  timer = null
+}
+
+onMounted(async () => {
+  await loadFileList()
+  if (selectedFile.value) {
+    await fetchContent(true)
+  }
+  startPolling()
 })
 
-onUnmounted(() => {
-  if (timer) {
-    clearInterval(timer)
-    timer = null
-  }
-})
+onActivated(startPolling)
+onDeactivated(stopPolling)
+onUnmounted(stopPolling)
 </script>
 
 <template>
