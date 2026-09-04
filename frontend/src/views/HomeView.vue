@@ -45,6 +45,8 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   keyviz: { icon: '⌨️', route: '/ext/keyviz' },
   quicklook: { icon: '👁️', route: '/ext/quicklook' },
   litemonitor: { icon: '📊', route: '/ext/litemonitor' },
+  guoheview: { icon: '🏞️', route: '/ext/guoheview' },
+  ddnsgo: { icon: '🌐', route: '/ext/ddnsgo' },
 }
 
 async function loadData() {

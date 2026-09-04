@@ -19,88 +19,100 @@ import type * as instance$1 from "../../../../../hanxi/internal/modules/ccswitch
 import type * as version$1 from "../../../../../hanxi/internal/modules/ccswitch/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as instance$2 from "../../../../../hanxi/internal/modules/ddnsgo/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$2 from "../../../../../hanxi/internal/modules/ddnsgo/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as everything$0 from "../../../../../hanxi/internal/modules/everything/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$2 from "../../../../../hanxi/internal/modules/everything/instance/models.js";
+import type * as instance$3 from "../../../../../hanxi/internal/modules/everything/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as fileshare$0 from "../../../../../hanxi/internal/modules/fileshare/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$3 from "../../../../../hanxi/internal/modules/flclash/instance/models.js";
+import type * as instance$4 from "../../../../../hanxi/internal/modules/flclash/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$2 from "../../../../../hanxi/internal/modules/flclash/version/models.js";
+import type * as version$3 from "../../../../../hanxi/internal/modules/flclash/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$4 from "../../../../../hanxi/internal/modules/frpc/instance/models.js";
+import type * as instance$5 from "../../../../../hanxi/internal/modules/frpc/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$3 from "../../../../../hanxi/internal/modules/frpc/version/models.js";
+import type * as version$4 from "../../../../../hanxi/internal/modules/frpc/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$5 from "../../../../../hanxi/internal/modules/keyviz/instance/models.js";
+import type * as instance$6 from "../../../../../hanxi/internal/modules/guoheview/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$4 from "../../../../../hanxi/internal/modules/keyviz/version/models.js";
+import type * as version$5 from "../../../../../hanxi/internal/modules/guoheview/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as instance$7 from "../../../../../hanxi/internal/modules/keyviz/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$6 from "../../../../../hanxi/internal/modules/keyviz/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as lan$0 from "../../../../../hanxi/internal/modules/lan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$6 from "../../../../../hanxi/internal/modules/litemonitor/instance/models.js";
+import type * as instance$8 from "../../../../../hanxi/internal/modules/litemonitor/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$5 from "../../../../../hanxi/internal/modules/litemonitor/version/models.js";
+import type * as version$7 from "../../../../../hanxi/internal/modules/litemonitor/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$7 from "../../../../../hanxi/internal/modules/mangodisk/instance/models.js";
+import type * as instance$9 from "../../../../../hanxi/internal/modules/mangodisk/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$6 from "../../../../../hanxi/internal/modules/mangodisk/version/models.js";
+import type * as version$8 from "../../../../../hanxi/internal/modules/mangodisk/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$8 from "../../../../../hanxi/internal/modules/markeron/instance/models.js";
+import type * as instance$10 from "../../../../../hanxi/internal/modules/markeron/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$7 from "../../../../../hanxi/internal/modules/markeron/version/models.js";
+import type * as version$9 from "../../../../../hanxi/internal/modules/markeron/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as nanazip$0 from "../../../../../hanxi/internal/modules/nanazip/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$9 from "../../../../../hanxi/internal/modules/papertodo/instance/models.js";
+import type * as instance$11 from "../../../../../hanxi/internal/modules/papertodo/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$8 from "../../../../../hanxi/internal/modules/papertodo/version/models.js";
+import type * as version$10 from "../../../../../hanxi/internal/modules/papertodo/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$10 from "../../../../../hanxi/internal/modules/piclite/instance/models.js";
+import type * as instance$12 from "../../../../../hanxi/internal/modules/piclite/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$9 from "../../../../../hanxi/internal/modules/piclite/version/models.js";
+import type * as version$11 from "../../../../../hanxi/internal/modules/piclite/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as portscan$0 from "../../../../../hanxi/internal/modules/portscan/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$11 from "../../../../../hanxi/internal/modules/quicklook/instance/models.js";
+import type * as instance$13 from "../../../../../hanxi/internal/modules/quicklook/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$10 from "../../../../../hanxi/internal/modules/quicklook/version/models.js";
+import type * as version$12 from "../../../../../hanxi/internal/modules/quicklook/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$12 from "../../../../../hanxi/internal/modules/recordly/instance/models.js";
+import type * as instance$14 from "../../../../../hanxi/internal/modules/recordly/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$11 from "../../../../../hanxi/internal/modules/recordly/version/models.js";
+import type * as version$13 from "../../../../../hanxi/internal/modules/recordly/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$13 from "../../../../../hanxi/internal/modules/snipaste/instance/models.js";
+import type * as instance$15 from "../../../../../hanxi/internal/modules/snipaste/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$12 from "../../../../../hanxi/internal/modules/snipaste/version/models.js";
+import type * as version$14 from "../../../../../hanxi/internal/modules/snipaste/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as wechat$0 from "../../../../../hanxi/internal/modules/wechat/models.js";
@@ -115,41 +127,46 @@ declare module "@wailsio/runtime" {
             "bcu:version-download": version$0.DownloadProgress;
             "ccswitch:instance-state": instance$1.Snapshot;
             "ccswitch:version-download": version$1.DownloadProgress;
+            "ddnsgo:instance-log": instance$2.LogEntry;
+            "ddnsgo:instance-state": instance$2.Snapshot;
+            "ddnsgo:version-download": version$2.DownloadProgress;
             "everything:download": everything$0.DownloadTicket;
-            "everything:instance-state": instance$2.Snapshot;
+            "everything:instance-state": instance$3.Snapshot;
             "ext:changed": void;
             "fileshare:status": fileshare$0.ServerStatus;
             "fileshare:text-dropped": fileshare$0.DropItem;
             "fileshare:transfer": fileshare$0.TransferEvent;
-            "flclash:instance-state": instance$3.Snapshot;
-            "flclash:version-download": version$2.DownloadProgress;
-            "frpc:instance-log": instance$4.LogEntry;
-            "frpc:instance-state": instance$4.Snapshot;
-            "frpc:version-download": version$3.DownloadProgress;
-            "keyviz:instance-state": instance$5.Snapshot;
-            "keyviz:version-download": version$4.DownloadProgress;
+            "flclash:instance-state": instance$4.Snapshot;
+            "flclash:version-download": version$3.DownloadProgress;
+            "frpc:instance-log": instance$5.LogEntry;
+            "frpc:instance-state": instance$5.Snapshot;
+            "frpc:version-download": version$4.DownloadProgress;
+            "guoheview:instance-state": instance$6.Snapshot;
+            "guoheview:version-download": version$5.DownloadProgress;
+            "keyviz:instance-state": instance$7.Snapshot;
+            "keyviz:version-download": version$6.DownloadProgress;
             "lan:progress": lan$0.LanProgress;
-            "litemonitor:instance-state": instance$6.Snapshot;
-            "litemonitor:version-download": version$5.DownloadProgress;
-            "mangodisk:instance-state": instance$7.Snapshot;
-            "mangodisk:version-download": version$6.DownloadProgress;
-            "markeron:instance-state": instance$8.Snapshot;
-            "markeron:version-download": version$7.DownloadProgress;
+            "litemonitor:instance-state": instance$8.Snapshot;
+            "litemonitor:version-download": version$7.DownloadProgress;
+            "mangodisk:instance-state": instance$9.Snapshot;
+            "mangodisk:version-download": version$8.DownloadProgress;
+            "markeron:instance-state": instance$10.Snapshot;
+            "markeron:version-download": version$9.DownloadProgress;
             "memo:changed": void;
             "nanazip:operation-progress": nanazip$0.OperationProgress;
             "nanazip:package-snapshot": nanazip$0.PackageSnapshot;
             "notify:received": notify$0.Notification;
-            "papertodo:instance-state": instance$9.Snapshot;
-            "papertodo:version-download": version$8.DownloadProgress;
-            "piclite:instance-state": instance$10.Snapshot;
-            "piclite:version-download": version$9.DownloadProgress;
+            "papertodo:instance-state": instance$11.Snapshot;
+            "papertodo:version-download": version$10.DownloadProgress;
+            "piclite:instance-state": instance$12.Snapshot;
+            "piclite:version-download": version$11.DownloadProgress;
             "portscan:progress": portscan$0.ScanProgress;
-            "quicklook:instance-state": instance$11.Snapshot;
-            "quicklook:version-download": version$10.DownloadProgress;
-            "recordly:instance-state": instance$12.Snapshot;
-            "recordly:version-download": version$11.DownloadProgress;
-            "snipaste:instance-state": instance$13.Snapshot;
-            "snipaste:version-download": version$12.DownloadProgress;
+            "quicklook:instance-state": instance$13.Snapshot;
+            "quicklook:version-download": version$12.DownloadProgress;
+            "recordly:instance-state": instance$14.Snapshot;
+            "recordly:version-download": version$13.DownloadProgress;
+            "snipaste:instance-state": instance$15.Snapshot;
+            "snipaste:version-download": version$14.DownloadProgress;
             "tray:navigate": string;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;

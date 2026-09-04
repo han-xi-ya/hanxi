@@ -32,6 +32,8 @@ import MangoDiskView from './views/MangoDiskView.vue'
 import BCUView from './views/BCUView.vue'
 import FlClashView from './views/FlClashView.vue'
 import LiteMonitorView from './views/LiteMonitorView.vue'
+import GuoheViewView from './views/GuoheViewView.vue'
+import DdnsGoView from './views/DdnsGoView.vue'
 import WifiView from './views/WifiView.vue'
 import EnvCheckView from './views/EnvCheckView.vue'
 import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
@@ -71,6 +73,8 @@ const CORE_VIEWS: Record<string, Component> = {
   '/ext/keyviz': markRaw(KeyvizView),
   '/ext/quicklook': markRaw(QuickLookView),
   '/ext/litemonitor': markRaw(LiteMonitorView),
+  '/ext/guoheview': markRaw(GuoheViewView),
+  '/ext/ddnsgo': markRaw(DdnsGoView),
   '/ext/envcheck': markRaw(EnvCheckView),
   '/logs': markRaw(LogsView),
   '/settings': markRaw(SettingsView),
@@ -103,6 +107,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/keyviz': 'keyviz',
   '/ext/quicklook': 'quicklook',
   '/ext/litemonitor': 'litemonitor',
+  '/ext/guoheview': 'guoheview',
+  '/ext/ddnsgo': 'ddnsgo',
   '/ext/envcheck': 'envcheck',
 }
 

@@ -15,6 +15,9 @@ import (
 	"hanxi/internal/modules/ccswitch"
 	ccswitchinstance "hanxi/internal/modules/ccswitch/instance"
 	ccswitchversion "hanxi/internal/modules/ccswitch/version"
+	"hanxi/internal/modules/ddnsgo"
+	ddnsgoinstance "hanxi/internal/modules/ddnsgo/instance"
+	ddnsgoversion "hanxi/internal/modules/ddnsgo/version"
 	"hanxi/internal/modules/eartrumpet"
 	"hanxi/internal/modules/envcheck"
 	"hanxi/internal/modules/everything"
@@ -26,6 +29,9 @@ import (
 	"hanxi/internal/modules/frpc"
 	"hanxi/internal/modules/frpc/instance"
 	"hanxi/internal/modules/frpc/version"
+	"hanxi/internal/modules/guoheview"
+	guoheviewinstance "hanxi/internal/modules/guoheview/instance"
+	guoheviewversion "hanxi/internal/modules/guoheview/version"
 	"hanxi/internal/modules/keyviz"
 	keyvizinstance "hanxi/internal/modules/keyviz/instance"
 	keyvizversion "hanxi/internal/modules/keyviz/version"
@@ -114,6 +120,11 @@ func RegisterEvents() {
 	application.RegisterEvent[quicklookinstance.Snapshot]("quicklook:instance-state")
 	application.RegisterEvent[litemonitorversion.DownloadProgress]("litemonitor:version-download")
 	application.RegisterEvent[litemonitorinstance.Snapshot]("litemonitor:instance-state")
+	application.RegisterEvent[guoheviewversion.DownloadProgress]("guoheview:version-download")
+	application.RegisterEvent[guoheviewinstance.Snapshot]("guoheview:instance-state")
+	application.RegisterEvent[ddnsgoversion.DownloadProgress]("ddnsgo:version-download")
+	application.RegisterEvent[ddnsgoinstance.Snapshot]("ddnsgo:instance-state")
+	application.RegisterEvent[ddnsgoinstance.LogEntry]("ddnsgo:instance-log")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 }
@@ -192,6 +203,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		keyviz.New(plat),
 		quicklook.New(plat),
 		litemonitor.New(plat),
+		guoheview.New(plat),
+		ddnsgo.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
