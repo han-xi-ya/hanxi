@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"hanxi/internal/platform"
+	"hanxi/internal/ringbuf"
 )
 
 // logCapacity 内存环形日志容量（行）。
@@ -117,7 +118,7 @@ type Instance struct {
 	cmd     *exec.Cmd
 	job     platform.Job
 	redact  []string
-	logs    *RingBuffer
+	logs    *ringbuf.RingBuffer
 	cb      Callbacks
 	jobAPI  platform.JobAPI
 }
@@ -131,7 +132,7 @@ func newInstance(opts StartOptions, jobAPI platform.JobAPI, cb Callbacks) *Insta
 		state:       StateStopped,
 		connState:   ConnStateIdle,
 		redact:      append([]string(nil), opts.Redact...),
-		logs:        newRingBuffer(logCapacity),
+		logs:        ringbuf.New(logCapacity),
 		cb:          cb,
 		jobAPI:      jobAPI,
 	}

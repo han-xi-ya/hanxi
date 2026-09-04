@@ -1,4 +1,7 @@
-package instance
+// Package ringbuf 提供线程安全的环形日志缓冲（保留最近 N 行）。
+// 自 frpc/instance 提取为共享包：控制台型托管模块（frpc、ddns-go 等）
+// 的子进程输出汇入同一种有界缓冲，避免每模块复制。
+package ringbuf
 
 import (
 	"strings"
@@ -14,8 +17,8 @@ type RingBuffer struct {
 	cap   int
 }
 
-// newRingBuffer 创建容量为 cap 的环形缓冲。
-func newRingBuffer(cap int) *RingBuffer {
+// New 创建容量为 cap 的环形缓冲（cap <= 0 时收敛为 1）。
+func New(cap int) *RingBuffer {
 	if cap <= 0 {
 		cap = 1
 	}
