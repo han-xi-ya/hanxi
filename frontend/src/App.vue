@@ -1,48 +1,19 @@
 <script setup lang="ts">
-import { ref, computed, markRaw, onMounted, onUnmounted } from 'vue'
-import type { Component } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Events } from '@wailsio/runtime'
 import * as AppAPI from '../bindings/hanxi/internal/app'
 import { EnsureModuleActive } from '../bindings/hanxi/internal/app/appservice.js'
 import type { NavEntry } from '../bindings/hanxi/internal/extapi/models'
-import HomeView from './views/HomeView.vue'
-import FrpcProjectsView from './views/FrpcProjectsView.vue'
-import SettingsView from './views/SettingsView.vue'
-import AboutView from './views/AboutView.vue'
-import LogsView from './views/LogsView.vue'
-import LanScannerView from './views/LanScannerView.vue'
-import PublicIpView from './views/PublicIpView.vue'
-import PortKillView from './views/PortKillView.vue'
-import PortScanView from './views/PortScanView.vue'
-import WechatBotView from './views/WechatBotView.vue'
-import FileShareView from './views/FileShareView.vue'
-import MemoView from './views/MemoView.vue'
-import MarkerOnView from './views/MarkerOnView.vue'
-import EverythingView from './views/EverythingView.vue'
-import CCSwitchView from './views/CCSwitchView.vue'
-import RecordlyView from './views/RecordlyView.vue'
-import PaperTodoView from './views/PaperTodoView.vue'
-import PicLiteView from './views/PicLiteView.vue'
-import KeyvizView from './views/KeyvizView.vue'
-import QuickLookView from './views/QuickLookView.vue'
-import SnipasteView from './views/SnipasteView.vue'
-import SubnetDeskView from './views/SubnetDeskView.vue'
-import RustDeskView from './views/RustDeskView.vue'
-import NanaZipView from './views/NanaZipView.vue'
-import EarTrumpetView from './views/EarTrumpetView.vue'
-import MangoDiskView from './views/MangoDiskView.vue'
-import BCUView from './views/BCUView.vue'
-import FlClashView from './views/FlClashView.vue'
-import LiteMonitorView from './views/LiteMonitorView.vue'
-import GuoheViewView from './views/GuoheViewView.vue'
-import DdnsGoView from './views/DdnsGoView.vue'
-import WifiView from './views/WifiView.vue'
-import EnvCheckView from './views/EnvCheckView.vue'
-import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import NotificationDrawer from './components/NotificationDrawer.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
+import UiPromptDialog from './components/ui/UiPromptDialog.vue'
+import ErrorBoundary from './components/ui/ErrorBoundary.vue'
+import { moduleIdOf, routeComponent, placeholderComponent, fallbackComponent } from './constants/navigation'
 import { useNotification } from './composables/useNotification'
 import { useTheme } from './composables/useTheme'
+import { useConfirm } from './composables/useConfirm'
+import { usePrompt } from './composables/usePrompt'
 import type { Notification } from '../bindings/hanxi/internal/notify/models'
 import { useToast } from './composables/useToast'
 import { getErrorMessage } from './utils/errors'
@@ -50,76 +21,10 @@ import { getErrorMessage } from './utils/errors'
 const { toastMsg, showToast } = useToast()
 const { unreadCount, toggleDrawer, loadHistory, pushToast } = useNotification()
 const { themeMode, cycleThemeMode } = useTheme()
+const { confirmState, settleConfirm } = useConfirm()
+const { promptState, settlePrompt } = usePrompt()
 
-// 核心与内置功能视图路由映射（使用 markRaw 避免深度响应式包装）
-const CORE_VIEWS: Record<string, Component> = {
-  '/': markRaw(HomeView),
-  '/frpc': markRaw(FrpcProjectsView),
-  '/ext/fileshare': markRaw(FileShareView),
-  '/ext/memo': markRaw(MemoView),
-  '/ext/lan': markRaw(LanScannerView),
-  '/ext/portscan': markRaw(PortScanView),
-  '/ext/wechat': markRaw(WechatBotView),
-  '/ext/publicip': markRaw(PublicIpView),
-  '/ext/portkill': markRaw(PortKillView),
-  '/ext/wifi': markRaw(WifiView),
-  '/ext/markeron': markRaw(MarkerOnView),
-  '/ext/everything': markRaw(EverythingView),
-  '/ext/ccswitch': markRaw(CCSwitchView),
-  '/ext/snipaste': markRaw(SnipasteView),
-  '/ext/nanazip': markRaw(NanaZipView),
-  '/ext/eartrumpet': markRaw(EarTrumpetView),
-  '/ext/mangodisk': markRaw(MangoDiskView),
-  '/ext/bcu': markRaw(BCUView),
-  '/ext/flclash': markRaw(FlClashView),
-  '/ext/recordly': markRaw(RecordlyView),
-  '/ext/papertodo': markRaw(PaperTodoView),
-  '/ext/piclite': markRaw(PicLiteView),
-  '/ext/keyviz': markRaw(KeyvizView),
-  '/ext/quicklook': markRaw(QuickLookView),
-  '/ext/litemonitor': markRaw(LiteMonitorView),
-  '/ext/guoheview': markRaw(GuoheViewView),
-  '/ext/ddnsgo': markRaw(DdnsGoView),
-  '/ext/subnetdesk': markRaw(SubnetDeskView),
-  '/ext/rustdesk': markRaw(RustDeskView),
-  '/ext/envcheck': markRaw(EnvCheckView),
-  '/logs': markRaw(LogsView),
-  '/settings': markRaw(SettingsView),
-  '/about': markRaw(AboutView),
-}
-
-// 路由与后端模块 ID 对应关系（用于路由切换时的零开销按需懒加载）
-const ROUTE_MODULE_MAP: Record<string, string> = {
-  '/frpc': 'frpc',
-  '/ext/fileshare': 'fileshare',
-  '/ext/memo': 'memo',
-  '/ext/lan': 'lan',
-  '/ext/portscan': 'portscan',
-  '/ext/wechat': 'wechat',
-  '/ext/publicip': 'publicip',
-  '/ext/portkill': 'portkill',
-  '/ext/wifi': 'wifi',
-  '/ext/markeron': 'markeron',
-  '/ext/everything': 'everything',
-  '/ext/ccswitch': 'ccswitch',
-  '/ext/snipaste': 'snipaste',
-  '/ext/nanazip': 'nanazip',
-  '/ext/eartrumpet': 'eartrumpet',
-  '/ext/mangodisk': 'mangodisk',
-  '/ext/bcu': 'bcu',
-  '/ext/flclash': 'flclash',
-  '/ext/recordly': 'recordly',
-  '/ext/papertodo': 'papertodo',
-  '/ext/piclite': 'piclite',
-  '/ext/keyviz': 'keyviz',
-  '/ext/quicklook': 'quicklook',
-  '/ext/litemonitor': 'litemonitor',
-  '/ext/guoheview': 'guoheview',
-  '/ext/ddnsgo': 'ddnsgo',
-  '/ext/subnetdesk': 'subnetdesk',
-  '/ext/rustdesk': 'rustdesk',
-  '/ext/envcheck': 'envcheck',
-}
+// 路由→组件与模块门禁清单已外移至 constants/navigation.ts（单一来源 + 视图异步化）。
 
 const SYSTEM_NAV = [
   { route: '/', title: '首页', icon: '⌂' },
@@ -161,7 +66,7 @@ async function refreshNavs() {
     navs.value = list ?? []
 
     // 如果当前所在路由对应的是已被禁用的扩展，则平滑重定向回首页
-    const currentModID = ROUTE_MODULE_MAP[activeRoute.value]
+    const currentModID = moduleIdOf(activeRoute.value)
     if (currentModID) {
       const isRouteAvailable = navs.value.some(n => n.route === activeRoute.value)
       if (!isRouteAvailable && activeRoute.value !== '/' && activeRoute.value !== '/settings' && activeRoute.value !== '/logs' && activeRoute.value !== '/about') {
@@ -175,7 +80,7 @@ async function refreshNavs() {
 
 async function navigateTo(route: string) {
   const requestID = ++navigationRequestID
-  const modID = ROUTE_MODULE_MAP[route]
+  const modID = moduleIdOf(route)
   if (modID) {
     try {
       await EnsureModuleActive(modID)
@@ -192,10 +97,10 @@ async function navigateTo(route: string) {
 }
 
 const currentView = computed(() => {
-  const v = CORE_VIEWS[activeRoute.value]
-  if (v) return v
-  if (navs.value.some(n => n.route === activeRoute.value)) return ExtPlaceholderView
-  return HomeView
+  const known = routeComponent(activeRoute.value)
+  if (known) return known
+  if (navs.value.some(n => n.route === activeRoute.value)) return placeholderComponent()
+  return fallbackComponent()
 })
 
 const currentExt = computed(() => navs.value.find(n => n.route === activeRoute.value))
@@ -335,17 +240,46 @@ onUnmounted(() => {
       <NotificationDrawer @navigate="navigateTo" />
 
       <div v-if="toastMsg" class="global-toast">{{ toastMsg }}</div>
-      <Transition name="page-fade" mode="out-in">
-        <KeepAlive :max="10">
-          <component
-            :is="currentView"
-            :key="activeRoute"
-            :title="currentExt?.title"
-            @navigate="navigateTo"
-          />
-        </KeepAlive>
-      </Transition>
+      <ErrorBoundary :reset-key="activeRoute">
+        <Transition name="page-fade" mode="out-in">
+          <KeepAlive :max="10">
+            <component
+              :is="currentView"
+              :key="activeRoute"
+              :title="currentExt?.title"
+              @navigate="navigateTo"
+            />
+          </KeepAlive>
+        </Transition>
+      </ErrorBoundary>
     </main>
+
+    <!-- 全局确认/输入对话框宿主（useConfirm / usePrompt 单例驱动，视图侧不再各挂各的） -->
+    <ConfirmDialog
+      :open="confirmState.open"
+      :title="confirmState.options.title"
+      :description="confirmState.options.description"
+      :confirm-label="confirmState.options.confirmLabel"
+      :cancel-label="confirmState.options.cancelLabel"
+      :tone="confirmState.options.tone"
+      :details="confirmState.options.details"
+      @confirm="settleConfirm(true)"
+      @cancel="settleConfirm(false)"
+      @update:open="(v: boolean) => { if (!v) settleConfirm(false) }"
+    />
+    <UiPromptDialog
+      :open="promptState.open"
+      :title="promptState.options.title"
+      :description="promptState.options.description"
+      :label="promptState.options.label"
+      :placeholder="promptState.options.placeholder"
+      :initial-value="promptState.options.initialValue"
+      :confirm-label="promptState.options.confirmLabel"
+      :cancel-label="promptState.options.cancelLabel"
+      @submit="settlePrompt"
+      @cancel="settlePrompt(null)"
+      @update:open="(v: boolean) => { if (!v) settlePrompt(null) }"
+    />
   </div>
 </template>
 
