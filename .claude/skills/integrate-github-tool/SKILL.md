@@ -28,6 +28,7 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/contents/<file>" -H "Accept
 5. **数据落盘**：配置跟 exe 走（everything portable）还是固定用户目录（ccswitch `~/.cc-switch`）→ 决定 ImportLocal 搬什么（整套 vs 单 exe）
 6. **关窗/退出语义**：`on_window_event(CloseRequested)` 是 exit 还是 hide 驻托盘 → 决定 Quit 走 WM_CLOSE/信号 + 宽限 + 强杀兜底的结构
 7. **托盘**：无条件创建还是可配置。用户问"能藏托盘吗"：上游无开关就如实说"要 fork"；**托盘有功能价值时（如供应商切换菜单）明确建议不藏**——别默认隐藏
+8. **提权 manifest**：`grep -r requestedExecutionLevel`（.NET 的 `app.manifest`、Go/rsrc 清单、electron-builder 的 `requestedExecutionLevel`、C 项目的 `*.manifest`）。命中 `requireAdministrator` 给三重契约（TROUBLESHOOTING #17 实证，BCU 集成漏查导致真机裸 errno 740 复发）：① 未提权 Hanxi `CreateProcess` 被 **ERROR_ELEVATION_REQUIRED(740)** 直拒——Go exec 不像 ShellExecute `runas` 会代弹 UAC，Start **与信使唤窗等全部 exec 路径**都要 `elevateHint` 特判文案指向"以管理员身份重启 Hanxi"；② UIPI：中完整性 Hanxi 对 elevated 实例的 WM_CLOSE/SetForegroundWindow 被静默拦截，托管仅在 Hanxi 同级或更高权限时可靠；③ 前端 stopped 引导行如实预告提权要求，别让用户首撞才看懂
 
 ## 决策点：集成范围
 
@@ -97,6 +98,8 @@ internal/modules/<mod>/
 | 进程名探测 + EnumWindows 按 PID 唤窗（无互斥体可用） | litemonitor / recordly / guoheview | instance/probe_windows.go + close_windows.go |
 | 单文件 exe 无 zip 下载（digest+字节数+MZ 魔数三重校验） | rustdesk / subnetdesk | version/manager.go Download/placeFile |
 | 被控/服务型常驻——禁用空闲退出、退出即断会话的诚实文案 | rustdesk / subnetdesk | service.go 包注释 + OpenWindow/Quit 编排 |
+| requireAdministrator 清单 740 三重预告（elevateHint 特判） | rufus / litemonitor / bcu | instance/close_windows.go + close_other.go 桩（TROUBLESHOOTING #17） |
+| 外部安装器（NSIS/MSI）静默安装与退出码分族翻译 | recordly（NSIS）/ rustdesk（MSI） | version/nsis_windows.go decodeInstallerExit / manager.go installExitError |
 
 ## 红线提醒
 
