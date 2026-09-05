@@ -38,6 +38,7 @@ var (
 // Snapshot 引擎状态快照：事件推送与前端渲染共用同一模型。
 type Snapshot struct {
 	Version   string    `json:"version"`
+	Form      string    `json:"form"` // portable / installed（随启动入参携带，未启动过时为空）
 	State     State     `json:"state"`
 	PID       uint32    `json:"pid"`
 	ExitCode  int       `json:"exitCode"`
@@ -50,9 +51,10 @@ type Snapshot struct {
 // StartOptions 启动参数：由 service 层解析版本后填充。
 type StartOptions struct {
 	Version string // 绑定版本 vX.Y.Z
+	Form    string // portable（隔离目录 packer）/ installed（系统安装版客户端）
 	// Detached 独立运行：解除 JobObject 退出联动（Hanxi 关闭完全不影响工具）。
 	Detached bool
-	Exe      string // rustdesk.exe（packer 外层）绝对路径（版本隔离目录内）
+	Exe      string // 主程序绝对路径（便携=版本隔离目录内 packer；安装版=Program Files 下 RustDesk.exe）
 }
 
 func (o StartOptions) validate() error {
@@ -90,8 +92,9 @@ type Engine struct {
 	startMu sync.Mutex // Start/Quit 互斥临界区
 
 	cmd       *exec.Cmd
-	ancestors []uint32 // 自有外层 packer PID 集合（含 SpawnWindow 派生的外层），进程树闭包锚点
+	ancestors []uint32 // 自有进程 PID 集合（packer 外层/安装版主进程，含派生开窗），进程树闭包锚点
 	exePath   string
+	form      string // portable / installed（Start 入参携带，驱动状态快照展示与文案）
 	job       platform.Job
 	jobAPI    platform.JobAPI
 	probe     RustDeskProbe
@@ -121,6 +124,7 @@ func (e *Engine) Start(opts StartOptions) error {
 
 	e.mu.Lock()
 	e.version = opts.Version
+	e.form = opts.Form
 	e.external = false
 	e.stopping = false
 	e.exePath = opts.Exe
@@ -520,6 +524,7 @@ func (e *Engine) sinceStart() time.Duration {
 func (e *Engine) snapshotLocked() Snapshot {
 	return Snapshot{
 		Version:   e.version,
+		Form:      e.form,
 		State:     e.state,
 		PID:       e.pid,
 		ExitCode:  e.exitCode,
