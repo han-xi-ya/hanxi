@@ -420,7 +420,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 治理说明：本视图历史遗留的 text-muted/font-mono/mb-*/gap-* 等 utility 类名在本文件与全局
+/* 治理说明：本视图历史遗留的 text-muted、font-mono、mb-*、gap-* 等 utility 类名在本文件与全局
    均无定义（渲染即无操作），清理会引入视觉变化，留观——本次只动确有定义的规则。 */
 .memo-page {
   padding: 24px 32px;

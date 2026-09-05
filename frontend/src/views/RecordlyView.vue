@@ -555,8 +555,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 仅保留本视图独有的业务样式；.btn 家族/.tbl/.header-row/.subtitle/.error-box/
-   .empty-state/.mono/.chip/.banner/.link-button/main-tab-*/keyframes pulse 已上收。 */
+/* 仅保留本视图独有的业务样式；.btn 家族、.tbl、.header-row、.subtitle、.error-box、
+   .empty-state、.mono、.chip、.banner、.link-button、main-tab 族、keyframes pulse 已上收。 */
 .recordly-view { display: flex; flex-direction: column; gap: 10px; }
 
 /* UiBanner 沿用迁移前 slim 密度 */

@@ -636,7 +636,7 @@ watch(() => snap.value?.state, (now, prev) => {
 .inline-link:hover { text-decoration: underline; }
 
 /* ---------- 进程输出日志面板（终端态：固定深底不随主题反相，tokens.css 设计决策；
-   色阶由 --terminal-*/--ansi-* 派生，不再散落裸色） ---------- */
+   色阶由 --terminal-* 与 --ansi-* 派生，不再散落裸色） ---------- */
 .dd-log-card { border: 1px solid color-mix(in srgb, var(--terminal-fg) 22%, transparent); border-radius: 8px; overflow: hidden; }
 .dd-log-head {
   display: flex; justify-content: space-between; align-items: center;
