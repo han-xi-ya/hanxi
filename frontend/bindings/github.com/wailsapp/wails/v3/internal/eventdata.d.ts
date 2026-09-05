@@ -194,6 +194,7 @@ declare module "@wailsio/runtime" {
             "portscan:progress": portscan$0.ScanProgress;
             "quicklook:instance-state": instance$14.Snapshot;
             "quicklook:version-download": version$13.DownloadProgress;
+            "quickmenu:opening": void;
             "recordly:instance-state": instance$15.Snapshot;
             "recordly:version-download": version$14.DownloadProgress;
             "rufus:instance-state": instance$16.Snapshot;

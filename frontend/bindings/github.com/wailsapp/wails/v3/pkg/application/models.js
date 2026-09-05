@@ -127,6 +127,11 @@ import * as slog$0 from "../../../../../../log/slog/models.js";
  */
 
 /**
+ * @typedef { {
+ * } } WebviewWindow
+ */
+
+/**
  * WindowManager manages all window-related operations
  * @typedef { {
  * } } WindowManager

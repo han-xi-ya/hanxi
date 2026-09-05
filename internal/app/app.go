@@ -63,6 +63,7 @@ import (
 	"hanxi/internal/modules/quicklook"
 	quicklookinstance "hanxi/internal/modules/quicklook/instance"
 	quicklookversion "hanxi/internal/modules/quicklook/version"
+	"hanxi/internal/modules/quickmenu"
 	"hanxi/internal/modules/recordly"
 	recordlyinstance "hanxi/internal/modules/recordly/instance"
 	recordlyversion "hanxi/internal/modules/recordly/version"
@@ -95,6 +96,8 @@ func RegisterEvents() {
 	// 若注册具体类型而 Emit 不带载荷，会因 Wails 严格类型校验被静默丢弃。
 	application.RegisterEvent[application.Void]("ext:changed")
 	application.RegisterEvent[string]("tray:navigate")
+	// quickmenu:opening 是无载荷事件（弹窗视图收到后重拉条目），必须用 Void 注册。
+	application.RegisterEvent[application.Void]("quickmenu:opening")
 	application.RegisterEvent[lan.LanProgress]("lan:progress")
 	application.RegisterEvent[portscan.ScanProgress]("portscan:progress")
 	application.RegisterEvent[wechat.InboundMessage]("wechat:message-received")
@@ -195,6 +198,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	registry := extapi.NewRegistry(store)
 
 	// 5. 初始化 fileshare 与 memo 模块并建立数据互联
+	// quickmenu 需在装配根持有引用：弹窗 route 条目要唤出稍后创建的主窗口。
+	quickMenuModule := quickmenu.New(store, registry)
 	fileShareModule := fileshare.New(plat)
 	memoModule, err := memo.New(paths)
 	if err != nil {
@@ -240,6 +245,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		envcheck.New(plat),
 		wechat.New(store),
 		fileShareModule,
+		quickMenuModule,
 	}
 	if memoModule != nil {
 		modulesToRegister = append(modulesToRegister, memoModule)
@@ -305,6 +311,11 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	})
 	mainWindow = win
 	notify.GetHub().SetWailsContext(a, win)
+
+	// quickmenu：注入主窗引用供 route 条目唤窗，并随启动常驻激活全局鼠标钩子
+	//（右键长按识别与 wechat 入站监听同属常驻监听型能力；设置页关模块即可停用）。
+	quickMenuModule.SetMainWindow(win)
+	_ = registry.EnsureActive("quickmenu")
 
 	// 深色标题栏桥：前端 useTheme 解析出实际亮/暗后经 SetWindowDarkMode 调到这里，
 	// 由平台层 DWM 属性同步原生窗框（重构蓝图铁律 8 的唯一后端例外）。

@@ -95,6 +95,10 @@ import * as $models from "./models.js";
  */
 
 /**
+ * @typedef {$models.WebviewWindow} WebviewWindow
+ */
+
+/**
  * WindowManager manages all window-related operations
  * @typedef {$models.WindowManager} WindowManager
  */
