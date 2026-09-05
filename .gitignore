@@ -2,6 +2,8 @@
 bin
 frontend/dist
 frontend/node_modules
+# 仓库根误跑 npm/vitest 的缓存目录（同 frontend/node_modules，不入库）
+/node_modules
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 # Mobile generated (per-machine; overlays hold absolute paths)
