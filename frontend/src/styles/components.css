@@ -156,6 +156,30 @@
 :where(.chip-danger) { background: var(--state-danger-soft); color: var(--state-danger); }
 :where(.chip-neutral) { background: var(--surface-hover); color: var(--color-text-muted); }
 
+/* ---------- 状态面板（虚线 inline 面板：加载/空/错/警，可挂右侧动作按钮）
+   §9.5-3 Snipaste 二次收编上收；强语义色经 state token，动作钮复用 link 语义 ---------- */
+:where(.state-box) {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+  color: var(--color-text-muted);
+}
+:where(.state-error) { color: var(--state-danger); }
+:where(.state-warning) { color: var(--state-warning); }
+:where(.state-action) {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-weight: 600;
+}
+
 /* ---------- 提示条 ---------- */
 :where(.banner) {
   padding: 10px 14px;

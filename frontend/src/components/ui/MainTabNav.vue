@@ -2,16 +2,20 @@
 // 顶层主选项卡（标注/版本管理这类双区切换）：v-model 收口。
 // 类名沿用托管视图迁移前的 main-tab-nav/main-tab-btn——迁移时删视图 scoped 副本、
 // 本组件 scoped 样式即唯一标准形；后续如需全局化再上收 components.css。
+// idPrefix（可选，§9.5-3）：需要 aria 接线时生成 `${idPrefix}-${key}-tab/-panel`，
+// 面板侧由视图自行 id + aria-labelledby 闭环（对应 tablist 的 label 可选命名）。
 defineProps<{
   tabs: Array<{ key: string; label: string }>
   modelValue: string
+  idPrefix?: string
+  label?: string
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [key: string] }>()
 </script>
 
 <template>
-  <div class="main-tab-nav" role="tablist">
+  <div class="main-tab-nav" role="tablist" :aria-label="label">
     <button
       v-for="tab in tabs"
       :key="tab.key"
@@ -19,6 +23,8 @@ const emit = defineEmits<{ 'update:modelValue': [key: string] }>()
       role="tab"
       class="main-tab-btn"
       :class="{ active: modelValue === tab.key }"
+      :id="idPrefix ? `${idPrefix}-${tab.key}-tab` : undefined"
+      :aria-controls="idPrefix ? `${idPrefix}-${tab.key}-panel` : undefined"
       :aria-selected="modelValue === tab.key"
       @click="emit('update:modelValue', tab.key)"
     >{{ tab.label }}</button>
