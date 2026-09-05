@@ -268,10 +268,8 @@ describe('FlClashView 操作流', () => {
     wrapper.unmount()
   })
 
-  it('随 Hanxi 关闭开关：设置失败 toast 后勾选呈未勾选态', async () => {
-    // 现状锁定（疑似既有 bug）：源码注释写"失败回滚"，但 ref 从未变过，
-    // catch 里的 `!followOnExit.value` 实际把值翻成了用户新选的状态而非回滚。
-    // 迁移必须原样保留该语义，是否算 bug 交回主线另立提交决策。
+  it('随 Hanxi 关闭开关：设置失败 toast 后勾选回滚复位（§9.5-1 修复）', async () => {
+    // 修复后语义：点击即乐观翻转 ref；写失败则回滚，勾选框复位到后端真实值。
     stubDefaults({ state: 'stopped' }, [installedV])
     svc.SetFollowOnExit.mockRejectedValue(new Error('写配置失败'))
     const { wrapper } = await mountInKeepAlive()
@@ -281,7 +279,7 @@ describe('FlClashView 操作流', () => {
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toContain('设置失败: 写配置失败')
     await nextTick()
-    expect((checkbox.element as HTMLInputElement).checked).toBe(false) // 现状：翻成新值
+    expect((checkbox.element as HTMLInputElement).checked).toBe(true) // 失败回滚：勾选框复位
     wrapper.unmount()
   })
 })

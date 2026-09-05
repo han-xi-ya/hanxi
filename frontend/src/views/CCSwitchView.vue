@@ -254,12 +254,14 @@ async function loadExtras() {
 }
 
 async function onFollowToggle() {
+  const next = !followOnExit.value
+  followOnExit.value = next // 用户点击已将勾选框翻转，ref 同步跟进，保持绑定状态一致
   try {
-    await CCSwitchAPI.SetFollowOnExit(!followOnExit.value)
-    showToast(followOnExit.value ? '已开启：Hanxi 退出时一并关闭该工具' : '已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
+    await CCSwitchAPI.SetFollowOnExit(next)
+    showToast(next ? '已开启：Hanxi 退出时一并关闭该工具' : '已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
   } catch (e) {
+    followOnExit.value = !next // 失败回滚：ref 变化驱动勾选框复位到后端真实值
     showToast('设置失败: ' + getErrorMessage(e))
-    followOnExit.value = !followOnExit.value // 失败回滚
   }
 }
 

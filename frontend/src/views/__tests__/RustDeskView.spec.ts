@@ -301,9 +301,8 @@ describe('RustDeskView 事件与轮询', () => {
 })
 
 describe('RustDeskView 联动开关与仓库', () => {
-  it('跟随退出开关：变更写入后端并 toast 对应文案', async () => {
-    // ⚠ 现状疑似 bug 锁定（迁移不改行为，修复应另立提交）：成功路径本地 ref 不回写，
-    // toast 用的是变更前的 stale 值——取消勾选后仍提示「已开启」。此处按事实断言。
+  it('跟随退出开关：变更写入后端并回写本地态、toast 跟随新值（§9.5-1 修复）', async () => {
+    // 修复后语义：成功路径回写 followOnExit，取消勾选后提示「已关闭」。
     stubDefaults({ state: 'stopped' })
     svc.SetFollowOnExit.mockResolvedValue(undefined)
     const w = await mountView()
@@ -311,8 +310,10 @@ describe('RustDeskView 联动开关与仓库', () => {
     expect((checkbox.element as HTMLInputElement).checked).toBe(true)
     await checkbox.setValue(false)
     await flushMicrotasks()
-    expect(svc.SetFollowOnExit).toHaveBeenCalledWith(false) // 目标值 = !当前值 ✓ 这一半是对的
-    expect(useToast().toastMsg.value).toContain('已开启') // stale 文案（现状）
+    expect(svc.SetFollowOnExit).toHaveBeenCalledWith(false) // 目标值 = 新勾选态
+    expect(useToast().toastMsg.value).toContain('已关闭') // 文案跟随新值
+    await nextTick()
+    expect((checkbox.element as HTMLInputElement).checked).toBe(false) // 视图与后端一致
     w.unmount()
   })
 

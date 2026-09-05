@@ -291,14 +291,16 @@ async function loadExtras() {
 }
 
 async function onFollowToggle() {
+  const next = !followOnExit.value
+  followOnExit.value = next // 用户点击已将勾选框翻转，ref 同步跟进，保持绑定状态一致
   try {
-    await DdnsGoAPI.SetFollowOnExit(!followOnExit.value)
-    showToast(followOnExit.value
+    await DdnsGoAPI.SetFollowOnExit(next)
+    showToast(next
       ? '已开启：Hanxi 退出时一并关闭 ddns-go'
       : '已关闭：Hanxi 退出不影响 ddns-go，继续独立解析')
   } catch (e) {
+    followOnExit.value = !next // 失败回滚：ref 变化驱动勾选框复位到后端真实值
     showToast('设置失败: ' + getErrorMessage(e))
-    followOnExit.value = !followOnExit.value // 失败回滚
   }
 }
 
