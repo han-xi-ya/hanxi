@@ -47,6 +47,8 @@ const MODULE_META: Record<string, { icon: string; route: string }> = {
   litemonitor: { icon: '📊', route: '/ext/litemonitor' },
   guoheview: { icon: '🏞️', route: '/ext/guoheview' },
   ddnsgo: { icon: '🌐', route: '/ext/ddnsgo' },
+  subnetdesk: { icon: '🖥', route: '/ext/subnetdesk' },
+  rustdesk: { icon: '🌍', route: '/ext/rustdesk' },
 }
 
 async function loadData() {

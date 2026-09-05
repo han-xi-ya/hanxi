@@ -26,6 +26,8 @@ import PicLiteView from './views/PicLiteView.vue'
 import KeyvizView from './views/KeyvizView.vue'
 import QuickLookView from './views/QuickLookView.vue'
 import SnipasteView from './views/SnipasteView.vue'
+import SubnetDeskView from './views/SubnetDeskView.vue'
+import RustDeskView from './views/RustDeskView.vue'
 import NanaZipView from './views/NanaZipView.vue'
 import EarTrumpetView from './views/EarTrumpetView.vue'
 import MangoDiskView from './views/MangoDiskView.vue'
@@ -76,6 +78,8 @@ const CORE_VIEWS: Record<string, Component> = {
   '/ext/litemonitor': markRaw(LiteMonitorView),
   '/ext/guoheview': markRaw(GuoheViewView),
   '/ext/ddnsgo': markRaw(DdnsGoView),
+  '/ext/subnetdesk': markRaw(SubnetDeskView),
+  '/ext/rustdesk': markRaw(RustDeskView),
   '/ext/envcheck': markRaw(EnvCheckView),
   '/logs': markRaw(LogsView),
   '/settings': markRaw(SettingsView),
@@ -110,6 +114,8 @@ const ROUTE_MODULE_MAP: Record<string, string> = {
   '/ext/litemonitor': 'litemonitor',
   '/ext/guoheview': 'guoheview',
   '/ext/ddnsgo': 'ddnsgo',
+  '/ext/subnetdesk': 'subnetdesk',
+  '/ext/rustdesk': 'rustdesk',
   '/ext/envcheck': 'envcheck',
 }
 
