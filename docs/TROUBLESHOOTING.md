@@ -477,3 +477,20 @@ ddns-go（jeessy2/ddns-go，Go 后台 DDNS + Web 面板）是家族里**第一�
   - **面板用独立顶层 `WebviewWindow`（`app.Window.NewWithOptions`）而非 iframe**：顶层文档 Cookie 视作第一方，登录态正常；关窗语义 `RegisterHook(WindowClosing)→Cancel+Hide`（保留 WebView2 会话免重复登录，且永不销毁子窗口 → 不触发"最后一个窗口关闭退出应用"策略）；改端口重启用经 `SetURL` 导航到新地址；
   - 绑定地址恒 `127.0.0.1:port`（上游默认 `:9876` 绑全网卡，会把带 DNS 服务商凭据的面板暴露到局域网），首启即用 `-l 127.0.0.1:9876`；配置沿用上游 `%USERPROFILE%` 固定路径（与用户自跑实例共享同一份，托管即无缝接管）；stdout/stderr 环形日志（复用 `internal/ringbuf` 共享包）经正则脱敏 DNS 凭据（`token/secret/accesskey=…`→`***`，上游 web 日志页有脱敏但 stdout 通道没有）。
 - **避坑防重犯建议**：托管**纯 CLI 后台程序**（非 GUI）前，必读其 main 启动分支——kardianos/service 形态的 Go 工具极易有"检测到已装服务则走 SCM"的劫持路径，常配 `*_DAEMON`/`-d` 类旁路开关，找到它比对抗它省力。端口型 web 工具的"启动成功"信号必须是**端口 TCP 可连**，绝不能用进程存活（僵活/后台化太常见）。任何**裸写用户主目录配置**的上游，托管侧强杀通道前都要加"写静默期"防御——数据在用户目录=你毁的是用户真实资产且无从恢复。内嵌第三方 Web UI 首选独立顶层 Webview，别 iframe：SameSite/CSP/X-Frame-Options 任一项都能让 iframe 静默失效，而顶层窗口天然规避。
+
+### 24. 托管 rust-portable 应用（RustDesk/SubnetDesk）：外层秒退进程不能当生命周期锚点 + 提取目录归属判别 + 便携/安装版双同名陷阱
+
+RustDesk 与其 LAN fork SubnetDesk（协议互不兼容的两个 AGPL 应用，Hanxi 以"远程控制"组合同时托管）是家族里第一类 **rust-portable packer 自解压单 exe** 形态。若照抄 markeron/ccswitch/litemonitor 三套引擎模板，会在四个层面静默失效：
+
+- **问题现象与误判风险**：
+  1. **外层进程不是本体**：`libs/portable/src/main.rs`（两仓库同源）把内层负载解压到 `%LOCALAPPDATA%\{内层条目名小写}\` 后 `cmd.spawn()` 即返回——外层 packer 在拉起后 ~1 秒**自退且退出码不反映内层存亡**。模板的 `wait(){ ...; job.Close(); cmd=nil }` 会在内层 UI 刚出现时把状态误判为"已退出"，更要命的是 `job.Close()` 恰好解除 KILL_ON_JOB_CLOSE 联动——**内层进程树全体放飞成孤儿**，Hanxi 退出不再连带。
+  2. **探测锚点的归属两难**：提取目录是所有同镜像便携实例**共享**的（外层改名无济于事——`app_dir_name` 取的是包内条目名）。"目录里有进程"既可能是自有也可能是外部用户双击的；安装版 + 其 Windows 服务（`Program Files\RustDesk\rustdesk.exe --service`，SYSTEM）与便携版**进程名完全相同**，纯进程名探测（recordly/litemonitor 模板做法）会把"服务常驻"误判为"实例在跑"，external 灯常亮、Quit 永远"不越权"。
+  3. **无退出/唤窗双契约缺失**：上游无 `--quit` 类 CLI、无单实例互斥体；关主窗 = 窗口销毁但内层驻留托盘继续被控；`WM_CLOSE` 模板信使只会"再藏一次窗"；二次无参拉起**不是**唤窗信使而是**又开一个新窗**。"优雅退出+宽限"在关窗驻托盘态必然空转 2s 再强杀，纯演戏。
+  4. **`--install` 首启陷阱**（假警报但要实证排除）：`core_main.rs` 的 `click_setup` 会在特定条件下给 args 注入 `--install` 弹出安装向导——实跑证实触发条件是**外层文件名以 `install.exe` 结尾**（`is_setup()`），官方资产名/托管定名均不命中；但 `ImportLocal` 若收了用户改名的 `*-install.exe`，等于托管一个开机自安装炸弹。
+- **排查过程**：curl GitHub API 确认两仓库 Windows 资产只有单文件 exe + msi（无 portable zip）且 digest 全量在场；读 `libs/portable/src/main.rs` 定位 spawn-不-wait 与 `data_local_dir()` 提取路径；读 `src/core_main.rs`/`src/common.rs` 逐条核对 click_setup/is_setup/is_quick_support/`--connect` 语义；确认 SubnetDesk 自有 hbb_common fork 中 `APP_NAME="SubnetDesk"`、监听 21118（RustDesk 21116/21117），两模块并行无端口/目录冲突；RustDesk 侧 tag 无前缀 v 而 SubnetDesk 有，资产名分别还需排除 `-x86-sciter`/`-aarch64` 变体。
+- **正确做法与标准修复方案**：
+  - **生命周期锚点 = 提取目录内的自有进程树**：引擎 `supervise()` 两相轮询——phase1 等内层出现（与外层 cmd.Wait 并行，外层挂死也能到 startGrace 判失败）、出现即 running 并上报内层 PID；phase2 树消失即 stopped；`job.Close()` 严格推迟到树确认后。外层退出码仅作启动早期判死的辅助信号；
+  - **归属用父 PID 闭包**：`FindOwnPIDs(ancestors)` 从自有外层 PID（含派生开窗的外层）沿 `ParentProcessID` 传递闭包收树；身份过滤 = Toolhelp32 进程名 → `QueryFullProcessImageNameW` 路径前缀必须落在 `%LOCALAPPDATA%\{rustdesk|subnetdesk}\`——安装版/服务天然出局（SYSTEM 进程在非提权下还会多一道 OpenProcess 失败保险）；`ImportLocal` 与落盘定名保证外层名不触发 `install.exe`/`-qs` 规则；
+  - **契约缺失的诚实实现**：Quit 直接 `TerminateJobObject` + 宽限等收尾（文案如实"进行中的会话会断开"）；`OpenWindow` 三分支——有可见/隐藏窗按 PID `SW_RESTORE+SetForegroundWindow`，托盘无窗则**派生第二 packer 并 assign 进同一 Job**（重新开窗的唯一正路，新外层 PID 并入闭包），external 态只唤窗绝不代拉起；**不做空闲自动退出**（被控端常驻是产品语义不是泄露）；
+  - 版本层：单文件下载免解压，完整性 = 官方 digest + 声明字节数 + MZ 魔数（防镜像 HTML 错误页伪装 exe）；RustDesk tag 无 v → 列表层规范化 `Version="v"+tag` 且保留 `Tag` 原值构造下载 URL（**tag 参与 URL，绝不能拿展示值拼**）。
+- **避坑防重犯建议**：遇到"官方 exe 只有一个文件"的发布形态，先读它的打包器源码再谈托管——rust-portable/自解压类"启动器进程"一律不满足模板的"cmd = 本体"前提，凡照搬 `cmd.Wait` 锚定的方案都会在真机上出现"状态秒跳未运行但窗口明明开着"。进程名撞车（便携 vs 安装 vs 服务同名）时，唯一可靠的判别是**镜像路径前缀**（`QueryFullProcessImageName` + PROCESS_QUERY_LIMITED_INFORMATION），并在设计文档里写清"安装版不归我管、互不感知"的边界，别让探测语义含糊。

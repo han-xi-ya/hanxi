@@ -5,7 +5,7 @@ description: 把 GitHub 上的桌面/CLI 工具集成进 Hanxi（托管模式：
 
 # 集成 GitHub 工具进 Hanxi（托管模式）
 
-用户给出 GitHub 地址要求"把 XX 集成到 hanxi"时，按本 skill 执行。已落地先例：**markeron**（GitHub releases、无官方哈希）、**everything**（官网下载、ini 改写藏托盘）、**ccswitch**（GitHub digest 官方 sha256、tauri 单实例互斥体）——新模块优先对照 ccswitch 模板（最新最完整）。
+用户给出 GitHub 地址要求"把 XX 集成到 hanxi"时，按本 skill 执行。已落地先例：**markeron**（GitHub releases、无官方哈希）、**everything**（官网下载、ini 改写藏托盘）、**ccswitch**（GitHub digest 官方 sha256、tauri 单实例互斥体）——新模块优先对照 ccswitch 模板（最新最完整）。另有反模板先例 **rustdesk/subnetdesk**（rust-portable 自解压单 exe：外层秒退不能当生命周期锚点、提取目录父 PID 闭包归属、无优雅退出无唤窗契约，见 TROUBLESHOOTING #24）与 **litemonitor/guoheview/recordly**（进程名探测 + EnumWindows 唤窗家族）——开工前先按上游实例模型选对模板族，别硬套互斥体。
 
 ## 阶段 0：上游侦查（先查后问，全部要实证）
 
@@ -93,6 +93,10 @@ internal/modules/<mod>/
 | 内嵌 CLI 搜索/额外组件 | everything | search/es.go + EnsureTool |
 | ini 改写（托盘隐藏等） | everything | instance/config.go ensureHiddenTray |
 | 空闲自动退出 | everything/ccswitch | service.go idleCheck/touch/shouldIdleQuit |
+| rust-portable 自解压单 exe（外层秒退，锚点=提取目录父 PID 闭包进程树） | rustdesk / subnetdesk | instance/instance.go supervise + probe_windows.go 路径判别（TROUBLESHOOTING #24） |
+| 进程名探测 + EnumWindows 按 PID 唤窗（无互斥体可用） | litemonitor / recordly / guoheview | instance/probe_windows.go + close_windows.go |
+| 单文件 exe 无 zip 下载（digest+字节数+MZ 魔数三重校验） | rustdesk / subnetdesk | version/manager.go Download/placeFile |
+| 被控/服务型常驻——禁用空闲退出、退出即断会话的诚实文案 | rustdesk / subnetdesk | service.go 包注释 + OpenWindow/Quit 编排 |
 
 ## 红线提醒
 
