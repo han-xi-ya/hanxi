@@ -312,13 +312,14 @@ BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名�
 
 ---
 
-### 12. 托管 Electron 应用（Recordly）：NSIS 在线安装器四连坑 + 进程名探测契约
+### 12. 托管 Electron 应用（Recordly）：NSIS 在线安装器五连坑 + 进程名探测契约
 
-- **问题现象与错误原因**：Recordly 上游 Windows 仅有 electron-builder NSIS 在线安装器（无便携 zip），集成托管连续踩四类坑：
+- **问题现象与错误原因**：Recordly 上游 Windows 仅有 electron-builder NSIS 在线安装器（无便携 zip），集成托管连续踩五类坑：
   1. **`/D=<目录>` 传参坑**：NSIS 规定 `/D=` 必须是命令行最后一个参数且路径**不带引号**；Go 的 `exec.Command` 给含空格路径自动整体加引号，NSIS 取 `/D=` 之后整段时把尾引号算进目录名，安装落到错误目录；
   2. **oneClick 静默卸载旧安装**：electron-builder NSIS 默认 `oneClick: true`，安装器启动时按 HKCU 卸载注册表 `InstallLocation` **静默卸载上一个安装**——多版本共存目录形同虚设（每装一版抹掉注册表指向的那版），若注册表指向用户自装副本还会被托管动作连带删掉；
   3. **PE 版本抹平预发布后缀**：`v1.3.5-beta.2` 的 `Recordly.exe` FileVersion 读出 `1.3.5`（electron-builder 把 prerelease 抹平进 Windows 数字版本），按 PE 版本识别 beta 安装必错；
   4. **空壳 tag**：上游 `v1.3.4` 有 git tag 但 `releases/tags/v1.3.4` 返回 404（打了 tag 从未发布），另有 v1.2.0 缺安装器只剩 blockmap、v1.3.5-beta.2 刻意不发 `latest.yml`——按 tag 给前端列版本会展示下载不到的版本。
+  5. **退出码直译误导 + 超时死代码**（真机复发）：安装失败控制台显示"退出码 3221225477（安装中止？请确认没有正在运行的 Recordly 实例）"——3221225477 = **0xC0000005 访问违例**，是安装器进程崩溃（Recordly 未签名安装器被杀软注入扫描干扰的典型死法），与"文件占用中止"毫不相干，兜底文案把用户引向完全错误的排查方向。连带发现：15 分钟超时的 ctx 从未接入 `exec.Command`（裸 Command 不 watch ctx，事后 `ctx.Err()` 判定永假），装死在隐藏对话框的安装器会永久吊死下载 goroutine，超时文案是不可达死代码。
 - **排查过程**：`electron-builder.json5` 实证 win target 只有 nsis 且未覆写 oneClick（默认 true）、`artifactName: ${productName}-windows-${arch}.${ext}`；releases API 全量 46 版逐一核对资产名与 digest；GitHub API 交叉验证 tag vs release 存在性；上游 `main.ts`/`updater.ts` 源码实证 `requestSingleInstanceLock` 与 `RECORDLY_DISABLE_AUTO_UPDATES` 官方开关。
 - **正确做法与标准修复方案**：
   - 静默安装显式接管原始命令行绕开 Go 引号化：`cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `"C:\installer.exe" /S /D=C:\path with space\target`}`（exe 段带引号、`/D=` 段不带）；
@@ -326,13 +327,15 @@ BCU（Bulk Crap Uninstaller）模块的三条上游契约坑——"看资产名�
   - beta 身份以安装时写入 `hanxi-meta.json` 的远程 tag 为准，PE FileVersion 只做兜底；版本比较必须 semver 预发布感知（`1.3.4-beta.1 < 1.3.4 < 1.3.5-beta.2`，数值核心互认函数供 beta/PE 版本互查）；
   - 远程列表以 `/releases?per_page=60` 为唯一数据源，tag 正则放宽到 `vX.Y.Z(-pre.N)` 后按 `prerelease || tag带后缀` 双依据标 IsPre，stable/beta 双通道（默认 stable），缺 digest/缺安装器资产的残缺发布一律不入列；校验链 = GitHub digest sha256（主）+ 官方 `SHA256SUMS.txt` 交叉比对（第二只眼，网络失败降级放行、两源矛盾硬失败）；
   - Electron 探测无稳定互斥体名可依赖（Chromium 进程单例对象名不可预期），一律**进程名 `Recordly.exe` + EnumWindows 按进程名过滤**（窗口要求可见且带标题）；`wait()` 判外部接管前先等 ~500ms 让 Chromium 子进程树收敛——进程名探测是树级信号，自有主进程刚退时 helper 残影会被误判成外部实例（ccswitch/bcu 的互斥体方案没有这个问题，这是移植托管模板到 Electron 时的结构性差异）；
-  - 启动注入 `RECORDLY_DISABLE_AUTO_UPDATES=1`（上游官方 env 开关），否则 electron-updater 的 `quitAndInstall` 会按注册表覆写托管目录；WM_CLOSE 必须按进程名过滤，**绝不能** `FindWindow("Chrome_WidgetWin_1")`——那是全体 Chromium 应用共享的窗口类，会误伤用户浏览器。
+  - 启动注入 `RECORDLY_DISABLE_AUTO_UPDATES=1`（上游官方 env 开关），否则 electron-updater 的 `quitAndInstall` 会按注册表覆写托管目录；WM_CLOSE 必须按进程名过滤，**绝不能** `FindWindow("Chrome_WidgetWin_1")`——那是全体 Chromium 应用共享的窗口类，会误伤用户浏览器；
+  - 退出码经 `decodeInstallerExit()` 分族翻译（与 rustdesk/subnetdesk 的 `installExitError` 同思想）：Win32 小码给语义指引（1223=UAC 取消、5=拒绝访问）、`0xC0000005` 明示"崩溃非文件占用→查杀软注入、覆盖重装即可"、其余 ≥`0xC0000000` 一律按 NTSTATUS 报十六进制；超时改 `exec.CommandContext` 真接线，且 `ctx.Err()` 判定必须排在 `ExitError` 判定之前（被 ctx 杀死后 Run 同样返回 ExitError，顺序颠倒会把超时误报成异常退出码）。
 - **避坑建议**：
   1. 托管 NSIS 类上游前先读 `electron-builder.json5` 的 win/nsis 配置判定 oneClick/perMachine/shortcut 默认值，再决定目录布局；"GitHub 有 zip 资产"≠ Windows 便携版（electron-builder 的 `Recordly-x64.zip` 是 macOS 自动更新产物）；
   2. NSIS 安装器会顺手创建桌面/开始菜单快捷方式（指向托管目录、可绕过 Hanxi 启停），安装成功后立即清理，"桌面快捷方式"作为 Hanxi 侧显式功能提供；上游若存在真托盘语义则另议；
   3. 未签名安装器的信任链完全押在双源 sha256 上：`SHA256SUMS.txt` 这类官方旁证资产要利用起来，格式解析容忍 GNU（`<hash>  <name>`）与 BSD（`<hash> *<name>`）两式；
   4. 安装器体积 ~214MB、装后 ~700MB，远大于既有 tauri 模块：下载超时给到分钟级，多版本目录设计前先量磁盘成本；
-  5. Electron 冷启动到主窗口就绪实测 2~10s，`readyTimeout` 给 30s，勿照抄 tauri 的 20s。
+  5. Electron 冷启动到主窗口就绪实测 2~10s，`readyTimeout` 给 30s，勿照抄 tauri 的 20s；
+  6. **外部安装器退出码先分族再写文案**：无符号大数（≥0xC0000000）是 NTSTATUS 异常=崩溃，NSIS/MSI 业务返回都是小码——把两类混进一句"安装中止？"必然误导；`context.WithTimeout` 必须配 `exec.CommandContext` 才算生效，裸 Command + 事后 `ctx.Err()` 是装饰。
 
 ### 13. 托管 WPF 绿色单文件应用（PaperTodo）：GitHub digest 并非全量存在 + 自建单实例命令契约
 
@@ -426,6 +429,7 @@ LiteMonitor（C# WinForms 桌面/任务栏硬件监控）集成实证——"GitH
 - **避坑防重犯建议**：
   1. **侦查清单第 4 项要读互斥体名的构造代码**：名称是否"路径/机器派生"决定探测可行性——固定 identifier 名（tauri/QuickLook）可 OpenMutex，路径派生名只能进程枚举；
   2. **`grep requestedExecutionLevel` 纳入必查项**：requireAdministrator 应用给出三重预告——740 特判文案、UIPI 下唤窗/关窗仅在 Hanxi 同或更高权限时可靠、首启 UAC 属预期交互；
+     **复发实证（BCU）**：集成 BCUninstaller 时漏执行本条，真机控制台直接裸 errno 740（"The requested operation requires elevation"）才补上 `elevateHint` 特判——BCU 的 Start 与信使唤窗两条 `exec` 路径都吃 740（外部实例几乎都是用户自提权启动的，唤窗失败率反而更高）。必查项要在写码前执行，不是文档里备着；
   3. **seed 上游配置先实证反序列化宽容度**：大小写策略/缺字段行为/文件缺失回退路径决定"最小种子"是否安全，不实证就是全量覆盖用户配置的隐患；
   4. **FileVersion 四段陷阱**：.NET 应用 csproj 常把 `<FileVersion>` 写成 `X.Y.Z.0` 而 tag 是 `X.Y.Z`，任何"PE 版本==目录版本"核对先做归一；
   5. **上游无 LICENSE 文件**（GitHub API `license: null`）的项目：托管模式仅代下载官方 release、不镜像分发，并在前端"关于"卡如实标注——法律姿态透明，风险交用户知情。
