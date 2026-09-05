@@ -110,35 +110,30 @@ watch(() => props.logLines.length, async () => {
 </template>
 
 <style scoped>
-.npm-panel { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px; }
+.npm-panel { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
 .panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.panel-heading strong { color: var(--text-main); font-size: 12px; }
-.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: #fff8c5; color: #9a6700; font-size: 10px; }
-.latest-version { color: var(--text-muted); font-size: 11px; }
+.panel-heading strong { color: var(--color-text); font-size: 12px; }
+.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: var(--state-warning-soft); color: var(--state-warning); font-size: 10px; }
+.latest-version { color: var(--color-text-muted); font-size: 11px; }
 .relation-text { margin: 0; padding: 6px 8px; border-radius: 5px; font-size: 12px; line-height: 1.45; }
-.relation-ok { background: #dafbe1; color: #1a7f37; }
-.relation-update { background: #ddf4ff; color: #0969da; }
-.relation-neutral { background: #eaeef2; color: #656d76; }
-.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: #ffebe9; color: var(--danger); font-size: 12px; line-height: 1.5; margin: 0; }
-.detail-warn { margin: 0; padding: 6px 8px; border-radius: 5px; background: #fff8c5; color: #9a6700; font-size: 11px; line-height: 1.5; }
-.op-running { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 12px; }
-.op-spinner { width: 12px; height: 12px; border: 2px solid var(--border-color); border-top-color: var(--accent); border-radius: 50%; animation: npm-spin 0.8s linear infinite; flex: none; }
+.relation-ok { background: var(--state-positive-soft); color: var(--state-positive); }
+.relation-update { background: var(--state-information-soft); color: var(--state-information); }
+.relation-neutral { background: var(--surface-hover); color: var(--color-text-muted); }
+.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: var(--state-danger-soft); color: var(--state-danger); font-size: 12px; line-height: 1.5; margin: 0; }
+.detail-warn { margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--state-warning-soft); color: var(--state-warning); font-size: 11px; line-height: 1.5; }
+.op-running { display: flex; align-items: center; gap: 7px; color: var(--color-text-muted); font-size: 12px; }
+.op-spinner { width: 12px; height: 12px; border: 2px solid var(--color-border); border-top-color: var(--color-primary); border-radius: 50%; animation: npm-spin 0.8s linear infinite; flex: none; }
 @keyframes npm-spin { to { transform: rotate(360deg); } }
 .npm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.op-log { margin: 0; max-height: 140px; overflow-y: auto; padding: 8px; border-radius: 6px; background: var(--bg-main); border: 1px solid var(--border-color); font-family: Consolas, monospace; font-size: 11px; line-height: 1.5; color: var(--text-main); white-space: pre-wrap; overflow-wrap: anywhere; }
-.npm-footnote { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
-.mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; }
-.link-button { padding: 0; border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; white-space: nowrap; text-decoration: underline; }
-.link-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-uninstall { background: transparent; color: var(--danger); border-color: rgba(207, 34, 46, 0.35); }
-.btn-uninstall:hover:not(:disabled) { background: #ffebe9; border-color: var(--danger); }
-.btn-small { padding: 4px 12px; font-size: 12px; }
-.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.op-log { margin: 0; max-height: 140px; overflow-y: auto; padding: 8px; border-radius: 6px; background: var(--surface-soft); border: 1px solid var(--color-border); font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.npm-footnote { margin: 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
+.mono { font-family: var(--font-mono); color: var(--color-text); font-size: 11px; }
+/* .link-button 全局原子承载基础形；本面板保持常下划线与小字号语境 */
+.link-button { padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font: inherit; white-space: nowrap; text-decoration: underline; }
+/* .btn 基础/primary/small、禁用态、焦点环、coarse-pointer 最小尺寸与减弱动效
+   由 components.css / base.css 全局承载；本面板仅留特有"描边红"卸载变体 */
+.btn-uninstall { background: transparent; color: var(--state-danger); border-color: var(--state-danger-glow); }
+.btn-uninstall:hover:not(:disabled) { background: var(--state-danger-soft); border-color: var(--state-danger); }
 @media (max-width: 460px) { .npm-actions .btn { flex: 1; } }
-@media (pointer: coarse) { .btn, .link-button { min-height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .btn { transition: none; } .op-spinner { animation-duration: 2s; } }
+@media (prefers-reduced-motion: reduce) { .op-spinner { animation-duration: 2s; } }
 </style>

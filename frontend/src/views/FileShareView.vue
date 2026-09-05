@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, shallowRef, computed, onMounted } from 'vue'
 import QRCode from 'qrcode'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import * as FileShareAPI from '../../bindings/hanxi/internal/modules/fileshare'
@@ -13,8 +12,12 @@ import type {
 } from '../../bindings/hanxi/internal/modules/fileshare/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { usePolling } from '../composables/usePolling'
+import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
+const { copy } = useClipboard()
 
 // 状态定义
 const status = ref<ServerStatus>({
@@ -61,11 +64,6 @@ const canOpenShareDirectory = computed(() => {
 // 二维码 SVG 缓存 Map (url -> svg)
 const qrMap = ref<Record<string, string>>({})
 
-let unlistenStatus: (() => void) | null = null
-let unlistenTransfer: (() => void) | null = null
-let unlistenDrop: (() => void) | null = null
-let pollTimer: number | null = null
-
 async function loadData() {
   try {
     const [srvStatus, cfg, eps, inbox] = await Promise.all([
@@ -95,6 +93,8 @@ async function generateQRCodes() {
         type: 'svg',
         margin: 1,
         width: 140,
+        // 二维码必须保持深墨+纯白硬对比——扫码器不认主题色，这两个 hex 是功能参数而非装饰色，
+        // 刻意不参与 token 化（全文件仅此处允许硬编码色值）。
         color: {
           dark: '#1e293b',
           light: '#ffffff',
@@ -173,12 +173,10 @@ function setQuickPort(port: number) {
   configForm.value.port = port
 }
 
-function copyToClipboard(text: string, tip = '已复制访问链接') {
-  navigator.clipboard.writeText(text).then(() => {
-    showToast(tip)
-  }).catch(() => {
-    showToast('复制到剪贴板失败')
-  })
+async function copyToClipboard(text: string, tip = '已复制访问链接') {
+  // 两级剪贴板策略收编进 useClipboard；成功/失败文案逐字保留
+  const ok = await copy(text)
+  showToast(ok ? tip : '复制到剪贴板失败')
 }
 
 async function handleDeleteDrop(id: string) {
@@ -202,56 +200,34 @@ async function handleClearInbox() {
   }
 }
 
-function startPolling() {
-  if (pollTimer) return
-  pollTimer = window.setInterval(async () => {
-    if (!status.value.isRunning) return
-    try {
-      status.value = await FileShareAPI.FileShareService.GetServerStatus()
-    } catch {
-      /* 状态获取失败静默，等待下次轮询 */
-    }
-  }, 2000)
-}
-
-function stopPolling() {
-  if (!pollTimer) return
-  window.clearInterval(pollTimer)
-  pollTimer = null
-}
-
-onMounted(async () => {
-  await loadData()
-
-  unlistenStatus = Events.On('fileshare:status', (ev: { data?: ServerStatus }) => {
-    if (ev.data) status.value = ev.data
-  })
-
-  unlistenTransfer = Events.On('fileshare:transfer', (ev: { data?: TransferEvent }) => {
-    if (ev.data) transferLogs.value = [ev.data, ...transferLogs.value.slice(0, 49)]
-  })
-
-  unlistenDrop = Events.On('fileshare:text-dropped', (ev: { data?: DropItem }) => {
-    const item = ev.data
-    if (!item) return
-    dropInbox.value = [item, ...dropInbox.value]
-    showToast(`收到来自移动端的文本投递: ${item.content.slice(0, 24)}...`)
-  })
-
-  startPolling()
+// ---------- 订阅与轮询（useWailsEvent/usePolling 契约：setup 期注册、KeepAlive 停用即停） ----------
+useWailsEvent<ServerStatus>('fileshare:status', (s) => {
+  if (s) status.value = s
 })
 
-onActivated(startPolling)
-onDeactivated(stopPolling)
-
-onUnmounted(() => {
-  stopPolling()
-  if (unlistenStatus) unlistenStatus()
-  if (unlistenTransfer) unlistenTransfer()
-  if (unlistenDrop) unlistenDrop()
+useWailsEvent<TransferEvent>('fileshare:transfer', (t) => {
+  if (t) transferLogs.value = [t, ...transferLogs.value.slice(0, 49)]
 })
 
-// 字节格式化: 1536 -> "1.5 KB"
+useWailsEvent<DropItem>('fileshare:text-dropped', (item) => {
+  if (!item) return
+  dropInbox.value = [item, ...dropInbox.value]
+  showToast(`收到来自移动端的文本投递: ${item.content.slice(0, 24)}...`)
+})
+
+// 运行中才拉状态（停止态空转保护逐字保留）；不立即首跑——进页数据由 loadData 负责
+usePolling(async () => {
+  if (!status.value.isRunning) return
+  status.value = await FileShareAPI.FileShareService.GetServerStatus()
+}, 2000, { immediateFirstRun: false })
+
+onMounted(() => {
+  loadData()
+})
+
+// 字节格式化: 1536 -> "1.5 KB"。
+// 有意保留本地实现而非 utils/format.fmtSize：本视图口径为"0 B 起点 + 千进制对数进位 +
+// 三位有效数字 + B/GB/TB 档"，与家族两档口径（'—'/KB-MB）语义不同，属业务差异非胶水副本。
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -646,7 +622,7 @@ function formatSpeed(bps: number): string {
 .page-title {
   font-size: 22px;
   font-weight: 700;
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -655,7 +631,7 @@ function formatSpeed(bps: number): string {
 
 .page-desc {
   font-size: 13px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-muted);
   max-width: 720px;
   line-height: 1.5;
 }
@@ -667,22 +643,22 @@ function formatSpeed(bps: number): string {
 }
 
 .stat-card {
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 16px;
 }
 
 .stat-label {
   font-size: 12px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-muted);
   margin-bottom: 6px;
 }
 
 .stat-val {
   font-size: 20px;
   font-weight: 700;
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text);
   margin-bottom: 4px;
 }
 
@@ -693,24 +669,24 @@ function formatSpeed(bps: number): string {
 .stat-val .unit {
   font-size: 13px;
   font-weight: normal;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-muted);
 }
 
 .stat-sub {
   font-size: 11px;
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-subtle);
 }
 
 .text-upload {
-  color: #10b981;
+  color: var(--state-positive);
 }
 
 .text-download {
-  color: #3b82f6;
+  color: var(--state-information);
 }
 
 .text-divider {
-  color: var(--color-border, #cbd5e1);
+  color: var(--color-border);
   margin: 0 4px;
 }
 
@@ -718,17 +694,17 @@ function formatSpeed(bps: number): string {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--state-danger);
 }
 
 .status-indicator.online {
-  background: #10b981;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+  background: var(--state-positive);
+  box-shadow: 0 0 8px var(--state-positive-glow);
 }
 
 .config-card {
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 16px 20px;
 }
@@ -746,7 +722,7 @@ function formatSpeed(bps: number): string {
   flex-wrap: wrap;
   gap: 20px;
   padding-top: 8px;
-  border-top: 1px dashed var(--color-border, #e2e8f0);
+  border-top: 1px dashed var(--color-border);
 }
 
 .form-group {
@@ -758,7 +734,7 @@ function formatSpeed(bps: number): string {
 .form-group label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-primary, #1e293b);
+  color: var(--color-text);
 }
 
 .path-input-group {
@@ -782,9 +758,9 @@ function formatSpeed(bps: number): string {
 }
 
 .quick-port-chip {
-  background: var(--color-bg-input, #f1f5f9);
-  border: 1px solid var(--color-border, #cbd5e1);
-  color: var(--color-text-secondary, #475569);
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
   font-size: 11px;
   font-family: monospace;
   padding: 1px 6px;
@@ -794,35 +770,35 @@ function formatSpeed(bps: number): string {
 }
 
 .quick-port-chip:hover {
-  background: #e2e8f0;
-  color: #0f172a;
+  background: var(--color-border);
+  color: var(--color-text);
 }
 
 .quick-port-chip.active {
-  background: #2563eb;
-  color: #ffffff;
-  border-color: #2563eb;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border-color: var(--color-primary);
 }
 
 .input-control {
-  background: var(--color-bg-input, #f8fafc);
-  border: 1px solid var(--color-border, #cbd5e1);
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 13px;
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text);
   outline: none;
   transition: border-color 0.2s;
 }
 
 .input-control:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  border-color: var(--state-information);
+  box-shadow: 0 0 0 2px var(--state-information-soft);
 }
 
 .form-hint {
   font-size: 11px;
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-subtle);
 }
 
 .checkbox-label {
@@ -830,14 +806,14 @@ function formatSpeed(bps: number): string {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: var(--color-text-primary, #1e293b);
+  color: var(--color-text);
   cursor: pointer;
 }
 
 .tab-nav {
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 8px;
 }
 
@@ -847,20 +823,20 @@ function formatSpeed(bps: number): string {
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-muted);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .tab-item:hover {
-  background: var(--color-bg-hover, #f1f5f9);
-  color: var(--color-text-primary, #0f172a);
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .tab-item.active {
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--state-information);
+  color: var(--color-on-primary);
 }
 
 .endpoint-grid {
@@ -870,8 +846,8 @@ function formatSpeed(bps: number): string {
 }
 
 .endpoint-card {
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 16px;
 }
@@ -884,10 +860,10 @@ function formatSpeed(bps: number): string {
 }
 
 .ep-qr {
-  background: #ffffff;
+  background: var(--surface-panel);
   padding: 8px;
   border-radius: 8px;
-  border: 1px solid var(--color-border, #e2e8f0);
+  border: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -903,22 +879,22 @@ function formatSpeed(bps: number): string {
 }
 
 .ep-url-box {
-  background: var(--color-bg-input, #f8fafc);
+  background: var(--surface-soft);
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid var(--color-border, #cbd5e1);
+  border: 1px solid var(--color-border);
   word-break: break-all;
 }
 
 .url-text {
   font-size: 13px;
   font-weight: 600;
-  color: #2563eb;
+  color: var(--color-primary);
 }
 
 .ep-tip {
   font-size: 12px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-muted);
   line-height: 1.4;
 }
 
@@ -930,8 +906,8 @@ function formatSpeed(bps: number): string {
 }
 
 .inbox-item {
-  background: var(--color-bg-input, #f8fafc);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 12px 16px;
   display: flex;
@@ -945,10 +921,10 @@ function formatSpeed(bps: number): string {
 }
 
 .inbox-content {
-  background: #ffffff;
+  background: var(--surface-panel);
   padding: 8px 12px;
   border-radius: 6px;
-  border: 1px solid var(--color-border, #e2e8f0);
+  border: 1px solid var(--color-border);
   font-size: 13px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -965,14 +941,14 @@ function formatSpeed(bps: number): string {
 .table td {
   padding: 10px 12px;
   text-align: left;
-  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .table th {
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-text-secondary, #64748b);
-  background: var(--color-bg-input, #f8fafc);
+  color: var(--color-text-muted);
+  background: var(--surface-soft);
 }
 
 .flex-between { display: flex; justify-content: space-between; align-items: center; }
@@ -987,8 +963,8 @@ function formatSpeed(bps: number): string {
 .py-8 { padding-top: 32px; padding-bottom: 32px; }
 
 .btn-primary {
-  background: #2563eb;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   border: none;
   border-radius: 6px;
   padding: 8px 16px;
@@ -1004,13 +980,13 @@ function formatSpeed(bps: number): string {
 }
 
 .btn-danger {
-  background: #ef4444;
+  background: var(--state-danger);
 }
 
 .btn-secondary {
-  background: #ffffff;
-  border: 1px solid var(--color-border, #cbd5e1);
-  color: var(--color-text-primary, #334155);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
   border-radius: 6px;
   padding: 6px 12px;
   font-size: 12px;
@@ -1018,7 +994,7 @@ function formatSpeed(bps: number): string {
 }
 
 .btn-secondary:hover {
-  background: var(--color-bg-input, #f8fafc);
+  background: var(--surface-soft);
 }
 
 .btn-sm {
@@ -1030,22 +1006,22 @@ function formatSpeed(bps: number): string {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--surface-soft);
+  color: var(--color-text);
 }
 
-.tag-primary { background: #dbeafe; color: #1d4ed8; }
-.tag-blue { background: #e0f2fe; color: #0284c7; }
-.tag-success { background: #dcfce7; color: #15803d; }
-.tag-amber { background: #fef3c7; color: #b45309; }
+.tag-primary { background: var(--state-information-soft); color: var(--color-primary-hover); }
+.tag-blue { background: var(--state-information-soft); color: var(--state-information); }
+.tag-success { background: var(--state-positive-soft); color: var(--state-positive); }
+.tag-amber { background: var(--state-warning-soft); color: var(--state-warning); }
 
-.text-danger { color: #ef4444; }
-.text-success { color: #10b981; }
-.text-muted { color: var(--color-text-muted, #94a3b8); }
+.text-danger { color: var(--state-danger); }
+.text-success { color: var(--state-positive); }
+.text-muted { color: var(--color-text-subtle); }
 
 .empty-state {
   text-align: center;
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-subtle);
 }
 
 .empty-icon {
@@ -1075,11 +1051,11 @@ function formatSpeed(bps: number): string {
   margin-bottom: 18px;
   overflow: hidden;
   background:
-    radial-gradient(circle at 85% 0%, rgba(59, 130, 246, 0.14), transparent 36%),
-    linear-gradient(135deg, var(--color-bg-card, #ffffff), var(--color-bg-input, #f8fafc));
-  border: 1px solid var(--color-border, #e2e8f0);
+    radial-gradient(circle at 85% 0%, var(--state-information-soft), transparent 36%),
+    linear-gradient(135deg, var(--surface-panel), var(--surface-soft));
+  border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 12px 30px var(--shadow-panel);
 }
 
 .hero-copy {
@@ -1089,7 +1065,7 @@ function formatSpeed(bps: number): string {
 .eyebrow,
 .section-kicker {
   margin-bottom: 7px;
-  color: #2563eb;
+  color: var(--color-primary);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -1108,11 +1084,11 @@ function formatSpeed(bps: number): string {
   justify-content: center;
   width: 36px;
   height: 36px;
-  color: #ffffff;
+  color: var(--color-on-primary);
   font-size: 22px;
-  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  background: linear-gradient(135deg, var(--color-primary), var(--state-information));
   border-radius: 10px;
-  box-shadow: 0 7px 16px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 7px 16px var(--color-primary-glow);
 }
 
 .page-desc {
@@ -1135,25 +1111,25 @@ function formatSpeed(bps: number): string {
   align-items: center;
   gap: 7px;
   padding: 5px 9px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-muted);
   font-size: 11px;
   font-weight: 600;
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
 }
 
 .status-pill.online {
-  color: #047857;
-  background: rgba(16, 185, 129, 0.09);
-  border-color: rgba(16, 185, 129, 0.25);
+  color: var(--state-positive);
+  background: var(--state-positive-soft);
+  border-color: var(--state-positive-soft);
 }
 
 .hero-action {
   min-width: 150px;
   padding: 10px 17px;
   border-radius: 9px;
-  box-shadow: 0 7px 16px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 7px 16px var(--color-primary-soft);
 }
 
 .overview-grid {
@@ -1168,21 +1144,21 @@ function formatSpeed(bps: number): string {
   gap: 14px;
   min-width: 0;
   padding: 16px;
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 13px;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .overview-card:hover {
   transform: translateY(-1px);
-  border-color: rgba(59, 130, 246, 0.35);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  border-color: var(--state-information-soft);
+  box-shadow: 0 8px 22px var(--shadow-panel);
 }
 
 .overview-card-primary {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), var(--color-bg-card, #ffffff));
-  border-color: rgba(37, 99, 235, 0.22);
+  background: linear-gradient(135deg, var(--color-primary-soft), var(--surface-panel));
+  border-color: var(--color-primary-glow);
 }
 
 .metric-icon,
@@ -1193,16 +1169,16 @@ function formatSpeed(bps: number): string {
   justify-content: center;
   width: 40px;
   height: 40px;
-  color: #2563eb;
+  color: var(--color-primary);
   font-size: 19px;
   font-weight: 700;
-  background: rgba(37, 99, 235, 0.1);
+  background: var(--color-primary-soft);
   border-radius: 11px;
 }
 
-.metric-icon-green { color: #059669; background: rgba(16, 185, 129, 0.1); }
-.metric-icon-blue { color: #0284c7; background: rgba(14, 165, 233, 0.1); }
-.metric-icon-amber { color: #d97706; background: rgba(245, 158, 11, 0.11); }
+.metric-icon-green { color: var(--state-positive); background: var(--state-positive-soft); }
+.metric-icon-blue { color: var(--state-information); background: var(--state-information-soft); }
+.metric-icon-amber { color: var(--state-warning); background: var(--state-warning-soft); }
 
 .stat-label { margin-bottom: 4px; }
 .stat-val { margin-bottom: 3px; font-size: 18px; }
@@ -1217,10 +1193,10 @@ function formatSpeed(bps: number): string {
 .workspace-card {
   padding: 0;
   overflow: hidden;
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.045);
+  box-shadow: 0 10px 28px var(--shadow-panel);
 }
 
 .section-header,
@@ -1230,19 +1206,19 @@ function formatSpeed(bps: number): string {
   justify-content: space-between;
   gap: 20px;
   padding: 20px 22px;
-  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .section-title {
   margin: 0;
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text);
   font-size: 18px;
   font-weight: 750;
 }
 
 .section-desc {
   margin: 5px 0 0;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
@@ -1253,7 +1229,7 @@ function formatSpeed(bps: number): string {
 }
 
 .hot-apply-tip {
-  color: #059669;
+  color: var(--state-positive);
   font-size: 11px;
   font-weight: 600;
 }
@@ -1263,14 +1239,14 @@ function formatSpeed(bps: number): string {
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.9fr);
   gap: 14px;
   padding: 16px;
-  background: var(--color-bg-input, #f8fafc);
+  background: var(--surface-soft);
 }
 
 .setting-panel {
   min-width: 0;
   padding: 18px;
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -1287,13 +1263,13 @@ function formatSpeed(bps: number): string {
 
 .setting-panel-title h3 {
   margin: 0 0 3px;
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text);
   font-size: 14px;
 }
 
 .setting-panel-title p {
   margin: 0;
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-subtle);
   font-size: 11px;
 }
 
@@ -1305,7 +1281,7 @@ function formatSpeed(bps: number): string {
 }
 
 .field-label {
-  color: var(--color-text-primary, #1e293b);
+  color: var(--color-text);
   font-size: 12px;
   font-weight: 650;
 }
@@ -1327,8 +1303,8 @@ function formatSpeed(bps: number): string {
 }
 
 .open-action {
-  color: #1d4ed8;
-  border-color: rgba(37, 99, 235, 0.35);
+  color: var(--color-primary-hover);
+  border-color: var(--color-primary-glow);
 }
 
 .path-hints {
@@ -1336,13 +1312,13 @@ function formatSpeed(bps: number): string {
   justify-content: space-between;
   gap: 10px;
   margin-top: 8px;
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-subtle);
   font-size: 11px;
 }
 
 .unsaved-hint {
   flex: 0 0 auto;
-  color: #d97706;
+  color: var(--state-warning);
   font-weight: 600;
 }
 
@@ -1383,14 +1359,14 @@ function formatSpeed(bps: number): string {
   gap: 16px;
   padding: 13px;
   cursor: pointer;
-  background: var(--color-bg-input, #f8fafc);
+  background: var(--surface-soft);
   border: 1px solid transparent;
   border-radius: 10px;
   transition: border-color 0.18s, background 0.18s;
 }
 
 .permission-item:hover {
-  border-color: rgba(59, 130, 246, 0.26);
+  border-color: var(--state-information-soft);
 }
 
 .permission-item span {
@@ -1400,13 +1376,13 @@ function formatSpeed(bps: number): string {
 }
 
 .permission-item strong {
-  color: var(--color-text-primary, #1e293b);
+  color: var(--color-text);
   font-size: 12px;
   font-weight: 650;
 }
 
 .permission-item small {
-  color: var(--color-text-muted, #94a3b8);
+  color: var(--color-text-subtle);
   font-size: 10px;
   line-height: 1.4;
 }
@@ -1414,7 +1390,7 @@ function formatSpeed(bps: number): string {
 .permission-item input {
   width: 16px;
   height: 16px;
-  accent-color: #2563eb;
+  accent-color: var(--color-primary);
 }
 
 .workspace-header {
@@ -1426,7 +1402,7 @@ function formatSpeed(bps: number): string {
   max-width: 100%;
   padding: 4px;
   overflow-x: auto;
-  background: var(--color-bg-input, #f1f5f9);
+  background: var(--surface-soft);
   border: 0;
   border-radius: 10px;
 }
@@ -1442,9 +1418,9 @@ function formatSpeed(bps: number): string {
 }
 
 .tab-item.active {
-  color: #1d4ed8;
-  background: var(--color-bg-card, #ffffff);
-  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.09);
+  color: var(--color-primary-hover);
+  background: var(--surface-panel);
+  box-shadow: 0 2px 7px var(--shadow-small);
 }
 
 .tab-count {
@@ -1453,14 +1429,14 @@ function formatSpeed(bps: number): string {
   color: inherit;
   font-size: 10px;
   text-align: center;
-  background: rgba(100, 116, 139, 0.12);
+  background: var(--surface-hover);
   border-radius: 999px;
 }
 
 .workspace-body {
   min-height: 230px;
   padding: 18px;
-  background: var(--color-bg-input, #f8fafc);
+  background: var(--surface-soft);
 }
 
 .workspace-body > .tab-content > .card,
@@ -1482,7 +1458,7 @@ function formatSpeed(bps: number): string {
   min-width: 132px;
   width: 132px;
   height: 132px;
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.03);
+  box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
 .inbox-item {
@@ -1492,7 +1468,7 @@ function formatSpeed(bps: number): string {
 .table-responsive {
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--color-border, #e2e8f0);
+  border: 1px solid var(--color-border);
   border-radius: 9px;
 }
 
@@ -1522,20 +1498,20 @@ function formatSpeed(bps: number): string {
 .quick-port-chip:focus-visible,
 .tab-item:focus-visible,
 .input-control:focus-visible {
-  outline: 2px solid rgba(37, 99, 235, 0.55);
+  outline: 2px solid var(--color-primary-glow);
   outline-offset: 2px;
 }
 
 .empty-state {
   padding: 44px 20px;
-  background: var(--color-bg-card, #ffffff);
-  border: 1px dashed var(--color-border, #cbd5e1);
+  background: var(--surface-panel);
+  border: 1px dashed var(--color-border);
   border-radius: 12px;
 }
 
 .empty-state h3 {
   margin: 0 0 7px;
-  color: var(--color-text-primary, #334155);
+  color: var(--color-text);
   font-size: 15px;
 }
 

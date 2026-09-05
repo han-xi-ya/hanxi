@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { computed, onMounted, reactive, ref } from 'vue'
 import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/envcheckservice'
 import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
 import type { ToolInfo } from '../../bindings/hanxi/internal/modules/envcheck/detect/models'
@@ -16,8 +15,11 @@ import OfficialVersionsPanel from '../components/envcheck/OfficialVersionsPanel.
 import PackageManagerUpgradeHint from '../components/envcheck/PackageManagerUpgradeHint.vue'
 import NpmToolActions from '../components/envcheck/NpmToolActions.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import PageHeader from '../components/ui/PageHeader.vue'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
+import { envStatusMeta } from '../constants/status'
 
 type OfficialTool = 'git' | 'go' | 'node' | 'java' | 'python' | 'dotnet'
 type NativeOverview = GoOverview | NodeOverview | JavaOverview | PythonOverview | DotNetOverview
@@ -48,8 +50,6 @@ const npmLogs = reactive<Record<string, string[]>>({})
 const npmActive = ref<OperationProgress | null>(null)
 const uninstallTarget = ref<ToolOverview | null>(null)
 const uninstallBusy = ref(false)
-let unlistenNpmOperation: (() => void) | null = null
-let unlistenNpmLog: (() => void) | null = null
 
 const npmByName = computed(() => new Map((npmOverview.value?.tools ?? []).map(tool => [tool.local.name, tool])))
 // npmBusy：进行中操作优先取实时事件，回退到 overview 快照（页面重挂载恢复忙碌态）。
@@ -254,12 +254,7 @@ function isOfficialTool(name: string): name is OfficialTool {
   return name === 'git' || name === 'go' || name === 'node' || name === 'java' || name === 'python' || name === 'dotnet'
 }
 
-const STATUS_META: Record<string, { text: string; icon: string; cls: string }> = {
-  installed: { text: '已安装', icon: '✓', cls: 'chip-installed' },
-  missing: { text: '未安装', icon: '○', cls: 'chip-missing' },
-  error: { text: '检测失败', icon: '!', cls: 'chip-error' },
-  'store-stub': { text: '商店存根', icon: '⚠', cls: 'chip-stub' },
-}
+// 状态语义表已上收 constants/status（ENV_STATUS_META text/icon 逐字同源，cls 由 tone 取代）
 
 // joinVersions 并列展示 .NET 并排安装的版本列表（后端已按版本升序去重）。
 function joinVersions(versions?: string[] | null) {
@@ -282,37 +277,35 @@ function dotnetExtraLines(tool: ToolInfo): string[] {
 }
 
 function metaOf(tool: ToolInfo) {
-  return STATUS_META[tool.status] ?? STATUS_META.error
+  return envStatusMeta(tool.status)
 }
 
-onMounted(async () => {
-  await refresh()
-  unlistenNpmOperation = Events.On('envcheck:npm-tool-operation', (event: { data?: OperationProgress }) => event.data && handleNpmOperation(event.data))
-  unlistenNpmLog = Events.On('envcheck:npm-tool-log', (event: { data?: OperationLog }) => event.data && handleNpmLog(event.data))
+// npm 事件流订阅（useWailsEvent：setup 期注册防丢早期推送，卸载自动注销）
+useWailsEvent<OperationProgress>('envcheck:npm-tool-operation', (p) => p && handleNpmOperation(p))
+useWailsEvent<OperationLog>('envcheck:npm-tool-log', (entry) => entry && handleNpmLog(entry))
+
+onMounted(() => {
+  void refresh()
 })
-onUnmounted(() => { unlistenNpmOperation?.(); unlistenNpmLog?.() })
 </script>
 
 <template>
   <section class="page env-view">
-    <div class="header-row">
-      <div>
-        <h1>开发环境检测</h1>
-        <p class="subtitle">
-          探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python、.NET 卡片同时查询官方或明确发行方版本：
-          每个通道只展示最新版本，本机已安装的版本线自动排在最前（.NET 卡片展示 SDK 优先版本，版本关系按运行时口径比较）。
-          npm、pnpm 本体仅提供可复制的手动升级命令；Claude Code、Codex 等受管 npm 全局工具支持一键安装/升级/卸载（卸载需二次确认）。
-        </p>
-      </div>
-      <div class="btn-group">
-        <span v-if="everLoaded" class="stat-text">✓ {{ okCount }} / {{ totalCount }} 已安装</span>
-        <button class="btn btn-primary btn-small" :disabled="loading" @click="refresh">
-          {{ loading ? '检测中…' : '↻ 重新检测' }}
-        </button>
-      </div>
-    </div>
+    <PageHeader
+      title="开发环境检测"
+      subtitle="探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python、.NET 卡片同时查询官方或明确发行方版本： 每个通道只展示最新版本，本机已安装的版本线自动排在最前（.NET 卡片展示 SDK 优先版本，版本关系按运行时口径比较）。 npm、pnpm 本体仅提供可复制的手动升级命令；Claude Code、Codex 等受管 npm 全局工具支持一键安装/升级/卸载（卸载需二次确认）。"
+    >
+      <template #actions>
+        <div class="btn-group">
+          <span v-if="everLoaded" class="stat-text">✓ {{ okCount }} / {{ totalCount }} 已安装</span>
+          <button class="btn btn-primary btn-small" :disabled="loading" @click="refresh">
+            {{ loading ? '检测中…' : '↻ 重新检测' }}
+          </button>
+        </div>
+      </template>
+    </PageHeader>
 
-    <div v-if="loadError" class="hint-banner banner-error" role="alert">{{ loadError }}</div>
+    <div v-if="loadError" class="banner banner-error" role="alert">{{ loadError }}</div>
     <div v-if="loading && !everLoaded" class="empty-state" aria-live="polite">
       <p>正在检测开发环境并查询官网版本…</p>
     </div>
@@ -321,7 +314,7 @@ onUnmounted(() => { unlistenNpmOperation?.(); unlistenNpmLog?.() })
       <div v-for="tool in tools" :key="tool.name" class="tool-card" :class="[`status-${tool.status}`, { 'local-refreshing': localLoading }]">
         <div class="tool-card-top">
           <span class="tool-name">{{ tool.display }}</span>
-          <span class="status-chip" :class="metaOf(tool).cls">{{ metaOf(tool).icon }} {{ metaOf(tool).text }}</span>
+          <span class="chip status-chip" :class="`chip-${metaOf(tool).tone}`">{{ metaOf(tool).icon }} {{ metaOf(tool).text }}</span>
         </div>
         <div class="inst-meta">
           <div class="meta-line">
@@ -408,52 +401,36 @@ onUnmounted(() => { unlistenNpmOperation?.(); unlistenNpmLog?.() })
 
 <style scoped>
 .env-view { display: flex; flex-direction: column; gap: 14px; }
-.header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.header-row h1 { margin: 0 0 6px; }
-.subtitle { color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.6; }
+/* 页头/副标题/错误横幅/空态/.btn 基础与 primary/small/.chip 家族/焦点环/减弱动效
+   均由 PageHeader 与 components.css + base.css 全局承载 */
 .btn-group { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
-.stat-text { font-size: 12px; color: var(--text-muted); }
-.hint-banner { padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
-.banner-error { background: #ffebe9; border-color: rgba(207, 34, 46, 0.25); color: var(--danger); }
-.empty-state { text-align: center; padding: 40px 24px; background: var(--bg-sidebar); border: 1px dashed var(--border-color); border-radius: 8px; }
-.empty-state p { margin: 0; color: var(--text-muted); font-size: 13px; }
+.stat-text { font-size: 12px; color: var(--color-text-muted); }
 .tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
-.tool-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-left: 3px solid var(--border-color); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: opacity 0.15s ease; min-width: 0; }
+.tool-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-left: 3px solid var(--color-border); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: opacity var(--motion-base) ease; min-width: 0; }
 .tool-card.local-refreshing { opacity: 0.68; }
-.tool-card.status-installed { border-left-color: #1a7f37; }
-.tool-card.status-missing { border-left-color: #8c959f; }
-.tool-card.status-error { border-left-color: #cf222e; }
-.tool-card.status-store-stub { border-left-color: #9a6700; }
+.tool-card.status-installed { border-left-color: var(--state-positive); }
+.tool-card.status-missing { border-left-color: var(--color-text-subtle); }
+.tool-card.status-error { border-left-color: var(--state-danger); }
+.tool-card.status-store-stub { border-left-color: var(--state-warning); }
 .tool-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.tool-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
-.status-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; white-space: nowrap; }
-.chip-installed { background: #dafbe1; color: #1a7f37; }
-.chip-missing { background: #eaeef2; color: #656d76; }
-.chip-error { background: #ffebe9; color: #cf222e; }
-.chip-stub { background: #fff8c5; color: #9a6700; }
+.tool-name { font-size: 14px; font-weight: 700; color: var(--color-text); }
+/* 本视图 chip 仅调图标间距；底色/形状走全局 .chip-{tone} */
+.status-chip { gap: 5px; }
 .inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.meta-line { display: flex; gap: 8px; color: var(--text-muted); align-items: baseline; min-width: 0; }
-.meta-line .k { color: var(--text-subtle); width: 36px; flex-shrink: 0; }
-.mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; overflow-wrap: anywhere; }
+.meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; min-width: 0; }
+.meta-line .k { color: var(--color-text-subtle); width: 36px; flex-shrink: 0; }
+.mono { font-size: 11px; overflow-wrap: anywhere; }
 .tool-path { min-width: 0; }
-.path-link { display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--border-color); text-underline-offset: 2px; }
-.path-link:hover { text-decoration-color: var(--accent); color: var(--accent); }
-.path-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.path-link { display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 2px; }
+.path-link:hover { text-decoration-color: var(--color-primary); color: var(--color-primary); }
 .tool-hint { font-size: 12px; border-radius: 5px; padding: 6px 8px; line-height: 1.5; }
-.tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
-.hint-warn { background: #fff8c5; color: #9a6700; }
-.hint-error { background: #ffebe9; color: var(--danger); }
-.btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-small { padding: 4px 12px; font-size: 12px; }
-.btn-secondary { background: transparent; color: var(--accent); border-color: var(--border-color); }
-.btn-secondary:hover:not(:disabled) { border-color: var(--accent); background: var(--bg-main); }
-.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--color-text-muted); font-size: 11px; line-height: 1.45; }
+.hint-warn { background: var(--state-warning-soft); color: var(--state-warning); }
+.hint-error { background: var(--state-danger-soft); color: var(--state-danger); }
+/* envcheck 家族特有"描边强调"变体（非全局 .btn-secondary 的实底语义），保留并 token 化 */
+.btn-secondary { background: transparent; color: var(--color-primary); border-color: var(--color-border); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--color-primary); background: var(--surface-soft); }
 .tool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.extra-lines { margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: 10px; background: #ddf4ff; color: #0969da; font-size: 10px; }
+.extra-lines { margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-size: 10px; }
 @media (max-width: 768px) { .header-row { flex-direction: column; } .btn-group { width: 100%; justify-content: space-between; } }
-@media (pointer: coarse) { .btn { min-height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .tool-card, .btn { transition: none; } }
 </style>

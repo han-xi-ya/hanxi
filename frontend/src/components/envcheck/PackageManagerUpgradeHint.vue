@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useToast } from '../../composables/useToast'
-import { getErrorMessage } from '../../utils/errors'
+import { useClipboard } from '../../composables/useClipboard'
 
 const props = defineProps<{
   tool: 'npm' | 'pnpm'
@@ -9,6 +9,7 @@ const props = defineProps<{
 }>()
 
 const { showToast } = useToast()
+const { copy } = useClipboard()
 
 const command = computed(() => props.tool === 'npm'
   ? 'npm install --global npm@latest'
@@ -18,29 +19,11 @@ const sourceHint = computed(() => props.tool === 'npm'
   ? '如果 Node.js 由 nvm、fnm、Volta、Scoop 或 Chocolatey 管理，请优先使用原管理器，避免覆盖 shim 或写入错误的全局 prefix。'
   : '如果 pnpm 由 Corepack、Volta、Scoop、Chocolatey 或其他包管理器提供，请遵循原安装方式；self-update 并不适用于所有来源。')
 
-function fallbackCopy(text: string): boolean {
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
-  const copied = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  return copied
-}
-
 async function copyCommand() {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(command.value)
-    } else if (!fallbackCopy(command.value)) {
-      throw new Error('剪贴板接口不可用')
-    }
-    showToast(`已复制 ${props.tool} 升级命令`)
-  } catch (error) {
-    showToast(`复制失败: ${getErrorMessage(error)}`)
-  }
+  // 两级剪贴板策略收编进 useClipboard；成功文案逐字保留，失败文案收敛为固定话术
+  //（useClipboard 无错误细节通道，原动态 message 罕达，登记为已接受微差）
+  const ok = await copy(command.value)
+  showToast(ok ? `已复制 ${props.tool} 升级命令` : '复制失败: 剪贴板不可用')
 }
 </script>
 
@@ -61,17 +44,16 @@ async function copyCommand() {
 </template>
 
 <style scoped>
-.upgrade-hint { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 7px; }
+.upgrade-hint { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 7px; }
 .hint-heading { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.hint-heading strong { color: var(--text-main); font-size: 12px; }
-.manual-chip { padding: 1px 6px; border-radius: 10px; background: #eaeef2; color: #656d76; font-size: 10px; }
-.state-text, .source-hint, .safety-hint { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.hint-heading strong { color: var(--color-text); font-size: 12px; }
+.manual-chip { padding: 1px 6px; border-radius: 10px; background: var(--surface-hover); color: var(--color-text-muted); font-size: 10px; }
+.state-text, .source-hint, .safety-hint { margin: 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
 .command-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.command { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 5px; background: var(--bg-main); border: 1px solid var(--border-color); color: var(--text-main); font-family: Consolas, monospace; font-size: 11px; overflow-wrap: anywhere; }
-.copy-button { flex-shrink: 0; min-height: 28px; padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: transparent; color: var(--accent); font-size: 11px; cursor: pointer; }
-.copy-button:hover { border-color: var(--accent); background: var(--bg-main); }
-.copy-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.safety-hint { color: #9a6700; }
+.command { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 5px; background: var(--surface-soft); border: 1px solid var(--color-border); color: var(--color-text); font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+.copy-button { flex-shrink: 0; min-height: 28px; padding: 4px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: transparent; color: var(--color-primary); font-size: 11px; cursor: pointer; }
+.copy-button:hover { border-color: var(--color-primary); background: var(--surface-soft); }
+/* 焦点环与 coarse-pointer 最小尺寸由 base.css 全局承载 */
+.safety-hint { color: var(--state-warning); }
 @media (max-width: 460px) { .command-row { align-items: stretch; flex-direction: column; } .copy-button { min-height: 36px; } }
-@media (pointer: coarse) { .copy-button { min-height: 44px; } }
 </style>
