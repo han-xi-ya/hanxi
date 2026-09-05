@@ -160,6 +160,31 @@ src/
 
 ---
 
-## 9. 提交拆分（示例）
+## 9. 视图迁移操作手册（Phase 3 模板产物，组 A 验证）
+
+对每个视图按序执行，全程只允许触碰该视图与其特征测试文件：
+
+1. **先锁行为**：无测试则补特征测试（范式：`views/__tests__/MarkerOnView.spec.ts`——
+   `vi.hoisted`+`vi.mock` 打桩 bindings service/AppService/`@wailsio.runtime` Events；
+   KeepAlive 宿主挂载；fake timers 场景用纯微任务排空，**禁用 flushPromises**）。
+   断言以 DOM 文本/类名/禁用态/调用序列为准；测出"现状 bug"如实钉死并注释，不顺手修。
+2. **胶水替换**：`Events.On+unlisten+onUnmounted` → `useWailsEvent(name, handler)`（handler 收解包后的 data）；
+   `setInterval+startTimers/onActivated/onDeactivated` → `usePolling(fn, ms)`（多定时器就多次调用；
+   进页首刷由 usePolling 首跑承担，onMounted 只留其余加载）；
+   `window.confirm/prompt` → `useConfirm/usePrompt`（文案逐字拆 title/description；测试改为
+   import 单例 + `settleConfirm/settlePrompt` 驱动）；剪贴板手搓 → `useClipboard`；`fmt*` → `utils/format`。
+3. **模板替换**：页头 → `PageHeader`（右侧选项卡进 `#actions` + `MainTabNav v-model`）；
+   条件提示条 → `UiBanner :tone`（banner computed 的 `cls` 改 `tone: ok/info/warn/error`）；
+   `link-btn` → 全局 `link-button`。
+4. **样式去重**：删除与 components.css 原子同义的 scoped 块（.btn 家族/.tbl/.header-row/.subtitle/
+   .error-box/.mono 基样式/.empty-state/.banner-*/@keyframes pulse→改引全局 hx-pulse）；
+   保留视图独有布局样式并把其中颜色/圆角/动效换成语义 token（`--color-*`/`--surface-*`/`--state-*`，
+   硬编码 hex/rgba 清零）；状态灯类名带视图前缀防全局碰撞的惯例保留。
+5. **验证闭环**：定向 vitest 全绿 → vue-tsc 无本视图错误 → 主线跑全量 → 真机目视（用户）。
+6. **差异决策表**（组 A 实例）：`hint-banner`→`.banner` 类名前缀更名＝测试同步改选择器；
+   卸载确认载体从原生换可访问对话框＝测试改单例驱动；radius 6px→8px 等 token 收敛＝设计意图不算回归；
+   任何"业务调用变了"＝违规，立即回退。
+
+## 10. 提交拆分（示例）
 
 `chore(frontend): 引入 ESLint/Vitest 与依赖基线` → `feat(frontend): 落地设计 token/全局样式层与青绿+深色双主题` → `refactor(frontend): 抽取共享 composable/原子组件/格式化与常量单一来源` → `refactor(frontend): 试点迁移托管视图到新骨架(MarkerOn/CCSwitch)` → `refactor(frontend): 铺开托管家族迁移(分批)` → `refactor(frontend): 工具视图顺手治理与 window.confirm/prompt 收编`。
