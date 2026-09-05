@@ -5,8 +5,11 @@ import type { NetworkOverview, PingSummary, TracerouteSummary } from '../../bind
 import type { Adapter } from '../../bindings/hanxi/internal/platform/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import PageHeader from '../components/ui/PageHeader.vue'
 
 const { showToast } = useToast()
+const { copy } = useClipboard()
 
 const activeTab = ref<'ip' | 'ping' | 'traceroute'>('ip')
 
@@ -67,10 +70,11 @@ async function runTraceroute() {
   }
 }
 
-function copyText(text: string, label: string) {
+async function copyText(text: string, label: string) {
   if (!text) return
-  navigator.clipboard.writeText(text)
-  showToast(`已复制 ${label}: ${text}`)
+  // 剪贴板两级策略收编进 useClipboard；失败不再谎报成功
+  const ok = await copy(text)
+  showToast(ok ? `已复制 ${label}: ${text}` : '复制失败')
 }
 
 function quickPing(ip: string) {
@@ -99,12 +103,7 @@ onMounted(() => loadNetworkInfo(false))
 
 <template>
   <section class="page network-page">
-    <div class="header-row">
-      <div>
-        <h1>网络与 IP 诊断</h1>
-        <p class="subtitle">综合展示公网/内网 IP、网卡与网关 DNS，提供毫秒级 ICMP Ping 探测与路由跳跃追踪 (Traceroute)。</p>
-      </div>
-    </div>
+    <PageHeader title="网络与 IP 诊断" subtitle="综合展示公网/内网 IP、网卡与网关 DNS，提供毫秒级 ICMP Ping 探测与路由跳跃追踪 (Traceroute)。" />
 
     <!-- 顶部导航 Tab 分页 -->
     <div class="nav-tabs">
@@ -156,7 +155,7 @@ onMounted(() => loadNetworkInfo(false))
           <div class="card-header">
             <div class="tag-row">
               <span class="card-tag v4">公网 IPv4</span>
-              <span class="badge badge-sub" v-if="overview?.publicIpv4">家宽 / 专线</span>
+              <span class="chip chip-neutral" v-if="overview?.publicIpv4">家宽 / 专线</span>
             </div>
             <span class="provider-label" v-if="overview?.sourceV4">来源: {{ overview.sourceV4 }}</span>
           </div>
@@ -190,7 +189,7 @@ onMounted(() => loadNetworkInfo(false))
           <div class="card-header">
             <div class="tag-row">
               <span class="card-tag v6">公网 IPv6</span>
-              <span class="badge badge-success" v-if="overview?.publicIpv6">已开通 IPv6</span>
+              <span class="chip chip-positive" v-if="overview?.publicIpv6">已开通 IPv6</span>
             </div>
             <span class="provider-label" v-if="overview?.sourceV6">来源: {{ overview.sourceV6 }}</span>
           </div>
@@ -228,8 +227,8 @@ onMounted(() => loadNetworkInfo(false))
               </span>
             </div>
             <div class="adapter-tags">
-              <span v-if="adapter.isPhysical" class="badge badge-physical">物理网卡</span>
-              <span v-else class="badge badge-virtual">虚拟 / 隧道</span>
+              <span v-if="adapter.isPhysical" class="chip chip-positive">物理网卡</span>
+              <span v-else class="chip chip-neutral">虚拟 / 隧道</span>
               <span class="mac-text" v-if="adapter.mac">MAC: {{ adapter.mac }}</span>
             </div>
           </div>
@@ -289,9 +288,9 @@ onMounted(() => loadNetworkInfo(false))
                   class="v6-chip"
                   :class="{ 'is-temp': v6.isTemporary, 'is-linklocal': v6.type === 'LinkLocal' }"
                 >
-                  <span class="v6-badge" v-if="v6.isTemporary">临时隐私地址</span>
-                  <span class="v6-badge linklocal" v-else-if="v6.type === 'LinkLocal'">链路本地 (Link-Local)</span>
-                  <span class="v6-badge main" v-else>全局主地址</span>
+                  <span class="chip chip-information" v-if="v6.isTemporary">临时隐私地址</span>
+                  <span class="chip chip-neutral" v-else-if="v6.type === 'LinkLocal'">链路本地 (Link-Local)</span>
+                  <span class="chip chip-positive" v-else>全局主地址</span>
 
                   <code>{{ v6.address }}</code>
                   <button class="chip-copy" title="复制" @click="copyText(v6.address, 'IPv6')">⧉</button>
@@ -367,7 +366,7 @@ onMounted(() => loadNetworkInfo(false))
         </div>
 
         <div class="table-container">
-          <table class="diag-tbl">
+          <table class="tbl">
             <thead>
               <tr>
                 <th style="width: 80px;">序号</th>
@@ -456,7 +455,7 @@ onMounted(() => loadNetworkInfo(false))
         </div>
 
         <div class="table-container">
-          <table class="diag-tbl">
+          <table class="tbl">
             <thead>
               <tr>
                 <th style="width: 80px;">跳数</th>
@@ -493,38 +492,21 @@ onMounted(() => loadNetworkInfo(false))
 </template>
 
 <style scoped>
+/* 页头/错误框/按钮家族/表格基样式/徽标(badge→全局 chip)由 PageHeader 与 components.css 原子接管。
+   nav-tabs 为下划线形变体（非 MainTabNav 胶囊形），按手册§9-4 不硬塞、保留视图独有样式并语义 token 化。
+   （原 .toast/.header-row/.subtitle 死代码与重复原子已删；status-badge 因承载动态错误文本、
+   避免 chip 的 nowrap 截断，保留为视图变体） */
 .network-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.subtitle {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 4px 0 0;
-}
-
-.toast {
-  background: var(--text-main);
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  animation: fadeIn 0.2s ease;
-}
-
-/* Tab 切换栏 */
+/* Tab 切换栏（下划线变体，视图独有） */
 .nav-tabs {
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 8px;
 }
 .tab-item {
@@ -534,35 +516,35 @@ onMounted(() => loadNetworkInfo(false))
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--motion-base) ease;
 }
 .tab-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-main);
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 .tab-item.active {
-  background: #fff;
-  border-color: var(--border-color);
-  color: var(--accent);
+  background: var(--surface-panel);
+  border-color: var(--color-border);
+  color: var(--color-primary);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  box-shadow: var(--shadow-small);
 }
 
 .control-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   padding: 12px 16px;
   border-radius: 8px;
 }
 
 .meta-info {
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .section-title {
@@ -572,7 +554,7 @@ onMounted(() => loadNetworkInfo(false))
 .section-title h3 {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0;
@@ -585,8 +567,8 @@ onMounted(() => loadNetworkInfo(false))
 }
 
 .ip-card {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
   display: flex;
@@ -606,6 +588,7 @@ onMounted(() => loadNetworkInfo(false))
   gap: 8px;
 }
 
+/* 协议标签为方角小标签（非胶囊 chip 形），保留视图独有 */
 .card-tag {
   font-size: 12px;
   font-weight: 600;
@@ -613,17 +596,17 @@ onMounted(() => loadNetworkInfo(false))
   border-radius: 4px;
 }
 .card-tag.v4 {
-  background: #ddf4ff;
-  color: #0969da;
+  background: var(--state-information-soft);
+  color: var(--state-information);
 }
 .card-tag.v6 {
-  background: #fff8c5;
-  color: #9a6700;
+  background: var(--state-warning-soft);
+  color: var(--state-warning);
 }
 
 .provider-label {
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .card-body {
@@ -634,11 +617,11 @@ onMounted(() => loadNetworkInfo(false))
 }
 
 .ip-value code {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 18px;
   font-weight: 700;
-  color: var(--text-main);
-  background: var(--bg-hover);
+  color: var(--color-text);
+  background: var(--surface-hover);
   padding: 4px 10px;
   border-radius: 6px;
   word-break: break-all;
@@ -646,29 +629,29 @@ onMounted(() => loadNetworkInfo(false))
 
 .ip-placeholder, .ip-empty {
   font-size: 13px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .card-footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color-border);
   padding-top: 8px;
 }
 
 .btn-copy {
   padding: 4px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface-panel);
   cursor: pointer;
   font-size: 12px;
-  transition: all 0.15s ease;
+  transition: all var(--motion-base) ease;
 }
 .btn-copy:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 .btn-copy:disabled {
   opacity: 0.4;
@@ -683,8 +666,8 @@ onMounted(() => loadNetworkInfo(false))
 }
 
 .adapter-card {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 16px;
   display: flex;
@@ -696,7 +679,7 @@ onMounted(() => loadNetworkInfo(false))
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color-border);
   padding-bottom: 10px;
 }
 
@@ -709,12 +692,12 @@ onMounted(() => loadNetworkInfo(false))
 .adapter-name {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-main);
+  color: var(--color-text);
 }
 
 .adapter-desc {
   font-size: 12px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .adapter-tags {
@@ -724,9 +707,9 @@ onMounted(() => loadNetworkInfo(false))
 }
 
 .mac-text {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .adapter-body {
@@ -748,7 +731,7 @@ onMounted(() => loadNetworkInfo(false))
 .group-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .items-list {
@@ -762,15 +745,15 @@ onMounted(() => loadNetworkInfo(false))
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
+  background: var(--surface-page);
+  border: 1px solid var(--color-border);
   padding: 3px 8px;
   border-radius: 5px;
   font-size: 12px;
 }
 
 .ip-chip code {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 
@@ -779,7 +762,7 @@ onMounted(() => loadNetworkInfo(false))
   border: none;
   cursor: pointer;
   font-size: 11px;
-  color: var(--accent);
+  color: var(--color-primary);
   padding: 0 2px;
 }
 .chip-action:hover {
@@ -791,11 +774,11 @@ onMounted(() => loadNetworkInfo(false))
   border: none;
   cursor: pointer;
   font-size: 12px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   padding: 0 2px;
 }
 .chip-copy:hover {
-  color: var(--accent);
+  color: var(--color-primary);
 }
 
 .v6-items-list {
@@ -808,124 +791,54 @@ onMounted(() => loadNetworkInfo(false))
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
+  background: var(--surface-page);
+  border: 1px solid var(--color-border);
   padding: 4px 10px;
   border-radius: 5px;
   font-size: 12px;
 }
 
 .v6-chip.is-temp {
-  border-color: rgba(9, 105, 218, 0.3);
-  background: #f0f8ff;
+  border-color: var(--state-information-glow);
+  background: var(--state-information-soft);
 }
 
 .v6-chip.is-linklocal {
-  border-color: var(--border-color);
+  border-color: var(--color-border);
   opacity: 0.85;
 }
 
 .v6-chip code {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
   word-break: break-all;
-}
-
-.v6-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 600;
-  background: #ddf4ff;
-  color: #0969da;
-}
-.v6-badge.linklocal {
-  background: var(--bg-hover);
-  color: var(--text-muted);
-}
-.v6-badge.main {
-  background: #dafbe1;
-  color: var(--success);
 }
 
 .v6-tag {
   font-size: 10px;
   font-weight: 600;
-  color: #9a6700;
-  background: #fff8c5;
+  color: var(--state-warning);
+  background: var(--state-warning-soft);
   padding: 1px 4px;
   border-radius: 3px;
 }
 
-.badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 500;
-}
-.badge-physical {
-  background: #dafbe1;
-  color: var(--success);
-}
-.badge-virtual {
-  background: var(--bg-hover);
-  color: var(--text-muted);
-}
-.badge-sub {
-  background: var(--bg-hover);
-  color: var(--text-muted);
-}
-.badge-success {
-  background: #dafbe1;
-  color: var(--success);
-}
-
 .muted-text {
   font-size: 12px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .empty-hint {
   text-align: center;
   padding: 32px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   font-size: 13px;
-}
-
-.error-box {
-  padding: 10px 14px;
-  background: #ffebe9;
-  color: var(--danger);
-  border: 1px solid rgba(207, 34, 46, 0.2);
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.btn {
-  padding: 6px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-}
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* 诊断工具控制条 */
 .tool-panel {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 14px 16px;
   display: flex;
@@ -949,23 +862,23 @@ onMounted(() => loadNetworkInfo(false))
 .input-label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 .text-input {
   width: 100%;
   padding: 6px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 13px;
 }
 .select-input {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 13px;
-  background: #fff;
+  background: var(--surface-panel);
 }
 
 .quick-targets {
@@ -975,26 +888,26 @@ onMounted(() => loadNetworkInfo(false))
   font-size: 12px;
 }
 .quick-label {
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 .btn-quick {
-  background: #fff;
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   cursor: pointer;
 }
 .btn-quick:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 /* 诊断结果卡片 */
 .diag-card {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
   display: flex;
@@ -1005,10 +918,10 @@ onMounted(() => loadNetworkInfo(false))
 .diag-summary-bar {
   display: flex;
   gap: 24px;
-  background: var(--bg-app);
+  background: var(--surface-page);
   padding: 10px 14px;
   border-radius: 6px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
 }
 .summary-col {
   display: flex;
@@ -1017,97 +930,81 @@ onMounted(() => loadNetworkInfo(false))
 }
 .s-label {
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 .s-val {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-main);
+  color: var(--color-text);
 }
 .val-warn {
-  color: var(--danger);
+  color: var(--state-danger);
 }
 .text-success {
-  color: var(--success);
+  color: var(--state-positive);
 }
 .text-warn {
-  color: #9a6700;
+  color: var(--state-warning);
 }
 .text-danger {
-  color: var(--danger);
+  color: var(--state-danger);
 }
 .text-subtle {
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
+/* 表格：.tbl 全局原子接管，仅保留表头 page 底色差异 */
 .table-container {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   overflow: hidden;
 }
-.diag-tbl {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  text-align: left;
-}
-.diag-tbl th {
-  background: var(--bg-app);
-  padding: 8px 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
-}
-.diag-tbl td {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-main);
-}
-.diag-tbl tr:last-child td {
-  border-bottom: none;
+.tbl th {
+  background: var(--surface-page);
 }
 
 .rtt-tag {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
   font-size: 12px;
 }
 .rtt-tag.fast {
-  color: var(--success);
+  color: var(--state-positive);
 }
 .rtt-tag.medium {
-  color: #9a6700;
+  color: var(--state-warning);
 }
 .rtt-tag.slow {
-  color: var(--danger);
+  color: var(--state-danger);
 }
 
 .node-ip {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 
+/* 状态徽章承载动态错误文本（可能较长），不套 chip 的 nowrap——保留视图变体 */
 .status-badge {
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   font-weight: 500;
 }
 .status-badge.ok {
-  background: #dafbe1;
-  color: var(--success);
+  background: var(--state-positive-soft);
+  color: var(--state-positive);
 }
 .status-badge.fail {
-  background: #ffebe9;
-  color: var(--danger);
+  background: var(--state-danger-soft);
+  color: var(--state-danger);
 }
 .status-badge.timeout {
-  background: var(--bg-hover);
-  color: var(--text-subtle);
+  background: var(--surface-hover);
+  color: var(--color-text-subtle);
 }
 .status-badge.target {
-  background: #ddf4ff;
-  color: #0969da;
+  background: var(--state-information-soft);
+  color: var(--state-information);
   font-weight: 600;
 }
 </style>

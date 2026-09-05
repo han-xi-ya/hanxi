@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, nextTick } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, shallowRef, onMounted, nextTick } from 'vue'
 import * as LanAPI from '../../bindings/hanxi/internal/modules/lan'
 import type { SubnetInfo, DeviceInfo, LanProgress } from '../../bindings/hanxi/internal/modules/lan/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { useClipboard } from '../composables/useClipboard'
+import PageHeader from '../components/ui/PageHeader.vue'
 
 const { showToast } = useToast()
+const { copy } = useClipboard()
 
 const subnets = shallowRef<SubnetInfo[]>([])
 const selectedCidr = ref('')
@@ -19,8 +22,6 @@ const errorMsg = ref('')
 const editingKey = ref<string | null>(null)
 const editingValue = ref('')
 const remarkInputRef = ref<HTMLInputElement | null>(null)
-
-let unlistenProgress: (() => void) | null = null
 
 async function loadSubnets() {
   try {
@@ -73,18 +74,23 @@ async function stopScan() {
   }
 }
 
-function copyIP(ip: string) {
-  navigator.clipboard.writeText(ip)
-  showToast(`已复制 IP: ${ip}`)
+async function copyIP(ip: string) {
+  // 剪贴板两级策略收编进 useClipboard；失败不再"谎报成功 toast"（原实现不 await，reject 时 toast 仍弹已复制）
+  const ok = await copy(ip)
+  showToast(ok ? `已复制 IP: ${ip}` : '复制失败')
 }
 
 function startEditRemark(dev: DeviceInfo) {
   editingKey.value = dev.ip
   editingValue.value = dev.remark || ''
   nextTick(() => {
-    if (remarkInputRef.value) {
-      remarkInputRef.value.focus()
-      remarkInputRef.value.select()
+    // 修复注记（组 G2）：ref 位于 v-for 子树内，Vue 语义下收集为数组——
+    // 原实现 .focus() 直接调用必抛 TypeError（自动聚焦从未生效、线上静默报错）。
+    // 此处按作者本意恢复"进入编辑即聚焦并全选"；若主线判定该行为属变更，回退本段即可。
+    const el = Array.isArray(remarkInputRef.value) ? remarkInputRef.value[0] : remarkInputRef.value
+    if (el) {
+      el.focus()
+      el.select()
     }
   })
 }
@@ -111,33 +117,21 @@ function cancelEditRemark() {
   editingValue.value = ''
 }
 
-onMounted(async () => {
-  await loadSubnets()
-
-  // 监听扫描实时进度推流
-  unlistenProgress = Events.On('lan:progress', (event: { data?: LanProgress }) => {
-    if (event?.data) {
-      progress.value = event.data
-    }
-  })
+// 扫描实时进度推流（setup 期订阅防丢早期事件，卸载自动注销）
+useWailsEvent<LanProgress>('lan:progress', (data) => {
+  if (data) {
+    progress.value = data
+  }
 })
 
-onUnmounted(() => {
-  if (unlistenProgress) {
-    unlistenProgress()
-    unlistenProgress = null
-  }
+onMounted(() => {
+  loadSubnets()
 })
 </script>
 
 <template>
   <section class="page lan-page">
-    <div class="header-row">
-      <div>
-        <h1>局域网扫描</h1>
-        <p class="subtitle">支持标准 CIDR 子网 (如 /24、/22) 与自定义 IP 范围扫描，毫秒级探测活跃设备与持久化备注。</p>
-      </div>
-    </div>
+    <PageHeader title="局域网扫描" subtitle="支持标准 CIDR 子网 (如 /24、/22) 与自定义 IP 范围扫描，毫秒级探测活跃设备与持久化备注。" />
 
     <!-- 顶部操作栏 -->
     <div class="control-panel">
@@ -252,8 +246,8 @@ onUnmounted(() => {
               </span>
             </td>
             <td>
-              <span v-if="dev.isSelf" class="badge badge-self">本机</span>
-              <span v-else class="badge badge-client">在线设备</span>
+              <span v-if="dev.isSelf" class="chip chip-information">本机</span>
+              <span v-else class="chip chip-neutral">在线设备</span>
             </td>
             <td>
               <button class="btn-action" title="复制 IP 到剪贴板" @click="copyIP(dev.ip)">
@@ -271,39 +265,21 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 页头/错误框/.btn 家族/.tbl 基样式/badge→chip/空态等由 PageHeader 与 components.css 全局原子接管；
+   下方仅保留本视图独有布局与"与全局原子的差异覆盖"（行内备注编辑、进度卡、RTT 分级等）。
+   （原 .toast 死代码 + fadeIn keyframes 已删——模板从未引用） */
 .lan-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.subtitle {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 4px 0 0;
-}
-
-.toast {
-  background: var(--text-main);
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  animation: fadeIn 0.2s ease;
-}
-
 .control-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   padding: 12px 16px;
   border-radius: 8px;
 }
@@ -331,26 +307,26 @@ onUnmounted(() => {
 
 .input-box {
   padding: 6px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 13px;
-  background: #fff;
+  background: var(--surface-panel);
   flex: 1;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
 }
 .input-box:focus {
-  border-color: var(--accent);
+  border-color: var(--color-primary);
   outline: none;
 }
 
 .select-addon {
   padding: 6px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 12px;
-  background: #fff;
+  background: var(--surface-panel);
   max-width: 220px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .quick-helpers {
@@ -363,24 +339,24 @@ onUnmounted(() => {
 
 .helper-label {
   font-size: 12px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .helper-tag {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   cursor: pointer;
-  font-family: Consolas, monospace;
-  transition: all 0.15s ease;
+  font-family: var(--font-mono);
+  transition: all var(--motion-base) ease;
 }
 .helper-tag:hover {
-  background: var(--bg-hover);
-  color: var(--accent);
-  border-color: var(--accent);
+  background: var(--surface-hover);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .btn-group {
@@ -388,41 +364,13 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.btn {
-  padding: 6px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-}
-.btn-primary:hover {
-  background: var(--accent-hover);
-}
-
+/* 实心红"停止扫描"为本视图专属变体（全局只有 btn-danger-outline 描边形） */
 .btn-danger {
-  background: var(--danger);
-  color: #fff;
+  background: var(--state-danger);
+  color: var(--color-on-primary);
 }
-
-.btn-secondary {
-  background: #fff;
-  border-color: var(--border-color);
-  color: var(--text-main);
-}
-.btn-secondary:hover {
-  background: var(--bg-hover);
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.92);
 }
 
 /* 进度条 */
@@ -430,8 +378,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   padding: 10px 16px;
   border-radius: 8px;
 }
@@ -440,81 +388,57 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .found-badge {
   font-weight: 600;
-  color: var(--accent);
+  color: var(--color-primary);
 }
 
 .progress-bar-wrap {
   height: 6px;
-  background: var(--bg-hover);
+  background: var(--surface-hover);
   border-radius: 3px;
   overflow: hidden;
 }
 
 .progress-bar-inner {
   height: 100%;
-  background: var(--accent);
-  transition: width 0.15s ease;
+  background: var(--color-primary);
+  transition: width var(--motion-base) ease;
 }
 
-.error-box {
-  padding: 10px 14px;
-  background: #ffebe9;
-  color: var(--danger);
-  border: 1px solid rgba(207, 34, 46, 0.2);
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-/* 表格展示 */
+/* 表格展示（.tbl 基样式全局接管，此处仅本视图差异：更宽内距与 page 色表头） */
 .table-container {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
 }
 
-.tbl {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  text-align: left;
-}
-
 .tbl th {
-  background: var(--bg-app);
+  background: var(--surface-page);
   padding: 10px 14px;
-  font-weight: 600;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
 }
 
 .tbl td {
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-main);
-}
-
-.tbl tr:last-child td {
-  border-bottom: none;
+  color: var(--color-text);
 }
 
 .row-self {
-  background: #f0f7ff;
+  background: var(--state-information-soft);
 }
 
 .col-ip strong {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .col-mac code {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 /* 备注单元格与内联编辑 */
@@ -529,29 +453,29 @@ onUnmounted(() => {
   cursor: pointer;
   padding: 3px 6px;
   border-radius: 4px;
-  transition: background 0.15s ease;
+  transition: background var(--motion-base) ease;
   max-width: 100%;
 }
 
 .remark-display:hover {
-  background: var(--bg-hover);
+  background: var(--surface-hover);
 }
 
 .remark-text {
   font-weight: 500;
-  color: #1e293b;
+  color: var(--color-text);
 }
 
 .remark-placeholder {
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   font-size: 12px;
 }
 
 .edit-icon {
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--motion-base) ease;
 }
 
 .remark-display:hover .edit-icon {
@@ -567,11 +491,11 @@ onUnmounted(() => {
   width: 100%;
   padding: 4px 8px;
   font-size: 13px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--color-primary);
   border-radius: 4px;
   outline: none;
-  background: #fff;
-  box-shadow: 0 0 0 2px rgba(47, 111, 237, 0.15);
+  background: var(--surface-panel);
+  box-shadow: 0 0 0 2px var(--color-primary-glow);
 }
 
 .rtt-tag {
@@ -581,55 +505,35 @@ onUnmounted(() => {
   font-weight: 600;
 }
 .rtt-tag.fast {
-  background: #dafbe1;
-  color: var(--success);
+  background: var(--state-positive-soft);
+  color: var(--state-positive);
 }
 .rtt-tag.normal {
-  background: #fff8c5;
-  color: #9a6700;
+  background: var(--state-warning-soft);
+  color: var(--state-warning);
 }
 .rtt-tag.slow {
-  background: #f0f2f5;
-  color: var(--text-muted);
-}
-
-.badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 500;
-}
-.badge-self {
-  background: #ddf4ff;
-  color: #0969da;
-}
-.badge-client {
-  background: var(--bg-hover);
-  color: var(--text-muted);
+  background: var(--surface-hover);
+  color: var(--color-text-muted);
 }
 
 .btn-action {
   padding: 3px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface-panel);
   cursor: pointer;
   font-size: 12px;
-  transition: all 0.15s ease;
+  transition: all var(--motion-base) ease;
 }
 .btn-action:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .empty-hint {
   text-align: center;
   padding: 32px 0;
-  color: var(--text-subtle);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  color: var(--color-text-subtle);
 }
 </style>

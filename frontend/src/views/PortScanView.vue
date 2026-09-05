@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
 import * as PortScanAPI from '../../bindings/hanxi/internal/modules/portscan'
-import type { PresetGroup, PortResult } from '../../bindings/hanxi/internal/modules/portscan/models'
-import { Events } from '@wailsio/runtime'
+import type { PresetGroup, PortResult, ScanProgress } from '../../bindings/hanxi/internal/modules/portscan/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { useClipboard } from '../composables/useClipboard'
+import PageHeader from '../components/ui/PageHeader.vue'
+import UiBanner from '../components/ui/UiBanner.vue'
 
 const { showToast } = useToast()
+const { copy } = useClipboard()
 
 const target = ref('127.0.0.1')
 const portRange = ref('80,443,3000,5000,5173,8000,8080,8081,8443,8888,9000')
@@ -29,7 +33,7 @@ const openPorts = shallowRef<PortResult[]>([])
 const durationMs = ref(0)
 const errorMessage = ref('')
 
-let unregEvent: (() => void) | null = null
+// 代理输入防抖定时器（非轮询，业务级防抖保留自管 + 卸载清理）
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function onModeChange() {
@@ -128,11 +132,12 @@ async function stopScan() {
   }
 }
 
-function copyOpenPorts() {
+async function copyOpenPorts() {
   if (openPorts.value.length === 0) return
   const str = openPorts.value.map(p => p.port).join(', ')
-  navigator.clipboard.writeText(str)
-  showToast(`已复制 ${openPorts.value.length} 个开放端口`)
+  // 剪贴板两级策略收编进 useClipboard；失败不再谎报成功
+  const ok = await copy(str)
+  showToast(ok ? `已复制 ${openPorts.value.length} 个开放端口` : '复制失败')
 }
 
 function openInBrowser(port: number) {
@@ -149,30 +154,30 @@ watch(proxyUrl, () => {
   }, 600)
 })
 
+// 后端流式进度推送（setup 期订阅 + 自动注销；开放端口增量去重、按端口号升序）
+useWailsEvent<ScanProgress>('portscan:progress', (p) => {
+  if (!p) return
+  // 逐字保留原实现：字段无条件覆盖（不做 ?? 旧值兜底）
+  currentTaskId.value = p.taskId
+  progressScanned.value = p.scanned
+  progressTotal.value = p.total
+  progressPercent.value = Math.round(p.percent)
+
+  const latestPort = p.latestPort
+  if (latestPort?.status === 'open') {
+    const currentList = openPorts.value
+    if (!currentList.some(item => item.port === latestPort.port)) {
+      const nextList = [...currentList, latestPort]
+      nextList.sort((a, b) => a.port - b.port)
+      openPorts.value = nextList
+    }
+  }
+})
+
 onMounted(() => {
   loadPresets()
   onModeChange()
   checkEgressIP()
-
-  // 监听后端流式进度推送
-  unregEvent = Events.On('portscan:progress', (event) => {
-    const p = event?.data
-    if (!p) return
-    currentTaskId.value = p.taskId
-    progressScanned.value = p.scanned
-    progressTotal.value = p.total
-    progressPercent.value = Math.round(p.percent)
-
-    const latestPort = p.latestPort
-    if (latestPort?.status === 'open') {
-      const currentList = openPorts.value
-      if (!currentList.some(item => item.port === latestPort.port)) {
-        const nextList = [...currentList, latestPort]
-        nextList.sort((a, b) => a.port - b.port)
-        openPorts.value = nextList
-      }
-    }
-  })
 })
 
 onUnmounted(() => {
@@ -180,21 +185,12 @@ onUnmounted(() => {
     clearTimeout(debounceTimer)
     debounceTimer = null
   }
-  if (unregEvent) {
-    unregEvent()
-    unregEvent = null
-  }
 })
 </script>
 
 <template>
   <section class="page portscan-page">
-    <div class="header-row">
-      <div>
-        <h1>端口扫描与服务识别</h1>
-        <p class="subtitle">高并发 TCP 探测，集成轻量服务指纹识别，支持中继代理与出网源 IP 实时核验。</p>
-      </div>
-    </div>
+    <PageHeader title="端口扫描与服务识别" subtitle="高并发 TCP 探测，集成轻量服务指纹识别，支持中继代理与出网源 IP 实时核验。" />
 
     <!-- 控制面板卡片 -->
     <div class="section-card control-card">
@@ -318,9 +314,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 进度与错误提示 -->
-    <div v-if="errorMessage" class="error-banner">
-      ⚠️ {{ errorMessage }}
-    </div>
+    <UiBanner v-if="errorMessage" tone="error">⚠️ {{ errorMessage }}</UiBanner>
 
     <div v-if="scanning || progressTotal > 0" class="progress-card">
       <div class="progress-info">
@@ -406,120 +400,115 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 页头/错误提示(UiBanner)/.btn 家族/.tbl 基样式由 PageHeader、全局原子接管。
+   本视图 .btn-primary 原硬编码 GitHub 蓝 #0969da（Phase 1 转青时的"漏色户"）随删除归一为青绿。
+   （原 .toast 死代码已删——模板从未引用） */
 .portscan-page { display: flex; flex-direction: column; gap: 14px; height: 100%; }
-.header-row { display: flex; justify-content: space-between; align-items: center; }
-.subtitle { color: var(--text-muted); font-size: 13px; margin: 4px 0 0; }
-.toast { background: var(--text-main); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; animation: fadeIn 0.2s ease; }
 
 .section-card {
-  background: var(--bg-sidebar); border: 1px solid var(--border-color);
+  background: var(--surface-panel); border: 1px solid var(--color-border);
   border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
 }
 
 .input-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
-.form-group label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.form-group label { font-size: 12px; font-weight: 600; color: var(--color-text-muted); }
 .target-input-row { display: flex; gap: 8px; }
 
 .input, .select-input {
-  background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 6px;
-  padding: 8px 12px; font-size: 13px; color: var(--text-main); font-family: inherit; width: 100%;
+  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: 6px;
+  padding: 8px 12px; font-size: 13px; color: var(--color-text); font-family: inherit; width: 100%;
 }
 .select-input { width: auto; font-size: 12px; padding: 6px 10px; cursor: pointer; }
-.input:focus, .select-input:focus { outline: none; border-color: var(--accent); }
+.input:focus, .select-input:focus { outline: none; border-color: var(--color-primary); }
 .num-input { width: 70px; text-align: center; }
 .proxy-input { width: 230px; font-size: 12px; padding: 5px 8px; }
 
 .presets-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.preset-label { font-size: 12px; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+.preset-label { font-size: 12px; color: var(--color-text-muted); font-weight: 600; white-space: nowrap; }
 .preset-badges { display: flex; gap: 6px; flex-wrap: wrap; }
 .preset-chip {
-  background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 14px;
-  padding: 3px 10px; font-size: 11px; color: var(--text-main); cursor: pointer; transition: all 0.15s ease;
+  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: var(--radius-pill);
+  padding: 3px 10px; font-size: 11px; color: var(--color-text); cursor: pointer; transition: all var(--motion-base) ease;
 }
-.preset-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
+.preset-chip:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); background: var(--surface-hover); }
 
 /* 出网 IP 指示条 */
 .egress-bar {
-  background: var(--bg-app); border: 1px solid var(--border-color);
+  background: var(--surface-page); border: 1px solid var(--color-border);
   border-radius: 6px; padding: 8px 12px;
 }
 .egress-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .egress-indicator {
   display: flex; align-items: center; gap: 8px; font-size: 12px;
-  background: var(--bg-sidebar); border: 1px solid var(--border-color);
+  background: var(--surface-panel); border: 1px solid var(--color-border);
   padding: 4px 10px; border-radius: 6px;
 }
-.indicator-label { color: var(--text-muted); }
-.indicator-ip { font-family: Consolas, monospace; color: var(--accent); display: flex; align-items: center; gap: 6px; }
-.indicator-loading { color: var(--text-subtle); font-size: 11px; }
-.proxy-badge { background: #dafbe1; color: #1a7f37; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
-.direct-badge { background: var(--bg-hover); color: var(--text-muted); font-size: 10px; padding: 1px 5px; border-radius: 3px; }
+.indicator-label { color: var(--color-text-muted); }
+.indicator-ip { font-family: var(--font-mono); color: var(--color-primary); display: flex; align-items: center; gap: 6px; }
+.indicator-loading { color: var(--color-text-subtle); font-size: 11px; }
+.proxy-badge { background: var(--state-positive-soft); color: var(--state-positive); font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.direct-badge { background: var(--surface-hover); color: var(--color-text-muted); font-size: 10px; padding: 1px 5px; border-radius: 3px; }
 .btn-refresh {
-  background: transparent; border: none; cursor: pointer; color: var(--text-muted);
-  font-size: 14px; padding: 0 2px; line-height: 1; transition: color 0.15s;
+  background: transparent; border: none; cursor: pointer; color: var(--color-text-muted);
+  font-size: 14px; padding: 0 2px; line-height: 1; transition: color var(--motion-base);
 }
-.btn-refresh:hover:not(:disabled) { color: var(--accent); }
+.btn-refresh:hover:not(:disabled) { color: var(--color-primary); }
 
 .action-bar {
   display: flex; justify-content: space-between; align-items: center; padding-top: 6px;
-  border-top: 1px solid var(--border-color); flex-wrap: wrap; gap: 12px;
+  border-top: 1px solid var(--color-border); flex-wrap: wrap; gap: 12px;
 }
 .options-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .mode-selector { display: flex; align-items: center; gap: 6px; }
 .proxy-item { display: flex; align-items: center; gap: 6px; }
-.checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text-main); }
-.param-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--color-text); }
+.param-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); }
 .unit { font-size: 11px; }
 
 .btn-group { display: flex; gap: 10px; }
 
+/* 实心红"终止扫描"为本视图专属变体（全局仅有描边红形） */
+.btn-danger { background: var(--state-danger); color: var(--color-on-primary); border-color: var(--state-danger); }
+.btn-danger:hover:not(:disabled) { filter: brightness(0.92); }
+
 /* 进度卡片 */
 .progress-card {
-  background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 8px;
   padding: 12px 16px; display: flex; flex-direction: column; gap: 8px;
 }
-.progress-info { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
-.highlight-open { color: var(--success); font-size: 13px; }
-.duration-tag { color: var(--text-subtle); }
-.progress-bar-bg { width: 100%; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
-.progress-bar-fill { height: 100%; background: var(--accent); transition: width 0.15s ease; }
+.progress-info { display: flex; justify-content: space-between; font-size: 12px; color: var(--color-text-muted); }
+.highlight-open { color: var(--state-positive); font-size: 13px; }
+.duration-tag { color: var(--color-text-subtle); }
+.progress-bar-bg { width: 100%; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
 
-/* 结果表格 */
+/* 结果表格（.tbl 基样式全局接管，此处仅差异：表头 sticky + page 色底） */
 .result-card { flex: 1; min-height: 280px; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
 .card-header h2 { font-size: 14px; font-weight: 600; margin: 0; }
 .header-left { display: flex; align-items: center; gap: 8px; }
-.badge-tag { font-size: 11px; background: var(--bg-hover); padding: 2px 8px; border-radius: 4px; color: var(--text-subtle); }
-.source-tag { color: var(--accent); border: 1px solid var(--accent); font-family: Consolas, monospace; }
+.badge-tag { font-size: 11px; background: var(--surface-hover); padding: 2px 8px; border-radius: 4px; color: var(--color-text-subtle); }
+.source-tag { color: var(--color-primary); border: 1px solid var(--color-primary); font-family: var(--font-mono); }
 
-.table-container { border: 1px solid var(--border-color); border-radius: 6px; overflow: auto; max-height: 480px; }
-.tbl { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
-.tbl th { background: var(--bg-app); padding: 10px 12px; font-weight: 600; color: var(--text-muted); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; }
-.tbl td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); color: var(--text-main); }
-.tbl tr:last-child td { border-bottom: none; }
+.table-container { border: 1px solid var(--color-border); border-radius: 6px; overflow: auto; max-height: 480px; }
+.tbl th { background: var(--surface-page); padding: 10px 12px; position: sticky; top: 0; z-index: 1; }
+.tbl td { color: var(--color-text); }
 
-.port-num { font-family: Consolas, monospace; font-size: 14px; color: var(--accent); }
-.status-tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
-.status-tag.ok { background: #dafbe1; color: #1a7f37; }
-.service-tag { font-family: Consolas, monospace; font-size: 12px; font-weight: 600; color: #0969da; }
+.port-num { font-family: var(--font-mono); font-size: 14px; color: var(--color-primary); }
+.status-tag { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 600; }
+.status-tag.ok { background: var(--state-positive-soft); color: var(--state-positive); }
+.service-tag { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--state-information); }
 .banner-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.banner-text { font-size: 12px; color: var(--text-main); font-family: Consolas, monospace; }
-.fp-badge { font-size: 10px; background: var(--bg-hover); color: var(--text-subtle); padding: 1px 6px; border-radius: 4px; }
-.latency-tag { font-family: Consolas, monospace; font-size: 11px; color: var(--text-muted); }
+.banner-text { font-size: 12px; color: var(--color-text); font-family: var(--font-mono); }
+.fp-badge { font-size: 10px; background: var(--surface-hover); color: var(--color-text-subtle); padding: 1px 6px; border-radius: 4px; }
+.latency-tag { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-muted); }
+.text-muted { color: var(--color-text-muted); }
 
 .empty-cell { text-align: center; padding: 40px 10px !important; }
-.empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; }
+/* 表格内嵌空态与全局 .empty-state（虚线卡）形制不同：视图变体保留 scoped */
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--color-text-muted); font-size: 13px; }
 .empty-icon { font-size: 24px; }
 
-.btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn-primary { background: #0969da; color: #fff; border-color: #0969da; }
-.btn-primary:hover:not(:disabled) { background: #0854ad; }
-.btn-danger { background: #cf222e; color: #fff; border-color: #cf222e; }
-.btn-danger:hover:not(:disabled) { background: #a40e26; }
-.btn-secondary { background: var(--bg-app); border-color: var(--border-color); color: var(--text-main); }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
-.btn-small { padding: 4px 10px; font-size: 12px; }
 .btn-xs { padding: 2px 8px; font-size: 11px; }
-.error-banner { background: #ffebe9; color: #cf222e; padding: 8px 12px; border-radius: 6px; font-size: 12px; border: 1px solid #ff8182; }
 </style>
