@@ -1,4 +1,4 @@
-package app
+package launcher
 
 import (
 	"reflect"
@@ -21,9 +21,9 @@ func TestSplitArgs(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := splitArgs(c.in)
+			got := SplitArgs(c.in)
 			if !reflect.DeepEqual(got, c.want) {
-				t.Fatalf("splitArgs(%q) = %#v, want %#v", c.in, got, c.want)
+				t.Fatalf("SplitArgs(%q) = %#v, want %#v", c.in, got, c.want)
 			}
 		})
 	}
