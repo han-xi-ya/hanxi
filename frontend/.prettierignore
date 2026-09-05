@@ -1,0 +1,6 @@
+# 自动生成物：禁止格式化——reformat 会直接击穿 CI 的 verify:bindings（git diff 校验）
+bindings
+dist
+node_modules
+public
+package-lock.json

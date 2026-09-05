@@ -61,6 +61,12 @@ jobs:
           npm --prefix frontend run typecheck
           npm --prefix frontend run build
 
+      - name: Frontend Unit Tests & Lint Baseline
+        shell: pwsh
+        run: |
+          npm --prefix frontend run test
+          npm --prefix frontend run lint
+
       - name: Go Vet & Test
         shell: pwsh
         env:

@@ -53,6 +53,20 @@ tasks:
       - task: common:generate:bindings
       - git diff --exit-code -- frontend/bindings
 
+  frontend:lint:
+    summary: Runs frontend ESLint (Phase 0 基线：只报告，不阻断)
+    cmds:
+      - task: common:frontend:run
+        vars:
+          SCRIPT: lint
+
+  frontend:test:
+    summary: Runs frontend unit tests (Vitest)
+    cmds:
+      - task: common:frontend:run
+        vars:
+          SCRIPT: test
+
   check:
     summary: Runs repository quality checks
     cmds:
@@ -65,6 +79,7 @@ tasks:
       - task: common:frontend:run
         vars:
           SCRIPT: build
+      - task: frontend:test
       - task: verify:tidy
       - task: verify:bindings
 
