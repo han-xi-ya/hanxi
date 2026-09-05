@@ -519,3 +519,16 @@ RustDesk 与其 LAN fork SubnetDesk（协议互不兼容的两个 AGPL 应用，
   - **契约缺失的诚实实现**：Quit 直接 `TerminateJobObject` + 宽限等收尾（文案如实"进行中的会话会断开"）；`OpenWindow` 三分支——有可见/隐藏窗按 PID `SW_RESTORE+SetForegroundWindow`，托盘无窗则**派生第二 packer 并 assign 进同一 Job**（重新开窗的唯一正路，新外层 PID 并入闭包），external 态只唤窗绝不代拉起；**不做空闲自动退出**（被控端常驻是产品语义不是泄露）；
   - 版本层：单文件下载免解压，完整性 = 官方 digest + 声明字节数 + MZ 魔数（防镜像 HTML 错误页伪装 exe）；RustDesk tag 无 v → 列表层规范化 `Version="v"+tag` 且保留 `Tag` 原值构造下载 URL（**tag 参与 URL，绝不能拿展示值拼**）。
 - **避坑防重犯建议**：遇到"官方 exe 只有一个文件"的发布形态，先读它的打包器源码再谈托管——rust-portable/自解压类"启动器进程"一律不满足模板的"cmd = 本体"前提，凡照搬 `cmd.Wait` 锚定的方案都会在真机上出现"状态秒跳未运行但窗口明明开着"。进程名撞车（便携 vs 安装 vs 服务同名）时，唯一可靠的判别是**镜像路径前缀**（`QueryFullProcessImageName` + PROCESS_QUERY_LIMITED_INFORMATION），并在设计文档里写清"安装版不归我管、互不感知"的边界，别让探测语义含糊。
+
+### 25. 前端重构 Phase 0/1：ESLint flat 的 TS base 压掉 .vue 解析器 + Vitest 5 API 变更与 fake timers 死锁 + CSS 注释星杠截断
+
+引入 ESLint(flat)/Vitest 安全网与样式地基时踩中五个工具链坑：
+
+- **问题现象与错误原因**：
+  1. **所有 `.vue` 报 `Parsing error: '>' expected (1:8)`**：flat config 中 `typescript-eslint` 的 base 配置不带 `files` 限制、全局把 `languageOptions.parser` 设成 TS parser；若它排在 `eslint-plugin-vue` 之后，`.vue` 原始文件（`<script setup…`）被 TS parser 直接啃就必炸。flat 合并是"后者胜"。
+  2. **`mock.fn.callCount` 返回 `undefined`、`.mock.callCount()` 又报 not a function**：Vitest 5 移除了 `.callCount` 属性直读；断言调用次数应改用 matcher。
+  3. **fake timers 下 `flushPromises()` 永久挂起**：test-utils 的 `flushPromises` 实现是 `new Promise(setTimeout)`，`vi.useFakeTimers()` 后宏任务不推进——测试死锁在挂载处。
+  4. **`ConfirmDialog` 以 `open=true` 直接挂载时 Escape 监听不挂、焦点不落**：内部 `watch(() => props.open)` 非 `immediate`，特征测试首次 dispatch Escape 无效果——这是既有语义（实际使用永远从 false 打开），测试必须按事实锁定而不是按期望。
+  5. **CSS 注释内含 `*/` 序列会提前截断注释**：token 注释里写 `--color-*/--surface-*` 这类"星杠"连缀（变量族通配写法）让注释提前闭合，dev 模式不报、生产构建才被 lightningcss（Vite 8 默认 minifier）以 `Unexpected token Delim('*')` 打回。
+- **正确做法与标准修复方案**：`.vue` 工程 flat config 顺序固定为 `tseslint.configs.recommended → pluginVue.configs['flat/essential'] → .vue 的 parserOptions.parser 覆写`；次数断言用 `expect(fn).toHaveBeenCalledTimes(n)`；fake timers 场景用纯微任务排空（循环 `await Promise.resolve()`）替代 `flushPromises`；生命周期敏感的行为先以特征测试钉死现状；CSS 注释中的通配族写成 `--color-* / --surface-*`（星与杠之间加空格）。
+- **避坑防重犯建议**：新工具链第一步永远先跑"空转基线"（lint 应 0 error、单测应全绿）再接 CI；给 lint 定"只报告不阻断"的过渡纪律时，把降级逻辑写进配置文件并注明恢复 error 的时机，防止 warn 状态被后人当成永久默认。绑定生成目录（`bindings/**`）必须同时进 ESLint ignores、`.prettierignore` 与测试 include 白名单之外——格式化生成物会击穿 `verify:bindings`。
