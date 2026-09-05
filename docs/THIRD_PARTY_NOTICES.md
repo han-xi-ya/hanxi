@@ -108,12 +108,13 @@ Hanxi 除版本托管外，内嵌官方 es.exe 在 Hanxi 控制台内实现秒�
 
 Hanxi 采用**脱管托管**：保留 Snipaste 原生托盘与全局快捷键，Hanxi 退出时不强杀（截图工具需常驻）；版本下载、启动与运行态由 Hanxi 统一管理。Hanxi 不修改、不捆绑、不再分发，不做任何品牌衍生展示；若未来需随包分发，必须另行取得官方授权。
 
-## GPL-3.0 托管工具（FlClash / Keyviz / QuickLook / PicLite）
+## GPL-3.0 托管工具（FlClash / Keyviz / QuickLook / PicLite / Bili23 Downloader）
 
 - FlClash：https://github.com/chen08209/FlClash —— GPL-3.0（Clash 系跨平台代理客户端；第二实例不唤窗，改用 EnumWindows 置前台）
 - Keyviz：https://github.com/mulaRahul/keyviz —— GPL-3.0（按键可视化；MSI `msiexec /a` 管理提取安装，互斥体探测）
 - QuickLook：https://github.com/QL-Win/QuickLook —— GPL-3.0（空格快速预览；便携 zip 安装，命名管道 Quit/Reload 优雅退出）
 - PicLite：https://github.com/amiaoapp/PicLite —— GPL-3.0（图片/GIF 压缩；`msiexec /a` 管理提取免管理员提权）
+- Bili23 Downloader：https://github.com/ScottSloan/Bili23-Downloader —— GPL-3.0（B 站视频下载器，Python/PySide6 自带静态运行时整目录便携包；命名互斥体 + QLocalServer 信使唤窗，关窗行为用户可配故退出三态如实上报、无静默强杀，详见 docs/TROUBLESHOOTING.md #27）
 
 Hanxi 对上述工具均采用用户侧按需下载与独立进程托管：二进制直接来自上游 GitHub Releases（GitHub API digest 等多层完整性校验），Hanxi 不修改、不静态链接、不内嵌其源码或二进制，全部功能均由原版 GUI 提供；对应源代码可通过各下载版本对应的上游 tag 获取。
 
