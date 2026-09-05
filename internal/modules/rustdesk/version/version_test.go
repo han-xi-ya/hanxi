@@ -53,26 +53,162 @@ func fakeReleasesJSON(t *testing.T) []byte {
     "assets": [
       {"name": "rustdesk-1.4.7-x86_64.exe", "url": "https://api.github.com/x/8", "size": 23300000}
     ]
+  },
+  {
+    "tag_name": "1.4.6",
+    "published_at": "2026-05-02T00:00:00Z",
+    "prerelease": false,
+    "draft": false,
+    "assets": [
+      {"name": "rustdesk-1.4.6-x86_64.exe", "url": "https://api.github.com/x/9", "size": 23100000, "digest": "` + h('1') + `"},
+      {"name": "rustdesk-1.4.6-x86_64.msi", "url": "https://api.github.com/x/10", "size": 23500000, "digest": ""}
+    ]
   }
 ]`
 	return []byte(body)
 }
 
-// TestParseReleasesBody 解析过滤：1.4.9 入列表且规范化为 v1.4.9 + Tag 保留原值；
-// nightly（非规范 tag）、1.4.8（无便携 exe）、1.4.7（缺 digest）丢弃。
+// TestParseReleasesBody 解析过滤：1.4.9 入列表（便携 + 安装版 msi 双资产齐）；
+// 1.4.6 入列表但 msi 缺 digest → 安装版字段留空（附属通道缺失不剔版本）；
+// nightly（非规范 tag）、1.4.8（无便携 exe）、1.4.7（便携缺 digest）丢弃。
 func TestParseReleasesBody(t *testing.T) {
 	list, err := parseReleasesBody(fakeReleasesJSON(t))
 	if err != nil {
 		t.Fatalf("parseReleasesBody: %v", err)
 	}
-	if len(list) != 1 {
-		t.Fatalf("期望 1 个版本，实际 %d: %+v", len(list), list)
+	if len(list) != 2 {
+		t.Fatalf("期望 2 个版本，实际 %d: %+v", len(list), list)
 	}
 	r := list[0]
 	if r.Version != "v1.4.9" || r.Tag != "1.4.9" || r.AssetName != "rustdesk-1.4.9-x86_64.exe" ||
 		r.Size != 23300000 || r.IsPre ||
 		r.SHA256 != "eaedeb0088e687bf46f7c46a9c6ea5493ce51f3134dfd6acbedb47b5b9136274" {
 		t.Errorf("1.4.9 解析错误: %+v", r)
+	}
+	if r.InstallerName != "rustdesk-1.4.9-x86_64.msi" || r.InstallerSize != 23700000 ||
+		r.InstallerSHA256 != strings.Repeat("c", 64) {
+		t.Errorf("1.4.9 安装版资产解析错误: %+v", r)
+	}
+	p := list[1]
+	if p.Version != "v1.4.6" || p.AssetName != "rustdesk-1.4.6-x86_64.exe" {
+		t.Errorf("1.4.6 解析错误: %+v", p)
+	}
+	if p.InstallerName != "" || p.InstallerSHA256 != "" || p.InstallerSize != 0 {
+		t.Errorf("msi 缺 digest 应不挂装安装版字段: %+v", p)
+	}
+}
+
+// TestFindInstallerAsset 安装版筛选：x64 msi 命中、aarch64/sciter/无 digest 拒入。
+func TestFindInstallerAsset(t *testing.T) {
+	good := "sha256:" + strings.Repeat("a", 64)
+	assets := []asset{
+		{Name: "rustdesk-1.4.9-aarch64.msi", Digest: good},
+		{Name: "rustdesk-1.4.9-x86_64-sciter.msi", Digest: good},
+		{Name: "rustdesk-1.4.9-x86_64.rpm", Digest: good},
+		{Name: "rustdesk-1.4.9-x86_64.msi", Size: 24825856, Digest: good},
+	}
+	got, sha, ok := findInstallerAsset(assets, "1.4.9")
+	if !ok || got.Name != "rustdesk-1.4.9-x86_64.msi" || sha != strings.Repeat("a", 64) {
+		t.Fatalf("应命中 x64 msi: %+v %q %v", got, sha, ok)
+	}
+	if _, _, ok := findInstallerAsset([]asset{{Name: "rustdesk-1.4.9-x86_64.exe"}}, "1.4.9"); ok {
+		t.Error("无 msi 资产不应命中")
+	}
+	if _, _, ok := findInstallerAsset([]asset{{Name: "rustdesk-1.4.9-x86_64.msi", Digest: "sha256:bad"}}, "1.4.9"); ok {
+		t.Error("缺官方 digest 的 msi 不应命中（完整性第一层不能缺位）")
+	}
+}
+
+// TestNormalizeDisplayVersion 真机实证四段 DisplayVersion 截取前三段；畸形退空。
+func TestNormalizeDisplayVersion(t *testing.T) {
+	cases := map[string]string{
+		"1.4.9.29722256": "1.4.9",
+		"v1.2.0.7":       "1.2.0",
+		"1.4.9":          "1.4.9",
+		"1.4":            "",
+		"":               "",
+		"a.b.c.d":        "",
+		" 1.10.2.99 ":    "1.10.2",
+	}
+	for in, want := range cases {
+		if got := normalizeDisplayVersion(in); got != want {
+			t.Errorf("normalizeDisplayVersion(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestVerifyMSIMagic OLE 复合文档头断言；MZ exe 必须被拒（两形态魔数互斥）。
+func TestVerifyMSIMagic(t *testing.T) {
+	ok := filepath.Join(t.TempDir(), "a.msi")
+	if err := os.WriteFile(ok, append([]byte{0xD0, 0xCF, 0x11, 0xE0}, []byte("fake-cabinet")...), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyMSIMagic(ok); err != nil {
+		t.Errorf("MSI 头文件应通过: %v", err)
+	}
+	bad := filepath.Join(t.TempDir(), "b.msi")
+	if err := os.WriteFile(bad, []byte("MZ\x90\x00pe-not-msi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyMSIMagic(bad); err == nil {
+		t.Error("PE 文件不应通过 MSI 魔数断言")
+	}
+}
+
+// TestInstallerCached 缓存判定：尺寸+官方哈希+魔数三者齐备才算命中。
+func TestInstallerCached(t *testing.T) {
+	m := NewManager(t.TempDir())
+	content := append([]byte{0xD0, 0xCF, 0x11, 0xE0}, []byte("msi-payload")...)
+	sha := fileSHA256Write(t, content)
+	rel := &RDRelease{Version: "v9.9.9", InstallerName: "rustdesk-9.9.9-x86_64.msi",
+		InstallerSize: int64(len(content)), InstallerSHA256: sha}
+
+	if m.InstallerCached(rel) != "" {
+		t.Fatal("空缓存不应命中")
+	}
+	dir := m.installerCacheDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	msi := filepath.Join(dir, rel.InstallerName)
+	if err := os.WriteFile(msi, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.InstallerCached(rel); got != msi {
+		t.Fatalf("完好缓存应命中，实际 %q", got)
+	}
+	if err := os.WriteFile(msi, []byte("tampered"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if m.InstallerCached(rel) != "" {
+		t.Error("被篡改的缓存必须判 miss")
+	}
+}
+
+// fileSHA256Write 计算字节流 sha256（缓存测试构造期望值用）。
+func fileSHA256Write(t *testing.T, b []byte) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "hash-src")
+	if err := os.WriteFile(p, b, 0644); err != nil {
+		t.Fatal(err)
+	}
+	return fileSHA256(p)
+}
+
+// TestInstallExitError 关键 Windows Installer 退出码的用户语义翻译。
+func TestInstallExitError(t *testing.T) {
+	for code, wantSub := range map[int]string{
+		1602: "取消",
+		1223: "取消",
+		1618: "忙于",
+		1603: "失败",
+		1619: "损坏",
+		9999: "退出码",
+	} {
+		err := installExitError(code)
+		if err == nil || !strings.Contains(err.Error(), wantSub) {
+			t.Errorf("installExitError(%d) = %v, want 含 %q", code, err, wantSub)
+		}
 	}
 }
 
@@ -157,6 +293,9 @@ func TestListInstalledAndRemove(t *testing.T) {
 	byVer := map[string]RDVersionInfo{}
 	for _, v := range list {
 		byVer[v.Version] = v
+	}
+	if v := byVer["v1.4.9"]; v.Form != FormPortable || byVer["v1.4.8"].Form != FormPortable {
+		t.Errorf("隔离目录安装应恒携带 portable 形态: %+v %+v", byVer["v1.4.9"], byVer["v1.4.8"])
 	}
 	if v := byVer["v1.4.9"]; !v.IsImport || v.InstalledAt != "2026-08-28 10:00:00" || v.Source != "E:\\dl" {
 		t.Errorf("v1.4.9 元信息解析错误: %+v", v)
