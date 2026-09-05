@@ -13,7 +13,7 @@ const TONES: StateTone[] = ['positive', 'information', 'warning', 'danger', 'neu
 
 describe('toolStateMeta', () => {
   it('已知托管状态返回正确语义（对齐托管视图六态矩阵通用口径）', () => {
-    expect(toolStateMeta('running')).toEqual({ text: '已启动', icon: '●', tone: 'positive' })
+    expect(toolStateMeta('running')).toEqual({ text: '运行中', icon: '●', tone: 'positive' })
     expect(toolStateMeta('starting')).toEqual({ text: '启动中…', icon: '◐', tone: 'information' })
     expect(toolStateMeta('stopped')).toEqual({ text: '未运行', icon: '○', tone: 'neutral' })
     expect(toolStateMeta('failed')).toEqual({ text: '异常退出', icon: '!', tone: 'danger' })

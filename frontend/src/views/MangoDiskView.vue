@@ -15,6 +15,7 @@ import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
+import { toolStateMeta } from '../constants/status'
 
 const snap = ref<Snapshot | null>(null)
 const releases = ref<MangoDiskRelease[]>([])
@@ -41,7 +42,7 @@ const isExternal = computed(() => state.value === 'external')
 const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
 // 文案口径保留本视图现状（"运行中"，与 TOOL_STATE_META.running="已启动" 存在家族级
 // 文案分歧——待主线统一，此处不强行对齐以免破坏特征基线）。
-const stateText = computed(() => ({ running: '运行中', starting: '启动中…', external: '外部运行', failed: '异常退出' }[state.value] ?? '未运行'))
+const stateText = computed(() => toolStateMeta(state.value).text)
 const currentVersion = computed(() => snap.value?.version || activeVersion.value || '自动选择')
 const currentInstalled = computed(() => installed.value.find(item => item.version === currentVersion.value) ?? null)
 

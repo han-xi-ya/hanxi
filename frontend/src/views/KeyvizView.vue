@@ -12,6 +12,7 @@ import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { useClipboard } from '../composables/useClipboard'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
+import { toolStateMeta } from '../constants/status'
 import { getErrorMessage } from '../utils/errors'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
@@ -48,16 +49,8 @@ const state = computed(() => snap.value?.state ?? '')
 const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
 const isExternal = computed(() => state.value === 'external')
 
-// 文案与迁移前逐字一致；'运行中' 与 constants/status 的 running.text 有差，统一与否归主线文案决策。
-const stateText = computed(() => {
-  switch (state.value) {
-    case 'running': return '运行中'
-    case 'starting': return '启动中…'
-    case 'failed': return '异常退出'
-    case 'external': return '外部运行'
-    default: return '未运行'
-  }
-})
+// 五态通用文案接 constants/status 单一来源（§9.5-5）；业务扩展话术视图自行覆写。
+const stateText = computed(() => toolStateMeta(state.value).text)
 
 const runningVersion = computed(() => snap.value?.version ?? '')
 

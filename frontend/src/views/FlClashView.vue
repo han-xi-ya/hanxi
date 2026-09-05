@@ -14,6 +14,7 @@ import { usePrompt } from '../composables/usePrompt'
 import { useClipboard } from '../composables/useClipboard'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
+import { toolStateMeta } from '../constants/status'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -49,15 +50,8 @@ const state = computed(() => snap.value?.state ?? '')
 const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
 const isExternal = computed(() => state.value === 'external')
 
-const stateText = computed(() => {
-  switch (state.value) {
-    case 'running': return '运行中'
-    case 'starting': return '启动中…'
-    case 'failed': return '异常退出'
-    case 'external': return '外部运行'
-    default: return '未运行'
-  }
-})
+// 五态通用文案接 constants/status 单一来源（§9.5-5）；业务扩展话术视图自行覆写。
+const stateText = computed(() => toolStateMeta(state.value).text)
 
 const runningVersion = computed(() => snap.value?.version ?? '')
 

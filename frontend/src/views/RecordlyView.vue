@@ -15,6 +15,7 @@ import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
+import { toolStateMeta } from '../constants/status'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
@@ -52,16 +53,8 @@ const state = computed(() => snap.value?.state ?? '')
 const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
 const isExternal = computed(() => state.value === 'external')
 
-// 注意：习惯文案"运行中"与 constants/status 通用"已启动"不一致，迁移保持逐字现状。
-const stateText = computed(() => {
-  switch (state.value) {
-    case 'running': return '运行中'
-    case 'starting': return '启动中…'
-    case 'failed': return '异常退出'
-    case 'external': return '外部运行'
-    default: return '未运行'
-  }
-})
+// 五态通用文案接 constants/status 单一来源（§9.5-5）；业务扩展话术视图自行覆写。
+const stateText = computed(() => toolStateMeta(state.value).text)
 
 const runningVersion = computed(() => snap.value?.version ?? '')
 const installedInfo = computed(() => installed.value[0] ?? null)

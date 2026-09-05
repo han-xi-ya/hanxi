@@ -17,7 +17,7 @@ export interface StateMeta {
  * 未识别状态一律回退 stopped——状态不明时宁可报"无"，不误报在跑。
  */
 export const TOOL_STATE_META: Record<string, StateMeta> = {
-  running: { text: '已启动', icon: '●', tone: 'positive' },
+  running: { text: '运行中', icon: '●', tone: 'positive' }, // §9.5-5 文案裁决：状态标签统一「运行中」；「已启动」仅存于后端动作回执 toast，不再作状态词
   starting: { text: '启动中…', icon: '◐', tone: 'information' },
   stopped: { text: '未运行', icon: '○', tone: 'neutral' },
   failed: { text: '异常退出', icon: '!', tone: 'danger' },

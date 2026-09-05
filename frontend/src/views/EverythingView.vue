@@ -112,8 +112,8 @@ const state = computed(() => snap.value?.state ?? '')
 const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
 const isExternal = computed(() => state.value === 'external')
 
-// 注：文案与 constants/status 的 TOOL_STATE_META 存在口径差（running 此族分后台/窗口两态），
-// 属托管家族既有话术，不强行套用单一表（迁移铁律 1），统一留待家族文案评审。
+// §9.5-5 文案评审结论：通用五态接单一来源（running=「运行中」）；
+// Everything 的 running 按托管模式细分「后台/窗口运行中」，属业务扩展话术，保留局部覆写。
 const stateText = computed(() => {
   switch (state.value) {
     case 'running':
