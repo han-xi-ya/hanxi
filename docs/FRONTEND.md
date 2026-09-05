@@ -3,7 +3,7 @@
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
 > **更新日期**：2026-09-05
-> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜**Phase 3+4 ✅**（托管家族 19/19 视图迁移完成：组 A `e44621e` / B `d6d6894` / C `19a1efe` / D `9238ec2` / E `a2c838e` / F `4e1da21`，全仓 358 用例、vue-tsc 0 错；迁移期发现的全家族潜伏 bug 见跟进清单 §9.5）｜Phase 5 进行中方向：非托管工具视图"改到哪治到哪"。已知过渡态：工具视图与系统页硬编码浅底在深色下仍显亮（Phase 5 收敛）；AppIcon 图标集与巨型孤本拆分分别在跟进清单与 Phase 6。
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。当前待办＝跟进批 §9.5（家族级 bug 修复、Snipaste/frpc modal 二次收编、VersionsView 死码处置待用户确认、AppIcon 图标集）与 Phase 6（巨型孤本拆分：WechatBot/FileShare/PublicIp/Everything）。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
 
@@ -180,7 +180,7 @@ src/
    .error-box/.mono 基样式/.empty-state/.banner-*/@keyframes pulse→改引全局 hx-pulse）；
    保留视图独有布局样式并把其中颜色/圆角/动效换成语义 token（`--color-*`/`--surface-*`/`--state-*`，
    硬编码 hex/rgba 清零）；状态灯类名带视图前缀防全局碰撞的惯例保留。
-5. **验证闭环**：定向 vitest 全绿 → vue-tsc 无本视图错误 → 主线跑全量 → 真机目视（用户）。
+5. **验证闭环**：定向 vitest 全绿 → vue-tsc 无本视图错误 → **npm run build 必过**（vitest 默认 `css:false` 不解析 `<style>` 块，CSS 注释星杠截断一类病灶只有 build 能抓，Phase 5 实证） → 主线跑全量 → 真机目视（用户）。
 6. **差异决策表**（组 A 实例）：`hint-banner`→`.banner` 类名前缀更名＝测试同步改选择器；
    卸载确认载体从原生换可访问对话框＝测试改单例驱动；radius 6px→8px 等 token 收敛＝设计意图不算回归；
    任何"业务调用变了"＝违规，立即回退。
