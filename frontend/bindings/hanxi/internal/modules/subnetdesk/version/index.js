@@ -10,12 +10,12 @@ import * as $models from "./models.js";
  */
 
 /**
- * SDRelease 远程 GitHub Release 中可用的 SubnetDesk Windows x64 便携版。
+ * SDRelease 远程 GitHub Release 中可用的 SubnetDesk Windows x64 版本。
  * SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验第一依据）。
  * @typedef {$models.SDRelease} SDRelease
  */
 
 /**
- * SDVersionInfo 本地已安装的 SubnetDesk 版本信息。
+ * SDVersionInfo 本地可用的 SubnetDesk 版本信息（隔离目录便携安装 + 系统安装版合流）。
  * @typedef {$models.SDVersionInfo} SDVersionInfo
  */

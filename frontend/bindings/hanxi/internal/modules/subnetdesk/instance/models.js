@@ -6,6 +6,7 @@
  * Snapshot 引擎状态快照：事件推送与前端渲染共用同一模型。
  * @typedef {Object} Snapshot
  * @property {string} version
+ * @property {string} form - portable / installed（随启动入参携带，未启动过时为空）
  * @property {State} state
  * @property {number} pid
  * @property {number} exitCode

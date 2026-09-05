@@ -27,6 +27,7 @@ const snap = ref<Snapshot | null>(null)
 const releases = ref<SDRelease[]>([])
 const installed = ref<SDVersionInfo[]>([])
 const activeVersion = ref('')
+const activeForm = ref('') // portable / installed（两形态版本号可同值，成对判定）
 const loading = ref(false)
 const listError = ref('')
 const uptimeSec = ref(0)
@@ -37,8 +38,9 @@ const { confirm } = useConfirm()
 const { prompt } = usePrompt()
 const { copy } = useClipboard()
 
-// 下载进度 map（按版本索引）
+// 下载进度 map（按版本索引）：便携与安装版通道独立（kind 分流，互不覆盖）
 const downloading = ref<Record<string, DownloadProgress>>({})
+const installing = ref<Record<string, DownloadProgress>>({})
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 frpc/ccswitch 同构）
 const activeMainTab = ref('console')
@@ -63,18 +65,26 @@ const openDirVersion = computed(() => {
   return installed.value.find(v => v.version === prefer) ?? installed.value[0] ?? null
 })
 
+const isInstalledForm = computed(() => snap.value?.form === 'installed')
+
 // 条件提示条（三个变体互斥）
 const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(() => {
   if (state.value === 'external') {
     return {
       tone: 'warn',
-      text: '检测到外部便携 SubnetDesk 实例（非 Hanxi 托管）。可尝试唤起其窗口；驻留托盘无窗可唤时点击其托盘图标，或在其中自行退出。',
+      text: '检测到外部自行启动的 SubnetDesk 实例（便携或安装版客户端，非 Hanxi 托管）。可尝试唤起其窗口；驻留托盘无窗可唤时点击其托盘图标，或在其中自行退出。',
     }
   }
   if (state.value === 'failed') {
     return { tone: 'error', text: snap.value?.error || 'SubnetDesk 异常退出' }
   }
   if (state.value === 'running') {
+    if (isInstalledForm.value) {
+      return {
+        tone: 'ok',
+        text: 'SubnetDesk 安装版正在运行：系统服务在位时可无人值守被控（锁屏/登录界面亦可达）；「退出」仅终止 Hanxi 拉起的客户端进程树，服务不受影响、被控仍可达。',
+      }
+    }
     return {
       tone: 'ok',
       text: 'SubnetDesk 正在运行：被控端在其窗口「LAN 设置」启用账号密码并放行防火墙 TCP 21118；关闭主窗仍驻留托盘继续托管，「退出」会终止整个进程树（断开进行中的会话）。',
@@ -88,14 +98,16 @@ async function loadVersions() {
   loading.value = true
   listError.value = ''
   try {
-    const [remote, local, active] = await Promise.all([
+    const [remote, local, active, form] = await Promise.all([
       SubnetDeskAPI.ListReleases(),
       SubnetDeskAPI.ListInstalledVersions(),
       SubnetDeskAPI.GetActiveVersion(),
+      SubnetDeskAPI.GetActiveForm(),
     ])
     releases.value = remote ?? []
     installed.value = local ?? []
     activeVersion.value = active ?? ''
+    activeForm.value = form ?? ''
   } catch (e) {
     listError.value = `获取版本列表失败: ${getErrorMessage(e)}`
   } finally {
@@ -122,7 +134,17 @@ function stepOf(p: DownloadProgress): number {
 function statusOf(rel: SDRelease): 'installed' | 'downloading' | 'error' | 'idle' {
   const p = downloading.value[rel.version]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
-  const hit = installed.value.find(v => v.version === rel.version)
+  // 形态精确匹配：仅系统安装版命中时，便携通道不应误显"已安装"
+  const hit = installed.value.find(v => v.version === rel.version && v.form !== 'installed')
+  return hit ? 'installed' : 'idle'
+}
+
+// 安装版通道状态（rel 无 installerName = 上游未提供 MSI，无此通道）
+function installStatusOf(rel: SDRelease): 'installed' | 'downloading' | 'error' | 'idle' | 'unavailable' {
+  if (!rel.installerName) return 'unavailable'
+  const p = installing.value[rel.version]
+  if (p) return p.stage === 'error' ? 'error' : 'downloading'
+  const hit = installed.value.find(v => v.version === rel.version && v.form === 'installed')
   return hit ? 'installed' : 'idle'
 }
 
@@ -154,14 +176,35 @@ async function download(rel: SDRelease) {
   }
 }
 
+// 安装版一键"下载并安装"：安装本体是 Windows Installer 前台向导（含 UAC），
+// 进度（下载/校验）走事件，装机动作由用户在弹出的向导中完成。
+async function install(rel: SDRelease) {
+  try {
+    const res = await SubnetDeskAPI.InstallVersion(rel.version)
+    if (res === 'already-installed') {
+      showToast(`SubnetDesk 安装版 ${rel.version} 已在系统中`)
+      await loadVersions()
+    }
+  } catch (e) {
+    showToast(`安装发起失败: ${getErrorMessage(e)}`)
+  }
+}
+
 async function setActive(v: SDVersionInfo) {
   try {
-    const ver = await SubnetDeskAPI.SetActiveVersion(v.version)
+    const ver = await SubnetDeskAPI.SetActiveVersion(v.version, v.form)
     activeVersion.value = ver
-    showToast(`已将 ${ver} 设为使用版本`)
+    activeForm.value = v.form
+    showToast(v.form === 'installed'
+      ? `已将系统安装版 ${ver} 设为使用版本`
+      : `已将 ${ver} 设为使用版本`)
   } catch (e) {
     showToast(`设置失败: ${getErrorMessage(e)}`)
   }
+}
+
+function isActiveCard(v: SDVersionInfo): boolean {
+  return activeVersion.value === v.version && (activeForm.value || 'portable') === (v.form || 'portable')
 }
 
 async function openDir(path: string) {
@@ -183,7 +226,7 @@ async function openConfigDir() {
 
 async function removeVersion(v: SDVersionInfo) {
   const ok = await confirm({
-    title: `卸载 SubnetDesk ${v.version}`,
+    title: `卸载 SubnetDesk ${v.version}（便携版）`,
     description: '该版本隔离目录将被删除，不可恢复。',
     details: [{ label: '配置数据', value: '连接记录与 LAN 设置恒存于 %APPDATA%\\SubnetDesk，后续版本继续共用' }],
     tone: 'danger',
@@ -196,6 +239,28 @@ async function removeVersion(v: SDVersionInfo) {
     await loadVersions()
   } catch (e) {
     showToast(`卸载失败: ${getErrorMessage(e)}`)
+  }
+}
+
+// 安装版卸载引导：系统级卸载（连带移除服务）交还 Windows 原生入口，
+// Hanxi 不代执行 msiexec——后端打开设置页，用户在「安装的应用」中操作。
+async function uninstallGuidance(v: SDVersionInfo) {
+  const ok = await confirm({
+    title: `卸载 SubnetDesk 安装版 ${v.version}`,
+    description: '安装版是系统级软件：卸载将连带移除 Windows 服务（无人值守被控随之失效），需在系统设置中完成。',
+    details: [
+      { label: '操作去向', value: '打开 Windows 设置「安装的应用」，搜索 SubnetDesk 后卸载' },
+      { label: '配置数据', value: '卸载器默认保留 %APPDATA%\\SubnetDesk 连接记录与 LAN 设置' },
+    ],
+    tone: 'danger',
+    confirmLabel: '打开系统设置',
+  })
+  if (!ok) return
+  try {
+    await SubnetDeskAPI.OpenUninstallSettings()
+    showToast('已打开系统「安装的应用」页面：搜索 SubnetDesk 完成卸载后回本页刷新')
+  } catch (e) {
+    showToast(`打开系统设置失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -285,12 +350,20 @@ async function openRepo() {
 // ---------- 事件订阅（自动注销）与装载 ----------
 useWailsEvent<DownloadProgress>('subnetdesk:version-download', (t) => {
   if (!t || !t.version) return
-  downloading.value = { ...downloading.value, [t.version]: t }
+  const isInstaller = t.kind === 'installer'
+  const map = () => (isInstaller ? installing.value : downloading.value)
+  const commit = (next: Record<string, DownloadProgress>) => {
+    if (isInstaller) installing.value = next
+    else downloading.value = next
+  }
+  const cur = { ...map() }
+  cur[t.version] = t
+  commit(cur)
   if (t.stage === 'done') {
     setTimeout(() => {
-      const next = { ...downloading.value }
+      const next = { ...map() }
       delete next[t.version]
-      downloading.value = next
+      commit(next)
     }, 800)
     loadVersions()
   }
@@ -330,6 +403,8 @@ onMounted(async () => {
             <span class="status-word">{{ stateText }}</span>
             <template v-if="isRunningOrStarting && runningVersion">
               <span class="ver-pill">{{ runningVersion }}</span>
+              <span v-if="isInstalledForm" class="form-pill" title="MSI 系统安装版（Program Files + Windows 服务）">安装版</span>
+              <span v-else class="form-pill form-pill-portable" title="隔离目录便携版（Hanxi 全托管）">便携版</span>
               <span v-if="snap?.pid" class="mono pid-tag">PID {{ snap.pid }}</span>
             </template>
             <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
@@ -344,7 +419,7 @@ onMounted(async () => {
             <button
               class="btn btn-danger-outline btn-small"
               :disabled="busy || (state !== 'running' && state !== 'starting' && !isExternal)"
-              :title="isExternal ? '外部实例请在其托盘退出' : '终止托管进程树（便携版无优雅退出，进行中的会话会断开）'"
+              :title="isExternal ? '外部实例请在其托盘退出' : isInstalledForm ? '终止客户端进程树（系统服务不受影响，被控仍可达）' : '终止托管进程树（便携版无优雅退出，进行中的会话会断开）'"
               @click="quitSubnetDesk"
             >⏻ 退出</button>
           </div>
@@ -364,7 +439,7 @@ onMounted(async () => {
         <div class="info-body">
           <p>面向局域网/路由内网/VPN 的远程桌面（<a class="inline-link" href="https://github.com/zibo-chen/SubnetDesk" target="_blank" rel="noopener">zibo-chen/SubnetDesk</a>，AGPL-3.0，RustDesk 的独立 LAN fork）：去掉公网设备 ID 与中继服务器，改为 mDNS 自动发现 + IP 直连（默认 TCP 21118）、用户名/密码（Argon2id）与设备指纹、CIDR 白名单。版本下载自官方 GitHub Releases（官方 sha256 校验），启停受 JobObject 管控。</p>
           <p>组合分工：同局域网/VPN 内用 <strong>SubnetDesk</strong>（直连、无服务器依赖）；跨公网场景用 <strong>RustDesk</strong>（设备 ID + 信令/中继，可自建服务器）。两者<b>协议互不兼容</b>——SubnetDesk 不能接入 RustDesk 主机，反之亦然，两端需安装同一软件。</p>
-          <p class="hint-dim">便携版边界：不装 Windows 服务，被控仅在进程/托盘存活期间可被接入，锁屏与安全桌面场景受限；连接记录与 LAN 设置恒存于 %APPDATA%\SubnetDesk，多版本共享。</p>
+          <p class="hint-dim">两形态分工：便携版（隔离目录全托管）不装 Windows 服务，被控仅在进程/托盘存活期间可被接入，锁屏与安全桌面场景受限；安装版（MSI 系统安装）自带 LocalSystem 服务，支持无人值守/锁屏被控——Hanxi 负责下载校验、发起安装向导与客户端纳管，服务与被控常驻不归 Hanxi 管辖（退出客户端后仍可达）。连接记录与 LAN 设置恒存于 %APPDATA%\SubnetDesk，两形态多版本共享，不建议双客户端并行运行。</p>
         </div>
       </details>
     </div>
@@ -391,9 +466,9 @@ onMounted(async () => {
     <div v-show="activeMainTab === 'versions'" class="tab-body">
       <div class="control-panel">
         <div class="meta-info">
-          <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程版本 {{ releases.length }} 个</span>
+          <span>本机可用 <strong>{{ installed.length }}</strong> 个版本 · 远程版本 {{ releases.length }} 个</span>
           <span class="hint-dim">便携包为官方单文件 packer exe（subnetdesk-版本-x86_64.exe，GitHub digest 校验，下载即安装）；或「导入本地」收纳你机器上已有的便携版</span>
-          <span class="hint-dim">便携 exe 首次运行自动解压到 %LOCALAPPDATA%\SubnetDesk；配置恒在 %APPDATA%\SubnetDesk，与安装位置无关</span>
+          <span class="hint-dim">安装版为官方 MSI（GitHub digest 校验）：下载后由 Windows Installer 向导装机（含 UAC），装入 Program Files 并注册系统服务，支持无人值守被控；识别与卸载交还系统</span>
         </div>
         <div class="btn-group">
           <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地便携版</button>
@@ -407,33 +482,47 @@ onMounted(async () => {
       <div class="section-title"><h3>已安装版本 ({{ installed.length }})</h3></div>
 
       <UiEmptyState v-if="installed.length === 0">
-        <p>尚未安装 SubnetDesk —— 下载官方便携版，或「导入本地便携版」把现有下载收纳进来</p>
-        <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
-          下载最新版 {{ releases[0].version }}
-        </button>
-        <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新远程列表</button>
+        <p>尚未安装 SubnetDesk —— 下载官方便携版 / 安装系统版，或「导入本地便携版」把现有下载收纳进来</p>
+        <div class="empty-btns">
+          <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
+            下载便携版 {{ releases[0].version }}
+          </button>
+          <button v-if="releases.length && releases[0].installerName" class="btn btn-secondary" @click="install(releases[0])">
+            安装系统版 {{ releases[0].version }}
+          </button>
+          <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新远程列表</button>
+        </div>
       </UiEmptyState>
 
       <div class="installed-grid">
-        <div v-for="v in installed" :key="v.version" class="installed-card" :class="{ 'card-active': activeVersion === v.version }">
+        <div v-for="v in installed" :key="`${v.form}-${v.version}`" class="installed-card" :class="{ 'card-active': isActiveCard(v) }">
           <div class="inst-card-top">
             <span class="ver-tag">{{ v.version }}</span>
             <div class="inst-badges">
-              <span v-if="activeVersion === v.version" class="badge badge-active">使用中</span>
+              <span v-if="isActiveCard(v)" class="badge badge-active">使用中</span>
               <span v-else-if="state === 'running' && runningVersion === v.version" class="badge badge-running">运行中</span>
-              <span v-if="v.isImport" class="badge badge-import">本地导入</span>
+              <span v-if="v.form === 'installed'" class="badge badge-system" title="MSI 系统安装版：含 Windows 服务，卸载走系统设置">安装版</span>
+              <span v-else-if="v.isImport" class="badge badge-import">本地导入</span>
               <span v-else class="badge badge-official">官方下载</span>
             </div>
           </div>
           <div class="inst-meta">
+            <div class="meta-line"><span class="k">形态</span><span>{{ v.form === 'installed' ? '安装版（Program Files + 系统服务）' : '便携版（隔离目录全托管）' }}</span></div>
             <div class="meta-line"><span class="k">路径</span><code class="mono">{{ v.exePath }}</code></div>
             <div class="meta-line"><span class="k">大小</span><span>{{ fmtSize(v.size) }} · 安装于 {{ v.installedAt }}</span></div>
             <div class="meta-line" v-if="v.isImport && v.source"><span class="k">来源</span><span class="hint-dim">{{ v.source }}</span></div>
           </div>
           <div class="inst-actions">
-            <button v-if="activeVersion !== v.version" class="btn btn-primary btn-small" @click="setActive(v)">设为使用</button>
+            <button v-if="!isActiveCard(v)" class="btn btn-primary btn-small" @click="setActive(v)">设为使用</button>
             <button class="btn btn-secondary btn-small" @click="openDir(v.dir)">📂 打开位置</button>
             <button
+              v-if="v.form === 'installed'"
+              class="btn btn-danger-outline btn-small"
+              title="系统级卸载（连带移除服务）交还 Windows 设置完成，Hanxi 不代执行"
+              @click="uninstallGuidance(v)"
+            >系统卸载…</button>
+            <button
+              v-else
               class="btn btn-danger-outline btn-small"
               :disabled="state === 'running' && runningVersion === v.version"
               :title="state === 'running' && runningVersion === v.version ? '请先退出 SubnetDesk' : ''"
@@ -464,34 +553,75 @@ onMounted(async () => {
               </td>
               <td>
                 <!-- 类名刻意用 sd-ver-status（含 sd- 前缀）——防与全局/其他视图状态点样式碰撞（markeron 垂直字体事故教训） -->
-                <span v-if="statusOf(rel) === 'installed'" class="sd-ver-status installed">已安装</span>
-                <span v-else-if="statusOf(rel) === 'downloading'" class="sd-ver-status downloading">下载中</span>
-                <span v-else-if="statusOf(rel) === 'error'" class="sd-ver-status error">失败</span>
-                <span v-else class="sd-ver-status idle">可安装</span>
+                <div class="dual-status">
+                  <span class="ch-label">便携</span>
+                  <span v-if="statusOf(rel) === 'installed'" class="sd-ver-status installed">已装</span>
+                  <span v-else-if="statusOf(rel) === 'downloading'" class="sd-ver-status downloading">下载中</span>
+                  <span v-else-if="statusOf(rel) === 'error'" class="sd-ver-status error">失败</span>
+                  <span v-else class="sd-ver-status idle">可下载</span>
+                </div>
+                <div v-if="installStatusOf(rel) !== 'unavailable'" class="dual-status">
+                  <span class="ch-label">安装版</span>
+                  <span v-if="installStatusOf(rel) === 'installed'" class="sd-ver-status installed">已装</span>
+                  <span v-else-if="installStatusOf(rel) === 'downloading'" class="sd-ver-status downloading">{{ installing[rel.version]!.stage === 'install' ? '装机中' : '下载中' }}</span>
+                  <span v-else-if="installStatusOf(rel) === 'error'" class="sd-ver-status error">失败</span>
+                  <span v-else class="sd-ver-status idle">可安装</span>
+                </div>
               </td>
-              <td>{{ fmtSize(rel.size) }}</td>
+              <td>
+                <div>{{ fmtSize(rel.size) }}</div>
+                <div v-if="rel.installerName" class="hint-dim size-sub">MSI {{ fmtSize(rel.installerSize) }}</div>
+              </td>
               <td>{{ fmtDate(rel.published) }}</td>
               <td>
-                <div v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'" class="download-cell">
-                  <div class="dl-bar-wrap">
-                    <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
+                <!-- 便携通道 -->
+                <div class="ch-actions">
+                  <template v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'">
+                    <div class="download-cell">
+                      <div class="dl-bar-wrap">
+                        <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
+                      </div>
+                      <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
+                    </div>
+                  </template>
+                  <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
+                    <span v-if="['verify', 'install'].includes(downloading[rel.version]!.stage)">校验安装中…</span>
+                    <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
                   </div>
-                  <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
+                  <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
+                    <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
+                  </div>
+                  <button v-if="statusOf(rel) === 'idle'" class="btn btn-primary btn-small" @click="download(rel)">下载便携版</button>
+                  <span v-if="statusOf(rel) === 'installed'" class="installed-tag">便携已装</span>
+                  <a v-if="statusOf(rel) === 'error'" class="retry-link" @click="download(rel)">重试</a>
                 </div>
-                <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
-                  <span v-if="['verify', 'install'].includes(downloading[rel.version]!.stage)">校验安装中…</span>
-                  <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
+                <!-- 安装版通道 -->
+                <div v-if="installStatusOf(rel) !== 'unavailable'" class="ch-actions">
+                  <template v-if="installStatusOf(rel) === 'downloading' && installing[rel.version]!.stage === 'downloading'">
+                    <div class="download-cell">
+                      <div class="dl-bar-wrap">
+                        <div class="dl-bar-inner" :style="{ width: `${stepOf(installing[rel.version]!)}%` }"></div>
+                      </div>
+                      <span class="dl-percent">{{ stepOf(installing[rel.version]!) }}%</span>
+                    </div>
+                  </template>
+                  <div v-else-if="installStatusOf(rel) === 'downloading' && installing[rel.version]!.stage === 'verify'" class="dl-meta-text">校验安装包…</div>
+                  <div v-else-if="installStatusOf(rel) === 'downloading'" class="dl-meta-text" :title="installing[rel.version]!.message">
+                    <span v-if="installing[rel.version]!.stage === 'install'">🛡 安装向导已弹出，请在其中完成装机</span>
+                    <span v-else class="dl-error" :title="installing[rel.version]!.message">{{ installing[rel.version]!.message }}</span>
+                  </div>
+                  <div v-else-if="installStatusOf(rel) === 'error'" class="dl-meta-text">
+                    <span class="dl-error" :title="installing[rel.version]!.message">{{ installing[rel.version]!.message }}</span>
+                  </div>
+                  <button
+                    v-if="installStatusOf(rel) === 'idle'"
+                    class="btn btn-secondary btn-small"
+                    title="下载官方 MSI 并唤起 Windows 安装向导（含 UAC）；装机后支持无人值守被控"
+                    @click="install(rel)"
+                  >安装系统版</button>
+                  <span v-if="installStatusOf(rel) === 'installed'" class="installed-tag">系统版已装</span>
+                  <a v-if="installStatusOf(rel) === 'error'" class="retry-link" @click="install(rel)">重试</a>
                 </div>
-                <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
-                  <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
-                </div>
-                <button
-                  v-if="statusOf(rel) === 'idle'"
-                  class="btn btn-primary btn-small"
-                  @click="download(rel)"
-                >下载安装</button>
-                <span v-if="statusOf(rel) === 'installed'" class="installed-tag">已安装</span>
-                <a v-if="statusOf(rel) === 'error'" class="retry-link" @click="download(rel)">重试</a>
               </td>
             </tr>
             <tr v-if="releases.length === 0 && !loading">
@@ -525,6 +655,9 @@ onMounted(async () => {
 .sd-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
 .status-word { font-size: 15px; font-weight: 700; color: var(--color-text); }
 .ver-pill { font-family: var(--font-mono); font-size: 12px; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 8px; color: var(--color-text); }
+/* 形态徽标：安装版（系统服务形态）与便携版区分，运行态一目了然 */
+.form-pill { font-size: 11px; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-weight: 600; }
+.form-pill-portable { background: var(--surface-hover); color: var(--color-text-muted); }
 .pid-tag { font-size: 11px; color: var(--color-text-subtle); }
 .uptime-tag { font-size: 11px; color: var(--color-text-subtle); }
 .control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -570,6 +703,7 @@ onMounted(async () => {
 .badge-running { background: var(--state-information-soft); color: var(--state-information); }
 .badge-import { background: var(--state-information-soft); color: var(--state-information); }
 .badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
+.badge-system { background: var(--state-positive-soft); color: var(--state-positive); }
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
 .inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
@@ -595,6 +729,15 @@ onMounted(async () => {
   border-radius: var(--radius-control); border: 1px solid var(--color-border);
   background: var(--surface-hover); color: var(--color-text-muted);
 }
+
+/* 双通道（便携/安装版）行内布局：状态两行、操作两行，通道标签对齐 */
+.dual-status { display: flex; align-items: center; gap: 6px; }
+.dual-status + .dual-status { margin-top: 3px; }
+.ch-label { font-size: 11px; color: var(--color-text-subtle); width: 34px; flex-shrink: 0; }
+.ch-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 26px; }
+.ch-actions + .ch-actions { margin-top: 5px; padding-top: 5px; border-top: 1px dashed var(--color-border); }
+.size-sub { font-size: 11px; margin-top: 2px; }
+.empty-btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
 .download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
 .dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }

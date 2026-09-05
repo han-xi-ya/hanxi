@@ -6,6 +6,7 @@
  * DownloadProgress 下载过程实时进度。
  * @typedef {Object} DownloadProgress
  * @property {string} version - 目标版本
+ * @property {string} kind - "" = 便携 exe；installer = 安装版 MSI
  * @property {string} stage - resolve/downloading/verify/install/done/error
  * @property {number} done - 已下载字节
  * @property {number} total - 总字节（未知为 0）
@@ -13,24 +14,29 @@
  */
 
 /**
- * SDRelease 远程 GitHub Release 中可用的 SubnetDesk Windows x64 便携版。
+ * SDRelease 远程 GitHub Release 中可用的 SubnetDesk Windows x64 版本。
  * SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验第一依据）。
  * @typedef {Object} SDRelease
- * @property {string} version - 如 v1.3.0
+ * @property {string} version - 如 v1.3.0（上游 tag 自带 v 前缀，直接采用）
  * @property {string} published - 发布时间（RFC3339）
  * @property {boolean} isPre - 是否为预发布版本
- * @property {string} assetName - 如 subnetdesk-1.3.0-x86_64.exe
+ * @property {string} assetName - 便携 packer exe，如 subnetdesk-1.3.0-x86_64.exe
  * @property {string} assetUrl - 资产下载地址（302 到 CDN）
  * @property {number} size - 资产大小（字节）
  * @property {string} sha256 - 官方 sha256（digest 去掉前缀）
+ * @property {string} installerName - 安装版 MSI 资产（subnetdesk-1.3.0-x86_64.msi）。上游未附带或官方 digest 缺失时四字段留空——安装版路线对该版本不可用，便携主资产不受影响。
+ * @property {string} installerUrl
+ * @property {number} installerSize
+ * @property {string} installerSha256
  */
 
 /**
- * SDVersionInfo 本地已安装的 SubnetDesk 版本信息。
+ * SDVersionInfo 本地可用的 SubnetDesk 版本信息（隔离目录便携安装 + 系统安装版合流）。
  * @typedef {Object} SDVersionInfo
  * @property {string} version - 如 v1.3.0
- * @property {string} exePath - subnetdesk.exe（packer 外层）完整路径
- * @property {string} dir - 版本隔离目录
+ * @property {string} form - portable / installed（见 Form* 常量）
+ * @property {string} exePath - 主程序完整路径（packer 外层 / 安装版 SubnetDesk.exe）
+ * @property {string} dir - 版本隔离目录 / 系统安装目录
  * @property {number} size - exe 大小（字节）
  * @property {string} installedAt - 安装时间 yyyy-MM-dd HH:mm:ss
  * @property {boolean} isImport - 是否经「导入本地」安装（非远程下载）

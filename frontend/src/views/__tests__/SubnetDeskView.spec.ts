@@ -14,13 +14,16 @@ const svc = vi.hoisted(() => ({
   ListReleases: vi.fn(),
   ListInstalledVersions: vi.fn(),
   GetActiveVersion: vi.fn(),
+  GetActiveForm: vi.fn(),
   GetStatus: vi.fn(),
   OpenWindow: vi.fn(),
   Quit: vi.fn(),
   DownloadVersion: vi.fn(),
+  InstallVersion: vi.fn(),
   SetActiveVersion: vi.fn(),
   OpenDir: vi.fn(),
   RemoveVersion: vi.fn(),
+  OpenUninstallSettings: vi.fn(),
   ImportLocal: vi.fn(),
   GetFollowOnExit: vi.fn(),
   SetFollowOnExit: vi.fn(),
@@ -46,21 +49,33 @@ vi.mock('../../../bindings/hanxi/internal/modules/subnetdesk/subnetdeskservice',
 
 const installedV123 = {
   version: '1.2.3',
+  form: 'portable',
   exePath: 'C:\\data\\subnetdesk\\1.2.3\\subnetdesk-1.2.3-x86_64.exe',
   dir: 'C:\\data\\subnetdesk\\1.2.3',
   size: 8 * 1024 * 1024,
   installedAt: '2026-08-01',
 }
 
+// 系统安装版条目（真机形态：Program Files + 首字母大写 exe）
+const installedSystem = {
+  version: '1.3.0',
+  form: 'installed',
+  exePath: 'C:\\Program Files\\SubnetDesk\\SubnetDesk.exe',
+  dir: 'C:\\Program Files\\SubnetDesk\\',
+  size: 379392,
+  installedAt: '2026-08-27 18:06:22',
+}
+
 async function flushMicrotasks(times = 20) {
   for (let i = 0; i < times; i++) await Promise.resolve()
 }
 
-function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version: string }> = [], releases: Array<Record<string, unknown>> = []) {
+function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version: string; form?: string }> = [], releases: Array<Record<string, unknown>> = []) {
   svc.GetStatus.mockResolvedValue(snap)
   svc.ListInstalledVersions.mockResolvedValue(installed)
   svc.ListReleases.mockResolvedValue(releases)
   svc.GetActiveVersion.mockResolvedValue(installed[0]?.version ?? '')
+  svc.GetActiveForm.mockResolvedValue(installed[0]?.form ?? '')
   svc.GetFollowOnExit.mockResolvedValue(true)
   svc.RepositoryURL.mockResolvedValue('https://github.com/zibo-chen/SubnetDesk')
 }
@@ -257,6 +272,67 @@ describe('SubnetDeskView 版本管理', () => {
     await flushMicrotasks()
     expect(svc.ImportLocal).toHaveBeenCalledWith('C:\\Downloads\\subnetdesk-1.2.3-x86_64.exe')
     expect(useToast().toastMsg.value).toBe('已导入 SubnetDesk 1.2.3')
+    w.unmount()
+  })
+})
+
+describe('SubnetDeskView 双形态（安装版通道）', () => {
+  it('安装版卡片：徽标/形态行/系统卸载引导（不直接调 RemoveVersion）', async () => {
+    const { confirmState, settleConfirm } = useConfirm()
+    stubDefaults({ state: 'stopped' }, [installedV123, installedSystem])
+    svc.OpenUninstallSettings.mockResolvedValue(undefined)
+    const w = await mountView()
+    const sysCard = w.findAll('.installed-card').find(c => c.text().includes('Program Files'))!
+    expect(sysCard.find('.badge-system').text()).toBe('安装版')
+    const sysUninstall = sysCard.findAll('button').find(b => b.text() === '系统卸载…')!
+    await sysUninstall.trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(svc.OpenUninstallSettings).toHaveBeenCalledTimes(1)
+    expect(svc.RemoveVersion).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('设为使用：携带 form 参数（安装版/便携分流）', async () => {
+    stubDefaults({ state: 'stopped' }, [installedSystem])
+    svc.GetActiveVersion.mockResolvedValue('')
+    svc.GetActiveForm.mockResolvedValue('')
+    svc.SetActiveVersion.mockImplementation(async (v: string, f: string) => v && f)
+    const w = await mountView()
+    const card = w.find('.installed-card')
+    await card.findAll('button').find(b => b.text() === '设为使用')!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.SetActiveVersion).toHaveBeenCalledWith('1.3.0', 'installed')
+    w.unmount()
+  })
+
+  it('远程表双通道：installerName 存在才出安装版行；kind=installer 进度独立于便携 downloading', async () => {
+    stubDefaults({ state: 'stopped' }, [], [
+      { version: '1.3.0', size: 24500000, published: '2026-08-27T00:00:00Z', isPre: false, installerName: 'subnetdesk-1.3.0-x86_64.msi', installerSize: 26276017 },
+      { version: '1.2.2', size: 24000000, published: '2026-08-09T00:00:00Z', isPre: false, installerName: '' },
+    ])
+    const w = await mountView()
+    const rows = w.findAll('tbody tr')
+    expect(rows[0].text()).toContain('安装系统版')
+    expect(rows[1].text()).not.toContain('安装系统版')
+    svc.InstallVersion.mockResolvedValue('started')
+    await rows[0].findAll('button').find(b => b.text() === '安装系统版')!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.InstallVersion).toHaveBeenCalledWith('1.3.0')
+    runtime.handlers['subnetdesk:version-download']({ data: { version: '1.3.0', kind: 'installer', stage: 'install', done: 0, total: 0 } })
+    await nextTick()
+    expect(w.find('tbody tr').text()).toContain('安装向导已弹出')
+    expect(w.find('tbody tr').text()).toContain('下载便携版')
+    w.unmount()
+  })
+
+  it('运行态快照带 form=installed：形态徽标与安装版横幅文案', async () => {
+    stubDefaults({ state: 'running', version: '1.3.0', form: 'installed', pid: 7 })
+    const w = await mountView()
+    expect(w.find('.form-pill').text()).toBe('安装版')
+    expect(w.find('.banner').text()).toContain('服务不受影响')
     w.unmount()
   })
 })

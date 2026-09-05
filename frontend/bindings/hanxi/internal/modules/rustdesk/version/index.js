@@ -10,12 +10,12 @@ import * as $models from "./models.js";
  */
 
 /**
- * RDRelease 远程 GitHub Release 中可用的 RustDesk Windows x64 便携版。
+ * RDRelease 远程 GitHub Release 中可用的 RustDesk Windows x64 版本。
  * SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验第一依据）。
  * @typedef {$models.RDRelease} RDRelease
  */
 
 /**
- * RDVersionInfo 本地已安装的 RustDesk 版本信息。
+ * RDVersionInfo 本地可用的 RustDesk 版本信息（隔离目录便携安装 + 系统安装版合流）。
  * @typedef {$models.RDVersionInfo} RDVersionInfo
  */
