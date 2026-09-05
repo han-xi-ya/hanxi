@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import QRCode from 'qrcode'
-import { Events } from '@wailsio/runtime'
 import * as WechatAPI from '../../bindings/hanxi/internal/modules/wechat'
 import type { WechatAccountState, QRInfo, InboundMessage } from '../../bindings/hanxi/internal/modules/wechat/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { useConfirm } from '../composables/useConfirm'
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
 
 // 账号列表与当前选中账号
 const accounts = ref<WechatAccountState[]>([])
@@ -56,6 +58,8 @@ const isSidebarCollapsed = ref(false)
 const showRulesBanner = ref(true)
 
 // 扫码绑定弹窗状态
+// 注：qrPollTimer 有意保留手管——它是"弹窗会话级"轮询（取码即启、scaned/confirmed/expired/
+// 关闭多出口启停 + isChecking 防重入），与 usePolling 的 KeepAlive 页面级契约语义不同，不并轨。
 const showBindModal = ref(false)
 const bindRemarkName = ref('')
 const qrInfo = ref<QRInfo | null>(null)
@@ -337,16 +341,20 @@ async function saveAccountRename() {
   }
 }
 
-// 删除账号
+// 删除账号——危险操作经全局 useConfirm 可访问对话框（原文案逐字进 title，tone 为设计纪律升级）
 async function handleDeleteAccount(acc: WechatAccountState) {
-  if (confirm(`确定要解绑并删除微信机器人「${acc.remarkName}」吗？`)) {
-    try {
-      await WechatAPI.WechatService.DeleteAccount(acc.id)
-      await loadAccounts()
-      showToast(`账号「${acc.remarkName}」已删除`)
-    } catch (err: unknown) {
-      showToast(`删除失败: ${getErrorMessage(err)}`)
-    }
+  const accepted = await confirm({
+    title: `确定要解绑并删除微信机器人「${acc.remarkName}」吗？`,
+    description: '',
+    tone: 'danger',
+  })
+  if (!accepted) return
+  try {
+    await WechatAPI.WechatService.DeleteAccount(acc.id)
+    await loadAccounts()
+    showToast(`账号「${acc.remarkName}」已删除`)
+  } catch (err: unknown) {
+    showToast(`删除失败: ${getErrorMessage(err)}`)
   }
 }
 
@@ -513,6 +521,8 @@ async function handleInboundFileAction(msg: ChatMessage, action: 'open' | 'save'
   }
 }
 
+// 有意保留本地实现：语义与 utils/format.fmtSize 不同（空值文案"微信接收附件"、
+// 独立 B 档、KB/MB 一位小数、阈值 >=1MB），强并会改界面文案。
 function formatFileSize(size?: number): string {
   if (!size || size <= 0) return '微信接收附件'
   if (size < 1024) return `${size} B`
@@ -549,9 +559,56 @@ function getAvatarColor(str: string): string {
   return colors[Math.abs(hash) % colors.length]
 }
 
-// 事件监听清理
-let unlistenContextToken: (() => void) | null = null
-let unlistenMessage: (() => void) | null = null
+// 事件订阅（useWailsEvent：setup 同步期注册、作用域销毁自动注销）
+// 生命周期等价性：本视图常驻于 App.vue 的 KeepAlive(max=10)，原实现"onMounted 注册 +
+// 仅 onUnmounted（缓存驱逐时）注销"= 停用不注销的常驻监听；useWailsEvent 的
+// onScopeDispose 同样只在卸载触发 → 2 订阅/2 注销与常驻语义完全等价。
+// 时序差异仅一处：注册点从"loadAccounts+离线补拉之后"提前到 setup 期（事件更早可达，
+// handler 自带判空、无挂载前竞态依赖，属只赚不丢的收口）。
+useWailsEvent<Record<string, string>>('wechat:context-token-updated', (payload) => {
+  loadAccounts()
+  if (payload?.accountId) {
+    appendMessage({
+      id: `${Date.now()}-ctx-upd`,
+      accountId: payload.accountId,
+      time: new Date().toLocaleTimeString(),
+      direction: 'sys',
+      msgType: 'system',
+      content: `⚡ 自动捕获到最新 Context Token (用户 ${payload.fromUserId || '微信'}), 会话保持激活`
+    })
+  }
+})
+
+useWailsEvent<InboundMessage | undefined>('wechat:message-received', (msg) => {
+  if (msg) {
+    const targetAccId = msg.accountId || selectedAccountId.value || (accounts.value[0]?.id ?? '')
+    let msgType: ChatMessage['msgType'] = 'text'
+    let content = msg.text || ''
+
+    if (msg.type === 2) {
+      msgType = 'image'
+      content = '[图片消息]'
+    } else if (msg.type === 4) {
+      msgType = 'file'
+      content = `[文件] ${msg.fileName || '未知文件'}`
+    }
+
+    appendMessage({
+      id: `${Date.now()}-${Math.random()}`,
+      accountId: targetAccId,
+      time: msg.time || new Date().toLocaleTimeString(),
+      direction: 'in',
+      msgType,
+      senderName: msg.from,
+      content,
+      fileName: msg.fileName,
+      fileSize: msg.fileSize,
+      attachmentId: msg.attachmentId,
+      downloadable: msg.downloadable,
+      attachmentError: msg.attachmentError
+    })
+  }
+})
 
 onMounted(async () => {
   await loadAccounts()
@@ -584,61 +641,10 @@ onMounted(async () => {
     } catch { /* 静默，不影响主流程 */ }
   }
   scrollToBottom()
-
-  // 监听 Token 刷新事件
-  unlistenContextToken = Events.On('wechat:context-token-updated', (ev) => {
-    loadAccounts()
-    const payload = ev?.data
-    if (payload?.accountId) {
-      appendMessage({
-        id: `${Date.now()}-ctx-upd`,
-        accountId: payload.accountId,
-        time: new Date().toLocaleTimeString(),
-        direction: 'sys',
-        msgType: 'system',
-        content: `⚡ 自动捕获到最新 Context Token (用户 ${payload.fromUserId || '微信'}), 会话保持激活`
-      })
-    }
-  })
-
-  // 监听入站消息
-  unlistenMessage = Events.On('wechat:message-received', (ev) => {
-    const msg = ev?.data as InboundMessage | undefined
-    if (msg) {
-      const targetAccId = msg.accountId || selectedAccountId.value || (accounts.value[0]?.id ?? '')
-      let msgType: ChatMessage['msgType'] = 'text'
-      let content = msg.text || ''
-
-      if (msg.type === 2) {
-        msgType = 'image'
-        content = '[图片消息]'
-      } else if (msg.type === 4) {
-        msgType = 'file'
-        content = `[文件] ${msg.fileName || '未知文件'}`
-      }
-
-      appendMessage({
-        id: `${Date.now()}-${Math.random()}`,
-        accountId: targetAccId,
-        time: msg.time || new Date().toLocaleTimeString(),
-        direction: 'in',
-        msgType,
-        senderName: msg.from,
-        content,
-        fileName: msg.fileName,
-        fileSize: msg.fileSize,
-        attachmentId: msg.attachmentId,
-        downloadable: msg.downloadable,
-        attachmentError: msg.attachmentError
-      })
-    }
-  })
 })
 
 onUnmounted(() => {
-  stopQRPoll()
-  if (unlistenContextToken) unlistenContextToken()
-  if (unlistenMessage) unlistenMessage()
+  stopQRPoll() // QR 弹窗轮询为手管定时器（见上方语义注释），卸载兜底清理
 })
 </script>
 
@@ -1063,18 +1069,18 @@ onUnmounted(() => {
 .chat-workbench {
   display: flex;
   flex: 1;
-  background: var(--bg-sidebar, #ffffff);
+  background: var(--surface-panel);
   border-radius: 8px;
-  border: 1px solid var(--border-color, #e4e7eb);
+  border: 1px solid var(--color-border);
   overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-small);
 }
 
 /* 1. 左侧账号栏 */
 .sidebar-pane {
   width: 270px;
-  background: #f8fafc;
-  border-right: 1px solid var(--border-color, #e4e7eb);
+  background: var(--surface-soft);
+  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -1090,8 +1096,8 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--border-color, #e4e7eb);
-  background: var(--bg-sidebar, #ffffff);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--surface-panel);
   min-height: 48px;
 }
 
@@ -1103,9 +1109,9 @@ onUnmounted(() => {
 
 .btn-toggle-sidebar {
   background: transparent;
-  border: 1px solid var(--border-color, #e4e7eb);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  color: var(--text-muted, #656d76);
+  color: var(--color-text-muted);
   font-size: 11px;
   width: 24px;
   height: 24px;
@@ -1117,13 +1123,13 @@ onUnmounted(() => {
 }
 
 .btn-toggle-sidebar:hover {
-  background: var(--bg-hover, #f0f2f5);
-  color: var(--text-main, #1f2328);
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .btn-expand-header {
   background: transparent;
-  border: 1px solid var(--border-color, #e4e7eb);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   font-size: 13px;
   padding: 3px 6px;
@@ -1133,7 +1139,7 @@ onUnmounted(() => {
 }
 
 .btn-expand-header:hover {
-  background: var(--bg-hover, #f0f2f5);
+  background: var(--surface-hover);
 }
 
 .sidebar-title {
@@ -1149,13 +1155,13 @@ onUnmounted(() => {
 .sidebar-title h3 {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
   margin: 0;
 }
 
 .btn-bind-account {
-  background: #10b981;
-  color: #ffffff;
+  background: var(--state-positive);
+  color: var(--color-text-inverse);
   border: none;
   padding: 4px 10px;
   border-radius: 6px;
@@ -1169,7 +1175,7 @@ onUnmounted(() => {
 }
 
 .btn-bind-account:hover {
-  background: #059669;
+  background: var(--state-positive);
 }
 
 .btn-bind-account.large {
@@ -1194,7 +1200,7 @@ onUnmounted(() => {
   justify-content: center;
   padding: 32px 8px;
   text-align: center;
-  color: var(--text-muted, #656d76);
+  color: var(--color-text-muted);
 }
 
 .empty-icon {
@@ -1208,8 +1214,8 @@ onUnmounted(() => {
 }
 
 .btn-empty-bind {
-  background: #10b981;
-  color: #ffffff;
+  background: var(--state-positive);
+  color: var(--color-text-inverse);
   border: none;
   padding: 5px 14px;
   border-radius: 6px;
@@ -1236,18 +1242,18 @@ onUnmounted(() => {
 }
 
 .account-item-card:hover {
-  background: #edf2f7;
+  background: var(--surface-hover);
 }
 
 .account-item-card.active {
-  background: #e2e8f0;
+  background: var(--surface-hover);
 }
 
 .bot-avatar {
   width: 38px;
   height: 38px;
   border-radius: 8px;
-  color: #ffffff;
+  color: #ffffff; /* 功能例外：数据值头像底上恒白不随主题 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1264,15 +1270,15 @@ onUnmounted(() => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid #ffffff;
+  border: 2px solid var(--surface-panel);
 }
 
 .status-dot-badge.online {
-  background: #10b981;
+  background: var(--state-positive);
 }
 
 .status-dot-badge.offline {
-  background: #94a3b8;
+  background: var(--color-text-subtle);
 }
 
 .account-meta {
@@ -1293,7 +1299,7 @@ onUnmounted(() => {
 .bot-remark {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1303,14 +1309,14 @@ onUnmounted(() => {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: #e2e8f0;
-  color: #64748b;
+  background: var(--surface-hover);
+  color: var(--color-text-muted);
   flex-shrink: 0;
 }
 
 .token-status-badge.ready {
-  background: #d1fae5;
-  color: #059669;
+  background: var(--state-positive-soft);
+  color: var(--state-positive);
 }
 
 .meta-row-sub {
@@ -1320,11 +1326,11 @@ onUnmounted(() => {
 
 .account-sub-id {
   font-size: 11px;
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 .hover-actions-group {
@@ -1344,17 +1350,17 @@ onUnmounted(() => {
   padding: 3px 5px;
   border-radius: 4px;
   cursor: pointer;
-  color: var(--text-muted, #656d76);
+  color: var(--color-text-muted);
   transition: all 0.1s;
 }
 
 .action-icon-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--surface-hover);
 }
 
 .action-icon-btn.danger:hover {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--state-danger-soft);
+  color: var(--state-danger);
 }
 
 /* 2. 右侧主聊天区域 */
@@ -1362,7 +1368,7 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #f8fafc;
+  background: var(--surface-soft);
   position: relative;
   min-width: 0;
 }
@@ -1373,7 +1379,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted, #656d76);
+  color: var(--color-text-muted);
   text-align: center;
   padding: 32px;
 }
@@ -1387,13 +1393,13 @@ onUnmounted(() => {
 .no-selection-placeholder h3 {
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
   margin: 0 0 6px;
 }
 
 .no-selection-placeholder p {
   font-size: 13px;
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
   margin: 0;
 }
 
@@ -1401,8 +1407,8 @@ onUnmounted(() => {
 .chat-header {
   height: 54px;
   padding: 0 18px;
-  background: var(--bg-sidebar, #ffffff);
-  border-bottom: 1px solid var(--border-color, #e4e7eb);
+  background: var(--surface-panel);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1419,7 +1425,7 @@ onUnmounted(() => {
   width: 34px;
   height: 34px;
   border-radius: 6px;
-  color: #ffffff;
+  color: #ffffff; /* 功能例外：数据值头像底上恒白不随主题 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1443,23 +1449,23 @@ onUnmounted(() => {
 .bot-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
 }
 
 .listen-badge {
   font-size: 11px;
   padding: 1px 7px;
   border-radius: 10px;
-  background: #e2e8f0;
-  color: #64748b;
+  background: var(--surface-hover);
+  color: var(--color-text-muted);
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 
 .listen-badge.online {
-  background: #d1fae5;
-  color: #059669;
+  background: var(--state-positive-soft);
+  color: var(--state-positive);
 }
 
 .listen-dot {
@@ -1477,18 +1483,18 @@ onUnmounted(() => {
 }
 
 .target-label {
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
 }
 
 .target-val {
-  color: var(--text-main, #1f2328);
-  font-family: Consolas, monospace;
+  color: var(--color-text);
+  font-family: var(--font-mono);
 }
 
 .btn-edit-link {
   background: transparent;
   border: none;
-  color: var(--accent, #2f6fed);
+  color: var(--color-primary);
   cursor: pointer;
   padding: 0 2px;
   font-size: 11px;
@@ -1496,21 +1502,21 @@ onUnmounted(() => {
 
 .target-input-inline {
   padding: 2px 6px;
-  border: 1px solid var(--border-color, #e4e7eb);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   font-size: 11px;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   width: 200px;
   outline: none;
 }
 
 .target-input-inline:focus {
-  border-color: var(--accent, #2f6fed);
+  border-color: var(--color-primary);
 }
 
 .btn-save-inline {
-  background: #10b981;
-  color: #ffffff;
+  background: var(--state-positive);
+  color: var(--color-text-inverse);
   border: none;
   padding: 2px 7px;
   border-radius: 4px;
@@ -1519,8 +1525,8 @@ onUnmounted(() => {
 }
 
 .btn-cancel-inline {
-  background: #e2e8f0;
-  color: #475569;
+  background: var(--surface-hover);
+  color: var(--color-text-muted);
   border: none;
   padding: 2px 7px;
   border-radius: 4px;
@@ -1535,34 +1541,34 @@ onUnmounted(() => {
 }
 
 .btn-hdr-action {
-  background: var(--bg-sidebar, #ffffff);
-  border: 1px solid var(--border-color, #e4e7eb);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   padding: 5px 12px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .btn-hdr-action:hover {
-  background: var(--bg-hover, #f0f2f5);
+  background: var(--surface-hover);
 }
 
 .btn-hdr-action.primary-toggle.active {
-  background: #d1fae5;
-  border-color: #10b981;
-  color: #059669;
+  background: var(--state-positive-soft);
+  border-color: var(--state-positive);
+  color: var(--state-positive);
 }
 
 /* 微信规则条 */
 .clawbot-rules-strip {
-  background: #fffbeb;
-  border-bottom: 1px solid #fef3c7;
+  background: var(--state-warning-soft);
+  border-bottom: 1px solid var(--state-warning-soft);
   padding: 6px 14px;
   font-size: 12px;
-  color: #b45309;
+  color: var(--state-warning);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1578,17 +1584,17 @@ onUnmounted(() => {
 
 .rules-tag {
   font-weight: 600;
-  color: #d97706;
+  color: var(--state-warning);
 }
 
 .rule-sep {
-  color: #fcd34d;
+  color: var(--state-warning);
 }
 
 .btn-close-strip {
   background: transparent;
   border: none;
-  color: #92400e;
+  color: var(--state-warning);
   cursor: pointer;
   font-size: 12px;
 }
@@ -1609,7 +1615,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted, #656d76);
+  color: var(--color-text-muted);
   text-align: center;
 }
 
@@ -1622,12 +1628,12 @@ onUnmounted(() => {
 .empty-title {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
 }
 
 .empty-desc {
   font-size: 12px;
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
   margin-top: 4px;
 }
 
@@ -1645,11 +1651,11 @@ onUnmounted(() => {
 }
 
 .system-pill {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--surface-hover);
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 12px;
-  color: var(--text-muted, #656d76);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1657,7 +1663,7 @@ onUnmounted(() => {
 
 .pill-time {
   font-size: 10px;
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
 }
 
 .bubble-row.inbound-row {
@@ -1670,12 +1676,12 @@ onUnmounted(() => {
 }
 
 .robot-sender-title {
-  color: var(--accent, #2f6fed);
+  color: var(--color-primary);
   font-weight: 500;
 }
 
 .robot-avatar-box {
-  background: #2563eb !important;
+  background: var(--color-primary) !important;
   font-size: 16px;
 }
 
@@ -1683,7 +1689,7 @@ onUnmounted(() => {
   width: 34px;
   height: 34px;
   border-radius: 6px;
-  color: #ffffff;
+  color: #ffffff; /* 功能例外：数据值头像底上恒白不随主题 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1693,7 +1699,7 @@ onUnmounted(() => {
 }
 
 .peer-avatar {
-  background: #64748b;
+  background: var(--color-text-muted);
 }
 
 .bubble-column {
@@ -1711,7 +1717,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
 }
 
 .bubble-info-header.justify-end {
@@ -1725,19 +1731,19 @@ onUnmounted(() => {
   line-height: 1.5;
   word-break: break-word;
   user-select: text;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-small);
 }
 
 .inbound-bubble {
-  background: var(--bg-sidebar, #ffffff);
-  border: 1px solid var(--border-color, #e4e7eb);
-  color: var(--text-main, #1f2328);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
   border-top-left-radius: 2px;
 }
 
 .outbound-bubble {
-  background: #95ec69;
-  color: #1a1a1a;
+  background: #95ec69; /* 功能例外：微信品牌绿气泡 */
+  color: #1a1a1a; /* 功能例外：品牌绿上深文 */
   border-top-right-radius: 2px;
 }
 
@@ -1750,13 +1756,13 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.04); /* 功能例外：气泡上中性深度覆层 */
   padding: 6px 10px;
   border-radius: 6px;
 }
 
 .file-card-preview.out {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.06); /* 功能例外：同上绿气泡档 */
 }
 
 .inbound-file-card {
@@ -1770,9 +1776,9 @@ onUnmounted(() => {
 }
 
 .file-action-btn {
-  border: 1px solid var(--border-color, #d0d7de);
-  background: var(--bg-main, #fff);
-  color: var(--text-main, #24292f);
+  border: 1px solid var(--color-border);
+  background: var(--surface-panel);
+  color: var(--color-text);
   border-radius: 5px;
   padding: 4px 9px;
   font-size: 11px;
@@ -1780,8 +1786,8 @@ onUnmounted(() => {
 }
 
 .file-action-btn:hover:not(:disabled) {
-  border-color: #07c160;
-  color: #07883f;
+  border-color: #07c160; /* 功能例外：微信品牌绿 hover */
+  color: #07883f; /* 功能例外：微信品牌绿深文 */
 }
 
 .file-action-btn:disabled {
@@ -1805,13 +1811,13 @@ onUnmounted(() => {
 
 .file-sub-type {
   font-size: 11px;
-  color: #64748b;
+  color: var(--color-text-muted);
 }
 
 .file-sub-path {
   font-size: 10px;
-  color: #475569;
-  font-family: Consolas, monospace;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1840,7 +1846,7 @@ onUnmounted(() => {
 
 .media-sub-path {
   font-size: 10px;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
   opacity: 0.8;
   max-width: 260px;
   overflow: hidden;
@@ -1857,18 +1863,18 @@ onUnmounted(() => {
 }
 
 .msg-send-status.sending {
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
 }
 
 .msg-send-status.failed {
-  color: var(--danger, #cf222e);
+  color: var(--state-danger);
 }
 
 /* 3. 底部输入区 */
 .chat-input-area {
   height: 155px;
-  background: var(--bg-sidebar, #ffffff);
-  border-top: 1px solid var(--border-color, #e4e7eb);
+  background: var(--surface-panel);
+  border-top: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -1885,7 +1891,7 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   font-size: 12px;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
   padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -1896,12 +1902,12 @@ onUnmounted(() => {
 }
 
 .toolbar-btn:hover {
-  background: var(--bg-hover, #f0f2f5);
+  background: var(--surface-hover);
 }
 
 .toolbar-btn.text-danger:hover {
-  color: var(--danger, #cf222e);
-  background: #fee2e2;
+  color: var(--state-danger);
+  background: var(--state-danger-soft);
 }
 
 .tb-icon {
@@ -1924,7 +1930,7 @@ onUnmounted(() => {
   outline: none;
   resize: none;
   font-size: 13px;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
   font-family: inherit;
   line-height: 1.5;
   background: transparent;
@@ -1939,12 +1945,12 @@ onUnmounted(() => {
 
 .shortcut-tip {
   font-size: 11px;
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
 }
 
 .btn-send-message {
-  background: #10b981;
-  color: #ffffff;
+  background: var(--state-positive);
+  color: var(--color-text-inverse);
   border: none;
   padding: 5px 16px;
   border-radius: 4px;
@@ -1955,12 +1961,12 @@ onUnmounted(() => {
 }
 
 .btn-send-message:hover {
-  background: #059669;
+  background: var(--state-positive);
 }
 
 .btn-send-message:disabled {
-  background: #e2e8f0;
-  color: #94a3b8;
+  background: var(--surface-hover);
+  color: var(--color-text-subtle);
   cursor: not-allowed;
 }
 
@@ -1971,7 +1977,7 @@ onUnmounted(() => {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-mask);
   backdrop-filter: blur(2px);
   z-index: 1000;
   display: flex;
@@ -1981,9 +1987,9 @@ onUnmounted(() => {
 
 .custom-modal-card {
   width: 360px;
-  background: var(--bg-sidebar, #ffffff);
+  background: var(--surface-panel);
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-panel);
   overflow: hidden;
   animation: modalIn 0.18s ease-out;
 }
@@ -2005,7 +2011,7 @@ onUnmounted(() => {
 
 .cmodal-header {
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color, #e4e7eb);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2014,7 +2020,7 @@ onUnmounted(() => {
 .cmodal-title {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2024,7 +2030,7 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   font-size: 14px;
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
   cursor: pointer;
 }
 
@@ -2044,12 +2050,12 @@ onUnmounted(() => {
 .form-label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-main, #1f2328);
+  color: var(--color-text);
 }
 
 .form-text-input {
   padding: 6px 10px;
-  border: 1px solid var(--border-color, #e4e7eb);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 13px;
   outline: none;
@@ -2057,7 +2063,7 @@ onUnmounted(() => {
 }
 
 .form-text-input:focus {
-  border-color: #10b981;
+  border-color: var(--state-positive);
 }
 
 .qr-render-container {
@@ -2066,9 +2072,9 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  background: #f8fafc;
+  background: var(--surface-soft);
   border-radius: 8px;
-  border: 1px dashed var(--border-color, #e4e7eb);
+  border: 1px dashed var(--color-border);
   padding: 12px;
 }
 
@@ -2077,7 +2083,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted, #656d76);
+  color: var(--color-text-muted);
   font-size: 12px;
   gap: 8px;
 }
@@ -2097,36 +2103,36 @@ onUnmounted(() => {
   width: 170px;
   height: 170px;
   border-radius: 6px;
-  border: 1px solid var(--border-color, #e4e7eb);
+  border: 1px solid var(--color-border);
 }
 
 .qr-badge-pill {
   font-size: 11px;
   padding: 3px 10px;
   border-radius: 12px;
-  background: #e2e8f0;
-  color: #475569;
+  background: var(--surface-hover);
+  color: var(--color-text-muted);
 }
 
 .qr-badge-pill.scaned {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--surface-selected);
+  color: var(--color-primary);
 }
 
 .qr-badge-pill.confirmed {
-  background: #d1fae5;
-  color: #059669;
+  background: var(--state-positive-soft);
+  color: var(--state-positive);
 }
 
 .qr-badge-pill.expired,
 .qr-badge-pill.error {
-  background: #fee2e2;
-  color: #dc2626;
+  background: var(--state-danger-soft);
+  color: var(--state-danger);
 }
 
 .btn-retry-qr {
-  background: #10b981;
-  color: #ffffff;
+  background: var(--state-positive);
+  color: var(--color-text-inverse);
   border: none;
   padding: 4px 12px;
   border-radius: 4px;
@@ -2136,7 +2142,7 @@ onUnmounted(() => {
 
 .cmodal-hints {
   font-size: 11px;
-  color: var(--text-subtle, #8c959f);
+  color: var(--color-text-subtle);
   line-height: 1.5;
 }
 
@@ -2148,9 +2154,9 @@ onUnmounted(() => {
 }
 
 .btn-cancel {
-  background: #f1f5f9;
-  color: #475569;
-  border: 1px solid var(--border-color, #e4e7eb);
+  background: var(--surface-soft);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
   padding: 4px 12px;
   border-radius: 6px;
   font-size: 12px;
@@ -2158,8 +2164,8 @@ onUnmounted(() => {
 }
 
 .btn-submit {
-  background: #10b981;
-  color: #ffffff;
+  background: var(--state-positive);
+  color: var(--color-text-inverse);
   border: none;
   padding: 4px 14px;
   border-radius: 6px;
