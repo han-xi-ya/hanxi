@@ -192,7 +192,7 @@ describe('SnipasteView 版本管理', () => {
     stubDefaults({ state: 'stopped' }, [], [release223], '')
     svc.DownloadVersion.mockReturnValue(new Promise(() => {})) // 挂起，观察票据
     const { wrapper } = await mountInKeepAlive()
-    await wrapper.find('.version-table .btn-primary').trigger('click')
+    await wrapper.find('.tbl .btn-primary').trigger('click')
     await nextTick()
     expect(svc.DownloadVersion).toHaveBeenCalledWith('2.2.3')
     expect(wrapper.find('.download-stage').text()).toBe('正在创建下载任务')
@@ -203,7 +203,7 @@ describe('SnipasteView 版本管理', () => {
     stubDefaults({ state: 'stopped' }, [], [release223], '')
     svc.DownloadVersion.mockResolvedValue('in-progress')
     const { wrapper } = await mountInKeepAlive()
-    await wrapper.find('.version-table .btn-primary').trigger('click')
+    await wrapper.find('.tbl .btn-primary').trigger('click')
     await flushMicrotasks()
     expect(wrapper.find('.download-stage').text()).toBe('已有下载任务正在进行')
     expect(useToast().toastMsg.value).toContain('已在下载中')
@@ -237,7 +237,7 @@ describe('SnipasteView 版本管理', () => {
     await nextTick()
     expect(wrapper.find('.snipaste-ver-status.error').exists()).toBe(true)
     expect(wrapper.find('.snipaste-row-error').text()).toBe('官网哈希不匹配')
-    expect(wrapper.find('.retry-btn').exists()).toBe(true)
+    expect(wrapper.find('#snipaste-versions-panel .link-button').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -265,7 +265,7 @@ describe('SnipasteView 版本管理', () => {
   it('缓存数据警示：stale release 显示缓存徽标与提示条', async () => {
     stubDefaults({ state: 'stopped' }, [], [{ ...release223, stale: true }], '')
     const { wrapper } = await mountInKeepAlive()
-    expect(wrapper.find('.badge-warning').text()).toBe('缓存')
+    expect(wrapper.find('.chip-warning').text()).toBe('缓存')
     expect(wrapper.find('.state-warning').text()).toContain('正在显示缓存数据')
     wrapper.unmount()
   })

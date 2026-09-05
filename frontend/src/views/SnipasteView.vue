@@ -11,11 +11,18 @@ import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import { fmtDuration } from '../utils/format'
+import PageHeader from '../components/ui/PageHeader.vue'
+import MainTabNav from '../components/ui/MainTabNav.vue'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { prompt } = usePrompt()
 const activeMainTab = ref<'console' | 'versions'>('console')
+
+const MAIN_TABS = [
+  { key: 'console', label: '控制台' },
+  { key: 'versions', label: '版本管理' },
+]
 const releases = ref<SnipasteRelease[]>([])
 const installed = ref<SnipasteVersionInfo[]>([])
 const activeVersion = ref('')
@@ -368,21 +375,16 @@ onUnmounted(() => {
 
 <template>
   <section class="page snipaste-view">
-    <div class="header-row">
-      <div class="snipaste-heading">
+    <PageHeader title="Snipaste" subtitle="管理并启动官方 Windows x64 免安装版；原生截图、贴图、托盘和快捷键保持不变。">
+      <template #icon>
         <span class="snipaste-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M9.4 7.7 5.8 4.1a2.6 2.6 0 1 0-1.7 4.5c.7 0 1.3-.3 1.8-.7l2.2 2.2m6.5-2.4 3.6-3.6a2.6 2.6 0 1 1 1.7 4.5c-.7 0-1.3-.3-1.8-.7L8.7 17.3a2.6 2.6 0 1 1-1.8-1.8L17 5.4M10 14l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </span>
-        <div class="title-group">
-          <h1>Snipaste</h1>
-          <p class="subtitle">管理并启动官方 Windows x64 免安装版；原生截图、贴图、托盘和快捷键保持不变。</p>
-        </div>
-      </div>
-      <div class="main-tab-nav" role="tablist" aria-label="Snipaste 页面">
-        <button id="snipaste-console-tab" class="main-tab-btn" :class="{ active: activeMainTab === 'console' }" role="tab" aria-controls="snipaste-console-panel" :aria-selected="activeMainTab === 'console'" @click="activeMainTab = 'console'">控制台</button>
-        <button id="snipaste-versions-tab" class="main-tab-btn" :class="{ active: activeMainTab === 'versions' }" role="tab" aria-controls="snipaste-versions-panel" :aria-selected="activeMainTab === 'versions'" @click="activeMainTab = 'versions'">版本管理</button>
-      </div>
-    </div>
+      </template>
+      <template #actions>
+        <MainTabNav v-model="activeMainTab" :tabs="MAIN_TABS" id-prefix="snipaste" label="Snipaste 页面" />
+      </template>
+    </PageHeader>
 
     <div id="snipaste-console-panel" v-show="activeMainTab === 'console'" class="tab-body" role="tabpanel" aria-labelledby="snipaste-console-tab">
       <div class="control-panel snipaste-control-panel">
@@ -414,7 +416,7 @@ onUnmounted(() => {
           <li>退出 Hanxi 或停用本模块后，Snipaste 仍会保留托盘与全局快捷键。</li>
           <li>页面退出会先发送尽力关闭请求，超时后强制结束。</li>
         </ul>
-        <button class="text-link" @click="openSite">打开 Snipaste 官网<span v-if="siteURL"> · {{ siteURL }}</span></button>
+        <button class="link-button" @click="openSite">打开 Snipaste 官网<span v-if="siteURL"> · {{ siteURL }}</span></button>
       </article>
     </div>
 
@@ -441,9 +443,9 @@ onUnmounted(() => {
           <div class="inst-card-top">
             <strong class="ver-tag">{{ item.version }}</strong>
             <div class="badge-group">
-              <span v-if="isActiveVersion(item.version)" class="badge badge-active">当前使用</span>
-              <span v-if="isRunningVersion(item.version)" class="badge badge-running">运行中</span>
-              <span v-if="item.isImport" class="badge">本地导入</span>
+              <span v-if="isActiveVersion(item.version)" class="chip chip-information">当前使用</span>
+              <span v-if="isRunningVersion(item.version)" class="chip chip-positive">运行中</span>
+              <span v-if="item.isImport" class="chip chip-neutral">本地导入</span>
             </div>
           </div>
           <code class="path-value">{{ item.dir }}</code>
@@ -463,11 +465,11 @@ onUnmounted(() => {
       <div v-if="remoteLoading && !releases.length" class="state-box">正在解析 Snipaste 官网版本…</div>
       <div v-else-if="!releases.length" class="state-box state-empty"><strong>没有可用的官网版本</strong><span>官网页面结构可能已变化，可稍后重试或导入本地版本。</span></div>
       <div v-else class="table-container">
-        <table class="version-table">
+        <table class="tbl">
           <thead><tr><th>版本</th><th>状态</th><th>大小</th><th>发布时间</th><th>校验</th><th class="action-col">操作</th></tr></thead>
           <tbody>
             <tr v-for="release in releases" :key="release.version">
-              <td><div class="release-version"><strong>{{ release.version }}</strong><span v-if="release.isPre" class="badge badge-warning">预发布</span><span v-if="release.stale" class="badge badge-warning">缓存</span></div></td>
+              <td><div class="release-version"><strong>{{ release.version }}</strong><span v-if="release.isPre" class="chip chip-warning">预发布</span><span v-if="release.stale" class="chip chip-warning">缓存</span></div></td>
               <td>
                 <span v-if="statusOf(release) === 'installed'" class="snipaste-ver-status installed">已安装</span>
                 <span v-else-if="statusOf(release) === 'error'" class="snipaste-ver-status error">失败</span>
@@ -488,7 +490,7 @@ onUnmounted(() => {
                   </div>
                   <span v-else class="download-stage">{{ stageText(ticketOf(release.version)) }}</span>
                 </template>
-                <button v-else-if="statusOf(release) === 'error'" class="retry-btn" @click="download(release)">重试</button>
+                <button v-else-if="statusOf(release) === 'error'" class="link-button" @click="download(release)">重试</button>
                 <span v-else-if="statusOf(release) === 'installed'" class="installed-label">已安装</span>
                 <button v-else class="btn btn-primary btn-small" @click="download(release)">下载并安装</button>
                 <p v-if="rowErrors[release.version]" class="snipaste-row-error" role="alert">{{ rowErrors[release.version] }}</p>
@@ -502,78 +504,52 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 页头/选项卡/btn 家族/badge→chip/state-box/tbl/subtitle/焦点环/减动效/触屏热区：
+   由 PageHeader、MainTabNav 与 components.css + base.css 全局原子接管（§9.5-3 二次收编） */
 .snipaste-view { max-width: 1120px; margin: 0 auto; }
-.header-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-bottom: 18px; }
-.snipaste-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.title-group { min-width: 0; }
-.title-group h1, .control-panel h2, .section-title-row h2, .info-panel h2 { margin: 0; }
-.subtitle, .control-panel p, .section-title-row p { margin: 4px 0 0; color: var(--text-muted); }
-.snipaste-mark { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; color: var(--accent); background: var(--bg-active); }
+.snipaste-mark { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: var(--radius-control); color: var(--color-primary); background: var(--surface-selected); }
 .snipaste-mark svg { width: 25px; height: 25px; }
-.main-tab-nav { display: inline-flex; padding: 3px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--bg-sidebar); }
-.main-tab-btn { min-height: 34px; padding: 0 14px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); cursor: pointer; }
-.main-tab-btn.active { background: var(--bg-app); color: var(--accent); box-shadow: 0 1px 4px rgb(0 0 0 / 7%); }
 .tab-body { display: grid; gap: 14px; }
-.control-panel, .info-panel { border: 1px solid var(--border-color); border-radius: 12px; background: var(--bg-sidebar); padding: 16px; }
+.control-panel, .info-panel { border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); padding: 16px; }
+.control-panel h2, .section-title-row h2, .info-panel h2 { margin: 0; }
+.control-panel p, .section-title-row p { margin: 4px 0 0; color: var(--color-text-muted); }
 .snipaste-control-panel, .versions-overview { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .snipaste-control-main { display: grid; gap: 6px; min-width: 0; }
 .snipaste-control-state, .btn-group, .badge-group, .inst-actions, .release-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.version-value, .ver-tag { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; }
+.version-value, .ver-tag, .path-value, .mono-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .version-value { font-size: 20px; }
-.path-value { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; }
-.mono-meta { color: var(--text-muted); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 12px; }
-.muted-copy { margin: 0; color: var(--text-muted); }
-.btn { min-height: 36px; padding: 0 13px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-app); color: var(--text-main); font-weight: 600; cursor: pointer; }
-.btn-primary { color: #fff; border-color: var(--accent); background: var(--accent); }
-.btn-secondary { background: var(--bg-hover); }
-.btn-ghost { color: var(--text-muted); background: transparent; }
-.btn-danger-outline { color: var(--danger, #d64545); border-color: color-mix(in srgb, var(--danger, #d64545) 36%, var(--border-color)); background: transparent; }
-.btn-small { min-height: 30px; padding: 0 10px; font-size: 12px; }
-.btn:disabled { opacity: .46; cursor: not-allowed; }
-.btn:not(:disabled):hover, .main-tab-btn:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--border-color)); }
-.btn:focus-visible, .main-tab-btn:focus-visible, .text-link:focus-visible, .retry-btn:focus-visible, .state-action:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 32%, transparent); outline-offset: 2px; }
-.snipaste-status, .snipaste-ver-status, .badge { display: inline-flex; align-items: center; width: fit-content; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-.snipaste-status { padding: 3px 8px; border: 1px solid var(--border-color); color: var(--text-muted); }
-.snipaste-status[data-state="running"] { color: var(--success, #08875d); border-color: color-mix(in srgb, var(--success, #08875d) 35%, var(--border-color)); }
-.snipaste-status[data-state="starting"], .snipaste-status[data-state="quitting"] { color: var(--warning, #b66f08); }
-.snipaste-status[data-state="failed"] { color: var(--danger, #d64545); }
-.badge { padding: 2px 7px; color: var(--text-muted); background: var(--bg-hover); }
-.badge-active { color: var(--accent); background: var(--bg-active); }
-.badge-running { color: var(--success, #08875d); background: color-mix(in srgb, var(--success, #08875d) 10%, transparent); }
-.badge-warning { color: var(--warning, #b66f08); background: color-mix(in srgb, var(--warning, #b66f08) 10%, transparent); }
-.state-box { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 14px; border: 1px dashed var(--border-color); border-radius: 9px; background: var(--bg-sidebar); color: var(--text-muted); }
-.state-error, .snipaste-row-error { color: var(--danger, #d64545); }
-.state-warning, .state-warning strong { color: var(--warning, #b66f08); }
-.state-action { margin-left: auto; border: 0; background: transparent; color: var(--accent); cursor: pointer; font-weight: 600; }
-.info-panel ul { margin: 10px 0 14px; padding-left: 20px; color: var(--text-muted); line-height: 1.7; }
-.text-link, .retry-btn { border: 0; padding: 0; background: transparent; color: var(--accent); cursor: pointer; font-weight: 600; }
+.path-value { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
+.mono-meta { color: var(--color-text-muted); font-size: 12px; }
+.muted-copy { margin: 0; color: var(--color-text-muted); }
+/* 状态胶囊带视图前缀防全局碰撞（托管家族 ver-status 惯例） */
+.snipaste-status, .snipaste-ver-status { display: inline-flex; align-items: center; width: fit-content; border-radius: var(--radius-pill); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.snipaste-status { padding: 3px 8px; border: 1px solid var(--color-border); color: var(--color-text-muted); }
+.snipaste-status[data-state="running"] { color: var(--state-positive); border-color: color-mix(in srgb, var(--state-positive) 35%, var(--color-border)); }
+.snipaste-status[data-state="starting"], .snipaste-status[data-state="quitting"] { color: var(--state-warning); }
+.snipaste-status[data-state="failed"] { color: var(--state-danger); }
+.snipaste-row-error { margin: 0; font-size: 12px; line-height: 1.45; white-space: normal; color: var(--state-danger); }
+.info-panel ul { margin: 10px 0 14px; padding-left: 20px; color: var(--color-text-muted); line-height: 1.7; }
 .section-title-row { margin-top: 4px; }
 .remote-title { margin-top: 10px; }
 .installed-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.installed-card { display: grid; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-sidebar); }
+.installed-card { display: grid; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); }
 .inst-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.inst-meta { margin: 0; color: var(--text-muted); font-size: 12px; }
+.inst-meta { margin: 0; color: var(--color-text-muted); font-size: 12px; }
 .inst-actions { margin-top: auto; }
-.snipaste-row-error { margin: 0; font-size: 12px; line-height: 1.45; white-space: normal; }
-.table-container { overflow-x: auto; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-sidebar); }
-.version-table { width: 100%; min-width: 830px; border-collapse: collapse; font-size: 13px; }
-.version-table th, .version-table td { padding: 11px 12px; border-bottom: 1px solid var(--border-color); text-align: left; vertical-align: middle; }
-.version-table th { color: var(--text-muted); background: var(--bg-hover); font-size: 11px; font-weight: 700; }
-.version-table tbody tr:last-child td { border-bottom: 0; }
+.table-container { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); }
+.table-container .tbl { min-width: 830px; }
 .action-col { width: 170px; }
 .snipaste-ver-status { padding: 3px 7px; }
-.snipaste-ver-status.installed { color: var(--success, #08875d); background: color-mix(in srgb, var(--success, #08875d) 10%, transparent); }
-.snipaste-ver-status.error { color: var(--danger, #d64545); background: color-mix(in srgb, var(--danger, #d64545) 9%, transparent); }
-.snipaste-ver-status.working { color: var(--warning, #b66f08); background: color-mix(in srgb, var(--warning, #b66f08) 9%, transparent); }
-.snipaste-ver-status.idle { color: var(--text-muted); background: var(--bg-hover); }
+.snipaste-ver-status.installed { color: var(--state-positive); background: color-mix(in srgb, var(--state-positive) 10%, transparent); }
+.snipaste-ver-status.error { color: var(--state-danger); background: color-mix(in srgb, var(--state-danger) 9%, transparent); }
+.snipaste-ver-status.working { color: var(--state-warning); background: color-mix(in srgb, var(--state-warning) 9%, transparent); }
+.snipaste-ver-status.idle { color: var(--color-text-muted); background: var(--surface-hover); }
 .snipaste-progress-wrap { display: flex; align-items: center; gap: 7px; min-width: 125px; }
-.snipaste-progress { position: relative; flex: 1; height: 6px; overflow: hidden; border-radius: 999px; background: var(--bg-hover); }
-.snipaste-progress span { display: block; height: 100%; background: var(--accent); transition: width .1s linear; }
+.snipaste-progress { position: relative; flex: 1; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-hover); }
+.snipaste-progress span { display: block; height: 100%; background: var(--color-primary); transition: width var(--motion-fast) linear; }
 .snipaste-progress-indeterminate { width: 35%; animation: snipaste-slide 1.1s ease-in-out infinite; }
-.download-stage, .installed-label { color: var(--text-muted); font-size: 12px; }
+.download-stage, .installed-label { color: var(--color-text-muted); font-size: 12px; }
 @keyframes snipaste-slide { from { transform: translateX(-110%); } to { transform: translateX(390%); } }
-@media (max-width: 760px) { .header-row, .snipaste-control-panel, .versions-overview { align-items: stretch; flex-direction: column; } .main-tab-nav { align-self: flex-start; } .installed-grid { grid-template-columns: 1fr; } .btn-group { justify-content: flex-start; } }
-@media (max-width: 460px) { .main-tab-nav { width: 100%; } .main-tab-btn { flex: 1; } .btn-group .btn { flex: 1 1 auto; } .path-value { white-space: normal; overflow-wrap: anywhere; } }
-@media (pointer: coarse) { .btn, .main-tab-btn { min-height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .snipaste-view *, .snipaste-view *::before, .snipaste-view *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+@media (max-width: 760px) { .snipaste-control-panel, .versions-overview { align-items: stretch; flex-direction: column; } .installed-grid { grid-template-columns: 1fr; } .btn-group { justify-content: flex-start; } }
+@media (max-width: 460px) { .btn-group .btn { flex: 1 1 auto; } .path-value { white-space: normal; overflow-wrap: anywhere; } }
 </style>
