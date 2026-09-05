@@ -12,6 +12,9 @@ import (
 	"hanxi/internal/modules/bcu"
 	bcuinstance "hanxi/internal/modules/bcu/instance"
 	bcuversion "hanxi/internal/modules/bcu/version"
+	"hanxi/internal/modules/bili23"
+	bili23instance "hanxi/internal/modules/bili23/instance"
+	bili23version "hanxi/internal/modules/bili23/version"
 	"hanxi/internal/modules/ccswitch"
 	ccswitchinstance "hanxi/internal/modules/ccswitch/instance"
 	ccswitchversion "hanxi/internal/modules/ccswitch/version"
@@ -141,6 +144,8 @@ func RegisterEvents() {
 	application.RegisterEvent[rustdeskinstance.Snapshot]("rustdesk:instance-state")
 	application.RegisterEvent[subnetdeskversion.DownloadProgress]("subnetdesk:version-download")
 	application.RegisterEvent[subnetdeskinstance.Snapshot]("subnetdesk:instance-state")
+	application.RegisterEvent[bili23version.DownloadProgress]("bili23:version-download")
+	application.RegisterEvent[bili23instance.Snapshot]("bili23:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 	application.RegisterEvent[npmtool.OperationProgress]("envcheck:npm-tool-operation")
@@ -226,6 +231,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		rustdesk.New(plat),
 		subnetdesk.New(plat),
 		rufus.New(plat),
+		bili23.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
