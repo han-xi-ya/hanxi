@@ -3,7 +3,7 @@
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
 > **更新日期**：2026-09-05
-> **进度快照**：Phase 0 ✅（`7113557`：ESLint/Vitest 安全网 + 特征测试）｜Phase 1 ✅（`6b88baf`+`14e3d4e`：tokens/base/components 样式地基、青绿浅/深双主题、useTheme 后端持久化 + DWM 标题栏、`@` 别名）｜Phase 2 ✅（共享层就绪：utils/format、constants/status+navigation、components/ui 九件、composables 七件、视图异步化、ErrorBoundary+useConfirm/usePrompt 宿主，单测 113 用例）｜下一步 Phase 3 试点迁移。已知过渡态：未迁移视图 scoped 硬编码浅底在深色下仍显亮，随 Phase 4/5 逐视图收敛；AppIcon 图标集（emoji→SVG）与巨型孤本拆分分别待补进 Phase 3 模板与 Phase 6。
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜**Phase 3+4 ✅**（托管家族 19/19 视图迁移完成：组 A `e44621e` / B `d6d6894` / C `19a1efe` / D `9238ec2` / E `a2c838e` / F `4e1da21`，全仓 358 用例、vue-tsc 0 错；迁移期发现的全家族潜伏 bug 见跟进清单 §9.5）｜Phase 5 进行中方向：非托管工具视图"改到哪治到哪"。已知过渡态：工具视图与系统页硬编码浅底在深色下仍显亮（Phase 5 收敛）；AppIcon 图标集与巨型孤本拆分分别在跟进清单与 Phase 6。
 
 ---
 
@@ -82,8 +82,8 @@ src/
 | **0 安全网** ✅ | ESLint(flat)+Prettier（先 warn 不阻断）、Vitest+@vue/test-utils，给 ConfirmDialog/useToast/一个托管视图状态机写**特征测试** | lint/test 脚本、基线用例 | 低（additive） |
 | **1 样式地基** ✅ | 落地 `styles/{tokens,base,components}.css`（**青绿 `#0f8b8d` + 浅/深双主题**，含全部别名消歧、`--ansi-*` 终端色板与字体栈，主题变量单一来源见 §7）；`useTheme` 三态切换（**后端 Settings 持久化** + 首帧缓存）+ 侧栏与设置页切换入口；后端 DWM 深色标题栏同步（铁律 8 唯一例外）；引入 VueUse；加 `@`→src 别名 | 主色全量转青 + 深色主题可切换（含窗框） | 中：一次性变色，单独可回滚 commit |
 | **2 共享件** ✅ | `utils/format`、`constants/status`、`constants/navigation`、`components/ui/*`、`composables/*`；`useConfirm` 收编 confirm、**`usePrompt`（UiPrompt 带输入）收编 14 处 `window.prompt`**；`ErrorBoundary` + `app.config.errorHandler` 兜底（单视图崩溃不再整壳白屏）；`CORE_VIEWS` 视图**异步化**（`defineAsyncComponent` 点哪个加载哪个）+ 单测 | 共享层就绪 + 首屏瘦身 + 崩溃兜底（不迁移视图） | 低 |
-| **3 试点** | 迁 `MarkerOnView`+`CCSwitchView` 到新骨架，锁特征测试一致，产出迁移模板+checklist | 前后对照样板 | 中 |
-| **4 铺开托管家族** | 按相似度分批（3–5 视图/commit）套模板迁 ~15+ 托管视图（含 rustdesk/subnetdesk 等）；envcheck 顺带对齐 token | 主要重复消除 | 中：逐视图验活 |
+| **3 试点** ✅ | 迁 `MarkerOnView`+`CCSwitchView` 到新骨架，锁特征测试一致，产出迁移模板+checklist（§9 手册） | 前后对照样板 | 中 |
+| **4 铺开托管家族** ✅ | 五路并行 fork + 主线模板组，19/19 托管视图套 §9 手册迁移（含 rustdesk/subnetdesk/everything/ddnsgo 等特殊形态）；envcheck 对齐 token 留 Phase 5 | 家族重复基本消除 | 中：逐视图验活 |
 | **5 工具视图顺手治理** | Wifi/Lan/PortScan/PublicIp/PortKill/FileShare/Memo/Wechat 等"改到哪治到哪"：`useWailsEvent/usePolling/useConfirm/usePrompt/format/UiXxx`；NanaZip/EarTrumpet 合并；**长尾认领：frpc 双视图（FrpcProjects/Versions + Frpc* 组件）、系统页 Home/Logs/Settings/About、ExtPlaceholderView** | 长尾收敛 | 低-中 |
 | **6 后续（暂不做）** | 巨型孤本视图（WechatBot/FileShare/PublicIp/Everything）结构拆分；App.vue 进一步组件化 | — | — |
 | **7 文档** | 技术栈漂移已修；本蓝图持续更新 | 文档一致 | 低 |
@@ -184,6 +184,15 @@ src/
 6. **差异决策表**（组 A 实例）：`hint-banner`→`.banner` 类名前缀更名＝测试同步改选择器；
    卸载确认载体从原生换可访问对话框＝测试改单例驱动；radius 6px→8px 等 token 收敛＝设计意图不算回归；
    任何"业务调用变了"＝违规，立即回退。
+
+### 9.5 迁移期发现登记（Phase 3/4 各组上交，均已被特征测试按事实锁定，修复合入独立跟进提交）
+
+1. **onFollowToggle 家族潜伏 bug**：成功路径不回写 `followOnExit`（toast 用 stale 值，文案可能反向），失败"回滚"实为翻转提交值——遍布托管家族；修法：改双绑或成功显式赋值，逐视图测试同步。
+2. **下载失败详情死分支**：`statusOf==='error'` 时错误文案挂在 `v-if==='downloading'` 分支内永不可见（部分视图重试入口同失联）——统一修 error 分支渲染。
+3. **Snipaste 模板二次收编**：待 MainTabNav 增 aria id 前缀 props、badge/state-box/version-table 上收原子后进行；同时清除其 `var(--danger, #hex)` 兜底写法。
+4. **`--terminal-*` 细分 token 组**：ddns 日志面板暂用 color-mix 派生，正式头/行/警告 token 补进 tokens.css。
+5. **running 文案家族分歧**（运行中/已启动）与 **MSIX 管理型壳抽取**（NanaZip/ET 剩余差异 ≈80 行模板 + 40 行样式可抽）：并入 Phase 5/4b 决策。
+6. 已接受的微差：fmtSize 恰 1MB 边界（`>=`→`>`）、确认按钮"确定"→"确认"、复制失败文案收敛、slim banner ~2px 内距、badge→chip 观感——均为设计归一，真机目视项。
 
 ## 10. 提交拆分（示例）
 
