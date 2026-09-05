@@ -1,8 +1,9 @@
 # Hanxi 前端架构与重构蓝图（Frontend Architecture）
 
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
-> **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**
+> **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
 > **更新日期**：2026-09-05
+> **进度快照**：Phase 0 ✅（`7113557`：ESLint/Vitest 安全网 + 特征测试）｜Phase 1 ✅（`6b88baf`+`14e3d4e`：tokens/base/components 样式地基、青绿浅/深双主题、useTheme 后端持久化 + DWM 标题栏、`@` 别名）｜Phase 2 ✅（共享层就绪：utils/format、constants/status+navigation、components/ui 九件、composables 七件、视图异步化、ErrorBoundary+useConfirm/usePrompt 宿主，单测 113 用例）｜下一步 Phase 3 试点迁移。已知过渡态：未迁移视图 scoped 硬编码浅底在深色下仍显亮，随 Phase 4/5 逐视图收敛；AppIcon 图标集（emoji→SVG）与巨型孤本拆分分别待补进 Phase 3 模板与 Phase 6。
 
 ---
 
@@ -78,9 +79,9 @@ src/
 
 | Phase | 内容 | 交付 | 风险 |
 |---|---|---|---|
-| **0 安全网** | ESLint(flat)+Prettier（先 warn 不阻断）、Vitest+@vue/test-utils，给 ConfirmDialog/useToast/一个托管视图状态机写**特征测试** | lint/test 脚本、基线用例 | 低（additive） |
-| **1 样式地基** | 落地 `styles/{tokens,base,components}.css`（**青绿 `#0f8b8d` + 浅/深双主题**，含全部别名消歧、`--ansi-*` 终端色板与字体栈，主题变量单一来源见 §7）；`useTheme` 三态切换（**后端 Settings 持久化** + 首帧缓存）+ 侧栏与设置页切换入口；后端 DWM 深色标题栏同步（铁律 8 唯一例外）；引入 VueUse；加 `@`→src 别名 | 主色全量转青 + 深色主题可切换（含窗框） | 中：一次性变色，单独可回滚 commit |
-| **2 共享件** | `utils/format`、`constants/status`、`constants/navigation`、`components/ui/*`、`composables/*`；`useConfirm` 收编 confirm、**`usePrompt`（UiPrompt 带输入）收编 14 处 `window.prompt`**；`ErrorBoundary` + `app.config.errorHandler` 兜底（单视图崩溃不再整壳白屏）；`CORE_VIEWS` 视图**异步化**（`defineAsyncComponent` 点哪个加载哪个）+ 单测 | 共享层就绪 + 首屏瘦身 + 崩溃兜底（不迁移视图） | 低 |
+| **0 安全网** ✅ | ESLint(flat)+Prettier（先 warn 不阻断）、Vitest+@vue/test-utils，给 ConfirmDialog/useToast/一个托管视图状态机写**特征测试** | lint/test 脚本、基线用例 | 低（additive） |
+| **1 样式地基** ✅ | 落地 `styles/{tokens,base,components}.css`（**青绿 `#0f8b8d` + 浅/深双主题**，含全部别名消歧、`--ansi-*` 终端色板与字体栈，主题变量单一来源见 §7）；`useTheme` 三态切换（**后端 Settings 持久化** + 首帧缓存）+ 侧栏与设置页切换入口；后端 DWM 深色标题栏同步（铁律 8 唯一例外）；引入 VueUse；加 `@`→src 别名 | 主色全量转青 + 深色主题可切换（含窗框） | 中：一次性变色，单独可回滚 commit |
+| **2 共享件** ✅ | `utils/format`、`constants/status`、`constants/navigation`、`components/ui/*`、`composables/*`；`useConfirm` 收编 confirm、**`usePrompt`（UiPrompt 带输入）收编 14 处 `window.prompt`**；`ErrorBoundary` + `app.config.errorHandler` 兜底（单视图崩溃不再整壳白屏）；`CORE_VIEWS` 视图**异步化**（`defineAsyncComponent` 点哪个加载哪个）+ 单测 | 共享层就绪 + 首屏瘦身 + 崩溃兜底（不迁移视图） | 低 |
 | **3 试点** | 迁 `MarkerOnView`+`CCSwitchView` 到新骨架，锁特征测试一致，产出迁移模板+checklist | 前后对照样板 | 中 |
 | **4 铺开托管家族** | 按相似度分批（3–5 视图/commit）套模板迁 ~15+ 托管视图（含 rustdesk/subnetdesk 等）；envcheck 顺带对齐 token | 主要重复消除 | 中：逐视图验活 |
 | **5 工具视图顺手治理** | Wifi/Lan/PortScan/PublicIp/PortKill/FileShare/Memo/Wechat 等"改到哪治到哪"：`useWailsEvent/usePolling/useConfirm/usePrompt/format/UiXxx`；NanaZip/EarTrumpet 合并；**长尾认领：frpc 双视图（FrpcProjects/Versions + Frpc* 组件）、系统页 Home/Logs/Settings/About、ExtPlaceholderView** | 长尾收敛 | 低-中 |
