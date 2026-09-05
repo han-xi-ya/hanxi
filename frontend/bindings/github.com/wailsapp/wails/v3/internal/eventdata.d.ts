@@ -25,6 +25,9 @@ import type * as instance$2 from "../../../../../hanxi/internal/modules/ddnsgo/i
 import type * as version$2 from "../../../../../hanxi/internal/modules/ddnsgo/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as npmtool$0 from "../../../../../hanxi/internal/modules/envcheck/npmtool/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as everything$0 from "../../../../../hanxi/internal/modules/everything/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -109,10 +112,22 @@ import type * as instance$14 from "../../../../../hanxi/internal/modules/recordl
 import type * as version$13 from "../../../../../hanxi/internal/modules/recordly/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$15 from "../../../../../hanxi/internal/modules/snipaste/instance/models.js";
+import type * as instance$15 from "../../../../../hanxi/internal/modules/rustdesk/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$14 from "../../../../../hanxi/internal/modules/snipaste/version/models.js";
+import type * as version$14 from "../../../../../hanxi/internal/modules/rustdesk/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as instance$16 from "../../../../../hanxi/internal/modules/snipaste/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$15 from "../../../../../hanxi/internal/modules/snipaste/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as instance$17 from "../../../../../hanxi/internal/modules/subnetdesk/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$16 from "../../../../../hanxi/internal/modules/subnetdesk/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as wechat$0 from "../../../../../hanxi/internal/modules/wechat/models.js";
@@ -130,6 +145,8 @@ declare module "@wailsio/runtime" {
             "ddnsgo:instance-log": instance$2.LogEntry;
             "ddnsgo:instance-state": instance$2.Snapshot;
             "ddnsgo:version-download": version$2.DownloadProgress;
+            "envcheck:npm-tool-log": npmtool$0.OperationLog;
+            "envcheck:npm-tool-operation": npmtool$0.OperationProgress;
             "everything:download": everything$0.DownloadTicket;
             "everything:instance-state": instance$3.Snapshot;
             "ext:changed": void;
@@ -165,8 +182,12 @@ declare module "@wailsio/runtime" {
             "quicklook:version-download": version$12.DownloadProgress;
             "recordly:instance-state": instance$14.Snapshot;
             "recordly:version-download": version$13.DownloadProgress;
-            "snipaste:instance-state": instance$15.Snapshot;
-            "snipaste:version-download": version$14.DownloadProgress;
+            "rustdesk:instance-state": instance$15.Snapshot;
+            "rustdesk:version-download": version$14.DownloadProgress;
+            "snipaste:instance-state": instance$16.Snapshot;
+            "snipaste:version-download": version$15.DownloadProgress;
+            "subnetdesk:instance-state": instance$17.Snapshot;
+            "subnetdesk:version-download": version$16.DownloadProgress;
             "tray:navigate": string;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
