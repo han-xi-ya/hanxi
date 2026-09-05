@@ -1,0 +1,186 @@
+/* ============================================================
+ * Hanxi 设计 token 单一来源（docs/FRONTEND.md §7）
+ *
+ * 三层模型：
+ *   ① 原始色板/主题值 —— 裸色值只允许出现在本文件；
+ *   ② 语义 token（--color-* / --surface-* / --state-* 等）—— 组件应引用的名字；
+ *   ③ 兼容别名层 —— 存量视图旧名的一次性消歧桥，Phase 4/5 迁移到哪族删到哪族。
+ *
+ * 主题机制：<html data-theme="light|dark">，深色为独立标定而非反色。
+ * 新增主题 = 只增变量块，禁止在组件/视图里硬编码颜色。
+ * ============================================================ */
+
+/* ---------- ① + ② 浅色主题（默认） ---------- */
+:root {
+  color-scheme: light;
+
+  /* 主色（青绿系，design-system.md） */
+  --color-primary: #0f8b8d;
+  --color-primary-hover: #0b7779;
+  --color-primary-soft: rgba(15, 139, 141, 0.1);
+  --color-on-primary: #ffffff;
+
+  /* 表面四层 + 选中态 */
+  --surface-page: #f3f7f8;
+  --surface-panel: #ffffff;
+  --surface-soft: #f7fafb;
+  --surface-hover: #eef5f5;
+  --surface-selected: #e2f1f0;
+
+  /* 文字 */
+  --color-text: #14252c;
+  --color-text-muted: #667980;
+  --color-text-subtle: #8a9aa0;
+  --color-text-inverse: #ffffff;
+
+  /* 边框 */
+  --color-border: #dce6e8;
+  --color-border-strong: #c7d6d9;
+
+  /* 状态色（含软底与光晕伴生值） */
+  --state-positive: #08875d;
+  --state-positive-soft: #e2f4ec;
+  --state-information: #2563eb;
+  --state-information-soft: #e7effd;
+  --state-warning: #b66f08;
+  --state-warning-soft: #fbf1de;
+  --state-danger: #d64545;
+  --state-danger-soft: #fbe9e9;
+  --state-positive-glow: rgba(8, 135, 93, 0.15);
+  --state-information-glow: rgba(37, 99, 235, 0.15);
+  --state-warning-glow: rgba(182, 111, 8, 0.15);
+  --state-danger-glow: rgba(214, 69, 69, 0.15);
+  --color-primary-glow: rgba(15, 139, 141, 0.18);
+
+  /* 遮罩 */
+  --overlay-mask: rgba(10, 24, 29, 0.46);
+  --focus-ring: rgba(15, 139, 141, 0.24);
+
+  /* 字体栈（写实含中文回退；--font-family 为 public/style.css 旧名归一） */
+  --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* 半径 / 阴影 / 动效 */
+  --radius-control: 8px;
+  --radius-element: 12px;
+  --radius-panel: 16px;
+  --radius-pill: 999px;
+  --shadow-small: 0 4px 14px rgba(32, 66, 72, 0.055);
+  --shadow-panel: 0 18px 45px rgba(32, 66, 72, 0.085);
+  --motion-fast: 100ms;
+  --motion-base: 150ms;
+  --motion-slow: 180ms;
+
+  /* 日志终端色板：frpc 抽屉/运行日志等 ANSI 彩色区。
+   * 终端块固定深底、永不随主题反相（design-system 决策，Phase 1 目测复核）。 */
+  --terminal-bg: #0b1a1e;
+  --terminal-fg: #dfe9ea;
+  --ansi-0: #484f58;
+  --ansi-1: #ff7b72;
+  --ansi-2: #7ee787;
+  --ansi-3: #f0c674;
+  --ansi-4: #79b8ff;
+  --ansi-5: #d2a8ff;
+  --ansi-6: #42b7b4;
+  --ansi-7: #dfe9ea;
+  --ansi-8: #6e7781;
+  --ansi-9: #ffa198;
+  --ansi-10: #aff5b4;
+  --ansi-11: #f8d879;
+  --ansi-12: #a5d3ff;
+  --ansi-13: #e2c5ff;
+  --ansi-14: #63d3d1;
+  --ansi-15: #f0f6f7;
+
+  /* ---------- ③ 兼容别名层：存量旧名 → 语义 token ---------- *
+   * 左列是重构前全仓 grep 出的真实引用名（含 15 个从未定义的悬空变量，
+   * 如 --text-primary、--bg-main、--warning、--nz-* 系、--et-* 系、--color-bg-* 系——
+   * 此前靠 color:inherit 等侥幸生效，现统一收编）。勿在新代码中引用别名。 */
+
+  /* App.vue 旧浅色调色板（使用量最大的 12 个） */
+  --bg-app: var(--surface-page);
+  --bg-sidebar: var(--surface-panel);
+  --bg-hover: var(--surface-hover);
+  --bg-active: var(--surface-selected);
+  --border-color: var(--color-border);
+  --text-main: var(--color-text);
+  --text-muted: var(--color-text-muted);
+  --text-subtle: var(--color-text-subtle);
+  --accent: var(--color-primary);
+  --accent-hover: var(--color-primary-hover);
+  --danger: var(--state-danger);
+  --success: var(--state-positive);
+
+  /* 悬空别名（ConfirmDialog / envcheck / FileShare 第三套） */
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-muted);
+  --bg-main: var(--surface-soft);
+  --bg-card: var(--surface-panel);
+  --warning: var(--state-warning);
+  --color-text-primary: var(--color-text);
+  --color-text-secondary: var(--color-text-muted);
+  --color-text-muted: var(--color-text-muted);
+  --color-bg-card: var(--surface-panel);
+  --color-bg-input: var(--surface-soft);
+  --color-bg-hover: var(--surface-hover);
+
+  /* 托管工具私设前缀（NanaZip 青绿系 / EarTrumpet） */
+  --nz-primary: var(--color-primary);
+  --nz-border: var(--color-border);
+  --et-primary: var(--color-primary);
+  --et-border: var(--color-border);
+
+  /* 公共 reset 旧字族名 */
+  --font-family: var(--font-text);
+}
+
+/* ---------- ① + ② 深色主题（独立标定，非反色） ---------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-primary: #42b7b4;
+  --color-primary-hover: #59c8c5;
+  --color-primary-soft: rgba(66, 183, 180, 0.13);
+  --color-on-primary: #052326;
+
+  --surface-page: #071318;
+  --surface-panel: #0e1c22;
+  --surface-soft: #12252c;
+  --surface-hover: #173039;
+  --surface-selected: #1a3d44;
+
+  --color-text: #e8f2f3;
+  --color-text-muted: #9aadb2;
+  --color-text-subtle: #748a90;
+  --color-text-inverse: #071318;
+
+  --color-border: #213840;
+  --color-border-strong: #31505a;
+
+  --state-positive: #47c792;
+  --state-positive-soft: #0f2e24;
+  --state-information: #72a5ff;
+  --state-information-soft: #16233c;
+  --state-warning: #f0ac45;
+  --state-warning-soft: #33260f;
+  --state-danger: #ff7974;
+  --state-danger-soft: #3a1a1a;
+  --state-positive-glow: rgba(71, 199, 146, 0.16);
+  --state-information-glow: rgba(114, 165, 255, 0.16);
+  --state-warning-glow: rgba(240, 172, 69, 0.16);
+  --state-danger-glow: rgba(255, 121, 116, 0.16);
+  --color-primary-glow: rgba(66, 183, 180, 0.2);
+
+  --overlay-mask: rgba(2, 8, 11, 0.62);
+  --focus-ring: rgba(66, 183, 180, 0.28);
+
+  --shadow-small: 0 5px 18px rgba(0, 0, 0, 0.18);
+  --shadow-panel: 0 22px 50px rgba(0, 0, 0, 0.23);
+
+  /* 终端色板深底版本（微调前景亮度） */
+  --ansi-7: #dfe9ea;
+  --ansi-15: #f0f6f7;
+}
+
+/* 别名层不随主题重写：它们 var() 引用语义 token，自动跟随上表。 */

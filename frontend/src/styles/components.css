@@ -1,0 +1,214 @@
+/* ============================================================
+ * 全局原子工具类（docs/FRONTEND.md §4）
+ *
+ * 全部规则用 :where() 写成零特异性（0,0,0）：
+ *   —— 未迁移视图的 scoped 副本（特异性 ≥ 0,1,0）永远压过全局，
+ *      因此本文件落地当天所有旧视图视觉零变化；
+ *   —— 迁移一个视图 = 删掉它的 scoped 副本，自动落回本文件的标准形。
+ * 新组件优先组合这里的类，禁止在视图里再造同名原子。
+ * ============================================================ */
+
+/* ---------- 页面骨架 ---------- */
+:where(.page) {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+:where(.page h1) {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--color-text);
+}
+:where(.page p) {
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+:where(.header-row) {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+:where(.subtitle) {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* ---------- 按钮家族 ---------- */
+:where(.btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
+}
+:where(.btn:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+:where(.btn-primary) {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+:where(.btn-primary:hover:not(:disabled)) {
+  background: var(--color-primary-hover);
+}
+:where(.btn-secondary) {
+  background: var(--surface-panel);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+:where(.btn-secondary:hover:not(:disabled)) {
+  background: var(--surface-hover);
+}
+:where(.btn-danger-outline) {
+  background: var(--surface-panel);
+  border-color: var(--state-danger);
+  color: var(--state-danger);
+}
+:where(.btn-danger-outline:hover:not(:disabled)) {
+  background: var(--state-danger-soft);
+}
+:where(.btn-ghost) {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+:where(.btn-ghost:hover:not(:disabled)) {
+  background: var(--surface-hover);
+  color: var(--color-text);
+}
+:where(.btn-small) {
+  min-height: 30px;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+:where(.link-button) {
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+:where(.link-button:hover) {
+  text-decoration: underline;
+}
+
+/* ---------- 容器 ---------- */
+:where(.card),
+:where(.panel) {
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-element);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-small);
+}
+
+/* ---------- 表格 ---------- */
+:where(.tbl) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+:where(.tbl th) {
+  background: var(--surface-soft);
+  padding: 8px 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+:where(.tbl td) {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+:where(.tbl tr:last-child td) {
+  border-bottom: none;
+}
+
+/* ---------- 徽标 / 状态 chip ---------- */
+:where(.chip) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+  white-space: nowrap;
+}
+:where(.chip-positive) { background: var(--state-positive-soft); color: var(--state-positive); }
+:where(.chip-information) { background: var(--state-information-soft); color: var(--state-information); }
+:where(.chip-warning) { background: var(--state-warning-soft); color: var(--state-warning); }
+:where(.chip-danger) { background: var(--state-danger-soft); color: var(--state-danger); }
+:where(.chip-neutral) { background: var(--surface-hover); color: var(--color-text-muted); }
+
+/* ---------- 提示条 ---------- */
+:where(.banner) {
+  padding: 10px 14px;
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  border: 1px solid transparent;
+  overflow-wrap: anywhere;
+}
+:where(.banner-ok) { background: var(--state-positive-soft); border-color: var(--state-positive-glow); color: var(--state-positive); }
+:where(.banner-info) { background: var(--state-information-soft); border-color: var(--state-information-glow); color: var(--state-information); }
+:where(.banner-warn) { background: var(--state-warning-soft); border-color: var(--state-warning-glow); color: var(--state-warning); }
+:where(.banner-error) { background: var(--state-danger-soft); border-color: var(--state-danger-glow); color: var(--state-danger); }
+
+/* ---------- 空态 / 错误框 ---------- */
+:where(.empty-state) {
+  text-align: center;
+  padding: 24px;
+  background: var(--surface-panel);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-element);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+:where(.empty-state p) {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+:where(.error-box) {
+  padding: 10px 14px;
+  background: var(--state-danger-soft);
+  color: var(--state-danger);
+  border: 1px solid var(--state-danger-glow);
+  border-radius: var(--radius-control);
+  font-size: 13px;
+}
+
+/* ---------- 机器值排版 ---------- */
+:where(.mono) {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+/* ---------- 共享动效（仅加载与真实活体状态允许持续动画） ---------- */
+@keyframes hx-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+:where(.live-pulse) {
+  animation: hx-pulse 1.8s ease-in-out infinite;
+}

@@ -42,12 +42,14 @@ import ExtPlaceholderView from './views/ExtPlaceholderView.vue'
 import NotificationToast from './components/NotificationToast.vue'
 import NotificationDrawer from './components/NotificationDrawer.vue'
 import { useNotification } from './composables/useNotification'
+import { useTheme } from './composables/useTheme'
 import type { Notification } from '../bindings/hanxi/internal/notify/models'
 import { useToast } from './composables/useToast'
 import { getErrorMessage } from './utils/errors'
 
 const { toastMsg, showToast } = useToast()
 const { unreadCount, toggleDrawer, loadHistory, pushToast } = useNotification()
+const { themeMode, cycleThemeMode } = useTheme()
 
 // 核心与内置功能视图路由映射（使用 markRaw 避免深度响应式包装）
 const CORE_VIEWS: Record<string, Component> = {
@@ -128,6 +130,22 @@ const BOTTOM_NAV = [
   { route: '/settings', title: '设置', icon: '⚙' },
   { route: '/about', title: '关于', icon: 'ⓘ' },
 ]
+
+const themeModeLabel = computed(() => {
+  switch (themeMode.value) {
+    case 'system': return '跟随系统'
+    case 'dark': return '深色主题'
+    default: return '浅色主题'
+  }
+})
+
+const themeGlyph = computed(() => {
+  switch (themeMode.value) {
+    case 'system': return '◐'
+    case 'dark': return '☾'
+    default: return '☀'
+  }
+})
 
 const navs = ref<NavEntry[]>([])
 const activeRoute = ref('/')
@@ -291,6 +309,16 @@ onUnmounted(() => {
           <span class="nav-text">{{ n.title }}</span>
         </button>
 
+        <!-- 主题循环切换：跟随系统 → 浅色 → 深色 -->
+        <button
+          class="nav-item theme-toggle"
+          :title="`当前主题：${themeModeLabel}（点击循环切换）`"
+          @click="cycleThemeMode"
+        >
+          <span class="nav-icon">{{ themeGlyph }}</span>
+          <span class="nav-text">{{ themeModeLabel }}</span>
+        </button>
+
         <div class="status-bar">
           <span class="status-dot" :class="{ online: backendReady }"></span>
           <span class="status-text">{{ backendReady ? '工作台已就绪' : '正在加载工作台…' }}</span>
@@ -321,30 +349,16 @@ onUnmounted(() => {
   </div>
 </template>
 
-<style>
-/* 全局浅色主题变量 */
-:root {
-  color-scheme: light;
-  --bg-app: #f4f6f9;
-  --bg-sidebar: #ffffff;
-  --bg-hover: #f0f2f5;
-  --bg-active: #e8f0fe;
-  --border-color: #e4e7eb;
-  --text-main: #1f2328;
-  --text-muted: #656d76;
-  --text-subtle: #8c959f;
-  --accent: #2f6fed;
-  --accent-hover: #1e5cd8;
-  --danger: #cf222e;
-  --success: #1a7f37;
-}
-
+<style scoped>
+/* 应用外壳样式（设计 token 见 styles/tokens.css；原子工具类见 styles/components.css）。
+   .page 等页面骨架已上收到全局 components.css，不在本文件重复定义。 */
 .layout {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
-  background: var(--bg-app);
-  color: var(--text-main);
+  background: var(--surface-page);
+  color: var(--color-text);
   overflow: hidden;
 }
 
@@ -352,8 +366,8 @@ onUnmounted(() => {
 .sidebar {
   width: 220px;
   flex: 0 0 220px;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -364,13 +378,13 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 16px 18px 14px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .brand-mark {
-  background: linear-gradient(135deg, #2f6fed 0%, #1a56cc 100%);
-  color: #ffffff;
-  border-radius: 7px;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+  color: var(--color-on-primary);
+  border-radius: var(--radius-control);
   width: 32px;
   height: 32px;
   display: flex;
@@ -378,7 +392,7 @@ onUnmounted(() => {
   justify-content: center;
   font-size: 13px;
   font-weight: 700;
-  box-shadow: 0 2px 4px rgba(47, 111, 237, 0.2);
+  box-shadow: 0 2px 4px var(--color-primary-glow);
 }
 
 .brand-info {
@@ -389,13 +403,13 @@ onUnmounted(() => {
 .brand-name {
   font-size: 15px;
   font-weight: 700;
-  color: var(--text-main);
+  color: var(--color-text);
   line-height: 1.2;
 }
 
 .brand-desc {
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 /* 导航区 */
@@ -410,20 +424,20 @@ onUnmounted(() => {
 
 .bottom-nav {
   flex: 0 0 auto;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color-border);
   padding-bottom: 6px;
 }
 
 .nav-divider {
   height: 1px;
-  background: var(--border-color);
+  background: var(--color-border);
   margin: 8px 4px 6px;
 }
 
 .nav-group-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   padding: 4px 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -438,23 +452,23 @@ onUnmounted(() => {
   margin-bottom: 3px;
   background: transparent;
   border: none;
-  border-radius: 6px;
-  color: var(--text-muted);
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
   font-size: 13px;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--motion-base) ease, color var(--motion-base) ease;
 }
 
 .nav-item:hover {
-  background: var(--bg-hover);
-  color: var(--text-main);
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .nav-item.active {
-  background: var(--bg-active);
-  color: var(--accent);
+  background: var(--surface-selected);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -469,12 +483,12 @@ onUnmounted(() => {
 }
 
 .nav-badge {
-  background: var(--danger);
-  color: #ffffff;
+  background: var(--state-danger);
+  color: var(--surface-page);
   font-size: 10px;
   font-weight: 700;
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius-pill);
   line-height: 1.2;
 }
 
@@ -485,19 +499,19 @@ onUnmounted(() => {
   gap: 6px;
   padding: 8px 12px 4px;
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .status-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #d0d7de;
+  background: var(--color-border-strong);
 }
 
 .status-dot.online {
-  background: var(--success);
-  box-shadow: 0 0 0 2px rgba(26, 127, 55, 0.15);
+  background: var(--state-positive);
+  box-shadow: 0 0 0 2px var(--state-positive-glow);
 }
 
 /* 内容主区域 */
@@ -506,29 +520,10 @@ onUnmounted(() => {
   height: 100%;
   overflow-y: auto;
   padding: 24px 32px;
-  background: var(--bg-app);
+  background: var(--surface-page);
 }
 
-/* 通用页面规范样式 */
-.page {
-  max-width: 1000px;
-  margin: 0 auto;
-}
-
-.page h1 {
-  font-size: 20px;
-  font-weight: 600;
-  margin: 0 0 16px;
-  color: var(--text-main);
-}
-
-.page p {
-  line-height: 1.6;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-/* 全局轻量 Toast 提示 */
+/* 全局轻量 Toast 提示（深底浮层为刻意设计，两种主题下均成立） */
 .global-toast {
   position: fixed;
   top: 20px;
@@ -537,10 +532,10 @@ onUnmounted(() => {
   backdrop-filter: blur(8px);
   color: #ffffff;
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   font-size: 13px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
-  animation: toastFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-panel);
+  animation: toastFadeIn var(--motion-slow) cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 9999;
   pointer-events: none;
 }
@@ -559,7 +554,7 @@ onUnmounted(() => {
 /* 页面切换平滑过渡动画 */
 .page-fade-enter-active,
 .page-fade-leave-active {
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity var(--motion-base) ease, transform var(--motion-base) ease;
 }
 
 .page-fade-enter-from {

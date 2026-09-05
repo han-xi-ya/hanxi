@@ -5,8 +5,10 @@ import type { AppInfo, TrayMenuOption } from '../../bindings/hanxi/internal/app/
 import type { TrayMenuItem } from '../../bindings/hanxi/internal/settings/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useTheme } from '../composables/useTheme'
 
 const { showToast } = useToast()
+const { themeMode, setThemeMode } = useTheme()
 
 const appInfo = ref<AppInfo | null>(null)
 const autoStart = ref(false)
@@ -266,6 +268,30 @@ onMounted(() => {
           <div class="input-inline">
             <input type="number" v-model.number="logRetainDays" @change="updateGeneralSettings" min="1" max="90" class="input-number" />
             <span class="input-unit">天</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 外观主题 -->
+    <div class="section-card">
+      <div class="card-header">
+        <div>
+          <h2>外观 (Theme)</h2>
+          <p class="hint">主题持久化在后端设置中，便携模式随 data/ 目录迁移；「跟随系统」将随 Windows 亮暗设置自动切换。</p>
+        </div>
+      </div>
+
+      <div class="pref-list">
+        <div class="pref-item">
+          <div class="pref-info">
+            <span class="pref-title">界面主题</span>
+            <span class="pref-desc">深色为独立标定的配色（含原生标题栏），不是简单反色</span>
+          </div>
+          <div class="theme-seg" role="radiogroup" aria-label="界面主题">
+            <button type="button" class="theme-seg-btn" :class="{ active: themeMode === 'system' }" role="radio" :aria-checked="themeMode === 'system'" @click="setThemeMode('system')">跟随系统</button>
+            <button type="button" class="theme-seg-btn" :class="{ active: themeMode === 'light' }" role="radio" :aria-checked="themeMode === 'light'" @click="setThemeMode('light')">浅色</button>
+            <button type="button" class="theme-seg-btn" :class="{ active: themeMode === 'dark' }" role="radio" :aria-checked="themeMode === 'dark'" @click="setThemeMode('dark')">深色</button>
           </div>
         </div>
       </div>
@@ -574,4 +600,10 @@ onMounted(() => {
 .btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
 .btn-group-inline { display: flex; align-items: center; gap: 6px; }
 .btn-small { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+
+/* 外观主题分段控件（新增代码按重构纪律直接引用语义 token） */
+.theme-seg { display: flex; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 3px; gap: 2px; }
+.theme-seg-btn { border: none; background: transparent; padding: 6px 14px; border-radius: 6px; font-size: 13px; color: var(--color-text-muted); cursor: pointer; transition: background var(--motion-base) ease, color var(--motion-base) ease; }
+.theme-seg-btn:hover { color: var(--color-text); }
+.theme-seg-btn.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-small); }
 </style>

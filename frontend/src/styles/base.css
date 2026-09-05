@@ -1,0 +1,49 @@
+/* ============================================================
+ * 基础层：排版重置 / 焦点环 / 减弱动效 / 全局字族
+ * 只放"应用级"规则；原子工具类在 components.css，token 在 tokens.css。
+ * ============================================================ */
+
+body {
+  margin: 0;
+  font-family: var(--font-text);
+  color: var(--color-text);
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* 一致的键盘焦点环（鼠标点按不显示） */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* 触控/窄屏最小可点尺寸兜底（design-system.md 无障碍条款） */
+@media (pointer: coarse) {
+  button,
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* 减弱动效全局块——任何主题/视图都不得移除 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
