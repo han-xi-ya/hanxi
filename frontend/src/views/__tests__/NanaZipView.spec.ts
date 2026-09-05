@@ -72,9 +72,9 @@ describe('NanaZipView 包状态呈现', () => {
   it('未安装：状态胶囊「未安装」，主操作为「选择版本安装」，无卸载按钮', async () => {
     stubDefaults(snapshot())
     const { wrapper } = await mountView()
-    expect(wrapper.find('.nanazip-state').text()).toBe('未安装')
-    expect(wrapper.find('.nanazip-overview h2').text()).toBe('尚未安装 NanaZip')
-    const labels = wrapper.findAll('.nanazip-actions button').map(b => b.text())
+    expect(wrapper.find('.msix-state').text()).toBe('未安装')
+    expect(wrapper.find('.msix-overview h2').text()).toBe('尚未安装 NanaZip')
+    const labels = wrapper.findAll('.msix-actions button').map(b => b.text())
     expect(labels).toContain('选择版本安装')
     expect(labels).not.toContain('卸载')
     wrapper.unmount()
@@ -83,10 +83,10 @@ describe('NanaZipView 包状态呈现', () => {
   it('已安装：版本标题、打开与卸载按钮就位；facts 展示包信息', async () => {
     stubDefaults(snapshot({ installed: true, version: '1.19.0', architecture: 'x64', packageStatus: 'Ok' }))
     const { wrapper } = await mountView()
-    expect(wrapper.find('.nanazip-state').text()).toBe('已安装')
-    expect(wrapper.find('.nanazip-overview h2').text()).toBe('NanaZip 1.19.0')
+    expect(wrapper.find('.msix-state').text()).toBe('已安装')
+    expect(wrapper.find('.msix-overview h2').text()).toBe('NanaZip 1.19.0')
     expect(wrapper.find('.nanazip-state-box.error').exists()).toBe(false)
-    const labels = wrapper.findAll('.nanazip-actions button').map(b => b.text())
+    const labels = wrapper.findAll('.msix-actions button').map(b => b.text())
     expect(labels).toEqual(expect.arrayContaining(['打开 NanaZip', '刷新状态', '卸载']))
     expect(wrapper.text()).toContain('x64')
     wrapper.unmount()
@@ -169,7 +169,7 @@ describe('NanaZipView 版本关系矩阵与安装', () => {
     stubDefaults(snapshot({ installed: true, version: '1.19.0' }))
     svc.Uninstall.mockResolvedValue({ operationId: 'op-7', kind: 'uninstall', message: 'Windows 正在卸载' })
     const { wrapper } = await mountView()
-    const uninstallBtn = wrapper.findAll('.nanazip-actions button').find(b => b.text() === '卸载')!
+    const uninstallBtn = wrapper.findAll('.msix-actions button').find(b => b.text() === '卸载')!
     await uninstallBtn.trigger('click')
     const dialog = wrapper.find('.workbench-confirm')
     expect(dialog.text()).toContain('卸载 NanaZip')
@@ -232,10 +232,10 @@ describe('NanaZipView 进度与快照事件', () => {
     const { wrapper } = await mountView()
     runtime.handlers['nanazip:package-snapshot']({ data: snapshot({ installed: false, revision: 4 }) })
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.nanazip-state').text()).toBe('已安装')
+    expect(wrapper.find('.msix-state').text()).toBe('已安装')
     runtime.handlers['nanazip:package-snapshot']({ data: snapshot({ installed: false, revision: 6 }) })
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('.nanazip-state').text()).toBe('未安装')
+    expect(wrapper.find('.msix-state').text()).toBe('未安装')
     wrapper.unmount()
   })
 

@@ -5,6 +5,8 @@ import type { OperationProgress, PackageSnapshot } from '../../bindings/hanxi/in
 import type { CachedPackage, Release } from '../../bindings/hanxi/internal/modules/nanazip/version/models'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
+import MsixToolHeader from '../components/tool/MsixToolHeader.vue'
+import MsixOverview from '../components/tool/MsixOverview.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import { useToast } from '../composables/useToast'
@@ -124,38 +126,31 @@ useWailsEvent<PackageSnapshot>('nanazip:package-snapshot', (data) => data && han
 
 <template>
   <section class="nanazip-page">
-    <header class="nanazip-header">
-      <div class="nanazip-identity"><div class="nanazip-logo">NZ</div><div><h1>NanaZip</h1><p>管理官方 stable MSIX 完整版，由 Windows 提供右键菜单、文件关联与包生命周期。</p></div></div>
-      <span class="nanazip-state" :class="{ active: operationBusy, installed }"><i></i>{{ stateLabel }}</span>
-    </header>
+    <MsixToolHeader logo-text="NZ" title="NanaZip" subtitle="管理官方 stable MSIX 完整版，由 Windows 提供右键菜单、文件关联与包生命周期。" :state-label="stateLabel" :installed="installed" :active="operationBusy" />
 
-    <MainTabNav
-      :tabs="tabs"
-      :model-value="activeTab"
-      aria-label="NanaZip 页面"
-      @update:model-value="activeTab = $event as 'install' | 'versions'"
-    />
+    <MainTabNav :tabs="tabs" :model-value="activeTab" label="NanaZip 页面" @update:model-value="activeTab = $event as 'install' | 'versions'" />
 
     <div v-if="localError" class="nanazip-state-box error"><strong>系统状态读取失败</strong><span>{{ localError }}</span><UiButton small @click="refreshLocal">重试</UiButton></div>
 
     <template v-if="activeTab === 'install'">
-      <section class="nanazip-panel nanazip-overview">
-        <div class="nanazip-overview-main">
-          <span class="nanazip-eyebrow">CURRENT USER PACKAGE</span>
-          <h2>{{ installed ? `NanaZip ${snapshot?.version}` : '尚未安装 NanaZip' }}</h2>
-          <p>{{ installed ? '当前状态来自 Windows 包数据库，不依赖 Hanxi 安装包缓存。' : '从版本资源选择 stable 版本，Hanxi 校验官方摘要和包身份后交给 Windows 安装。' }}</p>
-          <div class="nanazip-actions">
-            <UiButton v-if="installed" variant="primary" :disabled="operationBusy" @click="launch">打开 NanaZip</UiButton>
-            <UiButton v-else variant="primary" @click="activeTab = 'versions'">选择版本安装</UiButton>
-            <UiButton :disabled="localLoading" @click="refreshLocal">{{ localLoading ? '读取中…' : '刷新状态' }}</UiButton>
-            <UiButton v-if="installed" variant="danger" :disabled="operationBusy" @click="dialog = { kind:'uninstall' }">卸载</UiButton>
-          </div>
-        </div>
-        <dl class="nanazip-facts">
-          <div><dt>安装范围</dt><dd>当前用户</dd></div><div><dt>架构</dt><dd>{{ snapshot?.architecture || '—' }}</dd></div>
-          <div><dt>包状态</dt><dd>{{ snapshot?.packageStatus || (installed ? '已注册' : '未注册') }}</dd></div><div><dt>Package Family</dt><dd>{{ snapshot?.packageFamily || '40174MouriNaruto.NanaZip_gnj4mf6z9tkrc' }}</dd></div>
-        </dl>
-      </section>
+      <MsixOverview
+        eyebrow="CURRENT USER PACKAGE"
+        :headline="installed ? `NanaZip ${snapshot?.version}` : '尚未安装 NanaZip'"
+        :description="installed ? '当前状态来自 Windows 包数据库，不依赖 Hanxi 安装包缓存。' : '从版本资源选择 stable 版本，Hanxi 校验官方摘要和包身份后交给 Windows 安装。'"
+        :facts="[
+          { label: '安装范围', value: '当前用户' },
+          { label: '架构', value: snapshot?.architecture || '—' },
+          { label: '包状态', value: snapshot?.packageStatus || (installed ? '已注册' : '未注册') },
+          { label: 'Package Family', value: snapshot?.packageFamily || '40174MouriNaruto.NanaZip_gnj4mf6z9tkrc' },
+        ]"
+      >
+        <template #actions>
+          <UiButton v-if="installed" variant="primary" :disabled="operationBusy" @click="launch">打开 NanaZip</UiButton>
+          <UiButton v-else variant="primary" @click="activeTab = 'versions'">选择版本安装</UiButton>
+          <UiButton :disabled="localLoading" @click="refreshLocal">{{ localLoading ? '读取中…' : '刷新状态' }}</UiButton>
+          <UiButton v-if="installed" variant="danger" :disabled="operationBusy" @click="dialog = { kind:'uninstall' }">卸载</UiButton>
+        </template>
+      </MsixOverview>
 
       <section v-if="progress" class="nanazip-panel nanazip-progress" aria-live="polite">
         <div><strong>{{ stageLabel(progress.stage) }}</strong><span>{{ progress.message || `目标版本 ${progress.targetVersion}` }}</span></div>
@@ -203,16 +198,16 @@ useWailsEvent<PackageSnapshot>('nanazip:package-snapshot', (data) => data && han
 </template>
 
 <style scoped>
-/* 设计 token 引用规范见 docs/FRONTEND.md §7：本视图不再本地定义 --nz-* 私有调色板，
-   一律使用语义 token（原 --nz-primary 恰为青绿 #0f8b8d，与主色一致，无观感变化）。 */
+/* 设计 token 引用规范见 docs/FRONTEND.md §7：本视图不再本地定义私有调色板；
+   头部/状态胶囊/概览面板孪生样式已上收 components/tool/Msix*（§9.5-5）。 */
 .nanazip-page{max-width:1120px;margin:0 auto;padding-bottom:28px;color:var(--color-text)}
-.nanazip-header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:16px}.nanazip-identity{display:flex;align-items:center;gap:13px;min-width:0}.nanazip-logo{display:grid;place-items:center;width:44px;height:44px;flex:none;border:1px solid color-mix(in srgb,var(--color-primary) 28%,var(--color-border));border-radius:13px;background:color-mix(in srgb,var(--color-primary) 10%,var(--surface-panel));color:var(--color-primary);font-weight:800;letter-spacing:-.05em}.nanazip-header h1{margin:0;font-size:20px}.nanazip-header p{margin:4px 0 0;color:var(--color-text-muted);font-size:12px;line-height:1.5}.nanazip-state{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid var(--color-border);border-radius:var(--radius-pill);background:var(--surface-panel);font-size:12px;font-weight:700;white-space:nowrap}.nanazip-state i{width:7px;height:7px;border-radius:50%;background:var(--color-text-subtle)}.nanazip-state.installed i{background:var(--state-positive)}.nanazip-state.active i{background:var(--color-primary);animation:hx-pulse 1.8s infinite}
 .nanazip-stale-banner{margin-bottom:10px}
-.nanazip-panel{margin-bottom:14px;padding:18px;border:1px solid var(--color-border);border-radius:15px;background:var(--surface-panel);box-shadow:var(--shadow-small)}.nanazip-overview{display:grid;grid-template-columns:minmax(0,1fr) minmax(310px,.7fr);gap:24px}.nanazip-eyebrow{color:var(--color-primary);font:700 10px/1.2 var(--font-mono);letter-spacing:.1em}.nanazip-overview h2{margin:8px 0 6px;font-size:19px}.nanazip-overview p{margin:0;color:var(--color-text-muted);font-size:13px;line-height:1.65}.nanazip-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px}.nanazip-facts{margin:0;padding:13px;border:1px solid var(--color-border);border-radius:var(--radius-element);background:var(--surface-soft)}.nanazip-facts div{display:grid;grid-template-columns:94px minmax(0,1fr);gap:10px;padding:7px 0;border-bottom:1px solid var(--color-border)}.nanazip-facts div:last-child{border:0}.nanazip-facts dt{color:var(--color-text-muted);font-size:11px}.nanazip-facts dd{margin:0;overflow-wrap:anywhere;font:12px/1.45 var(--font-mono)}
+.nanazip-panel{margin-bottom:14px;padding:18px;border:1px solid var(--color-border);border-radius:var(--radius-element);background:var(--surface-panel);box-shadow:var(--shadow-small)}
 .nanazip-progress{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}.nanazip-progress strong,.nanazip-progress span{display:block}.nanazip-progress>div>span{margin-top:3px;color:var(--color-text-muted);font-size:12px}.nanazip-progress-value{font:700 13px var(--font-mono)}.nanazip-progress-track{grid-column:1/-1;height:7px;overflow:hidden;border-radius:var(--radius-pill);background:var(--surface-soft)}.nanazip-progress-track i{display:block;height:100%;border-radius:inherit;background:var(--color-primary);transition:width var(--motion-fast) linear}.nanazip-progress-track i.indeterminate{width:34%;animation:nz-indeterminate 1.25s infinite ease-in-out}.nanazip-progress-track i.failed{background:var(--state-danger)}.nanazip-inline-error{margin:7px 0 0!important;color:var(--state-danger)!important;font-size:12px!important}
-.nanazip-integrations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.nanazip-integrations article{display:flex;gap:11px;padding:15px;border:1px solid var(--color-border);border-radius:13px;background:var(--surface-panel)}.nanazip-integrations article>span{color:var(--color-primary);font:700 11px var(--font-mono)}.nanazip-integrations h3{margin:0 0 6px;font-size:13px}.nanazip-integrations p{margin:0;color:var(--color-text-muted);font-size:12px;line-height:1.6}
-.nanazip-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:13px}.nanazip-section-head h2{margin:0;font-size:15px}.nanazip-section-head p{margin:4px 0 0;color:var(--color-text-muted);font-size:12px}.nanazip-resource-panel{padding:16px}.nanazip-resource-list{display:grid;gap:8px}.nanazip-resource-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;padding:12px;border:1px solid var(--color-border);border-radius:11px;background:var(--surface-soft)}.nanazip-resource-main{display:flex;align-items:center;gap:11px;min-width:0}.nanazip-version-icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:10px;background:color-mix(in srgb,var(--color-primary) 10%,var(--surface-panel));color:var(--color-primary);font-weight:800}.nanazip-version-icon.cached{color:var(--state-positive)}.nanazip-resource-main h3{margin:0;font-size:13px}.nanazip-resource-main h3 span{margin-left:6px;color:var(--state-positive);font-size:10px}.nanazip-resource-main p{margin:4px 0 0;overflow-wrap:anywhere;color:var(--color-text-muted);font:11px/1.5 var(--font-mono)}.nanazip-row-actions{display:flex;align-items:center;gap:8px}.nanazip-state-box{display:flex;align-items:center;gap:10px;padding:14px;border:1px dashed var(--color-border);border-radius:11px;background:var(--surface-soft);font-size:12px}.nanazip-state-box span{color:var(--color-text-muted)}.nanazip-state-box button{margin-left:auto}.nanazip-state-box.error{border-style:solid;color:var(--state-danger)}
+.nanazip-integrations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.nanazip-integrations article{display:flex;gap:11px;padding:15px;border:1px solid var(--color-border);border-radius:var(--radius-element);background:var(--surface-panel)}.nanazip-integrations article>span{color:var(--color-primary);font:700 11px var(--font-mono)}.nanazip-integrations h3{margin:0 0 6px;font-size:13px}.nanazip-integrations p{margin:0;color:var(--color-text-muted);font-size:12px;line-height:1.6}
+.nanazip-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:13px}.nanazip-section-head h2{margin:0;font-size:15px}.nanazip-section-head p{margin:4px 0 0;color:var(--color-text-muted);font-size:12px}.nanazip-resource-panel{padding:16px}.nanazip-resource-list{display:grid;gap:8px}.nanazip-resource-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;padding:12px;border:1px solid var(--color-border);border-radius:var(--radius-element);background:var(--surface-soft)}.nanazip-resource-main{display:flex;align-items:center;gap:11px;min-width:0}.nanazip-version-icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--radius-control);background:color-mix(in srgb,var(--color-primary) 10%,var(--surface-panel));color:var(--color-primary);font-weight:800}.nanazip-version-icon.cached{color:var(--state-positive)}.nanazip-resource-main h3{margin:0;font-size:13px}.nanazip-resource-main h3 span{margin-left:6px;color:var(--state-positive);font-size:10px}.nanazip-resource-main p{margin:4px 0 0;overflow-wrap:anywhere;color:var(--color-text-muted);font:11px/1.5 var(--font-mono)}.nanazip-row-actions{display:flex;align-items:center;gap:8px}
+.nanazip-state-box{display:flex;align-items:center;gap:10px;padding:14px;border:1px dashed var(--color-border);border-radius:var(--radius-element);background:var(--surface-soft);font-size:12px}.nanazip-state-box span{color:var(--color-text-muted)}.nanazip-state-box button{margin-left:auto}.nanazip-state-box.error{border-style:solid;color:var(--state-danger)}
 @keyframes nz-indeterminate{0%{transform:translateX(-110%)}100%{transform:translateX(300%)}}
-@media(max-width:760px){.nanazip-header{align-items:flex-start}.nanazip-header p{display:none}.nanazip-overview{grid-template-columns:1fr}.nanazip-integrations{grid-template-columns:1fr}.nanazip-resource-row{grid-template-columns:1fr}.nanazip-row-actions{justify-content:flex-end}}
-@media(max-width:460px){.nanazip-page{padding-bottom:16px}.nanazip-header{flex-direction:column}.nanazip-actions{flex-direction:column}.nanazip-actions :deep(.btn){width:100%;min-height:44px}.nanazip-facts div{grid-template-columns:1fr}.nanazip-section-head{flex-direction:column}.nanazip-section-head :deep(.btn){width:100%}.nanazip-row-actions{align-items:stretch;flex-direction:column}.nanazip-row-actions :deep(.btn){width:100%}.nanazip-state-box{align-items:flex-start;flex-direction:column}}
+@media(max-width:760px){.nanazip-integrations{grid-template-columns:1fr}.nanazip-resource-row{grid-template-columns:1fr}.nanazip-row-actions{justify-content:flex-end}}
+@media(max-width:460px){.nanazip-page{padding-bottom:16px}.nanazip-section-head{flex-direction:column}.nanazip-section-head :deep(.btn){width:100%}.nanazip-row-actions{align-items:stretch;flex-direction:column}.nanazip-row-actions :deep(.btn){width:100%}.nanazip-state-box{align-items:flex-start;flex-direction:column}}
 </style>

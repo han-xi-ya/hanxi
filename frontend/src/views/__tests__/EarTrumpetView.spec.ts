@@ -45,7 +45,7 @@ async function mountView() {
 }
 
 const findBtn = (w: ReturnType<typeof mount>, label: string | RegExp) =>
-  w.findAll('.et-actions button').find(b =>
+  w.findAll('.msix-actions button').find(b =>
     typeof label === 'string' ? b.text() === label : label.test(b.text()))!
 
 beforeEach(() => {
@@ -59,8 +59,8 @@ describe('EarTrumpetView 状态呈现', () => {
   it('未安装：「未安装」徽标，仅安装按钮可用（启动/退出禁用）', async () => {
     stubDefaults(snapOf())
     const { wrapper } = await mountView()
-    expect(wrapper.find('.et-state').text()).toBe('未安装')
-    expect(wrapper.find('.et-overview h2').text()).toBe('尚未安装 EarTrumpet')
+    expect(wrapper.find('.msix-state').text()).toBe('未安装')
+    expect(wrapper.find('.msix-overview h2').text()).toBe('尚未安装 EarTrumpet')
     expect(findBtn(wrapper, '安装官方直装版').exists()).toBe(true)
     expect(findBtn(wrapper, '启动').attributes('disabled')).toBeDefined()
     expect(findBtn(wrapper, '退出').attributes('disabled')).toBeDefined()
@@ -70,9 +70,9 @@ describe('EarTrumpetView 状态呈现', () => {
   it('已安装且运行中：「运行中」徽标，退出可用；facts 进程行=运行中', async () => {
     stubDefaults(snapOf({ installed: true, running: true, version: '3.2.9.0', architecture: 'x64' }))
     const { wrapper } = await mountView()
-    expect(wrapper.find('.et-state').text()).toBe('运行中')
+    expect(wrapper.find('.msix-state').text()).toBe('运行中')
     expect(findBtn(wrapper, '退出').attributes('disabled')).toBeUndefined()
-    expect(wrapper.find('.et-facts').text()).toContain('运行中')
+    expect(wrapper.find('.msix-facts').text()).toContain('运行中')
     wrapper.unmount()
   })
 
@@ -88,8 +88,8 @@ describe('EarTrumpetView 状态呈现', () => {
     svc.GetRemoteVersion.mockRejectedValue(new Error('网络不可达'))
     const { wrapper } = await mountView()
     expect(wrapper.find('.banner-error').text()).toContain('包数据库不可访问')
-    expect(wrapper.find('.et-facts').text()).toContain('官方最新')
-    expect(wrapper.find('.et-facts').text()).toContain('—')
+    expect(wrapper.find('.msix-facts').text()).toContain('官方最新')
+    expect(wrapper.find('.msix-facts').text()).toContain('—')
     wrapper.unmount()
   })
 
