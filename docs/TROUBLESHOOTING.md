@@ -593,6 +593,28 @@ Bili23 Downloader（B 站视频下载器，Python/PySide6 + 自带静态运行�
   1. **托管/文档化"配置在用户目录"必须落到具体子目录名**，实证链 = 上游版本资源/identifier 配置 → 路径库取名源码 → 本机实存印证；Flutter 应用尤其注意 CompanyName\ProductName 两层拼接与"ProductName ≠ 产品名"的历史残留；
   2. **模板拷贝族盘点功能差异必须到函数/hunk 级**（`grep -B/-A` 看调用上下文），文件级命中只能证明"仓里某处有这行字"，不能证明"同一时机做了同一件事"——同构模板的坑恰恰在"99% 相同 + 关键 1% 分叉"。
 
+### 29. 全局鼠标钩子 + frameless 弹窗（quickmenu MVP）："吞起不吞按"真机卡死系统输入的反转，外加 beta.10 三处认知差
+
+实现"右键长按唤出快捷菜单"时，把 Win32 低级钩子缝进 Wails v3 beta.10 多窗口体系，八个点与直觉不符：
+
+- **问题现象与错误原因**：
+  1. **`x/sys/windows` 没有鼠标钩子**：`WH_MOUSE_LL`、`MSLLHOOKSTRUCT`、`SetWindowsHookEx`/`CallNextHookEx`/`GetMessageW` 全部缺席（包里只有 `GetCurrentThreadId` 可蹭），照 Go 社区笔记找常量会一头雾水。低级钩子还要求安装线程自泵消息，goroutine 随时可能被调度迁移，不 `runtime.LockOSThread()` 钩子形同虚设。
+  2. **`go vet` 报 `possible misuse of unsafe.Pointer`**：回调里 `(*MSLLHOOKSTRUCT)(unsafe.Pointer(lParam))` 是 Win32 胶水层的标准写法，但 vet 的 unsafeptr 检查不认 uintptr→Pointer 直转。
+  3. **`HiddenOnTaskbar` 不在 `WebviewWindowOptions` 顶层**：它挂在 `options.Windows`（`WindowsWindow` 子结构）里，顶层直写编译错；`WebviewWindow` 也没有公开 `Destroy()`（`Close()` 只是 fire `WindowClosing`，会被 Cancel 钩子拦下），子窗口想"释放"根本没有门。
+  4. **两套坐标系**：LL 钩子的 `pt` 是物理像素，而 `SetPosition/Size/Width/Height` 全是 DIP（Windows 实现内部 `DipToPhysicalRect`）。拿钩子坐标直接 SetPosition，125%/150% 缩放屏上弹窗会画到偏右下位置。
+  5. **`CreateThreadTimer` 直接把进程打崩，两轮才对**：它走的是内核 APC——初版按 `SetTimer` 参数序写 `Call(0, ms, 0)`，把毫秒数当 APC 函数指针，到期内核跳地址 0x1C2，秒崩且 Go 无栈可 recover；改成正序 `Call(ms, NULL, NULL)` 后仍然崩——**它的回调不是 optional**（"NULL→投 WM_TIMER"是 SetTimer 的行为，两者语义不同），内核 APC 到地址 0 照样 AV。最终弃用：`time.AfterFunc` 到期只 `PostThreadMessage` 回泵线程，零内核 APC。
+  6. **`SendInput` 参数序错误 = "短按回放从未注入成功"的真凶**：签名是 `(cInputs, pInputs, cbSize)`，初版写成 `(count, size, ptr)`——cbSize 与指针互换，连纯 MOVE 都返回 0 / `ERROR_INVALID_PARAMETER`。这个返回值一直被我丢弃，直到探针测试才暴露。此前"XAML 托盘拒收合成回放"只是为解释现象编的假说，真凶就是参数序；教训：**Win32 胶水调用的返回值必须当场检查并计数，不要为失败现象编机制故事**。
+  7. **任务栏区域判定**：`WindowFromPoint` 在 Win11 XAML 任务栏整带上直接返回 0（连 DPI 感知修正后也如此），基于命中测试的旁路永远不生效；改用 `FindWindowW("Shell_TrayWnd"/"Shell_SecondaryTrayWnd"/"TopLevelWindowForOverflowXamlIsland") + GetWindowRect 矩形相交`——纯查询、每手势一次、物理坐标与钩子 pt 同系。
+  8. **（真机反转，代价最大的一课）初版"吞起不吞按"策略把系统输入卡死**：以为"按下放行、抬起才判长按、长按才吞 `WM_RBUTTONUP`"是最保守的拦截点——真机反馈却是"弹窗 1-2s 才能操作、弹窗期间其它窗口全被卡、点桌面菜单也不消失"。根因：按下已放行，系统与前后台应用的**异步按键状态已记为"右键按着"**，吞掉抬起后这个状态永远不会自己清零——前台切换被 Windows 拒绝（按键按住时不允许 SetForegroundWindow），弹窗抢不到焦点故 `LostFocus` 永不触发（点外部不收起的直接原因），被吞那一下的宿主应用等不到抬起，输入处理挂起。
+- **排查过程**：grep `x/sys/windows` 符号表确认缺口→按仓内既有惯例（`syscall.NewLazyDLL("user32.dll")`）就近声明常量与结构体；读 `webview_window_windows.go` 的 `setPosition/setBounds` 确认 DIP 语义与 `Windows.HiddenOnTaskbar` 应用点；读 `webview_window.go` 确认无公开销毁 API（与 ddns 面板窗口"永不销毁、隐藏驻留"既有决策互相印证）。真机卡死后复盘推理：症状三连（其它窗口卡 + 抢不到焦点 + 失焦不收起）同时成立，唯一能串起三者的解释就是"全局按键状态停在按下"——于是拦截点从抬起侧整体翻转到按下侧。
+- **正确做法与标准修复方案**：钩子态只存在安装线程（`atomic.Pointer` 装载，回调零锁零阻塞零分配，触发经容量 1 通道非阻塞投递，满则丢弃）；**拦截点必须在按下侧——"吞按 + SendInput 回放 + 按住即弹"**：`WM_RBUTTONDOWN` 一律吞掉（按键状态永不脏）并同时 `time.AfterFunc` 起阈值表；按住到阈值（松手前）即在泵线程投触发弹窗并标记 suppressed，随后抬手吞净（应用全程未见右键，干净）；阈值前抬手→吞起并向泵 `PostThreadMessage` 投递请求，由泵 `SendInput(cInputs, pInputs, cbSize)` 回放一组合成 down+up（普通右键照常弹菜单，回调内零重入）；位移超容差（右键拖拽）→立刻补回放 down、后续移动/抬起原样放行让应用收尾拖拽。**自家回放事件在 `dwExtraInfo` 盖魔术值、回调据此精确放行**（比"逢 `LLMHF_INJECTED` 即放行"更强：外部自动化的注入右键仍与真实按键同权参与判定，自家事件绝不自我吞入）；uintptr→结构体用"取局部参数地址再解引用"惯用法 `*(**T)(unsafe.Pointer(&lParam))` 消解 vet；弹窗常驻 `Hidden:true` 创建、失焦 Cancel+Hide 复用，并加两重保险：`SetForegroundForce`（AttachThreadInput 借前台特权抢焦点，绕 ForegroundLockTimeout）+ 全局按键观察通道做"点击弹窗物理矩形之外即收起"的兜底（焦点方案失效时依然成立）；定位走 `Screen.PhysicalToDipPoint` + `ScreenNearestPhysicalPoint(...).WorkArea` 钳位。
+- **避坑防重犯建议**：
+  1. 缝 Win32 消息机制进 Go 时先跑 `go vet`——unsafeptr 惯用法要第一时间固化，别等 review 才发现；
+  2. beta.10 无公开窗口销毁 API：所有子窗口按"隐藏驻留复用"设计（省 WebView2 重建、也绕开最后窗口退出策略），别指望 OnDestroy 里释放；
+  3. 涉及屏幕坐标的一切换算显式标注物理/DIP，多显示器混 DPI 下用物理像素 API（钩子、GetWindowRect）与 Wails DIP API 之间只允许经 ScreenManager 单点转换；
+  4. **键鼠识别类钩子只能吞"按下"、短动作靠 SendInput 回放，永远不要吞"抬起"**——按键状态机一旦被拦断在中间态，受害的是全系统而不是自己；这是本轮真机付出最大代价换来的一条；
+  5. **待真机确认项（升级）**：中完整性进程对 elevated 前台窗口的钩子感知/拦截未实证；且"吞按回放"在 elevated 界面上会因 UIPI 拒绝注入而**丢这一下右键**（比初版"卡按键状态"体面，但仍是功能损失），需要时以提权运行 Hanxi 验证后再定策略。
+
 ### 30. 安装版（MSI 系统安装）纳管：魔数错配拒好包、同镜像服务误判与 spec mock 缺方法团灭
 
 rustdesk/subnetdesk 增加"下载安装版"通道（MSI perMachine + Windows 服务，解锁无人值守/锁屏被控），三个环节与便携版直觉相反：
