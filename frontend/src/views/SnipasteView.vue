@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
-import { Events } from '@wailsio/runtime'
 import * as SnipasteAPI from '../../bindings/hanxi/internal/modules/snipaste/snipasteservice'
 import type { LaunchOutcome, QuitOutcome } from '../../bindings/hanxi/internal/modules/snipaste/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/snipaste/instance/models'
 import type { DownloadProgress, SnipasteRelease, SnipasteVersionInfo } from '../../bindings/hanxi/internal/modules/snipaste/version/models'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { usePolling } from '../composables/usePolling'
+import { useConfirm } from '../composables/useConfirm'
+import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
+import { fmtDuration } from '../utils/format'
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
+const { prompt } = usePrompt()
 const activeMainTab = ref<'console' | 'versions'>('console')
 const releases = ref<SnipasteRelease[]>([])
 const installed = ref<SnipasteVersionInfo[]>([])
@@ -24,11 +30,8 @@ const snapshot = ref<Snapshot | null>(null)
 const controlResult = ref<{ tone: 'info' | 'warning' | 'error'; text: string } | null>(null)
 const uptimeSec = ref(0)
 const downloading = ref<Record<string, DownloadProgress>>({})
+// 安装完成票据的延迟清理计时器（非轮询；随组件卸载统一清算）
 const cleanupTimers = new Map<string, ReturnType<typeof setTimeout>>()
-let unlistenDownload: (() => void) | null = null
-let unlistenState: (() => void) | null = null
-let pollTimer: ReturnType<typeof setInterval> | null = null
-let tickTimer: ReturnType<typeof setInterval> | null = null
 
 const selected = computed(() => installed.value.find(item => item.version === activeVersion.value) ?? installed.value[0] ?? null)
 const stale = computed(() => releases.value.some(item => item.stale))
@@ -114,7 +117,12 @@ async function launch() {
 
 async function quitProcess() {
   if (busy.value || !ownedRunning.value) return
-  if (!window.confirm('Hanxi 会先向本会话启动的 Snipaste 发送关闭请求；若未在宽限期内退出，将自动强制结束。强制结束可能丢失未落盘状态。外部实例不受影响。')) return
+  const accepted = await confirm({
+    title: '退出本会话 Snipaste',
+    description: 'Hanxi 会先向本会话启动的 Snipaste 发送关闭请求；若未在宽限期内退出，将自动强制结束。强制结束可能丢失未落盘状态。外部实例不受影响。',
+    tone: 'warning',
+  })
+  if (!accepted) return
   busy.value = true
   controlResult.value = null
   try {
@@ -246,8 +254,13 @@ function removeDisabledTitle(item: SnipasteVersionInfo): string {
 
 async function removeVersion(item: SnipasteVersionInfo) {
   if (cannotRemoveVersion(item)) return
-  if (!window.confirm(`确定卸载 Snipaste ${item.version}？\n将删除该版本的完整隔离目录，此操作不可恢复。`)) return
-  if (cannotRemoveVersion(item)) return
+  const accepted = await confirm({
+    title: `确定卸载 Snipaste ${item.version}？`,
+    description: '将删除该版本的完整隔离目录，此操作不可恢复。',
+    tone: 'danger',
+  })
+  if (!accepted) return
+  if (cannotRemoveVersion(item)) return // 确认期间状态可能已变，二次门禁（脱管语义原样保留）
   rowErrors.value[item.version] = ''
   try {
     await SnipasteAPI.RemoveVersion(item.version)
@@ -259,7 +272,7 @@ async function removeVersion(item: SnipasteVersionInfo) {
 }
 
 async function importLocal() {
-  const path = window.prompt('请输入 Snipaste 免安装目录完整路径（目录内应包含 Snipaste.exe）')
+  const path = await prompt({ title: '请输入 Snipaste 免安装目录完整路径（目录内应包含 Snipaste.exe）' })
   if (!path) return
   busy.value = true
   localError.value = ''
@@ -282,18 +295,12 @@ async function openSite() {
   try { await SnipasteAPI.OpenOfficialSite() } catch (error) { showToast(`打开官网失败：${getErrorMessage(error)}`) }
 }
 
+// 本视图 fmtSize 空值语义是「未知」（官网大小常缺失），与 utils/format 的「—」
+// 口径不同——按铁律 1 保留本地实现不硬凑；fmtDuration 与标准形一致，已收编 utils/format。
 function fmtSize(bytes: number): string {
   if (!bytes) return '未知'
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.round(bytes / 1024)} KB`
-}
-
-function fmtDuration(sec: number): string {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return h ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
 function stageText(progress?: DownloadProgress): string {
@@ -320,49 +327,40 @@ function verificationLabel(item: SnipasteVersionInfo | SnipasteRelease): string 
   return item.officialHash ? '官方 SHA-1' : '大小 + ZIP CRC + 布局'
 }
 
-function startTimers() {
-  if (pollTimer) return
-  pollTimer = setInterval(refreshStatus, 2500)
-  tickTimer = setInterval(() => {
-    if (snapshot.value?.state === 'running' && snapshot.value.startedAt) {
-      const started = new Date(snapshot.value.startedAt).getTime()
-      uptimeSec.value = Number.isNaN(started) ? 0 : Math.max(0, Math.floor((Date.now() - started) / 1000))
-    }
-  }, 1000)
+function uptimeTick() {
+  if (snapshot.value?.state === 'running' && snapshot.value.startedAt) {
+    const started = new Date(snapshot.value.startedAt).getTime()
+    uptimeSec.value = Number.isNaN(started) ? 0 : Math.max(0, Math.floor((Date.now() - started) / 1000))
+  }
 }
 
-function stopTimers() {
-  if (pollTimer) clearInterval(pollTimer)
-  if (tickTimer) clearInterval(tickTimer)
-  pollTimer = null
-  tickTimer = null
-  uptimeSec.value = 0
-}
+// 状态兜底轮询 + 每秒时长 tick（usePolling 内置 KeepAlive 激活/停用契约）；
+// 首帧不自动跑——由 onMounted/onActivated 显式刷新，与迁移前请求节奏逐拍一致。
+usePolling(refreshStatus, 2500, { immediateFirstRun: false })
+usePolling(uptimeTick, 1000, { immediateFirstRun: false })
+
+onDeactivated(() => {
+  uptimeSec.value = 0 // 停用归零运行时长（业务状态复位）
+})
+
+// 事件订阅（setup 期注册不丢早期推送，卸载自动注销）
+useWailsEvent<DownloadProgress>('snipaste:version-download', (data) => {
+  if (data) void handleDownloadProgress(data)
+})
+useWailsEvent<Snapshot>('snipaste:instance-state', (data) => {
+  if (data) snapshot.value = data
+})
 
 onMounted(() => {
-  unlistenDownload = Events.On('snipaste:version-download', (event: { data?: DownloadProgress }) => {
-    if (event?.data) void handleDownloadProgress(event.data)
-  })
-  unlistenState = Events.On('snipaste:instance-state', (event: { data?: Snapshot }) => {
-    if (event?.data) snapshot.value = event.data
-  })
-  startTimers()
   void Promise.allSettled([loadPageData(), refreshStatus()])
 })
 
 onActivated(() => {
-  startTimers()
   void Promise.allSettled([refreshLocal(), refreshStatus()])
 })
 
-onDeactivated(stopTimers)
-
+// 票据清理计时器非轮询，卸载时统一清算（事件/轮询注销由 composable 自理）
 onUnmounted(() => {
-  stopTimers()
-  unlistenDownload?.()
-  unlistenState?.()
-  unlistenDownload = null
-  unlistenState = null
   cleanupTimers.forEach(clearTimeout)
   cleanupTimers.clear()
 })
