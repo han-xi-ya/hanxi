@@ -139,6 +139,12 @@ func (s *FlClashService) DownloadVersion(targetVersion string) (string, error) {
 		if err := s.manager.Download(targetVersion, emit); err != nil {
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("flclash", "版本下载失败", fmt.Sprintf("FlClash %s 下载失败: %v", targetVersion, err), "/ext/flclash")
+			return
+		}
+		// 未设使用版本时自动把刚下载完的版本设为使用版本：
+		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
+		if s.store.GetActive() == "" {
+			_ = s.store.SetActive(targetVersion)
 		}
 	}()
 
@@ -206,6 +212,27 @@ func (s *FlClashService) OpenDir(dir string) error {
 		return fmt.Errorf("目标不是目录: %s", dir)
 	}
 	return exec.Command("explorer.exe", dir).Start()
+}
+
+// OpenConfigDir 打开 FlClash 的用户数据目录（订阅配置 config.yaml、profiles 与数据库所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
+func (s *FlClashService) OpenConfigDir() error {
+	dir, err := userConfigDir()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("FlClash 数据目录尚未创建（程序还未运行过）: %s", dir)
+	}
+	return exec.Command("explorer.exe", dir).Start()
+}
+
+// userConfigDir path_provider getApplicationSupportDirectory 按 PE 版本信息拼 %APPDATA%\<CompanyName>\<ProductName>，上游 windows/runner/Runner.rc 实证 CompanyName=com.follow、ProductName=clash。
+func userConfigDir() (string, error) {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return "", fmt.Errorf("无法定位 APPDATA 目录")
+	}
+	return filepath.Join(appData, "com.follow", "clash"), nil
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。

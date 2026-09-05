@@ -148,6 +148,12 @@ func (s *BCUService) DownloadVersion(targetVersion, variant string) (string, err
 		if err := s.manager.Download(targetVersion, variant, emit); err != nil {
 			emit(version.DownloadProgress{Version: targetVersion, Variant: variant, Stage: "error", Message: err.Error()})
 			notify.Error("bcu", "版本下载失败", fmt.Sprintf("BCU %s 下载失败: %v", targetVersion, err), "/ext/bcu")
+			return
+		}
+		// 未设使用版本时自动把刚下载完的版本设为使用版本：
+		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
+		if s.store.GetActive() == "" {
+			_ = s.store.SetActive(targetVersion)
 		}
 	}()
 

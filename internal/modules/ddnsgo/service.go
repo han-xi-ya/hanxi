@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -149,6 +150,12 @@ func (s *DdnsGoService) DownloadVersion(targetVersion string) (string, error) {
 		if err := s.manager.Download(targetVersion, emit); err != nil {
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("ddnsgo", "版本下载失败", fmt.Sprintf("ddns-go %s 下载失败: %v", targetVersion, err), "/ext/ddnsgo")
+			return
+		}
+		// 未设使用版本时自动把刚下载完的版本设为使用版本：
+		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
+		if s.store.GetActive() == "" {
+			_ = s.store.SetActive(targetVersion)
 		}
 	}()
 
@@ -472,6 +479,29 @@ func (s *DdnsGoService) OpenDir(dir string) error {
 		return fmt.Errorf("目标不是目录: %s", dir)
 	}
 	return exec.Command("explorer.exe", dir).Start()
+}
+
+// OpenConfigDir 在资源管理器中定位 ddns-go 的配置文件（%USERPROFILE%\.ddns_go_config.yaml）——
+// 上游配置为单文件而非目录，直接打开整个用户主目录噪音过大，采用 /select 高亮定位。只读导航，不改写。
+func (s *DdnsGoService) OpenConfigDir() error {
+	file, err := userConfigFile()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(file); err != nil {
+		return fmt.Errorf("ddns-go 配置文件尚未创建（程序还未保存过配置）: %s", file)
+	}
+	return exec.Command("explorer.exe", "/select,"+file).Start()
+}
+
+// userConfigFile 上游约定路径：%USERPROFILE%\.ddns_go_config.yaml（-c 可覆盖，本托管不改传参恒用默认，
+// 与用户自行运行的实例共享同一份配置——module.go 包注释实证）。
+func userConfigFile() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("无法定位用户目录: %v", err)
+	}
+	return filepath.Join(home, ".ddns_go_config.yaml"), nil
 }
 
 // ---------- 版本解析 ----------

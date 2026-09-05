@@ -139,6 +139,12 @@ func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error)
 		if err := s.manager.Download(targetVersion, emit); err != nil {
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("quicklook", "版本安装失败", fmt.Sprintf("QuickLook %s 安装失败: %v", targetVersion, err), "/ext/quicklook")
+			return
+		}
+		// 未设使用版本时自动把刚下载完的版本设为使用版本：
+		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
+		if s.store.GetActive() == "" {
+			_ = s.store.SetActive(targetVersion)
 		}
 	}()
 

@@ -115,6 +115,15 @@ func (s *FrpcService) OpenDir(exePath string) error {
 	return nil
 }
 
+// OpenConfigDir 打开 frpc 实例配置目录（Hanxi RuntimeDir/frpc，各项目启动时生成的 TOML 落盘处）。
+// frpc 为 CLI 托管无自有用户数据，此目录即 Hanxi 侧全部可看数据；自有目录缺失时先备后打开。
+func (s *FrpcService) OpenConfigDir() error {
+	if err := os.MkdirAll(s.runDir, 0o755); err != nil {
+		return fmt.Errorf("无法准备实例配置目录: %v", err)
+	}
+	return exec.Command("explorer.exe", s.runDir).Start()
+}
+
 func resolveExeDir(exePath string) (string, error) {
 	exePath = strings.TrimSpace(exePath)
 	if exePath == "" {

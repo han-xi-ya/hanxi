@@ -268,6 +268,27 @@ func (s *RecordlyService) OpenDir(dir string) error {
 	return exec.Command("explorer.exe", dir).Start()
 }
 
+// OpenConfigDir 打开 Recordly 的用户数据目录（配置与录像库所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
+func (s *RecordlyService) OpenConfigDir() error {
+	dir, err := userConfigDir()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("Recordly 数据目录尚未创建（程序还未运行过）: %s", dir)
+	}
+	return exec.Command("explorer.exe", dir).Start()
+}
+
+// userConfigDir Electron userData 默认目录（模块注释与 THIRD_PARTY_NOTICES 实证：配置与录像恒在 %APPDATA%\Recordly）。
+func userConfigDir() (string, error) {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return "", fmt.Errorf("无法定位 APPDATA 目录")
+	}
+	return filepath.Join(appData, "Recordly"), nil
+}
+
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
 func (s *RecordlyService) GetStatus() (instance.Snapshot, error) {
 	s.engine.RefreshExternal()
