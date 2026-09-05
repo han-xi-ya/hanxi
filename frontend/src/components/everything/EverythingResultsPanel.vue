@@ -81,7 +81,7 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
 .results-wrap { display: flex; flex-direction: column; gap: 8px; }
 .results-meta { font-size: 12px; color: var(--color-text-muted); display: flex; gap: 12px; align-items: center; }
 .warn-text { color: var(--state-warning); }
-.hint-dim { color: var(--color-text-subtle); }
+/* .hint-dim 已上收 components.css（§9.6-2，全库 19 份逐字同形副本的公共形） */
 .result-scroll { overflow-x: auto; }
 .result-tbl { max-height: 428px; display: block; overflow-y: auto; }
 .result-tbl thead, .result-tbl tbody { display: table; width: 100%; table-layout: fixed; }

@@ -183,33 +183,8 @@ const emit = defineEmits<{
   margin: 0;
 }
 
-/* 注：.btn-bind-account 家族与视图本体「未选中占位」大按钮共用（跨组件边界），
-   按「标记与样式同迁、不做语义改动」原则在两侧各留一份逐字副本（§9.6 登记）。 */
-.btn-bind-account {
-  background: var(--state-positive);
-  color: var(--color-text-inverse);
-  border: none;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  transition: all 0.15s ease;
-}
-
-.btn-bind-account:hover {
-  background: var(--state-positive);
-}
-
-.btn-bind-account.large {
-  padding: 8px 18px;
-  font-size: 13px;
-  margin-top: 14px;
-}
-
+/* 注：.btn-bind-account 家族（含 large 档）与视图本体「未选中占位」大按钮的逐字副本
+   已上收 components.css 共享原子（§9.6-8 治理完成），本层不再保留副本。 */
 .account-list-scroll {
   flex: 1;
   overflow-y: auto;

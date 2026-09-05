@@ -128,129 +128,15 @@ function quickTarget(value: string) {
 </template>
 
 <style scoped>
-/* 注记（Phase 6 拆分）：本面板与 TraceroutePanel 的"诊断工具皮"（.tool-panel/.diag-card/
-   .table-container/.rtt-tag/.status-badge 家族）逐字同构，但按硬约束不动 components.css，
-   故两侧各留一份 scoped 副本；是否上收为共享原子留待主线裁决（见拆分报告）。
-   .btn 家族/.tbl 基样式/.error-box 仍由全局原子承载，本层只留差异覆盖。 */
-.tool-panel {
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.tool-form {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-.input-wrap.count-wrap {
-  flex: 0 0 140px;
-}
-.input-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-.text-input {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 13px;
-}
-.select-input {
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 13px;
-  background: var(--surface-panel);
-}
-
-.quick-targets {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-.quick-label {
-  color: var(--color-text-subtle);
-}
-.btn-quick {
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-.btn-quick:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-/* 诊断结果卡片 */
-.diag-card {
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px;
-}
-.diag-summary-bar {
-  display: flex;
-  gap: 24px;
-  background: var(--surface-page);
-  padding: 10px 14px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-}
-.summary-col {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.s-label {
-  font-size: 11px;
-  color: var(--color-text-subtle);
-}
-.s-val {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text);
-}
+/* Phase 6 后续治理（§9.6-1）：诊断工具皮家族（.tool-panel/.diag-card/.table-container/
+   .status-badge 等）已上收 components.css 共享原子，本层只留本面板真差异。
+   .rtt-tag 有意保留局部（LanScannerView 同名副本未声明 font-family，裸收会漏染）。 */
 .val-warn {
   color: var(--state-danger);
 }
-.text-success {
-  color: var(--state-positive);
-}
+/* .text-danger 暂留局部：MemoView 等处存在无定义同名使用点，全局原子会改其观感（§9.6 待裁决） */
 .text-danger {
   color: var(--state-danger);
-}
-
-/* 表格：.tbl 全局原子接管，仅保留表头 page 底色差异 */
-.table-container {
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.tbl th {
-  background: var(--surface-page);
 }
 
 .rtt-tag {
@@ -268,17 +154,7 @@ function quickTarget(value: string) {
   color: var(--state-danger);
 }
 
-/* 状态徽章承载动态错误文本（可能较长），不套 chip 的 nowrap——保留视图变体 */
-.status-badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  font-weight: 500;
-}
-.status-badge.ok {
-  background: var(--state-positive-soft);
-  color: var(--state-positive);
-}
+/* 状态徽章 fail 态承载动态错误文本（可能较长），本面板独有 */
 .status-badge.fail {
   background: var(--state-danger-soft);
   color: var(--state-danger);

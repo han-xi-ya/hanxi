@@ -67,7 +67,9 @@ defineProps<{
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
+/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动。
+   §9.6-3 治理：flex-between/tag-pill/tag-blue 与语义色 text-success 已上收 components.css；
+   .py-8/.text-danger/.text-muted/.empty-state/.empty-icon 按裁决保留局部（见 §9.6 报告）。 */
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -87,23 +89,13 @@ defineProps<{
   background: var(--surface-soft);
 }
 
-.flex-between { display: flex; justify-content: space-between; align-items: center; }
+/* .flex-between/.tag-pill/.tag-blue/.text-success 已上收 components.css（§9.6-3）；
+   .py-8/.text-danger/.text-muted 留局部（同名不同形或无定义使用点，见 §9.6 报告） */
 .py-8 { padding-top: 32px; padding-bottom: 32px; }
-
-.tag-pill {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--surface-soft);
-  color: var(--color-text);
-}
-
-.tag-blue { background: var(--state-information-soft); color: var(--state-information); }
 .tag-success { background: var(--state-positive-soft); color: var(--state-positive); }
 .tag-amber { background: var(--state-warning-soft); color: var(--state-warning); }
 
 .text-danger { color: var(--state-danger); }
-.text-success { color: var(--state-positive); }
 .text-muted { color: var(--color-text-subtle); }
 
 .empty-state {

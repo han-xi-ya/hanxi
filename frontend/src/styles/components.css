@@ -236,3 +236,262 @@
 :where(.live-pulse) {
   animation: hx-pulse 1.8s ease-in-out infinite;
 }
+
+/* ---------- 诊断工具皮（§9.6-1：publicip Ping ⇄ Traceroute 双面板逐字副本上收）
+   .table-container 与 .tbl th 表头底色两条按 .diag-card 祖先锚定收编：
+   同名原子在全库有 18+ 份不同形副本（overflow/radius 各表不一），裸收会按属性漏染
+   未迁移视图（overflow-y/背景/边框等逐属性覆盖差异），锚定后仅在诊断卡内生效，零外溢。 ---------- */
+:where(.tool-panel) {
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+:where(.tool-form) {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+:where(.input-wrap) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+:where(.input-wrap.count-wrap) {
+  flex: 0 0 140px;
+}
+:where(.input-label) {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+:where(.text-input) {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+:where(.select-input) {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--surface-panel);
+}
+:where(.quick-targets) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+:where(.quick-label) {
+  color: var(--color-text-subtle);
+}
+:where(.btn-quick) {
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+:where(.btn-quick:hover) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+:where(.diag-card) {
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+}
+:where(.diag-summary-bar) {
+  display: flex;
+  gap: 24px;
+  background: var(--surface-page);
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+}
+:where(.summary-col) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+:where(.s-label) {
+  font-size: 11px;
+  color: var(--color-text-subtle);
+}
+:where(.s-val) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+:where(.diag-card .table-container) {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+/* 诊断卡表头改用 page 底色（置于 :where(.tbl th) 之后靠源码序覆盖，特异性同为 0） */
+:where(.diag-card .tbl th) {
+  background: var(--surface-page);
+}
+/* 状态徽章承载动态错误/节点文本，不套 chip 的 nowrap——.ok 为两面板逐字共用形 */
+:where(.status-badge) {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+}
+:where(.status-badge.ok) {
+  background: var(--state-positive-soft);
+  color: var(--state-positive);
+}
+/* .rtt-tag 有意不收：LanScannerView 同名 scoped 副本未声明 font-family，裸收会漏染其等宽字体 */
+
+/* ---------- 语义色文本原子（publicip ×2、fileshare LogsTab、HomeView 逐字同形副本上收；
+   .text-danger/.text-muted/.text-warn/.text-subtle 存在同类不同形或无定义使用，暂留局部，见 §9.6 报告） ---------- */
+:where(.text-success) {
+  color: var(--state-positive);
+}
+
+/* ---------- 微信机器人模态壳（§9.6-8：Bind ⇄ Rename 双模态 11 条逐字副本上收） ---------- */
+:where(.custom-modal-backdrop) {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--overlay-mask);
+  backdrop-filter: blur(2px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+:where(.custom-modal-card) {
+  width: 360px;
+  background: var(--surface-panel);
+  border-radius: 10px;
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
+  animation: modalIn 0.18s ease-out;
+}
+:where(.cmodal-header) {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+:where(.cmodal-title) {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+:where(.cmodal-close) {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+}
+:where(.cmodal-body) {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+:where(.form-item-block) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+:where(.form-label) {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+:where(.form-text-input) {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+:where(.form-text-input:focus) {
+  border-color: var(--state-positive);
+}
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* 绑定账号钮家族（Sidebar ⇄ WechatBotView 占位大按钮逐字同形；视图副本在途，暂冻结） */
+:where(.btn-bind-account) {
+  background: var(--state-positive);
+  color: var(--color-text-inverse);
+  border: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+:where(.btn-bind-account:hover) {
+  background: var(--state-positive);
+}
+:where(.btn-bind-account.large) {
+  padding: 8px 18px;
+  font-size: 13px;
+  margin-top: 14px;
+}
+
+/* ---------- FileShare 方言原子（§9.6-3：endpoints/inbox/logs 就近复制、跨文件逐字同形且
+   不与既有全局原子冲突者上收；.btn-secondary 家族/.empty-state/.py-8/.text-muted/.empty-icon
+   等同名不同形或有未定义使用点，全部保留局部，见 §9.6 报告） ---------- */
+:where(.flex-between) { display: flex; justify-content: space-between; align-items: center; }
+:where(.gap-2) { gap: 8px; }
+:where(.ml-2) { margin-left: 8px; }
+:where(.btn-sm) {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+:where(.tag-pill) {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-soft);
+  color: var(--color-text);
+}
+:where(.tag-blue) { background: var(--state-information-soft); color: var(--state-information); }
+
+/* ---------- Everything 小工具（§9.6-2：hint-dim/badge 多组件逐字同形副本上收；
+   .empty-hint 全库 20+ 份存在 padding/border 不同形变体，暂留局部，见 §9.6 报告） ---------- */
+:where(.hint-dim) { color: var(--color-text-subtle); }
+:where(.badge) { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }

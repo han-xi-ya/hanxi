@@ -56,12 +56,11 @@ const emit = defineEmits<{
 .inst-card-top { display: flex; justify-content: space-between; align-items: center; }
 .ver-tag { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
 .inst-badges { display: flex; gap: 6px; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+/* .badge 基形与 .hint-dim 已上收 components.css（§9.6-2），以下仅本卡片档位色 */
 .badge-active { background: var(--state-positive-soft); color: var(--state-positive); }
 .badge-running { background: var(--state-information-soft); color: var(--state-information); }
 .badge-import { background: var(--state-information-soft); color: var(--state-information); }
 .badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
-.hint-dim { color: var(--color-text-subtle); }
 
 .inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }

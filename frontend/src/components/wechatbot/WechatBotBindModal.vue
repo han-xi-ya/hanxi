@@ -4,8 +4,8 @@
 // useWechatBot 编排（本组件仅渲染 qr 状态并上抛 close/retry 与备注名回写）。
 // 显隐开关（showBindModal）留在视图编排层 v-if，与原模板条件位置等价。
 // 注：模态壳层 CSS（.custom-modal-backdrop/.custom-modal-card/@keyframes modalIn/
-// .cmodal-*/.form-* 家族）与重命名模态为跨组件共用，按「标记与样式同迁、不做语义
-// 改动」原则两侧各留一份逐字副本（§9.6 登记）。
+// .cmodal-*/.form-* 家族）与重命名模态的 11 条逐字副本已上收 components.css 共享原子
+// （§9.6-8 治理完成），本组件 scoped 块只留二维码区私有样式。
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -83,99 +83,8 @@ const remarkModel = computed({
 </template>
 
 <style scoped>
-/* 以下样式自 WechatBotView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
-/* 4. 模态弹窗 */
-.custom-modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: var(--overlay-mask);
-  backdrop-filter: blur(2px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.custom-modal-card {
-  width: 360px;
-  background: var(--surface-panel);
-  border-radius: 10px;
-  box-shadow: var(--shadow-panel);
-  overflow: hidden;
-  animation: modalIn 0.18s ease-out;
-}
-
-@keyframes modalIn {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.cmodal-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.cmodal-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.cmodal-close {
-  background: transparent;
-  border: none;
-  font-size: 14px;
-  color: var(--color-text-subtle);
-  cursor: pointer;
-}
-
-.cmodal-body {
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.form-item-block {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text);
-}
-
-.form-text-input {
-  padding: 6px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.form-text-input:focus {
-  border-color: var(--state-positive);
-}
-
+/* 模态壳层家族（custom-modal、cmodal、form 系列与 @keyframes modalIn）
+   已上收 components.css（§9.6-8），以下仅二维码渲染区私有样式。 */
 .qr-render-container {
   display: flex;
   flex-direction: column;

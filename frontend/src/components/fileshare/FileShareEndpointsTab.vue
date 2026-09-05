@@ -54,7 +54,10 @@ const emit = defineEmits<{ copy: [url: string] }>()
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
+/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动。
+   §9.6-3 治理：与兄弟页签逐字同形的方言原子（flex-between/gap-2/ml-2/btn-sm/tag-pill/
+   tag-blue）已上收 components.css；.btn-secondary 家族/.empty-state/.py-8/.text-muted/
+   .empty-icon 因同名不同形或有未定义使用点，按裁决保留局部。 */
 .endpoint-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
@@ -114,9 +117,8 @@ const emit = defineEmits<{ copy: [url: string] }>()
   line-height: 1.4;
 }
 
-.flex-between { display: flex; justify-content: space-between; align-items: center; }
-.gap-2 { gap: 8px; }
-.ml-2 { margin-left: 8px; }
+/* .flex-between/.gap-2/.ml-2 已上收 components.css（§9.6-3）；
+   .py-8 留局部：MemoView 存在无定义同名使用点，裸收会经全局 .empty-state 互染 padding */
 .py-8 { padding-top: 32px; padding-bottom: 32px; }
 
 .btn-secondary {
@@ -133,21 +135,10 @@ const emit = defineEmits<{ copy: [url: string] }>()
   background: var(--surface-soft);
 }
 
-.btn-sm {
-  padding: 4px 8px;
-  font-size: 11px;
-}
-
-.tag-pill {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--surface-soft);
-  color: var(--color-text);
-}
-
+/* .btn-sm/.tag-pill 已上收 components.css（§9.6-3） */
 .tag-primary { background: var(--state-information-soft); color: var(--color-primary-hover); }
 
+/* .text-muted 留局部：HomeView 同名副本色值不同形（muted vs subtle），待裁决 */
 .text-muted { color: var(--color-text-subtle); }
 
 .empty-state {

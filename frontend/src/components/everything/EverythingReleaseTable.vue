@@ -110,7 +110,7 @@ function channelLabel(channel: string): string {
 .ch-stable { background: var(--state-positive-soft); color: var(--state-positive); }
 .ch-beta { background: var(--state-warning-soft); color: var(--state-warning); }
 
-.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+/* .badge 基形已上收 components.css（§9.6-2），以下仅本表格快照档位 */
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
 .ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
