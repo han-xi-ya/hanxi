@@ -122,7 +122,7 @@ function handleItemClick(item: Notification) {
 .drawer-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--overlay-mask);
   backdrop-filter: blur(1.5px);
   z-index: 10001;
 }
@@ -134,9 +134,9 @@ function handleItemClick(item: Notification) {
   bottom: 0;
   width: 360px;
   max-width: 90vw;
-  background: var(--bg-sidebar);
-  border-left: 1px solid var(--border-color);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+  background: var(--surface-panel);
+  border-left: 1px solid var(--color-border);
+  box-shadow: var(--shadow-drawer);
   z-index: 10002;
   display: flex;
   flex-direction: column;
@@ -147,8 +147,8 @@ function handleItemClick(item: Notification) {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-app);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--surface-page);
 }
 
 .header-left {
@@ -161,12 +161,12 @@ function handleItemClick(item: Notification) {
   font-size: 14px;
   font-weight: 600;
   margin: 0;
-  color: var(--text-main);
+  color: var(--color-text);
 }
 
 .badge-unread {
-  background: var(--danger);
-  color: #fff;
+  background: var(--state-danger);
+  color: var(--color-on-primary);
   font-size: 11px;
   font-weight: 600;
   padding: 1px 6px;
@@ -183,7 +183,7 @@ function handleItemClick(item: Notification) {
   background: transparent;
   border: none;
   font-size: 12px;
-  color: var(--accent);
+  color: var(--color-primary);
   cursor: pointer;
   padding: 2px 4px;
 }
@@ -196,15 +196,15 @@ function handleItemClick(item: Notification) {
   background: transparent;
   border: none;
   font-size: 14px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
 }
 
 .btn-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-main);
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .drawer-body {
@@ -219,7 +219,7 @@ function handleItemClick(item: Notification) {
   align-items: center;
   justify-content: center;
   height: 240px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   gap: 8px;
 }
 
@@ -239,18 +239,18 @@ function handleItemClick(item: Notification) {
 
 .notif-item {
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: background 0.15s ease;
   position: relative;
 }
 
 .notif-item:hover {
-  background: var(--bg-hover);
+  background: var(--surface-hover);
 }
 
 .notif-item.unread {
-  background: #f0f7ff;
+  background: var(--color-primary-soft);
 }
 
 .notif-top {
@@ -276,13 +276,13 @@ function handleItemClick(item: Notification) {
 .mod-tag {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   text-transform: uppercase;
 }
 
 .title {
   font-size: 13px;
-  color: var(--text-main);
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -290,13 +290,13 @@ function handleItemClick(item: Notification) {
 
 .time {
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   flex-shrink: 0;
 }
 
 .msg {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   margin: 0;
   line-height: 1.4;
   word-break: break-all;
@@ -309,7 +309,7 @@ function handleItemClick(item: Notification) {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--color-primary);
 }
 
 /* 动效 */

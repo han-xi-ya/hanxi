@@ -80,11 +80,11 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 
 .toast-card {
   pointer-events: auto;
-  background: #ffffff;
-  border: 1px solid #e1e4e8;
-  border-left: 4px solid var(--accent);
-  border-radius: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-panel);
   display: flex;
   align-items: flex-start;
   padding: 12px 14px;
@@ -96,24 +96,24 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 }
 
 .toast-card.toast-success {
-  border-left-color: #2da44e;
+  border-left-color: var(--state-positive);
 }
 
 .toast-card.toast-warning {
-  border-left-color: #bf8700;
+  border-left-color: var(--state-warning);
 }
 
 .toast-card.toast-error {
-  border-left-color: #cf222e;
+  border-left-color: var(--state-danger);
 }
 
 .toast-card.toast-info {
-  border-left-color: #2f6fed;
+  border-left-color: var(--state-information);
 }
 
 .toast-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--shadow-panel);
 }
 
 .toast-indicator {
@@ -141,7 +141,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 
 .toast-module {
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   font-weight: 600;
 }
@@ -149,7 +149,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 .toast-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-main);
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -157,7 +157,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 
 .toast-msg {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   margin: 0;
   line-height: 1.4;
   word-break: break-all;
@@ -171,7 +171,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
   background: transparent;
   border: none;
   font-size: 12px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
@@ -179,8 +179,8 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 }
 
 .toast-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-main);
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 /* 动效 */

@@ -73,23 +73,23 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </template>
 
 <style scoped>
-.workbench-confirm-backdrop { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:24px; background:rgba(10,24,29,.46); }
-.workbench-confirm { width:min(460px,100%); padding:20px; border:1px solid var(--border-color); border-radius:16px; background:var(--bg-sidebar); box-shadow:0 22px 50px rgba(0,0,0,.2); color:var(--text-primary); }
+.workbench-confirm-backdrop { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:24px; background:var(--overlay-mask); }
+.workbench-confirm { width:min(460px,100%); padding:20px; border:1px solid var(--color-border); border-radius:var(--radius-panel); background:var(--surface-panel); box-shadow:var(--shadow-panel); color:var(--color-text); }
 .workbench-confirm header { display:flex; gap:12px; align-items:flex-start; }
 .workbench-confirm h2 { margin:0 0 6px; font-size:17px; }
-.workbench-confirm p { margin:0; color:var(--text-secondary); font-size:13px; line-height:1.65; }
-.workbench-confirm-mark { display:grid; place-items:center; width:30px; height:30px; flex:none; border-radius:10px; background:rgba(182,111,8,.12); color:#9a5e05; font-weight:800; }
-.is-danger .workbench-confirm-mark { background:rgba(214,69,69,.1); color:#c53737; }
-.workbench-confirm-details { margin:16px 0 0; padding:12px; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-main); }
+.workbench-confirm p { margin:0; color:var(--color-text-muted); font-size:13px; line-height:1.65; }
+.workbench-confirm-mark { display:grid; place-items:center; width:30px; height:30px; flex:none; border-radius:var(--radius-element); background:var(--state-warning-soft); color:var(--state-warning); font-weight:800; }
+.is-danger .workbench-confirm-mark { background:var(--state-danger-soft); color:var(--state-danger); }
+.workbench-confirm-details { margin:16px 0 0; padding:12px; border:1px solid var(--color-border); border-radius:var(--radius-element); background:var(--surface-soft); }
 .workbench-confirm-details div { display:grid; grid-template-columns:100px minmax(0,1fr); gap:10px; padding:4px 0; }
-dt { color:var(--text-secondary); font-size:12px; } dd { margin:0; overflow-wrap:anywhere; font:12px/1.5 ui-monospace,Consolas,monospace; }
+dt { color:var(--color-text-muted); font-size:12px; } dd { margin:0; overflow-wrap:anywhere; font:12px/1.5 var(--font-mono); }
 footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
-.workbench-confirm-btn { min-height:38px; padding:0 16px; border:1px solid var(--border-color); border-radius:9px; font-weight:650; cursor:pointer; }
-.workbench-confirm-btn.secondary { background:var(--bg-main); color:var(--text-primary); }
-.workbench-confirm-btn.primary { border-color:transparent; background:var(--accent); color:white; }
-.is-danger .workbench-confirm-btn.primary { background:#d64545; }
+.workbench-confirm-btn { min-height:38px; padding:0 16px; border:1px solid var(--color-border); border-radius:var(--radius-control); font-weight:650; cursor:pointer; }
+.workbench-confirm-btn.secondary { background:var(--surface-soft); color:var(--color-text); }
+.workbench-confirm-btn.primary { border-color:transparent; background:var(--color-primary); color:var(--color-on-primary); }
+.is-danger .workbench-confirm-btn.primary { background:var(--state-danger); }
 .workbench-confirm-btn:disabled { opacity:.55; cursor:not-allowed; }
-.workbench-confirm-btn:focus-visible { outline:3px solid rgba(15,139,141,.24); outline-offset:2px; }
+.workbench-confirm-btn:focus-visible { outline:3px solid var(--focus-ring); outline-offset:2px; }
 @media (max-width:460px) { .workbench-confirm-backdrop{align-items:end;padding:12px}.workbench-confirm{padding:16px}.workbench-confirm footer{flex-direction:column-reverse}.workbench-confirm-btn{min-height:44px;width:100%}.workbench-confirm-details div{grid-template-columns:1fr}.workbench-confirm-details dt{margin-bottom:2px} }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important} }
 </style>

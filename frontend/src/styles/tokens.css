@@ -68,6 +68,7 @@
   --radius-pill: 999px;
   --shadow-small: 0 4px 14px rgba(32, 66, 72, 0.055);
   --shadow-panel: 0 18px 45px rgba(32, 66, 72, 0.085);
+  --shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.12); /* 右侧抽屉专用（通知中心等） */
   --motion-fast: 100ms;
   --motion-base: 150ms;
   --motion-slow: 180ms;
@@ -187,6 +188,7 @@
 
   --shadow-small: 0 5px 18px rgba(0, 0, 0, 0.18);
   --shadow-panel: 0 22px 50px rgba(0, 0, 0, 0.23);
+  --shadow-drawer: -8px 0 24px rgba(0, 0, 0, 0.34);
 
   /* 终端色板深底版本（微调前景亮度） */
   --ansi-7: #dfe9ea;
