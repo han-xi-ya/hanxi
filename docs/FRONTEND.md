@@ -3,7 +3,7 @@
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
 > **更新日期**：2026-09-05
-> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。当前待办＝AppIcon 阶段2（模块图标 26 枚）/阶段3（tab 与按钮 emoji ≈50 处）与 Phase 6（巨型孤本拆分：WechatBot/FileShare/PublicIp/Everything）。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。当前主线待办＝Phase 6 巨型孤本拆分（WechatBot 2176 行/FileShare 1630 行/PublicIp 1010 行/Everything 834 行）＋过渡别名层清零收尾。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
 
@@ -85,7 +85,7 @@ src/
 | **3 试点** ✅ | 迁 `MarkerOnView`+`CCSwitchView` 到新骨架，锁特征测试一致，产出迁移模板+checklist（§9 手册） | 前后对照样板 | 中 |
 | **4 铺开托管家族** ✅ | 五路并行 fork + 主线模板组，19/19 托管视图套 §9 手册迁移（含 rustdesk/subnetdesk/everything/ddnsgo 等特殊形态）；envcheck 对齐 token 留 Phase 5 | 家族重复基本消除 | 中：逐视图验活 |
 | **5 工具视图顺手治理** | Wifi/Lan/PortScan/PublicIp/PortKill/FileShare/Memo/Wechat 等"改到哪治到哪"：`useWailsEvent/usePolling/useConfirm/usePrompt/format/UiXxx`；NanaZip/EarTrumpet 合并；**长尾认领：frpc 双视图（FrpcProjects/Versions + Frpc* 组件）、系统页 Home/Logs/Settings/About、ExtPlaceholderView** | 长尾收敛 | 低-中 |
-| **6 后续（暂不做）** | 巨型孤本视图（WechatBot/FileShare/PublicIp/Everything）结构拆分；App.vue 进一步组件化 | — | — |
+| **6 当前主线**（§9.5 与 AppIcon 阶段1 后接棒） | 巨型孤本视图（WechatBot 2176 行/FileShare 1630 行/PublicIp 1010 行/Everything 834 行）结构拆分；过渡别名层清零（残余引用集中在未治理孤本内）；App.vue 进一步组件化 | — | 中：逐视图特征测试先行 |
 | **7 文档** | 技术栈漂移已修；本蓝图持续更新 | 文档一致 | 低 |
 
 > **全量认领对账（35 视图，无漏网）**：Phase 4 托管家族 19（含 rustdesk/subnetdesk/envcheck）；Phase 5 工具与长尾 16（网络类 8 + frpc 2 + 系统页 4 + ExtPlaceholder + Memo/FileShare 重叠计一）。SettingsView 的主题切换器属 Phase 1 最小改动，其余治理在 Phase 5。
@@ -151,7 +151,7 @@ src/
 - **测试 seam**：Vitest（happy-dom）没有 Wails 原生层，直接 import `frontend/bindings` 与 `Events` 会挂——Phase 0 先定对绑定服务/事件的 `vi.mock` 打桩约定，之后才有可写的托管视图特征测试。
 - **scoped 特异性陷阱**：scoped 样式带属性选择器，压过全局原子类；迁移时旧 scoped 副本不删净会"改了全局没生效"。对策：`components.css` 原子类用 `:where()` 包装（零特异性），且"迁移即删该视图本地副本"。
 - **Prettier 一次性**：全仓格式化独立成一个 `style:` 提交（`git blame --ignore-rev` 记录该 SHA 保护 blame），此后每 Phase 只格式化 touched 文件，不顺手全仓。
-- **AppIcon 图标集**（§8 清单已落定，阶段1 ✅）：注册表 `constants/icons.ts`（24 viewBox 纯 path、`currentColor` 描边 1.8、禁散写 `<svg>`）+ 渲染器 `components/ui/AppIcon.vue`（缺省 aria-hidden 装饰，传 label 升格 role=img；特征测试 6 例）。导航双轨前缀约定：`i:name` 走 SVG、裸值文本回退。分批：阶段1 壳与状态（home/file-text/gear/info/bell/inbox/sun/moon/monitor + 通知严重度改 CSS 色点）✅；**阶段2** navigation.ts 模块图标 26 枚；**阶段3** MAIN_TABS 前缀与控制按钮 emoji（≈50 处，含 SettingsView 🔔）。全部自绘无第三方图标库，THIRD_PARTY_NOTICES 不涉。
+- **AppIcon 图标集**（§8 清单已落定，阶段1 ✅）：注册表 `constants/icons.ts`（24 viewBox 纯 path、`currentColor` 描边 1.8、禁散写 `<svg>`）+ 渲染器 `components/ui/AppIcon.vue`（缺省 aria-hidden 装饰，传 label 升格 role=img；特征测试 6 例）。导航双轨前缀约定：`i:name` 走 SVG、裸值文本回退。分批：阶段1 壳与状态（home/file-text/gear/info/bell/inbox/sun/moon/monitor + 通知严重度改 CSS 色点）✅；**阶段2**（navigation.ts 模块图标 26 枚，含侧栏渲染层以前端表覆盖后端 GetNavs emoji 的单一来源方案，调研已毕）与**阶段3**（MAIN_TABS 前缀与控制按钮 emoji ≈50 处，含 SettingsView 🔔）**均经用户决策暂停（2026-09-05）**，恢复时按本清单续做。全部自绘无第三方图标库，THIRD_PARTY_NOTICES 不涉。
 - **依赖兼容矩阵**：Vitest 大版本必须实测支持 Vite 8；ESLint flat config + `eslint-plugin-vue` + `@typescript-eslint`；全部锁进 devDeps（`.npmrc` 供应链策略下）。
 - **生成物必须排除在 lint/format/test 之外**：`frontend/bindings/**` 进 ESLint ignores、`.prettierignore`、vitest include 白名单之外——生成物一旦被格式化，CI `verify:bindings`（git diff 校验）当场爆红。
 - **WebView2 能力假设**：`:where()`、`color-mix()`、`100dvh` 等依赖较新 Chromium——WebView2 为 Evergreen 自动更新，Win10 22H2+ 基线基本无忧；若目标机器存在固定版本 Runtime 需先用后写。
