@@ -45,6 +45,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/subnetdesk': { component: defineAsyncComponent(() => import('@/views/SubnetDeskView.vue')), moduleId: 'subnetdesk' },
   '/ext/rustdesk': { component: defineAsyncComponent(() => import('@/views/RustDeskView.vue')), moduleId: 'rustdesk' },
   '/ext/rufus': { component: defineAsyncComponent(() => import('@/views/RufusView.vue')), moduleId: 'rufus' },
+  '/ext/bili23': { component: defineAsyncComponent(() => import('@/views/Bili23View.vue')), moduleId: 'bili23' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
   '/settings': { component: defineAsyncComponent(() => import('@/views/SettingsView.vue')) },
@@ -108,6 +109,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   subnetdesk: { icon: '🖥', route: '/ext/subnetdesk' },
   rustdesk: { icon: '🌍', route: '/ext/rustdesk' },
   rufus: { icon: '💽', route: '/ext/rufus' },
+  bili23: { icon: '📺', route: '/ext/bili23' },
 }
 
 export const FALLBACK_MODULE_ICON = '📦'
