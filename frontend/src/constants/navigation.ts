@@ -47,6 +47,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/rufus': { component: defineAsyncComponent(() => import('@/views/RufusView.vue')), moduleId: 'rufus' },
   '/ext/bili23': { component: defineAsyncComponent(() => import('@/views/Bili23View.vue')), moduleId: 'bili23' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
+  '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
   '/settings': { component: defineAsyncComponent(() => import('@/views/SettingsView.vue')) },
   '/about': { component: defineAsyncComponent(() => import('@/views/AboutView.vue')) },
@@ -110,6 +111,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   rustdesk: { icon: '🌍', route: '/ext/rustdesk' },
   rufus: { icon: '💽', route: '/ext/rufus' },
   bili23: { icon: '📺', route: '/ext/bili23' },
+  quickmenu: { icon: '🖱', route: '/ext/quickmenu' },
 }
 
 export const FALLBACK_MODULE_ICON = '📦'
