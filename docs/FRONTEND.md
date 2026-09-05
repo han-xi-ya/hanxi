@@ -54,15 +54,16 @@ utils/        errors.ts: getErrorMessage
 src/
   main.ts                     # import 三份全局样式；初始化主题
   styles/                     # 唯一样式来源（从 App.vue 抽出）
-    tokens.css                #   设计 token 单一来源：浅+深双主题 + 全部遗留别名（消歧未定义变量）
+    tokens.css                #   设计 token 单一来源：浅+深双主题 + 全部遗留别名（消歧未定义变量）+ 字体栈 + --ansi-* 日志终端色板
     base.css                  #   reset/字族/:focus-visible/prefers-reduced-motion/100dvh/safe-area
     components.css            #   全局原子工具类：.btn家族/.card/.panel/.tbl/.chip/.banner/.empty-state/.mono/.link-button/页面骨架
   composables/                # VueUse 支撑 + 自研
-    useWailsEvent  usePolling  useAsyncAction  useClipboard  useConfirm  useManagedTool
+    useWailsEvent  usePolling  useAsyncAction  useClipboard  useConfirm  usePrompt  useManagedTool
     useToast  useNotification  useTheme
-  components/ui/              # 无业务原子件：UiButton/UiStatusChip/UiBanner/UiEmptyState/UiProgressBar/UiModal/StatePanel/PageHeader/MainTabNav/AppIcon
+  components/ui/              # 无业务原子件：UiButton/UiStatusChip/UiBanner/UiEmptyState/UiProgressBar/UiModal/UiPrompt(带输入)/ErrorBoundary/StatePanel/PageHeader/MainTabNav/AppIcon
   components/tool/            # 托管家族共用壳：ManagedConsoleShell / VersionGrid / StatusHeader
-  constants/                  # status.ts（状态→{text,icon,tone} 单一表）、navigation.ts（路由/模块清单单一来源）
+  constants/                  # status.ts（状态→{text,icon,tone} 单一表）；navigation.ts＝route→组件/图标/标题的**前端元数据**单一来源
+  │                           #   ——后端注册表仍管"模块存在/启用"，两者在侧栏渲染处合并，navigation.ts 不吞并后者
   utils/                      # errors.ts + format.ts（fmtSize/fmtDate/fmtDuration）
   views/                      # 迁移后瘦身，只留业务差异
 ```
@@ -78,13 +79,15 @@ src/
 | Phase | 内容 | 交付 | 风险 |
 |---|---|---|---|
 | **0 安全网** | ESLint(flat)+Prettier（先 warn 不阻断）、Vitest+@vue/test-utils，给 ConfirmDialog/useToast/一个托管视图状态机写**特征测试** | lint/test 脚本、基线用例 | 低（additive） |
-| **1 样式地基** | 落地 `styles/{tokens,base,components}.css`（**青绿 `#0f8b8d` + 浅/深双主题**，含全部别名消歧，主题变量单一来源见 §7）；`useTheme` 三态切换（跟随系统/浅/深，持久化）+ 侧栏与设置页切换入口；引入 VueUse；加 `@`→src 别名 | 主色全量转青 + 深色主题可切换 | 中：一次性变色，单独可回滚 commit |
-| **2 共享件** | `utils/format`、`constants/status`、`constants/navigation`、`components/ui/*`、`composables/*`（含 `useConfirm` 收编原生弹窗）+ 单测 | 共享层就绪（不迁移视图） | 低 |
+| **1 样式地基** | 落地 `styles/{tokens,base,components}.css`（**青绿 `#0f8b8d` + 浅/深双主题**，含全部别名消歧、`--ansi-*` 终端色板与字体栈，主题变量单一来源见 §7）；`useTheme` 三态切换（**后端 Settings 持久化** + 首帧缓存）+ 侧栏与设置页切换入口；后端 DWM 深色标题栏同步（铁律 8 唯一例外）；引入 VueUse；加 `@`→src 别名 | 主色全量转青 + 深色主题可切换（含窗框） | 中：一次性变色，单独可回滚 commit |
+| **2 共享件** | `utils/format`、`constants/status`、`constants/navigation`、`components/ui/*`、`composables/*`；`useConfirm` 收编 confirm、**`usePrompt`（UiPrompt 带输入）收编 14 处 `window.prompt`**；`ErrorBoundary` + `app.config.errorHandler` 兜底（单视图崩溃不再整壳白屏）；`CORE_VIEWS` 视图**异步化**（`defineAsyncComponent` 点哪个加载哪个）+ 单测 | 共享层就绪 + 首屏瘦身 + 崩溃兜底（不迁移视图） | 低 |
 | **3 试点** | 迁 `MarkerOnView`+`CCSwitchView` 到新骨架，锁特征测试一致，产出迁移模板+checklist | 前后对照样板 | 中 |
 | **4 铺开托管家族** | 按相似度分批（3–5 视图/commit）套模板迁 ~15+ 托管视图（含 rustdesk/subnetdesk 等）；envcheck 顺带对齐 token | 主要重复消除 | 中：逐视图验活 |
-| **5 工具视图顺手治理** | Wifi/Lan/PortScan/PublicIp/PortKill/FileShare/Memo/Wechat 等"改到哪治到哪"：`useWailsEvent/usePolling/useConfirm/format/UiXxx`；NanaZip/EarTrumpet 合并 | 长尾收敛 | 低-中 |
+| **5 工具视图顺手治理** | Wifi/Lan/PortScan/PublicIp/PortKill/FileShare/Memo/Wechat 等"改到哪治到哪"：`useWailsEvent/usePolling/useConfirm/usePrompt/format/UiXxx`；NanaZip/EarTrumpet 合并；**长尾认领：frpc 双视图（FrpcProjects/Versions + Frpc* 组件）、系统页 Home/Logs/Settings/About、ExtPlaceholderView** | 长尾收敛 | 低-中 |
 | **6 后续（暂不做）** | 巨型孤本视图（WechatBot/FileShare/PublicIp/Everything）结构拆分；App.vue 进一步组件化 | — | — |
 | **7 文档** | 技术栈漂移已修；本蓝图持续更新 | 文档一致 | 低 |
+
+> **全量认领对账（35 视图，无漏网）**：Phase 4 托管家族 19（含 rustdesk/subnetdesk/envcheck）；Phase 5 工具与长尾 16（网络类 8 + frpc 2 + 系统页 4 + ExtPlaceholder + Memo/FileShare 重叠计一）。SettingsView 的主题切换器属 Phase 1 最小改动，其余治理在 Phase 5。
 
 ---
 
@@ -97,7 +100,9 @@ src/
 5. 统一 bindings 导入为 **flat-service** 风格（`import * as XxxAPI from '.../xxxservice'`），仅对**改到的视图**归一，不做大范围重排。
 6. emoji 不作主图标：shell/状态图标逐步迁 `AppIcon` 内联 SVG（增量）。
 7. **主题变量只住在 `styles/tokens.css`**：组件/视图样式一律 `var()` 引用语义 token，不得硬编码颜色、不得就近定义主题变量；主题切换能力依赖此纪律（详见 §7）。
-8. 每 Phase 独立中文 Conventional Commit，可单独回滚；不碰 `internal/**` 后端。
+8. 每 Phase 独立中文 Conventional Commit，可单独回滚；不碰 `internal/**` 后端——**唯一例外**：Phase 1 的 DWM 深色标题栏同步调用（§7.2）。
+9. **新视图冻结线**：Phase 3 模板产出后，新增/增量视图（含新纳入的托管工具模块）必须直接按新骨架 + 共享胶水编写，禁止再复制旧方言样板——否则迁完 15 个又冒出新的复制体。
+10. **独立分支**：重构在专用分支（`refactor/frontend`）小步提交、每 Phase 绿后合回 `dev`，与 dev 上的新功能迭代互不阻塞。
 
 ---
 
@@ -119,10 +124,12 @@ src/
 ### 7.2 主题切换机制
 
 - 主题由 `<html data-theme="light|dark">` 属性承载，`:root[data-theme='dark']` 覆盖语义 token；根上声明 `color-scheme: light dark`。
-- `composables/useTheme.ts`（基于 VueUse `useColorMode` + `useLocalStorage` + `useMediaQuery`）是主题**唯一读写入口**，模块级单例，支持三态：跟随系统 / 固定浅色 / 固定深色，选择持久化，系统切换可自动跟随。
+- **持久化以后端为唯一真相**：`internal/settings` 的 `AppSettings.Theme`（`light|dark|system`，字段已存在但一直闲置）经 SettingsService 绑定读写——设置统一存后端，且便携版随 `data/` 目录整体迁移不丢主题。localStorage 仅作**首帧缓存**（mount 前同步读、先定 `data-theme` 防闪白；启动后异步以后端为准校正）。
+- **原生标题栏随主题**：深色内容需 DWM `ImmersiveDarkMode` 同步 Windows 原生窗框（否则"深窗口顶白标题栏"割裂），需在窗口层加少量 Win32 调用——这是迁移铁律第 8 条"不碰后端"的**唯一受控例外**，Phase 1 单独 commit。
+- `composables/useTheme.ts`（VueUse `useMediaQuery` + 后端 Settings 读写）是主题**唯一读写入口**，模块级单例，三态：跟随系统 / 固定浅色 / 固定深色，系统切换自动跟随。
 - 切换 UI：侧栏底部 + 设置页各一处，共用同一 composable，不各写各的。
 - **深色不是简单反色**：表面四层与 `positive/information/warning/danger` 均有独立双值，按 `design-system.md` 逐 token 设计。
-- 扩展位：将来若加"高对比度/品牌联名主题"，仅需新增一个 `[data-theme='xxx']` 变量块 + `useTheme` 枚举值，零组件改动。
+- 扩展位：将来若加"高对比度/品牌联名主题"，仅需新增一个 `[data-theme='xxx']` 变量块 + 后端 `Theme` 枚举值 + `useTheme` 分支，零组件改动。
 
 ### 7.3 关键 token 值（摘要）
 
@@ -131,11 +138,27 @@ src/
 - **字族**：`--font-text / --font-display / --font-mono`；仅机器值（路径/端口/版本/速率/日志）用 mono + `tabular-nums`。
 - **半径/阴影/动效**：control 8 / element 12 / panel 16 / pill 999；动效 100–180ms、≤6px；**必须含 `prefers-reduced-motion` 全局块**。
 - **无障碍**：`:focus-visible` 清晰环；`pointer:coarse ≥44px`、桌面按钮 ≥36–38px、资源行 ≥52–56px；状态不只靠颜色；网格文本子项 `min-width:0`。
+- **字体栈写实**：`--font-text` 含中文回退（如 `"Segoe UI", "Microsoft YaHei UI", system-ui`），`--font-mono` 用 `Consolas, "Cascadia Mono", monospace`；组件视图不得再自带 `font-family` 声明。
+- **日志终端色板**：frpc 日志抽屉 / 运行日志查看器是 ANSI 彩色终端风格——`--ansi-0..15` 在 `tokens.css` 单独成组（浅/深各一套，或固定深底永不反相，Phase 1 目测定夺），防止为黑底终端设计的色板浮在双主题界面上。
 
 > 完整 token 表、组件组合模式、完工检查单：见 `.claude/skills/hanxi-workbench-ui/references/`。
 
 ---
 
-## 8. 提交拆分（示例）
+## 8. 落地细节与提交纪律（评审补充结论）
 
-`chore(frontend): 引入 ESLint/Vitest 与依赖基线` → `feat(frontend): 落地设计 token/全局样式层与青绿+深色双主题` → `refactor(frontend): 抽取共享 composable/原子组件/格式化与常量单一来源` → `refactor(frontend): 试点迁移托管视图到新骨架(MarkerOn/CCSwitch)` → `refactor(frontend): 铺开托管家族迁移(分批)` → `refactor(frontend): 工具视图顺手治理与 window.confirm 收编`。
+- **测试 seam**：Vitest（happy-dom）没有 Wails 原生层，直接 import `frontend/bindings` 与 `Events` 会挂——Phase 0 先定对绑定服务/事件的 `vi.mock` 打桩约定，之后才有可写的托管视图特征测试。
+- **scoped 特异性陷阱**：scoped 样式带属性选择器，压过全局原子类；迁移时旧 scoped 副本不删净会"改了全局没生效"。对策：`components.css` 原子类用 `:where()` 包装（零特异性），且"迁移即删该视图本地副本"。
+- **Prettier 一次性**：全仓格式化独立成一个 `style:` 提交（`git blame --ignore-rev` 记录该 SHA 保护 blame），此后每 Phase 只格式化 touched 文件，不顺手全仓。
+- **AppIcon 图标集**：emoji→内联 SVG 前需先列 20–30 个状态/操作图标清单；若取自开源图标库，按许可证登记 `docs/THIRD_PARTY_NOTICES.md`。
+- **依赖兼容矩阵**：Vitest 大版本必须实测支持 Vite 8；ESLint flat config + `eslint-plugin-vue` + `@typescript-eslint`；全部锁进 devDeps（`.npmrc` 供应链策略下）。
+- **生成物必须排除在 lint/format/test 之外**：`frontend/bindings/**` 进 ESLint ignores、`.prettierignore`、vitest include 白名单之外——生成物一旦被格式化，CI `verify:bindings`（git diff 校验）当场爆红。
+- **WebView2 能力假设**：`:where()`、`color-mix()`、`100dvh` 等依赖较新 Chromium——WebView2 为 Evergreen 自动更新，Win10 22H2+ 基线基本无忧；若目标机器存在固定版本 Runtime 需先用后写。
+- **localStorage 便携性缺口**：WebView2 的 localStorage 在系统 profile，**不随 `data/` 迁移**（`EverythingView` 列宽等既有用法同病）——需跨机保留的数据一律进后端 settings；localStorage 只配作首帧缓存这类可弃用途。
+- **不受影响项（已核实）**：ddns-go 面板子窗口加载上游原生页面（外部 URL），不吃本项目 token，主题重构无需处理。
+
+---
+
+## 9. 提交拆分（示例）
+
+`chore(frontend): 引入 ESLint/Vitest 与依赖基线` → `feat(frontend): 落地设计 token/全局样式层与青绿+深色双主题` → `refactor(frontend): 抽取共享 composable/原子组件/格式化与常量单一来源` → `refactor(frontend): 试点迁移托管视图到新骨架(MarkerOn/CCSwitch)` → `refactor(frontend): 铺开托管家族迁移(分批)` → `refactor(frontend): 工具视图顺手治理与 window.confirm/prompt 收编`。
