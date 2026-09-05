@@ -133,19 +133,41 @@ func verifySHA256(path, want string) error {
 // verifyPEMagic 校验文件头 MZ 魔数：单文件 exe 无 zip 布局可自检，
 // PE 魔数是"落地文件确实是可执行体而非 HTML 错误页/截断残片"的最低断言。
 func verifyPEMagic(path string) error {
-	f, err := os.Open(path)
+	head, err := readHead(path, 2)
 	if err != nil {
 		return err
-	}
-	defer f.Close()
-	var head [2]byte
-	if _, err := io.ReadFull(f, head[:]); err != nil {
-		return fmt.Errorf("读取文件头失败: %w", err)
 	}
 	if head[0] != 'M' || head[1] != 'Z' {
 		return fmt.Errorf("文件不是有效的 Windows 可执行体（MZ 头缺失，疑似镜像返回了错误页）")
 	}
 	return nil
+}
+
+// verifyMSIMagic 校验 MSI 复合文档魔数 D0 CF 11 E0（OLE 头）。
+// 勿复用 verifyPEMagic：MSI 不是 PE 文件，MZ 断言会把好包全部误拒。
+func verifyMSIMagic(path string) error {
+	head, err := readHead(path, 4)
+	if err != nil {
+		return err
+	}
+	if head[0] != 0xD0 || head[1] != 0xCF || head[2] != 0x11 || head[3] != 0xE0 {
+		return fmt.Errorf("文件不是有效的 Windows Installer 包（MSI 复合文档头缺失，疑似镜像返回了错误页）")
+	}
+	return nil
+}
+
+// readHead 读取文件前 n 字节。
+func readHead(path string, n int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	head := make([]byte, n)
+	if _, err := io.ReadFull(f, head); err != nil {
+		return nil, fmt.Errorf("读取文件头失败: %w", err)
+	}
+	return head, nil
 }
 
 func copyFileTo(src, dst string) error {

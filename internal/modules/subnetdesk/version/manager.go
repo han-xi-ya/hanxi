@@ -1,10 +1,13 @@
 package version
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -75,6 +78,7 @@ func (m *Manager) ListInstalled() ([]SDVersionInfo, error) {
 
 		info := SDVersionInfo{
 			Version: "v" + strings.TrimPrefix(e.Name(), dirPrefix),
+			Form:    FormPortable,
 			ExePath: exe,
 			Dir:     dir,
 			Size:    fi.Size(),
@@ -102,6 +106,20 @@ func (m *Manager) ListInstalled() ([]SDVersionInfo, error) {
 	return list, nil
 }
 
+// resolveRelease 按规范版本号（vX.Y.Z）定位远程 release（10 分钟缓存复用）。
+func (m *Manager) resolveRelease(version string) (*SDRelease, error) {
+	releases, err := remoteCache.get()
+	if err != nil {
+		return nil, fmt.Errorf("获取远程版本列表失败: %w", err)
+	}
+	for i := range releases {
+		if releases[i].Version == version {
+			return &releases[i], nil
+		}
+	}
+	return nil, fmt.Errorf("远程列表不存在版本 %s", version)
+}
+
 // Download 下载便携 packer exe 安装到 versions/subnetdesk_X.Y.Z/subnetdesk.exe。
 // 单文件无 zip 布局，完整性校验：
 //  1. 官方 sha256（GitHub digest，第一主依据）；
@@ -118,20 +136,8 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 	}
 
 	// 1. 解析目标版本对应的远程资产
-	releases, err := remoteCache.get()
+	rel, err := m.resolveRelease(version)
 	if err != nil {
-		emit("error", 0, 0, fmt.Sprintf("获取远程版本列表失败: %v", err))
-		return err
-	}
-	var rel *SDRelease
-	for i := range releases {
-		if releases[i].Version == version {
-			rel = &releases[i]
-			break
-		}
-	}
-	if rel == nil {
-		err := fmt.Errorf("远程列表不存在版本 %s", version)
 		emit("error", 0, 0, err.Error())
 		return err
 	}
@@ -296,6 +302,204 @@ func (m *Manager) ImportLocal(path string) (SDVersionInfo, error) {
 		IsImport:    true,
 		Source:      filepath.Dir(srcExe),
 	}, nil
+}
+
+// ---------- 安装版通道（MSI 下载 → msiexec 交互安装 → 注册表探测） ----------
+
+// installerKindValue DownloadProgress.Kind 中标识安装版资产的取值（"" 为便携）。
+const installerKindValue = "installer"
+
+// installWizardTimeout 安装向导等待上限：msiexec 前台向导含 UAC 确认与用户
+// 操作间歇，窗口必须宽裕；超时判失败但 MSI 可能仍在装机，文案如实提醒。
+var installWizardTimeout = 30 * time.Minute
+
+// installerCacheDir 安装版 MSI 缓存目录（versions 同级，按产品分子目录）。
+// 独立于版本隔离目录：ListInstalled 按 subnetdesk_ 前缀扫描，混放会被损坏判定
+// 逻辑误伤；且"下载成功但用户未点安装/中途取消"的包需留存供重试免重下。
+func (m *Manager) installerCacheDir() string {
+	return filepath.Join(filepath.Dir(m.versionsDir), "installers", "subnetdesk")
+}
+
+// InstallerCached 返回指定版本已缓存且完好（字节数+官方哈希+MSI 魔数）的安装包
+// 路径；"" = 未下载或缓存已损坏（需重新下载）。
+func (m *Manager) InstallerCached(rel *SDRelease) string {
+	if rel == nil || rel.InstallerName == "" {
+		return ""
+	}
+	msi := filepath.Join(m.installerCacheDir(), rel.InstallerName)
+	fi, err := os.Stat(msi)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() != rel.InstallerSize {
+		return ""
+	}
+	if verifySHA256(msi, rel.InstallerSHA256) != nil || verifyMSIMagic(msi) != nil {
+		return ""
+	}
+	return msi
+}
+
+// DownloadInstaller 下载指定版本安装版 MSI 至缓存目录。完整性三层：
+// 官方 sha256（GitHub digest）→ 字节数 → MSI 复合文档魔数（勿用 PE MZ 断言）。
+// 缓存已命中则直接返回（不重发进度事件，调用方按 done 语义处理）。
+func (m *Manager) DownloadInstaller(version string, onProgress func(p DownloadProgress)) error {
+	emit := func(stage string, done, total int64, msg string) {
+		if onProgress != nil {
+			onProgress(DownloadProgress{Version: version, Kind: installerKindValue, Stage: stage, Done: done, Total: total, Message: msg})
+		}
+	}
+
+	rel, err := m.resolveRelease(version)
+	if err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
+	if rel.InstallerName == "" {
+		err := fmt.Errorf("版本 %s 上游未提供 Windows x64 安装包（MSI）", version)
+		emit("error", 0, 0, err.Error())
+		return err
+	}
+	if m.InstallerCached(rel) != "" {
+		return nil
+	}
+
+	cacheDir := m.installerCacheDir()
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		emit("error", 0, 0, fmt.Sprintf("创建安装包缓存目录失败: %v", err))
+		return err
+	}
+	tmpFile, err := os.CreateTemp(cacheDir, "dl-*.msi")
+	if err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+	tmpFile.Close()
+
+	emit("downloading", 0, rel.InstallerSize, "")
+	if err := downloadTo(m.client, assetMirrors(rel.Version, rel.InstallerName), tmpPath, func(done int64) {
+		emit("downloading", done, rel.InstallerSize, "")
+	}); err != nil {
+		emit("error", 0, rel.InstallerSize, fmt.Sprintf("下载失败: %v", err))
+		return err
+	}
+	actual, err := fileSize(tmpPath)
+	if err != nil {
+		emit("error", 0, rel.InstallerSize, fmt.Sprintf("读取临时文件失败: %v", err))
+		return err
+	}
+	if actual != rel.InstallerSize {
+		err := fmt.Errorf("下载不完整：期望 %d 字节，实际 %d 字节", rel.InstallerSize, actual)
+		emit("error", 0, rel.InstallerSize, err.Error())
+		return err
+	}
+	emit("verify", 0, 0, "")
+	if err := verifySHA256(tmpPath, rel.InstallerSHA256); err != nil {
+		emit("error", 0, rel.InstallerSize, err.Error())
+		return fmt.Errorf("官方哈希校验失败（下载文件疑似被篡改或损坏）: %w", err)
+	}
+	if err := verifyMSIMagic(tmpPath); err != nil {
+		emit("error", 0, rel.InstallerSize, err.Error())
+		return err
+	}
+	msiPath := filepath.Join(cacheDir, rel.InstallerName)
+	if err := placeFile(tmpPath, msiPath); err != nil {
+		emit("error", 0, 0, fmt.Sprintf("安装包落位失败: %v", err))
+		return err
+	}
+	_ = writeJSON(filepath.Join(cacheDir, strings.TrimSuffix(rel.InstallerName, ".msi")+".meta.json"), map[string]any{
+		"cachedAt":    time.Now().Format("2006-01-02 15:04:05"),
+		"source":      rel.AssetName + " (installer)",
+		"msiSize":     rel.InstallerSize,
+		"assetSHA256": rel.InstallerSHA256,
+	})
+	return nil
+}
+
+// Install 以 msiexec 前台拉起上游安装向导（交互式）并同步等待完成。
+// perMachine 包（上游 WiX 源码实证 Scope="perMachine"）的 UAC 授权由
+// Windows Installer 自行弹窗，Hanxi 侧无需也无法代答——用户在向导与 UAC
+// 上的操作决定装机结果，故结束后以注册表探测为准做事实核验。
+func (m *Manager) Install(version string) error {
+	rel, err := m.resolveRelease(version)
+	if err != nil {
+		return err
+	}
+	msi := m.InstallerCached(rel)
+	if msi == "" {
+		return fmt.Errorf("版本 %s 的安装包未下载或缓存已失效，请先完成下载", version)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), installWizardTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "msiexec.exe", "/i", msi)
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return installExitError(ee.ExitCode())
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("等待安装向导超时（%v）：若安装仍在进行请勿重复发起，完成后页面状态会自动刷新", installWizardTimeout)
+		}
+		return fmt.Errorf("无法启动安装向导: %w", err)
+	}
+	if _, ok := DetectSystemInstall(); !ok {
+		return fmt.Errorf("安装程序已退出但未探测到系统安装版：请确认向导一路走完未被中途取消，或先在系统设置中卸载残留后重试")
+	}
+	return nil
+}
+
+// normalizeDisplayVersion 截取安装版注册表 DisplayVersion 前三段为纯语义版本。
+// 真机实证形态为四段"X.Y.Z.构建修订号"（如 1.3.0.29797570）；
+// 截不出合法 X.Y.Z 时返回空串（调用方决定兜底）。
+func normalizeDisplayVersion(displayVersion string) string {
+	dv := strings.TrimPrefix(strings.TrimSpace(displayVersion), "v")
+	segs := strings.Split(dv, ".")
+	if len(segs) < 3 {
+		return ""
+	}
+	head := strings.Join(segs[:3], ".")
+	if !plainVersionRe.MatchString(head) {
+		return ""
+	}
+	return head
+}
+
+// installExitError 翻译 Windows Installer 常见退出码（ERROR_*）为面向用户的说明。
+// 成功码（0/3010 需重启）不会走到本函数（Run 返回 nil）。
+func installExitError(code int) error {
+	switch code {
+	case 1602, 1223:
+		return fmt.Errorf("安装已取消（向导或 UAC 授权被拒绝）")
+	case 1618:
+		return fmt.Errorf("Windows Installer 正忙于另一个安装/卸载任务（系统同一时刻仅允许一个），请稍候再试")
+	case 1603:
+		return fmt.Errorf("安装失败（Windows 安装致命错误，常见诱因：管理员授权未通过、目标文件被占用）")
+	case 1619, 1620:
+		return fmt.Errorf("安装包无法打开（退出码 %d），文件可能已损坏，请删除缓存后重新下载", code)
+	default:
+		return fmt.Errorf("安装未完成：Windows Installer 退出码 %d", code)
+	}
+}
+
+// SystemVersion 探测系统安装版（注册表事实来源，见 installed_windows.go），
+// 以统一模型返回；未安装时 ok=false。
+func (m *Manager) SystemVersion() (SDVersionInfo, bool) {
+	si, ok := DetectSystemInstall()
+	if !ok {
+		return SDVersionInfo{}, false
+	}
+	fi, _ := os.Stat(si.ExePath)
+	info := SDVersionInfo{
+		Version: si.Version,
+		Form:    FormInstalled,
+		ExePath: si.ExePath,
+		Dir:     si.Dir,
+	}
+	if fi != nil {
+		info.Size = fi.Size()
+		info.InstalledAt = fi.ModTime().Format("2006-01-02 15:04:05")
+	}
+	return info, true
 }
 
 // resolveImportExe 归一化导入入参：文件路径直接用（须为便携 exe 形态名）；

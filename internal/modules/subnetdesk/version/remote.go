@@ -95,6 +95,16 @@ func fetchJSON(urls []string) ([]byte, error) {
 	return nil, fmt.Errorf("all GitHub API mirrors failed: %w", lastErr)
 }
 
+// digestHex 解析 GitHub 资产 digest（"sha256:<hex>"）为裸 hex；
+// 缺失/畸形（长度不符）返回空串——调用方按"该资产不可用"处理。
+func digestHex(digest string) string {
+	sha := strings.TrimPrefix(strings.ToLower(digest), digestPrefix)
+	if len(sha) != 64 {
+		return ""
+	}
+	return sha
+}
+
 // findPortableAsset 从 release 资产中筛选 Windows x64 便携 packer exe。
 // 资产名形如 subnetdesk-1.3.0-x86_64.exe；同 release 还含 aarch64.exe / msi /
 // deb / rpm / AppImage / apk / tar.gz 等——"-x86_64.exe" 结尾天然排除
@@ -115,6 +125,35 @@ func findPortableAsset(assets []asset, version string) (asset, bool) {
 		}
 	}
 	return asset{}, false
+}
+
+// findInstallerAsset 筛选 Windows x64 安装版 MSI（subnetdesk-1.3.0-x86_64.msi，
+// WiX perMachine 包，上游 fork 保留 RustDesk 完整 msi 工程，真机实证与便携
+// exe 成对发布）。官方 digest 缺失的候选视为不可用（完整性第一层校验不能缺位）。
+func findInstallerAsset(assets []asset, version string) (asset, string, bool) {
+	ver := strings.TrimPrefix(version, "v")
+	needName := strings.ToLower("subnetdesk-" + ver + "-x86_64.msi")
+	var fallback asset
+	var fallbackSHA string
+	for _, a := range assets {
+		lower := strings.ToLower(a.Name)
+		sha := digestHex(a.Digest)
+		if sha == "" {
+			continue
+		}
+		if lower == needName {
+			return a, sha, true
+		}
+		if fallback == (asset{}) && strings.HasSuffix(lower, "-x86_64.msi") &&
+			strings.Contains(lower, ver) && !strings.Contains(lower, "sciter") &&
+			!strings.Contains(lower, "aarch64") {
+			fallback, fallbackSHA = a, sha
+		}
+	}
+	if fallback != (asset{}) {
+		return fallback, fallbackSHA, true
+	}
+	return asset{}, "", false
 }
 
 // releaseCache 远程列表缓存（防 GitHub 限流）。
@@ -170,11 +209,11 @@ func parseReleasesBody(body []byte) ([]SDRelease, error) {
 			continue
 		}
 		// 官方 sha256 缺失的 release 不入列表：完整性校验第一层不能缺位
-		sha := strings.TrimPrefix(strings.ToLower(arch.Digest), digestPrefix)
-		if len(sha) != 64 {
+		sha := digestHex(arch.Digest)
+		if sha == "" {
 			continue
 		}
-		list = append(list, SDRelease{
+		item := SDRelease{
 			Version:   r.TagName,
 			Published: r.PublishedAt,
 			IsPre:     r.Prerelease,
@@ -182,7 +221,15 @@ func parseReleasesBody(body []byte) ([]SDRelease, error) {
 			AssetURL:  arch.URL,
 			Size:      arch.Size,
 			SHA256:    sha,
-		})
+		}
+		// 安装版为附属通道：上游未带 msi 只置空该版本字段，不影响版本入列
+		if inst, instSHA, ok := findInstallerAsset(r.Assets, r.TagName); ok {
+			item.InstallerName = inst.Name
+			item.InstallerURL = inst.URL
+			item.InstallerSize = inst.Size
+			item.InstallerSHA256 = instSHA
+		}
+		list = append(list, item)
 	}
 	return list, nil
 }
