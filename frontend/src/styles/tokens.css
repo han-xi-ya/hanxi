@@ -120,7 +120,6 @@
   --warning: var(--state-warning);
   --color-text-primary: var(--color-text);
   --color-text-secondary: var(--color-text-muted);
-  --color-text-muted: var(--color-text-muted);
   --color-bg-card: var(--surface-panel);
   --color-bg-input: var(--surface-soft);
   --color-bg-hover: var(--surface-hover);
