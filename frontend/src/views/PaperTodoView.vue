@@ -1,13 +1,23 @@
 <script setup lang="ts">
 // PaperTodo 便签托管工作台：控制台（唤窗/收拢/退出）+ 版本管理（双变体下载、导入本地、卸载保留数据）
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, computed, watch, onMounted } from 'vue'
 import * as PaperAPI from '../../bindings/hanxi/internal/modules/papertodo/papertodoservice'
 import type { PaperRelease, PaperVersionInfo, DownloadProgress } from '../../bindings/hanxi/internal/modules/papertodo/version/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/papertodo/instance/models'
 import type { ControlOutcome, QuitOutcome, RuntimeStatus } from '../../bindings/hanxi/internal/modules/papertodo/models'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { usePolling } from '../composables/usePolling'
+import { useClipboard } from '../composables/useClipboard'
+import { useConfirm } from '../composables/useConfirm'
+import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
+import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
+import PageHeader from '../components/ui/PageHeader.vue'
+import MainTabNav from '../components/ui/MainTabNav.vue'
+import UiBanner from '../components/ui/UiBanner.vue'
+import UiButton from '../components/ui/UiButton.vue'
+import UiEmptyState from '../components/ui/UiEmptyState.vue'
 
 type Variant = 'self-contained' | 'no-runtime'
 
@@ -27,14 +37,17 @@ const downloading = ref<Record<string, DownloadProgress>>({})
 const lastVariant = ref<Record<string, Variant>>({})
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
+const { prompt } = usePrompt()
+const { copy } = useClipboard()
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 ccswitch/markeron 同构）
 const activeMainTab = ref<'console' | 'versions'>('console')
 
-let unlistenDownload: (() => void) | null = null
-let unlistenState: (() => void) | null = null
-let pollTimer: ReturnType<typeof setInterval> | null = null
-let tickTimer: ReturnType<typeof setInterval> | null = null
+const MAIN_TABS = [
+  { key: 'console', label: '📄 控制台' },
+  { key: 'versions', label: '📦 版本管理' },
+]
 
 // ---------- 派生状态 ----------
 const state = computed(() => snap.value?.state ?? '')
@@ -42,6 +55,7 @@ const isRunningOrStarting = computed(() => state.value === 'running' || state.va
 const isExternal = computed(() => state.value === 'external')
 const runningVersion = computed(() => snap.value?.version ?? '')
 
+// 注意：习惯文案"运行中"与 constants/status 通用"已启动"不一致，迁移保持逐字现状。
 const stateText = computed(() => {
   switch (state.value) {
     case 'running': return '运行中'
@@ -56,16 +70,16 @@ const stateText = computed(() => {
 const banner = computed(() => {
   if (state.value === 'external') {
     return {
-      cls: 'banner-warn',
+      tone: 'warn' as const,
       text: '检测到外部 PaperTodo 实例（非 Hanxi 托管）。可代为唤回/收拢纸片；退出请在其纸片顶栏或托盘菜单操作。',
     }
   }
   if (state.value === 'failed') {
-    return { cls: 'banner-error', text: snap.value?.error || 'PaperTodo 异常退出' }
+    return { tone: 'error' as const, text: snap.value?.error || 'PaperTodo 异常退出' }
   }
   if (state.value === 'running') {
     return {
-      cls: 'banner-ok',
+      tone: 'ok' as const,
       text: 'PaperTodo 正在运行：便签在它自己的桌面纸片上编辑，内容自动保存。便签数据存于托管目录（data.json），升级不丢、卸载保留。',
     }
   }
@@ -112,26 +126,6 @@ async function refreshStatus() {
     // 轮询静默失败：保留上次快照即可
     console.warn('papertodo GetStatus failed:', getErrorMessage(e))
   }
-}
-
-// ---------- 格式化 ----------
-function fmtSize(bytes?: number): string {
-  if (!bytes) return '—'
-  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024).toFixed(0)} KB`
-}
-
-function fmtDate(s?: string): string {
-  if (!s) return '—'
-  return s.slice(0, 10)
-}
-
-function fmtDuration(sec: number): string {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
 function stepOf(p: DownloadProgress): number {
@@ -219,7 +213,12 @@ function retryDownload(rel: PaperRelease) {
 
 async function removeInstalled() {
   const hadData = installed.value?.hasData
-  if (!window.confirm(`确定卸载 PaperTodo？\n只删除程序本体与托管元信息——${hadData ? '你的便签数据（data.json、图片库、plugins）将原地保留' : '当前没有便签数据'}。\n下次安装或导入本地副本时数据自动接上。`)) return
+  const ok = await confirm({
+    title: '确定卸载 PaperTodo？',
+    description: `只删除程序本体与托管元信息——${hadData ? '你的便签数据（data.json、图片库、plugins）将原地保留' : '当前没有便签数据'}。\n下次安装或导入本地副本时数据自动接上。`,
+    tone: 'danger',
+  })
+  if (!ok) return
   try {
     await PaperAPI.RemoveInstalled()
     showToast('已卸载 PaperTodo（便签数据已保留）')
@@ -231,7 +230,12 @@ async function removeInstalled() {
 }
 
 async function importLocal() {
-  const path = window.prompt('请输入本机已有 PaperTodo 的目录完整路径（含 PaperTodo.exe）\n提示：便签数据（data.json 等）与 exe 同目录，导入时会一起收编进托管目录')
+  const path = await prompt({
+    title: '导入本地副本',
+    label: '请输入本机已有 PaperTodo 的目录完整路径（含 PaperTodo.exe）',
+    description: '提示：便签数据（data.json 等）与 exe 同目录，导入时会一起收编进托管目录',
+    placeholder: 'C:\\...\\PaperTodo',
+  })
   if (!path) return
   try {
     busy.value = true
@@ -301,26 +305,8 @@ async function createShortcut() {
 }
 
 async function copyRepo() {
-  const text = repoUrl.value
-  const fallback = (): boolean => {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(ta)
-    return ok
-  }
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text)
-    } else if (!fallback()) {
-      throw new Error('execCommand 不可用')
-    }
-  } catch (e) {
-    showToast('复制失败: ' + getErrorMessage(e))
+  if (!(await copy(repoUrl.value))) {
+    showToast('复制失败: 剪贴板不可用')
     return
   }
   showToast('仓库地址已复制')
@@ -342,93 +328,58 @@ async function openReleases() {
   }
 }
 
-// ---------- 时长 ticker 与轮询管理 ----------
-function startTimers() {
-  if (pollTimer) return // 防重复开启（onMounted 后 onActivated 会再触发一次）
-  pollTimer = setInterval(refreshStatus, 2500) // 状态兜底轮询（事件推送之外）
-  tickTimer = setInterval(() => {
-    if (snap.value?.state === 'running' && snap.value.startedAt) {
-      const started = new Date(snap.value.startedAt).getTime()
-      if (!Number.isNaN(started)) {
-        uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
-      }
+// ---------- 时长 ticker 与状态轮询（usePolling 内置 KeepAlive 生命周期契约） ----------
+const statusPolling = usePolling(refreshStatus, 2500) // 状态兜底轮询（事件推送之外）
+usePolling(() => {
+  if (snap.value?.state === 'running' && snap.value.startedAt) {
+    const started = new Date(snap.value.startedAt).getTime()
+    if (!Number.isNaN(started)) {
+      uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
     }
-  }, 1000)
-}
+  }
+}, 1000, { immediateFirstRun: false })
 
-function stopTimers() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
-  if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
-  uptimeSec.value = 0
-}
-
-// ---------- 生命周期 ----------
-onMounted(async () => {
-  unlistenDownload = Events.On('papertodo:version-download', (event) => {
-    const t = event.data as DownloadProgress
-    if (!t || !t.version) return
-    downloading.value = { ...downloading.value, [t.version]: t }
-    if (t.stage === 'done') {
-      setTimeout(() => {
-        const next = { ...downloading.value }
-        delete next[t.version]
-        downloading.value = next
-      }, 800)
-      loadVersions()
-    }
-  })
-
-  unlistenState = Events.On('papertodo:instance-state', (event) => {
-    const s = event.data as Snapshot
-    if (!s) return
-    snap.value = s
-    if (s.state !== 'running') uptimeSec.value = 0
-  })
-
-  await Promise.all([refreshStatus(), loadVersions(), loadExtras()])
+// 停止轮询（切后台/卸载）时运行时长归零——对齐迁移前 stopTimers 语义
+watch(statusPolling.isPolling, (running) => {
+  if (!running) uptimeSec.value = 0
 })
 
-// KeepAlive：页面激活时恢复轮询并立即刷新一帧，退后台时暂停避免空转
-onActivated(() => {
-  startTimers()
-  refreshStatus()
+// ---------- 事件订阅（useWailsEvent 自动注销）与初始装载 ----------
+useWailsEvent<DownloadProgress>('papertodo:version-download', (t) => {
+  if (!t || !t.version) return
+  downloading.value = { ...downloading.value, [t.version]: t }
+  if (t.stage === 'done') {
+    setTimeout(() => {
+      const next = { ...downloading.value }
+      delete next[t.version]
+      downloading.value = next
+    }, 800)
+    loadVersions()
+  }
 })
 
-onDeactivated(() => {
-  stopTimers()
+useWailsEvent<Snapshot>('papertodo:instance-state', (s) => {
+  if (!s) return
+  snap.value = s
+  if (s.state !== 'running') uptimeSec.value = 0
 })
 
-onUnmounted(() => {
-  stopTimers()
-  if (unlistenDownload) unlistenDownload()
-  if (unlistenState) unlistenState()
+onMounted(() => {
+  // 状态首帧由 usePolling 的 mounted 即触发（immediateFirstRun）
+  void Promise.all([loadVersions(), loadExtras()])
 })
 </script>
 
 <template>
   <section class="page papertodo-view">
-    <div class="header-row">
-      <div>
-        <h1>PaperTodo 便签</h1>
-        <p class="subtitle">托管极简桌面便签 PaperTodo：官方绿色单文件双变体下载、单目录覆盖升级（便签数据永不迁移）、JobObject 启停；唤窗/收拢/退出走上游官方命令通道。</p>
-      </div>
-      <div class="main-tab-nav">
-        <button
-          class="main-tab-btn"
-          :class="{ active: activeMainTab === 'console' }"
-          @click="activeMainTab = 'console'"
-        >
-          📄 控制台
-        </button>
-        <button
-          class="main-tab-btn"
-          :class="{ active: activeMainTab === 'versions' }"
-          @click="activeMainTab = 'versions'"
-        >
-          📦 版本管理
-        </button>
-      </div>
-    </div>
+    <PageHeader
+      title="PaperTodo 便签"
+      subtitle="托管极简桌面便签 PaperTodo：官方绿色单文件双变体下载、单目录覆盖升级（便签数据永不迁移）、JobObject 启停；唤窗/收拢/退出走上游官方命令通道。"
+    >
+      <template #actions>
+        <MainTabNav v-model="activeMainTab" :tabs="MAIN_TABS" />
+      </template>
+    </PageHeader>
 
     <div v-if="listError" class="error-box">{{ listError }}</div>
 
@@ -446,29 +397,32 @@ onUnmounted(() => {
             <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
           </div>
           <div class="control-btns">
-            <button
-              class="btn btn-secondary btn-small"
+            <UiButton
+              variant="secondary"
+              small
               :disabled="busy || state === 'starting'"
               :title="state === 'running' ? '唤回全部纸片（show 命令）' : state === 'starting' ? '启动中…' : '启动 PaperTodo 并把纸片放上桌面'"
               @click="openWindow"
-            >🗔 唤回纸片</button>
-            <button
-              class="btn btn-secondary btn-small"
+            >🗔 唤回纸片</UiButton>
+            <UiButton
+              variant="secondary"
+              small
               :disabled="busy || (state !== 'running' && !isExternal)"
               title="收拢全部纸片（hide 命令，托盘与双击召回不受影响）"
               @click="hidePapers"
-            >🗜 收拢纸片</button>
-            <button
-              class="btn btn-danger-outline btn-small"
+            >🗜 收拢纸片</UiButton>
+            <UiButton
+              variant="danger"
+              small
               :disabled="busy || (state !== 'running' && state !== 'starting' && !isExternal)"
               :title="isExternal ? '外部实例请在其托盘/顶栏退出' : '发送 exit 命令优雅退出（宽限后强杀兜底）'"
               @click="quitPaperTodo"
-            >⏻ 退出</button>
+            >⏻ 退出</UiButton>
           </div>
         </div>
       </div>
 
-      <div v-if="banner" class="hint-banner slim" :class="banner.cls">{{ banner.text }}</div>
+      <UiBanner v-if="banner" :tone="banner.tone">{{ banner.text }}</UiBanner>
       <div v-else-if="state === 'stopped'" class="hint-line">
         尚未运行：点击「唤回纸片」启动，便签直接在桌面纸片上书写。数据存于托管目录，Hanxi 不读取便签内容。
       </div>
@@ -490,14 +444,14 @@ onUnmounted(() => {
           <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
           <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出不影响便签，纸片继续常驻桌面）</span></span>
         </label>
-        <button class="btn btn-secondary btn-small" @click="createShortcut">🖥 创建桌面快捷方式</button>
+        <UiButton variant="secondary" small @click="createShortcut">🖥 创建桌面快捷方式</UiButton>
       </div>
       <div class="repo-row">
         <span class="k">GitHub 仓库</span>
         <code class="mono repo-addr">{{ repoUrl }}</code>
-        <button class="link-btn" @click="copyRepo">复制</button>
-        <button class="link-btn" @click="openRepo">浏览器打开</button>
-        <button class="link-btn" @click="openReleases">Releases 页</button>
+        <button class="link-button" @click="copyRepo">复制</button>
+        <button class="link-button" @click="openRepo">浏览器打开</button>
+        <button class="link-button" @click="openReleases">Releases 页</button>
       </div>
     </div>
 
@@ -509,10 +463,10 @@ onUnmounted(() => {
           <span class="hint-dim">单目录覆盖升级：便签数据原地保留；「卸载」只删程序不删数据；回滚旧版 = 在下方重新安装该版本</span>
         </div>
         <div class="btn-group">
-          <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地副本</button>
-          <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadVersions">
+          <UiButton variant="secondary" small :disabled="busy" @click="importLocal">⇥ 导入本地副本</UiButton>
+          <UiButton variant="secondary" small :disabled="loading" @click="loadVersions">
             {{ loading ? '刷新中…' : '↻ 刷新远程列表' }}
-          </button>
+          </UiButton>
         </div>
       </div>
 
@@ -551,17 +505,17 @@ onUnmounted(() => {
           <div v-if="installed.isImport && installed.source" class="meta-line"><span class="k">来源</span><span class="hint-dim">{{ installed.source }}</span></div>
         </div>
         <div class="inst-actions">
-          <button class="btn btn-secondary btn-small" @click="openDir(installed.dir)">📂 打开位置</button>
-          <button class="btn btn-danger-outline btn-small" :disabled="isRunningOrStarting" :title="isRunningOrStarting ? '请先退出 PaperTodo' : '只删程序，便签数据原地保留'" @click="removeInstalled">卸载（保留数据）</button>
+          <UiButton variant="secondary" small @click="openDir(installed.dir)">📂 打开位置</UiButton>
+          <UiButton variant="danger" small :disabled="isRunningOrStarting" title="只删程序，便签数据原地保留" @click="removeInstalled">卸载（保留数据）</UiButton>
         </div>
       </div>
-      <div v-else class="empty-state first-use">
+      <UiEmptyState v-else class="first-use">
         <p>尚未安装 PaperTodo —— 下载官方绿色版，或「导入本地副本」把你机器上已有的 PaperTodo 目录（连同便签数据）收编进来</p>
-        <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0], variant)">
+        <UiButton v-if="releases.length" variant="primary" @click="download(releases[0], variant)">
           下载最新版 {{ releases[0].version }}（{{ variant === 'no-runtime' ? '精简版' : '完整版' }}）
-        </button>
-        <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新远程列表</button>
-      </div>
+        </UiButton>
+        <UiButton v-else-if="!loading" variant="secondary" @click="loadVersions">↻ 刷新远程列表</UiButton>
+      </UiEmptyState>
 
       <!-- 远程可用版本 -->
       <div class="section-title"><h3>远程可用版本</h3></div>
@@ -580,7 +534,7 @@ onUnmounted(() => {
             <tr v-for="rel in releases" :key="rel.version">
               <td><strong class="ver-name">{{ rel.version }}</strong></td>
               <td>
-                <!-- 类名刻意用 pt- 前缀——App.vue 全局样式有 .status-dot（7px），防碰撞压扁徽标 -->
+                <!-- 类名刻意用 pt- 前缀与全局原子族隔离 -->
                 <span v-if="statusOf(rel) === 'installed'" class="pt-ver-status installed">托管中</span>
                 <span v-else-if="statusOf(rel) === 'downloading'" class="pt-ver-status downloading">下载中</span>
                 <span v-else-if="statusOf(rel) === 'error'" class="pt-ver-status error">失败</span>
@@ -598,18 +552,18 @@ onUnmounted(() => {
                 </template>
                 <template v-else>
                   <span class="hint-dim size-hint">{{ fmtSize(rel.selfContained?.size) }}</span>
-                  <button v-if="cellAction(rel, 'self-contained') === 'download'" class="btn btn-primary btn-small" @click="download(rel, 'self-contained')">安装</button>
-                  <button v-else-if="cellAction(rel, 'self-contained') === 'switch'" class="btn btn-secondary btn-small" title="覆盖安装为完整版变体（便签数据不动）" @click="download(rel, 'self-contained')">换装</button>
-                  <span v-else class="btn btn-ghost btn-small">已安装</span>
+                  <UiButton v-if="cellAction(rel, 'self-contained') === 'download'" variant="primary" small @click="download(rel, 'self-contained')">安装</UiButton>
+                  <UiButton v-else-if="cellAction(rel, 'self-contained') === 'switch'" variant="secondary" small title="覆盖安装为完整版变体（便签数据不动）" @click="download(rel, 'self-contained')">换装</UiButton>
+                  <span v-else class="chip chip-positive">已安装</span>
                   <a v-if="installed && installed.version !== rel.version" class="retry-link" :title="`覆盖当前托管的 ${installed.version}，便签数据保留`" @click="download(rel, 'self-contained')">装此版</a>
                 </template>
               </td>
               <td class="asset-cell">
                 <template v-if="!(statusOf(rel) === 'downloading' && downloading[rel.version])">
                   <span class="hint-dim size-hint">{{ fmtSize(rel.noRuntime?.size) }}</span>
-                  <button v-if="cellAction(rel, 'no-runtime') === 'download'" class="btn btn-primary btn-small" :class="{ 'btn-dim': runtime && !runtime.hasDesktop10 }" :title="runtime && !runtime.hasDesktop10 ? '未检测到 .NET 10 桌面运行时，装好后可能无法启动' : ''" @click="download(rel, 'no-runtime')">安装</button>
-                  <button v-else-if="cellAction(rel, 'no-runtime') === 'switch'" class="btn btn-secondary btn-small" title="覆盖安装为精简版变体（便签数据不动）" @click="download(rel, 'no-runtime')">换装</button>
-                  <span v-else class="btn btn-ghost btn-small">已安装</span>
+                  <UiButton v-if="cellAction(rel, 'no-runtime') === 'download'" variant="primary" small :class="{ 'btn-dim': runtime && !runtime.hasDesktop10 }" :title="runtime && !runtime.hasDesktop10 ? '未检测到 .NET 10 桌面运行时，装好后可能无法启动' : ''" @click="download(rel, 'no-runtime')">安装</UiButton>
+                  <UiButton v-else-if="cellAction(rel, 'no-runtime') === 'switch'" variant="secondary" small title="覆盖安装为精简版变体（便签数据不动）" @click="download(rel, 'no-runtime')">换装</UiButton>
+                  <span v-else class="chip chip-positive">已安装</span>
                   <a v-if="installed && installed.version !== rel.version" class="retry-link" :title="`覆盖当前托管的 ${installed.version}，便签数据保留`" @click="download(rel, 'no-runtime')">装此版</a>
                 </template>
                 <span v-else class="hint-dim">—</span>
@@ -627,141 +581,106 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 仅保留本视图独有样式；通用原子（.btn/.tbl/.chip/.banner/.empty-state/
+   .error-box/.mono/.link-button/header-row/main-tab/pulse）已上收。 */
 .papertodo-view { display: flex; flex-direction: column; gap: 10px; }
-.header-row { display: flex; justify-content: space-between; align-items: flex-start; }
-.header-row h1 { margin: 0 0 6px; }
-.subtitle { color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.6; }
-.error-box { padding: 10px 14px; background: #ffebe9; color: var(--danger); border: 1px solid rgba(207, 34, 46, 0.2); border-radius: 6px; font-size: 13px; }
 
-/* 顶层主选项卡（与 CCSwitchView 同款） */
-.main-tab-nav { display: flex; background: var(--bg-hover); padding: 3px; border-radius: 8px; gap: 2px; }
-.main-tab-btn { background: transparent; border: none; padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer; transition: all 0.15s ease; }
-.main-tab-btn:hover { color: var(--text-main); }
-.main-tab-btn.active { background: var(--bg-app); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
-.tab-body { display: flex; flex-direction: column; gap: 10px; }
+.tab-body .banner { padding: 8px 12px; font-size: 12px; }
 
 /* ---------- 顶部整合控制条 ---------- */
-.control-bar { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.control-bar { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
 .control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* 信号灯类名带 pt- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
-.pt-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--text-subtle); flex-shrink: 0; }
-.pt-status-light.running { background: var(--success); box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.15); }
-.pt-status-light.starting { background: var(--accent); animation: pulse 1s infinite; }
-.pt-status-light.external { background: #9a6700; box-shadow: 0 0 0 3px rgba(154, 103, 0, 0.15); }
-.pt-status-light.failed { background: var(--danger); box-shadow: 0 0 0 3px rgba(207, 34, 46, 0.15); }
-.status-word { font-size: 15px; font-weight: 700; color: var(--text-main); }
-.ver-pill { font-family: Consolas, monospace; font-size: 12px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 8px; color: var(--text-main); }
-.pid-tag { font-size: 11px; color: var(--text-subtle); }
-.uptime-tag { font-size: 11px; color: var(--text-subtle); }
+.pt-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
+.pt-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
+.pt-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
+.pt-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
+.pt-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
+.status-word { font-size: 15px; font-weight: 700; color: var(--color-text); }
+.ver-pill { font-family: var(--font-mono); font-size: 12px; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 8px; color: var(--color-text); }
+.pid-tag { font-size: 11px; color: var(--color-text-subtle); }
+.uptime-tag { font-size: 11px; color: var(--color-text-subtle); }
 .control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ---------- 提示条与说明卡 ---------- */
-.hint-banner { padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
-.hint-banner.slim { padding: 8px 12px; font-size: 12px; }
-.banner-warn { background: #fff8c5; border-color: rgba(191, 135, 0, 0.3); color: #9a6700; }
-.banner-error { background: #ffebe9; border-color: rgba(207, 34, 46, 0.25); color: var(--danger); }
-.banner-ok { background: #dafbe1; border-color: rgba(26, 127, 55, 0.2); color: #1a7f37; }
-.hint-line { font-size: 12px; color: var(--text-subtle); padding-left: 2px; }
-.info-details { border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-sidebar); overflow: hidden; }
-.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
+.hint-line { font-size: 12px; color: var(--color-text-subtle); padding-left: 2px; }
+.info-details { border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); overflow: hidden; }
+.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--color-text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
 .info-summary::-webkit-details-marker { display: none; }
-.info-summary::after { content: '▸'; font-size: 10px; margin-left: auto; transition: transform 0.15s; }
-.info-details[open] .info-summary { border-bottom: 1px solid var(--border-color); }
+.info-summary::after { content: '▸'; font-size: 10px; margin-left: auto; transition: transform var(--motion-base); }
+.info-details[open] .info-summary { border-bottom: 1px solid var(--color-border); }
 .info-details[open] .info-summary::after { transform: rotate(90deg); }
-.info-body { padding: 8px 12px; font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 4px; }
+.info-body { padding: 8px 12px; font-size: 12px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 4px; }
 .info-body p { margin: 0; line-height: 1.6; }
-.inline-link { color: var(--accent); text-decoration: none; }
+.inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
 
-/* ---------- 通用按钮 ---------- */
-.btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
-.btn-small { padding: 4px 12px; font-size: 12px; }
-.btn-ghost { background: #f0f7ff; color: #0969da; border-color: #c8e1ff; cursor: default; }
-.btn-danger-outline { background: #fff; border-color: #ff8170; color: var(--danger); }
-.btn-danger-outline:hover:not(:disabled) { background: #ffebe9; }
 .btn-dim { opacity: 0.75; }
 
-.control-panel { display: flex; align-items: center; justify-content: space-between; background: var(--bg-sidebar); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 8px; gap: 10px; flex-wrap: wrap; }
-.meta-info { font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 2px; }
+.control-panel { display: flex; align-items: center; justify-content: space-between; background: var(--surface-panel); border: 1px solid var(--color-border); padding: 10px 14px; border-radius: var(--radius-control); gap: 10px; flex-wrap: wrap; }
+.meta-info { font-size: 13px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
 .btn-group { display: flex; gap: 8px; }
-.hint-dim { color: var(--text-subtle); }
+.hint-dim { color: var(--color-text-subtle); }
 
 /* ---------- 变体选择卡 ---------- */
-.variant-card { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
-.variant-card .k { color: var(--text-subtle); flex-shrink: 0; }
-.variant-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-main); font-size: 12px; }
+.variant-card { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 8px 14px; font-size: 13px; }
+.variant-card .k { color: var(--color-text-subtle); flex-shrink: 0; }
+.variant-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--color-text); font-size: 12px; }
 .variant-opt input { width: 14px; height: 14px; cursor: pointer; }
-.variant-note { font-size: 12px; color: #1a7f37; }
-.variant-note.warn { color: #9a6700; }
+.variant-note { font-size: 12px; color: var(--state-positive); }
+.variant-note.warn { color: var(--state-warning); }
 
-.section-title h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
-.empty-hint { text-align: center; padding: 20px; color: var(--text-subtle); font-size: 13px; background: var(--bg-sidebar); border-radius: 6px; border: 1px dashed var(--border-color); }
-
-.empty-state { text-align: center; padding: 24px; background: var(--bg-sidebar); border: 1px dashed var(--border-color); border-radius: 8px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
-.empty-state p { margin: 0; color: var(--text-muted); font-size: 13px; }
+.section-title h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+.empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: 6px; border: 1px dashed var(--color-border); }
 
 /* ---------- 当前托管卡 ---------- */
-.installed-card { background: var(--bg-sidebar); border: 1px solid var(--accent); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.installed-card { background: var(--surface-panel); border: 1px solid var(--color-primary); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .inst-card-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; }
-.ver-tag { font-family: Consolas, monospace; font-size: 14px; font-weight: 700; color: var(--text-main); }
+.ver-tag { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
 .inst-badges { display: flex; gap: 6px; flex-wrap: wrap; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
-.badge-running { background: #ddf4ff; color: #0969da; }
-.badge-external { background: #fff8c5; color: #9a6700; }
-.badge-variant { background: #f0f7ff; color: #0969da; }
-.badge-import { background: #ddf4ff; color: #0969da; }
-.badge-official { background: #eaeef2; color: #656d76; }
-.badge-data { background: #dafbe1; color: #1a7f37; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+.badge-running { background: var(--state-information-soft); color: var(--state-information); }
+.badge-external { background: var(--state-warning-soft); color: var(--state-warning); }
+.badge-variant { background: var(--state-information-soft); color: var(--state-information); }
+.badge-import { background: var(--state-information-soft); color: var(--state-information); }
+.badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
+.badge-data { background: var(--state-positive-soft); color: var(--state-positive); }
 
 .inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.meta-line { display: flex; gap: 8px; color: var(--text-muted); align-items: baseline; min-width: 0; }
-.meta-line .k { color: var(--text-subtle); width: 44px; flex-shrink: 0; }
-.mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; word-break: break-all; }
+.meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; min-width: 0; }
+.meta-line .k { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
+
 .inst-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
 
 /* ---------- 远程表格 ---------- */
-.table-container { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; overflow-x: auto; }
-.tbl { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
-.tbl th { background: var(--bg-sidebar); padding: 8px 12px; font-weight: 600; color: var(--text-muted); font-size: 12px; border-bottom: 1px solid var(--border-color); }
-.tbl td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
-.tbl tr:last-child td { border-bottom: none; }
-.ver-name { font-family: Consolas, monospace; }
+.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
+.ver-name { font-family: var(--font-mono); }
 
 .asset-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .size-hint { font-size: 12px; min-width: 56px; }
 
 .pt-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
 .pt-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.pt-ver-status.installed::before { background: #2da44e; }
-.pt-ver-status.downloading::before { background: #0969da; animation: pulse 1s infinite; }
-.pt-ver-status.error::before { background: #cf222e; }
-.pt-ver-status.idle::before { background: #8c959f; }
+.pt-ver-status.installed::before { background: var(--state-positive); }
+.pt-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
+.pt-ver-status.error::before { background: var(--state-danger); }
+.pt-ver-status.idle::before { background: var(--color-text-subtle); }
 
 .download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dl-bar-wrap { flex: 1; height: 6px; background: #e1e4e8; border-radius: 3px; overflow: hidden; }
-.dl-bar-inner { height: 100%; background: var(--accent); transition: width 0.2s ease; }
-.dl-percent { font-size: 11px; color: var(--text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: 12px; color: var(--accent); }
-.dl-error { color: var(--danger); font-size: 11px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.retry-link { color: var(--accent); font-size: 12px; cursor: pointer; margin-left: 4px; }
+.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+.dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-fast) linear; }
+.dl-percent { font-size: 11px; color: var(--color-text-muted); width: 32px; text-align: right; }
+.dl-meta-text { font-size: 12px; color: var(--color-primary); }
+.dl-error { color: var(--state-danger); font-size: 11px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.retry-link { color: var(--color-primary); font-size: 12px; cursor: pointer; margin-left: 4px; }
 .retry-link:hover { text-decoration: underline; }
 
 /* ---------- 联动与辅助设置卡 ---------- */
-.extras-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.extras-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
 .extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main); cursor: pointer; }
+.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text); cursor: pointer; }
 .toggle-label input { width: 15px; height: 15px; cursor: pointer; }
-.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
-.repo-row .k { color: var(--text-subtle); flex-shrink: 0; }
+.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap; }
+.repo-row .k { color: var(--color-text-subtle); flex-shrink: 0; }
 .repo-addr { flex: 1; min-width: 220px; }
-.link-btn { background: transparent; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0 2px; }
-.link-btn:hover { text-decoration: underline; }
-
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 </style>
