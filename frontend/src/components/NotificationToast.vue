@@ -7,16 +7,18 @@ const emit = defineEmits<{
 
 const { activeToasts, removeToast, markAsRead } = useNotification()
 
-function getLevelIcon(level: string) {
+// 严重度指示灯：emoji 已退役（AppIcon 纪律）——色点仅作冗余强调，
+// 语义由模块标签/标题文本承载，色板走 state token。
+function levelTone(level: string) {
   switch (level) {
     case 'success':
-      return '🟢'
+      return 'sev-success'
     case 'warning':
-      return '🟠'
+      return 'sev-warning'
     case 'error':
-      return '🔴'
+      return 'sev-error'
     default:
-      return '🔵'
+      return 'sev-info'
   }
 }
 
@@ -46,7 +48,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
           @click="handleToastClick(t)"
         >
           <div class="toast-indicator">
-            <span class="icon">{{ getLevelIcon(t.level) }}</span>
+            <span class="sev-dot" :class="levelTone(t.level)" aria-hidden="true"></span>
           </div>
           <div class="toast-body">
             <div class="toast-header">
@@ -116,9 +118,14 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 
 .toast-indicator {
   flex-shrink: 0;
-  font-size: 14px;
-  margin-top: 1px;
+  display: flex;
+  align-items: flex-start;
+  margin-top: 5px;
 }
+.sev-dot { width: 9px; height: 9px; border-radius: var(--radius-pill); background: var(--state-information); }
+.sev-success { background: var(--state-positive); }
+.sev-warning { background: var(--state-warning); }
+.sev-error { background: var(--state-danger); }
 
 .toast-body {
   flex: 1;

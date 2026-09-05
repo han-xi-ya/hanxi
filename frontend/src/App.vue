@@ -9,6 +9,8 @@ import NotificationDrawer from './components/NotificationDrawer.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import UiPromptDialog from './components/ui/UiPromptDialog.vue'
 import ErrorBoundary from './components/ui/ErrorBoundary.vue'
+import AppIcon from './components/ui/AppIcon.vue'
+import type { IconName } from './constants/icons'
 import { moduleIdOf, routeComponent, placeholderComponent, fallbackComponent } from './constants/navigation'
 import { useNotification } from './composables/useNotification'
 import { useTheme } from './composables/useTheme'
@@ -26,14 +28,17 @@ const { promptState, settlePrompt } = usePrompt()
 
 // 路由→组件与模块门禁清单已外移至 constants/navigation.ts（单一来源 + 视图异步化）。
 
+// 导航图标双轨制（AppIcon 阶段1，docs/FRONTEND.md §8）：
+// `i:` 前缀值经 AppIcon 渲染为内联 SVG；裸字符/emoji 走文本回退分支，
+// 模块图标（constants/navigation.ts）按阶段 2/3 计划逐批改写为 `i:` 名。
 const SYSTEM_NAV = [
-  { route: '/', title: '首页', icon: '⌂' },
+  { route: '/', title: '首页', icon: 'i:home' },
 ]
 
 const BOTTOM_NAV = [
-  { route: '/logs', title: '日志', icon: '📋' },
-  { route: '/settings', title: '设置', icon: '⚙' },
-  { route: '/about', title: '关于', icon: 'ⓘ' },
+  { route: '/logs', title: '日志', icon: 'i:file-text' },
+  { route: '/settings', title: '设置', icon: 'i:gear' },
+  { route: '/about', title: '关于', icon: 'i:info' },
 ]
 
 const themeModeLabel = computed(() => {
@@ -44,11 +49,11 @@ const themeModeLabel = computed(() => {
   }
 })
 
-const themeGlyph = computed(() => {
+const themeGlyph = computed<IconName>(() => {
   switch (themeMode.value) {
-    case 'system': return '◐'
-    case 'dark': return '☾'
-    default: return '☀'
+    case 'system': return 'monitor'
+    case 'dark': return 'moon'
+    default: return 'sun'
   }
 })
 
@@ -171,7 +176,7 @@ onUnmounted(() => {
           :class="{ active: activeRoute === n.route }"
           @click="navigateTo(n.route)"
         >
-          <span class="nav-icon">{{ n.icon }}</span>
+          <span class="nav-icon"><AppIcon v-if="n.icon.startsWith('i:')" :name="n.icon.slice(2) as IconName" :size="16" /><template v-else>{{ n.icon }}</template></span>
           <span class="nav-text">{{ n.title }}</span>
         </button>
 
@@ -185,7 +190,7 @@ onUnmounted(() => {
           :class="{ active: activeRoute === n.route }"
           @click="navigateTo(n.route)"
         >
-          <span class="nav-icon">{{ n.icon }}</span>
+          <span class="nav-icon"><AppIcon v-if="n.icon.startsWith('i:')" :name="n.icon.slice(2) as IconName" :size="16" /><template v-else>{{ n.icon }}</template></span>
           <span class="nav-text">{{ n.title }}</span>
         </button>
       </nav>
@@ -198,7 +203,7 @@ onUnmounted(() => {
           @click="toggleDrawer"
           title="通知中心"
         >
-          <span class="nav-icon">🔔</span>
+          <span class="nav-icon"><AppIcon name="bell" :size="16" /></span>
           <span class="nav-text">通知中心</span>
           <span v-if="unreadCount > 0" class="nav-badge">{{ unreadCount }}</span>
         </button>
@@ -210,7 +215,7 @@ onUnmounted(() => {
           :class="{ active: activeRoute === n.route }"
           @click="navigateTo(n.route)"
         >
-          <span class="nav-icon">{{ n.icon }}</span>
+          <span class="nav-icon"><AppIcon v-if="n.icon.startsWith('i:')" :name="n.icon.slice(2) as IconName" :size="16" /><template v-else>{{ n.icon }}</template></span>
           <span class="nav-text">{{ n.title }}</span>
         </button>
 
@@ -220,7 +225,7 @@ onUnmounted(() => {
           :title="`当前主题：${themeModeLabel}（点击循环切换）`"
           @click="cycleThemeMode"
         >
-          <span class="nav-icon">{{ themeGlyph }}</span>
+          <span class="nav-icon"><AppIcon :name="themeGlyph" :size="16" /></span>
           <span class="nav-text">{{ themeModeLabel }}</span>
         </button>
 

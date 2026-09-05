@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useNotification } from '../composables/useNotification'
 import type { Notification } from '../../bindings/hanxi/internal/notify/models'
+import AppIcon from './ui/AppIcon.vue'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -23,16 +24,17 @@ function formatTime(ts: number) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-function getLevelIcon(level: string) {
+// 严重度指示灯：emoji 已退役（AppIcon 纪律），色点仅冗余强调，色板走 state token。
+function levelTone(level: string) {
   switch (level) {
     case 'success':
-      return '🟢'
+      return 'sev-success'
     case 'warning':
-      return '🟠'
+      return 'sev-warning'
     case 'error':
-      return '🔴'
+      return 'sev-error'
     default:
-      return '🔵'
+      return 'sev-info'
   }
 }
 
@@ -58,7 +60,7 @@ function handleItemClick(item: Notification) {
         <aside v-if="drawerVisible" class="notification-drawer">
           <div class="drawer-header">
             <div class="header-left">
-              <h3>🔔 通知中心</h3>
+              <h3><AppIcon name="bell" :size="15" /> 通知中心</h3>
               <span v-if="unreadCount > 0" class="badge-unread">{{ unreadCount }} 未读</span>
             </div>
             <div class="header-actions">
@@ -85,7 +87,7 @@ function handleItemClick(item: Notification) {
           <!-- 列表容器 -->
           <div class="drawer-body">
             <div v-if="notifications.length === 0" class="empty-state">
-              <div class="empty-icon">📭</div>
+              <div class="empty-icon"><AppIcon name="inbox" :size="36" /></div>
               <p>暂无任何通知</p>
             </div>
 
@@ -99,7 +101,7 @@ function handleItemClick(item: Notification) {
               >
                 <div class="notif-top">
                   <div class="notif-meta">
-                    <span class="level-icon">{{ getLevelIcon(item.level) }}</span>
+                    <span class="level-icon sev-dot" :class="levelTone(item.level)" aria-hidden="true"></span>
                     <span class="mod-tag">[{{ item.moduleId }}]</span>
                     <strong class="title">{{ item.title }}</strong>
                   </div>
@@ -265,9 +267,11 @@ function handleItemClick(item: Notification) {
   min-width: 0;
 }
 
-.level-icon {
-  font-size: 12px;
-}
+.level-icon { flex: none; }
+.sev-dot { width: 9px; height: 9px; border-radius: var(--radius-pill); background: var(--state-information); }
+.sev-success { background: var(--state-positive); }
+.sev-warning { background: var(--state-warning); }
+.sev-error { background: var(--state-danger); }
 
 .mod-tag {
   font-size: 11px;
