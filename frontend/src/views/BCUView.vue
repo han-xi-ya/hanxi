@@ -401,7 +401,7 @@ onMounted(() => {
     <!-- 条件提示条 / 引导行 -->
     <UiBanner v-if="banner" :tone="banner.tone">{{ banner.text }}</UiBanner>
     <div v-else-if="state === 'stopped'" class="hint-line">
-      尚未运行：点击「打开窗口」启动 BCU，批量卸载在其窗口内完成。便携包自含 .NET 运行时（约 76MB），无需系统预装。
+      尚未运行：点击「打开窗口」启动 BCU，批量卸载在其窗口内完成。便携包自含 .NET 运行时（约 76MB），无需系统预装。BCU 上游 manifest 强制管理员权限：需以管理员身份运行 Hanxi 方可启动（否则系统直拒，不代弹 UAC）。
     </div>
     <div v-else-if="state === 'starting'" class="hint-line">正在拉起 BCU（自包含 .NET 首次启动约 3~10 秒）…</div>
 

@@ -4,8 +4,10 @@ package instance
 
 import (
 	"errors"
+	"fmt"
 	"os/exec"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -108,6 +110,21 @@ func TestStartAssignFail(t *testing.T) {
 	}
 	if got := e.Snapshot().State; got != StateFailed {
 		t.Fatalf("state = %s, want failed", got)
+	}
+}
+
+// TestElevateHint BCU manifest 为 requireAdministrator：未提权父进程得到裸
+// errno 740（exec 层可能带 %w 包装），特判输出管理员指引；其余错误返回空串
+// 走原文案。
+func TestElevateHint(t *testing.T) {
+	if got := elevateHint(syscall.Errno(740)); got == "" {
+		t.Fatal("740 应输出提权指引文案")
+	}
+	if got := elevateHint(fmt.Errorf("fork/exec: %w", syscall.Errno(740))); got == "" {
+		t.Fatal("包装后的 740 也应被识别")
+	}
+	if got := elevateHint(errors.New("no such file")); got != "" {
+		t.Fatalf("非 740 错误应返回空串，got %q", got)
 	}
 }
 

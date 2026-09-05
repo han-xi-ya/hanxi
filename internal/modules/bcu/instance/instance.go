@@ -1,6 +1,7 @@
 package instance
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -111,7 +112,11 @@ func (e *Engine) Start(opts StartOptions) error {
 	cmd := exec.Command(opts.Exe)
 	cmd.Dir = filepath.Dir(opts.Exe) // 工作目录锁定：便携设置文件按相对路径解析
 	if err := cmd.Start(); err != nil {
-		e.transition(StateFailed, "进程启动失败: "+err.Error())
+		msg := "进程启动失败: " + err.Error()
+		if hint := elevateHint(err); hint != "" {
+			msg = hint // requireAdministrator + 未提权父进程：740 直译为"要求提升"不友好
+		}
+		e.transition(StateFailed, msg)
 		return err
 	}
 
@@ -169,6 +174,11 @@ func (e *Engine) OpenWindow(exe string) (opened bool, err error) {
 	cmd := exec.Command(exe)
 	cmd.Dir = filepath.Dir(exe)
 	if err := cmd.Start(); err != nil {
+		// 外部实例通常由用户以管理员身份自启（BCU 卸载操作本身要提权），
+		// 未提权的 Hanxi 拉起信使同样被 740 直拒——指引与 Start 路径一致。
+		if hint := elevateHint(err); hint != "" {
+			return false, errors.New(hint)
+		}
 		return false, fmt.Errorf("拉起窗口信使失败: %w", err)
 	}
 	_ = cmd.Process.Release()

@@ -9,7 +9,11 @@
 //   - 二次启动 = 信使语义：第二实例查找主进程后 SetForegroundWindow(MainWindowHandle)
 //     唤起主窗口（无窗口时才弹错误框）——"打开窗口"直接无参拉起即可；
 //   - 无托盘、无 CLI 退出；WinForms 窗口类名不可预测，退出与窗口探测一律走
-//     EnumWindows + 进程 PID 过滤，与 ccswitch 的固定类名方案不同。
+//     EnumWindows + 进程 PID 过滤，与 ccswitch 的固定类名方案不同；
+//   - manifest requireAdministrator：未提权的 Hanxi 经 CreateProcess 拉起
+//     直接失败（ERROR_ELEVATION_REQUIRED 740，不代弹 UAC），Start 与信使
+//     两条路径的错误文案均经 elevateHint 特判指向"以管理员身份运行 Hanxi"；
+//     托管实例存在即蕴含 Hanxi 已提权，UIPI 不再成为唤窗/关窗的暗坑。
 //
 // 本包零框架依赖，便于单元测试。
 package instance

@@ -3,6 +3,7 @@
 package instance
 
 import (
+	"errors"
 	"syscall"
 	"unsafe"
 )
@@ -15,7 +16,24 @@ var (
 	procGetWndThreadProcessID = modUser32.NewProc("GetWindowThreadProcessId")
 )
 
-const wmClose = 0x0010
+const (
+	wmClose = 0x0010
+
+	// errorElevationRequired CreateProcessW 对 requireAdministrator 清单目标的
+	// 直接失败码——未提权的 Hanxi 拉起 BCU 时得到它（不会代弹 UAC）。
+	errorElevationRequired syscall.Errno = 740
+)
+
+// elevateHint 识别提权需求错误：BCU 的 app.manifest 为 requireAdministrator，
+// 未提权父进程 CreateProcess 直接失败（740）且系统不代弹 UAC。
+// 返回面向用户的指引文案；非该错误返回空串。
+func elevateHint(err error) string {
+	var errno syscall.Errno
+	if errors.As(err, &errno) && errno == errorElevationRequired {
+		return "BCU 要求管理员权限运行（上游 manifest 强制）：请以管理员身份重新启动 Hanxi 后重试"
+	}
+	return ""
+}
 
 // postCloseByPID 向指定进程的所有顶层窗口投递 WM_CLOSE（尽力优雅退出）：
 // 主窗口的 FormClosing 走正常关闭路径，SettingsProvider 落盘、互斥体释放、退出码 0。
