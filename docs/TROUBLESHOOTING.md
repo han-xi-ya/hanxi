@@ -520,6 +520,48 @@ RustDesk 与其 LAN fork SubnetDesk（协议互不兼容的两个 AGPL 应用，
   - 版本层：单文件下载免解压，完整性 = 官方 digest + 声明字节数 + MZ 魔数（防镜像 HTML 错误页伪装 exe）；RustDesk tag 无 v → 列表层规范化 `Version="v"+tag` 且保留 `Tag` 原值构造下载 URL（**tag 参与 URL，绝不能拿展示值拼**）。
 - **避坑防重犯建议**：遇到"官方 exe 只有一个文件"的发布形态，先读它的打包器源码再谈托管——rust-portable/自解压类"启动器进程"一律不满足模板的"cmd = 本体"前提，凡照搬 `cmd.Wait` 锚定的方案都会在真机上出现"状态秒跳未运行但窗口明明开着"。进程名撞车（便携 vs 安装 vs 服务同名）时，唯一可靠的判别是**镜像路径前缀**（`QueryFullProcessImageName` + PROCESS_QUERY_LIMITED_INFORMATION），并在设计文档里写清"安装版不归我管、互不感知"的边界，别让探测语义含糊。
 
+### 26. 托管 Rufus：固定名互斥体可探但"二次拉起弹模态错误框"反成噪音 + 磁盘级写入工具的强杀安全边界 + 便携 ini 存在即生效兼关更
+
+Rufus（C/Win32 原生 USB 启动盘制作，GPL-3.0）看似 litemonitor(#17) 的"原生 GUI + requireAdministrator"同族，实际在探测、退出安全、配置三处再次变形，且带一个全家族独有的**数据安全**维度：
+
+- **问题现象与错误原因**：
+  1. **互斥体可探，但信使路径"有害"而非仅"无效"**：`src/rufus.c` 单实例锁是 `CreateMutexA(NULL, TRUE, "Global/" APPLICATION_NAME)`，APPLICATION_NAME 固定为 `Rufus`——与 LiteMonitor 的路径派生名不同，**名称可预测，OpenMutex 探测完全可行**（存活权威信号）。但第二实例抢锁失败不是静默 return，而是先 `MessageBoxExU(...MB_SYSTEMMODAL...)` 弹一个"已在运行"错误框、等用户点掉才退出——所以"无参二次拉起当唤窗信使"比 LiteMonitor 更糟：不仅唤不了窗，还平白多弹一个要人手动确认的系统模态框。
+  2. **磁盘级写入 × 强杀兜底 = 半成品盘风险**：Quit 模板的"WM_CLOSE + 宽限 + JobObject 强杀兜底"在监控/预览类工具上无害，但 Rufus 正写 ISO 到 U 盘时收到 `WM_CLOSE` 会弹上游"任务进行中，确定退出？"确认框挂住消息循环——宽限期（2s）内无人点击即落入 `Terminate`，**强杀正在写盘的进程产出损坏启动盘**。这是本家族第一个"强杀兜底路径本身有数据破坏后果"的模块。
+  3. **便携开关是"文件存在即生效"，且顺带控制更新检查**：`src/rufus.c` 检测 exe 同目录有 `rufus.ini`（哪怕空文件）即 `ini_file=...` 且 `app_data_dir=app_dir`——全设置走 ini 而非注册表；`src/net.c` 的 `CheckForUpdatesThread` 实证 `ReadSetting32(UpdateCheckInterval) == -1 → "Check for updates disabled"`，即写 `UpdateCheckInterval = -1` 可永久关闭内置更新检查。上游安装版 `rufus-X.Y.exe` 与便携版 `rufus-X.Yp.exe` 是**同一二进制**（GitHub digest 实测同哈希）。
+  4. **两段式版本 + imported 兜底目录在 versioncmp 下误排最前**：tag 是 `v4.15`（X.Y，非 X.Y.Z）；`ListInstalled` 用 `versioncmp.Compare` 降序取"最新已装"作冷启动回退，但 `imported-时间戳` 目录名非纯数字，versioncmp 退化 `strings.Compare` 后字典序"i…" > "4…"，会被排到列表**首位**——回退逻辑选中版本未知的导入目录。
+- **排查过程**：GitHub API 实测 v4.9~v4.15 连续多版稳定发 `rufus-X.Yp.exe` 且全带 digest、安装版与便携版逐版同哈希 → 确认取 `p.exe` 形态语义最明确；`curl` 拉 `src/rufus.c` 逐行确认 `"Global/" APPLICATION_NAME`、`MessageBoxExU(MB_SYSTEMMODAL)`、`ini_file/app_data_dir`、`-g/-i/-l/-f/-w/-x` 全为启动参数无退出信使；拉 `src/settings.h`+`src/net.c` 坐实 `UpdateCheckInterval = -1` 禁用更新检查；`src/rufus.manifest` 确认 `requireAdministrator`（740 直拒路径复用 #17 的 `elevateHint`）。
+- **正确做法与标准修复方案**：
+  - **探测混合、唤窗直操作**：`IsRunning` 以 `OpenMutex(Global\Rufus, SYNCHRONIZE)` 为权威（不随 exe 改名漂移，外部实例浏览器原名 `rufus-X.Yp.exe` 也命中），再退到进程枚举兜底；`FindPIDs` 用 Toolhelp32 匹配 `rufus.exe` 或 `rufus-*.exe` 形态族供 PID；唤窗统一 `EnumWindows 按 PID SW_RESTORE+SetForegroundWindow`——**信使路径彻底不用**（`RestoreWindow` 与 `service_test.TestNoMessengerOpenWindow` 双重钉死）；
+  - **强杀安全边界靠前端常驻警示而非取消兜底**：Quit 保留 WM_CLOSE+宽限+强杀结构（异常滞留仍需能收尾），但 running 态横幅（`UiBanner tone=ok`）与 stopped 引导行**常显**"⚠ 正在写盘时切勿退出/关 Hanxi，中途终止产出半成品盘"，并提示"写盘任务中建议关闭『随 Hanxi 一起关闭』保持独立运行"；
+  - **种子 ini 一石二鸟**：`seedPortableSettings` 仅当 `rufus.ini` 不存在时写 ASCII 种子（含 `UpdateCheckInterval = -1`），激活便携零注册表 + 关内置更；文件已在则一字节不动（`ImportLocal` 若源旁有 `rufus.ini` 会随行搬运保住用户既有配置）；
+  - **版本层适配**：`plainSemverTag=^v\d+\.\d+$` 收两段式；单文件三重校验（digest+字节数+MZ，无 zip 布局自检，承 #24 rustdesk）；`ListInstalled` 引入 `importedRank` 让 `imported-` 目录排序**沉底**，`resolveActiveVersion` 冷启动回退才不误选版本未知的导入目录。
+- **避坑防重犯建议**：
+  1. **"无唤窗契约"要分级**：静默 return（LiteMonitor）与弹模态错误框（Rufus）都属"二次拉起不能唤窗"，但后者让信使路径从"无用"升级为"主动伤害"——侦查时不仅看第二实例是否 show+focus，还要看它退出前有没有 MessageBox/Dialog 副作用；固定名互斥体虽可探存活，**不能**因此推断它支持唤窗。
+  2. **托管"有状态副作用"的工具（写盘/联网改配置/起驱动）前，先审计强杀兜底的后果**：只要 `Terminate` 可能中断一个不可逆 I/O，就必须在前端把该风险讲成用户能看见的常驻警示，而不是默默信任 2s 宽限；
+  3. **便携模式若靠"某文件存在"激活，种子文件可同时承载关更配置**，但务必"已存在即绝不改写"，并让 ImportLocal 感知搬运，避免收纳用户配置时反而覆盖；
+  4. **版本号非标准段（时间戳兜底目录）参与 `versioncmp` 排序前必须先按"是否规范版本"分层**，否则退化字典序会把兜底目录顶上"最新"，污染一切"取第一个当默认"的逻辑。
+
+### 27. 托管用户可配关窗行为的下载器（Bili23 Downloader）：Quit 兜底强杀从"安全网"反转为"数据事故源" + 改名壳 exe 版本探测迁移到源码常量
+
+Bili23 Downloader（B 站视频下载器，Python/PySide6 + 自带静态运行时整目录便携包，GPL-3.0）表面是 ccswitch 模板族（命名互斥体 + 二次拉起信使唤窗），实则在退出语义与安装形态两处击穿模板前提：
+
+- **问题现象与错误原因**：
+  1. **WM_CLOSE 的结局由用户设置决定，不由代码决定**：`src/gui/interface/main_window.py` 的 `closeEvent → on_close` 三分叉——`EXIT` 放行优雅退出、`MINIMIZE` 仅 `hide()` 收入托盘（`e.ignore()`）、`ALWAYS_ASK`（**出厂默认**）弹模态询问对话框。照抄 ccswitch 的"WM_CLOSE + 2s 宽限 + JobObject 强杀兜底"，默认设置下 2s 只会换来对话框挂起然后**强杀一个刚弹出"您要退出吗"的下载器**；`MINIMIZE` 设置下每次"退出"都是静默强杀，在途分片下载直接中断。
+  2. **优雅退出本身是慢动作，快轮询会误判**：上游退出收尾要 `downloader_manager.shutdown()`（等在途分片线程收敛）→ `AsyncTask.safe_quit()` → `task_manager.shutdown()`（异步写队列落盘），`hide()` 之后进程可能还要活十几秒——"窗口没了"与"收入托盘"在这一相位外观完全相同，短宽限会把"正在收尾"误报成"驻留托盘"。
+  3. **改名壳 exe 让 PE 版本探测全线失效**：入口 `Bili23.exe` 是 Python-Static 的 pythonw 改壳（内嵌解释器，`_pystand_static.int` 引导 chdir 加载 `script/main.py`），FileVersion 资源恒为 Python 版本号——`ImportLocal` 沿用 `versioninfo.FileVersion(exe)` 会把 3.13 当应用版本入账。
+  4. **外层"秒退"假象险些误判为 rustdesk 型启动器**（#24 类疑）：真机冒烟时 Hanxi 拉起的 PID 瞬间消失、另一 PID 健在——实为**用户机器已常驻一个提权实例**，新进程命中单实例锁、唤醒旧窗后按契约自退（信使语义的现场实证），`Bili23.exe` 本身仍是常驻本体。幸而按 #24 教训先验尸再下结论。
+- **排查过程**：GitHub API 实测 v2.10~v2.15 便携 zip 全带官方 digest；真机下载实测**直连 github.com 在 ~6MB 处 Connection reset**，gh-proxy 镜像跑完且 sha256 与官方一致；`unzip -l` 实测 zip 带顶层单目录 `Bili23-Downloader/`（#21 果核同款复发，CI 的 `7z a ... Bili23-Downloader\*` 在 PowerShell 下通配符未展开）；读 `main.py` 坐实互斥体 GUID（与 Inno `AppMutex` 同值）、QLocalServer 命令字（`activate`/`ensure-running`，未知命令按 activate 兼容旧版）、AppData 落盘与 `os._exit` 收尾哲学；读 `enum.py`/`config.py` 确认 `WhenClose` 默认 3=ALWAYS_ASK、托盘无条件创建（`init_deferred_ui` 硬编码 show）；冒烟二次拉起证实信使自退 + 主进程单实例常驻。
+- **正确做法与标准修复方案**：
+  - **Quit 三态化，彻底移除静默强杀兜底**：`Engine.Quit()` 返回 `exited / hidden / windowUp`——第一阶段 3s 宽限收快退场；存活且有可见窗口 → `windowUp`（弹窗询问中，把决定权还给用户）；无窗口 → 进入 25s 收尾观察期，期满退出记 `exited`、仍存活才记 `hidden`（真驻托盘）。三态全部如实映射到 `QuitOutcome` 文案；强杀唯一入口是用户显式「强制结束」（`confirm` 说明"在途下载中断、可断点续传"）；**不做空闲自动退出**（同 #24：外部无法感知任务活跃度，误杀代价高）；
+  - **窗口探测按 PID 不走类名**：Qt 顶层窗口类名含 Qt 版本号（随 PySide 升级漂移），`EnumWindows + GetWindowThreadProcessId` 过滤（recordly 族手法）+ 标题非空剔除 Qt 隐形消息窗；`HasVisibleWindow` 同时服务 Quit 分叉与"运行中·已收入托盘"琥珀灯；
+  - **整目录形态的安装单元适配**：解压剥离顶层目录（`commonTopDirPrefix` 通用探测，上游改扁平布局自动兼容）；布局三锚点自检（`Bili23.exe` + `_pystand_static.int` + `script/main.py`）；`ImportLocal` 整目录复制（~108MB，拒绝非常规文件），版本探测改解析 `script/util/common/config.py` 的 `app_version = "X.Y.Z"` 常量（安装版/便携版目录同构，失败落 `imported-时间戳` 兜底）；
+  - tag 侧 `v2.00.7` 前导零变体天然通过 `\d+\.\d+\.\d+` 结构过滤，`-rc` 后缀 tag 被同一正则拒入列表（预发布不进托管面）。
+- **避坑防重犯建议**：
+  1. **托管前先读上游 closeEvent/退出收尾源码，别只看有没有互斥体**：单实例契约健全 ≠ 退出契约存在——凡是"关窗行为用户可配"（Electron 的 `before-quit`、Qt 的 closeEvent 分叉、Tauri 的 RunEvent）或"退出前要做长收尾"（下载器/同步盘/数据库）的应用，Quit 的强杀兜底都必须从模板默认里显式拆除，改成结果分叉如实上报；
+  2. **"宽限 + 强杀"兜底的适用性按数据后果分级**：预览/监控类误杀零成本可保留兜底，写入类（#26 Rufus 写盘、本例下载分片）一律禁静默兜底并给常驻风险文案；
+  3. **入口 exe 是"壳"的（改名解释器/自解压/打包器），导入版本探测必须找上游源码里的版本常量**，`versioninfo.FileVersion` 只对"自有 exe"成立；
+  4. 真机冒烟遇到"我拉的进程死了、另一个同名进程活着"，**先查同名进程的创建时间与安装路径**再谈启动器结论——用户可能正开着它（本次实为提权常驻实例，`Path` 因权限读空易误导）。
+
 ### 25. 前端重构 Phase 0/1：ESLint flat 的 TS base 压掉 .vue 解析器 + Vitest 5 API 变更与 fake timers 死锁 + CSS 注释星杠截断
 
 引入 ESLint(flat)/Vitest 安全网与样式地基时踩中五个工具链坑：
