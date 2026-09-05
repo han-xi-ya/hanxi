@@ -3,7 +3,7 @@
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
 > **更新日期**：2026-09-05
-> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。当前主线＝Phase 6：**首批三组拆分 ✅**（Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173，三 agent 并行交付，568 用例全绿、原特征测试断言零改动，发现登记 §9.6）；剩 WechatBot 2176 行 + 别名层清零复查。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，574 用例全绿、原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现）**。当前待办＝§9.6 后续刀（副本 CSS 上收、FileShare 死样式、真机目视）与 App.vue 进一步组件化（低优）。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
 
@@ -85,7 +85,7 @@ src/
 | **3 试点** ✅ | 迁 `MarkerOnView`+`CCSwitchView` 到新骨架，锁特征测试一致，产出迁移模板+checklist（§9 手册） | 前后对照样板 | 中 |
 | **4 铺开托管家族** ✅ | 五路并行 fork + 主线模板组，19/19 托管视图套 §9 手册迁移（含 rustdesk/subnetdesk/everything/ddnsgo 等特殊形态）；envcheck 对齐 token 留 Phase 5 | 家族重复基本消除 | 中：逐视图验活 |
 | **5 工具视图顺手治理** | Wifi/Lan/PortScan/PublicIp/PortKill/FileShare/Memo/Wechat 等"改到哪治到哪"：`useWailsEvent/usePolling/useConfirm/usePrompt/format/UiXxx`；NanaZip/EarTrumpet 合并；**长尾认领：frpc 双视图（FrpcProjects/Versions + Frpc* 组件）、系统页 Home/Logs/Settings/About、ExtPlaceholderView** | 长尾收敛 | 低-中 |
-| **6 当前主线**（§9.5 与 AppIcon 阶段1 后接棒） | 巨型孤本视图拆分：**首批三组 ✅**（Everything 834→397、PublicIp 1010→175、FileShare 1630→173，`d3c0815`…`9f9cc2f`，568 用例全绿，原特征测试断言零改动）；剩 WechatBot 2176 行；过渡别名层清零（拆分后复查引用面）；App.vue 进一步组件化 | — | 中：逐视图特征测试先行 |
+| **6 ✅ 拆分收官** | 巨型孤本四组全拆：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173（`d3c0815`…`9f9cc2f`）/ WechatBot 2176→235（`424015c`），574 用例全绿、原特征测试断言零改动；别名层整删（`4bfaf90`）。App.vue 进一步组件化留低优 | — | 中：逐视图特征测试先行 |
 | **7 文档** | 技术栈漂移已修；本蓝图持续更新 | 文档一致 | 低 |
 
 > **全量认领对账（35 视图，无漏网）**：Phase 4 托管家族 19（含 rustdesk/subnetdesk/envcheck）；Phase 5 工具与长尾 16（网络类 8 + frpc 2 + 系统页 4 + ExtPlaceholder + Memo/FileShare 重叠计一）。SettingsView 的主题切换器属 Phase 1 最小改动，其余治理在 Phase 5。
@@ -119,7 +119,7 @@ src/
 | 语义 token | 业务含义：主色、表面、文字、状态、边框、阴影、半径、动效、字族 | 仅 `tokens.css`，浅/深主题各定义一次 | `--color-primary`、`--surface-1..4`、`--text-1`、`--state-danger` |
 | 组件局部变量 | 组件私有微调（尺寸、间距等） | 组件 `<style scoped>` 内，引用处给 `var()` 回退 | `--chip-dot-size: 8px` |
 
-- **语义命名归一**（消歧 17 个未定义变量）：`--text-main/--text-primary` → `--color-text-primary`；`--bg-app/--bg-main/--bg-sidebar/--surface*` → `--surface-1..4` 家族；`--accent` → `--color-primary`；`--warning` → `--state-warning`。旧名只做**过渡期别名块**（如 `--text-main: var(--color-text-primary)`），Phase 4/5 迁移到哪族删到哪族，最终清空。
+- **语义命名归一**（消歧 17 个未定义变量）：`--text-main/--text-primary` → `--color-text-primary`；`--bg-app/--bg-main/--bg-sidebar/--surface*` → `--surface-1..4` 家族；`--accent` → `--color-primary`；`--warning` → `--state-warning`。旧名曾以**过渡期别名块**桥接，Phase 4/5/6 迁移到哪族删到哪族，**已于 Phase 6 收官整删（`4bfaf90`）**——旧名再出现即视为违规，直接改语义 token。
 - **硬约束**：视图/组件样式**只允许 `var()` 引用语义 token，禁止硬编码颜色、禁止在组件内重新定义主题变量**；裸 hex 只允许出现在 `tokens.css`。
 
 ### 7.2 主题切换机制
@@ -203,6 +203,8 @@ src/
 5. **PublicIp `quickTrace` 死码**：拆分前即无模板入口，按"不改行为"原样保留并注记；接入或删除单独裁决。
 6. **Everything 列宽 localStorage**：便携性缺口（§8 已知）维持现状契约，未迁后端 settings。
 7. **composable 命名法已统一**：Phase 6 新文件一律 `useXxx.ts`（PublicIp 组验收时由 `publicIpXxx.ts` 改齐）。
+8. **微信模态壳层副本**（H4 组上交）：BindModal/RenameModal 间 `.cmodal-*/.form-*/@keyframes modalIn` 家族 11 条逐字副本 + 侧栏⇄占位按钮 `.btn-bind-account` 家族 3 条——候选参照 MsixToolHeader 先例上收 `components/ui` 模态壳或 components.css，另立跟进批。
+9. **H4 唯一非逐字适配点**：useWechatBot 的滚动触达由元素 ref（messageContainer）改经 chatFlowRef + `defineExpose({ scrollToBottom })`，nextTick 时序等价，头注记在案。
 
 ## 10. 提交拆分（示例）
 
