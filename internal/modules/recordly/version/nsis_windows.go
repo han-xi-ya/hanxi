@@ -32,22 +32,51 @@ func runInstallerSilent(installer, targetDir string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
-	cmd := exec.Command(installer)
+	// CommandContext 而非裸 Command：超时才真正生效（杀进程）。此前 ctx 无人
+	// watch，装死在隐藏对话框里的安装器会永久吊死下载 goroutine，
+	// "超时（15 分钟）"文案是不可达的死代码。
+	cmd := exec.CommandContext(ctx, installer)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CmdLine: `"` + installer + `" /S /D=` + targetDir,
 	}
 	cmd.Dir = filepath.Dir(installer)
 	if err := cmd.Run(); err != nil {
+		// ctx 判定必须在 ExitError 之前：超时被杀后 Run 同样返回 *ExitError，
+		// 顺序颠倒会把超时误报成"异常退出码"。
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("NSIS 静默安装超时（15 分钟）：安装器可能卡在隐藏对话框，已强制终止，重试安装即可（NSIS 覆盖重装托管目录）")
+		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			return fmt.Errorf("NSIS 安装器退出码 %d（安装中止？请确认没有正在运行的 Recordly 实例）", ee.ExitCode())
-		}
-		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("NSIS 静默安装超时（15 分钟）")
+			code := ee.ExitCode()
+			return fmt.Errorf("NSIS 安装器退出码 %d：%s", code, decodeInstallerExit(code))
 		}
 		return err
 	}
 	return nil
+}
+
+// decodeInstallerExit 为 NSIS 异常退出码给出面向用户的语义分类。
+// NSIS 契约：0 = 成功；非零码分两族，处置指引完全不同，不可合并成一句猜测——
+//   - 小的正数是 Win32 错误码（1223=用户取消 UAC、5=拒绝访问等）；
+//   - 高位为 1 的大数（≥0xC0000000）是 NTSTATUS 异常：其中 3221225477
+//     （0xC0000005 访问违例）= 安装器进程崩溃，与"文件占用导致安装中止"
+//     的典型猜测无关：Recordly 安装器未签名（instance 包注释实证），真实
+//     常见诱因是杀软注入扫描干扰。包完整性此时已由 sha256 四层校验背书，
+//     可直接排除"文件坏了"。
+func decodeInstallerExit(code int) string {
+	switch code {
+	case 1223: // ERROR_CANCELLED：UAC 提示点了"否"
+		return "提权请求被取消：重试安装并在 UAC 弹窗中点击\"是\""
+	case 5: // ERROR_ACCESS_DENIED
+		return "拒绝访问：目标目录或注册表键被权限/安全策略拦截，请检查安全软件与目录权限后重试"
+	case 0xC0000005:
+		return "安装器进程崩溃（0xC0000005 访问违例），并非文件占用：安装包已通过 sha256 校验，而 Recordly 安装器未数字签名，最典型诱因是杀毒软件注入扫描干扰——暂时关闭实时防护或添加信任后重试；托管目录可能已写入一半，直接重新安装即可（NSIS 覆盖重装）"
+	}
+	if code >= 0xC0000000 {
+		return fmt.Sprintf("安装器进程被系统异常终止（NTSTATUS 0x%08X），属崩溃而非安装逻辑失败：先重试一次，持续复现请排查安全软件注入", uint32(code))
+	}
+	return "安装中止（NSIS 非零返回）：最常见是正在运行的 Recordly 实例锁住目标文件，请先退出全部 Recordly 再重试"
 }
 
 // foreignInstallLocation 扫描 HKCU 卸载注册表，返回非托管位置的 Recordly 安装目录。
