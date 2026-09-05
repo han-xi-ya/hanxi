@@ -19,22 +19,28 @@
 //   - 子进程 --server/--tray 由内层 run_me 拉起（同 token CreateProcess，
 //     继承 Job），树杀天然覆盖。
 //
-// 与外部安装的 SubnetDesk（Program Files）天然两清：探测只认提取目录内的进程，
-// 安装版及其服务进程不在计数范围（非提权场景 SYSTEM 进程也 OpenProcess 失败跳过，
-// 双重避免"服务常驻被误判为实例运行"）。
+// 两形态纳管（便携隔离目录 + MSI 系统安装版）后，进程身份按"镜像路径可读且
+// 命中提取目录/安装目录前缀"裁决：LocalSystem 服务与其派生 broker 因
+// OpenProcess 失败被天然排除（真机实证），"服务常驻被误判为实例运行"不成立；
+// JobObject 树杀亦只及客户端进程树，服务在 Job 外不受牵连——安装版形态下
+// "Hanxi 退出"仅关客户端 UI，被控端经服务仍然可达（页面文案说明）。
+// 代价：便携与安装两形态客户端并行时状态机同池计数，页面提示避免并行使用。
 //
 // 本包零框架依赖，便于单元测试。
 package instance
 
 // SubnetDeskProbe 实例存活与窗口探测（免框架依赖；service 层注入 Windows 实现）。
+//
+// 进程身份双来源（两形态纳管后）：便携提取目录（%LOCALAPPDATA%\subnetdesk）
+// ∪ 安装版目录（注册表探测，如 C:\Program Files\SubnetDesk）。
 type SubnetDeskProbe interface {
-	// FindInstancePIDs 提取目录（%LOCALAPPDATA%\subnetdesk）内全部进程 PID：
-	// 含自有与外部便携实例，不含安装版/服务。
+	// FindInstancePIDs 便携提取目录 + 安装版目录内全部进程 PID：
+	// 含自有与外部实例（两形态），不含服务侧进程。
 	FindInstancePIDs() []uint32
-	// FindOwnPIDs 提取目录内、父链（可传递）命中 ancestors 任一成员的进程 PID
-	// ——即本引擎拉起的外层 packer 及其全部后代。ancestors 含派生开窗的外层 PID。
+	// FindOwnPIDs 身份来源目录内、pid 命中 ancestors 或父链（可传递）命中
+	// ancestors 任一成员的进程 PID。安装版直拉主进程时祖先本体即实例，须计入。
 	FindOwnPIDs(ancestors []uint32) []uint32
-	// IsRunning 提取目录内存在任一便携进程（自有或外部）。
+	// IsRunning 两来源目录内存在任一客户端进程（自有或外部）。
 	IsRunning() bool
 	// HasVisibleWindow 给定进程集合中是否存在可见顶层窗口。
 	HasVisibleWindow(pids []uint32) bool

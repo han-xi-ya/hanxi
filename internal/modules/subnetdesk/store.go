@@ -5,21 +5,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
 // subnetdeskStore 持久化 SubnetDesk 少量偏好：
-// 位置 <dataDir>/subnetdesk.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
-// 与 followOnExit。与 ccswitchStore 同款原子写（tmp+rename），损坏容忍。
+// 位置 <dataDir>/subnetdesk.json，存 activeVersion（空字符串 = 未指定，冷启动自动
+// 回退最新已装）、activeForm（portable/installed，旧配置无此字段按 portable 兼容
+// 读取——两形态版本号可同值，必须成对落盘才无歧义）与 followOnExit。
+// 与 ccswitchStore 同款原子写（tmp+rename），损坏容忍。
 type subnetdeskStore struct {
 	filePath      string
 	mu            sync.RWMutex
 	activeVersion string
-	followOnExit  bool // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
+	activeForm    string // version 为空时恒为空
+	followOnExit  bool   // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
 }
 
 type subnetdeskConfig struct {
 	ActiveVersion string `json:"activeVersion"`
+	ActiveForm    string `json:"activeForm,omitempty"`
 	FollowOnExit  *bool  `json:"followOnExit"`
 }
 
@@ -45,7 +50,13 @@ func (s *subnetdeskStore) load() error {
 		// 损坏容忍：内容视为空，activeVersion 自然兜底到"自动最新已装"
 		return nil
 	}
-	s.activeVersion = cfg.ActiveVersion
+	s.activeVersion = strings.TrimSpace(cfg.ActiveVersion)
+	s.activeForm = strings.TrimSpace(cfg.ActiveForm)
+	if s.activeVersion == "" {
+		s.activeForm = "" // 成对不变式：无版本则无形态
+	} else if s.activeForm == "" {
+		s.activeForm = "portable" // 旧配置兼容：形态字段缺省 = 便携
+	}
 	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
 	return nil
 }
@@ -55,7 +66,7 @@ func (s *subnetdeskStore) saveLocked() error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	bytes, err := json.MarshalIndent(subnetdeskConfig{ActiveVersion: s.activeVersion, FollowOnExit: &s.followOnExit}, "", "  ")
+	bytes, err := json.MarshalIndent(subnetdeskConfig{ActiveVersion: s.activeVersion, ActiveForm: s.activeForm, FollowOnExit: &s.followOnExit}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -70,18 +81,23 @@ func (s *subnetdeskStore) saveLocked() error {
 	return nil
 }
 
-// GetActive 返回当前设定版本（空字符串 = 未指定）。
-func (s *subnetdeskStore) GetActive() string {
+// GetActive 返回当前设定版本与形态（version 为空字符串 = 未指定，form 随之为空）。
+func (s *subnetdeskStore) GetActive() (version, form string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.activeVersion
+	return s.activeVersion, s.activeForm
 }
 
-// SetActive 设定使用版本并立即落盘。
-func (s *subnetdeskStore) SetActive(version string) error {
+// SetActive 设定使用版本与形态并立即落盘（version 传空即清空设定）。
+func (s *subnetdeskStore) SetActive(version, form string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.activeVersion = version
+	if version == "" {
+		s.activeForm = ""
+	} else {
+		s.activeForm = form
+	}
 	return s.saveLocked()
 }
 

@@ -240,10 +240,13 @@ func TestQuitDuringStarting(t *testing.T) {
 	defer withShortWaits(t)()
 	probe := &fakeProbe{}
 	api := &fakeJobAPI{job: &fakeJob{}}
-	e := startEngine(t, api, probe, Callbacks{}) // 内层迟迟不出现 → starting
-	deadline := time.Now().Add(time.Second)
-	for e.Snapshot().State == StateStarting && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
+	e := startEngine(t, api, probe, Callbacks{}) // 内层迟迟不出现 → 停在 starting
+	// Start 返回时状态已同步迁移为 starting（transition 先于 cmd.Start），
+	// 立刻 Quit 即落在 startGrace（压缩后 1s）窗口内。勿改回"轮询等待
+	// starting"——等待窗口与 startGrace 等长，调度抖动会让引擎抢先判
+	// failed（rustdesk 模块 5 跑 4 挂的存量 flaky 同款教训）。
+	if got := e.Snapshot().State; got != StateStarting {
+		t.Fatalf("Start 后应立即处于 starting，实际 %s", got)
 	}
 	if err := e.Quit(); err != nil {
 		t.Fatalf("Quit(starting): %v", err)

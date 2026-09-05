@@ -10,14 +10,14 @@ func TestStoreRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	s := newSubnetDeskStore(dir)
 
-	if s.GetActive() != "" {
-		t.Error("初始 activeVersion 应为空")
+	if v, f := s.GetActive(); v != "" || f != "" {
+		t.Error("初始 activeVersion/activeForm 应为空")
 	}
 	if !s.GetFollowOnExit() {
 		t.Error("followOnExit 默认应为 true")
 	}
 
-	if err := s.SetActive("v1.3.0"); err != nil {
+	if err := s.SetActive("v1.3.0", "installed"); err != nil {
 		t.Fatalf("SetActive: %v", err)
 	}
 	if err := s.SetFollowOnExit(false); err != nil {
@@ -26,11 +26,20 @@ func TestStoreRoundTrip(t *testing.T) {
 
 	// 重新加载验证落盘
 	s2 := newSubnetDeskStore(dir)
-	if s2.GetActive() != "v1.3.0" {
-		t.Errorf("activeVersion = %q, want v1.3.0", s2.GetActive())
+	if v, f := s2.GetActive(); v != "v1.3.0" || f != "installed" {
+		t.Errorf("active = %q/%q, want v1.3.0/installed", v, f)
 	}
 	if s2.GetFollowOnExit() {
 		t.Error("followOnExit 应持久化为 false")
+	}
+
+	// 清空版本连带清空形态（成对不变式）
+	if err := s2.SetActive("", ""); err != nil {
+		t.Fatal(err)
+	}
+	s3 := newSubnetDeskStore(dir)
+	if v, f := s3.GetActive(); v != "" || f != "" {
+		t.Errorf("清空后应双空: %q/%q", v, f)
 	}
 }
 
@@ -41,20 +50,23 @@ func TestStoreCorruptTolerant(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := newSubnetDeskStore(dir)
-	if s.GetActive() != "" || !s.GetFollowOnExit() {
-		t.Errorf("损坏文件应按空配置继续: active=%q follow=%v", s.GetActive(), s.GetFollowOnExit())
+	if v, _ := s.GetActive(); v != "" || !s.GetFollowOnExit() {
+		t.Errorf("损坏文件应按空配置继续: active=%q follow=%v", v, s.GetFollowOnExit())
 	}
 }
 
 func TestStoreFollowOnExitBackCompat(t *testing.T) {
-	// 老配置无 followOnExit 字段 → 默认 true
+	// 老配置无 followOnExit / activeForm 字段 → follow 默认 true，形态按便携兼容
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subnetdesk.json")
 	if err := os.WriteFile(path, []byte(`{"activeVersion":"v1.2.3"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	s := newSubnetDeskStore(dir)
-	if s.GetActive() != "v1.2.3" || !s.GetFollowOnExit() {
-		t.Errorf("回读错误: active=%q follow=%v", s.GetActive(), s.GetFollowOnExit())
+	if v, f := s.GetActive(); v != "v1.2.3" || f != "portable" {
+		t.Errorf("旧配置回读错误: active=%q form=%q follow=%v", v, f, s.GetFollowOnExit())
+	}
+	if !s.GetFollowOnExit() {
+		t.Error("followOnExit 默认应为 true")
 	}
 }
