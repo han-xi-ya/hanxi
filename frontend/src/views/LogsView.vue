@@ -236,7 +236,7 @@ onMounted(async () => {
   flex: 1;
   background: var(--terminal-bg);
   border-radius: var(--radius-control);
-  border: 1px solid color-mix(in srgb, var(--terminal-fg) 14%, var(--terminal-bg));
+  border: 1px solid var(--terminal-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -245,14 +245,14 @@ onMounted(async () => {
 }
 
 .viewer-header {
-  background: color-mix(in srgb, var(--terminal-fg) 5%, var(--terminal-bg));
+  background: var(--terminal-head-bg);
   padding: 8px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid color-mix(in srgb, var(--terminal-fg) 14%, var(--terminal-bg));
+  border-bottom: 1px solid var(--terminal-border);
   font-size: 12px;
-  color: color-mix(in srgb, var(--terminal-fg) 55%, var(--terminal-bg));
+  color: var(--terminal-meta-fg);
 }
 
 .file-name {
@@ -273,7 +273,7 @@ onMounted(async () => {
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
-  color: var(--terminal-fg);
+  color: var(--terminal-row-fg);
   white-space: pre-wrap;
   word-break: break-all;
   user-select: text;
@@ -284,6 +284,6 @@ onMounted(async () => {
   justify-content: center;
   align-items: center;
   height: 200px;
-  color: color-mix(in srgb, var(--terminal-fg) 45%, var(--terminal-bg));
+  color: var(--terminal-faint-fg);
 }
 </style>

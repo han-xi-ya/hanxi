@@ -642,24 +642,24 @@ watch(() => snap.value?.state, (now, prev) => {
 
 /* ---------- 进程输出日志面板（终端态：固定深底不随主题反相，tokens.css 设计决策；
    色阶由 --terminal-* 与 --ansi-* 派生，不再散落裸色） ---------- */
-.dd-log-card { border: 1px solid color-mix(in srgb, var(--terminal-fg) 22%, transparent); border-radius: 8px; overflow: hidden; }
+.dd-log-card { border: 1px solid var(--terminal-border); border-radius: 8px; overflow: hidden; }
 .dd-log-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 7px 12px; background: color-mix(in srgb, var(--terminal-fg) 8%, var(--terminal-bg));
-  border-bottom: 1px solid color-mix(in srgb, var(--terminal-fg) 22%, transparent);
+  padding: 7px 12px; background: var(--terminal-head-bg);
+  border-bottom: 1px solid var(--terminal-border);
 }
 .dd-log-title { font-size: 12px; font-weight: 600; color: var(--terminal-fg); }
 .dd-log-tools { display: flex; align-items: center; gap: 8px; }
-.dd-auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: color-mix(in srgb, var(--terminal-fg) 65%, transparent); cursor: pointer; }
+.dd-auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--terminal-meta-fg); cursor: pointer; }
 .dd-auto-scroll input { accent-color: var(--color-primary); }
 .dd-log-body {
   height: 180px; overflow-y: auto; padding: 10px 12px; background: var(--terminal-bg);
   font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
   user-select: text;
 }
-.dd-log-line { white-space: pre-wrap; word-break: break-all; color: color-mix(in srgb, var(--terminal-fg) 88%, transparent); }
-.dd-log-warn { color: var(--ansi-3); }
-.dd-log-empty { color: var(--ansi-8); text-align: center; padding: 28px 0; }
+.dd-log-line { white-space: pre-wrap; word-break: break-all; color: var(--terminal-row-fg); }
+.dd-log-warn { color: var(--terminal-warn); }
+.dd-log-empty { color: var(--terminal-faint-fg); text-align: center; padding: 28px 0; }
 
 /* ---------- 版本区（业务专属壳） ---------- */
 .control-panel {

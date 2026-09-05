@@ -772,20 +772,20 @@ onMounted(async () => {
 .drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.25); }
 .log-drawer-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 16px; background: color-mix(in srgb, var(--terminal-fg) 8%, var(--terminal-bg));
-  border-bottom: 1px solid color-mix(in srgb, var(--terminal-fg) 18%, var(--terminal-bg));
+  padding: 10px 16px; background: var(--terminal-head-bg);
+  border-bottom: 1px solid var(--terminal-border);
 }
-.log-drawer-title { font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--terminal-fg) 92%, white); }
+.log-drawer-title { font-size: 13px; font-weight: 600; color: var(--terminal-head-fg); }
 .log-drawer-tools { display: flex; align-items: center; gap: 8px; }
-.auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: color-mix(in srgb, var(--terminal-fg) 60%, var(--terminal-bg)); cursor: pointer; }
+.auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--terminal-meta-fg); cursor: pointer; }
 .auto-scroll input { accent-color: var(--color-primary); }
-.log-error { padding: 6px 16px; background: color-mix(in srgb, var(--state-danger) 18%, var(--terminal-bg)); color: var(--state-danger); font-size: 12px; }
+.log-error { padding: 6px 16px; background: var(--terminal-error-bg); color: var(--state-danger); font-size: 12px; }
 .log-body {
   flex: 1; overflow-y: auto; padding: 12px 16px;
   font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
   user-select: text;
 }
-.log-line { white-space: pre-wrap; word-break: break-all; color: var(--terminal-fg); }
-.log-warn { color: var(--ansi-3); }
-.log-empty { color: color-mix(in srgb, var(--terminal-fg) 45%, var(--terminal-bg)); text-align: center; padding: 32px 0; }
+.log-line { white-space: pre-wrap; word-break: break-all; color: var(--terminal-row-fg); }
+.log-warn { color: var(--terminal-warn); }
+.log-empty { color: var(--terminal-faint-fg); text-align: center; padding: 32px 0; }
 </style>

@@ -76,6 +76,17 @@
    * 终端块固定深底、永不随主题反相（design-system 决策，Phase 1 目测复核）。 */
   --terminal-bg: #0b1a1e;
   --terminal-fg: #dfe9ea;
+  /* 终端细分 token（蓝图 §9.5-4）：frpc 日志抽屉 / 运行日志查看器 / ddns 日志面板三处共用。
+   * 由 bg/fg 派生；终端块固定深底、不随主题反相，故深色块不重写本组。
+   * 视图内禁止再写 color-mix 就近派生（收敛原 22/18/14、88/100、60/65 等散值）。 */
+  --terminal-head-bg: color-mix(in srgb, var(--terminal-fg) 8%, var(--terminal-bg));
+  --terminal-head-fg: color-mix(in srgb, var(--terminal-fg) 92%, white);
+  --terminal-border: color-mix(in srgb, var(--terminal-fg) 18%, var(--terminal-bg));
+  --terminal-row-fg: color-mix(in srgb, var(--terminal-fg) 92%, var(--terminal-bg));
+  --terminal-meta-fg: color-mix(in srgb, var(--terminal-fg) 60%, var(--terminal-bg));
+  --terminal-faint-fg: color-mix(in srgb, var(--terminal-fg) 45%, var(--terminal-bg));
+  --terminal-warn: var(--ansi-3);
+  --terminal-error-bg: color-mix(in srgb, var(--state-danger) 18%, var(--terminal-bg));
   --ansi-0: #484f58;
   --ansi-1: #ff7b72;
   --ansi-2: #7ee787;
