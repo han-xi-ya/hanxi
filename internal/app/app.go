@@ -63,6 +63,9 @@ import (
 	"hanxi/internal/modules/recordly"
 	recordlyinstance "hanxi/internal/modules/recordly/instance"
 	recordlyversion "hanxi/internal/modules/recordly/version"
+	"hanxi/internal/modules/rufus"
+	rufusinstance "hanxi/internal/modules/rufus/instance"
+	rufusversion "hanxi/internal/modules/rufus/version"
 	"hanxi/internal/modules/rustdesk"
 	rustdeskinstance "hanxi/internal/modules/rustdesk/instance"
 	rustdeskversion "hanxi/internal/modules/rustdesk/version"
@@ -132,6 +135,8 @@ func RegisterEvents() {
 	application.RegisterEvent[ddnsgoversion.DownloadProgress]("ddnsgo:version-download")
 	application.RegisterEvent[ddnsgoinstance.Snapshot]("ddnsgo:instance-state")
 	application.RegisterEvent[ddnsgoinstance.LogEntry]("ddnsgo:instance-log")
+	application.RegisterEvent[rufusversion.DownloadProgress]("rufus:version-download")
+	application.RegisterEvent[rufusinstance.Snapshot]("rufus:instance-state")
 	application.RegisterEvent[rustdeskversion.DownloadProgress]("rustdesk:version-download")
 	application.RegisterEvent[rustdeskinstance.Snapshot]("rustdesk:instance-state")
 	application.RegisterEvent[subnetdeskversion.DownloadProgress]("subnetdesk:version-download")
@@ -220,6 +225,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		ddnsgo.New(plat),
 		rustdesk.New(plat),
 		subnetdesk.New(plat),
+		rufus.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
