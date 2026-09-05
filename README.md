@@ -189,7 +189,7 @@ hanxi/
 │  ├─ platform/                 # 平台底层（Windows JobObject / DPAPI / 注册表自启 / IP Helper / Appx 包管理 / Shell 提权）
 │  ├─ logging/                  # slog 结构化日志与凭据自动脱敏
 │  └─ settings/                 # 便携化路径解析与通用设置持久化
-├─ frontend/                    # Vue 3 + TypeScript + TailwindCSS 前端
+├─ frontend/                    # Vue 3 + TypeScript + Vite 前端（自研样式层，无第三方 UI 框架）
 │  ├─ src/
 │  │  ├─ views/                 # 各模块业务视图（31 个）与统一工作台布局
 │  │  ├─ components/            # 复用组件（配置编辑/批量端口/分享模态框/状态指示器等）

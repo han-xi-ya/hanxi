@@ -3,7 +3,7 @@
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
 > **更新日期**：2026-09-03
-> **技术基线**：Go ≥1.24 + Wails v3 + Vue 3 + TypeScript + TailwindCSS  
+> **技术基线**：Go ≥1.24 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration)
 
 ---
@@ -14,8 +14,8 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 
 ```text
 ┌────────────────────────────────────────────────────────┐
-│  frontend/  Vue 3 + TypeScript + TailwindCSS           │
-│  - 视图组件、状态管理、路由与侧边栏动态渲染           │
+│  frontend/  Vue 3 + TypeScript + Vite                  │
+│  - 视图组件、状态管理、导航与侧边栏动态渲染           │
 │  - 调用 Wails v3 自动生成的类型化 Bindings JS API     │
 └───────────────────────────┬────────────────────────────┘
                             │ Wails v3 IPC / Events

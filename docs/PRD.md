@@ -5,7 +5,7 @@
 > **更新日期**：2026-09-03  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64（纯 Windows 原生调用）  
 > **发布形态**：**绿色便携单二进制**（默认便携版，支持同级 `data/` 目录免安装常驻）  
-> **技术栈**：Go 1.24+ / Wails v3.0-beta / Vue 3 + TypeScript / TailwindCSS  
+> **技术栈**：Go 1.24+ / Wails v3.0-beta / Vue 3 + TypeScript + Vite  
 
 ---
 

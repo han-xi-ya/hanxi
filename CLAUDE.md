@@ -45,5 +45,5 @@
 
 ## 🛠️ 技术栈与架构参考
 - **后端**：Go 1.24+、Wails v3.0-beta
-- **前端**：Vue 3 + TypeScript + Vite + Tailwind CSS / Element Plus
+- **前端**：Vue 3 + TypeScript + Vite（自研工作台设计系统：CSS 变量 token + 全局原子样式层，无第三方 UI 框架 / 无 vue-router / 无 Pinia）
 - **平台特性**：Windows JobObject 隔离、Windows DPAPI 硬件级加密、Windows 原生提权与托盘
