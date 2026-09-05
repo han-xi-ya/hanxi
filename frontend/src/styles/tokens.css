@@ -4,7 +4,8 @@
  * 三层模型：
  *   ① 原始色板/主题值 —— 裸色值只允许出现在本文件；
  *   ② 语义 token（--color-* / --surface-* / --state-* 等）—— 组件应引用的名字；
- *   ③ 兼容别名层 —— 存量视图旧名的一次性消歧桥，Phase 4/5 迁移到哪族删到哪族。
+ *   ③ 兼容别名层 —— 已于 Phase 6 拆分收官后整删（全仓消费面清零 + dist 产物 grep 复核）。
+   *   旧名再出现即视为违规引用，直接改语义 token，不再回桥。
  *
  * 主题机制：<html data-theme="light|dark">，深色为独立标定而非反色。
  * 新增主题 = 只增变量块，禁止在组件/视图里硬编码颜色。
@@ -56,7 +57,7 @@
   --overlay-mask: rgba(10, 24, 29, 0.46);
   --focus-ring: rgba(15, 139, 141, 0.24);
 
-  /* 字体栈（写实含中文回退；--font-family 为 public/style.css 旧名归一） */
+  /* 字体栈（写实含中文回退；public/style.css 自带其旧名 --font-family 定义，不依赖本文件） */
   --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
   --font-display: "Segoe UI Variable Display", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -105,45 +106,6 @@
   --ansi-14: #63d3d1;
   --ansi-15: #f0f6f7;
 
-  /* ---------- ③ 兼容别名层：存量旧名 → 语义 token ---------- *
-   * 左列是重构前全仓 grep 出的真实引用名（含 15 个从未定义的悬空变量，
-   * 如 --text-primary、--bg-main、--warning、--nz-* 系、--et-* 系、--color-bg-* 系——
-   * 此前靠 color:inherit 等侥幸生效，现统一收编）。勿在新代码中引用别名。 */
-
-  /* App.vue 旧浅色调色板（使用量最大的 12 个） */
-  --bg-app: var(--surface-page);
-  --bg-sidebar: var(--surface-panel);
-  --bg-hover: var(--surface-hover);
-  --bg-active: var(--surface-selected);
-  --border-color: var(--color-border);
-  --text-main: var(--color-text);
-  --text-muted: var(--color-text-muted);
-  --text-subtle: var(--color-text-subtle);
-  --accent: var(--color-primary);
-  --accent-hover: var(--color-primary-hover);
-  --danger: var(--state-danger);
-  --success: var(--state-positive);
-
-  /* 悬空别名（ConfirmDialog / envcheck / FileShare 第三套） */
-  --text-primary: var(--color-text);
-  --text-secondary: var(--color-text-muted);
-  --bg-main: var(--surface-soft);
-  --bg-card: var(--surface-panel);
-  --warning: var(--state-warning);
-  --color-text-primary: var(--color-text);
-  --color-text-secondary: var(--color-text-muted);
-  --color-bg-card: var(--surface-panel);
-  --color-bg-input: var(--surface-soft);
-  --color-bg-hover: var(--surface-hover);
-
-  /* 托管工具私设前缀（NanaZip 青绿系 / EarTrumpet） */
-  --nz-primary: var(--color-primary);
-  --nz-border: var(--color-border);
-  --et-primary: var(--color-primary);
-  --et-border: var(--color-border);
-
-  /* 公共 reset 旧字族名 */
-  --font-family: var(--font-text);
 }
 
 /* ---------- ① + ② 深色主题（独立标定，非反色） ---------- */
@@ -195,4 +157,4 @@
   --ansi-15: #f0f6f7;
 }
 
-/* 别名层不随主题重写：它们 var() 引用语义 token，自动跟随上表。 */
+/* 主题扩展位：新主题 = 新增 [data-theme='xxx'] 语义变量块，组件零改动。 */
