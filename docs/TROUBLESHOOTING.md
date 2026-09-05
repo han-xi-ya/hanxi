@@ -588,3 +588,20 @@ Bili23 Downloader（B 站视频下载器，Python/PySide6 + 自带静态运行�
 - **避坑防重犯建议**：
   1. **托管/文档化"配置在用户目录"必须落到具体子目录名**，实证链 = 上游版本资源/identifier 配置 → 路径库取名源码 → 本机实存印证；Flutter 应用尤其注意 CompanyName\ProductName 两层拼接与"ProductName ≠ 产品名"的历史残留；
   2. **模板拷贝族盘点功能差异必须到函数/hunk 级**（`grep -B/-A` 看调用上下文），文件级命中只能证明"仓里某处有这行字"，不能证明"同一时机做了同一件事"——同构模板的坑恰恰在"99% 相同 + 关键 1% 分叉"。
+
+### 30. 安装版（MSI 系统安装）纳管：魔数错配拒好包、同镜像服务误判与 spec mock 缺方法团灭
+
+rustdesk/subnetdesk 增加"下载安装版"通道（MSI perMachine + Windows 服务，解锁无人值守/锁屏被控），三个环节与便携版直觉相反：
+
+- **问题现象与错误原因**：
+  1. **MSI 不是 PE**：便携链路的 `verifyPEMagic`（MZ 头断言）若被顺手复用到 MSI 校验，会把所有好包全部误拒——MSI 是 OLE 复合文档，签名 `D0 CF 11 E0`；
+  2. **服务与客户端同镜像**：安装版服务 binPath 就是 `"Program Files\X\X.exe" --service`（上游 WiX `CreateStartService` 自定义操作实证），便携时代"探测只认提取目录、与安装版两清"的契约在纳管安装版后反转——按目录前缀识别实例会把 LocalSystem 服务一并数进去，"服务常驻"被误判为"实例运行中"；
+  3. **卸载注册表双键 + 四段版本**：真机在 `HKLM\...\Uninstall` 同时命中产品名遗留键与 `{ProductCode}` GUID 键（均 DisplayName=产品名），GUID 键反而无 `InstallLocation`；`DisplayVersion` 为四段 `1.4.9.29722256`，直接进 semver 比较必炸；
+  4. **前端特征测试团灭**：service 新增 RPC（`GetActiveForm` 等）后 spec 的 `svc` mock 对象没同步，视图 `loadVersions` 里同步 TypeError 被 catch 吞成 listError，installed/releases 双双为空——8 个断言失败全是症状，病根只有一个 mock。
+- **排查过程**：上游 WiX 工程源码实证（`res/msi`：`Scope="perMachine"`、File 元素 `$(var.Product).exe`、服务名=产品名、`preprocess.py` 的 UpgradeCode 派生与卸载键写入）+ 真机装双产品交叉核对（`Get-ItemProperty` 双键、`sc qc` binPath、`Get-Process`/`Get-CimInstance` 可见性对照）；前端侧以 vitest 复现，8 个失败收敛到 mock 缺一个方法。
+- **正确做法与标准修复方案**：魔数断言按形态分家（`verifyPEMagic` 只管便携 exe，`verifyMSIMagic` 独立）；进程身份裁决 = "镜像路径**可读**且命中（提取目录 ∪ 安装目录）前缀"，服务与其派生 broker 的排除靠非提权下 `OpenProcess` 失败这一权限边界（真机实证 Session 0 / SYSTEM 进程路径不可读），代码与注释都不许把裁决建立在"路径可读"之上——**若 Hanxi 将来提权运行，须补 Session/token 判别**；注册表探测只认确定证据（InstallLocation 非空且 exe 实存），版本截前三段、畸形退 PE 版本资源再退"未安装"；`activeVersion`/`activeForm` 成对落盘（旧配置缺 form 按 portable 兼容）；安装版卸载不代执行 `msiexec /x`，引导 `ms-settings:appsfeatures`。
+- **避坑防重犯建议**：
+  1. 写"二进制魔数断言"前先确认格式真实签名——PE(MZ)、OLE/MSI(D0CF11E0)、zip(PK) 是三套，别拿"校验可执行体"的名义跨形态复用；
+  2. 同镜像多身份（客户端/服务/broker）场景先定义判别维度（路径前缀 + 可读性 + session/token）并逐条真机实证，别沿用上一形态"天然两清"的侥幸假设；
+  3. 给 service 加/改 RPC 时，同批检查：bindings 再生成 + 特征测试 `svc` mock 补方法——mock 缺方法比断言写错更毒，它会拖垮整个 `Promise.all`；
+  4. 系统级形态（装机、服务、卸载）纳管的深度边界要显式写死：Hanxi 只做"取包校验 + 发起向导 + 探测拉起"，服务生命周期与卸载交还系统，页面文案如实标注。
