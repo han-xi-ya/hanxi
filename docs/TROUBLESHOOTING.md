@@ -575,3 +575,16 @@ Bili23 Downloader（B 站视频下载器，Python/PySide6 + 自带静态运行�
   6. **别名层同名自引用制造 var() 循环（Phase 1 tokens.css 真 bug，Phase 5 由并行会话揪出）**：兼容别名 `--color-text-muted: var(--color-text-muted);` 写在语义定义之后，后者胜 → 自引用非法 → 该属性 IACVT（invalid at computed-value time）静默失效，所有引用它且无兜底的文字退回 inherit，连指向它的别名一起失效。CSS 自定义属性没有编译期报错，肉眼也难察觉（颜色"看起来差不多"）。
 - **正确做法与标准修复方案**：`.vue` 工程 flat config 顺序固定为 `tseslint.configs.recommended → pluginVue.configs['flat/essential'] → .vue 的 parserOptions.parser 覆写`；次数断言用 `expect(fn).toHaveBeenCalledTimes(n)`；fake timers 场景用纯微任务排空（循环 `await Promise.resolve()`）替代 `flushPromises`；生命周期敏感的行为先以特征测试钉死现状；CSS 注释中的通配族写成 `--color-* / --surface-*`（星与杠之间加空格）；别名层落笔后必须做自引用扫描（正则 `(--[a-z0-9-]+):.*var\(\1[,)]` 应零命中），语义块内同名只允许定义一次、别名只桥接不同名旧称。
 - **避坑防重犯建议**：新工具链第一步永远先跑"空转基线"（lint 应 0 error、单测应全绿）再接 CI；给 lint 定"只报告不阻断"的过渡纪律时，把降级逻辑写进配置文件并注明恢复 error 的时机，防止 warn 状态被后人当成永久默认。绑定生成目录（`bindings/**`）必须同时进 ESLint ignores、`.prettierignore` 与测试 include 白名单之外——格式化生成物会击穿 `verify:bindings`。
+
+### 28. 托管模块批量补数据目录：path_provider Windows 目录名按 PE 版本信息拼接的实证链 + 模板拷贝族"文件级 grep 盘点功能"误判
+
+给全部托管模块批量加"数据目录直达"与"首个下载版本自动设为使用版本"时，两处结论靠猜/靠粗对账都会翻车：
+
+- **问题现象与错误原因**：
+  1. **"配置在 %APPDATA%" 是不完整结论**：FlClash 模块注释只写了"配置数据在 %APPDATA% 用户目录"。按直觉取 `%APPDATA%\FlClash` 会指向不存在的目录——path_provider 的 `getApplicationSupportDirectory` 在 Windows 上读 **exe 的 PE 版本信息**拼 `%APPDATA%\<CompanyName>\<ProductName>`，上游 `windows/runner/Runner.rc` 实测 `CompanyName=com.follow`、`ProductName=clash`（CMake `project(FlClash)` 管二进制名、管不到版本资源），真实数据目录是 `%APPDATA%\com.follow\clash`（`FlClash.lock`/`config.yaml` 均在其中）。
+  2. **文件级 grep 坐实"功能已有"是误判**：对账"哪些模块下载后自动设使用版本"时，`grep -l 'GetActive() == ""'` 命中 17/17 全绿——但逐处看上下文，既有兜底几乎全在**启动成功路径**（冷启动把实际采用版本回写 active），下载完成点并不激活；唯 snipaste 一处在 `manager.Download` 成功后判空收编。模板拷贝族在同一函数的不同调用点存在行为分叉，用户"下载完还要再点一下"的体感恰恰是真的。
+- **排查过程**：读 `path_provider_windows_real.dart` 源码确认取名规则（ProductName 经非法字符清洗，缺失回退 exe 文件名；有 CompanyName 则多拼一层）→ 对照上游 Runner.rc/CMakeLists 定死 com.follow\clash；Tauri 族（Keyviz `org.keyviz`、PicLite `com.piclite.desktop`）按 identifier 走 appData；已运行过的工具用本机目录实存交叉印证（RustDesk/SubnetDesk/Bili23/`.cc-switch` 均在，Snipaste 便携实证 config.ini 落 exe 同目录）。
+- **正确做法与标准修复方案**：9 模块补 `OpenConfigDir`（八种目录语义；ddns-go 上游是 home 下单文件，用 `explorer /select,` 定位而非整个打开主目录；frpc 为 CLI 托管无自有数据，按钮语义是 Hanxi 实例 TOML 配置目录并先 MkdirAll）；16 模块 `DownloadVersion` 的 goroutine 在 `err == nil` 后补"未设使用版本时自动收编刚下载版本 + 错误分支补 return"，与 snipaste 既有行为对齐。前端无需改：各视图 `done` 事件既有 `loadVersions()` 刷新链自动反映激活结果。
+- **避坑防重犯建议**：
+  1. **托管/文档化"配置在用户目录"必须落到具体子目录名**，实证链 = 上游版本资源/identifier 配置 → 路径库取名源码 → 本机实存印证；Flutter 应用尤其注意 CompanyName\ProductName 两层拼接与"ProductName ≠ 产品名"的历史残留；
+  2. **模板拷贝族盘点功能差异必须到函数/hunk 级**（`grep -B/-A` 看调用上下文），文件级命中只能证明"仓里某处有这行字"，不能证明"同一时机做了同一件事"——同构模板的坑恰恰在"99% 相同 + 关键 1% 分叉"。
