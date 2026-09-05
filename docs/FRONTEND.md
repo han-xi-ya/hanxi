@@ -3,7 +3,7 @@
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
 > **更新日期**：2026-09-05
-> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。当前待办＝跟进批 §9.5（家族级 bug 修复、Snipaste/frpc modal 二次收编、VersionsView 死码处置待用户确认、AppIcon 图标集）与 Phase 6（巨型孤本拆分：WechatBot/FileShare/PublicIp/Everything）。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批首批 ✅**（家族级 bug 修复①②、`--terminal-*` 细分 token④、VersionsView 死码删除，516 用例全绿）；当前待办＝§9.5 残余（③ Snipaste 二次收编【下一刀】、⑤ running 文案/MSIX 壳抽取、AppIcon 图标集）与 Phase 6（巨型孤本拆分：WechatBot/FileShare/PublicIp/Everything）。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
 
@@ -187,10 +187,10 @@ src/
 
 ### 9.5 迁移期发现登记（Phase 3/4 各组上交，均已被特征测试按事实锁定，修复合入独立跟进提交）
 
-1. **onFollowToggle 家族潜伏 bug**：成功路径不回写 `followOnExit`（toast 用 stale 值，文案可能反向），失败"回滚"实为翻转提交值——遍布托管家族；修法：改双绑或成功显式赋值，逐视图测试同步。
-2. **下载失败详情死分支**：`statusOf==='error'` 时错误文案挂在 `v-if==='downloading'` 分支内永不可见（部分视图重试入口同失联）——统一修 error 分支渲染。
+1. ✅ **onFollowToggle 家族潜伏 bug**（已修复）：原成功路径不回写 `followOnExit`（toast 用 stale 值，文案可能反向）、失败"回滚"实为翻转提交值。14 视图统一改「点击乐观翻转 ref → 成功保持 / 失败回写复位」（`:checked` 单向绑定与 DOM 勾选态由此自洽）；FlClash（失败复位）、RustDesk/SubnetDesk（成功回写+文案跟随新值）特征测试同步；MangoDisk 本已正确不涉。
+2. ✅ **下载失败详情死分支**（已修复）：13 样板视图操作列新增 `v-else-if="statusOf==='error'"` 分支渲染 `.dl-error` 详情；FrpcVersionsTab 复活缺失的重试入口（link-button）；BCU 双变体外层/内层条件纳入 error；PaperTodo 下载模板并含 error 态（retryDownload/lastVariant 复活）。死分支锁定测试翻转（FrpcVersionsTab/PaperTodo），MarkerOn 新增家族代表用例。VersionsView.vue（frpc 版本页旧死码孤本、活体为 FrpcVersionsTab 组件）经用户确认已删除。
 3. **Snipaste 模板二次收编**：待 MainTabNav 增 aria id 前缀 props、badge/state-box/version-table 上收原子后进行；同时清除其 `var(--danger, #hex)` 兜底写法。
-4. **`--terminal-*` 细分 token 组**：ddns 日志面板暂用 color-mix 派生，正式头/行/警告 token 补进 tokens.css。
+4. ✅ **`--terminal-*` 细分 token 组**（已落地）：tokens.css 新增 `--terminal-{head-bg,head-fg,border,row-fg,meta-fg,faint-fg,warn,error-bg}` 八枚（由 bg/fg 派生、深色块不重写——终端固定深底约定）；DdnsGo/FrpcProjects/LogsView 三终端面 15 处就近 color-mix 全部收敛，散值归一（边框 22/18/14→18、行文本 88/92/100→92、辅助 65/60/55→60 等）；视图内此后禁止再写终端色 color-mix 派生。
 5. **running 文案家族分歧**（运行中/已启动）与 **MSIX 管理型壳抽取**（NanaZip/ET 剩余差异 ≈80 行模板 + 40 行样式可抽）：并入 Phase 5/4b 决策。
 6. 已接受的微差：fmtSize 恰 1MB 边界（`>=`→`>`）、确认按钮"确定"→"确认"、复制失败文案收敛、slim banner ~2px 内距、badge→chip 观感——均为设计归一，真机目视项。
 
