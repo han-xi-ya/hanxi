@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { AppInfo } from '../../bindings/hanxi/internal/app'
+import type { ModuleInfo } from '../../bindings/hanxi/internal/extapi/models'
+import { getErrorMessage } from '../utils/errors'
 
 const info = ref<AppInfo | null>(null)
-const modules = ref<any[]>([])
+const modules = ref<ModuleInfo[]>([])
 const loading = ref(true)
 const loadError = ref('')
 
@@ -16,8 +18,9 @@ onMounted(async () => {
     ])
     info.value = appInfo
     modules.value = moduleList ?? []
-  } catch (error) {
-    loadError.value = error instanceof Error ? error.message : String(error)
+  } catch (error: unknown) {
+    // 错误归一入口全站统一（原 instanceof 手写分支语义等价，收编进 getErrorMessage）
+    loadError.value = getErrorMessage(error)
   } finally {
     loading.value = false
   }
@@ -107,17 +110,17 @@ onMounted(async () => {
   display: grid;
   place-items: center;
   flex: 0 0 52px;
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border-color));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
   border-radius: 14px;
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-sidebar));
-  color: var(--accent);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--surface-panel));
+  color: var(--color-primary);
   font-size: 16px;
   font-weight: 750;
 }
 
 .eyebrow {
   margin: 0 0 4px;
-  color: var(--accent);
+  color: var(--color-primary);
   font-size: 12px;
   font-weight: 650;
 }
@@ -136,15 +139,15 @@ h1 {
 .product-description,
 .section-heading p {
   margin-bottom: 0;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .info-panel,
 .modules-panel,
 .state-panel {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: var(--bg-sidebar);
+  background: var(--surface-panel);
 }
 
 .info-panel {
@@ -159,24 +162,24 @@ h1 {
   flex-direction: column;
   gap: 6px;
   padding: 14px 16px;
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--color-border);
 }
 
 .info-item span {
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   font-size: 12px;
 }
 
 .info-item code,
 .module-meta code {
-  color: var(--text-main);
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--color-text);
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
 .info-path {
   grid-column: 1 / -1;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color-border);
   border-right: 0;
 }
 
@@ -215,12 +218,12 @@ h1 {
 
 .module-count {
   padding: 4px 9px;
-  background: var(--bg-hover);
-  color: var(--text-muted);
+  background: var(--surface-hover);
+  color: var(--color-text-muted);
 }
 
 .module-list {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 9px;
   overflow: hidden;
 }
@@ -232,11 +235,11 @@ h1 {
   gap: 16px;
   min-height: 54px;
   padding: 11px 13px;
-  background: var(--bg-sidebar);
+  background: var(--surface-panel);
 }
 
 .module-row + .module-row {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color-border);
 }
 
 .module-main {
@@ -252,7 +255,7 @@ h1 {
 
 .module-main span {
   overflow: hidden;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -270,22 +273,22 @@ h1 {
 }
 
 .status-badge.enabled {
-  color: var(--success);
-  background: color-mix(in srgb, var(--success) 8%, transparent);
+  color: var(--state-positive);
+  background: color-mix(in srgb, var(--state-positive) 8%, transparent);
 }
 
 .status-badge.disabled {
-  color: var(--text-subtle);
-  background: var(--bg-hover);
+  color: var(--color-text-subtle);
+  background: var(--surface-hover);
 }
 
 .state-panel {
   padding: 18px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
 .error-panel {
-  color: var(--danger);
+  color: var(--state-danger);
 }
 
 @media (max-width: 720px) {
@@ -295,7 +298,7 @@ h1 {
 
   .info-item {
     border-right: 0;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--color-border);
   }
 
   .info-path {

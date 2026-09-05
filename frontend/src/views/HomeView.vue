@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, shallowRef, computed, onMounted } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { ModuleInfo, NavEntry } from '../../bindings/hanxi/internal/extapi/models'
 import type { AppInfo } from '../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../constants/navigation'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -17,39 +18,9 @@ const modules = shallowRef<ModuleInfo[]>([])
 const navs = shallowRef<NavEntry[]>([])
 const appInfo = ref<AppInfo | null>(null)
 const toggling = ref<string | null>(null)
-let unlistenExtChanged: (() => void) | null = null
 
-// 模块图标与首选路由映射
-const MODULE_META: Record<string, { icon: string; route: string }> = {
-  frpc: { icon: '⚡', route: '/frpc' },
-  fileshare: { icon: '📁', route: '/ext/fileshare' },
-  memo: { icon: '📝', route: '/ext/memo' },
-  lan: { icon: '◉', route: '/ext/lan' },
-  portscan: { icon: '🔍', route: '/ext/portscan' },
-  wechat: { icon: '💬', route: '/ext/wechat' },
-  publicip: { icon: '≋', route: '/ext/publicip' },
-  portkill: { icon: '✕', route: '/ext/portkill' },
-  wifi: { icon: '📶', route: '/ext/wifi' },
-  markeron: { icon: '✎', route: '/ext/markeron' },
-  everything: { icon: '🔎', route: '/ext/everything' },
-  ccswitch: { icon: '🔀', route: '/ext/ccswitch' },
-  snipaste: { icon: '✂', route: '/ext/snipaste' },
-  nanazip: { icon: 'NZ', route: '/ext/nanazip' },
-  eartrumpet: { icon: '🔊', route: '/ext/eartrumpet' },
-  mangodisk: { icon: '🥭', route: '/ext/mangodisk' },
-  bcu: { icon: '🧹', route: '/ext/bcu' },
-  flclash: { icon: '⚡', route: '/ext/flclash' },
-  recordly: { icon: '🎬', route: '/ext/recordly' },
-  papertodo: { icon: '📄', route: '/ext/papertodo' },
-  piclite: { icon: '🖼️', route: '/ext/piclite' },
-  keyviz: { icon: '⌨️', route: '/ext/keyviz' },
-  quicklook: { icon: '👁️', route: '/ext/quicklook' },
-  litemonitor: { icon: '📊', route: '/ext/litemonitor' },
-  guoheview: { icon: '🏞️', route: '/ext/guoheview' },
-  ddnsgo: { icon: '🌐', route: '/ext/ddnsgo' },
-  subnetdesk: { icon: '🖥', route: '/ext/subnetdesk' },
-  rustdesk: { icon: '🌍', route: '/ext/rustdesk' },
-}
+// 模块展示元数据（图标/首选路由）单一来源在 constants/navigation（三份清单收编）
+const MODULE_META = MODULE_PRESENTATION
 
 async function loadData() {
   try {
@@ -70,7 +41,7 @@ const enabledModules = computed(() => modules.value.filter(m => m.enabled))
 const disabledModules = computed(() => modules.value.filter(m => !m.enabled))
 
 function getModuleIcon(id: string): string {
-  return MODULE_META[id]?.icon || '📦'
+  return MODULE_META[id]?.icon || FALLBACK_MODULE_ICON
 }
 
 function getModuleRoute(id: string): string {
@@ -101,18 +72,12 @@ async function toggle(m: ModuleInfo) {
   }
 }
 
-onMounted(async () => {
-  await loadData()
-  unlistenExtChanged = Events.On('ext:changed', () => {
-    loadData()
-  })
+useWailsEvent('ext:changed', () => {
+  loadData()
 })
 
-onUnmounted(() => {
-  if (unlistenExtChanged) {
-    unlistenExtChanged()
-    unlistenExtChanged = null
-  }
+onMounted(async () => {
+  await loadData()
 })
 </script>
 
@@ -253,15 +218,16 @@ onUnmounted(() => {
   max-width: 1200px;
 }
 
+/* 首页页头为"标题 + 统计卡"复合行，结构区别于通用 .header-row 原子，保留本地 */
 .header-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   padding: 16px 20px;
-  border-radius: 10px;
+  border-radius: var(--radius-element);
 }
 
 .title-with-badge {
@@ -278,28 +244,26 @@ onUnmounted(() => {
 
 .version-tag {
   font-size: 11px;
-  font-family: Consolas, monospace;
-  background: var(--bg-app);
-  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: var(--surface-page);
+  color: var(--color-text-muted);
   padding: 2px 6px;
   border-radius: 4px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
 }
 
 .subtitle {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 6px 0 0;
+  margin: 6px 0 0; /* 颜色/字号由全局 .subtitle 原子提供 */
 }
 
 .stats-card {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
+  background: var(--surface-page);
+  border: 1px solid var(--color-border);
   padding: 8px 18px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .stat-item {
@@ -311,34 +275,21 @@ onUnmounted(() => {
 .stat-num {
   font-size: 18px;
   font-weight: 700;
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-.text-success { color: var(--success); }
-.text-muted { color: var(--text-muted); }
+.text-success { color: var(--state-positive); }
+.text-muted { color: var(--color-text-muted); }
 
 .stat-label {
   font-size: 11px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .stat-divider {
   font-size: 16px;
-  color: var(--border-color);
-}
-
-.toast {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  background: var(--text-main);
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  animation: fadeIn 0.2s ease;
-  z-index: 1000;
+  color: var(--color-border);
 }
 
 .section-container {
@@ -361,7 +312,7 @@ onUnmounted(() => {
 
 .section-hint {
   font-size: 12px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   margin-left: 4px;
 }
 
@@ -370,8 +321,8 @@ onUnmounted(() => {
   height: 8px;
   border-radius: 50%;
 }
-.dot-status.ok { background: var(--success); }
-.dot-status.off { background: var(--text-subtle); }
+.dot-status.ok { background: var(--state-positive); }
+.dot-status.off { background: var(--color-text-subtle); }
 
 .cards-grid {
   display: grid;
@@ -380,32 +331,32 @@ onUnmounted(() => {
 }
 
 .module-card {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-element);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transition: all 0.2s ease;
+  transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease, transform var(--motion-base) ease, opacity var(--motion-base) ease;
 }
 
 .enabled-card {
   cursor: pointer;
 }
 .enabled-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 4px 16px rgba(47, 111, 237, 0.08);
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 16px var(--color-primary-glow);
   transform: translateY(-2px);
 }
 
 .disabled-card {
   opacity: 0.85;
-  background: #fafbfc;
+  background: var(--surface-soft);
 }
 .disabled-card:hover {
   opacity: 1;
-  border-color: #c0c6d0;
+  border-color: var(--color-border-strong);
 }
 
 .card-top {
@@ -417,18 +368,18 @@ onUnmounted(() => {
 .icon-wrap {
   width: 38px;
   height: 38px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .active-icon {
-  background: var(--bg-active);
+  background: var(--surface-selected);
 }
 
 .idle-icon {
-  background: var(--bg-hover);
+  background: var(--surface-hover);
 }
 
 .mod-icon {
@@ -438,33 +389,33 @@ onUnmounted(() => {
 .btn-toggle-off {
   font-size: 11px;
   padding: 4px 10px;
-  border-radius: 5px;
-  border: 1px solid var(--border-color);
-  background: #fff;
-  color: var(--text-muted);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+  background: var(--surface-panel);
+  color: var(--color-text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
 }
 .btn-toggle-off:hover {
-  background: #ffebe9;
-  border-color: rgba(207, 34, 46, 0.3);
-  color: var(--danger);
+  background: var(--state-danger-soft);
+  border-color: var(--state-danger-glow);
+  color: var(--state-danger);
 }
 
 .btn-toggle-on {
   font-size: 11px;
   padding: 5px 12px;
-  border-radius: 5px;
-  border: 1px solid var(--accent);
-  background: var(--bg-active);
-  color: var(--accent);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-primary);
+  background: var(--surface-selected);
+  color: var(--color-primary);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--motion-base) ease, color var(--motion-base) ease;
 }
 .btn-toggle-on:hover {
-  background: var(--accent);
-  color: #fff;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
 }
 
 .card-info {
@@ -484,34 +435,34 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 600;
   margin: 0;
-  color: var(--text-main);
+  color: var(--color-text);
 }
 
 .level-badge {
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-pill);
   font-weight: 500;
 }
 
 .badge-active {
-  background: #dafbe1;
-  color: #1a7f37;
+  background: var(--state-positive-soft);
+  color: var(--state-positive);
 }
 
 .badge-idle {
-  background: #e8f0fe;
-  color: #1e5cd8;
+  background: var(--state-information-soft);
+  color: var(--state-information);
 }
 
 .badge-off {
-  background: #eaeef2;
-  color: #656d76;
+  background: var(--surface-hover);
+  color: var(--color-text-muted);
 }
 
 .mod-desc {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   margin: 0;
   line-height: 1.5;
   display: -webkit-box;
@@ -525,42 +476,28 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding-top: 8px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color-border);
   font-size: 11px;
 }
 
 .enter-link {
-  color: var(--accent);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
 .author-tag {
-  color: var(--text-subtle);
-  font-family: Consolas, monospace;
+  color: var(--color-text-subtle);
+  font-family: var(--font-mono);
 }
 
 .zero-cost-tag {
-  color: var(--text-muted);
+  color: var(--color-text-muted);
 }
 
-.empty-state {
-  background: var(--bg-sidebar);
-  border: 1px dashed var(--border-color);
-  border-radius: 8px;
-  padding: 24px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
+/* .empty-state 全局原子接管；此处仅留"全部启用"变体覆写 */
 .ok-state {
   border-style: solid;
-  background: #f6f8fa;
-  color: var(--success);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  background: var(--surface-soft);
+  color: var(--state-positive);
 }
 </style>

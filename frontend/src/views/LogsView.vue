@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, onActivated, onDeactivated, computed, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, computed, nextTick } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { LogFileInfo } from '../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { usePolling } from '../composables/usePolling'
+import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
+const { copy } = useClipboard()
 
 const logFiles = shallowRef<LogFileInfo[]>([])
 const selectedFile = ref<string>('')
@@ -16,7 +19,6 @@ const searchKeyword = ref('')
 const maxLines = ref(300)
 const logContainerRef = ref<HTMLPreElement | null>(null)
 
-let timer: ReturnType<typeof setInterval> | null = null
 let currentRequestId = 0
 
 async function loadFileList() {
@@ -61,15 +63,11 @@ async function fetchContent(scrollBottom = false) {
   }
 }
 
-async function selectLog(name: string) {
-  selectedFile.value = name
-  await fetchContent(true)
-}
-
-function copyLogs() {
+async function copyLogs() {
   if (!logContent.value) return
-  navigator.clipboard.writeText(logContent.value)
-  showToast('日志内容已复制到剪贴板')
+  // 修复说明：原实现 writeText 失败也谎报"已复制"（fire-and-forget），收编 useClipboard 后如实回执
+  const ok = await copy(logContent.value)
+  showToast(ok ? '日志内容已复制到剪贴板' : '复制失败')
 }
 
 async function openLogFolder() {
@@ -102,32 +100,19 @@ const filteredLines = computed(() => {
   return lines.filter(l => l.toLowerCase().includes(kw))
 })
 
-function startPolling() {
-  if (timer) return
-  timer = setInterval(() => {
-    if (autoRefresh.value && selectedFile.value) {
-      fetchContent(false)
-    }
-  }, 2500)
-}
-
-function stopPolling() {
-  if (!timer) return
-  clearInterval(timer)
-  timer = null
-}
+// 自动刷新轮询（usePolling 内置 KeepAlive 契约；immediateFirstRun:false 对齐原"2.5s 后才首次周期拉取"节奏）
+usePolling(() => {
+  if (autoRefresh.value && selectedFile.value) {
+    fetchContent(false)
+  }
+}, 2500, { immediateFirstRun: false })
 
 onMounted(async () => {
   await loadFileList()
   if (selectedFile.value) {
     await fetchContent(true)
   }
-  startPolling()
 })
-
-onActivated(startPolling)
-onDeactivated(stopPolling)
-onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -162,10 +147,10 @@ onUnmounted(stopPolling)
           <input v-model="autoRefresh" type="checkbox" />
           自动刷新 (2.5s)
         </label>
-        <button class="btn btn-secondary btn-sm" @click="fetchContent(true)">🔄 刷新</button>
-        <button class="btn btn-secondary btn-sm" @click="copyLogs">📋 复制</button>
-        <button class="btn btn-secondary btn-sm" @click="openLogFolder">📂 目录</button>
-        <button class="btn btn-danger-outline btn-sm" @click="clearLogs">🧹 清理历史</button>
+        <button class="btn btn-secondary btn-small" @click="fetchContent(true)">🔄 刷新</button>
+        <button class="btn btn-secondary btn-small" @click="copyLogs">📋 复制</button>
+        <button class="btn btn-secondary btn-small" @click="openLogFolder">📂 目录</button>
+        <button class="btn btn-danger-outline btn-small" @click="clearLogs">🧹 清理历史</button>
       </div>
     </div>
 
@@ -186,27 +171,12 @@ onUnmounted(stopPolling)
   flex-direction: column;
   gap: 14px;
   height: calc(100vh - 48px);
+  height: calc(100dvh - 48px);
 }
 
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
+/* .header-row/.subtitle/.btn 家族均由全局原子接管 */
 .subtitle {
-  color: var(--text-muted);
-  font-size: 13px;
   margin: 4px 0 0;
-}
-
-.toast {
-  background: var(--text-main);
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  animation: fadeIn 0.2s ease;
 }
 
 .control-panel {
@@ -214,10 +184,10 @@ onUnmounted(stopPolling)
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   flex-wrap: wrap;
 }
 
@@ -229,29 +199,31 @@ onUnmounted(stopPolling)
 
 .select-file {
   padding: 5px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   font-size: 12px;
-  background: #fff;
-  font-family: Consolas, monospace;
+  background: var(--surface-soft);
+  color: var(--color-text);
+  font-family: var(--font-mono);
 }
 
 .input-search {
   padding: 5px 10px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   font-size: 12px;
-  background: #fff;
+  background: var(--surface-soft);
+  color: var(--color-text);
   width: 240px;
 }
-.input-search:focus {
-  border-color: var(--accent);
+.input-search:focus-visible {
+  border-color: var(--color-primary);
   outline: none;
 }
 
 .auto-refresh-label {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -259,64 +231,33 @@ onUnmounted(stopPolling)
   margin-right: 4px;
 }
 
-.btn {
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-}
-
-.btn-secondary {
-  background: #fff;
-  border-color: var(--border-color);
-  color: var(--text-main);
-}
-.btn-secondary:hover {
-  background: var(--bg-hover);
-}
-
-.btn-danger-outline {
-  background: #fff;
-  border-color: rgba(207, 34, 46, 0.3);
-  color: var(--danger);
-}
-.btn-danger-outline:hover {
-  background: #ffebe9;
-}
-
-.btn-sm {
-  padding: 4px 10px;
-}
-
+/* 日志终端区：固定深底永不随主题反相（tokens.css --terminal-* 色板，蓝图 §7.3） */
 .log-viewer-container {
   flex: 1;
-  background: #1e1e1e;
-  border-radius: 8px;
-  border: 1px solid #333;
+  background: var(--terminal-bg);
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--terminal-fg) 14%, var(--terminal-bg));
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-small);
   min-height: 400px;
 }
 
 .viewer-header {
-  background: #252526;
+  background: color-mix(in srgb, var(--terminal-fg) 5%, var(--terminal-bg));
   padding: 8px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid color-mix(in srgb, var(--terminal-fg) 14%, var(--terminal-bg));
   font-size: 12px;
-  color: #858585;
+  color: color-mix(in srgb, var(--terminal-fg) 55%, var(--terminal-bg));
 }
 
 .file-name {
-  color: #9cdcfe;
-  font-family: Consolas, monospace;
+  color: var(--ansi-4);
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 
@@ -329,10 +270,10 @@ onUnmounted(stopPolling)
   margin: 0;
   padding: 12px 16px;
   overflow-y: auto;
-  font-family: Consolas, 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
-  color: #d4d4d4;
+  color: var(--terminal-fg);
   white-space: pre-wrap;
   word-break: break-all;
   user-select: text;
@@ -343,11 +284,6 @@ onUnmounted(stopPolling)
   justify-content: center;
   align-items: center;
   height: 200px;
-  color: #666;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  color: color-mix(in srgb, var(--terminal-fg) 45%, var(--terminal-bg));
 }
 </style>

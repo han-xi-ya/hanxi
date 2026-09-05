@@ -71,3 +71,41 @@ export function placeholderComponent(): Component {
 export function fallbackComponent(): Component {
   return ROUTES['/'].component
 }
+
+/**
+ * 模块展示元数据（图标 + 首选路由）：自 HomeView 的 MODULE_META 收编，
+ * 终结"三份并行清单"（App.vue 两张表已并入 ROUTES）。后端注册表仍是
+ * "模块存在/启用"的真相，本表只供首页卡片渲染；缺省模块走 fallbackIcon。
+ */
+export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }> = {
+  frpc: { icon: '⚡', route: '/frpc' },
+  fileshare: { icon: '📁', route: '/ext/fileshare' },
+  memo: { icon: '📝', route: '/ext/memo' },
+  lan: { icon: '◉', route: '/ext/lan' },
+  portscan: { icon: '🔍', route: '/ext/portscan' },
+  wechat: { icon: '💬', route: '/ext/wechat' },
+  publicip: { icon: '≋', route: '/ext/publicip' },
+  portkill: { icon: '✕', route: '/ext/portkill' },
+  wifi: { icon: '📶', route: '/ext/wifi' },
+  markeron: { icon: '✎', route: '/ext/markeron' },
+  everything: { icon: '🔎', route: '/ext/everything' },
+  ccswitch: { icon: '🔀', route: '/ext/ccswitch' },
+  snipaste: { icon: '✂', route: '/ext/snipaste' },
+  nanazip: { icon: 'NZ', route: '/ext/nanazip' },
+  eartrumpet: { icon: '🔊', route: '/ext/eartrumpet' },
+  mangodisk: { icon: '🥭', route: '/ext/mangodisk' },
+  bcu: { icon: '🧹', route: '/ext/bcu' },
+  flclash: { icon: '⚡', route: '/ext/flclash' },
+  recordly: { icon: '🎬', route: '/ext/recordly' },
+  papertodo: { icon: '📄', route: '/ext/papertodo' },
+  piclite: { icon: '🖼️', route: '/ext/piclite' },
+  keyviz: { icon: '⌨️', route: '/ext/keyviz' },
+  quicklook: { icon: '👁️', route: '/ext/quicklook' },
+  litemonitor: { icon: '📊', route: '/ext/litemonitor' },
+  guoheview: { icon: '🏞️', route: '/ext/guoheview' },
+  ddnsgo: { icon: '🌐', route: '/ext/ddnsgo' },
+  subnetdesk: { icon: '🖥', route: '/ext/subnetdesk' },
+  rustdesk: { icon: '🌍', route: '/ext/rustdesk' },
+}
+
+export const FALLBACK_MODULE_ICON = '📦'
