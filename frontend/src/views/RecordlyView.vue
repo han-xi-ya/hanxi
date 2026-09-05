@@ -534,6 +534,9 @@ onMounted(() => {
                 <span v-if="['verify', 'install'].includes(downloading[rel.version]!.stage)">校验并静默安装…</span>
                 <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
               </div>
+              <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
+                <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
+              </div>
               <UiButton
                 v-if="statusOf(rel) === 'idle'"
                 variant="primary"

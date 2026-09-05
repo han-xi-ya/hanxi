@@ -205,17 +205,20 @@ describe('PaperTodoView 变体体系', () => {
     wrapper.unmount()
   })
 
-  it('error 事件后状态列显失败；重试链接现状不渲染（疑似死代码，见迁移报告）', async () => {
-    // 现状锁定：statusOf 对 stage==='error' 返回 'error'，而"重试"链接挂在
-    // v-if="statusOf==='downloading'" 分支内 → 二者互斥，retry-link 永不可见，
-    // retryDownload/lastVariant 逻辑事实上不可达。迁移不改行为，仅交回主线决策。
+  it('error 事件后状态列显失败，错误详情与重试链接呈现（§9.5-2 修复）', async () => {
+    // 修复后语义：error 态并入下载模板分支渲染——详情可见，retryDownload/lastVariant 复活。
     stubDefaults({ state: 'stopped' })
+    svc.DownloadVersion.mockResolvedValue('started')
     const { wrapper } = await mountView()
     runtime.handlers['papertodo:version-download']({ data: { version: '1.3.0', stage: 'error', message: '网络中断' } })
     await nextTick()
     expect(wrapper.find('.pt-ver-status').classes()).toContain('error')
     expect(wrapper.find('.pt-ver-status').text()).toBe('失败')
-    expect(wrapper.text()).not.toContain('重试')
+    expect(wrapper.find('.dl-error').text()).toBe('网络中断')
+    const retry = wrapper.findAll('.retry-link').find((a) => a.text() === '重试')!
+    await retry.trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledWith('1.3.0', expect.any(String)) // 复下载走 lastVariant/当前变体
     wrapper.unmount()
   })
 })

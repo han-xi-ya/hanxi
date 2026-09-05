@@ -556,9 +556,9 @@ onMounted(() => {
                     @click="download(rel, 'fdd')"
                   >精简版 {{ rel.fddSize ? fmtSize(rel.fddSize) : '' }}</button>
                 </div>
-                <div v-if="statusOf(rel, 'portable') === 'downloading' || statusOf(rel, 'fdd') === 'downloading'" class="variant-progress">
+                <div v-if="['downloading', 'error'].includes(statusOf(rel, 'portable')) || ['downloading', 'error'].includes(statusOf(rel, 'fdd'))" class="variant-progress">
                   <template v-for="v in VARIANTS" :key="v">
-                    <div v-if="statusOf(rel, v) === 'downloading'" class="dl-meta-text">
+                    <div v-if="statusOf(rel, v) === 'downloading' || statusOf(rel, v) === 'error'" class="dl-meta-text">
                       <span v-if="['verify', 'extract'].includes(downloading[`${rel.version}|${v}`]!.stage)">
                         {{ variantLabel(v) }}校验解压安装…
                       </span>

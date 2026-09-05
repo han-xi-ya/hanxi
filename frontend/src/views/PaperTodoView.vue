@@ -543,7 +543,7 @@ onMounted(() => {
                 <span v-else class="pt-ver-status idle">可安装</span>
               </td>
               <td class="asset-cell">
-                <template v-if="statusOf(rel) === 'downloading' && downloading[rel.version]">
+                <template v-if="(statusOf(rel) === 'downloading' || statusOf(rel) === 'error') && downloading[rel.version]">
                   <div v-if="downloading[rel.version]!.stage === 'downloading'" class="download-cell">
                     <div class="dl-bar-wrap"><div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div></div>
                     <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>

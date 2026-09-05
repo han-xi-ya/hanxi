@@ -251,6 +251,20 @@ describe('MarkerOnView 事件推送与轮询（KeepAlive 契约）', () => {
     wrapper.unmount()
   })
 
+  it('下载失败事件：状态显失败且操作列呈现错误详情与重试（§9.5-2 家族样板）', async () => {
+    // 13 个样板视图同构修复，此处锁定家族代表形态；其余视图结构一致不逐一重复断言。
+    stubDefaults({ state: 'stopped' }, [], [{ version: 'v1.2.0', size: 100, published: '2026-08-02T00:00:00Z', isPre: false }])
+    const { wrapper } = await mountInKeepAlive()
+    runtime.handlers['markeron:version-download']({
+      data: { version: 'v1.2.0', stage: 'error', message: '压缩包校验失败' },
+    })
+    await nextTick()
+    expect(wrapper.find('.ver-status.error').text()).toBe('失败')
+    expect(wrapper.find('.dl-error').text()).toBe('压缩包校验失败')
+    expect(wrapper.find('.retry-link').text()).toBe('重试')
+    wrapper.unmount()
+  })
+
   it('激活时 2.5s 轮询刷新；KeepAlive 停用后轮询停止（不泄漏）', async () => {
     vi.useFakeTimers()
     try {

@@ -184,16 +184,20 @@ describe('FrpcVersionsTab 下载进度事件', () => {
     wrapper.unmount()
   })
 
-  it('error 阶段：状态格显示失败，但操作列无错误详情无重试入口（家族死分支现状，按事实锁定）', async () => {
+  it('error 阶段：状态格显示失败，操作列呈现错误详情与重试入口（§9.5-2 修复）', async () => {
     svc.ListReleases.mockResolvedValue([{ ...release061, version: 'v0.62.0' }])
     svc.ListInstalledVersions.mockResolvedValue([])
+    svc.DownloadVersion.mockResolvedValue(undefined)
     const wrapper = mount(FrpcVersionsTab)
     await flushMicrotasks()
     runtime.handlers['frpc:version-download']({ data: { version: 'v0.62.0', stage: 'error', message: 'SHA256 校验不符' } })
     await nextTick()
     expect(wrapper.find('.frpc-version-status.error').text()).toBe('失败')
-    expect(wrapper.find('.dl-error').exists()).toBe(false)
-    expect(wrapper.find('.retry-link').exists()).toBe(false)
+    expect(wrapper.find('.dl-error').text()).toBe('SHA256 校验不符')
+    const retry = wrapper.findAll('button').find((b) => b.text() === '重试')!
+    await retry.trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledWith('v0.62.0')
     wrapper.unmount()
   })
 

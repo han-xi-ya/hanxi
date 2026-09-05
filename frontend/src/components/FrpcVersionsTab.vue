@@ -228,12 +228,16 @@ onMounted(() => {
                 <span v-else-if="downloading[rel.version]!.stage === 'extract'">解压写入…</span>
                 <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
               </div>
+              <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
+                <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
+              </div>
               <button
                 v-if="statusOf(rel) === 'idle'"
                 class="btn btn-primary btn-small"
                 @click="download(rel)"
               >下载安装</button>
               <span v-if="statusOf(rel) === 'installed'" class="btn btn-ghost btn-small" disabled>已安装</span>
+              <button v-if="statusOf(rel) === 'error'" class="link-button" @click="download(rel)">重试</button>
             </td>
           </tr>
           <tr v-if="releases.length === 0 && !loading">

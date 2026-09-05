@@ -504,6 +504,9 @@ onActivated(() => {
                 <span v-if="['verify', 'extract'].includes(downloading[rel.version]!.stage)">校验解压安装…</span>
                 <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
               </div>
+              <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
+                <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
+              </div>
               <button
                 v-if="statusOf(rel) === 'idle'"
                 class="btn btn-primary btn-small"
