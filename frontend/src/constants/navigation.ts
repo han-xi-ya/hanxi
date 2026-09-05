@@ -44,6 +44,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/ddnsgo': { component: defineAsyncComponent(() => import('@/views/DdnsGoView.vue')), moduleId: 'ddnsgo' },
   '/ext/subnetdesk': { component: defineAsyncComponent(() => import('@/views/SubnetDeskView.vue')), moduleId: 'subnetdesk' },
   '/ext/rustdesk': { component: defineAsyncComponent(() => import('@/views/RustDeskView.vue')), moduleId: 'rustdesk' },
+  '/ext/rufus': { component: defineAsyncComponent(() => import('@/views/RufusView.vue')), moduleId: 'rufus' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
   '/settings': { component: defineAsyncComponent(() => import('@/views/SettingsView.vue')) },
@@ -106,6 +107,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   ddnsgo: { icon: '🌐', route: '/ext/ddnsgo' },
   subnetdesk: { icon: '🖥', route: '/ext/subnetdesk' },
   rustdesk: { icon: '🌍', route: '/ext/rustdesk' },
+  rufus: { icon: '💽', route: '/ext/rufus' },
 }
 
 export const FALLBACK_MODULE_ICON = '📦'
