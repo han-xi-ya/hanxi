@@ -179,6 +179,15 @@ async function openDir(path: string) {
   }
 }
 
+
+async function openConfigDir() {
+  try {
+    await KeyvizAPI.OpenConfigDir()
+  } catch (e) {
+    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+  }
+}
+
 async function removeVersion(v: KeyvizVersionInfo) {
   const ok = await confirm({
     title: `确定卸载 Keyviz ${v.version}？`,
@@ -357,6 +366,7 @@ onMounted(async () => {
           <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
           <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具）</span></span>
         </label>
+        <button class="btn btn-secondary btn-small" title="打开 Keyviz 用户数据目录（%APPDATA%\org.keyviz，样式配置）" @click="openConfigDir">🗂 数据目录</button>
       </div>
       <div class="repo-row">
         <span class="k">GitHub 仓库</span>

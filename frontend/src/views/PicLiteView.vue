@@ -179,6 +179,15 @@ async function openDir(path: string) {
   }
 }
 
+
+async function openConfigDir() {
+  try {
+    await PicLiteAPI.OpenConfigDir()
+  } catch (e) {
+    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+  }
+}
+
 async function removeVersion(v: PicVersionInfo) {
   const ok = await confirm({
     title: `确定卸载 PicLite ${v.version}？`,
@@ -367,6 +376,7 @@ onMounted(async () => {
           <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具）</span></span>
         </label>
         <button class="btn btn-secondary btn-small" @click="createShortcut">🖥 创建桌面快捷方式</button>
+        <button class="btn btn-secondary btn-small" title="打开 PicLite 用户数据目录（%APPDATA%\com.piclite.desktop，配置与图床设置）" @click="openConfigDir">🗂 数据目录</button>
       </div>
       <div class="repo-row">
         <span class="k">GitHub 仓库</span>

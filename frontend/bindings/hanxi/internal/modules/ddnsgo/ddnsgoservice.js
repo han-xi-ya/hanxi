@@ -102,6 +102,15 @@ export function Logs(n) {
 }
 
 /**
+ * OpenConfigDir 在资源管理器中定位 ddns-go 的配置文件（%USERPROFILE%\.ddns_go_config.yaml）——
+ * 上游配置为单文件而非目录，直接打开整个用户主目录噪音过大，采用 /select 高亮定位。只读导航，不改写。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenConfigDir() {
+    return $Call.ByID(1229857660);
+}
+
+/**
  * OpenConsole 打开（或复用）内嵌 Web 控制台子窗口：
  *   - running：直接指向自有实例监听地址；
  *   - external：按候选端口（设定端口 + 上游默认 9876）探测外部 web 服务；

@@ -182,6 +182,15 @@ async function openDir(path: string) {
   }
 }
 
+
+async function openConfigDir() {
+  try {
+    await FlClashAPI.OpenConfigDir()
+  } catch (e) {
+    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+  }
+}
+
 async function removeVersion(v: FlClashVersionInfo) {
   const accepted = await confirm({
     title: `确定卸载 FlClash ${v.version}？`,
@@ -395,6 +404,7 @@ onActivated(() => {
           <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具）</span></span>
         </label>
         <button class="btn btn-secondary btn-small" @click="createShortcut">🖥 创建桌面快捷方式</button>
+        <button class="btn btn-secondary btn-small" title="打开 FlClash 用户数据目录（%APPDATA%\com.follow\clash，订阅与配置）" @click="openConfigDir">🗂 数据目录</button>
       </div>
       <div class="repo-row">
         <span class="k">GitHub 仓库</span>

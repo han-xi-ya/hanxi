@@ -93,6 +93,14 @@ export function ListReleases() {
 }
 
 /**
+ * OpenConfigDir 打开 CC Switch 的用户数据目录（供应商配置与工作区所在（home/.cc-switch））——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenConfigDir() {
+    return $Call.ByID(2021209142);
+}
+
+/**
  * OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
  * 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
  * 而非"打开"（markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。

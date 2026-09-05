@@ -100,6 +100,14 @@ async function openExeFolder(path: string) {
   }
 }
 
+async function openConfigDir() {
+  try {
+    await FrpcAPI.OpenConfigDir()
+  } catch (e: unknown) {
+    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+  }
+}
+
 async function removeVersion(v: FrpVersionInfo) {
   const versionShort = v.version.replace(/^v/, '')
   // 卸载确认收编至全局 useConfirm（文案逐字拆 title/description）
@@ -155,6 +163,7 @@ onMounted(() => {
         <button class="btn btn-primary btn-small" :disabled="importing" @click="importLocal">
           {{ importing ? '导入中…' : '📁 导入本地 frpc.exe' }}
         </button>
+        <button class="btn btn-secondary btn-small" title="打开实例配置目录（各项目启动时生成的 frpc TOML 落盘处）" @click="openConfigDir">🗂 实例配置目录</button>
       </div>
     </div>
 

@@ -172,6 +172,15 @@ async function openDir(path: string) {
   }
 }
 
+
+async function openConfigDir() {
+  try {
+    await SubnetDeskAPI.OpenConfigDir()
+  } catch (e) {
+    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+  }
+}
+
 async function removeVersion(v: SDVersionInfo) {
   const ok = await confirm({
     title: `卸载 SubnetDesk ${v.version}`,
@@ -368,6 +377,7 @@ onMounted(async () => {
           <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具；被控常驻场景建议关闭本项或改用系统安装版）</span></span>
         </label>
         <button class="btn btn-secondary btn-small" @click="createShortcut">🖥 创建桌面快捷方式</button>
+        <button class="btn btn-secondary btn-small" title="打开 SubnetDesk 用户数据目录（%APPDATA%\SubnetDesk，身份密钥与设置）" @click="openConfigDir">🗂 数据目录</button>
       </div>
       <div class="repo-row">
         <span class="k">GitHub 仓库</span>

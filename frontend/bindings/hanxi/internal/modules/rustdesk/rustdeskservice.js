@@ -94,6 +94,14 @@ export function ListReleases() {
 }
 
 /**
+ * OpenConfigDir 打开 RustDesk 的用户数据目录（身份密钥、地址簿与设置所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenConfigDir() {
+    return $Call.ByID(2907818768);
+}
+
+/**
  * OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
  * 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
  * 而非"打开"（markeron 事故教训）；这里入参恒为目录，语义安全。

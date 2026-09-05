@@ -213,6 +213,15 @@ async function openDir(path: string) {
   }
 }
 
+
+async function openConfigDir() {
+  try {
+    await DdnsGoAPI.OpenConfigDir()
+  } catch (e) {
+    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+  }
+}
+
 async function removeVersion(v: DdnsVersionInfo) {
   const ok = await confirm({
     title: `卸载 ddns-go ${v.version}`,
@@ -467,6 +476,7 @@ watch(() => snap.value?.state, (now, prev) => {
           <input v-model.number="portInput" class="dd-port-input mono" type="number" min="1024" max="65535" />
           <button class="btn btn-secondary btn-small" :disabled="!portDirty || busy" @click="applyPort">应用</button>
         </span>
+        <button class="btn btn-secondary btn-small" title="在资源管理器中定位 ddns-go 配置文件（%USERPROFILE%\.ddns_go_config.yaml）" @click="openConfigDir">🗂 数据目录</button>
       </div>
       <div class="repo-row">
         <span class="k">GitHub 仓库</span>

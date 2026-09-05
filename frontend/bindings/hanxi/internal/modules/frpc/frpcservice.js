@@ -109,6 +109,15 @@ export function ListReleases() {
 }
 
 /**
+ * OpenConfigDir 打开 frpc 实例配置目录（Hanxi RuntimeDir/frpc，各项目启动时生成的 TOML 落盘处）。
+ * frpc 为 CLI 托管无自有用户数据，此目录即 Hanxi 侧全部可看数据；自有目录缺失时先备后打开。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenConfigDir() {
+    return $Call.ByID(1132256144);
+}
+
+/**
  * OpenDir 在系统文件管理器中打开 frpc.exe 所在目录。
  * @param {string} exePath
  * @returns {$CancellablePromise<void>}
