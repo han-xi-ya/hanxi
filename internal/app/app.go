@@ -20,6 +20,7 @@ import (
 	ddnsgoversion "hanxi/internal/modules/ddnsgo/version"
 	"hanxi/internal/modules/eartrumpet"
 	"hanxi/internal/modules/envcheck"
+	"hanxi/internal/modules/envcheck/npmtool"
 	"hanxi/internal/modules/everything"
 	everythinginstance "hanxi/internal/modules/everything/instance"
 	"hanxi/internal/modules/fileshare"
@@ -137,6 +138,8 @@ func RegisterEvents() {
 	application.RegisterEvent[subnetdeskinstance.Snapshot]("subnetdesk:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
+	application.RegisterEvent[npmtool.OperationProgress]("envcheck:npm-tool-operation")
+	application.RegisterEvent[npmtool.OperationLog]("envcheck:npm-tool-log")
 }
 
 // Options 控制应用启动时行为。

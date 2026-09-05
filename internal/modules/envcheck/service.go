@@ -14,6 +14,7 @@ import (
 	"hanxi/internal/modules/envcheck/goversion"
 	"hanxi/internal/modules/envcheck/javaversion"
 	"hanxi/internal/modules/envcheck/nodeversion"
+	"hanxi/internal/modules/envcheck/npmtool"
 	"hanxi/internal/modules/envcheck/pythonversion"
 	"hanxi/internal/modules/envcheck/remoteversion"
 )
@@ -23,7 +24,8 @@ type urlOpener interface {
 	OpenURL(url string) error
 }
 
-// EnvCheckService Wails 绑定服务：本机开发工具链探测与 Git、Go、Node.js、Java、Python、.NET 官网版本查询。
+// EnvCheckService Wails 绑定服务：本机开发工具链探测、Git/Go/Node.js/Java/Python/.NET
+// 官网版本查询，以及目录内 npm 全局 CLI 工具（Claude Code、Codex 等）的一键安装/升级/卸载。
 type EnvCheckService struct {
 	opener         urlOpener
 	detectOne      func(context.Context, string) (detect.ToolInfo, error)
@@ -33,6 +35,7 @@ type EnvCheckService struct {
 	javaChannels   func() ([]remoteversion.Channel, bool, time.Time, error)
 	pythonChannels pythonversion.MinorChannel
 	dotnetChannels func() ([]remoteversion.Channel, bool, time.Time, error)
+	npmOverview    func(context.Context) (npmtool.Overview, error)
 }
 
 func NewEnvCheckService(opener urlOpener) *EnvCheckService {
@@ -45,6 +48,7 @@ func NewEnvCheckService(opener urlOpener) *EnvCheckService {
 		javaChannels:   javaversion.Channels,
 		pythonChannels: pythonversion.ChannelsForLocal,
 		dotnetChannels: dotnetversion.Channels,
+		npmOverview:    npmtool.BuildOverview,
 	}
 }
 
@@ -320,6 +324,28 @@ func (s *EnvCheckService) RevealToolPath(name string) error {
 		return fmt.Errorf("%s 未安装或路径不可用", local.Display)
 	}
 	return revealInExplorer(local.Path)
+}
+
+// GetNpmToolsOverview 汇总目录内各 npm 全局 CLI：本机探测 × registry 最新版关系与安全提醒。
+func (s *EnvCheckService) GetNpmToolsOverview() (npmtool.Overview, error) {
+	return s.npmOverview(context.Background())
+}
+
+// InstallNpmTool / UpgradeNpmTool / UninstallNpmTool 经 npm 全局装/升/卸目录工具。
+// 安全红线（与 RevealToolPath 同款）：前端只允许传目录注册 ID（如 claude/codex），
+// 包名与命令参数一律取自后端目录常量，绝不接受前端传入包名/版本/路径字符串；
+// 本模块的"零执行面"哲学自此定向开洞——仅目录白名单内的 npm 命令、隐藏窗口、
+// 不提权、卸载须前端二次确认。长任务进度经 envcheck:npm-tool-* 事件流式回推。
+func (s *EnvCheckService) InstallNpmTool(id string) (npmtool.OperationAccepted, error) {
+	return npmtool.Install(id)
+}
+
+func (s *EnvCheckService) UpgradeNpmTool(id string) (npmtool.OperationAccepted, error) {
+	return npmtool.Upgrade(id)
+}
+
+func (s *EnvCheckService) UninstallNpmTool(id string) (npmtool.OperationAccepted, error) {
+	return npmtool.Uninstall(id)
 }
 
 func (s *EnvCheckService) openURL(name, rawURL string) error {

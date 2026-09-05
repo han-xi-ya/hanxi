@@ -478,6 +478,31 @@ ddns-go（jeessy2/ddns-go，Go 后台 DDNS + Web 面板）是家族里**第一�
   - 绑定地址恒 `127.0.0.1:port`（上游默认 `:9876` 绑全网卡，会把带 DNS 服务商凭据的面板暴露到局域网），首启即用 `-l 127.0.0.1:9876`；配置沿用上游 `%USERPROFILE%` 固定路径（与用户自跑实例共享同一份，托管即无缝接管）；stdout/stderr 环形日志（复用 `internal/ringbuf` 共享包）经正则脱敏 DNS 凭据（`token/secret/accesskey=…`→`***`，上游 web 日志页有脱敏但 stdout 通道没有）。
 - **避坑防重犯建议**：托管**纯 CLI 后台程序**（非 GUI）前，必读其 main 启动分支——kardianos/service 形态的 Go 工具极易有"检测到已装服务则走 SCM"的劫持路径，常配 `*_DAEMON`/`-d` 类旁路开关，找到它比对抗它省力。端口型 web 工具的"启动成功"信号必须是**端口 TCP 可连**，绝不能用进程存活（僵活/后台化太常见）。任何**裸写用户主目录配置**的上游，托管侧强杀通道前都要加"写静默期"防御——数据在用户目录=你毁的是用户真实资产且无从恢复。内嵌第三方 Web UI 首选独立顶层 Webview，别 iframe：SameSite/CSP/X-Frame-Options 任一项都能让 iframe 静默失效，而顶层窗口天然规避。
 
+---
+
+### 23. envcheck 定向开洞：npm 全局工具一键装升卸的安全边界与三处非典型陷阱
+
+把 Claude Code / Codex 的「安装/版本对比/升级/卸载」做进开发环境检测（envcheck）模块，抽象成配置驱动的通用 npm 工具框架（目录加一行即扩展）。过程中撞出若干「看起来同构、实则反直觉」的点，尤其前两条是环境检测这类"只读模块"引入执行面时的通用决策。
+
+- **问题现象与错误原因**：
+  1. **零执行面破例的安全边界**：envcheck 既有叙事是"只探测 + 只开网页"（`PackageManagerUpgradeHint.vue`、`RevealToolPath` 注释多处声明"Hanxi 不执行"）。新增 `npm install -g` 是对该哲学的**显式破例**——最危险的直觉是"前端传包名，后端拿去执行"。`npm install -g <任意串>` 里一个 `@evil; rm -rf` 或带空格/引号的参数就能把命令语义劫持进 `cmd /C`；`--registry`、`--prefix`、`-l` 等参数还能把落点改到任意目录。破例若不做死边界，等于把整台机器的全局环境交给前端字符串。
+  2. **插件式注册 × 计数断言**：`detect` 走 `init()` 里 `Register()` 的无中央清单模式。claude/codex 探测器由**兄弟包 `npmtool` 的 `init()`** 注册（npmtool → detect 单向依赖）。而 `detect` 包自带的 `TestRegistry`/`TestRunAll` 硬断言"恰好 9 个探测器"。直觉担心新工具撞坏该断言。
+  3. **测试 seam 的 `t.Cleanup` LIFO 泄漏**：`npmtool` 的 `runNpm`/`lookNpm` 是包级函数变量（仿 detect 的 `lookPath` seam）。`TestManagerLockConflict` 用一个"阻塞直到 release"的桩占住 npm 全局锁来测互斥。首版把 `close(release)` 放 `t.Cleanup`，且**先**注册、`withManagerSeams` 的还原**后**注册——结果 cleanup 里还原 runNpm 的钩子先跑、放行 goroutine 的钩子后跑。
+- **排查过程**：全仓 `go test ./...` 里 `TestManagerLockConflict` 卡到 waitIdle 超时，且**后续** `TestManagerSuccess/FailureTerminal` 报"Claude Code 正在执行安装"——锁被上一个用例的 goroutine 带着跨用例泄漏。反推根因：后台 goroutine 延迟读取 `runNpm` **包变量**（不是启动时快照值），若它在 seam 被还原成 `defaultRunNpm` 之后才真正调用，就会**在开发机上真的跑一次 `npm install -g @anthropic-ai/claude-code@latest`**（副作用 + 10min 超时占锁）。另实测确认第 2 点：`go test ./detect` 的二进制不链接 npmtool，注册数恒为 9；只有链接了 npmtool 的 envcheck/app 二进制才见 11。
+- **正确做法与标准修复方案**：
+  - 安全边界三铁律：① service 方法只收**目录 ID**（claude/codex），包名/命令参数一律取自后端 `catalog.go` 常量，永不接受前端传入的包名/版本/路径；② 目录 `init()` 用 `packageNamePattern` 白名单式校验（`^(@scope/)?name$`，禁一切 shell 语义字符）、`detect.Registered()` 撞键自检，**编程错误即 panic**（与 nodeversion URL 校验同哲学）；③ 执行层隐藏窗口（`CREATE_NO_WINDOW`+`HideWindow`）、`.cmd/.bat` 经 `cmd /C` 包装、npm 全局树一把**包级互斥锁 singleflight**、不提权、卸载仅前端 `ConfirmDialog` 二次确认（且如实告知"不删 `~/.claude` 等配置"）。同步把副标题与 `openBCUForUninstall` 注释从"零执行面"改为"除受管 npm 工具外仍零执行面"。
+  - 兄弟包注册**不改** detect 的计数断言：这是插件式注册的正确用法（谁 import 谁生效）；只需注意任何"全量枚举"断言都归属 detect 包内、天然不受下游包影响。
+  - 桩测试的释放/等待放在**测试体内、seam 仍生效时**完成（`fire(); waitIdle(t)`），`t.Cleanup` 仅兜底放行；杜绝"还原 seam 早于放行 goroutine"的 LIFO 顺序坑。
+  - npm 子进程 stdout/stderr 合并进一条 `os.Pipe`：`cmd.Start()` 后**父进程立即 `pw.Close()`**——否则 `cmd.exe→node.exe` 孙子进程继承的写句柄与父进程互持，读端在直连子进程退出后**永不 EOF**，`Scanner` 卡死。
+  - npm 版本**不复用**通用 `platform/versioncmp`：它对 `"260-beta"` 这类段整体退化字典序，会把预发布误判 ahead；`npmregistry/compare.go` 自建 semver-lite（数值核心 + 预发布 < 正式版 + `+build` 忽略 + 不可解析落 unknown）。scoped 包名走 `url.PathEscape`（`@scope%2Fname`），registry 两种写法都吃、单测锁转义式。
+  - 本机 PATH 命中目录 ≠ npm 全局 `prefix`（实测 `~\.local\bin` 优先于 `%AppData%\npm` 的双拷贝）时，只加 `RelationDetail` 安全提醒、**不改 status**：一键升级/卸载只作用于 npm 全局那份，命中结果可能不变。
+- **避坑防重犯建议**：
+  1. 任何"只读检测"模块要引入执行面，先定死**入参只能是后端白名单 ID**、执行参数全部来自常量，把前端字符串挡在命令拼接之外；破例范围（仅目录内工具、仅装升卸、不提权）写进代码注释与 UI 文案，不留"顺手加个自由命令"的口子。
+  2. 包级 seam（函数变量）+ 后台 goroutine 是危险组合：**goroutine 读的是变量当前值不是快照**。测"占锁/长任务"这类阻塞桩，放行与等待必须在 seam 生效期内于测试体收尾，别依赖 `t.Cleanup`（其 LIFO 顺序易先还原 seam）。CI 全绿但真机误触发副作用，就是这类顺序坑的signature。
+  3. 流式外部命令用 `os.Pipe` 合并输出时，父进程写端一定要 `Start()` 后立刻关，交给子进程独占；跨 `cmd.exe` 再 spawn 孙进程的链路，句柄继承会让"等 EOF"变成"等超时"。
+  4. "最新版对比"的版本号先问它属于哪套编号体系：npm 语义化版本含预发布/构建元数据，通用宽松比较器会误判，宁可为该数据源单独写一个贴合其规范的比较函数。
+  5. 前端渲染受管工具集**按后端目录回传的名字集合驱动**，不写死 `claude/codex`——目录加一条，卡片、检测、装升卸、前端全链路零改动，这才是"通用框架"相对"两个 if"的价值兑现。
+
 ### 24. 托管 rust-portable 应用（RustDesk/SubnetDesk）：外层秒退进程不能当生命周期锚点 + 提取目录归属判别 + 便携/安装版双同名陷阱
 
 RustDesk 与其 LAN fork SubnetDesk（协议互不兼容的两个 AGPL 应用，Hanxi 以"远程控制"组合同时托管）是家族里第一类 **rust-portable packer 自解压单 exe** 形态。若照抄 markeron/ccswitch/litemonitor 三套引擎模板，会在四个层面静默失效：

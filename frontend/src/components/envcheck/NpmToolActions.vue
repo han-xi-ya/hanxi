@@ -1,0 +1,144 @@
+<script setup lang="ts">
+import { computed, nextTick, ref, watch } from 'vue'
+import type { ToolOverview, OperationProgress } from '../../../bindings/hanxi/internal/modules/envcheck/npmtool/models'
+
+const props = defineProps<{
+  overview: ToolOverview
+  operation: OperationProgress | null
+  busyElsewhere: boolean
+  logLines: string[]
+}>()
+
+const emit = defineEmits<{ install: []; upgrade: []; uninstall: []; retry: [] }>()
+
+const relationText: Record<string, string> = {
+  'not-installed': '未安装 · 可一键安装',
+  'latest': '已是 npm registry 最新版',
+  'update-available': '有可用更新',
+  'ahead': '本机版本高于 registry 最新版',
+  'unknown': '无法判断版本关系',
+}
+
+const status = computed(() => props.overview.local.status)
+const relation = computed(() => props.overview.relation)
+const busy = computed(() => !!props.operation || props.busyElsewhere)
+const canInstall = computed(() => status.value === 'missing')
+const canUpgrade = computed(() => status.value === 'installed' && relation.value === 'update-available')
+const canUninstall = computed(() => status.value === 'installed')
+
+function relationClass(): string {
+  if (relation.value === 'latest') return 'relation-ok'
+  if (relation.value === 'update-available') return 'relation-update'
+  return 'relation-neutral'
+}
+
+const upgradeLabel = computed(() =>
+  props.overview.latest?.version ? `升级到 ${props.overview.latest.version}` : '升级到最新版')
+
+// 实时日志面板：自动滚到底，环形裁剪由父层负责。
+const logRef = ref<HTMLElement | null>(null)
+watch(() => props.logLines.length, async () => {
+  await nextTick()
+  if (logRef.value) logRef.value.scrollTop = logRef.value.scrollHeight
+})
+</script>
+
+<template>
+  <section class="npm-panel" :aria-busy="busy">
+    <div class="panel-heading">
+      <div>
+        <strong>npm 全局工具</strong>
+        <span v-if="overview.isStale" class="cache-chip">缓存数据</span>
+      </div>
+      <span v-if="overview.latest?.version" class="latest-version">
+        最新版 <code class="mono">{{ overview.latest.version }}</code>
+      </span>
+    </div>
+
+    <p v-if="overview.latestError" class="panel-error" role="alert">
+      <span>{{ overview.latestError }}</span>
+      <button class="link-button" @click="emit('retry')">重试</button>
+    </p>
+    <p v-else class="relation-text" :class="relationClass()">
+      {{ relationText[relation] || relationText.unknown }}
+      <span v-if="overview.isStale">（基于缓存，仅供参考）</span>
+    </p>
+
+    <p v-if="overview.relationDetail" class="detail-warn">{{ overview.relationDetail }}</p>
+
+    <div v-if="busy" class="op-running">
+      <span class="op-spinner" aria-hidden="true"></span>
+      {{ operation?.message || '另一 npm 操作进行中，请等待' }}
+    </div>
+
+    <div class="npm-actions">
+      <button
+        v-if="canInstall"
+        class="btn btn-primary btn-small"
+        :disabled="busy"
+        :aria-busy="busy"
+        @click="emit('install')"
+      >安装</button>
+      <button
+        v-else-if="canUpgrade"
+        class="btn btn-primary btn-small"
+        :disabled="busy"
+        :aria-busy="busy"
+        @click="emit('upgrade')"
+      >{{ upgradeLabel }}</button>
+      <button
+        v-if="canUninstall"
+        class="btn btn-uninstall btn-small"
+        :disabled="busy"
+        @click="emit('uninstall')"
+      >卸载</button>
+    </div>
+
+    <pre
+      v-if="operation || logLines.length"
+      ref="logRef"
+      class="op-log"
+      role="log"
+      aria-live="polite"
+    >{{ logLines.join('\n') || '正在启动 npm 操作…' }}</pre>
+
+    <p class="npm-footnote">
+      由 Hanxi 在隐藏控制台执行 npm 官方命令（{{ overview.tool.package }}），不自动提权；卸载仅移除 npm 全局安装。
+      若该工具由 nvm、Volta、Scoop 等管理，请优先使用原管理器。
+    </p>
+  </section>
+</template>
+
+<style scoped>
+.npm-panel { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 8px; }
+.panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.panel-heading strong { color: var(--text-main); font-size: 12px; }
+.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: #fff8c5; color: #9a6700; font-size: 10px; }
+.latest-version { color: var(--text-muted); font-size: 11px; }
+.relation-text { margin: 0; padding: 6px 8px; border-radius: 5px; font-size: 12px; line-height: 1.45; }
+.relation-ok { background: #dafbe1; color: #1a7f37; }
+.relation-update { background: #ddf4ff; color: #0969da; }
+.relation-neutral { background: #eaeef2; color: #656d76; }
+.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: #ffebe9; color: var(--danger); font-size: 12px; line-height: 1.5; margin: 0; }
+.detail-warn { margin: 0; padding: 6px 8px; border-radius: 5px; background: #fff8c5; color: #9a6700; font-size: 11px; line-height: 1.5; }
+.op-running { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 12px; }
+.op-spinner { width: 12px; height: 12px; border: 2px solid var(--border-color); border-top-color: var(--accent); border-radius: 50%; animation: npm-spin 0.8s linear infinite; flex: none; }
+@keyframes npm-spin { to { transform: rotate(360deg); } }
+.npm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.op-log { margin: 0; max-height: 140px; overflow-y: auto; padding: 8px; border-radius: 6px; background: var(--bg-main); border: 1px solid var(--border-color); font-family: Consolas, monospace; font-size: 11px; line-height: 1.5; color: var(--text-main); white-space: pre-wrap; overflow-wrap: anywhere; }
+.npm-footnote { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; }
+.link-button { padding: 0; border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; white-space: nowrap; text-decoration: underline; }
+.link-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-uninstall { background: transparent; color: var(--danger); border-color: rgba(207, 34, 46, 0.35); }
+.btn-uninstall:hover:not(:disabled) { background: #ffebe9; border-color: var(--danger); }
+.btn-small { padding: 4px 12px; font-size: 12px; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 460px) { .npm-actions .btn { flex: 1; } }
+@media (pointer: coarse) { .btn, .link-button { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .btn { transition: none; } .op-spinner { animation-duration: 2s; } }
+</style>

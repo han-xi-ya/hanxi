@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { Events } from '@wailsio/runtime'
 import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/envcheckservice'
 import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
 import type { ToolInfo } from '../../bindings/hanxi/internal/modules/envcheck/detect/models'
@@ -10,8 +11,11 @@ import type { Overview as JavaOverview } from '../../bindings/hanxi/internal/mod
 import type { Overview as NodeOverview } from '../../bindings/hanxi/internal/modules/envcheck/nodeversion/models'
 import type { Overview as PythonOverview } from '../../bindings/hanxi/internal/modules/envcheck/pythonversion/models'
 import type { Channel } from '../../bindings/hanxi/internal/modules/envcheck/remoteversion/models'
+import type { Overview as NpmOverview, ToolOverview, OperationProgress, OperationLog } from '../../bindings/hanxi/internal/modules/envcheck/npmtool/models'
 import OfficialVersionsPanel from '../components/envcheck/OfficialVersionsPanel.vue'
 import PackageManagerUpgradeHint from '../components/envcheck/PackageManagerUpgradeHint.vue'
+import NpmToolActions from '../components/envcheck/NpmToolActions.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
@@ -35,6 +39,31 @@ const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
   dotnet: { overview: null, loading: false, error: '' },
 })
 
+// npm 全局工具目录状态：后端按目录回传工具集合，前端不写死 claude/codex。
+const npmOverview = ref<NpmOverview | null>(null)
+const npmLoading = ref(false)
+const npmError = ref('')
+const npmLogs = reactive<Record<string, string[]>>({})
+// 当前进行中的操作（全局锁保证同一时刻至多一个）。
+const npmActive = ref<OperationProgress | null>(null)
+const uninstallTarget = ref<ToolOverview | null>(null)
+const uninstallBusy = ref(false)
+let unlistenNpmOperation: (() => void) | null = null
+let unlistenNpmLog: (() => void) | null = null
+
+const npmByName = computed(() => new Map((npmOverview.value?.tools ?? []).map(tool => [tool.local.name, tool])))
+// npmBusy：进行中操作优先取实时事件，回退到 overview 快照（页面重挂载恢复忙碌态）。
+const npmBusyOperation = computed<OperationProgress | null>(() => npmActive.value ?? npmOverview.value?.activeOperation ?? null)
+
+function npmOperationFor(name: string): OperationProgress | null {
+  const active = npmBusyOperation.value
+  return active && active.toolId === name ? active : null
+}
+function npmBusyElsewhere(name: string): boolean {
+  const active = npmBusyOperation.value
+  return !!active && active.toolId !== name
+}
+
 const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: string }> = {
   git: { heading: 'Git for Windows 官网稳定版', downloadLabel: '打开 Git 官网下载页' },
   go: { heading: 'Go 官网支持版本', downloadLabel: '打开 Go 官网下载页' },
@@ -44,7 +73,17 @@ const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: stri
   dotnet: { heading: '.NET 官方支持线', downloadLabel: '打开 .NET 官网下载页' },
 }
 
-const loading = computed(() => localLoading.value || Object.values(remoteStates).some(state => state.loading))
+const uninstallDetails = computed(() => {
+  const tool = uninstallTarget.value
+  if (!tool) return []
+  return [
+    { label: 'npm 包', value: tool.tool.package },
+    { label: '当前版本', value: tool.local.version || '—' },
+    { label: '影响范围', value: '仅移除 npm 全局安装；配置与登录态目录不受影响' },
+  ]
+})
+
+const loading = computed(() => localLoading.value || npmLoading.value || Object.values(remoteStates).some(state => state.loading))
 const okCount = computed(() => tools.value.filter(tool => tool.status === 'installed').length)
 const totalCount = computed(() => tools.value.length)
 
@@ -53,6 +92,7 @@ async function refresh() {
   localLoading.value = true
   loadError.value = ''
   const remotePromises = (['git', 'go', 'node', 'java', 'python', 'dotnet'] as OfficialTool[]).map(tool => refreshOfficial(tool))
+  remotePromises.push(refreshNpm())
   try {
     tools.value = (await EnvCheckAPI.DetectAll()) ?? []
     everLoaded.value = true
@@ -62,6 +102,80 @@ async function refresh() {
     localLoading.value = false
   }
   await Promise.allSettled(remotePromises)
+}
+
+async function refreshNpm() {
+  if (npmLoading.value) return
+  npmLoading.value = true
+  npmError.value = ''
+  try {
+    npmOverview.value = await EnvCheckAPI.GetNpmToolsOverview()
+  } catch (error) {
+    npmError.value = `npm 工具信息获取失败: ${getErrorMessage(error)}`
+  } finally {
+    npmLoading.value = false
+  }
+}
+
+// npm 操作：装/升直接发起，卸先弹二次确认；受理后由事件流推进度，终态再重取。
+async function startNpmAction(kind: 'install' | 'upgrade', tool: ToolOverview) {
+  if (npmBusyOperation.value) return
+  npmLogs[tool.local.name] = []
+  try {
+    const accepted = kind === 'install'
+      ? await EnvCheckAPI.InstallNpmTool(tool.tool.command)
+      : await EnvCheckAPI.UpgradeNpmTool(tool.tool.command)
+    npmActive.value = {
+      operationId: accepted.operationId, toolId: tool.local.name, kind,
+      stage: 'started', message: accepted.message, terminal: false, success: false,
+    }
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  }
+}
+
+function requestUninstall(tool: ToolOverview) {
+  if (npmBusyOperation.value) return
+  uninstallTarget.value = tool
+}
+
+async function confirmUninstall() {
+  const tool = uninstallTarget.value
+  if (!tool) return
+  uninstallBusy.value = true
+  try {
+    const accepted = await EnvCheckAPI.UninstallNpmTool(tool.tool.command)
+    npmLogs[tool.local.name] = []
+    npmActive.value = {
+      operationId: accepted.operationId, toolId: tool.local.name, kind: 'uninstall',
+      stage: 'started', message: accepted.message, terminal: false, success: false,
+    }
+    uninstallTarget.value = null
+  } catch (error) {
+    showToast(`卸载失败: ${getErrorMessage(error)}`)
+  } finally {
+    uninstallBusy.value = false
+  }
+}
+
+function handleNpmOperation(progress: OperationProgress) {
+  if (progress.terminal) {
+    npmActive.value = null
+    showToast(progress.message || (progress.success ? 'npm 操作完成' : 'npm 操作失败'))
+    // 装/卸后本机状态与 registry 关系都会变，重取 overview 与卡片列表自然收敛。
+    void refreshNpm()
+    EnvCheckAPI.DetectAll().then(result => { tools.value = result ?? [] }).catch(() => {})
+    return
+  }
+  if (!npmActive.value || npmActive.value.operationId === progress.operationId) {
+    npmActive.value = progress
+  }
+}
+
+function handleNpmLog(entry: OperationLog) {
+  const lines = npmLogs[entry.toolId] ?? (npmLogs[entry.toolId] = [])
+  lines.push(entry.line)
+  if (lines.length > 200) lines.splice(0, lines.length - 200)
 }
 
 async function refreshOfficial(tool: OfficialTool) {
@@ -105,7 +219,7 @@ function adaptChannelOverview(overview: NativeOverview): PanelOverview {
 }
 
 // openBCUForUninstall 委托 BCUninstaller 完成运行库卸载：Hanxi 只负责唤起它的窗口，
-// 卸载目标选择与确认全部在 BCU 内完成，本模块继续保持零执行面。
+// 卸载目标选择与确认全部在 BCU 内完成；除受管 npm 全局工具外，本模块对其余工具链仍保持零执行面。
 async function openBCUForUninstall() {
   try {
     await BCUAPI.OpenWindow()
@@ -171,7 +285,12 @@ function metaOf(tool: ToolInfo) {
   return STATUS_META[tool.status] ?? STATUS_META.error
 }
 
-onMounted(refresh)
+onMounted(async () => {
+  await refresh()
+  unlistenNpmOperation = Events.On('envcheck:npm-tool-operation', (event: { data?: OperationProgress }) => event.data && handleNpmOperation(event.data))
+  unlistenNpmLog = Events.On('envcheck:npm-tool-log', (event: { data?: OperationLog }) => event.data && handleNpmLog(event.data))
+})
+onUnmounted(() => { unlistenNpmOperation?.(); unlistenNpmLog?.() })
 </script>
 
 <template>
@@ -182,7 +301,7 @@ onMounted(refresh)
         <p class="subtitle">
           探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python、.NET 卡片同时查询官方或明确发行方版本：
           每个通道只展示最新版本，本机已安装的版本线自动排在最前（.NET 卡片展示 SDK 优先版本，版本关系按运行时口径比较）。
-          npm、pnpm 仅提供可复制的手动升级命令，Hanxi 不直接执行安装或升级。
+          npm、pnpm 本体仅提供可复制的手动升级命令；Claude Code、Codex 等受管 npm 全局工具支持一键安装/升级/卸载（卸载需二次确认）。
         </p>
       </div>
       <div class="btn-group">
@@ -257,8 +376,33 @@ onMounted(refresh)
           :tool="tool.name"
           :installed="tool.status === 'installed'"
         />
+        <NpmToolActions
+          v-if="npmByName.has(tool.name)"
+          :overview="npmByName.get(tool.name)!"
+          :operation="npmOperationFor(tool.name)"
+          :busy-elsewhere="npmBusyElsewhere(tool.name)"
+          :log-lines="npmLogs[tool.name] ?? []"
+          @install="startNpmAction('install', npmByName.get(tool.name)!)"
+          @upgrade="startNpmAction('upgrade', npmByName.get(tool.name)!)"
+          @uninstall="requestUninstall(npmByName.get(tool.name)!)"
+          @retry="refreshNpm"
+        />
       </div>
     </div>
+
+    <ConfirmDialog
+      :open="!!uninstallTarget"
+      :title="`卸载 ${uninstallTarget?.tool.display ?? 'npm 工具'}`"
+      description="将经 npm 全局卸载该命令行工具，需二次确认。用户配置目录与登录态不会被删除。"
+      confirm-label="确认卸载"
+      cancel-label="取消"
+      tone="danger"
+      :busy="uninstallBusy"
+      :details="uninstallDetails"
+      @confirm="confirmUninstall"
+      @cancel="uninstallTarget = null"
+      @update:open="(value: boolean) => { if (!value) uninstallTarget = null }"
+    />
   </section>
 </template>
 

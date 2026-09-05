@@ -9,6 +9,7 @@ import (
 
 	"hanxi/internal/modules/envcheck/detect"
 	"hanxi/internal/modules/envcheck/gitversion"
+	"hanxi/internal/modules/envcheck/npmtool"
 	"hanxi/internal/modules/envcheck/remoteversion"
 )
 
@@ -458,5 +459,31 @@ func TestOpenJavaAndPythonDownloadPages(t *testing.T) {
 	}
 	if err := svc.OpenPythonDownloadPage(); err != nil || opener.url != "https://www.python.org/downloads/windows/" {
 		t.Fatalf("python url=%q err=%v", opener.url, err)
+	}
+}
+
+// TestGetNpmToolsOverviewForwardsSeam 验证绑定方法经注入缝转发，不触真实探测/registry。
+func TestGetNpmToolsOverviewForwardsSeam(t *testing.T) {
+	svc := NewEnvCheckService(nil)
+	want := npmtool.Overview{Tools: []npmtool.ToolOverview{{Tool: npmtool.ToolBrief{Command: "claude", Display: "Claude Code"}}}}
+	svc.npmOverview = func(context.Context) (npmtool.Overview, error) { return want, nil }
+	got, err := svc.GetNpmToolsOverview()
+	if err != nil || len(got.Tools) != 1 || got.Tools[0].Tool.Command != "claude" {
+		t.Fatalf("got=%#v err=%v", got, err)
+	}
+}
+
+// TestNpmToolOperationsRejectUnknownID 覆盖安全红线：非目录 ID 一律同步拒绝，
+// 不经 lookNpm/执行层（此路径在无 npm 的 CI 上亦成立）。
+func TestNpmToolOperationsRejectUnknownID(t *testing.T) {
+	svc := NewEnvCheckService(nil)
+	if _, err := svc.UninstallNpmTool("nope"); err == nil {
+		t.Fatal("unknown id should error")
+	}
+	if _, err := svc.InstallNpmTool("@evil; rm -rf"); err == nil {
+		t.Fatal("injected package should error")
+	}
+	if _, err := svc.UpgradeNpmTool(""); err == nil {
+		t.Fatal("empty id should error")
 	}
 }

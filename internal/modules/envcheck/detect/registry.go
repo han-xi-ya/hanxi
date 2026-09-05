@@ -58,3 +58,16 @@ func Detectors() []Detector {
 	sort.Slice(ds, func(i, j int) bool { return ds[i].Name() < ds[j].Name() })
 	return ds
 }
+
+// Registered 判定注册名是否已被占用，供 npm 工具目录 init() 撞键自检，
+// 避免目录条目与既有探测器重名导致卡片重复或探测互相覆盖。
+func Registered(name string) bool {
+	regMu.RLock()
+	defer regMu.RUnlock()
+	for _, d := range registry {
+		if d.Name() == name {
+			return true
+		}
+	}
+	return false
+}
