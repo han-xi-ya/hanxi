@@ -62,9 +62,15 @@ import (
 	"hanxi/internal/modules/recordly"
 	recordlyinstance "hanxi/internal/modules/recordly/instance"
 	recordlyversion "hanxi/internal/modules/recordly/version"
+	"hanxi/internal/modules/rustdesk"
+	rustdeskinstance "hanxi/internal/modules/rustdesk/instance"
+	rustdeskversion "hanxi/internal/modules/rustdesk/version"
 	"hanxi/internal/modules/snipaste"
 	snipasteinstance "hanxi/internal/modules/snipaste/instance"
 	snipasteversion "hanxi/internal/modules/snipaste/version"
+	"hanxi/internal/modules/subnetdesk"
+	subnetdeskinstance "hanxi/internal/modules/subnetdesk/instance"
+	subnetdeskversion "hanxi/internal/modules/subnetdesk/version"
 	"hanxi/internal/modules/wechat"
 	"hanxi/internal/modules/wifi"
 	"hanxi/internal/notify"
@@ -125,6 +131,10 @@ func RegisterEvents() {
 	application.RegisterEvent[ddnsgoversion.DownloadProgress]("ddnsgo:version-download")
 	application.RegisterEvent[ddnsgoinstance.Snapshot]("ddnsgo:instance-state")
 	application.RegisterEvent[ddnsgoinstance.LogEntry]("ddnsgo:instance-log")
+	application.RegisterEvent[rustdeskversion.DownloadProgress]("rustdesk:version-download")
+	application.RegisterEvent[rustdeskinstance.Snapshot]("rustdesk:instance-state")
+	application.RegisterEvent[subnetdeskversion.DownloadProgress]("subnetdesk:version-download")
+	application.RegisterEvent[subnetdeskinstance.Snapshot]("subnetdesk:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 }
@@ -205,6 +215,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		litemonitor.New(plat),
 		guoheview.New(plat),
 		ddnsgo.New(plat),
+		rustdesk.New(plat),
+		subnetdesk.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
