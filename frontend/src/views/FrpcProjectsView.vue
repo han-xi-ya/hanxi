@@ -1,18 +1,29 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, shallowRef, computed, onMounted, nextTick } from 'vue'
 import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
 import type { Project } from '../../bindings/hanxi/internal/domain/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/frpc/instance/models'
 import FrpcProjectEditor from '../components/FrpcProjectEditor.vue'
 import FrpcVersionsTab from '../components/FrpcVersionsTab.vue'
+import PageHeader from '../components/ui/PageHeader.vue'
+import MainTabNav from '../components/ui/MainTabNav.vue'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { usePolling } from '../composables/usePolling'
+import { useConfirm } from '../composables/useConfirm'
+import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
+const { copy } = useClipboard()
 
 // 顶层主选项卡：projects = 项目列表，versions = 版本管理
-const activeMainTab = ref<'projects' | 'versions'>('projects')
+const activeMainTab = ref('projects')
+const mainTabs = [
+  { key: 'projects', label: '⧉ 穿透项目' },
+  { key: 'versions', label: '📦 版本管理' },
+]
 
 const projects = shallowRef<Project[]>([])
 const loading = ref(false)
@@ -44,9 +55,6 @@ const logBodyRef = ref<HTMLElement | null>(null)
 
 // 运行时长每秒刷新
 const nowTick = ref(Date.now())
-let tickTimer: ReturnType<typeof setInterval> | null = null
-let unlistenState: (() => void) | null = null
-let unlistenLog: (() => void) | null = null
 
 function projectName(id: string): string {
   return projects.value.find(p => p.id === id)?.name ?? id
@@ -84,32 +92,32 @@ const stateBadge = computed(() => (p: Project): { cls: string; text: string; dot
   switch (s?.state) {
     case 'running': {
       let connDesc = ''
-      let dotColor = '#2da44e'
+      let dotColor = 'var(--state-positive)'
       let statusCls = 'running'
 
       switch (s.connState) {
         case 'connected':
           connDesc = '已连接服务端'
-          dotColor = '#2da44e'
+          dotColor = 'var(--state-positive)'
           break
         case 'connecting':
           connDesc = '握手中…'
-          dotColor = '#d4a72c'
+          dotColor = 'var(--state-warning)'
           statusCls = 'starting'
           break
         case 'auth_failed':
           connDesc = '鉴权失败 (Token错误)'
-          dotColor = '#cf222e'
+          dotColor = 'var(--state-danger)'
           statusCls = 'failed'
           break
         case 'reconnecting':
           connDesc = '重连服务端中…'
-          dotColor = '#d4a72c'
+          dotColor = 'var(--state-warning)'
           statusCls = 'starting'
           break
         case 'error':
           connDesc = '连接异常'
-          dotColor = '#cf222e'
+          dotColor = 'var(--state-danger)'
           statusCls = 'failed'
           break
       }
@@ -120,9 +128,9 @@ const stateBadge = computed(() => (p: Project): { cls: string; text: string; dot
 
       return { cls: statusCls, text, dot: dotColor, connInfo: connDesc }
     }
-    case 'starting': return { cls: 'starting', text: '启动中…', dot: '#d4a72c' }
-    case 'failed': return { cls: 'failed', text: '启动失败', dot: '#cf222e' }
-    default: return { cls: 'stopped', text: '未启动', dot: '#c1c7cd' }
+    case 'starting': return { cls: 'starting', text: '启动中…', dot: 'var(--state-warning)' }
+    case 'failed': return { cls: 'failed', text: '启动失败', dot: 'var(--state-danger)' }
+    default: return { cls: 'stopped', text: '未启动', dot: 'var(--color-border-strong)' }
   }
 })
 
@@ -198,8 +206,8 @@ function exportProjectShareLink(p: Project) {
   const jsonStr = JSON.stringify(sharePayload)
   const b64 = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))))
   const link = `frp://${b64}`
-  navigator.clipboard.writeText(link)
-  showToast(`已复制「${p.name}」分享链接 (frp://...)`)
+  // 剪贴板收编 useClipboard（两级回退）；分享链接编码逻辑不变
+  void copy(link).then((ok) => showToast(ok ? `已复制「${p.name}」分享链接 (frp://...)` : '复制失败'))
 }
 
 function openImportModal() {
@@ -299,7 +307,13 @@ async function deleteProject(p: Project) {
     showToast('请先停止实例再删除项目')
     return
   }
-  if (!window.confirm(`确定删除项目「${p.name}」？\n配置将被永久移除。`)) return
+  // 删除确认收编全局 useConfirm（文案逐字拆 title/description）
+  const accepted = await confirm({
+    title: `确定删除项目「${p.name}」？`,
+    description: '配置将被永久移除。',
+    tone: 'danger',
+  })
+  if (!accepted) return
   try {
     await FrpcAPI.DeleteProject(p.id)
     showToast(`已删除「${p.name}」`)
@@ -369,8 +383,7 @@ function resolveEndpoints(p: Project): ProxyEndpoint[] {
 function copyEndpoint(ep: ProxyEndpoint) {
   const text = ep.url || ep.remoteDisplay
   if (!text) return
-  navigator.clipboard.writeText(text)
-  showToast(`已复制: ${text}`)
+  void copy(text).then((ok) => showToast(ok ? `已复制: ${text}` : '复制失败'))
 }
 
 // ---------- 日志抽屉 ----------
@@ -411,52 +424,30 @@ function clearLogs() {
   logLines.value = []
 }
 
-function startTicking() {
-  if (tickTimer) return
+function nowTickRefresh() {
   nowTick.value = Date.now()
-  tickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
 }
 
-function stopTicking() {
-  if (!tickTimer) return
-  clearInterval(tickTimer)
-  tickTimer = null
-}
+// ---------- 订阅与生命周期 ----------
+useWailsEvent<Snapshot>('frpc:instance-state', (snap) => {
+  if (!snap?.projectId) return
+  instances.value = { ...instances.value, [snap.projectId]: snap }
+})
+
+useWailsEvent<{ projectId: string; line: string }>('frpc:instance-log', (entry) => {
+  if (!entry?.projectId || entry.projectId !== drawerProjectId.value) return
+  logLines.value.push(entry.line)
+  if (logLines.value.length > 2000) {
+    logLines.value.splice(0, logLines.value.length - 2000)
+  }
+  void scrollToBottom()
+})
+
+// 运行时长秒表（usePolling 内置 KeepAlive 激活/停用/卸载契约）
+usePolling(nowTickRefresh, 1000)
 
 onMounted(async () => {
   await Promise.all([loadProjects(), loadInstances(), loadInstalledVersions()])
-
-  unlistenState = Events.On('frpc:instance-state', (event: { data?: Snapshot }) => {
-    const snap = event?.data
-    if (!snap?.projectId) return
-    instances.value = { ...instances.value, [snap.projectId]: snap }
-  })
-  unlistenLog = Events.On('frpc:instance-log', (event: { data?: { projectId: string; line: string } }) => {
-    const entry = event?.data
-    if (!entry?.projectId || entry.projectId !== drawerProjectId.value) return
-    logLines.value.push(entry.line)
-    if (logLines.value.length > 2000) {
-      logLines.value.splice(0, logLines.value.length - 2000)
-    }
-    void scrollToBottom()
-  })
-
-  startTicking()
-})
-
-onActivated(startTicking)
-onDeactivated(stopTicking)
-
-onUnmounted(() => {
-  if (unlistenState) {
-    unlistenState()
-    unlistenState = null
-  }
-  if (unlistenLog) {
-    unlistenLog()
-    unlistenLog = null
-  }
-  stopTicking()
 })
 </script>
 
@@ -473,28 +464,11 @@ onUnmounted(() => {
 
     <!-- 列表模式 -->
     <template v-else>
-      <div class="header-row">
-        <div>
-          <h1>frpc 穿透</h1>
-          <p class="subtitle">支持多实例隔离运行与版本管理。退出 Hanxi 时内核连带清理，杜绝孤儿进程。</p>
-        </div>
-        <div class="main-tab-nav">
-          <button
-            class="main-tab-btn"
-            :class="{ active: activeMainTab === 'projects' }"
-            @click="activeMainTab = 'projects'"
-          >
-            ⧉ 穿透项目
-          </button>
-          <button
-            class="main-tab-btn"
-            :class="{ active: activeMainTab === 'versions' }"
-            @click="activeMainTab = 'versions'"
-          >
-            📦 版本管理
-          </button>
-        </div>
-      </div>
+      <PageHeader title="frpc 穿透" subtitle="支持多实例隔离运行与版本管理。退出 Hanxi 时内核连带清理，杜绝孤儿进程。">
+        <template #actions>
+          <MainTabNav v-model="activeMainTab" :tabs="mainTabs" />
+        </template>
+      </PageHeader>
 
       <!-- 版本管理 Tab -->
       <div v-show="activeMainTab === 'versions'" class="tab-body">
@@ -650,37 +624,7 @@ onUnmounted(() => {
 
 <style scoped>
 .projects-page { display: flex; flex-direction: column; gap: 16px; height: 100%; }
-.header-row { display: flex; justify-content: space-between; align-items: center; }
-.subtitle { color: var(--text-muted); font-size: 13px; margin: 4px 0 0; }
-.toast { background: var(--text-main); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; animation: fadeIn 0.2s ease; }
-
-.main-tab-nav {
-  display: flex;
-  background: var(--bg-hover);
-  padding: 3px;
-  border-radius: 8px;
-  gap: 2px;
-}
-.main-tab-btn {
-  background: transparent;
-  border: none;
-  padding: 6px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.main-tab-btn:hover {
-  color: var(--text-main);
-}
-.main-tab-btn.active {
-  background: var(--bg-app);
-  color: var(--accent);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
+/* 页头/副标题/选项卡/按钮家族/表格/mono/错误框/空态 由 PageHeader、MainTabNav、components.css 全局原子接管 */
 .tab-body {
   display: flex;
   flex-direction: column;
@@ -689,166 +633,159 @@ onUnmounted(() => {
 
 .control-panel {
   display: flex; align-items: center; justify-content: space-between;
-  background: var(--bg-sidebar); border: 1px solid var(--border-color);
-  padding: 12px 16px; border-radius: 8px;
+  background: var(--surface-panel); border: 1px solid var(--color-border);
+  padding: 12px 16px; border-radius: var(--radius-control);
 }
 .control-actions { display: flex; gap: 10px; }
-.meta-info { font-size: 13px; color: var(--text-muted); }
-.error-box { padding: 10px 14px; background: #ffebe9; color: var(--danger); border: 1px solid rgba(207, 34, 46, 0.2); border-radius: 6px; font-size: 13px; }
+.meta-info { font-size: 13px; color: var(--color-text-muted); }
 
-.empty-state { text-align: center; padding: 56px 0; color: var(--text-subtle); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.empty-state { padding: 56px 24px; gap: 10px; }
 .empty-icon { font-size: 40px; }
 .empty-actions { display: flex; gap: 12px; margin-top: 8px; }
 
 .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
 .project-card {
-  background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 10px;
-  padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: box-shadow 0.15s ease;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
+  padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: box-shadow var(--motion-base) ease;
 }
-.project-card:hover { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06); }
-.project-card.active { border-color: rgba(45, 164, 78, 0.55); box-shadow: 0 0 0 1px rgba(45, 164, 78, 0.25); }
+.project-card:hover { box-shadow: var(--shadow-small); }
+.project-card.active { border-color: var(--state-positive-glow); box-shadow: 0 0 0 1px var(--state-positive-glow); }
 
 .proj-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .proj-title-box { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.proj-name { font-size: 15px; font-weight: 600; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; white-space: nowrap; }
-.badge-version { background: #ddf4ff; color: #0969da; }
-.badge-unbound { background: var(--bg-hover); color: var(--text-muted); }
+.proj-name { font-size: 15px; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; white-space: nowrap; }
+.badge-version { background: var(--state-information-soft); color: var(--state-information); }
+.badge-unbound { background: var(--surface-hover); color: var(--color-text-muted); }
 
 .proj-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; flex-shrink: 0; }
 .proj-status .dot { width: 8px; height: 8px; border-radius: 50%; }
-.proj-status.stopped { color: var(--text-subtle); }
-.proj-status.running { color: #1a7f37; font-weight: 600; }
-.proj-status.starting { color: #9a6700; }
-.proj-status.failed { color: var(--danger); }
+.proj-status.stopped { color: var(--color-text-subtle); }
+.proj-status.running { color: var(--state-positive); font-weight: 600; }
+.proj-status.starting { color: var(--state-warning); }
+.proj-status.failed { color: var(--state-danger); }
 
-.proj-server { display: flex; align-items: center; justify-content: space-between; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; }
-.server-addr { font-family: Consolas, monospace; font-size: 12px; color: var(--text-main); }
+.proj-server { display: flex; align-items: center; justify-content: space-between; background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 8px 10px; }
+.server-addr { font-family: var(--font-mono); font-size: 12px; color: var(--color-text); }
 .server-flags { display: flex; gap: 4px; }
-.flag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #f0f7ff; color: #0969da; }
+.flag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--state-information-soft); color: var(--state-information); }
 
-.proj-proxies { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+.proj-proxies { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); }
 .proxies-label { font-weight: 600; }
-.proxies-types { color: var(--text-subtle); }
-.proxy-pid { margin-left: auto; font-family: Consolas, monospace; font-size: 11px; color: var(--text-subtle); }
+.proxies-types { color: var(--color-text-subtle); }
+.proxy-pid { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--color-text-subtle); }
 
 /* 规则端点简略展示 */
 .endpoints-box {
   display: flex; flex-direction: column; gap: 6px;
-  background: var(--bg-app); border: 1px solid var(--border-color);
-  border-radius: 6px; padding: 8px 10px; max-height: 140px; overflow-y: auto;
+  background: var(--surface-soft); border: 1px solid var(--color-border);
+  border-radius: var(--radius-control); padding: 8px 10px; max-height: 140px; overflow-y: auto;
 }
 .endpoint-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: 12px; font-family: Consolas, monospace;
+  font-size: 12px; font-family: var(--font-mono);
 }
 .ep-left { display: flex; align-items: center; gap: 6px; min-width: 80px; }
 .ep-badge {
   font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px;
-  background: var(--bg-hover); color: var(--text-muted);
+  background: var(--surface-hover); color: var(--color-text-muted);
 }
-.ep-badge.http, .ep-badge.https { background: #ddf4ff; color: #0969da; }
-.ep-badge.tcp { background: #dafbe1; color: var(--success); }
-.ep-badge.udp { background: #fff8c5; color: #9a6700; }
+.ep-badge.http, .ep-badge.https { background: var(--state-information-soft); color: var(--state-information); }
+.ep-badge.tcp { background: var(--state-positive-soft); color: var(--state-positive); }
+.ep-badge.udp { background: var(--state-warning-soft); color: var(--state-warning); }
 .ep-name {
-  font-family: inherit; font-size: 11px; color: var(--text-muted);
+  font-family: inherit; font-size: 11px; color: var(--color-text-muted);
   max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ep-flow {
   display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
   justify-content: flex-start;
 }
-.ep-local { color: var(--text-subtle); font-size: 11px; }
-.ep-arrow { font-size: 10px; color: var(--text-subtle); }
+.ep-local { color: var(--color-text-subtle); font-size: 11px; }
+.ep-arrow { font-size: 10px; color: var(--color-text-subtle); }
 .ep-remote {
-  color: var(--text-main); font-weight: 600; font-size: 11px;
+  color: var(--color-text); font-weight: 600; font-size: 11px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ep-link { color: var(--accent); text-decoration: none; }
+.ep-link { color: var(--color-primary); text-decoration: none; }
 .ep-link:hover { text-decoration: underline; }
 .btn-copy-mini {
   background: transparent; border: none; cursor: pointer; font-size: 12px;
-  color: var(--text-subtle); padding: 0 2px; flex-shrink: 0;
+  color: var(--color-text-subtle); padding: 0 2px; flex-shrink: 0;
 }
-.btn-copy-mini:hover { color: var(--accent); }
+.btn-copy-mini:hover { color: var(--color-primary); }
 
-.proj-error { font-size: 12px; color: var(--danger); background: #ffebe9; border: 1px solid rgba(207,34,46,.15); border-radius: 6px; padding: 6px 10px; }
+.proj-error { font-size: 12px; color: var(--state-danger); background: var(--state-danger-soft); border: 1px solid var(--state-danger-glow); border-radius: var(--radius-control); padding: 6px 10px; }
 
-.proj-actions { display: flex; gap: 6px; border-top: 1px solid var(--border-color); padding-top: 12px; flex-wrap: wrap; }
+.proj-actions { display: flex; gap: 6px; border-top: 1px solid var(--color-border); padding-top: 12px; flex-wrap: wrap; }
 
-/* Modal 弹窗 */
+/* 导入 Modal 弹窗（富内容手搓件，二次收编 UiModal 在跟进清单；颜色已 token 化） */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 100;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-mask);
   display: flex; align-items: center; justify-content: center;
 }
 .modal-card {
-  background: #fff; border-radius: 10px; width: 480px; max-width: 90vw;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); overflow: hidden;
+  background: var(--surface-panel); border-radius: var(--radius-element); width: 480px; max-width: 90vw;
+  box-shadow: var(--shadow-panel); overflow: hidden;
 }
 .modal-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 16px 20px; border-bottom: 1px solid var(--border-color);
+  padding: 16px 20px; border-bottom: 1px solid var(--color-border);
 }
-.modal-head h3 { margin: 0; font-size: 16px; color: var(--text-main); }
-.btn-close { background: transparent; border: none; font-size: 16px; cursor: pointer; color: var(--text-muted); }
+.modal-head h3 { margin: 0; font-size: 16px; color: var(--color-text); }
+.btn-close { background: transparent; border: none; font-size: 16px; cursor: pointer; color: var(--color-text-muted); }
 .modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .modal-actions {
   display: flex; justify-content: flex-end; gap: 10px;
-  padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-sidebar);
+  padding: 12px 20px; border-top: 1px solid var(--color-border); background: var(--surface-soft);
 }
 
-.import-tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 8px; }
+.import-tabs { display: flex; border-bottom: 1px solid var(--color-border); margin-bottom: 8px; }
 .tab-btn {
   padding: 8px 16px; background: transparent; border: none; font-size: 13px;
-  color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent;
+  color: var(--color-text-muted); cursor: pointer; border-bottom: 2px solid transparent;
 }
-.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tab-btn.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
 
 .textarea {
-  padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px;
-  font-family: Consolas, monospace; font-size: 12px; width: 100%; box-sizing: border-box;
-  background: var(--bg-app); color: var(--text-main); resize: vertical;
+  padding: 8px 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control);
+  font-family: var(--font-mono); font-size: 12px; width: 100%; box-sizing: border-box;
+  background: var(--surface-soft); color: var(--color-text); resize: vertical;
 }
-.textarea:focus { border-color: var(--accent); outline: none; background: #fff; }
+.textarea:focus { border-color: var(--color-primary); outline: none; background: var(--surface-panel); }
 
-.form-item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.form-item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-text-muted); }
 
-.btn { padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
-.btn-stop { background: #fff; border-color: #ff8170; color: var(--danger); }
-.btn-stop:hover { background: #ffebe9; }
-.btn-small { padding: 4px 10px; font-size: 12px; }
-.btn-danger-outline { background: #fff; border-color: #ff8170; color: var(--danger); margin-left: auto; }
-.btn-danger-outline:hover:not(:disabled) { background: #ffebe9; }
+/* 停止按钮变体（全局原子之外的业务语义色） */
+.btn-stop { background: var(--surface-panel); border-color: var(--state-danger); color: var(--state-danger); }
+.btn-stop:hover { background: var(--state-danger-soft); }
+.btn-danger-outline { margin-left: auto; }
 
-/* 日志抽屉 */
+/* 日志抽屉：终端风格固定深底，不随主题反相（tokens.css --terminal-* 约定） */
 .log-drawer {
   position: fixed; left: 0; right: 0; bottom: 0; height: 42%;
-  background: #0f172a; color: #e2e8f0; border-radius: 10px 10px 0 0;
+  background: var(--terminal-bg); color: var(--terminal-fg); border-radius: var(--radius-element) var(--radius-element) 0 0;
   display: flex; flex-direction: column; z-index: 50; overflow: hidden;
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
 }
 .drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.25); }
 .log-drawer-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 16px; background: #1e293b; border-bottom: 1px solid #334155;
+  padding: 10px 16px; background: color-mix(in srgb, var(--terminal-fg) 8%, var(--terminal-bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--terminal-fg) 18%, var(--terminal-bg));
 }
-.log-drawer-title { font-size: 13px; font-weight: 600; color: #f1f5f9; }
+.log-drawer-title { font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--terminal-fg) 92%, white); }
 .log-drawer-tools { display: flex; align-items: center; gap: 8px; }
-.auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #94a3b8; cursor: pointer; }
-.auto-scroll input { accent-color: var(--accent); }
-.log-error { padding: 6px 16px; background: #450a0a; color: #fca5a5; font-size: 12px; }
+.auto-scroll { display: flex; align-items: center; gap: 4px; font-size: 12px; color: color-mix(in srgb, var(--terminal-fg) 60%, var(--terminal-bg)); cursor: pointer; }
+.auto-scroll input { accent-color: var(--color-primary); }
+.log-error { padding: 6px 16px; background: color-mix(in srgb, var(--state-danger) 18%, var(--terminal-bg)); color: var(--state-danger); font-size: 12px; }
 .log-body {
   flex: 1; overflow-y: auto; padding: 12px 16px;
-  font-family: Consolas, monospace; font-size: 12px; line-height: 1.55;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
   user-select: text;
 }
-.log-line { white-space: pre-wrap; word-break: break-all; color: #cbd5e1; }
-.log-warn { color: #fde047; }
-.log-empty { color: #64748b; text-align: center; padding: 32px 0; }
+.log-line { white-space: pre-wrap; word-break: break-all; color: var(--terminal-fg); }
+.log-warn { color: var(--ansi-3); }
+.log-empty { color: color-mix(in srgb, var(--terminal-fg) 45%, var(--terminal-bg)); text-align: center; padding: 32px 0; }
 </style>

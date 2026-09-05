@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, reactive, watch, nextTick } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
 import type { Project, ProxyRule } from '../../bindings/hanxi/internal/domain/models'
+import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
+import { getErrorMessage } from '../utils/errors'
 
 const props = defineProps<{
   project: Project | null
@@ -9,7 +12,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ (e: 'saved', p: Project): void; (e: 'cancel'): void }>()
 
-const toastMsg = ref('')
+const { showToast } = useToast()
+const { copy } = useClipboard()
+
 const saving = ref(false)
 const errorMsg = ref('')
 
@@ -133,11 +138,6 @@ const batchForm = reactive({
 })
 const batchError = ref('')
 
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => { toastMsg.value = '' }, 2500)
-}
-
 function newProxy(): EditableProxy {
   return toEditable({
     name: '',
@@ -218,8 +218,8 @@ function applyBatchPorts() {
         throw new Error(`本地端口数量 (${lPorts.length}) 与 远程端口数量 (${rPorts.length}) 不一致`)
       }
     }
-  } catch (err: any) {
-    batchError.value = err.message || String(err)
+  } catch (err: unknown) {
+    batchError.value = getErrorMessage(err)
     return
   }
 
@@ -346,8 +346,8 @@ function refreshPreview() {
   previewTimer = setTimeout(async () => {
     try {
       tomlPreview.value = await FrpcAPI.GenerateToml(toPayload() as any)
-    } catch (e: any) {
-      tomlPreview.value = `# 配置校验中: ${e?.message ?? e}`
+    } catch (e: unknown) {
+      tomlPreview.value = `# 配置校验中: ${getErrorMessage(e)}`
     }
   }, 250)
 }
@@ -362,8 +362,8 @@ async function switchMode(target: 'form' | 'toml') {
       rawTomlContent.value = await FrpcAPI.GenerateToml(toPayload() as any)
       tomlParseError.value = ''
       editorMode.value = 'toml'
-    } catch (err: any) {
-      errorMsg.value = `切换至源码模式失败（当前表单有误）: ${err?.message || err}`
+    } catch (err: unknown) {
+      errorMsg.value = `切换至源码模式失败（当前表单有误）: ${getErrorMessage(err)}`
     }
   } else {
     // 源码 -> 表单模式：解析 TOML 还原
@@ -385,8 +385,8 @@ async function switchMode(target: 'form' | 'toml') {
       tomlParseError.value = ''
       editorMode.value = 'form'
       refreshPreview()
-    } catch (err: any) {
-      tomlParseError.value = `TOML 语法错误，无法切回表单: ${err?.message || err}`
+    } catch (err: unknown) {
+      tomlParseError.value = `TOML 语法错误，无法切回表单: ${getErrorMessage(err)}`
     }
   }
 }
@@ -411,8 +411,7 @@ function isDraftValid(): boolean {
 
 function copyPreview() {
   const content = editorMode.value === 'toml' ? rawTomlContent.value : tomlPreview.value
-  navigator.clipboard.writeText(content)
-  showToast('TOML 已复制')
+  void copy(content).then((ok) => showToast(ok ? 'TOML 已复制' : '复制失败'))
 }
 
 // 导出分享链接 (frp://<base64>)
@@ -426,8 +425,7 @@ function copyShareLink() {
   const jsonStr = JSON.stringify(sharePayload)
   const b64 = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))))
   const link = `frp://${b64}`
-  navigator.clipboard.writeText(link)
-  showToast('分享链接已复制 (frp://...)')
+  void copy(link).then((ok) => showToast(ok ? '分享链接已复制 (frp://...)' : '复制失败'))
 }
 
 async function save() {
@@ -463,8 +461,8 @@ async function save() {
     const saved = await FrpcAPI.SaveProject(payload)
     showToast('项目已保存')
     emit('saved', saved)
-  } catch (e: any) {
-    errorMsg.value = `保存失败: ${e?.message ?? e}`
+  } catch (e: unknown) {
+    errorMsg.value = `保存失败: ${getErrorMessage(e)}`
   } finally {
     saving.value = false
   }
@@ -497,7 +495,6 @@ function cancel() { emit('cancel') }
       </div>
       <div class="header-actions">
         <button class="btn btn-secondary btn-small" @click="copyShareLink">⚡ 分享链接</button>
-        <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
       </div>
     </div>
 
@@ -807,24 +804,21 @@ function cancel() { emit('cancel') }
 
 <style scoped>
 .editor-page { display: flex; flex-direction: column; gap: 16px; }
-.header-row { display: flex; justify-content: space-between; align-items: center; }
+/* .header-row/.subtitle/.error-box/.btn 家族/.toast 由 components.css 全局原子与 useToast 接管 */
 .title-with-mode { display: flex; align-items: center; gap: 24px; }
-.subtitle { color: var(--text-muted); font-size: 13px; margin: 4px 0 0; }
 .header-actions { display: flex; align-items: center; gap: 12px; }
-.toast { background: var(--text-main); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; animation: fadeIn 0.2s ease; }
-.error-box { padding: 10px 14px; background: #ffebe9; color: var(--danger); border: 1px solid rgba(207, 34, 46, 0.2); border-radius: 6px; font-size: 13px; }
 
 /* 模式切换 Tabs */
 .mode-tabs {
-  display: flex; background: var(--bg-sidebar); border: 1px solid var(--border-color);
-  border-radius: 8px; padding: 3px; gap: 2px;
+  display: flex; background: var(--surface-panel); border: 1px solid var(--color-border);
+  border-radius: var(--radius-control); padding: 3px; gap: 2px;
 }
 .mode-btn {
   border: none; background: transparent; padding: 6px 14px; font-size: 13px;
-  color: var(--text-muted); border-radius: 6px; cursor: pointer; font-weight: 500;
-  transition: all 0.15s ease;
+  color: var(--color-text-muted); border-radius: var(--radius-control); cursor: pointer; font-weight: 500;
+  transition: all var(--motion-base) ease;
 }
-.mode-btn.active { background: #fff; color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.mode-btn.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: 0 1px 3px var(--shadow-small); }
 
 .editor-layout { display: grid; grid-template-columns: 1fr 420px; gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .editor-layout { grid-template-columns: 1fr; } }
@@ -832,51 +826,51 @@ function cancel() { emit('cancel') }
 .editor-main { display: flex; flex-direction: column; gap: 14px; }
 .editor-side { position: sticky; top: 16px; }
 
-.card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
-.card-title { font-size: 14px; font-weight: 600; color: var(--text-muted); margin: 0 0 12px; }
-.card-desc { font-size: 12px; color: var(--text-subtle); margin: 4px 0 0; }
+.card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 16px; }
+.card-title { font-size: 14px; font-weight: 600; color: var(--color-text-muted); margin: 0 0 12px; }
+.card-desc { font-size: 12px; color: var(--color-text-subtle); margin: 4px 0 0; }
 .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .card-head .card-title { margin: 0; }
 .card-head-tools { display: flex; gap: 8px; }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.form-item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
-.form-item em { color: var(--danger); font-style: normal; }
+.form-item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-text-muted); }
+.form-item em { color: var(--state-danger); font-style: normal; }
 .input {
-  padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px;
-  font-size: 13px; background: #fff; color: var(--text-main); width: 100%;
+  padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  font-size: 13px; background: var(--surface-panel); color: var(--color-text); width: 100%;
   box-sizing: border-box;
 }
-.input:focus { border-color: var(--accent); outline: none; }
+.input:focus { border-color: var(--color-primary); outline: none; }
 
-.btn-text { background: transparent; border: none; font-size: 12px; color: var(--accent); cursor: pointer; padding: 2px 4px; }
+.btn-text { background: transparent; border: none; font-size: 12px; color: var(--color-primary); cursor: pointer; padding: 2px 4px; }
 .btn-text:hover { text-decoration: underline; }
 .btn-adv-toggle { font-size: 12px; }
 
 .advanced-box {
-  background: var(--bg-app); border: 1px dashed var(--border-color);
-  border-radius: 6px; padding: 12px; margin-top: 12px;
+  background: var(--surface-soft); border: 1px dashed var(--color-border);
+  border-radius: var(--radius-control); padding: 12px; margin-top: 12px;
 }
 .rule-advanced-box {
-  background: #fff; border: 1px solid var(--border-color);
-  border-radius: 6px; padding: 10px 12px; margin-top: 10px;
+  background: var(--surface-panel); border: 1px solid var(--color-border);
+  border-radius: var(--radius-control); padding: 10px 12px; margin-top: 10px;
 }
 
 .toggle-row { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
-.toggle-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-main); cursor: pointer; }
-.toggle-item input { accent-color: var(--accent); }
+.toggle-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text); cursor: pointer; }
+.toggle-item input { accent-color: var(--color-primary); }
 .inline-check { margin-top: 20px; }
 
 /* 代理规则 */
 .proxy-list { display: flex; flex-direction: column; gap: 12px; }
-.proxy-row { border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background: var(--bg-app); }
-.proxy-row.is-visitor { border-left: 3px solid #8250df; background: #faf9ff; }
+.proxy-row { border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 12px; background: var(--surface-soft); }
+.proxy-row.is-visitor { border-left: 3px solid var(--state-information); background: var(--state-information-soft); }
 .proxy-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.proxy-index { font-size: 11px; color: var(--text-subtle); font-weight: 700; }
+.proxy-index { font-size: 11px; color: var(--color-text-subtle); font-weight: 700; }
 .input-name { max-width: 180px; }
 .input-type { max-width: 210px; }
-.btn-remove { width: 24px; height: 24px; border: 1px solid var(--border-color); border-radius: 6px; background: #fff; color: var(--text-subtle); cursor: pointer; font-size: 11px; margin-left: auto; }
-.btn-remove:hover { border-color: var(--danger); color: var(--danger); }
+.btn-remove { width: 24px; height: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text-subtle); cursor: pointer; font-size: 11px; margin-left: auto; }
+.btn-remove:hover { border-color: var(--state-danger); color: var(--state-danger); }
 
 .proxy-fields { display: grid; grid-template-columns: 1fr 1fr 1.5fr 1fr; gap: 10px; }
 .proxy-fields .n1 { grid-column: span 1; }
@@ -885,8 +879,8 @@ function cancel() { emit('cancel') }
 
 /* TOML 预览 */
 .toml-pre {
-  margin: 0; padding: 12px; background: #0f172a; color: #e2e8f0; border-radius: 6px;
-  font-family: Consolas, monospace; font-size: 12px; line-height: 1.55;
+  margin: 0; padding: 12px; background: var(--terminal-bg); color: var(--terminal-fg); border-radius: var(--radius-control);
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
   max-height: 560px; overflow: auto; white-space: pre; user-select: text;
 }
 
@@ -894,41 +888,35 @@ function cancel() { emit('cancel') }
 .toml-editor-layout { width: 100%; }
 .toml-edit-card { display: flex; flex-direction: column; height: 620px; }
 .raw-toml-textarea {
-  flex: 1; margin-top: 10px; padding: 14px; background: #0f172a; color: #e2e8f0;
-  border-radius: 6px; font-family: Consolas, monospace; font-size: 13px; line-height: 1.6;
-  border: 1px solid var(--border-color); resize: none; outline: none; width: 100%; box-sizing: border-box;
+  flex: 1; margin-top: 10px; padding: 14px; background: var(--terminal-bg); color: var(--terminal-fg);
+  border-radius: var(--radius-control); font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+  border: 1px solid var(--color-border); resize: none; outline: none; width: 100%; box-sizing: border-box;
 }
-.raw-toml-textarea:focus { border-color: var(--accent); }
+.raw-toml-textarea:focus { border-color: var(--color-primary); }
 
 .footer-actions { display: flex; justify-content: flex-end; gap: 12px; padding: 12px 0 24px; }
 
 /* Modal 弹窗 */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 100;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-mask);
   display: flex; align-items: center; justify-content: center;
 }
 .modal-card {
-  background: #fff; border-radius: 10px; width: 460px; max-width: 90vw;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); overflow: hidden;
+  background: var(--surface-panel); border-radius: var(--radius-element); width: 460px; max-width: 90vw;
+  box-shadow: 0 8px 32px var(--shadow-panel); overflow: hidden;
 }
 .modal-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 16px 20px; border-bottom: 1px solid var(--border-color);
+  padding: 16px 20px; border-bottom: 1px solid var(--color-border);
 }
-.modal-head h3 { margin: 0; font-size: 16px; color: var(--text-main); }
-.btn-close { background: transparent; border: none; font-size: 16px; cursor: pointer; color: var(--text-muted); }
+.modal-head h3 { margin: 0; font-size: 16px; color: var(--color-text); }
+.btn-close { background: transparent; border: none; font-size: 16px; cursor: pointer; color: var(--color-text-muted); }
 .modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .modal-actions {
   display: flex; justify-content: flex-end; gap: 10px;
-  padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-sidebar);
+  padding: 12px 20px; border-top: 1px solid var(--color-border); background: var(--surface-panel);
 }
 
-.btn { padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
-.btn-small { padding: 4px 12px; font-size: 12px; }
+/* .btn 家族由 components.css 全局原子接管 */
 </style>

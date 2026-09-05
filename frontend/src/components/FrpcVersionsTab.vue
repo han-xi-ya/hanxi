@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, onMounted } from 'vue'
 import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
 import type { FrpRelease, FrpVersionInfo, DownloadProgress } from '../../bindings/hanxi/internal/modules/frpc/version/models'
+import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { useConfirm } from '../composables/useConfirm'
+import { fmtSize, fmtDate } from '../utils/format'
+import { getErrorMessage } from '../utils/errors'
 
 const emit = defineEmits<{ (e: 'version-changed'): void }>()
 
@@ -10,18 +14,13 @@ const releases = ref<FrpRelease[]>([])
 const installed = ref<FrpVersionInfo[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
-const toastMsg = ref('')
 
 // 下载进度 map: version -> progress
 const downloading = ref<Record<string, DownloadProgress>>({})
 const importing = ref(false)
 
-let unlisten: (() => void) | null = null
-
-function showToast(msg: string) {
-  toastMsg.value = msg
-  setTimeout(() => { toastMsg.value = '' }, 2500)
-}
+const { showToast } = useToast()
+const { confirm } = useConfirm()
 
 async function loadAll() {
   loading.value = true
@@ -34,8 +33,8 @@ async function loadAll() {
     releases.value = remote ?? []
     installed.value = local ?? []
     emit('version-changed')
-  } catch (e: any) {
-    errorMsg.value = `获取版本列表失败: ${e?.message ?? e}`
+  } catch (e: unknown) {
+    errorMsg.value = `获取版本列表失败: ${getErrorMessage(e)}`
   } finally {
     loading.value = false
   }
@@ -45,22 +44,11 @@ async function refreshRemote() {
   loading.value = true
   try {
     releases.value = (await FrpcAPI.ListReleases()) ?? []
-  } catch (e: any) {
-    errorMsg.value = `刷新远程列表失败: ${e?.message ?? e}`
+  } catch (e: unknown) {
+    errorMsg.value = `刷新远程列表失败: ${getErrorMessage(e)}`
   } finally {
     loading.value = false
   }
-}
-
-function fmtSize(bytes: number): string {
-  if (!bytes) return '—'
-  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024).toFixed(0)} KB`
-}
-
-function fmtDate(s?: string): string {
-  if (!s) return '—'
-  return s.slice(0, 10)
 }
 
 function stepOf(p: DownloadProgress): number {
@@ -84,8 +72,8 @@ async function download(rel: FrpRelease) {
       showToast(`版本 ${rel.version} 已安装`)
       await loadAll()
     }
-  } catch (e: any) {
-    showToast(`下载失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`下载失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -97,8 +85,8 @@ async function importLocal() {
       showToast(`已导入 frpc ${info.version}`)
       await loadAll()
     }
-  } catch (e: any) {
-    showToast(`导入失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`导入失败: ${getErrorMessage(e)}`)
   } finally {
     importing.value = false
   }
@@ -107,55 +95,55 @@ async function importLocal() {
 async function openExeFolder(path: string) {
   try {
     await FrpcAPI.OpenDir(path)
-  } catch (e: any) {
-    showToast(`打开所在目录失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`打开所在目录失败: ${getErrorMessage(e)}`)
   }
 }
 
 async function removeVersion(v: FrpVersionInfo) {
   const versionShort = v.version.replace(/^v/, '')
-  if (!window.confirm(`确定卸载 frpc ${versionShort}？\n该版本不可恢复（删除隔离目录）。`)) return
+  // 卸载确认收编至全局 useConfirm（文案逐字拆 title/description）
+  const accepted = await confirm({
+    title: `确定卸载 frpc ${versionShort}？`,
+    description: '该版本不可恢复（删除隔离目录）。',
+    tone: 'danger',
+  })
+  if (!accepted) return
   try {
     await FrpcAPI.RemoveVersion(v.version)
     showToast(`已卸载 ${versionShort}`)
     await loadAll()
-  } catch (e: any) {
-    showToast(`卸载失败: ${e?.message ?? e}`)
+  } catch (e: unknown) {
+    showToast(`卸载失败: ${getErrorMessage(e)}`)
   }
 }
 
-onMounted(async () => {
-  unlisten = Events.On('frpc:version-download', (event) => {
-    const p = event.data as DownloadProgress
-    if (!p || !p.version) return
-    downloading.value = { ...downloading.value, [p.version]: p }
-    if (p.stage === 'done') {
-      setTimeout(() => {
-        const next = { ...downloading.value }
-        delete next[p.version]
-        downloading.value = next
-      }, 800)
-      loadAll()
-    }
-  })
-  await loadAll()
+// 事件订阅收编 useWailsEvent（setup 期注册、卸载自动注销）；toast 由局部实现升级为全局 useToast
+useWailsEvent<DownloadProgress>('frpc:version-download', (p) => {
+  if (!p || !p.version) return
+  downloading.value = { ...downloading.value, [p.version]: p }
+  if (p.stage === 'done') {
+    setTimeout(() => {
+      const next = { ...downloading.value }
+      delete next[p.version]
+      downloading.value = next
+    }, 800)
+    loadAll()
+  }
 })
 
-onUnmounted(() => {
-  if (unlisten) unlisten()
+onMounted(() => {
+  loadAll()
 })
 </script>
 
 <template>
   <div class="versions-tab-content">
     <div class="header-row">
-      <div>
-        <p class="subtitle">从 GitHub 官方源下载 frp Windows 二进制，SHA256 硬校验后隔离安装；也支持导入本地已有的 frpc.exe。</p>
-      </div>
-      <div v-if="toastMsg" class="toast">{{ toastMsg }}</div>
+      <p class="subtitle">从 GitHub 官方源下载 frp Windows 二进制，SHA256 硬校验后隔离安装；也支持导入本地已有的 frpc.exe。</p>
     </div>
 
-    <!-- 顶部操作栏 -->
+    <!-- 顶部操作栏（toast 提示升级为全局 useToast，不再局部渲染） -->
     <div class="control-panel">
       <div class="meta-info">
         <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程可用 {{ releases.length }} 个版本</span>
@@ -259,76 +247,58 @@ onUnmounted(() => {
 
 <style scoped>
 .versions-tab-content { display: flex; flex-direction: column; gap: 14px; }
-.header-row { display: flex; justify-content: space-between; align-items: center; }
-.subtitle { color: var(--text-muted); font-size: 13px; margin: 0; }
-.toast { background: var(--text-main); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; animation: fadeIn 0.2s ease; }
+/* .header-row/.subtitle/.btn 家族/.tbl/.mono/.error-box 由 components.css 全局原子接管 */
 
 .control-panel {
   display: flex; align-items: center; justify-content: space-between;
-  background: var(--bg-sidebar); border: 1px solid var(--border-color);
-  padding: 10px 14px; border-radius: 8px;
+  background: var(--surface-panel); border: 1px solid var(--color-border);
+  padding: 10px 14px; border-radius: var(--radius-control);
 }
-.meta-info { font-size: 13px; color: var(--text-muted); }
-.meta-info strong { color: var(--text-main); }
+.meta-info { font-size: 13px; color: var(--color-text-muted); }
+.meta-info strong { color: var(--color-text); }
 .btn-group { display: flex; gap: 8px; }
 
-.btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
-.btn-small { padding: 4px 12px; font-size: 12px; }
-.btn-ghost { background: #f0f7ff; color: #0969da; border-color: #c8e1ff; cursor: default; }
-.btn-danger-outline { background: #fff; border-color: #ff8170; color: var(--danger); }
-.btn-danger-outline:hover { background: #ffebe9; }
-
-.section-title h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
-.error-box { padding: 10px 14px; background: #ffebe9; color: var(--danger); border: 1px solid rgba(207, 34, 46, 0.2); border-radius: 6px; font-size: 13px; }
-.empty-hint { text-align: center; padding: 20px; color: var(--text-subtle); font-size: 13px; background: var(--bg-sidebar); border-radius: 6px; border: 1px dashed var(--border-color); }
+.section-title h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+.empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
 
 /* 已安装卡片 */
 .installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
 .installed-card {
-  background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
 }
 .inst-card-top { display: flex; justify-content: space-between; align-items: center; }
-.ver-tag { font-family: Consolas, monospace; font-size: 14px; font-weight: 700; color: var(--text-main); }
+.ver-tag { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
 .inst-badges { display: flex; gap: 6px; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
-.badge-import { background: #dafbe1; color: #1a7f37; }
-.badge-official { background: #ddf4ff; color: #0969da; }
-.badge-pre { background: #fff8c5; color: #9a6700; margin-left: 4px; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+.badge-import { background: var(--state-positive-soft); color: var(--state-positive); }
+.badge-official { background: var(--state-information-soft); color: var(--state-information); }
+.badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
 .inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.meta-line { display: flex; gap: 8px; color: var(--text-muted); align-items: baseline; }
-.meta-line .k { color: var(--text-subtle); width: 44px; flex-shrink: 0; }
-.mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; word-break: break-all; }
+.meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
+.meta-line .k { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
+.mono { font-size: 11px; }
 .mono.short { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .inst-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
 
-/* 表格 */
-.table-container { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
-.tbl { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
-.tbl th { background: var(--bg-sidebar); padding: 8px 12px; font-weight: 600; color: var(--text-muted); font-size: 12px; border-bottom: 1px solid var(--border-color); }
-.tbl td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
-.tbl tr:last-child td { border-bottom: none; }
-.ver-name { font-family: Consolas, monospace; }
+/* 表格（.tbl 全局原子接管） */
+.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; }
+.ver-name { font-family: var(--font-mono); }
 
 .frpc-version-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
 .frpc-version-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 7px; }
-.frpc-version-status.installed::before { background: #2da44e; }
-.frpc-version-status.downloading::before { background: #0969da; animation: pulse 1s infinite; }
-.frpc-version-status.error::before { background: #cf222e; }
-.frpc-version-status.idle::before { background: #8c959f; }
+.frpc-version-status.installed::before { background: var(--state-positive); }
+.frpc-version-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
+.frpc-version-status.error::before { background: var(--state-danger); }
+.frpc-version-status.idle::before { background: var(--color-text-subtle); }
 
 .download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dl-bar-wrap { flex: 1; height: 6px; background: #e1e4e8; border-radius: 3px; overflow: hidden; }
-.dl-bar-inner { height: 100%; background: var(--accent); transition: width 0.2s ease; }
-.dl-percent { font-size: 11px; color: var(--text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: 12px; color: var(--accent); }
-.dl-error { color: var(--danger); font-size: 11px; }
-.muted-text { color: var(--text-subtle); }
+.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+.dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
+.dl-percent { font-size: 11px; color: var(--color-text-muted); width: 32px; text-align: right; }
+.dl-meta-text { font-size: 12px; color: var(--color-primary); }
+.dl-error { color: var(--state-danger); font-size: 11px; }
+.muted-text { color: var(--color-text-subtle); }
 </style>
