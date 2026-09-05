@@ -8,9 +8,10 @@
 // 3. 生命周期：视图轮询由 onActivated 启动，故测试必须包在 <KeepAlive> 内，与真实外壳一致。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import MarkerOnView from '../MarkerOnView.vue'
 import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
 
 // ---------- 绑定层打桩 ----------
 const svc = vi.hoisted(() => ({
@@ -83,12 +84,7 @@ async function mountInKeepAlive() {
   return { wrapper, show }
 }
 
-beforeEach(() => {
-  vi.stubGlobal('confirm', vi.fn(() => false))
-})
-
 afterEach(() => {
-  vi.unstubAllGlobals()
   vi.restoreAllMocks()
   useToast().clearToast()
 })
@@ -131,11 +127,12 @@ describe('MarkerOnView 六态矩阵（状态 → 文案/按钮/提示条）', ()
       const { wrapper } = await mountInKeepAlive()
       expect(wrapper.find('.status-word').text()).toBe(c.word)
       expect(wrapper.find('.annotate-toggle').text()).toContain(c.label)
+      // 提示条迁移至 UiBanner：语义类前缀 hint-banner → 全局原子 .banner
       if (c.banner) {
-        expect(wrapper.find('.hint-banner').exists()).toBe(true)
-        expect(wrapper.find('.hint-banner').text()).toContain(c.banner)
+        expect(wrapper.find('.banner').exists()).toBe(true)
+        expect(wrapper.find('.banner').text()).toContain(c.banner)
       } else {
-        expect(wrapper.find('.hint-banner').exists()).toBe(false)
+        expect(wrapper.find('.banner').exists()).toBe(false)
       }
       wrapper.unmount()
     })
@@ -147,7 +144,7 @@ describe('MarkerOnView 六态矩阵（状态 → 文案/按钮/提示条）', ()
     const toggle = wrapper.find('.annotate-toggle')
     expect(toggle.attributes('disabled')).toBeDefined()
     expect(toggle.attributes('title')).toContain('无可用信使程序')
-    expect(wrapper.find('.hint-banner').classes()).toContain('banner-warn')
+    expect(wrapper.find('.banner').classes()).toContain('banner-warn')
     wrapper.unmount()
   })
 
@@ -193,24 +190,33 @@ describe('MarkerOnView 操作流', () => {
     wrapper.unmount()
   })
 
+  // 迁移注记：卸载确认已由原生 window.confirm 收编至 useConfirm 全局单例
+  // （可访问性对话框，文案 title/description 逐字保留）——契约不变：必经二次确认。
   it('卸载版本必须经确认对话框，取消则不动后端', async () => {
     stubDefaults({ state: 'stopped' }, [installedV102])
+    const { confirmState, settleConfirm } = useConfirm()
     const { wrapper } = await mountInKeepAlive()
     const uninstallBtn = wrapper.findAll('.installed-card button').find((b) => b.text() === '卸载')!
     await uninstallBtn.trigger('click')
-    await flushPromises()
-    expect(window.confirm).toHaveBeenCalledTimes(1)
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('确定卸载 MarkerOn 1.0.2？')
+    expect(confirmState.options.tone).toBe('danger')
+    settleConfirm(false)
+    await flushMicrotasks()
     expect(svc.RemoveVersion).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
   it('确认卸载：调 RemoveVersion 并 toast 结果', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true))
     stubDefaults({ state: 'stopped' }, [installedV102])
     svc.RemoveVersion.mockResolvedValue(undefined)
+    const { settleConfirm } = useConfirm()
     const { wrapper } = await mountInKeepAlive()
     const uninstallBtn = wrapper.findAll('.installed-card button').find((b) => b.text() === '卸载')!
     await uninstallBtn.trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
     await flushPromises()
     expect(svc.RemoveVersion).toHaveBeenCalledWith('v1.0.2')
     expect(useToast().toastMsg.value).toBe('已卸载 1.0.2')

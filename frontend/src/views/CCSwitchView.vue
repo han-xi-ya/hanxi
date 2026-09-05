@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // 状态 / 版本管理 / 下载进度 / 时长 ticker / 生命周期
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, computed, onMounted } from 'vue'
 import * as CCSwitchAPI from '../../bindings/hanxi/internal/modules/ccswitch/ccswitchservice'
 import type { CCRelease, CCVersionInfo } from '../../bindings/hanxi/internal/modules/ccswitch/version/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/ccswitch/instance/models'
@@ -9,6 +8,15 @@ import type { ControlOutcome, QuitOutcome } from '../../bindings/hanxi/internal/
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/ccswitch/version/models'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { usePolling } from '../composables/usePolling'
+import { useConfirm } from '../composables/useConfirm'
+import { usePrompt } from '../composables/usePrompt'
+import { useClipboard } from '../composables/useClipboard'
+import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
+import PageHeader from '../components/ui/PageHeader.vue'
+import MainTabNav from '../components/ui/MainTabNav.vue'
+import UiBanner from '../components/ui/UiBanner.vue'
 
 // ---------- 状态 ----------
 const snap = ref<Snapshot | null>(null)
@@ -24,14 +32,16 @@ const uptimeSec = ref(0)
 const downloading = ref<Record<string, DownloadProgress>>({})
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
+const { prompt } = usePrompt()
+const { copy } = useClipboard()
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 frpc/markeron/everything 同构）
 const activeMainTab = ref<'console' | 'versions'>('console')
-
-let unlistenDownload: (() => void) | null = null
-let unlistenState: (() => void) | null = null
-let pollTimer: ReturnType<typeof setInterval> | null = null
-let tickTimer: ReturnType<typeof setInterval> | null = null
+const mainTabs = [
+  { key: 'console', label: '🔀 控制台' },
+  { key: 'versions', label: '📦 版本管理' },
+]
 
 // ---------- 派生状态 ----------
 const state = computed(() => snap.value?.state ?? '')
@@ -56,22 +66,22 @@ const openDirVersion = computed(() => {
   return installed.value.find(v => v.version === prefer) ?? installed.value[0] ?? null
 })
 
-// 条件提示条（三个变体互斥）
+// 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
 const banner = computed(() => {
   if (state.value === 'external') {
     return {
-      cls: 'banner-warn',
+      tone: 'warn',
       text: '检测到外部 CC Switch 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 CC Switch 托盘操作。',
-    }
+    } as const
   }
   if (state.value === 'failed') {
-    return { cls: 'banner-error', text: snap.value?.error || 'CC Switch 异常退出' }
+    return { tone: 'error', text: snap.value?.error || 'CC Switch 异常退出' } as const
   }
   if (state.value === 'running') {
     return {
-      cls: 'banner-ok',
+      tone: 'ok',
       text: 'CC Switch 正在运行：供应商切换在其窗口内操作（作用于 ~/.cc-switch 配置，跨版本共享）。闲置 3 分钟自动退出。',
-    }
+    } as const
   }
   return null
 })
@@ -103,26 +113,6 @@ async function refreshStatus() {
     // 轮询静默失败：保留上次快照即可
     console.warn('ccswitch GetStatus failed:', getErrorMessage(e))
   }
-}
-
-// ---------- 格式化 ----------
-function fmtSize(bytes: number): string {
-  if (!bytes) return '—'
-  if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024).toFixed(0)} KB`
-}
-
-function fmtDate(s?: string): string {
-  if (!s) return '—'
-  return s.slice(0, 10)
-}
-
-function fmtDuration(sec: number): string {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }
 
 function stepOf(p: DownloadProgress): number {
@@ -202,7 +192,13 @@ async function openDir(path: string) {
 }
 
 async function removeVersion(v: CCVersionInfo) {
-  if (!window.confirm(`确定卸载 CC Switch ${v.version}？\n该版本隔离目录将被删除，不可恢复。\n（你的 ~/.cc-switch 供应商配置不受影响，后续版本继续共用）`)) return
+  // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+  const accepted = await confirm({
+    title: `确定卸载 CC Switch ${v.version}？`,
+    description: '该版本隔离目录将被删除，不可恢复。\n（你的 ~/.cc-switch 供应商配置不受影响，后续版本继续共用）',
+    tone: 'danger',
+  })
+  if (!accepted) return
   try {
     await CCSwitchAPI.RemoveVersion(v.version)
     showToast(`已卸载 ${v.version}`)
@@ -213,7 +209,12 @@ async function removeVersion(v: CCVersionInfo) {
 }
 
 async function importLocal() {
-  const path = window.prompt('请输入 CC Switch 安装目录完整路径（安装版或绿色版均可，含 cc-switch.exe）\n提示：供应商配置恒在 ~/.cc-switch，与安装位置无关')
+  // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+  const path = await prompt({
+    title: '导入本地 CC Switch',
+    description: '提示：供应商配置恒在 ~/.cc-switch，与安装位置无关',
+    label: '安装目录完整路径（安装版或绿色版均可，含 cc-switch.exe）',
+  })
   if (!path) return
   try {
     busy.value = true
@@ -227,24 +228,14 @@ async function importLocal() {
   }
 }
 
-// ---------- 时长 ticker 与轮询管理 ----------
-function startTimers() {
-  if (pollTimer) return // 防重复开启（onMounted 后 onActivated 会再触发一次）
-  pollTimer = setInterval(refreshStatus, 2500) // 状态兜底轮询（事件推送之外）
-  tickTimer = setInterval(() => {
-    if (snap.value?.state === 'running' && snap.value.startedAt) {
-      const started = new Date(snap.value.startedAt).getTime()
-      if (!Number.isNaN(started)) {
-        uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
-      }
+// 运行时长秒表（每秒从快照 startedAt 重算；KeepAlive 停用期间暂停）
+function uptimeTick() {
+  if (snap.value?.state === 'running' && snap.value.startedAt) {
+    const started = new Date(snap.value.startedAt).getTime()
+    if (!Number.isNaN(started)) {
+      uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
     }
-  }, 1000)
-}
-
-function stopTimers() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
-  if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
-  uptimeSec.value = 0
+  }
 }
 
 
@@ -282,29 +273,9 @@ async function createShortcut() {
 }
 
 async function copyRepo() {
-  const text = repoUrl.value
-  const fallback = (): boolean => {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(ta)
-    return ok
-  }
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text)
-    } else if (!fallback()) {
-      throw new Error('execCommand 不可用')
-    }
-  } catch (e) {
-    showToast('复制失败: ' + getErrorMessage(e))
-    return
-  }
-  showToast('仓库地址已复制')
+  // 剪贴板两级策略已收编进 useClipboard
+  const ok = await copy(repoUrl.value)
+  showToast(ok ? '仓库地址已复制' : '复制失败')
 }
 
 async function openRepo() {
@@ -315,73 +286,43 @@ async function openRepo() {
   }
 }
 
-// ---------- 生命周期 ----------
-onMounted(async () => {
-  unlistenDownload = Events.On('ccswitch:version-download', (event) => {
-    const t = event.data as DownloadProgress
-    if (!t || !t.version) return
-    downloading.value = { ...downloading.value, [t.version]: t }
-    if (t.stage === 'done') {
-      setTimeout(() => {
-        const next = { ...downloading.value }
-        delete next[t.version]
-        downloading.value = next
-      }, 800)
-      loadVersions()
-    }
-  })
-
-  unlistenState = Events.On('ccswitch:instance-state', (event) => {
-    const s = event.data as Snapshot
-    if (!s) return
-    snap.value = s
-    if (s.state !== 'running') uptimeSec.value = 0
-  })
-
-  await Promise.all([refreshStatus(), loadVersions(), loadExtras()])
+// ---------- 订阅与生命周期 ----------
+useWailsEvent<DownloadProgress>('ccswitch:version-download', (t) => {
+  if (!t || !t.version) return
+  downloading.value = { ...downloading.value, [t.version]: t }
+  if (t.stage === 'done') {
+    setTimeout(() => {
+      const next = { ...downloading.value }
+      delete next[t.version]
+      downloading.value = next
+    }, 800)
+    loadVersions()
+  }
 })
 
-// KeepAlive：页面激活时恢复轮询并立即刷新一帧，退后台时暂停避免空转
-onActivated(() => {
-  startTimers()
-  refreshStatus()
+useWailsEvent<Snapshot>('ccswitch:instance-state', (s) => {
+  if (!s) return
+  snap.value = s
+  if (s.state !== 'running') uptimeSec.value = 0
 })
 
-onDeactivated(() => {
-  stopTimers()
-})
+// 轮询（usePolling 内置 KeepAlive 激活/停用/卸载契约；首跑即完成进页状态刷新）
+usePolling(refreshStatus, 2500)
+usePolling(uptimeTick, 1000)
 
-onUnmounted(() => {
-  stopTimers()
-  if (unlistenDownload) unlistenDownload()
-  if (unlistenState) unlistenState()
+onMounted(() => {
+  loadVersions()
+  loadExtras()
 })
 </script>
 
 <template>
   <section class="page ccswitch-view">
-    <div class="header-row">
-      <div>
-        <h1>CC Switch</h1>
-        <p class="subtitle">托管 Claude Code / Codex 多供应商切换工具：版本管理、启停与窗口唤起。</p>
-      </div>
-      <div class="main-tab-nav">
-        <button
-          class="main-tab-btn"
-          :class="{ active: activeMainTab === 'console' }"
-          @click="activeMainTab = 'console'"
-        >
-          🔀 控制台
-        </button>
-        <button
-          class="main-tab-btn"
-          :class="{ active: activeMainTab === 'versions' }"
-          @click="activeMainTab = 'versions'"
-        >
-          📦 版本管理
-        </button>
-      </div>
-    </div>
+    <PageHeader title="CC Switch" subtitle="托管 Claude Code / Codex 多供应商切换工具：版本管理、启停与窗口唤起。">
+      <template #actions>
+        <MainTabNav v-model="activeMainTab" :tabs="mainTabs" />
+      </template>
+    </PageHeader>
 
     <div v-if="listError" class="error-box">{{ listError }}</div>
 
@@ -417,7 +358,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 条件提示条 / 引导行 -->
-    <div v-if="banner" class="hint-banner slim" :class="banner.cls">{{ banner.text }}</div>
+    <UiBanner v-if="banner" :tone="banner.tone" class="slim">{{ banner.text }}</UiBanner>
     <div v-else-if="state === 'stopped'" class="hint-line">
       尚未运行：点击「打开窗口」启动 CC Switch，供应商切换在它的窗口内完成。配置恒存于 ~/.cc-switch，与托管版本切换无关。
     </div>
@@ -446,8 +387,8 @@ onUnmounted(() => {
       <div class="repo-row">
         <span class="k">GitHub 仓库</span>
         <code class="mono repo-addr">{{ repoUrl }}</code>
-        <button class="link-btn" @click="copyRepo">复制</button>
-        <button class="link-btn" @click="openRepo">浏览器打开</button>
+        <button class="link-button" @click="copyRepo">复制</button>
+        <button class="link-button" @click="openRepo">浏览器打开</button>
       </div>
     </div>
     <!-- 版本管理 Tab -->
@@ -566,167 +507,111 @@ onUnmounted(() => {
 
 <style scoped>
 .ccswitch-view { display: flex; flex-direction: column; gap: 10px; }
-.header-row { display: flex; justify-content: space-between; align-items: flex-start; }
-.header-row h1 { margin: 0 0 6px; }
-.subtitle { color: var(--text-muted); font-size: 13px; margin: 0; line-height: 1.6; }
-.error-box { padding: 10px 14px; background: #ffebe9; color: var(--danger); border: 1px solid rgba(207, 34, 46, 0.2); border-radius: 6px; font-size: 13px; }
-
-/* 顶层主选项卡（与 EverythingView 同款） */
-.main-tab-nav {
-  display: flex;
-  background: var(--bg-hover);
-  padding: 3px;
-  border-radius: 8px;
-  gap: 2px;
-}
-.main-tab-btn {
-  background: transparent;
-  border: none;
-  padding: 6px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.main-tab-btn:hover { color: var(--text-main); }
-.main-tab-btn.active {
-  background: var(--bg-app);
-  color: var(--accent);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
+/* 页头/副标题/错误框/主选项卡：由 PageHeader、MainTabNav 与 components.css 全局原子接管 */
 .tab-body { display: flex; flex-direction: column; gap: 10px; }
+/* UiBanner 紧凑变体 */
+.slim { padding: 8px 12px; font-size: 12px; }
 
 /* ---------- 顶部整合控制条 ---------- */
 .control-bar {
-  background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 10px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
   padding: 10px 12px; display: flex; flex-direction: column; gap: 10px;
 }
 .control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* 信号灯类名带 cc- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
-.cc-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--text-subtle); flex-shrink: 0; }
-.cc-status-light.running { background: var(--success); box-shadow: 0 0 0 3px rgba(26, 127, 55, 0.15); }
-.cc-status-light.starting { background: var(--accent); animation: pulse 1s infinite; }
-.cc-status-light.external { background: #9a6700; box-shadow: 0 0 0 3px rgba(154, 103, 0, 0.15); }
-.cc-status-light.failed { background: var(--danger); box-shadow: 0 0 0 3px rgba(207, 34, 46, 0.15); }
-.status-word { font-size: 15px; font-weight: 700; color: var(--text-main); }
-.ver-pill { font-family: Consolas, monospace; font-size: 12px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 4px; padding: 1px 8px; color: var(--text-main); }
-.pid-tag { font-size: 11px; color: var(--text-subtle); }
-.uptime-tag { font-size: 11px; color: var(--text-subtle); }
+.cc-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
+.cc-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
+.cc-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
+.cc-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
+.cc-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
+.status-word { font-size: 15px; font-weight: 700; color: var(--color-text); }
+.ver-pill { font-family: var(--font-mono); font-size: 12px; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 1px 8px; color: var(--color-text); }
+.pid-tag { font-size: 11px; color: var(--color-text-subtle); }
+.uptime-tag { font-size: 11px; color: var(--color-text-subtle); }
 .control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* ---------- 提示条与说明卡 ---------- */
-.hint-banner { padding: 10px 14px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
-.hint-banner.slim { padding: 8px 12px; font-size: 12px; }
-.banner-warn { background: #fff8c5; border-color: rgba(191, 135, 0, 0.3); color: #9a6700; }
-.banner-error { background: #ffebe9; border-color: rgba(207, 34, 46, 0.25); color: var(--danger); }
-.banner-ok { background: #dafbe1; border-color: rgba(26, 127, 55, 0.2); color: #1a7f37; }
-.hint-line { font-size: 12px; color: var(--text-subtle); padding-left: 2px; }
-.info-details { border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-sidebar); overflow: hidden; }
-.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
+/* ---------- 提示与说明卡（banner-* 全局原子接管，hint-banner 退役） ---------- */
+.hint-line { font-size: 12px; color: var(--color-text-subtle); padding-left: 2px; }
+.info-details { border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); overflow: hidden; }
+.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--color-text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
 .info-summary::-webkit-details-marker { display: none; }
-.info-summary::after { content: '▸'; font-size: 10px; margin-left: auto; transition: transform 0.15s; }
-.info-details[open] .info-summary { border-bottom: 1px solid var(--border-color); }
+.info-summary::after { content: '▸'; font-size: 10px; margin-left: auto; transition: transform var(--motion-base); }
+.info-details[open] .info-summary { border-bottom: 1px solid var(--color-border); }
 .info-details[open] .info-summary::after { transform: rotate(90deg); }
-.info-body { padding: 8px 12px; font-size: 12px; color: var(--text-muted); display: flex; flex-direction: column; gap: 4px; }
+.info-body { padding: 8px 12px; font-size: 12px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 4px; }
 .info-body p { margin: 0; line-height: 1.6; }
-.info-title { font-weight: 600; color: var(--text-main); }
-.inline-link { color: var(--accent); text-decoration: none; }
+.info-title { font-weight: 600; color: var(--color-text); }
+.inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
 
-/* ---------- 通用按钮 ---------- */
-.btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; }
-.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
-.btn-secondary { background: #fff; border-color: var(--border-color); color: var(--text-main); }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-hover); }
-.btn-small { padding: 4px 12px; font-size: 12px; }
-.btn-ghost { background: #f0f7ff; color: #0969da; border-color: #c8e1ff; }
-.btn-danger-outline { background: #fff; border-color: #ff8170; color: var(--danger); }
-.btn-danger-outline:hover:not(:disabled) { background: #ffebe9; }
+/* 通用按钮 .btn 家族已由 components.css 全局原子提供 */
 
 .control-panel {
   display: flex; align-items: center; justify-content: space-between;
-  background: var(--bg-sidebar); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 8px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); padding: 10px 14px; border-radius: var(--radius-control);
 }
-.meta-info { font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 2px; }
-.meta-info strong { color: var(--text-main); }
+.meta-info { font-size: 13px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
+.meta-info strong { color: var(--color-text); }
 .btn-group { display: flex; gap: 8px; }
-.hint-dim { color: var(--text-subtle); }
+.hint-dim { color: var(--color-text-subtle); }
 
-.section-title h3 { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
-.empty-hint { text-align: center; padding: 20px; color: var(--text-subtle); font-size: 13px; background: var(--bg-sidebar); border-radius: 6px; border: 1px dashed var(--border-color); }
-
-/* 首次使用空态 */
-.empty-state {
-  text-align: center; padding: 24px; background: var(--bg-sidebar);
-  border: 1px dashed var(--border-color); border-radius: 8px;
-  display: flex; flex-direction: column; gap: 12px; align-items: center;
-}
-.empty-state p { margin: 0; color: var(--text-muted); font-size: 13px; }
+.section-title h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+.empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
+/* .empty-state 空态全局原子接管（components.css） */
 
 /* ---------- 已安装卡片 ---------- */
 .installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 .installed-card {
-  background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px;
-  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color 0.15s ease;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color var(--motion-base) ease;
 }
-.installed-card.card-active { border-color: var(--accent); }
+.installed-card.card-active { border-color: var(--color-primary); }
 .inst-card-top { display: flex; justify-content: space-between; align-items: center; }
-.ver-tag { font-family: Consolas, monospace; font-size: 14px; font-weight: 700; color: var(--text-main); }
+.ver-tag { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
 .inst-badges { display: flex; gap: 6px; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
-.badge-active { background: #dafbe1; color: #1a7f37; }
-.badge-running { background: #ddf4ff; color: #0969da; }
-.badge-import { background: #ddf4ff; color: #0969da; }
-.badge-official { background: #eaeef2; color: #656d76; }
-.badge-pre { background: #fff8c5; color: #9a6700; margin-left: 4px; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+.badge-active { background: var(--state-positive-soft); color: var(--state-positive); }
+.badge-running { background: var(--state-information-soft); color: var(--state-information); }
+.badge-import { background: var(--state-information-soft); color: var(--state-information); }
+.badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
+.badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
 .inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.meta-line { display: flex; gap: 8px; color: var(--text-muted); align-items: baseline; }
-.meta-line .k { color: var(--text-subtle); width: 44px; flex-shrink: 0; }
-.mono { font-family: Consolas, monospace; color: var(--text-main); font-size: 11px; word-break: break-all; }
+.meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
+.meta-line .k { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
+/* .mono 基样式全局原子接管，此处仅留本视图紧凑字号 */
+.mono { font-size: 11px; }
 
 .inst-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
 
-/* ---------- 远程表格 ---------- */
-.table-container { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; overflow-x: auto; }
-.tbl { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
-.tbl th { background: var(--bg-sidebar); padding: 8px 12px; font-weight: 600; color: var(--text-muted); font-size: 12px; border-bottom: 1px solid var(--border-color); }
-.tbl td { padding: 8px 12px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
-.tbl tr:last-child td { border-bottom: none; }
-.ver-name { font-family: Consolas, monospace; }
+/* ---------- 远程表格（.tbl 全局原子接管） ---------- */
+.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
+.ver-name { font-family: var(--font-mono); }
 
 .cc-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
 .cc-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.cc-ver-status.installed::before { background: #2da44e; }
-.cc-ver-status.downloading::before { background: #0969da; animation: pulse 1s infinite; }
-.cc-ver-status.error::before { background: #cf222e; }
-.cc-ver-status.idle::before { background: #8c959f; }
+.cc-ver-status.installed::before { background: var(--state-positive); }
+.cc-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
+.cc-ver-status.error::before { background: var(--state-danger); }
+.cc-ver-status.idle::before { background: var(--color-text-subtle); }
 
 .download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dl-bar-wrap { flex: 1; height: 6px; background: #e1e4e8; border-radius: 3px; overflow: hidden; }
-.dl-bar-inner { height: 100%; background: var(--accent); transition: width 0.2s ease; }
-.dl-percent { font-size: 11px; color: var(--text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: 12px; color: var(--accent); }
-.dl-error { color: var(--danger); font-size: 11px; }
-.retry-link { color: var(--accent); font-size: 12px; cursor: pointer; margin-left: 8px; }
+.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+.dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
+.dl-percent { font-size: 11px; color: var(--color-text-muted); width: 32px; text-align: right; }
+.dl-meta-text { font-size: 12px; color: var(--color-primary); }
+.dl-error { color: var(--state-danger); font-size: 11px; }
+.retry-link { color: var(--color-primary); font-size: 12px; cursor: pointer; margin-left: 8px; }
 .retry-link:hover { text-decoration: underline; }
 
 /* ---------- 联动与辅助设置卡 ---------- */
-.extras-card { background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.extras-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
 .extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-main); cursor: pointer; }
+.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text); cursor: pointer; }
 .toggle-label input { width: 15px; height: 15px; cursor: pointer; }
-.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
-.repo-row .k { color: var(--text-subtle); flex-shrink: 0; }
+.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap; }
+.repo-row .k { color: var(--color-text-subtle); flex-shrink: 0; }
 .repo-addr { flex: 1; min-width: 220px; }
-.link-btn { background: transparent; border: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0 2px; }
-.link-btn:hover { text-decoration: underline; }
-
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+/* .link-button 全局原子接管 */
 </style>
