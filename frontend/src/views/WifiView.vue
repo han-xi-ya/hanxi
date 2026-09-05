@@ -5,8 +5,10 @@ import * as WifiAPI from '../../bindings/hanxi/internal/modules/wifi'
 import type { Profile } from '../../bindings/hanxi/internal/modules/wifi/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
+const { copy } = useClipboard()
 
 const loading = ref(false)
 const profiles = shallowRef<Profile[]>([])
@@ -81,15 +83,11 @@ function closeQRModal() {
   qrModal.value.visible = false
 }
 
-// 复制密码到剪贴板
+// 复制密码到剪贴板（两级回退策略已收编进 useClipboard）
 async function copyPassword(p: Profile) {
   if (!p.password) return
-  try {
-    await navigator.clipboard.writeText(p.password)
-    showToast(`已复制密码: ${p.ssid}`)
-  } catch (e: unknown) {
-    showToast(`复制失败: ${getErrorMessage(e)}`)
-  }
+  const ok = await copy(p.password)
+  showToast(ok ? `已复制密码: ${p.ssid}` : '复制失败')
 }
 
 onMounted(() => {
@@ -104,7 +102,7 @@ onMounted(() => {
         <h1>WiFi 密码</h1>
         <p class="subtitle">查看本机已保存的 Wi-Fi 密码，支持手机扫码秒连</p>
       </div>
-      <button class="btn btn-secondary btn-sm" :disabled="loading" @click="loadProfiles">
+      <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadProfiles">
         {{ loading ? '刷新中…' : '刷新列表' }}
       </button>
     </div>
@@ -185,7 +183,7 @@ onMounted(() => {
           <p class="qr-tip">支持 iOS / Android 相机、微信扫一扫直接接入网络</p>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary btn-sm" @click="closeQRModal">关闭</button>
+          <button class="btn btn-secondary btn-small" @click="closeQRModal">关闭</button>
         </div>
       </div>
     </div>
@@ -193,28 +191,19 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 页头/表格/按钮族/错误框已由 components.css 全局原子接管（:where 零特异性），
+   本文件仅留视图独有结构与功能性样式，颜色一律语义 token。 */
 .wifi-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.subtitle {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 4px 0 0;
-}
-
+/* 表格外壳：全局 .card 原子带内距与投影，不适合零内距表格容器，保留独有形状 */
 .card {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -223,7 +212,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color-border);
 }
 .card-header h3 {
   font-size: 14px;
@@ -235,28 +224,6 @@ onMounted(() => {
   overflow-x: auto;
 }
 
-.tbl {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  text-align: left;
-}
-.tbl th {
-  background: var(--bg-app);
-  padding: 9px 14px;
-  font-weight: 600;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
-}
-.tbl td {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-main);
-}
-.tbl tr:last-child td {
-  border-bottom: none;
-}
-
 .actions {
   display: inline-flex;
   gap: 6px;
@@ -264,39 +231,18 @@ onMounted(() => {
   justify-content: center;
 }
 
-/* 密码明文样式 */
+/* 密码明文：机器值 + 可整段选中 */
 .pw {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-main);
-  background: #f6f8fa;
+  color: var(--color-text);
+  background: var(--surface-soft);
   padding: 2px 10px;
   border-radius: 4px;
-  border: 1px dashed var(--border-color);
+  border: 1px dashed var(--color-border);
   user-select: all;
-}
-
-.btn {
-  padding: 6px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-}
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-.btn-secondary {
-  background: #fff;
-  border-color: var(--border-color);
-  color: var(--text-main);
-}
-.btn-secondary:hover {
-  background: var(--bg-hover);
 }
 
 .btn-icon {
@@ -308,38 +254,29 @@ onMounted(() => {
   border-radius: 4px;
 }
 .btn-icon:hover {
-  background: var(--bg-hover);
-}
-
-.error-box {
-  padding: 10px 14px;
-  background: #ffebe9;
-  color: var(--danger);
-  border: 1px solid rgba(207, 34, 46, 0.2);
-  border-radius: 6px;
-  font-size: 13px;
+  background: var(--surface-hover);
 }
 
 .text-muted {
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .empty-hint {
   text-align: center;
   padding: 32px 0;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
   line-height: 1.8;
 }
 .hint-sub {
   font-size: 12px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
-/* 二维码弹窗 */
+/* 二维码弹窗（内容型模态，非确认框，保留视图实现） */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--overlay-mask);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -348,15 +285,15 @@ onMounted(() => {
 }
 
 .modal-card {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-element);
   width: 320px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-panel);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: popIn 0.18s ease-out;
+  animation: popIn var(--motion-slow) ease-out;
 }
 
 @keyframes popIn {
@@ -375,7 +312,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color-border);
 }
 .modal-header h3 {
   font-size: 14px;
@@ -388,13 +325,13 @@ onMounted(() => {
   border: none;
   font-size: 14px;
   cursor: pointer;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   padding: 2px 6px;
   border-radius: 4px;
 }
 .btn-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-main);
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .modal-body {
@@ -406,10 +343,11 @@ onMounted(() => {
 }
 
 .qr-container {
+  /* 二维码码面恒白：跨主题扫码可读性为功能需求，非装饰色，不适用暗色表面 */
   background: #ffffff;
   padding: 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -421,9 +359,9 @@ onMounted(() => {
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
-  background: var(--bg-app);
+  background: var(--surface-soft);
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
 }
 
 .info-row {
@@ -434,14 +372,14 @@ onMounted(() => {
 }
 
 .info-row .label {
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   font-size: 12px;
   flex-shrink: 0;
 }
 
 .qr-tip {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--color-text-muted);
   margin: 0;
   text-align: center;
 }
@@ -450,7 +388,7 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   padding: 8px 16px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-app);
+  border-top: 1px solid var(--color-border);
+  background: var(--surface-soft);
 }
 </style>

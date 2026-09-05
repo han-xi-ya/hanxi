@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted } from 'vue'
+import { ref, shallowRef, computed, onMounted } from 'vue'
 import * as PortKillAPI from '../../bindings/hanxi/internal/modules/portkill'
 import type { PortOccupant, KillResult } from '../../bindings/hanxi/internal/modules/portkill/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import UiStatusChip from '../components/ui/UiStatusChip.vue'
 
 const { showToast } = useToast()
 
@@ -109,6 +111,19 @@ async function doKill(occ: PortOccupant) {
   }
 }
 
+// 确认对话框明细（原手搓 modal 的信息行逐字迁移到标准 ConfirmDialog details）
+const killDetails = computed(() => {
+  const occ = targetToKill.value
+  if (!occ) return []
+  const rows = [
+    { label: '目标端口', value: `:${occ.port} (${occ.protocol})` },
+    { label: '进程名称', value: occ.processName || '未知进程' },
+    { label: '进程 PID', value: String(occ.pid) },
+  ]
+  if (occ.exePath) rows.push({ label: '程序路径', value: occ.exePath })
+  return rows
+})
+
 function formatTime(timeStr: string) {
   if (!timeStr || timeStr.startsWith('0001-01-01')) return '—'
   try {
@@ -170,7 +185,7 @@ onMounted(() => {
     <div v-if="occupants.length > 0" class="card result-card">
       <div class="card-header">
         <h3>端口 :{{ inputPort }} 占用详情</h3>
-        <span class="badge badge-danger">占用中 ({{ occupants.length }})</span>
+        <UiStatusChip tone="danger">占用中 ({{ occupants.length }})</UiStatusChip>
       </div>
       <div class="table-wrap">
         <table class="tbl">
@@ -201,7 +216,7 @@ onMounted(() => {
                 >
                   释放端口
                 </button>
-                <span v-else class="badge badge-prot">系统保护</span>
+                <UiStatusChip v-else tone="neutral">系统保护</UiStatusChip>
               </td>
             </tr>
           </tbody>
@@ -213,7 +228,7 @@ onMounted(() => {
     <div class="card list-card">
       <div class="card-header">
         <h3>当前活跃监听端口 (LISTEN)</h3>
-        <button class="btn btn-secondary btn-sm" :disabled="loading" @click="loadListeningPorts">
+        <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadListeningPorts">
           {{ loading ? '刷新中…' : '刷新列表' }}
         </button>
       </div>
@@ -247,7 +262,7 @@ onMounted(() => {
                 >
                   释放端口
                 </button>
-                <span v-else class="badge badge-prot">系统保护</span>
+                <UiStatusChip v-else tone="neutral">系统保护</UiStatusChip>
               </td>
             </tr>
             <tr v-if="listeningList.length === 0 && !loading">
@@ -258,78 +273,39 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 查杀安全确认对话框 Modal -->
-    <div v-if="targetToKill" class="modal-overlay">
-      <div class="modal-card">
-        <h3>⚠️ 确认终止进程并释放端口？</h3>
-        <p class="modal-desc">即将终止以下进程，端口将被立即释放：</p>
-
-        <div class="modal-info-box">
-          <div class="info-row">
-            <span class="lbl">目标端口:</span>
-            <strong>:{{ targetToKill.port }} ({{ targetToKill.protocol }})</strong>
-          </div>
-          <div class="info-row">
-            <span class="lbl">进程名称:</span>
-            <strong>{{ targetToKill.processName || '未知进程' }}</strong>
-          </div>
-          <div class="info-row">
-            <span class="lbl">进程 PID:</span>
-            <code>{{ targetToKill.pid }}</code>
-          </div>
-          <div class="info-row" v-if="targetToKill.exePath">
-            <span class="lbl">程序路径:</span>
-            <span class="path-text">{{ targetToKill.exePath }}</span>
-          </div>
-        </div>
-
-        <div class="modal-actions">
-          <button class="btn btn-secondary" :disabled="killing" @click="cancelKill">取消</button>
-          <button class="btn btn-danger" :disabled="killing" @click="doKill(targetToKill)">
-            {{ killing ? '终止中…' : '确认终止' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- 查杀安全确认：手搓 modal 收编为标准 ConfirmDialog（焦点陷阱/Esc/danger 语义内建；
+         busy 由组件统一呈现为「处理中…」，替代原「终止中…」文案——机制归一属迁移预期差异） -->
+    <ConfirmDialog
+      :open="!!targetToKill"
+      title="确认终止进程并释放端口？"
+      description="即将终止以下进程，端口将被立即释放："
+      tone="danger"
+      confirm-label="确认终止"
+      :busy="killing"
+      :details="killDetails"
+      @confirm="targetToKill && doKill(targetToKill)"
+      @cancel="cancelKill"
+    />
   </section>
 </template>
 
 <style scoped>
+/* 页头/表格/按钮族/错误框/徽章已由全局原子与 UiStatusChip 接管；
+   死代码 .toast/@keyframes fadeIn 与查杀 modal 族（收编进 ConfirmDialog）一并清除。 */
 .portkill-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.subtitle {
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 4px 0 0;
-}
-
-.toast {
-  background: var(--text-main);
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 12px;
-  animation: fadeIn 0.2s ease;
-}
-
 .search-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
   padding: 14px 18px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .search-input-wrap {
@@ -343,12 +319,14 @@ onMounted(() => {
   flex: 1;
   padding: 8px 12px;
   font-size: 14px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   outline: none;
+  background: var(--surface-soft);
+  color: var(--color-text);
 }
 .input-port:focus {
-  border-color: var(--accent);
+  border-color: var(--color-primary);
 }
 
 .quick-tags {
@@ -360,34 +338,36 @@ onMounted(() => {
 
 .tag-label {
   font-size: 12px;
-  color: var(--text-subtle);
+  color: var(--color-text-subtle);
 }
 
 .tag-btn {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
+  background: var(--surface-page);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 3px 8px;
   font-size: 12px;
   cursor: pointer;
-  color: var(--text-muted);
-  font-family: Consolas, monospace;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 .tag-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-main);
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 .tag-btn.active {
-  background: var(--bg-active);
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--surface-selected);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
+/* 表格外壳：全局 .card 原子的内距/投影不适合零内距表格容器，保留独有形状 */
 .card {
-  background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -396,7 +376,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .card-header h3 {
@@ -409,197 +389,42 @@ onMounted(() => {
   overflow-x: auto;
 }
 
-.tbl {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-  text-align: left;
-}
-
-.tbl th {
-  background: var(--bg-app);
-  padding: 9px 14px;
-  font-weight: 600;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.tbl td {
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--text-main);
-}
-
-.tbl tr:last-child td {
-  border-bottom: none;
-}
-
 .col-path {
   max-width: 280px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 12px;
-  color: var(--text-muted);
-  font-family: Consolas, monospace;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
 }
 
 .port-num {
-  font-family: Consolas, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
-  color: var(--accent);
-}
-
-.btn {
-  padding: 6px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
-}
-
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 12px;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-}
-.btn-primary:hover {
-  background: var(--accent-hover);
-}
-
-.btn-secondary {
-  background: #fff;
-  border-color: var(--border-color);
-  color: var(--text-main);
-}
-.btn-secondary:hover {
-  background: var(--bg-hover);
-}
-
-.btn-danger {
-  background: var(--danger);
-  color: #fff;
+  color: var(--color-primary);
 }
 
 .btn-kill {
   padding: 3px 8px;
-  background: #ffebe9;
-  border: 1px solid rgba(207, 34, 46, 0.2);
-  color: var(--danger);
+  background: var(--state-danger-soft);
+  border: 1px solid var(--state-danger-glow);
+  color: var(--state-danger);
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  transition: background var(--motion-base) ease, color var(--motion-base) ease;
 }
 .btn-kill:hover {
-  background: var(--danger);
-  color: #fff;
-}
-
-.badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-weight: 500;
-}
-.badge-danger {
-  background: #ffebe9;
-  color: var(--danger);
-}
-.badge-prot {
-  background: var(--bg-hover);
-  color: var(--text-subtle);
-}
-
-.error-box {
-  padding: 10px 14px;
-  background: #ffebe9;
-  color: var(--danger);
-  border: 1px solid rgba(207, 34, 46, 0.2);
-  border-radius: 6px;
-  font-size: 13px;
+  background: var(--state-danger);
+  color: var(--color-on-primary);
 }
 
 .empty-hint {
   text-align: center;
   padding: 32px 0;
-  color: var(--text-subtle);
-}
-
-/* Modal 弹窗 */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-card {
-  background: #fff;
-  border-radius: 10px;
-  width: 440px;
-  padding: 20px 24px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-}
-
-.modal-card h3 {
-  margin: 0 0 8px;
-  font-size: 16px;
-  color: #1f2328;
-}
-
-.modal-desc {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: 0 0 16px;
-}
-
-.modal-info-box {
-  background: var(--bg-app);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
-  margin-bottom: 20px;
-}
-
-.info-row {
-  display: flex;
-  gap: 8px;
-}
-
-.info-row .lbl {
-  color: var(--text-muted);
-  width: 70px;
-  flex-shrink: 0;
-}
-
-.path-text {
-  font-family: Consolas, monospace;
-  font-size: 12px;
-  word-break: break-all;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  color: var(--color-text-subtle);
 }
 </style>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, shallowRef, onMounted } from 'vue'
 import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
 import type {
   MemoItem,
@@ -9,8 +8,11 @@ import type {
 } from '../../bindings/hanxi/internal/modules/memo/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useWailsEvent } from '../composables/useWailsEvent'
+import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
+const { copy } = useClipboard()
 
 // 状态定义
 const memos = shallowRef<MemoItem[]>([])
@@ -45,8 +47,6 @@ const COLOR_OPTIONS = [
   { name: '玫瑰红', val: 'rose', hex: '#f43f5e' },
   { name: '紫罗兰', val: 'purple', hex: '#8b5cf6' },
 ]
-
-let unlistenMemoChanged: (() => void) | null = null
 
 async function loadMemos() {
   loading.value = true
@@ -185,26 +185,19 @@ async function handleDeleteMemo(id: string) {
   }
 }
 
-function copyMemoContent(content: string) {
-  navigator.clipboard.writeText(content).then(() => {
-    showToast('已复制便签内容到剪贴板')
-  }).catch(() => {
-    showToast('复制失败')
-  })
+// 剪贴板两级策略已收编进 useClipboard（toast 文案与原实现逐字一致）
+async function copyMemoContent(content: string) {
+  const ok = await copy(content)
+  showToast(ok ? '已复制便签内容到剪贴板' : '复制失败')
 }
 
-onMounted(async () => {
-  await loadMemos()
-  unlistenMemoChanged = Events.On('memo:changed', () => {
-    loadMemos()
-  })
+// memo:changed 由局域网投递/多端联动触发：setup 期订阅防丢早期事件，卸载自动注销
+useWailsEvent('memo:changed', () => {
+  loadMemos()
 })
 
-onUnmounted(() => {
-  if (unlistenMemoChanged) {
-    unlistenMemoChanged()
-    unlistenMemoChanged = null
-  }
+onMounted(() => {
+  loadMemos()
 })
 </script>
 
@@ -427,6 +420,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 治理说明：本视图历史遗留的 text-muted/font-mono/mb-*/gap-* 等 utility 类名在本文件与全局
+   均无定义（渲染即无操作），清理会引入视觉变化，留观——本次只动确有定义的规则。 */
 .memo-page {
   padding: 24px 32px;
   max-width: 1360px;
@@ -443,7 +438,7 @@ onUnmounted(() => {
 .page-title {
   font-size: 22px;
   font-weight: 700;
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -452,15 +447,15 @@ onUnmounted(() => {
 
 .page-desc {
   font-size: 13px;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--color-text-muted);
   max-width: 720px;
   line-height: 1.5;
 }
 
 .memo-toolbar-card {
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 10px;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   padding: 16px 20px;
 }
 
@@ -480,7 +475,7 @@ onUnmounted(() => {
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   cursor: pointer;
 }
 
@@ -495,25 +490,25 @@ onUnmounted(() => {
 }
 
 .tag-chip {
-  background: var(--color-bg-input, #f1f5f9);
-  border: 1px solid var(--color-border, #e2e8f0);
-  color: var(--color-text-secondary, #475569);
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
   padding: 4px 10px;
-  border-radius: 16px;
+  border-radius: var(--radius-pill);
   font-size: 12px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--motion-base), color var(--motion-base);
 }
 
 .tag-chip:hover {
-  background: #e2e8f0;
-  color: #0f172a;
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .tag-chip.active {
-  background: #2563eb;
-  color: #ffffff;
-  border-color: #2563eb;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  border-color: var(--color-primary);
 }
 
 .tag-count {
@@ -528,21 +523,22 @@ onUnmounted(() => {
 }
 
 .memo-card {
-  background: var(--color-bg-card, #ffffff);
-  border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 10px;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   padding: 16px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform var(--motion-base), box-shadow var(--motion-base);
 }
 
 .memo-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-small);
 }
 
+/* 色彩标记是用户数据值（colorTag 持久化进后端），非主题表面——palette 保留原始色板 */
 .border-tag-blue { border-left: 4px solid #3b82f6; }
 .border-tag-emerald { border-left: 4px solid #10b981; }
 .border-tag-amber { border-left: 4px solid #f59e0b; }
@@ -551,7 +547,7 @@ onUnmounted(() => {
 
 .memo-title {
   font-size: 14px;
-  color: var(--color-text-primary, #0f172a);
+  color: var(--color-text);
   max-width: 220px;
 }
 
@@ -566,20 +562,20 @@ onUnmounted(() => {
   font-size: 13px;
   padding: 2px 4px;
   border-radius: 4px;
-  transition: background 0.15s;
+  transition: background var(--motion-base);
 }
 
 .btn-icon:hover {
-  background: #f1f5f9;
+  background: var(--surface-hover);
 }
 
 .memo-content-box {
   font-size: 12px;
   line-height: 1.5;
-  color: var(--color-text-primary, #1e293b);
-  background: var(--color-bg-input, #f8fafc);
-  border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: 6px;
+  color: var(--color-text);
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   padding: 10px 12px;
   max-height: 160px;
   overflow-y: auto;
@@ -588,7 +584,7 @@ onUnmounted(() => {
 }
 
 .memo-content-box.masked {
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   user-select: none;
   letter-spacing: 2px;
 }
@@ -597,13 +593,13 @@ onUnmounted(() => {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--surface-soft);
+  color: var(--color-text-muted);
   cursor: pointer;
 }
 
 .tag-pill:hover {
-  background: #e2e8f0;
+  background: var(--surface-hover);
 }
 
 .tag-removable {
@@ -615,17 +611,17 @@ onUnmounted(() => {
 .tag-remove {
   cursor: pointer;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .tag-remove:hover {
-  color: #ef4444;
+  color: var(--state-danger);
 }
 
 .btn-copy-chip {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #334155;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -633,14 +629,14 @@ onUnmounted(() => {
 }
 
 .btn-copy-chip:hover {
-  background: #f8fafc;
-  border-color: #94a3b8;
+  background: var(--surface-soft);
+  border-color: var(--color-text-subtle);
 }
 
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.4);
+  background: var(--overlay-mask);
   backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
@@ -649,12 +645,12 @@ onUnmounted(() => {
 }
 
 .modal-dialog {
-  background: #ffffff;
-  border-radius: 12px;
+  background: var(--surface-panel);
+  border-radius: var(--radius-element);
   width: 90%;
   max-width: 580px;
   padding: 24px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-panel);
 }
 
 .color-circle {
@@ -662,7 +658,7 @@ onUnmounted(() => {
   height: 24px;
   border-radius: 50%;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: transform var(--motion-base);
 }
 
 .color-circle:hover {
@@ -670,7 +666,7 @@ onUnmounted(() => {
 }
 
 .color-circle.selected {
-  outline: 2px solid #0f172a;
+  outline: 2px solid var(--color-text);
   outline-offset: 2px;
 }
 
@@ -683,10 +679,10 @@ onUnmounted(() => {
 .gap-4 { gap: 16px; }
 
 .btn-primary {
-  background: #2563eb;
-  color: #ffffff;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
@@ -694,31 +690,33 @@ onUnmounted(() => {
 }
 
 .btn-secondary {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #334155;
-  border-radius: 6px;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-control);
   padding: 8px 16px;
   font-size: 13px;
   cursor: pointer;
 }
 
 .input-control {
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
   padding: 8px 12px;
   font-size: 13px;
   outline: none;
+  color: var(--color-text);
 }
 
 .textarea-control {
   resize: vertical;
 }
 
+/* 本视图空态为纯文本形态，与全局 dashed 卡片 .empty-state 原子不同形——不强凑，保留局部定义 */
 .empty-state {
   text-align: center;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .empty-icon {
