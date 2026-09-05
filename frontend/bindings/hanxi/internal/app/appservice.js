@@ -64,6 +64,14 @@ export function GetNavs() {
 }
 
 /**
+ * GetTheme 返回持久化的主题模式："light" | "dark" | "system"（异常/未设置回退浅色）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetTheme() {
+    return $Call.ByID(2743962162);
+}
+
+/**
  * GetTrayMenu 返回当前托盘右键菜单配置条目（按保存顺序）。
  * @returns {$CancellablePromise<settings$0.TrayMenuItem[] | null>}
  */
@@ -183,6 +191,16 @@ export function SetModuleEnabled(id, enabled) {
 }
 
 /**
+ * SetTheme 持久化主题模式。DOM 与标题栏的实际应用由前端 useTheme 完成
+ * （其解析 system→亮/暗后回调 SetWindowDarkMode），后端不感知解析细节。
+ * @param {string} mode
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetTheme(mode) {
+    return $Call.ByID(163266462, mode);
+}
+
+/**
  * SetTrayMenu 校验并持久化托盘菜单配置，保存成功后立即重建右键菜单热生效。
  * @param {settings$0.TrayMenuItem[] | null} items
  * @returns {$CancellablePromise<void>}
@@ -198,4 +216,22 @@ export function SetTrayMenu(items) {
  */
 export function SetTrayRebuilder(fn) {
     return $Call.ByID(178488523, fn);
+}
+
+/**
+ * SetWindowDarkApplier 注入主窗口标题栏深色应用回调，仅由装配根（app.New）在窗口创建后调用。
+ * @param {any} fn
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetWindowDarkApplier(fn) {
+    return $Call.ByID(1234381004, fn);
+}
+
+/**
+ * SetWindowDarkMode 切换主窗口原生标题栏亮/暗（DWM ImmersiveDarkMode）。
+ * @param {boolean} dark
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetWindowDarkMode(dark) {
+    return $Call.ByID(1186575710, dark);
 }

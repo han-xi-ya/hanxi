@@ -294,6 +294,12 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	mainWindow = win
 	notify.GetHub().SetWailsContext(a, win)
 
+	// 深色标题栏桥：前端 useTheme 解析出实际亮/暗后经 SetWindowDarkMode 调到这里，
+	// 由平台层 DWM 属性同步原生窗框（重构蓝图铁律 8 的唯一后端例外）。
+	appSvc.SetWindowDarkApplier(func(dark bool) error {
+		return windows.SetImmersiveDarkMode(uintptr(win.NativeWindow()), dark)
+	})
+
 	// 注册窗口关闭拦截钩子：如果开启了“关闭时最小化到托盘”，则隐藏窗口代替退出
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
 		minimizeToTray := true

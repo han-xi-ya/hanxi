@@ -41,6 +41,8 @@ type AppService struct {
 	registry    *extapi.Registry
 	store       *settings.Store
 	trayRebuild func() // 托盘菜单热重建回调（由装配根注入，可能为 nil）
+	// windowDark 主窗口标题栏深色应用回调（由装配根在窗口创建后注入，可能为 nil）。
+	windowDark func(dark bool) error
 }
 
 func NewAppService(registry *extapi.Registry, store *settings.Store) *AppService {
@@ -306,6 +308,46 @@ func (s *AppService) SetGeneralSettings(gen GeneralSettings) error {
 
 // SetTrayRebuilder 注入托盘菜单热重建回调，仅由装配根（app.New）在托盘创建后调用。
 func (s *AppService) SetTrayRebuilder(fn func()) { s.trayRebuild = fn }
+
+// SetWindowDarkApplier 注入主窗口标题栏深色应用回调，仅由装配根（app.New）在窗口创建后调用。
+func (s *AppService) SetWindowDarkApplier(fn func(dark bool) error) { s.windowDark = fn }
+
+// GetTheme 返回持久化的主题模式："light" | "dark" | "system"（异常/未设置回退浅色）。
+func (s *AppService) GetTheme() string {
+	if s.store == nil {
+		return "light"
+	}
+	switch t := s.store.Get().Theme; t {
+	case "light", "dark", "system":
+		return t
+	default:
+		return "light"
+	}
+}
+
+// SetTheme 持久化主题模式。DOM 与标题栏的实际应用由前端 useTheme 完成
+// （其解析 system→亮/暗后回调 SetWindowDarkMode），后端不感知解析细节。
+func (s *AppService) SetTheme(mode string) error {
+	switch mode {
+	case "light", "dark", "system":
+	default:
+		return fmt.Errorf("非法主题模式: %s", mode)
+	}
+	if s.store == nil {
+		return nil
+	}
+	return s.store.Update(func(cfg *settings.AppSettings) {
+		cfg.Theme = mode
+	})
+}
+
+// SetWindowDarkMode 切换主窗口原生标题栏亮/暗（DWM ImmersiveDarkMode）。
+func (s *AppService) SetWindowDarkMode(dark bool) error {
+	if s.windowDark == nil {
+		return nil // 窗口未就绪（启动早期/装配缺失）时静默降级
+	}
+	return s.windowDark(dark)
+}
 
 // TrayMenuOption 设置页可选的托盘菜单候选项（托管命令与扩展页面导航）。
 // 自定义外部程序不属候选目录，由前端构造 type=exe 条目随 SetTrayMenu 提交。
