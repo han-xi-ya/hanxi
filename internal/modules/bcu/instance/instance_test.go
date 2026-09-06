@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -117,8 +118,14 @@ func TestStartAssignFail(t *testing.T) {
 // errno 740（exec 层可能带 %w 包装），特判输出管理员指引；其余错误返回空串
 // 走原文案。
 func TestElevateHint(t *testing.T) {
-	if got := elevateHint(syscall.Errno(740)); got == "" {
+	got := elevateHint(syscall.Errno(740))
+	if got == "" {
 		t.Fatal("740 应输出提权指引文案")
+	}
+	// 跨层契约：前端 ElevateRestart 组件以"文案含'管理员'"判定一键提权重启
+	// 按钮显隐（BCUView needsElevate），文案改写时不得丢掉该关键词。
+	if !strings.Contains(got, "管理员") {
+		t.Errorf("指引文案必须含「管理员」关键词（前端按钮显隐匹配），got %q", got)
 	}
 	if got := elevateHint(fmt.Errorf("fork/exec: %w", syscall.Errno(740))); got == "" {
 		t.Fatal("包装后的 740 也应被识别")

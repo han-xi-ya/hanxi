@@ -90,6 +90,13 @@ onMounted(async () => {
     backendReady.value = true
   }
 
+  // 提权重启交接回航：初始 URL 携带 "#/路由"（后端 -route 注入）时直达重启前
+  // 页面。只认已注册导航路由（含核心页），未知/禁用路由留在首页。
+  const handoff = window.location.hash.replace(/^#/, '')
+  if (handoff && handoff !== '/' && navs.value.some(n => n.route === handoff)) {
+    await navigateTo(handoff)
+  }
+
   // 监听后端模块开关与导航热更新事件
   unlistenExtChanged = Events.On('ext:changed', () => {
     refreshNavs()

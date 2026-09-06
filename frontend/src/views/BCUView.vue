@@ -19,6 +19,7 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
+import ElevateRestart from '../components/ElevateRestart.vue'
 import UiEmptyState from '../components/ui/UiEmptyState.vue'
 
 // ---------- 状态 ----------
@@ -87,6 +88,9 @@ const banner = computed(() => {
   }
   return null
 })
+
+// 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
+const needsElevate = computed(() => state.value === 'failed' && (snap.value?.error || '').includes('管理员'))
 
 // ---------- 数据加载 ----------
 async function loadVersions() {
@@ -400,6 +404,7 @@ onMounted(() => {
 
     <!-- 条件提示条 / 引导行 -->
     <UiBanner v-if="banner" :tone="banner.tone">{{ banner.text }}</UiBanner>
+    <ElevateRestart v-if="needsElevate" route="/ext/bcu" />
     <div v-else-if="state === 'stopped'" class="hint-line">
       尚未运行：点击「打开窗口」启动 BCU，批量卸载在其窗口内完成。便携包自含 .NET 运行时（约 76MB），无需系统预装。BCU 上游 manifest 强制管理员权限：需以管理员身份运行 Hanxi 方可启动（否则系统直拒，不代弹 UAC）。
     </div>

@@ -18,6 +18,7 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
+import ElevateRestart from '../components/ElevateRestart.vue'
 
 // ---------- 状态 ----------
 const snap = ref<Snapshot | null>(null)
@@ -83,6 +84,9 @@ const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(
   }
   return null
 })
+
+// 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
+const needsElevate = computed(() => state.value === 'failed' && (snap.value?.error || '').includes('管理员'))
 
 // ---------- 数据加载 ----------
 async function loadVersions() {
@@ -365,6 +369,7 @@ onMounted(async () => {
       未检测到 .NET 8 桌面运行时：LiteMonitor 为框架依赖发布，缺少运行库将无法启动。可在「开发环境检测」页查看详情或前往微软官网安装。
     </UiBanner>
     <UiBanner v-if="banner" :tone="banner.tone" class="slim">{{ banner.text }}</UiBanner>
+    <ElevateRestart v-if="needsElevate" route="/ext/litemonitor" />
     <div v-else-if="state === 'stopped'" class="hint-line">
       尚未运行：点击「打开窗口」启动 LiteMonitor，监控条将显示在桌面顶部/任务栏。上游要求管理员权限，首启会弹一次 UAC 确认；读取 CPU 温度时可能提示安装 PawnIO 驱动（一次性的内核驱动，用于硬件传感器）。
     </div>

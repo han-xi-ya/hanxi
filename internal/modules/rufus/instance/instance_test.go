@@ -9,12 +9,24 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
 )
+
+// TestElevateHint 740 → 文案含「管理员」关键词：前端 ElevateRestart 一键提权
+// 按钮显隐的跨层契约（与 bcu 基准一致，文案改写不得丢掉关键词）。
+func TestElevateHint(t *testing.T) {
+	if got := elevateHint(syscall.Errno(740)); !strings.Contains(got, "管理员") {
+		t.Errorf("740 指引文案必须含「管理员」（前端按钮显隐匹配），got %q", got)
+	}
+	if got := elevateHint(errors.New("no such file")); got != "" {
+		t.Errorf("非 740 错误应返回空串走原文案，got %q", got)
+	}
+}
 
 // ---------- 测试用 fake（探针与 Job 注入） ----------
 

@@ -18,6 +18,7 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
+import ElevateRestart from '../components/ElevateRestart.vue'
 
 // ---------- 状态 ----------
 const snap = ref<Snapshot | null>(null)
@@ -79,6 +80,9 @@ const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(
   }
   return null
 })
+
+// 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
+const needsElevate = computed(() => state.value === 'failed' && (snap.value?.error || '').includes('管理员'))
 
 // ---------- 数据加载 ----------
 async function loadVersions() {
@@ -341,6 +345,7 @@ onMounted(async () => {
 
     <!-- 条件提示条 / 引导行 -->
     <UiBanner v-if="banner" :tone="banner.tone" class="slim">{{ banner.text }}</UiBanner>
+    <ElevateRestart v-if="needsElevate" route="/ext/rufus" />
     <div v-else-if="state === 'stopped'" class="hint-line">
       尚未运行：点击「打开窗口」启动 Rufus，插入 U 盘后在其界面内选择镜像即可制作。注意：Rufus 上游清单强制管理员权限——需 Hanxi 本身以管理员身份运行（否则启动会直接报"要求提升"）。
     </div>
