@@ -89,6 +89,7 @@ import (
 	vscodeversion "hanxi/internal/modules/vscode/version"
 	"hanxi/internal/modules/wechat"
 	"hanxi/internal/modules/wifi"
+	"hanxi/internal/modules/wsl"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/product"
@@ -165,6 +166,8 @@ func RegisterEvents() {
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 	application.RegisterEvent[npmtool.OperationProgress]("envcheck:npm-tool-operation")
 	application.RegisterEvent[npmtool.OperationLog]("envcheck:npm-tool-log")
+	application.RegisterEvent[wsl.ReadinessUpdate]("wsl:readiness")
+	application.RegisterEvent[wsl.DownloadProgress]("wsl:msi-download")
 }
 
 // Options 控制应用启动时行为。
@@ -274,6 +277,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		publicip.New(plat),
 		wifi.New(),
 		envcheck.New(plat),
+		wsl.New(plat),
 		wechat.New(store),
 		fileShareModule,
 		quickMenuModule,
