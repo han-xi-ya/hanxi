@@ -184,7 +184,7 @@ hanxi/
 │  │  └─ 工具托管               # snipaste / everything / quicklook / keyviz / litemonitor
 │  │                            # / ccswitch / markeron / flclash / nanazip / eartrumpet
 │  │                            # / bcu / mangodisk / recordly / papertodo / piclite / guoheview
-│  │                            # / ddnsgo / vscode
+│  │                            # / ddnsgo / translucenttb / vscode
 │  │                            # （托管模块标准形态：version/ 版本管理子包 + instance/ 实例引擎子包）
 │  ├─ platform/                 # 平台底层（Windows JobObject / DPAPI / 注册表自启 / IP Helper / Appx 包管理 / Shell 提权）
 │  ├─ logging/                  # slog 结构化日志与凭据自动脱敏
