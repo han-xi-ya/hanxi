@@ -113,8 +113,8 @@ internal/modules/<tool>/
 
 - **运行态探测**：进程枚举、命名互斥体探测（Keyviz/PicLite/FlClash 等）、.NET 单实例通道（BCU/PaperTodo）、商店/DSD 注册态（EarTrumpet）；**多实例上游无锁可探**（果核看图二次拉起即新开窗）→ 进程名快照 + EnumWindows 按自有 PID 过滤；
 - **唤窗通道**：官方命令信使（show/hide/exit）、`EnumWindows` 置前台、AUMID 激活、Win32 `ShowWindow/SetForegroundWindow` 直操作，全部先做进程指纹复核（PID+启动时间+路径）防误杀；
-- **进程模型**：默认 JobObject 强绑定；闭源工具脱管（Snipaste）；MSIX/Appx 型不绑 JobObject（NanaZip/EarTrumpet）；
-- **退出治理**：命名管道优雅退出（QuickLook Quit/Reload）→ 命令通道 → 指纹复核强杀（上游事务性写入保证安全）三级策略，支持"跟随 Hanxi 退出"开关（`SetFollowOnExit`）与桌面快捷方式（`platform/windows/shortcut.go`）。
+- **进程模型**：JobObject 全程托管绑定（默认解除 kill-on-close，工具不随 Hanxi 退出；开启"跟随 Hanxi 退出"才启用内核连带强杀）；闭源工具脱管（Snipaste）；MSIX/Appx 型不绑 JobObject（NanaZip/EarTrumpet）；
+- **退出治理**：命名管道优雅退出（QuickLook Quit/Reload）→ 命令通道 → 指纹复核强杀（上游事务性写入保证安全）三级策略，支持"跟随 Hanxi 退出"开关（`SetFollowOnExit`，**默认关闭**：开启 Detached 解除 Job 退出联动，Hanxi 退出/崩溃均不影响工具）与桌面快捷方式（`platform/windows/shortcut.go`）。
 
 **事件契约**：托管模块统一推送 `*:version-download`（下载进度）与 `*:instance-state`（实例状态）两类事件，汇入 `notify` 通知中心。
 

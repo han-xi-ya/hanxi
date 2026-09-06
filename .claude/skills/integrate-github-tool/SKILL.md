@@ -5,7 +5,7 @@ description: 把 GitHub 上的桌面/CLI 工具集成进 Hanxi（托管模式：
 
 # 集成 GitHub 工具进 Hanxi（托管模式）
 
-用户给出 GitHub 地址要求"把 XX 集成到 hanxi"时，按本 skill 执行。已落地先例：**markeron**（GitHub releases、无官方哈希）、**everything**（官网下载、ini 改写藏托盘）、**ccswitch**（GitHub digest 官方 sha256、tauri 单实例互斥体）——新模块优先对照 ccswitch 模板（最新最完整）。另有反模板先例 **rustdesk/subnetdesk**（rust-portable 自解压单 exe：外层秒退不能当生命周期锚点、提取目录父 PID 闭包归属、无优雅退出无唤窗契约，见 TROUBLESHOOTING #24）与 **litemonitor/guoheview/recordly**（进程名探测 + EnumWindows 唤窗家族）——开工前先按上游实例模型选对模板族，别硬套互斥体。
+用户给出 GitHub 地址要求"把 XX 集成到 hanxi"时，按本 skill 执行。已落地先例：**markeron**（GitHub releases、无官方哈希）、**everything**（官网下载、ini 改写藏托盘）、**ccswitch**（GitHub digest 官方 sha256、tauri 单实例互斥体）——新模块优先对照 ccswitch 模板（最新最完整）。另有反模板先例 **rustdesk/subnetdesk**（rust-portable 自解压单 exe：外层秒退不能当生命周期锚点、提取目录父 PID 闭包归属、无优雅退出无唤窗契约，见 TROUBLESHOOTING #24）、**bcu**（#24 家族第二变体：根目录小体积 exe 是官方 bootstrapper，~20ms 接力自退，真身在 `win-x64\`——ResolveExe 直指内层，见 manager.go innerExeRel）与 **litemonitor/guoheview/recordly**（进程名探测 + EnumWindows 唤窗家族）——开工前先按上游实例模型选对模板族，别硬套互斥体。
 
 ## 阶段 0：上游侦查（先查后问，全部要实证）
 
@@ -53,14 +53,14 @@ internal/modules/<mod>/
 ```
 
 **Engine 必须保持的硬约定**（三个模块一字不差，照抄勿改）：
-- Start：JobObject `KILL_ON_JOB_CLOSE` 绑定；`cmd.Dir = filepath.Dir(exe)`；wait() 里 job.Close+cmd=nil
+- Start：JobObject 绑定 + `opts.Detached`（"不随 Hanxi 关闭"开关，全托管统一**默认 Detached**：Assign 后 `SetAllowKillOnClose(false)`，Hanxi 退出/崩溃不连带）；`cmd.Dir = filepath.Dir(exe)`；wait() 里 job.Close+cmd=nil
 - 信使进程（OpenWindow）Start+Release **不 Wait、不进 Job**——代码注释里写明"勿好心改成 Wait"（markeron 先例，改了就拖慢冷启动）
 - wait() 分类顺序不可换：stopping → 外部接管（`!stopped && probe.IsRunning()`）→ exit0 → failed（错误文案指向 WebView2/依赖）
 - 退出宽限期用**包级变量**（`closeGracePeriod`），单测压缩、生产恢复
 
 ## 阶段 3：模块骨架
 
-- `store.go`（activeVersion 原子写/损坏容忍）、`models.go`（ControlOutcome/QuitOutcome）、`module.go`
+- `store.go`（activeVersion 原子写/损坏容忍 + `followOnExit *bool` 默认 false——"随 Hanxi 一起关闭"开关，service 启动传 `Detached: !store.GetFollowOnExit()`、Shutdown 里 `GetFollowOnExit()` 为 true 才 Stop）、`models.go`（ControlOutcome/QuitOutcome）、`module.go`（Nav 照 ccswitch：Icon/Order/SectionExt）、`service.go`（版本八件套 + GetStatus + OpenWindow/Quit + openXXX 控制编排 + 外部感知 watcher）
 - `internal/app/app.go`：两处事件 `RegisterEvent[<version>.DownloadProgress]("<mod>:version-download")`、`RegisterEvent[<instance>.Snapshot]("<mod>:instance-state")`（**值类型，Emit 也传值**——指针/值不匹配会被 Wails 静默丢弃，TROUBLESHOOTING #9）+ `modulesToRegister` 追加
 - 需要"打开安装目录"就加模块自有 `OpenDir(dir)` RPC（explorer.exe 目录语义），**绝不复用 AppService.OpenPath 传文件路径**（markeron 事故：explorer.exe 收 exe 会执行它）
 - PE 版本读取复用 `internal/platform/versioninfo.FileVersion`（共享包，勿再复制）
@@ -75,7 +75,7 @@ internal/modules/<mod>/
 
 ## 阶段 5：真机联调（用户参与，清单化验收）
 
-下载真实版本 → 启动/唤窗/退出 → 状态灯六态 → 外部实例感知（用户自行启动）→ 导入本地 → JobObject 连带退出。**离线难验证项**（编码/落盘位置/真实退出行为）逐条列给用户勾验。
+下载真实版本 → 启动/唤窗/退出 → 状态灯六态 → 外部实例感知（用户自行启动）→ 导入本地 → 联动开关验收（默认不随 Hanxi 关闭：退 Hanxi 工具存活；开启"随 Hanxi 一起关闭"并重启工具后：连带退出）。**离线难验证项**（编码/落盘位置/真实退出行为）逐条列给用户勾验。
 
 ## 阶段 6：收尾
 
@@ -95,6 +95,7 @@ internal/modules/<mod>/
 | ini 改写（托盘隐藏等） | everything | instance/config.go ensureHiddenTray |
 | 空闲自动退出 | everything/ccswitch | service.go idleCheck/touch/shouldIdleQuit |
 | rust-portable 自解压单 exe（外层秒退，锚点=提取目录父 PID 闭包进程树） | rustdesk / subnetdesk | instance/instance.go supervise + probe_windows.go 路径判别（TROUBLESHOOTING #24） |
+| 根目录官方启动器接力自退（真身在子目录，启动入口直指内层） | bcu | version/manager.go innerExeRel/ResolveExe（TROUBLESHOOTING #24 第二变体） |
 | 进程名探测 + EnumWindows 按 PID 唤窗（无互斥体可用） | litemonitor / recordly / guoheview | instance/probe_windows.go + close_windows.go |
 | 单文件 exe 无 zip 下载（digest+字节数+MZ 魔数三重校验） | rustdesk / subnetdesk | version/manager.go Download/placeFile |
 | 被控/服务型常驻——禁用空闲退出、退出即断会话的诚实文案 | rustdesk / subnetdesk | service.go 包注释 + OpenWindow/Quit 编排 |
