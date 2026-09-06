@@ -1,6 +1,6 @@
 # 第三方软件告知
 
-> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部 17 款托管桌面工具。Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
+> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部 23 款托管桌面工具。Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
 
 ## MangoDisk
 
@@ -117,7 +117,7 @@ Hanxi 除版本托管外，内嵌官方 es.exe 在 Hanxi 控制台内实现秒�
 
 Hanxi 采用**脱管托管**：保留 Snipaste 原生托盘与全局快捷键，Hanxi 退出时不强杀（截图工具需常驻）；版本下载、启动与运行态由 Hanxi 统一管理。Hanxi 不修改、不捆绑、不再分发，不做任何品牌衍生展示；若未来需随包分发，必须另行取得官方授权。
 
-## GPL-3.0 托管工具（FlClash / Keyviz / QuickLook / PicLite / Bili23 Downloader / TranslucentTB）
+## GPL-3.0 托管工具（FlClash / Keyviz / QuickLook / PicLite / Bili23 Downloader / TranslucentTB / Rufus）
 
 - FlClash：https://github.com/chen08209/FlClash —— GPL-3.0（Clash 系跨平台代理客户端；第二实例不唤窗，改用 EnumWindows 置前台）
 - Keyviz：https://github.com/mulaRahul/keyviz —— GPL-3.0（按键可视化；MSI `msiexec /a` 管理提取安装，互斥体探测）
@@ -125,10 +125,20 @@ Hanxi 采用**脱管托管**：保留 Snipaste 原生托盘与全局快捷键，
 - PicLite：https://github.com/amiaoapp/PicLite —— GPL-3.0（图片/GIF 压缩；`msiexec /a` 管理提取免管理员提权）
 - Bili23 Downloader：https://github.com/ScottSloan/Bili23-Downloader —— GPL-3.0（B 站视频下载器，Python/PySide6 自带静态运行时整目录便携包；命名互斥体 + QLocalServer 信使唤窗，关窗行为用户可配故退出三态如实上报、无静默强杀，详见 docs/TROUBLESHOOTING.md #27）
 - TranslucentTB：https://github.com/TranslucentTB/TranslucentTB —— GPL-3.0（任务栏透明/模糊效果工具，C++/WinRT 注入 explorer；单实例互斥体探测、托盘消息窗口 WM_CLOSE 优雅退出、信使重设任务栏状态而非唤窗，详见 docs/TROUBLESHOOTING.md #32）
+- Rufus：https://github.com/pbatard/rufus —— GPL-3.0（USB 启动盘制作工具；官方 Windows x64 便携单文件 exe，GitHub API digest + 字节数 + MZ 魔数三重校验、下载即安装，预置 `rufus.ini` 强制便携并关闭上游内置更新检查；上游 manifest 强制 `requireAdministrator`——托管启动要求 Hanxi 本身以管理员运行，第二实例弹模态错误框无唤窗契约改用 Win32 直操作置前台，详见 docs/TROUBLESHOOTING.md #26）。磁盘级写入属数据销毁高风险操作，制作流程全部在上游原版界面完成（纯托管决策），对应源代码可经上游仓库 tag 获取。
 
 Hanxi 对上述工具均采用用户侧按需下载与独立进程托管：二进制直接来自上游 GitHub Releases（GitHub API digest 等多层完整性校验），Hanxi 不修改、不静态链接、不内嵌其源码或二进制，全部功能均由原版 GUI 提供；对应源代码可通过各下载版本对应的上游 tag 获取。
 
 GPL-3.0 合规红线为**不捆绑、不再分发**：当前 Hanxi 仓库和安装包不包含上述任何二进制，下载行为全部由用户本机直连上游发起。若未来改为预装或随 Hanxi 二进制再分发，发布流程必须落实 GPL-3.0 完整许可证文本与对应完整源代码（或书面报价）的提供义务。
+
+## AGPL-3.0 远程桌面托管工具（RustDesk / SubnetDesk）
+
+- RustDesk：https://github.com/rustdesk/rustdesk —— AGPL-3.0（跨公网 ID/中继远程桌面；默认官方公共信令，支持自备自建 rendezvous/relay 服务器；便携 exe 为 rust-portable packer 单文件"下载即安装"，内层解压至 `%LOCALAPPDATA%\rustdesk`；另有 MSI 安装版双形态纳管；端口 TCP 21116/21117，数据目录 `%APPDATA%\RustDesk`）
+- SubnetDesk：https://github.com/zibo-chen/SubnetDesk —— AGPL-3.0（RustDesk 的独立局域网 fork：移除公网设备 ID、rendezvous/中继与云账户路径，局域网/VPN 直连，mDNS 发现、端口 TCP 21118、用户名/密码 Argon2id 认证；数据目录 `%APPDATA%\SubnetDesk`；同样为便携单文件 + MSI 安装版双形态）
+
+Hanxi 对上述两工具均为**纯托管**（不内嵌界面）：远程桌面画面即上游 GUI 本体，内嵌重做不可行；二进制直接来自上游 GitHub Releases（多层完整性校验），Hanxi 不修改、不静态链接、不内嵌其源码或二进制。两模块在 Hanxi 导航中配成"远程控制"组合，但**协议互不兼容**（ID+中继认证 vs 子网端点+账密认证），两端需装对应软件——页面文案如实说明，非互操作承诺。便携版边界如实提示：不装 Windows 服务，被控仅在便携进程存活期间可被连接，锁屏/安全桌面场景为安装版专属能力。两工具端口与数据目录错开，同机并行运行互不冲突。
+
+AGPL-3.0 合规红线同为**不捆绑、不再分发**：当前 Hanxi 仓库和安装包不包含上述任何二进制。若未来改为预装或随 Hanxi 再分发，发布流程必须落实 AGPL-3.0 完整许可证文本与对应完整源代码提供义务，并重新评估网络服务条款（§13）的适用边界。
 
 ## LiteMonitor
 
