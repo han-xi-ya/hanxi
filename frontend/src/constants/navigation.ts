@@ -46,6 +46,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/rustdesk': { component: defineAsyncComponent(() => import('@/views/RustDeskView.vue')), moduleId: 'rustdesk' },
   '/ext/rufus': { component: defineAsyncComponent(() => import('@/views/RufusView.vue')), moduleId: 'rufus' },
   '/ext/bili23': { component: defineAsyncComponent(() => import('@/views/Bili23View.vue')), moduleId: 'bili23' },
+  '/ext/vscode': { component: defineAsyncComponent(() => import('@/views/VSCodeView.vue')), moduleId: 'vscode' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
@@ -111,6 +112,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   rustdesk: { icon: '🌍', route: '/ext/rustdesk' },
   rufus: { icon: '💽', route: '/ext/rufus' },
   bili23: { icon: '📺', route: '/ext/bili23' },
+  vscode: { icon: '💻', route: '/ext/vscode' },
   quickmenu: { icon: '🖱', route: '/ext/quickmenu' },
 }
 

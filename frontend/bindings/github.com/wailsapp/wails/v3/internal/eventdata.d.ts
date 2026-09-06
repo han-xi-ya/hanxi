@@ -142,6 +142,12 @@ import type * as instance$19 from "../../../../../hanxi/internal/modules/subnetd
 import type * as version$18 from "../../../../../hanxi/internal/modules/subnetdesk/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as instance$20 from "../../../../../hanxi/internal/modules/vscode/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$19 from "../../../../../hanxi/internal/modules/vscode/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as wechat$0 from "../../../../../hanxi/internal/modules/wechat/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -206,6 +212,8 @@ declare module "@wailsio/runtime" {
             "subnetdesk:instance-state": instance$19.Snapshot;
             "subnetdesk:version-download": version$18.DownloadProgress;
             "tray:navigate": string;
+            "vscode:instance-state": instance$20.Snapshot;
+            "vscode:version-download": version$19.DownloadProgress;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
         }
