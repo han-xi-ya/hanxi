@@ -2,7 +2,7 @@
 
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
-> **更新日期**：2026-09-03
+> **更新日期**：2026-09-06
 > **技术基线**：Go ≥1.24 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration)
 
@@ -23,16 +23,16 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │  internal/app/  Composition Root (应用唯一装配点)       │
 │  - 生命周期管理、系统托盘 (Systray)、关闭拦截、优雅退出│
 │  - AppService (通用设置/日志/导航/关于信息)            │
-│  - 26 个模块统一注册与 Wails 服务注入                  │
+│  - 35 个模块统一注册与 Wails 服务注入                  │
 └──────┬────────────────────┬────────────────────┬───────┘
        │                    │                    │
 ┌──────▼───────────┐ ┌──────▼───────────┐ ┌──────▼───────┐
 │ internal/modules │ │ internal/extapi  │ │ internal/    │
-│ 25 个业务模块    │ │ 模块生命周期契约 │ │ settings     │
+│ 35 个业务模块    │ │ 模块生命周期契约 │ │ settings     │
 │ 自建: frpc 网络  │ │ 与按需懒加载注册 │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ (Info/Nav/       │ │ 与配置持久化 │
 │ 快传 随手记等    │ │  Services/       │ ├──────────────┤
-│ 托管: 15 款桌面  │ │  OnInit/         │ │ internal/    │
+│ 托管: 23 款桌面  │ │  OnInit/         │ │ internal/    │
 │ 工具 version+    │ │  OnDestroy)      │ │ notify       │
 │ instance 子包    │ ├──────────────────┤ │ 全局通知中心 │
 └──────┬───────────┘ │ internal/product │ └──────────────┘
@@ -93,7 +93,7 @@ type Module interface {
 
 ### 2.3 外部工具托管架构（Managed Integration）
 
-15 款第三方桌面工具按同一标准骨架纳管，每模块三件套：
+23 款第三方桌面工具按同一标准骨架纳管，每模块三件套：
 
 ```text
 internal/modules/<tool>/
@@ -106,15 +106,15 @@ internal/modules/<tool>/
 **版本管理子包（`version/`）**
 
 - **完整性四层兜底链**（按上游能力择优组合）：GitHub API 资产 `digest` → 官方 `SHA256SUMS.txt` 双源比对 → 官方站哈希清单（如 Snipaste sha-1、voidtools sha256、果核看图官方接口 MD5）→ 字节数 + MZ/PE `versioninfo` 版本核对 + sha256 下载指纹存档；
-- **安装布局适配**（免提权优先）：便携 zip 直解 / 顶层包装目录收割（zip 内 exe 深一层，如果核看图 `GuoheViewPortable/`）/ `msiexec /a` 管理提取（MSI 无 zip 形态，如 PicLite、Keyviz）/ NSIS `/S /D=` 静默安装（Recordly）/ 当前用户 MSIX（`platform/apppackage`，NanaZip）/ AppInstaller 官方直装清单交叉校验（EarTrumpet）；
+- **安装布局适配**（免提权优先）：便携 zip 直解 / 顶层包装目录收割（zip 内 exe 深一层，如果核看图 `GuoheViewPortable/`）/ `msiexec /a` 管理提取（MSI 无 zip 形态，如 PicLite、Keyviz）/ NSIS `/S /D=` 静默安装（Recordly）/ 当前用户 MSIX（`platform/apppackage`，NanaZip）/ AppInstaller 官方直装清单交叉校验（EarTrumpet）/ 单文件 exe 下载即安装（含 rust-portable packer 内层自解压形态，Rufus、RustDesk/SubnetDesk）/ MSI 安装版双形态纳管（Hanxi 取包校验+发起上游向导+注册表探测安装位，RustDesk/SubnetDesk 与 VS Code User Installer）；
 - 统一支持本地导入、版本删除与 `*:version-download` 进度事件。
 
 **实例引擎子包（`instance/`）**
 
-- **运行态探测**：进程枚举、命名互斥体探测（Keyviz/PicLite/FlClash 等）、.NET 单实例通道（BCU/PaperTodo）、商店/DSD 注册态（EarTrumpet）；**多实例上游无锁可探**（果核看图二次拉起即新开窗）→ 进程名快照 + EnumWindows 按自有 PID 过滤；
+- **运行态探测**：进程枚举、命名互斥体探测（Keyviz/PicLite/FlClash 等；RustDesk 系按安装形态分治——便携版进程镜像路径探针、安装版命名互斥体）、.NET 单实例通道（BCU/PaperTodo）、商店/DSD 注册态（EarTrumpet）；**多实例上游无锁可探**（果核看图二次拉起即新开窗）→ 进程名快照 + EnumWindows 按自有 PID 过滤；
 - **唤窗通道**：官方命令信使（show/hide/exit）、`EnumWindows` 置前台、AUMID 激活、Win32 `ShowWindow/SetForegroundWindow` 直操作，全部先做进程指纹复核（PID+启动时间+路径）防误杀；
 - **进程模型**：JobObject 全程托管绑定（默认解除 kill-on-close，工具不随 Hanxi 退出；开启"跟随 Hanxi 退出"才启用内核连带强杀）；闭源工具脱管（Snipaste）；MSIX/Appx 型不绑 JobObject（NanaZip/EarTrumpet）；
-- **退出治理**：命名管道优雅退出（QuickLook Quit/Reload）→ 命令通道 → 指纹复核强杀（上游事务性写入保证安全）三级策略，支持"跟随 Hanxi 退出"开关（`SetFollowOnExit`，**默认关闭**：开启 Detached 解除 Job 退出联动，Hanxi 退出/崩溃均不影响工具）与桌面快捷方式（`platform/windows/shortcut.go`）。
+- **退出治理**：命名管道优雅退出（QuickLook Quit/Reload）→ 命令通道 → 指纹复核强杀（上游事务性写入保证安全）三级策略；**例外分治**——上游关窗行为用户可配且强杀有中断在途任务代价的下载器型（Bili23 Downloader）不做静默强杀兜底，Quit 三态（exited/hidden/windowUp）如实上报，强杀仅留给用户显式点击；支持"跟随 Hanxi 退出"开关（`SetFollowOnExit`，**默认关闭**：开启 Detached 解除 Job 退出联动，Hanxi 退出/崩溃均不影响工具）与桌面快捷方式（`platform/windows/shortcut.go`）。
 
 **事件契约**：托管模块统一推送 `*:version-download`（下载进度）与 `*:instance-state`（实例状态）两类事件，汇入 `notify` 通知中心。
 
