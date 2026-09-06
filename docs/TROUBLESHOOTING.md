@@ -737,8 +737,25 @@ WSL2 模块要做虚拟机平台状态查看与开关，先被"现成信号"坑�
   1. **HypervisorPresent ≠ 虚拟机平台已启用**：Win11 内核隔离（HVCI/VBS）默认开启时系统同样跑着虚拟机监控程序——实机基准对照：两个功能 DISM 读到"已禁用"，而 `Win32_ComputerSystem.HypervisorPresent` 依旧 true。拿它当"平台开着"的证据会把"发行版根本起不来"的机器误判成就绪；
   2. **候选信号接连扑空**：CBS 包注册表（`Component Based Servicing\Packages\HyperV-Feature-VirtualMachinePlatform-*`）键值 InstallState 读不到且 FOD 包键常驻（连 "Disabled-FOD-Package-Wrapper" 都在），存在性≠启用；`HvHost` 服务任何现代 Windows 都有（Start=3 不随功能变）；`bcdedit /enum` 连查询都要管理员。
 - **排查过程**：先枚举候选信号做免管理员实测（注册表三路 + 服务四项），无一定论；提权跑一次 `Get-WindowsOptionalFeature`/DISM 拿地面真值（双功能=已禁用），反推与服务画像对照——`vmcompute` 服务恰随虚拟机平台安装/卸载（WSL2 建 VM 的硬依赖，缺席与 DISM 结论吻合），`LxssManager` 同理对应旧版 WSL 功能。
-- **正确做法与标准修复方案**：功能开关状态用 **服务存在性**（`SYSTEM\CurrentControlSet\Services\vmcompute` / `LxssManager`）做免管理员信号，并保留 DISM 提权通道作为写操作（enable/disable 均 /norestart，重启生效由引导条提示）；体检项对"平台未启用"定级 warn 而非 info——内核隔离制造的"监控程序在运行"假象必须被结论条点名，文案明说"HVCI 不能替代本功能"。
+- **正确做法与标准修复方案**：功能开关状态用 **`Win32_OptionalFeature` WMI（`InstallState` 1=启用 / 2=禁用，免管理员可读，与 DISM 真值逐项对照校准）**——服务存在性启发已被家庭版证伪（`vmcompute` 属 Hyper-V 全套件，家庭版启用虚拟机平台/旧版 WSL 均不产生对应服务，拿"服务缺席"反推"功能禁用"会全线误伤）。"已启用但未生效"另用 CBS 官方台账（`Component Based Servicing\RebootPending` 键）单独判定；DISM 提权通道保留作写操作（enable/disable 均 /norestart，重启生效由引导条提示）；体检项对"平台未启用"定级 warn 而非 info——内核隔离制造的"监控程序在运行"假象必须被结论条点名，文案明说"HVCI 不能替代本功能"。
 - **避坑防重犯建议**：
-  1. Windows 虚拟化相关状态判断，先把信号按"谁在什么条件下才存在"分级：功能随附的服务/驱动 > WMI 状态位 > CBS 包键；对 HypervisorPresent、VBS 状态这类"多来源共用"字段，永远问一句"还有谁会点亮它"（内核隔离、Hyper-V、WSL、沙盒都可能）；
+  1. Windows 功能状态判断优先取该功能的**权威台账**（WMI `Win32_OptionalFeature`、DISM 输出——都是服务栈自己维护的），而非**附属产物**（服务/驱动存在性）：同一功能在不同 SKU（家庭/专业/企业）装出的附属件并不一样，产物缺席不等于功能缺席（vmcompute 在家庭版缺席即本例实证）；对 HypervisorPresent、VBS 状态这类"多来源共用"字段，永远问一句"还有谁会点亮它"（内核隔离、Hyper-V、WSL、沙盒都可能）；
   2. 新加系统状态判据必须找一条**提权侧真值通道**做一次基准对照（跑一次 DISM/Get-WindowsOptionalFeature），别拿单信号直接上生产；
   3. 需要管理员才能读的命令（bcdedit、dism）不做常规探针——免管理员链路里出现它们，等于给每次体检插一次 UAC。
+
+### 37. 「发行版怎么装不上还报成功」：`Start-Process -Wait` 从不回传子进程退出码——裸提权通道的假成功是 #36 分号链的同族病灶
+
+WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"，多次点击全部回执"操作已执行完毕"，但 `wsl -l -v` 始终零发行版：
+
+- **问题现象与错误原因**：
+  1. **假成功的根因在提权通道本身**：`runElevatedProcess` 用 `Start-Process -Verb RunAs -Wait` 执行 `wsl.exe --install -d <id>`，但 **PowerShell 的 `Start-Process` 从不设置 `$LASTEXITCODE`**——无论目标程序以何种退出码结束，宿主 powershell 都以 0 退出。于是提权窗口里 `wsl` 已红字报错退出，Go 侧 `CombinedOutput()` 拿到的却是退出码 0，判成功。这与 #36 的 `dism; dism` 分号链吞码是同一病灶——当时只给 DISM 链补了 `if ($LASTEXITCODE -ne 0){exit}`，**裸提权通道这条一直漏着**；
+  2. **为什么注定失败**：本机虚拟机平台处于"已启用、待重启生效"（WMI `InstallState=1` 但 CBS `RebootPending` 在账），`wsl --status` 原话"WSL2 无法启动，因为此计算机上未启用虚拟化"——WSL2 起不了虚拟机，任何发行版安装都在首次拉起环节崩，只是崩了被假成功吞掉看不见。
+- **排查过程**：`wsl --status`/`wsl -l -v` 重定向到文件按 UTF-16 解码读原文（#34 口径），锁定"未启用虚拟化 + 零发行版 + RebootPending=True"三态；顺 `InstallDistro` → `elevateWsl` → `runElevatedProcess` 回溯，坐实 `Start-Process` 无 `-PassThru` 则拿不到子退出码。
+- **正确做法与标准修复方案**：
+  1. **总闸修复**：`runElevatedProcess` 改 `-PassThru` 拿进程对象并 `if ($null -ne $p -and $p.ExitCode -ne 0) { exit $p.ExitCode }` 显式传播，Go 侧 `errors.As` 捕 `*exec.ExitError` 点名退出码（提权窗口保持可见以展示进度与红字详情）；抽成纯函数 `buildElevatedPS` 上形状回归锁。
+  2. **前置拦截**：`InstallDistro` 在提权之前加 `virtualizationGate`——探针 `FeatureVM=false`（平台没启用）或 `FeatureVM=true && RebootPending=true`（启用但没重启加载）时，直接返回指路回执、根本不弹 UAC（探针自身不可得时保守放行，由退出码通道兜底）；前端版本页 `distroBlockedReason` 在清单上方挂黄色警告条并禁用安装按钮，**点之前就讲清**。
+  3. 用户侧动作：还掉欠的那次重启，重启后重新体检，`RebootPending` 归零、gate 放行，发行版即可正常安装。
+- **避坑防重犯建议**：
+  1. **凡用 `Start-Process` 判断成败，一律 `-PassThru` + 手动传播 `$p.ExitCode`**——`-Wait` 只保证时序不保证回码，这是 PowerShell 反直觉的头号陷阱；写提权执行器时把"回码从哪来"当作第一性问题，别让"命令跑完了"偷换成"命令成功了"；
+  2. **修一类 bug 要扫全同类通道**：#36 修了 DISM 分号链吞码却没修裸 `wsl.exe` 提权链，同族假成功隔了一轮又炸——落地一个"退出码传播"缺陷时，横向 grep 所有 `Start-Process`/子进程封装，一次性补齐；
+  3. **有确定性失败前提的操作先设闸门再弹 UAC**：明知"待重启时装必失败"，就该在提权前拦下并指路，而不是让用户对着闪退的黑窗口反复点"成功"。事前禁用 + 事中拦截 + 事后如实回码，三层缺一不可。
