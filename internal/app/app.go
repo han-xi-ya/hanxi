@@ -3,6 +3,8 @@ package app
 
 import (
 	"log/slog"
+	"os"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -158,6 +160,13 @@ func RegisterEvents() {
 // Options 控制应用启动时行为。
 type Options struct {
 	StartMinimized bool
+	// TakeoverPID 提权重启交接：旧实例进程 PID。非 0 时新实例在抢占单实例锁
+	// 之前等待该进程退出，否则会被 Wails 判为第二实例静默自退、交接失败。
+	TakeoverPID uint32
+	// InitialRoute 提权重启交接：启动后前端应直达的路由（如 "/ext/bcu"）。
+	// 非空时主窗口 URL 带 "#<route>" hash，App.vue 挂载后据此回航原页面。
+	// 已由 cmd 入口做格式门卫，此处仅透传。
+	InitialRoute string
 }
 
 // New 装配应用：配置加载 + 扩展注册 + 服务注册 + 窗口创建。
@@ -192,7 +201,17 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		"mode", paths.Mode(),
 		"baseDir", paths.BaseDir(),
 		"version", product.Version,
+		"takeover", options.TakeoverPID,
 	)
+
+	// 提权重启交接（elevate restart handoff）：旧实例经 UAC 拉起本实例后即走
+	// 正常退出流程，这里必须等它释放单实例互斥体再走 application.New 抢锁；
+	// 超时不致命——真让不出去就按普通第二实例聚焦旧窗并自退（Wails 原语义）。
+	if options.TakeoverPID != 0 && options.TakeoverPID != uint32(os.Getpid()) {
+		if !windows.WaitProcessGone(options.TakeoverPID, 15*time.Second) {
+			slog.Warn("takeover: old instance did not exit within 15s", "pid", options.TakeoverPID)
+		}
+	}
 
 	// 4. 初始化模块注册表并注入持久化 Store
 	registry := extapi.NewRegistry(store)
@@ -301,12 +320,18 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		mMod.GetService().SetWailsApp(a)
 	}
 
+	// 交接路由以 hash 形态挂进初始 URL（前端无 URL 路由，hash 仅回航提示用；
+	// main.ts 的 #quickmenu 分流不受 "/#/xxx" 影响）。
+	initialURL := "/"
+	if options.InitialRoute != "" {
+		initialURL = "/#" + options.InitialRoute
+	}
 	win := a.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            product.Name,
 		Width:            1200,
 		Height:           780,
 		BackgroundColour: application.NewRGB(245, 246, 248),
-		URL:              "/",
+		URL:              initialURL,
 		Hidden:           options.StartMinimized,
 	})
 	mainWindow = win

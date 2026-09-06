@@ -80,6 +80,16 @@ export function GetTrayMenu() {
 }
 
 /**
+ * IsElevated 报告当前进程是否已以管理员提权运行（前端据此决定
+ * 「以管理员身份重启」入口的显隐）。非 Windows 无 UAC 语义，恒返回 true
+ * 让前端不显示按钮。
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function IsElevated() {
+    return $Call.ByID(2084521265);
+}
+
+/**
  * ListLogFiles 获取日志目录下的所有日志文件列表（按时间倒序排列）
  * @returns {$CancellablePromise<$models.LogFileInfo[] | null>}
  */
@@ -152,6 +162,22 @@ export function PickExeFile() {
  */
 export function ReadLogContent(fileName, maxLines) {
     return $Call.ByID(2663620472, fileName, maxLines);
+}
+
+/**
+ * RestartElevated 经一次 UAC 以管理员身份重启 Hanxi（requireAdministrator
+ * 托管模块 BCU/Rufus/LiteMonitor 的 740 直拒解药，见 elevateHint 文案与
+ * TROUBLESHOOTING #17）。route 为重启后前端应直达的路由，传空则默认首页。
+ * 
+ * 时序：UAC 用户点"是"（新实例已创建）→ 本 RPC 先返回 → 稍后走正常退出
+ * 流程（OnShutdown 回收全部托管子进程，与手动退出口径一致）。用户点"否"
+ * 则返回取消错误，本实例原地不动。新实例经 -takeover 等待本进程退出后才
+ * 抢单实例锁，不会互撞。
+ * @param {string} route
+ * @returns {$CancellablePromise<void>}
+ */
+export function RestartElevated(route) {
+    return $Call.ByID(3634399224, route);
 }
 
 /**

@@ -20,6 +20,8 @@ func main() {
 	modeFlag := flag.String("mode", "", "run mode: empty for GUI, 'killhelper' for elevated process terminator")
 	pidFlag := flag.Uint("pid", 0, "target PID for killhelper mode")
 	minimizedFlag := flag.Bool("minimized", false, "start with the main window hidden in the system tray")
+	takeoverFlag := flag.Uint("takeover", 0, "elevated restart handoff: wait for this PID (the old instance) to release the single-instance lock")
+	routeFlag := flag.String("route", "", "elevated restart handoff: frontend route to open after start (e.g. /ext/bcu)")
 	flag.Parse()
 
 	// 1. 如果是 UAC 提权 Helper 模式，以极简逻辑执行并退出
@@ -40,6 +42,8 @@ func main() {
 		Handler: application.AssetFileServerFS(embedassets.FS),
 	}, app.Options{
 		StartMinimized: *minimizedFlag,
+		TakeoverPID:    uint32(*takeoverFlag),
+		InitialRoute:   app.SanitizeRoute(*routeFlag),
 	})
 	defer cleanup()
 

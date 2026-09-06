@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -339,6 +340,62 @@ func (s *AppService) SetTheme(mode string) error {
 	return s.store.Update(func(cfg *settings.AppSettings) {
 		cfg.Theme = mode
 	})
+}
+
+// restartRouteRe 交接路由门卫：前端路由形如 /ext/<id> 或 /settings，
+// 只放行小写字母/数字/短横/斜杠路径；非法值静默丢弃（退回首页无害）。
+var restartRouteRe = regexp.MustCompile(`^/[a-z0-9][a-z0-9/-]{0,63}$`)
+
+// SanitizeRoute 校验并返回合法交接路由，非法返回空串。
+// 双消费方：cmd 入口过滤 -route 启动参数；RestartElevated RPC 过滤前端传参。
+func SanitizeRoute(route string) string {
+	route = strings.TrimSpace(route)
+	if !restartRouteRe.MatchString(route) {
+		return ""
+	}
+	return route
+}
+
+// IsElevated 报告当前进程是否已以管理员提权运行（前端据此决定
+// 「以管理员身份重启」入口的显隐）。非 Windows 无 UAC 语义，恒返回 true
+// 让前端不显示按钮。
+func (s *AppService) IsElevated() bool {
+	if runtime.GOOS != "windows" {
+		return true
+	}
+	return windows.IsElevated()
+}
+
+// RestartElevated 经一次 UAC 以管理员身份重启 Hanxi（requireAdministrator
+// 托管模块 BCU/Rufus/LiteMonitor 的 740 直拒解药，见 elevateHint 文案与
+// TROUBLESHOOTING #17）。route 为重启后前端应直达的路由，传空则默认首页。
+//
+// 时序：UAC 用户点"是"（新实例已创建）→ 本 RPC 先返回 → 稍后走正常退出
+// 流程（OnShutdown 回收全部托管子进程，与手动退出口径一致）。用户点"否"
+// 则返回取消错误，本实例原地不动。新实例经 -takeover 等待本进程退出后才
+// 抢单实例锁，不会互撞。
+func (s *AppService) RestartElevated(route string) error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("提权重启仅支持 Windows")
+	}
+	if windows.IsElevated() {
+		return fmt.Errorf("Hanxi 当前已是管理员权限运行，无需重启")
+	}
+	args := []string{fmt.Sprintf("-takeover=%d", os.Getpid())}
+	if r := SanitizeRoute(route); r != "" {
+		args = append(args, "-route="+r)
+	}
+	if err := windows.RestartElevated(args); err != nil {
+		return err
+	}
+	// 延后一拍再退：让本 RPC 的响应先发回前端，再启动退出。
+	if a := application.Get(); a != nil {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			a.Quit()
+		}()
+	}
+	return nil
 }
 
 // SetWindowDarkMode 切换主窗口原生标题栏亮/暗（DWM ImmersiveDarkMode）。
