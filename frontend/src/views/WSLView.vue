@@ -56,6 +56,17 @@ const busyOp = ref('')
 // 与"刚做过什么操作"无关——真欠重启才提示，重启完自动消失。
 const rebootNudge = computed(() => !!report.value?.rebootPending)
 
+// 发行版安装被拦的预告（点之前就说清，别等 UAC 弹了再失败）：
+// 虚拟机平台未启用，或已启用但 CBS 台账欠重启——WSL2 此刻都起不了虚拟机。
+// 与后端 virtualizationGate 同源判据；体检未出结果时不猜测（返回空不显示）。
+const distroBlockedReason = computed(() => {
+  const r = report.value
+  if (!r || !r.wslVersion) return ''
+  if (!r.vmPlatformEnabled) return '「虚拟机平台」尚未启用，WSL2 承载不了发行版——现在点安装注定失败。请先回「🐧 就绪检测」页执行「🚀 一键开启」或「▶️ 开启虚拟机平台」。'
+  if (r.rebootPending) return '「虚拟机平台」已启用但还没重启生效，WSL2 此刻起不了虚拟机——现在装发行版注定失败。重启一次再回来挑系统即可（注意：Task Manager 显示的"虚拟化已启用"是 BIOS 硬件位，与这个 Windows 功能开关是两回事）。'
+  return ''
+})
+
 const verdictTone = computed<'ok' | 'warn' | 'error' | 'info'>(() => {
   switch (report.value?.verdict) {
     case 'ready': return 'ok'
@@ -551,6 +562,7 @@ onMounted(() => {
       </div>
 
       <!-- 在线发行版清单 -->
+      <UiBanner v-if="distroBlockedReason" tone="warn" class="slim distro-block-banner">{{ distroBlockedReason }}</UiBanner>
       <div class="section-title"><h3>可安装的官方发行版 ({{ online.length }})</h3></div>
       <div v-if="onlineLoading" class="hint-line">正在向本机 wsl.exe 查询在线清单…</div>
       <div v-else-if="onlineError" class="error-box">{{ onlineError }}
@@ -573,8 +585,8 @@ onMounted(() => {
                 <td><code class="mono">{{ opt.id }}</code></td>
                 <td>{{ opt.label }}</td>
                 <td>
-                  <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
-                    :title="`wsl --install -d ${opt.id}（UAC 提权）`"
+                  <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!distroBlockedReason"
+                    :title="distroBlockedReason || `wsl --install -d ${opt.id}（UAC 提权）`"
                     @click="installDistro(opt)">⬇ 安装</button>
                 </td>
               </tr>

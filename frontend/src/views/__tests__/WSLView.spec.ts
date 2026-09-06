@@ -289,11 +289,30 @@ describe('WSLView 版本与发行版', () => {
 
   it('发行版安装：把清单 ID 原样交给后端白名单校验', async () => {
     const w = await setup()
+    await completeCheck(w) // distroBlockedReason 需报告：vmPlatformEnabled=true、无 rebootPending → 放行
     await w.findAll('.main-tab-btn')[1].trigger('click')
     await flushPromises()
+    expect(w.find('.distro-block-banner').exists()).toBe(false)
     const install = w.findAll('button').find(b => b.text().includes('安装'))!
     await install.trigger('click')
     await flushPromises()
     expect(api.InstallDistro).toHaveBeenCalledWith('Ubuntu-24.04')
+  })
+
+  it('虚拟机平台未生效时预告拦截：版本页黄条警告 + 安装按钮禁用', async () => {
+    const w = await setup()
+    // 投喂"已启用但 CBS 欠重启"的报告——WSL2 起不了虚拟机，装发行版注定失败
+    emitReadiness({ stage: 'done', report: { ...REPORT, rebootPending: true } })
+    await flushPromises()
+    await w.findAll('.main-tab-btn')[1].trigger('click')
+    await flushPromises()
+    const banner = w.find('.distro-block-banner')
+    expect(banner.exists()).toBe(true)
+    expect(banner.text()).toContain('重启')
+    // 按钮禁用，点不动（免得弹了 UAC 才失败）
+    const install = w.findAll('button').find(b => b.text().includes('安装'))!
+    expect(install.attributes('disabled')).toBeDefined()
+    await install.trigger('click')
+    expect(api.InstallDistro).not.toHaveBeenCalled()
   })
 })
