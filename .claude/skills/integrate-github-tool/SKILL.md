@@ -1,11 +1,11 @@
 ---
 name: integrate-github-tool
-description: 把 GitHub 上的桌面/CLI 工具集成进 Hanxi（托管模式：版本管理+JobObject 启停+前端控制台）。用户提供 GitHub 地址说"集成到 hanxi"时使用。已用本模式落地 markeron、everything、ccswitch 三个模块。
+description: 把 GitHub 上的桌面/CLI 工具集成进 Hanxi（托管模式：版本管理+JobObject 启停+前端控制台）。用户提供 GitHub 地址说"集成到 hanxi"时使用。已用本模式落地 markeron、everything、ccswitch、vscode（双形态托管）等模块。
 ---
 
 # 集成 GitHub 工具进 Hanxi（托管模式）
 
-用户给出 GitHub 地址要求"把 XX 集成到 hanxi"时，按本 skill 执行。已落地先例：**markeron**（GitHub releases、无官方哈希）、**everything**（官网下载、ini 改写藏托盘）、**ccswitch**（GitHub digest 官方 sha256、tauri 单实例互斥体）——新模块优先对照 ccswitch 模板（最新最完整）。另有反模板先例 **rustdesk/subnetdesk**（rust-portable 自解压单 exe：外层秒退不能当生命周期锚点、提取目录父 PID 闭包归属、无优雅退出无唤窗契约，见 TROUBLESHOOTING #24）、**bcu**（#24 家族第二变体：根目录小体积 exe 是官方 bootstrapper，~20ms 接力自退，真身在 `win-x64\`——ResolveExe 直指内层，见 manager.go innerExeRel）与 **litemonitor/guoheview/recordly**（进程名探测 + EnumWindows 唤窗家族）——开工前先按上游实例模型选对模板族，别硬套互斥体。
+用户给出 GitHub 地址要求"把 XX 集成到 hanxi"时，按本 skill 执行。已落地先例：**markeron**（GitHub releases、无官方哈希）、**everything**（官网下载、ini 改写藏托盘）、**ccswitch**（GitHub digest 官方 sha256、tauri 单实例互斥体）——新模块优先对照 ccswitch 模板（最新最完整）。**vscode** 是"双形态托管"先例（官方 CDN 单源、GitHub 无二进制、哈希仅最新版、Inno 安装版 + zip 便携版两台 Engine，见 TROUBLESHOOTING #31）。另有反模板先例 **rustdesk/subnetdesk**（rust-portable 自解压单 exe：外层秒退不能当生命周期锚点、提取目录父 PID 闭包归属、无优雅退出无唤窗契约，见 TROUBLESHOOTING #24）、**bcu**（#24 家族第二变体：根目录小体积 exe 是官方 bootstrapper，~20ms 接力自退，真身在 `win-x64\`——ResolveExe 直指内层，见 manager.go innerExeRel）与 **litemonitor/guoheview/recordly**（进程名探测 + EnumWindows 唤窗家族）——开工前先按上游实例模型选对模板族，别硬套互斥体。
 
 ## 阶段 0：上游侦查（先查后问，全部要实证）
 
@@ -21,10 +21,10 @@ curl -s "https://api.github.com/repos/<owner>/<repo>/contents/<file>" -H "Accept
 
 **必查清单（每项要有源码/API 实证，严禁猜）**：
 
-1. **便携资产**：releases 里有没有 `*-Portable.zip`/`*_x64_portable.zip`；连续 N 个版本是否稳定发。zip 内部布局直接下载验证；下载域名（release-assets.githubusercontent.com）可能 DNS 失败——重试，或读 `.github/workflows/release.yml` 的打包步骤推断布局
-2. **官方哈希**：资产 `digest: "sha256:<hex>"` 是否存在（2024 起 GitHub 全量有）→ 决定四层完整性的第一层；无 digest 则降级 markeron 三层（字节数+CRC32+布局自检）
-3. **单实例/唤窗契约**：tauri 应用 → 源码 `tauri-plugin-single-instance` 依赖是否启用 semver feature、回调是否无条件 show+focus；mutex 名 = `{identifier}-sim`、窗口类 `{identifier}-sic`。CLI 应用 → 有无 `-startup`/`-quit`（everything）或纯信使语义（无 CLI 则"打开窗口"=无参拉起）
-4. **探测方式**：优先命名互斥体（`OpenMutex(SYNCHRONIZE)` 最小权限）；找不到互斥体再看顶层窗口/进程名
+1. **便携资产**：releases 里有没有 `*-Portable.zip`/`*_x64_portable.zip`；连续 N 个版本是否稳定发。**GitHub releases 可能根本不挂二进制**（大厂常把分发留在自有 CDN——VS Code 的 release 只有源码归档，`.../releases/expanded_assets/<tag>` HTML 实证）——先确认资产真实存在，再谈布局；zip 内部布局直接下载验证，大 zip 用 **HTTP Range 拉尾部 + 离线解析中央目录**（VS Code 332MB 包只取了 512KB 就拿到全部条目）；下载域名（release-assets.githubusercontent.com）可能 DNS 失败——重试，或读 `.github/workflows/release.yml` 的打包步骤推断布局。**警惕 zip 无根目录变体**：exe 躺在包根 + 运行时目录名随 commit 漂移（布局自检须按"存在 */resources/app/product.json"这类不变式，勿写死路径）
+2. **官方哈希**：资产 `digest: "sha256:<hex>"` 是否存在（2024 起 GitHub 全量有）→ 决定四层完整性的第一层；无 digest 则降级 markeron 三层（字节数+CRC32+布局自检）。**哈希可能仅最新版可得**（VS Code 官方 feed 恒返最新版 manifest，历史版本无哈希可查）——降级路径与 UI 标注（meta.verifiedHash + 徽章）要一次做全
+3. **单实例/唤窗契约**：tauri 应用 → 源码 `tauri-plugin-single-instance` 依赖是否启用 semver feature、回调是否无条件 show+focus；mutex 名 = `{identifier}-sim`、窗口类 `{identifier}-sic`。electron 应用（VS Code/markeron 家族）→ `requestSingleInstanceLock` 按 **user-data 目录**分实例组：多形态工具（便携 data\ vs %APPDATA%）信使天然各唤各的，安装版信使与用户日常实例同组=外部感知语义自洽；无 CLI 则"打开窗口"=无参二次拉起。CLI 应用 → 有无 `-startup`/`-quit`（everything）或纯信使语义（无 CLI 则"打开窗口"=无参拉起）
+4. **探测方式**：优先命名互斥体（`OpenMutex(SYNCHRONIZE)` 最小权限）；找不到互斥体再看顶层窗口/进程名。**互斥体可能有安装形态门控**（VS Code 的 `"vscode"` 仅 Inno 安装版创建，便携版持锁探测永远查无此人）——多形态工具按形态分治探测通道（安装版 mutex / 便携版进程镜像路径前缀匹配托管目录）
 5. **数据落盘**：配置跟 exe 走（everything portable）还是固定用户目录（ccswitch `~/.cc-switch`）→ 决定 ImportLocal 搬什么（整套 vs 单 exe）
 6. **关窗/退出语义**：`on_window_event(CloseRequested)` 是 exit 还是 hide 驻托盘 → 决定 Quit 走 WM_CLOSE/信号 + 宽限 + 强杀兜底的结构
 7. **托盘**：无条件创建还是可配置。用户问"能藏托盘吗"：上游无开关就如实说"要 fork"；**托盘有功能价值时（如供应商切换菜单）明确建议不藏**——别默认隐藏
@@ -60,18 +60,19 @@ internal/modules/<mod>/
 
 ## 阶段 3：模块骨架
 
-- `store.go`（activeVersion 原子写/损坏容忍 + `followOnExit *bool` 默认 false——"随 Hanxi 一起关闭"开关，service 启动传 `Detached: !store.GetFollowOnExit()`、Shutdown 里 `GetFollowOnExit()` 为 true 才 Stop）、`models.go`（ControlOutcome/QuitOutcome）、`module.go`（Nav 照 ccswitch：Icon/Order/SectionExt）、`service.go`（版本八件套 + GetStatus + OpenWindow/Quit + openXXX 控制编排 + 外部感知 watcher）
+- `store.go`（activeVersion 原子写/损坏容忍 + `followOnExit *bool` 默认 false——"随 Hanxi 一起关闭"开关，service 启动传 `Detached: !store.GetFollowOnExit()`、Shutdown 里 `GetFollowOnExit()` 为 true 才 Stop）、`models.go`（ControlOutcome/QuitOutcome；多形态可加组合 Status 结构一次拉全）、`module.go`（Nav 照 ccswitch：Icon/Order/SectionExt，Order 先 grep 全部模块取空位）、`service.go`（版本八件套 + GetStatus + OpenWindow/Quit + openXXX 控制编排 + 外部感知 watcher；多形态 = 每形态一台 Engine + 探测通道分治，如 vscode 便携/安装双引擎）
+- **安装器通道的确认闸**：安装器会强关运行实例时（Inno `CloseApplications=force` / NSIS oneClick 卸载重装），RPC 必须带 `confirm bool` 参数：命中运行实例且未确认 → 返回 `ControlOutcome{Action:"confirm-required"}` 前端弹全局 confirm 后带 `confirm=true` 重入——无此参数用户确认后会被同一道闸再拦成死锁（vscode DownloadVersion 实证）
 - `internal/app/app.go`：两处事件 `RegisterEvent[<version>.DownloadProgress]("<mod>:version-download")`、`RegisterEvent[<instance>.Snapshot]("<mod>:instance-state")`（**值类型，Emit 也传值**——指针/值不匹配会被 Wails 静默丢弃，TROUBLESHOOTING #9）+ `modulesToRegister` 追加
 - 需要"打开安装目录"就加模块自有 `OpenDir(dir)` RPC（explorer.exe 目录语义），**绝不复用 AppService.OpenPath 传文件路径**（markeron 事故：explorer.exe 收 exe 会执行它）
 - PE 版本读取复用 `internal/platform/versioninfo.FileVersion`（共享包，勿再复制）
 
 ## 阶段 4：前端
 
-- `<X>View.vue` 照 `CCSwitchView.vue`/`EverythingView.vue` 双 Tab：控制台（状态灯+版本/PID/时长+按钮组+条件提示条）+ 版本管理（已装卡片+远程表+导入本地）
-- 三处挂载：`App.vue`（import + CORE_VIEWS + ROUTE_MODULE_MAP）、`HomeView.vue` MODULE_META
-- **bindings 必须 `task common:generate:bindings`**（裸 `wails3 generate bindings` 会清空输出目录）
+- `<X>View.vue` 照 `CCSwitchView.vue`/`EverythingView.vue` 双 Tab：控制台（状态灯+版本/PID/时长+按钮组+条件提示条）+ 版本管理（已装卡片+远程表+导入本地）；多形态 = 控制台两行 control-bar + 远程表形态切换（vscode 先例）
+- 前端挂载单一来源：`frontend/src/constants/navigation.ts` 的 `ROUTES`（route→组件+moduleId）与 `MODULE_PRESENTATION`（首页图标）两张表各加一行即可（App.vue 手写三挂载已收编退役，勿再照旧文案找）；**`src/constants/__tests__/navigation.spec.ts` 有路由数量回归锁**（"登记了全部 N 条路由"/门禁集合长度），新增模块必须同步改数
+- **bindings 必须 `task common:generate:bindings`**（裸 `wails3 generate bindings` 会清空输出目录）；后端改了 RPC 签名（哪怕加一个参数）也要重生成再跑前端构建
 - CSS：所有自定义类名带模块前缀（`cc-`/`ev-`）——App.vue 全局有 `.status-dot`（7px）会压扁表格圆点（markeron 垂直字体事故）
-- 验证：`npm run build`（vue-tsc 零报错）
+- 验证：`npm run build`（vue-tsc 零报错）+ `task frontend:test`（导航锁在这一步兜底）
 
 ## 阶段 5：真机联调（用户参与，清单化验收）
 
@@ -91,6 +92,7 @@ internal/modules/<mod>/
 | GitHub releases 无官方哈希 | markeron | version/downloader.go 三层校验 |
 | 官网下载+官方 manifest 哈希 | everything | version/remote.go 网页解析+快照兜底 |
 | GitHub digest 官方 sha256+tauri 单实例 | **ccswitch（主模板）** | remote.go/instance/** |
+| 官方 CDN 单源（GitHub 无二进制）+ 哈希仅最新版 + 双形态两台 Engine + Inno 确认闸 | vscode | version/remote.go fetchRemoteList / registry_windows.go / instance/probe_windows.go 双探针 / service.go DownloadVersion confirm（TROUBLESHOOTING #31） |
 | 内嵌 CLI 搜索/额外组件 | everything | search/es.go + EnsureTool |
 | ini 改写（托盘隐藏等） | everything | instance/config.go ensureHiddenTray |
 | 空闲自动退出 | everything/ccswitch | service.go idleCheck/touch/shouldIdleQuit |
@@ -100,7 +102,7 @@ internal/modules/<mod>/
 | 单文件 exe 无 zip 下载（digest+字节数+MZ 魔数三重校验） | rustdesk / subnetdesk | version/manager.go Download/placeFile |
 | 被控/服务型常驻——禁用空闲退出、退出即断会话的诚实文案 | rustdesk / subnetdesk | service.go 包注释 + OpenWindow/Quit 编排 |
 | requireAdministrator 清单 740 三重预告（elevateHint 特判 + 前端一键提权重启 ElevateRestart 组件） | rufus / litemonitor / bcu | instance/close_windows.go + close_other.go 桩；通道在 platform/windows/elevate_windows.go（TROUBLESHOOTING #17） |
-| 外部安装器（NSIS/MSI）静默安装与退出码分族翻译 | recordly（NSIS）/ rustdesk（MSI） | version/nsis_windows.go decodeInstallerExit / manager.go installExitError |
+| 外部安装器（NSIS/Inno/MSI）静默安装与退出码分族翻译 | recordly（NSIS）/ vscode（Inno）/ rustdesk（MSI） | version/nsis_windows.go / inno_windows.go decodeInstallerExit / manager.go installExitError |
 
 ## 红线提醒
 

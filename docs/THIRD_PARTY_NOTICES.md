@@ -82,6 +82,15 @@ Hanxi 托管原版批量卸载 GUI：受管进程启停、闲置自动退出探�
 
 Hanxi 纯托管：Tauri 单实例协议唤窗、JobObject 启停与运行态探测；不修改、不捆绑、不再分发。若未来随 Hanxi 捆绑分发，须随附 MIT 许可证文本与版权声明。
 
+## Visual Studio Code
+
+- 项目：Visual Studio Code（代码编辑器）
+- 上游官网：https://code.visualstudio.com
+- 许可证：MIT（源代码）；官方二进制分发附带独立的许可证与商标条款，微软保留 VS Code 名称与标识权利
+- 发行方式：微软官方 CDN（update.code.visualstudio.com）按需下载；GitHub Releases 仅源码归档，无二进制资产。
+
+Hanxi 纯托管：双形态（ZIP 归档 data\ 自包含便携 + User Installer 免 UAC 静默安装/升级）、JobObject 启停、Electron 单实例协议唤窗与互斥体/注册表探测；不修改、不捆绑、不再分发，安装版卸载权交还系统「设置→应用」。若未来随 Hanxi 捆绑分发，须另行核对随附 MIT 源码条款与官方二进制的许可/商标条款。
+
 ## MarkerOn
 
 - 项目：MarkerOn（屏幕标注）
@@ -115,6 +124,7 @@ Hanxi 采用**脱管托管**：保留 Snipaste 原生托盘与全局快捷键，
 - QuickLook：https://github.com/QL-Win/QuickLook —— GPL-3.0（空格快速预览；便携 zip 安装，命名管道 Quit/Reload 优雅退出）
 - PicLite：https://github.com/amiaoapp/PicLite —— GPL-3.0（图片/GIF 压缩；`msiexec /a` 管理提取免管理员提权）
 - Bili23 Downloader：https://github.com/ScottSloan/Bili23-Downloader —— GPL-3.0（B 站视频下载器，Python/PySide6 自带静态运行时整目录便携包；命名互斥体 + QLocalServer 信使唤窗，关窗行为用户可配故退出三态如实上报、无静默强杀，详见 docs/TROUBLESHOOTING.md #27）
+- TranslucentTB：https://github.com/TranslucentTB/TranslucentTB —— GPL-3.0（任务栏透明/模糊效果工具，C++/WinRT 注入 explorer；单实例互斥体探测、托盘消息窗口 WM_CLOSE 优雅退出、信使重设任务栏状态而非唤窗，详见 docs/TROUBLESHOOTING.md #32）
 
 Hanxi 对上述工具均采用用户侧按需下载与独立进程托管：二进制直接来自上游 GitHub Releases（GitHub API digest 等多层完整性校验），Hanxi 不修改、不静态链接、不内嵌其源码或二进制，全部功能均由原版 GUI 提供；对应源代码可通过各下载版本对应的上游 tag 获取。
 
