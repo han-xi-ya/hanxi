@@ -15,7 +15,7 @@ type flclashStore struct {
 	filePath      string
 	mu            sync.RWMutex
 	activeVersion string
-	followOnExit  bool // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
+	followOnExit  bool // 默认 false：独立运行，不随 Hanxi 退出；true：随 Hanxi 退出一起关闭
 }
 
 type flclashConfig struct {
@@ -24,7 +24,7 @@ type flclashConfig struct {
 }
 
 func newFlClashStore(dir string) *flclashStore {
-	s := &flclashStore{filePath: filepath.Join(dir, "flclash.json"), followOnExit: true}
+	s := &flclashStore{filePath: filepath.Join(dir, "flclash.json"), followOnExit: false}
 	_ = s.load()
 	return s
 }
@@ -46,7 +46,7 @@ func (s *flclashStore) load() error {
 		return nil
 	}
 	s.activeVersion = cfg.ActiveVersion
-	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
+	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
 	return nil
 }
 
@@ -85,7 +85,7 @@ func (s *flclashStore) SetActive(version string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *flclashStore) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

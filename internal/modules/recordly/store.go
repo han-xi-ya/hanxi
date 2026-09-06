@@ -19,7 +19,7 @@ type recordlyStore struct {
 	filePath       string
 	mu             sync.RWMutex
 	releaseChannel string // "stable"（默认）| "beta"
-	followOnExit   bool   // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
+	followOnExit   bool   // 默认 false：独立运行，不随 Hanxi 退出；true：随 Hanxi 退出一起关闭
 }
 
 type recordlyConfig struct {
@@ -31,7 +31,7 @@ func newRecordlyStore(dir string) *recordlyStore {
 	s := &recordlyStore{
 		filePath:       filepath.Join(dir, "recordly.json"),
 		releaseChannel: ChannelStable,
-		followOnExit:   true,
+		followOnExit:   false,
 	}
 	_ = s.load()
 	return s
@@ -57,7 +57,7 @@ func (s *recordlyStore) load() error {
 	case ChannelStable, ChannelBeta:
 		s.releaseChannel = cfg.ReleaseChannel
 	}
-	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
+	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
 	return nil
 }
 
@@ -99,7 +99,7 @@ func (s *recordlyStore) SetReleaseChannel(channel string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *recordlyStore) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

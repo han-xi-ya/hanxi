@@ -16,7 +16,7 @@ type papertodoStore struct {
 	filePath     string
 	mu           sync.RWMutex
 	variant      string // version.VariantSelfContained / version.VariantNoRuntime（默认前者）
-	followOnExit bool   // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
+	followOnExit bool   // 默认 false：独立运行，不随 Hanxi 退出；true：随 Hanxi 退出一起关闭
 }
 
 type papertodoConfig struct {
@@ -25,7 +25,7 @@ type papertodoConfig struct {
 }
 
 func newPapertodoStore(dir string) *papertodoStore {
-	s := &papertodoStore{filePath: filepath.Join(dir, "papertodo.json"), variant: defaultVariant, followOnExit: true}
+	s := &papertodoStore{filePath: filepath.Join(dir, "papertodo.json"), variant: defaultVariant, followOnExit: false}
 	_ = s.load()
 	return s
 }
@@ -49,7 +49,7 @@ func (s *papertodoStore) load() error {
 	if validVariant(cfg.Variant) {
 		s.variant = cfg.Variant
 	}
-	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
+	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
 	return nil
 }
 
@@ -91,7 +91,7 @@ func (s *papertodoStore) SetVariant(variant string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *papertodoStore) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

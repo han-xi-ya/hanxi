@@ -14,8 +14,8 @@
 //   - 优雅退出优先 + 强杀兜底：向命名管道 "QuickLook.App.Pipe.<SID>" 投递 "Quit" 令上游
 //     OnExit 正常收尾，宽限内未退则 JobObject 强杀兜底。抓空格是进程内低级键盘钩子
 //     （WH_KEYBOARD_LL，非注入），随进程终止由系统自动摘除，强杀同样零残渣；
-//   - 生命周期可选：followOnExit 开关（默认随 Hanxi 退出；关闭则 Detached 独立常驻，
-//     贴合 QuickLook "开机常驻" 本性），同 keyviz；
+//   - 生命周期可选：followOnExit 开关（默认关闭：Detached 独立常驻，不随 Hanxi 退出，
+//     贴合 QuickLook "开机常驻" 本性；开启则随 Hanxi 退出），同全托管模块统一默认；
 //   - 许可合规：上游 GPL-3.0，托管模式仅启动上游官方二进制、不链接不分发其代码，无传染性；
 //     QuickLook 配置在便携目录随 exe，不属 Hanxi 读写范围。
 package quicklook

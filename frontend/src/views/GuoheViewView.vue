@@ -234,7 +234,7 @@ onDeactivated(() => {
 })
 
 // ---------- 联动开关与官网入口 ----------
-const followOnExit = ref(true)
+const followOnExit = ref(false)
 const siteUrl = ref('')
 
 async function loadExtras() {

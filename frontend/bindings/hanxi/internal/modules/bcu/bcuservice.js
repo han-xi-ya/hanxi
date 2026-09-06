@@ -60,7 +60,7 @@ export function GetDotnetEnvironment() {
 }
 
 /**
- * GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+ * GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
  * @returns {$CancellablePromise<boolean>}
  */
 export function GetFollowOnExit() {

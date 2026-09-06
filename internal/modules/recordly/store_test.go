@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestChannelAndFollowOnExitPersist 通道与联动开关：缺省 stable/true（旧配置兼容），
+// TestChannelAndFollowOnExitPersist 通道与联动开关：缺省 stable/false（默认不随 Hanxi 关闭），
 // 落盘重载保持；两字段互不干扰。
 func TestChannelAndFollowOnExitPersist(t *testing.T) {
 	dir := t.TempDir()
@@ -15,19 +15,19 @@ func TestChannelAndFollowOnExitPersist(t *testing.T) {
 	if s.GetReleaseChannel() != ChannelStable {
 		t.Fatalf("默认通道应为 stable，实际 %s", s.GetReleaseChannel())
 	}
-	if !s.GetFollowOnExit() {
-		t.Fatal("followOnExit 默认应为 true（随 Hanxi 关闭）")
+	if s.GetFollowOnExit() {
+		t.Fatal("followOnExit 默认应为 false（不随 Hanxi 关闭）")
 	}
 
 	if err := s.SetReleaseChannel(ChannelBeta); err != nil {
 		t.Fatalf("SetReleaseChannel: %v", err)
 	}
-	if err := s.SetFollowOnExit(false); err != nil {
+	if err := s.SetFollowOnExit(true); err != nil {
 		t.Fatalf("SetFollowOnExit: %v", err)
 	}
 	s2 := newRecordlyStore(dir)
-	if s2.GetReleaseChannel() != ChannelBeta || s2.GetFollowOnExit() {
-		t.Fatalf("重载后应分别保持 beta/false，实际 %s/%v", s2.GetReleaseChannel(), s2.GetFollowOnExit())
+	if s2.GetReleaseChannel() != ChannelBeta || !s2.GetFollowOnExit() {
+		t.Fatalf("重载后应分别保持 beta/true，实际 %s/%v", s2.GetReleaseChannel(), s2.GetFollowOnExit())
 	}
 
 	if err := s.SetReleaseChannel("nightly"); err == nil {
@@ -45,7 +45,7 @@ func TestStoreCorruptionTolerant(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := newRecordlyStore(dir)
-	if s.GetReleaseChannel() != ChannelStable || !s.GetFollowOnExit() {
+	if s.GetReleaseChannel() != ChannelStable || s.GetFollowOnExit() {
 		t.Fatalf("损坏配置应回退默认值: %s/%v", s.GetReleaseChannel(), s.GetFollowOnExit())
 	}
 }

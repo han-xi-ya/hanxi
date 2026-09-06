@@ -334,7 +334,7 @@ func versionCompare(a, b string) int {
 
 // ---------- 联动开关与桌面辅助 ----------
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *MarkerOnService) GetFollowOnExit() (bool, error) {
 	return s.store.GetFollowOnExit(), nil
 }

@@ -18,7 +18,7 @@ type quicklookStore struct {
 	filePath      string
 	mu            sync.RWMutex
 	activeVersion string
-	followOnExit  bool // 默认 true：随 Hanxi 退出一起关闭；false：独立常驻运行
+	followOnExit  bool // 默认 false：独立常驻运行，不随 Hanxi 退出；true：随 Hanxi 退出一起关闭
 }
 
 type quicklookConfig struct {
@@ -27,7 +27,7 @@ type quicklookConfig struct {
 }
 
 func newQuicklookStore(dir string) *quicklookStore {
-	s := &quicklookStore{filePath: filepath.Join(dir, "quicklook.json"), followOnExit: true}
+	s := &quicklookStore{filePath: filepath.Join(dir, "quicklook.json"), followOnExit: false}
 	_ = s.load()
 	return s
 }
@@ -49,7 +49,7 @@ func (s *quicklookStore) load() error {
 		return nil
 	}
 	s.activeVersion = cfg.ActiveVersion
-	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
+	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
 	return nil
 }
 
@@ -88,7 +88,7 @@ func (s *quicklookStore) SetActive(version string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *quicklookStore) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

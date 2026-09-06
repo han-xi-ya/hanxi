@@ -282,7 +282,7 @@ watch(statusPolling.isPolling, (running) => {
 })
 
 // ---------- 联动开关 / 桌面快捷方式 / GitHub 仓库 ----------
-const followOnExit = ref(true)
+const followOnExit = ref(false)
 const repoUrl = ref('')
 
 async function loadExtras() {

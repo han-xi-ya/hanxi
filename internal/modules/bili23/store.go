@@ -18,7 +18,7 @@ type bili23Store struct {
 	filePath      string
 	mu            sync.RWMutex
 	activeVersion string
-	followOnExit  bool // 默认 true：随 Hanxi 退出一起关闭；false：独立运行（解除 Job 联动）
+	followOnExit  bool // 默认 false：独立运行（解除 Job 联动），不随 Hanxi 退出；true：随 Hanxi 退出一起关闭
 }
 
 type bili23Config struct {
@@ -27,7 +27,7 @@ type bili23Config struct {
 }
 
 func newBili23Store(dir string) *bili23Store {
-	s := &bili23Store{filePath: filepath.Join(dir, "bili23.json"), followOnExit: true}
+	s := &bili23Store{filePath: filepath.Join(dir, "bili23.json"), followOnExit: false}
 	_ = s.load()
 	return s
 }
@@ -49,7 +49,7 @@ func (s *bili23Store) load() error {
 		return nil
 	}
 	s.activeVersion = cfg.ActiveVersion
-	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
+	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
 	return nil
 }
 
@@ -88,7 +88,7 @@ func (s *bili23Store) SetActive(version string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *bili23Store) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

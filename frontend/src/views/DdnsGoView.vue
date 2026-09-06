@@ -273,7 +273,7 @@ onDeactivated(() => {
 })
 
 // ---------- 联动开关 / 端口 / GitHub 仓库 ----------
-const followOnExit = ref(true)
+const followOnExit = ref(false)
 const repoUrl = ref('')
 const listenPort = ref(9876)
 const portInput = ref(9876)

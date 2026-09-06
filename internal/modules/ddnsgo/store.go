@@ -20,7 +20,7 @@ type ddnsgoStore struct {
 	filePath      string
 	mu            sync.RWMutex
 	activeVersion string
-	followOnExit  bool // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
+	followOnExit  bool // 默认 false：独立运行，不随 Hanxi 退出；true：随 Hanxi 退出一起关闭
 	listenPort    int
 }
 
@@ -33,7 +33,7 @@ type ddnsgoConfig struct {
 func newDdnsgoStore(dir string) *ddnsgoStore {
 	s := &ddnsgoStore{
 		filePath:     filepath.Join(dir, "ddnsgo.json"),
-		followOnExit: true,
+		followOnExit: false,
 		listenPort:   defaultListenPort,
 	}
 	_ = s.load()
@@ -57,7 +57,7 @@ func (s *ddnsgoStore) load() error {
 		return nil
 	}
 	s.activeVersion = cfg.ActiveVersion
-	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
+	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
 	if cfg.ListenPort != nil && *cfg.ListenPort >= 1024 && *cfg.ListenPort <= 65535 {
 		s.listenPort = *cfg.ListenPort
 	}
@@ -103,7 +103,7 @@ func (s *ddnsgoStore) SetActive(version string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *ddnsgoStore) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

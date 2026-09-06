@@ -12,19 +12,19 @@ func TestStoreDefaultsAndRoundTrip(t *testing.T) {
 	if got := s.GetVariant(); got != defaultVariant {
 		t.Errorf("默认变体应为 %s，实际 %s", defaultVariant, got)
 	}
-	if !s.GetFollowOnExit() {
-		t.Error("followOnExit 默认应为 true")
+	if s.GetFollowOnExit() {
+		t.Error("followOnExit 默认应为 false（不随 Hanxi 关闭）")
 	}
 
 	if err := s.SetVariant("no-runtime"); err != nil {
 		t.Fatalf("SetVariant: %v", err)
 	}
-	if err := s.SetFollowOnExit(false); err != nil {
+	if err := s.SetFollowOnExit(true); err != nil {
 		t.Fatalf("SetFollowOnExit: %v", err)
 	}
 	// 重新加载验证落盘
 	s2 := newPapertodoStore(dir)
-	if s2.GetVariant() != "no-runtime" || s2.GetFollowOnExit() {
+	if s2.GetVariant() != "no-runtime" || !s2.GetFollowOnExit() {
 		t.Errorf("持久化往返错误: %+v", s2)
 	}
 }
@@ -46,7 +46,7 @@ func TestStoreCorruptTolerance(t *testing.T) {
 	}
 	s := newPapertodoStore(dir)
 	// 损坏容忍：回退默认值而非报错阻断
-	if s.GetVariant() != defaultVariant || !s.GetFollowOnExit() {
+	if s.GetVariant() != defaultVariant || s.GetFollowOnExit() {
 		t.Errorf("损坏配置应回退默认: %+v", s)
 	}
 }

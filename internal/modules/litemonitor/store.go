@@ -15,7 +15,7 @@ type litemonitorStore struct {
 	filePath      string
 	mu            sync.RWMutex
 	activeVersion string
-	followOnExit  bool // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
+	followOnExit  bool // 默认 false：独立运行，不随 Hanxi 退出；true：随 Hanxi 退出一起关闭
 }
 
 type litemonitorConfig struct {
@@ -24,7 +24,7 @@ type litemonitorConfig struct {
 }
 
 func newLiteMonitorStore(dir string) *litemonitorStore {
-	s := &litemonitorStore{filePath: filepath.Join(dir, "litemonitor.json"), followOnExit: true}
+	s := &litemonitorStore{filePath: filepath.Join(dir, "litemonitor.json"), followOnExit: false}
 	_ = s.load()
 	return s
 }
@@ -46,7 +46,7 @@ func (s *litemonitorStore) load() error {
 		return nil
 	}
 	s.activeVersion = cfg.ActiveVersion
-	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
+	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
 	return nil
 }
 
@@ -85,7 +85,7 @@ func (s *litemonitorStore) SetActive(version string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *litemonitorStore) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

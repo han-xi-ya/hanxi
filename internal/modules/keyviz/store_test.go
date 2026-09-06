@@ -15,14 +15,14 @@ func TestStoreRoundTrip(t *testing.T) {
 	if s.GetActive() != "" {
 		t.Fatalf("初始 activeVersion 应为空，实际 %q", s.GetActive())
 	}
-	if !s.GetFollowOnExit() {
-		t.Fatal("followOnExit 默认应为 true")
+	if s.GetFollowOnExit() {
+		t.Fatal("followOnExit 默认应为 false（不随 Hanxi 关闭）")
 	}
 
 	if err := s.SetActive("v2.1.1"); err != nil {
 		t.Fatalf("SetActive: %v", err)
 	}
-	if err := s.SetFollowOnExit(false); err != nil {
+	if err := s.SetFollowOnExit(true); err != nil {
 		t.Fatalf("SetFollowOnExit: %v", err)
 	}
 
@@ -31,8 +31,8 @@ func TestStoreRoundTrip(t *testing.T) {
 	if s2.GetActive() != "v2.1.1" {
 		t.Errorf("重载 activeVersion = %q, want v2.1.1", s2.GetActive())
 	}
-	if s2.GetFollowOnExit() {
-		t.Error("重载 followOnExit 应为 false")
+	if !s2.GetFollowOnExit() {
+		t.Error("重载 followOnExit 应为 true")
 	}
 }
 
@@ -43,7 +43,7 @@ func TestStoreCorruptionTolerant(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := newKeyvizStore(dir)
-	if s.GetActive() != "" || !s.GetFollowOnExit() {
+	if s.GetActive() != "" || s.GetFollowOnExit() {
 		t.Fatalf("损坏容忍失败: active=%q follow=%v", s.GetActive(), s.GetFollowOnExit())
 	}
 }

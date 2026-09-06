@@ -265,7 +265,7 @@ async function chooseVariant(v: Variant) {
   }
 }
 
-const followOnExit = ref(true)
+const followOnExit = ref(false)
 const repoUrl = ref('')
 
 async function loadExtras() {

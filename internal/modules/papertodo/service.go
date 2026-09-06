@@ -197,7 +197,7 @@ func (s *PaperTodoService) GetRuntimeStatus() (RuntimeStatus, error) {
 	}, nil
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *PaperTodoService) GetFollowOnExit() (bool, error) {
 	return s.store.GetFollowOnExit(), nil
 }

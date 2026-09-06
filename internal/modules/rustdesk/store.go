@@ -19,7 +19,7 @@ type rustdeskStore struct {
 	mu            sync.RWMutex
 	activeVersion string
 	activeForm    string // version 为空时恒为空
-	followOnExit  bool   // 默认 true：随 Hanxi 退出一起关闭；false：独立运行
+	followOnExit  bool   // 默认 false：独立运行，不随 Hanxi 退出；true：随 Hanxi 退出一起关闭
 }
 
 type rustdeskConfig struct {
@@ -29,7 +29,7 @@ type rustdeskConfig struct {
 }
 
 func newRustDeskStore(dir string) *rustdeskStore {
-	s := &rustdeskStore{filePath: filepath.Join(dir, "rustdesk.json"), followOnExit: true}
+	s := &rustdeskStore{filePath: filepath.Join(dir, "rustdesk.json"), followOnExit: false}
 	_ = s.load()
 	return s
 }
@@ -57,7 +57,7 @@ func (s *rustdeskStore) load() error {
 	} else if s.activeForm == "" {
 		s.activeForm = "portable" // 旧配置兼容：形态字段缺省 = 便携
 	}
-	s.followOnExit = cfg.FollowOnExit == nil || *cfg.FollowOnExit
+	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
 	return nil
 }
 
@@ -101,7 +101,7 @@ func (s *rustdeskStore) SetActive(version, form string) error {
 	return s.saveLocked()
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *rustdeskStore) GetFollowOnExit() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

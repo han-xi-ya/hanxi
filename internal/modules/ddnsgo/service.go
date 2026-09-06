@@ -442,7 +442,7 @@ func (s *DdnsGoService) SetListenPort(port int) (string, error) {
 	return "applied", nil
 }
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *DdnsGoService) GetFollowOnExit() (bool, error) {
 	return s.store.GetFollowOnExit(), nil
 }

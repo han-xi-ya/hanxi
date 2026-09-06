@@ -321,7 +321,7 @@ func (s *RufusService) resolveActiveVersion() (string, string, error) {
 
 // ---------- 桌面辅助 ----------
 
-// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 true）。
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *RufusService) GetFollowOnExit() (bool, error) {
 	return s.store.GetFollowOnExit(), nil
 }

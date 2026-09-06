@@ -371,7 +371,8 @@ func (s *AppService) IsElevated() bool {
 // TROUBLESHOOTING #17）。route 为重启后前端应直达的路由，传空则默认首页。
 //
 // 时序：UAC 用户点"是"（新实例已创建）→ 本 RPC 先返回 → 稍后走正常退出
-// 流程（OnShutdown 回收全部托管子进程，与手动退出口径一致）。用户点"否"
+// 流程（OnShutdown 按各模块"随 Hanxi 一起关闭"开关收尾，与手动退出口径一致
+// ——默认 Detached 的工具跨提权重启继续存活）。用户点"否"
 // 则返回取消错误，本实例原地不动。新实例经 -takeover 等待本进程退出后才
 // 抢单实例锁，不会互撞。
 func (s *AppService) RestartElevated(route string) error {

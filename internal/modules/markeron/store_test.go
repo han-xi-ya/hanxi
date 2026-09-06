@@ -64,17 +64,17 @@ func TestVersionCompare(t *testing.T) {
 	}
 }
 
-// TestFollowOnExitDefaultAndPersist 联动开关：缺省 true，设 false 落盘重载保持。
+// TestFollowOnExitDefaultAndPersist 联动开关：缺省 false，设 true 落盘重载保持。
 func TestFollowOnExitDefaultAndPersist(t *testing.T) {
 	dir := t.TempDir()
 	s := newMarkeronStore(dir)
-	if !s.GetFollowOnExit() {
-		t.Fatal("默认应为 true（随 Hanxi 关闭）")
+	if s.GetFollowOnExit() {
+		t.Fatal("默认应为 false（不随 Hanxi 关闭）")
 	}
-	if err := s.SetFollowOnExit(false); err != nil {
+	if err := s.SetFollowOnExit(true); err != nil {
 		t.Fatalf("SetFollowOnExit: %v", err)
 	}
-	if s2 := newMarkeronStore(dir); s2.GetFollowOnExit() {
-		t.Fatal("重载后应保持 false")
+	if s2 := newMarkeronStore(dir); !s2.GetFollowOnExit() {
+		t.Fatal("重载后应保持 true")
 	}
 }
