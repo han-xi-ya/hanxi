@@ -76,6 +76,10 @@ export function GetReleases() {
 /**
  * InstallDistro 安装指定在线发行版。ID 不接受裸字符串直传命令——
  * 先实时重取在线清单做白名单校验，杜绝本模块被当作任意参数执行面。
+ * 白名单之后、提权之前还有一道虚拟化装载预检：默认版本为 2 的前提下，
+ * 虚拟机平台未启用或"已启用但欠重启"时 WSL2 根本起不了虚拟机（实机
+ * wsl --status 证词："WSL2 无法启动，因为此计算机上未启用虚拟化"），
+ * 此时点击安装只是白白弹出 UAC 再失败——提前拦下并指路，探针自身不可得时放行（失败由退出码通道如实上报）。
  * @param {string} id
  * @returns {$CancellablePromise<$models.OperationOutcome>}
  */

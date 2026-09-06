@@ -140,6 +140,48 @@ func TestInstallDistroWhitelist(t *testing.T) {
 	}
 }
 
+// 虚拟化装载预检（#36 家族的新证词）：虚拟机平台未生效时装发行版注定失败，
+// 必须在提权前拦下——实机事故是"待重启期间连点安装全部假成功"。
+func TestInstallDistroGatedByVirtualization(t *testing.T) {
+	// 已启用但 CBS 台账欠重启 → 拦截，且绝不触达提权通道。
+	svc, ev, _ := newTestService()
+	svc.probe = func(context.Context) (readiness.ProbeResult, error) {
+		return readiness.ProbeResult{FeatureVM: true, RebootPending: true}, nil
+	}
+	out, err := svc.InstallDistro("Ubuntu")
+	if err != nil || out.Success {
+		t.Fatalf("待重启时应拦截而非执行: %+v %v", out, err)
+	}
+	if len(ev.calls) != 0 {
+		t.Fatalf("被拦截不得触达提权通道: %+v", ev.calls)
+	}
+	if !strings.Contains(out.Message, "重启") {
+		t.Fatalf("拦截回执应指路重启: %s", out.Message)
+	}
+
+	// 虚拟机平台压根没启用 → 同样拦截。
+	svc2, ev2, _ := newTestService()
+	svc2.probe = func(context.Context) (readiness.ProbeResult, error) {
+		return readiness.ProbeResult{FeatureVM: false}, nil
+	}
+	out2, _ := svc2.InstallDistro("Ubuntu")
+	if out2.Success || len(ev2.calls) != 0 {
+		t.Fatalf("平台未启用应拦截: %+v", out2)
+	}
+
+	// 探针自身失败 → 保守放行（不拿读不到的状态误拦正常操作），退出码通道兜底。
+	svc3, ev3, _ := newTestService()
+	svc3.probe = func(context.Context) (readiness.ProbeResult, error) {
+		return readiness.ProbeResult{}, errors.New("ps blocked")
+	}
+	if _, err := svc3.InstallDistro("Ubuntu"); err != nil {
+		t.Fatal(err)
+	}
+	if len(ev3.calls) != 1 {
+		t.Fatalf("探针不可得时应放行到提权通道: %+v", ev3.calls)
+	}
+}
+
 func TestElevatedOperationsUseFixedArgs(t *testing.T) {
 	svc, ev, _ := newTestService()
 	calls := []struct {
