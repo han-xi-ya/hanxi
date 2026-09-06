@@ -4,21 +4,22 @@ import { describe, expect, it } from 'vitest'
 import { ROUTES, moduleIdOf, routeComponent, placeholderComponent, fallbackComponent } from '../navigation'
 
 describe('constants/navigation', () => {
-  it('登记了全部 38 条路由', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(38)
-    for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/quickmenu']) {
+  it('登记了全部 39 条路由', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(39)
+    for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/quickmenu']) {
       expect(ROUTES[route]).toBeDefined()
     }
   })
 
-  it('模块门禁集合与原 ROUTE_MODULE_MAP 一致（34 个 ext + frpc，核心页无 moduleId）', () => {
+  it('模块门禁集合与原 ROUTE_MODULE_MAP 一致（35 个 ext + frpc，核心页无 moduleId）', () => {
     const withModule = Object.entries(ROUTES)
       .filter(([, def]) => def.moduleId !== undefined)
       .map(([route, def]) => `${route}=${def.moduleId}`)
       .sort()
-    expect(withModule).toHaveLength(34)
+    expect(withModule).toHaveLength(35)
     expect(withModule).toContain('/frpc=frpc')
     expect(withModule).toContain('/ext/envcheck=envcheck')
+    expect(withModule).toContain('/ext/wsl=wsl')
     expect(withModule).toContain('/ext/subnetdesk=subnetdesk')
     expect(withModule).toContain('/ext/rustdesk=rustdesk')
     expect(withModule).toContain('/ext/bili23=bili23')

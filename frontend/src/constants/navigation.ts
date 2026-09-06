@@ -49,6 +49,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/vscode': { component: defineAsyncComponent(() => import('@/views/VSCodeView.vue')), moduleId: 'vscode' },
   '/ext/translucenttb': { component: defineAsyncComponent(() => import('@/views/TranslucentTBView.vue')), moduleId: 'translucenttb' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
+  '/ext/wsl': { component: defineAsyncComponent(() => import('@/views/WSLView.vue')), moduleId: 'wsl' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
   '/settings': { component: defineAsyncComponent(() => import('@/views/SettingsView.vue')) },
@@ -115,6 +116,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   bili23: { icon: '📺', route: '/ext/bili23' },
   vscode: { icon: '💻', route: '/ext/vscode' },
   translucenttb: { icon: '🌫️', route: '/ext/translucenttb' },
+  wsl: { icon: '🐧', route: '/ext/wsl' },
   quickmenu: { icon: '🖱', route: '/ext/quickmenu' },
 }
 

@@ -157,6 +157,9 @@ import type * as version$20 from "../../../../../hanxi/internal/modules/vscode/v
 import type * as wechat$0 from "../../../../../hanxi/internal/modules/wechat/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as wsl$0 from "../../../../../hanxi/internal/modules/wsl/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as notify$0 from "../../../../../hanxi/internal/notify/models.js";
 
 declare module "@wailsio/runtime" {
@@ -224,6 +227,8 @@ declare module "@wailsio/runtime" {
             "vscode:version-download": version$20.DownloadProgress;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
+            "wsl:msi-download": wsl$0.DownloadProgress;
+            "wsl:readiness": wsl$0.ReadinessUpdate;
         }
     }
 }
