@@ -634,3 +634,27 @@ rustdesk/subnetdesk 增加"下载安装版"通道（MSI perMachine + Windows 服
   2. 同镜像多身份（客户端/服务/broker）场景先定义判别维度（路径前缀 + 可读性 + session/token）并逐条真机实证，别沿用上一形态"天然两清"的侥幸假设；
   3. 给 service 加/改 RPC 时，同批检查：bindings 再生成 + 特征测试 `svc` mock 补方法——mock 缺方法比断言写错更毒，它会拖垮整个 `Promise.all`；
   4. 系统级形态（装机、服务、卸载）纳管的深度边界要显式写死：Hanxi 只做"取包校验 + 发起向导 + 探测拉起"，服务生命周期与卸载交还系统，页面文案如实标注。
+
+### 33. 前端深色主题：未迁移视图的 scoped 原子副本携带裸色值，只在深色下暴露
+
+设置页切到深色后，「托盘右键菜单」区块的 ↑ / ↓ / ✕ 移除 / 📂 浏览… 按钮整块泛白、文字几乎不可读（实际影响全页 `.btn-secondary`：四处「打开目录」、「打开管理 / 打开设置 / 前台卡片」同病）。
+
+- **问题现象与错误原因**：`SettingsView.vue` 的 `<style scoped>` 里 `.btn-secondary { background: #fff; color: var(--color-text); }` 把底色写成了裸色值。深色主题下 `--color-text` 是 `#e8f2f3`（近白），于是白底 + 近白文字 = 按钮糊成一块白。它盖掉了全局标准形 `components.css` 的 `:where(.btn-secondary) { background: var(--surface-panel); }`。
+  **为什么能盖掉、又为什么长期没人看见，是两层设计叠加的结果**：
+  1. 全局原子层刻意全部写成 `:where()` 零特异性（见 `components.css` 头部注释——目的是"全局层落地当天所有旧视图视觉零变化"），而 scoped 样式自带 `[data-v-*]` 属性选择器，特异性 ≥ 0,1,0，**永远压过全局**。副作用即：未迁移视图里的历史硬编码值一直生效，改全局 / 改 token 都修不动它；
+  2. 浅色主题下 `--surface-panel` 恰好就是 `#ffffff`，裸色与 token **逐字同值**，所以浅色走查永远"看起来没问题"。而 §7.2 明确"深色是独立标定、不是简单反色"，浅色通过对外推无效——这个 bug 只在深色下现身。
+- **排查过程**：devtools 选中按钮看 computed `background` 与**命中规则的来源**，发现生效的是带 `[data-v-*]` 的 scoped 规则而非 `:where(.btn-secondary)` → 一眼定位到"视图本地副本"而非全局层坏了。随后全仓分诊同类：`grep` 视图 / 组件 `<style>` 块内的裸 hex / `rgb()` / `#fff`，逐个判定「装饰色违规」还是「功能色例外」。
+  **例外白名单（有意不随主题，勿误伤，均自带注释自证）**：`WifiView` 二维码码面 `#ffffff` 与 qrcode 深墨/纯白双色、`useFileShareServer` 二维码对比度参数（扫码器不认主题色）、`WechatBotChat*` 微信品牌绿 `#07c160` / `#95ec69` 及气泡中性覆层、`MemoView` 用户可选标签五色（数据值）。扫下来**全仓真正的深色地雷只有 SettingsView 这一处**，其余皆为主题无关的功能色或数据色。
+  同批清掉同型第二处：`.toast { background: var(--color-text); color: #fff; }`——模板从未引用（提示条早已收编进全局 `NotificationToast`），且它引用的 `@keyframes fadeIn` 在本块也不存在，是纯死代码；`LanScannerView` 与 `PortKillView` 此前已按同一口径清除并留注释，SettingsView 是最后一处残留。
+- **正确做法与标准修复方案**：
+  1. 把本地副本的裸色改回语义 token：`.btn-secondary { background: var(--surface-panel); }`，与全局标准形逐字对齐。浅色下值完全相同（零视觉变化），深色下落到 `#0e1c22`，压在 `--surface-page: #071318` 的条目行上层次与描边都正常；
+  2. 删除死代码 `.toast` 副本，就地留注释说明"模板从未引用 + 同型地雷"，沿用 LanScanner / PortKill 的清理口径；
+  3. 在该 `.btn` 族副本上方补注释写死两条纪律：本视图副本即最终生效值、只准引用 token；以及下面这条**不可拆族半迁移**的陷阱；
+  4. （另开 refactor，不混入 fix）整族迁移回全局原子。看似"本地 `.btn-secondary` 改完 token 后与全局逐字一致，可以顺手删"——**不行**：本地 `.btn` 的 `border: 1px solid transparent` 是 shorthand（特异性 ≥ 0,1,0），层叠按长写属性逐条比较，它会盖掉全局 `:where(.btn-secondary)` 的 `border-color: var(--color-border)`（0,0,0）。只删 `.btn-secondary` 而留 `.btn`，全页次级按钮描边会**静默消失**——比原 bug 更隐蔽。整族一起删才落得回全局标准形；代价是可见尺寸归一：全局 `.btn` 有 `min-height: 36px` 与 `border-radius: var(--radius-control)`（8px），本地是 6px 且无 min-height（按 padding 6×2 + border 1×2 + 13px 行高推算实际约 32–33px，**本就低于 §7.3 无障碍"桌面按钮 ≥36–38px"底线**），`.btn-small` padding 也从 4px 10px 变 4px 12px。迁移顺带修掉尺寸越线，但必须目测双主题验收。
+  验证：`npx vitest run src/views/__tests__/SettingsView.spec.ts` 4 例通过；改动纯 CSS，不影响 `vue-tsc`。
+- **避坑防重犯建议**：
+  1. **凡触碰 `<style>`、token 或主题相关代码，浅 / 深双主题各走查一遍才算完工**——"深色独立标定"意味着浅色通过不能外推，反之亦然；
+  2. 裸 hex 只允许出现在 `tokens.css`（§7.1 硬约束）。视图若必须保留与全局**同名但有意不同形**的本地副本（范例：`EnvCheckView` 的描边强调变体），必须 token 化 + 注释写明"非全局实底语义"，禁止裸值；
+  3. 排查"深色下某处颜色不对"的第一动作是查**谁在盖全局原子**（devtools 命中规则看是否带 `[data-v-*]`），而不是去改 `components.css` / `tokens.css`——零特异性层修不动 scoped 副本，硬改还会波及其他已迁移视图；
+  4. 原子族迁移要**整族迁或不迁**，半删一族 = 引入静默失效；
+  5. 建议补一道机器闸门：加个单测 / CI 步骤 grep 视图与组件 `<style>` 块内的裸 hex / `rgb(` / `#fff`，白名单只放 `tokens.css` 与带"功能例外"注释的行。§7.1 目前是纯人审约束，本轮是它的一次实证漏网。
