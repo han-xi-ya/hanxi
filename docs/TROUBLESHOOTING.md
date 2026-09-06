@@ -699,3 +699,46 @@ TranslucentTB（任务栏透明工具，C++/WinRT + 注入 explorer 的 TAP/Hook
   3. 排查"深色下某处颜色不对"的第一动作是查**谁在盖全局原子**（devtools 命中规则看是否带 `[data-v-*]`），而不是去改 `components.css` / `tokens.css`——零特异性层修不动 scoped 副本，硬改还会波及其他已迁移视图；
   4. 原子族迁移要**整族迁或不迁**，半删一族 = 引入静默失效；
   5. 建议补一道机器闸门：加个单测 / CI 步骤 grep 视图与组件 `<style>` 块内的裸 hex / `rgb(` / `#fff`，白名单只放 `tokens.css` 与带"功能例外"注释的行。§7.1 目前是纯人审约束，本轮是它的一次实证漏网。
+
+### 34. WSL 就绪模块：wsl.exe 的 UTF-16 解码不能用 NUL 密度启发式，中文提示行会同时打穿解码与守卫
+
+`wsl -l -v` 在"已装 WSL 但零发行版"的真机输出（中文 Win11）被当成发行版行进表，且状态列乱码——一次故障两层成因：
+
+- **问题现象与错误原因**：
+  1. **NUL 密度阈值失判**：wsl.exe 输出为无 BOM UTF-16LE。初版解码用"NUL 占比 ≥ 1/3 判 UTF-16"，但 CJK 码位（U+4E00–U+9FFF）高字节永远非零——实机样本 270 字节仅 79 个 NUL（29%），整段被误判为单字节码流；
+  2. **守卫串被 NUL 打散**：误判产物里每个 ASCII 字符后跟着隐形 `\x00`（渲染不可见），`strings.Contains(line, "wsl.exe")` 这类关键词守卫全部漏检，帮助行穿过守卫、按 2+ 空格切列、堂而皇之成为表行——**编码失判会顺带击穿所有下游字符串防线**。
+- **排查过程**：`cmd /c wsl -l -v > out.bin` 抓原始字节（绕开 PowerShell 管道的自动转码），十六进制画像确认无 BOM UTF-16LE 与 29% NUL 占比；再以真实字节文件跑一次性取证单测验证修复后的解码与拒收。
+- **正确做法与标准修复方案**：判据换成强不变量——UTF-16 文本的 `\r\n` 必产生 NUL（`0D 00 0A 00`），而 UTF-8/GBK 字节流永不含 `0x00`，故"含 NUL 且偶数长度即 UTF-16"；解析器再加结构约束双保险：表尾列必须是 `1`/`2`（帮助行绝无此形态），关键词守卫从唯一防线降级为第一道防线。
+- **避坑防重犯建议**：
+  1. 对"输出编码混杂"的原生命令行（wsl.exe、老式 Win32 工具），解码判据优先选**编码的结构性不变量**（NUL 存在性、BOM、偶数长度），不要用比例阈值——语言与文案配比会漂移；
+  2. 修解码 bug 必须拿**用户实机原始字节**回归，合成样本（ASCII 为主）恰好全绿而真机（CJK 为主）翻车，就是本坑画像；
+  3. 下游任何"按内容关键字拒收"的守卫，都要问一句：如果上游解码错了，这个关键字还完整吗？——答案通常是"不"，所以文本型解析要配结构型断言（列数、末列取值域）兜底。
+
+### 35. Hanxi 内 Go 网络请求"浏览器能上、程序 403"：系统代理不进环境变量，api.github.com 对云出口 IP 区域性拦截
+
+WSL 模块用户报障：开着代理、浏览器逛 GitHub 一切正常，但版本列表与通道探测始终 HTTP 403。两层成因叠加：
+
+- **问题现象与错误原因**：
+  1. **代理传导断层**：主流代理客户端（Clash/v2rayN）默认只写 WinINET 系统代理（注册表 `Internet Settings\ProxyEnable/ProxyServer`），浏览器跟随；Go 标准库 `http.ProxyFromEnvironment` **只认环境变量**（HTTPS_PROXY 等）——环境变量没设，Go 就裸奔直连，系统代理形同不存在；
+  2. **api.github.com 独立拦截**：直连被墙只是表象之一——GitHub 对部分云厂商 IP 段（实测新加坡 AWS 出口）直接拒绝 `api.github.com`（403），而 `github.com` 网站域不拦。"浏览器能开 github.com"证明不了 API 可达，两个域名的封禁策略是两套。
+- **排查过程**：读注册表确认代理形态（`ProxyEnable=1 / ProxyServer=127.0.0.1:7897`，环境变量表无 PROXY 项）→ PowerShell 分别以直连与显式 `-Proxy` 打 API 域，双双 403（证明代理兜底该做但做完仍不够）→ 经代理查 `api.ipify.org` 得出口 IP 归属云段 → 实测 `github.com/.../releases.atom` 与文件下载直链 200 畅通，锁定可用的救生通道。
+- **正确做法与标准修复方案**：新建 `wsl/netx` 叶子包（避免 readiness/releases 与根包成环），客户端代理链 = **环境变量优先 → WinINET 系统代理兜底 → 直连**；发布列表改双源：REST API 首选，403/失败自动降级 `releases.atom` 订阅源（tag/日期取真值，MSI 文件名按官方规律 `wsl.<四段版本>.<arch>.msi` 合成，Size 未知置 0 前端渲染"—"，绝不编数字）。前端 Overview.fallback 时如实挂"订阅源降级"标注，错误文案区分"API 被拦"与"网络全挂"。
+- **避坑防重犯建议**：
+  1. Windows 桌面应用内任何 Go/原生 HTTP 请求，默认都要想一遍"用户浏览器的代理我走不走"——需要与浏览器同进退就实现 WinINET 注册表回落（PAC 形态不猜、如实直连）；
+  2. 诊断 GitHub 可达性时把 `api.github.com` 与 `github.com` 当两个独立探针（本模块体检项已是双探），单测 github.com 通而断言 API 可用是错误推理；
+  3. 降级数据源要逐项核字段可得性（Atom 无资产清单/预发布标记/大小），缺什么显示什么，命名规律合成 URL 必须实测直链 200 后才算立住；
+  4. 代理链代码拆纯函数（chainProxy 注入 env/sys 两路）单测四态：env 命中 / env 空系统代理兜底 / 双空直连 / 系统代理畸形值安全兜底——`http.ProxyFromEnvironment` 按进程缓存环境，测试别试图在进程内改环境变量验证链路。
+
+### 36. 「虚拟机平台开着没」：HypervisorPresent=true 会骗人——内核隔离也造监控程序，功能开关的免管理员判据要靠服务存在性并做 DISM 基准校准
+
+WSL2 模块要做虚拟机平台状态查看与开关，先被"现成信号"坑了一轮：
+
+- **问题现象与错误原因**：
+  1. **HypervisorPresent ≠ 虚拟机平台已启用**：Win11 内核隔离（HVCI/VBS）默认开启时系统同样跑着虚拟机监控程序——实机基准对照：两个功能 DISM 读到"已禁用"，而 `Win32_ComputerSystem.HypervisorPresent` 依旧 true。拿它当"平台开着"的证据会把"发行版根本起不来"的机器误判成就绪；
+  2. **候选信号接连扑空**：CBS 包注册表（`Component Based Servicing\Packages\HyperV-Feature-VirtualMachinePlatform-*`）键值 InstallState 读不到且 FOD 包键常驻（连 "Disabled-FOD-Package-Wrapper" 都在），存在性≠启用；`HvHost` 服务任何现代 Windows 都有（Start=3 不随功能变）；`bcdedit /enum` 连查询都要管理员。
+- **排查过程**：先枚举候选信号做免管理员实测（注册表三路 + 服务四项），无一定论；提权跑一次 `Get-WindowsOptionalFeature`/DISM 拿地面真值（双功能=已禁用），反推与服务画像对照——`vmcompute` 服务恰随虚拟机平台安装/卸载（WSL2 建 VM 的硬依赖，缺席与 DISM 结论吻合），`LxssManager` 同理对应旧版 WSL 功能。
+- **正确做法与标准修复方案**：功能开关状态用 **服务存在性**（`SYSTEM\CurrentControlSet\Services\vmcompute` / `LxssManager`）做免管理员信号，并保留 DISM 提权通道作为写操作（enable/disable 均 /norestart，重启生效由引导条提示）；体检项对"平台未启用"定级 warn 而非 info——内核隔离制造的"监控程序在运行"假象必须被结论条点名，文案明说"HVCI 不能替代本功能"。
+- **避坑防重犯建议**：
+  1. Windows 虚拟化相关状态判断，先把信号按"谁在什么条件下才存在"分级：功能随附的服务/驱动 > WMI 状态位 > CBS 包键；对 HypervisorPresent、VBS 状态这类"多来源共用"字段，永远问一句"还有谁会点亮它"（内核隔离、Hyper-V、WSL、沙盒都可能）；
+  2. 新加系统状态判据必须找一条**提权侧真值通道**做一次基准对照（跑一次 DISM/Get-WindowsOptionalFeature），别拿单信号直接上生产；
+  3. 需要管理员才能读的命令（bcdedit、dism）不做常规探针——免管理员链路里出现它们，等于给每次体检插一次 UAC。

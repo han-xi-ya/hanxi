@@ -1,7 +1,7 @@
 # Hanxi
 
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
-> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、局域网快传、随手记等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go 等 17 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
+> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go 等 17 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
 > **v0.3.0 品牌断代**：产品标识、进程名和标准数据目录已切换为 Hanxi，不读取旧版数据、自启项或单实例标识。
 
@@ -75,6 +75,13 @@
 - 敏感内容脱敏开关：开启后列表页遮蔽敏感片段，兼顾分享与隐私。
 - 数据统计与实时事件同步（与快传等模块联动刷新）。
 
+#### 10. 🐧 WSL2 就绪体检与版本管理 (WSL)
+- **流式只读体检**：十项门槛（系统版本 / 架构 / 虚拟化 / 监控程序 / 可选功能·虚拟机平台 / VBS / Store / 安装形态 / GitHub 通道 / WSL 本体）先渲染骨架，探针、本机运行时、网络三路并发"先到先点亮"，完成逐项落章 ✓/⚠/✕，输出「可开启 / 注意项 / 硬阻塞」三态结论与修正建议。
+- **「已禁止(403)」根因诊断**：Go 原生探测 `api.github.com`（HTTP 客户端自动跟随 WinINET 系统代理，与浏览器同出口），一键区分"硬件不满足"与"API 被网络侧拦截"两种装不上成因；列表数据源 API 优先、被拦自动降级 Releases Atom 订阅源并如实标注。
+- **安装形态取证与正规卸载**：MSIX 用户包 / MSI 系统版 / 系统启动器三路信号 × 运行时版本互证，专治"设置只显一个、卸了另一个还活着"；卸载双路各走官方卸载器（msiexec /X + Remove-AppxPackage），Lxss 注册残留如实巡查报告而非暗中删注册表；虚拟机平台状态免管理员检测（WMI）+ 开启/关闭对称操作，单独预告 Hyper-V/模拟器共用影响。
+- **官方版本管理与发行版**：microsoft/WSL Releases 列表 × 本机版本关系判定（过期缓存 stale 标注）；MSI 由**应用内下载器**直落系统"下载"文件夹（进度条 + 打开位置，不经过浏览器），并按本机架构自动标记"本机"、排序首选，异架构仅作备选；在线发行版清单白名单一键安装。
+- **白名单提权通道**：「一键开启」固定 `--install --no-distribution` 语义——只装 WSL 本体与虚拟机平台，**绝不自动捆绑发行版**（Linux 系统由用户在版本页手动挑选）；所有变更操作参数后端固定，经 UAC 提权窗口执行且逐条传播退出码（首条 DISM 失败不再被链尾成功吞没）；重启引导只打开系统设置页，不代点重启。
+
 ### 二、第三方桌面工具托管（托管模式）
 
 Hanxi 将 16 款常用开源/免费桌面工具纳入统一管理。除 frpc 等特例外，托管模块共享同一套标准骨架：
@@ -110,7 +117,7 @@ Hanxi 将 16 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 - **全局通知中心**：模块下载/实例状态/扫描进度等事件汇聚为分级通知（信息/成功/警告/错误），抽屉式查看与已读管理。
 - **内置运行日志查看器**：提供应用全局运行日志文件列表检索、多行日志实时分页查看与历史日志一键清理（凭据自动脱敏）。
 - **系统快捷直达 (Quick Launch)**：一键打开系统 `hosts` 文件、环境变量配置、网络适配器（`ncpa.cpl`）等。
-- **按需懒加载模块架构**：全部 25 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
+- **按需懒加载模块架构**：全部 26 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
 
 ---
 
@@ -173,14 +180,14 @@ hanxi/
 ├─ cmd/
 │  └─ hanxi/                    # 应用入口（Main 装配与 UAC 提权模式分流）
 ├─ internal/
-│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、25 模块统一注册)
+│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、26 模块统一注册)
 │  ├─ product/                  # 品牌身份常量（名称/标识/版本/数据目录单一真相源）
 │  ├─ domain/                   # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                   # 模块插件化抽象（Module 契约 / 懒加载注册中心 / 导航与启用状态）
 │  ├─ notify/                   # 全局通知中心（分级通知 Hub 与前端事件推送）
-│  ├─ modules/                  # 25 个功能模块
+│  ├─ modules/                  # 26 个功能模块
 │  │  ├─ 自建能力               # frpc / wechat / portscan / portkill / lan / publicip
-│  │  │                         # / wifi / envcheck / fileshare / memo
+│  │  │                         # / wifi / envcheck / wsl / fileshare / memo
 │  │  └─ 工具托管               # snipaste / everything / quicklook / keyviz / litemonitor
 │  │                            # / ccswitch / markeron / flclash / nanazip / eartrumpet
 │  │                            # / bcu / mangodisk / recordly / papertodo / piclite / guoheview
@@ -191,7 +198,7 @@ hanxi/
 │  └─ settings/                 # 便携化路径解析与通用设置持久化
 ├─ frontend/                    # Vue 3 + TypeScript + Vite 前端（自研样式层，无第三方 UI 框架）
 │  ├─ src/
-│  │  ├─ views/                 # 各模块业务视图（31 个）与统一工作台布局
+│  │  ├─ views/                 # 各模块业务视图与统一工作台布局（新增视图必须在 constants/navigation.ts 登记）
 │  │  ├─ components/            # 复用组件（配置编辑/批量端口/分享模态框/状态指示器等）
 │  │  └─ App.vue / main.ts      # 后端导航注册表驱动的侧边栏动态渲染
 │  └─ bindings/                 # Wails v3 自动生成的 Go-JS API 绑定
