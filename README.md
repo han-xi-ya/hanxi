@@ -1,7 +1,7 @@
 # Hanxi
 
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
-> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go 等 17 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
+> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader 等 23 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
 > **v0.3.0 品牌断代**：产品标识、进程名和标准数据目录已切换为 Hanxi，不读取旧版数据、自启项或单实例标识。
 
@@ -82,9 +82,14 @@
 - **官方版本管理与发行版**：microsoft/WSL Releases 列表 × 本机版本关系判定（过期缓存 stale 标注）；MSI 由**应用内下载器**直落系统"下载"文件夹（进度条 + 打开位置，不经过浏览器），并按本机架构自动标记"本机"、排序首选，异架构仅作备选；在线发行版清单白名单一键安装。
 - **白名单提权通道**：「一键开启」固定 `--install --no-distribution` 语义——只装 WSL 本体与虚拟机平台，**绝不自动捆绑发行版**（Linux 系统由用户在版本页手动挑选）；所有变更操作参数后端固定，经 UAC 提权窗口执行且逐条传播退出码（首条 DISM 失败不再被链尾成功吞没）；重启引导只打开系统设置页，不代点重启。
 
+#### 11. 🖱 右键快捷菜单 (QuickMenu)
+- **Quicker 式最小验证**：任意界面右键长按（默认 450ms、松手前即弹）→ 光标处弹出无边框快捷菜单 → 点击条目即时启动。
+- **普通右键零损失识别**：进程内 `WH_MOUSE_LL` 低级钩子（非注入）采用"吞按下、短按 SendInput 回放"策略，拖拽让位、任务栏矩形旁路；钩子随模块停用/进程退出由系统自动摘除，零残渣。
+- **条目复用托盘配置**：与托盘右键菜单完全共用同一份配置与启动器分发，不新增第二份配置面；弹窗为常驻隐藏单例 frameless 窗口，失焦收起 + 全局点击观察兜底，多显示器/屏幕边缘经物理↔DIP 换算与工作区钳位。
+
 ### 二、第三方桌面工具托管（托管模式）
 
-Hanxi 将 16 款常用开源/免费桌面工具纳入统一管理。除 frpc 等特例外，托管模块共享同一套标准骨架：
+Hanxi 将 23 款常用开源/免费桌面工具纳入统一管理。除 frpc 等特例外，托管模块共享同一套标准骨架：
 
 - **版本管理**：上游 Releases / 官网清单侦查 → 多层完整性校验（GitHub digest / SHA256SUMS / 官方哈希清单 / 字节数 + PE 版本核对）→ 下载、本地导入与版本删除；
 - **进程托管**：Windows JobObject 绑定的启停引擎、进程枚举/互斥体探测运行态、Win32 唤窗 / 官方单实例命令通道唤起窗口、"跟随 Hanxi 退出"开关（**默认关闭**：Hanxi 退出不影响已托管工具独立运行）、桌面快捷方式创建；
@@ -109,6 +114,12 @@ Hanxi 将 16 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 | **PicLite 图片压缩** | amiaoapp/PicLite | GPL-3.0 | 上游仅提供 MSI：采用 `msiexec /a` 管理提取免管理员提权安装 |
 | **果核看图** | 果核 ghxi.com（官方自建接口分发，非 GitHub） | 闭源免费软件（Certum 签名） | **多实例上游**：无单实例锁→进程名探测 + 按自有 PID 唤窗/关窗；官方发布接口仅 MD5 + 当前版本，便携 zip 顶层包装目录收割 |
 | **ddns-go 动态域名** | jeessy2/ddns-go | MIT | 纯 CLI + Web 面板形态：`DDNS_GO_DAEMON=1` 注入绕开上游服务劫持分支、TCP 端口就绪判定、Quit 前配置写静默期防截断、面板走独立子 Webview 窗口 |
+| **RustDesk 公网远控** | rustdesk/rustdesk | AGPL-3.0 | 跨公网 ID/中继远程桌面：rust-portable 单文件"下载即安装"与 MSI 安装版双形态，可自备自建信号/中继服务器，便携版无服务边界如实提示 |
+| **SubnetDesk 局域网远控** | zibo-chen/SubnetDesk | AGPL-3.0 | RustDesk 局域网 fork（mDNS 发现、TCP 21118、账密认证），与 RustDesk 配成"远程控制"组合但协议互不兼容，同机并行互不冲突 |
+| **Rufus 启动盘制作** | pbatard/rufus | GPL-3.0 | USB 启动盘工具纯托管：便携单文件 exe 三重校验，预置 `rufus.ini` 强制便携并关上游更新检查；上游 manifest 强制管理员——托管启动要求 Hanxi 本身以管理员运行 |
+| **Bili23 视频下载器** | ScottSloan/Bili23-Downloader | GPL-3.0 | B 站视频下载器（PySide6 自带静态运行时整目录便携包）：命名互斥体 + QLocalServer 信使唤窗；上游关窗行为用户可配，退出三态如实上报、**不做静默强杀兜底** |
+| **VS Code 编辑器** | Microsoft（官方 CDN 分发） | MIT（源码）+ 二进制许可条款 | **双形态托管**：ZIP 便携（`data/` 自包含激活器）与 User Installer 免 UAC 静默安装/升级确认闸；官方 CDN 三端点、哈希仅最新版可得的降级校验分治 |
+| **TranslucentTB 任务栏透明** | TranslucentTB/TranslucentTB | GPL-3.0 | 任务栏透明/模糊特效工具：信使语义是"重设任务栏状态"而非唤窗，托盘消息窗口 WM_CLOSE 优雅退出（通用类名验属主防误伤），便携版 Win11 + 框架包双重系统前提预告 |
 
 ### 三、桌面系统体验与通用设置
 
@@ -117,7 +128,7 @@ Hanxi 将 16 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 - **全局通知中心**：模块下载/实例状态/扫描进度等事件汇聚为分级通知（信息/成功/警告/错误），抽屉式查看与已读管理。
 - **内置运行日志查看器**：提供应用全局运行日志文件列表检索、多行日志实时分页查看与历史日志一键清理（凭据自动脱敏）。
 - **系统快捷直达 (Quick Launch)**：一键打开系统 `hosts` 文件、环境变量配置、网络适配器（`ncpa.cpl`）等。
-- **按需懒加载模块架构**：全部 26 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
+- **按需懒加载模块架构**：全部 35 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
 
 ---
 
@@ -132,7 +143,7 @@ Hanxi 将 16 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 | **连接感知** | **日志特征词嗅探（毫秒级细粒度状态）** | 仅根据进程存活判定 | 仅根据进程存活判定 |
 | **多实例支持** | **原生支持多项目独立并行运行** | 仅单配置单运行 | 仅单配置运行 |
 | **配置分享** | **`frp://` 链接一键分享 + 批量端口导入** | 部分支持 | 不支持 |
-| **第三方生态** | **15 款桌面工具统一托管**（版本管理+完整性校验+进程监管） | 不支持 | 不支持 |
+| **第三方生态** | **23 款桌面工具统一托管**（版本管理+完整性校验+进程监管） | 不支持 | 不支持 |
 | **系统集成** | **系统托盘常驻 + 开机自启 + UAC 提权** | 占用大/启动慢 | 功能单一 |
 | **开发者套件** | **环境检测 + 端口扫描 + 局域网快传 + 随手记** | 仅单一功能 | 仅单一功能 |
 
@@ -180,18 +191,19 @@ hanxi/
 ├─ cmd/
 │  └─ hanxi/                    # 应用入口（Main 装配与 UAC 提权模式分流）
 ├─ internal/
-│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、26 模块统一注册)
+│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、35 模块统一注册)
 │  ├─ product/                  # 品牌身份常量（名称/标识/版本/数据目录单一真相源）
 │  ├─ domain/                   # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                   # 模块插件化抽象（Module 契约 / 懒加载注册中心 / 导航与启用状态）
 │  ├─ notify/                   # 全局通知中心（分级通知 Hub 与前端事件推送）
-│  ├─ modules/                  # 26 个功能模块
+│  ├─ modules/                  # 35 个功能模块
 │  │  ├─ 自建能力               # frpc / wechat / portscan / portkill / lan / publicip
-│  │  │                         # / wifi / envcheck / wsl / fileshare / memo
+│  │  │                         # / wifi / envcheck / wsl / fileshare / memo / quickmenu
 │  │  └─ 工具托管               # snipaste / everything / quicklook / keyviz / litemonitor
 │  │                            # / ccswitch / markeron / flclash / nanazip / eartrumpet
 │  │                            # / bcu / mangodisk / recordly / papertodo / piclite / guoheview
-│  │                            # / ddnsgo / translucenttb / vscode
+│  │                            # / ddnsgo / translucenttb / vscode / rustdesk / subnetdesk
+│  │                            # / rufus / bili23
 │  │                            # （托管模块标准形态：version/ 版本管理子包 + instance/ 实例引擎子包）
 │  ├─ platform/                 # 平台底层（Windows JobObject / DPAPI / 注册表自启 / IP Helper / Appx 包管理 / Shell 提权）
 │  ├─ logging/                  # slog 结构化日志与凭据自动脱敏

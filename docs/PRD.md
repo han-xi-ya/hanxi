@@ -1,8 +1,8 @@
 # Hanxi 需求与产品设计规范（PRD）
 
 > **产品名称**：Hanxi
-> **文档版本**：v1.1  
-> **更新日期**：2026-09-03  
+> **文档版本**：v1.2  
+> **更新日期**：2026-09-06  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64（纯 Windows 原生调用）  
 > **发布形态**：**绿色便携单二进制**（默认便携版，支持同级 `data/` 目录免安装常驻）  
 > **技术栈**：Go 1.24+ / Wails v3.0-beta / Vue 3 + TypeScript + Vite  
@@ -13,8 +13,8 @@
 
 Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装、管理与运行常用开源软件。产品由两条主线构成：
 
-1. **自建功能模块**：frpc 内网穿透、微信机器人、端口扫描/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、局域网文件快传、极客随手记等，能力原生内置于单二进制；
-2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go 等 17 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台）。
+1. **自建功能模块**：frpc 内网穿透、微信机器人、端口扫描/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、WSL2 就绪体检、局域网文件快传、极客随手记、右键快捷菜单等，能力原生内置于单二进制；
+2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB 等 23 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台）。
 
 所有能力以平等模块身份注册到统一入口，按需懒加载启停。
 
@@ -33,7 +33,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 
 ## 2. 模块能力矩阵
 
-### 2.1 自建功能模块（10）
+### 2.1 自建功能模块（12）
 
 | 模块名称 | 模块标识 | 核心能力说明 | 安全与特权机制 |
 | :--- | :--- | :--- | :--- |
@@ -47,8 +47,10 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **开发环境检测** | `envcheck` | Git/Go/Node/Java/Python/.NET 本机工具链盘点、官网最新版本通道查询与按本机版本线置顶、包管理器升级提示、资源管理器定位安装路径、.NET 并排安装与官方支持线对照 | 只读检测、外网仅访问官方站点 |
 | **局域网文件快传** | `fileshare` | 零客户端局域网分享站（手机扫码互传）、监听端点枚举、收件箱管理、文本投递联动随手记 | 局域网边界监听、服务显式起停 |
 | **极客随手记** | `memo` | 本地持久化备忘/代码片段、快速新建、置顶、一键复制、统计汇总 | 敏感内容脱敏开关 |
+| **WSL2 就绪体检** | `wsl` | 十项门槛流式只读体检与三态结论（可开启/注意项/硬阻塞）、安装形态三路信号互证与正规双路卸载、虚拟机平台对称开关、microsoft/WSL Releases 版本管理（API 被拦自动降级 Atom 双源）与应用内 MSI 下载器、发行版白名单安装 | 只读探针免管理员；变更操作固定参数白名单提权、逐条传播退出码 |
+| **右键快捷菜单** | `quickmenu` | 任意界面右键长按（默认 450ms）唤出 Quicker 式快捷启动菜单，条目与托盘配置共用，失焦收起 frameless 置顶弹窗、多显示器/屏幕边缘钳位 | 进程内 `WH_MOUSE_LL` 低级钩子（非注入）"吞按下、短按回放"，普通右键零损失，退出自动摘除零残渣 |
 
-### 2.2 第三方工具托管模块（15）
+### 2.2 第三方工具托管模块（23）
 
 统一骨架：`version/` 版本管理子包（ListReleases / DownloadVersion / RemoveVersion / 本地导入）+ `instance/` 实例引擎子包（JobObject 启停、状态探测、唤窗、跟随退出）+ 前端托管控制台视图。
 
@@ -70,6 +72,13 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **Recordly 录屏** | `recordly` | webadderallorg/Recordly | AGPL-3.0+条款 | NSIS 静默安装进托管目录、双发布通道、禁用上游自动更新、未签名风险提示 |
 | **PaperTodo 便签** | `papertodo` | snownico0722/PaperTodo | PolyForm Noncommercial | self-contained / no-runtime 双变体、官方命令通道唤窗/收拢/退出 |
 | **PicLite 压图** | `piclite` | amiaoapp/PicLite | GPL-3.0 | `msiexec /a` 管理提取免管理员提权安装 |
+| **果核看图** | `guoheview` | 果核 ghxi.com（官方自建接口分发，非 GitHub） | 闭源免费（Certum 签名） | **多实例上游无单实例锁**：进程名快照探测 + 自有 PID 唤窗/关窗；官方接口 MD5 + 字节数 + zip CRC + 解压布局自检四层校验，便携 zip 顶层包装目录收割 |
+| **RustDesk 公网远控** | `rustdesk` | rustdesk/rustdesk | AGPL-3.0 | 跨公网 ID/中继远程桌面纯托管：rust-portable 单文件"下载即安装"（内层解压 `%LOCALAPPDATA%`）与 MSI 安装版双形态；可自备自建信号/中继服务器；便携版无服务、锁屏受限边界如实提示 |
+| **SubnetDesk 局域网远控** | `subnetdesk` | zibo-chen/SubnetDesk | AGPL-3.0 | RustDesk 局域网 fork（mDNS 发现、TCP 21118、账密 Argon2id），与 RustDesk 配成"远程控制"组合但协议互不兼容；端口与数据目录错开，同机并行互不冲突 |
+| **Rufus 启动盘** | `rufus` | pbatard/rufus | GPL-3.0 | USB 启动盘工具纯托管：便携单文件 exe（digest + 字节数 + MZ 三重校验）下载即安装，预置 `rufus.ini` 强制便携并关上游更新检查；上游 manifest 强制管理员——托管启动要求 Hanxi 以管理员运行 |
+| **Bili23 下载器** | `bili23` | ScottSloan/Bili23-Downloader | GPL-3.0 | B 站视频下载器（PySide6 自带静态运行时整目录便携包）：命名互斥体 + QLocalServer 信使唤窗；上游关窗行为用户可配，Quit 三态如实上报、**不做静默强杀兜底** |
+| **VS Code 编辑器** | `vscode` | Microsoft（官方 CDN update.code.visualstudio.com） | MIT（源码）+ 二进制许可条款 | **双形态托管**：ZIP 便携（`data/` 自包含激活器）与 User Installer 免 UAC 静默安装/升级确认闸；哈希仅最新版可得，历史版降级三层校验 |
+| **TranslucentTB** | `translucenttb` | TranslucentTB/TranslucentTB | GPL-3.0 | 任务栏透明/模糊特效：信使语义为重设任务栏状态（非唤窗），托盘消息窗口 WM_CLOSE 优雅退出（通用类名验属主）；Win11 + 框架包双重系统前提预告 |
 
 ### 2.3 宿主服务
 
@@ -106,7 +115,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 ```
 
 1. **版本侦查与下载**：`version/` 子包拉取上游 Releases 或官网哈希清单，完整性按工具形态多层兜底（GitHub API digest → 官方 SHA256SUMS → 官方清单 → 字节数 + MZ/PE 版本核对），支持镜像加速与指数退避重试；同时支持本地文件导入脱管网版本。
-2. **安装布局适配**：按上游发行形态选择免提权优先的安装策略——便携 zip 直解、`msiexec /a` 管理提取（MSI 无 zip 场景）、NSIS `/S /D=` 静默安装、MSIX/AppInstaller 交 Windows 为当前用户部署。
+2. **安装布局适配**：按上游发行形态选择免提权优先的安装策略——便携 zip 直解、`msiexec /a` 管理提取（MSI 无 zip 场景）、NSIS `/S /D=` 静默安装、MSIX/AppInstaller 交 Windows 为当前用户部署、单文件 exe 下载即安装（Rufus、RustDesk/SubnetDesk 的 rust-portable 内层自解压形态）、MSI 安装版双形态纳管（取包校验 + 发起上游向导 + 注册表探测安装位）。
 3. **运行态与唤窗**：`instance/` 子包以进程枚举/命名互斥体探测运行态；唤起窗口按上游能力择优——官方单实例命令通道（show/hide/exit）、`EnumWindows` 直接置前台、AUMID 激活；全部操作先做进程指纹复核防误杀。
 4. **退出治理**：提供"跟随 Hanxi 退出"开关（**默认关闭**：Detached 解除 Job 退出联动，Hanxi 退出/崩溃不影响工具独立运行）；有优雅通道（命名管道、命令信使）优先优雅退出，无通道则指纹复核后强杀（上游事务性写入保证安全）；仅开关开启时受管进程由 JobObject kill-on-close 内核兜底清理（frpc 例外：隧道恒定随 Hanxi 强制清理）。
 5. **合规边界**：下载由用户本机直连上游发起，Hanxi 不捆绑不再分发；上游数据（配置/笔记/录制）存于 Hanxi 托管目录且卸载时原地保留；AGPL/PolyForm 等强约束工具不做品牌融合展示。
