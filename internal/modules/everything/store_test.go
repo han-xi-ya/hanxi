@@ -30,6 +30,32 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 }
 
+// TestFollowOnExitDefaultAndPersist 联动开关：缺省 false（默认不随 Hanxi 关闭），
+// 设 true 后落盘重载仍为 true；存取与 activeVersion 互不干扰。
+func TestFollowOnExitDefaultAndPersist(t *testing.T) {
+	dir := t.TempDir()
+
+	s := newEverythingStore(dir)
+	if s.GetFollowOnExit() {
+		t.Fatal("新 store 的 followOnExit 默认应为 false（不随 Hanxi 关闭）")
+	}
+
+	if err := s.SetFollowOnExit(true); err != nil {
+		t.Fatalf("SetFollowOnExit: %v", err)
+	}
+	if s2 := newEverythingStore(dir); !s2.GetFollowOnExit() {
+		t.Fatal("重载后 followOnExit 应保持 true")
+	}
+
+	// SetActive 不影响联动开关
+	if err := s.SetActive("1.5.0.1422b"); err != nil {
+		t.Fatalf("SetActive: %v", err)
+	}
+	if !s.GetFollowOnExit() {
+		t.Fatal("SetActive 不应影响 followOnExit")
+	}
+}
+
 func TestStoreCorruptTolerant(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "everything.json"), []byte("{corrupt json"), 0644)

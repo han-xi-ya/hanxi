@@ -214,6 +214,29 @@ async function importLocal() {
   }
 }
 
+// ---------- 联动开关 ----------
+const followOnExit = ref(false)
+
+async function loadExtras() {
+  try {
+    followOnExit.value = await EverythingAPI.GetFollowOnExit()
+  } catch (e) {
+    console.warn('loadExtras failed:', getErrorMessage(e))
+  }
+}
+
+async function onFollowToggle() {
+  const next = !followOnExit.value
+  followOnExit.value = next // 用户点击已将勾选框翻转，ref 同步跟进，保持绑定状态一致
+  try {
+    await EverythingAPI.SetFollowOnExit(next)
+    showToast(next ? '已开启：Hanxi 退出时一并关闭 Everything' : '已关闭：Hanxi 退出不影响该工具，Everything 继续独立运行（下次启动生效）')
+  } catch (e) {
+    followOnExit.value = !next // 失败回滚：ref 变化驱动勾选框复位到后端真实值
+    showToast('设置失败: ' + getErrorMessage(e))
+  }
+}
+
 // ---------- 时长 ticker 与轮询（usePolling 内置 KeepAlive 激活/停用契约） ----------
 usePolling(refreshStatus, 2500) // 状态兜底轮询（事件推送之外）
 usePolling(() => {
@@ -256,7 +279,7 @@ useWailsEvent<Snapshot>('everything:instance-state', (s) => {
 })
 
 onMounted(async () => {
-  await Promise.all([refreshStatus(), loadVersions(), ensureTool()])
+  await Promise.all([refreshStatus(), loadVersions(), loadExtras(), ensureTool()])
 })
 </script>
 
@@ -328,6 +351,10 @@ onMounted(async () => {
           <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程槽位 {{ releases.length }} 个（稳定 + 1.5 测试）</span>
           <span class="hint-dim">便携包下载自官网 voidtools（官方 sha256 校验）；或导入本机已有安装连配置与索引库一起收纳</span>
           <span class="hint-dim">托管启动会自动隐藏 Everything 托盘图标；注意：手动直接运行版本目录里的 exe 将没有托盘，退出需用任务管理器</span>
+          <label class="toggle-label">
+            <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
+            <span>随 Hanxi 一起关闭 <span class="hint-dim">（默认关闭：Hanxi 退出不影响该工具；开启后退出时经 -quit 优雅收尾并落盘索引库）</span></span>
+          </label>
         </div>
         <div class="btn-group">
           <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地安装</button>
@@ -392,6 +419,8 @@ onMounted(async () => {
 .meta-info strong { color: var(--color-text); }
 .btn-group { display: flex; gap: 8px; }
 .hint-dim { color: var(--color-text-subtle); }
+.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text); cursor: pointer; margin-top: 4px; }
+.toggle-label input { width: 15px; height: 15px; cursor: pointer; }
 .section-title h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
 .installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 </style>

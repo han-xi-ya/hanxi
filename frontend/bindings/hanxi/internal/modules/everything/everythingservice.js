@@ -51,6 +51,14 @@ export function GetActiveVersion() {
 }
 
 /**
+ * GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetFollowOnExit() {
+    return $Call.ByID(1983814229);
+}
+
+/**
  * GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）
  * @returns {$CancellablePromise<instance$0.Snapshot>}
  */
@@ -156,7 +164,16 @@ export function SetActiveVersion(targetVersion) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 优雅退出自有实例（5s 兜底强杀）。
+ * SetFollowOnExit 设定开关（下次启动生效）。
+ * @param {boolean} b
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetFollowOnExit(b) {
+    return $Call.ByID(3487422145, b);
+}
+
+/**
+ * Shutdown 模块停用/应用退出：停后台轮询 + 按联动开关收尾自有实例。
  * 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
  * @returns {$CancellablePromise<void>}
  */

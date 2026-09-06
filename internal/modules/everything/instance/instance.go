@@ -1,7 +1,9 @@
 // Package instance 实现 Everything 单实例运行引擎：
 //
-// Everything 由本引擎启动后绑定 Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），
-// Hanxi 无论以何种方式退出，内核都会连带终止 Everything 进程树，杜绝孤儿驻留。
+// Everything 由本引擎启动后绑定 Windows Job Object：默认（Detached=false）启用
+// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE，Hanxi 无论以何种方式退出，内核都会连带终止
+// Everything 进程树，杜绝孤儿驻留；Detached=true（"不随 Hanxi 关闭"开关，全托管
+// 模块的统一默认）则解除退出联动，工具独立常驻，Hanxi 退出/崩溃完全不影响它。
 //
 // 与 markeron 引擎的两点本质差异：
 //   - Everything 无"标注开关"语义，本引擎提供三操作：后台启动（-startup）、
@@ -60,8 +62,10 @@ type Snapshot struct {
 // StartOptions 启动参数：由 service 层解析版本后填充。
 type StartOptions struct {
 	Version string // 绑定版本（如 1.5.0.1422b）
-	Exe     string // Everything.exe 绝对路径（版本隔离目录内）
-	Mode    string // ModeBackground / ModeWindow
+	// Detached 独立运行：解除 JobObject 退出联动（Hanxi 关闭完全不影响工具）。
+	Detached bool
+	Exe      string // Everything.exe 绝对路径（版本隔离目录内）
+	Mode     string // ModeBackground / ModeWindow
 }
 
 func (o StartOptions) validate() error {
@@ -170,6 +174,16 @@ func (e *Engine) Start(opts StartOptions) error {
 		go e.wait()
 		e.transition(StateFailed, "JobObject 绑定失败: "+aerr.Error())
 		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
+	}
+	if opts.Detached {
+		// 解除退出联动：Hanxi 退出/崩溃不再连带杀本实例（"不随 Hanxi 关闭"开关）
+		if derr := job.SetAllowKillOnClose(false); derr != nil {
+			job.Close()
+			_ = cmd.Process.Kill()
+			go e.wait()
+			e.transition(StateFailed, "解除退出联动失败: "+derr.Error())
+			return fmt.Errorf("解除退出联动失败: %w", derr)
+		}
 	}
 
 	e.mu.Lock()

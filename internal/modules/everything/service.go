@@ -191,7 +191,7 @@ func (s *EverythingService) startBackgroundLocked() (ControlOutcome, error) {
 	if err != nil {
 		return ControlOutcome{}, err
 	}
-	if err := s.engine.Start(evinstance.StartOptions{Version: v, Exe: exe, Mode: evinstance.ModeBackground}); err != nil {
+	if err := s.engine.Start(evinstance.StartOptions{Version: v, Exe: exe, Mode: evinstance.ModeBackground, Detached: !s.store.GetFollowOnExit()}); err != nil {
 		return ControlOutcome{}, fmt.Errorf("启动 Everything 失败: %w", err)
 	}
 	if !s.engine.WaitReady(readyTimeout) {
@@ -241,7 +241,7 @@ func (s *EverythingService) OpenWindow() (ControlOutcome, error) {
 	if err != nil {
 		return ControlOutcome{}, err
 	}
-	if err := s.engine.Start(evinstance.StartOptions{Version: v, Exe: exe, Mode: evinstance.ModeWindow}); err != nil {
+	if err := s.engine.Start(evinstance.StartOptions{Version: v, Exe: exe, Mode: evinstance.ModeWindow, Detached: !s.store.GetFollowOnExit()}); err != nil {
 		return ControlOutcome{}, fmt.Errorf("启动 Everything 失败: %w", err)
 	}
 	if !s.engine.WaitReady(readyTimeout) {
@@ -274,7 +274,7 @@ func (s *EverythingService) Quit() (QuitOutcome, error) {
 	return QuitOutcome{Stopped: true, Message: "Everything 已退出"}, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 优雅退出自有实例（5s 兜底强杀）。
+// Shutdown 模块停用/应用退出：停后台轮询 + 按联动开关收尾自有实例。
 // 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
 func (s *EverythingService) Shutdown() {
 	s.watchMu.Lock()
@@ -283,7 +283,9 @@ func (s *EverythingService) Shutdown() {
 		s.watching = false
 	}
 	s.watchMu.Unlock()
-	_ = s.engine.Quit()
+	if s.store.GetFollowOnExit() {
+		_ = s.engine.Quit() // 联动开启才优雅退出（5s 兜底强杀）；关闭则完全不影响工具（Job 已解除 kill-on-close）
+	}
 }
 
 // ---------- 内嵌搜索 ----------
@@ -450,6 +452,16 @@ func (s *EverythingService) SetActiveVersion(targetVersion string) (string, erro
 // GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动用最新已装）
 func (s *EverythingService) GetActiveVersion() (string, error) {
 	return s.store.GetActive(), nil
+}
+
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
+func (s *EverythingService) GetFollowOnExit() (bool, error) {
+	return s.store.GetFollowOnExit(), nil
+}
+
+// SetFollowOnExit 设定开关（下次启动生效）。
+func (s *EverythingService) SetFollowOnExit(b bool) error {
+	return s.store.SetFollowOnExit(b)
 }
 
 // ImportLocal 导入本地便携安装整套（exe+配置+语言包+索引库）。
