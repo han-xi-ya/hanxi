@@ -525,6 +525,8 @@ RustDesk 与其 LAN fork SubnetDesk（协议互不兼容的两个 AGPL 应用，
   - 版本层：单文件下载免解压，完整性 = 官方 digest + 声明字节数 + MZ 魔数（防镜像 HTML 错误页伪装 exe）；RustDesk tag 无 v → 列表层规范化 `Version="v"+tag` 且保留 `Tag` 原值构造下载 URL（**tag 参与 URL，绝不能拿展示值拼**）。
 - **避坑防重犯建议**：遇到"官方 exe 只有一个文件"的发布形态，先读它的打包器源码再谈托管——rust-portable/自解压类"启动器进程"一律不满足模板的"cmd = 本体"前提，凡照搬 `cmd.Wait` 锚定的方案都会在真机上出现"状态秒跳未运行但窗口明明开着"。进程名撞车（便携 vs 安装 vs 服务同名）时，唯一可靠的判别是**镜像路径前缀**（`QueryFullProcessImageName` + PROCESS_QUERY_LIMITED_INFORMATION），并在设计文档里写清"安装版不归我管、互不感知"的边界，别让探测语义含糊。
 
+  **家族第二变体·复发实证（BCU 官方 bootstrapper，2026-09-06）**：Bulk-Crap-Uninstaller 便携 zip 是"根目录小体积 `BCUninstaller.exe` 启动器 + `win-x64\` 完整应用"的 6.x 布局——外层拉起内层真身后 **~20ms 自退**，且真身诞生早于我方 `job.Assign`（不在 Job 管辖）。症状与前四坑首坑完全同型：托管实例被 wait() 的"我方进程秒退 + 互斥体存活"规则误判成 external（横幅常驻"检测到外部实例"）、退出联动失效。BCU 的修复比 rustdesk 轻一个数量级：**根本不必启动外层——`version.ResolveExe` 直指 `win-x64\BCUninstaller.exe`（缺内层的旧布局回退外层兜底），`cmd.Dir` 仍钉版本根**（实证真身按工作目录解析便携设置，退出写回版本根、win-x64 无分家文件），JobObject/锚点/wait 模板一字不动。教训：外层秒退家族不以"自解压打包器"为限——普通多文件 zip 也能藏 bootstrapper；侦查阶段除读打包脚本外，最省事的实锤是**直接起一次入口 exe、盯 20ms 粒度的 PPID 树**（或留意根目录 exe 异常小巧、子目录还有同名 apphost）。
+
 ### 26. 托管 Rufus：固定名互斥体可探但"二次拉起弹模态错误框"反成噪音 + 磁盘级写入工具的强杀安全边界 + 便携 ini 存在即生效兼关更
 
 Rufus（C/Win32 原生 USB 启动盘制作，GPL-3.0）看似 litemonitor(#17) 的"原生 GUI + requireAdministrator"同族，实际在探测、退出安全、配置三处再次变形，且带一个全家族独有的**数据安全**维度：

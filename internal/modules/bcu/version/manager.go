@@ -30,6 +30,16 @@ var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
 // settingsName BCU 便携版的设置文件（与 exe 同目录），导入/整部迁移时一并携带。
 const settingsName = "BCUninstaller.settings"
 
+// innerExeRel 真身实例相对版本根的路径。**托管启动/唤窗必须直指内层**：
+// 外层 BCUninstaller.exe（约 350KB）只是官方接力启动器（bootstrapper），
+// 执行后拉起 win-x64\BCUninstaller.exe 并在约 20ms 内自退（2026-09-06 真机
+// 实录：Hanxi 拉起的外层秒退 + 幸存内层持有单实例互斥体 → 引擎 wait() 按
+// "我方进程已死+互斥体活着"规则把自家实例误判成 external，托管能力全失——
+// TROUBLESHOOTING #24 rustdesk 接力家族同款上游怪癖）。
+// 直启内层不改变便携设置落点：工作目录钉版本根时真身退出将 settings 写回
+// 根目录（实证 win-x64 内无分家文件）。老布局缺失内层时回退外层兜底。
+var innerExeRel = filepath.Join("win-x64", exeName)
+
 // Manager BCU 版本管理引擎：远程列表、下载完整性校验、保布局解压隔离、本地导入。
 type Manager struct {
 	versionsDir string
@@ -76,6 +86,9 @@ func (m *Manager) ListInstalled() ([]BCUVersionInfo, error) {
 			ExePath: exe,
 			Dir:     dir,
 			Size:    fi.Size(),
+		}
+		if inner := filepath.Join(dir, innerExeRel); isRegularFile(inner) {
+			info.ExePath = inner // 展示与启动共用同一解析结果：真身优先（见 innerExeRel）
 		}
 		// 读取元信息（安装时间、导入来源）
 		if meta, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
@@ -219,13 +232,27 @@ func (m *Manager) Remove(version string) error {
 	return os.RemoveAll(dir)
 }
 
-// ResolveExe 返回指定版本的 BCUninstaller.exe 路径（不存在返回错误）
+// ResolveExe 返回指定版本用于启动/唤窗的可执行路径：优先 win-x64 真身、
+// 回退外层启动器（见 innerExeRel 注释——外层次次接力自退，不可当生命周期
+// 锚点）；两者皆缺返回错误。
 func (m *Manager) ResolveExe(version string) (string, error) {
 	dir, err := m.resolveVersionDir(version)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, exeName), nil
+	if inner := filepath.Join(dir, innerExeRel); isRegularFile(inner) {
+		return inner, nil
+	}
+	if outer := filepath.Join(dir, exeName); isRegularFile(outer) {
+		return outer, nil
+	}
+	return "", fmt.Errorf("版本 %s 未找到可用可执行文件（%s / %s 均缺失）", version, innerExeRel, exeName)
+}
+
+// isRegularFile 存在且为常规文件（非目录、可读实体）
+func isRegularFile(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // resolveVersionDir 定位版本隔离目录（bcu_X.Y.Z 或 bcu_imported-时间戳）
@@ -303,9 +330,13 @@ func (m *Manager) ImportLocal(srcDir string) (BCUVersionInfo, error) {
 		"copied":      copied,
 	})
 
+	launchExe := filepath.Join(targetDir, exeName)
+	if inner := filepath.Join(targetDir, innerExeRel); isRegularFile(inner) {
+		launchExe = inner // 与 ResolveExe 同口径：真身优先
+	}
 	return BCUVersionInfo{
 		Version:     version,
-		ExePath:     filepath.Join(targetDir, exeName),
+		ExePath:     launchExe,
 		Dir:         targetDir,
 		Size:        fi.Size(),
 		InstalledAt: time.Now().Format("2006-01-02 15:04:05"),

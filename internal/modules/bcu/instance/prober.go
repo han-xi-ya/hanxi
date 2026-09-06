@@ -13,7 +13,12 @@
 //   - manifest requireAdministrator：未提权的 Hanxi 经 CreateProcess 拉起
 //     直接失败（ERROR_ELEVATION_REQUIRED 740，不代弹 UAC），Start 与信使
 //     两条路径的错误文案均经 elevateHint 特判指向"以管理员身份运行 Hanxi"；
-//     托管实例存在即蕴含 Hanxi 已提权，UIPI 不再成为唤窗/关窗的暗坑。
+//     托管实例存在即蕴含 Hanxi 已提权，UIPI 不再成为唤窗/关窗的暗坑；
+//   - 外层启动器接力（真机实证 2026-09-06）：版本根目录的 BCUninstaller.exe
+//     仅是约 350KB 的 bootstrapper，执行后拉起 win-x64\ 下真身并在 ~20ms 内
+//     自退——若以外层为锚，wait() 会按"我方进程秒退+互斥体存活"误判 external，
+//     且真身生于绑 Job 之前不受 KILL_ON_JOB_CLOSE 管辖。启动/唤窗一律经
+//     version.ResolveExe 直指内层真身（工作目录仍钉版本根，settings 落点不变）。
 //
 // 本包零框架依赖，便于单元测试。
 package instance

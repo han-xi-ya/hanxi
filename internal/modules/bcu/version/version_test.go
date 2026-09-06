@@ -311,6 +311,9 @@ func TestListInstalledAndRemove(t *testing.T) {
 	if exe, err := m.ResolveExe("6.2.0"); err != nil || filepath.Base(exe) != exeName {
 		t.Errorf("ResolveExe(6.2.0): %v %v", exe, err)
 	}
+	if exe, err := m.ResolveExe("6.1.0.1"); err != nil || exe != filepath.Join(versionsDir, "bcu_6.1.0.1", exeName) {
+		t.Errorf("无内层真身的旧布局应回退外层: %v %v", exe, err)
+	}
 	if _, err := m.ResolveExe("9.9.9"); err == nil {
 		t.Error("未安装版本应报错")
 	}
@@ -325,6 +328,43 @@ func TestListInstalledAndRemove(t *testing.T) {
 	list, _ = m.ListInstalled()
 	if len(list) != 1 {
 		t.Errorf("卸载后应剩 1 个版本，实际 %d", len(list))
+	}
+}
+
+// TestResolveExePrefersInner 外层 BCUninstaller.exe 只是接力启动器（拉起真身后
+// ~20ms 自退，不可当生命周期锚点——真机误判 external 事故回归，见 innerExeRel
+// 注释与 TROUBLESHOOTING #24 接力家族）：启动路径与展示 ExePath 必须直指
+// win-x64 真身；旧布局无内层回退外层；两者皆缺报错。
+func TestResolveExePrefersInner(t *testing.T) {
+	versionsDir := t.TempDir()
+	m := NewManager(versionsDir)
+	dir := filepath.Join(versionsDir, dirPrefix+"6.2.0")
+	outer := filepath.Join(dir, exeName)
+	inner := filepath.Join(dir, innerExeRel)
+
+	// 仅外层（旧布局）：回退启动器本体
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(outer, []byte("bootstrapper"), 0644)
+	if got, err := m.ResolveExe("6.2.0"); err != nil || got != outer {
+		t.Errorf("仅外层布局应回退外层: got=%q err=%v", got, err)
+	}
+
+	// 真身存在：启动与展示都指内层
+	os.MkdirAll(filepath.Dir(inner), 0755)
+	os.WriteFile(inner, []byte("real-app"), 0644)
+	if got, err := m.ResolveExe("6.2.0"); err != nil || got != inner {
+		t.Errorf("应优先内层真身: got=%q err=%v", got, err)
+	}
+	list, err := m.ListInstalled()
+	if err != nil || len(list) != 1 || list[0].ExePath != inner {
+		t.Errorf("ListInstalled 展示 ExePath 应同为真身: %+v %v", list, err)
+	}
+
+	// 两者皆缺：报错（不可返回幽灵路径让 Start 才炸）
+	os.Remove(inner)
+	os.Remove(outer)
+	if _, err := m.ResolveExe("6.2.0"); err == nil {
+		t.Error("无任何可执行文件时必须报错")
 	}
 }
 
