@@ -81,6 +81,9 @@ import (
 	"hanxi/internal/modules/subnetdesk"
 	subnetdeskinstance "hanxi/internal/modules/subnetdesk/instance"
 	subnetdeskversion "hanxi/internal/modules/subnetdesk/version"
+	"hanxi/internal/modules/vscode"
+	vscodeinstance "hanxi/internal/modules/vscode/instance"
+	vscodeversion "hanxi/internal/modules/vscode/version"
 	"hanxi/internal/modules/wechat"
 	"hanxi/internal/modules/wifi"
 	"hanxi/internal/notify"
@@ -151,6 +154,8 @@ func RegisterEvents() {
 	application.RegisterEvent[subnetdeskinstance.Snapshot]("subnetdesk:instance-state")
 	application.RegisterEvent[bili23version.DownloadProgress]("bili23:version-download")
 	application.RegisterEvent[bili23instance.Snapshot]("bili23:instance-state")
+	application.RegisterEvent[vscodeversion.DownloadProgress]("vscode:version-download")
+	application.RegisterEvent[vscodeinstance.Snapshot]("vscode:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 	application.RegisterEvent[npmtool.OperationProgress]("envcheck:npm-tool-operation")
@@ -256,6 +261,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		subnetdesk.New(plat),
 		rufus.New(plat),
 		bili23.New(plat),
+		vscode.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
