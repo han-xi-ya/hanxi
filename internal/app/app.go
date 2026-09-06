@@ -81,6 +81,9 @@ import (
 	"hanxi/internal/modules/subnetdesk"
 	subnetdeskinstance "hanxi/internal/modules/subnetdesk/instance"
 	subnetdeskversion "hanxi/internal/modules/subnetdesk/version"
+	"hanxi/internal/modules/translucenttb"
+	ttbinstance "hanxi/internal/modules/translucenttb/instance"
+	ttbversion "hanxi/internal/modules/translucenttb/version"
 	"hanxi/internal/modules/vscode"
 	vscodeinstance "hanxi/internal/modules/vscode/instance"
 	vscodeversion "hanxi/internal/modules/vscode/version"
@@ -156,6 +159,8 @@ func RegisterEvents() {
 	application.RegisterEvent[bili23instance.Snapshot]("bili23:instance-state")
 	application.RegisterEvent[vscodeversion.DownloadProgress]("vscode:version-download")
 	application.RegisterEvent[vscodeinstance.Snapshot]("vscode:instance-state")
+	application.RegisterEvent[ttbversion.DownloadProgress]("translucenttb:version-download")
+	application.RegisterEvent[ttbinstance.Snapshot]("translucenttb:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 	application.RegisterEvent[npmtool.OperationProgress]("envcheck:npm-tool-operation")
@@ -262,6 +267,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		rufus.New(plat),
 		bili23.New(plat),
 		vscode.New(plat),
+		translucenttb.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
