@@ -278,6 +278,28 @@ func (l *Listener) dispatchInboundMsg(msg InboundRawMsg, nowStr string) {
 			inMsg.Text = item.TextItem.Text
 			summary = item.TextItem.Text
 		}
+		if item.ImageItem != nil {
+			// 图片消息只带媒体凭据：注册为附件后即获得预览/打开/保存能力，
+			// 文件名由后端按入站时刻合成（nowStr 同源），前端不感知注册细节。
+			fileName := inboundImageFileName(time.Now())
+			if l.attachments == nil {
+				inMsg.AttachmentError = "附件服务未初始化"
+			} else if attachmentID, err := l.attachments.registerImage(l.accountID, fileName, item.ImageItem.Media); err != nil {
+				inMsg.AttachmentError = err.Error()
+				slog.Warn("wechat inbound image is not downloadable",
+					"accountId", l.accountID,
+					"encryptType", item.ImageItem.Media.EncryptType,
+					"queryLength", len(item.ImageItem.Media.EncryptQueryParam),
+					"aesKeyLength", len(item.ImageItem.Media.AESKey),
+					"err", err,
+				)
+			} else {
+				inMsg.FileName = fileName
+				inMsg.AttachmentID = attachmentID
+				inMsg.Downloadable = true
+			}
+			summary = "[图片消息]"
+		}
 		if item.FileItem != nil {
 			inMsg.FileName = sanitizeInboundFileName(item.FileItem.FileName)
 			inMsg.FileSize = int64(item.FileItem.Len)

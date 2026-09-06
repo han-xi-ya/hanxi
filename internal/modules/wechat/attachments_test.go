@@ -35,13 +35,30 @@ func TestAttachmentStoreRegister(t *testing.T) {
 		t.Fatal("register() returned empty id")
 	}
 	item, ok := store.get(id)
-	if !ok || item.FileName != "test.txt" || item.AccountID != "account-1" {
+	if !ok || item.FileName != "test.txt" || item.AccountID != "account-1" || item.Kind != kindFile {
 		t.Fatalf("get() = %+v, %v", item, ok)
 	}
 
 	store.deleteAccount("account-1")
 	if _, ok := store.get(id); ok {
 		t.Fatal("attachment still exists after deleteAccount")
+	}
+}
+
+func TestAttachmentStoreRegisterImage(t *testing.T) {
+	store := newAttachmentStore()
+	id, err := store.registerImage("account-1", "微信图片_20260906_120304.jpg", InboundMedia{
+		EncryptQueryParam: "query",
+		AESKey:            "key",
+		EncryptType:       1,
+	})
+	if err != nil {
+		t.Fatalf("registerImage() error = %v", err)
+	}
+	item, ok := store.get(id)
+	// 图片消息不携带长度：FileSize 恒 0；Kind 决定预览通道准入。
+	if !ok || item.Kind != kindImage || item.FileName != "微信图片_20260906_120304.jpg" || item.FileSize != 0 {
+		t.Fatalf("get() = %+v, %v", item, ok)
 	}
 }
 

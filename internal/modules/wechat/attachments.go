@@ -7,6 +7,15 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
+)
+
+// 附件类别：注册来源决定预览 RPC 的信任边界——入站图片消息无文件名与长度字段，
+// 注册时合成图片名（kindImage），PreviewInboundImage 仅放行该类别，杜绝借图片预览
+// 通道下载解密任意大文件。
+const (
+	kindFile  = "file"
+	kindImage = "image"
 )
 
 type inboundAttachment struct {
@@ -14,6 +23,7 @@ type inboundAttachment struct {
 	FileName  string
 	FileSize  int64
 	Media     InboundMedia
+	Kind      string
 }
 
 type attachmentStore struct {
@@ -26,12 +36,21 @@ func newAttachmentStore() *attachmentStore {
 }
 
 func (s *attachmentStore) register(accountID string, payload InboundFilePayload) (string, error) {
-	fileName := sanitizeInboundFileName(payload.FileName)
-	if strings.TrimSpace(payload.Media.EncryptQueryParam) == "" {
-		return "", fmt.Errorf("文件消息缺少下载参数")
+	return s.registerMedia(accountID, sanitizeInboundFileName(payload.FileName), int64(payload.Len), payload.Media, kindFile)
+}
+
+// registerImage 注册入站图片附件：图片消息不携带文件名与长度，
+// 统一使用调用方合成的命名并标记 kindImage。
+func (s *attachmentStore) registerImage(accountID, fileName string, media InboundMedia) (string, error) {
+	return s.registerMedia(accountID, fileName, 0, media, kindImage)
+}
+
+func (s *attachmentStore) registerMedia(accountID, fileName string, fileSize int64, media InboundMedia, kind string) (string, error) {
+	if strings.TrimSpace(media.EncryptQueryParam) == "" {
+		return "", fmt.Errorf("媒体消息缺少下载参数")
 	}
-	if strings.TrimSpace(payload.Media.AESKey) == "" {
-		return "", fmt.Errorf("文件消息缺少解密密钥")
+	if strings.TrimSpace(media.AESKey) == "" {
+		return "", fmt.Errorf("媒体消息缺少解密密钥")
 	}
 
 	idBytes := make([]byte, 16)
@@ -44,20 +63,22 @@ func (s *attachmentStore) register(accountID string, payload InboundFilePayload)
 	s.items[id] = inboundAttachment{
 		AccountID: accountID,
 		FileName:  fileName,
-		FileSize:  int64(payload.Len),
-		Media:     payload.Media,
+		FileSize:  fileSize,
+		Media:     media,
+		Kind:      kind,
 	}
 	s.mu.Unlock()
 
 	// 只记录字段特征，绝不输出下载参数或 AES 密钥原文。
-	slog.Info("wechat inbound file registered",
+	slog.Info("wechat inbound attachment registered",
 		"attachmentId", id,
 		"accountId", accountID,
+		"kind", kind,
 		"fileName", fileName,
-		"fileSize", int64(payload.Len),
-		"encryptType", payload.Media.EncryptType,
-		"queryLength", len(payload.Media.EncryptQueryParam),
-		"aesKeyLength", len(payload.Media.AESKey),
+		"fileSize", fileSize,
+		"encryptType", media.EncryptType,
+		"queryLength", len(media.EncryptQueryParam),
+		"aesKeyLength", len(media.AESKey),
 	)
 	return id, nil
 }
@@ -83,6 +104,12 @@ func (s *attachmentStore) clear() {
 	s.mu.Lock()
 	s.items = make(map[string]inboundAttachment)
 	s.mu.Unlock()
+}
+
+// inboundImageFileName 为入站图片合成文件名：微信图片消息只携带媒体凭据、
+// 无原始文件名与长度，统一按入站时刻命名（与微信本地保存命名习惯对齐）。
+func inboundImageFileName(t time.Time) string {
+	return fmt.Sprintf("微信图片_%s.jpg", t.Format("20060102_150405"))
 }
 
 func sanitizeInboundFileName(name string) string {

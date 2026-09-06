@@ -1,5 +1,7 @@
 <script setup lang="ts">
-// 微信机器人气泡消息流：系统胶囊 / 入站（含附件卡）/ 出站三类消息的纯展示壳。
+// 微信机器人气泡消息流：系统胶囊 / 入站（含附件卡与图片缩略预览）/ 出站（含本地图片
+// 缩略预览与打开图片/打开目录动作）三类消息的纯展示壳。图片预览 Data URL 由编排层
+// （useWechatBot.attachImagePreview）异步回填，本壳只按 previewUrl/previewState 呈现。
 // 自 WechatBotView.vue 随 DOM 逐字迁出——formatFileSize 为本区专属呈现函数（语义与
 // utils/format.fmtSize 不同：空值文案"微信接收附件"、独立 B 档、KB/MB 一位小数、
 // 阈值 >=1MB，强并会改界面文案，拆分时有意保留本地实现随消费组件就近安放）；
@@ -10,7 +12,7 @@ import { ref } from 'vue'
 import type { WechatAccountState } from '../../../bindings/hanxi/internal/modules/wechat/models'
 import { getAvatarColor, type ChatMessage } from '../../composables/useWechatBot'
 
-defineProps<{
+const props = defineProps<{
   /** 当前选中账号（视图 v-else 分支保证非空，用于入站头像与发送者展示名）。 */
   account: WechatAccountState
   /** 当前会话消息列表（视图侧 currentMessages 过滤结果直传）。 */
@@ -21,7 +23,16 @@ defineProps<{
 
 const emit = defineEmits<{
   'inbound-file-action': [msg: ChatMessage, action: 'open' | 'save']
+  /** 出站图片：用系统默认查看器打开本地原图（缩略图点击同源）。 */
+  'open-local-image': [msg: ChatMessage]
+  /** 出站图片：在资源管理器中打开所在目录并选中文件。 */
+  'reveal-local-file': [msg: ChatMessage]
 }>()
+
+// 入站图片/文件附件的"打开"是否禁用：不可下载、缺 ID 或操作进行中。
+function attachmentOpenDisabled(msg: ChatMessage): boolean {
+  return !msg.downloadable || !msg.attachmentId || !!props.attachmentAction[msg.attachmentId || '']
+}
 
 const container = ref<HTMLDivElement | null>(null)
 
@@ -108,6 +119,39 @@ defineExpose({ scrollToBottom })
                 </div>
               </div>
             </template>
+            <template v-else-if="msg.msgType === 'image'">
+              <div class="image-block">
+                <img
+                  v-if="msg.previewUrl"
+                  :src="msg.previewUrl"
+                  class="bubble-thumb"
+                  :alt="msg.fileName || '微信图片'"
+                  :title="attachmentOpenDisabled(msg) ? undefined : '用系统查看器打开'"
+                  @click="!attachmentOpenDisabled(msg) && emit('inbound-file-action', msg, 'open')"
+                />
+                <div v-else class="bubble-thumb-placeholder">
+                  {{ msg.previewState === 'loading'
+                    ? '图片加载中…'
+                    : (msg.attachmentError || '📷 图片暂不可预览') }}
+                </div>
+                <div class="image-actions">
+                  <button
+                    class="file-action-btn"
+                    :disabled="attachmentOpenDisabled(msg)"
+                    @click="emit('inbound-file-action', msg, 'open')"
+                  >
+                    {{ attachmentAction[msg.attachmentId || ''] === 'opening' ? '打开中…' : '打开' }}
+                  </button>
+                  <button
+                    class="file-action-btn"
+                    :disabled="attachmentOpenDisabled(msg)"
+                    @click="emit('inbound-file-action', msg, 'save')"
+                  >
+                    {{ attachmentAction[msg.attachmentId || ''] === 'saving' ? '保存中…' : '保存' }}
+                  </button>
+                </div>
+              </div>
+            </template>
             <template v-else>
               <p class="media-tip">📷 {{ msg.content }}</p>
             </template>
@@ -127,12 +171,32 @@ defineExpose({ scrollToBottom })
               <p class="bubble-text">{{ msg.content }}</p>
             </template>
             <template v-else-if="msg.msgType === 'image'">
-              <div class="media-card-preview">
-                <span class="media-icon-box">🖼️</span>
-                <div class="media-info-group">
-                  <span class="media-main-name">图片消息 (AES加密下发)</span>
-                  <span class="media-sub-path" :title="msg.filePath">{{ msg.filePath }}</span>
+              <div class="image-block">
+                <img
+                  v-if="msg.previewUrl"
+                  :src="msg.previewUrl"
+                  class="bubble-thumb"
+                  alt="本地图片预览"
+                  :title="msg.filePath"
+                  @click="emit('open-local-image', msg)"
+                />
+                <div v-else-if="msg.previewState === 'loading'" class="bubble-thumb-placeholder">图片加载中…</div>
+                <div v-else class="media-card-preview">
+                  <span class="media-icon-box">🖼️</span>
+                  <div class="media-info-group">
+                    <span class="media-main-name">图片消息 (AES加密下发)</span>
+                    <span class="media-sub-path" :title="msg.filePath">{{ msg.filePath }}</span>
+                  </div>
                 </div>
+                <div v-if="msg.filePath" class="image-actions">
+                  <button class="file-action-btn" title="用系统默认查看器打开本地原图" @click="emit('open-local-image', msg)">
+                    打开图片
+                  </button>
+                  <button class="file-action-btn" title="在资源管理器中打开所在目录并选中" @click="emit('reveal-local-file', msg)">
+                    打开目录
+                  </button>
+                </div>
+                <span v-if="msg.previewUrl" class="media-sub-path" :title="msg.filePath">{{ msg.filePath }}</span>
               </div>
             </template>
             <template v-else-if="msg.msgType === 'file'">
@@ -415,6 +479,46 @@ defineExpose({ scrollToBottom })
 
 .media-tip {
   margin: 0;
+}
+
+/* 图片气泡：缩略预览块（装载中/失败占位定尺寸防消息流跳动），动作行紧贴图下 */
+.image-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.outbound-row .image-block {
+  align-items: flex-end;
+}
+
+.bubble-thumb {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  display: block;
+}
+
+.bubble-thumb-placeholder {
+  width: 200px;
+  min-height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px dashed var(--color-border-strong);
+  background: var(--surface-soft);
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}
+
+.image-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .msg-send-status {

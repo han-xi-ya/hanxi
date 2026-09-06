@@ -23,6 +23,8 @@ const {
   currentMessages,
   attachmentAction,
   handleInboundFileAction,
+  handleOpenLocalImage,
+  handleRevealLocalFile,
   inputText,
   isSending,
   handleSendText,
@@ -109,6 +111,8 @@ const showRulesBanner = ref(true)
             :messages="currentMessages"
             :attachment-action="attachmentAction"
             @inbound-file-action="handleInboundFileAction"
+            @open-local-image="handleOpenLocalImage"
+            @reveal-local-file="handleRevealLocalFile"
           />
 
           <!-- 2.4 底部富交互输入区 (Chat Input Area) -->

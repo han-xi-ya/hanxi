@@ -43,6 +43,10 @@ export interface ChatMessage {
   attachmentError?: string
   status?: 'sending' | 'sent' | 'failed'
   error?: string
+  /** 图片气泡缩略预览 Data URL（出站走本地读取，入站走 CDN 下载解密）。 */
+  previewUrl?: string
+  /** 预览装载状态：缺省表示非图片或尚未发起。 */
+  previewState?: 'loading' | 'ready' | 'failed'
 }
 
 // 字符串生成头像颜色（美观柔和色板）——跨侧栏/聊天头部/气泡三个子组件共用的呈现函数。
@@ -151,13 +155,44 @@ export function useWechatBot() {
     return chatMessages.value.filter(m => m.accountId === currentAccount.value?.id)
   })
 
-  // 添加一条消息并滚动
-  function appendMessage(msg: ChatMessage) {
+  // 添加一条消息并滚动。返回数组中的响应式代理引用——ref 深层包装后，直改入参原始对象
+  // 不会触发视图更新；预览异步回填等后置写入必须落在本返回值上（既有发送态 status 改写
+  // 经 chatMessages.value.find 取代理，同源同理）。
+  function appendMessage(msg: ChatMessage): ChatMessage {
     chatMessages.value.push(msg)
     if (chatMessages.value.length > 300) {
       chatMessages.value = chatMessages.value.slice(-200)
     }
     scrollToBottom(true)
+    return chatMessages.value[chatMessages.value.length - 1]
+  }
+
+  // 发起图片气泡的缩略预览装载：出站本地文件经 GetImagePreview 直读，入站附件经
+  // PreviewInboundImage 走 CDN 下载解密。失败静默回退占位卡片（不打扰、不弹 toast）。
+  // 注意：入参必须是 appendMessage 返回的响应式代理，否则回填不触发渲染。
+  function attachImagePreview(msg: ChatMessage) {
+    if (msg.msgType !== 'image') return
+    if (msg.direction === 'out' && msg.filePath) {
+      msg.previewState = 'loading'
+      WechatAPI.WechatService.GetImagePreview(msg.filePath)
+        .then((url) => {
+          msg.previewUrl = url
+          msg.previewState = 'ready'
+        })
+        .catch(() => {
+          msg.previewState = 'failed'
+        })
+    } else if (msg.direction === 'in' && msg.attachmentId) {
+      msg.previewState = 'loading'
+      WechatAPI.WechatService.PreviewInboundImage(msg.attachmentId)
+        .then((url) => {
+          msg.previewUrl = url
+          msg.previewState = 'ready'
+        })
+        .catch(() => {
+          msg.previewState = 'failed'
+        })
+    }
   }
 
   // 扫码绑定相关
@@ -446,7 +481,7 @@ export function useWechatBot() {
 
       isSending.value = true
       const msgId = `${Date.now()}-out-img`
-      appendMessage({
+      const stored = appendMessage({
         id: msgId,
         accountId: acc.id,
         time: new Date().toLocaleTimeString(),
@@ -456,6 +491,7 @@ export function useWechatBot() {
         filePath,
         status: 'sending'
       })
+      attachImagePreview(stored) // 本地缩略预览与上传发送并行，不等发送回执
 
       await WechatAPI.WechatService.SendImageMessage(acc.id, targetUser, filePath)
       const sent = chatMessages.value.find(m => m.id === msgId)
@@ -530,16 +566,41 @@ export function useWechatBot() {
     if (!msg.attachmentId || !msg.downloadable || attachmentAction.value[msg.attachmentId]) return
     attachmentAction.value[msg.attachmentId] = action === 'open' ? 'opening' : 'saving'
     try {
+      const isImage = msg.msgType === 'image'
       const result = action === 'open'
         ? await WechatAPI.WechatService.OpenInboundFile(msg.attachmentId)
         : await WechatAPI.WechatService.SaveInboundFile(msg.attachmentId)
       if (!result?.canceled) {
-        showToast(action === 'open' ? '文件已打开' : `文件已保存到 ${result?.path || ''}`)
+        showToast(
+          action === 'open'
+            ? `${isImage ? '图片' : '文件'}已打开`
+            : `${isImage ? '图片' : '文件'}已保存到 ${result?.path || ''}`
+        )
       }
     } catch (err: unknown) {
       showToast(`${action === 'open' ? '打开' : '保存'}文件失败: ${getErrorMessage(err)}`)
     } finally {
       attachmentAction.value[msg.attachmentId] = undefined
+    }
+  }
+
+  // 出站图片气泡的本地文件动作：打开图片（系统默认查看器）/ 在资源管理器中定位所在目录。
+  // 失败才弹 toast——成功时系统窗口已可见，再 toast 是噪音。
+  async function handleOpenLocalImage(msg: ChatMessage) {
+    if (!msg.filePath) return
+    try {
+      await WechatAPI.WechatService.OpenLocalImage(msg.filePath)
+    } catch (err: unknown) {
+      showToast(`打开图片失败: ${getErrorMessage(err)}`)
+    }
+  }
+
+  async function handleRevealLocalFile(msg: ChatMessage) {
+    if (!msg.filePath) return
+    try {
+      await WechatAPI.WechatService.RevealLocalFile(msg.filePath)
+    } catch (err: unknown) {
+      showToast(`打开所在目录失败: ${getErrorMessage(err)}`)
     }
   }
 
@@ -584,7 +645,7 @@ export function useWechatBot() {
         content = `[文件] ${msg.fileName || '未知文件'}`
       }
 
-      appendMessage({
+      const stored = appendMessage({
         id: `${Date.now()}-${Math.random()}`,
         accountId: targetAccId,
         time: msg.time || new Date().toLocaleTimeString(),
@@ -598,6 +659,7 @@ export function useWechatBot() {
         downloadable: msg.downloadable,
         attachmentError: msg.attachmentError
       })
+      attachImagePreview(stored)
     }
   })
 
@@ -628,6 +690,9 @@ export function useWechatBot() {
             downloadable: msg.downloadable,
             attachmentError: msg.attachmentError
           })
+          if (msgType === 'image') {
+            attachImagePreview(chatMessages.value[chatMessages.value.length - 1])
+          }
         }
       } catch { /* 静默，不影响主流程 */ }
     }
@@ -647,6 +712,8 @@ export function useWechatBot() {
     currentMessages,
     attachmentAction,
     handleInboundFileAction,
+    handleOpenLocalImage,
+    handleRevealLocalFile,
     inputText,
     isSending,
     handleSendText,

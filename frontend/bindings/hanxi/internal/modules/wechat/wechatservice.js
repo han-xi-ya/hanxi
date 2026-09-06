@@ -43,6 +43,16 @@ export function Destroy() {
 }
 
 /**
+ * GetImagePreview 读取本地图片并以 Base64 Data URL 返回，供出站图片气泡内嵌缩略预览
+ * （WebView 无法直读 file:// 本地路径，预览字节必须走后端通道）。
+ * @param {string} filePath
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetImagePreview(filePath) {
+    return $Call.ByID(1937123332, filePath);
+}
+
+/**
  * GetLoginQRCode 获取微信登录二维码
  * @returns {$CancellablePromise<$models.QRInfo | null>}
  */
@@ -93,6 +103,16 @@ export function OpenInboundFile(attachmentID) {
 }
 
 /**
+ * OpenLocalImage 用系统默认查看器打开出站消息引用的本地图片。
+ * 扩展名白名单前置校验，杜绝该 RPC 被借道唤起任意本地关联程序。
+ * @param {string} filePath
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenLocalImage(filePath) {
+    return $Call.ByID(1644573941, filePath);
+}
+
+/**
  * PickFileDialog 打开系统原生文件选择对话框选择任意文件并返回真实绝对路径
  * @returns {$CancellablePromise<string>}
  */
@@ -106,6 +126,16 @@ export function PickFileDialog() {
  */
 export function PickImageDialog() {
     return $Call.ByID(2397880461);
+}
+
+/**
+ * PreviewInboundImage 下载解密入站图片附件并以 Base64 Data URL 返回，供图片气泡内嵌缩略预览。
+ * 仅放行 kindImage 附件：预览通道不成为任意大文件的旁路下载器。
+ * @param {string} attachmentID
+ * @returns {$CancellablePromise<string>}
+ */
+export function PreviewInboundImage(attachmentID) {
+    return $Call.ByID(174810645, attachmentID);
 }
 
 /**
@@ -123,6 +153,15 @@ export function RefreshAccountContextToken(accountID) {
  */
 export function RefreshContextToken() {
     return $Call.ByID(1555551512);
+}
+
+/**
+ * RevealLocalFile 在资源管理器中定位本地文件（「打开目录」按钮：打开所在文件夹并选中）。
+ * @param {string} filePath
+ * @returns {$CancellablePromise<void>}
+ */
+export function RevealLocalFile(filePath) {
+    return $Call.ByID(453175521, filePath);
 }
 
 /**

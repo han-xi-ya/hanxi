@@ -501,6 +501,49 @@ func (s *WechatService) OpenInboundFile(attachmentID string) (AttachmentActionRe
 	return AttachmentActionResult{Path: target}, nil
 }
 
+// GetImagePreview 读取本地图片并以 Base64 Data URL 返回，供出站图片气泡内嵌缩略预览
+// （WebView 无法直读 file:// 本地路径，预览字节必须走后端通道）。
+func (s *WechatService) GetImagePreview(filePath string) (string, error) {
+	return localImagePreview(filePath)
+}
+
+// OpenLocalImage 用系统默认查看器打开出站消息引用的本地图片。
+// 扩展名白名单前置校验，杜绝该 RPC 被借道唤起任意本地关联程序。
+func (s *WechatService) OpenLocalImage(filePath string) error {
+	if !isPreviewableImageName(strings.TrimSpace(filePath)) {
+		return fmt.Errorf("仅允许打开图片文件")
+	}
+	return openAttachmentFile(filePath)
+}
+
+// RevealLocalFile 在资源管理器中定位本地文件（「打开目录」按钮：打开所在文件夹并选中）。
+func (s *WechatService) RevealLocalFile(filePath string) error {
+	return revealInFolder(strings.TrimSpace(filePath))
+}
+
+// PreviewInboundImage 下载解密入站图片附件并以 Base64 Data URL 返回，供图片气泡内嵌缩略预览。
+// 仅放行 kindImage 附件：预览通道不成为任意大文件的旁路下载器。
+func (s *WechatService) PreviewInboundImage(attachmentID string) (string, error) {
+	attachment, ok := s.attachments.get(attachmentID)
+	if !ok {
+		return "", fmt.Errorf("附件不存在或已过期")
+	}
+	if attachment.Kind != kindImage {
+		return "", fmt.Errorf("该附件不是图片消息")
+	}
+
+	ctx, cancel := attachmentTimeout()
+	defer cancel()
+	data, err := s.getClientForAttachment(attachment).DownloadInboundFile(ctx, attachment.Media, attachment.FileSize)
+	if err != nil {
+		return "", err
+	}
+	if int64(len(data)) > maxImagePreviewBytes {
+		return "", fmt.Errorf("图片超过 %d MB，已跳过预览", maxImagePreviewBytes>>20)
+	}
+	return buildImageDataURL(data)
+}
+
 func (s *WechatService) getClientForAttachment(attachment inboundAttachment) *Client {
 	if acc, ok := s.store.GetWechatAccountByID(attachment.AccountID); ok {
 		return s.getClientForAccount(acc.BaseURL)

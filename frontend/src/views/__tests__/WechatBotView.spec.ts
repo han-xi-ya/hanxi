@@ -29,6 +29,10 @@ const svc = vi.hoisted(() => ({
   PickFileDialog: vi.fn(),
   OpenInboundFile: vi.fn(),
   SaveInboundFile: vi.fn(),
+  GetImagePreview: vi.fn(),
+  PreviewInboundImage: vi.fn(),
+  OpenLocalImage: vi.fn(),
+  RevealLocalFile: vi.fn(),
 }))
 
 vi.mock('../../../bindings/hanxi/internal/modules/wechat', () => ({ WechatService: svc }))
@@ -270,6 +274,77 @@ describe('WechatBotView 操作', () => {
     await wrapper.find('.toolbar-btn.text-danger').trigger('click')
     expect(wrapper.find('.flow-empty-box').exists()).toBe(true)
     expect(useToast().toastMsg.value).toBe('当前会话消息流已清空')
+    wrapper.unmount()
+  })
+})
+
+describe('WechatBotView 图片消息预览与打开', () => {
+  it('入站图片：注册附件后经 PreviewInboundImage 回填缩略图，点击缩略图走打开', async () => {
+    stubs([acc('a1', 'A')])
+    svc.PreviewInboundImage.mockResolvedValue('data:image/jpeg;base64,IN')
+    svc.OpenInboundFile.mockResolvedValue({ path: 'C:/tmp/x.jpg' })
+    const { wrapper } = await mountView()
+    runtime.handlers['wechat:message-received']({
+      data: { type: 2, fileName: '微信图片_20260906_120304.jpg', attachmentId: 'att-img', downloadable: true, accountId: 'a1', time: '12:03:04' },
+    })
+    await flushMicrotasks()
+    const thumb = wrapper.find('.inbound-row .bubble-thumb')
+    expect(thumb.exists()).toBe(true)
+    expect(thumb.attributes('src')).toBe('data:image/jpeg;base64,IN')
+    expect(svc.PreviewInboundImage).toHaveBeenCalledWith('att-img')
+    await thumb.trigger('click')
+    await flushMicrotasks()
+    expect(svc.OpenInboundFile).toHaveBeenCalledWith('att-img')
+    wrapper.unmount()
+  })
+
+  it('入站图片注册失败：占位展示错误文案且操作按钮禁用', async () => {
+    stubs([acc('a1', 'A')])
+    const { wrapper } = await mountView()
+    runtime.handlers['wechat:message-received']({
+      data: { type: 2, attachmentId: '', downloadable: false, attachmentError: '媒体消息缺少解密密钥', accountId: 'a1', time: '12:04:00' },
+    })
+    await nextTick()
+    const placeholder = wrapper.find('.inbound-row .bubble-thumb-placeholder')
+    expect(placeholder.text()).toBe('媒体消息缺少解密密钥')
+    const buttons = wrapper.findAll('.inbound-row .file-action-btn')
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0].attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('出站图片：发送成功后本地缩略预览，打开图片/打开目录按钮直连对应 RPC', async () => {
+    stubs([acc('a1', 'A', { targetUserId: 'u1' })])
+    svc.PickImageDialog.mockResolvedValue('D:\\pic\\猫.png')
+    svc.SendImageMessage.mockResolvedValue(undefined)
+    svc.GetImagePreview.mockResolvedValue('data:image/png;base64,OUT')
+    const { wrapper } = await mountView()
+    await wrapper.findAll('.toolbar-btn')[0].trigger('click') // 🖼️ 发送图片
+    await flushMicrotasks()
+    expect(svc.SendImageMessage).toHaveBeenCalledWith('a1', 'u1', 'D:\\pic\\猫.png')
+    expect(svc.GetImagePreview).toHaveBeenCalledWith('D:\\pic\\猫.png')
+    const thumb = wrapper.find('.outbound-row .bubble-thumb')
+    expect(thumb.attributes('src')).toBe('data:image/png;base64,OUT')
+    const buttons = wrapper.findAll('.outbound-row .file-action-btn')
+    expect(buttons.map(b => b.text())).toEqual(['打开图片', '打开目录'])
+    await buttons[0].trigger('click')
+    await buttons[1].trigger('click')
+    expect(svc.OpenLocalImage).toHaveBeenCalledWith('D:\\pic\\猫.png')
+    expect(svc.RevealLocalFile).toHaveBeenCalledWith('D:\\pic\\猫.png')
+    wrapper.unmount()
+  })
+
+  it('本地预览失败：回退原路径卡片，动作按钮仍可用', async () => {
+    stubs([acc('a1', 'A', { targetUserId: 'u1' })])
+    svc.PickImageDialog.mockResolvedValue('D:\\big\\超清原图.png')
+    svc.SendImageMessage.mockResolvedValue(undefined)
+    svc.GetImagePreview.mockRejectedValue(new Error('图片超过 16 MB，已跳过预览'))
+    const { wrapper } = await mountView()
+    await wrapper.findAll('.toolbar-btn')[0].trigger('click')
+    await flushMicrotasks()
+    expect(wrapper.find('.outbound-row .bubble-thumb').exists()).toBe(false)
+    expect(wrapper.find('.outbound-row .media-card-preview').text()).toContain('D:\\big\\超清原图.png')
+    expect(wrapper.findAll('.outbound-row .file-action-btn')).toHaveLength(2)
     wrapper.unmount()
   })
 })
