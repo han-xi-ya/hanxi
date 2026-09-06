@@ -424,6 +424,7 @@ LiteMonitor（C# WinForms 桌面/任务栏硬件监控）集成实证——"GitH
 - **正确做法与标准修复方案**：
   - 探测/唤窗整体改走 **FlClash 先例**：`CreateToolhelp32Snapshot` 进程名枚举 + `EnumWindows` 按 PID `SW_RESTORE+SetForegroundWindow`/`postCloseByPID`——外部实例探测、自有实例唤窗、WM_CLOSE 优雅退出三件套统一，不再依赖任何互斥体；
   - Start 失败经 `elevateHint()` 特判 `syscall.Errno(740)` 输出"请以管理员身份重新启动 Hanxi"指引；控制台 stopped 引导行如实预告"首启弹一次 UAC、可能提示装 PawnIO 驱动"；失败态文案指向 .NET 8 桌面运行时（框架依赖版真实依赖，`GetRuntimeStatus` 探测 `Microsoft.WindowsDesktop.App` 8.x 存在性供前端常驻警示条）；
+  - **一键产品化出口**（取代"让用户手动右键管理员重启"的纯文案指引）：`platform/windows/elevate_windows.go` 三原语——`IsElevated`（Token.IsElevated）、`RestartElevated`（powershell `Start-Process -Verb RunAs` 复用 portkill 通道，同步阻塞到 UAC 出结果，用户拒绝时按英文/中文文案 + 1223/0x800704C7 多形态识别取消）、`WaitProcessGone`。交接协议：RPC 携带 `-takeover=<旧PID> -route=<当前路由>`，新实例在 `application.New` 抢单实例锁**之前**等旧进程退出——否则被 Wails 判为第二实例静默自退、交接失败；`-route` 以 `#<路由>` hash 挂进窗口 URL，App.vue 挂载后按已注册导航回航原页面。**跨层契约**：前端 `ElevateRestart` 组件以"错误文案含『管理员』"判定 740 横幅显隐，由 bcu/rufus/litemonitor 三模块 `TestElevateHint` 钉死，改写 elevateHint 文案必须保关键词。
   - `seedManagedSettings`：**仅当 settings.json 不存在**时写最小种子 `{"AutoCheckUpdate":false}`——上游反序列化大小写不敏感且缺失字段回属性默认值（源码实证），最小种子=全默认首启+关内置更检查；文件已存在**一字节不动**（用户后续在 LiteMonitor 内改的配置是明确意图，不越权覆盖，everything ini 改写先例的收敛版）；
   - `normalizeFileVersion()` 仅当第四段为 `0` 时裁剪三段再比对；布局自检锚点弃用 settings.json（zip 不含）改用 `resources/lang/zh.json`；GBK 乱码文件名条目照常读满保 CRC，自检只锚定 exe+语言包不受干扰；ImportLocal 因 settings/themes/plugins 全随 exe 目录，**整套目录递归迁移**（收单层包装目录形态），并跳过 `settings.json.tmp/.bak` 运行期垃圾。
 - **避坑防重犯建议**：
