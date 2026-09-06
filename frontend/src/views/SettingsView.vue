@@ -494,7 +494,9 @@ onMounted(() => {
 .settings-page { display: flex; flex-direction: column; gap: 16px; height: 100%; }
 .header-row { display: flex; justify-content: space-between; align-items: center; }
 .subtitle { color: var(--color-text-muted); font-size: 13px; margin: 4px 0 0; }
-.toast { background: var(--color-text); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; animation: fadeIn 0.2s ease; }
+/* 原 .toast 死代码已删——模板从未引用（提示条由全局 NotificationToast 顶层卡片承载），
+   且其 background: var(--color-text) + color: #fff 与本视图 .btn-secondary 是同型地雷：
+   深色下 --color-text 本身就是近白 #e8f2f3，会一并白底白字。LanScanner/PortKill 先例同口径 */
 
 .section-card {
   background: var(--surface-panel); border: 1px solid var(--color-border);
@@ -592,11 +594,15 @@ onMounted(() => {
 
 .tray-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 
+/* 本视图 .btn 家族是未迁移的 scoped 副本：scoped 自带 [data-v-*] 特异性，永远压过 components.css
+   的 :where() 零特异性全局原子，故此处声明即最终生效值，一律只准引用语义 token。
+   注意不可只删其中一条做"半迁移"——本地 .btn 的 border 简写会盖掉全局 :where(.btn-secondary)
+   的 border-color 长写，删净整族才会落回全局标准形（含 min-height 36px 与 radius 8px 归一）。 */
 .btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all 0.15s ease; }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .btn-primary-alt { background: var(--state-information); color: var(--color-on-primary); border-color: var(--state-information); }
 .btn-primary-alt:hover:not(:disabled) { background: color-mix(in srgb, var(--state-information) 82%, black); }
-.btn-secondary { background: #fff; border-color: var(--color-border); color: var(--color-text); }
+.btn-secondary { background: var(--surface-panel); border-color: var(--color-border); color: var(--color-text); }
 .btn-secondary:hover:not(:disabled) { background: var(--surface-hover); }
 .btn-group-inline { display: flex; align-items: center; gap: 6px; }
 .btn-small { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
