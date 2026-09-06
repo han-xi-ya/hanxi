@@ -2,6 +2,7 @@ package wsl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -13,23 +14,30 @@ import (
 // 提权控制台窗口保持可见，用户能实时看到进度，本方法同步等待其结束。
 const opTimeout = 30 * time.Minute
 
-// runElevatedProcess 以 UAC 提权运行固定程序与参数（portkill KillProcessElevated 同款通道）。
-// file/args 一律来自后端常量白名单与严格校验值，逐一经单引号转义后交 Start-Process；
-// 提权窗口保持可见（-WindowStyle Normal），完成后 -Wait 同步返回。
-func runElevatedProcess(ctx context.Context, file string, args ...string) (OperationOutcome, error) {
-	ctx, cancel := context.WithTimeout(ctx, opTimeout)
-	defer cancel()
-
+// buildElevatedPS 拼装提权执行脚本。-PassThru 拿到目标进程对象并把其退出码
+// 显式传播为本脚本的退出码：Start-Process 本身从不设置 $LASTEXITCODE，
+// 裸 -Wait 时目标程序失败也一律返回 0——wsl --install -d 失败被误报"执行完毕"
+// 的实机事故所系（#36 分号链吞码的同族病灶，那是 DISM 链、这是裸提权通道）。
+func buildElevatedPS(file string, args ...string) string {
 	quoted := make([]string, 0, len(args))
 	for _, a := range args {
 		quoted = append(quoted, "'"+strings.ReplaceAll(a, "'", "''")+"'")
 	}
-	ps := fmt.Sprintf(
-		"Start-Process -FilePath '%s' -ArgumentList %s -Verb RunAs -WindowStyle Normal -Wait",
+	return fmt.Sprintf(
+		"$p = Start-Process -FilePath '%s' -ArgumentList %s -Verb RunAs -WindowStyle Normal -Wait -PassThru; "+
+			"if ($null -ne $p -and $p.ExitCode -ne 0) { exit $p.ExitCode }",
 		strings.ReplaceAll(file, "'", "''"), strings.Join(quoted, ","),
 	)
+}
 
-	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
+// runElevatedProcess 以 UAC 提权运行固定程序与参数（portkill KillProcessElevated 同款通道）。
+// file/args 一律来自后端常量白名单与严格校验值，逐一经单引号转义后交 Start-Process；
+// 提权窗口保持可见（-WindowStyle Normal），完成后 -Wait 同步返回且退出码如实上报。
+func runElevatedProcess(ctx context.Context, file string, args ...string) (OperationOutcome, error) {
+	ctx, cancel := context.WithTimeout(ctx, opTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", buildElevatedPS(file, args...))
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 隐藏的是承载 Start-Process 的 powershell，不是提权后的目标窗口
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -45,14 +53,15 @@ func runElevatedProcess(ctx context.Context, file string, args ...string) (Opera
 		if line := lastErrorLine(string(out)); line != "" {
 			return OperationOutcome{}, fmt.Errorf("提权执行 %s 失败: %s", file, line)
 		}
+		// 目标程序退出码经 buildElevatedPS 传播到此：非零即失败，点名退出码，
+		// 绝不再报"执行完毕"（窗口可见，红字详情在提权窗口里）。
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return OperationOutcome{}, fmt.Errorf("提权执行 %s 失败：命令以退出码 %d 结束（具体报错见提权窗口，窗口关闭过快时重跑一次留意红字）", file, ee.ExitCode())
+		}
 		return OperationOutcome{}, fmt.Errorf("提权执行 %s 失败: %w %s", file, err, strings.TrimSpace(string(out)))
 	}
 	return OperationOutcome{Success: true, Message: "操作已执行完毕，状态已按最新结果刷新"}, nil
-}
-
-// runElevatedWsl 提权执行固定参数的 wsl.exe。
-func runElevatedWsl(ctx context.Context, args ...string) (OperationOutcome, error) {
-	return runElevatedProcess(ctx, "wsl.exe", args...)
 }
 
 // lastErrorLine 从 DISM/工具输出中提取最后一条错误行（中英语境皆覆盖）；无则空串。
