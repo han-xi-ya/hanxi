@@ -38,7 +38,8 @@ type CCSwitchService struct {
 	store   *ccswitchStore
 	engine  *instance.Engine
 
-	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
+	downloadMu sync.Mutex
+	downloads  map[string]struct{}
 	watchMu    sync.Mutex
 	watching   bool
 	watchStop  chan struct{}
@@ -50,9 +51,10 @@ type CCSwitchService struct {
 func NewCCSwitchService(plat platform.Platform) *CCSwitchService {
 	paths := settings.GetPaths()
 	svc := &CCSwitchService{
-		plat:    plat,
-		manager: version.NewManager(paths.VersionsDir()),
-		store:   newCCSwitchStore(paths.DataDir()),
+		plat:      plat,
+		manager:   version.NewManager(paths.VersionsDir()),
+		store:     newCCSwitchStore(paths.DataDir()),
+		downloads: make(map[string]struct{}),
 	}
 	svc.lastActivity = time.Now()
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewCCProbe(), instance.Callbacks{
@@ -167,19 +169,31 @@ func (s *CCSwitchService) DownloadVersion(targetVersion string) (string, error) 
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 
 	s.downloadMu.Lock()
-	defer s.downloadMu.Unlock()
+	if _, ok := s.downloads[targetVersion]; ok {
+		s.downloadMu.Unlock()
+		return "in-progress", nil
+	}
 
 	// 已安装则直接返回，避免重复下载
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
 		for _, v := range installed {
 			if strings.EqualFold(strings.TrimPrefix(v.Version, "v"), strings.TrimPrefix(targetVersion, "v")) {
+				s.downloadMu.Unlock()
 				return "already-installed", nil
 			}
 		}
 	}
 
+	s.downloads[targetVersion] = struct{}{}
+	s.downloadMu.Unlock()
+
 	go func() {
+		defer func() {
+			s.downloadMu.Lock()
+			delete(s.downloads, targetVersion)
+			s.downloadMu.Unlock()
+		}()
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("ccswitch download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {

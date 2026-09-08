@@ -29,17 +29,20 @@ type FrpcService struct {
 	store   *frpcStore
 	engine  *instance.Manager
 
-	runDir     string     // 实例配置落盘目录（RuntimeDir）
-	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
+	runDir     string // 实例配置落盘目录（RuntimeDir）
+	downloadMu sync.Mutex
+	downloads  map[string]struct{}
+	projectMu  sync.Map // project ID -> *sync.Mutex，串行化配置生成、启动、停止与清理
 }
 
 func NewFrpcService(plat platform.Platform) *FrpcService {
 	paths := settings.GetPaths()
 	svc := &FrpcService{
-		plat:    plat,
-		manager: version.NewManager(paths.VersionsDir()),
-		store:   newFrpcStore(paths.DataDir()),
-		runDir:  filepath.Join(paths.RuntimeDir(), "frpc"),
+		plat:      plat,
+		manager:   version.NewManager(paths.VersionsDir()),
+		store:     newFrpcStore(paths.DataDir()),
+		runDir:    filepath.Join(paths.RuntimeDir(), "frpc"),
+		downloads: make(map[string]struct{}),
 	}
 	svc.engine = instance.NewManager(plat.Job(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -153,19 +156,30 @@ func (s *FrpcService) DownloadVersion(targetVersion string) (string, error) {
 	targetVersion = "v" + targetVersion
 
 	s.downloadMu.Lock()
-	defer s.downloadMu.Unlock()
+	if _, ok := s.downloads[targetVersion]; ok {
+		s.downloadMu.Unlock()
+		return "in-progress", nil
+	}
 
 	// 已安装则直接返回，避免重复下载
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
 		for _, v := range installed {
 			if strings.EqualFold(strings.TrimPrefix(v.Version, "v"), strings.TrimPrefix(targetVersion, "v")) {
+				s.downloadMu.Unlock()
 				return "already-installed", nil
 			}
 		}
 	}
+	s.downloads[targetVersion] = struct{}{}
+	s.downloadMu.Unlock()
 
 	go func() {
+		defer func() {
+			s.downloadMu.Lock()
+			delete(s.downloads, targetVersion)
+			s.downloadMu.Unlock()
+		}()
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("frpc download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -219,6 +233,9 @@ func (s *FrpcService) ListProjects() ([]domain.Project, error) {
 
 // GetProject 按 ID 查询单个项目
 func (s *FrpcService) GetProject(id string) (*domain.Project, error) {
+	if err := s.store.LoadError(); err != nil {
+		return nil, err
+	}
 	p, ok := s.store.Get(strings.TrimSpace(id))
 	if !ok {
 		return nil, fmt.Errorf("项目 %s 不存在", id)
@@ -281,10 +298,24 @@ func (s *FrpcService) ParseToml(content string) (domain.Project, error) {
 
 // ---------- M4.3 多实例运行 ----------
 
+func (s *FrpcService) projectLock(id string) *sync.Mutex {
+	lock, _ := s.projectMu.LoadOrStore(id, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
 // StartProject 启动项目实例：解析绑定版本 → 生成 TOML 落盘 → 拉起 frpc.exe 并绑定 JobObject。
 // 启动后状态/日志经事件 frpc:instance-state / frpc:instance-log 持续推送。
 func (s *FrpcService) StartProject(id string) error {
 	id = strings.TrimSpace(id)
+	lock := s.projectLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+	if err := s.store.LoadError(); err != nil {
+		return err
+	}
+	if snap, ok := s.engine.Snapshot(id); ok && (snap.State == instance.StateStarting || snap.State == instance.StateRunning) {
+		return nil
+	}
 	p, ok := s.store.Get(id)
 	if !ok {
 		return fmt.Errorf("项目 %s 不存在", id)
@@ -331,6 +362,9 @@ func (s *FrpcService) StartProject(id string) error {
 // StopProject 停止项目实例（幂等），并清除生成的运行时临时配置。
 func (s *FrpcService) StopProject(id string) error {
 	id = strings.TrimSpace(id)
+	lock := s.projectLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 	if err := s.engine.Stop(id); err != nil {
 		return fmt.Errorf("停止实例失败: %w", err)
 	}

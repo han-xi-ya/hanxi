@@ -11,6 +11,7 @@ package instance
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -98,6 +99,14 @@ type Callbacks struct {
 	OnLog   func(projectID string, line string)
 }
 
+type processRun struct {
+	cmd      *exec.Cmd
+	job      platform.Job
+	done     chan struct{}
+	redact   []string
+	stopping bool
+}
+
 // Instance 单个项目的运行实例。
 type Instance struct {
 	projectID   string
@@ -115,9 +124,7 @@ type Instance struct {
 	stopping  bool // 手动停止标记：防止 kill 后误判为异常退出
 
 	startMu sync.Mutex // Start/Stop 互斥临界区
-	cmd     *exec.Cmd
-	job     platform.Job
-	redact  []string
+	run     *processRun
 	logs    *ringbuf.RingBuffer
 	cb      Callbacks
 	jobAPI  platform.JobAPI
@@ -131,14 +138,13 @@ func newInstance(opts StartOptions, jobAPI platform.JobAPI, cb Callbacks) *Insta
 		version:     opts.Version,
 		state:       StateStopped,
 		connState:   ConnStateIdle,
-		redact:      append([]string(nil), opts.Redact...),
 		logs:        ringbuf.New(logCapacity),
 		cb:          cb,
 		jobAPI:      jobAPI,
 	}
 }
 
-// Start 启动/重启实例：创建子进程 → 绑定 JobObject → 状态 running。
+// Start 启动实例；已运行或仍在回收时幂等返回，不隐式重启。
 func (in *Instance) Start(opts StartOptions) error {
 	in.startMu.Lock()
 	defer in.startMu.Unlock()
@@ -146,18 +152,18 @@ func (in *Instance) Start(opts StartOptions) error {
 	if err := opts.validate(); err != nil {
 		return err
 	}
-
 	in.mu.Lock()
+	if in.run != nil {
+		in.mu.Unlock()
+		return nil
+	}
 	in.version = opts.Version
-	in.redact = append([]string(nil), opts.Redact...)
-	in.stopping = false
 	in.mu.Unlock()
-
 	in.transition(StateStarting, ConnStateConnecting, "")
 
 	cmd := exec.Command(opts.FrpcExe, "-c", opts.ConfigPath)
 	cmd.Dir = filepath.Dir(opts.FrpcExe)
-	hideWindow(cmd) // 不弹黑窗口（CREATE_NO_WINDOW）
+	hideWindow(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		in.transition(StateFailed, ConnStateError, "打开进程输出管道失败: "+err.Error())
@@ -173,8 +179,9 @@ func (in *Instance) Start(opts StartOptions) error {
 		return err
 	}
 
+	run := &processRun{cmd: cmd, done: make(chan struct{}), redact: append([]string(nil), opts.Redact...)}
 	in.mu.Lock()
-	in.cmd = cmd // 立即登记
+	in.run = run
 	in.pid = uint32(cmd.Process.Pid)
 	in.exitCode = 0
 	in.errMsg = ""
@@ -185,52 +192,64 @@ func (in *Instance) Start(opts StartOptions) error {
 	job, jerr := in.jobAPI.Create()
 	if jerr != nil {
 		_ = cmd.Process.Kill()
-		go in.wait()
-		in.transition(StateFailed, ConnStateError, "创建 Job Object 失败: "+jerr.Error())
+		go in.wait(run)
+		in.transitionIfCurrent(run, StateFailed, ConnStateError, "创建 Job Object 失败: "+jerr.Error())
 		return fmt.Errorf("创建 Job Object 失败: %w", jerr)
 	}
 	if aerr := job.Assign(in.pid); aerr != nil {
-		job.Close()
+		_ = job.Close()
 		_ = cmd.Process.Kill()
-		go in.wait()
-		in.transition(StateFailed, ConnStateError, "JobObject 绑定失败: "+aerr.Error())
+		go in.wait(run)
+		in.transitionIfCurrent(run, StateFailed, ConnStateError, "JobObject 绑定失败: "+aerr.Error())
 		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
 	}
+	run.job = job
 
-	in.mu.Lock()
-	in.job = job
-	in.mu.Unlock()
-
-	go in.pump(stdout)
-	go in.pump(stderr)
-	go in.wait()
-	in.transition(StateRunning, ConnStateConnecting, "")
+	// 先登记 running，再让极快退出的 wait 有机会落最终状态。
+	in.transitionIfCurrent(run, StateRunning, ConnStateConnecting, "")
+	go in.pump(run, stdout)
+	go in.pump(run, stderr)
+	go in.wait(run)
 	return nil
 }
 
-// Stop 停止实例
+const stopWaitTimeout = 10 * time.Second
+
+// Stop 停止实例并等待本代回收完成。
 func (in *Instance) Stop() error {
 	in.startMu.Lock()
 	defer in.startMu.Unlock()
 
 	in.mu.Lock()
-	if in.state != StateRunning && in.state != StateStarting {
+	run := in.run
+	if run == nil {
 		in.mu.Unlock()
 		return nil
 	}
-	in.stopping = true
-	cmd, job := in.cmd, in.job
+	run.stopping = true
+	cmd, job, done := run.cmd, run.job, run.done
 	in.mu.Unlock()
 
+	var stopErr error
 	if job != nil {
-		if err := job.Terminate(1); err == nil {
-			return nil
+		stopErr = job.Terminate(1)
+	}
+	if stopErr != nil || job == nil {
+		if cmd != nil && cmd.Process != nil {
+			stopErr = cmd.Process.Kill()
+		} else if stopErr == nil {
+			stopErr = fmt.Errorf("实例没有可终止的进程（可能仍在启动）")
 		}
 	}
-	if cmd != nil && cmd.Process != nil {
-		return cmd.Process.Kill()
+	select {
+	case <-done:
+		return stopErr
+	case <-time.After(stopWaitTimeout):
+		if stopErr != nil {
+			return errors.Join(stopErr, fmt.Errorf("等待 frpc 进程退出超时"))
+		}
+		return fmt.Errorf("等待 frpc 进程退出超时")
 	}
-	return fmt.Errorf("实例没有可终止的进程（可能仍在启动）")
 }
 
 // Snapshot 返回当前状态快照。
@@ -293,11 +312,32 @@ func (in *Instance) transition(s State, cs ConnState, errMsg string) {
 	}
 }
 
-// updateConnState 仅更新细粒度连接状态并广播
-func (in *Instance) updateConnState(cs ConnState) {
+func (in *Instance) transitionIfCurrent(run *processRun, s State, cs ConnState, errMsg string) {
+	in.mu.Lock()
+	if in.run != run {
+		in.mu.Unlock()
+		return
+	}
+	in.state = s
+	in.connState = cs
+	in.errMsg = errMsg
+	if s == StateRunning {
+		in.stoppedAt = time.Time{}
+	} else if (s == StateFailed || s == StateStopped) && in.stoppedAt.IsZero() {
+		in.stoppedAt = time.Now()
+	}
+	snap := in.snapshotLocked()
+	in.mu.Unlock()
+	if in.cb.OnState != nil {
+		in.cb.OnState(snap)
+	}
+}
+
+// updateConnState 仅允许当前运行代更新连接状态并广播
+func (in *Instance) updateConnState(run *processRun, cs ConnState) {
 	var snap Snapshot
 	in.mu.Lock()
-	if in.connState == cs || in.state != StateRunning {
+	if in.run != run || in.connState == cs || in.state != StateRunning {
 		in.mu.Unlock()
 		return
 	}
@@ -310,50 +350,51 @@ func (in *Instance) updateConnState(cs ConnState) {
 	}
 }
 
-// wait 阻塞等待进程退出
-func (in *Instance) wait() {
-	err := in.cmd.Wait()
+// wait 阻塞等待本代进程退出，仅当前代可以写公共状态。
+func (in *Instance) wait(run *processRun) {
+	err := run.cmd.Wait()
 	code := 0
-	if err != nil && in.cmd.ProcessState != nil {
-		code = in.cmd.ProcessState.ExitCode()
+	if err != nil && run.cmd.ProcessState != nil {
+		code = run.cmd.ProcessState.ExitCode()
+	}
+	if run.job != nil {
+		_ = run.job.Close()
 	}
 
 	in.mu.Lock()
+	if in.run != run {
+		in.mu.Unlock()
+		close(run.done)
+		return
+	}
 	in.exitCode = code
 	in.stoppedAt = time.Now()
-	stopped := in.stopping
+	stopped := run.stopping
 	prev := in.state
-	if in.job != nil {
-		_ = in.job.Close()
-		in.job = nil
+	in.run = nil
+	in.pid = 0
+	if stopped {
+		in.state, in.connState, in.errMsg = StateStopped, ConnStateIdle, "已手动停止"
+	} else if code == 0 && prev == StateRunning {
+		in.state, in.connState, in.errMsg = StateStopped, ConnStateIdle, ""
+	} else if prev != StateFailed {
+		in.state, in.connState, in.errMsg = StateFailed, ConnStateError, fmt.Sprintf("frpc 进程异常退出（退出码 %d）", code)
 	}
-	in.cmd = nil
+	snap := in.snapshotLocked()
 	in.mu.Unlock()
-
-	switch {
-	case stopped:
-		in.transition(StateStopped, ConnStateIdle, "已手动停止")
-	case code == 0 && prev == StateRunning:
-		in.transition(StateStopped, ConnStateIdle, "")
-	case prev != StateFailed:
-		in.transition(StateFailed, ConnStateError, fmt.Sprintf("frpc 进程异常退出（退出码 %d）", code))
-	default:
-		in.mu.Lock()
-		snap := in.snapshotLocked()
-		in.mu.Unlock()
-		if in.cb.OnState != nil {
-			in.cb.OnState(snap)
-		}
+	close(run.done)
+	if in.cb.OnState != nil {
+		in.cb.OnState(snap)
 	}
 }
 
-// pump 逐行搬运子进程输出到环形日志。
-func (in *Instance) pump(r io.Reader) {
+// pump 逐行搬运本代子进程输出到环形日志。
+func (in *Instance) pump(run *processRun, r io.Reader) {
 	br := bufio.NewReader(r)
 	for {
 		line, err := br.ReadString('\n')
 		if line != "" {
-			in.inspectAndWriteLog(line)
+			in.inspectAndWriteLog(run, line)
 		}
 		if err != nil {
 			return
@@ -362,32 +403,33 @@ func (in *Instance) pump(r io.Reader) {
 }
 
 // inspectAndWriteLog 统一入口：连接状态关键词嗅探 → 脱敏 → 环形缓冲 → 回调。
-func (in *Instance) inspectAndWriteLog(line string) {
+func (in *Instance) inspectAndWriteLog(run *processRun, line string) {
+	in.mu.Lock()
+	current := in.run == run
+	in.mu.Unlock()
+	if !current {
+		return
+	}
 	lower := strings.ToLower(line)
 
-	// 嗅探 frpc 日志中的连接特征词
 	if strings.Contains(lower, "login to server success") ||
 		strings.Contains(lower, "start proxy success") ||
 		strings.Contains(lower, "work connection success") {
-		in.updateConnState(ConnStateConnected)
+		in.updateConnState(run, ConnStateConnected)
 	} else if strings.Contains(lower, "authorization failed") ||
 		strings.Contains(lower, "token is not correct") ||
 		strings.Contains(lower, "token is empty") ||
 		strings.Contains(lower, "user or token not matched") {
-		in.updateConnState(ConnStateAuthFailed)
+		in.updateConnState(run, ConnStateAuthFailed)
 	} else if strings.Contains(lower, "connect to server error") ||
 		strings.Contains(lower, "try to reconnect") ||
 		strings.Contains(lower, "i/o timeout") ||
 		strings.Contains(lower, "connection refused") ||
 		strings.Contains(lower, "wait until next retry") {
-		in.updateConnState(ConnStateReconnecting)
+		in.updateConnState(run, ConnStateReconnecting)
 	}
 
-	in.mu.Lock()
-	redact := append([]string(nil), in.redact...)
-	in.mu.Unlock()
-
-	line = redactText(line, redact)
+	line = redactText(line, run.redact)
 	in.logs.Write(line)
 	if in.cb.OnLog != nil {
 		in.cb.OnLog(in.projectID, line)

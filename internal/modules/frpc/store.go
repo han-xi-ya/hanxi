@@ -21,6 +21,7 @@ type frpcStore struct {
 	filePath string
 	mu       sync.RWMutex
 	projects map[string]domain.Project // key: project.ID
+	loadErr  error                     // 加载失败时禁止以空集合覆盖原文件
 }
 
 func newFrpcStore(dir string) *frpcStore {
@@ -28,7 +29,7 @@ func newFrpcStore(dir string) *frpcStore {
 		filePath: filepath.Join(dir, "projects.json"),
 		projects: make(map[string]domain.Project),
 	}
-	_ = s.load()
+	s.loadErr = s.load()
 	return s
 }
 
@@ -67,13 +68,13 @@ func (s *frpcStore) load() error {
 	return nil
 }
 
-func (s *frpcStore) saveLocked() error {
+func (s *frpcStore) saveLocked(projects map[string]domain.Project) error {
 	dir := filepath.Dir(s.filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	list := make([]domain.Project, 0, len(s.projects))
-	for _, p := range s.projects {
+	list := make([]domain.Project, 0, len(projects))
+	for _, p := range projects {
 		// 落盘保护：克隆对象并将敏感 Token 加密为 DPAPI 密文
 		item := p
 		if item.Server.Token != "" {
@@ -113,11 +114,21 @@ func (s *frpcStore) List() ([]domain.Project, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	if s.loadErr != nil {
+		return nil, s.loadErr
+	}
 	list := make([]domain.Project, 0, len(s.projects))
 	for _, p := range s.projects {
-		list = append(list, p)
+		list = append(list, cloneProject(p))
 	}
 	return list, nil
+}
+
+// LoadError 返回初始化加载错误；损坏或不可读的项目文件禁止被当成空库覆盖。
+func (s *frpcStore) LoadError() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.loadErr
 }
 
 // Get 按 ID 查询项目
@@ -125,7 +136,7 @@ func (s *frpcStore) Get(id string) (domain.Project, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	p, ok := s.projects[id]
-	return p, ok
+	return cloneProject(p), ok
 }
 
 // Save 新建或更新项目（自动维护 CreatedAt/UpdatedAt；空 ID 自动生成）
@@ -133,17 +144,29 @@ func (s *frpcStore) Save(p *domain.Project) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now().Format("2006-01-02 15:04:05")
-	if p.ID == "" {
-		p.ID = newProjectID()
-		p.CreatedAt = now
-	} else if _, exists := s.projects[p.ID]; !exists {
-		p.CreatedAt = now
+	if s.loadErr != nil {
+		return s.loadErr
 	}
-	p.UpdatedAt = now
-	s.projects[p.ID] = *p
-
-	return s.saveLocked()
+	if p == nil {
+		return fmt.Errorf("项目不能为空")
+	}
+	item := cloneProject(*p)
+	now := time.Now().Format("2006-01-02 15:04:05")
+	if item.ID == "" {
+		item.ID = newProjectID()
+		item.CreatedAt = now
+	} else if _, exists := s.projects[item.ID]; !exists {
+		item.CreatedAt = now
+	}
+	item.UpdatedAt = now
+	next := s.cloneProjectsLocked()
+	next[item.ID] = item
+	if err := s.saveLocked(next); err != nil {
+		return err
+	}
+	s.projects = next
+	*p = cloneProject(item)
+	return nil
 }
 
 // Delete 删除项目
@@ -151,9 +174,37 @@ func (s *frpcStore) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.loadErr != nil {
+		return s.loadErr
+	}
 	if _, ok := s.projects[id]; !ok {
 		return fmt.Errorf("项目 %s 不存在", id)
 	}
-	delete(s.projects, id)
-	return s.saveLocked()
+	next := s.cloneProjectsLocked()
+	delete(next, id)
+	if err := s.saveLocked(next); err != nil {
+		return err
+	}
+	s.projects = next
+	return nil
+}
+
+func cloneProject(p domain.Project) domain.Project {
+	if p.Proxies != nil {
+		p.Proxies = append([]domain.ProxyRule{}, p.Proxies...)
+		for i := range p.Proxies {
+			if p.Proxies[i].CustomDomains != nil {
+				p.Proxies[i].CustomDomains = append([]string{}, p.Proxies[i].CustomDomains...)
+			}
+		}
+	}
+	return p
+}
+
+func (s *frpcStore) cloneProjectsLocked() map[string]domain.Project {
+	out := make(map[string]domain.Project, len(s.projects))
+	for id, p := range s.projects {
+		out[id] = cloneProject(p)
+	}
+	return out
 }

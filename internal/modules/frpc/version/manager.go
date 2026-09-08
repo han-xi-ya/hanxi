@@ -46,6 +46,11 @@ func (m *Manager) ListInstalled() ([]FrpVersionInfo, error) {
 		return nil, err
 	}
 
+	root, err := os.OpenRoot(m.versionsDir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	var list []FrpVersionInfo
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -55,31 +60,41 @@ func (m *Manager) ListInstalled() ([]FrpVersionInfo, error) {
 		if !ok {
 			continue
 		}
-		dir := filepath.Join(m.versionsDir, e.Name())
-		exe := filepath.Join(dir, "frpc.exe")
-		fi, statErr := os.Stat(exe)
-		if statErr != nil || fi.IsDir() {
+		if err := checkVersionDir(root, e.Name()); err != nil {
 			continue
 		}
-		if !fi.Mode().IsRegular() || fi.Size() == 0 {
+		file, openErr := root.Open(filepath.Join(e.Name(), "frpc.exe"))
+		if openErr != nil {
 			continue
 		}
+		fi, statErr := file.Stat()
+		if statErr != nil || !fi.Mode().IsRegular() || fi.Size() == 0 {
+			_ = file.Close()
+			continue
+		}
+		hash := readerSHA256(file)
+		_ = file.Close()
+		exe := filepath.Join(m.versionsDir, e.Name(), "frpc.exe")
 
 		info := FrpVersionInfo{
 			Version: version,
 			ExePath: exe,
 			Size:    fi.Size(),
-			SHA256:  fileSHA256(exe),
+			SHA256:  hash,
 		}
 		// 读取元信息（安装时间、导入标记）
-		if meta, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
-			var mm map[string]any
-			if json.Unmarshal(meta, &mm) == nil {
-				if at, ok := mm["installedAt"].(string); ok {
-					info.InstalledAt = at
-				}
-				if imp, ok := mm["isImport"].(bool); ok {
-					info.IsImport = imp
+		if metaFile, err := root.Open(filepath.Join(e.Name(), "meta.json")); err == nil {
+			meta, readErr := io.ReadAll(metaFile)
+			_ = metaFile.Close()
+			if readErr == nil {
+				var mm map[string]any
+				if json.Unmarshal(meta, &mm) == nil {
+					if at, ok := mm["installedAt"].(string); ok {
+						info.InstalledAt = at
+					}
+					if imp, ok := mm["isImport"].(bool); ok {
+						info.IsImport = imp
+					}
 				}
 			}
 		}
@@ -94,6 +109,9 @@ func (m *Manager) ListInstalled() ([]FrpVersionInfo, error) {
 // Download 下载并硬校验指定版本，解压提取 frpc.exe 到 versions/frp_vX.Y.Z/
 // onProgress 可选：实时上报各阶段进度（下载字节、校验、解压）。
 func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) error {
+	if err := validateVersion(version); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -185,6 +203,9 @@ func (m *Manager) ImportLocal(srcExe string) (FrpVersionInfo, error) {
 	if vErr != nil || version == "" {
 		version = "imported-" + time.Now().Format("20060102-150405")
 	}
+	if err := validateVersion(version); err != nil {
+		return FrpVersionInfo{}, err
+	}
 	targetDir := filepath.Join(m.versionsDir, "frp_"+version)
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return FrpVersionInfo{}, err
@@ -227,7 +248,16 @@ func (m *Manager) Remove(version string) error {
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(dir)
+	root, err := os.OpenRoot(m.versionsDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	name := filepath.Base(dir)
+	if err := checkVersionDir(root, name); err != nil {
+		return err
+	}
+	return root.RemoveAll(name)
 }
 
 // ResolveExe 返回指定版本的 frpc.exe 路径（不存在返回错误）
@@ -241,12 +271,23 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 
 // resolveVersionDir 定位版本隔离目录（优先 frp_vX.Y.Z，回退 frp_X.Y.Z）
 func (m *Manager) resolveVersionDir(version string) (string, error) {
-	ver := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if err := validateVersion(version); err != nil {
+		return "", err
+	}
+	root, err := os.OpenRoot(m.versionsDir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	ver := strings.TrimPrefix(version, "v")
 	for _, name := range []string{"frp_v" + ver, "frp_" + ver} {
-		dir := filepath.Join(m.versionsDir, name)
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			return dir, nil
+		if _, err := root.Lstat(name); os.IsNotExist(err) {
+			continue
 		}
+		if err := checkVersionDir(root, name); err != nil {
+			return "", err
+		}
+		return filepath.Join(m.versionsDir, name), nil
 	}
 	return "", fmt.Errorf("版本 v%s 未安装，请先在版本管理页面下载或导入", ver)
 }
@@ -265,7 +306,7 @@ func versionFromDirName(name string) (string, bool) {
 	if plainVersionRe.MatchString(rest) {
 		return "v" + rest, true // 规范化为 vX.Y.Z，与远程 ListReleases 保持一致
 	}
-	if strings.HasPrefix(rest, "imported-") {
+	if importedVersionRe.MatchString(rest) {
 		return rest, true
 	}
 	return "", false
@@ -273,6 +314,33 @@ func versionFromDirName(name string) (string, bool) {
 
 // plainVersionRe 纯版本号（如 0.61.2），用于识别版本隔离目录名
 var plainVersionRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+$`)
+var importedVersionRe = regexp.MustCompile(`^imported-[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$`)
+
+func validateVersion(version string) error {
+	if !plainVersionRe.MatchString(version) && !importedVersionRe.MatchString(version) {
+		return fmt.Errorf("非法 frpc 版本标识 %q", version)
+	}
+	return nil
+}
+
+// 最后一次文件操作仍通过 Root，拒绝链接安装目录及链接可执行文件。
+func checkVersionDir(root *os.Root, name string) error {
+	fi, err := root.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("版本目录不是普通目录: %s", name)
+	}
+	exe, err := root.Lstat(filepath.Join(name, "frpc.exe"))
+	if err != nil {
+		return err
+	}
+	if !exe.Mode().IsRegular() || exe.Size() == 0 {
+		return fmt.Errorf("版本可执行文件无效: %s", name)
+	}
+	return nil
+}
 
 // ---------- 内部工具 ----------
 
@@ -448,17 +516,21 @@ func detectVersion(exe string) (string, error) {
 	return text, nil
 }
 
+func readerSHA256(r io.Reader) string {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func fileSHA256(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
 	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return ""
-	}
-	return hex.EncodeToString(h.Sum(nil))
+	return readerSHA256(f)
 }
 
 func writeJSON(path string, v any) error {
