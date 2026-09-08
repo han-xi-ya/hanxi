@@ -68,19 +68,18 @@ function progressOf(item: DownloadProgress): number {
 async function loadVersions() {
   loading.value = true
   listError.value = ''
-  try {
-    const [remote, local, active, follow] = await Promise.all([
-      MangoDiskAPI.ListReleases(), MangoDiskAPI.ListInstalledVersions(), MangoDiskAPI.GetActiveVersion(), MangoDiskAPI.GetFollowOnExit(),
-    ])
-    releases.value = remote ?? []
-    installed.value = local ?? []
-    activeVersion.value = active ?? ''
-    followOnExit.value = follow
-  } catch (error) {
-    listError.value = `获取版本列表失败：${getErrorMessage(error)}`
-  } finally {
-    loading.value = false
-  }
+  const localTask = Promise.all([MangoDiskAPI.ListInstalledVersions(), MangoDiskAPI.GetActiveVersion(), MangoDiskAPI.GetFollowOnExit()])
+    .then(([local, active, follow]) => {
+      installed.value = local ?? []
+      activeVersion.value = active ?? ''
+      followOnExit.value = follow
+    })
+    .catch((error: unknown) => { listError.value = `读取本地版本失败: ${getErrorMessage(error)}` })
+  void MangoDiskAPI.ListReleases()
+    .then(remote => { releases.value = remote ?? [] })
+    .catch((error: unknown) => { listError.value = `获取远程版本列表失败: ${getErrorMessage(error)}` })
+    .finally(() => { loading.value = false })
+  await localTask
 }
 
 async function refreshStatus() {

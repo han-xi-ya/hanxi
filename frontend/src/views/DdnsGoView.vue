@@ -8,6 +8,7 @@ import type { Snapshot } from '../../bindings/hanxi/internal/modules/ddnsgo/inst
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { usePolling } from '../composables/usePolling'
+import { loadManagedVersions } from '../composables/loadManagedVersions'
 import { useAsyncAction } from '../composables/useAsyncAction'
 import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
@@ -89,22 +90,16 @@ const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(
 
 // ---------- 数据加载 ----------
 async function loadVersions() {
-  loading.value = true
-  listError.value = ''
-  try {
-    const [remote, local, active] = await Promise.all([
-      DdnsGoAPI.ListReleases(),
-      DdnsGoAPI.ListInstalledVersions(),
-      DdnsGoAPI.GetActiveVersion(),
-    ])
-    releases.value = remote ?? []
-    installed.value = local ?? []
-    activeVersion.value = active ?? ''
-  } catch (e) {
-    listError.value = `获取版本列表失败: ${getErrorMessage(e)}`
-  } finally {
-    loading.value = false
-  }
+  await loadManagedVersions({
+    remote: DdnsGoAPI.ListReleases,
+    local: DdnsGoAPI.ListInstalledVersions,
+    active: DdnsGoAPI.GetActiveVersion,
+    setRemote: value => { releases.value = value },
+    setLocal: value => { installed.value = value },
+    setActive: value => { activeVersion.value = value },
+    setLoading: value => { loading.value = value },
+    setError: value => { listError.value = value },
+  })
 }
 
 async function refreshStatus() {

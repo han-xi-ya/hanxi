@@ -94,22 +94,18 @@ const variantNote = computed(() => {
 async function loadVersions() {
   loading.value = true
   listError.value = ''
-  try {
-    const [remote, local, pref, rt] = await Promise.all([
-      PaperAPI.ListReleases(),
-      PaperAPI.GetInstalledVersion(),
-      PaperAPI.GetVariant(),
-      PaperAPI.GetRuntimeStatus(),
-    ])
-    releases.value = remote ?? []
-    installed.value = local && local.version ? local : null
-    variant.value = (pref === 'no-runtime' ? 'no-runtime' : 'self-contained') as Variant
-    runtime.value = rt ?? null
-  } catch (e) {
-    listError.value = `获取版本列表失败: ${getErrorMessage(e)}`
-  } finally {
-    loading.value = false
-  }
+  const localTask = Promise.all([PaperAPI.GetInstalledVersion(), PaperAPI.GetVariant(), PaperAPI.GetRuntimeStatus()])
+    .then(([local, pref, rt]) => {
+      installed.value = local && local.version ? local : null
+      variant.value = (pref === 'no-runtime' ? 'no-runtime' : 'self-contained') as Variant
+      runtime.value = rt ?? null
+    })
+    .catch((error: unknown) => { listError.value = `读取本地版本失败: ${getErrorMessage(error)}` })
+  void PaperAPI.ListReleases()
+    .then(remote => { releases.value = remote ?? [] })
+    .catch((error: unknown) => { listError.value = `获取远程版本列表失败: ${getErrorMessage(error)}` })
+    .finally(() => { loading.value = false })
+  await localTask
 }
 
 async function refreshStatus() {

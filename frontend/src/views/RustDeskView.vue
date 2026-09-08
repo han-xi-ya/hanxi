@@ -96,22 +96,18 @@ const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(
 async function loadVersions() {
   loading.value = true
   listError.value = ''
-  try {
-    const [remote, local, active, form] = await Promise.all([
-      RustDeskAPI.ListReleases(),
-      RustDeskAPI.ListInstalledVersions(),
-      RustDeskAPI.GetActiveVersion(),
-      RustDeskAPI.GetActiveForm(),
-    ])
-    releases.value = remote ?? []
-    installed.value = local ?? []
-    activeVersion.value = active ?? ''
-    activeForm.value = form ?? ''
-  } catch (e) {
-    listError.value = `获取版本列表失败: ${getErrorMessage(e)}`
-  } finally {
-    loading.value = false
-  }
+  const localTask = Promise.all([RustDeskAPI.ListInstalledVersions(), RustDeskAPI.GetActiveVersion(), RustDeskAPI.GetActiveForm()])
+    .then(([local, active, form]) => {
+      installed.value = local ?? []
+      activeVersion.value = active ?? ''
+      activeForm.value = form ?? ''
+    })
+    .catch((error: unknown) => { listError.value = `读取本地版本失败: ${getErrorMessage(error)}` })
+  void RustDeskAPI.ListReleases()
+    .then(remote => { releases.value = remote ?? [] })
+    .catch((error: unknown) => { listError.value = `获取远程版本列表失败: ${getErrorMessage(error)}` })
+    .finally(() => { loading.value = false })
+  await localTask
 }
 
 async function refreshStatus() {

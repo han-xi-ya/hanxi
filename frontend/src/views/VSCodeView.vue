@@ -83,22 +83,20 @@ function bannerFor(snap: Snapshot | null, form: Form): { tone: 'warn' | 'error' 
 async function loadVersions() {
   loading.value = true
   listError.value = ''
-  try {
-    const [remoteP, remoteI, local, active] = await Promise.all([
-      VSCodeAPI.ListRemoteVersions('portable'),
-      VSCodeAPI.ListRemoteVersions('installer'),
-      VSCodeAPI.ListInstalledVersions(),
-      VSCodeAPI.GetActiveVersion(),
-    ])
-    releasesP.value = remoteP ?? []
-    releasesI.value = remoteI ?? []
-    installed.value = local ?? []
-    activeVersion.value = active ?? ''
-  } catch (e) {
-    listError.value = `获取版本列表失败: ${getErrorMessage(e)}`
-  } finally {
-    loading.value = false
-  }
+  const localTask = Promise.all([VSCodeAPI.ListInstalledVersions(), VSCodeAPI.GetActiveVersion()])
+    .then(([local, active]) => {
+      installed.value = local ?? []
+      activeVersion.value = active ?? ''
+    })
+    .catch((error: unknown) => { listError.value = `读取本地版本失败: ${getErrorMessage(error)}` })
+  const portableTask = VSCodeAPI.ListRemoteVersions('portable')
+    .then(remote => { releasesP.value = remote ?? [] })
+    .catch((error: unknown) => { listError.value = `获取便携版列表失败: ${getErrorMessage(error)}` })
+  const installerTask = VSCodeAPI.ListRemoteVersions('installer')
+    .then(remote => { releasesI.value = remote ?? [] })
+    .catch((error: unknown) => { listError.value = `获取安装版列表失败: ${getErrorMessage(error)}` })
+  void Promise.allSettled([portableTask, installerTask]).finally(() => { loading.value = false })
+  await localTask
 }
 
 async function refreshStatus() {

@@ -106,20 +106,17 @@ const banner = computed(() => {
 async function loadVersions() {
   loading.value = true
   listError.value = ''
-  try {
-    const [remote, local, ch] = await Promise.all([
-      RecordlyAPI.ListReleases(),
-      RecordlyAPI.ListInstalledVersions(),
-      RecordlyAPI.GetReleaseChannel(),
-    ])
-    releases.value = remote ?? []
-    installed.value = local ?? []
-    channel.value = ch === 'beta' ? 'beta' : 'stable'
-  } catch (e) {
-    listError.value = `获取版本列表失败: ${getErrorMessage(e)}`
-  } finally {
-    loading.value = false
-  }
+  const localTask = Promise.all([RecordlyAPI.ListInstalledVersions(), RecordlyAPI.GetReleaseChannel()])
+    .then(([local, ch]) => {
+      installed.value = local ?? []
+      channel.value = ch === 'beta' ? 'beta' : 'stable'
+    })
+    .catch((error: unknown) => { listError.value = `读取本地版本失败: ${getErrorMessage(error)}` })
+  void RecordlyAPI.ListReleases()
+    .then(remote => { releases.value = remote ?? [] })
+    .catch((error: unknown) => { listError.value = `获取远程版本列表失败: ${getErrorMessage(error)}` })
+    .finally(() => { loading.value = false })
+  await localTask
 }
 
 async function switchChannel(target: 'stable' | 'beta') {

@@ -10,6 +10,7 @@ import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { usePolling } from '../composables/usePolling'
+import { loadManagedVersions } from '../composables/loadManagedVersions'
 import { useConfirm } from '../composables/useConfirm'
 import { useClipboard } from '../composables/useClipboard'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
@@ -124,22 +125,16 @@ const latestVersion = computed(() => releases.value.find(r => !r.isPre)?.version
 
 // ---------- 数据加载 ----------
 async function loadVersions() {
-  loading.value = true
-  errorMsg.value = ''
-  try {
-    const [remote, local, active] = await Promise.all([
-      MarkerAPI.ListReleases(),
-      MarkerAPI.ListInstalledVersions(),
-      MarkerAPI.GetActiveVersion(),
-    ])
-    releases.value = remote ?? []
-    installed.value = local ?? []
-    activeVersion.value = active ?? ''
-  } catch (e) {
-    errorMsg.value = `获取版本列表失败: ${getErrorMessage(e)}`
-  } finally {
-    loading.value = false
-  }
+  await loadManagedVersions({
+    remote: MarkerAPI.ListReleases,
+    local: MarkerAPI.ListInstalledVersions,
+    active: MarkerAPI.GetActiveVersion,
+    setRemote: value => { releases.value = value },
+    setLocal: value => { installed.value = value },
+    setActive: value => { activeVersion.value = value },
+    setLoading: value => { loading.value = value },
+    setError: value => { errorMsg.value = value },
+  })
 }
 
 async function refreshStatus() {

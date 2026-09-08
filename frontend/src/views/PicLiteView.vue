@@ -8,6 +8,7 @@ import type { ControlOutcome, QuitOutcome } from '../../bindings/hanxi/internal/
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { usePolling } from '../composables/usePolling'
+import { loadManagedVersions } from '../composables/loadManagedVersions'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { useClipboard } from '../composables/useClipboard'
@@ -76,22 +77,16 @@ const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(
 
 // ---------- 数据加载 ----------
 async function loadVersions() {
-  loading.value = true
-  listError.value = ''
-  try {
-    const [remote, local, active] = await Promise.all([
-      PicLiteAPI.ListReleases(),
-      PicLiteAPI.ListInstalledVersions(),
-      PicLiteAPI.GetActiveVersion(),
-    ])
-    releases.value = remote ?? []
-    installed.value = local ?? []
-    activeVersion.value = active ?? ''
-  } catch (e) {
-    listError.value = `获取版本列表失败: ${getErrorMessage(e)}`
-  } finally {
-    loading.value = false
-  }
+  await loadManagedVersions({
+    remote: PicLiteAPI.ListReleases,
+    local: PicLiteAPI.ListInstalledVersions,
+    active: PicLiteAPI.GetActiveVersion,
+    setRemote: value => { releases.value = value },
+    setLocal: value => { installed.value = value },
+    setActive: value => { activeVersion.value = value },
+    setLoading: value => { loading.value = value },
+    setError: value => { listError.value = value },
+  })
 }
 
 async function refreshStatus() {
