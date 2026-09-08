@@ -2,7 +2,7 @@
 // 断言对象：检测卡渲染、状态 chip、官方版本面板接线、npm 工具装升卸事件流、
 // 本地三态 ConfirmDialog（busy+details，视图自持，非 useConfirm 收编对象）。
 import { nextTick } from 'vue'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import EnvCheckView from '../EnvCheckView.vue'
 import { useToast } from '../../composables/useToast'
@@ -102,12 +102,42 @@ async function mountView() {
   return mount(EnvCheckView, { attachTo: document.body, global: { stubs: { teleport: true } } })
 }
 
+async function openVersions(w: VueWrapper) {
+  const tab = w.findAll('[role="tab"]').find(item => item.text() === '版本与工具')
+  if (!tab) throw new Error('未找到“版本与工具”标签')
+  await tab.trigger('click')
+  await nextTick()
+}
+
+function managedCard(w: VueWrapper, display: string) {
+  return w.findAll('.management-card').find(card => card.text().includes(display) && card.find('.npm-panel').exists())
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
   useToast().clearToast()
 })
 
 describe('EnvCheckView 检测卡渲染', () => {
+  it('默认显示本机环境，并以完整 ARIA 关系切换版本与工具标签且不重复请求', async () => {
+    stubHappy()
+    const w = await mountView()
+    await flush()
+    const tabs = w.findAll('[role="tab"]')
+    expect(tabs.map(tab => tab.text())).toEqual(['本机环境', '版本与工具'])
+    expect(tabs[0].attributes('aria-selected')).toBe('true')
+    expect(tabs[0].attributes('aria-controls')).toBe('envcheck-local-panel')
+    expect(w.find('#envcheck-local-panel').attributes('aria-labelledby')).toBe('envcheck-local-tab')
+    expect(w.find('#envcheck-versions-panel').attributes('aria-labelledby')).toBe('envcheck-versions-tab')
+    const detectCalls = env.DetectAll.mock.calls.length
+    await openVersions(w)
+    expect(tabs[1].attributes('aria-selected')).toBe('true')
+    expect(w.find('#envcheck-local-panel').isVisible()).toBe(false)
+    expect(w.find('#envcheck-versions-panel').isVisible()).toBe(true)
+    expect(env.DetectAll).toHaveBeenCalledTimes(detectCalls)
+    w.unmount()
+  })
+
   it('首屏并发拉取本机清单 + 6 官网通道 + npm overview', async () => {
     stubHappy()
     const w = await mountView()
@@ -117,7 +147,7 @@ describe('EnvCheckView 检测卡渲染', () => {
     expect(env.GetDotNetOverview).toHaveBeenCalled()
     expect(env.GetNpmToolsOverview).toHaveBeenCalled()
     expect(w.findAll('.tool-card')).toHaveLength(BASE_TOOLS.length)
-    expect(w.find('.stat-text')!.text()).toContain('6 / 9 已安装')
+    expect(w.find('.status-summary').text()).toContain('本机已安装 6 / 9 项')
     w.unmount()
   })
 
@@ -131,22 +161,23 @@ describe('EnvCheckView 检测卡渲染', () => {
     ] as never)
     const w = await mountView()
     await flush()
-    const chips = w.findAll('.status-chip').map(c => c.text())
+    const chips = w.find('#envcheck-local-panel').findAll('.status-chip').map(c => c.text())
     expect(chips).toEqual(['✓ 已安装', '○ 未安装', '! 检测失败', '⚠ 商店存根'])
     // 回退语义：未知状态按"检测失败"呈现
     w.unmount()
   })
 
-  it('dotnet 并排版本线补充行 + npm/pnpm 手动升级提示 + java 存根 hint', async () => {
+  it('dotnet 并排版本线 + 版本标签中的 npm/pnpm 升级提示 + java 存根 hint', async () => {
     stubHappy()
     const w = await mountView()
     await flush()
     expect(w.text()).toContain('另装版本线 8.0')
-    const npmCard = w.findAll('.tool-card').find(c => c.text().includes('npm'))!
-    expect(npmCard.find('.upgrade-hint').exists()).toBe(true)
-    expect(npmCard.text()).toContain('npm install --global npm@latest')
     const javaCard = w.findAll('.tool-card').find(c => c.text().includes('Java'))!
     expect(javaCard.find('.tool-hint').text()).toContain('微软商店存根')
+    await openVersions(w)
+    const npmCard = w.findAll('.management-card').find(c => c.text().includes('npm') && c.find('.upgrade-hint').exists())!
+    expect(npmCard.find('.upgrade-hint').exists()).toBe(true)
+    expect(npmCard.text()).toContain('npm install --global npm@latest')
     w.unmount()
   })
 
@@ -158,6 +189,15 @@ describe('EnvCheckView 检测卡渲染', () => {
     await flush()
     expect(w.find('.banner-error').exists()).toBe(true)
     expect(w.find('.banner-error').text()).toContain('本机环境检测失败: WMI 不可用')
+    w.unmount()
+  })
+
+  it('空工具清单显示解释性空态', async () => {
+    stubHappy()
+    env.DetectAll.mockResolvedValue([])
+    const w = await mountView()
+    await flush()
+    expect(w.find('#envcheck-local-panel').text()).toContain('未返回可识别的开发工具，请重新检测')
     w.unmount()
   })
 
@@ -192,13 +232,22 @@ describe('EnvCheckView npm 工具操作流', () => {
     stubHappy()
     const w = await mountView()
     await flush()
-    const card = w.findAll('.tool-card').find(c => c.text().includes('Claude Code'))!
+    await openVersions(w)
+    const card = managedCard(w, 'Claude Code')!
     const upgrade = card.findAll('button').find(b => b.text().includes('升级到 2.1.261'))!
     await upgrade.trigger('click')
     await flush()
     expect(env.UpgradeNpmTool).toHaveBeenCalledWith('claude')
     expect(card.find('.op-running').exists()).toBe(true)
     expect(card.find('.op-log').text()).toBe('正在启动 npm 操作…')
+    const detectCalls = env.DetectAll.mock.calls.length
+    await w.findAll('[role="tab"]')[0].trigger('click')
+    await w.findAll('[role="tab"]')[1].trigger('click')
+    await nextTick()
+    const restored = managedCard(w, 'Claude Code')!
+    expect(restored.find('.op-running').exists()).toBe(true)
+    expect(restored.find('.op-log').text()).toBe('正在启动 npm 操作…')
+    expect(env.DetectAll).toHaveBeenCalledTimes(detectCalls)
     w.unmount()
   })
 
@@ -206,7 +255,8 @@ describe('EnvCheckView npm 工具操作流', () => {
     stubHappy()
     const w = await mountView()
     await flush()
-    const card = w.findAll('.tool-card').find(c => c.text().includes('Claude Code'))!
+    await openVersions(w)
+    const card = managedCard(w, 'Claude Code')!
     await card.findAll('button').find(b => b.text() === '卸载')!.trigger('click')
     await flush()
     const dialog = w.find('.workbench-confirm')
@@ -225,7 +275,8 @@ describe('EnvCheckView npm 工具操作流', () => {
     stubHappy()
     const w = await mountView()
     await flush()
-    const card = w.findAll('.tool-card').find(c => c.text().includes('Claude Code'))!
+    await openVersions(w)
+    const card = managedCard(w, 'Claude Code')!
     await card.findAll('button').find(b => b.text() === '卸载')!.trigger('click')
     await flush()
     await w.find('.workbench-confirm').findAll('button').find(b => b.text() === '取消')!.trigger('click')
@@ -241,7 +292,8 @@ describe('EnvCheckView npm 工具操作流', () => {
     await flush()
     runtime.handlers['envcheck:npm-tool-operation']({ data: { operationId: 'x', toolId: 'codex', kind: 'install', stage: 'running', message: 'codex 安装中', terminal: false, success: false } })
     await nextTick()
-    const card = w.findAll('.tool-card').find(c => c.text().includes('Claude Code'))!
+    await openVersions(w)
+    const card = managedCard(w, 'Claude Code')!
     const upgrade = card.findAll('button').find(b => b.text().includes('升级到'))!
     expect(upgrade.attributes('disabled')).toBeDefined()
     expect(card.text()).toContain('另一 npm 操作进行中')
@@ -268,7 +320,8 @@ describe('EnvCheckView npm 工具操作流', () => {
     await flush()
     runtime.handlers['envcheck:npm-tool-log']({ data: { toolId: 'claude', line: 'added 1 package' } })
     await nextTick()
-    const card = w.findAll('.tool-card').find(c => c.text().includes('Claude Code'))!
+    await openVersions(w)
+    const card = managedCard(w, 'Claude Code')!
     expect(card.find('.op-log').text()).toContain('added 1 package')
     // 他工具日志不污染本面板
     runtime.handlers['envcheck:npm-tool-log']({ data: { toolId: 'codex', line: 'foreign' } })
@@ -277,20 +330,18 @@ describe('EnvCheckView npm 工具操作流', () => {
     w.unmount()
   })
 
-  it('npm overview 拉取失败：错误文案 + 重试按钮重发', async () => {
+  it('npm overview 拉取失败：错误文案 + 分区重试按钮恢复', async () => {
     stubHappy()
     env.GetNpmToolsOverview.mockRejectedValue(new Error('registry 超时'))
     const w = await mountView()
     await flush()
-    // 现状契约：工具卡来自本机清单，overview 失败只影响 NpmToolActions 面板挂载，
-    // npmError 仅存于视图状态（模板未渲染横幅）——如实锁定。
-    const card = w.findAll('.tool-card').find(c => c.text().includes('Claude Code'))!
-    expect(card.find('.npm-panel').exists()).toBe(false)
-    // 顶层重检测按钮可再触发恢复
+    await openVersions(w)
+    expect(w.find('#envcheck-versions-panel .banner-error').text()).toContain('npm 工具信息获取失败: registry 超时')
+    expect(managedCard(w, 'Claude Code')).toBeUndefined()
     env.GetNpmToolsOverview.mockResolvedValue(npmOverview() as never)
-    await w.find('.btn-primary').trigger('click')
+    await w.findAll('.section-heading button').find(button => button.text() === '重试 npm 信息')!.trigger('click')
     await flush()
-    expect(w.findAll('.tool-card').find(c => c.text().includes('Claude Code'))!.find('.npm-panel').exists()).toBe(true)
+    expect(managedCard(w, 'Claude Code')!.find('.npm-panel').exists()).toBe(true)
     w.unmount()
   })
 })

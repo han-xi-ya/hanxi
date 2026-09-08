@@ -16,6 +16,7 @@ import PackageManagerUpgradeHint from '../components/envcheck/PackageManagerUpgr
 import NpmToolActions from '../components/envcheck/NpmToolActions.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
+import MainTabNav from '../components/ui/MainTabNav.vue'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
@@ -27,6 +28,12 @@ interface PanelOverview { channels: Channel[]; isStale: boolean; fetchedAt?: str
 interface RemoteState { overview: PanelOverview | null; loading: boolean; error: string }
 
 const tools = ref<ToolInfo[]>([])
+const activeMainTab = ref<'local' | 'versions'>('local')
+const MAIN_TABS = [
+  { key: 'local', label: '本机环境' },
+  { key: 'versions', label: '版本与工具' },
+]
+const OFFICIAL_TOOLS: OfficialTool[] = ['git', 'go', 'node', 'java', 'python', 'dotnet']
 const localLoading = ref(false)
 const loadError = ref('')
 const everLoaded = ref(false)
@@ -51,7 +58,9 @@ const npmActive = ref<OperationProgress | null>(null)
 const uninstallTarget = ref<ToolOverview | null>(null)
 const uninstallBusy = ref(false)
 
-const npmByName = computed(() => new Map((npmOverview.value?.tools ?? []).map(tool => [tool.local.name, tool])))
+const toolsByName = computed(() => new Map(tools.value.map(tool => [tool.name, tool])))
+const officialTools = computed(() => OFFICIAL_TOOLS.map(name => ({ name, local: toolsByName.value.get(name) })))
+const packageManagers = computed(() => (['npm', 'pnpm'] as const).map(name => ({ name, local: toolsByName.value.get(name) })))
 // npmBusy：进行中操作优先取实时事件，回退到 overview 快照（页面重挂载恢复忙碌态）。
 const npmBusyOperation = computed<OperationProgress | null>(() => npmActive.value ?? npmOverview.value?.activeOperation ?? null)
 
@@ -71,6 +80,17 @@ const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: stri
   java: { heading: 'Eclipse Temurin 参考版本', downloadLabel: '打开 Temurin 下载页' },
   python: { heading: 'Python.org 官方版本', downloadLabel: '打开 Python 官网下载页' },
   dotnet: { heading: '.NET 官方支持线', downloadLabel: '打开 .NET 官网下载页' },
+}
+
+const TOOL_LABELS: Record<OfficialTool | 'npm' | 'pnpm', string> = {
+  git: 'Git',
+  go: 'Go',
+  node: 'Node.js',
+  java: 'Java',
+  python: 'Python',
+  dotnet: '.NET',
+  npm: 'npm',
+  pnpm: 'pnpm',
 }
 
 const uninstallDetails = computed(() => {
@@ -250,10 +270,6 @@ async function openDownloadPage(tool: OfficialTool) {
   }
 }
 
-function isOfficialTool(name: string): name is OfficialTool {
-  return name === 'git' || name === 'go' || name === 'node' || name === 'java' || name === 'python' || name === 'dotnet'
-}
-
 // 状态语义表已上收 constants/status（ENV_STATUS_META text/icon 逐字同源，cls 由 tone 取代）
 
 // joinVersions 并列展示 .NET 并排安装的版本列表（后端已按版本升序去重）。
@@ -293,94 +309,184 @@ onMounted(() => {
   <section class="page env-view">
     <PageHeader
       title="开发环境检测"
-      subtitle="探测本机开发工具链的安装路径与版本。Git、Go、Node.js、Java、Python、.NET 卡片同时查询官方或明确发行方版本： 每个通道只展示最新版本，本机已安装的版本线自动排在最前（.NET 卡片展示 SDK 优先版本，版本关系按运行时口径比较）。 npm、pnpm 本体仅提供可复制的手动升级命令；Claude Code、Codex 等受管 npm 全局工具支持一键安装/升级/卸载（卸载需二次确认）。"
+      subtitle="检测本机开发工具链并对照官方版本；受管 npm 全局工具可在页内安装、升级或卸载。"
     >
       <template #actions>
-        <div class="btn-group">
-          <span v-if="everLoaded" class="stat-text">✓ {{ okCount }} / {{ totalCount }} 已安装</span>
-          <button class="btn btn-primary btn-small" :disabled="loading" @click="refresh">
-            {{ loading ? '检测中…' : '↻ 重新检测' }}
-          </button>
-        </div>
+        <MainTabNav
+          v-model="activeMainTab"
+          :tabs="MAIN_TABS"
+          id-prefix="envcheck"
+          label="开发环境检测页面"
+        />
       </template>
     </PageHeader>
 
-    <div v-if="loadError" class="banner banner-error" role="alert">{{ loadError }}</div>
-    <div v-if="loading && !everLoaded" class="empty-state" aria-live="polite">
-      <p>正在检测开发环境并查询官网版本…</p>
+    <div class="status-toolbar" :aria-busy="loading">
+      <div class="status-summary">
+        <strong>{{ everLoaded ? `本机已安装 ${okCount} / ${totalCount} 项` : '尚未完成本机检测' }}</strong>
+        <span>{{ loading ? '正在刷新本机环境、官方版本与 npm 工具信息…' : '一次刷新同步更新两个标签中的数据。' }}</span>
+      </div>
+      <button class="btn btn-primary btn-small refresh-button" :disabled="loading" @click="refresh">
+        {{ loading ? '检测中…' : '↻ 重新检测' }}
+      </button>
     </div>
 
-    <div v-else-if="everLoaded" class="tool-grid" :aria-busy="localLoading">
-      <div v-for="tool in tools" :key="tool.name" class="tool-card" :class="[`status-${tool.status}`, { 'local-refreshing': localLoading }]">
-        <div class="tool-card-top">
-          <span class="tool-name">{{ tool.display }}</span>
-          <span class="chip status-chip" :class="`chip-${metaOf(tool).tone}`">{{ metaOf(tool).icon }} {{ metaOf(tool).text }}</span>
-        </div>
-        <div class="inst-meta">
-          <div class="meta-line">
-            <span class="k">版本</span>
-            <code class="mono">{{ tool.version || '—' }}</code>
-            <span v-if="tool.name === 'dotnet' && dotnetExtraLines(tool).length" class="extra-lines">另装版本线 {{ dotnetExtraLines(tool).join('、') }}</span>
-          </div>
-          <div class="meta-line">
-            <span class="k">路径</span>
-            <button
-              v-if="tool.path && tool.status === 'installed'"
-              class="mono tool-path path-link"
-              :title="`在资源管理器中定位 ${tool.path}`"
-              @click="revealPath(tool)"
-            >{{ tool.path }}</button>
-            <code v-else class="mono tool-path">{{ tool.path || '—' }}</code>
-          </div>
-        </div>
-        <div v-if="tool.details?.java" class="tool-details">
-          <span>发行版：{{ tool.details.java.vendor || '未知' }}</span>
-          <span v-if="tool.details.java.runtime">运行时：{{ tool.details.java.runtime }}</span>
-        </div>
-        <div v-if="tool.details?.dotnet" class="tool-details">
-          <span>SDK：{{ joinVersions(tool.details.dotnet.sdks) || '未安装（仅运行时）' }}</span>
-          <span>运行时：{{ joinVersions(tool.details.dotnet.runtimes) || '未知' }}</span>
-          <span v-if="tool.details.dotnet.desktops?.length">桌面运行时：{{ joinVersions(tool.details.dotnet.desktops) }}</span>
-          <span v-if="tool.details.dotnet.aspnet?.length">ASP.NET 运行时：{{ joinVersions(tool.details.dotnet.aspnet) }}</span>
-        </div>
-        <div v-if="tool.name === 'dotnet'" class="tool-actions">
-          <button
-            class="btn btn-secondary btn-small"
-            title="打开 BCUninstaller 自行选择卸载目标；注意卸载 8.0 线会导致依赖它的 BCUninstaller 自身无法启动"
-            @click="openBCUForUninstall"
-          >🗑 用 BCUninstaller 卸载 / 搜索运行库</button>
-        </div>
-        <div v-if="tool.hint" class="tool-hint" :class="tool.status === 'store-stub' ? 'hint-warn' : 'hint-error'">{{ tool.hint }}</div>
+    <div v-if="loadError" class="banner banner-error" role="alert">{{ loadError }}</div>
 
-        <OfficialVersionsPanel
-          v-if="isOfficialTool(tool.name)"
-          :heading="OFFICIAL_META[tool.name].heading"
-          :download-label="OFFICIAL_META[tool.name].downloadLabel"
-          :channels="remoteStates[tool.name].overview?.channels ?? []"
-          :loading="remoteStates[tool.name].loading"
-          :error="remoteStates[tool.name].error"
-          :stale="remoteStates[tool.name].overview?.isStale ?? false"
-          :fetched-at="remoteStates[tool.name].overview?.fetchedAt"
-          @retry="refreshOfficial(tool.name)"
-          @open="openDownloadPage(tool.name)"
-        />
-        <PackageManagerUpgradeHint
-          v-if="tool.name === 'npm' || tool.name === 'pnpm'"
-          :tool="tool.name"
-          :installed="tool.status === 'installed'"
-        />
-        <NpmToolActions
-          v-if="npmByName.has(tool.name)"
-          :overview="npmByName.get(tool.name)!"
-          :operation="npmOperationFor(tool.name)"
-          :busy-elsewhere="npmBusyElsewhere(tool.name)"
-          :log-lines="npmLogs[tool.name] ?? []"
-          @install="startNpmAction('install', npmByName.get(tool.name)!)"
-          @upgrade="startNpmAction('upgrade', npmByName.get(tool.name)!)"
-          @uninstall="requestUninstall(npmByName.get(tool.name)!)"
-          @retry="refreshNpm"
-        />
+    <div
+      id="envcheck-local-panel"
+      v-show="activeMainTab === 'local'"
+      class="tab-body"
+      role="tabpanel"
+      aria-labelledby="envcheck-local-tab"
+    >
+      <div v-if="localLoading && !everLoaded" class="empty-state" aria-live="polite">
+        <p>正在检测本机开发工具链…</p>
       </div>
+      <div v-else-if="everLoaded && tools.length" class="tool-grid" :aria-busy="localLoading">
+        <article v-for="tool in tools" :key="tool.name" class="tool-card" :class="[`status-${tool.status}`, { 'local-refreshing': localLoading }]">
+          <div class="tool-card-top">
+            <span class="tool-name">{{ tool.display }}</span>
+            <span class="chip status-chip" :class="`chip-${metaOf(tool).tone}`">{{ metaOf(tool).icon }} {{ metaOf(tool).text }}</span>
+          </div>
+          <div class="inst-meta">
+            <div class="meta-line">
+              <span class="k">版本</span>
+              <code class="mono">{{ tool.version || '—' }}</code>
+              <span v-if="tool.name === 'dotnet' && dotnetExtraLines(tool).length" class="extra-lines">另装版本线 {{ dotnetExtraLines(tool).join('、') }}</span>
+            </div>
+            <div class="meta-line">
+              <span class="k">路径</span>
+              <button
+                v-if="tool.path && tool.status === 'installed'"
+                class="mono tool-path path-link"
+                :title="`在资源管理器中定位 ${tool.path}`"
+                @click="revealPath(tool)"
+              >{{ tool.path }}</button>
+              <code v-else class="mono tool-path">{{ tool.path || '—' }}</code>
+            </div>
+          </div>
+          <div v-if="tool.details?.java" class="tool-details">
+            <span>发行版：{{ tool.details.java.vendor || '未知' }}</span>
+            <span v-if="tool.details.java.runtime">运行时：{{ tool.details.java.runtime }}</span>
+          </div>
+          <div v-if="tool.details?.dotnet" class="tool-details">
+            <span>SDK：{{ joinVersions(tool.details.dotnet.sdks) || '未安装（仅运行时）' }}</span>
+            <span>运行时：{{ joinVersions(tool.details.dotnet.runtimes) || '未知' }}</span>
+            <span v-if="tool.details.dotnet.desktops?.length">桌面运行时：{{ joinVersions(tool.details.dotnet.desktops) }}</span>
+            <span v-if="tool.details.dotnet.aspnet?.length">ASP.NET 运行时：{{ joinVersions(tool.details.dotnet.aspnet) }}</span>
+          </div>
+          <div v-if="tool.name === 'dotnet'" class="tool-actions">
+            <button
+              class="btn btn-secondary btn-small"
+              title="打开 BCUninstaller 自行选择卸载目标；注意卸载 8.0 线会导致依赖它的 BCUninstaller 自身无法启动"
+              @click="openBCUForUninstall"
+            >用 BCUninstaller 卸载 / 搜索运行库</button>
+          </div>
+          <div v-if="tool.hint" class="tool-hint" :class="tool.status === 'store-stub' ? 'hint-warn' : 'hint-error'">{{ tool.hint }}</div>
+        </article>
+      </div>
+      <div v-else-if="everLoaded" class="empty-state">
+        <p>未返回可识别的开发工具，请重新检测。</p>
+      </div>
+    </div>
+
+    <div
+      id="envcheck-versions-panel"
+      v-show="activeMainTab === 'versions'"
+      class="tab-body version-workspace"
+      role="tabpanel"
+      aria-labelledby="envcheck-versions-tab"
+    >
+      <section class="workspace-section">
+        <div class="section-heading">
+          <div>
+            <h2>官方版本对照</h2>
+            <p>按官方或明确发行方通道对照本机版本；.NET 卡片展示 SDK 优先版本，版本关系按运行时口径比较。</p>
+          </div>
+        </div>
+        <div class="management-grid">
+          <article v-for="item in officialTools" :key="item.name" class="management-card">
+            <div class="local-summary">
+              <div>
+                <span class="tool-name">{{ TOOL_LABELS[item.name] }}</span>
+                <span v-if="item.local" class="chip status-chip" :class="`chip-${metaOf(item.local).tone}`">{{ metaOf(item.local).text }}</span>
+              </div>
+              <code class="mono">本机 {{ item.local?.version || '未安装' }}</code>
+            </div>
+            <OfficialVersionsPanel
+              :heading="OFFICIAL_META[item.name].heading"
+              :download-label="OFFICIAL_META[item.name].downloadLabel"
+              :channels="remoteStates[item.name].overview?.channels ?? []"
+              :loading="remoteStates[item.name].loading"
+              :error="remoteStates[item.name].error"
+              :stale="remoteStates[item.name].overview?.isStale ?? false"
+              :fetched-at="remoteStates[item.name].overview?.fetchedAt"
+              @retry="refreshOfficial(item.name)"
+              @open="openDownloadPage(item.name)"
+            />
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace-section">
+        <div class="section-heading">
+          <div>
+            <h2>包管理器升级指引</h2>
+            <p>只提供可复制的安全指引，不在 Hanxi 内代为执行 npm 或 pnpm 自升级。</p>
+          </div>
+        </div>
+        <div class="management-grid compact-grid">
+          <article v-for="item in packageManagers" :key="item.name" class="management-card">
+            <div class="local-summary">
+              <div>
+                <span class="tool-name">{{ TOOL_LABELS[item.name] }}</span>
+                <span v-if="item.local" class="chip status-chip" :class="`chip-${metaOf(item.local).tone}`">{{ metaOf(item.local).text }}</span>
+              </div>
+              <code class="mono">本机 {{ item.local?.version || '未安装' }}</code>
+            </div>
+            <PackageManagerUpgradeHint :tool="item.name" :installed="item.local?.status === 'installed'" />
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace-section">
+        <div class="section-heading">
+          <div>
+            <h2>受管 npm 全局工具</h2>
+            <p>工具目录由后端配置驱动；安装、升级与卸载共用一个全局操作锁。</p>
+          </div>
+          <button v-if="npmError" class="btn btn-secondary btn-small" :disabled="npmLoading" @click="refreshNpm">重试 npm 信息</button>
+        </div>
+        <div v-if="npmError" class="banner banner-error section-banner" role="alert">{{ npmError }}<template v-if="npmOverview?.tools?.length">；继续显示上次结果。</template></div>
+        <div v-if="npmLoading && !npmOverview" class="empty-state" aria-live="polite">
+          <p>正在读取受管 npm 工具信息…</p>
+        </div>
+        <div v-else-if="npmOverview?.tools?.length" class="management-grid compact-grid">
+          <article v-for="overview in npmOverview.tools" :key="overview.local.name" class="management-card">
+            <div class="local-summary">
+              <div>
+                <span class="tool-name">{{ overview.tool.display }}</span>
+                <span class="chip status-chip" :class="`chip-${metaOf(overview.local).tone}`">{{ metaOf(overview.local).text }}</span>
+              </div>
+              <code class="mono">本机 {{ overview.local.version || '未安装' }}</code>
+            </div>
+            <NpmToolActions
+              :overview="overview"
+              :operation="npmOperationFor(overview.local.name)"
+              :busy-elsewhere="npmBusyElsewhere(overview.local.name)"
+              :log-lines="npmLogs[overview.local.name] ?? []"
+              @install="startNpmAction('install', overview)"
+              @upgrade="startNpmAction('upgrade', overview)"
+              @uninstall="requestUninstall(overview)"
+              @retry="refreshNpm"
+            />
+          </article>
+        </div>
+        <div v-else-if="!npmLoading && !npmError" class="empty-state">
+          <p>当前没有配置可由 Hanxi 管理的 npm 全局工具。</p>
+        </div>
+      </section>
     </div>
 
     <ConfirmDialog
@@ -401,17 +507,33 @@ onMounted(() => {
 
 <style scoped>
 .env-view { display: flex; flex-direction: column; gap: 14px; }
-/* 页头/副标题/错误横幅/空态/.btn 基础与 primary/small/.chip 家族/焦点环/减弱动效
-   均由 PageHeader 与 components.css + base.css 全局承载 */
-.btn-group { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
-.stat-text { font-size: 12px; color: var(--color-text-muted); }
-.tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
-.tool-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-left: 3px solid var(--color-border); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: opacity var(--motion-base) ease; min-width: 0; }
+/* 页头/选项卡/错误横幅/空态/.btn 基础与 primary/small/.chip 家族/焦点环/减弱动效
+   均由 PageHeader、MainTabNav 与 components.css + base.css 全局承载 */
+.status-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-soft); }
+.status-summary { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.status-summary strong { color: var(--color-text); font-size: 13px; font-variant-numeric: tabular-nums; }
+.status-summary span { color: var(--color-text-muted); font-size: 11px; line-height: 1.45; }
+.refresh-button { min-width: 96px; flex: 0 0 auto; }
+.tab-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.tool-grid, .management-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+.compact-grid { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
+.tool-card, .management-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tool-card { border-left: 3px solid var(--color-border); transition: opacity var(--motion-base) ease; }
 .tool-card.local-refreshing { opacity: 0.68; }
 .tool-card.status-installed { border-left-color: var(--state-positive); }
 .tool-card.status-missing { border-left-color: var(--color-text-subtle); }
 .tool-card.status-error { border-left-color: var(--state-danger); }
 .tool-card.status-store-stub { border-left-color: var(--state-warning); }
+.version-workspace { gap: 18px; }
+.workspace-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.workspace-section + .workspace-section { padding-top: 17px; border-top: 1px solid var(--color-border); }
+.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.section-heading h2 { margin: 0; color: var(--color-text); font-size: 15px; line-height: 1.3; }
+.section-heading p { margin: 3px 0 0; max-width: 760px; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
+.section-banner { margin: 0; }
+.local-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+.local-summary > div { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; }
+.local-summary > code { flex: 0 1 auto; color: var(--color-text-muted); text-align: right; }
 .tool-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .tool-name { font-size: 14px; font-weight: 700; color: var(--color-text); }
 /* 本视图 chip 仅调图标间距；底色/形状走全局 .chip-{tone} */
@@ -427,10 +549,15 @@ onMounted(() => {
 .tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--color-text-muted); font-size: 11px; line-height: 1.45; }
 .hint-warn { background: var(--state-warning-soft); color: var(--state-warning); }
 .hint-error { background: var(--state-danger-soft); color: var(--state-danger); }
-/* envcheck 家族特有"描边强调"变体（非全局 .btn-secondary 的实底语义），保留并 token 化 */
+/* envcheck 家族特有“描边强调”变体（非全局 .btn-secondary 的实底语义），保留并 token 化 */
 .btn-secondary { background: transparent; color: var(--color-primary); border-color: var(--color-border); }
 .btn-secondary:hover:not(:disabled) { border-color: var(--color-primary); background: var(--surface-soft); }
 .tool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .extra-lines { margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-size: 10px; }
-@media (max-width: 768px) { .header-row { flex-direction: column; } .btn-group { width: 100%; justify-content: space-between; } }
+@media (max-width: 768px) {
+  .status-toolbar { align-items: stretch; flex-direction: column; gap: 10px; }
+  .refresh-button { width: 100%; }
+  .local-summary { align-items: flex-start; flex-direction: column; }
+  .local-summary > code { text-align: left; }
+}
 </style>
