@@ -10,9 +10,11 @@ import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
+import { useConfirm } from '../composables/useConfirm'
 
 const { showToast } = useToast()
 const { copy } = useClipboard()
+const { confirm } = useConfirm()
 
 // 状态定义
 const memos = shallowRef<MemoItem[]>([])
@@ -176,6 +178,13 @@ async function handleToggleMask(item: MemoItem) {
 }
 
 async function handleDeleteMemo(id: string) {
+  const accepted = await confirm({
+    title: '确定删除这条便签吗？',
+    description: '删除后无法恢复。',
+    confirmLabel: '删除',
+    tone: 'danger',
+  })
+  if (!accepted) return
   try {
     await MemoAPI.MemoService.Delete(id)
     showToast('已删除便签')

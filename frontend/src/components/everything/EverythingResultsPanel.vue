@@ -45,20 +45,22 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
           <tr v-for="(r, i) in results" :key="i">
             <!-- table-layout:fixed 的列宽以首行单元格为准；首行与表头同步绑定，保证列对齐 -->
             <td
-              class="result-name copyable"
+              class="result-name"
               :class="{ 'is-dir': r.isDir }"
               :style="i === 0 ? { width: colWidths.name + 'px' } : undefined"
-              :title="`点击复制：${resultFullPath(r)}`"
-              @click="emit('copy', r)"
             >
-              {{ r.isDir ? '📁' : '📄' }} {{ r.name }}
+              <button class="copy-cell" type="button" :title="`复制完整路径：${resultFullPath(r)}`" @click="emit('copy', r)">
+                {{ r.isDir ? '📁' : '📄' }} {{ r.name }}
+              </button>
             </td>
             <td
-              class="mono result-path copyable"
+              class="mono result-path"
               :style="i === 0 ? { width: colWidths.path + 'px' } : undefined"
-              :title="`点击复制：${resultFullPath(r)}`"
-              @click="emit('copy', r)"
-            >{{ r.path }}</td>
+            >
+              <button class="copy-cell mono" type="button" :title="`复制完整路径：${resultFullPath(r)}`" @click="emit('copy', r)">
+                {{ r.path }}
+              </button>
+            </td>
             <td :style="i === 0 ? { width: colWidths.size + 'px' } : undefined">{{ r.isDir ? '—' : fmtSize(r.size) }}</td>
             <td class="result-time" :style="i === 0 ? { width: colWidths.time + 'px' } : undefined">{{ r.modified }}</td>
             <td :style="i === 0 ? { width: colWidths.action + 'px' } : undefined">
@@ -97,8 +99,13 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
 .result-path { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; color: var(--color-text-subtle); }
 .result-time { font-size: 11px; color: var(--color-text-subtle); white-space: nowrap; }
 .row-actions { display: flex; gap: 4px; }
-.copyable { cursor: pointer; }
-.copyable:hover { background: var(--surface-hover); }
+.copy-cell {
+  width: 100%; min-width: 0; padding: 0; border: 0; background: transparent;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.copy-cell:hover { background: var(--surface-hover); }
+.copy-cell:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; border-radius: 3px; }
 .empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: 6px; border: 1px dashed var(--color-border); }
 .idle-hint { color: var(--color-text-subtle); }
 </style>

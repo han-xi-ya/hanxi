@@ -5,6 +5,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import MemoView from '../MemoView.vue'
 import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
 
 const svc = vi.hoisted(() => ({
   List: vi.fn(),
@@ -63,6 +64,7 @@ async function mountView(items?: unknown[], tagCloud?: Record<string, number>) {
 }
 
 afterEach(() => {
+  useConfirm().settleConfirm(false)
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   useToast().clearToast()
@@ -133,14 +135,23 @@ describe('MemoView 列表与过滤', () => {
     w.unmount()
   })
 
-  it('删除无二次确认直发后端（现状钉死，是否补确认属产品决策）', async () => {
+  it('删除须确认：取消不删，确认后才调用后端', async () => {
     const w = await mountView()
-    const spy = vi.fn(() => true)
-    vi.stubGlobal('confirm', spy) // happy-dom 下 window.confirm 不存在，用桩捕捉任何潜在调用
     svc.Delete.mockResolvedValue(undefined)
-    await w.find('.memo-actions .text-danger').trigger('click')
+    const deleteButton = w.find('.memo-actions .text-danger')
+
+    await deleteButton.trigger('click')
     await flushMicrotasks()
-    expect(spy).not.toHaveBeenCalled() // 原生确认都没有——直接删
+    expect(useConfirm().confirmState.open).toBe(true)
+    expect(svc.Delete).not.toHaveBeenCalled()
+    useConfirm().settleConfirm(false)
+    await flushMicrotasks()
+    expect(svc.Delete).not.toHaveBeenCalled()
+
+    await deleteButton.trigger('click')
+    await flushMicrotasks()
+    useConfirm().settleConfirm(true)
+    await flushMicrotasks()
     expect(svc.Delete).toHaveBeenCalledWith('m1')
     expect(useToast().toastMsg.value).toBe('已删除便签')
     w.unmount()

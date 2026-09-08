@@ -99,6 +99,13 @@ export function useWechatBot() {
   const qrStatusText = ref('')
   const qrStatusType = ref<'wait' | 'scaned' | 'confirmed' | 'expired' | 'error' | ''>('')
   let qrPollTimer: ReturnType<typeof setInterval> | null = null
+  let qrSuccessTimer: ReturnType<typeof setTimeout> | null = null
+  let qrSession = 0
+  let disposed = false
+
+  function isQRSession(session: number): boolean {
+    return !disposed && showBindModal.value && session === qrSession
+  }
 
   // 账号重命名模态状态
   const showRenameModal = ref(false)
@@ -116,9 +123,10 @@ export function useWechatBot() {
   }
 
   // 加载账号列表
-  async function loadAccounts(autoSelectLatest = false) {
+  async function loadAccounts(autoSelectLatest = false, valid: () => boolean = () => !disposed) {
     try {
       const list = await WechatAPI.WechatService.ListAccounts()
+      if (!valid()) return
       accounts.value = list || []
 
       if (accounts.value.length > 0) {
@@ -132,7 +140,7 @@ export function useWechatBot() {
         selectedAccountId.value = ''
       }
     } catch (err: unknown) {
-      showToast(`获取账号列表失败: ${getErrorMessage(err)}`)
+      if (valid()) showToast(`获取账号列表失败: ${getErrorMessage(err)}`)
     }
   }
 
@@ -207,12 +215,18 @@ export function useWechatBot() {
   }
 
   function closeBindModal() {
+    ++qrSession
     stopQRPoll()
+    stopQRSuccessTimer()
+    qrLoading.value = false
     showBindModal.value = false
   }
 
   async function fetchQRCode() {
+    if (disposed || !showBindModal.value) return
+    const session = ++qrSession
     stopQRPoll()
+    stopQRSuccessTimer()
     qrLoading.value = true
     qrStatusText.value = '正在向微信 iLink 请求登录二维码…'
     qrStatusType.value = 'wait'
@@ -221,42 +235,50 @@ export function useWechatBot() {
 
     try {
       const res = await WechatAPI.WechatService.GetLoginQRCode()
+      if (!isQRSession(session)) return
       if (res && (res.qrcodeUrl || res.qrcode)) {
         qrInfo.value = res
         qrStatusText.value = '请使用手机微信扫码授权绑定'
 
         const qrContent = res.qrcodeUrl || res.qrcode
         try {
-          qrDataUrl.value = await QRCode.toDataURL(qrContent, {
+          const dataUrl = await QRCode.toDataURL(qrContent, {
             width: 200,
             margin: 1,
             color: { dark: '#1f2328', light: '#ffffff' }
           })
+          if (!isQRSession(session)) return
+          qrDataUrl.value = dataUrl
         } catch (qrErr) {
+          if (!isQRSession(session)) return
           console.error('Render QR error:', qrErr)
         }
 
-        startQRPoll(res.qrcode)
+        startQRPoll(res.qrcode, session)
       } else {
         qrStatusText.value = '获取二维码失败，请重试'
         qrStatusType.value = 'error'
       }
     } catch (err: unknown) {
+      if (!isQRSession(session)) return
       qrStatusText.value = `获取失败: ${getErrorMessage(err)}`
       qrStatusType.value = 'error'
     } finally {
-      qrLoading.value = false
+      if (isQRSession(session)) qrLoading.value = false
     }
   }
 
-  function startQRPoll(qrcode: string) {
+  function startQRPoll(qrcode: string, session: number) {
+    if (!isQRSession(session)) return
+    stopQRPoll()
     let isChecking = false
     qrPollTimer = setInterval(async () => {
-      if (isChecking) return
+      if (isChecking || !isQRSession(session)) return
       isChecking = true
       try {
         const remark = bindRemarkName.value.trim()
         const res = await WechatAPI.WechatService.CheckQRStatus(qrcode, remark)
+        if (!isQRSession(session)) return
         if (res) {
           if (res.status === 'scaned') {
             qrStatusText.value = '已扫码，请在手机上确认授权'
@@ -266,8 +288,12 @@ export function useWechatBot() {
             qrStatusType.value = 'confirmed'
             stopQRPoll()
 
-            await loadAccounts(true)
-            setTimeout(() => {
+            await loadAccounts(true, () => isQRSession(session))
+            if (!isQRSession(session)) return
+            stopQRSuccessTimer()
+            qrSuccessTimer = setTimeout(() => {
+              qrSuccessTimer = null
+              if (!isQRSession(session)) return
               closeBindModal()
               showToast('新微信机器人绑定成功！')
               if (currentAccount.value) {
@@ -285,7 +311,7 @@ export function useWechatBot() {
             qrStatusText.value = '二维码已过期，正在刷新…'
             qrStatusType.value = 'expired'
             stopQRPoll()
-            fetchQRCode()
+            void fetchQRCode()
           }
         }
       } catch {
@@ -300,6 +326,13 @@ export function useWechatBot() {
     if (qrPollTimer) {
       clearInterval(qrPollTimer)
       qrPollTimer = null
+    }
+  }
+
+  function stopQRSuccessTimer() {
+    if (qrSuccessTimer) {
+      clearTimeout(qrSuccessTimer)
+      qrSuccessTimer = null
     }
   }
 
@@ -475,13 +508,14 @@ export function useWechatBot() {
       return
     }
 
+    let outgoing: ChatMessage | null = null
+    isSending.value = true
     try {
       const filePath = await WechatAPI.WechatService.PickImageDialog()
       if (!filePath) return
 
-      isSending.value = true
       const msgId = `${Date.now()}-out-img`
-      const stored = appendMessage({
+      outgoing = appendMessage({
         id: msgId,
         accountId: acc.id,
         time: new Date().toLocaleTimeString(),
@@ -491,14 +525,17 @@ export function useWechatBot() {
         filePath,
         status: 'sending'
       })
-      attachImagePreview(stored) // 本地缩略预览与上传发送并行，不等发送回执
+      attachImagePreview(outgoing) // 本地缩略预览与上传发送并行，不等发送回执
 
       await WechatAPI.WechatService.SendImageMessage(acc.id, targetUser, filePath)
-      const sent = chatMessages.value.find(m => m.id === msgId)
-      if (sent) sent.status = 'sent'
+      outgoing.status = 'sent'
       showToast('图片加密上传并下发成功')
     } catch (err: unknown) {
       const errMsg = getErrorMessage(err)
+      if (outgoing) {
+        outgoing.status = 'failed'
+        outgoing.error = errMsg
+      }
       showToast(`图片发送失败: ${errMsg}`)
       appendMessage({
         id: `${Date.now()}-err-img`,
@@ -523,14 +560,15 @@ export function useWechatBot() {
       return
     }
 
+    let outgoing: ChatMessage | null = null
+    isSending.value = true
     try {
       const filePath = await WechatAPI.WechatService.PickFileDialog()
       if (!filePath) return
 
       const fileName = filePath.split(/[/\\]/).pop() || filePath
-      isSending.value = true
       const msgId = `${Date.now()}-out-file`
-      appendMessage({
+      outgoing = appendMessage({
         id: msgId,
         accountId: acc.id,
         time: new Date().toLocaleTimeString(),
@@ -543,11 +581,14 @@ export function useWechatBot() {
       })
 
       await WechatAPI.WechatService.SendFileMessage(acc.id, targetUser, filePath)
-      const sent = chatMessages.value.find(m => m.id === msgId)
-      if (sent) sent.status = 'sent'
+      outgoing.status = 'sent'
       showToast('文件加密上传并下发成功')
     } catch (err: unknown) {
       const errMsg = getErrorMessage(err)
+      if (outgoing) {
+        outgoing.status = 'failed'
+        outgoing.error = errMsg
+      }
       showToast(`文件发送失败: ${errMsg}`)
       appendMessage({
         id: `${Date.now()}-err-file`,
@@ -700,7 +741,10 @@ export function useWechatBot() {
   })
 
   onUnmounted(() => {
-    stopQRPoll() // QR 弹窗轮询为手管定时器（见上方语义注释），卸载兜底清理
+    disposed = true
+    ++qrSession
+    stopQRPoll()
+    stopQRSuccessTimer()
   })
 
   return {

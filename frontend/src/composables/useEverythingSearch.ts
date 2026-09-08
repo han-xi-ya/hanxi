@@ -34,42 +34,52 @@ export function useEverythingSearch(busy: Ref<boolean>) {
   const { copy } = useClipboard()
 
   let debounceTimer: number | null = null
-  let searchSeq = 0 // 过期响应丢弃：最新一次搜索的序号才允许落盘结果
+  let searchSeq = 0 // 输入变化立即失效；仅最新查询允许写回
+  let disposed = false
+  let ensureInFlight: Promise<boolean> | null = null
 
   async function ensureTool(): Promise<boolean> {
+    if (disposed) return false
     if (esReady.value) return true
+    if (ensureInFlight) return ensureInFlight
     esBusy.value = true
-    try {
-      await EverythingAPI.EnsureSearchTool()
-      esReady.value = true
-      return true
-    } catch (e) {
-      showToast(`搜索组件就绪失败: ${getErrorMessage(e)}`)
-      return false
-    } finally {
-      esBusy.value = false
-    }
+    ensureInFlight = (async () => {
+      try {
+        await EverythingAPI.EnsureSearchTool()
+        if (disposed) return false
+        esReady.value = true
+        return true
+      } catch (e) {
+        if (!disposed) showToast(`搜索组件就绪失败: ${getErrorMessage(e)}`)
+        return false
+      } finally {
+        ensureInFlight = null
+        if (!disposed) esBusy.value = false
+      }
+    })()
+    return ensureInFlight
   }
 
   // 实时搜索：输入停顿 350ms 自动触发；中文输入法组合期间不触发（composition 守卫）
   function onKeywordInput() {
-    if (composing.value) return
+    ++searchSeq
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+    if (composing.value || disposed) return
     const q = keyword.value.trim()
     if (!q) {
-      if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
       results.value = []
       searched.value = ''
       searchError.value = ''
       truncated.value = false
+      searching.value = false
       return
     }
-    if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = window.setTimeout(() => { doSearch() }, 350)
+    debounceTimer = window.setTimeout(() => { void doSearch() }, 350)
   }
 
   function onKeywordEnter() {
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
-    doSearch()
+    void doSearch()
   }
 
   function onCompositionEnd() {
@@ -79,24 +89,24 @@ export function useEverythingSearch(busy: Ref<boolean>) {
 
   async function doSearch() {
     const q = keyword.value.trim()
-    if (!q || searching.value || busy.value) return
+    if (!q || composing.value || disposed || busy.value) return
     const seq = ++searchSeq
     searching.value = true
     searchError.value = ''
     truncated.value = false
     try {
-      if (!(await ensureTool())) return // 组件缺失且安装失败时给出 toast 后中断（由 finally 复位状态）
+      if (!(await ensureTool()) || disposed || seq !== searchSeq) return
       const list = await EverythingAPI.Search(q, 300)
-      if (seq !== searchSeq) return // 已有更新的关键词在途，丢弃过期响应
+      if (disposed || seq !== searchSeq) return
       results.value = list ?? []
       searched.value = q
       truncated.value = results.value.length >= 300
       if (results.value.length === 0) showToast(`「${q}」无匹配结果`)
     } catch (e) {
-      if (seq !== searchSeq) return
+      if (disposed || seq !== searchSeq) return
       searchError.value = getErrorMessage(e)
     } finally {
-      if (seq === searchSeq) searching.value = false
+      if (!disposed && seq === searchSeq) searching.value = false
     }
   }
 
@@ -136,6 +146,8 @@ export function useEverythingSearch(busy: Ref<boolean>) {
   }
 
   onUnmounted(() => {
+    disposed = true
+    ++searchSeq
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
   })
 

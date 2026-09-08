@@ -221,7 +221,7 @@ describe('EverythingView 内嵌搜索', () => {
     await w.find('.result-tbl tbody tr .link-button:nth-child(2)').trigger('click')
     await flushMicrotasks()
     expect(svc.RevealTarget).toHaveBeenCalledWith('C:\\t\\a.txt')
-    await w.find('.result-name').trigger('click')
+    await w.find('.result-name .copy-cell').trigger('click')
     await flushMicrotasks()
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('C:\\t\\a.txt')
     expect(useToast().toastMsg.value).toBe('已复制完整路径')

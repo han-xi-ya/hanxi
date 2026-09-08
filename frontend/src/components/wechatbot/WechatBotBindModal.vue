@@ -6,7 +6,7 @@
 // 注：模态壳层 CSS（.custom-modal-backdrop/.custom-modal-card/@keyframes modalIn/
 // .cmodal-*/.form-* 家族）与重命名模态的 11 条逐字副本已上收 components.css 共享原子
 // （§9.6-8 治理完成），本组件 scoped 块只留二维码区私有样式。
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 const props = defineProps<{
   /** 机器人备注名（与父级 bindRemarkName 同一 ref，受控回写）。 */
@@ -32,25 +32,71 @@ const remarkModel = computed({
   get: () => props.bindRemarkName,
   set: (v: string) => emit('update:bindRemarkName', v),
 })
+
+const titleId = 'wechat-bind-dialog-title'
+const remarkId = 'wechat-bind-remark'
+const dialogRef = ref<HTMLElement | null>(null)
+const remarkRef = ref<HTMLInputElement | null>(null)
+let previousFocus: HTMLElement | null = null
+
+function focusableElements(): HTMLElement[] {
+  return dialogRef.value
+    ? Array.from(dialogRef.value.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+    : []
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    emit('close')
+    return
+  }
+  if (event.key !== 'Tab') return
+  const elements = focusableElements()
+  if (!elements.length) return
+  const first = elements[0]
+  const last = elements[elements.length - 1]
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+onMounted(async () => {
+  previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  document.addEventListener('keydown', onKeydown)
+  await nextTick()
+  remarkRef.value?.focus()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+  previousFocus?.focus()
+})
 </script>
 
 <template>
   <!-- 扫码绑定模态框 (QR Bind Modal) -->
   <div class="custom-modal-backdrop" @click.self="emit('close')">
-    <div class="custom-modal-card">
+    <div ref="dialogRef" class="custom-modal-card" role="dialog" aria-modal="true" :aria-labelledby="titleId">
       <div class="cmodal-header">
-        <div class="cmodal-title">
-          <span>📱</span> 扫码绑定微信机器人
+        <div :id="titleId" class="cmodal-title">
+          <span aria-hidden="true">📱</span> 扫码绑定微信机器人
         </div>
-        <button class="cmodal-close" @click="emit('close')">✕</button>
+        <button class="cmodal-close" type="button" aria-label="关闭扫码绑定窗口" @click="emit('close')">✕</button>
       </div>
 
       <div class="cmodal-body">
         <div class="form-item-block">
-          <label class="form-label">机器人备注名</label>
+          <label :for="remarkId" class="form-label">机器人备注名</label>
           <input
-            type="text"
+            :id="remarkId"
+            ref="remarkRef"
             v-model="remarkModel"
+            type="text"
             placeholder="例如: 告警通知号 / 客户群机器人"
             class="form-text-input"
           />

@@ -33,13 +33,21 @@ export function usePolling(
   const { immediateFirstRun = true } = opts
   const isPolling = ref(false)
   let timer: ReturnType<typeof setInterval> | null = null
+  let inFlight = false
+  let generation = 0
 
   function tick() {
-    // 轮询回调异常绝不冒泡杀定时器（fn 若自带 catch 则此处仅兜底透传）。
+    if (inFlight) return
+    const runGeneration = generation
     try {
       const r = fn()
-      if (r && typeof r.catch === 'function') {
-        r.catch((err: unknown) => console.warn('[usePolling] 轮询回调异常:', err))
+      if (r && typeof r.then === 'function') {
+        inFlight = true
+        Promise.resolve(r)
+          .catch((err: unknown) => console.warn('[usePolling] 轮询回调异常:', err))
+          .finally(() => {
+            if (runGeneration === generation) inFlight = false
+          })
       }
     } catch (err) {
       console.warn('[usePolling] 轮询回调异常:', err)
@@ -48,12 +56,16 @@ export function usePolling(
 
   function start() {
     if (timer) return
+    ++generation
+    inFlight = false
     if (immediateFirstRun) tick()
     timer = setInterval(tick, intervalMs)
     isPolling.value = true
   }
 
   function stop() {
+    ++generation
+    inFlight = false
     if (timer) {
       clearInterval(timer)
       timer = null

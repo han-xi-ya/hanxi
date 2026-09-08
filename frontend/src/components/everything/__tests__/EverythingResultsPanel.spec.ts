@@ -93,14 +93,16 @@ describe('EverythingResultsPanel 列宽记忆与拖拽', () => {
 })
 
 describe('EverythingResultsPanel 结果行与空态', () => {
-  it('行 title 拼完整路径（目录尾杠不重复）；打开/定位/复制上抛行数据', async () => {
+  it('复制按钮暴露完整路径并支持键盘触发；打开/定位/复制上抛行数据', async () => {
     const w = mountPanel({ results: rows })
     const [tr0, tr1] = w.findAll('tbody tr')
-    expect(tr0.find('.result-name').attributes('title')).toBe('点击复制：D:\\proj\\go.mod')
-    expect(tr1.find('.result-name').attributes('title')).toBe('点击复制：D:\\proj\\src')
+    expect(tr0.find('.result-name .copy-cell').attributes('title')).toBe('复制完整路径：D:\\proj\\go.mod')
+    expect(tr1.find('.result-name .copy-cell').attributes('title')).toBe('复制完整路径：D:\\proj\\src')
     await tr0.findAll('.row-actions .link-button')[0].trigger('click')
     await tr0.findAll('.row-actions .link-button')[1].trigger('click')
-    await tr0.find('.result-path').trigger('click')
+    const copyButton = tr0.find('.result-path .copy-cell')
+    expect(copyButton.attributes('type')).toBe('button')
+    await copyButton.trigger('click')
     expect(w.emitted('open')![0]).toEqual([rows[0]])
     expect(w.emitted('reveal')![0]).toEqual([rows[0]])
     expect(w.emitted('copy')![0]).toEqual([rows[0]])

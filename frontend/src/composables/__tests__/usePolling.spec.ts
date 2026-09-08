@@ -14,7 +14,7 @@ function mountInKeepAlive(setupFn: () => unknown) {
   const show = ref(true)
   const Child = defineComponent({ setup: setupFn, render: () => null })
   const Host = defineComponent({
-    render: () => (show.value ? h(KeepAlive, null, h(Child)) : h('div')),
+    render: () => h(KeepAlive, null, { default: () => show.value ? h(Child) : null }),
   })
   const wrapper = mount(Host, { attachTo: document.body })
   return { wrapper, show }
@@ -25,6 +25,21 @@ afterEach(() => {
 })
 
 describe('usePolling', () => {
+  it('异步 tick 在途时不重叠，完成后恢复下一周期', async () => {
+    vi.useFakeTimers()
+    let resolve!: () => void
+    const fn = vi.fn(() => new Promise<void>((done) => { resolve = done }))
+    const { wrapper } = mountInKeepAlive(() => usePolling(fn, 1000))
+    expect(fn).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(fn).toHaveBeenCalledTimes(1)
+    resolve()
+    await flushMicrotasks()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fn).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
   it('挂载即首跑一次，此后按间隔周期触发', async () => {
     vi.useFakeTimers()
     const fn = vi.fn()
