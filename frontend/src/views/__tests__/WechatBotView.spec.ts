@@ -25,8 +25,11 @@ const svc = vi.hoisted(() => ({
   SendTextMessage: vi.fn(),
   SendImageMessage: vi.fn(),
   SendFileMessage: vi.fn(),
-  PickImageDialog: vi.fn(),
-  PickFileDialog: vi.fn(),
+  PickAttachmentDialog: vi.fn(),
+  InspectOutgoingAttachment: vi.fn(),
+  RegisterClipboardAttachment: vi.fn(),
+  RegisterClipboardImage: vi.fn(),
+  ReleaseOutgoingAttachment: vi.fn(),
   OpenInboundFile: vi.fn(),
   SaveInboundFile: vi.fn(),
   GetImagePreview: vi.fn(),
@@ -313,38 +316,74 @@ describe('WechatBotView 图片消息预览与打开', () => {
     wrapper.unmount()
   })
 
-  it('出站图片：发送成功后本地缩略预览，打开图片/打开目录按钮直连对应 RPC', async () => {
+  it('统一附件入口：选择后先预览，点击确认才发送图片', async () => {
     stubs([acc('a1', 'A', { targetUserId: 'u1' })])
-    svc.PickImageDialog.mockResolvedValue('D:\\pic\\猫.png')
+    svc.PickAttachmentDialog.mockResolvedValue('D:\\pic\\猫.png')
+    svc.InspectOutgoingAttachment.mockResolvedValue({
+      path: 'D:\\pic\\猫.png', fileName: '猫.png', fileSize: 2048,
+      isImage: true, previewUrl: 'data:image/png;base64,OUT',
+    })
     svc.SendImageMessage.mockResolvedValue(undefined)
-    svc.GetImagePreview.mockResolvedValue('data:image/png;base64,OUT')
     const { wrapper } = await mountView()
-    await wrapper.findAll('.toolbar-btn')[0].trigger('click') // 🖼️ 发送图片
+    await wrapper.find('.attachment-btn').trigger('click')
+    await flushMicrotasks()
+    expect(svc.SendImageMessage).not.toHaveBeenCalled()
+    expect(wrapper.find('.attachment-thumb').attributes('src')).toBe('data:image/png;base64,OUT')
+    await wrapper.find('.attachment-send').trigger('click')
     await flushMicrotasks()
     expect(svc.SendImageMessage).toHaveBeenCalledWith('a1', 'u1', 'D:\\pic\\猫.png')
-    expect(svc.GetImagePreview).toHaveBeenCalledWith('D:\\pic\\猫.png')
-    const thumb = wrapper.find('.outbound-row .bubble-thumb')
-    expect(thumb.attributes('src')).toBe('data:image/png;base64,OUT')
-    const buttons = wrapper.findAll('.outbound-row .file-action-btn')
-    expect(buttons.map(b => b.text())).toEqual(['打开图片', '打开目录'])
-    await buttons[0].trigger('click')
-    await buttons[1].trigger('click')
-    expect(svc.OpenLocalImage).toHaveBeenCalledWith('D:\\pic\\猫.png')
-    expect(svc.RevealLocalFile).toHaveBeenCalledWith('D:\\pic\\猫.png')
+    expect(wrapper.find('.attachment-preview-card').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('本地预览失败：回退原路径卡片，动作按钮仍可用', async () => {
+  it('粘贴普通文件只展示文件信息，确认后走文件发送链路', async () => {
     stubs([acc('a1', 'A', { targetUserId: 'u1' })])
-    svc.PickImageDialog.mockResolvedValue('D:\\big\\超清原图.png')
-    svc.SendImageMessage.mockResolvedValue(undefined)
-    svc.GetImagePreview.mockRejectedValue(new Error('图片超过 16 MB，已跳过预览'))
+    svc.RegisterClipboardAttachment.mockResolvedValue({
+      path: 'C:\\Temp\\hanxi-wechat-clipboard.tmp', fileName: 'report.pdf', fileSize: 4096,
+      isImage: false, temporary: true,
+    })
+    svc.SendFileMessage.mockResolvedValue(undefined)
+    svc.ReleaseOutgoingAttachment.mockResolvedValue(true)
     const { wrapper } = await mountView()
-    await wrapper.findAll('.toolbar-btn')[0].trigger('click')
+    const originalFileReader = globalThis.FileReader
+    class TestFileReader {
+      result: string | ArrayBuffer | null = null
+      error: DOMException | null = null
+      onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null
+      onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null
+      readAsDataURL() {
+        this.result = 'data:application/pdf;base64,cmVwb3J0'
+        this.onload?.call(this as unknown as FileReader, {} as ProgressEvent<FileReader>)
+      }
+    }
+    vi.stubGlobal('FileReader', TestFileReader)
+    const file = new File(['report'], 'report.pdf', { type: 'application/pdf' })
+    const event = new Event('paste', { bubbles: true, cancelable: true }) as ClipboardEvent
+    Object.defineProperty(event, 'clipboardData', {
+      value: { items: [{ kind: 'file', type: 'application/pdf', getAsFile: () => file }] },
+    })
+    wrapper.find('.wechat-textarea').element.dispatchEvent(event)
     await flushMicrotasks()
-    expect(wrapper.find('.outbound-row .bubble-thumb').exists()).toBe(false)
-    expect(wrapper.find('.outbound-row .media-card-preview').text()).toContain('D:\\big\\超清原图.png')
-    expect(wrapper.findAll('.outbound-row .file-action-btn')).toHaveLength(2)
+    expect(wrapper.find('.attachment-file-icon').exists()).toBe(true)
+    expect(wrapper.find('.attachment-meta').text()).toContain('report.pdf')
+    expect(svc.SendFileMessage).not.toHaveBeenCalled()
+    await wrapper.find('.attachment-send').trigger('click')
+    await flushMicrotasks()
+    expect(svc.SendFileMessage).toHaveBeenCalledWith('a1', 'u1', 'C:\\Temp\\hanxi-wechat-clipboard.tmp')
+    expect(svc.ReleaseOutgoingAttachment).toHaveBeenCalled()
+    vi.stubGlobal('FileReader', originalFileReader)
+    wrapper.unmount()
+  })
+
+  it('附件校验失败保留错误与重试入口，不产生发送消息', async () => {
+    stubs([acc('a1', 'A', { targetUserId: 'u1' })])
+    svc.PickAttachmentDialog.mockResolvedValue('D:\\big\\超清原图.png')
+    svc.InspectOutgoingAttachment.mockRejectedValue(new Error('图片超过 16 MB，无法发送前预览'))
+    const { wrapper } = await mountView()
+    await wrapper.find('.attachment-btn').trigger('click')
+    await flushMicrotasks()
+    expect(wrapper.find('.attachment-error').text()).toContain('图片超过 16 MB')
+    expect(svc.SendImageMessage).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

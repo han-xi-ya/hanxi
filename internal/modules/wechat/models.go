@@ -64,6 +64,16 @@ type AttachmentActionResult struct {
 	Canceled bool   `json:"canceled,omitempty"`
 }
 
+// OutgoingAttachmentDraft 是发送前预览所需的安全元数据；Path 仅供本地 Wails 窗口回传确认发送。
+type OutgoingAttachmentDraft struct {
+	Path       string `json:"path"`
+	FileName   string `json:"fileName"`
+	FileSize   int64  `json:"fileSize"`
+	IsImage    bool   `json:"isImage"`
+	PreviewURL string `json:"previewUrl,omitempty"`
+	Temporary  bool   `json:"temporary,omitempty"`
+}
+
 // InboundMessage 接收到的消息（业务实体）
 type InboundMessage struct {
 	AccountID       string `json:"accountId"`

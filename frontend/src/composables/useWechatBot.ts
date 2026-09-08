@@ -26,6 +26,15 @@ export interface ChatFlowHandle {
   scrollToBottom(smooth?: boolean): void
 }
 
+export interface OutgoingAttachmentDraft {
+  path: string
+  fileName: string
+  fileSize: number
+  isImage: boolean
+  previewUrl?: string
+  temporary?: boolean
+}
+
 // 聊天消息实体
 export interface ChatMessage {
   id: string
@@ -84,6 +93,10 @@ export function useWechatBot() {
   // 输入框与发送状态
   const inputText = ref('')
   const isSending = ref(false)
+  const attachmentDraft = ref<OutgoingAttachmentDraft | null>(null)
+  const attachmentDraftError = ref('')
+  const isPreparingAttachment = ref(false)
+  let attachmentSession = 0
   const attachmentAction = ref<Record<string, 'opening' | 'saving' | undefined>>({})
   const toUserIdInput = ref('')
   const isEditingTargetUser = ref(false)
@@ -151,6 +164,7 @@ export function useWechatBot() {
   }
 
   function handleSelectAccount(id: string) {
+    if (id !== selectedAccountId.value) clearAttachmentDraft()
     selectedAccountId.value = id
     isEditingTargetUser.value = false
     syncTargetUserInput()
@@ -498,61 +512,72 @@ export function useWechatBot() {
     }
   }
 
-  // 发送图片消息
-  async function handleSendImage() {
-    if (!currentAccount.value || isSending.value) return
-    const acc = currentAccount.value
-    const targetUser = toUserIdInput.value.trim() || acc.targetUserId || acc.ilinkUserId
-    if (!targetUser) {
-      showToast('请先填写目标微信用户的 User ID')
-      return
-    }
-
-    let outgoing: ChatMessage | null = null
-    isSending.value = true
+  async function releaseTemporaryDraft(draft: OutgoingAttachmentDraft | null) {
+    if (!draft?.temporary) return
     try {
-      const filePath = await WechatAPI.WechatService.PickImageDialog()
-      if (!filePath) return
+      await WechatAPI.WechatService.ReleaseOutgoingAttachment(draft.path)
+    } catch { /* 临时文件由后端 Destroy 兜底清理 */ }
+  }
 
-      const msgId = `${Date.now()}-out-img`
-      outgoing = appendMessage({
-        id: msgId,
-        accountId: acc.id,
-        time: new Date().toLocaleTimeString(),
-        direction: 'out',
-        msgType: 'image',
-        content: `[图片] ${filePath}`,
-        filePath,
-        status: 'sending'
-      })
-      attachImagePreview(outgoing) // 本地缩略预览与上传发送并行，不等发送回执
+  function clearAttachmentDraft() {
+    const previous = attachmentDraft.value
+    ++attachmentSession
+    attachmentDraft.value = null
+    attachmentDraftError.value = ''
+    isPreparingAttachment.value = false
+    void releaseTemporaryDraft(previous)
+  }
 
-      await WechatAPI.WechatService.SendImageMessage(acc.id, targetUser, filePath)
-      outgoing.status = 'sent'
-      showToast('图片加密上传并下发成功')
-    } catch (err: unknown) {
-      const errMsg = getErrorMessage(err)
-      if (outgoing) {
-        outgoing.status = 'failed'
-        outgoing.error = errMsg
+  async function applyAttachmentDraft(task: () => Promise<OutgoingAttachmentDraft>) {
+    if (isSending.value || isPreparingAttachment.value) return
+    const session = ++attachmentSession
+    const accountId = currentAccount.value?.id || ''
+    attachmentDraftError.value = ''
+    isPreparingAttachment.value = true
+    try {
+      const draft = await task()
+      if (session !== attachmentSession || accountId !== currentAccount.value?.id) {
+        await releaseTemporaryDraft(draft)
+        return
       }
-      showToast(`图片发送失败: ${errMsg}`)
-      appendMessage({
-        id: `${Date.now()}-err-img`,
-        accountId: acc.id,
-        time: new Date().toLocaleTimeString(),
-        direction: 'sys',
-        msgType: 'system',
-        content: `❌ 图片下发失败: ${errMsg}`
-      })
+      const previous = attachmentDraft.value
+      attachmentDraft.value = draft
+      await releaseTemporaryDraft(previous)
+    } catch (err: unknown) {
+      if (session === attachmentSession) attachmentDraftError.value = getErrorMessage(err)
     } finally {
-      isSending.value = false
+      if (session === attachmentSession) isPreparingAttachment.value = false
     }
   }
 
-  // 发送文件消息
-  async function handleSendFile() {
-    if (!currentAccount.value || isSending.value) return
+  async function handleChooseAttachment() {
+    await applyAttachmentDraft(async () => {
+      const filePath = await WechatAPI.WechatService.PickAttachmentDialog()
+      if (!filePath) throw new Error('已取消选择附件')
+      return WechatAPI.WechatService.InspectOutgoingAttachment(filePath)
+    })
+    if (attachmentDraftError.value === '已取消选择附件') attachmentDraftError.value = ''
+  }
+
+  async function handlePasteAttachment(file: File) {
+    if (file.size <= 0) {
+      attachmentDraftError.value = '剪贴板附件内容为空'
+      return
+    }
+    await applyAttachmentDraft(async () => {
+      const dataURL = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result || ''))
+        reader.onerror = () => reject(reader.error || new Error('读取剪贴板附件失败'))
+        reader.readAsDataURL(file)
+      })
+      return WechatAPI.WechatService.RegisterClipboardAttachment(file.name || '剪贴板附件.bin', dataURL)
+    })
+  }
+
+  async function handleSendAttachment() {
+    const draft = attachmentDraft.value
+    if (!currentAccount.value || !draft || isSending.value) return
     const acc = currentAccount.value
     const targetUser = toUserIdInput.value.trim() || acc.targetUserId || acc.ilinkUserId
     if (!targetUser) {
@@ -562,42 +587,43 @@ export function useWechatBot() {
 
     let outgoing: ChatMessage | null = null
     isSending.value = true
+    attachmentDraftError.value = ''
+    attachmentDraft.value = null
+    ++attachmentSession
     try {
-      const filePath = await WechatAPI.WechatService.PickFileDialog()
-      if (!filePath) return
-
-      const fileName = filePath.split(/[/\\]/).pop() || filePath
-      const msgId = `${Date.now()}-out-file`
+      const msgId = `${Date.now()}-out-${draft.isImage ? 'img' : 'file'}`
       outgoing = appendMessage({
         id: msgId,
         accountId: acc.id,
         time: new Date().toLocaleTimeString(),
         direction: 'out',
-        msgType: 'file',
-        content: `[文件] ${fileName}`,
-        fileName,
-        filePath,
+        msgType: draft.isImage ? 'image' : 'file',
+        content: draft.isImage ? `[图片] ${draft.fileName}` : `[文件] ${draft.fileName}`,
+        fileName: draft.fileName,
+        fileSize: draft.fileSize,
+        filePath: draft.temporary ? undefined : draft.path,
+        previewUrl: draft.isImage ? draft.previewUrl : undefined,
+        previewState: draft.isImage ? 'ready' : undefined,
         status: 'sending'
       })
 
-      await WechatAPI.WechatService.SendFileMessage(acc.id, targetUser, filePath)
+      if (draft.isImage) {
+        await WechatAPI.WechatService.SendImageMessage(acc.id, targetUser, draft.path)
+      } else {
+        await WechatAPI.WechatService.SendFileMessage(acc.id, targetUser, draft.path)
+      }
       outgoing.status = 'sent'
-      showToast('文件加密上传并下发成功')
+      await releaseTemporaryDraft(draft)
+      showToast(`${draft.isImage ? '图片' : '文件'}加密上传并下发成功`)
     } catch (err: unknown) {
       const errMsg = getErrorMessage(err)
       if (outgoing) {
         outgoing.status = 'failed'
         outgoing.error = errMsg
       }
-      showToast(`文件发送失败: ${errMsg}`)
-      appendMessage({
-        id: `${Date.now()}-err-file`,
-        accountId: acc.id,
-        time: new Date().toLocaleTimeString(),
-        direction: 'sys',
-        msgType: 'system',
-        content: `❌ 文件下发失败: ${errMsg}`
-      })
+      attachmentDraft.value = draft
+      attachmentDraftError.value = errMsg
+      showToast(`${draft.isImage ? '图片' : '文件'}发送失败: ${errMsg}`)
     } finally {
       isSending.value = false
     }
@@ -742,6 +768,7 @@ export function useWechatBot() {
 
   onUnmounted(() => {
     disposed = true
+    clearAttachmentDraft()
     ++qrSession
     stopQRPoll()
     stopQRSuccessTimer()
@@ -760,9 +787,14 @@ export function useWechatBot() {
     handleRevealLocalFile,
     inputText,
     isSending,
+    attachmentDraft,
+    attachmentDraftError,
+    isPreparingAttachment,
+    handleChooseAttachment,
+    handlePasteAttachment,
+    handleSendAttachment,
+    clearAttachmentDraft,
     handleSendText,
-    handleSendImage,
-    handleSendFile,
     clearCurrentChat,
     // 目标用户与 Token
     toUserIdInput,

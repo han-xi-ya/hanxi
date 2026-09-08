@@ -19,6 +19,11 @@ import * as $models from "./models.js";
  */
 
 /**
+ * OutgoingAttachmentDraft 是发送前预览所需的安全元数据；Path 仅供本地 Wails 窗口回传确认发送。
+ * @typedef {$models.OutgoingAttachmentDraft} OutgoingAttachmentDraft
+ */
+
+/**
  * QRInfo 微信登录二维码信息
  * @typedef {$models.QRInfo} QRInfo
  */

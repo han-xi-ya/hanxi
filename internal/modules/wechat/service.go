@@ -501,6 +501,85 @@ func (s *WechatService) OpenInboundFile(attachmentID string) (AttachmentActionRe
 	return AttachmentActionResult{Path: target}, nil
 }
 
+// InspectOutgoingAttachment 校验本地附件并生成发送前预览信息。
+func (s *WechatService) InspectOutgoingAttachment(filePath string) (OutgoingAttachmentDraft, error) {
+	return inspectOutgoingAttachment(filePath)
+}
+
+// RegisterClipboardAttachment 将窗口剪贴板中的附件字节安全落到受管临时文件，供现有发送链路复用。
+func (s *WechatService) RegisterClipboardAttachment(fileName, dataURL string) (OutgoingAttachmentDraft, error) {
+	data, mime, err := decodeClipboardDataURL(dataURL)
+	if err != nil {
+		return OutgoingAttachmentDraft{}, err
+	}
+	if int64(len(data)) > maxOutgoingAttachmentBytes {
+		return OutgoingAttachmentDraft{}, fmt.Errorf("剪贴板附件超过 %d MB，当前加密上传方式不支持", maxOutgoingAttachmentBytes>>20)
+	}
+
+	name := sanitizeInboundFileName(fileName)
+	ext := strings.ToLower(filepath.Ext(name))
+	isImage := strings.HasPrefix(mime, "image/")
+	if isImage {
+		if int64(len(data)) > maxImagePreviewBytes {
+			return OutgoingAttachmentDraft{}, fmt.Errorf("剪贴板图片超过 %d MB，无法发送前预览", maxImagePreviewBytes>>20)
+		}
+		detectedExt, ok := imageExtensionForMIME(mime)
+		if !ok {
+			return OutgoingAttachmentDraft{}, fmt.Errorf("剪贴板内容不是支持的图片格式 (%s)", mime)
+		}
+		ext = detectedExt
+		base := strings.TrimSuffix(name, filepath.Ext(name))
+		if base == "" || base == "微信文件" {
+			base = fmt.Sprintf("微信粘贴图片_%s", time.Now().Format("20060102_150405"))
+		}
+		name = base + ext
+	} else if ext == "" {
+		ext = ".bin"
+	}
+
+	file, err := os.CreateTemp("", "hanxi-wechat-clipboard-*"+ext)
+	if err != nil {
+		return OutgoingAttachmentDraft{}, fmt.Errorf("创建剪贴板附件临时文件失败: %w", err)
+	}
+	path := file.Name()
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		os.Remove(path)
+		return OutgoingAttachmentDraft{}, fmt.Errorf("写入剪贴板附件失败: %w", err)
+	}
+	if err = file.Close(); err != nil {
+		os.Remove(path)
+		return OutgoingAttachmentDraft{}, fmt.Errorf("保存剪贴板附件失败: %w", err)
+	}
+	s.attachments.registerOutgoingTemp(path)
+
+	draft := OutgoingAttachmentDraft{
+		Path:      path,
+		FileName:  name,
+		FileSize:  int64(len(data)),
+		IsImage:   isImage,
+		Temporary: true,
+	}
+	if isImage {
+		draft.PreviewURL, err = buildImageDataURL(data)
+		if err != nil {
+			s.attachments.releaseOutgoingTemp(path)
+			return OutgoingAttachmentDraft{}, err
+		}
+	}
+	return draft, nil
+}
+
+// RegisterClipboardImage 保留旧绑定兼容；新前端统一使用 RegisterClipboardAttachment。
+func (s *WechatService) RegisterClipboardImage(fileName, dataURL string) (OutgoingAttachmentDraft, error) {
+	return s.RegisterClipboardAttachment(fileName, dataURL)
+}
+
+// ReleaseOutgoingAttachment 仅释放由 RegisterClipboardImage 创建的受管临时文件。
+func (s *WechatService) ReleaseOutgoingAttachment(filePath string) bool {
+	return s.attachments.releaseOutgoingTemp(strings.TrimSpace(filePath))
+}
+
 // GetImagePreview 读取本地图片并以 Base64 Data URL 返回，供出站图片气泡内嵌缩略预览
 // （WebView 无法直读 file:// 本地路径，预览字节必须走后端通道）。
 func (s *WechatService) GetImagePreview(filePath string) (string, error) {
@@ -551,16 +630,15 @@ func (s *WechatService) getClientForAttachment(attachment inboundAttachment) *Cl
 	return s.defaultClient
 }
 
-// PickImageDialog 打开系统原生文件选择对话框选择图片并返回真实绝对路径
-func (s *WechatService) PickImageDialog() (string, error) {
+// PickAttachmentDialog 打开统一的系统附件选择对话框；图片真实性在发送前由后端按内容嗅探。
+func (s *WechatService) PickAttachmentDialog() (string, error) {
 	app := application.Get()
 	if app == nil {
 		return "", fmt.Errorf("application instance not available")
 	}
 
 	dialog := app.Dialog.OpenFile()
-	dialog.SetTitle("选择要发送的图片")
-	dialog.AddFilter("图片文件 (*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp)", "*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp")
+	dialog.SetTitle("选择要发送的附件")
 	dialog.AddFilter("所有文件 (*.*)", "*.*")
 
 	filePath, err := dialog.PromptForSingleSelection()
@@ -570,7 +648,12 @@ func (s *WechatService) PickImageDialog() (string, error) {
 	return filePath, nil
 }
 
-// PickFileDialog 打开系统原生文件选择对话框选择任意文件并返回真实绝对路径
+// PickImageDialog 保留旧绑定兼容；新前端统一使用 PickAttachmentDialog。
+func (s *WechatService) PickImageDialog() (string, error) {
+	return s.PickAttachmentDialog()
+}
+
+// PickFileDialog 保留旧绑定兼容；新前端统一使用 PickAttachmentDialog。
 func (s *WechatService) PickFileDialog() (string, error) {
 	app := application.Get()
 	if app == nil {

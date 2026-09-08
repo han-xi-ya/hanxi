@@ -27,9 +27,14 @@ const {
   handleRevealLocalFile,
   inputText,
   isSending,
+  attachmentDraft,
+  attachmentDraftError,
+  isPreparingAttachment,
+  handleChooseAttachment,
+  handlePasteAttachment,
+  handleSendAttachment,
+  clearAttachmentDraft,
   handleSendText,
-  handleSendImage,
-  handleSendFile,
   clearCurrentChat,
   toUserIdInput,
   isEditingTargetUser,
@@ -119,9 +124,14 @@ const showRulesBanner = ref(true)
           <WechatBotChatInput
             v-model="inputText"
             :is-sending="isSending"
+            :attachment-draft="attachmentDraft"
+            :attachment-error="attachmentDraftError"
+            :is-preparing-attachment="isPreparingAttachment"
             @send-text="handleSendText"
-            @send-image="handleSendImage"
-            @send-file="handleSendFile"
+            @choose-attachment="handleChooseAttachment"
+            @paste-attachment="handlePasteAttachment"
+            @send-attachment="handleSendAttachment"
+            @clear-attachment="clearAttachmentDraft"
             @clear="clearCurrentChat"
           />
         </template>

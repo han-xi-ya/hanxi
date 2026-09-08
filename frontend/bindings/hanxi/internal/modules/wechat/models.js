@@ -25,6 +25,17 @@
  */
 
 /**
+ * OutgoingAttachmentDraft 是发送前预览所需的安全元数据；Path 仅供本地 Wails 窗口回传确认发送。
+ * @typedef {Object} OutgoingAttachmentDraft
+ * @property {string} path
+ * @property {string} fileName
+ * @property {number} fileSize
+ * @property {boolean} isImage
+ * @property {string} [previewUrl]
+ * @property {boolean} [temporary]
+ */
+
+/**
  * QRInfo 微信登录二维码信息
  * @typedef {Object} QRInfo
  * @property {string} qrcode

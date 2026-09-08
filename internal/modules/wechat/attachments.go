@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -27,12 +28,16 @@ type inboundAttachment struct {
 }
 
 type attachmentStore struct {
-	mu    sync.RWMutex
-	items map[string]inboundAttachment
+	mu            sync.RWMutex
+	items         map[string]inboundAttachment
+	outgoingTemps map[string]struct{}
 }
 
 func newAttachmentStore() *attachmentStore {
-	return &attachmentStore{items: make(map[string]inboundAttachment)}
+	return &attachmentStore{
+		items:         make(map[string]inboundAttachment),
+		outgoingTemps: make(map[string]struct{}),
+	}
 }
 
 func (s *attachmentStore) register(accountID string, payload InboundFilePayload) (string, error) {
@@ -100,10 +105,36 @@ func (s *attachmentStore) deleteAccount(accountID string) {
 	}
 }
 
+func (s *attachmentStore) registerOutgoingTemp(path string) {
+	s.mu.Lock()
+	s.outgoingTemps[path] = struct{}{}
+	s.mu.Unlock()
+}
+
+func (s *attachmentStore) releaseOutgoingTemp(path string) bool {
+	s.mu.Lock()
+	if _, ok := s.outgoingTemps[path]; !ok {
+		s.mu.Unlock()
+		return false
+	}
+	delete(s.outgoingTemps, path)
+	s.mu.Unlock()
+	_ = os.Remove(path)
+	return true
+}
+
 func (s *attachmentStore) clear() {
 	s.mu.Lock()
+	temps := make([]string, 0, len(s.outgoingTemps))
+	for path := range s.outgoingTemps {
+		temps = append(temps, path)
+	}
 	s.items = make(map[string]inboundAttachment)
+	s.outgoingTemps = make(map[string]struct{})
 	s.mu.Unlock()
+	for _, path := range temps {
+		_ = os.Remove(path)
+	}
 }
 
 // inboundImageFileName 为入站图片合成文件名：微信图片消息只携带媒体凭据、

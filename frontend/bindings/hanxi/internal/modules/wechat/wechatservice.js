@@ -86,6 +86,15 @@ export function InitOnDemand() {
 }
 
 /**
+ * InspectOutgoingAttachment 校验本地附件并生成发送前预览信息。
+ * @param {string} filePath
+ * @returns {$CancellablePromise<$models.OutgoingAttachmentDraft>}
+ */
+export function InspectOutgoingAttachment(filePath) {
+    return $Call.ByID(2354370216, filePath);
+}
+
+/**
  * ListAccounts 获取所有账号及其运行时状态
  * @returns {$CancellablePromise<$models.WechatAccountState[] | null>}
  */
@@ -113,7 +122,15 @@ export function OpenLocalImage(filePath) {
 }
 
 /**
- * PickFileDialog 打开系统原生文件选择对话框选择任意文件并返回真实绝对路径
+ * PickAttachmentDialog 打开统一的系统附件选择对话框；图片真实性在发送前由后端按内容嗅探。
+ * @returns {$CancellablePromise<string>}
+ */
+export function PickAttachmentDialog() {
+    return $Call.ByID(1332530701);
+}
+
+/**
+ * PickFileDialog 保留旧绑定兼容；新前端统一使用 PickAttachmentDialog。
  * @returns {$CancellablePromise<string>}
  */
 export function PickFileDialog() {
@@ -121,7 +138,7 @@ export function PickFileDialog() {
 }
 
 /**
- * PickImageDialog 打开系统原生文件选择对话框选择图片并返回真实绝对路径
+ * PickImageDialog 保留旧绑定兼容；新前端统一使用 PickAttachmentDialog。
  * @returns {$CancellablePromise<string>}
  */
 export function PickImageDialog() {
@@ -153,6 +170,35 @@ export function RefreshAccountContextToken(accountID) {
  */
 export function RefreshContextToken() {
     return $Call.ByID(1555551512);
+}
+
+/**
+ * RegisterClipboardAttachment 将窗口剪贴板中的附件字节安全落到受管临时文件，供现有发送链路复用。
+ * @param {string} fileName
+ * @param {string} dataURL
+ * @returns {$CancellablePromise<$models.OutgoingAttachmentDraft>}
+ */
+export function RegisterClipboardAttachment(fileName, dataURL) {
+    return $Call.ByID(3491948815, fileName, dataURL);
+}
+
+/**
+ * RegisterClipboardImage 保留旧绑定兼容；新前端统一使用 RegisterClipboardAttachment。
+ * @param {string} fileName
+ * @param {string} dataURL
+ * @returns {$CancellablePromise<$models.OutgoingAttachmentDraft>}
+ */
+export function RegisterClipboardImage(fileName, dataURL) {
+    return $Call.ByID(2721324727, fileName, dataURL);
+}
+
+/**
+ * ReleaseOutgoingAttachment 仅释放由 RegisterClipboardImage 创建的受管临时文件。
+ * @param {string} filePath
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function ReleaseOutgoingAttachment(filePath) {
+    return $Call.ByID(2969951465, filePath);
 }
 
 /**

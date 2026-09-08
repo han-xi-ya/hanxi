@@ -1,6 +1,7 @@
 package wechat
 
 import (
+	"bytes"
 	"encoding/base64"
 	"os"
 	"path/filepath"
@@ -25,6 +26,56 @@ func TestBuildImageDataURL(t *testing.T) {
 	payload := strings.TrimPrefix(url, "data:image/png;base64,")
 	if decoded, err := base64.StdEncoding.DecodeString(payload); err != nil || string(decoded) != string(pngMagic) {
 		t.Fatalf("data URL payload does not round-trip: %v", err)
+	}
+}
+
+func TestInspectOutgoingAttachmentDetectsImageContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clipboard.bin")
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 32)...)
+	if err := os.WriteFile(path, png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := inspectOutgoingAttachment(path)
+	if err != nil {
+		t.Fatalf("inspectOutgoingAttachment() error = %v", err)
+	}
+	if !draft.IsImage || draft.PreviewURL == "" || draft.FileSize != int64(len(png)) {
+		t.Fatalf("inspectOutgoingAttachment() = %+v", draft)
+	}
+}
+
+func TestInspectOutgoingAttachmentRejectsSpoofedImageExtension(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "fake.png")
+	if err := os.WriteFile(path, []byte("not an image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectOutgoingAttachment(path); err == nil {
+		t.Fatal("inspectOutgoingAttachment(spoofed image) unexpectedly succeeded")
+	}
+}
+
+func TestDecodeClipboardDataURLForFile(t *testing.T) {
+	content := []byte("plain attachment")
+	url := "data:application/octet-stream;base64," + base64.StdEncoding.EncodeToString(content)
+	data, mime, err := decodeClipboardDataURL(url)
+	if err != nil {
+		t.Fatalf("decodeClipboardDataURL() error = %v", err)
+	}
+	if !bytes.Equal(data, content) || mime == "" {
+		t.Fatalf("decodeClipboardDataURL() mime=%q data=%q", mime, data)
+	}
+}
+
+func TestDecodeClipboardImageDataURL(t *testing.T) {
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 16)...)
+	url := "data:image/png;base64," + base64.StdEncoding.EncodeToString(png)
+	data, ext, err := decodeClipboardImageDataURL(url)
+	if err != nil {
+		t.Fatalf("decodeClipboardImageDataURL() error = %v", err)
+	}
+	if ext != ".png" || !bytes.Equal(data, png) {
+		t.Fatalf("decodeClipboardImageDataURL() ext=%q data=%x", ext, data)
 	}
 }
 
