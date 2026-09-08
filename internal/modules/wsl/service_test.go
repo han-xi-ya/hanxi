@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -111,6 +112,61 @@ func TestStartReadinessStreamsAllStages(t *testing.T) {
 		if !seen[want] {
 			t.Fatalf("缺少阶段 %s（收到 %v）", want, seen)
 		}
+	}
+}
+
+func TestStartReadinessDropsCancelledGeneration(t *testing.T) {
+	svc, _, _ := newTestService()
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	var calls int
+	svc.probe = func(context.Context) (readiness.ProbeResult, error) {
+		calls++
+		if calls == 1 {
+			close(firstStarted)
+			<-releaseFirst // 故意忽略取消，模拟旧外呼晚返回
+			return readiness.ProbeResult{OSBuild: 11111}, nil
+		}
+		return readiness.ProbeResult{OSBuild: 26200, Arch: "AMD64", Hypervisor: true, Store: true, FeatureVM: true}, nil
+	}
+	var mu sync.Mutex
+	var oldSystem bool
+	done := make(chan struct{}, 1)
+	svc.emit = func(_ string, payload any) {
+		u, ok := payload.(ReadinessUpdate)
+		if !ok {
+			return
+		}
+		mu.Lock()
+		if u.Stage == "system" && len(u.Items) > 0 && strings.Contains(u.Items[0].Detail, "11111") {
+			oldSystem = true
+		}
+		mu.Unlock()
+		if u.Stage == "done" {
+			select {
+			case done <- struct{}{}:
+			default:
+			}
+		}
+	}
+	if err := svc.StartReadiness(); err != nil {
+		t.Fatal(err)
+	}
+	<-firstStarted
+	if err := svc.StartReadiness(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("new generation did not finish")
+	}
+	close(releaseFirst)
+	time.Sleep(20 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if oldSystem {
+		t.Fatal("cancelled generation emitted stale system result")
 	}
 }
 

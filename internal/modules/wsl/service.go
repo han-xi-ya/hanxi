@@ -53,8 +53,11 @@ type WslService struct {
 	// lastProbe 缓存最近一次成功探针：卸载取 MSI ProductCode 免重复查询。
 	mu        sync.Mutex
 	lastProbe *readiness.ProbeResult
+	// readinessPublish 串行化轮次切换与事件发布，消除“旧轮已检查、尚未 Emit”窗口。
+	readinessPublish sync.Mutex
 	// readinessCancel 终止上一次仍在跑的流式体检（重新体检防串扰）。
 	readinessCancel context.CancelFunc
+	readinessGen    uint64
 	// 下载单飞状态与本会话落盘登记（RevealDownload 只认这里的路径）。
 	dlBusy  bool
 	dlPaths map[string]string
@@ -118,22 +121,26 @@ func (s *WslService) GetReadiness() (readiness.Report, error) {
 // 三源并发、先到先推（system / wsl / net 阶段逐项落位），全齐后 done 阶段整体收口。
 // 重复调用会静默终止上一轮，永不双跑串扰。
 func (s *WslService) StartReadiness() error {
+	s.readinessPublish.Lock()
+	defer s.readinessPublish.Unlock()
 	s.mu.Lock()
 	if s.readinessCancel != nil {
 		s.readinessCancel()
 	}
+	s.readinessGen++
+	gen := s.readinessGen
 	ctx, cancel := context.WithCancel(context.Background())
 	s.readinessCancel = cancel
 	s.mu.Unlock()
 
 	go func() {
 		defer cancel()
-		s.streamReadiness(ctx)
+		s.streamReadiness(ctx, gen)
 	}()
 	return nil
 }
 
-func (s *WslService) streamReadiness(ctx context.Context) {
+func (s *WslService) streamReadiness(ctx context.Context, gen uint64) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
@@ -147,24 +154,27 @@ func (s *WslService) streamReadiness(ctx context.Context) {
 	)
 	wg.Go(func() {
 		p, probeErr = s.probe(ctx)
-		if probeErr == nil {
-			s.setLastProbe(p)
-			s.emit(EventReadiness, ReadinessUpdate{Stage: "system", Items: readiness.SystemItems(p)})
+		if probeErr == nil && s.isCurrentReadiness(gen, ctx) {
+			s.setLastProbeIfCurrent(gen, p)
+			s.emitIfCurrent(gen, ctx, ReadinessUpdate{Stage: "system", Items: readiness.SystemItems(p)})
 		}
 	})
 	wg.Go(func() {
 		version = s.wslVersion(ctx)
-		s.emit(EventReadiness, ReadinessUpdate{Stage: "wsl", Items: []readiness.CheckItem{readiness.RuntimeItem(version)}})
+		s.emitIfCurrent(gen, ctx, ReadinessUpdate{Stage: "wsl", Items: []readiness.CheckItem{readiness.RuntimeItem(version)}})
 		distros = s.wslDistros(ctx)
 	})
 	wg.Go(func() {
 		api, gh = s.netProbe(ctx)
-		s.emit(EventReadiness, ReadinessUpdate{Stage: "net", Items: []readiness.CheckItem{readiness.NetworkItem(api, gh)}})
+		s.emitIfCurrent(gen, ctx, ReadinessUpdate{Stage: "net", Items: []readiness.CheckItem{readiness.NetworkItem(api, gh)}})
 	})
 	wg.Wait()
 
+	if !s.isCurrentReadiness(gen, ctx) {
+		return
+	}
 	if probeErr != nil {
-		s.emit(EventReadiness, ReadinessUpdate{
+		s.emitIfCurrent(gen, ctx, ReadinessUpdate{
 			Stage: "error",
 			Error: fmt.Sprintf("WSL 就绪探针执行失败（PowerShell 不可用或被安全策略拦截？）: %v", probeErr),
 		})
@@ -172,7 +182,33 @@ func (s *WslService) streamReadiness(ctx context.Context) {
 	}
 	p.APIGitHub, p.GitHub = api, gh
 	report := readiness.Evaluate(p, version, distros, time.Now().Format("2006-01-02 15:04:05"))
-	s.emit(EventReadiness, ReadinessUpdate{Stage: "done", Report: &report})
+	s.emitIfCurrent(gen, ctx, ReadinessUpdate{Stage: "done", Report: &report})
+}
+
+func (s *WslService) isCurrentReadiness(gen uint64, ctx context.Context) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readinessGen == gen
+}
+
+func (s *WslService) emitIfCurrent(gen uint64, ctx context.Context, update ReadinessUpdate) {
+	s.readinessPublish.Lock()
+	defer s.readinessPublish.Unlock()
+	if !s.isCurrentReadiness(gen, ctx) {
+		return
+	}
+	s.emit(EventReadiness, update)
+}
+
+func (s *WslService) setLastProbeIfCurrent(gen uint64, p readiness.ProbeResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.readinessGen == gen {
+		s.lastProbe = &p
+	}
 }
 
 func (s *WslService) setLastProbe(p readiness.ProbeResult) {
