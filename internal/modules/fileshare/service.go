@@ -17,6 +17,7 @@ import (
 type FileShareService struct {
 	plat         platform.Platform
 	mu           sync.RWMutex
+	lifecycleMu  sync.Mutex
 	config       ShareConfig
 	server       *Server
 	wailsApp     *application.App
@@ -92,6 +93,8 @@ func (s *FileShareService) SaveConfig(cfg ShareConfig) error {
 
 // StartServer 启动局域网快传服务
 func (s *FileShareService) StartServer() (ServerStatus, error) {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -142,17 +145,24 @@ func (s *FileShareService) StartServer() (ServerStatus, error) {
 
 // StopServer 停止快传服务
 func (s *FileShareService) StopServer() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
 
-	if s.server == nil {
+	s.mu.Lock()
+	server := s.server
+	if server == nil {
+		s.mu.Unlock()
 		return nil
 	}
-
-	err := s.server.Stop()
+	// 先摘除当前代，使回调和状态查询不再把正在停止的服务报告为运行中。
 	s.server = nil
+	s.mu.Unlock()
 
+	err := server.Stop()
+
+	s.mu.RLock()
 	status := s.getStatusLocked()
+	s.mu.RUnlock()
 	s.emitEvent("fileshare:status", status)
 	return err
 }

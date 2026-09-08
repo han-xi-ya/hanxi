@@ -2,6 +2,8 @@ package fileshare
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,6 +74,7 @@ type Server struct {
 	server    *http.Server
 	startedAt time.Time
 	statsQuit chan struct{} // 关闭速率采样协程
+	statsDone chan struct{} // 等待速率采样协程退出
 
 	mu        sync.RWMutex
 	publishMu sync.Mutex
@@ -144,49 +147,63 @@ func (s *Server) Start() (int, error) {
 	mux.HandleFunc("/api/drop", s.handleDrop)
 	mux.HandleFunc("/api/stats", s.handleStats)
 
-	s.server = &http.Server{
+	httpServer := &http.Server{
 		Handler:           s.connTracker(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       0, // 大文件上传无限制
 		WriteTimeout:      0, // 大文件下载无限制
 	}
+	s.server = httpServer
 
-	go func() {
-		if err := s.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	go func(server *http.Server, listener net.Listener) {
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fmt.Printf("[fileshare] server serve error: %v\n", err)
 		}
-	}()
+	}(httpServer, listener)
 
 	// 启动速率采样并清理旧进程遗留的上传临时文件
-	s.statsQuit = make(chan struct{})
+	statsQuit := make(chan struct{})
+	statsDone := make(chan struct{})
+	s.statsQuit = statsQuit
+	s.statsDone = statsDone
 	go s.cleanupExpiredUploadTemps(time.Now())
-	go s.samplingLoop()
+	go s.samplingLoop(statsQuit, statsDone)
 
 	return actualPort, nil
 }
 
-// Stop 优雅关闭 HTTP 服务
+// Stop 优雅关闭 HTTP 服务；超时后强制关闭，且不持状态锁等待 handler。
 func (s *Server) Stop() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.server == nil {
+	server := s.server
+	statsQuit := s.statsQuit
+	statsDone := s.statsDone
+	if server == nil {
+		s.mu.Unlock()
 		return nil
+	}
+	s.server = nil
+	s.listener = nil
+	s.statsQuit = nil
+	s.statsDone = nil
+	s.mu.Unlock()
+
+	if statsQuit != nil {
+		close(statsQuit)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	err := s.server.Shutdown(ctx)
-
-	// 停止速率采样协程 (close 后协程在下一次 select 立即退出)
-	if s.statsQuit != nil {
-		close(s.statsQuit)
-		s.statsQuit = nil
+	err := server.Shutdown(ctx)
+	cancel()
+	if err != nil {
+		closeErr := server.Close()
+		if closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+			err = errors.Join(err, closeErr)
+		}
 	}
-
-	s.server = nil
-	s.listener = nil
+	if statsDone != nil {
+		<-statsDone
+	}
 	return err
 }
 
@@ -276,48 +293,63 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Write(content)
 }
 
+// configSnapshot 返回当前配置副本，避免运行时热更新与 handler 无锁读发生竞争。
+func (s *Server) configSnapshot() ShareConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.config
+}
+
 // handleConfig 返回公共配置
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := s.configSnapshot()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"allowUpload":     s.config.AllowUpload,
-		"allowTextDrop":   s.config.AllowTextDrop,
-		"maxUploadSizeMB": s.config.MaxUploadSizeMB,
+		"allowUpload":     cfg.AllowUpload,
+		"allowTextDrop":   cfg.AllowTextDrop,
+		"maxUploadSizeMB": cfg.MaxUploadSizeMB,
 	})
 }
 
-// resolveSafePath 严格防目录穿越沙箱解析
+// resolveSafePath 严格解析为共享根内的相对路径；真实访问必须继续经 os.Root。
 func (s *Server) resolveSafePath(subPath string) (string, error) {
-	// 如果传入绝对路径，或者包含驱动器卷标/根路径前缀，直接拒绝
 	if filepath.IsAbs(subPath) || strings.HasPrefix(subPath, "/") || strings.HasPrefix(subPath, "\\") || filepath.VolumeName(subPath) != "" {
 		return "", errors.New("禁止访问非法越界路径 (Absolute Path Forbidden)")
 	}
-
 	cleanRel := filepath.Clean(filepath.FromSlash(subPath))
 	if cleanRel == "." || cleanRel == "" {
-		return s.config.SharePath, nil
+		return ".", nil
 	}
-
-	// 拼接绝对路径
-	target := filepath.Join(s.config.SharePath, cleanRel)
-	// 验证最终目标路径是否包含在 SharePath 之内
-	rel, err := filepath.Rel(s.config.SharePath, target)
-	if err != nil || strings.HasPrefix(rel, "..") || strings.HasPrefix(rel, "\\") || strings.HasPrefix(rel, "/") {
+	if cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
 		return "", errors.New("禁止访问非法越界路径 (Path Traversal Forbidden)")
 	}
+	return cleanRel, nil
+}
 
-	return target, nil
+func (s *Server) openRoot() (*os.Root, error) {
+	s.mu.RLock()
+	sharePath := s.config.SharePath
+	s.mu.RUnlock()
+	if sharePath == "" {
+		return nil, errors.New("共享路径不能为空")
+	}
+	return os.OpenRoot(sharePath)
 }
 
 // handleList 列出指定目录下的文件与子目录
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	reqPath := r.URL.Query().Get("path")
-	fullPath, err := s.resolveSafePath(reqPath)
+	relPath, err := s.resolveSafePath(reqPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-
-	entries, err := os.ReadDir(fullPath)
+	root, err := s.openRoot()
+	if err != nil {
+		http.Error(w, "无法打开共享目录: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer root.Close()
+	entries, err := fs.ReadDir(root.FS(), filepath.ToSlash(relPath))
 	if err != nil {
 		http.Error(w, "无法读取目录: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -357,51 +389,54 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 // handleDownload 处理文件强制下载 (原生支持 HTTP Range 断点续传)
 func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	reqPath := r.URL.Query().Get("path")
-	fullPath, err := s.resolveSafePath(reqPath)
+	relPath, err := s.resolveSafePath(reqPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	s.serveFile(w, r, fullPath, true)
+	s.serveFile(w, r, relPath, true)
 }
 
 // handleOpen 内联打开文件 (不设置 attachment 头，浏览器直接预览图片/视频/PDF 等)
 func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	reqPath := r.URL.Query().Get("path")
-	fullPath, err := s.resolveSafePath(reqPath)
+	relPath, err := s.resolveSafePath(reqPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	s.serveFile(w, r, fullPath, false)
+	s.serveFile(w, r, relPath, false)
 }
 
 // serveFile 统一的文件下发逻辑 (attach=true 强制下载，false 浏览器内联预览)
-func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, fullPath string, attach bool) {
-	info, err := os.Stat(fullPath)
+func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, relPath string, attach bool) {
+	root, err := s.openRoot()
+	if err != nil {
+		http.Error(w, "无法打开共享目录", http.StatusInternalServerError)
+		return
+	}
+	defer root.Close()
+	file, err := root.Open(relPath)
+	if err != nil {
+		http.Error(w, "文件不存在或不可访问", http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
 	if err != nil || info.IsDir() {
 		http.Error(w, "文件不存在或为目录", http.StatusNotFound)
 		return
 	}
 
 	atomic.AddInt64(&s.downloadCount, 1)
-
 	s.logEvent(TransferEvent{
-		Type:      "download",
-		Filename:  info.Name(),
-		Size:      info.Size(),
-		ClientIP:  getClientIP(r),
-		Timestamp: time.Now(),
-		Success:   true,
+		Type: "download", Filename: info.Name(), Size: info.Size(), ClientIP: getClientIP(r), Timestamp: time.Now(), Success: true,
 	})
-
 	if attach {
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(fullPath)))
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, info.Name()))
 	}
-
-	// 包装 ResponseWriter 统计实际下发的字节数 (兼容 Range 断点续传)
 	cw := &countingResponseWriter{ResponseWriter: w}
-	http.ServeFile(cw, r, fullPath)
+	http.ServeContent(cw, r, info.Name(), info.ModTime(), file)
 	s.recordBytes("down", atomic.LoadInt64(&cw.n))
 }
 
@@ -412,12 +447,13 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "请求方法不支持", http.StatusMethodNotAllowed)
 		return
 	}
-	if !s.config.AllowUpload {
+	cfg := s.configSnapshot()
+	if !cfg.AllowUpload {
 		http.Error(w, "服务器未开启文件上传权限", http.StatusForbidden)
 		return
 	}
 
-	p, err := s.parseUploadParams(r)
+	p, err := s.parseUploadParams(r, cfg.MaxUploadSizeMB)
 	if err != nil {
 		uploadParamError(w, err)
 		return
@@ -427,30 +463,35 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetDir, err := s.resolveSafePath(p.dir)
+	dirRel, err := s.resolveSafePath(p.dir)
 	if err != nil {
 		uploadParamError(w, err)
 		return
 	}
-	info, err := os.Stat(targetDir)
-	if err != nil || !info.IsDir() {
+	root, err := s.openRoot()
+	if err != nil {
+		http.Error(w, "无法打开共享目录: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer root.Close()
+	targetRoot, err := root.OpenRoot(dirRel)
+	if err != nil {
 		http.Error(w, "上传目录不存在或不可读", http.StatusBadRequest)
 		return
 	}
+	defer targetRoot.Close()
 
 	filename := filepath.Base(p.name)
-
-	temp, err := os.CreateTemp(targetDir, ".hanxi-upload-*.tmp")
+	tempName, temp, err := createUploadTemp(targetRoot)
 	if err != nil {
 		http.Error(w, "无法创建上传临时文件: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tempPath := temp.Name()
 	published := false
 	defer func() {
 		_ = temp.Close()
 		if !published {
-			_ = os.Remove(tempPath)
+			_ = targetRoot.Remove(tempName)
 		}
 	}()
 
@@ -495,10 +536,16 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.publishMu.Lock()
-	finalPath := getNonConflictingPath(filepath.Join(targetDir, filename))
-	renameErr := os.Rename(tempPath, finalPath)
+	finalName, pathErr := getNonConflictingName(targetRoot, filename)
+	var renameErr error
+	if pathErr == nil {
+		renameErr = targetRoot.Rename(tempName, finalName)
+	}
 	s.publishMu.Unlock()
-	if renameErr != nil {
+	if pathErr != nil || renameErr != nil {
+		if pathErr != nil {
+			renameErr = pathErr
+		}
 		http.Error(w, "发布上传文件失败: "+renameErr.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -506,16 +553,11 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	atomic.AddInt64(&s.uploadCount, 1)
 	s.logEvent(TransferEvent{
-		Type:      "upload",
-		Filename:  filepath.Base(finalPath),
-		Size:      written,
-		ClientIP:  getClientIP(r),
-		Timestamp: time.Now(),
-		Success:   true,
+		Type: "upload", Filename: finalName, Size: written, ClientIP: getClientIP(r), Timestamp: time.Now(), Success: true,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
-		"name":    filepath.Base(finalPath),
+		"name":    finalName,
 		"size":    written,
 	})
 }
@@ -532,7 +574,7 @@ func parsePositiveInt64(value, field string) (int64, error) {
 	return n, nil
 }
 
-func (s *Server) parseUploadParams(r *http.Request) (uploadParams, error) {
+func (s *Server) parseUploadParams(r *http.Request, maxUploadSizeMB int64) (uploadParams, error) {
 	q := r.URL.Query()
 	p := uploadParams{dir: q.Get("dir"), name: q.Get("name")}
 	if p.name == "" || p.name == "." || p.name == ".." {
@@ -542,7 +584,7 @@ func (s *Server) parseUploadParams(r *http.Request) (uploadParams, error) {
 	if p.size, err = parsePositiveInt64(q.Get("size"), "size"); err != nil {
 		return p, err
 	}
-	if maxMB := s.config.MaxUploadSizeMB; maxMB > 0 && (maxMB > (1<<63-1)/(1024*1024) || p.size > maxMB*1024*1024) {
+	if maxMB := maxUploadSizeMB; maxMB > 0 && (maxMB > (1<<63-1)/(1024*1024) || p.size > maxMB*1024*1024) {
 		return p, fmt.Errorf("文件超过 %d MB 上传限制", maxMB)
 	}
 	return p, nil
@@ -568,7 +610,8 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 
 // handleDrop 处理移动端投递文本/URL
 func (s *Server) handleDrop(w http.ResponseWriter, r *http.Request) {
-	if !s.config.AllowTextDrop {
+	cfg := s.configSnapshot()
+	if !cfg.AllowTextDrop {
 		http.Error(w, "服务器未开启文本投递功能", http.StatusForbidden)
 		return
 	}
@@ -644,28 +687,28 @@ func (s *Server) recordBytes(dir string, n int64) {
 }
 
 // samplingLoop 每秒记录一次累计字节采样点，供实时速率差分计算
-func (s *Server) samplingLoop() {
+func (s *Server) samplingLoop(quit <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
 			s.sampleRatePoint()
-		case <-s.statsQuit:
+		case <-quit:
 			return
 		}
 	}
 }
 
 func (s *Server) cleanupExpiredUploadTemps(now time.Time) {
-	s.mu.RLock()
-	root := s.config.SharePath
-	s.mu.RUnlock()
-	if root == "" {
+	root, err := s.openRoot()
+	if err != nil {
 		return
 	}
+	defer root.Close()
 	cutoff := now.Add(-uploadTempTTL)
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+	_ = fs.WalkDir(root.FS(), ".", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() || !isUploadTempName(entry.Name()) {
 			return nil
 		}
@@ -673,7 +716,7 @@ func (s *Server) cleanupExpiredUploadTemps(now time.Time) {
 		if err != nil || !info.Mode().IsRegular() || !info.ModTime().Before(cutoff) {
 			return nil
 		}
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		if err := root.Remove(filepath.FromSlash(path)); err != nil && !os.IsNotExist(err) {
 			fmt.Printf("[fileshare] cleanup upload temp %s failed: %v\n", path, err)
 		}
 		return nil
@@ -775,19 +818,39 @@ func formatBytes(b int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-func getNonConflictingPath(target string) string {
-	if _, err := os.Stat(target); os.IsNotExist(err) {
-		return target
-	}
-	dir := filepath.Dir(target)
-	ext := filepath.Ext(target)
-	base := strings.TrimSuffix(filepath.Base(target), ext)
-
-	for i := 1; i < 1000; i++ {
-		candidate := filepath.Join(dir, fmt.Sprintf("%s (%d)%s", base, i, ext))
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return candidate
+func createUploadTemp(root *os.Root) (string, *os.File, error) {
+	for range 100 {
+		var token [8]byte
+		if _, err := rand.Read(token[:]); err != nil {
+			return "", nil, err
+		}
+		name := ".hanxi-upload-" + hex.EncodeToString(token[:]) + ".tmp"
+		file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err == nil {
+			return name, file, nil
+		}
+		if !os.IsExist(err) {
+			return "", nil, err
 		}
 	}
-	return target
+	return "", nil, errors.New("无法分配上传临时文件名")
+}
+
+func getNonConflictingName(root *os.Root, target string) (string, error) {
+	if _, err := root.Lstat(target); os.IsNotExist(err) {
+		return target, nil
+	} else if err != nil {
+		return "", err
+	}
+	ext := filepath.Ext(target)
+	base := strings.TrimSuffix(target, ext)
+	for i := 1; i < 1000; i++ {
+		candidate := fmt.Sprintf("%s (%d)%s", base, i, ext)
+		if _, err := root.Lstat(candidate); os.IsNotExist(err) {
+			return candidate, nil
+		} else if err != nil {
+			return "", err
+		}
+	}
+	return "", errors.New("同名文件过多，无法分配目标名称")
 }

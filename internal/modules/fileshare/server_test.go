@@ -222,8 +222,8 @@ func TestFilesharePathSecurity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected legal path to pass, got err: %v", err)
 	}
-	if safe != testFile {
-		t.Errorf("expected %s, got %s", testFile, safe)
+	if safe != filepath.Join("sub", "hello.txt") {
+		t.Errorf("expected relative path, got %s", safe)
 	}
 
 	// 2. 测试越界目录穿越攻击 (Path Traversal Attacks)
@@ -241,6 +241,34 @@ func TestFilesharePathSecurity(t *testing.T) {
 		if err == nil {
 			t.Errorf("expected path traversal attack to be blocked for: %s", dp)
 		}
+	}
+}
+
+func TestFileshareRootRejectsEscapingLink(t *testing.T) {
+	rootDir := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(rootDir, "link")); err != nil {
+		t.Skipf("link permission unavailable: %v", err)
+	}
+	server := NewServer(ShareConfig{SharePath: rootDir, AllowUpload: true}, nil, nil)
+
+	rec := httptest.NewRecorder()
+	server.handleOpen(rec, httptest.NewRequest(http.MethodGet, "/api/open?path=link%2Fsecret.txt", nil))
+	if rec.Code == http.StatusOK || strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("escaped download succeeded: %d %q", rec.Code, rec.Body.String())
+	}
+
+	body := "x"
+	rec = httptest.NewRecorder()
+	server.handleUpload(rec, httptest.NewRequest(http.MethodPost, "/api/upload?dir=link&name=written.txt&size=1", strings.NewReader(body)))
+	if rec.Code == http.StatusOK {
+		t.Fatal("escaped upload succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "written.txt")); !os.IsNotExist(err) {
+		t.Fatalf("outside file created: %v", err)
 	}
 }
 
