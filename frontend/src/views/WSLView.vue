@@ -1,12 +1,13 @@
 <script setup lang="ts">
 // WSL 子系统：就绪体检（流式逐项点亮）+ 官方版本管理（Releases × 本机关系）
-// + 白名单提权操作（一键开启/更新/装发行版/正规卸载/组件还原）。
+// + 白名单提权操作（一键开启/更新/装发行版/正规卸载/组件还原）
+// + 发行版实例管理控制台（唤终端/设默认/终止/导出/迁移/删除）。
 // 体检走 wsl:readiness 事件分相推送：先全量 pending 骨架，system/wsl/net 三源
 // 并发先到先点亮，done 收口终版报告——骨架 key 与后端 BuildItems 有顺序互锁。
 import { ref, computed, watch, onMounted } from 'vue'
 import * as WSLAPI from '../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { CheckItem, DistroOption, Report } from '../../bindings/hanxi/internal/modules/wsl/readiness/models'
-import type { DownloadProgress, ReadinessUpdate } from '../../bindings/hanxi/internal/modules/wsl/models'
+import type { DistroInstance, DistroOpResult, DownloadProgress, ReadinessUpdate } from '../../bindings/hanxi/internal/modules/wsl/models'
 import type { Asset, Overview, Release } from '../../bindings/hanxi/internal/modules/wsl/releases/models'
 import { useToast } from '../composables/useToast'
 import { useConfirm } from '../composables/useConfirm'
@@ -94,13 +95,6 @@ const stateWord = (state: string): string => {
   }
 }
 
-function distroRunningChip(state: string): 'positive' | 'neutral' | 'information' {
-  const s = state.toLowerCase()
-  if (s.includes('running') || state.includes('正在运行')) return 'positive'
-  if (s.includes('stopped') || state.includes('已停止')) return 'neutral'
-  return 'information'
-}
-
 useWailsEvent<ReadinessUpdate>('wsl:readiness', (u) => {
   if (!u) return
   if (u.stage === 'error') {
@@ -114,6 +108,7 @@ useWailsEvent<ReadinessUpdate>('wsl:readiness', (u) => {
   if (u.stage === 'done' && u.report) {
     report.value = u.report
     streaming.value = false
+    if (u.report.wslVersion) loadInstances() // 体检收口顺带复采实例列表（不竞态：独立通道）
   }
 })
 
@@ -204,6 +199,137 @@ async function openPowerSettings() {
     await WSLAPI.OpenPowerSettings()
   } catch (e) {
     showToast(`打开系统设置失败: ${getErrorMessage(e)}`)
+  }
+}
+
+// ---------- 发行版实例管理 ----------
+// 列表与提权通道解耦：独立 loadInstances，操作后复采（wsl 状态有滞后，
+// 复采即真相——不在前端乐观编状态）。busyOp 全局互斥复用：任一操作在飞
+// 时所有按钮禁用，后端另有每发行版单飞闸与迁移全局闸兜并发。
+const instances = ref<DistroInstance[]>([])
+const instLoading = ref(false)
+const instError = ref('')
+const movingName = ref('') // 迁移内联表单展开中的发行版（同时只开一行）
+const moveTarget = ref('')
+const lastExport = ref<{ id: string; name: string } | null>(null)
+
+async function loadInstances() {
+  instLoading.value = true
+  instError.value = ''
+  try {
+    instances.value = (await WSLAPI.ListInstances()) ?? []
+  } catch (e) {
+    instances.value = []
+    instError.value = `获取发行版列表失败: ${getErrorMessage(e)}`
+  } finally {
+    instLoading.value = false
+  }
+}
+
+// runDistroOp：发行版操作编排（确认链 + 全局互斥 + 复采收口）。
+// 与 runOp 的差别：提权与否由 uac 如实声明（terminate/设默认/导出是用户态命令，
+// 谎报"会弹 UAC"反而制造困惑）；完成后只复采列表不重跑全量体检。
+async function runDistroOp(opts: {
+  name: string
+  title: string
+  desc: string
+  tone?: 'default' | 'warning' | 'danger'
+  uac?: boolean
+  details?: Array<{ label: string; value: string }>
+  confirm?: boolean
+  invoke: () => PromiseLike<DistroOpResult>
+  then?: (out: DistroOpResult) => void
+}) {
+  if (busyOp.value) return
+  if (opts.confirm !== false) {
+    const accepted = await confirm({
+      title: opts.title,
+      description: opts.desc + (opts.uac
+        ? '\n\n该操作需管理员权限：随后会弹出系统 UAC 授权窗口，请在窗口中确认继续。'
+        : '\n\n该操作以普通权限执行，不会弹出 UAC。'),
+      tone: opts.tone ?? 'warning',
+      details: opts.details ?? [],
+    })
+    if (!accepted) return
+  }
+  busyOp.value = opts.name
+  try {
+    const out = await opts.invoke()
+    showToast(out?.message || '操作已完成')
+    opts.then?.(out)
+  } catch (e) {
+    showToast(`${opts.title}失败: ${getErrorMessage(e)}`)
+  } finally {
+    busyOp.value = ''
+    await loadInstances() // 成败都复采：命令可能已部分生效，状态以复采为准
+  }
+}
+
+const openTerminal = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `启动 ${d.name}`, confirm: false,
+  desc: `唤起系统默认终端进入 ${d.name}。说明：WSL 在发行版内无前台进程时会自动停机，"运行中"是会话驱动的自然形态，本工具不做后台保活。`,
+  invoke: () => WSLAPI.OpenTerminal(d.name),
+})
+const terminateDistro = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `终止 ${d.name}？`, tone: 'default',
+  desc: '执行 wsl --terminate：立即停止该发行版。数据无损，下次访问（唤终端/\\wsl$ 路径）时自动再启动。',
+  invoke: () => WSLAPI.TerminateDistro(d.name),
+})
+const setDefaultDistro = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `把 ${d.name} 设为默认发行版？`, tone: 'default',
+  desc: '执行 wsl --set-default：此后不带 -d 的 wsl 命令与控制台默认进入该发行版。',
+  invoke: () => WSLAPI.SetDefaultDistro(d.name),
+})
+const unregisterDistro = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `删除发行版 ${d.name}？`, tone: 'danger',
+  details: [
+    { label: '发行版', value: d.name },
+    { label: '磁盘占用', value: d.sizeBytes ? fmtSize(d.sizeBytes) : '未知' },
+    { label: '数据位置', value: d.basePath || '未知' },
+  ],
+  desc: '执行 wsl --unregister：先终止该发行版，随后其数据盘（VHDX）连同全部文件被系统删除——不可恢复。'
+    + '如需留档，请先「导出」为 tar 再删。商店安装的发行版其启动器可能仍留在「设置→应用」，回执会如实提醒。',
+  invoke: () => WSLAPI.UnregisterDistro(d.name),
+})
+const exportDistro = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `导出 ${d.name}？`, tone: 'default',
+  desc: '执行 wsl --export --format tar.gz：整个文件系统压缩导出为 tar.gz，'
+    + '落到「下载\\WSL 导出」文件夹（文件名后端拼装、同名不覆盖）。大发行版可达数十 GB 耗时数分钟，期间请勿退出。',
+  invoke: () => WSLAPI.ExportDistro(d.name, true),
+  then: (out) => { if (out?.id) lastExport.value = { id: out.id, name: d.name } },
+})
+
+// 迁移：内联表单先行，确认时把目标路径与"会被连带打停的运行中实例"写进确认框。
+function startMove(d: DistroInstance) {
+  movingName.value = d.name
+  moveTarget.value = ''
+  lastExport.value = null
+}
+function cancelMove() {
+  movingName.value = ''
+  moveTarget.value = ''
+}
+const moveRunningOthers = computed(() =>
+  instances.value.filter(i => i.running && i.name !== movingName.value))
+const confirmMove = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `迁移 ${d.name} 到新位置？`, tone: 'danger', uac: true,
+  details: [
+    { label: '当前安装位置', value: d.basePath || '未知' },
+    { label: '目标目录', value: moveTarget.value.trim() },
+  ],
+  desc: '执行 wsl --manage --move：先把整个 WSL 子系统 wsl --shutdown'
+    + (moveRunningOthers.value.length ? `（将连带打停运行中的：${moveRunningOthers.value.map(i => i.name).join('、')}）` : '')
+    + '，再移动数据盘到目标目录（须为空目录或不存在的路径），瞬时冲突自动重试至多 5 次。迁移期间所有发行版不可用。',
+  invoke: () => WSLAPI.MoveDistro(d.name, moveTarget.value.trim()),
+  then: () => { movingName.value = ''; moveTarget.value = '' },
+})
+
+async function revealExport() {
+  if (!lastExport.value) return
+  try {
+    await WSLAPI.RevealDistroExport(lastExport.value.id)
+  } catch (e) {
+    showToast(`打开位置失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -349,13 +475,14 @@ async function openDocs() {
 
 onMounted(() => {
   startCheck()
+  loadInstances() // 与体检并行的独立通道：未装 WSL 时后端返回空列表，不报错
   loadReleases()
 })
 </script>
 
 <template>
   <section class="page wsl-view">
-    <PageHeader title="WSL2" subtitle="Windows Subsystem for Linux：就绪体检、GitHub 通道诊断、官方版本管理、发行版安装与正规卸载。">
+    <PageHeader title="WSL2" subtitle="Windows Subsystem for Linux：就绪体检、GitHub 通道诊断、官方版本管理、发行版安装/管理与正规卸载。">
       <template #actions>
         <MainTabNav v-model="activeMainTab" :tabs="mainTabs" />
       </template>
@@ -437,29 +564,97 @@ onMounted(() => {
         </li>
       </ul>
 
-      <!-- 已安装发行版 -->
+      <!-- 本机发行版管理控制台：状态归一列表 + 行内操作（数据源独立于体检报告） -->
       <template v-if="report && report.wslVersion">
-        <div class="section-title"><h3>本机发行版 ({{ report.distros?.length ?? 0 }})</h3></div>
-        <div v-if="!report.distros?.length" class="empty-state">
+        <div class="section-title distro-head">
+          <h3>本机发行版 ({{ instances.length }})</h3>
+          <div class="btn-group distro-head-actions">
+            <span v-if="lastExport" class="export-done">
+              <UiStatusChip tone="positive">✓ {{ lastExport.name }} 已导出</UiStatusChip>
+              <code class="mono dim" title="保存到「下载\WSL 导出」；位置直达仅本会话有效">{{ lastExport.id }}</code>
+              <button class="link-button" @click="revealExport">📂 打开位置</button>
+            </span>
+            <button class="btn btn-secondary btn-small" :disabled="instLoading || !!busyOp" @click="loadInstances">
+              {{ instLoading ? '复采中…' : '↻ 刷新列表' }}
+            </button>
+          </div>
+        </div>
+        <div v-if="instError" class="error-box">{{ instError }}
+          <button class="btn btn-secondary btn-small retry-inline" @click="loadInstances">↻ 重试</button>
+        </div>
+        <div v-else-if="instLoading && !instances.length" class="hint-line">正在向本机 wsl.exe 复采发行版现状…</div>
+        <div v-else-if="!instances.length" class="empty-state">
           <p>WSL 已安装但还没有发行版 —— 到「📦 版本与发行版」页从官方清单挑一个一键安装。</p>
         </div>
         <div v-else class="table-container">
           <table class="tbl">
             <thead>
               <tr>
-                <th style="width: 40%;">发行版</th>
-                <th style="width: 25%;">状态</th>
-                <th style="width: 15%;">WSL 版本</th>
-                <th>默认</th>
+                <th style="width: 18%;">发行版</th>
+                <th style="width: 10%;">状态</th>
+                <th style="width: 8%;">WSL 版本</th>
+                <th style="width: 10%;">磁盘占用</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="d in report.distros" :key="d.name">
-                <td><code class="mono">{{ d.name }}</code></td>
-                <td><UiStatusChip :tone="distroRunningChip(d.state)">{{ d.state }}</UiStatusChip></td>
-                <td class="mono">{{ d.version }}</td>
-                <td><span v-if="d.default" class="hint-dim">★ 默认</span></td>
-              </tr>
+              <template v-for="d in instances" :key="d.name">
+                <tr>
+                  <td>
+                    <code class="mono">{{ d.name }}</code>
+                    <UiStatusChip v-if="d.default" tone="information">★ 默认</UiStatusChip>
+                  </td>
+                  <td>
+                    <!-- 状态归一呈现：原文是本地化文案（跨语言系统不可作判据），仅收进 title 备查 -->
+                    <UiStatusChip :tone="d.running ? 'positive' : 'neutral'" :title="d.stateText">
+                      {{ d.running ? '运行中' : '已停止' }}
+                    </UiStatusChip>
+                  </td>
+                  <td class="mono">{{ d.version }}</td>
+                  <td class="mono dim" :title="d.vhdxPath || d.basePath || undefined">{{ d.sizeBytes ? fmtSize(d.sizeBytes) : '—' }}</td>
+                  <td>
+                    <div class="distro-actions">
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+                        title="唤起系统默认终端进入该发行版（WSL 无前台进程时会自动停机，本工具不做后台保活）"
+                        @click="openTerminal(d)">⌨ 终端</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || d.default"
+                        :title="d.default ? '已是默认发行版' : 'wsl --set-default：不带 -d 的 wsl 命令默认进入它'"
+                        @click="setDefaultDistro(d)">⭐ 设默认</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !d.running"
+                        :title="d.running ? 'wsl --terminate：立即停止（数据无损，下次访问自动再启动）' : '当前已停止'"
+                        @click="terminateDistro(d)">⏹ 终止</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+                        title="wsl --export：压缩导出为 tar.gz 到「下载」文件夹，可 long-running"
+                        @click="exportDistro(d)">📤 导出</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
+                        title="wsl --manage --move：迁移数据盘到其他盘（UAC 提权，会先停机全部 WSL）"
+                        @click="startMove(d)">🧭 迁移</button>
+                      <button class="btn btn-danger-outline btn-small" :disabled="!!busyOp"
+                        title="wsl --unregister：数据销毁级删除，不可恢复"
+                        @click="unregisterDistro(d)">🗑 删除</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="movingName === d.name" class="move-row-editor">
+                  <td colspan="5">
+                    <div class="move-editor">
+                      <UiBanner tone="warn" class="slim">
+                        迁移会先执行 <code class="mono">wsl --shutdown</code> 打停整个 WSL 子系统<template v-if="moveRunningOthers.length">——当前运行中的
+                        <b>{{ moveRunningOthers.map(i => i.name).join('、') }}</b> 会被连带终止<template v-if="d.running">（<b>{{ d.name }}</b> 本身也在运行，可先「⏹ 终止」缩小影响面）</template></template>，随后提权移动数据盘（UAC 授权，瞬时冲突自动重试至多 5 次）。目标须为空目录或不存在的路径，路径合法性由后端把关。
+                      </UiBanner>
+                      <div class="move-input-row">
+                        <label class="move-label" for="wsl-move-target">目标目录</label>
+                        <input id="wsl-move-target" v-model="moveTarget" class="input mono"
+                          :placeholder="`D:\\WSL\\${d.name}`" spellcheck="false" :disabled="!!busyOp"
+                          @keyup.enter="moveTarget.trim() && confirmMove(d)" />
+                        <button class="btn btn-primary btn-small" :disabled="!moveTarget.trim() || !!busyOp"
+                          @click="confirmMove(d)">{{ busyOp === `d-${d.name}` ? '迁移中…' : '✔ 确认迁移' }}</button>
+                        <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="cancelMove">取消</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </div>
@@ -657,6 +852,23 @@ onMounted(() => {
 .dl-error { font-size: 11.5px; color: var(--state-danger); font-weight: 600; }
 .plat-chip { font-size: 11px; font-weight: 700; color: var(--color-primary); background: var(--color-primary-soft, var(--surface-hover)); border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 0 8px; }
 .online-refresh { justify-content: flex-end; }
+
+/* 发行版管理控制台 */
+.distro-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.distro-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.export-done { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.distro-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.tbl td .mono.dim { font-size: 12px; }
+.move-row-editor td { background: var(--surface-page); }
+.move-editor { display: flex; flex-direction: column; gap: 8px; padding: 2px 0; }
+.move-input-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.move-label { font-size: 12px; font-weight: 600; color: var(--color-text-muted); white-space: nowrap; }
+.input {
+  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: 6px;
+  padding: 6px 10px; font-size: 12.5px; color: var(--color-text); font-family: inherit; flex: 1 1 240px; min-width: 0;
+}
+.input:focus { outline: none; border-color: var(--color-primary); }
+.input:disabled { opacity: 0.6; }
 
 /* 知识卡 */
 .info-details { border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); overflow: hidden; }

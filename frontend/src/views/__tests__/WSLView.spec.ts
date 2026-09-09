@@ -25,6 +25,14 @@ const api = vi.hoisted(() => ({
   OpenReleasesPage: vi.fn(),
   OpenOfficialDocs: vi.fn(),
   OpenPowerSettings: vi.fn(),
+  ListInstances: vi.fn(),
+  OpenTerminal: vi.fn(),
+  TerminateDistro: vi.fn(),
+  SetDefaultDistro: vi.fn(),
+  UnregisterDistro: vi.fn(),
+  ExportDistro: vi.fn(),
+  MoveDistro: vi.fn(),
+  RevealDistroExport: vi.fn(),
 }))
 
 vi.mock('../../../bindings/hanxi/internal/modules/wsl/wslservice', () => api)
@@ -42,7 +50,12 @@ vi.mock('@wailsio/runtime', () => ({
   },
 }))
 
-interface ConfirmOpts { title?: string; description?: string; tone?: string }
+interface ConfirmOpts {
+  title?: string
+  description?: string
+  tone?: string
+  details?: Array<{ label: string; value: string }>
+}
 const confirmFn = vi.hoisted(() => vi.fn(async (_opts: ConfirmOpts) => true))
 vi.mock('../../composables/useConfirm', () => ({
   useConfirm: () => ({ confirm: confirmFn }),
@@ -100,6 +113,16 @@ function emitReadiness(payload: unknown) {
   runtime.handlers['wsl:readiness']?.({ data: payload })
 }
 
+// 实例管理用发行版数据（状态原文故意本地化：前端必须归一呈现）
+const INSTANCES = [
+  { name: 'Ubuntu', running: true, default: true, version: '2', stateText: '正在运行', basePath: 'C:\\lxss\\u', vhdxPath: 'C:\\lxss\\u\\ext4.vhdx', sizeBytes: 12.3 * 1024 * 1024 },
+  { name: 'Debian', running: false, default: false, version: '1', stateText: '已停止', basePath: '', vhdxPath: '', sizeBytes: 0 },
+]
+
+function ok(message = '操作已完成') {
+  return { success: true, message }
+}
+
 async function setup() {
   api.StartReadiness.mockResolvedValue(undefined)
   api.GetReleases.mockResolvedValue(OVERVIEW)
@@ -109,6 +132,7 @@ async function setup() {
   api.UninstallWsl.mockResolvedValue({ success: true, message: '双路卸载完成' })
   api.DownloadMsi.mockResolvedValue({ success: true, message: '开始下载，保存到系统下载文件夹' })
   api.RevealDownload.mockResolvedValue(undefined)
+  api.ListInstances.mockResolvedValue(INSTANCES)
   const wrapper = mount(WSLView)
   await flushPromises()
   return wrapper
@@ -156,7 +180,10 @@ describe('WSLView 流式体检', () => {
     expect(w.findAll('.check-trail.info').length).toBe(1)
     expect(w.findAll('.check-trail').length).toBe(10)
     expect(w.text()).toContain('★ 默认')
-    expect(w.text()).toContain('正在运行')
+    // 状态归一呈现：本地化原文只进 title 备查，正文一律中文枚举；占用走注册表列
+    expect(w.text()).toContain('运行中')
+    expect(w.text()).toContain('已停止')
+    expect(w.text()).toContain('12.3 MB')
   })
 
   it('error 阶段落错误框并解除 streaming', async () => {
@@ -314,5 +341,137 @@ describe('WSLView 版本与发行版', () => {
     expect(install.attributes('disabled')).toBeDefined()
     await install.trigger('click')
     expect(api.InstallDistro).not.toHaveBeenCalled()
+  })
+})
+
+describe('WSLView 发行版实例管理', () => {
+  // 行内按钮顺序（与模板一致）：0 终端 1 设默认 2 终止 3 导出 4 迁移 5 删除
+  async function consoleMounted() {
+    const w = await setup()
+    await completeCheck(w)
+    return w
+  }
+  const rowBtns = (w: Awaited<ReturnType<typeof consoleMounted>>, row: number) =>
+    w.findAll('tbody tr')[row].findAll('button')
+  // 覆盖列表数据源并复采（setup 默认 mock 会重置，故覆盖必须发生在挂载后）
+  async function reloadWith(w: Awaited<ReturnType<typeof consoleMounted>>, list: unknown[]) {
+    api.ListInstances.mockResolvedValue(list)
+    await w.findAll('button').find(b => b.text().includes('刷新列表'))!.trigger('click')
+    await flushPromises()
+  }
+
+  it('唤终端免确认直达，发行版名原样透传后端白名单', async () => {
+    api.OpenTerminal.mockResolvedValue(ok('已启动终端会话'))
+    const w = await consoleMounted()
+    await rowBtns(w, 0)[0].trigger('click')
+    await flushPromises()
+    expect(confirmFn).not.toHaveBeenCalled()
+    expect(api.OpenTerminal).toHaveBeenCalledWith('Ubuntu')
+  })
+
+  it('终止仅对运行中实例可用；用户态操作如实声明不弹 UAC', async () => {
+    api.TerminateDistro.mockResolvedValue(ok('Ubuntu 已终止'))
+    const w = await consoleMounted()
+    const debianStop = rowBtns(w, 1)[2]
+    expect(debianStop.attributes('disabled')).toBeDefined()
+    await debianStop.trigger('click')
+    expect(api.TerminateDistro).not.toHaveBeenCalled()
+
+    await rowBtns(w, 0)[2].trigger('click')
+    await flushPromises()
+    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
+    expect(opts.description).toContain('不会弹出 UAC')
+    expect(api.TerminateDistro).toHaveBeenCalledWith('Ubuntu')
+  })
+
+  it('删除：数据销毁级危险确认 + details 点名占用与位置；确认被拒不触达', async () => {
+    api.UnregisterDistro.mockResolvedValue(ok('已删除'))
+    const w = await consoleMounted()
+    await rowBtns(w, 0)[5].trigger('click')
+    await flushPromises()
+    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
+    expect(opts.tone).toBe('danger')
+    expect(opts.description).toContain('不可恢复')
+    expect(opts.details?.find(d => d.label === '磁盘占用')?.value).toBe('12.3 MB')
+    expect(opts.details?.find(d => d.label === '数据位置')?.value).toBe('C:\\lxss\\u')
+    expect(api.UnregisterDistro).toHaveBeenCalledWith('Ubuntu')
+
+    const w2 = await consoleMounted()
+    confirmFn.mockResolvedValueOnce(false)
+    await rowBtns(w2, 0)[5].trigger('click')
+    await flushPromises()
+    expect(api.UnregisterDistro).toHaveBeenCalledTimes(1) // 第二次被拒不得新增调用
+  })
+
+  it('导出：回执工件名挂出「打开位置」，Reveal 只回传登记的 ID', async () => {
+    api.ExportDistro.mockResolvedValue({ ...ok('Ubuntu 已导出'), id: 'Ubuntu-20260909-120000.tar.gz' })
+    api.RevealDistroExport.mockResolvedValue(undefined)
+    const w = await consoleMounted()
+    await rowBtns(w, 0)[3].trigger('click')
+    await flushPromises()
+    expect(api.ExportDistro).toHaveBeenCalledWith('Ubuntu', true)
+    expect(w.text()).toContain('Ubuntu 已导出')
+    const reveal = w.findAll('button').find(b => b.text().includes('打开位置') && b.text().includes('📂'))!
+    await reveal.trigger('click')
+    await flushPromises()
+    expect(api.RevealDistroExport).toHaveBeenCalledWith('Ubuntu-20260909-120000.tar.gz')
+  })
+
+  it('迁移：内联表单→空路径禁确认→确认链点名 --shutdown 全局停机与运行中实例→路径透传并收起', async () => {
+    api.MoveDistro.mockResolvedValue(ok('迁移完成'))
+    const w = await consoleMounted()
+    // Debian 改为运行中：迁移预警必须点名会被 --shutdown 连带打停的实例
+    await reloadWith(w, [
+      INSTANCES[0],
+      { ...INSTANCES[1], running: true, stateText: '正在运行' },
+    ])
+    await rowBtns(w, 0)[4].trigger('click')
+    await flushPromises()
+    const editor = w.find('.move-editor')
+    expect(editor.exists()).toBe(true)
+    expect(editor.text()).toContain('wsl --shutdown')
+    expect(editor.text()).toContain('Debian') // 运行中的其它实例被点名预警
+    const submit = editor.findAll('button')[0] // 确认迁移
+    expect(submit.attributes('disabled')).toBeDefined()
+    await w.find('#wsl-move-target').setValue('  D:\\WSL\\Ubuntu  ')
+    await submit.trigger('click')
+    await flushPromises()
+    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
+    expect(opts.tone).toBe('danger')
+    expect(opts.description).toContain('wsl --shutdown')
+    expect(opts.details?.find(d => d.label === '目标目录')?.value).toBe('D:\\WSL\\Ubuntu')
+    expect(api.MoveDistro).toHaveBeenCalledWith('Ubuntu', 'D:\\WSL\\Ubuntu')
+    expect(w.find('.move-editor').exists()).toBe(false) // 完成后收起
+  })
+
+  it('全局互斥：导出在飞时其余发行版操作全部禁用', async () => {
+    let release!: (v: ReturnType<typeof ok>) => void
+    api.ExportDistro.mockImplementation(() => new Promise(res => { release = res }))
+    const w = await consoleMounted()
+    await rowBtns(w, 0)[3].trigger('click')
+    await flushPromises()
+    await flushPromises()
+    // Debian 行：导出/删除在忙时禁用（终止钮本来就因已停止禁用，不作判据）
+    expect(rowBtns(w, 1)[3].attributes('disabled')).toBeDefined()
+    expect(rowBtns(w, 1)[5].attributes('disabled')).toBeDefined()
+    release(ok('导出完成'))
+    await flushPromises()
+    await flushPromises()
+    expect(rowBtns(w, 1)[3].attributes('disabled')).toBeUndefined() // 收口后恢复
+  })
+
+  it('列表复采失败：错误框 + 重试钮，不影响体检区', async () => {
+    const w = await consoleMounted()
+    api.ListInstances.mockRejectedValue(new Error('wsl.exe 拒绝访问'))
+    await w.findAll('button').find(b => b.text().includes('刷新列表'))!.trigger('click')
+    await flushPromises()
+    const errBox = w.find('.error-box')
+    expect(errBox.exists()).toBe(true)
+    expect(errBox.text()).toContain('wsl.exe 拒绝访问')
+    expect(w.text()).toContain('GitHub API 被拦截') // 体检结论区不受牵连
+    api.ListInstances.mockResolvedValue(INSTANCES)
+    await w.findAll('button').find(b => b.text().includes('重试'))!.trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('运行中')
   })
 })
