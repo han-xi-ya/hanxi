@@ -37,7 +37,8 @@ $n = @(Get-ChildItem 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss' -Err
 )
 
 // WslService Wails 绑定服务：WSL 就绪体检（同步 + 流式）、官方版本管理、
-// 白名单提权操作与正规卸载。探测/外呼函数一律以字段注入，单测替换后即可离线断言。
+// 白名单提权操作与正规卸载、发行版实例管理控制台（列表 + 启停/导出/迁移等）。
+// 探测/外呼函数一律以字段注入，单测替换后即可离线断言。
 type WslService struct {
 	opener        urlOpener
 	probe         func(context.Context) (readiness.ProbeResult, error)
@@ -49,6 +50,10 @@ type WslService struct {
 	elevProc      func(context.Context, string, ...string) (OperationOutcome, error)
 	localPS       func(context.Context, string) (string, error)
 	emit          func(name string, payload any)
+	// runWsl 非提权 wsl.exe 通道（解码已收敛在 readiness.RunWsl）；
+	// startTerm 唤终端外呼。发行版管理面单测替换这两路即可离线断言。
+	runWsl    func(context.Context, ...string) (string, error)
+	startTerm func(context.Context, string) error
 
 	// lastProbe 缓存最近一次成功探针：卸载取 MSI ProductCode 免重复查询。
 	mu        sync.Mutex
@@ -61,6 +66,12 @@ type WslService struct {
 	// 下载单飞状态与本会话落盘登记（RevealDownload 只认这里的路径）。
 	dlBusy  bool
 	dlPaths map[string]string
+	// 发行版管理面：每发行版单飞闸（小写名 → 操作名）、全局重操作计数
+	// （迁移会 --shutdown 打停全部实例，与任何单发行版操作互斥）、
+	// 导出工件登记（RevealDistroExport 只认这里）。
+	distroOps   map[string]string
+	heavyOps    int
+	exportPaths map[string]string
 }
 
 func NewWslService(opener urlOpener) *WslService {
@@ -75,7 +86,11 @@ func NewWslService(opener urlOpener) *WslService {
 		elevProc:      runElevatedProcess,
 		localPS:       runLocalPS,
 		emit:          emitEvent,
+		runWsl:        readiness.RunWsl,
+		startTerm:     startTerminalSession,
 		dlPaths:       map[string]string{},
+		distroOps:     map[string]string{},
+		exportPaths:   map[string]string{},
 	}
 }
 

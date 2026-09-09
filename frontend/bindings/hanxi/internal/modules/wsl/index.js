@@ -10,6 +10,19 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * DistroInstance 管理控制台的发行版实例行。
+ * Running/Default 为归一后的布尔语义（状态列原文是本地化文案，跨语言系统下
+ * 不可作为判据；运行态以 `wsl -l -q --running` 名单为准，默认以 `wsl -l -q`
+ * 首行为准，均带回退）。
+ * @typedef {$models.DistroInstance} DistroInstance
+ */
+
+/**
+ * DistroOpResult 发行版操作统一回执；导出成功后 ID/Path 供「打开位置」白名单回查。
+ * @typedef {$models.DistroOpResult} DistroOpResult
+ */
+
+/**
  * DownloadProgress MSI 下载进度事件载荷（与托管模块 version-download 事件同构）。
  * @typedef {$models.DownloadProgress} DownloadProgress
  */

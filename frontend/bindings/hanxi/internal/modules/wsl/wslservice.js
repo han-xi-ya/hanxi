@@ -4,7 +4,8 @@
 
 /**
  * WslService Wails 绑定服务：WSL 就绪体检（同步 + 流式）、官方版本管理、
- * 白名单提权操作与正规卸载。探测/外呼函数一律以字段注入，单测替换后即可离线断言。
+ * 白名单提权操作与正规卸载、发行版实例管理控制台（列表 + 启停/导出/迁移等）。
+ * 探测/外呼函数一律以字段注入，单测替换后即可离线断言。
  * @module
  */
 
@@ -55,6 +56,19 @@ export function EnableWslFeatures() {
 }
 
 /**
+ * ExportDistro 导出为 tar（gzip=true 走 --format tar.gz，WSL 2.4.4+）。
+ * 落盘固定到「下载\WSL 导出」目录，文件名后端拼装（清洗后的发行版名 + 时间戳），
+ * 同名不覆盖——不收前端路径参数，杜绝本接口被当任意写盘面。
+ * 长操作同步等待（重型通道 30 分钟护栏），失败清理半成品文件并如实报因。
+ * @param {string} name
+ * @param {boolean} gzip
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function ExportDistro(name, gzip) {
+    return $Call.ByID(3455439624, name, gzip);
+}
+
+/**
  * GetReadiness 并发采集探针/网络通道/WSL CLI 现状，返回完整体检报告。
  * 供操作后的同步刷新；首屏渲染走 StartReadiness 流式通道。
  * @returns {$CancellablePromise<readiness$0.Report>}
@@ -98,11 +112,35 @@ export function InstallWsl() {
 }
 
 /**
+ * ListInstances 汇总本机发行版现状：-l -v 拿名称/版本，-q 名单归一运行态与默认，
+ * Lxss 注册表补安装路径与 VHDX 占用。任何一路取数失败都不谎报：
+ * 缺失字段留空、状态回退 -l -v 原文判读，列表本体拿不到才报错。
+ * @returns {$CancellablePromise<$models.DistroInstance[] | null>}
+ */
+export function ListInstances() {
+    return $Call.ByID(378971491);
+}
+
+/**
  * ListOnlineDistros 返回官方在线可安装发行版清单（需 wsl.exe 已具备 --list --online 能力）。
  * @returns {$CancellablePromise<readiness$0.DistroOption[] | null>}
  */
 export function ListOnlineDistros() {
     return $Call.ByID(733285110);
+}
+
+/**
+ * MoveDistro 迁移 VHDX 到其他盘（WSL2 通道 wsl --manage --move）。
+ * 全程单一提权会话内完成：`wsl --shutdown`（迁移会打停全部运行实例，
+ * 前端确认框已点名）→ 等 3s → 移动命令对 sharing-violation 型瞬时冲突
+ * 重试至多 5 次 → $LASTEXITCODE 逐层传播（#37 红线：绝不"执行完毕"式假成功）。
+ * 提权理由与参考项目一致：WSL 2.7.8+ 不提权移动常撞 E_ACCESSDENIED。
+ * @param {string} name
+ * @param {string} target
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function MoveDistro(name, target) {
+    return $Call.ByID(4127384307, name, target);
 }
 
 /**
@@ -140,6 +178,27 @@ export function OpenReleasesPage() {
 }
 
 /**
+ * OpenTerminal 唤终端即启动：拉起系统默认终端进入该发行版。
+ * 刻意不做后台保活——WSL 无前台进程时自动停机是平台语义，
+ * 塞一个野生的 sleep 进程换"常亮"状态，生命周期没人收尸，得不偿失。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function OpenTerminal(name) {
+    return $Call.ByID(2567537505, name);
+}
+
+/**
+ * RevealDistroExport 在资源管理器中定位导出产物；只认本会话后端自己登记过的
+ * 工件名（RevealDownload 同款红线：不接受任意路径）。
+ * @param {string} id
+ * @returns {$CancellablePromise<void>}
+ */
+export function RevealDistroExport(id) {
+    return $Call.ByID(3645920933, id);
+}
+
+/**
  * RevealDownload 在资源管理器中定位已下载的 MSI；只认本会话自己登记过的路径，
  * 不接受前端传入任意路径（envcheck RevealToolPath 同款红线）。
  * @param {string} tag
@@ -148,6 +207,15 @@ export function OpenReleasesPage() {
  */
 export function RevealDownload(tag, name) {
     return $Call.ByID(4181564764, tag, name);
+}
+
+/**
+ * SetDefaultDistro 设默认发行版（wsl --set-default，用户态命令）。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function SetDefaultDistro(name) {
+    return $Call.ByID(3438748147, name);
 }
 
 /**
@@ -169,6 +237,15 @@ export function StartReadiness() {
 }
 
 /**
+ * TerminateDistro 终止发行版（wsl --terminate，用户态命令，数据无损、幂等）。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function TerminateDistro(name) {
+    return $Call.ByID(2662705819, name);
+}
+
+/**
  * UninstallWsl 双形态正规卸载：MSI 系统版走 msiexec /X ProductCode（提权、官方卸载器
  * 自收编其注册表登记），MSIX 用户包走 Remove-AppxPackage（当前用户、无需提权）。
  * 边界如实申明：不强删注册表、不触碰可选功能（另见 DisableWslFeatures）；
@@ -177,6 +254,18 @@ export function StartReadiness() {
  */
 export function UninstallWsl() {
     return $Call.ByID(2610190521);
+}
+
+/**
+ * UnregisterDistro 删除发行版：数据销毁级操作。
+ * 先 terminate 再 unregister 是参考实现用卡死事故换来的教训——对运行中的
+ * 发行版直接 unregister 可能长时间挂起；terminate 失败不拦路（本就停止则
+ * 是幂等空转），unregister 的成败以退出码与输出如实上报。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function UnregisterDistro(name) {
+    return $Call.ByID(4253249296, name);
 }
 
 /**

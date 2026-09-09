@@ -61,7 +61,11 @@ func newTestService() (*WslService, *fakeElevated, *fakeOpener) {
 				return "", nil
 			}
 		},
-		emit: func(string, any) {},
+		emit:        func(string, any) {},
+		runWsl:      func(context.Context, ...string) (string, error) { return "", nil },
+		startTerm:   func(context.Context, string) error { return nil },
+		distroOps:   map[string]string{},
+		exportPaths: map[string]string{},
 	}
 	return svc, ev, op
 }
