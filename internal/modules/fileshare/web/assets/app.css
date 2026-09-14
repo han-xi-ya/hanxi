@@ -181,6 +181,15 @@ kbd { padding: 1px 5px; color: var(--muted); background: var(--surface-soft); bo
 .toast-error { color: var(--danger); border-color: var(--danger); }
 .page-footer { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; padding: 18px 8px 0; color: var(--subtle); font-size: 10px; }
 .hidden { display: none !important; }
+
+/* ── 口令门禁（authGate 会话失效时覆盖整页） ── */
+.auth-overlay { position: fixed; inset: 0; z-index: 900; display: grid; place-items: center; padding: 20px; background: color-mix(in srgb, var(--page) 90%, transparent); }
+.auth-card { width: min(420px, 100%); padding: 22px; }
+.auth-card .panel-heading { margin-bottom: 16px; }
+.auth-input { width: 100%; min-height: 42px; padding: 10px 13px; color: var(--text); background: var(--surface-soft); border: 1px solid var(--border); border-radius: 11px; font-size: 15px; letter-spacing: .04em; transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease; }
+.auth-input::placeholder { color: var(--subtle); letter-spacing: normal; }
+.auth-input:focus { outline: none; background: var(--surface); border-color: var(--primary); }
+.auth-input:focus-visible { box-shadow: var(--focus); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 @keyframes breathe { 50% { opacity: .45; } }

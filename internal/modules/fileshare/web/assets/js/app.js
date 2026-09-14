@@ -1,4 +1,4 @@
-import { getConfig, getStats, sendText } from './api.js'
+import { getConfig, getStats, listDirectory, login, sendText } from './api.js'
 import { createFileBrowser } from './file-browser.js'
 import { createUploader } from './upload.js'
 import { formatBytes, formatSpeed, setButtonBusy, showToast } from './ui.js'
@@ -14,9 +14,13 @@ const elements = {
   connectionText: document.getElementById('connectionText'),
   statsRegion: document.getElementById('statsRegion'),
   statsStatus: document.getElementById('statsStatus'),
+  authOverlay: document.getElementById('authOverlay'),
+  authForm: document.getElementById('authForm'),
+  authTokenInput: document.getElementById('authTokenInput'),
+  authSubmitButton: document.getElementById('authSubmitButton'),
 }
 
-let serverConfig = { allowUpload: true, allowTextDrop: true, maxUploadSizeMB: 0 }
+let serverConfig = { allowUpload: true, allowTextDrop: true, maxUploadSizeMB: 0, authRequired: false }
 let statsTimer = null
 let statsInFlight = false
 
@@ -140,13 +144,71 @@ elements.refreshButton.addEventListener('click', async () => {
   }
 })
 
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    window.clearInterval(statsTimer)
-  } else {
-    startStatsPolling()
+// ── 口令门禁：服务端 authGate 返回 401 时整页覆盖，验证通过才进入工作台 ──
+function showAuthGate() {
+  elements.authOverlay.classList.remove('hidden')
+  window.clearInterval(statsTimer)
+  elements.authTokenInput.focus()
+}
+
+function hideAuthGate() {
+  elements.authOverlay.classList.add('hidden')
+}
+
+window.addEventListener('fileshare:unauthorized', () => {
+  // 会话过期（如电脑端换了口令）：重新弹门禁并停轮询；
+  // 门禁已在场时不重复处理，避免打断正在输入的口令。
+  if (serverConfig.authRequired && elements.authOverlay.classList.contains('hidden')) {
+    showAuthGate()
   }
 })
 
-await Promise.all([loadConfig(), browser.load('')])
-startStatsPolling()
+async function unlock() {
+  const token = elements.authTokenInput.value
+  if (!token) {
+    showToast('请输入访问口令', 'error')
+    elements.authTokenInput.focus()
+    return
+  }
+  setButtonBusy(elements.authSubmitButton, true, '正在验证…')
+  try {
+    await login(token)
+    elements.authTokenInput.value = ''
+    hideAuthGate()
+    await browser.load('')
+    startStatsPolling()
+    showToast('口令正确，已进入工作台', 'success')
+  } catch (error) {
+    showToast(`口令验证失败：${error.message || error}`, 'error')
+    elements.authTokenInput.select()
+  } finally {
+    setButtonBusy(elements.authSubmitButton, false)
+  }
+}
+
+elements.authForm.addEventListener('submit', event => {
+  event.preventDefault()
+  unlock()
+})
+
+async function boot() {
+  try {
+    applyConfig(await getConfig())
+  } catch (error) {
+    showToast(`无法确认服务权限：${error.message || error}`, 'error')
+  }
+  if (serverConfig.authRequired) {
+    showAuthGate()
+    try {
+      // 30 天内回访且 Cookie 未失效：静默探测直接放行，不打扰老访客
+      await listDirectory('')
+      hideAuthGate()
+    } catch {
+      return // 401 属预期，等访客输入口令（失败提示由 unlock 统一处理）
+    }
+  }
+  await browser.load('')
+  startStatsPolling()
+}
+
+await boot()

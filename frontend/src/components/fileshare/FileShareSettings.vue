@@ -131,6 +131,19 @@ function setQuickPort(port: number) {
             <input v-model="form.autoSaveToMemo" type="checkbox" />
           </label>
         </div>
+        <div class="token-field">
+          <label class="field-label" for="share-token">访问口令</label>
+          <input
+            id="share-token"
+            v-model="form.authToken"
+            type="text"
+            class="input-control font-mono"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="留空表示免密局域网共享"
+          />
+          <span class="form-hint">设置后访客需先输口令；修改口令即刻作废旧设备登录态</span>
+        </div>
       </div>
     </div>
   </section>
@@ -447,6 +460,13 @@ function setQuickPort(port: number) {
   width: 16px;
   height: 16px;
   accent-color: var(--color-primary);
+}
+
+.token-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
 }
 
 .btn-secondary,

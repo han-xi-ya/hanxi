@@ -766,3 +766,24 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：从最终副作用反向追踪——递归删除、文件打开、安装目录提交、状态事件写回、JobObject 关闭——检查“校验/锁/取消”是否一直覆盖到该副作用发生。用临时根目录外哨兵文件、延迟 Promise/通道、重复 Start/Download 和旧轮次晚返回构造确定性回归，而不是靠人工快速点击。
 - **正确做法与标准修复方案**：文件共享全链使用 Go 1.26 `os.Root`，列表、下载、上传临时文件、发布和清理不得在校验后退回裸绝对路径 API；下载在途登记必须活到后台任务完成，安装应在同卷独立 staging 中完成后无损提交；每次进程运行持有独立 `cmd/job/done/redact`，wait/pump 只操作本代；异步轮询和体检采用 generation，请求结果在最终写回处验证，轮次切换与事件发布建立明确顺序；本地版本加载与远程版本请求分别写回，外网挂起不阻断本地资产。
 - **避坑防重犯建议**：① 安全边界以“最终文件句柄/最终删除目标”为准，不以一次字符串校验为准；② 锁的作用域必须覆盖真实后台任务，不是只覆盖 goroutine 创建；③ `cancel()` 不等于旧函数不会返回，所有 await/探针结果都要做代次门卫；④ Stop 要锁内摘取、锁外等待，超时 Close 并等待采样/handler 回收；⑤ 配置加载失败不能伪装成空配置，候选数据落盘成功后才能替换内存。
+
+### 39. WSL 只读取证的三个 guest 探测坑：`wsl -d` 会顺手开机、`ip -o` 的 brd 地址截胡、df 折行
+
+- **问题现象与错误原因**：发行版取证抽屉（VHDX 双口径/根盘用量/IPv4）首版联调暴露三处：① 对停止的发行版执行 `wsl -d <name> -- df` 会被平台语义**顺手拉起发行版**——"只读取证"产生了真实副作用，用户只是点开抽屉，任务栏却多出一个正在运行的发行版；② `ip -4 -o addr show` 输出为 `inet 172.25.9.42/24 brd 172.25.9.255 ...`，带 CIDR 后缀的地址使 `net.ParseIP` 判失败被跳过，"第一个合法 IPv4"于是**截胡成广播地址**；③ `df -B1M /` 在文件系统名过长时折行，按"最后一列是挂载点"的行解析会整行落空。
+- **排查过程**：用 `wsl -l -q --running` 名单先行门控后确认"未运行即不发 guest 命令"；实抓 `hostname -I`、`ip -o`、`df` 三种输出逐 token 核对解析路径；把 -q 通道不可得的场景也走保守分支（宁可不采，不猜测运行态）。
+- **正确做法与标准修复方案**：① 所有"只读"入口对停止实例一律不进 guest，并把缺项如实写进 Notes（前端不编数字）；② IP 提取先按 `/` 截断再 `net.ParseIP`，取首个命中即网卡主地址（`hostname -I` 优先，`ip -o` 兜底）；③ df 解析对整段输出做**搜索式**四元组匹配 `(\d+)M\s+(\d+)M\s+(\d+)M\s+(\d+)%`，天然免疫折行；④ VHDX"实占"必须走 `GetCompressedFileSizeW`（`os.Stat` 只给逻辑大小，稀疏盘两者可差数倍，磁盘瘦身决策依赖实占口径）。
+- **避坑防重犯建议**：① 在 WSL 语境里"只读"要以 guest 视角成立才算数，宿主侧再只读也拦不住 `wsl -d` 的开机语义；② 解析 Linux 工具输出优先选结构稳定通道（`-o`/quiet/JSON），并警惕"跳过坏 token"策略让位给语义更差的次优 token；③ 磁盘占用永远区分逻辑/实占双口径并注明。
+
+### 40. 开发环境：Git Bash 会话派生 Windows 子进程时 PATH 被截断，wails3/go test 找不到 go 与 cmd.exe
+
+- **问题现象与错误原因**：在同一 bash 里 `go build`/`go test` 正常，但 `wails3 generate bindings` 报 `go command required, not found: exec: "go"`；`cmd //c "where go"` 连 `where` 都找不到；批量测试中依赖 `cmd.exe` 的托管实例测试报「cmd.exe 不可用」。原因是该环境把 bash 的超长 POSIX PATH 转换为 Windows 格式时**被截断**（只剩前两百余字符，Go SDK 与 System32 全部丢失），受影响的是 bash 派生的 Windows 原生子进程，而非 bash 内建工具。
+- **排查过程**：对照 `echo $PATH`（完整）与 `cmd //c "echo %PATH%"`（截断）确认是转换层丢量而非配置丢失；给子进程**显式指定最小 Windows 目录集 PATH** 后全部恢复。
+- **正确做法与标准修复方案**：需要 bash 派生 Windows 工具链（wails3、npm 触发的 node、go test 的 exec 用例）时，用行内环境覆盖：`PATH="/c/Users/<u>/sdk/go<ver>/bin:/c/Windows/system32:/c/Windows:<node>/bin" <命令>`；批量测试直接 `task check`/在 cmd 或 PowerShell 会话中跑，避开 bash 的 PATH 转换。
+- **避坑防重犯建议**：① 遇到"父进程能用、子进程找不到"先分清 POSIX→Win 的 PATH 转换是否截断，别急着改系统 PATH 或怀疑工具损坏；② CI/门禁命令以 Windows 原生 shell 为准；③ 单测失败信息里"不可用"类文案要报出执行名（如 cmd.exe），本轮测试因此一次定位。
+
+### 41. FileShare「访问口令」假在：配置字段、绑定、设置存储全链路齐活，唯独服务端没人读它
+
+- **问题现象与错误原因**：`ShareConfig.AuthToken` 从 models 到 Wails 绑定到前端 configForm 一路都在，`SaveConfig` 也原样落存，唯独 `server.go` 的任何 handler 从未读取比对——设不设口令，局域网内浏览、下载、上传、投递全部放行（BUG_AUDIT BUG-001，P0）。同源病灶还有第二处：`connTracker` 对全响应下发 `Access-Control-Allow-Origin: *`，访客页与 API 本就同源、根本不需要 CORS，通配反而放行了「恶意网页借用户浏览器跨源打局域网端点」。
+- **排查过程**：对 `AuthToken` 做全引用扫描——除字段定义与配置读写外无任何消费点；比对 REVIEW 09-08「安全止血」清单，B02 只做了 os.Root 目录沙箱，鉴权不在其中；确认属「功能登记在表、实现悬空」而非回归。
+- **正确做法与标准修复方案**：新增 `authGate` 中间件挂完整处理链（`connTracker(authGate(mux))`），口令为空保持免密原语义；非空时 `/api/*` 数据面全部要求会话，仅 `/`、`/assets/`、`/api/login`、`/api/config` 白名单放行。会话为**口令 HMAC 派生值**的 HttpOnly + SameSite=Lax Cookie（30 天）：免服务端会话表、口令不落 Cookie、`UpdateConfig` 换口令即令全部旧登录态作废；另留 `Authorization: Bearer <口令>` 通道给非浏览器集成。口令与会话比较一律 `subtle.ConstantTimeCompare`，登录失败路径统一延时压制爆破；移除通配 CORS。访客页加全屏口令门禁（401 事件重弹、静默探测免回访重输），主程序设置面板补口令输入框。回归锁在 `internal/modules/fileshare/auth_test.go`。
+- **避坑防重犯建议**：① 新增配置字段必须同 PR 指出**消费点**，「存得进读不出」的字段比没有字段更危险——它制造已在防护的错觉；② 判断是否真需要 CORS：页面与 API 同源即不需要，任何 `*` 都要能讲出跨源调用方是谁；③ 安全声明（README 写「口令保护」）落笔前先问代码里谁在执行它——本次 README 文案缺口即按此补记；④ 审计文档里「待修复」条目动手前先在当前代码复核，09-04 清单到 09-08 修复轮之间行号与状态都已漂移。

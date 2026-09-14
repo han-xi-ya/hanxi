@@ -13,6 +13,21 @@
 <body>
   <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+  <div id="authOverlay" class="auth-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <form id="authForm" class="panel auth-card" novalidate>
+      <div class="panel-heading">
+        <span class="panel-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0 1 10 0M5 10h14v11H5zM12 14v3"/></svg></span>
+        <div><h2 id="authTitle">输入访问口令</h2><p>此共享已开启口令保护，验证通过后可浏览与传输文件。</p></div>
+      </div>
+      <label class="sr-only" for="authTokenInput">访问口令</label>
+      <input id="authTokenInput" class="auth-input" type="password" autocomplete="current-password" placeholder="访问口令">
+      <div class="panel-footer">
+        <span class="helper-text">口令仅用于本次访问验证</span>
+        <button id="authSubmitButton" class="button button-primary" type="submit">解锁工作台</button>
+      </div>
+    </form>
+  </div>
+
   <div class="shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="Hanxi 快传首页">

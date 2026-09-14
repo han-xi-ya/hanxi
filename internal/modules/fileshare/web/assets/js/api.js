@@ -1,10 +1,22 @@
 async function request(url, options) {
   const response = await fetch(url, options)
+  if (response.status === 401) {
+    // 会话过期/口令失效：广播事件让 app.js 重新弹出口令门禁
+    window.dispatchEvent(new CustomEvent('fileshare:unauthorized'))
+  }
   if (!response.ok) {
     const message = await response.text().catch(() => response.statusText)
     throw new Error(message || `HTTP ${response.status}`)
   }
   return response
+}
+
+export async function login(token) {
+  return request('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
 }
 
 export async function getConfig() {

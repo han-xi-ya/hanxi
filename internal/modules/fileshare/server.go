@@ -2,7 +2,10 @@ package fileshare
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -33,7 +36,20 @@ const (
 	uploadTempTTL           = 24 * time.Hour
 	streamUploadIdleTimeout = 2 * time.Minute
 	streamUploadBufferSize  = 1024 * 1024
+
+	// 口令会话 Cookie：HttpOnly + SameSite=Lax，登录一次有效期内免再输；
+	// 跨站 POST 不带 Cookie，天然免疫 CSRF 借权。
+	sessionCookieName   = "hanxi_share_session"
+	sessionCookieMaxAge = 30 * 24 * time.Hour
 )
+
+// sessionCookieValue 由访问口令 HMAC 派生会话 Cookie 值：口令不落 Cookie，
+// 换口令即令全部旧 Cookie 失效（无需服务端会话表，重启后旧登录态仍有效）。
+func sessionCookieValue(token string) string {
+	mac := hmac.New(sha256.New, []byte(token))
+	mac.Write([]byte("hanxi-fileshare/session-v1"))
+	return hex.EncodeToString(mac.Sum(nil))
+}
 
 type uploadParams struct {
 	dir  string
@@ -130,25 +146,15 @@ func (s *Server) Start() (int, error) {
 	s.listener = listener
 	s.startedAt = time.Now()
 
-	mux := http.NewServeMux()
-	assetFS, err := fs.Sub(web.DistFS, "assets")
+	handler, err := s.handler()
 	if err != nil {
 		listener.Close()
 		s.listener = nil
-		return 0, fmt.Errorf("加载快传静态资源失败: %w", err)
+		return 0, err
 	}
-	mux.Handle("/assets/", s.handleAssets(http.StripPrefix("/assets/", http.FileServer(http.FS(assetFS)))))
-	mux.HandleFunc("/", s.handleIndex)
-	mux.HandleFunc("/api/config", s.handleConfig)
-	mux.HandleFunc("/api/list", s.handleList)
-	mux.HandleFunc("/api/download", s.handleDownload)
-	mux.HandleFunc("/api/open", s.handleOpen)
-	mux.HandleFunc("/api/upload", s.handleUpload)
-	mux.HandleFunc("/api/drop", s.handleDrop)
-	mux.HandleFunc("/api/stats", s.handleStats)
 
 	httpServer := &http.Server{
-		Handler:           s.connTracker(mux),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       0, // 大文件上传无限制
 		WriteTimeout:      0, // 大文件下载无限制
@@ -170,6 +176,27 @@ func (s *Server) Start() (int, error) {
 	go s.samplingLoop(statsQuit, statsDone)
 
 	return actualPort, nil
+}
+
+// handler 组装完整 HTTP 处理链（connTracker → authGate → mux），
+// Start 与集成测试共用，避免测试平行维护一份路由表。
+func (s *Server) handler() (http.Handler, error) {
+	mux := http.NewServeMux()
+	assetFS, err := fs.Sub(web.DistFS, "assets")
+	if err != nil {
+		return nil, fmt.Errorf("加载快传静态资源失败: %w", err)
+	}
+	mux.Handle("/assets/", s.handleAssets(http.StripPrefix("/assets/", http.FileServer(http.FS(assetFS)))))
+	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/api/login", s.handleLogin)
+	mux.HandleFunc("/api/config", s.handleConfig)
+	mux.HandleFunc("/api/list", s.handleList)
+	mux.HandleFunc("/api/download", s.handleDownload)
+	mux.HandleFunc("/api/open", s.handleOpen)
+	mux.HandleFunc("/api/upload", s.handleUpload)
+	mux.HandleFunc("/api/drop", s.handleDrop)
+	mux.HandleFunc("/api/stats", s.handleStats)
+	return s.connTracker(s.authGate(mux)), nil
 }
 
 // Stop 优雅关闭 HTTP 服务；超时后强制关闭，且不持状态锁等待 handler。
@@ -215,6 +242,8 @@ func (s *Server) UpdateConfig(cfg ShareConfig) {
 	s.config.AllowTextDrop = cfg.AllowTextDrop
 	s.config.MaxUploadSizeMB = cfg.MaxUploadSizeMB
 	s.config.AutoSaveToMemo = cfg.AutoSaveToMemo
+	// 口令热更新：会话 Cookie 由口令 HMAC 派生，换口令即令旧登录态全部失效。
+	s.config.AuthToken = cfg.AuthToken
 	if cfg.SharePath != "" {
 		s.config.SharePath = cfg.SharePath
 	}
@@ -227,23 +256,17 @@ func (s *Server) IsRunning() bool {
 	return s.server != nil
 }
 
-// connTracker 连接中间件
+// connTracker 连接中间件。
+// 曾对全响应下发 Access-Control-Allow-Origin: *：访客页与本服务同源，
+// 本不需要 CORS；通配反而允许任意网页借用户浏览器跨源打局域网端点，
+// 已按 BUG-001 审查结论移除（BUG 编号见 docs/BUG_AUDIT.md）。
 func (s *Server) connTracker(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 跨域支持 (用于局域网不同端访问)
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
 		// 上传请求统一使用独立连接，避免 Safari/WKWebView 长连接状态异常。
 		// 单次流只有一个长请求，不会产生反复建连开销。
 		if r.URL.Path == "/api/upload" {
 			r.Close = true
 			w.Header().Set("Connection", "close")
-		}
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
 		}
 
 		// 轮询性请求不计入活跃连接数，避免统计面板自身虚高
@@ -300,14 +323,90 @@ func (s *Server) configSnapshot() ShareConfig {
 	return s.config
 }
 
-// handleConfig 返回公共配置
+// handleConfig 返回公共配置（authRequired 供访客页决定是否弹口令门禁；
+// 只暴露三个开关与上限，不含口令与路径，未登录可读）。
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := s.configSnapshot()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"allowUpload":     cfg.AllowUpload,
 		"allowTextDrop":   cfg.AllowTextDrop,
 		"maxUploadSizeMB": cfg.MaxUploadSizeMB,
+		"authRequired":    cfg.AuthToken != "",
 	})
+}
+
+// handleLogin 校验访问口令并签发会话 Cookie。
+// 免密模式下明确拒绝（400），避免调用方误以为存在可绕过的登录态。
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "请求方法不支持", http.StatusMethodNotAllowed)
+		return
+	}
+	cfg := s.configSnapshot()
+	if cfg.AuthToken == "" {
+		http.Error(w, "本共享未设置访问口令", http.StatusBadRequest)
+		return
+	}
+	var payload struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&payload); err != nil {
+		http.Error(w, "请求体不合法", http.StatusBadRequest)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(payload.Token), []byte(cfg.AuthToken)) != 1 {
+		// 失败路径统一延时，压缩局域网内口令爆破的尝试频率
+		time.Sleep(400 * time.Millisecond)
+		http.Error(w, "访问口令不正确", http.StatusUnauthorized)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sessionCookieValue(cfg.AuthToken),
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(sessionCookieMaxAge / time.Second),
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+// authGate 口令门禁：AuthToken 为空保持免密语义（产品定位「免密局域网共享」）；
+// 非空时页面与静态资源放行（登录界面自身需要加载），/api/login 与 /api/config
+// 白名单放行，其余 /api/*（列表/下载/预览/上传/投递/统计）必须持有有效会话。
+func (s *Server) authGate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.configSnapshot().AuthToken == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		switch {
+		case !strings.HasPrefix(r.URL.Path, "/api/"),
+			r.URL.Path == "/api/login",
+			r.URL.Path == "/api/config":
+			next.ServeHTTP(w, r)
+		case s.authenticated(r):
+			next.ServeHTTP(w, r)
+		default:
+			http.Error(w, "需要访问口令", http.StatusUnauthorized)
+		}
+	})
+}
+
+// authenticated 双通道校验：浏览器走会话 Cookie（HMAC 派生值，恒时比较），
+// 非浏览器集成（脚本/快捷指令等）支持 Authorization: Bearer <口令>。
+func (s *Server) authenticated(r *http.Request) bool {
+	cfg := s.configSnapshot()
+	want := sessionCookieValue(cfg.AuthToken)
+	if cookie, err := r.Cookie(sessionCookieName); err == nil &&
+		subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(want)) == 1 {
+		return true
+	}
+	if token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok &&
+		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.AuthToken)) == 1 {
+		return true
+	}
+	return false
 }
 
 // resolveSafePath 严格解析为共享根内的相对路径；真实访问必须继续经 os.Root。
