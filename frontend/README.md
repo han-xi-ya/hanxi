@@ -49,7 +49,8 @@ frontend/
 ## 🚀 本地开发与构建
 
 ```powershell
-# 安装依赖（根目录 .npmrc 有 minimum-release-age 供应链策略）
+# 安装依赖（供应链实际防线 = 提交的 package-lock.json + CI npm ci；
+# 更新依赖的 7 天冷却用法见 frontend/.npmrc 注释）
 npm install
 
 # 类型检查
