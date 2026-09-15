@@ -48,6 +48,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/bili23': { component: defineAsyncComponent(() => import('@/views/Bili23View.vue')), moduleId: 'bili23' },
   '/ext/vscode': { component: defineAsyncComponent(() => import('@/views/VSCodeView.vue')), moduleId: 'vscode' },
   '/ext/translucenttb': { component: defineAsyncComponent(() => import('@/views/TranslucentTBView.vue')), moduleId: 'translucenttb' },
+  '/ext/paseo': { component: defineAsyncComponent(() => import('@/views/PaseoView.vue')), moduleId: 'paseo' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/ext/wsl': { component: defineAsyncComponent(() => import('@/views/WSLView.vue')), moduleId: 'wsl' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
@@ -116,6 +117,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   bili23: { icon: '📺', route: '/ext/bili23' },
   vscode: { icon: '💻', route: '/ext/vscode' },
   translucenttb: { icon: '🌫️', route: '/ext/translucenttb' },
+  paseo: { icon: '🐾', route: '/ext/paseo' },
   wsl: { icon: '🐧', route: '/ext/wsl' },
   quickmenu: { icon: '🖱', route: '/ext/quickmenu' },
 }

@@ -1,0 +1,451 @@
+package paseo
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"hanxi/internal/modules/paseo/instance"
+	"hanxi/internal/modules/paseo/version"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform"
+	"hanxi/internal/settings"
+)
+
+const (
+	// ChannelStable / ChannelBeta 更新通道常量。上游 beta 线（v0.8.0-beta.1 等）
+	// 是带完整资产的预发布真实版本，但属"尝鲜"性质——默认 stable，beta 必须用户主动切换。
+	ChannelStable = "stable"
+	ChannelBeta   = "beta"
+
+	readyTimeout  = 45 * time.Second // 冷启动就绪上限（Electron 主窗口出现；内置 daemon 随主进程拉起，比裸 Electron 应用放宽）
+	watchInterval = 5 * time.Second  // 外部实例感知轮询间隔
+)
+
+// PaseoService 向前端暴露 Paseo 版本管理与窗口唤起能力。
+// agent 编排操作不内嵌：打开 Paseo 自有窗口完成（界面完整、协议在 daemon 侧，
+// 内嵌重做性价比为零——决策记录见 module.go 包注释）。
+type PaseoService struct {
+	plat    platform.Platform
+	manager *version.Manager
+	store   *paseoStore
+	engine  *instance.Engine
+
+	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
+	watchMu    sync.Mutex
+	watching   bool
+	watchStop  chan struct{}
+}
+
+func NewPaseoService(plat platform.Platform) *PaseoService {
+	paths := settings.GetPaths()
+	svc := &PaseoService{
+		plat:    plat,
+		manager: version.NewManager(paths.VersionsDir()),
+		store:   newPaseoStore(paths.DataDir()),
+	}
+	svc.engine = instance.NewEngine(plat.Job(), instance.NewPaseoProbe(), instance.Callbacks{
+		OnState: svc.emitInstanceState,
+	})
+	return svc
+}
+
+// ---------- 实例事件与后台感知 ----------
+
+// emitInstanceState 引擎状态迁移 → 事件 paseo:instance-state。
+func (s *PaseoService) emitInstanceState(snap instance.Snapshot) {
+	slog.Debug("paseo instance state", "state", snap.State, "pid", snap.PID, "external", snap.External)
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("paseo:instance-state", snap)
+	}
+	if snap.State == instance.StateFailed && snap.Error != "" {
+		notify.Error("paseo", "Paseo 实例异常", snap.Error, "/ext/paseo")
+	}
+}
+
+// activate 启动后台外部实例感知：5s 轮询进程名校正 external/stopped。
+// （自有实例的存活由引擎 hold 的进程句柄感知，不需要轮询。）
+// 刻意不做空闲自动退出：Paseo 是 daemon 宿主——无窗运行 ≠ 空闲，
+// 其上的 coding agent 会话可能正在进行，杀进程即毁会话（rustdesk 先例：
+// 服务型常驻禁用空闲退出）。
+func (s *PaseoService) activate() {
+	s.watchMu.Lock()
+	defer s.watchMu.Unlock()
+	if s.watching {
+		return
+	}
+	s.watching = true
+	stop := make(chan struct{})
+	s.watchStop = stop
+	go func() {
+		t := time.NewTicker(watchInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				s.engine.RefreshExternal()
+			}
+		}
+	}()
+}
+
+// ---------- 版本管理（委托 manager） ----------
+
+// GetReleaseChannel 返回当前更新通道（stable/beta）。
+func (s *PaseoService) GetReleaseChannel() (string, error) {
+	return s.store.GetReleaseChannel(), nil
+}
+
+// SetReleaseChannel 切换更新通道（beta 为上游预发布，资产完整但属尝鲜性质）。
+func (s *PaseoService) SetReleaseChannel(channel string) (string, error) {
+	if err := s.store.SetReleaseChannel(channel); err != nil {
+		return "", err
+	}
+	return channel, nil
+}
+
+// ListReleases 获取当前通道可用版本（多镜像回退，10 分钟缓存；
+// 数据源为 GitHub releases，无本机架构 win zip 或无官方 digest 的版本不入列表）。
+func (s *PaseoService) ListReleases() ([]version.PaseoRelease, error) {
+	return s.manager.ListRemote(s.store.GetReleaseChannel() == ChannelBeta)
+}
+
+// ListInstalledVersions 获取本地托管已装版本（多版本目录并存，新→旧排序）。
+func (s *PaseoService) ListInstalledVersions() ([]version.PaseoVersionInfo, error) {
+	list, err := s.manager.ListInstalled()
+	if err != nil {
+		return nil, err
+	}
+	sortInstalled(list)
+	return list, nil
+}
+
+// DownloadVersion 后台下载官方 win zip 并保布局解压到 versions/paseo_<ver>/：
+// 立即返回，全程经事件 paseo:version-download 推送进度。
+// 运行中不拒绝：解压目标是独立的新版本目录，不触碰在跑实例的文件。
+func (s *PaseoService) DownloadVersion(targetVersion string) (string, error) {
+	targetVersion = strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+
+	s.downloadMu.Lock()
+	defer s.downloadMu.Unlock()
+
+	go func() {
+		emit := func(p version.DownloadProgress) {
+			slog.Debug("paseo download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("paseo:version-download", p)
+			}
+			if p.Stage == "done" {
+				notify.Success("paseo", "安装成功", fmt.Sprintf("Paseo %s 已解压进托管目录", p.Version), "/ext/paseo")
+				// 首装自动立为使用版本（后续升级不再改动用户手选的 active）
+				if cur := s.store.GetActive(); cur == "" {
+					if _, err := s.manager.ResolveExe(p.Version); err == nil {
+						_ = s.store.SetActive(p.Version)
+					}
+				}
+			}
+		}
+		if err := s.manager.Download(targetVersion, emit); err != nil {
+			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
+			notify.Error("paseo", "安装失败", fmt.Sprintf("Paseo %s 安装失败: %v", targetVersion, err), "/ext/paseo")
+		}
+	}()
+
+	return "started", nil
+}
+
+// RemoveVersion 卸载指定托管版本（该版本正在运行则拒绝）。
+// 用户数据（%APPDATA%\Paseo 与 ~/.paseo）恒不动——共享数据集成决策，
+// 与 recordly"卸载保数据"先例一致。
+func (s *PaseoService) RemoveVersion(targetVersion string) error {
+	targetVersion = strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning && snap.Version == targetVersion {
+		return fmt.Errorf("版本 %s 正在运行，请先退出", targetVersion)
+	}
+	if err := s.manager.Remove(targetVersion); err != nil {
+		return err
+	}
+	if s.store.GetActive() == targetVersion {
+		_ = s.store.SetActive("") // 回退"自动最新已装"
+	}
+	return nil
+}
+
+// SetActiveVersion 指定启动使用的托管版本（须已安装）。
+func (s *PaseoService) SetActiveVersion(targetVersion string) (string, error) {
+	targetVersion = strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
+		return "", err
+	}
+	if err := s.store.SetActive(targetVersion); err != nil {
+		return "", err
+	}
+	return targetVersion, nil
+}
+
+// GetActiveVersion 返回当前设定的使用版本（空串 = 自动最新已装）。
+func (s *PaseoService) GetActiveVersion() (string, error) {
+	return s.store.GetActive(), nil
+}
+
+// ImportLocal 导入本地 Paseo 程序目录（整套 Electron 目录拷入托管版本目录）。
+// 数据恒在 %APPDATA%\Paseo 与 ~/.paseo（与 exe 位置无关），导入不搬数据。
+// 运行中的实例拒绝导入：Windows 下运行中的 exe 被独占，拷贝必然失败。
+func (s *PaseoService) ImportLocal(srcDir string) (version.PaseoVersionInfo, error) {
+	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
+		return version.PaseoVersionInfo{}, fmt.Errorf("Paseo 正在运行，请先退出再导入")
+	}
+	info, err := s.manager.ImportLocal(strings.TrimSpace(srcDir))
+	if err != nil {
+		return info, err
+	}
+	if s.store.GetActive() == "" {
+		_ = s.store.SetActive(info.Version)
+	}
+	return info, nil
+}
+
+// ---------- 控制操作 ----------
+
+// OpenDir 在资源管理器中打开指定目录（"打开位置"按钮）。
+// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
+// 而非"打开"（markeron 事故教训）。入参恒为目录，仍走本模块自有实现保持行为显式。
+func (s *PaseoService) OpenDir(dir string) error {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return fmt.Errorf("目录路径不能为空")
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("目录不存在或不可访问: %s", dir)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("目标不是目录: %s", dir)
+	}
+	return exec.Command("explorer.exe", dir).Start()
+}
+
+// OpenElectronDataDir 打开 Electron 数据目录 %APPDATA%\Paseo（窗口状态/桌面设置）。
+// 共享数据决策下的直达入口：托管实例与自装实例同用此目录，只读导航不改写。
+func (s *PaseoService) OpenElectronDataDir() error {
+	appData := os.Getenv("APPDATA")
+	if appData == "" {
+		return fmt.Errorf("无法定位 APPDATA 目录")
+	}
+	dir := filepath.Join(appData, "Paseo")
+	if _, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("Paseo Electron 数据目录尚未创建（程序还未运行过）: %s", dir)
+	}
+	return exec.Command("explorer.exe", dir).Start()
+}
+
+// OpenDaemonHome 打开 daemon 数据主目录 ~/.paseo（持久配置、实例注册、
+// 会话与配对状态所在）。与 exe 位置无关，删托管版本不丢配对。
+func (s *PaseoService) OpenDaemonHome() error {
+	base := os.Getenv("USERPROFILE")
+	if base == "" {
+		base = os.Getenv("HOME")
+	}
+	if base == "" {
+		return fmt.Errorf("无法定位用户主目录")
+	}
+	dir := filepath.Join(base, ".paseo")
+	if _, err := os.Stat(dir); err != nil {
+		return fmt.Errorf("Paseo daemon 数据目录尚未创建（程序还未运行过）: %s", dir)
+	}
+	return exec.Command("explorer.exe", dir).Start()
+}
+
+// GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
+func (s *PaseoService) GetStatus() (instance.Snapshot, error) {
+	s.engine.RefreshExternal()
+	return s.engine.Snapshot(), nil
+}
+
+// OpenWindow 窗口唤起编排中枢。Paseo 上游 second-instance 语义是
+// "再开一个新窗口"而非聚焦（main.ts 实证），故唤窗优先 Win32 直唤已有窗口，
+// 仅无窗可用时才以二次拉起请求开新窗（与 recordly 信使唤窗族不同，决策见包注释）。
+//   - external：共享数据同锁组下外部实例即全局唯一主实例，可直唤；
+//   - running：自有实例直唤；
+//   - stopped/failed：解析使用版本直接无参冷启动。
+func (s *PaseoService) OpenWindow() (ControlOutcome, error) {
+	s.engine.RefreshExternal()
+	snap := s.engine.Snapshot()
+
+	switch snap.State {
+	case instance.StateStarting:
+		// 前序 Start 仍在临界区：不做二次拉起（会产生两个进程竞速单实例锁）
+		return ControlOutcome{Action: "starting", Message: "Paseo 正在启动中，请稍候"}, nil
+
+	case instance.StateExternal:
+		if s.engine.FocusWindow() {
+			return ControlOutcome{Action: "external-focused", External: true,
+				Message: "Paseo 实例正在运行（非 Hanxi 托管，共享数据），已唤起其窗口"}, nil
+		}
+		exe, err := s.resolveAnyInstalledExe()
+		if err != nil {
+			return ControlOutcome{}, err
+		}
+		if err := s.engine.OpenMessenger(exe); err != nil {
+			return ControlOutcome{}, fmt.Errorf("请求窗口失败: %w", err)
+		}
+		return ControlOutcome{Action: "external-messenger", External: true,
+			Message: "运行中的 Paseo 实例无可见窗口（可能仅 daemon 在场），已请求其打开新窗口"}, nil
+
+	case instance.StateRunning:
+		if s.engine.FocusWindow() {
+			return ControlOutcome{Action: "focused", Message: "已唤起 Paseo 窗口"}, nil
+		}
+		if err := s.engine.OpenMessenger(s.engine.Exe()); err != nil {
+			return ControlOutcome{}, fmt.Errorf("请求窗口失败: %w", err)
+		}
+		return ControlOutcome{Action: "messenger",
+			Message: "Paseo 运行中但无可见窗口，已请求其打开新窗口（上游多窗口语义）"}, nil
+
+	default:
+		v, exe, err := s.resolveStartTarget()
+		if err != nil {
+			return ControlOutcome{}, err
+		}
+		if err := s.engine.Start(instance.StartOptions{
+			Version:  v,
+			Exe:      exe,
+			Detached: !s.store.GetFollowOnExit(),
+		}); err != nil {
+			return ControlOutcome{}, fmt.Errorf("启动 Paseo 失败: %w", err)
+		}
+		if !s.engine.WaitReady(readyTimeout) {
+			// 等待超时：优先读取引擎已记录的失败原因给出针对性提示
+			if cur := s.engine.Snapshot(); cur.State == instance.StateFailed && cur.Error != "" {
+				return ControlOutcome{}, fmt.Errorf("%s", cur.Error)
+			}
+			return ControlOutcome{}, fmt.Errorf("等待 Paseo 主窗口就绪超时（%d 秒），请检查杀毒软件是否拦截后重试", int(readyTimeout/time.Second))
+		}
+		return ControlOutcome{Action: "started",
+			Message: fmt.Sprintf("Paseo %s 已启动", v)}, nil
+	}
+}
+
+// Quit 退出引擎托管的 Paseo。
+// external 状态不越权强杀（进程名探测拿不到主进程 PID，且那是用户的实例）：
+// 仅返回人性化指引。
+func (s *PaseoService) Quit() (QuitOutcome, error) {
+	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
+		return QuitOutcome{Stopped: false, External: true,
+			Message: "当前是外部自行启动的 Paseo 实例，请在 Paseo 窗口内退出"}, nil
+	}
+	if err := s.engine.Quit(); err != nil {
+		return QuitOutcome{}, err
+	}
+	return QuitOutcome{Stopped: true, Message: "Paseo 已退出"}, nil
+}
+
+// Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
+// 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+func (s *PaseoService) Shutdown() {
+	s.watchMu.Lock()
+	if s.watching {
+		close(s.watchStop)
+		s.watching = false
+	}
+	s.watchMu.Unlock()
+	if s.store.GetFollowOnExit() {
+		_ = s.engine.Stop() // 联动开启才杀；关闭则完全不影响工具（Job 已解除 kill-on-close）
+	}
+}
+
+// ---------- 版本解析 ----------
+
+// resolveStartTarget 冷启动目标（版本标签与 exe）：activeVersion 优先，
+// 未设定/失效回退最新已装（并自愈清空）。
+func (s *PaseoService) resolveStartTarget() (string, string, error) {
+	if active := s.store.GetActive(); active != "" {
+		if exe, err := s.manager.ResolveExe(active); err == nil {
+			return active, exe, nil
+		}
+		_ = s.store.SetActive("") // 已设定的版本被卸载/损坏：清空自愈，回退最新已装
+	}
+	installed, err := s.manager.ListInstalled()
+	if err != nil {
+		return "", "", err
+	}
+	if len(installed) == 0 {
+		return "", "", fmt.Errorf("尚未安装 Paseo，请先在版本管理在线安装或导入本地副本")
+	}
+	sortInstalled(installed)
+	_ = s.store.SetActive(installed[0].Version) // 首次冷启动将实际采用的版本回写
+	return installed[0].Version, installed[0].ExePath, nil
+}
+
+// resolveAnyInstalledExe 外部态信使 exe（信使归属实例组由共享 user-data 决定，
+// 与具体版本号无关——取最新已装即可）。
+func (s *PaseoService) resolveAnyInstalledExe() (string, error) {
+	installed, err := s.manager.ListInstalled()
+	if err != nil {
+		return "", err
+	}
+	if len(installed) == 0 {
+		return "", fmt.Errorf("尚未安装任何 Paseo 托管版本，无法代为唤起外部实例窗口")
+	}
+	sortInstalled(installed)
+	return installed[0].ExePath, nil
+}
+
+// sortInstalled 版本新→旧原地排序：规范 semver 优先（预发布规则），
+// imported 时间戳目录恒排最后（其字典序大于数字版本，交给 Compare 会误判为最新）。
+func sortInstalled(list []version.PaseoVersionInfo) {
+	sort.SliceStable(list, func(i, j int) bool {
+		ci, cj := version.IsCanonical(list[i].Version), version.IsCanonical(list[j].Version)
+		switch {
+		case ci && cj:
+			return version.Compare(list[i].Version, list[j].Version) > 0
+		case ci != cj:
+			return ci
+		default:
+			return list[i].Version > list[j].Version
+		}
+	})
+}
+
+// ---------- 联动开关与桌面辅助 ----------
+
+// GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
+func (s *PaseoService) GetFollowOnExit() (bool, error) {
+	return s.store.GetFollowOnExit(), nil
+}
+
+// SetFollowOnExit 设定开关（下次启动生效）。开启后 Hanxi 退出将连带终止
+// Paseo 及其 daemon 上正在运行的 agent 会话——UI 提示条必须如实预告。
+func (s *PaseoService) SetFollowOnExit(b bool) error {
+	return s.store.SetFollowOnExit(b)
+}
+
+// CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
+// 上游安装器才会建开始菜单项；便携托管下这是显式提供的入口。
+func (s *PaseoService) CreateDesktopShortcut() error {
+	_, exe, err := s.resolveStartTarget()
+	if err != nil {
+		return err
+	}
+	return s.plat.CreateDesktopShortcut("Paseo", exe, filepath.Dir(exe))
+}
+
+// RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
+func (s *PaseoService) RepositoryURL() (string, error) {
+	return version.RepoURL(), nil
+}
+
+// OpenRepository 用默认浏览器打开上游仓库页面。
+func (s *PaseoService) OpenRepository() error {
+	return s.plat.OpenURL(version.RepoURL())
+}

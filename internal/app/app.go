@@ -56,6 +56,9 @@ import (
 	"hanxi/internal/modules/papertodo"
 	papertodoinstance "hanxi/internal/modules/papertodo/instance"
 	papertodoversion "hanxi/internal/modules/papertodo/version"
+	"hanxi/internal/modules/paseo"
+	paseoinstance "hanxi/internal/modules/paseo/instance"
+	paseoversion "hanxi/internal/modules/paseo/version"
 	"hanxi/internal/modules/piclite"
 	picliteinstance "hanxi/internal/modules/piclite/instance"
 	picliteversion "hanxi/internal/modules/piclite/version"
@@ -162,6 +165,8 @@ func RegisterEvents() {
 	application.RegisterEvent[vscodeinstance.Snapshot]("vscode:instance-state")
 	application.RegisterEvent[ttbversion.DownloadProgress]("translucenttb:version-download")
 	application.RegisterEvent[ttbinstance.Snapshot]("translucenttb:instance-state")
+	application.RegisterEvent[paseoversion.DownloadProgress]("paseo:version-download")
+	application.RegisterEvent[paseoinstance.Snapshot]("paseo:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 	application.RegisterEvent[npmtool.OperationProgress]("envcheck:npm-tool-operation")
@@ -273,6 +278,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		bili23.New(plat),
 		vscode.New(plat),
 		translucenttb.New(plat),
+		paseo.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
