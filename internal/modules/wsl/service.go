@@ -82,6 +82,10 @@ type WslService struct {
 	// 端口转发规则持久化（<DataDir>/wsl-portproxy.json）。
 	ppPath    string
 	ppPending bool // 规则有增删改但尚未点「应用」挂到系统
+	// 安装落位偏好持久化（<DataDir>/wsl-install-pref.json）：
+	// 取代前端 localStorage 的「空串粘滞、错路径粘 C、跨包各自为政」三坑，
+	// 详见 installdir.go 与 docs/TROUBLESHOOTING.md。
+	installPrefPath string
 	// 长操作取消通道（均以 mu 守护）：stage 同时是"允许取消"的判据——
 	// 克隆/下载全程可停，瘦身只在备份与 fstrim 段可停，
 	// 进入数据盘处理/重建段后拒绝取消（半途而废比慢更糟）。
@@ -98,12 +102,15 @@ type longOpHandle struct {
 
 func NewWslService(opener urlOpener, paths *settings.Paths) *WslService {
 	rulesPath := ""
+	installPref := ""
 	if paths != nil {
 		rulesPath = filepath.Join(paths.DataDir(), "wsl-portproxy.json")
+		installPref = filepath.Join(paths.DataDir(), "wsl-install-pref.json")
 	}
 	return &WslService{
-		opener:        opener,
-		ppPath:        rulesPath,
+		opener:          opener,
+		ppPath:          rulesPath,
+		installPrefPath: installPref,
 		probe:         readiness.Probe,
 		netProbe:      readiness.ProbeNetwork,
 		wslVersion:    readiness.Version,
@@ -313,6 +320,20 @@ func (s *WslService) InstallDistro(id string) (OperationOutcome, error) {
 	return s.elevateWsl("--install", "-d", id)
 }
 
+// manageMoveMinVersion 自动落位能力（wsl --manage --move）的最低版本：
+// 上游 2.4.4 发布说明引入该子命令（github.com/microsoft/WSL/releases/tag/2.4.4，
+// 文档 learn.microsoft.com/windows/wsl/virtual-disk 同口径），更老版本直接报
+// "unknown option"（上游 issues/11762 实证）。
+var manageMoveMinVersion = []int{2, 4, 4}
+
+// 装完即迁链的分段哨兵退出码：安装段与迁移段分开归因——迁移段失败时发行版
+// 已经躺在系统默认位置（通常 C 盘），必须点名指路补救而非笼统报错
+// （#36/#37 退出码传播红线同一族纪律）。
+const (
+	installStageExit = 80
+	moveStageExit    = 81
+)
+
 // InstallDistroTo 安装在线发行版并按需落位：location 为空走系统默认（现状，
 // 通常落 C 盘）；指定位置则在同一提权链里连做 wsl --install -d、wsl --shutdown、
 // wsl --manage --move，全程一次 UAC、一个提权窗口看进度——wsl --install 本身
@@ -320,6 +341,10 @@ func (s *WslService) InstallDistro(id string) (OperationOutcome, error) {
 // 白名单/虚拟化预检两道闸门与 InstallDistro 同源复用；location 按基目录语义
 // 使用（末级非发行版名时自动追加同名子目录），目标经 moveTarget 的绝对路径/
 // 盘符存在/非法字符/目录空性把关。
+// 三道落位防线（根治"说好的 D 盘结果还在 C"观感）：迁移能力版本闸门（本机 WSL
+// 过老则事前显式抉择，绝不装完才静默失败）；分段退出码归因（迁移段失败点名
+// "已装在 C、无需重装、点🧭迁移补救"）；成功后注册表 BasePath 复验（MoveDistro
+// 同款，退出码 0 不等于真落位）。
 func (s *WslService) InstallDistroTo(id, location string) (OperationOutcome, error) {
 	loc := strings.TrimSpace(location)
 	if loc == "" {
@@ -338,25 +363,87 @@ func (s *WslService) InstallDistroTo(id, location string) (OperationOutcome, err
 	if !slices.ContainsFunc(list, func(o readiness.DistroOption) bool { return o.ID == id }) {
 		return OperationOutcome{}, fmt.Errorf("发行版 %q 不在官方在线清单中，已拒绝执行", id)
 	}
+	// 版本闸门前置于一切副作用：过老 WSL 上"装完即迁"注定半路夭折，
+	// 与其装到 C 再静默失败，不如让用户事前显式抉择。
+	if v := s.wslVersion(ctx); !versionAtLeast(v, manageMoveMinVersion) {
+		return OperationOutcome{Message: fmt.Sprintf(
+			"自动落位需要 WSL %s+ 的迁移能力（当前 %s）：请到「🧩 本体版本」页升级 WSL 本体后再安装；"+
+				"或把「安装基目录」留空并接受系统默认位置（通常在 C 盘）。",
+			strings.Join(intsToStr(manageMoveMinVersion), "."), orUnknown(v))}, nil
+	}
+	// 幂等兜底：发行版已在册（典型为上次"装完即迁"迁移段失败后的重试）则跳过
+	// 安装段、只补落位迁移——避免对已注册实例重跑 --install 的非零退出把
+	// 整链掐死在第一步，形成"永远搬不动"的死循环。
+	registered := false
+	if names, err := s.quietNames(ctx); err == nil {
+		registered = slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, id) })
+	}
+	currentBase := ""
+	if registered {
+		if store, err := s.lxss(ctx); err == nil {
+			if e, found := store[strings.ToLower(id)]; found {
+				currentBase = e.BasePath
+			}
+		}
+	}
 	// location 按"基目录"语义处理：末级不是发行版名则自动追加同名子目录
 	//（D:\wsl → D:\wsl\Ubuntu），与 ImportDistro 同源复用 underDir。
-	clean, err := moveTarget(underDir(loc, id), "") // 空 currentBasePath：跳过"与当前位置相同/嵌套"两项检查
+	cleanTarget := underDir(loc, id)
+	// 已在目标位置＝善后完成而非违规操作，早退在 moveTarget 拒绝"相同位置"之前。
+	if registered && currentBase != "" && strings.EqualFold(filepath.Clean(currentBase), filepath.Clean(cleanTarget)) {
+		return OperationOutcome{Success: true, Message: fmt.Sprintf("%s 已在目标位置 %s，无需再动", id, filepath.Clean(currentBase))}, nil
+	}
+	// 未在册时 currentBase 留空：跳过"与当前位置相同/嵌套"两项检查。
+	clean, err := moveTarget(cleanTarget, currentBase)
 	if err != nil {
 		return OperationOutcome{}, fmt.Errorf("安装位置不合规: %w", err)
 	}
 	// 安装与落位共用一条提权 PowerShell：install 非零退出即中止（不留下"装到一半
-	// 又搬动"的乱局）；落位段沿用 MoveDistro 的 shutdown+3s+至多 5 次重试节律。
+	// 又搬动"的乱局）；落位段沿用 MoveDistro 的 shutdown+3s+至多 5 次重试节律，
+	// 两段各用哨兵退出码分开归因。
 	// ctx 用 opTimeout（数十 GB 下载+落位远超 60s 白名单窗口——白名单校验已完成）。
 	mctx, mcancel := context.WithTimeout(context.Background(), opTimeout)
 	defer mcancel()
 	inner := fmt.Sprintf(
-		"wsl --install -d %s; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; "+
-			"wsl --shutdown; Start-Sleep -Seconds 3; "+
-			"$tries = 0; while ($true) { $tries++; wsl --manage %s --move %s; "+
-			"if ($LASTEXITCODE -eq 0) { exit 0 }; if ($tries -ge 5) { exit $LASTEXITCODE }; Start-Sleep -Seconds 3 }",
-		psQuote(id), psQuote(id), psQuote(clean),
+		"$tries = 0; while ($true) { $tries++; wsl --manage %s --move %s; "+
+			"if ($LASTEXITCODE -eq 0) { exit 0 }; if ($tries -ge 5) { exit %d }; Start-Sleep -Seconds 3 }",
+		psQuote(id), psQuote(clean), moveStageExit,
 	)
-	return s.elevProc(mctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", inner)
+	if !registered {
+		inner = fmt.Sprintf(
+			"wsl --install -d %s; if ($LASTEXITCODE -ne 0) { exit %d }; wsl --shutdown; Start-Sleep -Seconds 3; %s",
+			psQuote(id), installStageExit, inner)
+	}
+	out, err := s.elevProc(mctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", inner)
+	if err != nil {
+		if exitCode(err) == moveStageExit {
+			stage := fmt.Sprintf("安装 %s", id)
+			if registered {
+				stage = "落位迁移 " + id
+			}
+			return OperationOutcome{Message: fmt.Sprintf(
+				"%s 的数据已就位，但迁移到 %s 失败：%v\n该发行版无需重装——到「本机发行版」列表对它点「🧭 迁移」即可手动完成落位（此刻它通常还在系统默认位置，一般在 C 盘）。",
+				stage, clean, err)}, nil
+		}
+		return OperationOutcome{}, err
+	}
+	if !out.Success {
+		return out, nil // UAC 取消等：如实回执不报错
+	}
+	// 成功复验（MoveDistro 同款）：注册表 BasePath 真指向目标才敢宣布落位完成。
+	vctx, vcancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer vcancel()
+	if store, serr := s.lxss(vctx); serr == nil {
+		if e, found := store[strings.ToLower(id)]; found {
+			if !strings.EqualFold(filepath.Clean(e.BasePath), clean) {
+				return OperationOutcome{Success: true, Message: fmt.Sprintf(
+					"%s 安装链执行完毕，但注册表位置（%s）与目标（%s）不一致——请重新复采核实，未落位就用「🧭 迁移」补一次",
+					id, e.BasePath, clean)}, nil
+			}
+			return OperationOutcome{Success: true, Message: fmt.Sprintf("%s 已安装并落位在 %s", id, clean)}, nil
+		}
+	}
+	return out, nil
 }
 
 // virtualizationGate 发行版安装的硬前提预检；返回空串表示放行。

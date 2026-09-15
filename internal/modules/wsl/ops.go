@@ -57,11 +57,31 @@ func runElevatedProcess(ctx context.Context, file string, args ...string) (Opera
 		// 绝不再报"执行完毕"（窗口可见，红字详情在提权窗口里）。
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			return OperationOutcome{}, fmt.Errorf("提权执行 %s 失败：命令以退出码 %d 结束（具体报错见提权窗口，窗口关闭过快时重跑一次留意红字）", file, ee.ExitCode())
+			// %w 挂上类型化退出码：调用方（如 InstallDistroTo 的分段哨兵归因）
+			// 用 errors.As 取码，不再从错误文案里抠数字。exec.ExitError 的
+			// ExitCode() 依赖 ProcessState、单测伪造不了，故自带轻量类型。
+			return OperationOutcome{}, fmt.Errorf("提权执行 %s 失败：命令以退出码 %d 结束（具体报错见提权窗口，窗口关闭过快时重跑一次留意红字）: %w",
+				file, ee.ExitCode(), &elevatedExitError{code: ee.ExitCode()})
 		}
 		return OperationOutcome{}, fmt.Errorf("提权执行 %s 失败: %w %s", file, err, strings.TrimSpace(string(out)))
 	}
 	return OperationOutcome{Success: true, Message: "操作已执行完毕，状态已按最新结果刷新"}, nil
+}
+
+// elevatedExitError 提权链非零退出的类型化凭证：外层隐藏 powershell 的
+// Start-Process -PassThru 把内层退出码传播到这里，供分段哨兵（如装完即迁链
+// 的 install/move 两段归因）errors.As 判码。
+type elevatedExitError struct{ code int }
+
+func (e *elevatedExitError) Error() string { return fmt.Sprintf("提权命令以退出码 %d 结束", e.code) }
+
+// exitCode 提取错误链上的提权退出码；无类型凭证时返回 -1。
+func exitCode(err error) int {
+	var ee *elevatedExitError
+	if errors.As(err, &ee) {
+		return ee.code
+	}
+	return -1
 }
 
 // lastErrorLine 从 DISM/工具输出中提取最后一条错误行（中英语境皆覆盖）；无则空串。

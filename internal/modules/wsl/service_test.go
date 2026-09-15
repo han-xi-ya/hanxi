@@ -3,6 +3,7 @@ package wsl
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -227,6 +228,102 @@ func TestInstallDistroToChainsMoveInSingleElevation(t *testing.T) {
 	}
 	if want := `--manage 'Ubuntu' --move 'E:\WSL\Ubuntu'`; !strings.Contains(strings.Join(ev4.calls[0].args, " "), want) {
 		t.Fatalf("基目录须追加同名子目录 %s: %s", want, strings.Join(ev4.calls[0].args, " "))
+	}
+}
+
+// 版本闸门：WSL < 2.4.4 没有 wsl --manage --move，装完即迁注定半途夭折——
+// 必须在任何副作用之前显式拦下并给两条出路，绝不"先装到 C 再静默失败"。
+func TestInstallDistroToGatedByMoveCapability(t *testing.T) {
+	svc, ev, _ := newTestService()
+	svc.wslVersion = func(context.Context) string { return "0.67.6" } // inbox 老版形态
+	out, err := svc.InstallDistroTo("Ubuntu", `E:\WSL\Ubuntu`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Success || len(ev.calls) != 0 {
+		t.Fatalf("版本不足须拦在提权之前: %+v %+v", out, ev.calls)
+	}
+	if !strings.Contains(out.Message, "2.4.4") || !strings.Contains(out.Message, "本体版本") {
+		t.Fatalf("闸门回执须点名版本要求与升级指路: %s", out.Message)
+	}
+}
+
+// 幂等兜底：发行版已在册（上次迁移段失败后的重试）则跳过 --install、只补落位；
+// 且 BasePath 复验通过时回执点名最终落位。
+func TestInstallDistroToRegisteredRunsMoveOnly(t *testing.T) {
+	svc, ev, _ := newTestService()
+	svc.runWsl = func(context.Context, ...string) (string, error) { return "Ubuntu\r\n", nil } // 管道形态名单（a9bba6a）
+	lxssCalls := 0
+	svc.localPS = func(_ context.Context, script string) (string, error) {
+		if strings.HasPrefix(script, "$items") {
+			lxssCalls++
+			if lxssCalls == 1 { // 在册巡查：当前还在旧位置
+				return `[{"name":"Ubuntu","basePath":"C:\\Users\\me\\AppData\\Local\\wsl\\Ubuntu","vhdx":"","size":0,"pfn":""}]`, nil
+			}
+			return `[{"name":"Ubuntu","basePath":"E:\\WSL\\Ubuntu","vhdx":"","size":0,"pfn":""}]`, nil // 复验：已落位
+		}
+		return "", nil
+	}
+	out, err := svc.InstallDistroTo("Ubuntu", `E:\WSL`)
+	if err != nil || !out.Success {
+		t.Fatalf("在册实例补落位应成功: %+v %v", out, err)
+	}
+	cmdline := strings.Join(ev.calls[0].args, " ")
+	if strings.Contains(cmdline, "--install") {
+		t.Fatalf("在册实例不得重跑安装段: %s", cmdline)
+	}
+	if !strings.Contains(cmdline, `--manage 'Ubuntu' --move 'E:\WSL\Ubuntu'`) {
+		t.Fatalf("须直接补落位迁移: %s", cmdline)
+	}
+	if !strings.Contains(out.Message, `落位在 E:\WSL\Ubuntu`) {
+		t.Fatalf("复验通过的回执须点名落位: %s", out.Message)
+	}
+
+	// 已在目标位置：好过空转一轮提权，直接如实回绝。
+	if _, err := svc.InstallDistroTo("Ubuntu", `E:\WSL\Ubuntu`); err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.calls) != 1 {
+		t.Fatalf("位置已正确时不得再提权: %+v", ev.calls)
+	}
+}
+
+// 迁移段哨兵退出码归因：install 段已完成、move 段 5 连败时，不能只留一句
+// 笼统失败——须点名"已就位、无需重装、点🧭迁移补救"（落 C 观感的正源）。
+func TestInstallDistroToMoveStageExitAttribution(t *testing.T) {
+	svc, ev, _ := newTestService()
+	ev.err = fmt.Errorf("提权执行失败: %w", &elevatedExitError{code: moveStageExit})
+	out, err := svc.InstallDistroTo("Ubuntu", `E:\WSL\Ubuntu`)
+	if err != nil {
+		t.Fatalf("迁移段失败应归因为带指路的回执而非裸错误: %v", err)
+	}
+	if out.Success || !strings.Contains(out.Message, "无需重装") || !strings.Contains(out.Message, "迁移") {
+		t.Fatalf("回执须指路一键补救: %+v", out)
+	}
+
+	// 安装段失败（80）与无凭证错误一律如实报错——没有"半吊子成功"的中间态。
+	svc2, ev2, _ := newTestService()
+	ev2.err = fmt.Errorf("提权执行失败: %w", &elevatedExitError{code: installStageExit})
+	if _, err := svc2.InstallDistroTo("Ubuntu", `E:\WSL\Ubuntu`); err == nil {
+		t.Fatal("安装段失败必须报错")
+	}
+}
+
+// 复验不放过"退出码 0 但没搬动"：注册表 BasePath 与目标不一致时如实存疑。
+func TestInstallDistroToVerifiesRegistryBasePath(t *testing.T) {
+	svc, _, _ := newTestService()
+	svc.localPS = func(_ context.Context, script string) (string, error) {
+		if strings.HasPrefix(script, "$items") {
+			return `[{"name":"Ubuntu","basePath":"C:\\Users\\me\\AppData\\Local\\wsl\\Ubuntu","vhdx":"","size":0,"pfn":""}]`, nil
+		}
+		return "", nil
+	}
+	out, err := svc.InstallDistroTo("Ubuntu", `E:\WSL\Ubuntu`)
+	if err != nil || !out.Success {
+		t.Fatalf("复验分歧应如实回执: %+v %v", out, err)
+	}
+	if !strings.Contains(out.Message, "不一致") || !strings.Contains(out.Message, `C:\Users\me`) {
+		t.Fatalf("分歧回执须点名注册表实际位置: %s", out.Message)
 	}
 }
 
