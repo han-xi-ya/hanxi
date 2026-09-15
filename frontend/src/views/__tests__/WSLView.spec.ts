@@ -1,8 +1,9 @@
-// 特征测试：WSLView 基线锁定。
-// 断言对象：流式体检（pending 骨架 → 分相点亮 → done 收口）、提权操作确认链路、
-// 正规卸载入口、版本页懒加载在线清单、MSI 直链参数拼装、发行版白名单安装传参。
+// 特征测试：WSLView 基线锁定（交互整改 W1–W9 后结构）。
+// 断言对象：流式体检（Stale 保活复采）、busy 分级锁与跨页签进度、失败行内保活、
+// 落位持久化后端 RPC 语义（set/dir + 防抖回写）、五页签结构（官方清单并入添加实例·商店源）、
+// 提权确认链与危险级降噪、MSI 直链参数、端口转发规则清单、行级「⋯ 更多」下拉开合。
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WSLView from '../WSLView.vue'
 
 const api = vi.hoisted(() => ({
@@ -57,11 +58,14 @@ const api = vi.hoisted(() => ({
   GetWslHostConf: vi.fn(),
   SaveWslHostConf: vi.fn(),
   ShutdownWsl: vi.fn(),
+  // W1：落位持久化后端 RPC（真实绑定尚未生成，本 mock 先兜住模块路径）
+  GetDistroInstallDir: vi.fn(),
+  SetDistroInstallDir: vi.fn(),
 }))
 
 vi.mock('../../../bindings/hanxi/internal/modules/wsl/wslservice', () => api)
 
-// Wails 运行时事件总线桩：捕获 wsl:readiness 订阅回调，测试内手动分相投喂。
+// Wails 运行时事件总线桩：捕获订阅回调，测试内手动分相投喂。
 const runtime = vi.hoisted(() => ({
   handlers: {} as Record<string, (event: { data?: unknown }) => void>,
 }))
@@ -78,6 +82,7 @@ interface ConfirmOpts {
   title?: string
   description?: string
   tone?: string
+  confirmLabel?: string
   details?: Array<{ label: string; value: string }>
 }
 const confirmFn = vi.hoisted(() => vi.fn(async (_opts: ConfirmOpts) => true))
@@ -147,7 +152,11 @@ function ok(message = '操作已完成') {
   return { success: true, message }
 }
 
-async function setup() {
+type InstallPref = { set: boolean; dir: string }
+
+// setup：默认"从未设置"（set=false）→ 输入框回落 D:\wsl（W1 语义）。
+// installPref 传 {set,dir} 定制后端返回值；传 'throw' 模拟后端拉取失败（静默降级）。
+async function setup(opts: { installPref?: InstallPref | 'throw' } = {}) {
   api.StartReadiness.mockResolvedValue(undefined)
   api.GetReleases.mockResolvedValue(OVERVIEW)
   api.ListOnlineDistros.mockResolvedValue(ONLINE)
@@ -164,6 +173,12 @@ async function setup() {
   api.ListInstances.mockResolvedValue(INSTANCES)
   api.ListDistroExports.mockResolvedValue([])
   api.ListPortRules.mockResolvedValue({ rules: [], foreign: [], pending: false })
+  if (opts.installPref === 'throw') {
+    api.GetDistroInstallDir.mockRejectedValue(new Error('RPC 通道掉线'))
+  } else {
+    api.GetDistroInstallDir.mockResolvedValue(opts.installPref ?? { set: false, dir: '' })
+  }
+  api.SetDistroInstallDir.mockResolvedValue(undefined)
   const wrapper = mount(WSLView)
   await flushPromises()
   return wrapper
@@ -180,15 +195,35 @@ async function completeCheck(wrapper: ReturnType<typeof mount>) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.useRealTimers()
   confirmFn.mockResolvedValue(true)
-  // 安装落位目录持久化在 localStorage，测试间必须隔离（否则前用例目录会预填进后用例）
-  localStorage.clear()
 })
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+// 行内常驻钮顺序（W8 收纳后）：0 终端 1 重启 2 关机 3 删除 4 ⋯更多；
+// 「⋯ 更多」面板钮：文件 / 设默认 / 导出 / 迁移 / 克隆 / 瘦身 / 详情 / wsl.conf。
+const rowBtns = (w: Awaited<ReturnType<typeof setup>>, row: number) =>
+  w.findAll('tbody tr')[row].findAll('button')
+async function openMore(w: Awaited<ReturnType<typeof setup>>, row: number) {
+  await rowBtns(w, row)[4].trigger('click')
+  await flushPromises()
+  return w.find('.row-menu-panel')
+}
+async function menuClick(w: Awaited<ReturnType<typeof setup>>, row: number, text: string) {
+  const panel = await openMore(w, row)
+  const btn = panel.findAll('button').find(b => b.text().includes(text))!
+  await btn.trigger('click')
+  await flushPromises()
+}
+
 describe('WSLView 流式体检', () => {
-  it('挂载即启动流式体检：骨架 9 项先以「检测中」渲染', async () => {
+  it('挂载即启动流式体检 + 后端拉取落位偏好：骨架 10 项先以「检测中」渲染', async () => {
     const w = await setup()
     expect(api.StartReadiness).toHaveBeenCalledTimes(1)
+    expect(api.GetDistroInstallDir).toHaveBeenCalledTimes(1)
     const rows = w.findAll('.check-row')
     expect(rows.length).toBe(10)
     expect(w.text().match(/检测中/g)?.length).toBe(10)
@@ -207,16 +242,28 @@ describe('WSLView 流式体检', () => {
     await completeCheck(w)
     expect(w.findAll('.check-row.pending').length).toBe(0)
     expect(w.text()).toContain(REPORT.verdictTitle)
-    // 完成落章：每行到齐都有记号——✓ 通过 8、⚠ 注意 1、✓（灰）已检测不判定 1（vbs）
+    // 完成落章：✓ 通过 8、⚠ 注意 1、ℹ 已检测不判定 1（vbs）——info 不再与 pass 共用灰勾
     expect(w.findAll('.check-trail.ok').length).toBe(8)
     expect(w.findAll('.check-trail.warn').length).toBe(1)
     expect(w.findAll('.check-trail.info').length).toBe(1)
+    expect(w.findAll('.check-trail.info')[0].text()).toBe('ℹ')
     expect(w.findAll('.check-trail').length).toBe(10)
     expect(w.text()).toContain('★ 默认')
     // 状态归一呈现：本地化原文只进 title 备查，正文一律中文枚举；占用走注册表列
     expect(w.text()).toContain('运行中')
     expect(w.text()).toContain('已停止')
     expect(w.text()).toContain('12.3 MB')
+  })
+
+  it('复采保旧值（Stale 基线，W9）：重新体检不清屏，标题区标注复采中', async () => {
+    const w = await setup()
+    await completeCheck(w)
+    api.StartReadiness.mockImplementationOnce(() => new Promise(() => {})) // 永挂起：停在 streaming 态
+    await w.findAll('button').find(b => b.text().includes('重新体检'))!.trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('复采中')
+    expect(w.text()).toContain(REPORT.verdictTitle) // 旧结论在位可读，不整页闪回骨架
+    expect(w.findAll('.check-row.pending').length).toBe(0)
   })
 
   it('error 阶段落错误框并解除 streaming', async () => {
@@ -227,13 +274,24 @@ describe('WSLView 流式体检', () => {
   })
 })
 
-describe('WSLView 标签页布局', () => {
+describe('WSLView 标签页布局（页签 6→5，W4）', () => {
   // 顺序锁定：懒加载断言全部按索引导航，插页或换序会连锁打破它们。
-  it('六页顺序锁定：就绪检测 → 本机发行版 → 添加实例 → 官方发行版 → 本体版本 → 端口转发', async () => {
+  it('五页顺序锁定：就绪检测 → 本机发行版 → 添加实例 → 本体版本 → 端口转发', async () => {
     const w = await setup()
     expect(w.findAll('.main-tab-btn').map(b => b.text())).toEqual([
-      '🐧 就绪检测', '💻 本机发行版', '➕ 添加实例', '📦 官方发行版', '🧩 本体版本', '🔀 端口转发',
+      '🐧 就绪检测', '💻 本机发行版', '➕ 添加实例', '🧩 本体版本', '🔀 端口转发',
     ])
+    // 「📦 官方发行版」独立页签已删（与添加实例·商店源同清单双入口归一）
+    expect(w.text()).not.toContain('📦 官方发行版')
+  })
+
+  it('页签 aria 接线：id-prefix 生成 tab/panel 配对（W9）', async () => {
+    const w = await setup()
+    expect(w.find('.main-tab-btn').attributes('id')).toBe('wsl-main-console-tab')
+    const panel = w.find('#wsl-main-console-panel')
+    expect(panel.exists()).toBe(true)
+    expect(panel.attributes('role')).toBe('tabpanel')
+    expect(panel.attributes('aria-labelledby')).toBe('wsl-main-console-tab')
   })
 
   it('未装 WSL 且无实例时，本机发行版页给引导空态而非管理表', async () => {
@@ -244,12 +302,14 @@ describe('WSLView 标签页布局', () => {
     await flushPromises()
     emitReadiness({ stage: 'done', report: { ...REPORT, wslVersion: '' } })
     await flushPromises()
-    expect(w.find('.distro-head').exists()).toBe(false)
+    // 页签是 v-show 常驻 DOM：.distro-head 也是添加实例页官方清单的表头，
+    // 断言必须限定在本机发行版面板内，否则扫到邻页表头误报。
+    expect(w.find('#wsl-main-distros-panel .distro-head').exists()).toBe(false)
     expect(w.text()).toContain('装好发行版后实例会列在这里')
   })
 })
 
-describe('WSLView 操作流', () => {
+describe('WSLView 提权操作与确认链', () => {
   it('提权操作：确认 → 白名单命令 → 完成后重新流式体检', async () => {
     const w = await setup()
     await completeCheck(w)
@@ -259,6 +319,20 @@ describe('WSLView 操作流', () => {
     expect(confirmFn).toHaveBeenCalledTimes(1)
     expect(api.SetDefaultVersion2).toHaveBeenCalledTimes(1)
     expect(api.StartReadiness).toHaveBeenCalledTimes(2) // 初始 + 操作后复查
+  })
+
+  it('提权操作失败也复采（W2-3）：catch 补 loadInstances，半成功不隐身', async () => {
+    api.InstallWsl.mockRejectedValueOnce(new Error('UAC 被取消'))
+    const w = await setup()
+    await completeCheck(w)
+    const before = api.ListInstances.mock.calls.length
+    await w.findAll('button').find(b => b.text().includes('一键开启'))!.trigger('click')
+    await flushPromises()
+    expect(api.ListInstances.mock.calls.length).toBeGreaterThan(before)
+    // 失败已放闸：按钮恢复可用，且文案不换字（宽度稳定）
+    const install = w.findAll('button').find(b => b.text().includes('一键开启'))!
+    expect(install.text()).toContain('🚀 一键开启')
+    expect(install.attributes('disabled')).toBeUndefined()
   })
 
   it('UAC 前置确认被拒时不触达提权通道', async () => {
@@ -272,7 +346,7 @@ describe('WSLView 操作流', () => {
     expect(w.text()).not.toContain('待重启生效')
   })
 
-  it('重启引导条纯检测驱动：CBS 台账报 pending 才出现，与操作语境无关', async () => {
+  it('重启引导纯检测驱动：CBS 台账报 pending 才出现，与操作语境无关', async () => {
     const w = await setup()
     await completeCheck(w) // REPORT 无 rebootPending：即使刚做过体检也不打扰
     expect(w.text()).not.toContain('待重启生效')
@@ -309,7 +383,7 @@ describe('WSLView 操作流', () => {
     expect(api.DisableWslFeatures).not.toHaveBeenCalled()
   })
 
-  it('正规卸载：危险确认 + 双路卸载调用', async () => {
+  it('正规卸载：danger 确认 + 专用钮文案「继续卸载」+ 双路卸载调用', async () => {
     const w = await setup()
     await completeCheck(w)
     const btn = w.findAll('button').find(b => b.text().includes('卸载 WSL'))!
@@ -317,103 +391,296 @@ describe('WSLView 操作流', () => {
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts | undefined
     expect(opts?.tone).toBe('danger')
+    expect(opts?.confirmLabel).toBe('继续卸载')
     expect(api.UninstallWsl).toHaveBeenCalledTimes(1)
     expect(api.StartReadiness).toHaveBeenCalledTimes(2) // 卸载后自动流式复查
   })
-})
 
-describe('WSLView 官方发行版与本体版本', () => {
-  it('在线清单懒加载：冷页不查；首次切到发行版相关页（添加实例/官方发行版共用）即查且只查一次', async () => {
-    const w = await setup()
-    expect(api.ListOnlineDistros).not.toHaveBeenCalled()
-    await w.findAll('.main-tab-btn')[2].trigger('click') // ➕ 添加实例
-    await flushPromises()
-    expect(api.ListOnlineDistros).toHaveBeenCalledTimes(1)
-    await w.findAll('.main-tab-btn')[3].trigger('click') // 再切 📦 官方发行版：已载过不重查
-    await flushPromises()
-    expect(api.ListOnlineDistros).toHaveBeenCalledTimes(1)
-    expect(w.text()).toContain('Ubuntu-24.04')
-    expect(w.text()).toContain('Debian')
-  })
-
-  it('API 被拦降级：fallback 载荷必须如实标注订阅源来源', async () => {
-    api.GetReleases.mockResolvedValueOnce({ ...OVERVIEW, fallback: true, localVersion: '', relation: 'unknown' })
-    const w = await setup()
-    await w.findAll('.main-tab-btn')[4].trigger('click')
-    await flushPromises()
-    expect(w.text()).toContain('订阅源')
-    expect(w.text()).toContain('403')
-  })
-
-  it('应用内下载：受理参数精确、事件驱动进度到"已下载+打开位置"闭环', async () => {
-    const w = await setup()
-    await completeCheck(w) // machineArch 需体检报告到位才可知（未知时兜底列全是设计行为）
-    await w.findAll('.main-tab-btn')[4].trigger('click')
-    await flushPromises()
-    expect(w.text()).toContain('2.9.10')
-    expect(w.text()).toContain('本机') // machineArch=x64 → 本机徽章
-    // 异架构（ARM64）整行隐藏：仅剩本机架构一个下载按钮
-    const dl = w.findAll('button').filter(b => b.text().includes('下载'))
-    expect(dl.length).toBe(1)
-    expect(w.text()).not.toContain('ARM64')
-    await dl[0].trigger('click')
-    await flushPromises()
-    expect(api.DownloadMsi).toHaveBeenCalledWith('2.9.10', 'wsl.2.9.10.0.x64.msi')
-    // 模拟进度事件：downloading 出进度条，done 收口为已下载 + 打开位置
-    runtime.handlers['wsl:msi-download']?.({ data: { tag: '2.9.10', platform: 'x64', stage: 'downloading', done: 5e6, total: 18e6 } })
-    await flushPromises()
-    expect(w.find('.ui-progress').exists()).toBe(true)
-    runtime.handlers['wsl:msi-download']?.({ data: { tag: '2.9.10', platform: 'x64', stage: 'done', done: 18e6, total: 18e6, path: 'C:\\Users\\x\\Downloads\\wsl.2.9.10.0.x64.msi' } })
-    await flushPromises()
-    expect(w.text()).toContain('已下载')
-    const reveal = w.findAll('button').find(b => b.text().includes('打开位置'))!
-    await reveal.trigger('click')
-    await flushPromises()
-    expect(api.RevealDownload).toHaveBeenCalledWith('2.9.10', 'wsl.2.9.10.0.x64.msi')
-  })
-
-  it('发行版安装：把清单 ID 原样交给后端白名单校验', async () => {
-    const w = await setup()
-    await completeCheck(w) // distroBlockedReason 需报告：vmPlatformEnabled=true、无 rebootPending → 放行
-    await w.findAll('.main-tab-btn')[3].trigger('click')
-    await flushPromises()
-    expect(w.find('.distro-block-banner').exists()).toBe(false)
-    const install = w.findAll('button').find(b => b.text().includes('⬇ 安装'))!
-    await install.trigger('click')
-    await flushPromises()
-    // 首次使用无记忆 → 预填默认基目录 D:\wsl（后端自动追加同名子目录落位）
-    expect(api.InstallDistroTo).toHaveBeenCalledWith('Ubuntu-24.04', 'D:\\wsl')
-  })
-
-  it('安装落位目录：填入即随确认链透传，回执预告"装完即迁"并持久记忆', async () => {
+  it('危险级降噪（W7）：关虚拟机平台保持 danger 且钮文案「仍要关闭」', async () => {
+    api.DisableWslFeatures.mockResolvedValue({ success: true, message: '已关闭' })
     const w = await setup()
     await completeCheck(w)
-    await w.findAll('.main-tab-btn')[3].trigger('click')
+    await w.findAll('button').find(b => b.text().includes('关闭虚拟机平台'))!.trigger('click')
     await flushPromises()
-    // 输入框上收在「➕ 添加实例」页（v-show 常驻 DOM）——两处入口共用同一落位
+    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
+    expect(opts.tone).toBe('danger')
+    expect(opts.confirmLabel).toBe('仍要关闭')
+  })
+
+  it('忙时按钮不换字防宽度跳动（W9）：在飞按钮保留原文案并挂 spinner', async () => {
+    let release!: (v: unknown) => void
+    api.InstallWsl.mockImplementation(() => new Promise(res => { release = res }))
+    const w = await setup()
+    await completeCheck(w)
+    await w.findAll('button').find(b => b.text().includes('一键开启'))!.trigger('click')
+    await flushPromises()
+    const install = w.findAll('button').find(b => b.text().includes('一键开启'))!
+    expect(install.text()).toContain('🚀 一键开启') // 文案未被"执行中…"替换
+    expect(install.find('.btn-spin').exists()).toBe(true) // 以 spinner 表忙
+    release({ success: true, message: '已安装' })
+    await flushPromises()
+  })
+})
+
+describe('WSLView busy 分级锁与跨页签进度（P0，W2）', () => {
+  it('克隆在飞：只锁本行写操作与全局钮，放行只读与其他发行版；全页签横幅 + 页签·运行中', async () => {
+    let release!: (v: unknown) => void
+    api.CloneDistro.mockImplementation(() => new Promise(res => { release = res }))
+    const w = await setup()
+    await completeCheck(w)
+    await menuClick(w, 0, '克隆')
+    // 展开即预填新名与落位：直接提交
+    await w.find('.clone-row-editor').findAll('button').find(b => b.text().includes('开始克隆'))!.trigger('click')
+    await flushPromises()
+    // 行结构：tr[0]=Ubuntu tr[1]=克隆行内编辑器 tr[2]=Debian
+    expect(rowBtns(w, 0)[1].attributes('disabled')).toBeDefined() // Ubuntu 重启关门
+    expect(rowBtns(w, 0)[3].attributes('disabled')).toBeDefined() // Ubuntu 删除关门
+    expect(rowBtns(w, 2)[0].attributes('disabled')).toBeUndefined() // Debian 终端照常（只读）
+    expect(rowBtns(w, 2)[3].attributes('disabled')).toBeUndefined() // Debian 删除照常（他行不连坐）
+    const install = w.findAll('button').find(b => b.text().includes('一键开启'))!
+    expect(install.attributes('disabled')).toBeDefined() // 全局互斥类在别操作在飞时关门
+    // 页签标题追加运行中
+    expect(w.findAll('.main-tab-btn')[1].text()).toContain('·运行中')
+    // 常驻横幅：克隆免 UAC，文案不得谎称提权窗口
+    const banner = w.find('#wsl-main-console-panel .busy-banner')
+    expect(banner.text()).toContain('克隆 Ubuntu → Ubuntu-Copy：拷贝数据盘中')
+    expect(banner.text()).not.toContain('提权窗口')
+    // 切到添加实例页：横幅仍在（跨页签可见）
+    await w.findAll('.main-tab-btn')[2].trigger('click')
+    await flushPromises()
+    expect(w.find('#wsl-main-add-panel .busy-banner').text()).toContain('克隆 Ubuntu')
+    // Debian 终端此刻真的可点并触达后端
+    api.OpenTerminal.mockResolvedValue(ok('已启动终端会话'))
+    await rowBtns(w, 2)[0].trigger('click')
+    await flushPromises()
+    expect(api.OpenTerminal).toHaveBeenCalledWith('Debian')
+    // 受理返回（事件尚未终态）：闸门仍由事件收口
+    release({ success: true, message: '已开始克隆' })
+    await flushPromises()
+    expect(w.findAll('.main-tab-btn')[1].text()).toContain('·运行中')
+    // done 终态：放闸、收表单、标记消失、横幅退场
+    runtime.handlers['wsl:clone']?.({ data: { source: 'Ubuntu', target: 'Ubuntu-Copy', stage: 'done', done: 1000, total: 1000, message: '已克隆为 Ubuntu-Copy' } })
+    await flushPromises()
+    expect(w.findAll('.main-tab-btn')[1].text()).not.toContain('·运行中')
+    expect(w.findAll('.busy-banner').every(b => !b.isVisible())).toBe(true)
+    // 回发行版页：克隆编辑器已收，Ubuntu 行恢复可用
+    await w.findAll('.main-tab-btn')[1].trigger('click')
+    await flushPromises()
+    expect(w.find('.clone-row-editor').exists()).toBe(false)
+    expect(rowBtns(w, 0)[1].attributes('disabled')).toBeUndefined()
+  })
+
+  it('提权类在飞：横幅如实点名提权窗口，全站写操作关门但只读放行', async () => {
+    let release!: (v: unknown) => void
+    api.UpdateWsl.mockImplementation(() => new Promise(res => { release = res }))
+    const w = await setup()
+    await completeCheck(w)
+    await w.findAll('button').find(b => b.text().includes('🔄 更新'))!.trigger('click')
+    await flushPromises()
+    // 全局在飞：连 Debian 的写钮也关门（tr[1]），终端只读不禁
+    expect(rowBtns(w, 1)[3].attributes('disabled')).toBeDefined()
+    expect(rowBtns(w, 1)[0].attributes('disabled')).toBeUndefined()
+    expect(w.find('.busy-banner').text()).toContain('提权窗口')
+    release({ success: true, message: '更新完成' })
+    await flushPromises()
+    expect(rowBtns(w, 1)[3].attributes('disabled')).toBeUndefined()
+  })
+
+  it('只读刷新永远可用：克隆在飞时列表刷新钮不灰', async () => {
+    let release!: (v: unknown) => void
+    api.CloneDistro.mockImplementation(() => new Promise(res => { release = res }))
+    const w = await setup()
+    await completeCheck(w)
+    await menuClick(w, 0, '克隆')
+    await w.find('.clone-row-editor').findAll('button').find(b => b.text().includes('开始克隆'))!.trigger('click')
+    await flushPromises()
+    const refresh = w.findAll('button').find(b => b.text().includes('刷新列表'))!
+    expect(refresh.attributes('disabled')).toBeUndefined()
+    release({ success: true, message: '已开始克隆' })
+    await flushPromises()
+    runtime.handlers['wsl:clone']?.({ data: { source: 'Ubuntu', target: 'Ubuntu-Copy', stage: 'done', done: 1000, total: 1000 } })
+    await flushPromises()
+  })
+})
+
+describe('WSLView 失败回报行内保活（P0，W3）', () => {
+  it('克隆提交失败：错误驻留本行红条（不再秒清表单），闸门即放', async () => {
+    api.CloneDistro.mockRejectedValue(new Error('目标盘所在卷空间不足'))
+    const w = await setup()
+    await completeCheck(w)
+    await menuClick(w, 0, '克隆')
+    await w.find('.clone-row-editor').findAll('button').find(b => b.text().includes('开始克隆'))!.trigger('click')
+    await flushPromises()
+    const editor = w.find('.clone-row-editor')
+    expect(editor.exists()).toBe(true) // 旧实现置 null 直接吞掉表单——现在驻留
+    expect(editor.text()).toContain('克隆失败')
+    expect(editor.find('.error-box').text()).toContain('目标盘所在卷空间不足')
+    expect(w.findAll('.main-tab-btn')[1].text()).not.toContain('·运行中') // 闸门已放
+    // 「知道了，收起」关表单
+    await editor.find('.error-box').findAll('button')[0].trigger('click')
+    await flushPromises()
+    expect(w.find('.clone-row-editor').exists()).toBe(false)
+  })
+
+  it('瘦身未受理：错误驻留本行红条，终态可收起', async () => {
+    api.CompactDistro.mockRejectedValue(new Error('备份目录不可写'))
+    const w = await setup()
+    await completeCheck(w)
+    await menuClick(w, 0, '瘦身')
+    await w.find('.compact-row-editor').findAll('button').find(b => b.text().includes('确认开始瘦身'))!.trigger('click')
+    await flushPromises()
+    const editor = w.find('.compact-row-editor')
+    expect(editor.exists()).toBe(true)
+    expect(editor.text()).toContain('瘦身中止')
+    expect(editor.find('.error-box').text()).toContain('备份目录不可写')
+    await editor.findAll('button').find(b => b.text().includes('收起'))!.trigger('click')
+    await flushPromises()
+    expect(w.find('.compact-row-editor').exists()).toBe(false)
+  })
+
+  it('克隆事件流 error 也在行内驻留（回归锁）', async () => {
+    api.CloneDistro.mockResolvedValue({ success: true, message: '开始克隆' })
+    const w = await setup()
+    await completeCheck(w)
+    await menuClick(w, 0, '克隆')
+    await w.find('.clone-row-editor').findAll('button').find(b => b.text().includes('开始克隆'))!.trigger('click')
+    await flushPromises()
+    runtime.handlers['wsl:clone']?.({ data: { source: 'Ubuntu', target: 'Ubuntu-Copy', stage: 'error', done: 0, total: 0, error: '挂载克隆盘失败（已拷贝的数据盘保留在 D:\\x，可自行处理）' } })
+    await flushPromises()
+    const box = w.find('.clone-row-editor .error-box')
+    expect(box.exists()).toBe(true)
+    expect(box.text()).toContain('保留在 D:\\x')
+    expect(rowBtns(w, 2)[3].attributes('disabled')).toBeUndefined() // error 即放闸（编辑行占 tr[1]）
+    await box.find('button').trigger('click')
+    await flushPromises()
+    expect(w.find('.clone-row-editor').exists()).toBe(false)
+  })
+})
+
+const dirInput = (w: Awaited<ReturnType<typeof setup>>) =>
+  (w.find('#wsl-install-dir').element as HTMLInputElement).value
+
+describe('WSLView 安装落位持久化：后端 RPC（W1）', () => {
+  it('set=false（从未设置）→ 回落默认 D:\\wsl；用户改动防抖 500ms 后写回', async () => {
+    vi.useFakeTimers()
+    const w = await setup({ installPref: { set: false, dir: '' } })
+    expect(dirInput(w)).toBe('D:\\wsl')
+    expect(api.SetDistroInstallDir).not.toHaveBeenCalled() // 拉取回显不触发回写
     await w.find('#wsl-install-dir').setValue('E:\\WSL')
+    await vi.advanceTimersByTimeAsync(499)
+    expect(api.SetDistroInstallDir).not.toHaveBeenCalled() // 防抖未到期
+    await vi.advanceTimersByTimeAsync(2)
+    expect(api.SetDistroInstallDir).toHaveBeenCalledTimes(1)
+    expect(api.SetDistroInstallDir).toHaveBeenCalledWith('E:\\WSL')
+    vi.useRealTimers()
+  })
+
+  it('set=true 且 dir=""（显式选系统默认）→ 输入框留空 + 常驻警示条（W5）', async () => {
+    const w = await setup({ installPref: { set: true, dir: '' } })
+    expect(dirInput(w)).toBe('')
+    expect(api.SetDistroInstallDir).not.toHaveBeenCalled()
+    const warn = w.findAll('.banner-warn').find(b => b.text().includes('留空 = 用系统默认位置'))
+    expect(warn).toBeTruthy()
+    expect(warn!.text()).toContain('C 盘')
+    // 输入框不再顶着过时长按说明：placeholder 已瘦身
+    expect(w.find('#wsl-install-dir').attributes('placeholder')).toBe('例：D:\\wsl')
+    // 标签更名"安装基目录"
+    expect(w.find('label[for="wsl-install-dir"]').text()).toBe('安装基目录')
+  })
+
+  it('set=true 且有值 → 原样回填；防抖窗口内改回原值不写回', async () => {
+    vi.useFakeTimers()
+    const w = await setup({ installPref: { set: true, dir: 'E:\\WSL' } })
+    expect(dirInput(w)).toBe('E:\\WSL')
+    await w.find('#wsl-install-dir').setValue('X:\\tmp')
+    await vi.advanceTimersByTimeAsync(100)
+    await w.find('#wsl-install-dir').setValue('E:\\WSL')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.SetDistroInstallDir).not.toHaveBeenCalled() // 净变化为零：不打扰后端
+    vi.useRealTimers()
+  })
+
+  it('后端拉取失败 → 静默降级默认值（console.warn 留痕，不拦渲染）', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const w = await setup({ installPref: 'throw' })
+    expect(dirInput(w)).toBe('D:\\wsl')
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('写回失败静默降级：仅 console.warn，不拦后续操作', async () => {
+    vi.useFakeTimers()
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const w = await setup()
+    api.SetDistroInstallDir.mockRejectedValue(new Error('RPC 掉线'))
+    await w.find('#wsl-install-dir').setValue('F:\\wsl')
+    await vi.advanceTimersByTimeAsync(600)
+    expect(warnSpy).toHaveBeenCalled()
+    expect(dirInput(w)).toBe('F:\\wsl') // 内存值保留，本会话继续可用
+    warnSpy.mockRestore()
+    vi.useRealTimers()
+  })
+})
+
+describe('WSLView 官方发行版清单并入添加实例·商店源（W4）', () => {
+  it('懒加载：冷页不查；首次进添加实例页即查且共用清单不重查', async () => {
+    const w = await setup()
+    expect(api.ListOnlineDistros).not.toHaveBeenCalled()
+    await w.findAll('.main-tab-btn')[2].trigger('click') // ➕ 添加实例（商店源默认选中）
+    await flushPromises()
+    expect(api.ListOnlineDistros).toHaveBeenCalledTimes(1)
+    await w.findAll('.main-tab-btn')[0].trigger('click')
+    await w.findAll('.main-tab-btn')[2].trigger('click')
+    await flushPromises()
+    expect(api.ListOnlineDistros).toHaveBeenCalledTimes(1) // 已载过不重查
+  })
+
+  it('商店源面板即清单表格：下拉+单钮双入口已删，逐行「⬇ 安装」携基目录走 InstallDistroTo', async () => {
+    const w = await setup()
+    await completeCheck(w) // vmPlatformEnabled=true、无 rebootPending → 放行
+    await w.findAll('.main-tab-btn')[2].trigger('click')
+    await flushPromises()
+    expect(w.find('#wsl-add-store').exists()).toBe(false) // 原下拉入口删除
+    expect(w.text()).not.toContain('安装所选发行版')
+    expect(w.text()).toContain('可安装的官方发行版 (2)')
+    expect(w.text()).toContain('Ubuntu-24.04')
+    expect(w.text()).toContain('Debian')
+    // 落位回显（三源共用基目录行）
+    expect(w.text()).toContain('安装落位：D:\\wsl')
     const install = w.findAll('button').find(b => b.text().includes('⬇ 安装'))!
+    expect(install.attributes('disabled')).toBeUndefined()
     await install.trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
     expect(opts.description).toContain('自动迁移落位')
-    expect(api.InstallDistroTo).toHaveBeenCalledWith('Ubuntu-24.04', 'E:\\WSL')
-    // 重挂载后目录记忆仍在（localStorage 持久化）
-    const w2 = await setup()
-    expect((w2.find('#wsl-install-dir').element as HTMLInputElement).value).toBe('E:\\WSL')
+    expect(api.InstallDistroTo).toHaveBeenCalledWith('Ubuntu-24.04', 'D:\\wsl')
   })
 
-  it('虚拟机平台未生效时预告拦截：版本页黄条警告 + 安装按钮禁用', async () => {
+  it('清单空态自带「↻ 重新查询」（P1-1：修复空态指向不存在的刷新钮）', async () => {
     const w = await setup()
-    // 投喂"已启用但 CBS 欠重启"的报告——WSL2 起不了虚拟机，装发行版注定失败
+    api.ListOnlineDistros.mockResolvedValue([])
+    await w.findAll('.main-tab-btn')[2].trigger('click')
+    await flushPromises()
+    expect(api.ListOnlineDistros).toHaveBeenCalledTimes(1)
+    const empty = w.find('.empty-state')
+    expect(empty.exists()).toBe(true)
+    const retry = empty.findAll('button').find(b => b.text().includes('重新查询'))
+    expect(retry).toBeTruthy()
+    expect(empty.text()).not.toContain('点右侧按钮')
+    await retry!.trigger('click')
+    await flushPromises()
+    expect(api.ListOnlineDistros).toHaveBeenCalledTimes(2) // 空态内即可自救
+  })
+
+  it('虚拟机平台未生效时预告拦截：黄条警告 + 行内安装钮禁用', async () => {
+    const w = await setup()
     emitReadiness({ stage: 'done', report: { ...REPORT, rebootPending: true } })
     await flushPromises()
-    await w.findAll('.main-tab-btn')[3].trigger('click')
+    await w.findAll('.main-tab-btn')[2].trigger('click')
     await flushPromises()
     const banner = w.find('.distro-block-banner')
     expect(banner.exists()).toBe(true)
     expect(banner.text()).toContain('重启')
-    // 按钮禁用，点不动（免得弹了 UAC 才失败）
     const install = w.findAll('button').find(b => b.text().includes('⬇ 安装'))!
     expect(install.attributes('disabled')).toBeDefined()
     await install.trigger('click')
@@ -422,22 +689,19 @@ describe('WSLView 官方发行版与本体版本', () => {
 })
 
 describe('WSLView 发行版实例管理', () => {
-  // 行内按钮顺序（与模板一致）：0 终端 1 文件 2 重启 3 关机 4 设默认 5 导出 6 迁移 7 克隆 8 瘦身 9 详情 10 wsl.conf 11 删除
   async function consoleMounted() {
     const w = await setup()
     await completeCheck(w)
     return w
   }
-  const rowBtns = (w: Awaited<ReturnType<typeof consoleMounted>>, row: number) =>
-    w.findAll('tbody tr')[row].findAll('button')
   // 覆盖列表数据源并复采（setup 默认 mock 会重置，故覆盖必须发生在挂载后）
-  async function reloadWith(w: Awaited<ReturnType<typeof consoleMounted>>, list: unknown[]) {
+  async function reloadWith(w: Awaited<ReturnType<typeof setup>>, list: unknown[]) {
     api.ListInstances.mockResolvedValue(list)
     await w.findAll('button').find(b => b.text().includes('刷新列表'))!.trigger('click')
     await flushPromises()
   }
 
-  it('唤终端免确认直达，发行版名原样透传后端白名单', async () => {
+  it('唤终端免确认直达（只读操作不受分级锁），发行版名原样透传', async () => {
     api.OpenTerminal.mockResolvedValue(ok('已启动终端会话'))
     const w = await consoleMounted()
     await rowBtns(w, 0)[0].trigger('click')
@@ -446,11 +710,10 @@ describe('WSLView 发行版实例管理', () => {
     expect(api.OpenTerminal).toHaveBeenCalledWith('Ubuntu')
   })
 
-  it('文件管理器与终端同为只读外呼：免确认直达，名原样透传', async () => {
+  it('文件管理器收进「更多」但仍是只读免确认直达', async () => {
     api.OpenDistroFolder.mockResolvedValue(ok('已在资源管理器打开 \\\\wsl$\\Ubuntu'))
     const w = await consoleMounted()
-    await rowBtns(w, 0)[1].trigger('click')
-    await flushPromises()
+    await menuClick(w, 0, '文件')
     expect(confirmFn).not.toHaveBeenCalled()
     expect(api.OpenDistroFolder).toHaveBeenCalledWith('Ubuntu')
   })
@@ -458,7 +721,7 @@ describe('WSLView 发行版实例管理', () => {
   it('重启：运行中实例给 warning 确认（会话中断如实声明）并透传名', async () => {
     api.RestartDistro.mockResolvedValue(ok('Ubuntu 已重启'))
     const w = await consoleMounted()
-    await rowBtns(w, 0)[2].trigger('click') // Ubuntu 运行中
+    await rowBtns(w, 0)[1].trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
     expect(opts.tone).toBe('warning')
@@ -470,7 +733,7 @@ describe('WSLView 发行版实例管理', () => {
   it('重启：停止态实例文案降级为直接拉起验证（default 基调）', async () => {
     api.RestartDistro.mockResolvedValue(ok('Debian 已重启'))
     const w = await consoleMounted()
-    await rowBtns(w, 1)[2].trigger('click') // Debian 已停止
+    await rowBtns(w, 1)[1].trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
     expect(opts.tone).toBe('default')
@@ -481,25 +744,26 @@ describe('WSLView 发行版实例管理', () => {
   it('终止仅对运行中实例可用；用户态操作如实声明不弹 UAC', async () => {
     api.TerminateDistro.mockResolvedValue(ok('Ubuntu 已终止'))
     const w = await consoleMounted()
-    const debianStop = rowBtns(w, 1)[3]
+    const debianStop = rowBtns(w, 1)[2]
     expect(debianStop.attributes('disabled')).toBeDefined()
     await debianStop.trigger('click')
     expect(api.TerminateDistro).not.toHaveBeenCalled()
 
-    await rowBtns(w, 0)[3].trigger('click')
+    await rowBtns(w, 0)[2].trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
     expect(opts.description).toContain('不会弹出 UAC')
     expect(api.TerminateDistro).toHaveBeenCalledWith('Ubuntu')
   })
 
-  it('删除：数据销毁级危险确认 + details 点名占用与位置；确认被拒不触达', async () => {
+  it('删除：常驻危险钮 + danger 确认带专用钮文案；details 点名占用与位置；确认被拒不触达', async () => {
     api.UnregisterDistro.mockResolvedValue(ok('已删除'))
     const w = await consoleMounted()
-    await rowBtns(w, 0)[11].trigger('click')
+    await rowBtns(w, 0)[3].trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
     expect(opts.tone).toBe('danger')
+    expect(opts.confirmLabel).toBe('🗑 删除数据并移除')
     expect(opts.description).toContain('不可恢复')
     expect(opts.details?.find(d => d.label === '磁盘占用')?.value).toBe('12.3 MB')
     expect(opts.details?.find(d => d.label === '数据位置')?.value).toBe('C:\\lxss\\u')
@@ -507,25 +771,22 @@ describe('WSLView 发行版实例管理', () => {
 
     const w2 = await consoleMounted()
     confirmFn.mockResolvedValueOnce(false)
-    await rowBtns(w2, 0)[11].trigger('click')
+    await rowBtns(w2, 0)[3].trigger('click')
     await flushPromises()
     expect(api.UnregisterDistro).toHaveBeenCalledTimes(1) // 第二次被拒不得新增调用
   })
 
-  it('导出两段式：先展开格式选择不进命令，开始导出透传 gzip 参数；记录全量列出逐份直达', async () => {
+  it('导出两段式：更多里展开格式选择不进命令，开始导出透传 gzip 参数；成功自动展开记录抽屉', async () => {
     api.ExportDistro.mockResolvedValue({ ...ok('Ubuntu 已导出'), id: 'Ubuntu-20260914-120000.tar.gz' })
     api.RevealDistroExport.mockResolvedValue(undefined)
     const w = await consoleMounted()
-    await rowBtns(w, 0)[5].trigger('click')
-    await flushPromises()
+    await menuClick(w, 0, '导出')
     // 第一段：只展开内联格式选择，未触达命令、未弹确认
     const editor = w.find('.export-row-editor')
     expect(editor.exists()).toBe(true)
     expect(api.ExportDistro).not.toHaveBeenCalled()
     expect(confirmFn).not.toHaveBeenCalled()
-    // 切到未压缩 tar 再开始：gzip=false 透传
-    await editor.findAll('input[type="radio"]')[1].setValue()
-    // 成功后会拉取登记列表：先备好记录 mock，逐份挂出「打开位置」
+    await editor.findAll('input[type="radio"]')[1].setValue() // 切未压缩 tar
     api.ListDistroExports.mockResolvedValue([
       { id: 'Ubuntu-20260914-120000.tar.gz', name: 'Ubuntu', path: 'C:\\dl\\Ubuntu-20260914-120000.tar.gz', size: 1024, at: '2026-09-14 12:00:00' },
     ])
@@ -535,58 +796,61 @@ describe('WSLView 发行版实例管理', () => {
     await flushPromises()
     const log = w.find('.export-log')
     expect(log.exists()).toBe(true)
+    expect(log.attributes('open')).toBeDefined() // W9：成功即自动展开
     expect(log.text()).toContain('Ubuntu-20260914-120000.tar.gz')
     await log.findAll('button').find(b => b.text().includes('打开位置'))!.trigger('click')
     await flushPromises()
     expect(api.RevealDistroExport).toHaveBeenCalledWith('Ubuntu-20260914-120000.tar.gz')
   })
 
-  it('迁移：内联表单→空路径禁确认→确认链点名 --shutdown 全局停机与运行中实例→路径透传并收起', async () => {
+  it('迁移：术语清洗（W6）+ warning 降级（W7）+ 留空置灰有解释（W5）+ 路径透传', async () => {
     api.MoveDistro.mockResolvedValue(ok('迁移完成'))
     const w = await consoleMounted()
     // Debian 改为运行中：迁移预警必须点名会被 --shutdown 连带打停的实例
-    await reloadWith(w, [
-      INSTANCES[0],
-      { ...INSTANCES[1], running: true, stateText: '正在运行' },
-    ])
-    await rowBtns(w, 0)[6].trigger('click')
-    await flushPromises()
+    await reloadWith(w, [INSTANCES[0], { ...INSTANCES[1], running: true, stateText: '正在运行' }])
+    await menuClick(w, 0, '迁移')
     const editor = w.find('.move-editor')
     expect(editor.exists()).toBe(true)
     expect(editor.text()).toContain('wsl --shutdown')
-    expect(editor.text()).toContain('Debian') // 运行中的其它实例被点名预警
-    // 展开即预填「安装目录\发行版名」供修改（不再是空框）
+    expect(editor.text()).toContain('Debian')
+    expect(editor.text()).not.toContain('瞬时冲突') // W6：内部重试策略不再进用户文案
+    // 展开即预填「安装基目录\发行版名」（不再是空框靠占位符糊弄）
     expect((w.find('#wsl-move-target').element as HTMLInputElement).value).toBe('D:\\wsl\\Ubuntu')
     const submit = editor.findAll('button').find(b => b.text().includes('确认迁移'))!
     await w.find('#wsl-move-target').setValue('')
-    expect(submit.attributes('disabled')).toBeDefined() // 清空后才显禁
+    expect(submit.attributes('disabled')).toBeDefined()
+    expect(editor.text()).toContain('置灰') // W5：解释为什么灰
     await w.find('#wsl-move-target').setValue('  D:\\WSL\\Ubuntu  ')
     await submit.trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
-    expect(opts.tone).toBe('danger')
+    expect(opts.tone).toBe('warning') // W7：danger 只留数据销毁级
     expect(opts.description).toContain('wsl --shutdown')
+    expect(opts.description).not.toContain('瞬时冲突')
     expect(opts.details?.find(d => d.label === '目标目录')?.value).toBe('D:\\WSL\\Ubuntu')
     expect(api.MoveDistro).toHaveBeenCalledWith('Ubuntu', 'D:\\WSL\\Ubuntu')
     expect(w.find('.move-editor').exists()).toBe(false) // 完成后收起
   })
 
-  it('全局互斥：导出在飞时其余发行版操作全部禁用', async () => {
+  it('分级锁（W2 取代旧全局互斥）：Ubuntu 导出在飞时 Debian 照常可用、本行关门', async () => {
     let release!: (v: ReturnType<typeof ok>) => void
     api.ExportDistro.mockImplementation(() => new Promise(res => { release = res }))
     const w = await consoleMounted()
-    await rowBtns(w, 0)[5].trigger('click')
-    await w.find('.export-row-editor').findAll('button')[0].trigger('click') // ✔ 开始导出
+    await menuClick(w, 0, '导出')
+    await w.find('.export-row-editor').findAll('button')[0].trigger('click')
     await flushPromises()
     await flushPromises()
-    // 导出编辑行占 tr[1]，Debian 行下移 tr[2]：导出/删除在忙时禁用（终止钮本来就因已停止禁用，不作判据）
-    expect(rowBtns(w, 2)[5].attributes('disabled')).toBeDefined()
-    expect(rowBtns(w, 2)[11].attributes('disabled')).toBeDefined()
+    // 导出编辑行占 tr[1]，Debian 在 tr[2]：终端/删除照常（只读永远放行、他行不连坐）
+    expect(rowBtns(w, 2)[0].attributes('disabled')).toBeUndefined()
+    expect(rowBtns(w, 2)[3].attributes('disabled')).toBeUndefined()
+    // 本行（Ubuntu）写操作关门
+    expect(rowBtns(w, 0)[3].attributes('disabled')).toBeDefined()
     release(ok('导出完成'))
     await flushPromises()
     await flushPromises()
     // 收口后编辑行收起，Debian 回到 tr[1]
-    expect(rowBtns(w, 1)[5].attributes('disabled')).toBeUndefined()
+    expect(w.find('.export-row-editor').exists()).toBe(false)
+    expect(rowBtns(w, 1)[3].attributes('disabled')).toBeUndefined()
   })
 
   it('列表复采失败：错误框 + 重试钮，不影响体检区', async () => {
@@ -604,7 +868,7 @@ describe('WSLView 发行版实例管理', () => {
     expect(w.text()).toContain('运行中')
   })
 
-  it('取证抽屉：磁盘双口径/稀疏/df/IP 渲染，复采重发，再点收起', async () => {
+  it('取证抽屉：收进更多、双口径渲染、复采重发、再点收起', async () => {
     api.GetDistroForensics.mockResolvedValue({
       name: 'Ubuntu', pfn: 'CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc',
       basePath: 'C:\\lxss\\u', vhdxPath: 'C:\\lxss\\u\\ext4.vhdx',
@@ -614,16 +878,14 @@ describe('WSLView 发行版实例管理', () => {
       ipv4: '172.25.4.136', notes: [],
     })
     const w = await consoleMounted()
-    await rowBtns(w, 0)[9].trigger('click')
-    await flushPromises()
+    await menuClick(w, 0, '详情')
     expect(api.GetDistroForensics).toHaveBeenCalledWith('Ubuntu')
     const panel = w.find('.forensics-panel')
     expect(panel.text()).toContain('稀疏盘')
-    expect(panel.text()).toContain('60.0 MB') // 逻辑 62,914,560
-    expect(panel.text()).toContain('20.0 MB') // 实占 20,971,520
+    expect(panel.text()).toContain('60.0 MB')
+    expect(panel.text()).toContain('20.0 MB')
     expect(panel.text()).toContain('172.25.4.136')
     expect(panel.find('.ui-progress').exists()).toBe(true)
-    // 复采：换一份停止态数据投喂
     api.GetDistroForensics.mockResolvedValue({
       name: 'Ubuntu', pfn: '', basePath: 'C:\\lxss\\u', vhdxPath: 'C:\\lxss\\u\\ext4.vhdx',
       logicalBytes: 62_914_560, allocBytes: 62_914_560, sparse: false,
@@ -635,135 +897,119 @@ describe('WSLView 发行版实例管理', () => {
     await flushPromises()
     expect(api.GetDistroForensics).toHaveBeenCalledTimes(2)
     const panel2 = w.find('.forensics-panel')
-    expect(panel2.text()).toContain('未运行') // Notes 如实呈现缺项，不编数字
+    expect(panel2.text()).toContain('未运行')
     expect(panel2.find('.ui-progress').exists()).toBe(false)
     expect(panel2.text()).not.toContain('172.25')
-    // 再点钮收起抽屉
-    await rowBtns(w, 0)[9].trigger('click')
-    await flushPromises()
+    await menuClick(w, 0, '详情') // 再点收起
     expect(w.find('.forensics-panel').exists()).toBe(false)
   })
 
-  it('克隆：表单先行→受理等 wsl:clone 终态；done 放闸关表单复采', async () => {
+  it('克隆：白话确认文案（W6）→ 受理等 wsl:clone 终态；done 放闸关表单复采', async () => {
     api.CloneDistro.mockResolvedValue({ success: true, message: '开始克隆' })
     const w = await consoleMounted()
-    await rowBtns(w, 0)[7].trigger('click')
-    await flushPromises()
+    await menuClick(w, 0, '克隆')
     const editor = w.find('.clone-row-editor')
     expect(editor.exists()).toBe(true)
-    expect(api.CloneDistro).not.toHaveBeenCalled() // 先填表不进命令
-    // 展开即预填新名与「安装目录\新名」目标；清空目标才显"空目录禁用确认钮"
+    expect(api.CloneDistro).not.toHaveBeenCalled()
     expect((w.find('#wsl-clone-name').element as HTMLInputElement).value).toBe('Ubuntu-Copy')
     expect((w.find('#wsl-clone-target').element as HTMLInputElement).value).toBe('D:\\wsl\\Ubuntu-Copy')
     const submit = editor.findAll('button').find(b => b.text().includes('开始克隆'))!
     await w.find('#wsl-clone-target').setValue('')
     expect(submit.attributes('disabled')).toBeDefined()
+    expect(editor.text()).toContain('置灰') // W5：留空致灰有解释
     await w.find('#wsl-clone-target').setValue('D:\\WSL\\Ubuntu-Copy')
     await submit.trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
-    expect(opts.description).toContain('先终止源发行版')
+    expect(opts.description).toContain('克隆会先关机「Ubuntu」')
+    expect(opts.description).toContain('原发行版不受影响')
+    expect(opts.description).toContain('需要 WSL 2.7.3 以上')
+    expect(opts.description).toContain('导出 → 导入')
+    expect(opts.description).not.toContain('import-in-place') // 命令细节撤出确认框
     expect(opts.details?.find(d => d.label === '目标目录')?.value).toBe('D:\\WSL\\Ubuntu-Copy')
     expect(api.CloneDistro).toHaveBeenCalledWith('Ubuntu', 'Ubuntu-Copy', 'D:\\WSL\\Ubuntu-Copy')
-    // 在飞：表单切进度态、全局闸门关门
     runtime.handlers['wsl:clone']?.({ data: { source: 'Ubuntu', target: 'Ubuntu-Copy', stage: 'copying', done: 500, total: 1000 } })
     await flushPromises()
     expect(w.find('.clone-row-editor').text()).toContain('拷贝数据盘中')
-    expect(rowBtns(w, 2)[11].attributes('disabled')).toBeDefined() // 编辑行占位后 Debian 在 tr[2]
-    // 终态 done：清闸、收表单、复采
     runtime.handlers['wsl:clone']?.({ data: { source: 'Ubuntu', target: 'Ubuntu-Copy', stage: 'done', done: 1000, total: 1000, message: '已克隆为 Ubuntu-Copy' } })
     await flushPromises()
     expect(w.find('.clone-row-editor').exists()).toBe(false)
-    expect(rowBtns(w, 1)[11].attributes('disabled')).toBeUndefined()
+    expect(rowBtns(w, 1)[3].attributes('disabled')).toBeUndefined() // Debian 回 tr[1] 且可用
   })
 
-  it('克隆失败：error 留表单可见并放闸，不吞错', async () => {
-    api.CloneDistro.mockResolvedValue({ success: true, message: '开始克隆' })
+  it('目录输入体验：克隆/迁移展开即预填「安装基目录\\实例名」，📁 回填后仍可改', async () => {
     const w = await consoleMounted()
-    await rowBtns(w, 0)[7].trigger('click')
-    await w.find('#wsl-clone-name').setValue('Ubuntu-Copy')
-    await w.find('#wsl-clone-target').setValue('D:\\x')
-    await w.find('.clone-row-editor').findAll('button').find(b => b.text().includes('开始克隆'))!.trigger('click')
-    await flushPromises()
-    runtime.handlers['wsl:clone']?.({ data: { source: 'Ubuntu', target: 'Ubuntu-Copy', stage: 'error', done: 0, total: 0, error: '挂载克隆盘失败（已拷贝的数据盘保留在 D:\\x，可自行处理）' } })
-    await flushPromises()
-    const box = w.find('.clone-row-editor .error-box')
-    expect(box.exists()).toBe(true)
-    expect(box.text()).toContain('保留在 D:\\x')
-    expect(rowBtns(w, 2)[11].attributes('disabled')).toBeUndefined() // 闸门已放
-    // 「知道了，收起」关表单
-    await box.find('button').trigger('click')
-    await flushPromises()
-    expect(w.find('.clone-row-editor').exists()).toBe(false)
-  })
-
-  it('目录输入体验：克隆/迁移展开即预填「安装目录\\实例名」，📁 回填后仍可改', async () => {
-    const w = await consoleMounted()
-    // 克隆行展开：新名与目标都是现成值（不是空框靠占位符糊弄）
-    await rowBtns(w, 0)[7].trigger('click')
+    await menuClick(w, 0, '克隆')
     expect((w.find('#wsl-clone-name').element as HTMLInputElement).value).toBe('Ubuntu-Copy')
     expect((w.find('#wsl-clone-target').element as HTMLInputElement).value).toBe('D:\\wsl\\Ubuntu-Copy')
-    // 📁 选目录：系统框回填输入框
     api.PickFolderDialog.mockResolvedValueOnce('E:\\Pool')
     await w.find('.clone-row-editor').findAll('button').find(b => b.text().includes('📁 选目录'))!.trigger('click')
     await flushPromises()
     expect(api.PickFolderDialog).toHaveBeenCalledTimes(1)
     expect((w.find('#wsl-clone-target').element as HTMLInputElement).value).toBe('E:\\Pool')
-    // 回填后仍可手改（选好再改）
     await w.find('#wsl-clone-target').setValue('E:\\Pool\\deep')
     expect((w.find('#wsl-clone-target').element as HTMLInputElement).value).toBe('E:\\Pool\\deep')
-
-    // 迁移行展开：同款预填
     await w.find('.clone-row-editor').findAll('button').find(b => b.text().includes('取消'))!.trigger('click')
     await flushPromises()
-    await rowBtns(w, 0)[6].trigger('click')
+    await menuClick(w, 0, '迁移')
     expect((w.find('#wsl-move-target').element as HTMLInputElement).value).toBe('D:\\wsl\\Ubuntu')
   })
 
-  it('wsl.conf 编辑器：装载回填文本与版本警示，保存按当前文本透传', async () => {
+  it('wsl.conf 编辑器：更多里打开、装载回填文本与版本警示，保存按当前文本透传', async () => {
     api.GetWslConf.mockResolvedValue({
       name: 'Ubuntu', text: '[boot]\nsystemd=true', missing: false, wslVersion: '2.7.13',
       warnings: ['[boot]：systemd / command 等 [boot] 项要求 WSL 2.4.4+（老版本会静默忽略）'],
     })
     api.SaveWslConf.mockResolvedValue(ok('已写入并复验一致'))
     const w = await consoleMounted()
-    await rowBtns(w, 0)[10].trigger('click')
+    await menuClick(w, 0, 'wsl.conf')
     await flushPromises()
     expect(api.GetWslConf).toHaveBeenCalledWith('Ubuntu')
     const editor = w.find('.conf-row-editor')
     expect(editor.exists()).toBe(true)
     expect(editor.find('textarea').element.value).toBe('[boot]\nsystemd=true')
-    expect(editor.text()).toContain('2.4.4') // 版本门控警示如实呈现
+    expect(editor.text()).toContain('2.4.4')
     await editor.find('textarea').setValue('[boot]\nsystemd=false')
     await editor.findAll('button')[0].trigger('click') // ✔ 保存写回
     await flushPromises()
     expect(api.SaveWslConf).toHaveBeenCalledWith('Ubuntu', '[boot]\nsystemd=false')
-    // 保存成功后引导"终止使其生效"：第二道确认 + 免 UAC 直调
-    expect(confirmFn).toHaveBeenCalledTimes(2)
+    expect(confirmFn).toHaveBeenCalledTimes(2) // 保存 + 生效引导
     expect(confirmFn.mock.calls[1][0].title).toContain('生效')
     expect(api.TerminateDistro).toHaveBeenCalledWith('Ubuntu')
   })
 
-  it('瘦身：受理→阶段事件驱动呈现，done 省量对比并放闸，错误留在表单', async () => {
+  it('瘦身：四步白话确认（W6）→ 阶段事件呈现去黑话，done 省量对比并放闸、备份工件自动可见', async () => {
     api.CompactDistro.mockResolvedValue({ success: true, message: '开始瘦身' })
     const w = await consoleMounted()
-    await rowBtns(w, 0)[8].trigger('click')
-    await flushPromises()
+    await menuClick(w, 0, '瘦身')
     expect(w.find('.compact-row-editor').text()).toContain('强制先全量备份')
+    expect(w.find('.compact-row-editor').text()).not.toContain('Tier') // 表单说明条也不见 Tier 黑话
     await w.find('.compact-row-editor').findAll('button').find(b => b.text().includes('确认开始瘦身'))!.trigger('click')
     await flushPromises()
-    expect(confirmFn).toHaveBeenCalledTimes(1)
+    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
+    expect(opts.description).toContain('① 先强制做一份全量 tar 备份')
+    expect(opts.description).toContain('④ 仍省得不够时，注销旧实例、从刚才的备份重建一个新实例')
+    expect(opts.description).not.toMatch(/Tier[12]/)
     expect(api.CompactDistro).toHaveBeenCalledWith('Ubuntu', '')
     runtime.handlers['wsl:compact']?.({ data: { name: 'Ubuntu', stage: 'backup', beforeMB: 0, afterMB: 0, message: '备份中' } })
     await flushPromises()
     expect(w.find('.compact-row-editor').text()).toContain('全量备份中')
+    runtime.handlers['wsl:compact']?.({ data: { name: 'Ubuntu', stage: 'optimize', beforeMB: 0, afterMB: 0 } })
+    await flushPromises()
+    expect(w.find('.compact-row-editor').text()).toContain('压缩数据盘中') // 原 'Tier1 压缩中'
+    runtime.handlers['wsl:compact']?.({ data: { name: 'Ubuntu', stage: 'reimport', beforeMB: 0, afterMB: 0 } })
+    await flushPromises()
+    expect(w.find('.compact-row-editor').text()).toContain('从备份重建中') // 原 'Tier2 注销重导入中'
+    api.ListDistroExports.mockResolvedValue([
+      { id: 'Ubuntu-backup.tar', name: 'Ubuntu', path: 'C:\\dl\\Ubuntu-backup.tar', size: 2048, at: '2026-09-15 10:00:00' },
+    ])
     runtime.handlers['wsl:compact']?.({ data: { name: 'Ubuntu', stage: 'done', tier: 'tier2', beforeMB: 20480, afterMB: 8192, message: '瘦身完成（Tier2）' } })
     await flushPromises()
     const editor = w.find('.compact-row-editor')
     expect(editor.text()).toContain('20.0 GB → 8.0 GB')
-    expect(editor.text()).toContain('tier2')
-    // done 即放闸；编辑行占 tr[1]，Debian 删除钮恢复可用
-    expect(rowBtns(w, 2)[11].attributes('disabled')).toBeUndefined()
+    expect(editor.text()).toContain('已走备份重建') // tier 徽标白话化
+    expect(w.find('.export-log').attributes('open')).toBeDefined() // 备份工件即刻可见
+    expect(rowBtns(w, 2)[3].attributes('disabled')).toBeUndefined() // done 即放闸（编辑行占 tr[1]）
     await editor.findAll('button').find(b => b.text().includes('收起'))!.trigger('click')
     await flushPromises()
     expect(w.find('.compact-row-editor').exists()).toBe(false)
@@ -773,185 +1019,5 @@ describe('WSLView 发行版实例管理', () => {
     const w = await consoleMounted()
     expect(w.find('#wsl-import-name').exists()).toBe(false)
     expect(w.findAll('button').some(b => b.text().includes('导入发行版'))).toBe(false)
-  })
-})
-
-describe('WSLView 添加实例（三源统一入口）', () => {
-  async function addMounted() {
-    const w = await setup()
-    await w.findAll('.main-tab-btn')[2].trigger('click')
-    await flushPromises()
-    return w
-  }
-  const btnByText = (w: Awaited<ReturnType<typeof setup>>, t: string) =>
-    w.findAll('button').find(b => b.text().includes(t))!
-
-  it('商店源：未选发行版禁装；选中后携默认基目录走 InstallDistroTo', async () => {
-    const w = await addMounted()
-    expect(api.ListOnlineDistros).toHaveBeenCalledTimes(1) // 切页即懒加载清单
-    const install = btnByText(w, '安装所选发行版')
-    expect(install.attributes('disabled')).toBeDefined()
-    await w.find('#wsl-add-store').setValue('Ubuntu-24.04')
-    await install.trigger('click')
-    await flushPromises()
-    expect(api.InstallDistroTo).toHaveBeenCalledWith('Ubuntu-24.04', 'D:\\wsl')
-  })
-
-  it('rootfs 源：三要素齐才可提交；details 预告落位子目录；成功清表单并复采', async () => {
-    api.ImportDistro.mockResolvedValue(ok('Fresh 已导入'))
-    const w = await addMounted()
-    await btnByText(w, '本地 rootfs').trigger('click')
-    const submit = btnByText(w, '✔ 创建（解包落位）')
-    expect(submit.attributes('disabled')).toBeDefined() // 空表单禁提交
-    await w.find('#wsl-add-name').setValue('Fresh')
-    await w.find('#wsl-add-file').setValue('C:\\dl\\Ubuntu.tar.gz')
-    await w.find('#wsl-install-dir').setValue('')
-    expect(submit.attributes('disabled')).toBeDefined() // 导入无系统默认落位：目录留空禁提交
-    await w.find('#wsl-install-dir').setValue('D:\\wsl')
-    await submit.trigger('click')
-    await flushPromises()
-    expect(api.ImportDistro).toHaveBeenCalledWith('Fresh', 'D:\\wsl', 'C:\\dl\\Ubuntu.tar.gz')
-    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
-    expect(opts.details?.map((d) => d.value)).toContain('D:\\wsl\\Fresh')
-    expect((w.find('#wsl-add-name').element as HTMLInputElement).value).toBe('') // 成功即清
-    expect(api.ListInstances).toHaveBeenCalled() // 完成复采
-  })
-
-  it('VHDX 源：默认就地注册——隐藏目录行、命令面 copy=false、文案声明零拷贝', async () => {
-    api.ImportDistroVhd.mockResolvedValue(ok('Fresh 已挂载'))
-    const w = await addMounted()
-    await btnByText(w, 'VHDX 发行盘').trigger('click')
-    expect(w.find('#wsl-install-dir').exists()).toBe(false) // 就地挂载不动盘
-    await w.find('#wsl-add-name').setValue('Fresh')
-    await w.find('#wsl-add-file').setValue('E:\\backup\\ext4.vhdx')
-    await btnByText(w, '✔ 创建实例').trigger('click')
-    await flushPromises()
-    expect(api.ImportDistroVhd).toHaveBeenCalledWith('Fresh', 'D:\\wsl', 'E:\\backup\\ext4.vhdx', false)
-    expect((confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts).description).toContain('零拷贝')
-  })
-
-  it('VHDX 复制落位：目录行随形态出现，副本预告落基目录同名子目录', async () => {
-    const radios = 'input[type="radio"]'
-    const w = await addMounted()
-    await btnByText(w, 'VHDX 发行盘').trigger('click')
-    await w.findAll(radios)[1].setValue() // 复制盘到安装目录
-    expect(w.find('#wsl-install-dir').exists()).toBe(true)
-    await w.find('#wsl-add-name').setValue('Fresh')
-    await w.find('#wsl-add-file').setValue('E:\\backup\\ext4.vhdx')
-    await btnByText(w, '✔ 创建实例').trigger('click')
-    await flushPromises()
-    expect(api.ImportDistroVhd).toHaveBeenCalledWith('Fresh', 'D:\\wsl', 'E:\\backup\\ext4.vhdx', true)
-    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
-    expect(opts.description).toContain('复制')
-    expect(opts.details?.map((d) => d.value)).toContain('D:\\wsl\\Fresh')
-  })
-
-  it('📁 浏览：系统文件框回填路径；取消（空串）静默保留手填内容', async () => {
-    api.PickDistroImageDialog.mockResolvedValueOnce('C:\\dl\\Ubuntu.tar')
-    const w = await addMounted()
-    await btnByText(w, '本地 rootfs').trigger('click')
-    await btnByText(w, '📁 浏览').trigger('click')
-    await flushPromises()
-    expect(api.PickDistroImageDialog).toHaveBeenCalledWith('rootfs')
-    expect((w.find('#wsl-add-file').element as HTMLInputElement).value).toBe('C:\\dl\\Ubuntu.tar')
-    await btnByText(w, '📁 浏览').trigger('click') // 第二次取消：空串不覆盖
-    await flushPromises()
-    expect(api.PickDistroImageDialog).toHaveBeenCalledTimes(2)
-    expect((w.find('#wsl-add-file').element as HTMLInputElement).value).toBe('C:\\dl\\Ubuntu.tar')
-  })
-})
-
-describe('WSLView 端口转发', () => {
-  const PP_VIEW = {
-    rules: [
-      { id: 'pp-a', distro: 'Ubuntu', port: 8080, guest: 8080, listen: '0.0.0.0', firewall: true, note: 'web', enabled: true, applied: true, activeIP: '172.25.4.136', targetIP: '172.25.9.99', distroRunning: true },
-      { id: 'pp-b', distro: 'Debian', port: 9000, guest: 9000, listen: '0.0.0.0', firewall: false, note: '', enabled: false, applied: false, activeIP: '', targetIP: '', distroRunning: false },
-    ],
-    foreign: [{ listenAddr: '0.0.0.0', listenPort: 3389, connectAddr: '172.25.4.200', connectPort: 3389 }],
-    pending: true,
-  }
-
-  it('Tab 懒加载；漂移/停用状态分列，外部转发只展示', async () => {
-    const w = await setup()
-    api.ListPortRules.mockResolvedValue(PP_VIEW) // setup 的默认 mock 之后覆盖
-    expect(api.ListPortRules).not.toHaveBeenCalled() // 冷页不探测
-    await w.findAll('.main-tab-btn')[5].trigger('click')
-    await flushPromises()
-    expect(api.ListPortRules).toHaveBeenCalledTimes(1)
-    expect(w.text()).toContain('账本有改动尚未应用')
-    expect(w.text()).toContain('IP 漂移·需重应用')
-    expect(w.text()).toContain('已停用')
-    expect(w.text()).toContain('外部转发')
-    expect(w.text()).toContain('3389')
-  })
-
-  it('镜像网络时端口转发页给出 localhost 直通提示', async () => {
-    const w = await setup()
-    api.ListPortRules.mockResolvedValue({ ...PP_VIEW, networkMode: 'mirrored' })
-    await w.findAll('.main-tab-btn')[5].trigger('click')
-    await flushPromises()
-    expect(w.text()).toContain('镜像网络')
-    expect(w.text()).toContain('localhost 直通')
-  })
-
-  it('添加走账本参数直传并复采；应用经 UAC 确认链', async () => {
-    api.AddPortRule.mockResolvedValue({ ...PP_VIEW.rules[0], applied: false })
-    api.ApplyPortRules.mockResolvedValue({ success: true, message: '已同步' })
-    const w = await setup()
-    await w.findAll('.main-tab-btn')[5].trigger('click')
-    await flushPromises()
-    await w.find('#wsl-pp-distro').setValue('Ubuntu')
-    await w.find('#wsl-pp-port').setValue('8081')
-    await w.find('#wsl-pp-guest').setValue('80')
-    await w.findAll('button').find(b => b.text().includes('＋ 添加'))!.trigger('click')
-    await flushPromises()
-    expect(api.AddPortRule).toHaveBeenCalledWith('Ubuntu', 8081, 80, '127.0.0.1', false, '')
-    expect(api.ListPortRules).toHaveBeenCalledTimes(2) // 添加即复采账本
-    // 应用规则：确认链 → 提权批量脚本（后端拼装，前端只触发）。
-    // 复采后账本里得有规则，「应用」钮才非禁用态：先刷新拉回有规则的视图。
-    api.ListPortRules.mockResolvedValue(PP_VIEW)
-    await w.findAll('button').find(b => b.text().trim() === '↻ 刷新')!.trigger('click')
-    await flushPromises()
-    await w.findAll('button').find(b => b.text().includes('应用规则'))!.trigger('click')
-    await flushPromises()
-    expect(confirmFn).toHaveBeenCalledTimes(1)
-    expect(api.ApplyPortRules).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('WSLView 全局配置与停止全部', () => {
-  it('.wslconfig 面板：打开即读、模式徽标呈现、保存两段确认（拒绝全停不打断保存）', async () => {
-    api.GetWslHostConf.mockResolvedValue({
-      path: 'C:\\Users\\me\\.wslconfig', text: '[networking]\nnetworkingMode=mirrored',
-      missing: false, networkMode: 'mirrored', warnings: [],
-    })
-    api.SaveWslHostConf.mockResolvedValue({ success: true, message: '已写入并复验一致' })
-    const w = await setup()
-    await w.findAll('button').find(b => b.text().includes('.wslconfig'))!.trigger('click')
-    await flushPromises()
-    expect(api.GetWslHostConf).toHaveBeenCalledTimes(1)
-    const panel = w.findAll('.import-panel').find(p => p.text().includes('宿主全局配置'))!
-    expect(panel.text()).toContain('当前网络模式：镜像网络')
-    // 保存确认放行、全停引导拒绝：只保存不 shutdown
-    confirmFn.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
-    await panel.find('textarea').setValue('[networking]\nnetworkingMode=nat')
-    await panel.findAll('button').find(b => b.text().includes('保存写回'))!.trigger('click')
-    await flushPromises()
-    expect(api.SaveWslHostConf).toHaveBeenCalledWith('[networking]\nnetworkingMode=nat')
-    expect(api.ShutdownWsl).not.toHaveBeenCalled()
-    // 保存为 danger 级确认 + 生效引导各一次
-    expect(confirmFn).toHaveBeenCalledTimes(2)
-    expect((confirmFn.mock.calls[0][0] as ConfirmOpts).tone).toBe('danger')
-  })
-
-  it('停止全部：确认链 → wsl --shutdown 直调 → 复采列表', async () => {
-    api.ShutdownWsl.mockResolvedValue({ success: true, message: '已全部停止' })
-    const w = await setup()
-    await w.findAll('button').find(b => b.text().includes('停止全部'))!.trigger('click')
-    await flushPromises()
-    expect(confirmFn).toHaveBeenCalledTimes(1)
-    expect(api.ShutdownWsl).toHaveBeenCalledTimes(1)
-    await flushPromises() // 收口：复采列表/转发不被在飞锁卡住
-    expect(w.findAll('button').find(b => b.text().includes('停止全部'))!.attributes('disabled')).toBeUndefined()
   })
 })
