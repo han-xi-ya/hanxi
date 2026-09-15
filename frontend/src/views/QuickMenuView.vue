@@ -54,7 +54,7 @@ onMounted(refresh)
     </div>
     <p class="subtitle">
       在任意界面按住鼠标右键约 <b class="mono">{{ status ? status.holdMs : 450 }}ms</b>
-      即刻在光标处弹出快捷启动菜单（无需松手）；按住中移动超过
+      即刻在光标处弹出圆形快捷启动轮盘（无需松手）；按住中移动超过
       <b class="mono">{{ status ? status.moveTol : 16 }}px</b> 视为拖拽、自动让位给应用原生右键。
       普通右键（提前松开）完全不受影响，任务栏与托盘区亦自动让位。
     </p>

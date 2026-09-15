@@ -10,7 +10,7 @@ export {
 import * as $models from "./models.js";
 
 /**
- * MenuItem 弹窗菜单的一个条目：复用托盘 TrayMenu 配置（同一份条目、同一套分发），
+ * MenuItem 轮盘的一个扇区条目：复用托盘 TrayMenu 配置（同一份条目、同一套分发），
  * Index 为展示序下标，前端点击经 Launch(index) 回传。
  * @typedef {$models.MenuItem} MenuItem
  */

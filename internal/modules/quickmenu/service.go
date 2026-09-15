@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,22 +25,25 @@ const (
 	triggerMove = 16                     // 抬手前光标位移容差（物理像素）
 
 	popupWindowName = "quickmenu-popup"
-	popupWidth      = 264 // 弹窗尺寸按 DIP 配置（Wails 内部处理 DPI 缩放）
-	popupHeight     = 340
+	// 轮盘弹窗为正方形窗口，首次唤出后经 GDI 区域裁剪成正圆（圆盘直径）；
+	// 尺寸按 DIP 配置（Wails 内部处理 DPI 缩放）。
+	popupWidth  = 340
+	popupHeight = 340
 )
 
-// QuickMenuService 鼠标快捷菜单：全局右键长按 → 光标处无边框弹窗 → 点击派发条目。
+// QuickMenuService 鼠标快捷菜单：全局右键长按 → 光标处弹出圆盘 → 点击扇区派发条目。
 // 条目配置与分发与托盘右键菜单完全共享（settings.TrayMenu + internal/launcher）。
 type QuickMenuService struct {
 	store    *settings.Store
 	registry *extapi.Registry
 	disp     *launcher.Dispatcher
 
-	mu      sync.Mutex
-	started bool
-	mainWin *application.WebviewWindow // route 条目唤主窗用（装配根注入）
-	popup   *application.WebviewWindow
-	trap    *mousetrap.Trap
+	mu           sync.Mutex
+	started      bool
+	popupClipped bool // 弹窗已裁剪成圆（常驻单例只做一次）
+	mainWin      *application.WebviewWindow // route 条目唤主窗用（装配根注入）
+	popup        *application.WebviewWindow
+	trap         *mousetrap.Trap
 }
 
 func NewQuickMenuService(store *settings.Store, registry *extapi.Registry) *QuickMenuService {
@@ -164,8 +168,9 @@ func (s *QuickMenuService) consumeEvents(trap *mousetrap.Trap) {
 	}
 }
 
-// dismissIfOutside 点击弹窗外部区域即收起。这是对失焦收起的兜底：弹窗因 Windows
+// dismissIfOutside 点击圆盘之外即收起。这是对失焦收起的兜底：弹窗因 Windows
 // 前台锁抢不到焦点时 Wails 的 LostFocus 根本不会触发，只能靠全局点击观察。
+// 命中判定按圆而非矩形：窗口已被区域裁剪，方形四角本就不属于轮盘视觉。
 // 坐标同用物理像素系（钩子 pt 与 PhysicalBounds），无需换算。
 func (s *QuickMenuService) dismissIfOutside(btn mousetrap.ButtonEvent) {
 	s.mu.Lock()
@@ -175,16 +180,21 @@ func (s *QuickMenuService) dismissIfOutside(btn mousetrap.ButtonEvent) {
 		return
 	}
 	b := popup.PhysicalBounds()
-	if int32(b.X) <= btn.X && btn.X < int32(b.X+b.Width) &&
-		int32(b.Y) <= btn.Y && btn.Y < int32(b.Y+b.Height) {
-		return // 点在菜单上：留给 WebView2 自己的条目点击处理
+	cx := b.X + b.Width/2
+	cy := b.Y + b.Height/2
+	dx := int(btn.X) - cx
+	dy := int(btn.Y) - cy
+	r := min(b.Width, b.Height) / 2
+	if dx*dx+dy*dy <= r*r {
+		return // 点在圆盘上：留给 WebView2 自己的扇区点击处理
 	}
 	popup.Hide()
 }
 
-// showAt 将弹窗定位到光标处并置前。坐标换算：钩子给的是物理像素，
+// showAt 将圆盘中心对准光标并置前（轮盘可辨识度依赖"盘心=光标"的肌肉记忆，
+// 不能沿用列表窗"左上角贴光标"的旧定位）。坐标换算：钩子给的是物理像素，
 // Wails 窗口 API 按 DIP 工作，经 ScreenManager 换算并以就近显示器工作区钳位，
-// 保证弹窗在屏幕边缘/多显示器下不被裁掉。
+// 保证圆盘在屏幕边缘/多显示器下不被裁掉。
 func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 	a := application.Get()
 	if a == nil || a.Screen == nil {
@@ -200,9 +210,10 @@ func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 
 	physical := application.Point{X: int(trg.X), Y: int(trg.Y)}
 	dip := a.Screen.PhysicalToDipPoint(physical)
-	x, y := dip.X, dip.Y
 
+	// 盘心对准光标：方形窗口左上角回退半盘（列表时代的"左上贴光标"对轮盘是错的）。
 	w, h := popup.Size()
+	x, y := dip.X-w/2, dip.Y-h/2
 	if scr := a.Screen.ScreenNearestPhysicalPoint(physical); scr != nil {
 		wa := scr.WorkArea
 		if x+w > wa.X+wa.Width {
@@ -221,6 +232,7 @@ func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 
 	popup.SetPosition(x, y)
 	popup.Show()
+	s.clipPopupOnce(popup)
 	popup.Focus()
 	// Wails Focus 是裸 SetForegroundWindow：本进程处于后台（主窗在托盘）时会被
 	// Windows 前台锁拒绝，弹窗拿不到焦点则 Esc/失焦收起失灵——借用前台窗口线程
@@ -230,6 +242,25 @@ func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 	}
 	// 通知弹窗视图重拉条目（托盘配置可能已在设置页改过，弹窗常驻不重启）
 	a.Event.Emit("quickmenu:opening")
+}
+
+// clipPopupOnce 方形窗口首次唤出后经 GDI 区域裁剪成正圆盘（Wails beta.10 Windows
+// 侧无透明能力，方案与锯齿代价见 platform/windows.ClipWindowEllipse）。常驻单例
+// 固定尺寸只裁一次即长期有效；失败降级为方形弹窗（仅影响观感，不重试轰炸日志）。
+func (s *QuickMenuService) clipPopupOnce(popup *application.WebviewWindow) {
+	s.mu.Lock()
+	done := s.popupClipped
+	s.mu.Unlock()
+	if done {
+		return
+	}
+	if err := windows.ClipWindowEllipse(uintptr(popup.NativeWindow())); err != nil {
+		slog.Warn("quickmenu: 圆盘裁剪失败（方形弹窗降级）", "err", err)
+		return
+	}
+	s.mu.Lock()
+	s.popupClipped = true
+	s.mu.Unlock()
 }
 
 // navigateMain route 条目动作：显示主窗口并请求前端导航（与托盘 route 条目同构）。
@@ -273,9 +304,31 @@ func (s *QuickMenuService) ListItems() []MenuItem {
 			Label: s.disp.Label(item),
 			Type:  item.Type,
 			Hint:  hint,
+			Icon:  s.resolveIcon(item),
 		})
 	}
 	return out
+}
+
+// resolveIcon 为扇区解析前端图标名（AppIcon 注册表约定）：页面类复用导航注册的
+// 模块图标（"i:" 前缀剥离），命令类用 terminal，程序类用 box；路由已停用查不到
+// nav 时回退 layout。前端对未登记图标名仍有最终回退。
+func (s *QuickMenuService) resolveIcon(item settings.TrayMenuItem) string {
+	switch item.Type {
+	case settings.TrayItemRoute:
+		if s.registry != nil {
+			for _, nav := range s.registry.GetEnabledNavs() {
+				if nav.Route == item.Ref {
+					return strings.TrimPrefix(nav.Icon, "i:")
+				}
+			}
+		}
+		return "layout"
+	case settings.TrayItemCommand:
+		return "terminal"
+	default:
+		return "box"
+	}
 }
 
 // Launch 执行第 index 个条目：先收起弹窗给即时反馈，派发进 goroutine，
