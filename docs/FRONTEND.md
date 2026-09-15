@@ -125,7 +125,7 @@ src/
 ### 7.2 主题切换机制
 
 - 主题由 `<html data-theme="light|dark">` 属性承载，`:root[data-theme='dark']` 覆盖语义 token；根上声明 `color-scheme: light dark`。
-- **持久化以后端为唯一真相**：`internal/settings` 的 `AppSettings.Theme`（`light|dark|system`，字段已存在但一直闲置）经 SettingsService 绑定读写——设置统一存后端，且便携版随 `data/` 目录整体迁移不丢主题。localStorage 仅作**首帧缓存**（mount 前同步读、先定 `data-theme` 防闪白；启动后异步以后端为准校正）。
+- **持久化以后端为唯一真相**：`internal/settings` 的 `AppSettings.Theme`（`light|dark|system`，字段已存在但一直闲置）经 SettingsService 绑定读写——设置统一存后端，且便携版随 `hanxidata/` 目录整体迁移不丢主题。localStorage 仅作**首帧缓存**（mount 前同步读、先定 `data-theme` 防闪白；启动后异步以后端为准校正）。
 - **原生标题栏随主题**：深色内容需 DWM `ImmersiveDarkMode` 同步 Windows 原生窗框（否则"深窗口顶白标题栏"割裂），需在窗口层加少量 Win32 调用——这是迁移铁律第 8 条"不碰后端"的**唯一受控例外**，Phase 1 单独 commit。
 - `composables/useTheme.ts`（VueUse `useMediaQuery` + 后端 Settings 读写）是主题**唯一读写入口**，模块级单例，三态：跟随系统 / 固定浅色 / 固定深色，系统切换自动跟随。
 - 切换 UI：侧栏底部 + 设置页各一处，共用同一 composable，不各写各的。
@@ -155,7 +155,7 @@ src/
 - **依赖兼容矩阵**：Vitest 大版本必须实测支持 Vite 8；ESLint flat config + `eslint-plugin-vue` + `@typescript-eslint`；全部锁进 devDeps（`.npmrc` 供应链策略下）。
 - **生成物必须排除在 lint/format/test 之外**：`frontend/bindings/**` 进 ESLint ignores、`.prettierignore`、vitest include 白名单之外——生成物一旦被格式化，CI `verify:bindings`（git diff 校验）当场爆红。
 - **WebView2 能力假设**：`:where()`、`color-mix()`、`100dvh` 等依赖较新 Chromium——WebView2 为 Evergreen 自动更新，Win10 22H2+ 基线基本无忧；若目标机器存在固定版本 Runtime 需先用后写。
-- **localStorage 便携性缺口**：WebView2 的 localStorage 在系统 profile，**不随 `data/` 迁移**（`EverythingView` 列宽等既有用法同病）——需跨机保留的数据一律进后端 settings；localStorage 只配作首帧缓存这类可弃用途。
+- **localStorage 便携性缺口**：WebView2 的 localStorage 在系统 profile，**不随 `hanxidata/` 迁移**（`EverythingView` 列宽等既有用法同病）——需跨机保留的数据一律进后端 settings；localStorage 只配作首帧缓存这类可弃用途。
 - **不受影响项（已核实）**：ddns-go 面板子窗口加载上游原生页面（外部 URL），不吃本项目 token，主题重构无需处理。
 
 ---

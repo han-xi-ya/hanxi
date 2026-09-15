@@ -117,13 +117,15 @@ task build
 
 Hanxi 支持零安装、不写注册表的绿色便携模式：
 
-1. 在 `bin/` 目录下创建一个名为 `data` 的空文件夹：
+1. 在 `bin/` 目录下创建一个名为 `hanxidata` 的空文件夹：
    ```powershell
-   mkdir bin\data
+   mkdir bin\hanxidata
    ```
 2. 双击运行 `bin/hanxi.exe`；
 3. 程序启动后会自动侦测并切换至 **Portable 便携模式**；
-4. 所有的配置文件（`config.json`）、运行时 TOML、日志（`logs/`）、frpc 与各托管工具的版本文件（`versions/`）将全部落入 `bin/data/` 目录中，随时拷走即用。
+4. 所有的配置文件（`config.json`）、运行时 TOML、日志（`logs/`）、frpc 与各托管工具的版本文件（`versions/`）将全部落入 `bin/hanxidata/` 目录中，随时拷走即用。
+
+> 历史兼容：v0.3.0 及以前的便携包使用泛化名 `data/`，新版仍会识别**已含 Hanxi 数据**（`config.json` 或 `versions/`）的旧 `data/` 目录；空 `data/` 不再触发便携模式，避免与无关同名目录误撞。
 
 ---
 

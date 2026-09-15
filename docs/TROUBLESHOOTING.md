@@ -803,6 +803,19 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **避坑防重犯建议**：① `HideWindow` 藏的不止 cmd 壳本身——经 `start`/`cmd /c` 转手拉起的 GUI/控制台窗口会继承隐藏态，"藏壳露窗"想当然必翻车，需要可见窗口就直接 CreateProcess 新控制台，不要套 cmd 壳；② 长生命周期的用户会话进程绝不能挂在带超时的 `context` 上（CommandContext 取消即杀子进程）；③ toast 报成功≠用户看得见结果，"拉起窗口"类操作验证要盯窗口本身。
 - **二次踩坑补记（同日，v2）**：修复 v1 后改用 `exec.Command("wsl.exe") + CREATE_NEW_CONSOLE`，黑窗**一闪而过**——Go 的 os/exec 在 Stdin 未连接时递给子进程 NUL/EOF 句柄，bash 启动即读到 EOF 秒退。控制台交互程序要真实 stdin，必须走 ShellExecute（系统壳语义：新控制台 + std 接控制台输入 + 显式 SW_SHOWNORMAL），或 `cmd start` 转手（但带回 v1 隐藏态继承坑）。**最终形态**：`windows.ShellExecute(0, nil, "wsl.exe", "-d <名>", 0, SW_SHOWNORMAL)`——两坑同免。**泛化教训**：从 GUI 宿主（-H windowsgui）spawn"需要人交互的控制台程序"时，句柄继承面（stdin）与窗口显示面（wShowWindow）都要经壳层语义接管，Go exec 的"便利默认"（nil stdin→NUL）对交互场景是致命的。
 
+### 44. 数据目录实测迁移：Paseo 进程疑似"逃托"退出清理，外加迁移与环境的三枚次级坑
+
+- **问题现象与错误原因**：将标准模式数据目录（`%APPDATA%\Hanxi`，实测 1.6GB，`versions/` 占 99.9%，配置类 JSON 合计 <1MB）整体迁移到便携模式（exe 同级 `data/`）。托盘退出 Hanxi、复制验证、新位置启动正常后删除旧目录时，`versions/paseo_0.8.0/resources/app.asar` 报 Device or resource busy——`tasklist` 实锤 3 个 `Paseo.exe`（`Get-CimInstance` 确认全部从**旧托管路径**启动）仍存活。§3 的 JobObject KILL_ON_JOB_CLOSE 内核兜底与 §10 的 OnShutdown→ShutdownAll 优雅链两条理论防线，在 Electron 托管工具上疑似同时失守（§42 记录过 Paseo 关窗即 quit 的优雅退出可达性，但"托管方退出"路径未实测覆盖）。
+- **排查过程**：**根因未闭环，列为待办**。进程已被 taskkill、出生时刻证据随之丢失，无法区分两种可能：① 本次托盘退出真的漏杀（Electron relaunch 派生真实进程 breakaway 出 Job，或 daemon 子进程树从未 assign，或优雅退出宽限期内未完成）；② 系更早残留的孤儿（此前某次异常退出漏杀，本次只是被删除动作撞见）。复现路径：启动托管 Paseo → 托盘退出 → `Get-CimInstance Win32_Process -Filter "Name='Paseo.exe'"` 扫残留并按 ExecutablePath 判归属，命中即查进程树 ParentProcessId 与 JobObject 归属（Process Explorer / `NtQueryInformationProcess` Job 类）。无论哪种，§10 的结论都要补一条：**"接线了"≠"对 Electron 进程树有效"**，验收必须含托管进程残留扫描。
+- **正确做法与标准修复方案（迁移流程，本次全程走通且可回退）**：① **先复制不动源**：`robocopy /E` 整树拷至新位置 `data\` → 双侧文件数核对 → 新位置启动验证（exe 同级存在 `data/` 时 `resolvePaths` 便携模式优先，旧 `%APPDATA%` 原地未动，任一步失败直接回退）→ 用户确认后才删旧目录；② 自启 `HKCU\...\Run` 键记录的是 exe 绝对路径，迁址后必须在设置页"关→开"重注册（让新实例按自身路径写回，勿手改注册表）；③ 桌面 `.lnk` 快捷方式指向 `versions/` 下绝对路径，迁移必悬空，需重新"创建桌面快捷方式"；④ 日常使用 exe 与开发构建 exe 分居两目录——删数据后开发目录 exe 自动新建空白 `%APPDATA%` 当沙盒，意外实现了开发/日常数据隔离。
+- **避坑防重犯建议**：① 托管 Electron 工具的"退出"语义验收，必须在真机上做"Hanxi 托盘退出 → 托管进程树残留扫描"，互斥体可达（§42 的 WM_CLOSE 路径）不代表**退出清理**可达；② Git Bash 里调 robocopy 等斜杠参数 Windows 原生工具，必须前缀 `MSYS_NO_PATHCONV=1`——否则 `/E` `/COPY:DAT` 被 MSYS 改写成 `E:/` 之类路径报 `Invalid Parameter`；③ Wails/WebView2 在 `%APPDATA%\Roaming\` 下生成字面名 `hanxi.exe` 的缓存目录（内含 EBWebView 浏览器缓存）——目录名酷似可执行文件，易被误判为恶意残留，属低优先观感问题，宜显式指定 user-data-dir 归入自家数据目录。
+
+### 45. 便携标记目录更名 hanxidata：泛化名歧义、旧包兼容与 Compress-Archive 丢空目录
+
+- **问题现象与错误原因**：便携模式此前以 exe 同级**任意存在的 `data/` 目录**为开关，泛化名有两重歧义：任何同名第三方目录会误撞，且路过误建一个空 `data` 即静默把标准模式切成便携（用户以为数据"丢了"，实为读写了那个空目录）。同时排查发现发布链的隐患：`release.yml` 以 `New-Item` 建**空** `data` 目录后用 `Compress-Archive` 打便携 zip，而 Compress-Archive 会**静默丢弃空目录**——zip 解压后若无标记目录，"便携版"首启直接回落 `%APPDATA%` 标准模式，便携语义名存实亡（依赖被丢弃的目录存在做模式开关，是打包器行为与运行时探测的契约断裂）。
+- **正确做法与标准修复方案**：① 标记目录更名为 `hanxidata/`（自带产品归属，空目录即生效——显式创建本身就是用户意图）；② 旧包兼容：同名 `data/` **仅当已含数据根特征**（`config.json` 或 `versions/`）时才识别，空 `data` 不触发，升级已发布便携包不丢数据、新用户不误撞；探测逻辑提取为 `detectPortableBaseDir(exeDir)` 纯函数配表驱动单测（`os.Executable` 不可注入,可测边界就设在参数上），标准/便携两套 `Paths` 字面量收敛为共用 `buildPaths(mode, base)`；③ CI 便携目录内落 `portable.txt` 占位说明（目录非空，zip 必保留，兼作用户向文档），同步改写 Release 文案。
+- **避坑防重犯建议**：① 凡"目录存在性"做模式开关，目录名必须带产品归属；② 凡走 `Compress-Archive` 打包，目录树里不允许任何**语义依赖其存在**的空目录——要么放占位文件，要么改用 `tar -a -cf`（PS7 的 tar 保留空目录）并实测 zip 内容清单；发布流水线里"运行时契约依赖的产物形态"（本例：解压后必须有标记目录）应在 CI 加一步 `Expand-Archive` 到临时目录复验，而非只看 zip 生成成功。
+
 ### 46. WSL 克隆"假失败"：--import 返回 0 后 `wsl -l -q` 对新注册有传播延迟，单快照复验把成功误报成失败
 
 - **问题现象与错误原因**：真机克隆 kali-linux 时报"克隆导入命令返回成功，但名单中未见 kali-linux-Copy，请重新复采核实"——实查 `wsl -l -v`，`kali-linux-Copy` 早已在册（Stopped/WSL2），克隆其实**完全成功**。根因：`wsl --import-in-place` 退出码 0 只代表注册指令落库，WSL 服务对 `wsl -l -q` 的枚举视图存在毫秒级的最终一致窗口；runClone/ImportDistro/ImportDistroVhd 三处"成功后复验在册"全部用**单次快照**，撞上传播窗口就把成功误判成失败（错误处理方向反了：宁可漏报也不能误报）。
