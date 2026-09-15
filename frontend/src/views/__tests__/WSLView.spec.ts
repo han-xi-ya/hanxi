@@ -25,6 +25,8 @@ const api = vi.hoisted(() => ({
   OpenPowerSettings: vi.fn(),
   ListInstances: vi.fn(),
   OpenTerminal: vi.fn(),
+  OpenDistroFolder: vi.fn(),
+  RestartDistro: vi.fn(),
   TerminateDistro: vi.fn(),
   SetDefaultDistro: vi.fn(),
   UnregisterDistro: vi.fn(),
@@ -214,6 +216,28 @@ describe('WSLView 流式体检', () => {
   })
 })
 
+describe('WSLView 标签页布局', () => {
+  // 顺序锁定：版本/端口页的懒加载断言全部按索引导航，插页或换序会连锁打破它们。
+  it('四页顺序锁定：就绪检测 → 本机发行版 → 版本与发行版 → 端口转发', async () => {
+    const w = await setup()
+    expect(w.findAll('.main-tab-btn').map(b => b.text())).toEqual([
+      '🐧 就绪检测', '💻 本机发行版', '📦 版本与发行版', '🔀 端口转发',
+    ])
+  })
+
+  it('未装 WSL 且无实例时，本机发行版页给引导空态而非管理表', async () => {
+    const w = await setup()
+    // setup 的默认 mock 挂载后才生效，置空须发生在挂载后并复采一次
+    api.ListInstances.mockResolvedValue([])
+    await w.findAll('button').find(b => b.text().includes('刷新列表'))!.trigger('click')
+    await flushPromises()
+    emitReadiness({ stage: 'done', report: { ...REPORT, wslVersion: '' } })
+    await flushPromises()
+    expect(w.find('.distro-head').exists()).toBe(false)
+    expect(w.text()).toContain('装好发行版后实例会列在这里')
+  })
+})
+
 describe('WSLView 操作流', () => {
   it('提权操作：确认 → 白名单命令 → 完成后重新流式体检', async () => {
     const w = await setup()
@@ -291,7 +315,7 @@ describe('WSLView 版本与发行版', () => {
   it('在线清单懒加载：切到版本页才查询', async () => {
     const w = await setup()
     expect(api.ListOnlineDistros).not.toHaveBeenCalled()
-    await w.findAll('.main-tab-btn')[1].trigger('click')
+    await w.findAll('.main-tab-btn')[2].trigger('click')
     await flushPromises()
     expect(api.ListOnlineDistros).toHaveBeenCalledTimes(1)
     expect(w.text()).toContain('Ubuntu-24.04')
@@ -301,7 +325,7 @@ describe('WSLView 版本与发行版', () => {
   it('API 被拦降级：fallback 载荷必须如实标注订阅源来源', async () => {
     api.GetReleases.mockResolvedValueOnce({ ...OVERVIEW, fallback: true, localVersion: '', relation: 'unknown' })
     const w = await setup()
-    await w.findAll('.main-tab-btn')[1].trigger('click')
+    await w.findAll('.main-tab-btn')[2].trigger('click')
     await flushPromises()
     expect(w.text()).toContain('订阅源')
     expect(w.text()).toContain('403')
@@ -310,7 +334,7 @@ describe('WSLView 版本与发行版', () => {
   it('应用内下载：受理参数精确、事件驱动进度到"已下载+打开位置"闭环', async () => {
     const w = await setup()
     await completeCheck(w) // machineArch 需体检报告到位才可知（未知时兜底列全是设计行为）
-    await w.findAll('.main-tab-btn')[1].trigger('click')
+    await w.findAll('.main-tab-btn')[2].trigger('click')
     await flushPromises()
     expect(w.text()).toContain('2.9.10')
     expect(w.text()).toContain('本机') // machineArch=x64 → 本机徽章
@@ -337,7 +361,7 @@ describe('WSLView 版本与发行版', () => {
   it('发行版安装：把清单 ID 原样交给后端白名单校验', async () => {
     const w = await setup()
     await completeCheck(w) // distroBlockedReason 需报告：vmPlatformEnabled=true、无 rebootPending → 放行
-    await w.findAll('.main-tab-btn')[1].trigger('click')
+    await w.findAll('.main-tab-btn')[2].trigger('click')
     await flushPromises()
     expect(w.find('.distro-block-banner').exists()).toBe(false)
     const install = w.findAll('button').find(b => b.text().includes('安装'))!
@@ -351,7 +375,7 @@ describe('WSLView 版本与发行版', () => {
     // 投喂"已启用但 CBS 欠重启"的报告——WSL2 起不了虚拟机，装发行版注定失败
     emitReadiness({ stage: 'done', report: { ...REPORT, rebootPending: true } })
     await flushPromises()
-    await w.findAll('.main-tab-btn')[1].trigger('click')
+    await w.findAll('.main-tab-btn')[2].trigger('click')
     await flushPromises()
     const banner = w.find('.distro-block-banner')
     expect(banner.exists()).toBe(true)
@@ -365,7 +389,7 @@ describe('WSLView 版本与发行版', () => {
 })
 
 describe('WSLView 发行版实例管理', () => {
-  // 行内按钮顺序（与模板一致）：0 终端 1 设默认 2 终止 3 导出 4 迁移 5 删除 6 克隆 7 取证 8 wsl.conf 9 瘦身
+  // 行内按钮顺序（与模板一致）：0 终端 1 文件 2 重启 3 停止 4 设默认 5 导出 6 迁移 7 克隆 8 瘦身 9 详情 10 wsl.conf 11 删除
   async function consoleMounted() {
     const w = await setup()
     await completeCheck(w)
@@ -389,15 +413,47 @@ describe('WSLView 发行版实例管理', () => {
     expect(api.OpenTerminal).toHaveBeenCalledWith('Ubuntu')
   })
 
+  it('文件管理器与终端同为只读外呼：免确认直达，名原样透传', async () => {
+    api.OpenDistroFolder.mockResolvedValue(ok('已在资源管理器打开 \\\\wsl$\\Ubuntu'))
+    const w = await consoleMounted()
+    await rowBtns(w, 0)[1].trigger('click')
+    await flushPromises()
+    expect(confirmFn).not.toHaveBeenCalled()
+    expect(api.OpenDistroFolder).toHaveBeenCalledWith('Ubuntu')
+  })
+
+  it('重启：运行中实例给 warning 确认（会话中断如实声明）并透传名', async () => {
+    api.RestartDistro.mockResolvedValue(ok('Ubuntu 已重启'))
+    const w = await consoleMounted()
+    await rowBtns(w, 0)[2].trigger('click') // Ubuntu 运行中
+    await flushPromises()
+    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
+    expect(opts.tone).toBe('warning')
+    expect(opts.description).toContain('会话会被中断')
+    expect(opts.description).toContain('不做后台保活')
+    expect(api.RestartDistro).toHaveBeenCalledWith('Ubuntu')
+  })
+
+  it('重启：停止态实例文案降级为直接拉起验证（default 基调）', async () => {
+    api.RestartDistro.mockResolvedValue(ok('Debian 已重启'))
+    const w = await consoleMounted()
+    await rowBtns(w, 1)[2].trigger('click') // Debian 已停止
+    await flushPromises()
+    const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
+    expect(opts.tone).toBe('default')
+    expect(opts.description).toContain('当前已停止')
+    expect(api.RestartDistro).toHaveBeenCalledWith('Debian')
+  })
+
   it('终止仅对运行中实例可用；用户态操作如实声明不弹 UAC', async () => {
     api.TerminateDistro.mockResolvedValue(ok('Ubuntu 已终止'))
     const w = await consoleMounted()
-    const debianStop = rowBtns(w, 1)[2]
+    const debianStop = rowBtns(w, 1)[3]
     expect(debianStop.attributes('disabled')).toBeDefined()
     await debianStop.trigger('click')
     expect(api.TerminateDistro).not.toHaveBeenCalled()
 
-    await rowBtns(w, 0)[2].trigger('click')
+    await rowBtns(w, 0)[3].trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
     expect(opts.description).toContain('不会弹出 UAC')
@@ -407,7 +463,7 @@ describe('WSLView 发行版实例管理', () => {
   it('删除：数据销毁级危险确认 + details 点名占用与位置；确认被拒不触达', async () => {
     api.UnregisterDistro.mockResolvedValue(ok('已删除'))
     const w = await consoleMounted()
-    await rowBtns(w, 0)[5].trigger('click')
+    await rowBtns(w, 0)[11].trigger('click')
     await flushPromises()
     const opts = confirmFn.mock.calls.at(-1)?.[0] as ConfirmOpts
     expect(opts.tone).toBe('danger')
@@ -418,7 +474,7 @@ describe('WSLView 发行版实例管理', () => {
 
     const w2 = await consoleMounted()
     confirmFn.mockResolvedValueOnce(false)
-    await rowBtns(w2, 0)[5].trigger('click')
+    await rowBtns(w2, 0)[11].trigger('click')
     await flushPromises()
     expect(api.UnregisterDistro).toHaveBeenCalledTimes(1) // 第二次被拒不得新增调用
   })
@@ -427,7 +483,7 @@ describe('WSLView 发行版实例管理', () => {
     api.ExportDistro.mockResolvedValue({ ...ok('Ubuntu 已导出'), id: 'Ubuntu-20260914-120000.tar.gz' })
     api.RevealDistroExport.mockResolvedValue(undefined)
     const w = await consoleMounted()
-    await rowBtns(w, 0)[3].trigger('click')
+    await rowBtns(w, 0)[5].trigger('click')
     await flushPromises()
     // 第一段：只展开内联格式选择，未触达命令、未弹确认
     const editor = w.find('.export-row-editor')
@@ -460,7 +516,7 @@ describe('WSLView 发行版实例管理', () => {
       INSTANCES[0],
       { ...INSTANCES[1], running: true, stateText: '正在运行' },
     ])
-    await rowBtns(w, 0)[4].trigger('click')
+    await rowBtns(w, 0)[6].trigger('click')
     await flushPromises()
     const editor = w.find('.move-editor')
     expect(editor.exists()).toBe(true)
@@ -483,18 +539,18 @@ describe('WSLView 发行版实例管理', () => {
     let release!: (v: ReturnType<typeof ok>) => void
     api.ExportDistro.mockImplementation(() => new Promise(res => { release = res }))
     const w = await consoleMounted()
-    await rowBtns(w, 0)[3].trigger('click')
+    await rowBtns(w, 0)[5].trigger('click')
     await w.find('.export-row-editor').findAll('button')[0].trigger('click') // ✔ 开始导出
     await flushPromises()
     await flushPromises()
     // 导出编辑行占 tr[1]，Debian 行下移 tr[2]：导出/删除在忙时禁用（终止钮本来就因已停止禁用，不作判据）
-    expect(rowBtns(w, 2)[3].attributes('disabled')).toBeDefined()
     expect(rowBtns(w, 2)[5].attributes('disabled')).toBeDefined()
+    expect(rowBtns(w, 2)[11].attributes('disabled')).toBeDefined()
     release(ok('导出完成'))
     await flushPromises()
     await flushPromises()
     // 收口后编辑行收起，Debian 回到 tr[1]
-    expect(rowBtns(w, 1)[3].attributes('disabled')).toBeUndefined()
+    expect(rowBtns(w, 1)[5].attributes('disabled')).toBeUndefined()
   })
 
   it('列表复采失败：错误框 + 重试钮，不影响体检区', async () => {
@@ -522,7 +578,7 @@ describe('WSLView 发行版实例管理', () => {
       ipv4: '172.25.4.136', notes: [],
     })
     const w = await consoleMounted()
-    await rowBtns(w, 0)[7].trigger('click')
+    await rowBtns(w, 0)[9].trigger('click')
     await flushPromises()
     expect(api.GetDistroForensics).toHaveBeenCalledWith('Ubuntu')
     const panel = w.find('.forensics-panel')
@@ -547,7 +603,7 @@ describe('WSLView 发行版实例管理', () => {
     expect(panel2.find('.ui-progress').exists()).toBe(false)
     expect(panel2.text()).not.toContain('172.25')
     // 再点钮收起抽屉
-    await rowBtns(w, 0)[7].trigger('click')
+    await rowBtns(w, 0)[9].trigger('click')
     await flushPromises()
     expect(w.find('.forensics-panel').exists()).toBe(false)
   })
@@ -555,7 +611,7 @@ describe('WSLView 发行版实例管理', () => {
   it('克隆：表单先行→受理等 wsl:clone 终态；done 放闸关表单复采', async () => {
     api.CloneDistro.mockResolvedValue({ success: true, message: '开始克隆' })
     const w = await consoleMounted()
-    await rowBtns(w, 0)[6].trigger('click')
+    await rowBtns(w, 0)[7].trigger('click')
     await flushPromises()
     const editor = w.find('.clone-row-editor')
     expect(editor.exists()).toBe(true)
@@ -574,18 +630,18 @@ describe('WSLView 发行版实例管理', () => {
     runtime.handlers['wsl:clone']?.({ data: { source: 'Ubuntu', target: 'Ubuntu-Copy', stage: 'copying', done: 500, total: 1000 } })
     await flushPromises()
     expect(w.find('.clone-row-editor').text()).toContain('拷贝数据盘中')
-    expect(rowBtns(w, 2)[5].attributes('disabled')).toBeDefined() // 编辑行占位后 Debian 在 tr[2]
+    expect(rowBtns(w, 2)[11].attributes('disabled')).toBeDefined() // 编辑行占位后 Debian 在 tr[2]
     // 终态 done：清闸、收表单、复采
     runtime.handlers['wsl:clone']?.({ data: { source: 'Ubuntu', target: 'Ubuntu-Copy', stage: 'done', done: 1000, total: 1000, message: '已克隆为 Ubuntu-Copy' } })
     await flushPromises()
     expect(w.find('.clone-row-editor').exists()).toBe(false)
-    expect(rowBtns(w, 1)[5].attributes('disabled')).toBeUndefined()
+    expect(rowBtns(w, 1)[11].attributes('disabled')).toBeUndefined()
   })
 
   it('克隆失败：error 留表单可见并放闸，不吞错', async () => {
     api.CloneDistro.mockResolvedValue({ success: true, message: '开始克隆' })
     const w = await consoleMounted()
-    await rowBtns(w, 0)[6].trigger('click')
+    await rowBtns(w, 0)[7].trigger('click')
     await w.find('#wsl-clone-name').setValue('Ubuntu-Copy')
     await w.find('#wsl-clone-target').setValue('D:\\x')
     await w.find('.clone-row-editor').findAll('button')[0].trigger('click')
@@ -595,7 +651,7 @@ describe('WSLView 发行版实例管理', () => {
     const box = w.find('.clone-row-editor .error-box')
     expect(box.exists()).toBe(true)
     expect(box.text()).toContain('保留在 D:\\x')
-    expect(rowBtns(w, 2)[5].attributes('disabled')).toBeUndefined() // 闸门已放
+    expect(rowBtns(w, 2)[11].attributes('disabled')).toBeUndefined() // 闸门已放
     // 「知道了，收起」关表单
     await box.find('button').trigger('click')
     await flushPromises()
@@ -609,7 +665,7 @@ describe('WSLView 发行版实例管理', () => {
     })
     api.SaveWslConf.mockResolvedValue(ok('已写入并复验一致'))
     const w = await consoleMounted()
-    await rowBtns(w, 0)[8].trigger('click')
+    await rowBtns(w, 0)[10].trigger('click')
     await flushPromises()
     expect(api.GetWslConf).toHaveBeenCalledWith('Ubuntu')
     const editor = w.find('.conf-row-editor')
@@ -629,7 +685,7 @@ describe('WSLView 发行版实例管理', () => {
   it('瘦身：受理→阶段事件驱动呈现，done 省量对比并放闸，错误留在表单', async () => {
     api.CompactDistro.mockResolvedValue({ success: true, message: '开始瘦身' })
     const w = await consoleMounted()
-    await rowBtns(w, 0)[9].trigger('click')
+    await rowBtns(w, 0)[8].trigger('click')
     await flushPromises()
     expect(w.find('.compact-row-editor').text()).toContain('强制先全量备份')
     await w.find('.compact-row-editor').findAll('button')[0].trigger('click') // 🗜 确认开始瘦身
@@ -645,7 +701,7 @@ describe('WSLView 发行版实例管理', () => {
     expect(editor.text()).toContain('20.0 GB → 8.0 GB')
     expect(editor.text()).toContain('tier2')
     // done 即放闸；编辑行占 tr[1]，Debian 删除钮恢复可用
-    expect(rowBtns(w, 2)[5].attributes('disabled')).toBeUndefined()
+    expect(rowBtns(w, 2)[11].attributes('disabled')).toBeUndefined()
     await editor.findAll('button').find(b => b.text().includes('收起'))!.trigger('click')
     await flushPromises()
     expect(w.find('.compact-row-editor').exists()).toBe(false)
@@ -684,7 +740,7 @@ describe('WSLView 端口转发', () => {
     const w = await setup()
     api.ListPortRules.mockResolvedValue(PP_VIEW) // setup 的默认 mock 之后覆盖
     expect(api.ListPortRules).not.toHaveBeenCalled() // 冷页不探测
-    await w.findAll('.main-tab-btn')[2].trigger('click')
+    await w.findAll('.main-tab-btn')[3].trigger('click')
     await flushPromises()
     expect(api.ListPortRules).toHaveBeenCalledTimes(1)
     expect(w.text()).toContain('账本有改动尚未应用')
@@ -697,7 +753,7 @@ describe('WSLView 端口转发', () => {
   it('镜像网络时端口转发页给出 localhost 直通提示', async () => {
     const w = await setup()
     api.ListPortRules.mockResolvedValue({ ...PP_VIEW, networkMode: 'mirrored' })
-    await w.findAll('.main-tab-btn')[2].trigger('click')
+    await w.findAll('.main-tab-btn')[3].trigger('click')
     await flushPromises()
     expect(w.text()).toContain('镜像网络')
     expect(w.text()).toContain('localhost 直通')
@@ -707,7 +763,7 @@ describe('WSLView 端口转发', () => {
     api.AddPortRule.mockResolvedValue({ ...PP_VIEW.rules[0], applied: false })
     api.ApplyPortRules.mockResolvedValue({ success: true, message: '已同步' })
     const w = await setup()
-    await w.findAll('.main-tab-btn')[2].trigger('click')
+    await w.findAll('.main-tab-btn')[3].trigger('click')
     await flushPromises()
     await w.find('#wsl-pp-distro').setValue('Ubuntu')
     await w.find('#wsl-pp-port').setValue('8081')
@@ -728,7 +784,7 @@ describe('WSLView 端口转发', () => {
   })
 })
 
-describe('WSLView 全局配置与全停', () => {
+describe('WSLView 全局配置与停止全部', () => {
   it('.wslconfig 面板：打开即读、模式徽标呈现、保存两段确认（拒绝全停不打断保存）', async () => {
     api.GetWslHostConf.mockResolvedValue({
       path: 'C:\\Users\\me\\.wslconfig', text: '[networking]\nnetworkingMode=mirrored',
@@ -753,14 +809,14 @@ describe('WSLView 全局配置与全停', () => {
     expect((confirmFn.mock.calls[0][0] as ConfirmOpts).tone).toBe('danger')
   })
 
-  it('全停：确认链 → wsl --shutdown 直调 → 复采列表', async () => {
+  it('停止全部：确认链 → wsl --shutdown 直调 → 复采列表', async () => {
     api.ShutdownWsl.mockResolvedValue({ success: true, message: '已全部停止' })
     const w = await setup()
-    await w.findAll('button').find(b => b.text().includes('全停'))!.trigger('click')
+    await w.findAll('button').find(b => b.text().includes('停止全部'))!.trigger('click')
     await flushPromises()
     expect(confirmFn).toHaveBeenCalledTimes(1)
     expect(api.ShutdownWsl).toHaveBeenCalledTimes(1)
     await flushPromises() // 收口：复采列表/转发不被在飞锁卡住
-    expect(w.findAll('button').find(b => b.text().includes('全停'))!.attributes('disabled')).toBeUndefined()
+    expect(w.findAll('button').find(b => b.text().includes('停止全部'))!.attributes('disabled')).toBeUndefined()
   })
 })

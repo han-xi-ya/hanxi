@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // WSL 子系统：就绪体检（流式逐项点亮）+ 官方版本管理（Releases × 本机关系）
 // + 白名单提权操作（一键开启/更新/装发行版/正规卸载/组件还原）
-// + 发行版实例管理控制台（唤终端/设默认/终止/导出/迁移/删除）。
+// + 发行版实例管理控制台（终端/文件/重启/停止/设默认/导出/迁移/克隆/瘦身/详情/wsl.conf/删除，
+// 独立「本机发行版」页签；删除附带商店启动器清理）。
 // 体检走 wsl:readiness 事件分相推送：先全量 pending 骨架，system/wsl/net 三源
 // 并发先到先点亮，done 收口终版报告——骨架 key 与后端 BuildItems 有顺序互锁。
 import { ref, reactive, computed, watch, onMounted } from 'vue'
@@ -25,9 +26,10 @@ const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { copy } = useClipboard()
 
-const activeMainTab = ref<'console' | 'versions' | 'proxy'>('console')
+const activeMainTab = ref<'console' | 'distros' | 'versions' | 'proxy'>('console')
 const mainTabs = [
   { key: 'console', label: '🐧 就绪检测' },
+  { key: 'distros', label: '💻 本机发行版' },
   { key: 'versions', label: '📦 版本与发行版' },
   { key: 'proxy', label: '🔀 端口转发' },
 ]
@@ -230,6 +232,11 @@ async function loadInstances() {
   }
 }
 
+// 发行版 Tab 呈现判据：体检确认装了本体即开管理面；复采通道独立于体检——
+// 已复采到实例或复采如实报错时同样呈现，不让"体检未出/失败"遮蔽本机现状。
+const distroTabReady = computed(() =>
+  !!report.value?.wslVersion || instances.value.length > 0 || !!instError.value)
+
 async function loadExportRecords() {
   try {
     exportRecords.value = (await WSLAPI.ListDistroExports()) ?? []
@@ -283,9 +290,22 @@ const openTerminal = (d: DistroInstance) => runDistroOp({
   invoke: () => WSLAPI.OpenTerminal(d.name),
 })
 const terminateDistro = (d: DistroInstance) => runDistroOp({
-  name: `d-${d.name}`, title: `终止 ${d.name}？`, tone: 'default',
-  desc: '执行 wsl --terminate：立即停止该发行版。数据无损，下次访问（唤终端/\\wsl$ 路径）时自动再启动。',
+  name: `d-${d.name}`, title: `停止 ${d.name}？`, tone: 'default',
+  desc: '执行 wsl --terminate：只停这一个发行版（要停全部请到就绪检测页「🌑 停止全部」）。数据无损，下次访问（唤终端/\\wsl$ 路径）时自动再启动。',
   invoke: () => WSLAPI.TerminateDistro(d.name),
+})
+// 重启（对齐 wsl-dashboard 语义但刻意不做保活）：后端 terminate→确认已停→拉起探针。
+const restartDistro = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `重启 ${d.name}？`, tone: d.running ? 'warning' : 'default',
+  desc: (d.running ? '先停止再启动验证：现有终端/前台会话会被中断（数据无损）。' : '当前已停止——重启即拉起并验证可启动。')
+    + '之后不进入终端的话，发行版空闲片刻会自动回落为「已停止」，本工具不做后台保活（平台常态）。',
+  invoke: () => WSLAPI.RestartDistro(d.name),
+})
+// 文件管理器：只读外呼免确认（同唤终端）；停止的发行版会被后端顺手拉起。
+const openFolder = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `打开 ${d.name} 的文件`, confirm: false,
+  desc: `在资源管理器打开 \\\\wsl$\\${d.name} 浏览发行版文件系统${d.running ? '' : '（当前已停止，会先拉起发行版）'}。只读浏览入口，不改动任何数据。`,
+  invoke: () => WSLAPI.OpenDistroFolder(d.name),
 })
 const setDefaultDistro = (d: DistroInstance) => runDistroOp({
   name: `d-${d.name}`, title: `把 ${d.name} 设为默认发行版？`, tone: 'default',
@@ -299,8 +319,9 @@ const unregisterDistro = (d: DistroInstance) => runDistroOp({
     { label: '磁盘占用', value: d.sizeBytes ? fmtSize(d.sizeBytes) : '未知' },
     { label: '数据位置', value: d.basePath || '未知' },
   ],
-  desc: '执行 wsl --unregister：先终止该发行版，随后其数据盘（VHDX）连同全部文件被系统删除——不可恢复。'
-    + '如需留档，请先「导出」为 tar 再删。商店安装的发行版其启动器可能仍留在「设置→应用」，回执会如实提醒。',
+  desc: '执行 wsl --unregister：先停止该发行版，随后其数据盘（VHDX）连同全部文件被系统删除——不可恢复。'
+    + '如需留档，请先「导出」为 tar 再删。商店安装的发行版其启动器将被一并自动卸载'
+    + '（仅当启动器被其它发行版共用、或卸载失败时，回执会点名让你到「设置→应用」手动处理）。',
   invoke: () => WSLAPI.UnregisterDistro(d.name),
 })
 // 导出两段式：点击展开内联格式选择，「开始导出」才进确认链（对齐迁移的表单先行范式）。
@@ -358,7 +379,7 @@ async function revealExport(id: string) {
   }
 }
 
-// ---------- 单发行版取证（只读抽屉） ----------
+// ---------- 单发行版详情（只读抽屉；历史名"取证"，内部符号沿用 forensics） ----------
 // 后端红线：停止的发行版绝不进 guest（wsl -d 会顺手拉起）——抽屉里以 Notes 如实说明缺项。
 interface ForensicsState { loading: boolean; error: string; data: DistroForensics | null }
 const forensicsName = ref('')
@@ -504,7 +525,7 @@ async function loadConf(name: string) {
 const saveConf = (d: DistroInstance) => runDistroOp({
   name: `d-${d.name}`, title: `写回 ${d.name} 的 /etc/wsl.conf？`, tone: 'warning',
   desc: '后端三步防线：语法校验 → 默认用户存在性求证 → root 备份原文件后整文件写回并复验。'
-    + '\nwsl.conf 只在发行版启动时读取——保存后需「⏹ 终止」该发行版再进入才生效。',
+    + '\nwsl.conf 只在发行版启动时读取——保存后需「⏹ 停止」（或「🔄 重启」）该发行版再进入才生效。',
   details: [{ label: '文件大小', value: `${new Blob([confText.value]).size} B` }],
   invoke: () => WSLAPI.SaveWslConf(d.name, confText.value),
   then: (out) => { if (out?.success) void offerTerminateAfterConf(d) },
@@ -513,16 +534,16 @@ const saveConf = (d: DistroInstance) => runDistroOp({
 // 保存成功即给"让配置生效"的下一步：终止后下次进入自然读到新 wsl.conf。
 async function offerTerminateAfterConf(d: DistroInstance) {
   const yes = await confirm({
-    title: `终止 ${d.name} 使新配置生效？`,
+    title: `停止 ${d.name} 使新配置生效？`,
     tone: 'default',
-    description: 'wsl.conf 只在发行版启动时读取。现在终止（数据无损，下次进入自动重启）即可立刻生效；也可以稍后自行点「⏹ 终止」。',
+    description: 'wsl.conf 只在发行版启动时读取。现在停止（数据无损，下次进入自动重启）即可立刻生效；也可以稍后自行点「⏹ 停止」或「🔄 重启」。',
   })
   if (!yes) return
   try {
     const r = await WSLAPI.TerminateDistro(d.name)
-    showToast(r?.message || '已终止，配置已生效')
+    showToast(r?.message || '已停止，配置已生效')
   } catch (e) {
-    showToast(`终止失败: ${getErrorMessage(e)}`)
+    showToast(`停止失败: ${getErrorMessage(e)}`)
   }
   await loadInstances()
 }
@@ -831,7 +852,7 @@ async function saveHostConf() {
   const accepted = await confirm({
     title: '写回 .wslconfig（宿主全局配置）？',
     tone: 'danger',
-    description: '该文件影响【所有发行版】（网络模式、资源上限等），保存后需 wsl --shutdown 全停才生效。'
+    description: '该文件影响【所有发行版】（网络模式、资源上限等），保存后需 wsl --shutdown 停止全部才生效。'
       + '\n\n写回防线：INI 语法闸门 + networkingMode 白名单（nat/bridged/mirrored）+ 原文件备份到 .wslconfig.hanxi.bak + 原子写后读回复核。',
   })
   if (!accepted) return
@@ -849,17 +870,17 @@ async function saveHostConf() {
 }
 async function offerShutdownForHostConf() {
   const yes = await confirm({
-    title: '立即「🌑 全停」使新配置生效？',
+    title: '立即「🌑 停止全部」使新配置生效？',
     tone: 'warning',
     description: 'wsl --shutdown 会终止【所有发行版】正在运行的会话（数据无损，下次访问自动重启）。'
-      + '\n里面有跑着的任务就别现在停，稍后自行点「🌑 全停」。',
+      + '\n里面有跑着的任务就别现在停，稍后自行点「🌑 停止全部」。',
   })
   if (yes) await doShutdown()
 }
 async function doShutdown() {
   if (busyOp.value) return
   const accepted = await confirm({
-    title: '全停 WSL（wsl --shutdown）？',
+    title: '停止全部 WSL（wsl --shutdown）？',
     tone: 'warning',
     description: '终止全部发行版会话：数据无损，下次进入自动重启。这是 .wslconfig 全局改动与网络模式切换的生效前提。',
   })
@@ -869,7 +890,7 @@ async function doShutdown() {
     const out = await WSLAPI.ShutdownWsl()
     showToast(out?.message || '已全部停止')
   } catch (e) {
-    showToast(`全停失败: ${getErrorMessage(e)}`)
+    showToast(`停止全部失败: ${getErrorMessage(e)}`)
   } finally {
     busyOp.value = ''
     await loadInstances()
@@ -1039,11 +1060,11 @@ onMounted(() => {
               title="wsl --set-default-version 2：新装发行版默认用 WSL2"
               @click="setDefaultV2">2️⃣ 默认WSL2</button>
             <button class="btn btn-secondary btn-small" :disabled="!!busyOp" :class="{ active: hostConfOpen }"
-              title="编辑宿主全局配置 .wslconfig（网络模式/资源上限；影响所有发行版，全停后生效）"
+              title="编辑宿主全局配置 .wslconfig（网络模式/资源上限；影响所有发行版，「停止全部」后生效）"
               @click="toggleHostConf">🌐 .wslconfig</button>
             <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
-              title="wsl --shutdown：终止全部发行版会话（数据无损），.wslconfig 改动的生效前提"
-              @click="doShutdown">🌑 全停</button>
+              title="wsl --shutdown：停止全部发行版与 WSL 虚拟机（数据无损；单个发行版请用发行版页「⏹ 停止」），.wslconfig 改动的生效前提"
+              @click="doShutdown">🌑 停止全部</button>
             <button class="btn btn-secondary btn-small" :disabled="streaming" @click="startCheck">
               {{ streaming ? '体检中…' : '↻ 重新体检' }}
             </button>
@@ -1071,7 +1092,7 @@ onMounted(() => {
       <div v-if="hostConfOpen" class="import-panel">
         <UiBanner tone="warn" class="slim">
           .wslconfig 是<b>宿主全局配置</b>（网络模式、内存/CPU 上限等），作用于所有发行版，
-          需「🌑 全停」或重启后才被读取。写回防线同 wsl.conf：语法闸门 + networkingMode 白名单 + 写前备份（.wslconfig.hanxi.bak）+ 原子写读回复核。
+          需「🌑 停止全部」或重启后才被读取。写回防线同 wsl.conf：语法闸门 + networkingMode 白名单 + 写前备份（.wslconfig.hanxi.bak）+ 原子写读回复核。
         </UiBanner>
         <div class="move-input-row">
           <UiStatusChip tone="information">当前网络模式：{{ modeWord(hostDoc?.networkMode) }}</UiStatusChip>
@@ -1113,8 +1134,20 @@ onMounted(() => {
         </li>
       </ul>
 
-      <!-- 本机发行版管理控制台：状态归一列表 + 行内操作（数据源独立于体检报告） -->
-      <template v-if="report && report.wslVersion">
+      <!-- 知识沉淀（踩坑记录入口） -->
+      <details class="info-details">
+        <summary class="info-summary">关于「已禁止(403)」「卸不干净」与 WSL</summary>
+        <div class="info-body">
+          <p><a class="inline-link" href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noopener">WSL 2</a> 需要 Windows 10 2004（Build 19041）以上、CPU 虚拟化（VT-x/AMD-V）与「虚拟机平台」功能。<b>wsl --install</b> 会先查询 GitHub API 获取安装信息——若你的网络出口被 GitHub API 拦截，就会报「已禁止(403)」。体检报告的「GitHub 安装通道」项即复现该判据：API 403 时改用「🌐 直连更新」、挂代理，或直接下载 MSI 离线包。</p>
+          <p>WSL 在系统中可能<b>同时存在 MSIX 用户包与 MSI 系统版两种形态</b>，「设置→应用」通常只显示其一——只卸一边时另一边依旧存活，「安装形态」项会如实展示两路信号。卸载请点「🗑 卸载 WSL」，双形态各自走官方卸载器。</p>
+          <p class="hint-dim">另一已知现象：虚拟机监控程序运行时 WMI 读固件虚拟化位会报 False——这不是故障，报告以「监控程序在运行」为最强证据。启用虚拟机平台后必须重启一次，发行版才能拉起。</p>
+        </div>
+      </details>
+    </div>
+
+    <!-- 本机发行版 Tab：实例管理控制台（状态归一列表 + 行内操作，复采通道独立于体检报告） -->
+    <div v-show="activeMainTab === 'distros'" class="tab-body">
+      <template v-if="distroTabReady">
         <div class="section-title distro-head">
           <h3>本机发行版 ({{ instances.length }})</h3>
           <div class="btn-group distro-head-actions">
@@ -1122,7 +1155,7 @@ onMounted(() => {
               :class="{ active: importOpen }" title="wsl --import：把导出 tar / 可信 rootfs 落成新增发行版（免 UAC）"
               @click="importOpen = !importOpen">📥 导入发行版</button>
             <button class="btn btn-secondary btn-small" :disabled="instLoading || !!busyOp" @click="loadInstances">
-              {{ instLoading ? '复采中…' : '↻ 刷新列表' }}
+              {{ instLoading ? '刷新中…' : '↻ 刷新列表' }}
             </button>
           </div>
         </div>
@@ -1150,7 +1183,7 @@ onMounted(() => {
         <div v-if="instError" class="error-box">{{ instError }}
           <button class="btn btn-secondary btn-small retry-inline" @click="loadInstances">↻ 重试</button>
         </div>
-        <div v-else-if="instLoading && !instances.length" class="hint-line">正在向本机 wsl.exe 复采发行版现状…</div>
+        <div v-else-if="instLoading && !instances.length" class="hint-line">正在经本机 wsl.exe 读取发行版现状…</div>
         <div v-else-if="!instances.length" class="empty-state">
           <p>WSL 已安装但还没有发行版 —— 到「📦 版本与发行版」页从官方清单挑一个一键安装。</p>
         </div>
@@ -1185,35 +1218,41 @@ onMounted(() => {
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
                         title="唤起系统默认终端进入该发行版（WSL 无前台进程时会自动停机，本工具不做后台保活）"
                         @click="openTerminal(d)">⌨ 终端</button>
-                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || d.default"
-                        :title="d.default ? '已是默认发行版' : 'wsl --set-default：不带 -d 的 wsl 命令默认进入它'"
-                        @click="setDefaultDistro(d)">⭐ 设默认</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+                        title="资源管理器打开 \\wsl$\<发行版> 浏览文件系统（停止时会被顺手拉起；只读入口免确认）"
+                        @click="openFolder(d)">📂 文件</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName || cloneBusy"
+                        title="重启：停止→确认已停→拉起验证（不做后台保活，空闲后自动回落停止；wsl.conf 改动的生效捷径）"
+                        @click="restartDistro(d)">🔄 重启</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !d.running"
-                        :title="d.running ? 'wsl --terminate：立即停止（数据无损，下次访问自动再启动）' : '当前已停止'"
-                        @click="terminateDistro(d)">⏹ 终止</button>
+                        :title="d.running ? 'wsl --terminate：只停这一个发行版（数据无损，下次访问自动再启动）；停全部请到就绪检测页「🌑 停止全部」' : '当前已停止'"
+                        @click="terminateDistro(d)">⏹ 停止</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || d.default"
+                        :title="d.default ? '已是默认发行版' : 'wsl --set-default：不带 -d 的 wsl 命令与控制台默认进入它'"
+                        @click="setDefaultDistro(d)">⭐ 设默认</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName || (!!exportingName && exportingName !== d.name)"
                         title="wsl --export：选择格式（tar.gz 压缩 / tar 未压缩）导出到「下载」文件夹，可 long-running"
                         @click="startExport(d)">📤 导出</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
                         title="wsl --manage --move：迁移数据盘到其他盘（UAC 提权，会先停机全部 WSL）"
                         @click="startMove(d)">🧭 迁移</button>
-                      <button class="btn btn-danger-outline btn-small" :disabled="!!busyOp"
-                        title="wsl --unregister：数据销毁级删除，不可恢复"
-                        @click="unregisterDistro(d)">🗑 删除</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName || (!!exportingName && exportingName !== d.name) || (!!cloneSrc && cloneSrc !== d.name)"
                         title="克隆快路径：停源→拷贝数据盘→--import --vhd 挂为新发行版（需 WSL 2.7.3+，免 UAC）"
                         @click="startClone(d)">🧬 克隆</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
+                        title="数据盘瘦身：备份→fstrim→Optimize-VHD→不足则注销重导入（Tier2 会换落位目录）"
+                        @click="openCompact(d)">🗜 瘦身</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
                         :class="{ active: forensicsName === d.name }"
-                        title="只读取证：VHDX 逻辑/实占与稀疏、根盘用量、IPv4（停止时不进 guest，以免顺手启动它）"
-                        @click="toggleForensics(d)">🔍 取证</button>
+                        title="只读详情：VHDX 逻辑/实占与稀疏、根盘用量、IPv4、网络模式（停止时不进 guest，以免顺手启动它）"
+                        @click="toggleForensics(d)">📋 详情</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
                         :class="{ active: confName === d.name }"
                         title="编辑 /etc/wsl.conf（systemd/automount/默认用户等）：读时会启动发行版；写回有语法闸门 + 引用校验 + 写前备份"
                         @click="openConf(d)">⚙ wsl.conf</button>
-                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
-                        title="数据盘瘦身：备份→fstrim→Optimize-VHD→不足则注销重导入（Tier2 会换落位目录）"
-                        @click="openCompact(d)">🗜 瘦身</button>
+                      <button class="btn btn-danger-outline btn-small" :disabled="!!busyOp"
+                        title="wsl --unregister：数据销毁级删除（连带清理独占的商店启动器），不可恢复"
+                        @click="unregisterDistro(d)">🗑 删除</button>
                     </div>
                   </td>
                 </tr>
@@ -1222,7 +1261,7 @@ onMounted(() => {
                     <div class="move-editor">
                       <UiBanner tone="warn" class="slim">
                         迁移会先执行 <code class="mono">wsl --shutdown</code> 打停整个 WSL 子系统<template v-if="moveRunningOthers.length">——当前运行中的
-                        <b>{{ moveRunningOthers.map(i => i.name).join('、') }}</b> 会被连带终止<template v-if="d.running">（<b>{{ d.name }}</b> 本身也在运行，可先「⏹ 终止」缩小影响面）</template></template>，随后提权移动数据盘（UAC 授权，瞬时冲突自动重试至多 5 次）。目标须为空目录或不存在的路径，路径合法性由后端把关。
+                        <b>{{ moveRunningOthers.map(i => i.name).join('、') }}</b> 会被连带终止<template v-if="d.running">（<b>{{ d.name }}</b> 本身也在运行，可先「⏹ 停止」缩小影响面）</template></template>，随后提权移动数据盘（UAC 授权，瞬时冲突自动重试至多 5 次）。目标须为空目录或不存在的路径，路径合法性由后端把关。
                       </UiBanner>
                       <div class="move-input-row">
                         <label class="move-label" for="wsl-move-target">目标目录</label>
@@ -1350,7 +1389,7 @@ onMounted(() => {
                           <button class="btn btn-secondary btn-small" :disabled="!!busyOp || confLoading"
                             @click="loadConf(d.name)">↻ 重读</button>
                           <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="closeConf">收起</button>
-                          <span class="hint-dim">语法闸门 / 默认用户求证 / 写前备份（{{ '/etc/wsl.conf.hanxi.bak' }}）由后端把关；改完记得终止再进入</span>
+                          <span class="hint-dim">语法闸门 / 默认用户求证 / 写前备份（{{ '/etc/wsl.conf.hanxi.bak' }}）由后端把关；改完记得「⏹ 停止」或「🔄 重启」再进入</span>
                         </div>
                       </template>
                     </div>
@@ -1359,7 +1398,7 @@ onMounted(() => {
                 <tr v-if="forensicsName === d.name" class="forensics-row">
                   <td colspan="5">
                     <div class="forensics-panel">
-                      <div v-if="!forensicsOf || (forensicsOf.loading && !forensicsOf.data)" class="hint-line">取证采集中：注册表巡查 + 磁盘双口径 + guest 只读探测…</div>
+                      <div v-if="!forensicsOf || (forensicsOf.loading && !forensicsOf.data)" class="hint-line">详情采集中：注册表巡查 + 磁盘双口径 + guest 只读探测…</div>
                       <div v-else-if="forensicsOf.error && !forensicsOf.data" class="error-box">{{ forensicsOf.error }}
                         <button class="btn btn-secondary btn-small retry-inline" @click="loadForensics(d.name)">↻ 重试</button>
                       </div>
@@ -1387,7 +1426,7 @@ onMounted(() => {
                           <UiStatusChip :tone="forensicsOf.data.running ? 'positive' : 'neutral'">{{ forensicsOf.data.running ? '运行中' : '已停止' }}</UiStatusChip>
                           <UiStatusChip tone="neutral" title="来自宿主 ~/.wslconfig 的 [networking] networkingMode">网络模式：{{ modeWord(forensicsOf.data.networkMode) }}</UiStatusChip>
                           <button class="btn btn-secondary btn-small" :disabled="forensicsOf.loading"
-                            @click="loadForensics(d.name)">{{ forensicsOf.loading ? '复采中…' : '↻ 复采' }}</button>
+                            @click="loadForensics(d.name)">{{ forensicsOf.loading ? '刷新中…' : '↻ 刷新' }}</button>
                         </div>
                       </template>
                     </div>
@@ -1411,16 +1450,10 @@ onMounted(() => {
           </ul>
         </details>
       </template>
-
-      <!-- 知识沉淀（踩坑记录入口） -->
-      <details class="info-details">
-        <summary class="info-summary">关于「已禁止(403)」「卸不干净」与 WSL</summary>
-        <div class="info-body">
-          <p><a class="inline-link" href="https://learn.microsoft.com/windows/wsl/install" target="_blank" rel="noopener">WSL 2</a> 需要 Windows 10 2004（Build 19041）以上、CPU 虚拟化（VT-x/AMD-V）与「虚拟机平台」功能。<b>wsl --install</b> 会先查询 GitHub API 获取安装信息——若你的网络出口被 GitHub API 拦截，就会报「已禁止(403)」。体检报告的「GitHub 安装通道」项即复现该判据：API 403 时改用「🌐 直连更新」、挂代理，或直接下载 MSI 离线包。</p>
-          <p>WSL 在系统中可能<b>同时存在 MSIX 用户包与 MSI 系统版两种形态</b>，「设置→应用」通常只显示其一——只卸一边时另一边依旧存活，「安装形态」项会如实展示两路信号。卸载请点「🗑 卸载 WSL」，双形态各自走官方卸载器。</p>
-          <p class="hint-dim">另一已知现象：虚拟机监控程序运行时 WMI 读固件虚拟化位会报 False——这不是故障，报告以「监控程序在运行」为最强证据。启用虚拟机平台后必须重启一次，发行版才能拉起。</p>
-        </div>
-      </details>
+      <div v-else-if="report" class="empty-state">
+        <p>本机尚未安装 WSL 本体——先到「🐧 就绪检测」页执行「🚀 一键开启」（「虚拟机平台」启用后需重启一次），装好发行版后实例会列在这里。</p>
+      </div>
+      <div v-else class="hint-line">就绪体检进行中，稍候自动列出本机发行版…</div>
     </div>
 
     <!-- 版本 Tab：官方版本管理与发行版 -->

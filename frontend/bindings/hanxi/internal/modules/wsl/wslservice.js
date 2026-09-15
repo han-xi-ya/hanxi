@@ -283,6 +283,18 @@ export function MoveDistro(name, target) {
 }
 
 /**
+ * OpenDistroFolder 资源管理器打开发行版文件共享。停止的发行版 9P 共享不存在
+ * （explorer 会报"路径不存在"），故确认停止时先静默拉起（echo 探针）——explorer
+ * 持有目录句柄期间 9P 会话活跃不会被空闲停机，关窗后按平台语义自然回落。
+ * 与唤终端同属"只读外呼"：免确认、免单飞闸（无状态改动可竞）。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function OpenDistroFolder(name) {
+    return $Call.ByID(3020843330, name);
+}
+
+/**
  * OpenOfficialDocs 打开微软官方 WSL 安装文档。
  * @returns {$CancellablePromise<void>}
  */
@@ -334,6 +346,19 @@ export function OpenTerminal(name) {
  */
 export function RemovePortRule(id) {
     return $Call.ByID(2540685276, id);
+}
+
+/**
+ * RestartDistro 重启发行版：停止 → 轮询确认已停 → echo 探针拉起验证。
+ * 语义拍板（对齐讨论，刻意有别于 wsl-dashboard）：拉起验证即止、不做
+ * sleep infinity 后台保活——无前台会话数秒后自动回落"已停止"是平台语义
+ * （见 OpenTerminal 注释），回执如实讲清，不拿保活假装"常亮运行"。
+ * 探针走 runWsl（HideWindow 捕获输出）而非 startTerm：重启不该弹终端窗口。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function RestartDistro(name) {
+    return $Call.ByID(2495533611, name);
 }
 
 /**
