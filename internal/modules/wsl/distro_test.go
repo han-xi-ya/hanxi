@@ -58,8 +58,36 @@ func TestParseQuietList(t *testing.T) {
 	if len(got) != 2 || got[0] != "Ubuntu-24.04" || got[1] != "Debian" {
 		t.Fatalf("NUL 名单拆分错误: %q", got)
 	}
-	if n := parseQuietList(""); n != nil {
+	// #46 主案回归：wsl.exe 的 -l -q 在 stdout 重定向到管道（Go exec 捕获恰是）
+	// 时分隔符从 NUL 变 \r\n——旧解析把整串当一个名字，白名单误拒删除现存发行版；
+	// 本机实证此前只有单发行版时侥幸未爆。
+	pipe := parseQuietList("kali-linux\r\nkali-linux-Copy\r\n")
+	if len(pipe) != 2 || pipe[0] != "kali-linux" || pipe[1] != "kali-linux-Copy" {
+		t.Fatalf("\\r\\n 管道名单拆分错误: %q", pipe)
+	}
+	if mixed := parseQuietList("a\x00b\r\nc"); len(mixed) != 3 {
+		t.Fatalf("混合分隔应全拆开: %q", mixed)
+	}
+	if n := parseQuietList(""); len(n) != 0 {
 		t.Fatalf("空串应得空名单: %q", n)
+	}
+}
+
+// #46 端到端：\r\n 名单下白名单链必须放行对在册发行版的操作（旧解析此处必拒）。
+func TestDistroAllowedPipedRoster(t *testing.T) {
+	svc, _, _ := newTestService()
+	svc.runWsl = func(_ context.Context, args ...string) (string, error) {
+		if len(args) == 2 && args[0] == "-l" && args[1] == "-q" {
+			return "kali-linux\r\nkali-linux-Copy\r\n", nil
+		}
+		if len(args) >= 2 && args[0] == "--terminate" {
+			return "", nil
+		}
+		return "", fmt.Errorf("意外的 wsl 调用: %v", args)
+	}
+	res, err := svc.TerminateDistro("kali-linux")
+	if err != nil || !res.Success {
+		t.Fatalf("管道 \\r\\n 名单下终止在册发行版应成功: %v %+v", err, res)
 	}
 }
 

@@ -134,12 +134,15 @@ func (s *WslService) quietSet(ctx context.Context, extra ...string) (map[string]
 	return set, true
 }
 
-// parseQuietList 拆 NUL 分隔名单（decodeWslOutput 已把 UTF-16 解成 UTF-8 串并
-// trim 两端，NUL 分隔符原样保留在中间）。
+// parseQuietList 拆发行版名单：`wsl -l -q` 的分隔形态随 stdout 类型而变——
+// 接控制台（伪终端）时 NUL 分隔（微软 CLI 约定），**重定向到管道时改用 \r\n**
+// （Go exec 捕获恰然后者）（#46 实锤）。发行版名不允许含换行/NUL，双分隔切分
+// 天然兼容，\r 由逐段 TrimSpace 清掉。
 func parseQuietList(out string) []string {
-	var names []string
-	for part := range strings.SplitSeq(out, "\x00") {
-		if n := strings.TrimSpace(part); n != "" {
+	parts := strings.FieldsFunc(out, func(r rune) bool { return r == '\x00' || r == '\n' })
+	names := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if n := strings.TrimSpace(p); n != "" {
 			names = append(names, n)
 		}
 	}
