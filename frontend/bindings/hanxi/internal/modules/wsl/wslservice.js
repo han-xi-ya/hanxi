@@ -169,6 +169,15 @@ export function GetDistroForensics(name) {
 }
 
 /**
+ * GetDistroInstallDir 读取落位偏好。路径不可用、文件缺失或损坏都回退
+ * "未设置"：偏好读不出来不该影响添加实例页的任何功能。
+ * @returns {$CancellablePromise<$models.InstallDirPref>}
+ */
+export function GetDistroInstallDir() {
+    return $Call.ByID(113656710);
+}
+
+/**
  * GetReleases 拉取 microsoft/WSL 官方发布列表并判定与本机版本的关系。
  * API 被拦（如 api.github.com 对部分云出口 IP 区域封锁 403）时自动降级
  * Atom 订阅源（github.com 域通常畅通），载荷 fallback 标记供前端如实标注。
@@ -251,6 +260,10 @@ export function InstallDistro(id) {
  * 白名单/虚拟化预检两道闸门与 InstallDistro 同源复用；location 按基目录语义
  * 使用（末级非发行版名时自动追加同名子目录），目标经 moveTarget 的绝对路径/
  * 盘符存在/非法字符/目录空性把关。
+ * 三道落位防线（根治"说好的 D 盘结果还在 C"观感）：迁移能力版本闸门（本机 WSL
+ * 过老则事前显式抉择，绝不装完才静默失败）；分段退出码归因（迁移段失败点名
+ * "已装在 C、无需重装、点🧭迁移补救"）；成功后注册表 BasePath 复验（MoveDistro
+ * 同款，退出码 0 不等于真落位）。
  * @param {string} id
  * @param {string} location
  * @returns {$CancellablePromise<$models.OperationOutcome>}
@@ -473,6 +486,17 @@ export function SetDefaultDistro(name) {
  */
 export function SetDefaultVersion2() {
     return $Call.ByID(2993198642);
+}
+
+/**
+ * SetDistroInstallDir 写入落位偏好：空串=显式"系统默认位置"；非空须是
+ * 绝对路径形态（moveTarget 同款校验口径）——写偏好时就把明显坏掉的拼写拦下，
+ * 好过让它粘在记忆里反复坑后续操作。长度封顶防呆（路径实用上限远低于此）。
+ * @param {string} dir
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetDistroInstallDir(dir) {
+    return $Call.ByID(2779832794, dir);
 }
 
 /**

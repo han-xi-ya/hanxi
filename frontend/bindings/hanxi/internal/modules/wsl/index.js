@@ -60,6 +60,14 @@ import * as $models from "./models.js";
  */
 
 /**
+ * InstallDirPref 安装基目录偏好的返回形态：Set=false 表示从未设置过
+ * （前端按内置默认 D:\wsl 预填）；Set=true 且 Dir="" 是用户显式选择的
+ * "系统默认位置"（装到哪由 WSL 说了算，通常在 C 盘）——三态区分开，
+ * "没记得"与"故意留空"不再共用一个空串。
+ * @typedef {$models.InstallDirPref} InstallDirPref
+ */
+
+/**
  * OperationOutcome 提权操作统一回执（UAC 取消不算错误，以文案区分）。
  * @typedef {$models.OperationOutcome} OperationOutcome
  */
