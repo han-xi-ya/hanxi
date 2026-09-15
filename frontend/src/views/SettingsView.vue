@@ -408,8 +408,8 @@ onMounted(() => {
         <div class="dir-item">
           <div class="dir-info">
             <div class="dir-title">
-              <span class="dir-name">frpc 安装版本目录</span>
-              <span class="dir-badge">可执行文件隔离仓</span>
+              <span class="dir-name">免安装包版本目录</span>
+              <span class="dir-badge">全部托管工具可执行文件隔离仓</span>
             </div>
             <code class="dir-path" :title="appInfo?.versionsDir">{{ appInfo?.versionsDir || '—' }}</code>
           </div>
