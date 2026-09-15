@@ -89,7 +89,13 @@ jobs:
         run: |
           $ver = $env:RELEASE_TAG
 
-          New-Item -ItemType Directory -Force release/hanxi-portable/data | Out-Null
+          New-Item -ItemType Directory -Force release/hanxi-portable/hanxidata | Out-Null
+          # 占位文件必须有：Compress-Archive 会静默丢弃空目录，缺了它解压后无标记
+          # 目录 → 便携版首启回落到 %APPDATA% 标准模式（"便携"名不副实）。
+          Set-Content -Path release/hanxi-portable/hanxidata/portable.txt -Value @"
+本目录存在即令 hanxi.exe 以便携模式运行：配置、日志与托管工具版本全部保存在本目录。
+删除本目录并将内容移至 %APPDATA%\Hanxi 可迁回标准模式。
+"@ -Encoding UTF8
           Copy-Item bin/hanxi.exe release/hanxi-portable/hanxi.exe
           Copy-Item README.md release/hanxi-portable/README.md
 
@@ -117,7 +123,7 @@ jobs:
           > **品牌断代说明**：v0.3.0 使用全新的应用标识与 `%APPDATA%/Hanxi/` 数据目录，不读取旧版数据或自启配置。
 
           ### 📦 资产下载与说明
-          - **`hanxi-windows-amd64-portable-$ver.zip`**：**【推荐】绿色便携免安装版**（内置 `data/` 目录，配置/日志/版本均自包含在同级，解压即用）。
+          - **`hanxi-windows-amd64-portable-$ver.zip`**：**【推荐】绿色便携免安装版**（内置 `hanxidata/` 目录，配置/日志/版本均自包含在同级，解压即用；旧便携包的 `data/` 目录升级后仍自动识别）。
           - **`hanxi-windows-amd64-$ver.exe`**：单独立可执行文件（默认数据落盘在 `%APPDATA%/Hanxi/`）。
           - **`checksums.txt`**：SHA256 完整性哈希校验清单。
 
