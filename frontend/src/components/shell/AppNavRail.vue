@@ -2,7 +2,9 @@
 // 一级图标轨道（双栏外壳左列，收起 64px / 展开 188px，结构参照
 // docs/design/shell-redesign/mockup-b-icon-rail.html）。
 // 纯展示组件：首页 / 六个分类按钮（GROUP_META 驱动，模块数角标 + 组内运行绿点）/
-// rail-bottom（展开收起钮、通知中心徽标、日志、设置、关于、主题三态循环）。
+// rail-bottom（展开收起钮、通知中心徽标、设置）。日志与关于入口、主题三态切换
+// 已按用户决策收进设置页（SettingsView「工作台入口」分区 + 外观 Theme 卡片），
+// rail 只保留高频导航职责。
 // 全部导航状态经 props 注入、动作以 emits 上抛；分类切换只上抛 select-group，
 // 面板联动与路由编排留在 AppSidebar / App.vue。唯一本地态是展开/收起
 // （纯视觉宽度开关，localStorage 键 hanxi.railExpanded 持久化，不参与业务）。
@@ -13,7 +15,6 @@
 import { computed, ref } from 'vue'
 import AppIcon from '../ui/AppIcon.vue'
 import type { IconName } from '../../constants/icons'
-import type { ThemeMode } from '../../composables/useTheme'
 import {
   GROUP_META,
   type NavGroup,
@@ -36,26 +37,25 @@ const props = withDefaults(defineProps<{
   activeRoute: string
   /** 未读通知数，>0 时通知按钮显示徽标 */
   unreadCount: number
-  /** 主题三态：跟随系统 / 浅色 / 深色 */
-  themeMode: ThemeMode
   /** 运行中模块 ID 清单（状态嗅探接线前缺省空数组） */
   runningIds?: string[]
+  /** 二级分组面板是否已折叠（AppSidebar 本地态）：折叠时 rail 浮出「展开面板」钮 */
+  panelCollapsed?: boolean
 }>(), {
   runningIds: () => [],
+  panelCollapsed: false,
 })
 
 const emit = defineEmits<{
   (e: 'select-group', group: NavGroup): void
   (e: 'navigate', route: string): void
   (e: 'toggle-drawer'): void
-  (e: 'cycle-theme'): void
+  (e: 'toggle-panel'): void
 }>()
 
-// 核心固定入口：rail 底部区（日志/设置/关于为文字导航，收进图标轨后逐字保留路由语义）
+// 核心固定入口：rail 底部区仅保留设置（日志/关于/主题已收进设置页）
 const BOTTOM_NAV = [
-  { route: '/logs', title: '日志', icon: 'file-text' },
   { route: '/settings', title: '设置', icon: 'gear' },
-  { route: '/about', title: '关于', icon: 'info' },
 ] as const
 
 interface RailGroupItem {
@@ -83,22 +83,6 @@ const railGroups = computed<RailGroupItem[]>(() => {
       hasRunning: members.some((n) => isNavRunning(n, running)),
     }
   })
-})
-
-const themeModeLabel = computed(() => {
-  switch (props.themeMode) {
-    case 'system': return '跟随系统'
-    case 'dark': return '深色主题'
-    default: return '浅色主题'
-  }
-})
-
-const themeGlyph = computed<IconName>(() => {
-  switch (props.themeMode) {
-    case 'system': return 'monitor'
-    case 'dark': return 'moon'
-    default: return 'sun'
-  }
 })
 
 // ── 展开/收起（rail 唯一本地态：图标轨 ↔ 图标+文字两列宽）──
@@ -157,6 +141,18 @@ function toggleExpanded() {
     </button>
 
     <div class="rail-bottom">
+      <!-- 面板折叠后的唯一回展入口（展开态由面板头部「收起面板」钮负责折叠） -->
+      <button
+        v-if="panelCollapsed"
+        class="rail-btn panel-toggle"
+        title="展开分组面板"
+        aria-label="展开分组面板"
+        aria-expanded="true"
+        @click="emit('toggle-panel')"
+      >
+        <AppIcon name="chevrons-right" :size="20" />
+      </button>
+
       <button
         class="rail-btn rail-toggle"
         :title="expanded ? '收起导航栏' : '展开导航栏'"
@@ -190,16 +186,6 @@ function toggleExpanded() {
       >
         <AppIcon :name="n.icon" :size="20" />
         <span class="rail-label">{{ n.title }}</span>
-      </button>
-
-      <button
-        class="rail-btn theme-toggle"
-        :title="`当前主题：${themeModeLabel}（点击循环切换）`"
-        :aria-label="`当前主题：${themeModeLabel}，点击循环切换`"
-        @click="emit('cycle-theme')"
-      >
-        <AppIcon :name="themeGlyph" :size="20" />
-        <span class="rail-label">{{ themeModeLabel }}</span>
       </button>
     </div>
   </nav>

@@ -1,7 +1,8 @@
 // 接线特征测试：Phase 6 外壳组件化后，App.vue 与 AppSidebar 的 props/emits 编排锁。
 // mount 真实 App（bindings 与 Events 按既有范式 vi.mock），验证三条上抛通道逐字生效：
-// 侧栏点击导航 → navigateTo（门禁与高亮更新）、通知入口 → toggleDrawer（抽屉开合）、
-// 主题钮 → cycleThemeMode（三态文案循环）。vi.mock 相对路径范式同 views/__tests__。
+// 侧栏点击导航 → navigateTo（门禁与高亮更新）、通知入口 → toggleDrawer（抽屉开合）。
+// 主题切换与日志/关于入口已迁设置页（SettingsView.spec 覆盖），App 侧无 cycle-theme 接线。
+// vi.mock 相对路径范式同 views/__tests__。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '../../../App.vue'
@@ -49,7 +50,7 @@ afterEach(() => {
 })
 
 describe('App.vue ↔ AppSidebar 接线', () => {
-  // 双栏改造适配：首页/日志等核心页入口已从单栏 nav 列表收进一级图标轨道，
+  // 双栏改造适配：核心页入口已从单栏 nav 列表收进一级图标轨道（rail 收敛后仅剩设置），
   // 断言由「.nav-item.active .nav-text 文案」等价迁移到「rail 按钮 active 类 + title」。
   it('侧栏渲染在 .layout 骨架内，active 高亮随 App 路由状态', async () => {
     const w = await mountApp()
@@ -60,9 +61,9 @@ describe('App.vue ↔ AppSidebar 接线', () => {
 
   it('点击侧栏导航项：emit navigate 直达 App.navigateTo，高亮迁移', async () => {
     const w = await mountApp()
-    const logsBtn = w.findAll('.rail-core').find((b) => b.attributes('title') === '日志')!
-    await logsBtn.trigger('click')
-    expect(w.find('.rail-core.active').attributes('title')).toBe('日志')
+    const settingsBtn = w.findAll('.rail-core').find((b) => b.attributes('title') === '设置')!
+    await settingsBtn.trigger('click')
+    expect(w.find('.rail-core.active').attributes('title')).toBe('设置')
     w.unmount()
   })
 
@@ -77,18 +78,11 @@ describe('App.vue ↔ AppSidebar 接线', () => {
     w.unmount()
   })
 
-  it('点击主题钮：emit cycle-theme 驱动 useTheme 三态循环（light → dark → system → light）', async () => {
+  it('rail 不再承载主题钮与日志/关于入口（已迁设置页）', async () => {
     const w = await mountApp()
-    const themeBtn = w.find('.theme-toggle')
-    // 双栏改造适配：主题钮移入 rail 后为纯图标钮，三态文案由 nav-text 迁移到 title 属性
-    const stateTitle = (label: string) => `当前主题：${label}（点击循环切换）`
-    expect(themeBtn.attributes('title')).toBe(stateTitle('浅色主题'))
-    await themeBtn.trigger('click')
-    expect(themeBtn.attributes('title')).toBe(stateTitle('深色主题'))
-    await themeBtn.trigger('click')
-    expect(themeBtn.attributes('title')).toBe(stateTitle('跟随系统'))
-    await themeBtn.trigger('click')
-    expect(themeBtn.attributes('title')).toBe(stateTitle('浅色主题'))
+    expect(w.find('.theme-toggle').exists()).toBe(false)
+    const titles = w.findAll('.rail-core').map((b) => b.attributes('title'))
+    expect(titles).toEqual(['设置'])
     w.unmount()
   })
 })

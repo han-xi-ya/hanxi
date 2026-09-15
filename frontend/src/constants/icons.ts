@@ -70,6 +70,8 @@ export const ICON_PATHS = {
   menu: ['M4 6h16', 'M4 12h16', 'M4 18h16'],
   'rail-expand': ['M4 4h16v16H4z', 'M10 4v16', 'm13.5 9 3 3-3 3'],
   'rail-collapse': ['M4 4h16v16H4z', 'M10 4v16', 'm16.5 9-3 3 3 3'],
+  'chevrons-left': ['m11 7-5 5 5 5', 'm18 7-5 5 5 5'],
+  'chevrons-right': ['m13 7 5 5-5 5', 'm6 7 5 5-5 5'],
 } as const
 
 export type IconName = keyof typeof ICON_PATHS

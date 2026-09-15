@@ -10,6 +10,10 @@ import { useTheme } from '../composables/useTheme'
 const { showToast } = useToast()
 const { themeMode, setThemeMode } = useTheme()
 
+// 工作台入口行的页面跳转（/logs /about）：事件上抛宿主 <component @navigate>，
+// 统一走 App.vue navigateTo 的门禁链，本视图不自行编排路由。
+const emit = defineEmits<{ (e: 'navigate', route: string): void }>()
+
 const appInfo = ref<AppInfo | null>(null)
 const autoStart = ref(false)
 const minimizeToTray = ref(true)
@@ -546,6 +550,39 @@ onMounted(() => {
             <button class="btn btn-secondary btn-small" @click="triggerTestNotification" title="前台即时测试">🔔 前台卡片</button>
             <button class="btn btn-primary-alt btn-small" @click="triggerDelayedTestNotification" title="4秒倒计时后派发，用于最小化后测试原生系统通知">⏱️ 4秒后后台气泡</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 工作台入口：原 rail 底部的日志/关于导航收进设置（主题切换沿用上方「外观」卡片） -->
+    <div class="section-card">
+      <div class="card-header">
+        <div>
+          <h2>工作台入口 (Workbench)</h2>
+          <p class="hint">统一日志查看与版本关于信息</p>
+        </div>
+      </div>
+      <div class="dir-grid">
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">运行日志</span>
+              <span class="dir-badge">LogsView</span>
+            </div>
+            <code class="dir-path">模块运行输出与脱敏历史统一查看器</code>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="emit('navigate', '/logs')">打开</button>
+        </div>
+
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">关于 Hanxi</span>
+              <span class="dir-badge">AboutView</span>
+            </div>
+            <code class="dir-path">版本、技术栈与第三方合规信息</code>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="emit('navigate', '/about')">打开</button>
         </div>
       </div>
     </div>

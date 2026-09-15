@@ -15,10 +15,10 @@
 //   ≤760px rail 也收成 overlay 抽屉：rail 定位固定、translateX 移出（150ms 位移动画），
 //   左上角浮出 ☰ 把手钮，开抽屉出遮罩，点遮罩/导航后自动收回（railOpen 组件本地态）。
 import { computed, ref, watch } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import AppIcon from '../ui/AppIcon.vue'
 import AppNavRail from './AppNavRail.vue'
 import type { IconName } from '../../constants/icons'
-import type { ThemeMode } from '../../composables/useTheme'
 import type { NavEntry } from '../../../bindings/hanxi/internal/extapi/models'
 import {
   GROUP_META,
@@ -45,8 +45,6 @@ const props = withDefaults(defineProps<{
   activeRoute: string
   /** 未读通知数，>0 时显示徽标 */
   unreadCount: number
-  /** 主题三态：跟随系统 / 浅色 / 深色 */
-  themeMode: ThemeMode
   /** 后端初始化完成标志，驱动底部状态条 */
   backendReady: boolean
   /** 受控面板分类（App.vue 接线位）：缺省时由 activeRoute 反推 + 本地 override */
@@ -61,12 +59,41 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
   (e: 'toggle-drawer'): void
-  (e: 'cycle-theme'): void
 }>()
 
 // ── 窄屏 overlay 抽屉与面板分类的组件本地态 ──
 const railOpen = ref(false)
 const groupOverride = ref<ShellGroup | null>(null)
+
+// ≤1100px 面板由 CSS 隐藏：此时点 rail 分类不静默改状态，而是把面板以 flyout
+// 浮层贴在 rail 右缘弹出（否则用户无从浏览/切换分组——窄屏盲点修复）。
+const isNarrow = useMediaQuery('(max-width: 1100px)')
+const panelFlyout = ref(false)
+watch(isNarrow, (narrow) => {
+  if (!narrow) panelFlyout.value = false // 回到宽屏：面板回归常驻列，浮层语义失效
+})
+
+// ── 二级面板折叠（纯视觉开关，localStorage 持久化，与 rail 展开态同哲学）──
+const PANEL_COLLAPSED_KEY = 'hanxi.navPanelCollapsed'
+
+function loadPanelCollapsed(): boolean {
+  try {
+    return localStorage.getItem(PANEL_COLLAPSED_KEY) === '1'
+  } catch {
+    return false // 存储异常按默认展开
+  }
+}
+
+const panelCollapsed = ref(loadPanelCollapsed())
+
+function togglePanel() {
+  panelCollapsed.value = !panelCollapsed.value
+  try {
+    localStorage.setItem(PANEL_COLLAPSED_KEY, panelCollapsed.value ? '1' : '0')
+  } catch {
+    /* 存储不可用时仅本次会话生效 */
+  }
+}
 
 const navList = computed(() => props.navs as NavEntryWithGroup[])
 
@@ -130,11 +157,16 @@ const recentNavs = computed(() => {
 function onNavigate(route: string) {
   if (navList.value.some((n) => n.route === route)) recentRoutes.value = pushRecentRoute(route)
   railOpen.value = false // 窄屏抽屉内导航后自动收回
+  panelFlyout.value = false // flyout 内导航后同样即点即收
   emit('navigate', route)
 }
 
 function onSelectGroup(group: NavGroup) {
   groupOverride.value = group
+  if (isNarrow.value) {
+    panelFlyout.value = true
+    railOpen.value = false // ≤760 抽屉语境下让位给 flyout，避免双浮层叠罗汉
+  }
 }
 
 // 行内图标双轨：`i:` 前缀走 AppIcon，其余文本回退（同 rail/旧版约定）
@@ -144,7 +176,10 @@ function iconSvg(icon: string | undefined): IconName | null {
 </script>
 
 <template>
-  <aside class="sidebar" :class="{ 'rail-open': railOpen }">
+  <aside
+    class="sidebar"
+    :class="{ 'rail-open': railOpen, 'panel-collapsed': panelCollapsed, 'panel-flyout': panelFlyout }"
+  >
     <!-- ≤760px 浮出的抽屉把手（CSS 控制显隐，宽屏零占位） -->
     <button
       class="rail-handle"
@@ -154,6 +189,8 @@ function iconSvg(icon: string | undefined): IconName | null {
       @click="railOpen = !railOpen"
     ><AppIcon name="menu" :size="16" aria-hidden="true" /></button>
     <div v-if="railOpen" class="rail-mask" @click="railOpen = false"></div>
+    <!-- 窄屏 flyout 的全屏点击收回层（透明，不遮暗——面板是暂驻预览而非模态） -->
+    <div v-if="panelFlyout" class="flyout-mask" @click="panelFlyout = false"></div>
 
     <!-- ① 一级图标轨道 -->
     <AppNavRail
@@ -161,15 +198,15 @@ function iconSvg(icon: string | undefined): IconName | null {
       :navs="navList"
       :active-route="activeRoute"
       :unread-count="unreadCount"
-      :theme-mode="themeMode"
       :running-ids="runningIds"
+      :panel-collapsed="panelCollapsed"
       @select-group="onSelectGroup"
       @navigate="onNavigate"
       @toggle-drawer="emit('toggle-drawer')"
-      @cycle-theme="emit('cycle-theme')"
+      @toggle-panel="togglePanel"
     />
 
-    <!-- ② 二级分组面板（238px；≤1100px 由 CSS 隐藏） -->
+    <!-- ② 二级分组面板（238px；≤1100px 或折叠态由 CSS 隐藏，rail「展开面板」钮回展） -->
     <div class="nav-panel">
       <div class="panel-head">
         <span class="panel-head-icon"><AppIcon :name="panelMeta.icon" :size="16" /></span>
@@ -177,6 +214,13 @@ function iconSvg(icon: string | undefined): IconName | null {
           <div class="panel-title">{{ panelMeta.title }}</div>
           <div class="panel-sub">{{ panelMeta.desc }}</div>
         </div>
+        <button
+          class="panel-collapse-btn"
+          title="收起分组面板"
+          aria-label="收起分组面板"
+          aria-expanded="false"
+          @click="togglePanel"
+        ><AppIcon name="chevrons-left" :size="15" /></button>
       </div>
 
       <div class="panel-list">
@@ -295,7 +339,34 @@ function iconSvg(icon: string | undefined): IconName | null {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 14px 10px;
+  padding: 14px 10px 10px 14px;
+}
+
+/* 面板头「收起」钮（折叠入口；回展入口在 rail-bottom） */
+.panel-collapse-btn {
+  margin-left: auto;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.panel-collapse-btn:hover {
+  background: var(--surface-hover);
+  color: var(--color-text);
+}
+
+/* 折叠态：面板整列收起，rail 的「展开分组面板」钮为唯一回展入口 */
+.sidebar.panel-collapsed .nav-panel {
+  display: none;
 }
 
 .panel-head-icon {
@@ -493,6 +564,11 @@ function iconSvg(icon: string | undefined): IconName | null {
   display: none;
 }
 
+/* flyout 收回层宽屏零占位（显隐与媒体查询内翻转为 block） */
+.flyout-mask {
+  display: none;
+}
+
 /* ≤1100px：隐藏二级面板，仅留 64px rail */
 @media (max-width: 1100px) {
   .sidebar {
@@ -501,6 +577,34 @@ function iconSvg(icon: string | undefined): IconName | null {
 
   .nav-panel {
     display: none;
+  }
+
+  /* 点分类后的 flyout：贴在 rail 右缘（sidebar 宽度由 rail 驱动，left:100% 自适应
+     收起/展开两态），覆盖隐藏态；折叠钮不适用（flyout 即点即收，无需再折） */
+  .sidebar.panel-flyout .nav-panel {
+    display: flex;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 100%;
+    z-index: 1001;
+    background: var(--surface-panel);
+    border: 1px solid var(--color-border);
+    border-left: none;
+    border-radius: 0 var(--radius-element) var(--radius-element) 0;
+    box-shadow: var(--shadow-panel);
+  }
+
+  .sidebar.panel-flyout .panel-collapse-btn {
+    display: none;
+  }
+
+  .flyout-mask {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: transparent;
   }
 }
 

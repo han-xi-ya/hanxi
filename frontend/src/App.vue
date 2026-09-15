@@ -13,7 +13,6 @@ import AppSidebar from './components/shell/AppSidebar.vue'
 import CommandPalette from './components/shell/CommandPalette.vue'
 import { moduleIdOf, routeComponent, placeholderComponent, fallbackComponent } from './constants/navigation'
 import { useNotification } from './composables/useNotification'
-import { useTheme } from './composables/useTheme'
 import { useConfirm } from './composables/useConfirm'
 import { usePrompt } from './composables/usePrompt'
 import type { Notification } from '../bindings/hanxi/internal/notify/models'
@@ -22,7 +21,6 @@ import { getErrorMessage } from './utils/errors'
 
 const { toastMsg, showToast } = useToast()
 const { unreadCount, toggleDrawer, loadHistory, pushToast } = useNotification()
-const { themeMode, cycleThemeMode } = useTheme()
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
@@ -142,11 +140,9 @@ onUnmounted(() => {
       :navs="navs"
       :active-route="activeRoute"
       :unread-count="unreadCount"
-      :theme-mode="themeMode"
       :backend-ready="backendReady"
       @navigate="navigateTo"
       @toggle-drawer="toggleDrawer"
-      @cycle-theme="cycleThemeMode"
     />
 
     <!-- Ctrl/⌘+K 命令面板（自管理全局热键与浮层；宿主模态流程打开时禁用，

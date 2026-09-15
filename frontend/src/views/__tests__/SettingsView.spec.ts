@@ -88,4 +88,19 @@ describe('SettingsView', () => {
     expect(appSvc.SetTheme).toHaveBeenCalledWith('dark')
     expect(appSvc.SetWindowDarkMode).toHaveBeenCalledWith(true)
   })
+
+  it('工作台入口分区：日志/关于行存在，点击上抛 navigate（由宿主门禁链换页）', async () => {
+    stubs()
+    const w = await mountView()
+    expect(w.text()).toContain('工作台入口')
+    // 按 dir-name 精确匹配（「日志存储目录」行的 badge 文案含"运行日志"字样，text 泛匹配会撞车）
+    const rows = w.findAll('.dir-item')
+    const logsRow = rows.find((r) => r.find('.dir-name').exists() && r.find('.dir-name').text() === '运行日志')!
+    const aboutRow = rows.find((r) => r.find('.dir-name').exists() && r.find('.dir-name').text() === '关于 Hanxi')!
+    expect(logsRow).toBeTruthy()
+    expect(aboutRow).toBeTruthy()
+    await logsRow.find('button').trigger('click')
+    await aboutRow.find('button').trigger('click')
+    expect(w.emitted('navigate')).toEqual([['/logs'], ['/about']])
+  })
 })

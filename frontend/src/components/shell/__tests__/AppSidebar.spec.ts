@@ -1,6 +1,7 @@
 // 特征测试：AppSidebar 双栏容器（一级 rail + 二级分组面板）。
-// 锁 props/emits 向后兼容契约（navs/activeRoute/unreadCount/themeMode/backendReady +
-// navigate/toggle-drawer/cycle-theme）、新增可选 activeGroup/runningIds、
+// 锁 props/emits 契约（navs/activeRoute/unreadCount/backendReady + navigate/toggle-drawer，
+// 主题切换已随「rail 收敛」迁至设置页）、新增可选 activeGroup/runningIds、
+// 二级面板折叠（hanxi.navPanelCollapsed 持久化 + rail 回展钮）、
 // 分组渲染规则（后端 group 优先 → route 末段回落 → 'other' 兜底）、
 // 首页态「常用 + 最近使用」（localStorage hanxi.recentRoutes）、页脚计数、
 // 状态条、窄屏降级 DOM（把手/遮罩/rail-open 类）。
@@ -8,7 +9,7 @@
 // 双栏改造即为打破该结构，机检目标转为"根节点单元素 aside.sidebar + rail/panel 并排"。
 // 依赖真实 constants/navigation.ts 契约导出（数据层已落地）。
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppSidebar from '../AppSidebar.vue'
 import { GROUP_META } from '../../../constants/navigation'
 import { RECENT_ROUTES_KEY, type NavEntryWithGroup } from '../navGrouping'
@@ -32,7 +33,6 @@ function factory(props: Partial<{
   navs: NavEntryWithGroup[]
   activeRoute: string
   unreadCount: number
-  themeMode: 'light' | 'dark' | 'system'
   backendReady: boolean
   activeGroup: 'network' | 'system' | 'desktop' | 'efficiency' | 'media' | 'developer' | 'other' | ''
   runningIds: string[]
@@ -42,7 +42,6 @@ function factory(props: Partial<{
       navs: [],
       activeRoute: '/',
       unreadCount: 0,
-      themeMode: 'light',
       backendReady: true,
       ...props,
     },
@@ -217,22 +216,87 @@ describe('props/emits 向后兼容通道', () => {
     expect(w.find('.nav-badge').exists()).toBe(false)
   })
 
-  it('主题钮三态经 rail 上抛 cycle-theme，title 逐字保持旧语义', async () => {
-    const w = factory({ themeMode: 'system' })
-    const btn = w.find('.theme-toggle')
-    expect(btn.attributes('title')).toBe('当前主题：跟随系统（点击循环切换）')
-    await w.setProps({ themeMode: 'dark' })
-    expect(btn.attributes('title')).toBe('当前主题：深色主题（点击循环切换）')
-    await btn.trigger('click')
-    expect(w.emitted('cycle-theme')).toHaveLength(1)
+  it('面板折叠：.panel-collapse-btn 切换根节点 panel-collapsed 类并持久化，rail 回展钮可复原', async () => {
+    const w = factory()
+    expect(w.classes()).not.toContain('panel-collapsed')
+    expect(w.find('.panel-toggle').exists()).toBe(false)
+
+    await w.find('.panel-collapse-btn').trigger('click')
+    expect(w.classes()).toContain('panel-collapsed')
+    expect(localStorage.getItem('hanxi.navPanelCollapsed')).toBe('1')
+    // 折叠态 rail 浮出唯一回展入口
+    const panelBtn = w.find('.panel-toggle')
+    expect(panelBtn.exists()).toBe(true)
+    await panelBtn.trigger('click')
+    expect(w.classes()).not.toContain('panel-collapsed')
+    expect(localStorage.getItem('hanxi.navPanelCollapsed')).toBe('0')
+  })
+
+  it('折叠态重新挂载读取持久化记忆', async () => {
+    localStorage.setItem('hanxi.navPanelCollapsed', '1')
+    const w = factory()
+    expect(w.classes()).toContain('panel-collapsed')
+  })
+
+  describe('窄屏（≤1100px）flyout', () => {
+    /** stub matchMedia：仅 1100px 断点按参数命中，其余（prefers-color-scheme 等）恒 false。 */
+    function mockNarrow(narrow: boolean) {
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query: string) =>
+          ({
+            matches: query.includes('1100') ? narrow : false,
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+          }) as unknown as MediaQueryList,
+      )
+    }
+
+    afterEach(() => vi.restoreAllMocks())
+
+    it('点 rail 分类钮：面板以 flyout 弹出（含收回遮罩），点遮罩即收', async () => {
+      mockNarrow(true)
+      const w = factory()
+      expect(w.find('.flyout-mask').exists()).toBe(false)
+
+      await w.findAll('.rail-group')[0].trigger('click')
+      expect(w.classes()).toContain('panel-flyout')
+      expect(w.find('.flyout-mask').exists()).toBe(true)
+
+      await w.find('.flyout-mask').trigger('click')
+      expect(w.classes()).not.toContain('panel-flyout')
+    })
+
+    it('flyout 内导航：上抛 navigate 且浮层即点即收', async () => {
+      mockNarrow(true)
+      const memo = nav('/ext/memo', '随手记', 'i:sticky-note', 'efficiency')
+      const w = factory({ navs: [memo] })
+      await w.findAll('.rail-group')[3].trigger('click') // efficiency 组
+      expect(w.classes()).toContain('panel-flyout')
+      await w.find('.nav-panel .mod').trigger('click')
+      expect(w.emitted('navigate')).toEqual([['/ext/memo']])
+      expect(w.classes()).not.toContain('panel-flyout')
+    })
+
+    it('宽屏（matchMedia 不命中）点分类不触发 flyout', async () => {
+      mockNarrow(false)
+      const w = factory()
+      await w.findAll('.rail-group')[0].trigger('click')
+      expect(w.classes()).not.toContain('panel-flyout')
+      expect(w.find('.flyout-mask').exists()).toBe(false)
+    })
   })
 
   it('rail 核心页导航同样上抛 navigate，窄屏抽屉内导航后自动收回', async () => {
     const w = factory()
     await w.find('.rail-handle').trigger('click')
-    const logsBtn = w.findAll('.rail-core').find((b) => b.attributes('title') === '日志')!
-    await logsBtn.trigger('click')
-    expect(w.emitted('navigate')).toEqual([['/logs']])
+    const settingsBtn = w.findAll('.rail-core').find((b) => b.attributes('title') === '设置')!
+    await settingsBtn.trigger('click')
+    expect(w.emitted('navigate')).toEqual([['/settings']])
     expect(w.classes()).not.toContain('rail-open')
   })
 
