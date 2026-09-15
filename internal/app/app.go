@@ -23,6 +23,8 @@ import (
 	"hanxi/internal/modules/ddnsgo"
 	ddnsgoinstance "hanxi/internal/modules/ddnsgo/instance"
 	ddnsgoversion "hanxi/internal/modules/ddnsgo/version"
+	"hanxi/internal/modules/douzy"
+	douzyversion "hanxi/internal/modules/douzy/version"
 	"hanxi/internal/modules/eartrumpet"
 	"hanxi/internal/modules/envcheck"
 	"hanxi/internal/modules/envcheck/npmtool"
@@ -167,6 +169,7 @@ func RegisterEvents() {
 	application.RegisterEvent[ttbinstance.Snapshot]("translucenttb:instance-state")
 	application.RegisterEvent[paseoversion.DownloadProgress]("paseo:version-download")
 	application.RegisterEvent[paseoinstance.Snapshot]("paseo:instance-state")
+	application.RegisterEvent[douzyversion.DownloadProgress]("douzy:version-download")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 	application.RegisterEvent[npmtool.OperationProgress]("envcheck:npm-tool-operation")
@@ -279,6 +282,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		vscode.New(plat),
 		translucenttb.New(plat),
 		paseo.New(plat),
+		douzy.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
