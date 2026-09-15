@@ -147,6 +147,16 @@ export function OpenSystemEnvSettings() {
 }
 
 /**
+ * OpenSystemTool 按白名单调起 Windows 系统管理工具（设置页"系统快捷直达"）。
+ * 仅接受固定 key，杜绝任意命令注入；UAC 弹窗由系统自行处理（如注册表/计算机管理）。
+ * @param {string} tool
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenSystemTool(tool) {
+    return $Call.ByID(1247441472, tool);
+}
+
+/**
  * PickExeFile 弹出系统文件选择框选取外部程序，返回绝对路径（用户取消时为空串）。
  * @returns {$CancellablePromise<string>}
  */

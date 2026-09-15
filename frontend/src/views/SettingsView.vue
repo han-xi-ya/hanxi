@@ -201,6 +201,24 @@ async function openEnvSettings() {
   }
 }
 
+// 系统管理工具统一走后端白名单（OpenSystemTool）；注册表/计算机管理会触发系统 UAC 确认。
+const systemToolNames: Record<string, string> = {
+  control: '控制面板',
+  regedit: '注册表编辑器',
+  firewall: 'Windows 防火墙',
+  compmgmt: '计算机管理',
+}
+
+async function openSystemTool(tool: string) {
+  const name = systemToolNames[tool] ?? tool
+  try {
+    await AppAPI.AppService.OpenSystemTool(tool)
+    showToast(`已调起${name}`)
+  } catch (e: unknown) {
+    showToast(`打开${name}失败: ${getErrorMessage(e)}`)
+  }
+}
+
 async function triggerTestNotification() {
   try {
     // 走完整统一通知管道：后端 notify → notify:received 事件 → 顶层卡片
@@ -470,6 +488,50 @@ onMounted(() => {
             <code class="dir-path">Path 与用户/系统变量配置</code>
           </div>
           <button class="btn btn-secondary btn-small" @click="openEnvSettings">⚙️ 打开设置</button>
+        </div>
+
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">控制面板</span>
+              <span class="dir-badge">control.exe</span>
+            </div>
+            <code class="dir-path">Windows 经典控制面板主页</code>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="openSystemTool('control')">🪟 打开面板</button>
+        </div>
+
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">注册表编辑器</span>
+              <span class="dir-badge">regedit · 需 UAC</span>
+            </div>
+            <code class="dir-path">改动前建议先导出目标项备份</code>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="openSystemTool('regedit')">🗂 打开注册表</button>
+        </div>
+
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">Windows 防火墙</span>
+              <span class="dir-badge">firewall.cpl</span>
+            </div>
+            <code class="dir-path">防火墙放行规则与通知配置</code>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="openSystemTool('firewall')">🛡 打开防火墙</button>
+        </div>
+
+        <div class="dir-item">
+          <div class="dir-info">
+            <div class="dir-title">
+              <span class="dir-name">计算机管理</span>
+              <span class="dir-badge">compmgmt · 需 UAC</span>
+            </div>
+            <code class="dir-path">任务计划、服务、设备管理器与磁盘管理</code>
+          </div>
+          <button class="btn btn-secondary btn-small" @click="openSystemTool('compmgmt')">💻 打开管理</button>
         </div>
 
         <div class="dir-item">

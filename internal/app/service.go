@@ -134,6 +134,28 @@ func (s *AppService) OpenSystemEnvSettings() error {
 	return cmd.Start()
 }
 
+// OpenSystemTool 按白名单调起 Windows 系统管理工具（设置页"系统快捷直达"）。
+// 仅接受固定 key，杜绝任意命令注入；UAC 弹窗由系统自行处理（如注册表/计算机管理）。
+func (s *AppService) OpenSystemTool(tool string) error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("当前系统不支持快捷直达")
+	}
+	var cmd *exec.Cmd
+	switch tool {
+	case "control": // 控制面板主页
+		cmd = exec.Command("control.exe")
+	case "regedit": // 注册表编辑器
+		cmd = exec.Command("regedit.exe")
+	case "firewall": // Windows 防火墙
+		cmd = exec.Command("control.exe", "firewall.cpl")
+	case "compmgmt": // 计算机管理（mmc 加载，兼容非 System32 工作目录）
+		cmd = exec.Command("mmc.exe", "compmgmt.msc")
+	default:
+		return fmt.Errorf("未知的系统工具: %s", tool)
+	}
+	return cmd.Start()
+}
+
 // GetNavs 返回前端左侧导航（核心 + 已启用扩展）。
 func (s *AppService) GetNavs() []extapi.NavEntry {
 	return s.registry.GetEnabledNavs()
