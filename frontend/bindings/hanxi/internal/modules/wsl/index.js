@@ -10,6 +10,27 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * ActiveProxy netsh 现态的一条转发。
+ * @typedef {$models.ActiveProxy} ActiveProxy
+ */
+
+/**
+ * CloneProgress 克隆进度事件载荷。
+ * @typedef {$models.CloneProgress} CloneProgress
+ */
+
+/**
+ * CompactProgress 压缩进度事件载荷。Stage 时序：backup → trim → optimize → reimport → done|error。
+ * @typedef {$models.CompactProgress} CompactProgress
+ */
+
+/**
+ * DistroForensics 单发行版取证详情载荷。
+ * 取不到的项一律留空并汇入 Notes 如实说明，不以零值冒充测定结果。
+ * @typedef {$models.DistroForensics} DistroForensics
+ */
+
+/**
  * DistroInstance 管理控制台的发行版实例行。
  * Running/Default 为归一后的布尔语义（状态列原文是本地化文案，跨语言系统下
  * 不可作为判据；运行态以 `wsl -l -q --running` 名单为准，默认以 `wsl -l -q`
@@ -28,8 +49,34 @@ import * as $models from "./models.js";
  */
 
 /**
+ * ExportRecord 导出工件登记（本会话内有效）。多份导出全部在册——
+ * 前端经 ListDistroExports 拉全量列表，逐份可「打开位置」。
+ * @typedef {$models.ExportRecord} ExportRecord
+ */
+
+/**
+ * HostConfDoc .wslconfig 读取载荷。
+ * @typedef {$models.HostConfDoc} HostConfDoc
+ */
+
+/**
  * OperationOutcome 提权操作统一回执（UAC 取消不算错误，以文案区分）。
  * @typedef {$models.OperationOutcome} OperationOutcome
+ */
+
+/**
+ * PortProxyView 端口转发总览载荷。
+ * @typedef {$models.PortProxyView} PortProxyView
+ */
+
+/**
+ * PortRule 一条端口转发规则（Hanxi 账本内的期望态）。
+ * @typedef {$models.PortRule} PortRule
+ */
+
+/**
+ * PortRuleView 规则 + 现态对照（前端呈现"已应用/IP 漂移/待应用"）。
+ * @typedef {$models.PortRuleView} PortRuleView
  */
 
 /**
@@ -37,4 +84,9 @@ import * as $models from "./models.js";
  * 前端先渲染全量 pending 骨架，各阶段到达后按 key 落位点亮，done 携带终版报告。
  * 阶段划分与数据源一一对应，互不等待：system=探针、wsl=本机运行时、net=Go 网络探测。
  * @typedef {$models.ReadinessUpdate} ReadinessUpdate
+ */
+
+/**
+ * WslConfDoc /etc/wsl.conf 读取载荷。Missing=true 表示文件不存在（合法空态）。
+ * @typedef {$models.WslConfDoc} WslConfDoc
  */

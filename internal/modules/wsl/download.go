@@ -48,15 +48,25 @@ func (s *WslService) DownloadMsi(tag, name string) (OperationOutcome, error) {
 
 	key := tag + "/" + name
 	dir := downloadDir()
+	opCtx, opCancel := context.WithCancel(context.Background())
+	if !s.registerDownload(opCancel) {
+		return OperationOutcome{}, fmt.Errorf("已有下载正在进行，请等待完成或取消")
+	}
 	go func() {
+		defer opCancel()
+		defer s.finishDownload()
 		defer func() {
 			s.mu.Lock()
 			s.dlBusy = false
 			s.mu.Unlock()
 		}()
-		path, derr := s.downloadTo(key, tag, name, dir, rawURL)
+		path, derr := s.downloadTo(opCtx, tag, name, dir, rawURL)
 		if derr != nil {
-			s.emit(EventMsiDownload, DownloadProgress{Tag: tag, Platform: assetPlatform(name), Stage: "error", Error: derr.Error()})
+			msg := derr.Error()
+			if canceled(derr) {
+				msg = "下载已按请求取消（临时 .part 文件已清理）"
+			}
+			s.emit(EventMsiDownload, DownloadProgress{Tag: tag, Platform: assetPlatform(name), Stage: "error", Error: msg})
 			return
 		}
 		s.mu.Lock()
@@ -83,8 +93,8 @@ func (s *WslService) RevealDownload(tag, name string) error {
 	return revealInExplorer(path)
 }
 
-func (s *WslService) downloadTo(key, tag, name, dir, rawURL string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+func (s *WslService) downloadTo(parent context.Context, tag, name, dir, rawURL string) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)
 	defer cancel()
 
 	client := netx.NewClient(30*time.Minute, func(req *http.Request, via []*http.Request) error {

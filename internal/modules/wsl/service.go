@@ -3,6 +3,7 @@ package wsl
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"hanxi/internal/modules/wsl/readiness"
 	"hanxi/internal/modules/wsl/releases"
+	"hanxi/internal/settings"
 )
 
 // EventReadiness 流式体检事件名（app.go 中注册载荷类型）。
@@ -54,6 +56,8 @@ type WslService struct {
 	// startTerm 唤终端外呼。发行版管理面单测替换这两路即可离线断言。
 	runWsl    func(context.Context, ...string) (string, error)
 	startTerm func(context.Context, string) error
+	// runWslIn 带 stdin 的 wsl.exe 通道（wsl.conf 写回等经管道改文件场景）。
+	runWslIn func(context.Context, string, ...string) (string, error)
 
 	// lastProbe 缓存最近一次成功探针：卸载取 MSI ProductCode 免重复查询。
 	mu        sync.Mutex
@@ -68,15 +72,35 @@ type WslService struct {
 	dlPaths map[string]string
 	// 发行版管理面：每发行版单飞闸（小写名 → 操作名）、全局重操作计数
 	// （迁移会 --shutdown 打停全部实例，与任何单发行版操作互斥）、
-	// 导出工件登记（RevealDistroExport 只认这里）。
-	distroOps   map[string]string
-	heavyOps    int
-	exportPaths map[string]string
+	// 导出工件登记（ListDistroExports/RevealDistroExport 只认这里）。
+	distroOps     map[string]string
+	heavyOps      int
+	exportRecords map[string]ExportRecord
+	// 端口转发规则持久化（<DataDir>/wsl-portproxy.json）。
+	ppPath    string
+	ppPending bool // 规则有增删改但尚未点「应用」挂到系统
+	// 长操作取消通道（均以 mu 守护）：stage 同时是"允许取消"的判据——
+	// 克隆/下载全程可停，瘦身只在备份与 fstrim 段可停，
+	// 进入数据盘处理/重建段后拒绝取消（半途而废比慢更糟）。
+	cloneOps  map[string]longOpHandle // key: 源名小写
+	compactOp *longOpHandle
+	dlOp      *longOpHandle
 }
 
-func NewWslService(opener urlOpener) *WslService {
+// longOpHandle 后台长操作的取消句柄与当前阶段。
+type longOpHandle struct {
+	cancel context.CancelFunc
+	stage  string
+}
+
+func NewWslService(opener urlOpener, paths *settings.Paths) *WslService {
+	rulesPath := ""
+	if paths != nil {
+		rulesPath = filepath.Join(paths.DataDir(), "wsl-portproxy.json")
+	}
 	return &WslService{
 		opener:        opener,
+		ppPath:        rulesPath,
 		probe:         readiness.Probe,
 		netProbe:      readiness.ProbeNetwork,
 		wslVersion:    readiness.Version,
@@ -87,10 +111,12 @@ func NewWslService(opener urlOpener) *WslService {
 		localPS:       runLocalPS,
 		emit:          emitEvent,
 		runWsl:        readiness.RunWsl,
+		runWslIn:      readiness.RunWslWithStdin,
 		startTerm:     startTerminalSession,
 		dlPaths:       map[string]string{},
 		distroOps:     map[string]string{},
-		exportPaths:   map[string]string{},
+		exportRecords: map[string]ExportRecord{},
+		cloneOps:      map[string]longOpHandle{},
 	}
 }
 
@@ -101,36 +127,9 @@ func emitEvent(name string, payload any) {
 	}
 }
 
-// ---- 体检：同步整体 + 流式分相 ----
-
-// GetReadiness 并发采集探针/网络通道/WSL CLI 现状，返回完整体检报告。
-// 供操作后的同步刷新；首屏渲染走 StartReadiness 流式通道。
-func (s *WslService) GetReadiness() (readiness.Report, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	var (
-		p        readiness.ProbeResult
-		probeErr error
-		api, gh  string
-		version  string
-		distros  []readiness.Distro
-		wg       sync.WaitGroup
-	)
-	wg.Go(func() { p, probeErr = s.probe(ctx) })
-	wg.Go(func() { api, gh = s.netProbe(ctx) })
-	wg.Go(func() {
-		version = s.wslVersion(ctx)
-		distros = s.wslDistros(ctx)
-	})
-	wg.Wait()
-	if probeErr != nil {
-		return readiness.Report{}, fmt.Errorf("WSL 就绪探针执行失败（PowerShell 不可用或被安全策略拦截？）: %w", probeErr)
-	}
-	p.APIGitHub, p.GitHub = api, gh
-	s.setLastProbe(p)
-	return readiness.Evaluate(p, version, distros, time.Now().Format("2006-01-02 15:04:05")), nil
-}
+// ---- 体检：流式分相 ----
+// 曾有过同步整体版 GetReadiness：首屏与操作后复查全走 StartReadiness 流式通道，
+// 同步版从未被前端接线，死绑定已摘除（避免绑定面长期挂着无人维护的平行取数路径）。
 
 // StartReadiness 异步启动流式体检并立即返回：
 // 三源并发、先到先推（system / wsl / net 阶段逐项落位），全齐后 done 阶段整体收口。

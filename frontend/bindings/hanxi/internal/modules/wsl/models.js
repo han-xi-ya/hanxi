@@ -7,6 +7,62 @@
 import * as readiness$0 from "./readiness/models.js";
 
 /**
+ * ActiveProxy netsh 现态的一条转发。
+ * @typedef {Object} ActiveProxy
+ * @property {string} listenAddr
+ * @property {number} listenPort
+ * @property {string} connectAddr
+ * @property {number} connectPort
+ */
+
+/**
+ * CloneProgress 克隆进度事件载荷。
+ * @typedef {Object} CloneProgress
+ * @property {string} source
+ * @property {string} target
+ * @property {string} stage - copying | importing | done | error
+ * @property {number} done
+ * @property {number} total
+ * @property {string} [error]
+ * @property {string} [message] - done 时的完整回执文案
+ */
+
+/**
+ * CompactProgress 压缩进度事件载荷。Stage 时序：backup → trim → optimize → reimport → done|error。
+ * @typedef {Object} CompactProgress
+ * @property {string} name
+ * @property {string} stage
+ * @property {string} [message] - 阶段说明/终版回执
+ * @property {string} [error]
+ * @property {string} [tier] - tier1 | tier2（实际达成路径，如实上报）
+ * @property {number} beforeMB
+ * @property {number} afterMB
+ */
+
+/**
+ * DistroForensics 单发行版取证详情载荷。
+ * 取不到的项一律留空并汇入 Notes 如实说明，不以零值冒充测定结果。
+ * @typedef {Object} DistroForensics
+ * @property {string} name
+ * @property {string} pfn - PackageFamilyName（商店发行版才有）
+ * @property {string} basePath
+ * @property {string} vhdxPath
+ * @property {number} logicalBytes - VHDX 逻辑大小
+ * @property {number} allocBytes - 磁盘实占（稀疏盘显著小于逻辑值）
+ * @property {boolean} sparse
+ * @property {boolean} running
+ * @property {boolean} runtimeKnown - -q --running 通道是否可用
+ * @property {number} dfTotalMB
+ * @property {number} dfUsedMB
+ * @property {number} dfAvailMB
+ * @property {number} dfUsePct
+ * @property {boolean} dfOk - guest df 是否取到
+ * @property {string} ipv4
+ * @property {string} networkMode - 宿主 .wslconfig 网络模式（nat/bridged/mirrored/unknown）
+ * @property {string[] | null} notes
+ */
+
+/**
  * DistroInstance 管理控制台的发行版实例行。
  * Running/Default 为归一后的布尔语义（状态列原文是本地化文案，跨语言系统下
  * 不可作为判据；运行态以 `wsl -l -q --running` 名单为准，默认以 `wsl -l -q`
@@ -44,10 +100,70 @@ import * as readiness$0 from "./readiness/models.js";
  */
 
 /**
+ * ExportRecord 导出工件登记（本会话内有效）。多份导出全部在册——
+ * 前端经 ListDistroExports 拉全量列表，逐份可「打开位置」。
+ * @typedef {Object} ExportRecord
+ * @property {string} id
+ * @property {string} name - 源发行版名
+ * @property {string} path
+ * @property {number} size
+ * @property {string} at - 落盘时间（与文件名时间戳同源）
+ */
+
+/**
+ * HostConfDoc .wslconfig 读取载荷。
+ * @typedef {Object} HostConfDoc
+ * @property {string} path
+ * @property {string} text
+ * @property {boolean} missing
+ * @property {string} networkMode - nat（缺省归一）| bridged | mirrored | unknown
+ * @property {string[] | null} warnings
+ */
+
+/**
  * OperationOutcome 提权操作统一回执（UAC 取消不算错误，以文案区分）。
  * @typedef {Object} OperationOutcome
  * @property {boolean} success
  * @property {string} message
+ */
+
+/**
+ * PortProxyView 端口转发总览载荷。
+ * @typedef {Object} PortProxyView
+ * @property {PortRuleView[] | null} rules
+ * @property {ActiveProxy[] | null} foreign - 非本工具登记的现态转发（只展示不管理）
+ * @property {boolean} pending - 账本有改动未应用
+ * @property {string} networkMode - 宿主网络模式；mirrored 下本机 localhost 直通，通常无需转发
+ */
+
+/**
+ * PortRule 一条端口转发规则（Hanxi 账本内的期望态）。
+ * @typedef {Object} PortRule
+ * @property {string} id
+ * @property {string} distro
+ * @property {number} port - 本机监听端口（TCP）
+ * @property {number} guest - guest 目标端口（0=与 Port 相同）
+ * @property {string} listen - 本机监听地址（0.0.0.0 或具体 IPv4）
+ * @property {boolean} firewall - 同步防火墙入站放行
+ * @property {string} [note]
+ * @property {boolean} enabled
+ */
+
+/**
+ * PortRuleView 规则 + 现态对照（前端呈现"已应用/IP 漂移/待应用"）。
+ * @typedef {Object} PortRuleView
+ * @property {string} id
+ * @property {string} distro
+ * @property {number} port - 本机监听端口（TCP）
+ * @property {number} guest - guest 目标端口（0=与 Port 相同）
+ * @property {string} listen - 本机监听地址（0.0.0.0 或具体 IPv4）
+ * @property {boolean} firewall - 同步防火墙入站放行
+ * @property {string} [note]
+ * @property {boolean} enabled
+ * @property {boolean} applied
+ * @property {string} [activeIP] - netsh 当前指向
+ * @property {string} [targetIP] - 解析出的发行版现 IP（漂移对比）
+ * @property {boolean} distroRunning
  */
 
 /**
@@ -59,6 +175,16 @@ import * as readiness$0 from "./readiness/models.js";
  * @property {readiness$0.CheckItem[] | null} [items]
  * @property {readiness$0.Report | null} [report]
  * @property {string} [error] - stage=error 时的失败说明
+ */
+
+/**
+ * WslConfDoc /etc/wsl.conf 读取载荷。Missing=true 表示文件不存在（合法空态）。
+ * @typedef {Object} WslConfDoc
+ * @property {string} name
+ * @property {string} text
+ * @property {boolean} missing
+ * @property {string} wslVersion
+ * @property {string[] | null} warnings
  */
 
 // In interface mode, this file is likely to contain just comments.

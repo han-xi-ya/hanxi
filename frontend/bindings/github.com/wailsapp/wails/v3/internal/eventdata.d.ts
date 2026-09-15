@@ -227,6 +227,8 @@ declare module "@wailsio/runtime" {
             "vscode:version-download": version$20.DownloadProgress;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
+            "wsl:clone": wsl$0.CloneProgress;
+            "wsl:compact": wsl$0.CompactProgress;
             "wsl:msi-download": wsl$0.DownloadProgress;
             "wsl:readiness": wsl$0.ReadinessUpdate;
         }

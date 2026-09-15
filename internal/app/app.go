@@ -168,6 +168,8 @@ func RegisterEvents() {
 	application.RegisterEvent[npmtool.OperationLog]("envcheck:npm-tool-log")
 	application.RegisterEvent[wsl.ReadinessUpdate]("wsl:readiness")
 	application.RegisterEvent[wsl.DownloadProgress]("wsl:msi-download")
+	application.RegisterEvent[wsl.CloneProgress]("wsl:clone")
+	application.RegisterEvent[wsl.CompactProgress]("wsl:compact")
 }
 
 // Options 控制应用启动时行为。
@@ -277,7 +279,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		publicip.New(plat),
 		wifi.New(),
 		envcheck.New(plat),
-		wsl.New(plat),
+		wsl.New(plat, paths),
 		wechat.New(store),
 		fileShareModule,
 		quickMenuModule,

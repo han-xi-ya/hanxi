@@ -46,6 +46,16 @@ type DistroOpResult struct {
 	Path    string `json:"path,omitempty"`
 }
 
+// ExportRecord 导出工件登记（本会话内有效）。多份导出全部在册——
+// 前端经 ListDistroExports 拉全量列表，逐份可「打开位置」。
+type ExportRecord struct {
+	ID   string `json:"id"`
+	Name string `json:"name"` // 源发行版名
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+	At   string `json:"at"` // 落盘时间（与文件名时间戳同源）
+}
+
 // ---- 列表 ----
 
 // ListInstances 汇总本机发行版现状：-l -v 拿名称/版本，-q 名单归一运行态与默认，
@@ -141,6 +151,7 @@ type lxssEntry struct {
 	BasePath string `json:"basePath"`
 	Vhdx     string `json:"vhdx"`
 	Size     int64  `json:"size"`
+	Pfn      string `json:"pfn"` // PackageFamilyName（商店发行版才有）
 }
 
 // lxssScript 只读枚举 HKCU Lxss 发行版登记，补 ext4.vhdx 路径与字节数。
@@ -154,7 +165,7 @@ const lxssScript = `$items = @(Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Window
     if (Test-Path $c1) { $vhdx = $c1 } elseif (Test-Path $c2) { $vhdx = $c2 }
     if ($vhdx) { $size = (Get-Item -LiteralPath $vhdx).Length }
   }
-  [pscustomobject]@{ name = $_.DistributionName; basePath = $_.BasePath; vhdx = $vhdx; size = $size }
+  [pscustomobject]@{ name = $_.DistributionName; basePath = $_.BasePath; vhdx = $vhdx; size = $size; pfn = [string]$_.PackageFamilyName }
 })
 ConvertTo-Json -Compress -InputObject $items`
 
@@ -340,36 +351,60 @@ func (s *WslService) ExportDistro(name string, gzip bool) (DistroOpResult, error
 	}
 	defer finish()
 
-	dir := exportDir()
+	id, path, err := s.exportCore(ctx, name, gzip, exportDir())
+	if err != nil {
+		return DistroOpResult{}, err
+	}
+	return DistroOpResult{
+		Success: true,
+		Message: fmt.Sprintf("%s 已导出（%s，%.1f MB）", name, id, sizeMB(path)),
+		ID:      id, Path: path,
+	}, nil
+}
+
+// exportCore 导出主体（不含白名单与单飞闸——由调用方将守门，
+// 磁盘压缩的强制备份步骤在重操作闸内直接复用本函数）。
+// 返回实落盘的工件名与路径，并登记进导出记录。
+func (s *WslService) exportCore(ctx context.Context, name string, gzip bool, dir string) (id, path string, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return DistroOpResult{}, fmt.Errorf("创建导出目录失败: %w", err)
+		return "", "", fmt.Errorf("创建导出目录失败: %w", err)
 	}
 	ext := ".tar"
 	args := []string{"--export", name}
 	if gzip {
 		ext, args = ".tar.gz", append(args, "--format", "tar.gz")
 	}
-	id := fmt.Sprintf("%s-%s%s", sanitizeFileNamePart(name), time.Now().Format("20060102-150405"), ext)
+	started := time.Now()
+	id = fmt.Sprintf("%s-%s%s", sanitizeFileNamePart(name), started.Format("20060102-150405"), ext)
 	// 同秒重名（双击/多实例同名）走 uniquePath 递增不覆盖，ID 取实落盘文件名。
-	path := uniquePath(dir, id)
+	path = uniquePath(dir, id)
 	id = filepath.Base(path)
 	args = append(args, path)
 
 	if out, err := s.runWsl(ctx, args...); err != nil {
 		_ = os.Remove(path) // 半成品不留在用户下载目录
-		return DistroOpResult{}, fmt.Errorf("导出 %s 失败: %w %s", name, err, strings.TrimSpace(out))
+		return "", "", fmt.Errorf("导出 %s 失败: %w %s", name, err, strings.TrimSpace(out))
 	}
 	if _, err := os.Stat(path); err != nil {
-		return DistroOpResult{}, fmt.Errorf("导出命令返回成功但文件未落盘: %w", err)
+		return "", "", fmt.Errorf("导出命令返回成功但文件未落盘: %w", err)
 	}
 	s.mu.Lock()
-	s.exportPaths[id] = path
+	s.exportRecords[id] = ExportRecord{ID: id, Name: name, Path: path, Size: fileSize(path), At: started.Format("2006-01-02 15:04:05")}
 	s.mu.Unlock()
-	return DistroOpResult{
-		Success: true,
-		Message: fmt.Sprintf("%s 已导出（%s，%.1f MB）", name, id, sizeMB(path)),
-		ID:      id, Path: path,
-	}, nil
+	return id, path, nil
+}
+
+// ListDistroExports 返回本会话全部导出工件登记（新→旧）。
+// 登记只在内存：跨会话的旧工件到「下载\WSL 导出」文件夹自查。
+func (s *WslService) ListDistroExports() []ExportRecord {
+	s.mu.Lock()
+	out := make([]ExportRecord, 0, len(s.exportRecords))
+	for _, r := range s.exportRecords {
+		out = append(out, r)
+	}
+	s.mu.Unlock()
+	slices.SortFunc(out, func(a, b ExportRecord) int { return strings.Compare(b.At, a.At) })
+	return out
 }
 
 // RevealDistroExport 在资源管理器中定位导出产物；只认本会话后端自己登记过的
@@ -380,8 +415,12 @@ func (s *WslService) RevealDistroExport(id string) error {
 		return fmt.Errorf("导出文件名 %q 格式不合法", id)
 	}
 	s.mu.Lock()
-	path := s.exportPaths[id]
+	rec, found := s.exportRecords[id]
 	s.mu.Unlock()
+	path := ""
+	if found {
+		path = rec.Path
+	}
 	if path == "" {
 		return fmt.Errorf("该导出由其它会话产生或记录已失效，请前往「下载\\%s」查找", exportDirName)
 	}
@@ -531,9 +570,13 @@ func sanitizeFileNamePart(s string) string {
 	return s
 }
 
-func sizeMB(path string) float64 {
+func fileSize(path string) int64 {
 	if st, err := os.Stat(path); err == nil {
-		return float64(st.Size()) / (1024 * 1024)
+		return st.Size()
 	}
 	return 0
+}
+
+func sizeMB(path string) float64 {
+	return float64(fileSize(path)) / (1024 * 1024)
 }

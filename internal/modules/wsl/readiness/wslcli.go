@@ -30,6 +30,26 @@ func RunWsl(ctx context.Context, args ...string) (string, error) {
 	return out, err
 }
 
+// RunWslWithStdin 执行 wsl.exe 子命令并把 stdin 内容喂给 guest 进程
+// （wsl.conf 写回等"经管道改文件"的通道）。解码语义与 RunWsl 一致。
+func RunWslWithStdin(ctx context.Context, stdin string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "wsl.exe", args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	out := decodeWslOutput(stdout.Bytes())
+	if s := decodeWslOutput(stderr.Bytes()); s != "" {
+		if out != "" {
+			out += "\n"
+		}
+		out += s
+	}
+	return out, err
+}
+
 // decodeWslOutput 判别 wsl.exe 输出编码。判据（用户机器字节级实证修正）：
 // UTF-16LE 换行 \r\n 编码为 0D 00 0A 00 必含 NUL；而 UTF-8/GBK 文本永远不含 0x00。
 // 因此"含 NUL 且偶数长度"即为 UTF-16——不能按 NUL 占比设阈值：

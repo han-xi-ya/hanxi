@@ -25,6 +25,96 @@ import * as releases$0 from "./releases/models.js";
 import * as $models from "./models.js";
 
 /**
+ * AddPortRule 新增规则（只写账本；生效要点「应用」）。
+ * @param {string} distro
+ * @param {number} port
+ * @param {number} guest
+ * @param {string} listen
+ * @param {boolean} firewall
+ * @param {string} note
+ * @returns {$CancellablePromise<$models.PortRuleView>}
+ */
+export function AddPortRule(distro, port, guest, listen, firewall, note) {
+    return $Call.ByID(4246814901, distro, port, guest, listen, firewall, note);
+}
+
+/**
+ * ApplyPortRules 把账本期望态同步到系统：目标解析 → 组装 netsh 批量脚本 →
+ * 单次 UAC 执行 → 退出码如实上报。停机/无 IP 的发行版跳过并在回执点名。
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function ApplyPortRules() {
+    return $Call.ByID(1097910015);
+}
+
+/**
+ * CancelClone 请求取消指定发行版进行中的克隆。
+ * @param {string} src
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function CancelClone(src) {
+    return $Call.ByID(1003067844, src);
+}
+
+/**
+ * CancelCompact 请求取消进行中的瘦身；已进入数据盘处理/重建段则拒绝。
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function CancelCompact() {
+    return $Call.ByID(1712226400);
+}
+
+/**
+ * CancelMsiDownload 取消进行中的 MSI 下载（.part 临时文件随协程清理，正式文件不受影响）。
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function CancelMsiDownload() {
+    return $Call.ByID(841405674);
+}
+
+/**
+ * CleanupPortRules 一键清理：摘除账本全部规则的系统转发与防火墙规则并清空账本。
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function CleanupPortRules() {
+    return $Call.ByID(137037407);
+}
+
+/**
+ * ClearPortLedgerFile 账本损坏/误拦时的逃生口：只删账本文件，不碰系统
+ * 现态（其中原属本工具的转发会转列为"外部转发"，需要摘除时手工 netsh delete）。
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function ClearPortLedgerFile() {
+    return $Call.ByID(3429492126);
+}
+
+/**
+ * CloneDistro 克隆发行版。校验全同步（失败即时报错），拷贝/导入转后台协程
+ * 推 wsl:clone 事件——数十 GB 的盘对拷不该吊死一次 RPC。
+ * @param {string} name
+ * @param {string} newName
+ * @param {string} target
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function CloneDistro(name, newName, target) {
+    return $Call.ByID(1265919117, name, newName, target);
+}
+
+/**
+ * CompactDistro 受理磁盘压缩。校验与空间预检同步完成（不足即时拒绝，
+ * 不烧 UAC 也不做半程手术），执行主体转后台协程推事件。
+ * backupDir 留空即用默认导出目录；备份/停机前的安全段可取消，
+ * 进入数据盘处理/重建段后取消会被拒绝（CancelCompact）。
+ * @param {string} name
+ * @param {string} backupDir
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function CompactDistro(name, backupDir) {
+    return $Call.ByID(146144305, name, backupDir);
+}
+
+/**
  * DisableWslFeatures 提权经 DISM 关闭两个可选功能（虚拟机平台 + WSL 旧功能开关），
  * 这是"把 Windows 自身被 WSL 改变的开关还原回去"的正道；/norestart 交由用户择机重启。
  * @returns {$CancellablePromise<$models.OperationOutcome>}
@@ -69,12 +159,13 @@ export function ExportDistro(name, gzip) {
 }
 
 /**
- * GetReadiness 并发采集探针/网络通道/WSL CLI 现状，返回完整体检报告。
- * 供操作后的同步刷新；首屏渲染走 StartReadiness 流式通道。
- * @returns {$CancellablePromise<readiness$0.Report>}
+ * GetDistroForensics 展开行取证：名称先过实时白名单（与六操作同基线），
+ * 全部子项只读、单项失败不拖垮整体，缺口进 Notes。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.DistroForensics>}
  */
-export function GetReadiness() {
-    return $Call.ByID(3730095945);
+export function GetDistroForensics(name) {
+    return $Call.ByID(1925020882, name);
 }
 
 /**
@@ -85,6 +176,37 @@ export function GetReadiness() {
  */
 export function GetReleases() {
     return $Call.ByID(1589128305);
+}
+
+/**
+ * GetWslConf 读取发行版的 /etc/wsl.conf。文件不存在返回 Missing 空态；
+ * 读取本身会经 wsl -d 拉起停止的发行版——这是显式点「配置」的预期动作。
+ * 存在性以 test -f 退出码为判据（与 Save 的备份决策同一口径），不猜文案。
+ * @param {string} name
+ * @returns {$CancellablePromise<$models.WslConfDoc>}
+ */
+export function GetWslConf(name) {
+    return $Call.ByID(3411358501, name);
+}
+
+/**
+ * GetWslHostConf 读取 .wslconfig（纯宿主文件读，无副作用）。
+ * @returns {$CancellablePromise<$models.HostConfDoc>}
+ */
+export function GetWslHostConf() {
+    return $Call.ByID(1625728103);
+}
+
+/**
+ * ImportDistro 导入 tar（本模块导出产物或官方 rootfs）为新增发行版。
+ * 同步等待（wsl --import 内部完成解包，数十分钟级），成功后复验在册。
+ * @param {string} name
+ * @param {string} target
+ * @param {string} tarPath
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function ImportDistro(name, target, tarPath) {
+    return $Call.ByID(3326170139, name, target, tarPath);
 }
 
 /**
@@ -112,6 +234,15 @@ export function InstallWsl() {
 }
 
 /**
+ * ListDistroExports 返回本会话全部导出工件登记（新→旧）。
+ * 登记只在内存：跨会话的旧工件到「下载\WSL 导出」文件夹自查。
+ * @returns {$CancellablePromise<$models.ExportRecord[] | null>}
+ */
+export function ListDistroExports() {
+    return $Call.ByID(2356075121);
+}
+
+/**
  * ListInstances 汇总本机发行版现状：-l -v 拿名称/版本，-q 名单归一运行态与默认，
  * Lxss 注册表补安装路径与 VHDX 占用。任何一路取数失败都不谎报：
  * 缺失字段留空、状态回退 -l -v 原文判读，列表本体拿不到才报错。
@@ -127,6 +258,14 @@ export function ListInstances() {
  */
 export function ListOnlineDistros() {
     return $Call.ByID(733285110);
+}
+
+/**
+ * ListPortRules 总览：账本规则逐条对照 netsh 现态 + 发行版运行态/IP 漂移。
+ * @returns {$CancellablePromise<$models.PortProxyView>}
+ */
+export function ListPortRules() {
+    return $Call.ByID(280215321);
 }
 
 /**
@@ -189,6 +328,15 @@ export function OpenTerminal(name) {
 }
 
 /**
+ * RemovePortRule 删除账本规则；若系统里还有对应转发，提醒去「应用」摘除。
+ * @param {string} id
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function RemovePortRule(id) {
+    return $Call.ByID(2540685276, id);
+}
+
+/**
  * RevealDistroExport 在资源管理器中定位导出产物；只认本会话后端自己登记过的
  * 工件名（RevealDownload 同款红线：不接受任意路径）。
  * @param {string} id
@@ -210,6 +358,25 @@ export function RevealDownload(tag, name) {
 }
 
 /**
+ * SaveWslConf 写回 /etc/wsl.conf：校验 → （原文件在则）root 备份 → tee 覆盖 → 复验。
+ * @param {string} name
+ * @param {string} text
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function SaveWslConf(name, text) {
+    return $Call.ByID(862345260, name, text);
+}
+
+/**
+ * SaveWslHostConf 写回 .wslconfig：语法闸门 + 网络模式白名单 → 备份 → 原子写 → 复核。
+ * @param {string} text
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function SaveWslHostConf(text) {
+    return $Call.ByID(1344081966, text);
+}
+
+/**
  * SetDefaultDistro 设默认发行版（wsl --set-default，用户态命令）。
  * @param {string} name
  * @returns {$CancellablePromise<$models.DistroOpResult>}
@@ -224,6 +391,15 @@ export function SetDefaultDistro(name) {
  */
 export function SetDefaultVersion2() {
     return $Call.ByID(2993198642);
+}
+
+/**
+ * ShutdownWsl 执行 wsl --shutdown：打停全部发行版（数据无损，下次访问自动再启动）。
+ * 与迁移/克隆/瘦身共用重操作闸，避免"边搬盘边全停"。
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function ShutdownWsl() {
+    return $Call.ByID(2742191847);
 }
 
 /**
@@ -266,6 +442,15 @@ export function UninstallWsl() {
  */
 export function UnregisterDistro(name) {
     return $Call.ByID(4253249296, name);
+}
+
+/**
+ * UpdatePortRule 按 ID 整条替换（改端口/防火墙开关/启停/备注）。
+ * @param {$models.PortRule} rule
+ * @returns {$CancellablePromise<$models.PortRuleView>}
+ */
+export function UpdatePortRule(rule) {
+    return $Call.ByID(2509893485, rule);
 }
 
 /**

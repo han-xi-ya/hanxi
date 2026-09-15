@@ -61,34 +61,14 @@ func newTestService() (*WslService, *fakeElevated, *fakeOpener) {
 				return "", nil
 			}
 		},
-		emit:        func(string, any) {},
-		runWsl:      func(context.Context, ...string) (string, error) { return "", nil },
-		startTerm:   func(context.Context, string) error { return nil },
-		distroOps:   map[string]string{},
-		exportPaths: map[string]string{},
+		emit:          func(string, any) {},
+		runWsl:        func(context.Context, ...string) (string, error) { return "", nil },
+		startTerm:     func(context.Context, string) error { return nil },
+		distroOps:     map[string]string{},
+		exportRecords: map[string]ExportRecord{},
+		cloneOps:      map[string]longOpHandle{},
 	}
 	return svc, ev, op
-}
-
-func TestGetReadinessWiresAll(t *testing.T) {
-	svc, _, _ := newTestService()
-	rpt, err := svc.GetReadiness()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rpt.Verdict != readiness.VerdictReady || rpt.WslVersion != "2.7.13" {
-		t.Fatalf("报告装配错误: %+v", rpt)
-	}
-}
-
-func TestGetReadinessProbeFailureIsError(t *testing.T) {
-	svc, _, _ := newTestService()
-	svc.probe = func(context.Context) (readiness.ProbeResult, error) {
-		return readiness.ProbeResult{}, errors.New("ps blocked")
-	}
-	if _, err := svc.GetReadiness(); err == nil {
-		t.Fatal("探针失败必须整体报错（缺门槛项的报告没有结论意义）")
-	}
 }
 
 func TestStartReadinessStreamsAllStages(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/platform"
+	"hanxi/internal/settings"
 )
 
 const ID = "wsl"
@@ -15,16 +16,16 @@ type Module struct {
 	svc *WslService
 }
 
-func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewWslService(plat)}
+func New(plat platform.Platform, paths *settings.Paths) extapi.Module {
+	return &Module{svc: NewWslService(plat, paths)}
 }
 
 func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
 		Name:        "WSL2",
-		Version:     "0.1.0",
-		Description: "Windows Subsystem for Linux：就绪体检、GitHub 通道诊断、官方版本管理与白名单提权操作（面向 WSL2 完整内核工作流）",
+		Version:     "0.2.0",
+		Description: "Windows Subsystem for Linux：就绪体检、GitHub 通道诊断、官方版本管理、发行版管理控制台（六操作+克隆/导入/取证/wsl.conf/瘦身）与端口转发（面向 WSL2 完整内核工作流）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

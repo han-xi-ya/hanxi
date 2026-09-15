@@ -4,10 +4,10 @@
 // + 发行版实例管理控制台（唤终端/设默认/终止/导出/迁移/删除）。
 // 体检走 wsl:readiness 事件分相推送：先全量 pending 骨架，system/wsl/net 三源
 // 并发先到先点亮，done 收口终版报告——骨架 key 与后端 BuildItems 有顺序互锁。
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import * as WSLAPI from '../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { CheckItem, DistroOption, Report } from '../../bindings/hanxi/internal/modules/wsl/readiness/models'
-import type { DistroInstance, DistroOpResult, DownloadProgress, ReadinessUpdate } from '../../bindings/hanxi/internal/modules/wsl/models'
+import type { CloneProgress, CompactProgress, DistroForensics, DistroInstance, DistroOpResult, DownloadProgress, ExportRecord, HostConfDoc, PortProxyView, PortRule, PortRuleView, ReadinessUpdate, WslConfDoc } from '../../bindings/hanxi/internal/modules/wsl/models'
 import type { Asset, Overview, Release } from '../../bindings/hanxi/internal/modules/wsl/releases/models'
 import { useToast } from '../composables/useToast'
 import { useConfirm } from '../composables/useConfirm'
@@ -25,10 +25,11 @@ const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { copy } = useClipboard()
 
-const activeMainTab = ref<'console' | 'versions'>('console')
+const activeMainTab = ref<'console' | 'versions' | 'proxy'>('console')
 const mainTabs = [
   { key: 'console', label: '🐧 就绪检测' },
   { key: 'versions', label: '📦 版本与发行版' },
+  { key: 'proxy', label: '🔀 端口转发' },
 ]
 
 // ---------- 就绪体检（流式） ----------
@@ -211,7 +212,10 @@ const instLoading = ref(false)
 const instError = ref('')
 const movingName = ref('') // 迁移内联表单展开中的发行版（同时只开一行）
 const moveTarget = ref('')
-const lastExport = ref<{ id: string; name: string } | null>(null)
+// 导出：内联格式选择（同时只开一行），本会话导出工件全量登记展示。
+const exportingName = ref('')
+const exportFormat = ref<'gz' | 'tar'>('gz')
+const exportRecords = ref<ExportRecord[]>([])
 
 async function loadInstances() {
   instLoading.value = true
@@ -223,6 +227,14 @@ async function loadInstances() {
     instError.value = `获取发行版列表失败: ${getErrorMessage(e)}`
   } finally {
     instLoading.value = false
+  }
+}
+
+async function loadExportRecords() {
+  try {
+    exportRecords.value = (await WSLAPI.ListDistroExports()) ?? []
+  } catch {
+    // 登记面是辅助信息：失败不打扰主列表，保留已有视图
   }
 }
 
@@ -291,19 +303,33 @@ const unregisterDistro = (d: DistroInstance) => runDistroOp({
     + '如需留档，请先「导出」为 tar 再删。商店安装的发行版其启动器可能仍留在「设置→应用」，回执会如实提醒。',
   invoke: () => WSLAPI.UnregisterDistro(d.name),
 })
-const exportDistro = (d: DistroInstance) => runDistroOp({
+// 导出两段式：点击展开内联格式选择，「开始导出」才进确认链（对齐迁移的表单先行范式）。
+function startExport(d: DistroInstance) {
+  exportingName.value = d.name
+  exportFormat.value = 'gz'
+}
+function cancelExport() {
+  exportingName.value = ''
+}
+const confirmExport = (d: DistroInstance) => runDistroOp({
   name: `d-${d.name}`, title: `导出 ${d.name}？`, tone: 'default',
-  desc: '执行 wsl --export --format tar.gz：整个文件系统压缩导出为 tar.gz，'
-    + '落到「下载\\WSL 导出」文件夹（文件名后端拼装、同名不覆盖）。大发行版可达数十 GB 耗时数分钟，期间请勿退出。',
-  invoke: () => WSLAPI.ExportDistro(d.name, true),
-  then: (out) => { if (out?.id) lastExport.value = { id: out.id, name: d.name } },
+  details: [{ label: '导出格式', value: exportFormat.value === 'gz' ? 'tar.gz（压缩）' : 'tar（未压缩）' }],
+  desc: exportFormat.value === 'gz'
+    ? '执行 wsl --export --format tar.gz：整个文件系统压缩导出为 tar.gz（需 WSL 2.4.4+），'
+      + '落到「下载\\WSL 导出」文件夹（文件名后端拼装、同名不覆盖）。大发行版可达数十 GB 耗时数分钟，期间请勿退出。'
+    : '执行 wsl --export：整个文件系统导出为未压缩 tar（速度更快、兼容老版本 WSL，但体积大），'
+      + '落到「下载\\WSL 导出」文件夹（文件名后端拼装、同名不覆盖）。大发行版可达数十 GB 耗时数分钟，期间请勿退出。',
+  invoke: () => WSLAPI.ExportDistro(d.name, exportFormat.value === 'gz'),
+  then: (out) => {
+    exportingName.value = ''
+    if (out?.success) void loadExportRecords()
+  },
 })
 
 // 迁移：内联表单先行，确认时把目标路径与"会被连带打停的运行中实例"写进确认框。
 function startMove(d: DistroInstance) {
   movingName.value = d.name
   moveTarget.value = ''
-  lastExport.value = null
 }
 function cancelMove() {
   movingName.value = ''
@@ -324,12 +350,292 @@ const confirmMove = (d: DistroInstance) => runDistroOp({
   then: () => { movingName.value = ''; moveTarget.value = '' },
 })
 
-async function revealExport() {
-  if (!lastExport.value) return
+async function revealExport(id: string) {
   try {
-    await WSLAPI.RevealDistroExport(lastExport.value.id)
+    await WSLAPI.RevealDistroExport(id)
   } catch (e) {
     showToast(`打开位置失败: ${getErrorMessage(e)}`)
+  }
+}
+
+// ---------- 单发行版取证（只读抽屉） ----------
+// 后端红线：停止的发行版绝不进 guest（wsl -d 会顺手拉起）——抽屉里以 Notes 如实说明缺项。
+interface ForensicsState { loading: boolean; error: string; data: DistroForensics | null }
+const forensicsName = ref('')
+const forensics = ref<Record<string, ForensicsState>>({})
+const forensicsOf = computed(() => (forensicsName.value ? forensics.value[forensicsName.value] : undefined))
+
+function toggleForensics(d: DistroInstance) {
+  forensicsName.value = forensicsName.value === d.name ? '' : d.name
+  if (forensicsName.value && !forensics.value[d.name]) void loadForensics(d.name)
+}
+
+async function loadForensics(name: string) {
+  const prev = forensics.value[name]
+  forensics.value = { ...forensics.value, [name]: { loading: true, error: '', data: prev?.data ?? null } }
+  try {
+    const data = await WSLAPI.GetDistroForensics(name)
+    forensics.value = { ...forensics.value, [name]: { loading: false, error: '', data } }
+  } catch (e) {
+    forensics.value = { ...forensics.value, [name]: { loading: false, error: getErrorMessage(e), data: prev?.data ?? null } }
+  }
+}
+
+// df 值以 MB 计，根盘常见数十 GB——fmtSize 上限只到 MB，这里升一档到 GB 呈现。
+function mb(v: number): string {
+  return v >= 1024 ? `${(v / 1024).toFixed(1)} GB` : `${v} MB`
+}
+
+// ---------- 克隆（异步事件驱动）与导入 ----------
+// 克隆受理后转后台：wsl:clone 事件推进度，busyOp 一直挂到终态——
+// 数十 GB 的盘对拷期间所有操作入口必须关门（后端另有双名单飞闸兜底）。
+const cloneSrc = ref('')
+const cloneNewName = ref('')
+const cloneTarget = ref('')
+const cloneProg = ref<CloneProgress | null>(null)
+const cloneBusy = computed(() => !!cloneProg.value && ['copying', 'importing'].includes(cloneProg.value.stage))
+
+// 请求后端取消在飞克隆：拷贝段半成品自清，挂载段取消走失败清理路径（保留拷贝盘）。
+async function requestCancelClone() {
+  if (!cloneProg.value) return
+  try {
+    const out = await WSLAPI.CancelClone(cloneProg.value.source)
+    showToast(out.message || '已请求取消')
+  } catch (e) {
+    showToast(`取消失败: ${getErrorMessage(e)}`)
+  }
+}
+
+function startClone(d: DistroInstance) {
+  cloneSrc.value = d.name
+  cloneNewName.value = `${d.name}-Copy`
+  cloneTarget.value = ''
+  cloneProg.value = null
+}
+function cancelClone() {
+  if (cloneBusy.value) return // 在飞不收编：进度可见直到终态
+  cloneSrc.value = ''
+  cloneProg.value = null
+}
+
+async function submitClone(d: DistroInstance) {
+  if (busyOp.value) return
+  const newName = cloneNewName.value.trim()
+  const target = cloneTarget.value.trim()
+  const accepted = await confirm({
+    title: `克隆 ${d.name} → ${newName}？`,
+    tone: 'warning',
+    description: '执行快路径克隆：先终止源发行版，再流式复制数据盘（数十 GB 时耗时数分钟，进度行内可见），'
+      + '随后 wsl --import --vhd 把副本挂载为新发行版。源盘保持不动；要求本机 WSL 2.7.3+（不足时请用「导出 → 导入」替代动线）。'
+      + '\n\n该操作以普通权限执行，不会弹出 UAC。',
+    details: [
+      { label: '新发行版名', value: newName },
+      { label: '目标目录', value: target },
+    ],
+  })
+  if (!accepted) return
+  busyOp.value = `clone-${d.name}`
+  cloneProg.value = { source: d.name, target: newName, stage: 'copying', done: 0, total: 0 }
+  try {
+    const out = (await WSLAPI.CloneDistro(d.name, newName, target)) as { message?: string }
+    showToast(out.message || '已开始克隆')
+  } catch (e) {
+    busyOp.value = ''
+    cloneProg.value = null
+    showToast(`克隆失败: ${getErrorMessage(e)}`)
+    await loadInstances()
+  }
+}
+
+useWailsEvent<CloneProgress>('wsl:clone', (p) => {
+  if (!p) return
+  cloneProg.value = p
+  if (p.stage === 'done') {
+    busyOp.value = ''
+    cloneSrc.value = ''
+    cloneProg.value = null
+    showToast(p.message || '克隆完成')
+    void loadInstances()
+  } else if (p.stage === 'error') {
+    busyOp.value = '' // 错误留在表单里可见，不吞
+    void loadInstances()
+  }
+})
+
+// ---------- /etc/wsl.conf 编辑器 ----------
+// 读时若发行版已停止会被 wsl -d 顺手拉起（点「配置」即默认接受）；
+// 写回的语法闸门/引用校验/写前备份全在后端，前端只呈现实情。
+const confName = ref('')
+const confDoc = ref<WslConfDoc | null>(null)
+const confText = ref('')
+const confLoading = ref(false)
+const confError = ref('')
+
+function openConf(d: DistroInstance) {
+  if (confName.value === d.name) {
+    closeConf()
+    return
+  }
+  confName.value = d.name
+  confDoc.value = null
+  confText.value = ''
+  void loadConf(d.name)
+}
+function closeConf() {
+  if (confLoading.value || !!busyOp.value) return
+  confName.value = ''
+  confDoc.value = null
+  confText.value = ''
+  confError.value = ''
+}
+async function loadConf(name: string) {
+  confLoading.value = true
+  confError.value = ''
+  try {
+    const doc = await WSLAPI.GetWslConf(name)
+    confDoc.value = doc
+    confText.value = doc?.text ?? ''
+  } catch (e) {
+    confError.value = getErrorMessage(e)
+  } finally {
+    confLoading.value = false
+  }
+}
+const saveConf = (d: DistroInstance) => runDistroOp({
+  name: `d-${d.name}`, title: `写回 ${d.name} 的 /etc/wsl.conf？`, tone: 'warning',
+  desc: '后端三步防线：语法校验 → 默认用户存在性求证 → root 备份原文件后整文件写回并复验。'
+    + '\nwsl.conf 只在发行版启动时读取——保存后需「⏹ 终止」该发行版再进入才生效。',
+  details: [{ label: '文件大小', value: `${new Blob([confText.value]).size} B` }],
+  invoke: () => WSLAPI.SaveWslConf(d.name, confText.value),
+  then: (out) => { if (out?.success) void offerTerminateAfterConf(d) },
+})
+
+// 保存成功即给"让配置生效"的下一步：终止后下次进入自然读到新 wsl.conf。
+async function offerTerminateAfterConf(d: DistroInstance) {
+  const yes = await confirm({
+    title: `终止 ${d.name} 使新配置生效？`,
+    tone: 'default',
+    description: 'wsl.conf 只在发行版启动时读取。现在终止（数据无损，下次进入自动重启）即可立刻生效；也可以稍后自行点「⏹ 终止」。',
+  })
+  if (!yes) return
+  try {
+    const r = await WSLAPI.TerminateDistro(d.name)
+    showToast(r?.message || '已终止，配置已生效')
+  } catch (e) {
+    showToast(`终止失败: ${getErrorMessage(e)}`)
+  }
+  await loadInstances()
+}
+
+// ---------- 磁盘瘦身（三级工作流，异步事件驱动） ----------
+const compSrc = ref('')
+const compProg = ref<CompactProgress | null>(null)
+const compTerm = computed(() => !!compProg.value && ['done', 'error'].includes(compProg.value.stage))
+const compBackupDir = ref('') // 留空=默认「下载\WSL 导出」；大盘备份常被 C 盘容量卡住
+const compCancelable = computed(() => !!compProg.value && ['backup', 'trim', 'waiting'].includes(compProg.value.stage))
+
+async function cancelCompact() {
+  try {
+    const out = await WSLAPI.CancelCompact()
+    showToast(out.message || '已请求取消')
+  } catch (e) {
+    showToast(`取消被拒: ${getErrorMessage(e)}`) // 进入动盘段后如实拒绝，不假装停了
+  }
+}
+
+function openCompact(d: DistroInstance) {
+  compSrc.value = d.name
+  compProg.value = null
+  compBackupDir.value = ''
+}
+function closeCompact() {
+  if (compSrc.value && !compTerm.value && busyOp.value) return // 在飞不收编
+  compSrc.value = ''
+  compProg.value = null
+}
+
+const COMPACT_STAGE_TEXT: Record<string, string> = {
+  backup: '全量备份中', trim: 'fstrim/停机收敛中', optimize: 'Tier1 压缩中',
+  reimport: 'Tier2 注销重导入中', done: '瘦身完成', error: '瘦身中止',
+}
+
+async function submitCompact(d: DistroInstance) {
+  if (busyOp.value) return
+  const accepted = await confirm({
+    title: `为 ${d.name} 瘦身数据盘？`,
+    tone: 'danger',
+    description: '这是对数据盘的手术，全程分四步：① 强制全量导出 tar 备份（占用约等于数据盘实占的额外空间）；'
+      + '② guest 内 fstrim 释放已删块并终止发行版；③ Tier1 Optimize-VHD 压缩（需 Hyper-V 模块，UAC 提权；省量不足即放弃）；'
+      + '④ Tier2 注销实例并从备份重导入（数据经备份 tar 重建，落位换到新的旁路目录）。'
+      + '\n\n任何一步失败都会如实中止并点名备份文件位置；完成后备份仍保留，确认无误后可自行删除。'
+      + '\n数十 GB 盘耗时可达数十分钟，期间请勿退出 Hanxi。',
+    details: [
+      { label: '发行版', value: d.name },
+      { label: '当前占用', value: d.sizeBytes ? fmtSize(d.sizeBytes) : '未知' },
+    ],
+  })
+  if (!accepted) return
+  busyOp.value = `compact-${d.name}`
+  compProg.value = { name: d.name, stage: 'backup', beforeMB: 0, afterMB: 0 }
+  try {
+    const out = (await WSLAPI.CompactDistro(d.name, compBackupDir.value.trim())) as { message?: string }
+    showToast(out.message || '已开始瘦身')
+  } catch (e) {
+    busyOp.value = ''
+    compProg.value = null
+    showToast(`瘦身未受理: ${getErrorMessage(e)}`)
+  }
+}
+
+useWailsEvent<CompactProgress>('wsl:compact', (p) => {
+  if (!p) return
+  compProg.value = p
+  if (p.stage === 'done') {
+    busyOp.value = ''
+    showToast(p.message || '瘦身完成')
+    void loadInstances()
+    void loadExportRecords() // 备份 tar 也在导出登记里
+  } else if (p.stage === 'error') {
+    busyOp.value = '' // 错误留在表单里可见（含备份位置）
+    void loadInstances()
+  }
+})
+
+const importOpen = ref(false)
+const impName = ref('')
+const impTarget = ref('')
+const impTar = ref('')
+
+async function submitImport() {
+  if (busyOp.value) return
+  const name = impName.value.trim()
+  const target = impTarget.value.trim()
+  const tar = impTar.value.trim()
+  const accepted = await confirm({
+    title: `导入新发行版 ${name}？`,
+    tone: 'warning',
+    description: '执行 wsl --import：解包 tar 建立新发行版实例（数十 GB 时耗时数分钟，请勿退出）。'
+      + 'tar 须为本工具导出产物或可信来源 rootfs；目标须为空目录或不存在路径；名称与本机名单防撞。'
+      + '\n\n该操作以普通权限执行，不会弹出 UAC。',
+    details: [
+      { label: 'tar 源', value: tar },
+      { label: '目标目录', value: target },
+    ],
+  })
+  if (!accepted) return
+  busyOp.value = 'import'
+  try {
+    const out = await WSLAPI.ImportDistro(name, target, tar)
+    showToast(out?.message || '导入完成')
+    importOpen.value = false
+    impName.value = ''
+    impTarget.value = ''
+    impTar.value = ''
+  } catch (e) {
+    showToast(`导入失败: ${getErrorMessage(e)}`)
+  } finally {
+    busyOp.value = ''
+    await loadInstances() // 导入可能部分生效：复采为准
   }
 }
 
@@ -366,12 +672,210 @@ async function loadOnline() {
   }
 }
 
-// 首次切到版本页时才拉清单（在线清单依赖 wsl.exe，冷页避免双重探测）。
+// 首次切到对应页才拉数据（在线清单/netsh 现态均依赖本机命令，冷页避免无谓探测）。
 watch(activeMainTab, (tab) => {
   if (tab === 'versions' && online.value.length === 0 && !onlineLoading.value && !onlineError.value) {
     loadOnline()
   }
+  if (tab === 'proxy' && !proxyView.value && !proxyLoading.value) {
+    void loadProxy()
+  }
 })
+
+// ---------- 端口转发（NAT netsh portproxy 账本） ----------
+const proxyView = ref<PortProxyView | null>(null)
+const proxyLoading = ref(false)
+const proxyError = ref('')
+// 默认只开本机回环；0.0.0.0 属"向局域网曝光"的显式选择（UI 有警示条）。
+const newRule = reactive({ distro: '', port: '', guest: '', listen: '127.0.0.1', firewall: false, note: '' })
+
+async function resetProxyLedger() {
+  const accepted = await confirm({
+    title: '清空端口转发账本文件？',
+    tone: 'danger',
+    description: '仅删除 Hanxi 的规则账本（账本文件损坏或想彻底重来时的逃生口）——不摘除系统里已生效的转发，'
+      + '它们会转列为「外部转发」由你自行处置。正常收束请用「🧹 清理托管」。',
+  })
+  if (!accepted) return
+  try {
+    const out = await WSLAPI.ClearPortLedgerFile()
+    showToast(out?.message || '账本已清空')
+    await loadProxy()
+  } catch (e) {
+    showToast(`清空失败: ${getErrorMessage(e)}`)
+  }
+}
+
+async function loadProxy() {
+  proxyLoading.value = true
+  proxyError.value = ''
+  try {
+    proxyView.value = await WSLAPI.ListPortRules()
+  } catch (e) {
+    proxyError.value = `读取端口转发失败: ${getErrorMessage(e)}\n需要本机 netsh（PowerShell 通道）可用；若安全软件拦截了 netsh，请如实处理后再刷新。`
+  } finally {
+    proxyLoading.value = false
+  }
+}
+
+async function addProxyRule() {
+  if (busyOp.value) return
+  const port = Number(newRule.port.trim())
+  const guest = Number(newRule.guest.trim() || '0')
+  if (!newRule.distro || !Number.isInteger(port)) {
+    showToast('请填写发行版与合法的本机监听端口（1-65535）')
+    return
+  }
+  try {
+    const r = await WSLAPI.AddPortRule(newRule.distro, port, guest, newRule.listen.trim() || '127.0.0.1', newRule.firewall, newRule.note.trim())
+    showToast(`已加入账本 ${r?.listen}:${r?.port} → ${r?.distro}（点「▶ 应用规则」才挂进系统）`)
+    newRule.port = ''
+    newRule.guest = ''
+    newRule.note = ''
+    await loadProxy()
+  } catch (e) {
+    showToast(`添加规则失败: ${getErrorMessage(e)}`)
+  }
+}
+
+const rulePayload = (r: PortRuleView, patch: Partial<PortRule> = {}): PortRule => ({
+  id: r.id, distro: r.distro, port: r.port, guest: r.guest, listen: r.listen,
+  firewall: r.firewall, note: r.note ?? '', enabled: r.enabled, ...patch,
+})
+
+async function updateRule(r: PortRuleView, patch: Partial<PortRule>) {
+  try {
+    await WSLAPI.UpdatePortRule(rulePayload(r, patch))
+  } catch (e) {
+    showToast(`更新规则失败: ${getErrorMessage(e)}`)
+  }
+  await loadProxy()
+}
+
+async function removeRule(r: PortRuleView) {
+  const accepted = await confirm({
+    title: `删除规则 ${r.listen}:${r.port} → ${r.distro}？`,
+    tone: 'warning',
+    description: '只删账本；若系统里还有对应转发，随后点「▶ 应用规则」会一并摘除（提权执行）。',
+  })
+  if (!accepted) return
+  try {
+    const out = await WSLAPI.RemovePortRule(r.id)
+    showToast(out?.message || '已删除')
+  } catch (e) {
+    showToast(`删除失败: ${getErrorMessage(e)}`)
+  }
+  await loadProxy()
+}
+
+const applyProxy = () => runOp({
+  name: 'proxy-apply', title: '应用端口转发规则到系统？',
+  desc: '单批 netsh portproxy 与防火墙放行命令在同一个提权脚本内执行（先删后加幂等，逐条传播退出码）；'
+    + '未运行的发行版会被跳过并在回执点名，不会被顺手拉起。外部程序登记的转发一律不触碰。',
+  invoke: async () => {
+    const out = await WSLAPI.ApplyPortRules()
+    await loadProxy()
+    return out
+  },
+})
+
+const cleanupProxy = () => runOp({
+  name: 'proxy-cleanup', title: '清理 Hanxi 登记的全部端口转发？', tone: 'danger',
+  desc: '从系统摘除账本规则的转发与 "Hanxi WSL *" 防火墙放行（UAC 提权），并清空账本文件。'
+    + '\n外部程序的转发不受影响；如你还想恢复，需重新添加规则。',
+  invoke: async () => {
+    const out = await WSLAPI.CleanupPortRules()
+    await loadProxy()
+    return out
+  },
+})
+
+function ruleDrift(r: PortRuleView): boolean {
+  return r.applied && !!r.targetIP && !!r.activeIP && r.activeIP !== r.targetIP
+}
+
+// ---------- .wslconfig（宿主全局配置：网络模式等） ----------
+const hostConfOpen = ref(false)
+const hostDoc = ref<HostConfDoc | null>(null)
+const hostText = ref('')
+const hostLoading = ref(false)
+const hostError = ref('')
+
+const MODE_WORD: Record<string, string> = { nat: 'NAT（默认）', bridged: '桥接', mirrored: '镜像网络', unknown: '未知/非法值' }
+const modeWord = (m?: string | null) => MODE_WORD[m || 'nat'] || 'NAT（默认）'
+
+async function toggleHostConf() {
+  if (hostConfOpen.value) {
+    if (busyOp.value || hostLoading.value) return
+    hostConfOpen.value = false
+    return
+  }
+  hostConfOpen.value = true
+  if (!hostDoc.value) await loadHostConf()
+}
+async function loadHostConf() {
+  hostLoading.value = true
+  hostError.value = ''
+  try {
+    const doc = await WSLAPI.GetWslHostConf()
+    hostDoc.value = doc
+    hostText.value = doc?.text ?? ''
+  } catch (e) {
+    hostError.value = getErrorMessage(e)
+  } finally {
+    hostLoading.value = false
+  }
+}
+async function saveHostConf() {
+  if (busyOp.value) return
+  const accepted = await confirm({
+    title: '写回 .wslconfig（宿主全局配置）？',
+    tone: 'danger',
+    description: '该文件影响【所有发行版】（网络模式、资源上限等），保存后需 wsl --shutdown 全停才生效。'
+      + '\n\n写回防线：INI 语法闸门 + networkingMode 白名单（nat/bridged/mirrored）+ 原文件备份到 .wslconfig.hanxi.bak + 原子写后读回复核。',
+  })
+  if (!accepted) return
+  busyOp.value = 'wslconfig'
+  try {
+    const out = await WSLAPI.SaveWslHostConf(hostText.value)
+    showToast(out?.message || '已写回')
+    await loadHostConf()
+    if (out?.success) await offerShutdownForHostConf()
+  } catch (e) {
+    showToast(`保存失败: ${getErrorMessage(e)}`)
+  } finally {
+    busyOp.value = ''
+  }
+}
+async function offerShutdownForHostConf() {
+  const yes = await confirm({
+    title: '立即「🌑 全停」使新配置生效？',
+    tone: 'warning',
+    description: 'wsl --shutdown 会终止【所有发行版】正在运行的会话（数据无损，下次访问自动重启）。'
+      + '\n里面有跑着的任务就别现在停，稍后自行点「🌑 全停」。',
+  })
+  if (yes) await doShutdown()
+}
+async function doShutdown() {
+  if (busyOp.value) return
+  const accepted = await confirm({
+    title: '全停 WSL（wsl --shutdown）？',
+    tone: 'warning',
+    description: '终止全部发行版会话：数据无损，下次进入自动重启。这是 .wslconfig 全局改动与网络模式切换的生效前提。',
+  })
+  if (!accepted) return
+  busyOp.value = 'shutdown'
+  try {
+    const out = await WSLAPI.ShutdownWsl()
+    showToast(out?.message || '已全部停止')
+  } catch (e) {
+    showToast(`全停失败: ${getErrorMessage(e)}`)
+  } finally {
+    busyOp.value = ''
+    await loadInstances()
+    await loadProxy()
+  }
+}
 
 // ---------- 内置 MSI 下载（应用内进度，不甩浏览器） ----------
 const dl = ref<Record<string, DownloadProgress>>({})
@@ -397,6 +901,16 @@ async function downloadAsset(tag: string, name: string, platform: string) {
     showToast(out.message || '开始下载')
   } catch (e) {
     dl.value = { ...dl.value, [key]: { tag, platform, stage: 'error', done: 0, total: 0, error: getErrorMessage(e) } }
+  }
+}
+
+async function cancelDownload(key: string) {
+  if (dl.value[key]?.stage !== 'downloading') return
+  try {
+    const out = (await WSLAPI.CancelMsiDownload()) as { message?: string }
+    showToast(out.message || '已请求取消下载') // 终态以 wsl:msi-download error 事件为准回显
+  } catch (e) {
+    showToast(`取消下载失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -476,6 +990,7 @@ async function openDocs() {
 onMounted(() => {
   startCheck()
   loadInstances() // 与体检并行的独立通道：未装 WSL 时后端返回空列表，不报错
+  loadExportRecords()
   loadReleases()
 })
 </script>
@@ -523,6 +1038,12 @@ onMounted(() => {
             <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
               title="wsl --set-default-version 2：新装发行版默认用 WSL2"
               @click="setDefaultV2">2️⃣ 默认WSL2</button>
+            <button class="btn btn-secondary btn-small" :disabled="!!busyOp" :class="{ active: hostConfOpen }"
+              title="编辑宿主全局配置 .wslconfig（网络模式/资源上限；影响所有发行版，全停后生效）"
+              @click="toggleHostConf">🌐 .wslconfig</button>
+            <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+              title="wsl --shutdown：终止全部发行版会话（数据无损），.wslconfig 改动的生效前提"
+              @click="doShutdown">🌑 全停</button>
             <button class="btn btn-secondary btn-small" :disabled="streaming" @click="startCheck">
               {{ streaming ? '体检中…' : '↻ 重新体检' }}
             </button>
@@ -545,6 +1066,34 @@ onMounted(() => {
         系统记有组件变更待重启生效（虚拟机平台/功能开关类改动，重启前发行版无法拉起）。就绪后自行重启即可，本工具不代点；重启后本提示自动消失。
         <button class="link-button reboot-link" @click="openPowerSettings">打开系统设置·电源 ↗</button>
       </UiBanner>
+
+      <!-- .wslconfig 全局配置面板（宿主文件，网络模式等） -->
+      <div v-if="hostConfOpen" class="import-panel">
+        <UiBanner tone="warn" class="slim">
+          .wslconfig 是<b>宿主全局配置</b>（网络模式、内存/CPU 上限等），作用于所有发行版，
+          需「🌑 全停」或重启后才被读取。写回防线同 wsl.conf：语法闸门 + networkingMode 白名单 + 写前备份（.wslconfig.hanxi.bak）+ 原子写读回复核。
+        </UiBanner>
+        <div class="move-input-row">
+          <UiStatusChip tone="information">当前网络模式：{{ modeWord(hostDoc?.networkMode) }}</UiStatusChip>
+          <span v-if="hostDoc?.missing" class="hint-dim">文件尚不存在——保存即首建（缺省即 NAT）</span>
+          <code v-if="hostDoc?.path" class="mono dim">{{ hostDoc.path }}</code>
+        </div>
+        <div v-if="hostLoading && !hostDoc" class="hint-line">读取 ~/.wslconfig…</div>
+        <div v-else-if="hostError && !hostDoc" class="error-box">{{ hostError }}
+          <button class="btn btn-secondary btn-small retry-inline" @click="loadHostConf">↻ 重试</button>
+        </div>
+        <template v-else-if="hostDoc">
+          <UiBanner v-for="(w, i) in hostDoc.warnings ?? []" :key="i" tone="warn" class="slim">{{ w }}</UiBanner>
+          <textarea v-model="hostText" class="input conf-textarea mono" rows="6" spellcheck="false"
+            :disabled="!!busyOp" :placeholder="`[wsl2]&#10;memory=8GB&#10;&#10;[networking]&#10;networkingMode=mirrored`"></textarea>
+          <div class="move-input-row">
+            <button class="btn btn-primary btn-small" :disabled="!!busyOp || hostLoading"
+              @click="saveHostConf">{{ busyOp === 'wslconfig' ? '保存中…' : '✔ 保存写回' }}</button>
+            <button class="btn btn-secondary btn-small" :disabled="!!busyOp || hostLoading" @click="loadHostConf">↻ 重读</button>
+            <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="toggleHostConf">收起</button>
+          </div>
+        </template>
+      </div>
 
       <!-- 逐项结论：骨架先行，事件分相点亮 -->
       <div class="section-title"><h3>逐项体检</h3></div>
@@ -569,14 +1118,33 @@ onMounted(() => {
         <div class="section-title distro-head">
           <h3>本机发行版 ({{ instances.length }})</h3>
           <div class="btn-group distro-head-actions">
-            <span v-if="lastExport" class="export-done">
-              <UiStatusChip tone="positive">✓ {{ lastExport.name }} 已导出</UiStatusChip>
-              <code class="mono dim" title="保存到「下载\WSL 导出」；位置直达仅本会话有效">{{ lastExport.id }}</code>
-              <button class="link-button" @click="revealExport">📂 打开位置</button>
-            </span>
+            <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName || cloneBusy"
+              :class="{ active: importOpen }" title="wsl --import：把导出 tar / 可信 rootfs 落成新增发行版（免 UAC）"
+              @click="importOpen = !importOpen">📥 导入发行版</button>
             <button class="btn btn-secondary btn-small" :disabled="instLoading || !!busyOp" @click="loadInstances">
               {{ instLoading ? '复采中…' : '↻ 刷新列表' }}
             </button>
+          </div>
+        </div>
+        <!-- 导入面板：新增发行版入口（导出产物回流 / 外部 rootfs） -->
+        <div v-if="importOpen" class="import-panel">
+          <UiBanner tone="info" class="slim">
+            导入 = <code class="mono">wsl --import</code>：把本工具导出产物或可信 rootfs tar 落成新增发行版（免 UAC）。
+            目标须为空目录或不存在路径；名称与本机名单防撞；大 tar 解包耗时数分钟，期间请勿退出。
+          </UiBanner>
+          <div class="move-input-row">
+            <label class="move-label" for="wsl-import-name">新发行版名</label>
+            <input id="wsl-import-name" v-model="impName" class="input mono" placeholder="MyDistro" spellcheck="false" :disabled="!!busyOp" />
+            <label class="move-label" for="wsl-import-target">目标目录</label>
+            <input id="wsl-import-target" v-model="impTarget" class="input mono" placeholder="D:\WSL\MyDistro" spellcheck="false" :disabled="!!busyOp" />
+          </div>
+          <div class="move-input-row">
+            <label class="move-label" for="wsl-import-tar">tar 文件路径</label>
+            <input id="wsl-import-tar" v-model="impTar" class="input mono" placeholder="导出工件的完整路径（「本会话导出记录」处可复制）" spellcheck="false" :disabled="!!busyOp"
+              @keyup.enter="impName.trim() && impTarget.trim() && impTar.trim() && submitImport()" />
+            <button class="btn btn-primary btn-small" :disabled="!impName.trim() || !impTarget.trim() || !impTar.trim() || !!busyOp"
+              @click="submitImport">{{ busyOp === 'import' ? '导入中…' : '✔ 导入' }}</button>
+            <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="importOpen = false">收起</button>
           </div>
         </div>
         <div v-if="instError" class="error-box">{{ instError }}
@@ -623,15 +1191,29 @@ onMounted(() => {
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !d.running"
                         :title="d.running ? 'wsl --terminate：立即停止（数据无损，下次访问自动再启动）' : '当前已停止'"
                         @click="terminateDistro(d)">⏹ 终止</button>
-                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
-                        title="wsl --export：压缩导出为 tar.gz 到「下载」文件夹，可 long-running"
-                        @click="exportDistro(d)">📤 导出</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName || (!!exportingName && exportingName !== d.name)"
+                        title="wsl --export：选择格式（tar.gz 压缩 / tar 未压缩）导出到「下载」文件夹，可 long-running"
+                        @click="startExport(d)">📤 导出</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
                         title="wsl --manage --move：迁移数据盘到其他盘（UAC 提权，会先停机全部 WSL）"
                         @click="startMove(d)">🧭 迁移</button>
                       <button class="btn btn-danger-outline btn-small" :disabled="!!busyOp"
                         title="wsl --unregister：数据销毁级删除，不可恢复"
                         @click="unregisterDistro(d)">🗑 删除</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName || (!!exportingName && exportingName !== d.name) || (!!cloneSrc && cloneSrc !== d.name)"
+                        title="克隆快路径：停源→拷贝数据盘→--import --vhd 挂为新发行版（需 WSL 2.7.3+，免 UAC）"
+                        @click="startClone(d)">🧬 克隆</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
+                        :class="{ active: forensicsName === d.name }"
+                        title="只读取证：VHDX 逻辑/实占与稀疏、根盘用量、IPv4（停止时不进 guest，以免顺手启动它）"
+                        @click="toggleForensics(d)">🔍 取证</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
+                        :class="{ active: confName === d.name }"
+                        title="编辑 /etc/wsl.conf（systemd/automount/默认用户等）：读时会启动发行版；写回有语法闸门 + 引用校验 + 写前备份"
+                        @click="openConf(d)">⚙ wsl.conf</button>
+                      <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
+                        title="数据盘瘦身：备份→fstrim→Optimize-VHD→不足则注销重导入（Tier2 会换落位目录）"
+                        @click="openCompact(d)">🗜 瘦身</button>
                     </div>
                   </td>
                 </tr>
@@ -654,10 +1236,180 @@ onMounted(() => {
                     </div>
                   </td>
                 </tr>
+                <tr v-if="exportingName === d.name" class="export-row-editor">
+                  <td colspan="5">
+                    <div class="move-editor">
+                      <div class="move-input-row">
+                        <label class="move-label">导出格式</label>
+                        <label class="radio-label"><input v-model="exportFormat" type="radio" value="gz" :disabled="!!busyOp" />
+                          tar.gz 压缩（默认，体积小；需 WSL 2.4.4+）</label>
+                        <label class="radio-label"><input v-model="exportFormat" type="radio" value="tar" :disabled="!!busyOp" />
+                          tar 未压缩（更快、兼容老版本，体积大）</label>
+                        <button class="btn btn-primary btn-small" :disabled="!!busyOp"
+                          @click="confirmExport(d)">{{ busyOp === `d-${d.name}` ? '导出中…' : '✔ 开始导出' }}</button>
+                        <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="cancelExport">取消</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="cloneSrc === d.name" class="clone-row-editor">
+                  <td colspan="5">
+                    <div class="move-editor">
+                      <template v-if="cloneProg && cloneProg.source === d.name">
+                        <div class="move-input-row">
+                          <UiStatusChip :tone="cloneProg.stage === 'error' ? 'danger' : 'information'">
+                            {{ cloneProg.stage === 'copying' ? '拷贝数据盘中' : cloneProg.stage === 'importing' ? '挂载新实例中' : cloneProg.stage === 'error' ? '克隆失败' : '完成' }}
+                          </UiStatusChip>
+                          <span v-if="(cloneProg.stage === 'copying' || cloneProg.stage === 'importing') && cloneProg.total" class="fx-bar">
+                            <UiProgressBar :percent="Math.min(99, Math.round(cloneProg.done / cloneProg.total * 100))" />
+                          </span>
+                          <span v-if="cloneProg.total" class="mono dim">{{ fmtSize(cloneProg.done) }} / {{ fmtSize(cloneProg.total) }}</span>
+                        </div>
+                        <div v-if="cloneProg.stage === 'error'" class="error-box">{{ cloneProg.error }}
+                          <button class="btn btn-secondary btn-small retry-inline" @click="cancelClone">知道了，收起</button>
+                        </div>
+                        <div v-if="cloneBusy" class="move-input-row">
+                          <button class="btn btn-secondary btn-small" @click="requestCancelClone">✋ 取消克隆</button>
+                          <span class="hint-dim">拷贝段取消会清理半成品；挂载段取消则保留已拷盘并点名路径</span>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <UiBanner v-if="d.running" tone="warn" class="slim">
+                          源发行版 <b>{{ d.name }}</b> 正在运行：克隆开始时会先终止它（数据无损，完成后可再启动）。
+                        </UiBanner>
+                        <div class="move-input-row">
+                          <label class="move-label" for="wsl-clone-name">新发行版名</label>
+                          <input id="wsl-clone-name" v-model="cloneNewName" class="input mono" spellcheck="false" :disabled="!!busyOp" />
+                          <label class="move-label" for="wsl-clone-target">目标目录</label>
+                          <input id="wsl-clone-target" v-model="cloneTarget" class="input mono" :placeholder="`D:\\WSL\\${d.name}-Copy`"
+                            spellcheck="false" :disabled="!!busyOp"
+                            @keyup.enter="cloneNewName.trim() && cloneTarget.trim() && submitClone(d)" />
+                          <button class="btn btn-primary btn-small" :disabled="!cloneNewName.trim() || !cloneTarget.trim() || !!busyOp"
+                            @click="submitClone(d)">✔ 开始克隆</button>
+                          <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="cancelClone">取消</button>
+                        </div>
+                      </template>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="compSrc === d.name" class="compact-row-editor">
+                  <td colspan="5">
+                    <div class="move-editor">
+                      <template v-if="compProg">
+                        <div class="move-input-row">
+                          <UiStatusChip :tone="compProg.stage === 'error' ? 'danger' : compProg.stage === 'done' ? 'positive' : 'information'">
+                            {{ COMPACT_STAGE_TEXT[compProg.stage] ?? compProg.stage }}
+                          </UiStatusChip>
+                          <UiStatusChip v-if="compProg.tier" tone="neutral">{{ compProg.tier }}</UiStatusChip>
+                          <span v-if="compProg.stage === 'done' && compProg.afterMB" class="mono dim">
+                            {{ mb(compProg.beforeMB) }} → {{ mb(compProg.afterMB) }}</span>
+                        </div>
+                        <div v-if="compProg.stage === 'error'" class="error-box">{{ compProg.error }}</div>
+                        <div v-else class="hint-line">{{ compProg.message || '进行中…' }}</div>
+                        <div class="move-input-row">
+                          <button v-if="compCancelable" class="btn btn-danger-outline btn-small" @click="cancelCompact">✋ 取消瘦身</button>
+                          <button class="btn btn-secondary btn-small" :disabled="!compTerm" @click="closeCompact">
+                            {{ compTerm ? '收起' : '在飞（终态后可收起）' }}</button>
+                          <span v-if="!compCancelable && !compTerm" class="hint-dim">已进入数据盘处理/重建段，取消会被拒绝（有备份兜底，等它跑完）</span>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <UiBanner tone="error" class="slim">
+                          瘦身是对数据盘的手术：<b>强制先全量备份</b>，再 fstrim/停机、Tier1 Optimize-VHD（需 Hyper-V 模块，UAC），
+                          省量不足自动转 Tier2「注销 + 从备份重导入」（落位会换到新旁路目录）。失败如实中止并点名备份位置；完成后备份保留供你自行清理。
+                        </UiBanner>
+                        <div class="move-input-row">
+                          <label class="move-label" for="wsl-compact-bak">备份目录</label>
+                          <input id="wsl-compact-bak" v-model="compBackupDir" class="input mono"
+                            placeholder="默认「下载\WSL 导出」；大盘备份可指到空闲卷（须绝对路径）" spellcheck="false" :disabled="!!busyOp" />
+                        </div>
+                        <div class="move-input-row">
+                          <button class="btn btn-danger-outline btn-small" :disabled="!!busyOp" @click="submitCompact(d)">🗜 确认开始瘦身</button>
+                          <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="closeCompact">取消</button>
+                        </div>
+                      </template>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="confName === d.name" class="conf-row-editor">
+                  <td colspan="5">
+                    <div class="move-editor">
+                      <div v-if="confLoading && !confDoc" class="hint-line">正在读取 /etc/wsl.conf…（发行版未运行时会先被启动，这是读配置的预期动作）</div>
+                      <div v-else-if="confError && !confDoc" class="error-box">{{ confError }}
+                        <button class="btn btn-secondary btn-small retry-inline" @click="loadConf(d.name)">↻ 重试</button>
+                        <button class="btn btn-secondary btn-small" @click="closeConf">收起</button>
+                      </div>
+                      <template v-else-if="confDoc">
+                        <UiBanner v-if="confDoc.missing" tone="info" class="slim">该发行版尚无 /etc/wsl.conf——保存即首建。</UiBanner>
+                        <UiBanner v-for="(w, i) in confDoc.warnings ?? []" :key="i" tone="warn" class="slim">{{ w }}</UiBanner>
+                        <textarea v-model="confText" class="input conf-textarea mono" rows="8" spellcheck="false"
+                          :disabled="!!busyOp" :placeholder="`[boot]&#10;systemd=true`"></textarea>
+                        <div class="move-input-row">
+                          <button class="btn btn-primary btn-small" :disabled="!!busyOp || confLoading"
+                            @click="saveConf(d)">{{ busyOp === `d-${d.name}` ? '保存中…' : '✔ 保存写回' }}</button>
+                          <button class="btn btn-secondary btn-small" :disabled="!!busyOp || confLoading"
+                            @click="loadConf(d.name)">↻ 重读</button>
+                          <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="closeConf">收起</button>
+                          <span class="hint-dim">语法闸门 / 默认用户求证 / 写前备份（{{ '/etc/wsl.conf.hanxi.bak' }}）由后端把关；改完记得终止再进入</span>
+                        </div>
+                      </template>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="forensicsName === d.name" class="forensics-row">
+                  <td colspan="5">
+                    <div class="forensics-panel">
+                      <div v-if="!forensicsOf || (forensicsOf.loading && !forensicsOf.data)" class="hint-line">取证采集中：注册表巡查 + 磁盘双口径 + guest 只读探测…</div>
+                      <div v-else-if="forensicsOf.error && !forensicsOf.data" class="error-box">{{ forensicsOf.error }}
+                        <button class="btn btn-secondary btn-small retry-inline" @click="loadForensics(d.name)">↻ 重试</button>
+                      </div>
+                      <template v-else-if="forensicsOf?.data">
+                        <dl class="fx-grid">
+                          <div><dt>VHDX 逻辑大小</dt><dd class="mono">{{ forensicsOf.data.logicalBytes ? fmtSize(forensicsOf.data.logicalBytes) : '—' }}</dd></div>
+                          <div><dt>磁盘实占</dt><dd class="mono">{{ forensicsOf.data.allocBytes ? fmtSize(forensicsOf.data.allocBytes) : '—' }}
+                            <UiStatusChip v-if="forensicsOf.data.sparse" tone="information">稀疏盘</UiStatusChip></dd></div>
+                          <div v-if="forensicsOf.data.dfOk"><dt>根盘用量（guest df）</dt><dd class="mono">
+                            <span class="fx-bar"><UiProgressBar :percent="forensicsOf.data.dfUsePct" /></span>
+                            {{ mb(forensicsOf.data.dfUsedMB) }} / {{ mb(forensicsOf.data.dfTotalMB) }} · 可用 {{ mb(forensicsOf.data.dfAvailMB) }} · {{ forensicsOf.data.dfUsePct }}%</dd></div>
+                          <div><dt>发行版 IPv4</dt><dd class="mono">
+                            <template v-if="forensicsOf.data.ipv4">{{ forensicsOf.data.ipv4 }}
+                              <button class="link-button" @click="copy(forensicsOf.data.ipv4)">复制</button>
+                            </template>
+                            <template v-else>—</template></dd></div>
+                          <div v-if="forensicsOf.data.pfn"><dt>包家族名 (PFN)</dt><dd class="mono">{{ forensicsOf.data.pfn }}</dd></div>
+                          <div v-if="forensicsOf.data.basePath"><dt>安装路径</dt><dd class="mono">{{ forensicsOf.data.basePath }}</dd></div>
+                          <div v-if="forensicsOf.data.vhdxPath"><dt>VHDX 路径</dt><dd class="mono">{{ forensicsOf.data.vhdxPath }}</dd></div>
+                        </dl>
+                        <ul v-if="forensicsOf.data.notes?.length" class="fx-notes">
+                          <li v-for="(n, i) in forensicsOf.data.notes" :key="i">ⓘ {{ n }}</li>
+                        </ul>
+                        <div class="fx-foot">
+                          <UiStatusChip :tone="forensicsOf.data.running ? 'positive' : 'neutral'">{{ forensicsOf.data.running ? '运行中' : '已停止' }}</UiStatusChip>
+                          <UiStatusChip tone="neutral" title="来自宿主 ~/.wslconfig 的 [networking] networkingMode">网络模式：{{ modeWord(forensicsOf.data.networkMode) }}</UiStatusChip>
+                          <button class="btn btn-secondary btn-small" :disabled="forensicsOf.loading"
+                            @click="loadForensics(d.name)">{{ forensicsOf.loading ? '复采中…' : '↻ 复采' }}</button>
+                        </div>
+                      </template>
+                    </div>
+                  </td>
+                </tr>
               </template>
             </tbody>
           </table>
         </div>
+
+        <!-- 本会话导出工件登记：多份全列，逐份直达位置 -->
+        <details v-if="exportRecords.length" class="info-details export-log">
+          <summary class="info-summary">📦 本会话导出记录（{{ exportRecords.length }}）</summary>
+          <ul class="export-log-list">
+            <li v-for="r in exportRecords" :key="r.id">
+              <code class="mono">{{ r.id }}</code>
+              <span class="dim mono">{{ r.name }} · {{ fmtSize(r.size) }} · {{ r.at }}</span>
+              <button class="link-button" @click="copy(r.path)">复制路径</button>
+              <button class="link-button" @click="revealExport(r.id)">📂 打开位置</button>
+            </li>
+          </ul>
+        </details>
       </template>
 
       <!-- 知识沉淀（踩坑记录入口） -->
@@ -731,6 +1483,7 @@ onMounted(() => {
                   <template v-if="dl[dlKey(rel.tag, a.platform)]?.stage === 'downloading'">
                     <span class="dl-bar"><UiProgressBar :percent="dlPercent(dl[dlKey(rel.tag, a.platform)]!)" /></span>
                     <span class="mono dim">{{ dlPercent(dl[dlKey(rel.tag, a.platform)]!) }}%</span>
+                    <button class="link-button" @click="cancelDownload(dlKey(rel.tag, a.platform))">取消</button>
                   </template>
                   <template v-else-if="dl[dlKey(rel.tag, a.platform)]?.stage === 'done'">
                     <UiStatusChip tone="positive">✓ 已下载</UiStatusChip>
@@ -788,6 +1541,129 @@ onMounted(() => {
             </tbody>
           </table>
         </div>
+      </template>
+    </div>
+
+    <!-- 端口转发 Tab：NAT 场景 netsh portproxy 账本 -->
+    <div v-show="activeMainTab === 'proxy'" class="tab-body">
+      <UiBanner v-if="proxyView?.networkMode === 'mirrored'" tone="info" class="slim">
+        本机为<b>镜像网络</b>：Windows 的 localhost 直通发行版服务，通常<b>无需</b>这里的转发规则——
+        下方只读列出的 portproxy 属 NAT 时代遗产或其它程序建立，自行决定去留。要切回 NAT 可在「🌐 .wslconfig」中修改。
+      </UiBanner>
+      <UiBanner v-if="proxyView?.pending" tone="warn" class="slim">
+        账本有改动尚未应用到系统——点「▶ 应用规则」同步（一次 UAC 批量执行）。
+      </UiBanner>
+      <div class="control-panel">
+        <div class="meta-info">
+          <span>WSL2 NAT 转发：本机 <b class="mono">监听:端口</b> → <b class="mono">发行版IP:guest端口</b>；WSL 重启后 guest IP 漂移，再点一次应用即重同步。</span>
+          <span class="hint-dim">只管理本工具账本登记的监听口；系统里其它来源的转发列在「外部转发」，只展示不触碰</span>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-primary btn-small" :disabled="!!busyOp || !proxyView?.rules?.length"
+            title="netsh portproxy/advfirewall 批量应用（UAC 提权，先删后加幂等）" @click="applyProxy">▶ 应用规则</button>
+          <button class="btn btn-secondary btn-small" :disabled="proxyLoading" @click="loadProxy">{{ proxyLoading ? '读取中…' : '↻ 刷新' }}</button>
+          <button class="btn btn-danger-outline btn-small" :disabled="!!busyOp || !proxyView?.rules?.length"
+            title="摘除账本全部规则的系统转发与 Hanxi WSL 防火墙放行并清空账本" @click="cleanupProxy">🧹 清理托管</button>
+        </div>
+      </div>
+
+      <div v-if="proxyError" class="error-box">{{ proxyError }}
+        <button class="btn btn-secondary btn-small retry-inline" @click="loadProxy">↻ 重试</button>
+        <button class="btn btn-secondary btn-small" title="账本文件损坏/误拦时的逃生口：只删文件，不碰系统现态" @click="resetProxyLedger">清空账本文件</button>
+      </div>
+      <div v-else-if="proxyLoading && !proxyView" class="hint-line">正在读取账本与 netsh 现态…</div>
+      <template v-else-if="proxyView">
+        <div class="import-panel">
+          <div class="move-input-row">
+            <label class="move-label" for="wsl-pp-distro">发行版</label>
+            <select id="wsl-pp-distro" v-model="newRule.distro" class="input" :disabled="!!busyOp">
+              <option value="">（选择）</option>
+              <option v-for="i in instances" :key="i.name" :value="i.name">{{ i.name }}</option>
+            </select>
+            <label class="move-label" for="wsl-pp-port">本机端口</label>
+            <input id="wsl-pp-port" v-model="newRule.port" class="input mono pp-num" placeholder="8080" :disabled="!!busyOp" />
+            <label class="move-label" for="wsl-pp-guest">guest 端口</label>
+            <input id="wsl-pp-guest" v-model="newRule.guest" class="input mono pp-num" placeholder="默认同左" :disabled="!!busyOp" />
+            <label class="move-label" for="wsl-pp-listen">监听地址</label>
+            <input id="wsl-pp-listen" v-model="newRule.listen" class="input mono" style="max-width: 130px" :disabled="!!busyOp" />
+            <label class="radio-label"><input v-model="newRule.firewall" type="checkbox" :disabled="!!busyOp" /> 防火墙放行</label>
+            <button class="btn btn-primary btn-small" :disabled="!newRule.distro || !newRule.port.trim() || !!busyOp"
+              @click="addProxyRule">＋ 添加</button>
+          </div>
+          <div class="move-input-row">
+            <label class="move-label" for="wsl-pp-note">备注</label>
+            <input id="wsl-pp-note" v-model="newRule.note" class="input" placeholder="可选：这条转发给谁用" :disabled="!!busyOp" />
+          </div>
+          <div v-if="newRule.listen.trim() === '0.0.0.0'" class="hint-line">
+            ⚠ 监听 0.0.0.0 + 防火墙放行 = 局域网内<b>其它设备也能访问</b>该端口；只想本机访问请用 127.0.0.1。
+          </div>
+        </div>
+
+        <div class="section-title"><h3>规则账本 ({{ proxyView.rules?.length ?? 0 }})</h3></div>
+        <div v-if="!proxyView.rules?.length" class="empty-state"><p>还没有规则——用上面的表单添加第一条（如 8080 → Ubuntu:80）。</p></div>
+        <div v-else class="table-container">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="width: 170px;">状态</th>
+                <th style="width: 150px;">发行版</th>
+                <th style="width: 130px;">本机监听</th>
+                <th>目标</th>
+                <th style="width: 84px;">防火墙</th>
+                <th>备注</th>
+                <th style="width: 170px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in proxyView.rules" :key="r.id">
+                <td>
+                  <UiStatusChip v-if="!r.enabled" tone="neutral">已停用</UiStatusChip>
+                  <UiStatusChip v-else-if="!r.distroRunning" tone="warning">发行版未运行</UiStatusChip>
+                  <UiStatusChip v-else-if="ruleDrift(r)" tone="warning" :title="`netsh 现指 ${r.activeIP}，现为 ${r.targetIP}`">IP 漂移·需重应用</UiStatusChip>
+                  <UiStatusChip v-else-if="r.applied" tone="positive">✓ 已生效</UiStatusChip>
+                  <UiStatusChip v-else tone="information">待应用</UiStatusChip>
+                </td>
+                <td><code class="mono">{{ r.distro }}</code></td>
+                <td class="mono">{{ r.listen }}:{{ r.port }}</td>
+                <td class="mono">{{ r.targetIP || r.activeIP || '—' }}:{{ r.guest }}</td>
+                <td>{{ r.firewall ? '✅ 放行' : '—' }}</td>
+                <td class="dim">{{ r.note || '—' }}</td>
+                <td>
+                  <div class="distro-actions">
+                    <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+                      :title="r.enabled ? '停用后点「应用规则」将从系统摘除该转发' : '恢复启用'"
+                      @click="updateRule(r, { enabled: !r.enabled })">{{ r.enabled ? '⏸ 停用' : '▶ 启用' }}</button>
+                    <button class="btn btn-secondary btn-small" :disabled="!!busyOp" title="切换是否同步防火墙入站放行"
+                      @click="updateRule(r, { firewall: !r.firewall })">{{ r.firewall ? '关放行' : '开关行' }}</button>
+                    <button class="btn btn-danger-outline btn-small" :disabled="!!busyOp" @click="removeRule(r)">🗑 删除</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <template v-if="proxyView.foreign?.length">
+          <div class="section-title"><h3>外部转发 ({{ proxyView.foreign.length }})</h3></div>
+          <div class="table-container">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th style="width: 130px;">本机监听</th>
+                  <th>指向</th>
+                  <th style="width: 320px;">说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(f, i) in proxyView.foreign" :key="i">
+                  <td class="mono">{{ f.listenAddr }}:{{ f.listenPort }}</td>
+                  <td class="mono">{{ f.connectAddr }}:{{ f.connectPort }}</td>
+                  <td class="dim">非 Hanxi 登记——由其它程序建立，本工具只展示不改动</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
       </template>
     </div>
   </section>
@@ -856,8 +1732,40 @@ onMounted(() => {
 /* 发行版管理控制台 */
 .distro-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .distro-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.export-done { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .distro-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.radio-label { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--color-text); cursor: pointer; }
+.radio-label input[type='radio'] { accent-color: var(--color-primary); margin: 0; }
+.export-row-editor td { background: var(--surface-page); }
+.clone-row-editor td { background: var(--surface-page); }
+.btn.active { border-color: var(--color-primary); color: var(--color-primary); }
+
+/* 导入面板 */
+.import-panel {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+}
+
+/* 端口转发 Tab */
+.pp-num { width: 96px; flex: 0 0 auto; }
+
+/* wsl.conf 编辑器与瘦身 */
+.compact-row-editor td { background: var(--surface-page); }
+.conf-row-editor td { background: var(--surface-page); }
+.conf-textarea { resize: vertical; min-height: 120px; line-height: 1.6; font-size: 12px; }
+
+/* 取证抽屉 */
+.forensics-row td { background: var(--surface-page); }
+.forensics-panel { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; }
+.fx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 18px; margin: 0; }
+.fx-grid dt { font-size: 11px; color: var(--color-text-subtle); }
+.fx-grid dd { margin: 0; font-size: 12.5px; word-break: break-all; }
+.fx-bar { width: 90px; display: inline-flex; vertical-align: middle; margin-right: 6px; }
+.fx-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--color-text-muted); }
+.fx-foot { display: flex; align-items: center; gap: 10px; }
+.export-log { margin-top: 2px; }
+.export-log-list { list-style: none; margin: 0; padding: 4px 0; display: flex; flex-direction: column; }
+.export-log-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 12px; font-size: 12px; border-bottom: 1px solid var(--color-border); }
+.export-log-list li:last-child { border-bottom: none; }
 .tbl td .mono.dim { font-size: 12px; }
 .move-row-editor td { background: var(--surface-page); }
 .move-editor { display: flex; flex-direction: column; gap: 8px; padding: 2px 0; }
