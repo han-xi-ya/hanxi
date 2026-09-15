@@ -211,7 +211,7 @@ func (s *WslService) runCompact(parent context.Context, name, vhdx, basePath str
 	}
 	destDir := reimportDir(basePath, name)
 	if out, err := s.runWsl(ctx, "--import", name, destDir, backupPath); err != nil {
-		fail("reimport", fmt.Sprintf("重导入失败！注销已执行——你的数据现在只在备份 tar：%s。可到 Hanxi 发行版表用「📥 导入发行版」以任意新名字恢复它，或原样恢复：%s（命令面 wsl --import %s <目标空目录> <备份>）。错误: %v %s",
+		fail("reimport", fmt.Sprintf("重导入失败！注销已执行——你的数据现在只在备份 tar：%s。可到 Hanxi「➕ 添加实例」页以任意新名字恢复它，或原样恢复：%s（命令面 wsl --import %s <目标空目录> <备份>）。错误: %v %s",
 			backupPath, backupPath, name, err, strings.TrimSpace(out)))
 		return
 	}

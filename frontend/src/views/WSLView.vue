@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // WSL 子系统：就绪体检（流式逐项点亮）+ 官方版本管理（Releases × 本机关系）
 // + 白名单提权操作（一键开启/更新/装发行版/正规卸载/组件还原）
-// + 发行版实例管理控制台（终端/文件/重启/停止/设默认/导出/迁移/克隆/瘦身/详情/wsl.conf/删除，
+// + 发行版实例管理控制台（终端/文件/重启/关机/设默认/导出/迁移/克隆/瘦身/详情/wsl.conf/删除，
 // 独立「本机发行版」页签；删除附带商店启动器清理）。
+// + 「➕ 添加实例」页：商店官方 / 本地 rootfs tar / 现有 VHDX 三源统一新增入口
+//（对齐 wsl-dashboard 的 AddInstanceView；镜像站源刻意不做——第三方 rootfs 信任链无法把关）。
 // 体检走 wsl:readiness 事件分相推送：先全量 pending 骨架，system/wsl/net 三源
 // 并发先到先点亮，done 收口终版报告——骨架 key 与后端 BuildItems 有顺序互锁。
 import { ref, reactive, computed, watch, onMounted } from 'vue'
@@ -26,11 +28,13 @@ const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { copy } = useClipboard()
 
-const activeMainTab = ref<'console' | 'distros' | 'versions' | 'proxy'>('console')
+const activeMainTab = ref<'console' | 'distros' | 'add' | 'official' | 'versions' | 'proxy'>('console')
 const mainTabs = [
   { key: 'console', label: '🐧 就绪检测' },
   { key: 'distros', label: '💻 本机发行版' },
-  { key: 'versions', label: '📦 版本与发行版' },
+  { key: 'add', label: '➕ 添加实例' },
+  { key: 'official', label: '📦 官方发行版' },
+  { key: 'versions', label: '🧩 本体版本' },
   { key: 'proxy', label: '🔀 端口转发' },
 ]
 
@@ -157,7 +161,7 @@ async function runOp(opts: {
 
 const installWsl = () => runOp({
   name: 'install', title: '一键开启 WSL（不装发行版）？',
-  desc: '执行 wsl --install --no-distribution：只安装 WSL 本体并启用「虚拟机平台」，绝不自动捆绑任何 Linux 发行版——系统请重启后到「版本与发行版」页手动挑选。',
+  desc: '执行 wsl --install --no-distribution：只安装 WSL 本体并启用「虚拟机平台」，绝不自动捆绑任何 Linux 发行版——系统请重启后到「📦 官方发行版」页手动挑选。',
   invoke: WSLAPI.InstallWsl,
 })
 const updateWsl = () => runOp({
@@ -290,8 +294,8 @@ const openTerminal = (d: DistroInstance) => runDistroOp({
   invoke: () => WSLAPI.OpenTerminal(d.name),
 })
 const terminateDistro = (d: DistroInstance) => runDistroOp({
-  name: `d-${d.name}`, title: `停止 ${d.name}？`, tone: 'default',
-  desc: '执行 wsl --terminate：只停这一个发行版（要停全部请到就绪检测页「🌑 停止全部」）。数据无损，下次访问（唤终端/\\wsl$ 路径）时自动再启动。',
+  name: `d-${d.name}`, title: `关机 ${d.name}？`, tone: 'default',
+  desc: '执行 wsl --terminate——等同拔掉这一个发行版的虚拟机电源（WSL 不提供单发行版的优雅关机）：未保存的前台进程即刻终止，数据盘无损；要停全部请到就绪检测页「🌑 停止全部」。下次访问（唤终端/\\wsl$ 路径）自动再开机。',
   invoke: () => WSLAPI.TerminateDistro(d.name),
 })
 // 重启（对齐 wsl-dashboard 语义但刻意不做保活）：后端 terminate→确认已停→拉起探针。
@@ -350,7 +354,8 @@ const confirmExport = (d: DistroInstance) => runDistroOp({
 // 迁移：内联表单先行，确认时把目标路径与"会被连带打停的运行中实例"写进确认框。
 function startMove(d: DistroInstance) {
   movingName.value = d.name
-  moveTarget.value = ''
+  // 预填「安装目录\<发行版名>」供修改（同克隆落位规则）；安装目录留空则不猜。
+  moveTarget.value = previewSubdir(installDir.value, d.name)
 }
 function cancelMove() {
   movingName.value = ''
@@ -430,7 +435,9 @@ async function requestCancelClone() {
 function startClone(d: DistroInstance) {
   cloneSrc.value = d.name
   cloneNewName.value = `${d.name}-Copy`
-  cloneTarget.value = ''
+  // 目标预填「安装目录\<新实例名>」（与后端 underDir 同规则），可任意改动；
+  // 安装目录留空时不猜，留占位符引导手填或 📁 选择。
+  cloneTarget.value = previewSubdir(installDir.value, cloneNewName.value)
   cloneProg.value = null
 }
 function cancelClone() {
@@ -447,7 +454,7 @@ async function submitClone(d: DistroInstance) {
     title: `克隆 ${d.name} → ${newName}？`,
     tone: 'warning',
     description: '执行快路径克隆：先终止源发行版，再流式复制数据盘（数十 GB 时耗时数分钟，进度行内可见），'
-      + '随后 wsl --import --vhd 把副本挂载为新发行版。源盘保持不动；要求本机 WSL 2.7.3+（不足时请用「导出 → 导入」替代动线）。'
+      + '随后 wsl --import-in-place 把副本就地挂载为新发行版（零二次拷贝）。源盘保持不动；要求本机 WSL 2.7.3+（不足时请用「导出 → 导入」替代动线）。'
       + '\n\n该操作以普通权限执行，不会弹出 UAC。',
     details: [
       { label: '新发行版名', value: newName },
@@ -525,7 +532,7 @@ async function loadConf(name: string) {
 const saveConf = (d: DistroInstance) => runDistroOp({
   name: `d-${d.name}`, title: `写回 ${d.name} 的 /etc/wsl.conf？`, tone: 'warning',
   desc: '后端三步防线：语法校验 → 默认用户存在性求证 → root 备份原文件后整文件写回并复验。'
-    + '\nwsl.conf 只在发行版启动时读取——保存后需「⏹ 停止」（或「🔄 重启」）该发行版再进入才生效。',
+    + '\nwsl.conf 只在发行版启动时读取——保存后需「⏹ 关机」（或「🔄 重启」）该发行版再进入才生效。',
   details: [{ label: '文件大小', value: `${new Blob([confText.value]).size} B` }],
   invoke: () => WSLAPI.SaveWslConf(d.name, confText.value),
   then: (out) => { if (out?.success) void offerTerminateAfterConf(d) },
@@ -534,16 +541,16 @@ const saveConf = (d: DistroInstance) => runDistroOp({
 // 保存成功即给"让配置生效"的下一步：终止后下次进入自然读到新 wsl.conf。
 async function offerTerminateAfterConf(d: DistroInstance) {
   const yes = await confirm({
-    title: `停止 ${d.name} 使新配置生效？`,
+    title: `关机 ${d.name} 使新配置生效？`,
     tone: 'default',
-    description: 'wsl.conf 只在发行版启动时读取。现在停止（数据无损，下次进入自动重启）即可立刻生效；也可以稍后自行点「⏹ 停止」或「🔄 重启」。',
+    description: 'wsl.conf 只在发行版启动时读取。现在关机（数据无损，下次进入自动再开机）即可立刻生效；也可以稍后自行点「⏹ 关机」或「🔄 重启」。',
   })
   if (!yes) return
   try {
     const r = await WSLAPI.TerminateDistro(d.name)
-    showToast(r?.message || '已停止，配置已生效')
+    showToast(r?.message || '已关机，配置已生效')
   } catch (e) {
-    showToast(`停止失败: ${getErrorMessage(e)}`)
+    showToast(`关机失败: ${getErrorMessage(e)}`)
   }
   await loadInstances()
 }
@@ -622,41 +629,112 @@ useWailsEvent<CompactProgress>('wsl:compact', (p) => {
   }
 })
 
-const importOpen = ref(false)
-const impName = ref('')
-const impTarget = ref('')
-const impTar = ref('')
+// ---------- ➕ 添加实例（三源统一入口，对齐 wsl-dashboard 的 AddInstanceView；
+// 镜像站源刻意不做：第三方 rootfs 的信任链无法在本工具内把关） ----------
+const addSource = ref<'store' | 'rootfs' | 'vhdx'>('store')
+const addName = ref('')
+const addFile = ref('')
+const addStoreId = ref('')
+// VHDX 两形态：false=就地注册（--import-in-place 零拷贝）；true=盘副本落位（--import … --vhd）。
+const addVhdCopy = ref(false)
+const addStoreOpt = computed(() => online.value.find(o => o.id === addStoreId.value) ?? null)
+// 创建钮可用性：tar 必带落位目录；VHDX 就地挂载可免目录（盘留在原处）。
+const canAddRootfs = computed(() =>
+  !!addName.value.trim() && !!addFile.value.trim() && !!installDir.value.trim())
+const canAddVhd = computed(() =>
+  !!addName.value.trim() && !!addFile.value.trim() && (!addVhdCopy.value || !!installDir.value.trim()))
+// 落位子目录预览：与后端 underDir 同规则（末级已是实例名则原样）。
+function previewSubdir(base: string, id: string): string {
+  const clean = base.trim().replace(/[\\/]+$/, '')
+  const seg = (clean.split(/[\\/]/).pop() || '').toLowerCase()
+  if (!clean) return ''
+  return seg === id.toLowerCase() ? clean : `${clean}\\${id}`
+}
 
+async function pickAddFile(kind: 'rootfs' | 'vhdx') {
+  try {
+    const p = await WSLAPI.PickDistroImageDialog(kind)
+    if (p) addFile.value = p // 取消返回空串：静默，保留手填通道
+  } catch (e) {
+    showToast(`打开系统文件选择框失败: ${getErrorMessage(e)}——可直接在输入框手动填写路径`)
+  }
+}
+
+// 📁 选目录：系统文件夹框选好后回填输入框、仍可继续编辑（选好再改）——
+// 克隆/迁移/瘦身备份/安装基目录四处目录输入统一走这扇门。
+async function pickFolderInto(fill: (p: string) => void, title: string) {
+  try {
+    const p = await WSLAPI.PickFolderDialog(title)
+    if (p) fill(p)
+  } catch (e) {
+    showToast(`打开系统文件夹选择框失败: ${getErrorMessage(e)}——可直接在输入框手动填写路径`)
+  }
+}
+
+// rootfs tar → wsl --import（免 UAC）；目录走全局安装目录（基目录语义）。
 async function submitImport() {
   if (busyOp.value) return
-  const name = impName.value.trim()
-  const target = impTarget.value.trim()
-  const tar = impTar.value.trim()
+  const name = addName.value.trim()
+  const dir = installDir.value.trim()
+  const tar = addFile.value.trim()
   const accepted = await confirm({
     title: `导入新发行版 ${name}？`,
     tone: 'warning',
     description: '执行 wsl --import：解包 tar 建立新发行版实例（数十 GB 时耗时数分钟，请勿退出）。'
-      + 'tar 须为本工具导出产物或可信来源 rootfs；目标须为空目录或不存在路径；名称与本机名单防撞。'
+      + 'tar 须为本工具导出产物或可信来源 rootfs；落位子目录须为空或不存在；名称与本机名单防撞。'
       + '\n\n该操作以普通权限执行，不会弹出 UAC。',
     details: [
       { label: 'tar 源', value: tar },
-      { label: '目标目录', value: target },
+      { label: '落位目录', value: previewSubdir(dir, name) },
     ],
   })
   if (!accepted) return
   busyOp.value = 'import'
   try {
-    const out = await WSLAPI.ImportDistro(name, target, tar)
+    const out = await WSLAPI.ImportDistro(name, dir, tar)
     showToast(out?.message || '导入完成')
-    importOpen.value = false
-    impName.value = ''
-    impTarget.value = ''
-    impTar.value = ''
+    addName.value = ''
+    addFile.value = ''
   } catch (e) {
     showToast(`导入失败: ${getErrorMessage(e)}`)
   } finally {
     busyOp.value = ''
     await loadInstances() // 导入可能部分生效：复采为准
+  }
+}
+
+// 现有 VHDX 盘 → 新实例：就地注册（零拷贝，盘留在原处）或复制落位。
+async function submitImportVhd() {
+  if (busyOp.value) return
+  const name = addName.value.trim()
+  const dir = installDir.value.trim()
+  const vhdx = addFile.value.trim()
+  const copy = addVhdCopy.value
+  const accepted = await confirm({
+    title: `挂载 VHDX 为新发行版 ${name}？`,
+    tone: 'warning',
+    description: copy
+      ? '执行 wsl --import … --vhd：微软语义即把数据盘【复制】到安装位置下的同名子目录（数十 GB 时耗时较长）。'
+        + '适合接管备份盘且想换位置的场合；原盘保持不动。'
+      : '执行 wsl --import-in-place：就地注册，零拷贝——该 VHDX 文件从此就是发行版的数据盘，'
+        + '移动/删除它会直接伤及实例（想换位置请用挂载后的「🧭 迁移」）。',
+    details: [
+      { label: 'VHDX 盘', value: vhdx },
+      ...(copy ? [{ label: '副本落位', value: previewSubdir(dir, name) }] : []),
+    ],
+  })
+  if (!accepted) return
+  busyOp.value = 'import'
+  try {
+    const out = await WSLAPI.ImportDistroVhd(name, dir, vhdx, copy)
+    showToast(out?.message || '挂载完成')
+    addName.value = ''
+    addFile.value = ''
+  } catch (e) {
+    showToast(`挂载失败: ${getErrorMessage(e)}`)
+  } finally {
+    busyOp.value = ''
+    await loadInstances()
   }
 }
 
@@ -695,7 +773,7 @@ async function loadOnline() {
 
 // 首次切到对应页才拉数据（在线清单/netsh 现态均依赖本机命令，冷页避免无谓探测）。
 watch(activeMainTab, (tab) => {
-  if (tab === 'versions' && online.value.length === 0 && !onlineLoading.value && !onlineError.value) {
+  if ((tab === 'official' || tab === 'add') && online.value.length === 0 && !onlineLoading.value && !onlineError.value) {
     loadOnline()
   }
   if (tab === 'proxy' && !proxyView.value && !proxyLoading.value) {
@@ -965,13 +1043,36 @@ async function openReleaseTag(tag: string) {
   }
 }
 
+// 安装落位基目录（「➕ 添加实例」页全局行）：默认 D:\wsl——每个实例落在其下
+// 同名子目录（后端 underDir 把关）；留空=系统默认（通常 C 盘）。一经改动即记住
+//（localStorage）。商店安装由后端在同一条提权链里"装完即迁"（wsl --install 不
+// 支持目标目录参数）；rootfs/VHDX 导入直接落位。
+const INSTALL_DIR_KEY = 'wsl.distroInstallDir'
+const DEFAULT_INSTALL_DIR = 'D:\\wsl'
+const installDir = ref('')
+try {
+  const stored = localStorage.getItem(INSTALL_DIR_KEY)
+  installDir.value = stored === null ? DEFAULT_INSTALL_DIR : stored
+} catch {
+  installDir.value = DEFAULT_INSTALL_DIR // 隐私模式等存不下不拦安装，仅失去记忆
+}
+watch(installDir, (v) => {
+  try {
+    localStorage.setItem(INSTALL_DIR_KEY, v.trim())
+  } catch { /* 同上 */ }
+})
+
 async function installDistro(opt: DistroOption) {
+  const dir = installDir.value.trim()
   await runOp({
     name: `distro-${opt.id}`,
     title: `安装发行版 ${opt.id}？`,
     tone: 'default',
-    desc: `执行 wsl --install -d ${opt.id}：下载安装后首次进入该发行版需创建 Linux 用户名与密码。`,
-    invoke: () => WSLAPI.InstallDistro(opt.id),
+    desc: `执行 wsl --install -d ${opt.id}：下载安装后首次进入该发行版需创建 Linux 用户名与密码。`
+      + (dir
+          ? `\n\n装完将自动迁移落位到：${previewSubdir(dir, opt.id)}\n（基目录 + 同名子目录；同一条提权链一次 UAC 完成——wsl --install 本身不支持指定目录，"装完即迁"是唯一正规通道。）`
+          : '\n\n当前安装目录留空——将装到系统默认位置（通常在 C 盘）。想避开 C 盘，请到「➕ 添加实例」页顶部填写基目录（默认 D:\\wsl）并会被记住。'),
+    invoke: () => WSLAPI.InstallDistroTo(opt.id, dir),
   })
 }
 
@@ -1063,7 +1164,7 @@ onMounted(() => {
               title="编辑宿主全局配置 .wslconfig（网络模式/资源上限；影响所有发行版，「停止全部」后生效）"
               @click="toggleHostConf">🌐 .wslconfig</button>
             <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
-              title="wsl --shutdown：停止全部发行版与 WSL 虚拟机（数据无损；单个发行版请用发行版页「⏹ 停止」），.wslconfig 改动的生效前提"
+              title="wsl --shutdown：停止全部发行版与 WSL 虚拟机（数据无损；单个发行版请用发行版页「⏹ 关机」），.wslconfig 改动的生效前提"
               @click="doShutdown">🌑 停止全部</button>
             <button class="btn btn-secondary btn-small" :disabled="streaming" @click="startCheck">
               {{ streaming ? '体检中…' : '↻ 重新体检' }}
@@ -1151,33 +1252,9 @@ onMounted(() => {
         <div class="section-title distro-head">
           <h3>本机发行版 ({{ instances.length }})</h3>
           <div class="btn-group distro-head-actions">
-            <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName || cloneBusy"
-              :class="{ active: importOpen }" title="wsl --import：把导出 tar / 可信 rootfs 落成新增发行版（免 UAC）"
-              @click="importOpen = !importOpen">📥 导入发行版</button>
             <button class="btn btn-secondary btn-small" :disabled="instLoading || !!busyOp" @click="loadInstances">
               {{ instLoading ? '刷新中…' : '↻ 刷新列表' }}
             </button>
-          </div>
-        </div>
-        <!-- 导入面板：新增发行版入口（导出产物回流 / 外部 rootfs） -->
-        <div v-if="importOpen" class="import-panel">
-          <UiBanner tone="info" class="slim">
-            导入 = <code class="mono">wsl --import</code>：把本工具导出产物或可信 rootfs tar 落成新增发行版（免 UAC）。
-            目标须为空目录或不存在路径；名称与本机名单防撞；大 tar 解包耗时数分钟，期间请勿退出。
-          </UiBanner>
-          <div class="move-input-row">
-            <label class="move-label" for="wsl-import-name">新发行版名</label>
-            <input id="wsl-import-name" v-model="impName" class="input mono" placeholder="MyDistro" spellcheck="false" :disabled="!!busyOp" />
-            <label class="move-label" for="wsl-import-target">目标目录</label>
-            <input id="wsl-import-target" v-model="impTarget" class="input mono" placeholder="D:\WSL\MyDistro" spellcheck="false" :disabled="!!busyOp" />
-          </div>
-          <div class="move-input-row">
-            <label class="move-label" for="wsl-import-tar">tar 文件路径</label>
-            <input id="wsl-import-tar" v-model="impTar" class="input mono" placeholder="导出工件的完整路径（「本会话导出记录」处可复制）" spellcheck="false" :disabled="!!busyOp"
-              @keyup.enter="impName.trim() && impTarget.trim() && impTar.trim() && submitImport()" />
-            <button class="btn btn-primary btn-small" :disabled="!impName.trim() || !impTarget.trim() || !impTar.trim() || !!busyOp"
-              @click="submitImport">{{ busyOp === 'import' ? '导入中…' : '✔ 导入' }}</button>
-            <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="importOpen = false">收起</button>
           </div>
         </div>
         <div v-if="instError" class="error-box">{{ instError }}
@@ -1185,7 +1262,7 @@ onMounted(() => {
         </div>
         <div v-else-if="instLoading && !instances.length" class="hint-line">正在经本机 wsl.exe 读取发行版现状…</div>
         <div v-else-if="!instances.length" class="empty-state">
-          <p>WSL 已安装但还没有发行版 —— 到「📦 版本与发行版」页从官方清单挑一个一键安装。</p>
+          <p>WSL 已安装但还没有发行版 —— 到「➕ 添加实例」页挑一个来源（官方商店 / rootfs / VHDX 盘）。</p>
         </div>
         <div v-else class="table-container">
           <table class="tbl">
@@ -1225,8 +1302,8 @@ onMounted(() => {
                         title="重启：停止→确认已停→拉起验证（不做后台保活，空闲后自动回落停止；wsl.conf 改动的生效捷径）"
                         @click="restartDistro(d)">🔄 重启</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !d.running"
-                        :title="d.running ? 'wsl --terminate：只停这一个发行版（数据无损，下次访问自动再启动）；停全部请到就绪检测页「🌑 停止全部」' : '当前已停止'"
-                        @click="terminateDistro(d)">⏹ 停止</button>
+                        :title="d.running ? 'wsl --terminate：等同关掉本发行版的虚拟机电源（硬停；数据盘无损，下次访问自动再启动）；停全部请到就绪检测页「🌑 停止全部」' : '当前已停止'"
+                        @click="terminateDistro(d)">⏹ 关机</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || d.default"
                         :title="d.default ? '已是默认发行版' : 'wsl --set-default：不带 -d 的 wsl 命令与控制台默认进入它'"
                         @click="setDefaultDistro(d)">⭐ 设默认</button>
@@ -1237,7 +1314,7 @@ onMounted(() => {
                         title="wsl --manage --move：迁移数据盘到其他盘（UAC 提权，会先停机全部 WSL）"
                         @click="startMove(d)">🧭 迁移</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName || (!!exportingName && exportingName !== d.name) || (!!cloneSrc && cloneSrc !== d.name)"
-                        title="克隆快路径：停源→拷贝数据盘→--import --vhd 挂为新发行版（需 WSL 2.7.3+，免 UAC）"
+                        title="克隆快路径：停源→拷贝数据盘→--import-in-place 就地挂为新发行版（需 WSL 2.7.3+，免 UAC）"
                         @click="startClone(d)">🧬 克隆</button>
                       <button class="btn btn-secondary btn-small" :disabled="!!busyOp || !!movingName"
                         title="数据盘瘦身：备份→fstrim→Optimize-VHD→不足则注销重导入（Tier2 会换落位目录）"
@@ -1261,13 +1338,15 @@ onMounted(() => {
                     <div class="move-editor">
                       <UiBanner tone="warn" class="slim">
                         迁移会先执行 <code class="mono">wsl --shutdown</code> 打停整个 WSL 子系统<template v-if="moveRunningOthers.length">——当前运行中的
-                        <b>{{ moveRunningOthers.map(i => i.name).join('、') }}</b> 会被连带终止<template v-if="d.running">（<b>{{ d.name }}</b> 本身也在运行，可先「⏹ 停止」缩小影响面）</template></template>，随后提权移动数据盘（UAC 授权，瞬时冲突自动重试至多 5 次）。目标须为空目录或不存在的路径，路径合法性由后端把关。
+                        <b>{{ moveRunningOthers.map(i => i.name).join('、') }}</b> 会被连带终止<template v-if="d.running">（<b>{{ d.name }}</b> 本身也在运行，可先「⏹ 关机」缩小影响面）</template></template>，随后提权移动数据盘（UAC 授权，瞬时冲突自动重试至多 5 次）。目标须为空目录或不存在的路径，路径合法性由后端把关。
                       </UiBanner>
                       <div class="move-input-row">
                         <label class="move-label" for="wsl-move-target">目标目录</label>
                         <input id="wsl-move-target" v-model="moveTarget" class="input mono"
                           :placeholder="`D:\\WSL\\${d.name}`" spellcheck="false" :disabled="!!busyOp"
                           @keyup.enter="moveTarget.trim() && confirmMove(d)" />
+                        <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+                          title="调系统文件夹选择框：选好即回填，仍可手动修改" @click="pickFolderInto((p) => moveTarget = p, `选择 ${d.name} 的迁移目标目录`)">📁 选目录</button>
                         <button class="btn btn-primary btn-small" :disabled="!moveTarget.trim() || !!busyOp"
                           @click="confirmMove(d)">{{ busyOp === `d-${d.name}` ? '迁移中…' : '✔ 确认迁移' }}</button>
                         <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="cancelMove">取消</button>
@@ -1323,6 +1402,8 @@ onMounted(() => {
                           <input id="wsl-clone-target" v-model="cloneTarget" class="input mono" :placeholder="`D:\\WSL\\${d.name}-Copy`"
                             spellcheck="false" :disabled="!!busyOp"
                             @keyup.enter="cloneNewName.trim() && cloneTarget.trim() && submitClone(d)" />
+                          <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+                            title="调系统文件夹选择框：选好即回填，仍可手动修改" @click="pickFolderInto((p) => cloneTarget = p, `选择 ${d.name} 克隆副本的落位目录`)">📁 选目录</button>
                           <button class="btn btn-primary btn-small" :disabled="!cloneNewName.trim() || !cloneTarget.trim() || !!busyOp"
                             @click="submitClone(d)">✔ 开始克隆</button>
                           <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="cancelClone">取消</button>
@@ -1361,6 +1442,8 @@ onMounted(() => {
                           <label class="move-label" for="wsl-compact-bak">备份目录</label>
                           <input id="wsl-compact-bak" v-model="compBackupDir" class="input mono"
                             placeholder="默认「下载\WSL 导出」；大盘备份可指到空闲卷（须绝对路径）" spellcheck="false" :disabled="!!busyOp" />
+                          <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+                            title="调系统文件夹选择框：选好即回填，仍可手动修改" @click="pickFolderInto((p) => compBackupDir = p, `选择 ${d.name} 瘦身备份的存放目录`)">📁 选目录</button>
                         </div>
                         <div class="move-input-row">
                           <button class="btn btn-danger-outline btn-small" :disabled="!!busyOp" @click="submitCompact(d)">🗜 确认开始瘦身</button>
@@ -1389,7 +1472,7 @@ onMounted(() => {
                           <button class="btn btn-secondary btn-small" :disabled="!!busyOp || confLoading"
                             @click="loadConf(d.name)">↻ 重读</button>
                           <button class="btn btn-secondary btn-small" :disabled="!!busyOp" @click="closeConf">收起</button>
-                          <span class="hint-dim">语法闸门 / 默认用户求证 / 写前备份（{{ '/etc/wsl.conf.hanxi.bak' }}）由后端把关；改完记得「⏹ 停止」或「🔄 重启」再进入</span>
+                          <span class="hint-dim">语法闸门 / 默认用户求证 / 写前备份（{{ '/etc/wsl.conf.hanxi.bak' }}）由后端把关；改完记得「⏹ 关机」或「🔄 重启」再进入</span>
                         </div>
                       </template>
                     </div>
@@ -1456,7 +1539,7 @@ onMounted(() => {
       <div v-else class="hint-line">就绪体检进行中，稍候自动列出本机发行版…</div>
     </div>
 
-    <!-- 版本 Tab：官方版本管理与发行版 -->
+    <!-- 版本 Tab：WSL 本体官方发布（Releases × 本机关系 × MSI 应用内下载） -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
       <div class="control-panel">
         <div class="meta-info">
@@ -1541,6 +1624,111 @@ onMounted(() => {
           </tbody>
         </table>
       </div>
+
+    </div>
+
+    <!-- ➕ 添加实例 Tab：三源统一新增入口（官方商店 / 本地 rootfs / 现有 VHDX 盘）。
+         对齐 wsl-dashboard 的 AddInstanceView；镜像站下载源刻意不做（第三方 rootfs 信任链无法把关）。 -->
+    <div v-show="activeMainTab === 'add'" class="tab-body">
+      <div class="install-panel">
+        <div class="move-input-row">
+          <label class="move-label">来源类型</label>
+          <div class="btn-group">
+            <button class="btn btn-secondary btn-small" :class="{ active: addSource === 'store' }" :disabled="!!busyOp" @click="addSource = 'store'">🛒 官方商店发行版</button>
+            <button class="btn btn-secondary btn-small" :class="{ active: addSource === 'rootfs' }" :disabled="!!busyOp" @click="addSource = 'rootfs'">📄 本地 rootfs（tar）</button>
+            <button class="btn btn-secondary btn-small" :class="{ active: addSource === 'vhdx' }" :disabled="!!busyOp" @click="addSource = 'vhdx'">💽 现有 VHDX 发行盘</button>
+          </div>
+        </div>
+        <!-- 安装基目录三源共用；VHDX 就地挂载不动盘，故隐藏该行 -->
+        <div v-if="addSource !== 'vhdx' || addVhdCopy" class="move-input-row">
+          <label class="move-label" for="wsl-install-dir">安装目录</label>
+          <input id="wsl-install-dir" v-model="installDir" class="input mono"
+            placeholder="默认 D:\wsl；实例落在其下同名子目录；留空=系统默认（通常在 C 盘）" spellcheck="false" :disabled="!!busyOp" />
+          <button class="btn btn-secondary btn-small" :disabled="!!busyOp"
+            title="调系统文件夹选择框：选好即回填，仍可手动修改" @click="pickFolderInto((p) => installDir = p, '选择安装基目录')">📁 选目录</button>
+        </div>
+        <div class="hint-line">安装目录按「基目录」使用：每个实例自动落在其下<b>同名子目录</b>（如 D:\wsl\Ubuntu；末级已是实例名则不重复追加）。须为本机绝对路径且所在盘存在；改动会被记住。</div>
+      </div>
+
+      <!-- 源①：官方商店（wsl --install + 装完即迁落位，同一条提权链一次 UAC） -->
+      <div v-if="addSource === 'store'" class="install-panel">
+        <div class="move-input-row">
+          <label class="move-label" for="wsl-add-store">发行版</label>
+          <select id="wsl-add-store" v-model="addStoreId" class="input" :disabled="!!busyOp || !online.length">
+            <option value="" disabled>{{ onlineLoading ? '正在加载清单…' : (online.length ? '从官方在线清单选择…' : '清单未加载——点右侧刷新向本机 wsl.exe 查询') }}</option>
+            <option v-for="o in online" :key="o.id" :value="o.id">{{ o.label }}</option>
+          </select>
+          <button class="btn btn-secondary btn-small" :disabled="!!busyOp || onlineLoading" @click="loadOnline">↻ 刷新清单</button>
+        </div>
+        <div v-if="onlineError" class="error-box">{{ onlineError }}
+          <button class="btn btn-secondary btn-small retry-inline" @click="loadOnline">↻ 重试</button>
+        </div>
+        <UiBanner v-if="distroBlockedReason" tone="warn" class="slim distro-block-banner">{{ distroBlockedReason }}</UiBanner>
+        <div class="move-input-row">
+          <button class="btn btn-primary" :disabled="!addStoreOpt || !!busyOp || !!distroBlockedReason"
+            @click="addStoreOpt && installDistro(addStoreOpt)">📦 安装所选发行版</button>
+          <span class="hint-dim">下载体量较大多半要几分钟；首次进入发行版需创建 Linux 用户名与密码</span>
+        </div>
+      </div>
+
+      <!-- 源②：本地 rootfs tar（wsl --import，免 UAC） -->
+      <div v-else-if="addSource === 'rootfs'" class="install-panel">
+        <UiBanner tone="info" class="slim">
+          导入 = <code class="mono">wsl --import</code>：把本工具导出产物或可信 rootfs tar 解包落成新增实例（免 UAC）。
+          落位子目录须为空或不存在；名称与本机名单防撞；大 tar 解包耗时数分钟，期间请勿退出。
+        </UiBanner>
+        <div class="move-input-row">
+          <label class="move-label" for="wsl-add-name">实例名称</label>
+          <input id="wsl-add-name" v-model="addName" class="input mono" placeholder="MyDistro" spellcheck="false" :disabled="!!busyOp" />
+        </div>
+        <div class="move-input-row">
+          <label class="move-label" for="wsl-add-file">tar 文件路径</label>
+          <input id="wsl-add-file" v-model="addFile" class="input mono" placeholder="导出工件或 rootfs tar 的完整路径（「本会话导出记录」处可复制）" spellcheck="false" :disabled="!!busyOp"
+            @keyup.enter="canAddRootfs && submitImport()" />
+          <button class="btn btn-secondary btn-small" :disabled="!!busyOp" title="调系统文件选择框挑选 tar（也可手动填写路径）" @click="pickAddFile('rootfs')">📁 浏览</button>
+        </div>
+        <div class="move-input-row">
+          <button class="btn btn-primary btn-small" :disabled="!canAddRootfs || !!busyOp" @click="submitImport">
+            {{ busyOp === 'import' ? '导入中…' : '✔ 创建（解包落位）' }}
+          </button>
+          <span v-if="addName.trim()" class="hint-dim">落位：{{ previewSubdir(installDir.trim(), addName.trim()) || '请先填写安装目录' }}</span>
+        </div>
+      </div>
+
+      <!-- 源③：现有 VHDX 发行盘（--import-in-place 零拷贝 / --import … --vhd 复制落位，免 UAC） -->
+      <div v-else class="install-panel">
+        <UiBanner tone="info" class="slim">
+          挂载 = 把现成的 ext4 发行盘（「🗜 瘦身」备份盘、别机带来的 ext4.vhdx 等）落成新增实例（免 UAC；要求 WSL 2.7.3+）。
+          <b>就地挂载零拷贝</b>——该文件从此就是实例的数据盘，移动/删除它即伤及实例；换位置请用挂载后的「🧭 迁移」。
+        </UiBanner>
+        <div class="move-input-row">
+          <label class="move-label" for="wsl-add-name">实例名称</label>
+          <input id="wsl-add-name" v-model="addName" class="input mono" placeholder="MyDistro" spellcheck="false" :disabled="!!busyOp" />
+        </div>
+        <div class="move-input-row">
+          <label class="move-label" for="wsl-add-file">VHDX 盘路径</label>
+          <input id="wsl-add-file" v-model="addFile" class="input mono" placeholder="ext4.vhdx 等发行盘的完整路径" spellcheck="false" :disabled="!!busyOp"
+            @keyup.enter="canAddVhd && submitImportVhd()" />
+          <button class="btn btn-secondary btn-small" :disabled="!!busyOp" title="调系统文件选择框挑选 VHDX（也可手动填写路径）" @click="pickAddFile('vhdx')">📁 浏览</button>
+        </div>
+        <div class="move-input-row">
+          <label class="move-label">挂载方式</label>
+          <label class="radio-label"><input v-model="addVhdCopy" type="radio" :value="false" :disabled="!!busyOp" /> 就地挂载（零拷贝，推荐）</label>
+          <label class="radio-label"><input v-model="addVhdCopy" type="radio" :value="true" :disabled="!!busyOp" /> 复制盘到安装目录（原盘不动）</label>
+        </div>
+        <div class="move-input-row">
+          <button class="btn btn-primary btn-small" :disabled="!canAddVhd || !!busyOp" @click="submitImportVhd">
+            {{ busyOp === 'import' ? '挂载中…' : '✔ 创建实例' }}
+          </button>
+          <span v-if="addVhdCopy && addName.trim()" class="hint-dim">副本落位：{{ previewSubdir(installDir.trim(), addName.trim()) || '请先填写安装目录' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 官方发行版 Tab：可安装清单（wsl --install 白名单 + 装完即迁落位） -->
+    <div v-show="activeMainTab === 'official'" class="tab-body">
+      <!-- 落位说明：安装目录输入已上收「➕ 添加实例」页，此处如实回显当前落位 -->
+      <div class="hint-line">安装落位：<b>{{ installDir.trim() || '系统默认（通常在 C 盘）' }}</b> 下的同名子目录——到「➕ 添加实例」页顶部可改，改动会被记住。</div>
 
       <!-- 在线发行版清单 -->
       <UiBanner v-if="distroBlockedReason" tone="warn" class="slim distro-block-banner">{{ distroBlockedReason }}</UiBanner>
@@ -1772,8 +1960,9 @@ onMounted(() => {
 .clone-row-editor td { background: var(--surface-page); }
 .btn.active { border-color: var(--color-primary); color: var(--color-primary); }
 
-/* 导入面板 */
-.import-panel {
+/* 导入面板 / 安装落位目录面板 */
+.import-panel,
+.install-panel {
   display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
 }
