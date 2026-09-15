@@ -7,6 +7,19 @@
 // 禁止再回到 App.vue 手抄两张表（迁移铁律第 1、9 条）。
 import { defineAsyncComponent } from 'vue'
 import type { Component } from 'vue'
+import type { IconName } from './icons'
+
+/** 双栏外壳的一级分组（左栏目录节点）：六组固定，顺序由 GROUP_META.order 决定。 */
+export type NavGroup = 'network' | 'system' | 'desktop' | 'efficiency' | 'media' | 'developer'
+
+export const GROUP_META: Record<NavGroup, { title: string; desc: string; icon: IconName; order: number }> = {
+  network:   { title: '网络与传输', desc: '隧道 · 扫描 · 代理 · 远控', icon: 'globe',    order: 1 },
+  system:    { title: '系统管理',   desc: '端口 · 清理 · 监控 · 系统盘', icon: 'cpu',   order: 2 },
+  desktop:   { title: '桌面增强',   desc: '标注 · 解压 · 音量 · 快捷工具', icon: 'layout', order: 3 },
+  efficiency:{ title: '效率办公',   desc: '备忘 · 搜索 · 截图 · 待办',  icon: 'check-square', order: 4 },
+  media:     { title: '媒体影音',   desc: '录屏 · 压图 · 下载',        icon: 'film',    order: 5 },
+  developer: { title: '开发者工具', desc: '编辑器 · 模型切换 · Agent · WSL', icon: 'code', order: 6 },
+}
 
 export interface RouteDef {
   component: Component
@@ -79,47 +92,95 @@ export function fallbackComponent(): Component {
   return ROUTES['/'].component
 }
 
+/** 模块 → 一级分组归属（与后端注册表分组口径一致；双栏左栏按此聚簇）。 */
+export const MODULE_GROUP: Record<string, NavGroup> = {
+  frpc: 'network',
+  fileshare: 'network',
+  lan: 'network',
+  portscan: 'network',
+  publicip: 'network',
+  wifi: 'network',
+  flclash: 'network',
+  ddnsgo: 'network',
+  subnetdesk: 'network',
+  rustdesk: 'network',
+  portkill: 'system',
+  bcu: 'system',
+  litemonitor: 'system',
+  rufus: 'system',
+  envcheck: 'system',
+  markeron: 'desktop',
+  nanazip: 'desktop',
+  eartrumpet: 'desktop',
+  mangodisk: 'desktop',
+  translucenttb: 'desktop',
+  quickmenu: 'desktop',
+  keyviz: 'desktop',
+  quicklook: 'desktop',
+  guoheview: 'desktop',
+  memo: 'efficiency',
+  everything: 'efficiency',
+  snipaste: 'efficiency',
+  papertodo: 'efficiency',
+  wechat: 'efficiency',
+  recordly: 'media',
+  piclite: 'media',
+  bili23: 'media',
+  ccswitch: 'developer',
+  vscode: 'developer',
+  paseo: 'developer',
+  wsl: 'developer',
+}
+
+/** 模块所属分组；未登记模块返回 undefined（由外壳决定归入"其他"或隐藏）。 */
+export function groupOfModule(id: string): NavGroup | undefined {
+  return MODULE_GROUP[id]
+}
+
 /**
  * 模块展示元数据（图标 + 首选路由）：自 HomeView 的 MODULE_META 收编，
  * 终结"三份并行清单"（App.vue 两张表已并入 ROUTES）。后端注册表仍是
  * "模块存在/启用"的真相，本表只供首页卡片渲染；缺省模块走 fallbackIcon。
+ * icon 统一 `i:` 前缀引用 constants/icons 注册表（与后端 Nav().Icon 同名），
+ * 消费端（HomeView）经 AppIcon 渲染 SVG；无前缀值按文本回退。
  */
 export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }> = {
-  frpc: { icon: '⚡', route: '/frpc' },
-  fileshare: { icon: '📁', route: '/ext/fileshare' },
-  memo: { icon: '📝', route: '/ext/memo' },
-  lan: { icon: '◉', route: '/ext/lan' },
-  portscan: { icon: '🔍', route: '/ext/portscan' },
-  wechat: { icon: '💬', route: '/ext/wechat' },
-  publicip: { icon: '≋', route: '/ext/publicip' },
-  portkill: { icon: '✕', route: '/ext/portkill' },
-  wifi: { icon: '📶', route: '/ext/wifi' },
-  markeron: { icon: '✎', route: '/ext/markeron' },
-  everything: { icon: '🔎', route: '/ext/everything' },
-  ccswitch: { icon: '🔀', route: '/ext/ccswitch' },
-  snipaste: { icon: '✂', route: '/ext/snipaste' },
-  nanazip: { icon: 'NZ', route: '/ext/nanazip' },
-  eartrumpet: { icon: '🔊', route: '/ext/eartrumpet' },
-  mangodisk: { icon: '🥭', route: '/ext/mangodisk' },
-  bcu: { icon: '🧹', route: '/ext/bcu' },
-  flclash: { icon: '⚡', route: '/ext/flclash' },
-  recordly: { icon: '🎬', route: '/ext/recordly' },
-  papertodo: { icon: '📄', route: '/ext/papertodo' },
-  piclite: { icon: '🖼️', route: '/ext/piclite' },
-  keyviz: { icon: '⌨️', route: '/ext/keyviz' },
-  quicklook: { icon: '👁️', route: '/ext/quicklook' },
-  litemonitor: { icon: '📊', route: '/ext/litemonitor' },
-  guoheview: { icon: '🏞️', route: '/ext/guoheview' },
-  ddnsgo: { icon: '🌐', route: '/ext/ddnsgo' },
-  subnetdesk: { icon: '🖥', route: '/ext/subnetdesk' },
-  rustdesk: { icon: '🌍', route: '/ext/rustdesk' },
-  rufus: { icon: '💽', route: '/ext/rufus' },
-  bili23: { icon: '📺', route: '/ext/bili23' },
-  vscode: { icon: '💻', route: '/ext/vscode' },
-  translucenttb: { icon: '🌫️', route: '/ext/translucenttb' },
-  paseo: { icon: '🐾', route: '/ext/paseo' },
-  wsl: { icon: '🐧', route: '/ext/wsl' },
-  quickmenu: { icon: '🖱', route: '/ext/quickmenu' },
+  frpc: { icon: 'i:zap', route: '/frpc' },
+  fileshare: { icon: 'i:share-2', route: '/ext/fileshare' },
+  memo: { icon: 'i:sticky-note', route: '/ext/memo' },
+  lan: { icon: 'i:radar', route: '/ext/lan' },
+  portscan: { icon: 'i:search', route: '/ext/portscan' },
+  wechat: { icon: 'i:message-circle', route: '/ext/wechat' },
+  publicip: { icon: 'i:globe', route: '/ext/publicip' },
+  portkill: { icon: 'i:x-octagon', route: '/ext/portkill' },
+  wifi: { icon: 'i:wifi', route: '/ext/wifi' },
+  markeron: { icon: 'i:pen-line', route: '/ext/markeron' },
+  everything: { icon: 'i:search-code', route: '/ext/everything' },
+  ccswitch: { icon: 'i:shuffle', route: '/ext/ccswitch' },
+  snipaste: { icon: 'i:scissors', route: '/ext/snipaste' },
+  nanazip: { icon: 'i:archive', route: '/ext/nanazip' },
+  eartrumpet: { icon: 'i:volume-2', route: '/ext/eartrumpet' },
+  mangodisk: { icon: 'i:hard-drive', route: '/ext/mangodisk' },
+  bcu: { icon: 'i:trash-2', route: '/ext/bcu' },
+  flclash: { icon: 'i:shield', route: '/ext/flclash' },
+  recordly: { icon: 'i:video', route: '/ext/recordly' },
+  papertodo: { icon: 'i:clipboard-list', route: '/ext/papertodo' },
+  piclite: { icon: 'i:image-down', route: '/ext/piclite' },
+  keyviz: { icon: 'i:keyboard', route: '/ext/keyviz' },
+  quicklook: { icon: 'i:eye', route: '/ext/quicklook' },
+  litemonitor: { icon: 'i:activity', route: '/ext/litemonitor' },
+  guoheview: { icon: 'i:image', route: '/ext/guoheview' },
+  ddnsgo: { icon: 'i:link', route: '/ext/ddnsgo' },
+  subnetdesk: { icon: 'i:network', route: '/ext/subnetdesk' },
+  rustdesk: { icon: 'i:cast', route: '/ext/rustdesk' },
+  rufus: { icon: 'i:disc', route: '/ext/rufus' },
+  bili23: { icon: 'i:tv', route: '/ext/bili23' },
+  vscode: { icon: 'i:code', route: '/ext/vscode' },
+  translucenttb: { icon: 'i:layers', route: '/ext/translucenttb' },
+  paseo: { icon: 'i:paw', route: '/ext/paseo' },
+  wsl: { icon: 'i:terminal', route: '/ext/wsl' },
+  quickmenu: { icon: 'i:mouse-pointer', route: '/ext/quickmenu' },
+  envcheck: { icon: 'i:wrench', route: '/ext/envcheck' },
 }
 
-export const FALLBACK_MODULE_ICON = '📦'
+export const FALLBACK_MODULE_ICON = 'i:box'

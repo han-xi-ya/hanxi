@@ -7,6 +7,8 @@ import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../constants/navigation'
+import { ICON_NAMES, type IconName } from '../constants/icons'
+import AppIcon from '../components/ui/AppIcon.vue'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -42,6 +44,14 @@ const disabledModules = computed(() => modules.value.filter(m => !m.enabled))
 
 function getModuleIcon(id: string): string {
   return MODULE_META[id]?.icon || FALLBACK_MODULE_ICON
+}
+
+/** `i:` 前缀且已登记 → SVG 图标名；否则 undefined（走文本回退渲染）。 */
+function moduleIconName(id: string): IconName | undefined {
+  const icon = getModuleIcon(id)
+  if (!icon.startsWith('i:')) return undefined
+  const name = icon.slice(2)
+  return (ICON_NAMES as readonly string[]).includes(name) ? (name as IconName) : undefined
 }
 
 function getModuleRoute(id: string): string {
@@ -125,7 +135,8 @@ onMounted(async () => {
         >
           <div class="card-top">
             <div class="icon-wrap active-icon">
-              <span class="mod-icon">{{ getModuleIcon(m.id) }}</span>
+              <AppIcon v-if="moduleIconName(m.id)" :name="moduleIconName(m.id)!" :size="18" />
+              <span v-else class="mod-icon">{{ getModuleIcon(m.id) }}</span>
             </div>
             <div class="card-actions" @click.stop>
               <button
@@ -177,7 +188,8 @@ onMounted(async () => {
         >
           <div class="card-top">
             <div class="icon-wrap idle-icon">
-              <span class="mod-icon">{{ getModuleIcon(m.id) }}</span>
+              <AppIcon v-if="moduleIconName(m.id)" :name="moduleIconName(m.id)!" :size="18" />
+              <span v-else class="mod-icon">{{ getModuleIcon(m.id) }}</span>
             </div>
             <button
               class="btn-toggle-on"

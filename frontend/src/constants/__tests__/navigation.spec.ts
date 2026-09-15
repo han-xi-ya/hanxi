@@ -1,7 +1,11 @@
 // navigation.ts 是路由单一来源：防"新增视图忘登记 / 双表漂移"的回归锁。
 // 断言与 App.vue 迁移前的两份手写表内容一一对应（特征基线）。
 import { describe, expect, it } from 'vitest'
-import { ROUTES, moduleIdOf, routeComponent, placeholderComponent, fallbackComponent } from '../navigation'
+import {
+  ROUTES, moduleIdOf, routeComponent, placeholderComponent, fallbackComponent,
+  GROUP_META, MODULE_GROUP, groupOfModule, MODULE_PRESENTATION, FALLBACK_MODULE_ICON,
+} from '../navigation'
+import { ICON_NAMES } from '../icons'
 
 describe('constants/navigation', () => {
   it('登记了全部 40 条路由', () => {
@@ -36,6 +40,39 @@ describe('constants/navigation', () => {
       if (route.startsWith('/ext/')) {
         expect(def.moduleId).toBe(route.slice('/ext/'.length))
       }
+    }
+  })
+
+  it('GROUP_META 六组齐全，order 1..6 连续，图标名均已登记', () => {
+    expect(Object.keys(GROUP_META)).toHaveLength(6)
+    expect(Object.values(GROUP_META).map((g) => g.order).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+    for (const g of Object.values(GROUP_META)) {
+      expect(ICON_NAMES).toContain(g.icon)
+      expect(g.title).toBeTruthy()
+      expect(g.desc).toBeTruthy()
+    }
+  })
+
+  it('MODULE_GROUP 覆盖 ROUTES 全部 moduleId，且值均属六组之一', () => {
+    const groups = new Set(Object.keys(GROUP_META))
+    for (const def of Object.values(ROUTES)) {
+      if (def.moduleId) expect(MODULE_GROUP[def.moduleId]).toBeDefined()
+    }
+    for (const g of Object.values(MODULE_GROUP)) expect(groups.has(g)).toBe(true)
+    expect(Object.keys(MODULE_GROUP)).toHaveLength(36)
+  })
+
+  it('groupOfModule：已知返回分组，未知返回 undefined', () => {
+    expect(groupOfModule('frpc')).toBe('network')
+    expect(groupOfModule('paseo')).toBe('developer')
+    expect(groupOfModule('nope')).toBeUndefined()
+  })
+
+  it('MODULE_PRESENTATION 图标全部为已登记的 i: 名，回退为 i:box', () => {
+    expect(FALLBACK_MODULE_ICON).toBe('i:box')
+    for (const p of Object.values(MODULE_PRESENTATION)) {
+      expect(p.icon.startsWith('i:')).toBe(true)
+      expect(ICON_NAMES).toContain(p.icon.slice(2))
     }
   })
 

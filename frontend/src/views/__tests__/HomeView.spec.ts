@@ -54,12 +54,15 @@ describe('HomeView', () => {
     expect(w.findAll('.enabled-card')).toHaveLength(2)
     expect(w.findAll('.disabled-card')).toHaveLength(1)
     expect(w.findAll('.stat-num')[0].text()).toBe('2')
-    // 未建档模块走回退图标 📦
+    // 图标经 AppIcon 渲染为内联 SVG（i: 前缀体系，不再输出 emoji 文本）
+    // 未建档模块走回退图标 i:box
     const mysteryCard = w.findAll('.enabled-card').find((c) => c.text().includes('未知模块'))!
-    expect(mysteryCard.find('.mod-icon').text()).toBe('📦')
-    // 已建档模块走 navigation 单一来源图标
+    expect(mysteryCard.find('.icon-wrap svg.app-icon').exists()).toBe(true)
+    // 已建档模块走 navigation 单一来源图标：同一渲染管线，path 几何互不相同
     const memoCard = w.findAll('.enabled-card').find((c) => c.text().includes('极客随手记'))!
-    expect(memoCard.find('.mod-icon').text()).toBe('📝')
+    const memoSvg = memoCard.find('.icon-wrap svg.app-icon')
+    expect(memoSvg.exists()).toBe(true)
+    expect(memoSvg.html()).not.toBe(mysteryCard.find('.icon-wrap svg.app-icon').html())
     expect(memoCard.find('.level-badge').text()).toBe('活跃运行中')
     w.unmount()
   })
