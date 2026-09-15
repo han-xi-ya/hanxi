@@ -60,7 +60,7 @@ func cloneFixture(t *testing.T, svc *WslService, wslVer string) (*wslStub, strin
 		case "--terminate Ubuntu":
 			return "", nil
 		}
-		if len(args) >= 1 && (args[0] == "--import" || args[0] == "--unregister") {
+		if len(args) >= 1 && (args[0] == "--import" || args[0] == "--import-in-place" || args[0] == "--unregister") {
 			return "", nil
 		}
 		return "", fmt.Errorf("意外的 wsl 调用: %v", args)
@@ -80,7 +80,7 @@ func TestCloneDistroRejections(t *testing.T) {
 		{"源与目标同名", "2.9.0", "ubuntu", "同名"},
 		{"新名以选项形态开头", "2.9.0", "--evil", "不合法"},
 		{"新名撞本机名单", "2.9.0", "Docker", "已存在"},
-		{"WSL 版本过旧不满足 --vhd", "2.6.0", "Ubuntu-Copy", "--vhd"},
+		{"WSL 版本过旧不满足 --import-in-place", "2.6.0", "Ubuntu-Copy", "--import-in-place"},
 	}
 	for _, c := range cases {
 		svc, _, _ := newTestService()
@@ -163,14 +163,14 @@ func TestCloneDistroHappyPath(t *testing.T) {
 	if err != nil || st.Size() != 4096 {
 		t.Fatalf("克隆盘未正确落位: %v %+v", err, st)
 	}
-	// 命令面对：--import --vhd 带克隆盘路径；先 terminate 源
+	// 命令面对：--import-in-place 带克隆盘路径；先 terminate 源
 	var sawImport, sawTerm bool
 	for _, c := range stub.calls {
 		j := joined(c)
 		if j == "--terminate Ubuntu" {
 			sawTerm = true
 		}
-		if strings.HasPrefix(j, "--import --vhd Ubuntu-Copy ") && strings.HasSuffix(j, cp) {
+		if j == "--import-in-place Ubuntu-Copy "+cp {
 			sawImport = true
 		}
 	}
@@ -191,7 +191,7 @@ func TestCloneDistroImportFailureKeepsCopyAndUnregisters(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "clone2")
 	q := quietList("Ubuntu")
 	stub.resp = func(args []string) (string, error) {
-		if args[0] == "--import" {
+		if args[0] == "--import-in-place" {
 			return "挂载失败", errors.New("exit status 42")
 		}
 		return q(context.Background(), args...)

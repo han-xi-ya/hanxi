@@ -146,6 +146,40 @@ func parseQuietList(out string) []string {
 	return names
 }
 
+// 导入后复验的重试参数（包级变量供测试加速）：--import 系命令返回 0 的瞬间，
+// WSL 服务对 `wsl -l -q` 的新注册有短暂传播延迟——实机实证：克隆成功入库后
+// 一次快照读不到新名，把成功误报成失败（#44）。复验一律轮询而非单快照。
+var (
+	verifyRetryInterval = 500 * time.Millisecond
+	verifyRetryBudget   = 10 * time.Second
+)
+
+// waitForRegistration 轮询 quietNames 直到 name 在册；预算耗尽仍未见返回 false。
+// 名单读取失败不拦路（与既有复验口径一致）——继续重试到预算，末次错误如实带回。
+func (s *WslService) waitForRegistration(ctx context.Context, name string) (bool, error) {
+	deadline := time.Now().Add(verifyRetryBudget)
+	var lastErr error
+	for {
+		var names []string
+		names, lastErr = s.quietNames(ctx)
+		if lastErr == nil {
+			for _, n := range names {
+				if strings.EqualFold(n, name) {
+					return true, nil
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			return false, lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(verifyRetryInterval):
+		}
+	}
+}
+
 // stateLooksRunning 仅在 -q --running 通道不可得时回退使用：
 // 状态列原文本地化，中英文各匹配一种形态即可（Running/正在运行）。
 func stateLooksRunning(state string) bool {

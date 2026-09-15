@@ -41,7 +41,7 @@ var newDistroNameRe = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,63}$`)
 // importExtRe 导入源文件白名单：本模块导出产物与主流 rootfs 形态。
 var importExtRe = regexp.MustCompile(`(?i)\.(tar|tar\.gz|tgz)$`)
 
-// vhdxMinVersion --import --vhd 形态的最低 WSL 版本（微软 2.7.3 引入）。
+// vhdxMinVersion VHDX 挂载能力族（--import-in-place / --import --vhd）的保守下限。
 var vhdxMinVersion = []int{2, 7, 3}
 
 // validateNewDistroName 新名合法性 + 与本机名单防撞（大小写不敏感）。
@@ -78,7 +78,7 @@ func (s *WslService) CloneDistro(name, newName, target string) (OperationOutcome
 		return OperationOutcome{}, err
 	}
 
-	// 快路径前提：源为 WSL2 且本机 WSL ≥ 2.7.3（--import --vhd 能力面）。
+	// 快路径前提：源为 WSL2 且本机 WSL ≥ 2.7.3（--import-in-place 能力面）。
 	version := ""
 	for _, d := range s.wslDistros(ctx) {
 		if strings.EqualFold(d.Name, name) {
@@ -90,7 +90,7 @@ func (s *WslService) CloneDistro(name, newName, target string) (OperationOutcome
 		return OperationOutcome{}, fmt.Errorf("克隆快路径仅支持 WSL2 发行版（当前为 WSL%s）；WSL1 请先迁移为 WSL2", version)
 	}
 	if v := s.wslVersion(ctx); !versionAtLeast(v, vhdxMinVersion) {
-		return OperationOutcome{}, fmt.Errorf("克隆所需的 wsl --import --vhd 能力要求 WSL %s+（当前 %s）；升级前可用「导出 → 导入」替代：先导出 tar，再用导入落成", strings.Join(intsToStr(vhdxMinVersion), "."), orUnknown(v))
+		return OperationOutcome{}, fmt.Errorf("克隆所需的 wsl --import-in-place 能力要求 WSL %s+（当前 %s）；升级前可用「导出 → 导入」替代：先导出 tar，再用导入落成", strings.Join(intsToStr(vhdxMinVersion), "."), orUnknown(v))
 	}
 
 	store, err := s.lxss(ctx)
@@ -150,7 +150,7 @@ func (s *WslService) CloneDistro(name, newName, target string) (OperationOutcome
 	return OperationOutcome{Success: true, Message: fmt.Sprintf("开始克隆 %s → %s（保存到 %s），进度见行内提示；随时可取消", name, newName, destDir)}, nil
 }
 
-// runClone 后台主体：停源 → 拷 VHDX（进度）→ --import --vhd → 复验在册。
+// runClone 后台主体：停源 → 拷 VHDX（进度）→ --import-in-place → 复验在册。
 // 全程 30 分钟护栏 + 可取消 ctx；拷贝段取消自清半成品（本轮创建的文件，
 // 非用户资产），import 段失败/取消则保留已拷盘并点名路径（它已是有价值的数据）。
 func (s *WslService) runClone(parent context.Context, name, newName, vhdx, destDir string) error {
@@ -219,31 +219,28 @@ func (s *WslService) runClone(parent context.Context, name, newName, vhdx, destD
 
 	s.setCloneStage(name, "importing")
 	s.emit(EventClone, CloneProgress{Source: name, Target: newName, Stage: "importing", Done: written, Total: total})
-	if out, err := s.runWsl(ctx, "--import", "--vhd", newName, destPath); err != nil {
+	// 就地挂载拷贝盘（零二次拷贝）。旧写法 `--import --vhd <名> <盘路径>` 系命令面
+	// 误用——--import 须三个位置参数且 --vhd 形态会把盘再复制一份到安装位置。
+	if out, err := s.runWsl(ctx, "--import-in-place", newName, destPath); err != nil {
 		_, _ = s.runWsl(context.Background(), "--unregister", newName) // 半成品新实例尽力回收
 		if canceled(ctx.Err()) {
 			return fmt.Errorf("导入阶段被取消（已拷贝的数据盘保留在 %s，可自行处理）: %w", destPath, ctx.Err())
 		}
 		return fmt.Errorf("挂载克隆盘失败（已拷贝的数据盘保留在 %s，可自行处理）: %w %s", destPath, err, strings.TrimSpace(out))
 	}
-	// 复验在册：退出码 0 但名单里没有它，不算成功。
-	if names, err := s.quietNames(ctx); err == nil {
-		present := false
-		for _, n := range names {
-			if strings.EqualFold(n, newName) {
-				present = true
-				break
-			}
-		}
-		if !present {
-			return fmt.Errorf("克隆导入命令返回成功，但名单中未见 %s，请重新复采核实", newName)
-		}
+	// 复验在册：退出码 0 但名单里没有它，不算成功——轮询复验（服务视图对新注册
+	// 有传播延迟，单快照会把成功误报成失败，#44）；名单始终读不到则沿用旧口径不拦路。
+	found, verr := s.waitForRegistration(ctx, newName)
+	if !found && verr == nil {
+		return fmt.Errorf("克隆导入命令返回成功，但超时窗口内名单始终未见 %s，请重新复采核实", newName)
 	}
 	return nil
 }
 
 // ImportDistro 导入 tar（本模块导出产物或官方 rootfs）为新增发行版。
-// 同步等待（wsl --import 内部完成解包，数十分钟级），成功后复验在册。
+// target 按基目录语义处理（末级非发行版名则自动追加同名子目录，与安装落位
+// 同源复用 underDir）。同步等待（wsl --import 内部完成解包，数十分钟级），
+// 成功后复验在册。
 func (s *WslService) ImportDistro(name, target, tarPath string) (DistroOpResult, error) {
 	name, tarPath = strings.TrimSpace(name), strings.TrimSpace(filepath.Clean(tarPath))
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)

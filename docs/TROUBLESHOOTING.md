@@ -803,3 +803,9 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **避坑防重犯建议**：① `HideWindow` 藏的不止 cmd 壳本身——经 `start`/`cmd /c` 转手拉起的 GUI/控制台窗口会继承隐藏态，"藏壳露窗"想当然必翻车，需要可见窗口就直接 CreateProcess 新控制台，不要套 cmd 壳；② 长生命周期的用户会话进程绝不能挂在带超时的 `context` 上（CommandContext 取消即杀子进程）；③ toast 报成功≠用户看得见结果，"拉起窗口"类操作验证要盯窗口本身。
 - **二次踩坑补记（同日，v2）**：修复 v1 后改用 `exec.Command("wsl.exe") + CREATE_NEW_CONSOLE`，黑窗**一闪而过**——Go 的 os/exec 在 Stdin 未连接时递给子进程 NUL/EOF 句柄，bash 启动即读到 EOF 秒退。控制台交互程序要真实 stdin，必须走 ShellExecute（系统壳语义：新控制台 + std 接控制台输入 + 显式 SW_SHOWNORMAL），或 `cmd start` 转手（但带回 v1 隐藏态继承坑）。**最终形态**：`windows.ShellExecute(0, nil, "wsl.exe", "-d <名>", 0, SW_SHOWNORMAL)`——两坑同免。**泛化教训**：从 GUI 宿主（-H windowsgui）spawn"需要人交互的控制台程序"时，句柄继承面（stdin）与窗口显示面（wShowWindow）都要经壳层语义接管，Go exec 的"便利默认"（nil stdin→NUL）对交互场景是致命的。
 
+### 46. WSL 克隆"假失败"：--import 返回 0 后 `wsl -l -q` 对新注册有传播延迟，单快照复验把成功误报成失败
+
+- **问题现象与错误原因**：真机克隆 kali-linux 时报"克隆导入命令返回成功，但名单中未见 kali-linux-Copy，请重新复采核实"——实查 `wsl -l -v`，`kali-linux-Copy` 早已在册（Stopped/WSL2），克隆其实**完全成功**。根因：`wsl --import-in-place` 退出码 0 只代表注册指令落库，WSL 服务对 `wsl -l -q` 的枚举视图存在毫秒级的最终一致窗口；runClone/ImportDistro/ImportDistroVhd 三处"成功后复验在册"全部用**单次快照**，撞上传播窗口就把成功误判成失败（错误处理方向反了：宁可漏报也不能误报）。
+- **排查过程**：先以 `wsl -l -v` 与 `wsl -l -q --running`（NUL 分隔转码读取）实证在册→排除注册失败；再核对 `parseQuietList` 拆分与大小写比较无异常→锁定"查询时机"唯一变量。与 §重启的 `waitDistroStopped` 轮询同源教训：**跨进程读 WSL 状态，任何一次快照都不可当作原子真相**。
+- **正确做法与标准修复方案**：新增 `waitForRegistration(ctx, name)`（`verifyRetryInterval` 500ms × `verifyRetryBudget` 10s，包级变量供测试加速），三处导入复验统一改轮询；名单始终读不到（lastErr≠nil）沿用旧口径不拦路，只有"读得到且始终不见"才如实报错。回归锁双用例：`TestImportDistroRosterPropagationDelay`（前 3 拍缺席须等到出现为止）与 `TestImportDistroRosterNeverAppearsStillFails`（预算耗尽仍须报错，防修复把真失败咽掉）。
+- **避坑防重犯建议**：① 凡"命令成功 → 立刻读回验证"的闭环，读回一律按最终一致设计（短轮询+预算），单次快照只配用于纯展示复采；② 复验类错误的文案要给出路（"请重新复采核实"是对的，但误报本身伤信任——宁可放宽复验也不误杀成功）；③ 测试加速钩子沿用包级变量手法（同 `restartPollInterval`），别在 CI 里真等 10 秒。
