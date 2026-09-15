@@ -49,18 +49,20 @@ afterEach(() => {
 })
 
 describe('App.vue ↔ AppSidebar 接线', () => {
+  // 双栏改造适配：首页/日志等核心页入口已从单栏 nav 列表收进一级图标轨道，
+  // 断言由「.nav-item.active .nav-text 文案」等价迁移到「rail 按钮 active 类 + title」。
   it('侧栏渲染在 .layout 骨架内，active 高亮随 App 路由状态', async () => {
     const w = await mountApp()
     expect(w.find('.layout > aside.sidebar').exists()).toBe(true)
-    expect(w.find('.nav-item.active .nav-text').text()).toBe('首页')
+    expect(w.find('.rail-home.active').attributes('title')).toBe('首页')
     w.unmount()
   })
 
   it('点击侧栏导航项：emit navigate 直达 App.navigateTo，高亮迁移', async () => {
     const w = await mountApp()
-    const logsBtn = w.findAll('.nav-item').find((b) => b.text().includes('日志'))!
+    const logsBtn = w.findAll('.rail-core').find((b) => b.attributes('title') === '日志')!
     await logsBtn.trigger('click')
-    expect(w.find('.nav-item.active .nav-text').text()).toBe('日志')
+    expect(w.find('.rail-core.active').attributes('title')).toBe('日志')
     w.unmount()
   })
 
@@ -78,13 +80,15 @@ describe('App.vue ↔ AppSidebar 接线', () => {
   it('点击主题钮：emit cycle-theme 驱动 useTheme 三态循环（light → dark → system → light）', async () => {
     const w = await mountApp()
     const themeBtn = w.find('.theme-toggle')
-    expect(themeBtn.find('.nav-text').text()).toBe('浅色主题')
+    // 双栏改造适配：主题钮移入 rail 后为纯图标钮，三态文案由 nav-text 迁移到 title 属性
+    const stateTitle = (label: string) => `当前主题：${label}（点击循环切换）`
+    expect(themeBtn.attributes('title')).toBe(stateTitle('浅色主题'))
     await themeBtn.trigger('click')
-    expect(themeBtn.find('.nav-text').text()).toBe('深色主题')
+    expect(themeBtn.attributes('title')).toBe(stateTitle('深色主题'))
     await themeBtn.trigger('click')
-    expect(themeBtn.find('.nav-text').text()).toBe('跟随系统')
+    expect(themeBtn.attributes('title')).toBe(stateTitle('跟随系统'))
     await themeBtn.trigger('click')
-    expect(themeBtn.find('.nav-text').text()).toBe('浅色主题')
+    expect(themeBtn.attributes('title')).toBe(stateTitle('浅色主题'))
     w.unmount()
   })
 })
