@@ -53,9 +53,11 @@ type WslService struct {
 	localPS       func(context.Context, string) (string, error)
 	emit          func(name string, payload any)
 	// runWsl 非提权 wsl.exe 通道（解码已收敛在 readiness.RunWsl）；
-	// startTerm 唤终端外呼。发行版管理面单测替换这两路即可离线断言。
-	runWsl    func(context.Context, ...string) (string, error)
-	startTerm func(context.Context, string) error
+	// startTerm 唤终端、openFolder 唤资源管理器外呼。
+	// 发行版管理面单测替换这三路即可离线断言。
+	runWsl     func(context.Context, ...string) (string, error)
+	startTerm  func(context.Context, string) error
+	openFolder func(context.Context, string) error
 	// runWslIn 带 stdin 的 wsl.exe 通道（wsl.conf 写回等经管道改文件场景）。
 	runWslIn func(context.Context, string, ...string) (string, error)
 
@@ -113,6 +115,7 @@ func NewWslService(opener urlOpener, paths *settings.Paths) *WslService {
 		runWsl:        readiness.RunWsl,
 		runWslIn:      readiness.RunWslWithStdin,
 		startTerm:     startTerminalSession,
+		openFolder:    openDistroFolderExplorer,
 		dlPaths:       map[string]string{},
 		distroOps:     map[string]string{},
 		exportRecords: map[string]ExportRecord{},

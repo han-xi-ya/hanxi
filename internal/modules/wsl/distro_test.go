@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"hanxi/internal/modules/wsl/readiness"
 )
@@ -165,6 +166,8 @@ func TestDistroOpsRejectUnknownName(t *testing.T) {
 		{"export", func(s *WslService) error { _, e := s.ExportDistro("evil", false); return e }},
 		{"move", func(s *WslService) error { _, e := s.MoveDistro("evil", `D:\x`); return e }},
 		{"terminal", func(s *WslService) error { _, e := s.OpenTerminal("evil"); return e }},
+		{"restart", func(s *WslService) error { _, e := s.RestartDistro("evil"); return e }},
+		{"folder", func(s *WslService) error { _, e := s.OpenDistroFolder("evil"); return e }},
 	} {
 		svc, ev, _ := newTestService()
 		stub := &wslStub{resp: quietStub([]string{"Ubuntu"}, nil)}
@@ -273,6 +276,216 @@ func TestOpenTerminalPassesValidatedName(t *testing.T) {
 	}
 	if got != "Ubuntu" {
 		t.Fatalf("透传名错误: %s", got)
+	}
+}
+
+// ---- 重启与文件管理器 ----
+
+// runningFlipStub：`--running` 名单从"含 Ubuntu"翻转为"空"——模拟 terminate 后收敛。
+func runningFlipStub(runningFirst bool) *wslStub {
+	running := runningFirst
+	return &wslStub{resp: func(args []string) (string, error) {
+		switch joined(args) {
+		case "-l -q":
+			return "Ubuntu\x00", nil
+		case "-l -q --running":
+			if running {
+				running = false
+				return "Ubuntu\x00", nil
+			}
+			return "", nil
+		}
+		if strings.HasPrefix(joined(args), "--terminate") || strings.HasPrefix(joined(args), "-d Ubuntu --exec") {
+			return "", nil
+		}
+		return "", fmt.Errorf("意外的 wsl 调用: %v", args)
+	}}
+}
+
+func TestRestartDistroStopsThenProbes(t *testing.T) {
+	old := restartPollInterval
+	restartPollInterval = time.Millisecond
+	defer func() { restartPollInterval = old }()
+
+	svc, _, _ := newTestService()
+	stub := runningFlipStub(true)
+	svc.runWsl = stub.run
+	out, err := svc.RestartDistro(" Ubuntu ")
+	if err != nil || !out.Success {
+		t.Fatalf("重启失败: %+v %v", out, err)
+	}
+	want := []string{"-l -q", "-l -q --running", "--terminate Ubuntu", "-l -q --running", "-d Ubuntu --exec /bin/echo hanxi-restart-ok"}
+	if got := joinedCalls(stub); strings.Join(got, " | ") != strings.Join(want, " | ") {
+		t.Fatalf("重启命令面漂移: %v", got)
+	}
+	// 回执必须如实讲"无会话自动回落停止"，不假装常亮。
+	if !strings.Contains(out.Message, "自动回落") {
+		t.Fatalf("回执缺运行态如实说明: %s", out.Message)
+	}
+}
+
+func TestRestartDistroStoppedSkipsTerminate(t *testing.T) {
+	svc, _, _ := newTestService()
+	stub := runningFlipStub(false) // 首轮名单即空：本就停止，直达拉起探针
+	svc.runWsl = stub.run
+	if out, err := svc.RestartDistro("Ubuntu"); err != nil || !out.Success {
+		t.Fatalf("停止态重启失败: %+v %v", out, err)
+	}
+	for _, c := range joinedCalls(stub) {
+		if strings.HasPrefix(c, "--terminate") {
+			t.Fatalf("停止态不得执行 terminate: %v", joinedCalls(stub))
+		}
+	}
+}
+
+func TestRestartDistroProbeFailureIsError(t *testing.T) {
+	svc, _, _ := newTestService()
+	svc.runWsl = (&wslStub{resp: func(args []string) (string, error) {
+		j := joined(args)
+		switch {
+		case j == "-l -q":
+			return "Ubuntu\x00", nil
+		case strings.HasPrefix(j, "-d Ubuntu --exec"):
+			return "Wsl/Service/CreateInstance/E_ACCESSDENIED", errors.New("exit 1")
+		}
+		return "", nil
+	}}).run
+	if _, err := svc.RestartDistro("Ubuntu"); err == nil {
+		t.Fatal("拉起探针失败必须如实报错，不得假报重启成功")
+	}
+}
+
+func TestOpenDistroFolderStartsStoppedDistroFirst(t *testing.T) {
+	svc, _, _ := newTestService()
+	stub := runningFlipStub(false) // 停止态
+	svc.runWsl = stub.run
+	var opened string
+	svc.openFolder = func(_ context.Context, name string) error { opened = name; return nil }
+	out, err := svc.OpenDistroFolder("Ubuntu")
+	if err != nil || !out.Success || opened != "Ubuntu" {
+		t.Fatalf("打开文件失败: %+v %v opened=%s", out, err, opened)
+	}
+	probed := false
+	for _, c := range joinedCalls(stub) {
+		if strings.HasPrefix(c, "-d Ubuntu --exec") {
+			probed = true
+		}
+	}
+	if !probed {
+		t.Fatalf("停止态应先跑拉起探针再开 explorer: %v", joinedCalls(stub))
+	}
+	if !strings.Contains(out.Message, "顺手拉起") {
+		t.Fatalf("回执未如实标注顺手拉起: %s", out.Message)
+	}
+}
+
+func TestOpenDistroFolderRunningSkipsProbe(t *testing.T) {
+	svc, _, _ := newTestService()
+	stub := runningFlipStub(true) // 首轮名单含 Ubuntu：运行中，直接开
+	svc.runWsl = stub.run
+	svc.openFolder = func(context.Context, string) error { return nil }
+	if _, err := svc.OpenDistroFolder("Ubuntu"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range joinedCalls(stub) {
+		if strings.HasPrefix(c, "-d Ubuntu --exec") {
+			t.Fatalf("运行中不得再跑探针: %v", joinedCalls(stub))
+		}
+	}
+}
+
+// ---- 删除时的商店启动器清理 ----
+
+// launcherPSStub 按脚本前缀分流 localPS：Lxss 巡查按调用次序返回 preJSON/postJSON，
+// Appx 卸载脚本回 removed（removeErr 非空则模拟卸载失败）。
+func launcherPSStub(t *testing.T, preJSON, postJSON string, removeErr error) (func(context.Context, string) (string, error), *int) {
+	lxssCalls, removeCalls := 0, 0
+	return func(_ context.Context, script string) (string, error) {
+		switch {
+		case strings.HasPrefix(script, "$items"):
+			lxssCalls++
+			if lxssCalls == 1 {
+				return preJSON, nil
+			}
+			return postJSON, nil
+		case strings.HasPrefix(script, "$p = Get-AppxPackage"):
+			removeCalls++
+			return "removed", removeErr
+		}
+		t.Errorf("意外的 localPS 脚本: %.40s", script)
+		return "", nil
+	}, &removeCalls
+}
+
+func TestUnregisterCleansExclusiveLauncher(t *testing.T) {
+	svc, _, _ := newTestService()
+	svc.runWsl = (&wslStub{resp: quietStub([]string{"Ubuntu"}, func([]string) (string, error) { return "", nil })}).run
+	const pfn = "CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc"
+	ps, removeCalls := launcherPSStub(t,
+		`[{"name":"Ubuntu","basePath":"","vhdx":"","size":0,"pfn":"`+pfn+`"}]`, `[]`, nil)
+	svc.localPS = ps
+	out, err := svc.UnregisterDistro("Ubuntu")
+	if err != nil || !out.Success {
+		t.Fatalf("删除失败: %+v %v", out, err)
+	}
+	if *removeCalls != 1 {
+		t.Fatalf("独占 PFN 应触发一次启动器卸载: %d", *removeCalls)
+	}
+	if !strings.Contains(out.Message, "启动器已一并卸载") {
+		t.Fatalf("回执未如实标注启动器清理: %s", out.Message)
+	}
+}
+
+func TestUnregisterKeepsSharedLauncher(t *testing.T) {
+	svc, _, _ := newTestService()
+	svc.runWsl = (&wslStub{resp: quietStub([]string{"Ubuntu"}, func([]string) (string, error) { return "", nil })}).run
+	const pfn = "CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc"
+	// 删除后仍有多余发行版共用同一 PFN → 绝不动包（连坐事故零容忍）。
+	ps, removeCalls := launcherPSStub(t,
+		`[{"name":"Ubuntu","basePath":"","vhdx":"","size":0,"pfn":"`+pfn+`"}]`,
+		`[{"name":"Ubuntu2","basePath":"","vhdx":"","size":0,"pfn":"`+pfn+`"}]`, nil)
+	svc.localPS = ps
+	out, err := svc.UnregisterDistro("Ubuntu")
+	if err != nil || !out.Success {
+		t.Fatalf("删除失败: %+v %v", out, err)
+	}
+	if *removeCalls != 0 {
+		t.Fatal("共用 PFN 不得卸载启动器")
+	}
+	if !strings.Contains(out.Message, "共用") {
+		t.Fatalf("回执应说明启动器共用未动: %s", out.Message)
+	}
+}
+
+func TestUnregisterLauncherRemoveFailureDoesNotBlock(t *testing.T) {
+	svc, _, _ := newTestService()
+	svc.runWsl = (&wslStub{resp: quietStub([]string{"Ubuntu"}, func([]string) (string, error) { return "", nil })}).run
+	const pfn = "CanonicalGroupLimited.Ubuntu_79rhkp1fndgsc"
+	ps, _ := launcherPSStub(t,
+		`[{"name":"Ubuntu","basePath":"","vhdx":"","size":0,"pfn":"`+pfn+`"}]`, `[]`,
+		errors.New("0x80073cf0 package in use"))
+	svc.localPS = ps
+	out, err := svc.UnregisterDistro("Ubuntu")
+	if err != nil || !out.Success { // 删除本身已成功——清理失败只落尾注
+		t.Fatalf("清理失败不得拦删除主流程: %+v %v", out, err)
+	}
+	if !strings.Contains(out.Message, "手动处理") {
+		t.Fatalf("回执应点名剩余事项: %s", out.Message)
+	}
+}
+
+func TestUnregisterNonStoreSkipsLauncherPath(t *testing.T) {
+	svc, _, _ := newTestService()
+	svc.runWsl = (&wslStub{resp: quietStub([]string{"MyDistro"}, func([]string) (string, error) { return "", nil })}).run
+	// 导入/rootfs 形态无 PFN：lxss 巡查一次即够，不应出现任何 Appx 脚本。
+	ps, removeCalls := launcherPSStub(t,
+		`[{"name":"MyDistro","basePath":"D:\\WSL\\MyDistro","vhdx":"","size":0,"pfn":""}]`, `[]`, nil)
+	svc.localPS = ps
+	if _, err := svc.UnregisterDistro("MyDistro"); err != nil {
+		t.Fatal(err)
+	}
+	if *removeCalls != 0 {
+		t.Fatal("无 PFN 的发行版不应触达商店卸载通道")
 	}
 }
 

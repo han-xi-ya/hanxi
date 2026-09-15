@@ -27,6 +27,12 @@ const exportDirName = "WSL 导出"
 // （Win11 起新控制台由系统"默认终端应用"接管呈现——设了 Windows Terminal 就出 WT）。
 const createNewConsole = 0x00000010
 
+// restartStoppedWait 重启时"确认已停止"的轮询上限；restartPollInterval 是包级
+// 变量供单测加速（真实节奏 500ms）。
+const restartStoppedWait = 10 * time.Second
+
+var restartPollInterval = 500 * time.Millisecond
+
 // DistroInstance 管理控制台的发行版实例行。
 // Running/Default 为归一后的布尔语义（状态列原文是本地化文案，跨语言系统下
 // 不可作为判据；运行态以 `wsl -l -q --running` 名单为准，默认以 `wsl -l -q`
@@ -267,6 +273,110 @@ func (s *WslService) OpenTerminal(name string) (DistroOpResult, error) {
 	return DistroOpResult{Success: true, Message: fmt.Sprintf("已为 %s 启动终端会话", name)}, nil
 }
 
+// openDistroFolderExplorer 用 explorer.exe 打开发行版 9P 共享根（\\wsl$\<名>）。
+// 刻意不复用 AppService.OpenPath（其 explorer.exe <file> 语义在文件对象上是"执行"，
+// 与 bcu/ccswitch 等模块同纪律）；name 已过 wsl -l 白名单，单 argv 传参不进 shell。
+// Start 后即 Release 脱手：explorer 窗口生命周期归用户。
+func openDistroFolderExplorer(_ context.Context, name string) error {
+	cmd := exec.Command("explorer.exe", `\\wsl$\`+name)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
+// OpenDistroFolder 资源管理器打开发行版文件共享。停止的发行版 9P 共享不存在
+// （explorer 会报"路径不存在"），故确认停止时先静默拉起（echo 探针）——explorer
+// 持有目录句柄期间 9P 会话活跃不会被空闲停机，关窗后按平台语义自然回落。
+// 与唤终端同属"只读外呼"：免确认、免单飞闸（无状态改动可竞）。
+func (s *WslService) OpenDistroFolder(name string) (DistroOpResult, error) {
+	name = strings.TrimSpace(name)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := s.distroAllowed(ctx, name); err != nil {
+		return DistroOpResult{}, err
+	}
+	lifted := false
+	if set, ok := s.quietSet(ctx, "--running"); ok && !set[strings.ToLower(name)] {
+		if out, err := s.runWsl(ctx, "-d", name, "--exec", "/bin/echo", "hanxi-start-probe"); err != nil {
+			return DistroOpResult{}, fmt.Errorf("无法启动 %s，打开文件取消: %w %s", name, err, strings.TrimSpace(out))
+		}
+		lifted = true
+	}
+	if err := s.openFolder(ctx, name); err != nil {
+		return DistroOpResult{}, fmt.Errorf("打开资源管理器失败: %w", err)
+	}
+	msg := fmt.Sprintf("已在资源管理器打开 \\\\wsl$\\%s", name)
+	if lifted {
+		msg += "（发行版原为停止，已顺手拉起）"
+	}
+	return DistroOpResult{Success: true, Message: msg}, nil
+}
+
+// RestartDistro 重启发行版：停止 → 轮询确认已停 → echo 探针拉起验证。
+// 语义拍板（对齐讨论，刻意有别于 wsl-dashboard）：拉起验证即止、不做
+// sleep infinity 后台保活——无前台会话数秒后自动回落"已停止"是平台语义
+// （见 OpenTerminal 注释），回执如实讲清，不拿保活假装"常亮运行"。
+// 探针走 runWsl（HideWindow 捕获输出）而非 startTerm：重启不该弹终端窗口。
+func (s *WslService) RestartDistro(name string) (DistroOpResult, error) {
+	name = strings.TrimSpace(name)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	if err := s.distroAllowed(ctx, name); err != nil {
+		return DistroOpResult{}, err
+	}
+	finish, ok := s.tryBeginDistroOp(name, "restart")
+	if !ok {
+		return DistroOpResult{}, errDistroBusy
+	}
+	defer finish()
+
+	key := strings.ToLower(name)
+	set, setOK := s.quietSet(ctx, "--running")
+	caveat := ""
+	switch {
+	case !setOK:
+		// 运行名单不可得：停止步无法求证，terminate 尽力而为 + 回执如实标注。
+		_, _ = s.runWsl(ctx, "--terminate", name)
+		caveat = "（运行名单不可得，停止步骤未求证）"
+	case set[key]:
+		// terminate 返回 ≠ 已出名单（收敛有滞后），不轮询确认就拉起会"假重启"——
+		// 参考实现同款时序坑，此处以名单为唯一判据。
+		if _, err := s.runWsl(ctx, "--terminate", name); err != nil {
+			return DistroOpResult{}, fmt.Errorf("终止 %s 失败，重启中止: %w", name, err)
+		}
+		if err := s.waitDistroStopped(ctx, key); err != nil {
+			return DistroOpResult{}, err
+		}
+	}
+	if out, err := s.runWsl(ctx, "-d", name, "--exec", "/bin/echo", "hanxi-restart-ok"); err != nil {
+		return DistroOpResult{}, fmt.Errorf("%s 启动失败，重启未完成: %w %s", name, err, strings.TrimSpace(out))
+	}
+	return DistroOpResult{
+		Success: true,
+		Message: fmt.Sprintf("%s 已重启：启动验证通过。之后不进入终端的话，发行版空闲片刻会自动回落为「已停止」——属平台常态 %s", name, caveat),
+	}, nil
+}
+
+// waitDistroStopped 轮询运行名单直到 name 退出。超上限仍未退出即中止重启
+// （宁可如实失败，不对没收住的运行态直接拉起）。
+func (s *WslService) waitDistroStopped(ctx context.Context, key string) error {
+	deadline := time.Now().Add(restartStoppedWait)
+	for {
+		if set, ok := s.quietSet(ctx, "--running"); ok && !set[key] {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("终止后 %v 仍在运行名单中，重启中止——请先手动「⏹ 停止」确认状态再重启", restartStoppedWait)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(restartPollInterval):
+		}
+	}
+}
+
 // TerminateDistro 终止发行版（wsl --terminate，用户态命令，数据无损、幂等）。
 func (s *WslService) TerminateDistro(name string) (DistroOpResult, error) {
 	name = strings.TrimSpace(name)
@@ -321,14 +431,50 @@ func (s *WslService) UnregisterDistro(name string) (DistroOpResult, error) {
 		return DistroOpResult{}, errDistroBusy
 	}
 	defer finish()
+	// 商店身份要在注销前抓：Lxss 登记一删，PFN 就无处可查了。
+	pfn := ""
+	if store, err := s.lxss(ctx); err == nil {
+		pfn = store[strings.ToLower(name)].Pfn
+	}
 	_, _ = s.runWsl(ctx, "--terminate", name) // 尽力收敛运行态，成败交给下一步兜底
 	if out, err := s.runWsl(ctx, "--unregister", name); err != nil {
 		return DistroOpResult{}, fmt.Errorf("删除 %s 失败: %w %s", name, err, strings.TrimSpace(out))
 	}
 	return DistroOpResult{
 		Success: true,
-		Message: fmt.Sprintf("%s 已删除（数据文件由系统移除）；如是商店安装的发行版，其启动器可能仍在「设置→应用」中，需要时可自行卸载", name),
+		Message: fmt.Sprintf("%s 已删除（数据文件由系统移除）%s", name, s.cleanupLauncher(ctx, pfn)),
 	}, nil
+}
+
+// cleanupLauncher 删除发行版后清理商店 Appx 启动器（"删干净"的最后一环）：
+// 仅当 PFN 未被其它在册发行版共用时才 Remove-AppxPackage（动了会连坐别人——
+// 如实保留说明）；当前用户态操作免提权，best-effort：任何失败都不拦删除主流程，
+// 只在回执尾注点名剩余事项。
+func (s *WslService) cleanupLauncher(ctx context.Context, pfn string) string {
+	if pfn == "" {
+		return "" // 非商店形态（导入/rootfs），本就没有启动器
+	}
+	if store, err := s.lxss(ctx); err != nil {
+		return "；启动器引用计数求证失败，如有残留在「设置→应用」请自行卸载"
+	} else {
+		for _, e := range store {
+			if strings.EqualFold(e.Pfn, pfn) {
+				return "；该启动器包仍被其它发行版共用，未卸载"
+			}
+		}
+	}
+	cctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	// 存在性由脚本自证（absent 幂等），Go 侧只区分"执行失败/确实卸载/本就没有"。
+	script := fmt.Sprintf("$p = Get-AppxPackage -PackageFamilyName %s; if ($p) { $p | Remove-AppxPackage | Out-Null; 'removed' } else { 'absent' }", psQuote(pfn))
+	out, err := s.localPS(cctx, script)
+	if err != nil {
+		return fmt.Sprintf("；商店启动器卸载失败（%s）——可在「设置→应用」手动处理", strings.TrimSpace(err.Error()))
+	}
+	if strings.Contains(out, "removed") {
+		return "；商店启动器已一并卸载"
+	}
+	return ""
 }
 
 // exportIDRe 导出工件名白名单形态（文件名本身由后端拼装，Reveal 回查时严格匹配；
