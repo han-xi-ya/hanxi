@@ -181,6 +181,55 @@ func TestInstallDistroWhitelist(t *testing.T) {
 	}
 }
 
+func TestInstallDistroToChainsMoveInSingleElevation(t *testing.T) {
+	// 指定落位目录：install + shutdown + manage --move 必须压进同一条提权链（一次 UAC）。
+	svc, ev, _ := newTestService()
+	out, err := svc.InstallDistroTo("Ubuntu", `E:\WSL\Ubuntu`)
+	if err != nil || !out.Success {
+		t.Fatalf("落位安装失败: %+v %v", out, err)
+	}
+	if len(ev.calls) != 1 {
+		t.Fatalf("指定位置安装须合并为一次提权: %+v", ev.calls)
+	}
+	c := ev.calls[0]
+	if c.file != "powershell.exe" {
+		t.Fatalf("落位链应走提权 PowerShell 而非 wsl.exe 直通道: %s", c.file)
+	}
+	cmdline := strings.Join(c.args, " ")
+	for _, want := range []string{"--install -d 'Ubuntu'", "wsl --shutdown", "--manage 'Ubuntu' --move 'E:\\WSL\\Ubuntu'"} {
+		if !strings.Contains(cmdline, want) {
+			t.Fatalf("提权脚本缺少 %s: %s", want, cmdline)
+		}
+	}
+
+	// 留空：回退现状直装通道（系统默认位置）。
+	svc2, ev2, _ := newTestService()
+	if _, err := svc2.InstallDistroTo("Ubuntu", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if len(ev2.calls) != 1 || ev2.calls[0].file != "wsl.exe" {
+		t.Fatalf("留空须走系统默认直装通道: %+v", ev2.calls)
+	}
+
+	// 非法目标目录：拦在提权之前（不得弹出 UAC 才发现路径不行）。
+	svc3, ev3, _ := newTestService()
+	if _, err := svc3.InstallDistroTo("Ubuntu", `WSL\relative`); err == nil {
+		t.Fatal("相对路径目标必须拒绝")
+	}
+	if len(ev3.calls) != 0 {
+		t.Fatalf("被拒的落位安装不得触达提权通道: %+v", ev3.calls)
+	}
+
+	// 基目录语义：只给基目录（默认 D:\wsl 形态）时自动追加发行版同名子目录。
+	svc4, ev4, _ := newTestService()
+	if _, err := svc4.InstallDistroTo("Ubuntu", `E:\WSL`); err != nil {
+		t.Fatalf("基目录落位安装失败: %v", err)
+	}
+	if want := `--manage 'Ubuntu' --move 'E:\WSL\Ubuntu'`; !strings.Contains(strings.Join(ev4.calls[0].args, " "), want) {
+		t.Fatalf("基目录须追加同名子目录 %s: %s", want, strings.Join(ev4.calls[0].args, " "))
+	}
+}
+
 // 虚拟化装载预检（#36 家族的新证词）：虚拟机平台未生效时装发行版注定失败，
 // 必须在提权前拦下——实机事故是"待重启期间连点安装全部假成功"。
 func TestInstallDistroGatedByVirtualization(t *testing.T) {

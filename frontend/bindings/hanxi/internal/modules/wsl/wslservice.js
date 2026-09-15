@@ -199,7 +199,9 @@ export function GetWslHostConf() {
 
 /**
  * ImportDistro 导入 tar（本模块导出产物或官方 rootfs）为新增发行版。
- * 同步等待（wsl --import 内部完成解包，数十分钟级），成功后复验在册。
+ * target 按基目录语义处理（末级非发行版名则自动追加同名子目录，与安装落位
+ * 同源复用 underDir）。同步等待（wsl --import 内部完成解包，数十分钟级），
+ * 成功后复验在册。
  * @param {string} name
  * @param {string} target
  * @param {string} tarPath
@@ -207,6 +209,24 @@ export function GetWslHostConf() {
  */
 export function ImportDistro(name, target, tarPath) {
     return $Call.ByID(3326170139, name, target, tarPath);
+}
+
+/**
+ * ImportDistroVhd 把现成 VHDX 发行盘落成新增实例（「添加实例」VHDX 源），两形态：
+ *   - copyToLocation=false：wsl --import-in-place 就地注册——零拷贝、盘留在原处
+ *     （移动位置用导入后的「🧭 迁移」），适合直接接管外部/备份盘；
+ *   - copyToLocation=true：wsl --import <名> <目录> <盘> --vhd——微软语义即在
+ *     安装位置创建盘的副本，落位目录按基目录语义追加同名子目录（与安装/tar 导入
+ *     同构），数十 GB 级复制耗时较长。
+ * 两形态都要求 WSL 2.7.3+（vhdxMinVersion，与克隆同闸）；盘须 ext4 文件系统格式。
+ * @param {string} name
+ * @param {string} location
+ * @param {string} vhdxPath
+ * @param {boolean} copyToLocation
+ * @returns {$CancellablePromise<$models.DistroOpResult>}
+ */
+export function ImportDistroVhd(name, location, vhdxPath, copyToLocation) {
+    return $Call.ByID(1923562187, name, location, vhdxPath, copyToLocation);
 }
 
 /**
@@ -221,6 +241,22 @@ export function ImportDistro(name, target, tarPath) {
  */
 export function InstallDistro(id) {
     return $Call.ByID(1671179919, id);
+}
+
+/**
+ * InstallDistroTo 安装在线发行版并按需落位：location 为空走系统默认（现状，
+ * 通常落 C 盘）；指定位置则在同一提权链里连做 wsl --install -d、wsl --shutdown、
+ * wsl --manage --move，全程一次 UAC、一个提权窗口看进度——wsl --install 本身
+ * 不接受目标目录参数，"装完即迁"是唯一正规通道（与 MoveDistro 同款停机+重试节律）。
+ * 白名单/虚拟化预检两道闸门与 InstallDistro 同源复用；location 按基目录语义
+ * 使用（末级非发行版名时自动追加同名子目录），目标经 moveTarget 的绝对路径/
+ * 盘符存在/非法字符/目录空性把关。
+ * @param {string} id
+ * @param {string} location
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function InstallDistroTo(id, location) {
+    return $Call.ByID(370767850, id, location);
 }
 
 /**
@@ -337,6 +373,27 @@ export function OpenReleasesPage() {
  */
 export function OpenTerminal(name) {
     return $Call.ByID(2567537505, name);
+}
+
+/**
+ * PickDistroImageDialog 打开系统文件选择框为「添加实例」挑镜像源：
+ * kind = "vhdx" 过滤发行盘，其余按 rootfs tar 过滤；取消返回空串不报错。
+ * @param {string} kind
+ * @returns {$CancellablePromise<string>}
+ */
+export function PickDistroImageDialog(kind) {
+    return $Call.ByID(1023386564, kind);
+}
+
+/**
+ * PickFolderDialog 打开系统"选择文件夹"对话框（克隆/迁移/安装落位的"选好再改"
+ * 场景——目录通常不存在也要能选中父级，故用目录框而非手拼路径）。取消返回空串
+ * 不报错；宿主不可用时如实报错，前端指路手填。
+ * @param {string} title
+ * @returns {$CancellablePromise<string>}
+ */
+export function PickFolderDialog(title) {
+    return $Call.ByID(1396025144, title);
 }
 
 /**

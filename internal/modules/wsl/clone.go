@@ -2,8 +2,10 @@ package wsl
 
 // 克隆与导入（备份/复制环境的两条正路）：
 //   - CloneDistro 快路径 = 停源 → 流式拷贝 ext4.vhdx（wsl:clone 进度事件）→
-//     wsl --import --vhd 挂载副本（需 WSL 2.7.3+；版本不足时指路「导出→导入」替代动线）。
+//     wsl --import-in-place 就地挂载副本（需 WSL 2.7.3+；版本不足时指路「导出→导入」替代动线）。
 //   - ImportDistro = wsl --import 把导出的 tar / 官方 rootfs 落成新增发行版。
+//   - ImportDistroVhd = 现成 VHDX 发行盘落为新实例：就地注册（--import-in-place，
+//     零拷贝）或复制落位（--import … --vhd，盘拷贝到目标目录）二选一。
 // 基线与六操作一致：源名过实时白名单、新名过字符集校验并与本机名单防撞、
 // 目标目录复用 moveTarget 把关；克隆占源与目标两把单飞闸；
 // 克隆失败保留已拷 VHDX 并点名路径，绝不暗删用户目录里的东西。
@@ -18,6 +20,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // EventClone 克隆进度事件名（app.go 中注册载荷类型）。
@@ -256,7 +260,7 @@ func (s *WslService) ImportDistro(name, target, tarPath string) (DistroOpResult,
 	if err != nil || st.IsDir() || st.Size() == 0 {
 		return DistroOpResult{}, fmt.Errorf("导入源文件不存在或为空: %s", tarPath)
 	}
-	destDir, err := moveTarget(target, "")
+	destDir, err := moveTarget(underDir(target, name), "")
 	if err != nil {
 		return DistroOpResult{}, err
 	}
@@ -269,19 +273,114 @@ func (s *WslService) ImportDistro(name, target, tarPath string) (DistroOpResult,
 	if out, err := s.runWsl(ctx, "--import", name, destDir, tarPath); err != nil {
 		return DistroOpResult{}, fmt.Errorf("导入 %s 失败: %w %s", name, err, strings.TrimSpace(out))
 	}
-	if names, err := s.quietNames(ctx); err == nil {
-		present := false
-		for _, n := range names {
-			if strings.EqualFold(n, name) {
-				present = true
-				break
-			}
-		}
-		if !present {
-			return DistroOpResult{}, fmt.Errorf("导入命令返回成功，但名单中未见 %s，请重新复采核实", name)
-		}
+	// 轮询复验（#44）：名单读不到时沿用旧口径不拦路。
+	if found, verr := s.waitForRegistration(ctx, name); !found && verr == nil {
+		return DistroOpResult{}, fmt.Errorf("导入命令返回成功，但超时窗口内名单始终未见 %s，请重新复采核实", name)
 	}
 	return DistroOpResult{Success: true, Message: fmt.Sprintf("%s 已导入（数据落在 %s），下次唤终端即可以普通权限进入", name, destDir)}, nil
+}
+
+// vhdxExtRe 挂载源扩展名白名单（--import-in-place / --import --vhd 均认 .vhd/.vhdx）。
+var vhdxExtRe = regexp.MustCompile(`(?i)\.(vhd|vhdx)$`)
+
+// ImportDistroVhd 把现成 VHDX 发行盘落成新增实例（「添加实例」VHDX 源），两形态：
+//   - copyToLocation=false：wsl --import-in-place 就地注册——零拷贝、盘留在原处
+//     （移动位置用导入后的「🧭 迁移」），适合直接接管外部/备份盘；
+//   - copyToLocation=true：wsl --import <名> <目录> <盘> --vhd——微软语义即在
+//     安装位置创建盘的副本，落位目录按基目录语义追加同名子目录（与安装/tar 导入
+//     同构），数十 GB 级复制耗时较长。
+// 两形态都要求 WSL 2.7.3+（vhdxMinVersion，与克隆同闸）；盘须 ext4 文件系统格式。
+func (s *WslService) ImportDistroVhd(name, location, vhdxPath string, copyToLocation bool) (DistroOpResult, error) {
+	name, vhdxPath = strings.TrimSpace(name), strings.TrimSpace(filepath.Clean(vhdxPath))
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+
+	if v := s.wslVersion(ctx); !versionAtLeast(v, vhdxMinVersion) {
+		return DistroOpResult{}, fmt.Errorf("VHDX 挂载能力要求 WSL %s+（当前 %s）：请先在「🧩 本体版本」页升级 WSL 本体", strings.Join(intsToStr(vhdxMinVersion), "."), orUnknown(v))
+	}
+	if err := s.validateNewDistroName(ctx, name); err != nil {
+		return DistroOpResult{}, err
+	}
+	if !vhdxExtRe.MatchString(vhdxPath) {
+		return DistroOpResult{}, fmt.Errorf("挂载源须为 .vhdx / .vhd 发行盘文件: %s", vhdxPath)
+	}
+	st, err := os.Stat(vhdxPath)
+	if err != nil || st.IsDir() || st.Size() == 0 {
+		return DistroOpResult{}, fmt.Errorf("挂载源文件不存在或为空: %s", vhdxPath)
+	}
+	destDir := ""
+	if copyToLocation {
+		if destDir, err = moveTarget(underDir(location, name), ""); err != nil {
+			return DistroOpResult{}, err
+		}
+	}
+	finish, ok := s.tryBeginDistroOp(name, "import")
+	if !ok {
+		return DistroOpResult{}, errDistroBusy
+	}
+	defer finish()
+
+	var out string
+	if copyToLocation {
+		out, err = s.runWsl(ctx, "--import", name, destDir, vhdxPath, "--vhd")
+	} else {
+		out, err = s.runWsl(ctx, "--import-in-place", name, vhdxPath)
+	}
+	if err != nil {
+		return DistroOpResult{}, fmt.Errorf("挂载 %s 失败（盘须为 ext4 文件系统的 WSL2 数据盘）: %w %s", name, err, strings.TrimSpace(out))
+	}
+	// 轮询复验（#44）：名单读不到时沿用旧口径不拦路。
+	if found, verr := s.waitForRegistration(ctx, name); !found && verr == nil {
+		return DistroOpResult{}, fmt.Errorf("挂载命令返回成功，但超时窗口内名单始终未见 %s，请重新复采核实", name)
+	}
+	loc := fmt.Sprintf("盘留在原处 %s", vhdxPath)
+	if copyToLocation {
+		loc = fmt.Sprintf("盘副本已落在 %s", destDir)
+	}
+	return DistroOpResult{Success: true, Message: fmt.Sprintf("%s 已挂载（%s），下次唤终端即可以普通权限进入", name, loc)}, nil
+}
+
+// PickDistroImageDialog 打开系统文件选择框为「添加实例」挑镜像源：
+// kind = "vhdx" 过滤发行盘，其余按 rootfs tar 过滤；取消返回空串不报错。
+func (s *WslService) PickDistroImageDialog(kind string) (string, error) {
+	app := application.Get()
+	if app == nil {
+		return "", fmt.Errorf("应用实例不可用，请直接手动填写路径")
+	}
+	dialog := app.Dialog.OpenFile()
+	if kind == "vhdx" {
+		dialog.SetTitle("选择要挂载的 VHDX 发行盘")
+		dialog.AddFilter("VHDX 发行盘 (*.vhdx;*.vhd)", "*.vhdx;*.vhd")
+	} else {
+		dialog.SetTitle("选择要导入的 rootfs 镜像")
+		dialog.AddFilter("rootfs 镜像 (*.tar;*.tar.gz;*.tgz)", "*.tar;*.tar.gz;*.tgz")
+		dialog.AddFilter("所有文件 (*.*)", "*.*")
+	}
+	path, err := dialog.PromptForSingleSelection()
+	if err != nil {
+		// 用户取消在 wails 层是错误态：转空串交前端静默。
+		return "", nil
+	}
+	return path, nil
+}
+
+// PickFolderDialog 打开系统"选择文件夹"对话框（克隆/迁移/安装落位的"选好再改"
+// 场景——目录通常不存在也要能选中父级，故用目录框而非手拼路径）。取消返回空串
+// 不报错；宿主不可用时如实报错，前端指路手填。
+func (s *WslService) PickFolderDialog(title string) (string, error) {
+	app := application.Get()
+	if app == nil {
+		return "", fmt.Errorf("应用实例不可用，请直接手动填写路径")
+	}
+	if title = strings.TrimSpace(title); title == "" {
+		title = "选择目标文件夹"
+	}
+	dialog := app.Dialog.OpenFile().CanChooseFiles(false).CanChooseDirectories(true).SetTitle(title)
+	path, err := dialog.PromptForSingleSelection()
+	if err != nil {
+		return "", nil // 取消：静默
+	}
+	return path, nil
 }
 
 // versionAtLeast 点分数版本 ≥ min；无法解析（空串/非数字段）一律判不满足。

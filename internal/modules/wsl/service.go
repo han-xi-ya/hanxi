@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -310,6 +311,52 @@ func (s *WslService) InstallDistro(id string) (OperationOutcome, error) {
 		return OperationOutcome{}, fmt.Errorf("发行版 %q 不在官方在线清单中，已拒绝执行", id)
 	}
 	return s.elevateWsl("--install", "-d", id)
+}
+
+// InstallDistroTo 安装在线发行版并按需落位：location 为空走系统默认（现状，
+// 通常落 C 盘）；指定位置则在同一提权链里连做 wsl --install -d、wsl --shutdown、
+// wsl --manage --move，全程一次 UAC、一个提权窗口看进度——wsl --install 本身
+// 不接受目标目录参数，"装完即迁"是唯一正规通道（与 MoveDistro 同款停机+重试节律）。
+// 白名单/虚拟化预检两道闸门与 InstallDistro 同源复用；location 按基目录语义
+// 使用（末级非发行版名时自动追加同名子目录），目标经 moveTarget 的绝对路径/
+// 盘符存在/非法字符/目录空性把关。
+func (s *WslService) InstallDistroTo(id, location string) (OperationOutcome, error) {
+	loc := strings.TrimSpace(location)
+	if loc == "" {
+		return s.InstallDistro(id)
+	}
+	id = strings.TrimSpace(id)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if gate := s.virtualizationGate(ctx); gate != "" {
+		return OperationOutcome{Message: gate}, nil
+	}
+	list, err := s.onlineDistros(ctx)
+	if err != nil {
+		return OperationOutcome{}, fmt.Errorf("无法校验发行版清单，安装中止: %w", err)
+	}
+	if !slices.ContainsFunc(list, func(o readiness.DistroOption) bool { return o.ID == id }) {
+		return OperationOutcome{}, fmt.Errorf("发行版 %q 不在官方在线清单中，已拒绝执行", id)
+	}
+	// location 按"基目录"语义处理：末级不是发行版名则自动追加同名子目录
+	//（D:\wsl → D:\wsl\Ubuntu），与 ImportDistro 同源复用 underDir。
+	clean, err := moveTarget(underDir(loc, id), "") // 空 currentBasePath：跳过"与当前位置相同/嵌套"两项检查
+	if err != nil {
+		return OperationOutcome{}, fmt.Errorf("安装位置不合规: %w", err)
+	}
+	// 安装与落位共用一条提权 PowerShell：install 非零退出即中止（不留下"装到一半
+	// 又搬动"的乱局）；落位段沿用 MoveDistro 的 shutdown+3s+至多 5 次重试节律。
+	// ctx 用 opTimeout（数十 GB 下载+落位远超 60s 白名单窗口——白名单校验已完成）。
+	mctx, mcancel := context.WithTimeout(context.Background(), opTimeout)
+	defer mcancel()
+	inner := fmt.Sprintf(
+		"wsl --install -d %s; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; "+
+			"wsl --shutdown; Start-Sleep -Seconds 3; "+
+			"$tries = 0; while ($true) { $tries++; wsl --manage %s --move %s; "+
+			"if ($LASTEXITCODE -eq 0) { exit 0 }; if ($tries -ge 5) { exit $LASTEXITCODE }; Start-Sleep -Seconds 3 }",
+		psQuote(id), psQuote(id), psQuote(clean),
+	)
+	return s.elevProc(mctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", inner)
 }
 
 // virtualizationGate 发行版安装的硬前提预检；返回空串表示放行。

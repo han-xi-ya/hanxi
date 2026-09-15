@@ -655,6 +655,17 @@ func moveTarget(target, currentBasePath string) (string, error) {
 	return clean, nil
 }
 
+// underDir 实现"基目录 + 同名子目录"落位语义：base 末级不是 id 则追加一级
+// （D:\wsl → D:\wsl\Ubuntu），已是 id 则原样返回。安装/导入共用——否则第一个
+// 发行版占住基目录后，第二次操作必撞 moveTarget 的"目标目录非空"闸门。
+func underDir(base, id string) string {
+	clean := filepath.Clean(strings.TrimSpace(base))
+	if strings.EqualFold(filepath.Base(clean), id) {
+		return clean
+	}
+	return filepath.Join(clean, id)
+}
+
 // validMovePath 拒绝 Windows 路径非法字符（尖括号/引号/竖线/问号/星号）。
 // 冒号只允许出现在盘符位（IsAbs 已保证 D:\ 形态，盘符之后再遇冒号即非法）。
 func validMovePath(p string) bool {

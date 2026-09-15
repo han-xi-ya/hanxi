@@ -218,6 +218,173 @@ func TestCloneDistroImportFailureKeepsCopyAndUnregisters(t *testing.T) {
 	}
 }
 
+// quickVerify 把复验轮询参数压到测试尺度（防真机等价逻辑拖慢用例）。
+func quickVerify(t *testing.T) {
+	t.Helper()
+	oldInt, oldBudget := verifyRetryInterval, verifyRetryBudget
+	verifyRetryInterval, verifyRetryBudget = time.Millisecond, 300*time.Millisecond
+	t.Cleanup(func() { verifyRetryInterval, verifyRetryBudget = oldInt, oldBudget })
+}
+
+func TestImportDistroRosterPropagationDelay(t *testing.T) {
+	// #44 回归锁：--import 返回 0 后 WSL 服务名单有短暂传播延迟——
+	// 前几次复查看不到新名属正常，必须轮询等待而非一次快照误报失败。
+	quickVerify(t)
+	tar := filepath.Join(t.TempDir(), "rootfs.tar")
+	if err := os.WriteFile(tar, []byte("tar-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "fresh")
+	svc, _, _ := newTestService()
+	q := 0
+	stub := &wslStub{resp: func(args []string) (string, error) {
+		switch {
+		case joined(args) == "-l -q":
+			q++
+			if q <= 3 { // 撞名查询 1 次 + 复验前 2 拍均未传播
+				return "Ubuntu\x00", nil
+			}
+			return "Ubuntu\x00Fresh\x00", nil
+		case args[0] == "--import":
+			return "", nil
+		}
+		return "", fmt.Errorf("意外的 wsl 调用: %v", args)
+	}}
+	svc.runWsl = stub.run
+	res, err := svc.ImportDistro("Fresh", dest, tar)
+	if err != nil || !res.Success {
+		t.Fatalf("传播延迟不得误报导入失败: %v %+v", err, res)
+	}
+}
+
+func TestImportDistroRosterNeverAppearsStillFails(t *testing.T) {
+	// 反向兜底：轮询到预算耗尽仍不在册，依旧如实报错——不把真失败咽下去。
+	quickVerify(t)
+	tar := filepath.Join(t.TempDir(), "rootfs.tar")
+	if err := os.WriteFile(tar, []byte("tar-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "fresh")
+	svc, _, _ := newTestService()
+	stub := &wslStub{resp: func(args []string) (string, error) {
+		if joined(args) == "-l -q" {
+			return "Ubuntu\x00", nil // 永远不见 Fresh
+		}
+		return "", nil
+	}}
+	svc.runWsl = stub.run
+	_, err := svc.ImportDistro("Fresh", dest, tar)
+	if err == nil || !strings.Contains(err.Error(), "名单始终未见") {
+		t.Fatalf("始终不在册应报错： %v", err)
+	}
+}
+
+func TestUnderDir(t *testing.T) {
+	cases := []struct{ base, id, want string }{
+		{`D:\wsl`, "Ubuntu", `D:\wsl\Ubuntu`},
+		{`D:\wsl\`, "Ubuntu", `D:\wsl\Ubuntu`},
+		{`D:\wsl\ubuntu`, "Ubuntu", `D:\wsl\ubuntu`}, // 末级已是名（大小写不敏感）：不重复追加
+		{`E:\WSL\Ubuntu-24.04`, "Ubuntu-24.04", `E:\WSL\Ubuntu-24.04`},
+		{`  E:\WSL  `, "Debian", `E:\WSL\Debian`},
+	}
+	for _, c := range cases {
+		if got := underDir(c.base, c.id); got != c.want {
+			t.Fatalf("underDir(%q, %q) = %q，期望 %q", c.base, c.id, got, c.want)
+		}
+	}
+}
+
+func TestImportDistroVhd(t *testing.T) {
+	vhdx := filepath.Join(t.TempDir(), "backup", "ext4.vhdx")
+	if err := os.MkdirAll(filepath.Dir(vhdx), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(vhdx, []byte("vhdx-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 就地注册（默认形态）：命令面 --import-in-place <名> <盘>，不触碰目录。
+	svc, _, _ := newTestService()
+	qcalls := 0
+	stub := &wslStub{resp: func(args []string) (string, error) {
+		if joined(args) == "-l -q" {
+			qcalls++
+			if qcalls == 1 {
+				return "Ubuntu\x00", nil // 防撞名单：无 Fresh
+			}
+			return "Ubuntu\x00Fresh\x00", nil // 复验在册
+		}
+		if args[0] == "--import-in-place" {
+			return "", nil
+		}
+		return "", fmt.Errorf("意外的 wsl 调用: %v", args)
+	}}
+	svc.runWsl = stub.run
+	res, err := svc.ImportDistroVhd("Fresh", "", vhdx, false)
+	if err != nil || !res.Success {
+		t.Fatalf("就地挂载应成功: %v %+v", err, res)
+	}
+	saw := false
+	for _, c := range stub.calls {
+		if joined(c) == "--import-in-place Fresh "+vhdx {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("就地挂载命令面错误: %v", joinedCalls(stub))
+	}
+	if !strings.Contains(res.Message, "盘留在原处") {
+		t.Fatalf("回执应如实声明零拷贝语义: %s", res.Message)
+	}
+
+	// 复制落位形态：目标按基目录语义追加同名子目录，命令面 --import <名> <目录> <盘> --vhd。
+	svc2, _, _ := newTestService()
+	loc := filepath.Join(t.TempDir(), "loc")
+	q2 := 0
+	stub2 := &wslStub{resp: func(args []string) (string, error) {
+		if joined(args) == "-l -q" {
+			q2++
+			if q2 == 1 {
+				return "Ubuntu\x00", nil
+			}
+			return "Ubuntu\x00Fresh\x00", nil
+		}
+		return "", nil
+	}}
+	svc2.runWsl = stub2.run
+	if _, err := svc2.ImportDistroVhd("Fresh", loc, vhdx, true); err != nil {
+		t.Fatal(err)
+	}
+	sawCopy := false
+	for _, c := range stub2.calls {
+		if joined(c) == fmt.Sprintf("--import Fresh %s %s --vhd", filepath.Join(loc, "Fresh"), vhdx) {
+			sawCopy = true
+		}
+	}
+	if !sawCopy {
+		t.Fatalf("复制落位命令面错误: %v", joinedCalls(stub2))
+	}
+
+	// 拦截矩阵：版本闸 / 坏扩展名 / 文件不存在 / 名单撞名。
+	svc3, _, _ := newTestService()
+	svc3.runWsl = quietList("Ubuntu", "Fresh")
+	if _, err := svc3.ImportDistroVhd("Fresh", "", vhdx, false); err == nil || !strings.Contains(err.Error(), "已存在") {
+		t.Fatalf("撞名应被拒: %v", err)
+	}
+	svc4, _, _ := newTestService()
+	svc4.wslVersion = func(context.Context) string { return "2.6.0" }
+	if _, err := svc4.ImportDistroVhd("Fresh", "", vhdx, false); err == nil || !strings.Contains(err.Error(), "2.7.3") {
+		t.Fatalf("版本不足应被闸并指路升级: %v", err)
+	}
+	svc5, _, _ := newTestService()
+	if _, err := svc5.ImportDistroVhd("Fresh", "", strings.TrimSuffix(vhdx, ".vhdx")+".txt", false); err == nil || !strings.Contains(err.Error(), ".vhdx") {
+		t.Fatalf("坏扩展名应被拒: %v", err)
+	}
+	if _, err := svc5.ImportDistroVhd("Fresh", "", filepath.Join(t.TempDir(), "nope.vhdx"), false); err == nil || !strings.Contains(err.Error(), "不存在") {
+		t.Fatalf("不存在的盘应被拒: %v", err)
+	}
+}
+
 func TestImportDistro(t *testing.T) {
 	tar := filepath.Join(t.TempDir(), "rootfs.tar")
 	if err := os.WriteFile(tar, []byte("tar-bytes"), 0o600); err != nil {
