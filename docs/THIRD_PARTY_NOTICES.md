@@ -1,6 +1,6 @@
 # 第三方软件告知
 
-> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部 23 款托管桌面工具。Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
+> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部 24 款托管桌面工具。Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
 
 ## MangoDisk
 
@@ -171,3 +171,12 @@ Hanxi 对该工具采用用户侧按需下载与独立进程托管：下载由�
 - 发行方式：官方 GitHub Releases 按需下载（`ddns-go_*_windows_x86_64.zip`，GitHub API digest 官方 sha256 四层校验）。
 
 Hanxi 纯托管：JobObject 启停、进程名存活探测、TCP 端口就绪判定、DNS 解析配置全程由上游原版 Web 面板完成（Hanxi 经独立子 Webview 窗口提供入口，不改写其 `~/.ddns_go_config.yaml` 配置语义）；不修改、不捆绑、不再分发上游二进制。托管侧安全加固如实登记：监听地址固定 127.0.0.1（上游默认绑全网卡），进程 stdout 日志行经敏感参数脱敏后展示。若未来随 Hanxi 捆绑分发，须随附 MIT 许可证文本与版权声明。
+
+## Paseo
+
+- 项目：Paseo（coding agent 编排器：本机 daemon + 桌面/移动/Web 客户端，统一管理 Claude Code、Codex 等 CLI agent）
+- 上游仓库：https://github.com/getpaseo/paseo
+- 官方许可证说明：根 LICENSE 为自定义文本——除第三方组件外整体按 **Apache License 2.0** 授权（第三方组件沿用各自许可证；GitHub API 因此标 NOASSERTION 而非 Apache-2.0）
+- 发行方式：官方 GitHub Releases 按需下载 Windows 便携 zip（electron-builder win zip target，`Paseo-Setup-<ver>-<arch>.zip`，约 180MB；GitHub API digest sha256 + 字节数 + zip 内建 CRC + 解压布局自检四层校验）。
+
+Hanxi 纯托管：官方便携 zip 解压进多版本目录（versions/paseo_X.Y.Z），JobObject 绑定的启停引擎、进程名 Paseo.exe 探测、WM_CLOSE 优雅退出（宽限覆盖 daemon 清理生命周期）+ 强杀兜底、Win32 直唤窗口；agent 编排全程在 Paseo 自有窗口完成（其 second-instance 语义是"再开新窗"而非聚焦，唤窗因此优先直唤、无窗才二次拉起请求开新窗）。**数据模式为用户目录共享（与 cc-switch 同构，集成拍板）**：Electron 数据恒在 `%APPDATA%\Paseo`、daemon 数据恒在 `~/.paseo`（含手机端配对凭据），托管实例与用户自装实例同数据同锁组——删托管版本不毁配对，Hanxi 不注入上游官方 env 隔离通道（PASEO_HOME / PASEO_ELECTRON_USER_DATA_DIR），不改写任何配置语义，不修改上游二进制。上游自动更新无禁用开关（源码实证）：`autoInstallOnAppQuit=false` 下安装动作仅在用户于 Paseo 界面内点击时发生（zip 形态会装出 `%LOCALAPPDATA%` 平行副本），页面提示条如实引导"版本升级走 Hanxi 版本管理"，不做拦截。若未来随 Hanxi 捆绑分发，须随附 Apache-2.0 许可证文本与 NOTICE/第三方组件清单。
