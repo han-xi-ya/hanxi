@@ -366,11 +366,23 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	quickMenuModule.SetMainWindow(win)
 	_ = registry.EnsureActive("quickmenu")
 
-	// 深色标题栏桥：前端 useTheme 解析出实际亮/暗后经 SetWindowDarkMode 调到这里，
+	// 标题栏同步桥：前端 useTheme 解析出实际亮/暗后经 SetWindowDarkMode 调到这里，
 	// 由平台层 DWM 属性同步原生窗框（重构蓝图铁律 8 的唯一后端例外）。
+	// 沉浸式深浅打底（Win10+），Win11 再叠加精确配色让标题栏与页面背景同色，
+	// 不支持的属性静默降级。
 	appSvc.SetWindowDarkApplier(func(dark bool) error {
-		return windows.SetImmersiveDarkMode(uintptr(win.NativeWindow()), dark)
+		hwnd := uintptr(win.NativeWindow())
+		if err := windows.SetImmersiveDarkMode(hwnd, dark); err != nil {
+			return err
+		}
+		_ = windows.SetTitleBarPalette(hwnd, dark)
+		return nil
 	})
+	// 启动即按持久化主题预应用（light/dark 立即可判，消除前端挂载前的原生白标题栏
+	// 闪现；system 的真实解析仍由前端 useTheme 回调完成）。
+	if t := store.Get().Theme; t == "light" || t == "dark" {
+		_ = appSvc.SetWindowDarkMode(t == "dark")
+	}
 
 	// 注册窗口关闭拦截钩子：如果开启了“关闭时最小化到托盘”，则隐藏窗口代替退出
 	win.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
