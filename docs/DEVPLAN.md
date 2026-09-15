@@ -1,7 +1,7 @@
 # Hanxi 开发里程碑与执行现状
 
-> **版本**：v1.2  
-> **更新日期**：2026-09-06  
+> **版本**：v1.3  
+> **更新日期**：2026-09-14  
 > **目标平台**：Windows 10 (22H2+) / Windows 11 x64  
 
 ---
@@ -21,6 +21,7 @@
 | **M8: 开发环境检测增强** | Git/Go/Node/Java/Python/.NET 工具链盘点、官网最新版本通道（按本机版本线置顶）、包管理器升级提示、资源管理器定位安装路径、.NET 并排安装与官方支持线 | 🟢 已达成 | `modules/envcheck`（模块版本 0.4.0）、前端环境页 |
 | **M9: 开源工具托管生态** | 托管模式框架化（`version/`+`instance/` 三件套）并规模化至 23 款桌面工具；安装布局矩阵（zip/MSI 管理提取/NSIS 静默/MSIX/AppInstaller/单文件下载即安装/MSI 安装版双形态）；唤窗与退出治理矩阵（含多实例上游进程名探测契约、退出三态如实上报无强杀兜底形态）；第三方许可合规登记 | 🟢 已达成 | `modules/{markeron,everything,ccswitch,snipaste,nanazip,eartrumpet,mangodisk,bcu,flclash,recordly,papertodo,piclite,keyviz,quicklook,litemonitor,guoheview,ddnsgo,rustdesk,subnetdesk,rufus,bili23,vscode,translucenttb}`、`platform/apppackage` |
 | **M10: 系统就绪与桌面效率** | WSL2 十项流式只读体检与三态结论（根因诊断"硬件不满足 vs API 被拦"、双源降级）、安装形态取证与正规卸载、白名单固定参数提权通道；Quicker 式右键长按快捷菜单（低级鼠标钩子吞/放策略、frameless 弹窗 DIP 钳位）；全托管模块"随 Hanxi 关闭"默认翻转为关（Detached 独立运行） | 🟢 已达成 | `modules/wsl`（`netx`+`readiness`+`releases` 子包）、`modules/quickmenu`（`mousetrap` 子包） |
+| **M11: WSL 发行版运维工作台** | 发行版六操作之上补齐：只读取证抽屉（VHDX 双口径/稀疏/df/IPv4，停止不误启动）、克隆快路径（拷 VHDX+`--import --vhd` 进度事件）、tar 导入面、/etc/wsl.conf 图形编辑（语法闸门+引用校验+写前备份+复验）、VHDX 三级瘦身工作流（强制备份/Tier1 Optimize-VHD/Tier2 重导入）、NAT 端口转发账本（netsh 批量单 UAC、IP 漂移重同步、外部转发不触碰）；收敛半成品（摘除 GetReadiness 死绑定、导出格式选择与多工件登记） | 🟢 已达成 | `modules/wsl`（`distro.go`/`forensics.go`/`clone.go`/`wslconf.go`/`compact.go`/`portproxy.go`） |
 
 ---
 
@@ -81,6 +82,19 @@
 - [x] 应用内 MSI 下载器（进度事件、落系统下载文件夹、本机架构自适应标记，异架构仅作备选）
 - [x] 右键长按快捷菜单：`WH_MOUSE_LL` 吞按下/短按回放识别（普通右键零损失）、frameless 置顶弹窗失焦收起、多显示器/边缘 DIP 钳位
 - [x] 全托管模块"随 Hanxi 一起关闭"开关默认翻转为关（Detached 独立运行，退出/崩溃不连带）
+
+### 2.7 WSL 发行版运维工作台 (M11)
+- [x] 只读取证抽屉：VHDX 逻辑/实占双口径（`GetCompressedFileSizeW`）+ 稀疏标志、guest `df` 根盘用量、发行版 IPv4；运行态通道不可得或未运行时不进 guest（防顺手启动）
+- [x] 导出支持 tar.gz/tar 双格式；本会话导出工件全量登记（ListDistroExports），逐份"打开位置/复制路径"
+- [x] 克隆快路径：源停机制、8MB 流式拷贝带 `wsl:clone` 进度事件、`--import --vhd` 挂载（WSL 2.7.3+ 能力门控）、导入失败保留拷贝盘并尽力回收半成品实例；源+目标双单飞闸
+- [x] 导入面：`wsl --import` 落成新增发行版（扩展名白名单、文件存在性、名称防撞、目标目录同迁移口径、成功后名单复验）
+- [x] /etc/wsl.conf 编辑器：自研 INI 语法闸门、`[user] default` 经 `id -u` 存在性求证、写前 root `cp` 备份 `.bak`、stdin `tee` 覆盖 + 读回复验一致才报成功、CRLF→LF 归一、版本门控警示不硬拦
+- [x] VHDX 三级瘦身：受理期空间预检（源卷+导出卷 实占+2GB）、强制 tar 备份先行、fstrim+停机确认、Tier1 `Optimize-VHD`（Hyper-V 模块探测在位才弹 UAC）、省量 <100MB 自动转 Tier2 注销重导入、失败路径点名备份位置、稀疏属性尽力恢复
+- [x] NAT 端口转发账本：规则持久化 `<DataDir>/wsl-portproxy.json`、netsh 现态对照（已生效/IP 漂移/待应用/未运行）、应用批量单 UAC 先删后加逐条传播退出码、防火墙 `Hanxi WSL <port>` 命名联动、外部转发只展示不触碰、清理托管一键摘除
+- [x] 半成品收敛：`GetReadiness` 死绑定摘除（同步通道从未接线）、`WSLView.spec` stale mock 清理
+- [x] 优化批次：克隆目标卷空间预检；MSI 下载/克隆全程可取消、瘦身备份/停机段可取消（动盘段拒绝并说明中间态风险）；wsl.conf 读写以开机探针+`test -f` 退出码断存在性（消灭跨语言文案猜测，堵住"停止实例跳过备份直接 tee"的丢数据路径）；瘦身备份目录可指空闲卷；端口转发默认 127.0.0.1+曝光警示、IP 并行探测、应用/清理挂重操作闸、账本损坏逃生口；wsl.conf 保存后一键终止生效引导
+- [x] 网络模式三件套：`~/.wslconfig` networkingMode 检测（取证/转发页徽标，mirrored 明示 localhost 直通）；.wslconfig 全文编辑器（语法闸门 + networkingMode 白名单 + 备份 + 原子写复核）；`ShutdownWsl` 全停通道（重操作闸）与保存后生效引导
+- [x] 测试面：Go 新增 45+ 用例（命令面形态锁、白名单矩阵、三级流程事件序、备份失败零销毁断言），`WSLView.spec` 21→29 例；全仓 653 前端测试通过
 
 ---
 
