@@ -23,6 +23,10 @@ import (
 // exportDirName 导出落盘子目录（系统"下载"文件夹下，与 MSI 下载同址不同目录）。
 const exportDirName = "WSL 导出"
 
+// createNewConsole CREATE_NEW_CONSOLE: 让子进程在自己的可见控制台窗口里运行
+// （Win11 起新控制台由系统"默认终端应用"接管呈现——设了 Windows Terminal 就出 WT）。
+const createNewConsole = 0x00000010
+
 // DistroInstance 管理控制台的发行版实例行。
 // Running/Default 为归一后的布尔语义（状态列原文是本地化文案，跨语言系统下
 // 不可作为判据；运行态以 `wsl -l -q --running` 名单为准，默认以 `wsl -l -q`
@@ -538,18 +542,23 @@ func (s *WslService) MoveDistro(name, target string) (DistroOpResult, error) {
 	return DistroOpResult{Success: true, Message: msg}, nil
 }
 
-// startTerminalSession 经 cmd start 唤起默认终端进入发行版（默认终端程序是
-// Windows Terminal 就出 WT，老控制台主机就出 conhost）。start 起后不回wait——
-// 终端会话生命周期归用户，Hanxi 退出不应牵连它（与 launcher runExe 同款语义）。
-// 刻意不做后台保活进程，见 OpenTerminal 注释。
-func startTerminalSession(ctx context.Context, name string) error {
-	cmd := exec.CommandContext(ctx, "cmd.exe", "/c", "start", "", "wsl.exe", "-d", name)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 藏的是 cmd 壳，新终端窗口不受影响
+// startTerminalSession 直接以 CREATE_NEW_CONSOLE 拉起 wsl.exe 交互会话：
+// 子进程自带一个全新可见控制台窗口（Win11 由"默认终端应用"接管呈现——设了
+// Windows Terminal 就出 WT，老系统出 conhost），不再借 cmd start 转手。
+// 历史踩坑（2026-09-15）：旧实现 cmd.exe /c start + HideWindow，本意"只藏 cmd 壳"，
+// 实际 start 开的新窗口会继承 cmd 启动信息里的 SW_HIDE——窗口存在但完全不可见，
+// 用户感知"点了没弹终端"（发行版其实已被拉起）。详见 docs/TROUBLESHOOTING.md。
+// 终端会话生命周期归用户：Start 后即 Release 句柄脱手，Hanxi 退出与体检 ctx
+// 超时都不牵连它（与 launcher runExe 同款语义）；刻意不做后台保活，见 OpenTerminal 注释。
+func startTerminalSession(_ context.Context, name string) error {
+	// 刻意不用 CommandContext：wsl.exe 会活到用户敲 exit 为止，
+	// 挂 60s 体检 ctx 会在超时处把会话击杀——这里只取 name，ctx 不外接。
+	cmd := exec.Command("wsl.exe", "-d", name)
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewConsole}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	go func() { _ = cmd.Wait() }() // 收尸 cmd 壳防僵尸，不等终端会话
-	return nil
+	return cmd.Process.Release() // Windows 无僵尸进程语义，Release 即彻底脱手不留句柄
 }
 
 // ---- 小工具 ----
