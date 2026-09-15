@@ -10,6 +10,7 @@ import ConfirmDialog from './components/ConfirmDialog.vue'
 import UiPromptDialog from './components/ui/UiPromptDialog.vue'
 import ErrorBoundary from './components/ui/ErrorBoundary.vue'
 import AppSidebar from './components/shell/AppSidebar.vue'
+import CommandPalette from './components/shell/CommandPalette.vue'
 import { moduleIdOf, routeComponent, placeholderComponent, fallbackComponent } from './constants/navigation'
 import { useNotification } from './composables/useNotification'
 import { useTheme } from './composables/useTheme'
@@ -146,6 +147,14 @@ onUnmounted(() => {
       @navigate="navigateTo"
       @toggle-drawer="toggleDrawer"
       @cycle-theme="cycleThemeMode"
+    />
+
+    <!-- Ctrl/⌘+K 命令面板（自管理全局热键与浮层；宿主模态流程打开时禁用，
+         导航动作经 navigateTo 走既有模块门禁链） -->
+    <CommandPalette
+      :navs="navs"
+      :disabled="confirmState.open || promptState.open"
+      @navigate="navigateTo"
     />
 
     <!-- 右侧内容主视口 -->
