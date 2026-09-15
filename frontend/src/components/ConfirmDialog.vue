@@ -55,10 +55,10 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 <template>
   <Teleport to="body">
     <div v-if="open" class="workbench-confirm-backdrop" @mousedown.self="cancel">
-      <section ref="dialog" class="workbench-confirm" :class="`is-${tone}`" role="alertdialog" aria-modal="true" :aria-labelledby="`${title}-dialog-title`">
+      <section ref="dialog" class="workbench-confirm" :class="`is-${tone}`" role="alertdialog" aria-modal="true" aria-labelledby="hx-confirm-title">
         <header>
           <span class="workbench-confirm-mark" aria-hidden="true">!</span>
-          <div><h2 :id="`${title}-dialog-title`">{{ title }}</h2><p>{{ description }}</p></div>
+          <div><h2 id="hx-confirm-title">{{ title }}</h2><p>{{ description }}</p></div>
         </header>
         <dl v-if="details.length" class="workbench-confirm-details">
           <div v-for="item in details" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div>
@@ -74,10 +74,10 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 
 <style scoped>
 .workbench-confirm-backdrop { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:24px; background:var(--overlay-mask); }
-.workbench-confirm { width:min(460px,100%); padding:20px; border:1px solid var(--color-border); border-radius:var(--radius-panel); background:var(--surface-panel); box-shadow:var(--shadow-panel); color:var(--color-text); }
+.workbench-confirm { width:min(460px,100%); max-height:min(72vh,640px); overflow-y:auto; padding:20px; border:1px solid var(--color-border); border-radius:var(--radius-panel); background:var(--surface-panel); box-shadow:var(--shadow-panel); color:var(--color-text); }
 .workbench-confirm header { display:flex; gap:12px; align-items:flex-start; }
 .workbench-confirm h2 { margin:0 0 6px; font-size:17px; }
-.workbench-confirm p { margin:0; color:var(--color-text-muted); font-size:13px; line-height:1.65; }
+.workbench-confirm p { margin:0; color:var(--color-text-muted); font-size:13px; line-height:1.65; white-space:pre-line; }
 .workbench-confirm-mark { display:grid; place-items:center; width:30px; height:30px; flex:none; border-radius:var(--radius-element); background:var(--state-warning-soft); color:var(--state-warning); font-weight:800; }
 .is-danger .workbench-confirm-mark { background:var(--state-danger-soft); color:var(--state-danger); }
 .workbench-confirm-details { margin:16px 0 0; padding:12px; border:1px solid var(--color-border); border-radius:var(--radius-element); background:var(--surface-soft); }

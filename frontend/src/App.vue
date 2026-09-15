@@ -228,21 +228,26 @@ onUnmounted(() => {
   background: var(--surface-page);
 }
 
-/* 全局轻量 Toast 提示（深底浮层为刻意设计，两种主题下均成立） */
+/* 全局轻量 Toast 提示（深底浮层为刻意设计，两种主题下均成立）
+   允许选中复制：错误串常含路径/报错文本，需可拖选；pointer-events:auto 为有意开放交互 */
 .global-toast {
   position: fixed;
   top: 20px;
   right: 24px;
+  max-width: 480px;
   background: rgba(31, 35, 40, 0.92);
   backdrop-filter: blur(8px);
   color: #ffffff;
   padding: 8px 16px;
   border-radius: var(--radius-control);
   font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
   box-shadow: var(--shadow-panel);
   animation: toastFadeIn var(--motion-slow) cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 9999;
-  pointer-events: none;
+  pointer-events: auto;
+  user-select: text;
 }
 
 @keyframes toastFadeIn {

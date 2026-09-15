@@ -3,6 +3,9 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import ConfirmDialog from '../ConfirmDialog.vue'
+// happy-dom 不会把 SFC scoped 样式注入 document，计算样式拿不到声明值，
+// 因此对样式契约改走「SFC 源码内 CSS 规则存在性」断言（?raw 为 Vite 原生能力）。
+import sfcSource from '../ConfirmDialog.vue?raw'
 
 const baseProps = { open: true, title: '卸载工具', description: '该版本数据将被删除，不可恢复。' }
 
@@ -29,12 +32,13 @@ describe('ConfirmDialog', () => {
     expect(w.find('.workbench-confirm-details').text()).toContain('v1.2.3')
   })
 
-  it('role=alertdialog + aria-labelledby 可访问性锚点存在', () => {
+  it('role=alertdialog + aria-labelledby 指向固定合法 id（标题含中文不产生非法 IDREF）', () => {
     const w = factory()
     const section = w.find('section')
     expect(section.attributes('role')).toBe('alertdialog')
     expect(section.attributes('aria-modal')).toBe('true')
-    expect(section.attributes('aria-labelledby')).toBe(`${baseProps.title}-dialog-title`)
+    expect(section.attributes('aria-labelledby')).toBe('hx-confirm-title')
+    expect(w.find('h2').attributes('id')).toBe('hx-confirm-title')
   })
 
   it('点击取消：emit cancel 并请求关闭（update:open=false）', async () => {
@@ -93,5 +97,17 @@ describe('ConfirmDialog', () => {
   it('tone=danger 挂上 is-danger 样式钩子', () => {
     const w = factory({ tone: 'danger' })
     expect(w.find('section').classes()).toContain('is-danger')
+  })
+
+  it('description 样式含 white-space: pre-line（\\n\\n 分段不被折叠成文字墙）', () => {
+    // 调用方约定 description 用 \n\n 分段；无 pre-line 时 HTML 会折叠换行。
+    const pRule = sfcSource.match(/\.workbench-confirm p\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(pRule).toMatch(/white-space:\s*pre-line/)
+  })
+
+  it('面板限高可滚动，小窗口下按钮不被顶出视口', () => {
+    const panelRule = sfcSource.match(/\.workbench-confirm\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(panelRule).toMatch(/max-height:\s*min\(\s*72vh\s*,\s*640px\s*\)/)
+    expect(panelRule).toMatch(/overflow-y:\s*auto/)
   })
 })
