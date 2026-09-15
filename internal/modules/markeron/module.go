@@ -36,7 +36,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "markeron-annotate", Title: "MarkerOn 标注", Route: "/ext/markeron", Icon: "✎", Section: extapi.SectionExt, Order: 55},
+		{ID: "markeron-annotate", Title: "MarkerOn 标注", Route: "/ext/markeron", Icon: "i:pen-line", Section: extapi.SectionExt, Order: 55, Group: extapi.GroupDesktop},
 	}
 }
 

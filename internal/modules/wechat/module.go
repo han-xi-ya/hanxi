@@ -36,9 +36,10 @@ func (m *Module) Nav() []extapi.NavEntry {
 		ID:      ID,
 		Title:   "微信机器人",
 		Route:   "/ext/wechat",
-		Icon:    "💬",
+		Icon:    "i:message-circle",
 		Section: extapi.SectionExt,
 		Order:   35,
+		Group:   extapi.GroupEfficiency,
 	}}
 }
 

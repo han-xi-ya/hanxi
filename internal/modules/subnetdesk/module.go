@@ -47,7 +47,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "subnetdesk-manager", Title: "SubnetDesk 局域网", Route: "/ext/subnetdesk", Icon: "🖥", Section: extapi.SectionExt, Order: 86},
+		{ID: "subnetdesk-manager", Title: "SubnetDesk 局域网", Route: "/ext/subnetdesk", Icon: "i:network", Section: extapi.SectionExt, Order: 86, Group: extapi.GroupNetwork},
 	}
 }
 

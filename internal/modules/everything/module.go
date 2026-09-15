@@ -37,7 +37,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "everything-search", Title: "Everything 搜索", Route: "/ext/everything", Icon: "🔎", Section: extapi.SectionExt, Order: 60},
+		{ID: "everything-search", Title: "Everything 搜索", Route: "/ext/everything", Icon: "i:search-code", Section: extapi.SectionExt, Order: 60, Group: extapi.GroupEfficiency},
 	}
 }
 

@@ -47,7 +47,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "bili23-manager", Title: "Bili23 下载", Route: "/ext/bili23", Icon: "📺", Section: extapi.SectionExt, Order: 89},
+		{ID: "bili23-manager", Title: "Bili23 下载", Route: "/ext/bili23", Icon: "i:tv", Section: extapi.SectionExt, Order: 89, Group: extapi.GroupMedia},
 	}
 }
 

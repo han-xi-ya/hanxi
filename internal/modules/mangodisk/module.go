@@ -26,7 +26,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 }
 
 func (m *Module) Nav() []extapi.NavEntry {
-	return []extapi.NavEntry{{ID: "mangodisk-manager", Title: "MangoDisk", Route: "/ext/mangodisk", Icon: "🥭", Section: extapi.SectionExt, Order: 75}}
+	return []extapi.NavEntry{{ID: "mangodisk-manager", Title: "MangoDisk", Route: "/ext/mangodisk", Icon: "i:hard-drive", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupDesktop}}
 }
 
 func (m *Module) Services() []extapi.Service       { return []extapi.Service{application.NewService(m.svc)} }

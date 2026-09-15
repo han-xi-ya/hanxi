@@ -35,7 +35,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "snipaste-manager", Title: "Snipaste", Route: "/ext/snipaste", Icon: "✂", Section: extapi.SectionExt, Order: 75},
+		{ID: "snipaste-manager", Title: "Snipaste", Route: "/ext/snipaste", Icon: "i:scissors", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupEfficiency},
 	}
 }
 

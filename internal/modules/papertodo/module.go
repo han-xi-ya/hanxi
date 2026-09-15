@@ -50,7 +50,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "papertodo-manager", Title: "PaperTodo 便签", Route: "/ext/papertodo", Icon: "📄", Section: extapi.SectionExt, Order: 79},
+		{ID: "papertodo-manager", Title: "PaperTodo 便签", Route: "/ext/papertodo", Icon: "i:clipboard-list", Section: extapi.SectionExt, Order: 79, Group: extapi.GroupEfficiency},
 	}
 }
 

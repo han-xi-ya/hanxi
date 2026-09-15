@@ -44,10 +44,11 @@ func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{
 		ID:      ID,
 		Title:   "随手备忘录",
-		Icon:    "📝",
+		Icon:    "i:sticky-note",
 		Route:   "/ext/memo",
 		Section: extapi.SectionExt,
 		Order:   36,
+		Group:   extapi.GroupEfficiency,
 	}}
 }
 

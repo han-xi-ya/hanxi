@@ -39,7 +39,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "bcu-manager", Title: "BC 卸载工具", Route: "/ext/bcu", Icon: "🧹", Section: extapi.SectionExt, Order: 75},
+		{ID: "bcu-manager", Title: "BC 卸载工具", Route: "/ext/bcu", Icon: "i:trash-2", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupSystem},
 	}
 }
 

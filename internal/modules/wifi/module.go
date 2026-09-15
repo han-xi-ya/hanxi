@@ -35,9 +35,10 @@ func (e *Module) Nav() []extapi.NavEntry {
 		ID:      ID,
 		Title:   "WiFi 密码",
 		Route:   "/ext/wifi",
-		Icon:    "📶",
+		Icon:    "i:wifi",
 		Section: extapi.SectionExt,
 		Order:   45,
+		Group:   extapi.GroupNetwork,
 	}}
 }
 

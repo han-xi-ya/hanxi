@@ -21,7 +21,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 }
 
 func (m *Module) Nav() []extapi.NavEntry {
-	return []extapi.NavEntry{{ID: "nanazip-manager", Title: "NanaZip", Route: "/ext/nanazip", Icon: "NZ", Section: extapi.SectionExt, Order: 76}}
+	return []extapi.NavEntry{{ID: "nanazip-manager", Title: "NanaZip", Route: "/ext/nanazip", Icon: "i:archive", Section: extapi.SectionExt, Order: 76, Group: extapi.GroupDesktop}}
 }
 
 func (m *Module) Services() []extapi.Service       { return []extapi.Service{application.NewService(m.svc)} }

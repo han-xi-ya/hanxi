@@ -58,7 +58,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 }
 
 func (m *Module) Nav() []extapi.NavEntry {
-	return []extapi.NavEntry{{ID: "eartrumpet-manager", Title: "EarTrumpet", Route: "/ext/eartrumpet", Icon: "🔊", Section: extapi.SectionExt, Order: 77}}
+	return []extapi.NavEntry{{ID: "eartrumpet-manager", Title: "EarTrumpet", Route: "/ext/eartrumpet", Icon: "i:volume-2", Section: extapi.SectionExt, Order: 77, Group: extapi.GroupDesktop}}
 }
 
 func (m *Module) Services() []extapi.Service {

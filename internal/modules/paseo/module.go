@@ -56,7 +56,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "paseo-manager", Title: "Paseo 编排器", Route: "/ext/paseo", Icon: "🐾", Section: extapi.SectionExt, Order: 92},
+		{ID: "paseo-manager", Title: "Paseo 编排器", Route: "/ext/paseo", Icon: "i:paw", Section: extapi.SectionExt, Order: 92, Group: extapi.GroupDeveloper},
 	}
 }
 

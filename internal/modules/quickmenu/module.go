@@ -48,9 +48,10 @@ func (m *Module) Nav() []extapi.NavEntry {
 		ID:      ID,
 		Title:   "快捷菜单",
 		Route:   "/ext/quickmenu",
-		Icon:    "🖱",
+		Icon:    "i:mouse-pointer",
 		Section: extapi.SectionExt,
 		Order:   90,
+		Group:   extapi.GroupDesktop,
 	}}
 }
 

@@ -45,7 +45,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "piclite-manager", Title: "PicLite 压图", Route: "/ext/piclite", Icon: "🖼️", Section: extapi.SectionExt, Order: 81},
+		{ID: "piclite-manager", Title: "PicLite 压图", Route: "/ext/piclite", Icon: "i:image-down", Section: extapi.SectionExt, Order: 81, Group: extapi.GroupMedia},
 	}
 }
 

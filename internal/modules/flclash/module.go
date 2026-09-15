@@ -40,7 +40,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "flclash-manager", Title: "FlClash 代理", Route: "/ext/flclash", Icon: "⚡", Section: extapi.SectionExt, Order: 80},
+		{ID: "flclash-manager", Title: "FlClash 代理", Route: "/ext/flclash", Icon: "i:shield", Section: extapi.SectionExt, Order: 80, Group: extapi.GroupNetwork},
 	}
 }
 

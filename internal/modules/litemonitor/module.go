@@ -40,7 +40,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "litemonitor-manager", Title: "LiteMonitor", Route: "/ext/litemonitor", Icon: "📊", Section: extapi.SectionExt, Order: 84},
+		{ID: "litemonitor-manager", Title: "LiteMonitor", Route: "/ext/litemonitor", Icon: "i:activity", Section: extapi.SectionExt, Order: 84, Group: extapi.GroupSystem},
 	}
 }
 

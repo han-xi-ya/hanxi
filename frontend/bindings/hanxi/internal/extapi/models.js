@@ -47,7 +47,50 @@ export const Level = {
  * @property {string} icon
  * @property {NavSection} section
  * @property {number} order
+ * @property {NavGroup} [group]
  */
+
+/**
+ * NavGroup 区分外壳双栏导航中的能力分组（左栏分组目录的归属依据）。
+ * @readonly
+ * @enum {string}
+ */
+export const NavGroup = {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero: "",
+
+    /**
+     * 网络与传输
+     */
+    GroupNetwork: "network",
+
+    /**
+     * 系统管理
+     */
+    GroupSystem: "system",
+
+    /**
+     * 桌面增强
+     */
+    GroupDesktop: "desktop",
+
+    /**
+     * 效率办公
+     */
+    GroupEfficiency: "efficiency",
+
+    /**
+     * 媒体影音
+     */
+    GroupMedia: "media",
+
+    /**
+     * 开发者工具
+     */
+    GroupDeveloper: "developer",
+};
 
 /**
  * NavSection 区分核心导航与扩展导航两个分区。

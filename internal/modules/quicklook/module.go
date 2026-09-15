@@ -52,7 +52,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "quicklook-manager", Title: "QuickLook 预览", Route: "/ext/quicklook", Icon: "👁️", Section: extapi.SectionExt, Order: 83},
+		{ID: "quicklook-manager", Title: "QuickLook 预览", Route: "/ext/quicklook", Icon: "i:eye", Section: extapi.SectionExt, Order: 83, Group: extapi.GroupDesktop},
 	}
 }
 

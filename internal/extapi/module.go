@@ -35,6 +35,18 @@ const (
 	SectionExt  NavSection = "ext"
 )
 
+// NavGroup 区分外壳双栏导航中的能力分组（左栏分组目录的归属依据）。
+type NavGroup string
+
+const (
+	GroupNetwork    NavGroup = "network"    // 网络与传输
+	GroupSystem     NavGroup = "system"     // 系统管理
+	GroupDesktop    NavGroup = "desktop"    // 桌面增强
+	GroupEfficiency NavGroup = "efficiency" // 效率办公
+	GroupMedia      NavGroup = "media"      // 媒体影音
+	GroupDeveloper  NavGroup = "developer"  // 开发者工具
+)
+
 // NavEntry 描述左侧导航中的一项（前端据此注册路由）。
 type NavEntry struct {
 	ID      string     `json:"id"`
@@ -43,6 +55,7 @@ type NavEntry struct {
 	Icon    string     `json:"icon"`
 	Section NavSection `json:"section"`
 	Order   int        `json:"order"`
+	Group   NavGroup   `json:"group,omitempty"`
 }
 
 // Level 模块级别。

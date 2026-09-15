@@ -42,10 +42,11 @@ func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{
 		ID:      ID,
 		Title:   "局域网快传",
-		Icon:    "📁",
+		Icon:    "i:share-2",
 		Route:   "/ext/fileshare",
 		Section: extapi.SectionExt,
 		Order:   35,
+		Group:   extapi.GroupNetwork,
 	}}
 }
 

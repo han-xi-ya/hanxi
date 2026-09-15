@@ -50,7 +50,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "guoheview-manager", Title: "果核看图", Route: "/ext/guoheview", Icon: "🏞️", Section: extapi.SectionExt, Order: 85},
+		{ID: "guoheview-manager", Title: "果核看图", Route: "/ext/guoheview", Icon: "i:image", Section: extapi.SectionExt, Order: 85, Group: extapi.GroupDesktop},
 	}
 }
 

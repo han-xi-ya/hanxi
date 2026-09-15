@@ -46,7 +46,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "recordly-manager", Title: "Recordly 录屏", Route: "/ext/recordly", Icon: "🎬", Section: extapi.SectionExt, Order: 78},
+		{ID: "recordly-manager", Title: "Recordly 录屏", Route: "/ext/recordly", Icon: "i:video", Section: extapi.SectionExt, Order: 78, Group: extapi.GroupMedia},
 	}
 }
 

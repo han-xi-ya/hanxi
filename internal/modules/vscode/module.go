@@ -44,7 +44,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "vscode-manager", Title: "VS Code", Route: "/ext/vscode", Icon: "💻", Section: extapi.SectionExt, Order: 90},
+		{ID: "vscode-manager", Title: "VS Code", Route: "/ext/vscode", Icon: "i:code", Section: extapi.SectionExt, Order: 90, Group: extapi.GroupDeveloper},
 	}
 }
 

@@ -4,6 +4,7 @@
 
 export {
     Level,
+    NavGroup,
     NavSection
 } from "./models.js";
 

@@ -37,9 +37,10 @@ func (e *Module) Nav() []extapi.NavEntry {
 		ID:      ID,
 		Title:   "局域网扫描",
 		Route:   "/ext/lan",
-		Icon:    "◉",
+		Icon:    "i:radar",
 		Section: extapi.SectionExt,
 		Order:   30,
+		Group:   extapi.GroupNetwork,
 	}}
 }
 

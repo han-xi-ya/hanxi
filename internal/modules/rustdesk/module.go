@@ -48,7 +48,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "rustdesk-manager", Title: "RustDesk 公网", Route: "/ext/rustdesk", Icon: "🌍", Section: extapi.SectionExt, Order: 87},
+		{ID: "rustdesk-manager", Title: "RustDesk 公网", Route: "/ext/rustdesk", Icon: "i:cast", Section: extapi.SectionExt, Order: 87, Group: extapi.GroupNetwork},
 	}
 }
 

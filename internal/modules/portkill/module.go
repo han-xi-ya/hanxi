@@ -36,9 +36,10 @@ func (e *Module) Nav() []extapi.NavEntry {
 		ID:      ID,
 		Title:   "释放端口",
 		Route:   "/ext/portkill",
-		Icon:    "✕",
+		Icon:    "i:x-octagon",
 		Section: extapi.SectionExt,
 		Order:   40,
+		Group:   extapi.GroupSystem,
 	}}
 }
 

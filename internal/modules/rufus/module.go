@@ -42,7 +42,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "rufus-manager", Title: "Rufus 启动盘", Route: "/ext/rufus", Icon: "💽", Section: extapi.SectionExt, Order: 88},
+		{ID: "rufus-manager", Title: "Rufus 启动盘", Route: "/ext/rufus", Icon: "i:disc", Section: extapi.SectionExt, Order: 88, Group: extapi.GroupSystem},
 	}
 }
 

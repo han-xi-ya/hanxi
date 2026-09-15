@@ -36,9 +36,10 @@ func (e *Module) Nav() []extapi.NavEntry {
 		ID:      "wsl-main",
 		Title:   "WSL2",
 		Route:   "/ext/wsl",
-		Icon:    "🐧",
+		Icon:    "i:terminal",
 		Section: extapi.SectionExt,
 		Order:   66,
+		Group:   extapi.GroupDeveloper,
 	}}
 }
 

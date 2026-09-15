@@ -48,7 +48,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "keyviz-manager", Title: "Keyviz 键显", Route: "/ext/keyviz", Icon: "⌨️", Section: extapi.SectionExt, Order: 82},
+		{ID: "keyviz-manager", Title: "Keyviz 键显", Route: "/ext/keyviz", Icon: "i:keyboard", Section: extapi.SectionExt, Order: 82, Group: extapi.GroupDesktop},
 	}
 }
 

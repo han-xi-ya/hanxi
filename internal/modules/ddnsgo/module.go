@@ -42,7 +42,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "ddnsgo-manager", Title: "ddns-go 解析", Route: "/ext/ddnsgo", Icon: "🌐", Section: extapi.SectionExt, Order: 85},
+		{ID: "ddnsgo-manager", Title: "ddns-go 解析", Route: "/ext/ddnsgo", Icon: "i:link", Section: extapi.SectionExt, Order: 85, Group: extapi.GroupNetwork},
 	}
 }
 

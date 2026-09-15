@@ -40,9 +40,10 @@ func (e *Module) Nav() []extapi.NavEntry {
 		ID:      "envcheck-main",
 		Title:   "开发环境检测",
 		Route:   "/ext/envcheck",
-		Icon:    "🧰",
+		Icon:    "i:wrench",
 		Section: extapi.SectionExt,
 		Order:   65,
+		Group:   extapi.GroupSystem,
 	}}
 }
 

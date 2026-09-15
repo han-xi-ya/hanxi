@@ -36,9 +36,10 @@ func (e *Module) Nav() []extapi.NavEntry {
 		ID:      ID,
 		Title:   "IP 查看",
 		Route:   "/ext/publicip",
-		Icon:    "≋",
+		Icon:    "i:globe",
 		Section: extapi.SectionExt,
 		Order:   50,
+		Group:   extapi.GroupNetwork,
 	}}
 }
 

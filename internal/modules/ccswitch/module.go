@@ -38,7 +38,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "ccswitch-manager", Title: "CC Switch", Route: "/ext/ccswitch", Icon: "🔀", Section: extapi.SectionExt, Order: 70},
+		{ID: "ccswitch-manager", Title: "CC Switch", Route: "/ext/ccswitch", Icon: "i:shuffle", Section: extapi.SectionExt, Order: 70, Group: extapi.GroupDeveloper},
 	}
 }
 

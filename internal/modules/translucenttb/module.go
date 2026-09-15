@@ -44,7 +44,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "translucenttb-manager", Title: "TranslucentTB 透明栏", Route: "/ext/translucenttb", Icon: "🌫️", Section: extapi.SectionExt, Order: 91},
+		{ID: "translucenttb-manager", Title: "TranslucentTB 透明栏", Route: "/ext/translucenttb", Icon: "i:layers", Section: extapi.SectionExt, Order: 91, Group: extapi.GroupDesktop},
 	}
 }
 
