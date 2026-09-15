@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>方案 A · 分组折叠侧栏（浅色）</title>
+<style>
+/* ========== Hanxi 真实 token（浅色） ========== */
+:root{
+  color-scheme:light;
+  --color-primary:#0f8b8d; --color-primary-hover:#0b7779; --color-primary-soft:rgba(15,139,141,.1);
+  --color-on-primary:#fff;
+  --surface-page:#f3f7f8; --surface-panel:#fff; --surface-soft:#f7fafb; --surface-hover:#eef5f5; --surface-selected:#e2f1f0;
+  --color-text:#14252c; --color-text-muted:#667980; --color-text-subtle:#8a9aa0;
+  --color-border:#dce6e8; --color-border-strong:#c7d6d9;
+  --state-positive:#08875d; --state-positive-soft:#e2f4ec; --state-information:#2563eb; --state-information-soft:#e7effd;
+  --state-warning:#b66f08; --state-warning-soft:#fbf1de; --state-danger:#d64545; --state-danger-soft:#fbe9e9;
+  --state-positive-glow:rgba(8,135,93,.15); --color-primary-glow:rgba(15,139,141,.18);
+  --font-text:"Segoe UI Variable Text","Microsoft YaHei UI","Segoe UI",sans-serif;
+  --font-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --radius-control:8px; --radius-element:12px; --radius-panel:16px; --radius-pill:999px;
+  --shadow-small:0 4px 14px rgba(32,66,72,.055); --shadow-panel:0 18px 45px rgba(32,66,72,.085);
+}
+*{margin:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--font-text);background:var(--surface-page);color:var(--color-text);font-size:13px;overflow:hidden}
+svg.ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+
+.window{display:flex;flex-direction:column;height:100vh}
+
+/* ---------- 标题栏 ---------- */
+.titlebar{height:36px;flex:none;display:flex;align-items:center;gap:8px;padding:0 0 0 14px;background:var(--surface-panel);border-bottom:1px solid var(--color-border);-webkit-user-select:none}
+.titlebar .t-brand{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-text-muted)}
+.titlebar .t-mark{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,var(--color-primary),var(--color-primary-hover));color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800}
+.titlebar .wins{margin-left:auto;display:flex}
+.titlebar .wins i{width:46px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--color-text-muted)}
+.titlebar .wins i:hover{background:var(--surface-hover)}
+.titlebar .wins i.x:hover{background:#e02d2d;color:#fff}
+
+.layout{flex:1;display:flex;min-height:0}
+
+/* ---------- 侧栏 ---------- */
+.sidebar{width:244px;flex:none;background:var(--surface-panel);border-right:1px solid var(--color-border);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:10px;padding:14px 16px 12px}
+.brand-mark{background:linear-gradient(135deg,var(--color-primary),var(--color-primary-hover));color:#fff;border-radius:var(--radius-control);width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;box-shadow:0 2px 6px var(--color-primary-glow)}
+.brand-name{font-size:14px;font-weight:700;line-height:1.2}
+.brand-desc{font-size:10.5px;color:var(--color-text-subtle)}
+
+/* 搜索框 */
+.nav-search{padding:0 12px 10px;border-bottom:1px solid var(--color-border)}
+.searchbox{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;background:var(--surface-soft);border:1px solid var(--color-border);border-radius:var(--radius-control);color:var(--color-text-subtle);transition:border var(--motion,.15s),box-shadow .15s}
+.searchbox svg{width:14px;height:14px}
+.searchbox span{flex:1;font-size:12.5px}
+.searchbox kbd{font-family:var(--font-mono);font-size:10px;border:1px solid var(--color-border-strong);border-bottom-width:2px;border-radius:5px;padding:1px 5px;color:var(--color-text-subtle);background:var(--surface-panel)}
+
+.nav-scroll{flex:1;overflow-y:auto;padding:8px 10px 8px;scrollbar-width:thin;scrollbar-color:var(--color-border-strong) transparent}
+.group-hd{display:flex;align-items:center;gap:6px;width:100%;padding:6px 8px 5px;margin-top:4px;background:none;border:none;border-radius:6px;color:var(--color-text-subtle);font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;cursor:pointer;font-family:inherit}
+.group-hd:hover{color:var(--color-text-muted);background:var(--surface-soft)}
+.group-hd .chev{width:12px;height:12px;transition:transform .15s}
+.group-hd.closed .chev{transform:rotate(-90deg)}
+.group-hd .g-name{flex:1;text-align:left}
+.group-hd .g-count{font-size:10px;font-weight:600;color:var(--color-text-subtle);background:var(--surface-soft);border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:0 6px;line-height:15px;font-family:var(--font-mono)}
+.group-hd.pinned .g-count{display:none}
+.group-hd .pin{color:var(--color-primary)}
+
+.nav-item{position:relative;display:flex;align-items:center;gap:9px;width:100%;padding:7px 10px;margin-bottom:2px;background:transparent;border:none;border-radius:var(--radius-control);color:var(--color-text-muted);font-size:13px;font-weight:500;text-align:left;cursor:pointer;font-family:inherit;transition:background .15s,color .15s}
+.nav-item:hover{background:var(--surface-hover);color:var(--color-text)}
+.nav-item.active{background:var(--surface-selected);color:var(--color-primary);font-weight:600}
+.nav-item.active::before{content:"";position:absolute;left:-10px;top:50%;transform:translateY(-50%);width:3px;height:16px;border-radius:0 3px 3px 0;background:var(--color-primary)}
+.nav-item .n-text{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-item .run-dot{width:6px;height:6px;border-radius:50%;background:var(--state-positive);box-shadow:0 0 0 2.5px var(--state-positive-glow);flex:none}
+.nav-item .n-star{opacity:0;color:var(--color-text-subtle)}
+.nav-item .n-star svg{width:13px;height:13px}
+.nav-item:hover .n-star{opacity:1}
+.nav-item .n-star.pinned-star{opacity:1;color:var(--color-primary)}
+
+.bottom-nav{flex:none;border-top:1px solid var(--color-border);padding:8px 10px 8px}
+.status-bar{display:flex;align-items:center;gap:6px;padding:6px 10px 0;font-size:11px;color:var(--color-text-subtle)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--state-positive);box-shadow:0 0 0 2px var(--state-positive-glow)}
+
+/* ---------- 主区 ---------- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.ctxbar{height:46px;flex:none;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--color-border);background:var(--surface-panel)}
+.crumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-subtle)}
+.crumb b{font-size:14px;font-weight:700;color:var(--color-text)}
+.crumb svg{width:12px;height:12px}
+.ctx-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:var(--radius-pill);font-size:11.5px;font-weight:600;border:1px solid transparent}
+.chip svg{width:12px;height:12px}
+.chip.ok{background:var(--state-positive-soft);color:var(--state-positive);border-color:color-mix(in srgb,var(--state-positive) 25%,transparent)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:var(--radius-control);border:1px solid var(--color-border-strong);background:var(--surface-panel);color:var(--color-text-muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn svg{width:13px;height:13px}
+.btn.primary{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-on-primary)}
+
+.page{flex:1;overflow-y:auto;padding:18px 20px 22px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpi{background:var(--surface-panel);border:1px solid var(--color-border);border-radius:var(--radius-element);padding:13px 15px;box-shadow:var(--shadow-small)}
+.kpi .k-label{font-size:11px;color:var(--color-text-subtle);font-weight:600;display:flex;align-items:center;gap:6px}
+.kpi .k-label svg{width:13px;height:13px;color:var(--color-primary)}
+.kpi .k-value{font-size:21px;font-weight:700;margin-top:5px;font-family:var(--font-display);letter-spacing:.2px}
+.kpi .k-value small{font-size:11px;color:var(--color-text-subtle);font-weight:500;font-family:var(--font-mono)}
+.kpi .k-sub{font-size:11px;color:var(--color-text-muted);margin-top:2px}
+
+.panel{background:var(--surface-panel);border:1px solid var(--color-border);border-radius:var(--radius-element);box-shadow:var(--shadow-small);overflow:hidden}
+.panel-hd{display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid var(--color-border);font-size:12.5px;font-weight:700}
+.panel-hd .p-tools{margin-left:auto;display:flex;gap:6px;color:var(--color-text-subtle)}
+.rowline{display:flex;align-items:center;gap:12px;padding:10px 15px;border-bottom:1px solid var(--color-border);font-size:12.5px}
+.rowline:last-child{border-bottom:none}
+.rowline:hover{background:var(--surface-soft)}
+.r-name{width:170px;font-weight:600}
+.r-proto{width:64px;font-size:10.5px;font-weight:700;color:var(--color-text-muted);background:var(--surface-soft);border:1px solid var(--color-border);border-radius:5px;text-align:center;padding:1px 0;font-family:var(--font-mono)}
+.r-addr{width:230px;font-family:var(--font-mono);font-size:11.5px;color:var(--color-text-muted)}
+.r-lat{width:70px;font-family:var(--font-mono);font-size:11.5px}
+.r-st{margin-left:auto}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:2px 9px;border-radius:var(--radius-pill)}
+.badge.ok{background:var(--state-positive-soft);color:var(--state-positive)}
+.badge.warn{background:var(--state-warning-soft);color:var(--state-warning)}
+.badge.mut{background:var(--surface-soft);color:var(--color-text-subtle);border:1px solid var(--color-border)}
+.badge i{width:5px;height:5px;border-radius:50%;background:currentColor}
+
+.term{margin-top:14px;background:#0b1a1e;border:1px solid #16323a;border-radius:var(--radius-element);overflow:hidden}
+.term-hd{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#10232a;color:#9fb4ba;font-size:11.5px;font-weight:600}
+.term-hd .dots{display:flex;gap:5px}
+.term-hd .dots i{width:9px;height:9px;border-radius:50%;background:#2b464f}
+.term-body{padding:10px 14px 13px;font-family:var(--font-mono);font-size:11px;line-height:1.75;color:#dfe9ea}
+.term-body .ts{color:#5f7a82}.term-body .ok{color:#7ee787}.term-body .info{color:#79b8ff}.term-body .w{color:#f0c674}
+</style>
+</head>
+<body>
+<!-- SVG 符号库（线性图标，替换 emoji 双轨制的目标形态） -->
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V21h-6v-6h-6v6H3z"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-3.5"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+<symbol id="i-layout" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11"/></symbol>
+<symbol id="i-check-sq" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+<symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M13 5l-2 14"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.7 10.7 6.6-3.4M8.7 13.3l6.6 3.4"/></symbol>
+<symbol id="i-radar" viewBox="0 0 24 24"><path d="M19.1 5.6A9 9 0 1 0 21 12"/><path d="M14.5 9.5a4 4 0 1 0 0 5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M12 12l7-7"/></symbol>
+<symbol id="i-x-oct" viewBox="0 0 24 24"><path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z"/><path d="m10 10 4 4m0-4-4 4"/></symbol>
+<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16.3a5 5 0 0 1 6 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7L12.5 19"/></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+<symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+<symbol id="i-hdd" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+<symbol id="i-toolbox" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M9 8V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 14h18"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
+<symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/></symbol>
+<symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+<symbol id="i-menu3" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+<symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m5 19 6-6 3 3 2.5-2.5L21 18"/></symbol>
+<symbol id="i-note" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+<symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 7.5 20 17M20 7 8.5 16.5"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></symbol>
+<symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4M3 8h13a4 4 0 0 1 0 8H8"/><path d="m5 20 4-4-4-4" transform="translate(9,0)"/></symbol>
+<symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M8 13h8M8 17h6"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8 13.5 6l3.4-.6 1 3.2 3.2 1.1-.9 3.3 2.3 2.6-2.3 2.6.9 3.3-3.2 1-1 3.3-3.4-.6L12 23.2l-1.5-2.3-3.4.6-1-3.3-3.2-1 .9-3.3L1.5 13l2.3-2.6-.9-3.3 3.2-1.1 1-3.2L10.5 5z"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 3.2 3.4H5.8L9 9z"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.9 6.2.8-4.5 4.3 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.7l6.2-.8z"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 3v6h-6"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 4.5v9L12 21l-9-4.5v-9z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></symbol>
+<symbol id="i-remote" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 6h2M12 18h.01"/></symbol>
+</defs>
+</svg>
+
+<div class="window">
+  <div class="titlebar">
+    <div class="t-brand"><span class="t-mark">HX</span> Hanxi 工作台 — frpc 穿透</div>
+    <div class="wins"><i>—</i><i>▢</i><i class="x">✕</i></div>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">HX</span>
+        <div><div class="brand-name">Hanxi</div><div class="brand-desc">开源工具工作台 · 36 模块</div></div>
+      </div>
+
+      <div class="nav-search">
+        <div class="searchbox"><svg class="ic"><use href="#i-search"/></svg><span>搜索工具…</span><kbd>Ctrl K</kbd></div>
+      </div>
+
+      <nav class="nav-scroll">
+        <button class="group-hd pinned"><svg class="ic chev"><use href="#i-chev"/></svg><span class="g-name"><svg class="ic pin" style="width:11px;height:11px;display:inline-block;vertical-align:-1px"><use href="#i-pin"/></svg> 常用</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-home"/></svg><span class="n-text">首页</span></button>
+        <button class="nav-item active"><svg class="ic"><use href="#i-bolt"/></svg><span class="n-text">frpc 穿透</span><span class="run-dot"></span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-search"/></svg><span class="n-text">Everything 搜索</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-scissors"/></svg><span class="n-text">Snipaste</span><span class="run-dot"></span></button>
+
+        <button class="group-hd"><svg class="ic chev"><use href="#i-chev"/></svg><span class="g-name">网络与传输</span><span class="g-count">10</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-share"/></svg><span class="n-text">局域网快传</span><span class="n-star"><svg class="ic"><use href="#i-star"/></svg></span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-radar"/></svg><span class="n-text">局域网扫描</span><span class="n-star"><svg class="ic"><use href="#i-star"/></svg></span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-globe"/></svg><span class="n-text">IP 查看</span><span class="n-star"><svg class="ic"><use href="#i-star"/></svg></span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-bolt"/></svg><span class="n-text">FlClash 代理</span><span class="run-dot"></span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-wifi"/></svg><span class="n-text">WiFi 密码</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-link"/></svg><span class="n-text">ddns-go 解析</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-monitor"/></svg><span class="n-text">SubnetDesk 局域网</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-remote"/></svg><span class="n-text">RustDesk 公网</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-search"/></svg><span class="n-text">端口扫描</span></button>
+
+        <button class="group-hd"><svg class="ic chev"><use href="#i-chev"/></svg><span class="g-name">系统管理</span><span class="g-count">5</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-x-oct"/></svg><span class="n-text">释放端口</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-trash"/></svg><span class="n-text">BC 卸载工具</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-activity"/></svg><span class="n-text">LiteMonitor</span></button>
+
+        <button class="group-hd closed"><svg class="ic chev"><use href="#i-chev"/></svg><span class="g-name">桌面增强</span><span class="g-count">9</span></button>
+        <button class="group-hd closed"><svg class="ic chev"><use href="#i-chev"/></svg><span class="g-name">效率办公</span><span class="g-count">5</span></button>
+        <button class="group-hd closed"><svg class="ic chev"><use href="#i-chev"/></svg><span class="g-name">媒体影音</span><span class="g-count">3</span></button>
+        <button class="group-hd closed"><svg class="ic chev"><use href="#i-chev"/></svg><span class="g-name">开发者工具</span><span class="g-count">4</span></button>
+      </nav>
+
+      <nav class="bottom-nav">
+        <button class="nav-item"><svg class="ic"><use href="#i-bell"/></svg><span class="n-text">通知中心</span><span style="background:var(--state-danger);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:999px">2</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-file"/></svg><span class="n-text">日志</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-gear"/></svg><span class="n-text">设置</span></button>
+        <button class="nav-item"><svg class="ic"><use href="#i-sun"/></svg><span class="n-text">浅色主题</span></button>
+        <div class="status-bar"><span class="status-dot"></span>工作台已就绪 · v2.4.0</div>
+      </nav>
+    </aside>
+
+    <div class="main">
+      <div class="ctxbar">
+        <div class="crumb">网络与传输 <svg class="ic"><use href="#i-chev" transform="rotate(-90)"/></svg> <b>frpc 穿透</b></div>
+        <div class="ctx-right">
+          <span class="chip ok"><i style="width:5px;height:5px;border-radius:50%;background:currentColor"></i>运行中</span>
+          <button class="btn"><svg class="ic"><use href="#i-refresh"/></svg>刷新</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-plus"/></svg>新增隧道</button>
+        </div>
+      </div>
+      <div class="page">
+        <div class="kpis">
+          <div class="kpi"><div class="k-label"><svg class="ic"><use href="#i-bolt"/></svg>在线隧道</div><div class="k-value">4 <small>/ 6</small></div><div class="k-sub">2 条已暂停</div></div>
+          <div class="kpi"><div class="k-label"><svg class="ic"><use href="#i-activity"/></svg>上行流量</div><div class="k-value">1.8 <small>GB</small></div><div class="k-sub">今日累计</div></div>
+          <div class="kpi"><div class="k-label"><svg class="ic"><use href="#i-link"/></svg>平均延迟</div><div class="k-value">38 <small>ms</small></div><div class="k-sub">较昨日 ↓6ms</div></div>
+          <div class="kpi"><div class="k-label"><svg class="ic"><use href="#i-monitor"/></svg>服务器</div><div class="k-value">华东 2 <small>×</small></div><div class="k-sub">frps 7.1.0</div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd">隧道列表<span class="p-tools"><svg class="ic"><use href="#i-menu3"/></svg></span></div>
+          <div class="rowline"><span class="r-name">远程桌面 RDP</span><span class="r-proto">tcp</span><span class="r-addr">frp.hanxi.dev:24107 → 127.0.0.1:3389</span><span class="r-lat">41 ms</span><span class="r-st"><span class="badge ok"><i></i>在线</span></span></div>
+          <div class="rowline"><span class="r-name">内网 NAS 面板</span><span class="r-proto">http</span><span class="r-addr">nas.hanxi.dev → 192.168.1.20:5666</span><span class="r-lat">12 ms</span><span class="r-st"><span class="badge ok"><i></i>在线</span></span></div>
+          <div class="rowline"><span class="r-name">SSH 跳板</span><span class="r-proto">tcp</span><span class="r-addr">frp.hanxi.dev:2200 → 127.0.0.1:22</span><span class="r-lat">39 ms</span><span class="r-st"><span class="badge ok"><i></i>在线</span></span></div>
+          <div class="rowline"><span class="r-name">测试站点的 HTTPS</span><span class="r-proto">https</span><span class="r-addr">dev.hanxi.dev → 127.0.0.1:8443</span><span class="r-lat">—</span><span class="r-st"><span class="badge mut"><i></i>已暂停</span></span></div>
+          <div class="rowline"><span class="r-name">旧 Jenkins</span><span class="r-proto">tcp</span><span class="r-addr">frp.hanxi.dev:18080 → 192.168.1.31:8080</span><span class="r-lat">—</span><span class="r-st"><span class="badge warn"><i></i>连接失败</span></span></div>
+        </div>
+
+        <div class="term">
+          <div class="term-hd"><span class="dots"><i></i><i></i><i></i></span>运行日志<span style="margin-left:auto;font-family:var(--font-mono);font-size:10px">tail -f</span></div>
+          <div class="term-body">
+            <div><span class="ts">14:22:07</span> <span class="ok">[ OK ]</span> [ssh-jump] start warning success, proxy tcp port 2200</div>
+            <div><span class="ts">14:22:07</span> <span class="info">[ INFO]</span> login to the server frps.hanxi.dev:7000 success, version 0.61.1</div>
+            <div><span class="ts">14:22:12</span> <span class="ok">[ OK ]</span> [nas-panel] http tunnel established, host nas.hanxi.dev</div>
+            <div><span class="ts">14:23:40</span> <span class="w">[ WARN]</span> [jenkins-old] dial tcp 192.168.1.31:8080: connectex refused, retry in 5s</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

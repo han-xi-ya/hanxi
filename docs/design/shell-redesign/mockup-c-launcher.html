@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>方案 C · 轻量壳 + 启动器（浅色）</title>
+<style>
+:root{
+  color-scheme:light;
+  --color-primary:#0f8b8d; --color-primary-hover:#0b7779; --color-primary-soft:rgba(15,139,141,.1); --color-on-primary:#fff;
+  --surface-page:#f3f7f8; --surface-panel:#fff; --surface-soft:#f7fafb; --surface-hover:#eef5f5; --surface-selected:#e2f1f0;
+  --color-text:#14252c; --color-text-muted:#667980; --color-text-subtle:#8a9aa0;
+  --color-border:#dce6e8; --color-border-strong:#c7d6d9;
+  --state-positive:#08875d; --state-positive-soft:#e2f4ec; --state-information:#2563eb; --state-information-soft:#e7effd;
+  --state-warning:#b66f08; --state-warning-soft:#fbf1de; --state-danger:#d64545; --state-danger-soft:#fbe9e9;
+  --state-positive-glow:rgba(8,135,93,.15); --color-primary-glow:rgba(15,139,141,.18);
+  --font-text:"Segoe UI Variable Text","Microsoft YaHei UI","Segoe UI",sans-serif;
+  --font-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --radius-control:8px; --radius-element:12px; --radius-panel:16px; --radius-pill:999px;
+  --shadow-small:0 4px 14px rgba(32,66,72,.055); --shadow-panel:0 18px 45px rgba(32,66,72,.085);
+  --overlay-mask:rgba(10,24,29,.46);
+}
+*{margin:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--font-text);background:var(--surface-page);color:var(--color-text);font-size:13px;overflow:hidden}
+svg.ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+
+.window{display:flex;flex-direction:column;height:100vh}
+.titlebar{height:36px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;background:var(--surface-panel);border-bottom:1px solid var(--color-border)}
+.titlebar .t-brand{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-text-muted)}
+.titlebar .t-mark{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,var(--color-primary),var(--color-primary-hover));color:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800}
+.titlebar .wins{margin-left:auto;display:flex}
+.titlebar .wins i{width:46px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--color-text-muted)}
+.titlebar .wins i:hover{background:var(--surface-hover)}
+.layout{flex:1;display:flex;min-height:0}
+
+/* ---------- 极简侧栏 ---------- */
+.sidebar{width:178px;flex:none;background:var(--surface-panel);border-right:1px solid var(--color-border);display:flex;flex-direction:column;padding:10px 10px 8px}
+.s-item{position:relative;display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;margin-bottom:2px;background:transparent;border:none;border-radius:var(--radius-control);color:var(--color-text-muted);font-size:13px;font-weight:550;text-align:left;cursor:pointer;font-family:inherit}
+.s-item:hover{background:var(--surface-hover);color:var(--color-text)}
+.s-item.active{background:var(--surface-selected);color:var(--color-primary);font-weight:650}
+.s-item.active::before{content:"";position:absolute;left:-10px;top:50%;transform:translateY(-50%);width:3px;height:16px;border-radius:0 3px 3px 0;background:var(--color-primary)}
+.s-item .txt{flex:1}
+.s-item .bdg{background:var(--state-danger);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:var(--radius-pill)}
+.s-sep{height:1px;background:var(--color-border);margin:8px 4px}
+.s-foot{margin-top:auto}
+.s-status{display:flex;align-items:center;gap:6px;padding:8px 10px 2px;font-size:11px;color:var(--color-text-subtle)}
+.s-dot{width:7px;height:7px;border-radius:50%;background:var(--state-positive);box-shadow:0 0 0 2px var(--state-positive-glow)}
+
+/* ---------- 启动器主区 ---------- */
+.main{flex:1;min-width:0;overflow-y:auto;padding:26px 30px 30px;position:relative}
+.hero{max-width:1060px;margin:0 auto}
+.hero h1{font-size:22px;font-weight:800;letter-spacing:.2px}
+.hero p{color:var(--color-text-subtle);font-size:12.5px;margin:4px 0 16px}
+.hero-search{display:flex;align-items:center;gap:10px;height:44px;padding:0 16px;background:var(--surface-panel);border:1px solid var(--color-border-strong);border-radius:14px;box-shadow:var(--shadow-small);color:var(--color-text-subtle)}
+.hero-search svg{width:17px;height:17px;color:var(--color-primary)}
+.hero-search span{flex:1;font-size:13.5px}
+.hero-search kbd{font-family:var(--font-mono);font-size:10.5px;border:1px solid var(--color-border-strong);border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:var(--surface-soft)}
+
+.recent{display:flex;align-items:center;gap:8px;margin:18px 0 4px;flex-wrap:wrap}
+.recent .lbl{font-size:11px;font-weight:700;color:var(--color-text-subtle);letter-spacing:.4px}
+.r-pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--color-border);background:var(--surface-panel);border-radius:var(--radius-pill);font-size:11.5px;color:var(--color-text-muted);cursor:pointer}
+.r-pill svg{width:12px;height:12px}
+.r-pill .dot{width:5px;height:5px;border-radius:50%;background:var(--state-positive)}
+
+.filters{display:flex;align-items:center;gap:7px;margin:14px 0 16px;flex-wrap:wrap}
+.f-chip{display:inline-flex;align-items:center;gap:6px;height:27px;padding:0 11px;border:1px solid var(--color-border);background:var(--surface-panel);border-radius:var(--radius-pill);font-size:11.5px;font-weight:600;color:var(--color-text-muted);cursor:pointer}
+.f-chip .n{font-family:var(--font-mono);font-size:10px;color:var(--color-text-subtle)}
+.f-chip.on{background:var(--color-primary);border-color:var(--color-primary);color:#fff}
+.f-chip.on .n{color:rgba(255,255,255,.75)}
+.f-right{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--color-text-muted)}
+.toggle{width:30px;height:17px;border-radius:999px;background:var(--color-border-strong);position:relative}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:1060px;margin:0 auto}
+.card{background:var(--surface-panel);border:1px solid var(--color-border);border-radius:var(--radius-element);padding:14px 15px 12px;box-shadow:var(--shadow-small);cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s;position:relative}
+.card:hover{border-color:var(--color-primary);box-shadow:0 6px 20px var(--color-primary-glow);transform:translateY(-1px)}
+.card .c-top{display:flex;align-items:flex-start;gap:11px}
+.c-ic{width:36px;height:36px;flex:none;border-radius:10px;background:var(--surface-selected);color:var(--color-primary);display:flex;align-items:center;justify-content:center}
+.c-ic svg{width:18px;height:18px}
+.c-name{font-size:13px;font-weight:700;line-height:1.3}
+.c-cat{font-size:10.5px;color:var(--color-text-subtle);margin-top:2px}
+.c-st{margin-top:11px;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--color-text-subtle);border-top:1px solid var(--color-border);padding-top:9px}
+.c-st .s-dot{width:6px;height:6px;border-radius:50%;background:var(--color-border-strong)}
+.c-st .ver{margin-left:auto;font-family:var(--font-mono);font-size:10px;font-weight:500;color:var(--color-text-subtle)}
+.c-st.running{color:var(--state-positive)}
+.c-st.running .s-dot{background:var(--state-positive);box-shadow:0 0 0 2.5px var(--state-positive-glow)}
+.pin-star{position:absolute;top:11px;right:11px;color:var(--color-primary)}
+.pin-star svg{width:13px;height:13px}
+
+/* ---------- 命令面板浮层 ---------- */
+.palette-mask{position:absolute;inset:0;background:var(--overlay-mask);backdrop-filter:blur(2px);z-index:50;display:flex;justify-content:center;padding-top:9vh}
+.palette{width:560px;height:fit-content;background:var(--surface-panel);border:1px solid var(--color-border);border-radius:var(--radius-panel);box-shadow:var(--shadow-panel);overflow:hidden}
+.p-input{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--color-border)}
+.p-input svg{width:17px;height:17px;color:var(--color-primary)}
+.p-input .q{font-size:15px;font-weight:600;color:var(--color-text)}
+.p-input .q em{font-style:normal;color:var(--color-primary)}
+.p-input .cursor{width:1.5px;height:18px;background:var(--color-primary)}
+.p-sec{padding:8px 10px 2px;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--color-text-subtle);text-transform:uppercase;padding-left:16px}
+.p-item{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer}
+.p-item.sel{background:var(--surface-selected)}
+.p-item .c-ic{width:26px;height:26px;border-radius:7px}
+.p-item .c-ic svg{width:14px;height:14px}
+.p-item .p-name{font-size:13px;font-weight:650}
+.p-item .p-name em{font-style:normal;color:var(--color-primary)}
+.p-item .p-route{font-family:var(--font-mono);font-size:10.5px;color:var(--color-text-subtle)}
+.p-item .go{margin-left:auto;color:var(--color-text-subtle)}
+.p-item .go svg{width:14px;height:14px}
+.p-foot{display:flex;gap:14px;padding:9px 16px;border-top:1px solid var(--color-border);background:var(--surface-soft);font-size:10.5px;color:var(--color-text-subtle)}
+.p-foot b{font-family:var(--font-mono);font-weight:600;color:var(--color-text-muted)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V21h-6v-6h-6v6H3z"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M8 13h8M8 17h6"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8 13.5 6l3.4-.6 1 3.2 3.2 1.1-.9 3.3 2.3 2.6-2.3 2.6.9 3.3-3.2 1-1 3.3-3.4-.6L12 23.2l-1.5-2.3-3.4.6-1-3.3-3.2-1 .9-3.3L1.5 13l2.3-2.6-.9-3.3 3.2-1.1 1-3.2L10.5 5z"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-3.5"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.9 6.2.8-4.5 4.3 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.7l6.2-.8z"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></symbol>
+<symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M8.5 7.5 20 17M20 7 8.5 16.5"/></symbol>
+<symbol id="i-x-oct" viewBox="0 0 24 24"><path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z"/><path d="m10 10 4 4m0-4-4 4"/></symbol>
+<symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.7 10.7 6.6-3.4M8.7 13.3l6.6 3.4"/></symbol>
+<symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16.3a5 5 0 0 1 6 0"/><circle cx="12" cy="20" r="1" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/></symbol>
+<symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
+<symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+<symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/></symbol>
+<symbol id="i-note" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+<symbol id="i-check-sq" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+<symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M13 5l-2 14"/></symbol>
+<symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4M3 8h13a4 4 0 0 1 0 8H8"/><path d="m14 20 4-4-4-4" transform="translate(7,0)"/></symbol>
+<symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="7" cy="8" rx="1.7" ry="2.4"/><ellipse cx="12" cy="5.5" rx="1.7" ry="2.4"/><ellipse cx="17" cy="8" rx="1.7" ry="2.4"/><path d="M12 11c3.5 0 6 2.5 6 5 0 2.2-2 3-3.6 2.3-1.5-.7-3.3-.7-4.8 0C8 19 6 18.2 6 16c0-2.5 2.5-5 6-5z"/></symbol>
+<symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+<symbol id="i-radar" viewBox="0 0 24 24"><path d="M19.1 5.6A9 9 0 1 0 21 12"/><path d="M14.5 9.5a4 4 0 1 0 0 5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M12 12l7-7"/></symbol>
+<symbol id="i-goto" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 4.5v9L12 21l-9-4.5v-9z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></symbol>
+</defs>
+</svg>
+
+<div class="window">
+  <div class="titlebar">
+    <div class="t-brand"><span class="t-mark">HX</span> Hanxi 工作台</div>
+    <div class="wins"><i>—</i><i>▢</i><i class="x">✕</i></div>
+  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <button class="s-item"><svg class="ic"><use href="#i-home"/></svg><span class="txt">首页</span></button>
+      <button class="s-item active"><svg class="ic"><use href="#i-grid"/></svg><span class="txt">全部应用</span></button>
+      <button class="s-item"><svg class="ic"><use href="#i-clock"/></svg><span class="txt">最近使用</span></button>
+      <button class="s-item"><svg class="ic"><use href="#i-bell"/></svg><span class="txt">通知</span><span class="bdg">2</span></button>
+      <div class="s-sep"></div>
+      <button class="s-item"><svg class="ic"><use href="#i-file"/></svg><span class="txt">日志</span></button>
+      <button class="s-item"><svg class="ic"><use href="#i-gear"/></svg><span class="txt">设置</span></button>
+      <div class="s-foot">
+        <button class="s-item"><svg class="ic"><use href="#i-sun"/></svg><span class="txt">浅色主题</span></button>
+        <div class="s-status"><span class="s-dot"></span>6 个模块运行中</div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="hero">
+        <h1>全部应用</h1>
+        <p>36 个模块 · 6 个分组 · 7 个运行中</p>
+        <div class="hero-search"><svg class="ic"><use href="#i-search"/></svg><span>搜索模块名称、功能或端口…</span><kbd>Ctrl K</kbd></div>
+
+        <div class="recent">
+          <span class="lbl">最近使用</span>
+          <span class="r-pill"><svg class="ic" style="color:var(--color-primary)"><use href="#i-bolt"/></svg>frpc 穿透<span class="dot"></span></span>
+          <span class="r-pill"><svg class="ic" style="color:var(--color-primary)"><use href="#i-search"/></svg>Everything 搜索</span>
+          <span class="r-pill"><svg class="ic" style="color:var(--color-primary)"><use href="#i-scissors"/></svg>Snipaste<span class="dot"></span></span>
+          <span class="r-pill"><svg class="ic" style="color:var(--color-primary)"><use href="#i-paw"/></svg>Paseo 编排器<span class="dot"></span></span>
+        </div>
+
+        <div class="filters">
+          <span class="f-chip on">全部 <span class="n">36</span></span>
+          <span class="f-chip">网络与传输 <span class="n">10</span></span>
+          <span class="f-chip">系统管理 <span class="n">5</span></span>
+          <span class="f-chip">桌面增强 <span class="n">9</span></span>
+          <span class="f-chip">效率办公 <span class="n">5</span></span>
+          <span class="f-chip">媒体影音 <span class="n">3</span></span>
+          <span class="f-chip">开发者工具 <span class="n">4</span></span>
+          <span class="f-right"><span class="toggle"></span>仅看运行中</span>
+        </div>
+      </div>
+
+      <div class="grid" style="position:relative;z-index:0">
+        <div class="card"><span class="pin-star"><svg class="ic"><use href="#i-star"/></svg></span><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-bolt"/></svg></span><div><div class="c-name">frpc 穿透</div><div class="c-cat">网络与传输</div></div></div><div class="c-st running"><span class="s-dot"></span>4 条隧道在线<span class="ver">v0.61.1</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-share"/></svg></span><div><div class="c-name">局域网快传</div><div class="c-cat">网络与传输</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">内建</span></div></div>
+        <div class="card"><span class="pin-star"><svg class="ic"><use href="#i-star"/></svg></span><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-search"/></svg></span><div><div class="c-name">Everything 搜索</div><div class="c-cat">效率办公</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">v1.4.1</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-scissors"/></svg></span><div><div class="c-name">Snipaste</div><div class="c-cat">效率办公</div></div></div><div class="c-st running"><span class="s-dot"></span>运行中<span class="ver">v2.9.0</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-x-oct"/></svg></span><div><div class="c-name">释放端口</div><div class="c-cat">系统管理</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">内建</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-wifi"/></svg></span><div><div class="c-name">WiFi 密码</div><div class="c-cat">网络与传输</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">内建</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-activity"/></svg></span><div><div class="c-name">LiteMonitor</div><div class="c-cat">系统管理</div></div></div><div class="c-st running"><span class="s-dot"></span>悬浮窗运行中<span class="ver">v1.1</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-archive"/></svg></span><div><div class="c-name">NanaZip</div><div class="c-cat">桌面增强</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">v4.0</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-volume"/></svg></span><div><div class="c-name">EarTrumpet</div><div class="c-cat">桌面增强</div></div></div><div class="c-st running"><span class="s-dot"></span>运行中<span class="ver">v2.2</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-keyboard"/></svg></span><div><div class="c-name">Keyviz 键显</div><div class="c-cat">桌面增强</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">v1.0.6</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-eye"/></svg></span><div><div class="c-name">QuickLook 预览</div><div class="c-cat">桌面增强</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">v3.7</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-pen"/></svg></span><div><div class="c-name">MarkerOn 标注</div><div class="c-cat">桌面增强</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">v0.3</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-note"/></svg></span><div><div class="c-name">随手备忘录</div><div class="c-cat">效率办公</div></div></div><div class="c-st"><span class="s-dot"></span>12 条笔记<span class="ver">内建</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-check-sq"/></svg></span><div><div class="c-name">PaperTodo 便签</div><div class="c-cat">效率办公</div></div></div><div class="c-st"><span class="s-dot"></span>3 项待办<span class="ver">v2.0</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-film"/></svg></span><div><div class="c-name">Recordly 录屏</div><div class="c-cat">媒体影音</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">v1.2</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-code"/></svg></span><div><div class="c-name">VS Code</div><div class="c-cat">开发者工具</div></div></div><div class="c-st running"><span class="s-dot"></span>2 个实例<span class="ver">v1.98</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-swap"/></svg></span><div><div class="c-name">CC Switch</div><div class="c-cat">开发者工具</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">v3.9</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-paw"/></svg></span><div><div class="c-name">Paseo 编排器</div><div class="c-cat">开发者工具</div></div></div><div class="c-st running"><span class="s-dot"></span>daemon 在线<span class="ver">v0.14.2</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-terminal"/></svg></span><div><div class="c-name">WSL2</div><div class="c-cat">开发者工具</div></div></div><div class="c-st running"><span class="s-dot"></span>Ubuntu 运行中<span class="ver">2.4.13</span></div></div>
+        <div class="card"><div class="c-top"><span class="c-ic"><svg class="ic"><use href="#i-radar"/></svg></span><div><div class="c-name">局域网扫描</div><div class="c-cat">网络与传输</div></div></div><div class="c-st"><span class="s-dot"></span>未启动<span class="ver">内建</span></div></div>
+      </div>
+
+      <!-- Ctrl+K 命令面板示意 -->
+      <div class="palette-mask">
+        <div class="palette">
+          <div class="p-input"><svg class="ic"><use href="#i-search"/></svg><span class="q">po<em>rt</em></span><span class="cursor"></span></div>
+          <div class="p-sec">跳转模块</div>
+          <div class="p-item sel"><span class="c-ic"><svg class="ic"><use href="#i-x-oct"/></svg></span><div><div class="p-name">释放<em>端口</em></div><div class="p-route">/ext/portkill · 系统管理</div></div><span class="go"><svg class="ic"><use href="#i-goto"/></svg></span></div>
+          <div class="p-item"><span class="c-ic"><svg class="ic"><use href="#i-search"/></svg></span><div><div class="p-name"><em>端口</em>扫描</div><div class="p-route">/ext/portscan · 网络与传输</div></div>
+          <div class="p-item"><span class="c-ic"><svg class="ic"><use href="#i-bolt"/></svg></span><div><div class="p-name">frpc 隧道 241<em>07</em></div><div class="p-route">/frpc · 网络与传输</div></div></div>
+          <div class="p-foot"><span><b>↑↓</b> 导航</span><span><b>⏎</b> 打开</span><span><b>1–9</b> 快捷启动</span><span><b>Esc</b> 关闭</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

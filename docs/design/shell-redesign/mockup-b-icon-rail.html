@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>方案 B · 双栏结构（深色）</title>
+<style>
+/* ========== Hanxi 真实 token（深色） ========== */
+:root{
+  color-scheme:dark;
+  --color-primary:#42b7b4; --color-primary-hover:#59c8c5; --color-primary-soft:rgba(66,183,180,.13);
+  --color-on-primary:#052326;
+  --surface-page:#071318; --surface-panel:#0e1c22; --surface-soft:#12252c; --surface-hover:#173039; --surface-selected:#1a3d44;
+  --color-text:#e8f2f3; --color-text-muted:#9aadb2; --color-text-subtle:#748a90;
+  --color-border:#213840; --color-border-strong:#31505a;
+  --state-positive:#47c792; --state-positive-soft:#0f2e24; --state-information:#72a5ff; --state-information-soft:#16233c;
+  --state-warning:#f0ac45; --state-warning-soft:#33260f; --state-danger:#ff7974; --state-danger-soft:#3a1a1a;
+  --state-positive-glow:rgba(71,199,146,.16); --color-primary-glow:rgba(66,183,180,.2);
+  --font-text:"Segoe UI Variable Text","Microsoft YaHei UI","Segoe UI",sans-serif;
+  --font-mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --radius-control:8px; --radius-element:12px; --radius-panel:16px; --radius-pill:999px;
+  --shadow-small:0 5px 18px rgba(0,0,0,.18); --shadow-panel:0 22px 50px rgba(0,0,0,.23);
+}
+*{margin:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--font-text);background:var(--surface-page);color:var(--color-text);font-size:13px;overflow:hidden}
+svg.ic{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+
+.window{display:flex;flex-direction:column;height:100vh}
+.titlebar{height:36px;flex:none;display:flex;align-items:center;gap:8px;padding:0 0 0 14px;background:var(--surface-panel);border-bottom:1px solid var(--color-border)}
+.titlebar .t-brand{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--color-text-muted)}
+.titlebar .t-mark{width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,var(--color-primary),#2b8381);color:var(--color-on-primary);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800}
+.titlebar .wins{margin-left:auto;display:flex}
+.titlebar .wins i{width:46px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--color-text-muted)}
+.titlebar .wins i:hover{background:var(--surface-hover)}
+.titlebar .wins i.x:hover{background:#e02d2d;color:#fff}
+
+.layout{flex:1;display:flex;min-height:0}
+
+/* ---------- ① 图标轨道 ---------- */
+.rail{width:64px;flex:none;background:var(--surface-panel);border-right:1px solid var(--color-border);display:flex;flex-direction:column;align-items:center;padding:10px 0 8px}
+.rail-logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--color-primary),#2b8381);color:var(--color-on-primary);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;box-shadow:0 3px 10px var(--color-primary-glow);margin-bottom:10px}
+.rail-sep{width:26px;height:1px;background:var(--color-border);margin:6px 0 10px}
+.rail-btn{position:relative;width:44px;height:44px;border-radius:12px;border:none;background:transparent;color:var(--color-text-subtle);display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:6px;transition:background .15s,color .15s}
+.rail-btn svg{width:20px;height:20px}
+.rail-btn:hover{background:var(--surface-hover);color:var(--color-text)}
+.rail-btn.active{background:var(--surface-selected);color:var(--color-primary)}
+.rail-btn.active::before{content:"";position:absolute;left:-10px;top:50%;transform:translateY(-50%);width:3px;height:20px;border-radius:0 3px 3px 0;background:var(--color-primary)}
+.rail-btn .cnt{position:absolute;right:3px;bottom:2px;font-family:var(--font-mono);font-size:8.5px;font-weight:700;color:var(--color-text-subtle);background:var(--surface-soft);border:1px solid var(--color-border);border-radius:999px;padding:0 4px;line-height:12px}
+.rail-btn .rd{position:absolute;left:4px;top:4px;width:7px;height:7px;border-radius:50%;background:var(--state-positive);box-shadow:0 0 0 2.5px var(--surface-panel),0 0 6px var(--state-positive-glow)}
+.rail-btn .bdg{position:absolute;right:4px;top:4px;min-width:15px;height:15px;border-radius:999px;background:var(--state-danger);color:#fff;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px;box-shadow:0 0 0 2.5px var(--surface-panel)}
+.rail-bottom{margin-top:auto;display:flex;flex-direction:column;align-items:center}
+
+/* ---------- ② 分类扩展面板 ---------- */
+.panel2{width:238px;flex:none;background:var(--surface-panel);border-right:1px solid var(--color-border);display:flex;flex-direction:column}
+.p2-head{padding:14px 14px 10px}
+.p2-title{font-size:14.5px;font-weight:800;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+.p2-title svg{color:var(--color-primary)}
+.p2-sub{font-size:11px;color:var(--color-text-subtle);margin-top:3px}
+.p2-search{margin:2px 14px 10px;display:flex;align-items:center;gap:7px;height:30px;padding:0 9px;background:var(--surface-soft);border:1px solid var(--color-border);border-radius:var(--radius-control);color:var(--color-text-subtle)}
+.p2-search svg{width:13px;height:13px}
+.p2-search span{font-size:12px;flex:1}
+.p2-list{flex:1;overflow-y:auto;padding:0 8px 8px;scrollbar-width:thin;scrollbar-color:var(--color-border-strong) transparent}
+.mod{display:flex;gap:10px;width:100%;text-align:left;background:transparent;border:1px solid transparent;border-radius:10px;padding:9px 10px;margin-bottom:3px;cursor:pointer;font-family:inherit;color:inherit;transition:background .15s,border-color .15s}
+.mod:hover{background:var(--surface-hover)}
+.mod.active{background:var(--surface-selected);border-color:color-mix(in srgb,var(--color-primary) 35%,transparent)}
+.mod .m-ic{width:30px;height:30px;flex:none;border-radius:8px;background:var(--surface-soft);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;color:var(--color-text-muted)}
+.mod.active .m-ic{background:var(--color-primary-soft);border-color:color-mix(in srgb,var(--color-primary) 30%,transparent);color:var(--color-primary)}
+.mod .m-ic svg{width:15px;height:15px}
+.mod .m-name{font-size:12.5px;font-weight:650;line-height:1.35}
+.mod .m-desc{font-size:10.5px;color:var(--color-text-subtle);line-height:1.35;margin-top:1px}
+.mod .m-run{margin-left:auto;flex:none;width:7px;height:7px;border-radius:50%;background:var(--state-positive);box-shadow:0 0 0 2.5px color-mix(in srgb,var(--surface-selected) 60%,var(--state-positive-glow));align-self:center}
+.p2-foot{flex:none;border-top:1px solid var(--color-border);padding:9px 14px;font-size:10.5px;color:var(--color-text-subtle);display:flex;gap:10px}
+.p2-foot b{color:var(--state-positive);font-weight:650}
+
+/* ---------- ③ 主区 ---------- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.ctxbar{height:46px;flex:none;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--color-border);background:var(--surface-panel)}
+.crumb{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-subtle)}
+.crumb b{font-size:14px;font-weight:700;color:var(--color-text)}
+.crumb svg{width:12px;height:12px}
+.ctx-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:var(--radius-pill);font-size:11.5px;font-weight:600;border:1px solid transparent}
+.chip.ok{background:var(--state-positive-soft);color:var(--state-positive)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;border-radius:var(--radius-control);border:1px solid var(--color-border-strong);background:var(--surface-soft);color:var(--color-text-muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn svg{width:13px;height:13px}
+.btn.primary{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-on-primary)}
+
+.page{flex:1;overflow-y:auto;padding:18px 20px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpi{background:var(--surface-panel);border:1px solid var(--color-border);border-radius:var(--radius-element);padding:13px 15px}
+.kpi .k-label{font-size:11px;color:var(--color-text-subtle);font-weight:600}
+.kpi .k-value{font-size:21px;font-weight:750;margin-top:5px}
+.kpi .k-value small{font-size:11px;color:var(--color-text-subtle);font-weight:500;font-family:var(--font-mono)}
+.kpi .k-sub{font-size:11px;color:var(--color-text-muted);margin-top:2px}
+.kpi .spark{margin-top:8px;height:26px;display:flex;align-items:flex-end;gap:3px}
+.kpi .spark i{flex:1;border-radius:2px 2px 0 0;background:var(--color-primary-soft);border:1px solid color-mix(in srgb,var(--color-primary) 40%,transparent)}
+
+.panel{background:var(--surface-panel);border:1px solid var(--color-border);border-radius:var(--radius-element);overflow:hidden}
+.panel-hd{display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid var(--color-border);font-size:12.5px;font-weight:700}
+.rowline{display:flex;align-items:center;gap:12px;padding:11px 15px;border-bottom:1px solid var(--color-border);font-size:12.5px}
+.rowline:last-child{border-bottom:none}
+.rowline:hover{background:var(--surface-soft)}
+.r-avatar{width:26px;height:26px;border-radius:7px;background:var(--surface-soft);border:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--color-primary)}
+.r-name{width:150px;font-weight:650}
+.r-meta{font-family:var(--font-mono);font-size:11px;color:var(--color-text-subtle)}
+.r-st{margin-left:auto}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:2px 9px;border-radius:var(--radius-pill)}
+.badge.ok{background:var(--state-positive-soft);color:var(--state-positive)}
+.badge.warn{background:var(--state-warning-soft);color:var(--state-warning)}
+.badge.mut{background:var(--surface-soft);color:var(--color-text-subtle);border:1px solid var(--color-border)}
+.badge i{width:5px;height:5px;border-radius:50%;background:currentColor}
+.ctl{display:inline-flex;border:1px solid var(--color-border);border-radius:7px;overflow:hidden}
+.ctl button{background:var(--surface-soft);border:none;color:var(--color-text-muted);padding:3px 9px;font-size:11px;cursor:pointer;font-family:inherit;border-right:1px solid var(--color-border)}
+.ctl button:last-child{border-right:none}
+.ctl button.on{background:var(--color-primary-soft);color:var(--color-primary);font-weight:700}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V21h-6v-6h-6v6H3z"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-3.5"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+<symbol id="i-layout" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11"/></symbol>
+<symbol id="i-check-sq" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m8 12 3 3 5-6"/></symbol>
+<symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M13 5l-2 14"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></symbol>
+<symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4M3 8h13a4 4 0 0 1 0 8H8"/><path d="m14 20 4-4-4-4" transform="translate(7,0)"/></symbol>
+<symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+<symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="7" cy="8" rx="1.7" ry="2.4"/><ellipse cx="12" cy="5.5" rx="1.7" ry="2.4"/><ellipse cx="17" cy="8" rx="1.7" ry="2.4"/><path d="M12 11c3.5 0 6 2.5 6 5 0 2.2-2 3-3.6 2.3-1.5-.7-3.3-.7-4.8 0C8 19 6 18.2 6 16c0-2.5 2.5-5 6-5z"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 4.5v9L12 21l-9-4.5v-9z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8 13.5 6l3.4-.6 1 3.2 3.2 1.1-.9 3.3 2.3 2.6-2.3 2.6.9 3.3-3.2 1-1 3.3-3.4-.6L12 23.2l-1.5-2.3-3.4.6-1-3.3-3.2-1 .9-3.3L1.5 13l2.3-2.6-.9-3.3 3.2-1.1 1-3.2L10.5 5z"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 13A8.5 8.5 0 1 1 11 4a7 7 0 0 0 9 9z"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 3v6h-6"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></symbol>
+</defs>
+</svg>
+
+<div class="window">
+  <div class="titlebar">
+    <div class="t-brand"><span class="t-mark">HX</span> Hanxi 工作台 — Paseo 编排器</div>
+    <div class="wins"><i>—</i><i>▢</i><i class="x">✕</i></div>
+  </div>
+  <div class="layout">
+
+    <!-- ① 一级：分类图标轨道 -->
+    <nav class="rail">
+      <div class="rail-logo">HX</div>
+      <button class="rail-btn"><svg class="ic"><use href="#i-home"/></svg></button>
+      <div class="rail-sep"></div>
+      <button class="rail-btn"><svg class="ic"><use href="#i-globe"/></svg><span class="cnt">10</span><span class="rd"></span><span style="position:absolute;right:12px;top:8px;width:5px;height:5px;border-radius:50%;background:var(--state-positive);box-shadow:0 0 4px var(--state-positive)"></span></button>
+      <button class="rail-btn"><svg class="ic"><use href="#i-cpu"/></svg><span class="cnt">5</span></button>
+      <button class="rail-btn"><svg class="ic"><use href="#i-layout"/></svg><span class="cnt">9</span></button>
+      <button class="rail-btn"><svg class="ic"><use href="#i-check-sq"/></svg><span class="cnt">5</span></button>
+      <button class="rail-btn"><svg class="ic"><use href="#i-film"/></svg><span class="cnt">3</span></button>
+      <button class="rail-btn active"><svg class="ic"><use href="#i-code"/></svg><span class="cnt">4</span></button>
+      <div class="rail-bottom">
+        <button class="rail-btn"><svg class="ic"><use href="#i-grid"/></svg></button>
+        <button class="rail-btn"><svg class="ic"><use href="#i-bell"/></svg><span class="bdg">2</span></button>
+        <button class="rail-btn"><svg class="ic"><use href="#i-moon"/></svg></button>
+        <button class="rail-btn"><svg class="ic"><use href="#i-gear"/></svg></button>
+      </div>
+    </nav>
+
+    <!-- ② 二级：当前分类的模块列表 -->
+    <aside class="panel2">
+      <div class="p2-head">
+        <div class="p2-title"><svg class="ic"><use href="#i-code"/></svg>开发者工具</div>
+        <div class="p2-sub">桌面开发环境 · Agent 编排</div>
+      </div>
+      <div class="p2-search"><svg class="ic"><use href="#i-search"/></svg><span>筛选…</span></div>
+      <div class="p2-list">
+        <button class="mod"><span class="m-ic"><svg class="ic"><use href="#i-box"/></svg></span><span><span class="m-name">VS Code</span><span class="m-desc">便携版多版本托管与实例管理</span></span></button>
+        <button class="mod"><span class="m-ic"><svg class="ic"><use href="#i-swap"/></svg></span><span><span class="m-name">CC Switch</span><span class="m-desc">Claude Code 供应商配置切换</span></span></button>
+        <button class="mod active"><span class="m-ic"><svg class="ic"><use href="#i-paw"/></svg></span><span><span class="m-name">Paseo 编排器</span><span class="m-desc">AI Agent 会话多端托管</span></span><span class="m-run"></span></button>
+        <button class="mod"><span class="m-ic"><svg class="ic"><use href="#i-terminal"/></svg></span><span><span class="m-name">WSL2</span><span class="m-desc">发行版安装 / 资源与端口运维</span></span></button>
+      </div>
+      <div class="p2-foot"><span>4 个模块</span><span><b>1</b> 运行中</span></div>
+    </aside>
+
+    <!-- ③ 主区 -->
+    <div class="main">
+      <div class="ctxbar">
+        <div class="crumb">开发者工具 <svg class="ic"><use href="#i-chev" transform="rotate(-90)"/></svg> <b>Paseo 编排器</b></div>
+        <div class="ctx-right">
+          <span class="chip ok"><i style="width:5px;height:5px;border-radius:50%;background:currentColor"></i>daemon 在线</span>
+          <button class="btn"><svg class="ic"><use href="#i-refresh"/></svg>刷新</button>
+          <button class="btn primary"><svg class="ic"><use href="#i-plus"/></svg>新建实例</button>
+        </div>
+      </div>
+      <div class="page">
+        <div class="kpis">
+          <div class="kpi"><div class="k-label">托管实例</div><div class="k-value">3 <small>/ 3</small></div><div class="k-sub">paseo-server 0.14.2</div></div>
+          <div class="kpi"><div class="k-label">活跃会话</div><div class="k-value">7</div><div class="k-sub">2 个正在生成</div></div>
+          <div class="kpi"><div class="k-label">今日 Token</div><div class="k-value">412 <small>K</small></div><div class="k-sub">≈ ¥23.6</div><div class="spark"><i style="height:35%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:80%"></i><i style="height:62%"></i><i style="height:100%"></i><i style="height:48%"></i></div></div>
+          <div class="kpi"><div class="k-label">进程状态</div><div class="k-value" style="color:var(--state-positive)">健康</div><div class="k-sub">JobObject 内 1 进程 · 24 MB</div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd">实例列表</div>
+          <div class="rowline"><span class="r-avatar">PS</span><span class="r-name">paseo-server (默认)</span><span class="r-meta">:9080 · v0.14.2 · 运行 2h14m</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-subtle)">CPU 0.4%</span><span class="r-st"><span class="badge ok"><i></i>运行中</span></span></div>
+          <div class="rowline"><span class="r-avatar">SE</span><span class="r-name">session · hanxi-desktop</span><span class="r-meta">claude-fable-5 · 7 轮</span><span class="r-st"><div class="ctl"><button class="on">跟随</button><button>聚焦</button><button>停止</button></div></span></div>
+          <div class="rowline"><span class="r-avatar">SE</span><span class="r-name">session · phone-relay</span><span class="r-meta">claude-opus-5 · 12 轮</span><span class="r-st"><div class="ctl"><button class="on">跟随</button><button>聚焦</button><button>停止</button></div></span></div>
+          <div class="rowline"><span class="r-avatar">SE</span><span class="r-name">session · nightly-docs</span><span class="r-meta">计划任务 · 上次 03:00</span><span class="r-st"><span class="badge mut"><i></i>空闲</span></span></div>
+          <div class="rowline"><span class="r-avatar" style="color:var(--color-text-subtle)">＋</span><span class="r-name" style="color:var(--color-text-subtle);font-weight:500">添加已配对的 paseo-server…</span><span class="r-st"><span class="badge warn"><i></i>1 条版本更新可用</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
