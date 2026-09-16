@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -340,13 +339,8 @@ func (s *PublicIPService) TraceRoute(target string, maxHops int) (TracerouteSumm
 		Hops:   make([]HopInfo, 0),
 	}
 
-	// 调用系统 tracert / traceroute
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("tracert", "-d", "-h", fmt.Sprintf("%d", maxHops), "-w", "1000", target)
-	} else {
-		cmd = exec.Command("traceroute", "-n", "-m", fmt.Sprintf("%d", maxHops), "-w", "1", target)
-	}
+	// 调用系统 tracert（Windows-only 项目，不再保留 traceroute 分支）
+	cmd := exec.Command("tracert", "-d", "-h", fmt.Sprintf("%d", maxHops), "-w", "1000", target)
 	hideWindow(cmd)
 
 	out, err := cmd.CombinedOutput()

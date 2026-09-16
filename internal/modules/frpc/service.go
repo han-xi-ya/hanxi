@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -105,16 +104,8 @@ func (s *FrpcService) OpenDir(exePath string) error {
 		return err
 	}
 
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("explorer.exe", dir)
-	case "darwin":
-		cmd = exec.Command("open", dir)
-	default:
-		cmd = exec.Command("xdg-open", dir)
-	}
-	if err := cmd.Start(); err != nil {
+	// Windows-only 项目：不再保留 open/xdg-open 死分支
+	if err := exec.Command("explorer.exe", dir).Start(); err != nil {
 		return fmt.Errorf("打开 frpc 所在目录失败: %w", err)
 	}
 	return nil
@@ -271,6 +262,8 @@ func (s *FrpcService) DeleteProject(id string) error {
 	if err := s.StopProject(id); err != nil {
 		slog.Warn("stop before delete failed", "project", id, "err", err)
 	}
+	// engine.Remove 为无返回值的实例表清理（Stop 已在上一步兜底），无错误可传播；
+	// 真正需要错误语义的运行时配置清理与 store.Delete 见下方两行。
 	s.engine.Remove(id)
 	_ = os.Remove(filepath.Join(s.runDir, projectConfigName(id))) // 清理已生成的运行时配置
 	return s.store.Delete(id)

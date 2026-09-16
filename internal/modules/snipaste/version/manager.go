@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -73,10 +72,8 @@ func (m *Manager) ListInstalled() ([]SnipasteVersionInfo, error) {
 		if err != nil || !fi.Mode().IsRegular() || fi.Size() == 0 {
 			continue
 		}
-		if runtime.GOOS == "windows" {
-			if actual, err := m.fileVersion(exe); err != nil || normalizeVersion(actual) != normalizeVersion(version) {
-				continue
-			}
+		if actual, err := m.fileVersion(exe); err != nil || normalizeVersion(actual) != normalizeVersion(version) {
+			continue
 		}
 		info := SnipasteVersionInfo{Version: version, ExePath: exe, Dir: dir, Size: fi.Size()}
 		readMeta(filepath.Join(dir, "meta.json"), &info)
@@ -202,14 +199,12 @@ func (m *Manager) Download(targetVersion string, onProgress func(DownloadProgres
 	}
 
 	exe := filepath.Join(installRoot, exeName)
-	if runtime.GOOS == "windows" {
-		actualVersion, err := m.fileVersion(exe)
-		if err != nil {
-			return fmt.Errorf("读取 Snipaste.exe 版本失败: %w", err)
-		}
-		if normalizeVersion(actualVersion) != normalizeVersion(version) {
-			return fmt.Errorf("文件版本不匹配：期望 %s，实际 %s", version, actualVersion)
-		}
+	actualVersion, err := m.fileVersion(exe)
+	if err != nil {
+		return fmt.Errorf("读取 Snipaste.exe 版本失败: %w", err)
+	}
+	if normalizeVersion(actualVersion) != normalizeVersion(version) {
+		return fmt.Errorf("文件版本不匹配：期望 %s，实际 %s", version, actualVersion)
 	}
 
 	meta := map[string]any{

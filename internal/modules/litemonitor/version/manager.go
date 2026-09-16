@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -97,10 +96,8 @@ func (m *Manager) ListInstalled() ([]LMVersionInfo, error) {
 			// PE 版本与目录名一致才可信（上游 FileVersion 恒为 X.Y.Z.0 四段，
 			// 比对前归一为三段）；不一致 = 目录内容与名不符的损坏安装。
 			// imported- 目录名不含版本号，天然不走此分支。
-			if runtime.GOOS == "windows" {
-				if actual, err := m.fileVersion(exe); err != nil || normalizeFileVersion(actual) != name {
-					continue
-				}
+			if actual, err := m.fileVersion(exe); err != nil || normalizeFileVersion(actual) != name {
+				continue
 			}
 		}
 		// 读取元信息（安装时间、导入来源）
@@ -219,17 +216,15 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 	}
 
 	// 6. PE 版本核对（上游 FileVersion 恒为 "X.Y.Z.0"，归一三段比对）
-	if runtime.GOOS == "windows" {
-		actualVer, verr := m.fileVersion(filepath.Join(installRoot, exeName))
-		if verr != nil {
-			emit("error", 0, 0, fmt.Sprintf("读取 %s 版本失败: %v", exeName, verr))
-			return fmt.Errorf("读取 %s 版本失败: %w", exeName, verr)
-		}
-		if want := strings.TrimPrefix(version, "v"); normalizeFileVersion(actualVer) != want {
-			err := fmt.Errorf("文件版本不匹配：期望 %s，实际 %s", want, actualVer)
-			emit("error", 0, 0, err.Error())
-			return err
-		}
+	actualVer, verr := m.fileVersion(filepath.Join(installRoot, exeName))
+	if verr != nil {
+		emit("error", 0, 0, fmt.Sprintf("读取 %s 版本失败: %v", exeName, verr))
+		return fmt.Errorf("读取 %s 版本失败: %w", exeName, verr)
+	}
+	if want := strings.TrimPrefix(version, "v"); normalizeFileVersion(actualVer) != want {
+		err := fmt.Errorf("文件版本不匹配：期望 %s，实际 %s", want, actualVer)
+		emit("error", 0, 0, err.Error())
+		return err
 	}
 
 	// 7. 落盘元信息 + 原子搬迁到最终目录
