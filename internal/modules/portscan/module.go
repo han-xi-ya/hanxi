@@ -57,12 +57,6 @@ func (m *Module) Services() []extapi.Service {
 	}
 }
 
-func (m *Module) Permissions() []extapi.Permission {
-	return []extapi.Permission{extapi.PermNetwork} // 网络扫描基础权限
-}
-
-func (m *Module) Protocol() int { return 1 }
-
 func (m *Module) OnInit(ctx context.Context) error {
 	return nil
 }

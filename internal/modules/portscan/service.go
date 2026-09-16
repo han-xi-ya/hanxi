@@ -13,9 +13,40 @@ import (
 
 // PortScanService 暴露给前端的端口扫描服务。
 // cancelMap 按任务 ID 登记每轮扫描的 context.CancelFunc，供 StopScan 精准取消；任务结束须删除条目防泄露。
+// current 记录最新一轮任务 ID（而非 CancelFunc）：任务收尾按 ID 比对后才摘除标记，
+// 否则旧任务的清理路径会把新任务刚登记的 current 一并删掉，导致 StopScan 兜底失效。
 type PortScanService struct {
 	scanner   *Scanner
 	cancelMap sync.Map // map[string]context.CancelFunc
+	// currentMu 只护 current 一个字符串——登记与"比对后再摘除"必须原子完成
+	currentMu sync.Mutex
+	current   string
+}
+
+// setCurrent 把 current 指向本轮任务，返回被顶替的上一轮任务 ID（无则空串）。
+func (s *PortScanService) setCurrent(id string) string {
+	s.currentMu.Lock()
+	defer s.currentMu.Unlock()
+	old := s.current
+	s.current = id
+	return old
+}
+
+// currentID 取当前任务 ID（无在册任务则空串）。
+func (s *PortScanService) currentID() string {
+	s.currentMu.Lock()
+	defer s.currentMu.Unlock()
+	return s.current
+}
+
+// clearCurrent 任务收尾摘除标记：仅当 current 仍指向自己才清，
+// 已被新一轮任务顶替时保持不动，避免把新任务的登记误删。
+func (s *PortScanService) clearCurrent(id string) {
+	s.currentMu.Lock()
+	defer s.currentMu.Unlock()
+	if s.current == id {
+		s.current = ""
+	}
 }
 
 // NewPortScanService 创建无状态服务实例。
@@ -52,22 +83,26 @@ func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {
 	taskID := fmt.Sprintf("scan_%d", time.Now().UnixNano())
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelMap.Store(taskID, cancel)
-	// 同时将 "current" 指向最新任务，若存在上一个未结束的任务则主动触发取消
-	if oldCancel, loaded := s.cancelMap.Swap("current", cancel); loaded && oldCancel != nil {
-		if c, ok := oldCancel.(context.CancelFunc); ok {
-			c()
+	// 将 current 指向最新任务，并主动取消被顶掉的上一轮任务（其条目一并摘除，
+	// 由新任务接管取消权；旧任务自身的 defer 清理按 ID 比对，不会再误伤本轮登记）
+	if oldID := s.setCurrent(taskID); oldID != "" && oldID != taskID {
+		if old, loaded := s.cancelMap.LoadAndDelete(oldID); loaded {
+			if c, ok := old.(context.CancelFunc); ok {
+				c()
+			}
 		}
 	}
 
 	defer func() {
 		s.cancelMap.Delete(taskID)
-		s.cancelMap.Delete("current")
+		// 仅当 current 仍指向本轮任务时才摘除；已被新任务顶替则保持不动
+		s.clearCurrent(taskID)
 		cancel()
 	}()
 
 	timeout := time.Duration(req.TimeoutMs) * time.Millisecond
 	if timeout <= 0 {
-		timeout = 600 * time.Millisecond
+		timeout = DefaultScanTimeout
 	}
 
 	summary, err := s.scanner.ExecuteScan(
@@ -94,27 +129,32 @@ func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {
 	return summary, err
 }
 
-// StopScan 中止指定任务
+// StopScan 中止指定任务；指定 ID 未在册（或为空）时回退中止 current 任务。
+// 兜底路径按 current 记录的 ID 反查取消函数，两条路径都遵循"取消即摘除条目"。
 func (s *PortScanService) StopScan(taskID string) bool {
 	stopped := false
 	taskID = strings.TrimSpace(taskID)
 
 	if taskID != "" {
-		if val, ok := s.cancelMap.Load(taskID); ok {
+		if val, ok := s.cancelMap.LoadAndDelete(taskID); ok {
 			if cancel, ok := val.(context.CancelFunc); ok {
 				cancel()
-				s.cancelMap.Delete(taskID)
+				s.clearCurrent(taskID)
 				stopped = true
 			}
 		}
 	}
 
-	// 如果指定 ID 没找到或者为空，尝试中止 current 任务
-	if val, ok := s.cancelMap.Load("current"); ok {
-		if cancel, ok := val.(context.CancelFunc); ok {
-			cancel()
-			s.cancelMap.Delete("current")
-			stopped = true
+	// 指定 ID 没找到或者为空，尝试中止 current 任务
+	if !stopped {
+		if cur := s.currentID(); cur != "" {
+			if val, ok := s.cancelMap.LoadAndDelete(cur); ok {
+				if cancel, ok := val.(context.CancelFunc); ok {
+					cancel()
+					stopped = true
+				}
+			}
+			s.clearCurrent(cur)
 		}
 	}
 

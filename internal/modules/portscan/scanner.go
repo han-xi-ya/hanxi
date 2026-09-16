@@ -150,7 +150,7 @@ func (s *Scanner) QueryEgressIP(ctx context.Context, proxyURL string, timeout ti
 			return ip.String(), nil
 		}
 		// 备用正则匹配
-		matches := regexp.MustCompile(`(?:[0-9]{1,3}\.){3}[0-9]{1,3}`).FindString(body)
+		matches := ipv4Regex.FindString(body)
 		if matches != "" && net.ParseIP(matches) != nil {
 			return matches, nil
 		}
@@ -319,7 +319,10 @@ var KnownPortServices = map[int]string{
 
 var (
 	titleRegex = regexp.MustCompile(`(?i)<title>(.*?)</title>`)
-	bufPool    = sync.Pool{
+	// ipv4Regex 出网 IP 兜底匹配（供应商返回带杂质的文本时从中抠出 IPv4）。
+	// 提为包级：正则编译昂贵，不可在轮询循环内反复 MustCompile。
+	ipv4Regex = regexp.MustCompile(`(?:[0-9]{1,3}\.){3}[0-9]{1,3}`)
+	bufPool   = sync.Pool{
 		New: func() any {
 			b := make([]byte, 512)
 			return &b
@@ -536,32 +539,38 @@ func (s *Scanner) lightweightProbe(ctx context.Context, dialer ContextDialer, ht
 		n, _ := conn.Read(buf)
 		_ = conn.Close()
 
+		// 分支判定必须在归还缓冲区之前全部完成：MySQL 分支直读原始字节 buf[:n]，
+		// 若先 Put 再读，池可能已把同一底层数组交给另一个 goroutine（读写竞争）。
+		// 因此这里"读完 → 判完 → 最后统一 Put"，命中判定用 matched 收口而非分散 return。
+		matched := false
 		if n > 0 {
 			greeting := string(bytes.TrimSpace(buf[:n]))
-			bufPool.Put(bufPtr)
-			if strings.HasPrefix(greeting, "SSH-") {
+			switch {
+			case strings.HasPrefix(greeting, "SSH-"):
 				res.Service = "ssh"
 				res.Banner = greeting
-				return
-			} else if strings.HasPrefix(greeting, "+PONG") || strings.Contains(greeting, "NOAUTH") || strings.Contains(greeting, "-ERR") {
+				matched = true
+			case strings.HasPrefix(greeting, "+PONG") || strings.Contains(greeting, "NOAUTH") || strings.Contains(greeting, "-ERR"):
 				res.Service = "redis"
 				res.Banner = "Redis Server"
-				return
-			} else if strings.HasPrefix(greeting, "220") {
+				matched = true
+			case strings.HasPrefix(greeting, "220"):
 				if strings.Contains(strings.ToLower(greeting), "ftp") {
 					res.Service = "ftp"
 				} else {
 					res.Service = "smtp"
 				}
 				res.Banner = greeting
-				return
-			} else if n > 5 && (bytes.Contains(buf[:n], []byte("mysql")) || bytes.Contains(buf[:n], []byte("MariaDB"))) {
+				matched = true
+			case n > 5 && (bytes.Contains(buf[:n], []byte("mysql")) || bytes.Contains(buf[:n], []byte("MariaDB"))):
 				res.Service = "mysql"
 				res.Banner = "MySQL / MariaDB"
-				return
+				matched = true
 			}
-		} else {
-			bufPool.Put(bufPtr)
+		}
+		bufPool.Put(bufPtr)
+		if matched {
+			return
 		}
 	}
 
