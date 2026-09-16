@@ -33,6 +33,7 @@ type Manager struct {
 	desktopDir  func() string // 桌面目录探测（service 注入 plat.DesktopDir；nil 时尽力而为）
 }
 
+// NewManager 以指定 versions 根目录创建版本管理引擎；构造无副作用。
 func NewManager(versionsDir string) *Manager {
 	return NewManagerWithDesktop(versionsDir, nil)
 }
@@ -256,6 +257,14 @@ func (m *Manager) Remove(version string) error {
 	dir := m.InstallDir()
 	if _, err := os.Stat(filepath.Join(dir, exeName)); err != nil {
 		return fmt.Errorf("版本 %s 未安装或安装目录已缺失", version)
+	}
+	// 请求版本与实装版本核对：托管是单目录单版本，删的就是那一份固定目录。
+	// 不校验的话，调用方传任意不匹配版本号即可绕过 service 层"运行中禁删"保护
+	// （保护按参数比对、删除按实际目录），把运行中的安装连锅端掉。传空 = 接受任何版本。
+	if version != "" {
+		if actual := m.resolveInstalledVersion(dir, filepath.Join(dir, exeName)); CompareCore(actual, version) != 0 {
+			return fmt.Errorf("请求卸载版本 %s 与当前实装版本 %s 不一致，请刷新列表后重试", version, actual)
+		}
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		return err

@@ -2,6 +2,7 @@ package portkill
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,10 +35,12 @@ type KillResult struct {
 	ErrorMessage string `json:"errorMessage"`
 }
 
+// PortKillService 端口占用查询与查杀服务（无内部状态，每次 RPC 即时快照系统表）。
 type PortKillService struct {
 	plat platform.Platform
 }
 
+// NewPortKillService 注入平台能力创建服务。
 func NewPortKillService(plat platform.Platform) *PortKillService {
 	return &PortKillService{plat: plat}
 }
@@ -191,7 +194,17 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 	}
 }
 
-// KillProcessElevated 触发 UAC 提权 Helper 查杀管理员进程
+// psQuote 将字符串包装为 PowerShell 单引号字面量（内部单引号成对转义）。
+// 用单引号而非双引号：路径含 $ 或反引号时不会被 PowerShell 插值。
+func psQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// KillProcessElevated 触发 UAC 提权 Helper 查杀管理员进程。
+// 提权前捕获目标指纹（镜像路径 + 创建时间）交给 helper 复核——UAC 等待期间目标可能
+// 退出并被 PID 复用，届时 helper 比对不过会以退出码 3 拒杀而非误杀新进程；
+// 命中系统关键进程红线则在本地直接拒绝，不弹 UAC。
+// helper 的真实成败经 Start-Process -PassThru 的 ExitCode 传播回来，杜绝"helper 失败仍报成功"。
 func (s *PortKillService) KillProcessElevated(pid uint32) KillResult {
 	if pid == 0 || pid == 4 || pid == uint32(os.Getpid()) {
 		return KillResult{
@@ -200,15 +213,36 @@ func (s *PortKillService) KillProcessElevated(pid uint32) KillResult {
 		}
 	}
 
+	procAPI := s.plat.Process()
+	info, err := procAPI.Query(pid)
+	if err != nil {
+		return KillResult{Success: false, ErrorMessage: fmt.Sprintf("目标进程 PID %d 不存在或已退出", pid)}
+	}
+	if procAPI.IsProtected(pid, info) {
+		return KillResult{Success: false, ErrorMessage: "受系统保护的关键进程不可查杀"}
+	}
+
 	exe, err := os.Executable()
 	if err != nil {
 		return KillResult{Success: false, ErrorMessage: "无法定位宿主程序路径"}
 	}
 
-	// 使用 powershell 的 Start-Process -Verb RunAs 调起同二进制的 helper 模式
-	args := fmt.Sprintf(`Start-Process -FilePath "%s" -ArgumentList "-mode=killhelper", "-pid=%d" -Verb RunAs -Wait -WindowStyle Hidden`, exe, pid)
+	// 组装 helper 参数：始终携带镜像路径指纹；创建时间可查时一并携带
+	args := fmt.Sprintf("%s, %s", psQuote("-mode=killhelper"), psQuote(fmt.Sprintf("-pid=%d", pid)))
+	if info.ExePath != "" {
+		args += ", " + psQuote("-exe="+info.ExePath)
+	}
+	if !info.StartedAt.IsZero() {
+		args += ", " + psQuote(fmt.Sprintf("-start=%d", info.StartedAt.UnixNano()))
+	}
 
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", args)
+	// 使用 powershell 的 Start-Process -Verb RunAs 调起同二进制的 helper 模式；
+	// -PassThru 取回子进程退出码并转成本脚本的退出码，供 Go 侧如实归因
+	script := fmt.Sprintf(
+		"$p = Start-Process -FilePath %s -ArgumentList %s -Verb RunAs -Wait -WindowStyle Hidden -PassThru; if ($null -eq $p) { exit 1 }; exit [int]$p.ExitCode",
+		psQuote(exe), args)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
 	out, err := cmd.CombinedOutput()
@@ -217,8 +251,24 @@ func (s *PortKillService) KillProcessElevated(pid uint32) KillResult {
 		if strings.Contains(outStr, "canceled by the user") || strings.Contains(outStr, "1223") {
 			return KillResult{Success: false, ErrorMessage: "用户取消了 UAC 授权"}
 		}
-		return KillResult{Success: false, ErrorMessage: fmt.Sprintf("提权查杀失败: %v %s", err, outStr)}
+		switch helperExitCode(err) {
+		case 2:
+			return KillResult{Success: false, ErrorMessage: "目标为系统关键进程，已拒绝查杀"}
+		case 3:
+			return KillResult{Success: false, ErrorMessage: "目标进程身份已变化（PID 可能被复用），已安全中止，请重新扫描"}
+		default:
+			return KillResult{Success: false, ErrorMessage: fmt.Sprintf("提权查杀失败: %v %s", err, outStr)}
+		}
 	}
 
 	return KillResult{Success: true}
+}
+
+// helperExitCode 从 powershell 的 exec 错误中提取 helper 传播回来的退出码；无法判定时返回 -1。
+func helperExitCode(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }

@@ -54,6 +54,7 @@ type RecordlyService struct {
 	lastActivity time.Time // 最近一次 Hanxi 发起的使用（打开窗口）；GetStatus 轮询不计
 }
 
+// NewRecordlyService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
 func NewRecordlyService(plat platform.Platform) *RecordlyService {
 	paths := settings.GetPaths()
 	svc := &RecordlyService{
@@ -228,11 +229,14 @@ func (s *RecordlyService) DownloadVersion(targetVersion string) (string, error) 
 }
 
 // RemoveVersion 卸载托管版本（正在运行则拒绝）。%APPDATA%\Recordly 配置与录像保留。
+// 运行判定不看请求版本号：单安装目录下任何运行形态（托管运行/启动中/外部实例）
+// 一律拒绝——旧实现把保护与参数版本挂钩，传不匹配版本号即可绕过（Manager.Remove
+// 现在也会二次核对版本，双保险）。
 func (s *RecordlyService) RemoveVersion(targetVersion string) error {
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
-	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning &&
-		version.CompareCore(snap.Version, targetVersion) == 0 {
-		return fmt.Errorf("版本 %s 正在运行，请先退出", targetVersion)
+	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning ||
+		snap.State == instance.StateStarting || snap.State == instance.StateExternal {
+		return fmt.Errorf("Recordly 正在运行，请先退出再卸载")
 	}
 	return s.manager.Remove(targetVersion)
 }

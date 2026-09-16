@@ -2,6 +2,7 @@
 package app
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -55,6 +56,7 @@ import (
 	markeronversion "hanxi/internal/modules/markeron/version"
 	"hanxi/internal/modules/memo"
 	"hanxi/internal/modules/nanazip"
+	"hanxi/internal/modules/ocr"
 	"hanxi/internal/modules/papertodo"
 	papertodoinstance "hanxi/internal/modules/papertodo/instance"
 	papertodoversion "hanxi/internal/modules/papertodo/version"
@@ -178,6 +180,7 @@ func RegisterEvents() {
 	application.RegisterEvent[wsl.DownloadProgress]("wsl:msi-download")
 	application.RegisterEvent[wsl.CloneProgress]("wsl:clone")
 	application.RegisterEvent[wsl.CompactProgress]("wsl:compact")
+	application.RegisterEvent[ocr.ServiceState]("ocr:service-state")
 }
 
 // Options 控制应用启动时行为。
@@ -203,11 +206,24 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	}
 
 	// 2. 初始化路径与配置存储
+	// config.json 损坏时不再 panic 造成"启动即崩、用户无修复入口"的死循环：
+	// 将损坏文件隔离改名（取证副本保留在原地），以出厂默认配置降级启动并显著告警。
+	// 隔离改名失败（如权限异常）仍拒绝启动——那时降级也无从落盘，需要人工介入。
 	paths := settings.InitPaths()
 	store, err := settings.NewStore(paths.ConfigFile())
 	if err != nil {
-		slog.Error("failed to load settings store", "err", err)
-		panic(err)
+		quarantine := fmt.Sprintf("%s.corrupt-%s", paths.ConfigFile(), time.Now().Format("20060102-150405"))
+		if rerr := os.Rename(paths.ConfigFile(), quarantine); rerr != nil {
+			slog.Error("failed to load settings store and quarantine rename failed, refusing to start",
+				"err", err, "rename_err", rerr)
+			panic(err)
+		}
+		slog.Error("config.json 损坏，已隔离为取证副本，本次以出厂默认配置启动（原配置可从副本手工找回）",
+			"err", err, "quarantined_to", quarantine)
+		if store, err = settings.NewStore(paths.ConfigFile()); err != nil {
+			slog.Error("settings store still unloadable after quarantine", "err", err)
+			panic(err)
+		}
 	}
 
 	// 3. 初始化日志脱敏系统
@@ -283,6 +299,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		translucenttb.New(plat),
 		paseo.New(plat),
 		douzy.New(plat),
+		ocr.New(plat),
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),

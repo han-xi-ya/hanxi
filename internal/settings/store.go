@@ -1,3 +1,6 @@
+// Package settings 提供应用全局配置（config.json）的模型、加载与持久化，
+// 以及便携/标准两种运行模式下的数据目录布局解析（见 paths.go）。
+// 本包不依赖任何模块层代码，仅被 app 与各业务模块反向引用。
 package settings
 
 import (
@@ -64,6 +67,7 @@ type AppSettings struct {
 	WechatAccounts []WechatAccount   `json:"wechatAccounts"` // 微信多账号列表
 }
 
+// DefaultSettings 返回出厂默认配置：浅色主题、中文、关闭时最小化到托盘、日志保留 7 天。
 func DefaultSettings() AppSettings {
 	return AppSettings{
 		Theme:          "light",
@@ -88,6 +92,8 @@ type Store struct {
 	data     AppSettings
 }
 
+// NewStore 创建配置存储并立即加载 filePath 处的 JSON 配置。
+// 文件不存在不算错误（视为首次运行，保留默认值）；JSON 损坏则返回错误。
 func NewStore(filePath string) (*Store, error) {
 	s := &Store{
 		filePath: filePath,
@@ -101,6 +107,8 @@ func NewStore(filePath string) (*Store, error) {
 	return s, nil
 }
 
+// load 读取并反序列化配置文件，补齐 nil 集合字段，并把旧版单微信账号配置迁移进多账号列表。
+// 调用方（NewStore）尚未对外暴露 Store，无需额外加锁之外的时序约束；此处仍持写锁保证一致。
 func (s *Store) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -110,7 +118,10 @@ func (s *Store) load() error {
 		return err
 	}
 
-	var data AppSettings
+	// 解码进出厂默认的副本而非零值结构体：旧配置缺失/未包含的字段自动回落默认值
+	// （零值解码会把 MinimizeToTray 变 false、LogRetainDays 变 0、Theme 变空串）。
+	// JSON 显式写出的字段仍按文件值覆盖；map/slice 显式为 null 时由下方兜底重建。
+	data := DefaultSettings()
 	if err := json.Unmarshal(bytes, &data); err != nil {
 		return fmt.Errorf("corrupt config json: %w", err)
 	}
@@ -160,27 +171,43 @@ func (s *Store) load() error {
 func (s *Store) Get() AppSettings {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return cloneAppSettings(s.data)
+}
 
-	cp := s.data
-	cp.Modules = make(map[string]bool, len(s.data.Modules))
-	for k, v := range s.data.Modules {
+// cloneAppSettings 深拷贝全部集合字段，保证调用方按下标/键写入不会污染 Store 内存态。
+// 各元素（bool/string/结构体）内部均无可变引用，一层拷贝即完备。
+// WechatAccounts 曾因漏拷共享底层数组，调用方改 cfg.WechatAccounts[i] 直接篡改 Store——新增字段必须同步进本函数。
+func cloneAppSettings(src AppSettings) AppSettings {
+	cp := src
+	cp.Modules = make(map[string]bool, len(src.Modules))
+	for k, v := range src.Modules {
 		cp.Modules[k] = v
 	}
-	cp.LanRemarks = make(map[string]string, len(s.data.LanRemarks))
-	for k, v := range s.data.LanRemarks {
+	cp.LanRemarks = make(map[string]string, len(src.LanRemarks))
+	for k, v := range src.LanRemarks {
 		cp.LanRemarks[k] = v
 	}
-	cp.TrayMenu = append(make([]TrayMenuItem, 0, len(s.data.TrayMenu)), s.data.TrayMenu...)
+	cp.TrayMenu = append(make([]TrayMenuItem, 0, len(src.TrayMenu)), src.TrayMenu...)
+	cp.WechatAccounts = append(make([]WechatAccount, 0, len(src.WechatAccounts)), src.WechatAccounts...)
 	return cp
 }
 
-// Update 更新配置并原子落盘
+// Update 更新配置并原子落盘。
+// 候选提交语义：fn 只改副本，落盘成功后内存才整体换装；落盘失败回滚原值——
+// 保证内存与磁盘不分叉（否则运行期读到新值、重启后读回旧值，状态"随机回弹"）。
 func (s *Store) Update(fn func(cfg *AppSettings)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	fn(&s.data)
-	return s.saveLocked()
+	candidate := cloneAppSettings(s.data)
+	fn(&candidate)
+	prev := s.data
+	s.data = candidate
+	if err := s.saveLocked(); err != nil {
+		s.data = prev
+		return err
+	}
+	return nil
 }
 
 // IsModuleEnabled 查询特定模块是否启用

@@ -3,6 +3,7 @@ package frpc
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,11 +56,17 @@ func (s *frpcStore) load() error {
 		if p.ID == "" {
 			p.ID = newProjectID()
 		}
-		// 若 Token 使用 DPAPI 加密，则在内存中解密为明文
+		// 若 Token 使用 DPAPI 加密，则在内存中解密为明文。
+		// 解密失败（如文件拷自另一 Windows 用户/机器）时保留 dpapi: 前缀形态原样驻留：
+		// saveLocked 对带前缀的值直通不再二次加密，避免"密文当明文再包一层"把原 Token
+		// 永久锁死；此时连接认证会失败，属预期，日志已点名根因。
 		if strings.HasPrefix(p.Server.Token, dpapiPrefix) {
 			cipher := strings.TrimPrefix(p.Server.Token, dpapiPrefix)
 			plain, err := windows.DPAPIDecrypt(cipher)
-			if err == nil {
+			if err != nil {
+				slog.Error("frpc: DPAPI 解密失败，Token 维持密文形态（可能属另一 Windows 用户/机器），请重新录入",
+					"project", p.ID, "name", p.Name, "err", err)
+			} else {
 				p.Server.Token = string(plain)
 			}
 		}
@@ -75,13 +82,17 @@ func (s *frpcStore) saveLocked(projects map[string]domain.Project) error {
 	}
 	list := make([]domain.Project, 0, len(projects))
 	for _, p := range projects {
-		// 落盘保护：克隆对象并将敏感 Token 加密为 DPAPI 密文
+		// 落盘保护：克隆对象并将敏感 Token 加密为 DPAPI 密文。
+		// 已带 dpapi: 前缀的值（load 解密失败的密文驻留态）直通写回，绝不再包一层；
+		// 加密失败拒绝以明文落盘并让整次保存报错——明文泄露比保存失败严重得多，
+		// 且 DPAPI 异常通常持续存在，静默降级只会把旧明文重新引回磁盘。
 		item := p
-		if item.Server.Token != "" {
+		if item.Server.Token != "" && !strings.HasPrefix(item.Server.Token, dpapiPrefix) {
 			cipher, err := windows.DPAPIEncrypt([]byte(item.Server.Token))
-			if err == nil {
-				item.Server.Token = dpapiPrefix + cipher
+			if err != nil {
+				return fmt.Errorf("项目 %s 的 Token DPAPI 加密失败，拒绝明文落盘: %w", item.ID, err)
 			}
+			item.Server.Token = dpapiPrefix + cipher
 		}
 		list = append(list, item)
 	}
