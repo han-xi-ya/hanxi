@@ -1,11 +1,13 @@
-// 特征测试（组 G3 / Phase 5）：EnvCheckView 迁移前基线锁定。
+// 特征测试（组 G3 / Phase 5）：EnvCheckView 基线锁定。
 // 断言对象：检测卡渲染、状态 chip、官方版本面板接线、npm 工具装升卸事件流、
-// 本地三态 ConfirmDialog（busy+details，视图自持，非 useConfirm 收编对象）。
+// 卸载二次确认（已收编为全局 useConfirm 单例，视图不再自挂弹层，测试改经
+// confirmState/settleConfirm 驱动，文案/details 断言语义不变）。
 import { nextTick } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import EnvCheckView from '../EnvCheckView.vue'
 import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
 
 const env = vi.hoisted(() => ({
   DetectAll: vi.fn(),
@@ -113,7 +115,10 @@ function managedCard(w: VueWrapper, display: string) {
   return w.findAll('.management-card').find(card => card.text().includes(display) && card.find('.npm-panel').exists())
 }
 
+const { confirmState, settleConfirm } = useConfirm()
+
 afterEach(() => {
+  settleConfirm(false) // 兜底落定未决确认，防跨用例悬挂
   vi.restoreAllMocks()
   useToast().clearToast()
 })
@@ -251,7 +256,7 @@ describe('EnvCheckView npm 工具操作流', () => {
     w.unmount()
   })
 
-  it('卸载二次确认：视图自持三态 ConfirmDialog（title=卸载 Claude Code，details 含 npm 包），确认后调 UninstallNpmTool', async () => {
+  it('卸载二次确认：经全局 useConfirm 单例（title=卸载 Claude Code，details 含 npm 包），确认后调 UninstallNpmTool', async () => {
     stubHappy()
     const w = await mountView()
     await flush()
@@ -259,19 +264,26 @@ describe('EnvCheckView npm 工具操作流', () => {
     const card = managedCard(w, 'Claude Code')!
     await card.findAll('button').find(b => b.text() === '卸载')!.trigger('click')
     await flush()
-    const dialog = w.find('.workbench-confirm')
-    expect(dialog.exists()).toBe(true)
-    expect(dialog.text()).toContain('卸载 Claude Code')
-    expect(dialog.text()).toContain('@anthropic-ai/claude-code')
-    expect(dialog.text()).toContain('仅移除 npm 全局安装')
-    await dialog.findAll('button').find(b => b.text() === '确认卸载')!.trigger('click')
+    // 收编契约：确认请求走全局单例，视图自身不再渲染弹层
+    expect(w.find('.workbench-confirm').exists()).toBe(false)
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('卸载 Claude Code')
+    expect(confirmState.options.confirmLabel).toBe('确认卸载')
+    expect(confirmState.options.tone).toBe('danger')
+    const detailValues = confirmState.options.details?.map(item => item.value) ?? []
+    expect(detailValues).toContain('@anthropic-ai/claude-code')
+    expect(detailValues.some(v => v.includes('仅移除 npm 全局安装'))).toBe(true)
+    expect(env.UninstallNpmTool).not.toHaveBeenCalled()
+    settleConfirm(true)
     await flush()
     expect(env.UninstallNpmTool).toHaveBeenCalledWith('claude')
-    expect(w.find('.workbench-confirm').exists()).toBe(false)
+    expect(confirmState.open).toBe(false)
+    // 受理后进入乐观运行态
+    expect(managedCard(w, 'Claude Code')!.find('.op-running').exists()).toBe(true)
     w.unmount()
   })
 
-  it('卸载确认点取消：不调后端、对话框关闭', async () => {
+  it('卸载确认取消（settle false）：不调后端', async () => {
     stubHappy()
     const w = await mountView()
     await flush()
@@ -279,10 +291,11 @@ describe('EnvCheckView npm 工具操作流', () => {
     const card = managedCard(w, 'Claude Code')!
     await card.findAll('button').find(b => b.text() === '卸载')!.trigger('click')
     await flush()
-    await w.find('.workbench-confirm').findAll('button').find(b => b.text() === '取消')!.trigger('click')
+    expect(confirmState.open).toBe(true)
+    settleConfirm(false)
     await flush()
     expect(env.UninstallNpmTool).not.toHaveBeenCalled()
-    expect(w.find('.workbench-confirm').exists()).toBe(false)
+    expect(confirmState.open).toBe(false)
     w.unmount()
   })
 

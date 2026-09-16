@@ -537,7 +537,7 @@ onMounted(async () => {
                   <span class="ep-local" :title="ep.local">{{ ep.local }}</span>
                   <span class="ep-arrow">➜</span>
                   <span class="ep-remote" :title="ep.url || ep.remoteDisplay">
-                    <a v-if="ep.url && isActive(p)" :href="ep.url" target="_blank" class="ep-link">{{ ep.remoteDisplay }}</a>
+                    <a v-if="ep.url && isActive(p)" :href="ep.url" target="_blank" rel="noopener" class="ep-link">{{ ep.remoteDisplay }}</a>
                     <span v-else>{{ ep.remoteDisplay }}</span>
                   </span>
                 </div>

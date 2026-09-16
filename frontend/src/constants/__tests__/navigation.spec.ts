@@ -8,20 +8,21 @@ import {
 import { ICON_NAMES } from '../icons'
 
 describe('constants/navigation', () => {
-  it('登记了全部 41 条路由', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(41)
-    for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu']) {
+  it('登记了全部 42 条路由', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(42)
+    for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr']) {
       expect(ROUTES[route]).toBeDefined()
     }
   })
 
-  it('模块门禁集合与原 ROUTE_MODULE_MAP 一致（36 个 ext + frpc + paseo，核心页无 moduleId）', () => {
+  it('模块门禁集合与原 ROUTE_MODULE_MAP 一致（37 个 ext + frpc + paseo，核心页无 moduleId）', () => {
     const withModule = Object.entries(ROUTES)
       .filter(([, def]) => def.moduleId !== undefined)
       .map(([route, def]) => `${route}=${def.moduleId}`)
       .sort()
-    expect(withModule).toHaveLength(37)
+    expect(withModule).toHaveLength(38)
     expect(withModule).toContain('/frpc=frpc')
+    expect(withModule).toContain('/ext/ocr=ocr')
     expect(withModule).toContain('/ext/envcheck=envcheck')
     expect(withModule).toContain('/ext/wsl=wsl')
     expect(withModule).toContain('/ext/subnetdesk=subnetdesk')
@@ -59,7 +60,7 @@ describe('constants/navigation', () => {
       if (def.moduleId) expect(MODULE_GROUP[def.moduleId]).toBeDefined()
     }
     for (const g of Object.values(MODULE_GROUP)) expect(groups.has(g)).toBe(true)
-    expect(Object.keys(MODULE_GROUP)).toHaveLength(37)
+    expect(Object.keys(MODULE_GROUP)).toHaveLength(38)
   })
 
   it('groupOfModule：已知返回分组，未知返回 undefined', () => {

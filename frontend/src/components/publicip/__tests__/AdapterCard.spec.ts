@@ -41,8 +41,8 @@ const bare = {
   isUp: false,
 } as unknown as Adapter
 
-function factory(adapter: Adapter) {
-  return mount(AdapterCard, { props: { adapter }, attachTo: document.body })
+function factory(adapter: Adapter, extra: { pingBusy?: boolean } = {}) {
+  return mount(AdapterCard, { props: { adapter, ...extra }, attachTo: document.body })
 }
 
 describe('AdapterCard 展示', () => {
@@ -89,5 +89,18 @@ describe('AdapterCard 事件上抛', () => {
     await w.findAll('.ip-chip')[1].find('.chip-copy').trigger('click')
     expect(w.emitted('copy-text')).toEqual([['223.5.5.5', 'DNS'], ['192.168.1.1', '默认网关']])
     w.unmount()
+  })
+
+  it('pingBusy 时三枚 ⚡（IP/网关/DNS）全部禁用，⧉ 复制钮不受影响；默认不禁用', () => {
+    const busy = factory(wlan, { pingBusy: true })
+    const actions = busy.findAll('.chip-action')
+    expect(actions).toHaveLength(3)
+    actions.forEach((btn) => expect(btn.attributes('disabled')).toBeDefined())
+    busy.findAll('.chip-copy').forEach((btn) => expect(btn.attributes('disabled')).toBeUndefined())
+    busy.unmount()
+
+    const idle = factory(wlan)
+    idle.findAll('.chip-action').forEach((btn) => expect(btn.attributes('disabled')).toBeUndefined())
+    idle.unmount()
   })
 })

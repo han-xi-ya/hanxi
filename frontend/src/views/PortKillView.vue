@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted } from 'vue'
+import { ref, shallowRef, onMounted } from 'vue'
 import * as PortKillAPI from '../../bindings/hanxi/internal/modules/portkill'
 import type { PortOccupant, KillResult } from '../../bindings/hanxi/internal/modules/portkill/models'
 import { getErrorMessage } from '../utils/errors'
+import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
 
 const inputPort = ref<number | ''>('')
 const loading = ref(false)
@@ -19,8 +20,7 @@ const errorMsg = ref('')
 // 快捷端口预设
 const QUICK_PORTS = [80, 443, 3000, 5173, 8080, 8000, 3306, 6379, 27017]
 
-// 待终止的确认弹窗状态
-const targetToKill = ref<PortOccupant | null>(null)
+// 查杀串行门禁：一次查杀（含 UAC 提权等待）未完成前不再受理新的释放
 const killing = ref(false)
 
 function sortReleasableFirst(list: PortOccupant[]) {
@@ -68,12 +68,19 @@ function selectQuickPort(port: number) {
   searchPort(port)
 }
 
-function confirmKill(occ: PortOccupant) {
-  targetToKill.value = occ
-}
-
-function cancelKill() {
-  targetToKill.value = null
+// 释放端口：危险确认经全局 useConfirm 单例（原视图自挂 ConfirmDialog 已收编）；
+// 确认后弹层落定，查杀期由 killing 门禁全页释放按钮（含 UAC 提权等待窗口）。
+async function requestKill(occ: PortOccupant) {
+  if (killing.value) return
+  const accepted = await confirm({
+    title: '确认终止进程并释放端口？',
+    description: '即将终止以下进程，端口将被立即释放：',
+    confirmLabel: '确认终止',
+    tone: 'danger',
+    details: killDetails(occ),
+  })
+  if (!accepted) return
+  await doKill(occ)
 }
 
 async function doKill(occ: PortOccupant) {
@@ -95,7 +102,6 @@ async function doKill(occ: PortOccupant) {
 
     if (res.success) {
       showToast(`已成功终止进程 PID ${occ.pid} (${occ.processName || '未知'})`)
-      targetToKill.value = null
       // 重新刷新列表或查询
       if (inputPort.value) {
         searchPort()
@@ -111,10 +117,8 @@ async function doKill(occ: PortOccupant) {
   }
 }
 
-// 确认对话框明细（原手搓 modal 的信息行逐字迁移到标准 ConfirmDialog details）
-const killDetails = computed(() => {
-  const occ = targetToKill.value
-  if (!occ) return []
+// 确认框明细（原手搓 modal 的信息行逐字迁移到标准 ConfirmDialog details）
+function killDetails(occ: PortOccupant) {
   const rows = [
     { label: '目标端口', value: `:${occ.port} (${occ.protocol})` },
     { label: '进程名称', value: occ.processName || '未知进程' },
@@ -122,7 +126,7 @@ const killDetails = computed(() => {
   ]
   if (occ.exePath) rows.push({ label: '程序路径', value: occ.exePath })
   return rows
-})
+}
 
 function formatTime(timeStr: string) {
   if (!timeStr || timeStr.startsWith('0001-01-01')) return '—'
@@ -212,7 +216,8 @@ onMounted(() => {
                 <button
                   v-if="!occ.isProtected"
                   class="btn-kill"
-                  @click="confirmKill(occ)"
+                  :disabled="killing"
+                  @click="requestKill(occ)"
                 >
                   释放端口
                 </button>
@@ -258,7 +263,8 @@ onMounted(() => {
                 <button
                   v-if="!occ.isProtected"
                   class="btn-kill"
-                  @click="confirmKill(occ)"
+                  :disabled="killing"
+                  @click="requestKill(occ)"
                 >
                   释放端口
                 </button>
@@ -273,19 +279,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 查杀安全确认：手搓 modal 收编为标准 ConfirmDialog（焦点陷阱/Esc/danger 语义内建；
-         busy 由组件统一呈现为「处理中…」，替代原「终止中…」文案——机制归一属迁移预期差异） -->
-    <ConfirmDialog
-      :open="!!targetToKill"
-      title="确认终止进程并释放端口？"
-      description="即将终止以下进程，端口将被立即释放："
-      tone="danger"
-      confirm-label="确认终止"
-      :busy="killing"
-      :details="killDetails"
-      @confirm="targetToKill && doKill(targetToKill)"
-      @cancel="cancelKill"
-    />
   </section>
 </template>
 
@@ -420,6 +413,10 @@ onMounted(() => {
 .btn-kill:hover {
   background: var(--state-danger);
   color: var(--color-on-primary);
+}
+.btn-kill:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .empty-hint {

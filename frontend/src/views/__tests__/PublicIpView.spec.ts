@@ -161,6 +161,32 @@ describe('PublicIpView Ping Tab', () => {
     expect(w.find('.tool-panel .btn-primary').attributes('disabled')).toBeDefined()
     w.unmount()
   })
+
+  it('在飞单飞：探测中 Enter 重触发被 run() 守卫拒绝，收尾后可再次发起', async () => {
+    stubDefaults()
+    let resolvePing: (v: unknown) => void = () => {}
+    svc.PingTarget.mockImplementationOnce(
+      () => new Promise((r) => { resolvePing = r }),
+    )
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('.tab-item')[1].trigger('click')
+    await w.find('.tool-panel .btn-primary').trigger('click')
+    await flushMicrotasks()
+    expect(svc.PingTarget).toHaveBeenCalledTimes(1)
+    // 在飞期间走 Enter 路径（不受按钮 disabled 遮挡）：守卫必须拒绝，不并发重入
+    await w.find('.text-input').trigger('keyup', { key: 'Enter' })
+    await w.find('.text-input').trigger('keyup', { key: 'Enter' })
+    await flushMicrotasks()
+    expect(svc.PingTarget).toHaveBeenCalledTimes(1)
+    resolvePing({ target: '1.1.1.1', ip: '1.1.1.1', sent: 4, received: 4, lossRate: 0, minRtt: 1, avgRtt: 1, maxRtt: 1, results: [] })
+    await flushMicrotasks()
+    // 在飞标记解除后即可再次发起
+    await w.find('.text-input').trigger('keyup', { key: 'Enter' })
+    await flushMicrotasks()
+    expect(svc.PingTarget).toHaveBeenCalledTimes(2)
+    w.unmount()
+  })
 })
 
 describe('PublicIpView Traceroute Tab', () => {

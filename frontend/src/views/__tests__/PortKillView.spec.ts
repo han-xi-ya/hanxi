@@ -1,11 +1,13 @@
-// 组 G1 特征测试：PortKillView——锁迁移前基线。
-// 现状契约：确认终止为手搓 modal（迁移后换标准 ConfirmDialog，busy 文案 '终止中…'→
-// 对话框标准 '处理中…'）；断言以文本/流程结果为准，跨两种载体兼容。
+// 组 G1 特征测试：PortKillView。
+// 现状契约：确认终止走全局 useConfirm 单例（视图自挂 ConfirmDialog 已收编），
+// 测试经 confirmState/settleConfirm 驱动；明细以 options.details 逐字断言，
+// 查杀期门禁体现在释放按钮 disabled（killing）。
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PortKillView from '../PortKillView.vue'
 import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
 
 const svc = vi.hoisted(() => ({
   ListListeningPorts: vi.fn(),
@@ -38,13 +40,18 @@ function mountView() {
   svc.ListListeningPorts.mockResolvedValue([occ(), occ({ port: 443, pid: 4, isProtected: true })])
   const w = mount(defineComponent({ render: () => h(PortKillView) }), {
     attachTo: document.body,
-    // teleport 原地渲染：迁前手搓 modal 无影响，迁后 ConfirmDialog 可被 wrapper 查询（双态兼容）
     global: { stubs: { teleport: true } },
   })
   return w
 }
 
+const { confirmState, settleConfirm } = useConfirm()
+
+beforeEach(() => {
+  settleConfirm(false) // 兜底落定上个用例可能悬挂的确认
+})
 afterEach(() => {
+  settleConfirm(false)
   vi.restoreAllMocks()
   useToast().clearToast()
 })
@@ -96,7 +103,7 @@ describe('PortKillView', () => {
     w.unmount()
   })
 
-  it('释放流程：确认弹层含端口/PID 明细，确认后普通权限成功并双刷新', async () => {
+  it('释放流程：全局确认含端口/PID 明细，确认后普通权限成功并双刷新', async () => {
     svc.QueryPort.mockResolvedValue([occ()])
     svc.KillProcess.mockResolvedValue({ success: true })
     const w = mountView()
@@ -108,16 +115,47 @@ describe('PortKillView', () => {
     const beforeList = svc.ListListeningPorts.mock.calls.length
     await w.findAll('.result-card button').find((b) => b.text() === '释放端口')!.trigger('click')
     await flushMicrotasks()
-    // 确认界面出现（modal 或标准对话框，载体兼容断言）
-    expect(w.text()).toContain('确认终止进程并释放端口')
-    expect(w.text()).toContain('8080')
-    expect(w.text()).toContain('4321')
-    await w.findAll('button').find((b) => b.text().includes('确认终止'))!.trigger('click')
+    // 确认请求走全局单例，视图不再自挂弹层
+    expect(w.find('.workbench-confirm').exists()).toBe(false)
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('确认终止进程并释放端口？')
+    expect(confirmState.options.confirmLabel).toBe('确认终止')
+    expect(confirmState.options.tone).toBe('danger')
+    const detailValues = confirmState.options.details?.map((item) => item.value) ?? []
+    expect(detailValues).toContain(':8080 (TCP)')
+    expect(detailValues).toContain('4321')
+    expect(detailValues).toContain('C:\\node.exe')
+    expect(svc.KillProcess).not.toHaveBeenCalled()
+    settleConfirm(true)
     await flushMicrotasks()
     expect(svc.KillProcess).toHaveBeenCalledWith(4321, 'C:\\node.exe', Math.floor(new Date('2026-09-01T08:00:00Z').getTime() / 1000))
     expect(useToast().toastMsg.value).toContain('已成功终止进程 PID 4321')
     expect(svc.ListListeningPorts.mock.calls.length).toBeGreaterThan(beforeList) // 成功联动刷新
-    expect(w.text()).not.toContain('确认终止进程并释放端口') // 弹层已关
+    expect(confirmState.open).toBe(false)
+    w.unmount()
+  })
+
+  it('查杀挂起期 killing 门禁：全部释放按钮禁用，完成后恢复（替代原弹层滞留遮罩）', async () => {
+    svc.QueryPort.mockResolvedValue([occ(), occ({ pid: 99, port: 3000 })])
+    let resolveKill: (r: { success: boolean }) => void = () => {}
+    svc.KillProcess.mockReturnValue(new Promise((r) => (resolveKill = r)))
+    const w = mountView()
+    await flushMicrotasks()
+    await w.find('.input-port').setValue(8080)
+    await w.findAll('button').find((b) => b.text().includes('查询占用'))!.trigger('click')
+    await flushMicrotasks()
+    const killBtns = w.findAll('.result-card button').filter((b) => b.text() === '释放端口')
+    expect(killBtns).toHaveLength(2)
+    await killBtns[0].trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
+    await flushMicrotasks()
+    const pending = w.findAll('.result-card .btn-kill')
+    expect(pending.every((b) => b.attributes('disabled') !== undefined)).toBe(true)
+    resolveKill({ success: true })
+    await flushMicrotasks()
+    // 成功后行数据随刷新收敛，此处仅验证门禁态解除不抛错；断言完成态按钮可用
+    expect(useToast().toastMsg.value).toContain('已成功终止进程')
     w.unmount()
   })
 
@@ -132,14 +170,14 @@ describe('PortKillView', () => {
     await flushMicrotasks()
     await w.findAll('.result-card button').find((b) => b.text() === '释放端口')!.trigger('click')
     await flushMicrotasks()
-    await w.findAll('button').find((b) => b.text().includes('确认终止'))!.trigger('click')
+    settleConfirm(true)
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toContain('已成功终止进程')
     expect(svc.KillProcessElevated).toHaveBeenCalledWith(4321)
     w.unmount()
   })
 
-  it('查杀失败展示后端错误且不关确认层？——现状：失败不清 targetToKill（钉死）', async () => {
+  it('查杀失败：toast 后端错误、确认已落定关闭，按钮恢复可重试', async () => {
     svc.QueryPort.mockResolvedValue([occ()])
     svc.KillProcess.mockResolvedValue({ success: false, needElevate: false, errorMessage: '拒绝访问' })
     const w = mountView()
@@ -149,14 +187,21 @@ describe('PortKillView', () => {
     await flushMicrotasks()
     await w.findAll('.result-card button').find((b) => b.text() === '释放端口')!.trigger('click')
     await flushMicrotasks()
-    await w.findAll('button').find((b) => b.text().includes('确认终止'))!.trigger('click')
+    settleConfirm(true)
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toContain('查杀失败: 拒绝访问')
-    // 现状：失败路径不清 targetToKill，确认层仍在（行为如实锁定，是否算 bug 交主线）
-    expect(w.text()).toContain('确认终止进程并释放端口')
-    // 取消可关
-    await w.findAll('button').find((b) => b.text() === '取消')!.trigger('click')
-    expect(w.text()).not.toContain('确认终止进程并释放端口')
+    // 收编后语义：失败不再滞留确认层（原视图自持 busy 已归一为 toast + 可重试），
+    // killing 门禁解除，释放按钮恢复可用
+    expect(confirmState.open).toBe(false)
+    const killBtn = w.findAll('.result-card button').find((b) => b.text() === '释放端口')!
+    expect(killBtn.attributes('disabled')).toBeUndefined()
+    // 确认取消路径：不调后端
+    await killBtn.trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    settleConfirm(false)
+    await flushMicrotasks()
+    expect(svc.KillProcess).toHaveBeenCalledTimes(1)
     w.unmount()
   })
 

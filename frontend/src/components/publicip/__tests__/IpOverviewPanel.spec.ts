@@ -35,6 +35,7 @@ function factory(over: Partial<{
   loading: boolean
   error: string
   adapters: Adapter[]
+  pingBusy: boolean
 }> = {}) {
   return mount(IpOverviewPanel, {
     props: { overview, loading: false, error: '', adapters: [adapter], ...over },
@@ -117,5 +118,17 @@ describe('IpOverviewPanel 事件上抛', () => {
     expect(w.emitted('quick-ping')).toEqual([['223.5.5.5']])
     expect(w.emitted('copy-text')).toEqual([['223.5.5.5', 'DNS']])
     w.unmount()
+  })
+
+  it('pingBusy 透传：出口 IP ⚡ 与网卡卡三枚 ⚡ 一并禁用', () => {
+    const busy = factory({ pingBusy: true })
+    expect(busy.findAll('.ip-card')[0].findAll('.btn-copy')[0].attributes('disabled')).toBeDefined()
+    busy.findAll('.chip-action').forEach((btn) => expect(btn.attributes('disabled')).toBeDefined())
+    busy.unmount()
+
+    const idle = factory()
+    expect(idle.findAll('.ip-card')[0].findAll('.btn-copy')[0].attributes('disabled')).toBeUndefined()
+    idle.findAll('.chip-action').forEach((btn) => expect(btn.attributes('disabled')).toBeUndefined())
+    idle.unmount()
   })
 })

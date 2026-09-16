@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 扩展页占位：具体扩展视图在对应里程碑实现（M2 lan/publicip，M3 portkill）。
+// 扩展页占位：后端注册了路由、但前端尚未建档对应视图时兜底渲染（constants/navigation.ts 的
+// placeholderComponent）。早期里程碑点名的 lan/publicip/portkill 等均已有独立视图，不再走此处。
 defineProps<{ title?: string }>()
 </script>
 

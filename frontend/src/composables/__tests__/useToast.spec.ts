@@ -54,4 +54,41 @@ describe('useToast', () => {
     b.clearToast()
     expect(a.toastMsg.value).toBe('')
   })
+
+  // 失败类 toast 契约（#49 收口升级版）：8000ms 默认时长固化在 showErrorToast 一处。
+  it('showErrorToast 默认保活 8000ms，普通 showToast 仍是 2500ms', () => {
+    const { toastMsg, showToast, showErrorToast } = useToast()
+    showErrorToast('克隆失败: exit status 42')
+    expect(toastMsg.value).toBe('克隆失败: exit status 42')
+    vi.advanceTimersByTime(7999)
+    expect(toastMsg.value).toBe('克隆失败: exit status 42')
+    vi.advanceTimersByTime(1)
+    expect(toastMsg.value).toBe('')
+    showToast('普通播报')
+    vi.advanceTimersByTime(2500)
+    expect(toastMsg.value).toBe('')
+  })
+
+  it('showErrorToast 保留显式 duration 覆盖能力（长短都可覆）', () => {
+    const { toastMsg, showErrorToast } = useToast()
+    showErrorToast('短暂错误提示', { duration: 1000 })
+    vi.advanceTimersByTime(1000)
+    expect(toastMsg.value).toBe('')
+    showErrorToast('超长驻留', { duration: 15000 })
+    vi.advanceTimersByTime(8000)
+    expect(toastMsg.value).toBe('超长驻留')
+    vi.advanceTimersByTime(7000)
+    expect(toastMsg.value).toBe('')
+  })
+
+  it('showErrorToast 与 showToast 共用单例计时器：后发者清除前者定时器', () => {
+    const { toastMsg, showToast, showErrorToast } = useToast()
+    showErrorToast('先来错误')
+    vi.advanceTimersByTime(1000)
+    showToast('后来普通', { duration: 500 })
+    vi.advanceTimersByTime(500)
+    expect(toastMsg.value).toBe('') // 错误条的 8000ms 定时器已被重置，不得复活后把新消息抹掉
+    vi.advanceTimersByTime(7000)
+    expect(toastMsg.value).toBe('')
+  })
 })

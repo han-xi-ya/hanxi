@@ -6,8 +6,8 @@
 import { onMounted, ref } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import UiButton from './ui/UiButton.vue'
-import ConfirmDialog from './ConfirmDialog.vue'
 import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
 import { getErrorMessage } from '../utils/errors'
 
 const props = defineProps<{
@@ -16,12 +16,11 @@ const props = defineProps<{
 }>()
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
 
 // 默认隐身：IsElevated 拿不到结果（非 Windows 语义/绑定异常）时不显示按钮，
 // 宁缺毋滥——按钮只在"确认未提权"时才有一键价值。
 const visible = ref(false)
-const confirming = ref(false)
-const busy = ref(false)
 
 onMounted(async () => {
   try {
@@ -31,37 +30,31 @@ onMounted(async () => {
   }
 })
 
+// 确认经全局 useConfirm 单例发出（App.vue 顶层唯一实例），本组件不再自挂弹层。
+// 确认后对话框即落定关闭；UAC 与退出流程的进度由 toast 承载，
+// 失败（如 UAC 取消）toast 报错，用户可重新点击按钮再次发起。
 async function restart() {
-  busy.value = true
+  const accepted = await confirm({
+    title: '以管理员身份重启 Hanxi',
+    description: 'Hanxi 将退出并弹出 UAC 提权对话框，请点击「是」。重启完成后自动回到当前页面；已启动的托管工具会随退出流程关闭，需要重新打开。',
+    confirmLabel: '提权重启',
+    tone: 'warning',
+  })
+  if (!accepted) return
   try {
     await AppAPI.AppService.RestartElevated(props.route)
     // 成功即进入 300ms 后的退出流程，toast 只是退出前的瞬时示意
     showToast('已在 UAC 授权，正在以管理员身份重启…', { duration: 4000 })
   } catch (e) {
-    confirming.value = false
     showToast(`提权重启失败: ${getErrorMessage(e)}`, { duration: 4000 })
-  } finally {
-    busy.value = false
   }
 }
 </script>
 
 <template>
   <div v-if="visible" class="elevate-restart">
-    <UiButton variant="primary" small @click="confirming = true">↟ 以管理员身份重启</UiButton>
+    <UiButton variant="primary" small @click="restart">↟ 以管理员身份重启</UiButton>
     <span class="elevate-note">将弹出一次 UAC 确认；重启后自动回到本页。正在运行的托管工具会随本次重启退出，需重新启动。</span>
-    <ConfirmDialog
-      :open="confirming"
-      title="以管理员身份重启 Hanxi"
-      description="Hanxi 将退出并弹出 UAC 提权对话框，请点击「是」。重启完成后自动回到当前页面；已启动的托管工具会随退出流程关闭，需要重新打开。"
-      confirm-label="提权重启"
-      cancel-label="取消"
-      tone="warning"
-      :busy="busy"
-      @confirm="restart"
-      @cancel="confirming = false"
-      @update:open="confirming = $event"
-    />
   </div>
 </template>
 

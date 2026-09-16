@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
 import type {
   MemoItem,
@@ -50,7 +50,17 @@ const COLOR_OPTIONS = [
   { name: '紫罗兰', val: 'purple', hex: '#8b5cf6' },
 ]
 
+// 搜索/过滤拉取带序号守卫（模式同 useEverythingSearch 的 searchSeq）：
+// 新查询发起即失效旧请求，List+GetStats 的慢响应不得覆盖新状态（loading 亦只由最新请求收口）。
+let loadSeq = 0
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
 async function loadMemos() {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+  const seq = ++loadSeq
   loading.value = true
   try {
     const filter: MemoFilter = {
@@ -66,13 +76,25 @@ async function loadMemos() {
       MemoAPI.MemoService.GetStats(),
     ])
 
+    if (seq !== loadSeq) return
     memos.value = items ?? []
     stats.value = curStats
   } catch (err: unknown) {
+    if (seq !== loadSeq) return
     errorMsg.value = `加载备忘录失败: ${getErrorMessage(err)}`
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
+}
+
+// 搜索框输入：350ms 防抖；输入瞬间即失效在飞查询，仅最后一次停顿后的请求允许写回。
+function onSearchInput() {
+  ++loadSeq
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    searchTimer = null
+    void loadMemos()
+  }, 350)
 }
 
 function handleSelectTag(tag: string) {
@@ -208,6 +230,14 @@ useWailsEvent('memo:changed', () => {
 onMounted(() => {
   loadMemos()
 })
+
+onUnmounted(() => {
+  ++loadSeq // 作废在飞请求，卸载后不得回写状态
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+})
 </script>
 
 <template>
@@ -238,7 +268,7 @@ onMounted(() => {
           type="text"
           class="input-control search-input"
           placeholder="🔍 搜索标题、文本内容、代码片段或标签..."
-          @input="loadMemos"
+          @input="onSearchInput"
         />
         <button v-if="searchKw" class="btn-clear-search" @click="searchKw = ''; loadMemos()">✕</button>
       </div>

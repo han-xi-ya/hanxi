@@ -28,6 +28,7 @@ export interface UsePublicIpTracerouteReturn {
  * 目标/次数由视图持有、面板组件经 v-model 双向绑定——网卡芯片的「⚡ 快捷 Ping」
  * 需要跨 Tab 回填目标并立即发起，故状态不能下沉进面板组件。
  * 结果为一次性快照（无轮询），错误文案「Ping 执行失败: 」属业务契约，逐字保留。
+ * run() 在飞单飞：探测中重复触发（连点/Enter/快捷 ⚡）直接拒绝，不并发重入。
  */
 export function usePublicIpPing(): UsePublicIpPingReturn {
   const targetInput = ref('1.1.1.1')
@@ -38,6 +39,7 @@ export function usePublicIpPing(): UsePublicIpPingReturn {
 
   async function run() {
     if (!targetInput.value.trim()) return
+    if (loading.value) return // 在飞拒绝：以 loading 为单飞闸门，跨 Tab 快捷入口与面板按钮共用
     loading.value = true
     error.value = ''
     try {
@@ -58,6 +60,7 @@ export function usePublicIpPing(): UsePublicIpPingReturn {
  * 与 Ping 同构但参数语义不同（最大跳数），故各立一个 composable 而非泛型合流，
  * 以免为省 20 行把两侧契约揉成一团。
  * 错误文案「路由追踪执行失败: 」属业务契约，逐字保留。
+ * run() 在飞单飞：与 Ping 侧同一守卫语义，探测中重复触发直接拒绝。
  */
 export function usePublicIpTraceroute(): UsePublicIpTracerouteReturn {
   const targetInput = ref('1.1.1.1')
@@ -68,6 +71,7 @@ export function usePublicIpTraceroute(): UsePublicIpTracerouteReturn {
 
   async function run() {
     if (!targetInput.value.trim()) return
+    if (loading.value) return // 在飞拒绝：单飞闸门同 usePublicIpPing
     loading.value = true
     error.value = ''
     try {

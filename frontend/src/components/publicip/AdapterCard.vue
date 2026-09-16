@@ -4,9 +4,13 @@ import type { Adapter } from '../../../bindings/hanxi/internal/platform/models'
 // 单张网卡详情卡：局域网 IPv4 / 默认网关 / DNS / IPv6 地址列表（纯展示）。
 // v-for 与 :key 留在宿主 IpOverviewPanel 的用法处；快捷动作一律上抛，
 // 「切 Tab 并立即探测」与复制 toast 口径归视图编排层所有。
-defineProps<{
+// pingBusy：Ping 在飞时禁用 ⚡（视觉闸门；重入拒绝由 composable run() 的单飞守卫兜底）。
+withDefaults(defineProps<{
   adapter: Adapter
-}>()
+  pingBusy?: boolean
+}>(), {
+  pingBusy: false,
+})
 
 const emit = defineEmits<{
   'quick-ping': [ip: string]
@@ -37,7 +41,7 @@ const emit = defineEmits<{
         <div class="items-list">
           <div v-for="ip in adapter.ipv4" :key="ip" class="ip-chip">
             <code>{{ ip }}</code>
-            <button class="chip-action" title="Ping 测试" @click="emit('quick-ping', ip)">⚡</button>
+            <button class="chip-action" title="Ping 测试" :disabled="pingBusy" @click="emit('quick-ping', ip)">⚡</button>
             <button class="chip-copy" title="复制" @click="emit('copy-text', ip, '局域网 IP')">⧉</button>
           </div>
           <span v-if="!adapter.ipv4 || adapter.ipv4.length === 0" class="muted-text">无</span>
@@ -50,7 +54,7 @@ const emit = defineEmits<{
         <div class="items-list">
           <div v-if="adapter.gateway" class="ip-chip">
             <code>{{ adapter.gateway }}</code>
-            <button class="chip-action" title="Ping 网关" @click="emit('quick-ping', adapter.gateway)">⚡</button>
+            <button class="chip-action" title="Ping 网关" :disabled="pingBusy" @click="emit('quick-ping', adapter.gateway)">⚡</button>
             <button class="chip-copy" title="复制" @click="emit('copy-text', adapter.gateway, '默认网关')">⧉</button>
           </div>
           <div v-if="adapter.ipv6Gateway" class="ip-chip">
@@ -68,7 +72,7 @@ const emit = defineEmits<{
         <div class="items-list">
           <div v-for="dns in adapter.dnsServers" :key="dns" class="ip-chip dns-chip">
             <code>{{ dns }}</code>
-            <button class="chip-action" title="Ping DNS" @click="emit('quick-ping', dns)">⚡</button>
+            <button class="chip-action" title="Ping DNS" :disabled="pingBusy" @click="emit('quick-ping', dns)">⚡</button>
             <button class="chip-copy" title="复制" @click="emit('copy-text', dns, 'DNS')">⧉</button>
           </div>
           <span v-if="!adapter.dnsServers || adapter.dnsServers.length === 0" class="muted-text">—</span>
@@ -201,8 +205,12 @@ const emit = defineEmits<{
   color: var(--color-primary);
   padding: 0 2px;
 }
-.chip-action:hover {
+.chip-action:hover:not(:disabled) {
   transform: scale(1.15);
+}
+.chip-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .chip-copy {

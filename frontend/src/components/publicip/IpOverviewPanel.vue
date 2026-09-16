@@ -5,14 +5,18 @@ import AdapterCard from './AdapterCard.vue'
 
 // 「IP 与网卡查看」面板：状态栏 + 公网出口 IP 双卡 + 网卡详情列表（纯展示）。
 // 概览数据、加载态与错误文案由视图经 props 下传；强制刷新与快捷 Ping / 复制上抛。
+// pingBusy 为 Ping 在飞标记：快捷 ⚡ 探测中禁用，防连点触发重入（守卫本体在 composable run()）。
 // 根节点为多根 fragment（状态栏/错误框/两个小节），渲染后仍是 .network-page 的直接子节点，
 // 故 flex gap 布局与拆分前逐字一致。
-defineProps<{
+withDefaults(defineProps<{
   overview: NetworkOverview | null
   loading: boolean
   error: string
   adapters: Adapter[]
-}>()
+  pingBusy?: boolean
+}>(), {
+  pingBusy: false,
+})
 
 const emit = defineEmits<{
   refresh: []
@@ -68,7 +72,7 @@ function forwardCopyText(text: string, label: string) {
       <div class="card-footer">
         <button
           class="btn-copy"
-          :disabled="!overview?.publicIpv4"
+          :disabled="!overview?.publicIpv4 || pingBusy"
           @click="emit('quick-ping', overview?.publicIpv4 ?? '')"
         >
           ⚡ Ping 测试
@@ -121,6 +125,7 @@ function forwardCopyText(text: string, label: string) {
       v-for="adapter in adapters"
       :key="adapter.name"
       :adapter="adapter"
+      :ping-busy="pingBusy"
       @quick-ping="forwardQuickPing"
       @copy-text="forwardCopyText"
     />

@@ -2,22 +2,21 @@
 import { computed, onActivated, onMounted, ref } from 'vue'
 import * as EarTrumpetAPI from '../../bindings/hanxi/internal/modules/eartrumpet/eartrumpetservice'
 import type { PackageSnapshot } from '../../bindings/hanxi/internal/modules/eartrumpet/models'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
 import MsixToolHeader from '../components/tool/MsixToolHeader.vue'
 import MsixOverview from '../components/tool/MsixOverview.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
+import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
 const snapshot = ref<PackageSnapshot | null>(null)
 const remoteVersion = ref('')
 const loading = ref(false)
 const error = ref('')
-const busy = ref<'' | 'launch' | 'exit' | 'install' | 'repo'>('')
-const confirmUninstall = ref(false)
-const uninstallBusy = ref(false)
+const busy = ref<'' | 'launch' | 'exit' | 'install' | 'repo' | 'uninstall'>('')
 
 const installed = computed(() => snapshot.value?.installed ?? false)
 const running = computed(() => snapshot.value?.running ?? false)
@@ -96,17 +95,26 @@ async function install() {
   }
 }
 
-async function confirmUninstallAction() {
-  uninstallBusy.value = true
+// 卸载：危险确认经全局 useConfirm 单例（原视图自挂 ConfirmDialog 已收编）；
+// 确认后动作期由 busy='uninstall' 门禁全页按钮，成败均以 toast 回执。
+async function requestUninstall() {
+  const accepted = await confirm({
+    title: '卸载 EarTrumpet 直装版',
+    description: '为当前用户卸载 Windows 包。热键、音量覆盖与 Actions 规则等设置保存在包的 LocalSettings 容器中，将随卸载一并删除。',
+    confirmLabel: '卸载',
+    tone: 'danger',
+    details: [{ label: '当前版本', value: snapshot.value?.version || '—' }],
+  })
+  if (!accepted) return
+  busy.value = 'uninstall'
   try {
     await EarTrumpetAPI.Uninstall()
-    confirmUninstall.value = false
     showToast('已卸载（当前用户）')
     await refresh()
   } catch (err) {
     showToast(`卸载失败：${getErrorMessage(err)}`)
   } finally {
-    uninstallBusy.value = false
+    busy.value = ''
   }
 }
 
@@ -160,21 +168,9 @@ onActivated(() => {
         <UiButton :disabled="!running || busy !== ''" @click="exit">退出</UiButton>
         <UiButton :disabled="loading" @click="refresh">{{ loading ? '读取中…' : '刷新状态' }}</UiButton>
         <UiButton :disabled="busy !== ''" @click="openRepo">{{ busy === 'repo' ? '正在打开…' : '项目主页' }}</UiButton>
-        <UiButton v-if="installed" variant="danger" :disabled="busy !== ''" @click="confirmUninstall = true">卸载</UiButton>
+        <UiButton v-if="installed" variant="danger" :disabled="busy !== ''" @click="requestUninstall">{{ busy === 'uninstall' ? '卸载中…' : '卸载' }}</UiButton>
       </template>
     </MsixOverview>
-
-    <ConfirmDialog
-      :open="confirmUninstall"
-      title="卸载 EarTrumpet 直装版"
-      description="为当前用户卸载 Windows 包。热键、音量覆盖与 Actions 规则等设置保存在包的 LocalSettings 容器中，将随卸载一并删除。"
-      confirm-label="卸载"
-      tone="danger"
-      :busy="uninstallBusy"
-      :details="[{ label: '当前版本', value: snapshot?.version || '—' }]"
-      @confirm="confirmUninstallAction"
-      @cancel="confirmUninstall = false"
-    />
   </section>
 </template>
 

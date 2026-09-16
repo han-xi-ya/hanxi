@@ -14,9 +14,9 @@ import type { Overview as NpmOverview, ToolOverview, OperationProgress, Operatio
 import OfficialVersionsPanel from '../components/envcheck/OfficialVersionsPanel.vue'
 import PackageManagerUpgradeHint from '../components/envcheck/PackageManagerUpgradeHint.vue'
 import NpmToolActions from '../components/envcheck/NpmToolActions.vue'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
+import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
@@ -38,6 +38,7 @@ const localLoading = ref(false)
 const loadError = ref('')
 const everLoaded = ref(false)
 const { showToast } = useToast()
+const { confirm } = useConfirm()
 
 const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
   git: { overview: null, loading: false, error: '' },
@@ -55,8 +56,6 @@ const npmError = ref('')
 const npmLogs = reactive<Record<string, string[]>>({})
 // 当前进行中的操作（全局锁保证同一时刻至多一个）。
 const npmActive = ref<OperationProgress | null>(null)
-const uninstallTarget = ref<ToolOverview | null>(null)
-const uninstallBusy = ref(false)
 
 const toolsByName = computed(() => new Map(tools.value.map(tool => [tool.name, tool])))
 const officialTools = computed(() => OFFICIAL_TOOLS.map(name => ({ name, local: toolsByName.value.get(name) })))
@@ -92,16 +91,6 @@ const TOOL_LABELS: Record<OfficialTool | 'npm' | 'pnpm', string> = {
   npm: 'npm',
   pnpm: 'pnpm',
 }
-
-const uninstallDetails = computed(() => {
-  const tool = uninstallTarget.value
-  if (!tool) return []
-  return [
-    { label: 'npm 包', value: tool.tool.package },
-    { label: '当前版本', value: tool.local.version || '—' },
-    { label: '影响范围', value: '仅移除 npm 全局安装；配置与登录态目录不受影响' },
-  ]
-})
 
 const loading = computed(() => localLoading.value || npmLoading.value || Object.values(remoteStates).some(state => state.loading))
 const okCount = computed(() => tools.value.filter(tool => tool.status === 'installed').length)
@@ -154,27 +143,32 @@ async function startNpmAction(kind: 'install' | 'upgrade', tool: ToolOverview) {
   }
 }
 
-function requestUninstall(tool: ToolOverview) {
+// 卸载先经全局 useConfirm 单例二次确认（原视图自挂 ConfirmDialog 已收编）；
+// 受理成功后由事件流推进度，失败以 toast 回执、可重新发起。
+async function requestUninstall(tool: ToolOverview) {
   if (npmBusyOperation.value) return
-  uninstallTarget.value = tool
-}
-
-async function confirmUninstall() {
-  const tool = uninstallTarget.value
-  if (!tool) return
-  uninstallBusy.value = true
+  const accepted = await confirm({
+    title: `卸载 ${tool.tool.display}`,
+    description: '将经 npm 全局卸载该命令行工具，需二次确认。用户配置目录与登录态不会被删除。',
+    confirmLabel: '确认卸载',
+    tone: 'danger',
+    details: [
+      { label: 'npm 包', value: tool.tool.package },
+      { label: '当前版本', value: tool.local.version || '—' },
+      { label: '影响范围', value: '仅移除 npm 全局安装；配置与登录态目录不受影响' },
+    ],
+  })
+  if (!accepted) return
+  if (npmBusyOperation.value) return // 确认期间可能已有其它 npm 操作受理，二次门禁
   try {
-    const accepted = await EnvCheckAPI.UninstallNpmTool(tool.tool.command)
+    const result = await EnvCheckAPI.UninstallNpmTool(tool.tool.command)
     npmLogs[tool.local.name] = []
     npmActive.value = {
-      operationId: accepted.operationId, toolId: tool.local.name, kind: 'uninstall',
-      stage: 'started', message: accepted.message, terminal: false, success: false,
+      operationId: result.operationId, toolId: tool.local.name, kind: 'uninstall',
+      stage: 'started', message: result.message, terminal: false, success: false,
     }
-    uninstallTarget.value = null
   } catch (error) {
     showToast(`卸载失败: ${getErrorMessage(error)}`)
-  } finally {
-    uninstallBusy.value = false
   }
 }
 
@@ -488,20 +482,6 @@ onMounted(() => {
         </div>
       </section>
     </div>
-
-    <ConfirmDialog
-      :open="!!uninstallTarget"
-      :title="`卸载 ${uninstallTarget?.tool.display ?? 'npm 工具'}`"
-      description="将经 npm 全局卸载该命令行工具，需二次确认。用户配置目录与登录态不会被删除。"
-      confirm-label="确认卸载"
-      cancel-label="取消"
-      tone="danger"
-      :busy="uninstallBusy"
-      :details="uninstallDetails"
-      @confirm="confirmUninstall"
-      @cancel="uninstallTarget = null"
-      @update:open="(value: boolean) => { if (!value) uninstallTarget = null }"
-    />
   </section>
 </template>
 

@@ -3,18 +3,19 @@ import { computed, onActivated, onMounted, ref } from 'vue'
 import * as NanaZipAPI from '../../bindings/hanxi/internal/modules/nanazip/nanazipservice'
 import type { OperationProgress, PackageSnapshot } from '../../bindings/hanxi/internal/modules/nanazip/models'
 import type { CachedPackage, Release } from '../../bindings/hanxi/internal/modules/nanazip/version/models'
-import ConfirmDialog from '../components/ConfirmDialog.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import MsixToolHeader from '../components/tool/MsixToolHeader.vue'
 import MsixOverview from '../components/tool/MsixOverview.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
+import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
 const activeTab = ref<'install' | 'versions'>('install')
 const tabs = [
   { key: 'install', label: '安装管理' },
@@ -29,14 +30,11 @@ const localError = ref('')
 const remoteError = ref('')
 const progress = ref<OperationProgress | null>(null)
 const rowErrors = ref<Record<string, string>>({})
-const dialog = ref<{ kind: 'uninstall' | 'downgrade' | 'cache'; version?: string } | null>(null)
-const dialogBusy = ref(false)
 
 const installed = computed(() => snapshot.value?.installed ?? false)
 const operationBusy = computed(() => !!progress.value && !progress.value.terminal)
 const stale = computed(() => releases.value.some(item => item.stale))
 const stateLabel = computed(() => operationBusy.value ? stageLabel(progress.value?.stage ?? '') : installed.value ? '已安装' : '未安装')
-const latest = computed(() => releases.value[0] ?? null)
 const progressPercent = computed(() => {
   const item = progress.value
   if (!item) return null
@@ -82,9 +80,25 @@ async function refreshRemote() {
 }
 async function loadPage() { await Promise.allSettled([refreshLocal(), refreshRemote()]) }
 
+// 危险/降级确认全部经全局 useConfirm 单例发出（原视图自挂的三态 ConfirmDialog 已收编）；
+// 确认后动作直接发起，失败以 toast/行内错误回执，可重新点击再次走确认流。
 async function install(release: Release, allowDowngrade = false) {
   if (operationBusy.value || relation(release) === 'installed') return
-  if (relation(release) === 'downgrade' && !allowDowngrade) { dialog.value = { kind:'downgrade', version:release.version }; return }
+  if (relation(release) === 'downgrade' && !allowDowngrade) {
+    const accepted = await confirm({
+      title: '确认降级',
+      description: 'Windows 将使用 ForceUpdateFromAnyVersion 部署旧版本，请先关闭 NanaZip。',
+      confirmLabel: '确认降级',
+      tone: 'warning',
+      details: [
+        { label: '当前版本', value: snapshot.value?.version || '—' },
+        { label: '目标版本', value: release.version },
+      ],
+    })
+    if (!accepted) return
+    if (operationBusy.value || relation(release) === 'installed') return // 确认期间状态可能已变，二次门禁
+    allowDowngrade = true
+  }
   rowErrors.value[release.version] = ''
   try {
     const accepted = await NanaZipAPI.InstallVersion(release.version, allowDowngrade)
@@ -93,21 +107,26 @@ async function install(release: Release, allowDowngrade = false) {
 }
 async function launch() { try { await NanaZipAPI.Launch(); showToast('已提交 NanaZip 启动请求') } catch (error) { showToast(`打开失败：${getErrorMessage(error)}`) } }
 async function uninstall() {
-  dialogBusy.value = true
-  try { const accepted = await NanaZipAPI.Uninstall(); progress.value = { operationId:accepted.operationId, kind:accepted.kind, targetVersion:snapshot.value?.version ?? '', stage:'uninstalling', done:0, total:0, message:accepted.message, terminal:false, success:false, errorCode:'', errorDetail:'' }; dialog.value = null }
+  const accepted = await confirm({
+    title: '卸载 NanaZip',
+    description: '仅卸载当前用户 NanaZip。Explorer 右键菜单可能需要重新登录后完全消失，Hanxi 不会自动重启 Explorer。',
+    confirmLabel: '卸载 NanaZip',
+    tone: 'danger',
+  })
+  if (!accepted) return
+  try { const op = await NanaZipAPI.Uninstall(); progress.value = { operationId:op.operationId, kind:op.kind, targetVersion:snapshot.value?.version ?? '', stage:'uninstalling', done:0, total:0, message:op.message, terminal:false, success:false, errorCode:'', errorDetail:'' } }
   catch (error) { showToast(`卸载失败：${getErrorMessage(error)}`) }
-  finally { dialogBusy.value = false }
 }
-async function removeCache(version: string) {
-  dialogBusy.value = true
-  try { await NanaZipAPI.RemoveCachedPackage(version); dialog.value = null; await refreshLocal(); showToast(`已移除 NanaZip ${version} 安装包缓存`) }
+async function requestRemoveCache(version: string) {
+  const accepted = await confirm({
+    title: '移除安装包缓存',
+    description: '仅删除 Hanxi 保存的可信 MSIXBundle，不会卸载系统中的 NanaZip。',
+    confirmLabel: '移除缓存',
+    tone: 'danger',
+  })
+  if (!accepted) return
+  try { await NanaZipAPI.RemoveCachedPackage(version); await refreshLocal(); showToast(`已移除 NanaZip ${version} 安装包缓存`) }
   catch (error) { rowErrors.value[version] = getErrorMessage(error) }
-  finally { dialogBusy.value = false }
-}
-async function confirmDialog() {
-  if (dialog.value?.kind === 'uninstall') await uninstall()
-  else if (dialog.value?.kind === 'downgrade' && dialog.value.version) { const target = releases.value.find(item => item.version === dialog.value?.version); dialog.value = null; if (target) await install(target, true) }
-  else if (dialog.value?.kind === 'cache' && dialog.value.version) await removeCache(dialog.value.version)
 }
 function handleProgress(item: OperationProgress) {
   if (progress.value?.operationId && item.operationId !== progress.value.operationId) return
@@ -148,7 +167,7 @@ useWailsEvent<PackageSnapshot>('nanazip:package-snapshot', (data) => data && han
           <UiButton v-if="installed" variant="primary" :disabled="operationBusy" @click="launch">打开 NanaZip</UiButton>
           <UiButton v-else variant="primary" @click="activeTab = 'versions'">选择版本安装</UiButton>
           <UiButton :disabled="localLoading" @click="refreshLocal">{{ localLoading ? '读取中…' : '刷新状态' }}</UiButton>
-          <UiButton v-if="installed" variant="danger" :disabled="operationBusy" @click="dialog = { kind:'uninstall' }">卸载</UiButton>
+          <UiButton v-if="installed" variant="danger" :disabled="operationBusy" @click="uninstall">卸载</UiButton>
         </template>
       </MsixOverview>
 
@@ -187,13 +206,11 @@ useWailsEvent<PackageSnapshot>('nanazip:package-snapshot', (data) => data && han
         <div v-else class="nanazip-resource-list">
           <article v-for="item in cached" :key="item.version" class="nanazip-resource-row">
             <div class="nanazip-resource-main"><div class="nanazip-version-icon cached">✓</div><div><h3>NanaZip {{ item.version }}</h3><p>{{ fmtSize(item.size) }} · {{ item.architectures?.join(' / ') || '架构已验证' }} · {{ item.verificationMode }}</p></div></div>
-            <UiButton variant="danger" :disabled="operationBusy" @click="dialog = { kind:'cache', version:item.version }">移除缓存</UiButton>
+            <UiButton variant="danger" :disabled="operationBusy" @click="requestRemoveCache(item.version)">移除缓存</UiButton>
           </article>
         </div>
       </section>
     </template>
-
-    <ConfirmDialog :open="!!dialog" :title="dialog?.kind === 'uninstall' ? '卸载 NanaZip' : dialog?.kind === 'downgrade' ? '确认降级' : '移除安装包缓存'" :description="dialog?.kind === 'uninstall' ? '仅卸载当前用户 NanaZip。Explorer 右键菜单可能需要重新登录后完全消失，Hanxi 不会自动重启 Explorer。' : dialog?.kind === 'downgrade' ? 'Windows 将使用 ForceUpdateFromAnyVersion 部署旧版本，请先关闭 NanaZip。' : '仅删除 Hanxi 保存的可信 MSIXBundle，不会卸载系统中的 NanaZip。'" :confirm-label="dialog?.kind === 'uninstall' ? '卸载 NanaZip' : dialog?.kind === 'downgrade' ? '确认降级' : '移除缓存'" :tone="dialog?.kind === 'uninstall' || dialog?.kind === 'cache' ? 'danger' : 'warning'" :busy="dialogBusy" :details="dialog?.kind === 'downgrade' ? [{label:'当前版本',value:snapshot?.version || '—'},{label:'目标版本',value:dialog?.version || '—'}] : []" @confirm="confirmDialog" @cancel="dialog = null" />
   </section>
 </template>
 

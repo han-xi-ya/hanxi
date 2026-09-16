@@ -46,18 +46,13 @@ async function copyText(text: string, label: string) {
   showToast(ok ? `已复制 ${label}: ${text}` : '复制失败')
 }
 
+// 快捷 Ping：回填目标并跨 Tab 立即发起；探测经 runPing()（即 composable 的 run()），
+// 与面板按钮共用同一在飞单飞守卫，连点 ⚡ 不会并发重入。
+// （Phase 6 曾登记的同族死码 quickTrace 已于本次交互整改删除。）
 function quickPing(ip: string) {
   pingTargetInput.value = ip
   activeTab.value = 'ping'
   runPing()
-}
-
-// 注记（Phase 6 拆分登记）：拆分前的模板里就没有任何入口调用 quickTrace（快捷 Ping 有、快捷 Trace 无），
-// 属既有死码。按「结构重构不改行为」原样保留，是否接入口或删除交主线单独裁决。
-function quickTrace(ip: string) {
-  traceTargetInput.value = ip
-  activeTab.value = 'traceroute'
-  runTraceroute()
 }
 
 onMounted(() => loadNetworkInfo(false))
@@ -99,6 +94,7 @@ onMounted(() => loadNetworkInfo(false))
         :loading="loading"
         :error="errorMsg"
         :adapters="activeAdapters"
+        :ping-busy="pingLoading"
         @refresh="loadNetworkInfo(true)"
         @quick-ping="quickPing"
         @copy-text="copyText"

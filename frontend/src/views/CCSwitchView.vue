@@ -55,12 +55,6 @@ const stateText = computed(() => toolStateMeta(state.value).text)
 
 const runningVersion = computed(() => snap.value?.version ?? '')
 
-// 打开安装目录目标：优先当前运行版本，其次 active 版本，最后任一已装
-const openDirVersion = computed(() => {
-  const prefer = state.value === 'running' && runningVersion.value ? runningVersion.value : activeVersion.value
-  return installed.value.find(v => v.version === prefer) ?? installed.value[0] ?? null
-})
-
 // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
 const banner = computed(() => {
   if (state.value === 'external') {

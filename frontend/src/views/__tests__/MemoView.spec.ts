@@ -1,5 +1,6 @@
 // 组 G1 特征测试：MemoView——锁迁移前基线（第三方言视图，交互结果导向断言）。
-// 现状钉死：删除无二次确认（直接 Delete）、搜索 @input 即时查询、标签自动加 # 前缀。
+// 现状钉死：删除无二次确认（直接 Delete）、搜索 @input 350ms 防抖 + 序号守卫（过期响应丢弃）、
+// 标签自动加 # 前缀。
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -90,13 +91,43 @@ describe('MemoView 列表与过滤', () => {
     w.unmount()
   })
 
-  it('搜索框输入即时重查（keyword 入参）', async () => {
-    const w = await mountView()
-    const before = svc.List.mock.calls.length
-    await w.find('.search-input').setValue('redis')
+  it('搜索框输入 350ms 防抖后重查（keyword 入参），停顿窗口内不发请求', async () => {
+    vi.useFakeTimers()
+    try {
+      const w = await mountView()
+      const before = svc.List.mock.calls.length
+      await w.find('.search-input').setValue('redis')
+      await vi.advanceTimersByTimeAsync(300)
+      expect(svc.List.mock.calls.length).toBe(before) // 防抖窗口内不触发
+      await vi.advanceTimersByTimeAsync(100)
+      await flushMicrotasks()
+      expect(svc.List.mock.calls.length).toBe(before + 1)
+      expect(svc.List.mock.calls.at(-1)![0]).toMatchObject({ keyword: 'redis' })
+      w.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('序号守卫：先发起后返回的过期响应不得覆盖新结果', async () => {
+    // 挂载即首查，令其 List 挂起（旧查询），GetStats 正常返回
+    let resolveStale: (v: unknown[]) => void = () => {}
+    const staleList = new Promise<unknown[]>((r) => { resolveStale = r })
+    defaults([memo()], { '#SQL': 1 })
+    svc.List.mockImplementationOnce(() => staleList)
+    const w = mount(defineComponent({ render: () => h(MemoView) }), { attachTo: document.body })
     await flushMicrotasks()
-    expect(svc.List.mock.calls.length).toBeGreaterThan(before)
-    expect(svc.List.mock.calls[svc.List.mock.calls.length - 1][0]).toMatchObject({ keyword: 'redis' })
+    // memo:changed 事件直达 loadMemos（不经防抖），触发第二次查询
+    // （第一次查询挂在 List 上，Promise.all 未归，stats/标签也尚未渲染）
+    svc.List.mockResolvedValueOnce([memo({ id: 'm2', title: '新查询结果' })])
+    runtime.handlers['memo:changed']({})
+    await flushMicrotasks()
+    expect(w.text()).toContain('新查询结果')
+    // 旧查询姗姗来迟：seq 已失效，必须被丢弃而不是糊回列表
+    resolveStale([memo({ id: 'm1', title: '过期旧结果' })])
+    await flushMicrotasks()
+    expect(w.text()).toContain('新查询结果')
+    expect(w.text()).not.toContain('过期旧结果')
     w.unmount()
   })
 

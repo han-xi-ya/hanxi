@@ -1,9 +1,11 @@
 // 特征测试：NanaZipView（MSIX 安装管理型，OperationAccepted+进度事件形态，无轮询）。
-// 锁定迁移前行为基线；迁移后除"确认框承载机制/格式化统一"外断言不得改动。
+// 卸载/降级/移除缓存三类确认已收编为全局 useConfirm 单例：测试经
+// confirmState/settleConfirm 驱动，文案与流程断言语义不变。
 import { KeepAlive, defineComponent, h, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NanaZipView from '../NanaZipView.vue'
+import { useConfirm } from '../../composables/useConfirm'
 
 const svc = vi.hoisted(() => ({
   GetPackageSnapshot: vi.fn(),
@@ -62,8 +64,13 @@ async function mountView() {
   return { wrapper, show }
 }
 
-beforeEach(() => vi.stubGlobal('confirm', vi.fn(() => true)))
+const { confirmState, settleConfirm } = useConfirm()
+
+beforeEach(() => {
+  settleConfirm(false) // 兜底落定上个用例可能悬挂的确认
+})
 afterEach(() => {
+  settleConfirm(false)
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -147,7 +154,7 @@ describe('NanaZipView 版本关系矩阵与安装', () => {
     wrapper.unmount()
   })
 
-  it('降级先弹确认框；确认后携 allowDowngrade=true', async () => {
+  it('降级先经全局确认（warning+双版本明细）；确认后携 allowDowngrade=true', async () => {
     stubDefaults(snapshot({ installed: true, version: '1.19.0' }), [release('1.18.0')])
     svc.InstallVersion.mockResolvedValue({ operationId: 'op-8', kind: 'install', message: '' })
     const { wrapper } = await mountView()
@@ -155,13 +162,33 @@ describe('NanaZipView 版本关系矩阵与安装', () => {
     await wrapper.find('.nanazip-row-actions button').trigger('click')
     await flushMicrotasks()
     expect(svc.InstallVersion).not.toHaveBeenCalled()
-    const dialog = wrapper.find('.workbench-confirm')
-    expect(dialog.exists()).toBe(true)
-    expect(dialog.text()).toContain('确认降级')
-    expect(dialog.text()).toContain('ForceUpdateFromAnyVersion')
-    await dialog.findAll('button').find(b => b.text() === '确认降级')!.trigger('click')
+    expect(wrapper.find('.workbench-confirm').exists()).toBe(false) // 视图不再自挂弹层
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('确认降级')
+    expect(confirmState.options.confirmLabel).toBe('确认降级')
+    expect(confirmState.options.tone).toBe('warning')
+    expect(confirmState.options.description).toContain('ForceUpdateFromAnyVersion')
+    expect(confirmState.options.details).toEqual([
+      { label: '当前版本', value: '1.19.0' },
+      { label: '目标版本', value: '1.18.0' },
+    ])
+    settleConfirm(true)
     await flushMicrotasks()
     expect(svc.InstallVersion).toHaveBeenCalledWith('1.18.0', true)
+    wrapper.unmount()
+  })
+
+  it('降级确认取消：不发起安装', async () => {
+    stubDefaults(snapshot({ installed: true, version: '1.19.0' }), [release('1.18.0')])
+    const { wrapper } = await mountView()
+    await wrapper.findAll('.main-tab-btn')[1].trigger('click')
+    await wrapper.find('.nanazip-row-actions button').trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    settleConfirm(false)
+    await flushMicrotasks()
+    expect(svc.InstallVersion).not.toHaveBeenCalled()
+    expect(confirmState.open).toBe(false)
     wrapper.unmount()
   })
 
@@ -171,10 +198,14 @@ describe('NanaZipView 版本关系矩阵与安装', () => {
     const { wrapper } = await mountView()
     const uninstallBtn = wrapper.findAll('.msix-actions button').find(b => b.text() === '卸载')!
     await uninstallBtn.trigger('click')
-    const dialog = wrapper.find('.workbench-confirm')
-    expect(dialog.text()).toContain('卸载 NanaZip')
-    expect(dialog.text()).toContain('不会自动重启 Explorer')
-    await dialog.findAll('button').find(b => b.text() === '卸载 NanaZip')!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.Uninstall).not.toHaveBeenCalled()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('卸载 NanaZip')
+    expect(confirmState.options.confirmLabel).toBe('卸载 NanaZip')
+    expect(confirmState.options.tone).toBe('danger')
+    expect(confirmState.options.description).toContain('不会自动重启 Explorer')
+    settleConfirm(true)
     await flushMicrotasks()
     expect(svc.Uninstall).toHaveBeenCalledTimes(1)
     expect(wrapper.find('.nanazip-progress').text()).toContain('Windows 正在卸载')
@@ -246,9 +277,13 @@ describe('NanaZipView 进度与快照事件', () => {
     await wrapper.findAll('.main-tab-btn')[1].trigger('click')
     expect(wrapper.find('.nanazip-resource-row').text()).toContain('2.0 MB') // formatBytes 基线（远离 1MB 边界，与统一 fmtSize 行为一致）
     await wrapper.find('.btn-danger-outline').trigger('click')
-    const dialog = wrapper.find('.workbench-confirm')
-    expect(dialog.text()).toContain('移除安装包缓存')
-    await dialog.findAll('button').find(b => b.text() === '移除缓存')!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.RemoveCachedPackage).not.toHaveBeenCalled()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('移除安装包缓存')
+    expect(confirmState.options.confirmLabel).toBe('移除缓存')
+    expect(confirmState.options.tone).toBe('danger')
+    settleConfirm(true)
     await flushMicrotasks()
     expect(svc.RemoveCachedPackage).toHaveBeenCalledWith('1.18.0')
     wrapper.unmount()

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { onBeforeUnmount, onDeactivated, reactive, ref, watch } from 'vue'
 import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
 import type { Project, ProxyRule } from '../../bindings/hanxi/internal/domain/models'
 import { useToast } from '../composables/useToast'
@@ -263,17 +263,6 @@ function applyBatchPorts() {
   showToast(`已批量添加 ${added.length} 条端口规则`)
 }
 
-function onTypeChange(r: EditableProxy) {
-  if (r.type === 'stcp-visitor' || r.type === 'xtcp-visitor') {
-    r.role = 'visitor'
-    if (!r.bindPort) r.bindPort = r.localPort || 9000
-    if (!r.bindAddr) r.bindAddr = '127.0.0.1'
-  } else {
-    r.role = 'server'
-  }
-  refreshPreview()
-}
-
 function getRuleSelectType(r: EditableProxy): string {
   if (r.role === 'visitor') {
     return r.type === 'xtcp' ? 'xtcp-visitor' : 'stcp-visitor'
@@ -339,18 +328,38 @@ function toPayload(): Project {
   }
 }
 
+// 防抖预览的生命周期收口：卸载后丢弃迟到的 RPC 回写；KeepAlive 失活时撤掉未触发的
+// 定时器，避免后台标签页继续发起 GenerateToml（再激活后由后续编辑重新调度）。
 let previewTimer: ReturnType<typeof setTimeout> | null = null
+let previewGone = false
+
+function cancelPendingPreview() {
+  if (previewTimer) {
+    clearTimeout(previewTimer)
+    previewTimer = null
+  }
+}
+
 function refreshPreview() {
   if (editorMode.value === 'toml') return
-  if (previewTimer) clearTimeout(previewTimer)
+  cancelPendingPreview()
   previewTimer = setTimeout(async () => {
+    previewTimer = null
+    if (previewGone) return
     try {
-      tomlPreview.value = await FrpcAPI.GenerateToml(toPayload() as any)
+      const toml = await FrpcAPI.GenerateToml(toPayload())
+      if (!previewGone) tomlPreview.value = toml
     } catch (e: unknown) {
-      tomlPreview.value = `# 配置校验中: ${getErrorMessage(e)}`
+      if (!previewGone) tomlPreview.value = `# 配置校验中: ${getErrorMessage(e)}`
     }
   }, 250)
 }
+
+onDeactivated(cancelPendingPreview)
+onBeforeUnmount(() => {
+  previewGone = true
+  cancelPendingPreview()
+})
 
 watch(() => draft, refreshPreview, { deep: true, immediate: true })
 
@@ -359,7 +368,7 @@ async function switchMode(target: 'form' | 'toml') {
   if (target === 'toml') {
     // 表单 -> 源码模式：生成 TOML
     try {
-      rawTomlContent.value = await FrpcAPI.GenerateToml(toPayload() as any)
+      rawTomlContent.value = await FrpcAPI.GenerateToml(toPayload())
       tomlParseError.value = ''
       editorMode.value = 'toml'
     } catch (err: unknown) {
