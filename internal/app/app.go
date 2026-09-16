@@ -103,8 +103,17 @@ import (
 	"hanxi/internal/settings"
 )
 
-// mainWindow 主窗口引用，供单实例第二启动回调聚焦使用
-var mainWindow *application.WebviewWindow
+// 主窗口外观与启动交接参数：集中常量化，避免魔法数字散落装配代码。
+const (
+	windowWidth  = 1200 // 主窗口默认宽
+	windowHeight = 780  // 主窗口默认高
+	// 窗口底色与前端浅色主题页面背景同值，消除 WebView 挂载前的白/异色闪。
+	windowBgR = 245
+	windowBgG = 246
+	windowBgB = 248
+	// takeoverWaitTimeout 提权重启交接：等待旧实例退出（让出单实例锁）的上限。
+	takeoverWaitTimeout = 15 * time.Second
+)
 
 // RegisterEvents 注册类型化事件（wails3 绑定生成器会据此生成 TS API）。
 func RegisterEvents() {
@@ -249,8 +258,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// 正常退出流程，这里必须等它释放单实例互斥体再走 application.New 抢锁；
 	// 超时不致命——真让不出去就按普通第二实例聚焦旧窗并自退（Wails 原语义）。
 	if options.TakeoverPID != 0 && options.TakeoverPID != uint32(os.Getpid()) {
-		if !windows.WaitProcessGone(options.TakeoverPID, 15*time.Second) {
-			slog.Warn("takeover: old instance did not exit within 15s", "pid", options.TakeoverPID)
+		if !windows.WaitProcessGone(options.TakeoverPID, takeoverWaitTimeout) {
+			slog.Warn("takeover: old instance did not exit within timeout",
+				"pid", options.TakeoverPID, "timeout", takeoverWaitTimeout)
 		}
 	}
 
@@ -329,8 +339,14 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	}
 	services = append(services, registry.AllServices()...)
 
+	// mainWin 主窗口局部引用：闭包捕获供单实例第二启动回调聚焦，
+	// 不再使用包级全局（消除可被任意代码读写的共享状态）。
+	var mainWin *application.WebviewWindow
+
 	// 自动预初始化微信等常驻监听型后台模块，确保即便未打开对应前端页面也能实时监听入站消息
-	_ = registry.EnsureActive("wechat")
+	if err := registry.EnsureActive("wechat"); err != nil {
+		slog.Error("预激活 wechat 模块失败，入站消息监听不可用（不影响启动）", "err", err)
+	}
 
 	a := application.New(application.Options{
 		Name:        product.Name,
@@ -349,9 +365,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 			UniqueID: product.Identifier,
 			// 第二实例启动时, 聚焦展示已有主窗口
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
-				if mainWindow != nil {
-					mainWindow.Show()
-					mainWindow.Focus()
+				if mainWin != nil {
+					mainWin.Show()
+					mainWin.Focus()
 				}
 			},
 		},
@@ -376,9 +392,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	}
 	win := a.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            product.Name,
-		Width:            1200,
-		Height:           780,
-		BackgroundColour: application.NewRGB(245, 246, 248),
+		Width:            windowWidth,
+		Height:           windowHeight,
+		BackgroundColour: application.NewRGB(windowBgR, windowBgG, windowBgB),
 		URL:              initialURL,
 		Hidden:           options.StartMinimized,
 		// 原生文件拖放：Windows(WebView2) 下把落放文件的真实磁盘路径交给 Go。
@@ -386,7 +402,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		//（文字识别页的组件导入区/图片区），其余区域行为不变。
 		EnableFileDrop: true,
 	})
-	mainWindow = win
+	mainWin = win
 	notify.GetHub().SetWailsContext(a, win)
 
 	// 文字识别：主窗文件拖放 → OcrService（exe 落放=导入组件，图片落放=选图识别）。
@@ -407,7 +423,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// quickmenu：注入主窗引用供 route 条目唤窗，并随启动常驻激活全局鼠标钩子
 	//（右键长按识别与 wechat 入站监听同属常驻监听型能力；设置页关模块即可停用）。
 	quickMenuModule.SetMainWindow(win)
-	_ = registry.EnsureActive("quickmenu")
+	if err := registry.EnsureActive("quickmenu"); err != nil {
+		slog.Error("激活 quickmenu 模块失败，全局鼠标钩子不可用（不影响启动）", "err", err)
+	}
 
 	// 标题栏同步桥：前端 useTheme 解析出实际亮/暗后经 SetWindowDarkMode 调到这里，
 	// 由平台层 DWM 属性同步原生窗框（重构蓝图铁律 8 的唯一后端例外）。

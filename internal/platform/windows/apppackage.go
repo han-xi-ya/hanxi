@@ -254,11 +254,7 @@ func mapAppPackageError(src *appPackageScriptError) error {
 }
 
 func windowsPowerShellPath() string {
-	root := os.Getenv("SystemRoot")
-	if root == "" {
-		root = `C:\Windows`
-	}
-	return filepath.Join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	return filepath.Join(SystemRoot(), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 }
 
 func encodedAppPackageScript() string {
