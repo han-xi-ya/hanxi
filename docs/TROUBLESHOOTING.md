@@ -78,6 +78,7 @@
 - [47. 集成「内测 + 闭源壳 + 无便携版」产品：托管降级为「仅版本+下载」的决策与连环环境坑（douzy 集成实战）](#47-集成内测--闭源壳--无便携版产品托管降级为仅版本下载的决策与连环环境坑douzy-集成实战)
 - [48. WSL「默认 D:\wsl 却还是装到 C」：落位三坑同源——偏好粘滞、装完即迁无归因、能力无闸门](#48-wsl默认-dwsl-却还是装到-c落位三坑同源偏好粘滞装完即迁无归因能力无闸门)
 - [49. 全库确认框「\n\n 分段」被 HTML 折叠成文字墙：设计防线在渲染层一秒归零](#49-全库确认框nn-分段被-html-折叠成文字墙设计防线在渲染层一秒归零)
+- [50. 快捷菜单轮盘连环白边：旧注释谎称"Wails 无透明能力"，GDI 区域硬裁与近白 canvas 双重露底](#50-快捷菜单轮盘连环白边旧注释谎称wails-无透明能力gdi-区域硬裁与近白-canvas-双重露底)
 
 ---
 
@@ -900,3 +901,10 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：从"文案都分段了为什么读起来是墙"反向到渲染层，确认全库模板里唯一丢换行的就是裸 `<p>` 插值；toast 侧核实 useToast 早已支持 `{duration}` 而调用方从未用过。
 - **正确做法与标准修复方案**：① `.workbench-confirm p { white-space: pre-line }`（一行 CSS 全局生效，顺带 `&lt;br&gt;` 手拼的旧文案不受影响）；② 面板 `max-height: min(72vh, 640px); overflow-y: auto`；③ `.global-toast` 开 `pointer-events: auto; user-select: text; max-width: 480px; overflow-wrap: anywhere`——可选中复制长错误路径；④ 失败类 toast 调用方显式 `{ duration: 8000 }`，默认 2500ms 不动（长保活是调用方的语义决定，不是全局样式决定）；⑤ 附带修 aria：`:aria-labelledby="`${title}-dialog-title`"` 里 title 含中文/空格即非法 IDREF，改固定 `hx-confirm-title`。
 - **避坑防重犯建议**：① 模板插值渲染带 `\n` 的多行文案，**渲染层必须先声明 `white-space: pre-line`**——这是文案设计与 CSS 的隐式契约，新对话框组件落地时容易漏；② 有滚动容器就要锁 `max-height`，否则小窗/长文案场景按钮被顶出可视区，确认框变成"只能 Esc 取消"；③ 组件写"分段"的单元测试要断言**换行真的可见**（pre-line 规则存在性即可，happy-dom 拿不到 scoped 计算样式时用 `?raw` 读 SFC 断言），别只断言 `textContent` 含整段——折叠成空格它照样绿；④ toast 是"路过型"反馈，失败详情要行内驻留（progress.error 分支），toast 只做指路。
+
+### 50. 快捷菜单轮盘连环白边：旧注释谎称"Wails 无透明能力"，GDI 区域硬裁与近白 canvas 双重露底
+
+- **问题现象与错误原因**：右键长按弹窗从列表改为圆形轮盘后（钩子与弹窗基础坑见 #29，其"三处认知差"不含本条的透明能力误判），实机先后出现三种"白边"。① 细碎白边+边缘发虚：按 QuickMenuPopup 旧注释"Wails beta.10 Windows 侧无窗口透明能力"的断言，用 `SetWindowRgn(CreateEllipticRgn)` 硬裁方形窗模拟圆——GDI 区域无抗锯齿，圆周呈阶梯锯齿；且 `BackgroundColour` 固定浅灰在深色主题下于 AA 混色像素处露底成白圈，入场 `scale(0.94)` 动画还把 SVG 整体缩出一圈窗底白环。② 大白环：切到 `BackgroundTypeTransparent` 真透明后，全局 `body { background: var(--surface-page) }`（近白）铺满方形窗口，GDI 圆裁（半径=窗口半宽，含为投影留的边距）后剩下一个比圆盘大一圈的**不透明白圆**，盘缘外露出 18px 大白环——solid 时代这层底被铺满窗口的圆盘盖住，从未现形，透明化才引爆。
+- **排查过程**：读 beta.10 源码（`webview_window_windows.go`）实锤 `BackgroundTypeTransparent` 存在且走 DirectComposition（`WS_EX_NOREDIRECTIONBITMAP` + chromium 背景 alpha=0）——旧注释是错的；白环宽度恰等于边距、外缘恰为裁剪圈 → 反推是页面 canvas 而非窗口底。
+- **正确做法与标准修复方案**：① 弹窗用 `BackgroundType: application.BackgroundTypeTransparent` + `BackgroundColour: NewRGBA(0,0,0,0)`，圆盘视觉边缘（含抗锯齿、投影）全部由页面绘制；`SetWindowRgn` 降级为纯命中测试（把四角从鼠标命中剪掉让点击穿透），裁剪圈半径设在**投影淡出后的全透明区**，GDI 硬边落在无像素处即不可见；② 弹窗类透明窗口须把 canvas 一并打穿：main.ts 按 hash 给 `<html>` 打 `.popup-shell` 标记，base.css 覆写 `html/body background: transparent`；③ 入场动画不得缩放"能露出底色的整层"，且新窗口透明后边距区点击会被 WebView 吃掉——"点外收起"判定半径要按**盘半径**（窗口半宽 − 边距×scale）而非窗口半宽。
+- **避坑防重犯建议**：① 代码注释里的"框架不支持 X"是**历史断言不是事实**——动手支持性判断前回一遍当前版本源码/grep 能力位（beta 版特性表变得快），本轮为一句旧注释多走了一整轮 GDI 弯路；② 给"未来可能透明"的浮窗立规：**页面根 canvas 不允许携带实底全局背景**，底色职责下放到显式绘制的容器层，否则任何透明化尝试都会把 `body` 底色原样暴露；③ 透明窗 + 区域裁剪混用时，二者半径职责必须分开——区域管命中、CSS 管观感，裁剪圈永远画在内容透明处；④ 带 scale 入场动画的浮层，动画层下方必须无可见底（透明窗/同色底），否则每次弹出都闪一圈露边。
