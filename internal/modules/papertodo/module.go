@@ -66,10 +66,6 @@ func (m *Module) Services() []extapi.Service {
 	}
 }
 
-func (m *Module) Permissions() []extapi.Permission { return nil }
-
-func (m *Module) Protocol() int { return 1 }
-
 // OnInit 首次激活时启动外部实例感知轮询（懒加载，与 markeron/ccswitch 同策略）
 func (m *Module) OnInit(ctx context.Context) error {
 	m.svc.activate()

@@ -52,10 +52,6 @@ func (e *Module) Services() []extapi.Service {
 	}
 }
 
-func (e *Module) Permissions() []extapi.Permission { return nil }
-
-func (e *Module) Protocol() int { return 1 }
-
 // OnInit 首次激活时启动外部实例感知轮询（懒加载，与 wechat 等常驻模块不同）
 func (e *Module) OnInit(ctx context.Context) error {
 	e.svc.activate()

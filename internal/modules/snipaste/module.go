@@ -49,9 +49,7 @@ func (m *Module) Services() []extapi.Service {
 	return []extapi.Service{application.NewService(m.svc)}
 }
 
-func (m *Module) Permissions() []extapi.Permission { return nil }
-func (m *Module) Protocol() int                    { return 1 }
-func (m *Module) OnInit(context.Context) error     { return nil }
+func (m *Module) OnInit(context.Context) error { return nil }
 
 // OnDestroy 不终止已启动的 Snipaste：页面手动退出是唯一控制入口，
 // 模块停用或 Hanxi 退出仍保留原生托盘与快捷键。

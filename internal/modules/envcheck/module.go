@@ -52,18 +52,12 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}}
 }
 
-// 以下方法实现 extapi.Module 契约，逐项语义见接口文档；PermNetwork 覆盖官网版本查询与 npm 安装下载。
+// 以下方法实现 extapi.Module 契约，逐项语义见接口文档。
 func (e *Module) Services() []extapi.Service {
 	return []extapi.Service{
 		application.NewService(e.svc),
 	}
 }
-
-func (e *Module) Permissions() []extapi.Permission {
-	return []extapi.Permission{extapi.PermNetwork}
-}
-
-func (e *Module) Protocol() int { return 1 }
 
 func (e *Module) OnInit(ctx context.Context) error {
 	return nil // 探测与 npm 操作均按需触发，无常驻资源需要初始化

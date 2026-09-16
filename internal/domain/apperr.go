@@ -32,8 +32,7 @@ func (e *AppError) Error() string {
 func (e *AppError) Unwrap() error { return e.Cause }
 
 // 通用错误码（各模块的详细错误码随模块实现补充）。
+// ErrInternal/ErrNotImpl 因全仓零引用已删除（死代码清理）。
 const (
-	ErrInternal   = "SYS_INTERNAL"
-	ErrNotImpl    = "SYS_NOT_IMPLEMENTED"
 	ErrValidation = "SYS_VALIDATION"
 )

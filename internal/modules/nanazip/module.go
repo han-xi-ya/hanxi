@@ -31,9 +31,7 @@ func (m *Module) Nav() []extapi.NavEntry {
 
 // 以下方法实现 extapi.Module 契约，逐项语义见接口文档；
 // 生命周期无重资源：OnInit/OnDestroy 均空操作，包操作由 service 自身的单槽位互斥管理。
-func (m *Module) Services() []extapi.Service       { return []extapi.Service{application.NewService(m.svc)} }
-func (m *Module) Permissions() []extapi.Permission { return nil }
-func (m *Module) Protocol() int                    { return 1 }
-func (m *Module) OnInit(context.Context) error     { return nil }
-func (m *Module) OnDestroy() error                 { return nil }
-func (m *Module) IsInitialized() bool              { return true }
+func (m *Module) Services() []extapi.Service   { return []extapi.Service{application.NewService(m.svc)} }
+func (m *Module) OnInit(context.Context) error { return nil }
+func (m *Module) OnDestroy() error             { return nil }
+func (m *Module) IsInitialized() bool          { return true }

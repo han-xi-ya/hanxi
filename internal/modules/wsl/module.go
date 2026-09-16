@@ -49,12 +49,6 @@ func (e *Module) Services() []extapi.Service {
 	}
 }
 
-func (e *Module) Permissions() []extapi.Permission {
-	return []extapi.Permission{extapi.PermNetwork}
-}
-
-func (e *Module) Protocol() int { return 1 }
-
 func (e *Module) OnInit(ctx context.Context) error {
 	return nil // 探针与提权操作均按需触发，无常驻资源
 }

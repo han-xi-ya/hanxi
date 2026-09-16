@@ -21,12 +21,6 @@ import (
 // Service 是 wails 服务的别名，避免扩展包直接依赖 wails。
 type Service = application.Service
 
-// NewService 包装一个具体类型的 service 实例为 Service。
-// 泛型由调用点（扩展包）提供具体类型，wails 的静态分析器可识别。
-func NewService[T any](instance *T) Service {
-	return application.NewService(instance)
-}
-
 // NavSection 区分核心导航与扩展导航两个分区。
 type NavSection string
 
@@ -98,6 +92,8 @@ type TrayCommandsProvider interface {
 
 // Permission 声明扩展所需的能力。运行期由宿主白名单校验，
 // 扩展不得绕过宿主 API（host）直接操作系统资源。
+// 注：Module 契约的 Permissions() 已作为死代码移除（无任何调用方），
+// 类型与常量保留给未来子进程插件（LevelExternal）的能力握手复用。
 type Permission string
 
 const (
@@ -112,12 +108,8 @@ type Module interface {
 	Info() ModuleInfo
 	// Nav 返回注册到左侧导航的条目（未启用时不展示）。
 	Nav() []NavEntry
-	// Services 返回已包装好的 wails service（用 extapi.NewService 包装）。
+	// Services 返回已包装好的 wails service（用 application.NewService 包装）。
 	Services() []Service
-	// Permissions 声明需要的能力，宿主在启用时核对白名单。
-	Permissions() []Permission
-	// Protocol 返回扩展契约版本，未来子进程插件用于版本握手。
-	Protocol() int
 
 	// --- 懒加载生命周期钩子 ---
 	// OnInit 在模块首次被用户激活/使用时调用（分配内存缓存、初始化连接、启动后台任务等）

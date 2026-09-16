@@ -60,12 +60,6 @@ func (e *Module) Services() []extapi.Service {
 	}
 }
 
-func (e *Module) Permissions() []extapi.Permission {
-	return []extapi.Permission{extapi.PermLANScan}
-}
-
-func (e *Module) Protocol() int { return 1 }
-
 func (e *Module) OnInit(ctx context.Context) error {
 	// 懒加载初始化：无需分配重型常驻资源
 	return nil

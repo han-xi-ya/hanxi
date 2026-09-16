@@ -66,11 +66,6 @@ func (m *Module) TrayCommands() []extapi.TrayCommand {
 	}}
 }
 
-// Permissions 声明回环 HTTP 探测与转发（网络出站最小口径）。
-func (m *Module) Permissions() []extapi.Permission { return []extapi.Permission{extapi.PermNetwork} }
-
-func (m *Module) Protocol() int { return 1 }
-
 // OnInit 首次激活时启动状态感知轮询（懒加载，与 ddnsgo 同策略）。
 func (m *Module) OnInit(ctx context.Context) error {
 	m.svc.activate()

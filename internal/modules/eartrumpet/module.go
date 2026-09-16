@@ -70,9 +70,7 @@ func (m *Module) Services() []extapi.Service {
 	return []extapi.Service{application.NewService(m.svc)}
 }
 
-func (m *Module) Permissions() []extapi.Permission { return nil }
-func (m *Module) Protocol() int                    { return 1 }
-func (m *Module) OnInit(context.Context) error     { return nil }
+func (m *Module) OnInit(context.Context) error { return nil }
 
 // OnDestroy 本模块无常驻资源（查询/安装均为按需短任务，goroutine 随调用结束收敛），无需回收。
 func (m *Module) OnDestroy() error { return nil }

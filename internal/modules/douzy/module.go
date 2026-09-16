@@ -53,10 +53,6 @@ func (e *Module) Services() []extapi.Service {
 	}
 }
 
-func (e *Module) Permissions() []extapi.Permission { return nil }
-
-func (e *Module) Protocol() int { return 1 }
-
 // 无后台协程、无进程托管：OnInit/OnDestroy 空实现（仿 portscan）。
 func (e *Module) OnInit(ctx context.Context) error { return nil }
 

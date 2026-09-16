@@ -60,12 +60,6 @@ func (m *Module) Services() []extapi.Service {
 	}
 }
 
-func (m *Module) Permissions() []extapi.Permission {
-	return []extapi.Permission{extapi.PermNetwork}
-}
-
-func (m *Module) Protocol() int { return 1 }
-
 func (m *Module) OnInit(ctx context.Context) error {
 	m.svc.InitOnDemand()
 	return nil

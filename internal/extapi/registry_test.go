@@ -17,13 +17,11 @@ type registryTestModule struct {
 	destroyCnt atomic.Int32
 }
 
-func (m *registryTestModule) Info() ModuleInfo          { return m.info }
-func (m *registryTestModule) Nav() []NavEntry           { return m.navs }
-func (m *registryTestModule) Services() []Service       { return nil }
-func (m *registryTestModule) Permissions() []Permission { return nil }
-func (m *registryTestModule) Protocol() int             { return 1 }
-func (m *registryTestModule) IsInitialized() bool       { return m.initCount.Load() > m.destroyCnt.Load() }
-func (m *registryTestModule) OnDestroy() error          { m.destroyCnt.Add(1); return nil }
+func (m *registryTestModule) Info() ModuleInfo    { return m.info }
+func (m *registryTestModule) Nav() []NavEntry     { return m.navs }
+func (m *registryTestModule) Services() []Service { return nil }
+func (m *registryTestModule) IsInitialized() bool { return m.initCount.Load() > m.destroyCnt.Load() }
+func (m *registryTestModule) OnDestroy() error    { m.destroyCnt.Add(1); return nil }
 func (m *registryTestModule) OnInit(context.Context) error {
 	m.initCount.Add(1)
 	return m.initErr

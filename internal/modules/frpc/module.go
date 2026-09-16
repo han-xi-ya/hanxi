@@ -52,10 +52,6 @@ func (e *Module) Services() []extapi.Service {
 	}
 }
 
-func (e *Module) Permissions() []extapi.Permission { return nil }
-
-func (e *Module) Protocol() int { return 1 }
-
 func (e *Module) OnInit(ctx context.Context) error {
 	return nil
 }

@@ -55,10 +55,6 @@ func (e *Module) Services() []extapi.Service {
 	}
 }
 
-func (e *Module) Permissions() []extapi.Permission { return nil }
-
-func (e *Module) Protocol() int { return 1 }
-
 // OnInit 首次激活时启动外部实例感知与空闲退出巡检（懒加载，与其他工具模块同策略）
 func (e *Module) OnInit(ctx context.Context) error {
 	e.svc.activate()

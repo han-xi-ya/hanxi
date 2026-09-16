@@ -69,10 +69,6 @@ func (m *Module) Services() []extapi.Service {
 	}
 }
 
-func (m *Module) Permissions() []extapi.Permission { return nil }
-
-func (m *Module) Protocol() int { return 1 }
-
 func (m *Module) OnInit(ctx context.Context) error {
 	if err := m.svc.start(); err != nil {
 		return err
