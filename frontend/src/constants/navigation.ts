@@ -63,6 +63,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/translucenttb': { component: defineAsyncComponent(() => import('@/views/TranslucentTBView.vue')), moduleId: 'translucenttb' },
   '/ext/paseo': { component: defineAsyncComponent(() => import('@/views/PaseoView.vue')), moduleId: 'paseo' },
   '/ext/douzy': { component: defineAsyncComponent(() => import('@/views/DouzyView.vue')), moduleId: 'douzy' },
+  '/ext/ocr': { component: defineAsyncComponent(() => import('@/views/OcrView.vue')), moduleId: 'ocr' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/ext/wsl': { component: defineAsyncComponent(() => import('@/views/WSLView.vue')), moduleId: 'wsl' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
@@ -124,6 +125,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   snipaste: 'efficiency',
   papertodo: 'efficiency',
   wechat: 'efficiency',
+  ocr: 'efficiency',
   recordly: 'media',
   piclite: 'media',
   bili23: 'media',
@@ -184,6 +186,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   wsl: { icon: 'i:terminal', route: '/ext/wsl' },
   quickmenu: { icon: 'i:mouse-pointer', route: '/ext/quickmenu' },
   envcheck: { icon: 'i:wrench', route: '/ext/envcheck' },
+  ocr: { icon: 'i:scan-text', route: '/ext/ocr' },
 }
 
 export const FALLBACK_MODULE_ICON = 'i:box'
