@@ -1,5 +1,7 @@
 # Hanxi 开发与构建指南
 
+> **更新日期**：2026-09-16
+
 本文档介绍 Hanxi 的本地环境准备、开发调试模式（HMR）、静态检查、单测执行以及生产编译（便携版）的完整流程。
 
 ---
@@ -62,7 +64,7 @@ task dev
 运行该命令后：
 1. 会在后台启动 Vite（默认端口 `9245`）；
 2. 自动根据 Go 代码结构生成 TypeScript 绑定文件到 `frontend/bindings/`；
-3. 弹出 Hanxi 开发窗口（浅色主题，尺寸 1200×780）；
+3. 弹出 Hanxi 开发窗口（尺寸 1200×780，主题跟随已保存的设置）；
 4. 修改前端 `frontend/src/` 代码后界面即时热更新；
 5. 在界面上可按 `F12` 或右键打开 WebView2 开发者工具进行调试。
 
@@ -72,11 +74,13 @@ task dev
 
 在提交代码前，必须保证静态检查与单元测试全部通过：
 
-### 4.1 全量静态检查（Go vet + Go build）
+### 4.1 全量质量门禁（gofmt + go vet + Go 单测 + 前端 typecheck/build/Vitest + 漂移检查）
 
 ```powershell
 task check
 ```
+
+> `task check` 依次执行：`gofmt` 格式检查、`go vet ./...`、`go test -count=1 ./...`、前端 `typecheck` 与 `build`、前端 Vitest 单测、`verify:tidy`（go.mod/go.sum 漂移）与 `verify:bindings`（bindings 漂移），与 CI 门禁等价。
 
 ### 4.2 运行平台与业务单元测试
 
@@ -107,11 +111,13 @@ task build
 ```
 
 **构建流水线会自动执行**：
-1. `go mod tidy` 依赖对齐；
-2. `wails3 generate bindings` 生成最新的类型绑定；
-3. `npm run build` 打包前端资源到 `frontend/dist/`；
-4. Go 原生编译，将前端资源嵌入二进制（通过 `//go:embed`）；
+1. 安装前端依赖（npm 锁 `package-lock.json`，`run:once` 去重）；
+2. `npm run build`（`vue-tsc` 类型检查 + Vite 打包）产出前端资源到 `frontend/dist/`；
+3. `wails3 generate syso` 生成 Windows 图标/清单/版本资源（`icon.ico` 已固化于 `build/windows/`，不重新生成）；
+4. `go build -tags production -trimpath -ldflags="-w -s -H windowsgui"` 原生编译，前端资源经 `//go:embed`（`embedassets.go`）嵌入二进制；
 5. 最终产物生成在：**`bin/hanxi.exe`**。
+
+> 注意：`task build` 不修改源码树。`go mod tidy` 与 `wails3 generate bindings` 属独立维护动作，用 `task generate` 执行；二者的一致性由 `task verify:tidy` / `task verify:bindings` 漂移检查守护。
 
 ### 5.2 验证便携模式
 
@@ -134,11 +140,13 @@ Hanxi 支持零安装、不写注册表的绿色便携模式：
 | 动作 | 命令 | 适用场景 |
 |---|---|---|
 | **启动开发模式** | `task dev` | 日常开发、联调、前端热更新 |
-| **静态语法检查** | `task check` | 快速排查类型与编译报错 |
+| **全量质量门禁** | `task check` | 提交前跑齐 Go/前端全部检查与漂移校验 |
 | **运行单元测试** | `go test -v ./internal/...` | 验证底层平台原语与核心逻辑 |
 | **打包 Windows 便携版** | `task build` | 产出 `bin/hanxi.exe` 绿色单文件 |
 | **单前端编译** | `cd frontend && npm run build` | 验证前端 Vue 3 / TS 编译状态 |
-| **手动生成绑定** | `task generate:bindings` | 仅重新生成 Go 到 TS 的 Bindings |
+| **手动生成绑定** | `task common:generate:bindings` | 仅重新生成 Go 到 TS 的 Bindings |
+| **依赖对齐 + 绑定再生** | `task generate` | `go mod tidy` 与 bindings 一并刷新 |
+| **安装包打包（NSIS/MSIX）** | `task package`（可加 `FORMAT=msix`、`INSTALL_SCOPE=user`） | 产出安装器（需 NSIS `makensis` 在 PATH） |
 
 ---
 

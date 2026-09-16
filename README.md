@@ -1,7 +1,7 @@
 # Hanxi
 
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
-> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器等 24 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
+> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、抖音下载器等 25 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
 > **v0.3.0 品牌断代**：产品标识、进程名和标准数据目录已切换为 Hanxi，不读取旧版数据、自启项或单实例标识。
 
@@ -95,7 +95,7 @@
 
 ### 二、第三方桌面工具托管（托管模式）
 
-Hanxi 将 24 款常用开源/免费桌面工具纳入统一管理。除 frpc 等特例外，托管模块共享同一套标准骨架：
+Hanxi 将 25 款常用开源/免费桌面工具纳入统一管理。除 frpc 等特例外，托管模块共享同一套标准骨架：
 
 - **版本管理**：上游 Releases / 官网清单侦查 → 多层完整性校验（GitHub digest / SHA256SUMS / 官方哈希清单 / 字节数 + PE 版本核对）→ 下载、本地导入与版本删除；
 - **进程托管**：Windows JobObject 绑定的启停引擎、进程枚举/互斥体探测运行态、Win32 唤窗 / 官方单实例命令通道唤起窗口、"跟随 Hanxi 退出"开关（**默认关闭**：Hanxi 退出不影响已托管工具独立运行）、桌面快捷方式创建；
@@ -127,6 +127,7 @@ Hanxi 将 24 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 | **VS Code 编辑器** | Microsoft（官方 CDN 分发） | MIT（源码）+ 二进制许可条款 | **双形态托管**：ZIP 便携（`data/` 自包含激活器）与 User Installer 免 UAC 静默安装/升级确认闸；官方 CDN 三端点、哈希仅最新版可得的降级校验分治 |
 | **TranslucentTB 任务栏透明** | TranslucentTB/TranslucentTB | GPL-3.0 | 任务栏透明/模糊特效工具：信使语义是"重设任务栏状态"而非唤窗，托盘消息窗口 WM_CLOSE 优雅退出（通用类名验属主防误伤），便携版 Win11 + 框架包双重系统前提预告 |
 | **Paseo agent 编排器** | getpaseo/paseo | Apache-2.0 | coding agent 编排器（本机 daemon + 手机/桌面多端）：官方便携 zip 多版本目录托管、**共享数据模式**（与自装实例同 `%APPDATA%\Paseo`+`~/.paseo` 锁组）、进程名探测 + Win32 直唤（上游二次拉起语义是"开新窗"非聚焦，与 recordly 信使唤窗分家）、无空闲自动退出（daemon 宿主）、上游无更新禁用开关如实预告平行副本风险 |
+| **抖音下载器 Douzy** | jiji262/douyin-downloader | MIT | **仅版本+下载托管的特例**：上游内测期、Electron 壳源码未公开、Windows 仅 NSIS 安装版无便携 zip，故止步于版本列表侦查 → `Douzy-Setup-*.exe` 官方 sha256 + 字节数 + PE 魔数三重校验下载 → 一键拉起上游安装向导，**不接管进程运行**（决策记录见 TROUBLESHOOTING #47） |
 
 ### 三、桌面系统体验与通用设置
 
@@ -135,7 +136,7 @@ Hanxi 将 24 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 - **全局通知中心**：模块下载/实例状态/扫描进度等事件汇聚为分级通知（信息/成功/警告/错误），抽屉式查看与已读管理。
 - **内置运行日志查看器**：提供应用全局运行日志文件列表检索、多行日志实时分页查看与历史日志一键清理（凭据自动脱敏）。
 - **系统快捷直达 (Quick Launch)**：一键打开系统 `hosts` 文件、环境变量配置、网络适配器（`ncpa.cpl`）等。
-- **按需懒加载模块架构**：全部 36 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
+- **按需懒加载模块架构**：全部 37 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
 
 ---
 
@@ -150,7 +151,7 @@ Hanxi 将 24 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 | **连接感知** | **日志特征词嗅探（毫秒级细粒度状态）** | 仅根据进程存活判定 | 仅根据进程存活判定 |
 | **多实例支持** | **原生支持多项目独立并行运行** | 仅单配置单运行 | 仅单配置运行 |
 | **配置分享** | **`frp://` 链接一键分享 + 批量端口导入** | 部分支持 | 不支持 |
-| **第三方生态** | **24 款桌面工具统一托管**（版本管理+完整性校验+进程监管） | 不支持 | 不支持 |
+| **第三方生态** | **25 款桌面工具统一托管**（版本管理+完整性校验+进程监管；抖音下载器为仅版本+下载托管的特例） | 不支持 | 不支持 |
 | **系统集成** | **系统托盘常驻 + 开机自启 + UAC 提权** | 占用大/启动慢 | 功能单一 |
 | **开发者套件** | **环境检测 + 端口扫描 + 局域网快传 + 随手记** | 仅单一功能 | 仅单一功能 |
 
@@ -198,19 +199,19 @@ hanxi/
 ├─ cmd/
 │  └─ hanxi/                    # 应用入口（Main 装配与 UAC 提权模式分流）
 ├─ internal/
-│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、35 模块统一注册)
+│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、37 模块统一注册)
 │  ├─ product/                  # 品牌身份常量（名称/标识/版本/数据目录单一真相源）
 │  ├─ domain/                   # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                   # 模块插件化抽象（Module 契约 / 懒加载注册中心 / 导航与启用状态）
 │  ├─ notify/                   # 全局通知中心（分级通知 Hub 与前端事件推送）
-│  ├─ modules/                  # 36 个功能模块
+│  ├─ modules/                  # 37 个功能模块
 │  │  ├─ 自建能力               # frpc / wechat / portscan / portkill / lan / publicip
 │  │  │                         # / wifi / envcheck / wsl / fileshare / memo / quickmenu
 │  │  └─ 工具托管               # snipaste / everything / quicklook / keyviz / litemonitor
 │  │                            # / ccswitch / markeron / flclash / nanazip / eartrumpet
 │  │                            # / bcu / mangodisk / recordly / papertodo / piclite / guoheview
 │  │                            # / ddnsgo / translucenttb / vscode / rustdesk / subnetdesk
-│  │                            # / rufus / bili23 / paseo
+│  │                            # / rufus / bili23 / paseo / douzy
 │  │                            # （托管模块标准形态：version/ 版本管理子包 + instance/ 实例引擎子包）
 │  ├─ platform/                 # 平台底层（Windows JobObject / DPAPI / 注册表自启 / IP Helper / Appx 包管理 / Shell 提权）
 │  ├─ logging/                  # slog 结构化日志与凭据自动脱敏

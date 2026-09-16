@@ -3,7 +3,7 @@
 > **文档状态**：战略基线  
 > **战略周期**：2026-09 至 2027-09  
 > **复审周期**：每季度，或重大架构决策后  
-> **当前代码基线**：35 个业务模块（12 个自建能力、23 个第三方工具托管）（2026-09-14 对表：与 `internal/modules/` 目录及 PRD §2.1/§2.2 一致；原记 27/10/17 为 WSL 重整前基线）  
+> **当前代码基线**：37 个业务模块（12 个自建能力、25 个第三方工具托管）（2026-09-16 对表：与 `internal/modules/` 目录及 PRD §2.1/§2.2 一致；原记 35/12/23 为 Paseo/抖音下载器集成前基线，27/10/17 为 WSL 重整前基线）  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64
 
 本文档定义 Hanxi 后续发展的产品边界、目标架构、技术优先级和决策标准。它不是现有文档的重复版本：
@@ -72,7 +72,7 @@ Hanxi 的差异化不在于“内置多少按钮”，而在于以下五项控�
 - `internal/modules/<tool>` 采用纵向模块切片，复杂托管工具基本形成 `module + version + instance` 结构；
 - `internal/platform/windows` 已沉淀 JobObject、DPAPI、进程指纹、端口/网卡、快捷方式和 Appx 等原语；
 - Wails 类型化绑定将 Vue 视图与 Go Service 连接起来；
-- 后端测试资产较丰富，当前约有 105 个测试文件，覆盖版本、实例、存储、平台和网络边界；
+- 后端测试资产较丰富，当前有 163 个 Go 测试文件（2026-09-16 对表），覆盖版本、实例、存储、平台和网络边界；
 - CI、Release、便携包和 SHA256 清单已有基本骨架。
 
 其中，**进程治理、版本隔离、Windows 原生能力和便携模式**是最值得继续强化的资产。
@@ -450,8 +450,8 @@ failed
 - Release 未先运行完整测试，手工发布 tag 选择逻辑存在发布错误风险；
 - 版本号散落在产品常量、构建配置、PE、NSIS、MSIX 和 workflow，应建立单一版本源并校验；
 - Release 仅发布同渠道 SHA256，缺少 Authenticode、SBOM 和 provenance；
-- 构建流程会执行 `go mod tidy` 并重写 bindings，应改为独立 drift check，生产构建不修改源码树；
-- ~~前端没有自动化测试，当前只有类型检查和构建~~（2026-09-14 对表：Vitest 77 文件 / 653 用例与 ESLint 已落地；但 ESLint 全量规则降为 warning 仅观察（REVIEW E01），dev 分支在途提交仍可能带红测试——门禁有效性待实跑验证）。
+- ~~构建流程会执行 `go mod tidy` 并重写 bindings，应改为独立 drift check，生产构建不修改源码树~~（2026-09-16 对表：已落地——`task build` 不再 tidy/重写 bindings，漂移由 `Taskfile.yml` 的 `verify:tidy` / `verify:bindings`（生成后 `git diff --exit-code`）与 CI 独立步骤守护）；
+- ~~前端没有自动化测试，当前只有类型检查和构建~~（2026-09-16 对表：Vitest 80 文件 / 721 用例全绿与 ESLint 已落地（2026-09-14 记 77/653）；但 ESLint 全量规则降为 warning 仅观察（REVIEW E01），dev 分支在途提交仍可能带红测试——门禁有效性待实跑验证）。
 
 ### 8.2 建议质量门
 

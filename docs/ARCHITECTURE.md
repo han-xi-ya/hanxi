@@ -2,8 +2,8 @@
 
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
-> **更新日期**：2026-09-06
-> **技术基线**：Go ≥1.24 + Wails v3 + Vue 3 + TypeScript + Vite  
+> **更新日期**：2026-09-16
+> **技术基线**：Go ≥1.26 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration)
 
 ---
@@ -23,16 +23,16 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │  internal/app/  Composition Root (应用唯一装配点)       │
 │  - 生命周期管理、系统托盘 (Systray)、关闭拦截、优雅退出│
 │  - AppService (通用设置/日志/导航/关于信息)            │
-│  - 35 个模块统一注册与 Wails 服务注入                  │
+│  - 37 个模块统一注册与 Wails 服务注入                  │
 └──────┬────────────────────┬────────────────────┬───────┘
        │                    │                    │
 ┌──────▼───────────┐ ┌──────▼───────────┐ ┌──────▼───────┐
 │ internal/modules │ │ internal/extapi  │ │ internal/    │
-│ 35 个业务模块    │ │ 模块生命周期契约 │ │ settings     │
+│ 37 个业务模块    │ │ 模块生命周期契约 │ │ settings     │
 │ 自建: frpc 网络  │ │ 与按需懒加载注册 │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ (Info/Nav/       │ │ 与配置持久化 │
 │ 快传 随手记等    │ │  Services/       │ ├──────────────┤
-│ 托管: 23 款桌面  │ │  OnInit/         │ │ internal/    │
+│ 托管: 25 款桌面  │ │  OnInit/         │ │ internal/    │
 │ 工具 version+    │ │  OnDestroy)      │ │ notify       │
 │ instance 子包    │ ├──────────────────┤ │ 全局通知中心 │
 └──────┬───────────┘ │ internal/product │ └──────────────┘
@@ -93,7 +93,7 @@ type Module interface {
 
 ### 2.3 外部工具托管架构（Managed Integration）
 
-23 款第三方桌面工具按同一标准骨架纳管，每模块三件套：
+25 款第三方桌面工具按同一标准骨架纳管，每模块三件套（例外：`douzy` 上游尚处内测期、无便携形态，刻意止步于 `version/` 版本管理 + 安装包下载，不做进程托管、无 `instance/` 子包）：
 
 ```text
 internal/modules/<tool>/
@@ -136,7 +136,7 @@ internal/modules/<tool>/
 > Hanxi v0.3.0 是品牌断代版本：源码命名空间、应用标识、进程名、自启项、单实例 ID 和标准数据目录均使用 Hanxi，不探测或迁移旧产品数据。
 
 - **路径判定**：
-  - 启动时若在可执行文件同级目录检测到 `data/` 目录，则判定为 **Portable 便携模式**，所有数据、日志、版本文件均存放在 `data/` 下；
+  - 启动时若在可执行文件同级目录检测到 `hanxidata/` 目录（存在即生效，含空目录），则判定为 **Portable 便携模式**，所有数据、日志、版本文件均存放在 `hanxidata/` 下；为兼容旧便携包，同级泛化名 `data/` 仅当其中已含 Hanxi 数据根特征（`config.json` 或 `versions/`）时仍被识别，空 `data/` 不再触发便携模式；
   - 否则进入 **Standard 标准模式**，数据存储在 `%APPDATA%/Hanxi/`。
 - **托管目录约定**：frpc 与各托管工具的二进制、版本文件、运行时配置统一落在对应模块的托管子目录（`versions/`、`runtime/`）内；上游工具自身数据（如 PaperTodo `data.json`）原地保留于托管目录，卸载 Hanxi 不删除用户数据。
 - **并发安全原子写**：配置保存采用“写入临时文件 + `os.Rename`”策略，杜绝因程序异常断电造成 JSON 文件损坏。

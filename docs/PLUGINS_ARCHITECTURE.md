@@ -1,5 +1,7 @@
 # Hanxi 单体零开销懒加载架构改造方案
 
+> **状态注记（2026-09-16）**：本文为早期（6 个内置模块时代）的改造设计方案，**已落地并演进**。最终实现的 `Module` 契约为 `Info()/Nav()/Services()/Permissions()/Protocol()` + `OnInit()/OnDestroy()/IsInitialized()`（见 `internal/extapi/module.go`），与下文初稿设想的 `ID()/Title()/Route()/Icon()/Level()` 方法签名不同；`EnsureActive`、`SetEnabled` 停用回收（`runtime.GC()` + `debug.FreeOSMemory()`）与前端路由联动均已按此形态落地，模块数已从方案中的 6 个增长到 37 个。**现行架构事实以 `docs/ARCHITECTURE.md` 为准**，本文仅作历史决策留档保留，不再随代码更新。
+
 ## 一、 方案概述与目标
 
 针对 Hanxi 工具箱功能不断增多的现状，本方案采用 **「单体内建 + 严格生命周期懒加载」** 模式。在不改变单二进制文件（绿色免安装、零杀毒报毒）的前提下，实现**功能按需加载、物理级内存回收、开箱即用的插件化体验**。

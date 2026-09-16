@@ -519,6 +519,9 @@
 
 ### BUG-046：`followOnExit` 开关成功后不更新本地状态
 
+> ✅ **已修复（前端重构跟进批）**：14 视图统一收编为「点击乐观翻转 ref → 成功保持 / 失败回写复位」模式
+> （实证 `frontend/src/views/CCSwitchView.vue` `onFollowToggle`），详见 `docs/FRONTEND.md` §9.5-1。
+
 - **严重度**：P1
 - **已确认位置**：
   - `frontend/src/views/CCSwitchView.vue:265-272`
@@ -620,7 +623,7 @@
 - 在没有先生成 `frontend/dist` 的隔离工作树中执行 `go test ./...`、全仓 `go vet` 或全仓 `go build`，会在 `embedassets.go:8-9` 的 `//go:embed all:frontend/dist` 失败。
 - 这是构建顺序前置条件，不是内部 Go 业务包编译错误。
 - `go test -race` 无法在当前环境执行：默认 `CGO_ENABLED=0`；启用 CGO 后环境缺少 GCC。
-- 前端没有 lint script，仓库也没有 ESLint、Stylelint 或 Biome 配置。
+- 前端没有 lint script，仓库也没有 ESLint、Stylelint 或 Biome 配置。（2026-09-16 复核注：本条为 2026-09-04 审查时点记录，现已过时——`frontend/package.json` 已含 `lint`/`lint:fix`/`format`/`test` 脚本，`frontend/eslint.config.js` 已引入并接入 `task check` 与 CI。）
 
 ### 明确排除的误报
 

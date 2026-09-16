@@ -2,9 +2,9 @@
 
 > **产品名称**：Hanxi
 > **文档版本**：v1.2  
-> **更新日期**：2026-09-06  
+> **更新日期**：2026-09-16  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64（纯 Windows 原生调用）  
-> **发布形态**：**绿色便携单二进制**（默认便携版，支持同级 `data/` 目录免安装常驻）  
+> **发布形态**：**绿色便携单二进制**（默认便携版，支持同级 `hanxidata/` 目录免安装常驻）  
 > **技术栈**：Go 1.26+ / Wails v3.0-beta / Vue 3 + TypeScript + Vite  
 
 ---
@@ -14,7 +14,7 @@
 Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装、管理与运行常用开源软件。产品由两条主线构成：
 
 1. **自建功能模块**：frpc 内网穿透、微信机器人、端口扫描/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、WSL2 就绪体检、局域网文件快传、极客随手记、右键快捷菜单等，能力原生内置于单二进制；
-2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB 等 23 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台）。
+2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、抖音下载器（Douzy）等 25 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；抖音下载器为仅"版本管理 + 下载"托管的特例）。
 
 所有能力以平等模块身份注册到统一入口，按需懒加载启停。
 
@@ -50,9 +50,9 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **WSL2 就绪体检** | `wsl` | 十项门槛流式只读体检与三态结论（可开启/注意项/硬阻塞）、安装形态三路信号互证与正规双路卸载、虚拟机平台对称开关、microsoft/WSL Releases 版本管理（API 被拦自动降级 Atom 双源）与应用内 MSI 下载器、发行版白名单安装 | 只读探针免管理员；变更操作固定参数白名单提权、逐条传播退出码 |
 | **右键快捷菜单** | `quickmenu` | 任意界面右键长按（默认 450ms）唤出 Quicker 式快捷启动菜单，条目与托盘配置共用，失焦收起 frameless 置顶弹窗、多显示器/屏幕边缘钳位 | 进程内 `WH_MOUSE_LL` 低级钩子（非注入）"吞按下、短按回放"，普通右键零损失，退出自动摘除零残渣 |
 
-### 2.2 第三方工具托管模块（23）
+### 2.2 第三方工具托管模块（25）
 
-统一骨架：`version/` 版本管理子包（ListReleases / DownloadVersion / RemoveVersion / 本地导入）+ `instance/` 实例引擎子包（JobObject 启停、状态探测、唤窗、跟随退出）+ 前端托管控制台视图。
+统一骨架：`version/` 版本管理子包（ListReleases / DownloadVersion / RemoveVersion / 本地导入）+ `instance/` 实例引擎子包（JobObject 启停、状态探测、唤窗、跟随退出）+ 前端托管控制台视图。例外：`douzy` 上游尚处内测期，止步于 `version/` 版本管理与安装包下载拉起，不做进程托管（无 `instance/` 子包）。
 
 | 模块名称 | 模块标识 | 上游项目 | 许可证 | 托管形态与差异点 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -79,6 +79,8 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **Bili23 下载器** | `bili23` | ScottSloan/Bili23-Downloader | GPL-3.0 | B 站视频下载器（PySide6 自带静态运行时整目录便携包）：命名互斥体 + QLocalServer 信使唤窗；上游关窗行为用户可配，Quit 三态如实上报、**不做静默强杀兜底** |
 | **VS Code 编辑器** | `vscode` | Microsoft（官方 CDN update.code.visualstudio.com） | MIT（源码）+ 二进制许可条款 | **双形态托管**：ZIP 便携（`data/` 自包含激活器）与 User Installer 免 UAC 静默安装/升级确认闸；哈希仅最新版可得，历史版降级三层校验 |
 | **TranslucentTB** | `translucenttb` | TranslucentTB/TranslucentTB | GPL-3.0 | 任务栏透明/模糊特效：信使语义为重设任务栏状态（非唤窗），托盘消息窗口 WM_CLOSE 优雅退出（通用类名验属主）；Win11 + 框架包双重系统前提预告 |
+| **Paseo 编排器** | `paseo` | getpaseo/paseo | Apache-2.0（自定义根 LICENSE） | coding agent 编排器：官方便携 zip 多版本目录托管、共享数据模式（与自装实例同 `%APPDATA%\Paseo` + `~/.paseo`）、进程名探测 + Win32 直唤、WM_CLOSE 优雅退出宽限覆盖 daemon 清理 |
+| **抖音下载器** | `douzy` | jiji262/douyin-downloader | MIT | **仅版本+下载托管特例**：上游内测、无便携形态—— Releases 列表侦查 → `Douzy-Setup-*.exe` 官方 sha256 + 字节数 + PE 魔数三重校验下载 → 一键拉起上游 NSIS 安装向导，不接管进程 |
 
 ### 2.3 宿主服务
 
@@ -138,7 +140,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 1. **运行环境**：Windows 10 22H2 及以上 / Windows 11 x64。
 2. **冷启动内存**：初始加载仅 **18MB ~ 25MB**（仅 Wails 内核与主框架），极低系统资源占用。
 3. **绿色便携**：
-   - 优先检测可执行文件同级 `data/` 目录；若存在则以便携模式运行，数据全落入 `data/`；
+   - 优先检测可执行文件同级 `hanxidata/` 目录（存在即生效）；若存在则以便携模式运行，数据全落入 `hanxidata/`；旧便携包的泛化名 `data/` 仅当已含 Hanxi 数据根特征（`config.json` 或 `versions/`）时仍被识别，空目录不再触发；
    - 若不存在则默认落入 `%APPDATA%/Hanxi/`，不污染系统其它目录；
-   - frpc 版本/运行时、托管工具版本与实例数据统一落在对应模块的托管子目录下，随 `data/` 整体拷贝迁移。
+   - frpc 版本/运行时、托管工具版本与实例数据统一落在对应模块的托管子目录下，随 `hanxidata/` 整体拷贝迁移。
 4. **编译与交付**：纯 Go 原生编译（`CGO_ENABLED=0`），无 GCC / MinGW 外部依赖，产出单一 `hanxi.exe`。

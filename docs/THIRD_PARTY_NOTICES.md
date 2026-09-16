@@ -1,6 +1,6 @@
 # 第三方软件告知
 
-> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部 24 款托管桌面工具。Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
+> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部 25 款托管桌面工具。Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
 
 ## MangoDisk
 
@@ -180,3 +180,14 @@ Hanxi 纯托管：JobObject 启停、进程名存活探测、TCP 端口就绪判
 - 发行方式：官方 GitHub Releases 按需下载 Windows 便携 zip（electron-builder win zip target，`Paseo-Setup-<ver>-<arch>.zip`，约 180MB；GitHub API digest sha256 + 字节数 + zip 内建 CRC + 解压布局自检四层校验）。
 
 Hanxi 纯托管：官方便携 zip 解压进多版本目录（versions/paseo_X.Y.Z），JobObject 绑定的启停引擎、进程名 Paseo.exe 探测、WM_CLOSE 优雅退出（宽限覆盖 daemon 清理生命周期）+ 强杀兜底、Win32 直唤窗口；agent 编排全程在 Paseo 自有窗口完成（其 second-instance 语义是"再开新窗"而非聚焦，唤窗因此优先直唤、无窗才二次拉起请求开新窗）。**数据模式为用户目录共享（与 cc-switch 同构，集成拍板）**：Electron 数据恒在 `%APPDATA%\Paseo`、daemon 数据恒在 `~/.paseo`（含手机端配对凭据），托管实例与用户自装实例同数据同锁组——删托管版本不毁配对，Hanxi 不注入上游官方 env 隔离通道（PASEO_HOME / PASEO_ELECTRON_USER_DATA_DIR），不改写任何配置语义，不修改上游二进制。上游自动更新无禁用开关（源码实证）：`autoInstallOnAppQuit=false` 下安装动作仅在用户于 Paseo 界面内点击时发生（zip 形态会装出 `%LOCALAPPDATA%` 平行副本），页面提示条如实引导"版本升级走 Hanxi 版本管理"，不做拦截。若未来随 Hanxi 捆绑分发，须随附 Apache-2.0 许可证文本与 NOTICE/第三方组件清单。
+
+## 抖音下载器（Douzy）
+
+- 项目：抖音下载器 Douzy（抖音桌面下载器，上游为 jiji262/douyin-downloader 的桌面产品形态）
+- 上游仓库：https://github.com/jiji262/douyin-downloader
+- 许可证：MIT（上游仓库 LICENSE，截至 2026-09 GitHub API 标记 MIT；桌面版尚处内测期，其分发条款以上游页面为准）
+- 发行方式：官方 GitHub Releases 仅提供 Windows NSIS 在线/离线安装器（`Douzy-Setup-*.exe`），无便携 zip 形态。
+
+Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下载，不做进程托管**：上游桌面版尚处内测期、Electron 壳源码未公开、Windows 仅有 NSIS 安装版，三者在"托管启停/探测/唤窗"上都是硬伤，故 Hanxi 只做到 Releases 版本列表侦查 → 官方 sha256 + 字节数 + PE 魔数三重校验下载 → 一键拉起上游 NSIS 安装向导交还用户（集成决策与踩坑详见 docs/TROUBLESHOOTING.md #47）；安装后的运行行为、更新策略与数据目录均由上游本体决定，Hanxi 不修改、不静态链接、不内嵌其源码或二进制。
+
+当前 Hanxi 仓库和安装包不包含 Douzy 任何二进制。若未来改为预装或随 Hanxi 再分发，发布流程须随附 MIT 许可证文本与版权声明，并另行评估内测产品的分发责任。

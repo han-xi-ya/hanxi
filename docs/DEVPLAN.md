@@ -1,7 +1,7 @@
 # Hanxi 开发里程碑与执行现状
 
 > **版本**：v1.3  
-> **更新日期**：2026-09-14  
+> **更新日期**：2026-09-16  
 > **目标平台**：Windows 10 (22H2+) / Windows 11 x64  
 
 ---
@@ -18,8 +18,8 @@
 | **M5: 扩展生态与工具套件** | 微信机器人助手、Gonmap 端口服务指纹扫描、内置日志查看器 | 🟢 已达成 | `modules/wechat`、`modules/portscan`、日志查看器 |
 | **M6: 极致优化与便携交付** | 按需懒加载零开销架构、关闭最小化托盘常驻、单二进制构建 | 🟢 已达成 | `bin/hanxi.exe`、零内存泄漏保证 |
 | **M7: 桌面协同与局域网套件** | WiFi 密码查看、局域网文件快传、极客随手记（快传联动）、全局通知中心、品牌断代迁移 | 🟢 已达成 | `modules/wifi`、`modules/fileshare`、`modules/memo`、`internal/notify`、`internal/product` |
-| **M8: 开发环境检测增强** | Git/Go/Node/Java/Python/.NET 工具链盘点、官网最新版本通道（按本机版本线置顶）、包管理器升级提示、资源管理器定位安装路径、.NET 并排安装与官方支持线 | 🟢 已达成 | `modules/envcheck`（模块版本 0.4.0）、前端环境页 |
-| **M9: 开源工具托管生态** | 托管模式框架化（`version/`+`instance/` 三件套）并规模化至 23 款桌面工具；安装布局矩阵（zip/MSI 管理提取/NSIS 静默/MSIX/AppInstaller/单文件下载即安装/MSI 安装版双形态）；唤窗与退出治理矩阵（含多实例上游进程名探测契约、退出三态如实上报无强杀兜底形态）；第三方许可合规登记 | 🟢 已达成 | `modules/{markeron,everything,ccswitch,snipaste,nanazip,eartrumpet,mangodisk,bcu,flclash,recordly,papertodo,piclite,keyviz,quicklook,litemonitor,guoheview,ddnsgo,rustdesk,subnetdesk,rufus,bili23,vscode,translucenttb}`、`platform/apppackage` |
+| **M8: 开发环境检测增强** | Git/Go/Node/Java/Python/.NET 工具链盘点、官网最新版本通道（按本机版本线置顶）、包管理器升级提示、资源管理器定位安装路径、.NET 并排安装与官方支持线 | 🟢 已达成 | `modules/envcheck`（模块版本 0.5.0）、前端环境页 |
+| **M9: 开源工具托管生态** | 托管模式框架化（`version/`+`instance/` 三件套）并规模化至 25 款桌面工具（含 `douzy` 仅版本+下载的特例形态）；安装布局矩阵（zip/MSI 管理提取/NSIS 静默/MSIX/AppInstaller/单文件下载即安装/MSI 安装版双形态）；唤窗与退出治理矩阵（含多实例上游进程名探测契约、退出三态如实上报无强杀兜底形态）；第三方许可合规登记 | 🟢 已达成 | `modules/{markeron,everything,ccswitch,snipaste,nanazip,eartrumpet,mangodisk,bcu,flclash,recordly,papertodo,piclite,keyviz,quicklook,litemonitor,guoheview,ddnsgo,rustdesk,subnetdesk,rufus,bili23,vscode,translucenttb,paseo,douzy}`、`platform/apppackage` |
 | **M10: 系统就绪与桌面效率** | WSL2 十项流式只读体检与三态结论（根因诊断"硬件不满足 vs API 被拦"、双源降级）、安装形态取证与正规卸载、白名单固定参数提权通道；Quicker 式右键长按快捷菜单（低级鼠标钩子吞/放策略、frameless 弹窗 DIP 钳位）；全托管模块"随 Hanxi 关闭"默认翻转为关（Detached 独立运行） | 🟢 已达成 | `modules/wsl`（`netx`+`readiness`+`releases` 子包）、`modules/quickmenu`（`mousetrap` 子包） |
 | **M11: WSL 发行版运维工作台** | 发行版六操作之上补齐：只读取证抽屉（VHDX 双口径/稀疏/df/IPv4，停止不误启动）、克隆快路径（拷 VHDX+`--import --vhd` 进度事件）、tar 导入面、/etc/wsl.conf 图形编辑（语法闸门+引用校验+写前备份+复验）、VHDX 三级瘦身工作流（强制备份/Tier1 Optimize-VHD/Tier2 重导入）、NAT 端口转发账本（netsh 批量单 UAC、IP 漂移重同步、外部转发不触碰）；收敛半成品（摘除 GetReadiness 死绑定、导出格式选择与多工件登记） | 🟢 已达成 | `modules/wsl`（`distro.go`/`forensics.go`/`clone.go`/`wslconf.go`/`compact.go`/`portproxy.go`） |
 
@@ -51,7 +51,7 @@
 - [x] 关闭主窗口自动最小化到托盘配置
 - [x] Windows 注册表开机自启动管理
 - [x] 绿色免安装 Portable 模式（检测 `hanxidata/` 目录，兼容旧包真数据根 `data/`）
-- [x] `extapi` 按需懒加载架构（未启用模块 0 内存与 0 协程占用，35 模块统一注册）
+- [x] `extapi` 按需懒加载架构（未启用模块 0 内存与 0 协程占用，37 模块统一注册）
 - [x] 全局分级通知中心（事件汇聚、历史查询、已读管理）
 - [x] 局域网零客户端文件快传（扫码投递、文本联动随手记）
 
@@ -72,7 +72,7 @@
 - [x] 闭源工具脱管模式（Snipaste 保留原生托盘）与 Everything 内嵌 ES.exe 秒级搜索
 - [x] 本地版本导入、版本删除、桌面快捷方式、下载/实例事件推送
 - [x] `THIRD_PARTY_NOTICES.md` 合规登记（GPL/AGPL/PolyForm/MIT/专有免费全覆盖）与"不捆绑不再分发"红线
-- [x] 托管集成踩坑记录沉淀（TROUBLESHOOTING 托管与平台系列 #8–#36 持续积累）
+- [x] 托管集成踩坑记录沉淀（TROUBLESHOOTING 托管与平台系列 #8–#49 持续积累）
 
 ### 2.6 系统就绪与桌面效率 (M10)
 - [x] WSL2 十项门槛流式只读体检（三源并发分相推送、骨架先渲染先到先点亮、✓/⚠/✕ 逐项落章、三态结论）
@@ -103,3 +103,28 @@
 - **LevelExternal 子进程插件**：`extapi` 契约已预留 manifest + JSON-RPC over stdio 形态，支持模块独立安装/卸载（`Removable` 字段）。
 - **托管工具扩量**：持续按"integrate-github-tool"托管模式集成更多开源桌面工具，每新增一款同步登记第三方告知与踩坑记录。
 - **v0.3.0 正式发布**：当前版本常量 `product.Version = 0.3.0` 尚未打 git tag（最新 tag 为 v0.2.0），待 dev 分支收敛后发布。
+
+### 3.1 质量收敛账（2026-09-16 全仓体检登记，未排期）
+
+> 来源：2026-09-16 双路代码体检 + BUG_AUDIT 逐条源码验证。首批小修已同日落地
+> （提权查杀 helper 身份复核与退出码传播、recordly 卸载版本绕过、frpc DPAPI 密文锁死、
+> config 损坏隔离降级启动、settings store 默认值/回滚/深拷三连，含 6 个回归用例）；
+> 以下为本轮明确不动、需按里程碑排期的存量。
+
+**架构下沉族（一次消灭一片旧账）**
+- **实例引擎公共层**：以 frpc 已修代际模型（`processRun`/`transitionIfCurrent`/私有 cmd 的 `wait(run)`/Job 回退 Kill）为蓝本下沉 `internal/hosted/instance`，替换 23 个 `modules/*/instance/instance.go` 复制体；同刀消灭 BUG-008/009/010/011 与 `wait()` 不持锁读 `e.cmd` 的数据竞争（2026-09-16 新登记，静态判读，-race 本机不可用待 CI）。
+- **staged installer 公共层**：以 litemonitor 的 `version/manager.go`（staging→PE 核对→meta 错误传播→原子 Rename→`.removing-` 卸载）为蓝本，消灭 BUG-023 直写最终目录、BUG-025 解压无配额、BUG-026 吞 meta 写失败、BUG-027 秒级导入身份。
+- **下载登记 keyed singleflight**：frpc/ccswitch/snipaste/douzy 的登记 map 模式提公共，替换其余 19 个模块的 `downloadMu + defer Unlock` 早释放（BUG-022）。
+- **提权执行通道统一**：以 `wsl/ops.go`（单引号转义 + `-PassThru` + 退出码传播）为规范，收敛 shortcut/everything/launcher/wsl 等处 ≥12 个 `cmd.Start()` 不 Wait/Release（BUG-012）。
+- **JSON store 公共层**：原子写 + copy-on-write 下沉（frpc 已 COW，settings/memo/everything 参差），顺带修 memo 侧 BUG-032（Load 错误被吞、Save 覆盖原文件）。
+- **模块 RPC 门禁中间件**：`Registry.IsEnabled/IsActive` 生产代码零调用者（BUG-021），正确修法是在 `app.go` Wails 注册处按服务包 enabled 检查，一次性结构收口。
+
+**安全与后置项（用户已明确后置，勿静默扩量前偿还）**
+- 下载供应链信任模型（BUG-003/004：gh-proxy 同伪资产与摘要、PaperTodo 无可信摘要照装）与微信凭据 DPAPI 迁移（BUG-005/B06）。
+- 后端长尾：frpc DeleteProject 停超时丢引用成孤儿（2026-09-16 新）、`/api/drop` 无 LimitReader、`getClientIP` 信任 XFF、shortcut COM 引用未 Release、`errorsIsAccessDenied` 用 `Contains("5")` 误判、`KillVerified` 的 ctx 未生效、ReadLogContent 整读大日志、BUG-017 portscan cancel 误删、BUG-034/035 微信附件覆盖与解密长度、BUG-036~040 探测/版本判定族、BUG-054 .bat 直启。
+
+**前端长尾**
+- 失败播报逐视图迁移 `showErrorToast` 统一入口（useToast 已固化 8000ms 单点常量，全库 647 处直调中失败语义者自然收口；`main.ts` 全局异常与 `App.vue` 模块初始化失败优先）。
+- WSLView 2209 行按五页签拆分（Phase 6 拆分纪律对新代码的补账）。
+- 托管家族 23 文件复制体收编 `useVersionDownload`（`stepOf/statusOf/loadVersions/openDir` + 下载事件块），连带裁决 §9.6-10 六项同名不同形。
+- useWechatBot 多代轮询与 contextToken 账号快照竞态（先核证 `GetPendingMessages` 消费语义）；MemoView 设计方言清理；PublicIp 页签归编 MainTabNav；tsconfig `noImplicitAny` 收紧；Bili23/Paseo/VSCode/TranslucentTB/Rufus 五视图特征测试与托管子组件补 spec。

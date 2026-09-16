@@ -2,7 +2,7 @@
 
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
-> **更新日期**：2026-09-05
+> **更新日期**：2026-09-16
 > **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。当前待办＝§9.6-10 六项同名不同形待裁决（随 views 大扫除定标准形）、AppIcon 阶段2/3（挂起）、真机目视；蓝图 Phase 0–6 主体全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
@@ -18,17 +18,18 @@
 ## 2. 现状架构（如实描述）
 
 ```
-main.ts ── createApp(App)                          # 无 router、无 store
-App.vue  ── 应用外壳（手写一切）
-  ├─ CORE_VIEWS: route → component 映射            # 手写路由
-  ├─ ROUTE_MODULE_MAP: route → 后端 moduleId        # 路由切换前 EnsureModuleActive 门禁
-  ├─ <component :is> + <KeepAlive :max=10>          # 动态视图 + 缓存
+main.ts ── createApp(App) + 三份 styles/ 全局样式      # 无 router、无 store
+App.vue  ── 应用外壳（薄壳，路由表已外移）
+  ├─ 路由→组件与模块门禁清单在 constants/navigation.ts  # 单一来源 + defineAsyncComponent 异步
+  ├─ EnsureModuleActive 门禁 + navigationRequestID 防乱序
+  ├─ <component :is> + <KeepAlive :max=10> + <ErrorBoundary>   # 动态视图 + 缓存 + 崩溃兜底
   ├─ Events 顶层桥：ext:changed / notify:received / tray:navigate
-  └─ <style>:root                                   # 全局设计 token（当前仅浅色）
-views/<模块>View.vue  ×33                            # 每后端模块一视图，普遍偏大（最大 2170 行）
-components/                                         # ConfirmDialog / Notification* / Frpc* / envcheck/*
-composables/  useToast · useNotification            # 模块级 ref 单例＝事实状态层
-utils/        errors.ts: getErrorMessage
+  └─ 主题 token 住 styles/tokens.css（浅/深双主题）           # 不再内联于 App.vue
+views/*.vue  ×43                                   # 37 个后端模块各一视图 + 系统页/占位/弹窗壳（最大 WSLView.vue 2209 行）
+components/{ui,tool,shell}/                        # 原子件 / 托管家族共用壳 / 外壳组件；业务组件按族目录放置
+composables/  useToast · useNotification · useTheme · useWailsEvent · usePolling ·
+              useConfirm · usePrompt · useAsyncAction · useClipboard · 视图级 composable
+utils/        errors.ts: getErrorMessage · format.ts: fmtSize/fmtDate/fmtDuration
 ```
 
 **已做对、应保留**：`useToast`/`useNotification` 单例模式；`getErrorMessage` 统一异常；`ConfirmDialog`（Teleport+焦点陷阱+`tone/busy/details`+`v-model:open`）是可访问性标杆；事件订阅均有 unlisten 清理、`onActivated/onDeactivated` 管轮询的生命周期纪律。
