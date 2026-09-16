@@ -3,8 +3,8 @@
 // docs/design/shell-redesign/mockup-b-icon-rail.html）。
 // 纯展示组件：首页 / 六个分类按钮（GROUP_META 驱动，模块数角标 + 组内运行绿点）/
 // rail-bottom（展开收起钮、通知中心徽标、设置）。日志与关于入口、主题三态切换
-// 已按用户决策收进设置页（SettingsView「工作台入口」分区 + 外观 Theme 卡片），
-// rail 只保留高频导航职责。
+// 已按用户决策收进设置页（views/settings/WorkbenchSection + ThemeSection），
+// rail 只保留高频导航职责。设置钮对 /settings 及其全部子分区路由点亮。
 // 全部导航状态经 props 注入、动作以 emits 上抛；分类切换只上抛 select-group，
 // 面板联动与路由编排留在 AppSidebar / App.vue。唯一本地态是展开/收起
 // （纯视觉宽度开关，localStorage 键 hanxi.railExpanded 持久化，不参与业务）。
@@ -57,6 +57,11 @@ const emit = defineEmits<{
 const BOTTOM_NAV = [
   { route: '/settings', title: '设置', icon: 'gear' },
 ] as const
+
+// 设置已拆分为 /settings/<分区> 子路由：本体与全部子段均点亮设置钮
+function isCoreActive(route: string): boolean {
+  return props.activeRoute === route || props.activeRoute.startsWith(`${route}/`)
+}
 
 interface RailGroupItem {
   key: NavGroup
@@ -178,10 +183,10 @@ function toggleExpanded() {
         v-for="n in BOTTOM_NAV"
         :key="n.route"
         class="rail-btn rail-core"
-        :class="{ active: activeRoute === n.route }"
+        :class="{ active: isCoreActive(n.route) }"
         :title="n.title"
         :aria-label="n.title"
-        :aria-current="activeRoute === n.route ? 'page' : undefined"
+        :aria-current="isCoreActive(n.route) ? 'page' : undefined"
         @click="emit('navigate', n.route)"
       >
         <AppIcon :name="n.icon" :size="20" />

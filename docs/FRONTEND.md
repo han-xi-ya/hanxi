@@ -24,8 +24,12 @@ App.vue  ── 应用外壳（薄壳，路由表已外移）
   ├─ EnsureModuleActive 门禁 + navigationRequestID 防乱序
   ├─ <component :is> + <KeepAlive :max=10> + <ErrorBoundary>   # 动态视图 + 缓存 + 崩溃兜底
   ├─ Events 顶层桥：ext:changed / notify:received / tray:navigate
+  ├─ 设置语境第二栏：activeRoute ∈ /settings* 时 AppSidebar 面板切换为
+  │    SETTINGS_SECTIONS 分区菜单（constants/navigation.ts 单一来源，
+  │    子路由 /settings/<id>；'/settings' 兼容入口内容等同常规偏好）
   └─ 主题 token 住 styles/tokens.css（浅/深双主题）           # 不再内联于 App.vue
-views/*.vue  ×43                                   # 37 个后端模块各一视图 + 系统页/占位/弹窗壳（最大 WSLView.vue 2209 行）
+views/*.vue + views/settings/                    # 37 个后端模块各一视图 + 系统页/占位/弹窗壳（最大 WSLView.vue 2209 行）；
+                                                   # settings/ 为设置页拆分六分区（General/Theme/Tray/Storage/System/Workbench）
 components/{ui,tool,shell}/                        # 原子件 / 托管家族共用壳 / 外壳组件；业务组件按族目录放置
 composables/  useToast · useNotification · useTheme · useWailsEvent · usePolling ·
               useConfirm · usePrompt · useAsyncAction · useClipboard · 视图级 composable

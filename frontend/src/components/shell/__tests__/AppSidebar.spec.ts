@@ -125,6 +125,45 @@ describe('分组渲染', () => {
   })
 })
 
+describe('设置分区菜单（第二栏设置态）', () => {
+  it('activeRoute=/settings → 面板头「设置」、六分区行、主入口回落高亮常规，页脚计分区数', () => {
+    const w = factory({ navs: [MEMO], activeRoute: '/settings' })
+    expect(w.find('.panel-title').text()).toBe('设置')
+    const items = w.findAll('.mod')
+    expect(items).toHaveLength(6)
+    expect(items.map((b) => b.find('.mod-name').text())[0]).toBe('常规偏好')
+    expect(items[0].classes()).toContain('active')
+    expect(w.find('.foot-counts span').text()).toBe('6 个分区')
+    expect(w.find('.foot-run').exists()).toBe(false)
+  })
+
+  it('点击分区上抛 navigate；路由到子分区后高亮迁移', async () => {
+    const w = factory({ navs: [MEMO], activeRoute: '/settings' })
+    await w.findAll('.mod')[1].trigger('click') // theme
+    expect(w.emitted('navigate')).toEqual([['/settings/theme']])
+    await w.setProps({ activeRoute: '/settings/theme' })
+    const items = w.findAll('.mod')
+    expect(items[1].classes()).toContain('active')
+    expect(items[0].classes()).not.toContain('active')
+  })
+
+  it('rail 点分类预览压过设置菜单；路由再变化即复位设置态', async () => {
+    const w = factory({ navs: [MEMO], activeRoute: '/settings/tray' })
+    await w.findAll('.rail-group')[3].trigger('click') // efficiency 组预览
+    expect(w.find('.panel-title').text()).toBe(GROUP_META.efficiency.title)
+    expect(w.findAll('.mod').map((b) => b.find('.mod-name').text())).toEqual(['随手记'])
+    await w.setProps({ activeRoute: '/settings/storage' })
+    expect(w.find('.panel-title').text()).toBe('设置')
+    expect(w.findAll('.mod')[3].classes()).toContain('active') // 分区序：general/theme/tray/storage
+  })
+
+  it('设置分区不写入最近使用（recentRoutes 只记模块路由）', async () => {
+    const w = factory({ navs: [MEMO], activeRoute: '/settings' })
+    await w.findAll('.mod')[0].trigger('click')
+    expect(localStorage.getItem(RECENT_ROUTES_KEY)).toBeNull()
+  })
+})
+
 describe('面板模块行', () => {
   it('active 高亮跟随 activeRoute；点击行 emit navigate', async () => {
     const w = factory({ navs: [MEMO, FRPC], activeGroup: 'efficiency', activeRoute: '/ext/memo' })

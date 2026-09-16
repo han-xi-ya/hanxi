@@ -73,6 +73,16 @@ export const ICON_PATHS = {
   'rail-collapse': ['M4 4h16v16H4z', 'M10 4v16', 'm16.5 9-3 3 3 3'],
   'chevrons-left': ['m11 7-5 5 5 5', 'm18 7-5 5 5 5'],
   'chevrons-right': ['m13 7 5 5-5 5', 'm6 7 5 5-5 5'],
+
+  // ── 设置页拆分（分区菜单 + 操作钮去 emoji 化，阶段3先咬掉设置页一角）──
+  sliders: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M1 14h6', 'M9 8h6', 'M17 16h6'],
+  palette: ['M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h1.5A4.5 4.5 0 0 0 21 10c0-3.9-4-7-9-7z', 'M7.5 11.5h.01', 'M10 8h.01', 'M14.5 7.5h.01'],
+  folder: ['M4 5h5l2 2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'],
+  plus: ['M12 5v14', 'M5 12h14'],
+  x: ['M18 6L6 18', 'M6 6l12 12'],
+  'chevron-up': ['m18 15-6-6-6 6'],
+  'chevron-down': ['m6 9 6 6 6-6'],
+  clock: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18', 'M12 7v5l3 2'],
 } as const
 
 export type IconName = keyof typeof ICON_PATHS

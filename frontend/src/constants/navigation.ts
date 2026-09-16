@@ -27,6 +27,16 @@ export interface RouteDef {
   moduleId?: string
 }
 
+// —— 设置页分区视图（拆分自原单页 SettingsView）：'/settings' 为兼容落地入口
+//（托盘固定项 / 通知点击路由 / 快捷菜单直达均引用该串），内容等同「常规偏好」。
+// 分区菜单单一来源见 SETTINGS_SECTIONS，二级面板（AppSidebar）据此渲染。
+const SettingsGeneral = defineAsyncComponent(() => import('@/views/settings/GeneralSection.vue'))
+const SettingsTheme = defineAsyncComponent(() => import('@/views/settings/ThemeSection.vue'))
+const SettingsTray = defineAsyncComponent(() => import('@/views/settings/TraySection.vue'))
+const SettingsStorage = defineAsyncComponent(() => import('@/views/settings/StorageSection.vue'))
+const SettingsSystem = defineAsyncComponent(() => import('@/views/settings/SystemSection.vue'))
+const SettingsWorkbench = defineAsyncComponent(() => import('@/views/settings/WorkbenchSection.vue'))
+
 export const ROUTES: Record<string, RouteDef> = {
   '/': { component: defineAsyncComponent(() => import('@/views/HomeView.vue')) },
   '/frpc': { component: defineAsyncComponent(() => import('@/views/FrpcProjectsView.vue')), moduleId: 'frpc' },
@@ -68,8 +78,39 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/wsl': { component: defineAsyncComponent(() => import('@/views/WSLView.vue')), moduleId: 'wsl' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
-  '/settings': { component: defineAsyncComponent(() => import('@/views/SettingsView.vue')) },
+  '/settings': { component: SettingsGeneral },
+  '/settings/general': { component: SettingsGeneral },
+  '/settings/theme': { component: SettingsTheme },
+  '/settings/tray': { component: SettingsTray },
+  '/settings/storage': { component: SettingsStorage },
+  '/settings/system': { component: SettingsSystem },
+  '/settings/workbench': { component: SettingsWorkbench },
   '/about': { component: defineAsyncComponent(() => import('@/views/AboutView.vue')) },
+}
+
+/** 设置页分区（二级面板设置态菜单的单一来源）。 */
+export interface SettingsSection {
+  id: string
+  title: string
+  desc: string
+  icon: IconName
+  route: string
+}
+
+export const SETTINGS_SECTIONS: SettingsSection[] = [
+  { id: 'general', title: '常规偏好', desc: '启动 · 窗口 · 日志保留', icon: 'sliders', route: '/settings/general' },
+  { id: 'theme', title: '外观主题', desc: '浅色 · 深色 · 跟随系统', icon: 'palette', route: '/settings/theme' },
+  { id: 'tray', title: '托盘菜单', desc: '右键快捷入口自定义', icon: 'inbox', route: '/settings/tray' },
+  { id: 'storage', title: '存储目录', desc: '配置 · 日志 · 版本仓', icon: 'hard-drive', route: '/settings/storage' },
+  { id: 'system', title: '系统直达', desc: 'hosts · 组件 · 通知诊断', icon: 'wrench', route: '/settings/system' },
+  { id: 'workbench', title: '工作台入口', desc: '运行日志 · 关于', icon: 'file-text', route: '/settings/workbench' },
+]
+
+/** route → 设置分区 id；'/settings' 与未注册子段回落 general；非设置路由返回 null。 */
+export function settingsSectionOf(route: string): string | null {
+  if (route !== '/settings' && !route.startsWith('/settings/')) return null
+  const seg = route.slice('/settings/'.length)
+  return SETTINGS_SECTIONS.some((s) => s.id === seg) ? seg : 'general'
 }
 
 /** 占位视图同样异步（仅在后端注册了前端未建档的路由时才加载）。 */

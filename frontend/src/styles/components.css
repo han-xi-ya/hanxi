@@ -139,6 +139,26 @@
   border-bottom: none;
 }
 
+/* ---------- 设置分区行（设置页拆分后跨六个分区视图共用，自 SettingsView scoped 副本上收；
+   命名 .setting-* 全库唯一，零特异性落回即可用） ---------- */
+:where(.setting-row) {
+  background: var(--surface-page);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+:where(.setting-row-tappable) { cursor: pointer; }
+:where(.setting-row-tappable:hover) { background: var(--surface-hover); }
+:where(.setting-main) { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+:where(.setting-name) { font-size: 13px; font-weight: 600; color: var(--color-text); }
+:where(.setting-desc) { font-size: 11px; color: var(--color-text-muted); }
+:where(.setting-actions) { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 /* ---------- 徽标 / 状态 chip ---------- */
 :where(.chip) {
   display: inline-flex;

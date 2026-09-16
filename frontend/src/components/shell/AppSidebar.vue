@@ -7,6 +7,10 @@
 // 路由/门禁/单例编排留在 App.vue。activeGroup 缺省时面板分类由 activeRoute 反推
 // （点 rail 分类钮仅切面板、不换路由，产生临时 override，路由变化即复位）。
 //
+// 设置语境：activeRoute 落在 /settings*（且未被分组预览占用）时，面板切换为
+// 设置分区菜单（constants/navigation.SETTINGS_SECTIONS 单一来源），点击分区
+// 上抛 navigate 换子路由；rail 点分类仍走既有 override 预览语义，互不干扰。
+//
 // 图标双轨制（AppIcon 阶段1，docs/FRONTEND.md §8）：nav.icon 为 `i:` 前缀时渲染
 // 内联 SVG，裸字符/emoji 走文本回退分支（后端 Icon 全量改写 i: 名后回退分支自然退役）。
 //
@@ -23,6 +27,8 @@ import type { NavEntry } from '../../../bindings/hanxi/internal/extapi/models'
 import {
   GROUP_META,
   MODULE_PRESENTATION,
+  SETTINGS_SECTIONS,
+  settingsSectionOf,
   type NavGroup,
 } from '../../constants/navigation'
 import {
@@ -111,6 +117,11 @@ const shownGroup = computed<ShellGroup | ''>(() =>
 // 路由一旦变化，rail 的临时预览分类即失效，面板回归当前路由语境
 watch(() => props.activeRoute, () => { groupOverride.value = null })
 
+// 设置分区语境：activeRoute 落在 /settings* 且面板未被 rail 分组预览占用时，
+// 第二栏整体切换为设置分区菜单（SETTINGS_SECTIONS 单一来源）。
+const settingsSection = computed(() => settingsSectionOf(props.activeRoute))
+const settingsPanel = computed(() => settingsSection.value !== null && shownGroup.value === '')
+
 const grouped = computed(() => groupNavs(navList.value))
 
 // 当前分类的模块清单（rail 点组但组内为空时呈现空态文案）
@@ -118,8 +129,11 @@ const shownNavs = computed<NavEntryWithGroup[]>(() =>
   shownGroup.value === '' ? [] : grouped.value.get(shownGroup.value) ?? [],
 )
 
-// 面板头：分类态取 GROUP_META（other 兜底组自配文案），首页态取"工作台"
+// 面板头：设置态取"设置"；分类态取 GROUP_META（other 兜底组自配文案）；首页态取"工作台"
 const panelMeta = computed(() => {
+  if (settingsPanel.value) {
+    return { title: '设置', desc: '偏好 · 托盘 · 系统直达', icon: 'gear' as IconName }
+  }
   if (shownGroup.value === '') {
     return { title: '工作台', desc: '常用与最近使用的模块', icon: 'home' as IconName }
   }
@@ -158,6 +172,9 @@ function onNavigate(route: string) {
   if (navList.value.some((n) => n.route === route)) recentRoutes.value = pushRecentRoute(route)
   railOpen.value = false // 窄屏抽屉内导航后自动收回
   panelFlyout.value = false // flyout 内导航后同样即点即收
+  // 窄屏进设置：分区菜单以 flyout 随页弹出（否则第二栏不可见，无从切换分区）；
+  // 分区之间互切（/settings/xxx）不再弹，让位给内容区。
+  if (isNarrow.value && route === '/settings') panelFlyout.value = true
   emit('navigate', route)
 }
 
@@ -224,8 +241,30 @@ function iconSvg(icon: string | undefined): IconName | null {
       </div>
 
       <div class="panel-list">
+        <!-- 设置态：分区菜单（点击上抛 navigate 换子路由，内容区随之换页） -->
+        <template v-if="settingsPanel">
+          <div class="panel-section-label">设置分区</div>
+          <button
+            v-for="s in SETTINGS_SECTIONS"
+            :key="s.id"
+            class="nav-item mod"
+            :class="{ active: settingsSection === s.id }"
+            :title="`${s.title} · ${s.desc}`"
+            :aria-current="settingsSection === s.id ? 'page' : undefined"
+            @click="onNavigate(s.route)"
+          >
+            <span class="mod-icon">
+              <AppIcon :name="s.icon" :size="15" />
+            </span>
+            <span class="mod-main">
+              <span class="nav-text mod-name">{{ s.title }}</span>
+              <span class="mod-sub">{{ s.desc }}</span>
+            </span>
+          </button>
+        </template>
+
         <!-- 首页态：常用 + 最近使用 -->
-        <template v-if="shownGroup === ''">
+        <template v-else-if="shownGroup === ''">
           <div class="panel-section-label">常用</div>
           <button
             v-for="n in favNavs"
@@ -296,8 +335,8 @@ function iconSvg(icon: string | undefined): IconName | null {
 
       <div class="panel-foot">
         <div class="foot-counts">
-          <span>{{ shownGroup === '' ? navList.length : shownNavs.length }} 个模块</span>
-          <span class="foot-run"><b>{{ shownGroup === '' ? runningCountOf(navList, runningIds) : groupRunningCount }}</b> 运行中</span>
+          <span>{{ settingsPanel ? `${SETTINGS_SECTIONS.length} 个分区` : (shownGroup === '' ? navList.length : shownNavs.length) + ' 个模块' }}</span>
+          <span v-if="!settingsPanel" class="foot-run"><b>{{ shownGroup === '' ? runningCountOf(navList, runningIds) : groupRunningCount }}</b> 运行中</span>
         </div>
         <div class="status-bar">
           <span class="status-dot" :class="{ online: backendReady }"></span>
@@ -482,6 +521,16 @@ function iconSvg(icon: string | undefined): IconName | null {
   font-size: 12.5px;
   font-weight: 600;
   line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 行副描述（设置分区行用；模块行留空零占位） */
+.mod-sub {
+  font-size: 10.5px;
+  color: var(--color-text-subtle);
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

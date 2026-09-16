@@ -4,14 +4,18 @@ import { describe, expect, it } from 'vitest'
 import {
   ROUTES, moduleIdOf, routeComponent, placeholderComponent, fallbackComponent,
   GROUP_META, MODULE_GROUP, groupOfModule, MODULE_PRESENTATION, FALLBACK_MODULE_ICON,
+  SETTINGS_SECTIONS, settingsSectionOf,
 } from '../navigation'
 import { ICON_NAMES } from '../icons'
 
 describe('constants/navigation', () => {
-  it('登记了全部 42 条路由', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(42)
+  it('登记了全部 48 条路由（含设置页 6 个分区子路由）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(48)
     for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr']) {
       expect(ROUTES[route]).toBeDefined()
+    }
+    for (const s of SETTINGS_SECTIONS) {
+      expect(ROUTES[s.route]).toBeDefined()
     }
   })
 
@@ -84,5 +88,28 @@ describe('constants/navigation', () => {
     expect(routeComponent('/nope')).toBeUndefined()
     expect(placeholderComponent()).toBeTruthy()
     expect(fallbackComponent()).toBe(routeComponent('/'))
+    // 设置主入口与常规分区共享同一组件（'/settings' 兼容串直达内容）
+    expect(routeComponent('/settings')).toBe(routeComponent('/settings/general'))
+  })
+})
+
+describe('设置分区注册表', () => {
+  it('SETTINGS_SECTIONS 图标均已登记，route 与 /settings/<id> 对齐且全部进 ROUTES', () => {
+    expect(SETTINGS_SECTIONS.length).toBeGreaterThanOrEqual(6)
+    for (const s of SETTINGS_SECTIONS) {
+      expect(ICON_NAMES).toContain(s.icon)
+      expect(s.route).toBe(`/settings/${s.id}`)
+      expect(ROUTES[s.route]).toBeDefined()
+      expect(moduleIdOf(s.route)).toBeUndefined() // 分区为前端核心页，不进模块门禁
+    }
+  })
+
+  it('settingsSectionOf：主入口与未知子段回落 general，识别分区，非设置路由返回 null', () => {
+    expect(settingsSectionOf('/settings')).toBe('general')
+    expect(settingsSectionOf('/settings/theme')).toBe('theme')
+    expect(settingsSectionOf('/settings/nope')).toBe('general')
+    expect(settingsSectionOf('/')).toBeNull()
+    expect(settingsSectionOf('/ext/memo')).toBeNull()
+    expect(settingsSectionOf('/settingsx')).toBeNull() // 前缀相似不误伤
   })
 })
