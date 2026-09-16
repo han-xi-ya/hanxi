@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,10 +13,13 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"hanxi/internal/jsonstore"
 	"hanxi/internal/modules/ddnsgo/instance"
 	"hanxi/internal/modules/ddnsgo/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -26,6 +27,16 @@ const (
 	watchInterval = 5 * time.Second // 外部实例感知轮询间隔
 
 	consoleWindowName = "ddnsgo-console" // 固定窗口名（Wails 窗口管理器内唯一键）
+
+	// 控制台子窗口尺寸：默认展开 / 最小缩放两档（面板为上游 web 页，尺寸只影响首屏视野）。
+	consoleWindowWidth  = 1120
+	consoleWindowHeight = 820
+	consoleMinWidth     = 760
+	consoleMinHeight    = 520
+
+	// configFileName 上游约定的单文件配置名：恒存 %USERPROFILE%\.ddns_go_config.yaml
+	// （-c 可覆盖，本托管不改传参恒用默认，与用户自行运行的实例共享同一份配置）。
+	configFileName = ".ddns_go_config.yaml"
 )
 
 // DdnsGoService 向前端暴露 ddns-go 版本管理、托管启停与内嵌 Web 控制台能力。
@@ -377,10 +388,10 @@ func (s *DdnsGoService) ensureConsoleWindow(url string) error {
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             consoleWindowName,
 		Title:            "ddns-go 控制台",
-		Width:            1120,
-		Height:           820,
-		MinWidth:         760,
-		MinHeight:        520,
+		Width:            consoleWindowWidth,
+		Height:           consoleWindowHeight,
+		MinWidth:         consoleMinWidth,
+		MinHeight:        consoleMinHeight,
 		URL:              url,
 		BackgroundColour: application.NewRGB(245, 246, 248),
 	})
@@ -431,7 +442,7 @@ func (s *DdnsGoService) GetListenPort() (int, error) {
 
 // SetListenPort 设定端口（1024~65535，下次启动生效；运行中实例不变）。
 func (s *DdnsGoService) SetListenPort(port int) (string, error) {
-	if err := validateListenPort(port); err != nil {
+	if err := jsonstore.ValidateListenPort(port); err != nil {
 		return "", err
 	}
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateStarting {
@@ -464,22 +475,10 @@ func (s *DdnsGoService) OpenRepository() error {
 }
 
 // OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
-// 而非"打开"（markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
-// 这里入参恒为目录，语义安全，但仍走本模块自有实现保持行为显式。
+// 收口至 windows.RevealDir（存在性/类型校验与中文报错内置；入参恒为目录，
+// 刻意不走 explorer.exe <file> 的"执行"语义——markeron「打开安装目录」按钮的事故教训）。
 func (s *DdnsGoService) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 在资源管理器中定位 ddns-go 的配置文件（%USERPROFILE%\.ddns_go_config.yaml）——
@@ -492,7 +491,7 @@ func (s *DdnsGoService) OpenConfigDir() error {
 	if _, err := os.Stat(file); err != nil {
 		return fmt.Errorf("ddns-go 配置文件尚未创建（程序还未保存过配置）: %s", file)
 	}
-	return exec.Command("explorer.exe", "/select,"+file).Start()
+	return windows.RevealFile(file)
 }
 
 // userConfigFile 上游约定路径：%USERPROFILE%\.ddns_go_config.yaml（-c 可覆盖，本托管不改传参恒用默认，
@@ -502,7 +501,7 @@ func userConfigFile() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("无法定位用户目录: %v", err)
 	}
-	return filepath.Join(home, ".ddns_go_config.yaml"), nil
+	return filepath.Join(home, configFileName), nil
 }
 
 // ---------- 版本解析 ----------
@@ -533,20 +532,6 @@ func (s *DdnsGoService) resolveActiveVersion() (string, string, error) {
 // versionCompare 比较 vX.Y.Z 版本号（a>b 返回 1；相等 0；a<b 返回 -1）。
 // 目录名的字典序对 6.9.0/6.10.0 这类多位数段有误，必须数值分段比较。
 func versionCompare(a, b string) int {
-	pa := strings.Split(strings.TrimPrefix(a, "v"), ".")
-	pb := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		na, errA := strconv.Atoi(pa[i])
-		nb, errB := strconv.Atoi(pb[i])
-		if errA != nil || errB != nil {
-			return strings.Compare(a, b) // 非规范段退化为字典序（正常数据不可达）
-		}
-		if na != nb {
-			if na > nb {
-				return 1
-			}
-			return -1
-		}
-	}
-	return 0
+	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
+	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
 }

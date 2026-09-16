@@ -4,20 +4,21 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/modules/modpath"
 	"hanxi/internal/modules/piclite/instance"
 	"hanxi/internal/modules/piclite/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -27,6 +28,10 @@ const (
 
 	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 Hanxi 发起操作且无可见用户窗口
 	idleCheckTick = 30 * time.Second
+
+	// userDirName 上游为 tauri 应用，identifier=com.piclite.desktop → %APPDATA% 下数据目录
+	// （实例区注释实证，配置恒在 %APPDATA%\com.piclite.desktop）。
+	userDirName = "com.piclite.desktop"
 )
 
 // PicLiteService 向前端暴露 PicLite 版本管理与窗口唤起能力。
@@ -138,7 +143,7 @@ func (s *PicLiteService) idleCheck() {
 		slog.Warn("piclite idle auto-quit failed", "err", err)
 		return
 	}
-	notify.Info("piclite", "已自动退出", "PicLite 已空闲 3 分钟，自动退出以释放内存", "/ext/piclite")
+	notify.Info("piclite", "已自动退出", fmt.Sprintf("PicLite 已空闲 %d 分钟，自动退出以释放内存", int(idleQuitAfter/time.Minute)), "/ext/piclite")
 }
 
 // shouldIdleQuit 空闲退出判定（纯函数，便于单测穷举）。
@@ -253,43 +258,22 @@ func (s *PicLiteService) ImportLocal(srcDir string) (version.PicVersionInfo, err
 // ---------- 控制操作 ----------
 
 // OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
-// 而非"打开"（markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
-// 这里入参恒为目录，语义安全，但仍走本模块自有实现保持行为显式。
+// 收口至 windows.RevealDir：入参恒为目录（其内部先做存在性/类型校验并给出中文报错），
+// 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *PicLiteService) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 PicLite 的用户数据目录（配置与图床设置所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
 func (s *PicLiteService) OpenConfigDir() error {
-	dir, err := userConfigDir()
+	dir, err := modpath.UserConfigDir(userDirName)
 	if err != nil {
 		return err
 	}
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("PicLite 数据目录尚未创建（程序还未运行过）: %s", dir)
 	}
-	return exec.Command("explorer.exe", dir).Start()
-}
-
-// userConfigDir 上游为 tauri 应用，identifier=com.piclite.desktop → appData 目录（实例区注释实证，配置恒在 %APPDATA%\com.piclite.desktop）。
-func userConfigDir() (string, error) {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return "", fmt.Errorf("无法定位 APPDATA 目录")
-	}
-	return filepath.Join(appData, "com.piclite.desktop"), nil
+	return windows.RevealDir(dir)
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
@@ -420,22 +404,8 @@ func (s *PicLiteService) resolveInstalledExeAny() (string, error) {
 // versionCompare 比较 vX.Y.Z 版本号（a>b 返回 1；相等 0；a<b 返回 -1）。
 // 目录名的字典序对 1.10.0/1.9.0 这类多位数段有误，必须数值分段比较。
 func versionCompare(a, b string) int {
-	pa := strings.Split(strings.TrimPrefix(a, "v"), ".")
-	pb := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		na, errA := strconv.Atoi(pa[i])
-		nb, errB := strconv.Atoi(pb[i])
-		if errA != nil || errB != nil {
-			return strings.Compare(a, b) // 非规范段退化为字典序（正常数据不可达）
-		}
-		if na != nb {
-			if na > nb {
-				return 1
-			}
-			return -1
-		}
-	}
-	return 0
+	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
+	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
 }
 
 // ---------- 联动开关与桌面辅助 ----------

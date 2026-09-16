@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +16,8 @@ import (
 	"hanxi/internal/modules/ccswitch/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -27,6 +27,9 @@ const (
 
 	idleQuitAfter = 3 * time.Minute // 空闲自动退出阈值：无 Hanxi 发起操作且主窗口未开
 	idleCheckTick = 30 * time.Second
+
+	// dataDirName 上游数据目录约定：provider 配置、备份恒在 ~/.cc-switch（导入区注释实证，跨版本共享不迁移）。
+	dataDirName = ".cc-switch"
 )
 
 // CCSwitchService 向前端暴露 CC Switch 版本管理与窗口唤起能力。
@@ -139,7 +142,7 @@ func (s *CCSwitchService) idleCheck() {
 		slog.Warn("ccswitch idle auto-quit failed", "err", err)
 		return
 	}
-	notify.Info("ccswitch", "已自动退出", "CC Switch 已空闲 3 分钟，自动退出以释放内存", "/ext/ccswitch")
+	notify.Info("ccswitch", "已自动退出", fmt.Sprintf("CC Switch 已空闲 %d 分钟，自动退出以释放内存", int(idleQuitAfter/time.Minute)), "/ext/ccswitch")
 }
 
 // shouldIdleQuit 空闲退出判定（纯函数，便于单测穷举）。
@@ -266,22 +269,10 @@ func (s *CCSwitchService) ImportLocal(srcDir string) (version.CCVersionInfo, err
 // ---------- 控制操作 ----------
 
 // OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
-// 而非"打开"（markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
-// 这里入参恒为目录，语义安全，但仍走本模块自有实现保持行为显式。
+// 收口至 windows.RevealDir：其 explorer.exe <dir> 语义即"打开目录"，
+// 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *CCSwitchService) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 CC Switch 的用户数据目录（供应商配置与工作区所在（home/.cc-switch））——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
@@ -293,16 +284,16 @@ func (s *CCSwitchService) OpenConfigDir() error {
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("CC Switch 数据目录尚未创建（程序还未运行过）: %s", dir)
 	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
-// userConfigDir 上游数据目录约定：provider 配置、备份恒在 ~/.cc-switch（导入区注释实证，跨版本共享不迁移）。
+// userConfigDir CC Switch 数据目录恒在用户主目录下的 .cc-switch（上游约定，跨版本共享不迁移）。
 func userConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("无法定位用户目录: %v", err)
 	}
-	return filepath.Join(home, ".cc-switch"), nil
+	return filepath.Join(home, dataDirName), nil
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
@@ -432,22 +423,8 @@ func (s *CCSwitchService) resolveInstalledExeAny() (string, error) {
 // versionCompare 比较 vX.Y.Z 版本号（a>b 返回 1；相等 0；a<b 返回 -1）。
 // 目录名的字典序对 3.10.0/3.9.0 这类多位数段有误，必须数值分段比较。
 func versionCompare(a, b string) int {
-	pa := strings.Split(strings.TrimPrefix(a, "v"), ".")
-	pb := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		na, errA := strconv.Atoi(pa[i])
-		nb, errB := strconv.Atoi(pb[i])
-		if errA != nil || errB != nil {
-			return strings.Compare(a, b) // 非规范段退化为字典序（正常数据不可达）
-		}
-		if na != nb {
-			if na > nb {
-				return 1
-			}
-			return -1
-		}
-	}
-	return 0
+	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
+	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
 }
 
 // ---------- 联动开关与桌面辅助 ----------

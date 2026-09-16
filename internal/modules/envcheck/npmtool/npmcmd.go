@@ -9,12 +9,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
+
+	"hanxi/internal/platform/windows"
 )
 
 const (
-	createNoWindow      = 0x08000000 // CREATE_NO_WINDOW：防止执行时弹出 cmd 黑框
 	npmOperationTimeout = 10 * time.Minute
 	npmQuickTimeout     = 10 * time.Second
 	maxStreamedLines    = 2000
@@ -84,7 +84,7 @@ func buildNpmCommand(ctx context.Context, npm string, args []string) *exec.Cmd {
 	default:
 		cmd = exec.CommandContext(ctx, npm, args...)
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	windows.HideConsole(cmd) // 防止执行时弹出 cmd 黑框（CREATE_NO_WINDOW 公共实现）
 	return cmd
 }
 

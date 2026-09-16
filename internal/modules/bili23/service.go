@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,14 +14,21 @@ import (
 
 	"hanxi/internal/modules/bili23/instance"
 	"hanxi/internal/modules/bili23/version"
+	"hanxi/internal/modules/modpath"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
 const (
 	readyTimeout  = 30 * time.Second // 冷启动就绪上限（单实例互斥体出现；Qt 首帧 + 网络栈预热）
 	watchInterval = 5 * time.Second  // 外部实例感知轮询间隔
+
+	// dataDirName 上游数据目录约定（实证自 src/main.py：QStandardPaths.AppDataLocation
+	// 导入期取值 + 硬编码 "Bili23 Downloader" 子目录拼接）。
+	dataDirName = "Bili23 Downloader"
 )
 
 // Service 向前端暴露 Bili23 Downloader 版本管理与托管启停能力。
@@ -197,44 +202,23 @@ func (s *Service) ImportLocal(srcDir string) (version.Bili23VersionInfo, error) 
 // ---------- 控制操作 ----------
 
 // OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
-// 而非"打开"（markeron「打开安装目录」按钮的事故教训）。这里入参恒为目录，语义安全。
+// 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
+// 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *Service) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 Bili23 的用户数据目录（%APPDATA%\Bili23 Downloader，
 // 配置/任务库/日志所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
 func (s *Service) OpenConfigDir() error {
-	dir, err := bili23UserDir()
+	dir, err := modpath.UserConfigDir(dataDirName)
 	if err != nil {
 		return err
 	}
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("Bili23 数据目录尚未创建（程序还未运行过）: %s", dir)
 	}
-	return exec.Command("explorer.exe", dir).Start()
-}
-
-// bili23UserDir 上游数据目录约定（实证自 src/main.py：QStandardPaths.AppDataLocation
-// 导入期取值 + 硬编码 "Bili23 Downloader" 子目录拼接）。
-func bili23UserDir() (string, error) {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return "", fmt.Errorf("无法定位 APPDATA 目录")
-	}
-	return filepath.Join(appData, "Bili23 Downloader"), nil
+	return windows.RevealDir(dir)
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
@@ -398,22 +382,8 @@ func (s *Service) resolveInstalledExeAny() (string, error) {
 // 目录名的字典序对 2.15.0/2.9.0 这类多位数段有误，必须数值分段比较；
 // 上游存在 2.00.7 前导零段，Atoi 天然兼容。
 func versionCompare(a, b string) int {
-	pa := strings.Split(strings.TrimPrefix(a, "v"), ".")
-	pb := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		na, errA := strconv.Atoi(pa[i])
-		nb, errB := strconv.Atoi(pb[i])
-		if errA != nil || errB != nil {
-			return strings.Compare(a, b) // 非规范段退化为字典序（正常数据不可达）
-		}
-		if na != nb {
-			if na > nb {
-				return 1
-			}
-			return -1
-		}
-	}
-	return 0
+	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
+	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
 }
 
 // ---------- 联动开关与桌面辅助 ----------

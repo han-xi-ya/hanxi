@@ -4,10 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,14 +13,21 @@ import (
 
 	"hanxi/internal/modules/keyviz/instance"
 	"hanxi/internal/modules/keyviz/version"
+	"hanxi/internal/modules/modpath"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
 const (
 	readyTimeout  = 20 * time.Second // 冷启动就绪上限（单实例互斥体出现）
 	watchInterval = 5 * time.Second  // 外部实例感知轮询间隔
+
+	// dataDirName 上游为 tauri 应用，identifier=org.keyviz（tauri-plugin-store 写
+	// %APPDATA%\org.keyviz\store.json，实例包注释实证）。
+	dataDirName = "org.keyviz"
 )
 
 // KeyvizService 向前端暴露 Keyviz 版本管理与托管启停能力。
@@ -194,43 +198,22 @@ func (s *KeyvizService) ImportLocal(srcDir string) (version.KeyvizVersionInfo, e
 // ---------- 控制操作 ----------
 
 // OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
-// 而非"打开"（markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
-// 这里入参恒为目录，语义安全，但仍走本模块自有实现保持行为显式。
+// 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
+// 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *KeyvizService) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 Keyviz 的用户数据目录（样式配置 store.json 所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
 func (s *KeyvizService) OpenConfigDir() error {
-	dir, err := userConfigDir()
+	dir, err := modpath.UserConfigDir(dataDirName)
 	if err != nil {
 		return err
 	}
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("Keyviz 数据目录尚未创建（程序还未运行过）: %s", dir)
 	}
-	return exec.Command("explorer.exe", dir).Start()
-}
-
-// userConfigDir 上游为 tauri 应用，identifier=org.keyviz → appData 目录（tauri-plugin-store 写 %APPDATA%\org.keyviz\store.json，实例包注释实证）。
-func userConfigDir() (string, error) {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return "", fmt.Errorf("无法定位 APPDATA 目录")
-	}
-	return filepath.Join(appData, "org.keyviz"), nil
+	return windows.RevealDir(dir)
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
@@ -339,22 +322,8 @@ func (s *KeyvizService) resolveActiveVersion() (string, string, error) {
 // versionCompare 比较 vX.Y.Z 版本号（a>b 返回 1；相等 0；a<b 返回 -1）。
 // 目录名的字典序对 2.10.0/2.9.0 这类多位数段有误，必须数值分段比较。
 func versionCompare(a, b string) int {
-	pa := strings.Split(strings.TrimPrefix(a, "v"), ".")
-	pb := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		na, errA := strconv.Atoi(pa[i])
-		nb, errB := strconv.Atoi(pb[i])
-		if errA != nil || errB != nil {
-			return strings.Compare(a, b) // 非规范段退化为字典序（正常数据不可达）
-		}
-		if na != nb {
-			if na > nb {
-				return 1
-			}
-			return -1
-		}
-	}
-	return 0
+	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
+	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
 }
 
 // ---------- 联动开关与桌面辅助 ----------

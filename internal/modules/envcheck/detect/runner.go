@@ -6,14 +6,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
+
+	"hanxi/internal/platform/windows"
 )
 
-const (
-	createNoWindow = 0x08000000 // CREATE_NO_WINDOW：防止探测时弹出 cmd 黑框
-	probeTimeout   = 5 * time.Second
-)
+const probeTimeout = 5 * time.Second
 
 // runVersionCommand 执行一次性版本探测命令并返回合并输出。
 // CombinedOutput 而非 Output：java 的 -version 输出打在 stderr 上，必须合并兜底。
@@ -31,7 +29,7 @@ func runVersionCommand(ctx context.Context, exe string, args []string) (string, 
 	default:
 		cmd = exec.CommandContext(ctx, exe, args...)
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	windows.HideConsole(cmd) // 防止探测时弹出 cmd 黑框（CREATE_NO_WINDOW 公共实现）
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {

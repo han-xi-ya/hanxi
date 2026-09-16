@@ -19,6 +19,7 @@ import (
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -145,7 +146,7 @@ func (s *EverythingService) idleCheck() {
 		slog.Warn("everything idle auto-quit failed", "err", err)
 		return
 	}
-	notify.Info("everything", "已自动退出", "Everything 已空闲 3 分钟，自动退出以释放内存；再次搜索会自动重启", "/ext/everything")
+	notify.Info("everything", "已自动退出", fmt.Sprintf("Everything 已空闲 %d 分钟，自动退出以释放内存；再次搜索会自动重启", int(idleQuitAfter/time.Minute)), "/ext/everything")
 }
 
 // shouldIdleQuit 空闲退出判定（纯函数，便于单测穷举）。
@@ -346,18 +347,17 @@ func (s *EverythingService) OpenTarget(path string) error {
 	if err != nil {
 		return fmt.Errorf("目标不存在或不可访问: %s", path)
 	}
-	var cmd *exec.Cmd
 	if fi.IsDir() {
-		cmd = exec.Command("explorer.exe", path)
-	} else {
-		cmd = exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", path)
+		return windows.RevealDir(path)
 	}
-	return cmd.Start()
+	// 文件走默认关联程序（rundll32 FileProtocolHandler），不限可执行文件
+	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", path).Start()
 }
 
 // RevealTarget 在资源管理器中定位并选中目标（文件/目录通用）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"而非"定位"
-// （markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
+// 存在性校验用本模块文案先行（目标可以是文件或目录），定位动作收口至
+// windows.RevealFile（explorer /select, 习语——刻意不走 explorer.exe <file> 的"执行"语义，
+// markeron「打开安装目录」按钮的事故教训）。
 func (s *EverythingService) RevealTarget(path string) error {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -366,8 +366,7 @@ func (s *EverythingService) RevealTarget(path string) error {
 	if _, err := os.Stat(path); err != nil {
 		return fmt.Errorf("目标不存在或不可访问: %s", path)
 	}
-	// /select, 与路径必须为同一参数，中间逗号是语法一部分
-	return exec.Command("explorer.exe", "/select,"+path).Start()
+	return windows.RevealFile(path)
 }
 
 // ---------- 版本管理（委托 manager） ----------

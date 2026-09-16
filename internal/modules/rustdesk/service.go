@@ -4,20 +4,21 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/modules/modpath"
 	"hanxi/internal/modules/rustdesk/instance"
 	"hanxi/internal/modules/rustdesk/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -28,6 +29,9 @@ const (
 	readyTimeout = 45 * time.Second
 	// watchInterval 外部便携实例感知轮询间隔
 	watchInterval = 5 * time.Second
+
+	// dataDirName portable 形态默认写 %APPDATA%\RustDesk（module.go 包注释实证；本机实存印证）。
+	dataDirName = "RustDesk"
 )
 
 // RustDeskService 向前端暴露 RustDesk 版本管理与启停/唤窗能力，双形态纳管：
@@ -282,42 +286,22 @@ func (s *RustDeskService) ImportLocal(srcPath string) (version.RDVersionInfo, er
 // ---------- 控制操作 ----------
 
 // OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
-// 而非"打开"（markeron 事故教训）；这里入参恒为目录，语义安全。
+// 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
+// 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *RustDeskService) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 RustDesk 的用户数据目录（身份密钥、地址簿与设置所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
 func (s *RustDeskService) OpenConfigDir() error {
-	dir, err := userConfigDir()
+	dir, err := modpath.UserConfigDir(dataDirName)
 	if err != nil {
 		return err
 	}
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("RustDesk 数据目录尚未创建（程序还未运行过）: %s", dir)
 	}
-	return exec.Command("explorer.exe", dir).Start()
-}
-
-// userConfigDir portable 形态默认写 %APPDATA%\RustDesk（module.go 包注释实证；本机实存印证）。
-func userConfigDir() (string, error) {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return "", fmt.Errorf("无法定位 APPDATA 目录")
-	}
-	return filepath.Join(appData, "RustDesk"), nil
+	return windows.RevealDir(dir)
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
@@ -464,22 +448,8 @@ func (s *RustDeskService) resolveActiveVersion() (string, string, string, error)
 // versionCompare 比较 vX.Y.Z 版本号（a>b 返回 1；相等 0；a<b 返回 -1）。
 // 目录名的字典序对 1.10.0/1.9.0 这类多位数段有误，必须数值分段比较。
 func versionCompare(a, b string) int {
-	pa := strings.Split(strings.TrimPrefix(a, "v"), ".")
-	pb := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		na, errA := strconv.Atoi(pa[i])
-		nb, errB := strconv.Atoi(pb[i])
-		if errA != nil || errB != nil {
-			return strings.Compare(a, b) // 非规范段退化为字典序（正常数据不可达）
-		}
-		if na != nb {
-			if na > nb {
-				return 1
-			}
-			return -1
-		}
-	}
-	return 0
+	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
+	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
 }
 
 // ---------- 联动开关与桌面辅助 ----------

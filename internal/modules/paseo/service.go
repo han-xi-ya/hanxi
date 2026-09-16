@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -13,10 +12,12 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/modules/modpath"
 	"hanxi/internal/modules/paseo/instance"
 	"hanxi/internal/modules/paseo/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -28,6 +29,11 @@ const (
 
 	readyTimeout  = 45 * time.Second // 冷启动就绪上限（Electron 主窗口出现；内置 daemon 随主进程拉起，比裸 Electron 应用放宽）
 	watchInterval = 5 * time.Second  // 外部实例感知轮询间隔
+
+	// electronDataDirName / daemonDirName 上游用户数据目录字面量：
+	// Electron 数据恒在 %APPDATA%\Paseo，daemon 数据恒在 ~/.paseo（module.go 包注释实证）。
+	electronDataDirName = "Paseo"
+	daemonDirName       = ".paseo"
 )
 
 // PaseoService 向前端暴露 Paseo 版本管理与窗口唤起能力。
@@ -219,35 +225,23 @@ func (s *PaseoService) ImportLocal(srcDir string) (version.PaseoVersionInfo, err
 // ---------- 控制操作 ----------
 
 // OpenDir 在资源管理器中打开指定目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
-// 而非"打开"（markeron 事故教训）。入参恒为目录，仍走本模块自有实现保持行为显式。
+// 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
+// 刻意不走 explorer.exe <file> 的"执行"语义（markeron 事故教训）。
 func (s *PaseoService) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenElectronDataDir 打开 Electron 数据目录 %APPDATA%\Paseo（窗口状态/桌面设置）。
 // 共享数据决策下的直达入口：托管实例与自装实例同用此目录，只读导航不改写。
 func (s *PaseoService) OpenElectronDataDir() error {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return fmt.Errorf("无法定位 APPDATA 目录")
+	dir, err := modpath.UserConfigDir(electronDataDirName)
+	if err != nil {
+		return err
 	}
-	dir := filepath.Join(appData, "Paseo")
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("Paseo Electron 数据目录尚未创建（程序还未运行过）: %s", dir)
 	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenDaemonHome 打开 daemon 数据主目录 ~/.paseo（持久配置、实例注册、
@@ -260,11 +254,11 @@ func (s *PaseoService) OpenDaemonHome() error {
 	if base == "" {
 		return fmt.Errorf("无法定位用户主目录")
 	}
-	dir := filepath.Join(base, ".paseo")
+	dir := filepath.Join(base, daemonDirName)
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("Paseo daemon 数据目录尚未创建（程序还未运行过）: %s", dir)
 	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。

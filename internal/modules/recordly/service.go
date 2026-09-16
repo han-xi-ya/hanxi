@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -12,10 +11,12 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/modules/modpath"
 	"hanxi/internal/modules/recordly/instance"
 	"hanxi/internal/modules/recordly/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -34,6 +35,9 @@ const (
 	// disableAutoUpdateEnv 上游官方开关（updater.ts 实证）：阻止 electron-updater
 	// 的 quitAndInstall 按注册表覆写 Hanxi 托管安装目录，版本升级统一走版本管理。
 	disableAutoUpdateEnv = "RECORDLY_DISABLE_AUTO_UPDATES=1"
+
+	// dataDirName Electron userData 默认目录（模块注释与 THIRD_PARTY_NOTICES 实证：配置与录像恒在 %APPDATA%\Recordly）。
+	dataDirName = "Recordly"
 )
 
 // RecordlyService 向前端暴露 Recordly 版本管理与窗口唤起能力。
@@ -151,7 +155,7 @@ func (s *RecordlyService) idleCheck() {
 		slog.Warn("recordly idle auto-quit failed", "err", err)
 		return
 	}
-	notify.Info("recordly", "已自动退出", "Recordly 已空闲 5 分钟，自动退出以释放内存", "/ext/recordly")
+	notify.Info("recordly", "已自动退出", fmt.Sprintf("Recordly 已空闲 %d 分钟，自动退出以释放内存", int(idleQuitAfter/time.Minute)), "/ext/recordly")
 }
 
 // shouldIdleQuit 空闲退出判定（纯函数，便于单测穷举）。
@@ -253,44 +257,23 @@ func (s *RecordlyService) ImportLocal(srcDir string) (version.RecordlyVersionInf
 
 // ---------- 控制操作 ----------
 
-// OpenDir 在资源管理器中打开托管安装目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
-// 而非"打开"（markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
-// 这里入参恒为目录，语义安全，但仍走本模块自有实现保持行为显式。
+// OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
+// 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
+// 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *RecordlyService) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 Recordly 的用户数据目录（配置与录像库所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
 func (s *RecordlyService) OpenConfigDir() error {
-	dir, err := userConfigDir()
+	dir, err := modpath.UserConfigDir(dataDirName)
 	if err != nil {
 		return err
 	}
 	if _, err := os.Stat(dir); err != nil {
 		return fmt.Errorf("Recordly 数据目录尚未创建（程序还未运行过）: %s", dir)
 	}
-	return exec.Command("explorer.exe", dir).Start()
-}
-
-// userConfigDir Electron userData 默认目录（模块注释与 THIRD_PARTY_NOTICES 实证：配置与录像恒在 %APPDATA%\Recordly）。
-func userConfigDir() (string, error) {
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return "", fmt.Errorf("无法定位 APPDATA 目录")
-	}
-	return filepath.Join(appData, "Recordly"), nil
+	return windows.RevealDir(dir)
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
