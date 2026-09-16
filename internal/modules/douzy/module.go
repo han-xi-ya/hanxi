@@ -1,4 +1,6 @@
-// Package douzy 内置模块：「抖音下载器」(Douzy) 的版本管理与安装包下载。
+// Package douzy 内置模块：「Douzy 全能下载器」的版本管理与安装包下载。
+// 上游为多平台视频桌面下载器（抖音 / TikTok / YouTube / Telegram / X 等），
+// 模块 ID 与包名沿用 douzy（上游产品名），显示名覆盖全部支持平台。
 //
 // 与其它托管模块（ccswitch/rustdesk/everything）的根本区别：**本模块不做进程托管**。
 // 只做到"从上游 GitHub Releases 拉版本列表 → 下载 Windows 安装包（Douzy-Setup-*.exe，
@@ -31,9 +33,9 @@ func New(plat platform.Platform) extapi.Module {
 func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
-		Name:        "抖音下载器",
+		Name:        "Douzy 全能下载器",
 		Version:     "0.1.0",
-		Description: "抖音桌面下载器 Douzy 的内测安装包版本管理：远程列表、官方哈希校验下载与安装向导拉起（仅版本管理+下载，不接管进程运行）",
+		Description: "多平台视频桌面下载器 Douzy（抖音/TikTok/YouTube/Telegram/X）的内测安装包版本管理：远程列表、官方哈希校验下载与安装向导拉起（仅版本管理+下载，不接管进程运行）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
@@ -41,7 +43,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "douzy-manager", Title: "抖音下载器", Route: "/ext/douzy", Icon: "i:film", Section: extapi.SectionExt, Order: 93, Group: extapi.GroupMedia},
+		{ID: "douzy-manager", Title: "Douzy 全能下载器", Route: "/ext/douzy", Icon: "i:film", Section: extapi.SectionExt, Order: 93, Group: extapi.GroupMedia},
 	}
 }
 

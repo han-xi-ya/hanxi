@@ -1,4 +1,5 @@
-// Package version 实现「抖音下载器」(Douzy) 的版本管理与下载：GitHub Releases
+// Package version 实现「Douzy 全能下载器」（多平台视频下载：抖音/TikTok/YouTube/
+// Telegram/X）的版本管理与下载：GitHub Releases
 // 远程列表、Windows 安装包（Douzy-Setup-*.exe，NSIS）下载与官方 sha256 校验，
 // 落盘到 versions/douzy_<ver>/ 隔离目录供用户自行安装。
 //

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 「抖音下载器」(Douzy)：仅版本管理与安装包下载——列远程版本、下载官方
+// 「Douzy 全能下载器」（多平台：抖音/TikTok/YouTube/Telegram/X）：仅版本管理与安装包下载——列远程版本、下载官方
 // Windows 安装包（sha256+字节数+PE 魔数校验）、拉起上游安装向导、管理已下载包。
 // 刻意无控制台 Tab / 状态灯 / 启停：本模块不托管进程（上游内测 + 壳闭源）。
 import { ref, onMounted } from 'vue'
@@ -149,7 +149,7 @@ onMounted(async () => {
 
 <template>
   <section class="page douzy-view">
-    <PageHeader title="抖音下载器" subtitle="抖音桌面下载器 Douzy 的安装包版本管理：下载、校验与安装向导拉起（仅版本管理+下载，不接管程序运行）。" />
+    <PageHeader title="Douzy 全能下载器" subtitle="多平台视频下载器 Douzy（抖音 / TikTok / YouTube / Telegram / X）的安装包版本管理：下载、校验与安装向导拉起（仅版本管理+下载，不接管程序运行）。" />
 
     <!-- 常驻诚实横幅：上游内测 + 边界声明 -->
     <UiBanner tone="warn" class="dz-slim">
