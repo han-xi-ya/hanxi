@@ -30,6 +30,14 @@ type updatesResp struct {
 // msgBufMax 前端断连期间的消息留存上限，超出丢最旧。
 const msgBufMax = 100
 
+// 长轮询与失败退避的时间常量：手动单次拉取留足响应余量，后台轮询略长于腾讯侧上限，
+// 网络抖动/协议失败后统一按 pollRetryDelay 退避重试。
+const (
+	manualPollTimeoutMs = 25000 // 给腾讯长轮询留出足够响应时间 (25s)
+	loopPollTimeoutMs   = 35000
+	pollRetryDelay      = 2 * time.Second
+)
+
 // Listener 负责长轮询获取微信消息并提取/刷新 ContextToken
 type Listener struct {
 	accountID   string
@@ -114,7 +122,7 @@ func (l *Listener) FetchUpdatesOnce(ctx context.Context, botToken string) (strin
 
 	req := updatesReq{
 		BotToken:             botToken,
-		LongPollingTimeoutMs: 25000, // 给腾讯长轮询留出足够响应时间 (25s)
+		LongPollingTimeoutMs: manualPollTimeoutMs,
 		BaseInfo:             defaultBaseInfo(),
 		GetUpdatesBuf:        buf,
 	}
@@ -129,6 +137,13 @@ func (l *Listener) FetchUpdatesOnce(ctx context.Context, botToken string) (strin
 		return "", fmt.Errorf("getupdates failed: ret=%d, msg=%s", resp.Ret, resp.ErrMsg)
 	}
 
+	return l.handleUpdates(botToken, resp), nil
+}
+
+// handleUpdates 统一处理一轮 getupdates 回执：推进游标、逐条持久化 context_token
+// 并广播事件（手动刷新与后台轮询共用同一份语义，避免两条路径各修一半漂移）。
+// 返回本轮看到的最新 context_token（无则空串）。
+func (l *Listener) handleUpdates(botToken string, resp updatesResp) string {
 	if resp.GetUpdatesBuf != "" {
 		l.mu.Lock()
 		l.updatesBuf = resp.GetUpdatesBuf
@@ -141,28 +156,7 @@ func (l *Listener) FetchUpdatesOnce(ctx context.Context, botToken string) (strin
 	for _, msg := range resp.Msgs {
 		if msg.ContextToken != "" {
 			latestToken = msg.ContextToken
-			// 自动持久化指定账号
-			if err := l.store.Update(func(c *settings.AppSettings) {
-				for i, acc := range c.WechatAccounts {
-					if acc.ID == l.accountID {
-						c.WechatAccounts[i].ContextToken = latestToken
-						c.WechatAccounts[i].ContextTokenUpdatedAt = nowStr
-						if msg.FromUserID != "" && c.WechatAccounts[i].TargetUserID == "" {
-							c.WechatAccounts[i].TargetUserID = msg.FromUserID
-						}
-						break
-					}
-				}
-				if c.Wechat.BotToken == botToken {
-					c.Wechat.ContextToken = latestToken
-					c.Wechat.ContextTokenUpdatedAt = nowStr
-					if msg.FromUserID != "" && c.Wechat.TargetUserID == "" {
-						c.Wechat.TargetUserID = msg.FromUserID
-					}
-				}
-			}); err != nil {
-				slog.Warn("failed to persist updated wechat context_token", "err", err, "accountId", l.accountID)
-			}
+			l.persistContextToken(botToken, msg, nowStr)
 
 			// 广播 Wails 事件
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -179,7 +173,34 @@ func (l *Listener) FetchUpdatesOnce(ctx context.Context, botToken string) (strin
 		l.dispatchInboundMsg(msg, nowStr)
 	}
 
-	return latestToken, nil
+	return latestToken
+}
+
+// persistContextToken 把消息携带的 context_token（及首次见到的对端 ID）落库：
+// 账号表按 accountID 命中，遗留单账号配置按 botToken 命中，两者互不排斥。
+func (l *Listener) persistContextToken(botToken string, msg InboundRawMsg, nowStr string) {
+	token := msg.ContextToken
+	if err := l.store.Update(func(c *settings.AppSettings) {
+		for i, acc := range c.WechatAccounts {
+			if acc.ID == l.accountID {
+				c.WechatAccounts[i].ContextToken = token
+				c.WechatAccounts[i].ContextTokenUpdatedAt = nowStr
+				if msg.FromUserID != "" && c.WechatAccounts[i].TargetUserID == "" {
+					c.WechatAccounts[i].TargetUserID = msg.FromUserID
+				}
+				break
+			}
+		}
+		if c.Wechat.BotToken == botToken {
+			c.Wechat.ContextToken = token
+			c.Wechat.ContextTokenUpdatedAt = nowStr
+			if msg.FromUserID != "" && c.Wechat.TargetUserID == "" {
+				c.Wechat.TargetUserID = msg.FromUserID
+			}
+		}
+	}); err != nil {
+		slog.Warn("failed to persist updated wechat context_token", "err", err, "accountId", l.accountID)
+	}
 }
 
 func (l *Listener) pollLoop(ctx context.Context, botToken string) {
@@ -202,7 +223,7 @@ func (l *Listener) pollLoop(ctx context.Context, botToken string) {
 
 		req := updatesReq{
 			BotToken:             botToken,
-			LongPollingTimeoutMs: 35000,
+			LongPollingTimeoutMs: loopPollTimeoutMs,
 			BaseInfo:             defaultBaseInfo(),
 			GetUpdatesBuf:        buf,
 		}
@@ -213,58 +234,34 @@ func (l *Listener) pollLoop(ctx context.Context, botToken string) {
 			if ctx.Err() != nil {
 				return
 			}
-			time.Sleep(2 * time.Second)
+			if !waitBackoff(ctx, pollRetryDelay) {
+				return
+			}
 			continue
 		}
 
 		if resp.Ret != 0 && resp.Ret != 200 {
-			time.Sleep(2 * time.Second)
+			if !waitBackoff(ctx, pollRetryDelay) {
+				return
+			}
 			continue
 		}
 
-		if resp.GetUpdatesBuf != "" {
-			l.mu.Lock()
-			l.updatesBuf = resp.GetUpdatesBuf
-			l.mu.Unlock()
-		}
+		l.handleUpdates(botToken, resp)
+	}
+}
 
-		nowStr := time.Now().Format("2006-01-02 15:04:05")
-		for _, msg := range resp.Msgs {
-			if msg.ContextToken != "" {
-				if err := l.store.Update(func(c *settings.AppSettings) {
-					for i, acc := range c.WechatAccounts {
-						if acc.ID == l.accountID {
-							c.WechatAccounts[i].ContextToken = msg.ContextToken
-							c.WechatAccounts[i].ContextTokenUpdatedAt = nowStr
-							if msg.FromUserID != "" && c.WechatAccounts[i].TargetUserID == "" {
-								c.WechatAccounts[i].TargetUserID = msg.FromUserID
-							}
-							break
-						}
-					}
-					if c.Wechat.BotToken == botToken {
-						c.Wechat.ContextToken = msg.ContextToken
-						c.Wechat.ContextTokenUpdatedAt = nowStr
-						if msg.FromUserID != "" && c.Wechat.TargetUserID == "" {
-							c.Wechat.TargetUserID = msg.FromUserID
-						}
-					}
-				}); err != nil {
-					slog.Warn("failed to persist updated wechat context_token", "err", err, "accountId", l.accountID)
-				}
-
-				if app := application.Get(); app != nil && app.Event != nil {
-					app.Event.Emit("wechat:context-token-updated", map[string]string{
-						"accountId":    l.accountID,
-						"contextToken": msg.ContextToken,
-						"updatedAt":    nowStr,
-						"fromUserId":   msg.FromUserID,
-					})
-				}
-			}
-
-			l.dispatchInboundMsg(msg, nowStr)
-		}
+// waitBackoff 可被 ctx 打断的退避等待：time.Sleep 硬等会让 Stop() 之后轮询 goroutine
+// 还要空转到退避结束（并在此期间无视取消信号），故一律走 select + timer。
+// 返回 false 表示退避期间被取消，调用方应立即退出循环。
+func waitBackoff(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 
@@ -338,15 +335,11 @@ func (l *Listener) dispatchInboundMsg(msg InboundRawMsg, nowStr string) {
 		}
 		l.mu.Unlock()
 
-		// 优先获取账号备注名称，绝不回退为冗长的 TargetUserID/FromUserID/原始 Hash
+		// 优先获取账号备注名称，绝不回退为冗长的 TargetUserID/FromUserID/原始 Hash；
+		// 无备注名即固定称号（原 else 分支再读一次遗留配置赋同一个值，属无操作死码，已删）
 		displayName := "微信机器人"
 		if acc, ok := l.store.GetWechatAccountByID(l.accountID); ok && acc.RemarkName != "" {
 			displayName = acc.RemarkName
-		} else {
-			cfg := l.store.GetWechatConfig()
-			if cfg.IlinkBotID != "" {
-				displayName = "微信机器人"
-			}
 		}
 
 		notify.Info("wechat", fmt.Sprintf("微信消息 (%s)", displayName), summary, "/ext/wechat")

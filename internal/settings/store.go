@@ -82,9 +82,9 @@ func DefaultSettings() AppSettings {
 		LanRemarks:       make(map[string]string),
 		TrayMenu:         make([]TrayMenuItem, 0),
 		QuickMenuTwoTier: true, // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
-		Wechat: WechatConfig{
-			BaseURL: "https://ilinkai.weixin.qq.com",
-		},
+		// wechat 业务默认端点不属设置存储职责：出厂留空，
+		// 缺省回退由 wechat 模块读取侧兜底（defaultBaseURL）。
+		Wechat:         WechatConfig{},
 		WechatAccounts: make([]WechatAccount, 0),
 	}
 }
@@ -367,9 +367,8 @@ func (s *Store) DeleteWechatAccount(id string) error {
 				BaseURL:               first.BaseURL,
 			}
 		} else {
-			c.Wechat = WechatConfig{
-				BaseURL: "https://ilinkai.weixin.qq.com",
-			}
+			// 账号清空后遗留字段整体归零；默认端点回退由 wechat 模块读取侧负责
+			c.Wechat = WechatConfig{}
 		}
 	})
 }

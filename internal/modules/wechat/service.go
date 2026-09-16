@@ -13,41 +13,66 @@ import (
 	"hanxi/internal/settings"
 )
 
+// 各外呼通道的超时（一处收口，与前端按钮态对齐；改值须同时确认腾讯侧长轮询上限）。
+const (
+	qrCodeFetchTimeout  = 15 * time.Second  // 取登录二维码
+	qrStatusPollTimeout = 40 * time.Second  // 扫码状态长轮询（含用户掏手机的等待）
+	contextTokenTimeout = 30 * time.Second  // 手动拉取一轮 updates
+	sendTextTimeout     = 15 * time.Second  // 发送文字
+	sendImageTimeout    = 60 * time.Second  // 发送图片（含上传 CDN）
+	sendFileTimeout     = 120 * time.Second // 发送文件（含上传 CDN）
+)
+
 // WechatService 暴露给 Wails 前端的服务（支持多微信账号并发管理与收发路由）
 type WechatService struct {
 	defaultClient *Client
-	listeners     map[string]*Listener
-	attachments   *attachmentStore
-	mu            sync.RWMutex
-	store         *settings.Store
+	// clients 按 baseURL 缓存自定义网关的 Client：每个 Client 自带连接池（http.Transport），
+	// 每次现建会让 keep-alive 连接与 TLS 会话在每次调用后作废。
+	// 用独立锁而非 s.mu：StartAccountListener/RefreshAccountContextToken 在持有 s.mu 时取用
+	// 客户端，复用同一把锁会自死锁；s.mu 护监听器表、clientMu 护客户端表，不存在反向嵌套。
+	clientMu    sync.Mutex
+	clients     map[string]*Client
+	listeners   map[string]*Listener
+	attachments *attachmentStore
+	mu          sync.RWMutex
+	store       *settings.Store
 }
 
 // NewWechatService 创建服务并按遗留单账号配置选定 baseURL；各账号的 Listener 懒创建（首次登录/启动监听时）。
 // 构造无网络 IO。
 func NewWechatService(store *settings.Store) *WechatService {
-	cfg := store.GetWechatConfig()
-	baseURL := cfg.BaseURL
+	// 配置为空一律回落官方端点：设置页已不再预置默认值（清空即"用官方地址"），
+	// 这里的兜底是唯一防线，绝不允许把空串拼进请求 URL。
+	baseURL := store.GetWechatConfig().BaseURL
 	if baseURL == "" {
-		baseURL = "https://ilinkai.weixin.qq.com"
+		baseURL = defaultBaseURL
 	}
-	defaultClient := NewClient(baseURL)
 
-	svc := &WechatService{
-		defaultClient: defaultClient,
+	return &WechatService{
+		defaultClient: NewClient(baseURL),
+		clients:       make(map[string]*Client),
 		listeners:     make(map[string]*Listener),
 		attachments:   newAttachmentStore(),
 		store:         store,
 	}
-
-	return svc
 }
 
-// getClientForAccount 获取或创建特定账号的 Client
+// getClientForAccount 取用特定 baseURL 的 Client（官方端点复用 defaultClient，
+// 自定义网关按地址缓存）。空地址一律归一到默认端点。
 func (s *WechatService) getClientForAccount(baseURL string) *Client {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" || baseURL == s.defaultClient.baseURL {
 		return s.defaultClient
 	}
-	return NewClient(baseURL)
+
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+	if c, ok := s.clients[baseURL]; ok {
+		return c
+	}
+	c := NewClient(baseURL)
+	s.clients[baseURL] = c
+	return c
 }
 
 // InitOnDemand 按需懒初始化：用户进入页面或首次调用时拉起所有已配置账号的后台监听
@@ -70,6 +95,10 @@ func (s *WechatService) Destroy() {
 	}
 	s.listeners = make(map[string]*Listener)
 	s.attachments.clear()
+
+	s.clientMu.Lock()
+	s.clients = make(map[string]*Client)
+	s.clientMu.Unlock()
 }
 
 // ListAccounts 获取所有账号及其运行时状态
@@ -204,7 +233,7 @@ func (s *WechatService) StopAccountListener(accountID string) bool {
 
 // GetLoginQRCode 获取微信登录二维码
 func (s *WechatService) GetLoginQRCode() (*QRInfo, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), qrCodeFetchTimeout)
 	defer cancel()
 	return s.defaultClient.FetchLoginQRCode(ctx)
 }
@@ -216,7 +245,7 @@ func (s *WechatService) CheckQRStatus(qrcode, remarkName string) (*QRStatus, err
 		return nil, fmt.Errorf("qrcode 不能为空")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), qrStatusPollTimeout)
 	defer cancel()
 
 	res, err := s.defaultClient.PollQRStatus(ctx, qrcode)
@@ -282,7 +311,7 @@ func (s *WechatService) RefreshAccountContextToken(accountID string) (string, er
 	}
 	s.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), contextTokenTimeout)
 	defer cancel()
 
 	token, err := l.FetchUpdatesOnce(ctx, acc.BotToken)
@@ -336,7 +365,7 @@ func (s *WechatService) SendTextMessage(accountID, toUserID, text string) error 
 	}
 
 	client := s.getClientForAccount(acc.BaseURL)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), sendTextTimeout)
 	defer cancel()
 
 	return client.SendTextMessage(ctx, acc.BotToken, acc.ContextToken, toUserID, text)
@@ -383,7 +412,7 @@ func (s *WechatService) SendImageMessage(accountID, toUserID, filePath string) e
 	}
 
 	client := s.getClientForAccount(acc.BaseURL)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), sendImageTimeout)
 	defer cancel()
 
 	return client.SendImageMessage(ctx, acc.BotToken, acc.ContextToken, toUserID, filePath)
@@ -430,7 +459,7 @@ func (s *WechatService) SendFileMessage(accountID, toUserID, filePath string) er
 	}
 
 	client := s.getClientForAccount(acc.BaseURL)
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), sendFileTimeout)
 	defer cancel()
 
 	return client.SendFileMessage(ctx, acc.BotToken, acc.ContextToken, toUserID, filePath)
@@ -572,12 +601,7 @@ func (s *WechatService) RegisterClipboardAttachment(fileName, dataURL string) (O
 	return draft, nil
 }
 
-// RegisterClipboardImage 保留旧绑定兼容；新前端统一使用 RegisterClipboardAttachment。
-func (s *WechatService) RegisterClipboardImage(fileName, dataURL string) (OutgoingAttachmentDraft, error) {
-	return s.RegisterClipboardAttachment(fileName, dataURL)
-}
-
-// ReleaseOutgoingAttachment 仅释放由 RegisterClipboardImage 创建的受管临时文件。
+// ReleaseOutgoingAttachment 仅释放由 RegisterClipboardAttachment 创建的受管临时文件。
 func (s *WechatService) ReleaseOutgoingAttachment(filePath string) bool {
 	return s.attachments.releaseOutgoingTemp(strings.TrimSpace(filePath))
 }
@@ -648,56 +672,6 @@ func (s *WechatService) PickAttachmentDialog() (string, error) {
 		return "", err
 	}
 	return filePath, nil
-}
-
-// PickImageDialog 保留旧绑定兼容；新前端统一使用 PickAttachmentDialog。
-func (s *WechatService) PickImageDialog() (string, error) {
-	return s.PickAttachmentDialog()
-}
-
-// PickFileDialog 保留旧绑定兼容；新前端统一使用 PickAttachmentDialog。
-func (s *WechatService) PickFileDialog() (string, error) {
-	app := application.Get()
-	if app == nil {
-		return "", fmt.Errorf("application instance not available")
-	}
-
-	dialog := app.Dialog.OpenFile()
-	dialog.SetTitle("选择要发送的文件")
-	dialog.AddFilter("所有文件 (*.*)", "*.*")
-
-	filePath, err := dialog.PromptForSingleSelection()
-	if err != nil {
-		return "", err
-	}
-	return filePath, nil
-}
-
-// StartListener 启动主账号后台实时监听（遗留兼容接口）
-func (s *WechatService) StartListener() error {
-	accounts := s.store.GetWechatAccounts()
-	if len(accounts) == 0 {
-		return fmt.Errorf("暂无微信账号，请先扫码绑定")
-	}
-	return s.StartAccountListener(accounts[0].ID)
-}
-
-// StopListener 停止主账号后台监听（遗留兼容接口）
-func (s *WechatService) StopListener() bool {
-	accounts := s.store.GetWechatAccounts()
-	if len(accounts) == 0 {
-		return false
-	}
-	return s.StopAccountListener(accounts[0].ID)
-}
-
-// RefreshContextToken 刷新主账号 Context Token（遗留兼容接口）
-func (s *WechatService) RefreshContextToken() (string, error) {
-	accounts := s.store.GetWechatAccounts()
-	if len(accounts) == 0 {
-		return "", fmt.Errorf("暂无微信账号，请先扫码绑定")
-	}
-	return s.RefreshAccountContextToken(accounts[0].ID)
 }
 
 // GetPendingMessages 取走指定账号后台积累的未读消息（消费后清空，供前端页面重新挂载时补取）

@@ -28,7 +28,6 @@ const svc = vi.hoisted(() => ({
   PickAttachmentDialog: vi.fn(),
   InspectOutgoingAttachment: vi.fn(),
   RegisterClipboardAttachment: vi.fn(),
-  RegisterClipboardImage: vi.fn(),
   ReleaseOutgoingAttachment: vi.fn(),
   OpenInboundFile: vi.fn(),
   SaveInboundFile: vi.fn(),

@@ -33,8 +33,10 @@ func TestNewStoreFillsMissingFieldsWithDefaults(t *testing.T) {
 	if cfg.Language != "zh-CN" {
 		t.Errorf("缺失字段 language 应回落默认 zh-CN，得到 %q", cfg.Language)
 	}
-	if cfg.Wechat.BaseURL == "" {
-		t.Error("缺失 wechat.baseUrl 应回落默认端点")
+	// wechat 出厂默认端点已移交业务模块兜底（settings 不再持有该业务默认，
+	// 见 DefaultSettings 注释），此处口径随之反转：缺失字段回落空串。
+	if cfg.Wechat.BaseURL != "" {
+		t.Errorf("wechat.baseUrl 默认应为空串（由 wechat 模块兜底），得到 %q", cfg.Wechat.BaseURL)
 	}
 }
 
