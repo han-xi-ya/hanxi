@@ -3,11 +3,9 @@ package douzy
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -16,6 +14,8 @@ import (
 	"hanxi/internal/modules/douzy/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -134,22 +134,11 @@ func (s *DouzyService) RemoveVersion(targetVersion string) error {
 
 // ---------- 目录与仓库导航 ----------
 
-// OpenDir 在资源管理器中打开安装包所在隔离目录（"打开位置"按钮）。
-// 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义是"执行"而非"打开"
-// （markeron「打开安装目录」事故教训）。这里入参恒为目录，语义安全。
+// OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
+// 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
+// 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *DouzyService) OpenDir(dir string) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("目录路径不能为空")
-	}
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return fmt.Errorf("目录不存在或不可访问: %s", dir)
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("目标不是目录: %s", dir)
-	}
-	return exec.Command("explorer.exe", dir).Start()
+	return windows.RevealDir(dir)
 }
 
 // RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
@@ -165,20 +154,6 @@ func (s *DouzyService) OpenRepository() error {
 // versionCompare 比较 vX.Y.Z 版本号（a>b 返回 1；相等 0；a<b 返回 -1）。
 // 目录名字典序对 0.11.x/0.8.x 这类多位数段有误，必须数值分段比较。
 func versionCompare(a, b string) int {
-	pa := strings.Split(strings.TrimPrefix(a, "v"), ".")
-	pb := strings.Split(strings.TrimPrefix(b, "v"), ".")
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		na, errA := strconv.Atoi(pa[i])
-		nb, errB := strconv.Atoi(pb[i])
-		if errA != nil || errB != nil {
-			return strings.Compare(a, b)
-		}
-		if na != nb {
-			if na > nb {
-				return 1
-			}
-			return -1
-		}
-	}
-	return 0
+	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
+	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
 }
