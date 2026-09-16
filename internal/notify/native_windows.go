@@ -13,6 +13,13 @@ import (
 
 const createNoWindow = 0x08000000 // CREATE_NO_WINDOW
 
+// toastAUMID Windows 原生 Toast 的 AppUserModelID。
+// 未安装的裸 exe 没有注册过的 Shell 快捷方式，直接以自身 AUMID 弹 Toast 会被
+// 系统静默丢弃（不进操作中心、无通知区域图标归属）。这里借用系统自带
+// PowerShell 的注册身份——它的 Start Menu 快捷方式在安装时即登记了该 AUMID，
+// 是当前用户态下唯一"免安装即可用"的合法通知发布者。
+const toastAUMID = `{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe`
+
 // showNativeToast 在 Windows 最小化或后台时发送系统通知
 func showNativeToast(n *Notification) {
 	go sendWindowsNotification(n.Title, fmt.Sprintf("[%s] %s", n.ModuleID, n.Message))
@@ -27,8 +34,8 @@ $textNodes = $xml.GetElementsByTagName("text")
 $textNodes.Item(0).AppendChild($xml.CreateTextNode("%s")) | Out-Null
 $textNodes.Item(1).AppendChild($xml.CreateTextNode("%s")) | Out-Null
 $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe").Show($toast)
-`, escapePS(title), escapePS(message))
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("%s").Show($toast)
+`, escapePS(title), escapePS(message), toastAUMID)
 
 	utf16Units := utf16.Encode([]rune(psScript))
 	bytes := make([]byte, len(utf16Units)*2)

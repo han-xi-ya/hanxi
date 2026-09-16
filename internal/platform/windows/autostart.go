@@ -9,10 +9,15 @@ import (
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
+
+	"hanxi/internal/product"
 )
 
 const runKeyPath = `Software\Microsoft\Windows\CurrentVersion\Run`
-const runValueName = `Hanxi`
+
+// runValueName 自启注册表值名取自产品身份（product.Name 即 "Hanxi"，值不变，
+// 存量用户配置兼容；product 包零依赖，不成环）。
+const runValueName = product.Name
 
 // SetAutoStart 设置或移除 Windows 当前用户的开机自启动注册表项
 func SetAutoStart(enable bool) error {

@@ -24,6 +24,14 @@ var (
 	procFreeMibTable   = modIphlpapi.NewProc("FreeMibTable")
 )
 
+const (
+	// adaptersBufInitSize GetAdaptersAddresses 初始缓冲区字节数：常规机型一次即够，
+	// 溢出时按 API 回报的所需大小重试（见 Adapters 循环）。
+	adaptersBufInitSize = 15000
+	// adaptersMaxRetries 缓冲区溢出重试上限：防止 API 回报的 size 异常时死循环。
+	adaptersMaxRetries = 3
+)
+
 // NetworkImpl platform.NetworkAPI 的 Windows 实现（无状态；网卡/邻居表均实时查询，不缓存）。
 type NetworkImpl struct{}
 
@@ -35,7 +43,7 @@ func NewNetworkAPI() platform.NetworkAPI {
 // Adapters 列举本机可用网卡与完整配置（包含网关、DNS、临时与永久 IPv6）
 // 优化：采用 Windows 原生 Win32 API GetAdaptersAddresses（亚毫秒级直接内存调用），彻底替代起子进程执行 PowerShell/WMI 导致的数秒延迟
 func (n *NetworkImpl) Adapters() ([]platform.Adapter, error) {
-	var size uint32 = 15000
+	var size uint32 = adaptersBufInitSize
 	var buf []byte
 	var err error
 
@@ -43,7 +51,7 @@ func (n *NetworkImpl) Adapters() ([]platform.Adapter, error) {
 	var pAddresses *windows.IpAdapterAddresses
 	flags := uint32(windows.GAA_FLAG_INCLUDE_GATEWAYS | windows.GAA_FLAG_INCLUDE_PREFIX)
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < adaptersMaxRetries; i++ {
 		buf = make([]byte, size)
 		pAddresses = (*windows.IpAdapterAddresses)(unsafe.Pointer(&buf[0]))
 		err = windows.GetAdaptersAddresses(windows.AF_UNSPEC, flags, 0, pAddresses, &size)

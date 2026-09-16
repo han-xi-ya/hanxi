@@ -9,6 +9,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
+// historyCap 通知历史环形保留上限：仅驻留最近 N 条，防止长期运行内存无界增长。
+const historyCap = 100
+
 // Hub 是全局统一通知中心分发器
 type Hub struct {
 	mu      sync.RWMutex
@@ -19,7 +22,7 @@ type Hub struct {
 }
 
 var globalHub = &Hub{
-	history: make([]*Notification, 0, 100),
+	history: make([]*Notification, 0, historyCap),
 }
 
 // GetHub 获取全局通知分发器单例
@@ -51,10 +54,10 @@ func (h *Hub) Emit(n *Notification) {
 	}
 
 	h.mu.Lock()
-	// 头插法保留最新通知，上限 100 条
+	// 头插法保留最新通知，上限 historyCap 条
 	h.history = append([]*Notification{n}, h.history...)
-	if len(h.history) > 100 {
-		h.history = h.history[:100]
+	if len(h.history) > historyCap {
+		h.history = h.history[:historyCap]
 	}
 	appRef := h.app
 	winRef := h.win
@@ -110,5 +113,5 @@ func (h *Hub) MarkAllAsRead() {
 func (h *Hub) ClearHistory() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.history = make([]*Notification, 0, 100)
+	h.history = make([]*Notification, 0, historyCap)
 }

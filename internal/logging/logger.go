@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -87,7 +88,36 @@ var (
 	logMu        sync.Mutex
 )
 
-// InitLogger 初始化日志器（控制台 + 文件，带自动脱敏）
+// pruneOldLogs 按天清理过期日志：删除 logDir 下 mtime 早于 retainDays 天前的
+// app-*.log（InitLogger 在打开当天文件前调用；当天文件 mtime 必然最新，天然豁免）。
+// retainDays<=0 视为不清理。单文件删除失败仅告警不阻断初始化——日志清理是尽力
+// 而为的辅助能力，句柄占用/权限异常不应影响应用启动。抽成独立函数便于单测。
+func pruneOldLogs(logDir string, retainDays int) {
+	if retainDays <= 0 {
+		return
+	}
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		slog.Warn("logging: prune old logs failed to read dir", "dir", logDir, "err", err)
+		return
+	}
+	cutoff := time.Now().AddDate(0, 0, -retainDays)
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, "app-") || !strings.HasSuffix(name, ".log") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(logDir, name)); err != nil {
+			slog.Warn("logging: remove expired log file failed", "file", name, "err", err)
+		}
+	}
+}
+
+// InitLogger 初始化日志器（控制台 + 文件，带自动脱敏；初始化时顺带按保留天数清理过期日志）
 func InitLogger(logDir string, retainDays int) (*slog.Logger, func(), error) {
 	logMu.Lock()
 	defer logMu.Unlock()
@@ -95,6 +125,9 @@ func InitLogger(logDir string, retainDays int) (*slog.Logger, func(), error) {
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return nil, nil, err
 	}
+
+	// 先清理再落盘：让 retainDays 配置真正生效（此前参数一直被忽略）
+	pruneOldLogs(logDir, retainDays)
 
 	today := time.Now().Format("2006-01-02")
 	logFile := filepath.Join(logDir, "app-"+today+".log")

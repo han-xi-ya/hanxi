@@ -4,6 +4,7 @@ package windows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -144,6 +145,8 @@ func errorsIsAccessDenied(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "access is denied") ||
-		strings.Contains(err.Error(), "5")
+	// 曾用子串匹配 "5" 判定错误码，会误伤任何错误文本里含 5 的场景（退出码、PID、端口号等），
+	// 改为对 syscall.Errno 的 errors.Is 精确比较；保留文案兜底应对非 Errno 包装（如本地化输出）。
+	return errors.Is(err, windows.ERROR_ACCESS_DENIED) ||
+		strings.Contains(strings.ToLower(err.Error()), "access is denied")
 }
