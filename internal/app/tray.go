@@ -60,6 +60,26 @@ func (b *trayMenuBuilder) build() *application.Menu {
 	if len(configured) > 0 {
 		menu.AddSeparator()
 		for _, item := range configured {
+			// group 条目渲染为原生子菜单（beta.10 Windows 实现递归处理 MF_POPUP）；
+			// 空组/全禁用组不占位，与轮盘侧 wheelView 的过滤规则一致。
+			if item.Type == settings.TrayItemGroup {
+				var kids []settings.TrayMenuItem
+				for _, ch := range item.Children {
+					if ch.Enabled && ch.Type != settings.TrayItemGroup {
+						kids = append(kids, ch)
+					}
+				}
+				if len(kids) == 0 {
+					continue // 子条目全禁用：整组不占位（后端校验只保证配置期非空）
+				}
+				sub := menu.AddSubmenu(b.disp.Label(item))
+				for _, ch := range kids {
+					sub.Add(b.disp.Label(ch)).OnClick(func(ctx *application.Context) {
+						b.dispatch(ch)
+					})
+				}
+				continue
+			}
 			menu.Add(b.disp.Label(item)).OnClick(func(ctx *application.Context) {
 				b.dispatch(item)
 			})

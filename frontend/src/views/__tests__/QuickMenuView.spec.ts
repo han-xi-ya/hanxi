@@ -66,12 +66,12 @@ describe('QuickMenuView', () => {
     w.unmount()
   })
 
-  it('空条目走占位引导，"前往设置页配置"上抛 navigate(/settings)', async () => {
+  it('空条目走占位引导，"前往设置页配置"直达设置·托盘菜单分区', async () => {
     const w = await mountReady(status, [])
     expect(w.find('.empty-state').text()).toContain('尚未配置任何条目')
     await w.find('.panel-foot .btn-primary').trigger('click')
     // Host 包裹渲染下 emit 挂在子组件 wrapper 上
-    expect(w.findComponent(QuickMenuView).emitted('navigate')?.[0]).toEqual(['/settings'])
+    expect(w.findComponent(QuickMenuView).emitted('navigate')?.[0]).toEqual(['/settings/tray'])
     w.unmount()
   })
 

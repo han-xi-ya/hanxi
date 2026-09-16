@@ -41,43 +41,47 @@ const (
 	TrayItemCommand = "command" // 托管模块启动命令，Ref = "moduleId/commandId"
 	TrayItemRoute   = "route"   // 打开主窗口模块页面，Ref = 前端路由
 	TrayItemExe     = "exe"     // 启动任意外部程序，Path/Args 自描述
+	TrayItemGroup   = "group"   // 分组：轮盘二级扇区/托盘子菜单容器，本身无动作，Children 仅允许叶子条目
 )
 
 // TrayMenuItem 托盘右键菜单自定义条目（配置切片顺序即菜单显示顺序）。
 type TrayMenuItem struct {
-	Type    string `json:"type"`    // "command" | "route" | "exe"
-	Ref     string `json:"ref"`     // command: "moduleId/commandId"；route: 前端路由；exe 留空
-	Path    string `json:"path"`    // exe: 可执行文件绝对路径；其余留空
-	Args    string `json:"args"`    // exe: 启动参数（空格分隔，支持一对引号包裹含空格参数）；其余留空
-	Label   string `json:"label"`   // 菜单显示名；留空则回退默认名（命令/页面/程序名）
-	Enabled bool   `json:"enabled"` // 是否显示在托盘右键菜单
+	Type     string         `json:"type"`               // "command" | "route" | "exe" | "group"
+	Ref      string         `json:"ref"`                // command: "moduleId/commandId"；route: 前端路由；其余留空
+	Path     string         `json:"path"`               // exe: 可执行文件绝对路径；其余留空
+	Args     string         `json:"args"`               // exe: 启动参数（空格分隔，支持一对引号包裹含空格参数）；其余留空
+	Label    string         `json:"label"`              // 菜单显示名；留空则回退默认名（命令/页面/程序名）；group 必填
+	Enabled  bool           `json:"enabled"`            // 是否显示在托盘右键菜单
+	Children []TrayMenuItem `json:"children,omitempty"` // group: 二级条目（仅 command/route/exe，不允许再嵌套）；其余留空
 }
 
 // AppSettings 应用全局配置模型
 type AppSettings struct {
-	Theme          string            `json:"theme"`          // "light" | "dark" | "system"
-	Language       string            `json:"language"`       // "zh-CN" | "en-US"
-	AutoStart      bool              `json:"autoStart"`      // 开机自启
-	MinimizeToTray bool              `json:"minimizeToTray"` // 关闭时最小化到托盘
-	LogRetainDays  int               `json:"logRetainDays"`  // 日志保留天数（默认 7）
-	Modules        map[string]bool   `json:"modules"`        // 各模块启用状态 map[moduleId]enabled
-	LanRemarks     map[string]string `json:"lanRemarks"`     // 局域网 IP/MAC 备注 map[identifier]remark
-	TrayMenu       []TrayMenuItem    `json:"trayMenu"`       // 托盘右键菜单自定义条目（有序）
-	Wechat         WechatConfig      `json:"wechat"`         // 微信机器人遗留配置（向下兼容）
-	WechatAccounts []WechatAccount   `json:"wechatAccounts"` // 微信多账号列表
+	Theme            string            `json:"theme"`            // "light" | "dark" | "system"
+	Language         string            `json:"language"`         // "zh-CN" | "en-US"
+	AutoStart        bool              `json:"autoStart"`        // 开机自启
+	MinimizeToTray   bool              `json:"minimizeToTray"`   // 关闭时最小化到托盘
+	LogRetainDays    int               `json:"logRetainDays"`    // 日志保留天数（默认 7）
+	Modules          map[string]bool   `json:"modules"`          // 各模块启用状态 map[moduleId]enabled
+	LanRemarks       map[string]string `json:"lanRemarks"`       // 局域网 IP/MAC 备注 map[identifier]remark
+	TrayMenu         []TrayMenuItem    `json:"trayMenu"`         // 托盘右键菜单自定义条目（有序）
+	QuickMenuTwoTier bool              `json:"quickMenuTwoTier"` // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
+	Wechat           WechatConfig      `json:"wechat"`           // 微信机器人遗留配置（向下兼容）
+	WechatAccounts   []WechatAccount   `json:"wechatAccounts"`   // 微信多账号列表
 }
 
 // DefaultSettings 返回出厂默认配置：浅色主题、中文、关闭时最小化到托盘、日志保留 7 天。
 func DefaultSettings() AppSettings {
 	return AppSettings{
-		Theme:          "light",
-		Language:       "zh-CN",
-		AutoStart:      false,
-		MinimizeToTray: true,
-		LogRetainDays:  7,
-		Modules:        make(map[string]bool),
-		LanRemarks:     make(map[string]string),
-		TrayMenu:       make([]TrayMenuItem, 0),
+		Theme:            "light",
+		Language:         "zh-CN",
+		AutoStart:        false,
+		MinimizeToTray:   true,
+		LogRetainDays:    7,
+		Modules:          make(map[string]bool),
+		LanRemarks:       make(map[string]string),
+		TrayMenu:         make([]TrayMenuItem, 0),
+		QuickMenuTwoTier: true, // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
 		Wechat: WechatConfig{
 			BaseURL: "https://ilinkai.weixin.qq.com",
 		},
@@ -175,8 +179,8 @@ func (s *Store) Get() AppSettings {
 }
 
 // cloneAppSettings 深拷贝全部集合字段，保证调用方按下标/键写入不会污染 Store 内存态。
-// 各元素（bool/string/结构体）内部均无可变引用，一层拷贝即完备。
 // WechatAccounts 曾因漏拷共享底层数组，调用方改 cfg.WechatAccounts[i] 直接篡改 Store——新增字段必须同步进本函数。
+// TrayMenu 自二级分组起元素内含可变 Children 切片，一层拷贝不完备，走 cloneTrayItems。
 func cloneAppSettings(src AppSettings) AppSettings {
 	cp := src
 	cp.Modules = make(map[string]bool, len(src.Modules))
@@ -187,9 +191,21 @@ func cloneAppSettings(src AppSettings) AppSettings {
 	for k, v := range src.LanRemarks {
 		cp.LanRemarks[k] = v
 	}
-	cp.TrayMenu = append(make([]TrayMenuItem, 0, len(src.TrayMenu)), src.TrayMenu...)
+	cp.TrayMenu = cloneTrayItems(src.TrayMenu)
 	cp.WechatAccounts = append(make([]WechatAccount, 0, len(src.WechatAccounts)), src.WechatAccounts...)
 	return cp
+}
+
+// cloneTrayItems 深拷贝托盘条目切片（含 group 的 Children 嵌套层）。
+func cloneTrayItems(src []TrayMenuItem) []TrayMenuItem {
+	out := make([]TrayMenuItem, 0, len(src))
+	for _, it := range src {
+		if it.Children != nil {
+			it.Children = cloneTrayItems(it.Children)
+		}
+		out = append(out, it)
+	}
+	return out
 }
 
 // Update 更新配置并原子落盘。
@@ -358,23 +374,31 @@ func (s *Store) DeleteWechatAccount(id string) error {
 	})
 }
 
-// GetTrayMenu 获取托盘右键菜单条目配置副本（按保存顺序）
+// GetTrayMenu 获取托盘右键菜单条目配置副本（按保存顺序，含 group 子条目的深拷贝）
 func (s *Store) GetTrayMenu() []TrayMenuItem {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	res := make([]TrayMenuItem, len(s.data.TrayMenu))
-	copy(res, s.data.TrayMenu)
-	return res
+	return cloneTrayItems(s.data.TrayMenu)
 }
 
-// SetTrayMenu 保存托盘右键菜单条目配置并原子落盘
-func (s *Store) SetTrayMenu(items []TrayMenuItem) error {
-	if items == nil {
-		items = make([]TrayMenuItem, 0)
-	}
+// GetQuickMenuTwoTier 快捷菜单轮盘是否启用二级展开（默认开启）。
+func (s *Store) GetQuickMenuTwoTier() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.QuickMenuTwoTier
+}
+
+// SetQuickMenuTwoTier 保存轮盘二级展开开关并原子落盘。
+func (s *Store) SetQuickMenuTwoTier(on bool) error {
 	return s.Update(func(cfg *AppSettings) {
-		cfg.TrayMenu = items
+		cfg.QuickMenuTwoTier = on
+	})
+}
+
+// SetTrayMenu 保存托盘右键菜单条目配置并原子落盘（入库前深拷贝，杜绝与调用方共享 Children）
+func (s *Store) SetTrayMenu(items []TrayMenuItem) error {
+	return s.Update(func(cfg *AppSettings) {
+		cfg.TrayMenu = cloneTrayItems(items)
 	})
 }
 

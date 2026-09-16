@@ -26,7 +26,8 @@ type winRect struct{ left, top, right, bottom int32 }
 // 椭圆之外系统层面既不绘制也不接收鼠标输入（四角点击穿透到下层应用）。配合
 // 真透明窗口使用时，把裁剪圈设在视觉内容（含投影）淡出之后的半径上，GDI 区域
 // 边缘无抗锯齿的硬边就落在全透明区、视觉不可见，本函数只承担命中测试职责。
-// 窗口尺寸变化后需重设（区域按旧物理尺寸会失真），常驻固定尺寸的弹窗不受影响。
+// 区域按物理像素固定、不随窗口改尺寸自动更新，重设安全幂等。注意"DIP 尺寸恒定"
+// 的窗口跨到不同缩放比的显示器后物理像素同样会变，此时必须重裁，不可一次了结。
 func ClipWindowEllipse(hwnd uintptr) error {
 	var r winRect
 	if ret, _, err := procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&r))); ret == 0 {

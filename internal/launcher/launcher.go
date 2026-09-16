@@ -69,6 +69,8 @@ func (d *Dispatcher) Label(item settings.TrayMenuItem) string {
 		if base := filepath.Base(item.Path); base != "." && base != string(filepath.Separator) {
 			return strings.TrimSuffix(base, filepath.Ext(base))
 		}
+	case settings.TrayItemGroup:
+		return "分组"
 	}
 	return item.Ref
 }
@@ -89,6 +91,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, item settings.TrayMenuItem) e
 		return nil
 	case settings.TrayItemExe:
 		return d.runExe(item)
+	case settings.TrayItemGroup:
+		// group 是容器不是动作：轮盘展开子盘、托盘展开子菜单，均不走到执行路径。
+		return fmt.Errorf("分组条目不可直接执行")
 	default:
 		return fmt.Errorf("未知的条目类型: %q", item.Type)
 	}

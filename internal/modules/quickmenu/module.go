@@ -3,7 +3,8 @@
 //
 // 设计取舍（验证期）：
 //   - 条目与托盘右键菜单完全共用 settings.TrayMenu 配置与 internal/launcher 分发，
-//     不新增第二份配置面；验证通过后再演进独立条目模型（图标/分组/条件菜单）；
+//     不新增第二份配置面；图标与二级分组（group 条目：轮盘子盘展开、托盘原生
+//     子菜单，展开开关 QuickMenuTwoTier 关闭时拍平）已内置，条件菜单仍在观察；
 //   - 全局钩子为进程内低级钩子（WH_MOUSE_LL，非注入），随模块停用/进程退出由
 //     系统自动摘除，零残渣；识别采用"吞按下、短按 SendInput 回放"策略保证普通
 //     右键零损失（为何不能"吞抬起放按下"，见 TROUBLESHOOTING #29）；
@@ -41,8 +42,8 @@ func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
 		Name:        "快捷菜单",
-		Version:     "0.1.0",
-		Description: "任意处右键长按唤出快捷启动菜单（条目与托盘配置共用）",
+		Version:     "0.2.0",
+		Description: "任意处右键长按唤出圆形快捷轮盘（条目与托盘配置共用，支持分组二级子盘）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

@@ -26,27 +26,33 @@ const (
 
 	popupWindowName = "quickmenu-popup"
 	// 轮盘弹窗为正方形真透明窗口（BackgroundTypeTransparent，DirectComposition
-	// 合成）：盘体直径 340 DIP，四周另留 18 DIP 透明边距容纳投影，GDI 区域裁剪
-	// 只负责把边距四角从命中测试里剪掉（裁剪圈落在投影淡出后的全透明区，硬边
-	// 不可见），圆盘视觉边缘全部由页面抗锯齿绘制。尺寸按 DIP（Wails 处理缩放）。
-	popupWidth  = 376
-	popupHeight = 376
-	popupMargin = 18 // 盘缘外透明投影边距（DIP），须与前端视图几何保持一致
+	// 合成）：主盘直径 340 DIP（r=170）保持不变；分组展开的"外扩子环帽带"画到
+	// r=236，故窗口放大为 512 DIP 见方，四周透明边距 popupMargin=20 容纳投影与
+	// 外甩取消判定环（r236→244），GDI 区域裁剪只负责把四角从命中测试里剪掉
+	// （裁剪圈落在投影淡出后的全透明区，硬边不可见），圆盘视觉边缘全部由页面
+	// 抗锯齿绘制。尺寸按 DIP（Wails 处理缩放）。前端 QuickMenuPopup.vue 的
+	// wheelGeometry 常量必须与本组数值同源，改动两处需同步。
+	popupWidth  = 512
+	popupHeight = 512
+	popupMargin = 20 // 盘缘外透明边距（DIP）：收起点击判定半径 = 半窗 - 边距 = 子环帽带外缘
 )
 
 // QuickMenuService 鼠标快捷菜单：全局右键长按 → 光标处弹出圆盘 → 点击扇区派发条目。
-// 条目配置与分发与托盘右键菜单完全共享（settings.TrayMenu + internal/launcher）。
+// 条目配置与分发与托盘右键菜单完全共享（settings.TrayMenu + internal/launcher）；
+// group 分组条目在二级轮盘开启时悬停在外扩子环（StarPie 式级联外扩，见前端
+// QuickMenuPopup.vue 与 wheelGeometry.ts），关闭时子条目拍平进主盘，
+// 展示与派发共用 wheelView 保证索引一致。
 type QuickMenuService struct {
 	store    *settings.Store
 	registry *extapi.Registry
 	disp     *launcher.Dispatcher
 
-	mu           sync.Mutex
-	started      bool
-	popupClipped bool                       // 弹窗已裁剪成圆（常驻单例只做一次）
-	mainWin      *application.WebviewWindow // route 条目唤主窗用（装配根注入）
-	popup        *application.WebviewWindow
-	trap         *mousetrap.Trap
+	mu         sync.Mutex
+	started    bool
+	clipWarned bool                       // 裁剪失败已告警过（每次唤出都裁，只首报防刷屏）
+	mainWin    *application.WebviewWindow // route 条目唤主窗用（装配根注入）
+	popup      *application.WebviewWindow
+	trap       *mousetrap.Trap
 }
 
 // NewQuickMenuService 装配常驻单例服务：条目派发器复用 internal/launcher（与托盘菜单同语义），
@@ -97,9 +103,9 @@ func (s *QuickMenuService) start() error {
 			Frameless:        true,
 			AlwaysOnTop:      true,
 			DisableResize:    true,
-			BackgroundType:   application.BackgroundTypeTransparent, // 真透明：圆盘边缘抗锯齿由页面绘制，杜绝窗底白边
+			BackgroundType:   application.BackgroundTypeTransparent,            // 真透明：圆盘边缘抗锯齿由页面绘制，杜绝窗底白边
 			Windows:          application.WindowsWindow{HiddenOnTaskbar: true}, // 不进任务栏/Alt+Tab
-			URL:              "/#quickmenu",                                      // 前端按 hash 分流挂载弹窗视图（main.ts）
+			URL:              "/#quickmenu",                                    // 前端按 hash 分流挂载弹窗视图（main.ts）
 			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
 		})
 		// 关窗/失焦均收起不销毁（beta.10 无公开销毁 API，隐藏复用与会话驻留的托盘隐藏策略同构，
@@ -110,6 +116,11 @@ func (s *QuickMenuService) start() error {
 		})
 		popup.OnWindowEvent(events.Common.WindowLostFocus, func(ev *application.WindowEvent) {
 			popup.Hide()
+		})
+		// 跨缩放比屏幕时 Wails 按建议物理矩形直接改窗（DIP 恒定会变成像素恒定的
+		// 512/640/768…），GDI 裁剪圈不会随动——DPI 变化后兜底重裁。
+		popup.OnWindowEvent(events.Common.WindowDPIChanged, func(ev *application.WindowEvent) {
+			s.clipPopup(popup)
 		})
 		s.mu.Lock()
 		s.popup = popup
@@ -241,7 +252,7 @@ func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 
 	popup.SetPosition(x, y)
 	popup.Show()
-	s.clipPopupOnce(popup)
+	s.clipPopup(popup)
 	popup.Focus()
 	// Wails Focus 是裸 SetForegroundWindow：本进程处于后台（主窗在托盘）时会被
 	// Windows 前台锁拒绝，弹窗拿不到焦点则 Esc/失焦收起失灵——借用前台窗口线程
@@ -253,25 +264,28 @@ func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 	a.Event.Emit("quickmenu:opening")
 }
 
-// clipPopupOnce 方形窗口首次唤出后裁剪为整圆区域（ClipWindowEllipse）。窗口本体
+// clipPopup 把弹窗按当前物理客户区重裁为整圆区域（ClipWindowEllipse）。窗口本体
 // 已是真透明（BackgroundTypeTransparent），圆盘视觉边缘由页面抗锯齿绘制；区域裁剪
 // 只承担命中测试——把四角从鼠标命中里剪掉让点击穿透到下层应用。裁剪圈半径 = 盘半径
-// + 透明边距，落在投影淡出后的全透明区，GDI 硬边在视觉上不可见。常驻单例固定尺寸
-// 只做一次；失败仅损失四角穿透体验，不影响功能，不重试轰炸日志。
-func (s *QuickMenuService) clipPopupOnce(popup *application.WebviewWindow) {
-	s.mu.Lock()
-	done := s.popupClipped
-	s.mu.Unlock()
-	if done {
-		return
-	}
+// + 透明边距，落在投影淡出后的全透明区，GDI 硬边在视觉上不可见。
+//
+// 必须每次唤出重裁而非一劳永逸：SetWindowRgn 区域不随窗口改尺寸，而"DIP 固定 512"
+// 的窗口跨到不同缩放比的显示器后物理像素必变（Wails 在 WM_DPICHANGED 里按建议矩形
+// 直接改窗），一次性的圈会停在旧半径把圆盘歪着切掉一块——即"轮盘变形"。另挂
+// WindowDPIChanged 事件兜底，覆盖"先裁后到 DPI 重排"的竞态。单枚 GDI 调用成本，
+// 可安全重放；失败仅损失四角穿透体验，首报 Warn 后续降 Debug 不刷屏。
+func (s *QuickMenuService) clipPopup(popup *application.WebviewWindow) {
 	if err := windows.ClipWindowEllipse(uintptr(popup.NativeWindow())); err != nil {
-		slog.Warn("quickmenu: 圆盘裁剪失败（方形弹窗降级）", "err", err)
-		return
+		s.mu.Lock()
+		first := !s.clipWarned
+		s.clipWarned = true
+		s.mu.Unlock()
+		if first {
+			slog.Warn("quickmenu: 圆盘裁剪失败（四角点击穿透降级，后续唤出仍重试）", "err", err)
+		} else {
+			slog.Debug("quickmenu: 圆盘裁剪失败", "err", err)
+		}
 	}
-	s.mu.Lock()
-	s.popupClipped = true
-	s.mu.Unlock()
 }
 
 // navigateMain route 条目动作：显示主窗口并请求前端导航（与托盘 route 条目同构）。
@@ -290,40 +304,110 @@ func (s *QuickMenuService) navigateMain(route string) {
 
 // ---------- 前端绑定 API ----------
 
-// GetStatus 返回快捷菜单运行态（模块页展示）。
+// GetStatus 返回快捷菜单运行态（模块页展示 + 二级轮盘开关回显）。
 func (s *QuickMenuService) GetStatus() Status {
-	items := s.disp.EnabledItems()
 	return Status{
 		TrapActive: s.trapActive(),
 		HoldMs:     int(triggerHold / time.Millisecond),
 		MoveTol:    triggerMove,
-		ItemCount:  len(items),
+		ItemCount:  len(s.wheelView()),
+		TwoTier:    s.twoTierOn(),
 	}
 }
 
-// ListItems 返回弹窗菜单条目（复用托盘配置中启用的条目，展示序即索引序）。
-func (s *QuickMenuService) ListItems() []MenuItem {
-	enabled := s.disp.EnabledItems()
-	out := make([]MenuItem, 0, len(enabled))
-	for i, item := range enabled {
-		hint := item.Ref
-		if item.Type == settings.TrayItemExe {
-			hint = item.Path
+// GetTwoTier 返回二级轮盘开关状态（模块页独立读取用）。
+func (s *QuickMenuService) GetTwoTier() bool { return s.twoTierOn() }
+
+// SetTwoTier 保存二级轮盘开关：开启时分组扇区点击展开子盘，关闭时分组子条目
+// 拍平进主盘。热生效——弹窗每次唤出都经 wheelView 重算，无需重启。
+func (s *QuickMenuService) SetTwoTier(on bool) error {
+	if s.store == nil {
+		return fmt.Errorf("配置存储不可用")
+	}
+	return s.store.SetQuickMenuTwoTier(on)
+}
+
+// twoTierOn 读取二级轮盘开关（store 缺失时保守按关闭处理）。
+func (s *QuickMenuService) twoTierOn() bool {
+	return s.store != nil && s.store.GetQuickMenuTwoTier()
+}
+
+// wheelNode 轮盘展示结构节点：一条主盘扇区（叶子或分组 + 已过滤的启用子条目）。
+type wheelNode struct {
+	item settings.TrayMenuItem
+	kids []settings.TrayMenuItem
+}
+
+// wheelView 计算轮盘当前展示结构：过滤启用条目，二级开关开启时保留 group 树形
+// （空组不占位），关闭时把组内启用子条目直接拍平为主盘扇区。ListItems 与 Launch
+// 共用本视图，Index 即展示序下标，天然一致。
+func (s *QuickMenuService) wheelView() []wheelNode {
+	var out []wheelNode
+	for _, item := range s.disp.EnabledItems() {
+		if item.Type == settings.TrayItemGroup {
+			kids := enabledLeaves(item.Children)
+			if !s.twoTierOn() {
+				for _, k := range kids {
+					out = append(out, wheelNode{item: k})
+				}
+				continue
+			}
+			if len(kids) == 0 {
+				continue
+			}
+			out = append(out, wheelNode{item: item, kids: kids})
+			continue
 		}
-		out = append(out, MenuItem{
-			Index: i,
-			Label: s.disp.Label(item),
-			Type:  item.Type,
-			Hint:  hint,
-			Icon:  s.resolveIcon(item),
-		})
+		out = append(out, wheelNode{item: item})
 	}
 	return out
 }
 
+// enabledLeaves 过滤组内启用的叶子条目（防御性拒绝嵌套分组，配置层已校验）。
+func enabledLeaves(items []settings.TrayMenuItem) []settings.TrayMenuItem {
+	var out []settings.TrayMenuItem
+	for _, ch := range items {
+		if ch.Enabled && ch.Type != settings.TrayItemGroup {
+			out = append(out, ch)
+		}
+	}
+	return out
+}
+
+// ListItems 返回弹窗菜单条目树（复用托盘配置中启用的条目，展示序即索引序；
+// 二级轮盘关闭时 group 已被拍平，树只有一层）。
+func (s *QuickMenuService) ListItems() []MenuItem {
+	view := s.wheelView()
+	out := make([]MenuItem, 0, len(view))
+	for i, node := range view {
+		mi := s.menuItem(i, node.item)
+		mi.Children = make([]MenuItem, 0, len(node.kids))
+		for j, k := range node.kids {
+			mi.Children = append(mi.Children, s.menuItem(j, k))
+		}
+		out = append(out, mi)
+	}
+	return out
+}
+
+// menuItem 把配置条目解析为一个轮盘扇区视图模型（Index 为所在层展示序）。
+func (s *QuickMenuService) menuItem(index int, item settings.TrayMenuItem) MenuItem {
+	hint := item.Ref
+	if item.Type == settings.TrayItemExe {
+		hint = item.Path
+	}
+	return MenuItem{
+		Index: index,
+		Label: s.disp.Label(item),
+		Type:  item.Type,
+		Hint:  hint,
+		Icon:  s.resolveIcon(item),
+	}
+}
+
 // resolveIcon 为扇区解析前端图标名（AppIcon 注册表约定）：页面类复用导航注册的
-// 模块图标（"i:" 前缀剥离），命令类用 terminal，程序类用 box；路由已停用查不到
-// nav 时回退 layout。前端对未登记图标名仍有最终回退。
+// 模块图标（"i:" 前缀剥离），命令类用 terminal，程序类用 box，分组用 layers；
+// 路由已停用查不到 nav 时回退 layout。前端对未登记图标名仍有最终回退。
 func (s *QuickMenuService) resolveIcon(item settings.TrayMenuItem) string {
 	switch item.Type {
 	case settings.TrayItemRoute:
@@ -337,19 +421,40 @@ func (s *QuickMenuService) resolveIcon(item settings.TrayMenuItem) string {
 		return "layout"
 	case settings.TrayItemCommand:
 		return "terminal"
+	case settings.TrayItemGroup:
+		return "layers"
 	default:
 		return "box"
 	}
 }
 
-// Launch 执行第 index 个条目：先收起弹窗给即时反馈，派发进 goroutine，
-// 失败统一走通知 Hub（与托盘失败反馈同构）。
-func (s *QuickMenuService) Launch(index int) error {
-	items := s.disp.EnabledItems()
-	if index < 0 || index >= len(items) {
-		return fmt.Errorf("菜单条目不存在（索引 %d）", index)
+// Launch 按展示序路径派发条目：[i] 主盘第 i 个扇区；[i, j] 主盘分组 i 的第 j 个
+// 子条目（二级轮盘关闭时后端已拍平，前端只会传一元路径，二元路径被拍平结构自然
+// 拒绝）。与 ListItems 共用 wheelView，索引一致。先收起弹窗给即时反馈，派发进
+// goroutine，失败统一走通知 Hub（与托盘失败反馈同构）。
+func (s *QuickMenuService) Launch(path []int) error {
+	if len(path) == 0 {
+		return fmt.Errorf("未指定菜单条目")
 	}
-	item := items[index]
+	view := s.wheelView()
+	i := path[0]
+	if i < 0 || i >= len(view) {
+		return fmt.Errorf("菜单条目不存在（索引 %d）", i)
+	}
+	node := view[i]
+	if len(path) >= 2 {
+		j := path[1]
+		if len(node.kids) == 0 {
+			return fmt.Errorf("该条目不是分组（索引 %d）", i)
+		}
+		if j < 0 || j >= len(node.kids) {
+			return fmt.Errorf("分组子条目不存在（索引 %d）", j)
+		}
+		node = wheelNode{item: node.kids[j]}
+	} else if len(node.kids) > 0 {
+		return fmt.Errorf("分组条目请点击展开子盘，本身不可执行")
+	}
+	item := node.item
 
 	s.Dismiss()
 	go func() {

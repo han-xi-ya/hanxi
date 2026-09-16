@@ -4,7 +4,9 @@
 
 /**
  * QuickMenuService 鼠标快捷菜单：全局右键长按 → 光标处弹出圆盘 → 点击扇区派发条目。
- * 条目配置与分发与托盘右键菜单完全共享（settings.TrayMenu + internal/launcher）。
+ * 条目配置与分发与托盘右键菜单完全共享（settings.TrayMenu + internal/launcher）；
+ * group 分组条目在二级轮盘开启时点击展开子盘（同一窗口换层，hub 提供返回），
+ * 关闭时子条目拍平进主盘，展示与派发共用 wheelView 保证索引一致。
  * @module
  */
 
@@ -29,7 +31,7 @@ export function Dismiss() {
 }
 
 /**
- * GetStatus 返回快捷菜单运行态（模块页展示）。
+ * GetStatus 返回快捷菜单运行态（模块页展示 + 二级轮盘开关回显）。
  * @returns {$CancellablePromise<$models.Status>}
  */
 export function GetStatus() {
@@ -37,17 +39,28 @@ export function GetStatus() {
 }
 
 /**
- * Launch 执行第 index 个条目：先收起弹窗给即时反馈，派发进 goroutine，
- * 失败统一走通知 Hub（与托盘失败反馈同构）。
- * @param {number} index
- * @returns {$CancellablePromise<void>}
+ * GetTwoTier 返回二级轮盘开关状态（模块页独立读取用）。
+ * @returns {$CancellablePromise<boolean>}
  */
-export function Launch(index) {
-    return $Call.ByID(3874078790, index);
+export function GetTwoTier() {
+    return $Call.ByID(1518657311);
 }
 
 /**
- * ListItems 返回弹窗菜单条目（复用托盘配置中启用的条目，展示序即索引序）。
+ * Launch 按展示序路径派发条目：[i] 主盘第 i 个扇区；[i, j] 主盘分组 i 的第 j 个
+ * 子条目（二级轮盘关闭时后端已拍平，前端只会传一元路径，二元路径被拍平结构自然
+ * 拒绝）。与 ListItems 共用 wheelView，索引一致。先收起弹窗给即时反馈，派发进
+ * goroutine，失败统一走通知 Hub（与托盘失败反馈同构）。
+ * @param {number[] | null} path
+ * @returns {$CancellablePromise<void>}
+ */
+export function Launch(path) {
+    return $Call.ByID(3874078790, path);
+}
+
+/**
+ * ListItems 返回弹窗菜单条目树（复用托盘配置中启用的条目，展示序即索引序；
+ * 二级轮盘关闭时 group 已被拍平，树只有一层）。
  * @returns {$CancellablePromise<$models.MenuItem[] | null>}
  */
 export function ListItems() {
@@ -69,4 +82,14 @@ export function OpenSettings() {
  */
 export function SetMainWindow(win) {
     return $Call.ByID(3119883326, win);
+}
+
+/**
+ * SetTwoTier 保存二级轮盘开关：开启时分组扇区点击展开子盘，关闭时分组子条目
+ * 拍平进主盘。热生效——弹窗每次唤出都经 wheelView 重算，无需重启。
+ * @param {boolean} on
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetTwoTier(on) {
+    return $Call.ByID(2743464091, on);
 }

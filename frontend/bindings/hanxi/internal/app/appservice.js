@@ -241,6 +241,7 @@ export function SetTheme(mode) {
 
 /**
  * SetTrayMenu 校验并持久化托盘菜单配置，保存成功后立即重建右键菜单热生效。
+ * group 条目：必须有名字与至少一个子条目，子条目经同一叶子校验规整。
  * @param {settings$0.TrayMenuItem[] | null} items
  * @returns {$CancellablePromise<void>}
  */

@@ -465,24 +465,60 @@ func (s *AppService) GetTrayMenu() []settings.TrayMenuItem {
 	return s.store.GetTrayMenu()
 }
 
+// cleanTrayLeaf 校验并规整一个叶子条目（command/route/exe）：字段去空白、必填检查。
+// group 型不允许进叶子位（嵌套深度锁死两层，二级盘不需要无限树）。
+func cleanTrayLeaf(it settings.TrayMenuItem) (settings.TrayMenuItem, error) {
+	it.Type = strings.TrimSpace(it.Type)
+	it.Ref = strings.TrimSpace(it.Ref)
+	it.Path = strings.TrimSpace(it.Path)
+	it.Children = nil
+	switch it.Type {
+	case settings.TrayItemCommand, settings.TrayItemRoute:
+		if it.Ref == "" {
+			return it, fmt.Errorf("托盘条目缺少引用（%s）", it.Type)
+		}
+	case settings.TrayItemExe:
+		if it.Path == "" {
+			return it, fmt.Errorf("外部程序托盘条目缺少路径")
+		}
+	case settings.TrayItemGroup:
+		return it, fmt.Errorf("分组条目不允许再嵌套分组")
+	default:
+		return it, fmt.Errorf("未知托盘条目类型: %q", it.Type)
+	}
+	return it, nil
+}
+
 // SetTrayMenu 校验并持久化托盘菜单配置，保存成功后立即重建右键菜单热生效。
+// group 条目：必须有名字与至少一个子条目，子条目经同一叶子校验规整。
 func (s *AppService) SetTrayMenu(items []settings.TrayMenuItem) error {
 	cleaned := make([]settings.TrayMenuItem, 0, len(items))
 	for _, it := range items {
 		it.Type = strings.TrimSpace(it.Type)
-		it.Ref = strings.TrimSpace(it.Ref)
-		it.Path = strings.TrimSpace(it.Path)
-		switch it.Type {
-		case settings.TrayItemCommand, settings.TrayItemRoute:
-			if it.Ref == "" {
-				return fmt.Errorf("托盘条目缺少引用（%s）", it.Type)
+		if it.Type == settings.TrayItemGroup {
+			it.Label = strings.TrimSpace(it.Label)
+			if it.Label == "" {
+				return fmt.Errorf("分组条目缺少名称")
 			}
-		case settings.TrayItemExe:
-			if it.Path == "" {
-				return fmt.Errorf("外部程序托盘条目缺少路径")
+			if len(it.Children) == 0 {
+				return fmt.Errorf("分组「%s」没有任何子条目", it.Label)
 			}
-		default:
-			return fmt.Errorf("未知托盘条目类型: %q", it.Type)
+			it.Ref, it.Path, it.Args = "", "", ""
+			kids := make([]settings.TrayMenuItem, 0, len(it.Children))
+			for _, ch := range it.Children {
+				kid, err := cleanTrayLeaf(ch)
+				if err != nil {
+					return fmt.Errorf("分组「%s」：%w", it.Label, err)
+				}
+				kids = append(kids, kid)
+			}
+			it.Children = kids
+		} else {
+			leaf, err := cleanTrayLeaf(it)
+			if err != nil {
+				return err
+			}
+			it = leaf
 		}
 		cleaned = append(cleaned, it)
 	}

@@ -11,11 +11,13 @@ import * as $models from "./models.js";
 
 /**
  * MenuItem 轮盘的一个扇区条目：复用托盘 TrayMenu 配置（同一份条目、同一套分发），
- * Index 为展示序下标，前端点击经 Launch(index) 回传。
+ * Index 为当前层展示序下标，前端点击经 Launch(path) 回传完整路径。
+ * Type 为 group 且 Children 非空时该扇区可展开二级盘（二级轮盘关闭时后端已把
+ * 子条目拍平到主盘，前端看到的数据形态天然只随开关变化，无需感知配置）。
  * @typedef {$models.MenuItem} MenuItem
  */
 
 /**
- * Status 快捷菜单运行态（模块页只读展示）。
+ * Status 快捷菜单运行态（模块页展示 + 开关回显）。
  * @typedef {$models.Status} Status
  */
