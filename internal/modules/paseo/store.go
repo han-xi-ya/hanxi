@@ -1,19 +1,19 @@
 package paseo
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // paseoStore 持久化 Paseo 模块少量偏好：
 // 位置 <dataDir>/paseo.json，存 activeVersion、releaseChannel（stable/beta）与
 // followOnExit。多版本目录（versions/paseo_X.Y.Z）并存，activeVersion 空串 =
 // 未指定，冷启动自动回退最新已装（vscode 便携同款语义）。
-// 与 recordlyStore/vscodeStore 同款原子写（tmp+rename），损坏容忍
-// （解析失败按空配置继续，不阻断模块）。
+// 原子写（tmp+rename）与损坏容忍
+// （解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type paseoStore struct {
 	filePath       string
 	mu             sync.RWMutex
@@ -42,17 +42,10 @@ func (s *paseoStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bytes, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var cfg paseoConfig
-	if json.Unmarshal(bytes, &cfg) != nil {
-		// 损坏容忍：内容视为空，activeVersion 自然兜底到"自动最新已装"
-		return nil
+	if ok, err := jsonstore.Load(s.filePath, &cfg); err != nil || !ok {
+		// 未初始化或损坏容忍：内容视为空，activeVersion 自然兜底到"自动最新已装"
+		return err
 	}
 	switch cfg.ReleaseChannel {
 	case ChannelStable, ChannelBeta:
@@ -64,27 +57,11 @@ func (s *paseoStore) load() error {
 }
 
 func (s *paseoStore) saveLocked() error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	bytes, err := json.MarshalIndent(paseoConfig{
+	return jsonstore.Save(s.filePath, paseoConfig{
 		ActiveVersion:  s.activeVersion,
 		ReleaseChannel: s.releaseChannel,
 		FollowOnExit:   &s.followOnExit,
-	}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, bytes, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	})
 }
 
 // GetActive 返回当前设定的使用版本（空字符串 = 未指定，回退最新已装）。

@@ -1,17 +1,16 @@
 package quicklook
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // quicklookStore 持久化 QuickLook 少量偏好：
 // 位置 <dataDir>/quicklook.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
-// 与 followOnExit。与 keyvizStore 同款原子写（tmp+rename），损坏容忍
-// （解析失败按空配置继续，不阻断模块）。
+// 与 followOnExit。原子写（tmp+rename）与损坏容忍
+// （解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 // 注意与 QuickLook 自身的用户配置（便携目录内的 *.config，随 portable.lock 走）无关——
 // 托管侧只存"用哪个版本、是否随 Hanxi 退出"两件事。
 type quicklookStore struct {
@@ -36,17 +35,10 @@ func (s *quicklookStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bytes, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var cfg quicklookConfig
-	if json.Unmarshal(bytes, &cfg) != nil {
-		// 损坏容忍：内容视为空，activeVersion 自然兜底到"自动最新已装"
-		return nil
+	if ok, err := jsonstore.Load(s.filePath, &cfg); err != nil || !ok {
+		// 未初始化或损坏容忍：内容视为空，activeVersion 自然兜底到"自动最新已装"
+		return err
 	}
 	s.activeVersion = cfg.ActiveVersion
 	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
@@ -54,23 +46,7 @@ func (s *quicklookStore) load() error {
 }
 
 func (s *quicklookStore) saveLocked() error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	bytes, err := json.MarshalIndent(quicklookConfig{ActiveVersion: s.activeVersion, FollowOnExit: &s.followOnExit}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, bytes, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return jsonstore.Save(s.filePath, quicklookConfig{ActiveVersion: s.activeVersion, FollowOnExit: &s.followOnExit})
 }
 
 // GetActive 返回当前设定版本（空字符串 = 未指定）。

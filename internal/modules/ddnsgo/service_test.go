@@ -3,6 +3,8 @@ package ddnsgo
 import (
 	"reflect"
 	"testing"
+
+	"hanxi/internal/jsonstore"
 )
 
 // TestConsoleURLOf 监听地址 → 面板 URL 拼接。
@@ -27,14 +29,15 @@ func TestExternalConsoleCandidates(t *testing.T) {
 }
 
 // TestValidateListenPort 端口合法区间：1024~65535 通过，越界拒绝。
+// （校验实现已收口至 jsonstore.ValidateListenPort，与 ocr 共用，断言原样保留。）
 func TestValidateListenPort(t *testing.T) {
 	for _, p := range []int{1024, 9876, 65535} {
-		if err := validateListenPort(p); err != nil {
+		if err := jsonstore.ValidateListenPort(p); err != nil {
 			t.Errorf("端口 %d 应合法，却报错 %v", p, err)
 		}
 	}
 	for _, p := range []int{0, 80, 1023, 65536, -1} {
-		if err := validateListenPort(p); err == nil {
+		if err := jsonstore.ValidateListenPort(p); err == nil {
 			t.Errorf("端口 %d 应被拒绝", p)
 		}
 	}

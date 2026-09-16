@@ -1,11 +1,11 @@
 package recordly
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // recordlyStore 持久化 Recordly 模块少量偏好：
@@ -13,8 +13,8 @@ import (
 // 无 activeVersion——NSIS oneClick 安装器语义决定托管目录恒为单一
 // versions/recordly（多版本共存形同虚设，详见 version.Manager 包注释），
 // "当前版本"由安装目录实测得出。
-// 与 ccswitchStore/markeronStore 同款原子写（tmp+rename），损坏容忍
-// （解析失败按空配置继续，不阻断模块）。
+// 原子写（tmp+rename）与损坏容忍
+// （解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type recordlyStore struct {
 	filePath       string
 	mu             sync.RWMutex
@@ -41,17 +41,10 @@ func (s *recordlyStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bytes, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var cfg recordlyConfig
-	if json.Unmarshal(bytes, &cfg) != nil {
-		// 损坏容忍：内容视为空，通道/开关注入默认值
-		return nil
+	if ok, err := jsonstore.Load(s.filePath, &cfg); err != nil || !ok {
+		// 未初始化或损坏容忍：内容视为空，通道/开关注入默认值
+		return err
 	}
 	switch cfg.ReleaseChannel {
 	case ChannelStable, ChannelBeta:
@@ -62,23 +55,7 @@ func (s *recordlyStore) load() error {
 }
 
 func (s *recordlyStore) saveLocked() error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	bytes, err := json.MarshalIndent(recordlyConfig{ReleaseChannel: s.releaseChannel, FollowOnExit: &s.followOnExit}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, bytes, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return jsonstore.Save(s.filePath, recordlyConfig{ReleaseChannel: s.releaseChannel, FollowOnExit: &s.followOnExit})
 }
 
 // GetReleaseChannel 返回当前更新通道（"stable" | "beta"）。

@@ -1,15 +1,14 @@
 package snipaste
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // snipasteStore 模块私有小配置（data/snipaste.json）：目前仅持久化"当前使用版本"。
-// 读走 RLock；写经 SetActive 串行化并原子落盘（临时文件+Rename）。
+// 读走 RLock；写经 SetActive 串行化并原子落盘（临时文件+Rename，公共核 internal/jsonstore）。
 type snipasteStore struct {
 	filePath      string
 	mu            sync.RWMutex
@@ -29,16 +28,10 @@ func newSnipasteStore(dir string) *snipasteStore {
 func (s *snipasteStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var cfg snipasteConfig
-	if json.Unmarshal(data, &cfg) != nil {
-		return nil
+	if ok, err := jsonstore.Load(s.filePath, &cfg); err != nil || !ok {
+		// 未初始化或损坏容忍：内容视为空，activeVersion 保持默认空串
+		return err
 	}
 	s.activeVersion = cfg.ActiveVersion
 	return nil
@@ -60,20 +53,5 @@ func (s *snipasteStore) SetActive(version string) error {
 }
 
 func (s *snipasteStore) saveLocked() error {
-	if err := os.MkdirAll(filepath.Dir(s.filePath), 0755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(snipasteConfig{ActiveVersion: s.activeVersion}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return jsonstore.Save(s.filePath, snipasteConfig{ActiveVersion: s.activeVersion})
 }

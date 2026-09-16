@@ -1,12 +1,13 @@
 package ocr
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // defaultListenPort 与上游 hanxi-ocr v0.2.0 内置默认端口一致。
@@ -16,7 +17,7 @@ const defaultListenPort = 53120
 // 位置 <dataDir>/ocr.json，存 exePath（空 = 自动发现同级 ../hanxi-ocr/）、
 // listenPort（服务端口）、followOnExit（随 Hanxi 退出联动，默认 true——
 // 托管拉起的服务不该在宿主退出后变孤儿）。
-// 与 ddnsgoStore 同款原子写（tmp+rename），损坏容忍（解析失败按默认值继续）。
+// 原子写（tmp+rename）与损坏容忍（解析失败按默认值继续）收口至 internal/jsonstore。
 type ocrStore struct {
 	filePath     string
 	mu           sync.RWMutex
@@ -48,17 +49,10 @@ func (s *ocrStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bytes, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var cfg ocrConfig
-	if json.Unmarshal(bytes, &cfg) != nil {
-		// 损坏容忍：内容视为空，字段自然兜底默认值
-		return nil
+	if ok, err := jsonstore.Load(s.filePath, &cfg); err != nil || !ok {
+		// 未初始化或损坏容忍：内容视为空，字段自然兜底默认值
+		return err
 	}
 	s.exePath = strings.TrimSpace(cfg.ExePath)
 	if cfg.FollowOnExit != nil {
@@ -74,28 +68,12 @@ func (s *ocrStore) load() error {
 }
 
 func (s *ocrStore) saveLocked() error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	bytes, err := json.MarshalIndent(ocrConfig{
+	return jsonstore.Save(s.filePath, ocrConfig{
 		ExePath:      s.exePath,
 		FollowOnExit: &s.followOnExit,
 		AutoCopy:     &s.autoCopy,
 		ListenPort:   &s.listenPort,
-	}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, bytes, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	})
 }
 
 // GetExePath 返回设定路径（空字符串 = 自动发现）。
@@ -106,7 +84,7 @@ func (s *ocrStore) GetExePath() string {
 }
 
 // SetExePath 设定 hanxi-ocr.exe 路径并落盘；""=恢复自动发现；
-// 非空必须是存在的 .exe 文件（校验中文报错，仿 ddnsgo validateListenPort）。
+// 非空必须是存在的 .exe 文件（校验中文报错，风格仿 jsonstore.ValidateListenPort）。
 func (s *ocrStore) SetExePath(path string) error {
 	path = strings.TrimSpace(path)
 	if path != "" {
@@ -163,19 +141,11 @@ func (s *ocrStore) GetListenPort() int {
 
 // SetListenPort 设定端口并立即落盘（校验范围 1024~65535）。
 func (s *ocrStore) SetListenPort(port int) error {
-	if err := validateListenPort(port); err != nil {
+	if err := jsonstore.ValidateListenPort(port); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.listenPort = port
 	return s.saveLocked()
-}
-
-// validateListenPort 端口合法性：1024~65535（避开特权端口段），非法即拒。
-func validateListenPort(port int) error {
-	if port < 1024 || port > 65535 {
-		return fmt.Errorf("端口需在 1024~65535 范围内，当前 %d", port)
-	}
-	return nil
 }

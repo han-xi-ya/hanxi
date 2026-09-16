@@ -1,22 +1,23 @@
 package frpc
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"hanxi/internal/domain"
+	"hanxi/internal/jsonstore"
 	"hanxi/internal/platform/windows"
 )
 
 const dpapiPrefix = "dpapi:"
 
-// frpcStore 项目存储：以单 JSON 文件原子读写持久化全部 frpc 项目。
+// frpcStore 项目存储：以单 JSON 文件原子读写持久化全部 frpc 项目
+// （原子写公共核 internal/jsonstore；本项目刻意取"损坏即报错、禁止以空库覆盖落盘文件"的严格策略）。
 // 位置：<dataDir>/frpc/projects.json（与版本隔离目录同根，方便整体拷贝搬迁）。
 type frpcStore struct {
 	filePath string
@@ -38,18 +39,16 @@ func (s *frpcStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bytes, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var data struct {
 		Projects []domain.Project `json:"projects"`
 	}
-	if err := json.Unmarshal(bytes, &data); err != nil {
+	ok, err := jsonstore.Load(s.filePath, &data)
+	if errors.Is(err, jsonstore.ErrCorrupt) || errors.Is(err, jsonstore.ErrEmpty) {
+		// 损坏/空文件：报错驻留 loadErr，禁止后续保存把项目库当空库覆盖
 		return fmt.Errorf("corrupt frpc projects.json: %w", err)
+	}
+	if err != nil || !ok {
+		return err // 读失败原样上抛；不存在（ok=false 且 err=nil）按空库继续
 	}
 	// 兼容与解密：自动解密 DPAPI 加密的 Token，无 ID 的项目自动补 ID
 	for _, p := range data.Projects {
@@ -76,10 +75,6 @@ func (s *frpcStore) load() error {
 }
 
 func (s *frpcStore) saveLocked(projects map[string]domain.Project) error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
 	list := make([]domain.Project, 0, len(projects))
 	for _, p := range projects {
 		// 落盘保护：克隆对象并将敏感 Token 加密为 DPAPI 密文。
@@ -101,19 +96,7 @@ func (s *frpcStore) saveLocked(projects map[string]domain.Project) error {
 		UpdatedAt string           `json:"updatedAt"`
 	}{list, time.Now().Format("2006-01-02 15:04:05")}
 
-	bytes, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, bytes, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return jsonstore.Save(s.filePath, data)
 }
 
 func newProjectID() string {

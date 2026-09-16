@@ -1,11 +1,10 @@
 package ddnsgo
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // defaultListenPort 与上游 -l 默认端口一致，接管既有使用习惯；
@@ -15,7 +14,7 @@ const defaultListenPort = 9876
 // ddnsgoStore 持久化 ddns-go 托管偏好：
 // 位置 <dataDir>/ddnsgo.json，存 activeVersion（空 = 未指定，冷启动回退最新已装）、
 // listenPort（web 监听端口）、followOnExit（随 Hanxi 退出开关联动）。
-// 与 ccswitchStore 同款原子写（tmp+rename），损坏容忍（解析失败按默认值继续）。
+// 原子写（tmp+rename）与损坏容忍（解析失败按默认值继续）收口至 internal/jsonstore。
 type ddnsgoStore struct {
 	filePath      string
 	mu            sync.RWMutex
@@ -44,17 +43,10 @@ func (s *ddnsgoStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bytes, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var cfg ddnsgoConfig
-	if json.Unmarshal(bytes, &cfg) != nil {
-		// 损坏容忍：内容视为空，字段自然兜底默认值
-		return nil
+	if ok, err := jsonstore.Load(s.filePath, &cfg); err != nil || !ok {
+		// 未初始化或损坏容忍：内容视为空，字段自然兜底默认值
+		return err
 	}
 	s.activeVersion = cfg.ActiveVersion
 	s.followOnExit = cfg.FollowOnExit != nil && *cfg.FollowOnExit
@@ -65,27 +57,11 @@ func (s *ddnsgoStore) load() error {
 }
 
 func (s *ddnsgoStore) saveLocked() error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	bytes, err := json.MarshalIndent(ddnsgoConfig{
+	return jsonstore.Save(s.filePath, ddnsgoConfig{
 		ActiveVersion: s.activeVersion,
 		FollowOnExit:  &s.followOnExit,
 		ListenPort:    &s.listenPort,
-	}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, bytes, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	})
 }
 
 // GetActive 返回当前设定版本（空字符串 = 未指定）。
@@ -127,20 +103,11 @@ func (s *ddnsgoStore) GetListenPort() int {
 
 // SetListenPort 设定端口并立即落盘（校验范围 1024~65535）。
 func (s *ddnsgoStore) SetListenPort(port int) error {
-	if err := validateListenPort(port); err != nil {
+	if err := jsonstore.ValidateListenPort(port); err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.listenPort = port
 	return s.saveLocked()
-}
-
-// validateListenPort 端口合法性：1024~65535（避开特权端口段，上游首次
-// 设置页同规则），非法即拒。
-func validateListenPort(port int) error {
-	if port < 1024 || port > 65535 {
-		return fmt.Errorf("端口需在 1024~65535 范围内，当前 %d", port)
-	}
-	return nil
 }

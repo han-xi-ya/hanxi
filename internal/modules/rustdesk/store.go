@@ -1,19 +1,18 @@
 package rustdesk
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // rustdeskStore 持久化 RustDesk 少量偏好：
 // 位置 <dataDir>/rustdesk.json，存 activeVersion（空字符串 = 未指定，冷启动自动
 // 回退最新已装）、activeForm（portable/installed，旧配置无此字段按 portable 兼容
 // 读取——两形态版本号可同值，必须成对落盘才无歧义）与 followOnExit。
-// 与 ccswitchStore 同款原子写（tmp+rename），损坏容忍。
+// 原子写（tmp+rename）与损坏容忍收口至 internal/jsonstore。
 type rustdeskStore struct {
 	filePath      string
 	mu            sync.RWMutex
@@ -38,17 +37,10 @@ func (s *rustdeskStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bytes, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var cfg rustdeskConfig
-	if json.Unmarshal(bytes, &cfg) != nil {
-		// 损坏容忍：内容视为空，activeVersion 自然兜底到"自动最新已装"
-		return nil
+	if ok, err := jsonstore.Load(s.filePath, &cfg); err != nil || !ok {
+		// 未初始化或损坏容忍：内容视为空，activeVersion 自然兜底到"自动最新已装"
+		return err
 	}
 	s.activeVersion = strings.TrimSpace(cfg.ActiveVersion)
 	s.activeForm = strings.TrimSpace(cfg.ActiveForm)
@@ -62,23 +54,7 @@ func (s *rustdeskStore) load() error {
 }
 
 func (s *rustdeskStore) saveLocked() error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	bytes, err := json.MarshalIndent(rustdeskConfig{ActiveVersion: s.activeVersion, ActiveForm: s.activeForm, FollowOnExit: &s.followOnExit}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, bytes, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return jsonstore.Save(s.filePath, rustdeskConfig{ActiveVersion: s.activeVersion, ActiveForm: s.activeForm, FollowOnExit: &s.followOnExit})
 }
 
 // GetActive 返回当前设定版本与形态（version 为空字符串 = 未指定，form 随之为空）。

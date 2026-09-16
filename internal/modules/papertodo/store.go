@@ -1,17 +1,17 @@
 package papertodo
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // papertodoStore 持久化 PaperTodo 少量偏好：
 // 位置 <dataDir>/papertodo.json，存 variant（下载运行库变体）与 followOnExit。
 // 单版本覆盖布局无 activeVersion 概念（托管目录至多一版）。
-// 与 ccswitchStore 同款原子写（tmp+rename），损坏容忍（解析失败按默认配置继续，不阻断模块）。
+// 原子写（tmp+rename）与损坏容忍（解析失败按默认配置继续，不阻断模块）收口至 internal/jsonstore。
 type papertodoStore struct {
 	filePath     string
 	mu           sync.RWMutex
@@ -34,17 +34,10 @@ func (s *papertodoStore) load() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	bytes, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
 	var cfg papertodoConfig
-	if json.Unmarshal(bytes, &cfg) != nil {
-		// 损坏容忍：内容视为空，variant 自然回退默认 self-contained
-		return nil
+	if ok, err := jsonstore.Load(s.filePath, &cfg); err != nil || !ok {
+		// 未初始化或损坏容忍：内容视为空，variant 自然回退默认 self-contained
+		return err
 	}
 	if validVariant(cfg.Variant) {
 		s.variant = cfg.Variant
@@ -54,23 +47,7 @@ func (s *papertodoStore) load() error {
 }
 
 func (s *papertodoStore) saveLocked() error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	bytes, err := json.MarshalIndent(papertodoConfig{Variant: s.variant, FollowOnExit: &s.followOnExit}, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmp, bytes, 0644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.filePath); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return jsonstore.Save(s.filePath, papertodoConfig{Variant: s.variant, FollowOnExit: &s.followOnExit})
 }
 
 // GetVariant 返回下载变体偏好。

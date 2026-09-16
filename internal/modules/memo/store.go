@@ -1,14 +1,16 @@
 package memo
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
-// Store 便签本地原子化持久化存储引擎
+// Store 便签本地原子化持久化存储引擎（tmp+fsync+rename 原子写公共核 internal/jsonstore）。
 type Store struct {
 	filePath string
 	mu       sync.RWMutex
@@ -32,29 +34,24 @@ func NewStore(filePath string) (*Store, error) {
 	return s, nil
 }
 
-// Load 读取所有便签数据
+// Load 读取所有便签数据（严格策略：文件损坏/读取失败直接报错，不静默清空创作内容）
 func (s *Store) Load() ([]MemoItem, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	data, err := os.ReadFile(s.filePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []MemoItem{}, nil
-		}
+	var items []MemoItem
+	ok, err := jsonstore.Load(s.filePath, &items)
+	switch {
+	case err == nil && ok:
+		return items, nil
+	case errors.Is(err, jsonstore.ErrEmpty) || (err == nil && !ok):
+		// 文件不存在或为 0 字节：视为空便签列表（与原实现逐分支一致）
+		return []MemoItem{}, nil
+	case errors.Is(err, jsonstore.ErrCorrupt):
+		return nil, fmt.Errorf("解析便签 JSON 失败: %w", err)
+	default:
 		return nil, fmt.Errorf("读取便签文件失败: %w", err)
 	}
-
-	if len(data) == 0 {
-		return []MemoItem{}, nil
-	}
-
-	var items []MemoItem
-	if err := json.Unmarshal(data, &items); err != nil {
-		return nil, fmt.Errorf("解析便签 JSON 失败: %w", err)
-	}
-
-	return items, nil
 }
 
 // Save 原子写入所有便签数据 (临时文件 + Rename 保证防断电损坏)
@@ -65,24 +62,8 @@ func (s *Store) Save(items []MemoItem) error {
 }
 
 func (s *Store) saveAtomic(items []MemoItem) error {
-	data, err := json.MarshalIndent(items, "", "  ")
-	if err != nil {
-		return fmt.Errorf("序列化便签数据失败: %w", err)
+	if err := jsonstore.Save(s.filePath, items); err != nil {
+		return fmt.Errorf("保存便签数据失败: %w", err)
 	}
-
-	tmpFile := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
-		return fmt.Errorf("写入临时便签文件失败: %w", err)
-	}
-
-	// Windows 下直接 rename 到已存在目标可能会失败，因此先尝试 rename，若失败先移除再 rename
-	if err := os.Rename(tmpFile, s.filePath); err != nil {
-		_ = os.Remove(s.filePath)
-		if err := os.Rename(tmpFile, s.filePath); err != nil {
-			_ = os.Remove(tmpFile)
-			return fmt.Errorf("原子替换便签文件失败: %w", err)
-		}
-	}
-
 	return nil
 }
