@@ -11,6 +11,8 @@ package wsl
 //   - 一切系统变更走同一个提权批量脚本（单 UAC），netsh 参数全部由后端从
 //     白名单校验（端口数字/IPv4 点分十进制）拼装，前端零拼接面；
 //   - 防火墙规则用固定命名前缀 "Hanxi WSL " + 端口，先删后加幂等；
+//   - 账本文件的"读-改-写"全程经 ppLedgerMu 串行（含标脏/清脏），并发增删改互不覆盖；
+//     账本被应用流程持有时增删改快速失败，绝不在锁上排队挂死前端；
 //   - 停机的发行版不会被转发流程顺手拉起（IP 拿不到即跳过并如实上报）。
 
 import (
@@ -110,6 +112,16 @@ func parsePortproxyShow(out string) []ActiveProxy {
 }
 
 // ---- 持久化 ----
+
+// ppLedgerMu 串行化账本的全部"读 → 改 → 写 → 标脏"路径：并发 AddPortRule/UpdatePortRule/
+// RemovePortRule 各自读到同一份旧快照，后写者会把前者刚落的改动整体覆盖
+// （表现为"加了一条规则，另一条莫名消失"）；账本是小 JSON 文件，串行代价可忽略。
+// 锁序纪律：ppLedgerMu → s.mu（markPending/clearPending 内部取 s.mu），反向持锁禁止。
+var ppLedgerMu sync.Mutex
+
+// errLedgerBusy 账本被应用/清理流程持有时的快速失败信号：与 tryBegin* 一族同风格——
+// 忙则如实拒绝而非排队挂死（Apply 在等 UAC 时可挂数分钟，绝不能让前端 RPC 无声悬停）。
+var errLedgerBusy = errors.New("端口转发账本正被占用（增删改或应用流程在飞），请稍候再试")
 
 func (s *WslService) ppLoad() ([]PortRule, error) {
 	if s.ppPath == "" {
@@ -267,6 +279,10 @@ func (s *WslService) AddPortRule(distro string, port, guest int, listen string, 
 	if err != nil {
 		return PortRuleView{}, err
 	}
+	if !ppLedgerMu.TryLock() {
+		return PortRuleView{}, errLedgerBusy
+	}
+	defer ppLedgerMu.Unlock()
 	rules, err := s.ppLoad()
 	if err != nil {
 		return PortRuleView{}, err
@@ -288,6 +304,10 @@ func (s *WslService) AddPortRule(distro string, port, guest int, listen string, 
 func (s *WslService) UpdatePortRule(rule PortRule) (PortRuleView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	if !ppLedgerMu.TryLock() {
+		return PortRuleView{}, errLedgerBusy
+	}
+	defer ppLedgerMu.Unlock()
 	rules, err := s.ppLoad()
 	if err != nil {
 		return PortRuleView{}, err
@@ -315,6 +335,10 @@ func (s *WslService) UpdatePortRule(rule PortRule) (PortRuleView, error) {
 
 // RemovePortRule 删除账本规则；若系统里还有对应转发，提醒去「应用」摘除。
 func (s *WslService) RemovePortRule(id string) (OperationOutcome, error) {
+	if !ppLedgerMu.TryLock() {
+		return OperationOutcome{}, errLedgerBusy
+	}
+	defer ppLedgerMu.Unlock()
 	rules, err := s.ppLoad()
 	if err != nil {
 		return OperationOutcome{}, err
@@ -351,6 +375,13 @@ func (s *WslService) ApplyPortRules() (OperationOutcome, error) {
 		return OperationOutcome{}, errDistroBusy
 	}
 	defer finish()
+	// 账本锁全程持有：本方法"读账本 → 改系统 → 清待应用标记"是一整条读-改-写链，
+	// 中途放进来的增删改会让刚清掉的 pending 标记与系统现态再次错位（宁可让前端
+	// 收到"正在应用中"的快速失败，也不制造"改了却没生效"的假象）。
+	if !ppLedgerMu.TryLock() {
+		return OperationOutcome{}, errLedgerBusy
+	}
+	defer ppLedgerMu.Unlock()
 	rules, err := s.ppLoad()
 	if err != nil {
 		return OperationOutcome{}, err
@@ -473,6 +504,11 @@ func (s *WslService) ClearPortLedgerFile() (OperationOutcome, error) {
 	if s.ppPath == "" {
 		return OperationOutcome{}, errors.New("数据存储路径不可用")
 	}
+	// 与账本读-改-写同锁：应用流程在飞时删文件，会让它按旧快照清掉一个"本不该清"的 pending
+	if !ppLedgerMu.TryLock() {
+		return OperationOutcome{}, errLedgerBusy
+	}
+	defer ppLedgerMu.Unlock()
 	if err := os.Remove(s.ppPath); err != nil && !os.IsNotExist(err) {
 		return OperationOutcome{}, fmt.Errorf("清空账本文件失败: %w", err)
 	}
@@ -489,6 +525,10 @@ func (s *WslService) CleanupPortRules() (OperationOutcome, error) {
 		return OperationOutcome{}, errDistroBusy
 	}
 	defer finish()
+	if !ppLedgerMu.TryLock() {
+		return OperationOutcome{}, errLedgerBusy
+	}
+	defer ppLedgerMu.Unlock()
 	rules, err := s.ppLoad()
 	if err != nil {
 		return OperationOutcome{}, err

@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
+
+	platformwin "hanxi/internal/platform/windows"
 )
 
 // opTimeout 覆盖「一键开启」「MSI 卸载向导」等全程；
@@ -21,12 +22,12 @@ const opTimeout = 30 * time.Minute
 func buildElevatedPS(file string, args ...string) string {
 	quoted := make([]string, 0, len(args))
 	for _, a := range args {
-		quoted = append(quoted, "'"+strings.ReplaceAll(a, "'", "''")+"'")
+		quoted = append(quoted, psQuote(a))
 	}
 	return fmt.Sprintf(
-		"$p = Start-Process -FilePath '%s' -ArgumentList %s -Verb RunAs -WindowStyle Normal -Wait -PassThru; "+
+		"$p = Start-Process -FilePath %s -ArgumentList %s -Verb RunAs -WindowStyle Normal -Wait -PassThru; "+
 			"if ($null -ne $p -and $p.ExitCode -ne 0) { exit $p.ExitCode }",
-		strings.ReplaceAll(file, "'", "''"), strings.Join(quoted, ","),
+		psQuote(file), strings.Join(quoted, ","),
 	)
 }
 
@@ -38,7 +39,8 @@ func runElevatedProcess(ctx context.Context, file string, args ...string) (Opera
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", buildElevatedPS(file, args...))
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // 隐藏的是承载 Start-Process 的 powershell，不是提权后的目标窗口
+	// 隐藏的是承载 Start-Process 的 powershell，不是提权后的目标窗口
+	platformwin.HideConsole(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		s := strings.ToLower(string(out))
@@ -102,7 +104,7 @@ func lastErrorLine(out string) string {
 // runLocalPS 以普通权限隐藏窗口执行固定 PowerShell 脚本并回传 trim 后的输出。
 func runLocalPS(ctx context.Context, script string) (string, error) {
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	platformwin.HideConsole(cmd)
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
 }

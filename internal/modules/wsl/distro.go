@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	platformwin "hanxi/internal/platform/windows"
 )
 
 // exportDirName 导出落盘子目录（系统"下载"文件夹下，与 MSI 下载同址不同目录）。
@@ -30,6 +32,19 @@ const exportDirName = "WSL 导出"
 const restartStoppedWait = 10 * time.Second
 
 var restartPollInterval = 500 * time.Millisecond
+
+// 操作面单次调用预算（对齐同文件 opTimeout 的口径，裸值收口）：
+// 只读外呼按"取数 + 白名单校验"给秒级预算，会真正动数据的操作各按自身耗时上界放宽；
+// 迁移/导出/克隆/瘦身这类长任务一律走 opTimeout，不进本组。
+const (
+	listInstancesTimeout   = 30 * time.Second // 列表：-l -v、-q 名单、Lxss 注册表三路取数
+	openTerminalTimeout    = 60 * time.Second // 唤终端：白名单校验 + ShellExecute 外呼
+	openFolderTimeout      = 2 * time.Minute  // 开目录：未运行时含一次按需启动
+	restartDistroTimeout   = 3 * time.Minute  // 重启：停止确认轮询 + 再拉起
+	terminateDistroTimeout = 2 * time.Minute  // 终止：单发 wsl --terminate
+	setDefaultTimeout      = 2 * time.Minute  // 设默认：单发 wsl --set-default
+	unregisterTimeout      = 5 * time.Minute  // 删除：terminate + unregister + 商店启动器清理
+)
 
 // DistroInstance 管理控制台的发行版实例行。
 // Running/Default 为归一后的布尔语义（状态列原文是本地化文案，跨语言系统下
@@ -70,7 +85,7 @@ type ExportRecord struct {
 // Lxss 注册表补安装路径与 VHDX 占用。任何一路取数失败都不谎报：
 // 缺失字段留空、状态回退 -l -v 原文判读，列表本体拿不到才报错。
 func (s *WslService) ListInstances() ([]DistroInstance, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), listInstancesTimeout)
 	defer cancel()
 
 	rows := s.wslDistros(ctx)
@@ -297,7 +312,7 @@ var errDistroBusy = fmt.Errorf("该发行版或 WSL 子系统有操作正在进�
 // 塞一个野生的 sleep 进程换"常亮"状态，生命周期没人收尸，得不偿失。
 func (s *WslService) OpenTerminal(name string) (DistroOpResult, error) {
 	name = strings.TrimSpace(name)
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), openTerminalTimeout)
 	defer cancel()
 	if err := s.distroAllowed(ctx, name); err != nil {
 		return DistroOpResult{}, err
@@ -326,7 +341,7 @@ func openDistroFolderExplorer(_ context.Context, name string) error {
 // 与唤终端同属"只读外呼"：免确认、免单飞闸（无状态改动可竞）。
 func (s *WslService) OpenDistroFolder(name string) (DistroOpResult, error) {
 	name = strings.TrimSpace(name)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), openFolderTimeout)
 	defer cancel()
 	if err := s.distroAllowed(ctx, name); err != nil {
 		return DistroOpResult{}, err
@@ -355,7 +370,7 @@ func (s *WslService) OpenDistroFolder(name string) (DistroOpResult, error) {
 // 探针走 runWsl（HideWindow 捕获输出）而非 startTerm：重启不该弹终端窗口。
 func (s *WslService) RestartDistro(name string) (DistroOpResult, error) {
 	name = strings.TrimSpace(name)
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), restartDistroTimeout)
 	defer cancel()
 	if err := s.distroAllowed(ctx, name); err != nil {
 		return DistroOpResult{}, err
@@ -415,7 +430,7 @@ func (s *WslService) waitDistroStopped(ctx context.Context, key string) error {
 // TerminateDistro 终止发行版（wsl --terminate，用户态命令，数据无损、幂等）。
 func (s *WslService) TerminateDistro(name string) (DistroOpResult, error) {
 	name = strings.TrimSpace(name)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), terminateDistroTimeout)
 	defer cancel()
 	if err := s.distroAllowed(ctx, name); err != nil {
 		return DistroOpResult{}, err
@@ -434,7 +449,7 @@ func (s *WslService) TerminateDistro(name string) (DistroOpResult, error) {
 // SetDefaultDistro 设默认发行版（wsl --set-default，用户态命令）。
 func (s *WslService) SetDefaultDistro(name string) (DistroOpResult, error) {
 	name = strings.TrimSpace(name)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), setDefaultTimeout)
 	defer cancel()
 	if err := s.distroAllowed(ctx, name); err != nil {
 		return DistroOpResult{}, err
@@ -456,7 +471,7 @@ func (s *WslService) SetDefaultDistro(name string) (DistroOpResult, error) {
 // 是幂等空转），unregister 的成败以退出码与输出如实上报。
 func (s *WslService) UnregisterDistro(name string) (DistroOpResult, error) {
 	name = strings.TrimSpace(name)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), unregisterTimeout)
 	defer cancel()
 	if err := s.distroAllowed(ctx, name); err != nil {
 		return DistroOpResult{}, err
@@ -755,10 +770,10 @@ func startTerminalSession(_ context.Context, name string) error {
 
 // ---- 小工具 ----
 
-// psQuote PowerShell 单引号安全字面量（” 转义），提权/巡查脚本内嵌参数统一走它。
-func psQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
-}
+// psQuote PowerShell 单引号安全字面量（' 成对转义），提权/巡查脚本内嵌参数统一走它。
+// 实现收口在 platform/windows.PsQuote；本文件与 compact/forensics 已把 `windows`
+// 这个名字让给了 golang.org/x/sys/windows，故包内保留这一层短名转发，调用点不撞标识符。
+func psQuote(s string) string { return platformwin.PsQuote(s) }
 
 // sanitizeFileNamePart 发行版名转安全文件名片段：非法字符落为下划线。
 var fileNameIllegalRe = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)

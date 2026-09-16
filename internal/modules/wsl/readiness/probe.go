@@ -6,12 +6,19 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
+
+	"hanxi/internal/platform/windows"
 )
 
 // probeTimeoutSecs 覆盖 CIM/WMI/Appx 读取的余量（网络探测已拆到 Go 侧并行，不再受脚本捆绑）。
 const probeTimeoutSecs = 30 * time.Second
+
+// MsiWslLookupPS WSL 卸载登记巡查语句（只读）：从 HKLM/HKCU 三个 Uninstall 根键里
+// 挑出 WSL 的那一条，结果变量约定为 $u。
+// 单一常量源——本包探针（取 DisplayVersion 与 PSChildName）与 wsl 侧的正规卸载补查
+// （取 ProductCode）都拼它，注册表路径与显示名匹配串不再两处各写一份。
+const MsiWslLookupPS = `$u = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'Windows Subsystem for Linux' } | Select-Object -First 1`
 
 // probeScript 是只读环境探针：注册表、WMI、Appx，输出单行紧凑 JSON。
 // 全程不写任何系统状态、无需管理员权限。GitHub 通道探测不放进来——
@@ -27,7 +34,7 @@ $msix = ''
 $p = Get-AppxPackage *WindowsSubsystemForLinux* -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($p) { $msix = [string]$p.Version }
 $msi = ''
-$u = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'Windows Subsystem for Linux' } | Select-Object -First 1
+` + MsiWslLookupPS + `
 if ($u) { $msi = [string]$u.DisplayVersion }
 $exeFile = ''
 $e = Get-Item "$env:windir\System32\wsl.exe" -ErrorAction SilentlyContinue
@@ -73,7 +80,7 @@ func Probe(ctx context.Context) (ProbeResult, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", probeScript)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	windows.HideConsole(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return ProbeResult{}, fmt.Errorf("执行 WSL 就绪探针失败: %w", err)

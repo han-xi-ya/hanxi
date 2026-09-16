@@ -7,7 +7,8 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"syscall"
+
+	"hanxi/internal/platform/windows"
 )
 
 // wsl.exe 的 stdout/stderr 均为 UTF-16LE（常带 BOM），与主流 CLI 的 UTF-8 惯例不同，
@@ -15,7 +16,7 @@ import (
 // RunWsl 统一解码后返回合并输出；exit error 一并返回供上层判断语义。
 func RunWsl(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "wsl.exe", args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	windows.HideConsole(cmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -34,7 +35,7 @@ func RunWsl(ctx context.Context, args ...string) (string, error) {
 // （wsl.conf 写回等"经管道改文件"的通道）。解码语义与 RunWsl 一致。
 func RunWslWithStdin(ctx context.Context, stdin string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "wsl.exe", args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	windows.HideConsole(cmd)
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
