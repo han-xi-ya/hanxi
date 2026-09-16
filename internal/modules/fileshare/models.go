@@ -2,6 +2,11 @@ package fileshare
 
 import "time"
 
+// DefaultSharePort 默认监听端口。
+// 已知问题：80 属特权低位端口，Windows 上常被 IIS / http.sys 占住，且被占用时的
+// 排查与释放往往需要管理员权限——首次启动失败请到设置里改用 8080 之类高位端口。
+const DefaultSharePort = 80
+
 // ShareConfig 局域网共享服务配置
 type ShareConfig struct {
 	Port            int    `json:"port"`            // 监听端口 (默认 80，0 为系统自动随机分配)

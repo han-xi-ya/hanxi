@@ -13,6 +13,11 @@ import (
 	"hanxi/internal/platform"
 )
 
+// defaultShareDirName 默认共享的宿主目录名（用户「下载」夹）。
+// 与 wechat/wsl 两处同款就地字面量：等 Lane Y 的公共下载目录解析落地后再统一收口，
+// 本模块不跨包引依赖。
+const defaultShareDirName = "Downloads"
+
 // FileShareService 面向 Wails 前端与核心调度的服务层
 type FileShareService struct {
 	plat         platform.Platform
@@ -28,7 +33,7 @@ type FileShareService struct {
 func NewFileShareService(plat platform.Platform) *FileShareService {
 	// 默认配置
 	homeDir, _ := os.UserHomeDir()
-	defaultShare := filepath.Join(homeDir, "Downloads")
+	defaultShare := filepath.Join(homeDir, defaultShareDirName)
 	if _, err := os.Stat(defaultShare); os.IsNotExist(err) {
 		defaultShare = homeDir
 	}
@@ -36,7 +41,7 @@ func NewFileShareService(plat platform.Platform) *FileShareService {
 	return &FileShareService{
 		plat: plat,
 		config: ShareConfig{
-			Port:            80,
+			Port:            DefaultSharePort,
 			SharePath:       defaultShare,
 			AllowUpload:     true,
 			AllowTextDrop:   true,
