@@ -40,3 +40,9 @@ import * as $models from "./models.js";
  * 事件 ocr:service-state 与 GetStatus 共用同一结构。
  * @typedef {$models.ServiceState} ServiceState
  */
+
+/**
+ * SnipResult 框选截屏识别结果（悬浮卡事件 ocr:snip-result 与 SnipAndRecognize
+ * 返回值共用）。Cancelled=true 表示用户放弃选区（静默路径，前端不打扰）。
+ * @typedef {$models.SnipResult} SnipResult
+ */

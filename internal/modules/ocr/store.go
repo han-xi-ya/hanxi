@@ -22,12 +22,14 @@ type ocrStore struct {
 	mu           sync.RWMutex
 	exePath      string
 	followOnExit bool
+	autoCopy     bool
 	listenPort   int
 }
 
 type ocrConfig struct {
 	ExePath      string `json:"exePath"`
 	FollowOnExit *bool  `json:"followOnExit"`
+	AutoCopy     *bool  `json:"autoCopy"`
 	ListenPort   *int   `json:"listenPort"`
 }
 
@@ -35,6 +37,7 @@ func newOcrStore(dir string) *ocrStore {
 	s := &ocrStore{
 		filePath:     filepath.Join(dir, "ocr.json"),
 		followOnExit: true,
+		autoCopy:     true, // 截屏识别后自动把文字复制进剪贴板（悬浮卡仍可手动复制）
 		listenPort:   defaultListenPort,
 	}
 	_ = s.load()
@@ -61,6 +64,9 @@ func (s *ocrStore) load() error {
 	if cfg.FollowOnExit != nil {
 		s.followOnExit = *cfg.FollowOnExit
 	}
+	if cfg.AutoCopy != nil {
+		s.autoCopy = *cfg.AutoCopy
+	}
 	if cfg.ListenPort != nil && *cfg.ListenPort >= 1024 && *cfg.ListenPort <= 65535 {
 		s.listenPort = *cfg.ListenPort
 	}
@@ -75,6 +81,7 @@ func (s *ocrStore) saveLocked() error {
 	bytes, err := json.MarshalIndent(ocrConfig{
 		ExePath:      s.exePath,
 		FollowOnExit: &s.followOnExit,
+		AutoCopy:     &s.autoCopy,
 		ListenPort:   &s.listenPort,
 	}, "", "  ")
 	if err != nil {
@@ -129,6 +136,21 @@ func (s *ocrStore) SetFollowOnExit(b bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.followOnExit = b
+	return s.saveLocked()
+}
+
+// GetAutoCopy 返回「截屏识别后自动复制文字」开关（默认 true）。
+func (s *ocrStore) GetAutoCopy() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.autoCopy
+}
+
+// SetAutoCopy 设定自动复制开关并落盘（下一次截屏识别生效）。
+func (s *ocrStore) SetAutoCopy(v bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.autoCopy = v
 	return s.saveLocked()
 }
 

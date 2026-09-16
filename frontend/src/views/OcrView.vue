@@ -26,6 +26,7 @@ const state = ref<ServiceState | null>(null) // null = 首帧尚未取得
 const showSettings = ref(false)
 const portInput = ref('')
 const followOnExit = ref(true)
+const autoCopy = ref(true)
 
 const image = ref<ImageRef | null>(null)
 const outcome = ref<OcrOutcome | null>(null)
@@ -34,6 +35,7 @@ const readingFile = ref(false)
 
 const { busy: recBusy, run: runRec } = useAsyncAction()
 const { busy: ctrlBusy, run: runCtrl } = useAsyncAction()
+const { busy: snipBusy, run: runSnip } = useAsyncAction()
 
 const chip = computed(() => (state.value ? toolStateMeta(state.value.state) : null))
 const online = computed(() => state.value?.online === true)
@@ -121,8 +123,31 @@ async function loadSettings() {
   try {
     portInput.value = String(await OcrAPI.GetListenPort())
     followOnExit.value = await OcrAPI.GetFollowOnExit()
+    autoCopy.value = await OcrAPI.GetAutoCopy()
   } catch (e) {
     console.warn('ocr settings load failed:', getErrorMessage(e))
+  }
+}
+
+// 框选截屏识别：与轮盘命令同链路（系统截屏 → 识别 → 悬浮卡+自动复制）。
+async function snipRecognize() {
+  const res = await runSnip(() => OcrAPI.SnipAndRecognize())
+  if (!res.ok) {
+    showToast(`截屏识别失败: ${getErrorMessage(res.error)}`)
+    return
+  }
+  if (res.data.cancelled) return // 用户放弃选区：静默
+  if (res.data.ok) showToast('识别完成，结果已在悬浮卡中')
+}
+
+async function toggleAutoCopy(v: boolean) {
+  autoCopy.value = v
+  try {
+    await OcrAPI.SetAutoCopy(v)
+    showToast(v ? '截屏识别后将自动复制文字' : '不再自动复制，可在卡片内手动选取')
+  } catch (e) {
+    autoCopy.value = !v
+    showToast(getErrorMessage(e))
   }
 }
 
@@ -282,6 +307,9 @@ onMounted(() => {
           <span v-if="online && state!.version" class="ocr-ver" :title="`引擎 ${state!.engine}`">
             {{ state!.version }}<template v-if="!state!.engineRunning"> · 引擎预热中</template>
           </span>
+          <button class="btn btn-secondary btn-small" :disabled="snipBusy" title="唤起系统截屏，框选区域即识别（服务未运行时自动拉起）" @click="snipRecognize">
+            {{ snipBusy ? '截屏识别中…' : '📷 框选识别' }}
+          </button>
           <button class="btn btn-secondary btn-small" :aria-expanded="showSettings" @click="showSettings = !showSettings">
             {{ showSettings ? '收起设置' : '服务设置' }}
           </button>
@@ -340,6 +368,13 @@ onMounted(() => {
         <label class="ocr-set-follow">
           <input type="checkbox" :checked="followOnExit" @change="toggleFollow(($event.target as HTMLInputElement).checked)" />
           随 Hanxi 退出一起关闭
+        </label>
+      </div>
+      <div class="ocr-set-row">
+        <span class="ocr-set-k">截屏识别</span>
+        <label class="ocr-set-follow">
+          <input type="checkbox" :checked="autoCopy" @change="toggleAutoCopy(($event.target as HTMLInputElement).checked)" />
+          识别后自动把文字复制到剪贴板（关闭后可在结果卡内手动选字）
         </label>
       </div>
       <p class="ocr-set-note">改端口对已运行的实例下次启动生效；外部自行启动的实例端口以其自身为准。</p>

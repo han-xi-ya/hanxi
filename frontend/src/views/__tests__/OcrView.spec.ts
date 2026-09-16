@@ -26,6 +26,12 @@ const svc = vi.hoisted(() => ({
   ImportServiceExe: vi.fn(),
   ImportServiceExeDialog: vi.fn(),
   HandleNativeDrop: vi.fn(),
+  SnipAndRecognize: vi.fn(),
+  GetSnipResult: vi.fn().mockResolvedValue([{ ok: false, text: '', lineCount: 0, elapsedMs: 0, error: '', copied: false, cancelled: false }, false]),
+  SnipCopyText: vi.fn(),
+  SnipCardDismiss: vi.fn(),
+  GetAutoCopy: vi.fn(),
+  SetAutoCopy: vi.fn(),
   Logs: vi.fn(),
 }))
 
@@ -59,6 +65,7 @@ function stubStatus(st = stoppedState) {
   svc.GetStatus.mockResolvedValue({ ...st })
   svc.GetListenPort.mockResolvedValue(53120)
   svc.GetFollowOnExit.mockResolvedValue(true)
+  svc.GetAutoCopy.mockResolvedValue(true)
 }
 
 async function mountView() {
@@ -253,6 +260,55 @@ describe('OcrView 组件导入', () => {
     await flushPromises()
     expect(useToast().toastMsg.value).toBe('')
     expect(svc.StartService).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+})
+
+describe('OcrView 框选截屏识别', () => {
+  it('点击截屏按钮：调 SnipAndRecognize，成功回执 toast 指路悬浮卡', async () => {
+    stubStatus(runningState)
+    svc.SnipAndRecognize.mockResolvedValue({ ok: true, text: '字', lineCount: 1, elapsedMs: 90, error: '', copied: true, cancelled: false })
+    const wrapper = await mountView()
+    await wrapper.findAll('.btn').find((b) => b.text().includes('框选识别'))!.trigger('click')
+    await flushPromises()
+    expect(svc.SnipAndRecognize).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toContain('悬浮卡')
+    wrapper.unmount()
+  })
+
+  it('用户放弃选区（cancelled）：完全静默', async () => {
+    stubStatus(runningState)
+    svc.SnipAndRecognize.mockResolvedValue({ ok: false, text: '', lineCount: 0, elapsedMs: 0, error: '', copied: false, cancelled: true })
+    const wrapper = await mountView()
+    await wrapper.findAll('.btn').find((b) => b.text().includes('框选识别'))!.trigger('click')
+    await flushPromises()
+    expect(useToast().toastMsg.value).toBeFalsy()
+    wrapper.unmount()
+  })
+
+  it('截屏链路报错：toast 含原因；busy 期间按钮禁用', async () => {
+    stubStatus(runningState)
+    let rejectFn: (e: unknown) => void = () => {}
+    svc.SnipAndRecognize.mockReturnValue(new Promise((_, rej) => { rejectFn = rej }))
+    const wrapper = await mountView()
+    const btn = wrapper.findAll('.btn').find((b) => b.text().includes('框选识别'))!
+    await btn.trigger('click')
+    expect(btn.attributes('disabled')).toBeDefined() // 45s 等待期内防重入
+    rejectFn(new Error('截屏识别需要 hanxi-ocr 组件：请先在文字识别页导入'))
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('组件')
+    wrapper.unmount()
+  })
+
+  it('自动复制开关：回显 + 切换落盘', async () => {
+    stubStatus(runningState)
+    const wrapper = await mountView()
+    await wrapper.findAll('.btn').find((b) => b.text().includes('服务设置'))!.trigger('click')
+    const box = wrapper.findAll('input[type="checkbox"]')[1] // [0]=随退出 [1]=自动复制
+    expect((box.element as HTMLInputElement).checked).toBe(true)
+    await box.setValue(false)
+    await flushPromises()
+    expect(svc.SetAutoCopy).toHaveBeenCalledWith(false)
     wrapper.unmount()
   })
 })

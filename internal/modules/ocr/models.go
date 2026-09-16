@@ -59,6 +59,18 @@ type ControlOutcome struct {
 	Message  string `json:"message"`
 }
 
+// SnipResult 框选截屏识别结果（悬浮卡事件 ocr:snip-result 与 SnipAndRecognize
+// 返回值共用）。Cancelled=true 表示用户放弃选区（静默路径，前端不打扰）。
+type SnipResult struct {
+	Ok        bool   `json:"ok"`
+	Text      string `json:"text"`
+	LineCount int    `json:"lineCount"`
+	ElapsedMs int64  `json:"elapsedMs"`
+	Error     string `json:"error"`
+	Copied    bool   `json:"copied"`    // 已按开关自动复制进剪贴板
+	Cancelled bool   `json:"cancelled"` // 选区超时取消
+}
+
 // DropResult 原生文件拖放/组件导入的统一回执（事件 ocr:file-drop-result 与各
 // 导入方法共用）。按 Kind 分流：import 结果刷状态，image 结果直接设为待识别图。
 type DropResult struct {

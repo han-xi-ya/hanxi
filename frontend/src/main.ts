@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import QuickMenuPopup from './views/QuickMenuPopup.vue'
+import SnipCardView from './views/SnipCardView.vue'
 import './styles/tokens.css'
 import './styles/base.css'
 import './styles/components.css'
@@ -11,15 +12,16 @@ import { getErrorMessage } from './utils/errors'
 // 主题首帧同步应用（localStorage 缓存先行，后端 Settings 异步校正）
 initTheme()
 
-// 快捷菜单弹窗为独立 frameless 顶层窗口（后端以 URL "/#quickmenu" 加载同一前端产物）：
-// 按 hash 分流只挂紧凑菜单视图，不加载工作台外壳（侧栏/通知/对话框）。
-const isQuickMenuPopup = window.location.hash.startsWith('#quickmenu')
-if (isQuickMenuPopup) {
+// 独立 frameless 顶层窗口按 hash 分流（同一前端产物多窗复用，不加载工作台外壳）：
+//   #quickmenu → 右键长按轮盘；#ocrcard → 框选截屏识别悬浮结果卡。
+const hash = window.location.hash
+const rootComponent = hash.startsWith('#quickmenu') ? QuickMenuPopup : hash.startsWith('#ocrcard') ? SnipCardView : App
+if (rootComponent !== App) {
   // 透明壳窗口：canvas（html/body）底色一并透明，否则近白 --surface-page 会在
   // 盘体外露出白底（见 base.css .popup-shell 规则）。
   document.documentElement.classList.add('popup-shell')
 }
-const app = createApp(isQuickMenuPopup ? QuickMenuPopup : App)
+const app = createApp(rootComponent)
 
 // 全局错误兜底：ErrorBoundary 未覆盖的泄漏路径（事件回调、异步流等）转 toast 可见，
 // 不再静默 console + 白屏

@@ -5,8 +5,9 @@
 /**
  * QuickMenuService 鼠标快捷菜单：全局右键长按 → 光标处弹出圆盘 → 点击扇区派发条目。
  * 条目配置与分发与托盘右键菜单完全共享（settings.TrayMenu + internal/launcher）；
- * group 分组条目在二级轮盘开启时点击展开子盘（同一窗口换层，hub 提供返回），
- * 关闭时子条目拍平进主盘，展示与派发共用 wheelView 保证索引一致。
+ * group 分组条目在二级轮盘开启时悬停在外扩子环（StarPie 式级联外扩，见前端
+ * QuickMenuPopup.vue 与 wheelGeometry.ts），关闭时子条目拍平进主盘，
+ * 展示与派发共用 wheelView 保证索引一致。
  * @module
  */
 

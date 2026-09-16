@@ -69,6 +69,19 @@
  * @property {string} checkedAt - 最近探测时刻（格式化，状态新鲜度）
  */
 
+/**
+ * SnipResult 框选截屏识别结果（悬浮卡事件 ocr:snip-result 与 SnipAndRecognize
+ * 返回值共用）。Cancelled=true 表示用户放弃选区（静默路径，前端不打扰）。
+ * @typedef {Object} SnipResult
+ * @property {boolean} ok
+ * @property {string} text
+ * @property {number} lineCount
+ * @property {number} elapsedMs
+ * @property {string} error
+ * @property {boolean} copied - 已按开关自动复制进剪贴板
+ * @property {boolean} cancelled - 选区超时取消
+ */
+
 // In interface mode, this file is likely to contain just comments.
 // We add a dummy export statement to ensure it is recognised as an ES module.
 export {};

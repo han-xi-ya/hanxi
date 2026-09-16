@@ -217,6 +217,7 @@ declare module "@wailsio/runtime" {
             "notify:received": notify$0.Notification;
             "ocr:file-drop-result": ocr$0.DropResult;
             "ocr:service-state": ocr$0.ServiceState;
+            "ocr:snip-result": ocr$0.SnipResult;
             "papertodo:instance-state": instance$12.Snapshot;
             "papertodo:version-download": version$12.DownloadProgress;
             "paseo:instance-state": instance$13.Snapshot;

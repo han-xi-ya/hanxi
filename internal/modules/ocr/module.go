@@ -53,6 +53,19 @@ func (m *Module) Services() []extapi.Service {
 // Service 暴露服务实例供 app.go 接线主窗原生文件拖放（组件导入通道）。
 func (m *Module) Service() *OcrService { return m.svc }
 
+// TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向轮盘/托盘命令候选
+// 目录暴露「框选截屏识别」（Key=ocr/snip，宿主独立 goroutine 调用，内部防重入）。
+func (m *Module) TrayCommands() []extapi.TrayCommand {
+	return []extapi.TrayCommand{{
+		ID:    "snip",
+		Label: "框选截屏识别（OCR）",
+		Run: func(ctx context.Context) error {
+			_, err := m.svc.SnipAndRecognize()
+			return err
+		},
+	}}
+}
+
 // Permissions 声明回环 HTTP 探测与转发（网络出站最小口径）。
 func (m *Module) Permissions() []extapi.Permission { return []extapi.Permission{extapi.PermNetwork} }
 

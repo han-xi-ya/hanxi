@@ -182,6 +182,7 @@ func RegisterEvents() {
 	application.RegisterEvent[wsl.CompactProgress]("wsl:compact")
 	application.RegisterEvent[ocr.ServiceState]("ocr:service-state")
 	application.RegisterEvent[ocr.DropResult]("ocr:file-drop-result")
+	application.RegisterEvent[ocr.SnipResult]("ocr:snip-result")
 }
 
 // Options 控制应用启动时行为。

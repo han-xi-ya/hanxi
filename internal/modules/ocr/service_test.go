@@ -334,6 +334,78 @@ func TestImportServiceExeAcceptsBothForms(t *testing.T) {
 	}
 }
 
+// ---------- 框选截屏识别（snipper 打桩） ----------
+
+// fakeSnip 可编程剪贴板/截屏桩。
+type fakeSnip struct {
+	text     string
+	hasText  bool
+	emptyErr error
+	grabPNG  []byte
+	grabOK   bool
+	written  []string
+	cursorXY [2]int
+}
+
+func (f *fakeSnip) SnapshotText() (string, bool) { return f.text, f.hasText }
+func (f *fakeSnip) Empty() error                 { return f.emptyErr }
+func (f *fakeSnip) WriteText(s string) error     { f.written = append(f.written, s); return nil }
+func (f *fakeSnip) GrabImage() ([]byte, bool, error) {
+	return f.grabPNG, f.grabOK, nil
+}
+func (f *fakeSnip) InvokeOverlay() error { return nil }
+func (f *fakeSnip) CursorPos() (int, int, error) { return f.cursorXY[0], f.cursorXY[1], nil }
+
+func TestSnipReentrancyGuard(t *testing.T) {
+	s := newTestService(t, "")
+	s.snip = &fakeSnip{}
+	s.snipMu.Lock() // 模拟进行中
+	defer s.snipMu.Unlock()
+	if _, err := s.SnipAndRecognize(); err == nil || !strings.Contains(err.Error(), "进行中") {
+		t.Fatalf("并发触发应被防重入拒绝: %v", err)
+	}
+}
+
+func TestSnipRequiresComponent(t *testing.T) {
+	// stopped + 自动发现失败（exeDir 空目录无同级组件）→ 中文导入指引
+	s := newTestService(t, "")
+	s.snip = &fakeSnip{}
+	if _, err := s.SnipAndRecognize(); err == nil || !strings.Contains(err.Error(), "导入") {
+		t.Fatalf("无组件应给导入指引: %v", err)
+	}
+}
+
+func TestSnipCopyTextAndDismiss(t *testing.T) {
+	s := newTestService(t, "")
+	fs := &fakeSnip{}
+	s.snip = fs
+	// 无结果时拒绝
+	if err := s.SnipCopyText(); err == nil {
+		t.Fatal("空结果不应可复制")
+	}
+	s.lastSnip = SnipResult{Ok: true, Text: "你好"}
+	if err := s.SnipCopyText(); err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.written) != 1 || fs.written[0] != "你好" {
+		t.Fatalf("复制代理未落到剪贴板写入: %v", fs.written)
+	}
+}
+
+func TestShowSnipCardWithoutApp(t *testing.T) {
+	// 无 Wails 实例（单测环境）：只记结果不建窗，不 panic
+	s := newTestService(t, "")
+	s.snip = &fakeSnip{}
+	s.showSnipCard(SnipResult{Ok: true, Text: "x"})
+	res := s.cardResult()
+	if !res.Ok || res.Text != "x" {
+		t.Fatal("结果应被记录供 GetSnipResult 拉取")
+	}
+	if _, found := s.GetSnipResult(); !found {
+		t.Fatal("有结果时 found 应为 true")
+	}
+}
+
 func TestHandleNativeDropRouting(t *testing.T) {
 	s := newTestService(t, "")
 

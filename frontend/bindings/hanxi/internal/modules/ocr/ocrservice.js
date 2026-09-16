@@ -26,6 +26,14 @@ export function BrowseServiceExeDialog() {
 }
 
 /**
+ * GetAutoCopy 返回「截屏识别后自动复制文字」开关（默认 true）。
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetAutoCopy() {
+    return $Call.ByID(4022883145);
+}
+
+/**
  * GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关。
  * @returns {$CancellablePromise<boolean>}
  */
@@ -47,6 +55,15 @@ export function GetListenPort() {
  */
 export function GetServiceExePath() {
     return $Call.ByID(3624823525);
+}
+
+/**
+ * GetSnipResult 卡片挂载/刷新时拉取当前结果（事件双保险，常驻窗体不漏帧）。
+ * found 仅在存在成功结果时为真——取消帧不进卡片通道（showSnipCard 只在成功时调用）。
+ * @returns {$CancellablePromise<[$models.SnipResult, boolean]>}
+ */
+export function GetSnipResult() {
+    return $Call.ByID(2567895550);
 }
 
 /**
@@ -135,6 +152,15 @@ export function SavePastedImage(fileName, dataURL) {
 }
 
 /**
+ * SetAutoCopy 设定自动复制开关（下一次截屏识别起生效）。
+ * @param {boolean} v
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetAutoCopy(v) {
+    return $Call.ByID(885513349, v);
+}
+
+/**
  * SetFollowOnExit 设定开关（已运行实例的联动在下一次启动时生效）。
  * @param {boolean} v
  * @returns {$CancellablePromise<void>}
@@ -168,6 +194,33 @@ export function SetServiceExePath(path) {
  */
 export function Shutdown() {
     return $Call.ByID(2824723323);
+}
+
+/**
+ * SnipAndRecognize 唤起系统截屏覆盖层（ms-screenclip:），接住框选图像识别，
+ * 成功后弹悬浮卡并按开关自动复制文字。业务失败以中文 error 返回
+ * （命令派发链路与前端按钮的提示系统会接住）；用户放弃选区静默返回 Cancelled。
+ * @returns {$CancellablePromise<$models.SnipResult>}
+ */
+export function SnipAndRecognize() {
+    return $Call.ByID(791784394);
+}
+
+/**
+ * SnipCardDismiss 收起悬浮卡（前端关闭钮/Esc 调用；只隐藏不销毁）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function SnipCardDismiss() {
+    return $Call.ByID(2862850157);
+}
+
+/**
+ * SnipCopyText 手动复制卡片全文（Go 代理写剪贴板，绕开 webview 安全上下文
+ * 限制），成功后收起卡片。
+ * @returns {$CancellablePromise<void>}
+ */
+export function SnipCopyText() {
+    return $Call.ByID(590756931);
 }
 
 /**
