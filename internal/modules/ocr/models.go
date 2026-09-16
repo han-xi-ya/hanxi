@@ -81,6 +81,17 @@ type DropResult struct {
 	Message string    `json:"message"` // 中文人话（成功说明或失败原因）
 }
 
+// 上游组件文件名（自动发现、导入校验与布局判定共用同一字面量，改名字一处收口）。
+// 注：instance 子包为探测进程还存在自己的一份私有常量——跨包共享需导出并引入依赖，
+// 两处各自就近定义，改名字时务必同改。
+const (
+	serviceExeName = "hanxi-ocr.exe"
+	// serviceExeDirName 私发组件默认落位目录名（Hanxi 主程序同级）。
+	serviceExeDirName = "hanxi-ocr"
+	// engineDLLName v0.2 目录版启动器必须同级携带的引擎文件；v0.3 起单文件版不再需要。
+	engineDLLName = "wcocr.dll"
+)
+
 // resolveServiceExe 纯函数：hanxi-ocr.exe 发现顺序（exeDir 注入便于单测）。
 //  1. 用户设定路径（存在即用；失效以 error 明示，不静默回退）
 //  2. Hanxi 同级目录 ../hanxi-ocr/hanxi-ocr.exe（私发组件默认落位）
@@ -92,11 +103,11 @@ func resolveServiceExe(exeDir, stored string) (path string, fromStore bool, err 
 		}
 		return "", true, fmt.Errorf("设置的服务路径已失效：%s，请在设置中重新指定", p)
 	}
-	cand := filepath.Join(filepath.Dir(exeDir), "hanxi-ocr", "hanxi-ocr.exe")
+	cand := filepath.Join(filepath.Dir(exeDir), serviceExeDirName, serviceExeName)
 	if st, e := os.Stat(cand); e == nil && !st.IsDir() {
 		return cand, false, nil
 	}
-	if p, e := exec.LookPath("hanxi-ocr.exe"); e == nil {
+	if p, e := exec.LookPath(serviceExeName); e == nil {
 		return p, false, nil
 	}
 	return "", false, fmt.Errorf("未找到 hanxi-ocr.exe，默认预期位置 %s；可在设置中手动指定路径", cand)
