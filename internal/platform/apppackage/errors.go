@@ -2,6 +2,7 @@ package apppackage
 
 import "fmt"
 
+// 稳定的机器可读错误码：不随 PowerShell 输出语言漂移，前端/模块层据此分支处理。
 const (
 	CodeNotSupported     = "APP_PACKAGE_NOT_SUPPORTED"
 	CodePowerShellAbsent = "APP_PACKAGE_POWERSHELL_NOT_FOUND"
@@ -27,6 +28,8 @@ type Error struct {
 	Cause     error  `json:"-"`
 }
 
+// Error 实现 error 接口：优先输出 "message: detail"（脚本侧结构化明细），
+// 无 detail 时退化为 "message: cause"（本地包装错误），两者皆无则仅输出 message。
 func (e *Error) Error() string {
 	if e.Detail != "" {
 		return fmt.Sprintf("%s: %s", e.Message, e.Detail)
@@ -37,4 +40,5 @@ func (e *Error) Error() string {
 	return e.Message
 }
 
+// Unwrap 暴露底层 Go 错误，支持 errors.Is/As 穿透（如判定 context.Canceled）。
 func (e *Error) Unwrap() error { return e.Cause }

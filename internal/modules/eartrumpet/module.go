@@ -35,6 +35,7 @@ import (
 	"hanxi/internal/platform"
 )
 
+// ID 是模块注册键，同时用作通知/事件的 moduleID。
 const ID = "eartrumpet"
 
 // Module 实现 extapi.Module，纯无状态入口，无重资源需要懒初始化。
@@ -42,10 +43,12 @@ type Module struct {
 	svc *EarTrumpetService
 }
 
+// New 在 app 装配期创建模块（构造无 IO，重活延迟到 OnInit 与 service 方法）。
 func New(plat platform.Platform) extapi.Module {
 	return &Module{svc: NewEarTrumpetService(plat)}
 }
 
+// Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
@@ -57,10 +60,12 @@ func (m *Module) Info() extapi.ModuleInfo {
 	}
 }
 
+// Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{ID: "eartrumpet-manager", Title: "EarTrumpet", Route: "/ext/eartrumpet", Icon: "i:volume-2", Section: extapi.SectionExt, Order: 77, Group: extapi.GroupDesktop}}
 }
 
+// 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。
 func (m *Module) Services() []extapi.Service {
 	return []extapi.Service{application.NewService(m.svc)}
 }
@@ -68,8 +73,12 @@ func (m *Module) Services() []extapi.Service {
 func (m *Module) Permissions() []extapi.Permission { return nil }
 func (m *Module) Protocol() int                    { return 1 }
 func (m *Module) OnInit(context.Context) error     { return nil }
-func (m *Module) OnDestroy() error                 { return nil }
-func (m *Module) IsInitialized() bool              { return true }
+
+// OnDestroy 本模块无常驻资源（查询/安装均为按需短任务，goroutine 随调用结束收敛），无需回收。
+func (m *Module) OnDestroy() error { return nil }
+
+// IsInitialized OnInit 无失败路径，注册表懒初始化后恒为已就绪。
+func (m *Module) IsInitialized() bool { return true }
 
 // TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向宿主托盘暴露启动命令，
 // 复用与模块页面"启动"按钮完全一致的 service 入口；宿主在触发前已完成模块懒初始化。

@@ -39,6 +39,8 @@ type MangoDiskService struct {
 	watchStop  chan struct{}
 }
 
+// NewMangoDiskService 装配版本管理器、持久化 store 与实例引擎。
+// 构造不触发任何 IO/网络；外部实例嗅探协程由 activate 在模块 OnInit 时启动。
 func NewMangoDiskService(plat platform.Platform) *MangoDiskService {
 	paths := settings.GetPaths()
 	svc := &MangoDiskService{
@@ -48,6 +50,8 @@ func NewMangoDiskService(plat platform.Platform) *MangoDiskService {
 	return svc
 }
 
+// emitInstanceState 实例引擎状态回调：广播前端事件驱动页面刷新，Failed 时另发系统通知。
+// 由 engine 内部 goroutine 调用，勿在此做阻塞操作。
 func (s *MangoDiskService) emitInstanceState(snap instance.Snapshot) {
 	slog.Debug("mangodisk instance state", "state", snap.State, "pid", snap.PID, "external", snap.External)
 	if app := application.Get(); app != nil && app.Event != nil {
@@ -58,6 +62,8 @@ func (s *MangoDiskService) emitInstanceState(snap instance.Snapshot) {
 	}
 }
 
+// activate 启动外部实例嗅探 goroutine（每 watchInterval 轮询 RefreshExternal）。
+// 幂等：已监视则直接返回。goroutine 由 Shutdown 关闭 watchStop 通道终止，模块停用必须成对调用。
 func (s *MangoDiskService) activate() {
 	s.watchMu.Lock()
 	defer s.watchMu.Unlock()
@@ -81,14 +87,19 @@ func (s *MangoDiskService) activate() {
 	}()
 }
 
+// ListReleases 拉取远端官方版本列表（GitHub Releases，经缓存与镜像加速），网络失败返回错误。
 func (s *MangoDiskService) ListReleases() ([]version.MangoDiskRelease, error) {
 	return s.manager.ListRemote()
 }
 
+// ListInstalledVersions 扫描本地 versions 目录并做完整性校验（哈希基线比对）。
 func (s *MangoDiskService) ListInstalledVersions() ([]version.MangoDiskVersionInfo, error) {
 	return s.manager.ListInstalled()
 }
 
+// DownloadVersion 异步下载指定版本：立即返回 "started"（已在本地则返回 "already-installed"），
+// 进度与结果经 "mangodisk:version-download" 事件与通知推送。同一时刻仅允许一个下载
+// （TryLock 失败直接报"正在下载"），未设置使用版本时下载完成后自动设为当前版本。
 func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error) {
 	targetVersion = normalizeVersion(targetVersion)
 	if !s.downloadMu.TryLock() {
@@ -127,6 +138,7 @@ func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error)
 	return "started", nil
 }
 
+// RemoveVersion 删除本地版本目录；该版本正在托管运行时拒绝，删除后若其为使用版本则清空 active。
 func (s *MangoDiskService) RemoveVersion(targetVersion string) error {
 	targetVersion = normalizeVersion(targetVersion)
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning && snap.Version == targetVersion {
@@ -141,6 +153,8 @@ func (s *MangoDiskService) RemoveVersion(targetVersion string) error {
 	return nil
 }
 
+// SetActiveVersion 将指定版本设为"当前使用版本"。落盘前先 Inspect，
+// 完整性校验失败（IntegrityInvalid）的版本拒绝激活，返回错误提示重新下载/导入。
 func (s *MangoDiskService) SetActiveVersion(targetVersion string) (string, error) {
 	targetVersion = normalizeVersion(targetVersion)
 	info, err := s.manager.Inspect(targetVersion)
@@ -156,8 +170,11 @@ func (s *MangoDiskService) SetActiveVersion(targetVersion string) (string, error
 	return targetVersion, nil
 }
 
+// GetActiveVersion 返回当前使用版本号；未设置时返回空串（error 恒为 nil，为前端统一签名保留）。
 func (s *MangoDiskService) GetActiveVersion() (string, error) { return s.store.GetActive(), nil }
 
+// ImportLocal 导入用户自备的 MangoDisk 可执行文件为托管版本（读取 PE 版本信息建基线）。
+// 实例正在运行（托管或外部嗅探到）时拒绝，避免导入后新旧文件混用。
 func (s *MangoDiskService) ImportLocal(srcExe string) (version.MangoDiskVersionInfo, error) {
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
 		return version.MangoDiskVersionInfo{}, fmt.Errorf("MangoDisk 正在运行，请先退出再导入")
@@ -165,6 +182,7 @@ func (s *MangoDiskService) ImportLocal(srcExe string) (version.MangoDiskVersionI
 	return s.manager.ImportLocal(strings.TrimSpace(srcExe))
 }
 
+// OpenDir 用资源管理器打开目录；路径为空或不存在时返回错误（explorer.Start 本身不报错，故先行校验）。
 func (s *MangoDiskService) OpenDir(dir string) error {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
@@ -177,11 +195,16 @@ func (s *MangoDiskService) OpenDir(dir string) error {
 	return exec.Command("explorer.exe", dir).Start()
 }
 
+// GetStatus 先强制刷新外部实例嗅探再返回快照，保证前端轮询看到的是实时状态（error 恒 nil 为签名统一）。
 func (s *MangoDiskService) GetStatus() (instance.Snapshot, error) {
 	s.engine.RefreshExternal()
 	return s.engine.Snapshot(), nil
 }
 
+// OpenWindow 是页面/托盘"启动"的统一入口，按实例状态机分支：
+// Starting→提示等待；External（外部自启实例）→借用其 exe 唤起窗口；
+// Running→唤起自家窗口；Stopped/Failed→校验完整性后冷启动并等待就绪（readyTimeout）。
+// 冷启动时按 GetFollowOnExit 决定是否挂入 JobObject（Detached 则不随 Hanxi 退出）。
 func (s *MangoDiskService) OpenWindow() (ControlOutcome, error) {
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
@@ -226,6 +249,7 @@ func (s *MangoDiskService) OpenWindow() (ControlOutcome, error) {
 	}
 }
 
+// Quit 优雅退出托管实例；外部自启实例（External）不归 Hanxi 管，只回提示不动它。
 func (s *MangoDiskService) Quit() (QuitOutcome, error) {
 	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{External: true, Message: "当前是外部自行启动的实例，请在 MangoDisk 窗口内退出"}, nil
@@ -236,6 +260,7 @@ func (s *MangoDiskService) Quit() (QuitOutcome, error) {
 	return QuitOutcome{Stopped: true, Message: "MangoDisk 已退出"}, nil
 }
 
+// Shutdown 在模块 OnDestroy 时调用：终止嗅探 goroutine，并按"随 Hanxi 退出"开关决定是否停止托管实例。
 func (s *MangoDiskService) Shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
@@ -248,6 +273,8 @@ func (s *MangoDiskService) Shutdown() {
 	}
 }
 
+// resolveActiveVersion 解析"当前应使用的版本 + exe 路径"：active 有效则直用（失效自动清空），
+// 否则回退到完整性可用的最高版本（versioncmp 语义化比较），一个都没有才报错。
 func (s *MangoDiskService) resolveActiveVersion() (string, string, error) {
 	if active := s.store.GetActive(); active != "" {
 		if info, err := s.manager.Inspect(active); err == nil && info.Integrity != version.IntegrityInvalid {
@@ -274,6 +301,8 @@ func (s *MangoDiskService) resolveActiveVersion() (string, string, error) {
 	return valid[0].Version, valid[0].ExePath, nil
 }
 
+// resolveInstalledExeAny 为 External 实例唤起窗口挑选一个可用的本地 exe（仅借用其单实例唤窗行为）。
+// 按可信度排序：官方校验通过 > 本地导入基线 > 漂移（被上游更新器改过但可运行）。
 func (s *MangoDiskService) resolveInstalledExeAny() (string, error) {
 	installed, err := s.manager.ListInstalled()
 	if err != nil {
@@ -289,6 +318,9 @@ func (s *MangoDiskService) resolveInstalledExeAny() (string, error) {
 	return "", fmt.Errorf("尚未安装可用的 MangoDisk 版本，无法代为唤起外部实例窗口")
 }
 
+// GetFollowOnExit / SetFollowOnExit 读写"随 Hanxi 一起退出"开关：
+// 开启时实例挂入 JobObject（Hanxi 退出/崩溃内核连带终止），关闭时 Detached 独立存活。
+// 变更只影响之后的启动/关停时机，不热切换已运行实例。
 func (s *MangoDiskService) GetFollowOnExit() (bool, error) { return s.store.GetFollowOnExit(), nil }
 func (s *MangoDiskService) SetFollowOnExit(enabled bool) error {
 	return s.store.SetFollowOnExit(enabled)
@@ -304,9 +336,11 @@ func (s *MangoDiskService) CreateDesktopShortcut() error {
 	return s.plat.CreateDesktopShortcut("MangoDisk", exe, filepath.Dir(exe))
 }
 
+// RepositoryURL / OpenRepository 提供上游仓库主页（error 恒 nil 为前端统一签名）。
 func (s *MangoDiskService) RepositoryURL() (string, error) { return version.RepoURL(), nil }
 func (s *MangoDiskService) OpenRepository() error          { return s.plat.OpenURL(version.RepoURL()) }
 
+// normalizeVersion 统一版本号形态为 "vX.Y.Z"（前端可能传带或不带 v 前缀）。
 func normalizeVersion(value string) string {
 	return "v" + strings.TrimPrefix(strings.TrimSpace(value), "v")
 }

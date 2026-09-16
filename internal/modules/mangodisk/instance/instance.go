@@ -80,6 +80,8 @@ type Engine struct {
 	cb     Callbacks
 }
 
+// NewEngine 创建运行引擎（初始 state=stopped，不产生任何系统副作用）。
+// jobAPI/probe/cb 均由 service 层注入，便于非 Windows 构建与单测替换。
 func NewEngine(jobAPI platform.JobAPI, probe MangoDiskProbe, cb Callbacks) *Engine {
 	return &Engine{
 		state:  StateStopped,

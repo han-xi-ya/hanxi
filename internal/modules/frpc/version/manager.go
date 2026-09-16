@@ -23,6 +23,7 @@ type Manager struct {
 	client      *http.Client // 下载客户端（长超时）
 }
 
+// NewManager 以 versions 根目录创建引擎；client 长超时专用于大版本包下载，列表查询走 remoteCache。
 func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		versionsDir: versionsDir,

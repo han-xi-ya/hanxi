@@ -29,6 +29,9 @@ type NetworkOverview struct {
 	Adapters []platform.Adapter `json:"adapters"`
 }
 
+// PublicIPService 公网/局域网信息聚合服务。
+// 对上游查询源做进程内 TTL 缓存（RWMutex 读写锁）：TTL 内的重复请求直接回吐 cachedData，
+// 前端轮询不放大外部请求量；缓存含部分失败结果（某源挂掉不会立即重查）。
 type PublicIPService struct {
 	plat   platform.Platform
 	client *http.Client
@@ -39,6 +42,7 @@ type PublicIPService struct {
 	cacheTTL   time.Duration
 }
 
+// NewPublicIPService 创建服务：单源 HTTP 超时 3s（多源轮询兜底），结果缓存 2 分钟。
 func NewPublicIPService(plat platform.Platform) *PublicIPService {
 	return &PublicIPService{
 		plat:     plat,

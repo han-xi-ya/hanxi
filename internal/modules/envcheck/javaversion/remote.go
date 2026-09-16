@@ -57,8 +57,10 @@ func defaultSource() source {
 
 var cache = remoteversion.NewCache(defaultSource().fetch, cloneChannels)
 
+// DownloadPageURL Adoptium 官网下载页地址（前端"去下载"跳转按钮用）。
 func DownloadPageURL() string { return downloadURL }
 
+// Channels 返回 Temurin GA 各 feature 版本线通道清单（remoteversion.Cache 提供 TTL 与 stale-if-error）。
 func Channels() ([]remoteversion.Channel, bool, time.Time, error) { return cache.Get() }
 
 func (s source) fetch() ([]remoteversion.Channel, error) {

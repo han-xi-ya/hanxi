@@ -11,12 +11,16 @@ import (
 	"hanxi/internal/platform"
 )
 
+// JobImpl platform.JobAPI 的 Windows 实现（无状态，仅作工厂载体）。
 type JobImpl struct{}
 
+// NewJobAPI 返回 Job Object 管理 API 实例。
 func NewJobAPI() platform.JobAPI {
 	return &JobImpl{}
 }
 
+// Create 创建匿名 Job Object 并默认启用 KILL_ON_JOB_CLOSE，
+// 保证 Hanxi 崩溃或被杀时托管子进程不残留。失败时不泄漏已创建句柄。
 func (j *JobImpl) Create() (platform.Job, error) {
 	// 创建无名的 Job Object
 	hJob, err := windows.CreateJobObject(nil, nil)
@@ -47,11 +51,15 @@ func (j *JobImpl) Create() (platform.Job, error) {
 	}, nil
 }
 
+// windowsJob 持有单个 Job Object 原生句柄。
+// mu 保护 hJob 的置零关闭与所有句柄操作，Close 后各方法须安全退化而非 panic。
 type windowsJob struct {
 	hJob windows.Handle
 	mu   sync.Mutex
 }
 
+// Assign 以 SET_QUOTA|TERMINATE 权限打开目标进程并挂入本 Job。
+// 注意 Windows 约束：已属于其他 Job 的进程（如被 Job 启动的子进程）在 Win8+ 可嵌套挂入。
 func (wj *windowsJob) Assign(pid uint32) error {
 	wj.mu.Lock()
 	defer wj.mu.Unlock()
@@ -72,6 +80,7 @@ func (wj *windowsJob) Assign(pid uint32) error {
 	return nil
 }
 
+// Close 幂等关闭句柄（重复调用返回 nil）；KILL_ON_JOB_CLOSE 开启时内核连带杀组内进程。
 func (wj *windowsJob) Close() error {
 	wj.mu.Lock()
 	defer wj.mu.Unlock()
@@ -84,6 +93,7 @@ func (wj *windowsJob) Close() error {
 	return nil
 }
 
+// Terminate 杀死组内全部进程但保留句柄；已关闭（hJob==0）时视为已完成，返回 nil。
 func (wj *windowsJob) Terminate(exitCode uint32) error {
 	wj.mu.Lock()
 	defer wj.mu.Unlock()

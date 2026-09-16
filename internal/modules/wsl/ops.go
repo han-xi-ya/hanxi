@@ -73,7 +73,9 @@ func runElevatedProcess(ctx context.Context, file string, args ...string) (Opera
 // 的 install/move 两段归因）errors.As 判码。
 type elevatedExitError struct{ code int }
 
-func (e *elevatedExitError) Error() string { return fmt.Sprintf("提权命令以退出码 %d 结束", e.code) }
+func (e *elevatedExitError) Error() string {
+	return fmt.Sprintf("提权命令以退出码 %d 结束", e.code)
+}
 
 // exitCode 提取错误链上的提权退出码；无类型凭证时返回 -1。
 func exitCode(err error) int {

@@ -14,6 +14,8 @@ const (
 	ProbeTimeout = 12 * time.Second
 )
 
+// NewHTTPClient 创建仅信任指定官网主机的客户端：每次重定向都复验目标仍在白名单且为 HTTPS，
+// 防止官网被劫持/重定向后把请求（及潜在凭据）发给任意主机。
 func NewHTTPClient(allowedHosts ...string) *http.Client {
 	hosts := make(map[string]struct{}, len(allowedHosts))
 	for _, host := range allowedHosts {
@@ -30,6 +32,7 @@ func NewHTTPClient(allowedHosts ...string) *http.Client {
 	}
 }
 
+// ValidateURL 校验 URL 为 https 且主机在表白名单内（大小写不敏感）；报错信息用 Redacted 隐藏 query 凭据。
 func ValidateURL(rawURL *url.URL, allowedHosts map[string]struct{}) error {
 	if rawURL == nil || rawURL.Scheme != "https" {
 		return fmt.Errorf("地址必须使用 HTTPS")
@@ -40,6 +43,8 @@ func ValidateURL(rawURL *url.URL, allowedHosts map[string]struct{}) error {
 	return nil
 }
 
+// Fetch GET 单个 URL 并限幅读取：Content-Length 预检 + LimitReader 双保险，
+// 防无长度声明的恶意/异常响应撑爆内存。非 200 一律视为错误。
 func Fetch(client *http.Client, rawURL string, limit int64, headers map[string]string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {

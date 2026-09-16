@@ -26,6 +26,7 @@ type ltsValue struct {
 	Name string
 }
 
+// UnmarshalJSON 兼容 nodejs.org index.json 中 lts 字段的两种形态：false/null 或 LTS 代号字符串。
 func (v *ltsValue) UnmarshalJSON(data []byte) error {
 	if bytes.Equal(data, []byte("false")) || bytes.Equal(data, []byte("null")) {
 		v.Name = ""
@@ -68,8 +69,10 @@ func defaultSource() source {
 
 var cache = remoteversion.NewCache(defaultSource().fetch, cloneChannels)
 
+// DownloadPageURL 官网下载页地址（前端"去下载"跳转按钮用）。
 func DownloadPageURL() string { return downloadURL }
 
+// Channels 返回 Node.js 版本通道清单（Current/LTS 系列，remoteversion.Cache 提供 TTL 与 stale-if-error）。
 func Channels() ([]remoteversion.Channel, bool, time.Time, error) {
 	return cache.Get()
 }

@@ -46,6 +46,7 @@ type RufusService struct {
 	watchStop  chan struct{}
 }
 
+// NewRufusService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
 func NewRufusService(plat platform.Platform) *RufusService {
 	paths := settings.GetPaths()
 	svc := &RufusService{

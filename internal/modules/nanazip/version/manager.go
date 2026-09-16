@@ -12,13 +12,17 @@ import (
 	"hanxi/internal/platform/versioncmp"
 )
 
+// verificationMode 记录可信链级别，写入每个缓存包的 meta.json；清单外的包不视为可信。
 const verificationMode = "github-sha256+size+zip-crc+bundle-identity+app-manifest+architecture"
 
+// Manager 维护 versions/nanazip/packages/<ver>/ 下的"已校验可信 MSIXBundle 缓存"，
+// 供包安装复用（下载一次即可反复部署）。读多写少但写路径由 service 层单操作槽位串行化。
 type Manager struct {
 	cacheRoot string
 	client    *http.Client
 }
 
+// NewManager 以 versions 根派生缓存目录；client 15 分钟超时覆盖大包下载。
 func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		cacheRoot: filepath.Join(versionsDir, "nanazip", "packages"),
@@ -26,8 +30,10 @@ func NewManager(versionsDir string) *Manager {
 	}
 }
 
+// ListReleases 返回远端 stable 发布列表（缓存命中免网络）。
 func (m *Manager) ListReleases() ([]Release, error) { return remoteCache.get() }
 
+// ListCached 枚举缓存目录并逐个 readAndVerifyCached：校验不过的条目静默跳过（宁缺毋假）。
 func (m *Manager) ListCached() ([]CachedPackage, error) {
 	entries, err := os.ReadDir(m.cacheRoot)
 	if err != nil {
@@ -50,6 +56,9 @@ func (m *Manager) ListCached() ([]CachedPackage, error) {
 	return result, nil
 }
 
+// EnsureCached 保证指定版本的可信包已缓存：命中且校验通过直接复用；否则从 GitHub 下载
+// 并按 verificationMode 全链校验（SHA256/大小/zip CRC/Bundle 身份/AppX 清单/架构），
+// 通过后才落缓存目录。版本号先过 stableVersionRe 白名单，杜绝路径注入。
 func (m *Manager) EnsureCached(version string, onProgress func(DownloadProgress)) (CachedPackage, error) {
 	emit := func(stage string, done, total int64, message string) {
 		if onProgress != nil {
@@ -133,6 +142,7 @@ func (m *Manager) EnsureCached(version string, onProgress func(DownloadProgress)
 	return meta, nil
 }
 
+// RemoveCached 删除指定版本缓存目录（整目录删除，不做存在性预检——RemoveAll 幂等）。
 func (m *Manager) RemoveCached(version string) error {
 	if !stableVersionRe.MatchString(version) {
 		return fmt.Errorf("非法 NanaZip 版本号: %q", version)

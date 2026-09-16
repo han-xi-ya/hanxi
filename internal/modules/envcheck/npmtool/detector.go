@@ -17,6 +17,7 @@ func newDetector(s ToolSpec) specDetector {
 	return specDetector{spec: s, re: commandPattern(s)}
 }
 
+// 以下方法实现 detect.Detector：全部字段取自目录条目常量，无任何运行时推断。
 func (d specDetector) Name() string          { return d.spec.Command }
 func (d specDetector) Display() string       { return d.spec.Display }
 func (d specDetector) VersionArgs() []string { return d.spec.VersionArgs }

@@ -30,6 +30,7 @@ var (
 	}
 )
 
+// RepoURL 返回上游仓库主页（设置页"打开仓库"与下载兜底共用）。
 func RepoURL() string { return "https://github.com/" + repoOwner + "/" + repoName }
 
 type release struct {

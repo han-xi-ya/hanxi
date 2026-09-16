@@ -39,6 +39,7 @@ type MarkerOnService struct {
 	watchStop  chan struct{}
 }
 
+// NewMarkerOnService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
 func NewMarkerOnService(plat platform.Platform) *MarkerOnService {
 	paths := settings.GetPaths()
 	svc := &MarkerOnService{

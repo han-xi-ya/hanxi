@@ -11,5 +11,6 @@ type otherProbe struct {
 // NewProbe 非 Windows 桩实现。
 func NewProbe() Probe { return &otherProbe{} }
 
+// 以下占位方法实现 Probe 接口：恒报告"不存在/未就绪/失败"，仅保跨平台编译，语义见 prober.go 接口注释。
 func (p *otherProbe) FindPIDs() []uint32 { return nil }
 func (p *otherProbe) IsRunning() bool    { return false }

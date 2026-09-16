@@ -22,6 +22,8 @@ type WechatService struct {
 	store         *settings.Store
 }
 
+// NewWechatService 创建服务并按遗留单账号配置选定 baseURL；各账号的 Listener 懒创建（首次登录/启动监听时）。
+// 构造无网络 IO。
 func NewWechatService(store *settings.Store) *WechatService {
 	cfg := store.GetWechatConfig()
 	baseURL := cfg.BaseURL

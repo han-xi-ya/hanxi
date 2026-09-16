@@ -6,6 +6,7 @@ import (
 	"hanxi/internal/modules/envcheck/remoteversion"
 )
 
+// TemurinVendor 与 detect.javaVendor 的输出字符串保持一致：仅当本机发行版命中该值才做补丁级比较。
 const TemurinVendor = "Eclipse Temurin"
 
 // Overview 组合本机 Java 探测结果与 Temurin GA 版本通道。

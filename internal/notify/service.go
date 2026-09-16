@@ -3,6 +3,7 @@ package notify
 // NotificationService 暴露给 Wails 前端的通知中心管理服务
 type NotificationService struct{}
 
+// NewNotificationService 创建通知服务的 Wails 绑定实例（无状态，操作均转发全局 Hub）。
 func NewNotificationService() *NotificationService {
 	return &NotificationService{}
 }

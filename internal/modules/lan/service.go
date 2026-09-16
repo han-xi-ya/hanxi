@@ -43,6 +43,9 @@ type LanProgress struct {
 	Found   int `json:"found"`
 }
 
+// LanService 局域网扫描服务。同一时刻仅允许一轮扫描：
+// scanning 原子标志做快速拒重入，cancelScan 记录在途扫描的取消函数（mu 保护读写），
+// 模块 OnDestroy/用户手动停止都经 Cancel 终止 goroutine 并释放 context。
 type LanService struct {
 	plat       platform.Platform
 	store      *settings.Store
@@ -51,6 +54,7 @@ type LanService struct {
 	mu         sync.Mutex
 }
 
+// NewLanService 装配平台能力与备注持久化；构造无副作用。
 func NewLanService(plat platform.Platform, store *settings.Store) *LanService {
 	return &LanService{
 		plat:  plat,

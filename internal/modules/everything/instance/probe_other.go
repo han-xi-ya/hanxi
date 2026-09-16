@@ -10,6 +10,7 @@ type noopEverythingProbe struct{}
 
 func NewEverythingProbe() EverythingProbe { return &noopEverythingProbe{} }
 
+// 以下占位方法实现 Probe 接口：恒报告"不存在/未就绪/失败"，仅保跨平台编译，语义见 prober.go 接口注释。
 func (p *noopEverythingProbe) IsEverythingRunning() bool { return false }
 
 func (p *noopEverythingProbe) WaitForEverythingReady(timeout time.Duration) bool { return false }

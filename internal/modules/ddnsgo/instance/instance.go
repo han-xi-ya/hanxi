@@ -130,6 +130,8 @@ type Engine struct {
 	cb     Callbacks
 }
 
+// NewEngine 创建托管运行引擎（初始 stopped，无任何系统副作用）；
+// JobAPI/Probe/Callbacks 由 service 层注入，保持本包零框架依赖。
 func NewEngine(jobAPI platform.JobAPI, probe Probe, cb Callbacks) *Engine {
 	return &Engine{
 		state:  StateStopped,

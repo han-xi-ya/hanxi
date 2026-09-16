@@ -2,10 +2,11 @@ package detect
 
 import "regexp"
 
-// nodeDetector 探测 Node.js。
+// nodeVersionRe 匹配 `node --version` 输出中的版本号。
 // 样本：v20.15.1（v 前缀保留在输出中，解析时去掉；可能 CRLF 行尾）
 var nodeVersionRe = regexp.MustCompile(`(?m)^\s*v?(\d+\.\d+\.\d+)`)
 
+// nodeDetector 实现 Detector，探测 Node.js。
 type nodeDetector struct{}
 
 func (nodeDetector) Name() string          { return "node" }

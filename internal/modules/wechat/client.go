@@ -43,6 +43,8 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// NewClient 创建 iLink HTTP 客户端；baseURL 传空回退官方端点（自定义网关场景由账号配置传入）。
+// DisableCompression 必须保持 true：CDN 密文下载若被 gzip 变换字节数，AES 解密必然失败。
 func NewClient(baseURL string) *Client {
 	if baseURL == "" {
 		baseURL = defaultBaseURL

@@ -24,13 +24,15 @@ const (
 	udpTableOwnerPid    = 1
 )
 
+// PortImpl platform.PortAPI 的 Windows 实现：经 iphlpapi 扩展表 API 获取带属主 PID 的连接表。
 type PortImpl struct{}
 
+// NewPortAPI 返回端口与连接表 API 实例。
 func NewPortAPI() platform.PortAPI {
 	return &PortImpl{}
 }
 
-// TCPTable 获取系统 TCP 表（目前支持 IPv4，扩展 IPv6）
+// TCPTable 获取系统 TCP 表（IPv4/IPv6 均由 GetExtendedTcpTable 一次调用快照，按远端地址排序）。
 func (p *PortImpl) TCPTable(family platform.Family) ([]platform.TCPRow, error) {
 	if family != platform.FamilyIPv4 && family != platform.FamilyIPv6 {
 		return nil, platform.ErrNotSupported

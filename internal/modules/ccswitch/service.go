@@ -48,6 +48,7 @@ type CCSwitchService struct {
 	lastActivity time.Time // 最近一次 Hanxi 发起的使用（打开窗口）；GetStatus 轮询不计
 }
 
+// NewCCSwitchService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
 func NewCCSwitchService(plat platform.Platform) *CCSwitchService {
 	paths := settings.GetPaths()
 	svc := &CCSwitchService{

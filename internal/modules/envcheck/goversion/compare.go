@@ -46,6 +46,8 @@ func VersionLine(raw string) string {
 	return strconv.FormatUint(parsed.major, 10) + "." + strconv.FormatUint(parsed.minor, 10)
 }
 
+// Compare 按 major.minor.patch 数值序比较，返回 -1/0/1；任一侧不可解析返回 (0,false)，
+// 调用方据此降级为 unknown，不做字符串字典序兜底（版本号跨位数对比会失真）。
 func Compare(a, b string) (int, bool) {
 	left, okLeft := parseVersion(a)
 	right, okRight := parseVersion(b)

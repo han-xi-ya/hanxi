@@ -1,3 +1,7 @@
+// Package detect 提供开发环境工具的探测框架：Detector 接口 + init() 自注册表，
+// 每个工具一个文件（git/node/python/...），按统一流程"LookPath → 版本命令 → 正则解析"
+// 产出 ToolInfo。可选能力（结构化详情、商店存根识别、安装提示）通过类型断言渐进启用。
+// 仅依赖标准库，被 envcheck service 与 npmtool 目录复用。
 package detect
 
 import (

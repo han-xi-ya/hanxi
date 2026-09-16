@@ -1,3 +1,6 @@
+// Package platform 定义操作系统能力的抽象接口与跨平台数据模型（网卡、端口表、
+// 进程、Job Object、应用包等），不含任何系统调用实现。具体实现位于
+// platform/windows（Windows 专属）；业务模块只依赖本包接口，便于非 Windows 构建降级。
 package platform
 
 import (
@@ -111,8 +114,11 @@ type VerifyToken struct {
 
 // Job Windows Job Object 句柄封装接口
 type Job interface {
+	// Assign 把已存在的进程（按 PID，需 PROCESS_QUERY_LIMITED_INFORMATION 打开句柄）纳入本 Job。
 	Assign(pid uint32) error
+	// Close 关闭 Job 句柄；若 KILL_ON_JOB_CLOSE 生效则连带终止组内所有进程。
 	Close() error
+	// Terminate 立即以指定退出码杀死 Job 内全部进程，句柄本身仍需 Close。
 	Terminate(exitCode uint32) error
 	// SetAllowKillOnClose 动态调整 KILL_ON_JOB_CLOSE 限制：
 	// true（默认，创建即启用）= Hanxi 退出/崩溃时内核连带杀 Job 内进程；
@@ -122,27 +128,39 @@ type Job interface {
 
 // NetworkAPI 网络与接口抽象
 type NetworkAPI interface {
+	// Adapters 枚举全部网卡（含回环与虚拟网卡，由调用方按 IsLoopback/IsPhysical 过滤）。
 	Adapters() ([]Adapter, error)
+	// DefaultAdapter 返回承载默认路由的网卡；无活动出网网卡时返回错误。
 	DefaultAdapter() (*Adapter, error)
+	// NeighborTable 返回邻居/ARP 缓存，供局域网发现去重与在线判断。
 	NeighborTable() ([]Neighbor, error)
+	// Ping 探测目标可达性并返回往返时延。ok=false 且 err=nil 表示正常超时不可达；
+	// err 非空仅用于系统级失败（权限/构造 ICMP 句柄出错等），ctx 取消也走 err。
 	Ping(ctx context.Context, ip string, timeout time.Duration) (rtt time.Duration, ok bool, err error)
 }
 
 // PortAPI 端口与连接表抽象
 type PortAPI interface {
+	// TCPTable 按协议族快照系统 TCP 连接表（一次调用即一致性视图，无分页）。
 	TCPTable(family Family) ([]TCPRow, error)
+	// UDPTable 按协议族快照系统 UDP 监听表。
 	UDPTable(family Family) ([]UDPRow, error)
 }
 
 // ProcessAPI 进程管理与安全查杀抽象
 type ProcessAPI interface {
+	// Query 按 PID 读取进程元信息；进程不存在时返回 ErrProcessNotFound。
 	Query(pid uint32) (ProcInfo, error)
+	// KillVerified 查杀前先复核 PID 对应的可执行路径与启动时间是否与 token 一致，
+	// 不一致判定为 PID 复用，返回 ErrTokenMismatch 拒杀；force=true 跳过温和退出直接强杀。
 	KillVerified(ctx context.Context, token VerifyToken, force bool) error
+	// IsProtected 判断进程是否属于系统红线（csrss/winlogon 等关键进程），命中即禁止查杀。
 	IsProtected(pid uint32, info ProcInfo) bool
 }
 
 // JobAPI Job Object 管理抽象
 type JobAPI interface {
+	// Create 创建 Job Object 并返回句柄封装；默认开启 KILL_ON_JOB_CLOSE。
 	Create() (Job, error)
 }
 

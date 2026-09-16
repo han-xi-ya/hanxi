@@ -11,12 +11,16 @@ import (
 	"hanxi/internal/platform"
 )
 
+// ID 是模块注册键，同时用作通知/事件的 moduleID。
 const ID = "mangodisk"
 
+// Module 是 extapi.Module 契约载体：仅持有 service 单例，自身无其他状态。
 type Module struct{ svc *MangoDiskService }
 
+// New 在 app 装配期创建模块（构造无 IO，重活在 OnInit 与 service 方法内）。
 func New(plat platform.Platform) extapi.Module { return &Module{svc: NewMangoDiskService(plat)} }
 
+// Info 返回模块元信息（Version 是模块实现版本，与被管工具版本无关）。
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID: ID, Name: "MangoDisk", Version: "0.1.0",
@@ -25,10 +29,14 @@ func (m *Module) Info() extapi.ModuleInfo {
 	}
 }
 
+// Nav 声明侧边栏入口（Order/Group 决定桌面组内排序，详见 extapi.NavEntry 契约）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{ID: "mangodisk-manager", Title: "MangoDisk", Route: "/ext/mangodisk", Icon: "i:hard-drive", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupDesktop}}
 }
 
+// 以下方法实现 extapi.Module 契约，逐项语义见接口文档。
+// 本模块无权限申请；OnInit 启动外部实例嗅探 goroutine；
+// OnDestroy 经 svc.Shutdown 终止该 goroutine 并按"随 Hanxi 退出"开关收尾实例。
 func (m *Module) Services() []extapi.Service       { return []extapi.Service{application.NewService(m.svc)} }
 func (m *Module) Permissions() []extapi.Permission { return nil }
 func (m *Module) Protocol() int                    { return 1 }

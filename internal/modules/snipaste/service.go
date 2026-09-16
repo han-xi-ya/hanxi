@@ -18,6 +18,8 @@ import (
 	"hanxi/internal/settings"
 )
 
+// SnipasteService 面向前端的 Snipaste 托管服务：官网 zip 下载、本地导入、版本切换与会话内启停。
+// downloads 记录进行中的下载版本号（按版本去重，允许不同版本并行下载）。
 type SnipasteService struct {
 	plat    platform.Platform
 	manager *version.Manager
@@ -28,6 +30,7 @@ type SnipasteService struct {
 	downloads  map[string]struct{}
 }
 
+// NewSnipasteService 装配版本管理器、store 与实例引擎；构造无 IO。
 func NewSnipasteService(plat platform.Platform) *SnipasteService {
 	paths := settings.GetPaths()
 	svc := &SnipasteService{
@@ -38,6 +41,7 @@ func NewSnipasteService(plat platform.Platform) *SnipasteService {
 	return svc
 }
 
+// emitInstanceState 引擎状态回调：广播 "snipaste:instance-state" 事件，failed 态另发系统通知。
 func (s *SnipasteService) emitInstanceState(snapshot instance.Snapshot) {
 	if app := application.Get(); app != nil && app.Event != nil {
 		app.Event.Emit("snipaste:instance-state", snapshot)
@@ -47,14 +51,19 @@ func (s *SnipasteService) emitInstanceState(snapshot instance.Snapshot) {
 	}
 }
 
+// ListReleases 拉取官网发布通道列表（远端缓存），网络失败返回错误。
 func (s *SnipasteService) ListReleases() ([]version.SnipasteRelease, error) {
 	return s.manager.ListRemote()
 }
 
+// ListInstalledVersions 扫描本地已装版本目录。
 func (s *SnipasteService) ListInstalledVersions() ([]version.SnipasteVersionInfo, error) {
 	return s.manager.ListInstalled()
 }
 
+// DownloadVersion 异步下载：返回 "started"；目标版本已装返回 "already-installed"、
+// 同版本下载中返回 "in-progress"（不报错，前端按状态渲染）。进度经
+// "snipaste:version-download" 事件推送；首个版本装完自动设为使用版本。
 func (s *SnipasteService) DownloadVersion(targetVersion string) (string, error) {
 	targetVersion = normalizeVersion(targetVersion)
 	installed, err := s.manager.ListInstalled()
@@ -98,6 +107,7 @@ func (s *SnipasteService) DownloadVersion(targetVersion string) (string, error) 
 	return "started", nil
 }
 
+// ImportLocal 导入本地 Snipaste 目录为托管版本；未设使用版本时自动激活导入结果。
 func (s *SnipasteService) ImportLocal(srcDir string) (version.SnipasteVersionInfo, error) {
 	info, err := s.manager.ImportLocal(strings.TrimSpace(srcDir))
 	if err != nil {
@@ -109,6 +119,7 @@ func (s *SnipasteService) ImportLocal(srcDir string) (version.SnipasteVersionInf
 	return info, nil
 }
 
+// RemoveVersion 删除本地版本；本会话正在运行该版本、或该版本为"当前使用版本"时拒绝。
 func (s *SnipasteService) RemoveVersion(targetVersion string) error {
 	targetVersion = normalizeVersion(targetVersion)
 	snapshot := instance.Snapshot{}
@@ -124,6 +135,7 @@ func (s *SnipasteService) RemoveVersion(targetVersion string) error {
 	return s.manager.Remove(targetVersion)
 }
 
+// SetActiveVersion 切换使用版本；ResolveExe 确认版本目录内主程序存在后才落盘。
 func (s *SnipasteService) SetActiveVersion(targetVersion string) (string, error) {
 	targetVersion = normalizeVersion(targetVersion)
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
@@ -135,10 +147,13 @@ func (s *SnipasteService) SetActiveVersion(targetVersion string) (string, error)
 	return targetVersion, nil
 }
 
+// GetActiveVersion 返回使用版本号，未设置时为空串（error 恒 nil，统一前端签名）。
 func (s *SnipasteService) GetActiveVersion() (string, error) {
 	return s.store.GetActive(), nil
 }
 
+// Launch 启动当前使用版本（无 active 时回退最新可运行版本）。启动前复核 exe 为非空常规文件，
+// 交给 engine.Start 建身份与 Job 绑定；重复启动由 engine 拒绝。
 func (s *SnipasteService) Launch() (LaunchOutcome, error) {
 	selected, exe, err := s.resolveActiveVersion()
 	if err != nil {
@@ -160,10 +175,13 @@ func (s *SnipasteService) Launch() (LaunchOutcome, error) {
 	}, nil
 }
 
+// GetStatus 返回引擎状态快照（纯内存读，无系统调用）。
 func (s *SnipasteService) GetStatus() (instance.Snapshot, error) {
 	return s.engine.Snapshot(), nil
 }
 
+// Quit 执行分层退出并把 engine 的 Method 归因翻译成用户文案；
+// 身份复核被拒时保留 Stopped/Method 字段返回错误，供前端精确提示"未误杀"场景。
 func (s *SnipasteService) Quit() (QuitOutcome, error) {
 	result, err := s.engine.Quit()
 	if err != nil {
@@ -185,6 +203,8 @@ func (s *SnipasteService) Quit() (QuitOutcome, error) {
 	return out, nil
 }
 
+// resolveActiveVersion 解析启动目标：active 可用则直用（损坏自动清空回退），
+// 否则取已装版本中 versioncmp 最高者。
 func (s *SnipasteService) resolveActiveVersion() (string, string, error) {
 	if active := s.store.GetActive(); active != "" {
 		if exe, err := s.manager.ResolveExe(active); err == nil {
@@ -205,6 +225,7 @@ func (s *SnipasteService) resolveActiveVersion() (string, string, error) {
 	return installed[0].Version, installed[0].ExePath, nil
 }
 
+// OpenDir 用资源管理器打开版本目录（先校验存在，explorer 自身不报错）。
 func (s *SnipasteService) OpenDir(dir string) error {
 	dir = strings.TrimSpace(dir)
 	fi, err := os.Stat(dir)
@@ -214,6 +235,7 @@ func (s *SnipasteService) OpenDir(dir string) error {
 	return exec.Command("explorer.exe", dir).Start()
 }
 
+// OfficialSiteURL / OpenOfficialSite 提供 Snipaste 官网入口（error 恒 nil，统一前端签名）。
 func (s *SnipasteService) OfficialSiteURL() (string, error) {
 	return version.OfficialSiteURL(), nil
 }
@@ -222,6 +244,7 @@ func (s *SnipasteService) OpenOfficialSite() error {
 	return s.plat.OpenURL(version.OfficialSiteURL())
 }
 
+// normalizeVersion 统一为不带 v 前缀的纯版本号（Snipaste 版本号形态）。
 func normalizeVersion(value string) string {
 	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "v"))
 }

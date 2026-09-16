@@ -59,6 +59,8 @@ type SendMessageReq struct {
 	FilePath  string `json:"filePath,omitempty"`
 }
 
+// AttachmentActionResult 文件选择/保存对话框的回执： canceled=true 表示用户取消（Path 为空）；
+// 另存成功时 Path 为落盘绝对路径。
 type AttachmentActionResult struct {
 	Path     string `json:"path,omitempty"`
 	Canceled bool   `json:"canceled,omitempty"`
@@ -109,6 +111,7 @@ type InboundMedia struct {
 // InboundFileSize 兼容微信将文件长度编码为 JSON 字符串或整数。
 type InboundFileSize int64
 
+// UnmarshalJSON 同时接受 JSON 字符串与整数两种形态；空/null 归零，负数拒绝。
 func (s *InboundFileSize) UnmarshalJSON(data []byte) error {
 	data = bytes.TrimSpace(data)
 	if len(data) == 0 || bytes.Equal(data, []byte("null")) {

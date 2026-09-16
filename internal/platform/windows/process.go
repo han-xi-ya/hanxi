@@ -22,8 +22,10 @@ var (
 	procQueryFullProcessImageNameW = modKernel32.NewProc("QueryFullProcessImageNameW")
 )
 
+// ProcessImpl platform.ProcessAPI 的 Windows 实现（无状态，查询与查杀均按次打开进程句柄）。
 type ProcessImpl struct{}
 
+// NewProcessAPI 返回进程管理 API 实例。
 func NewProcessAPI() platform.ProcessAPI {
 	return &ProcessImpl{}
 }

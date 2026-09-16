@@ -12,8 +12,11 @@ import (
 	"sync"
 )
 
+// 哨兵错误：调用方可用 errors.Is 区分"模块不存在"与"模块已禁用"两类失败。
 var (
-	ErrUnknownModule  = errors.New("registry: unknown module")
+	// ErrUnknownModule 表示注册表中不存在该 ID 的模块。
+	ErrUnknownModule = errors.New("registry: unknown module")
+	// ErrModuleDisabled 表示模块存在但当前处于禁用状态，拒绝初始化或调用。
 	ErrModuleDisabled = errors.New("registry: module disabled")
 )
 
@@ -39,6 +42,7 @@ type Registry struct {
 	store   StateStorage
 }
 
+// NewRegistry 创建注册表。store 可为 nil，此时启用状态不持久化（仅内存生效，重启后恢复默认）。
 func NewRegistry(store StateStorage) *Registry {
 	return &Registry{
 		modules: make(map[string]*ModuleWrapper),

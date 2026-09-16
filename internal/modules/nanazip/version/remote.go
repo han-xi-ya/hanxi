@@ -33,6 +33,7 @@ var (
 	}
 )
 
+// RepoURL 上游仓库主页（apiBaseURLs 为 GitHub API 镜像轮询序列，直连失败自动降级）。
 func RepoURL() string { return "https://github.com/" + repoOwner + "/" + repoName }
 
 type release struct {

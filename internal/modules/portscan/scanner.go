@@ -98,6 +98,7 @@ func ParsePortRange(raw string) ([]int, error) {
 // Scanner 纯原生极轻量端口扫描引擎 (0 外部重依赖，0 堆常驻内存)
 type Scanner struct{}
 
+// NewScanner 创建无状态扫描引擎，所有方法可并发调用。
 func NewScanner() *Scanner {
 	return &Scanner{}
 }
@@ -245,10 +246,14 @@ func (s *Scanner) createDialerAndHTTPClient(proxyStr string, timeout time.Durati
 	return dialer, httpClient, nil
 }
 
+// socks5ContextAdapter 给不支持 context 的 socks5 proxy.Dialer 补上 DialContext 语义。
 type socks5ContextAdapter struct {
 	dialer proxy.Dialer
 }
 
+// DialContext 在独立 goroutine 中执行阻塞式 socks5 拨号并 select 等待：
+// ctx 取消时不能直接丢弃 goroutine（否则连接建成即成孤儿 socket），
+// 因此后台接收建连结果并立即 Close，确保取消路径也不泄露连接。
 func (a *socks5ContextAdapter) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	type result struct {
 		conn net.Conn

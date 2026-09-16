@@ -5,10 +5,11 @@ import (
 	"strings"
 )
 
-// pythonDetector 探测 Python。
+// pythonVersionRe 匹配 `python --version` 输出中的版本号。
 // 样本：Python 3.12.4（Python 3.4+ 输出到 stdout；可能 CRLF 行尾）
 var pythonVersionRe = regexp.MustCompile(`(?m)^\s*[Pp]ython\s+(\d+\.\d+(?:\.\d+)?)`)
 
+// pythonDetector 实现 Detector，探测 Python；同时实现 StubAware 识别商店存根。
 type pythonDetector struct{}
 
 func (pythonDetector) Name() string          { return "python" }

@@ -289,6 +289,7 @@ var vhdxExtRe = regexp.MustCompile(`(?i)\.(vhd|vhdx)$`)
 //   - copyToLocation=true：wsl --import <名> <目录> <盘> --vhd——微软语义即在
 //     安装位置创建盘的副本，落位目录按基目录语义追加同名子目录（与安装/tar 导入
 //     同构），数十 GB 级复制耗时较长。
+//
 // 两形态都要求 WSL 2.7.3+（vhdxMinVersion，与克隆同闸）；盘须 ext4 文件系统格式。
 func (s *WslService) ImportDistroVhd(name, location, vhdxPath string, copyToLocation bool) (DistroOpResult, error) {
 	name, vhdxPath = strings.TrimSpace(name), strings.TrimSpace(filepath.Clean(vhdxPath))

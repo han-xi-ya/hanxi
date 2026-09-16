@@ -1,3 +1,6 @@
+// Package logging 提供应用统一日志设施：JSON 日志 + 按天落盘 + 敏感信息自动脱敏。
+// 脱敏发生在 slog.Handler 层（RedactHandler），因此所有经 slog 输出的记录
+// 无论来源模块都无法绕过；各模块不应绕过 L()/slog.Default 直接打印含凭据的文本。
 package logging
 
 import (
@@ -29,14 +32,18 @@ type RedactHandler struct {
 	inner slog.Handler
 }
 
+// NewRedactHandler 包装内层 Handler，对经由它输出的所有日志做脱敏。
 func NewRedactHandler(inner slog.Handler) *RedactHandler {
 	return &RedactHandler{inner: inner}
 }
 
+// Enabled 直接委托内层 Handler 判断级别是否输出。
 func (h *RedactHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return h.inner.Enabled(ctx, level)
 }
 
+// Handle 实现 slog.Handler：复制记录并对 Message 与字符串类型属性逐条 Redact 后下传。
+// 只脱敏 KindString 属性，非字符串值（数字/布尔等）无法承载凭据文本，原样透传。
 func (h *RedactHandler) Handle(ctx context.Context, r slog.Record) error {
 	// 消息脱敏
 	r.Message = Redact(r.Message)
@@ -57,6 +64,7 @@ func (h *RedactHandler) Handle(ctx context.Context, r slog.Record) error {
 	return h.inner.Handle(ctx, newRecord)
 }
 
+// WithAttrs 返回预绑定属性的新 Handler；绑定前先脱敏，防止凭据随 logger 派生扩散。
 func (h *RedactHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	redactedAttrs := make([]slog.Attr, len(attrs))
 	for i, a := range attrs {
@@ -69,6 +77,7 @@ func (h *RedactHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &RedactHandler{inner: h.inner.WithAttrs(redactedAttrs)}
 }
 
+// WithGroup 返回带属性组前缀的新 Handler，脱敏行为不变。
 func (h *RedactHandler) WithGroup(name string) slog.Handler {
 	return &RedactHandler{inner: h.inner.WithGroup(name)}
 }
@@ -115,6 +124,7 @@ func InitLogger(logDir string, retainDays int) (*slog.Logger, func(), error) {
 	return logger, cleanup, nil
 }
 
+// L 返回全局 logger；InitLogger 未调用时回退到 slog.Default()（仅 stderr、无脱敏），保证任何时机调用都不 panic。
 func L() *slog.Logger {
 	if globalLogger == nil {
 		return slog.Default()

@@ -12,18 +12,22 @@ import (
 	"hanxi/internal/platform"
 )
 
+// ID 是模块注册键，同时用作通知/事件的 moduleID。
 const ID = "envcheck"
 
+// Module 是 extapi.Module 契约载体：仅持有 service 单例。
 type Module struct {
 	svc *EnvCheckService
 }
 
+// New 在 app 装配期创建模块；plat 仅用于"打开官网"类跳转，无其他资源。
 func New(plat platform.Platform) extapi.Module {
 	return &Module{
 		svc: NewEnvCheckService(plat),
 	}
 }
 
+// Info 返回模块元信息。
 func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
@@ -35,6 +39,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 	}
 }
 
+// Nav 声明侧边栏入口（Order/Group 决定系统组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{
 		ID:      "envcheck-main",
@@ -47,6 +52,7 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}}
 }
 
+// 以下方法实现 extapi.Module 契约，逐项语义见接口文档；PermNetwork 覆盖官网版本查询与 npm 安装下载。
 func (e *Module) Services() []extapi.Service {
 	return []extapi.Service{
 		application.NewService(e.svc),
@@ -67,6 +73,7 @@ func (e *Module) OnDestroy() error {
 	return nil
 }
 
+// IsInitialized 本模块无常驻资源与失败路径，懒初始化后恒为已就绪。
 func (e *Module) IsInitialized() bool {
 	return true
 }

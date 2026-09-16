@@ -41,6 +41,7 @@ type BCUService struct {
 	watchStop  chan struct{}
 }
 
+// NewBCUService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
 func NewBCUService(plat platform.Platform) *BCUService {
 	paths := settings.GetPaths()
 	svc := &BCUService{

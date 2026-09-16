@@ -14,8 +14,13 @@ import (
 	"time"
 )
 
+// maxInboundAttachmentSize 入站文件密文总量上限（512MB），防对端报超大尺寸拖垮内存。
 const maxInboundAttachmentSize int64 = 512 << 20
 
+// DownloadInboundFile 下载并解密一条入站媒体：CDN 密文整体读入内存后本地 AES-ECB 解密返回明文
+// （密钥 16/32 字节对应 AES-128/256），不落临时文件。expectedSize 仅做入口粗筛，
+// 实际防线是 LimitReader(max+16+1)——密文比明文最多长一个 AES 块。
+// 调用方须持有 ctx 控制超时；404/超尺寸/密钥非法均以 error 返回，由 listener 决定重试或忽略。
 func (c *Client) DownloadInboundFile(ctx context.Context, media InboundMedia, expectedSize int64) ([]byte, error) {
 	if strings.TrimSpace(media.EncryptQueryParam) == "" {
 		return nil, fmt.Errorf("文件下载参数为空")

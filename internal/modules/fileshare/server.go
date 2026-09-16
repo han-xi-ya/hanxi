@@ -57,12 +57,15 @@ type uploadParams struct {
 	size int64
 }
 
+// progressTimeoutReader 上传流包装器：每次 Read 前用 ResponseController 刷新读截止时间，
+// 实现"停滞超时"而非总时长超时——慢但持续的传输不被掐断，卡死的连接按时断开。
 type progressTimeoutReader struct {
 	reader     io.Reader
 	controller *http.ResponseController
 	timeout    time.Duration
 }
 
+// Read 设置本轮读超时后透传底层读取；ErrNotSupported（如非 HTTP 流）容忍降级。
 func (r *progressTimeoutReader) Read(p []byte) (int, error) {
 	if err := r.controller.SetReadDeadline(time.Now().Add(r.timeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
 		return 0, fmt.Errorf("设置上传停滞超时失败: %w", err)
@@ -70,11 +73,13 @@ func (r *progressTimeoutReader) Read(p []byte) (int, error) {
 	return r.reader.Read(p)
 }
 
+// byteCountingReader 按块回调累计已读字节数，驱动 /api/stats 实时速率采样。
 type byteCountingReader struct {
 	reader io.Reader
 	onRead func(int64)
 }
 
+// Read 透传底层读取；onRead 在 n>0 时以本次字节数回调（回调需自行保证并发安全）。
 func (r *byteCountingReader) Read(p []byte) (int, error) {
 	n, err := r.reader.Read(p)
 	if n > 0 && r.onRead != nil {
@@ -887,6 +892,7 @@ type countingResponseWriter struct {
 	n int64
 }
 
+// Write 透传响应写入并累计字节数；无 Flush/Hijack 等可选接口需求，故不转发。
 func (w *countingResponseWriter) Write(b []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(b)
 	w.n += int64(n)

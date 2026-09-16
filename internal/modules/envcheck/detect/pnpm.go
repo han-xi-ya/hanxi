@@ -2,10 +2,11 @@ package detect
 
 import "regexp"
 
-// pnpmDetector 探测 pnpm（Windows 下经 pnpm.cmd 分发，runner 自动 cmd /C 包装）。
+// pnpmVersionRe 匹配 `pnpm --version` 输出中的版本号（兼容预发布后缀）。
 // 样本：9.7.1
 var pnpmVersionRe = regexp.MustCompile(`(?m)^\s*v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)`)
 
+// pnpmDetector 实现 Detector，探测 pnpm（Windows 下经 pnpm.cmd 分发，runner 自动 cmd /C 包装）。
 type pnpmDetector struct{}
 
 func (pnpmDetector) Name() string          { return "pnpm" }

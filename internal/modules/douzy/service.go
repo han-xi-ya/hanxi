@@ -31,6 +31,7 @@ type DouzyService struct {
 	downloads  map[string]struct{}
 }
 
+// NewDouzyService 装配版本管理器与下载槽位；构造无 IO（store/引擎由后续流程按形态创建）。
 func NewDouzyService(plat platform.Platform) *DouzyService {
 	paths := settings.GetPaths()
 	return &DouzyService{

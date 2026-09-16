@@ -27,6 +27,7 @@ type updatesResp struct {
 	ErrMsg        string          `json:"errmsg"`
 }
 
+// msgBufMax 前端断连期间的消息留存上限，超出丢最旧。
 const msgBufMax = 100
 
 // Listener 负责长轮询获取微信消息并提取/刷新 ContextToken
@@ -42,6 +43,7 @@ type Listener struct {
 	msgBuf      []InboundMessage // 有界环形缓冲，供前端重新挂载时拉取
 }
 
+// NewListener 创建账号级监听器（不启动轮询；goroutine 由 Start 派生、Stop 经 cancel 终止）。
 func NewListener(accountID string, client *Client, store *settings.Store, attachments *attachmentStore) *Listener {
 	return &Listener{
 		accountID:   accountID,
@@ -51,6 +53,7 @@ func NewListener(accountID string, client *Client, store *settings.Store, attach
 	}
 }
 
+// IsRunning 无锁读原子标志，仅表示轮询 goroutine 存活，不代表本轮已成功拉取。
 func (l *Listener) IsRunning() bool {
 	return l.running.Load()
 }

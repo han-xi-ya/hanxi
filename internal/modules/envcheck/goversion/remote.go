@@ -34,8 +34,11 @@ func defaultSource() source {
 
 var cache = remoteversion.NewCache(defaultSource().fetch, cloneChannels)
 
+// DownloadPageURL 官网下载页地址（前端"去下载"跳转按钮用）。
 func DownloadPageURL() string { return downloadURL }
 
+// Channels 返回 go.dev 版本通道清单（remoteversion.Cache 包装：TTL 内免网络，
+// 拉取失败回吐旧数据并置 stale=true）。
 func Channels() ([]remoteversion.Channel, bool, time.Time, error) {
 	return cache.Get()
 }

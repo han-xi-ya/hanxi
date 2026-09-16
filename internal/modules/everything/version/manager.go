@@ -30,6 +30,7 @@ type Manager struct {
 	versionsDir string
 }
 
+// NewManager 以指定 versions 根目录创建版本管理引擎；构造无副作用。
 func NewManager(versionsDir string) *Manager {
 	return &Manager{versionsDir: versionsDir}
 }

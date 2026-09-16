@@ -1,3 +1,6 @@
+// Package notify 提供全局通知中心：业务模块经 Send/Info 等入口投递通知，
+// Hub 负责历史缓存、事件广播到前端通知中心，并在窗口后台时补发 Windows 原生 Toast。
+// 依赖方向：仅依赖 Wails application 事件系统，任何模块可安全引用。
 package notify
 
 // Send 发送一条通知（核心入口）

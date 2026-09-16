@@ -24,8 +24,10 @@ var (
 	procFreeMibTable   = modIphlpapi.NewProc("FreeMibTable")
 )
 
+// NetworkImpl platform.NetworkAPI 的 Windows 实现（无状态；网卡/邻居表均实时查询，不缓存）。
 type NetworkImpl struct{}
 
+// NewNetworkAPI 返回网络与接口 API 实例。
 func NewNetworkAPI() platform.NetworkAPI {
 	return &NetworkImpl{}
 }

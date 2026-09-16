@@ -49,6 +49,7 @@ type EverythingService struct {
 	lastActivity time.Time // 最近一次 Hanxi 发起的使用（搜索/开窗/启动）；GetStatus 轮询不计
 }
 
+// NewEverythingService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
 func NewEverythingService(plat platform.Platform) *EverythingService {
 	paths := settings.GetPaths()
 	svc := &EverythingService{

@@ -33,6 +33,7 @@ type Manager struct {
 	fileVersion func(string) (string, error)
 }
 
+// NewManager 以 versions 根目录创建管理器；fileVersion 注入 PE 版本读取，单测可替换。
 func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		versionsDir: versionsDir,
@@ -42,10 +43,13 @@ func NewManager(versionsDir string) *Manager {
 	}
 }
 
+// ListRemote 返回官网发布通道列表（releaseCache 缓存命中则免网络）。
 func (m *Manager) ListRemote() ([]SnipasteRelease, error) {
 	return m.cache.get()
 }
 
+// ListInstalled 枚举 snipaste_v<ver> 版本目录；跳过 .installing-/.removing- 前缀的
+// 安装/卸载中间态目录，避免把半成品当成功安装项展示。
 func (m *Manager) ListInstalled() ([]SnipasteVersionInfo, error) {
 	entries, err := os.ReadDir(m.versionsDir)
 	if err != nil {
@@ -109,6 +113,9 @@ func readMeta(path string, info *SnipasteVersionInfo) {
 	info.VerificationMode = meta.VerificationMode
 }
 
+// Download 下载官网免安装 zip 并解压到隔离目录：下载→SHA256→解压 staging→
+// 校验 Snipaste.exe 存在且 FileVersion 匹配→Rename 原子落位；onProgress 收 downloading/extract/verify/done|error。
+// 版本号先过 plainVersionRe 白名单再拼路径，拒绝注入；已安装直接报错不覆盖。
 func (m *Manager) Download(targetVersion string, onProgress func(DownloadProgress)) error {
 	version := normalizeVersion(targetVersion)
 	emit := func(stage string, done, total int64, message string) {
@@ -234,6 +241,8 @@ func (m *Manager) Download(targetVersion string, onProgress func(DownloadProgres
 	return nil
 }
 
+// ImportLocal 导入用户自备的 Snipaste 免安装目录：以 exe 的 PE FileVersion 定版本号复制建档
+// （VerificationMode=local-import，无官网包哈希可比对）。
 func (m *Manager) ImportLocal(srcDir string) (SnipasteVersionInfo, error) {
 	srcDir = filepath.Clean(strings.TrimSpace(srcDir))
 	srcExe := filepath.Join(srcDir, exeName)
@@ -284,6 +293,8 @@ func (m *Manager) ImportLocal(srcDir string) (SnipasteVersionInfo, error) {
 	}, nil
 }
 
+// Remove 先 Rename 到 .removing-<nano> 再递归删除：Windows 下文件被占用时 Rename 也会失败，
+// 借此把"进程仍在用"转化为可读错误提示，而不会留下半删目录。
 func (m *Manager) Remove(version string) error {
 	dir, err := m.resolveVersionDir(version)
 	if err != nil {
@@ -299,6 +310,7 @@ func (m *Manager) Remove(version string) error {
 	return nil
 }
 
+// ResolveExe 返回版本目录内主程序路径并验证为非空常规文件；缺失即"安装损坏"。
 func (m *Manager) ResolveExe(version string) (string, error) {
 	dir, err := m.resolveVersionDir(version)
 	if err != nil {

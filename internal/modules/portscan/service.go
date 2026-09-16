@@ -11,12 +11,14 @@ import (
 	"hanxi/internal/notify"
 )
 
-// PortScanService 暴露给前端的端口扫描服务
+// PortScanService 暴露给前端的端口扫描服务。
+// cancelMap 按任务 ID 登记每轮扫描的 context.CancelFunc，供 StopScan 精准取消；任务结束须删除条目防泄露。
 type PortScanService struct {
 	scanner   *Scanner
 	cancelMap sync.Map // map[string]context.CancelFunc
 }
 
+// NewPortScanService 创建无状态服务实例。
 func NewPortScanService() *PortScanService {
 	return &PortScanService{
 		scanner: NewScanner(),

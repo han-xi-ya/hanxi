@@ -38,6 +38,8 @@ type EnvCheckService struct {
 	npmOverview    func(context.Context) (npmtool.Overview, error)
 }
 
+// NewEnvCheckService 装配探测与各官网版本源。字段全部为函数值注入（而非直连包函数），
+// 单测可逐个替换为假数据源；各版本源内部自带 TTL 缓存，这里不重复缓存。
 func NewEnvCheckService(opener urlOpener) *EnvCheckService {
 	return &EnvCheckService{
 		opener:         opener,
@@ -340,6 +342,8 @@ func (s *EnvCheckService) InstallNpmTool(id string) (npmtool.OperationAccepted, 
 	return npmtool.Install(id)
 }
 
+// UpgradeNpmTool / UninstallNpmTool 与 InstallNpmTool 同款安全口径：id 必须是目录白名单键，
+// 实际包名与参数取自后端常量；异步执行返回受理回执，终态经事件推送。
 func (s *EnvCheckService) UpgradeNpmTool(id string) (npmtool.OperationAccepted, error) {
 	return npmtool.Upgrade(id)
 }

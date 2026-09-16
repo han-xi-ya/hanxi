@@ -27,6 +27,8 @@ type Channel struct {
 	RelationDetail string    `json:"relationDetail,omitempty"`
 }
 
+// RelationFor 依据本机版本与通道最新正式版推导展示关系；compare 返回 ok=false（版本形态
+// 不可比较，如本机为 devel 版）时保守落 unknown 而非猜测。
 func RelationFor(installed bool, local, latest string, compare func(string, string) (int, bool)) Relation {
 	if !installed {
 		return RelationNotInstalled

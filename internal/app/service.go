@@ -46,10 +46,14 @@ type AppService struct {
 	windowDark func(dark bool) error
 }
 
+// NewAppService 创建基础服务。trayRebuild / windowDark 回调此时为 nil，
+// 由装配根在托盘/主窗口创建后经 SetTrayRebuilder / SetWindowDarkApplier 注入。
 func NewAppService(registry *extapi.Registry, store *settings.Store) *AppService {
 	return &AppService{registry: registry, store: store}
 }
 
+// GetAppInfo 返回产品标识、运行模式与全套数据目录路径，供前端关于页/首页展示。
+// 依赖 InitPaths 已执行（GetPaths 内部兜底懒初始化）。
 func (s *AppService) GetAppInfo() AppInfo {
 	paths := settings.GetPaths()
 	return AppInfo{

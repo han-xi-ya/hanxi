@@ -38,6 +38,7 @@ type Manager struct {
 	client      *http.Client // 下载客户端（长超时，便携 zip 约 117MB）
 }
 
+// NewManager 以指定 versions 根目录创建版本管理引擎；构造无副作用。
 func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		versionsDir: versionsDir,

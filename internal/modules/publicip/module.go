@@ -1,3 +1,5 @@
+// Package publicip 内置模块：聚合公网 IPv4/IPv6（多源冗余查询 + 短 TTL 缓存）、
+// 局域网地址、网关与 DNS 与网卡详情。只读查询，无常驻资源。
 package publicip
 
 import (
@@ -8,18 +10,22 @@ import (
 	"hanxi/internal/platform"
 )
 
+// ID 是模块注册键，同时用作通知/事件的 moduleID。
 const ID = "publicip"
 
+// Module 是 extapi.Module 契约载体：仅持有 service 单例。
 type Module struct {
 	svc *PublicIPService
 }
 
+// New 在 app 装配期创建模块；plat 提供网卡枚举，公网查询走标准库 HTTP。
 func New(plat platform.Platform) extapi.Module {
 	return &Module{
 		svc: NewPublicIPService(plat),
 	}
 }
 
+// Info 返回模块元信息。
 func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
@@ -31,6 +37,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 	}
 }
 
+// Nav 声明侧边栏入口（Order/Group 决定网络组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{
 		ID:      ID,
@@ -43,6 +50,8 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}}
 }
 
+// 以下方法实现 extapi.Module 契约，逐项语义见接口文档。
+// PermNetwork 覆盖 ipify/3322 等公网 IP 探测源；查询型工具，生命周期无副作用。
 func (e *Module) Services() []extapi.Service {
 	return []extapi.Service{
 		application.NewService(e.svc),
@@ -63,6 +72,7 @@ func (e *Module) OnDestroy() error {
 	return nil
 }
 
+// IsInitialized 本模块 OnInit 无副作用，懒初始化后恒为已就绪。
 func (e *Module) IsInitialized() bool {
 	return true
 }

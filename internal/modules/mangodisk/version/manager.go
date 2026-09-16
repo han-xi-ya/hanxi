@@ -38,17 +38,22 @@ type installMeta struct {
 	VerifiedOfficial bool   `json:"verifiedOfficial"`
 }
 
+// Manager 管理 versions/mangodisk_<ver> 目录树：下载校验、导入、完整性巡检。
+// 无内部锁：同一时刻仅允许一个下载/导入由 service 层的 downloadMu 保证，Manager 自身可并发读。
 type Manager struct {
 	versionsDir string
 	client      *http.Client
 }
 
+// NewManager 以 versions 根目录创建管理器；HTTP 客户端 10 分钟超时覆盖大文件下载。
 func NewManager(versionsDir string) *Manager {
 	return &Manager{versionsDir: versionsDir, client: &http.Client{Timeout: 10 * time.Minute}}
 }
 
+// ListRemote 返回远端发布列表（走 remoteCache，TTL 内不发网络请求）。
 func (m *Manager) ListRemote() ([]MangoDiskRelease, error) { return remoteCache.get() }
 
+// ListInstalled 扫描 mangodisk_<ver> 命名规范的目录并逐个 inspect；目录不存在视为空装机。
 func (m *Manager) ListInstalled() ([]MangoDiskVersionInfo, error) {
 	entries, err := os.ReadDir(m.versionsDir)
 	if err != nil {
@@ -69,6 +74,7 @@ func (m *Manager) ListInstalled() ([]MangoDiskVersionInfo, error) {
 	return list, nil
 }
 
+// Inspect 对单个已装版本做完整性检查（meta.json 基线哈希 vs 当前文件哈希/PE 版本信息）。
 func (m *Manager) Inspect(version string) (MangoDiskVersionInfo, error) {
 	dir, err := m.resolveVersionDir(version)
 	if err != nil {
@@ -77,6 +83,8 @@ func (m *Manager) Inspect(version string) (MangoDiskVersionInfo, error) {
 	return m.inspect(dir, normalizeVersion(version)), nil
 }
 
+// VerifyBeforeLaunch 启动前完整性闸门：Verified/LocalBaseline 放行；
+// Drifted（被 MangoDisk 内置更新器替换过）与 Invalid 拒绝并返回可操作错误。
 func (m *Manager) VerifyBeforeLaunch(version string) (MangoDiskVersionInfo, error) {
 	info, err := m.Inspect(version)
 	if err != nil {
@@ -92,6 +100,9 @@ func (m *Manager) VerifyBeforeLaunch(version string) (MangoDiskVersionInfo, erro
 	}
 }
 
+// Download 下载并安装指定版本，onProgress 依次收到 downloading/verify/install/done|error 阶段。
+// 流程：镜像轮询下载 → 大小+SHA256+PE 元数据三重校验 → 先写临时目录再 Rename 原子落位，
+// 中途失败不留半成品版本目录（defer 清理临时物）。
 func (m *Manager) Download(version string, onProgress func(DownloadProgress)) error {
 	version = normalizeVersion(version)
 	emit := func(stage string, done, total int64, message string) {
@@ -183,6 +194,7 @@ func (m *Manager) Download(version string, onProgress func(DownloadProgress)) er
 	return nil
 }
 
+// Remove 删除版本目录；不检查是否正在运行——调用方（service）负责先做运行态拦截。
 func (m *Manager) Remove(version string) error {
 	dir, err := m.resolveVersionDir(version)
 	if err != nil {
@@ -191,6 +203,7 @@ func (m *Manager) Remove(version string) error {
 	return os.RemoveAll(dir)
 }
 
+// ResolveExe 返回版本目录内的主程序绝对路径，缺文件视为版本损坏。
 func (m *Manager) ResolveExe(version string) (string, error) {
 	info, err := m.Inspect(version)
 	if err != nil {
@@ -202,6 +215,9 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return info.ExePath, nil
 }
 
+// ImportLocal 把用户自备 EXE 纳管为本地版本：以 PE FileVersion 为版本号建目录与基线 meta
+// （IsImport=true、无官方 ExpectedSHA256，完整性校验退化为 LocalBaseline 自检）。
+// 同版本号已存在时拒绝，不覆盖既有安装。
 func (m *Manager) ImportLocal(srcExe string) (MangoDiskVersionInfo, error) {
 	srcExe = strings.TrimSpace(srcExe)
 	fi, err := os.Stat(srcExe)

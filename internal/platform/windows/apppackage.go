@@ -64,12 +64,15 @@ type appPackageCommandExecutor interface {
 	Execute(ctx context.Context, executable string, args []string, stdin []byte) (stdout, stderr []byte, exitCode int, err error)
 }
 
+// windowsAppPackageAPI 通过一次性 PowerShell 子进程（Appx 部署 cmdlet）实现 apppackage.API，
+// 不在 Go 侧常驻 WinRT 调用；sequence 生成请求 ID，用于校验响应确为本次请求的结果。
 type windowsAppPackageAPI struct {
 	executable string
 	executor   appPackageCommandExecutor
 	sequence   atomic.Uint64
 }
 
+// NewAppPackageAPI 创建指向系统 Windows PowerShell（5.1，System32 固定路径）的包管理 API。
 func NewAppPackageAPI() apppackage.API {
 	return &windowsAppPackageAPI{
 		executable: windowsPowerShellPath(),
@@ -77,6 +80,7 @@ func NewAppPackageAPI() apppackage.API {
 	}
 }
 
+// Query 查询指定包族是否已为当前用户注册；未安装时返回 (nil, nil)（resp.Result.Package 为空）。
 func (a *windowsAppPackageAPI) Query(ctx context.Context, identity apppackage.Identity) (*apppackage.Package, error) {
 	if err := validateIdentity(identity); err != nil {
 		return nil, err
@@ -88,6 +92,8 @@ func (a *windowsAppPackageAPI) Query(ctx context.Context, identity apppackage.Id
 	return resp.Result.Package, nil
 }
 
+// Install 为当前用户安装 MSIXBundle/AppxBundle 包（含依赖声明）。
+// 参数校验失败返回 CodeProtocol；安装失败透传脚本侧部署错误码（可能 CodeDowngrade 等）。
 func (a *windowsAppPackageAPI) Install(ctx context.Context, options apppackage.InstallOptions) (*apppackage.Package, error) {
 	if err := validateIdentity(options.Expected); err != nil {
 		return nil, err
@@ -114,6 +120,8 @@ func (a *windowsAppPackageAPI) Install(ctx context.Context, options apppackage.I
 	return resp.Result.Package, nil
 }
 
+// Uninstall 按包完整名称卸载。packageFullName 来自 Query 结果，此处仅做通配符/换行注入防护，
+// 不重复校验其与 identity 的一致性（以脚本侧 Remove-AppxPackage 匹配为准）。
 func (a *windowsAppPackageAPI) Uninstall(ctx context.Context, identity apppackage.Identity, packageFullName string) error {
 	if err := validateIdentity(identity); err != nil {
 		return err
@@ -125,6 +133,7 @@ func (a *windowsAppPackageAPI) Uninstall(ctx context.Context, identity apppackag
 	return err
 }
 
+// Activate 启动已注册包的主应用（等价于点击开始菜单磁贴）。AppID 拒绝含路径分隔符与换行的值。
 func (a *windowsAppPackageAPI) Activate(ctx context.Context, identity apppackage.Identity) error {
 	if err := validateIdentity(identity); err != nil {
 		return err
@@ -136,6 +145,9 @@ func (a *windowsAppPackageAPI) Activate(ctx context.Context, identity apppackage
 	return err
 }
 
+// run 执行一次请求-响应往返：序列化为 JSON 经 stdin 送入 UTF-16LE Base64 编码的固定脚本，
+// 解析 stdout JSON。仅当协议版本与 RequestID 双双匹配才信任响应（防其他输出混入误判成功）；
+// 否则区分 ctx 取消（CodeCancelled，可重试）与协议错乱（CodeProtocol）两类错误。
 func (a *windowsAppPackageAPI) run(ctx context.Context, req appPackageRequest) (appPackageResponse, error) {
 	if _, err := os.Stat(a.executable); err != nil {
 		return appPackageResponse{}, &apppackage.Error{Code: apppackage.CodePowerShellAbsent, Message: "系统 Windows PowerShell 不可用", Cause: err}
@@ -259,6 +271,8 @@ func encodedAppPackageScript() string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
+// limitedBuffer 有界写入缓冲：截断超限输出但 Write 仍报告原始长度，
+// 兼容 io.Writer 契约避免 exec 报 ErrShortWrite；exceeded 供调用方识别溢出。
 type limitedBuffer struct {
 	buf       bytes.Buffer
 	remaining int
@@ -282,8 +296,11 @@ func (b *limitedBuffer) Write(p []byte) (int, error) {
 
 func (b *limitedBuffer) Bytes() []byte { return b.buf.Bytes() }
 
+// osAppPackageCommandExecutor 真实命令执行器；测试经 appPackageCommandExecutor 接口注入替身。
 type osAppPackageCommandExecutor struct{}
 
+// Execute 以 CREATE_NO_WINDOW 隐藏控制台运行 PowerShell，stdin 传请求 JSON。
+// 非 ExitError 类失败（如无法启动进程）exitCode 归一为 -1；stdout/stderr 均限幅 1MB。
 func (osAppPackageCommandExecutor) Execute(ctx context.Context, executable string, args []string, stdin []byte) ([]byte, []byte, int, error) {
 	cmd := exec.CommandContext(ctx, executable, args...)
 	cmd.Stdin = bytes.NewReader(stdin)

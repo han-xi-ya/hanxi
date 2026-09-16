@@ -25,6 +25,7 @@ const (
 	legacyPortableDataDirName = "data"
 )
 
+// Paths 数据目录布局快照，字段在 InitPaths 时一次性解析，之后只读，可并发访问。
 type Paths struct {
 	mode        Mode
 	baseDir     string
@@ -135,6 +136,7 @@ func ensureDirs(p *Paths) error {
 	return nil
 }
 
+// 以下只读访问器返回 InitPaths 时解析好的绝对路径，无副作用。
 func (p *Paths) Mode() Mode          { return p.mode }
 func (p *Paths) BaseDir() string     { return p.baseDir }
 func (p *Paths) ConfigDir() string   { return p.configDir }

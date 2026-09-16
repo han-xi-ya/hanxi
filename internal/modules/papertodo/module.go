@@ -27,16 +27,20 @@ import (
 	"hanxi/internal/platform"
 )
 
+// ID 是模块注册键，同时用作通知/事件的 moduleID。
 const ID = "papertodo"
 
+// Module 是 extapi.Module 契约载体：仅持有 service 单例。
 type Module struct {
 	svc *PaperTodoService
 }
 
+// New 在 app 装配期创建模块（构造无 IO，重活延迟到 OnInit 与 service 方法）。
 func New(plat platform.Platform) extapi.Module {
 	return &Module{svc: NewPaperTodoService(plat)}
 }
 
+// Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
@@ -48,12 +52,14 @@ func (m *Module) Info() extapi.ModuleInfo {
 	}
 }
 
+// Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
 		{ID: "papertodo-manager", Title: "PaperTodo 便签", Route: "/ext/papertodo", Icon: "i:clipboard-list", Section: extapi.SectionExt, Order: 79, Group: extapi.GroupEfficiency},
 	}
 }
 
+// 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。
 func (m *Module) Services() []extapi.Service {
 	return []extapi.Service{
 		application.NewService(m.svc),
@@ -70,11 +76,13 @@ func (m *Module) OnInit(ctx context.Context) error {
 	return nil
 }
 
+// OnDestroy 交回 service 做资源收尾；错误仅记录，注册表不因此阻断停用流程。
 func (m *Module) OnDestroy() error {
 	m.svc.Shutdown()
 	return nil
 }
 
+// IsInitialized OnInit 无失败路径，注册表懒初始化后恒为已就绪。
 func (m *Module) IsInitialized() bool { return true }
 
 // TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向宿主托盘暴露启动命令，

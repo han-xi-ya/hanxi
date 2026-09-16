@@ -2,10 +2,11 @@ package detect
 
 import "regexp"
 
-// npmDetector 探测 npm（Windows 下经 npm.cmd 分发，runner 自动 cmd /C 包装）。
+// npmVersionRe 匹配 `npm --version` 输出中的版本号（兼容预发布后缀）。
 // 样本：10.8.3（部分版本输出前有空行）
 var npmVersionRe = regexp.MustCompile(`(?m)^\s*v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)`)
 
+// npmDetector 实现 Detector，探测 npm（Windows 下经 npm.cmd 分发，runner 自动 cmd /C 包装）。
 type npmDetector struct{}
 
 func (npmDetector) Name() string          { return "npm" }

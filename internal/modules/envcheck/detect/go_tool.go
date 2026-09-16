@@ -5,11 +5,12 @@ import (
 	"strings"
 )
 
-// goDetector 探测 Go 工具链。
+// goVersionRe 匹配 `go version` 输出中的版本号。
 // 样本：go version go1.22.5 windows/amd64
 // 开发版：go version devel go1.24-8a0e33a linux/amd64（捕获 1.24，可接受）
 var goVersionRe = regexp.MustCompile(`(?i)\bgo(\d+(?:\.\d+){1,2})\b`)
 
+// goDetector 实现 Detector，探测 Go 工具链；devel 输出处追加 "-devel" 后缀以区分开发版。
 type goDetector struct{}
 
 func (goDetector) Name() string          { return "go" }

@@ -35,6 +35,8 @@ type FrpcService struct {
 	projectMu  sync.Map // project ID -> *sync.Mutex，串行化配置生成、启动、停止与清理
 }
 
+// NewFrpcService 装配版本管理器、项目 store 与多实例引擎。构造无 IO；
+// 实例引擎的事件回调指回本 service，因此 service 与 engine 生命周期必须一致（模块级单例）。
 func NewFrpcService(plat platform.Platform) *FrpcService {
 	paths := settings.GetPaths()
 	svc := &FrpcService{

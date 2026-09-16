@@ -2,11 +2,12 @@ package detect
 
 import "regexp"
 
-// goGRPCDetector 探测 Go gRPC 的 protoc 代码生成插件。
-// 它不是 gRPC 运行库；Go 项目的运行时依赖由各项目的 go.mod 独立管理。
+// goGRPCVersionRe 匹配 `protoc-gen-go-grpc --version` 输出中的版本号。
 // 样本：protoc-gen-go-grpc 1.5.1
 var goGRPCVersionRe = regexp.MustCompile(`(?i)\bprotoc-gen-go-grpc\s+v?(\d+(?:\.\d+){1,2})\b`)
 
+// goGRPCDetector 实现 Detector，探测 Go gRPC 的 protoc 代码生成插件。
+// 注意：它不是 gRPC 运行库（运行时依赖由各项目的 go.mod 独立管理），MissingHint 专门澄清此点。
 type goGRPCDetector struct{}
 
 func (goGRPCDetector) Name() string          { return "protoc-gen-go-grpc" }

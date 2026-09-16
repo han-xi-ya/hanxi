@@ -1,5 +1,8 @@
 //go:build windows
 
+// Package windows 是 platform 抽象接口的 Windows 实现：iphlpapi/advapi32 等
+// 系统 DLL 的直接调用（网卡、端口表、进程、Job Object、应用包、快捷方式、提权、
+// DPAPI、托盘辅助能力）。仅在 windows 构建标签下编译，业务侧一律经 platform.Platform 获取。
 package windows
 
 import (
@@ -7,6 +10,8 @@ import (
 	"hanxi/internal/platform/apppackage"
 )
 
+// WindowsPlatform 聚合各子能力实现，是 platform.Platform 的 Windows 单例载体。
+// 各子 API 均为无状态或自持锁实现，可在多 goroutine 并发调用。
 type WindowsPlatform struct {
 	network    platform.NetworkAPI
 	port       platform.PortAPI
@@ -15,6 +20,7 @@ type WindowsPlatform struct {
 	appPackage apppackage.API
 }
 
+// New 装配全部 Windows 子能力。当前各构造函数不会失败，error 恒为 nil，保留以对齐跨平台工厂签名。
 func New() (platform.Platform, error) {
 	return &WindowsPlatform{
 		network:    NewNetworkAPI(),
@@ -25,6 +31,7 @@ func New() (platform.Platform, error) {
 	}, nil
 }
 
+// 以下访问器返回 New 时创建的单例子 API 实例；DesktopDir/CreateDesktopShortcut/OpenURL 转发包级函数。
 func (p *WindowsPlatform) Network() platform.NetworkAPI {
 	return p.network
 }

@@ -1,3 +1,6 @@
+// Package apppackage 定义"Windows 应用包（MSIX/Appx）当前用户注册管理"的抽象接口与错误模型，
+// 与具体实现方式（PowerShell 子进程等）解耦；实现位于 internal/platform/windows（apppackage.go）。
+// 本包是纯接口/数据定义，除 context 外无依赖，可供模块层直接引用。
 package apppackage
 
 import "context"

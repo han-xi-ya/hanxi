@@ -8,18 +8,20 @@ import (
 	"strings"
 )
 
-// dotnetDetector 探测 .NET（Core）环境。
+// dotnetRuntimeRe 匹配共享框架数据行（NETCore/AspNetCore/WindowsDesktop 三族）；
+// dotnetSDKRe 匹配缩进的 SDK 数据行（如 "9.0.100 [C:\Program Files\dotnet\sdk]"）。
+var (
+	dotnetRuntimeRe = regexp.MustCompile(`(?m)^\s*Microsoft\.(NETCore|AspNetCore|WindowsDesktop)\.App\s+(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\s*\[`)
+	dotnetSDKRe     = regexp.MustCompile(`(?m)^\s+(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\s+\[`)
+)
+
+// dotnetDetector 实现 Detector，探测 .NET（Core）环境。
 // 版本命令用 --info 而非 --version：未安装 SDK 的纯运行时机器上 --version 会直接报错，
 // 而 --info 恒定退出 0 并列出 SDK 与共享框架数据行。节标题存在本地化风险，
 // 因此只按语言无关的数据行形状解析：
 //
 //	Microsoft.NETCore.App 8.0.13 [C:\Program Files\dotnet\shared\...]
 //	9.0.100 [C:\Program Files\dotnet\sdk]
-var (
-	dotnetRuntimeRe = regexp.MustCompile(`(?m)^\s*Microsoft\.(NETCore|AspNetCore|WindowsDesktop)\.App\s+(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\s*\[`)
-	dotnetSDKRe     = regexp.MustCompile(`(?m)^\s+(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)\s+\[`)
-)
-
 type dotnetDetector struct{}
 
 func (dotnetDetector) Name() string    { return "dotnet" }
@@ -38,6 +40,7 @@ func (d dotnetDetector) Parse(out string) string {
 	return highestDotNetVersion(info.Runtimes)
 }
 
+// ParseDetails 返回 SDK/运行时/桌面/ASP.NET 四族完整版本清单；无任何可解析行时返回 nil。
 func (d dotnetDetector) ParseDetails(out string) *ToolDetails {
 	info := parseDotNetInfo(out)
 	if len(info.SDKs) == 0 && len(info.Runtimes) == 0 {
