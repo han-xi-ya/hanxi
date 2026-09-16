@@ -41,6 +41,8 @@ export function EnsureModuleActive(moduleID) {
 }
 
 /**
+ * GetAppInfo 返回产品标识、运行模式与全套数据目录路径，供前端关于页/首页展示。
+ * 依赖 InitPaths 已执行（GetPaths 内部兜底懒初始化）。
  * @returns {$CancellablePromise<$models.AppInfo>}
  */
 export function GetAppInfo() {

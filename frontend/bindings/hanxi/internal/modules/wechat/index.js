@@ -10,6 +10,8 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * AttachmentActionResult 文件选择/保存对话框的回执： canceled=true 表示用户取消（Path 为空）；
+ * 另存成功时 Path 为落盘绝对路径。
  * @typedef {$models.AttachmentActionResult} AttachmentActionResult
  */
 

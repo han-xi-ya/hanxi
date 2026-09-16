@@ -32,6 +32,9 @@ export function CreateDesktopShortcut() {
 }
 
 /**
+ * DownloadVersion 异步下载指定版本：立即返回 "started"（已在本地则返回 "already-installed"），
+ * 进度与结果经 "mangodisk:version-download" 事件与通知推送。同一时刻仅允许一个下载
+ * （TryLock 失败直接报"正在下载"），未设置使用版本时下载完成后自动设为当前版本。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
@@ -40,6 +43,7 @@ export function DownloadVersion(targetVersion) {
 }
 
 /**
+ * GetActiveVersion 返回当前使用版本号；未设置时返回空串（error 恒为 nil，为前端统一签名保留）。
  * @returns {$CancellablePromise<string>}
  */
 export function GetActiveVersion() {
@@ -47,6 +51,9 @@ export function GetActiveVersion() {
 }
 
 /**
+ * GetFollowOnExit / SetFollowOnExit 读写"随 Hanxi 一起退出"开关：
+ * 开启时实例挂入 JobObject（Hanxi 退出/崩溃内核连带终止），关闭时 Detached 独立存活。
+ * 变更只影响之后的启动/关停时机，不热切换已运行实例。
  * @returns {$CancellablePromise<boolean>}
  */
 export function GetFollowOnExit() {
@@ -54,6 +61,7 @@ export function GetFollowOnExit() {
 }
 
 /**
+ * GetStatus 先强制刷新外部实例嗅探再返回快照，保证前端轮询看到的是实时状态（error 恒 nil 为签名统一）。
  * @returns {$CancellablePromise<instance$0.Snapshot>}
  */
 export function GetStatus() {
@@ -61,6 +69,8 @@ export function GetStatus() {
 }
 
 /**
+ * ImportLocal 导入用户自备的 MangoDisk 可执行文件为托管版本（读取 PE 版本信息建基线）。
+ * 实例正在运行（托管或外部嗅探到）时拒绝，避免导入后新旧文件混用。
  * @param {string} srcExe
  * @returns {$CancellablePromise<version$0.MangoDiskVersionInfo>}
  */
@@ -69,6 +79,7 @@ export function ImportLocal(srcExe) {
 }
 
 /**
+ * ListInstalledVersions 扫描本地 versions 目录并做完整性校验（哈希基线比对）。
  * @returns {$CancellablePromise<version$0.MangoDiskVersionInfo[] | null>}
  */
 export function ListInstalledVersions() {
@@ -76,6 +87,7 @@ export function ListInstalledVersions() {
 }
 
 /**
+ * ListReleases 拉取远端官方版本列表（GitHub Releases，经缓存与镜像加速），网络失败返回错误。
  * @returns {$CancellablePromise<version$0.MangoDiskRelease[] | null>}
  */
 export function ListReleases() {
@@ -83,6 +95,7 @@ export function ListReleases() {
 }
 
 /**
+ * OpenDir 用资源管理器打开目录；路径为空或不存在时返回错误（explorer.Start 本身不报错，故先行校验）。
  * @param {string} dir
  * @returns {$CancellablePromise<void>}
  */
@@ -98,6 +111,10 @@ export function OpenRepository() {
 }
 
 /**
+ * OpenWindow 是页面/托盘"启动"的统一入口，按实例状态机分支：
+ * Starting→提示等待；External（外部自启实例）→借用其 exe 唤起窗口；
+ * Running→唤起自家窗口；Stopped/Failed→校验完整性后冷启动并等待就绪（readyTimeout）。
+ * 冷启动时按 GetFollowOnExit 决定是否挂入 JobObject（Detached 则不随 Hanxi 退出）。
  * @returns {$CancellablePromise<$models.ControlOutcome>}
  */
 export function OpenWindow() {
@@ -105,6 +122,7 @@ export function OpenWindow() {
 }
 
 /**
+ * Quit 优雅退出托管实例；外部自启实例（External）不归 Hanxi 管，只回提示不动它。
  * @returns {$CancellablePromise<$models.QuitOutcome>}
  */
 export function Quit() {
@@ -112,6 +130,7 @@ export function Quit() {
 }
 
 /**
+ * RemoveVersion 删除本地版本目录；该版本正在托管运行时拒绝，删除后若其为使用版本则清空 active。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<void>}
  */
@@ -120,6 +139,7 @@ export function RemoveVersion(targetVersion) {
 }
 
 /**
+ * RepositoryURL / OpenRepository 提供上游仓库主页（error 恒 nil 为前端统一签名）。
  * @returns {$CancellablePromise<string>}
  */
 export function RepositoryURL() {
@@ -127,6 +147,8 @@ export function RepositoryURL() {
 }
 
 /**
+ * SetActiveVersion 将指定版本设为"当前使用版本"。落盘前先 Inspect，
+ * 完整性校验失败（IntegrityInvalid）的版本拒绝激活，返回错误提示重新下载/导入。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
@@ -143,6 +165,7 @@ export function SetFollowOnExit(enabled) {
 }
 
 /**
+ * Shutdown 在模块 OnDestroy 时调用：终止嗅探 goroutine，并按"随 Hanxi 退出"开关决定是否停止托管实例。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

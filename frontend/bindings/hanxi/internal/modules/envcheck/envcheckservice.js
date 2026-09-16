@@ -193,6 +193,8 @@ export function UninstallNpmTool(id) {
 }
 
 /**
+ * UpgradeNpmTool / UninstallNpmTool 与 InstallNpmTool 同款安全口径：id 必须是目录白名单键，
+ * 实际包名与参数取自后端常量；异步执行返回受理回执，终态经事件推送。
  * @param {string} id
  * @returns {$CancellablePromise<npmtool$0.OperationAccepted>}
  */

@@ -5,9 +5,13 @@
 import * as $models from "./models.js";
 
 /**
+ * CachedPackage 本地已通过全链校验的可信包缓存条目（与 meta.json 一一对应）。
+ * Architectures 为 Bundle 内解出的目标架构列表，安装前据此匹配本机 arch。
  * @typedef {$models.CachedPackage} CachedPackage
  */
 
 /**
+ * Release 远端 stable MSIXBundle 发布条目。SHA256 取自 GitHub Release 正文声明；
+ * Stale 表示列表来自过期缓存（TTL 超时后的兜底旧数据）。
  * @typedef {$models.Release} Release
  */

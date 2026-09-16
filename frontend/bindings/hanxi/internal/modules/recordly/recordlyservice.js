@@ -145,6 +145,9 @@ export function Quit() {
 
 /**
  * RemoveVersion 卸载托管版本（正在运行则拒绝）。%APPDATA%\Recordly 配置与录像保留。
+ * 运行判定不看请求版本号：单安装目录下任何运行形态（托管运行/启动中/外部实例）
+ * 一律拒绝——旧实现把保护与参数版本挂钩，传不匹配版本号即可绕过（Manager.Remove
+ * 现在也会二次核对版本，双保险）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<void>}
  */

@@ -9,5 +9,6 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * Snapshot 引擎状态快照，事件推送与前端渲染共用；仅本引擎自有实例，无 external 态。
  * @typedef {$models.Snapshot} Snapshot
  */

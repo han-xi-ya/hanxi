@@ -10,13 +10,20 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * OperationAccepted 异步操作的受理回执：仅表示操作已启动（含 OperationID 供前端关联进度事件），
+ * 不代表成功；Kind 为 already-installed/already-uninstalled 时表示幂等短路、无后台操作。
  * @typedef {$models.OperationAccepted} OperationAccepted
  */
 
 /**
+ * OperationProgress 异步包操作（install/uninstall）的进度事件模型。
+ * Terminal=true 表示终态事件（成功/失败各一次，之后快照失效需重新拉取）；
+ * Stage 依次为 preflight → downloading/cache-commit（下载阶段）→ installing|uninstalling → 终态。
  * @typedef {$models.OperationProgress} OperationProgress
  */
 
 /**
+ * PackageSnapshot 一次"包注册状态 + 进行中操作"的合并快照（前端唯一状态源）。
+ * Revision 单调递增：前端据此丢弃乱序到达的旧事件。Operation* 字段在无操作时为空。
  * @typedef {$models.PackageSnapshot} PackageSnapshot
  */
