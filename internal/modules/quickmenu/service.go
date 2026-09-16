@@ -25,10 +25,13 @@ const (
 	triggerMove = 16                     // 抬手前光标位移容差（物理像素）
 
 	popupWindowName = "quickmenu-popup"
-	// 轮盘弹窗为正方形窗口，首次唤出后经 GDI 区域裁剪成正圆（圆盘直径）；
-	// 尺寸按 DIP 配置（Wails 内部处理 DPI 缩放）。
-	popupWidth  = 340
-	popupHeight = 340
+	// 轮盘弹窗为正方形真透明窗口（BackgroundTypeTransparent，DirectComposition
+	// 合成）：盘体直径 340 DIP，四周另留 18 DIP 透明边距容纳投影，GDI 区域裁剪
+	// 只负责把边距四角从命中测试里剪掉（裁剪圈落在投影淡出后的全透明区，硬边
+	// 不可见），圆盘视觉边缘全部由页面抗锯齿绘制。尺寸按 DIP（Wails 处理缩放）。
+	popupWidth  = 376
+	popupHeight = 376
+	popupMargin = 18 // 盘缘外透明投影边距（DIP），须与前端视图几何保持一致
 )
 
 // QuickMenuService 鼠标快捷菜单：全局右键长按 → 光标处弹出圆盘 → 点击扇区派发条目。
@@ -94,9 +97,10 @@ func (s *QuickMenuService) start() error {
 			Frameless:        true,
 			AlwaysOnTop:      true,
 			DisableResize:    true,
+			BackgroundType:   application.BackgroundTypeTransparent, // 真透明：圆盘边缘抗锯齿由页面绘制，杜绝窗底白边
 			Windows:          application.WindowsWindow{HiddenOnTaskbar: true}, // 不进任务栏/Alt+Tab
-			URL:              "/#quickmenu",                                    // 前端按 hash 分流挂载弹窗视图（main.ts）
-			BackgroundColour: application.NewRGB(245, 246, 248),
+			URL:              "/#quickmenu",                                      // 前端按 hash 分流挂载弹窗视图（main.ts）
+			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
 		})
 		// 关窗/失焦均收起不销毁（beta.10 无公开销毁 API，隐藏复用与会话驻留的托盘隐藏策略同构，
 		// 也避免误触"最后窗口"退出分支）。
@@ -186,8 +190,11 @@ func (s *QuickMenuService) dismissIfOutside(btn mousetrap.ButtonEvent) {
 	cy := b.Y + b.Height/2
 	dx := int(btn.X) - cx
 	dy := int(btn.Y) - cy
-	r := min(b.Width, b.Height) / 2
-	if dx*dx+dy*dy <= r*r {
+	// 判定半径取盘面而非窗口半宽：盘缘外的透明投影边距会被 WebView 吃掉点击，
+	// 若按窗口半径算，点投影圈会"无事发生"——按盘半径则即时收起，符合直觉。
+	scale := float64(b.Width) / float64(popupWidth)
+	r := float64(b.Width)/2 - float64(popupMargin)*scale
+	if float64(dx*dx+dy*dy) <= r*r {
 		return // 点在圆盘上：留给 WebView2 自己的扇区点击处理
 	}
 	popup.Hide()
@@ -246,9 +253,11 @@ func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 	a.Event.Emit("quickmenu:opening")
 }
 
-// clipPopupOnce 方形窗口首次唤出后经 GDI 区域裁剪成正圆盘（Wails beta.10 Windows
-// 侧无透明能力，方案与锯齿代价见 platform/windows.ClipWindowEllipse）。常驻单例
-// 固定尺寸只裁一次即长期有效；失败降级为方形弹窗（仅影响观感，不重试轰炸日志）。
+// clipPopupOnce 方形窗口首次唤出后裁剪为整圆区域（ClipWindowEllipse）。窗口本体
+// 已是真透明（BackgroundTypeTransparent），圆盘视觉边缘由页面抗锯齿绘制；区域裁剪
+// 只承担命中测试——把四角从鼠标命中里剪掉让点击穿透到下层应用。裁剪圈半径 = 盘半径
+// + 透明边距，落在投影淡出后的全透明区，GDI 硬边在视觉上不可见。常驻单例固定尺寸
+// 只做一次；失败仅损失四角穿透体验，不影响功能，不重试轰炸日志。
 func (s *QuickMenuService) clipPopupOnce(popup *application.WebviewWindow) {
 	s.mu.Lock()
 	done := s.popupClipped

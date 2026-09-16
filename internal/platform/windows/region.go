@@ -23,12 +23,10 @@ type winRect struct{ left, top, right, bottom int32 }
 
 // ClipWindowEllipse 将窗口客户端区裁剪为椭圆区域：方形窗口即得正圆。
 //
-// Wails beta.10 Windows 侧没有分层/透明窗口能力，圆盘弹窗改用 GDI 区域模拟
-// 圆形轮廓——椭圆之外系统层面既不绘制也不接收鼠标输入，四角不是"透明像素"
-// 而是整块不存在，是 Windows 上做圆形浮窗的标准手法（无需 DWM、零逐帧开销）。
-// 已知代价：GDI 区域边缘无抗锯齿，低 DPI 下有轻微锯齿，视觉上把环形描边画在
-// 裁剪半径稍内侧来弱化。窗口尺寸变化后需重设（区域按旧物理尺寸会失真），
-// 常驻固定尺寸的弹窗不受影响。
+// 椭圆之外系统层面既不绘制也不接收鼠标输入（四角点击穿透到下层应用）。配合
+// 真透明窗口使用时，把裁剪圈设在视觉内容（含投影）淡出之后的半径上，GDI 区域
+// 边缘无抗锯齿的硬边就落在全透明区、视觉不可见，本函数只承担命中测试职责。
+// 窗口尺寸变化后需重设（区域按旧物理尺寸会失真），常驻固定尺寸的弹窗不受影响。
 func ClipWindowEllipse(hwnd uintptr) error {
 	var r winRect
 	if ret, _, err := procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&r))); ret == 0 {

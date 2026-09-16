@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// 快捷菜单光标轮盘：独立 frameless 顶层窗口的全部内容（main.ts 按 #quickmenu hash
-// 分流挂载）。窗口为正方形、首次唤出后经 GDI 区域裁剪成正圆（见
-// platform/windows.ClipWindowEllipse），因此圆盘几何按 340×340 铺满整个客户端。
+// 快捷菜单光标轮盘：独立 frameless 真透明顶层窗口的全部内容（main.ts 按
+// #quickmenu hash 分流挂载）。窗口正方形 376 = 盘径 340 + 四周 18 透明边距
+// （容纳投影）；四角经 GDI 区域裁剪从命中测试中剪掉（windows.ClipWindowEllipse），
+// 圆盘视觉边缘全部由本页抗锯齿绘制，窗口本体透明、不存在窗底白边。
 //
 // 三层结构：SVG 画几何与扇区命中面（悬停/点击），每个条目同时是一个落在扇区质点
 // 上的真实 <button>（键盘 Tab/Enter/focus-visible 语义），中心 hub 为读数浮层。
@@ -15,11 +16,12 @@ import { getErrorMessage } from '../utils/errors'
 import { ICON_NAMES, type IconName } from '../constants/icons'
 
 // —— 轮盘几何（SVG 用户单位 = 窗口 DIP，1:1）——
-const SIZE = 340
-const C = SIZE / 2 // 圆心；窗口圆裁半径同为 C，盘缘即窗缘
+const SIZE = 376 // 窗口边长：盘径 340 + 四周 18 透明投影边距
+const C = SIZE / 2 // 圆心 = 光标锚点（后端将盘心对准光标）
+const R_DISC = 170 // 盘面半径：缘环与填充画到这里，GDI 裁剪圈（r=C）在其外的全透明区
 const R_HUB = 62 // 中心 hub 半径
 const R_SEC_IN = 74 // 扇区内缘
-const R_SEC_OUT = 166 // 扇区外缘（留 4px 给缘环描边）
+const R_SEC_OUT = 162 // 扇区外缘（162~169 为刻度/缘环/高亮弧的边带）
 
 /** 极坐标 → 直角坐标：0° 取 12 点方向，顺时针增长（轮盘的直觉序） */
 function polar(r: number, deg: number) {
@@ -52,6 +54,31 @@ function anchorOf(i: number, n: number) {
   const p = polar((R_SEC_IN + R_SEC_OUT) / 2, (360 / n) * (i + 0.5))
   return { left: `${(p.x / SIZE) * 100}%`, top: `${(p.y / SIZE) * 100}%` }
 }
+
+/** 扇区分界刻度（r 落在扇区外缘与盘缘的细缝带，指针式表盘的方位感） */
+const tickMarks = computed(() => {
+  const n = items.value.length
+  if (n < 3) return []
+  return Array.from({ length: n }, (_, i) => {
+    const a = (360 / n) * i
+    const p1 = polar(R_SEC_OUT + 1.5, a)
+    const p2 = polar(R_DISC - 2.5, a)
+    return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y }
+  })
+})
+
+/** 激活扇区的外缘高亮弧：盘缘上的一段主色弧线，pie menu 的直觉反馈 */
+const activeRimArc = computed(() => {
+  const i = active.value
+  const n = items.value.length
+  if (i == null || n < 2) return ''
+  const step = 360 / n
+  const a0 = step * i + 3
+  const a1 = step * (i + 1) - 3
+  const p0 = polar(R_DISC - 1.25, a0)
+  const p1 = polar(R_DISC - 1.25, a1)
+  return `M ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} A ${R_DISC - 1.25} ${R_DISC - 1.25} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`
+})
 
 const items = shallowRef<MenuItem[]>([])
 const loading = ref(true)
@@ -182,9 +209,9 @@ onBeforeUnmount(() => {
       class="disc"
       :viewBox="`0 0 ${SIZE} ${SIZE}`"
     >
-      <!-- 盘底：铺满圆形窗口；缘环稍内缩，弱化 GDI 区域裁剪的硬边锯齿 -->
-      <circle :cx="C" :cy="C" :r="C" class="disc-face" />
-      <circle :cx="C" :cy="C" :r="C - 1.75" class="disc-edge" />
+      <!-- 盘底：真透明窗口上绘制不透明圆盘，边缘天然抗锯齿；缘环即盘缘 -->
+      <circle :cx="C" :cy="C" :r="R_DISC" class="disc-face" />
+      <circle :cx="C" :cy="C" :r="R_DISC - 1.25" class="disc-edge" />
 
       <g :key="entrySeq" class="sectors">
         <path
@@ -193,12 +220,25 @@ onBeforeUnmount(() => {
           class="sector"
           :class="{ 'is-active': active === i }"
           :d="wedgePath(i, items.length)"
+          :style="{ animationDelay: `${Math.min(i * 14, 84)}ms` }"
           role="presentation"
           @mouseenter="active = i"
           @mouseleave="leaveSector(i)"
           @click="launch(item)"
         />
       </g>
+
+      <!-- 分界刻度：扇区外缘与盘缘之间的细缝带，指针式表盘的方位刻度 -->
+      <g v-if="tickMarks.length" class="ticks" aria-hidden="true">
+        <line
+          v-for="(t, i) in tickMarks"
+          :key="i"
+          :x1="t.x1" :y1="t.y1" :x2="t.x2" :y2="t.y2"
+        />
+      </g>
+
+      <!-- 激活扇区的外缘主色高亮弧 -->
+      <path v-if="activeRimArc" class="rim-accent" :d="activeRimArc" />
 
       <!-- 无扇区可画时（加载/空态/错误）留一圈虚线：圆盘仍是"一个待用的轮盘" -->
       <circle
@@ -227,7 +267,7 @@ onBeforeUnmount(() => {
       @focus="active = i"
       @click="launch(item)"
     >
-      <AppIcon :name="iconOf(item)" :size="20" />
+      <span class="sector-icon"><AppIcon :name="iconOf(item)" :size="18" /></span>
       <span v-if="showLabels" class="sector-name">{{ item.label }}</span>
     </button>
 
@@ -260,14 +300,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* 窗口已被圆区域裁剪成正圆：根节点直接当圆盘面用，永不出现滚动条。
-   颜色全部走 token，明暗主题随 data-theme 自动切换。 */
+/* 窗口本体真透明：根节点不带任何背景（圆盘由 SVG 绘出），投影落在四周
+   透明边距内。颜色全部走 token，明暗主题随 data-theme 自动切换。 */
 .popup {
   position: relative;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: var(--surface-panel);
+  background: transparent;
   color: var(--color-text);
   font-family: var(--font-text);
 }
@@ -281,10 +321,12 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   pointer-events: none; /* 盘面不拦截，扇区 path 逐枚放开 */
+  /* 双层低噪投影：贴地接触影 + 环境扩散影，淡出全部落在 GDI 裁剪圈内 */
+  filter: drop-shadow(0 1px 3px rgba(10, 20, 24, 0.20)) drop-shadow(0 12px 26px rgba(10, 20, 24, 0.24));
   animation: disc-in 140ms ease-out; /* 弹出动感：常驻窗口复用重挂时重放 */
 }
 @keyframes disc-in {
-  from { transform: scale(0.94); opacity: 0.55; }
+  from { transform: scale(0.965); opacity: 0.55; }
   to { transform: scale(1); opacity: 1; }
 }
 
@@ -298,10 +340,28 @@ onBeforeUnmount(() => {
   stroke: var(--color-border);
   stroke-width: 1;
   transition: fill var(--motion-fast) ease, stroke var(--motion-fast) ease;
+  animation: sector-in 120ms ease-out backwards; /* 错峰淡入：delay 由模板按序下发 */
+}
+@keyframes sector-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .sector.is-active {
   fill: var(--surface-selected);
   stroke: var(--color-primary);
+}
+
+.ticks line {
+  stroke: var(--color-border-strong);
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.rim-accent {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2.5;
+  stroke-linecap: round;
 }
 
 .disc-ghost {
@@ -340,6 +400,22 @@ onBeforeUnmount(() => {
 .sector-btn:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+}
+/* 图标井：浅一档底 + 细描边（设计系统 surface 公式的"嵌套控件"层），激活时主色软化 */
+.sector-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.sector-btn.is-active .sector-icon {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
 }
 .sector-name {
   max-width: 100%;
@@ -414,6 +490,8 @@ onBeforeUnmount(() => {
 }
 .hub-esc { opacity: 0.75; }
 
-/* 暗色下亮度差收敛，扇区分层更多依赖描边：环纹加强一档 */
+/* 暗色下亮度差收敛，扇区分层更多依赖描边；图标井反向抬升（面板比扇区更亮一档，
+   避免在暗盘上凹成"黑洞"） */
 [data-theme='dark'] .sector { stroke: var(--color-border-strong); }
+[data-theme='dark'] .sector-icon { background: var(--surface-hover); }
 </style>

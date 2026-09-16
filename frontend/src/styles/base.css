@@ -12,6 +12,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 透明壳弹窗窗口（main.ts 打 .popup-shell 标记，如快捷菜单轮盘）：canvas 整体
+   透明，盘体由视图自行绘制 opaque——否则近白的 --surface-page 会铺满窗口，在
+   圆盘之外、GDI 裁剪圈之内透出来形成一圈大白边。 */
+html.popup-shell,
+html.popup-shell body {
+  background: transparent;
+}
+
 button,
 input,
 select,
