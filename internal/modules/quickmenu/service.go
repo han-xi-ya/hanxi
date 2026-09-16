@@ -40,12 +40,14 @@ type QuickMenuService struct {
 
 	mu           sync.Mutex
 	started      bool
-	popupClipped bool // 弹窗已裁剪成圆（常驻单例只做一次）
+	popupClipped bool                       // 弹窗已裁剪成圆（常驻单例只做一次）
 	mainWin      *application.WebviewWindow // route 条目唤主窗用（装配根注入）
 	popup        *application.WebviewWindow
 	trap         *mousetrap.Trap
 }
 
+// NewQuickMenuService 装配常驻单例服务：条目派发器复用 internal/launcher（与托盘菜单同语义），
+// navigateMain 回调用于 route 条目唤起主窗口；构造无 IO，钩子与弹窗由 start 懒建。
 func NewQuickMenuService(store *settings.Store, registry *extapi.Registry) *QuickMenuService {
 	s := &QuickMenuService{store: store, registry: registry}
 	s.disp = launcher.New(registry, store, s.navigateMain)

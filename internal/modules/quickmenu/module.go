@@ -22,8 +22,10 @@ import (
 	"hanxi/internal/settings"
 )
 
+// ID 是模块注册键，同时用作通知/事件的 moduleID。
 const ID = "quickmenu"
 
+// Module 是 extapi.Module 契约载体：仅持有 service 单例。
 type Module struct {
 	svc         *QuickMenuService
 	initialized bool
@@ -34,6 +36,7 @@ func New(store *settings.Store, registry *extapi.Registry) *Module {
 	return &Module{svc: NewQuickMenuService(store, registry)}
 }
 
+// Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
@@ -45,6 +48,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 	}
 }
 
+// Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{
 		ID:      ID,
@@ -57,6 +61,7 @@ func (m *Module) Nav() []extapi.NavEntry {
 	}}
 }
 
+// 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。
 func (m *Module) Services() []extapi.Service {
 	return []extapi.Service{
 		application.NewService(m.svc),
@@ -75,11 +80,13 @@ func (m *Module) OnInit(ctx context.Context) error {
 	return nil
 }
 
+// OnDestroy 摘除全局鼠标钩子并收起弹窗（svc.stop 同步等待钩子线程退出），错误上抛给注册表。
 func (m *Module) OnDestroy() error {
 	m.initialized = false
 	return m.svc.stop()
 }
 
+// IsInitialized 如实反映 OnInit 结果：start（钩子安装/弹窗创建）失败时为 false，注册表可重试初始化。
 func (m *Module) IsInitialized() bool { return m.initialized }
 
 // SetMainWindow 透传装配根注入的主窗口引用（route 条目需要唤出主窗口）。
