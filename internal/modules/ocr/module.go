@@ -50,6 +50,9 @@ func (m *Module) Services() []extapi.Service {
 	}
 }
 
+// Service 暴露服务实例供 app.go 接线主窗原生文件拖放（组件导入通道）。
+func (m *Module) Service() *OcrService { return m.svc }
+
 // Permissions 声明回环 HTTP 探测与转发（网络出站最小口径）。
 func (m *Module) Permissions() []extapi.Permission { return []extapi.Permission{extapi.PermNetwork} }
 

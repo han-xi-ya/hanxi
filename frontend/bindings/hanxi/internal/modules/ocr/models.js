@@ -11,6 +11,17 @@
  */
 
 /**
+ * DropResult 原生文件拖放/组件导入的统一回执（事件 ocr:file-drop-result 与各
+ * 导入方法共用）。按 Kind 分流：import 结果刷状态，image 结果直接设为待识别图。
+ * @typedef {Object} DropResult
+ * @property {string} kind - import / image
+ * @property {boolean} ok
+ * @property {string} exePath - 导入成功后的托管副本路径
+ * @property {ImageRef | null} image - 图片通道成功时的选图结果
+ * @property {string} message - 中文人话（成功说明或失败原因）
+ */
+
+/**
  * ImageRef 统一"已选图"模型：对话框/拖拽/粘贴三通道汇流。
  * @typedef {Object} ImageRef
  * @property {string} path

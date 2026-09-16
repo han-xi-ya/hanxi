@@ -58,6 +58,36 @@ export function GetStatus() {
 }
 
 /**
+ * HandleNativeDrop Wails 主窗原生文件拖放入口（app.go 接线；只有落在 OcrView
+ * 标记 data-file-drop-target 元素上的文件才会到达）。按扩展名分流：.exe → 组件
+ * 导入；图片 → 真实路径直接选为待识别对象（免走 dataURL 全量 IPC）；其余给中文提示。
+ * @param {string[] | null} files
+ * @returns {$CancellablePromise<void>}
+ */
+export function HandleNativeDrop(files) {
+    return $Call.ByID(2331129421, files);
+}
+
+/**
+ * ImportServiceExe 导入用户提供的组件：校验文件名/体积/布局后把服务路径指向它。
+ * 校验失败不置 error（属业务结果），统一折进 DropResult.Message 并广播
+ * ocr:file-drop-result 事件；取消对话框等无操作场景不发事件。
+ * @param {string} srcPath
+ * @returns {$CancellablePromise<$models.DropResult>}
+ */
+export function ImportServiceExe(srcPath) {
+    return $Call.ByID(3123454301, srcPath);
+}
+
+/**
+ * ImportServiceExeDialog 对话框式导入（与拖放共用同一套校验）。取消返回空回执。
+ * @returns {$CancellablePromise<$models.DropResult>}
+ */
+export function ImportServiceExeDialog() {
+    return $Call.ByID(3234376289);
+}
+
+/**
  * InspectImage 校验对话框所选图片并生成预览（不落盘、temporary=false）。
  * @param {string} path
  * @returns {$CancellablePromise<$models.ImageRef>}

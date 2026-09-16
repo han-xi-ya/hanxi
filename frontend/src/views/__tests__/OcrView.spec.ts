@@ -23,6 +23,9 @@ const svc = vi.hoisted(() => ({
   GetServiceExePath: vi.fn(),
   SetServiceExePath: vi.fn(),
   BrowseServiceExeDialog: vi.fn(),
+  ImportServiceExe: vi.fn(),
+  ImportServiceExeDialog: vi.fn(),
+  HandleNativeDrop: vi.fn(),
   Logs: vi.fn(),
 }))
 
@@ -180,6 +183,76 @@ describe('OcrView 三输入通道', () => {
     await settle()
     expect(svc.SavePastedImage).not.toHaveBeenCalled()
     expect(useToast().toastMsg.value).toContain('只支持图片')
+    wrapper.unmount()
+  })
+})
+
+describe('OcrView 组件导入', () => {
+  it('无组件首启：设置面板自动展开且导入区带原生拖放标记', async () => {
+    stubStatus()
+    const wrapper = await mountView()
+    const zone = wrapper.find('#ocr-import-target')
+    expect(zone.exists()).toBe(true)
+    expect(zone.attributes('data-file-drop-target')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('点击导入区走对话框通道（提示统一由回执事件负责）', async () => {
+    stubStatus(runningState)
+    const wrapper = await mountView()
+    await wrapper.findAll('.btn').find((b) => b.text().includes('服务设置'))!.trigger('click')
+    await wrapper.find('#ocr-import-target').trigger('click')
+    await flushPromises()
+    expect(svc.ImportServiceExeDialog).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toBeFalsy() // 回执未回，不抢提示
+    wrapper.unmount()
+  })
+
+  it('导入成功回执：提示 + 自动启动托管', async () => {
+    stubStatus()
+    const wrapper = await mountView()
+    svc.StartService.mockResolvedValue({ action: 'started', external: false, message: 'hanxi-ocr 服务已启动（127.0.0.1:53120）' })
+    runtime.handlers['ocr:file-drop-result']({
+      data: { kind: 'import', ok: true, exePath: 'D:\\x\\hanxi-ocr.exe', image: null, message: '已导入 hanxi-ocr.exe（47.9 MB），正在启动服务' },
+    })
+    await flushPromises()
+    // 单条全局 toast：导入提示随后被启动成功回执顶掉，证明两步链路都走完
+    expect(useToast().toastMsg.value).toContain('已启动')
+    expect(svc.StartService).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('导入校验失败回执：只提示原因，绝不自动启动', async () => {
+    stubStatus()
+    const wrapper = await mountView()
+    runtime.handlers['ocr:file-drop-result']({
+      data: { kind: 'import', ok: false, exePath: '', image: null, message: '该文件仅 9.0 MB 且同级没有引擎文件，无法独立运行（v0.3 起请收发单文件版 hanxi-ocr.exe，约 48 MB）' },
+    })
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('单文件版')
+    expect(svc.StartService).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('图片真实路径回执：直接设为待识别对象，不走 dataURL 落盘', async () => {
+    stubStatus(runningState)
+    const wrapper = await mountView()
+    runtime.handlers['ocr:file-drop-result']({
+      data: { kind: 'image', ok: true, exePath: '', image: { ...imageRef }, message: '' },
+    })
+    await flushPromises()
+    expect(svc.SavePastedImage).not.toHaveBeenCalled()
+    expect(wrapper.find('.ocr-preview').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('取消导入（空回执）保持静默', async () => {
+    stubStatus()
+    const wrapper = await mountView()
+    runtime.handlers['ocr:file-drop-result']({ data: { kind: 'import', ok: false, exePath: '', image: null, message: '' } })
+    await flushPromises()
+    expect(useToast().toastMsg.value).toBe('')
+    expect(svc.StartService).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

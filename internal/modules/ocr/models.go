@@ -59,6 +59,16 @@ type ControlOutcome struct {
 	Message  string `json:"message"`
 }
 
+// DropResult 原生文件拖放/组件导入的统一回执（事件 ocr:file-drop-result 与各
+// 导入方法共用）。按 Kind 分流：import 结果刷状态，image 结果直接设为待识别图。
+type DropResult struct {
+	Kind    string    `json:"kind"` // import / image
+	Ok      bool      `json:"ok"`
+	ExePath string    `json:"exePath"` // 导入成功后的托管副本路径
+	Image   *ImageRef `json:"image"`   // 图片通道成功时的选图结果
+	Message string    `json:"message"` // 中文人话（成功说明或失败原因）
+}
+
 // resolveServiceExe 纯函数：hanxi-ocr.exe 发现顺序（exeDir 注入便于单测）。
 //  1. 用户设定路径（存在即用；失效以 error 明示，不静默回退）
 //  2. Hanxi 同级目录 ../hanxi-ocr/hanxi-ocr.exe（私发组件默认落位）

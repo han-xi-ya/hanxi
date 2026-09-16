@@ -181,6 +181,7 @@ func RegisterEvents() {
 	application.RegisterEvent[wsl.CloneProgress]("wsl:clone")
 	application.RegisterEvent[wsl.CompactProgress]("wsl:compact")
 	application.RegisterEvent[ocr.ServiceState]("ocr:service-state")
+	application.RegisterEvent[ocr.DropResult]("ocr:file-drop-result")
 }
 
 // Options 控制应用启动时行为。
@@ -259,6 +260,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// quickmenu 需在装配根持有引用：弹窗 route 条目要唤出稍后创建的主窗口。
 	quickMenuModule := quickmenu.New(store, registry)
 	fileShareModule := fileshare.New(plat)
+	ocrModule := ocr.New(plat) // 类型断言取服务实例，接主窗文件拖放（组件导入）
 	memoModule, err := memo.New(paths)
 	if err != nil {
 		slog.Error("failed to init memo module", "err", err)
@@ -299,7 +301,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		translucenttb.New(plat),
 		paseo.New(plat),
 		douzy.New(plat),
-		ocr.New(plat),
+		ocrModule,
 		lan.New(plat, store),
 		portkill.New(plat),
 		portscan.New(),
@@ -378,9 +380,28 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		BackgroundColour: application.NewRGB(245, 246, 248),
 		URL:              initialURL,
 		Hidden:           options.StartMinimized,
+		// 原生文件拖放：Windows(WebView2) 下把落放文件的真实磁盘路径交给 Go。
+		// 只有落在带 data-file-drop-target 标记元素上的拖放才会回报
+		//（文字识别页的组件导入区/图片区），其余区域行为不变。
+		EnableFileDrop: true,
 	})
 	mainWindow = win
 	notify.GetHub().SetWailsContext(a, win)
+
+	// 文字识别：主窗文件拖放 → OcrService（exe 落放=导入组件，图片落放=选图识别）。
+	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
+		ocrSvc := ocrMod.Service()
+		win.OnWindowEvent(events.Common.WindowFilesDropped, func(e *application.WindowEvent) {
+			details := e.Context().DropTargetDetails()
+			if details == nil {
+				return
+			}
+			switch details.ElementID {
+			case "ocr-import-target", "ocr-image-dropzone":
+				ocrSvc.HandleNativeDrop(e.Context().DroppedFiles())
+			}
+		})
+	}
 
 	// quickmenu：注入主窗引用供 route 条目唤窗，并随启动常驻激活全局鼠标钩子
 	//（右键长按识别与 wechat 入站监听同属常驻监听型能力；设置页关模块即可停用）。

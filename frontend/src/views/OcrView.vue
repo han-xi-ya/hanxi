@@ -3,9 +3,9 @@
 // 托管启停 + 识别工作台。三输入通道（对话框选图 / 拖拽 / 粘贴）汇流为
 // ImageRef 后统一转发 path 模式识别；状态以事件为主、5s 轮询兜底。
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
-import type { ImageRef, OcrOutcome, ServiceState } from '../../bindings/hanxi/internal/modules/ocr/models'
+import type { DropResult, ImageRef, OcrOutcome, ServiceState } from '../../bindings/hanxi/internal/modules/ocr/models'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import { useWailsEvent } from '../composables/useWailsEvent'
@@ -74,6 +74,47 @@ async function stopService() {
   }
   await refreshStatus()
 }
+
+// ---------- 组件导入（拖放/对话框；回执统一走 ocr:file-drop-result 事件） ----------
+async function importViaDialog() {
+  try {
+    await OcrAPI.ImportServiceExeDialog() // 成功/失败提示与自动启动由事件统一处理，此处只兜程序性错误
+  } catch (e) {
+    showToast(getErrorMessage(e))
+  }
+}
+
+useWailsEvent<DropResult>('ocr:file-drop-result', (r) => {
+  if (!r || !r.kind) return
+  if (r.kind === 'image') {
+    if (r.ok && r.image) {
+      image.value = r.image // 原生通道真实路径：免 dataURL 全量 IPC
+      outcome.value = null
+    } else if (r.message) {
+      showToast(r.message)
+    }
+    return
+  }
+  // import：取消对话框回执静默（无 message）
+  if (!r.ok) {
+    if (r.message) showToast(r.message)
+    void refreshStatus()
+    return
+  }
+  showToast(r.message || '组件已导入')
+  void refreshStatus()
+  const st = state.value?.state
+  if (st === 'stopped' || st === 'failed') void startService() // 导入即托管：拖进来就能跑
+})
+
+// 从未发现组件的首启场景：自动展开设置面板，让导入区直达视线（只提示一次）
+const importHinted = ref(false)
+watch(state, (st) => {
+  if (!importHinted.value && st && st.state === 'stopped' && !st.exePath) {
+    importHinted.value = true
+    showSettings.value = true
+  }
+})
 
 // ---------- 设置面板 ----------
 async function loadSettings() {
@@ -160,8 +201,17 @@ async function acceptFile(file: File) {
   }
 }
 
+// Wails/WebView2 环境下文件拖放走原生通道（带真实磁盘路径，由后端回报
+// ocr:file-drop-result），DOM File 通道仅作纯浏览器开发的降级回退，
+// 二者互斥防双处理。
+function nativeDropActive() {
+  const w = window as unknown as { chrome?: { webview?: { postMessageWithAdditionalObjects?: unknown } } }
+  return !!w.chrome?.webview?.postMessageWithAdditionalObjects
+}
+
 function onDrop(e: DragEvent) {
   dragOver.value = false
+  if (nativeDropActive()) return
   const file = e.dataTransfer?.files?.[0]
   if (file) void acceptFile(file)
 }
@@ -241,8 +291,10 @@ onMounted(() => {
 
     <!-- 服务引导：按状态给下一步，绝不裸报错 -->
     <UiBanner v-if="state && state.state === 'stopped'" tone="info">
-      识别服务未运行。将 hanxi-ocr 组件解压到 <code class="mono">{{ state.exePath || 'Hanxi 同级目录 ../hanxi-ocr' }}</code> 后
-      点击「启动服务」，或在其运行环境中手动启动后自动接管识别。
+      识别服务未运行。把单文件版 hanxi-ocr.exe
+      <button class="link-button" @click="showSettings = true">拖入下方导入区</button>
+      或解压组件到 <code class="mono">{{ state.exePath || 'Hanxi 同级目录 ../hanxi-ocr' }}</code>，
+      再点击「启动服务」；外部自行启动的实例会被自动接管识别。
       <button class="btn btn-primary btn-small ocr-banner-btn" :disabled="ctrlBusy" @click="startService">
         {{ ctrlBusy ? '启动中…' : '▶ 启动服务' }}
       </button>
@@ -272,6 +324,15 @@ onMounted(() => {
         <button class="btn btn-secondary btn-small" @click="browseExe">浏览…</button>
         <button v-if="state && !state.exeAuto" class="link-button" @click="resetExeAuto">恢复自动</button>
       </div>
+      <div class="ocr-set-row ocr-import-row">
+        <span class="ocr-set-k">导入组件</span>
+        <div id="ocr-import-target" class="ocr-import-drop" data-file-drop-target="true"
+          role="button" tabindex="0" aria-label="拖入或点击选择 hanxi-ocr.exe 导入"
+          @click="importViaDialog" @keydown.enter.prevent="importViaDialog">
+          将单文件版 <b>hanxi-ocr.exe</b>（约 48 MB）拖到这里，或点击选择文件；
+          校验通过即指向它并自动启动。升级组件：拖入新版覆盖旧路径即可
+        </div>
+      </div>
       <div class="ocr-set-row">
         <span class="ocr-set-k">端口</span>
         <input v-model="portInput" class="ocr-set-port" inputmode="numeric" aria-label="服务端口" />
@@ -294,7 +355,8 @@ onMounted(() => {
           </button>
         </div>
 
-        <div v-if="!image" class="ocr-dropzone" :class="{ 'ocr-dropzone-hot': dragOver }"
+        <div v-if="!image" id="ocr-image-dropzone" class="ocr-dropzone" :class="{ 'ocr-dropzone-hot': dragOver }"
+          data-file-drop-target="true"
           tabindex="0" aria-label="拖入图片、Ctrl+V 粘贴图片或按回车选择图片"
           :aria-disabled="!online" @dragover.prevent="dragOver = true"
           @dragleave="dragOver = false" @drop.prevent="onDrop"
@@ -422,6 +484,18 @@ onMounted(() => {
 .ocr-lines li:hover .link-button, .ocr-lines li:focus-within .link-button { opacity: 1; }
 .ocr-stale { margin-bottom: 0; }
 .ocr-retry { margin-left: 10px; }
+
+/* 组件导入区：原生通道在文件拖入悬停时会自动加 file-drop-target-active */
+.ocr-import-row { align-items: stretch; }
+.ocr-import-drop {
+  flex: 1; min-width: 0; padding: 12px 14px; text-align: center;
+  border: 1px dashed var(--color-border); border-radius: var(--radius-control);
+  font-size: 12px; line-height: 1.6; color: var(--color-text-muted); cursor: pointer;
+}
+.ocr-import-drop:hover, .ocr-import-drop:focus-visible, .ocr-import-drop.file-drop-target-active {
+  border-color: var(--color-primary); color: var(--color-primary); background: var(--surface-hover);
+}
+.ocr-dropzone.file-drop-target-active { border-color: var(--color-primary); }
 
 /* 设置面板 */
 .ocr-settings { gap: 8px; }

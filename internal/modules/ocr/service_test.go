@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/internal/modules/ocr/instance"
 )
 
 // ---------- 纯函数 ----------
@@ -92,6 +94,14 @@ func TestImageHelpers(t *testing.T) {
 
 // ---------- 转发层（httptest 模拟上游契约） ----------
 
+// stubProbe 空转探测器：恒报"无进程、端口不通"，让 refresh 走离线分支。
+type stubProbe struct{}
+
+func (stubProbe) FindPIDs() []uint32         { return nil }
+func (stubProbe) IsRunning() bool            { return false }
+func (stubProbe) PortOpen(string) bool       { return false }
+func (stubProbe) IsOCRService(string) bool   { return false }
+
 func newTestService(t *testing.T, url string) *OcrService {
 	t.Helper()
 	port := strings.TrimPrefix(url, "http://127.0.0.1:")
@@ -103,6 +113,7 @@ func newTestService(t *testing.T, url string) *OcrService {
 		exeDir: t.TempDir(),
 		tmpDir: t.TempDir(),
 	}
+	s.engine = instance.NewEngine(nil, stubProbe{}, instance.Callbacks{})
 	if p > 0 {
 		if err := s.store.SetListenPort(p); err != nil {
 			t.Fatal(err)
@@ -235,4 +246,111 @@ func TestSavePastedImageLifecycle(t *testing.T) {
 	if _, err := s.SavePastedImage("x", "data:text/plain;base64,AAA="); err == nil {
 		t.Fatal("非图片 MIME 应被拒")
 	}
+}
+
+// ---------- 组件导入（拖放/对话框，引用式校验） ----------
+
+// mkFakeExe 造指定体积的假 hanxi-ocr.exe（Truncate 稀疏文件，秒建不占实际空间）。
+func mkFakeExe(t *testing.T, dir, name string, size int64) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	f, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size > 0 {
+		if err := f.Truncate(size); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = f.Close()
+	return p
+}
+
+func TestImportServiceExeValidation(t *testing.T) {
+	s := newTestService(t, "")
+
+	cases := []struct {
+		name string
+		path string
+		want string // 期望中文提示关键词
+	}{
+		{"空路径", "  ", "未收到文件路径"},
+		{"改名件", filepath.Join(t.TempDir(), "我改名了.exe"), "hanxi-ocr.exe"},
+		{"不存在", filepath.Join(t.TempDir(), "hanxi-ocr.exe"), "不存在"},
+	}
+	for _, c := range cases {
+		res, err := s.ImportServiceExe(c.path)
+		if err != nil {
+			t.Fatalf("%s: 业务失败不应走 error 通道: %v", c.name, err)
+		}
+		if res.Ok || !strings.Contains(res.Message, c.want) {
+			t.Fatalf("%s: 应被拒且提示含 %q，实得 %+v", c.name, c.want, res)
+		}
+		if s.store.GetExePath() != "" {
+			t.Fatalf("%s: 失败导入不得改动设定", c.name)
+		}
+	}
+}
+
+func TestImportServiceExeRejectsOversizedJunkWithoutEngine(t *testing.T) {
+	// 目录版启动器体积（<35MB）且同级无 wcocr.dll → 拒收并指引要单文件版
+	dir := t.TempDir()
+	p := mkFakeExe(t, dir, "hanxi-ocr.exe", 9<<20)
+	s := newTestService(t, "")
+	res, err := s.ImportServiceExe(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Ok || !strings.Contains(res.Message, "单文件版") {
+		t.Fatalf("孤零小 exe 应被拒并提示单文件版，实得 %+v", res)
+	}
+}
+
+func TestImportServiceExeAcceptsBothForms(t *testing.T) {
+	singleDir := t.TempDir()
+	single := mkFakeExe(t, singleDir, "hanxi-ocr.exe", 36<<20) // 稀疏假单文件版
+	s := newTestService(t, "")
+	res, err := s.ImportServiceExe(single)
+	if err != nil || !res.Ok {
+		t.Fatalf("单文件版应导入成功: %+v %v", res, err)
+	}
+	if got := s.store.GetExePath(); got != single {
+		t.Fatalf("设定应指向导入件: %s", got)
+	}
+	if res.ExePath != single || res.Kind != "import" {
+		t.Fatalf("回执字段异常: %+v", res)
+	}
+
+	// 目录版：小 exe 但同级有 wcocr.dll → 同样可导入
+	folderDir := t.TempDir()
+	fake := mkFakeExe(t, folderDir, "hanxi-ocr.exe", 9<<20)
+	if err := os.WriteFile(filepath.Join(folderDir, "wcocr.dll"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	res2, err := s.ImportServiceExe(fake)
+	if err != nil || !res2.Ok {
+		t.Fatalf("目录版(带引擎同级)应导入成功: %+v %v", res2, err)
+	}
+}
+
+func TestHandleNativeDropRouting(t *testing.T) {
+	s := newTestService(t, "")
+
+	// .exe 落放 → 导入分支（以 store 副作用观测；无 Wails 实例时事件静默丢弃）
+	single := mkFakeExe(t, t.TempDir(), "hanxi-ocr.exe", 36<<20)
+	s.HandleNativeDrop([]string{single})
+	if s.store.GetExePath() != single {
+		t.Fatal("exe 落放应走导入分支并更新设定")
+	}
+
+	// 图片落放 → 选图分支，不得动组件设定
+	s.HandleNativeDrop([]string{realImagePath(t)})
+	if s.store.GetExePath() != single {
+		t.Fatal("图片落放不应改动组件设定")
+	}
+
+	// 杂项与空列表：无害
+	s.HandleNativeDrop([]string{mkFakeExe(t, t.TempDir(), "readme.txt", 10)})
+	s.HandleNativeDrop(nil)
 }

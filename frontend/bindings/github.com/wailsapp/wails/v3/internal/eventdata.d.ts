@@ -215,6 +215,7 @@ declare module "@wailsio/runtime" {
             "nanazip:operation-progress": nanazip$0.OperationProgress;
             "nanazip:package-snapshot": nanazip$0.PackageSnapshot;
             "notify:received": notify$0.Notification;
+            "ocr:file-drop-result": ocr$0.DropResult;
             "ocr:service-state": ocr$0.ServiceState;
             "papertodo:instance-state": instance$12.Snapshot;
             "papertodo:version-download": version$12.DownloadProgress;

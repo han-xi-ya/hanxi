@@ -15,6 +15,12 @@ import * as $models from "./models.js";
  */
 
 /**
+ * DropResult 原生文件拖放/组件导入的统一回执（事件 ocr:file-drop-result 与各
+ * 导入方法共用）。按 Kind 分流：import 结果刷状态，image 结果直接设为待识别图。
+ * @typedef {$models.DropResult} DropResult
+ */
+
+/**
  * ImageRef 统一"已选图"模型：对话框/拖拽/粘贴三通道汇流。
  * @typedef {$models.ImageRef} ImageRef
  */
