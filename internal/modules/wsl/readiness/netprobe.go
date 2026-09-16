@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"hanxi/internal/modules/wsl/netx"
+	"hanxi/internal/product"
 )
 
 // GitHub 安装通道探测端点（固定官方 HTTPS 地址）。
@@ -46,7 +47,7 @@ func headStatus(ctx context.Context, client *http.Client, rawURL string) string 
 	if err != nil {
 		return "net-fail"
 	}
-	req.Header.Set("User-Agent", "Hanxi/0.2")
+	req.Header.Set("User-Agent", product.UserAgent())
 	resp, err := client.Do(req)
 	if err != nil {
 		return "net-fail"

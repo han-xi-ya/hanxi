@@ -12,12 +12,16 @@ import (
 	"time"
 
 	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/product"
 )
+
+// userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
+// 注入 Version 后自动跟随真实发布版本，不再手写版本串。
+var userAgent = product.UserAgent()
 
 const (
 	repoOwner    = "M2Team"
 	repoName     = "NanaZip"
-	userAgent    = "Hanxi/0.2"
 	cacheTTL     = 10 * time.Minute
 	digestPrefix = "sha256:"
 )

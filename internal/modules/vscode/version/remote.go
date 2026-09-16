@@ -8,7 +8,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"hanxi/internal/product"
 )
+
+// userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
+// 注入 Version 后自动跟随真实发布版本，不再手写版本串。
+var userAgent = product.UserAgent()
 
 const (
 	// apiRoot VS Code 官方更新/下载网关（update.code.visualstudio.com）。
@@ -16,8 +22,7 @@ const (
 	// 因此本模块无 GitHub API 镜像回退的必要（everything 官网下载同族先例）。
 	apiRoot = "https://update.code.visualstudio.com"
 
-	userAgent = "Hanxi/0.2"
-	quality   = "stable"
+	quality = "stable"
 
 	// 平台标识（官方更新清单 API 的 {platform} 段，实测 200）：
 	// win32-x64-archive 便携 zip；win32-x64-user 用户安装器（免 UAC）。

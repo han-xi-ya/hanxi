@@ -10,14 +10,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"hanxi/internal/product"
 )
+
+// userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
+// 注入 Version 后自动跟随真实发布版本，不再手写版本串。
+var userAgent = product.UserAgent()
 
 const (
 	// 上游发布接口（果核自建，非 GitHub）：GET 返回当前版本 JSON；
 	// ?channel=beta 查测试通道。实测接口无鉴权、无历史列表。
 	productBase = "https://rj.lovestu.com/download/gh_view"
 	siteURL     = "https://pic.ghxi.com" // 官网（前端"访问官网"入口）
-	userAgent   = "Hanxi/0.2"
 
 	// cacheTTL 远程版本内存缓存时长：接口无分页无历史，10 分钟足以兜住
 	// 页面反复进入的重复请求，又不至于错过太久的新版本发布

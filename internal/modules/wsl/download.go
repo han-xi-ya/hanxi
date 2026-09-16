@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"hanxi/internal/modules/wsl/netx"
+	"hanxi/internal/product"
 )
 
 // EventMsiDownload 下载进度事件名（app.go 注册载荷类型）。
@@ -111,7 +112,7 @@ func (s *WslService) downloadTo(parent context.Context, tag, name, dir, rawURL s
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Hanxi/0.2")
+	req.Header.Set("User-Agent", product.UserAgent())
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("下载请求失败（GitHub 直连被拦时可换网络/代理后重试）: %w", err)

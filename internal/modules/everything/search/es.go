@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"hanxi/internal/product"
 )
 
 const (
@@ -32,8 +34,6 @@ const (
 	// maxZipBody ES zip 体积上限（实际约百 KB 级，防御异常响应）
 	maxZipBody = 8 << 20
 )
-
-var userAgent = "Hanxi/0.2"
 
 // Result 单条搜索结果（ES 输出列的子集，其余列丢弃）。
 type Result struct {
@@ -82,7 +82,7 @@ func EnsureESExe(toolDir string, onProgress func(stage string)) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", product.UserAgent())
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("下载 ES 搜索组件失败: %w", err)

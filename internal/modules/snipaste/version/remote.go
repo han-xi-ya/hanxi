@@ -14,13 +14,17 @@ import (
 	"time"
 
 	"hanxi/internal/platform/versioncmp"
+	"hanxi/internal/product"
 )
+
+// userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
+// 注入 Version 后自动跟随真实发布版本，不再手写版本串。
+var userAgent = product.UserAgent()
 
 const (
 	officialSiteURL  = "https://www.snipaste.com/"
 	downloadsPageURL = "https://www.snipaste.com/download.html"
 	sha1ManifestURL  = "https://dl.snipaste.com/sha-1.txt"
-	userAgent        = "Hanxi/0.2"
 	cacheTTL         = 10 * time.Minute
 	probeTimeout     = 12 * time.Second
 	maxPageBody      = 4 << 20

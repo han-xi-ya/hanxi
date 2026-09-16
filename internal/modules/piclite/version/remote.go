@@ -9,12 +9,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"hanxi/internal/product"
 )
+
+// userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
+// 注入 Version 后自动跟随真实发布版本，不再手写版本串。
+var userAgent = product.UserAgent()
 
 const (
 	repoOwner  = "amiaoapp"
 	repoName   = "PicLite"
-	userAgent  = "Hanxi/0.2"
 	releaseURL = "https://api.github.com/repos/" + repoOwner + "/" + repoName + "/releases?per_page=60"
 
 	// cacheTTL 远程 Release 列表内存缓存时长（规避 GitHub 未认证 60 次/小时限流）

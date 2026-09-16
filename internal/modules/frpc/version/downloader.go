@@ -16,12 +16,14 @@ import (
 const (
 	repoOwner  = "fatedier"
 	repoName   = "frp"
-	userAgent  = product.Name + "/" + product.Version
 	releaseURL = "https://api.github.com/repos/" + repoOwner + "/" + repoName + "/releases?per_page=60"
 
 	// cacheTTL 远程 Release 列表内存缓存时长（规避 GitHub 未认证 60 次/小时限流）
 	cacheTTL = 10 * time.Minute
 )
+
+// userAgent 统一引产品身份（构建期 -X 注入版本后自动跟随，不再手抄版本串）
+var userAgent = product.UserAgent()
 
 // 拉取 GitHub API 的候选前缀：直连优先，镜像逐个回退
 var apiBaseURLs = []string{

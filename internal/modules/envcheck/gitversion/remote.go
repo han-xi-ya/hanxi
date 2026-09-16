@@ -3,21 +3,18 @@ package gitversion
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
-	"sync"
 	"time"
+
+	"hanxi/internal/modules/envcheck/remoteversion"
 )
 
 const (
 	releasesAPIURL  = "https://api.github.com/repos/git-for-windows/git/releases?per_page=10"
 	downloadPageURL = "https://git-scm.com/download/win"
-	userAgent       = "Hanxi/0.2"
-	cacheTTL        = 10 * time.Minute
-	probeTimeout    = 12 * time.Second
 	maxResponseBody = 4 << 20
 	maxReleaseCount = 5
 )
@@ -39,105 +36,60 @@ type remoteSource struct {
 
 func defaultRemoteSource() remoteSource {
 	return remoteSource{
-		client: &http.Client{
-			Timeout:       probeTimeout,
-			CheckRedirect: checkGitHubRedirect,
-		},
+		client:   remoteversion.NewHTTPClient("api.github.com"),
 		endpoint: releasesAPIURL,
 	}
 }
 
-func checkGitHubRedirect(req *http.Request, _ []*http.Request) error {
-	if req.URL.Scheme != "https" || !strings.EqualFold(req.URL.Hostname(), "api.github.com") {
-		return fmt.Errorf("拒绝 GitHub API 重定向到非官方地址: %s", req.URL.Redacted())
-	}
-	return nil
-}
-
-type releaseCache struct {
-	mu        sync.Mutex
-	data      []Release
-	fetchedAt time.Time
-	source    remoteSource
-	now       func() time.Time
-}
-
-func newReleaseCache(source remoteSource) *releaseCache {
-	return &releaseCache{source: source, now: time.Now}
-}
-
-func (c *releaseCache) get() ([]Release, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if len(c.data) > 0 && c.now().Sub(c.fetchedAt) < cacheTTL {
-		return cloneReleases(c.data, false), nil
-	}
-	list, err := c.source.fetchRemote()
-	if err == nil && len(list) > 0 {
-		c.data = cloneReleases(list, false)
-		c.fetchedAt = c.now()
-		return cloneReleases(c.data, false), nil
-	}
-	if len(c.data) > 0 {
-		return cloneReleases(c.data, true), nil
-	}
-	if err == nil {
-		err = fmt.Errorf("Git for Windows 官网稳定版本列表为空")
-	}
-	return nil, err
-}
-
-func cloneReleases(src []Release, stale bool) []Release {
-	out := make([]Release, len(src))
-	copy(out, src)
-	for i := range out {
-		out[i].Stale = stale
-	}
-	return out
-}
-
-var remoteCache = newReleaseCache(defaultRemoteSource())
-
-// RecentReleases 返回近期最多五个 Git for Windows 官网稳定版本。
-func RecentReleases() ([]Release, error) {
-	return remoteCache.get()
-}
-
 func (s remoteSource) fetchRemote() ([]Release, error) {
-	req, err := http.NewRequest(http.MethodGet, s.endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建 GitHub Releases 请求失败: %w", err)
-	}
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := s.client.Do(req)
+	body, err := remoteversion.Fetch(s.client, s.endpoint, maxResponseBody, map[string]string{
+		"Accept":               "application/vnd.github+json",
+		"X-GitHub-Api-Version": "2022-11-28",
+	})
 	if err != nil {
 		return nil, fmt.Errorf("获取 Git for Windows 稳定版本失败: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("获取 Git for Windows 稳定版本失败: HTTP %d", resp.StatusCode)
-	}
-	if resp.ContentLength > maxResponseBody {
-		return nil, fmt.Errorf("GitHub Releases 响应超过 %d 字节限制", maxResponseBody)
-	}
-
-	limited := io.LimitReader(resp.Body, maxResponseBody+1)
-	body, err := io.ReadAll(limited)
-	if err != nil {
-		return nil, fmt.Errorf("读取 GitHub Releases 响应失败: %w", err)
-	}
-	if len(body) > maxResponseBody {
-		return nil, fmt.Errorf("GitHub Releases 响应超过 %d 字节限制", maxResponseBody)
 	}
 	var releases []githubRelease
 	if err := json.Unmarshal(body, &releases); err != nil {
 		return nil, fmt.Errorf("解析 GitHub Releases 响应失败: %w", err)
 	}
-	return normalizeReleases(releases), nil
+	list := normalizeReleases(releases)
+	if len(list) == 0 {
+		return nil, fmt.Errorf("Git for Windows 官网稳定版本列表为空")
+	}
+	return list, nil
+}
+
+// releaseGetter 抽象 remoteversion.Cache 的读取接口（TTL/并发合并/stale-if-error
+// 语义即该公共缓存本体，单测以假实现覆盖 stale 标记与错误透传两条支路）。
+type releaseGetter interface {
+	Get() ([]Release, bool, time.Time, error)
+}
+
+// cloneReleases 深拷贝：缓存内部数据与返回值共享引用会让调用方误改缓存。
+func cloneReleases(src []Release) []Release {
+	return append([]Release(nil), src...)
+}
+
+func cachedReleases(c releaseGetter) ([]Release, error) {
+	list, stale, _, err := c.Get()
+	if err != nil {
+		return nil, err
+	}
+	if stale {
+		// stale-if-error 回吐：数据可展示但必须标注陈旧
+		for i := range list {
+			list[i].Stale = true
+		}
+	}
+	return list, nil
+}
+
+var remoteCache releaseGetter = remoteversion.NewCache(defaultRemoteSource().fetchRemote, cloneReleases)
+
+// RecentReleases 返回近期最多五个 Git for Windows 官网稳定版本。
+func RecentReleases() ([]Release, error) {
+	return cachedReleases(remoteCache)
 }
 
 func normalizeReleases(src []githubRelease) []Release {

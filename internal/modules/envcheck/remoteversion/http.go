@@ -7,10 +7,15 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"hanxi/internal/product"
 )
 
+// UserAgent 探测请求统一 UA：派生自产品身份，构建注入 Version 后自动跟随，
+// 不再手写版本串（导出供调用方复用；无 const 依赖方，故用 var）。
+var UserAgent = product.UserAgent()
+
 const (
-	UserAgent    = "Hanxi/0.2"
 	ProbeTimeout = 12 * time.Second
 )
 

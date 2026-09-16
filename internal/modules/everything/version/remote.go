@@ -9,12 +9,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"hanxi/internal/product"
 )
+
+// userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
+// 注入 Version 后自动跟随真实发布版本，不再手写版本串。
+var userAgent = product.UserAgent()
 
 const (
 	siteBase             = "https://www.voidtools.com"
 	downloadsPageURL     = siteBase + "/downloads/"
-	userAgent            = "Hanxi/0.2"
 	assetURLFormat       = siteBase + "/Everything-%s.x64.zip" // 官方资产命名模板（已用 HEAD 实测稳定）
 	shaURLFormat         = siteBase + "/Everything-%s.sha256"  // 官方 sha256 清单（每版本一份）
 	probeTimeout         = 10 * time.Second
