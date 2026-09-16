@@ -8,11 +8,11 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/windows"
 )
 
 // PortOccupant 端口占用实体模型
@@ -176,7 +176,7 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 
 	err := s.plat.Process().KillVerified(ctx, token, true)
 	if err == nil {
-		notify.Success("portkill", "进程已终止", fmt.Sprintf("已成功终止进程 PID: %d (%s)", pid, exePath), "/portkill")
+		notify.Success("portkill", "进程已终止", fmt.Sprintf("已成功终止进程 PID: %d (%s)", pid, exePath), "/ext/portkill")
 		return KillResult{Success: true}
 	}
 
@@ -192,12 +192,6 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 		Success:      false,
 		ErrorMessage: fmt.Sprintf("终止失败: %v", err),
 	}
-}
-
-// psQuote 将字符串包装为 PowerShell 单引号字面量（内部单引号成对转义）。
-// 用单引号而非双引号：路径含 $ 或反引号时不会被 PowerShell 插值。
-func psQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
 // KillProcessElevated 触发 UAC 提权 Helper 查杀管理员进程。
@@ -228,22 +222,22 @@ func (s *PortKillService) KillProcessElevated(pid uint32) KillResult {
 	}
 
 	// 组装 helper 参数：始终携带镜像路径指纹；创建时间可查时一并携带
-	args := fmt.Sprintf("%s, %s", psQuote("-mode=killhelper"), psQuote(fmt.Sprintf("-pid=%d", pid)))
+	args := fmt.Sprintf("%s, %s", windows.PsQuote("-mode=killhelper"), windows.PsQuote(fmt.Sprintf("-pid=%d", pid)))
 	if info.ExePath != "" {
-		args += ", " + psQuote("-exe="+info.ExePath)
+		args += ", " + windows.PsQuote("-exe="+info.ExePath)
 	}
 	if !info.StartedAt.IsZero() {
-		args += ", " + psQuote(fmt.Sprintf("-start=%d", info.StartedAt.UnixNano()))
+		args += ", " + windows.PsQuote(fmt.Sprintf("-start=%d", info.StartedAt.UnixNano()))
 	}
 
 	// 使用 powershell 的 Start-Process -Verb RunAs 调起同二进制的 helper 模式；
 	// -PassThru 取回子进程退出码并转成本脚本的退出码，供 Go 侧如实归因
 	script := fmt.Sprintf(
 		"$p = Start-Process -FilePath %s -ArgumentList %s -Verb RunAs -Wait -WindowStyle Hidden -PassThru; if ($null -eq $p) { exit 1 }; exit [int]$p.ExitCode",
-		psQuote(exe), args)
+		windows.PsQuote(exe), args)
 
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	windows.HideConsole(cmd)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
