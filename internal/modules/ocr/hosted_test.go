@@ -411,6 +411,131 @@ func TestHostedInstallFailureLeavesTargetIntact(t *testing.T) {
 	}
 }
 
+// ---------- manifest.files 逐文件自校验（后厨超集令） ----------
+
+// zipSHA 计算字节串 sha256（十六进制小写）。
+func zipSHA(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+// makeFilesZip 造带 manifest.files 逐文件清单的包；mode：
+// good=清单全对 / tamper=exe 摘要篡一位 / escape=清单含逃逸路径。
+func makeFilesZip(t *testing.T, dir, mode string) string {
+	t.Helper()
+	exeBody := "MZ-exe-real"
+	modelBody := "model-bytes"
+	exeSum, modelSum := zipSHA(exeBody), zipSHA(modelBody)
+	if mode == "tamper" {
+		exeSum = zipSHA("wrong")
+	}
+	files := []hostedManifestEntry{
+		{Path: serviceExeName, SHA256: exeSum},
+		{Path: "models/model.onnx", SHA256: modelSum},
+	}
+	if mode == "escape" {
+		files = append(files, hostedManifestEntry{Path: "../escape.txt", SHA256: zipSHA("x")})
+	}
+	manifest, _ := json.Marshal(hostedManifest{
+		Schema: hostedManifestSchema, Engine: "paddle", Version: "1.0.0", Entry: serviceExeName,
+		Files: files,
+	})
+	path := filepath.Join(dir, "hanxi-ocr-paddle-1.0.0.zip")
+	makeHostedZip(t, path, []zipEntry{
+		{name: manifestName, body: string(manifest)},
+		{name: serviceExeName, body: exeBody},
+		{name: "models/model.onnx", body: modelBody},
+	})
+	return path
+}
+
+func TestHostedFilesSelfCheck(t *testing.T) {
+	// 清单一致（good）→ 安装成功
+	hm := newTestHostedManager(t)
+	p := makeFilesZip(t, t.TempDir(), "good")
+	writeHostedSidecar(t, p)
+	if _, err := hm.installZip(p); err != nil {
+		t.Fatalf("一致清单应安装成功: %v", err)
+	}
+
+	// 摘要不符 → 拒收
+	p2 := makeFilesZip(t, t.TempDir(), "tamper")
+	writeHostedSidecar(t, p2)
+	hm2 := newTestHostedManager(t)
+	if _, err := hm2.installZip(p2); err == nil || !strings.Contains(err.Error(), "逐文件校验失败") {
+		t.Fatalf("篡改摘要应拦下: %v", err)
+	}
+	if len(hm2.list()) != 0 {
+		t.Fatal("拒收不得留下版本")
+	}
+
+	// 清单路径逃逸 → 独立拒收（manifest 不可信其字面）
+	p3 := makeFilesZip(t, t.TempDir(), "escape")
+	writeHostedSidecar(t, p3)
+	hm3 := newTestHostedManager(t)
+	if _, err := hm3.installZip(p3); err == nil || !strings.Contains(err.Error(), "非法路径") {
+		t.Fatalf("files 逃逸路径应拒绝: %v", err)
+	}
+}
+
+// ---------- 后厨真包集成测（2026-09-18 双包已交付；只读引用，产物只进 TempDir） ----------
+
+func realPackagePath(t *testing.T, env, file string) string {
+	t.Helper()
+	p := os.Getenv(env)
+	if p == "" {
+		p = filepath.Join(`E:\System\桌面\工具\hanxi-ocr-dev\dist`, file)
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Skipf("真包未就位（%s），跳过集成测", p)
+	}
+	return p
+}
+
+func TestRealPaddlePackageFullChain(t *testing.T) {
+	src := realPackagePath(t, "HANXI_OCR_PADDLE_ZIP", "hanxi-ocr-paddle-0.4.0-alpha.zip")
+	// 安装链会把包移存 installers/——必须拷贝进 TempDir，绝不触碰只读成品目录
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, filepath.Base(src))
+	if err := os.WriteFile(zipPath, mustRead(t, src), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(zipPath+".sha256", mustRead(t, src+".sha256"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	hm := newTestHostedManager(t)
+	hv, err := hm.installZip(zipPath)
+	if err != nil {
+		t.Fatalf("真 paddle 包安装失败: %v", err)
+	}
+	if hv.Version != "0.4.0-alpha" || hv.State != hostedStateReady {
+		t.Fatalf("回执异常: %+v", hv)
+	}
+	if !isRegularFile(hv.ExePath) || hv.Size < 1<<20 {
+		t.Fatalf("入口异常: %+v", hv)
+	}
+	exe, ver, ok := hostedResolveLatest(hm.versionsRoot, EnginePaddle)
+	if !ok || ver != "0.4.0-alpha" || exe != hv.ExePath {
+		t.Fatalf("resolve 未命中托管入口: %s/%s/%v", exe, ver, ok)
+	}
+	if len(hm.list()) != 1 {
+		t.Fatalf("列表应恰一项: %+v", hm.list())
+	}
+}
+
+func TestRealWechatPackageValidationOnly(t *testing.T) {
+	// wechat 私发件：只跑校验闸（读原路径，不解压不拷贝——49MB 不进任何落盘面）
+	src := realPackagePath(t, "HANXI_OCR_WECHAT_ZIP", "hanxi-ocr-wechat-4.1.15.9.zip")
+	if _, err := verifyHostedZipSHA(src); err != nil {
+		t.Fatalf("真 wechat 包旁挂核对失败: %v", err)
+	}
+	m, _, err := inspectHostedZip(src)
+	if err != nil || m.Engine != EngineWechat || m.Version != "4.1.15.9" {
+		t.Fatalf("真 wechat 包契约校验失败: %+v %v", m, err)
+	}
+}
+
 // ---------- 列表 / 解析 / 卸载 ----------
 
 func TestHostedList(t *testing.T) {

@@ -68,14 +68,23 @@ var hostedZipNameRe = regexp.MustCompile(`(?i)^hanxi-ocr-(wechat|paddle)-([A-Za-
 // 不得以 . 或 - 结尾（Windows 目录名尾部点/连字符非法或语义不定）。
 var versionTokenRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
-// hostedManifest 安装包根 manifest.json 的契约结构（未知字段忽略，向前兼容）。
+// hostedManifest 安装包根 manifest.json 的契约结构。后厨超集令（2026-09-18）：
+// 契约六字段之外还携带 name/files/build_date 等额外键——一律忽略向前兼容，
+// 严禁 DisallowUnknownFields；files[]（path/sha256）用于解压后逐文件自校验。
 type hostedManifest struct {
-	Schema   int    `json:"schema"`
-	Engine   string `json:"engine"`
-	Version  string `json:"version"`
-	Entry    string `json:"entry"`
-	MinHanxi string `json:"minHanxi"`
-	Note     string `json:"note"`
+	Schema   int                   `json:"schema"`
+	Engine   string                `json:"engine"`
+	Version  string                `json:"version"`
+	Entry    string                `json:"entry"`
+	MinHanxi string                `json:"minHanxi"`
+	Note     string                `json:"note"`
+	Files    []hostedManifestEntry `json:"files"`
+}
+
+// hostedManifestEntry manifest.files 逐文件摘要件（size 不参与校验，只认 sha256）。
+type hostedManifestEntry struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 // validate 契约矩阵校验（schema/engine/version/entry 四闸，中文报错）。
@@ -317,6 +326,11 @@ func (hm *hostedManager) installZip(zipPath string) (HostedVersion, error) {
 		_ = os.RemoveAll(tmp)
 		return empty, err
 	}
+	// 解压后逐文件自校验（manifest.files 为包内完整性自证，缺失则跳过——兼容旧包）
+	if err := verifyHostedFiles(tmp, m.Files); err != nil {
+		_ = os.RemoveAll(tmp)
+		return empty, err
+	}
 
 	// 原子换入：旧版本目录先移开（可能被锁，失败即中止并清理 tmp），新目录 rename 顶上
 	aside := ""
@@ -373,6 +387,38 @@ func (hm *hostedManager) installZip(zipPath string) (HostedVersion, error) {
 		Note:        m.Note,
 		State:       hostedStateReady,
 	}, nil
+}
+
+// verifyHostedFiles 按 manifest.files 逐文件复核解压结果（sha256 一致才算装好）。
+// 空清单跳过（契约只钉六字段，files 为后厨超集扩展）；清单里的路径同样过
+// ZipSlip 闸——manifest 由包自带，不可信其字面。
+func verifyHostedFiles(targetDir string, files []hostedManifestEntry) error {
+	for _, fe := range files {
+		clean := filepath.Clean(filepath.FromSlash(fe.Path))
+		if clean == "." || filepath.IsAbs(clean) || clean == ".." ||
+			strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("manifest.files 含非法路径 %q，拒收", fe.Path)
+		}
+		want := strings.ToLower(strings.TrimSpace(fe.SHA256))
+		if len(want) != 64 {
+			return fmt.Errorf("manifest.files[%s] 摘要不是合法 sha256：%q", fe.Path, fe.SHA256)
+		}
+		full := filepath.Join(targetDir, clean)
+		f, err := os.Open(full)
+		if err != nil {
+			return fmt.Errorf("解压后缺少 manifest 点名的文件 %s：%w", fe.Path, err)
+		}
+		h := sha256.New()
+		_, copyErr := io.Copy(h, f)
+		f.Close()
+		if copyErr != nil {
+			return fmt.Errorf("读取 %s 失败: %w", fe.Path, copyErr)
+		}
+		if actual := hex.EncodeToString(h.Sum(nil)); actual != want {
+			return fmt.Errorf("逐文件校验失败：%s（期望 %s，实际 %s）", fe.Path, want, actual)
+		}
+	}
+	return nil
 }
 
 // extractHostedZip 全量保布局解压（ZipSlip 拒绝 + 炸弹逐字节上限 + 读满触发 CRC）。
