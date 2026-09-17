@@ -158,23 +158,49 @@ var contractNames = map[string]bool{serviceContractName: true}
 
 func isContractName(name string) bool { return contractNames[name] }
 
-// resolveServiceExe 纯函数：按引擎 ID 解析组件路径（exeDir/dataDir 注入便于单测，计划 §5.3）。
-//   - wechat：用户设定路径 → Hanxi 同级 ../hanxi-ocr/（私发件默认落位）→ PATH 兜底，
-//     与单引擎时代完全一致；
-//   - paddle：登记路径 → DataDir/ocr-engines/ 下含 manifest.json 的组件目录 →
-//     exe 同级 ../hanxi-ocr-paddle/。不做 PATH 兜底：开源件与微信件契约同名
-//     hanxi-ocr.exe，PATH 上无法区分型号。
+// resolveServiceExe 纯函数：按引擎 ID 解析组件路径（锚点目录注入便于单测，计划 §5.3）。
 //
-// 设定/登记路径失效一律以 error 明示，不静默回退自动发现（与旧行为一致）。
-func resolveServiceExe(exeDir, dataDir, engineID, stored string) (path string, fromStore bool, err error) {
-	switch engineID {
-	case EngineWechat:
-		if p := strings.TrimSpace(stored); p != "" {
-			if st, e := os.Stat(p); e == nil && !st.IsDir() {
+// F7 托管优先（BACKLOG F7：引用式→托管式）：
+//  1. 登记件指向托管树（versions/hanxi-ocr/<engine>-<version>/）内 → 托管语义：
+//     在位即用；被卸载/损坏时自愈回退到该引擎托管树内最新版本；全树已空则
+//     视同自动发现继续走旧锚点（卸载即回到托管前世界，不留悬空报错）；
+//  2. 无登记 → 托管树最新版本优先（zip 装好即生效，压过旧同级/ocr-engines 锚点）；
+//  3. 托管树之外的设定/登记路径保留旧语义：存在即用、失效一律以 error 明示，
+//     不静默回退自动发现（48MB 单文件版与手动指路径兜底行为不动）；
+//  4. 旧自动发现锚点殿后兼容——wechat：Hanxi 同级 ../hanxi-ocr/ → PATH；
+//     paddle：DataDir/ocr-engines/（含 manifest.json 自检）→ 同级 ../hanxi-ocr-paddle/。
+//     paddle 不做 PATH 兜底：开源件与微信件契约同名 hanxi-ocr.exe，PATH 上无法区分型号。
+//
+// versionsRoot 为空（托管未接线/旧测试注入）时托管两闸自然跳过，行为与改造前一致。
+func resolveServiceExe(exeDir, dataDir, versionsRoot, engineID, stored string) (path string, fromStore bool, err error) {
+	if !isKnownEngine(engineID) {
+		return "", false, fmt.Errorf("未知 OCR 引擎：%s（可选 wechat / paddle）", engineID)
+	}
+	if p := strings.TrimSpace(stored); p != "" {
+		if hostedDirOfExe(versionsRoot, p) != "" {
+			// 登记件在托管树内：生效版本以托管树为准（含被卸载后的自愈回退）
+			if isRegularNonEmpty(p) {
 				return p, true, nil
+			}
+			if exe, _, ok := hostedResolveLatest(versionsRoot, engineID); ok {
+				return exe, false, nil
+			}
+			// 引擎整体卸载：落到下方托管树（必空）与旧锚点链
+		} else {
+			if isRegularNonEmpty(p) {
+				return p, true, nil
+			}
+			if engineID == EnginePaddle {
+				return "", true, fmt.Errorf("登记的 PP-OCR 引擎路径已失效：%s，请重新导入引擎目录", p)
 			}
 			return "", true, fmt.Errorf("设置的服务路径已失效：%s，请在设置中重新指定", p)
 		}
+	}
+	if exe, _, ok := hostedResolveLatest(versionsRoot, engineID); ok {
+		return exe, false, nil
+	}
+	switch engineID {
+	case EngineWechat:
 		cand := filepath.Join(filepath.Dir(exeDir), serviceExeDirName, serviceExeName)
 		if st, e := os.Stat(cand); e == nil && !st.IsDir() {
 			return cand, false, nil
@@ -182,22 +208,17 @@ func resolveServiceExe(exeDir, dataDir, engineID, stored string) (path string, f
 		if p, e := exec.LookPath(serviceExeName); e == nil {
 			return p, false, nil
 		}
-		return "", false, fmt.Errorf("未找到 hanxi-ocr.exe，默认预期位置 %s；可在设置中手动指定路径", cand)
+		return "", false, fmt.Errorf("未找到 hanxi-ocr.exe，默认预期位置 %s；可将引擎安装包（.zip）拖入文字识别页托管安装，或在设置中手动指定路径", cand)
 	case EnginePaddle:
-		return resolvePaddleExe(exeDir, dataDir, stored)
+		return resolvePaddleExe(exeDir, dataDir)
 	default:
 		return "", false, fmt.Errorf("未知 OCR 引擎：%s（可选 wechat / paddle）", engineID)
 	}
 }
 
-// resolvePaddleExe PP-OCR 开源引擎发现链（约定见计划 §3.3/§6：目录按 manifest 自检）。
-func resolvePaddleExe(exeDir, dataDir, stored string) (path string, fromStore bool, err error) {
-	if p := strings.TrimSpace(stored); p != "" {
-		if st, e := os.Stat(p); e == nil && !st.IsDir() {
-			return p, true, nil
-		}
-		return "", true, fmt.Errorf("登记的 PP-OCR 引擎路径已失效：%s，请重新导入引擎目录", p)
-	}
+// resolvePaddleExe PP-OCR 开源引擎旧发现链（托管树与登记件已在主函数前置处理；
+// 约定见计划 §3.3/§6：目录按 manifest 自检）。
+func resolvePaddleExe(exeDir, dataDir string) (path string, fromStore bool, err error) {
 	enginesRoot := filepath.Join(dataDir, enginesDirName)
 	if p := findPaddleInDir(enginesRoot); p != "" {
 		return p, false, nil

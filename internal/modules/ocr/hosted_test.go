@@ -552,6 +552,75 @@ func TestHostedRemove(t *testing.T) {
 	}
 }
 
+// ---------- 解析链：托管优先与失效自愈（F7 卡片 3） ----------
+
+func TestResolveServiceExeHostedFirst(t *testing.T) {
+	base := t.TempDir()
+	hanxiDir := filepath.Join(base, "hanxi")
+	dataDir := filepath.Join(base, "hanxidata")
+	versionsRoot := filepath.Join(base, "versions", hostedDirName)
+	if err := os.MkdirAll(hanxiDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// 旧同级锚点（托管前世界的默认落位）
+	sibling := filepath.Join(base, "hanxi-ocr")
+	mkComponentDir(t, sibling, false)
+	siblingExe := filepath.Join(sibling, serviceExeName)
+
+	// 无托管树 → 旧行为：同级自动发现
+	got, fromStore, err := resolveServiceExe(hanxiDir, dataDir, versionsRoot, EngineWechat, "")
+	if err != nil || got != siblingExe || fromStore {
+		t.Fatalf("无托管树应走旧同级锚点: %v/%v/%v", got, fromStore, err)
+	}
+
+	// 装两个托管版本 → 托管最新版压过同级
+	w1 := mkVer(t, versionsRoot, "wechat", "1.0", false)
+	w2 := mkVer(t, versionsRoot, "wechat", "1.2", false)
+	got, fromStore, err = resolveServiceExe(hanxiDir, dataDir, versionsRoot, EngineWechat, "")
+	want := filepath.Join(w2, serviceExeName)
+	if err != nil || got != want || fromStore {
+		t.Fatalf("托管优先 = %v/%v/%v, want %s", got, fromStore, err, want)
+	}
+
+	// 树外显式登记件仍在位 → 用户意图优先（48MB 手动指定行为不动）
+	got, fromStore, err = resolveServiceExe(hanxiDir, dataDir, versionsRoot, EngineWechat, siblingExe)
+	if err != nil || got != siblingExe || !fromStore {
+		t.Fatalf("树外登记件应最高优先: %v/%v/%v", got, fromStore, err)
+	}
+
+	// 托管登记件在位 → 命中登记版本（非最新）
+	reg := filepath.Join(w1, serviceExeName)
+	got, fromStore, err = resolveServiceExe(hanxiDir, dataDir, versionsRoot, EngineWechat, reg)
+	if err != nil || got != reg || !fromStore {
+		t.Fatalf("托管登记件 = %v/%v/%v", got, fromStore, err)
+	}
+
+	// 登记版本被卸载 → 自愈回退到托管树最新（不报"已失效"）
+	if err := os.RemoveAll(w1); err != nil {
+		t.Fatal(err)
+	}
+	got, fromStore, err = resolveServiceExe(hanxiDir, dataDir, versionsRoot, EngineWechat, reg)
+	if err != nil || got != want || fromStore {
+		t.Fatalf("卸载自愈 = %v/%v/%v, want 最新版 %s", got, fromStore, err, want)
+	}
+
+	// 引擎整体卸载 → 落回旧锚点链（同级仍在位）
+	if err := os.RemoveAll(versionsRoot); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err = resolveServiceExe(hanxiDir, dataDir, versionsRoot, EngineWechat, reg)
+	if err != nil || got != siblingExe {
+		t.Fatalf("整体卸载应落回旧锚点: %v/%v", got, err)
+	}
+
+	// 树外登记件失效 → 一律明示"已失效"，不静默回退
+	if _, _, err := resolveServiceExe(hanxiDir, dataDir, versionsRoot, EngineWechat, filepath.Join(base, "gone.exe")); err == nil ||
+		!strings.Contains(err.Error(), "失效") {
+		t.Fatalf("树外失效登记应明示: %v", err)
+	}
+}
+
 func TestHostedDirOfExe(t *testing.T) {
 	root := filepath.Join(t.TempDir(), hostedDirName)
 	inside := filepath.Join(root, "paddle-1.0", serviceExeName)
