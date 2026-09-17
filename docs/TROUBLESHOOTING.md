@@ -992,6 +992,7 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：`ls $GOMODCACHE/cache/download/<mod>/@v/` 逐模块核对 .mod/.zip/.ziphash 三件套完整性（只看 `pkg/mod` 解包目录会误判——解包存在不代表 zip 与 ziphash 还在）；确认 `curl proxy.golang.org` 不可达后放弃补拉，转缓存内自洽方案。
 - **正确做法与标准修复方案**：只允许**升级方向**的钉版本：`easyjson` 升到缓存完整的 v0.9.0（MVS max，无降级风险）；`cast` 被 wails 图锁死在 v1.10.0 且其 zip 无缓存，用 `go mod edit -replace github.com/spf13/cast=github.com/spf13/cast@v1.7.1`（v1.7.1 恰是 mcp-go 自身要求的版本，wails 源码并不 import cast，替换仅影响取源不影响语义）。随后 `GOPROXY=off GOFLAGS=-mod=mod go get github.com/mark3labs/mcp-go/mcp@v0.41.1 github.com/mark3labs/mcp-go/server@v0.41.1` 一次成功，`go build ./... && go mod verify` 全绿。恢复网络后必须跑 `go mod tidy` 复核并酌情撤除 replace。
 - **避坑防重犯建议**：① 离线可行性以 `cache/download/<mod>/@v/*.ziphash` 为准，不以解包目录为准；② 永远不要用 `go get mod@低版本` 逆着 MVS 钉依赖——会引发包括"误删在用模块"在内的连锁改写，升级方向（max 语义）才是安全的；③ 无网时 `go mod tidy` 因"依赖的测试依赖"报错属已知行为，用显式 `go get` 逐包补齐替代，但**最终验收仍要在有网环境跑一次 tidy**；④ `go get` 前 `git stash` 或确保 go.mod 干净，失败即 `git checkout -- go.mod go.sum` 回滚重试，别在手脏状态下继续 get。
+- **复核结果（2026-09-17，R3）**：网络部分恢复（proxy.golang.org 仍 dial tcp 超时，goproxy.cn 可用）。已 `go mod edit -dropreplace github.com/spf13/cast` + 有网 `go mod tidy` 撤除绕行：cast 按 wails 图自然落 v1.10.0 且 zip 已补拉入缓存；easyjson 维持 v0.9.0（升级方向钉，回退上游 v0.7.7 即本条目红线禁止的逆钉操作）；离线期 go get 多记的间接依赖 `josharian/intern` 被正常 tidy 剪除。`go build ./...`、`go mod verify`、`GOPROXY=off go build ./...`（新 go.mod 离线仍自洽）、`go test ./internal/mcp/... ./internal/mcpwizard/... ./internal/app` 抽查、`go mod tidy -diff` 全绿，绕行 replace 正式退场。
 
 ### 63. `-H=windowsgui` 下 stdio MCP 管道实测可用；帧级测试必须自己关写端（否则 io.Pipe 死锁挂 120s）
 
