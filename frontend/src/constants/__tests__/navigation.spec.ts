@@ -9,8 +9,8 @@ import {
 import { ICON_NAMES } from '../icons'
 
 describe('constants/navigation', () => {
-  it('登记了全部 48 条路由（含设置页 6 个分区子路由）', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(48)
+  it('登记了全部 49 条路由（含设置页 6 个分区子路由）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(49)
     for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr']) {
       expect(ROUTES[route]).toBeDefined()
     }
@@ -19,12 +19,12 @@ describe('constants/navigation', () => {
     }
   })
 
-  it('模块门禁集合与原 ROUTE_MODULE_MAP 一致（37 个 ext + frpc + paseo，核心页无 moduleId）', () => {
+  it('模块门禁集合与原 ROUTE_MODULE_MAP 一致（38 个 ext + frpc + paseo，核心页无 moduleId）', () => {
     const withModule = Object.entries(ROUTES)
       .filter(([, def]) => def.moduleId !== undefined)
       .map(([route, def]) => `${route}=${def.moduleId}`)
       .sort()
-    expect(withModule).toHaveLength(38)
+    expect(withModule).toHaveLength(39)
     expect(withModule).toContain('/frpc=frpc')
     expect(withModule).toContain('/ext/ocr=ocr')
     expect(withModule).toContain('/ext/envcheck=envcheck')
@@ -64,7 +64,7 @@ describe('constants/navigation', () => {
       if (def.moduleId) expect(MODULE_GROUP[def.moduleId]).toBeDefined()
     }
     for (const g of Object.values(MODULE_GROUP)) expect(groups.has(g)).toBe(true)
-    expect(Object.keys(MODULE_GROUP)).toHaveLength(38)
+    expect(Object.keys(MODULE_GROUP)).toHaveLength(39)
   })
 
   it('groupOfModule：已知返回分组，未知返回 undefined', () => {
