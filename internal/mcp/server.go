@@ -73,8 +73,9 @@ var knownModuleIDs = map[string]bool{
 	"memo":       true,
 }
 
-// toolDefs 全量工具面（C3-C5 逐提交挂载 everything/ocr/memo）。注册顺序即 tools/list
-// 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"红线审（包注释纪律 2）。
+// toolDefs 全量工具面（首版四件，PLAN_MCP C1-C5 收口）。注册顺序即 tools/list
+// 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"红线审（包注释纪律 1），
+// 并同步 knownModuleIDs 与 guards_test.go 的名称白名单。
 var toolDefs = []toolDef{
 	{Name: toolEnvCheck, ModuleID: "envcheck", Build: buildEnvCheckTool},
 	{Name: toolSearch, ModuleID: "everything", Build: buildEverythingTool},

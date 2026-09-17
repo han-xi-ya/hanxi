@@ -979,3 +979,17 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：真实仓库回归时发现"删光 memo/ 后 status 干净"；对照 git 语义：ignore/exclude 只作用于**未跟踪**文件，已跟踪文件的删除永远会进 status。
 - **正确做法与标准修复方案**：作用域下沉到 `git-dir` 的 `info/exclude` 反向白名单（`/*` 顶层全忽略 + `!/config.json`、`!/state/`、`!/memo/` 逐条放行 + 中间产物黑名单），命令一律不带 pathspec（`status --porcelain=v1 -z -uall` / `add -A`）；Go 侧 `Whitelisted()` 再做一层纵深过滤兜底（防存量仓库 exclude 落后）。exclude 每次 ensureRepo 重写，升级新增排除模式能补进存量仓库。`--git-dir` 隔离保证这份 exclude 不落进用户目录任何可见文件。
 - **避坑防重犯建议**：① "列存在的根再传 pathspec"看似稳妥，实则把**目录消失**这种合法状态当成错误吞掉——作用域优先表达为"仓库自身规则"（exclude），让 git 的已跟踪语义替你兜删除；② 用 git 管非代码数据时，`core.hooksPath` 置空不可靠（空串语义含糊），用 `commit --no-verify` 才是明确跳过用户钩子的口径；③ 判定"内容是否变化"若要精确到字节（原子写原样重写不算变更），别信 mtime，对 KB 级文件直接 sha256 manifest，成本可忽略、碎历史免疫。
+
+### 61. 离线构建 mcp-go：本地 GOMODCACHE 缺传递依赖 zip，go mod tidy/go get 连环失败（F4 无头 server）
+
+- **问题现象与错误原因**：`GOPROXY=off go mod tidy` 报 `gopkg.in/check.v1: module lookup disabled by GOPROXY=off`；绕开 tidy 直接 `go get github.com/mark3labs/mcp-go/mcp` 又报 `missing go.sum entry`。根因：① tidy 需要为依赖的**测试导入**（yaml.v3→check.v1）解析"最新版本"，离线时无法做 latest 查询；② mcp-go 的传递依赖被 MVS 抬高到本机没货的版本——`spf13/cast` 被 wails v3.0.0-beta.10 的 require 抬到 v1.10.0（下载缓存只有 .mod 无 .zip）、`mailru/easyjson` 被 wk8/go-ordered-map 抬到 v0.7.7（连 .mod 都不全），而 mcp-go 编译需要真正 import 这些包，zip 缺失即断链；③ 试图用显式 `go get mod@低版本` 钉回缓存里有的版本会触发**连环降级**，go get 中途把 wails 判为可移除，一把改坏 go.mod（`removed github.com/wailsapp/wails/v3`）。
+- **排查过程**：`ls $GOMODCACHE/cache/download/<mod>/@v/` 逐模块核对 .mod/.zip/.ziphash 三件套完整性（只看 `pkg/mod` 解包目录会误判——解包存在不代表 zip 与 ziphash 还在）；确认 `curl proxy.golang.org` 不可达后放弃补拉，转缓存内自洽方案。
+- **正确做法与标准修复方案**：只允许**升级方向**的钉版本：`easyjson` 升到缓存完整的 v0.9.0（MVS max，无降级风险）；`cast` 被 wails 图锁死在 v1.10.0 且其 zip 无缓存，用 `go mod edit -replace github.com/spf13/cast=github.com/spf13/cast@v1.7.1`（v1.7.1 恰是 mcp-go 自身要求的版本，wails 源码并不 import cast，替换仅影响取源不影响语义）。随后 `GOPROXY=off GOFLAGS=-mod=mod go get github.com/mark3labs/mcp-go/mcp@v0.41.1 github.com/mark3labs/mcp-go/server@v0.41.1` 一次成功，`go build ./... && go mod verify` 全绿。恢复网络后必须跑 `go mod tidy` 复核并酌情撤除 replace。
+- **避坑防重犯建议**：① 离线可行性以 `cache/download/<mod>/@v/*.ziphash` 为准，不以解包目录为准；② 永远不要用 `go get mod@低版本` 逆着 MVS 钉依赖——会引发包括"误删在用模块"在内的连锁改写，升级方向（max 语义）才是安全的；③ 无网时 `go mod tidy` 因"依赖的测试依赖"报错属已知行为，用显式 `go get` 逐包补齐替代，但**最终验收仍要在有网环境跑一次 tidy**；④ `go get` 前 `git stash` 或确保 go.mod 干净，失败即 `git checkout -- go.mod go.sum` 回滚重试，别在手脏状态下继续 get。
+
+### 62. `-H=windowsgui` 下 stdio MCP 管道实测可用；帧级测试必须自己关写端（否则 io.Pipe 死锁挂 120s）
+
+- **问题现象与错误原因**：PLAN_MCP §1-4 曾把"生产构建 GUI 子系统下 stdio 句柄是否可用"列为需真机验证的工程风险；实测结论：MCP 客户端经管道 CreateProcess 拉起时 stdin/stdout 句柄继承正常（`printf '...' | hanxi-mcp.exe mcp` 得到纯 JSON-RPC 帧、stderr 收 slog、EOF 后退出码 0），风险解除——但**从 cmd 手敲仍看不到输出**（GUI 子系统无控制台），验证必须走管道。测试侧另踩一刀：用 `io.Pipe` 做 stdout 流断言"逐行皆协议帧"时，`StdioServer.Listen` 返回后没人关 `outWriter`，`bufio.Scanner` 永阻塞，测试挂到 120s 超时无信息。
+- **排查过程**：临时把 `server.NewStdioServer(...).Listen(ctx, in, out)` 的 out 换成 os.Pipe 复现——确认 Listen 在 stdin EOF 正常返回，是测试读取端没等到 EOF。
+- **正确做法与标准修复方案**：Listen 跑在 goroutine，返回即 `_ = outWriter.Close()`；读取端再套 `select { case <-done / case <-time.After(60s) }` 兜底给出明确失败。生产路径 `server.ServeStdio` 自带 os.Stdin/os.Stdout 生命周期，无此问题。
+- **避坑防重犯建议**：① 管道冒烟命令模板已验证可用：`printf '<init帧>\n<initialized通知帧>\n<tools/list帧>\n' | <exe> mcp`；release 包验收直接复用；② MCP 日志必须钉死 stderr（`server.WithErrorLogger(log.New(os.Stderr,...))` + InitLogger 的控制台路本身走 stderr），任何库默认写 stdout 都要显式改道；③ io.Pipe 是无缓冲同步管道，测试里"写完关读端"或"读端等不到关写端"都会死锁——goroutine 生命周期必须配对收尾。
