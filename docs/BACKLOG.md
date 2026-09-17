@@ -92,7 +92,7 @@ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
 ### F9 · WSL USB 设备共享管理（参考 wsl-dashboard，usbipd-win 集成）—— ⚪ 2026-09-17 用户指定排期
 
 - **要什么**：usbipd-win 深度集成三件套——① 图形化列出可共享 USB 设备；② 绑定（bind）/附加（attach --wsl）/解绑全部点点点，不碰命令行；③ **USB 设备开机自动共享给 Linux**（重连场景：开机/拔插后自动重新 attach 到指定发行版）。
-- **技术路径（CLI 封装，与 wsl-dashboard 同谱）**：包 `usbipd list --json` 出设备表（VID/PID/总线号/已绑状态）；`bind` 需管理员——走 wsl 模块现成的**白名单固定参数提权通道**（M10 基建）；`attach --wsl -d <distro> -b <busid>` 无需提权。**前置检测**照托管惯例：usbipd-win 未装时探测（winget 清单/注册表卸载项）→ 引导安装（可复用 integrate-github-tool 托管链，usbipd 有 winget 官方包）。
+- **技术路径（CLI 封装，与 wsl-dashboard 同谱）**：~~包 `usbipd list --json` 出设备表~~ **⚠️ 2026-09-18 实现期纠偏**：上游 usbipd-win 的 `list` **无 `--json`**，JSON 面只有 `usbipd state`（VID/PID/状态为 JsonIgnore 计算属性，须从 InstanceId 提取+可空性推导，与上游 list 自身同口径）；attach 语法为 `--wsl <DISTRO>`（无 `-d`）。实现按上游实况落地并兼容两代字段形态，见 `internal/modules/wsl/usbipd`。`bind` 需管理员——走 wsl 模块现成的**白名单固定参数提权通道**（M10 基建）。**前置检测**照托管惯例：usbipd-win 未装时探测 → 引导安装（实现取保守：发布页+winget 命令复制，未接托管链）。
 - **开机自动共享的设计选择（关键决策，倾向已定）**：**不自建 Windows 计划任务，抄自家 NAT 端口转发账本范式**——"hanxi 记录 desired-attach 账本 + 启动/解锁时重放 attach"，与外部工具创建的规则互不触碰（端口转发账本同款边界纪律）。代价：仅 hanxi 在跑时生效；收益：账本可视化、可勾选停用、无系统残留。**若用户要求"hanxi 不在场也要自动共享"，再补计划任务注册选项**（写进账本 UI 的进阶开关，默认关）。
 - **落点**：`internal/modules/wsl` 加 `usb.go` + `usbipd` 子包（CLI 胶水与状态机），前端 WSLView 加"USB 共享"页签（MainTabNav 现成）；**真机闸门**：需一台有可直通 USB 设备（串口/存储类）的环境实测 bind/attach/重连，wsl 模块"离线桩结论不可信"的老纪律（FEATURES_OVERVIEW §5.3）在此条目上加倍适用。
 - **量级**：3~4 人日 + 真机联调缓冲 1 日。无硬依赖；建议排在 wsl 模块下次动刀时同车，不单独起浪。
