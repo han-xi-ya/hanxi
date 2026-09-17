@@ -34,6 +34,7 @@ import (
 	"hanxi/internal/modules/envcheck"
 	"hanxi/internal/modules/everything"
 	"hanxi/internal/modules/memo"
+	"hanxi/internal/modules/ocr"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/product"
@@ -102,7 +103,8 @@ func Run() error {
 	}
 
 	registry := extapi.NewRegistry(store)
-	if err := registry.Register(mcpModules(plat)...); err != nil {
+	ocrModule := ocr.New(plat) // 类型断言取 service 作识图后端（与 GUI 同一 service 契约）
+	if err := registry.Register(append(mcpModules(plat), ocrModule)...); err != nil {
 		return fmt.Errorf("注册无头模块失败: %w", err)
 	}
 	defer registry.ShutdownAll()
@@ -116,6 +118,12 @@ func Run() error {
 		// everything 走独立严格只读通道（不复用 service.Search 的懒启动/下载编排，
 		// 决策 3-B）；registry 内仍注册该模块，只取 enabled 门禁与生命周期收口。
 		Search: newStrictSearcher(plat),
+	}
+	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
+		// service 无头可用：client 已显式 Proxy:nil（回环 HTTP 纪律）、构造零落盘、
+		// 事件出口 application.Get() nil 守卫；服务离线时 RecognizeImage 返回
+		// "请先启动服务"业务指引而非拉起（§2.2 ocr 行）。
+		deps.OCR = ocrMod.Service()
 	}
 
 	srv := NewMCPServer(deps)

@@ -31,7 +31,8 @@ type Deps struct {
 	Gate     ModuleGate // 模块启用门禁（真 = registry+settings 组合）
 	EnvCheck EnvChecker // hanxi_envcheck_detect 后端
 	Search   Searcher   // hanxi_file_search 后端（严格只读档）
-	// C4/C5 依次追加：OCR Recognizer / Memo MemoSource。
+	OCR      Recognizer // hanxi_ocr_recognize 后端
+	// C5 追加：Memo MemoSource。
 }
 
 // NewMCPServer 按工具面全量组表并挂授权/门禁中间件。
@@ -77,6 +78,7 @@ var knownModuleIDs = map[string]bool{
 var toolDefs = []toolDef{
 	{Name: toolEnvCheck, ModuleID: "envcheck", Build: buildEnvCheckTool},
 	{Name: toolSearch, ModuleID: "everything", Build: buildEverythingTool},
+	{Name: toolOCR, ModuleID: "ocr", Build: buildOcrTool},
 }
 
 // gateMiddleware 是所有工具调用的统一闸门：授权（每次重读 access.json）→ 模块启用 →
