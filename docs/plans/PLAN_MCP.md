@@ -19,8 +19,9 @@
 
    > **实际落地（C10 回写 2026-09-17）**：按决策 6 锁 v0.41.1 引入（`179f65a`）。离线构建踩中 GOMODCACHE
    > 缺传递依赖 zip 的洞（tidy/go get 连环失败），以 `easyjson` 升版 + `spf13/cast` replace（v1.10.0→v1.7.1）
-   > 绕行，全案沉淀踩坑 #62；go.mod 现存该 replace，网络恢复后 `go mod tidy` 复核/撤除为随批修 R3（wave 收尾批）。
-   > v1.x 升级评估维持原样未做。
+   > 绕行，全案沉淀踩坑 #62。该绕行已完成使命：随批修 R3 网络恢复后 `dropreplace` + 有网 `go mod tidy`
+   > 复核撤除（dev `8476ff3`，cast 按 wails 图自然落 v1.10.0、easyjson 维持 v0.9.0 升级方向钉），
+   > 复核结论见 #62 补记。v1.x 升级评估维持原样未做。
 3. **必须先纠正两个需求设定里的事实偏差**：
    - memo **不存在"逐库"概念**——单文件 `<DataDir>/memo.json`（`internal/modules/memo/module.go:1-2`，
      全包 grep 无库列表/库目录）。「逐库授权」退化为「整库授权 + 敏感遮罩项脱敏」，需用户确认（§8-2）。

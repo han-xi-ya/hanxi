@@ -115,7 +115,7 @@ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
 | S2 | everything 的 MCP 文案如实引导（ES 依赖运行中实例，勿承诺代拉起） | 🟢 2026-09-17（`feat/f4-mcp` C3：`hanxi_file_search` description 与前置错误双处如实，测试含文案诚实性断言） |
 | R1 | msgboard 热键薄封装收编 `internal/hotkey` 通用注册器（wave2 接缝债） | 🟢 2026-09-17（`d96aac6` 合入 + bindings 回补 `bb7905a`） |
 | R2 | 安装向导"安装前自检"接线——F4b 合入时 `hanxi mcp` 不存在刻意留白，F4a 合并后补 spawn `hanxi mcp` 跑 listTools + envcheck 真调（见 PLAN §2.5） | 🔵 进行中（分支 `feat/r2-selfcheck`；F4 合入后的真机前闸门） |
-| R3 | go.mod `spf13/cast` replace 复核与撤除（#62 离线绕行产物，网络/代理可达后跑 `go mod tidy`） | ⚪ 未动工（wave 收尾批，分支 `feat/r3-gomod` 已立） |
+| R3 | go.mod `spf13/cast` replace 复核与撤除（#62 离线绕行产物，网络/代理可达后跑 `go mod tidy`） | 🟢 2026-09-17（`8476ff3` dropreplace + 有网 tidy 收敛，`f09fc19` 补记 #62 复核结论） |
 | R4 | PLAN_MCP 回写实际落地形态（ocr/memo 提前落地注记，C10 归收尾批） | 🟢 本批（R4/C10：PLAN_MCP 已加"实际落地"注记，四件套文档同批） |
 
 ---
