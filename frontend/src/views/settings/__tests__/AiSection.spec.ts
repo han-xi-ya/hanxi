@@ -1,6 +1,7 @@
 // AI 接入分区（F4b MCP 安装向导）特征测试：三客户端四态渲染、
 // 预览→确认写链（令牌回传）、fail-closed 拒动呈现手动片段、
-// access.json 只读呈现与"打开所在目录"、幂等 ZeroDiff 文案。
+// access.json 只读呈现与"打开所在目录"、幂等 ZeroDiff 文案、
+// 安装前自检行（R2：通过/失败警示不阻断/重检走 refresh/不该 spawn 时不 spawn）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AiSection from '../AiSection.vue'
@@ -13,6 +14,7 @@ const wizardSvc = vi.hoisted(() => ({
   ConfirmInstall: vi.fn(),
   ConfirmUninstall: vi.fn(),
   GetAccessInfo: vi.fn(),
+  SelfCheck: vi.fn(),
 }))
 const appSvc = vi.hoisted(() => ({ OpenPath: vi.fn() }))
 vi.mock('../../../../bindings/hanxi/internal/mcpwizard', () => ({ McpWizardService: wizardSvc }))
@@ -36,6 +38,11 @@ function stubStatus(clients: unknown[], access: Record<string, unknown> = {}) {
       tools: { envcheck: true, everything: false, ocr: false, memo: false }, note: '',
       ...access,
     },
+  })
+  // 自检默认通过态（R2）；单个用例覆写失败/异常分支
+  wizardSvc.SelfCheck.mockResolvedValue({
+    state: 'ok', toolCount: 4, tools: ['hanxi_envcheck_detect', 'hanxi_file_search', 'hanxi_ocr_recognize', 'hanxi_memo_search'],
+    message: 'hanxi mcp 握手成功，4 件工具就位', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
   })
 }
 
@@ -93,6 +100,89 @@ describe('AI 接入分区', () => {
     expect(w.text()).toContain('完成')
     expect(w.text()).toContain('安装成功')
     expect(wizardSvc.GetStatus).toHaveBeenCalledTimes(2) // 写后刷新
+  })
+
+  it('安装预览呈现自检通过行（通过 · N 工具），首轮走缓存口径 refresh=false', async () => {
+    stubStatus([client('claude', 'Claude Code')])
+    wizardSvc.PreviewInstall.mockResolvedValue({
+      client: 'claude', clientName: 'Claude Code', configPath: 'p',
+      allowed: true, zeroDiff: false, willCreate: false, reason: '', manualSnippet: '', token: 'tk', diff: [],
+    })
+    const w = await mountView()
+    await w.findAll('.client-row')[0].findAll('button')[0].trigger('click')
+    await flushPromises()
+    expect(wizardSvc.SelfCheck).toHaveBeenCalledWith(false)
+    const row = w.find('.check-row')
+    expect(row.exists()).toBe(true)
+    expect(row.text()).toContain('通过（4 工具）')
+    expect(row.text()).toContain('握手成功')
+  })
+
+  it('自检失败红字警示 + 指引，不阻断确认按钮；重新自检走 refresh=true', async () => {
+    stubStatus([client('claude', 'Claude Code')])
+    wizardSvc.PreviewInstall.mockResolvedValue({
+      client: 'claude', clientName: 'Claude Code', configPath: 'p',
+      allowed: true, zeroDiff: false, willCreate: false, reason: '', manualSnippet: '', token: 'tk', diff: [],
+    })
+    wizardSvc.SelfCheck.mockResolvedValue({
+      state: 'failed', toolCount: 0, tools: null,
+      message: '握手超时（15s 内未完成 initialize→tools/list，子进程已终止）', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
+    })
+    const w = await mountView()
+    await w.findAll('.client-row')[0].findAll('button')[0].trigger('click')
+    await flushPromises()
+    const row = w.find('.check-row')
+    expect(row.find('.chip-danger').exists()).toBe(true)
+    expect(row.text()).toContain('未通过')
+    expect(row.text()).toContain('握手超时')
+    expect(row.find('.check-hint').exists()).toBe(true)
+    // 不阻断：确认按钮仍在且可点
+    const confirm = w.find('.modal-actions .btn-primary')
+    expect(confirm.exists()).toBe(true)
+    // 重新自检强制重 spawn
+    await row.find('button').trigger('click')
+    await flushPromises()
+    expect(wizardSvc.SelfCheck).toHaveBeenLastCalledWith(true)
+  })
+
+  it('自检绑定层异常也定性失败呈现，不留空白行', async () => {
+    stubStatus([client('claude', 'Claude Code')])
+    wizardSvc.PreviewInstall.mockResolvedValue({
+      client: 'claude', clientName: 'Claude Code', configPath: 'p',
+      allowed: true, zeroDiff: false, willCreate: false, reason: '', manualSnippet: '', token: 'tk', diff: [],
+    })
+    wizardSvc.SelfCheck.mockRejectedValue(new Error('bridge down'))
+    const w = await mountView()
+    await w.findAll('.client-row')[0].findAll('button')[0].trigger('click')
+    await flushPromises()
+    expect(w.find('.check-row').text()).toContain('自检调用失败')
+    expect(w.find('.check-row').text()).toContain('bridge down')
+  })
+
+  it('卸载预览与拒动安装预览均不触发自检（不落盘的预览不 spawn）', async () => {
+    stubStatus([
+      client('codex', 'Codex', { state: 'installed', canInstall: false, canUninstall: true }),
+      client('claude', 'Claude Code'),
+    ])
+    wizardSvc.PreviewUninstall.mockResolvedValue({
+      client: 'codex', clientName: 'Codex', configPath: 'p',
+      allowed: true, zeroDiff: false, willCreate: false, reason: '', manualSnippet: '', token: 'tk-u', diff: [],
+    })
+    wizardSvc.PreviewInstall.mockResolvedValue({
+      client: 'claude', clientName: 'Claude Code', configPath: 'p',
+      allowed: false, zeroDiff: false, willCreate: false, reason: '不可安全合并', manualSnippet: 's', token: '',
+      diff: [{ kind: 'keep', text: '已拒绝自动修改，不展示差异' }],
+    })
+    const w = await mountView()
+    const codexBtns = w.findAll('.client-row')[0].findAll('button')
+    await codexBtns[codexBtns.length - 1].trigger('click') // 卸载
+    await flushPromises()
+    expect(w.find('.check-row').exists()).toBe(false)
+    const claudeBtns = w.findAll('.client-row')[1].findAll('button')
+    await claudeBtns[0].trigger('click') // 拒动路径的安装预览
+    await flushPromises()
+    expect(w.find('.check-row').exists()).toBe(false)
+    expect(wizardSvc.SelfCheck).not.toHaveBeenCalled()
   })
 
   it('fail-closed 预览：Allowed=false 呈现手动片段且无确认按钮', async () => {

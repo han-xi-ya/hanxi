@@ -4,7 +4,8 @@
 // hanxi MCP stdio server 启动条目（command = 当前 hanxi exe，args = ["mcp"]）。
 //
 // 边界（F4a/F4b 拆分）：本包不 import internal/mcp、不依赖无头 server 的任何
-// 编译期符号——`hanxi mcp` 在这里只是将要写进配置的运行时字符串。授权文件
+// 编译期符号——`hanxi mcp` 在写入链里只是将要写进配置的运行时字符串，安装前
+// 自检（selfcheck.go）也只按线上协议自发帧握手（唯一软耦合是协议版本号字面量）。授权文件
 // `<DataDir>/mcp/access.json`（字段按 PLAN_MCP §6：version + tools 四键）归
 // F4a 引擎写，本包只读取呈现、绝不写。所有权回执 `<DataDir>/mcp/install.json`
 // 由本包读写，记录上次写入指纹，供四态判定与"同名条目被用户改过即拒绝"。

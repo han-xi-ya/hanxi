@@ -6,7 +6,7 @@
 import { ref, computed, onMounted } from 'vue'
 import * as McpWizardAPI from '../../../bindings/hanxi/internal/mcpwizard'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
-import type { WizardStatus, ClientState, WizardPreview, OpResult } from '../../../bindings/hanxi/internal/mcpwizard/models'
+import type { WizardStatus, ClientState, WizardPreview, OpResult, SelfCheckInfo } from '../../../bindings/hanxi/internal/mcpwizard/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import PageHeader from '../../components/ui/PageHeader.vue'
@@ -17,13 +17,17 @@ const { showToast } = useToast()
 const status = ref<WizardStatus | null>(null)
 const loading = ref(false)
 
-// 向导弹窗态：预览 → 结果两段（result 非空即进入结果态，不再可确认）
+// 向导弹窗态：预览 → 结果两段（result 非空即进入结果态，不再可确认）。
+// check/checkBusy 为安装前自检（R2，PLAN §2.5）的本地态：Go 侧短 TTL 缓存，
+// 同一次向导会话只真 spawn 一次；失败只警示不阻断（惰性条目 + access 门兜底）。
 const modal = ref<{
   client: ClientState
   mode: 'install' | 'uninstall'
   preview: WizardPreview | null
   result: OpResult | null
   busy: boolean
+  check: SelfCheckInfo | null
+  checkBusy: boolean
 } | null>(null)
 
 const stateMeta: Record<string, { label: string; chip: string }> = {
@@ -74,17 +78,37 @@ function actionWord(mode: 'install' | 'uninstall'): string {
 }
 
 async function openWizard(client: ClientState, mode: 'install' | 'uninstall') {
-  modal.value = { client, mode, preview: null, result: null, busy: true }
+  modal.value = { client, mode, preview: null, result: null, busy: true, check: null, checkBusy: false }
   try {
     const pv = mode === 'install'
       ? await McpWizardAPI.McpWizardService.PreviewInstall(client.id)
       : await McpWizardAPI.McpWizardService.PreviewUninstall(client.id)
     if (modal.value) modal.value.preview = pv
+    // 自检只在「可写入的安装预览」里做：拒动路径本就不落盘，无须再 spawn
+    if (mode === 'install' && pv.allowed) void runCheck(false)
   } catch (e: unknown) {
     showToast(`${actionWord(mode)}预览失败: ${getErrorMessage(e)}`)
     modal.value = null
   } finally {
     if (modal.value) modal.value.busy = false
+  }
+}
+
+/** runCheck 调 Go 侧自检（refresh=true 强制重 spawn）；弹窗切换后丢弃迟到结果。 */
+async function runCheck(refresh: boolean) {
+  const m = modal.value
+  if (!m || m.mode !== 'install') return
+  m.checkBusy = true
+  try {
+    const info = await McpWizardAPI.McpWizardService.SelfCheck(refresh)
+    if (modal.value === m) m.check = info
+  } catch (e: unknown) {
+    // 绑定层异常（进程崩桥/超时）按自检失败呈现，原因取错误文本
+    if (modal.value === m) {
+      m.check = { state: 'failed', toolCount: 0, tools: null, message: `自检调用失败: ${getErrorMessage(e)}`, checkedAt: '', fresh: false }
+    }
+  } finally {
+    if (modal.value === m) m.checkBusy = false
   }
 }
 
@@ -223,6 +247,25 @@ onMounted(refresh)
                 <span v-if="modal.preview.zeroDiff" class="chip chip-neutral">零改动（幂等）</span>
               </div>
               <template v-if="modal.preview.allowed">
+                <!-- 安装前自检（R2）：spawn 自家 hanxi mcp 走 initialize→tools/list -->
+                <div v-if="modal.mode === 'install'" class="check-row">
+                  <span class="check-label">安装前自检</span>
+                  <span v-if="modal.checkBusy && !modal.check" class="chip chip-neutral">握手中…</span>
+                  <template v-else-if="modal.check">
+                    <span class="chip" :class="modal.check.state === 'ok' ? 'chip-positive' : 'chip-danger'"
+                      :title="`检查于 ${modal.check.checkedAt}${modal.check.fresh ? '' : '（会话内缓存）'}`">
+                      {{ modal.check.state === 'ok' ? `通过（${modal.check.toolCount} 工具）` : '未通过' }}
+                    </span>
+                    <span class="check-msg" :class="{ 'detail-warn': modal.check.state !== 'ok' }">{{ modal.check.message }}</span>
+                    <button class="btn btn-ghost btn-small" :disabled="modal.checkBusy" @click="runCheck(true)">
+                      {{ modal.checkBusy ? '握手中…' : '重新自检' }}
+                    </button>
+                    <div v-if="modal.check.state !== 'ok'" class="check-hint">
+                      自检失败不阻断本次写入——条目在客户端真正拉起 hanxi mcp 之前不会生效，工具面另有 access.json 授权门兜底。
+                      若客户端日后连不上 hanxi：检查杀毒软件/企业策略是否拦截其子进程，或在终端运行 hanxi mcp 观察 stderr 报错后「重新自检」。
+                    </div>
+                  </template>
+                </div>
                 <div class="diff-pane" role="log" aria-label="配置差异预览">
                   <div v-for="(l, i) in modal.preview.diff" :key="i" class="diff-line" :class="`d-${l.kind}`">
                     <span class="diff-g">{{ l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' ' }}</span>{{ l.text }}
@@ -330,6 +373,18 @@ onMounted(refresh)
 .pv-path { font-size: var(--text-sm); color: var(--color-text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pv-path code { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
 .pv-reason { font-size: var(--text-sm); color: var(--color-text-muted); }
+
+/* 安装前自检行（R2）：一行结论徽章 + 原因 + 重检按钮；失败时追加指引段 */
+.check-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.check-label { font-size: var(--text-sm); color: var(--color-text-muted); flex: none; }
+.check-msg { font-size: var(--text-sm); color: var(--color-text-muted); min-width: 0; }
+.check-msg.detail-warn { color: var(--state-danger, var(--color-text)); }
+.check-hint {
+  flex-basis: 100%; font-size: var(--text-xs); line-height: 1.6;
+  color: var(--color-text-muted);
+  background: var(--surface-chrome); border-left: 2px solid var(--state-warning, var(--color-border));
+  padding: 6px 10px; border-radius: 0 var(--radius-element) var(--radius-element) 0;
+}
 
 .diff-pane {
   border: 1px solid var(--color-border); border-radius: var(--radius-element);

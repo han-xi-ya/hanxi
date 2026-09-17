@@ -4,7 +4,9 @@
 
 /**
  * McpWizardService 是「AI 接入」分区的 Wails 绑定服务（装配根直挂，先例 snapshot）。
- * 无后台协程、无常驻状态：每次方法调用即时读盘分析，天然与外部工具并发改配置对齐。
+ * 无常驻业务状态：每次配置方法调用即时读盘分析，天然与外部工具并发改配置对齐。
+ * 唯一的例外是安装前自检（selfcheck.go）的短 TTL 结果缓存与串行锁——它只是
+ * 一次性握手的新鲜度备忘，不持有任何文件句柄或后台协程。
  * @module
  */
 
@@ -68,4 +70,16 @@ export function PreviewInstall(clientID) {
  */
 export function PreviewUninstall(clientID) {
     return $Call.ByID(3959652945, clientID);
+}
+
+/**
+ * SelfCheck 执行（或复用）一次安装前自检。refresh=true 忽略缓存强制重 spawn
+ * （前端「重新自检」按钮）。返回的 error 仅代表编程错误，业务失败在
+ * State=failed + Message 里表达——绑定面友好，前端无须 try/catch 双轨。
+ * 全程互斥串行：同刻至多一个自检子进程（并发预览共用结果）。
+ * @param {boolean} refresh
+ * @returns {$CancellablePromise<$models.SelfCheckInfo>}
+ */
+export function SelfCheck(refresh) {
+    return $Call.ByID(1925285191, refresh);
 }

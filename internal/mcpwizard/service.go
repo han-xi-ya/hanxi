@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"hanxi/internal/settings"
 )
 
 // McpWizardService 是「AI 接入」分区的 Wails 绑定服务（装配根直挂，先例 snapshot）。
-// 无后台协程、无常驻状态：每次方法调用即时读盘分析，天然与外部工具并发改配置对齐。
+// 无常驻业务状态：每次配置方法调用即时读盘分析，天然与外部工具并发改配置对齐。
+// 唯一的例外是安装前自检（selfcheck.go）的短 TTL 结果缓存与串行锁——它只是
+// 一次性握手的新鲜度备忘，不持有任何文件句柄或后台协程。
 type McpWizardService struct {
 	receiptPath string // <DataDir>/mcp/install.json（本包所有）
 	accessPath  string // <DataDir>/mcp/access.json（F4a 所有，只读呈现）
@@ -21,6 +24,13 @@ type McpWizardService struct {
 	command     string // hanxi exe 绝对路径（os.Executable，写入配置的 command 值）
 	writeFn     func(path string, data []byte) error
 	now         func() time.Time
+
+	// —— 安装前自检（PLAN §2.5，R2）——
+	checkMu      sync.Mutex    // 串行化自检：同刻至多一个握手子进程
+	probe        probeRunner   // 注入缝：生产=spawnProbe，测试=剧本假件
+	probeTimeout time.Duration // 握手硬预算（0 → selfCheckTimeout 默认；测试缩短用）
+	check        *SelfCheckInfo
+	checkAt      time.Time
 }
 
 // NewService 构造向导服务。paths.DataDir() 锚定 mcp 子目录（PLAN §2.5/§6 字面路径）。
@@ -33,7 +43,7 @@ func NewService(paths *settings.Paths) *McpWizardService {
 	if err != nil {
 		exe = ""
 	}
-	return &McpWizardService{
+	s := &McpWizardService{
 		receiptPath: filepath.Join(paths.DataDir(), "mcp", "install.json"),
 		accessPath:  filepath.Join(paths.DataDir(), "mcp", "access.json"),
 		home:        home,
@@ -42,6 +52,8 @@ func NewService(paths *settings.Paths) *McpWizardService {
 		writeFn:     atomicWrite,
 		now:         time.Now,
 	}
+	s.probe = s.spawnProbe // 生产接线（一行真实 exec；单测覆写此字段）
+	return s
 }
 
 // —— 绑定 DTO（前端可见）——
@@ -383,7 +395,9 @@ func (s *McpWizardService) accessInfo() AccessInfo {
 	data, err := os.ReadFile(s.accessPath)
 	switch {
 	case os.IsNotExist(err):
-		info.Note = "授权文件尚未生成——`hanxi mcp` 首次运行时初始化；默认全关，未授权工具调用会被拒绝并给出指引"
+		// 如实口径（F4a 零落盘承诺）：全仓没有任何代码创建/重建 access.json，
+		// 缺失是合法的默认全关态，需用户手工放置后对应工具方被开放。
+		info.Note = "授权文件尚未放置——MCP 引擎默认全关（fail-closed），按 PLAN_MCP §6 字面结构在本目录手工放置后对应工具方被开放；本向导不代为写入"
 		return info
 	case err != nil:
 		info.Note = fmt.Sprintf("读取失败: %v", err)
@@ -392,7 +406,7 @@ func (s *McpWizardService) accessInfo() AccessInfo {
 	info.Exists = true
 	var af accessFile
 	if jsonErr := json.Unmarshal(data, &af); jsonErr != nil {
-		info.Note = "授权文件已损坏——MCP server 对其 fail-closed（视同全工具未授权）。本向导不代为修复，请检查 JSON 语法或删除后由 `hanxi mcp` 重建"
+		info.Note = "授权文件已损坏——MCP server 对其 fail-closed（视同全工具未授权）。本向导不代为修复，请手工检查 JSON 语法（该文件全仓无任何自动创建/重建方，删除也不会被代生成）"
 		return info
 	}
 	info.Readable = true

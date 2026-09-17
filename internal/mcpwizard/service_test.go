@@ -1,7 +1,9 @@
 package mcpwizard
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -30,6 +32,11 @@ func newTestService(t *testing.T, envs map[string]string) (*McpWizardService, st
 		command:     filepath.Join(root, "hanxi.exe"),
 		writeFn:     atomicWrite,
 		now:         func() time.Time { return time.Date(2026, 9, 17, 12, 0, 0, 0, time.Local) },
+		// 自检默认哑弹：真 spawn 永不进常规单测（防手滑起进程），
+		// 需要走 SelfCheck 的用例覆写 probe 或用 spawnProbe 冒烟。
+		probe: func(ctx context.Context) ([]string, error) {
+			return nil, errors.New("测试未注入 probe")
+		},
 	}, home
 }
 
@@ -510,8 +517,13 @@ func TestUnknownClient(t *testing.T) {
 func TestAccessInfoReadOnlyPresentation(t *testing.T) {
 	svc, _ := newTestService(t, nil)
 	info := svc.accessInfo()
-	if info.Exists || info.Readable || !strings.Contains(info.Note, "尚未生成") {
+	if info.Exists || info.Readable || !strings.Contains(info.Note, "尚未放置") || !strings.Contains(info.Note, "默认全关") {
 		t.Fatalf("缺文件呈现异常: %+v", info)
+	}
+	// F4a 零落盘承诺的文案红线：全仓无人创建/重建 access.json，禁止再出现
+	// 「首次运行初始化」「由 hanxi mcp 重建」这类与事实矛盾的指引
+	if strings.Contains(info.Note, "首次运行") {
+		t.Errorf("缺档文案不得暗示存在自动初始化方: %s", info.Note)
 	}
 	// 写入 PLAN §6 样例后只读呈现
 	writeFile(t, svc.accessPath, `{"version":1,"tools":{"envcheck":true,"everything":false,"ocr":false,"memo":false}}`)
@@ -525,8 +537,11 @@ func TestAccessInfoReadOnlyPresentation(t *testing.T) {
 	// 损坏：fail-closed 文案，且向导绝不代写修复
 	writeFile(t, svc.accessPath, `{"version":1,,}`)
 	info = svc.accessInfo()
-	if !info.Exists || info.Readable || !strings.Contains(info.Note, "损坏") {
+	if !info.Exists || info.Readable || !strings.Contains(info.Note, "损坏") || !strings.Contains(info.Note, "不代为修复") {
 		t.Fatalf("损坏文件呈现异常: %+v", info)
+	}
+	if strings.Contains(info.Note, "重建") && !strings.Contains(info.Note, "不会被代生成") {
+		t.Errorf("损坏文案不得暗示存在自动重建方: %s", info.Note)
 	}
 	before := readFile(t, svc.accessPath)
 	if _, err := svc.GetStatus(); err != nil {

@@ -36,6 +36,12 @@ import * as $models from "./models.js";
  */
 
 /**
+ * SelfCheckInfo 安装前自检结果（Wails 绑定 DTO）。Message 恒非空：
+ * 成功=结论一句话，失败=原因（指引文案由前端固定补充）。
+ * @typedef {$models.SelfCheckInfo} SelfCheckInfo
+ */
+
+/**
  * ServerInfo MCP server 启动命令（写入客户端配置的 command/args）。
  * @typedef {$models.ServerInfo} ServerInfo
  */
