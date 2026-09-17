@@ -1,6 +1,7 @@
 package memo
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -354,6 +355,45 @@ func (s *MemoService) Delete(id string) error {
 	}
 	s.items = filtered
 
+	s.emitChanged()
+	return nil
+}
+
+// RestoreFile 单条热恢复（供 internal/snapshot「历史版本」恢复 memo/<id>.md 时经
+// 装配根注入的钩子调用）：校验文件内容与 ID 一致后原样字节回写，内存换装并广播
+// memo:changed——前端全量重拉即见，热生效无重启。回落旧库模式不支持（无单条概念），
+// 返回可读错误引导重启。content 用 string 承载原样字节（Go string 不校验 UTF-8，
+// 无损；同时避开绑定面对 []byte 的形态特化）。
+func (s *MemoService) RestoreFile(id, content string) error {
+	data := []byte(content)
+	item, derr := DecodeMemo(id+".md", data)
+	if derr != nil {
+		return fmt.Errorf("恢复内容不是合法便签文件: %w", derr)
+	}
+	if item.ID != id {
+		return fmt.Errorf("恢复内容 ID（%s）与目标（%s）不一致", item.ID, id)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.useFiles {
+		return errors.New("便签尚处旧库回落模式，暂不支持单条热恢复，请重启 Hanxi")
+	}
+	// 原样字节回写（保留版本内历史原文，不重编码归一）
+	if err := writeFileAtomic(filepath.Join(s.files.dir, id+".md"), data); err != nil {
+		return err
+	}
+	replaced := false
+	for i, it := range s.items {
+		if it.ID == id {
+			s.items[i] = item
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		s.items = append([]MemoItem{item}, s.items...)
+	}
 	s.emitChanged()
 	return nil
 }

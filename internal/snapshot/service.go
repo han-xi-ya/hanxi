@@ -40,7 +40,7 @@ type CheckpointService struct {
 
 	// memoRestorer 便签热恢复钩子（装配根注入 memo.MemoService.RestoreFile）：
 	// memo/ 文件回写后同步内存换装 + emit memo:changed，热生效无感。
-	memoRestorer atomic.Pointer[func(id string, data []byte) error]
+	memoRestorer atomic.Pointer[func(id, content string) error]
 }
 
 // New 构造服务（纯装配无 IO；探测与引擎选择在 Start）。
@@ -49,7 +49,7 @@ func New(paths *settings.Paths, store *settings.Store) *CheckpointService {
 }
 
 // SetMemoRestorer 注入便签热恢复回调（仅装配根调用；nil 安全）。
-func (s *CheckpointService) SetMemoRestorer(fn func(id string, data []byte) error) {
+func (s *CheckpointService) SetMemoRestorer(fn func(id, content string) error) {
 	if fn == nil {
 		s.memoRestorer.Store(nil)
 		return
@@ -484,16 +484,17 @@ func (s *CheckpointService) RestoreFile(id, path string) error {
 			if memoID == "" {
 				return fmt.Errorf("非法便签路径: %s", rel)
 			}
-			return (*restorer)(memoID, data)
+			return (*restorer)(memoID, string(data))
 		}
 	}
-	return s.writeRestored(rel, data)
+	return writeRestoredFile(s.paths.DataDir(), rel, data)
 }
 
-// writeRestored 白名单文件原子回写数据根（tmp+rename，与 jsonstore 同构防半途断电；
-// 不走 jsonstore.Save——恢复的是原样字节，可能是 md 也可能含 JSON 校验外形态）。
-func (s *CheckpointService) writeRestored(rel string, data []byte) error {
-	target := filepath.Join(s.paths.DataDir(), filepath.FromSlash(rel))
+// writeRestoredFile 白名单文件原子回写数据根（tmp+rename，与 jsonstore 同构防半途
+// 断电；不走 jsonstore.Save——恢复的是原样字节，可能是 md 也可能含 JSON 校验外形态）。
+// 非 memo 文件写盘后 notify 提示重启生效（运行中内存态分叉是 v1 明确边界）。
+func writeRestoredFile(dataDir, rel string, data []byte) error {
+	target := filepath.Join(dataDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		return err
 	}

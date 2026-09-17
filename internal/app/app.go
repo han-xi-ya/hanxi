@@ -396,6 +396,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	}
 	if mMod, ok := memoModule.(*memo.Module); ok && mMod != nil {
 		mMod.GetService().SetWailsApp(a)
+		// 历史版本 → 便签热恢复：memo/<id>.md 回滚走 RestoreFile（原样落盘 +
+		// 内存换装 + memo:changed），前端即时可见，无需重启。
+		snapSvc.SetMemoRestorer(mMod.GetService().RestoreFile)
 	}
 
 	// 交接路由以 hash 形态挂进初始 URL（前端无 URL 路由，hash 仅回航提示用；

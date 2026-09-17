@@ -96,6 +96,47 @@ func TestMemoFilesMigrationIntegration(t *testing.T) {
 	}
 }
 
+// TestMemoRestoreFile 快照热恢复钩子语义：校验、落盘、内存换装。
+func TestMemoRestoreFile(t *testing.T) {
+	svc, memoDir := newFilesService(t)
+	created, err := svc.Create("旧标题", "旧内容", nil, "blue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 伪造"历史版本"字节（该条的旧形态）
+	old := created
+	old.Title = "历史标题"
+	old.Content = "历史内容"
+	data, err := EncodeMemo(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.RestoreFile(created.ID, string(data)); err != nil {
+		t.Fatal(err)
+	}
+	items := svc.List(MemoFilter{})
+	if len(items) != 1 || items[0].Title != "历史标题" {
+		t.Fatalf("内存未换装: %+v", items)
+	}
+	onDisk, _ := os.ReadFile(filepath.Join(memoDir, created.ID+".md"))
+	if string(onDisk) != string(data) {
+		t.Error("盘上非原样字节")
+	}
+
+	// 守卫：非法内容 / ID 不符 / 回落模式
+	if err := svc.RestoreFile(created.ID, "garbage"); err == nil {
+		t.Error("非 frontmatter 内容应拒")
+	}
+	if err := svc.RestoreFile("other_id", string(data)); err == nil {
+		t.Error("ID 不符应拒")
+	}
+	legacy := &MemoService{items: []MemoItem{}}
+	if err := legacy.RestoreFile("x", string(data)); err == nil {
+		t.Error("回落旧库模式应拒绝热恢复")
+	}
+}
+
 func TestMemoStoreAndCRUD(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "memo_test_*")
 	if err != nil {
