@@ -89,6 +89,7 @@ import (
 	"hanxi/internal/modules/snipaste"
 	snipasteinstance "hanxi/internal/modules/snipaste/instance"
 	snipasteversion "hanxi/internal/modules/snipaste/version"
+	"hanxi/internal/modules/softver"
 	"hanxi/internal/modules/subnetdesk"
 	subnetdeskinstance "hanxi/internal/modules/subnetdesk/instance"
 	subnetdeskversion "hanxi/internal/modules/subnetdesk/version"
@@ -202,6 +203,7 @@ func RegisterEvents() {
 	application.RegisterEvent[ocr.ServiceState]("ocr:service-state")
 	application.RegisterEvent[ocr.DropResult]("ocr:file-drop-result")
 	application.RegisterEvent[ocr.SnipResult]("ocr:snip-result")
+	application.RegisterEvent[softver.ScanProgress]("softver:dir-scan")
 }
 
 // Options 控制应用启动时行为。
@@ -342,6 +344,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		publicip.New(plat),
 		wifi.New(),
 		envcheck.New(plat),
+		softver.New(plat),
 		wsl.New(plat, paths),
 		wechat.New(store),
 		fileShareModule,

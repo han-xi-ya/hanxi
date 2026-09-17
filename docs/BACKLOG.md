@@ -49,7 +49,7 @@ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
 - **裁定要点**：portkill/frpc 等**提权与写操作永不暴露**；everything 严格只读（无实例报错给指引，不代启动不触发下载）；MCP 输出会进云端模型上下文——逐工具过红线；CLI `--yes` 不开放；配置含注释即 fail-closed 给手动片段。
 - **方案**：`docs/plans/PLAN_MCP.md`
 
-### F5 · 软件版本检测（softver，微信为首个目标）—— ⚪ 下一个执行
+### F5 · 软件版本检测（softver，微信为首个目标）—— 🔵 进行中（`feat/f5-wxver`：后端/绑定/前端已落，winget 备用通道未做——卡片裁定其仅"备用对照"，主通道失配口径为"打开官方页"）
 
 - **要什么**（用户 2026-09-17 原话拆解）：① 本机装的微信是什么版本；② 官方最新发布的是什么版本（方便去下载升级）；③ 微信安装目录及其占用大小；④ 微信**数据目录**及其大小。定位是"envcheck 面向日常软件"——envcheck 管 git/go/node 开发工具链，本模块管微信这类装机软件，版本落后引导下载。
 - **本机版本怎么拿（复用现成轮子）**：注册表 Uninstall 键（HKLM 64/32 + HKCU）出 `DisplayName/DisplayVersion/InstallLocation`——bcu 的 `instance/prober.go` 与 envcheck `detect/registry.go` 已有同谱探测经验；注册表版本是安装器口径，须再用 `platform/versioninfo`（PE FileVersion，含踩坑 #10 的 VerQueryValueW 两个实测坑）对微信主程序 exe 做第二口径校准——本机×官方双口径正是 envcheck 的成熟模型。
