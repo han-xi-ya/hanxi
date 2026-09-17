@@ -27,6 +27,8 @@ export function Collapse(entryID) {
 
 /**
  * CollapseAll 收起全部可见网页窗（各自进入 TTL 驻留）。
+ * 返回 error 恒为 nil：全仓 Wails 服务先例（Dismiss 等）以 error 收尾
+ * 保持绑定面一致，前端 await 契约不因后续演进突变。
  * @returns {$CancellablePromise<void>}
  */
 export function CollapseAll() {
