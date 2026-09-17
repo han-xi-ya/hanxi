@@ -27,7 +27,7 @@
 | F2 剪贴板惯例 | ✅ 已合并 | feat/f2-clipboard | 二 | 6a38422 | PLAN_CLIPBOARD.md 三段全落；热键封装 internal/hotkey |
 | F3 数据自动快照 | ✅ 已合并 | feat/f3-snapshot | 二 | 7a6cc78 | PLAN_SNAPSHOT.md 全量；三红线守住（永不 push/影子拷贝/对外"历史版本"） |
 | F4a MCP 无头 server | 🟡 开发中 | feat/f4-mcp | 三 | - | PLAN_MCP C1-C5 无头段+S2；与 F4b 仅经 access.json 契约耦合 |
-| F4b MCP 安装向导 | 🟡 开发中 | feat/f4b-mcpwizard | 三 | - | 预览→确认→备份→原子写→回滚；不依赖 F4a 代码，契约=PLAN 文本 |
+| F4b MCP 安装向导 | ✅ 已合并 | feat/f4b-mcpwizard | 三 | aa48a73 | internal/mcpwizard 独立包零依赖 F4a；AI 接入第 8 分区（52/40/40）；坑占 #61；access.json 对账清单见详情 |
 | F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
 | F6 数据目录同级化 | 🟡 开发中 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动；worktree wt-f6-siblingdir |
 | F7 hanxi-ocr 托管化 | 🟡 开发中 | feat/f7-ocrhosted | 三 | - | 主仓侧改造；zip+manifest+sha256 契约见 wave3 注记 |
@@ -61,5 +61,13 @@
 
 ### 随批修项
 
-- **R1**：msgboard 热键（`internal/modules/msgboard/hotkey.go` 薄私有封装）收编进 F2 的 `internal/hotkey` 通用注册器——接缝级，随 wave3 合并批顺手做。
+- **R1**：✅ 已偿（d96aac6 + bindings 回补 bb7905a）。
+
+### F4a↔F4b access.json 对账单（合并 F4a 时逐项核）
+
+- F4b 按 PLAN §6 字面读：`<DataDir>/mcp/access.json`，`{"version":1,"tools":{"envcheck","everything","ocr","memo"}}`，只读呈现，额外键忽略。
+- F4b 所有权回执在 `<DataDir>/mcp/install.json`（version/installs{configPath,fingerprint,installedAt}）。
+- **若 F4a 实际落盘 `state/mcp/` 或字段超纲**：以 F4a 报告为准改 `mcpwizard/service.go` NewService 两行路径，字段扩展要求 F4a 报告单列。
+- F4a 合入前 `hanxi mcp` 不存在——F4b 的"安装前自检 spawn listTools"刻意未接线，F4a 合并后补一行（新随批修 **R2**）。
+- 踩坑号已占：#61=F4b；F4a 若有沉淀从 **#62** 起。
 - **S2**：随 F4 批（PLAN_MCP 已含 ES.exe 文案改真话任务，F4 agent 合同内）。
