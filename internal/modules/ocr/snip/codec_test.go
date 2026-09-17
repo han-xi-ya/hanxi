@@ -69,9 +69,9 @@ func TestDecodeDIB32BitTopDownAlphaFallback(t *testing.T) {
 	// DIB 字节序 B,G,R,A：期望 RGBA(7,8,9,255)
 	pixels := make([]byte, 2*2*4)
 	for i := 0; i < 8; i += 4 {
-		pixels[i+0] = 9   // B
-		pixels[i+1] = 8   // G
-		pixels[i+2] = 7   // R
+		pixels[i+0] = 9 // B
+		pixels[i+1] = 8 // G
+		pixels[i+2] = 7 // R
 	}
 	for i := 8; i < 16; i += 4 {
 		pixels[i+0] = 109 // B
@@ -111,10 +111,24 @@ func TestDecodeDIB8BitPalette(t *testing.T) {
 
 func TestDecodeDIBRejects(t *testing.T) {
 	cases := map[string][]byte{
-		"短头":     {1, 2, 3},
-		"OS2头":   func() []byte { b := make([]byte, 40); binary.LittleEndian.PutUint32(b, 12); return b }(),
-		"位深16":   func() []byte { b := make([]byte, 40); binary.LittleEndian.PutUint32(b, 40); binary.LittleEndian.PutUint32(b[4:], 2); binary.LittleEndian.PutUint32(b[8:], 2); binary.LittleEndian.PutUint16(b[14:], 16); return b }(),
-		"像素不足":   func() []byte { b := make([]byte, 40); binary.LittleEndian.PutUint32(b, 40); binary.LittleEndian.PutUint32(b[4:], 8); binary.LittleEndian.PutUint32(b[8:], 8); binary.LittleEndian.PutUint16(b[14:], 24); return b }(),
+		"短头":   {1, 2, 3},
+		"OS2头": func() []byte { b := make([]byte, 40); binary.LittleEndian.PutUint32(b, 12); return b }(),
+		"位深16": func() []byte {
+			b := make([]byte, 40)
+			binary.LittleEndian.PutUint32(b, 40)
+			binary.LittleEndian.PutUint32(b[4:], 2)
+			binary.LittleEndian.PutUint32(b[8:], 2)
+			binary.LittleEndian.PutUint16(b[14:], 16)
+			return b
+		}(),
+		"像素不足": func() []byte {
+			b := make([]byte, 40)
+			binary.LittleEndian.PutUint32(b, 40)
+			binary.LittleEndian.PutUint32(b[4:], 8)
+			binary.LittleEndian.PutUint32(b[8:], 8)
+			binary.LittleEndian.PutUint16(b[14:], 24)
+			return b
+		}(),
 		"BITFIELDS非标准掩码": mkDIB(1, -1, 32, 3, [][]byte{{1, 0, 0, 0}, {2, 0, 0, 0}, {3, 0, 0, 0}}, make([]byte, 4)),
 	}
 	for name, dib := range cases {

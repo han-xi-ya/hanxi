@@ -54,7 +54,10 @@ vi.mock('@wailsio/runtime', () => ({
   },
 }))
 
+const hist = vi.hoisted(() => ({ List: vi.fn(), Delete: vi.fn(), Clear: vi.fn() }))
+
 vi.mock('../../../bindings/hanxi/internal/modules/ocr/ocrservice', () => svc)
+vi.mock('../../../bindings/hanxi/internal/history/historyservice', () => hist)
 
 const stoppedState = {
   state: 'stopped', online: false, managed: false, external: false, pid: 0,
@@ -87,11 +90,12 @@ function stubStatus(st = stoppedState, engs: Array<Record<string, unknown>> = [{
   svc.GetListenPort.mockResolvedValue(53120)
   svc.GetFollowOnExit.mockResolvedValue(true)
   svc.GetAutoCopy.mockResolvedValue(true)
+  hist.List.mockResolvedValue([]) // 历史面板自取数：默认空桶
 }
 
 async function mountView() {
   const Host = defineComponent({ render: () => h(KeepAlive, null, h(OcrView)) })
-  const wrapper = mount(Host, { attachTo: document.body })
+  const wrapper = mount(Host, { attachTo: document.body, global: { stubs: { teleport: true } } })
   await flushPromises()
   return wrapper
 }
@@ -534,6 +538,29 @@ describe('OcrView 识别与复制', () => {
     await flushPromises()
     expect(wrapper.find('.ocr-stale').exists()).toBe(true)
     expect(wrapper.find('.ocr-text').exists()).toBe(true) // 数据未被抹掉
+    wrapper.unmount()
+  })
+})
+
+describe('OcrView 历史弹窗（统一历史接入）', () => {
+  it('打开历史：面板按 ocr 桶自取数；双击应用行经 InspectImage 回填图片并关窗', async () => {
+    stubStatus(runningState)
+    hist.List.mockResolvedValue([
+      { id: 7, funcType: 'ocr', summary: '识别 a.png → 2 字', input: 'C:\pics\a.png', output: '你好', extra: 'ui', createdAt: '2026-09-17T10:00:00+08:00' },
+    ])
+    svc.InspectImage.mockResolvedValue({ ...imageRef })
+    const wrapper = await mountView()
+
+    await wrapper.findAll('.ocr-head-actions .btn').find((b) => b.text().includes('历史'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.hist-dialog').exists()).toBe(true)
+    expect(hist.List).toHaveBeenCalledWith('ocr', '')
+
+    await wrapper.find('.hp-list tbody tr').trigger('dblclick')
+    await flushPromises()
+    expect(svc.InspectImage).toHaveBeenCalledWith('C:\pics\a.png')
+    expect(wrapper.find('.hist-dialog').exists()).toBe(false) // 回填即关窗
+    expect(wrapper.find('.ocr-preview').exists()).toBe(true) // 图片已落输入区
     wrapper.unmount()
   })
 })

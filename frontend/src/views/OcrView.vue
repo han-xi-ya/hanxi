@@ -4,9 +4,10 @@
 // 三输入通道（对话框选图 / 拖拽 / 粘贴）汇流为 ImageRef 后统一转发 path 模式识别；
 // 状态以事件为主、5s 轮询兜底。
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
 import type { DropResult, EngineInfo, ImageRef, OcrOutcome, ServiceState } from '../../bindings/hanxi/internal/modules/ocr/models'
+import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
@@ -19,6 +20,7 @@ import { toolStateMeta } from '../constants/status'
 import PageHeader from '../components/ui/PageHeader.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
+import HistoryPanel from '../components/tool/HistoryPanel.vue'
 
 const { showToast } = useToast()
 const { copy } = useClipboard()
@@ -339,6 +341,28 @@ async function copyLine(text: string) {
   showToast(ok ? '已复制该行' : '复制失败')
 }
 
+// ---------- 历史记录（Teleport 弹窗；双击行经 InspectImage 回填图片，Q6 行内数据直用） ----------
+const showHistory = ref(false)
+
+async function applyHistoryImage(rec: HistoryRecord) {
+  try {
+    image.value = await OcrAPI.InspectImage(rec.input)
+    outcome.value = null
+    showHistory.value = false
+  } catch (e) {
+    showToast(getErrorMessage(e))
+  }
+}
+
+function onHistoryEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape') showHistory.value = false
+}
+watch(showHistory, (v) => {
+  if (v) document.addEventListener('keydown', onHistoryEsc)
+  else document.removeEventListener('keydown', onHistoryEsc)
+})
+onBeforeUnmount(() => document.removeEventListener('keydown', onHistoryEsc))
+
 onMounted(() => {
   void refreshAll()
   void loadSettings()
@@ -360,6 +384,9 @@ onMounted(() => {
           </span>
           <button class="btn btn-secondary btn-small" :disabled="snipBusy" title="唤起系统截屏，框选区域即识别（服务未运行时自动拉起）" @click="snipRecognize">
             {{ snipBusy ? '截屏识别中…' : '📷 框选识别' }}
+          </button>
+          <button class="btn btn-secondary btn-small" :aria-expanded="showHistory" @click="showHistory = true" title="最近识别留档：图片路径与文本可一键回填">
+            🕘 历史
           </button>
           <button class="btn btn-secondary btn-small" :aria-expanded="showSettings" @click="showSettings = !showSettings">
             {{ showSettings ? '收起设置' : '服务设置' }}
@@ -547,6 +574,19 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- 历史记录弹窗（自取数面板；Esc/遮罩/关闭出口，复用 ConfirmDialog 交互契约） -->
+    <Teleport to="body">
+      <div v-if="showHistory" class="hist-backdrop" @click.self="showHistory = false">
+        <div class="hist-dialog" role="dialog" aria-modal="true" aria-label="识别历史">
+          <div class="hist-head">
+            <h2>识别历史</h2>
+            <button class="btn btn-secondary btn-small" @click="showHistory = false">关闭</button>
+          </div>
+          <HistoryPanel func-type="ocr" @apply="applyHistoryImage" />
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -658,4 +698,14 @@ onMounted(() => {
   .ocr-dropzone, .ocr-lines .link-button, .ocr-engine-row { transition: none; }
   .ocr-view :deep(.live-pulse) { animation: none; }
 }
+
+/* 历史弹窗外壳：照 ConfirmDialog 遮罩语系（Teleport 挂 body，scoped 仍生效于本组件模板） */
+.hist-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
+.hist-dialog {
+  width: min(720px, 100%); max-height: min(80vh, 640px); overflow: auto; display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
+  padding: 16px 18px; box-shadow: var(--shadow-small);
+}
+.hist-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hist-head h2 { font-size: var(--text-md); font-weight: 600; margin: 0; }
 </style>

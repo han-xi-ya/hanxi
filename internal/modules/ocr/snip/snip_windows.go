@@ -12,22 +12,22 @@ import (
 )
 
 var (
-	user32                  = syscall.NewLazyDLL("user32.dll")
-	kernel32                = syscall.NewLazyDLL("kernel32.dll")
-	procOpenClipboard       = user32.NewProc("OpenClipboard")
-	procCloseClipboard      = user32.NewProc("CloseClipboard")
-	procEmptyClipboard      = user32.NewProc("EmptyClipboard")
-	procGetClipboardData    = user32.NewProc("GetClipboardData")
-	procSetClipboardData    = user32.NewProc("SetClipboardData")
-	procIsFormatAvailable   = user32.NewProc("IsClipboardFormatAvailable")
-	procRegisterFormat      = user32.NewProc("RegisterClipboardFormatW")
-	procGlobalSize          = kernel32.NewProc("GlobalSize")
-	procGlobalLock          = kernel32.NewProc("GlobalLock")
-	procGlobalUnlock        = kernel32.NewProc("GlobalUnlock")
-	procGlobalFree          = kernel32.NewProc("GlobalFree")
-	procGlobalAlloc         = kernel32.NewProc("GlobalAlloc")
-	procMoveMemory          = kernel32.NewProc("RtlMoveMemory")
-	procGetCursorPos        = user32.NewProc("GetCursorPos")
+	user32                = syscall.NewLazyDLL("user32.dll")
+	kernel32              = syscall.NewLazyDLL("kernel32.dll")
+	procOpenClipboard     = user32.NewProc("OpenClipboard")
+	procCloseClipboard    = user32.NewProc("CloseClipboard")
+	procEmptyClipboard    = user32.NewProc("EmptyClipboard")
+	procGetClipboardData  = user32.NewProc("GetClipboardData")
+	procSetClipboardData  = user32.NewProc("SetClipboardData")
+	procIsFormatAvailable = user32.NewProc("IsClipboardFormatAvailable")
+	procRegisterFormat    = user32.NewProc("RegisterClipboardFormatW")
+	procGlobalSize        = kernel32.NewProc("GlobalSize")
+	procGlobalLock        = kernel32.NewProc("GlobalLock")
+	procGlobalUnlock      = kernel32.NewProc("GlobalUnlock")
+	procGlobalFree        = kernel32.NewProc("GlobalFree")
+	procGlobalAlloc       = kernel32.NewProc("GlobalAlloc")
+	procMoveMemory        = kernel32.NewProc("RtlMoveMemory")
+	procGetCursorPos      = user32.NewProc("GetCursorPos")
 )
 
 const (
@@ -207,4 +207,3 @@ func (system) CursorPos() (int, int, error) {
 	}
 	return int(pt.X), int(pt.Y), nil
 }
-

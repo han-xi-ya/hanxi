@@ -62,7 +62,8 @@ func (s *OcrService) SnipAndRecognize() (SnipResult, error) {
 	if err := os.WriteFile(path, pngBytes, 0644); err != nil {
 		return SnipResult{}, fmt.Errorf("写入截屏临时件失败: %w", err)
 	}
-	out, err := s.RecognizeImage(path)
+	// 复用识别链路的 defer 记录点，来源标 snip（勿二处插历史落点）。
+	out, err := s.recognizeImage(path, "snip")
 	if err != nil {
 		return SnipResult{}, err
 	}
