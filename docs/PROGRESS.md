@@ -46,4 +46,17 @@
 
 ## 任务进度详情
 
-（协调者随合并滚动记录：合入 commit 清单、验收要点、遗留项）
+### wave2 合并日战果（2026-09-17）
+
+- **F1** `fd830ab`：internal/history 公共包（200/桶、4000 rune 截断、Redact 入口）+ ocr/portkill/envcheck 接入 + HistoryPanel.vue；保守裁定：`ListListeningPorts` 大表列举不入史。
+- **F8** `00f1dc9`：platform.KeepAwakeAPI 租约式引用计数（SetThreadExecutionState 收拢 LockOSThread 唯一 owner 协程）+ msgboard 模块三通道 + 全屏挂牌真销毁；导航计数并集重算 51/40/40（webapp+msgboard+F3 分区叠加，F3 合并日修正）。
+- **F2** `6a38422`：utils/paste.ts 三态分流 + UiClipboardField + 34 处复制收口 + `Ctrl+Alt+T` 剪贴板识图 + `internal/hotkey` 通用注册器（msgboard 薄封装待收编，见 R1）。
+- **F3** `7a6cc78`：internal/snapshot（git 检查点、info/exclude 反向白名单、失焦/隐藏/空闲三源触发、影子拷贝 30 份降级、永不 push）+ 设置第七分区"历史版本" + memo 一条一文件幂等迁移。
+- 合并修面：`0c8f0db` portkill fakePlat 补 KeepAwake（F1 mock × F8 接口扩展的跨分支语义冲突）；踩坑号定序：56 webapp / 57 历史 bindings 漂移 / 58 Vue Boolean casting+PATH 假失败 / 59 wails3 看不见 go / 60 git pathspec 白名单；新增坑编号从 **#61** 起。
+- 合并后 dev 门禁全绿：go build ✅、go test 除 instance 噪音 ✅、vitest 90 文件 888 用例 ✅、vue-tsc ✅、`wails3 generate bindings -clean` 零 diff ✅。
+- 真机验收闸门（人工）：F3「立即快照」首拍+提权下 git 可用；F8 全屏观感/防休眠实测；F2 Ctrl+Alt+T 抢键实测。
+
+### 随批修项
+
+- **R1**：msgboard 热键（`internal/modules/msgboard/hotkey.go` 薄私有封装）收编进 F2 的 `internal/hotkey` 通用注册器——接缝级，随 wave3 合并批顺手做。
+- **S2**：随 F4 批（PLAN_MCP 已含 ES.exe 文案改真话任务，F4 agent 合同内）。
