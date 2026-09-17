@@ -1,6 +1,7 @@
 package frpc
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -274,6 +275,31 @@ func projectConfigName(id string) string {
 	return "frpc-" + id + ".toml"
 }
 
+// pruneRuntimeConfigs 清扫 dir 下的实例运行时配置（frpc-*.toml）。
+// 这些 TOML 由 StartProject 落盘、含 [auth] token 等明文项：手动 StopProject /
+// DeleteProject 路径各自即时擦除，但停用/退出（Shutdown）与崩溃/强杀（JobObject）
+// 无人负责清理——本函数兜底：OnInit 扫上次运行的孤儿，Shutdown 停进程后清本次。
+func pruneRuntimeConfigs(dir string) error {
+	matches, err := filepath.Glob(filepath.Join(dir, "frpc-*.toml"))
+	if err != nil {
+		return err
+	}
+	for _, path := range matches {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("擦除运行时配置 %s 失败: %w", filepath.Base(path), err)
+		}
+	}
+	return nil
+}
+
+// cleanupRuntimeConfigs 是 pruneRuntimeConfigs 的 service 侧封装：尽力清扫 runDir
+// 残留，失败仅告警不阻断生命周期（文件可能被尚未退净的子进程短暂占用，下次启动兜底重试）。
+func (s *FrpcService) cleanupRuntimeConfigs() {
+	if err := pruneRuntimeConfigs(s.runDir); err != nil {
+		slog.Warn("frpc: 运行时明文配置擦除失败", "err", err)
+	}
+}
+
 // GenerateToml 生成项目配置的 TOML 预览文本（不落盘，供编辑页展示与校验）
 func (s *FrpcService) GenerateToml(p domain.Project) (string, error) {
 	return docgen.Generate(&p)
@@ -386,9 +412,11 @@ func (s *FrpcService) GetProjectLogs(id string, lastN int) ([]string, error) {
 	return logs, nil
 }
 
-// Shutdown 销毁实例引擎，终止所有正在运行的 frpc 子进程
+// Shutdown 销毁实例引擎，终止所有正在运行的 frpc 子进程，
+// 并擦除运行时 TOML（含明文 token）——停用/退出路径不落敏感残留。
 func (s *FrpcService) Shutdown() {
 	if s.engine != nil {
 		s.engine.Shutdown()
 	}
+	s.cleanupRuntimeConfigs()
 }

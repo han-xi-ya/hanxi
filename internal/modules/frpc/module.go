@@ -52,7 +52,10 @@ func (e *Module) Services() []extapi.Service {
 	}
 }
 
+// OnInit 启动期清扫孤儿运行时配置：此刻必无实例在跑，runDir 里的
+// frpc-*.toml 都是上次崩溃/强杀的残留（S0，见 TROUBLESHOOTING #55）。
 func (e *Module) OnInit(ctx context.Context) error {
+	e.svc.cleanupRuntimeConfigs()
 	return nil
 }
 
@@ -61,7 +64,8 @@ func (e *Module) OnDestroy() error {
 	return nil
 }
 
-// IsInitialized 本模块 OnInit 无副作用，懒初始化后恒为已就绪。
+// IsInitialized 本模块 OnInit 仅做幂等的孤儿配置清扫（无失败路径阻断），
+// 懒初始化后恒为已就绪。
 func (e *Module) IsInitialized() bool {
 	return true
 }
