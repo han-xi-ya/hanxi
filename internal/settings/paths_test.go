@@ -94,6 +94,7 @@ func TestBuildPaths(t *testing.T) {
 		t.Fatalf("根目录映射错误: %+v", p)
 	}
 	for name, got := range map[string]string{
+		"state":    p.StateDir(),
 		"logs":     p.LogsDir(),
 		"versions": p.VersionsDir(),
 		"runtime":  p.RuntimeDir(),

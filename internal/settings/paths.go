@@ -31,6 +31,7 @@ type Paths struct {
 	baseDir     string
 	configDir   string
 	dataDir     string
+	stateDir    string
 	logsDir     string
 	versionsDir string
 	runtimeDir  string
@@ -114,12 +115,17 @@ func isHanxiDataRoot(dir string) bool {
 }
 
 // buildPaths 按数据根派生全套子目录布局（便携与标准模式共用同一形态）。
+// 根目录只留应用级锚点：config.json（便携数据根标记，isHanxiDataRoot 依赖，
+// 不可下迁）、logs/、versions/、runtime/、installers/（与 versions 同级，
+// 托管模块的安装包缓存/组件二进制锚）与各模块状态文件（state/，经
+// StateDir() 访问，v0.3.x 起由启动迁移从根目录收拢，见 state_migrate.go）。
 func buildPaths(mode Mode, base string) *Paths {
 	return &Paths{
 		mode:        mode,
 		baseDir:     base,
 		configDir:   base,
 		dataDir:     base,
+		stateDir:    filepath.Join(base, "state"),
 		logsDir:     filepath.Join(base, "logs"),
 		versionsDir: filepath.Join(base, "versions"),
 		runtimeDir:  filepath.Join(base, "runtime"),
@@ -127,7 +133,7 @@ func buildPaths(mode Mode, base string) *Paths {
 }
 
 func ensureDirs(p *Paths) error {
-	dirs := []string{p.baseDir, p.configDir, p.logsDir, p.versionsDir, p.runtimeDir}
+	dirs := []string{p.baseDir, p.configDir, p.stateDir, p.logsDir, p.versionsDir, p.runtimeDir}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0755); err != nil {
 			return err
@@ -141,6 +147,7 @@ func (p *Paths) Mode() Mode          { return p.mode }
 func (p *Paths) BaseDir() string     { return p.baseDir }
 func (p *Paths) ConfigDir() string   { return p.configDir }
 func (p *Paths) DataDir() string     { return p.dataDir }
+func (p *Paths) StateDir() string    { return p.stateDir }
 func (p *Paths) LogsDir() string     { return p.logsDir }
 func (p *Paths) VersionsDir() string { return p.versionsDir }
 func (p *Paths) RuntimeDir() string  { return p.runtimeDir }
