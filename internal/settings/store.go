@@ -70,6 +70,14 @@ type TrayMenuItem struct {
 	Children []TrayMenuItem `json:"children,omitempty"` // group: 二级条目（仅 command/route/exe，不允许再嵌套）；其余留空
 }
 
+// SnapshotConfig 数据历史版本（自动版本快照）偏好。字段语义见 internal/snapshot；
+// 缺字段解码进 DefaultSettings 副本即自动回落出厂值（与 QuickMenuTwoTier 同机制）。
+type SnapshotConfig struct {
+	Enabled         bool `json:"enabled"`         // 总开关（默认开）
+	IdleSeconds     int  `json:"idleSeconds"`     // mtime 空闲兜底阈值：白名单文件静默该秒数后视为可拍（默认 300）
+	IntervalMinutes int  `json:"intervalMinutes"` // 两次提交的最小间隔，防编辑期连环保存灌碎历史（默认 5）
+}
+
 // AppSettings 应用全局配置模型
 type AppSettings struct {
 	Theme              string            `json:"theme"`              // 明暗轴 "light" | "dark" | "system"
@@ -86,6 +94,7 @@ type AppSettings struct {
 	Wechat             WechatConfig      `json:"wechat"`             // 微信机器人遗留配置（向下兼容）
 	WechatAccounts     []WechatAccount   `json:"wechatAccounts"`     // 微信多账号列表
 	WebAppEntries      []WebAppEntry     `json:"webAppEntries"`      // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
+	Snapshot           SnapshotConfig    `json:"snapshot"`           // 数据历史版本偏好（internal/snapshot）
 }
 
 // DefaultSettings 返回出厂默认配置：浅色主题、青壳色板、中文、关闭时最小化到托盘、日志保留 7 天。
@@ -114,6 +123,9 @@ func DefaultSettings() AppSettings {
 			URL:  "https://filehelper.weixin.qq.com/",
 			Icon: "💬",
 		}},
+		// 历史版本快照默认开启（零用户负担红线）；空闲 300s / 最小间隔 5min
+		// 为 PLAN_SNAPSHOT Q4 拍板默认值。
+		Snapshot: SnapshotConfig{Enabled: true, IdleSeconds: 300, IntervalMinutes: 5},
 	}
 }
 

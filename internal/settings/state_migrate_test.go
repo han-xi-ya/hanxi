@@ -27,12 +27,12 @@ func TestMigrateRootStateFiles(t *testing.T) {
 		base := t.TempDir()
 		state := filepath.Join(base, "state")
 
-		touch(t, filepath.Join(base, "config.json"), `{}`)          // 便携根标记：必须留
-		touch(t, filepath.Join(base, "markeron.json"), `{"a":1}`)   // 模块状态：搬
-		touch(t, filepath.Join(base, "projects.json"), `[]`)        // frpc 泛化名：同样搬
-		touch(t, filepath.Join(base, "wsl-portproxy.json"), `{}`)   // wsl：搬
-		touch(t, filepath.Join(base, "bcu.json.tmp.4242"), `{}`)    // 原子写残骸：搬
-		touch(t, filepath.Join(base, ".wsl-portproxy-7.tmp"), `{}`) // wsl 残骸：搬
+		touch(t, filepath.Join(base, "config.json"), `{}`)                        // 便携根标记：必须留
+		touch(t, filepath.Join(base, "markeron.json"), `{"a":1}`)                 // 模块状态：搬
+		touch(t, filepath.Join(base, "projects.json"), `[]`)                      // frpc 泛化名：同样搬
+		touch(t, filepath.Join(base, "wsl-portproxy.json"), `{}`)                 // wsl：搬
+		touch(t, filepath.Join(base, "bcu.json.tmp.4242"), `{}`)                  // 原子写残骸：搬
+		touch(t, filepath.Join(base, ".wsl-portproxy-7.tmp"), `{}`)               // wsl 残骸：搬
 		touch(t, filepath.Join(base, "config.json.corrupt-20260101-000000"), `x`) // 取证副本：留
 		if err := os.MkdirAll(filepath.Join(base, "logs"), 0755); err != nil {
 			t.Fatal(err)

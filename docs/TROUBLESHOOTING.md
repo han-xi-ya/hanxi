@@ -966,3 +966,16 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：① 用一次性 spec 把组件挂载后 `throw new Error(w.html())` 导出 HTML，发现 head 区整体是 `<!--v-if-->`，顺推 `wantPaste` 恒 false 才定位到 Boolean casting；② 给失败测试所在 shell 补 `PATH="/c/Windows/System32:$PATH"` 后同一命令全绿，确认与改动无关。
 - **正确做法与标准修复方案**：① 组件布尔开关一律设计成**默认态即 false 的"否定/追加"形**（`hidePaste`/`hideCopy`/`allowCopy`），缺省 false 与 casting 结果同值，语义自明；需要"跟随另一 prop"的派生态放 computed 里组合，不依赖 undefined 三态。② 生成绑定与跑 instance 系测试用 `cmd //c "set PATH=C:\Windows\System32;%PATH% && wails3 generate bindings -clean=true -i ./cmd/hanxi ./internal/..."` 形态（Taskfile 口径 `-f` 参数在 cmd 下会被吞成畸形 flag，可省略）；报告 Go 测试基线前先在补好 PATH 的环境复测一次。
 - **避坑防重犯建议**：① 写可选 Boolean prop 前先问"缺省 false 是不是我要的语义"——是，则随便 cast；不是（需要三态），**必须**改成否定命名或 string 枚举，别指望 `?? undefined` 分支；happy-dom 的 spec 是最便宜的探针，组件"整块不渲染"优先 dump HTML 看 v-if 落点；② Windows 上"测试红一批但只红同一类（都要 spawn cmd.exe/go）"先怀疑 shell PATH，再怀疑代码；给同事的复现命令请附 PATH 前提；③ 组件的粘贴钮/复制钮显隐属交互契约，spec 里"默认见 X 不见 Y"要逐态钉死（本次补的 8 例已锁）。
+### 59. `wails3 generate bindings` 报 "go not found"：原生工具看不见 bash profile 注入的 PATH
+
+- **问题现象与错误原因**：worktree 根执行 `wails3 generate bindings -clean=true -i ./cmd/hanxi ./internal/...`，先打出 `Processed: 0 Packages, 0 Services...` 随即 `ERROR err: go command required, not found: exec: "go": executable file not found in %PATH%`。同一 shell 里 `go build` 明明正常。根因：`go` 目录只写进了 bash profile（Git Bash 的 `$PATH`），**原生 Windows 可执行文件 wails3.exe 解析的是进程环境块**，`cmd //c "go version"` 同样不识别——即宿主 PATH 里根本没有 go。更险的是 `-clean=true` 若先于失败执行会清空 `frontend/bindings/`（本次幸而失败发生在分析阶段前、git 里也有存量兜底）。
+- **排查过程**：`which go` 有 → `cmd //c "echo %PATH%"` 无 go 目录 → 定性为"bash 环境与原生环境分叉"，非 wails 问题。
+- **正确做法与标准修复方案**：经 cmd 显式扩 PATH 再调原生工具：`cmd //c "cd /d <worktree> && set PATH=C:\Users\<u>\sdk\go<ver>\bin;C:\Users\<u>\go\bin;%PATH% && wails3 generate bindings -clean=true -i .\cmd\hanxi .\internal\..."`。生成后必须 `git diff --exit-code -- frontend/bindings` 前后对照（Taskfile 的 `verify:bindings` 同一口径），发现存量绑定漂移（如本次 frpc/quickmenu 注释同步）一并提交归零。
+- **避坑防重犯建议**：① 凡"bash 里 A 工具调起原生 B 工具"的链路（wails3、git hooks、npm 脚本调 go/exe），报"找不到命令"先怀疑**环境块分叉**而不是安装缺失——判据是一条 `cmd //c "<tool> --version"`；② `-clean=true` 类破坏性开关执行前确认产物在 git 跟踪内可回滚；③ 绑定漂移（生成器输出与提交内容不一致）是 `verify:bindings` 门禁的存在意义，动过任何被绑定的 Go 注释/签名后必须重生成并把 diff 一起提交。
+
+### 60. git 白名单圈定勿用命令级 pathspec：目录"整体消失"后增删再也拍不进去（快照工程）
+
+- **问题现象与错误原因**：快照引擎初版按 PLAN 原案用 `git status --porcelain -z -- config.json state memo` 与 `git add -A -- <存在的根>` 圈作用域，存在两个坑：① `git add -A -- memo` 在 memo/ 不存在时直接 `fatal: pathspec ... did not match any files` 报错（首版实现用 Go 侧 Stat 过滤只传存在的根绕开）；② 更隐蔽——一旦某白名单根**整个消失**（如 memo 库全删），Go 过滤就不再传它，git 对"已跟踪文件被连目录删除"这件事永远没机会上报，历史停在幽灵的最后一版。
+- **排查过程**：真实仓库回归时发现"删光 memo/ 后 status 干净"；对照 git 语义：ignore/exclude 只作用于**未跟踪**文件，已跟踪文件的删除永远会进 status。
+- **正确做法与标准修复方案**：作用域下沉到 `git-dir` 的 `info/exclude` 反向白名单（`/*` 顶层全忽略 + `!/config.json`、`!/state/`、`!/memo/` 逐条放行 + 中间产物黑名单），命令一律不带 pathspec（`status --porcelain=v1 -z -uall` / `add -A`）；Go 侧 `Whitelisted()` 再做一层纵深过滤兜底（防存量仓库 exclude 落后）。exclude 每次 ensureRepo 重写，升级新增排除模式能补进存量仓库。`--git-dir` 隔离保证这份 exclude 不落进用户目录任何可见文件。
+- **避坑防重犯建议**：① "列存在的根再传 pathspec"看似稳妥，实则把**目录消失**这种合法状态当成错误吞掉——作用域优先表达为"仓库自身规则"（exclude），让 git 的已跟踪语义替你兜删除；② 用 git 管非代码数据时，`core.hooksPath` 置空不可靠（空串语义含糊），用 `commit --no-verify` 才是明确跳过用户钩子的口径；③ 判定"内容是否变化"若要精确到字节（原子写原样重写不算变更），别信 mtime，对 KB 级文件直接 sha256 manifest，成本可忽略、碎历史免疫。

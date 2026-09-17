@@ -268,3 +268,28 @@ describe('MemoView 编辑器', () => {
     w.unmount()
   })
 })
+
+// F3-b 契约钉死：后端文件库化（memo/<id>.md）承诺前端零改动——
+// 视图只依赖既有七个方法面与 List/GetStats 语义；快照新增的 RestoreFile
+// 属后端热恢复面，不得出现在前端调用清单里（出现即说明有人拿前端绕道恢复）。
+describe('memo 文件库化前端零改动契约', () => {
+  it('MemoView 依赖面恰为既有七方法（新增后端方法不进前端契约）', () => {
+    expect(Object.keys(svc).sort()).toEqual([
+      'Create', 'Delete', 'GetStats', 'List', 'ToggleMask', 'TogglePin', 'Update',
+    ])
+  })
+
+  it('迁移后 List 响应形态不变：整数组 + 双时间戳 + 标签数组渲染照常', async () => {
+    const w = await mountView([
+      memo({ id: 'memo_1758000000000000001', isMasked: true }),
+      memo({ id: 'memo_1758000000000000002', isPinned: true }),
+    ], { '#SQL': 2 })
+    await flushMicrotasks()
+    expect(w.findAll('.memo-card')).toHaveLength(2)
+    // 遮罩语义不变：masked 仍是持久布尔，渲染 •••
+    expect(w.find('.masked').text()).toContain('•••')
+    // 置顶标记不变：视图渲染 is-pinned 类（排序由后端 List 保证）
+    expect(w.findAll('.memo-card')[1].classes()).toContain('is-pinned')
+    w.unmount()
+  })
+})

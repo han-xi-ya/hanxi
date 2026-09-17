@@ -9,8 +9,8 @@ import {
 import { ICON_NAMES } from '../icons'
 
 describe('constants/navigation', () => {
-  it('登记了全部 50 条路由（含设置页 6 个分区子路由）', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(50)
+  it('登记了全部 51 条路由（含设置页 7 个分区子路由）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(51)
     for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard']) {
       expect(ROUTES[route]).toBeDefined()
     }

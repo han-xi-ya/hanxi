@@ -104,6 +104,7 @@ import (
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/product"
 	"hanxi/internal/settings"
+	"hanxi/internal/snapshot"
 )
 
 // 主窗口外观与启动交接参数：集中常量化，避免魔法数字散落装配代码。
@@ -361,11 +362,15 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	npmtool.SetHistory(historyStore)
 
 	appSvc := NewAppService(registry, store)
+	// 历史版本（自动快照平台底座）：非 extapi 模块，服务面与 AppService 同级；
+	// 触发接线在主窗创建后（见下方窗口事件钩子），退出补拍挂 OnShutdown 链。
+	snapSvc := snapshot.New(paths, store)
 	services := []application.Service{
 		application.NewService(appSvc),
 		application.NewService(notify.NewNotificationService()),
 		// 统一历史：公共包型服务直挂（notify 同位置先例），不进 modulesToRegister、无 Nav。
 		application.NewService(historySvc),
+		application.NewService(snapSvc),
 	}
 	services = append(services, registry.AllServices()...)
 
@@ -386,6 +391,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		// OnShutdown 阻塞至返回，保证需要回收的工具不残留孤儿进程。
 		OnShutdown: func() {
 			registry.ShutdownAll()
+			// 退出前同步补最后一发（3s 闸门卡死不拖退出；ShutdownAll 已停写入方，
+			// 此时盘上即终态）。
+			snapSvc.FlushOnExit()
 		},
 		Services: services,
 		Assets:   assets,
@@ -412,6 +420,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	}
 	if mMod, ok := memoModule.(*memo.Module); ok && mMod != nil {
 		mMod.GetService().SetWailsApp(a)
+		// 历史版本 → 便签热恢复：memo/<id>.md 回滚走 RestoreFile（原样落盘 +
+		// 内存换装 + memo:changed），前端即时可见，无需重启。
+		snapSvc.SetMemoRestorer(mMod.GetService().RestoreFile)
 	}
 
 	// 交接路由以 hash 形态挂进初始 URL（前端无 URL 路由，hash 仅回航提示用；
@@ -434,6 +445,17 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	})
 	mainWin = win
 	notify.GetHub().SetWailsContext(a, win)
+
+	// 历史版本（自动快照）触发源一：主窗失焦/隐藏/最小化置失活标记——关到托盘
+	// 走 Hide() 不销毁、驻托盘后不再有失焦事件，故 Hide/Minimise 等价补位
+	// （触发源二 mtime 空闲巡检、三退出补拍在 snapshot 服务与 OnShutdown 内）。
+	win.OnWindowEvent(events.Common.WindowLostFocus, func(*application.WindowEvent) { snapSvc.NoteDeactivated() })
+	win.OnWindowEvent(events.Common.WindowHide, func(*application.WindowEvent) { snapSvc.NoteDeactivated() })
+	win.OnWindowEvent(events.Common.WindowMinimise, func(*application.WindowEvent) { snapSvc.NoteDeactivated() })
+	win.OnWindowEvent(events.Common.WindowFocus, func(*application.WindowEvent) { snapSvc.NoteActivated() })
+	win.OnWindowEvent(events.Common.WindowShow, func(*application.WindowEvent) { snapSvc.NoteActivated() })
+	win.OnWindowEvent(events.Common.WindowUnMinimise, func(*application.WindowEvent) { snapSvc.NoteActivated() })
+	snapSvc.Start()
 
 	// 文字识别：主窗文件拖放 → OcrService（exe 落放=导入组件，图片落放=选图识别）。
 	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
@@ -512,6 +534,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	})
 
 	cleanup := func() {
+		snapSvc.Stop()
 		if logCleanup != nil {
 			logCleanup()
 		}

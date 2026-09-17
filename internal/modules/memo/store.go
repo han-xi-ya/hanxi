@@ -10,13 +10,15 @@ import (
 	"hanxi/internal/jsonstore"
 )
 
-// Store 便签本地原子化持久化存储引擎（tmp+fsync+rename 原子写公共核 internal/jsonstore）。
+// Store 便签旧整库引擎（tmp+fsync+rename 原子写公共核 internal/jsonstore）。
+// F3-b 文件库化后仅剩两职：迁移期读旧库（migrate.go）与迁移未成的回落写；
+// 正常态权威是 FileStore（memo/<id>.md）。
 type Store struct {
 	filePath string
 	mu       sync.RWMutex
 }
 
-// NewStore 实例化存储，传入目标数据文件绝对路径 (如 <DataDir>/memo.json)
+// NewStore 实例化存储，传入目标数据文件绝对路径 (如 <StateDir>/memo.json)
 func NewStore(filePath string) (*Store, error) {
 	dir := filepath.Dir(filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
