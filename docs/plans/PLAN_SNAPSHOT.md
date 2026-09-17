@@ -25,8 +25,9 @@
 ### 2.1 数据目录布局（快照作用域的事实底座）
 
 - 解析：`internal/settings/paths.go:23-26`（`hanxidata` 常量，旧名 `data`）、`:61-86`（exe 同目录探测，同级 `hanxidata/` 存在即生效含空目录 `:93-96`；旧 `data/` 需特征认定 `:106-114`）、兜底 `%APPDATA%\Hanxi`（`:75-85`）。**无环境变量/命令行覆盖**。
-- 布局：`:117-127` **configDir == dataDir**（config.json 直接落数据根 `:147`），另有 `logs/`、`versions/`、`runtime/` 三子层。
+- 布局：`:117-127` **configDir == dataDir**（config.json 直接落数据根 `:147`），另有 `state/`、`logs/`、`versions/`、`runtime/` 四子层。
 - 实测 `bin/hanxidata/`：`config.json` + **24 个模块 JSON 平铺根目录**（memo、projects(frpc)、ccswitch、ocr 等，注入方式统一 `newXxxStore(paths.DataDir())`）+ 子目录 `everything/`（含 ES.exe 二进制）、`installers/`、`logs/`、`runtime/`、`versions/`（托管工具安装树，数百 MB）。
+  - ✂️ 修订注（2026-09-17 落地）：上述"模块 JSON 平铺根目录"已治理——`paths.StateDir()`（`<base>/state/`）成为模块状态新家，`newXxxStore(paths.StateDir())`，根目录遗留文件由 `settings.MigrateRootStateFiles` 启动时自动收拢（config.json 留根）。快照白名单因此更简单：**state/ 目录边界 == 白名单边界**，根扫描只剩 config.json。
 - quickmenu 无独立文件：条目即 config.json 的 `trayMenu/quickMenuTwoTier` 字段（`internal/modules/quickmenu/service.go:60` 注 settings.Store）。
 - ⚠️ 仓库根 `.gitignore:14` 只忽略旧名 `data/`，**未忽略 `hanxidata/`**（在仓库根跑 exe 即产生海量 untracked）——顺带修的独立小项。
 

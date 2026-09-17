@@ -13,6 +13,7 @@
 ### 1.1 存储层
 
 - 数据目录解析唯一入口 `settings.GetPaths().DataDir()`（`internal/settings/paths.go:143`）；便携模式即 exe 同级 `hanxidata/`（`paths.go:23-26,92-103`）。现状布局：顶层扁平 `config.json` + 每模块一个 `<id>.json`（memo/ocr/bcu… 实测 bin/hanxidata），另有 `logs/`、`versions/`、`runtime/` 子目录；**按模块建子目录有先例**（frpc：`<dataDir>/frpc/projects.json`，`internal/modules/frpc/store.go:21,31`）。
+  - ✂️ 修订注（2026-09-17）：本条两处论据已过时——① frpc "子目录先例"系 store.go 注释与代码不符（实际平铺根 `projects.json`），已随数据根治理一并修正；② "每模块 JSON 平铺根"现状已变更为收纳进 `StateDir()`（`<base>/state/`，启动自动迁移，见 `internal/settings/state_migrate.go`），新模块状态文件一律落 `state/`。
 - 两种成熟落盘模式可选：settings 的"克隆→改→失败回滚内存"（`internal/settings/store.go:216-229`，`saveLocked` tmp+rename `:407-429`）与 jsonstore 公共核（`Load` 三分语义 `(ok,err)`：不存在/ErrEmpty/ErrCorrupt，`jsonstore.go:22-26,35`；`Save` = MarshalIndent→`tmp.<pid>`→**fsync**→rename，`:55-87`，比 settings 私有版多一步刷盘）。memo 为单 JSON 文件全量覆写的最简样板（`internal/modules/memo/store.go:58-62`，每次变更立即 `Save`，无 debounce——全仓一致，`internal/modules/recordly/store.go:69-77` 注释直书"立即落盘"）。
 - 项目自身持久化**清一色 JSON，无任何内嵌数据库**（grep sqlite/bbolt/badger 仅命中外部托管工具注释）。损坏处置有降级先例：config.json 损坏→改名隔离 `corrupt-<ts>` + 默认值启动（`internal/app/app.go:224-238`）；严格防误覆盖先例：frpc `loadErr` 驻留禁止空库覆写磁盘（`internal/modules/frpc/store.go:26,46-48`）。
 - **MooTool 对照**：Java/Electron 两侧都是 sqlite 单表按 `func_type` 列分桶，每桶 200 条、insert 后 `delete not in top-200` 裁剪，无去重（`TFuncHistory.java:5-17`、`FuncHistoryUtil.java:9,36-38`、`next/electron/main/historyRepository.ts:13-27,59-72`）。hanxi 体量小两个数量级，不需要 sqlite。
@@ -63,7 +64,7 @@ type Record struct {
 }
 ```
 
-- **落盘：单文件 `<DataDir>/history.json`，格式 `map[funcType][]Record`（桶头插，新→旧）**。理由：与 hanxidata 顶层扁平 JSON 现状一致、整体拷贝搬迁语义不变（frpc 注释论证）；桶数首批 3、devkit 后 ≲15，每桶 ≤200 且 input/output 有截断，单文件体量有硬上界（ worst case 个位数 MB）；每桶一文件要多文件生命周期与目录扫描，收益为零。
+- **落盘：单文件 `<StateDir>/history.json`（修订：原拟 `<DataDir>/` 顶层，2026-09-17 数据根治理后模块状态统一入 `state/`），格式 `map[funcType][]Record`（桶头插，新→旧）**。理由：与模块状态收纳布局一致、整体拷贝搬迁语义不变；桶数首批 3、devkit 后 ≲15，每桶 ≤200 且 input/output 有截断，单文件体量有硬上界（ worst case 个位数 MB）；每桶一文件要多文件生命周期与目录扫描，收益为零。
 - **写并发**：`Store{mu sync.Mutex; buckets map…; path}`——内存权威副本，所有公开方法整体持锁，改完即 `jsonstore.Save` 全量原子覆写（200 条体量下与现有"立即写"惯例同成本；全仓无 debounce 先例，不做第一个特例）。写失败返回 error 并 `slog.Error`，内存不回滚（历史是尽力而为的副作用，不能让记历史失败阻塞/回滚业务操作——与 memo TogglePin 仅记日志同档，`memo/service.go:217-221`）。
 - **裁剪**：头插后 `if len(b) > maxPerBucket { b = b[:maxPerBucket] }`，照抄 `notify/hub.go:57-61`；上限 `const maxPerBucket = 200` 编译期常量（对齐需求"约 200"）。
 - **损坏策略**：取 frpc 严格档——`jsonstore.Load` 返回 ErrCorrupt 时置 `loadErr` 驻留，**禁一切 Save 防空库覆写存量**，同时返回错误让面板可见提示；不做隔离改名（那是启动关键路径 config 的待遇，历史损坏降级为空即可，不救不可恢复字节）。
