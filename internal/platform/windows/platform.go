@@ -18,6 +18,7 @@ type WindowsPlatform struct {
 	process    platform.ProcessAPI
 	job        platform.JobAPI
 	appPackage apppackage.API
+	keepAwake  platform.KeepAwakeAPI
 }
 
 // New 装配全部 Windows 子能力。当前各构造函数不会失败，error 恒为 nil，保留以对齐跨平台工厂签名。
@@ -28,6 +29,7 @@ func New() (platform.Platform, error) {
 		process:    NewProcessAPI(),
 		job:        NewJobAPI(),
 		appPackage: NewAppPackageAPI(),
+		keepAwake:  NewKeepAwake(),
 	}, nil
 }
 
@@ -50,6 +52,10 @@ func (p *WindowsPlatform) Job() platform.JobAPI {
 
 func (p *WindowsPlatform) AppPackage() apppackage.API {
 	return p.appPackage
+}
+
+func (p *WindowsPlatform) KeepAwake() platform.KeepAwakeAPI {
+	return p.keepAwake
 }
 
 func (p *WindowsPlatform) DesktopDir() (string, error) {
