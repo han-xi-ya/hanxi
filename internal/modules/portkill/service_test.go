@@ -22,6 +22,7 @@ func (f fakePlat) Network() platform.NetworkAPI               { return nil }
 func (f fakePlat) Port() platform.PortAPI                     { return f.port }
 func (f fakePlat) Process() platform.ProcessAPI               { return f.proc }
 func (f fakePlat) Job() platform.JobAPI                       { return nil }
+func (f fakePlat) KeepAwake() platform.KeepAwakeAPI           { return nil }
 func (f fakePlat) AppPackage() apppackage.API                 { return nil }
 func (f fakePlat) DesktopDir() (string, error)                { return "", platform.ErrNotSupported }
 func (f fakePlat) CreateDesktopShortcut(_, _, _ string) error { return platform.ErrNotSupported }
