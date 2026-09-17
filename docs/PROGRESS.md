@@ -30,7 +30,7 @@
 | F4b MCP 安装向导 | ✅ 已合并 | feat/f4b-mcpwizard | 三 | aa48a73 | internal/mcpwizard 独立包零依赖 F4a；AI 接入第 8 分区（52/40/40）；坑占 #61；access.json 对账清单见详情 |
 | F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
 | F6 数据目录同级化 | ✅ 已合并 | feat/f6-siblingdir | 一 | 8ba24bd | 实弹全过：裸 exe 全新目录自动建同级 hanxidata ✓、mcp 无头握手 ✓、用户目录零写 ✓；绑定指针=同级 hanxi.bind |
-| F7 hanxi-ocr 托管化 | 🟡 开发中 | feat/f7-ocrhosted | 三 | - | 主仓侧改造；zip+manifest+sha256 契约见 wave3 注记 |
+| F7 hanxi-ocr 托管化 | ✅ 已合并(主仓侧) | feat/f7-ocrhosted | 三 | aee1119 | 真 paddle 36MB 包全链集成测过；三契约令全落；坑重排 #66；剩实 UI 冒烟入人工闸门 |
 | F8 桌面留言板 | ✅ 已合并 | feat/f8-board | 一 | 00f1dc9 | KeepAwake 聚合器入 platform；msgboard 模块；导航计数并集已重算 |
 | F9 WSL USB 共享 | 🟡 开发中 | feat/f9-wslusb | 三 | - | 账本+重放范式；真机验证为合入后闸门 |
 | F7k 后厨发布流水线 | ✅ 已交付(独立仓) | hanxi-ocr-dev `4300765`/`e8ab2b2`/`3330dbf` | 三 | - | 真双包已产出并核验；manifest 超集裁定+version 语义三令已转 F7 主仓侧；selftest 11/11 |
@@ -83,6 +83,7 @@
 2. **access.json 授权写入口**（F4 §6 + R5 并案）：补 GUI 开关/auth 子命令 → MCP 拒权文案变真；或维持手工放置 → 改文案口径。
 3. **48MB 单文件版去留**（F7 卡片遗留）：托管化落地后是否停产？
 4. **paddle 源码拆仓**（F7 卡片遗留）。
+5. **sha256 旁挂件缺失的宽容度**（F7 实现裁定）：现按契约"三件套"**必检拒收**；若私发链路存在只发 zip 单件的习惯，放宽为"缺旁挂仅告警"一行可改。
 
 ### F7k 后厨交付注记（2026-09-18，独立仓 hanxi-ocr-dev）
 
