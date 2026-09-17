@@ -28,6 +28,13 @@ import * as $models from "./models.js";
  */
 
 /**
+ * HostedVersion 托管版本清单一件（F7：引擎 zip 安装进 versions/hanxi-ocr 的落位件）。
+ * State：ready=入口可执行 / broken=目录在位但入口缺失损坏（列表照列，供卸载清理）。
+ * Effective 由服务层填充：当前活跃引擎的服务解析结果正落在该版本目录内。
+ * @typedef {$models.HostedVersion} HostedVersion
+ */
+
+/**
  * ImageRef 统一"已选图"模型：对话框/拖拽/粘贴三通道汇流。
  * @typedef {$models.ImageRef} ImageRef
  */
