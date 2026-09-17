@@ -36,6 +36,7 @@ const SettingsTray = defineAsyncComponent(() => import('@/views/settings/TraySec
 const SettingsStorage = defineAsyncComponent(() => import('@/views/settings/StorageSection.vue'))
 const SettingsSystem = defineAsyncComponent(() => import('@/views/settings/SystemSection.vue'))
 const SettingsWorkbench = defineAsyncComponent(() => import('@/views/settings/WorkbenchSection.vue'))
+const SettingsSnapshot = defineAsyncComponent(() => import('@/views/settings/SnapshotSection.vue'))
 
 export const ROUTES: Record<string, RouteDef> = {
   '/': { component: defineAsyncComponent(() => import('@/views/HomeView.vue')) },
@@ -85,6 +86,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/settings/storage': { component: SettingsStorage },
   '/settings/system': { component: SettingsSystem },
   '/settings/workbench': { component: SettingsWorkbench },
+  '/settings/snapshot': { component: SettingsSnapshot },
   '/about': { component: defineAsyncComponent(() => import('@/views/AboutView.vue')) },
 }
 
@@ -104,6 +106,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'storage', title: '存储目录', desc: '配置 · 日志 · 版本仓', icon: 'hard-drive', route: '/settings/storage' },
   { id: 'system', title: '系统直达', desc: 'hosts · 组件 · 通知诊断', icon: 'wrench', route: '/settings/system' },
   { id: 'workbench', title: '工作台入口', desc: '运行日志 · 关于', icon: 'file-text', route: '/settings/workbench' },
+  { id: 'snapshot', title: '历史版本', desc: '自动快照 · 单文件回滚', icon: 'clock', route: '/settings/snapshot' },
 ]
 
 /** route → 设置分区 id；'/settings' 与未注册子段回落 general；非设置路由返回 null。 */

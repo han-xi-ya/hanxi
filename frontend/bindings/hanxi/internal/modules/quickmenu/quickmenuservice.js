@@ -24,7 +24,7 @@ import * as application$0 from "../../../../github.com/wailsapp/wails/v3/pkg/app
 import * as $models from "./models.js";
 
 /**
- * Dismiss 收起弹窗（前端 Esc / 空背景点击调用）。
+ * Dismiss 收起弹窗（前端 Esc / 空背景点击调用），并武装空闲销毁。
  * @returns {$CancellablePromise<void>}
  */
 export function Dismiss() {

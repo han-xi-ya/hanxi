@@ -154,7 +154,8 @@ export function SaveProject(p) {
 }
 
 /**
- * Shutdown 销毁实例引擎，终止所有正在运行的 frpc 子进程
+ * Shutdown 销毁实例引擎，终止所有正在运行的 frpc 子进程，
+ * 并擦除运行时 TOML（含明文 token）——停用/退出路径不落敏感残留。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {
