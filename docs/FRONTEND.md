@@ -3,7 +3,7 @@
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
 > **更新日期**：2026-09-16
-> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。当前待办＝§9.6-10 六项同名不同形待裁决（随 views 大扫除定标准形）、AppIcon 阶段2/3（挂起）、真机目视；蓝图 Phase 0–6 主体全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。**§9.7 字号/按钮体系化治理波 ✅**（2026-09-16/17：九档字号+三档控件高 token、~1000 处裸 px 视图层清零、家族 ~895 条副本删净落回、WSLView 2209→441 拆分、§9.6-10 六项裁决全清、822 用例全绿）；当前待办＝§9.7-下轮候选（ManagedConsoleShell 壳收编、UiModal、可访问性散点）、AppIcon 阶段2/3（挂起）、真机目视（§9.7 目视项清单①–⑩）；蓝图 Phase 0–6 主体全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
 
@@ -142,6 +142,8 @@ src/
 - **主色**：`primary #0f8b8d`（浅）/ `#42b7b4`（深）；`positive/information/warning/danger` 双值。
 - **表面四层公式**：`page → surface → surface-soft → surface-hover`，边框先于阴影。
 - **字族**：`--font-text / --font-display / --font-mono`；仅机器值（路径/端口/版本/速率/日志）用 mono + `tabular-nums`。
+- **字号阶梯（2026-09 体系化治理落地，全库唯一合法字号源）**：`--text-micro/xs/sm/base/md/lg/xl/2xl/3xl` = **10/11/12/13/14/16/18/22/28px**，基准 13px（紧凑工作台裁决）；角色映射：micro 角标注记 / xs 元数据 caption chip / sm 表格正文控件标签小按钮 / base 正文主按钮 / md 分区标题 / lg 区块标题 / xl 页面标题 / 2xl·3xl 大数字与 KPI。视图/组件**禁止裸 px 字号**，一律 var() 就近取档（历史散值映射：9/9.5/10/10.5→micro、11/11.5→xs、12/12.5→sm、14/15→md、16/17→lg、18/19/20→xl、21/22/24→2xl、其余→3xl 封顶）。**豁免区**：`.popup-shell` 独立悬浮窗（轮盘/SnipCard，字号与窗口尺寸后端互锁）与终端 ANSI 日志区（`--terminal-*` 行距体系）。
+- **按钮与控件三档（同上治理）**：`--control-h-lg/md/sm` = **36/30/24px** 对应 `.btn`/`.btn-small`/`.btn-micro`；行内微操作一律收 `.btn .btn-small/.btn-micro` 或 `.link-button` 标准家族，禁私有钮形；粗指针 44px 兜底在 base.css。
 - **半径/阴影/动效**：control 8 / element 12 / panel 16 / pill 999；动效 100–180ms、≤6px；**必须含 `prefers-reduced-motion` 全局块**。
 - **无障碍**：`:focus-visible` 清晰环；`pointer:coarse ≥44px`、桌面按钮 ≥36–38px、资源行 ≥52–56px；状态不只靠颜色；网格文本子项 `min-width:0`。
 - **字体栈写实**：`--font-text` 含中文回退（如 `"Segoe UI", "Microsoft YaHei UI", system-ui`），`--font-mono` 用 `Consolas, "Cascadia Mono", monospace`；组件视图不得再自带 `font-family` 声明。
@@ -210,7 +212,17 @@ src/
 7. **composable 命名法已统一**：Phase 6 新文件一律 `useXxx.ts`（PublicIp 组验收时由 `publicIpXxx.ts` 改齐）。
 8. ✅ **微信模态壳层副本**（已上收 `311f09d`）：11 条 `.custom-modal-*/.form-*/modalIn` + 3 条 `.btn-bind-account` 入 components.css；components/ui 的 UiModal 抽象仍留待将来复杂交互件需求时再立（Reka UI 触发线，§4）。
 9. ✅ **H4 唯一非逐字适配点**：useWechatBot 的滚动触达由元素 ref（messageContainer）改经 chatFlowRef + `defineExpose({ scrollToBottom })`，nextTick 时序等价，头注记在案。
-10. **同名不同形待裁决六项**（`311f09d` 上收时冻结）：`.rtt-tag/.btn-secondary/.text-muted/.text-danger/.empty-hint/.py-8`——均因未迁移 views 存在同名单方副本且形状/作用域有差（漏染或互染风险），待 views 大扫除定标准形一并处理。
+10. ✅ **同名不同形待裁决六项**（2026-09 字号/按钮体系化治理波裁决）：`.rtt-tag`（基形上收全局，fast/medium/slow 与 LanScanner padding 档留合法补差）、`.text-muted/.text-danger`（按名实一致定档全局，subtle 派四件改挂 `.text-subtle`）、`.empty-hint`（虚线卡标准形上收，裸文字派六处落回，目视项）、`.py-8`（全库死码清绝，原子不设）、`.btn-secondary`（MemoView/FileShare 全形副本删净落回；FileShareSettings 响应式 `.section-actions .btn-secondary` 语境覆盖属合法补差）。
+
+### 9.7 字号/按钮体系化治理波（2026-09-16/17，六路并行：A/B/C/D 治理 + E1/E2 收编）
+
+- **动因**：全库 ~1000 处硬编码 `font-size`、27 种离散值（9–44px），同角色控件高度 24–36px 不等——无字号 token 是根因（§7.3 原仅有字族/色/阴影）。
+- **地基**：tokens.css 落地九档字号 `--text-micro..3xl`（10/11/12/13/14/16/18/22/28，基准 13px 紧凑裁决）+ 三档控件高 `--control-h-lg/md/sm`（36/30/24，新原子 `.btn-micro`）+ `--radius-micro: 4px`；base.css body 定基线；components.css 全原子 token 化。裸 px 字号终扫：**视图/组件层清零**，仅剩声明豁免区（终端 ANSI 三页 `--terminal-*` 互锁区、`.popup-shell` 轮盘/SnipCard 窗口尺寸互锁区）。
+- **拆分**：WSLView 2209→441 行纯编排，五页签下沉 `components/wsl/`（Readiness/DistroTable/AddInstance/Versions/PortProxy），47 例特征测试零断言改动；MangoDisk 页头复制改挂 PageHeader。
+- **家族收编**：托管家族控制台皮 ~40 条原子（控制条/状态字组/下载行/已装卡/联动卡/知识折叠卡/table-container/ver-name/empty-hint/banner.slim/rtt-tag/btn-accent-outline/语义文本三色）上收 components.css「托管家族控制台皮」块，**~895 条 scoped 副本删净落回**；散差按多数派定档（installed-grid minmax320、control-bar gap8、dl-bar-inner base ease、retry-link ml8、hint-line 无行距、**info-body gap 4px——模板视图 MarkerOn 值系少数派，定档时已纠正**）。净账 92 受管文件 +1434/−4282，含 wsl 新族共净 −644 行。
+- **确定性缺陷修复**：`box-shadow: 0 Xpx Ypx var(--shadow-*)` 拼接无效七处改正（TROUBLESHOOTING #51，修复后投影开始真实渲染=目视项）；FileShare 三页签死祖先选择器删除；死类 `py-8/.first-use` 等清绝。
+- **真机目视项清单**（全为 token 定档/落回的设计归一，±1–2px 与个别形制）：① VSCode/FrpcVersionsTab/Douzy `.mono` 11→12px；② FrpcProjects 大空态图标 40→28px；③ MangoDisk/Snipaste 页头 21/20→18px；④ SnipCard 外 9 视图 `.ver-pill` 4px→胶囊、`.empty-hint` 6→8px、control-bar 圆角 10→12px；⑤ Wifi/Lan/PortKill/IpOverview/FileShare×3 `.empty-hint` 裸文字→虚线卡标准形；⑥ Memo 页头/模态钮 36px 高中枢（原 8px 内距无形钮）、页标题 22→18px；⑦ PackageManagerUpgradeHint `.copy-button` 收 btn-micro 28→24px；⑧ 阴影修复七处投影开始渲染；⑨ WSL 表壳获得 table-container 边框壳（裸用新染，预期收编）；⑩ FileShareInbox/Endpoints `.empty-state` gen1 基形落回全局。
+- **下轮候选（登记未做）**：① `components/tool/ManagedConsoleShell/VersionGrid/StatusHeader`（§4 预留位）——前缀状态灯 `{pfx}-status-light`、`{pfx}-ver-status` 四态灯、dz-/md- 前缀家族、badge 色词→chip 映射、`.summary-text` 更名合流；② `.control-panel` gap/wrap、`.k` 36 vs 44、`ver-pill` 方片形制、retry-link `<a>` 无 href 不可键盘聚焦（可访问性）→ 收编波；③ UiModal 抽象收双模态壳+Frpc 手搓 modal（§9.6-8）；④ OcrView `--primary-soft` 未定义回退、FrpcProjectEditor 无效阴影已修但 hover 意图待裁决、Memo 死 utility（font-mono/mb-*/truncate）复活或删除；⑤ AppIcon 阶段2/3（挂起中）。
 
 ## 10. 提交拆分（示例）
 

@@ -908,3 +908,10 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：读 beta.10 源码（`webview_window_windows.go`）实锤 `BackgroundTypeTransparent` 存在且走 DirectComposition（`WS_EX_NOREDIRECTIONBITMAP` + chromium 背景 alpha=0）——旧注释是错的；白环宽度恰等于边距、外缘恰为裁剪圈 → 反推是页面 canvas 而非窗口底。
 - **正确做法与标准修复方案**：① 弹窗用 `BackgroundType: application.BackgroundTypeTransparent` + `BackgroundColour: NewRGBA(0,0,0,0)`，圆盘视觉边缘（含抗锯齿、投影）全部由页面绘制；`SetWindowRgn` 降级为纯命中测试（把四角从鼠标命中剪掉让点击穿透），裁剪圈半径设在**投影淡出后的全透明区**，GDI 硬边落在无像素处即不可见；② 弹窗类透明窗口须把 canvas 一并打穿：main.ts 按 hash 给 `<html>` 打 `.popup-shell` 标记，base.css 覆写 `html/body background: transparent`；③ 入场动画不得缩放"能露出底色的整层"，且新窗口透明后边距区点击会被 WebView 吃掉——"点外收起"判定半径要按**盘半径**（窗口半宽 − 边距×scale）而非窗口半宽。
 - **避坑防重犯建议**：① 代码注释里的"框架不支持 X"是**历史断言不是事实**——动手支持性判断前回一遍当前版本源码/grep 能力位（beta 版特性表变得快），本轮为一句旧注释多走了一整轮 GDI 弯路；② 给"未来可能透明"的浮窗立规：**页面根 canvas 不允许携带实底全局背景**，底色职责下放到显式绘制的容器层，否则任何透明化尝试都会把 `body` 底色原样暴露；③ 透明窗 + 区域裁剪混用时，二者半径职责必须分开——区域管命中、CSS 管观感，裁剪圈永远画在内容透明处；④ 带 scale 入场动画的浮层，动画层下方必须无可见底（透明窗/同色底），否则每次弹出都闪一圈露边。
+
+### 51. 阴影 token 当颜色用：`box-shadow: 0 8px 32px var(--shadow-panel)` 七处整条声明被解析器静默丢弃
+
+- **问题现象与错误原因**：字号/按钮体系化治理的上收审计中，B/D 两组各自登记了"阴影从未渲染"的组件（FrpcProjectEditor 模式钮选中态与导入模态、FileShareHero/Overview/Settings/Workspace 四处卡片投影）。根因同一：把 `--shadow-*` token 当 `<color>` 填进自定义阴影的偏移位——token 值是完整的 `0 18px 45px rgba(...)`（含偏移/模糊/扩散），拼接后整条 box-shadow 变成 6+ 个长度值，CSS 解析当场丢弃**整条声明**，浏览器控制台零报错，肉眼只会"以为没做阴影"。
+- **排查过程**：跨组上收候选汇总时逐条比对 shadow 声明，发现同库 `.modal-card` 在 FrpcProjectsView 正确直挂 token、在 FrpcProjectEditor 却是拼接形——正确写法与错误写法同屏存活，实锤是复制走样而非能力缺失；grep 模式 `box-shadow:[^;]*0[^;]*var\(--shadow` 全库扫出共 7 处。
+- **正确做法与标准修复方案**：阴影只有两档语义（`--shadow-small` 卡片 / `--shadow-panel` 浮层模态），要投影就**整值直挂** `box-shadow: var(--shadow-small)`；确有第三种投影需求（如右侧抽屉专用 `--shadow-drawer`）才在 tokens.css 增设命名档，禁止视图内拼接改参。7 处已全部改正（修复后投影开始真实渲染，列入目视核对项）。
+- **避坑防重犯建议**：① token 化的复合值（阴影/渐变/字族）永远整值引用，**组合器（box-shadow 逗号并列）只允许并列多条完整 shadow**，不允许给单条加偏移前缀；② code review 见到 `box-shadow:` 行里 `var(--shadow` 前面还有裸数字即红灯；③ 此类"声明无效但无报错"的静默失效，vitest（happy-dom 不解析 scoped CSS）与 vue-tsc 均抓不住，只有 grep 审计或真机目视能兜底——大治理波务必带一次全库失效声明扫描。
