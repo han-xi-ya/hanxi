@@ -12,6 +12,8 @@ build/ios/xcode/gen/
 build/android/overlay.json
 build/android/gen/
 data/
+# 仓库根误跑 exe 即生成的便携数据根（bin/ 下的已被上面的 bin 覆盖）
+hanxidata/
 
 # Windows syso 构建中间产物（扫描 main 包目录时自动化生成）
 *.syso

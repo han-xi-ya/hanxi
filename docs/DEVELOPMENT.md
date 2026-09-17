@@ -129,7 +129,9 @@ Hanxi 支持零安装、不写注册表的绿色便携模式：
    ```
 2. 双击运行 `bin/hanxi.exe`；
 3. 程序启动后会自动侦测并切换至 **Portable 便携模式**；
-4. 所有的配置文件（`config.json`）、运行时 TOML、日志（`logs/`）、frpc 与各托管工具的版本文件（`versions/`）将全部落入 `bin/hanxidata/` 目录中，随时拷走即用。
+4. 所有的配置文件（`config.json` 留在 `bin/hanxidata/` 根，作为便携数据根标记）、各模块状态 JSON（`state/`）、运行时 TOML、日志（`logs/`）、frpc 与各托管工具的版本文件（`versions/`）将全部落入 `bin/hanxidata/` 目录中，随时拷走即用。
+
+> 历史兼容：旧版本把各模块状态 JSON 平铺在数据根，新版启动时自动收拢进 `hanxidata/state/`（`config.json` 留根不动）。若曾回滚旧版运行，旧版会再把文件写回根目录，此时升级后根/`state/` 双份并存并告警留痕——升级/回滚前先彻底退出另一版本（含托盘）即可避免。
 
 > 历史兼容：v0.3.0 及以前的便携包使用泛化名 `data/`，新版仍会识别**已含 Hanxi 数据**（`config.json` 或 `versions/`）的旧 `data/` 目录；空 `data/` 不再触发便携模式，避免与无关同名目录误撞。
 
