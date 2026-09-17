@@ -26,7 +26,7 @@
 | F1 统一历史记录 | ✅ 已合并 | feat/f1-history | 二 | fd830ab | PLAN_HISTORY.md，决策已全回写 |
 | F2 剪贴板惯例 | ✅ 已合并 | feat/f2-clipboard | 二 | 6a38422 | PLAN_CLIPBOARD.md 三段全落；热键封装 internal/hotkey |
 | F3 数据自动快照 | ✅ 已合并 | feat/f3-snapshot | 二 | 7a6cc78 | PLAN_SNAPSHOT.md 全量；三红线守住（永不 push/影子拷贝/对外"历史版本"） |
-| F4a MCP 无头 server | ⛔ 被停待裁 | feat/f4-mcp | 三 | - | PLAN_MCP.md 无头段+S2 随批修；agent 停于零提交，无沉没成本 |
+| F4a MCP 无头 server | 🟡 开发中 | feat/f4-mcp | 三 | - | PLAN_MCP C1-C5 无头段+S2；与 F4b 仅经 access.json 契约耦合 |
 | F4b MCP 安装向导 | 🟡 开发中 | feat/f4b-mcpwizard | 三 | - | 预览→确认→备份→原子写→回滚；不依赖 F4a 代码，契约=PLAN 文本 |
 | F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
 | F6 数据目录同级化 | 🟡 开发中 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动；worktree wt-f6-siblingdir |
