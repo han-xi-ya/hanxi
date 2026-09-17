@@ -28,12 +28,12 @@
 | F3 数据自动快照 | ✅ 已合并 | feat/f3-snapshot | 二 | 7a6cc78 | PLAN_SNAPSHOT.md 全量；三红线守住（永不 push/影子拷贝/对外"历史版本"） |
 | F4a MCP 无头 server | ✅ 已合并 | feat/f4-mcp | 三 | 021ce5e | C1-C5 全落（含 ocr/memo 工具，默认全关）；S2 已收口；真机 stdio 管道冒烟已过；剩 C9 三客户端红队 |
 | F4b MCP 安装向导 | ✅ 已合并 | feat/f4b-mcpwizard | 三 | aa48a73 | internal/mcpwizard 独立包零依赖 F4a；AI 接入第 8 分区（52/40/40）；坑占 #61；access.json 对账清单见详情 |
-| F5 软件版本检测 | ⛔ 已停待裁 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
-| F6 数据目录同级化 | ⛔ 已停待裁 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动；worktree wt-f6-siblingdir |
-| F7 hanxi-ocr 托管化 | ⛔ 已停待裁 | feat/f7-ocrhosted | 三 | - | 主仓侧改造；zip+manifest+sha256 契约见 wave3 注记 |
+| F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
+| F6 数据目录同级化 | 🟡 开发中 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动；worktree wt-f6-siblingdir |
+| F7 hanxi-ocr 托管化 | 🟡 开发中 | feat/f7-ocrhosted | 三 | - | 主仓侧改造；zip+manifest+sha256 契约见 wave3 注记 |
 | F8 桌面留言板 | ✅ 已合并 | feat/f8-board | 一 | 00f1dc9 | KeepAwake 聚合器入 platform；msgboard 模块；导航计数并集已重算 |
-| F9 WSL USB 共享 | ⛔ 已停待裁 | feat/f9-wslusb | 三 | - | 账本+重放范式；真机验证为合入后闸门 |
-| F7k 后厨发布流水线 | ⛔ 已停待裁 | hanxi-ocr-dev@直提 | 三 | - | 独立仓不进 hanxi；双 zip+manifest+sha256+断言 |
+| F9 WSL USB 共享 | 🟡 开发中 | feat/f9-wslusb | 三 | - | 账本+重放范式；真机验证为合入后闸门 |
+| F7k 后厨发布流水线 | 🟡 开发中 | hanxi-ocr-dev@直提 | 三 | - | 独立仓不进 hanxi；双 zip+manifest+sha256+断言 |
 | R1 热键收编 | ✅ 已合并 | feat/r1-hotkey | 三 | d96aac6 | msgboard→internal/hotkey 槽位 msgboard/toggle；改键序内部升级为"先新后旧"，用户可见零差异 |
 
 图例：⬜ 未开始 / 🟡 开发中 / 🔶 待审查 / ✅ 已合并 / ⛔ 阻塞
