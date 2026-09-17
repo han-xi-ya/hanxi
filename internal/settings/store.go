@@ -36,6 +36,21 @@ type WechatConfig struct {
 	BaseURL               string `json:"baseUrl"`
 }
 
+// WebAppEntry 网页应用窗口的网址条目配置模型（webapp 模块）。
+// 尺寸/坐标为"记忆位"：0 表示未记忆，建窗时回退默认 1120x820 居中；
+// 窗口收起/销毁时由 webapp 服务回写。
+type WebAppEntry struct {
+	ID        string `json:"id"`        // 唯一标识（webapp_<UnixNano>；出厂预置用固定 ID）
+	Name      string `json:"name"`      // 显示名，兼作子窗口标题
+	URL       string `json:"url"`       // 外部地址（仅 http/https，webapp 服务层闸门校验）
+	Icon      string `json:"icon"`      // emoji 等自由文本图标，可空，仅前端行内展示
+	Width     int    `json:"width"`     // 记忆窗口宽度（0=默认）
+	Height    int    `json:"height"`    // 记忆窗口高度（0=默认）
+	X         int    `json:"x"`         // 记忆窗口坐标 X（X/Y 同为非 0 才生效；负值=副屏合法）
+	Y         int    `json:"y"`         // 记忆窗口坐标 Y
+	CreatedAt string `json:"createdAt"` // 创建时刻（预置条目为空）
+}
+
 // 托盘菜单项类型常量。
 const (
 	TrayItemCommand = "command" // 托管模块启动命令，Ref = "moduleId/commandId"
@@ -69,6 +84,7 @@ type AppSettings struct {
 	QuickMenuTwoTier bool              `json:"quickMenuTwoTier"` // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
 	Wechat           WechatConfig      `json:"wechat"`           // 微信机器人遗留配置（向下兼容）
 	WechatAccounts   []WechatAccount   `json:"wechatAccounts"`   // 微信多账号列表
+	WebAppEntries    []WebAppEntry     `json:"webAppEntries"`    // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
 }
 
 // DefaultSettings 返回出厂默认配置：浅色主题、青壳色板、中文、关闭时最小化到托盘、日志保留 7 天。
@@ -88,6 +104,14 @@ func DefaultSettings() AppSettings {
 		// 缺省回退由 wechat 模块读取侧兜底（defaultBaseURL）。
 		Wechat:         WechatConfig{},
 		WechatAccounts: make([]WechatAccount, 0),
+		// 出厂预置微信文件传输助手网页版：旧配置文件缺 webAppEntries 键时，
+		// load() 解码进本默认副本即自动带出；用户显式存 [] 后不再复活。
+		WebAppEntries: []WebAppEntry{{
+			ID:   "webapp_filehelper",
+			Name: "微信文件传输助手",
+			URL:  "https://filehelper.weixin.qq.com/",
+			Icon: "💬",
+		}},
 	}
 }
 
@@ -140,6 +164,9 @@ func (s *Store) load() error {
 	}
 	if data.WechatAccounts == nil {
 		data.WechatAccounts = make([]WechatAccount, 0)
+	}
+	if data.WebAppEntries == nil {
+		data.WebAppEntries = make([]WebAppEntry, 0)
 	}
 	if data.TrayMenu == nil {
 		data.TrayMenu = make([]TrayMenuItem, 0)
@@ -195,6 +222,7 @@ func cloneAppSettings(src AppSettings) AppSettings {
 	}
 	cp.TrayMenu = cloneTrayItems(src.TrayMenu)
 	cp.WechatAccounts = append(make([]WechatAccount, 0, len(src.WechatAccounts)), src.WechatAccounts...)
+	cp.WebAppEntries = append(make([]WebAppEntry, 0, len(src.WebAppEntries)), src.WebAppEntries...)
 	return cp
 }
 
@@ -373,6 +401,80 @@ func (s *Store) DeleteWechatAccount(id string) error {
 			c.Wechat = WechatConfig{}
 		}
 	})
+}
+
+// GetWebAppEntries 获取全部网页应用网址条目副本（保持配置顺序）
+func (s *Store) GetWebAppEntries() []WebAppEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	res := make([]WebAppEntry, len(s.data.WebAppEntries))
+	copy(res, s.data.WebAppEntries)
+	return res
+}
+
+// GetWebAppEntryByID 按 ID 获取单个网址条目
+func (s *Store) GetWebAppEntryByID(id string) (WebAppEntry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, e := range s.data.WebAppEntries {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return WebAppEntry{}, false
+}
+
+// UpsertWebAppEntry 添加或更新网址条目并持久化（按 ID 命中替换，否则追加到末尾）
+func (s *Store) UpsertWebAppEntry(entry WebAppEntry) error {
+	return s.Update(func(c *AppSettings) {
+		if c.WebAppEntries == nil {
+			c.WebAppEntries = make([]WebAppEntry, 0)
+		}
+		for i, existing := range c.WebAppEntries {
+			if existing.ID == entry.ID {
+				c.WebAppEntries[i] = entry
+				return
+			}
+		}
+		c.WebAppEntries = append(c.WebAppEntries, entry)
+	})
+}
+
+// DeleteWebAppEntry 删除指定网址条目并持久化；同步清理托盘/轮盘配置中
+// 指向本条目的命令引用（"webapp/open:<id>"），避免已删条目在托盘菜单里
+// 残留成"点击必报错"的死条目。
+func (s *Store) DeleteWebAppEntry(id string) error {
+	ref := "webapp/open:" + id
+	return s.Update(func(c *AppSettings) {
+		filtered := make([]WebAppEntry, 0, len(c.WebAppEntries))
+		for _, e := range c.WebAppEntries {
+			if e.ID != id {
+				filtered = append(filtered, e)
+			}
+		}
+		c.WebAppEntries = filtered
+		c.TrayMenu = pruneTrayRefs(c.TrayMenu, ref)
+	})
+}
+
+// pruneTrayRefs 剔除 command 引用等于 ref 的条目（含 group 子层），其余原样保留。
+func pruneTrayRefs(items []TrayMenuItem, ref string) []TrayMenuItem {
+	if len(items) == 0 {
+		return items
+	}
+	out := make([]TrayMenuItem, 0, len(items))
+	for _, it := range items {
+		if it.Type == TrayItemCommand && it.Ref == ref {
+			continue
+		}
+		if it.Type == TrayItemGroup {
+			it.Children = pruneTrayRefs(it.Children, ref)
+		}
+		out = append(out, it)
+	}
+	return out
 }
 
 // GetTrayMenu 获取托盘右键菜单条目配置副本（按保存顺序，含 group 子条目的深拷贝）
