@@ -12,6 +12,7 @@ import (
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/history"
+	"hanxi/internal/hotkey"
 	"hanxi/internal/logging"
 	"hanxi/internal/modules/bcu"
 	bcuinstance "hanxi/internal/modules/bcu/instance"
@@ -285,8 +286,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// quickmenu 需在装配根持有引用：弹窗 route 条目要唤出稍后创建的主窗口。
 	quickMenuModule := quickmenu.New(store, registry)
 	fileShareModule := fileshare.New(plat)
-	ocrModule := ocr.New(plat)           // 类型断言取服务实例，接主窗文件拖放（组件导入）
-	portkillModule := portkill.New(plat) // 类型断言取服务实例，注入统一历史
+	ocrModule := ocr.New(plat)                  // 类型断言取服务实例，接主窗文件拖放（组件导入）
+	portkillModule := portkill.New(plat)        // 类型断言取服务实例，注入统一历史
+	msgboardModule := msgboard.New(plat, paths) // 持有引用：热键注册器随装配根注入（R1 收编）
 	memoModule, err := memo.New(paths)
 	if err != nil {
 		slog.Error("failed to init memo module", "err", err)
@@ -339,7 +341,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		fileShareModule,
 		quickMenuModule,
 		webapp.New(store),
-		msgboard.New(plat, paths),
+		msgboardModule,
 	}
 	if memoModule != nil {
 		modulesToRegister = append(modulesToRegister, memoModule)
@@ -457,6 +459,10 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	win.OnWindowEvent(events.Common.WindowUnMinimise, func(*application.WindowEvent) { snapSvc.NoteActivated() })
 	snapSvc.Start()
 
+	// 全仓唯一一张热键注册表（底层即 Wails GlobalShortcut 管理器）：ocr 剪贴板
+	// 识图、留言板 toggle 等所有热键槽位共用同一份记账与原子换键语义（F2-③）。
+	hk := hotkey.NewRegistry(a.GlobalShortcut)
+
 	// 文字识别：主窗文件拖放 → OcrService（exe 落放=导入组件，图片落放=选图识别）。
 	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
 		ocrSvc := ocrMod.Service()
@@ -471,7 +477,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 			}
 		})
 		// 全局热键"剪贴板识图"（默认 Ctrl+Alt+T）：通用注册器 + 命令派发接线。
-		setupSnipHotkey(a, registry, ocrSvc)
+		setupSnipHotkey(hk, registry, ocrSvc)
 	}
 
 	// quickmenu：注入主窗引用供 route 条目唤窗，并随启动常驻激活全局鼠标钩子
@@ -481,8 +487,11 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		slog.Error("激活 quickmenu 模块失败，全局鼠标钩子不可用（不影响启动）", "err", err)
 	}
 
-	// msgboard：全局热键与 quickmenu 钩子同属常驻监听能力——开机即注册（beta.10
-	// 会把 Run 前的注册排入 pending，启动瞬间完成 OS 绑定），主窗不开也能挂牌。
+	// msgboard：全局热键收编入通用注册器（R1）——这里只交接注册表，绑定/解绑
+	// 随模块 OnInit/OnDestroy 驱动，须在激活前注入。热键与 quickmenu 钩子同属
+	// 常驻监听能力——开机即注册（beta.10 会把 Run 前的注册排入 pending，启动瞬间
+	// 完成 OS 绑定），主窗不开也能挂牌。
+	msgboardModule.SetHotkeyRegistry(hk)
 	if err := registry.EnsureActive("msgboard"); err != nil {
 		slog.Error("激活 msgboard 模块失败，留言板热键不可用（不影响启动）", "err", err)
 	}
