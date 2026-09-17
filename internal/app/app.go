@@ -94,6 +94,7 @@ import (
 	"hanxi/internal/modules/vscode"
 	vscodeinstance "hanxi/internal/modules/vscode/instance"
 	vscodeversion "hanxi/internal/modules/vscode/version"
+	"hanxi/internal/modules/webapp"
 	"hanxi/internal/modules/wechat"
 	"hanxi/internal/modules/wifi"
 	"hanxi/internal/modules/wsl"
@@ -329,6 +330,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		wechat.New(store),
 		fileShareModule,
 		quickMenuModule,
+		webapp.New(store),
 	}
 	if memoModule != nil {
 		modulesToRegister = append(modulesToRegister, memoModule)
