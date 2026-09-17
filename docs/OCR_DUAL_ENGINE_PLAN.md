@@ -172,3 +172,10 @@ Hanxi:   启动后低频探测(或进 OCR 页时) → 发现新于 active 版本
   CreateEnv 直接 AV 崩，干净机器必炸）——pack_public 清单与 manifest 需增补这三个 DLL。
   快判：1:1 框选与微信件打平互有胜负，整屏小字弱于微信件但不在 snip 链路，退出条件不触发；
   medium 档与精度定量留给 M2 盲测。
+- **M1 已收官（2026-09-17）**：spike 管线合入 `service\engine\paddle\`（6 文件，纯 Go，双模式
+  vet/build 绿），内存治理达标（整屏 1.8GB→329MB 封顶、snip 132MB、72MP 硬拒）；收编时修掉
+  spike 两个真 bug（ORT 输出悬垂切片、uintptr 跨函数转发的栈逃逸崩溃，已沉淀主仓
+  TROUBLESHOOTING #54）。首个真实引擎包 44MB：`hanxi-ocr-dev\dist\hanxi-ocr-paddle\` 与
+  同级自动发现锚点 `工具\hanxi-ocr-paddle\` 均已落位；rapidocr.dll 出局的 manifest/pack
+  修正已同步。M2 待办不变：labels 人工校对、真手写/拍照补料、medium 档量化、
+  运行中切换分支人工核验（真件在 Hanxi 内启停）。

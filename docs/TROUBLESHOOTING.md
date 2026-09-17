@@ -79,6 +79,10 @@
 - [48. WSL「默认 D:\wsl 却还是装到 C」：落位三坑同源——偏好粘滞、装完即迁无归因、能力无闸门](#48-wsl默认-dwsl-却还是装到-c落位三坑同源偏好粘滞装完即迁无归因能力无闸门)
 - [49. 全库确认框「\n\n 分段」被 HTML 折叠成文字墙：设计防线在渲染层一秒归零](#49-全库确认框nn-分段被-html-折叠成文字墙设计防线在渲染层一秒归零)
 - [50. 快捷菜单轮盘连环白边：旧注释谎称"Wails 无透明能力"，GDI 区域硬裁与近白 canvas 双重露底](#50-快捷菜单轮盘连环白边旧注释谎称wails-无透明能力gdi-区域硬裁与近白-canvas-双重露底)
+- [51. 阴影 token 当颜色用：`box-shadow: 0 8px 32px var(--shadow-panel)` 七处整条声明被解析器静默丢弃](#51-阴影-token-当颜色用box-shadow-0-8px-32px-varshadow-panel-七处整条声明被解析器静默丢弃)
+- [52. GUI 子系统双击启动"日志恒空"：`io.MultiWriter(os.Stderr, f)` 被无效 stderr 句柄中断，落盘跟着拖垮](#52-gui-子系统双击启动日志恒空iomultiwriterosstderr-f-被无效-stderr-句柄中断落盘跟着拖垮)
+- [53. Wails v3 beta.10 无公开 Destroy() ≠ 无法销毁窗口：摘掉 WindowClosing 拦截 hook 再 Close 即走内部真销毁](#53-wails-v3-beta10-无公开-destroy--无法销毁窗口摘掉-windowclosing-拦截-hook-再-close-即走内部真销毁)
+- [54. Go 直调 COM 式 vtable：uintptr 跨函数转发违反 unsafe 规则，栈增长后 C++ 回写旧副本必崩（ORT 三坑）](#54-go-直调-com-式-vtableuintptr-跨函数转发违反-unsafe-规则栈增长后-c-回写旧副本必崩ort-三坑)
 
 ---
 
@@ -915,3 +919,24 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：跨组上收候选汇总时逐条比对 shadow 声明，发现同库 `.modal-card` 在 FrpcProjectsView 正确直挂 token、在 FrpcProjectEditor 却是拼接形——正确写法与错误写法同屏存活，实锤是复制走样而非能力缺失；grep 模式 `box-shadow:[^;]*0[^;]*var\(--shadow` 全库扫出共 7 处。
 - **正确做法与标准修复方案**：阴影只有两档语义（`--shadow-small` 卡片 / `--shadow-panel` 浮层模态），要投影就**整值直挂** `box-shadow: var(--shadow-small)`；确有第三种投影需求（如右侧抽屉专用 `--shadow-drawer`）才在 tokens.css 增设命名档，禁止视图内拼接改参。7 处已全部改正（修复后投影开始真实渲染，列入目视核对项）。
 - **避坑防重犯建议**：① token 化的复合值（阴影/渐变/字族）永远整值引用，**组合器（box-shadow 逗号并列）只允许并列多条完整 shadow**，不允许给单条加偏移前缀；② code review 见到 `box-shadow:` 行里 `var(--shadow` 前面还有裸数字即红灯；③ 此类"声明无效但无报错"的静默失效，vitest（happy-dom 不解析 scoped CSS）与 vue-tsc 均抓不住，只有 grep 审计或真机目视能兜底——大治理波务必带一次全库失效声明扫描。
+
+### 52. GUI 子系统双击启动"日志恒空"：`io.MultiWriter(os.Stderr, f)` 被无效 stderr 句柄中断，落盘跟着拖垮
+
+- **问题现象与错误原因**：便携包 `hanxidata/logs/` 下每天的 `app-*.log` 都被正常创建，却恒为 0 字节，任何排障都"无日志可查"；从终端/`go run` 启动时日志却又完好。根因两步叠加：① 生产构建带 `-H windowsgui`（PE 子系统 2，见 `build/windows/Taskfile.yml`），双击/开机启动的进程没有控制台，`GetStdHandle(STD_ERROR_HANDLE)` 返回无效句柄，对 `os.Stderr` 的每次写入都报 `write /dev/stderr: The handle is invalid.`；② `logging.InitLogger` 用 `io.MultiWriter(os.Stderr, f)` 双路输出，而 MultiWriter 按参数序逐路写、**首路报错即中断**——stderr 排第一，磁盘文件永远轮不到。文件存在纯属 `O_CREATE` 的副作用，制造了"日志在写"的假象。
+- **排查过程**：先确认启动路径（InitLogger 唯一调用点在 `app/app.go`，`slog.Info("Hanxi starting")` 紧随其后，理应有内容）；读 PE 头验证 `bin/hanxi.exe` subsystem=2；用同 `-H windowsgui` 编译的最小复现程序对照三种启动方式：从 Git Bash 启动（继承控制台句柄，stderr 有效→一切正常，解释了"开发时看不见这个 Bug"）、经 explorer 启动（无句柄：`multiwriter n=0 err=handle invalid`、同一 fd 直写 `fileonly n=10` 成功）——锁定 MultiWriter 的中断语义而非 slog/文件权限。
+- **正确做法与标准修复方案**：控制台路包一层尽力而为 writer（`consoleWriter`，写失败吞掉、恒返 `(len(p), nil)`，seam 变量 `consoleOut` 供单测注入），stderr 有无句柄不再影响落盘；回归测试 `TestInitLoggerFileWritesSurviveBadConsole` 注入必错 console 断言文件收全量。实机验收：production flags 构建双击启动，`app-<今天>.log` 非空。
+- **避坑防重犯建议**：① Windows GUI 子系统的 `os.Stdin/Stdout/Stderr` 一律视为"可能必错"的 writer——凡与关键路径（日志、崩溃报告）并路输出，先包吞错壳再进 MultiWriter，或把文件路排在最前；② "文件被创建"≠"管道是通的"，双路输出上线前要做一次**无控制台环境**（explorer/计划任务/服务）冒烟，终端里永远测不出这类坑；③ 从 bash 直接 `./xxx.exe` 会继承控制台句柄，复现 GUI 坑必须经 explorer/Start-Process 换环境，否则得出"无法复现"的错误结论；④ 日志是排障的最后生命线，InitLogger 之后的任何启动早退路径都要保证至少一条记录已落盘。
+
+### 53. Wails v3 beta.10 无公开 Destroy() ≠ 无法销毁窗口：摘掉 WindowClosing 拦截 hook 再 Close 即走内部真销毁
+
+- **问题现象与错误原因**：quickmenu/ocr 悬浮窗长期按"beta.10 无公开窗口销毁 API"的结论做**常驻隐藏复用**，导致开机即养着不可见的 WebView2 视图（每个渲染器进程 + DOM/JS 堆几十 MB），任务管理器分组总内存被推到 300MB+。但"无销毁 API"的结论只对了一半：`WebviewWindow` 确实没有公开的 `Destroy()`，可 `Close()` 的完整销毁通路一直都在——`WM_CLOSE` 处理里只要 `unconditionallyClose` 未被置位就先派发 `WindowClosing` 事件，若**没有任何 hook 取消它**，Wails 在创建时自动注册的内部监听器会自行置位 `unconditionallyClose`、`markAsDestroyed`、二次 `Close()` 进入真销毁（`chromium.ShuttingDown()` + `DestroyWindow` + 从窗口管理器除名），页面内存随之释放，且同名窗口可再 `NewWithOptions` 重建。此前弹窗注册的"Cancel+Hide"拦截 hook 恰好挡死了这条通路，让人误以为根本关不掉。
+- **排查过程**：读 v3.0.0-beta.10 源码链：`webview_window.go` 创建时注册的内部 `WindowClosing` 监听器（置位 unconditionallyClose + Remove）→ `webview_window_windows.go` 的 `WM_CLOSE` 分支（`chromium.ShuttingDown` + `unregisterWindow`）→ `HandleWindowEvent` 派发顺序（hook 先跑、可取消，取消后监听器不执行）→ `RegisterHook` 返回注销闭包。四处拼起来即"摘 hook → Close → 真销毁 → 可同名重建"闭环。
+- **正确做法与标准修复方案**：需要空闲释放的常驻弹窗按「按需创建 + 收起后定时销毁」实现，参考 `quickmenu/service.go`：`createPopup` 把 `RegisterHook` 返回的注销闭包存进 `popupClosing`；`destroyPopup` 先 `off()` 摘钩再 `popup.Close()`；重建路径同名复用。显隐判定用服务层状态机（`popupShown`），不要在持 `s.mu` 时调 `IsVisible/Hide/Close`——它们是主线程 `InvokeSync`，而主线程侧（如 `navigateMain`）可能反向要拿同一把锁，构成锁反转；`OnShutdown` 链上的销毁安全，因为 `dispatchOnMainThread` 检测到已在主线程会直接内联执行。
+- **避坑防重犯建议**：① 断言"框架做不到 X"前先翻一遍依赖源码的事件派发与清理通路，注释里的旧结论会自我繁殖（本次三处"beta.10 无销毁 API"注释互相引用，实则只差一个注销闭包）；② 拦截型 `WindowClosing` hook 必须预留"合法关闭"通道（注销闭包或放行标志），否则连模块停用/空闲释放都做不到；③ WebView2 多窗的内存大头在每个视图的渲染器与页面堆，隐藏≠省钱，常驻隐藏要过"这窗值得几十 MB 吗"的评审。
+
+### 54. Go 直调 COM 式 vtable：uintptr 跨函数转发违反 unsafe 规则，栈增长后 C++ 回写旧副本必崩（ORT 三坑）
+
+- **问题现象与错误原因**：PP-OCRv6 管线收编（hanxi-ocr 开源版 paddle 后端，纯 Go 动态装载 `onnxruntime.dll` + vtable 直调）时，spike 版"能跑通大多数图"但在固定一张图（呀哈哟 1484×1081 第 17 批）确定性崩溃。根因：跨调用传递的 Go 侧出参地址以 `uintptr(unsafe.Pointer(&栈局部))` 形态经**普通函数**（`rt.call`）转发，违反 unsafe 规则 3（uintptr 不得作为活指针跨函数存活）——函数入口栈若增长/拷贝，C++ 拿到的是**旧栈副本**地址，`GetTensorTypeAndShape` 把形状写进废内存、出参恒 0，随后 `NULL+0x60` AV。spike 还埋着第二颗雷：`Run1In1Out` 返回指向 ORT 自有内存的切片且随即 `ReleaseValue`（use-after-free，此前只是侥幸未踩中脏页）。
+- **排查过程**：崩溃点无 Go 栈可归因（AV 在 ORT 内部），先以二分裁批锁定"第 N 批必崩"的确定性，再对照 unsafe 规则清单审 vtable 胶水——发现全部出参走 `uintptr→普通函数` 转发形态；`runtime.Pinner` 预案（spike 报告 §7 已预警"移动栈"）落实后 5/5 稳定。同轮扫出 spike 报告 §7 三个已知坑：ORT `Run` 参数序、input/output names 须二级指针数组、`CreateEnv` 传错 logid 等级直接崩。
+- **正确做法与标准修复方案**：① 凡 Go 分配的内存地址要被 C/汇编 callee 读写并跨调用存活，一律 `runtime.Pinner.Pin` 后再 `unsafe.Pointer`→`uintptr` 取址，调用结束 `Unpin`（Go 1.21+ 的合规通道，等价旧 `runtime.KeepAlive` 但覆盖栈拷贝场景）；② C 侧拥有的返回缓冲**当场 MoveMemory 复制进 Go 自有缓冲再 ReleaseValue**，绝不外带切片；③ 原生地址→Go 全程 `uintptr` 算术 + `RtlMoveMemory` 搬运（与主仓 `internal/modules/ocr/snip` 包 Windows API 胶水的 vet-clean 纪律同谱）；④ ORT API 调用以 1.30.0 官方头文件机械提取的 vtable 索引表为准（`spike/downloads/ortapi_130.txt`），不手抄。
+- **避坑防重犯建议**：① "spike 里没崩"≠没有 use-after-free：ORT 释放后的内存常被下一批分配复用，脏数据恰好等于期望值时测试全绿，**换图/换批次就翻车**——收编 spike 代码必须把 unsafe 审计列为第一遍扫描，不跑功能先跑 `go vet`（本报告修复后双模式 vet 零告警）；② vtable/COM 式胶水评审三查：出参地址归属（Go 栈/C 堆）、跨函数存活形态（禁裸 uintptr 转发）、返回缓冲所有权（拷贝后即释）；③ 确定性崩溃优先做"最小输入二分"而不是加日志——本例"第 17 批必崩"一句话就把嫌疑收敛到批次间缓冲复用；④ msvcp140 系 VC 运行时必须 app-local 随件（ORT 1.30 在 14.36 旧运行时 `CreateEnv` 直接 AV，干净虚拟机必炸，见 spike 报告）。
