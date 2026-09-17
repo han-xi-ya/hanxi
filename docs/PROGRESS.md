@@ -70,6 +70,7 @@
 - **若 F4a 实际落盘 `state/mcp/` 或字段超纲**：以 F4a 报告为准改 `mcpwizard/service.go` NewService 两行路径，字段扩展要求 F4a 报告单列。
 - F4a 合入前 `hanxi mcp` 不存在——F4b 的"安装前自检 spawn listTools"刻意未接线，F4a 合并后补一行（新随批修 **R2**）。
 - 踩坑号定序（全部已占）：#61=F4b JSON 外科合并、#62=F4a 离线 GOMODCACHE 洞、#63=F4a windowsgui stdio；后续从 **#64** 起。
-- **R3 新增**：go.mod 现存 `replace spf13/cast v1.7.1` 离线绕行（#62 登记），网络/代理可达后必须跑 `go mod tidy` 复核并评估撤除——wave 收尾批处理。
-- **R4 新增**：F4a 依 C1-C5 字面把 PLAN"二期"的 ocr/memo 工具也做了（独立开关默认全关，无暴露）——保留现实现，PLAN_MCP §2 需回写实际落地形态（C10 归入收尾批）。
+- **R3**：✅ 已收口（`8476ff3`/`f09fc19`，FF 合入）。goproxy.cn 可达实证，cast replace 已撤、tidy 内容级零 diff、离线自洽复核全绿；easyjson v0.9.0 维持（回退=逆钉红线，且符合"用新不用旧"）。附注：本机 `core.autocrlf=true`，`go mod tidy -diff` 对 go.sum 报**假全文件 diff（纯 EOL）**，内容级核验用 `go mod tidy`+`git diff`。
+- **R4**：✅ 已收口（74f8fa7）——PLAN_MCP 注记回写/BACKLOG 销账/DEVPLAN v1.5 指针改口/MOOTOOL 打勾四合一入；其发现的 mcpwizard 文案与事实矛盾点已塞给 R2 顺路修；遗留待用户裁决：PLAN §6 两个 access.json 授权写入口均未实现（GUI 只读+无 auth 子命令），现状=手工放置文件。
+- 文档陈旧计数待核（R4 上报，收尾批处理）：DEVPLAN §2.3 与 ARCHITECTURE"37 模块统一注册"疑落后于 webapp/msgboard 入账后的实际数。
 - **S2**：✅ 已随 F4a 收口（everything 工具诚实文案有测试锁定 + BACKLOG 收账提交 7392e44）。
