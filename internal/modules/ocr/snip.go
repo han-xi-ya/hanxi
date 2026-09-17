@@ -55,6 +55,38 @@ func (s *OcrService) SnipAndRecognize() (SnipResult, error) {
 		return SnipResult{Cancelled: true}, nil
 	}
 
+	return s.finishSnipRecognition(pngBytes)
+}
+
+// RecognizeClipboardImage 剪贴板识图（默认热键 Ctrl+Alt+T / 轮盘/托盘命令
+// ocr/snip-clipboard / 页面按钮共用）：剪贴板已有图 → 直接识别——不弹覆盖层、
+// 不清写用户剪贴板（与 SnipAndRecognize 互补：那边"先截后识"，这边"先复制后识"，
+// 贴 snipaste 工作流）。成功后悬浮卡 + 按开关自动复制。
+// 歧义处理：GrabImage 只认图像格式，复制的文字/文件一律如实报"剪贴板中无图片"。
+func (s *OcrService) RecognizeClipboardImage() (SnipResult, error) {
+	if !s.snipMu.TryLock() {
+		return SnipResult{}, fmt.Errorf("识别正在进行中，请稍候")
+	}
+	defer s.snipMu.Unlock()
+
+	// 先取图再保服务在线：剪贴板没图是最常见失败，快速反馈不白拉引擎；
+	// 极端持锁竞态下 GrabImage 报错也按"读不到图"给重按指引（openClipboard 已内置重试）。
+	pngBytes, found, err := s.snip.GrabImage()
+	if err != nil {
+		return SnipResult{}, fmt.Errorf("读取剪贴板图像失败，请重试: %w", err)
+	}
+	if !found {
+		return SnipResult{}, fmt.Errorf("剪贴板中没有图片：请先复制截图或图片（复制文字、文件不算）")
+	}
+	if err := s.ensureOnlineForSnip(); err != nil {
+		return SnipResult{}, err
+	}
+	return s.finishSnipRecognition(pngBytes)
+}
+
+// finishSnipRecognition 识别公共收尾：落临时件 → 转发识别 → 按开关自动复制 →
+// 悬浮卡。调用方须持有 snipMu（两条截屏入口共用）。
+func (s *OcrService) finishSnipRecognition(pngBytes []byte) (SnipResult, error) {
 	if err := os.MkdirAll(s.tmpDir, 0755); err != nil {
 		return SnipResult{}, fmt.Errorf("创建临时目录失败: %w", err)
 	}

@@ -54,16 +54,27 @@ func (m *Module) Services() []extapi.Service {
 func (m *Module) Service() *OcrService { return m.svc }
 
 // TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向轮盘/托盘命令候选
-// 目录暴露「框选截屏识别」（Key=ocr/snip，宿主独立 goroutine 调用，内部防重入）。
+// 目录暴露「框选截屏识别」（Key=ocr/snip）与「剪贴板识图」（Key=ocr/snip-clipboard，
+// 默认全局热键 Ctrl+Alt+T 的派发目标），宿主独立 goroutine 调用，内部防重入。
 func (m *Module) TrayCommands() []extapi.TrayCommand {
-	return []extapi.TrayCommand{{
-		ID:    "snip",
-		Label: "框选截屏识别（OCR）",
-		Run: func(ctx context.Context) error {
-			_, err := m.svc.SnipAndRecognize()
-			return err
+	return []extapi.TrayCommand{
+		{
+			ID:    "snip",
+			Label: "框选截屏识别（OCR）",
+			Run: func(ctx context.Context) error {
+				_, err := m.svc.SnipAndRecognize()
+				return err
+			},
 		},
-	}}
+		{
+			ID:    "snip-clipboard",
+			Label: "剪贴板识图（OCR）",
+			Run: func(ctx context.Context) error {
+				_, err := m.svc.RecognizeClipboardImage()
+				return err
+			},
+		},
+	}
 }
 
 // OnInit 首次激活时启动状态感知轮询（懒加载，与 ddnsgo 同策略）。

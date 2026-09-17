@@ -64,6 +64,9 @@ type OcrService struct {
 	cardDragMu   sync.Mutex    // 悬浮卡拖拽会话：同一时刻至多一个跟手 goroutine
 	cardDragStop chan struct{} // 非 nil 表示拖拽进行中
 
+	hotkeyMu      sync.Mutex        // 保护热键绑定通道注入（装配根写、RPC 读）
+	hotkeyBinding SnipHotkeyBinding // 剪贴板识图热键落实通道（未注入 = 纯配置读写）
+
 	mu        sync.Mutex
 	probe     probeCache
 	lastEmit  ServiceState // 上一次广播的状态（去重防抖）
@@ -87,10 +90,10 @@ type probeCache struct {
 func NewOcrService(plat platform.Platform) *OcrService {
 	paths := settings.GetPaths()
 	svc := &OcrService{
-		plat:    plat,
-		store:   newOcrStore(paths.StateDir()),
-		client:  &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
-		exeDir:  exeDirOf(),
+		plat:   plat,
+		store:  newOcrStore(paths.StateDir()),
+		client: &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
+		exeDir: exeDirOf(),
 		// dataDir 是 ocr-engines/ 引擎组件的发现锚（二进制目录，非状态文件，
 		// 不随 state/ 收纳走），保持指数据根。
 		dataDir: paths.DataDir(),

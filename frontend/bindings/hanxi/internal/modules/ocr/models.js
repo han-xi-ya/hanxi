@@ -88,6 +88,21 @@
  */
 
 /**
+ * SnipHotkeyBinding 宿主注入的热键落实通道。Apply 把"键位 + 开关"期望态落到系统
+ * 全局热键（失败返回中文错误，配置端须自行回滚）；Registered 如实回报槽位是否
+ * 真实绑定在系统上（启动期抢键失败 → false，设置页据此给"已被占用"提示）。
+ * @typedef {any} SnipHotkeyBinding
+ */
+
+/**
+ * SnipHotkeyState 热键配置的对外视图（设置页一次拉全）。
+ * @typedef {Object} SnipHotkeyState
+ * @property {boolean} enabled
+ * @property {string} accel - 规范化键位（如 Ctrl+Alt+T）
+ * @property {boolean} registered - 系统侧真实绑定状态（禁用中恒 false）
+ */
+
+/**
  * SnipResult 框选截屏识别结果（悬浮卡事件 ocr:snip-result 与 SnipAndRecognize
  * 返回值共用）。Cancelled=true 表示用户放弃选区（静默路径，前端不打扰）。
  * @typedef {Object} SnipResult

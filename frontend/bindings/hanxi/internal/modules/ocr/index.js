@@ -49,6 +49,18 @@ import * as $models from "./models.js";
  */
 
 /**
+ * SnipHotkeyBinding 宿主注入的热键落实通道。Apply 把"键位 + 开关"期望态落到系统
+ * 全局热键（失败返回中文错误，配置端须自行回滚）；Registered 如实回报槽位是否
+ * 真实绑定在系统上（启动期抢键失败 → false，设置页据此给"已被占用"提示）。
+ * @typedef {$models.SnipHotkeyBinding} SnipHotkeyBinding
+ */
+
+/**
+ * SnipHotkeyState 热键配置的对外视图（设置页一次拉全）。
+ * @typedef {$models.SnipHotkeyState} SnipHotkeyState
+ */
+
+/**
  * SnipResult 框选截屏识别结果（悬浮卡事件 ocr:snip-result 与 SnipAndRecognize
  * 返回值共用）。Cancelled=true 表示用户放弃选区（静默路径，前端不打扰）。
  * @typedef {$models.SnipResult} SnipResult
