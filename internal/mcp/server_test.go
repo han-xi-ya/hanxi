@@ -186,6 +186,35 @@ func TestUnauthorizedFailClosed(t *testing.T) {
 	}
 }
 
+// TestAllToolsUnauthorizedMatrix 全工具 fail-closed 矩阵：无授权文件时四件工具
+// 逐一调用都必须指引错误且各自后端零触发（撤权=即时生效已由 access 层单测保证）。
+func TestAllToolsUnauthorizedMatrix(t *testing.T) {
+	deps, _, env := newTestServer(t)
+	fs := &fakeSearcher{}
+	fr := &fakeRecognizer{}
+	fm := &fakeMemo{}
+	deps.Search, deps.OCR, deps.Memo = fs, fr, fm
+	c := inProcClient(t, deps)
+
+	for _, tc := range []struct {
+		tool string
+		args map[string]any
+	}{
+		{toolEnvCheck, nil},
+		{toolSearch, map[string]any{"query": "x"}},
+		{toolOCR, map[string]any{"path": `C:\a.png`}},
+		{toolMemo, nil},
+	} {
+		res, text := callText(t, c, tc.tool, tc.args)
+		if !res.IsError || !strings.Contains(text, "未获授权") {
+			t.Errorf("%s: must deny without grant: %s", tc.tool, text)
+		}
+	}
+	if env.calls != 0 || fs.lastQ != "" || fr.calls != 0 || len(fm.items) != 0 {
+		t.Errorf("denied tools must not touch backends")
+	}
+}
+
 // TestAuthorizedCallAndRedact 授权后 envcheck 正常返回；输出过 Redact 口径
 // （敏感串绝不出网——这是"会进云端模型上下文"红线的回归锚点）。
 func TestAuthorizedCallAndRedact(t *testing.T) {

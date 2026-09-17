@@ -118,6 +118,9 @@ func Run() error {
 		// everything 走独立严格只读通道（不复用 service.Search 的懒启动/下载编排，
 		// 决策 3-B）；registry 内仍注册该模块，只取 enabled 门禁与生命周期收口。
 		Search: newStrictSearcher(plat),
+		// memo 走零落盘直读通道（绕开携带迁移/隔离写盘副作用的 MemoService 构造链，
+		// 包注释决策 3）；门禁仍按 config.json enabled 位（registryGate）。
+		Memo: newMemoDiskReader(),
 	}
 	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
 		// service 无头可用：client 已显式 Proxy:nil（回环 HTTP 纪律）、构造零落盘、

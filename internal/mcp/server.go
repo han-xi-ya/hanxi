@@ -32,7 +32,7 @@ type Deps struct {
 	EnvCheck EnvChecker // hanxi_envcheck_detect 后端
 	Search   Searcher   // hanxi_file_search 后端（严格只读档）
 	OCR      Recognizer // hanxi_ocr_recognize 后端
-	// C5 追加：Memo MemoSource。
+	Memo     MemoSource // hanxi_memo_search 后端（零落盘直读）
 }
 
 // NewMCPServer 按工具面全量组表并挂授权/门禁中间件。
@@ -79,6 +79,7 @@ var toolDefs = []toolDef{
 	{Name: toolEnvCheck, ModuleID: "envcheck", Build: buildEnvCheckTool},
 	{Name: toolSearch, ModuleID: "everything", Build: buildEverythingTool},
 	{Name: toolOCR, ModuleID: "ocr", Build: buildOcrTool},
+	{Name: toolMemo, ModuleID: "memo", Build: buildMemoTool},
 }
 
 // gateMiddleware 是所有工具调用的统一闸门：授权（每次重读 access.json）→ 模块启用 →
