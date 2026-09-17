@@ -85,3 +85,31 @@ func (s *AppService) SetTheme(mode string) error {
 		cfg.Theme = mode
 	})
 }
+
+// GetAccent 返回持久化的色板轴："teal" | "sky" | "iris" | "jade" | "onyx"（异常/未设置回退默认青壳）。
+func (s *AppService) GetAccent() string {
+	if s.store == nil {
+		return "teal"
+	}
+	switch a := s.store.Get().Accent; a {
+	case "teal", "sky", "iris", "jade", "onyx":
+		return a
+	default:
+		return "teal"
+	}
+}
+
+// SetAccent 持久化色板轴。DOM 的 data-accent 实际应用由前端 useTheme 完成，后端不感知。
+func (s *AppService) SetAccent(accent string) error {
+	switch accent {
+	case "teal", "sky", "iris", "jade", "onyx":
+	default:
+		return fmt.Errorf("非法色板: %s", accent)
+	}
+	if s.store == nil {
+		return nil
+	}
+	return s.store.Update(func(cfg *settings.AppSettings) {
+		cfg.Accent = accent
+	})
+}

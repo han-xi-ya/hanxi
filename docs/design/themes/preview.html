@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-accent="sky">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hanxi 主题配色提案 v2 · mica 通透系</title>
+<!--
+  v2 设计预览页（不属应用代码）：三套 mica 流派候选 + 现状基线 + 无障碍项。
+  方法论换为 OKLCH 感知色阶（gen-palettes-v2.mjs 可复现），v1 十套见 preview-v1.html（已废）。
+  令牌选择器结构即落地方案：[data-theme=浅深] × [data-accent=色板] 双轴组合。
+-->
+<style>
+/* ============ 结构常量（与主题无关） ============ */
+:root {
+  --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --text-micro: 10px; --text-xs: 11px; --text-sm: 12px; --text-base: 13px;
+  --text-md: 14px; --text-lg: 16px; --text-xl: 18px; --text-2xl: 22px;
+  --radius-micro: 4px; --radius-control: 8px; --radius-element: 12px;
+  --radius-panel: 16px; --radius-pill: 999px;
+  --control-h-lg: 36px; --control-h-md: 30px; --control-h-sm: 24px;
+  --motion-fast: 100ms; --motion-base: 150ms;
+}
+
+/* ============ 主题模式层：状态色/遮罩（跨色板恒定） ============ */
+[data-theme="light"] {
+  color-scheme: light;
+  --state-positive: #067d4d; --state-positive-soft: #e2f4ec;
+  --state-information: #2563eb; --state-information-soft: #e7effd;
+  --state-warning: #955e00; --state-warning-soft: #fbf1de;
+  --state-danger: #b33736; --state-danger-soft: #fdf0ee;
+  --state-positive-glow: rgba(6, 125, 77, 0.15);
+  --state-information-glow: rgba(37, 99, 235, 0.15);
+  --state-warning-glow: rgba(149, 94, 0, 0.15);
+  --state-danger-glow: rgba(179, 55, 54, 0.15);
+  --overlay-mask: rgba(10, 18, 26, 0.46);
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --state-positive: #47c792; --state-positive-soft: #0f2e24;
+  --state-information: #72a5ff; --state-information-soft: #16233c;
+  --state-warning: #f0ac45; --state-warning-soft: #33260f;
+  --state-danger: #ff7974; --state-danger-soft: #3a1a1a;
+  --state-positive-glow: rgba(71, 199, 146, 0.16);
+  --state-information-glow: rgba(114, 165, 255, 0.16);
+  --state-warning-glow: rgba(240, 172, 69, 0.16);
+  --state-danger-glow: rgba(255, 121, 116, 0.16);
+  --overlay-mask: rgba(2, 6, 11, 0.62);
+  /* mica 深色阴影跨色板恒定（石墨底上黑投影最自然） */
+  --shadow-small: 0 5px 18px rgba(0, 0, 0, 0.28);
+  --shadow-panel: 0 22px 50px rgba(0, 0, 0, 0.34);
+}
+
+/* ============ 色板层 ============ */
+
+/* ---- teal · 青壳（现状基线，审计会亮红叉——v1 病灶对照用） ---- */
+[data-theme="light"][data-accent="teal"] {
+  --color-primary: #0f8b8d; --color-primary-hover: #0b7779;
+  --color-primary-soft: rgba(15, 139, 141, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f3f7f8; --surface-panel: #ffffff; --surface-soft: #f7fafb;
+  --surface-hover: #eef5f5; --surface-selected: #e2f1f0;
+  --color-text: #14252c; --color-text-muted: #667980; --color-text-subtle: #8a9aa0;
+  --color-text-inverse: #ffffff;
+  --color-border: #dce6e8; --color-border-strong: #c7d6d9;
+  --color-primary-glow: rgba(15, 139, 141, 0.18); --focus-ring: rgba(15, 139, 141, 0.24);
+  --shadow-small: 0 4px 14px rgba(32, 66, 72, 0.055);
+  --shadow-panel: 0 18px 45px rgba(32, 66, 72, 0.085);
+}
+[data-theme="dark"][data-accent="teal"] {
+  --color-primary: #42b7b4; --color-primary-hover: #59c8c5;
+  --color-primary-soft: rgba(66, 183, 180, 0.13); --color-on-primary: #052326;
+  --surface-page: #071318; --surface-panel: #0e1c22; --surface-soft: #12252c;
+  --surface-hover: #173039; --surface-selected: #1a3d44;
+  --color-text: #e8f2f3; --color-text-muted: #9aadb2; --color-text-subtle: #748a90;
+  --color-text-inverse: #071318;
+  --color-border: #213840; --color-border-strong: #31505a;
+  --color-primary-glow: rgba(66, 183, 180, 0.2); --focus-ring: rgba(66, 183, 180, 0.28);
+}
+
+/* ---- sky · 碧空（Fluent mica：霜白蓝灰面 + 微软系 azure，选中行强染色） ---- */
+[data-theme="light"][data-accent="sky"] {
+  --color-primary: #0064b5; --color-primary-hover: #005093;
+  --color-primary-soft: rgba(0, 100, 181, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f1f5fa; --surface-panel: #ffffff; --surface-soft: #f6f8fb;
+  --surface-hover: #e7edf5; --surface-selected: #c7dcf8;
+  --color-text: #192029; --color-text-muted: #5e6a79; --color-text-subtle: #87909c;
+  --color-text-inverse: #ffffff;
+  --color-border: #dae0e8; --color-border-strong: #b8c2ce;
+  --color-primary-glow: rgba(0, 100, 181, 0.18); --focus-ring: rgba(0, 100, 181, 0.28);
+  --shadow-small: 0 4px 14px rgba(24, 32, 41, 0.05);
+  --shadow-panel: 0 18px 45px rgba(24, 32, 41, 0.08);
+}
+[data-theme="dark"][data-accent="sky"] {
+  --color-primary: #4ebdf7; --color-primary-hover: #74ccfe;
+  --color-primary-soft: rgba(78, 189, 247, 0.15); --color-on-primary: #00243e;
+  --surface-page: #151a20; --surface-panel: #1f252c; --surface-soft: #2a3139;
+  --surface-hover: #373f4a; --surface-selected: #38577e;
+  --color-text: #edf0f6; --color-text-muted: #adb5c0; --color-text-subtle: #818a95;
+  --color-text-inverse: #151a20;
+  --color-border: #38404b; --color-border-strong: #525f6f;
+  --color-primary-glow: rgba(78, 189, 247, 0.22); --focus-ring: rgba(78, 189, 247, 0.3);
+}
+
+/* ---- iris · 鸢尾晨紫（Arc 式薰衣草纸面 + 高彩鸢尾，最有个性的一族） ---- */
+[data-theme="light"][data-accent="iris"] {
+  --color-primary: #6741ca; --color-primary-hover: #542dae;
+  --color-primary-soft: rgba(103, 65, 202, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f4f2f9; --surface-panel: #ffffff; --surface-soft: #f9f7fd;
+  --surface-hover: #ede9f5; --surface-selected: #ded2f6;
+  --color-text: #211d29; --color-text-muted: #6c657b; --color-text-subtle: #918c9d;
+  --color-text-inverse: #ffffff;
+  --color-border: #dfdce7; --color-border-strong: #c0bace;
+  --color-primary-glow: rgba(103, 65, 202, 0.18); --focus-ring: rgba(103, 65, 202, 0.28);
+  --shadow-small: 0 4px 14px rgba(33, 29, 41, 0.05);
+  --shadow-panel: 0 18px 45px rgba(33, 29, 41, 0.08);
+}
+[data-theme="dark"][data-accent="iris"] {
+  --color-primary: #bba9fa; --color-primary-hover: #c7b8ff;
+  --color-primary-soft: rgba(187, 169, 250, 0.15); --color-on-primary: #27124b;
+  --surface-page: #1a1620; --surface-panel: #25212e; --surface-soft: #312c3a;
+  --surface-hover: #3f3a4b; --surface-selected: #4e3e6a;
+  --color-text: #f1eff5; --color-text-muted: #b6b2bf; --color-text-subtle: #8b8696;
+  --color-text-inverse: #1a1620;
+  --color-border: #413b4c; --color-border-strong: #5f5770;
+  --color-primary-glow: rgba(187, 169, 250, 0.22); --focus-ring: rgba(187, 169, 250, 0.3);
+}
+
+/* ---- jade · 青瓷（现状青绿的品牌进化：瓷面青灰 + 祖母潭深青 / 夜釉碧色） ---- */
+[data-theme="light"][data-accent="jade"] {
+  --color-primary: #006869; --color-primary-hover: #005657;
+  --color-primary-soft: rgba(0, 104, 105, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #eef6f6; --surface-panel: #ffffff; --surface-soft: #f3f9f9;
+  --surface-hover: #e3eeee; --surface-selected: #bae3e2;
+  --color-text: #142222; --color-text-muted: #506363; --color-text-subtle: #7d8d8c;
+  --color-text-inverse: #ffffff;
+  --color-border: #d6e2e1; --color-border-strong: #b1c4c3;
+  --color-primary-glow: rgba(0, 104, 105, 0.18); --focus-ring: rgba(0, 104, 105, 0.28);
+  --shadow-small: 0 4px 14px rgba(20, 34, 34, 0.05);
+  --shadow-panel: 0 18px 45px rgba(20, 34, 34, 0.08);
+}
+[data-theme="dark"][data-accent="jade"] {
+  --color-primary: #5dd1cf; --color-primary-hover: #81dfdc;
+  --color-primary-soft: rgba(93, 209, 207, 0.15); --color-on-primary: #002525;
+  --surface-page: #0f1b1b; --surface-panel: #192626; --surface-soft: #233232;
+  --surface-hover: #2e4140; --surface-selected: #005758;
+  --color-text: #eaf2f2; --color-text-muted: #b3c1c1; --color-text-subtle: #7c8d8d;
+  --color-text-inverse: #0f1b1b;
+  --color-border: #2f4242; --color-border-strong: #476261;
+  --color-primary-glow: rgba(93, 209, 207, 0.22); --focus-ring: rgba(93, 209, 207, 0.3);
+}
+
+/* ---- onyx · 曜石（无障碍高对比 v2："工程蓝图"化重配，标准从 AA 提到 AAA：
+       正文 ≥17:1、弱注记 ≥6.7:1、状态 chip ≥5:1，全部高于其余色板；
+       用蓝墨纸面与 steel-blue 边框替换 v1 的黑白硬灰，高对比不再=丑。唯一覆写 state-* 的功能性色板） ---- */
+[data-theme="light"][data-accent="onyx"] {
+  --color-primary: #0649b8; --color-primary-hover: #003999;
+  --color-primary-soft: rgba(6, 73, 184, 0.12); --color-on-primary: #ffffff;
+  --surface-page: #f2f7fc; --surface-panel: #ffffff; --surface-soft: #eef2f6;
+  --surface-hover: #dfe7ef; --surface-selected: #cfe0f2;
+  --color-text: #0a0f14; --color-text-muted: #333c46; --color-text-subtle: #626b77;
+  --color-text-inverse: #ffffff;
+  --color-border: #838f9d; --color-border-strong: #455263;
+  --state-positive: #0a6b45; --state-positive-soft: #e3f1e9;
+  --state-information: #1c6b92; --state-information-soft: #e1f1f9;
+  --state-warning: #8a5100; --state-warning-soft: #f3edd8;
+  --state-danger: #b3261e; --state-danger-soft: #f9e9e6;
+  --color-primary-glow: rgba(6, 73, 184, 0.2); --focus-ring: rgba(6, 73, 184, 0.36);
+  --shadow-small: 0 4px 14px rgba(10, 15, 20, 0.08);
+  --shadow-panel: 0 18px 45px rgba(10, 15, 20, 0.13);
+}
+[data-theme="dark"][data-accent="onyx"] {
+  --color-primary: #79b7ff; --color-primary-hover: #9bc9ff;
+  --color-primary-soft: rgba(121, 183, 255, 0.16); --color-on-primary: #04223f;
+  --surface-page: #05070a; --surface-panel: #0d1117; --surface-soft: #141a22;
+  --surface-hover: #1c2530; --surface-selected: #244268;
+  --color-text: #f2f6fb; --color-text-muted: #b9c4d0; --color-text-subtle: #8f9bab;
+  --color-text-inverse: #05070a;
+  --color-border: #5c646f; --color-border-strong: #78818c;
+  --state-positive: #5bd88e; --state-positive-soft: #0a2b1b;
+  --state-information: #66cbec; --state-information-soft: #0c2a39;
+  --state-warning: #f7c948; --state-warning-soft: #2e2308;
+  --state-danger: #ff9690; --state-danger-soft: #3a1210;
+  --color-primary-glow: rgba(121, 183, 255, 0.24); --focus-ring: rgba(121, 183, 255, 0.45);
+}
+
+/* ============ 页面骨架 ============ */
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface-page); color: var(--color-text);
+  font: var(--text-base)/1.55 var(--font-text);
+}
+.topbar {
+  position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px;
+  align-items: center; padding: 12px 24px;
+  background: var(--surface-panel); border-bottom: 1px solid var(--color-border);
+}
+.topbar h1 { font: 600 var(--text-md)/1.3 var(--font-display); margin: 0 16px 0 0; }
+.seg { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-pill); background: var(--surface-soft); }
+.seg button {
+  border: 0; border-radius: var(--radius-pill); padding: 4px 12px; cursor: pointer;
+  background: transparent; color: var(--color-text-muted); font: 500 var(--text-sm) var(--font-text);
+}
+.seg button[aria-pressed="true"] { background: var(--color-primary); color: var(--color-on-primary); }
+.grow { flex: 1; }
+.hint { color: var(--color-text-subtle); font-size: var(--text-xs); }
+main { max-width: 1280px; margin: 0 auto; padding: 24px; display: grid; gap: 24px; }
+.stage-wrap { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px; }
+.stage-label { display: flex; justify-content: space-between; margin: 0 4px 8px; color: var(--color-text-muted); font-size: var(--text-sm); }
+.stage-label b { color: var(--color-text); font-weight: 600; }
+
+/* ============ 迷你工作台 mock ============ */
+.mock {
+  background: var(--surface-page); border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel); box-shadow: var(--shadow-panel);
+  overflow: hidden; display: grid; grid-template-columns: 150px 1fr; min-height: 430px;
+  font-size: var(--text-base);
+}
+.mock .rail { background: var(--surface-panel); border-right: 1px solid var(--color-border); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.rail .brand { display: flex; align-items: center; gap: 8px; font: 600 var(--text-md)/1 var(--font-display); padding: 6px 8px 16px; }
+.rail .brand i { width: 14px; height: 14px; border-radius: var(--radius-micro); background: linear-gradient(135deg, var(--color-primary), var(--color-primary-hover)); box-shadow: 0 0 0 4px var(--color-primary-glow); }
+.nav-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: var(--radius-control);
+  color: var(--color-text-muted); font-size: var(--text-sm); cursor: default;
+}
+.nav-item:hover { background: var(--surface-hover); }
+.nav-item.on { background: var(--surface-selected); color: var(--color-primary); font-weight: 600; box-shadow: inset 2px 0 0 var(--color-primary); }
+.nav-item .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--state-positive); margin-left: auto; box-shadow: 0 0 6px var(--state-positive-glow); }
+.mock .main { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.mhead { display: flex; align-items: center; gap: 10px; }
+.mhead h3 { margin: 0; font: 600 var(--text-xl)/1.2 var(--font-display); letter-spacing: -0.01em; }
+.mhead .sub { color: var(--color-text-subtle); font-size: var(--text-xs); }
+.mhead .grow { flex: 1; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; height: var(--control-h-md);
+  padding: 0 14px; border-radius: var(--radius-control); border: 1px solid transparent;
+  font: 600 var(--text-sm) var(--font-text); cursor: pointer;
+}
+.btn-primary { background: var(--color-primary); color: var(--color-on-primary); box-shadow: 0 3px 12px var(--color-primary-glow); }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-plain { background: var(--surface-panel); color: var(--color-text); border-color: var(--color-border-strong); }
+.btn-danger { background: var(--state-danger); color: #fff; }
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; box-shadow: 0 0 0 5px var(--focus-ring); }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.kpi {
+  background: var(--surface-panel); border: 1px solid var(--color-border);
+  border-radius: var(--radius-element); box-shadow: var(--shadow-small); padding: 10px 12px;
+}
+.kpi .num { font: 600 var(--text-2xl)/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi .cap { color: var(--color-text-muted); font-size: var(--text-xs); margin-top: 2px; }
+.kpi.pos .num { color: var(--state-positive); } .kpi.warn .num { color: var(--state-warning); } .kpi.dgr .num { color: var(--state-danger); }
+.tbl { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element); overflow: hidden; }
+.tbl .trow {
+  display: grid; grid-template-columns: 1.4fr 1.6fr 90px; gap: 10px; align-items: center;
+  padding: 8px 12px; border-top: 1px solid var(--color-border); font-size: var(--text-sm); min-height: 44px;
+}
+.tbl .trow:first-child { border-top: 0; background: var(--surface-soft); color: var(--color-text-muted); font-size: var(--text-xs); font-weight: 600; min-height: 0; padding: 6px 12px; }
+.tbl .trow.sel { background: var(--surface-selected); }
+.tbl .mono { font: var(--text-sm) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-text-muted); }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: var(--radius-pill);
+  font-size: var(--text-xs); font-weight: 600; width: max-content;
+}
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.pos { background: var(--state-positive-soft); color: var(--state-positive); }
+.chip.inf { background: var(--state-information-soft); color: var(--state-information); }
+.chip.wrn { background: var(--state-warning-soft); color: var(--state-warning); }
+.chip.dgr { background: var(--state-danger-soft); color: var(--state-danger); }
+.inputrow { display: flex; gap: 10px; align-items: center; }
+.field {
+  flex: 1; height: var(--control-h-md); padding: 0 10px; border-radius: var(--radius-control);
+  border: 1px solid var(--color-border-strong); background: var(--surface-soft); color: var(--color-text);
+  font: var(--text-sm) var(--font-text);
+}
+.field::placeholder { color: var(--color-text-subtle); }
+.field.faked { border-color: var(--color-primary); box-shadow: 0 0 0 4px var(--focus-ring); }
+.toggle { width: 36px; height: 20px; border-radius: var(--radius-pill); background: var(--color-primary); position: relative; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.toast {
+  display: flex; gap: 10px; align-items: center; padding: 10px 12px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-control); box-shadow: var(--shadow-panel); font-size: var(--text-sm);
+}
+.toast .t-sub { color: var(--color-text-muted); font-size: var(--text-xs); }
+.progress { flex: 1; height: 6px; border-radius: var(--radius-pill); background: var(--surface-hover); overflow: hidden; }
+.progress i { display: block; height: 100%; width: 64%; border-radius: inherit; background: linear-gradient(90deg, var(--color-primary), var(--color-primary-hover)); box-shadow: 0 0 8px var(--color-primary-glow); }
+
+/* ============ 色卡与对比度审计 ============ */
+.audit {
+  background: var(--surface-panel); border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel); box-shadow: var(--shadow-small); padding: 18px 20px; margin-top: 4px;
+}
+.audit h2 { margin: 0 0 4px; font: 600 var(--text-lg) var(--font-display); }
+.audit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 14px; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 8px; }
+.sw { border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; }
+.sw i { display: block; height: 34px; }
+.sw span { display: block; padding: 3px 7px; font: var(--text-micro) var(--font-mono); color: var(--color-text-muted); background: var(--surface-soft); }
+table.cc { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+table.cc th { text-align: left; color: var(--color-text-muted); font-size: var(--text-xs); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--color-border); }
+table.cc td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+table.cc td:last-child { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 600; margin-left: 8px; }
+.badge.ok { background: var(--state-positive-soft); color: var(--state-positive); }
+.badge.lg { background: var(--state-warning-soft); color: var(--state-warning); }
+.badge.no { background: var(--state-danger-soft); color: var(--state-danger); }
+.aa { color: var(--color-text-subtle); font-size: var(--text-xs); }
+@media (max-width: 560px) {
+  .mock { grid-template-columns: 1fr; }
+  .mock .rail { display: none; }
+  .audit-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>Hanxi 主题配色提案 v2 · mica 通透系</h1>
+  <div class="seg" id="paletteSeg"></div>
+  <div class="grow"></div>
+  <span class="hint">OKLCH 感知色阶标定 · 对比度由页面实时计算 · v1 十套见 preview-v1.html</span>
+</header>
+<main>
+  <div class="stage-wrap">
+    <section>
+      <div class="stage-label"><b>浅色模式</b><span data-mode="light" class="hint"></span></div>
+      <div id="stageLight" data-theme="light"></div>
+      <div class="audit" data-audit="light"></div>
+    </section>
+    <section>
+      <div class="stage-label"><b>深色模式</b><span data-mode="dark" class="hint"></span></div>
+      <div id="stageDark" data-theme="dark"></div>
+      <div class="audit" data-audit="dark"></div>
+    </section>
+  </div>
+</main>
+<script>
+/* 迷你工作台模板（消费语义 token，演示真实界面各面） */
+const MOCK = `
+<div class="mock">
+  <aside class="rail">
+    <div class="brand"><i></i>Hanxi</div>
+    <div class="nav-item">总览</div>
+    <div class="nav-item on">FRPC <span class="dot"></span></div>
+    <div class="nav-item">端口扫描</div>
+    <div class="nav-item">文件共享</div>
+    <div class="nav-item">系统</div>
+  </aside>
+  <div class="main">
+    <div class="mhead">
+      <div><h3>FRPC 隧道</h3><div class="sub">3 个代理 · 最近同步 12s 前</div></div>
+      <div class="grow"></div>
+      <button class="btn btn-primary">启动全部</button>
+      <button class="btn btn-plain">配置</button>
+    </div>
+    <div class="kpis">
+      <div class="kpi pos"><div class="num">2/3</div><div class="cap">在线隧道</div></div>
+      <div class="kpi"><div class="num" style="color:var(--color-text)">1.4<small style="font-size:11px"> MB/s</small></div><div class="cap">实时流量</div></div>
+      <div class="kpi dgr"><div class="num">1</div><div class="cap">失败重试</div></div>
+    </div>
+    <div class="tbl">
+      <div class="trow"><span>名称</span><span>入口</span><span>状态</span></div>
+      <div class="trow sel"><span>web-tunnel</span><span class="mono">7000 → rdp://10.0.4.2:3389</span><span class="chip pos">运行中</span></div>
+      <div class="trow"><span>ssh-jump</span><span class="mono">2222 → tcp://10.0.4.2:22</span><span class="chip wrn">重试中</span></div>
+      <div class="trow"><span>metrics</span><span class="mono">9090 → http://127.0.0.1:9090</span><span class="chip dgr">失败</span></div>
+      <div class="trow"><span>dns-sync</span><span class="mono">5353 → udp://10.0.4.9:53</span><span class="chip inf">空闲</span></div>
+    </div>
+    <div class="inputrow">
+      <input class="field faked" value="frps.addr = 10.0.4.9" readonly>
+      <span class="toggle"></span>
+      <button class="btn btn-danger">停止</button>
+    </div>
+    <div class="toast"><div style="flex:1"><div>隧道 web-tunnel 已重连</div><div class="t-sub">14:32:07 · 自动恢复</div></div><button class="btn btn-plain">知道了</button></div>
+    <div class="inputrow"><span class="hint" style="font-size:var(--text-xs);color:var(--color-text-muted)">部署进度</span><span class="progress"><i></i></span></div>
+  </div>
+</div>`;
+
+document.getElementById('stageLight').insertAdjacentHTML('beforeend', MOCK);
+document.getElementById('stageDark').insertAdjacentHTML('beforeend', MOCK);
+
+/* 色板切换：页面骨架 + 两个 mock 的 data-accent */
+const PALETTES = [
+  ['teal', '青壳·现状'], ['sky', '碧空·Fluent'], ['iris', '鸢尾·晨紫'],
+  ['jade', '青瓷·品牌进化'], ['onyx', '曜石·高对比'],
+];
+const seg = document.getElementById('paletteSeg');
+for (const [key, zh] of PALETTES) {
+  const b = document.createElement('button');
+  b.textContent = zh; b.dataset.k = key;
+  b.onclick = () => apply(key);
+  seg.appendChild(b);
+}
+function apply(key) {
+  document.documentElement.dataset.accent = key;
+  for (const btn of seg.children) btn.setAttribute('aria-pressed', String(btn.dataset.k === key));
+  for (const stage of document.querySelectorAll('.mock')) stage.dataset.accent = key;
+  document.querySelector('title').textContent = `Hanxi 主题配色提案 v2 · ${PALETTES.find(p => p[0] === key)[1]}`;
+  renderAudits(key);
+}
+
+/* ---- 对比度实时审计（从渲染后的元素解析 token） ---- */
+const parse = s => {
+  s = s.trim();
+  if (s.startsWith('#')) { const n = s.slice(1); return [parseInt(n.slice(0,2),16),parseInt(n.slice(2,4),16),parseInt(n.slice(4,6),16),1]; }
+  const m = s.match(/[\d.]+/g).map(Number); return m.length === 3 ? [...m, 1] : m;
+};
+const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const over = (fg, bg) => { const a = fg[3]; return [0,1,2].map(i => fg[i]*a + bg[i]*(1-a)); };
+const lum = c => 0.2126*lin(c[0]) + 0.7152*lin(c[1]) + 0.0722*lin(c[2]);
+function ratio(fgStr, bgStr) {
+  const bg = parse(bgStr); let fg = parse(fgStr);
+  if (fg[3] < 1) fg = over(fg, bg);
+  const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+  return (a + 0.05) / (b + 0.05);
+}
+const TOKEN_LABELS = [
+  ['--surface-page', '页面底'], ['--surface-panel', '面板'], ['--surface-soft', '软底'],
+  ['--surface-hover', '悬浮'], ['--surface-selected', '选中行'], ['--color-border', '边框'],
+  ['--color-border-strong', '强边框'], ['--color-text', '正文'], ['--color-text-muted', '辅助字'],
+  ['--color-text-subtle', '弱注记'], ['--color-primary', '主色'],
+];
+const CHECKS = [
+  ['正文/面板', '--color-text', '--surface-panel', 4.5],
+  ['辅助字/面板', '--color-text-muted', '--surface-panel', 4.5],
+  ['弱注记/面板', '--color-text-subtle', '--surface-panel', 3],
+  ['主按钮字/主色', '--color-on-primary', '--color-primary', 4.5],
+  ['主色链接/面板', '--color-primary', '--surface-panel', 4.5],
+  ['正文/选中行', '--color-text', '--surface-selected', 4.5],
+  ['成功字/成功底', '--state-positive', '--state-positive-soft', 4.5],
+  ['警告字/警告底', '--state-warning', '--state-warning-soft', 4.5],
+  ['危险字/危险底', '--state-danger', '--state-danger-soft', 4.5],
+  ['信息字/信息底', '--state-information', '--state-information-soft', 4.5],
+];
+function renderAudits(key) {
+  const zh = PALETTES.find(p => p[0] === key)[1];
+  for (const mode of ['light', 'dark']) {
+    const host = document.querySelector(`.audit[data-audit="${mode}"]`);
+    const probe = document.querySelector(`.mock[data-theme="${mode}"]`);
+    const cs = getComputedStyle(probe);
+    const gv = t => cs.getPropertyValue(t);
+    document.querySelector(`[data-mode="${mode}"]`).textContent = `${zh} · ${mode === 'light' ? '浅' : '深'}`;
+    const sw = TOKEN_LABELS.map(([t, label]) => {
+      const v = gv(t);
+      return `<div class="sw"><i style="background:${v}"></i><span>${label}<br>${v.trim()}</span></div>`;
+    }).join('');
+    const rows = CHECKS.map(([label, f, b, need]) => {
+      const r = ratio(gv(f), gv(b));
+      const cls = r >= need ? 'ok' : r >= 3 ? 'lg' : 'no';
+      const txt = r >= need ? 'AA' : r >= 3 ? 'AA大字' : '低';
+      return `<tr><td>${label}</td><td>${Math.round(r * 100) / 100}:1</td><td><span class="badge ${cls}">${txt}</span></td></tr>`;
+    }).join('');
+    host.innerHTML = `
+      <h2>${zh} · ${mode === 'light' ? '浅色' : '深色'}审计</h2>
+      <div class="aa">阈值：正文 ≥4.5，弱注记 ≥3，主按钮字/链接 ≥4.5（青壳基线两项不达标的会亮红/黄徽章作对照）</div>
+      <div class="audit-grid">
+        <div><div class="aa" style="margin-bottom:6px">色值面板</div><div class="swatches">${sw}</div></div>
+        <div><div class="aa" style="margin-bottom:6px">对比度（渲染值实时计算）</div>
+          <table class="cc"><thead><tr><th>配对</th><th>比值</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+        </div>
+      </div>`;
+  }
+}
+apply('sky');
+</script>
+</body>
+</html>

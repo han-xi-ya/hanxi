@@ -1,0 +1,65 @@
+/* ============================================================
+ * iris · 鸢尾·晨紫 —— 单套色板深化稿 v2.1（提案，未接入应用）
+ *
+ * 定位与参照物：Arc/Graf 一系的"薰衣草紫纸面 × 高彩鸢尾"，三套候选里个性最强。
+ * 深化起点为 docs/design/themes/preview.html 的 [data-accent="iris"] 两块，
+ * 覆写变量集与 preview.html 的 sky 块完全对齐（浅色 19 枚 / 深色 17 枚）。
+ * 全部配对经 OKLCH/WCAG 实算复核（算式与数值表见同目录 iris-report.md）。
+ *
+ * 相对 preview.html 的改动（旧 → 新，浅模式）：
+ * 1. --color-primary      #5645d5 → #6741ca（L .50 保持，hue 281→290，C .21→.20）
+ *    理由：原主色偏靛蓝，与 information 蓝 #2563eb 色距仅 18°/ΔE .081，同屏小字级
+ *    近亲易混；旋紫后色距 27°/ΔE .110，"鸢尾紫"身份更准，白字 6.55→6.59 不掉线。
+ * 2. --color-primary-hover #462cbd → #542dae（L .43 保持，hue 同步 290）
+ *    理由：hover 必须与主色同族，否则按压瞬间会"跳色"。
+ * 3. --color-primary-soft / --color-primary-glow / --focus-ring
+ *    rgba(86,69,213,…) → rgba(103,65,202,…)，alpha 不变（.1/.18/.28）
+ *    理由：三枚均为主色派生值，主色改则随动，浓度纪律（10% 软底）不动。
+ *
+ * 相对 preview.html 的改动（旧 → 新，深模式）：
+ * 4. --color-primary      #b3a2fa → #bba9fa（L .76→.78，hue 292→294，C .125→.115）
+ *    理由：与选中行同用"亮色+深字"策略时提亮一档，供选中行上的主色图标/文字达标
+ *    （nav.on 3.70→4.58）；顺带把与 information 蓝的色距推到 32.7°；深字/主色 7.43→7.98。
+ * 5. --color-primary-hover #c2b5ff → #c7b8ff（L .81→.82，hue 294 同步）
+ *    理由：保持比主色高一档的悬浮反馈，深字对比 9.2。
+ * 6. --surface-selected   #584677 → #4e3e6a（L .435→.40，C .081→.075）
+ *    理由：选中行仍为强染色紫（C .075 为 hover 的 2.5 倍），但压暗一档——
+ *    深模式选中行上"主色字"（AppNavRail 激活项/badge-newest 为真实用法）由 3.70→4.58
+ *    达标，辅助字/选中行 3.95→4.55 同步转正，四类状态 chip 软底与选中行的
+ *    ΔL/ΔE 仍 ≥.12/.15，"糊成一片"风险不升反降；正文/选中 7.2→8.29。
+ * 7. --color-primary-soft / --color-primary-glow / --focus-ring
+ *    rgba(179,162,250,…) → rgba(187,169,250,…)，alpha 不变（.15/.22/.3）
+ *    理由：主色派生值随动。
+ *
+ * 未改动（有意保持 preview.html 值）：
+ * - 浅色面组 #f4f2f9/#ffffff/#f9f7fd/#ede9f5/#ded2f6：实算台阶 ΔL .035/.021/.039/.056
+ *   全部 ≥.02 方向正确；chip 软底在浅选中行上 ΔL ≥.064，无竞争，无需转 hue 或降彩度；
+ *   主色旋紫后 #6741ca/#ded2f6（nav.on）4.60 达标，选中行彩度 .05 维持"最强个性"卖点。
+ * - 深模式 page #1a1620（L .2096，家族纪律 L .20–.22 石墨调）、panel/soft/hover、
+ *   文字四枚、边框两枚、--color-text-inverse、浅模式阴影三枚：实算全部达标，不动。
+ * - 状态色 --state-* 及其 soft/glow 一律不覆写（家族纪律，保持 tokens.css 现行值）。
+ * ============================================================ */
+
+:root[data-theme="light"][data-accent="iris"] {
+  --color-primary: #6741ca; --color-primary-hover: #542dae;
+  --color-primary-soft: rgba(103, 65, 202, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f4f2f9; --surface-panel: #ffffff; --surface-soft: #f9f7fd;
+  --surface-hover: #ede9f5; --surface-selected: #ded2f6;
+  --color-text: #211d29; --color-text-muted: #6c657b; --color-text-subtle: #918c9d;
+  --color-text-inverse: #ffffff;
+  --color-border: #dfdce7; --color-border-strong: #c0bace;
+  --color-primary-glow: rgba(103, 65, 202, 0.18); --focus-ring: rgba(103, 65, 202, 0.28);
+  --shadow-small: 0 4px 14px rgba(33, 29, 41, 0.05);
+  --shadow-panel: 0 18px 45px rgba(33, 29, 41, 0.08);
+}
+
+:root[data-theme="dark"][data-accent="iris"] {
+  --color-primary: #bba9fa; --color-primary-hover: #c7b8ff;
+  --color-primary-soft: rgba(187, 169, 250, 0.15); --color-on-primary: #27124b;
+  --surface-page: #1a1620; --surface-panel: #25212e; --surface-soft: #312c3a;
+  --surface-hover: #3f3a4b; --surface-selected: #4e3e6a;
+  --color-text: #f1eff5; --color-text-muted: #b6b2bf; --color-text-subtle: #8b8696;
+  --color-text-inverse: #1a1620;
+  --color-border: #413b4c; --color-border-strong: #5f5770;
+  --color-primary-glow: rgba(187, 169, 250, 0.22); --focus-ring: rgba(187, 169, 250, 0.3);
+}

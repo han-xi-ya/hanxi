@@ -7,11 +7,13 @@
  *   ③ 兼容别名层 —— 已于 Phase 6 拆分收官后整删（全仓消费面清零 + dist 产物 grep 复核）。
    *   旧名再出现即视为违规引用，直接改语义 token，不再回桥。
  *
- * 主题机制：<html data-theme="light|dark">，深色为独立标定而非反色。
- * 新增主题 = 只增变量块，禁止在组件/视图里硬编码颜色。
+ * 主题机制为双轴：<html data-theme="light|dark"> 定明暗，<html data-accent="…"> 定色板；
+ * 深色为独立标定而非反色。:root 与 :root[data-theme="dark"] 的现值即「青壳 teal」默认回退
+ * （无 data-accent 或 teal 时生效），色板块只覆写随色板联动的变量组。
+ * 新增主题/色板 = 只增变量块，禁止在组件/视图里硬编码颜色。
  * ============================================================ */
 
-/* ---------- ① + ② 浅色主题（默认） ---------- */
+/* ---------- ① + ② 浅色主题（默认 = 青壳 teal） ---------- */
 :root {
   color-scheme: light;
 
@@ -38,19 +40,23 @@
   --color-border: #dce6e8;
   --color-border-strong: #c7d6d9;
 
-  /* 状态色（含软底与光晕伴生值） */
-  --state-positive: #08875d;
+  /* 状态色（含软底与光晕伴生值）
+   * 浅色三枚于 2026-09 主题全族复审"深一档"（R1 议题落地）：
+   * 旧值绿/黄/红于各自软底 3.56–3.97 不达 AA 4.5（青壳时代遗留），
+   * 现绿 #067d4d 4.54 / 黄 #955e00 4.83 / 红 #b33736 5.37（危险软底
+   * #fbe9e9→#fdf0ee 提亮补偿新红偏沉），色相不动、语义锚点不变。 */
+  --state-positive: #067d4d;
   --state-positive-soft: #e2f4ec;
   --state-information: #2563eb;
   --state-information-soft: #e7effd;
-  --state-warning: #b66f08;
+  --state-warning: #955e00;
   --state-warning-soft: #fbf1de;
-  --state-danger: #d64545;
-  --state-danger-soft: #fbe9e9;
-  --state-positive-glow: rgba(8, 135, 93, 0.15);
+  --state-danger: #b33736;
+  --state-danger-soft: #fdf0ee;
+  --state-positive-glow: rgba(6, 125, 77, 0.15);
   --state-information-glow: rgba(37, 99, 235, 0.15);
-  --state-warning-glow: rgba(182, 111, 8, 0.15);
-  --state-danger-glow: rgba(214, 69, 69, 0.15);
+  --state-warning-glow: rgba(149, 94, 0, 0.15);
+  --state-danger-glow: rgba(179, 55, 54, 0.15);
   --color-primary-glow: rgba(15, 139, 141, 0.18);
 
   /* 遮罩 */
@@ -127,7 +133,7 @@
 
 }
 
-/* ---------- ① + ② 深色主题（独立标定，非反色） ---------- */
+/* ---------- ① + ② 深色主题（默认 = 青壳 teal，独立标定，非反色） ---------- */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
@@ -176,4 +182,248 @@
   --ansi-15: #f0f6f7;
 }
 
-/* 主题扩展位：新主题 = 新增 [data-theme='xxx'] 语义变量块，组件零改动。 */
+/* ---------- 色板轴 · sky 碧空（Fluent mica：霜白蓝灰面 + azure 主色） ----------
+ * 只覆写随色板联动的变量组（主色 4 + 表面 5 + 文字 4 + 边框 2 + 主色光晕 + 焦点环，
+ * 浅模式另覆写随底色走的小/面板阴影；抽屉投影与遮罩为色板中性项，跨色板恒定不覆写）。
+ * 数值唯一真相 = docs/design/themes/preview.html（v2），原样搬运。 */
+:root[data-theme="light"][data-accent="sky"] {
+  --color-primary: #0064b5;
+  --color-primary-hover: #005093;
+  --color-primary-soft: rgba(0, 100, 181, 0.1);
+  --color-on-primary: #ffffff;
+
+  --surface-page: #f1f5fa;
+  --surface-panel: #ffffff;
+  /* soft 由 #f7f9fc 下压一档（OKLCH L .982→.979）：panel→soft 感知台阶 ≥ΔL.02（v2.1 复审修案） */
+  --surface-soft: #f6f8fb;
+  --surface-hover: #e7edf5;
+  --surface-selected: #c7dcf8;
+
+  --color-text: #192029;
+  --color-text-muted: #5e6a79;
+  --color-text-subtle: #87909c;
+  --color-text-inverse: #ffffff;
+
+  --color-border: #dae0e8;
+  --color-border-strong: #b8c2ce;
+
+  --color-primary-glow: rgba(0, 100, 181, 0.18);
+  --focus-ring: rgba(0, 100, 181, 0.28);
+
+  --shadow-small: 0 4px 14px rgba(24, 32, 41, 0.05);
+  --shadow-panel: 0 18px 45px rgba(24, 32, 41, 0.08);
+}
+
+:root[data-theme="dark"][data-accent="sky"] {
+  --color-primary: #4ebdf7;
+  --color-primary-hover: #74ccfe;
+  --color-primary-soft: rgba(78, 189, 247, 0.15);
+  --color-on-primary: #00243e;
+
+  --surface-page: #151a20;
+  --surface-panel: #1f252c;
+  --surface-soft: #2a3139;
+  --surface-hover: #373f4a;
+  --surface-selected: #38577e;
+
+  --color-text: #edf0f6;
+  --color-text-muted: #adb5c0;
+  --color-text-subtle: #818a95;
+  --color-text-inverse: #151a20;
+
+  --color-border: #38404b;
+  --color-border-strong: #525f6f;
+
+  --color-primary-glow: rgba(78, 189, 247, 0.22);
+  --focus-ring: rgba(78, 189, 247, 0.3);
+  /* 深色阴影/遮罩跨色板恒定（石墨底上黑投影最自然，见 preview.html 主题模式层决策），不覆写 */
+}
+
+/* ---------- 色板轴 · iris 鸢尾（Arc 式薰衣草纸面 + 高彩鸢尾） ----------
+ * v2.1 深化稿并入：主色 h281→290 旋紫拉开与 information 蓝色距（18°→27°），
+ * 深模式 selected 压暗一档使"选中底+主色字"（导航激活项）4.58:1 达标。
+ * 全量理由与实算：docs/design/themes/tokens/iris.css · iris-report.md */
+:root[data-theme="light"][data-accent="iris"] {
+  --color-primary: #6741ca;
+  --color-primary-hover: #542dae;
+  --color-primary-soft: rgba(103, 65, 202, 0.1);
+  --color-on-primary: #ffffff;
+
+  --surface-page: #f4f2f9;
+  --surface-panel: #ffffff;
+  --surface-soft: #f9f7fd;
+  --surface-hover: #ede9f5;
+  --surface-selected: #ded2f6;
+
+  --color-text: #211d29;
+  --color-text-muted: #6c657b;
+  --color-text-subtle: #918c9d;
+  --color-text-inverse: #ffffff;
+
+  --color-border: #dfdce7;
+  --color-border-strong: #c0bace;
+
+  --color-primary-glow: rgba(103, 65, 202, 0.18);
+  --focus-ring: rgba(103, 65, 202, 0.28);
+
+  --shadow-small: 0 4px 14px rgba(33, 29, 41, 0.05);
+  --shadow-panel: 0 18px 45px rgba(33, 29, 41, 0.08);
+}
+
+:root[data-theme="dark"][data-accent="iris"] {
+  --color-primary: #bba9fa;
+  --color-primary-hover: #c7b8ff;
+  --color-primary-soft: rgba(187, 169, 250, 0.15);
+  --color-on-primary: #27124b;
+
+  --surface-page: #1a1620;
+  --surface-panel: #25212e;
+  --surface-soft: #312c3a;
+  --surface-hover: #3f3a4b;
+  --surface-selected: #4e3e6a;
+
+  --color-text: #f1eff5;
+  --color-text-muted: #b6b2bf;
+  --color-text-subtle: #8b8696;
+  --color-text-inverse: #1a1620;
+
+  --color-border: #413b4c;
+  --color-border-strong: #5f5770;
+
+  --color-primary-glow: rgba(187, 169, 250, 0.22);
+  --focus-ring: rgba(187, 169, 250, 0.3);
+}
+
+/* ---------- 色板轴 · jade 青瓷（现状青绿的品牌进化：瓷面 + 墨青釉/松石夜釉） ----------
+ * v2.1 深化稿并入：主色相钉回品牌正色相 h196/h194（兼拉远与 positive 绿 33°/31°），
+ * 深 selected 内收半档使行上 mono 字/主色字达标，浅面降彩换通透并修三处台阶/基线。
+ * 全量理由与实算：docs/design/themes/tokens/jade.css · jade-report.md */
+:root[data-theme="light"][data-accent="jade"] {
+  --color-primary: #006869;
+  --color-primary-hover: #005657;
+  --color-primary-soft: rgba(0, 104, 105, 0.1);
+  --color-on-primary: #ffffff;
+
+  --surface-page: #eef6f6;
+  --surface-panel: #ffffff;
+  --surface-soft: #f3f9f9;
+  --surface-hover: #e3eeee;
+  --surface-selected: #bae3e2;
+
+  --color-text: #142222;
+  --color-text-muted: #506363;
+  --color-text-subtle: #7d8d8c;
+  --color-text-inverse: #ffffff;
+
+  --color-border: #d6e2e1;
+  --color-border-strong: #b1c4c3;
+
+  --color-primary-glow: rgba(0, 104, 105, 0.18);
+  --focus-ring: rgba(0, 104, 105, 0.28);
+
+  --shadow-small: 0 4px 14px rgba(20, 34, 34, 0.05);
+  --shadow-panel: 0 18px 45px rgba(20, 34, 34, 0.08);
+}
+
+:root[data-theme="dark"][data-accent="jade"] {
+  --color-primary: #5dd1cf;
+  --color-primary-hover: #81dfdc;
+  --color-primary-soft: rgba(93, 209, 207, 0.15);
+  --color-on-primary: #002525;
+
+  --surface-page: #0f1b1b;
+  --surface-panel: #192626;
+  --surface-soft: #233232;
+  --surface-hover: #2e4140;
+  --surface-selected: #005758;
+
+  --color-text: #eaf2f2;
+  --color-text-muted: #b3c1c1;
+  --color-text-subtle: #7c8d8d;
+  --color-text-inverse: #0f1b1b;
+
+  --color-border: #2f4242;
+  --color-border-strong: #476261;
+
+  --color-primary-glow: rgba(93, 209, 207, 0.22);
+  --focus-ring: rgba(93, 209, 207, 0.3);
+}
+
+/* ---------- 色板轴 · onyx 曜石（无障碍高对比·工程蓝画质感，AAA 口径） ----------
+ * 全库唯一覆写 --state-*（含 soft）的色板（红线对它的豁免见 design-system 与提案 README）；
+ * v2.1 复审修案：浅信息色与主色分家（Δh 26°）、深 selected 压深使行上裸状态字全 ≥4.88、
+ * 边框回归 3:1 非文带。全量理由与实算：docs/design/themes/tokens/onyx.css · onyx-report.md */
+:root[data-theme="light"][data-accent="onyx"] {
+  --color-primary: #0649b8;
+  --color-primary-hover: #003999;
+  --color-primary-soft: rgba(6, 73, 184, 0.12);
+  --color-on-primary: #ffffff;
+
+  --surface-page: #f2f7fc;
+  --surface-panel: #ffffff;
+  --surface-soft: #eef2f6;
+  --surface-hover: #dfe7ef;
+  --surface-selected: #cfe0f2;
+
+  --color-text: #0a0f14;
+  --color-text-muted: #333c46;
+  --color-text-subtle: #626b77;
+  --color-text-inverse: #ffffff;
+
+  --color-border: #838f9d;
+  --color-border-strong: #455263;
+
+  --state-positive: #0a6b45;
+  --state-positive-soft: #e3f1e9;
+  --state-information: #1c6b92;
+  --state-information-soft: #e1f1f9;
+  --state-warning: #8a5100;
+  --state-warning-soft: #f3edd8;
+  --state-danger: #b3261e;
+  --state-danger-soft: #f9e9e6;
+
+  --color-primary-glow: rgba(6, 73, 184, 0.2);
+  --focus-ring: rgba(6, 73, 184, 0.36);
+
+  --shadow-small: 0 4px 14px rgba(10, 15, 20, 0.08);
+  --shadow-panel: 0 18px 45px rgba(10, 15, 20, 0.13);
+}
+
+:root[data-theme="dark"][data-accent="onyx"] {
+  --color-primary: #79b7ff;
+  --color-primary-hover: #9bc9ff;
+  --color-primary-soft: rgba(121, 183, 255, 0.16);
+  --color-on-primary: #04223f;
+
+  --surface-page: #05070a;
+  --surface-panel: #0d1117;
+  --surface-soft: #141a22;
+  --surface-hover: #1c2530;
+  --surface-selected: #244268;
+
+  --color-text: #f2f6fb;
+  --color-text-muted: #b9c4d0;
+  --color-text-subtle: #8f9bab;
+  --color-text-inverse: #05070a;
+
+  --color-border: #5c646f;
+  --color-border-strong: #78818c;
+
+  --state-positive: #5bd88e;
+  --state-positive-soft: #0a2b1b;
+  --state-information: #66cbec;
+  --state-information-soft: #0c2a39;
+  --state-warning: #f7c948;
+  --state-warning-soft: #2e2308;
+  --state-danger: #ff9690;
+  --state-danger-soft: #3a1210;
+
+  --color-primary-glow: rgba(121, 183, 255, 0.24);
+  --focus-ring: rgba(121, 183, 255, 0.45);
+}
+
+/* 主题扩展位：
+ *  - 新明暗模式 = 新增 [data-theme='xxx'] 变量块；新色板 = 新增 [data-theme=…][data-accent='yyy'] 覆写块，组件零改动。
+ *  - 覆写集契约：主色 4 + 表面 5 + 文字 4 + 边框 2 + 主色光晕 + 焦点环（浅模式另加小/面板阴影；
+ *    状态色/遮罩/终端跨色板恒定，唯 onyx 按无障碍职能覆写状态色）。
+ *  - 选中行使用纪律（精修复审固化）：强染色 selected 行内禁放 muted/subtle 小字，状态语义必须走 chip 软底。 */

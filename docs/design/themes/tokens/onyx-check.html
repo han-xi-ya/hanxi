@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!-- onyx 深化稿微型自检页（调试用）：打开后 JS 从渲染结果实时复算配对对比度，红=未达标。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>onyx v2.1 自检</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 13px/1.55 "Segoe UI", "Microsoft YaHei UI", sans-serif; background: #666c75; }
+  .stage { max-width: 660px; margin: 0 auto 28px; padding: 18px; border: 1px solid var(--color-border); border-radius: 14px; background: var(--surface-page); color: var(--color-text); }
+  .stage h1 { font-size: 15px; margin: 0 0 12px; }
+  .card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .t-text { color: var(--color-text); } .t-muted { color: var(--color-text-muted); }
+  .t-subtle { color: var(--color-text-subtle); font-size: 11px; }
+  .t-link { color: var(--color-primary); text-decoration: underline; }
+  .btn { background: var(--color-primary); color: var(--color-on-primary); border: 0; border-radius: 8px; padding: 7px 14px; font: 600 13px/1.4 inherit; }
+  .chip { border-radius: 999px; padding: 3px 10px; font-size: 11px; font-weight: 600; }
+  .chip.pos  { background: var(--state-positive-soft);    color: var(--state-positive); }
+  .chip.info { background: var(--state-information-soft); color: var(--state-information); }
+  .chip.warn { background: var(--state-warning-soft);     color: var(--state-warning); }
+  .chip.dgr  { background: var(--state-danger-soft);      color: var(--state-danger); }
+  .b-pos { color: var(--state-positive); } .b-info { color: var(--state-information); }
+  .b-warn { color: var(--state-warning); } .b-dgr { color: var(--state-danger); font-weight: 600; }
+  .kpi { border-radius: 10px; padding: 10px 14px; min-width: 108px; }
+  .kpi b { display: block; font-size: 21px; font-variant-numeric: tabular-nums; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid var(--color-border); padding: 5px 8px; font-size: 12px; text-align: left; }
+  tr.sel td { background: var(--surface-selected); }
+  tr.hov td { background: var(--surface-hover); }
+  .focusdemo { outline: 3px solid var(--focus-ring); outline-offset: 2px; border: 1px solid var(--color-border-strong); background: var(--surface-panel); border-radius: 8px; padding: 6px 10px; }
+  input { background: var(--surface-soft); border: 1px solid var(--color-border-strong); color: var(--color-text); border-radius: 8px; padding: 6px 8px; width: 150px; }
+  .audit { font: 12px/1.8 ui-monospace, Consolas, monospace; background: #101418; color: #cfd8e3; border-radius: 10px; padding: 12px 14px; max-width: 660px; margin: 0 auto 28px; white-space: pre; }
+  .ok { color: #7ee2a8; } .bad { color: #ff9690; font-weight: 700; }
+
+  /* ==== onyx 浅（与 tokens/onyx.css 同步） ==== */
+  .light {
+    --color-primary: #0649b8; --color-primary-hover: #003999;
+    --color-on-primary: #ffffff;
+    --surface-page: #f2f7fc; --surface-panel: #ffffff; --surface-soft: #eef2f6;
+    --surface-hover: #dfe7ef; --surface-selected: #cfe0f2;
+    --color-text: #0a0f14; --color-text-muted: #333c46; --color-text-subtle: #626b77;
+    --color-border: #838f9d; --color-border-strong: #455263;
+    --state-positive: #0a6b45; --state-positive-soft: #e3f1e9;
+    --state-information: #1c6b92; --state-information-soft: #e1f1f9;
+    --state-warning: #8a5100; --state-warning-soft: #f3edd8;
+    --state-danger: #b3261e; --state-danger-soft: #f9e9e6;
+    --focus-ring: rgba(6, 73, 184, 0.36);
+  }
+  /* ==== onyx 深 ==== */
+  .dark {
+    --color-primary: #79b7ff; --color-primary-hover: #9bc9ff;
+    --color-on-primary: #04223f;
+    --surface-page: #05070a; --surface-panel: #0d1117; --surface-soft: #141a22;
+    --surface-hover: #1c2530; --surface-selected: #244268;
+    --color-text: #f2f6fb; --color-text-muted: #b9c4d0; --color-text-subtle: #8f9bab;
+    --color-border: #5c646f; --color-border-strong: #78818c;
+    --state-positive: #5bd88e; --state-positive-soft: #0a2b1b;
+    --state-information: #66cbec; --state-information-soft: #0c2a39;
+    --state-warning: #f7c948; --state-warning-soft: #2e2308;
+    --state-danger: #ff9690; --state-danger-soft: #3a1210;
+    --focus-ring: rgba(121, 183, 255, 0.45);
+  }
+</style>
+</head>
+<body>
+<div class="stage light">
+  <h1>onyx 浅模式 — 蓝墨纸面</h1>
+  <div class="card">
+    <span class="t-text">正文 text</span> · <span class="t-muted">辅助 muted</span> · <span class="t-subtle">弱注记 subtle</span> · <a class="t-link">主色链接</a>
+    <div class="row">
+      <button class="btn">主按钮</button>
+      <span class="chip pos">正常</span><span class="chip info">信息</span><span class="chip warn">告警</span><span class="chip dgr">故障</span>
+      <span class="focusdemo">焦点环</span><input placeholder="输入框">
+    </div>
+  </div>
+  <div class="row" style="margin:0 0 12px">
+    <div class="kpi" style="background:var(--state-positive-soft)"><b class="b-pos">98.7%</b><span class="t-muted">在线率（KPI 大块软底）</span></div>
+    <div class="kpi" style="background:var(--state-warning-soft)"><b class="b-warn">12</b><span class="t-muted">待处理</span></div>
+    <div class="kpi" style="background:var(--state-danger-soft)"><b class="b-dgr">3</b><span class="t-muted">故障</span></div>
+    <div class="kpi" style="background:var(--state-information-soft)"><b class="b-info">45</b><span class="t-muted">事件</span></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table>
+      <tr><th>资源</th><th>状态</th><th>裸字</th><th>备注</th></tr>
+      <tr><td class="t-text">row-normal</td><td><span class="chip info">SYNC</span></td><td class="b-pos">运行</td><td class="t-muted">面板行</td></tr>
+      <tr class="hov"><td class="t-text">row-hover</td><td><span class="chip warn">重试</span></td><td class="b-warn">排队</td><td class="t-muted">悬停行（表格线@柔底）</td></tr>
+      <tr class="sel"><td class="t-text">row-selected</td><td><span class="chip dgr">ERR</span></td><td class="b-dgr">失败</td><td class="t-muted">选中行</td></tr>
+    </table>
+  </div>
+</div>
+<div class="stage dark">
+  <h1>onyx 深模式 — 近黑画布 / 石墨蓝面</h1>
+  <div class="card">
+    <span class="t-text">正文 text</span> · <span class="t-muted">辅助 muted</span> · <span class="t-subtle">弱注记 subtle</span> · <a class="t-link">主色链接</a>
+    <div class="row">
+      <button class="btn">主按钮(深字)</button>
+      <span class="chip pos">正常</span><span class="chip info">信息</span><span class="chip warn">告警</span><span class="chip dgr">故障</span>
+      <span class="focusdemo">焦点环</span><input placeholder="输入框">
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table>
+      <tr><th>资源</th><th>状态</th><th>裸字/选中</th></tr>
+      <tr><td class="t-text">row-normal</td><td><span class="chip pos">OK</span></td><td class="b-info">同步</td></tr>
+      <tr class="sel"><td class="t-text">row-selected</td><td><span class="chip dgr">ERR</span></td><td class="b-dgr">失败裸字</td></tr>
+    </table>
+  </div>
+</div>
+<pre class="audit" id="out">计算中…</pre>
+<script>
+const rgbOf = c => c.match(/[\d.]+/g).slice(0, 3).map(Number);
+const lum = rgb => rgb.map(v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+  .reduce((a, v, i) => a + [0.2126, 0.7152, 0.0722][i] * v, 0);
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return Math.round(((x + 0.05) / (y + 0.05)) * 100) / 100; };
+const F = (stage, sel) => rgbOf(getComputedStyle(stage.querySelector(sel)).color);
+const B = (stage, sel) => rgbOf(getComputedStyle(stage.querySelector(sel)).backgroundColor);
+const PAIRS = [
+  ['正文/面板',     (s, d) => [F(s, '.card .t-text'),  B(s, '.card')],                        d => 7],
+  ['辅助/面板',     (s, d) => [F(s, '.card .t-muted'), B(s, '.card')],                        d => 7],
+  ['弱注/面板',     (s, d) => [F(s, '.card .t-subtle'), B(s, '.card')],                       d => 4.5],
+  ['链接/面板',     (s, d) => [F(s, '.t-link'),        B(s, '.card')],                        d => 7],
+  ['钮字/主色',     (s, d) => [F(s, '.btn'),           B(s, '.btn')],                         d => 7],
+  ['正字/正软',     (s, d) => [F(s, '.chip.pos'),      B(s, '.chip.pos')],                    d => 4.5],
+  ['信字/信软',     (s, d) => [F(s, '.chip.info'),     B(s, '.chip.info')],                   d => 4.5],
+  ['警字/警软',     (s, d) => [F(s, '.chip.warn'),     B(s, '.chip.warn')],                   d => 4.5],
+  ['危字/危软',     (s, d) => [F(s, '.chip.dgr'),      B(s, '.chip.dgr')],                    d => 4.5],
+  ['正文/选中行',   (s, d) => [F(s, '.sel .t-text'),   B(s, '.sel td')],                      d => 7],
+  ['危字裸/选中行', (s, d) => [F(s, '.sel .b-dgr'),    B(s, '.sel td')],                      d => 4.5],
+];
+let out = '';
+for (const stage of document.querySelectorAll('.stage')) {
+  const isDark = stage.classList.contains('dark');
+  out += `== onyx ${isDark ? '深' : '浅'}模式（实算自渲染值） ==\n`;
+  for (const [name, pair, need] of PAIRS) {
+    const [fg, bg] = pair(stage, isDark);
+    const needV = need(isDark);
+    const r = ratio(fg, bg);
+    out += `  ${r >= needV ? '<span class="ok">✓</span>  ' : '<span class="bad">✗✗✗</span>'} ${name.padEnd(14, ' ')} ${String(r).padStart(6)}:1 (≥${needV})\n`;
+  }
+  out += '\n';
+}
+document.getElementById('out').innerHTML = out;
+</script>
+</body>
+</html>

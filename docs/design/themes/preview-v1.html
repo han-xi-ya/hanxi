@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-accent="cobalt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hanxi 主题配色提案 · 可视化预览</title>
+<!--
+  一次性设计预览页（不属应用代码）：九套候选主题 + 现状青绿基线，浅/深并排。
+  令牌选择器结构即落地方案：[data-theme=浅深] × [data-accent=色板] 双轴组合。
+  设计规范见同目录 README.md；数据可经 gen-palettes.mjs 重新生成校验。
+-->
+<style>
+/* ============ 结构常量（与主题无关） ============ */
+:root {
+  --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --text-micro: 10px; --text-xs: 11px; --text-sm: 12px; --text-base: 13px;
+  --text-md: 14px; --text-lg: 16px; --text-xl: 18px; --text-2xl: 22px;
+  --radius-micro: 4px; --radius-control: 8px; --radius-element: 12px;
+  --radius-panel: 16px; --radius-pill: 999px;
+  --control-h-lg: 36px; --control-h-md: 30px; --control-h-sm: 24px;
+  --motion-fast: 100ms; --motion-base: 150ms;
+}
+
+/* ============ 主题模式层：状态色/遮罩/阴影基座（跨色板恒定） ============ */
+[data-theme="light"] {
+  color-scheme: light;
+  --state-positive: #08875d; --state-positive-soft: #e2f4ec;
+  --state-information: #2563eb; --state-information-soft: #e7effd;
+  --state-warning: #b66f08; --state-warning-soft: #fbf1de;
+  --state-danger: #d64545; --state-danger-soft: #fbe9e9;
+  --state-positive-glow: rgba(8, 135, 93, 0.15);
+  --state-information-glow: rgba(37, 99, 235, 0.15);
+  --state-warning-glow: rgba(182, 111, 8, 0.15);
+  --state-danger-glow: rgba(214, 69, 69, 0.15);
+  --overlay-mask: rgba(10, 24, 29, 0.46);
+  --shadow-small: 0 4px 14px rgba(32, 66, 72, 0.055);
+  --shadow-panel: 0 18px 45px rgba(32, 66, 72, 0.085);
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --state-positive: #47c792; --state-positive-soft: #0f2e24;
+  --state-information: #72a5ff; --state-information-soft: #16233c;
+  --state-warning: #f0ac45; --state-warning-soft: #33260f;
+  --state-danger: #ff7974; --state-danger-soft: #3a1a1a;
+  --state-positive-glow: rgba(71, 199, 146, 0.16);
+  --state-information-glow: rgba(114, 165, 255, 0.16);
+  --state-warning-glow: rgba(240, 172, 69, 0.16);
+  --state-danger-glow: rgba(255, 121, 116, 0.16);
+  --overlay-mask: rgba(2, 8, 11, 0.62);
+  --shadow-small: 0 5px 18px rgba(0, 0, 0, 0.18);
+  --shadow-panel: 0 22px 50px rgba(0, 0, 0, 0.23);
+}
+
+/* ============ 色板层 × 模式层（= 提案落 tokens.css 的内容） ============ */
+
+/* ---- teal · 青壳（现状基线） ---- */
+[data-theme="light"][data-accent="teal"] {
+  --color-primary: #0f8b8d; --color-primary-hover: #0b7779;
+  --color-primary-soft: rgba(15, 139, 141, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f3f7f8; --surface-panel: #ffffff; --surface-soft: #f7fafb;
+  --surface-hover: #eef5f5; --surface-selected: #e2f1f0;
+  --color-text: #14252c; --color-text-muted: #667980; --color-text-subtle: #8a9aa0;
+  --color-text-inverse: #ffffff;
+  --color-border: #dce6e8; --color-border-strong: #c7d6d9;
+  --color-primary-glow: rgba(15, 139, 141, 0.18); --focus-ring: rgba(15, 139, 141, 0.24);
+  --shadow-small: 0 4px 14px rgba(32, 66, 72, 0.055);
+  --shadow-panel: 0 18px 45px rgba(32, 66, 72, 0.085);
+}
+[data-theme="dark"][data-accent="teal"] {
+  --color-primary: #42b7b4; --color-primary-hover: #59c8c5;
+  --color-primary-soft: rgba(66, 183, 180, 0.13); --color-on-primary: #052326;
+  --surface-page: #071318; --surface-panel: #0e1c22; --surface-soft: #12252c;
+  --surface-hover: #173039; --surface-selected: #1a3d44;
+  --color-text: #e8f2f3; --color-text-muted: #9aadb2; --color-text-subtle: #748a90;
+  --color-text-inverse: #071318;
+  --color-border: #213840; --color-border-strong: #31505a;
+  --color-primary-glow: rgba(66, 183, 180, 0.2); --focus-ring: rgba(66, 183, 180, 0.28);
+}
+
+/* ---- cobalt · 钴蓝 ---- */
+[data-theme="light"][data-accent="cobalt"] {
+  --color-primary: #2f5fd0; --color-primary-hover: #2750b0;
+  --color-primary-soft: rgba(47, 95, 208, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f3f5f9; --surface-panel: #ffffff; --surface-soft: #f8f9fb;
+  --surface-hover: #e8ebf3; --surface-selected: #e6ecf9;
+  --color-text: #181b28; --color-text-muted: #5d657e; --color-text-subtle: #7f869c;
+  --color-text-inverse: #ffffff;
+  --color-border: #d6dae6; --color-border-strong: #b9bed0;
+  --color-primary-glow: rgba(47, 95, 208, 0.18); --focus-ring: rgba(47, 95, 208, 0.26);
+  --shadow-small: 0 4px 14px rgba(35, 45, 77, 0.055);
+  --shadow-panel: 0 18px 45px rgba(35, 45, 77, 0.085);
+}
+[data-theme="dark"][data-accent="cobalt"] {
+  --color-primary: #7ba2ff; --color-primary-hover: #96b6ff;
+  --color-primary-soft: rgba(123, 162, 255, 0.13); --color-on-primary: #0a1730;
+  --surface-page: #0a0c15; --surface-panel: #121624; --surface-soft: #171d2d;
+  --surface-hover: #1c2238; --surface-selected: #1f2a4c;
+  --color-text: #e8eaf3; --color-text-muted: #9aa1b6; --color-text-subtle: #737b96;
+  --color-text-inverse: #0a0c15;
+  --color-border: #242938; --color-border-strong: #373e53;
+  --color-primary-glow: rgba(123, 162, 255, 0.2); --focus-ring: rgba(123, 162, 255, 0.28);
+}
+
+/* ---- graphite · 石墨 ---- */
+[data-theme="light"][data-accent="graphite"] {
+  --color-primary: #33628c; --color-primary-hover: #2a5377;
+  --color-primary-soft: rgba(51, 98, 140, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f5f6f7; --surface-panel: #ffffff; --surface-soft: #f9fafa;
+  --surface-hover: #eceeef; --surface-selected: #e7ecf1;
+  --color-text: #1d2023; --color-text-muted: #686d73; --color-text-subtle: #888d93;
+  --color-text-inverse: #ffffff;
+  --color-border: #dbdee1; --color-border-strong: #c0c4c8;
+  --color-primary-glow: rgba(51, 98, 140, 0.18); --focus-ring: rgba(51, 98, 140, 0.26);
+  --shadow-small: 0 4px 14px rgba(35, 55, 77, 0.055);
+  --shadow-panel: 0 18px 45px rgba(35, 55, 77, 0.085);
+}
+[data-theme="dark"][data-accent="graphite"] {
+  --color-primary: #83aacb; --color-primary-hover: #9ebdd6;
+  --color-primary-soft: rgba(131, 170, 203, 0.13); --color-on-primary: #0b1c28;
+  --surface-page: #0d0f11; --surface-panel: #181b1e; --surface-soft: #1f2226;
+  --surface-hover: #252a2f; --surface-selected: #2e353d;
+  --color-text: #ebedef; --color-text-muted: #a3a8ad; --color-text-subtle: #7f848b;
+  --color-text-inverse: #0d0f11;
+  --color-border: #2a2e31; --color-border-strong: #40454a;
+  --color-primary-glow: rgba(131, 170, 203, 0.2); --focus-ring: rgba(131, 170, 203, 0.28);
+}
+
+/* ---- moss · 苔原 ---- */
+[data-theme="light"][data-accent="moss"] {
+  --color-primary: #3d6d35; --color-primary-hover: #335a2c;
+  --color-primary-soft: rgba(61, 109, 53, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f6f8f4; --surface-panel: #ffffff; --surface-soft: #fafbf9;
+  --surface-hover: #edf2e9; --surface-selected: #e8ede7;
+  --color-text: #1f2719; --color-text-muted: #6b7b60; --color-text-subtle: #8b9982;
+  --color-text-inverse: #ffffff;
+  --color-border: #dde4d7; --color-border-strong: #c2cebb;
+  --color-primary-glow: rgba(61, 109, 53, 0.18); --focus-ring: rgba(61, 109, 53, 0.26);
+  --shadow-small: 0 4px 14px rgba(52, 77, 35, 0.055);
+  --shadow-panel: 0 18px 45px rgba(52, 77, 35, 0.085);
+}
+[data-theme="dark"][data-accent="moss"] {
+  --color-primary: #9ec57c; --color-primary-hover: #b2d395;
+  --color-primary-soft: rgba(158, 197, 124, 0.13); --color-on-primary: #12240e;
+  --surface-page: #0e140b; --surface-panel: #192213; --surface-soft: #212b1a;
+  --surface-hover: #28361f; --surface-selected: #324824;
+  --color-text: #ecf1e9; --color-text-muted: #a6b39d; --color-text-subtle: #829277;
+  --color-text-inverse: #0e140b;
+  --color-border: #2c3626; --color-border-strong: #43503a;
+  --color-primary-glow: rgba(158, 197, 124, 0.2); --focus-ring: rgba(158, 197, 124, 0.28);
+}
+
+/* ---- rust · 赭岩 ---- */
+[data-theme="light"][data-accent="rust"] {
+  --color-primary: #a3512a; --color-primary-hover: #8a4423;
+  --color-primary-soft: rgba(163, 81, 42, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f9f5f4; --surface-panel: #ffffff; --surface-soft: #fbfaf9;
+  --surface-hover: #f2ece9; --surface-selected: #f4eae5;
+  --color-text: #271e18; --color-text-muted: #7c6a5f; --color-text-subtle: #9b8a80;
+  --color-text-inverse: #ffffff;
+  --color-border: #e5dcd7; --color-border-strong: #cfc2ba;
+  --color-primary-glow: rgba(163, 81, 42, 0.18); --focus-ring: rgba(163, 81, 42, 0.26);
+  --shadow-small: 0 4px 14px rgba(77, 50, 35, 0.055);
+  --shadow-panel: 0 18px 45px rgba(77, 50, 35, 0.085);
+}
+[data-theme="dark"][data-accent="rust"] {
+  --color-primary: #e0946a; --color-primary-hover: #e8ab88;
+  --color-primary-soft: rgba(224, 148, 106, 0.13); --color-on-primary: #2a1108;
+  --surface-page: #140e0a; --surface-panel: #231913; --surface-soft: #2c2019;
+  --surface-hover: #37271d; --surface-selected: #4a3021;
+  --color-text: #f2ece8; --color-text-muted: #b5a59c; --color-text-subtle: #948075;
+  --color-text-inverse: #140e0a;
+  --color-border: #372b25; --color-border-strong: #514238;
+  --color-primary-glow: rgba(224, 148, 106, 0.2); --focus-ring: rgba(224, 148, 106, 0.28);
+}
+
+/* ---- plum · 紫晶 ---- */
+[data-theme="light"][data-accent="plum"] {
+  --color-primary: #6852c9; --color-primary-hover: #5844ad;
+  --color-primary-soft: rgba(104, 82, 201, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f5f4f9; --surface-panel: #ffffff; --surface-soft: #f9f9fb;
+  --surface-hover: #ece9f2; --surface-selected: #edeaf9;
+  --color-text: #1d1827; --color-text-muted: #685f7c; --color-text-subtle: #88809b;
+  --color-text-inverse: #ffffff;
+  --color-border: #dbd7e5; --color-border-strong: #c0bacf;
+  --color-primary-glow: rgba(104, 82, 201, 0.18); --focus-ring: rgba(104, 82, 201, 0.26);
+  --shadow-small: 0 4px 14px rgba(48, 35, 77, 0.055);
+  --shadow-panel: 0 18px 45px rgba(48, 35, 77, 0.085);
+}
+[data-theme="dark"][data-accent="plum"] {
+  --color-primary: #ab95f5; --color-primary-hover: #bfaef8;
+  --color-primary-soft: rgba(171, 149, 245, 0.13); --color-on-primary: #1b1040;
+  --surface-page: #0d0a14; --surface-panel: #171323; --surface-soft: #1e192c;
+  --surface-hover: #251d37; --surface-selected: #2d214a;
+  --color-text: #ebe8f2; --color-text-muted: #a39cb5; --color-text-subtle: #7e7594;
+  --color-text-inverse: #0d0a14;
+  --color-border: #2a2537; --color-border-strong: #403851;
+  --color-primary-glow: rgba(171, 149, 245, 0.2); --focus-ring: rgba(171, 149, 245, 0.28);
+}
+
+/* ---- azure · 蔚蓝（macOS 风：近无色冷灰面 + 高饱和 azure 强调） ----
+   说明：Apple 原教旨 #007AFF 白字仅 3.2:1 不达 AA，此处微降至 #0a63d6；
+   深色主色取 systemBlue(#0a84ff) 提亮版 #3e9dff，按钮前景用深蓝字（Apple 白字为 3.65 不达 AA）。 */
+[data-theme="light"][data-accent="azure"] {
+  --color-primary: #0a63d6; --color-primary-hover: #0953ae;
+  --color-primary-soft: rgba(10, 99, 214, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f5f6f7; --surface-panel: #ffffff; --surface-soft: #f9fafa;
+  --surface-hover: #eceeef; --surface-selected: #e2ecfa;
+  --color-text: #1d2022; --color-text-muted: #696d73; --color-text-subtle: #898d92;
+  --color-text-inverse: #ffffff;
+  --color-border: #dbdee0; --color-border-strong: #c1c4c8;
+  --color-primary-glow: rgba(10, 99, 214, 0.18); --focus-ring: rgba(10, 99, 214, 0.26);
+  --shadow-small: 0 4px 14px rgba(35, 55, 77, 0.055);
+  --shadow-panel: 0 18px 45px rgba(35, 55, 77, 0.085);
+}
+[data-theme="dark"][data-accent="azure"] {
+  --color-primary: #3e9dff; --color-primary-hover: #5dafff;
+  --color-primary-soft: rgba(62, 157, 255, 0.13); --color-on-primary: #0a2a4d;
+  --surface-page: #0e0f11; --surface-panel: #181b1e; --surface-soft: #1f2226;
+  --surface-hover: #262a2e; --surface-selected: #2f353c;
+  --color-text: #ecedef; --color-text-muted: #a4a8ac; --color-text-subtle: #7f848a;
+  --color-text-inverse: #0e0f11;
+  --color-border: #2b2e31; --color-border-strong: #414549;
+  --color-primary-glow: rgba(62, 157, 255, 0.2); --focus-ring: rgba(62, 157, 255, 0.28);
+}
+
+/* ---- rose · 玫瑰 ---- */
+[data-theme="light"][data-accent="rose"] {
+  --color-primary: #a93d78; --color-primary-hover: #8f3364;
+  --color-primary-soft: rgba(169, 61, 120, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f8f4f6; --surface-panel: #ffffff; --surface-soft: #fbf9fa;
+  --surface-hover: #f2eaed; --surface-selected: #f5e8ef;
+  --color-text: #261a1f; --color-text-muted: #7a616c; --color-text-subtle: #99828c;
+  --color-text-inverse: #ffffff;
+  --color-border: #e4d8dd; --color-border-strong: #cdbcc3;
+  --color-primary-glow: rgba(169, 61, 120, 0.18); --focus-ring: rgba(169, 61, 120, 0.26);
+  --shadow-small: 0 4px 14px rgba(77, 35, 53, 0.055);
+  --shadow-panel: 0 18px 45px rgba(77, 35, 53, 0.085);
+}
+[data-theme="dark"][data-accent="rose"] {
+  --color-primary: #e78fc0; --color-primary-hover: #efa9d2;
+  --color-primary-soft: rgba(231, 143, 192, 0.13); --color-on-primary: #3a0f2b;
+  --surface-page: #130b0f; --surface-panel: #22141a; --surface-soft: #2b1a21;
+  --surface-hover: #351f28; --surface-selected: #462533;
+  --color-text: #f1e9ec; --color-text-muted: #b39ea7; --color-text-subtle: #917882;
+  --color-text-inverse: #130b0f;
+  --color-border: #35262d; --color-border-strong: #4f3b43;
+  --color-primary-glow: rgba(231, 143, 192, 0.2); --focus-ring: rgba(231, 143, 192, 0.28);
+}
+
+/* ---- ink · 玄墨（Notion/Vercel 式近无色纸面，强调靠明度不靠色相） ----
+   注意: 浅色下主按钮=墨黑、链接色≈正文色，激活/链接的可辨性依赖字重与下划线
+   （设计系统本就要求状态不只靠颜色表达）；深色主色改用冷银蓝以区别正文白。 */
+[data-theme="light"][data-accent="ink"] {
+  --color-primary: #26292e; --color-primary-hover: #1a1d21;
+  --color-primary-soft: rgba(38, 41, 46, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f6f6f7; --surface-panel: #ffffff; --surface-soft: #fafafa;
+  --surface-hover: #edeeef; --surface-selected: #e5e5e6;
+  --color-text: #1e2021; --color-text-muted: #6b6e71; --color-text-subtle: #8b8e90;
+  --color-text-inverse: #ffffff;
+  --color-border: #dcdedf; --color-border-strong: #c2c4c6;
+  --color-primary-glow: rgba(38, 41, 46, 0.18); --focus-ring: rgba(38, 41, 46, 0.26);
+  --shadow-small: 0 4px 14px rgba(35, 56, 77, 0.055);
+  --shadow-panel: 0 18px 45px rgba(35, 56, 77, 0.085);
+}
+[data-theme="dark"][data-accent="ink"] {
+  --color-primary: #aebfd0; --color-primary-hover: #c3d0dd;
+  --color-primary-soft: rgba(174, 191, 208, 0.13); --color-on-primary: #191c1f;
+  --surface-page: #0e0f10; --surface-panel: #191b1c; --surface-soft: #202224;
+  --surface-hover: #282a2d; --surface-selected: #32363a;
+  --color-text: #ecedee; --color-text-muted: #a6a8ab; --color-text-subtle: #828588;
+  --color-text-inverse: #0e0f10;
+  --color-border: #2c2e30; --color-border-strong: #424547;
+  --color-primary-glow: rgba(174, 191, 208, 0.2); --focus-ring: rgba(174, 191, 208, 0.28);
+}
+
+/* ---- onyx · 曜石（无障碍高对比：边框承担分离、状态色也整体压深提亮，唯一覆写 state-* 的色板） ---- */
+[data-theme="light"][data-accent="onyx"] {
+  --color-primary: #0b57d0; --color-primary-hover: #0846a8;
+  --color-primary-soft: rgba(11, 87, 208, 0.12); --color-on-primary: #ffffff;
+  --surface-page: #ffffff; --surface-panel: #ffffff; --surface-soft: #f3f4f6;
+  --surface-hover: #e6e8eb; --surface-selected: #d5dae2;
+  --color-text: #000000; --color-text-muted: #3f4650; --color-text-subtle: #535d6b;
+  --color-text-inverse: #ffffff;
+  --color-border: #4b5563; --color-border-strong: #333a44;
+  --state-positive: #0a6b45; --state-positive-soft: #d7ecdf;
+  --state-information: #0b57d0; --state-information-soft: #dfe9fb;
+  --state-warning: #8a5100; --state-warning-soft: #f7e9cd;
+  --state-danger: #b3261e; --state-danger-soft: #f9dfdc;
+  --color-primary-glow: rgba(11, 87, 208, 0.18); --focus-ring: rgba(11, 87, 208, 0.34);
+  --shadow-small: 0 4px 14px rgba(0, 0, 0, 0.09);
+  --shadow-panel: 0 18px 45px rgba(0, 0, 0, 0.14);
+}
+[data-theme="dark"][data-accent="onyx"] {
+  --color-primary: #8ab4f8; --color-primary-hover: #a8c8fb;
+  --color-primary-soft: rgba(138, 180, 248, 0.16); --color-on-primary: #041c3b;
+  --surface-page: #000000; --surface-panel: #0b0c0d; --surface-soft: #121315;
+  --surface-hover: #1a1c1f; --surface-selected: #24303f;
+  --color-text: #ffffff; --color-text-muted: #c6ccd2; --color-text-subtle: #a8b0b8;
+  --color-text-inverse: #000000;
+  --color-border: #6e7781; --color-border-strong: #98a1ab;
+  --state-positive: #57d98f; --state-positive-soft: #0b2e1c;
+  --state-information: #8ab4f8; --state-information-soft: #101f3d;
+  --state-warning: #f5c34b; --state-warning-soft: #33240a;
+  --state-danger: #ff9b93; --state-danger-soft: #3d1512;
+  --color-primary-glow: rgba(138, 180, 248, 0.22); --focus-ring: rgba(138, 180, 248, 0.45);
+}
+
+/* ============ 页面骨架 ============ */
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface-page); color: var(--color-text);
+  font: var(--text-base)/1.55 var(--font-text);
+}
+.topbar {
+  position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px;
+  align-items: center; padding: 12px 24px;
+  background: var(--surface-panel); border-bottom: 1px solid var(--color-border);
+}
+.topbar h1 { font: 600 var(--text-md)/1.3 var(--font-display); margin: 0 16px 0 0; }
+.seg { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-pill); background: var(--surface-soft); }
+.seg button {
+  border: 0; border-radius: var(--radius-pill); padding: 4px 12px; cursor: pointer;
+  background: transparent; color: var(--color-text-muted); font: 500 var(--text-sm) var(--font-text);
+}
+.seg button[aria-pressed="true"] { background: var(--color-primary); color: var(--color-on-primary); }
+.grow { flex: 1; }
+.hint { color: var(--color-text-subtle); font-size: var(--text-xs); }
+main { max-width: 1280px; margin: 0 auto; padding: 24px; display: grid; gap: 24px; }
+.stage-wrap { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px; }
+.stage-label { display: flex; justify-content: space-between; margin: 0 4px 8px; color: var(--color-text-muted); font-size: var(--text-sm); }
+.stage-label b { color: var(--color-text); font-weight: 600; }
+
+/* ============ 迷你工作台 mock（消费 token 的示范面） ============ */
+.mock {
+  background: var(--surface-page); border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel); box-shadow: var(--shadow-panel);
+  overflow: hidden; display: grid; grid-template-columns: 150px 1fr; min-height: 430px;
+  font-size: var(--text-base);
+}
+.mock .rail { background: var(--surface-panel); border-right: 1px solid var(--color-border); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; }
+.rail .brand { display: flex; align-items: center; gap: 8px; font: 600 var(--text-md)/1 var(--font-display); padding: 6px 8px 16px; }
+.rail .brand i { width: 14px; height: 14px; border-radius: var(--radius-micro); background: var(--color-primary); box-shadow: 0 0 0 4px var(--color-primary-glow); }
+.nav-item {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: var(--radius-control);
+  color: var(--color-text-muted); font-size: var(--text-sm); cursor: default;
+}
+.nav-item:hover { background: var(--surface-hover); }
+.nav-item.on { background: var(--surface-selected); color: var(--color-primary); font-weight: 600; box-shadow: inset 2px 0 0 var(--color-primary); }
+.nav-item .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--state-positive); margin-left: auto; box-shadow: 0 0 6px var(--state-positive-glow); }
+.mock .main { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.mhead { display: flex; align-items: center; gap: 10px; }
+.mhead h3 { margin: 0; font: 600 var(--text-xl)/1.2 var(--font-display); letter-spacing: -0.01em; }
+.mhead .sub { color: var(--color-text-subtle); font-size: var(--text-xs); }
+.mhead .grow { flex: 1; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; height: var(--control-h-md);
+  padding: 0 14px; border-radius: var(--radius-control); border: 1px solid transparent;
+  font: 600 var(--text-sm) var(--font-text); cursor: pointer;
+}
+.btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-plain { background: var(--surface-panel); color: var(--color-text); border-color: var(--color-border-strong); }
+.btn-danger { background: var(--state-danger); color: #fff; }
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; box-shadow: 0 0 0 5px var(--focus-ring); }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.kpi {
+  background: var(--surface-panel); border: 1px solid var(--color-border);
+  border-radius: var(--radius-element); box-shadow: var(--shadow-small); padding: 10px 12px;
+}
+.kpi .num { font: 600 var(--text-2xl)/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi .cap { color: var(--color-text-muted); font-size: var(--text-xs); margin-top: 2px; }
+.kpi.pos .num { color: var(--state-positive); } .kpi.warn .num { color: var(--state-warning); } .kpi.dgr .num { color: var(--state-danger); }
+.tbl { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element); overflow: hidden; }
+.tbl .trow {
+  display: grid; grid-template-columns: 1.4fr 1.6fr 90px; gap: 10px; align-items: center;
+  padding: 8px 12px; border-top: 1px solid var(--color-border); font-size: var(--text-sm); min-height: 44px;
+}
+.tbl .trow:first-child { border-top: 0; background: var(--surface-soft); color: var(--color-text-muted); font-size: var(--text-xs); font-weight: 600; min-height: 0; padding: 6px 12px; }
+.tbl .trow.sel { background: var(--surface-selected); }
+.tbl .mono { font: var(--text-sm) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-text-muted); }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: var(--radius-pill);
+  font-size: var(--text-xs); font-weight: 600; width: max-content;
+}
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.pos { background: var(--state-positive-soft); color: var(--state-positive); }
+.chip.inf { background: var(--state-information-soft); color: var(--state-information); }
+.chip.wrn { background: var(--state-warning-soft); color: var(--state-warning); }
+.chip.dgr { background: var(--state-danger-soft); color: var(--state-danger); }
+.inputrow { display: flex; gap: 10px; align-items: center; }
+.field {
+  flex: 1; height: var(--control-h-md); padding: 0 10px; border-radius: var(--radius-control);
+  border: 1px solid var(--color-border-strong); background: var(--surface-soft); color: var(--color-text);
+  font: var(--text-sm) var(--font-text);
+}
+.field::placeholder { color: var(--color-text-subtle); }
+.field.faked { border-color: var(--color-primary); box-shadow: 0 0 0 4px var(--focus-ring); }
+.toggle { width: 36px; height: 20px; border-radius: var(--radius-pill); background: var(--color-primary); position: relative; flex: none; }
+.toggle::after { content: ""; position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+.toast {
+  display: flex; gap: 10px; align-items: center; padding: 10px 12px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-control); box-shadow: var(--shadow-panel); font-size: var(--text-sm);
+}
+.toast .t-sub { color: var(--color-text-muted); font-size: var(--text-xs); }
+.progress { flex: 1; height: 6px; border-radius: var(--radius-pill); background: var(--surface-hover); overflow: hidden; }
+.progress i { display: block; height: 100%; width: 64%; border-radius: inherit; background: var(--color-primary); box-shadow: 0 0 8px var(--color-primary-glow); }
+
+/* ============ 色卡与对比度审计 ============ */
+.audit {
+  background: var(--surface-panel); border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel); box-shadow: var(--shadow-small); padding: 18px 20px; margin-top: 4px;
+}
+.audit h2 { margin: 0 0 4px; font: 600 var(--text-lg) var(--font-display); }
+.audit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 14px; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 8px; }
+.sw { border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; }
+.sw i { display: block; height: 34px; }
+.sw span { display: block; padding: 3px 7px; font: var(--text-micro) var(--font-mono); color: var(--color-text-muted); background: var(--surface-soft); }
+table.cc { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+table.cc th { text-align: left; color: var(--color-text-muted); font-size: var(--text-xs); padding: 4px 8px 4px 0; border-bottom: 1px solid var(--color-border); }
+table.cc td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+table.cc td:last-child { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 600; margin-left: 8px; }
+.badge.ok { background: var(--state-positive-soft); color: var(--state-positive); }
+.badge.lg { background: var(--state-warning-soft); color: var(--state-warning); }
+.badge.no { background: var(--state-danger-soft); color: var(--state-danger); }
+.aa { color: var(--color-text-subtle); font-size: var(--text-xs); }
+@media (max-width: 560px) {
+  .mock { grid-template-columns: 1fr; }
+  .mock .rail { display: none; }
+  .audit-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>Hanxi 主题配色提案</h1>
+  <div class="seg" id="paletteSeg"></div>
+  <div class="grow"></div>
+  <span class="hint">浅 / 深并排 = 同一色板双标定 · 数据由页面实时计算</span>
+</header>
+<main>
+  <div class="stage-wrap">
+    <section>
+      <div class="stage-label"><b>浅色模式</b><span data-mode="light" class="hint"></span></div>
+      <div id="stageLight" data-theme="light"></div>
+      <div class="audit" data-audit="light"></div>
+    </section>
+    <section>
+      <div class="stage-label"><b>深色模式</b><span data-mode="dark" class="hint"></span></div>
+      <div id="stageDark" data-theme="dark"></div>
+      <div class="audit" data-audit="dark"></div>
+    </section>
+  </div>
+</main>
+<script>
+/* 迷你工作台模板（消费语义 token，演示真实界面各面） */
+const MOCK = `
+<div class="mock">
+  <aside class="rail">
+    <div class="brand"><i></i>Hanxi</div>
+    <div class="nav-item">总览</div>
+    <div class="nav-item on">FRPC <span class="dot"></span></div>
+    <div class="nav-item">端口扫描</div>
+    <div class="nav-item">文件共享</div>
+    <div class="nav-item">系统</div>
+  </aside>
+  <div class="main">
+    <div class="mhead">
+      <div><h3>FRPC 隧道</h3><div class="sub">3 个代理 · 最近同步 12s 前</div></div>
+      <div class="grow"></div>
+      <button class="btn btn-primary">启动全部</button>
+      <button class="btn btn-plain">配置</button>
+    </div>
+    <div class="kpis">
+      <div class="kpi pos"><div class="num">2/3</div><div class="cap">在线隧道</div></div>
+      <div class="kpi"><div class="num" style="color:var(--color-text)">1.4<small style="font-size:11px"> MB/s</small></div><div class="cap">实时流量</div></div>
+      <div class="kpi dgr"><div class="num">1</div><div class="cap">失败重试</div></div>
+    </div>
+    <div class="tbl">
+      <div class="trow"><span>名称</span><span>入口</span><span>状态</span></div>
+      <div class="trow sel"><span>web-tunnel</span><span class="mono">7000 → rdp://10.0.4.2:3389</span><span class="chip pos">运行中</span></div>
+      <div class="trow"><span>ssh-jump</span><span class="mono">2222 → tcp://10.0.4.2:22</span><span class="chip wrn">重试中</span></div>
+      <div class="trow"><span>metrics</span><span class="mono">9090 → http://127.0.0.1:9090</span><span class="chip dgr">失败</span></div>
+      <div class="trow"><span>dns-sync</span><span class="mono">5353 → udp://10.0.4.9:53</span><span class="chip inf">空闲</span></div>
+    </div>
+    <div class="inputrow">
+      <input class="field faked" value="frps.addr = 10.0.4.9" readonly>
+      <span class="toggle"></span>
+      <button class="btn btn-danger">停止</button>
+    </div>
+    <div class="toast"><div style="flex:1"><div>隧道 web-tunnel 已重连</div><div class="t-sub">14:32:07 · 自动恢复</div></div><button class="btn btn-plain">知道了</button></div>
+    <div class="inputrow"><span class="hint" style="font-size:var(--text-xs);color:var(--color-text-muted)">部署进度</span><span class="progress"><i></i></span></div>
+  </div>
+</div>`;
+
+document.getElementById('stageLight').insertAdjacentHTML('beforeend', MOCK);
+document.getElementById('stageDark').insertAdjacentHTML('beforeend', MOCK);
+
+/* 色板切换：页面骨架 + 两个 mock 的 data-accent */
+const PALETTES = [
+  ['teal', '青壳·现状'], ['cobalt', '钴蓝'], ['graphite', '石墨'],
+  ['moss', '苔原'], ['rust', '赭岩'], ['plum', '紫晶'], ['azure', '蔚蓝·macOS'],
+  ['rose', '玫瑰'], ['ink', '玄墨'], ['onyx', '曜石·高对比'],
+];
+const seg = document.getElementById('paletteSeg');
+for (const [key, zh] of PALETTES) {
+  const b = document.createElement('button');
+  b.textContent = zh; b.dataset.k = key;
+  b.onclick = () => apply(key);
+  seg.appendChild(b);
+}
+function apply(key) {
+  document.documentElement.dataset.accent = key;
+  for (const btn of seg.children) btn.setAttribute('aria-pressed', String(btn.dataset.k === key));
+  for (const stage of document.querySelectorAll('[data-theme]')) stage.dataset.accent = key;
+  document.querySelector('title').textContent = `Hanxi 主题配色提案 · ${PALETTES.find(p => p[0] === key)[1]}`;
+  renderAudits(key);
+}
+
+/* ---- 对比度实时审计（从渲染后的元素解析 token） ---- */
+const parse = s => {
+  s = s.trim();
+  if (s.startsWith('#')) { const n = s.slice(1); return [parseInt(n.slice(0,2),16),parseInt(n.slice(2,4),16),parseInt(n.slice(4,6),16),1]; }
+  const m = s.match(/[\d.]+/g).map(Number); return m.length === 3 ? [...m, 1] : m;
+};
+const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const over = (fg, bg) => { const a = fg[3]; return [0,1,2].map(i => fg[i]*a + bg[i]*(1-a)); };
+const lum = c => 0.2126*lin(c[0]) + 0.7152*lin(c[1]) + 0.0722*lin(c[2]);
+function ratio(fgStr, bgStr) {
+  const bg = parse(bgStr); let fg = parse(fgStr);
+  if (fg[3] < 1) fg = over(fg, bg);
+  const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+  return (a + 0.05) / (b + 0.05);
+}
+const TOKEN_LABELS = [
+  ['--surface-page', '页面底'], ['--surface-panel', '面板'], ['--surface-soft', '软底'],
+  ['--surface-hover', '悬浮'], ['--surface-selected', '选中行'], ['--color-border', '边框'],
+  ['--color-border-strong', '强边框'], ['--color-text', '正文'], ['--color-text-muted', '辅助字'],
+  ['--color-text-subtle', '弱注记'], ['--color-primary', '主色'],
+];
+const CHECKS = [
+  ['正文/面板', '--color-text', '--surface-panel', 4.5],
+  ['辅助字/面板', '--color-text-muted', '--surface-panel', 4.5],
+  ['弱注记/面板', '--color-text-subtle', '--surface-panel', 3],
+  ['主按钮字/主色', '--color-on-primary', '--color-primary', 4.5],
+  ['主色链接/面板', '--color-primary', '--surface-panel', 4.5],
+  ['正文/选中行', '--color-text', '--surface-selected', 4.5],
+  ['成功字/成功底', '--state-positive', '--state-positive-soft', 4.5],
+  ['警告字/警告底', '--state-warning', '--state-warning-soft', 4.5],
+  ['危险字/危险底', '--state-danger', '--state-danger-soft', 4.5],
+  ['信息字/信息底', '--state-information', '--state-information-soft', 4.5],
+];
+function renderAudits(key) {
+  const zh = PALETTES.find(p => p[0] === key)[1];
+  for (const mode of ['light', 'dark']) {
+    const host = document.querySelector(`.audit[data-audit="${mode}"]`);
+    const probe = document.querySelector(`.mock[data-theme="${mode}"]`);
+    const cs = getComputedStyle(probe);
+    const gv = t => cs.getPropertyValue(t);
+    document.querySelector(`[data-mode="${mode}"]`).textContent = `${zh} · ${mode === 'light' ? '浅' : '深'}`;
+    const sw = TOKEN_LABELS.map(([t, label]) => {
+      const v = gv(t);
+      return `<div class="sw"><i style="background:${v}"></i><span>${label}<br>${v.trim()}</span></div>`;
+    }).join('');
+    const rows = CHECKS.map(([label, f, b, need]) => {
+      const r = ratio(gv(f), gv(b));
+      const cls = r >= need ? 'ok' : r >= 3 ? 'lg' : 'no';
+      const txt = r >= need ? 'AA' : r >= 3 ? 'AA大字' : '低';
+      return `<tr><td>${label}</td><td>${Math.round(r * 100) / 100}:1</td><td><span class="badge ${cls}">${txt}</span></td></tr>`;
+    }).join('');
+    host.innerHTML = `
+      <h2>${zh} · ${mode === 'light' ? '浅色' : '深色'}审计</h2>
+      <div class="aa">阈值：正文 ≥4.5，大字/图形 ≥3，主按钮字 ≥4.5（基线青壳为 4.12，本次全部补足）</div>
+      <div class="audit-grid">
+        <div><div class="aa" style="margin-bottom:6px">色值面板</div><div class="swatches">${sw}</div></div>
+        <div><div class="aa" style="margin-bottom:6px">对比度（渲染值实时计算）</div>
+          <table class="cc"><thead><tr><th>配对</th><th>比值</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+        </div>
+      </div>`;
+  }
+}
+apply('cobalt');
+</script>
+</body>
+</html>

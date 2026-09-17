@@ -1,0 +1,83 @@
+/* ============================================================
+ * onyx · 曜石（无障碍高对比 · "工程蓝图"质感 —— 单套深化稿 v2.1）
+ *
+ * 定位：唯一的高对比 / 无障碍职能色板，其余色板的"状态色跨板恒定"红线
+ * 对它放宽——它是全库唯一允许覆写 --state-*（含 soft）的色板。
+ * 验收标准按 AAA 执行：正文/面板≥7、辅助/面板≥7、弱注/面板≥4.5、
+ * 按钮字/主色≥7、主色链接/面板≥7、正文/选中≥7、状态字/状态软底≥4.5；
+ * 深模式画布允许近纯黑（OLED 合理）。全部实算见同目录 onyx-report.md。
+ *
+ * 本块在 preview.html 的 [data-accent="onyx"] 起点上深化，相对旧值的全部改动：
+ *
+ * 【浅模式】
+ *  primary      #0b4fc0→#0649b8 / hover #08409e→#003999
+ *    旧主链接于画布仅 6.88（<7）；压深后按钮字 7.92、链接于面板/画布/柔面全部 ≥7。
+ *    soft/glow/focus 的 rgba 基色随之同步为 (6,73,184)。
+ *  page         #f7f9fb→#f2f7fc
+ *    旧 page→panel OKLCH ΔL 仅 0.019，不足 0.02 感知台阶；压至 L=0.973 后 ΔL=0.026。
+ *  subtle       #4c5763→#626b77（"高对比但不吵"审查②）
+ *    旧 muted(L.352)→subtle(L.452) ΔL 仅 0.10，三级文字层次被压扁；
+ *    subtle 提亮至 L.524（面板上 5.40 ≥4.5），ΔL 拉至 0.172，层次恢复。
+ *  border       #64748b→#838f9d（审查①）
+ *    旧 4.76:1 满屏表格线过重；新 3.29/画布 3.05，恰落在 3.0–3.5 非文门槛上沿。
+ *  border-strong #334155→#455263
+ *    旧 10.35:1 与"补丁风"残留告别；7.95:1 仍远高于 3:1，分离感保留、吵度减半。
+ *  information  #0b4fc0→#1c6b92（审查③）
+ *    旧信息与主色逐字节相同，chip 与链接/按钮同屏无法分辨；转向天蓝青（Δh≈26°、
+ *    互比 1.34），软底上 5.09、面板上 5.89，语义位与操作位彻底分家。
+ *  四枚 state-soft  #d7ecdf→#e3f1e9 / #dfe9fb→#e1f1f9 / #f7e9cd→#f3edd8 / #f9dfdc→#f9e9e6
+ *    （审查⑤）统一底色至 L≈.945、彩度 0.03–0.04→0.018–0.028：
+ *    大块 KPI 同屏时"医疗表单感"降为"纸上一缕淡晕"，文字于软底仍全 ≥5.09。
+ *  状态色本体（positive/warning/danger）与 soft/hover/selected/text/muted/阴影不动。
+ *
+ * 【深模式】
+ *  selected     #2b4a73→#244268（审查④）
+ *    旧选中行上四枚状态字（无软底裸放）danger 4.10 / information 4.31 双双向 AA 掉队；
+ *    压深后 pos/info/warn/dgr 裸字 5.68/5.51/6.52/4.88 全 ≥4.5，正文/选中 9.42。
+ *  border       #8f9bab→#5c646f / border-strong #a4b0be→#78818c
+ *    旧边框 6.71:1 过重且与 subtle 文字逐字节同值（角色串味）；
+ *    新 3.16/4.79（面板），边框回归非文 3:1 本分，与文字级差 ΔL 0.185。
+ *  information  #79b7ff→#66cbec / soft #0e2038→#0c2a39
+ *    与主色脱钩（Δh 31°）；软底偏青，在蓝选中行上以色相+1.46:1 双重分离。
+ *  danger       #ff8f8a→#ff9690
+ *    选中行裸字 4.10→4.88 抬过 4.5；软底上仍有 7.86。
+ *  其余（primary/on-primary/面四层/text 三级/page 近黑/glow/focus）不动。
+ *
+ * 变量名集合与 tokens.css 契约一致：= 其余色板覆写集 + 8 枚状态色（含 soft）；
+ * 浅块 19+8=27 枚，深块 17+8=25 枚（阴影仅浅模式覆写，与 preview.html 各板同构）。
+ * 数值由 OKLCH 台阶生成（同 gen-palettes-v2.mjs 手法），sRGB 出界者已色域收缩。
+ * ============================================================ */
+
+/* ---- onyx · 浅模式（蓝墨纸面 + steel-blue 细线） ---- */
+:root[data-theme="light"][data-accent="onyx"] {
+  --color-primary: #0649b8; --color-primary-hover: #003999;
+  --color-primary-soft: rgba(6, 73, 184, 0.12); --color-on-primary: #ffffff;
+  --surface-page: #f2f7fc; --surface-panel: #ffffff; --surface-soft: #eef2f6;
+  --surface-hover: #dfe7ef; --surface-selected: #cfe0f2;
+  --color-text: #0a0f14; --color-text-muted: #333c46; --color-text-subtle: #626b77;
+  --color-text-inverse: #ffffff;
+  --color-border: #838f9d; --color-border-strong: #455263;
+  --state-positive: #0a6b45; --state-positive-soft: #e3f1e9;
+  --state-information: #1c6b92; --state-information-soft: #e1f1f9;
+  --state-warning: #8a5100; --state-warning-soft: #f3edd8;
+  --state-danger: #b3261e; --state-danger-soft: #f9e9e6;
+  --color-primary-glow: rgba(6, 73, 184, 0.2); --focus-ring: rgba(6, 73, 184, 0.36);
+  --shadow-small: 0 4px 14px rgba(10, 15, 20, 0.08);
+  --shadow-panel: 0 18px 45px rgba(10, 15, 20, 0.13);
+}
+
+/* ---- onyx · 深模式（近黑画布 + 石墨蓝面，允许 OLED 向） ---- */
+:root[data-theme="dark"][data-accent="onyx"] {
+  --color-primary: #79b7ff; --color-primary-hover: #9bc9ff;
+  --color-primary-soft: rgba(121, 183, 255, 0.16); --color-on-primary: #04223f;
+  --surface-page: #05070a; --surface-panel: #0d1117; --surface-soft: #141a22;
+  --surface-hover: #1c2530; --surface-selected: #244268;
+  --color-text: #f2f6fb; --color-text-muted: #b9c4d0; --color-text-subtle: #8f9bab;
+  --color-text-inverse: #05070a;
+  --color-border: #5c646f; --color-border-strong: #78818c;
+  --state-positive: #5bd88e; --state-positive-soft: #0a2b1b;
+  --state-information: #66cbec; --state-information-soft: #0c2a39;
+  --state-warning: #f7c948; --state-warning-soft: #2e2308;
+  --state-danger: #ff9690; --state-danger-soft: #3a1210;
+  --color-primary-glow: rgba(121, 183, 255, 0.24); --focus-ring: rgba(121, 183, 255, 0.45);
+}

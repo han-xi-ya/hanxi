@@ -1,0 +1,106 @@
+/* ============================================================
+ * jade · 青瓷 —— 单套色板深化稿 v2.1（现状青绿 #0f8b8d 的品牌进化方向）
+ *
+ * 定位与参照物：龙泉青瓷的"千峰翠色"——雾面青灰瓷胎 + 墨青釉主色；
+ *   不是祖母绿（那是 positive 的语义位），是偏冷半档的松石-墨青。
+ *   起点为 docs/design/themes/preview.html 的 [data-accent="jade"] 两块
+ *   （即 gen-palettes-v2.mjs 参数 lightP[.48,.12,188] / darkP[.79,.105,180]），
+ *   本稿在其上做"族内深化"，全部数值经 node 实算（脚本口径与生成器一致）。
+ *
+ * 为什么改（三个矛盾的解法，实算细节见同目录 jade-report.md）：
+ *   ① 主色与 positive 祖母绿同绿族冲突：preview 版浅主色 h188 / 深主色 h180，
+ *     与 #08875d（h163）/#47c792（h162）的色相距离仅 25.6°/17.6°，"运行中 chip +
+ *     主按钮同屏"会糊。而现状品牌默认 teal 实测本来就在 h197/h193——把 jade
+ *     主色推回品牌正色相偏冷半档，既拉开与 positive 的距离（→33.4°/31.5°），
+ *     又比 preview 版更"一眼同族"，两全。明度差保留：浅主色 L.47（正.55 更深）、
+ *     深主色 L.79（正.75 更亮）——色相+明度双距离。
+ *   ② 深模式 selected 强染色行：白正文达标（6.6→7.4），但其上 mono 辅助字仅 3.65、
+ *     侧栏选中项主色字仅 4.08，均低于 4.5。压半档明度（L.440→.414）并把彩度微抬
+ *     （spec .075，sRGB 裁切后实测 .070），强染色保持（与 hover 仍差 ΔL.055 + ΔC.046）；
+ *     四枚状态 chip 软底与新行的分离度仍 1.74–1.87、ΔL≥.136，不发闷（状态色本身未动）。
+ *   ③ 浅模式瓷面显脏风险：page/hover 彩度各降一档（.010→.008 / .014→.012）换通透，
+ *     选中行 .042 不动保住主题身份；另修三处基线未达标——panel→soft 台阶 ΔL 仅
+ *     0.019（soft .981→.978 补到 .022）、辅助字在选中行 3.92（muted .52→.485 补到
+ *     4.59）、弱注记在页面底 2.92（subtle .65→.63 补到 3.16）。
+ *
+ * 族纪律核对：深 page #0f1b1b 实测 L.211∈[.20,.22] 石墨 ✓；selected 强染色 ✓；
+ *   --state-* 及 soft/glow 零覆写（浅模式三枚状态字/软底 <4 属跨色板常量层遗留，
+ *   本盘无权改，已在报告"遗留风险"上报）；终端/字号/半径等非色 token 不涉。
+ * 变量名集合与 preview.html 的 sky 块完全对齐（浅 19 枚 / 深 17 枚，深模式阴影
+ *   跨色板恒定故不覆写）。可直接并入 preview.html 或作落地蓝本。
+ * ============================================================ */
+
+/* ---- 浅色：墨青釉主色 + 降彩通透瓷面 ---- */
+:root[data-theme="light"][data-accent="jade"] {
+  /* 主色组：#006c66→#006869 推冷回品牌正色相 h196（原 h188 偏绿、离 positive 仅 25.6°），
+     白字 6.60:1、链接 6.60:1、在选中行上 4.77:1；hover 同族加深一档 */
+  --color-primary: #006869;
+  --color-primary-hover: #005657;
+  --color-primary-soft: rgba(0, 104, 105, 0.1);
+  --color-on-primary: #ffffff;
+
+  /* 表面：page #edf6f6→#eef6f6（C.010→.008）、hover #e1efee→#e3eeee（C.014→.012）
+     微降彩度换长时通透；soft #f4fafa→#f3f9f9（L.981→.978）修复 panel→soft 台阶
+     ΔL 0.019<0.02 的族纪律缺口；selected #bae3e2 保持不动（强染色是主题身份位） */
+  --surface-page: #eef6f6;
+  --surface-panel: #ffffff;
+  --surface-soft: #f3f9f9;
+  --surface-hover: #e3eeee;
+  --surface-selected: #bae3e2;
+
+  /* 文字：muted #586e6d→#506363（L.52→.485）使辅助字在选中行 3.92→4.59 达标
+     （表内 mono 列常态）；subtle #829393→#7d8d8c（L.65→.63）修页面底 2.92→3.16；
+     text/inverse 不动 */
+  --color-text: #142222;
+  --color-text-muted: #506363;
+  --color-text-subtle: #7d8d8c;
+  --color-text-inverse: #ffffff;
+
+  --color-border: #d6e2e1;
+  --color-border-strong: #b1c4c3;
+
+  /* 光晕/焦点环：随新主色 rgb 重派生，alpha 与 preview 版一致 */
+  --color-primary-glow: rgba(0, 104, 105, 0.18);
+  --focus-ring: rgba(0, 104, 105, 0.28);
+
+  /* 浅模式阴影随中性文字色 #142222 派生，该值未动，故两枚保持原样 */
+  --shadow-small: 0 4px 14px rgba(20, 34, 34, 0.05);
+  --shadow-panel: 0 18px 45px rgba(20, 34, 34, 0.08);
+}
+
+/* ---- 深色：松石夜釉 + 半档内收的强染色选中行 ---- */
+:root[data-theme="dark"][data-accent="jade"] {
+  /* 主色组：#64d1bd→#5dd1cf，色相 180→194——preview 版偏翡翠、与 positive #47c792
+     （h162）仅 17.6° 之隔，亮绿/亮青同屏最难分；推冷回到品牌深模式 #42b7b4 的
+     h193 正色相（Δh 1°"同族"）同时把与 positive 的距离拉到 31.5°；
+     深字 on-primary #002824→#002525 随色相微调，按钮字对比 8.90:1 */
+  --color-primary: #5dd1cf;
+  --color-primary-hover: #81dfdc;
+  --color-primary-soft: rgba(93, 209, 207, 0.15);
+  --color-on-primary: #002525;
+
+  /* 表面：page/panel/soft/hover 四台阶原样保留（L.211→.257→.304→.359，石墨纪律内）；
+     selected #155e5e→#005758（L.440→.414，彩度 spec .075）——行明度内收半档换
+     其上文字达标：白正文 6.61→7.38、mono 辅助字 3.65→4.52、侧栏选中项主色字
+     4.08→4.59；强染色未稀释（与 hover 仍有 ΔL.055+ΔC.046），四枚状态 chip 软底
+     对其分离 1.74–1.87（ΔL≥.136）不闷，状态色本身零改动 */
+  --surface-page: #0f1b1b;
+  --surface-panel: #192626;
+  --surface-soft: #233232;
+  --surface-hover: #2e4140;
+  --surface-selected: #005758;
+
+  /* muted #a8b8b7→#b3c1c1（L.77→.80）与 selected 内收配套，全表面族≥4.5、
+     选中行 4.52；subtle/inverse/text 不动 */
+  --color-text: #eaf2f2;
+  --color-text-muted: #b3c1c1;
+  --color-text-subtle: #7c8d8d;
+  --color-text-inverse: #0f1b1b;
+
+  --color-border: #2f4242;
+  --color-border-strong: #476261;
+
+  /* 光晕/焦点环随新主色 rgb 重派生，alpha 不变 */
+  --color-primary-glow: rgba(93, 209, 207, 0.22);
+  --focus-ring: rgba(93, 209, 207, 0.3);
+}

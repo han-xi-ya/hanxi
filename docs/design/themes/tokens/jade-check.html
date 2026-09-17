@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>jade v2.1 深化自检（仅调试用）</title>
+<!--
+  微型自检页：只服务 jade 深化稿（tokens/jade.css），三块专审场景 + 全配对实算表。
+  数值以本页 JS 实时计算为准，与 jade-report.md 互相印证；正式评审请用 preview.html。
+-->
+<style>
+/* 常量层（与 preview.html 同构：状态色跨色板恒定） */
+:root {
+  --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --text-xs: 11px; --text-sm: 12px; --text-base: 13px; --text-md: 14px; --text-lg: 16px;
+  --radius-control: 8px; --radius-element: 12px; --radius-panel: 16px; --radius-pill: 999px;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --state-positive: #08875d; --state-positive-soft: #e2f4ec;
+  --state-information: #2563eb; --state-information-soft: #e7effd;
+  --state-warning: #b66f08; --state-warning-soft: #fbf1de;
+  --state-danger: #d64545; --state-danger-soft: #fbe9e9;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --state-positive: #47c792; --state-positive-soft: #0f2e24;
+  --state-information: #72a5ff; --state-information-soft: #16233c;
+  --state-warning: #f0ac45; --state-warning-soft: #33260f;
+  --state-danger: #ff7974; --state-danger-soft: #3a1a1a;
+}
+/* ==== 被检对象：tokens/jade.css 两块（逐字同步） ==== */
+:root[data-theme="light"][data-accent="jade"] {
+  --color-primary: #006869; --color-primary-hover: #005657;
+  --color-primary-soft: rgba(0, 104, 105, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #eef6f6; --surface-panel: #ffffff; --surface-soft: #f3f9f9;
+  --surface-hover: #e3eeee; --surface-selected: #bae3e2;
+  --color-text: #142222; --color-text-muted: #506363; --color-text-subtle: #7d8d8c;
+  --color-text-inverse: #ffffff;
+  --color-border: #d6e2e1; --color-border-strong: #b1c4c3;
+  --color-primary-glow: rgba(0, 104, 105, 0.18); --focus-ring: rgba(0, 104, 105, 0.28);
+  --shadow-small: 0 4px 14px rgba(20, 34, 34, 0.05);
+  --shadow-panel: 0 18px 45px rgba(20, 34, 34, 0.08);
+}
+:root[data-theme="dark"][data-accent="jade"] {
+  --color-primary: #5dd1cf; --color-primary-hover: #81dfdc;
+  --color-primary-soft: rgba(93, 209, 207, 0.15); --color-on-primary: #002525;
+  --surface-page: #0f1b1b; --surface-panel: #192626; --surface-soft: #233232;
+  --surface-hover: #2e4140; --surface-selected: #005758;
+  --color-text: #eaf2f2; --color-text-muted: #b3c1c1; --color-text-subtle: #7c8d8d;
+  --color-text-inverse: #0f1b1b;
+  --color-border: #2f4242; --color-border-strong: #476261;
+  --color-primary-glow: rgba(93, 209, 207, 0.22); --focus-ring: rgba(93, 209, 207, 0.3);
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; font: var(--text-base)/1.55 var(--font-text); background: #888; }
+.wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1100px; margin: 0 auto; }
+.card { padding: 14px; display: grid; gap: 12px; background: var(--surface-page); color: var(--color-text);
+  border: 1px solid var(--color-border); border-radius: var(--radius-panel); }
+h2 { margin: 0; font: 600 var(--text-lg) var(--font-text); }
+h3 { margin: 0 0 4px; font: 600 var(--text-sm) var(--font-text); color: var(--color-text-muted); }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px;
+  border-radius: var(--radius-control); border: 1px solid transparent; font: 600 var(--text-sm) var(--font-text); }
+.btn-primary { background: var(--color-primary); color: var(--color-on-primary); box-shadow: 0 3px 12px var(--color-primary-glow); }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: var(--radius-pill);
+  font-size: var(--text-xs); font-weight: 600; width: max-content; }
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.pos { background: var(--state-positive-soft); color: var(--state-positive); }
+.chip.inf { background: var(--state-information-soft); color: var(--state-information); }
+.chip.wrn { background: var(--state-warning-soft); color: var(--state-warning); }
+.chip.dgr { background: var(--state-danger-soft); color: var(--state-danger); }
+.trow { display: grid; grid-template-columns: 1.2fr 1.8fr auto auto; gap: 10px; align-items: center;
+  padding: 8px 12px; border: 1px solid var(--color-border); border-bottom: 0; font-size: var(--text-sm); background: var(--surface-panel); }
+.trow:last-of-type { border-bottom: 1px solid var(--color-border); }
+.trow.sel { background: var(--surface-selected); }
+.mono { font: var(--text-sm) var(--font-mono); color: var(--color-text-muted); }
+.nav { display: grid; gap: 2px; padding: 8px; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element); }
+.nav .it { padding: 7px 9px; border-radius: var(--radius-control); color: var(--color-text-muted); font-size: var(--text-sm); }
+.nav .it.on { background: var(--surface-selected); color: var(--color-primary); font-weight: 600; box-shadow: inset 2px 0 0 var(--color-primary); }
+.steps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.steps i { height: 30px; border-radius: 6px; border: 1px solid var(--color-border); display: block; }
+.steps span { font: var(--text-xs) var(--font-mono); color: var(--color-text-subtle); }
+.reading { background: var(--surface-page); border: 1px solid var(--color-border); border-radius: var(--radius-element); padding: 12px 14px; }
+.reading p { margin: 4px 0; } .reading .m { color: var(--color-text-muted); font-size: var(--text-sm); }
+.reading .s { color: var(--color-text-subtle); font-size: var(--text-xs); }
+.link { color: var(--color-primary); font-weight: 600; }
+table.cc { border-collapse: collapse; width: 100%; font: var(--text-sm) var(--font-text); }
+table.cc th { text-align: left; color: var(--color-text-subtle); font-size: var(--text-xs); border-bottom: 1px solid var(--color-border); }
+table.cc td { padding: 3px 6px 3px 0; border-bottom: 1px solid var(--color-border); }
+.ok { color: var(--state-positive); font-weight: 700; } .no { color: var(--state-danger); font-weight: 700; }
+.note { font-size: var(--text-xs); color: var(--color-text-subtle); }
+@media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="card" data-theme="light" data-accent="jade" id="cl">
+    <h2>浅色 · jade v2.1</h2>
+    <div><h3>① 主按钮 × 运行中 chip 同屏（可区分度）</h3>
+      <span class="btn btn-primary">启动全部</span>&nbsp;
+      <span class="chip pos">运行中</span>&nbsp;<span class="chip inf">空闲</span>&nbsp;<span class="chip wrn">重试中</span>&nbsp;<span class="chip dgr">失败</span></div>
+    <div><h3>② 选中行 × 四枚 chip ×（mono 辅助字 / 主色链接）</h3>
+      <div class="trow"><span>web-tunnel</span><span class="mono">7000 → rdp://10.0.4.2:3389</span><span class="chip pos">运行中</span><a class="link">日志</a></div>
+      <div class="trow sel"><span>ssh-jump（选中行）</span><span class="mono">2222 → tcp://10.0.4.2:22</span><span class="chip wrn">重试中</span><a class="link">日志</a></div></div>
+    <div><h3>侧栏选中项（主色字压染色行）</h3><div class="nav"><div class="it">总览</div><div class="it on">FRPC</div><div class="it">端口扫描</div></div></div>
+    <div><h3>③ page→panel→soft→hover→selected 台阶 + 长文阅读面</h3>
+      <div class="steps">
+        <div><i style="background:var(--surface-page)"></i><span>page</span></div>
+        <div><i style="background:var(--surface-panel)"></i><span>panel</span></div>
+        <div><i style="background:var(--surface-soft)"></i><span>soft</span></div>
+        <div><i style="background:var(--surface-hover)"></i><span>hover</span></div>
+        <div><i style="background:var(--surface-selected)"></i><span>selected</span></div>
+      </div>
+      <div class="reading" style="margin-top:8px"><p>隧道断线后系统按指数退避自动重连，首次失败通常源于服务端安全组未放行端口。</p>
+      <p class="m">元数据行（muted）：上次同步 12 秒前 · 重试 2 次 · 平均延迟 84ms</p>
+      <p class="s">弱注记行（subtle）：配置位于 frpc.toml，修改后需重载生效</p></div></div>
+    <div><h3>全配对实算</h3><table class="cc" id="tblLight"></table></div>
+  </section>
+  <section class="card" data-theme="dark" data-accent="jade" id="cd">
+    <h2>深色 · jade v2.1</h2>
+    <div><h3>① 主按钮 × 运行中 chip 同屏（可区分度）</h3>
+      <span class="btn btn-primary">启动全部</span>&nbsp;
+      <span class="chip pos">运行中</span>&nbsp;<span class="chip inf">空闲</span>&nbsp;<span class="chip wrn">重试中</span>&nbsp;<span class="chip dgr">失败</span></div>
+    <div><h3>② 选中行 × 四枚 chip ×（mono 辅助字 / 主色链接）</h3>
+      <div class="trow"><span>web-tunnel</span><span class="mono">7000 → rdp://10.0.4.2:3389</span><span class="chip pos">运行中</span><a class="link">日志</a></div>
+      <div class="trow sel"><span>ssh-jump（选中行）</span><span class="mono">2222 → tcp://10.0.4.2:22</span><span class="chip wrn">重试中</span><a class="link">日志</a></div></div>
+    <div><h3>侧栏选中项（主色字压染色行）</h3><div class="nav"><div class="it">总览</div><div class="it on">FRPC</div><div class="it">端口扫描</div></div></div>
+    <div><h3>③ page→panel→soft→hover→selected 台阶 + 长文阅读面</h3>
+      <div class="steps">
+        <div><i style="background:var(--surface-page)"></i><span>page</span></div>
+        <div><i style="background:var(--surface-panel)"></i><span>panel</span></div>
+        <div><i style="background:var(--surface-soft)"></i><span>soft</span></div>
+        <div><i style="background:var(--surface-hover)"></i><span>hover</span></div>
+        <div><i style="background:var(--surface-selected)"></i><span>selected</span></div>
+      </div>
+      <div class="reading" style="margin-top:8px"><p>隧道断线后系统按指数退避自动重连，首次失败通常源于服务端安全组未放行端口。</p>
+      <p class="m">元数据行（muted）：上次同步 12 秒前 · 重试 2 次 · 平均延迟 84ms</p>
+      <p class="s">弱注记行（subtle）：配置位于 frpc.toml，修改后需重载生效</p></div></div>
+    <div><h3>全配对实算</h3><table class="cc" id="tblDark"></table></div>
+  </section>
+</div>
+<script>
+const parse = s => { s = s.trim();
+  if (s.startsWith('#')) { const n = s.slice(1); return [parseInt(n.slice(0,2),16),parseInt(n.slice(2,4),16),parseInt(n.slice(4,6),16),1]; }
+  const m = s.match(/[\d.]+/g).map(Number); return m.length === 3 ? [...m, 1] : m; };
+const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const over = (fg, bg) => { const a = fg[3]; return [0,1,2].map(i => fg[i]*a + bg[i]*(1-a)); };
+const lum = c => 0.2126*lin(c[0]) + 0.7152*lin(c[1]) + 0.0722*lin(c[2]);
+function ratio(fgStr, bgStr) { const bg = parse(bgStr); let fg = parse(fgStr);
+  if (fg[3] < 1) fg = over(fg, bg);
+  const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x); return (a + 0.05) / (b + 0.05); }
+const CHECKS = [
+  ['正文/面板','--color-text','--surface-panel',4.5],['正文/页面','--color-text','--surface-page',4.5],
+  ['正文/软底','--color-text','--surface-soft',4.5],['正文/悬浮','--color-text','--surface-hover',4.5],
+  ['正文/选中行','--color-text','--surface-selected',4.5],
+  ['辅助字/面板','--color-text-muted','--surface-panel',4.5],['辅助字/页面','--color-text-muted','--surface-page',4.5],
+  ['辅助字/软底','--color-text-muted','--surface-soft',4.5],['辅助字/悬浮','--color-text-muted','--surface-hover',4.5],
+  ['辅助字/选中行','--color-text-muted','--surface-selected',4.5],
+  ['弱注记/面板','--color-text-subtle','--surface-panel',3],['弱注记/页面','--color-text-subtle','--surface-page',3],
+  ['弱注记/软底','--color-text-subtle','--surface-soft',3],
+  ['按钮字/主色','--color-on-primary','--color-primary',4.5],['按钮字/主悬停','--color-on-primary','--color-primary-hover',4.5],
+  ['主色链接/面板','--color-primary','--surface-panel',4.5],['主色链接/页面','--color-primary','--surface-page',4.5],
+  ['主色链接/软底','--color-primary','--surface-soft',4.5],['主色链接/悬浮','--color-primary','--surface-hover',4.5],
+  ['主色链接/选中行','--color-primary','--surface-selected',4.5],
+  ['成功字/软底','--state-positive','--state-positive-soft',4],['信息字/软底','--state-information','--state-information-soft',4],
+  ['警告字/软底','--state-warning','--state-warning-soft',4],['危险字/软底','--state-danger','--state-danger-soft',4],
+];
+function render(hostSel, probe) {
+  const cs = getComputedStyle(document.querySelector(probe));
+  const gv = t => cs.getPropertyValue(t);
+  document.getElementById(hostSel).innerHTML = CHECKS.map(([k, f, b, need]) => {
+    const r = ratio(gv(f), gv(b));
+    return `<tr><td>${k}</td><td style="font-family:var(--font-mono)">${r.toFixed(2)}:1</td><td class="${r>=need?'ok':'no'}">${r>=need?'✓':'✗'}≥${need}</td></tr>`;
+  }).join('');
+}
+render('tblLight', '#cl'); render('tblDark', '#cd');
+document.body.insertAdjacentHTML('beforeend','<p class="note" style="max-width:1100px;margin:12px auto">注：浅模式"成功/警告/危险字/软底"三枚 ✗ 属跨色板常量层（--state-*，本盘禁改），已在 jade-report.md §7 风险 1 上报；其余 ✗ 应为零。</p>');
+</script>
+</body>
+</html>

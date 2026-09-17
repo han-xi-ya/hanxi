@@ -29,6 +29,8 @@ const appSvc = vi.hoisted(() => ({
   SendDelayedTestNotification: vi.fn(),
   GetTheme: vi.fn(),
   SetTheme: vi.fn().mockResolvedValue(undefined),
+  GetAccent: vi.fn(),
+  SetAccent: vi.fn().mockResolvedValue(undefined),
   SetWindowDarkMode: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock('../../../../bindings/hanxi/internal/app', () => ({ AppService: appSvc }))
@@ -46,6 +48,7 @@ function stubs() {
   appSvc.SetTrayMenu.mockResolvedValue(undefined)
   appSvc.OpenPath.mockResolvedValue(undefined)
   appSvc.GetTheme.mockResolvedValue('light')
+  appSvc.GetAccent.mockResolvedValue('teal')
 }
 
 async function mountView(Component: typeof GeneralSection | typeof ThemeSection | typeof TraySection | typeof StorageSection | typeof SystemSection | typeof WorkbenchSection) {
@@ -59,6 +62,7 @@ afterEach(() => {
   vi.clearAllMocks()
   useToast().clearToast()
   document.documentElement.removeAttribute('data-theme')
+  document.documentElement.removeAttribute('data-accent')
 })
 
 describe('常规偏好分区', () => {
@@ -97,7 +101,7 @@ describe('外观主题分区', () => {
     stubs()
     const { themeMode, resolvedTheme } = useTheme()
     const w = await mountView(ThemeSection)
-    const segs = w.findAll('.theme-seg-btn')
+    const segs = w.findAll('.seg-theme .theme-seg-btn')
     expect(segs).toHaveLength(3)
     expect(segs[2].text()).toBe('深色')
     await segs[2].trigger('click')
@@ -109,6 +113,25 @@ describe('外观主题分区', () => {
     expect(appSvc.SetWindowDarkMode).toHaveBeenCalledWith(true)
     // 复位防串扰
     themeMode.value = 'light'
+  })
+
+  it('色板五分段存在且点击碧空：SetAccent 持久化 + DOM data-accent 联动，预览圆点硬编码主色', async () => {
+    stubs()
+    const { accent } = useTheme()
+    const w = await mountView(ThemeSection)
+    const segs = w.findAll('.seg-accent .theme-seg-btn')
+    expect(segs.map((s) => s.text())).toEqual(['青壳', '碧空', '鸢尾', '青瓷', '曜石'])
+    expect(segs[0].classes()).toContain('active') // 默认青壳
+    // 圆点为各色板浅色主色硬编码预览（不随当前色板联动）
+    expect(segs[1].find('.accent-dot').attributes('style')).toContain('background: #0064b5')
+    await segs[1].trigger('click')
+    await flushPromises()
+    expect(accent.value).toBe('sky')
+    expect(document.documentElement.dataset.accent).toBe('sky')
+    expect(appSvc.SetAccent).toHaveBeenCalledWith('sky')
+    expect(segs[1].classes()).toContain('active')
+    // 复位防串扰
+    accent.value = 'teal'
   })
 })
 

@@ -57,7 +57,8 @@ type TrayMenuItem struct {
 
 // AppSettings 应用全局配置模型
 type AppSettings struct {
-	Theme            string            `json:"theme"`            // "light" | "dark" | "system"
+	Theme            string            `json:"theme"`            // 明暗轴 "light" | "dark" | "system"
+	Accent           string            `json:"accent"`           // 色板轴 "teal" | "sky" | "iris" | "jade" | "onyx"
 	Language         string            `json:"language"`         // "zh-CN" | "en-US"
 	AutoStart        bool              `json:"autoStart"`        // 开机自启
 	MinimizeToTray   bool              `json:"minimizeToTray"`   // 关闭时最小化到托盘
@@ -70,10 +71,11 @@ type AppSettings struct {
 	WechatAccounts   []WechatAccount   `json:"wechatAccounts"`   // 微信多账号列表
 }
 
-// DefaultSettings 返回出厂默认配置：浅色主题、中文、关闭时最小化到托盘、日志保留 7 天。
+// DefaultSettings 返回出厂默认配置：浅色主题、青壳色板、中文、关闭时最小化到托盘、日志保留 7 天。
 func DefaultSettings() AppSettings {
 	return AppSettings{
 		Theme:            "light",
+		Accent:           "teal",
 		Language:         "zh-CN",
 		AutoStart:        false,
 		MinimizeToTray:   true,
@@ -123,7 +125,7 @@ func (s *Store) load() error {
 	}
 
 	// 解码进出厂默认的副本而非零值结构体：旧配置缺失/未包含的字段自动回落默认值
-	// （零值解码会把 MinimizeToTray 变 false、LogRetainDays 变 0、Theme 变空串）。
+	// （零值解码会把 MinimizeToTray 变 false、LogRetainDays 变 0、Theme/Accent 变空串）。
 	// JSON 显式写出的字段仍按文件值覆盖；map/slice 显式为 null 时由下方兜底重建。
 	data := DefaultSettings()
 	if err := json.Unmarshal(bytes, &data); err != nil {

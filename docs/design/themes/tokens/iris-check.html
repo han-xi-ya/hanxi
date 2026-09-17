@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<!-- iris 深化微型自检（调试用）：左浅右深同屏，重点看 ①主色vs信息蓝 ②深选中行chip ③nav.on主色字 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>iris 自检</title>
+<style>
+/* ============ 本次深化 token 块（与 iris.css 一致） ============ */
+:root {
+  --state-positive: #08875d; --state-positive-soft: #e2f4ec;
+  --state-information: #2563eb; --state-information-soft: #e7effd;
+  --state-warning: #b66f08; --state-warning-soft: #fbf1de;
+  --state-danger: #d64545; --state-danger-soft: #fbe9e9;
+  --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+}
+:root[data-theme="light"][data-accent="iris"], .light {
+  color-scheme: light;
+  --color-primary: #6741ca; --color-primary-hover: #542dae;
+  --color-primary-soft: rgba(103, 65, 202, 0.1); --color-on-primary: #ffffff;
+  --surface-page: #f4f2f9; --surface-panel: #ffffff; --surface-soft: #f9f7fd;
+  --surface-hover: #ede9f5; --surface-selected: #ded2f6;
+  --color-text: #211d29; --color-text-muted: #6c657b; --color-text-subtle: #918c9d;
+  --color-text-inverse: #ffffff;
+  --color-border: #dfdce7; --color-border-strong: #c0bace;
+  --color-primary-glow: rgba(103, 65, 202, 0.18); --focus-ring: rgba(103, 65, 202, 0.28);
+}
+:root[data-theme="dark"][data-accent="iris"], .dark {
+  color-scheme: dark;
+  --color-primary: #bba9fa; --color-primary-hover: #c7b8ff;
+  --color-primary-soft: rgba(187, 169, 250, 0.15); --color-on-primary: #27124b;
+  --surface-page: #1a1620; --surface-panel: #25212e; --surface-soft: #312c3a;
+  --surface-hover: #3f3a4b; --surface-selected: #4e3e6a;
+  --color-text: #f1eff5; --color-text-muted: #b6b2bf; --color-text-subtle: #8b8696;
+  --color-text-inverse: #1a1620;
+  --color-border: #413b4c; --color-border-strong: #5f5770;
+  --color-primary-glow: rgba(187, 169, 250, 0.22); --focus-ring: rgba(187, 169, 250, 0.3);
+  --state-positive: #47c792; --state-positive-soft: #0f2e24;
+  --state-information: #72a5ff; --state-information-soft: #16233c;
+  --state-warning: #f0ac45; --state-warning-soft: #33260f;
+  --state-danger: #ff7974; --state-danger-soft: #3a1a1a;
+}
+/* ============ 自检页骨架 ============ */
+* { box-sizing: border-box; }
+body { margin: 0; font: 13px/1.55 var(--font-text); background: #888; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; min-height: 100vh; }
+.stage { padding: 20px; background: var(--surface-page); color: var(--color-text); display: grid; gap: 14px; align-content: start; }
+h2 { font-size: 12px; margin: 0; color: var(--color-text-muted); font-weight: 600; }
+.panel { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.btn { height: 30px; padding: 0 14px; border-radius: 8px; border: 0; background: var(--color-primary); color: var(--color-on-primary); font: 600 13px var(--font-text); cursor: pointer; }
+.btn:hover { background: var(--color-primary-hover); }
+.btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+a { color: var(--color-primary); }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.chip.pos { background: var(--state-positive-soft); color: var(--state-positive); }
+.chip.inf { background: var(--state-information-soft); color: var(--state-information); }
+.chip.wrn { background: var(--state-warning-soft); color: var(--state-warning); }
+.chip.dgr { background: var(--state-danger-soft); color: var(--state-danger); }
+.tbl { display: grid; gap: 2px; }
+.trow { display: flex; gap: 8px; align-items: center; padding: 7px 9px; border-radius: 8px; background: var(--surface-soft); }
+.trow.hov { background: var(--surface-hover); }
+.trow.sel { background: var(--surface-selected); font-weight: 600; }
+.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--color-text-muted); }
+.nav { display: grid; gap: 2px; }
+.nav div { padding: 7px 9px; border-radius: 8px; color: var(--color-text-muted); font-size: 12px; }
+.nav div.on { background: var(--surface-selected); color: var(--color-primary); font-weight: 600; box-shadow: inset 2px 0 0 var(--color-primary); }
+.well { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; background: var(--color-primary-soft); color: var(--color-primary); font-weight: 700; }
+.ladder { display: flex; height: 26px; border-radius: 6px; overflow: hidden; border: 1px solid var(--color-border); }
+.ladder i { flex: 1; }
+.ladder i:nth-child(1){background:var(--surface-page)} .ladder i:nth-child(2){background:var(--surface-panel)} .ladder i:nth-child(3){background:var(--surface-soft)} .ladder i:nth-child(4){background:var(--surface-hover)} .ladder i:nth-child(5){background:var(--surface-selected)}
+table.cc { border-collapse: collapse; font-size: 11px; width: 100%; }
+table.cc td, table.cc th { border-bottom: 1px solid var(--color-border); padding: 3px 6px; text-align: left; }
+.ok { color: var(--state-positive); font-weight: 700; } .no { color: var(--state-danger); font-weight: 700; } .lg { color: var(--state-warning); font-weight: 700; }
+.caption { color: var(--color-text-subtle); font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="stage light" id="L">
+  <h2>iris 浅（深化后）</h2>
+  <div class="ladder"></div>
+  <div class="panel"><div class="row"><button class="btn">主要操作</button><a href="#">主色链接</a><span class="caption">弱注记</span></div>
+    <div class="row"><span class="well">紫</span><div>图标坞 primary-soft<div class="caption">正文 16.5 · 辅助 5.55 · 弱注记 3.26</div></div></div></div>
+  <div class="panel nav"><div>概览</div><div class="on">服务管理（nav.on 4.60）</div><div>日志</div></div>
+  <div class="panel tbl">
+    <div class="trow"><span>frpc-http</span><span class="mono">8080</span><span class="chip inf">空闲</span></div>
+    <div class="trow hov"><span>web-tunnel</span><span class="mono">7000</span><span class="chip wrn">重试中</span></div>
+    <div class="trow sel"><span>web-tunnel</span><span class="mono" style="color:var(--color-text)">→ rdp://10.0.4.2</span><span class="chip pos">运行中</span><span class="chip inf">空闲</span><span class="chip wrn">警告</span><span class="chip dgr">失败</span></div>
+  </div>
+  <div class="panel"><div>主色↔信息蓝 色距 27°/ΔE .110 · chip 软底 vs 选中 ΔL ≥.064</div></div>
+</div>
+<div class="stage dark" id="D">
+  <h2>iris 深（深化后）</h2>
+  <div class="ladder"></div>
+  <div class="panel"><div class="row"><button class="btn">主要操作</button><a href="#">主色链接</a><span class="caption">弱注记</span></div>
+    <div class="row"><span class="well">紫</span><div>图标坞 primary-soft<div class="caption">正文 13.78 · 辅助 7.57 · 弱注记 4.45</div></div></div></div>
+  <div class="panel nav"><div>概览</div><div class="on">服务管理（nav.on 4.58）</div><div>日志</div></div>
+  <div class="panel tbl">
+    <div class="trow"><span>frpc-http</span><span class="mono">8080</span><span class="chip inf">空闲</span></div>
+    <div class="trow hov"><span>web-tunnel</span><span class="mono">7000</span><span class="chip wrn">重试中</span></div>
+    <div class="trow sel"><span>web-tunnel</span><span class="mono" style="color:var(--color-text)">→ rdp://10.0.4.2</span><span class="chip pos">运行中</span><span class="chip inf">空闲</span><span class="chip wrn">警告</span><span class="chip dgr">失败</span></div>
+  </div>
+  <div class="panel"><div>选中行压暗后 chip ΔL ≥.123 · 主色↔infoD hueΔ 32.7°</div></div>
+</div>
+<script>
+/* 从渲染值实时复算硬底线 */
+const parse = s => { s = s.trim(); if (s.startsWith('#')) { const n = s.slice(1); return [parseInt(n.slice(0,2),16),parseInt(n.slice(2,4),16),parseInt(n.slice(4,6),16),1]; } const m = s.match(/[\d.]+/g).map(Number); return m.length===3?[...m,1]:m; };
+const lin = v => { v/=255; return v<=0.04045? v/12.92 : ((v+0.055)/1.055)**2.4; };
+const lum = c => 0.2126*lin(c[0])+0.7152*lin(c[1])+0.0722*lin(c[2]);
+function ratio(f,b){const bg=parse(b);let fg=parse(f);if(fg[3]<1)fg=[0,1,2].map(i=>fg[i]*fg[3]+bg[i]*(1-fg[3]));const[a,c]=[lum(fg),lum(bg)].sort((x,y)=>y-x);return Math.round((a+0.05)/(c+0.05)*100)/100;}
+const CHECKS=[['正文/面板','--color-text','--surface-panel',4.5],['辅助字/面板','--color-text-muted','--surface-panel',4.5],['弱注记/面板','--color-text-subtle','--surface-panel',3],['按钮字/主色','--color-on-primary','--color-primary',4.5],['主色链接/面板','--color-primary','--surface-panel',4.5],['正文/选中行','--color-text','--surface-selected',4.5],['主色字/选中行','--color-primary','--surface-selected',4.5],['成功字/底','--state-positive','--state-positive-soft',4],['信息字/底','--state-information','--state-information-soft',4],['警告字/底','--state-warning','--state-warning-soft',4],['危险字/底','--state-danger','--state-danger-soft',4]];
+for (const id of ['L','D']) {
+  const el = document.getElementById(id), cs = getComputedStyle(el);
+  const rows = CHECKS.map(([l,f,b,n])=>{const r=ratio(cs.getPropertyValue(f),cs.getPropertyValue(b));return `<tr><td>${l}</td><td>${r}</td><td class="${r>=n?'ok':r>=3?'lg':'no'}">${r>=n?'过':r>=3?'大字':'低'}</td></tr>`;}).join('');
+  el.insertAdjacentHTML('beforeend', `<div class="panel"><table class="cc"><tr><th>配对</th><th>实算</th><th></th></tr>${rows}</table></div>`);
+}
+</script>
+</body>
+</html>

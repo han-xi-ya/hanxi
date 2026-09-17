@@ -129,13 +129,13 @@ src/
 
 ### 7.2 主题切换机制
 
-- 主题由 `<html data-theme="light|dark">` 属性承载，`:root[data-theme='dark']` 覆盖语义 token；根上声明 `color-scheme: light dark`。
-- **持久化以后端为唯一真相**：`internal/settings` 的 `AppSettings.Theme`（`light|dark|system`，字段已存在但一直闲置）经 SettingsService 绑定读写——设置统一存后端，且便携版随 `hanxidata/` 目录整体迁移不丢主题。localStorage 仅作**首帧缓存**（mount 前同步读、先定 `data-theme` 防闪白；启动后异步以后端为准校正）。
+- 主题为**双轴**：`<html data-theme="light|dark">` 定明暗、`<html data-accent="teal|sky|iris|jade|onyx">` 定色板，`:root[data-theme='dark']` 覆盖语义 token，`:root[data-theme=…][data-accent='…']` 双属性选择器再叠加色板覆写块（只覆写主色/表面/文字/边框/光晕焦点环与浅色阴影等随色板联动项）；根上声明 `color-scheme: light dark`。缺省（无 `data-accent`）与 `teal` 同值——`:root` 现值即青壳默认回退。首套落地色板 sky（碧空）已并入，iris/jade/onyx 待 `docs/design/themes/tokens/*.css` 搬运（并入前选择它们回落青壳）。
+- **持久化以后端为唯一真相**：`internal/settings` 的 `AppSettings.Theme`（`light|dark|system`）与 `AppSettings.Accent`（`teal|sky|iris|jade|onyx`）经 AppService（`Get/SetTheme`、`Get/SetAccent`）绑定读写——设置统一存后端，且便携版随 `hanxidata/` 目录整体迁移不丢主题。localStorage 仅作**首帧缓存**（`hanxi.theme`/`hanxi.accent` 两 key，mount 前同步读、先定 `data-theme`/`data-accent` 防闪白；启动后异步以后端为准校正）。
 - **原生标题栏随主题**：深色内容需 DWM `ImmersiveDarkMode` 同步 Windows 原生窗框（否则"深窗口顶白标题栏"割裂），需在窗口层加少量 Win32 调用——这是迁移铁律第 8 条"不碰后端"的**唯一受控例外**，Phase 1 单独 commit。
 - `composables/useTheme.ts`（VueUse `useMediaQuery` + 后端 Settings 读写）是主题**唯一读写入口**，模块级单例，三态：跟随系统 / 固定浅色 / 固定深色，系统切换自动跟随。
 - 切换 UI：侧栏底部 + 设置页各一处，共用同一 composable，不各写各的。
 - **深色不是简单反色**：表面四层与 `positive/information/warning/danger` 均有独立双值，按 `design-system.md` 逐 token 设计。
-- 扩展位：将来若加"高对比度/品牌联名主题"，仅需新增一个 `[data-theme='xxx']` 变量块 + 后端 `Theme` 枚举值 + `useTheme` 分支，零组件改动。
+- 扩展位：加明暗模式 = 新增 `[data-theme='xxx']` 变量块；加色板 = 新增 `[data-theme=…][data-accent='yyy']` 覆写块 + 后端 `Accent` 合法值 + `useTheme` 的 `VALID_ACCENTS` 与设置页选项，均零组件改动。色板数值唯一真相在 `docs/design/themes/preview.html`，原样搬运。
 
 ### 7.3 关键 token 值（摘要）
 
