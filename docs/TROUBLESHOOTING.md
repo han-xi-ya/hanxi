@@ -979,3 +979,10 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：真实仓库回归时发现"删光 memo/ 后 status 干净"；对照 git 语义：ignore/exclude 只作用于**未跟踪**文件，已跟踪文件的删除永远会进 status。
 - **正确做法与标准修复方案**：作用域下沉到 `git-dir` 的 `info/exclude` 反向白名单（`/*` 顶层全忽略 + `!/config.json`、`!/state/`、`!/memo/` 逐条放行 + 中间产物黑名单），命令一律不带 pathspec（`status --porcelain=v1 -z -uall` / `add -A`）；Go 侧 `Whitelisted()` 再做一层纵深过滤兜底（防存量仓库 exclude 落后）。exclude 每次 ensureRepo 重写，升级新增排除模式能补进存量仓库。`--git-dir` 隔离保证这份 exclude 不落进用户目录任何可见文件。
 - **避坑防重犯建议**：① "列存在的根再传 pathspec"看似稳妥，实则把**目录消失**这种合法状态当成错误吞掉——作用域优先表达为"仓库自身规则"（exclude），让 git 的已跟踪语义替你兜删除；② 用 git 管非代码数据时，`core.hooksPath` 置空不可靠（空串语义含糊），用 `commit --no-verify` 才是明确跳过用户钩子的口径；③ 判定"内容是否变化"若要精确到字节（原子写原样重写不算变更），别信 mtime，对 KB 级文件直接 sha256 manifest，成本可忽略、碎历史免疫。
+
+### 61. JSON 外科合并的两副暗面：RawMessage 子树被压成单行、回滚守卫把"写坏"误判为"被改"
+
+- **问题现象与错误原因**：MCP 安装向导（`internal/mcpwizard`）为保住用户配置的顶层键与注释外内容，采用 `map[string]json.RawMessage` 解析-改键-回写。两个连撞的坑：① `json.Marshal` 对 `RawMessage` 值只做 compact 不做 indent——嵌套的 `mcpServers` 子树整棵被压成一行写回用户文件，"外科合并"变成"格式毁容"；② 写链按 PLAN 裁定"仅当盘上仍等于我们写的字节才自动回滚"，单测最初用"写坏内容"注入验证回滚，结果回滚被守卫正确拦下——守卫无法区分"自家 writeFn 写坏"与"第三方毫秒级抢改"，此时强行回滚就会覆盖第三方改动，测试前提与实现语义相抵触。
+- **排查过程**：① 对照 encoding/json 文档与实测：`MarshalIndent`/`Indent` 都不递归美化 RawMessage；② 回滚用例失败输出里 `Message: …未能自动回滚` 触发对 PLAN 原文再读——守卫的本意正是竞态护栏，不能为测试方便放宽。
+- **正确做法与标准修复方案**：① 回写走两步：先 `json.Marshal`（子树压平但语义完整）再对整篇 `json.Indent(&buf, compact, "", 探测缩进)` 统一重排，嵌套层级恢复一致缩进；幂等判定不信字节，比较 `canonicalJSON`（Unmarshal→Marshal 键序归一）后的语义指纹，键序不同视为零改动。② 回滚链测试拆开注入面：`writeFn` 注入"写成功但盘上≠意图"只用来验证**不**回滚（第三方竞态护栏），还原/删除半成品分支改为直接构造 plan 单测 `applyChain`（指纹故意错配、字节仍等于 newData）。
+- **避坑防重犯建议**：① 凡"保留未知键"的 JSON 改写，落笔前先确认序列化器对 RawMessage/JsonNode 的缩进行为，测试必须含"嵌套对象不被压平"断言；② 写类安全守卫的语义要写进包注释并据此设计测试，不要为了"测到回滚成功"而绕开守卫的初衷；③ Windows 下路径解析单测期望值一律 `filepath.Join` 拼装，别用 `/` 字面串（分隔符口径必翻车）。
