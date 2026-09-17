@@ -505,6 +505,13 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		slog.Error("激活 msgboard 模块失败，留言板热键不可用（不影响启动）", "err", err)
 	}
 
+	// wsl：预激活——USB 开机自动共享（F9）走「账本+重放」范式，重放随模块
+	// OnInit 调度（总开关关/账本空即秒退，无常驻开销）；不预激活则该页不进
+	// 就不重放，"开机自动"名存实亡。
+	if err := registry.EnsureActive("wsl"); err != nil {
+		slog.Error("预激活 wsl 模块失败，USB 自动共享不会随启动重放（不影响启动）", "err", err)
+	}
+
 	// 标题栏同步桥：前端 useTheme 解析出实际亮/暗与当前色板后经 SetWindowDarkMode
 	// 调到这里，由平台层 DWM 属性同步原生窗框（重构蓝图铁律 8 的唯一后端例外）。
 	// 沉浸式深浅打底（Win10+），Win11 再叠加精确配色让标题栏与外壳层

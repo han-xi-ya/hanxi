@@ -6,6 +6,8 @@
 //   WslAddInstancePanel（➕ 添加实例：商店/rootfs/VHDX 三源统一入口）
 //   WslVersionsPanel（🧩 本体版本：官方 Releases × 本机关系 × MSI 应用内下载）
 //   WslPortProxyPanel（🔀 端口转发：NAT netsh portproxy 规则清单）
+//   WslUsbPanel（🔌 USB 直通：usbipd-win 设备表 + bind/attach/detach + 自动共享账本重放，
+//     唯一随页签 v-if 挂载的面板——5s 轮询的生命周期即开关，冷页零探测）
 // 本体只留跨页签共享状态与编排：wsl:readiness 事件流与体检报告（多页签消费）、
 // busy 分级在飞登记（activeOps → 常驻进度横幅 + 页签 label「·运行中」互锁）、
 // 白名单提权操作 runOp 链、发行版列表复采通道、安装基目录后端持久化、
@@ -27,12 +29,14 @@ import WslDistroTable from '../components/wsl/WslDistroTable.vue'
 import WslAddInstancePanel from '../components/wsl/WslAddInstancePanel.vue'
 import WslVersionsPanel from '../components/wsl/WslVersionsPanel.vue'
 import WslPortProxyPanel from '../components/wsl/WslPortProxyPanel.vue'
+import WslUsbPanel from '../components/wsl/WslUsbPanel.vue'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
 
-const activeMainTab = ref<'console' | 'distros' | 'add' | 'versions' | 'proxy'>('console')
+const activeMainTab = ref<'console' | 'distros' | 'add' | 'versions' | 'proxy' | 'usb'>('console')
 // 页签 6→5：原「📦 官方发行版」整页与「添加实例·商店源」是同清单双入口，已并入商店源面板。
+// F9 起为六页：追加「🔌 USB 直通」（usbipd-win 集成）。
 // mainTabs 为 computed：distros 页签在克隆/瘦身重任务在飞时 label 追加「·运行中」——跨页签进度可见。
 const mainTabs = computed<Array<{ key: string; label: string }>>(() => {
   const heavy = cloneBusy.value || (!!compProg.value && !compTerm.value)
@@ -42,6 +46,7 @@ const mainTabs = computed<Array<{ key: string; label: string }>>(() => {
     { key: 'add', label: '➕ 添加实例' },
     { key: 'versions', label: '🧩 本体版本' },
     { key: 'proxy', label: '🔀 端口转发' },
+    { key: 'usb', label: '🔌 USB 直通' },
   ]
 })
 
@@ -427,6 +432,14 @@ onBeforeUnmount(() => {
         ref="proxyPanelRef"
         :instances="instances" :busy-any="busyAny" :global-busy="globalBusy" :run-op="runOp"
       />
+    </div>
+
+    <!-- USB 直通 Tab：usbipd-win 设备表与自动共享账本（F9）。
+         刻意 v-if 而非 v-show：面板内 usePolling 的 mounted/unmounted 即轮询开关，
+         离开页签 5s 探测链归零；切回即重拉最新现态，无需 ensureLoaded 回拨。 -->
+    <div v-if="activeMainTab === 'usb'" id="wsl-main-usb-panel" role="tabpanel" aria-labelledby="wsl-main-usb-tab" class="tab-body">
+      <UiBanner v-if="busyBanner" tone="info" class="slim busy-banner">{{ busyBanner }}</UiBanner>
+      <WslUsbPanel :instances="instances" />
     </div>
   </section>
 </template>

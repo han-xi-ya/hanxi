@@ -95,6 +95,16 @@ import * as $models from "./models.js";
  */
 
 /**
+ * USBShareEntry 账本里的一条"期望共享"记录（设备 × 目标发行版）。
+ * @typedef {$models.USBShareEntry} USBShareEntry
+ */
+
+/**
+ * UsbView "USB 直通"页签总载荷。
+ * @typedef {$models.UsbView} UsbView
+ */
+
+/**
  * WslConfDoc /etc/wsl.conf 读取载荷。Missing=true 表示文件不存在（合法空态）。
  * @typedef {$models.WslConfDoc} WslConfDoc
  */

@@ -58,6 +58,19 @@ const api = vi.hoisted(() => ({
   GetWslHostConf: vi.fn(),
   SaveWslHostConf: vi.fn(),
   ShutdownWsl: vi.fn(),
+  // F9 USB 直通（usbipd-win 集成）
+  GetUsbOverview: vi.fn(),
+  BindUsbDevice: vi.fn(),
+  UnbindUsbDevice: vi.fn(),
+  UnbindAbsentUsbDevice: vi.fn(),
+  AttachUsbDevice: vi.fn(),
+  DetachUsbDevice: vi.fn(),
+  SetUsbAutoAttach: vi.fn(),
+  SetUsbShare: vi.fn(),
+  SetUsbShareEnabled: vi.fn(),
+  RemoveUsbShare: vi.fn(),
+  ReplayUsbNow: vi.fn(),
+  OpenUsbipdReleases: vi.fn(),
   // W1：落位持久化后端 RPC（真实绑定尚未生成，本 mock 先兜住模块路径）
   GetDistroInstallDir: vi.fn(),
   SetDistroInstallDir: vi.fn(),
@@ -173,6 +186,7 @@ async function setup(opts: { installPref?: InstallPref | 'throw' } = {}) {
   api.ListInstances.mockResolvedValue(INSTANCES)
   api.ListDistroExports.mockResolvedValue([])
   api.ListPortRules.mockResolvedValue({ rules: [], foreign: [], pending: false })
+  api.GetUsbOverview.mockResolvedValue({ installed: false, devices: [], ledger: [], autoEnabled: false, releasesPage: 'https://github.com/dorssel/usbipd-win/releases' })
   if (opts.installPref === 'throw') {
     api.GetDistroInstallDir.mockRejectedValue(new Error('RPC 通道掉线'))
   } else {
@@ -274,12 +288,12 @@ describe('WSLView 流式体检', () => {
   })
 })
 
-describe('WSLView 标签页布局（页签 6→5，W4）', () => {
+describe('WSLView 标签页布局（页签 6→5→6：F9 追加「🔌 USB 直通」）', () => {
   // 顺序锁定：懒加载断言全部按索引导航，插页或换序会连锁打破它们。
-  it('五页顺序锁定：就绪检测 → 本机发行版 → 添加实例 → 本体版本 → 端口转发', async () => {
+  it('六页顺序锁定：就绪检测 → 本机发行版 → 添加实例 → 本体版本 → 端口转发 → USB 直通', async () => {
     const w = await setup()
     expect(w.findAll('.main-tab-btn').map(b => b.text())).toEqual([
-      '🐧 就绪检测', '💻 本机发行版', '➕ 添加实例', '🧩 本体版本', '🔀 端口转发',
+      '🐧 就绪检测', '💻 本机发行版', '➕ 添加实例', '🧩 本体版本', '🔀 端口转发', '🔌 USB 直通',
     ])
     // 「📦 官方发行版」独立页签已删（与添加实例·商店源同清单双入口归一）
     expect(w.text()).not.toContain('📦 官方发行版')
@@ -1020,5 +1034,163 @@ describe('WSLView 发行版实例管理', () => {
     const w = await consoleMounted()
     expect(w.find('#wsl-import-name').exists()).toBe(false)
     expect(w.findAll('button').some(b => b.text().includes('导入发行版'))).toBe(false)
+  })
+})
+
+// ---------- F9 USB 直通（usbipd-win） ----------
+
+const USB_SHARE = {
+  installed: true,
+  version: '5.3.0',
+  devices: [
+    { busId: '2-3', description: 'USB-SERIAL CH340', instanceId: 'USB\\VID_1A86&PID_7523\\X', vid: '1a86', pid: '7523', state: 'shared', forced: false },
+    { busId: '1-1', description: 'ESP32 开发板', instanceId: 'USB\\VID_303A&PID_1001\\Y', vid: '303a', pid: '1001', state: 'notshared', forced: false },
+    { busId: '1-4', description: '加密狗', instanceId: 'USB\\VID_0988&PID_03DC\\Z', vid: '0988', pid: '03dc', state: 'attached', clientIp: '127.0.1.1', forced: false },
+    { busId: '', description: 'FTDI（已拔出）', instanceId: 'USB\\VID_0403&PID_6001\\FT1', vid: '0403', pid: '6001', guid: 'aaaa1111-2222-3333-4444-555555555555', state: 'shared', forced: false },
+  ],
+  ledger: [
+    { id: 'usb-1', busId: '1-4', vid: '0988', pid: '03dc', description: '加密狗', distro: 'Ubuntu', enabled: true, addedAt: '2026-09-18 10:00:00', lastStatus: '已附加到 Ubuntu', lastAt: '2026-09-18 10:00:05' },
+  ],
+  autoEnabled: true,
+  replayBusy: false,
+  lastReplay: '[10:00:05] 重放完成：附加 1 台，跳过 0 台',
+  releasesPage: 'https://github.com/dorssel/usbipd-win/releases',
+}
+
+const usbRowBtn = (w: Awaited<ReturnType<typeof setup>>, row: number, text: string) =>
+  w.find('#wsl-main-usb-panel').findAll('tbody tr')[row].findAll('button').find(b => b.text().includes(text))!
+
+async function usbMounted() {
+  const w = await setup()
+  await completeCheck(w)
+  api.GetUsbOverview.mockResolvedValue(USB_SHARE)
+  api.BindUsbDevice.mockResolvedValue(ok('共享完成'))
+  api.AttachUsbDevice.mockResolvedValue(ok('已附加'))
+  api.DetachUsbDevice.mockResolvedValue(ok('已卸下'))
+  api.SetUsbShare.mockResolvedValue(ok('已登记'))
+  api.SetUsbShareEnabled.mockResolvedValue(ok('账本已更新'))
+  api.RemoveUsbShare.mockResolvedValue(ok('已移除'))
+  api.ReplayUsbNow.mockResolvedValue(ok('重放完成'))
+  await w.findAll('.main-tab-btn')[5].trigger('click')
+  await flushPromises()
+  return w
+}
+
+describe('WSLView USB 直通页（F9）', () => {
+  it('未装 usbipd：渲染引导卡（发布页 + winget 命令），不渲染设备表', async () => {
+    const w = await setup()
+    await completeCheck(w)
+    await w.findAll('.main-tab-btn')[5].trigger('click')
+    await flushPromises()
+    const panel = w.find('#wsl-main-usb-panel')
+    expect(panel.text()).toContain('需要 usbipd-win')
+    expect(panel.text()).toContain('winget install --id dorssel.usbipd-win')
+    expect(panel.find('table').exists()).toBe(false)
+    await panel.findAll('button').find(b => b.text().includes('打开官方发布页'))!.trigger('click')
+    await flushPromises()
+    expect(api.OpenUsbipdReleases).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  it('设备表列集与状态归一（在场/未共享/已附加/不在场沉底），账本呈现上次结果', async () => {
+    const w = await usbMounted()
+    const panel = w.find('#wsl-main-usb-panel')
+    expect(panel.text()).toContain('v5.3.0')
+    expect(panel.text()).toContain('2-3')
+    expect(panel.text()).toContain('1a86:7523')
+    expect(panel.text()).toContain('已共享·不在场')
+    expect(panel.text()).toContain('127.0.1.1')
+    expect(panel.text()).toContain('重放完成：附加 1 台') // lastReplay 上屏
+    const ledgerTable = panel.findAll('table')[1]
+    expect(ledgerTable.text()).toContain('加密狗')
+    expect(ledgerTable.text()).toContain('已附加到 Ubuntu')
+    w.unmount()
+  })
+
+  it('附加：已共享设备免确认直达（目标发行版=默认 WSL2 实例），停止实例由后端顺手拉起', async () => {
+    const w = await usbMounted()
+    await usbRowBtn(w, 0, '附加').trigger('click')
+    await flushPromises()
+    expect(api.AttachUsbDevice).toHaveBeenCalledWith('2-3', 'Ubuntu')
+    expect(confirmFn).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('一键直通：未共享设备先经 UAC 确认补 bind 再 attach；bind 未成即中止', async () => {
+    const w = await usbMounted()
+    await usbRowBtn(w, 1, '附加').trigger('click')
+    await flushPromises()
+    expect(confirmFn).toHaveBeenCalled()
+    expect(api.BindUsbDevice).toHaveBeenCalledWith('1-1', false)
+    expect(api.AttachUsbDevice).toHaveBeenCalledWith('1-1', 'Ubuntu')
+    // bind 回执 success=false（UAC 取消族）：不得抢跑 attach
+    api.BindUsbDevice.mockResolvedValueOnce({ success: false, message: '已取消 UAC 授权' })
+    api.AttachUsbDevice.mockClear()
+    await usbRowBtn(w, 1, '附加').trigger('click')
+    await flushPromises()
+    expect(api.AttachUsbDevice).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('卸下/取消共享/不在场退绑：各自路由到对应命令', async () => {
+    api.UnbindUsbDevice.mockResolvedValue(ok('已取消共享'))
+    api.UnbindAbsentUsbDevice.mockResolvedValue(ok('已取消共享'))
+    const w = await usbMounted()
+    await usbRowBtn(w, 2, '卸下').trigger('click')
+    await flushPromises()
+    expect(api.DetachUsbDevice).toHaveBeenCalledWith('1-4')
+    await usbRowBtn(w, 0, '取消共享').trigger('click')
+    await flushPromises()
+    expect(api.UnbindUsbDevice).toHaveBeenCalledWith('2-3')
+    await usbRowBtn(w, 3, '退绑').trigger('click')
+    await flushPromises()
+    expect(api.UnbindAbsentUsbDevice).toHaveBeenCalledWith('aaaa1111-2222-3333-4444-555555555555')
+    w.unmount()
+  })
+
+  it('账本操作：登记走 SetUsbShare，停用/移除走条目命令；手动重放走 ReplayUsbNow', async () => {
+    const w = await usbMounted()
+    await usbRowBtn(w, 0, '自动共享').trigger('click')
+    await flushPromises()
+    expect(api.SetUsbShare).toHaveBeenCalledWith('2-3', 'Ubuntu')
+    const ledgerBtns = w.find('#wsl-main-usb-panel').findAll('table')[1].findAll('tbody tr')[0].findAll('button')
+    await ledgerBtns[0].trigger('click') // ⏸ 停用
+    await flushPromises()
+    expect(api.SetUsbShareEnabled).toHaveBeenCalledWith('usb-1', false)
+    await ledgerBtns[1].trigger('click') // 🗑 移除（先确认）
+    await flushPromises()
+    expect(api.RemoveUsbShare).toHaveBeenCalledWith('usb-1')
+    await w.find('#wsl-main-usb-panel').findAll('button').find(b => b.text().includes('重放共享'))!.trigger('click')
+    await flushPromises()
+    expect(api.ReplayUsbNow).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  it('总开关确认被拒不触达后端，且 checkbox 弹回账本真值（key 增强重挂载）', async () => {
+    const w = await setup()
+    await completeCheck(w)
+    api.GetUsbOverview.mockResolvedValue({ ...USB_SHARE, autoEnabled: false })
+    await w.findAll('.main-tab-btn')[5].trigger('click')
+    await flushPromises()
+    confirmFn.mockResolvedValueOnce(false) // 打开需确认：拒
+    const sw = w.find('#wsl-main-usb-panel .auto-switch input')
+    await sw.setValue(true) // 翻位 → @change → 确认被拒
+    await flushPromises()
+    expect(api.SetUsbAutoAttach).not.toHaveBeenCalled()
+    expect((w.find('#wsl-main-usb-panel .auto-switch input').element as HTMLInputElement).checked).toBe(false)
+    w.unmount()
+  })
+
+  it('轮询随页签生灭（v-if 生命周期即开关）：离开页面板即销毁，回页重拉', async () => {
+    const w = await usbMounted()
+    const callsOnOpen = api.GetUsbOverview.mock.calls.length
+    await w.findAll('.main-tab-btn')[0].trigger('click') // 回就绪页
+    await flushPromises()
+    expect(w.find('#wsl-main-usb-panel').exists()).toBe(false)
+    await w.findAll('.main-tab-btn')[5].trigger('click')
+    await flushPromises()
+    expect(w.find('#wsl-main-usb-panel').exists()).toBe(true)
+    expect(api.GetUsbOverview.mock.calls.length).toBeGreaterThan(callsOnOpen)
+    w.unmount()
   })
 })

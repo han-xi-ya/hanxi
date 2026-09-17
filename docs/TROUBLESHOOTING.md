@@ -1020,3 +1020,18 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：`grep -n $'\xef\xbb\xbf' file.go | cat -v` 用字节级视图定位裸 BOM（输出 `M-oM-;M-?`）；确认 Edit 类工具重写该段时反复回灌同一字符（模型输出经 JSON unicode 解析后就是裸字符，写转义意图无效）。
 - **正确做法与标准修复方案**：① Go 源码里要表达 BOM 一律写 **ASCII 转义** `"\ufeff"`，绝不打裸字符（注释同理，写「U+FEFF/BOM」字样）；② 修文件用可控拼线：`printf '%s\n' '..."\ufeff"...' > /tmp/line` 单引号防解释，再 `head -n N + cat + tail` 整行替换，`cat -A` 验字节后 go build 坐实；③ 测试数据构造干脆绕开源码转义——`string(rune(0xFEFF))` 或直接 printf 生成 fixture。
 - **避坑防重犯建议**：① 凡「不可见 Unicode 字符」的测试/常量（BOM、ZWSP、NBSP…），源码里只允许 escape 形态，评审时 `grep -P "\x{FEFF}" *.go` 一查到底；② 用 sed/perl 批量改 Go 时警惕替换语言的转义方言（perl 替换段 `\u\U\l\E`、GNU sed 的 `\u`），改完必须 `go build` 而非 grep 验收——本坑里 grep 看到的 `Feff` 曾被误当成修复成功；③ AI 工具链修不可见字符问题不可靠第二次：一旦 Edit 结果与预期字节不符，立刻换 shell 层 printf/cat -A 的字节级操作路径。
+### 67. 内部调度函数导出即进绑定面：一个 time.Duration 参数让 wails3 生成出 dev 不存在的 `frontend/bindings/time/`（F9 USB 直通）
+
+- **问题现象与错误原因**：wsl 模块新增的后台重放调度助手按 Go 惯例导出了（`ScheduleUsbReplay(trigger string, delay time.Duration, ...)`），本意只是给 module.go/distro.go 接线用。`wails3 generate bindings` 对 **service 上的全部导出方法**无差别建绑定：time.Duration 被当成枚举外溢，产出仓库里从未有过的 `frontend/bindings/time/` 目录（`git ls-tree dev` 查证不存在），绑定 diff 混进与前端契约无关的杂项，verify:bindings 语义被污染。
+- **排查过程**：`-clean=true` 全量再生后 `git status frontend/bindings` 发现 `?? frontend/bindings/time/`；回溯生成器输出（"34 Enums"），对照本轮新增绑定方法逐个审签名——`Delay time.Duration` 是唯一 std 时间类型入口。
+- **正确做法与标准修复方案**：仅供 Go 侧接线的调度/取消助手一律小写私有化（`scheduleUsbReplay` / `cancelUsbReplay`，同包 module.go 照常调用），`rm -rf frontend/bindings/time` 后再生，绑定 diff 收敛回纯 wsl/usbipd 新增；`git diff --exit-code -- frontend/bindings` 零漂移确认。
+- **避坑防重犯建议**：① 服务结构体上的**每个导出方法都是对外 RPC 面**——内部工具函数请小写，导出前问一遍"前端会碰它吗"；② 绑定再生后先 `git status frontend/bindings` 审目录级新增，冒出没见过的包目录（尤其 std 包名）即签名外溢信号，不是生成器毛病；③ 参数别用 std 富类型（Duration/Time）跨绑定面，字符串秒数/毫秒数最稳。
+
+### 68. Go 源码字符串字面量里的"裸 BOM 字符"直接编译失败：`illegal byte order mark`（F9 USB 直通）
+
+- **另见**：#65（F6 字面 BOM 与 GNU sed 替换吞字）、#66（F7 AI 工具混入 U+FEFF）——同族坑第三次踩中，AI 生成含不可见字符的源码请一律 hexdump 复核关键文件。
+
+- **问题现象与错误原因**：usbipd 输出要剥 UTF-8 BOM，代码顺手写成 `strings.TrimPrefix(s, "<U+FEFF字面量>")`——把 BOM **字符本身**粘进了源码字符串。`go vet/build` 报 `runner.go:201:87: illegal byte order mark`：Go 词法器只容忍文件开头的 BOM，源码任何位置（含字符串字面量内）出现裸 U+FEFF 一律拒收。多轮 sed/perl 修补时又把替换目标打成 `"Feff"` 文本、还一度让 perl 报 `Wide character in print`——非 ASCII 字面在 shell 引号层里的往返比问题本身更费时间。
+- **排查过程**：`cat -A` 看字节确认 `M-oM-;M-?`（EF BB BF）确在字面量内；`grep -c $'\xef\xbb\xbf'` 定位污染行；对 Edit 工具"看着一样却报 same"的两行做 hexdump 才坐实转义又被解释成了真字符。
+- **正确做法与标准修复方案**：Go 源里写纯 ASCII 的十六进制转义 `"\xEF\xBB\xBF"`（或 `"\uFEFF"` 转义形态）表达 BOM，绝不粘裸字符；被污染的行用 `head -N + printf '%s\n' + tail` 的纯 ASCII 拼接法重写（避开 sed `\u` 大小写标记与 perl 双字节输出的坑）。
+- **避坑防重犯建议**：① 源码里需要不可见字符（BOM/NUL/零宽空格）时**永远用转义**，判据是 `cat -A` 只见可打印 ASCII；② Windows Git Bash 里改 Go 文件慎用 sed/perl 的 `-i` 打非 ASCII——GNU sed 替换段的 `\u` 是大小写标记、perl 缺省按字节流写宽字符，两者都安静地产出错内容而非报错；改完必 `go build` + `grep -c $'\xef\xbb\xbf'` 双查；③ 文本修补连环失败两轮即止损：整段重写（Write/编辑器落盘）比第三次 sed 便宜。

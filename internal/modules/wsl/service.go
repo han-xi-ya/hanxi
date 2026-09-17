@@ -13,6 +13,7 @@ import (
 
 	"hanxi/internal/modules/wsl/readiness"
 	"hanxi/internal/modules/wsl/releases"
+	"hanxi/internal/modules/wsl/usbipd"
 	"hanxi/internal/settings"
 )
 
@@ -67,6 +68,13 @@ type WslService struct {
 	// 端口转发规则持久化（<StateDir>/wsl-portproxy.json）。
 	ppPath    string
 	ppPending bool // 规则有增删改但尚未点「应用」挂到系统
+	// USB 直通（usbipd-win，F9）：账本持久化（<StateDir>/wsl-usbipd.json）、
+	// CLI 注入面（单测替身）与重放单飞/取消（均以 mu 守护）。
+	usbRun          usbCLI
+	usbPath         string
+	usbReplayBusy   bool
+	usbReplayMsg    string
+	usbReplayCancel context.CancelFunc
 	// 安装落位偏好持久化（<StateDir>/wsl-install-pref.json）：
 	// 取代前端 localStorage 的「空串粘滞、错路径粘 C、跨包各自为政」三坑，
 	// 详见 installdir.go 与 docs/TROUBLESHOOTING.md。
@@ -88,14 +96,18 @@ type longOpHandle struct {
 func NewWslService(opener urlOpener, paths *settings.Paths) *WslService {
 	rulesPath := ""
 	installPref := ""
+	usbLedger := ""
 	if paths != nil {
 		rulesPath = filepath.Join(paths.StateDir(), "wsl-portproxy.json")
 		installPref = filepath.Join(paths.StateDir(), "wsl-install-pref.json")
+		usbLedger = filepath.Join(paths.StateDir(), "wsl-usbipd.json")
 	}
 	return &WslService{
 		opener:          opener,
 		ppPath:          rulesPath,
 		installPrefPath: installPref,
+		usbPath:         usbLedger,
+		usbRun:          usbipd.NewRunner(),
 		probe:           readiness.Probe,
 		netProbe:        readiness.ProbeNetwork,
 		wslVersion:      readiness.Version,
