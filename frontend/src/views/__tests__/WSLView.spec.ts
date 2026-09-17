@@ -1166,6 +1166,21 @@ describe('WSLView USB 直通页（F9）', () => {
     w.unmount()
   })
 
+  it('总开关确认被拒不触达后端，且 checkbox 弹回账本真值（key 增强重挂载）', async () => {
+    const w = await setup()
+    await completeCheck(w)
+    api.GetUsbOverview.mockResolvedValue({ ...USB_SHARE, autoEnabled: false })
+    await w.findAll('.main-tab-btn')[5].trigger('click')
+    await flushPromises()
+    confirmFn.mockResolvedValueOnce(false) // 打开需确认：拒
+    const sw = w.find('#wsl-main-usb-panel .auto-switch input')
+    await sw.setValue(true) // 翻位 → @change → 确认被拒
+    await flushPromises()
+    expect(api.SetUsbAutoAttach).not.toHaveBeenCalled()
+    expect((w.find('#wsl-main-usb-panel .auto-switch input').element as HTMLInputElement).checked).toBe(false)
+    w.unmount()
+  })
+
   it('轮询随页签生灭（v-if 生命周期即开关）：离开页面板即销毁，回页重拉', async () => {
     const w = await usbMounted()
     const callsOnOpen = api.GetUsbOverview.mock.calls.length

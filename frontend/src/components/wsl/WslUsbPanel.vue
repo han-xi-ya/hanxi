@@ -177,15 +177,25 @@ const registerShare = (d: Device) => withOp(async () => {
   }
 })
 
+// 确认被拒时原生 checkbox 已被用户翻位而绑定值未变（Vue 不重patch同值 :checked），
+// 用 key 自增强制重挂载回真实账本态。
+const switchKey = ref(0)
+
 async function toggleAuto() {
   const next = !view.value?.autoEnabled
-  if (next && !(await confirm({
-    title: '开启开机自动共享？',
-    description: 'hanxi 启动与本机拉起发行版后，会自动按账本补做「bind(如需)+attach」：'
-      + 'bind 欠账时弹一次 UAC；未运行发行版的条目跳过、待其启动后自动补挂。'
-      + '仅 hanxi 在跑时生效（刻意不自建 Windows 计划任务，无系统残留）。',
-    tone: 'warning',
-  }))) return
+  if (next) {
+    const ok = await confirm({
+      title: '开启开机自动共享？',
+      description: 'hanxi 启动与本机拉起发行版后，会自动按账本补做「bind(如需)+attach」：'
+        + 'bind 欠账时弹一次 UAC；未运行发行版的条目跳过、待其启动后自动补挂。'
+        + '仅 hanxi 在跑时生效（刻意不自建 Windows 计划任务，无系统残留）。',
+      tone: 'warning',
+    })
+    if (!ok) {
+      switchKey.value++
+      return
+    }
+  }
   await withOp(async () => {
     const out = await WSLAPI.SetUsbAutoAttach(next)
     showToast(out?.message || '已更新总开关')
@@ -280,7 +290,7 @@ function entryLive(d: USBShareEntry): { tone: 'positive' | 'information' | 'warn
           共享(bind)需管理员，附加(attach)/卸下(detach)用户态即行。</span>
         <span class="hint-dim">只登记与管理 Hanxi 账本内的自动共享；usbipd 自身与他机远程 usbip 不触碰</span>
       </div>
-      <label class="auto-switch" title="开机自动共享总开关：hanxi 启动/拉起发行版时按账本补挂（默认关）">
+      <label class="auto-switch" :key="switchKey" title="开机自动共享总开关：hanxi 启动/拉起发行版时按账本补挂（默认关）">
         <input type="checkbox" :checked="view.autoEnabled" :disabled="opBusy" @change="toggleAuto" />
         开机自动共享<span v-if="!view.autoEnabled" class="hint-dim">（关）</span>
       </label>
