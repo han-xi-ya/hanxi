@@ -129,9 +129,9 @@ func (s *CheckpointService) pickEngine() (eng engine, gitAvailable bool) {
 			return ge, true
 		}
 	} else {
-		slog.Info("snapshot: 未探测到可用 git，等待影子拷贝降级链接入")
+		slog.Info("snapshot: 未探测到可用 git，历史版本降级影子拷贝")
 	}
-	return nil, probe.Available
+	return newBackupEngine(s.paths.DataDir(), s.snapshotDir()), probe.Available
 }
 
 // ---------- 触发源（三源一闸） ----------
