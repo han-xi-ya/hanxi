@@ -26,7 +26,7 @@
 | F1 统一历史记录 | ✅ 已合并 | feat/f1-history | 二 | fd830ab | PLAN_HISTORY.md，决策已全回写 |
 | F2 剪贴板惯例 | ✅ 已合并 | feat/f2-clipboard | 二 | 6a38422 | PLAN_CLIPBOARD.md 三段全落；热键封装 internal/hotkey |
 | F3 数据自动快照 | ✅ 已合并 | feat/f3-snapshot | 二 | 7a6cc78 | PLAN_SNAPSHOT.md 全量；三红线守住（永不 push/影子拷贝/对外"历史版本"） |
-| F4a MCP 无头 server | 🟡 开发中 | feat/f4-mcp | 三 | - | PLAN_MCP C1-C5 无头段+S2；与 F4b 仅经 access.json 契约耦合 |
+| F4a MCP 无头 server | ✅ 已合并 | feat/f4-mcp | 三 | 021ce5e | C1-C5 全落（含 ocr/memo 工具，默认全关）；S2 已收口；真机 stdio 管道冒烟已过；剩 C9 三客户端红队 |
 | F4b MCP 安装向导 | ✅ 已合并 | feat/f4b-mcpwizard | 三 | aa48a73 | internal/mcpwizard 独立包零依赖 F4a；AI 接入第 8 分区（52/40/40）；坑占 #61；access.json 对账清单见详情 |
 | F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
 | F6 数据目录同级化 | 🟡 开发中 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动；worktree wt-f6-siblingdir |
@@ -69,5 +69,7 @@
 - F4b 所有权回执在 `<DataDir>/mcp/install.json`（version/installs{configPath,fingerprint,installedAt}）。
 - **若 F4a 实际落盘 `state/mcp/` 或字段超纲**：以 F4a 报告为准改 `mcpwizard/service.go` NewService 两行路径，字段扩展要求 F4a 报告单列。
 - F4a 合入前 `hanxi mcp` 不存在——F4b 的"安装前自检 spawn listTools"刻意未接线，F4a 合并后补一行（新随批修 **R2**）。
-- 踩坑号已占：#61=F4b；F4a 若有沉淀从 **#62** 起。
-- **S2**：随 F4 批（PLAN_MCP 已含 ES.exe 文案改真话任务，F4 agent 合同内）。
+- 踩坑号定序（全部已占）：#61=F4b JSON 外科合并、#62=F4a 离线 GOMODCACHE 洞、#63=F4a windowsgui stdio；后续从 **#64** 起。
+- **R3 新增**：go.mod 现存 `replace spf13/cast v1.7.1` 离线绕行（#62 登记），网络/代理可达后必须跑 `go mod tidy` 复核并评估撤除——wave 收尾批处理。
+- **R4 新增**：F4a 依 C1-C5 字面把 PLAN"二期"的 ocr/memo 工具也做了（独立开关默认全关，无暴露）——保留现实现，PLAN_MCP §2 需回写实际落地形态（C10 归入收尾批）。
+- **S2**：✅ 已随 F4a 收口（everything 工具诚实文案有测试锁定 + BACKLOG 收账提交 7392e44）。
