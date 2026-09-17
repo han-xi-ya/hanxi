@@ -1007,3 +1007,10 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：`-v` 跑出 BADCHILD 日志见横幅行 `"Microsoft Windows [Version ...]"`；换 deadline 到 10ms 又反向竞态（杀进程与读管道互抢）。结论：与其调时序赌运气，不如换行为确定的替身。
 - **正确做法与标准修复方案**：改用 `powershell.exe`（OS 组件、Win10/11 必在；开发 shell 可能剥其 PATH，用 `exec.LookPath` + `$SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe` 绝对路径兜底）——其 .NET 冷启动必然 >80ms，且参数非法的报错走 **stderr** 而 stdout 全程静默：deadline 到点时它必然还活着且没出声，ctx Kill 支**确定性**触发。坏协议支反过来仍用 cmd.exe（横幅非 JSON 恰好就是真实污染样本，0.01s 收敛）。
 - **避坑防重犯建议**：① 断言"子进程超时被杀"的用例，替身选择标准是 **stdout 静默时长 ≫ deadline**，控制台横幅/欢迎语类程序（cmd、ssh、telnet）一律不合格；② 真 exec 单测一律双保险：测试自身设 watchdog（`select` + `time.After`）+ 子进程侧有 ctx deadline，绝不允许挂到包级超时；③ 自检客户端的纪律与 #63 服务端镜像对称：stdout 非协议行=污染即败（勿容错跳过继续找 id——垃圾能进一次就能进一串），失败原因附 stderr 尾部（本包 `syncBuffer` 截 4KB 展示 200 字）供排障。
+
+### 65. AI 工具写 Go 源码混入裸 U+FEFF 字符：编译器报 illegal byte order mark，sed/perl 修补又踩 \u 大写陷阱（F7 托管安装）
+
+- **问题现象与错误原因**：给 ocr 包写 sha256 旁挂件 BOM 容忍逻辑时，AI 编辑工具把「字符串字面量里的 BOM」以**裸 U+FEFF 字符**写入源码（`strings.TrimPrefix(s, "<BOM>")` 与注释里各一处）。Go 源码规范规定 BOM 只允许出现在文件起始处一次，任何位置（含字符串与注释）的裸 U+FEFF 都报 `illegal byte order mark`——且该字符在编辑器/diff 里**不可见**，错误行号指向整行也看不出端倪。后续修补再踩两连环：GNU sed 替换段里写 `\u` 被 shell/转义链吃掉变成裸文本 `Feff`；perl 替换段的 `\u` 是「下一字母大写」指令而非字面反斜杠-u，同样产出 `"Feff"`，两次都把源码改成了语义错误的坏常量还照常通过 grep。
+- **排查过程**：`grep -n $'\xef\xbb\xbf' file.go | cat -v` 用字节级视图定位裸 BOM（输出 `M-oM-;M-?`）；确认 Edit 类工具重写该段时反复回灌同一字符（模型输出经 JSON unicode 解析后就是裸字符，写转义意图无效）。
+- **正确做法与标准修复方案**：① Go 源码里要表达 BOM 一律写 **ASCII 转义** `"\ufeff"`，绝不打裸字符（注释同理，写「U+FEFF/BOM」字样）；② 修文件用可控拼线：`printf '%s\n' '..."\ufeff"...' > /tmp/line` 单引号防解释，再 `head -n N + cat + tail` 整行替换，`cat -A` 验字节后 go build 坐实；③ 测试数据构造干脆绕开源码转义——`string(rune(0xFEFF))` 或直接 printf 生成 fixture。
+- **避坑防重犯建议**：① 凡「不可见 Unicode 字符」的测试/常量（BOM、ZWSP、NBSP…），源码里只允许 escape 形态，评审时 `grep -P "\x{FEFF}" *.go` 一查到底；② 用 sed/perl 批量改 Go 时警惕替换语言的转义方言（perl 替换段 `\u\U\l\E`、GNU sed 的 `\u`），改完必须 `go build` 而非 grep 验收——本坑里 grep 看到的 `Feff` 曾被误当成修复成功；③ AI 工具链修不可见字符问题不可靠第二次：一旦 Edit 结果与预期字节不符，立刻换 shell 层 printf/cat -A 的字节级操作路径。
