@@ -88,6 +88,23 @@ var (
 	logMu        sync.Mutex
 )
 
+// consoleOut 控制台输出汇（默认 stderr），抽成变量供单测注入。
+var consoleOut io.Writer = os.Stderr
+
+// consoleWriter 尽力而为的控制台写手：写失败一律吞掉并谎报成功。
+// 存在的理由是生产构建带 -H windowsgui（PE 子系统 GUI），双击/开机启动的进程
+// 没有控制台、stderr 是无效句柄，任何写入都报 "The handle is invalid"；而
+// io.MultiWriter 遇到首个报错 writer 即中断后续 writer——若把裸 os.Stderr 排
+// 在第一路，磁盘日志文件将永远收不到一条记录（曾致 logs/app-*.log 恒 0 字节，
+// 详见 docs/TROUBLESHOOTING.md #52）。包一层恒报错即丢弃后，控制台有无都不再
+// 影响落盘；从终端启动时日志照常双路输出。
+type consoleWriter struct{ w io.Writer }
+
+func (c consoleWriter) Write(p []byte) (int, error) {
+	_, _ = c.w.Write(p)
+	return len(p), nil
+}
+
 // pruneOldLogs 按天清理过期日志：删除 logDir 下 mtime 早于 retainDays 天前的
 // app-*.log（InitLogger 在打开当天文件前调用；当天文件 mtime 必然最新，天然豁免）。
 // retainDays<=0 视为不清理。单文件删除失败仅告警不阻断初始化——日志清理是尽力
@@ -137,8 +154,8 @@ func InitLogger(logDir string, retainDays int) (*slog.Logger, func(), error) {
 		return nil, nil, err
 	}
 
-	// 多路输出：标准错误 + 磁盘日志文件
-	mw := io.MultiWriter(os.Stderr, f)
+	// 多路输出：控制台（尽力而为，句柄无效也不拖累落盘）+ 磁盘日志文件
+	mw := io.MultiWriter(consoleWriter{consoleOut}, f)
 
 	jsonHandler := slog.NewJSONHandler(mw, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
