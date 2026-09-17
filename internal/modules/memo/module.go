@@ -1,5 +1,7 @@
 // Package memo 内置模块：极轻量本地备忘录/代码片段站。
-// 数据以 JSON 文件（data/memo.json）持久化，NewMemoService 构造时即加载；无网络与常驻 goroutine。
+// 数据以每条一文件的 md 库（<数据根>/memo/<id>.md，frontmatter + 正文）持久化，
+// NewMemoService 构造时全量装载进内存；旧版整库 state/memo.json 在启动时幂等迁移
+// （见 migrate.go），迁移未成的异常态回落旧库读写。无网络与常驻 goroutine。
 package memo
 
 import (

@@ -3,6 +3,7 @@ package memo
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -10,34 +11,83 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"hanxi/internal/notify"
 	"hanxi/internal/settings"
 )
 
-// MemoService 便签业务服务
+// MemoService 便签业务服务。
+// 存储后端二态：默认文件库（memo/<id>.md，写盘点单条化）；仅当旧库 memo.json
+// 仍在位且迁移未成功（损坏/暂存失败）时回落旧整库 Store，保证"迁移不成也不丢数据"。
 type MemoService struct {
-	store    *Store
+	files    *FileStore
+	store    *Store // 旧库回落态才非 nil；文件库模式恒 nil
+	useFiles bool
 	mu       sync.RWMutex
 	items    []MemoItem
 	wailsApp *application.App
 }
 
-// NewMemoService 实例化便签服务
+// NewMemoService 实例化便签服务：启动清扫/迁移旧库，然后把权威数据全量装载进内存
+// （实测千条以下全量缓存模式，前端 List/GetStats 语义迁移前后不变）。
 func NewMemoService(paths *settings.Paths) (*MemoService, error) {
-	memoPath := filepath.Join(paths.StateDir(), "memo.json")
-	store, err := NewStore(memoPath)
-	if err != nil {
-		return nil, err
+	dataDir := paths.DataDir()
+	legacyPath := filepath.Join(paths.StateDir(), "memo.json")
+	memoDir := filepath.Join(dataDir, "memo")
+
+	// 上次进程遗留的暂存残骸/半程续跑（幂等）
+	sweepStaleStaging(dataDir, memoDir, legacyPath)
+	if need, err := memoNeedsMigration(legacyPath, memoDir); err != nil {
+		slog.Error("memo: 迁移判据读取失败，本次跳过迁移", "err", err)
+	} else if need {
+		committed, merr := migrateMemoToFiles(legacyPath, memoDir)
+		if merr != nil {
+			slog.Error("memo: 文件库化迁移未完成", "committed", committed, "err", merr)
+		}
 	}
 
-	items, err := store.Load()
-	if err != nil {
-		items = []MemoItem{}
-	}
+	files := NewFileStore(memoDir)
+	s := &MemoService{files: files}
 
-	return &MemoService{
-		store: store,
-		items: items,
-	}, nil
+	hasFiles, herr := memoDirHasFiles(memoDir)
+	if herr != nil {
+		// 目录不可读按"无已提交文件"保守处理：旧库在位则整体回落旧读写，不丢数据
+		slog.Warn("memo: 文件库目录读取失败，保守按空库处理", "err", herr)
+	}
+	_, legacyErr := os.Stat(legacyPath)
+	legacyExists := legacyErr == nil
+	switch {
+	case hasFiles || !legacyExists:
+		// 文件库权威（正常态；含全新安装——不再复活空 memo.json）
+		s.useFiles = true
+		items, lerr := files.LoadAll()
+		if lerr != nil {
+			// 严格型读 + 不阻断启动：坏条目已在 LoadAll 内隔离取证副本，此处显式告警
+			notify.Error(ID, "部分便签装载失败", lerr.Error(), "/ext/memo")
+		}
+		s.items = items
+	case !hasFiles:
+		// 迁移未成的回落态：旧整库读写照旧（BUG-032 修复点——Load 错误不再吞）
+		if herr != nil {
+			return nil, fmt.Errorf("便签文件库与旧库均不可读: %w", herr)
+		}
+		store, err := NewStore(legacyPath)
+		if err != nil {
+			return nil, err
+		}
+		items, err := store.Load()
+		if err != nil {
+			quarantine := fmt.Sprintf("%s.corrupt-%s", legacyPath, time.Now().Format("20060102-150405"))
+			if rerr := os.Rename(legacyPath, quarantine); rerr != nil {
+				return nil, fmt.Errorf("读取便签库失败且隔离改名失败（拒绝以空库覆盖可疑数据）: %v / %w", rerr, err)
+			}
+			slog.Error("memo: 旧库损坏，已隔离取证副本并以空库启动（可从副本手工找回）",
+				"err", err, "quarantined_to", quarantine)
+			notify.Error(ID, "便签数据损坏已隔离", "memo.json 解析失败，已改名保留取证副本，本次以空库启动", "/ext/memo")
+			items = []MemoItem{}
+		}
+		s.store, s.items = store, items
+	}
+	return s, nil
 }
 
 // SetWailsApp 设置 Wails App 引用
@@ -165,9 +215,19 @@ func (s *MemoService) Create(title, content string, tags []string, colorTag stri
 		UpdatedAt: now,
 	}
 
-	s.items = append([]MemoItem{item}, s.items...)
-	if err := s.store.Save(s.items); err != nil {
-		return MemoItem{}, err
+	// 文件库模式单条落盘、失败即返回（内存不换装，与盘不分叉）；
+	// 回落态维持旧语义（先改候选整表再原子写）
+	if s.useFiles {
+		if err := s.files.SaveItem(item); err != nil {
+			return MemoItem{}, err
+		}
+		s.items = append([]MemoItem{item}, s.items...)
+	} else {
+		next := append([]MemoItem{item}, s.items...)
+		if err := s.store.Save(next); err != nil {
+			return MemoItem{}, err
+		}
+		s.items = next
 	}
 
 	s.emitChanged()
@@ -206,12 +266,26 @@ func (s *MemoService) Update(id, title, content string, tags []string, colorTag 
 	s.items[idx].UpdatedAt = time.Now()
 
 	updated := s.items[idx]
-	if err := s.store.Save(s.items); err != nil {
+	if err := s.persist(updated); err != nil {
 		return MemoItem{}, err
 	}
 
 	s.emitChanged()
 	return updated, nil
+}
+
+// persist 将单条最新内容落盘：文件库模式只写该条文件（整体重写点从 5 处降为
+// 单条，git diff 从此精确到"改了哪一条"）；回落态整库原子重写。
+func (s *MemoService) persist(item MemoItem) error {
+	if s.useFiles {
+		return s.files.SaveItem(item)
+	}
+	for i, it := range s.items {
+		if it.ID == item.ID {
+			s.items[i] = item
+		}
+	}
+	return s.store.Save(s.items)
 }
 
 // TogglePin 切换置顶状态。
@@ -228,7 +302,7 @@ func (s *MemoService) TogglePin(id string) (bool, error) {
 			s.items[i].IsPinned = !s.items[i].IsPinned
 			s.items[i].UpdatedAt = time.Now()
 			cur := s.items[i].IsPinned
-			if err := s.store.Save(s.items); err != nil {
+			if err := s.persist(s.items[i]); err != nil {
 				slog.Error("便签置顶状态落盘失败（内存态已切换，重启后会回退）", "err", err, "id", id, "pinned", cur)
 			}
 			s.emitChanged()
@@ -248,7 +322,7 @@ func (s *MemoService) ToggleMask(id string) (bool, error) {
 		if it.ID == id {
 			s.items[i].IsMasked = !s.items[i].IsMasked
 			cur := s.items[i].IsMasked
-			if err := s.store.Save(s.items); err != nil {
+			if err := s.persist(s.items[i]); err != nil {
 				slog.Error("便签遮罩状态落盘失败（内存态已切换，重启后会回退）", "err", err, "id", id, "masked", cur)
 			}
 			s.emitChanged()
@@ -270,10 +344,15 @@ func (s *MemoService) Delete(id string) error {
 		}
 	}
 
-	s.items = filtered
-	if err := s.store.Save(s.items); err != nil {
+	if s.useFiles {
+		// 先删文件再换内存：删文件失败即返回错误，内存态与磁盘不分叉
+		if err := s.files.RemoveItem(id); err != nil {
+			return err
+		}
+	} else if err := s.store.Save(filtered); err != nil {
 		return err
 	}
+	s.items = filtered
 
 	s.emitChanged()
 	return nil
