@@ -372,7 +372,7 @@ onMounted(() => {
           </div>
           <div v-if="tool.name === 'dotnet'" class="tool-actions">
             <button
-              class="btn btn-secondary btn-small"
+              class="btn btn-accent-outline btn-small"
               title="打开 BCUninstaller 自行选择卸载目标；注意卸载 8.0 线会导致依赖它的 BCUninstaller 自身无法启动"
               @click="openBCUForUninstall"
             >用 BCUninstaller 卸载 / 搜索运行库</button>
@@ -491,8 +491,8 @@ onMounted(() => {
    均由 PageHeader、MainTabNav 与 components.css + base.css 全局承载 */
 .status-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 14px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-soft); }
 .status-summary { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.status-summary strong { color: var(--color-text); font-size: 13px; font-variant-numeric: tabular-nums; }
-.status-summary span { color: var(--color-text-muted); font-size: 11px; line-height: 1.45; }
+.status-summary strong { color: var(--color-text); font-size: var(--text-base); font-variant-numeric: tabular-nums; }
+.status-summary span { color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.45; }
 .refresh-button { min-width: 96px; flex: 0 0 auto; }
 .tab-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .tool-grid, .management-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
@@ -508,32 +508,33 @@ onMounted(() => {
 .workspace-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .workspace-section + .workspace-section { padding-top: 17px; border-top: 1px solid var(--color-border); }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.section-heading h2 { margin: 0; color: var(--color-text); font-size: 15px; line-height: 1.3; }
-.section-heading p { margin: 3px 0 0; max-width: 760px; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
+.section-heading h2 { margin: 0; color: var(--color-text); font-size: var(--text-md); line-height: 1.3; }
+.section-heading p { margin: 3px 0 0; max-width: 760px; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.5; }
 .section-banner { margin: 0; }
 .local-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
 .local-summary > div { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; min-width: 0; }
 .local-summary > code { flex: 0 1 auto; color: var(--color-text-muted); text-align: right; }
 .tool-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.tool-name { font-size: 14px; font-weight: 700; color: var(--color-text); }
+.tool-name { font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
 /* 本视图 chip 仅调图标间距；底色/形状走全局 .chip-{tone} */
 .status-chip { gap: 5px; }
-.inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; min-width: 0; }
-.meta-line .k { color: var(--color-text-subtle); width: 36px; flex-shrink: 0; }
-.mono { font-size: 11px; overflow-wrap: anywhere; }
+/* .inst-meta 与托管家族上收的全局原子逐字等值，副本删净落回 */
+/* display/gap/色/基线落回全局 .meta-line；此处仅留收缩补差 */
+.meta-line { min-width: 0; }
+/* 色与收缩落回全局 .meta-line .k；仅标签列宽散差（36 vs 全局 44）暂留本地——定档候选，见收编报告 */
+.meta-line .k { width: 36px; }
+/* 原 .mono 同名 scoped 副本（11px + overflow-wrap）已删净：落回全局 .mono（--text-sm +
+   word-break: break-all），字号差一档为设计归一（登记 §9.6 式微差，真机目视项） */
 .tool-path { min-width: 0; }
 .path-link { display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 2px; }
 .path-link:hover { text-decoration-color: var(--color-primary); color: var(--color-primary); }
-.tool-hint { font-size: 12px; border-radius: 5px; padding: 6px 8px; line-height: 1.5; }
-.tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--color-text-muted); font-size: 11px; line-height: 1.45; }
+.tool-hint { font-size: var(--text-sm); border-radius: 5px; padding: 6px 8px; line-height: 1.5; }
+.tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.45; }
 .hint-warn { background: var(--state-warning-soft); color: var(--state-warning); }
 .hint-error { background: var(--state-danger-soft); color: var(--state-danger); }
-/* envcheck 家族特有“描边强调”变体（非全局 .btn-secondary 的实底语义），保留并 token 化 */
-.btn-secondary { background: transparent; color: var(--color-primary); border-color: var(--color-border); }
-.btn-secondary:hover:not(:disabled) { border-color: var(--color-primary); background: var(--surface-soft); }
+/* .btn-accent-outline 等值副本删净落回全局 :where(.btn-accent-outline)（含 hover 行，2026-09 治理裁决） */
 .tool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.extra-lines { margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-size: 10px; }
+.extra-lines { margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-size: var(--text-micro); }
 @media (max-width: 768px) {
   .status-toolbar { align-items: stretch; flex-direction: column; gap: 10px; }
   .refresh-button { width: 100%; }

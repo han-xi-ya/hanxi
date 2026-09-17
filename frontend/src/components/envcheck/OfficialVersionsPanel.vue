@@ -38,13 +38,13 @@ function relationClass(relation: string) {
         <strong>{{ heading }}</strong>
         <span v-if="stale" class="cache-chip">缓存数据</span>
       </div>
-      <button class="btn btn-secondary btn-small" @click="emit('open')">{{ downloadLabel }}</button>
+      <button class="btn btn-accent-outline btn-small" @click="emit('open')">{{ downloadLabel }}</button>
     </div>
 
     <p v-if="loading && !channels.length" class="panel-state">正在查询官网版本…</p>
     <div v-if="error" class="panel-error" role="alert">
       <span>{{ error }}<template v-if="channels.length">，继续显示上次结果</template></span>
-      <button class="link-button" :disabled="loading" @click="emit('retry')">重试</button>
+      <button class="retry-link" :disabled="loading" @click="emit('retry')">重试</button>
     </div>
 
     <div v-if="channels.length" class="channel-list">
@@ -76,33 +76,34 @@ function relationClass(relation: string) {
 <style scoped>
 .official-panel { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.panel-heading strong { color: var(--color-text); font-size: 12px; }
-.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: var(--state-warning-soft); color: var(--state-warning); font-size: 10px; }
-.panel-state, .fetched-at { margin: 0; color: var(--color-text-muted); font-size: 12px; }
-.fetched-at { font-size: 10px; }
-.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: var(--state-danger-soft); color: var(--state-danger); font-size: 12px; line-height: 1.5; }
+.panel-heading strong { color: var(--color-text); font-size: var(--text-sm); }
+.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-micro); }
+.panel-state, .fetched-at { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.fetched-at { font-size: var(--text-micro); }
+.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: var(--state-danger-soft); color: var(--state-danger); font-size: var(--text-sm); line-height: 1.5; }
 .channel-list { display: flex; flex-direction: column; gap: 10px; }
 .channel-block { display: flex; flex-direction: column; gap: 6px; }
 .channel-block + .channel-block { padding-top: 9px; border-top: 1px dashed var(--color-border); }
 .channel-heading { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
-.channel-label { color: var(--color-text); font-size: 12px; font-weight: 700; }
-.channel-detail { color: var(--color-text-muted); font-size: 10px; }
-.relation-text { margin: 0; padding: 6px 8px; border-radius: 5px; font-size: 12px; line-height: 1.45; }
+.channel-label { color: var(--color-text); font-size: var(--text-sm); font-weight: 700; }
+.channel-detail { color: var(--color-text-muted); font-size: var(--text-micro); }
+.relation-text { margin: 0; padding: 6px 8px; border-radius: 5px; font-size: var(--text-sm); line-height: 1.45; }
 .relation-ok { background: var(--state-positive-soft); color: var(--state-positive); }
 .relation-update { background: var(--state-information-soft); color: var(--state-information); }
 .relation-neutral { background: var(--surface-hover); color: var(--color-text-muted); }
 .release-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
 .release-list li { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; align-items: baseline; gap: 8px; padding: 4px 2px; border-bottom: 1px dashed var(--color-border); }
 .release-list li:last-child { border-bottom: 0; }
-.release-rank { color: var(--color-text-subtle); font-size: 11px; }
+.release-rank { color: var(--color-text-subtle); font-size: var(--text-xs); }
 .release-version { font-weight: 600; }
-.release-list time, .date-empty { color: var(--color-text-muted); font-size: 11px; white-space: nowrap; }
-.mono { font-family: var(--font-mono); color: var(--color-text); font-size: 11px; overflow-wrap: anywhere; }
-.link-button { padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font: inherit; white-space: nowrap; text-decoration: underline; }
-/* .btn 基础/small/禁用/焦点环/coarse/reduced 由全局承载；保留面板特有"描边强调"变体与链接禁用态 */
-.btn-secondary { background: transparent; color: var(--color-primary); border-color: var(--color-border); }
-.btn-secondary:hover:not(:disabled) { border-color: var(--color-primary); background: var(--surface-soft); }
-.link-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.release-list time, .date-empty { color: var(--color-text-muted); font-size: var(--text-xs); white-space: nowrap; }
+/* 原 .mono 同名 scoped 副本已删净：落回全局 .mono（--text-sm + break-all） */
+/* 原 .link-button 同名 scoped 副本改名 .retry-link：常下划线 + 不换行小字语境——
+   与全局 .retry-link（下划线仅 hover、margin-left 8、字号 sm 档）不同形，属有意局部差异，保留 */
+.retry-link { padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font: inherit; white-space: nowrap; text-decoration: underline; }
+.retry-link:disabled { opacity: 0.5; cursor: not-allowed; }
+/* .btn 基础/small/禁用/焦点环/coarse/reduced 由全局承载；
+   .btn-accent-outline 等值副本（含 hover 行）删净落回全局 :where(.btn-accent-outline) */
 @media (max-width: 460px) {
   .release-list li { grid-template-columns: 50px minmax(0, 1fr); }
   .release-list time, .date-empty { grid-column: 2; }

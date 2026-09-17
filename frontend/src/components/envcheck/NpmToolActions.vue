@@ -57,7 +57,7 @@ watch(() => props.logLines.length, async () => {
 
     <p v-if="overview.latestError" class="panel-error" role="alert">
       <span>{{ overview.latestError }}</span>
-      <button class="link-button" @click="emit('retry')">重试</button>
+      <button class="retry-link" @click="emit('retry')">重试</button>
     </p>
     <p v-else class="relation-text" :class="relationClass()">
       {{ relationText[relation] || relationText.unknown }}
@@ -112,24 +112,26 @@ watch(() => props.logLines.length, async () => {
 <style scoped>
 .npm-panel { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 8px; }
 .panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.panel-heading strong { color: var(--color-text); font-size: 12px; }
-.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: var(--state-warning-soft); color: var(--state-warning); font-size: 10px; }
-.latest-version { color: var(--color-text-muted); font-size: 11px; }
-.relation-text { margin: 0; padding: 6px 8px; border-radius: 5px; font-size: 12px; line-height: 1.45; }
+.panel-heading strong { color: var(--color-text); font-size: var(--text-sm); }
+.cache-chip { display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 10px; background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-micro); }
+.latest-version { color: var(--color-text-muted); font-size: var(--text-xs); }
+.relation-text { margin: 0; padding: 6px 8px; border-radius: 5px; font-size: var(--text-sm); line-height: 1.45; }
 .relation-ok { background: var(--state-positive-soft); color: var(--state-positive); }
 .relation-update { background: var(--state-information-soft); color: var(--state-information); }
 .relation-neutral { background: var(--surface-hover); color: var(--color-text-muted); }
-.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: var(--state-danger-soft); color: var(--state-danger); font-size: 12px; line-height: 1.5; margin: 0; }
-.detail-warn { margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--state-warning-soft); color: var(--state-warning); font-size: 11px; line-height: 1.5; }
-.op-running { display: flex; align-items: center; gap: 7px; color: var(--color-text-muted); font-size: 12px; }
+.panel-error { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 7px 8px; border-radius: 5px; background: var(--state-danger-soft); color: var(--state-danger); font-size: var(--text-sm); line-height: 1.5; margin: 0; }
+.detail-warn { margin: 0; padding: 6px 8px; border-radius: 5px; background: var(--state-warning-soft); color: var(--state-warning); font-size: var(--text-xs); line-height: 1.5; }
+.op-running { display: flex; align-items: center; gap: 7px; color: var(--color-text-muted); font-size: var(--text-sm); }
 .op-spinner { width: 12px; height: 12px; border: 2px solid var(--color-border); border-top-color: var(--color-primary); border-radius: 50%; animation: npm-spin 0.8s linear infinite; flex: none; }
 @keyframes npm-spin { to { transform: rotate(360deg); } }
 .npm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.op-log { margin: 0; max-height: 140px; overflow-y: auto; padding: 8px; border-radius: 6px; background: var(--surface-soft); border: 1px solid var(--color-border); font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; }
-.npm-footnote { margin: 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
-.mono { font-family: var(--font-mono); color: var(--color-text); font-size: 11px; }
-/* .link-button 全局原子承载基础形；本面板保持常下划线与小字号语境 */
-.link-button { padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font: inherit; white-space: nowrap; text-decoration: underline; }
+/* 页内软底日志块（非 --terminal-* 固定深底体系），不豁免：字号上阶梯 */
+.op-log { margin: 0; max-height: 140px; overflow-y: auto; padding: 8px; border-radius: 6px; background: var(--surface-soft); border: 1px solid var(--color-border); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.npm-footnote { margin: 0; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.5; }
+/* 原 .mono 同名 scoped 副本已删净：落回全局 .mono（--text-sm + break-all） */
+/* 原 .link-button 同名 scoped 副本改名 .retry-link：本面板保持常下划线 + 不换行的小字语境，
+   与全局原子（默认无下划线、hover 才现形）系有意差异，脱钩命名防互染 */
+.retry-link { padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font: inherit; white-space: nowrap; text-decoration: underline; }
 /* .btn 基础/primary/small、禁用态、焦点环、coarse-pointer 最小尺寸与减弱动效
    由 components.css / base.css 全局承载；本面板仅留特有"描边红"卸载变体 */
 .btn-uninstall { background: transparent; color: var(--state-danger); border-color: var(--state-danger-glow); }

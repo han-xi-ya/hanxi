@@ -36,7 +36,7 @@ async function copyCommand() {
     <p v-if="!installed" class="state-text">当前未检测到 {{ tool }}，以下命令仅供安装后参考。</p>
     <div class="command-row">
       <code class="command">{{ command }}</code>
-      <button class="copy-button" type="button" @click="copyCommand">复制命令</button>
+      <button class="btn btn-secondary btn-micro copy-button" type="button" @click="copyCommand">复制命令</button>
     </div>
     <p class="source-hint">{{ sourceHint }}</p>
     <p class="safety-hint">该命令会修改全局开发环境。请在你自己的终端确认路径与权限后执行；Hanxi 不自动运行，也不自动提权。</p>
@@ -46,12 +46,15 @@ async function copyCommand() {
 <style scoped>
 .upgrade-hint { margin-top: 3px; padding-top: 11px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 7px; }
 .hint-heading { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.hint-heading strong { color: var(--color-text); font-size: 12px; }
-.manual-chip { padding: 1px 6px; border-radius: 10px; background: var(--surface-hover); color: var(--color-text-muted); font-size: 10px; }
-.state-text, .source-hint, .safety-hint { margin: 0; color: var(--color-text-muted); font-size: 11px; line-height: 1.5; }
+.hint-heading strong { color: var(--color-text); font-size: var(--text-sm); }
+.manual-chip { padding: 1px 6px; border-radius: 10px; background: var(--surface-hover); color: var(--color-text-muted); font-size: var(--text-micro); }
+.state-text, .source-hint, .safety-hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.5; }
 .command-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.command { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 5px; background: var(--surface-soft); border: 1px solid var(--color-border); color: var(--color-text); font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
-.copy-button { flex-shrink: 0; min-height: 28px; padding: 4px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: transparent; color: var(--color-primary); font-size: 11px; cursor: pointer; }
+.command { flex: 1; min-width: 0; padding: 6px 8px; border-radius: 5px; background: var(--surface-soft); border: 1px solid var(--color-border); color: var(--color-text); font-family: var(--font-mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+/* 私有小钮形收编：钮高/内距/字号/边框/圆角/手型落回全局 .btn .btn-secondary .btn-micro
+   标准三件套（28px→--control-h-sm 24px、4px 10px→2px 8px——设计归一，登记目视项）；
+   此处仅留主色描边配色与不收缩两项独有差 */
+.copy-button { flex-shrink: 0; background: transparent; color: var(--color-primary); }
 .copy-button:hover { border-color: var(--color-primary); background: var(--surface-soft); }
 /* 焦点环与 coarse-pointer 最小尺寸由 base.css 全局承载 */
 .safety-hint { color: var(--state-warning); }
