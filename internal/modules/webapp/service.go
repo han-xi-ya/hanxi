@@ -119,7 +119,10 @@ func (s *WebAppService) SaveEntry(entryID, name, rawURL, icon string) (string, e
 		return "", err
 	}
 
-	// 存活窗即时跟新标题（建窗后 Title 恒定格、不随页面漂移，改名只有服务层能推）
+	// 存活窗即时跟新标题（建窗后 Title 恒定格、不随页面漂移，改名只有服务层能推）。
+	// 与 Open 占位回填存在良性竞态：改名抢在回填前则 SetTitle 落空（live=nil），
+	// 随后建窗以 Store 最新名定格，殊途同归；URL 编辑不导航存活窗，
+	// 新地址自下次开窗起生效（有意语义，与 Collapse 复用不刷新同口径）。
 	s.mu.Lock()
 	var live *application.WebviewWindow
 	if h, ok := s.wins[entryID]; ok {
@@ -216,9 +219,11 @@ func (s *WebAppService) Open(entryID string) error {
 		s.emitChanged()
 		return nil
 	}
-	// 建窗期间条目被 DeleteEntry/shutdown 摘除：弃建（Close 无 Cancel hook，直达真销毁）
+	// 建窗期间条目被 DeleteEntry/shutdown 摘除：弃建（Close 无 Cancel hook，直达真销毁）。
+	// Close 走 InvokeSync，须留 goroutine：OnDestroy 在 shutdown 主线程执行时，
+	// 若此弃建窗恰好还挂在主线程手里，同线程阻塞等待自身队列会僵住退出链（#56 语境）。
 	s.mu.Unlock()
-	win.Close()
+	go win.Close()
 	return nil
 }
 
@@ -256,6 +261,8 @@ func (s *WebAppService) Collapse(entryID string) error {
 }
 
 // CollapseAll 收起全部可见网页窗（各自进入 TTL 驻留）。
+// 返回 error 恒为 nil：全仓 Wails 服务先例（Dismiss 等）以 error 收尾
+// 保持绑定面一致，前端 await 契约不因后续演进突变。
 func (s *WebAppService) CollapseAll() error {
 	s.mu.Lock()
 	ids := make([]string, 0, len(s.wins))
@@ -364,7 +371,12 @@ func (s *WebAppService) destroy(entryID string, expect *winHandle, force bool) {
 
 	if h.win != nil {
 		s.rememberGeometry(entryID, h.win)
-		h.win.Close() // 无 Cancel hook：emit 后即走内部真销毁（#56）
+		// 无 Cancel hook：emit 后即走内部真销毁（#56）。Close/内部销毁响应器
+		// （InvokeSync markAsDestroyed+impl.close，非主线程即排队等主循环）一律
+		// 挪 goroutine 执行：本方法有 shutdown 调用点，可能正处于主线程 OnShutdown
+		// 序列内，锁外同步 Close 会阻塞退出链数秒甚至更久。
+		win := h.win
+		go win.Close()
 	}
 	s.emitChanged()
 }
