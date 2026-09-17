@@ -78,6 +78,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/ext/wsl': { component: defineAsyncComponent(() => import('@/views/WSLView.vue')), moduleId: 'wsl' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
+  '/ext/msgboard': { component: defineAsyncComponent(() => import('@/views/MsgBoardView.vue')), moduleId: 'msgboard' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
   '/settings': { component: SettingsGeneral },
   '/settings/general': { component: SettingsGeneral },
@@ -162,6 +163,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   keyviz: 'desktop',
   quicklook: 'desktop',
   guoheview: 'desktop',
+  msgboard: 'desktop',
   memo: 'efficiency',
   webapp: 'efficiency',
   everything: 'efficiency',
@@ -229,6 +231,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   douzy: { icon: 'i:film', route: '/ext/douzy' },
   wsl: { icon: 'i:terminal', route: '/ext/wsl' },
   quickmenu: { icon: 'i:mouse-pointer', route: '/ext/quickmenu' },
+  msgboard: { icon: 'i:message-circle', route: '/ext/msgboard' },
   envcheck: { icon: 'i:wrench', route: '/ext/envcheck' },
   ocr: { icon: 'i:scan-text', route: '/ext/ocr' },
 }

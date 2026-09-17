@@ -9,9 +9,9 @@ import {
 import { ICON_NAMES } from '../icons'
 
 describe('constants/navigation', () => {
-  it('登记了全部 49 条路由（含设置页 6 个分区子路由）', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(49)
-    for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp']) {
+  it('登记了全部 50 条路由（含设置页 6 个分区子路由）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(50)
+    for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard']) {
       expect(ROUTES[route]).toBeDefined()
     }
     for (const s of SETTINGS_SECTIONS) {
@@ -24,7 +24,7 @@ describe('constants/navigation', () => {
       .filter(([, def]) => def.moduleId !== undefined)
       .map(([route, def]) => `${route}=${def.moduleId}`)
       .sort()
-    expect(withModule).toHaveLength(39)
+    expect(withModule).toHaveLength(40)
     expect(withModule).toContain('/frpc=frpc')
     expect(withModule).toContain('/ext/webapp=webapp')
     expect(withModule).toContain('/ext/ocr=ocr')
@@ -65,7 +65,7 @@ describe('constants/navigation', () => {
       if (def.moduleId) expect(MODULE_GROUP[def.moduleId]).toBeDefined()
     }
     for (const g of Object.values(MODULE_GROUP)) expect(groups.has(g)).toBe(true)
-    expect(Object.keys(MODULE_GROUP)).toHaveLength(39)
+    expect(Object.keys(MODULE_GROUP)).toHaveLength(40)
   })
 
   it('groupOfModule：已知返回分组，未知返回 undefined', () => {

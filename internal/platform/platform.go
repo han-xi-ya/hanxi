@@ -164,6 +164,34 @@ type JobAPI interface {
 	Create() (Job, error)
 }
 
+// KeepAwakeScope 防休眠层面位标志（可按位组合）。
+type KeepAwakeScope uint8
+
+const (
+	KeepAwakeSystem  KeepAwakeScope = 1 << iota // 阻止系统休眠
+	KeepAwakeDisplay                            // 阻止显示器自动熄灭
+)
+
+// KeepAwakeAPI 防休眠引用计数聚合器抽象（Windows 实现封 SetThreadExecutionState，
+// 其余平台可给空操作降级）。
+//
+// 语义（合同）：
+//   - 每个能力持有人（holder，如 "msgboard"）以唯一名字 Acquire 一份诉求，做完
+//     Release；系统级休眠阻止状态是所有活跃持有人 scope 的并集；
+//   - 多持有人交叠互不踩踏：任一持有人在场即保持阻止；最后一个 Release 后
+//     （计数归零）才真正撤销系统状态；
+//   - 同一持有人重复 Acquire 为幂等改判（后写覆盖前写的 scope，不加计数），
+//     Release 亦幂等——持有人名字本身就是租约，宁可少计一次也不要泄露
+//     "永远在防休眠"的常驻状态。
+type KeepAwakeAPI interface {
+	// Acquire 为 holder 申请阻止休眠（scope 不得为 0）。
+	Acquire(holder string, scope KeepAwakeScope) error
+	// Release 释放 holder 的诉求（holder 未在场时静默无操作）。
+	Release(holder string) error
+	// Holders 返回当前活跃持有人名单（有序，诊断与测试用）。
+	Holders() []string
+}
+
 // Platform 统一聚合接口
 type Platform interface {
 	Network() NetworkAPI
@@ -172,6 +200,8 @@ type Platform interface {
 	Job() JobAPI
 	// AppPackage 管理当前用户注册的 Windows 应用包。
 	AppPackage() apppackage.API
+	// KeepAwake 防休眠引用计数聚合器（挂牌/录制等"我在场别睡"类能力的公共设施）。
+	KeepAwake() KeepAwakeAPI
 	// DesktopDir 返回当前用户桌面目录（供便携工具的桌面快捷方式落点）
 	DesktopDir() (string, error)
 	// CreateDesktopShortcut 在桌面创建快捷方式（同名覆盖）

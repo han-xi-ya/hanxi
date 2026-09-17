@@ -56,6 +56,7 @@ import (
 	markeroninstance "hanxi/internal/modules/markeron/instance"
 	markeronversion "hanxi/internal/modules/markeron/version"
 	"hanxi/internal/modules/memo"
+	"hanxi/internal/modules/msgboard"
 	"hanxi/internal/modules/nanazip"
 	"hanxi/internal/modules/ocr"
 	"hanxi/internal/modules/papertodo"
@@ -138,6 +139,8 @@ func RegisterEvents() {
 	application.RegisterEvent[fileshare.TransferEvent]("fileshare:transfer")
 	application.RegisterEvent[fileshare.DropItem]("fileshare:text-dropped")
 	application.RegisterEvent[application.Void]("memo:changed")
+	// msgboard:changed 是无载荷事件（挂牌/撤牌/改配置推送，模块页与牌体视图各自拉新）。
+	application.RegisterEvent[application.Void]("msgboard:changed")
 	application.RegisterEvent[notify.Notification]("notify:received")
 	application.RegisterEvent[markeronversion.DownloadProgress]("markeron:version-download")
 	application.RegisterEvent[markeroninstance.Snapshot]("markeron:instance-state")
@@ -335,6 +338,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		fileShareModule,
 		quickMenuModule,
 		webapp.New(store),
+		msgboard.New(plat, paths),
 	}
 	if memoModule != nil {
 		modulesToRegister = append(modulesToRegister, memoModule)
@@ -451,6 +455,12 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	quickMenuModule.SetMainWindow(win)
 	if err := registry.EnsureActive("quickmenu"); err != nil {
 		slog.Error("激活 quickmenu 模块失败，全局鼠标钩子不可用（不影响启动）", "err", err)
+	}
+
+	// msgboard：全局热键与 quickmenu 钩子同属常驻监听能力——开机即注册（beta.10
+	// 会把 Run 前的注册排入 pending，启动瞬间完成 OS 绑定），主窗不开也能挂牌。
+	if err := registry.EnsureActive("msgboard"); err != nil {
+		slog.Error("激活 msgboard 模块失败，留言板热键不可用（不影响启动）", "err", err)
 	}
 
 	// 标题栏同步桥：前端 useTheme 解析出实际亮/暗与当前色板后经 SetWindowDarkMode
