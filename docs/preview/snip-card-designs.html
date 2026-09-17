@@ -1,0 +1,285 @@
+<!doctype html>
+<!-- OCR 框选识别悬浮结果卡 · 设计对比稿（仅供挑选方向，非实现代码）
+     四个方案 A/B/C/D，各含浅色/深色两版，放在模拟壁纸上观察真实浮起效果。 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>OCR 结果卡设计稿 · 四方案对比</title>
+<style>
+  /* ---------- 画布与对比稿骨架 ---------- */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 32px 64px;
+    font-family: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    background: #e9edee; color: #1c2b31;
+  }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lede { font-size: 13px; color: #5b6d74; margin: 0 0 30px; }
+  .scheme { margin-bottom: 44px; }
+  .scheme > h2 { font-size: 15px; margin: 0 0 2px; }
+  .scheme > p { font-size: 12.5px; color: #5b6d74; margin: 0 0 14px; max-width: 860px; line-height: 1.6; }
+  .pair { display: flex; gap: 24px; flex-wrap: wrap; }
+  .stage {
+    position: relative; width: 500px; height: 330px; border-radius: 12px; overflow: hidden;
+    /* 模拟桌面壁纸：彩色渐变 + 窗格纹理，检验卡片浮起感 */
+    background:
+      linear-gradient(116deg, rgba(255,255,255,.18), transparent 42%),
+      repeating-linear-gradient(0deg, transparent 0 46px, rgba(255,255,255,.07) 46px 47px),
+      repeating-linear-gradient(90deg, transparent 0 70px, rgba(255,255,255,.07) 70px 71px),
+      linear-gradient(135deg, #4c7d8f 0%, #7ba391 34%, #c8a468 68%, #8f6f8f 100%);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.12);
+  }
+  .stage .tag {
+    position: absolute; top: 10px; left: 12px; z-index: 2;
+    font-size: 11px; letter-spacing: .04em; color: rgba(255,255,255,.92);
+    text-shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+
+  /* ---------- 主题 token（与 tokens.css 同步的取值） ---------- */
+  .light {
+    --panel:#ffffff; --soft:#f7fafb; --hover:#eef5f5;
+    --text:#14252c; --muted:#667980; --subtle:#8a9aa0;
+    --border:#dce6e8; --primary:#0f8b8d; --primary-hover:#0b7779; --on-primary:#fff;
+    --pos:#08875d; --pos-soft:#e2f4ec; --danger:#d64545;
+    --float:0 2px 4px rgba(32,66,72,.08), 0 8px 22px rgba(32,66,72,.18);
+  }
+  .dark {
+    --panel:#0e1c22; --soft:#12252c; --hover:#173039;
+    --text:#e8f2f3; --muted:#9aadb2; --subtle:#748a90;
+    --border:#213840; --primary:#42b7b4; --primary-hover:#59c8c5; --on-primary:#052326;
+    --pos:#47c792; --pos-soft:#0f2e24; --danger:#ff7974;
+    --float:0 2px 4px rgba(0,0,0,.28), 0 8px 22px rgba(0,0,0,.42);
+  }
+
+  /* 公共：定位在"鼠标右下"的悬浮卡 + 模拟光标位置感 */
+  .stage .card { position: absolute; top: 118px; left: 62px; }
+  .btn {
+    display:inline-flex; align-items:center; gap:5px; border-radius:8px; cursor:default;
+    border:1px solid transparent; font: 500 12px/1 inherit; padding:7px 13px;
+    font-family: inherit;
+  }
+  .btn-primary { background: var(--primary); color: var(--on-primary); }
+  .btn-ghost { background: transparent; color: var(--muted); }
+  .icon-btn {
+    width:26px; height:26px; display:grid; place-items:center; border:none; cursor:default;
+    border-radius:8px; background:transparent; color:var(--muted);
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .meta { font-size:11px; color:var(--subtle); font-variant-numeric: tabular-nums; }
+  .chip {
+    font-size:11px; padding:2px 8px; border-radius:999px; font-weight:500; white-space:nowrap;
+    background: var(--pos-soft); color: var(--pos);
+  }
+  svg { display:block; }
+  .txt { font-size:13.5px; line-height:1.65; color:var(--text); white-space:pre-wrap; }
+
+  /* ---------- 方案 A：无标题纯内容，底部一行工具 ---------- */
+  .card-a {
+    width:400px; min-height:190px; display:flex; flex-direction:column;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    box-shadow:var(--float); padding:14px 16px 10px;
+  }
+  .card-a .txt { flex:1; }
+  .card-a .foot {
+    display:flex; align-items:center; gap:8px;
+    border-top:1px solid var(--border); padding-top:8px;
+  }
+  .card-a .foot .grow { flex:1; }
+
+  /* ---------- 方案 B：正文主卡 + 下方悬浮工具条 ---------- */
+  .bwrap { width:400px; }
+  .card-b {
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    box-shadow:var(--float); padding:14px 16px; min-height:170px; overflow:hidden;
+  }
+  .bar-b {
+    margin-top:10px; display:flex; align-items:center; gap:10px;
+    padding:6px 8px 6px 12px; border-radius:999px;
+    background:var(--panel); border:1px solid var(--border);
+    box-shadow:var(--float); width:max-content;
+  }
+  .bar-b .sep { width:1px; height:14px; background:var(--border); }
+
+  /* ---------- 方案 C：一行小注当标题，零分隔线 ---------- */
+  .card-c {
+    width:400px; min-height:190px; display:flex; flex-direction:column;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    box-shadow:var(--float); padding:11px 14px 11px;
+  }
+  .card-c .cap { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .card-c .cap .mark { width:5px; height:5px; border-radius:50%; background:var(--primary); }
+  .card-c .cap .meta { font-size:11px; letter-spacing:.02em; }
+  .card-c .txt { flex:1; }
+  .card-c .act { display:flex; justify-content:flex-end; margin-top:6px; }
+
+  /* ---------- 方案 D：无边框深玻璃大圆角 ---------- */
+  .card-d {
+    width:400px; min-height:190px; display:flex; flex-direction:column;
+    border-radius:14px; padding:14px 16px 11px;
+    box-shadow:0 10px 34px rgba(10,20,24,.4), 0 2px 8px rgba(10,20,24,.25);
+    backdrop-filter: blur(18px) saturate(1.3);
+  }
+  .light .card-d { background:rgba(255,255,255,.82); }
+  .dark  .card-d { background:rgba(12,22,27,.78); }
+  .card-d .txt { flex:1; }
+  .card-d .foot { display:flex; align-items:center; gap:8px; margin-top:8px; }
+  .card-d .foot .grow { flex:1; }
+  .card-d .meta { color:var(--muted); }
+</style>
+</head>
+<body>
+  <h1>OCR 框选识别 · 悬浮结果卡设计稿</h1>
+  <p class="lede">
+    共性：单层实底、无内嵌框（消灭"两层"感）；发丝边框 + 柔和投影建立浮起；13.5px 正文。
+    差异在<b>工具区放哪、标题要不要、边框语言</b>。每张卡内容相同，便于对比。
+  </p>
+
+  <!-- ================= A ================= -->
+  <section class="scheme">
+    <h2>方案 A · 内容即主角（Snipaste 式）</h2>
+    <p>去掉标题行——"这是识别结果"由场景自明。文字直接铺满卡片，底部一行小工具：元信息 + 复制。<b>最克制、最紧凑</b>，卡片可以做得更小。</p>
+    <div class="pair">
+      <div class="stage light"><span class="tag">浅色</span>
+        <div class="card card-a">
+          <div class="txt">2026 年 9 月 17 日 星期四
+项目例会 14:00 · 会议室 B
+待办：提交报销、回复邮件、
+整理季度 OKR 复盘材料</div>
+          <div class="foot">
+            <span class="meta">4 行 · 88 ms</span><span class="chip">已复制</span>
+            <span class="grow"></span>
+            <button class="icon-btn" title="关闭">✕</button>
+            <button class="btn btn-primary">⧉ 复制全文</button>
+          </div>
+        </div>
+      </div>
+      <div class="stage dark"><span class="tag">深色</span>
+        <div class="card card-a">
+          <div class="txt">2026 年 9 月 17 日 星期四
+项目例会 14:00 · 会议室 B
+待办：提交报销、回复邮件、
+整理季度 OKR 复盘材料</div>
+          <div class="foot">
+            <span class="meta">4 行 · 88 ms</span><span class="chip">已复制</span>
+            <span class="grow"></span>
+            <button class="icon-btn" title="关闭">✕</button>
+            <button class="btn btn-primary">⧉ 复制全文</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= B ================= -->
+  <section class="scheme">
+    <h2>方案 B · 主卡 + 悬浮工具条（两段式分离）</h2>
+    <p>卡片本体<b>只有文字</b>，一点 chrome 都没有；工具做成下方独立小胶囊条（元信息 / 复制 / 关闭）。像系统级取词浮层的质感，正文区域视觉最大。代价：弹两个区域，定位稍复杂。</p>
+    <div class="pair">
+      <div class="stage light"><span class="tag">浅色</span>
+        <div class="card bwrap">
+          <div class="card-b">
+            <div class="txt">2026 年 9 月 17 日 星期四
+项目例会 14:00 · 会议室 B
+待办：提交报销、回复邮件、
+整理季度 OKR 复盘材料</div>
+          </div>
+          <div class="bar-b">
+            <span class="meta">4 行 · 88 ms</span><span class="chip">已复制</span>
+            <span class="sep"></span>
+            <button class="btn btn-primary">⧉ 复制全文</button>
+            <button class="icon-btn" title="关闭">✕</button>
+          </div>
+        </div>
+      </div>
+      <div class="stage dark"><span class="tag">深色</span>
+        <div class="card bwrap">
+          <div class="card-b">
+            <div class="txt">2026 年 9 月 17 日 星期四
+项目例会 14:00 · 会议室 B
+待办：提交报销、回复邮件、
+整理季度 OKR 复盘材料</div>
+          </div>
+          <div class="bar-b">
+            <span class="meta">4 行 · 88 ms</span><span class="chip">已复制</span>
+            <span class="sep"></span>
+            <button class="btn btn-primary">⧉ 复制全文</button>
+            <button class="icon-btn" title="关闭">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= C ================= -->
+  <section class="scheme">
+    <h2>方案 C · 一行小注作标题，零分隔线</h2>
+    <p>保留"这是什么"的线索但不给标题栏：<b>青色小圆点 + 11px 灰调小注</b>（含元信息）飘在文字上方，底部右角只留一个主按钮。整卡一张白纸，靠字号对比分层，最贴合 Hanxi 冷静语汇。</p>
+    <div class="pair">
+      <div class="stage light"><span class="tag">浅色</span>
+        <div class="card card-c">
+          <div class="cap">
+            <span class="mark"></span>
+            <span class="meta">识别结果 · 4 行 · 88 ms · 已复制</span>
+            <span style="flex:1"></span>
+            <button class="icon-btn" title="关闭">✕</button>
+          </div>
+          <div class="txt">2026 年 9 月 17 日 星期四
+项目例会 14:00 · 会议室 B
+待办：提交报销、回复邮件、
+整理季度 OKR 复盘材料</div>
+          <div class="act"><button class="btn btn-primary">⧉ 复制全文</button></div>
+        </div>
+      </div>
+      <div class="stage dark"><span class="tag">深色</span>
+        <div class="card card-c">
+          <div class="cap">
+            <span class="mark"></span>
+            <span class="meta">识别结果 · 4 行 · 88 ms · 已复制</span>
+            <span style="flex:1"></span>
+            <button class="icon-btn" title="关闭">✕</button>
+          </div>
+          <div class="txt">2026 年 9 月 17 日 星期四
+项目例会 14:00 · 会议室 B
+待办：提交报销、回复邮件、
+整理季度 OKR 复盘材料</div>
+          <div class="act"><button class="btn btn-primary">⧉ 复制全文</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= D ================= -->
+  <section class="scheme">
+    <h2>方案 D · 无边框深玻璃（macOS 通知式）</h2>
+    <p>去边框、大圆角、半透明 + 背景模糊，靠大投影整体浮起，气质最"系统原生"。<b>提醒</b>：Hanxi 设计红线明确反对玻璃拟态堆叠，且 WebView2 的 backdrop-blur 在透明壳窗口上性能/兼容性需实测——选它=有意识地偏离设计系统。</p>
+    <div class="pair">
+      <div class="stage light"><span class="tag">浅色</span>
+        <div class="card card-d">
+          <div class="txt">2026 年 9 月 17 日 星期四
+项目例会 14:00 · 会议室 B
+待办：提交报销、回复邮件、
+整理季度 OKR 复盘材料</div>
+          <div class="foot">
+            <span class="meta">识别结果 · 4 行 · 88 ms</span><span class="grow"></span>
+            <button class="icon-btn" title="关闭" style="color:var(--muted)">✕</button>
+            <button class="btn btn-primary">⧉ 复制全文</button>
+          </div>
+        </div>
+      </div>
+      <div class="stage dark"><span class="tag">深色</span>
+        <div class="card card-d">
+          <div class="txt">2026 年 9 月 17 日 星期四
+项目例会 14:00 · 会议室 B
+待办：提交报销、回复邮件、
+整理季度 OKR 复盘材料</div>
+          <div class="foot">
+            <span class="meta">识别结果 · 4 行 · 88 ms</span><span class="grow"></span>
+            <button class="icon-btn" title="关闭" style="color:var(--muted)">✕</button>
+            <button class="btn btn-primary">⧉ 复制全文</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>
