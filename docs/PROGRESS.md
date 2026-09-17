@@ -23,9 +23,9 @@
 
 | 任务 | 状态 | 分支 | 波次 | 合并 commit | 备注 |
 |---|---|---|---|---|---|
-| F1 统一历史记录 | ⬜ 未开始 | feat/f1-history | 二 | - | PLAN_HISTORY.md，决策已全回写 |
-| F2 剪贴板惯例 | ⬜ 未开始 | feat/f2-clipboard | 二 | - | PLAN_CLIPBOARD.md；SnipCardView 依赖已解除 |
-| F3 数据自动快照 | ⬜ 未开始 | feat/f3-snapshot | 二 | - | PLAN_SNAPSHOT.md；对外命名"历史版本" |
+| F1 统一历史记录 | 🟡 开发中 | feat/f1-history | 二 | - | PLAN_HISTORY.md，决策已全回写；worktree wt-f1-history |
+| F2 剪贴板惯例 | 🟡 开发中 | feat/f2-clipboard | 二 | - | PLAN_CLIPBOARD.md；SnipCardView 依赖已解除；owns GlobalShortcut 封装 |
+| F3 数据自动快照 | 🟡 开发中 | feat/f3-snapshot | 二 | - | PLAN_SNAPSHOT.md；对外命名"历史版本"；只调用路径访问器不碰 paths.go |
 | F4 MCP AI 接入 | ⬜ 未开始 | feat/f4-mcp | 三 | - | PLAN_MCP.md；含 S2 随批修 |
 | F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
 | F6 数据目录同级化 | 🟡 开发中 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动；worktree wt-f6-siblingdir |
