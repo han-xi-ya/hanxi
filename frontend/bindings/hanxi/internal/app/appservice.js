@@ -277,7 +277,7 @@ export function SetTrayRebuilder(fn) {
 }
 
 /**
- * SetWindowDarkApplier 注入主窗口标题栏深色应用回调，仅由装配根（app.New）在窗口创建后调用。
+ * SetWindowDarkApplier 注入主窗口标题栏深色/色板应用回调，仅由装配根（app.New）在窗口创建后调用。
  * @param {any} fn
  * @returns {$CancellablePromise<void>}
  */
@@ -286,10 +286,12 @@ export function SetWindowDarkApplier(fn) {
 }
 
 /**
- * SetWindowDarkMode 切换主窗口原生标题栏亮/暗（DWM ImmersiveDarkMode）。
+ * SetWindowDarkMode 切换主窗口原生标题栏亮/暗（DWM ImmersiveDarkMode），
+ * 并按色板（teal|sky|iris|jade|onyx）同步外壳层配色（Win11 caption/text）。
  * @param {boolean} dark
+ * @param {string} accent
  * @returns {$CancellablePromise<void>}
  */
-export function SetWindowDarkMode(dark) {
-    return $Call.ByID(1186575710, dark);
+export function SetWindowDarkMode(dark, accent) {
+    return $Call.ByID(1186575710, dark, accent);
 }
