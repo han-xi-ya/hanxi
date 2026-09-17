@@ -132,6 +132,26 @@ func (s *OcrService) SnipCopyText() error {
 	return nil
 }
 
+// CardDragStart 拖拽把手 mousedown 调用：进入跟手移动会话（重入忽略）。
+// Wails beta.10 没有拖拽区 API（v2 SetDragRegion 已移除），原生轮询实现见
+// card_windows.go；结束走 CardDragEnd 与左键态检测双通道。
+func (s *OcrService) CardDragStart() {
+	s.cardMu.Lock()
+	card := s.card
+	s.cardMu.Unlock()
+	s.startCardDrag(card)
+}
+
+// CardDragEnd 拖拽把手 mouseup 调用：结束跟手移动会话（幂等）。
+func (s *OcrService) CardDragEnd() {
+	s.cardDragMu.Lock()
+	if s.cardDragStop != nil {
+		close(s.cardDragStop)
+		s.cardDragStop = nil
+	}
+	s.cardDragMu.Unlock()
+}
+
 // SnipCardDismiss 收起悬浮卡（前端关闭钮/Esc 调用；只隐藏不销毁）。
 func (s *OcrService) SnipCardDismiss() {
 	s.cardMu.Lock()

@@ -26,6 +26,24 @@ export function BrowseServiceExeDialog() {
 }
 
 /**
+ * CardDragEnd 拖拽把手 mouseup 调用：结束跟手移动会话（幂等）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function CardDragEnd() {
+    return $Call.ByID(3519330210);
+}
+
+/**
+ * CardDragStart 拖拽把手 mousedown 调用：进入跟手移动会话（重入忽略）。
+ * Wails beta.10 没有拖拽区 API（v2 SetDragRegion 已移除），原生轮询实现见
+ * card_windows.go；结束走 CardDragEnd 与左键态检测双通道。
+ * @returns {$CancellablePromise<void>}
+ */
+export function CardDragStart() {
+    return $Call.ByID(541182791);
+}
+
+/**
  * GetAutoCopy 返回「截屏识别后自动复制文字」开关（默认 true）。
  * @returns {$CancellablePromise<boolean>}
  */

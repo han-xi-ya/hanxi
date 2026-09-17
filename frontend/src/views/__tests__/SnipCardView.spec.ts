@@ -1,6 +1,6 @@
-// SnipCardView 特征测试：透明壳小窗里的结果卡契约——
+// SnipCardView 特征测试：Acrylic 小窗里的结果卡契约——
 // 事件推送渲染全文/元信息、复制按钮走 Go 代理、失败保卡给提示、
-// 空文本走"未识别"态、Esc 收起。绑定与事件按仓库统一打桩范式。
+// 空文本走"未识别"态、元信息条拖拽、Esc 收起。绑定与事件按仓库统一打桩范式。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SnipCardView from '../SnipCardView.vue'
@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   GetSnipResult: vi.fn(),
   SnipCopyText: vi.fn(),
   SnipCardDismiss: vi.fn(),
+  CardDragStart: vi.fn(),
+  CardDragEnd: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -85,6 +87,18 @@ describe('SnipCardView', () => {
     await flushPromises()
     expect(wrapper.find('.snip-state').text()).toContain('未识别到文字')
     expect(wrapper.find('.btn-primary').attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
+
+  it('拖拽把手：元信息条 mousedown 起跟手，window mouseup 结束', async () => {
+    api.CardDragStart.mockResolvedValue(undefined)
+    api.CardDragEnd.mockResolvedValue(undefined)
+    const wrapper = await mountView()
+    await wrapper.find('.snip-grip').trigger('mousedown', { button: 0 })
+    expect(api.CardDragStart).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 0 }))
+    await flushPromises()
+    expect(api.CardDragEnd).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 

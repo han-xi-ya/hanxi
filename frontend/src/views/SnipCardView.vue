@@ -32,6 +32,19 @@ async function dismiss() {
   } catch { /* 窗口侧兜底：卡已无处可收时静默 */ }
 }
 
+// 拖拽把手（元信息条）：Wails beta.10 无拖拽区 API，Go 侧原生轮询跟手。
+// mouseup 显式结束；指针移出窗口丢失事件时，Go 侧左键态检测兜底。
+function startDrag(e: MouseEvent) {
+  if (e.button !== 0) return
+  e.preventDefault() // 抑制把手上的文本选中
+  OcrAPI.CardDragStart().catch(() => { /* 拖拽尽力而为 */ })
+  const stop = () => {
+    window.removeEventListener('mouseup', stop)
+    OcrAPI.CardDragEnd().catch(() => {})
+  }
+  window.addEventListener('mouseup', stop)
+}
+
 async function copyAll() {
   busy.value = true
   try {
@@ -65,8 +78,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
     <footer class="snip-foot">
       <span v-if="tip" class="snip-tip" role="alert">{{ tip }}</span>
-      <span v-else-if="res?.ok" class="snip-meta">识别结果 · {{ res.lineCount }} 行 · {{ res.elapsedMs }} ms</span>
-      <span v-else class="snip-meta">识别结果</span>
+      <span v-else-if="res?.ok" class="snip-meta snip-grip" title="按住拖动" @mousedown="startDrag">识别结果 · {{ res.lineCount }} 行 · {{ res.elapsedMs }} ms</span>
+      <span v-else class="snip-meta snip-grip" title="按住拖动" @mousedown="startDrag">识别结果</span>
       <span v-if="res?.copied" class="chip chip-positive snip-copied">已复制</span>
       <button class="snip-x" aria-label="关闭（Esc）" title="关闭（Esc）" @click="dismiss">✕</button>
       <button class="btn btn-primary btn-small" :disabled="!canCopy" @click="copyAll">
@@ -78,15 +91,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <style scoped>
 /* 方案 D · 原生 Acrylic：Go 侧以 BackgroundTypeTranslucent + BackdropType
-   Acrylic 建窗，DWM 负责桌面模糊、圆角裁切与投影——**窗口即卡片**，页面不再
-   自绘边框/圆角/阴影壳（透明 margin 在 acrylic 下会露成灰角）。页面只叠一层
-   半透明主题调色，保证 Acrylic 系统着色与应用主题（及 Win10 无 tint 回退）
-   下的文字对比度；1px 内描边确立边缘。无标题栏：元信息下沉到底部一行，
-   "识别结果"由场景自明。 */
+   Acrylic 建窗，DWM 负责桌面模糊与圆角裁切——**窗口即卡片**，页面不再自绘
+   边框/圆角/阴影壳（透明 margin 在 acrylic 下会露成灰角）。页面叠 78% 半透明
+   主题调色：透明度每降一分，系统着色对文字对比的污染就多一分（62% 实测小字
+   不可读），78% 兼顾毛玻璃质感与 token 设计对比度；1px 内描边确立边缘。
+   无标题栏：元信息下沉底行兼作拖拽把手（.snip-grip），"识别结果"由场景自明。 */
 .snip-card {
   height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column;
-  background: color-mix(in srgb, var(--surface-panel) 62%, transparent);
+  background: color-mix(in srgb, var(--surface-panel) 78%, transparent);
   box-shadow: inset 0 0 0 1px var(--color-border);
   color: var(--color-text); padding: 14px 16px 12px;
   font-family: var(--font-text);
@@ -111,6 +124,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--color-text-subtle);
   font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.snip-grip { cursor: grab; user-select: none; }
+.snip-grip:active { cursor: grabbing; }
 .snip-tip { flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--state-danger); }
 .snip-copied { flex: none; }
 .snip-x {
