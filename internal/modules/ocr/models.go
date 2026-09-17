@@ -85,6 +85,22 @@ type DropResult struct {
 	Message string    `json:"message"` // 中文人话（成功说明或失败原因）
 }
 
+// HostedVersion 托管版本清单一件（F7：引擎 zip 安装进 versions/hanxi-ocr 的落位件）。
+// State：ready=入口可执行 / broken=目录在位但入口缺失损坏（列表照列，供卸载清理）。
+// Effective 由服务层填充：当前活跃引擎的服务解析结果正落在该版本目录内。
+type HostedVersion struct {
+	Engine      string `json:"engine"`      // wechat / paddle
+	Version     string `json:"version"`     // manifest 版本号（目录名 = engine-version）
+	Dir         string `json:"dir"`         // 版本目录绝对路径
+	ExePath     string `json:"exePath"`     // 入口 hanxi-ocr.exe 路径
+	Size        int64  `json:"size"`        // 入口 exe 字节数
+	InstalledAt string `json:"installedAt"` // 安装时间（meta.json / 目录 mtime）
+	Note        string `json:"note"`        // manifest 中文说明（可空）
+	State       string `json:"state"`       // ready / broken
+	Effective   bool   `json:"effective"`   // 生效版本（活跃引擎解析命中）
+	Error       string `json:"error"`       // broken 态中文原因
+}
+
 // EngineInfo 引擎注册表单件（GetEngines 列表元素，前端"引擎列表"两行卡按此渲染）。
 // Installed 语义：登记件或默认锚点可解析出可用 exe；未安装时 Path 为空、
 // Error 给中文原因（未找到指引 / 登记路径失效）。
