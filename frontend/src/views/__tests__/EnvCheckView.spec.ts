@@ -46,8 +46,11 @@ vi.mock('@wailsio/runtime', () => ({
   },
 }))
 
+const hist = vi.hoisted(() => ({ List: vi.fn(), Delete: vi.fn(), Clear: vi.fn() }))
+
 vi.mock('../../../bindings/hanxi/internal/modules/envcheck/envcheckservice', () => env)
 vi.mock('../../../bindings/hanxi/internal/modules/bcu/bcuservice', () => bcu)
+vi.mock('../../../bindings/hanxi/internal/history/historyservice', () => hist)
 
 function tool(over: Record<string, unknown>) {
   return { name: '', display: '', status: 'installed', version: '', path: '', hint: '', details: null, ...over }
@@ -98,6 +101,7 @@ function stubHappy() {
   env.UpgradeNpmTool.mockResolvedValue({ operationId: 'op-2', message: '升级中' })
   env.UninstallNpmTool.mockResolvedValue({ operationId: 'op-3', message: '卸载中' })
   bcu.OpenWindow.mockResolvedValue(undefined)
+  hist.List.mockResolvedValue([]) // 历史标签面板自取数：默认空桶
 }
 
 async function mountView() {
@@ -129,7 +133,7 @@ describe('EnvCheckView 检测卡渲染', () => {
     const w = await mountView()
     await flush()
     const tabs = w.findAll('[role="tab"]')
-    expect(tabs.map(tab => tab.text())).toEqual(['本机环境', '版本与工具'])
+    expect(tabs.map(tab => tab.text())).toEqual(['本机环境', '版本与工具', '历史记录'])
     expect(tabs[0].attributes('aria-selected')).toBe('true')
     expect(tabs[0].attributes('aria-controls')).toBe('envcheck-local-panel')
     expect(w.find('#envcheck-local-panel').attributes('aria-labelledby')).toBe('envcheck-local-tab')
@@ -368,5 +372,25 @@ describe('EnvCheckView 订阅生命周期', () => {
     w.unmount()
     await nextTick()
     expect(runtime.unlisten).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('EnvCheckView 历史记录标签（统一历史接入）', () => {
+  it('面板自取 envcheck 桶并渲染动作留档；无应用钮（无回填输入面）', async () => {
+    stubHappy()
+    hist.List.mockResolvedValue([
+      { id: 1, funcType: 'envcheck', summary: 'Claude Code 安装完成', input: 'claude', output: '', extra: 'npm-install', createdAt: '2026-09-17T10:00:00+08:00' },
+    ])
+    const w = await mountView()
+    await flush()
+    expect(hist.List).toHaveBeenCalledWith('envcheck', '')
+    const tab = w.findAll('[role="tab"]').find(item => item.text() === '历史记录')!
+    await tab.trigger('click')
+    await flush()
+    const panel = w.find('#envcheck-history-panel')
+    expect(panel.attributes('aria-labelledby')).toBe('envcheck-history-tab')
+    expect(panel.text()).toContain('Claude Code 安装完成')
+    expect(panel.findAll('.hp-actions .btn').map(b => b.text())).not.toContain('应用')
+    w.unmount()
   })
 })

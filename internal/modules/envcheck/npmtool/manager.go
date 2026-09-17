@@ -148,6 +148,7 @@ func runOperation(op *operationState, args []string) {
 			Stage: "error", Message: message, Terminal: true,
 		})
 		notify.Error(moduleID, op.display+" 操作失败", message, navigateURL)
+		recordOutcome(op, message, false)
 		return
 	}
 	message := fmt.Sprintf("%s %s完成", op.display, kindText(op.kind))
@@ -156,6 +157,27 @@ func runOperation(op *operationState, args []string) {
 		Stage: "done", Message: message, Terminal: true, Success: true,
 	})
 	notify.Success(moduleID, op.display+" 操作完成", message, navigateURL)
+	recordOutcome(op, message, true)
+}
+
+// recordOutcome npm 动作终态落统一历史（Q2：动作类全记）。
+// 只记自组摘要，绝不存 npm 输出正文（runNpm 的 tail 返回即弃——日志行可能含
+// 私有源凭据，且原始日志已走 envcheck:npm-tool-log 事件流供前端当场查看）；
+// err 通道仅 exec 包装文本（"npm … 执行失败: exit status"形态），无凭据面。
+func recordOutcome(op *operationState, message string, success bool) {
+	if historyStore == nil {
+		return
+	}
+	extra := "npm-" + op.kind
+	if !success {
+		extra += "|fail"
+	}
+	_ = historyStore.Save(history.Record{
+		FuncType: moduleID,
+		Summary:  message,
+		Input:    op.toolID,
+		Extra:    extra,
+	})
 }
 
 func kindText(kind string) string {

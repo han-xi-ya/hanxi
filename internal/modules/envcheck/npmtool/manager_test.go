@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"hanxi/internal/history"
 )
 
 // withManagerSeams 替换 lookNpm / runNpm 两个包级 seam，测试结束自动还原。
@@ -105,4 +107,60 @@ func TestManagerFailureTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitIdle(t) // 失败路径同样必须收尾清锁（defer finishOperation）
+}
+
+// ---------- 统一历史（Q2 动作终态入库；只记摘要不存日志行） ----------
+
+func TestManagerRecordsHistoryTerminals(t *testing.T) {
+	h := history.NewStore(t.TempDir())
+	SetHistory(h)
+	t.Cleanup(func() { SetHistory(nil) })
+
+	// 成功终态：npm-install
+	withManagerSeams(t, true, func(_ context.Context, _ []string, _ func(string)) (string, error) {
+		return "added 1 package", nil
+	})
+	if _, err := Install("claude"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t)
+	list, err := h.List("envcheck", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Input != "claude" || list[0].Extra != "npm-install" ||
+		!strings.Contains(list[0].Summary, "Claude Code 安装完成") {
+		t.Fatalf("成功终态记录失真: %+v", list)
+	}
+
+	// 失败终态：npm-uninstall|fail；Output 必须为空（日志行/输出正文严禁入库）
+	withManagerSeams(t, true, func(_ context.Context, _ []string, _ func(string)) (string, error) {
+		return "npm ERR! 401 private-registry token=secret123", errors.New("npm uninstall -g @openai/codex executed failed: exit status 1")
+	})
+	if _, err := Uninstall("codex"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t)
+	list, _ = h.List("envcheck", "")
+	if len(list) != 2 {
+		t.Fatalf("失败终态也应记: %+v", list)
+	}
+	fail := list[0] // 头插最新
+	if fail.Extra != "npm-uninstall|fail" || fail.Output != "" || fail.Input != "codex" {
+		t.Fatalf("失败记录失真: %+v", fail)
+	}
+	if strings.Contains(fail.Summary, "token=secret123") || strings.Contains(fail.Summary, "npm ERR!") {
+		t.Fatalf("摘要不得混入 npm 输出正文: %q", fail.Summary)
+	}
+}
+
+func TestManagerHistoryOptional(t *testing.T) {
+	// 未接线（historyStore=nil，包级态）：操作链照常收尾
+	withManagerSeams(t, true, func(_ context.Context, _ []string, _ func(string)) (string, error) {
+		return "", nil
+	})
+	if _, err := Upgrade("claude"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t)
 }
