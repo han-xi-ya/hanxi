@@ -15,6 +15,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as history$0 from "../../history/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -238,6 +242,18 @@ export function SetAutoCopy(v) {
  */
 export function SetFollowOnExit(v) {
     return $Call.ByID(126128511, v);
+}
+
+/**
+ * SetHistory 注入统一历史存储与"全文入库"档位读取器（装配根接线，
+ * 照 memo↔fileshare SetMemoHook 先例）。fullText 为 config.json 开关的实时读取
+ * 闭包（Q1：默认开=全文入库；关=只记图片路径与摘要）；nil 视为开。
+ * @param {history$0.Store | null} h
+ * @param {any} fullText
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetHistory(h, fullText) {
+    return $Call.ByID(492254989, h, fullText);
 }
 
 /**

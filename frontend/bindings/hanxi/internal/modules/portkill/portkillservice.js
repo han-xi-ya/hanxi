@@ -13,6 +13,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as history$0 from "../../history/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -54,4 +58,13 @@ export function ListListeningPorts() {
  */
 export function QueryPort(port) {
     return $Call.ByID(4098650878, port);
+}
+
+/**
+ * SetHistory 注入统一历史存储（装配根接线，照 memo↔fileshare SetMemoHook 先例）。
+ * @param {history$0.Store | null} h
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetHistory(h) {
+    return $Call.ByID(1905654983, h);
 }

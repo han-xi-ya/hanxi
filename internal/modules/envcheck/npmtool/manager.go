@@ -9,6 +9,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/history"
 	"hanxi/internal/notify"
 )
 
@@ -37,6 +38,14 @@ type operationState struct {
 	display string
 	kind    string
 }
+
+// historyStore 为装配根注入的统一历史存储（nil=未接线，静默不记）。
+// 本包操作是异步终态型动作（Q2：动作类全记），注入缝做成包级变量而非
+// service 字段：runOperation 走的是包级函数链（Install/Upgrade/Uninstall 亦如此）。
+var historyStore *history.Store
+
+// SetHistory 接线统一历史记录（envcheck 桶）。只记动作摘要，绝不存 npm 原始日志行。
+func SetHistory(s *history.Store) { historyStore = s }
 
 // Install 经 npm 全局安装目录工具（`npm install -g <pkg>@latest`，天然幂等）。
 func Install(id string) (OperationAccepted, error) {

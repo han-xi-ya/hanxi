@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"hanxi/internal/history"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
@@ -37,13 +38,17 @@ type KillResult struct {
 
 // PortKillService 端口占用查询与查杀服务（无内部状态，每次 RPC 即时快照系统表）。
 type PortKillService struct {
-	plat platform.Platform
+	plat    platform.Platform
+	history *history.Store // 统一历史记录（nil=未接线，静默不记）
 }
 
 // NewPortKillService 注入平台能力创建服务。
 func NewPortKillService(plat platform.Platform) *PortKillService {
 	return &PortKillService{plat: plat}
 }
+
+// SetHistory 注入统一历史存储（装配根接线，照 memo↔fileshare SetMemoHook 先例）。
+func (s *PortKillService) SetHistory(h *history.Store) { s.history = h }
 
 // QueryPort 查询指定端口号的占用情况 (TCP + UDP)
 func (s *PortKillService) QueryPort(port int) ([]PortOccupant, error) {

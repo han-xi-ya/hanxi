@@ -11,6 +11,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"hanxi/internal/extapi"
+	"hanxi/internal/history"
 	"hanxi/internal/logging"
 	"hanxi/internal/modules/bcu"
 	bcuinstance "hanxi/internal/modules/bcu/instance"
@@ -277,7 +278,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// quickmenu 需在装配根持有引用：弹窗 route 条目要唤出稍后创建的主窗口。
 	quickMenuModule := quickmenu.New(store, registry)
 	fileShareModule := fileshare.New(plat)
-	ocrModule := ocr.New(plat) // 类型断言取服务实例，接主窗文件拖放（组件导入）
+	ocrModule := ocr.New(plat)           // 类型断言取服务实例，接主窗文件拖放（组件导入）
+	portkillModule := portkill.New(plat) // 类型断言取服务实例，注入统一历史
 	memoModule, err := memo.New(paths)
 	if err != nil {
 		slog.Error("failed to init memo module", "err", err)
@@ -320,7 +322,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		douzy.New(plat),
 		ocrModule,
 		lan.New(plat, store),
-		portkill.New(plat),
+		portkillModule,
 		portscan.New(),
 		publicip.New(plat),
 		wifi.New(),
@@ -338,10 +340,24 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		panic(err) // 内建模块注册失败属于编程错误，直接暴露
 	}
 
+	// 统一历史记录：公共 Store 挂 state/history.json，装配根注入首批三处接缝
+	//（ocr 识别 / portkill 查询与查杀 / npmtool 装升卸）。记录点与口径见各模块接入提交。
+	historyStore := history.NewStore(paths.StateDir())
+	historySvc := history.NewHistoryService(historyStore, store)
+	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
+		ocrMod.Service().SetHistory(historyStore, func() bool { return store.Get().HistoryOcrFullText })
+	}
+	if pkMod, ok := portkillModule.(*portkill.Module); ok && pkMod != nil {
+		pkMod.Service().SetHistory(historyStore)
+	}
+	npmtool.SetHistory(historyStore)
+
 	appSvc := NewAppService(registry, store)
 	services := []application.Service{
 		application.NewService(appSvc),
 		application.NewService(notify.NewNotificationService()),
+		// 统一历史：公共包型服务直挂（notify 同位置先例），不进 modulesToRegister、无 Nav。
+		application.NewService(historySvc),
 	}
 	services = append(services, registry.AllServices()...)
 

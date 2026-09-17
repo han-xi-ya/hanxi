@@ -16,6 +16,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/history"
 	"hanxi/internal/modules/ocr/instance"
 	"hanxi/internal/modules/ocr/snip"
 	"hanxi/internal/notify"
@@ -52,6 +53,9 @@ type OcrService struct {
 	tmpDir  string       // 粘贴/拖拽图片落盘目录 RuntimeDir()/ocr
 	snip    snip.Snipper // 框选截屏识别原语（测试可打桩）
 
+	history         *history.Store // 统一历史记录（nil=未接线，静默不记）
+	historyFullText func() bool    // Q1 档位：识别全文是否入库（装配根注入，nil 视为开）
+
 	watchMu   sync.Mutex
 	watching  bool
 	watchStop chan struct{}
@@ -87,10 +91,10 @@ type probeCache struct {
 func NewOcrService(plat platform.Platform) *OcrService {
 	paths := settings.GetPaths()
 	svc := &OcrService{
-		plat:    plat,
-		store:   newOcrStore(paths.StateDir()),
-		client:  &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
-		exeDir:  exeDirOf(),
+		plat:   plat,
+		store:  newOcrStore(paths.StateDir()),
+		client: &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
+		exeDir: exeDirOf(),
 		// dataDir 是 ocr-engines/ 引擎组件的发现锚（二进制目录，非状态文件，
 		// 不随 state/ 收纳走），保持指数据根。
 		dataDir: paths.DataDir(),
@@ -108,6 +112,14 @@ func exeDirOf() string {
 		return filepath.Dir(exe)
 	}
 	return "."
+}
+
+// SetHistory 注入统一历史存储与"全文入库"档位读取器（装配根接线，
+// 照 memo↔fileshare SetMemoHook 先例）。fullText 为 config.json 开关的实时读取
+// 闭包（Q1：默认开=全文入库；关=只记图片路径与摘要）；nil 视为开。
+func (s *OcrService) SetHistory(h *history.Store, fullText func() bool) {
+	s.history = h
+	s.historyFullText = fullText
 }
 
 // ---------- 状态模型与事件 ----------
