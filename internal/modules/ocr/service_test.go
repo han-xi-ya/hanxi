@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"hanxi/internal/history"
 	"hanxi/internal/modules/ocr/instance"
 )
 
@@ -349,6 +350,99 @@ func TestRecognizeImageFailureStates(t *testing.T) {
 	}
 	if out, _ := s.RecognizeImage(`C:\no\such\img.png`); out.Ok || !strings.Contains(out.Error, "不存在") {
 		t.Fatal("缺文件应拒绝")
+	}
+}
+
+// ---------- 统一历史（defer 单点：成败同记 / Q1 档位 / 来源标记） ----------
+
+func ocrSuccessServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/ocr" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true,"elapsed_ms":42,"text":"你好\n世界","lines":[]}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestRecognizeImageRecordsHistory(t *testing.T) {
+	s := newTestService(t, ocrSuccessServer(t).URL)
+	h := history.NewStore(t.TempDir())
+	s.SetHistory(h, func() bool { return true })
+
+	img := realImagePath(t)
+	if _, err := s.RecognizeImage(img); err != nil {
+		t.Fatal(err)
+	}
+	list, err := h.List(ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("识别成功应记 1 条: %+v", list)
+	}
+	r := list[0]
+	if r.Input != img || !strings.Contains(r.Output, "你好") || r.Extra != "ui" {
+		t.Fatalf("记录字段失真: %+v", r)
+	}
+	// "你好\n世界" 共 5 rune（含换行）
+	if !strings.Contains(r.Summary, "测试图片.png") || !strings.Contains(r.Summary, "5 字") {
+		t.Fatalf("摘要应含文件名与 rune 字数: %q", r.Summary)
+	}
+}
+
+func TestRecognizeHistoryFailureAndSnipSource(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"ok":false,"error":"识别超时"}`))
+	}))
+	defer srv.Close()
+	s := newTestService(t, srv.URL)
+	h := history.NewStore(t.TempDir())
+	s.SetHistory(h, nil) // nil 档位读取器 = 默认全文开
+
+	// snip 来源 + 失败标记同记
+	if _, err := s.recognizeImage(realImagePath(t), "snip"); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := h.List(ID, "")
+	if len(list) != 1 || !strings.HasSuffix(list[0].Extra, "snip|fail") || !strings.Contains(list[0].Output, "识别超时") {
+		t.Fatalf("失败记录失真: %+v", list)
+	}
+	// 空路径入参拒绝不入库（防刷桶）
+	_, _ = s.RecognizeImage("   ")
+	if got, _ := h.List(ID, ""); len(got) != 1 {
+		t.Fatal("空路径不得入库")
+	}
+}
+
+func TestRecognizeHistoryGateOffDropsText(t *testing.T) {
+	s := newTestService(t, ocrSuccessServer(t).URL)
+	h := history.NewStore(t.TempDir())
+	s.SetHistory(h, func() bool { return false })
+
+	if _, err := s.RecognizeImage(realImagePath(t)); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := h.List(ID, "")
+	if len(list) != 1 {
+		t.Fatalf("档位关闭也应记 1 条: %+v", list)
+	}
+	if list[0].Output != "" || !strings.Contains(list[0].Extra, "nofull") ||
+		!strings.Contains(list[0].Summary, "全文未记录") {
+		t.Fatalf("Q1 档位关：不得存识别文本: %+v", list[0])
+	}
+}
+
+func TestHistoryWiringIsOptional(t *testing.T) {
+	// 未 SetHistory（nil store）：识别照常、不 panic、不落任何文件
+	s := newTestService(t, ocrSuccessServer(t).URL)
+	out, err := s.RecognizeImage(realImagePath(t))
+	if err != nil || !out.Ok {
+		t.Fatalf("未接历史不得影响识别: %+v %v", out, err)
 	}
 }
 

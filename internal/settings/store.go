@@ -72,34 +72,36 @@ type TrayMenuItem struct {
 
 // AppSettings 应用全局配置模型
 type AppSettings struct {
-	Theme            string            `json:"theme"`            // 明暗轴 "light" | "dark" | "system"
-	Accent           string            `json:"accent"`           // 色板轴 "teal" | "sky" | "iris" | "jade" | "onyx"
-	Language         string            `json:"language"`         // "zh-CN" | "en-US"
-	AutoStart        bool              `json:"autoStart"`        // 开机自启
-	MinimizeToTray   bool              `json:"minimizeToTray"`   // 关闭时最小化到托盘
-	LogRetainDays    int               `json:"logRetainDays"`    // 日志保留天数（默认 7）
-	Modules          map[string]bool   `json:"modules"`          // 各模块启用状态 map[moduleId]enabled
-	LanRemarks       map[string]string `json:"lanRemarks"`       // 局域网 IP/MAC 备注 map[identifier]remark
-	TrayMenu         []TrayMenuItem    `json:"trayMenu"`         // 托盘右键菜单自定义条目（有序）
-	QuickMenuTwoTier bool              `json:"quickMenuTwoTier"` // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
-	Wechat           WechatConfig      `json:"wechat"`           // 微信机器人遗留配置（向下兼容）
-	WechatAccounts   []WechatAccount   `json:"wechatAccounts"`   // 微信多账号列表
-	WebAppEntries    []WebAppEntry     `json:"webAppEntries"`    // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
+	Theme              string            `json:"theme"`              // 明暗轴 "light" | "dark" | "system"
+	Accent             string            `json:"accent"`             // 色板轴 "teal" | "sky" | "iris" | "jade" | "onyx"
+	Language           string            `json:"language"`           // "zh-CN" | "en-US"
+	AutoStart          bool              `json:"autoStart"`          // 开机自启
+	MinimizeToTray     bool              `json:"minimizeToTray"`     // 关闭时最小化到托盘
+	LogRetainDays      int               `json:"logRetainDays"`      // 日志保留天数（默认 7）
+	Modules            map[string]bool   `json:"modules"`            // 各模块启用状态 map[moduleId]enabled
+	LanRemarks         map[string]string `json:"lanRemarks"`         // 局域网 IP/MAC 备注 map[identifier]remark
+	TrayMenu           []TrayMenuItem    `json:"trayMenu"`           // 托盘右键菜单自定义条目（有序）
+	QuickMenuTwoTier   bool              `json:"quickMenuTwoTier"`   // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
+	HistoryOcrFullText bool              `json:"historyOcrFullText"` // 历史记录是否收录 OCR 识别全文（默认开；关=只记图片路径与摘要，不存识别文本）
+	Wechat             WechatConfig      `json:"wechat"`             // 微信机器人遗留配置（向下兼容）
+	WechatAccounts     []WechatAccount   `json:"wechatAccounts"`     // 微信多账号列表
+	WebAppEntries      []WebAppEntry     `json:"webAppEntries"`      // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
 }
 
 // DefaultSettings 返回出厂默认配置：浅色主题、青壳色板、中文、关闭时最小化到托盘、日志保留 7 天。
 func DefaultSettings() AppSettings {
 	return AppSettings{
-		Theme:            "light",
-		Accent:           "teal",
-		Language:         "zh-CN",
-		AutoStart:        false,
-		MinimizeToTray:   true,
-		LogRetainDays:    7,
-		Modules:          make(map[string]bool),
-		LanRemarks:       make(map[string]string),
-		TrayMenu:         make([]TrayMenuItem, 0),
-		QuickMenuTwoTier: true, // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
+		Theme:              "light",
+		Accent:             "teal",
+		Language:           "zh-CN",
+		AutoStart:          false,
+		MinimizeToTray:     true,
+		LogRetainDays:      7,
+		Modules:            make(map[string]bool),
+		LanRemarks:         make(map[string]string),
+		TrayMenu:           make([]TrayMenuItem, 0),
+		QuickMenuTwoTier:   true, // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
+		HistoryOcrFullText: true, // OCR 全文入历史默认开启（同 QuickMenuTwoTier 缺字段回落机制）
 		// wechat 业务默认端点不属设置存储职责：出厂留空，
 		// 缺省回退由 wechat 模块读取侧兜底（defaultBaseURL）。
 		Wechat:         WechatConfig{},

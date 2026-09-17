@@ -9,6 +9,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/history"
 	"hanxi/internal/notify"
 )
 
@@ -37,6 +38,14 @@ type operationState struct {
 	display string
 	kind    string
 }
+
+// historyStore 为装配根注入的统一历史存储（nil=未接线，静默不记）。
+// 本包操作是异步终态型动作（Q2：动作类全记），注入缝做成包级变量而非
+// service 字段：runOperation 走的是包级函数链（Install/Upgrade/Uninstall 亦如此）。
+var historyStore *history.Store
+
+// SetHistory 接线统一历史记录（envcheck 桶）。只记动作摘要，绝不存 npm 原始日志行。
+func SetHistory(s *history.Store) { historyStore = s }
 
 // Install 经 npm 全局安装目录工具（`npm install -g <pkg>@latest`，天然幂等）。
 func Install(id string) (OperationAccepted, error) {
@@ -139,6 +148,7 @@ func runOperation(op *operationState, args []string) {
 			Stage: "error", Message: message, Terminal: true,
 		})
 		notify.Error(moduleID, op.display+" 操作失败", message, navigateURL)
+		recordOutcome(op, message, false)
 		return
 	}
 	message := fmt.Sprintf("%s %s完成", op.display, kindText(op.kind))
@@ -147,6 +157,27 @@ func runOperation(op *operationState, args []string) {
 		Stage: "done", Message: message, Terminal: true, Success: true,
 	})
 	notify.Success(moduleID, op.display+" 操作完成", message, navigateURL)
+	recordOutcome(op, message, true)
+}
+
+// recordOutcome npm 动作终态落统一历史（Q2：动作类全记）。
+// 只记自组摘要，绝不存 npm 输出正文（runNpm 的 tail 返回即弃——日志行可能含
+// 私有源凭据，且原始日志已走 envcheck:npm-tool-log 事件流供前端当场查看）；
+// err 通道仅 exec 包装文本（"npm … 执行失败: exit status"形态），无凭据面。
+func recordOutcome(op *operationState, message string, success bool) {
+	if historyStore == nil {
+		return
+	}
+	extra := "npm-" + op.kind
+	if !success {
+		extra += "|fail"
+	}
+	_ = historyStore.Save(history.Record{
+		FuncType: moduleID,
+		Summary:  message,
+		Input:    op.toolID,
+		Extra:    extra,
+	})
 }
 
 func kindText(kind string) string {

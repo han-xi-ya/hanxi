@@ -13,9 +13,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/history"
 	"hanxi/internal/modules/ocr/instance"
 	"hanxi/internal/modules/ocr/snip"
 	"hanxi/internal/notify"
@@ -52,6 +54,9 @@ type OcrService struct {
 	tmpDir  string       // 粘贴/拖拽图片落盘目录 RuntimeDir()/ocr
 	snip    snip.Snipper // 框选截屏识别原语（测试可打桩）
 
+	history         *history.Store // 统一历史记录（nil=未接线，静默不记）
+	historyFullText func() bool    // Q1 档位：识别全文是否入库（装配根注入，nil 视为开）
+
 	watchMu   sync.Mutex
 	watching  bool
 	watchStop chan struct{}
@@ -87,10 +92,10 @@ type probeCache struct {
 func NewOcrService(plat platform.Platform) *OcrService {
 	paths := settings.GetPaths()
 	svc := &OcrService{
-		plat:    plat,
-		store:   newOcrStore(paths.StateDir()),
-		client:  &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
-		exeDir:  exeDirOf(),
+		plat:   plat,
+		store:  newOcrStore(paths.StateDir()),
+		client: &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
+		exeDir: exeDirOf(),
 		// dataDir 是 ocr-engines/ 引擎组件的发现锚（二进制目录，非状态文件，
 		// 不随 state/ 收纳走），保持指数据根。
 		dataDir: paths.DataDir(),
@@ -108,6 +113,14 @@ func exeDirOf() string {
 		return filepath.Dir(exe)
 	}
 	return "."
+}
+
+// SetHistory 注入统一历史存储与"全文入库"档位读取器（装配根接线，
+// 照 memo↔fileshare SetMemoHook 先例）。fullText 为 config.json 开关的实时读取
+// 闭包（Q1：默认开=全文入库；关=只记图片路径与摘要）；nil 视为开。
+func (s *OcrService) SetHistory(h *history.Store, fullText func() bool) {
+	s.history = h
+	s.historyFullText = fullText
 }
 
 // ---------- 状态模型与事件 ----------
@@ -401,7 +414,14 @@ func (s *OcrService) Logs(n int) ([]string, error) {
 
 // RecognizeImage 转发图片路径给上游识别。一切业务失败折进 Outcome.Error
 // （中文人话），error 通道留给程序性错误。
+// 统一历史：识别动作的唯一记录点在 recognizeImage 的 defer 单点（成功与失败同记），
+// 截屏链路经 snip 来源标记复用同一记录点，勿二处插。
 func (s *OcrService) RecognizeImage(path string) (OcrOutcome, error) {
+	return s.recognizeImage(path, "ui")
+}
+
+func (s *OcrService) recognizeImage(path string, source string) (result OcrOutcome, err error) {
+	defer func() { s.recordHistory(path, source, result, err) }()
 	var empty OcrOutcome
 	p := strings.TrimSpace(path)
 	if p == "" {
@@ -460,6 +480,42 @@ func (s *OcrService) RecognizeImage(path string) (OcrOutcome, error) {
 		out.Lines = append(out.Lines, OcrLine{Text: l.Text, X: int(l.X), Y: int(l.Y)})
 	}
 	return out, nil
+}
+
+// recordHistory 识别动作统一历史落点（defer 单点，成败同记）。
+// Q1 档位：全文开关关闭时只记图片路径与摘要、不存识别文本（截图常含聊天记录，
+// 隐私风险面收在这一个读取点）；空路径的入参拒绝不入库，防非法调用刷桶。
+// Save 失败仅静默（历史是尽力而为的副作用，公共包已记日志）。
+func (s *OcrService) recordHistory(path, source string, result OcrOutcome, err error) {
+	if s.history == nil || strings.TrimSpace(path) == "" {
+		return
+	}
+	base := filepath.Base(strings.TrimSpace(path))
+	rec := history.Record{FuncType: ID, Input: path, Extra: source}
+	if err == nil && result.Ok {
+		n := utf8.RuneCountInString(result.Text)
+		if s.fullTextOn() {
+			rec.Summary = fmt.Sprintf("识别 %s → %d 字", base, n)
+			rec.Output = result.Text
+		} else {
+			rec.Summary = fmt.Sprintf("识别 %s → %d 字（全文未记录）", base, n)
+			rec.Extra += "|nofull"
+		}
+	} else {
+		msg := result.Error
+		if msg == "" && err != nil {
+			msg = err.Error()
+		}
+		rec.Summary = "识别失败 · " + base
+		rec.Output = msg
+		rec.Extra += "|fail"
+	}
+	_ = s.history.Save(rec)
+}
+
+// fullTextOn 全文档位实时读取（未注入读取器视为开，对齐 Q1 默认全文）。
+func (s *OcrService) fullTextOn() bool {
+	return s.historyFullText == nil || s.historyFullText()
 }
 
 // ---------- 前端 API：图片三通道 ----------

@@ -74,7 +74,7 @@ func DecodeDIBToPNG(dib []byte) ([]byte, error) {
 		return nil, fmt.Errorf("不支持的 DIB 位深 %d（截屏请经 Hanxi 文字识别页反馈）", bitCount)
 	}
 
-	stride := ((width*int(bitCount)+31)/32)*4 // 行 4 字节对齐
+	stride := ((width*int(bitCount) + 31) / 32) * 4 // 行 4 字节对齐
 	total := stride * height
 	if len(dib) < pixelOff+total {
 		return nil, fmt.Errorf("DIB 像素数据不完整（需 %d B 实得 %d B）", pixelOff+total, len(dib))

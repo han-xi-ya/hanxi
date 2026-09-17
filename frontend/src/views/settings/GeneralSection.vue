@@ -4,6 +4,7 @@
 // 失败回滚重拉；提示走全局顶层卡片（useToast），本页不挂局部 toast。
 import { ref, onMounted } from 'vue'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
+import * as HistoryAPI from '../../../bindings/hanxi/internal/history/historyservice'
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import PageHeader from '../../components/ui/PageHeader.vue'
@@ -14,6 +15,9 @@ const autoStart = ref(false)
 const minimizeToTray = ref(true)
 const logRetainDays = ref(7)
 const saving = ref(false)
+// 历史记录·OCR 全文档位（Q1 裁定：默认开=全文入库；独立于 GeneralSettings DTO，
+// 走 history 服务的档位读写，避免动共享设置模型面）
+const historyOcrFull = ref(true)
 
 async function refresh() {
   try {
@@ -23,6 +27,22 @@ async function refresh() {
     logRetainDays.value = gen.logRetainDays || 7
   } catch (e: unknown) {
     showToast(`获取常规设置失败: ${getErrorMessage(e)}`)
+  }
+  try {
+    historyOcrFull.value = await HistoryAPI.GetOcrFullText()
+  } catch (e: unknown) {
+    showToast(`获取历史档位失败: ${getErrorMessage(e)}`)
+  }
+}
+
+async function toggleHistoryOcrFull(v: boolean) {
+  historyOcrFull.value = v
+  try {
+    await HistoryAPI.SetOcrFullText(v)
+    showToast(v ? '识别历史将收录全文（下次识别起效）' : '识别历史只记路径与摘要（下次识别起效）')
+  } catch (e: unknown) {
+    historyOcrFull.value = !v
+    showToast(`保存历史档位失败: ${getErrorMessage(e)}`)
   }
 }
 
@@ -66,6 +86,14 @@ onMounted(refresh)
           <span class="setting-desc">点击右上角关闭按钮时保留后台托盘与已启动的托管实例，而不是直接退出</span>
         </span>
         <input type="checkbox" v-model="minimizeToTray" @change="updateGeneralSettings" :disabled="saving" class="switch" />
+      </label>
+
+      <label class="setting-row setting-row-tappable">
+        <span class="setting-main">
+          <span class="setting-name">识别历史收录 OCR 全文</span>
+          <span class="setting-desc">开启后「文字识别」的历史记录保存识别出的完整文本，便于回看复用；关闭只记图片路径与摘要。截图常含聊天记录等敏感内容时建议关闭。</span>
+        </span>
+        <input type="checkbox" :checked="historyOcrFull" @change="toggleHistoryOcrFull(($event.target as HTMLInputElement).checked)" class="switch" />
       </label>
 
       <div class="setting-row">

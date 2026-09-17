@@ -13,10 +13,15 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as history$0 from "../../history/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
- * KillProcess 通过安全令牌终止目标进程
+ * KillProcess 通过安全令牌终止目标进程。
+ * 统一历史：Q2 动作全记，defer 单点成败同记。
  * @param {number} pid
  * @param {string} exePath
  * @param {number} startedAtUnix
@@ -32,6 +37,7 @@ export function KillProcess(pid, exePath, startedAtUnix) {
  * 退出并被 PID 复用，届时 helper 比对不过会以退出码 3 拒杀而非误杀新进程；
  * 命中系统关键进程红线则在本地直接拒绝，不弹 UAC。
  * helper 的真实成败经 Start-Process -PassThru 的 ExitCode 传播回来，杜绝"helper 失败仍报成功"。
+ * 统一历史：defer 单点记录；Q3 裁定拒绝类失败同样入库并标 denied（回看"当时为什么没杀掉"）。
  * @param {number} pid
  * @returns {$CancellablePromise<$models.KillResult>}
  */
@@ -48,10 +54,20 @@ export function ListListeningPorts() {
 }
 
 /**
- * QueryPort 查询指定端口号的占用情况 (TCP + UDP)
+ * QueryPort 查询指定端口号的占用情况 (TCP + UDP)。
+ * 统一历史：Q2 裁定 portkill 查询入库（轻量——占用清单文本，回填价值主体）。
  * @param {number} port
  * @returns {$CancellablePromise<$models.PortOccupant[] | null>}
  */
 export function QueryPort(port) {
     return $Call.ByID(4098650878, port);
+}
+
+/**
+ * SetHistory 注入统一历史存储（装配根接线，照 memo↔fileshare SetMemoHook 先例）。
+ * @param {history$0.Store | null} h
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetHistory(h) {
+    return $Call.ByID(1905654983, h);
 }

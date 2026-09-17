@@ -16,6 +16,7 @@ import PackageManagerUpgradeHint from '../components/envcheck/PackageManagerUpgr
 import NpmToolActions from '../components/envcheck/NpmToolActions.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
+import HistoryPanel from '../components/tool/HistoryPanel.vue'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
@@ -28,10 +29,11 @@ interface PanelOverview { channels: Channel[]; isStale: boolean; fetchedAt?: str
 interface RemoteState { overview: PanelOverview | null; loading: boolean; error: string }
 
 const tools = ref<ToolInfo[]>([])
-const activeMainTab = ref<'local' | 'versions'>('local')
+const activeMainTab = ref<'local' | 'versions' | 'history'>('local')
 const MAIN_TABS = [
   { key: 'local', label: '本机环境' },
   { key: 'versions', label: '版本与工具' },
+  { key: 'history', label: '历史记录' },
 ]
 const OFFICIAL_TOOLS: OfficialTool[] = ['git', 'go', 'node', 'java', 'python', 'dotnet']
 const localLoading = ref(false)
@@ -481,6 +483,18 @@ onMounted(() => {
           <p>当前没有配置可由 Hanxi 管理的 npm 全局工具。</p>
         </div>
       </section>
+    </div>
+
+    <!-- 历史记录（Q2 口径：本模块只记 npm 装升卸动作终态，版本查询不入库；
+         无自由输入框故关"应用"，回填语义=定位对应工具卡自行查看） -->
+    <div
+      id="envcheck-history-panel"
+      v-show="activeMainTab === 'history'"
+      class="tab-body"
+      role="tabpanel"
+      aria-labelledby="envcheck-history-tab"
+    >
+      <HistoryPanel func-type="envcheck" :show-apply="false" />
     </div>
   </section>
 </template>
