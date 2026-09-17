@@ -7,6 +7,7 @@ import FrpcProjectEditor from '../components/FrpcProjectEditor.vue'
 import FrpcVersionsTab from '../components/FrpcVersionsTab.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
+import UiClipboardField from '../components/ui/UiClipboardField.vue'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
@@ -585,12 +586,15 @@ onMounted(async () => {
           </div>
           <label class="form-item">
             <span>{{ importType === 'link' ? '粘贴 frp:// 分享链接' : '粘贴 frpc.toml 文件内容' }}</span>
-            <textarea
+            <!-- 专设"粘贴框"：挂 UiClipboardField 补"从剪贴板粘贴"钮（label 原话即邀请粘贴，
+                 却只剩 Ctrl+V 一条路）；TOML 模式等宽 -->
+            <UiClipboardField
               v-model="importContent"
-              class="input textarea"
+              :mono="importType === 'toml'"
+              :rows="6"
+              paste-mode="replace"
               :placeholder="importType === 'link' ? '例如: frp://eyJzZXJ2ZXIiOnsic2VydmVyQWRkciI...' : 'serverAddr = &quot;x.x.x.x&quot;\nserverPort = 7000\n...'"
-              rows="6"
-            ></textarea>
+            />
           </label>
         </div>
         <div class="modal-actions">
@@ -748,13 +752,7 @@ onMounted(async () => {
 }
 .tab-btn.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
 
-.textarea {
-  padding: 8px 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control);
-  font-family: var(--font-mono); font-size: var(--text-sm); width: 100%; box-sizing: border-box;
-  background: var(--surface-soft); color: var(--color-text); resize: vertical;
-}
-.textarea:focus { border-color: var(--color-primary); outline: none; background: var(--surface-panel); }
-
+/* .textarea 副本随导入框换装 UiClipboardField 退役（粘贴/复制样式由组件自带 token 化） */
 .form-item { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 
 /* 停止按钮变体（全局原子之外的业务语义色） */

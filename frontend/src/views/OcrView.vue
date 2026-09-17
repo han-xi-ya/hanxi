@@ -15,6 +15,7 @@ import { usePolling } from '../composables/usePolling'
 import { useAsyncAction } from '../composables/useAsyncAction'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
+import { parsePaste } from '../utils/paste'
 import { toolStateMeta } from '../constants/status'
 import PageHeader from '../components/ui/PageHeader.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
@@ -293,12 +294,11 @@ function onDrop(e: DragEvent) {
 }
 
 function onPaste(e: ClipboardEvent) {
-  const file = Array.from(e.clipboardData?.items || [])
-    .find((item) => item.kind === 'file')
-    ?.getAsFile()
-  if (!file) return
+  // 三态分流走 utils/paste 纯函数：图片接管；文本/非图文件放行（dropzone 无文本语义）
+  const payload = parsePaste(e)
+  if (payload.kind !== 'image') return
   e.preventDefault()
-  void acceptFile(file)
+  void acceptFile(payload.file)
 }
 
 async function chooseByDialog() {
