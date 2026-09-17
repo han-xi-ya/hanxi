@@ -22,6 +22,21 @@
  */
 
 /**
+ * EngineInfo 引擎注册表单件（GetEngines 列表元素，前端"引擎列表"两行卡按此渲染）。
+ * Installed 语义：登记件或默认锚点可解析出可用 exe；未安装时 Path 为空、
+ * Error 给中文原因（未找到指引 / 登记路径失效）。
+ * @typedef {Object} EngineInfo
+ * @property {string} id - wechat / paddle
+ * @property {string} label - 中文显示名（微信引擎 / PP-OCR 开源引擎）
+ * @property {boolean} installed - 组件可解析（登记或自动发现）
+ * @property {boolean} active - 当前活跃引擎（单活语义，至多一行为真）
+ * @property {string} version - 登记版本；活跃引擎在线时为 /api/status 实测版本
+ * @property {string} path - 解析出的 exe 路径（未安装为空）
+ * @property {boolean} auto - 路径来自自动发现（false = 用户设定/导入登记）
+ * @property {string} error - 不可解析的中文原因（Installed 为真相空）
+ */
+
+/**
  * ImageRef 统一"已选图"模型：对话框/拖拽/粘贴三通道汇流。
  * @typedef {Object} ImageRef
  * @property {string} path
@@ -62,7 +77,10 @@
  * @property {string} exePath - 生效的服务程序路径（发现结果或设定值）
  * @property {boolean} exeAuto - 生效路径是否来自自动发现（false=用户显式指定）
  * @property {string} version - 上游 status.version
- * @property {string} engine - 上游 status.engine（如 wxocr@8094 / wcdir@4.1.13.65）
+ * @property {string} engine - 上游 status.engine（如 wxocr@8094 / pp-ocrv6-small）
+ * @property {string} engineMode - 上游 status.engine_mode（组件如实上报，本侧不解释语义）
+ * @property {string} engineID - store 登记的活跃引擎（wechat / paddle，未在线时也可判定）
+ * @property {string} engineError - 上游 status.error（引擎已就位但带病的中文原因，空=健康）
  * @property {boolean} engineRunning
  * @property {boolean} hung - 上游报告引擎 Call 挂死
  * @property {string} error - 中文人话错误（failed 时非空）

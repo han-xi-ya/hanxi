@@ -34,6 +34,16 @@ export function GetAutoCopy() {
 }
 
 /**
+ * GetEngines 返回引擎注册表全量视图（含未安装引擎——前端据此渲染"导入"入口）。
+ * Installed 判定即时解析（登记件在位或自动发现锚点命中）；活跃引擎在线时
+ * Version 以 /api/status 实测值优先（探测顺带回写注册表，见 probeStatus）。
+ * @returns {$CancellablePromise<$models.EngineInfo[] | null>}
+ */
+export function GetEngines() {
+    return $Call.ByID(3658015710);
+}
+
+/**
  * GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关。
  * @returns {$CancellablePromise<boolean>}
  */
@@ -50,7 +60,7 @@ export function GetListenPort() {
 }
 
 /**
- * GetServiceExePath 返回当前生效的服务程序路径（自动发现结果或用户设定）。
+ * GetServiceExePath 返回当前生效的服务程序路径（活跃引擎的自动发现结果或登记件）。
  * @returns {$CancellablePromise<string>}
  */
 export function GetServiceExePath() {
@@ -76,8 +86,9 @@ export function GetStatus() {
 
 /**
  * HandleNativeDrop Wails 主窗原生文件拖放入口（app.go 接线；只有落在 OcrView
- * 标记 data-file-drop-target 元素上的文件才会到达）。按扩展名分流：.exe → 组件
- * 导入；图片 → 真实路径直接选为待识别对象（免走 dataURL 全量 IPC）；其余给中文提示。
+ * 标记 data-file-drop-target 元素上的文件才会到达）。分流：目录 → PP-OCR 引擎包
+ * 导入；.exe → 微信件导入；图片 → 真实路径直接选为待识别对象（免走 dataURL 全量
+ * IPC）；其余给中文提示。
  * @param {string[] | null} files
  * @returns {$CancellablePromise<void>}
  */
@@ -86,7 +97,32 @@ export function HandleNativeDrop(files) {
 }
 
 /**
- * ImportServiceExe 导入用户提供的组件：校验文件名/体积/布局后把服务路径指向它。
+ * ImportPaddleDir 导入 PP-OCR 开源引擎目录（引用式登记，不复制）：
+ * 目录须同时含 hanxi-ocr.exe（契约文件名与微信版同名，计划 §3）与 manifest.json
+ * （组件自检清单，读其 version 字段登记版本）。登记成功后切 active=paddle——
+ * 在跑的托管实例会停旧起新，外部实例占位时只登记不切换（不越权）。
+ * 回执与事件复用 ocr:file-drop-result（Kind=import）。
+ * @param {string} srcDir
+ * @returns {$CancellablePromise<$models.DropResult>}
+ */
+export function ImportPaddleDir(srcDir) {
+    return $Call.ByID(3836450419, srcDir);
+}
+
+/**
+ * ImportPaddleDirDialog 目录选择框式导入 PP-OCR 引擎包（系统文件夹框为原生
+ * 能力，拖放之外的通道；取消返回空回执）。选定后走 ImportPaddleDir 同一套校验。
+ * @returns {$CancellablePromise<$models.DropResult>}
+ */
+export function ImportPaddleDirDialog() {
+    return $Call.ByID(2723718847);
+}
+
+/**
+ * ImportServiceExe 导入用户提供的组件，按文件/目录分流（计划 §5.3）：
+ *   - 文件 → 微信版校验（文件名/体积/布局不变），登记为微信引擎；
+ *   - 目录 → PP-OCR 开源引擎包（含 manifest.json 自检），转 ImportPaddleDir。
+ * 
  * 校验失败不置 error（属业务结果），统一折进 DropResult.Message 并广播
  * ocr:file-drop-result 事件；取消对话框等无操作场景不发事件。
  * @param {string} srcPath
@@ -152,6 +188,23 @@ export function SavePastedImage(fileName, dataURL) {
 }
 
 /**
+ * SetActiveEngine 切换活跃引擎并落盘（id：wechat / paddle）。
+ *   - 未知 ID / 目标未安装（登记件失效或锚点无组件）→ error 通道给中文指引；
+ *   - 当前托管实例在跑 → 先按 StopService 语义优雅停、再按 StartService 语义起新件
+ *     （Detached 联动仍随 followOnExit 开关）；active 在停旧后即持久化，起新件失败
+ *     不回滚（注册表如实反映用户意图，失败原因折进 Message，引擎侧已广播 + notify）；
+ *   - 外部实例在服务（external）→ 不越权：只提示先手动停止，不做任何切换；
+ *   - 服务原本未运行 → 仅切换登记，不擅自拉起。
+ * 
+ * 幂等：切到当前活跃引擎直接返回 already-active。
+ * @param {string} id
+ * @returns {$CancellablePromise<$models.ControlOutcome>}
+ */
+export function SetActiveEngine(id) {
+    return $Call.ByID(1632066051, id);
+}
+
+/**
  * SetAutoCopy 设定自动复制开关（下一次截屏识别起生效）。
  * @param {boolean} v
  * @returns {$CancellablePromise<void>}
@@ -179,7 +232,8 @@ export function SetListenPort(port) {
 }
 
 /**
- * SetServiceExePath 设定服务路径；""=恢复自动发现。返回当前生效值。
+ * SetServiceExePath 设定活跃引擎的登记路径；""=恢复自动发现。返回当前生效值。
+ * （双引擎口径：本方法作用于 active 引擎注册件；另一引擎的登记走导入分流。）
  * @param {string} path
  * @returns {$CancellablePromise<string>}
  */

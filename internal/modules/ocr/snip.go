@@ -103,7 +103,7 @@ func (s *OcrService) ensureOnlineForSnip() error {
 		}
 		return fmt.Errorf("服务启动超时，请到文字识别页重试")
 	}
-	exe, _, err := resolveServiceExe(s.exeDir, s.store.GetExePath())
+	exe, _, err := s.resolveActiveExe() // 拉起目标 = 活跃引擎解析结果（计划 §5.4）
 	if err != nil {
 		return fmt.Errorf("截屏识别需要 hanxi-ocr 组件：请先在文字识别页导入")
 	}

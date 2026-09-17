@@ -43,13 +43,14 @@ const (
 // 定位边界：识别能力全部在上游服务内，本服务只做"探活 + 转发 + 生命周期"，
 // 不重复实现上游功能面（与 ddnsgo 托管口径一致）。
 type OcrService struct {
-	plat   platform.Platform
-	store  *ocrStore
-	engine *instance.Engine
-	client *http.Client // 回环专用：Proxy 显式置 nil，防系统代理污染（netx 教训）
-	exeDir string       // Hanxi 主程序目录（同级 ../hanxi-ocr 自动发现锚点）
-	tmpDir string       // 粘贴/拖拽图片落盘目录 RuntimeDir()/ocr
-	snip   snip.Snipper // 框选截屏识别原语（测试可打桩）
+	plat    platform.Platform
+	store   *ocrStore
+	engine  *instance.Engine
+	client  *http.Client // 回环专用：Proxy 显式置 nil，防系统代理污染（netx 教训）
+	exeDir  string       // Hanxi 主程序目录（同级 ../hanxi-ocr、../hanxi-ocr-paddle 自动发现锚点）
+	dataDir string       // 数据目录（ocr-engines/ PP-OCR 引擎主发现锚点）
+	tmpDir  string       // 粘贴/拖拽图片落盘目录 RuntimeDir()/ocr
+	snip    snip.Snipper // 框选截屏识别原语（测试可打桩）
 
 	watchMu   sync.Mutex
 	watching  bool
@@ -67,10 +68,14 @@ type OcrService struct {
 }
 
 // probeCache /api/status 最近一次探测结果缓存。
+// engine / engineMode 为上游如实上报的引擎标识（双引擎契约 v0.4，计划 §3.1），
+// 前端据此显示当前引擎型号。
 type probeCache struct {
 	online        bool
 	version       string
 	engine        string
+	engineMode    string
+	engineError   string // 上游可选 status.error：仅引擎带病（如 paddle 自检失败）时非空
 	engineRunning bool
 	hung          bool
 	checkedAt     time.Time
@@ -79,12 +84,13 @@ type probeCache struct {
 func NewOcrService(plat platform.Platform) *OcrService {
 	paths := settings.GetPaths()
 	svc := &OcrService{
-		plat:   plat,
-		store:  newOcrStore(paths.DataDir()),
-		client: &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
-		exeDir: exeDirOf(),
-		tmpDir: filepath.Join(paths.RuntimeDir(), "ocr"),
-		snip:   snip.New(),
+		plat:    plat,
+		store:   newOcrStore(paths.DataDir()),
+		client:  &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
+		exeDir:  exeDirOf(),
+		dataDir: paths.DataDir(),
+		tmpDir:  filepath.Join(paths.RuntimeDir(), "ocr"),
+		snip:    snip.New(),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -103,6 +109,17 @@ func exeDirOf() string {
 
 // addr 当前设定服务地址。
 func (s *OcrService) addr() string { return fmt.Sprintf("127.0.0.1:%d", s.store.GetListenPort()) }
+
+// resolveEngineExe 按指定引擎解析组件路径（登记件为空时走各自自动发现锚点）。
+func (s *OcrService) resolveEngineExe(id string) (path string, fromStore bool, err error) {
+	return resolveServiceExe(s.exeDir, s.dataDir, id, s.store.GetEnginePath(id))
+}
+
+// resolveActiveExe 按当前活跃引擎解析组件路径——启停与截屏拉起的唯一取径
+// （计划 §5.4：单活语义下所有拉起目标恒等于 active 引擎的解析结果）。
+func (s *OcrService) resolveActiveExe() (path string, fromStore bool, err error) {
+	return s.resolveEngineExe(s.store.GetActiveEngine())
+}
 
 // buildState 引擎快照 + 探测缓存合并为前端状态模型。
 func (s *OcrService) buildState(snap instance.Snapshot) ServiceState {
@@ -124,6 +141,8 @@ func (s *OcrService) buildStateLocked(snap instance.Snapshot) ServiceState {
 		ListenAddr: s.addr(),
 		Version:    s.probe.version,
 		Engine:     s.probe.engine,
+		EngineMode: s.probe.engineMode,
+		EngineID:   s.store.GetActiveEngine(),
 		Error:      snap.Error,
 	}
 	if managed && snap.ListenAddr != "" {
@@ -131,15 +150,18 @@ func (s *OcrService) buildStateLocked(snap instance.Snapshot) ServiceState {
 	}
 	if fresh || managed {
 		st.EngineRunning = s.probe.engineRunning
+		st.EngineError = s.probe.engineError
 		st.Hung = s.probe.hung
 		if !s.probe.checkedAt.IsZero() {
 			st.CheckedAt = s.probe.checkedAt.Format("2006-01-02 15:04:05")
 		}
 	}
-	if exe, _, err := resolveServiceExe(s.exeDir, s.store.GetExePath()); err == nil {
+	// ExePath/ExeAuto 恒描述活跃引擎（未安装时 ExePath 留空，原因由 GetEngines 给）
+	active := s.store.GetActiveEngine()
+	if exe, _, err := s.resolveEngineExe(active); err == nil {
 		st.ExePath = exe
 	}
-	st.ExeAuto = strings.TrimSpace(s.store.GetExePath()) == ""
+	st.ExeAuto = strings.TrimSpace(s.store.GetEnginePath(active)) == ""
 	return st
 }
 
@@ -221,7 +243,9 @@ func (s *OcrService) refresh() {
 	s.emitStateIfChanged(s.buildState(s.engine.Snapshot()))
 }
 
-// probeStatus GET /api/status 更新探测缓存。
+// probeStatus GET /api/status 更新探测缓存。name 判别按契约名集合放宽（计划 §5.1：
+// 微信版与 PP-OCR 开源版同名 "hanxi-ocr"）；engine / engine_mode 收进缓存并经
+// ServiceState 透传给前端显示当前引擎。
 func (s *OcrService) probeStatus(addr string) probeCache {
 	ctx, cancel := context.WithTimeout(context.Background(), statusTimeout)
 	defer cancel()
@@ -237,14 +261,16 @@ func (s *OcrService) probeStatus(addr string) probeCache {
 				Name          string `json:"name"`
 				Version       string `json:"version"`
 				Engine        string `json:"engine"`
+				EngineMode    string `json:"engine_mode"`
+				EngineError   string `json:"error"` // 双引擎契约 v0.4 可选字段（微信件无此字段，缺省空串）
 				EngineRunning bool   `json:"engine_running"`
 				EngineHung    bool   `json:"engine_hung"`
 			}
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
-			if resp.StatusCode == http.StatusOK && json.Unmarshal(body, &v) == nil && v.OK && v.Name == "hanxi-ocr" {
+			if resp.StatusCode == http.StatusOK && json.Unmarshal(body, &v) == nil && v.OK && isContractName(v.Name) {
 				out = probeCache{
-					online: true, version: v.Version, engine: v.Engine,
-					engineRunning: v.EngineRunning, hung: v.EngineHung, checkedAt: time.Now(),
+					online: true, version: v.Version, engine: v.Engine, engineMode: v.EngineMode,
+					engineError: v.EngineError, engineRunning: v.EngineRunning, hung: v.EngineHung, checkedAt: time.Now(),
 				}
 			}
 		}
@@ -252,6 +278,14 @@ func (s *OcrService) probeStatus(addr string) probeCache {
 	s.mu.Lock()
 	s.probe = out
 	s.mu.Unlock()
+	// 在线实例（托管或外部）的版本回写活跃引擎注册表（同值静默跳过，探测周期
+	// 不产生写盘放大）；引擎未在线不动登记值，避免把离线猜测当事实。
+	if out.online && out.version != "" {
+		switch s.engine.Snapshot().State {
+		case instance.StateRunning, instance.StateExternal:
+			_ = s.store.SetEngineVersion(s.store.GetActiveEngine(), out.version)
+		}
+	}
 	return out
 }
 
@@ -276,7 +310,7 @@ func (s *OcrService) StartService() (ControlOutcome, error) {
 			Message: "外部 hanxi-ocr 已在服务，识别照常、启停不接管"}, nil
 	}
 
-	exe, _, err := resolveServiceExe(s.exeDir, s.store.GetExePath())
+	exe, _, err := s.resolveActiveExe() // 拉起目标恒为活跃引擎解析结果（计划 §5.4）
 	if err != nil {
 		return ControlOutcome{}, err
 	}
@@ -507,15 +541,16 @@ func (s *OcrService) SavePastedImage(fileName, dataURL string) (ImageRef, error)
 
 // ---------- 前端 API：设置项 ----------
 
-// GetServiceExePath 返回当前生效的服务程序路径（自动发现结果或用户设定）。
+// GetServiceExePath 返回当前生效的服务程序路径（活跃引擎的自动发现结果或登记件）。
 func (s *OcrService) GetServiceExePath() (string, error) {
-	exe, _, err := resolveServiceExe(s.exeDir, s.store.GetExePath())
+	exe, _, err := s.resolveActiveExe()
 	return exe, err
 }
 
-// SetServiceExePath 设定服务路径；""=恢复自动发现。返回当前生效值。
+// SetServiceExePath 设定活跃引擎的登记路径；""=恢复自动发现。返回当前生效值。
+// （双引擎口径：本方法作用于 active 引擎注册件；另一引擎的登记走导入分流。）
 func (s *OcrService) SetServiceExePath(path string) (string, error) {
-	if err := s.store.SetExePath(path); err != nil {
+	if err := s.store.SetEnginePath(s.store.GetActiveEngine(), path); err != nil {
 		return "", err
 	}
 	return s.GetServiceExePath()

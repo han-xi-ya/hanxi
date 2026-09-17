@@ -21,6 +21,13 @@ import * as $models from "./models.js";
  */
 
 /**
+ * EngineInfo 引擎注册表单件（GetEngines 列表元素，前端"引擎列表"两行卡按此渲染）。
+ * Installed 语义：登记件或默认锚点可解析出可用 exe；未安装时 Path 为空、
+ * Error 给中文原因（未找到指引 / 登记路径失效）。
+ * @typedef {$models.EngineInfo} EngineInfo
+ */
+
+/**
  * ImageRef 统一"已选图"模型：对话框/拖拽/粘贴三通道汇流。
  * @typedef {$models.ImageRef} ImageRef
  */
