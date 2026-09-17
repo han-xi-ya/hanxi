@@ -1007,3 +1007,10 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：`-v` 跑出 BADCHILD 日志见横幅行 `"Microsoft Windows [Version ...]"`；换 deadline 到 10ms 又反向竞态（杀进程与读管道互抢）。结论：与其调时序赌运气，不如换行为确定的替身。
 - **正确做法与标准修复方案**：改用 `powershell.exe`（OS 组件、Win10/11 必在；开发 shell 可能剥其 PATH，用 `exec.LookPath` + `$SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe` 绝对路径兜底）——其 .NET 冷启动必然 >80ms，且参数非法的报错走 **stderr** 而 stdout 全程静默：deadline 到点时它必然还活着且没出声，ctx Kill 支**确定性**触发。坏协议支反过来仍用 cmd.exe（横幅非 JSON 恰好就是真实污染样本，0.01s 收敛）。
 - **避坑防重犯建议**：① 断言"子进程超时被杀"的用例，替身选择标准是 **stdout 静默时长 ≫ deadline**，控制台横幅/欢迎语类程序（cmd、ssh、telnet）一律不合格；② 真 exec 单测一律双保险：测试自身设 watchdog（`select` + `time.After`）+ 子进程侧有 ctx deadline，绝不允许挂到包级超时；③ 自检客户端的纪律与 #63 服务端镜像对称：stdout 非协议行=污染即败（勿容错跳过继续找 id——垃圾能进一次就能进一串），失败原因附 stderr 尾部（本包 `syncBuffer` 截 4KB 展示 200 字）供排障。
+
+### 65. Go 源码里写字面 BOM 即编译失败；GNU sed 替换又会把 \u 当大小写指令吞字（F6 绑定指针解析）
+
+- **问题现象与错误原因**：绑定指针要容忍记事本 UTF-8 BOM，解析函数里写了 `strings.TrimPrefix(string(raw), "<U+FEFF>")`——第二个参数用的是**字面 BOM 字符**（不可见）。`go vet`/`gofmt` 直接报 `paths.go:165:70: illegal byte order mark`：Go 编译器只允许 BOM 出现在**文件首字节**，源码字符串内部的字面 BOM 属于非法输入；测试文件里为造 BOM 场景写下的同类字面量一并爆雷。随后用 `sed -i` 想把 BOM 改回 `"\uFEFF"` 转义，替换串里的 `\u` 又被 GNU sed 解释为"下一字符转大写"的大小写指令，`\uFEFF` 落进文件成了 `FEFF`（u 被吞、F 被大写），越修越花。
+- **排查过程**：`sed -n 165p | od -c` 直读字节确认真凶是 `357 273 277`（EF BB BF）三字节字面 BOM；确认 Go 对源码内 BOM 的非法判定后，改走转义路线；转义落盘用 perl（`s/"\x{ef}\x{bb}\x{bf}"/"\\uFEFF"/`）替代 sed 并回读 od 验证。
+- **正确做法与标准修复方案**：① 源码中一律用 `"\uFEFF"` 转义写 BOM（零宽字符同理用 `\u200B` 等），永不嵌字面不可见字符；② 批量替换含反斜杠语义的文本用 perl -pe 或编辑器精确替换，不用 GNU sed 的 `\u`-敏感替换串；③ 改完立刻过 `gofmt -l` + `go vet` 门禁（本坑正是 vet 抓出来的）。
+- **避坑防重犯建议**：① 凡代码/测试涉及 BOM、NBSP、零宽空格一类不可见字符，成文即转义，评审时 `od -c` 抽查可疑行；② 处理"用户可能用记事本手工编辑的配置文件"（如 hanxi.bind）时，BOM 容忍必须进解析层并有测试用例钉死；③ Windows 路径有效性判定统一 `filepath.IsAbs`——注意其 Windows 口径**要求带卷名**（`\HanxiData` 判相对），跨平台单测构造绝对路径要用 `t.TempDir()` 而非手拼 `\` 前缀。
