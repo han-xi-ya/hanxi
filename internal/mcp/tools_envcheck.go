@@ -38,7 +38,7 @@ func buildEnvCheckTool(deps Deps) (mcp.Tool, server.ToolHandlerFunc) {
 			t.Hint = logging.Redact(t.Hint)
 			items = append(items, t)
 		}
-		return listResult(items)
+		return listResult(items, false)
 	}
 	return tool, handler
 }

@@ -30,7 +30,8 @@ type Deps struct {
 	Access   *Access    // access.json 授权引擎（每次调用重读，fail-closed）
 	Gate     ModuleGate // 模块启用门禁（真 = registry+settings 组合）
 	EnvCheck EnvChecker // hanxi_envcheck_detect 后端
-	// C3-C5 依次追加：Search Searcher / OCR Recognizer / Memo MemoSource。
+	Search   Searcher   // hanxi_file_search 后端（严格只读档）
+	// C4/C5 依次追加：OCR Recognizer / Memo MemoSource。
 }
 
 // NewMCPServer 按工具面全量组表并挂授权/门禁中间件。
@@ -75,6 +76,7 @@ var knownModuleIDs = map[string]bool{
 // 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"红线审（包注释纪律 2）。
 var toolDefs = []toolDef{
 	{Name: toolEnvCheck, ModuleID: "envcheck", Build: buildEnvCheckTool},
+	{Name: toolSearch, ModuleID: "everything", Build: buildEverythingTool},
 }
 
 // gateMiddleware 是所有工具调用的统一闸门：授权（每次重读 access.json）→ 模块启用 →
@@ -112,8 +114,9 @@ func gateMiddleware(deps Deps) server.ToolHandlerMiddleware {
 type resultPayload map[string]any
 
 // listResult 把条目列表装进 {count, truncated, results:[...]} 信封并执行 1MB 预算：
-// 装不下就对半砍条目（预算耗尽以 truncated=true 显式表达，≠ 无结果）。
-func listResult(items []any) (*mcp.CallToolResult, error) {
+// 装不下就对半砍条目（预算耗尽以 truncated=true 显式表达，≠ 无结果）；
+// cappedByLimit=true 表示后端按上限取数、大概率还有更多（同样置 truncated）。
+func listResult(items []any, cappedByLimit bool) (*mcp.CallToolResult, error) {
 	total := len(items)
 	payload := resultPayload{}
 	n := total
@@ -123,7 +126,7 @@ func listResult(items []any) (*mcp.CallToolResult, error) {
 			kept = items[:n]
 		}
 		payload["count"] = len(kept)
-		payload["truncated"] = n < total
+		payload["truncated"] = n < total || (cappedByLimit && n == total && total > 0)
 		payload["results"] = kept
 		data, err := json.Marshal(payload)
 		if err != nil {

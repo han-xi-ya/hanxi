@@ -32,6 +32,7 @@ import (
 	"hanxi/internal/extapi"
 	"hanxi/internal/logging"
 	"hanxi/internal/modules/envcheck"
+	"hanxi/internal/modules/everything"
 	"hanxi/internal/modules/memo"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
@@ -112,6 +113,9 @@ func Run() error {
 		// envcheck 后端独立于模块实例直构（plat 仅作 OpenURL，nil 守卫）——
 		// 与 registry 中模块共享同一份探测框架（detect 包级注册表），无状态分歧。
 		EnvCheck: envcheck.NewEnvCheckService(nil),
+		// everything 走独立严格只读通道（不复用 service.Search 的懒启动/下载编排，
+		// 决策 3-B）；registry 内仍注册该模块，只取 enabled 门禁与生命周期收口。
+		Search: newStrictSearcher(plat),
 	}
 
 	srv := NewMCPServer(deps)
@@ -127,5 +131,6 @@ func Run() error {
 func mcpModules(plat platform.Platform) []extapi.Module {
 	return []extapi.Module{
 		envcheck.New(plat),
+		everything.New(plat),
 	}
 }
