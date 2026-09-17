@@ -32,6 +32,10 @@ const svc = vi.hoisted(() => ({
   SetActiveEngine: vi.fn(),
   HandleNativeDrop: vi.fn(),
   SnipAndRecognize: vi.fn(),
+  RecognizeClipboardImage: vi.fn(),
+  GetSnipHotkey: vi.fn(),
+  SetSnipHotkey: vi.fn(),
+  SetSnipHotkeyEnabled: vi.fn(),
   GetSnipResult: vi.fn().mockResolvedValue([{ ok: false, text: '', lineCount: 0, elapsedMs: 0, error: '', copied: false, cancelled: false }, false]),
   SnipCopyText: vi.fn(),
   SnipCardDismiss: vi.fn(),
@@ -87,6 +91,7 @@ function stubStatus(st = stoppedState, engs: Array<Record<string, unknown>> = [{
   svc.GetListenPort.mockResolvedValue(53120)
   svc.GetFollowOnExit.mockResolvedValue(true)
   svc.GetAutoCopy.mockResolvedValue(true)
+  svc.GetSnipHotkey.mockResolvedValue({ enabled: true, accel: 'Ctrl+Alt+T', registered: true })
 }
 
 async function mountView() {
@@ -534,6 +539,81 @@ describe('OcrView 识别与复制', () => {
     await flushPromises()
     expect(wrapper.find('.ocr-stale').exists()).toBe(true)
     expect(wrapper.find('.ocr-text').exists()).toBe(true) // 数据未被抹掉
+    wrapper.unmount()
+  })
+})
+
+describe('OcrView 剪贴板识图与识图热键', () => {
+  async function openSettings(wrapper: Awaited<ReturnType<typeof mountView>>) {
+    // 无组件的 stopped 态会被首启提示自动展开设置面板——仅未展开时才点开关
+    if (!wrapper.find('.ocr-settings').exists()) {
+      await wrapper.findAll('.btn').find((b) => /服务设置|收起设置/.test(b.text()))!.trigger('click')
+      await flushPromises()
+    }
+  }
+
+  it('页头「剪贴板识图」按钮：成功与无图失败都给回执（不弹覆盖层链路）', async () => {
+    stubStatus()
+    svc.RecognizeClipboardImage.mockResolvedValue({
+      ok: true, text: '你好', lineCount: 1, elapsedMs: 10, error: '', copied: true, cancelled: false,
+    })
+    const wrapper = await mountView()
+    const btn = wrapper.findAll('button').find((b) => b.text().includes('剪贴板识图'))!
+    await btn.trigger('click')
+    await flushPromises()
+    expect(svc.RecognizeClipboardImage).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toBe('识别完成，结果已在悬浮卡中')
+
+    svc.RecognizeClipboardImage.mockRejectedValue(
+      new Error('剪贴板中没有图片：请先复制截图或图片（复制文字、文件不算）'),
+    )
+    await btn.trigger('click')
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('剪贴板识图失败')
+    wrapper.unmount()
+  })
+
+  it('键位录入：组合键提交规范串；占用冲突红字直出且回显不脏写', async () => {
+    const st = { enabled: true, accel: 'Ctrl+Alt+T', registered: true }
+    stubStatus()
+    svc.GetSnipHotkey.mockImplementation(() => Promise.resolve({ ...st }))
+    const wrapper = await mountView()
+    await openSettings(wrapper)
+    const input = wrapper.find('.ocr-hotkey-input')
+    expect((input.element as HTMLInputElement).value).toBe('Ctrl+Alt+T')
+
+    svc.SetSnipHotkey.mockResolvedValue(undefined)
+    await input.trigger('click')
+    await input.trigger('keydown', { key: 'r', ctrlKey: true, altKey: true })
+    await flushPromises()
+    expect(svc.SetSnipHotkey).toHaveBeenCalledWith('Ctrl+Alt+R')
+
+    // 冲突：后端已回滚，UI 红字点名占用，键位框仍显实际生效键
+    svc.SetSnipHotkey.mockRejectedValue(new Error('组合键 Ctrl+Alt+P 已被占用（可能被其他软件抢注），请到设置页改键'))
+    await input.trigger('click')
+    await input.trigger('keydown', { key: 'p', ctrlKey: true, altKey: true })
+    await flushPromises()
+    expect(wrapper.find('.ocr-hotkey-err').text()).toContain('已被占用')
+    expect((wrapper.find('.ocr-hotkey-input').element as HTMLInputElement).value).toBe('Ctrl+Alt+T')
+    wrapper.unmount()
+  })
+
+  it('热键开关与未注册实况警示', async () => {
+    const st = { enabled: true, accel: 'Ctrl+Alt+T', registered: false }
+    stubStatus()
+    svc.GetSnipHotkey.mockImplementation(() => Promise.resolve({ ...st }))
+    const wrapper = await mountView()
+    await openSettings(wrapper)
+    // enabled 但系统未绑：警示行提示改键重试
+    expect(wrapper.find('.ocr-hotkey-err').text()).toContain('未注册')
+
+    svc.SetSnipHotkeyEnabled.mockImplementation((v: boolean) => { st.enabled = v; return Promise.resolve() })
+    const cb = wrapper.find('.ocr-hotkey-row input[type="checkbox"]')
+    await cb.setValue(false) // checkbox 单向 :checked + @change 驱动
+    await flushPromises()
+    expect(svc.SetSnipHotkeyEnabled).toHaveBeenCalledWith(false)
+    // 禁用后不再有"未注册"实况告警（禁而不用是正常态）
+    expect(wrapper.find('.ocr-hotkey-err').exists()).toBe(false)
     wrapper.unmount()
   })
 })
