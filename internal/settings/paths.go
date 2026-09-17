@@ -65,6 +65,9 @@ func InitPaths() *Paths {
 	once.Do(func() {
 		globalPaths = resolvePaths()
 		if globalPaths.initErr == nil {
+			// 搬迁必须在 ensureDirs 派生空目录之前：闸门以"新家尚无数据根
+			// 特征"为条件，先建 versions/ 会让真·新家被误判为已安身。
+			migrateLegacyHome(globalPaths.baseDir)
 			_ = ensureDirs(globalPaths)
 		}
 	})
