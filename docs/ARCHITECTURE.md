@@ -81,6 +81,7 @@ type Module interface {
 - **动态回收**：设置页停用模块时调用 `OnDestroy()` 清空对象并触发 `runtime.GC()` 与 `debug.FreeOSMemory()` 将内存彻底归还操作系统；启用状态经 `Registry` 持久化（Store）。
 - **退出编排**：`OnShutdown → Registry.ShutdownAll()`，JobObject 受管工具连带退出；脱管工具（Snipaste 等）保留原生托盘不受波及。
 - **宿主服务**：`internal/notify` 提供全局通知中心（Hub 分级通知 + `notify:received` 事件 + 已读管理）；`internal/product/identity.go` 集中品牌常量（名称/标识符/可执行名/数据目录/版本）。
+- **统一历史（`internal/history`）**：公共包型服务（与 notify 同谱：直挂 services、无模块身份、无 Nav 无路由）。单文件 `state/history.json`，格式 `map[funcType][]Record`（桶头插新→旧，每桶 200 条裁剪）；`Save` 入口统一补 ID/时间、过 `logging.Redact`（与日志出口同口径）并按 4000 rune 截断，损坏取 frpc 严格档（loadErr 驻留禁写、绝不空库覆写）。模块侧经装配根 `SetHistory` 注入在业务动作点自动留档（首批：ocr 识别 defer 单点、portkill 查询与两路查杀、npmtool 装升卸终态；Q2 口径：动作全记、查询仅 ocr/portkill、envcheck 版本查询不记），`HistoryService` 只暴露读删清、无前端写入面。前端通用件 `components/tool/HistoryPanel.vue` 自取数（funcType prop + 350ms 防抖搜索），宿主按形态嵌 Tab（envcheck）或 Teleport 弹窗（ocr/portkill），双击行上抛整条 Record 直接回填（Q6 行内数据直用，不做应用前强一致重查）。OCR 全文入历史由 config.json `historyOcrFullText` 档位裁决（默认开；关=只记路径与摘要），读写走 `HistoryService.GetOcrFullText/SetOcrFullText`。
 
 ### 2.2 frpc 多实例引擎与进程沙箱 (`internal/modules/frpc`)
 
@@ -138,7 +139,7 @@ internal/modules/<tool>/
 - **路径判定**：
   - 启动时若在可执行文件同级目录检测到 `hanxidata/` 目录（存在即生效，含空目录），则判定为 **Portable 便携模式**，所有数据、日志、版本文件均存放在 `hanxidata/` 下；为兼容旧便携包，同级泛化名 `data/` 仅当其中已含 Hanxi 数据根特征（`config.json` 或 `versions/`）时仍被识别，空 `data/` 不再触发便携模式；
   - 否则进入 **Standard 标准模式**，数据存储在 `%APPDATA%/Hanxi/`。
-- **数据根布局与状态收纳**：数据根只保留应用级锚点——`config.json`（便携数据根标记，不可下迁）、`state/`（各模块状态 JSON，如 `markeron.json`、`memo.json`）、`logs/`、`versions/`、`runtime/`、`installers/`（托管安装版 MSI 缓存）与个别组件二进制锚（`everything/es`、`ocr-engines`）。历史版本把模块状态平铺在根目录，v0.3.x 起由 `settings.MigrateRootStateFiles` 在启动时（模块装配前）自动收拢进 `state/`：`config.json` 除外；目标同名不覆盖、告警留痕（升级/回滚前请先彻底退出另一版本，避免双份文件）。
+- **数据根布局与状态收纳**：数据根只保留应用级锚点——`config.json`（便携数据根标记，不可下迁）、`state/`（各模块状态 JSON，如 `markeron.json`、`memo.json`，含公共统一历史 `history.json`）、`logs/`、`versions/`、`runtime/`、`installers/`（托管安装版 MSI 缓存）与个别组件二进制锚（`everything/es`、`ocr-engines`）。历史版本把模块状态平铺在根目录，v0.3.x 起由 `settings.MigrateRootStateFiles` 在启动时（模块装配前）自动收拢进 `state/`：`config.json` 除外；目标同名不覆盖、告警留痕（升级/回滚前请先彻底退出另一版本，避免双份文件）。
 - **托管目录约定**：frpc 与各托管工具的二进制、版本文件、运行时配置统一落在对应模块的托管子目录（`versions/`、`runtime/`）内；上游工具自身数据（如 PaperTodo `data.json`）原地保留于托管目录，卸载 Hanxi 不删除用户数据。
 - **并发安全原子写**：配置保存采用“写入临时文件 + `os.Rename`”策略，杜绝因程序异常断电造成 JSON 文件损坏。
 - **单实例锁**：以 `io.hanxi.desktop` 标识抢占，防止双开导致的托盘与端口冲突。
