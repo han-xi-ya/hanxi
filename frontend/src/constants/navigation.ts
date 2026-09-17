@@ -78,6 +78,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/douzy': { component: defineAsyncComponent(() => import('@/views/DouzyView.vue')), moduleId: 'douzy' },
   '/ext/ocr': { component: defineAsyncComponent(() => import('@/views/OcrView.vue')), moduleId: 'ocr' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
+  '/ext/softver': { component: defineAsyncComponent(() => import('@/views/SoftverView.vue')), moduleId: 'softver' },
   '/ext/wsl': { component: defineAsyncComponent(() => import('@/views/WSLView.vue')), moduleId: 'wsl' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
   '/ext/msgboard': { component: defineAsyncComponent(() => import('@/views/MsgBoardView.vue')), moduleId: 'msgboard' },
@@ -160,6 +161,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   litemonitor: 'system',
   rufus: 'system',
   envcheck: 'system',
+  softver: 'system',
   markeron: 'desktop',
   nanazip: 'desktop',
   eartrumpet: 'desktop',
@@ -239,6 +241,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   quickmenu: { icon: 'i:mouse-pointer', route: '/ext/quickmenu' },
   msgboard: { icon: 'i:message-circle', route: '/ext/msgboard' },
   envcheck: { icon: 'i:wrench', route: '/ext/envcheck' },
+  softver: { icon: 'i:tag', route: '/ext/softver' },
   ocr: { icon: 'i:scan-text', route: '/ext/ocr' },
 }
 
