@@ -58,7 +58,7 @@ func NewEverythingService(plat platform.Platform) *EverythingService {
 		manager: evversion.NewManager(paths.VersionsDir()),
 		store:   newEverythingStore(paths.StateDir()),
 		// esDir 挂数据根而非 state/：ES 是组件二进制（版本无关），非状态文件。
-		esDir:   filepath.Join(paths.DataDir(), "everything", "es"),
+		esDir: filepath.Join(paths.DataDir(), "everything", "es"),
 	}
 	svc.lastActivity = time.Now()
 	svc.engine = evinstance.NewEngine(plat.Job(), evinstance.NewEverythingProbe(), evinstance.Callbacks{

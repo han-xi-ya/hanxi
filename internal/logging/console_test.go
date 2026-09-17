@@ -13,7 +13,9 @@ import (
 // failWriter 模拟 windowsgui 双击启动时无效句柄的 os.Stderr：写入必错。
 type failWriter struct{}
 
-func (failWriter) Write([]byte) (int, error) { return 0, errors.New("write /dev/stderr: The handle is invalid.") }
+func (failWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write /dev/stderr: The handle is invalid.")
+}
 
 var _ io.Writer = failWriter{}
 
