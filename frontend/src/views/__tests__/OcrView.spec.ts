@@ -1,12 +1,13 @@
-// 特征测试：OcrView 是「本地服务托管 + 识别转发」视图——
-// 核心契约：五态 chip 与引导横幅、启停调用、三输入通道汇流 ImageRef、
-// 识别结果/失败/stale 三形态、busy 防重入、复制走 useClipboard。
+// 特征测试：OcrView 是「本地服务托管 + 识别转发」视图（双引擎并存，计划 §5.5）——
+// 核心契约：五态 chip 与引导横幅、启停调用、引擎列表（GetEngines/切换/带病警示）、
+// 三输入通道汇流 ImageRef、识别结果/失败/stale 三形态、busy 防重入、复制走 useClipboard。
 // 绑定与事件按仓库统一 vi.mock 打桩范式（照 DouzyView.spec）。
 import { KeepAlive, defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import OcrView from '../OcrView.vue'
 import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
 
 const svc = vi.hoisted(() => ({
   GetStatus: vi.fn(),
@@ -25,6 +26,10 @@ const svc = vi.hoisted(() => ({
   BrowseServiceExeDialog: vi.fn(),
   ImportServiceExe: vi.fn(),
   ImportServiceExeDialog: vi.fn(),
+  ImportPaddleDir: vi.fn(),
+  ImportPaddleDirDialog: vi.fn(),
+  GetEngines: vi.fn(),
+  SetActiveEngine: vi.fn(),
   HandleNativeDrop: vi.fn(),
   SnipAndRecognize: vi.fn(),
   GetSnipResult: vi.fn().mockResolvedValue([{ ok: false, text: '', lineCount: 0, elapsedMs: 0, error: '', copied: false, cancelled: false }, false]),
@@ -54,6 +59,7 @@ vi.mock('../../../bindings/hanxi/internal/modules/ocr/ocrservice', () => svc)
 const stoppedState = {
   state: 'stopped', online: false, managed: false, external: false, pid: 0,
   listenAddr: '127.0.0.1:53120', exePath: '', exeAuto: true, version: '', engine: '',
+  engineMode: '', engineID: 'wechat', engineError: '',
   engineRunning: false, hung: false, error: '', checkedAt: '',
 }
 const runningState = {
@@ -61,8 +67,23 @@ const runningState = {
   exePath: 'E:\\tools\\hanxi-ocr\\hanxi-ocr.exe', version: '0.2.0', engine: 'wxocr@8094', engineRunning: true,
 }
 
-function stubStatus(st = stoppedState) {
+// 引擎注册表夹具：默认微信已装且活跃（自动发现）、PP-OCR 未装（中文指引）
+const wechatEngine = {
+  id: 'wechat', label: '微信引擎', installed: true, active: true, version: '0.3.1',
+  path: 'E:\\tools\\hanxi-ocr\\hanxi-ocr.exe', auto: true, error: '',
+}
+const paddleMissing = {
+  id: 'paddle', label: 'PP-OCR 开源引擎', installed: false, active: false, version: '',
+  path: '', auto: false, error: '未发现 PP-OCR 引擎：解压公开分发包后点「导入目录」，或把目录放入 Hanxi 数据目录 ocr-engines 下',
+}
+const paddleInstalled = {
+  id: 'paddle', label: 'PP-OCR 开源引擎', installed: true, active: false, version: '0.4.0-alpha',
+  path: 'D:\\ocr\\hanxi-ocr-paddle\\hanxi-ocr.exe', auto: false, error: '',
+}
+
+function stubStatus(st = stoppedState, engs: Array<Record<string, unknown>> = [{ ...wechatEngine }, { ...paddleMissing }]) {
   svc.GetStatus.mockResolvedValue({ ...st })
+  svc.GetEngines.mockResolvedValue(engs.map((e) => ({ ...e })))
   svc.GetListenPort.mockResolvedValue(53120)
   svc.GetFollowOnExit.mockResolvedValue(true)
   svc.GetAutoCopy.mockResolvedValue(true)
@@ -260,6 +281,137 @@ describe('OcrView 组件导入', () => {
     await flushPromises()
     expect(useToast().toastMsg.value).toBe('')
     expect(svc.StartService).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+})
+
+describe('OcrView 引擎列表（双引擎并存）', () => {
+  async function mountWith(st: Record<string, unknown>, engs: Array<Record<string, unknown>>) {
+    stubStatus(st as never, engs)
+    const wrapper = await mountView()
+    const toggle = wrapper.findAll('.btn').find((b) => /服务设置|收起设置/.test(b.text()))!
+    if (toggle.attributes('aria-expanded') !== 'true') await toggle.trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+  function rowBtn(wrapper: Awaited<ReturnType<typeof mountView>>, rowIdx: number, text: string) {
+    return wrapper.findAll('.ocr-engine-row')[rowIdx].findAll('.btn').find((b) => b.text().includes(text))!
+  }
+
+  it('两行卡：当前徽标/安装态/版本/路径/自动发现；未安装行直出中文指引且不可切换', async () => {
+    const wrapper = await mountWith(runningState, [{ ...wechatEngine }, { ...paddleMissing }])
+    const rows = wrapper.findAll('.ocr-engine-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain('微信引擎')
+    expect(rows[0].text()).toContain('当前引擎')
+    expect(rows[0].text()).toContain('已安装')
+    expect(rows[0].text()).toContain('0.3.1')
+    expect(rows[0].text()).toContain('自动发现')
+    expect(rows[0].text()).toContain('上游型号 wxocr@8094')
+    expect(rows[0].findAll('.btn-primary')).toHaveLength(0) // 活跃行无「设为当前」
+    expect(rows[1].text()).toContain('未安装')
+    expect(rows[1].text()).toContain('未发现 PP-OCR 引擎') // error 中文指引直出
+    expect(rows[1].findAll('.btn-primary')).toHaveLength(0) // 未安装不可切换
+    expect(rows[1].text()).toContain('导入目录')
+    wrapper.unmount()
+  })
+
+  it('engineError 非空：页面警示横幅 + 当前行警示态，中文原因不吞', async () => {
+    const wrapper = await mountWith(
+      { ...runningState, engineError: '模型缺失：models/det.onnx 未找到' },
+      [{ ...wechatEngine }, { ...paddleInstalled }],
+    )
+    expect(wrapper.find('.banner-warn').text()).toContain('模型缺失')
+    const rows = wrapper.findAll('.ocr-engine-row')
+    expect(rows[0].classes()).toContain('ocr-engine-sick')
+    expect(rows[0].text()).toContain('当前 · 引擎异常')
+    expect(rows[0].text()).toContain('模型缺失')
+    expect(rows[1].text()).toContain('设为当前') // 另一已装引擎可作切换逃生口
+    wrapper.unmount()
+  })
+
+  it('运行中切换：先经确认框说明将重启识别，确认后才调 SetActiveEngine', async () => {
+    svc.SetActiveEngine.mockResolvedValue({ action: 'switched', external: false, message: '已切换为 PP-OCR 开源引擎，新引擎已启动' })
+    const wrapper = await mountWith(runningState, [{ ...wechatEngine }, { ...paddleInstalled }])
+    const { confirmState, settleConfirm } = useConfirm()
+    await rowBtn(wrapper, 1, '设为当前').trigger('click')
+    await flushPromises()
+    expect(svc.SetActiveEngine).not.toHaveBeenCalled() // 未经确认绝不擅自重启服务
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.description).toContain('重启')
+    settleConfirm(true)
+    await settle()
+    expect(svc.SetActiveEngine).toHaveBeenCalledWith('paddle')
+    expect(useToast().toastMsg.value).toContain('已切换')
+    wrapper.unmount()
+  })
+
+  it('取消确认：不切换引擎', async () => {
+    const wrapper = await mountWith(runningState, [{ ...wechatEngine }, { ...paddleInstalled }])
+    const { confirmState, settleConfirm } = useConfirm()
+    await rowBtn(wrapper, 1, '设为当前').trigger('click')
+    await flushPromises()
+    expect(confirmState.open).toBe(true)
+    settleConfirm(false)
+    await settle()
+    expect(svc.SetActiveEngine).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('服务停止时切换：免确认直接登记切换，不擅自拉起', async () => {
+    svc.SetActiveEngine.mockResolvedValue({ action: 'switched', external: false, message: '已切换为 PP-OCR 开源引擎（服务未启动，启动或截屏识别时自动拉起）' })
+    const wrapper = await mountWith(stoppedState, [{ ...wechatEngine }, { ...paddleInstalled }])
+    const { confirmState } = useConfirm()
+    await rowBtn(wrapper, 1, '设为当前').trigger('click')
+    await settle()
+    expect(confirmState.open).toBe(false)
+    expect(svc.SetActiveEngine).toHaveBeenCalledWith('paddle')
+    expect(svc.StartService).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('external 在跑：后端 external-unmanaged 拒绝的中文指引原样直出', async () => {
+    svc.SetActiveEngine.mockResolvedValue({ action: 'external-unmanaged', external: true, message: '外部 hanxi-ocr 实例正在服务，Hanxi 不接管其启停；请先退出该实例再切换引擎' })
+    const wrapper = await mountWith({ ...runningState, state: 'external', external: true, managed: false }, [{ ...wechatEngine }, { ...paddleInstalled }])
+    const { confirmState } = useConfirm()
+    await rowBtn(wrapper, 1, '设为当前').trigger('click')
+    await settle()
+    expect(confirmState.open).toBe(false) // 不弹无意义的重启确认
+    expect(svc.SetActiveEngine).toHaveBeenCalledWith('paddle')
+    expect(useToast().toastMsg.value).toContain('外部')
+    expect(svc.StartService).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('PP-OCR 导入目录：后端对话框一体导入（取消静默），回执事件统一播报', async () => {
+    const wrapper = await mountWith(runningState, [{ ...wechatEngine }, { ...paddleMissing }])
+    svc.ImportPaddleDirDialog.mockResolvedValue({ kind: 'import' }) // 取消：后端空回执，不发事件不播报
+    await rowBtn(wrapper, 1, '导入目录').trigger('click')
+    await settle()
+    expect(svc.ImportPaddleDirDialog).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toBeFalsy()
+
+    const statusBefore = svc.GetStatus.mock.calls.length
+    const enginesBefore = svc.GetEngines.mock.calls.length
+    runtime.handlers['ocr:file-drop-result']({
+      data: { kind: 'import', ok: true, exePath: 'D:\\ocr\\hanxi-ocr-paddle\\hanxi-ocr.exe', image: null, message: '已登记 PP-OCR 引擎目录（v0.4.0-alpha）；已切换为 PP-OCR 开源引擎' },
+    })
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('已登记')
+    expect(svc.GetStatus.mock.calls.length).toBeGreaterThan(statusBefore) // 回执后状态…
+    expect(svc.GetEngines.mock.calls.length).toBeGreaterThan(enginesBefore) // …与注册表同频刷新
+    wrapper.unmount()
+  })
+
+  it('微信引擎行「导入组件」走文件框（对话框通道），拖入区保留原生目录/文件双接受面', async () => {
+    const wrapper = await mountWith(runningState, [{ ...wechatEngine }, { ...paddleInstalled }])
+    await rowBtn(wrapper, 0, '更换组件').trigger('click')
+    await flushPromises()
+    expect(svc.ImportServiceExeDialog).toHaveBeenCalledTimes(1)
+    const zone = wrapper.find('#ocr-import-target')
+    expect(zone.attributes('data-file-drop-target')).toBe('true')
+    expect(zone.text()).toContain('PP-OCR') // 接受面文案覆盖目录件
+    expect(zone.text()).toContain('hanxi-ocr.exe')
     wrapper.unmount()
   })
 })

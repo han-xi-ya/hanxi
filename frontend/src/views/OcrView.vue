@@ -1,13 +1,15 @@
 <script setup lang="ts">
-// 「文字识别」：本地 hanxi-ocr 服务（微信 4.0 OCR 引擎封装的私有组件）的
-// 托管启停 + 识别工作台。三输入通道（对话框选图 / 拖拽 / 粘贴）汇流为
-// ImageRef 后统一转发 path 模式识别；状态以事件为主、5s 轮询兜底。
+// 「文字识别」：本地 hanxi-ocr 服务的托管启停 + 识别工作台（双引擎并存，计划 §5.5：
+// PP-OCR 开源引擎 / 微信引擎组件，单端口单活，切换即重启识别服务）。
+// 三输入通道（对话框选图 / 拖拽 / 粘贴）汇流为 ImageRef 后统一转发 path 模式识别；
+// 状态以事件为主、5s 轮询兜底。
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
 import { computed, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
-import type { DropResult, ImageRef, OcrOutcome, ServiceState } from '../../bindings/hanxi/internal/modules/ocr/models'
+import type { DropResult, EngineInfo, ImageRef, OcrOutcome, ServiceState } from '../../bindings/hanxi/internal/modules/ocr/models'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
+import { useConfirm } from '../composables/useConfirm'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { usePolling } from '../composables/usePolling'
 import { useAsyncAction } from '../composables/useAsyncAction'
@@ -20,9 +22,12 @@ import UiBanner from '../components/ui/UiBanner.vue'
 
 const { showToast } = useToast()
 const { copy } = useClipboard()
+const { confirm } = useConfirm()
 
 // ---------- 状态 ----------
 const state = ref<ServiceState | null>(null) // null = 首帧尚未取得
+const engines = ref<EngineInfo[]>([]) // 引擎注册表（GetEngines）；空=首帧未取得
+const enginesReady = ref(false) // 已取得过一次（区分"加载中"与"真的没有"）
 const showSettings = ref(false)
 const portInput = ref('')
 const followOnExit = ref(true)
@@ -36,10 +41,19 @@ const readingFile = ref(false)
 const { busy: recBusy, run: runRec } = useAsyncAction()
 const { busy: ctrlBusy, run: runCtrl } = useAsyncAction()
 const { busy: snipBusy, run: runSnip } = useAsyncAction()
+const { busy: switchBusy, run: runSwitch } = useAsyncAction()
+const switchingId = ref('') // 切换进行中的目标引擎（行内按钮态）
 
 const chip = computed(() => (state.value ? toolStateMeta(state.value.state) : null))
 const online = computed(() => state.value?.online === true)
 const canRecognize = computed(() => online.value && !!image.value && !recBusy.value)
+
+// 引擎中文名（表头/确认框展示用）：身份判定恒以 engineID（后端 store 登记），
+// 上游 engine 型号串只作次要信息直出不解析（计划 §3/§5.1 口径）。
+const ENGINE_LABELS: Record<string, string> = { wechat: '微信引擎', paddle: 'PP-OCR 开源引擎' }
+const activeEngineLabel = computed(() => ENGINE_LABELS[state.value?.engineID || ''] || '')
+// 引擎带病（服务在线但上游自报中文错误）→ 仅命中当前活跃行时给警示态
+const engineSick = computed(() => online.value && !!state.value?.engineError)
 
 // 服务掉线但已有上次结果 → stale 提示（保留数据，诚实标记）
 const stale = computed(() => !!outcome.value?.ok && !!state.value && !state.value.online)
@@ -51,7 +65,21 @@ async function refreshStatus() {
     console.warn('ocr GetStatus failed:', getErrorMessage(e))
   }
 }
-usePolling(refreshStatus, 5000)
+
+// 引擎注册表视图：与状态同频刷新（导入/切换后必须即时反映安装态与路径）。
+async function refreshEngines() {
+  try {
+    engines.value = (await OcrAPI.GetEngines()) || [] // Go 空切片到达为 null，归一为空数组
+    enginesReady.value = true
+  } catch (e) {
+    console.warn('ocr GetEngines failed:', getErrorMessage(e))
+  }
+}
+
+async function refreshAll() {
+  await Promise.all([refreshStatus(), refreshEngines()])
+}
+usePolling(refreshAll, 5000)
 useWailsEvent<ServiceState>('ocr:service-state', (st) => {
   if (st && typeof st.state === 'string') state.value = st
 })
@@ -78,12 +106,57 @@ async function stopService() {
 }
 
 // ---------- 组件导入（拖放/对话框；回执统一走 ocr:file-drop-result 事件） ----------
+// 微信引擎：单文件 exe（后端按形态分流，拖文件走原校验链）。
 async function importViaDialog() {
   try {
     await OcrAPI.ImportServiceExeDialog() // 成功/失败提示与自动启动由事件统一处理，此处只兜程序性错误
   } catch (e) {
     showToast(getErrorMessage(e))
   }
+}
+
+// PP-OCR 开源引擎：目录件（后端原生文件夹框选目录 + 导入一体）。成功/失败回执
+// （含校验拒绝的中文指引）均由后端广播 ocr:file-drop-result 统一处理，此处
+// 只兜程序性错误；登记即激活与停旧起新收口在后端，前端不再补启停。
+async function importPaddleViaDialog() {
+  try {
+    await OcrAPI.ImportPaddleDirDialog()
+  } catch (e) {
+    showToast(getErrorMessage(e))
+  }
+}
+
+// ---------- 引擎切换（单活语义：在跑则停旧起新，须显式确认） ----------
+async function requestSwitch(id: string) {
+  const eng = engines.value.find((e) => e.id === id)
+  if (!eng || eng.active || !eng.installed || switchBusy.value) return
+  const st = state.value
+  // 托管实例在跑 → 切换必然重启识别服务：先确认；未运行/external 直发后端
+  // （external 由后端按"不越权"拒绝并给中文指引，前端原样呈现）
+  if (st && !st.external && (st.state === 'running' || st.state === 'starting')) {
+    const accepted = await confirm({
+      title: `切换为${eng.label}？`,
+      description: '当前识别服务正在运行：切换引擎将重启识别服务（先停止现有实例、再启动新引擎），期间短暂中断，进行中的识别请求会失败。',
+      confirmLabel: '重启并切换',
+      tone: 'warning',
+      details: [
+        { label: '当前引擎', value: activeEngineLabel.value || '—' },
+        { label: '切换为', value: eng.label },
+      ],
+    })
+    if (!accepted) return
+  }
+  switchingId.value = id
+  const res = await runSwitch(() => OcrAPI.SetActiveEngine(id))
+  switchingId.value = ''
+  if (!res.ok) {
+    showToast(`切换引擎失败: ${getErrorMessage(res.error)}`)
+  } else if (res.data.action === 'external-unmanaged') {
+    showToast(res.data.message || '外部实例正在服务，暂不接管切换') // 拒绝原因必须直出，不能吞
+  } else {
+    showToast(res.data.message || '引擎切换完成')
+  }
+  await refreshAll()
 }
 
 useWailsEvent<DropResult>('ocr:file-drop-result', (r) => {
@@ -100,11 +173,11 @@ useWailsEvent<DropResult>('ocr:file-drop-result', (r) => {
   // import：取消对话框回执静默（无 message）
   if (!r.ok) {
     if (r.message) showToast(r.message)
-    void refreshStatus()
+    void refreshAll()
     return
   }
   showToast(r.message || '组件已导入')
-  void refreshStatus()
+  void refreshAll()
   const st = state.value?.state
   if (st === 'stopped' || st === 'failed') void startService() // 导入即托管：拖进来就能跑
 })
@@ -160,28 +233,6 @@ async function applyPort() {
   try {
     const res = await OcrAPI.SetListenPort(port)
     showToast(res === 'pending' ? '端口已保存，下次启动服务生效' : '端口已应用')
-    await refreshStatus()
-  } catch (e) {
-    showToast(getErrorMessage(e))
-  }
-}
-
-async function browseExe() {
-  try {
-    const path = await OcrAPI.BrowseServiceExeDialog()
-    if (!path) return
-    await OcrAPI.SetServiceExePath(path)
-    showToast('服务路径已更新')
-    await refreshStatus()
-  } catch (e) {
-    showToast(getErrorMessage(e))
-  }
-}
-
-async function resetExeAuto() {
-  try {
-    await OcrAPI.SetServiceExePath('')
-    showToast('已恢复自动发现（Hanxi 同级 ../hanxi-ocr）')
     await refreshStatus()
   } catch (e) {
     showToast(getErrorMessage(e))
@@ -289,7 +340,7 @@ async function copyLine(text: string) {
 }
 
 onMounted(() => {
-  void refreshStatus()
+  void refreshAll()
   void loadSettings()
 })
 </script>
@@ -298,14 +349,14 @@ onMounted(() => {
   <section class="page ocr-view">
     <PageHeader
       title="文字识别"
-      subtitle="本地 hanxi-ocr 服务（微信 4.0 识别引擎封装）：拖入、粘贴或选择图片即可识别，全程离线不联网。"
+      subtitle="本地 hanxi-ocr 服务，双引擎并存：PP-OCR 开源引擎（公开可获取，自行导入）或微信引擎组件（私发）。拖入、粘贴或选择图片即可识别，全程离线不联网。"
     >
       <template #actions>
         <div class="ocr-head-actions">
           <span v-if="!state" class="ocr-checking live-pulse">探测服务中…</span>
           <UiStatusChip v-else :tone="chip!.tone">{{ chip!.text }}</UiStatusChip>
-          <span v-if="online && state!.version" class="ocr-ver" :title="`引擎 ${state!.engine}`">
-            {{ state!.version }}<template v-if="!state!.engineRunning"> · 引擎预热中</template>
+          <span v-if="online && state!.version" class="ocr-ver" :title="`上游型号 ${state!.engine}`">
+            <template v-if="activeEngineLabel">{{ activeEngineLabel }} · </template>{{ state!.version }}<template v-if="!state!.engineRunning"> · 引擎预热中</template>
           </span>
           <button class="btn btn-secondary btn-small" :disabled="snipBusy" title="唤起系统截屏，框选区域即识别（服务未运行时自动拉起）" @click="snipRecognize">
             {{ snipBusy ? '截屏识别中…' : '📷 框选识别' }}
@@ -319,10 +370,10 @@ onMounted(() => {
 
     <!-- 服务引导：按状态给下一步，绝不裸报错 -->
     <UiBanner v-if="state && state.state === 'stopped'" tone="info">
-      识别服务未运行。把单文件版 hanxi-ocr.exe
-      <button class="link-button" @click="showSettings = true">拖入下方导入区</button>
-      或解压组件到 <code class="mono">{{ state.exePath || 'Hanxi 同级目录 ../hanxi-ocr' }}</code>，
-      再点击「启动服务」；外部自行启动的实例会被自动接管识别。
+      识别服务未运行：
+      <button class="link-button" @click="showSettings = true">打开引擎列表</button>
+      导入其一——<b>PP-OCR 开源引擎</b>（公开可获取，解压后拖入整个目录）或<b>微信引擎</b>组件（单文件 hanxi-ocr.exe，私发渠道获取）；
+      引擎已就绪则直接启动。外部自行启动的实例会被自动接管识别。
       <button class="btn btn-primary btn-small ocr-banner-btn" :disabled="ctrlBusy" @click="startService">
         {{ ctrlBusy ? '启动中…' : '▶ 启动服务' }}
       </button>
@@ -343,22 +394,63 @@ onMounted(() => {
       引擎挂起无响应（识别 Call 未返回）。重启服务可恢复：
       <button class="btn btn-secondary btn-small ocr-banner-btn" :disabled="ctrlBusy" @click="stopService">停止服务</button>
     </UiBanner>
+    <!-- 引擎带病：服务在线但上游自报中文错误——独立警示（可与上行横幅叠加），绝不吞 -->
+    <UiBanner v-if="engineSick" tone="warn">
+      服务在线但当前引擎异常：{{ state!.engineError }}。可停止并重新启动服务，或在「服务设置 → 识别引擎」切换引擎尝试恢复。
+    </UiBanner>
 
     <div v-if="showSettings" class="ocr-card ocr-settings">
-      <div class="ocr-set-row">
-        <span class="ocr-set-k">服务程序</span>
-        <code class="mono ocr-set-path" :title="state?.exePath || ''">{{ state?.exePath || '未发现（预期 Hanxi 同级 ../hanxi-ocr/hanxi-ocr.exe）' }}</code>
-        <span v-if="state?.exeAuto" class="ocr-set-tag">自动发现</span>
-        <button class="btn btn-secondary btn-small" @click="browseExe">浏览…</button>
-        <button v-if="state && !state.exeAuto" class="link-button" @click="resetExeAuto">恢复自动</button>
+      <div class="section-title"><h3>识别引擎</h3></div>
+      <p class="ocr-set-note">单端口单活：同一时刻仅一个引擎在服务，切换即重启识别；两者对识别链路完全等价。</p>
+
+      <!-- 引擎列表：GetEngines 注册表驱动，两行卡（微信 / PP-OCR 开源） -->
+      <div v-if="!enginesReady" class="state-box ocr-eng-loading">读取引擎列表…<span class="live-pulse">…</span></div>
+      <div v-else class="ocr-engine-list">
+        <div v-for="eng in engines" :key="eng.id" class="ocr-engine-row"
+          :class="{ 'ocr-engine-current': eng.active, 'ocr-engine-sick': eng.active && engineSick }">
+          <div class="ocr-engine-top">
+            <span class="ocr-engine-name">{{ eng.label }}</span>
+            <span class="ocr-engine-badges">
+              <UiStatusChip v-if="eng.active" :tone="engineSick ? 'warning' : 'positive'">
+                {{ engineSick ? '当前 · 引擎异常' : '当前引擎' }}
+              </UiStatusChip>
+              <UiStatusChip :tone="eng.installed ? 'positive' : 'neutral'">{{ eng.installed ? '已安装' : '未安装' }}</UiStatusChip>
+              <span v-if="eng.auto" class="ocr-set-tag">自动发现</span>
+            </span>
+          </div>
+          <div v-if="eng.installed" class="ocr-engine-meta">
+            <span v-if="eng.version" class="ocr-engine-ver mono">{{ eng.version }}</span>
+            <code class="ocr-engine-path mono" :title="eng.path">{{ eng.path }}</code>
+            <span v-if="eng.active && online && state!.engine" class="ocr-engine-model">
+              上游型号 {{ state!.engine }}<template v-if="state!.engineMode"> · {{ state!.engineMode }}</template>
+            </span>
+          </div>
+          <!-- 警示态优先：当前引擎带病直出中文原因；未安装给注册表指引 -->
+          <p v-if="eng.active && engineSick" class="ocr-engine-warn">{{ state!.engineError }}</p>
+          <p v-else-if="eng.error" class="ocr-engine-err">{{ eng.error }}</p>
+          <div class="ocr-engine-actions">
+            <button v-if="eng.installed && !eng.active" class="btn btn-primary btn-small"
+              :disabled="switchBusy" @click="requestSwitch(eng.id)">
+              {{ switchBusy && switchingId === eng.id ? '切换中…' : '设为当前' }}
+            </button>
+            <button v-if="eng.id === 'paddle'" class="btn btn-secondary btn-small" @click="importPaddleViaDialog">
+              {{ eng.installed ? '更换目录…' : '导入目录…' }}
+            </button>
+            <button v-else class="btn btn-secondary btn-small" @click="importViaDialog">
+              {{ eng.installed ? '更换组件…' : '导入组件…' }}
+            </button>
+          </div>
+        </div>
       </div>
+
       <div class="ocr-set-row ocr-import-row">
-        <span class="ocr-set-k">导入组件</span>
+        <span class="ocr-set-k">拖入导入</span>
         <div id="ocr-import-target" class="ocr-import-drop" data-file-drop-target="true"
-          role="button" tabindex="0" aria-label="拖入或点击选择 hanxi-ocr.exe 导入"
+          role="button" tabindex="0" aria-label="拖入 PP-OCR 开源引擎目录或微信引擎 hanxi-ocr.exe 导入；点击可选取微信引擎文件"
           @click="importViaDialog" @keydown.enter.prevent="importViaDialog">
-          将单文件版 <b>hanxi-ocr.exe</b>（约 48 MB）拖到这里，或点击选择文件；
-          校验通过即指向它并自动启动。升级组件：拖入新版覆盖旧路径即可
+          📂 把 <b>PP-OCR 开源引擎</b>的解压目录整个拖到这里（须含 hanxi-ocr.exe 与 manifest.json）；
+          <b>微信引擎</b>单文件 <b>hanxi-ocr.exe</b>（约 48 MB）拖入或点击选择亦可。
+          校验通过即指向并自动启动，升级引擎同此再拖一次新版
         </div>
       </div>
       <div class="ocr-set-row">
@@ -536,14 +628,34 @@ onMounted(() => {
 .ocr-settings { gap: 8px; }
 .ocr-set-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--text-sm); }
 .ocr-set-k { color: var(--color-text-subtle); flex-shrink: 0; width: 56px; }
-.ocr-set-path { flex: 1; min-width: 200px; font-size: var(--text-xs); color: var(--color-text-muted); overflow-wrap: anywhere; }
 .ocr-set-tag { font-size: var(--text-micro); padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft, var(--surface-hover)); color: var(--state-information); }
+
+/* 引擎列表：installed-card 语系的两行卡（纵排；窄屏自然换行不缩字号） */
+.ocr-eng-loading { font-size: var(--text-sm); }
+.ocr-engine-list { display: flex; flex-direction: column; gap: 8px; }
+.ocr-engine-row {
+  background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  transition: border-color var(--motion-base) ease;
+}
+.ocr-engine-current { border-color: var(--color-primary); background: var(--surface-panel); }
+.ocr-engine-sick { border-color: var(--state-warning); }
+.ocr-engine-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ocr-engine-name { font-size: var(--text-base); font-weight: 600; color: var(--color-text); }
+.ocr-engine-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.ocr-engine-meta { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: var(--text-xs); color: var(--color-text-muted); min-width: 0; }
+.ocr-engine-ver { color: var(--color-text); flex-shrink: 0; }
+.ocr-engine-path { flex: 1 1 200px; min-width: 0; font-size: var(--text-xs); color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ocr-engine-model { font-size: var(--text-xs); color: var(--color-text-subtle); flex-shrink: 0; }
+.ocr-engine-err { margin: 0; font-size: var(--text-xs); color: var(--state-warning); overflow-wrap: anywhere; }
+.ocr-engine-warn { margin: 0; font-size: var(--text-sm); color: var(--state-warning); overflow-wrap: anywhere; }
+.ocr-engine-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .ocr-set-port { width: 84px; }
 .ocr-set-follow { display: flex; align-items: center; gap: 6px; color: var(--color-text-muted); margin-left: auto; }
 .ocr-set-note { font-size: var(--text-xs); color: var(--color-text-subtle); margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .ocr-dropzone, .ocr-lines .link-button { transition: none; }
+  .ocr-dropzone, .ocr-lines .link-button, .ocr-engine-row { transition: none; }
   .ocr-view :deep(.live-pulse) { animation: none; }
 }
 </style>
