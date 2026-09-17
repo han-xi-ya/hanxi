@@ -37,6 +37,23 @@
  */
 
 /**
+ * HostedVersion 托管版本清单一件（F7：引擎 zip 安装进 versions/hanxi-ocr 的落位件）。
+ * State：ready=入口可执行 / broken=目录在位但入口缺失损坏（列表照列，供卸载清理）。
+ * Effective 由服务层填充：当前活跃引擎的服务解析结果正落在该版本目录内。
+ * @typedef {Object} HostedVersion
+ * @property {string} engine - wechat / paddle
+ * @property {string} version - manifest 版本号（目录名 = engine-version）
+ * @property {string} dir - 版本目录绝对路径
+ * @property {string} exePath - 入口 hanxi-ocr.exe 路径
+ * @property {number} size - 入口 exe 字节数
+ * @property {string} installedAt - 安装时间（meta.json / 目录 mtime）
+ * @property {string} note - manifest 中文说明（可空）
+ * @property {string} state - ready / broken
+ * @property {boolean} effective - 生效版本（活跃引擎解析命中）
+ * @property {string} error - broken 态中文原因
+ */
+
+/**
  * ImageRef 统一"已选图"模型：对话框/拖拽/粘贴三通道汇流。
  * @typedef {Object} ImageRef
  * @property {string} path

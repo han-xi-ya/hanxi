@@ -116,9 +116,9 @@ export function GetStatus() {
 
 /**
  * HandleNativeDrop Wails 主窗原生文件拖放入口（app.go 接线；只有落在 OcrView
- * 标记 data-file-drop-target 元素上的文件才会到达）。分流：目录 → PP-OCR 引擎包
- * 导入；.exe → 微信件导入；图片 → 真实路径直接选为待识别对象（免走 dataURL 全量
- * IPC）；其余给中文提示。
+ * 标记 data-file-drop-target 元素上的文件才会到达）。分流：.zip → 托管安装包
+ * （F7：契约校验后自动解压落位）；目录 → PP-OCR 引擎包导入；.exe → 微信件导入；
+ * 图片 → 真实路径直接选为待识别对象（免走 dataURL 全量 IPC）；其余给中文提示。
  * @param {string[] | null} files
  * @returns {$CancellablePromise<void>}
  */
@@ -177,6 +177,35 @@ export function ImportServiceExeDialog() {
  */
 export function InspectImage(path) {
     return $Call.ByID(691847548, path);
+}
+
+/**
+ * InstallHostedZip 安装引擎 zip 包（拖放/对话框共用同一校验链）。业务失败
+ * 折进 DropResult.Message 并广播 ocr:file-drop-result（Kind=import）。
+ * 成功后：登记该引擎指向托管入口并记录版本；paddle 沿用"登记即激活"语义
+ * （停旧起新/外部不越权判定收口 SetActiveEngine），wechat 仅登记不切换。
+ * @param {string} srcPath
+ * @returns {$CancellablePromise<$models.DropResult>}
+ */
+export function InstallHostedZip(srcPath) {
+    return $Call.ByID(1325098850, srcPath);
+}
+
+/**
+ * InstallHostedZipDialog 对话框式安装（与拖放同一校验链；取消静默）。
+ * @returns {$CancellablePromise<$models.DropResult>}
+ */
+export function InstallHostedZipDialog() {
+    return $Call.ByID(3392273058);
+}
+
+/**
+ * ListHostedVersions 托管版本树清单（engineOrder 次序、engine 内版本降序），
+ * 并标记当前生效版本（活跃引擎解析结果所在目录）。未安装返回空列表。
+ * @returns {$CancellablePromise<$models.HostedVersion[] | null>}
+ */
+export function ListHostedVersions() {
+    return $Call.ByID(2321453439);
 }
 
 /**
@@ -376,4 +405,16 @@ export function StartService() {
  */
 export function StopService() {
     return $Call.ByID(2170035572);
+}
+
+/**
+ * UninstallHostedVersion 卸载一个托管版本（删 versions/hanxi-ocr/<engine>-<version>/）。
+ * 在用拒卸：托管/启动中实例的生效解析正落在该目录 → 拒绝并给指引。
+ * 成功后该引擎登记件若指向被删目录则复位自动发现（解析链自愈/落回旧锚点）。
+ * @param {string} engine
+ * @param {string} version
+ * @returns {$CancellablePromise<$models.ControlOutcome>}
+ */
+export function UninstallHostedVersion(engine, version) {
+    return $Call.ByID(228064910, engine, version);
 }

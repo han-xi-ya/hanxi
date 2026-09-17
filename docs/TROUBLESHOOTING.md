@@ -1014,3 +1014,9 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：`sed -n 165p | od -c` 直读字节确认真凶是 `357 273 277`（EF BB BF）三字节字面 BOM；确认 Go 对源码内 BOM 的非法判定后，改走转义路线；转义落盘用 perl（`s/"\x{ef}\x{bb}\x{bf}"/"\\uFEFF"/`）替代 sed 并回读 od 验证。
 - **正确做法与标准修复方案**：① 源码中一律用 `"\uFEFF"` 转义写 BOM（零宽字符同理用 `\u200B` 等），永不嵌字面不可见字符；② 批量替换含反斜杠语义的文本用 perl -pe 或编辑器精确替换，不用 GNU sed 的 `\u`-敏感替换串；③ 改完立刻过 `gofmt -l` + `go vet` 门禁（本坑正是 vet 抓出来的）。
 - **避坑防重犯建议**：① 凡代码/测试涉及 BOM、NBSP、零宽空格一类不可见字符，成文即转义，评审时 `od -c` 抽查可疑行；② 处理"用户可能用记事本手工编辑的配置文件"（如 hanxi.bind）时，BOM 容忍必须进解析层并有测试用例钉死；③ Windows 路径有效性判定统一 `filepath.IsAbs`——注意其 Windows 口径**要求带卷名**（`\HanxiData` 判相对），跨平台单测构造绝对路径要用 `t.TempDir()` 而非手拼 `\` 前缀。
+### 66. AI 工具写 Go 源码混入裸 U+FEFF 字符：编译器报 illegal byte order mark，sed/perl 修补又踩 \u 大写陷阱（F7 托管安装）
+
+- **问题现象与错误原因**：给 ocr 包写 sha256 旁挂件 BOM 容忍逻辑时，AI 编辑工具把「字符串字面量里的 BOM」以**裸 U+FEFF 字符**写入源码（`strings.TrimPrefix(s, "<BOM>")` 与注释里各一处）。Go 源码规范规定 BOM 只允许出现在文件起始处一次，任何位置（含字符串与注释）的裸 U+FEFF 都报 `illegal byte order mark`——且该字符在编辑器/diff 里**不可见**，错误行号指向整行也看不出端倪。后续修补再踩两连环：GNU sed 替换段里写 `\u` 被 shell/转义链吃掉变成裸文本 `Feff`；perl 替换段的 `\u` 是「下一字母大写」指令而非字面反斜杠-u，同样产出 `"Feff"`，两次都把源码改成了语义错误的坏常量还照常通过 grep。
+- **排查过程**：`grep -n $'\xef\xbb\xbf' file.go | cat -v` 用字节级视图定位裸 BOM（输出 `M-oM-;M-?`）；确认 Edit 类工具重写该段时反复回灌同一字符（模型输出经 JSON unicode 解析后就是裸字符，写转义意图无效）。
+- **正确做法与标准修复方案**：① Go 源码里要表达 BOM 一律写 **ASCII 转义** `"\ufeff"`，绝不打裸字符（注释同理，写「U+FEFF/BOM」字样）；② 修文件用可控拼线：`printf '%s\n' '..."\ufeff"...' > /tmp/line` 单引号防解释，再 `head -n N + cat + tail` 整行替换，`cat -A` 验字节后 go build 坐实；③ 测试数据构造干脆绕开源码转义——`string(rune(0xFEFF))` 或直接 printf 生成 fixture。
+- **避坑防重犯建议**：① 凡「不可见 Unicode 字符」的测试/常量（BOM、ZWSP、NBSP…），源码里只允许 escape 形态，评审时 `grep -P "\x{FEFF}" *.go` 一查到底；② 用 sed/perl 批量改 Go 时警惕替换语言的转义方言（perl 替换段 `\u\U\l\E`、GNU sed 的 `\u`），改完必须 `go build` 而非 grep 验收——本坑里 grep 看到的 `Feff` 曾被误当成修复成功；③ AI 工具链修不可见字符问题不可靠第二次：一旦 Edit 结果与预期字节不符，立刻换 shell 层 printf/cat -A 的字节级操作路径。

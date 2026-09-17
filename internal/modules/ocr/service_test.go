@@ -50,7 +50,7 @@ func TestResolveServiceExeWechat(t *testing.T) {
 	if err := os.WriteFile(realExe, []byte("x"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	got, fromStore, err := resolveServiceExe(hanxiDir, dataDir, EngineWechat, "")
+	got, fromStore, err := resolveServiceExe(hanxiDir, dataDir, "", EngineWechat, "")
 	if err != nil || got != realExe || fromStore {
 		t.Fatalf("自动发现 = %v/%v/%v, want 同级路径", got, fromStore, err)
 	}
@@ -63,13 +63,13 @@ func TestResolveServiceExeWechat(t *testing.T) {
 	if err := os.WriteFile(own, []byte("x"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	got, fromStore, err = resolveServiceExe(hanxiDir, dataDir, EngineWechat, own)
+	got, fromStore, err = resolveServiceExe(hanxiDir, dataDir, "", EngineWechat, own)
 	if err != nil || got != own || !fromStore {
 		t.Fatalf("设定路径 = %v/%v/%v", got, fromStore, err)
 	}
 
 	// 3) 设定路径失效 → 明确报错，不静默回退
-	if _, _, err := resolveServiceExe(hanxiDir, dataDir, EngineWechat, filepath.Join(base, "gone.exe")); err == nil ||
+	if _, _, err := resolveServiceExe(hanxiDir, dataDir, "", EngineWechat, filepath.Join(base, "gone.exe")); err == nil ||
 		!strings.Contains(err.Error(), "失效") {
 		t.Fatalf("失效路径应报「已失效」错误: %v", err)
 	}
@@ -91,12 +91,12 @@ func TestResolveServiceExePaddle(t *testing.T) {
 	if err := os.WriteFile(regExe, []byte("x"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	got, fromStore, err := resolveServiceExe(hanxiDir, dataDir, EnginePaddle, regExe)
+	got, fromStore, err := resolveServiceExe(hanxiDir, dataDir, "", EnginePaddle, regExe)
 	if err != nil || got != regExe || !fromStore {
 		t.Fatalf("登记路径 = %v/%v/%v", got, fromStore, err)
 	}
 	// 登记路径失效 → 报错不静默回退
-	if _, _, err := resolveServiceExe(hanxiDir, dataDir, EnginePaddle, filepath.Join(base, "gone.exe")); err == nil ||
+	if _, _, err := resolveServiceExe(hanxiDir, dataDir, "", EnginePaddle, filepath.Join(base, "gone.exe")); err == nil ||
 		!strings.Contains(err.Error(), "失效") {
 		t.Fatalf("失效登记应报错: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestResolveServiceExePaddle(t *testing.T) {
 	mkComponentDir(t, plain, false) // 无 manifest，不得命中
 	comp := filepath.Join(enginesRoot, "pp-ocrv6")
 	mkComponentDir(t, comp, true)
-	got, fromStore, err = resolveServiceExe(hanxiDir, dataDir, EnginePaddle, "")
+	got, fromStore, err = resolveServiceExe(hanxiDir, dataDir, "", EnginePaddle, "")
 	want := filepath.Join(comp, "hanxi-ocr.exe")
 	if err != nil || got != want || fromStore {
 		t.Fatalf("ocr-engines 自动发现 = %v/%v/%v, want %s", got, fromStore, err, want)
@@ -117,7 +117,7 @@ func TestResolveServiceExePaddle(t *testing.T) {
 	paddleSibling := filepath.Join(base, "hanxi-ocr-paddle")
 	mkComponentDir(t, paddleSibling, false) // 同级锚点不要求 manifest
 	os.RemoveAll(enginesRoot)
-	got, _, err = resolveServiceExe(hanxiDir, dataDir, EnginePaddle, "")
+	got, _, err = resolveServiceExe(hanxiDir, dataDir, "", EnginePaddle, "")
 	if err != nil || got != filepath.Join(paddleSibling, "hanxi-ocr.exe") {
 		t.Fatalf("同级 paddle 发现 = %v/%v, want paddle sibling", got, err)
 	}
@@ -126,14 +126,14 @@ func TestResolveServiceExePaddle(t *testing.T) {
 	if err := os.RemoveAll(paddleSibling); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := resolveServiceExe(hanxiDir, dataDir, EnginePaddle, ""); err == nil ||
+	if _, _, err := resolveServiceExe(hanxiDir, dataDir, "", EnginePaddle, ""); err == nil ||
 		!strings.Contains(err.Error(), "导入") {
 		t.Fatalf("未安装应给导入指引: %v", err)
 	}
 }
 
 func TestResolveServiceExeUnknownEngine(t *testing.T) {
-	if _, _, err := resolveServiceExe(t.TempDir(), t.TempDir(), "cuda", ""); err == nil ||
+	if _, _, err := resolveServiceExe(t.TempDir(), t.TempDir(), "", "cuda", ""); err == nil ||
 		!strings.Contains(err.Error(), "未知") {
 		t.Fatalf("未知引擎应报错: %v", err)
 	}

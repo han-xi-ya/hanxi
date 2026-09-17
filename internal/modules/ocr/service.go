@@ -48,11 +48,12 @@ type OcrService struct {
 	plat    platform.Platform
 	store   *ocrStore
 	engine  *instance.Engine
-	client  *http.Client // 回环专用：Proxy 显式置 nil，防系统代理污染（netx 教训）
-	exeDir  string       // Hanxi 主程序目录（同级 ../hanxi-ocr、../hanxi-ocr-paddle 自动发现锚点）
-	dataDir string       // 数据目录（ocr-engines/ PP-OCR 引擎主发现锚点）
-	tmpDir  string       // 粘贴/拖拽图片落盘目录 RuntimeDir()/ocr
-	snip    snip.Snipper // 框选截屏识别原语（测试可打桩）
+	client  *http.Client   // 回环专用：Proxy 显式置 nil，防系统代理污染（netx 教训）
+	exeDir  string         // Hanxi 主程序目录（同级 ../hanxi-ocr、../hanxi-ocr-paddle 自动发现锚点）
+	dataDir string         // 数据目录（ocr-engines/ PP-OCR 引擎主发现锚点）
+	tmpDir  string         // 粘贴/拖拽图片落盘目录 RuntimeDir()/ocr
+	snip    snip.Snipper   // 框选截屏识别原语（测试可打桩）
+	hosted  *hostedManager // F7 托管版本树（nil=未接线，解析自然退旧锚点链）
 
 	history         *history.Store // 统一历史记录（nil=未接线，静默不记）
 	historyFullText func() bool    // Q1 档位：识别全文是否入库（装配根注入，nil 视为开）
@@ -104,6 +105,10 @@ func NewOcrService(plat platform.Platform) *OcrService {
 		dataDir: paths.DataDir(),
 		tmpDir:  filepath.Join(paths.RuntimeDir(), "ocr"),
 		snip:    snip.New(),
+		hosted: newHostedManager(
+			filepath.Join(paths.VersionsDir(), hostedDirName),
+			filepath.Join(paths.BaseDir(), "installers", hostedDirName),
+		),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -131,9 +136,14 @@ func (s *OcrService) SetHistory(h *history.Store, fullText func() bool) {
 // addr 当前设定服务地址。
 func (s *OcrService) addr() string { return fmt.Sprintf("127.0.0.1:%d", s.store.GetListenPort()) }
 
-// resolveEngineExe 按指定引擎解析组件路径（登记件为空时走各自自动发现锚点）。
+// resolveEngineExe 按指定引擎解析组件路径（F7 托管优先：登记件为空/托管登记
+// 悬空时先看托管版本树最新，再走各自旧自动发现锚点）。
 func (s *OcrService) resolveEngineExe(id string) (path string, fromStore bool, err error) {
-	return resolveServiceExe(s.exeDir, s.dataDir, id, s.store.GetEnginePath(id))
+	root := ""
+	if s.hosted != nil {
+		root = s.hosted.versionsRoot
+	}
+	return resolveServiceExe(s.exeDir, s.dataDir, root, id, s.store.GetEnginePath(id))
 }
 
 // resolveActiveExe 按当前活跃引擎解析组件路径——启停与截屏拉起的唯一取径
