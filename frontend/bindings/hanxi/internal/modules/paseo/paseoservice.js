@@ -115,8 +115,8 @@ export function OpenDaemonHome() {
 
 /**
  * OpenDir 在资源管理器中打开指定目录（"打开位置"按钮）。
- * 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
- * 而非"打开"（markeron 事故教训）。入参恒为目录，仍走本模块自有实现保持行为显式。
+ * 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
+ * 刻意不走 explorer.exe <file> 的"执行"语义（markeron 事故教训）。
  * @param {string} dir
  * @returns {$CancellablePromise<void>}
  */

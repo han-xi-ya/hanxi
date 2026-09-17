@@ -102,9 +102,8 @@ export function OpenConfigDir() {
 
 /**
  * OpenDir 在资源管理器中打开版本隔离目录（"打开位置"按钮）。
- * 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
- * 而非"打开"（markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
- * 这里入参恒为目录，语义安全，但仍走本模块自有实现保持行为显式。
+ * 收口至 windows.RevealDir：入参恒为目录（其内部先做存在性/类型校验并给出中文报错），
+ * 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
  * @param {string} dir
  * @returns {$CancellablePromise<void>}
  */

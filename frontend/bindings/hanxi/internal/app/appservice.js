@@ -24,7 +24,9 @@ import * as settings$0 from "../settings/models.js";
 import * as $models from "./models.js";
 
 /**
- * ClearLogs 清除所有历史日志（保留当天的）
+ * ClearLogs 清除所有历史日志（保留当天的）。
+ * 逐文件删除失败不再静默吞掉：聚合后一次性返回（如当天之前有文件被杀毒软件占用），
+ * 前端可如实提示；目录不存在视为无日志可清，仍按成功处理。
  * @returns {$CancellablePromise<void>}
  */
 export function ClearLogs() {
@@ -38,6 +40,14 @@ export function ClearLogs() {
  */
 export function EnsureModuleActive(moduleID) {
     return $Call.ByID(1002666571, moduleID);
+}
+
+/**
+ * GetAccent 返回持久化的色板轴："teal" | "sky" | "iris" | "jade" | "onyx"（异常/未设置回退默认青壳）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetAccent() {
+    return $Call.ByID(2185227255);
 }
 
 /**
@@ -83,8 +93,7 @@ export function GetTrayMenu() {
 
 /**
  * IsElevated 报告当前进程是否已以管理员提权运行（前端据此决定
- * 「以管理员身份重启」入口的显隐）。非 Windows 无 UAC 语义，恒返回 true
- * 让前端不显示按钮。
+ * 「以管理员身份重启」入口的显隐）。
  * @returns {$CancellablePromise<boolean>}
  */
 export function IsElevated() {
@@ -116,7 +125,7 @@ export function ListTrayMenuOptions() {
 }
 
 /**
- * OpenHostsFile 使用系统默认记事本或编辑器打开系统的 hosts 文件
+ * OpenHostsFile 使用系统默认记事本打开系统的 hosts 文件
  * @returns {$CancellablePromise<void>}
  */
 export function OpenHostsFile() {
@@ -208,6 +217,15 @@ export function SendDelayedTestNotification(delaySeconds) {
  */
 export function SendTestNotification() {
     return $Call.ByID(1721883358);
+}
+
+/**
+ * SetAccent 持久化色板轴。DOM 的 data-accent 实际应用由前端 useTheme 完成，后端不感知。
+ * @param {string} accent
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetAccent(accent) {
+    return $Call.ByID(876125507, accent);
 }
 
 /**

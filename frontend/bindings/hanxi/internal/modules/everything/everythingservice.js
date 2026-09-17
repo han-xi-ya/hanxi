@@ -134,8 +134,9 @@ export function RemoveVersion(targetVersion) {
 
 /**
  * RevealTarget 在资源管理器中定位并选中目标（文件/目录通用）。
- * 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"而非"定位"
- * （markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
+ * 存在性校验用本模块文案先行（目标可以是文件或目录），定位动作收口至
+ * windows.RevealFile（explorer /select, 习语——刻意不走 explorer.exe <file> 的"执行"语义，
+ * markeron「打开安装目录」按钮的事故教训）。
  * @param {string} path
  * @returns {$CancellablePromise<void>}
  */

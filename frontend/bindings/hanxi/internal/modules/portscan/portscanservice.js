@@ -5,6 +5,8 @@
 /**
  * PortScanService 暴露给前端的端口扫描服务。
  * cancelMap 按任务 ID 登记每轮扫描的 context.CancelFunc，供 StopScan 精准取消；任务结束须删除条目防泄露。
+ * current 记录最新一轮任务 ID（而非 CancelFunc）：任务收尾按 ID 比对后才摘除标记，
+ * 否则旧任务的清理路径会把新任务刚登记的 current 一并删掉，导致 StopScan 兜底失效。
  * @module
  */
 
@@ -43,7 +45,8 @@ export function StartScan(req) {
 }
 
 /**
- * StopScan 中止指定任务
+ * StopScan 中止指定任务；指定 ID 未在册（或为空）时回退中止 current 任务。
+ * 兜底路径按 current 记录的 ID 反查取消函数，两条路径都遵循"取消即摘除条目"。
  * @param {string} taskID
  * @returns {$CancellablePromise<boolean>}
  */

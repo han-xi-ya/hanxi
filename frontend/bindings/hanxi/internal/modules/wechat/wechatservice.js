@@ -130,22 +130,6 @@ export function PickAttachmentDialog() {
 }
 
 /**
- * PickFileDialog 保留旧绑定兼容；新前端统一使用 PickAttachmentDialog。
- * @returns {$CancellablePromise<string>}
- */
-export function PickFileDialog() {
-    return $Call.ByID(3588239546);
-}
-
-/**
- * PickImageDialog 保留旧绑定兼容；新前端统一使用 PickAttachmentDialog。
- * @returns {$CancellablePromise<string>}
- */
-export function PickImageDialog() {
-    return $Call.ByID(2397880461);
-}
-
-/**
  * PreviewInboundImage 下载解密入站图片附件并以 Base64 Data URL 返回，供图片气泡内嵌缩略预览。
  * 仅放行 kindImage 附件：预览通道不成为任意大文件的旁路下载器。
  * @param {string} attachmentID
@@ -165,14 +149,6 @@ export function RefreshAccountContextToken(accountID) {
 }
 
 /**
- * RefreshContextToken 刷新主账号 Context Token（遗留兼容接口）
- * @returns {$CancellablePromise<string>}
- */
-export function RefreshContextToken() {
-    return $Call.ByID(1555551512);
-}
-
-/**
  * RegisterClipboardAttachment 将窗口剪贴板中的附件字节安全落到受管临时文件，供现有发送链路复用。
  * @param {string} fileName
  * @param {string} dataURL
@@ -183,17 +159,7 @@ export function RegisterClipboardAttachment(fileName, dataURL) {
 }
 
 /**
- * RegisterClipboardImage 保留旧绑定兼容；新前端统一使用 RegisterClipboardAttachment。
- * @param {string} fileName
- * @param {string} dataURL
- * @returns {$CancellablePromise<$models.OutgoingAttachmentDraft>}
- */
-export function RegisterClipboardImage(fileName, dataURL) {
-    return $Call.ByID(2721324727, fileName, dataURL);
-}
-
-/**
- * ReleaseOutgoingAttachment 仅释放由 RegisterClipboardImage 创建的受管临时文件。
+ * ReleaseOutgoingAttachment 仅释放由 RegisterClipboardAttachment 创建的受管临时文件。
  * @param {string} filePath
  * @returns {$CancellablePromise<boolean>}
  */
@@ -262,28 +228,12 @@ export function StartAccountListener(accountID) {
 }
 
 /**
- * StartListener 启动主账号后台实时监听（遗留兼容接口）
- * @returns {$CancellablePromise<void>}
- */
-export function StartListener() {
-    return $Call.ByID(457550371);
-}
-
-/**
  * StopAccountListener 停止指定账号的后台监听
  * @param {string} accountID
  * @returns {$CancellablePromise<boolean>}
  */
 export function StopAccountListener(accountID) {
     return $Call.ByID(3020317984, accountID);
-}
-
-/**
- * StopListener 停止主账号后台监听（遗留兼容接口）
- * @returns {$CancellablePromise<boolean>}
- */
-export function StopListener() {
-    return $Call.ByID(3501850925);
 }
 
 /**

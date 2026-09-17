@@ -16,7 +16,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * ListProfiles 直接获取全部 WiFi 名称与明文密码
+ * ListProfiles 直接获取全部 WiFi 名称与明文密码。
+ * 绑定签名只回传列表（无 error 通道），故枚举失败与"本机确无已保存配置"在返回值上
+ * 都表现为空表——前端无从分辨；这里把失败原因落到日志（含 netsh 报错原文），
+ * 排障时看 slog 即可判定是 WLAN 服务/权限问题还是真的一个配置都没有。
  * @returns {$CancellablePromise<$models.Profile[] | null>}
  */
 export function ListProfiles() {

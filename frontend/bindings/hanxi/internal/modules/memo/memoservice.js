@@ -78,7 +78,8 @@ export function SetWailsApp(app) {
 }
 
 /**
- * ToggleMask 切换敏感信息遮罩
+ * ToggleMask 切换敏感信息遮罩。
+ * 落盘失败的处理策略与 TogglePin 一致：状态值本身已成功切换，持久化异常记 error 日志而非回错。
  * @param {string} id
  * @returns {$CancellablePromise<boolean>}
  */
@@ -87,7 +88,11 @@ export function ToggleMask(id) {
 }
 
 /**
- * TogglePin 切换置顶状态
+ * TogglePin 切换置顶状态。
+ * 与 Create/Update/Delete 的差异：那几个写盘失败直接回错误让前端回滚重试，
+ * 本方法回传的是「切换后的状态」这一内存事实，UI 已按新状态渲染；置顶仅是视图偏好，
+ * 丢一次持久化的代价远小于把成功态标成失败让用户以为按钮失灵，故签名保持 (bool, error)
+ * 中 error 只用于"便签不存在"，落盘失败改为 slog.Error 记录（不静默吞掉，重启后回退可见）。
  * @param {string} id
  * @returns {$CancellablePromise<boolean>}
  */
