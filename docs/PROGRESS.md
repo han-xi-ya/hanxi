@@ -29,7 +29,7 @@
 | F4a MCP 无头 server | ✅ 已合并 | feat/f4-mcp | 三 | 021ce5e | C1-C5 全落（含 ocr/memo 工具，默认全关）；S2 已收口；真机 stdio 管道冒烟已过；剩 C9 三客户端红队 |
 | F4b MCP 安装向导 | ✅ 已合并 | feat/f4b-mcpwizard | 三 | aa48a73 | internal/mcpwizard 独立包零依赖 F4a；AI 接入第 8 分区（52/40/40）；坑占 #61；access.json 对账清单见详情 |
 | F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
-| F6 数据目录同级化 | 🟡 开发中 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动；worktree wt-f6-siblingdir |
+| F6 数据目录同级化 | ✅ 已合并 | feat/f6-siblingdir | 一 | 8ba24bd | 实弹全过：裸 exe 全新目录自动建同级 hanxidata ✓、mcp 无头握手 ✓、用户目录零写 ✓；绑定指针=同级 hanxi.bind |
 | F7 hanxi-ocr 托管化 | 🟡 开发中 | feat/f7-ocrhosted | 三 | - | 主仓侧改造；zip+manifest+sha256 契约见 wave3 注记 |
 | F8 桌面留言板 | ✅ 已合并 | feat/f8-board | 一 | 00f1dc9 | KeepAwake 聚合器入 platform；msgboard 模块；导航计数并集已重算 |
 | F9 WSL USB 共享 | 🟡 开发中 | feat/f9-wslusb | 三 | - | 账本+重放范式；真机验证为合入后闸门 |
@@ -76,6 +76,13 @@
 - **R3**：✅ 已收口（`8476ff3`/`f09fc19`，FF 合入）。goproxy.cn 可达实证，cast replace 已撤、tidy 内容级零 diff、离线自洽复核全绿；easyjson v0.9.0 维持（回退=逆钉红线，且符合"用新不用旧"）。附注：本机 `core.autocrlf=true`，`go mod tidy -diff` 对 go.sum 报**假全文件 diff（纯 EOL）**，内容级核验用 `go mod tidy`+`git diff`。
 - **R4**：✅ 已收口（74f8fa7）——PLAN_MCP 注记回写/BACKLOG 销账/DEVPLAN v1.5 指针改口/MOOTOOL 打勾四合一入；其发现的 mcpwizard 文案与事实矛盾点已塞给 R2 顺路修；遗留待用户裁决：PLAN §6 两个 access.json 授权写入口均未实现（GUI 只读+无 auth 子命令），现状=手工放置文件。
 - 文档陈旧计数待核（R4 上报，收尾批处理）：DEVPLAN §2.3 与 ARCHITECTURE"37 模块统一注册"疑落后于 webapp/msgboard 入账后的实际数。
+
+### 待用户裁决清单（不阻塞合并，收尾时逐项拍板）
+
+1. **MSIX 形态去留**（F6）：只读目录下连 hanxi.bind 都写不下，现行为=启动弹窗引导搬家；继续支持/正式放弃？
+2. **access.json 授权写入口**（F4 §6 + R5 并案）：补 GUI 开关/auth 子命令 → MCP 拒权文案变真；或维持手工放置 → 改文案口径。
+3. **48MB 单文件版去留**（F7 卡片遗留）：托管化落地后是否停产？
+4. **paddle 源码拆仓**（F7 卡片遗留）。
 
 ### F7k 后厨交付注记（2026-09-18，独立仓 hanxi-ocr-dev）
 
