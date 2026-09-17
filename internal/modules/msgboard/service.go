@@ -8,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"hanxi/internal/hotkey"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
@@ -26,8 +27,8 @@ const (
 // MsgBoardService 桌面留言板：一键在目标显示器全屏挂出离岗告示牌。
 //
 // 三通道唤起：托盘/轮盘共用 extapi.TrayCommandsProvider 注册的 toggle 命令
-// （条目配置与分发走 internal/launcher 现成通道）；全局热键为最薄私有封装
-// （a.GlobalShortcut 直调，见 hotkey.go，合并时收编入集中注册管理）。
+// （条目配置与分发走 internal/launcher 现成通道）；全局热键收编入
+// internal/hotkey 通用注册器槽位 msgboard/toggle（接线与语义见 hotkey.go）。
 //
 // 生命周期纪律：挂牌窗口按需创建、撤牌即真销毁（对齐 #53：注销 WindowClosing
 // 拦截 hook 后 Close 走 Wails 内部销毁路径，WebView2 内存归还，同名窗口可重建，
@@ -42,9 +43,9 @@ type MsgBoardService struct {
 	opBusy      bool // 挂/撤操作互斥锁：热键连按/托盘连点时后进者静默忽略
 	shown       bool
 	board       *application.WebviewWindow
-	offClosing  func() // WindowClosing 拦截 hook 的注销闭包（销毁前摘除，#53 通路）
-	hotkeyBound string // 当前已注册的全局热键（""=未在位）
-	keepAwakeOn bool   // 防休眠诉求是否在账（状态页如实回显）
+	offClosing  func()           // WindowClosing 拦截 hook 的注销闭包（销毁前摘除，#53 通路）
+	hk          *hotkey.Registry // 全仓通用热键注册器（装配根注入，槽位记账归注册器）
+	keepAwakeOn bool             // 防休眠诉求是否在账（状态页如实回显）
 }
 
 // NewMsgBoardService 装配服务单例：构造仅读盘建 store，不碰窗口与热键
@@ -67,7 +68,7 @@ func (s *MsgBoardService) start() error {
 	s.mu.Unlock()
 
 	if key := s.store.Get().Hotkey; key != "" {
-		if err := s.applyHotkey("", key); err != nil {
+		if err := s.applyHotkey(key); err != nil {
 			slog.Warn("msgboard: 全局热键注册失败（已降级为托盘/轮盘唤起）", "hotkey", key, "err", err)
 		}
 	}
@@ -83,16 +84,13 @@ func (s *MsgBoardService) stop() error {
 		return nil
 	}
 	s.started = false
-	bound := s.hotkeyBound
 	s.mu.Unlock()
 
-	if bound != "" {
-		if a := application.Get(); a != nil && a.GlobalShortcut != nil {
-			if err := a.GlobalShortcut.Unregister(bound); err != nil {
-				slog.Warn("msgboard: 全局热键注销失败", "hotkey", bound, "err", err)
-			}
+	// 槽位解绑（注册器幂等：未绑定静默成功；启动期 OS 回滚的残账也直接抹除）。
+	if r := s.hotkeyRegistry(); r != nil {
+		if err := r.Unbind(hotkeySlot); err != nil {
+			slog.Warn("msgboard: 全局热键注销失败", "err", err)
 		}
-		s.setBound("")
 	}
 	s.Dismiss()
 	return nil
@@ -259,20 +257,17 @@ func (s *MsgBoardService) setKeepAwakeOn(on bool) {
 
 // ---------- 前端绑定 API（模块页 + 挂牌弹窗共用） ----------
 
-// GetStatus 返回运行态（模块页状态区回显）。热键在位与否问 manager.IsRegistered
-// 而非自记状态：开机期 Register 只入 pending、OS 拒绑发生在 Run 之后（错误走
-// Wails 错误通道不回流本模块），自记标志会谎报，以注册表实存为准。
+// GetStatus 返回运行态（模块页状态区回显）。热键在位与否问注册器槽位实况
+// （Registry.Registered 底层即 manager.IsRegistered）而非自记状态：开机期
+// Register 只入 pending、OS 拒绑发生在 Run 之后（错误走 Wails 错误通道不回流
+// 本模块），自记标志会谎报，以系统实存为准。
 func (s *MsgBoardService) GetStatus() Status {
 	cfg := s.store.Get()
 	s.mu.Lock()
-	shown, bound, awake := s.shown, s.hotkeyBound, s.keepAwakeOn
+	shown, awake := s.shown, s.keepAwakeOn
 	s.mu.Unlock()
-	active := false
-	if bound != "" {
-		if a := application.Get(); a != nil && a.GlobalShortcut != nil {
-			active = a.GlobalShortcut.IsRegistered(bound)
-		}
-	}
+	r := s.hotkeyRegistry()
+	active := r != nil && r.Registered(hotkeySlot)
 	return Status{
 		Shown:        shown,
 		Hotkey:       cfg.Hotkey,
@@ -293,9 +288,9 @@ func (s *MsgBoardService) SetConfig(cfg Config) error {
 		return err
 	}
 	if next.Hotkey != old.Hotkey {
-		if herr := s.applyHotkey(old.Hotkey, next.Hotkey); herr != nil {
-			// 新键不可用：配置热键字段回滚为旧值（applyHotkey 内部已把 OS
-			// 绑定尽力恢复旧键），错误上抛由页面红字提示改键。
+		if herr := s.applyHotkey(next.Hotkey); herr != nil {
+			// 新键不可用：注册器保旧绑定原样在位（先注册新键成功才注销旧键），
+			// 配置热键字段回滚为旧值，错误上抛由页面红字提示改键。
 			if _, rerr := s.store.Set(Config{Text: next.Text, FontSize: next.FontSize, Screen: next.Screen, Hotkey: old.Hotkey}); rerr != nil {
 				slog.Warn("msgboard: 热键回滚落盘失败", "err", rerr)
 			}

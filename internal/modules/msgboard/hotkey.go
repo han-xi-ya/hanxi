@@ -4,67 +4,59 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/wailsapp/wails/v3/pkg/application"
+	"hanxi/internal/hotkey"
 )
 
-// errNoApplication 应用实例未就绪（构造期/装配前调用热键改判）。
-var errNoApplication = errors.New("应用实例不可用，无法注册全局热键")
+// 全局热键（R1 收编）：原先本文件是最薄私有封装——直调 Wails application.
+// GlobalShortcut 并手写"注销旧键→注册新键→失败回注册旧键"的原子回滚；
+// 现已并入 internal/hotkey 通用注册器的槽位语义（先注册新键、成功才注销旧
+// 键，冲突保持旧绑定并中文报错，实况以系统为准），系统绑定通路不变（同一个
+// Wails GlobalShortcutManager / RegisterHotKey），此处只保留服务侧接线入口。
 
-// 全局热键：最薄私有封装，直调 Wails application.GlobalShortcut（beta.10
-// Windows 侧即 RegisterHotKey 通路，与 quickmenu 的 WH_MOUSE_LL 钩子零交集）。
-//
-// 并行纪律：feat/f2-clipboard 正在建全仓集中热键注册管理器，本文件刻意**不**
-// 抽公共 manager——只服务"单一 toggle 键"的最小需求；改键采用
-// "注销旧键→注册新键→失败回注册旧键"的原子回滚。合并时由协调者把这里收编
-// 到集中注册器之下（热键代码落点：本文件 + service.go 的 applyHotkey/stop）。
+// hotkeySlot 挂/撤牌热键在通用注册器中的槽位名——与托盘命令键 msgboard/toggle
+// 对齐（装配根约定：槽位名与命令键两头一个名字，见 internal/app/hotkeys.go）。
+const hotkeySlot = "msgboard/toggle"
 
-// applyHotkey 把热键绑定从 oldKey 迁移到 newKey（newKey 为 ""=停用热键）。
-// 注意：Register/Unregister 内部是主线程 InvokeSync 包装，绝不持有 s.mu 调用。
-// 失败时尽力恢复旧键并返回错误，调用方负责回滚配置与用户提示。
-func (s *MsgBoardService) applyHotkey(oldKey, newKey string) error {
-	if oldKey == newKey {
-		return nil
-	}
-	a := application.Get()
-	if a == nil || a.GlobalShortcut == nil {
-		return errNoApplication
-	}
-	if oldKey != "" {
-		if err := a.GlobalShortcut.Unregister(oldKey); err != nil {
-			slog.Warn("msgboard: 注销旧热键失败（继续尝试新键）", "hotkey", oldKey, "err", err)
-		}
-	}
-	if newKey == "" {
-		s.setBound("")
-		return nil
-	}
-	if err := a.GlobalShortcut.Register(newKey, s.onHotkey); err != nil {
-		// 回滚：恢复旧键，恢复结果如实入账（恢复失败则热键通道整体不可用）。
-		if oldKey != "" {
-			if rerr := a.GlobalShortcut.Register(oldKey, s.onHotkey); rerr != nil {
-				slog.Warn("msgboard: 旧热键回注册也失败，热键通道停用", "hotkey", oldKey, "err", rerr)
-				s.setBound("")
-			} else {
-				s.setBound(oldKey)
-			}
-		} else {
-			s.setBound("")
-		}
-		return err
-	}
-	s.setBound(newKey)
-	return nil
+// errNoHotkeyRegistry 热键注册器未接线（应用实例未就绪或装配前调用）。
+var errNoHotkeyRegistry = errors.New("热键注册器未就绪，无法注册全局热键")
+
+// setHotkeyRegistry 注入全仓通用热键注册器（装配根经 Module.SetHotkeyRegistry
+// 交接，见 app.go）。注册器底层是 Wails GlobalShortcut 管理器，Register/
+// Unregister 内部为主线程 InvokeSync 包装——热键操作绝不持有 s.mu 调用，防锁反转。
+func (s *MsgBoardService) setHotkeyRegistry(r *hotkey.Registry) {
+	s.mu.Lock()
+	s.hk = r
+	s.mu.Unlock()
 }
 
-// onHotkey 热键回调（manager 保证在独立 goroutine 派发，不占用任何消息泵线程）。
+func (s *MsgBoardService) hotkeyRegistry() *hotkey.Registry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.hk
+}
+
+// applyHotkey 把槽位绑定迁移到期望键位（newKey 为 ""=停用热键）。
+// 语义全部落在注册器上：同键已在位幂等 no-op；换键先注册新键、成功后才注销
+// 旧键，新键被占用则旧绑定原样保留并返回中文错误（调用方负责回滚配置与提示，
+// 注册器内部无需再回注册旧键）；停用为幂等解绑，OS 注销失败只记日志不挡配置
+// 落盘（与旧私有封装行为一致）。
+func (s *MsgBoardService) applyHotkey(newKey string) error {
+	r := s.hotkeyRegistry()
+	if r == nil {
+		return errNoHotkeyRegistry
+	}
+	if newKey == "" {
+		if err := r.Unbind(hotkeySlot); err != nil {
+			slog.Warn("msgboard: 注销旧热键失败（继续停用热键）", "err", err)
+		}
+		return nil
+	}
+	return r.Bind(hotkeySlot, newKey, true, s.onHotkey)
+}
+
+// onHotkey 热键回调（manager 保证在独立 goroutine 上派发，不占用任何消息泵线程）。
 func (s *MsgBoardService) onHotkey() {
 	if err := s.Toggle(); err != nil {
 		slog.Warn("msgboard: 热键切换留言牌失败", "err", err)
 	}
-}
-
-func (s *MsgBoardService) setBound(key string) {
-	s.mu.Lock()
-	s.hotkeyBound = key
-	s.mu.Unlock()
 }

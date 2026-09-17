@@ -4,7 +4,7 @@
 // 设计边界（BACKLOG F8 卡片裁定，MVP 克制版）：
 //   - 三通道唤起：托盘命令 + 轮盘条目（同一份 settings.TrayMenu 配置、同一个
 //     extapi.TrayCommandsProvider 注册点，经 internal/launcher 现成派发）+
-//     全局热键（最薄私有封装，见 hotkey.go）；
+//     全局热键（收编入 internal/hotkey 通用注册器槽位，见 hotkey.go）；
 //   - 内容 = 内置预设模板若干条 + 自定义文字与字号（jsonstore 原子写落
 //     state/msgboard.json）；副屏支持=可选显示器挂单屏牌，默认跟随主屏；
 //   - 挂牌期间通过平台层 KeepAwake 引用计数聚合器阻止系统/显示器休眠
@@ -22,6 +22,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"hanxi/internal/extapi"
+	"hanxi/internal/hotkey"
 	"hanxi/internal/platform"
 	"hanxi/internal/settings"
 )
@@ -85,6 +86,11 @@ func (m *Module) TrayCommands() []extapi.TrayCommand {
 		},
 	}}
 }
+
+// SetHotkeyRegistry 装配根注入全仓通用热键注册器（quickmenu SetMainWindow 同款
+// 接缝；随 application.New 就绪、须在 EnsureActive 前交接，start() 即按配置绑定。
+// Module 不进前端绑定面，注入通道对绑定生成零足迹）。
+func (m *Module) SetHotkeyRegistry(r *hotkey.Registry) { m.svc.setHotkeyRegistry(r) }
 
 // OnInit 注册全局热键（懒加载生命周期，注册失败降级不阻塞启用）。
 func (m *Module) OnInit(ctx context.Context) error {

@@ -1,19 +1,21 @@
 package app
 
-// ---------- 全局热键装配（F2-③） ----------
+// ---------- 全局热键装配（F2-③，留言板已于 R1 收编） ----------
 //
 // 热键是跨模块的全局输入能力：底层走 Wails GlobalShortcut（RegisterHotKey，
-// 免手写键盘钩子），注册表语义收口在 internal/hotkey 通用封装；派发只认
-// TrayCommand 键（registry.RunTrayCommand），热键层不持有任何模块业务——
-// 取色、留言板等后续功能各加一条"键位配置 → 命令键"即可复用，零触碰底层。
+// 免手写键盘钩子），全仓唯一一张 hotkey.Registry 注册表由装配根构造后按需交接
+// ——注册表语义（槽位记账、改键原子回滚、冲突中文报错、实况查询）收口在
+// internal/hotkey 通用封装，各功能零触碰底层。
 //
-// 槽位命名与托盘命令键对齐（"ocr/snip-clipboard"），排查时两头一个名字。
+// 接线形态两种：ocr 剪贴板识图走命令派发链（本文件包装配启动绑定）；留言板
+// 只注入注册表，绑定/解绑随模块 OnInit/OnDestroy 驱动（见 msgboard/hotkey.go）。
+//
+// 槽位命名与托盘命令键对齐（"ocr/snip-clipboard"、"msgboard/toggle"），
+// 排查时两头一个名字。
 
 import (
 	"context"
 	"log/slog"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/hotkey"
@@ -29,8 +31,7 @@ const snipHotkeyName = "ocr/snip-clipboard"
 //     启动绑定；启动期抢键失败只记日志，设置页实况可见、可改键重试）；
 //   - 注入服务绑定通道：设置页改键/开关即时落实系统并如实回滚配置；
 //   - 回调复用命令派发链（模块门禁 + 懒初始化 + 防重入，与轮盘/托盘同路）。
-func setupSnipHotkey(a *application.App, reg *extapi.Registry, svc *ocr.OcrService) {
-	hk := hotkey.NewRegistry(a.GlobalShortcut)
+func setupSnipHotkey(hk *hotkey.Registry, reg *extapi.Registry, svc *ocr.OcrService) {
 	handler := func() {
 		// Wails 已在独立 goroutine 上派发热键回调，耗时识别可安全直跑不卡消息泵；
 		// 业务失败（无图/服务未就绪/正在进行中）进通知 Hub——窗口隐藏时自动落原生 Toast。
