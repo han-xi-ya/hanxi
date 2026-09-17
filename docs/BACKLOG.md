@@ -40,8 +40,10 @@ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
 - **裁定要点**：**永不自动 push**；全程静默；wechat 明文 token 接受入历史；遮罩便签照进；空闲 300s / 间隔 5min；含手动「立即快照」按钮。命名：对外文案用"历史版本"（"Snapshot" 撞 instance.Snapshot）。
 - **方案**：`docs/plans/PLAN_SNAPSHOT.md`
 
-### F4 · MCP / Skill AI 接入 —— ⚪
+### F4 · MCP / Skill AI 接入 —— 🔵（主体已合入 dev，剩真机闸门与随批修）
 
+- **已实现（2026-09-17 wave3）**：**F4a** 无头 server——`hanxi mcp` stdio 四件只读工具全上（C1-C5；ocr/memo 未等二期提前随批落，独立开关默认全关，无额外暴露，PROGRESS R4 裁决保留），合入 `021ce5e`；**F4b** 安装向导——`internal/mcpwizard` 三客户端编辑引擎 + 「AI 接入」第 8 分区（C7/C8：preview→确认令牌→备份→原子写→复验→回滚全链，JSONC fail-closed），合入 `aa48a73`。S2 文案随批收口；windowsgui 管道冒烟已过（坑 #63）。逐项对账见 PLAN_MCP 各节"实际落地"注记。
+- **剩余**：① **C9 真机红队**——Claude Code/Codex/Cursor 三客户端真机各接一次 + 人工安全审查清单，不可跳过；② R2 安装前自检接线（随批修）；③ C6 CLI 双身份（`--list`/`--call`）未落地未排期；④ access.json 无编程写入口（PLAN §6 两个写入口均未实现，当前唯一路径是手工放置授权文件——待用户裁决）。
 - **做什么**：`hanxi mcp` headless 子命令（mcp-go v0.41.1 锁版本，不装配 WebView/托盘/钩子）；MVP 只放 envcheck + everything；GUI 一键安装向导（preview→确认→备份→原子写→复验→回滚）；memo 检索二期（整库总开关 + 遮罩条目不下发）。
 - **量级**：MVP 3~4 人日 → 完善共 9~12 人日。
 - **裁定要点**：portkill/frpc 等**提权与写操作永不暴露**；everything 严格只读（无实例报错给指引，不代启动不触发下载）；MCP 输出会进云端模型上下文——逐工具过红线；CLI `--yes` 不开放；配置含注释即 fail-closed 给手动片段。
@@ -111,6 +113,10 @@ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
 | S0 | frpc 运行时明文 TOML 停用/退出即擦 + 启动孤儿收编 | 🟢 2026-09-17（`f4c527b`，踩坑 #55） |
 | S1 | `.gitignore` 忽略 `hanxidata/` | 🟢 随数据根治理线并行修复 |
 | S2 | everything 的 MCP 文案如实引导（ES 依赖运行中实例，勿承诺代拉起） | 🟢 2026-09-17（`feat/f4-mcp` C3：`hanxi_file_search` description 与前置错误双处如实，测试含文案诚实性断言） |
+| R1 | msgboard 热键薄封装收编 `internal/hotkey` 通用注册器（wave2 接缝债） | 🟢 2026-09-17（`d96aac6` 合入 + bindings 回补 `bb7905a`） |
+| R2 | 安装向导"安装前自检"接线——F4b 合入时 `hanxi mcp` 不存在刻意留白，F4a 合并后补 spawn `hanxi mcp` 跑 listTools + envcheck 真调（见 PLAN §2.5） | 🔵 进行中（分支 `feat/r2-selfcheck`；F4 合入后的真机前闸门） |
+| R3 | go.mod `spf13/cast` replace 复核与撤除（#62 离线绕行产物，网络/代理可达后跑 `go mod tidy`） | 🟢 2026-09-17（`8476ff3` dropreplace + 有网 tidy 收敛，`f09fc19` 补记 #62 复核结论） |
+| R4 | PLAN_MCP 回写实际落地形态（ocr/memo 提前落地注记，C10 归收尾批） | 🟢 本批（R4/C10：PLAN_MCP 已加"实际落地"注记，四件套文档同批） |
 
 ---
 
