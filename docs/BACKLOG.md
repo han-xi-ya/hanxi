@@ -96,6 +96,14 @@ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
 - **量级**：3~4 人日 + 真机联调缓冲 1 日。无硬依赖；建议排在 wsl 模块下次动刀时同车，不单独起浪。
 - **边界**：不做 GUI 级驱动安装（Windows PnP 的事）、不做远程主机的 usbip（本机 --wsl 直通 only）。
 
+### F10 · 网页应用窗口（webapp）—— 🔵 进行中
+
+- **要什么**：通用"网页应用"内置模块——网址条目管理（名称/URL/图标/几何记忆），点击以独立 WebviewWindow 打开外部站点；预置条目"微信文件传输助手 `https://filehelper.weixin.qq.com/`"；轮盘/托盘按条目动态成项。
+- **裁定要点（2026-09-17 用户拍板）**：**X 关闭 = 真销毁**（cookie 存于共享 WebView2 user data folder，销毁不丢登录，依据踩坑 #56 的退出判据实证）；"收起" = Hide + 5min TTL 到期真销毁，TTL 内热复用秒显；**不做协议逆向**——filehelper 走 A 方案协议通道明确不做（归候选池），本模块以 B 方案"打开网页版"实现；URL 闸门仅放行 http/https；每条目至多一窗。
+- **落点**：`internal/settings/store.go`（WebAppEntry 五处联动）+ `internal/modules/webapp/{module,service,models}.go` + 前端 `WebAppView.vue`/`useWebApp.ts` + `navigation.ts` 三表；Nav Order 37（efficiency 组）。
+- **量级**：原估 1.5~2 人日；依赖链 7 个原子提交：配置面→骨架→窗体核心→TrayCommands→bindings→前端→文档（前 2 已入库 `67e19e4`、`05dc232`）。
+- **关联**：踩坑 #56（关闭即真销毁的判据实证，本次沉淀）；旧版对比结论归档在会话方案——B 方案胜出的原因：零协议风控、泛化任意网址。
+
 ### 随批修项
 
 | # | 项 | 状态 |

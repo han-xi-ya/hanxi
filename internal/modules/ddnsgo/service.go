@@ -361,9 +361,11 @@ func externalConsoleCandidates(listenPort int) []string {
 }
 
 // ensureConsoleWindow 创建或复用 ddns-go 控制台子 Webview 窗口并置前。
-// 关闭按钮语义为隐藏复用（RegisterHook Cancel+Hide）：
-//   - 避免误关子窗口在"最后窗口"平台分支上牵连应用退出策略；
-//   - 隐藏复用保留 WebView2 会话 Cookie，下次打开免重复登录。
+// 关闭按钮语义为隐藏复用（RegisterHook Cancel+Hide），动机只有一条：
+// 隐藏复用保留 WebView2 会话 Cookie，下次打开免重复登录。
+// （旧注释另载的"误关子窗牵连最后窗口退出"顾虑已被证伪——退出判据数的是
+// windowMap 存活总数、含隐藏窗且主窗恒在，子窗真销毁带不崩应用，
+// 最后窗口判据见 TROUBLESHOOTING #56。）
 //
 // 监听地址变化（改端口/重启用）经 SetURL 导航到新面板。
 func (s *DdnsGoService) ensureConsoleWindow(url string) error {
