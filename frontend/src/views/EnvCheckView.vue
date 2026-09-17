@@ -18,6 +18,7 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
 import { envStatusMeta } from '../constants/status'
@@ -39,6 +40,7 @@ const loadError = ref('')
 const everLoaded = ref(false)
 const { showToast } = useToast()
 const { confirm } = useConfirm()
+const { copyWithToast } = useClipboard()
 
 const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
   git: { overview: null, loading: false, error: '' },
@@ -290,6 +292,20 @@ function metaOf(tool: ToolInfo) {
   return envStatusMeta(tool.status)
 }
 
+// 复制环境报告本体（PLAN_CLIPBOARD §2.2：报告此前无复制入口，仅子组件有"复制升级
+// 命令"）：一行一工具，Tab 分隔"名称/版本/路径"，未安装如实标注。
+function copyReport() {
+  if (!everLoaded.value || tools.value.length === 0) {
+    showToast('尚未完成本机检测，暂无报告可复制')
+    return
+  }
+  const stamp = new Date().toLocaleString('zh-CN', { hour12: false })
+  const body = tools.value
+    .map((t) => [t.display, t.version || '未安装', t.path || '—'].join('\t'))
+    .join('\n')
+  void copyWithToast(`Hanxi 开发环境报告（${stamp}）\n${body}`, '环境报告已复制')
+}
+
 // npm 事件流订阅（useWailsEvent：setup 期注册防丢早期推送，卸载自动注销）
 useWailsEvent<OperationProgress>('envcheck:npm-tool-operation', (p) => p && handleNpmOperation(p))
 useWailsEvent<OperationLog>('envcheck:npm-tool-log', (entry) => entry && handleNpmLog(entry))
@@ -320,9 +336,14 @@ onMounted(() => {
         <strong>{{ everLoaded ? `本机已安装 ${okCount} / ${totalCount} 项` : '尚未完成本机检测' }}</strong>
         <span>{{ loading ? '正在刷新本机环境、官方版本与 npm 工具信息…' : '一次刷新同步更新两个标签中的数据。' }}</span>
       </div>
-      <button class="btn btn-primary btn-small refresh-button" :disabled="loading" @click="refresh">
-        {{ loading ? '检测中…' : '↻ 重新检测' }}
-      </button>
+      <span class="env-actions">
+        <button class="btn btn-secondary btn-small copy-report-button" :disabled="!everLoaded" title="复制全部工具的版本与路径" @click="copyReport">
+          复制报告
+        </button>
+        <button class="btn btn-primary btn-small refresh-button" :disabled="loading" @click="refresh">
+          {{ loading ? '检测中…' : '↻ 重新检测' }}
+        </button>
+      </span>
     </div>
 
     <div v-if="loadError" class="banner banner-error" role="alert">{{ loadError }}</div>
@@ -347,6 +368,8 @@ onMounted(() => {
             <div class="meta-line">
               <span class="k">版本</span>
               <code class="mono">{{ tool.version || '—' }}</code>
+              <button v-if="tool.version" class="link-button meta-copy" :aria-label="`复制 ${tool.display} 版本`"
+                @click="copyWithToast(tool.version, `已复制 ${tool.display} 版本`)">复制</button>
               <span v-if="tool.name === 'dotnet' && dotnetExtraLines(tool).length" class="extra-lines">另装版本线 {{ dotnetExtraLines(tool).join('、') }}</span>
             </div>
             <div class="meta-line">
@@ -358,6 +381,8 @@ onMounted(() => {
                 @click="revealPath(tool)"
               >{{ tool.path }}</button>
               <code v-else class="mono tool-path">{{ tool.path || '—' }}</code>
+              <button v-if="tool.path" class="link-button meta-copy" :aria-label="`复制 ${tool.display} 路径`"
+                @click="copyWithToast(tool.path, `已复制 ${tool.display} 路径`)">复制</button>
             </div>
           </div>
           <div v-if="tool.details?.java" class="tool-details">
@@ -494,6 +519,8 @@ onMounted(() => {
 .status-summary strong { color: var(--color-text); font-size: var(--text-base); font-variant-numeric: tabular-nums; }
 .status-summary span { color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.45; }
 .refresh-button { min-width: 96px; flex: 0 0 auto; }
+.env-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.copy-report-button { flex: 0 0 auto; }
 .tab-body { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .tool-grid, .management-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
 .compact-grid { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
@@ -528,6 +555,9 @@ onMounted(() => {
 .tool-path { min-width: 0; }
 .path-link { display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 2px; }
 .path-link:hover { text-decoration-color: var(--color-primary); color: var(--color-primary); }
+/* 行内复制钮：卡面静默、悬停/聚焦浮现（与 OcrView 逐行复制同交互族） */
+.meta-copy { opacity: 0; flex-shrink: 0; transition: opacity var(--motion-base) ease; }
+.tool-card:hover .meta-copy, .tool-card:focus-within .meta-copy { opacity: 1; }
 .tool-hint { font-size: var(--text-sm); border-radius: 5px; padding: 6px 8px; line-height: 1.5; }
 .tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.45; }
 .hint-warn { background: var(--state-warning-soft); color: var(--state-warning); }

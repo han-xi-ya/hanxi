@@ -425,6 +425,11 @@ function clearLogs() {
   logLines.value = []
 }
 
+// 复制抽屉当前日志（ANSI 已剥离的纯文本行），对齐 LogsView 的输出复制惯例
+function copyDrawerLogs() {
+  void copyWithToast(displayLines.value.join('\n'), `已复制 ${displayLines.value.length} 行日志`)
+}
+
 function nowTickRefresh() {
   nowTick.value = Date.now()
 }
@@ -610,6 +615,8 @@ onMounted(async () => {
         <span class="log-drawer-title">日志 · {{ projectName(drawerProjectId) }}</span>
         <div class="log-drawer-tools">
           <label class="auto-scroll"><input v-model="logAutoScroll" type="checkbox" />自动滚动</label>
+          <!-- 输出区复制补齐（PLAN_CLIPBOARD §3.2C）：LogsView 有、frpc 抽屉此前没有 -->
+          <button class="btn btn-secondary btn-small" :disabled="displayLines.length === 0" @click="copyDrawerLogs">复制</button>
           <button class="btn btn-secondary btn-small" @click="clearLogs">清屏</button>
           <button class="btn btn-secondary btn-small" @click="openLogs(projects.find(x => x.id === drawerProjectId) as any)">刷新</button>
           <button class="btn btn-secondary btn-small" @click="closeLogs">✕ 收起</button>
