@@ -48,6 +48,28 @@ export function ApplyPortRules() {
 }
 
 /**
+ * AttachUsbDevice 附加设备到发行版（用户态）。发行版名先过 `wsl -l -q` 实时
+ * 白名单（InstallDistro 同纪律）；未运行的发行版顺手拉起（OpenDistroFolder 同
+ * 先例——attach 的硬前提是实例在跑，用户点名要挂给它，拉起在意图之内）。
+ * @param {string} busID
+ * @param {string} distro
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function AttachUsbDevice(busID, distro) {
+    return $Call.ByID(4225772156, busID, distro);
+}
+
+/**
+ * BindUsbDevice 共享设备（bind，提权；--force 留作真机验证后的进阶口，UI 暂不放）。
+ * @param {string} busID
+ * @param {boolean} force
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function BindUsbDevice(busID, force) {
+    return $Call.ByID(4234663898, busID, force);
+}
+
+/**
  * CancelClone 请求取消指定发行版进行中的克隆。
  * @param {string} src
  * @returns {$CancellablePromise<$models.OperationOutcome>}
@@ -112,6 +134,15 @@ export function CloneDistro(name, newName, target) {
  */
 export function CompactDistro(name, backupDir) {
     return $Call.ByID(146144305, name, backupDir);
+}
+
+/**
+ * DetachUsbDevice 从客户端卸下（用户态）。
+ * @param {string} busID
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function DetachUsbDevice(busID) {
+    return $Call.ByID(3487121078, busID);
 }
 
 /**
@@ -185,6 +216,15 @@ export function GetDistroInstallDir() {
  */
 export function GetReleases() {
     return $Call.ByID(1589128305);
+}
+
+/**
+ * GetUsbOverview "USB 直通"页总取数：usbipd 存在性 + 设备表 + 账本 + 开关态。
+ * 未安装不是错误（installed=false，前端渲染引导卡）；设备表拉取失败如实进 error。
+ * @returns {$CancellablePromise<$models.UsbView>}
+ */
+export function GetUsbOverview() {
+    return $Call.ByID(3564259140);
 }
 
 /**
@@ -390,6 +430,14 @@ export function OpenTerminal(name) {
 }
 
 /**
+ * OpenUsbipdReleases 打开 usbipd-win 官方发布页（固定地址白名单）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenUsbipdReleases() {
+    return $Call.ByID(1965001726);
+}
+
+/**
  * PickDistroImageDialog 打开系统文件选择框为「添加实例」挑镜像源：
  * kind = "vhdx" 过滤发行盘，其余按 rootfs tar 过滤；取消返回空串不报错。
  * @param {string} kind
@@ -417,6 +465,23 @@ export function PickFolderDialog(title) {
  */
 export function RemovePortRule(id) {
     return $Call.ByID(2540685276, id);
+}
+
+/**
+ * RemoveUsbShare 删除账本条目（不触碰 usbipd 的系统绑定）。
+ * @param {string} id
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function RemoveUsbShare(id) {
+    return $Call.ByID(2658418792, id);
+}
+
+/**
+ * ReplayUsbNow 手动补打一发重放（忽略总开关——手动点击即显式意图）。
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function ReplayUsbNow() {
+    return $Call.ByID(189727500);
 }
 
 /**
@@ -501,6 +566,37 @@ export function SetDistroInstallDir(dir) {
 }
 
 /**
+ * SetUsbAutoAttach 开机自动共享总开关（默认关；打开即补打一发重放）。
+ * @param {boolean} enabled
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function SetUsbAutoAttach(enabled) {
+    return $Call.ByID(904694833, enabled);
+}
+
+/**
+ * SetUsbShare 登记/更新"设备 → 发行版"的自动共享条目（以 busid 一设备一条）。
+ * 设备名/VID/PID 取自当前设备表快照（供换插口回落匹配）；此刻不在场的设备拒绝
+ * 登记（没有 busid 快照与匹配线索，登记了也重放不动）。
+ * @param {string} busID
+ * @param {string} distro
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function SetUsbShare(busID, distro) {
+    return $Call.ByID(3492184518, busID, distro);
+}
+
+/**
+ * SetUsbShareEnabled 勾选/停用单条账本（"可勾选停用"卡片要求）。
+ * @param {string} id
+ * @param {boolean} enabled
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function SetUsbShareEnabled(id, enabled) {
+    return $Call.ByID(2677501747, id, enabled);
+}
+
+/**
  * ShutdownWsl 执行 wsl --shutdown：打停全部发行版（数据无损，下次访问自动再启动）。
  * 与迁移/克隆/瘦身共用重操作闸，避免"边搬盘边全停"。
  * @returns {$CancellablePromise<$models.DistroOpResult>}
@@ -526,6 +622,24 @@ export function StartReadiness() {
  */
 export function TerminateDistro(name) {
     return $Call.ByID(2662705819, name);
+}
+
+/**
+ * UnbindAbsentUsbDevice 取消共享（"已共享但不在场"的设备按 GUID，提权）。
+ * @param {string} guid
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function UnbindAbsentUsbDevice(guid) {
+    return $Call.ByID(2010784244, guid);
+}
+
+/**
+ * UnbindUsbDevice 取消共享（在场设备按 busid，提权）。
+ * @param {string} busID
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function UnbindUsbDevice(busID) {
+    return $Call.ByID(3550980023, busID);
 }
 
 /**

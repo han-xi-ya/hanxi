@@ -5,6 +5,9 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as readiness$0 from "./readiness/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as usbipd$0 from "./usbipd/models.js";
 
 /**
  * ActiveProxy netsh 现态的一条转发。
@@ -185,6 +188,35 @@ import * as readiness$0 from "./readiness/models.js";
  * @property {readiness$0.CheckItem[] | null} [items]
  * @property {readiness$0.Report | null} [report]
  * @property {string} [error] - stage=error 时的失败说明
+ */
+
+/**
+ * USBShareEntry 账本里的一条"期望共享"记录（设备 × 目标发行版）。
+ * @typedef {Object} USBShareEntry
+ * @property {string} id
+ * @property {string} busId - 记录时的总线号（重放主匹配键）
+ * @property {string} [vid]
+ * @property {string} [pid]
+ * @property {string} [description] - 设备名快照（账本表可读性）
+ * @property {string} distro
+ * @property {boolean} enabled
+ * @property {string} addedAt
+ * @property {string} [lastStatus] - 最近一次重放/操作归因
+ * @property {string} [lastAt]
+ */
+
+/**
+ * UsbView "USB 直通"页签总载荷。
+ * @typedef {Object} UsbView
+ * @property {boolean} installed
+ * @property {string} [version]
+ * @property {string} [error] - 取数失败说明（未装不算失败）
+ * @property {usbipd$0.Device[] | null} devices
+ * @property {USBShareEntry[] | null} ledger
+ * @property {boolean} autoEnabled - 开机自动共享总开关（默认关）
+ * @property {boolean} replayBusy
+ * @property {string} [lastReplay] - 最近一次后台重放摘要
+ * @property {string} releasesPage - 引导卡固定跳转地址
  */
 
 /**
