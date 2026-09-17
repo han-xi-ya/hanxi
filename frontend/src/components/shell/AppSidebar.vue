@@ -425,7 +425,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 700;
   letter-spacing: 0.2px;
   color: var(--color-text);
@@ -433,7 +433,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 }
 
 .panel-sub {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   margin-top: 2px;
   line-height: 1.35;
@@ -450,7 +450,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 }
 
 .panel-section-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-text-subtle);
   letter-spacing: 0.5px;
@@ -500,7 +500,7 @@ function iconSvg(icon: string | undefined): IconName | null {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--color-text-muted);
 }
 
@@ -518,7 +518,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 }
 
 .mod-name {
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1.35;
   white-space: nowrap;
@@ -528,7 +528,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 
 /* 行副描述（设置分区行用；模块行留空零占位） */
 .mod-sub {
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   color: var(--color-text-subtle);
   line-height: 1.3;
   white-space: nowrap;
@@ -550,7 +550,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 
 .panel-hint,
 .panel-empty {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   padding: 10px 8px;
   line-height: 1.5;
@@ -571,7 +571,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 .foot-counts {
   display: flex;
   gap: 10px;
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   color: var(--color-text-subtle);
   padding-top: 4px;
 }
@@ -588,7 +588,7 @@ function iconSvg(icon: string | undefined): IconName | null {
   align-items: center;
   gap: 6px;
   padding: 4px 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
 }
 
@@ -678,7 +678,7 @@ function iconSvg(icon: string | undefined): IconName | null {
     border: 1px solid var(--color-border);
     background: var(--surface-panel);
     color: var(--color-text-muted);
-    font-size: 15px;
+    font-size: var(--text-md);
     cursor: pointer;
     box-shadow: var(--shadow-small);
     transition: background var(--motion-fast) ease, color var(--motion-fast) ease;

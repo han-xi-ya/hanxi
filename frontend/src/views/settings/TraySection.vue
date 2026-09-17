@@ -329,19 +329,19 @@ onMounted(refreshTray)
 .tray-row-group { border-color: var(--color-border-strong); background: var(--surface-panel); }
 .tray-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .tray-tag {
-  font-size: 10px; color: var(--color-text-muted); background: var(--surface-hover);
+  font-size: var(--text-micro); color: var(--color-text-muted); background: var(--surface-hover);
   padding: 1px 6px; border-radius: 4px; white-space: nowrap; border: 1px solid var(--color-border);
 }
 .tray-tag-command { color: var(--color-primary); border-color: var(--color-primary); }
 .tray-tag-group { color: var(--color-primary); border-color: var(--color-primary); }
 .tray-active { color: var(--color-primary); border-color: var(--color-primary); }
 .tray-ref {
-  font-family: var(--font-mono); font-size: 11px; color: var(--color-text-subtle);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
 .tray-input {
   padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 6px;
-  background: var(--surface-panel); color: var(--color-text); font-size: 12px;
+  background: var(--surface-panel); color: var(--color-text); font-size: var(--text-sm);
 }
 .tray-name { width: 170px; flex-shrink: 0; }
 .tray-remove:hover:not(:disabled) { border-color: var(--state-danger); color: var(--state-danger); }
@@ -352,7 +352,7 @@ onMounted(refreshTray)
   border: 1px dashed var(--color-border-strong); border-radius: var(--radius-control); background: var(--surface-page);
 }
 .tray-child-row { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
-.tray-child-empty { font-size: 11px; color: var(--state-danger); }
+.tray-child-empty { font-size: var(--text-xs); color: var(--state-danger); }
 .tray-child-add { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tray-child-select { min-width: 200px; }
 
@@ -362,7 +362,7 @@ onMounted(refreshTray)
   background: var(--surface-page); border: 1px dashed var(--color-border); border-radius: var(--radius-control);
   padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
 }
-.exe-form-title { font-size: 12px; font-weight: 600; color: var(--color-text); }
+.exe-form-title { font-size: var(--text-sm); font-weight: 600; color: var(--color-text); }
 .exe-form-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .tray-exe-path { flex: 1; min-width: 0; }
 .tray-exe-args { flex: 1; min-width: 0; }
@@ -378,9 +378,9 @@ onMounted(refreshTray)
   padding: 7px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0;
 }
 .option-item:hover { background: var(--surface-hover); }
-.option-label { font-size: 12px; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.option-label { font-size: var(--text-sm); color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
 
 .tray-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
-.hint { font-size: 12px; color: var(--color-text-muted); }
+.hint { font-size: var(--text-sm); color: var(--color-text-muted); }
 </style>

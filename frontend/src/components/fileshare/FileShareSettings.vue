@@ -32,7 +32,7 @@ function setQuickPort(port: number) {
       </div>
       <div class="section-actions">
         <span v-if="isRunning" class="hot-apply-tip">● 保存后实时生效</span>
-        <button type="button" class="btn-secondary" @click="emit('save')">保存共享规则</button>
+        <button type="button" class="btn btn-secondary btn-small" @click="emit('save')">保存共享规则</button>
       </div>
     </div>
 
@@ -54,12 +54,12 @@ function setQuickPort(port: number) {
             class="input-control font-mono"
             placeholder="请选择或输入要共享的物理文件夹路径..."
           />
-          <button type="button" class="btn-secondary path-action" @click="emit('choose')">
+          <button type="button" class="btn btn-secondary btn-small path-action" @click="emit('choose')">
             选择目录
           </button>
           <button
             type="button"
-            class="btn-secondary path-action open-action"
+            class="btn btn-secondary btn-small path-action open-action"
             :disabled="!canOpen"
             :title="canOpen ? '在系统资源管理器中打开共享目录' : '请先保存当前共享目录'"
             @click="emit('open')"
@@ -150,14 +150,9 @@ function setQuickPort(port: number) {
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
-.config-card {
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 16px 20px;
-}
-
+/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移。
+   refined 两代级联已按生效终值合并（原 gen1 .config-card 小圆角浅内距档、独立
+   .quick-ports 无 display 死规则、chip 方角 1px 档均被 gen2 覆盖，已并入或删除）。 */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -165,7 +160,7 @@ function setQuickPort(port: number) {
 }
 
 .form-group label {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-text);
 }
@@ -173,23 +168,19 @@ function setQuickPort(port: number) {
 .path-input-group {
   display: flex;
   gap: 8px;
-  align-items: center;
-}
-
-.quick-ports {
-  align-items: center;
+  align-items: stretch;
+  margin-top: 7px;
 }
 
 .quick-port-chip {
   background: var(--surface-soft);
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
-  font-size: 11px;
-  font-family: monospace;
-  padding: 1px 6px;
-  border-radius: 4px;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
-  transition: all 0.15s;
 }
 
 .quick-port-chip:hover {
@@ -208,7 +199,7 @@ function setQuickPort(port: number) {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--color-text);
   outline: none;
   transition: border-color 0.2s;
@@ -220,42 +211,29 @@ function setQuickPort(port: number) {
 }
 
 .form-hint {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
 }
 
-.btn-secondary {
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.btn-secondary:hover {
-  background: var(--surface-soft);
-}
-
+/* .btn-secondary 全形副本删净落回全局 .btn .btn-secondary .btn-small（与页签同处置） */
 .setting-icon {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   color: var(--color-primary);
-  font-size: 19px;
+  font-size: var(--text-md);
   font-weight: 700;
   background: var(--color-primary-soft);
-  border-radius: 11px;
+  border-radius: 9px;
 }
 
 .section-kicker {
   margin-bottom: 7px;
   color: var(--color-primary);
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 800;
   letter-spacing: 0.16em;
 }
@@ -266,7 +244,7 @@ function setQuickPort(port: number) {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 10px 28px var(--shadow-panel);
+  box-shadow: var(--shadow-panel);
 }
 
 .section-header {
@@ -281,14 +259,14 @@ function setQuickPort(port: number) {
 .section-title {
   margin: 0;
   color: var(--color-text);
-  font-size: 18px;
+  font-size: var(--text-xl);
   font-weight: 750;
 }
 
 .section-desc {
   margin: 5px 0 0;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .section-actions {
@@ -299,7 +277,7 @@ function setQuickPort(port: number) {
 
 .hot-apply-tip {
   color: var(--state-positive);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
@@ -333,31 +311,19 @@ function setQuickPort(port: number) {
 .setting-panel-title h3 {
   margin: 0 0 3px;
   color: var(--color-text);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .setting-panel-title p {
   margin: 0;
   color: var(--color-text-subtle);
-  font-size: 11px;
-}
-
-.setting-icon {
-  width: 34px;
-  height: 34px;
-  font-size: 15px;
-  border-radius: 9px;
+  font-size: var(--text-xs);
 }
 
 .field-label {
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
-}
-
-.path-input-group {
-  align-items: stretch;
-  margin-top: 7px;
 }
 
 .path-input-group .input-control {
@@ -382,7 +348,7 @@ function setQuickPort(port: number) {
   gap: 10px;
   margin-top: 8px;
   color: var(--color-text-subtle);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .unsaved-hint {
@@ -408,11 +374,6 @@ function setQuickPort(port: number) {
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-.quick-port-chip {
-  padding: 2px 7px;
-  border-radius: 999px;
 }
 
 .permission-list {
@@ -446,13 +407,13 @@ function setQuickPort(port: number) {
 
 .permission-item strong {
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
 }
 
 .permission-item small {
   color: var(--color-text-subtle);
-  font-size: 10px;
+  font-size: var(--text-micro);
   line-height: 1.4;
 }
 
@@ -469,21 +430,17 @@ function setQuickPort(port: number) {
   margin-top: 14px;
 }
 
-.btn-secondary,
+/* 按钮族装饰（自绘悬浮微抬/降透明/焦点环）随 .btn-secondary 全形副本一并删除，
+   disabled 0.45→全局 .btn:disabled 0.5、hover 落回 surface-hover（±档设计收敛）；
+   仅私有 chip/输入框保留自绘焦点环 */
 .quick-port-chip {
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.btn-secondary:hover:not(:disabled) {
+.quick-port-chip:hover {
   transform: translateY(-1px);
 }
 
-.btn-secondary:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.btn-secondary:focus-visible,
 .quick-port-chip:focus-visible,
 .input-control:focus-visible {
   outline: 2px solid var(--color-primary-glow);

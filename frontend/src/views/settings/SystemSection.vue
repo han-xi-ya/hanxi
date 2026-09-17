@@ -126,5 +126,5 @@ async function triggerDelayedTestNotification() {
 }
 .tool-main { flex: 1; }
 .tool-badge { margin-left: 6px; vertical-align: 1px; }
-.tool-desc { font-family: var(--font-mono); font-size: 11px; }
+.tool-desc { font-family: var(--font-mono); font-size: var(--text-xs); }
 </style>

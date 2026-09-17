@@ -130,13 +130,13 @@ const emit = defineEmits<{
 }
 
 .adapter-name {
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-text);
 }
 
 .adapter-desc {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }
 
@@ -148,7 +148,7 @@ const emit = defineEmits<{
 
 .mac-text {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
@@ -169,7 +169,7 @@ const emit = defineEmits<{
 }
 
 .group-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text-muted);
 }
@@ -189,7 +189,7 @@ const emit = defineEmits<{
   border: 1px solid var(--color-border);
   padding: 3px 8px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .ip-chip code {
@@ -201,7 +201,7 @@ const emit = defineEmits<{
   background: transparent;
   border: none;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-primary);
   padding: 0 2px;
 }
@@ -217,7 +217,7 @@ const emit = defineEmits<{
   background: transparent;
   border: none;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
   padding: 0 2px;
 }
@@ -239,7 +239,7 @@ const emit = defineEmits<{
   border: 1px solid var(--color-border);
   padding: 4px 10px;
   border-radius: 5px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .v6-chip.is-temp {
@@ -259,7 +259,7 @@ const emit = defineEmits<{
 }
 
 .v6-tag {
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 600;
   color: var(--state-warning);
   background: var(--state-warning-soft);
@@ -268,7 +268,7 @@ const emit = defineEmits<{
 }
 
 .muted-text {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }
 </style>

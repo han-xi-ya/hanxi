@@ -91,10 +91,10 @@ onMounted(refresh)
     <template v-else>
       <section class="panel">
         <h2 class="sec-title">轮盘行为</h2>
-        <label class="tier-row">
-          <span class="tier-info">
-            <span class="tier-title">启用二级轮盘</span>
-            <span class="tier-desc">分组扇区悬停即在主盘外圈展开子环（点击扇区可钉住）；关闭时分组子条目直接拍平进主盘。修改即时生效。</span>
+        <label class="setting-row setting-row-tappable">
+          <span class="setting-main">
+            <span class="setting-name">启用二级轮盘</span>
+            <span class="setting-desc">分组扇区悬停即在主盘外圈展开子环（点击扇区可钉住）；关闭时分组子条目直接拍平进主盘。修改即时生效。</span>
           </span>
           <input
             type="checkbox"
@@ -162,13 +162,13 @@ onMounted(refresh)
 
 <style scoped>
 .sec-title {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0 0 6px;
   color: var(--color-text);
 }
 .sec-note {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   margin: 0 0 10px;
   line-height: 1.6;
@@ -218,21 +218,21 @@ onMounted(refresh)
   gap: 2px;
 }
 .item-label {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .item-hint {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .item-kind {
-  font-size: 10px;
+  font-size: var(--text-micro);
   color: var(--color-text-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
@@ -246,34 +246,8 @@ onMounted(refresh)
   margin-top: 12px;
 }
 
-/* 二级轮盘开关行（与设置页"常规偏好"同构的标题+描述+开关布局） */
-.tier-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--surface-soft);
-  cursor: pointer;
-}
-.tier-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.tier-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text);
-}
-.tier-desc {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  line-height: 1.6;
-}
+/* 二级轮盘开关行原 .tier-* 家族与设置页 .setting-row/.setting-main/.setting-name/.setting-desc
+   原子同义（soft/page 底色与 line-height 为 ±2px 级微差），scoped 副本删净、模板改挂全局原子落回 */
 .switch {
   width: 18px;
   height: 18px;
@@ -291,13 +265,13 @@ onMounted(refresh)
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   line-height: 1.65;
 }
 kbd {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   border: 1px solid var(--color-border-strong);
   border-bottom-width: 2px;
   border-radius: 4px;

@@ -81,7 +81,7 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
 
 <style scoped>
 .results-wrap { display: flex; flex-direction: column; gap: 8px; }
-.results-meta { font-size: 12px; color: var(--color-text-muted); display: flex; gap: 12px; align-items: center; }
+.results-meta { font-size: var(--text-sm); color: var(--color-text-muted); display: flex; gap: 12px; align-items: center; }
 .warn-text { color: var(--state-warning); }
 /* .hint-dim 已上收 components.css（§9.6-2，全库 19 份逐字同形副本的公共形） */
 .result-scroll { overflow-x: auto; }
@@ -93,11 +93,11 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
   cursor: col-resize; transition: background 0.1s ease;
 }
 .col-resizer:hover { background: color-mix(in srgb, var(--color-primary) 35%, transparent); }
-.result-tbl td { font-size: 12px; }
+.result-tbl td { font-size: var(--text-sm); }
 .result-name { font-weight: 500; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-name.is-dir { color: var(--color-primary); }
-.result-path { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; color: var(--color-text-subtle); }
-.result-time { font-size: 11px; color: var(--color-text-subtle); white-space: nowrap; }
+.result-path { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; color: var(--color-text-subtle); }
+.result-time { font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; }
 .row-actions { display: flex; gap: 4px; }
 .copy-cell {
   width: 100%; min-width: 0; padding: 0; border: 0; background: transparent;
@@ -106,6 +106,5 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
 }
 .copy-cell:hover { background: var(--surface-hover); }
 .copy-cell:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; border-radius: 3px; }
-.empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: 6px; border: 1px dashed var(--color-border); }
 .idle-hint { color: var(--color-text-subtle); }
 </style>

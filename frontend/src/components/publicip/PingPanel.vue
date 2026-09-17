@@ -130,20 +130,12 @@ function quickTarget(value: string) {
 <style scoped>
 /* Phase 6 后续治理（§9.6-1）：诊断工具皮家族（.tool-panel/.diag-card/.table-container/
    .status-badge 等）已上收 components.css 共享原子，本层只留本面板真差异。
-   .rtt-tag 有意保留局部（LanScannerView 同名副本未声明 font-family，裸收会漏染）。 */
+   .rtt-tag 基形与 .text-danger 已按 §9.6-10 裁决全局定档，等值副本删净落回。 */
 .val-warn {
   color: var(--state-danger);
 }
-/* .text-danger 暂留局部：MemoView 等处存在无定义同名使用点，全局原子会改其观感（§9.6 待裁决） */
-.text-danger {
-  color: var(--state-danger);
-}
 
-.rtt-tag {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 12px;
-}
+/* fast/medium/slow 色档为合法局部补差（全局仅收基形） */
 .rtt-tag.fast {
   color: var(--state-positive);
 }

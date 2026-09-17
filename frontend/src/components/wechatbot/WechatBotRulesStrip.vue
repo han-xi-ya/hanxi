@@ -25,7 +25,7 @@ defineEmits<{ 'close': [] }>()
   background: var(--state-warning-soft);
   border-bottom: 1px solid var(--state-warning-soft);
   padding: 6px 14px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--state-warning);
   display: flex;
   align-items: center;
@@ -54,6 +54,6 @@ defineEmits<{ 'close': [] }>()
   border: none;
   color: var(--state-warning);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 </style>

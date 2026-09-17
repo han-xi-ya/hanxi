@@ -151,7 +151,7 @@ onMounted(() => loadNetworkInfo(false))
   border: 1px solid transparent;
   padding: 6px 14px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-text-muted);
   cursor: pointer;

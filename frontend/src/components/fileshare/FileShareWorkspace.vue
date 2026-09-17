@@ -80,74 +80,11 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
+/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移。
+   §9.6"refined dashboard"两代级联已按生效终值合并（原 gen1 的 tab-nav 下边线/
+   8px 大内距与蓝色实底 .active 被 gen2 覆盖为死码，合并时删除）。 */
 .tab-nav {
   display: flex;
-  gap: 8px;
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 8px;
-}
-
-.tab-item {
-  background: none;
-  border: none;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.tab-item:hover {
-  background: var(--surface-hover);
-  color: var(--color-text);
-}
-
-.tab-item.active {
-  background: var(--state-information);
-  color: var(--color-on-primary);
-}
-
-.section-kicker {
-  margin-bottom: 7px;
-  color: var(--color-primary);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-}
-
-.workspace-card {
-  padding: 0;
-  overflow: hidden;
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
-  border-radius: 16px;
-  box-shadow: 0 10px 28px var(--shadow-panel);
-}
-
-.workspace-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 20px 22px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.section-title {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 18px;
-  font-weight: 750;
-}
-
-.workspace-header {
-  align-items: flex-end;
-}
-
-.tab-nav {
   gap: 4px;
   max-width: 100%;
   padding: 4px;
@@ -165,19 +102,70 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
   padding: 7px 11px;
   white-space: nowrap;
   border-radius: 7px;
+  background: none;
+  border: none;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tab-item:hover {
+  background: var(--surface-hover);
+  color: var(--color-text);
 }
 
 .tab-item.active {
   color: var(--color-primary-hover);
   background: var(--surface-panel);
-  box-shadow: 0 2px 7px var(--shadow-small);
+  box-shadow: var(--shadow-small);
+}
+
+.tab-item:focus-visible {
+  outline: 2px solid var(--color-primary-glow);
+  outline-offset: 2px;
+}
+
+.section-kicker {
+  margin-bottom: 7px;
+  color: var(--color-primary);
+  font-size: var(--text-micro);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.workspace-card {
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-panel);
+}
+
+.workspace-header {
+  display: flex;
+  align-items: flex-end; /* gen2 覆盖档合并进基块（原 center→flex-end 生效值） */
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* 区块标题（原两代级联 18px 单一生效值，token 化保留） */
+.section-title {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--text-xl);
+  font-weight: 750;
 }
 
 .tab-count {
   min-width: 18px;
   padding: 1px 5px;
   color: inherit;
-  font-size: 10px;
+  font-size: var(--text-micro);
   text-align: center;
   background: var(--surface-hover);
   border-radius: 999px;
@@ -189,22 +177,10 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
   background: var(--surface-soft);
 }
 
-.tab-item {
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.tab-item:focus-visible {
-  outline: 2px solid var(--color-primary-glow);
-  outline-offset: 2px;
-}
-
 @media (max-width: 760px) {
   .workspace-header {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .workspace-header {
     gap: 14px;
   }
 

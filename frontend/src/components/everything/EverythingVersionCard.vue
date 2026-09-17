@@ -54,7 +54,7 @@ const emit = defineEmits<{
 }
 .installed-card.card-active { border-color: var(--color-primary); }
 .inst-card-top { display: flex; justify-content: space-between; align-items: center; }
-.ver-tag { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
+.ver-tag { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
 .inst-badges { display: flex; gap: 6px; }
 /* .badge 基形与 .hint-dim 已上收 components.css（§9.6-2），以下仅本卡片档位色 */
 .badge-active { background: var(--state-positive-soft); color: var(--state-positive); }
@@ -62,7 +62,7 @@ const emit = defineEmits<{
 .badge-import { background: var(--state-information-soft); color: var(--state-information); }
 .badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
 
-.inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); }
 .meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
 .meta-line .k { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
 

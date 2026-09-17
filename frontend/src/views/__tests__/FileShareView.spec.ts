@@ -259,7 +259,7 @@ describe('FileShareView 事件、审计与轮询契约', () => {
     await nextTick()
     await wrapper.findAll('.tab-item')[2].trigger('click')
     await nextTick()
-    const rows = wrapper.findAll('.table tbody tr')
+    const rows = wrapper.findAll('.tbl tbody tr')
     // 现状契约：slice(0,49)+头插＝至多 50 条，最旧被挤出（a.bin 已不可见）
     expect(rows).toHaveLength(50)
     expect(rows[0].text()).toContain('f54')
@@ -269,7 +269,7 @@ describe('FileShareView 事件、审计与轮询契约', () => {
     // 顺带锁定该视图自有 formatBytes 口径（千进制、一位小数、非托管家族 fmtSize）
     runtime.handlers['fileshare:transfer']({ data: { type: 'upload', filename: 'big.bin', size: 1536, clientIp: '1.2.3.4', success: true, timestamp: new Date().toISOString() } })
     await nextTick()
-    expect(wrapper.findAll('.table tbody tr')[0].text()).toContain('1.5 KB')
+    expect(wrapper.findAll('.tbl tbody tr')[0].text()).toContain('1.5 KB')
     wrapper.unmount()
   })
 

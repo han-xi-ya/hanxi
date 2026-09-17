@@ -14,15 +14,15 @@ defineProps<{
     <div class="card">
       <div class="card-header flex-between">
         <h3 class="card-title">📋 局域网访问与传输审计</h3>
-        <span class="text-muted text-sm font-mono">保留最新 50 条</span>
+        <span class="text-subtle text-sm font-mono">保留最新 50 条</span>
       </div>
-      <div v-if="logs.length === 0" class="empty-state py-8">
+      <div v-if="logs.length === 0" class="empty-state">
         <div class="empty-icon">📜</div>
         <h3>暂无传输事件</h3>
         <p>客户端下载或上传文件时，此处将实时展示 IP、文件名、传输大小与状态。</p>
       </div>
       <div v-else class="table-responsive">
-        <table class="table">
+        <table class="tbl">
           <thead>
             <tr>
               <th>时间</th>
@@ -67,44 +67,19 @@ defineProps<{
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动。
-   §9.6-3 治理：flex-between/tag-pill/tag-blue 与语义色 text-success 已上收 components.css；
-   .py-8/.text-danger/.text-muted/.empty-state/.empty-icon 按裁决保留局部（见 §9.6 报告）。 */
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th,
-.table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.table th {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  background: var(--surface-soft);
-}
-
-/* .flex-between/.tag-pill/.tag-blue/.text-success 已上收 components.css（§9.6-3）；
-   .py-8/.text-danger/.text-muted 留局部（同名不同形或无定义使用点，见 §9.6 报告） */
-.py-8 { padding-top: 32px; padding-bottom: 32px; }
+/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移。
+   §9.6-3 治理：flex-between/tag-pill/tag-blue 与语义色 text-success 已上收 components.css。
+   本表方言 .table 基形与全局 .tbl 同义（th/td 内距 10px 在 ±2px 收拢档），模板改挂 .tbl
+   落回全局基形，scoped 基形删除，仅保留滚动壳与最小宽差异档。 */
+/* .flex-between/.tag-pill/.tag-blue/.text-success 已上收 components.css（§9.6-3）。
+   §9.6-10 text 档裁决落地：.text-danger 等值副本删净落回全局；subtle 派 .text-muted
+   模板改挂全局 .text-subtle，副本删净。
+   原 .py-8 副本被后位 .empty-state padding 级联压死，连同挂点删除（§9.6-10 FileShare 侧清零） */
 .tag-success { background: var(--state-positive-soft); color: var(--state-positive); }
 .tag-amber { background: var(--state-warning-soft); color: var(--state-warning); }
 
-.text-danger { color: var(--state-danger); }
-.text-muted { color: var(--color-text-subtle); }
-
-.empty-state {
-  text-align: center;
-  color: var(--color-text-subtle);
-}
-
 .empty-icon {
-  font-size: 36px;
+  font-size: var(--text-3xl);
   margin-bottom: 8px;
 }
 
@@ -120,10 +95,12 @@ defineProps<{
   border-radius: 9px;
 }
 
-.table {
-  min-width: 720px;
+.tbl {
+  min-width: 720px; /* 窄窗横滚下限（本表真差异档，保留） */
 }
 
+/* 空态：居中/虚线卡基形落回全局 .empty-state，此处仅保留 44px 大内距档
+   （与全局 24px 差 >±2px，带 icon+h3 结构，待主线裁决全局大档） */
 .empty-state {
   padding: 44px 20px;
   background: var(--surface-panel);
@@ -134,13 +111,13 @@ defineProps<{
 .empty-state h3 {
   margin: 0 0 7px;
   color: var(--color-text);
-  font-size: 15px;
+  font-size: var(--text-md);
 }
 
 .empty-state p {
   max-width: 620px;
   margin: 0 auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.6;
 }
 </style>

@@ -111,34 +111,34 @@ function formatFileSize(bytes: number): string {
 .chat-input-area { min-height: 155px; background: var(--surface-panel); border-top: 1px solid var(--color-border); display: flex; flex-direction: column; flex-shrink: 0; }
 .chat-input-area.has-attachment { min-height: 235px; }
 .input-toolbar-row { padding: 6px 14px 2px; display: flex; align-items: center; gap: 8px; }
-.toolbar-btn { background: transparent; border: none; font-size: 12px; color: var(--color-text); padding: 5px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: background .15s ease; }
+.toolbar-btn { background: transparent; border: none; font-size: var(--text-sm); color: var(--color-text); padding: 5px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: background .15s ease; }
 .toolbar-btn:hover:not(:disabled) { background: var(--surface-hover); }
 .toolbar-btn:disabled { color: var(--color-text-subtle); cursor: not-allowed; }
 .attachment-btn { border: 1px solid var(--color-border); background: var(--surface-soft); }
 .toolbar-btn.text-danger:hover:not(:disabled) { color: var(--state-danger); background: var(--state-danger-soft); }
-.tb-icon { font-size: 15px; line-height: 1; }
-.paste-tip { font-size: 11px; color: var(--color-text-subtle); min-width: 0; }
+.tb-icon { font-size: var(--text-md); line-height: 1; }
+.paste-tip { font-size: var(--text-xs); color: var(--color-text-subtle); min-width: 0; }
 .tb-spacer { flex: 1; }
 .attachment-stage { margin: 5px 14px 7px; }
 .attachment-loading, .attachment-error, .attachment-preview-card { min-height: 58px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--surface-soft); }
-.attachment-loading { display: flex; align-items: center; padding: 10px 12px; color: var(--color-text-muted); font-size: 12px; }
+.attachment-loading { display: flex; align-items: center; padding: 10px 12px; color: var(--color-text-muted); font-size: var(--text-sm); }
 .attachment-preview-card { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 9px; }
 .attachment-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border); }
 .attachment-file-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 6px; background: var(--surface-hover); color: var(--color-text-muted); font: 600 10px ui-monospace, Consolas, monospace; }
 .attachment-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.attachment-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--color-text); }
-.attachment-meta span { font-size: 11px; color: var(--color-text-subtle); }
-.attachment-remove, .attachment-send, .attachment-error button { border-radius: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+.attachment-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--color-text); }
+.attachment-meta span { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.attachment-remove, .attachment-send, .attachment-error button { border-radius: 6px; padding: 6px 10px; font-size: var(--text-sm); cursor: pointer; }
 .attachment-remove { border: 1px solid var(--color-border); color: var(--color-text-muted); background: transparent; }
 .attachment-send { border: 0; color: var(--color-text-inverse); background: var(--state-positive); min-width: 74px; }
 .attachment-remove:disabled, .attachment-send:disabled { opacity: .55; cursor: not-allowed; }
-.attachment-error { padding: 9px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--state-danger); font-size: 12px; }
+.attachment-error { padding: 9px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--state-danger); font-size: var(--text-sm); }
 .attachment-error button { border: 1px solid var(--color-border); background: var(--surface-panel); color: var(--color-text); }
 .input-textarea-wrapper { flex: 1; padding: 0 14px; min-height: 48px; }
-.wechat-textarea { width: 100%; height: 100%; border: none; outline: none; resize: none; font-size: 13px; color: var(--color-text); font-family: inherit; line-height: 1.5; background: transparent; }
+.wechat-textarea { width: 100%; height: 100%; border: none; outline: none; resize: none; font-size: var(--text-base); color: var(--color-text); font-family: inherit; line-height: 1.5; background: transparent; }
 .input-footer-row { padding: 4px 14px 8px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.shortcut-tip { font-size: 11px; color: var(--color-text-subtle); }
-.btn-send-message { background: var(--state-positive); color: var(--color-text-inverse); border: none; padding: 5px 16px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all .15s ease; }
+.shortcut-tip { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.btn-send-message { background: var(--state-positive); color: var(--color-text-inverse); border: none; padding: 5px 16px; border-radius: 4px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: all .15s ease; }
 .btn-send-message:disabled { background: var(--surface-hover); color: var(--color-text-subtle); cursor: not-allowed; }
 button:focus-visible, .wechat-textarea:focus-visible { outline: 2px solid var(--color-primary, #0f8b8d); outline-offset: 2px; }
 @media (max-width: 640px) { .paste-tip { display: none; } .attachment-preview-card { grid-template-columns: 46px minmax(0, 1fr); } .attachment-remove, .attachment-send { grid-row: 2; } .attachment-send { grid-column: 2; } .shortcut-tip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }

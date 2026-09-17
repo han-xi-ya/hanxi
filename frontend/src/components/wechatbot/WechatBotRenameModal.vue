@@ -75,7 +75,7 @@ const nameModel = computed({
   border: 1px solid var(--color-border);
   padding: 4px 12px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -85,7 +85,7 @@ const nameModel = computed({
   border: none;
   padding: 4px 14px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
 }

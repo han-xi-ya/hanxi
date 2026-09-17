@@ -254,7 +254,7 @@ onUnmounted(() => {
         </p>
       </div>
       <div class="header-actions">
-        <button class="btn-primary" @click="openCreateModal">
+        <button class="btn btn-primary" @click="openCreateModal">
           <span>+ 新建备忘便签</span>
         </button>
       </div>
@@ -448,8 +448,8 @@ onUnmounted(() => {
         </div>
 
         <div class="modal-footer flex-between mt-6">
-          <button class="btn-secondary" @click="showEditor = false">取消</button>
-          <button class="btn-primary" @click="handleSaveMemo">
+          <button class="btn btn-secondary" @click="showEditor = false">取消</button>
+          <button class="btn btn-primary" @click="handleSaveMemo">
             {{ isEditing ? '保存修改' : '立即创建' }}
           </button>
         </div>
@@ -459,8 +459,10 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 治理说明：本视图历史遗留的 text-muted、font-mono、mb-*、gap-* 等 utility 类名在本文件与全局
-   均无定义（渲染即无操作），清理会引入视觉变化，留观——本次只动确有定义的规则。 */
+/* 治理说明（2026-09 字号体系化波）：历史遗留的 font-mono、mb-* 、gap-* 等 utility 类名在本文件与全局
+   均无定义（渲染即无操作），清理会引入视觉变化，留观；text-muted/text-danger 两处死类已由本轮
+   全局语义文本原子（components.css）名实复活（灰/红随类生效，属预期归一，目视项）。
+   页头双钮收 .btn 基座落回全局按钮家族；flex-between/gap-2 与全局原子逐字同义，副本删净。 */
 .memo-page {
   padding: 24px 32px;
   max-width: 1360px;
@@ -475,7 +477,8 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 22px;
+  /* 22→18 与 PageHeader 家族页面对齐（目视项） */
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--color-text);
   display: flex;
@@ -485,7 +488,7 @@ onUnmounted(() => {
 }
 
 .page-desc {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--color-text-muted);
   max-width: 720px;
   line-height: 1.5;
@@ -534,7 +537,7 @@ onUnmounted(() => {
   color: var(--color-text-muted);
   padding: 4px 10px;
   border-radius: var(--radius-pill);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: background var(--motion-base), color var(--motion-base);
 }
@@ -552,7 +555,7 @@ onUnmounted(() => {
 
 .tag-count {
   opacity: 0.8;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .memo-grid {
@@ -585,20 +588,20 @@ onUnmounted(() => {
 .border-tag-purple { border-left: 4px solid #8b5cf6; }
 
 .memo-title {
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-text);
   max-width: 220px;
 }
 
 .pin-badge {
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .btn-icon {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-base);
   padding: 2px 4px;
   border-radius: 4px;
   transition: background var(--motion-base);
@@ -609,7 +612,7 @@ onUnmounted(() => {
 }
 
 .memo-content-box {
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.5;
   color: var(--color-text);
   background: var(--surface-soft);
@@ -629,7 +632,8 @@ onUnmounted(() => {
 }
 
 .tag-pill {
-  font-size: 11px;
+  /* 与全局 .tag-pill 方言同名异用（本处为可点选过滤丸，带 cursor/hover），scoped 压全局保留 */
+  font-size: var(--text-xs);
   padding: 2px 6px;
   border-radius: 4px;
   background: var(--surface-soft);
@@ -649,7 +653,7 @@ onUnmounted(() => {
 
 .tag-remove {
   cursor: pointer;
-  font-size: 10px;
+  font-size: var(--text-micro);
   color: var(--color-text-subtle);
 }
 
@@ -663,7 +667,7 @@ onUnmounted(() => {
   color: var(--color-text-muted);
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -709,41 +713,21 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
-.flex-between { display: flex; justify-content: space-between; align-items: center; }
+/* .flex-between/.gap-2 与全局原子逐字同义，副本删净落回（components.css FileShare 方言块） */
 .flex-center { display: flex; align-items: center; }
 .flex-col { display: flex; flex-direction: column; }
 .gap-1 { gap: 4px; }
-.gap-2 { gap: 8px; }
 .gap-3 { gap: 12px; }
 .gap-4 { gap: 16px; }
 
-.btn-primary {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-  border: none;
-  border-radius: var(--radius-control);
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-secondary {
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border-strong);
-  color: var(--color-text-muted);
-  border-radius: var(--radius-control);
-  padding: 8px 16px;
-  font-size: 13px;
-  cursor: pointer;
-}
+/* 页头/模态双钮收全局 .btn .btn-primary/.btn-secondary 家族（36px 高中枢、13px 字号落基线） */
 
 .input-control {
   background: var(--surface-soft);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-control);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--text-base);
   outline: none;
   color: var(--color-text);
 }
@@ -759,7 +743,7 @@ onUnmounted(() => {
 }
 
 .empty-icon {
-  font-size: 36px;
+  font-size: var(--text-3xl);
   margin-bottom: 8px;
 }
 </style>

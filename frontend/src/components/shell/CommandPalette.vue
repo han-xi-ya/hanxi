@@ -375,7 +375,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
   background: transparent;
   color: var(--color-text);
   font-family: inherit;
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 600;
   caret-color: var(--color-primary);
 }
@@ -390,7 +390,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
 }
 .p-sec {
   padding: 8px 16px 4px;
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 700;
   letter-spacing: 0.5px;
   text-transform: uppercase;
@@ -422,7 +422,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .p-body {
   flex: 1;
@@ -432,13 +432,13 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
   gap: 1px;
 }
 .p-name {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 650;
   line-height: 1.35;
 }
 .p-route {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   color: var(--color-text-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -456,7 +456,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
 .p-empty {
   padding: 26px 16px;
   text-align: center;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }
 .p-foot {
@@ -465,12 +465,12 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
   padding: 9px 16px;
   border-top: 1px solid var(--color-border);
   background: var(--surface-soft);
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   color: var(--color-text-subtle);
 }
 .p-foot kbd {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 600;
   color: var(--color-text-muted);
   border: 1px solid var(--color-border-strong);

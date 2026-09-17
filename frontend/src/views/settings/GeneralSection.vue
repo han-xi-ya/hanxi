@@ -90,7 +90,7 @@ onMounted(refresh)
 .input-inline { display: flex; align-items: center; gap: 6px; }
 .input-number {
   width: 64px; padding: 5px 8px; border: 1px solid var(--color-border);
-  border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text); font-size: 13px;
+  border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text); font-size: var(--text-base);
 }
-.input-unit { font-size: 12px; color: var(--color-text-muted); }
+.input-unit { font-size: var(--text-sm); color: var(--color-text-muted); }
 </style>

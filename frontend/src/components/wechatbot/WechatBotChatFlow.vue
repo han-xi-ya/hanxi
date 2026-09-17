@@ -243,19 +243,19 @@ defineExpose({ scrollToBottom })
 }
 
 .empty-bubble-icon {
-  font-size: 36px;
+  font-size: var(--text-3xl);
   margin-bottom: 6px;
   opacity: 0.5;
 }
 
 .empty-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-text);
 }
 
 .empty-desc {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
   margin-top: 4px;
 }
@@ -277,7 +277,7 @@ defineExpose({ scrollToBottom })
   background: var(--surface-hover);
   padding: 4px 12px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   display: flex;
   align-items: center;
@@ -285,7 +285,7 @@ defineExpose({ scrollToBottom })
 }
 
 .pill-time {
-  font-size: 10px;
+  font-size: var(--text-micro);
   color: var(--color-text-subtle);
 }
 
@@ -305,7 +305,7 @@ defineExpose({ scrollToBottom })
 
 .robot-avatar-box {
   background: var(--color-primary) !important;
-  font-size: 16px;
+  font-size: var(--text-lg);
 }
 
 .msg-avatar-icon {
@@ -317,7 +317,7 @@ defineExpose({ scrollToBottom })
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-base);
   flex-shrink: 0;
 }
 
@@ -339,7 +339,7 @@ defineExpose({ scrollToBottom })
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
 }
 
@@ -350,7 +350,7 @@ defineExpose({ scrollToBottom })
 .bubble-box {
   padding: 9px 13px;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.5;
   word-break: break-word;
   user-select: text;
@@ -404,7 +404,7 @@ defineExpose({ scrollToBottom })
   color: var(--color-text);
   border-radius: 5px;
   padding: 4px 9px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -419,7 +419,7 @@ defineExpose({ scrollToBottom })
 }
 
 .file-icon-box {
-  font-size: 22px;
+  font-size: var(--text-2xl);
 }
 
 .file-info-group {
@@ -429,16 +429,16 @@ defineExpose({ scrollToBottom })
 
 .file-main-name {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .file-sub-type {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
 .file-sub-path {
-  font-size: 10px;
+  font-size: var(--text-micro);
   color: var(--color-text-muted);
   font-family: var(--font-mono);
   max-width: 260px;
@@ -454,7 +454,7 @@ defineExpose({ scrollToBottom })
 }
 
 .media-icon-box {
-  font-size: 20px;
+  font-size: var(--text-xl);
 }
 
 .media-info-group {
@@ -464,11 +464,11 @@ defineExpose({ scrollToBottom })
 
 .media-main-name {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .media-sub-path {
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-family: var(--font-mono);
   opacity: 0.8;
   max-width: 260px;
@@ -513,7 +513,7 @@ defineExpose({ scrollToBottom })
   border: 1px dashed var(--color-border-strong);
   background: var(--surface-soft);
   color: var(--color-text-subtle);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .image-actions {
@@ -522,7 +522,7 @@ defineExpose({ scrollToBottom })
 }
 
 .msg-send-status {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .msg-send-status.sending {

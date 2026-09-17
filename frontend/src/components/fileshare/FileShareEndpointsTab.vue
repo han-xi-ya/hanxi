@@ -16,7 +16,7 @@ const emit = defineEmits<{ copy: [url: string] }>()
 
 <template>
   <div class="tab-content">
-    <div v-if="!isRunning" class="empty-state py-8">
+    <div v-if="!isRunning" class="empty-state">
       <div class="empty-icon">⏹</div>
       <h3>快传服务当前处于停止状态</h3>
       <p>点击右上角的「▶ 启动快传服务」后即可生成各局域网网卡的访问地址与专属二维码。</p>
@@ -29,7 +29,7 @@ const emit = defineEmits<{ copy: [url: string] }>()
             {{ ep.interfaceName }}
             <span v-if="ep.isDefault" class="tag-pill tag-primary ml-2">主通信网卡</span>
           </div>
-          <span class="ep-ip font-mono text-muted">{{ ep.ip }}</span>
+          <span class="ep-ip font-mono text-subtle">{{ ep.ip }}</span>
         </div>
 
         <div class="ep-body flex-between">
@@ -42,7 +42,7 @@ const emit = defineEmits<{ copy: [url: string] }>()
               📱 手机/平板连接同局域网后，打开相机或浏览器扫码秒开共享站。
             </p>
             <div class="ep-actions flex gap-2">
-              <button class="btn-secondary btn-sm" @click="emit('copy', ep.url)">
+              <button class="btn btn-secondary btn-small" @click="emit('copy', ep.url)">
                 📋 复制访问链接
               </button>
             </div>
@@ -56,8 +56,9 @@ const emit = defineEmits<{ copy: [url: string] }>()
 <style scoped>
 /* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动。
    §9.6-3 治理：与兄弟页签逐字同形的方言原子（flex-between/gap-2/ml-2/btn-sm/tag-pill/
-   tag-blue）已上收 components.css；.btn-secondary 家族/.empty-state/.py-8/.text-muted/
-   .empty-icon 因同名不同形或有未定义使用点，按裁决保留局部。 */
+   tag-blue）已上收 components.css；.btn-secondary 家族/.empty-state/.py-8/.empty-icon
+   因同名不同形或有未定义使用点，按裁决保留局部。§9.6-10 text 档裁决落地：
+   本件 .text-muted（色值实为 subtle 档）已改挂全局 .text-subtle 并删净副本。 */
 .endpoint-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
@@ -106,48 +107,31 @@ const emit = defineEmits<{ copy: [url: string] }>()
 }
 
 .url-text {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-primary);
 }
 
 .ep-tip {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   line-height: 1.4;
 }
 
 /* .flex-between/.gap-2/.ml-2 已上收 components.css（§9.6-3）；
-   .py-8 留局部：MemoView 存在无定义同名使用点，裸收会经全局 .empty-state 互染 padding */
-.py-8 { padding-top: 32px; padding-bottom: 32px; }
+   原 .py-8 副本已被后位 .empty-state 的 padding 级联压死（32→44px 生效后即死码），
+   连同模板挂点一并删除——§9.6-10 冻结项 .py-8 在 FileShare 侧清零 */
 
-.btn-secondary {
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.btn-secondary:hover {
-  background: var(--surface-soft);
-}
-
-/* .btn-sm/.tag-pill 已上收 components.css（§9.6-3） */
+/* .btn-secondary 家族 scoped 全形副本删净落回：模板改挂全局 .btn .btn-secondary .btn-small
+   标准三件套（radius 6→8、悬浮 translateY 微抬与自绘焦点环弃用，hover 落回 surface-hover），
+   §9.6-10 冻结项在 FileShare 侧就此解除；全库冻结标记待 MemoView 等外组同形收编后整删。
+   .btn-sm/.tag-pill 已上收 components.css（§9.6-3），本行内按钮不再需要尺寸档。 */
 .tag-primary { background: var(--state-information-soft); color: var(--color-primary-hover); }
 
-/* .text-muted 留局部：HomeView 同名副本色值不同形（muted vs subtle），待裁决 */
-.text-muted { color: var(--color-text-subtle); }
-
-.empty-state {
-  text-align: center;
-  color: var(--color-text-subtle);
-}
+/* subtle 派 .text-muted 按 §9.6-10 名实裁决：模板改挂全局 .text-subtle，局部副本删净 */
 
 .empty-icon {
-  font-size: 36px;
+  font-size: var(--text-3xl);
   margin-bottom: 8px;
 }
 
@@ -173,19 +157,6 @@ const emit = defineEmits<{ copy: [url: string] }>()
   box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
-.btn-secondary {
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.btn-secondary:focus-visible {
-  outline: 2px solid var(--color-primary-glow);
-  outline-offset: 2px;
-}
-
 .empty-state {
   padding: 44px 20px;
   background: var(--surface-panel);
@@ -196,13 +167,13 @@ const emit = defineEmits<{ copy: [url: string] }>()
 .empty-state h3 {
   margin: 0 0 7px;
   color: var(--color-text);
-  font-size: 15px;
+  font-size: var(--text-md);
 }
 
 .empty-state p {
   max-width: 620px;
   margin: 0 auto;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.6;
 }
 

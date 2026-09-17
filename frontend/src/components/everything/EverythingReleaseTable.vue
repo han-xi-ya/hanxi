@@ -106,14 +106,14 @@ function channelLabel(channel: string): string {
 .table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 8px; overflow-x: auto; }
 .ver-name { font-family: var(--font-mono); }
 
-.channel-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); }
+.channel-badge { font-size: var(--text-xs); font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); }
 .ch-stable { background: var(--state-positive-soft); color: var(--state-positive); }
 .ch-beta { background: var(--state-warning-soft); color: var(--state-warning); }
 
 /* .badge 基形已上收 components.css（§9.6-2），以下仅本表格快照档位 */
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
-.ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .ver-status.installed::before { background: var(--state-positive); }
 .ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
@@ -122,7 +122,7 @@ function channelLabel(channel: string): string {
 
 /* 「已安装」表内标记：区别于全局 .btn-ghost（悬停幽灵按钮）的静态标签态 */
 .installed-tag {
-  display: inline-flex; align-items: center; padding: 4px 12px; font-size: 12px;
+  display: inline-flex; align-items: center; padding: 4px 12px; font-size: var(--text-sm);
   border-radius: var(--radius-control); border: 1px solid var(--color-border);
   background: var(--surface-hover); color: var(--color-text-muted);
 }
@@ -130,10 +130,9 @@ function channelLabel(channel: string): string {
 .download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
 .dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
 .dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-fast) linear; }
-.dl-percent { font-size: 11px; color: var(--color-text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: 12px; color: var(--color-primary); }
-.dl-error { color: var(--state-danger); font-size: 11px; }
-.retry-link { color: var(--color-primary); font-size: 12px; cursor: pointer; margin-left: 8px; }
+.dl-percent { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
+.dl-meta-text { font-size: var(--text-sm); color: var(--color-primary); }
+.dl-error { color: var(--state-danger); font-size: var(--text-xs); }
+.retry-link { color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; }
 .retry-link:hover { text-decoration: underline; }
-.empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: 6px; border: 1px dashed var(--color-border); }
 </style>

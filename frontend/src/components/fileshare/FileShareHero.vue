@@ -34,7 +34,7 @@ const emit = defineEmits<{ toggle: [] }>()
     </div>
     <button
       type="button"
-      class="btn-primary hero-action"
+      class="btn btn-primary hero-action"
       :class="{ 'btn-danger': status.isRunning }"
       :disabled="loading"
       @click="emit('toggle')"
@@ -47,22 +47,14 @@ const emit = defineEmits<{ toggle: [] }>()
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
-.page-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--color-text);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+/* 原私有 .btn-primary 全形（含 :disabled 降透明）与全局 :where(.btn)/.btn-primary 同语义，
+   模板补挂 .btn 基座后 scoped 副本删净落回；hero 仅保留 CTA 差异档（.hero-action）与
+   "运行中变红"覆盖档（.btn-danger，hover 保持红底不吃全局 primary-hover）。 */
+.btn-danger {
+  background: var(--state-danger);
 }
-
-.page-desc {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  max-width: 720px;
-  line-height: 1.5;
+.btn-danger:hover:not(:disabled) {
+  background: var(--state-danger);
 }
 
 .status-indicator {
@@ -75,27 +67,6 @@ const emit = defineEmits<{ toggle: [] }>()
 .status-indicator.online {
   background: var(--state-positive);
   box-shadow: 0 0 8px var(--state-positive-glow);
-}
-
-.btn-primary {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-danger {
-  background: var(--state-danger);
 }
 
 .hero-panel {
@@ -112,7 +83,7 @@ const emit = defineEmits<{ toggle: [] }>()
     linear-gradient(135deg, var(--surface-panel), var(--surface-soft));
   border: 1px solid var(--color-border);
   border-radius: 16px;
-  box-shadow: 0 12px 30px var(--shadow-panel);
+  box-shadow: var(--shadow-panel);
 }
 
 .hero-copy {
@@ -122,15 +93,20 @@ const emit = defineEmits<{ toggle: [] }>()
 .eyebrow {
   margin-bottom: 7px;
   color: var(--color-primary);
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 800;
   letter-spacing: 0.16em;
 }
 
+/* hero 标题（原两代级联 22px→27px 死重声明已并为生效终值；27→--text-3xl 阶梯顶档） */
 .page-title {
   margin: 0 0 8px;
   gap: 10px;
-  font-size: 27px;
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
   letter-spacing: -0.02em;
 }
 
@@ -141,7 +117,7 @@ const emit = defineEmits<{ toggle: [] }>()
   width: 36px;
   height: 36px;
   color: var(--color-on-primary);
-  font-size: 22px;
+  font-size: var(--text-2xl);
   background: linear-gradient(135deg, var(--color-primary), var(--state-information));
   border-radius: 10px;
   box-shadow: 0 7px 16px var(--color-primary-glow);
@@ -150,7 +126,8 @@ const emit = defineEmits<{ toggle: [] }>()
 .page-desc {
   max-width: 760px;
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
   line-height: 1.65;
 }
 
@@ -168,7 +145,7 @@ const emit = defineEmits<{ toggle: [] }>()
   gap: 7px;
   padding: 5px 9px;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
@@ -181,22 +158,19 @@ const emit = defineEmits<{ toggle: [] }>()
   border-color: var(--state-positive-soft);
 }
 
+/* hero CTA 差异档：全局 .btn 基座之上的大尺寸与悬浮微抬（radius 9→全局 8 落回） */
 .hero-action {
   min-width: 150px;
   padding: 10px 17px;
-  border-radius: 9px;
   box-shadow: 0 7px 16px var(--color-primary-soft);
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
-.btn-primary {
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.btn-primary:hover:not(:disabled) {
+.hero-action:hover:not(:disabled) {
   transform: translateY(-1px);
 }
 
-.btn-primary:focus-visible {
+.hero-action:focus-visible {
   outline: 2px solid var(--color-primary-glow);
   outline-offset: 2px;
 }

@@ -133,7 +133,7 @@ describe('PortScanView 扫描链路', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('nginx')
     // 打开按钮仅对 web 端口渲染（两行都是）
-    expect(rows[0].find('.btn-xs').exists()).toBe(true)
+    expect(rows[0].find('.btn-micro').exists()).toBe(true)
     expect(rows[1].find('.fp-badge').text()).toBe('Nmap:cpe')
     w.unmount()
   })

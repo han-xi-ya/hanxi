@@ -149,12 +149,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   gap: 8px;
 }
 
 .qr-spinner {
-  font-size: 24px;
+  font-size: var(--text-2xl);
 }
 
 .qr-success-box {
@@ -172,7 +172,7 @@ onUnmounted(() => {
 }
 
 .qr-badge-pill {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 3px 10px;
   border-radius: 12px;
   background: var(--surface-hover);
@@ -201,12 +201,12 @@ onUnmounted(() => {
   border: none;
   padding: 4px 12px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
 .cmodal-hints {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   line-height: 1.5;
 }

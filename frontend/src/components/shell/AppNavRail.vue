@@ -233,7 +233,7 @@ function toggleExpanded() {
   flex: 1;
   min-width: 0;
   text-align: left;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -315,7 +315,7 @@ function toggleExpanded() {
   right: 3px;
   bottom: 2px;
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-micro);
   font-weight: 700;
   color: var(--color-text-subtle);
   background: var(--surface-soft);
@@ -347,7 +347,7 @@ function toggleExpanded() {
   border-radius: var(--radius-pill);
   background: var(--state-danger);
   color: var(--color-text-inverse);
-  font-size: 9px;
+  font-size: var(--text-micro);
   font-weight: 800;
   display: flex;
   align-items: center;

@@ -111,7 +111,7 @@ const targetUserModel = computed({
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  font-size: 13px;
+  font-size: var(--text-base);
   padding: 3px 6px;
   cursor: pointer;
   margin-right: 4px;
@@ -148,7 +148,7 @@ const targetUserModel = computed({
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-md);
   flex-shrink: 0;
 }
 
@@ -165,13 +165,13 @@ const targetUserModel = computed({
 }
 
 .bot-name {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-text);
 }
 
 .listen-badge {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 1px 7px;
   border-radius: 10px;
   background: var(--surface-hover);
@@ -197,7 +197,7 @@ const targetUserModel = computed({
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .target-label {
@@ -215,14 +215,14 @@ const targetUserModel = computed({
   color: var(--color-primary);
   cursor: pointer;
   padding: 0 2px;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .target-input-inline {
   padding: 2px 6px;
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: var(--font-mono);
   width: 200px;
   outline: none;
@@ -238,7 +238,7 @@ const targetUserModel = computed({
   border: none;
   padding: 2px 7px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -248,7 +248,7 @@ const targetUserModel = computed({
   border: none;
   padding: 2px 7px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -263,7 +263,7 @@ const targetUserModel = computed({
   border: 1px solid var(--color-border);
   padding: 5px 12px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
   cursor: pointer;

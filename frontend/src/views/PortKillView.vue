@@ -215,7 +215,7 @@ onMounted(() => {
               <td>
                 <button
                   v-if="!occ.isProtected"
-                  class="btn-kill"
+                  class="btn btn-danger-outline btn-micro"
                   :disabled="killing"
                   @click="requestKill(occ)"
                 >
@@ -262,7 +262,7 @@ onMounted(() => {
               <td>
                 <button
                   v-if="!occ.isProtected"
-                  class="btn-kill"
+                  class="btn btn-danger-outline btn-micro"
                   :disabled="killing"
                   @click="requestKill(occ)"
                 >
@@ -311,7 +311,7 @@ onMounted(() => {
 .input-port {
   flex: 1;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: var(--text-md);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   outline: none;
@@ -330,7 +330,7 @@ onMounted(() => {
 }
 
 .tag-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }
 
@@ -339,7 +339,7 @@ onMounted(() => {
   border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 3px 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
@@ -373,7 +373,7 @@ onMounted(() => {
 }
 
 .card-header h3 {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0;
 }
@@ -387,7 +387,7 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   font-family: var(--font-mono);
 }
@@ -399,29 +399,9 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
-.btn-kill {
-  padding: 3px 8px;
-  background: var(--state-danger-soft);
-  border: 1px solid var(--state-danger-glow);
-  color: var(--state-danger);
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background var(--motion-base) ease, color var(--motion-base) ease;
-}
-.btn-kill:hover {
-  background: var(--state-danger);
-  color: var(--color-on-primary);
-}
-.btn-kill:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+/* 行内"释放端口"危险微钮收编全局 .btn .btn-danger-outline .btn-micro 标准形，
+   原私有软底 .btn-kill（含 hover 实底反白变体）删净落回（目视项）。 */
 
-.empty-hint {
-  text-align: center;
-  padding: 32px 0;
-  color: var(--color-text-subtle);
-}
+/* 裸文字 32px 档副本删净，落回全局 .empty-hint 标准虚线卡形（§9.6-10 定档裁决——目视项；
+   挂点为 <td colspan>，虚线卡染进单元格为预期收编效果） */
 </style>

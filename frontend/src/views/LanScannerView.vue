@@ -274,14 +274,9 @@ onMounted(() => {
   gap: 16px;
 }
 
+/* 布局/底色/边框/圆角逐值部分落回全局 .control-panel；仅内距散差暂留——定档候选，见收编报告 */
 .control-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
   padding: 12px 16px;
-  border-radius: 8px;
 }
 
 .form-item {
@@ -292,7 +287,7 @@ onMounted(() => {
 }
 
 .form-item label {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -309,7 +304,7 @@ onMounted(() => {
   padding: 6px 12px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
   background: var(--surface-panel);
   flex: 1;
   font-family: var(--font-mono);
@@ -323,7 +318,7 @@ onMounted(() => {
   padding: 6px 10px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   background: var(--surface-panel);
   max-width: 220px;
   color: var(--color-text-muted);
@@ -338,7 +333,7 @@ onMounted(() => {
 }
 
 .helper-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }
 
@@ -347,7 +342,7 @@ onMounted(() => {
   border: 1px solid var(--color-border);
   border-radius: 4px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   cursor: pointer;
   font-family: var(--font-mono);
@@ -359,10 +354,7 @@ onMounted(() => {
   border-color: var(--color-primary);
 }
 
-.btn-group {
-  display: flex;
-  gap: 8px;
-}
+/* .btn-group 等值副本删净落回全局 :where(.btn-group) */
 
 /* 实心红"停止扫描"为本视图专属变体（全局只有 btn-danger-outline 描边形） */
 .btn-danger {
@@ -387,7 +379,7 @@ onMounted(() => {
 .progress-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
@@ -409,22 +401,14 @@ onMounted(() => {
   transition: width var(--motion-base) ease;
 }
 
-/* 表格展示（.tbl 基样式全局接管，此处仅本视图差异：更宽内距与 page 色表头） */
+/* 表格展示：.tbl 基样式与 th/td 内距、表头底色全部落回 components.css 全局标准形
+   （原 10px 14px 宽内距与 page 色表头为 ±2px 内差异，已删）；
+   外壳 .table-container 为全局仅锚定于 .diag-card 的裸形缺口，保留本地。 */
 .table-container {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
-}
-
-.tbl th {
-  background: var(--surface-page);
-  padding: 10px 14px;
-}
-
-.tbl td {
-  padding: 10px 14px;
-  color: var(--color-text);
 }
 
 .row-self {
@@ -437,7 +421,7 @@ onMounted(() => {
 
 .col-mac code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
@@ -468,11 +452,11 @@ onMounted(() => {
 
 .remark-placeholder {
   color: var(--color-text-subtle);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .edit-icon {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   opacity: 0;
   transition: opacity var(--motion-base) ease;
@@ -490,7 +474,7 @@ onMounted(() => {
 .input-inline {
   width: 100%;
   padding: 4px 8px;
-  font-size: 13px;
+  font-size: var(--text-base);
   border: 1px solid var(--color-primary);
   border-radius: 4px;
   outline: none;
@@ -498,11 +482,11 @@ onMounted(() => {
   box-shadow: 0 0 0 2px var(--color-primary-glow);
 }
 
+/* .rtt-tag 基形（mono + 600 + sm）已全局定档（§9.6-10 裁决落地），副本删净落回；
+   本视图色块档（padding/圆角）为合法局部补差保留 */
 .rtt-tag {
-  font-size: 11px;
   padding: 2px 6px;
   border-radius: 4px;
-  font-weight: 600;
 }
 .rtt-tag.fast {
   background: var(--state-positive-soft);
@@ -523,7 +507,7 @@ onMounted(() => {
   border-radius: 5px;
   background: var(--surface-panel);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   transition: all var(--motion-base) ease;
 }
 .btn-action:hover {
@@ -531,9 +515,6 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
-.empty-hint {
-  text-align: center;
-  padding: 32px 0;
-  color: var(--color-text-subtle);
-}
+/* 裸文字 32px 档副本删净，落回全局 .empty-hint 标准虚线卡形（§9.6-10 定档裁决——目视项；
+   本处挂点为 <td colspan>，虚线卡染进单元格为预期收编效果） */
 </style>

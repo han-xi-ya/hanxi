@@ -140,31 +140,21 @@ function forwardCopyText(text: string, label: string) {
 /* 页头/错误框/.btn 家族/.chip 徽标由 PageHeader 与 components.css 原子接管；
    以下状态栏、公网 IP 卡与网卡列表容器为本视图独有布局，拆分时随标记整体迁入。
    （协议标签 .card-tag 为方角小标签、非胶囊 chip 形，按手册§9-4 不硬塞全局） */
+/* 布局/底色/边框/圆角逐值部分落回全局 .control-panel；仅内距散差暂留——定档候选，见收编报告 */
 .control-panel {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
   padding: 12px 16px;
-  border-radius: 8px;
 }
 
-.meta-info {
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
+/* 字号/颜色/列布局落回全局 .meta-info；单子节点，收编后由全局染及（目视项） */
 
 .section-title {
   margin-top: 6px;
 }
 
+/* 字重/颜色/大写/字距落回全局 .section-title h3；仅字号（md）与下外距（0）散差暂留
+   ——同族 WSL 面板裸用全局标准形，本形为定档候选，见收编报告 */
 .section-title h3 {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: var(--text-md);
   margin: 0;
 }
 
@@ -197,7 +187,7 @@ function forwardCopyText(text: string, label: string) {
 }
 
 .card-tag {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   padding: 3px 8px;
   border-radius: 4px;
@@ -212,7 +202,7 @@ function forwardCopyText(text: string, label: string) {
 }
 
 .provider-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
 }
 
@@ -225,7 +215,7 @@ function forwardCopyText(text: string, label: string) {
 
 .ip-value code {
   font-family: var(--font-mono);
-  font-size: 18px;
+  font-size: var(--text-xl);
   font-weight: 700;
   color: var(--color-text);
   background: var(--surface-hover);
@@ -235,7 +225,7 @@ function forwardCopyText(text: string, label: string) {
 }
 
 .ip-placeholder, .ip-empty {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--color-text-subtle);
 }
 
@@ -253,7 +243,7 @@ function forwardCopyText(text: string, label: string) {
   border-radius: 5px;
   background: var(--surface-panel);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   transition: all var(--motion-base) ease;
 }
 .btn-copy:hover:not(:disabled) {
@@ -272,10 +262,5 @@ function forwardCopyText(text: string, label: string) {
   gap: 14px;
 }
 
-.empty-hint {
-  text-align: center;
-  padding: 32px;
-  color: var(--color-text-subtle);
-  font-size: 13px;
-}
+/* 裸文字 32px 档副本删净，落回全局 .empty-hint 标准虚线卡形（§9.6-10 定档裁决——目视项） */
 </style>

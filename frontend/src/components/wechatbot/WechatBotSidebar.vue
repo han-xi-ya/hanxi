@@ -151,7 +151,7 @@ const emit = defineEmits<{
   border: 1px solid var(--color-border);
   border-radius: 4px;
   color: var(--color-text-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
   width: 24px;
   height: 24px;
   display: inline-flex;
@@ -173,11 +173,11 @@ const emit = defineEmits<{
 }
 
 .logo-emoji {
-  font-size: 16px;
+  font-size: var(--text-lg);
 }
 
 .sidebar-title h3 {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-text);
   margin: 0;
@@ -205,12 +205,12 @@ const emit = defineEmits<{
 }
 
 .empty-icon {
-  font-size: 28px;
+  font-size: var(--text-3xl);
   margin-bottom: 6px;
 }
 
 .empty-text {
-  font-size: 13px;
+  font-size: var(--text-base);
   margin-bottom: 12px;
 }
 
@@ -220,7 +220,7 @@ const emit = defineEmits<{
   border: none;
   padding: 5px 14px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -259,7 +259,7 @@ const emit = defineEmits<{
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--text-md);
   position: relative;
   flex-shrink: 0;
 }
@@ -298,7 +298,7 @@ const emit = defineEmits<{
 }
 
 .bot-remark {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text);
   overflow: hidden;
@@ -307,7 +307,7 @@ const emit = defineEmits<{
 }
 
 .token-status-badge {
-  font-size: 10px;
+  font-size: var(--text-micro);
   padding: 1px 5px;
   border-radius: 4px;
   background: var(--surface-hover);
@@ -326,7 +326,7 @@ const emit = defineEmits<{
 }
 
 .account-sub-id {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -347,7 +347,7 @@ const emit = defineEmits<{
 .action-icon-btn {
   background: transparent;
   border: none;
-  font-size: 12px;
+  font-size: var(--text-sm);
   padding: 3px 5px;
   border-radius: 4px;
   cursor: pointer;

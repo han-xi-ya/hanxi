@@ -56,26 +56,26 @@ defineProps<{
 <style scoped>
 /* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
 .stat-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
-  margin-bottom: 6px;
+  margin-bottom: 4px; /* gen2 覆盖档（原 6px）并入 */
 }
 
 .stat-val {
-  font-size: 20px;
+  font-size: var(--text-xl); /* 原 20px→gen2 18px 生效值并入，收 xl 档 */
   font-weight: 700;
   color: var(--color-text);
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 
 .stat-val .unit {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: normal;
   color: var(--color-text-muted);
 }
 
 .stat-sub {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
 }
 
@@ -108,7 +108,7 @@ defineProps<{
 .overview-card:hover {
   transform: translateY(-1px);
   border-color: var(--state-information-soft);
-  box-shadow: 0 8px 22px var(--shadow-panel);
+  box-shadow: var(--shadow-panel);
 }
 
 .overview-card-primary {
@@ -124,7 +124,7 @@ defineProps<{
   width: 40px;
   height: 40px;
   color: var(--color-primary);
-  font-size: 19px;
+  font-size: var(--text-xl);
   font-weight: 700;
   background: var(--color-primary-soft);
   border-radius: 11px;
@@ -134,13 +134,12 @@ defineProps<{
 .metric-icon-blue { color: var(--state-information); background: var(--state-information-soft); }
 .metric-icon-amber { color: var(--state-warning); background: var(--state-warning-soft); }
 
-.stat-label { margin-bottom: 4px; }
-.stat-val { margin-bottom: 3px; font-size: 18px; }
+/* 原 gen2 对 .stat-label/.stat-val 的覆盖档已并入上方基块（生效终值不变） */
 .stat-val-compact {
   display: flex;
   flex-wrap: wrap;
   gap: 3px 10px;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 @media (max-width: 1100px) {

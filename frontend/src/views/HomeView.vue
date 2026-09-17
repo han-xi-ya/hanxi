@@ -249,13 +249,13 @@ onMounted(async () => {
 }
 
 .title-with-badge h1 {
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: 700;
   margin: 0;
 }
 
 .version-tag {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: var(--font-mono);
   background: var(--surface-page);
   color: var(--color-text-muted);
@@ -284,23 +284,24 @@ onMounted(async () => {
   align-items: center;
 }
 
+/* KPI 大数字收 --text-2xl 档（原 18px 散值） */
 .stat-num {
-  font-size: 18px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-.text-success { color: var(--state-positive); }
-.text-muted { color: var(--color-text-muted); }
+/* .text-success 与 .text-muted 与全局原子逐字同义，副本删净落回
+   （§9.6-10 冻结裁决已落地：muted 派定档全局同名同值） */
 
 .stat-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
 }
 
 .stat-divider {
-  font-size: 16px;
+  font-size: var(--text-lg);
   color: var(--color-border);
 }
 
@@ -317,13 +318,13 @@ onMounted(async () => {
 }
 
 .section-title h2 {
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0;
 }
 
 .section-hint {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
   margin-left: 4px;
 }
@@ -395,11 +396,11 @@ onMounted(async () => {
 }
 
 .mod-icon {
-  font-size: 18px;
+  font-size: var(--text-xl);
 }
 
 .btn-toggle-off {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 4px 10px;
   border-radius: var(--radius-control);
   border: 1px solid var(--color-border);
@@ -415,7 +416,7 @@ onMounted(async () => {
 }
 
 .btn-toggle-on {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 5px 12px;
   border-radius: var(--radius-control);
   border: 1px solid var(--color-primary);
@@ -444,14 +445,14 @@ onMounted(async () => {
 }
 
 .mod-name {
-  font-size: 15px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0;
   color: var(--color-text);
 }
 
 .level-badge {
-  font-size: 10px;
+  font-size: var(--text-micro);
   padding: 2px 6px;
   border-radius: var(--radius-pill);
   font-weight: 500;
@@ -473,7 +474,7 @@ onMounted(async () => {
 }
 
 .mod-desc {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   margin: 0;
   line-height: 1.5;
@@ -489,7 +490,7 @@ onMounted(async () => {
   align-items: center;
   padding-top: 8px;
   border-top: 1px solid var(--color-border);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .enter-link {

@@ -150,7 +150,7 @@ describe('PortKillView', () => {
     await flushMicrotasks()
     settleConfirm(true)
     await flushMicrotasks()
-    const pending = w.findAll('.result-card .btn-kill')
+    const pending = w.findAll('.result-card .btn-micro')
     expect(pending.every((b) => b.attributes('disabled') !== undefined)).toBe(true)
     resolveKill({ success: true })
     await flushMicrotasks()

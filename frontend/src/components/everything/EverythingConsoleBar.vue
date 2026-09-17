@@ -119,21 +119,21 @@ function onInput(e: Event) {
 .ev-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
 .ev-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
 .ev-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
-.status-word { font-size: 15px; font-weight: 700; color: var(--color-text); }
-.ver-pill { font-family: var(--font-mono); font-size: 12px; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 8px; color: var(--color-text); }
-.pid-tag { font-size: 11px; color: var(--color-text-subtle); }
-.uptime-tag { font-size: 11px; color: var(--color-text-subtle); }
+.status-word { font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
+.ver-pill { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 8px; color: var(--color-text); }
+.pid-tag { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.uptime-tag { font-size: var(--text-xs); color: var(--color-text-subtle); }
 .control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- 搜索行 ---------- */
 .search-line { display: flex; gap: 8px; align-items: center; }
 .search-go { flex-shrink: 0; }
-.ev-status-pill { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); white-space: nowrap; }
+.ev-status-pill { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-pill); white-space: nowrap; }
 .ev-status-pill.ready { background: var(--state-positive-soft); color: var(--state-positive); }
 .ev-status-pill.idle { background: var(--surface-hover); color: var(--color-text-muted); }
 .search-input {
   flex: 1; padding: 8px 12px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control);
-  font-size: 13px; background: var(--surface-soft); color: var(--color-text); outline: none;
+  font-size: var(--text-base); background: var(--surface-soft); color: var(--color-text); outline: none;
   transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
 .search-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-glow); }

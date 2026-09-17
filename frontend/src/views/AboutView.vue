@@ -114,14 +114,14 @@ onMounted(async () => {
   border-radius: 14px;
   background: color-mix(in srgb, var(--color-primary) 10%, var(--surface-panel));
   color: var(--color-primary);
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 750;
 }
 
 .eyebrow {
   margin: 0 0 4px;
   color: var(--color-primary);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 650;
 }
 
@@ -133,7 +133,7 @@ p {
 
 h1 {
   margin-bottom: 6px;
-  font-size: 24px;
+  font-size: var(--text-2xl);
 }
 
 .product-description,
@@ -167,14 +167,14 @@ h1 {
 
 .info-item span {
   color: var(--color-text-subtle);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .info-item code,
 .module-meta code {
   color: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .info-path {
@@ -201,18 +201,20 @@ h1 {
 
 .section-heading h2 {
   margin-bottom: 4px;
-  font-size: 16px;
+  font-size: var(--text-lg);
 }
 
 .section-heading p {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
+/* .status-badge 与全局原子同名但为"描边 currentColor + 650 字重 + 自带上/停色档"的
+   差异形（非 ±2px 内），保留局部压回，登记待主线裁决（全局 .status-badge 标准形收编面） */
 .module-count,
 .status-badge {
   flex: 0 0 auto;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 650;
 }
 
@@ -250,13 +252,13 @@ h1 {
 }
 
 .module-main strong {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .module-main span {
   overflow: hidden;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

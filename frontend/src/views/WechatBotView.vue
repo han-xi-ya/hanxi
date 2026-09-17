@@ -202,48 +202,24 @@ const showRulesBanner = ref(true)
 }
 
 .ph-icon {
-  font-size: 44px;
+  font-size: var(--text-3xl);
   margin-bottom: 12px;
   opacity: 0.7;
 }
 
 .no-selection-placeholder h3 {
-  font-size: 16px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--color-text);
   margin: 0 0 6px;
 }
 
 .no-selection-placeholder p {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--color-text-subtle);
   margin: 0;
 }
 
-/* 注：.btn-bind-account 家族与侧栏组件「绑定账号」按钮共用（跨组件边界），
-   按「标记与样式同迁、不做语义改动」原则在两侧各留一份逐字副本（§9.6 登记）。 */
-.btn-bind-account {
-  background: var(--state-positive);
-  color: var(--color-text-inverse);
-  border: none;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  transition: all 0.15s ease;
-}
-
-.btn-bind-account:hover {
-  background: var(--state-positive);
-}
-
-.btn-bind-account.large {
-  padding: 8px 18px;
-  font-size: 13px;
-  margin-top: 14px;
-}
+/* .btn-bind-account 家族（含 .large 档）scoped 逐字副本删净落回 components.css 全局原子
+   （§9.6-8 冻结标记就此可整删：全库仅剩全局一份定义，模板挂点不变） */
 </style>

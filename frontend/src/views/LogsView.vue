@@ -201,7 +201,7 @@ onMounted(async () => {
   padding: 5px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  font-size: 12px;
+  font-size: var(--text-sm);
   background: var(--surface-soft);
   color: var(--color-text);
   font-family: var(--font-mono);
@@ -211,7 +211,7 @@ onMounted(async () => {
   padding: 5px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  font-size: 12px;
+  font-size: var(--text-sm);
   background: var(--surface-soft);
   color: var(--color-text);
   width: 240px;
@@ -222,7 +222,7 @@ onMounted(async () => {
 }
 
 .auto-refresh-label {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   display: flex;
   align-items: center;
@@ -231,7 +231,8 @@ onMounted(async () => {
   margin-right: 4px;
 }
 
-/* 日志终端区：固定深底永不随主题反相（tokens.css --terminal-* 色板，蓝图 §7.3） */
+/* 日志终端区：固定深底永不随主题反相（tokens.css --terminal-* 色板，蓝图 §7.3）。
+   本区块字号（viewer-header/line-count/log-content）属终端豁免面，保留裸 px 不进 --text-* 阶梯。 */
 .log-viewer-container {
   flex: 1;
   background: var(--terminal-bg);

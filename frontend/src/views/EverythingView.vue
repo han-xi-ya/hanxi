@@ -402,20 +402,20 @@ onMounted(async () => {
    远程表格的业务样式随 DOM 迁入 components/everything/* 子组件 scoped——此处只留编排层骨架样式。 */
 .everything-view { display: flex; flex-direction: column; gap: 14px; }
 .tab-body { display: flex; flex-direction: column; gap: 16px; }
-.hint-line { font-size: 12px; color: var(--color-text-subtle); padding-left: 2px; }
-.error-box.slim { padding: 8px 12px; font-size: 12px; }
+.hint-line { font-size: var(--text-sm); color: var(--color-text-subtle); padding-left: 2px; }
+.error-box.slim { padding: 8px 12px; font-size: var(--text-sm); }
 
 /* ---------- 版本区（业务壳） ---------- */
 .control-panel {
   display: flex; align-items: center; justify-content: space-between;
   background: var(--surface-panel); border: 1px solid var(--color-border); padding: 10px 14px; border-radius: 8px;
 }
-.meta-info { font-size: 13px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
+.meta-info { font-size: var(--text-base); color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
 .meta-info strong { color: var(--color-text); }
 .btn-group { display: flex; gap: 8px; }
-.hint-dim { color: var(--color-text-subtle); }
-.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text); cursor: pointer; margin-top: 4px; }
+/* .hint-dim 与全局原子逐字同义（§9.6-2 已上收），scoped 副本删净落回 */
+.toggle-label { display: flex; align-items: center; gap: 8px; font-size: var(--text-base); color: var(--color-text); cursor: pointer; margin-top: 4px; }
 .toggle-label input { width: 15px; height: 15px; cursor: pointer; }
-.section-title h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+.section-title h3 { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
 .installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 </style>

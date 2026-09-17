@@ -128,7 +128,7 @@ onMounted(() => {
               <td><strong>{{ p.ssid }}</strong></td>
               <td>
                 <span v-if="p.password" class="pw">{{ p.password }}</span>
-                <span v-else class="text-muted">—</span>
+                <span v-else class="text-subtle">—</span>
               </td>
               <td style="text-align: center;">
                 <div class="actions">
@@ -215,7 +215,7 @@ onMounted(() => {
   border-bottom: 1px solid var(--color-border);
 }
 .card-header h3 {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0;
 }
@@ -235,7 +235,7 @@ onMounted(() => {
 .pw {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text);
   background: var(--surface-soft);
@@ -248,7 +248,7 @@ onMounted(() => {
 .btn-icon {
   background: transparent;
   border: none;
-  font-size: 14px;
+  font-size: var(--text-md);
   cursor: pointer;
   padding: 3px 5px;
   border-radius: 4px;
@@ -257,18 +257,11 @@ onMounted(() => {
   background: var(--surface-hover);
 }
 
-.text-muted {
-  color: var(--color-text-subtle);
-}
-
-.empty-hint {
-  text-align: center;
-  padding: 32px 0;
-  color: var(--color-text-subtle);
-  line-height: 1.8;
-}
+/* .text-muted（色值实为 subtle 档）按 §9.6-10 名实裁决改挂全局 .text-subtle，副本删净；
+   裸文字 32px 档 .empty-hint（含 line-height 1.8）整体删净，落回全局标准虚线卡形
+   （挂点为 <td colspan>，虚线卡染进单元格为预期收编效果——目视项） */
 .hint-sub {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }
 
@@ -293,18 +286,8 @@ onMounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: popIn var(--motion-slow) ease-out;
-}
-
-@keyframes popIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+  /* 入场动效落回 components.css 全局 modalIn（原私有 popIn 与之仅 scale 0.95/0.96 之差） */
+  animation: modalIn var(--motion-slow) ease-out;
 }
 
 .modal-header {
@@ -315,7 +298,7 @@ onMounted(() => {
   border-bottom: 1px solid var(--color-border);
 }
 .modal-header h3 {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0;
 }
@@ -323,7 +306,7 @@ onMounted(() => {
 .btn-close {
   background: transparent;
   border: none;
-  font-size: 14px;
+  font-size: var(--text-md);
   cursor: pointer;
   color: var(--color-text-muted);
   padding: 2px 6px;
@@ -358,7 +341,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
   background: var(--surface-soft);
   padding: 8px 12px;
   border-radius: var(--radius-control);
@@ -373,12 +356,12 @@ onMounted(() => {
 
 .info-row .label {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   flex-shrink: 0;
 }
 
 .qr-tip {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   margin: 0;
   text-align: center;

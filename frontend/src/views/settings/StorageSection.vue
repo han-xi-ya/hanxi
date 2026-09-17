@@ -72,7 +72,7 @@ onMounted(refresh)
 .dir-list { display: flex; flex-direction: column; gap: 8px; }
 .dir-badge { margin-left: 6px; vertical-align: 1px; }
 .dir-path {
-  font-family: var(--font-mono); font-size: 11px; color: var(--color-text-subtle);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 </style>
