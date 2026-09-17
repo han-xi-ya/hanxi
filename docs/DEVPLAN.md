@@ -131,30 +131,7 @@
 
 ---
 
-## 4. 待实现功能（已排期，2026-09-17 登记）
+## 4. 待实现功能（跟踪账本已迁出）
 
-> 来源：`docs/MOOTOOL_ANALYSIS.md` 借鉴分析 → 四份可研报告 `docs/plans/PLAN_*.md`（含实地调研证据与 commit 级任务分解）。
-> **开放问题已全部拍板（2026-09-17），裁定见各报告末尾"决策回写"，实现时不得偏离。**
-> 状态图例：⚪ 未动工 ｜ 🔵 进行中 ｜ 🟢 已完成（完成后从本节挪进 §1 里程碑表）。
-
-**执行顺序**（依赖链，勿并行抢跑）：
-
-```
-~~S0/S1 小修~~（2026-09-17 已清）→ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
-→ F4-a MCP MVP → F3-b memo 文件库化 → F4-b MCP 完善 → F2-③ 热键识图（硬依赖：SnipCardView 悬浮卡合入）
-```
-
-| # | 功能 | 概要 | 量级 | 硬约束/裁定要点 | 方案 | 状态 |
-|---|---|---|---|---|---|:---:|
-| F1 | 统一历史记录公共包 | `internal/history` 单文件 `state/history.json` 分桶、每桶 200 条头插裁剪、`newRecord` 统一过 `logging.Redact`；通用 `HistoryPanel.vue`；首批接 ocr/portkill/envcheck | 7~9 人日，6 原子提交 | 动作全记、查询仅 ocr/portkill；envcheck Overview 不记；OCR 全文入库+设置页开关（默认开）；停用不清桶；清空仅当前桶 | `PLAN_HISTORY.md` | ⚪ |
-| F2 | 剪贴板联动惯例 | ① 规范条款入 `FRONTEND.md`+workbench-ui 技能；② `UiClipboardField`/`useClipboard` 扩展（paste 侧全仓从零起步）；③ `Ctrl+Alt+T` 热键识剪贴板图（Wails `GlobalShortcut`，复用 snip 包原语+悬浮卡；取色并入同一注册器） | ①② 3.5 + ③ 5.5 人日 | 不做全局剪贴板监听；短输入（端口/IP）有意不加粘贴钮；③ 只出悬浮卡 | `PLAN_CLIPBOARD.md` | ⚪ |
-| F3 | 数据自动版本快照 | `internal/snapshot` 平台底座：失焦/隐藏+mtime 巡检三源触发，外部 git（`.snapshots/repo.git` 分离仓库，Microsoft Store 假存根判定）缺失降级影子拷贝 30 份；白名单排除 `runtime/`；二步 memo 文件库化（前端零改动） | 5 + 4 人日 + 真机闸门 1 日 | **永不自动 push**；静默不打扰；wechat 明文 token 接受入历史（已拍板）；遮罩便签照进；空闲 300s/间隔 5min/含手动「立即快照」钮 | `PLAN_SNAPSHOT.md` | ⚪ |
-| F4 | MCP / Skill AI 接入 | `hanxi mcp` headless 子命令（mcp-go v0.41.1 锁版本）；MVP 只放 envcheck + everything（严格只读，无实例报错不代启动）；一键安装向导 GUI 单通道（preview→确认→备份→原子写→回滚）；memo 二期总开关+遮罩条目不下发 | MVP 3~4 / 共 9~12 人日 | portkill/frpc 等提权与写操作**永不暴露**；MCP 输出会进云端模型上下文——逐工具过红线；`--yes` 不开 | `PLAN_MCP.md` | ⚪ |
-
-### 4.1 先行动修项（随批处理，独立 fix 提交）
-
-| # | 项 | 说明 | 状态 |
-|---|---|---|:---:|
-| S0 | frpc 运行时明文 TOML 残留 | 已修（2026-09-17）：`pruneRuntimeConfigs` 白名单清扫挂 `OnInit`（孤儿收编）+ `Shutdown`（停用/退出即擦），回归测试锁边界，沉淀踩坑 #55；§2.1 该验收项已改如实表述。遗留如实边界见 #55 避坑④（崩溃后从未再启用模块则残留待下次激活收编） | 🟢 |
-| S1 | `.gitignore` 未忽略 `hanxidata/` | 已随数据根治理线并行修复（`hanxidata/` 带注释入 ignore），本批次仅核销登记 | 🟢 |
-| S2 | ES.exe 版本常量手动跟升 | 非新账，登记提醒：F4 落地后 everything 工具依赖运行中实例（ES 非内嵌、按需下载），MCP 报错指引文案须如实引导用户，勿承诺代拉起 | ⚪ |
+> 自 2026-09-17 起，待实现功能/修项的**执行跟踪唯一账本**为 **`docs/BACKLOG.md`**——已排期九件套（F6 数据目录同级化改造[建议首批] / F1 统一历史 / F2 剪贴板 / F3 快照 / F4 MCP / F5 软件版本检测 / F7 hanxi-ocr 托管化双引擎 zip 分发[后厨+主仓两端] / F8 桌面留言板 / F9 WSL USB 共享管理，均 2026-09-17 登记拍板）、随批修项核销（S0/S1 已清、S2 随 F4）、未排期候选池（devkit 批次、本体自更新等）与更新纪律均在其中，避免与本节双写漂移。
+> 本文档只保留里程碑视角：已完成清单见 §1-§2，存量质量债见 §3；各功能方案与拍板裁定见 `docs/plans/PLAN_*.md` 末尾"决策回写"。
