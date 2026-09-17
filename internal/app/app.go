@@ -231,6 +231,11 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// 将损坏文件隔离改名（取证副本保留在原地），以出厂默认配置降级启动并显著告警。
 	// 隔离改名失败（如权限异常）仍拒绝启动——那时降级也无从落盘，需要人工介入。
 	paths := settings.InitPaths()
+	if err := paths.InitError(); err != nil {
+		// F6 数据根 fail loud：绑定与同级都不可用 → 弹窗指引（搬家/写 hanxi.bind 绑定）即退，
+		// 绝不静默回退用户目录——旧 %APPDATA% 兜底已按裁定废弃。
+		settings.ExitWithBindingGuide(err)
+	}
 	store, err := settings.NewStore(paths.ConfigFile())
 	if err != nil {
 		quarantine := fmt.Sprintf("%s.corrupt-%s", paths.ConfigFile(), time.Now().Format("20060102-150405"))
