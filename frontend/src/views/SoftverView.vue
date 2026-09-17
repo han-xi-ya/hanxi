@@ -3,7 +3,7 @@
 // 官方最新版（SSR 更新页解析，失配降级为打开官方页）、下载直链复制，
 // 以及安装/两代数据目录的空间勘察（异步扫描 + 可取消 + 结果缓存）。
 // 定位边界：全量软件清单与卸载归 bcu，本页只是白名单跟踪对象的升级引导。
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onActivated, onMounted, ref, shallowRef } from 'vue'
 import * as SoftverAPI from '../../bindings/hanxi/internal/modules/softver'
 import type {
   DirSlot,
@@ -173,6 +173,19 @@ function originText(o: string): string {
 onMounted(async () => {
   await refresh()
   void loadOfficial() // 版本对照是本页存在的意义：进入即拉一次官方读数
+})
+
+// KeepAlive 回访静默重探（微信可能在后台被升级）：首帧由 onMounted 承担；
+// 官方读数不重拉（网络外呼只跟显式动作与首帧），扫描缓存原样回显。
+let firstFrame = true
+onActivated(async () => {
+  if (firstFrame) {
+    firstFrame = false
+    return
+  }
+  try {
+    snap.value = await SoftverAPI.SoftverService.Snapshot()
+  } catch { /* 静默失败不打扰，旧数据可继续用 */ }
 })
 </script>
 

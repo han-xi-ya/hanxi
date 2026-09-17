@@ -207,6 +207,13 @@ func (s *SoftverService) StartDirScan(id string) error {
 }
 
 func (s *SoftverService) runScan(id, path string, ctx context.Context, cancel context.CancelFunc) {
+	// recover 兜底：扫描协程若意外 panic 也必须发终态事件——否则前端该槽位
+	// 永远停在"进行中"（defer LIFO 下本函数最后执行，登记与取消通道已先清）。
+	defer func() {
+		if r := recover(); r != nil {
+			s.emit(EventDirScan, ScanProgress{ID: id, State: "error", Message: fmt.Sprintf("扫描异常中止: %v", r)})
+		}
+	}()
 	defer cancel()
 	defer func() {
 		s.mu.Lock()
