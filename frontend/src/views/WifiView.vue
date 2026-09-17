@@ -8,7 +8,7 @@ import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const loading = ref(false)
 const profiles = shallowRef<Profile[]>([])
@@ -86,8 +86,7 @@ function closeQRModal() {
 // 复制密码到剪贴板（两级回退策略已收编进 useClipboard）
 async function copyPassword(p: Profile) {
   if (!p.password) return
-  const ok = await copy(p.password)
-  showToast(ok ? `已复制密码: ${p.ssid}` : '复制失败')
+  await copyWithToast(p.password, `已复制密码: ${p.ssid}`)
 }
 
 onMounted(() => {

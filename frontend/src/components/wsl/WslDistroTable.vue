@@ -23,6 +23,7 @@ import { useWailsEvent } from '../../composables/useWailsEvent'
 import { getErrorMessage } from '../../utils/errors'
 import { fmtSize } from '../../utils/format'
 import UiBanner from '../ui/UiBanner.vue'
+import UiClipboardField from '../ui/UiClipboardField.vue'
 import UiStatusChip from '../ui/UiStatusChip.vue'
 import UiProgressBar from '../ui/UiProgressBar.vue'
 
@@ -735,8 +736,16 @@ onBeforeUnmount(() => {
                   <template v-else-if="confDoc">
                     <UiBanner v-if="confDoc.missing" tone="info" class="slim">该发行版尚无 /etc/wsl.conf——保存即首建。</UiBanner>
                     <UiBanner v-for="(w, i) in confDoc.warnings ?? []" :key="i" tone="warn" class="slim">{{ w }}</UiBanner>
-                    <textarea v-model="confText" class="input conf-textarea mono" rows="8" spellcheck="false"
-                      :disabled="rowBusy(d.name)" :placeholder="`[boot]&#10;systemd=true`"></textarea>
+                    <!-- 换装 UiClipboardField：conf 常被整段从别处复制来改，标配粘贴钮；
+                         编辑器语义是"整份替换"，pasteMode=replace -->
+                    <UiClipboardField
+                      v-model="confText"
+                      mono
+                      :rows="8"
+                      paste-mode="replace"
+                      :disabled="rowBusy(d.name)"
+                      :placeholder="'[boot]\nsystemd=true'"
+                    />
                     <div class="move-input-row">
                       <button class="btn btn-primary btn-small" :disabled="rowBusy(d.name) || confLoading"
                         @click="saveConf(d)">{{ busyWith(`confsave:${d.name}`) ? '保存中…' : '✔ 保存写回' }}</button>
@@ -857,7 +866,6 @@ onBeforeUnmount(() => {
 .compact-row-editor td, .conf-row-editor td, .forensics-row td { background: var(--surface-page); }
 
 /* wsl.conf 编辑器与瘦身表单 */
-.conf-textarea { resize: vertical; min-height: 120px; line-height: 1.6; font-size: var(--text-sm); }
 
 /* 取证抽屉 */
 .forensics-panel { display: flex; flex-direction: column; gap: 6px; padding: 4px 0; }

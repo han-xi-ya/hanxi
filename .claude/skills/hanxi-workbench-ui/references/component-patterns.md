@@ -192,6 +192,37 @@ Use `pointer: coarse` for touch sizing rather than assuming every narrow screen 
 - Preserve existing composables and feedback mechanisms.
 - Avoid extracting one-off visual wrappers as global components.
 
+## Clipboard interactions (paste/copy convention)
+
+Derived from PLAN_CLIPBOARD (decided 2026-09-17). Keep it restrained: this is a
+convention for views that already have the surface, not an excuse to bolt
+clipboard widgets everywhere.
+
+- **Paste button on rich text inputs.** Any view whose main input exists to
+  receive pasted content (multi-line text areas, import boxes, config editors)
+  ships a "从剪贴板粘贴" secondary button beside/above the field, wired through
+  `useClipboard().paste()`. Never overwrite silently: an empty box fills, a
+  non-empty box appends (or replaces only where the field semantically holds a
+  whole document, e.g. config editors). Short structured single-line inputs
+  (port, IP, CIDR) intentionally have no paste button — Ctrl+V already works
+  there natively; adding a button is noise.
+- **Copy on outputs.** Result cards get a header "复制全文"; detail rows may add
+  a row-level copy that appears on hover. Every copy goes through
+  `useClipboard.copyWithToast(text, okTip)` — the single receipt channel.
+  Success wording is the caller's `okTip`; failure wording is always
+  "复制失败" (no leaking of "execCommand 不可用"/"剪贴板不可用" internals).
+  Copy-input and copy-output in history/result panels stay separate actions.
+- **One paste, never a watcher.** No global clipboard listener, polling, or
+  mirroring. Clipboard is read exactly once per explicit user action (button
+  click, Ctrl+V event, hot key). `parsePaste()` (utils/paste) is the shared
+  pure classifier for ClipboardEvent (image → text → none).
+- **Shared pieces.** `UiClipboardField.vue` is the default for new paste/copy
+  surfaces (label + textarea + paste button; readonly mode = output + copy
+  button; `paste-mode="append|replace"`). Registered intentional exceptions to
+  `copyWithToast`: Everything's click-a-cell-to-copy table pattern, and
+  SnipCardView's Go-side clipboard write (bypasses the webview secure-context
+  limit) — do not "unify" these away.
+
 ## Plain HTML mapping
 
 - Use semantic elements and event listeners.

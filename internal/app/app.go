@@ -448,6 +448,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 				ocrSvc.HandleNativeDrop(e.Context().DroppedFiles())
 			}
 		})
+		// 全局热键"剪贴板识图"（默认 Ctrl+Alt+T）：通用注册器 + 命令派发接线。
+		setupSnipHotkey(a, registry, ocrSvc)
 	}
 
 	// quickmenu：注入主窗引用供 route 条目唤窗，并随启动常驻激活全局鼠标钩子

@@ -7,6 +7,7 @@ import FrpcProjectEditor from '../components/FrpcProjectEditor.vue'
 import FrpcVersionsTab from '../components/FrpcVersionsTab.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
+import UiClipboardField from '../components/ui/UiClipboardField.vue'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
@@ -16,7 +17,7 @@ import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 // 顶层主选项卡：projects = 项目列表，versions = 版本管理
 const activeMainTab = ref('projects')
@@ -207,7 +208,7 @@ function exportProjectShareLink(p: Project) {
   const b64 = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))))
   const link = `frp://${b64}`
   // 剪贴板收编 useClipboard（两级回退）；分享链接编码逻辑不变
-  void copy(link).then((ok) => showToast(ok ? `已复制「${p.name}」分享链接 (frp://...)` : '复制失败'))
+  void copyWithToast(link, `已复制「${p.name}」分享链接 (frp://...)`)
 }
 
 function openImportModal() {
@@ -383,7 +384,7 @@ function resolveEndpoints(p: Project): ProxyEndpoint[] {
 function copyEndpoint(ep: ProxyEndpoint) {
   const text = ep.url || ep.remoteDisplay
   if (!text) return
-  void copy(text).then((ok) => showToast(ok ? `已复制: ${text}` : '复制失败'))
+  void copyWithToast(text, `已复制: ${text}`)
 }
 
 // ---------- 日志抽屉 ----------
@@ -422,6 +423,11 @@ async function scrollToBottom() {
 
 function clearLogs() {
   logLines.value = []
+}
+
+// 复制抽屉当前日志（ANSI 已剥离的纯文本行），对齐 LogsView 的输出复制惯例
+function copyDrawerLogs() {
+  void copyWithToast(displayLines.value.join('\n'), `已复制 ${displayLines.value.length} 行日志`)
 }
 
 function nowTickRefresh() {
@@ -585,12 +591,15 @@ onMounted(async () => {
           </div>
           <label class="form-item">
             <span>{{ importType === 'link' ? '粘贴 frp:// 分享链接' : '粘贴 frpc.toml 文件内容' }}</span>
-            <textarea
+            <!-- 专设"粘贴框"：挂 UiClipboardField 补"从剪贴板粘贴"钮（label 原话即邀请粘贴，
+                 却只剩 Ctrl+V 一条路）；TOML 模式等宽 -->
+            <UiClipboardField
               v-model="importContent"
-              class="input textarea"
+              :mono="importType === 'toml'"
+              :rows="6"
+              paste-mode="replace"
               :placeholder="importType === 'link' ? '例如: frp://eyJzZXJ2ZXIiOnsic2VydmVyQWRkciI...' : 'serverAddr = &quot;x.x.x.x&quot;\nserverPort = 7000\n...'"
-              rows="6"
-            ></textarea>
+            />
           </label>
         </div>
         <div class="modal-actions">
@@ -606,6 +615,8 @@ onMounted(async () => {
         <span class="log-drawer-title">日志 · {{ projectName(drawerProjectId) }}</span>
         <div class="log-drawer-tools">
           <label class="auto-scroll"><input v-model="logAutoScroll" type="checkbox" />自动滚动</label>
+          <!-- 输出区复制补齐（PLAN_CLIPBOARD §3.2C）：LogsView 有、frpc 抽屉此前没有 -->
+          <button class="btn btn-secondary btn-small" :disabled="displayLines.length === 0" @click="copyDrawerLogs">复制</button>
           <button class="btn btn-secondary btn-small" @click="clearLogs">清屏</button>
           <button class="btn btn-secondary btn-small" @click="openLogs(projects.find(x => x.id === drawerProjectId) as any)">刷新</button>
           <button class="btn btn-secondary btn-small" @click="closeLogs">✕ 收起</button>
@@ -748,13 +759,7 @@ onMounted(async () => {
 }
 .tab-btn.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
 
-.textarea {
-  padding: 8px 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control);
-  font-family: var(--font-mono); font-size: var(--text-sm); width: 100%; box-sizing: border-box;
-  background: var(--surface-soft); color: var(--color-text); resize: vertical;
-}
-.textarea:focus { border-color: var(--color-primary); outline: none; background: var(--surface-panel); }
-
+/* .textarea 副本随导入框换装 UiClipboardField 退役（粘贴/复制样式由组件自带 token 化） */
 .form-item { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 
 /* 停止按钮变体（全局原子之外的业务语义色） */

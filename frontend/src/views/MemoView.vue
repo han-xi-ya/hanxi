@@ -11,9 +11,10 @@ import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
+import UiClipboardField from '../components/ui/UiClipboardField.vue'
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
 
 // 状态定义
@@ -218,8 +219,7 @@ async function handleDeleteMemo(id: string) {
 
 // 剪贴板两级策略已收编进 useClipboard（toast 文案与原实现逐字一致）
 async function copyMemoContent(content: string) {
-  const ok = await copy(content)
-  showToast(ok ? '已复制便签内容到剪贴板' : '复制失败')
+  await copyWithToast(content, '已复制便签内容到剪贴板')
 }
 
 // memo:changed 由局域网投递/多端联动触发：setup 期订阅防丢早期事件，卸载自动注销
@@ -404,12 +404,14 @@ onUnmounted(() => {
 
           <div class="form-group">
             <label>正文内容 (支持多行、代码、SQL 或密钥):</label>
-            <textarea
+            <!-- 本视图正文主用途即"从别处复制来"（placeholder 原话）：挂 UiClipboardField
+                 标配"从剪贴板粘贴"（空填入/已有内容追加，不无声覆盖） -->
+            <UiClipboardField
               v-model="editForm.content"
-              class="input-control textarea-control font-mono"
-              rows="8"
+              mono
+              :rows="8"
               placeholder="在此粘贴文本、命令行、cURL、JWT 或备忘内容..."
-            ></textarea>
+            />
           </div>
 
           <!-- 色彩标记 -->
@@ -730,10 +732,6 @@ onUnmounted(() => {
   font-size: var(--text-base);
   outline: none;
   color: var(--color-text);
-}
-
-.textarea-control {
-  resize: vertical;
 }
 
 /* 本视图空态为纯文本形态，与全局 dashed 卡片 .empty-state 原子不同形——不强凑，保留局部定义 */

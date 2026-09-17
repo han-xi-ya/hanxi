@@ -2,7 +2,7 @@
 
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
-> **更新日期**：2026-09-16
+> **更新日期**：2026-09-17
 > **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。**§9.7 字号/按钮体系化治理波 ✅**（2026-09-16/17：九档字号+三档控件高 token、~1000 处裸 px 视图层清零、家族 ~895 条副本删净落回、WSLView 2209→441 拆分、§9.6-10 六项裁决全清、822 用例全绿）；当前待办＝§9.7-下轮候选（ManagedConsoleShell 壳收编、UiModal、可访问性散点）、AppIcon 阶段2/3（挂起）、真机目视（§9.7 目视项清单①–⑩）；蓝图 Phase 0–6 主体全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
@@ -33,7 +33,7 @@ views/*.vue + views/settings/                    # 37 个后端模块各一视�
 components/{ui,tool,shell}/                        # 原子件 / 托管家族共用壳 / 外壳组件；业务组件按族目录放置
 composables/  useToast · useNotification · useTheme · useWailsEvent · usePolling ·
               useConfirm · usePrompt · useAsyncAction · useClipboard · 视图级 composable
-utils/        errors.ts: getErrorMessage · format.ts: fmtSize/fmtDate/fmtDuration
+utils/        errors.ts: getErrorMessage · format.ts: fmtSize/fmtDate/fmtDuration · paste.ts: parsePaste/pasteImage 粘贴分流
 ```
 
 **已做对、应保留**：`useToast`/`useNotification` 单例模式；`getErrorMessage` 统一异常；`ConfirmDialog`（Teleport+焦点陷阱+`tone/busy/details`+`v-model:open`）是可访问性标杆；事件订阅均有 unlisten 清理、`onActivated/onDeactivated` 管轮询的生命周期纪律。
@@ -66,7 +66,7 @@ src/
   composables/                # VueUse 支撑 + 自研
     useWailsEvent  usePolling  useAsyncAction  useClipboard  useConfirm  usePrompt  useManagedTool
     useToast  useNotification  useTheme
-  components/ui/              # 无业务原子件：UiButton/UiStatusChip/UiBanner/UiEmptyState/UiProgressBar/UiModal/UiPrompt(带输入)/ErrorBoundary/StatePanel/PageHeader/MainTabNav/AppIcon
+  components/ui/              # 无业务原子件：UiButton/UiStatusChip/UiBanner/UiEmptyState/UiProgressBar/UiModal/UiPrompt(带输入)/UiClipboardField(粘贴/复制标准文本区)/ErrorBoundary/StatePanel/PageHeader/MainTabNav/AppIcon
   components/tool/            # 托管家族共用壳：ManagedConsoleShell / VersionGrid / StatusHeader
   constants/                  # status.ts（状态→{text,icon,tone} 单一表）；navigation.ts＝route→组件/图标/标题的**前端元数据**单一来源
   │                           #   ——后端注册表仍管"模块存在/启用"，两者在侧栏渲染处合并，navigation.ts 不吞并后者
@@ -227,3 +227,29 @@ src/
 ## 10. 提交拆分（示例）
 
 `chore(frontend): 引入 ESLint/Vitest 与依赖基线` → `feat(frontend): 落地设计 token/全局样式层与青绿+深色双主题` → `refactor(frontend): 抽取共享 composable/原子组件/格式化与常量单一来源` → `refactor(frontend): 试点迁移托管视图到新骨架(MarkerOn/CCSwitch)` → `refactor(frontend): 铺开托管家族迁移(分批)` → `refactor(frontend): 工具视图顺手治理与 window.confirm/prompt 收编`。
+
+## 11. 剪贴板交互惯例（F2 落地，2026-09-17）
+
+> 唯一底层：`composables/useClipboard.ts`（copy 两级回退 / paste 仅 readText /
+> copyWithToast 统一回执）；组件化默认件：`components/ui/UiClipboardField.vue`；
+> 粘贴事件分流纯函数：`utils/paste.ts`。完整条款见
+> `.claude/skills/hanxi-workbench-ui/references/component-patterns.md`
+> "Clipboard interactions" 与 `docs/plans/PLAN_CLIPBOARD.md`。
+
+1. **有输入区的视图标配"从剪贴板粘贴"**：凡输入区本为"从别处复制来"而设
+   （多行文本、导入框、配置编辑器），其旁须有"从剪贴板粘贴"钮（`paste()` 回填；
+   空填入、已有内容默认追加不无声覆盖，文档型整替需显式 `paste-mode="replace"`）。
+   端口/IP 等单行结构化短输入**有意不加**（Ctrl+V 原生可用，加钮是噪声）。
+2. **有输出区的视图标配"复制结果"**：结果卡右上角"复制全文"，明细行可行内
+   "复制本行"（悬停浮现）；历史/结果面板"复制输入"与"复制输出"分离，不一钮混两义。
+3. **回执单一话术**：复制一律 `copyWithToast(text, okTip)`——成功播 `okTip`
+   （缺省「已复制」），失败统一「复制失败」（走 showErrorToast 长保活）；
+   视图不得再自写"剪贴板不可用 / execCommand 不可用"等实现细节文案。
+   已登记有意例外：Everything 单元格点击即复制（表格交互范式）、
+   SnipCardView 走 Go 代理写剪贴板（绕 webview 安全上下文）——均不强行改。
+4. **不做全局剪贴板监听**：一切读取只在用户显式动作（点钮 / Ctrl+V / 全局热键）
+   时发生一次；轮询仅允许出现在单次有始有终的操作内（如 snip.WaitFor 等截屏写回）。
+5. **全局热键走集中封装**：新功能要热键，复用 `internal/hotkey.Registry`
+   （命名槽位 + 先注册新键后注销旧键 + 冲突中文报错降级），派发目标一律
+   TrayCommand 键（`registry.RunTrayCommand`），不各自触碰 Wails、更不写键盘钩子。
+   首例：`Ctrl+Alt+T` 剪贴板识图（`ocr/snip-clipboard`，键位可在文字识别页改）。

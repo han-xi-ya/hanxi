@@ -90,6 +90,14 @@ export function GetServiceExePath() {
 }
 
 /**
+ * GetSnipHotkey 拉取热键开关、键位与系统注册实况（前端设置页回显用）。
+ * @returns {$CancellablePromise<$models.SnipHotkeyState>}
+ */
+export function GetSnipHotkey() {
+    return $Call.ByID(1597519133);
+}
+
+/**
  * GetSnipResult 卡片挂载/刷新时拉取当前结果（事件双保险，常驻窗体不漏帧）。
  * found 仅在存在成功结果时为真——取消帧不进卡片通道（showSnipCard 只在成功时调用）。
  * @returns {$CancellablePromise<[$models.SnipResult, boolean]>}
@@ -189,6 +197,18 @@ export function PickImageDialog() {
 }
 
 /**
+ * RecognizeClipboardImage 剪贴板识图（默认热键 Ctrl+Alt+T / 轮盘/托盘命令
+ * ocr/snip-clipboard / 页面按钮共用）：剪贴板已有图 → 直接识别——不弹覆盖层、
+ * 不清写用户剪贴板（与 SnipAndRecognize 互补：那边"先截后识"，这边"先复制后识"，
+ * 贴 snipaste 工作流）。成功后悬浮卡 + 按开关自动复制。
+ * 歧义处理：GrabImage 只认图像格式，复制的文字/文件一律如实报"剪贴板中无图片"。
+ * @returns {$CancellablePromise<$models.SnipResult>}
+ */
+export function RecognizeClipboardImage() {
+    return $Call.ByID(2642549768);
+}
+
+/**
  * RecognizeImage 转发图片路径给上游识别。一切业务失败折进 Outcome.Error
  * （中文人话），error 通道留给程序性错误。
  * 统一历史：识别动作的唯一记录点在 recognizeImage 的 defer 单点（成功与失败同记），
@@ -275,6 +295,34 @@ export function SetListenPort(port) {
  */
 export function SetServiceExePath(path) {
     return $Call.ByID(1316221937, path);
+}
+
+/**
+ * SetSnipHotkey 改键：规范化校验 → 落系统重绑 → 失败回滚持久化。
+ * 键位非法（纯键位不开/未知修饰键）在第一步即中文拒绝，不触系统。
+ * @param {string} raw
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetSnipHotkey(raw) {
+    return $Call.ByID(2433669737, raw);
+}
+
+/**
+ * @param {$models.SnipHotkeyBinding} b
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetSnipHotkeyBinding(b) {
+    return $Call.ByID(4207187166, b);
+}
+
+/**
+ * SetSnipHotkeyEnabled 开关热键：先落系统（开=注册/关=注销），成功才持久化——
+ * 注册失败（键位被占用）直接报错返回，配置保持原样，UI 不留"显示开了实际没绑"。
+ * @param {boolean} v
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetSnipHotkeyEnabled(v) {
+    return $Call.ByID(499605026, v);
 }
 
 /**

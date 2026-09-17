@@ -6,11 +6,13 @@ import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/hist
 import { getErrorMessage } from '../utils/errors'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import HistoryPanel from '../components/tool/HistoryPanel.vue'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
+const { copyWithToast } = useClipboard()
 
 const inputPort = ref<number | ''>('')
 const loading = ref(false)
@@ -162,6 +164,22 @@ watch(showHistory, (v) => {
 })
 onBeforeUnmount(() => document.removeEventListener('keydown', onHistoryEsc))
 
+// ---------- 输出区复制（PLAN_CLIPBOARD §3.2C：PortKill 整页零复制的缺口补齐） ----------
+// 整表导出按"一行一条、Tab 分隔"，粘进表格/文档即可对齐。
+function occupantLines(list: PortOccupant[]): string {
+  return list
+    .map((o) => [o.protocol, `${o.localIp}:${o.port}`, `PID ${o.pid}`, o.processName || '—', o.exePath || '—'].join('\t'))
+    .join('\n')
+}
+
+function copyRows(list: PortOccupant[], tip: string) {
+  if (!list.length) {
+    showToast('暂无可复制的记录')
+    return
+  }
+  void copyWithToast(occupantLines(list), tip)
+}
+
 onMounted(() => {
   loadListeningPorts()
 })
@@ -216,7 +234,10 @@ onMounted(() => {
     <div v-if="occupants.length > 0" class="card result-card">
       <div class="card-header">
         <h3>端口 :{{ inputPort }} 占用详情</h3>
-        <UiStatusChip tone="danger">占用中 ({{ occupants.length }})</UiStatusChip>
+        <span class="pk-head-actions">
+          <UiStatusChip tone="danger">占用中 ({{ occupants.length }})</UiStatusChip>
+          <button class="btn btn-secondary btn-small" @click="copyRows(occupants, `已复制 ${occupants.length} 条占用详情`)">复制详情</button>
+        </span>
       </div>
       <div class="table-wrap">
         <table class="tbl">
@@ -237,7 +258,13 @@ onMounted(() => {
               <td><code>{{ occ.localIp }}:{{ occ.port }}</code></td>
               <td><code>{{ occ.pid }}</code></td>
               <td class="col-name"><strong>{{ occ.processName || '—' }}</strong></td>
-              <td class="col-path" :title="occ.exePath">{{ occ.exePath || '—' }}</td>
+              <td class="col-path">
+                <template v-if="occ.exePath">
+                  <span class="path-text" :title="occ.exePath">{{ occ.exePath }}</span>
+                  <button class="link-button" :aria-label="`复制 PID ${occ.pid} 的程序路径`" @click="copyWithToast(occ.exePath, '已复制程序路径')">复制</button>
+                </template>
+                <template v-else>—</template>
+              </td>
               <td>{{ formatTime(occ.startedAt as any) }}</td>
               <td>
                 <button
@@ -260,9 +287,12 @@ onMounted(() => {
     <div class="card list-card">
       <div class="card-header">
         <h3>当前活跃监听端口 (LISTEN)</h3>
-        <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadListeningPorts">
-          {{ loading ? '刷新中…' : '刷新列表' }}
-        </button>
+        <span class="pk-head-actions">
+          <button class="btn btn-secondary btn-small" @click="copyRows(listeningList, `已复制 ${listeningList.length} 条监听端口`)">复制列表</button>
+          <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadListeningPorts">
+            {{ loading ? '刷新中…' : '刷新列表' }}
+          </button>
+        </span>
       </div>
 
       <div class="table-wrap">
@@ -285,7 +315,13 @@ onMounted(() => {
               <td><code>{{ occ.localIp }}</code></td>
               <td><code>{{ occ.pid }}</code></td>
               <td class="col-name"><strong>{{ occ.processName || '—' }}</strong></td>
-              <td class="col-path" :title="occ.exePath">{{ occ.exePath || '—' }}</td>
+              <td class="col-path">
+                <template v-if="occ.exePath">
+                  <span class="path-text" :title="occ.exePath">{{ occ.exePath }}</span>
+                  <button class="link-button" :aria-label="`复制 PID ${occ.pid} 的程序路径`" @click="copyWithToast(occ.exePath, '已复制程序路径')">复制</button>
+                </template>
+                <template v-else>—</template>
+              </td>
               <td>
                 <button
                   v-if="!occ.isProtected"
@@ -422,13 +458,35 @@ onMounted(() => {
 }
 
 .col-path {
-  max-width: 280px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 320px;
   font-size: var(--text-sm);
   color: var(--color-text-muted);
   font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* 路径文本省略号与悬停浮现的"复制"钮共存：截断收进 span，钮恒定可见域 */
+.col-path .path-text {
+  display: inline-block;
+  max-width: 230px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.col-path .link-button {
+  opacity: 0;
+  transition: opacity var(--motion-base) ease;
+}
+tr:hover .col-path .link-button,
+.col-path:focus-within .link-button {
+  opacity: 1;
+}
+
+.pk-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .port-num {

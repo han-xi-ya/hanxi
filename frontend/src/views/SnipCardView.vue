@@ -48,7 +48,9 @@ function startDrag(e: MouseEvent) {
 async function copyAll() {
   busy.value = true
   try {
-    await OcrAPI.SnipCopyText() // Go 代理写剪贴板并收起卡片
+    // 有意例外（PLAN_CLIPBOARD §3.2C）：走 Go 代理写剪贴板绕开 webview 安全上下文
+    // 限制并收起卡片，不经 useClipboard——悬浮卡窗体常驻隐藏，登记勿改。
+    await OcrAPI.SnipCopyText()
   } catch (e) {
     tip.value = getErrorMessage(e) // 失败保卡：用户仍可手动选字
   } finally {

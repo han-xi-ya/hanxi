@@ -233,9 +233,10 @@ describe('MemoView 编辑器', () => {
   it('编辑流：回填既有数据并以 Update 保存', async () => {
     const w = await mountView([memo({ tags: ['#SQL', '#prod'], colorTag: 'amber' })])
     await w.find('.memo-actions button:nth-child(3)').trigger('click') // ✏️ 编辑
+    // 正文换装 UiClipboardField：标题仍走 .input-control，正文直取 textarea 本体
     const inputs = w.findAll('.modal-body .input-control')
     expect((inputs[0].element as HTMLInputElement).value).toBe('生产库连接串')
-    expect((inputs[1].element as HTMLTextAreaElement).value).toContain('topsecret')
+    expect((w.find('.modal-body textarea').element as HTMLTextAreaElement).value).toContain('topsecret')
     // 选中态色彩圈
     expect(w.findAll('.color-circle')[2].classes()).toContain('selected')
     svc.Update.mockResolvedValue(undefined)

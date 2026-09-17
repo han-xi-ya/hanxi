@@ -970,7 +970,8 @@ describe('WSLView 发行版实例管理', () => {
     expect(editor.find('textarea').element.value).toBe('[boot]\nsystemd=true')
     expect(editor.text()).toContain('2.4.4')
     await editor.find('textarea').setValue('[boot]\nsystemd=false')
-    await editor.findAll('button')[0].trigger('click') // ✔ 保存写回
+    // conf 编辑器换装 UiClipboardField 后按钮序前多了"粘贴"钮，改按文案定位保存钮
+    await editor.findAll('button').find(b => b.text().includes('保存写回'))!.trigger('click')
     await flushPromises()
     expect(api.SaveWslConf).toHaveBeenCalledWith('Ubuntu', '[boot]\nsystemd=false')
     expect(confirmFn).toHaveBeenCalledTimes(2) // 保存 + 生效引导

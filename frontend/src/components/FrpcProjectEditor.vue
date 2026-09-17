@@ -13,7 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: 'saved', p: Project): void; (e: 'cancel'): void }>()
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const saving = ref(false)
 const errorMsg = ref('')
@@ -420,7 +420,7 @@ function isDraftValid(): boolean {
 
 function copyPreview() {
   const content = editorMode.value === 'toml' ? rawTomlContent.value : tomlPreview.value
-  void copy(content).then((ok) => showToast(ok ? 'TOML 已复制' : '复制失败'))
+  void copyWithToast(content, 'TOML 已复制')
 }
 
 // 导出分享链接 (frp://<base64>)
@@ -434,7 +434,7 @@ function copyShareLink() {
   const jsonStr = JSON.stringify(sharePayload)
   const b64 = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))))
   const link = `frp://${b64}`
-  void copy(link).then((ok) => showToast(ok ? '分享链接已复制 (frp://...)' : '复制失败'))
+  void copyWithToast(link, '分享链接已复制 (frp://...)')
 }
 
 async function save() {

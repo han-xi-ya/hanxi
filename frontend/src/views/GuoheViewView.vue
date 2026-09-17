@@ -37,7 +37,7 @@ const downloading = ref<Record<string, DownloadProgress>>({})
 const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { prompt } = usePrompt()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 ccswitch/piclite 同构）
 const activeMainTab = ref('console')
@@ -255,11 +255,7 @@ async function onFollowToggle() {
 }
 
 async function copySite() {
-  if (await copy(siteUrl.value)) {
-    showToast('官网地址已复制')
-  } else {
-    showToast('复制失败: execCommand 不可用')
-  }
+  await copyWithToast(siteUrl.value, '官网地址已复制')
 }
 
 async function openSite() {

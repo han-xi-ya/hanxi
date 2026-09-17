@@ -6,7 +6,7 @@
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
-import type { DropResult, EngineInfo, ImageRef, OcrOutcome, ServiceState } from '../../bindings/hanxi/internal/modules/ocr/models'
+import type { DropResult, EngineInfo, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
 import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
@@ -16,6 +16,7 @@ import { usePolling } from '../composables/usePolling'
 import { useAsyncAction } from '../composables/useAsyncAction'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
+import { parsePaste } from '../utils/paste'
 import { toolStateMeta } from '../constants/status'
 import PageHeader from '../components/ui/PageHeader.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
@@ -23,7 +24,7 @@ import UiBanner from '../components/ui/UiBanner.vue'
 import HistoryPanel from '../components/tool/HistoryPanel.vue'
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
 
 // ---------- 状态 ----------
@@ -34,6 +35,7 @@ const showSettings = ref(false)
 const portInput = ref('')
 const followOnExit = ref(true)
 const autoCopy = ref(true)
+const hotkey = ref<SnipHotkeyState | null>(null) // 剪贴板识图热键配置（null=未取得）
 
 const image = ref<ImageRef | null>(null)
 const outcome = ref<OcrOutcome | null>(null)
@@ -43,6 +45,7 @@ const readingFile = ref(false)
 const { busy: recBusy, run: runRec } = useAsyncAction()
 const { busy: ctrlBusy, run: runCtrl } = useAsyncAction()
 const { busy: snipBusy, run: runSnip } = useAsyncAction()
+const { busy: clipBusy, run: runClip } = useAsyncAction()
 const { busy: switchBusy, run: runSwitch } = useAsyncAction()
 const switchingId = ref('') // 切换进行中的目标引擎（行内按钮态）
 
@@ -59,6 +62,7 @@ const engineSick = computed(() => online.value && !!state.value?.engineError)
 
 // 服务掉线但已有上次结果 → stale 提示（保留数据，诚实标记）
 const stale = computed(() => !!outcome.value?.ok && !!state.value && !state.value.online)
+
 
 async function refreshStatus() {
   try {
@@ -202,6 +206,100 @@ async function loadSettings() {
   } catch (e) {
     console.warn('ocr settings load failed:', getErrorMessage(e))
   }
+  try {
+    hotkey.value = await OcrAPI.GetSnipHotkey()
+  } catch (e) {
+    console.warn('ocr hotkey settings load failed:', getErrorMessage(e))
+  }
+}
+
+// ---------- 剪贴板识图热键（键位录入 + 冲突即时报错，PLAN_CLIPBOARD §3.3） ----------
+const hotkeyError = ref('')
+const recording = ref(false)
+const recordPreview = ref('')
+
+// 键位框回显：录入中显示实时预览/引导语，静默时显示实际键位
+const hotkeyDisplay = computed(() => {
+  if (recording.value) return recordPreview.value || '按下新组合键…'
+  return hotkey.value?.accel || '…'
+})
+
+function startRecord() {
+  recording.value = true
+  recordPreview.value = ''
+  hotkeyError.value = ''
+}
+
+function cancelRecord() {
+  // 焦点离开即退出录入；组合键录入途中失焦只复位不改配置
+  recording.value = false
+  recordPreview.value = ''
+}
+
+// e.key → 规范化主键：单字符大写；F 区直取；DOM 专有名映射到 Wails 具名键。
+const NAMED_KEYS: Record<string, string> = {
+  ' ': 'Space', Escape: 'Escape', Enter: 'Enter', Tab: 'Tab', Backspace: 'Backspace',
+  Delete: 'Delete', Insert: 'Insert', Home: 'Home', End: 'End',
+  PageUp: 'Page Up', PageDown: 'Page Down', ArrowLeft: 'Left', ArrowUp: 'Up',
+  ArrowRight: 'Right', ArrowDown: 'Down',
+}
+
+function recordKeyName(key: string): string {
+  if (NAMED_KEYS[key]) return NAMED_KEYS[key]
+  if (/^F\d{1,2}$/.test(key)) return key
+  if (key.length === 1) return key.toUpperCase()
+  return key
+}
+
+async function onRecordKey(e: KeyboardEvent) {
+  if (!recording.value) return
+  e.preventDefault()
+  e.stopPropagation()
+  if (['Control', 'Alt', 'Shift', 'Meta', 'OS'].includes(e.key)) {
+    // 修饰键按下途中：实时预览组合前缀（Meta/OS → Win）
+    const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', (e.metaKey || e.key === 'OS') && 'Win'].filter(Boolean)
+    recordPreview.value = mods.length ? mods.join('+') + '+' : ''
+    return
+  }
+  const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win'].filter(Boolean)
+  const accel = [...mods, recordKeyName(e.key)].join('+')
+  recording.value = false
+  recordPreview.value = ''
+  await commitHotkey(accel)
+}
+
+async function commitHotkey(accel: string) {
+  hotkeyError.value = ''
+  try {
+    await OcrAPI.SetSnipHotkey(accel)
+    hotkey.value = await OcrAPI.GetSnipHotkey()
+    showToast(`剪贴板识图热键已设为 ${accel}`)
+  } catch (e) {
+    // 注册冲突：后端已回滚不落账——红字直出占用原因，回显恢复实际键位
+    hotkeyError.value = getErrorMessage(e)
+    try {
+      hotkey.value = await OcrAPI.GetSnipHotkey()
+    } catch { /* 拉取失败保持现回显 */ }
+  }
+}
+
+async function toggleHotkey(v: boolean) {
+  if (!hotkey.value) return
+  const prev = hotkey.value
+  hotkey.value = { ...prev, enabled: v }
+  hotkeyError.value = ''
+  try {
+    await OcrAPI.SetSnipHotkeyEnabled(v)
+    hotkey.value = await OcrAPI.GetSnipHotkey()
+    showToast(v ? '热键已启用：复制图片后按键即识别' : '热键已停用（页内「剪贴板识图」按钮仍可用）')
+  } catch (e) {
+    hotkey.value = prev // 占用失败后端未落账，回滚回显
+    hotkeyError.value = getErrorMessage(e)
+  }
+}
+
+function resetHotkey() {
+  void commitHotkey('Ctrl+Alt+T')
 }
 
 // 框选截屏识别：与轮盘命令同链路（系统截屏 → 识别 → 悬浮卡+自动复制）。
@@ -212,6 +310,17 @@ async function snipRecognize() {
     return
   }
   if (res.data.cancelled) return // 用户放弃选区：静默
+  if (res.data.ok) showToast('识别完成，结果已在悬浮卡中')
+}
+
+// 剪贴板识图：与全局热键（默认 Ctrl+Alt+T）/轮盘命令同链路——剪贴板已有图
+// 直接识别，不弹截屏覆盖层、不清用户剪贴板。
+async function snipClipboard() {
+  const res = await runClip(() => OcrAPI.RecognizeClipboardImage())
+  if (!res.ok) {
+    showToast(`剪贴板识图失败: ${getErrorMessage(res.error)}`)
+    return
+  }
   if (res.data.ok) showToast('识别完成，结果已在悬浮卡中')
 }
 
@@ -295,12 +404,11 @@ function onDrop(e: DragEvent) {
 }
 
 function onPaste(e: ClipboardEvent) {
-  const file = Array.from(e.clipboardData?.items || [])
-    .find((item) => item.kind === 'file')
-    ?.getAsFile()
-  if (!file) return
+  // 三态分流走 utils/paste 纯函数：图片接管；文本/非图文件放行（dropzone 无文本语义）
+  const payload = parsePaste(e)
+  if (payload.kind !== 'image') return
   e.preventDefault()
-  void acceptFile(file)
+  void acceptFile(payload.file)
 }
 
 async function chooseByDialog() {
@@ -332,13 +440,11 @@ async function recognize() {
 }
 
 async function copyAll() {
-  const ok = await copy(outcome.value?.text || '')
-  showToast(ok ? '已复制全部文本' : '复制失败')
+  await copyWithToast(outcome.value?.text || '', '已复制全部文本')
 }
 
 async function copyLine(text: string) {
-  const ok = await copy(text)
-  showToast(ok ? '已复制该行' : '复制失败')
+  await copyWithToast(text, '已复制该行')
 }
 
 // ---------- 历史记录（Teleport 弹窗；双击行经 InspectImage 回填图片，Q6 行内数据直用） ----------
@@ -387,6 +493,9 @@ onMounted(() => {
           </button>
           <button class="btn btn-secondary btn-small" :aria-expanded="showHistory" @click="showHistory = true" title="最近识别留档：图片路径与文本可一键回填">
             🕘 历史
+          </button>
+          <button class="btn btn-secondary btn-small" :disabled="clipBusy" title="识别剪贴板中已有的图片，不重新截屏（与全局热键 Ctrl+Alt+T 同链路）" @click="snipClipboard">
+            {{ clipBusy ? '识图中…' : '📋 剪贴板识图' }}
           </button>
           <button class="btn btn-secondary btn-small" :aria-expanded="showSettings" @click="showSettings = !showSettings">
             {{ showSettings ? '收起设置' : '服务设置' }}
@@ -496,6 +605,24 @@ onMounted(() => {
           识别后自动把文字复制到剪贴板（关闭后可在结果卡内手动选字）
         </label>
       </div>
+      <div class="ocr-set-row ocr-hotkey-row">
+        <span class="ocr-set-k">识图热键</span>
+        <input
+          class="ocr-hotkey-input mono" :class="{ 'ocr-hotkey-recording': recording }" readonly
+          :value="hotkeyDisplay" :disabled="!hotkey"
+          aria-label="剪贴板识图全局热键：点击后按下新组合键"
+          @click="startRecord" @keydown="onRecordKey" @blur="cancelRecord"
+        />
+        <button class="btn btn-secondary btn-small" :disabled="!hotkey || hotkey.accel === 'Ctrl+Alt+T'" @click="resetHotkey">恢复默认</button>
+        <label class="ocr-set-follow">
+          <input type="checkbox" :checked="hotkey?.enabled" :disabled="!hotkey" @change="toggleHotkey(($event.target as HTMLInputElement).checked)" />
+          全局生效：任意软件里复制图片后按键即识别（纯键位组合不开，须带修饰键）
+        </label>
+      </div>
+      <p v-if="hotkeyError" class="ocr-hotkey-err" role="alert">{{ hotkeyError }}</p>
+      <p v-else-if="hotkey && hotkey.enabled && !hotkey.registered" class="ocr-hotkey-err" role="alert">
+        热键当前未注册成功（可能被其他软件抢占）：点击键位框改键重试。
+      </p>
       <p class="ocr-set-note">改端口对已运行的实例下次启动生效；外部自行启动的实例端口以其自身为准。</p>
     </div>
 
@@ -691,6 +818,17 @@ onMounted(() => {
 .ocr-engine-warn { margin: 0; font-size: var(--text-sm); color: var(--state-warning); overflow-wrap: anywhere; }
 .ocr-engine-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .ocr-set-port { width: 84px; }
+
+/* 热键键位框：只读录入面（点击进录制态），占用/未注册错误红字直出 */
+.ocr-hotkey-row { align-items: center; }
+.ocr-hotkey-input {
+  width: 148px; padding: 4px 8px; text-align: center; cursor: pointer;
+  font-size: var(--text-sm); color: var(--color-text);
+  background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+}
+.ocr-hotkey-input:hover { border-color: var(--color-primary); }
+.ocr-hotkey-recording { border-color: var(--color-primary); color: var(--color-primary); background: var(--surface-panel); }
+.ocr-hotkey-err { margin: 0; font-size: var(--text-xs); color: var(--state-danger); overflow-wrap: anywhere; }
 .ocr-set-follow { display: flex; align-items: center; gap: 6px; color: var(--color-text-muted); margin-left: auto; }
 .ocr-set-note { font-size: var(--text-xs); color: var(--color-text-subtle); margin: 0; }
 

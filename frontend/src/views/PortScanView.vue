@@ -10,7 +10,7 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const target = ref('127.0.0.1')
 const portRange = ref('80,443,3000,5000,5173,8000,8080,8081,8443,8888,9000')
@@ -136,8 +136,7 @@ async function copyOpenPorts() {
   if (openPorts.value.length === 0) return
   const str = openPorts.value.map(p => p.port).join(', ')
   // 剪贴板两级策略收编进 useClipboard；失败不再谎报成功
-  const ok = await copy(str)
-  showToast(ok ? `已复制 ${openPorts.value.length} 个开放端口` : '复制失败')
+  await copyWithToast(str, `已复制 ${openPorts.value.length} 个开放端口`)
 }
 
 function openInBrowser(port: number) {

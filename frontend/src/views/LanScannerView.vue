@@ -9,7 +9,7 @@ import { useClipboard } from '../composables/useClipboard'
 import PageHeader from '../components/ui/PageHeader.vue'
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const subnets = shallowRef<SubnetInfo[]>([])
 const selectedCidr = ref('')
@@ -76,8 +76,7 @@ async function stopScan() {
 
 async function copyIP(ip: string) {
   // 剪贴板两级策略收编进 useClipboard；失败不再"谎报成功 toast"（原实现不 await，reject 时 toast 仍弹已复制）
-  const ok = await copy(ip)
-  showToast(ok ? `已复制 IP: ${ip}` : '复制失败')
+  await copyWithToast(ip, `已复制 IP: ${ip}`)
 }
 
 function startEditRemark(dev: DeviceInfo) {

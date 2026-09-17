@@ -256,4 +256,25 @@ describe('PortKillView', () => {
     expect(useToast().toastMsg.value).toContain('仅「端口查询」类历史可回填')
     w.unmount()
   })
+
+  it('输出区复制：LISTEN 整表按 Tab 行导出，行内可复制程序路径', async () => {
+    const write = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: write }, configurable: true })
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })
+    const w = mountView() // LISTEN 两行：8080/PID4321 与 443/PID4
+    await flushMicrotasks()
+    await w.findAll('button').find((b) => b.text() === '复制列表')!.trigger('click')
+    await flushMicrotasks()
+    expect(write).toHaveBeenCalledWith(
+      'TCP\t0.0.0.0:8080\tPID 4321\tnode.exe\tC:\\node.exe\n'
+      + 'TCP\t0.0.0.0:443\tPID 4\tnode.exe\tC:\\node.exe',
+    )
+    expect(useToast().toastMsg.value).toBe('已复制 2 条监听端口')
+
+    await w.findAll('button').find((b) => b.attributes('aria-label') === '复制 PID 4321 的程序路径')!.trigger('click')
+    await flushMicrotasks()
+    expect(write).toHaveBeenLastCalledWith('C:\\node.exe')
+    expect(useToast().toastMsg.value).toBe('已复制程序路径')
+    w.unmount()
+  })
 })
