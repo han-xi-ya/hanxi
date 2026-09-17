@@ -1,5 +1,5 @@
 // 主题单例 composable（docs/FRONTEND.md §7.2）——明暗轴（theme）与色板轴（accent）的唯一读写入口。
-// 真相源 = 后端 settings（AppSettings.Theme / AppSettings.Accent，随便携 data/ 迁移）；
+// 真相源 = 后端 settings（AppSettings.Theme / AppSettings.Accent，随数据目录迁移）；
 // localStorage 仅作首帧缓存：mount 前同步应用防闪白，启动后以后端为准校正。
 // 标题栏经 AppService.SetWindowDarkMode 桥到 Win32 DWM（前端管不到原生窗框）：
 // 明暗 + 色板双轴一并同步，标题栏底色对齐 --surface-chrome 外壳层。

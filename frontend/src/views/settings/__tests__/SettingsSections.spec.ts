@@ -11,6 +11,11 @@ import SystemSection from '../SystemSection.vue'
 import WorkbenchSection from '../WorkbenchSection.vue'
 import { useToast } from '../../../composables/useToast'
 import { useTheme } from '../../../composables/useTheme'
+import { usePrompt } from '../../../composables/usePrompt'
+import { useConfirm } from '../../../composables/useConfirm'
+
+const { promptState, settlePrompt } = usePrompt()
+const { confirmState, settleConfirm } = useConfirm()
 
 const appSvc = vi.hoisted(() => ({
   GetAppInfo: vi.fn(),
@@ -21,6 +26,8 @@ const appSvc = vi.hoisted(() => ({
   SetTrayMenu: vi.fn(),
   PickExeFile: vi.fn(),
   OpenPath: vi.fn(),
+  BindDataDir: vi.fn(),
+  UnbindDataDir: vi.fn(),
   OpenHostsFile: vi.fn(),
   OpenNetworkConnections: vi.fn(),
   OpenSystemEnvSettings: vi.fn(),
@@ -41,11 +48,19 @@ vi.mock('../../../../bindings/hanxi/internal/app', () => ({ AppService: appSvc }
 vi.mock('../../../../bindings/hanxi/internal/history/historyservice', () => histSvc)
 vi.mock('@wailsio/runtime', () => ({ Events: { On: vi.fn(() => vi.fn()) } }))
 
+// F6 后 mode 为数据根来源内部标记（sibling/bound），不再是运行模式
+function appInfoStub(over: Record<string, unknown> = {}) {
+  return {
+    name: 'Hanxi', version: '0.3.0', mode: 'sibling', baseDir: 'D:\\hx',
+    configDir: 'D:\\hx', logsDir: 'D:\\hx\\logs', versionsDir: 'D:\\hx\\versions', runtimeDir: 'D:\\hx\\runtime',
+    ...over,
+  }
+}
+
 function stubs() {
-  appSvc.GetAppInfo.mockResolvedValue({
-    name: 'Hanxi', version: '0.3.0', mode: 'portable', baseDir: 'D:\\hx',
-    configDir: 'D:\\hx\\data', logsDir: 'D:\\hx\\logs', versionsDir: 'D:\\hx\\versions', runtimeDir: 'D:\\hx\\runtime',
-  })
+  appSvc.GetAppInfo.mockResolvedValue(appInfoStub())
+  appSvc.BindDataDir.mockResolvedValue(undefined)
+  appSvc.UnbindDataDir.mockResolvedValue(undefined)
   appSvc.GetGeneralSettings.mockResolvedValue({ autoStart: false, minimizeToTray: true, logRetainDays: 7 })
   appSvc.SetGeneralSettings.mockResolvedValue(undefined)
   appSvc.ListTrayMenuOptions.mockResolvedValue([{ type: 'command', ref: 'frpc/start', label: '启动 frpc', moduleName: 'frpc' }])
@@ -65,6 +80,9 @@ async function mountView(Component: typeof GeneralSection | typeof ThemeSection 
 }
 
 afterEach(() => {
+  // 防御上抛未落定的全局对话框请求，不让 Promise 悬挂串扰下个用例
+  settlePrompt(null)
+  settleConfirm(false)
   vi.restoreAllMocks()
   vi.clearAllMocks()
   useToast().clearToast()
@@ -215,15 +233,63 @@ describe('托盘菜单分区', () => {
 })
 
 describe('存储目录分区', () => {
-  it('回填四类目录路径与运行模式徽标，点击打开走 OpenPath', async () => {
+  it('F6 后呈现当前数据根与同级来源徽标，目录行直达走 OpenPath，无运行模式字样', async () => {
     stubs()
     const w = await mountView(StorageSection)
-    expect(w.text()).toContain('便携免安装模式')
+    expect(w.text()).toContain('应用同级 · ./hanxidata')
+    expect(w.text()).not.toContain('便携')
+    expect(w.text()).not.toContain('标准模式')
     const rows = w.findAll('.setting-row')
-    expect(rows).toHaveLength(4)
-    expect(rows[0].text()).toContain('D:\\hx\\data')
+    expect(rows).toHaveLength(4) // 数据根 + 日志/版本仓/运行时
+    expect(rows[0].text()).toContain('D:\\hx') // 数据根 = baseDir
+    const rootBtns = rows[0].findAll('button')
+    expect(rootBtns).toHaveLength(2) // 未绑定：打开目录 + 更改位置，无"回到同级"
     await rows[1].find('button').trigger('click')
     expect(appSvc.OpenPath).toHaveBeenCalledWith('D:\\hx\\logs')
+  })
+
+  it('绑定来源：解锁"回到同级"，解绑走全局确认后落 UnbindDataDir', async () => {
+    stubs()
+    appSvc.GetAppInfo.mockResolvedValue(appInfoStub({ mode: 'bound', baseDir: 'E:\\HanxiData' }))
+    const w = await mountView(StorageSection)
+    expect(w.text()).toContain('已绑定数据之家')
+    const rootBtns = w.findAll('.setting-row')[0].findAll('button')
+    expect(rootBtns).toHaveLength(3)
+    await rootBtns[2].trigger('click')
+    expect(confirmState.open).toBe(true)
+    settleConfirm(true)
+    await flushPromises()
+    expect(appSvc.UnbindDataDir).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toContain('重启')
+  })
+
+  it('更改位置：prompt 取消不调后端，提交绝对路径走 BindDataDir 并提示重启生效', async () => {
+    stubs()
+    const w = await mountView(StorageSection)
+    const changeBtn = w.findAll('.setting-row')[0].findAll('button')[1]
+    await changeBtn.trigger('click')
+    expect(promptState.open).toBe(true)
+    settlePrompt(null) // 取消
+    await flushPromises()
+    expect(appSvc.BindDataDir).not.toHaveBeenCalled()
+
+    await changeBtn.trigger('click')
+    settlePrompt('E:\\HanxiData')
+    await flushPromises()
+    expect(appSvc.BindDataDir).toHaveBeenCalledWith('E:\\HanxiData')
+    expect(useToast().toastMsg.value).toContain('重启 Hanxi 后生效')
+  })
+
+  it('绑定失败：后端中文错误经 toast 呈现，不留成功假象', async () => {
+    stubs()
+    appSvc.BindDataDir.mockRejectedValue(new Error('exe 同级无法写入 hanxi.bind'))
+    const w = await mountView(StorageSection)
+    const changeBtn = w.findAll('.setting-row')[0].findAll('button')[1]
+    await changeBtn.trigger('click')
+    settlePrompt('E:\\HanxiData')
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('绑定失败')
+    expect(useToast().toastMsg.value).toContain('hanxi.bind')
   })
 })
 

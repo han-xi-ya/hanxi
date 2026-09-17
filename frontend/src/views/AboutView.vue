@@ -53,10 +53,7 @@ onMounted(async () => {
           <span>平台</span>
           <code>{{ info.goos }}/{{ info.goarch }}</code>
         </div>
-        <div class="info-item">
-          <span>运行模式</span>
-          <code>{{ info.mode === 'portable' ? '便携模式' : '标准模式' }}</code>
-        </div>
+        <!-- F6 后"运行模式"概念退役：关于页只呈现数据目录，家从哪去存储分区看 -->
         <div class="info-item info-path">
           <span>数据目录</span>
           <code>{{ info.baseDir }}</code>
