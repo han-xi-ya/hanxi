@@ -1,6 +1,9 @@
 package ocr
 
-// ---------- 组件导入（拖放 / 对话框，引用式：校验通过即指向，不复制） ----------
+// ---------- 组件导入（拖放 / 对话框） ----------
+//
+// 两条落位通道并存：exe/目录=引用式（校验通过即指向，不复制，旧行为不动）；
+// .zip 引擎安装包=托管式（F7，契约校验后解压落位 versions/，见 hostedsvc.go）。
 
 import (
 	"encoding/json"
@@ -152,15 +155,22 @@ func (s *OcrService) ImportServiceExeDialog() (DropResult, error) {
 }
 
 // HandleNativeDrop Wails 主窗原生文件拖放入口（app.go 接线；只有落在 OcrView
-// 标记 data-file-drop-target 元素上的文件才会到达）。分流：目录 → PP-OCR 引擎包
-// 导入；.exe → 微信件导入；图片 → 真实路径直接选为待识别对象（免走 dataURL 全量
-// IPC）；其余给中文提示。
+// 标记 data-file-drop-target 元素上的文件才会到达）。分流：.zip → 托管安装包
+// （F7：契约校验后自动解压落位）；目录 → PP-OCR 引擎包导入；.exe → 微信件导入；
+// 图片 → 真实路径直接选为待识别对象（免走 dataURL 全量 IPC）；其余给中文提示。
 func (s *OcrService) HandleNativeDrop(files []string) {
 	if len(files) == 0 {
 		return
 	}
 	src := strings.TrimSpace(files[0])
 	ext := strings.ToLower(filepath.Ext(src))
+	// F7 托管安装通道：.zip 引擎安装包（校验链与错误回执收口 InstallHostedZip）
+	if ext == ".zip" {
+		if _, err := s.InstallHostedZip(src); err != nil {
+			slog.Warn("ocr 托管安装失败", "path", src, "err", err)
+		}
+		return
+	}
 	// 目录与 .exe 一律进导入分流（ImportServiceExe 内部按形态派发到
 	// 微信件校验 / ImportPaddleDir 引擎包登记），其余按扩展名判图片
 	if st, err := os.Stat(src); (err == nil && st.IsDir()) || ext == ".exe" {
@@ -178,7 +188,7 @@ func (s *OcrService) HandleNativeDrop(files []string) {
 		s.dropResultFail("image", err.Error())
 		return
 	}
-	s.dropResultFail("image", fmt.Sprintf("无法识别的拖放文件类型（%s）：支持图片文件、%s 与 PP-OCR 引擎目录", ext, serviceExeName))
+	s.dropResultFail("image", fmt.Sprintf("无法识别的拖放文件类型（%s）：支持图片文件、引擎安装包 .zip、%s 与 PP-OCR 引擎目录", ext, serviceExeName))
 }
 
 func (s *OcrService) dropResultFail(kind, msg string) DropResult {

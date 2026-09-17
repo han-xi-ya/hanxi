@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/internal/modules/ocr/instance"
 )
 
 type zipEntry struct {
@@ -618,6 +620,152 @@ func TestResolveServiceExeHostedFirst(t *testing.T) {
 	if _, _, err := resolveServiceExe(hanxiDir, dataDir, versionsRoot, EngineWechat, filepath.Join(base, "gone.exe")); err == nil ||
 		!strings.Contains(err.Error(), "失效") {
 		t.Fatalf("树外失效登记应明示: %v", err)
+	}
+}
+
+// ---------- 服务面：安装 / 列表 / 卸载（F7 卡片 2） ----------
+
+// newTestHostedService 在通用测试服务上接线独立的托管版本树。
+func newTestHostedService(t *testing.T) (*OcrService, *hostedManager) {
+	t.Helper()
+	s := newTestService(t, "")
+	base := t.TempDir()
+	s.hosted = newHostedManager(filepath.Join(base, "versions", hostedDirName), filepath.Join(base, "installers", hostedDirName))
+	return s, s.hosted
+}
+
+func TestInstallHostedZipServiceWechat(t *testing.T) {
+	s, hm := newTestHostedService(t)
+	zipPath := makeValidHostedZip(t, t.TempDir(), "wechat", "4.1.15.9")
+	writeHostedSidecar(t, zipPath)
+
+	res, err := s.InstallHostedZip(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Ok || res.Kind != "import" {
+		t.Fatalf("安装回执失败: %+v", res)
+	}
+	exe := filepath.Join(hm.versionsRoot, "wechat-4.1.15.9", serviceExeName)
+	if res.ExePath != exe {
+		t.Fatalf("回执入口路径 %s", res.ExePath)
+	}
+	if s.store.GetEnginePath(EngineWechat) != exe {
+		t.Fatalf("微信引擎应登记托管入口: %q", s.store.GetEnginePath(EngineWechat))
+	}
+	if v := s.store.GetEngineVersion(EngineWechat); v != "4.1.15.9" {
+		t.Fatalf("版本登记 = %q", v)
+	}
+	// 默认活跃引擎即 wechat → 生效标记命中
+	list, err := s.ListHostedVersions()
+	if err != nil || len(list) != 1 || !list[0].Effective {
+		t.Fatalf("列表/生效标记异常: %+v %v", list, err)
+	}
+}
+
+func TestInstallHostedZipServicePaddleActivates(t *testing.T) {
+	s, _ := newTestHostedService(t)
+	zipPath := makeValidHostedZip(t, t.TempDir(), "paddle", "0.4.0")
+	writeHostedSidecar(t, zipPath)
+	res, err := s.InstallHostedZip(zipPath)
+	if err != nil || !res.Ok {
+		t.Fatalf("paddle 安装失败: %+v %v", res, err)
+	}
+	if s.store.GetActiveEngine() != EnginePaddle {
+		t.Fatalf("paddle 登记应即激活, active=%q", s.store.GetActiveEngine())
+	}
+}
+
+func TestInstallHostedZipRejections(t *testing.T) {
+	s, hm := newTestHostedService(t)
+
+	// 缺旁挂件
+	p := makeValidHostedZip(t, t.TempDir(), "wechat", "1.0.0")
+	res, err := s.InstallHostedZip(p)
+	if err != nil || res.Ok || !strings.Contains(res.Message, "缺少校验文件") {
+		t.Fatalf("缺旁挂应拒: %+v %v", res, err)
+	}
+
+	// manifest 契约违规（未知引擎）
+	zipPath := makeBadManifestZip(t, filepath.Join(t.TempDir(), "hanxi-ocr-cuda-1.0.0.zip"))
+	writeHostedSidecar(t, zipPath)
+	if res, _ := s.InstallHostedZip(zipPath); res.Ok {
+		t.Fatal("非法 manifest 应拒")
+	}
+	if n := len(hm.list()); n != 0 {
+		t.Fatalf("拒收不得留下版本: %+v", hm.list())
+	}
+}
+
+func makeBadManifestZip(t *testing.T, path string) string {
+	t.Helper()
+	manifest, _ := json.Marshal(hostedManifest{Schema: 1, Engine: "cuda", Version: "1.0.0", Entry: serviceExeName})
+	makeHostedZip(t, path, []zipEntry{
+		{name: manifestName, body: string(manifest)},
+		{name: serviceExeName, body: "MZ"},
+	})
+	return path
+}
+
+func TestUninstallHostedVersionFlow(t *testing.T) {
+	s, hm := newTestHostedService(t)
+	zipPath := makeValidHostedZip(t, t.TempDir(), "wechat", "1.0.0")
+	writeHostedSidecar(t, zipPath)
+	if res, err := s.InstallHostedZip(zipPath); err != nil || !res.Ok {
+		t.Fatalf("前置安装失败: %+v %v", res, err)
+	}
+	out, err := s.UninstallHostedVersion("wechat", "1.0.0")
+	if err != nil || out.Action != "uninstalled" {
+		t.Fatalf("卸载失败: %+v %v", out, err)
+	}
+	if len(hm.list()) != 0 {
+		t.Fatal("版本目录应删除")
+	}
+	if p := s.store.GetEnginePath(EngineWechat); p != "" {
+		t.Fatalf("悬空登记应复位自动发现, got %q", p)
+	}
+	if _, err := s.UninstallHostedVersion("wechat", "1.0.0"); err == nil {
+		t.Fatal("重复卸载应报错（未安装）")
+	}
+	if _, err := s.UninstallHostedVersion("cuda", "1.0.0"); err == nil {
+		t.Fatal("未知引擎应报错")
+	}
+	if _, err := s.UninstallHostedVersion("wechat", `../x`); err == nil {
+		t.Fatal("非法版本名应报错")
+	}
+}
+
+func TestHostedExeInUsePure(t *testing.T) {
+	dir := filepath.Join("versions", "hanxi-ocr", "wechat-1.0.0")
+	exe := filepath.Join(dir, serviceExeName)
+	if !hostedExeInUse(instance.StateRunning, exe, dir) {
+		t.Fatal("running 命中目录应在用")
+	}
+	if !hostedExeInUse(instance.StateStarting, exe, filepath.Clean(dir)) {
+		t.Fatal("starting 亦应在用")
+	}
+	if hostedExeInUse(instance.StateStopped, exe, dir) {
+		t.Fatal("stopped 不在用")
+	}
+	if hostedExeInUse(instance.StateExternal, exe, dir) {
+		t.Fatal("external 不归本引擎管")
+	}
+	other := filepath.Join("versions", "hanxi-ocr", "wechat-2.0.0")
+	if hostedExeInUse(instance.StateRunning, exe, other) {
+		t.Fatal("其他版本目录不受影响")
+	}
+	if hostedExeInUse(instance.StateRunning, filepath.Join("C:\\elsewhere", serviceExeName), dir) {
+		t.Fatal("树外路径不在用")
+	}
+}
+
+func TestHandleNativeDropZip(t *testing.T) {
+	s, hm := newTestHostedService(t)
+	zipPath := makeValidHostedZip(t, t.TempDir(), "paddle", "3.0.0")
+	writeHostedSidecar(t, zipPath)
+	s.HandleNativeDrop([]string{zipPath})
+	if len(hm.list()) != 1 || s.store.GetActiveEngine() != EnginePaddle {
+		t.Fatalf("拖放 .zip 应完成安装并激活: %+v active=%s", hm.list(), s.store.GetActiveEngine())
 	}
 }
 
