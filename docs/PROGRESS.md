@@ -68,7 +68,8 @@
 - F4b 按 PLAN §6 字面读：`<DataDir>/mcp/access.json`，`{"version":1,"tools":{"envcheck","everything","ocr","memo"}}`，只读呈现，额外键忽略。
 - F4b 所有权回执在 `<DataDir>/mcp/install.json`（version/installs{configPath,fingerprint,installedAt}）。
 - **若 F4a 实际落盘 `state/mcp/` 或字段超纲**：以 F4a 报告为准改 `mcpwizard/service.go` NewService 两行路径，字段扩展要求 F4a 报告单列。
-- F4a 合入前 `hanxi mcp` 不存在——F4b 的"安装前自检 spawn listTools"刻意未接线，F4a 合并后补一行（新随批修 **R2**）。
+- **R2**：✅ 已收口（eee224a）——SelfCheck spawn 握手 + 90s TTL 缓存 + 预览页呈现；阻断性裁定=自检失败**不阻断**写入（PLAN §2.5 口径落档）；access 缺档文案假承诺一并纠正；实弹冒烟（HANXI_EXE opt-in 真 hanxi.exe）已过；坑 #64 归 R2。
+- **R5 登记（与 §6 写入口待裁项并案）**：`internal/mcp/server.go` gateMiddleware 拒绝文案引导用户"到 设置→AI 接入 开启"，但该分区对 access.json 只读无开启入口（写入口缺位=R4 上报的待裁项）——用户裁决"补写入口"则文案变真、裁决"维持手工放置"则该文案须改口径，二选一后此单自动关闭。
 - 踩坑号定序（全部已占）：#61=F4b JSON 外科合并、#62=F4a 离线 GOMODCACHE 洞、#63=F4a windowsgui stdio；后续从 **#64** 起。
 - **R3**：✅ 已收口（`8476ff3`/`f09fc19`，FF 合入）。goproxy.cn 可达实证，cast replace 已撤、tidy 内容级零 diff、离线自洽复核全绿；easyjson v0.9.0 维持（回退=逆钉红线，且符合"用新不用旧"）。附注：本机 `core.autocrlf=true`，`go mod tidy -diff` 对 go.sum 报**假全文件 diff（纯 EOL）**，内容级核验用 `go mod tidy`+`git diff`。
 - **R4**：✅ 已收口（74f8fa7）——PLAN_MCP 注记回写/BACKLOG 销账/DEVPLAN v1.5 指针改口/MOOTOOL 打勾四合一入；其发现的 mcpwizard 文案与事实矛盾点已塞给 R2 顺路修；遗留待用户裁决：PLAN §6 两个 access.json 授权写入口均未实现（GUI 只读+无 auth 子命令），现状=手工放置文件。
