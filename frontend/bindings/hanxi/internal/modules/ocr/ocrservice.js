@@ -191,6 +191,8 @@ export function PickImageDialog() {
 /**
  * RecognizeImage 转发图片路径给上游识别。一切业务失败折进 Outcome.Error
  * （中文人话），error 通道留给程序性错误。
+ * 统一历史：识别动作的唯一记录点在 recognizeImage 的 defer 单点（成功与失败同记），
+ * 截屏链路经 snip 来源标记复用同一记录点，勿二处插。
  * @param {string} path
  * @returns {$CancellablePromise<$models.OcrOutcome>}
  */
