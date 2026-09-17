@@ -6,7 +6,7 @@
 
 ## 基线与测试口径
 
-- 基线 commit：`f08e9d3`（dev 分支，账本登记完毕时）。
+- 基线 commit：`4f67581`（dev 分支；wave1 三分支 feat/f6-siblingdir、feat/f5-wxver、feat/f8-board 均自此检出，2026-09-17 开工）。
 - 已知环境噪音：沙箱内 `bcu/instance`、`bili23/instance` 等报 `cmd.exe 不可用` 的测试失败是环境限制，不算回归；其余测试必须全绿。
 - 前端 `npm run` 在 Git Bash 下损坏：build/test/typecheck 走 `frontend/node_modules/` 内入口直调（vitest、vue-tsc、vite）。
 - worktree 内前端测试需要 node_modules：已用 junction 链回主仓 `frontend/node_modules`。
@@ -27,10 +27,10 @@
 | F2 剪贴板惯例 | ⬜ 未开始 | feat/f2-clipboard | 二 | - | PLAN_CLIPBOARD.md；SnipCardView 依赖已解除 |
 | F3 数据自动快照 | ⬜ 未开始 | feat/f3-snapshot | 二 | - | PLAN_SNAPSHOT.md；对外命名"历史版本" |
 | F4 MCP AI 接入 | ⬜ 未开始 | feat/f4-mcp | 三 | - | PLAN_MCP.md；含 S2 随批修 |
-| F5 软件版本检测 | ⬜ 未开始 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证 |
-| F6 数据目录同级化 | ⬜ 未开始 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动 |
+| F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
+| F6 数据目录同级化 | 🟡 开发中 | feat/f6-siblingdir | 一 | - | BACKLOG 卡片；访问器面一字不动；worktree wt-f6-siblingdir |
 | F7 hanxi-ocr 托管化 | ⬜ 未开始 | feat/f7-ocrhosted | 三 | - | 主仓侧改造；后厨侧只读参考 |
-| F8 桌面留言板 | ⬜ 未开始 | feat/f8-board | 一 | - | 含防休眠引用计数自池收编 |
+| F8 桌面留言板 | 🟡 开发中 | feat/f8-board | 一 | - | 含防休眠引用计数自池收编；worktree wt-f8-board |
 | F9 WSL USB 共享 | ⬜ 未开始 | feat/f9-wslusb | 三 | - | 账本+重放范式；真机验证为合入后闸门 |
 
 图例：⬜ 未开始 / 🟡 开发中 / 🔶 待审查 / ✅ 已合并 / ⛔ 阻塞
