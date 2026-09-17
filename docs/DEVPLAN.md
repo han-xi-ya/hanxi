@@ -1,7 +1,7 @@
 # Hanxi 开发里程碑与执行现状
 
-> **版本**：v1.3  
-> **更新日期**：2026-09-16  
+> **版本**：v1.4  
+> **更新日期**：2026-09-17  
 > **目标平台**：Windows 10 (22H2+) / Windows 11 x64  
 
 ---
@@ -31,7 +31,7 @@
 - [x] 多实例独立并发运行与状态隔离
 - [x] Windows JobObject 进程树自动绑定与防孤儿进程清理
 - [x] Windows DPAPI 本地 Token 凭据硬件加密存储
-- [x] frpc 运行时临时 TOML 停机即时擦除
+- [x] frpc 运行时临时 TOML 停止/停用/退出即擦、启动孤儿自动收编（崩溃/强杀兜底；2026-09-17 S0 补齐，此前仅手动停止路径为真，见踩坑 #55）
 - [x] 控制台输出流实时特征词嗅探（精确反映连通/认证失败/重连状态）
 - [x] `frp://` 协议链接一键导出与导入
 - [x] 批量端口区间导入规则生成
@@ -128,3 +128,33 @@
 - WSLView 2209 行按五页签拆分（Phase 6 拆分纪律对新代码的补账）。
 - 托管家族 23 文件复制体收编 `useVersionDownload`（`stepOf/statusOf/loadVersions/openDir` + 下载事件块），连带裁决 §9.6-10 六项同名不同形。
 - useWechatBot 多代轮询与 contextToken 账号快照竞态（先核证 `GetPendingMessages` 消费语义）；MemoView 设计方言清理；PublicIp 页签归编 MainTabNav；tsconfig `noImplicitAny` 收紧；Bili23/Paseo/VSCode/TranslucentTB/Rufus 五视图特征测试与托管子组件补 spec。
+
+---
+
+## 4. 待实现功能（已排期，2026-09-17 登记）
+
+> 来源：`docs/MOOTOOL_ANALYSIS.md` 借鉴分析 → 四份可研报告 `docs/plans/PLAN_*.md`（含实地调研证据与 commit 级任务分解）。
+> **开放问题已全部拍板（2026-09-17），裁定见各报告末尾"决策回写"，实现时不得偏离。**
+> 状态图例：⚪ 未动工 ｜ 🔵 进行中 ｜ 🟢 已完成（完成后从本节挪进 §1 里程碑表）。
+
+**执行顺序**（依赖链，勿并行抢跑）：
+
+```
+~~S0/S1 小修~~（2026-09-17 已清）→ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
+→ F4-a MCP MVP → F3-b memo 文件库化 → F4-b MCP 完善 → F2-③ 热键识图（硬依赖：SnipCardView 悬浮卡合入）
+```
+
+| # | 功能 | 概要 | 量级 | 硬约束/裁定要点 | 方案 | 状态 |
+|---|---|---|---|---|---|:---:|
+| F1 | 统一历史记录公共包 | `internal/history` 单文件 `state/history.json` 分桶、每桶 200 条头插裁剪、`newRecord` 统一过 `logging.Redact`；通用 `HistoryPanel.vue`；首批接 ocr/portkill/envcheck | 7~9 人日，6 原子提交 | 动作全记、查询仅 ocr/portkill；envcheck Overview 不记；OCR 全文入库+设置页开关（默认开）；停用不清桶；清空仅当前桶 | `PLAN_HISTORY.md` | ⚪ |
+| F2 | 剪贴板联动惯例 | ① 规范条款入 `FRONTEND.md`+workbench-ui 技能；② `UiClipboardField`/`useClipboard` 扩展（paste 侧全仓从零起步）；③ `Ctrl+Alt+T` 热键识剪贴板图（Wails `GlobalShortcut`，复用 snip 包原语+悬浮卡；取色并入同一注册器） | ①② 3.5 + ③ 5.5 人日 | 不做全局剪贴板监听；短输入（端口/IP）有意不加粘贴钮；③ 只出悬浮卡 | `PLAN_CLIPBOARD.md` | ⚪ |
+| F3 | 数据自动版本快照 | `internal/snapshot` 平台底座：失焦/隐藏+mtime 巡检三源触发，外部 git（`.snapshots/repo.git` 分离仓库，Microsoft Store 假存根判定）缺失降级影子拷贝 30 份；白名单排除 `runtime/`；二步 memo 文件库化（前端零改动） | 5 + 4 人日 + 真机闸门 1 日 | **永不自动 push**；静默不打扰；wechat 明文 token 接受入历史（已拍板）；遮罩便签照进；空闲 300s/间隔 5min/含手动「立即快照」钮 | `PLAN_SNAPSHOT.md` | ⚪ |
+| F4 | MCP / Skill AI 接入 | `hanxi mcp` headless 子命令（mcp-go v0.41.1 锁版本）；MVP 只放 envcheck + everything（严格只读，无实例报错不代启动）；一键安装向导 GUI 单通道（preview→确认→备份→原子写→回滚）；memo 二期总开关+遮罩条目不下发 | MVP 3~4 / 共 9~12 人日 | portkill/frpc 等提权与写操作**永不暴露**；MCP 输出会进云端模型上下文——逐工具过红线；`--yes` 不开 | `PLAN_MCP.md` | ⚪ |
+
+### 4.1 先行动修项（随批处理，独立 fix 提交）
+
+| # | 项 | 说明 | 状态 |
+|---|---|---|:---:|
+| S0 | frpc 运行时明文 TOML 残留 | 已修（2026-09-17）：`pruneRuntimeConfigs` 白名单清扫挂 `OnInit`（孤儿收编）+ `Shutdown`（停用/退出即擦），回归测试锁边界，沉淀踩坑 #55；§2.1 该验收项已改如实表述。遗留如实边界见 #55 避坑④（崩溃后从未再启用模块则残留待下次激活收编） | 🟢 |
+| S1 | `.gitignore` 未忽略 `hanxidata/` | 已随数据根治理线并行修复（`hanxidata/` 带注释入 ignore），本批次仅核销登记 | 🟢 |
+| S2 | ES.exe 版本常量手动跟升 | 非新账，登记提醒：F4 落地后 everything 工具依赖运行中实例（ES 非内嵌、按需下载），MCP 报错指引文案须如实引导用户，勿承诺代拉起 | ⚪ |
