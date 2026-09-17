@@ -24,7 +24,7 @@ import { useClipboard } from './useClipboard'
 
 export function useFileShareServer() {
   const { showToast } = useToast()
-  const { copy } = useClipboard()
+  const { copyWithToast } = useClipboard()
 
   // 状态定义
   const status = ref<ServerStatus>({
@@ -180,9 +180,9 @@ export function useFileShareServer() {
   }
 
   async function copyToClipboard(text: string, tip = '已复制访问链接') {
-    // 两级剪贴板策略收编进 useClipboard；成功/失败文案逐字保留
-    const ok = await copy(text)
-    showToast(ok ? tip : '复制到剪贴板失败')
+    // 两级剪贴板策略与统一回执话术全部收进 useClipboard.copyWithToast
+    //（PLAN_CLIPBOARD §3.2C）；本函数只保留"默认成功话术"的薄封装职责。
+    await copyWithToast(text, tip)
   }
 
   async function handleDeleteDrop(id: string) {

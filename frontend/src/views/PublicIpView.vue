@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import { usePublicIpOverview } from '../composables/usePublicIpOverview'
 import { usePublicIpPing, usePublicIpTraceroute } from '../composables/usePublicIpDiagnostics'
@@ -11,8 +10,7 @@ import TraceroutePanel from '../components/publicip/TraceroutePanel.vue'
 
 // Phase 6 结构拆分后的编排层：只留三 Tab 状态机、跨 Tab 快捷联动与复制反馈；
 // 领域状态见 composables/publicIp{Overview,Diagnostics}.ts，区块 DOM 见 components/publicip/*。
-const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const activeTab = ref<'ip' | 'ping' | 'traceroute'>('ip')
 
@@ -42,8 +40,7 @@ const {
 async function copyText(text: string, label: string) {
   if (!text) return
   // 剪贴板两级策略收编进 useClipboard；失败不再谎报成功
-  const ok = await copy(text)
-  showToast(ok ? `已复制 ${label}: ${text}` : '复制失败')
+  await copyWithToast(text, `已复制 ${label}: ${text}`)
 }
 
 // 快捷 Ping：回填目标并跨 Tab 立即发起；探测经 runPing()（即 composable 的 run()），

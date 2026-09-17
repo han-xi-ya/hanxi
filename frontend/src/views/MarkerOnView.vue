@@ -33,7 +33,7 @@ const downloading = ref<Record<string, DownloadProgress>>({})
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 // 顶层主选项卡：annotate = 标注开关，versions = 版本管理（与 frpc 的 projects/versions 同构）
 const activeMainTab = ref<'annotate' | 'versions'>('annotate')
@@ -294,8 +294,7 @@ async function createShortcut() {
 
 async function copyRepo() {
   // 剪贴板两级策略（clipboard API + execCommand 回退）已收编进 useClipboard
-  const ok = await copy(repoUrl.value)
-  showToast(ok ? '仓库地址已复制' : '复制失败')
+  await copyWithToast(repoUrl.value, '仓库地址已复制')
 }
 
 async function openRepo() {

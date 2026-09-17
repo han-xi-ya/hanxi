@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useToast } from '../../composables/useToast'
 import { useClipboard } from '../../composables/useClipboard'
 
 const props = defineProps<{
@@ -8,8 +7,7 @@ const props = defineProps<{
   installed: boolean
 }>()
 
-const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const command = computed(() => props.tool === 'npm'
   ? 'npm install --global npm@latest'
@@ -22,8 +20,7 @@ const sourceHint = computed(() => props.tool === 'npm'
 async function copyCommand() {
   // 两级剪贴板策略收编进 useClipboard；成功文案逐字保留，失败文案收敛为固定话术
   //（useClipboard 无错误细节通道，原动态 message 罕达，登记为已接受微差）
-  const ok = await copy(command.value)
-  showToast(ok ? `已复制 ${props.tool} 升级命令` : '复制失败: 剪贴板不可用')
+  await copyWithToast(command.value, `已复制 ${props.tool} 升级命令`)
 }
 </script>
 

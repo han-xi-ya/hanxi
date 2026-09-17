@@ -37,7 +37,7 @@ const downloading = ref<Record<string, DownloadProgress>>({})
 const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { prompt } = usePrompt()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 frpc/markeron/everything 同构）
 const activeMainTab = ref('console')
@@ -277,11 +277,7 @@ async function createShortcut() {
 }
 
 async function copyRepo() {
-  if (await copy(repoUrl.value)) {
-    showToast('仓库地址已复制')
-  } else {
-    showToast('复制失败: execCommand 不可用')
-  }
+  await copyWithToast(repoUrl.value, '仓库地址已复制')
 }
 
 async function openRepo() {

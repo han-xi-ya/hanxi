@@ -8,7 +8,7 @@ import { usePolling } from '../composables/usePolling'
 import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const logFiles = shallowRef<LogFileInfo[]>([])
 const selectedFile = ref<string>('')
@@ -66,8 +66,7 @@ async function fetchContent(scrollBottom = false) {
 async function copyLogs() {
   if (!logContent.value) return
   // 修复说明：原实现 writeText 失败也谎报"已复制"（fire-and-forget），收编 useClipboard 后如实回执
-  const ok = await copy(logContent.value)
-  showToast(ok ? '日志内容已复制到剪贴板' : '复制失败')
+  await copyWithToast(logContent.value, '日志内容已复制到剪贴板')
 }
 
 async function openLogFolder() {

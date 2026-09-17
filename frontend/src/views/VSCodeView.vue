@@ -37,7 +37,7 @@ const downloading = ref<Record<string, DownloadProgress>>({})
 const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { prompt } = usePrompt()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const activeMainTab = ref<'console' | 'versions'>('console')
 const mainTabs = [
@@ -283,8 +283,7 @@ async function createShortcut() {
 }
 
 async function copySite() {
-  const ok = await copy(siteUrl.value)
-  showToast(ok ? '官网地址已复制' : '复制失败')
+  await copyWithToast(siteUrl.value, '官网地址已复制')
 }
 
 async function openSite() {

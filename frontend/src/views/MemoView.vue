@@ -13,7 +13,7 @@ import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
 
 // 状态定义
@@ -218,8 +218,7 @@ async function handleDeleteMemo(id: string) {
 
 // 剪贴板两级策略已收编进 useClipboard（toast 文案与原实现逐字一致）
 async function copyMemoContent(content: string) {
-  const ok = await copy(content)
-  showToast(ok ? '已复制便签内容到剪贴板' : '复制失败')
+  await copyWithToast(content, '已复制便签内容到剪贴板')
 }
 
 // memo:changed 由局域网投递/多端联动触发：setup 期订阅防丢早期事件，卸载自动注销

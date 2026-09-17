@@ -21,7 +21,7 @@ import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 
 const { showToast } = useToast()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
 
 // ---------- 状态 ----------
@@ -330,13 +330,11 @@ async function recognize() {
 }
 
 async function copyAll() {
-  const ok = await copy(outcome.value?.text || '')
-  showToast(ok ? '已复制全部文本' : '复制失败')
+  await copyWithToast(outcome.value?.text || '', '已复制全部文本')
 }
 
 async function copyLine(text: string) {
-  const ok = await copy(text)
-  showToast(ok ? '已复制该行' : '复制失败')
+  await copyWithToast(text, '已复制该行')
 }
 
 onMounted(() => {

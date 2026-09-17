@@ -16,7 +16,7 @@ import { useClipboard } from '../composables/useClipboard'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 // 顶层主选项卡：projects = 项目列表，versions = 版本管理
 const activeMainTab = ref('projects')
@@ -207,7 +207,7 @@ function exportProjectShareLink(p: Project) {
   const b64 = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))))
   const link = `frp://${b64}`
   // 剪贴板收编 useClipboard（两级回退）；分享链接编码逻辑不变
-  void copy(link).then((ok) => showToast(ok ? `已复制「${p.name}」分享链接 (frp://...)` : '复制失败'))
+  void copyWithToast(link, `已复制「${p.name}」分享链接 (frp://...)`)
 }
 
 function openImportModal() {
@@ -383,7 +383,7 @@ function resolveEndpoints(p: Project): ProxyEndpoint[] {
 function copyEndpoint(ep: ProxyEndpoint) {
   const text = ep.url || ep.remoteDisplay
   if (!text) return
-  void copy(text).then((ok) => showToast(ok ? `已复制: ${text}` : '复制失败'))
+  void copyWithToast(text, `已复制: ${text}`)
 }
 
 // ---------- 日志抽屉 ----------

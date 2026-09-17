@@ -185,8 +185,9 @@ describe('FileShareView 服务启停与配置', () => {
 describe('FileShareView 剪贴板与投递箱', () => {
   it('复制访问链接成功/失败文案逐字', async () => {
     stubHappy(statusOf({ isRunning: true, port: 8080 }))
-    // 机制迁移注记：复制改由 useClipboard 两级策略驱动——显式构造"安全上下文 + clipboard 可用"
-    // 使其走第①路；成功/失败 toast 文案仍逐字锁定。
+    // 机制迁移注记：复制改由 useClipboard.copyWithToast 驱动——显式构造"安全上下文 +
+    // clipboard 可用"使其走第①路；成功文案逐字锁定，失败话术按 PLAN_CLIPBOARD 统一为
+    // 「复制失败」（原「复制到剪贴板失败」随收口退役）。
     const write = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: write }, configurable: true })
     Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })
@@ -198,7 +199,7 @@ describe('FileShareView 剪贴板与投递箱', () => {
     write.mockImplementationOnce(() => Promise.reject(new Error('denied')))
     await wrapper.find('.endpoint-card .btn-secondary').trigger('click')
     await flushMicrotasks()
-    expect(useToast().toastMsg.value).toBe('复制到剪贴板失败')
+    expect(useToast().toastMsg.value).toBe('复制失败')
     wrapper.unmount()
   })
 

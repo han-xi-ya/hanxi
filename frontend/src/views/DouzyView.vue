@@ -27,7 +27,7 @@ const downloading = ref<Record<string, DownloadProgress>>({})
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 const repoUrl = ref('')
 
@@ -111,8 +111,7 @@ async function removeInstaller(v: DouzyVersionInfo) {
 }
 
 async function copyRepo() {
-  const ok = await copy(repoUrl.value)
-  showToast(ok ? '仓库地址已复制' : '复制失败')
+  await copyWithToast(repoUrl.value, '仓库地址已复制')
 }
 
 async function openRepo() {

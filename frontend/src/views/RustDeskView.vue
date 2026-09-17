@@ -35,7 +35,7 @@ const { busy, run } = useAsyncAction()
 const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { prompt } = usePrompt()
-const { copy } = useClipboard()
+const { copyWithToast } = useClipboard()
 
 // 下载进度 map（按版本索引）：便携与安装版通道独立（kind 分流，互不覆盖）
 const downloading = ref<Record<string, DownloadProgress>>({})
@@ -321,11 +321,7 @@ async function createShortcut() {
 }
 
 async function copyRepo() {
-  if (await copy(repoUrl.value)) {
-    showToast('仓库地址已复制')
-  } else {
-    showToast('复制失败')
-  }
+  await copyWithToast(repoUrl.value, '仓库地址已复制')
 }
 
 async function openRepo() {

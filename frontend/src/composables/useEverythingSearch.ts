@@ -126,7 +126,9 @@ export function useEverythingSearch(busy: Ref<boolean>) {
     }
   }
 
-  // 点击名称/路径单元格 = 复制完整路径（两级剪贴板策略经 useClipboard 收编）
+  // 点击名称/路径单元格 = 复制完整路径（两级剪贴板策略经 useClipboard 收编）。
+  // 有意例外（PLAN_CLIPBOARD §3.2C）：表格点击即复制交互范式，保留自管 toast，
+  // 不套 copyWithToast——登记勿改。
   async function copyResult(r: Result) {
     if (await copy(resultFullPath(r))) {
       showToast('已复制完整路径')
