@@ -52,7 +52,7 @@ func NewRufusService(plat platform.Platform) *RufusService {
 	svc := &RufusService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newRufusStore(paths.DataDir()),
+		store:   newRufusStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewRufusProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

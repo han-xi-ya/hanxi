@@ -52,7 +52,7 @@ func NewVSCodeService(plat platform.Platform) *VSCodeService {
 	svc := &VSCodeService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newVSCodeStore(paths.DataDir()),
+		store:   newVSCodeStore(paths.StateDir()),
 	}
 	svc.portableEngine = instance.NewEngine(plat.Job(),
 		instance.NewPortableProbe(paths.VersionsDir()),

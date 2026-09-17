@@ -8,7 +8,7 @@ import (
 )
 
 // bili23Store 持久化 Bili23 少量偏好：
-// 位置 <dataDir>/bili23.json，仅存 activeVersion（空串 = 未指定，冷启动自动回退最新已装）
+// 位置 <stateDir>/bili23.json，仅存 activeVersion（空串 = 未指定，冷启动自动回退最新已装）
 // 与 followOnExit（是否随 Hanxi 退出一起关闭自有实例）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 // 注意：本文件只存 Hanxi 侧的托管偏好，Bili23 自身配置恒在 %APPDATA%\Bili23 Downloader\，

@@ -41,7 +41,7 @@ func NewFrpcService(plat platform.Platform) *FrpcService {
 	svc := &FrpcService{
 		plat:      plat,
 		manager:   version.NewManager(paths.VersionsDir()),
-		store:     newFrpcStore(paths.DataDir()),
+		store:     newFrpcStore(paths.StateDir()),
 		runDir:    filepath.Join(paths.RuntimeDir(), "frpc"),
 		downloads: make(map[string]struct{}),
 	}

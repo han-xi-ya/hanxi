@@ -8,7 +8,7 @@ import (
 )
 
 // translucenttbStore 持久化 TranslucentTB 少量偏好：
-// 位置 <dataDir>/translucenttb.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）。
+// 位置 <stateDir>/translucenttb.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type translucenttbStore struct {
 	filePath      string

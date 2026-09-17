@@ -7,7 +7,7 @@ import (
 	"hanxi/internal/jsonstore"
 )
 
-// snipasteStore 模块私有小配置（data/snipaste.json）：目前仅持久化"当前使用版本"。
+// snipasteStore 模块私有小配置（state/snipaste.json）：目前仅持久化"当前使用版本"。
 // 读走 RLock；写经 SetActive 串行化并原子落盘（临时文件+Rename，公共核 internal/jsonstore）。
 type snipasteStore struct {
 	filePath      string

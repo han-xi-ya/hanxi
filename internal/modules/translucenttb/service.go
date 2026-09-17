@@ -46,7 +46,7 @@ func NewTranslucentTBService(plat platform.Platform) *TranslucentTBService {
 	svc := &TranslucentTBService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newTranslucentTBStore(paths.DataDir()),
+		store:   newTranslucentTBStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewTBProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

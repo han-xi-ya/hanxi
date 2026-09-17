@@ -14,7 +14,7 @@ import (
 const defaultListenPort = 53120
 
 // ocrStore 持久化 hanxi-ocr 服务托管偏好（双引擎注册表形态，计划 §5.2）：
-// 位置 <dataDir>/ocr.json，存——
+// 位置 <stateDir>/ocr.json，存——
 //   - engines.{wechat,paddle}：各引擎 {path, version} 注册件（path 空 = 自动发现，
 //     version 为导入时记录的组件版本，可空）；
 //   - active：活跃引擎（单端口、单活引擎语义），默认 wechat；

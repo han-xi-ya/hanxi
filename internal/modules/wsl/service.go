@@ -64,10 +64,10 @@ type WslService struct {
 	distroOps     map[string]string
 	heavyOps      int
 	exportRecords map[string]ExportRecord
-	// 端口转发规则持久化（<DataDir>/wsl-portproxy.json）。
+	// 端口转发规则持久化（<StateDir>/wsl-portproxy.json）。
 	ppPath    string
 	ppPending bool // 规则有增删改但尚未点「应用」挂到系统
-	// 安装落位偏好持久化（<DataDir>/wsl-install-pref.json）：
+	// 安装落位偏好持久化（<StateDir>/wsl-install-pref.json）：
 	// 取代前端 localStorage 的「空串粘滞、错路径粘 C、跨包各自为政」三坑，
 	// 详见 installdir.go 与 docs/TROUBLESHOOTING.md。
 	installPrefPath string
@@ -89,8 +89,8 @@ func NewWslService(opener urlOpener, paths *settings.Paths) *WslService {
 	rulesPath := ""
 	installPref := ""
 	if paths != nil {
-		rulesPath = filepath.Join(paths.DataDir(), "wsl-portproxy.json")
-		installPref = filepath.Join(paths.DataDir(), "wsl-install-pref.json")
+		rulesPath = filepath.Join(paths.StateDir(), "wsl-portproxy.json")
+		installPref = filepath.Join(paths.StateDir(), "wsl-install-pref.json")
 	}
 	return &WslService{
 		opener:          opener,

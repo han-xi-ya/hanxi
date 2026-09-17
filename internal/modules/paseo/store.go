@@ -9,7 +9,7 @@ import (
 )
 
 // paseoStore 持久化 Paseo 模块少量偏好：
-// 位置 <dataDir>/paseo.json，存 activeVersion、releaseChannel（stable/beta）与
+// 位置 <stateDir>/paseo.json，存 activeVersion、releaseChannel（stable/beta）与
 // followOnExit。多版本目录（versions/paseo_X.Y.Z）并存，activeVersion 空串 =
 // 未指定，冷启动自动回退最新已装（vscode 便携同款语义）。
 // 原子写（tmp+rename）与损坏容忍

@@ -60,7 +60,7 @@ func NewSubnetDeskService(plat platform.Platform) *SubnetDeskService {
 	svc := &SubnetDeskService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newSubnetDeskStore(paths.DataDir()),
+		store:   newSubnetDeskStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewSubnetDeskProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

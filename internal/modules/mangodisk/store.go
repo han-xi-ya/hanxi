@@ -8,7 +8,7 @@ import (
 )
 
 // mangoDiskStore 持久化 MangoDisk 少量偏好：
-// 位置 <dataDir>/mangodisk.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）。
+// 位置 <stateDir>/mangodisk.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type mangoDiskStore struct {
 	filePath      string

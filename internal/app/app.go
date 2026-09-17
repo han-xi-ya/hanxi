@@ -264,6 +264,12 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		}
 	}
 
+	// 数据根治理：把历史版本平铺在根目录的模块状态 JSON 收拢进 state/。
+	// 必须严格早于下方一切模块构造（store 构造即读盘）；InitLogger 已就位，
+	// 迁移告警能落日志文件。放在 takeover 等待之后，把 mixed-version 双开
+	// 的竞态窗口压到最小（迁移本身幂等、冲突不覆盖，竞态无损）。
+	settings.MigrateRootStateFiles(paths)
+
 	// 4. 初始化模块注册表并注入持久化 Store
 	registry := extapi.NewRegistry(store)
 

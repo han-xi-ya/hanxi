@@ -45,7 +45,7 @@ func NewQuickLookService(plat platform.Platform) *QuickLookService {
 	svc := &QuickLookService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newQuicklookStore(paths.DataDir()),
+		store:   newQuicklookStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewQuickLookProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

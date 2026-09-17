@@ -50,7 +50,7 @@ func NewPaperTodoService(plat platform.Platform) *PaperTodoService {
 	svc := &PaperTodoService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newPapertodoStore(paths.DataDir()),
+		store:   newPapertodoStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewPaperProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

@@ -8,7 +8,7 @@ import (
 )
 
 // quicklookStore 持久化 QuickLook 少量偏好：
-// 位置 <dataDir>/quicklook.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
+// 位置 <stateDir>/quicklook.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
 // 与 followOnExit。原子写（tmp+rename）与损坏容忍
 // （解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 // 注意与 QuickLook 自身的用户配置（便携目录内的 *.config，随 portable.lock 走）无关——

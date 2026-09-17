@@ -8,7 +8,7 @@ import (
 )
 
 // rufusStore 持久化 Rufus 少量偏好：
-// 位置 <dataDir>/rufus.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
+// 位置 <stateDir>/rufus.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
 // 与 followOnExit 开关。原子写（tmp+rename）与
 // 损坏容忍（解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type rufusStore struct {

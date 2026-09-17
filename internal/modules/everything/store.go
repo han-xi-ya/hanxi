@@ -8,7 +8,7 @@ import (
 )
 
 // everythingStore 持久化 Everything 模块少量偏好：
-// 位置 <dataDir>/everything.json，存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
+// 位置 <stateDir>/everything.json，存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
 // 与 followOnExit（是否随 Hanxi 退出一起关闭自有实例）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type everythingStore struct {

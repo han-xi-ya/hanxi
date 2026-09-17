@@ -52,7 +52,7 @@ func NewLiteMonitorService(plat platform.Platform) *LiteMonitorService {
 	svc := &LiteMonitorService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newLiteMonitorStore(paths.DataDir()),
+		store:   newLiteMonitorStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewLiteMonitorProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

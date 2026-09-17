@@ -9,7 +9,7 @@ import (
 )
 
 // papertodoStore 持久化 PaperTodo 少量偏好：
-// 位置 <dataDir>/papertodo.json，存 variant（下载运行库变体）与 followOnExit。
+// 位置 <stateDir>/papertodo.json，存 variant（下载运行库变体）与 followOnExit。
 // 单版本覆盖布局无 activeVersion 概念（托管目录至多一版）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按默认配置继续，不阻断模块）收口至 internal/jsonstore。
 type papertodoStore struct {

@@ -8,7 +8,7 @@ import (
 )
 
 // ccswitchStore 持久化 CC Switch 少量偏好：
-// 位置 <dataDir>/ccswitch.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）。
+// 位置 <stateDir>/ccswitch.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type ccswitchStore struct {
 	filePath      string

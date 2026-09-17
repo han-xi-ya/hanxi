@@ -61,7 +61,7 @@ func NewRustDeskService(plat platform.Platform) *RustDeskService {
 	svc := &RustDeskService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newRustDeskStore(paths.DataDir()),
+		store:   newRustDeskStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewRustDeskProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

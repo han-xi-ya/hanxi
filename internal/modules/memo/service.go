@@ -23,7 +23,7 @@ type MemoService struct {
 
 // NewMemoService 实例化便签服务
 func NewMemoService(paths *settings.Paths) (*MemoService, error) {
-	memoPath := filepath.Join(paths.DataDir(), "memo.json")
+	memoPath := filepath.Join(paths.StateDir(), "memo.json")
 	store, err := NewStore(memoPath)
 	if err != nil {
 		return nil, err

@@ -52,7 +52,7 @@ func NewFlClashService(plat platform.Platform) *FlClashService {
 	svc := &FlClashService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newFlClashStore(paths.DataDir()),
+		store:   newFlClashStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewFlClashProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

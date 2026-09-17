@@ -35,7 +35,7 @@ func NewSnipasteService(plat platform.Platform) *SnipasteService {
 	paths := settings.GetPaths()
 	svc := &SnipasteService{
 		plat: plat, manager: version.NewManager(paths.VersionsDir()),
-		store: newSnipasteStore(paths.DataDir()), downloads: make(map[string]struct{}),
+		store: newSnipasteStore(paths.StateDir()), downloads: make(map[string]struct{}),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), plat.Process(), instance.Callbacks{OnState: svc.emitInstanceState})
 	return svc

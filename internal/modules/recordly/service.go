@@ -70,7 +70,7 @@ func NewRecordlyService(plat platform.Platform) *RecordlyService {
 			}
 			return dir
 		}),
-		store: newRecordlyStore(paths.DataDir()),
+		store: newRecordlyStore(paths.StateDir()),
 	}
 	svc.lastActivity = time.Now()
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewRecordlyProbe(), instance.Callbacks{

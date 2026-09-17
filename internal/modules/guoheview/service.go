@@ -45,7 +45,7 @@ func NewGuoheViewService(plat platform.Platform) *GuoheViewService {
 	svc := &GuoheViewService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newGuoheviewStore(paths.DataDir()),
+		store:   newGuoheviewStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewViewProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

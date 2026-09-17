@@ -44,7 +44,7 @@ type MangoDiskService struct {
 func NewMangoDiskService(plat platform.Platform) *MangoDiskService {
 	paths := settings.GetPaths()
 	svc := &MangoDiskService{
-		plat: plat, manager: version.NewManager(paths.VersionsDir()), store: newMangoDiskStore(paths.DataDir()),
+		plat: plat, manager: version.NewManager(paths.VersionsDir()), store: newMangoDiskStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewMangoDiskProbe(), instance.Callbacks{OnState: svc.emitInstanceState})
 	return svc

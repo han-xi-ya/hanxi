@@ -9,7 +9,7 @@ import (
 )
 
 // rustdeskStore 持久化 RustDesk 少量偏好：
-// 位置 <dataDir>/rustdesk.json，存 activeVersion（空字符串 = 未指定，冷启动自动
+// 位置 <stateDir>/rustdesk.json，存 activeVersion（空字符串 = 未指定，冷启动自动
 // 回退最新已装）、activeForm（portable/installed，旧配置无此字段按 portable 兼容
 // 读取——两形态版本号可同值，必须成对落盘才无歧义）与 followOnExit。
 // 原子写（tmp+rename）与损坏容忍收口至 internal/jsonstore。

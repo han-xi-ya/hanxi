@@ -57,7 +57,7 @@ func NewCCSwitchService(plat platform.Platform) *CCSwitchService {
 	svc := &CCSwitchService{
 		plat:      plat,
 		manager:   version.NewManager(paths.VersionsDir()),
-		store:     newCCSwitchStore(paths.DataDir()),
+		store:     newCCSwitchStore(paths.StateDir()),
 		downloads: make(map[string]struct{}),
 	}
 	svc.lastActivity = time.Now()

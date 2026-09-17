@@ -9,7 +9,7 @@ import (
 )
 
 // recordlyStore 持久化 Recordly 模块少量偏好：
-// 位置 <dataDir>/recordly.json，存 releaseChannel（stable/beta）与 followOnExit。
+// 位置 <stateDir>/recordly.json，存 releaseChannel（stable/beta）与 followOnExit。
 // 无 activeVersion——NSIS oneClick 安装器语义决定托管目录恒为单一
 // versions/recordly（多版本共存形同虚设，详见 version.Manager 包注释），
 // "当前版本"由安装目录实测得出。

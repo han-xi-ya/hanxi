@@ -45,7 +45,7 @@ func NewMarkerOnService(plat platform.Platform) *MarkerOnService {
 	svc := &MarkerOnService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newMarkeronStore(paths.DataDir()),
+		store:   newMarkeronStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewMarkerProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

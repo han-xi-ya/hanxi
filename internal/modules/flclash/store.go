@@ -8,7 +8,7 @@ import (
 )
 
 // flclashStore 持久化 FlClash 少量偏好：
-// 位置 <dataDir>/flclash.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）。
+// 位置 <stateDir>/flclash.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type flclashStore struct {
 	filePath      string

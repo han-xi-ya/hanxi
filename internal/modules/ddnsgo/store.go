@@ -12,7 +12,7 @@ import (
 const defaultListenPort = 9876
 
 // ddnsgoStore 持久化 ddns-go 托管偏好：
-// 位置 <dataDir>/ddnsgo.json，存 activeVersion（空 = 未指定，冷启动回退最新已装）、
+// 位置 <stateDir>/ddnsgo.json，存 activeVersion（空 = 未指定，冷启动回退最新已装）、
 // listenPort（web 监听端口）、followOnExit（随 Hanxi 退出开关联动）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按默认值继续）收口至 internal/jsonstore。
 type ddnsgoStore struct {

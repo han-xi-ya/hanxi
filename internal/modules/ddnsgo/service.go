@@ -64,7 +64,7 @@ func NewDdnsGoService(plat platform.Platform) *DdnsGoService {
 	svc := &DdnsGoService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newDdnsgoStore(paths.DataDir()),
+		store:   newDdnsgoStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

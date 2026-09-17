@@ -57,7 +57,7 @@ func NewPaseoService(plat platform.Platform) *PaseoService {
 	svc := &PaseoService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newPaseoStore(paths.DataDir()),
+		store:   newPaseoStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewPaseoProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

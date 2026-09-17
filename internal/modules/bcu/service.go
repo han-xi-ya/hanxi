@@ -47,7 +47,7 @@ func NewBCUService(plat platform.Platform) *BCUService {
 	svc := &BCUService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newBCUStore(paths.DataDir()),
+		store:   newBCUStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewBCUProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

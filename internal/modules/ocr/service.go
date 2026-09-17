@@ -61,6 +61,9 @@ type OcrService struct {
 	card     *application.WebviewWindow
 	lastSnip SnipResult
 
+	cardDragMu   sync.Mutex    // 悬浮卡拖拽会话：同一时刻至多一个跟手 goroutine
+	cardDragStop chan struct{} // 非 nil 表示拖拽进行中
+
 	mu        sync.Mutex
 	probe     probeCache
 	lastEmit  ServiceState // 上一次广播的状态（去重防抖）
@@ -85,9 +88,11 @@ func NewOcrService(plat platform.Platform) *OcrService {
 	paths := settings.GetPaths()
 	svc := &OcrService{
 		plat:    plat,
-		store:   newOcrStore(paths.DataDir()),
+		store:   newOcrStore(paths.StateDir()),
 		client:  &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
 		exeDir:  exeDirOf(),
+		// dataDir 是 ocr-engines/ 引擎组件的发现锚（二进制目录，非状态文件，
+		// 不随 state/ 收纳走），保持指数据根。
 		dataDir: paths.DataDir(),
 		tmpDir:  filepath.Join(paths.RuntimeDir(), "ocr"),
 		snip:    snip.New(),

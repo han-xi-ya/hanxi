@@ -51,7 +51,7 @@ func NewKeyvizService(plat platform.Platform) *KeyvizService {
 	svc := &KeyvizService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newKeyvizStore(paths.DataDir()),
+		store:   newKeyvizStore(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewKeyvizProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,

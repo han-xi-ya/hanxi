@@ -58,7 +58,7 @@ func NewPicLiteService(plat platform.Platform) *PicLiteService {
 	svc := &PicLiteService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newPicliteStore(paths.DataDir()),
+		store:   newPicliteStore(paths.StateDir()),
 	}
 	svc.lastActivity = time.Now()
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewPicProbe(), instance.Callbacks{

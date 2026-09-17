@@ -18,7 +18,7 @@ const dpapiPrefix = "dpapi:"
 
 // frpcStore 项目存储：以单 JSON 文件原子读写持久化全部 frpc 项目
 // （原子写公共核 internal/jsonstore；本项目刻意取"损坏即报错、禁止以空库覆盖落盘文件"的严格策略）。
-// 位置：<dataDir>/frpc/projects.json（与版本隔离目录同根，方便整体拷贝搬迁）。
+// 位置：<stateDir>/projects.json（历史版本平铺在数据根，启动时自动迁移，见 internal/settings/state_migrate.go）。
 type frpcStore struct {
 	filePath string
 	mu       sync.RWMutex

@@ -8,7 +8,7 @@ import (
 )
 
 // keyvizStore 持久化 Keyviz 少量偏好：
-// 位置 <dataDir>/keyviz.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
+// 位置 <stateDir>/keyviz.json，仅存 activeVersion（空字符串 = 未指定，冷启动自动回退最新已装）
 // 与 followOnExit。原子写（tmp+rename）与损坏容忍
 // （解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 // 注意与 Keyviz 自身的用户配置（%APPDATA%\org.keyviz\store.json）无关——

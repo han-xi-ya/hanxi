@@ -8,7 +8,7 @@ import (
 )
 
 // vscodeStore 持久化 VS Code 少量偏好：
-// 位置 <dataDir>/vscode.json，activeVersion 仅对便携版有意义（空字符串 = 未指定，
+// 位置 <stateDir>/vscode.json，activeVersion 仅对便携版有意义（空字符串 = 未指定，
 // 冷启动自动回退最新已装便携版）；安装版无"选版本"概念（本机恒一份，版本随安装升级）。
 // 原子写（tmp+rename）与损坏容忍（解析失败按空配置继续，不阻断模块）收口至 internal/jsonstore。
 type vscodeStore struct {

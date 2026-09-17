@@ -55,7 +55,7 @@ func NewService(plat platform.Platform) *Service {
 	svc := &Service{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
-		store:   newBili23Store(paths.DataDir()),
+		store:   newBili23Store(paths.StateDir()),
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewBili23Probe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
