@@ -23,6 +23,11 @@
   --color-primary-soft: rgba(15, 139, 141, 0.1);
   --color-on-primary: #ffffff;
 
+  /* 外壳层（Fluent 式）：DWM 标题栏 + 双栏导航共用底色，与内容区分离；
+   * 原生窗框配色在 internal/platform/windows/darkmode.go 表内同步（改此处必改彼处） */
+  --surface-chrome: #e9f5f5;
+  --surface-chrome-hover: #d9e5e6;
+
   /* 表面四层 + 选中态 */
   --surface-page: #f3f7f8;
   --surface-panel: #ffffff;
@@ -142,6 +147,8 @@
   --color-primary-soft: rgba(66, 183, 180, 0.13);
   --color-on-primary: #052326;
 
+  --surface-chrome: #0b181d;
+  --surface-chrome-hover: #202c30;
   --surface-page: #071318;
   --surface-panel: #0e1c22;
   --surface-soft: #12252c;
@@ -192,6 +199,8 @@
   --color-primary-soft: rgba(0, 100, 181, 0.1);
   --color-on-primary: #ffffff;
 
+  --surface-chrome: #e8f1f8;
+  --surface-chrome-hover: #d8e1e8;
   --surface-page: #f1f5fa;
   --surface-panel: #ffffff;
   /* soft 由 #f7f9fc 下压一档（OKLCH L .982→.979）：panel→soft 感知台阶 ≥ΔL.02（v2.1 复审修案） */
@@ -220,6 +229,8 @@
   --color-primary-soft: rgba(78, 189, 247, 0.15);
   --color-on-primary: #00243e;
 
+  --surface-chrome: #1a2026;
+  --surface-chrome-hover: #2d3338;
   --surface-page: #151a20;
   --surface-panel: #1f252c;
   --surface-soft: #2a3139;
@@ -249,6 +260,8 @@
   --color-primary-soft: rgba(103, 65, 202, 0.1);
   --color-on-primary: #ffffff;
 
+  --surface-chrome: #ece7f9;
+  --surface-chrome-hover: #ddd8e9;
   --surface-page: #f4f2f9;
   --surface-panel: #ffffff;
   --surface-soft: #f9f7fd;
@@ -276,6 +289,8 @@
   --color-primary-soft: rgba(187, 169, 250, 0.15);
   --color-on-primary: #27124b;
 
+  --surface-chrome: #201c27;
+  --surface-chrome-hover: #332f39;
   --surface-page: #1a1620;
   --surface-panel: #25212e;
   --surface-soft: #312c3a;
@@ -304,6 +319,8 @@
   --color-primary-soft: rgba(0, 104, 105, 0.1);
   --color-on-primary: #ffffff;
 
+  --surface-chrome: #e8f1f2;
+  --surface-chrome-hover: #d8e1e2;
   --surface-page: #eef6f6;
   --surface-panel: #ffffff;
   --surface-soft: #f3f9f9;
@@ -331,6 +348,8 @@
   --color-primary-soft: rgba(93, 209, 207, 0.15);
   --color-on-primary: #002525;
 
+  --surface-chrome: #142121;
+  --surface-chrome-hover: #283434;
   --surface-page: #0f1b1b;
   --surface-panel: #192626;
   --surface-soft: #233232;
@@ -359,6 +378,8 @@
   --color-primary-soft: rgba(6, 73, 184, 0.12);
   --color-on-primary: #ffffff;
 
+  --surface-chrome: #dce6f5;
+  --surface-chrome-hover: #ccd6e4;
   --surface-page: #f2f7fc;
   --surface-panel: #ffffff;
   --surface-soft: #eef2f6;
@@ -395,6 +416,8 @@
   --color-primary-soft: rgba(121, 183, 255, 0.16);
   --color-on-primary: #04223f;
 
+  --surface-chrome: #090c11;
+  --surface-chrome-hover: #1e2125;
   --surface-page: #05070a;
   --surface-panel: #0d1117;
   --surface-soft: #141a22;

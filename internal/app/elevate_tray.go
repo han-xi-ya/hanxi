@@ -68,12 +68,13 @@ func (s *AppService) RestartElevated(route string) error {
 	return nil
 }
 
-// SetWindowDarkMode 切换主窗口原生标题栏亮/暗（DWM ImmersiveDarkMode）。
-func (s *AppService) SetWindowDarkMode(dark bool) error {
+// SetWindowDarkMode 切换主窗口原生标题栏亮/暗（DWM ImmersiveDarkMode），
+// 并按色板（teal|sky|iris|jade|onyx）同步外壳层配色（Win11 caption/text）。
+func (s *AppService) SetWindowDarkMode(dark bool, accent string) error {
 	if s.windowDark == nil {
 		return nil // 窗口未就绪（启动早期/装配缺失）时静默降级
 	}
-	return s.windowDark(dark)
+	return s.windowDark(dark, accent)
 }
 
 // TrayMenuOption 设置页可选的托盘菜单候选项（托管命令与扩展页面导航）。

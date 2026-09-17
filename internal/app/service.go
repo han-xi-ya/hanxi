@@ -41,8 +41,8 @@ type AppService struct {
 	registry    *extapi.Registry
 	store       *settings.Store
 	trayRebuild func() // 托盘菜单热重建回调（由装配根注入，可能为 nil）
-	// windowDark 主窗口标题栏深色应用回调（由装配根在窗口创建后注入，可能为 nil）。
-	windowDark func(dark bool) error
+	// windowDark 主窗口标题栏深色/色板应用回调（由装配根在窗口创建后注入，可能为 nil）。
+	windowDark func(dark bool, accent string) error
 }
 
 // NewAppService 创建基础服务。trayRebuild / windowDark 回调此时为 nil，

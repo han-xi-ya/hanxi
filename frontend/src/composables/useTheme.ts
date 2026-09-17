@@ -1,7 +1,8 @@
 // 主题单例 composable（docs/FRONTEND.md §7.2）——明暗轴（theme）与色板轴（accent）的唯一读写入口。
 // 真相源 = 后端 settings（AppSettings.Theme / AppSettings.Accent，随便携 data/ 迁移）；
 // localStorage 仅作首帧缓存：mount 前同步应用防闪白，启动后以后端为准校正。
-// 标题栏深色经 AppService.SetWindowDarkMode 桥到 Win32 DWM（前端管不到原生窗框）；色板只关内容面，不关标题栏。
+// 标题栏经 AppService.SetWindowDarkMode 桥到 Win32 DWM（前端管不到原生窗框）：
+// 明暗 + 色板双轴一并同步，标题栏底色对齐 --surface-chrome 外壳层。
 import { computed, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
@@ -55,11 +56,15 @@ function applyToDom(mode: ThemeMode, systemDark: boolean): 'light' | 'dark' {
   const el = document.documentElement
   el.dataset.theme = resolved
   el.style.colorScheme = resolved
-  // 原生标题栏跟随（启动早期窗口未就绪/非 Windows 平台时静默失败即可）
-  AppAPI.AppService.SetWindowDarkMode(resolved === 'dark').catch(() => {
+  syncWindowChrome(resolved)
+  return resolved
+}
+
+/** 原生标题栏跟随双轴（启动早期窗口未就绪/非 Windows 平台时静默失败即可）。 */
+function syncWindowChrome(resolved: 'light' | 'dark') {
+  AppAPI.AppService.SetWindowDarkMode(resolved === 'dark', accent.value).catch(() => {
     /* DWM 桥降级：内容主题仍正确 */
   })
-  return resolved
 }
 
 function applyAccentToDom(accent: AccentMode) {
@@ -84,6 +89,8 @@ watch([themeMode, systemDark], () => {
 watch(accent, (value) => {
   writeAccentCache(value)
   applyAccentToDom(value)
+  // 标题栏外壳配色随色板联动（壳底 --surface-chrome 各色板不同）
+  syncWindowChrome(resolvedTheme.value)
 })
 
 /** 在 createApp 前调用：先用缓存同步定主题（明暗 + 色板），再异步以后端为准校正。 */

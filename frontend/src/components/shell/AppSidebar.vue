@@ -355,7 +355,8 @@ function iconSvg(icon: string | undefined): IconName | null {
 .sidebar {
   width: auto;
   flex: 0 0 auto;
-  background: var(--surface-panel);
+  /* 外壳层：双栏共用壳底，与 DWM 标题栏同色（flyout/抽屉浮层仍用 panel 保持抬起感） */
+  background: var(--surface-chrome);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: row;
@@ -399,7 +400,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 }
 
 .panel-collapse-btn:hover {
-  background: var(--surface-hover);
+  background: var(--surface-chrome-hover);
   color: var(--color-text);
 }
 
@@ -480,7 +481,7 @@ function iconSvg(icon: string | undefined): IconName | null {
 }
 
 .mod:hover {
-  background: var(--surface-hover);
+  background: var(--surface-chrome-hover);
   color: var(--color-text);
 }
 

@@ -201,7 +201,8 @@ function toggleExpanded() {
 .rail {
   width: 64px;
   flex: 0 0 64px;
-  background: var(--surface-panel);
+  /* 外壳层：与 DWM 标题栏同色（--surface-chrome 双轴联动），与内容区分离 */
+  background: var(--surface-chrome);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
@@ -287,7 +288,7 @@ function toggleExpanded() {
 }
 
 .rail-btn:hover {
-  background: var(--surface-hover);
+  background: var(--surface-chrome-hover);
   color: var(--color-text);
 }
 
@@ -334,7 +335,7 @@ function toggleExpanded() {
   height: 7px;
   border-radius: 50%;
   background: var(--state-positive);
-  box-shadow: 0 0 0 2.5px var(--surface-panel), 0 0 6px var(--state-positive-glow);
+  box-shadow: 0 0 0 2.5px var(--surface-chrome), 0 0 6px var(--state-positive-glow);
 }
 
 /* 未读徽标（右上） */
@@ -354,7 +355,7 @@ function toggleExpanded() {
   justify-content: center;
   padding: 0 4px;
   line-height: 1;
-  box-shadow: 0 0 0 2.5px var(--surface-panel);
+  box-shadow: 0 0 0 2.5px var(--surface-chrome);
 }
 
 .rail-bottom {

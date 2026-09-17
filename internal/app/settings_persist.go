@@ -54,8 +54,8 @@ func (s *AppService) SetGeneralSettings(gen GeneralSettings) error {
 // SetTrayRebuilder 注入托盘菜单热重建回调，仅由装配根（app.New）在托盘创建后调用。
 func (s *AppService) SetTrayRebuilder(fn func()) { s.trayRebuild = fn }
 
-// SetWindowDarkApplier 注入主窗口标题栏深色应用回调，仅由装配根（app.New）在窗口创建后调用。
-func (s *AppService) SetWindowDarkApplier(fn func(dark bool) error) { s.windowDark = fn }
+// SetWindowDarkApplier 注入主窗口标题栏深色/色板应用回调，仅由装配根（app.New）在窗口创建后调用。
+func (s *AppService) SetWindowDarkApplier(fn func(dark bool, accent string) error) { s.windowDark = fn }
 
 // GetTheme 返回持久化的主题模式："light" | "dark" | "system"（异常/未设置回退浅色）。
 func (s *AppService) GetTheme() string {

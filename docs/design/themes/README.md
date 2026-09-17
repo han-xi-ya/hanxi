@@ -31,7 +31,18 @@ OKLCH 感知色阶标定（生成器可复现）、mica 深色石墨面（L≈0.
 2. 选中行上表达状态语义**必须走 chip 软底**，禁裸着色字（浅模式族债下裸字不可读）；
 3. 裸 hex 仍只准出现在 `tokens.css`；设置页色板预览圆点是登记在 `ThemeSection.vue` 注释里的唯一豁免（预览点必须独立于当前主题）。
 
-## 4. 遗留议题（待拍板，非阻塞）
+## 4. 外壳层 --surface-chrome（2026-09-17 追加，已落地）
+
+DWM 标题栏与双栏导航共用一层壳底（浅色 ≈ 主色混白 9%，深色 = page/panel 中点），
+内容区自 page→panel 浮起，左半 + 顶部连成 Fluent 式"壳"。各色板两态共 10 组值在
+`tokens.css`；原生窗框侧的镜像表在 `internal/platform/windows/darkmode.go`——
+**改 chrome/text 值必须两处分头同步**（表旁有纪律注释）。壳上导航 hover 用专用
+`--surface-chrome-hover`（浅 = 壳底混 7.5% 文字色 / 深 = 混 8.5% 白），不得借内容层
+`--surface-hover`（壳面上台阶不足）。链路：设置页/侧栏切换 → `useTheme` →
+`SetWindowDarkMode(dark, accent)` → DWM caption/text；启动按持久化值预应用防白闪。
+预览页 mock 顶部已画假标题栏直观看壳效果（`preview.html`）。
+
+## 5. 遗留议题（待拍板，非阻塞）
 
 - ~~R1 全族共债~~ **已修**（2026-09-17）：浅模式绿/黄/红深一档（`#067d4d`/`#955e00`/`#b33736`），危险软底提亮 `#fdf0ee` 补偿，chip 文字 4.54–5.37 全过 AA；色相不动、深模式与 onyx（自带覆写）不受影响。信息蓝 4.47 贴线放行。
 - **真机目视**：构建与单测全绿（vue-tsc + vite + 831 用例 + go build/vet/test），但未运行 Wails 实机核 sky/jade 强染色选中行的观感。

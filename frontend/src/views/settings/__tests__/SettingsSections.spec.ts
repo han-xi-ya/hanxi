@@ -110,7 +110,8 @@ describe('外观主题分区', () => {
     expect(resolvedTheme.value).toBe('dark')
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(appSvc.SetTheme).toHaveBeenCalledWith('dark')
-    expect(appSvc.SetWindowDarkMode).toHaveBeenCalledWith(true)
+    // 双轴同步：明暗 + 当前色板（标题栏外壳配色随色板）
+    expect(appSvc.SetWindowDarkMode).toHaveBeenCalledWith(true, 'teal')
     // 复位防串扰
     themeMode.value = 'light'
   })

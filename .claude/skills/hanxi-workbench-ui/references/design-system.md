@@ -17,6 +17,7 @@ Use role-based tokens. Components must not depend on theme-specific literals.
 
 | Role | Light | Dark | Purpose |
 |---|---:|---:|---|
+| `chrome` | `#e9f5f5` | `#0b181d` | Shell layer: DWM titlebar + dual-rail nav share this tone; caption colors mirror in `internal/platform/windows/darkmode.go` table (sync both). Hover on chrome uses `chrome-hover` (light ≈ chrome mixed 7.5% with text; dark ≈ chrome mixed 8.5% with white), never `hover` |
 | `page` | `#f3f7f8` | `#071318` | Application canvas |
 | `page-accent` | `#e6f3f2` | `#0b2326` | Optional low-contrast ambient glow |
 | `surface` | `#ffffff` | `#0e1c22` | Main panels and cards |
