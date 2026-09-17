@@ -30,6 +30,10 @@ const svc = vi.hoisted(() => ({
   ImportPaddleDirDialog: vi.fn(),
   GetEngines: vi.fn(),
   SetActiveEngine: vi.fn(),
+  ListHostedVersions: vi.fn(),
+  InstallHostedZip: vi.fn(),
+  InstallHostedZipDialog: vi.fn(),
+  UninstallHostedVersion: vi.fn(),
   HandleNativeDrop: vi.fn(),
   SnipAndRecognize: vi.fn(),
   RecognizeClipboardImage: vi.fn(),
@@ -88,9 +92,10 @@ const paddleInstalled = {
   path: 'D:\\ocr\\hanxi-ocr-paddle\\hanxi-ocr.exe', auto: false, error: '',
 }
 
-function stubStatus(st = stoppedState, engs: Array<Record<string, unknown>> = [{ ...wechatEngine }, { ...paddleMissing }]) {
+function stubStatus(st = stoppedState, engs: Array<Record<string, unknown>> = [{ ...wechatEngine }, { ...paddleMissing }], hosted: Array<Record<string, unknown>> = []) {
   svc.GetStatus.mockResolvedValue({ ...st })
   svc.GetEngines.mockResolvedValue(engs.map((e) => ({ ...e })))
+  svc.ListHostedVersions.mockResolvedValue(hosted.map((v) => ({ ...v })))
   svc.GetListenPort.mockResolvedValue(53120)
   svc.GetFollowOnExit.mockResolvedValue(true)
   svc.GetAutoCopy.mockResolvedValue(true)
@@ -234,13 +239,14 @@ describe('OcrView 组件导入', () => {
     wrapper.unmount()
   })
 
-  it('点击导入区走对话框通道（提示统一由回执事件负责）', async () => {
+  it('点击导入区走 zip 托管安装对话框（提示统一由回执事件负责）', async () => {
     stubStatus(runningState)
     const wrapper = await mountView()
     await wrapper.findAll('.btn').find((b) => b.text().includes('服务设置'))!.trigger('click')
     await wrapper.find('#ocr-import-target').trigger('click')
     await flushPromises()
-    expect(svc.ImportServiceExeDialog).toHaveBeenCalledTimes(1)
+    expect(svc.InstallHostedZipDialog).toHaveBeenCalledTimes(1)
+    expect(svc.ImportServiceExeDialog).not.toHaveBeenCalled() // 微信 exe 对话框已归引擎行「更换组件」
     expect(useToast().toastMsg.value).toBeFalsy() // 回执未回，不抢提示
     wrapper.unmount()
   })
@@ -412,15 +418,126 @@ describe('OcrView 引擎列表（双引擎并存）', () => {
     wrapper.unmount()
   })
 
-  it('微信引擎行「导入组件」走文件框（对话框通道），拖入区保留原生目录/文件双接受面', async () => {
+  it('微信引擎行「更换组件」走文件框（对话框通道）；导入区文案改指 zip 托管通道', async () => {
     const wrapper = await mountWith(runningState, [{ ...wechatEngine }, { ...paddleInstalled }])
     await rowBtn(wrapper, 0, '更换组件').trigger('click')
     await flushPromises()
     expect(svc.ImportServiceExeDialog).toHaveBeenCalledTimes(1)
     const zone = wrapper.find('#ocr-import-target')
     expect(zone.attributes('data-file-drop-target')).toBe('true')
-    expect(zone.text()).toContain('PP-OCR') // 接受面文案覆盖目录件
-    expect(zone.text()).toContain('hanxi-ocr.exe')
+    expect(zone.text()).toContain('.zip') // 托管通道主推文案
+    expect(zone.text()).toContain('.sha256')
+    wrapper.unmount()
+  })
+})
+
+describe('OcrView 托管版本（F7 zip 安装 / 列表 / 卸载）', () => {
+  const hv = (over: Record<string, unknown>) => ({
+    engine: 'wechat', version: '4.1.15.9',
+    dir: 'C:\\hx\\versions\\hanxi-ocr\\wechat-4.1.15.9',
+    exePath: 'C:\\hx\\versions\\hanxi-ocr\\wechat-4.1.15.9\\hanxi-ocr.exe',
+    size: 50 * 1024 * 1024, installedAt: '2026-09-18 10:00:00',
+    note: '微信 4.0 离线 OCR 引擎', state: 'ready', effective: false, error: '',
+    ...over,
+  })
+  const hostedFixture = [
+    hv({}), hv({ version: '4.1.9.0', state: 'broken', error: '入口文件缺失或损坏' }),
+    hv({ engine: 'paddle', version: '0.4.0-alpha', effective: true, size: 36 * 1024 * 1024 }),
+  ]
+
+  async function mountHosted(st: Record<string, unknown> = runningState) {
+    stubStatus(st as never, [{ ...wechatEngine }, { ...paddleInstalled }], hostedFixture)
+    const wrapper = await mountView()
+    const toggle = wrapper.findAll('.btn').find((b) => /服务设置|收起设置/.test(b.text()))!
+    if (toggle.attributes('aria-expanded') !== 'true') await toggle.trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+
+  it('引擎行内子表：版本/生效徽标/大小/时间渲染，损坏版给危险徽标；按引擎归属分流', async () => {
+    const wrapper = await mountHosted()
+    const rows = wrapper.findAll('.ocr-engine-row')
+    const wechatHv = rows[0].findAll('.ocr-hosted-row')
+    const paddleHv = rows[1].findAll('.ocr-hosted-row')
+    expect(wechatHv).toHaveLength(2)
+    expect(paddleHv).toHaveLength(1)
+    expect(wechatHv[0].text()).toContain('4.1.15.9')
+    expect(wechatHv[0].text()).toContain('2026-09-18')
+    expect(wechatHv[1].text()).toContain('损坏')
+    expect(paddleHv[0].text()).toContain('0.4.0-alpha')
+    expect(paddleHv[0].text()).toContain('生效') // 生效徽标只落在 effective 行
+    expect(wechatHv[0].text()).not.toContain('生效')
+    wrapper.unmount()
+  })
+
+  it('卸载走确认框：确认后调 UninstallHostedVersion 并全量刷新', async () => {
+    svc.UninstallHostedVersion.mockResolvedValue({ action: 'uninstalled', external: false, message: '已卸载 微信引擎 v4.1.15.9' })
+    const wrapper = await mountHosted()
+    const { confirmState, settleConfirm } = useConfirm()
+    await wrapper.findAll('.ocr-hosted-uninstall')[0].trigger('click')
+    await flushPromises()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.description).toContain('installers/') // 非生效版：说明包原件保留可重装
+    settleConfirm(true)
+    await settle()
+    expect(svc.UninstallHostedVersion).toHaveBeenCalledWith('wechat', '4.1.15.9')
+    expect(useToast().toastMsg.value).toContain('已卸载')
+    wrapper.unmount()
+  })
+
+  it('生效版本卸载确认文案带降级说明；取消确认不卸', async () => {
+    const wrapper = await mountHosted()
+    const { confirmState, settleConfirm } = useConfirm()
+    await wrapper.findAll('.ocr-hosted-uninstall')[2].trigger('click') // paddle 生效行
+    await flushPromises()
+    expect(confirmState.options.description).toContain('当前生效')
+    settleConfirm(false)
+    await settle()
+    expect(svc.UninstallHostedVersion).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('在用拒卸：后端 refused-in-use 的中文指引原样直出，不静默', async () => {
+    svc.UninstallHostedVersion.mockResolvedValue({
+      action: 'refused-in-use', external: false,
+      message: 'PP-OCR 开源引擎 v0.4.0-alpha 正在被识别服务使用，无法卸载；请先停止服务（或切换到其他引擎）再卸载',
+    })
+    const wrapper = await mountHosted()
+    const { confirmState, settleConfirm } = useConfirm()
+    await wrapper.findAll('.ocr-hosted-uninstall')[2].trigger('click')
+    await flushPromises()
+    settleConfirm(true)
+    await settle()
+    expect(confirmState.open).toBe(false)
+    expect(useToast().toastMsg.value).toContain('正在被识别服务使用')
+    wrapper.unmount()
+  })
+
+  it('「安装引擎包…」走 zip 对话框；成功回执经事件刷新列表与状态', async () => {
+    const wrapper = await mountHosted()
+    await wrapper.findAll('.btn').find((b) => b.text().includes('安装引擎包'))!.trigger('click')
+    await flushPromises()
+    expect(svc.InstallHostedZipDialog).toHaveBeenCalledTimes(1)
+
+    const enginesBefore = svc.GetEngines.mock.calls.length
+    const hostedBefore = svc.ListHostedVersions.mock.calls.length
+    runtime.handlers['ocr:file-drop-result']({
+      data: { kind: 'import', ok: true, exePath: 'C:\\hx\\versions\\hanxi-ocr\\paddle-0.5.0\\hanxi-ocr.exe', image: null, message: '已安装托管引擎 PP-OCR 开源引擎 v0.5.0（36.2 MB）' },
+    })
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('已安装托管引擎')
+    expect(svc.GetEngines.mock.calls.length).toBeGreaterThan(enginesBefore) // 回执后注册表…
+    expect(svc.ListHostedVersions.mock.calls.length).toBeGreaterThan(hostedBefore) // …与托管树同频刷新
+    wrapper.unmount()
+  })
+
+  it('无托管版本时引擎行不渲染子表（旧式引用件世界零打扰）', async () => {
+    stubStatus(runningState as never, [{ ...wechatEngine }, { ...paddleInstalled }], [])
+    const wrapper = await mountView()
+    const toggle = wrapper.findAll('.btn').find((b) => /服务设置|收起设置/.test(b.text()))!
+    if (toggle.attributes('aria-expanded') !== 'true') await toggle.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.ocr-hosted-row')).toHaveLength(0)
     wrapper.unmount()
   })
 })

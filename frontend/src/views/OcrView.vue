@@ -6,7 +6,7 @@
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
-import type { DropResult, EngineInfo, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
+import type { DropResult, EngineInfo, HostedVersion, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
 import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
@@ -31,6 +31,7 @@ const { confirm } = useConfirm()
 const state = ref<ServiceState | null>(null) // null = 首帧尚未取得
 const engines = ref<EngineInfo[]>([]) // 引擎注册表（GetEngines）；空=首帧未取得
 const enginesReady = ref(false) // 已取得过一次（区分"加载中"与"真的没有"）
+const hosted = ref<HostedVersion[]>([]) // 托管版本树清单（F7 ListHostedVersions）
 const showSettings = ref(false)
 const portInput = ref('')
 const followOnExit = ref(true)
@@ -47,7 +48,9 @@ const { busy: ctrlBusy, run: runCtrl } = useAsyncAction()
 const { busy: snipBusy, run: runSnip } = useAsyncAction()
 const { busy: clipBusy, run: runClip } = useAsyncAction()
 const { busy: switchBusy, run: runSwitch } = useAsyncAction()
+const { busy: manageBusy, run: runManage } = useAsyncAction()
 const switchingId = ref('') // 切换进行中的目标引擎（行内按钮态）
+const uninstallingKey = ref('') // 卸载进行中的版本（engine-version 行内按钮态）
 
 const chip = computed(() => (state.value ? toolStateMeta(state.value.state) : null))
 const online = computed(() => state.value?.online === true)
@@ -82,8 +85,17 @@ async function refreshEngines() {
   }
 }
 
+// 托管版本树清单（F7）：与状态/注册表同频刷新（安装/卸载后生效标记须即时跟随）。
+async function refreshHosted() {
+  try {
+    hosted.value = (await OcrAPI.ListHostedVersions()) || [] // Go 空切片到达为 null，归一为空数组
+  } catch (e) {
+    console.warn('ocr ListHostedVersions failed:', getErrorMessage(e))
+  }
+}
+
 async function refreshAll() {
-  await Promise.all([refreshStatus(), refreshEngines()])
+  await Promise.all([refreshStatus(), refreshEngines(), refreshHosted()])
 }
 usePolling(refreshAll, 5000)
 useWailsEvent<ServiceState>('ocr:service-state', (st) => {
@@ -130,6 +142,48 @@ async function importPaddleViaDialog() {
   } catch (e) {
     showToast(getErrorMessage(e))
   }
+}
+
+// ---------- F7 托管版本（zip 安装 / 列表 / 卸载） ----------
+// 安装=对话框选 zip（与拖放同一后端校验链，回执统一走 ocr:file-drop-result）；
+// 卸载=删版本目录（在跑生效版本由后端拒卸，中文指引原样直出不吞）。
+
+function hostedOf(engineId: string): HostedVersion[] {
+  return hosted.value.filter((v) => v.engine === engineId)
+}
+
+async function installZipViaDialog() {
+  try {
+    await OcrAPI.InstallHostedZipDialog() // 校验/成功/失败提示由事件回执统一处理，此处只兜程序性错误
+  } catch (e) {
+    showToast(getErrorMessage(e))
+  }
+}
+
+async function requestUninstall(v: HostedVersion) {
+  const accepted = await confirm({
+    title: `卸载 ${ENGINE_LABELS[v.engine] || v.engine} v${v.version}？`,
+    description: v.effective
+      ? '该版本当前生效：卸载后本引擎自动改用托管树内其余版本；无其余版本则回退旧自动发现。正在运行的服务不受影响，下次启动起新件。'
+      : '仅删除该托管版本目录；安装包原件保留在 installers/，随时可重拖装回。',
+    confirmLabel: '卸载',
+    tone: 'danger',
+    details: [
+      { label: '引擎', value: ENGINE_LABELS[v.engine] || v.engine },
+      { label: '版本', value: v.version },
+      { label: '大小', value: fmtSize(v.size || 0) },
+    ],
+  })
+  if (!accepted) return
+  uninstallingKey.value = `${v.engine}-${v.version}`
+  const res = await runManage(() => OcrAPI.UninstallHostedVersion(v.engine, v.version))
+  uninstallingKey.value = ''
+  if (!res.ok) {
+    showToast(`卸载失败: ${getErrorMessage(res.error)}`)
+  } else {
+    showToast(res.data.message || '已卸载') // 在用拒卸（refused-in-use）的中文指引同样直出
+  }
+  await refreshAll()
 }
 
 // ---------- 引擎切换（单活语义：在跑则停旧起新，须显式确认） ----------
@@ -508,7 +562,8 @@ onMounted(() => {
     <UiBanner v-if="state && state.state === 'stopped'" tone="info">
       识别服务未运行：
       <button class="link-button" @click="showSettings = true">打开引擎列表</button>
-      导入其一——<b>PP-OCR 开源引擎</b>（公开可获取，解压后拖入整个目录）或<b>微信引擎</b>组件（单文件 hanxi-ocr.exe，私发渠道获取）；
+      安装其一——<b>引擎安装包（.zip，旁挂 .sha256）</b>拖入即自动校验落位，
+      也可旧式导入 <b>PP-OCR 解压目录</b>或<b>微信引擎</b>单文件 hanxi-ocr.exe（私发渠道获取）；
       引擎已就绪则直接启动。外部自行启动的实例会被自动接管识别。
       <button class="btn btn-primary btn-small ocr-banner-btn" :disabled="ctrlBusy" @click="startService">
         {{ ctrlBusy ? '启动中…' : '▶ 启动服务' }}
@@ -576,18 +631,41 @@ onMounted(() => {
               {{ eng.installed ? '更换组件…' : '导入组件…' }}
             </button>
           </div>
+          <!-- F7 托管版本：该引擎已装进 versions/hanxi-ocr 的落位件（标记生效版，可卸载） -->
+          <div v-if="hostedOf(eng.id).length" class="ocr-hosted">
+            <div v-for="v in hostedOf(eng.id)" :key="v.version" class="ocr-hosted-row"
+              :class="{ 'ocr-hosted-effective': v.effective }">
+              <span class="ocr-hosted-ver mono" :title="v.note || v.dir">{{ v.version }}</span>
+              <UiStatusChip v-if="v.effective" tone="positive">生效</UiStatusChip>
+              <UiStatusChip v-if="v.state !== 'ready'" tone="danger">损坏</UiStatusChip>
+              <span class="ocr-hosted-meta">
+                {{ fmtSize(v.size) }}<template v-if="v.installedAt"> · {{ v.installedAt }}</template>
+              </span>
+              <button class="btn btn-secondary btn-small ocr-hosted-uninstall" :disabled="manageBusy"
+                :aria-label="`卸载 ${eng.label} ${v.version}`" @click="requestUninstall(v)">
+                {{ uninstallingKey === eng.id + '-' + v.version ? '卸载中…' : '卸载' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="ocr-set-row ocr-import-row">
-        <span class="ocr-set-k">拖入导入</span>
+      <div class="ocr-set-row ocr-import-row ocr-zip-row">
+        <span class="ocr-set-k">引擎包</span>
+        <button class="btn btn-primary btn-small" @click="installZipViaDialog">安装引擎包…</button>
         <div id="ocr-import-target" class="ocr-import-drop" data-file-drop-target="true"
-          role="button" tabindex="0" aria-label="拖入 PP-OCR 开源引擎目录或微信引擎 hanxi-ocr.exe 导入；点击可选取微信引擎文件"
-          @click="importViaDialog" @keydown.enter.prevent="importViaDialog">
-          📂 把 <b>PP-OCR 开源引擎</b>的解压目录整个拖到这里（须含 hanxi-ocr.exe 与 manifest.json）；
-          <b>微信引擎</b>单文件 <b>hanxi-ocr.exe</b>（约 48 MB）拖入或点击选择亦可。
-          校验通过即指向并自动启动，升级引擎同此再拖一次新版
+          role="button" tabindex="0" aria-label="拖入引擎安装包 zip 托管安装；点击可选取 zip"
+          @click="installZipViaDialog" @keydown.enter.prevent="installZipViaDialog">
+          📦 推荐：把引擎安装包 <b>hanxi-ocr-&lt;engine&gt;-&lt;version&gt;.zip</b>（旁挂同名 .sha256）
+          拖到这里或点「安装引擎包…」——自动识别引擎、校验落位，升级=再拖一次新版
         </div>
+      </div>
+      <div class="ocr-set-row">
+        <span class="ocr-set-k">旧式导入</span>
+        <span class="ocr-set-note">
+          <b>PP-OCR</b> 解压目录（含 hanxi-ocr.exe 与 manifest.json）或 <b>微信引擎</b>单文件
+          hanxi-ocr.exe 仍走上方引擎行「导入目录/导入组件」——引用式指向，不复制落位
+        </span>
       </div>
       <div class="ocr-set-row">
         <span class="ocr-set-k">端口</span>
@@ -781,6 +859,22 @@ onMounted(() => {
 
 /* 组件导入区：原生通道在文件拖入悬停时会自动加 file-drop-target-active */
 .ocr-import-row { align-items: stretch; }
+.ocr-zip-row .ocr-import-drop { flex: 1; }
+
+/* F7 托管版本清单：引擎行内缩进子表（版本 mono + 生效/损坏徽标 + 卸载动作） */
+.ocr-hosted {
+  display: flex; flex-direction: column; gap: 4px; margin-top: 2px; padding-top: 8px;
+  border-top: 1px dashed var(--color-border);
+}
+.ocr-hosted-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 4px 8px; border-radius: 6px; background: var(--surface-panel);
+  border: 1px solid var(--color-border); font-size: var(--text-xs);
+}
+.ocr-hosted-effective { border-color: var(--color-primary); }
+.ocr-hosted-ver { color: var(--color-text); font-weight: 600; flex-shrink: 0; }
+.ocr-hosted-meta { color: var(--color-text-subtle); min-width: 0; overflow-wrap: anywhere; }
+.ocr-hosted-uninstall { margin-left: auto; }
 .ocr-import-drop {
   flex: 1; min-width: 0; padding: 12px 14px; text-align: center;
   border: 1px dashed var(--color-border); border-radius: var(--radius-control);
