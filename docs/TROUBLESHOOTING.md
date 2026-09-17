@@ -999,3 +999,10 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：临时把 `server.NewStdioServer(...).Listen(ctx, in, out)` 的 out 换成 os.Pipe 复现——确认 Listen 在 stdin EOF 正常返回，是测试读取端没等到 EOF。
 - **正确做法与标准修复方案**：Listen 跑在 goroutine，返回即 `_ = outWriter.Close()`；读取端再套 `select { case <-done / case <-time.After(60s) }` 兜底给出明确失败。生产路径 `server.ServeStdio` 自带 os.Stdin/os.Stdout 生命周期，无此问题。
 - **避坑防重犯建议**：① 管道冒烟命令模板已验证可用：`printf '<init帧>\n<initialized通知帧>\n<tools/list帧>\n' | <exe> mcp`；release 包验收直接复用；② MCP 日志必须钉死 stderr（`server.WithErrorLogger(log.New(os.Stderr,...))` + InitLogger 的控制台路本身走 stderr），任何库默认写 stdout 都要显式改道；③ io.Pipe 是无缓冲同步管道，测试里"写完关读端"或"读端等不到关写端"都会死锁——goroutine 生命周期必须配对收尾。
+
+### 64. 真子进程「超时强杀」单测勿用 cmd.exe：横幅输出会赢下 deadline 竞态，把超时支验成 EOF 支（R2 安装前自检）
+
+- **问题现象与错误原因**：`mcpwizard` 安装前自检要单测 spawnProbe 的 ctx 超时强杀路径（证明"管杀"接线真实有效）。首版选 `cmd.exe` 冒充挂死子进程、deadline 100ms，预期报「握手超时」——实际 cmd.exe 冷启动后**立刻**向 stdout 吐版权横幅（实测 0.01s 内），probe 读到非协议行提前返回，断言在「超时」与「污染/EOF」两支之间随机器负载摇摆（flaky）。根因：超时支要求子进程在 deadline 前**既不出声也不退场**，而 cmd.exe 两样都不满足；用"随便找个不存在的命令"当挂死替身是对 OS 行为想当然。
+- **排查过程**：`-v` 跑出 BADCHILD 日志见横幅行 `"Microsoft Windows [Version ...]"`；换 deadline 到 10ms 又反向竞态（杀进程与读管道互抢）。结论：与其调时序赌运气，不如换行为确定的替身。
+- **正确做法与标准修复方案**：改用 `powershell.exe`（OS 组件、Win10/11 必在；开发 shell 可能剥其 PATH，用 `exec.LookPath` + `$SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe` 绝对路径兜底）——其 .NET 冷启动必然 >80ms，且参数非法的报错走 **stderr** 而 stdout 全程静默：deadline 到点时它必然还活着且没出声，ctx Kill 支**确定性**触发。坏协议支反过来仍用 cmd.exe（横幅非 JSON 恰好就是真实污染样本，0.01s 收敛）。
+- **避坑防重犯建议**：① 断言"子进程超时被杀"的用例，替身选择标准是 **stdout 静默时长 ≫ deadline**，控制台横幅/欢迎语类程序（cmd、ssh、telnet）一律不合格；② 真 exec 单测一律双保险：测试自身设 watchdog（`select` + `time.After`）+ 子进程侧有 ctx deadline，绝不允许挂到包级超时；③ 自检客户端的纪律与 #63 服务端镜像对称：stdout 非协议行=污染即败（勿容错跳过继续找 id——垃圾能进一次就能进一串），失败原因附 stderr 尾部（本包 `syncBuffer` 截 4KB 展示 200 字）供排障。
