@@ -33,7 +33,7 @@
 | F7 hanxi-ocr 托管化 | 🟡 开发中 | feat/f7-ocrhosted | 三 | - | 主仓侧改造；zip+manifest+sha256 契约见 wave3 注记 |
 | F8 桌面留言板 | ✅ 已合并 | feat/f8-board | 一 | 00f1dc9 | KeepAwake 聚合器入 platform；msgboard 模块；导航计数并集已重算 |
 | F9 WSL USB 共享 | 🟡 开发中 | feat/f9-wslusb | 三 | - | 账本+重放范式；真机验证为合入后闸门 |
-| F7k 后厨发布流水线 | 🟡 开发中 | hanxi-ocr-dev@直提 | 三 | - | 独立仓不进 hanxi；双 zip+manifest+sha256+断言 |
+| F7k 后厨发布流水线 | ✅ 已交付(独立仓) | hanxi-ocr-dev `4300765`/`e8ab2b2`/`3330dbf` | 三 | - | 真双包已产出并核验；manifest 超集裁定+version 语义三令已转 F7 主仓侧；selftest 11/11 |
 | R1 热键收编 | ✅ 已合并 | feat/r1-hotkey | 三 | d96aac6 | msgboard→internal/hotkey 槽位 msgboard/toggle；改键序内部升级为"先新后旧"，用户可见零差异 |
 
 图例：⬜ 未开始 / 🟡 开发中 / 🔶 待审查 / ✅ 已合并 / ⛔ 阻塞
@@ -76,4 +76,10 @@
 - **R3**：✅ 已收口（`8476ff3`/`f09fc19`，FF 合入）。goproxy.cn 可达实证，cast replace 已撤、tidy 内容级零 diff、离线自洽复核全绿；easyjson v0.9.0 维持（回退=逆钉红线，且符合"用新不用旧"）。附注：本机 `core.autocrlf=true`，`go mod tidy -diff` 对 go.sum 报**假全文件 diff（纯 EOL）**，内容级核验用 `go mod tidy`+`git diff`。
 - **R4**：✅ 已收口（74f8fa7）——PLAN_MCP 注记回写/BACKLOG 销账/DEVPLAN v1.5 指针改口/MOOTOOL 打勾四合一入；其发现的 mcpwizard 文案与事实矛盾点已塞给 R2 顺路修；遗留待用户裁决：PLAN §6 两个 access.json 授权写入口均未实现（GUI 只读+无 auth 子命令），现状=手工放置文件。
 - 文档陈旧计数待核（R4 上报，收尾批处理）：DEVPLAN §2.3 与 ARCHITECTURE"37 模块统一注册"疑落后于 webapp/msgboard 入账后的实际数。
+
+### F7k 后厨交付注记（2026-09-18，独立仓 hanxi-ocr-dev）
+
+- 真包在 `E:\System\桌面\工具\hanxi-ocr-dev\dist\`：paddle-0.4.0-alpha.zip（36.2MB）/ wechat-4.1.15.9.zip（49.7MB）+ 旁挂 `.sha256`（**纯 hex 一行不含文件名**）。
+- manifest 为契约六字段**超集**（额外 name/files/build_date）——主仓解析端必须容忍未知键；`version`=引擎版本，勿与组件 `/api/status` 的组件版本（微信 0.3.1）交叉核对；paddle status.engine 上报 `"paddle"` 非档位串。
+- 微信引擎换版/补 minHanxi：按 RELEASE.md §一 传参重跑 `bash release.sh`（selftest 11 项含七反例必拒闸门）。
 - **S2**：✅ 已随 F4a 收口（everything 工具诚实文案有测试锁定 + BACKLOG 收账提交 7392e44）。
