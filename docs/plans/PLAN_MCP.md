@@ -1,6 +1,7 @@
 # PLAN_MCP —— MCP / Skill AI 接入可行性分析与开发计划
 
-> 日期：2026-09-17 · 状态：方案评审稿（未动任何代码）
+> 日期：2026-09-17 · 状态：已落地（F4a `021ce5e` + F4b `aa48a73` 合入 dev；C10 已回写"实际落地"注记，
+> 正文与注记冲突处**以注记为准**；剩余真机闸门与未落地项见 §4/§6/§8 注记）
 > 需求：给 hanxi 增加 `hanxi mcp` headless 子命令（stdio MCP server），首批只暴露只读工具
 > （everything 全盘搜索 / hanxi-ocr 识图 / envcheck 环境体检 / memo 检索），含一键安装到
 > Claude Code / Codex / Cursor 的受确认向导；同一入口兼做 CLI（`--list` / `--call`）供 Skill 消费。
@@ -15,6 +16,11 @@
    （v1.0 起 jsonschema 依赖有换，疑似 schema 侧破坏性改动）。API 三件套已实测存在：
    `server.NewMCPServer`（server.go:335）→ `AddTool`（server.go:528）→ `ServeStdio`（server/stdio.go:710），
    注解支持 `WithReadOnlyHintAnnotation`（mcp/tools.go:832-836）。依赖树纯 Go（uuid/jsonschema/cast），与 Wails 无冲突。
+
+   > **实际落地（C10 回写 2026-09-17）**：按决策 6 锁 v0.41.1 引入（`179f65a`）。离线构建踩中 GOMODCACHE
+   > 缺传递依赖 zip 的洞（tidy/go get 连环失败），以 `easyjson` 升版 + `spf13/cast` replace（v1.10.0→v1.7.1）
+   > 绕行，全案沉淀踩坑 #62；go.mod 现存该 replace，网络恢复后 `go mod tidy` 复核/撤除为随批修 R3（wave 收尾批）。
+   > v1.x 升级评估维持原样未做。
 3. **必须先纠正两个需求设定里的事实偏差**：
    - memo **不存在"逐库"概念**——单文件 `<DataDir>/memo.json`（`internal/modules/memo/module.go:1-2`，
      全包 grep 无库列表/库目录）。「逐库授权」退化为「整库授权 + 敏感遮罩项脱敏」，需用户确认（§8-2）。
@@ -25,6 +31,10 @@
 4. 唯一需要真机验证的工程风险：生产构建 `-H windowsgui`（`build/windows/Taskfile.yml:65`）下无控制台，
    MCP 客户端经管道 CreateProcess 拉起时 stdin/stdout 句柄仍继承可用，但**从 cmd 手敲测试看不到输出**——
    验收必须包含"管道实测"项（用 dev 构建或 go run 直测 + 一次 release 管道冒烟）。
+
+   > **实测解除（随 F4a，C10 回写）**：风险已验证解除——release 形态（windowsgui）经管道拉起 `hanxi mcp`
+   > 得到纯 JSON-RPC 帧（stdout 无杂写、日志钉死 stderr、EOF 退出码 0），管道冒烟模板沉淀在踩坑 #63。
+   > cmd 手敲仍无回显（GUI 子系统无控制台），验收只认管道。
 5. 改用户 AI 客户端配置属项目红线：**默认不装、preview→确认→备份→原子写→回读校验→失败回滚、
    冲突永不静默覆盖**。仓内已有完整先例可套：wsl `.wslconfig` 的"闸门→写前备份 .hanxi.bak→原子替换→复验"
    （`internal/modules/wsl/hostconf.go:130-176`）+ jsonstore 原子写核（`internal/jsonstore/jsonstore.go:52-87`）。
@@ -50,6 +60,12 @@
   GUI 里停用模块 = MCP 同步不可用，语义一致。**纪律：MCP 进程任何代码不得 print 到 stdout**（stdio 协议通道），
   以单测断言守卫。
 
+  > **实际落地（C10 回写）**：入口分流按设想落（`cmd/hanxi/main.go` 在 `flag.Parse` 前短路 `os.Args[1]=="mcp"`）。
+  > 一处装配偏差：registry 只挂 **envcheck/everything/ocr 三模块**——memo 模块构造链在 F3-b 后携带文件库迁移
+  > 写盘副作用，与无头"零落盘"承诺冲突，故 memo 不进 registry、门禁直读 config.json 的 enabled 位（语义同谱，
+  > 见 `internal/mcp/mcp.go` 包注释决策 3 与 `registryGate`）。stdout 纪律由 `guards_test.go` 静态扫描 +
+  > 帧级测试双重守卫，已兑现。
+
 ### 2.2 四个工具的真实依赖（均已实读源码确认）
 
 | 工具 | headless 初始化 | 调用面 | 依赖与副作用 |
@@ -58,6 +74,19 @@
 | everything | ⭐⭐ `NewEverythingService(plat)`（只用 plat.Job，service.go:54-67） | `(*EverythingService).Search`（service.go:307-336）：确保实例→确保 es.exe→`search.Search(esExe,q,limit)`（search/es.go:156，10s 超时、上限 300） | 见 §1-3：懒拉起实例 + 组件缺失联网下载。结果元数据本地 stat 补齐（es.go:252+），`-export-tsv` 临时文件读后即删（es.go:168-175，防中文 GBK 乱码） |
 | ocr | ⭐⭐⭐ `NewOcrService(plat)`（store=数据根 ocr.json，client 已显式 `Proxy:nil` 防系统代理污染，service.go:87-102） | `RecognizeImage(path)`（service.go:402-461）：绝对路径校验→`POST http://127.0.0.1:<port>/api/ocr`（默认端口 53120，store.go:13-14），35s 超时 | **不自动拉起**：离线只返回"请先启动服务"业务错误（service.go:431）；拉起需 `StartService`（:304，JobObject+端口预检）。组件发现三级：登记路径→exe 同级 `../hanxi-ocr/`→PATH（models.go:153-169），登记失效**报错不回退**。与主程序共用同一上游：端口占用+`/api/status` 契约判别为 external，无双起冲突 |
 | memo | ⭐ 只读可完全绕开 Module：直接 `jsonstore.Load(<DataDir>/memo.json, &items)` | `Store.Load`（store.go:38）；损坏严格报错不静默清空（store.go:50，jsonstore ErrCorrupt） | 注意 `NewStore` 对缺省会**创建文件**（store.go:27-32 区段）→ MCP 用裸 Load 保零落盘。敏感遮罩 `IsMasked`（models.go:12）是用户标记的 API Key/Token 级条目，**输出必须脱敏**（§4.3） |
+
+> **实际落地（C10 回写，PROGRESS R4 裁决的落地形态）**：
+> ① **ocr/memo 提前随首批落地**（C4/C5 与 C1-C3 同波，原计划放"二期"）——暴露面没有放大：四工具各自
+> 独立 access.json 开关、默认全关，未授权调用被拒并返回指引。工具名按决策 7 英文 + 中文 description：
+> `hanxi_envcheck_detect` / `hanxi_file_search` / `hanxi_ocr_recognize` / `hanxi_memo_search`。
+> ② **everything 行**按决策 3-B 的最严形态落地：不复用 `service.Search` 编排（懒拉起、联网下载两段副作用
+> 都不在无头代码路径内），走独立 `strictSearcher` 只读通道——探测引擎只查进程在位从不 Start、es.exe 不在
+> 即报错指引；两类前置缺失的诚实文案有测试锁定（随批修 S2 收口）。
+> ③ **memo 行**原假设已过时：数据形态随 F3-b 变为文件库（`<DataDir>/memo/<id>.md` 一条一文件），工具出生
+> 即按适配后口径读——`memoDiskReader` 文件库优先、库不存在或无有效条目时回落旧整库 `<StateDir>/memo.json`
+> （覆盖"迁移未跑"过渡态），两态皆零落盘、坏条只跳过告警不隔离（修复归 GUI 通道）；§5 预告的"库化落地时
+> 仅改 memo 工具内部取数、schema 不变"即此。遮罩条目**整条不下发**（决策 2，连标题与命中事实都不外泄），
+> 其余条目标题/正文再过 `logging.Redact`。
 
 ### 2.3 并发访问 hanxidata（双进程同开）
 
@@ -99,6 +128,14 @@ preview（含 before/after diff，只回显将写入内容、不上传既有配�
 needs-repair / conflict，**同名条目被用户改过时安装与卸载都拒绝**，绝不静默覆盖。安装前自检：以管道
 spawn 自家 `hanxi mcp` 跑 `listTools` + 一次 envcheck 真调，先验证后写配置。
 
+> **实际落地（F4b，`internal/mcpwizard`，C10 回写）**：全链按上文兑现——preview→确认令牌（等价
+> `assertUnchanged`：预览后文件被第三方改动则确认整体拒绝）→备份 `<file>.hanxi-bak-<时间戳>`→原子写→
+> 读回复验→仅当文件仍等于我们写的内容才回滚；回执 `<DataDir>/mcp/install.json` 四态之外增设呈现扩展态
+> `blocked`（不可安全合并）。JSON 客户端顶层键 RawMessage 外科保留（坑 #61）、Codex 哨兵区块、Cursor
+> JSONC/BOM 一律 fail-closed 给手动片段（决策 4）；写配置仅 GUI 向导一条路（决策 5，CLI `--yes` 本就不开）。
+> **唯一未接线项**：上文"安装前自检"——F4b 合入时 `hanxi mcp` 尚未进 dev（F4a 后合），刻意留白，
+> F4a 合并后登记为随批修 **R2**（进行中，见 BACKLOG 随批修表）。
+
 ### 2.6 工程面（构建/绑定/目录）
 
 - 构建零改动：Taskfile 只打 `./cmd/hanxi`（build/windows/Taskfile.yml:53），子命令同一 exe，
@@ -128,6 +165,10 @@ Registry 注册 {envcheck, everything, ocr, memo} 四模块（enabled 沿用 con
 未授权工具**仍在列表中但调用报错并指引开关**（deny-by-default + 可发现性，MooTool 语义）；
 access.json **每次调用重读**（撤销即时生效，≤16KB、损坏 fail-closed、路径锚定 DataDir）。
 
+> **实际落地（C10 回写）**：装配段全部兑现（全量 tools/list、三道门中间件、每次重读、会话随 stdin EOF 收）。
+> 命令面只有第一行落地——裸 `hanxi mcp` 进 ServeStdio；`--list`/`--call` 双身份（C6）与 `mcp install`/`mcp auth`
+> 均未实现（install 属决策 5 裁决不做；auth 见 §6 注记的写入口悬空）。
+
 ## 4. 任务分解（commit 粒度；每提交含测试、过 `task check`）
 
 | # | 提交 | 内容 | 验收 |
@@ -144,6 +185,13 @@ access.json **每次调用重读**（撤销即时生效，≤16KB、损坏 fail-
 | C10 | `docs: PLAN_MCP 状态回写与 MOOTOOL_ANALYSIS 收口` | 文档 | — |
 
 依赖关系：C2→C3..C6 串行于骨架，C7 独立可并行，C8 依赖 C7。C1-C5 即"首版 2 工具 MVP"。
+
+> **落地对账（C10 回写）**：C1 `179f65a`、C2 `309e555`、C3 `afd5c13`、C4 `aad484e`、C5 `cac611b`
+> （五提交合入即 F4a `021ce5e`）；C7 `fafe368`、C8 `cb94eff`+绑定再生 `2781047`（合入即 F4b `aa48a73`）；
+> C10 即本篇回写。**未落地两项半**：C6（CLI 双身份 `--list`/`--call`，未排上）；C9 剩人工闸门——
+> 三客户端（Claude Code/Codex/Cursor）真机各接一次 + 红队自查清单不可跳过（其中 windowsgui 管道冒烟
+> 已随 F4a 通过，#63）；另 §2.5 的安装前自检留白在 R2 随批偿还。"C1-C5 即首版 2 工具 MVP"的口径被
+> 实际执行放宽为 **四工具首版全上、授权默认全关**（见 §2.2 落地注记）。
 
 ## 5. 排期
 
@@ -166,6 +214,17 @@ access.json **每次调用重读**（撤销即时生效，≤16KB、损坏 fail-
 GUI 设置分区与 `hanxi mcp auth` 是仅有的两个写入口。不暴露任何配置文件的写能力（安装向导产物
 不算 MCP 工具面，属本地 CLI/GUI 行为）。
 
+> **实际执行面（C10 回写）**：
+> - **契约一致且校验更严**：路径、`version:1`、tools 四键集、默认全关（envcheck 也关）与上文文本一致；
+>   引擎 `internal/mcp/access.go` 在此之上从严执行——超 16KB/目录形态/解析失败/尾随垃圾/version≠1/缺
+>   tools 对象一律全拒；解析开启 `DisallowUnknownFields`（未知顶层字段即拒读），tools 里出现**四键之外
+>   的未知键也整体拒读**（防授权语义漂移）；文件缺失是合法态（视同全关）。每次调用重读、进程内不养缓存。
+>   F4b 向导对该文件**只读呈现**、额外键忽略（对账裁定，见 PROGRESS）。
+> - **一处偏差须如实**：上文"两个写入口"目前**均未落地**——GUI「AI 接入」分区是只读呈现（写入口按 F4b
+>   对账裁定归 F4a 引擎，而 F4a 立了零落盘承诺未写），`hanxi mcp auth` 未实现。当下授权唯一生效路径是
+>   **用户手工在 `<DataDir>/mcp/` 放置 access.json**。是否补编程写入口、补在哪一侧，属待用户裁决项
+>   （C10 上报，勿当已交付）。
+
 ## 7. 踩坑预登记（写入包注释/后续 TROUBLESHOOTING）
 
 ① MCP 进程禁止一切 stdout 杂写；② ES.exe 依赖运行实例与按需下载两条副作用必须如实进工具文案；
@@ -187,3 +246,5 @@ GUI 设置分区与 `hanxi mcp auth` 是仅有的两个写入口。不暴露任�
 7. **工具名与描述语言**：`hanxi_file_search` 式命名 + 中文 description（模型可理解）还是中英双注？
 
 **决策回写（2026-09-17，用户拍板）**：1 = MVP 组合定为 envcheck + everything，ocr/memo 放二期；2 = 便签采用"整库总开关 + IsMasked 条目不下发"，不等文件库化重构；3 = 方案 B 严格只读，无实例/缺组件报错给指引，不代启动不触发下载；4 = 一期 fail-closed（配置含注释即拒绝自动改、给手动片段）；5 = 写配置仅保留 GUI 向导一条路，CLI `--yes` 不开放；6 = mcp-go 锁 v0.41.1，v1 生态稳定后再评估；7 = 英文工具名 + 中文 description。
+
+**落地核对（C10 回写 2026-09-17）**：决策 2/3/4/5/6/7 全部照拍板落地（3 取最严独立只读通道形态、6 锁 v0.41.1、7 英文名+中文 description 已兑现于四工具）。唯决策 1 被实际执行放宽：ocr/memo 未等二期、随 F4a 首批同落（独立开关默认全关，无额外暴露），PROGRESS R4 裁决保留现实现、以本篇 §2.2 注记为准。未落地清单：C6 CLI 双身份、C9 三客户端真机红队（剩余真机闸门）、§2.5 安装前自检（R2 随批偿还）、§6 授权编程写入口（待裁决）。
