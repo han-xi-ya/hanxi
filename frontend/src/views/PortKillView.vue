@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as PortKillAPI from '../../bindings/hanxi/internal/modules/portkill'
 import type { PortOccupant, KillResult } from '../../bindings/hanxi/internal/modules/portkill/models'
+import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
 import { getErrorMessage } from '../utils/errors'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
+import HistoryPanel from '../components/tool/HistoryPanel.vue'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
@@ -138,6 +140,28 @@ function formatTime(timeStr: string) {
   }
 }
 
+// ---------- 历史记录（弹窗；应用回填端口并触发查询，Q6 行内数据直用） ----------
+const showHistory = ref(false)
+
+function applyHistoryPort(rec: HistoryRecord) {
+  const raw = String(rec.input ?? '').trim()
+  if (!/^\d+$/.test(raw)) {
+    showToast('仅「端口查询」类历史可回填端口号（查杀记录含 PID 标识）')
+    return
+  }
+  showHistory.value = false
+  void searchPort(Number(raw))
+}
+
+function onHistoryEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape') showHistory.value = false
+}
+watch(showHistory, (v) => {
+  if (v) document.addEventListener('keydown', onHistoryEsc)
+  else document.removeEventListener('keydown', onHistoryEsc)
+})
+onBeforeUnmount(() => document.removeEventListener('keydown', onHistoryEsc))
+
 onMounted(() => {
   loadListeningPorts()
 })
@@ -150,6 +174,9 @@ onMounted(() => {
         <h1>释放端口</h1>
         <p class="subtitle">精准定位端口占用进程，防 PID 复用令牌复核，支持 UAC 提权快速释放。</p>
       </div>
+      <button class="btn btn-secondary btn-small" :aria-expanded="showHistory" @click="showHistory = true" title="最近的端口查询与查杀留档，可回填重查">
+        🕘 历史
+      </button>
     </div>
 
     <!-- 端口精准搜索与快捷标签 -->
@@ -279,6 +306,18 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 历史记录弹窗（自取数面板；Esc/遮罩/关闭出口，复用 ConfirmDialog 交互契约） -->
+    <Teleport to="body">
+      <div v-if="showHistory" class="hist-backdrop" @click.self="showHistory = false">
+        <div class="hist-dialog" role="dialog" aria-modal="true" aria-label="端口查杀历史">
+          <div class="hist-head">
+            <h2>查杀历史</h2>
+            <button class="btn btn-secondary btn-small" @click="showHistory = false">关闭</button>
+          </div>
+          <HistoryPanel func-type="portkill" @apply="applyHistoryPort" />
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -404,4 +443,14 @@ onMounted(() => {
 
 /* 裸文字 32px 档副本删净，落回全局 .empty-hint 标准虚线卡形（§9.6-10 定档裁决——目视项；
    挂点为 <td colspan>，虚线卡染进单元格为预期收编效果） */
+
+/* 历史弹窗外壳：照 ConfirmDialog 遮罩语系（与 OcrView 同款，Teleport 挂 body） */
+.hist-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
+.hist-dialog {
+  width: min(720px, 100%); max-height: min(80vh, 640px); overflow: auto; display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
+  padding: 16px 18px; box-shadow: var(--shadow-small);
+}
+.hist-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hist-head h2 { font-size: var(--text-md); font-weight: 600; margin: 0; }
 </style>

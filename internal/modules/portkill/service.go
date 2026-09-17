@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,8 +51,10 @@ func NewPortKillService(plat platform.Platform) *PortKillService {
 // SetHistory 注入统一历史存储（装配根接线，照 memo↔fileshare SetMemoHook 先例）。
 func (s *PortKillService) SetHistory(h *history.Store) { s.history = h }
 
-// QueryPort 查询指定端口号的占用情况 (TCP + UDP)
-func (s *PortKillService) QueryPort(port int) ([]PortOccupant, error) {
+// QueryPort 查询指定端口号的占用情况 (TCP + UDP)。
+// 统一历史：Q2 裁定 portkill 查询入库（轻量——占用清单文本，回填价值主体）。
+func (s *PortKillService) QueryPort(port int) (result []PortOccupant, err error) {
+	defer func() { s.recordQuery(port, result, err) }()
 	if port <= 0 || port > 65535 {
 		return nil, fmt.Errorf("invalid port number: %d", port)
 	}
@@ -163,8 +166,10 @@ func (s *PortKillService) ListListeningPorts() ([]PortOccupant, error) {
 	return list, nil
 }
 
-// KillProcess 通过安全令牌终止目标进程
-func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix int64) KillResult {
+// KillProcess 通过安全令牌终止目标进程。
+// 统一历史：Q2 动作全记，defer 单点成败同记。
+func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix int64) (result KillResult) {
+	defer func() { s.recordKill(pid, exePath, "kill", result) }()
 	var startedAt time.Time
 	if startedAtUnix > 0 {
 		startedAt = time.Unix(startedAtUnix, 0)
@@ -204,7 +209,9 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 // 退出并被 PID 复用，届时 helper 比对不过会以退出码 3 拒杀而非误杀新进程；
 // 命中系统关键进程红线则在本地直接拒绝，不弹 UAC。
 // helper 的真实成败经 Start-Process -PassThru 的 ExitCode 传播回来，杜绝"helper 失败仍报成功"。
-func (s *PortKillService) KillProcessElevated(pid uint32) KillResult {
+// 统一历史：defer 单点记录；Q3 裁定拒绝类失败同样入库并标 denied（回看"当时为什么没杀掉"）。
+func (s *PortKillService) KillProcessElevated(pid uint32) (result KillResult) {
+	defer func() { s.recordKill(pid, "", "elevated", result) }()
 	if pid == 0 || pid == 4 || pid == uint32(os.Getpid()) {
 		return KillResult{
 			Success:      false,
@@ -270,4 +277,68 @@ func helperExitCode(err error) int {
 		return exitErr.ExitCode()
 	}
 	return -1
+}
+
+// ---------- 统一历史（Q2 动作全记 + portkill 查询；Q3 拒绝也记标 denied） ----------
+
+// recordQuery 端口查询留档：占用清单逐行（PID 进程名 路径），空占用也记
+// （"上次查过、当时没占用"同样有回看价值）。入参非法（err 非空）不入库。
+func (s *PortKillService) recordQuery(port int, occupants []PortOccupant, err error) {
+	if s.history == nil || err != nil {
+		return
+	}
+	var lines []string
+	for _, o := range occupants {
+		lines = append(lines, fmt.Sprintf("%d %s %s", o.PID, o.ProcessName, o.ExePath))
+	}
+	_ = s.history.Save(history.Record{
+		FuncType: ID,
+		Summary:  fmt.Sprintf("查询端口 :%d（%d 项占用）", port, len(occupants)),
+		Input:    strconv.Itoa(port),
+		Output:   strings.Join(lines, "\n"),
+		Extra:    "query",
+	})
+}
+
+// recordKill 查杀动作留档。Input 刻意以 "PID " 前缀开头（非纯数字），
+// 前端回填按纯数字识别端口，杀进程记录不会误导入端口框。
+func (s *PortKillService) recordKill(pid uint32, exePath, kind string, res KillResult) {
+	if s.history == nil {
+		return
+	}
+	state := "成功"
+	extra := kind
+	if !res.Success {
+		extra = kind + "|" + classifyKillFailure(kind, res.ErrorMessage)
+		state = "失败"
+	}
+	desc := fmt.Sprintf("PID %d", pid)
+	if exePath != "" {
+		desc += " · " + exePath
+	}
+	_ = s.history.Save(history.Record{
+		FuncType: ID,
+		Summary:  "终止进程 " + desc + " " + state,
+		Input:    desc,
+		Output:   res.ErrorMessage,
+		Extra:    extra,
+	})
+}
+
+// classifyKillFailure 失败记录的 extra 归类：提权链路的"策略/取消"类失败标 denied
+// （红线拒杀、UAC 取消、helper 复核中止——Q3 口径：便于回看当时为什么没杀掉），
+// 其余失败标 fail。判据取自本文件各失败分支的中文文案，改文案须同步此处。
+func classifyKillFailure(kind, msg string) string {
+	if kind != "elevated" {
+		return "fail"
+	}
+	switch {
+	case strings.Contains(msg, "不可查杀"),
+		strings.Contains(msg, "已拒绝查杀"),
+		strings.Contains(msg, "用户取消了 UAC"),
+		strings.Contains(msg, "已安全中止"):
+		return "denied"
+	default:
+		return "fail"
+	}
 }

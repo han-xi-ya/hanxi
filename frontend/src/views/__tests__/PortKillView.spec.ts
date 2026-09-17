@@ -16,9 +16,16 @@ const svc = vi.hoisted(() => ({
   KillProcessElevated: vi.fn(),
 }))
 
+const hist = vi.hoisted(() => ({
+  List: vi.fn(),
+  Delete: vi.fn(),
+  Clear: vi.fn(),
+}))
+
 vi.mock('../../../bindings/hanxi/internal/modules/portkill', () => ({
   PortKillService: svc,
 }))
+vi.mock('../../../bindings/hanxi/internal/history/historyservice', () => hist)
 
 async function flushMicrotasks(times = 25) {
   for (let i = 0; i < times; i++) await Promise.resolve()
@@ -213,6 +220,40 @@ describe('PortKillView', () => {
     await w.findAll('button').find((b) => b.text().includes('查询占用'))!.trigger('click')
     await flushMicrotasks()
     expect(w.find('.result-card tbody tr').text()).toContain('—')
+    w.unmount()
+  })
+
+  it('历史弹窗：按 portkill 桶自取数，双击端口查询行回填并即查', async () => {
+    svc.QueryPort.mockResolvedValue([])
+    hist.List.mockResolvedValue([
+      { id: 5, funcType: 'portkill', summary: '查询端口 :3000（0 项占用）', input: '3000', output: '', extra: 'query', createdAt: '2026-09-17T10:00:00+08:00' },
+    ])
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('button').find((b) => b.text().includes('历史'))!.trigger('click')
+    await flushMicrotasks()
+    expect(w.find('.hist-dialog').exists()).toBe(true)
+    expect(hist.List).toHaveBeenCalledWith('portkill', '')
+    await w.find('.hp-list tbody tr').trigger('dblclick')
+    await flushMicrotasks()
+    expect(svc.QueryPort).toHaveBeenCalledWith(3000)
+    expect(w.find('.hist-dialog').exists()).toBe(false) // 回填即关窗
+    w.unmount()
+  })
+
+  it('查杀历史行（PID 前缀）不可回填端口：给中文提示不动查询', async () => {
+    svc.QueryPort.mockResolvedValue([])
+    hist.List.mockResolvedValue([
+      { id: 6, funcType: 'portkill', summary: '终止进程 PID 1 · C:\\x.exe 成功', input: 'PID 1 · C:\\x.exe', output: '', extra: 'kill', createdAt: '2026-09-17T10:00:00+08:00' },
+    ])
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('button').find((b) => b.text().includes('历史'))!.trigger('click')
+    await flushMicrotasks()
+    await w.find('.hp-list tbody tr').trigger('dblclick')
+    await flushMicrotasks()
+    expect(svc.QueryPort).not.toHaveBeenCalled()
+    expect(useToast().toastMsg.value).toContain('仅「端口查询」类历史可回填')
     w.unmount()
   })
 })
