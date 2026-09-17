@@ -6,8 +6,8 @@
  * MsgBoardService 桌面留言板：一键在目标显示器全屏挂出离岗告示牌。
  * 
  * 三通道唤起：托盘/轮盘共用 extapi.TrayCommandsProvider 注册的 toggle 命令
- * （条目配置与分发走 internal/launcher 现成通道）；全局热键为最薄私有封装
- * （a.GlobalShortcut 直调，见 hotkey.go，合并时收编入集中注册管理）。
+ * （条目配置与分发走 internal/launcher 现成通道）；全局热键收编入
+ * internal/hotkey 通用注册器槽位 msgboard/toggle（接线与语义见 hotkey.go）。
  * 
  * 生命周期纪律：挂牌窗口按需创建、撤牌即真销毁（对齐 #53：注销 WindowClosing
  * 拦截 hook 后 Close 走 Wails 内部销毁路径，WebView2 内存归还，同名窗口可重建，
@@ -50,9 +50,10 @@ export function GetConfig() {
 }
 
 /**
- * GetStatus 返回运行态（模块页状态区回显）。热键在位与否问 manager.IsRegistered
- * 而非自记状态：开机期 Register 只入 pending、OS 拒绑发生在 Run 之后（错误走
- * Wails 错误通道不回流本模块），自记标志会谎报，以注册表实存为准。
+ * GetStatus 返回运行态（模块页状态区回显）。热键在位与否问注册器槽位实况
+ * （Registry.Registered 底层即 manager.IsRegistered）而非自记状态：开机期
+ * Register 只入 pending、OS 拒绑发生在 Run 之后（错误走 Wails 错误通道不回流
+ * 本模块），自记标志会谎报，以系统实存为准。
  * @returns {$CancellablePromise<$models.Status>}
  */
 export function GetStatus() {
