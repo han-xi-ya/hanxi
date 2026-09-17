@@ -28,17 +28,33 @@
 | F3 数据自动快照 | ✅ 已合并 | feat/f3-snapshot | 二 | 7a6cc78 | PLAN_SNAPSHOT.md 全量；三红线守住（永不 push/影子拷贝/对外"历史版本"） |
 | F4a MCP 无头 server | ✅ 已合并 | feat/f4-mcp | 三 | 021ce5e | C1-C5 全落（含 ocr/memo 工具，默认全关）；S2 已收口；真机 stdio 管道冒烟已过；剩 C9 三客户端红队 |
 | F4b MCP 安装向导 | ✅ 已合并 | feat/f4b-mcpwizard | 三 | aa48a73 | internal/mcpwizard 独立包零依赖 F4a；AI 接入第 8 分区（52/40/40）；坑占 #61；access.json 对账清单见详情 |
-| F5 软件版本检测 | 🟡 开发中 | feat/f5-wxver | 一 | - | BACKLOG 卡片即方案；官方通道已实连验证；worktree wt-f5-wxver |
+| F5 软件版本检测 | ✅ 已合并 | feat/f5-wxver | 一 | d79f235 | softver 模块；本机真机双口径实测 4.1.15.9 三读数一致；官方页实连 0.37s；winget 备用通道保守未做（裁定记录在卡） |
 | F6 数据目录同级化 | ✅ 已合并 | feat/f6-siblingdir | 一 | 8ba24bd | 实弹全过：裸 exe 全新目录自动建同级 hanxidata ✓、mcp 无头握手 ✓、用户目录零写 ✓；绑定指针=同级 hanxi.bind |
 | F7 hanxi-ocr 托管化 | ✅ 已合并(主仓侧) | feat/f7-ocrhosted | 三 | aee1119 | 真 paddle 36MB 包全链集成测过；三契约令全落；坑重排 #66；剩实 UI 冒烟入人工闸门 |
 | F8 桌面留言板 | ✅ 已合并 | feat/f8-board | 一 | 00f1dc9 | KeepAwake 聚合器入 platform；msgboard 模块；导航计数并集已重算 |
-| F9 WSL USB 共享 | 🟡 开发中 | feat/f9-wslusb | 三 | - | 账本+重放范式；真机验证为合入后闸门 |
+| F9 WSL USB 共享 | ✅ 已合并 | feat/f9-wslusb | 三 | 91f5ce3 | **卡片合同有误已按上游实况纠偏**（list 无 --json，改 state 源）——BACKLOG 回写列入收尾批；真机闸门清单 7 条见 F9 报告 |
 | F7k 后厨发布流水线 | ✅ 已交付(独立仓) | hanxi-ocr-dev `4300765`/`e8ab2b2`/`3330dbf` | 三 | - | 真双包已产出并核验；manifest 超集裁定+version 语义三令已转 F7 主仓侧；selftest 11/11 |
 | R1 热键收编 | ✅ 已合并 | feat/r1-hotkey | 三 | d96aac6 | msgboard→internal/hotkey 槽位 msgboard/toggle；改键序内部升级为"先新后旧"，用户可见零差异 |
 
 图例：⬜ 未开始 / 🟡 开发中 / 🔶 待审查 / ✅ 已合并 / ⛔ 阻塞
 
-> **2026-09-18 停机实况**：F5/F6/F7/F7k/F9 五个在途 agent 被用户停止，**全部停于零提交**（worktree 干净、分支空、零沉没成本，随时可原样重派）。重派时新合同已预装"里程碑即时切账"纪律（禁攒改动、每可编译段即提交）。
+> **2026-09-18 停机实况**：F5/F6/F7/F7k/F9 五个在途 agent 曾被子夜停（全部零沉没成本），重派后装"里程碑即时切账"纪律全部交付。
+
+## 完工总览（2026-09-18 收尾批后）
+
+**九件套 9/9 全部入 dev**（F4 拆 a/b、F7 拆主仓/后厨共 11 支），另有 R1-R5 随批线四清一裁。收尾批已完成：gofmt 全仓清账（6cdf9d7）、F9 卡上游纠偏回写 + DEVPLAN 模块数核正 41（ac37090）。**最终门禁全家福**：`go build` ✅、`go test ./...` 除 instance 沙箱噪音 ✅、vitest **92 文件 923 用例** ✅、vue-tsc ✅、bindings 再生零 diff ✅。全部本地提交，未 push（等你指令）。
+
+### 人工真机验收清单（按优先序，都是 agent 变不出显示器的项）
+
+1. **F6**：把 bin 里新编的 hanxi.exe 拷到任意新目录双击 → 自动建 hanxidata；Program Files 场景弹窗引导；编辑 hanxi.bind 换绑；有 %APPDATA%\Hanxi 老数据的机器首启搬家不丢。
+2. **F7**：拖 `hanxi-ocr-dev\dist\` 双 zip 实装（paddle 即装即生效、wechat 登记不切换）、卸载在用版本拒卸、MCP/服务链路复验。
+3. **F8**：挂牌全屏观感（多 DPI/副屏）、防休眠实测、热键 Ctrl+Alt+B 抢键。
+4. **F2**：Ctrl+Alt+T 与微信/QQ/snipaste 抢键实测；WebView2 剪贴板权限体验。
+5. **F3**：失焦自动快照首拍、提权运行时 git 可用、"历史版本"分区回滚一单验证。
+6. **F9**：按 F9 报告七步闸门（装 usbipd→插设备→bind/attach→⭐自动重放）。
+7. **F5**：大数据目录首扫耗时/取消手感；有 3.x 微信的机器补验旧代口径。
+8. **F1**：便携/标准两目录各开一次确认 history.json 落点（随 F6 搬家验）。
+9. **F4**：真 Claude/Codex/Cursor 三客户端红队（C9）——向导装完各拉一次工具调用。
 
 ## 恢复协议（断了怎么接上）
 
