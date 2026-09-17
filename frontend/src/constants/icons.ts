@@ -83,6 +83,7 @@ export const ICON_PATHS = {
   'chevron-up': ['m18 15-6-6-6 6'],
   'chevron-down': ['m6 9 6 6 6-6'],
   clock: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18', 'M12 7v5l3 2'],
+  bot: ['M12 8V4H8', 'M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z', 'M2 14h2', 'M20 14h2', 'M15 13v2', 'M9 13v2'],
 } as const
 
 export type IconName = keyof typeof ICON_PATHS

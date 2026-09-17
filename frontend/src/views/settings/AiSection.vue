@@ -1,0 +1,359 @@
+<script setup lang="ts">
+// 设置分区·AI 接入（F4b MCP 安装向导，PLAN_MCP §2.5/§8 拍板）：
+// 三态红线流：客户端列表 → 预览（before/after 差异；JSONC/冲突给手动片段）
+// → 确认写入（备份→原子写→复验→失败回滚，结果三态：成功/回滚/拒动）。
+// access.json 只读呈现（授权引擎归 F4a，本分区无写入口）；卸载走对称逆向链。
+import { ref, computed, onMounted } from 'vue'
+import * as McpWizardAPI from '../../../bindings/hanxi/internal/mcpwizard'
+import * as AppAPI from '../../../bindings/hanxi/internal/app'
+import type { WizardStatus, ClientState, WizardPreview, OpResult } from '../../../bindings/hanxi/internal/mcpwizard/models'
+import { getErrorMessage } from '../../utils/errors'
+import { useToast } from '../../composables/useToast'
+import PageHeader from '../../components/ui/PageHeader.vue'
+import AppIcon from '../../components/ui/AppIcon.vue'
+
+const { showToast } = useToast()
+
+const status = ref<WizardStatus | null>(null)
+const loading = ref(false)
+
+// 向导弹窗态：预览 → 结果两段（result 非空即进入结果态，不再可确认）
+const modal = ref<{
+  client: ClientState
+  mode: 'install' | 'uninstall'
+  preview: WizardPreview | null
+  result: OpResult | null
+  busy: boolean
+} | null>(null)
+
+const stateMeta: Record<string, { label: string; chip: string }> = {
+  'not-installed': { label: '未安装', chip: 'chip-neutral' },
+  installed: { label: '已安装', chip: 'chip-positive' },
+  'needs-repair': { label: '需修复', chip: 'chip-warning' },
+  conflict: { label: '冲突 · 拒动', chip: 'chip-danger' },
+  blocked: { label: '拒绝自动改', chip: 'chip-warning' },
+}
+
+const accessMeta = computed(() => {
+  const a = status.value?.access
+  if (!a) return { label: '读取中…', chip: 'chip-neutral' }
+  if (!a.exists) return { label: '尚未生成', chip: 'chip-neutral' }
+  if (!a.readable) return { label: '已损坏 · fail-closed', chip: 'chip-danger' }
+  return { label: `正常 · v${a.version}`, chip: 'chip-positive' }
+})
+
+const accessTools = computed(() => {
+  const t = status.value?.access.tools
+  return [
+    { key: 'envcheck', name: '环境体检', on: !!t?.envcheck },
+    { key: 'everything', name: '全盘搜索', on: !!t?.everything },
+    { key: 'ocr', name: 'OCR 识图', on: !!t?.ocr },
+    { key: 'memo', name: '便签检索', on: !!t?.memo },
+  ]
+})
+
+const serverCmd = computed(() => {
+  const s = status.value?.server
+  if (!s?.command) return '（无法解析 hanxi 可执行文件路径）'
+  return [`"${s.command}"`, ...(s.args ?? [])].join(' ')
+})
+
+async function refresh() {
+  loading.value = true
+  try {
+    status.value = await McpWizardAPI.McpWizardService.GetStatus()
+  } catch (e: unknown) {
+    showToast(`探测客户端配置失败: ${getErrorMessage(e)}`)
+  } finally {
+    loading.value = false
+  }
+}
+
+function actionWord(mode: 'install' | 'uninstall'): string {
+  return mode === 'install' ? '安装' : '卸载'
+}
+
+async function openWizard(client: ClientState, mode: 'install' | 'uninstall') {
+  modal.value = { client, mode, preview: null, result: null, busy: true }
+  try {
+    const pv = mode === 'install'
+      ? await McpWizardAPI.McpWizardService.PreviewInstall(client.id)
+      : await McpWizardAPI.McpWizardService.PreviewUninstall(client.id)
+    if (modal.value) modal.value.preview = pv
+  } catch (e: unknown) {
+    showToast(`${actionWord(mode)}预览失败: ${getErrorMessage(e)}`)
+    modal.value = null
+  } finally {
+    if (modal.value) modal.value.busy = false
+  }
+}
+
+async function confirmWrite() {
+  const m = modal.value
+  if (!m?.preview?.allowed || !m.preview.token) return
+  m.busy = true
+  try {
+    const res = m.mode === 'install'
+      ? await McpWizardAPI.McpWizardService.ConfirmInstall(m.client.id, m.preview.token)
+      : await McpWizardAPI.McpWizardService.ConfirmUninstall(m.client.id, m.preview.token)
+    if (modal.value) modal.value.result = res
+    if (!res.success) showToast(`${actionWord(m.mode)}未完成：${res.message}`)
+    await refresh()
+  } catch (e: unknown) {
+    showToast(`${actionWord(m.mode)}被拒绝: ${getErrorMessage(e)}`)
+    if (modal.value) modal.value.result = { success: false, rolledBack: false, backupPath: '', message: getErrorMessage(e) }
+  } finally {
+    if (modal.value) modal.value.busy = false
+  }
+}
+
+function closeWizard() {
+  modal.value = null
+}
+
+const resultChip = computed(() => {
+  const r = modal.value?.result
+  if (!r) return 'chip-neutral'
+  if (r.success) return 'chip-positive'
+  return r.rolledBack ? 'chip-warning' : 'chip-danger'
+})
+
+/** access.json 所在目录（对文件本身 OpenPath 语义是"打开文件"，这里只要目录）。 */
+const accessDir = computed(() => {
+  const p = status.value?.access.path ?? ''
+  const i = Math.max(p.lastIndexOf('\\'), p.lastIndexOf('/'))
+  return i > 0 ? p.slice(0, i) : p
+})
+
+async function openAccessDir() {
+  if (!accessDir.value) return
+  try {
+    await AppAPI.AppService.OpenPath(accessDir.value)
+  } catch (e: unknown) {
+    showToast(`打开目录失败: ${getErrorMessage(e)}`)
+  }
+}
+
+onMounted(refresh)
+</script>
+
+<template>
+  <section class="page">
+    <PageHeader title="AI 接入" subtitle="把 hanxi 以 MCP server 接入 Claude Code / Codex / Cursor。写入你的客户端配置必经「预览 → 确认」，落盘前自动备份、复验不过自动回滚，绝不静默覆盖。">
+      <template #actions>
+        <span class="chip chip-information">hanxi mcp · stdio</span>
+      </template>
+    </PageHeader>
+
+    <!-- server 启动命令（写入配置的值本体，让"要写什么"一目了然） -->
+    <div class="card server-row">
+      <span class="server-label">写入的启动命令</span>
+      <code class="server-cmd" :title="serverCmd">{{ serverCmd }}</code>
+      <span v-if="status && !status.server.ready" class="chip chip-danger">路径不可解析 · 安装已禁用</span>
+    </div>
+
+    <!-- 客户端列表 -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">MCP 客户端</span>
+        <span class="card-meta">
+          <button class="btn btn-ghost btn-small" :disabled="loading" @click="refresh">
+            <AppIcon name="search" :size="13" /> {{ loading ? '探测中…' : '重新探测' }}
+          </button>
+        </span>
+      </div>
+      <div v-if="loading && !status" class="ai-empty">正在探测客户端配置文件…</div>
+      <div v-else class="client-list">
+        <div v-for="c in status?.clients ?? []" :key="c.id" class="client-row">
+          <div class="client-main">
+            <span class="client-name">
+              {{ c.name }}
+              <span class="chip" :class="stateMeta[c.state]?.chip ?? 'chip-neutral'">{{ stateMeta[c.state]?.label ?? c.state }}</span>
+            </span>
+            <code class="client-path" :title="c.configPath">{{ c.configPath || '—' }}</code>
+            <span v-if="c.detail" class="client-detail" :class="{ 'detail-warn': c.state === 'conflict' || c.state === 'blocked' }">{{ c.detail }}</span>
+            <span v-if="c.installedAt" class="client-time">登记于 {{ c.installedAt }}</span>
+          </div>
+          <div class="client-actions">
+            <button class="btn btn-secondary btn-small" @click="openWizard(c, 'install')" :disabled="!c.canInstall">
+              {{ c.state === 'needs-repair' ? '修复安装' : '安装' }}
+            </button>
+            <button class="btn btn-ghost btn-small" @click="openWizard(c, 'uninstall')" :disabled="!c.canUninstall">卸载</button>
+            <button v-if="!c.canInstall && !c.canUninstall" class="btn btn-ghost btn-small" @click="openWizard(c, 'install')">查看指引</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- access.json 只读呈现（引擎归 F4a；本分区不写） -->
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">工具授权（access.json · 只读）</span>
+        <span class="chip" :class="accessMeta.chip">{{ accessMeta.label }}</span>
+      </div>
+      <div class="access-tools">
+        <span v-for="t in accessTools" :key="t.key" class="tool-item">
+          <span class="tool-name">{{ t.name }}</span>
+          <span class="chip" :class="t.on ? 'chip-positive' : 'chip-neutral'">{{ t.on ? '已授权' : '未授权' }}</span>
+        </span>
+      </div>
+      <div v-if="status?.access.note" class="access-note">{{ status.access.note }}</div>
+      <div class="access-foot">
+        <code class="client-path" :title="status?.access.path">{{ status?.access.path || '—' }}</code>
+        <button class="btn btn-secondary btn-small" :disabled="!status?.access.path" @click="openAccessDir">
+          <AppIcon name="folder" :size="13" /> 打开所在目录
+        </button>
+      </div>
+    </div>
+
+    <!-- 向导弹窗：预览(diff/手动片段) → 确认 → 结果三态 -->
+    <div v-if="modal" class="modal-backdrop" @click.self="closeWizard">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3>{{ actionWord(modal.mode) }} · {{ modal.client.name }}</h3>
+          <button class="btn-close" aria-label="关闭" @click="closeWizard">✕</button>
+        </div>
+        <div class="modal-body">
+          <div v-if="modal.busy && !modal.preview" class="ai-empty">正在生成预览…</div>
+          <template v-else-if="modal.preview">
+            <template v-if="!modal.result">
+              <div class="pv-path">
+                目标文件：<code :title="modal.preview.configPath">{{ modal.preview.configPath }}</code>
+                <span v-if="modal.preview.willCreate" class="chip chip-information">文件不存在，将新建</span>
+                <span v-if="modal.preview.zeroDiff" class="chip chip-neutral">零改动（幂等）</span>
+              </div>
+              <template v-if="modal.preview.allowed">
+                <div class="diff-pane" role="log" aria-label="配置差异预览">
+                  <div v-for="(l, i) in modal.preview.diff" :key="i" class="diff-line" :class="`d-${l.kind}`">
+                    <span class="diff-g">{{ l.kind === 'add' ? '+' : l.kind === 'del' ? '-' : ' ' }}</span>{{ l.text }}
+                  </div>
+                </div>
+                <div v-if="modal.preview.reason" class="pv-reason">{{ modal.preview.reason }}</div>
+              </template>
+              <template v-else>
+                <div class="refuse-block">
+                  <div class="refuse-title">已拒绝自动修改（fail-closed）</div>
+                  <div class="refuse-reason">{{ modal.preview.reason || '该文件无法安全合并' }}</div>
+                  <pre v-if="modal.preview.manualSnippet" class="snippet">{{ modal.preview.manualSnippet }}</pre>
+                </div>
+              </template>
+            </template>
+            <template v-else>
+              <div class="result-block">
+                <span class="chip" :class="resultChip">
+                  {{ modal.result.success ? '完成' : modal.result.rolledBack ? '已回滚' : '未完成' }}
+                </span>
+                <div class="result-message">{{ modal.result.message }}</div>
+                <div v-if="modal.result.backupPath" class="result-bak">备份文件：<code>{{ modal.result.backupPath }}</code></div>
+              </div>
+            </template>
+          </template>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" @click="closeWizard">{{ modal.result ? '关闭' : '取消' }}</button>
+          <button
+            v-if="!modal.result && modal.preview?.allowed"
+            class="btn btn-primary"
+            :disabled="modal.busy"
+            @click="confirmWrite"
+          >
+            {{ modal.busy ? '写入中…' : `确认${actionWord(modal.mode)}${modal.preview.zeroDiff ? '' : '（自动备份）'}` }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+/* 行骨架复用全局 .card / .chip / .btn / .setting 原子，此处仅本分区专属皮 */
+.card { margin-bottom: 16px; }
+
+.server-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.server-label { font-size: var(--text-sm); color: var(--color-text-muted); flex: none; }
+.server-cmd {
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text);
+  background: var(--surface-chrome); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  padding: 3px 8px; max-width: 560px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px; }
+.card-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); }
+.card-meta { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.ai-empty { padding: 18px 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
+
+.client-list { display: flex; flex-direction: column; gap: 8px; }
+.client-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-element);
+}
+.client-row:hover { background: var(--surface-hover); }
+.client-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.client-name { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-base); font-weight: 600; color: var(--color-text); }
+.client-path {
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px;
+}
+.client-detail { font-size: var(--text-sm); color: var(--color-text-muted); }
+.client-detail.detail-warn { color: var(--state-warning, var(--color-text)); }
+.client-time { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.client-actions { display: flex; gap: 6px; flex: none; }
+
+.access-tools { display: flex; gap: 18px; flex-wrap: wrap; margin: 4px 0 8px; }
+.tool-item { display: inline-flex; align-items: center; gap: 6px; }
+.tool-name { font-size: var(--text-sm); color: var(--color-text); }
+.access-note { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: 8px; }
+.access-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* 向导弹窗（皮对齐 SnapshotSection 的 .modal-* 家族） */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--overlay-mask);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-card {
+  background: var(--surface-panel); border-radius: var(--radius-element); width: 640px; max-width: 92vw;
+  box-shadow: var(--shadow-panel); overflow: hidden; display: flex; flex-direction: column;
+}
+.modal-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--color-border);
+}
+.modal-head h3 { margin: 0; font-size: var(--text-base); color: var(--color-text); font-weight: 600; }
+.btn-close { background: transparent; border: none; font-size: var(--text-lg); cursor: pointer; color: var(--color-text-muted); }
+.modal-body { padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; max-height: 62vh; overflow: auto; }
+.modal-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 12px 20px; border-top: 1px solid var(--color-border);
+}
+
+.pv-path { font-size: var(--text-sm); color: var(--color-text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pv-path code { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
+.pv-reason { font-size: var(--text-sm); color: var(--color-text-muted); }
+
+.diff-pane {
+  border: 1px solid var(--color-border); border-radius: var(--radius-element);
+  padding: 8px 10px; overflow: auto; max-height: 40vh; background: var(--surface-chrome);
+}
+.diff-line {
+  font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.6; white-space: pre-wrap; word-break: break-all;
+  color: var(--color-text-muted);
+}
+.diff-g { display: inline-block; width: 12px; user-select: none; }
+.diff-line.d-add { color: var(--state-positive, var(--color-text)); background: var(--state-positive-soft, transparent); }
+.diff-line.d-del { color: var(--state-danger, var(--color-text)); background: var(--state-danger-soft, transparent); }
+
+.refuse-block { display: flex; flex-direction: column; gap: 8px; }
+.refuse-title { font-size: var(--text-base); font-weight: 600; color: var(--state-warning, var(--color-text)); }
+.refuse-reason { font-size: var(--text-sm); color: var(--color-text); }
+.snippet {
+  margin: 0; padding: 10px 12px; overflow: auto;
+  font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; color: var(--color-text);
+  white-space: pre-wrap; word-break: break-all;
+  background: var(--surface-chrome); border: 1px solid var(--color-border); border-radius: var(--radius-element);
+}
+
+.result-block { display: flex; flex-direction: column; gap: 8px; }
+.result-message { font-size: var(--text-sm); color: var(--color-text); }
+.result-bak { font-size: var(--text-xs); color: var(--color-text-subtle); font-family: var(--font-mono); word-break: break-all; }
+</style>

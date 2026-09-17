@@ -126,14 +126,14 @@ describe('分组渲染', () => {
 })
 
 describe('设置分区菜单（第二栏设置态）', () => {
-  it('activeRoute=/settings → 面板头「设置」、七分区行、主入口回落高亮常规，页脚计分区数', () => {
+  it('activeRoute=/settings → 面板头「设置」、八分区行、主入口回落高亮常规，页脚计分区数', () => {
     const w = factory({ navs: [MEMO], activeRoute: '/settings' })
     expect(w.find('.panel-title').text()).toBe('设置')
     const items = w.findAll('.mod')
-    expect(items).toHaveLength(7)
+    expect(items).toHaveLength(8)
     expect(items.map((b) => b.find('.mod-name').text())[0]).toBe('常规偏好')
     expect(items[0].classes()).toContain('active')
-    expect(w.find('.foot-counts span').text()).toBe('7 个分区')
+    expect(w.find('.foot-counts span').text()).toBe('8 个分区')
     expect(w.find('.foot-run').exists()).toBe(false)
   })
 

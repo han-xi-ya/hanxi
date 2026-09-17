@@ -14,6 +14,7 @@ import (
 	"hanxi/internal/history"
 	"hanxi/internal/hotkey"
 	"hanxi/internal/logging"
+	"hanxi/internal/mcpwizard"
 	"hanxi/internal/modules/bcu"
 	bcuinstance "hanxi/internal/modules/bcu/instance"
 	bcuversion "hanxi/internal/modules/bcu/version"
@@ -373,6 +374,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		// 统一历史：公共包型服务直挂（notify 同位置先例），不进 modulesToRegister、无 Nav。
 		application.NewService(historySvc),
 		application.NewService(snapSvc),
+		// MCP 安装向导（「AI 接入」分区后端，F4b）：平台级服务直挂同 snapSvc 先例；
+		// 无后台协程无常驻状态，只在设置分区打开时按需读盘分析。
+		application.NewService(mcpwizard.NewService(paths)),
 	}
 	services = append(services, registry.AllServices()...)
 
