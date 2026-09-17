@@ -47,7 +47,7 @@ function reset() {
   border-radius: var(--radius-element);
   text-align: center;
 }
-.eb-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--state-danger); }
-.eb-desc { margin: 0; font-size: 13px; color: var(--color-text-muted); max-width: 520px; overflow-wrap: anywhere; }
+.eb-title { margin: 0; font-size: var(--text-md); font-weight: 700; color: var(--state-danger); }
+.eb-desc { margin: 0; font-size: var(--text-base); color: var(--color-text-muted); max-width: 520px; overflow-wrap: anywhere; }
 .eb-actions { display: flex; gap: 8px; margin-top: 4px; }
 </style>

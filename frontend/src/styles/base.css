@@ -6,6 +6,7 @@
 body {
   margin: 0;
   font-family: var(--font-text);
+  font-size: var(--text-base);
   color: var(--color-text);
   background: var(--surface-page);
   -webkit-font-smoothing: antialiased;

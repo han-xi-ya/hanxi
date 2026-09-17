@@ -76,15 +76,15 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 .workbench-confirm-backdrop { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:24px; background:var(--overlay-mask); }
 .workbench-confirm { width:min(460px,100%); max-height:min(72vh,640px); overflow-y:auto; padding:20px; border:1px solid var(--color-border); border-radius:var(--radius-panel); background:var(--surface-panel); box-shadow:var(--shadow-panel); color:var(--color-text); }
 .workbench-confirm header { display:flex; gap:12px; align-items:flex-start; }
-.workbench-confirm h2 { margin:0 0 6px; font-size:17px; }
-.workbench-confirm p { margin:0; color:var(--color-text-muted); font-size:13px; line-height:1.65; white-space:pre-line; }
+.workbench-confirm h2 { margin:0 0 6px; font-size:var(--text-lg); }
+.workbench-confirm p { margin:0; color:var(--color-text-muted); font-size:var(--text-base); line-height:1.65; white-space:pre-line; }
 .workbench-confirm-mark { display:grid; place-items:center; width:30px; height:30px; flex:none; border-radius:var(--radius-element); background:var(--state-warning-soft); color:var(--state-warning); font-weight:800; }
 .is-danger .workbench-confirm-mark { background:var(--state-danger-soft); color:var(--state-danger); }
 .workbench-confirm-details { margin:16px 0 0; padding:12px; border:1px solid var(--color-border); border-radius:var(--radius-element); background:var(--surface-soft); }
 .workbench-confirm-details div { display:grid; grid-template-columns:100px minmax(0,1fr); gap:10px; padding:4px 0; }
-dt { color:var(--color-text-muted); font-size:12px; } dd { margin:0; overflow-wrap:anywhere; font:12px/1.5 var(--font-mono); }
+dt { color:var(--color-text-muted); font-size:var(--text-sm); } dd { margin:0; overflow-wrap:anywhere; font:var(--text-sm)/1.5 var(--font-mono); }
 footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
-.workbench-confirm-btn { min-height:38px; padding:0 16px; border:1px solid var(--color-border); border-radius:var(--radius-control); font-weight:650; cursor:pointer; }
+.workbench-confirm-btn { min-height:var(--control-h-lg); padding:0 16px; border:1px solid var(--color-border); border-radius:var(--radius-control); font-weight:650; cursor:pointer; }
 .workbench-confirm-btn.secondary { background:var(--surface-soft); color:var(--color-text); }
 .workbench-confirm-btn.primary { border-color:transparent; background:var(--color-primary); color:var(--color-on-primary); }
 .is-danger .workbench-confirm-btn.primary { background:var(--state-danger); }

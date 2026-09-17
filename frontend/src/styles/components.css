@@ -6,6 +6,9 @@
  *      因此本文件落地当天所有旧视图视觉零变化；
  *   —— 迁移一个视图 = 删掉它的 scoped 副本，自动落回本文件的标准形。
  * 新组件优先组合这里的类，禁止在视图里再造同名原子。
+ *
+ * 字号一律引用 --text-* 阶梯、按钮高度引用 --control-h-* 三档（tokens.css §7.3），
+ * 本文件内禁止再出现裸 px 字号。
  * ============================================================ */
 
 /* ---------- 页面骨架 ---------- */
@@ -14,7 +17,7 @@
   margin: 0 auto;
 }
 :where(.page h1) {
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: 600;
   margin: 0 0 16px;
   color: var(--color-text);
@@ -22,7 +25,7 @@
 :where(.page p) {
   line-height: 1.6;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 :where(.header-row) {
   display: flex;
@@ -33,22 +36,22 @@
 }
 :where(.subtitle) {
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--text-base);
   margin: 0;
   line-height: 1.6;
 }
 
-/* ---------- 按钮家族 ---------- */
+/* ---------- 按钮家族（高度三档 --control-h-lg/md/sm）---------- */
 :where(.btn) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 36px;
+  min-height: var(--control-h-lg);
   padding: 6px 14px;
   border-radius: var(--radius-control);
   border: 1px solid transparent;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   cursor: pointer;
   transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
@@ -80,6 +83,15 @@
 :where(.btn-danger-outline:hover:not(:disabled)) {
   background: var(--state-danger-soft);
 }
+:where(.btn-accent-outline) {
+  background: transparent;
+  color: var(--color-primary);
+  border-color: var(--color-border);
+}
+:where(.btn-accent-outline:hover:not(:disabled)) {
+  border-color: var(--color-primary);
+  background: var(--surface-soft);
+}
 :where(.btn-ghost) {
   background: transparent;
   color: var(--color-text-muted);
@@ -89,16 +101,23 @@
   color: var(--color-text);
 }
 :where(.btn-small) {
-  min-height: 30px;
+  min-height: var(--control-h-md);
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
+}
+/* 微操作钮：表格行内/工具条等密集场景的第三档，替代各视图私有小钮形 */
+:where(.btn-micro) {
+  min-height: var(--control-h-sm);
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+  border-radius: 6px;
 }
 :where(.link-button) {
   background: transparent;
   border: none;
   padding: 0 2px;
   color: var(--color-primary);
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 :where(.link-button:hover) {
@@ -119,7 +138,7 @@
 :where(.tbl) {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: var(--text-base);
   text-align: left;
 }
 :where(.tbl th) {
@@ -127,7 +146,7 @@
   padding: 8px 12px;
   font-weight: 600;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   border-bottom: 1px solid var(--color-border);
 }
 :where(.tbl td) {
@@ -138,6 +157,73 @@
 :where(.tbl tr:last-child td) {
   border-bottom: none;
 }
+
+/* ---------- 托管家族控制台皮（2026-09 字号/按钮体系化治理·上收波：控制条/状态字组/下载行/
+   已装卡/联动卡/知识折叠卡等 ~40 条，MarkerOn 等 19–21 份 scoped 副本逐字同形，标准形取
+   模板视图 MarkerOnView 值；散差按多数派定档（installed-grid minmax 320、control-bar gap 8、
+   dl-bar-inner base ease、retry-link ml8、hint-line 无行距档），逐视图删副本落回即完成收编。
+   同名不同名的前缀复制体（dz-/md- 家族、各视图 {前缀}-status-light/{前缀}-ver-status 状态灯）
+   属 ManagedConsoleShell 后续专项（§4），本波不收。
+   位置注记：本块须先于 .diag-card 锚定块（源码序 = 同特异性裁决序）。 ---------- */
+:where(.control-bar) {
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
+}
+:where(.control-top) { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+:where(.control-status) { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+:where(.control-btns) { display: flex; gap: 8px; flex-wrap: wrap; }
+:where(.status-word) { font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
+:where(.ver-pill) { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 1px 8px; color: var(--color-text); }
+:where(.pid-tag) { font-size: var(--text-xs); color: var(--color-text-subtle); }
+:where(.uptime-tag) { font-size: var(--text-xs); color: var(--color-text-subtle); }
+:where(.ver-tag) { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
+:where(.download-cell) { display: flex; align-items: center; gap: 8px; width: 140px; }
+:where(.dl-bar-wrap) { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }
+:where(.dl-bar-inner) { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
+:where(.dl-percent) { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
+:where(.dl-meta-text) { font-size: var(--text-sm); color: var(--color-primary); }
+:where(.dl-error) { color: var(--state-danger); font-size: var(--text-xs); }
+:where(.retry-link) { color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; }
+:where(.retry-link:hover) { text-decoration: underline; }
+:where(.installed-grid) { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+:where(.installed-card) {
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color var(--motion-base) ease;
+}
+:where(.installed-card.card-active) { border-color: var(--color-primary); }
+:where(.inst-card-top) { display: flex; justify-content: space-between; align-items: center; }
+:where(.inst-badges) { display: flex; gap: 6px; }
+:where(.inst-meta) { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); }
+:where(.meta-line) { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
+:where(.meta-line .k) { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
+:where(.inst-actions) { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
+:where(.control-panel) {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface-panel); border: 1px solid var(--color-border); padding: 10px 14px; border-radius: var(--radius-control);
+}
+:where(.meta-info) { font-size: var(--text-base); color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
+:where(.meta-info strong) { color: var(--color-text); }
+:where(.btn-group) { display: flex; gap: 8px; }
+:where(.section-title h3) { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+:where(.empty-hint) { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: var(--text-base); background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
+:where(.extras-card) { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+:where(.extras-row) { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+:where(.toggle-label) { display: flex; align-items: center; gap: 8px; font-size: var(--text-base); color: var(--color-text); cursor: pointer; }
+:where(.toggle-label input) { width: 15px; height: 15px; cursor: pointer; }
+:where(.repo-row) { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-text-muted); flex-wrap: wrap; }
+:where(.repo-row .k) { color: var(--color-text-subtle); flex-shrink: 0; }
+:where(.repo-addr) { flex: 1; min-width: 220px; }
+:where(.info-details) { border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); overflow: hidden; }
+:where(.info-summary) { padding: 7px 12px; font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
+:where(.info-summary::-webkit-details-marker) { display: none; }
+:where(.info-summary::after) { content: '▸'; font-size: var(--text-micro); margin-left: auto; transition: transform var(--motion-base); }
+:where(.info-details[open] .info-summary) { border-bottom: 1px solid var(--color-border); }
+:where(.info-details[open] .info-summary::after) { transform: rotate(90deg); }
+:where(.info-body) { padding: 8px 12px; font-size: var(--text-sm); color: var(--color-text-muted); display: flex; flex-direction: column; gap: 4px; }
+:where(.info-body p) { margin: 0; line-height: 1.6; }
+:where(.hint-line) { font-size: var(--text-sm); color: var(--color-text-subtle); padding-left: 2px; }
+:where(.table-container) { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
+:where(.ver-name) { font-family: var(--font-mono); }
 
 /* ---------- 设置分区行（设置页拆分后跨六个分区视图共用，自 SettingsView scoped 副本上收；
    命名 .setting-* 全库唯一，零特异性落回即可用） ---------- */
@@ -155,8 +241,8 @@
 :where(.setting-row-tappable) { cursor: pointer; }
 :where(.setting-row-tappable:hover) { background: var(--surface-hover); }
 :where(.setting-main) { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-:where(.setting-name) { font-size: 13px; font-weight: 600; color: var(--color-text); }
-:where(.setting-desc) { font-size: 11px; color: var(--color-text-muted); }
+:where(.setting-name) { font-size: var(--text-base); font-weight: 600; color: var(--color-text); }
+:where(.setting-desc) { font-size: var(--text-xs); color: var(--color-text-muted); }
 :where(.setting-actions) { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- 徽标 / 状态 chip ---------- */
@@ -164,7 +250,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 8px;
   border-radius: var(--radius-pill);
   font-weight: 500;
@@ -188,6 +274,7 @@
   border-radius: var(--radius-control);
   background: var(--surface-panel);
   color: var(--color-text-muted);
+  font-size: var(--text-sm);
 }
 :where(.state-error) { color: var(--state-danger); }
 :where(.state-warning) { color: var(--state-warning); }
@@ -204,7 +291,7 @@
 :where(.banner) {
   padding: 10px 14px;
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: var(--text-base);
   border: 1px solid transparent;
   overflow-wrap: anywhere;
 }
@@ -212,6 +299,8 @@
 :where(.banner-info) { background: var(--state-information-soft); border-color: var(--state-information-glow); color: var(--state-information); }
 :where(.banner-warn) { background: var(--state-warning-soft); border-color: var(--state-warning-glow); color: var(--state-warning); }
 :where(.banner-error) { background: var(--state-danger-soft); border-color: var(--state-danger-glow); color: var(--state-danger); }
+/* slim 档（§9.5-6 已接受微差）：页签内/控制条下紧凑提示条，四写归一（.slim/.banner.slim/.tab-body .banner/.dz-slim 消费面收拢中） */
+:where(.banner.slim) { padding: 8px 12px; font-size: var(--text-sm); }
 
 /* ---------- 空态 / 错误框 ---------- */
 :where(.empty-state) {
@@ -228,7 +317,7 @@
 :where(.empty-state p) {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 :where(.error-box) {
   padding: 10px 14px;
@@ -236,14 +325,14 @@
   color: var(--state-danger);
   border: 1px solid var(--state-danger-glow);
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 /* ---------- 机器值排版 ---------- */
 :where(.mono) {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text);
   word-break: break-all;
 }
@@ -264,7 +353,7 @@
 :where(.tool-panel) {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -285,7 +374,7 @@
   flex: 0 0 140px;
 }
 :where(.input-label) {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-text-muted);
   white-space: nowrap;
@@ -295,21 +384,21 @@
   padding: 6px 10px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 :where(.select-input) {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
   background: var(--surface-panel);
 }
 :where(.quick-targets) {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 :where(.quick-label) {
   color: var(--color-text-subtle);
@@ -317,9 +406,9 @@
 :where(.btn-quick) {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   cursor: pointer;
 }
@@ -330,7 +419,7 @@
 :where(.diag-card) {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -351,11 +440,11 @@
   gap: 2px;
 }
 :where(.s-label) {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
 }
 :where(.s-val) {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text);
 }
@@ -370,7 +459,7 @@
 }
 /* 状态徽章承载动态错误/节点文本，不套 chip 的 nowrap——.ok 为两面板逐字共用形 */
 :where(.status-badge) {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 8px;
   border-radius: var(--radius-pill);
   font-weight: 500;
@@ -379,13 +468,19 @@
   background: var(--state-positive-soft);
   color: var(--state-positive);
 }
-/* .rtt-tag 有意不收：LanScannerView 同名 scoped 副本未声明 font-family，裸收会漏染其等宽字体 */
+/* RTT 值标签基形（2026-09 治理裁决，§9.6-10 冻结件就此解除：三方基形已收拢一致；
+   LanScanner 的 padding/radius 档与 Ping/Traceroute 的 fast/medium/slow 色档为合法补差，留局部） */
+:where(.rtt-tag) { font-family: var(--font-mono); font-weight: 600; font-size: var(--text-sm); }
 
 /* ---------- 语义色文本原子（publicip ×2、fileshare LogsTab、HomeView 逐字同形副本上收；
-   .text-danger/.text-muted/.text-warn/.text-subtle 存在同类不同形或无定义使用，暂留局部，见 §9.6 报告） ---------- */
+   2026-09 冻结六项裁决落地：.text-muted/.text-danger 按名实一致定档全局，
+   subtle 派局部件改挂 .text-subtle；.text-warn 全库零消费不设） ---------- */
 :where(.text-success) {
   color: var(--state-positive);
 }
+:where(.text-muted) { color: var(--color-text-muted); }
+:where(.text-subtle) { color: var(--color-text-subtle); }
+:where(.text-danger) { color: var(--state-danger); }
 
 /* ---------- 微信机器人模态壳（§9.6-8：Bind ⇄ Rename 双模态 11 条逐字副本上收） ---------- */
 :where(.custom-modal-backdrop) {
@@ -417,7 +512,7 @@
   align-items: center;
 }
 :where(.cmodal-title) {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-text);
   display: flex;
@@ -427,7 +522,7 @@
 :where(.cmodal-close) {
   background: transparent;
   border: none;
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-text-subtle);
   cursor: pointer;
 }
@@ -443,7 +538,7 @@
   gap: 4px;
 }
 :where(.form-label) {
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
 }
@@ -451,7 +546,7 @@
   padding: 6px 10px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
   outline: none;
   transition: border-color 0.15s ease;
 }
@@ -475,7 +570,7 @@
   border: none;
   padding: 4px 10px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
   display: inline-flex;
@@ -488,7 +583,7 @@
 }
 :where(.btn-bind-account.large) {
   padding: 8px 18px;
-  font-size: 13px;
+  font-size: var(--text-base);
   margin-top: 14px;
 }
 
@@ -498,12 +593,8 @@
 :where(.flex-between) { display: flex; justify-content: space-between; align-items: center; }
 :where(.gap-2) { gap: 8px; }
 :where(.ml-2) { margin-left: 8px; }
-:where(.btn-sm) {
-  padding: 4px 8px;
-  font-size: 11px;
-}
 :where(.tag-pill) {
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px 6px;
   border-radius: 4px;
   background: var(--surface-soft);
@@ -514,4 +605,4 @@
 /* ---------- Everything 小工具（§9.6-2：hint-dim/badge 多组件逐字同形副本上收；
    .empty-hint 全库 20+ 份存在 padding/border 不同形变体，暂留局部，见 §9.6 报告） ---------- */
 :where(.hint-dim) { color: var(--color-text-subtle); }
-:where(.badge) { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+:where(.badge) { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }

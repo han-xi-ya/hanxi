@@ -66,7 +66,7 @@ async function restart() {
   margin-top: 8px;
 }
 .elevate-note {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 </style>

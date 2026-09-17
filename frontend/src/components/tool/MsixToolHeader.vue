@@ -29,9 +29,9 @@ defineProps<{
 .msix-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 16px; }
 .msix-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .msix-logo { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border)); border-radius: var(--radius-element); background: color-mix(in srgb, var(--color-primary) 10%, var(--surface-panel)); color: var(--color-primary); font-weight: 800; letter-spacing: -0.05em; }
-.msix-header h1 { margin: 0; font-size: 20px; }
-.msix-header p { margin: 4px 0 0; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
-.msix-state { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-pill); background: var(--surface-panel); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.msix-header h1 { margin: 0; font-size: var(--text-xl); }
+.msix-header p { margin: 4px 0 0; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.5; }
+.msix-state { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-pill); background: var(--surface-panel); font-size: var(--text-sm); font-weight: 700; white-space: nowrap; }
 .msix-state i { width: 7px; height: 7px; border-radius: 50%; background: var(--color-text-subtle); }
 .msix-state.installed i { background: var(--state-positive); }
 .msix-state.active i { background: var(--color-primary); animation: hx-pulse 1.8s infinite; }

@@ -94,14 +94,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 <style scoped>
 .hx-prompt-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
 .hx-prompt { width: min(440px, 100%); padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); background: var(--surface-panel); box-shadow: var(--shadow-panel); color: var(--color-text); }
-.hx-prompt h2 { margin: 0 0 6px; font-size: 17px; }
-.hx-prompt header p { margin: 0 0 4px; color: var(--color-text-muted); font-size: 13px; line-height: 1.65; }
+.hx-prompt h2 { margin: 0 0 6px; font-size: var(--text-lg); }
+.hx-prompt header p { margin: 0 0 4px; color: var(--color-text-muted); font-size: var(--text-base); line-height: 1.65; }
 .hx-prompt-field { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
-.hx-prompt-label { font-size: 12px; font-weight: 600; color: var(--color-text-muted); }
-.hx-prompt-field input { min-height: 38px; padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); background: var(--surface-soft); color: var(--color-text); font-size: 13px; }
+.hx-prompt-label { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); }
+.hx-prompt-field input { min-height: var(--control-h-lg); padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); background: var(--surface-soft); color: var(--color-text); font-size: var(--text-base); }
 .hx-prompt-field input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-.hx-prompt-btn { min-height: 38px; padding: 0 16px; border: 1px solid var(--color-border); border-radius: var(--radius-control); font-weight: 650; cursor: pointer; transition: background var(--motion-base) ease; }
+.hx-prompt-btn { min-height: var(--control-h-lg); padding: 0 16px; border: 1px solid var(--color-border); border-radius: var(--radius-control); font-weight: 650; cursor: pointer; transition: background var(--motion-base) ease; }
 .hx-prompt-btn.secondary { background: var(--surface-soft); color: var(--color-text); }
 .hx-prompt-btn.secondary:hover { background: var(--surface-hover); }
 .hx-prompt-btn.primary { border-color: transparent; background: var(--color-primary); color: var(--color-on-primary); }

@@ -158,7 +158,7 @@ function handleItemClick(item: Notification) {
 }
 
 .header-left h3 {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0;
   color: var(--color-text);
@@ -167,7 +167,7 @@ function handleItemClick(item: Notification) {
 .badge-unread {
   background: var(--state-danger);
   color: var(--color-on-primary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 10px;
@@ -182,7 +182,7 @@ function handleItemClick(item: Notification) {
 .btn-text {
   background: transparent;
   border: none;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-primary);
   cursor: pointer;
   padding: 2px 4px;
@@ -195,7 +195,7 @@ function handleItemClick(item: Notification) {
 .btn-close {
   background: transparent;
   border: none;
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-text-muted);
   cursor: pointer;
   padding: 2px 6px;
@@ -224,11 +224,11 @@ function handleItemClick(item: Notification) {
 }
 
 .empty-icon {
-  font-size: 32px;
+  font-size: var(--text-3xl);
 }
 
 .empty-state p {
-  font-size: 13px;
+  font-size: var(--text-base);
   margin: 0;
 }
 
@@ -274,14 +274,14 @@ function handleItemClick(item: Notification) {
 .sev-error { background: var(--state-danger); }
 
 .mod-tag {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-text-subtle);
   text-transform: uppercase;
 }
 
 .title {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
@@ -289,13 +289,13 @@ function handleItemClick(item: Notification) {
 }
 
 .time {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   flex-shrink: 0;
 }
 
 .msg {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   margin: 0;
   line-height: 1.4;

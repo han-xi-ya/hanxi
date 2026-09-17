@@ -33,7 +33,7 @@ const emit = defineEmits<{ 'update:modelValue': [key: string] }>()
 
 <style scoped>
 .main-tab-nav { display: flex; background: var(--surface-hover); padding: 3px; border-radius: var(--radius-control); gap: 2px; }
-.main-tab-btn { background: transparent; border: none; padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--color-text-muted); cursor: pointer; transition: color var(--motion-base) ease, background var(--motion-base) ease; }
+.main-tab-btn { background: transparent; border: none; padding: 6px 16px; border-radius: 6px; font-size: var(--text-base); font-weight: 500; color: var(--color-text-muted); cursor: pointer; transition: color var(--motion-base) ease, background var(--motion-base) ease; }
 .main-tab-btn:hover { color: var(--color-text); }
 .main-tab-btn.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-small); }
 </style>

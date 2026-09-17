@@ -140,14 +140,14 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 }
 
 .toast-module {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-subtle);
   text-transform: uppercase;
   font-weight: 600;
 }
 
 .toast-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--color-text);
   white-space: nowrap;
@@ -156,7 +156,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 }
 
 .toast-msg {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   margin: 0;
   line-height: 1.4;
@@ -170,7 +170,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 .toast-close {
   background: transparent;
   border: none;
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--color-text-subtle);
   cursor: pointer;
   padding: 2px 4px;

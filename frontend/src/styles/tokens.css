@@ -62,7 +62,26 @@
   --font-display: "Segoe UI Variable Display", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 
+  /* 字号阶梯（紧凑工作台，基准 13px；docs/FRONTEND.md §7.3）
+   * 视图/组件禁止再写裸 px 字号，一律 var() 引用本阶梯就近取档；
+   * 仅 .popup-shell 独立悬浮窗与终端 ANSI 日志区因窗口尺寸/后端互锁豁免。 */
+  --text-micro: 10px; /* 极小注记 / 角标 */
+  --text-xs: 11px;    /* 元数据 / caption / 状态标签 / chip */
+  --text-sm: 12px;    /* 表格正文 / 控件标签 / 小按钮 */
+  --text-base: 13px;  /* 正文默认 / 主按钮 */
+  --text-md: 14px;    /* 分区标题 / 强调正文 */
+  --text-lg: 16px;    /* 区块标题 */
+  --text-xl: 18px;    /* 页面标题 */
+  --text-2xl: 22px;   /* 大数字 / KPI */
+  --text-3xl: 28px;   /* hero 数字（全库禁止更大文本字号） */
+
+  /* 控件高度三档：主按钮 / 小按钮 / 微操作钮（触控粗指针由 base.css 44px 兜底） */
+  --control-h-lg: 36px;
+  --control-h-md: 30px;
+  --control-h-sm: 24px;
+
   /* 半径 / 阴影 / 动效 */
+  --radius-micro: 4px;   /* 键帽/行内微件小圆角（B/C 组治理诉求，2026-09） */
   --radius-control: 8px;
   --radius-element: 12px;
   --radius-panel: 16px;
