@@ -22,3 +22,6 @@ hanxidata/
 
 .idea/
 .vscode/
+
+# 多 agent 协调 worktree（含 node_modules junction，勿入库）
+.claude/worktrees/
