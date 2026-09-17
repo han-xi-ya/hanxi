@@ -25,6 +25,10 @@ const (
 	triggerMove = 16                     // 抬手前光标位移容差（物理像素）
 
 	popupWindowName = "quickmenu-popup"
+	// 弹窗收起后的空闲驻留时长：到期真销毁窗口释放 WebView2 内存（下次唤出重建，
+	// 代价数百毫秒）；TTL 内再唤出走热复用，零延迟。常驻隐藏换内存的折中点，
+	// 轮盘作为高频手势工具，5 分钟覆盖"连用几次"的会话粒度。
+	popupIdleTTL = 5 * time.Minute
 	// 轮盘弹窗为正方形真透明窗口（BackgroundTypeTransparent，DirectComposition
 	// 合成）：主盘直径 340 DIP（r=170）保持不变；分组展开的"外扩子环帽带"画到
 	// r=236，故窗口放大为 512 DIP 见方，四周透明边距 popupMargin=20 容纳投影与
@@ -52,7 +56,13 @@ type QuickMenuService struct {
 	clipWarned bool                       // 裁剪失败已告警过（每次唤出都裁，只首报防刷屏）
 	mainWin    *application.WebviewWindow // route 条目唤主窗用（装配根注入）
 	popup      *application.WebviewWindow
-	trap       *mousetrap.Trap
+	// 弹窗生命周期三态：popup 非空=窗体存在（可见或隐藏驻留）；
+	// popupShown 与 show/hide 调用严格同步——显隐判定走状态机而非
+	// IsVisible（后者是主线程 InvokeSync，持锁期间调用有锁反转风险）。
+	popupShown   bool
+	popupClosing func() // WindowClosing 拦截 hook 的注销闭包（销毁前摘除，放行 Close 走 Wails 内部销毁路径）
+	popupIdle    *time.Timer
+	trap         *mousetrap.Trap
 }
 
 // NewQuickMenuService 装配常驻单例服务：条目派发器复用 internal/launcher（与托盘菜单同语义），
@@ -80,8 +90,7 @@ func (s *QuickMenuService) start() error {
 	}
 	s.mu.Unlock()
 
-	a := application.Get()
-	if a == nil {
+	if application.Get() == nil {
 		return fmt.Errorf("快捷菜单需要在应用运行后初始化，请重试")
 	}
 
@@ -90,43 +99,9 @@ func (s *QuickMenuService) start() error {
 		return err
 	}
 
-	s.mu.Lock()
-	popup := s.popup
-	s.mu.Unlock()
-	if popup == nil {
-		popup = a.Window.NewWithOptions(application.WebviewWindowOptions{
-			Name:             popupWindowName,
-			Title:            "快捷菜单",
-			Width:            popupWidth,
-			Height:           popupHeight,
-			Hidden:           true, // 常驻隐藏待唤，首次触发前不占屏
-			Frameless:        true,
-			AlwaysOnTop:      true,
-			DisableResize:    true,
-			BackgroundType:   application.BackgroundTypeTransparent,            // 真透明：圆盘边缘抗锯齿由页面绘制，杜绝窗底白边
-			Windows:          application.WindowsWindow{HiddenOnTaskbar: true}, // 不进任务栏/Alt+Tab
-			URL:              "/#quickmenu",                                    // 前端按 hash 分流挂载弹窗视图（main.ts）
-			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
-		})
-		// 关窗/失焦均收起不销毁（beta.10 无公开销毁 API，隐藏复用与会话驻留的托盘隐藏策略同构，
-		// 也避免误触"最后窗口"退出分支）。
-		popup.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
-			ev.Cancel()
-			popup.Hide()
-		})
-		popup.OnWindowEvent(events.Common.WindowLostFocus, func(ev *application.WindowEvent) {
-			popup.Hide()
-		})
-		// 跨缩放比屏幕时 Wails 按建议物理矩形直接改窗（DIP 恒定会变成像素恒定的
-		// 512/640/768…），GDI 裁剪圈不会随动——DPI 变化后兜底重裁。
-		popup.OnWindowEvent(events.Common.WindowDPIChanged, func(ev *application.WindowEvent) {
-			s.clipPopup(popup)
-		})
-		s.mu.Lock()
-		s.popup = popup
-		s.mu.Unlock()
-	}
-
+	// 弹窗不在启动时预建：首次唤出才创建（showAt → acquirePopup → createPopup），
+	// 收起空闲 popupIdleTTL 后自动销毁。开机常驻只养一个从不露面的 WebView2 视图，
+	// 实测白占几十 MB——按需创建把这笔固定税还给系统。
 	s.mu.Lock()
 	s.trap = trap
 	s.started = true
@@ -137,6 +112,117 @@ func (s *QuickMenuService) start() error {
 	return nil
 }
 
+// createPopup 按需创建轮盘弹窗（调用方只有 consumeEvents 协程的 acquirePopup，
+// 单点串行天然免竞态；其余读方经 s.mu）。建窗即隐藏，随后 SetPosition+Show 展示。
+//
+// WindowClosing 默认被拦截为"收起不销毁"（Cancel+Hide），挡住 Alt+F4 误杀；
+// 空闲销毁见 destroyPopup：先注销该 hook 再 Close，事件不再被拦截，Wails 内部
+// WindowClosing 监听器执行真销毁（markAsDestroyed + chromium.ShuttingDown + 从
+// 窗口管理器除名），WebView2 视图与页面内存真正归还，同名窗口此后可再重建。
+// beta.10 无公开 Destroy()，这是唯一销毁路径（详见 docs/TROUBLESHOOTING.md）。
+func (s *QuickMenuService) createPopup() *application.WebviewWindow {
+	a := application.Get()
+	if a == nil || a.Window == nil {
+		return nil
+	}
+	popup := a.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             popupWindowName,
+		Title:            "快捷菜单",
+		Width:            popupWidth,
+		Height:           popupHeight,
+		Hidden:           true, // 建窗即隐藏，showAt 定位完成后立即 Show
+		Frameless:        true,
+		AlwaysOnTop:      true,
+		DisableResize:    true,
+		BackgroundType:   application.BackgroundTypeTransparent,            // 真透明：圆盘边缘抗锯齿由页面绘制，杜绝窗底白边
+		Windows:          application.WindowsWindow{HiddenOnTaskbar: true}, // 不进任务栏/Alt+Tab
+		URL:              "/#quickmenu",                                    // 前端按 hash 分流挂载弹窗视图（main.ts）
+		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+	})
+	offClosing := popup.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
+		ev.Cancel()
+		s.hidePopup()
+	})
+	popup.OnWindowEvent(events.Common.WindowLostFocus, func(ev *application.WindowEvent) {
+		s.hidePopup()
+	})
+	// 跨缩放比屏幕时 Wails 按建议物理矩形直接改窗（DIP 恒定会变成像素恒定的
+	// 512/640/768…），GDI 裁剪圈不会随动——DPI 变化后兜底重裁。
+	popup.OnWindowEvent(events.Common.WindowDPIChanged, func(ev *application.WindowEvent) {
+		s.clipPopup(popup)
+	})
+	s.mu.Lock()
+	s.popup = popup
+	s.popupClosing = offClosing
+	s.popupShown = false
+	s.mu.Unlock()
+	return popup
+}
+
+// acquirePopup 取一个可展示的弹窗并标记为使用中：隐藏驻留的取消空闲销毁计时热复用；
+// 不存在（从未建或已空闲销毁）则按需新建。仅当应用实例不可用时返回 nil。
+func (s *QuickMenuService) acquirePopup() *application.WebviewWindow {
+	s.mu.Lock()
+	if s.popup == nil {
+		s.mu.Unlock()
+		popup := s.createPopup() // 仅 consumeEvents 协程调用，内部串行安装到 s.popup
+		if popup == nil {
+			return nil
+		}
+		s.mu.Lock()
+		s.popupShown = true // 新建路径同样标记在用，首显期间的点外收起兜底才生效
+		s.mu.Unlock()
+		return popup
+	}
+	popup := s.popup
+	if s.popupIdle != nil {
+		s.popupIdle.Stop()
+		s.popupIdle = nil
+	}
+	s.popupShown = true
+	s.mu.Unlock()
+	return popup
+}
+
+// hidePopup 收起轮盘并武装空闲销毁计时：popupIdleTTL 内无人再唤即释放整窗内存。
+func (s *QuickMenuService) hidePopup() {
+	s.mu.Lock()
+	popup := s.popup
+	s.popupShown = false
+	if s.popupIdle != nil {
+		s.popupIdle.Stop()
+	}
+	s.popupIdle = time.AfterFunc(popupIdleTTL, func() { s.destroyPopup(true) })
+	s.mu.Unlock()
+	if popup != nil {
+		popup.Hide()
+	}
+}
+
+// destroyPopup 真销毁弹窗并清空引用，下次唤出走 createPopup 重建（代价是一次轮盘
+// 延迟出现）。skipIfShown=true（空闲计时器路径）：用户正在用则跳过，收起时自会
+// 重新武装；false（模块停用路径）：无论显隐一律释放。
+func (s *QuickMenuService) destroyPopup(skipIfShown bool) {
+	s.mu.Lock()
+	if s.popupIdle != nil {
+		s.popupIdle.Stop()
+		s.popupIdle = nil
+	}
+	if s.popup == nil || (skipIfShown && s.popupShown) {
+		s.mu.Unlock()
+		return
+	}
+	popup, off := s.popup, s.popupClosing
+	s.popup, s.popupClosing, s.popupShown = nil, nil, false
+	s.mu.Unlock()
+
+	if off != nil {
+		off() // 摘除"关即收起"拦截，让下面的 Close 放行到 Wails 内部销毁路径
+	}
+	popup.Close()
+	slog.Debug("quickmenu: 轮盘弹窗已销毁（WebView2 视图内存释放）")
+}
+
 func (s *QuickMenuService) stop() error {
 	s.mu.Lock()
 	if !s.started {
@@ -145,7 +231,6 @@ func (s *QuickMenuService) stop() error {
 	}
 	s.started = false
 	trap := s.trap
-	popup := s.popup
 	s.trap = nil
 	s.mu.Unlock()
 
@@ -154,11 +239,8 @@ func (s *QuickMenuService) stop() error {
 			slog.Warn("quickmenu: 钩子停止异常", "err", err)
 		}
 	}
-	if popup != nil {
-		// 隐藏驻留而非销毁（beta.10 无公开销毁 API；与 ddns 面板窗口"永不销毁子窗"同策略），
-		// 重新启用时经 start() 直接复用，零重建成本。
-		popup.Hide()
-	}
+	// 停用即销毁：模块关了就释放弹窗占的 WebView2 内存，重新启用后首次唤出重建。
+	s.destroyPopup(false)
 	slog.Info("quickmenu: 右键长按唤出已停用")
 	return nil
 }
@@ -191,9 +273,9 @@ func (s *QuickMenuService) consumeEvents(trap *mousetrap.Trap) {
 // 坐标同用物理像素系（钩子 pt 与 PhysicalBounds），无需换算。
 func (s *QuickMenuService) dismissIfOutside(btn mousetrap.ButtonEvent) {
 	s.mu.Lock()
-	popup := s.popup
+	popup, shown := s.popup, s.popupShown
 	s.mu.Unlock()
-	if popup == nil || !popup.IsVisible() {
+	if popup == nil || !shown {
 		return
 	}
 	b := popup.PhysicalBounds()
@@ -208,7 +290,7 @@ func (s *QuickMenuService) dismissIfOutside(btn mousetrap.ButtonEvent) {
 	if float64(dx*dx+dy*dy) <= r*r {
 		return // 点在圆盘上：留给 WebView2 自己的扇区点击处理
 	}
-	popup.Hide()
+	s.hidePopup()
 }
 
 // showAt 将圆盘中心对准光标并置前（轮盘可辨识度依赖"盘心=光标"的肌肉记忆，
@@ -221,11 +303,10 @@ func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 		return
 	}
 
-	s.mu.Lock()
-	popup := s.popup
-	s.mu.Unlock()
+	// 弹窗按需就位：隐藏驻留的热复用（取消空闲销毁计时），已销毁/从未建则此刻重建。
+	popup := s.acquirePopup()
 	if popup == nil {
-		return
+		return // 应用实例不可用（理论上不可达，防御）
 	}
 
 	physical := application.Point{X: int(trg.X), Y: int(trg.Y)}
@@ -477,14 +558,9 @@ func (s *QuickMenuService) OpenSettings() {
 	s.Dismiss()
 }
 
-// Dismiss 收起弹窗（前端 Esc / 空背景点击调用）。
+// Dismiss 收起弹窗（前端 Esc / 空背景点击调用），并武装空闲销毁。
 func (s *QuickMenuService) Dismiss() {
-	s.mu.Lock()
-	popup := s.popup
-	s.mu.Unlock()
-	if popup != nil {
-		popup.Hide()
-	}
+	s.hidePopup()
 }
 
 func (s *QuickMenuService) trapActive() bool {
