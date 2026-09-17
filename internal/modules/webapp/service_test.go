@@ -83,6 +83,46 @@ func TestSaveEntryLifecycle(t *testing.T) {
 	}
 }
 
+// TestWindowStateHelpersHeadless 无 application 环境下的窗体层防御：
+// 错误路径必须干净返回且不留占位残留；无窗时收起/销毁均幂等。
+// （开窗/销毁主路径依赖真实 Wails 主循环，无法 headless 测，走手工冒烟清单。）
+func TestWindowStateHelpersHeadless(t *testing.T) {
+	svc, store := newTestService(t)
+
+	if err := svc.Open("  "); err == nil {
+		t.Error("空 ID 开窗应报错")
+	}
+	if err := svc.Open("webapp_missing"); err == nil {
+		t.Error("不存在条目开窗应报错")
+	}
+	// 预置条目存在但无 application：应报错且不留占位句柄
+	if err := svc.Open("webapp_filehelper"); err == nil {
+		t.Skip("此环境意外存在 application 实例，占位回滚断言不适用")
+	}
+	svc.mu.Lock()
+	_, leaked := svc.wins["webapp_filehelper"]
+	svc.mu.Unlock()
+	if leaked {
+		t.Error("建窗失败路径泄漏了占位句柄")
+	}
+
+	if err := svc.Collapse("webapp_filehelper"); err != nil {
+		t.Errorf("无窗收起应幂等无错: %v", err)
+	}
+	if err := svc.CollapseAll(); err != nil {
+		t.Errorf("无窗收起全部应幂等无错: %v", err)
+	}
+	svc.shutdown() // 空表不应 panic
+
+	views := svc.ListEntries()
+	if len(views) != 1 || views[0].WindowOpen || views[0].WindowHidden {
+		t.Errorf("无窗时窗态徽标应全 false: %+v", views)
+	}
+	if _, ok := store.GetWebAppEntryByID("webapp_filehelper"); !ok {
+		t.Error("预置条目意外丢失")
+	}
+}
+
 func TestDeleteEntryAndOpenExternal(t *testing.T) {
 	var opened string
 	store, err := settings.NewStore(filepath.Join(t.TempDir(), "config.json"))

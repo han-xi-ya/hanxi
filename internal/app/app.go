@@ -124,6 +124,8 @@ func RegisterEvents() {
 	application.RegisterEvent[string]("tray:navigate")
 	// quickmenu:opening 是无载荷事件（弹窗视图收到后重拉条目），必须用 Void 注册。
 	application.RegisterEvent[application.Void]("quickmenu:opening")
+	// webapp:windows-changed 同为无载荷事件（开窗/收起/销毁后前端重拉条目窗态）。
+	application.RegisterEvent[application.Void]("webapp:windows-changed")
 	application.RegisterEvent[lan.LanProgress]("lan:progress")
 	application.RegisterEvent[portscan.ScanProgress]("portscan:progress")
 	application.RegisterEvent[wechat.InboundMessage]("wechat:message-received")

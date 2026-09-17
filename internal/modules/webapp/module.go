@@ -61,8 +61,11 @@ func (m *Module) Services() []extapi.Service {
 // OnInit 无后台常驻资源（监听器/钩子均无），恒成功；窗口生命周期由服务层自管。
 func (m *Module) OnInit(ctx context.Context) error { return nil }
 
-// OnDestroy 当前无后台资源可回收；窗体层接入后在此真销毁全部存活网页窗。
-func (m *Module) OnDestroy() error { return nil }
+// OnDestroy 真销毁全部存活网页窗（停用/退出即归还 WebView2 内存）。
+func (m *Module) OnDestroy() error {
+	m.svc.shutdown()
+	return nil
+}
 
 // IsInitialized 无失败路径，注册表懒初始化后恒为已就绪。
 func (m *Module) IsInitialized() bool { return true }
