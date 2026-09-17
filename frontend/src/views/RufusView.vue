@@ -511,85 +511,40 @@ onMounted(async () => {
 .rufus-view { display: flex; flex-direction: column; gap: 10px; }
 .tab-body { display: flex; flex-direction: column; gap: 10px; }
 
-/* ---------- 顶部整合控制条 ---------- */
-.control-bar { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
-.control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* ---------- 顶部整合控制条（control-bar 四件套由全局原子接管；
+   本视图原 gap:10px 散差按标准形 gap:8px 定档删除） ---------- */
 /* 信号灯类名带 rf- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
 .rf-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
 .rf-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
 .rf-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
 .rf-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
 .rf-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
-.status-word { font-size: 15px; font-weight: 700; color: var(--color-text); }
-.ver-pill { font-family: var(--font-mono); font-size: 12px; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 8px; color: var(--color-text); }
-.pid-tag { font-size: 11px; color: var(--color-text-subtle); }
-.uptime-tag { font-size: 11px; color: var(--color-text-subtle); }
-.control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+/* status-word/ver-pill/pid-tag/uptime-tag/control-btns 由全局原子接管 */
 
-/* ---------- 提示与说明卡 ---------- */
-.banner.slim { padding: 8px 12px; font-size: 12px; }
-.hint-line { font-size: 12px; color: var(--color-text-subtle); padding-left: 2px; line-height: 1.6; }
-.info-details { border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); overflow: hidden; }
-.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--color-text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
-.info-summary::-webkit-details-marker { display: none; }
-.info-summary::after { content: '▸'; font-size: 10px; margin-left: auto; transition: transform var(--motion-base); }
-.info-details[open] .info-summary { border-bottom: 1px solid var(--color-border); }
-.info-details[open] .info-summary::after { transform: rotate(90deg); }
-.info-body { padding: 8px 12px; font-size: 12px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 4px; }
-.info-body p { margin: 0; line-height: 1.6; }
+/* ---------- 提示与说明卡（.banner.slim 改由全局原子接管，模板挂 class="slim"；
+   hint-line 原 line-height:1.6 散差按标准形（无行距档）定档删除；
+   info-details/info-summary/info-body p 等由全局原子接管） ---------- */
 .inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
 
-.control-panel { display: flex; align-items: center; justify-content: space-between; background: var(--surface-panel); border: 1px solid var(--color-border); padding: 10px 14px; border-radius: var(--radius-control); }
-.meta-info { font-size: 13px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
-.meta-info strong { color: var(--color-text); }
-.btn-group { display: flex; gap: 8px; }
-.hint-dim { color: var(--color-text-subtle); }
+/* control-panel/meta-info/btn-group、section-title h3/empty-hint 由全局原子接管 */
 
-.section-title h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
-.empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: 6px; border: 1px dashed var(--color-border); }
+/* ---------- 已安装卡片（installed-grid/installed-card(.card-active)/inst-card-top/inst-badges/
+   inst-meta/meta-line(.k)/inst-actions/ver-tag 由全局原子接管；
+   本视图原 minmax(340px) 散差按标准形 minmax(320px) 定档删除） ---------- */
 
-/* ---------- 已安装卡片 ---------- */
-.installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
-.installed-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color var(--motion-base) ease; }
-.installed-card.card-active { border-color: var(--color-primary); }
-.inst-card-top { display: flex; justify-content: space-between; align-items: center; }
-.ver-tag { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
-.inst-badges { display: flex; gap: 6px; }
-.inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
-.meta-line .k { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
-.inst-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
-
-/* ---------- 远程表格 ---------- */
-.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
-.ver-name { font-family: var(--font-mono); }
+/* ---------- 远程表格（table-container/ver-name 由全局原子接管） ---------- */
 .ver-name + .chip { margin-left: 4px; }
 
-.rf-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.rf-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .rf-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .rf-ver-status.installed::before { background: var(--state-positive); }
 .rf-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
 .rf-ver-status.error::before { background: var(--state-danger); }
 .rf-ver-status.idle::before { background: var(--color-text-subtle); }
 
-.download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
-.dl-bar-inner { height: 100%; background: var(--color-primary); transition: width 0.2s ease; }
-.dl-percent { font-size: 11px; color: var(--color-text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: 12px; color: var(--color-primary); }
-.dl-error { color: var(--state-danger); font-size: 11px; }
-.retry-link { color: var(--color-primary); font-size: 12px; cursor: pointer; margin-left: 8px; }
-.retry-link:hover { text-decoration: underline; }
+/* download-cell/dl-* 家族与 retry-link(:hover) 由全局原子接管 */
 
-/* ---------- 联动与辅助设置卡 ---------- */
-.extras-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-.extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text); cursor: pointer; }
-.toggle-label input { width: 15px; height: 15px; cursor: pointer; }
+/* ---------- 联动与辅助设置卡（extras-card/extras-row/toggle-label/repo-row(.k)/repo-addr 由全局原子接管） ---------- */
 .extras-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap; }
-.repo-row .k { color: var(--color-text-subtle); flex-shrink: 0; }
-.repo-addr { flex: 1; min-width: 220px; }
 </style>

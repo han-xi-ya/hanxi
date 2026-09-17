@@ -503,8 +503,9 @@ onMounted(async () => {
             <div class="proj-top">
               <div class="proj-title-box">
                 <span class="proj-name">{{ p.name }}</span>
-                <span v-if="p.version" class="badge badge-version">{{ p.version }}</span>
-                <span v-else class="badge badge-unbound">未绑定版本</span>
+                <!-- 徽标映射全局 .chip 语义档（§9.5-3 先例：badge→chip 逐字同色） -->
+                <span v-if="p.version" class="chip chip-information">{{ p.version }}</span>
+                <span v-else class="chip chip-neutral">未绑定版本</span>
               </div>
               <span class="proj-status" :class="stateBadge(p).cls" :title="stateOf(p)?.error || ''">
                 <span class="dot" :style="{ background: stateBadge(p).dot }"></span>{{ stateBadge(p).text }}
@@ -637,10 +638,12 @@ onMounted(async () => {
   padding: 12px 16px; border-radius: var(--radius-control);
 }
 .control-actions { display: flex; gap: 10px; }
-.meta-info { font-size: 13px; color: var(--color-text-muted); }
+.meta-info { font-size: var(--text-base); color: var(--color-text-muted); }
 
+/* 同名不同形保留：本页空态为引导性大图空态（全局 .empty-state padding 24 的有意放大版），
+   字号已归阶梯：empty-icon 40px→--text-3xl（阶梯顶格，散值清零） */
 .empty-state { padding: 56px 24px; gap: 10px; }
-.empty-icon { font-size: 40px; }
+.empty-icon { font-size: var(--text-3xl); }
 .empty-actions { display: flex; gap: 12px; margin-top: 8px; }
 
 .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
@@ -653,12 +656,9 @@ onMounted(async () => {
 
 .proj-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .proj-title-box { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.proj-name { font-size: 15px; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; white-space: nowrap; }
-.badge-version { background: var(--state-information-soft); color: var(--state-information); }
-.badge-unbound { background: var(--surface-hover); color: var(--color-text-muted); }
+.proj-name { font-size: var(--text-md); font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.proj-status { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; flex-shrink: 0; }
+.proj-status { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-sm); flex-shrink: 0; }
 .proj-status .dot { width: 8px; height: 8px; border-radius: 50%; }
 .proj-status.stopped { color: var(--color-text-subtle); }
 .proj-status.running { color: var(--state-positive); font-weight: 600; }
@@ -666,14 +666,14 @@ onMounted(async () => {
 .proj-status.failed { color: var(--state-danger); }
 
 .proj-server { display: flex; align-items: center; justify-content: space-between; background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 8px 10px; }
-.server-addr { font-family: var(--font-mono); font-size: 12px; color: var(--color-text); }
+.server-addr { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text); }
 .server-flags { display: flex; gap: 4px; }
-.flag { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: var(--state-information-soft); color: var(--state-information); }
+.flag { font-size: var(--text-micro); padding: 1px 6px; border-radius: 3px; background: var(--state-information-soft); color: var(--state-information); }
 
-.proj-proxies { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); }
+.proj-proxies { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-text-muted); }
 .proxies-label { font-weight: 600; }
 .proxies-types { color: var(--color-text-subtle); }
-.proxy-pid { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--color-text-subtle); }
+.proxy-pid { margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle); }
 
 /* 规则端点简略展示 */
 .endpoints-box {
@@ -683,39 +683,39 @@ onMounted(async () => {
 }
 .endpoint-row {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: 12px; font-family: var(--font-mono);
+  font-size: var(--text-sm); font-family: var(--font-mono);
 }
 .ep-left { display: flex; align-items: center; gap: 6px; min-width: 80px; }
 .ep-badge {
-  font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px;
+  font-size: var(--text-micro); font-weight: 600; padding: 1px 5px; border-radius: 3px;
   background: var(--surface-hover); color: var(--color-text-muted);
 }
 .ep-badge.http, .ep-badge.https { background: var(--state-information-soft); color: var(--state-information); }
 .ep-badge.tcp { background: var(--state-positive-soft); color: var(--state-positive); }
 .ep-badge.udp { background: var(--state-warning-soft); color: var(--state-warning); }
 .ep-name {
-  font-family: inherit; font-size: 11px; color: var(--color-text-muted);
+  font-family: inherit; font-size: var(--text-xs); color: var(--color-text-muted);
   max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ep-flow {
   display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
   justify-content: flex-start;
 }
-.ep-local { color: var(--color-text-subtle); font-size: 11px; }
-.ep-arrow { font-size: 10px; color: var(--color-text-subtle); }
+.ep-local { color: var(--color-text-subtle); font-size: var(--text-xs); }
+.ep-arrow { font-size: var(--text-micro); color: var(--color-text-subtle); }
 .ep-remote {
-  color: var(--color-text); font-weight: 600; font-size: 11px;
+  color: var(--color-text); font-weight: 600; font-size: var(--text-xs);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ep-link { color: var(--color-primary); text-decoration: none; }
 .ep-link:hover { text-decoration: underline; }
 .btn-copy-mini {
-  background: transparent; border: none; cursor: pointer; font-size: 12px;
+  background: transparent; border: none; cursor: pointer; font-size: var(--text-sm);
   color: var(--color-text-subtle); padding: 0 2px; flex-shrink: 0;
 }
 .btn-copy-mini:hover { color: var(--color-primary); }
 
-.proj-error { font-size: 12px; color: var(--state-danger); background: var(--state-danger-soft); border: 1px solid var(--state-danger-glow); border-radius: var(--radius-control); padding: 6px 10px; }
+.proj-error { font-size: var(--text-sm); color: var(--state-danger); background: var(--state-danger-soft); border: 1px solid var(--state-danger-glow); border-radius: var(--radius-control); padding: 6px 10px; }
 
 .proj-actions { display: flex; gap: 6px; border-top: 1px solid var(--color-border); padding-top: 12px; flex-wrap: wrap; }
 
@@ -733,8 +733,8 @@ onMounted(async () => {
   display: flex; justify-content: space-between; align-items: center;
   padding: 16px 20px; border-bottom: 1px solid var(--color-border);
 }
-.modal-head h3 { margin: 0; font-size: 16px; color: var(--color-text); }
-.btn-close { background: transparent; border: none; font-size: 16px; cursor: pointer; color: var(--color-text-muted); }
+.modal-head h3 { margin: 0; font-size: var(--text-lg); color: var(--color-text); }
+.btn-close { background: transparent; border: none; font-size: var(--text-lg); cursor: pointer; color: var(--color-text-muted); }
 .modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .modal-actions {
   display: flex; justify-content: flex-end; gap: 10px;
@@ -743,32 +743,36 @@ onMounted(async () => {
 
 .import-tabs { display: flex; border-bottom: 1px solid var(--color-border); margin-bottom: 8px; }
 .tab-btn {
-  padding: 8px 16px; background: transparent; border: none; font-size: 13px;
+  padding: 8px 16px; background: transparent; border: none; font-size: var(--text-base);
   color: var(--color-text-muted); cursor: pointer; border-bottom: 2px solid transparent;
 }
 .tab-btn.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
 
 .textarea {
   padding: 8px 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control);
-  font-family: var(--font-mono); font-size: 12px; width: 100%; box-sizing: border-box;
+  font-family: var(--font-mono); font-size: var(--text-sm); width: 100%; box-sizing: border-box;
   background: var(--surface-soft); color: var(--color-text); resize: vertical;
 }
 .textarea:focus { border-color: var(--color-primary); outline: none; background: var(--surface-panel); }
 
-.form-item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-text-muted); }
+.form-item { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 
 /* 停止按钮变体（全局原子之外的业务语义色） */
 .btn-stop { background: var(--surface-panel); border-color: var(--state-danger); color: var(--state-danger); }
 .btn-stop:hover { background: var(--state-danger-soft); }
-.btn-danger-outline { margin-left: auto; }
+/* 同名原子不再整名重定义：删除全局 .btn-danger-outline 的色形副本风险，
+   仅按 components.css「祖先锚定」先例追加本视图布局微调（删除钮靠右） */
+.proj-actions .btn-danger-outline { margin-left: auto; }
 
 /* 日志抽屉：终端风格固定深底，不随主题反相（tokens.css --terminal-* 约定） */
 .log-drawer {
   position: fixed; left: 0; right: 0; bottom: 0; height: 42%;
   background: var(--terminal-bg); color: var(--terminal-fg); border-radius: var(--radius-element) var(--radius-element) 0 0;
   display: flex; flex-direction: column; z-index: 50; overflow: hidden;
+  /* 功能例外：底部抽屉上抛阴影，--shadow-drawer 为左右抽屉定向值不适用（待阴影 token 组扩充裁决） */
   box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
 }
+/* 功能例外：轻量遮罩（0.25），--overlay-mask（0.46）为模态全遮罩、加深会改变抽屉语义 */
 .drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.25); }
 .log-drawer-head {
   display: flex; justify-content: space-between; align-items: center;

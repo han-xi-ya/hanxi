@@ -267,12 +267,11 @@ onMounted(() => {
   background: var(--surface-panel); border: 1px solid var(--color-border);
   padding: 10px 14px; border-radius: var(--radius-control);
 }
-.meta-info { font-size: 13px; color: var(--color-text-muted); }
+.meta-info { font-size: var(--text-base); color: var(--color-text-muted); }
 .meta-info strong { color: var(--color-text); }
 .btn-group { display: flex; gap: 8px; }
 
-.section-title h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
-.empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
+.section-title h3 { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
 
 /* 已安装卡片 */
 .installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
@@ -281,17 +280,17 @@ onMounted(() => {
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
 }
 .inst-card-top { display: flex; justify-content: space-between; align-items: center; }
-.ver-tag { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
+.ver-tag { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
 .inst-badges { display: flex; gap: 6px; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+/* .badge 基形与 components.css 全局原子逐字同义，scoped 副本已删除；以下仅本组件配色变体 */
 .badge-import { background: var(--state-positive-soft); color: var(--state-positive); }
 .badge-official { background: var(--state-information-soft); color: var(--state-information); }
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
-.inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); }
 .meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
 .meta-line .k { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
-.mono { font-size: 11px; }
+/* 旧 scoped 同名原子 .mono{font-size:11px} 压缩副本已删除，落回全局 .mono（--text-sm）标准形 */
 .mono.short { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .inst-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
@@ -300,7 +299,7 @@ onMounted(() => {
 .table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; }
 .ver-name { font-family: var(--font-mono); }
 
-.frpc-version-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.frpc-version-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .frpc-version-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 7px; }
 .frpc-version-status.installed::before { background: var(--state-positive); }
 .frpc-version-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
@@ -308,10 +307,10 @@ onMounted(() => {
 .frpc-version-status.idle::before { background: var(--color-text-subtle); }
 
 .download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }
 .dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
-.dl-percent { font-size: 11px; color: var(--color-text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: 12px; color: var(--color-primary); }
-.dl-error { color: var(--state-danger); font-size: 11px; }
+.dl-percent { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
+.dl-meta-text { font-size: var(--text-sm); color: var(--color-primary); }
+.dl-error { color: var(--state-danger); font-size: var(--text-xs); }
 .muted-text { color: var(--color-text-subtle); }
 </style>

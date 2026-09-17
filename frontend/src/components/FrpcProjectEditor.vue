@@ -537,7 +537,7 @@ function cancel() { emit('cancel') }
           <div class="card-head">
             <h3 class="card-title">服务端连接</h3>
             <button
-              class="btn-text"
+              class="link-button"
               @click="showServerAdvanced = !showServerAdvanced"
             >{{ showServerAdvanced ? '▲ 收起高级连接参数' : '▼ 展开高级连接参数 (KCP/QUIC/跳板)' }}</button>
           </div>
@@ -630,7 +630,7 @@ function cancel() { emit('cancel') }
                 </select>
 
                 <button
-                  class="btn-text btn-adv-toggle"
+                  class="link-button"
                   @click="r.showAdvanced = !r.showAdvanced"
                   title="展开/收起 Host重写、限速、ProxyProtocol"
                 >{{ r.showAdvanced ? '▲ 简略' : '⚙️ 高级' }}</button>
@@ -823,11 +823,11 @@ function cancel() { emit('cancel') }
   border-radius: var(--radius-control); padding: 3px; gap: 2px;
 }
 .mode-btn {
-  border: none; background: transparent; padding: 6px 14px; font-size: 13px;
+  border: none; background: transparent; padding: 6px 14px; font-size: var(--text-base);
   color: var(--color-text-muted); border-radius: var(--radius-control); cursor: pointer; font-weight: 500;
   transition: all var(--motion-base) ease;
 }
-.mode-btn.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: 0 1px 3px var(--shadow-small); }
+.mode-btn.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-small); }
 
 .editor-layout { display: grid; grid-template-columns: 1fr 420px; gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .editor-layout { grid-template-columns: 1fr; } }
@@ -835,26 +835,26 @@ function cancel() { emit('cancel') }
 .editor-main { display: flex; flex-direction: column; gap: 14px; }
 .editor-side { position: sticky; top: 16px; }
 
+/* 同名不同形有意保留：本组件表单分节卡为无阴影紧凑形（全局 .card 带 shadow-small、radius-element），
+   落回会改变编辑器视觉层级，待 §9.6-10 大扫除统一裁决 */
 .card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 16px; }
-.card-title { font-size: 14px; font-weight: 600; color: var(--color-text-muted); margin: 0 0 12px; }
-.card-desc { font-size: 12px; color: var(--color-text-subtle); margin: 4px 0 0; }
+.card-title { font-size: var(--text-md); font-weight: 600; color: var(--color-text-muted); margin: 0 0 12px; }
+.card-desc { font-size: var(--text-sm); color: var(--color-text-subtle); margin: 4px 0 0; }
 .card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .card-head .card-title { margin: 0; }
 .card-head-tools { display: flex; gap: 8px; }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.form-item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-text-muted); }
+.form-item { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 .form-item em { color: var(--state-danger); font-style: normal; }
 .input {
   padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-control);
-  font-size: 13px; background: var(--surface-panel); color: var(--color-text); width: 100%;
+  font-size: var(--text-base); background: var(--surface-panel); color: var(--color-text); width: 100%;
   box-sizing: border-box;
 }
 .input:focus { border-color: var(--color-primary); outline: none; }
 
-.btn-text { background: transparent; border: none; font-size: 12px; color: var(--color-primary); cursor: pointer; padding: 2px 4px; }
-.btn-text:hover { text-decoration: underline; }
-.btn-adv-toggle { font-size: 12px; }
+/* 旧 scoped .btn-text/.btn-adv-toggle 手搓链接钮已删除，模板改挂全局 .link-button（§9.3 惯例） */
 
 .advanced-box {
   background: var(--surface-soft); border: 1px dashed var(--color-border);
@@ -866,7 +866,7 @@ function cancel() { emit('cancel') }
 }
 
 .toggle-row { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
-.toggle-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text); cursor: pointer; }
+.toggle-item { display: flex; align-items: center; gap: 6px; font-size: var(--text-base); color: var(--color-text); cursor: pointer; }
 .toggle-item input { accent-color: var(--color-primary); }
 .inline-check { margin-top: 20px; }
 
@@ -875,10 +875,10 @@ function cancel() { emit('cancel') }
 .proxy-row { border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 12px; background: var(--surface-soft); }
 .proxy-row.is-visitor { border-left: 3px solid var(--state-information); background: var(--state-information-soft); }
 .proxy-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.proxy-index { font-size: 11px; color: var(--color-text-subtle); font-weight: 700; }
+.proxy-index { font-size: var(--text-xs); color: var(--color-text-subtle); font-weight: 700; }
 .input-name { max-width: 180px; }
 .input-type { max-width: 210px; }
-.btn-remove { width: 24px; height: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text-subtle); cursor: pointer; font-size: 11px; margin-left: auto; }
+.btn-remove { width: 24px; height: 24px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text-subtle); cursor: pointer; font-size: var(--text-xs); margin-left: auto; }
 .btn-remove:hover { border-color: var(--state-danger); color: var(--state-danger); }
 
 .proxy-fields { display: grid; grid-template-columns: 1fr 1fr 1.5fr 1fr; gap: 10px; }
@@ -886,10 +886,10 @@ function cancel() { emit('cancel') }
 .proxy-fields .n2 { grid-column: span 2; }
 .visitor-fields { display: grid; grid-template-columns: 1.2fr 1.2fr 1fr 1fr; gap: 10px; }
 
-/* TOML 预览 */
+/* TOML 预览（配置文本展示，非后端行距互锁的 ANSI 日志区——字号归 --text-* 同值档，零视觉差） */
 .toml-pre {
   margin: 0; padding: 12px; background: var(--terminal-bg); color: var(--terminal-fg); border-radius: var(--radius-control);
-  font-family: var(--font-mono); font-size: 12px; line-height: 1.55;
+  font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.55;
   max-height: 560px; overflow: auto; white-space: pre; user-select: text;
 }
 
@@ -898,7 +898,7 @@ function cancel() { emit('cancel') }
 .toml-edit-card { display: flex; flex-direction: column; height: 620px; }
 .raw-toml-textarea {
   flex: 1; margin-top: 10px; padding: 14px; background: var(--terminal-bg); color: var(--terminal-fg);
-  border-radius: var(--radius-control); font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+  border-radius: var(--radius-control); font-family: var(--font-mono); font-size: var(--text-base); line-height: 1.6;
   border: 1px solid var(--color-border); resize: none; outline: none; width: 100%; box-sizing: border-box;
 }
 .raw-toml-textarea:focus { border-color: var(--color-primary); }
@@ -913,14 +913,14 @@ function cancel() { emit('cancel') }
 }
 .modal-card {
   background: var(--surface-panel); border-radius: var(--radius-element); width: 460px; max-width: 90vw;
-  box-shadow: 0 8px 32px var(--shadow-panel); overflow: hidden;
+  box-shadow: var(--shadow-panel); overflow: hidden;
 }
 .modal-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 16px 20px; border-bottom: 1px solid var(--color-border);
 }
-.modal-head h3 { margin: 0; font-size: 16px; color: var(--color-text); }
-.btn-close { background: transparent; border: none; font-size: 16px; cursor: pointer; color: var(--color-text-muted); }
+.modal-head h3 { margin: 0; font-size: var(--text-lg); color: var(--color-text); }
+.btn-close { background: transparent; border: none; font-size: var(--text-lg); cursor: pointer; color: var(--color-text-muted); }
 .modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .modal-actions {
   display: flex; justify-content: flex-end; gap: 10px;

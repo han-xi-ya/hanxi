@@ -575,17 +575,11 @@ const remoteList = computed(() => (remoteForm.value === 'installer' ? releasesI.
 <style scoped>
 .vscode-view { display: flex; flex-direction: column; gap: 10px; }
 .tab-body { display: flex; flex-direction: column; gap: 10px; }
-.slim { padding: 8px 12px; font-size: 12px; }
+/* UiBanner 的 slim 密度变体：.banner.slim 由 components.css 全局原子接管（模板挂 class="slim"） */
 
-/* ---------- 控制台（双形态整合条） ---------- */
-.control-bar {
-  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
-  padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;
-}
-.control-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* ---------- 控制台（control-bar 四件套由全局原子接管，本视图为标准形逐字副本删除） ---------- */
 .form-tag {
-  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: var(--text-xs); font-weight: 700; padding: 2px 8px; border-radius: var(--radius-pill);
   background: var(--surface-hover); color: var(--color-text-muted); flex-shrink: 0;
 }
 .form-tag.installer { background: var(--state-information-soft); color: var(--state-information); }
@@ -595,50 +589,25 @@ const remoteList = computed(() => (remoteForm.value === 'installer' ? releasesI.
 .vc-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
 .vc-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
 .vc-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
-.status-word { font-size: 15px; font-weight: 700; color: var(--color-text); }
-.ver-pill { font-family: var(--font-mono); font-size: 12px; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 1px 8px; color: var(--color-text); }
-.pid-tag { font-size: 11px; color: var(--color-text-subtle); }
-.uptime-tag { font-size: 11px; color: var(--color-text-subtle); }
-.control-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+/* status-word/ver-pill/pid-tag/uptime-tag/control-btns 由全局原子接管 */
 
-/* ---------- 提示与说明卡 ---------- */
-.hint-line { font-size: 12px; color: var(--color-text-subtle); padding-left: 2px; line-height: 1.6; }
-.info-details { border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); overflow: hidden; }
-.info-summary { padding: 7px 12px; font-size: 12px; font-weight: 600; color: var(--color-text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }
-.info-summary::-webkit-details-marker { display: none; }
-.info-summary::after { content: '▸'; font-size: 10px; margin-left: auto; transition: transform var(--motion-base); }
-.info-details[open] .info-summary { border-bottom: 1px solid var(--color-border); }
-.info-details[open] .info-summary::after { transform: rotate(90deg); }
-.info-body { padding: 8px 12px; font-size: 12px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 4px; }
-.info-body p { margin: 0; line-height: 1.6; }
+/* ---------- 提示与说明卡（hint-line 原 line-height:1.6 散差按标准形定档删除；
+   info-details/info-summary/info-body p 等由全局原子接管） ---------- */
 .inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
 
-/* ---------- 版本管理 ---------- */
-.control-panel {
-  display: flex; align-items: center; justify-content: space-between;
-  background: var(--surface-panel); border: 1px solid var(--color-border); padding: 10px 14px; border-radius: var(--radius-control);
-}
-.meta-info { font-size: 13px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
-.meta-info strong { color: var(--color-text); }
-.btn-group { display: flex; gap: 8px; }
-.hint-dim { color: var(--color-text-subtle); }
+/* ---------- 版本管理（control-panel/meta-info/btn-group、section-title h3/empty-hint 由全局原子接管） ---------- */
+/* .hint-dim 同名同义 scoped 副本已删除，落回 components.css 全局原子 */
 
-.section-title h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
 .vc-remote-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
 .vc-form-switch { display: flex; gap: 6px; }
-.empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
 
-.installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
-.installed-card {
-  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
-  padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; transition: border-color var(--motion-base) ease;
-}
-.installed-card.card-active { border-color: var(--color-primary); }
-.inst-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ver-tag { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
-.inst-badges { display: flex; gap: 6px; flex-wrap: wrap; }
-.badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+/* installed-grid/installed-card(.card-active)/inst-badges/ver-tag 由全局原子接管；
+   本视图原 minmax(340px) 散差按标准形 minmax(320px) 定档删除 */
+/* 补差 against 全局原子 .inst-card-top / .inst-badges：双形态标签行允许换行 */
+.inst-card-top { gap: 8px; flex-wrap: wrap; }
+.inst-badges { flex-wrap: wrap; }
+/* .badge 基形与 components.css 全局原子逐字同义，scoped 副本已删除；以下仅本视图配色变体 */
 .badge-active { background: var(--state-positive-soft); color: var(--state-positive); }
 .badge-running { background: var(--state-information-soft); color: var(--state-information); }
 .badge-import { background: var(--state-information-soft); color: var(--state-information); }
@@ -646,37 +615,21 @@ const remoteList = computed(() => (remoteForm.value === 'installer' ? releasesI.
 .badge-weak { background: var(--state-warning-soft); color: var(--state-warning); }
 .badge-hash { background: var(--state-positive-soft); color: var(--state-positive); margin-left: 6px; }
 
-.inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
-.meta-line .k { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
-.mono { font-size: 11px; }
-.inst-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; flex-wrap: wrap; }
+/* inst-meta/meta-line(.k)/table-container/ver-name 由全局原子接管 */
+/* 旧 scoped 同名原子 .mono{font-size:11px} 压缩副本已删除，落回全局 .mono（--text-sm）标准形 */
+/* 补差 against 全局原子 .inst-actions：双形态动作钮允许换行 */
+.inst-actions { flex-wrap: wrap; }
 
-.table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
-.ver-name { font-family: var(--font-mono); }
-
-.vc-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.vc-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .vc-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .vc-ver-status.installed::before { background: var(--state-positive); }
 .vc-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
 .vc-ver-status.error::before { background: var(--state-danger); }
 .vc-ver-status.idle::before { background: var(--color-text-subtle); }
 
-.download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
-.dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
-.dl-percent { font-size: 11px; color: var(--color-text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: 12px; color: var(--color-primary); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dl-error { color: var(--state-danger); font-size: 11px; }
-.retry-link { color: var(--color-primary); font-size: 12px; cursor: pointer; margin-left: 8px; }
-.retry-link:hover { text-decoration: underline; }
+/* download-cell/dl-* 家族与 retry-link(:hover) 由全局原子接管 */
+/* 补差 against 全局原子 .dl-meta-text：下载说明单行截断 */
+.dl-meta-text { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* ---------- 联动与辅助设置卡 ---------- */
-.extras-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
-.extras-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text); cursor: pointer; }
-.toggle-label input { width: 15px; height: 15px; cursor: pointer; }
-.repo-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap; }
-.repo-row .k { color: var(--color-text-subtle); flex-shrink: 0; }
-.repo-addr { flex: 1; min-width: 220px; }
+/* ---------- 联动与辅助设置卡（extras-card/extras-row/toggle-label/repo-row(.k)/repo-addr 由全局原子接管） ---------- */
 </style>

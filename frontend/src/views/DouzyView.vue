@@ -188,7 +188,7 @@ onMounted(async () => {
           <span class="dz-badge downloaded">已下载</span>
         </div>
         <div class="dz-card-meta">
-          <div class="dz-line"><span class="k">安装包</span><code class="mono dz-mono">{{ v.exePath }}</code></div>
+          <div class="dz-line"><span class="k">安装包</span><code class="mono">{{ v.exePath }}</code></div>
           <div class="dz-line"><span class="k">大小</span><span>{{ fmtSize(v.size) }} · 下载于 {{ v.installedAt }}</span></div>
         </div>
         <div class="dz-card-actions">
@@ -265,19 +265,19 @@ onMounted(async () => {
 <style scoped>
 .douzy-view { display: flex; flex-direction: column; gap: 10px; }
 /* UiBanner 紧凑变体 */
-.dz-slim { padding: 8px 12px; font-size: 12px; }
+.dz-slim { padding: 8px 12px; font-size: var(--text-sm); }
 
 .dz-panel {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   background: var(--surface-panel); border: 1px solid var(--color-border); padding: 10px 14px; border-radius: var(--radius-control);
 }
-.dz-meta { font-size: 13px; color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
+.dz-meta { font-size: var(--text-base); color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
 .dz-meta strong { color: var(--color-text); }
 .dz-dim { color: var(--color-text-subtle); }
 .dz-btns { display: flex; gap: 8px; }
 
-.dz-section h3 { font-size: 13px; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
-.dz-empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: 13px; background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
+.dz-section h3 { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
+.dz-empty-hint { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: var(--text-base); background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
 
 /* ---------- 已下载卡片 ---------- */
 .dz-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
@@ -286,22 +286,22 @@ onMounted(async () => {
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
 }
 .dz-card-top { display: flex; justify-content: space-between; align-items: center; }
-.dz-ver { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--color-text); }
-.dz-badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+.dz-ver { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
+.dz-badge { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
 .dz-badge.downloaded { background: var(--state-positive-soft); color: var(--state-positive); }
 .dz-badge.pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
-.dz-card-meta { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.dz-card-meta { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); }
 .dz-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
 .dz-line .k { color: var(--color-text-subtle); width: 48px; flex-shrink: 0; }
-.dz-mono { font-size: 11px; word-break: break-all; }
+/* .dz-mono 紧凑字号副本删除,落回 components.css 全局 .mono(sm) */
 .dz-card-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; flex-wrap: wrap; }
 
 /* ---------- 远程表格（.tbl 全局原子接管） ---------- */
 .dz-table-wrap { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
 .dz-ver-name { font-family: var(--font-mono); }
 
-.dz-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.dz-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .dz-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .dz-status.installed::before { background: var(--state-positive); }
 .dz-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
@@ -309,16 +309,16 @@ onMounted(async () => {
 .dz-status.idle::before { background: var(--color-text-subtle); }
 
 .dz-dl-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dz-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
+.dz-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }
 .dz-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
-.dz-percent { font-size: 11px; color: var(--color-text-muted); width: 32px; text-align: right; }
-.dz-dl-meta { font-size: 12px; color: var(--color-primary); }
-.dz-error { color: var(--state-danger); font-size: 11px; }
-.dz-retry { color: var(--color-primary); font-size: 12px; cursor: pointer; margin-left: 8px; }
+.dz-percent { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
+.dz-dl-meta { font-size: var(--text-sm); color: var(--color-primary); }
+.dz-error { color: var(--state-danger); font-size: var(--text-xs); }
+.dz-retry { color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; }
 .dz-retry:hover { text-decoration: underline; }
 
 /* ---------- 上游信息 ---------- */
-.dz-repo { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; }
+.dz-repo { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-text-muted); flex-wrap: wrap; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; }
 .dz-repo .k { color: var(--color-text-subtle); flex-shrink: 0; }
 .dz-repo-addr { flex: 1; min-width: 220px; }
 </style>

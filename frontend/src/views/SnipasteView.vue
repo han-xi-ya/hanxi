@@ -510,33 +510,42 @@ onUnmounted(() => {
 .snipaste-mark { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: var(--radius-control); color: var(--color-primary); background: var(--surface-selected); }
 .snipaste-mark svg { width: 25px; height: 25px; }
 .tab-body { display: grid; gap: 14px; }
-.control-panel, .info-panel { border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); padding: 16px; }
+/* 补差 against 全局原子 .control-panel：本视图面板为 element 圆角 + 16px 内距的大卡 */
+.control-panel { border-radius: var(--radius-element); padding: 16px; }
+.info-panel { border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); padding: 16px; }
 .control-panel h2, .section-title-row h2, .info-panel h2 { margin: 0; }
 .control-panel p, .section-title-row p { margin: 4px 0 0; color: var(--color-text-muted); }
 .snipaste-control-panel, .versions-overview { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
 .snipaste-control-main { display: grid; gap: 6px; min-width: 0; }
-.snipaste-control-state, .btn-group, .badge-group, .inst-actions, .release-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.version-value, .ver-tag, .path-value, .mono-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-.version-value { font-size: 20px; }
-.path-value { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); font-size: 12px; line-height: 1.5; }
-.mono-meta { color: var(--color-text-muted); font-size: 12px; }
+.snipaste-control-state, .badge-group, .release-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 补差 against 全局原子 .btn-group / .inst-actions：本视图行需垂直居中并允许换行 */
+.btn-group { align-items: center; flex-wrap: wrap; }
+.inst-actions { align-items: center; flex-wrap: wrap; }
+.version-value, .path-value, .mono-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* 补差 against 全局原子 .ver-tag：等宽数字 */
+.ver-tag { font-variant-numeric: tabular-nums; }
+.version-value { font-size: var(--text-xl); }
+.path-value { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.5; }
+.mono-meta { color: var(--color-text-muted); font-size: var(--text-sm); }
 .muted-copy { margin: 0; color: var(--color-text-muted); }
 /* 状态胶囊带视图前缀防全局碰撞（托管家族 ver-status 惯例） */
-.snipaste-status, .snipaste-ver-status { display: inline-flex; align-items: center; width: fit-content; border-radius: var(--radius-pill); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.snipaste-status, .snipaste-ver-status { display: inline-flex; align-items: center; width: fit-content; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
 .snipaste-status { padding: 3px 8px; border: 1px solid var(--color-border); color: var(--color-text-muted); }
 .snipaste-status[data-state="running"] { color: var(--state-positive); border-color: color-mix(in srgb, var(--state-positive) 35%, var(--color-border)); }
 .snipaste-status[data-state="starting"], .snipaste-status[data-state="quitting"] { color: var(--state-warning); }
 .snipaste-status[data-state="failed"] { color: var(--state-danger); }
-.snipaste-row-error { margin: 0; font-size: 12px; line-height: 1.45; white-space: normal; color: var(--state-danger); }
+.snipaste-row-error { margin: 0; font-size: var(--text-sm); line-height: 1.45; white-space: normal; color: var(--state-danger); }
 .info-panel ul { margin: 10px 0 14px; padding-left: 20px; color: var(--color-text-muted); line-height: 1.7; }
 .section-title-row { margin-top: 4px; }
 .remote-title { margin-top: 10px; }
-.installed-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.installed-card { display: grid; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); }
-.inst-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.inst-meta { margin: 0; color: var(--color-text-muted); font-size: 12px; }
+/* 已装卡家族为 Snipaste 双列方言：基形由全局原子接管，此处只留差异（补差 against 全局原子） */
+.installed-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.installed-card { display: grid; gap: 10px; min-width: 0; padding: 14px; border-radius: var(--radius-element); }
+.inst-card-top { align-items: flex-start; gap: 10px; }
+.inst-meta { margin: 0; color: var(--color-text-muted); }
 .inst-actions { margin-top: auto; }
-.table-container { overflow-x: auto; border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); }
+/* 补差 against 全局原子 .table-container：element 圆角 */
+.table-container { border-radius: var(--radius-element); }
 .table-container .tbl { min-width: 830px; }
 .action-col { width: 170px; }
 .snipaste-ver-status { padding: 3px 7px; }
@@ -548,7 +557,7 @@ onUnmounted(() => {
 .snipaste-progress { position: relative; flex: 1; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-hover); }
 .snipaste-progress span { display: block; height: 100%; background: var(--color-primary); transition: width var(--motion-fast) linear; }
 .snipaste-progress-indeterminate { width: 35%; animation: snipaste-slide 1.1s ease-in-out infinite; }
-.download-stage, .installed-label { color: var(--color-text-muted); font-size: 12px; }
+.download-stage, .installed-label { color: var(--color-text-muted); font-size: var(--text-sm); }
 @keyframes snipaste-slide { from { transform: translateX(-110%); } to { transform: translateX(390%); } }
 @media (max-width: 760px) { .snipaste-control-panel, .versions-overview { align-items: stretch; flex-direction: column; } .installed-grid { grid-template-columns: 1fr; } .btn-group { justify-content: flex-start; } }
 @media (max-width: 460px) { .btn-group .btn { flex: 1 1 auto; } .path-value { white-space: normal; overflow-wrap: anywhere; } }
