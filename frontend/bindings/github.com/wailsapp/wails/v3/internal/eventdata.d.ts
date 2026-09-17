@@ -148,6 +148,9 @@ import type * as instance$19 from "../../../../../hanxi/internal/modules/snipast
 import type * as version$19 from "../../../../../hanxi/internal/modules/snipaste/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as softver$0 from "../../../../../hanxi/internal/modules/softver/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as instance$20 from "../../../../../hanxi/internal/modules/subnetdesk/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -237,6 +240,7 @@ declare module "@wailsio/runtime" {
             "rustdesk:version-download": version$18.DownloadProgress;
             "snipaste:instance-state": instance$19.Snapshot;
             "snipaste:version-download": version$19.DownloadProgress;
+            "softver:dir-scan": softver$0.ScanProgress;
             "subnetdesk:instance-state": instance$20.Snapshot;
             "subnetdesk:version-download": version$20.DownloadProgress;
             "translucenttb:instance-state": instance$21.Snapshot;
