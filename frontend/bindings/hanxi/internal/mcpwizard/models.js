@@ -56,6 +56,18 @@
  */
 
 /**
+ * SelfCheckInfo 安装前自检结果（Wails 绑定 DTO）。Message 恒非空：
+ * 成功=结论一句话，失败=原因（指引文案由前端固定补充）。
+ * @typedef {Object} SelfCheckInfo
+ * @property {string} state - ok / failed
+ * @property {number} toolCount - tools/list 工具数（失败为 0）
+ * @property {string[] | null} tools - 工具名清单（可发现性展示）
+ * @property {string} message
+ * @property {string} checkedAt - 真实 spawn 时刻（RFC3339；缓存复用仍是原时刻）
+ * @property {boolean} fresh - true=本次调用真 spawn；false=TTL 内缓存复用
+ */
+
+/**
  * ServerInfo MCP server 启动命令（写入客户端配置的 command/args）。
  * @typedef {Object} ServerInfo
  * @property {string} command
