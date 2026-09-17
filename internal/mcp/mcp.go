@@ -82,6 +82,10 @@ func (g *registryGate) Check(moduleID string) error {
 // 阻塞至客户端关闭 stdin（会话即进程生命周期），退出前 ShutdownAll 收尾。
 func Run() error {
 	paths := settings.InitPaths()
+	if err := paths.InitError(); err != nil {
+		// 数据根不可用 fail loud（F6）：无头模式经 stderr 报引导文案退出，不弹 GUI 对话框。
+		return fmt.Errorf("数据目录不可用: %w", err)
+	}
 
 	// 配置读取失败 = fail-closed 直接退出：损坏 config.json 的隔离降级是 GUI 的
 	// 修复通道（有用户可见的提示），无头模式不抢这个动作，也不静默带病服务。

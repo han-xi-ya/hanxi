@@ -24,6 +24,16 @@ import * as settings$0 from "../settings/models.js";
 import * as $models from "./models.js";
 
 /**
+ * BindDataDir 将数据根显式绑定到指定绝对目录（重启后生效）。
+ * 校验、目标预创建与指针落盘失败均返回明确中文错误，由设置页 toast 呈现。
+ * @param {string} target
+ * @returns {$CancellablePromise<void>}
+ */
+export function BindDataDir(target) {
+    return $Call.ByID(957620339, target);
+}
+
+/**
  * ClearLogs 清除所有历史日志（保留当天的）。
  * 逐文件删除失败不再静默吞掉：聚合后一次性返回（如当天之前有文件被杀毒软件占用），
  * 前端可如实提示；目录不存在视为无日志可清，仍按成功处理。
@@ -294,4 +304,12 @@ export function SetWindowDarkApplier(fn) {
  */
 export function SetWindowDarkMode(dark, accent) {
     return $Call.ByID(1186575710, dark, accent);
+}
+
+/**
+ * UnbindDataDir 清除数据根绑定，回到应用同级默认（重启后生效，幂等）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function UnbindDataDir() {
+    return $Call.ByID(2714573946);
 }

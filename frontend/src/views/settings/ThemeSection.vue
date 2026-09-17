@@ -29,7 +29,7 @@ const ACCENTS: ReadonlyArray<{ key: AccentMode; label: string; dot: string }> = 
 
 <template>
   <section class="page">
-    <PageHeader title="外观主题" subtitle="明暗与色板双轴持久化在后端设置中，便携模式随 data/ 目录迁移；「跟随系统」将随 Windows 亮暗设置自动切换。" />
+    <PageHeader title="外观主题" subtitle="明暗与色板双轴持久化在后端设置中，随数据目录整体迁移；「跟随系统」将随 Windows 亮暗设置自动切换。" />
 
     <div class="card pref-list">
       <div class="setting-row">
