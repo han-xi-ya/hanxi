@@ -17,9 +17,21 @@ import (
 
 	embedassets "hanxi" // 根目录包：承载 //go:embed all:frontend/dist
 	"hanxi/internal/app"
+	"hanxi/internal/mcp"
 )
 
 func main() {
+	// 0. `hanxi mcp` 无头短路（PLAN_MCP §2.1，与 killhelper 分流同谱）：位置参数形态
+	// 供客户端配置 args:["mcp"] 直用。不进 flag 状态机、不进 GUI 生命周期
+	// （单实例锁/托盘/钩子均不装配），与运行中的主程序并存，前台服务 stdio JSON-RPC。
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		if err := mcp.Run(); err != nil {
+			fmt.Fprintln(os.Stderr, "hanxi mcp:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	modeFlag := flag.String("mode", "", "run mode: empty for GUI, 'killhelper' for elevated process terminator")
 	pidFlag := flag.Uint("pid", 0, "target PID for killhelper mode")
 	minimizedFlag := flag.Bool("minimized", false, "start with the main window hidden in the system tray")
