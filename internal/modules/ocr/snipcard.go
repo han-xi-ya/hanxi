@@ -1,6 +1,7 @@
 // 悬浮结果卡：框选截屏识别的轻量出口（轮盘场景不弹主窗）。
-// 复刻 quickmenu 弹窗已验证的范式：frameless + 真透明 + 置顶 + 不进任务栏，
-// 常驻隐藏复用（beta.10 无公开窗口销毁 API，隐藏复用与托盘驻留策略同构）。
+// 窗口形态：frameless + 置顶 + 不进任务栏，常驻隐藏复用（beta.10 无公开窗口
+// 销毁 API，隐藏复用与托盘驻留策略同构）。方案 D：背景用 Win11 原生 Acrylic
+// （真桌面毛玻璃）——窗口即卡片，圆角与投影由 DWM 裁切/绘制，页面不再自绘壳。
 // 与轮盘弹窗的唯一差异：**不挂失焦自动隐藏**——用户要能在卡内手动选字复制。
 package ocr
 
@@ -16,8 +17,8 @@ import (
 const (
 	cardWindowName  = "ocr-snip-card"
 	cardWidthDIP    = 420
-	cardHeightDIP   = 340
-	cardCursorGap   = 16  // 卡片左上角相对游标的右下偏移（DIP）
+	cardHeightDIP   = 240
+	cardCursorGap   = 16 // 卡片左上角相对游标的右下偏移（DIP）
 	cardEventResult = "ocr:snip-result"
 )
 
@@ -44,11 +45,12 @@ func (s *OcrService) showSnipCard(res SnipResult) {
 			Frameless:        true,
 			AlwaysOnTop:      true,
 			DisableResize:    true,
-			BackgroundType:   application.BackgroundTypeTransparent,
-			Windows:          application.WindowsWindow{HiddenOnTaskbar: true},
+			BackgroundType:   application.BackgroundTypeTranslucent,
+			Windows:          application.WindowsWindow{HiddenOnTaskbar: true, BackdropType: application.Acrylic},
 			URL:              "/#ocrcard",
 			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
 		})
+		applyCardWindowStyle(card)
 		card.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
 			ev.Cancel()
 			card.Hide()

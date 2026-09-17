@@ -48,7 +48,7 @@ describe('SnipCardView', () => {
     expect(wrapper.find('.snip-text').text()).toContain('第一行')
     expect(wrapper.find('.snip-meta').text()).toContain('2 行')
     expect(wrapper.find('.snip-meta').text()).toContain('88 ms')
-    expect(wrapper.find('.snip-meta').text()).toContain('已复制')
+    expect(wrapper.find('.snip-copied').text()).toContain('已复制')
     wrapper.unmount()
   })
 

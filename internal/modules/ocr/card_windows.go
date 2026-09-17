@@ -17,3 +17,16 @@ func forceCardForeground(card *application.WebviewWindow) {
 		slog.Debug("ocr: 悬浮卡强制置前失败", "err", err)
 	}
 }
+
+// applyCardWindowStyle Acrylic 载体的窗口级精修：DWM 系统圆角裁切 + 无边框
+// 投影。两者失败都只降级外观（直角/无阴影），不影响功能；Wails 未暴露这两个
+// 属性，直连 dwmapi 补齐。建窗后设置一次即长期生效。
+func applyCardWindowStyle(card *application.WebviewWindow) {
+	hwnd := uintptr(card.NativeWindow())
+	if err := windows.SetFramelessRoundedCorners(hwnd); err != nil {
+		slog.Debug("ocr: 悬浮卡圆角设置失败", "err", err)
+	}
+	if err := windows.EnableFramelessShadow(hwnd); err != nil {
+		slog.Debug("ocr: 悬浮卡投影设置失败", "err", err)
+	}
+}
