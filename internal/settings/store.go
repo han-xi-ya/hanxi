@@ -1,5 +1,5 @@
 // Package settings 提供应用全局配置（config.json）的模型、加载与持久化，
-// 以及便携/标准两种运行模式下的数据目录布局解析（见 paths.go）。
+// 以及数据目录布局解析（F6 起同级默认 + 显式绑定，见 paths.go）。
 // 本包不依赖任何模块层代码，仅被 app 与各业务模块反向引用。
 package settings
 
