@@ -34,10 +34,12 @@ const modal = ref<{
   checkBusy: boolean
 } | null>(null)
 
+// 标签主语恒为「hanxi 接入条目」而非客户端软件本身——envcheck 页管"客户端装没装"，
+// 本页只关心"该客户端配置里写没写 hanxi 的 MCP 条目"。曾省主语致与 envcheck 观感冲突（"未安装"被读成软件未装）。
 const stateMeta: Record<string, { label: string; chip: string }> = {
-  'not-installed': { label: '未安装', chip: 'chip-neutral' },
-  installed: { label: '已安装', chip: 'chip-positive' },
-  'needs-repair': { label: '需修复', chip: 'chip-warning' },
+  'not-installed': { label: '未接入 hanxi', chip: 'chip-neutral' },
+  installed: { label: '已接入', chip: 'chip-positive' },
+  'needs-repair': { label: '条目缺失 · 可修复', chip: 'chip-warning' },
   conflict: { label: '冲突 · 拒动', chip: 'chip-danger' },
   blocked: { label: '拒绝自动改', chip: 'chip-warning' },
 }
