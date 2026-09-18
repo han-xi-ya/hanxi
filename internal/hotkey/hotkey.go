@@ -14,6 +14,7 @@
 package hotkey
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -38,6 +39,7 @@ type Registry struct {
 type slot struct {
 	accel   string
 	handler func()
+	pending map[string]struct{} // 回滚注销失败的新键；后续同槽操作先重试清理
 }
 
 // NewRegistry 以指定底层构造注册表。
@@ -45,10 +47,11 @@ func NewRegistry(backend Backend) *Registry {
 	return &Registry{backend: backend, slots: make(map[string]slot)}
 }
 
-// Bind 为槽位落实期望态：enabled=false 解绑；enabled=true 绑到 accel。
-//   - 同槽同键且系统确在绑定 → 幂等 no-op（启动期 pending 回滚产生的"记账在、
-//     系统没绑"状态会被视为需要重试，走下方重绑路径）；
-//   - 换键先注册新键，成功后才注销旧键；新键被占用则保持旧绑定、返回中文错误；
+// Bind 为槽位落实期望态。完整事务在 r.mu 内串行，避免同槽并发把底层系统态
+// 与槽位账本拆成两套历史：enabled=false 解绑；enabled=true 绑到 accel。
+//   - 同槽同键且系统确在绑定 → 幂等 no-op；
+//   - 换键先注册新键，再注销旧键；旧键注销失败会反向注销新键并保留旧槽位；
+//   - 反向注销也失败时把新键记为 pending，后续同槽操作先清理它；
 //   - handler 必须非 nil（解绑除外）。
 func (r *Registry) Bind(name, accel string, enabled bool, handler func()) error {
 	if name == "" {
@@ -66,46 +69,86 @@ func (r *Registry) Bind(name, accel string, enabled bool, handler func()) error 
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	cur, had := r.slots[name]
-	r.mu.Unlock()
+	if err := r.cleanupPendingLocked(name, &cur); err != nil {
+		r.slots[name] = cur
+		return err
+	}
+	if had {
+		r.slots[name] = cur
+	}
 	if had && sameAccel(cur.accel, accel) && r.backend.IsRegistered(accel) {
-		return nil // 已是期望态
+		cur.handler = handler
+		r.slots[name] = cur
+		return nil
 	}
 
 	if err := r.backend.Register(accel, handler); err != nil {
-		return userError(accel, err) // 失败保旧：slots 原样，旧键仍在
+		return userError(accel, err)
 	}
-	r.mu.Lock()
-	r.slots[name] = slot{accel: accel, handler: handler}
-	r.mu.Unlock()
-	if had && !sameAccel(cur.accel, accel) {
-		// 新键到手后才释放旧键；记账已落新键，注销失败如实报错但不再回退
-		//（OS 侧旧键即使用户再按也只触同一 handler，无越权风险，重试可清）
-		if err := r.backend.Unregister(cur.accel); err != nil && r.backend.IsRegistered(cur.accel) {
-			return fmt.Errorf("热键「%s」已换到 %s，但旧键 %s 注销失败：%w", name, accel, cur.accel, err)
+	if !had || sameAccel(cur.accel, accel) {
+		r.slots[name] = slot{accel: accel, handler: handler}
+		return nil
+	}
+
+	if err := r.backend.Unregister(cur.accel); err != nil && r.backend.IsRegistered(cur.accel) {
+		primary := fmt.Errorf("热键「%s」旧键 %s 注销失败，换绑未生效：%w", name, cur.accel, err)
+		if rollbackErr := r.backend.Unregister(accel); rollbackErr != nil && r.backend.IsRegistered(accel) {
+			if cur.pending == nil {
+				cur.pending = make(map[string]struct{})
+			}
+			cur.pending[accel] = struct{}{}
+			r.slots[name] = cur
+			return errors.Join(primary, fmt.Errorf("热键「%s」补偿注销新键 %s 失败，已保留待重试凭据：%w", name, accel, rollbackErr))
 		}
+		r.slots[name] = cur
+		return primary
+	}
+
+	r.slots[name] = slot{accel: accel, handler: handler}
+	return nil
+}
+
+// cleanupPendingLocked 清理此前补偿失败遗留的新键。调用方持有 r.mu。
+func (r *Registry) cleanupPendingLocked(name string, cur *slot) error {
+	for accel := range cur.pending {
+		if !r.backend.IsRegistered(accel) {
+			delete(cur.pending, accel)
+			continue
+		}
+		if err := r.backend.Unregister(accel); err != nil && r.backend.IsRegistered(accel) {
+			return fmt.Errorf("热键「%s」清理待回滚键 %s 失败：%w", name, accel, err)
+		}
+		delete(cur.pending, accel)
 	}
 	return nil
 }
 
-// Unbind 解绑槽位（幂等：未绑定静默成功）。启动期 OS 绑定回滚（记账在、系统
-// 没绑）的残账同样直接抹除。
+// Unbind 解绑槽位（幂等：未绑定静默成功）。注销失败时不删槽位账本，保留
+// accel 作为二次重试凭据；只有系统确认未注册或注销成功后才清账。
 func (r *Registry) Unbind(name string) error {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	cur, had := r.slots[name]
-	if had {
-		delete(r.slots, name)
-	}
-	r.mu.Unlock()
 	if !had {
 		return nil
 	}
-	if !r.backend.IsRegistered(cur.accel) {
-		return nil // 启动回滚/已被注销：记账抹除即达成
+	if err := r.cleanupPendingLocked(name, &cur); err != nil {
+		r.slots[name] = cur
+		return err
 	}
-	if err := r.backend.Unregister(cur.accel); err != nil {
+	if !r.backend.IsRegistered(cur.accel) {
+		delete(r.slots, name)
+		return nil
+	}
+	if err := r.backend.Unregister(cur.accel); err != nil && r.backend.IsRegistered(cur.accel) {
+		r.slots[name] = cur
 		return fmt.Errorf("热键「%s」注销失败：%w", name, err)
 	}
+	delete(r.slots, name)
 	return nil
 }
 
