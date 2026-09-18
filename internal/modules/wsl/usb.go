@@ -46,9 +46,12 @@ const (
 // USBShareEntry 账本里的一条"期望共享"记录（设备 × 目标发行版）。
 type USBShareEntry struct {
 	ID          string `json:"id"`
-	BusID       string `json:"busId"` // 记录时的总线号（重放主匹配键）
+	BusID       string `json:"busId"` // 记录时的总线号（仅作位置提示，命中仍须核验物理身份）
+	InstanceID  string `json:"instanceId,omitempty"`
 	Vid         string `json:"vid,omitempty"`
 	Pid         string `json:"pid,omitempty"`
+	Serial      string `json:"serial,omitempty"`
+	Guid        string `json:"guid,omitempty"`
 	Description string `json:"description,omitempty"` // 设备名快照（账本表可读性）
 	Distro      string `json:"distro"`
 	Enabled     bool   `json:"enabled"`
@@ -135,9 +138,10 @@ type usbPlanStep struct {
 }
 
 // planUsbReplay 账本 × 当前设备表 × 运行名单 → 动作序列。
-// 匹配次序：账本 busid 原样在场 → 用之；不在场时按 VID:PID 在"在场设备"里
-// 唯一匹配（换插口场景）；多义/无匹配即 skip 记因。已附加、发行版未运行、
-// 不兼容集线器都跳过且如实记因；未共享的先 bind（提权）后 attach。
+// 匹配次序：账本 busid 原样在场时仍核验物理身份；原端口被其他设备占用时明确
+// skip。换插口仅接受唯一稳定身份命中；旧账本没有新身份字段时，保守兼容唯一
+// VID:PID 候选，多义即拒绝。已附加、发行版未运行、不兼容集线器都跳过且如实
+// 记因；未共享的先 bind（提权）后 attach。
 // runningOK=false（运行名单通道故障）时不做未运行拦截，交给 usbipd 自己报错。
 func planUsbReplay(entries []USBShareEntry, devices []usbipd.Device, running map[string]bool, runningOK bool) []usbPlanStep {
 	var steps []usbPlanStep
@@ -147,7 +151,10 @@ func planUsbReplay(entries []USBShareEntry, devices []usbipd.Device, running map
 		}
 		dev, note, found := matchUsbDevice(e, devices)
 		if !found {
-			steps = append(steps, usbPlanStep{Kind: usbStepSkip, Entry: e, Distro: e.Distro, Reason: "设备不在场（等待重新插入后自动补挂）"})
+			if note == "" {
+				note = "设备不在场（等待重新插入后自动补挂）"
+			}
+			steps = append(steps, usbPlanStep{Kind: usbStepSkip, Entry: e, Distro: e.Distro, Reason: note})
 			continue
 		}
 		if dev.State == usbipd.StateIncompatible {
@@ -171,25 +178,85 @@ func planUsbReplay(entries []USBShareEntry, devices []usbipd.Device, running map
 	return steps
 }
 
-// matchUsbDevice 账本条目 → 当前在场设备：busid 精确优先，VID:PID 唯一匹配兜底。
+// matchUsbDevice 账本条目 → 当前在场设备。BusID 仅表示拓扑位置，不能单独充当
+// 物理身份：原端口命中也必须核验账本已有身份字段；端口不同则只接受唯一稳定身份。
 func matchUsbDevice(e USBShareEntry, devices []usbipd.Device) (usbipd.Device, string, bool) {
-	for _, d := range devices {
-		if d.Connected() && strings.EqualFold(d.BusID, e.BusID) {
-			return d, "", true
+	var sameBus *usbipd.Device
+	connected := make([]usbipd.Device, 0, len(devices))
+	for i := range devices {
+		d := devices[i]
+		if !d.Connected() {
+			continue
+		}
+		connected = append(connected, d)
+		if strings.EqualFold(d.BusID, e.BusID) {
+			sameBus = &devices[i]
 		}
 	}
-	if e.Vid != "" && e.Pid != "" {
-		var hits []usbipd.Device
-		for _, d := range devices {
-			if d.Connected() && d.Vid == e.Vid && d.Pid == e.Pid {
-				hits = append(hits, d)
-			}
+
+	if sameBus != nil {
+		if usbIdentityMatches(e, *sameBus) {
+			return *sameBus, "", true
 		}
-		if len(hits) == 1 {
-			return hits[0], fmt.Sprintf("（换插口，现总线号 %s）", hits[0].BusID), true
+		return usbipd.Device{}, "同端口当前是其他设备，物理身份不匹配，已跳过", false
+	}
+
+	hits := make([]usbipd.Device, 0, 1)
+	for _, d := range connected {
+		matched := usbStableIdentityMatches(e, d)
+		if !usbHasStableIdentity(e) {
+			matched = e.Vid != "" && e.Pid != "" && usbVidPidMatches(e, d)
 		}
+		if matched {
+			hits = append(hits, d)
+		}
+	}
+	if len(hits) == 1 {
+		return hits[0], fmt.Sprintf("（换插口，现总线号 %s）", hits[0].BusID), true
+	}
+	if len(hits) > 1 {
+		return usbipd.Device{}, "检测到多个相同身份候选，无法安全确认物理设备，已跳过", false
 	}
 	return usbipd.Device{}, "", false
+}
+
+// usbIdentityMatches 核验原端口上的设备。新账本只接受已记录的稳定身份命中；旧账本
+// 没有稳定字段时至少要求 VID/PID 相符。完全没有身份线索的最老账本不再凭 BusID 操作。
+func usbIdentityMatches(e USBShareEntry, d usbipd.Device) bool {
+	if usbHasStableIdentity(e) {
+		return usbStableIdentityMatches(e, d)
+	}
+	return e.Vid != "" && e.Pid != "" && usbVidPidMatches(e, d)
+}
+
+// usbStableIdentityMatches 判断稳定身份。Serial、InstanceID、Guid 任一已记录值精确命中
+// 即可，其中 Serial/Guid 还会同时核对账本已有的 VID/PID。不会退化为仅按 VID/PID。
+func usbStableIdentityMatches(e USBShareEntry, d usbipd.Device) bool {
+	if e.Serial != "" && d.Serial != "" && strings.EqualFold(e.Serial, d.Serial) && usbVidPidCompatible(e, d) {
+		return true
+	}
+	if e.InstanceID != "" && d.InstanceID != "" && strings.EqualFold(e.InstanceID, d.InstanceID) {
+		return true
+	}
+	return e.Guid != "" && d.Guid != "" && strings.EqualFold(e.Guid, d.Guid) && usbVidPidCompatible(e, d)
+}
+
+func usbHasStableIdentity(e USBShareEntry) bool {
+	return e.InstanceID != "" || e.Serial != "" || e.Guid != ""
+}
+
+func usbVidPidCompatible(e USBShareEntry, d usbipd.Device) bool {
+	if e.Vid != "" && !strings.EqualFold(e.Vid, d.Vid) {
+		return false
+	}
+	if e.Pid != "" && !strings.EqualFold(e.Pid, d.Pid) {
+		return false
+	}
+	return true
+}
+
+func usbVidPidMatches(e USBShareEntry, d usbipd.Device) bool {
+	return strings.EqualFold(e.Vid, d.Vid) && strings.EqualFold(e.Pid, d.Pid)
 }
 
 // ---- 重放执行 ----
@@ -581,8 +648,11 @@ func (s *WslService) SetUsbShare(busID, distro string) (OperationOutcome, error)
 	entry := USBShareEntry{
 		ID:          fmt.Sprintf("usb-%d", time.Now().UnixNano()),
 		BusID:       found.BusID,
+		InstanceID:  found.InstanceID,
 		Vid:         found.Vid,
 		Pid:         found.Pid,
+		Serial:      found.Serial,
+		Guid:        found.Guid,
 		Description: found.Description,
 		Distro:      distro,
 		Enabled:     true,
