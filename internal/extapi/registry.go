@@ -141,13 +141,19 @@ func ensureActive(wrapper *ModuleWrapper, moduleID string) error {
 
 	wrapper.mu.Lock()
 	wrapper.initializing = false
-	if err == nil && wrapper.Enabled && !wrapper.stopping {
+	if err == nil {
+		// OnInit 已成功分配的资源必须入账，即使停用已在等待；这样停用方才能
+		// 在唤醒后执行 OnDestroy，而不是因 initialized=false 泄露资源。
 		wrapper.initialized = true
 	}
+	disabled := !wrapper.Enabled || wrapper.stopping
 	wrapper.cond.Broadcast()
 	wrapper.mu.Unlock()
 	if err != nil {
 		return fmt.Errorf("registry: init module %q failed: %w", moduleID, err)
+	}
+	if disabled {
+		return fmt.Errorf("%w %q", ErrModuleDisabled, moduleID)
 	}
 	return nil
 }
