@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-accent="jade">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef6f6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#071318" media="(prefers-color-scheme: dark)">
+  <title>Hanxi 工作台首页演进稿</title>
+  <link rel="stylesheet" href="../../../frontend/src/styles/tokens.css">
+  <script>
+    (() => {
+      const params = new URLSearchParams(location.search)
+      const themes = new Set(['light', 'dark'])
+      const accents = new Set(['teal', 'sky', 'iris', 'jade', 'onyx'])
+      const theme = params.get('theme')
+      const accent = params.get('accent')
+      document.documentElement.dataset.theme = themes.has(theme) ? theme : 'light'
+      document.documentElement.dataset.accent = accents.has(accent) ? accent : 'jade'
+    })()
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--surface-page); }
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow: hidden;
+      background: var(--surface-page);
+      color: var(--color-text);
+      font: var(--text-base)/1.5 var(--font-text);
+      text-rendering: optimizeLegibility;
+    }
+    button, a { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; text-decoration: none; }
+    svg.icon {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    :focus-visible {
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+    .shell {
+      display: flex;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* 当前双栏 Shell：一级轨道 + 二级上下文面板。 */
+    .sidebar {
+      flex: none;
+      display: flex;
+      height: 100%;
+      background: var(--surface-chrome);
+      border-right: 1px solid var(--color-border);
+    }
+    .rail {
+      width: 64px;
+      flex: 0 0 64px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: max(12px, env(safe-area-inset-top)) 0 max(8px, env(safe-area-inset-bottom));
+      border-right: 1px solid var(--color-border);
+    }
+    .rail-button, .mobile-menu, .icon-button {
+      border: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      color: var(--color-text-subtle);
+      transition: background var(--motion-base) ease, color var(--motion-base) ease;
+    }
+    .rail-button {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      border-radius: var(--radius-element);
+    }
+    .rail-button:hover, .icon-button:hover { background: var(--surface-chrome-hover); color: var(--color-text); }
+    .rail-button.active { background: var(--surface-selected); color: var(--color-primary); }
+    .rail-button.active::before {
+      content: "";
+      position: absolute;
+      left: -10px;
+      top: 12px;
+      width: 3px;
+      height: 20px;
+      border-radius: 0 var(--radius-micro) var(--radius-micro) 0;
+      background: var(--color-primary);
+    }
+    .rail-separator { width: 26px; height: 1px; margin: 1px 0 3px; background: var(--color-border); }
+    .rail-spacer { flex: 1; }
+    .rail-count {
+      position: absolute;
+      right: 1px;
+      bottom: 1px;
+      min-width: 15px;
+      padding: 0 3px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-pill);
+      background: var(--surface-soft);
+      color: var(--color-text-subtle);
+      font: 700 var(--text-micro)/13px var(--font-mono);
+    }
+    .rail-run {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--state-positive);
+      box-shadow: 0 0 0 2px var(--surface-chrome);
+    }
+    .rail-badge {
+      position: absolute;
+      top: 1px;
+      right: 0;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: var(--radius-pill);
+      background: var(--state-danger);
+      color: var(--color-text-inverse);
+      font: 800 var(--text-micro)/16px var(--font-mono);
+    }
+    .nav-panel {
+      width: 238px;
+      flex: 0 0 238px;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 14px 14px 10px;
+    }
+    .panel-head-icon, .module-icon, .summary-icon, .shortcut-icon, .task-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      border-radius: var(--radius-control);
+    }
+    .panel-head-icon { width: 28px; height: 28px; background: var(--color-primary-soft); color: var(--color-primary); }
+    .panel-head-copy, .module-copy, .page-title, .section-title-copy, .task-copy { min-width: 0; }
+    .panel-title { font-size: var(--text-md); font-weight: 700; line-height: 1.25; }
+    .panel-sub { margin-top: 2px; overflow: hidden; color: var(--color-text-subtle); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+    .panel-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; }
+    .panel-label {
+      padding: 8px 6px 4px;
+      color: var(--color-text-subtle);
+      font-size: var(--text-xs);
+      font-weight: 650;
+      letter-spacing: .04em;
+    }
+    .panel-label.with-rule { margin-top: 6px; border-top: 1px solid var(--color-border); }
+    .module-link {
+      width: 100%;
+      min-width: 0;
+      min-height: 46px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 3px;
+      padding: 7px 9px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-element);
+      color: var(--color-text-muted);
+      transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
+    }
+    .module-link:hover { background: var(--surface-chrome-hover); color: var(--color-text); }
+    .module-link.active { background: var(--surface-selected); border-color: color-mix(in srgb, var(--color-primary) 30%, transparent); color: var(--color-text); }
+    .module-icon { width: 30px; height: 30px; border: 1px solid var(--color-border); background: var(--surface-soft); }
+    .module-icon .icon { width: 15px; height: 15px; }
+    .module-name { display: block; overflow: hidden; font-size: var(--text-sm); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .module-meta { display: block; color: var(--color-text-subtle); font-size: var(--text-micro); }
+    .state-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--state-positive); }
+    .panel-foot { flex: none; padding: 8px 14px max(9px, env(safe-area-inset-bottom)); border-top: 1px solid var(--color-border); }
+    .panel-counts, .workbench-state { display: flex; align-items: center; gap: 10px; color: var(--color-text-subtle); font-size: var(--text-micro); }
+    .panel-counts b { color: var(--state-positive); }
+    .workbench-state { gap: 6px; margin-top: 6px; font-size: var(--text-xs); }
+
+    .main {
+      min-width: 0;
+      flex: 1;
+      height: 100%;
+      overflow-y: auto;
+      padding: 20px max(22px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
+      background: var(--surface-page);
+    }
+    .content { width: min(100%, 1180px); margin: 0 auto; }
+    .mobile-menu, .nav-mask { display: none; }
+    .page-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-height: 48px;
+      margin-bottom: 16px;
+    }
+    .eyebrow { margin: 0 0 2px; color: var(--color-text-subtle); font-size: var(--text-xs); font-weight: 650; letter-spacing: .04em; }
+    h1 { margin: 0; font: 700 var(--text-xl)/1.25 var(--font-display); letter-spacing: -.01em; }
+    .page-note { margin: 3px 0 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+    .sample-tag, .status-chip, .meta-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      width: max-content;
+      border-radius: var(--radius-pill);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    .sample-tag { margin-left: auto; padding: 4px 9px; border: 1px solid var(--color-border); background: var(--surface-soft); color: var(--color-text-muted); font-size: var(--text-xs); }
+    .sample-tag .icon { width: 13px; height: 13px; }
+
+    .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .summary-card {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 11px;
+      min-height: 82px;
+      padding: 13px 14px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-element);
+      background: var(--surface-panel);
+      box-shadow: var(--shadow-small);
+    }
+    .summary-icon { width: 36px; height: 36px; background: var(--color-primary-soft); color: var(--color-primary); }
+    .summary-card.warning .summary-icon { background: var(--state-warning-soft); color: var(--state-warning); }
+    .summary-card.info .summary-icon { background: var(--state-information-soft); color: var(--state-information); }
+    .summary-label { color: var(--color-text-muted); font-size: var(--text-xs); font-weight: 650; }
+    .summary-detail { margin-top: 2px; overflow: hidden; color: var(--color-text-subtle); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+    .summary-value { font: 750 var(--text-2xl)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(290px, .75fr); gap: 16px; align-items: start; }
+    .column { min-width: 0; display: grid; gap: 16px; }
+    .panel {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-panel);
+      background: var(--surface-panel);
+      box-shadow: var(--shadow-small);
+    }
+    .section-head {
+      min-height: 49px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .section-title { margin: 0; font-size: var(--text-md); font-weight: 700; line-height: 1.3; }
+    .section-sub { margin-top: 1px; color: var(--color-text-subtle); font-size: var(--text-xs); }
+    .section-action {
+      min-height: 30px;
+      margin-left: auto;
+      padding: 0 9px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-control);
+      background: var(--surface-soft);
+      color: var(--color-text-muted);
+      cursor: pointer;
+      font-size: var(--text-xs);
+      font-weight: 650;
+    }
+    .section-action:hover { border-color: var(--color-border-strong); background: var(--surface-hover); color: var(--color-text); }
+
+    .running-list, .update-list, .task-list { margin: 0; padding: 0; list-style: none; }
+    .running-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 12px;
+      min-height: 62px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .running-row:last-child { border-bottom: 0; }
+    .running-row:hover, .task-row:hover { background: var(--surface-soft); }
+    .resource-main { min-width: 0; display: flex; align-items: center; gap: 10px; }
+    .resource-main .module-icon { background: var(--color-primary-soft); color: var(--color-primary); }
+    .resource-title { overflow: hidden; font-size: var(--text-sm); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .resource-desc { margin-top: 2px; overflow: hidden; color: var(--color-text-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+    .resource-time { color: var(--color-text-subtle); font-size: var(--text-xs); white-space: nowrap; }
+    .status-chip { padding: 3px 8px; font-size: var(--text-xs); }
+    .status-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .status-chip.positive { background: var(--state-positive-soft); color: var(--state-positive); }
+    .status-chip.warning { background: var(--state-warning-soft); color: var(--state-warning); }
+    .status-chip.info { background: var(--state-information-soft); color: var(--state-information); }
+
+    .update-row { padding: 12px 14px; border-bottom: 1px solid var(--color-border); }
+    .update-row:last-child { border-bottom: 0; }
+    .update-top { min-width: 0; display: flex; align-items: center; gap: 9px; }
+    .update-top .module-icon { width: 32px; height: 32px; color: var(--color-text-muted); }
+    .update-title { min-width: 0; flex: 1; }
+    .update-name { overflow: hidden; font-size: var(--text-sm); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .version-line { color: var(--color-text-subtle); font: var(--text-xs)/1.4 var(--font-mono); }
+    .meta-chip { padding: 2px 7px; background: var(--state-information-soft); color: var(--state-information); font-size: var(--text-micro); }
+    .update-note { margin: 8px 0 0 41px; color: var(--color-text-muted); font-size: var(--text-xs); }
+
+    .task-row {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 56px;
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .task-row:last-child { border-bottom: 0; }
+    .task-icon { width: 30px; height: 30px; background: var(--surface-soft); color: var(--color-text-muted); }
+    .task-icon.success { background: var(--state-positive-soft); color: var(--state-positive); }
+    .task-icon.warning { background: var(--state-warning-soft); color: var(--state-warning); }
+    .task-title { overflow: hidden; font-size: var(--text-sm); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .task-meta { margin-top: 1px; color: var(--color-text-subtle); font-size: var(--text-xs); }
+    .task-result { color: var(--color-text-muted); font: var(--text-xs)/1.4 var(--font-mono); white-space: nowrap; }
+
+    .shortcut-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 12px; }
+    .shortcut {
+      min-width: 0;
+      min-height: 104px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 12px;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-element);
+      background: var(--surface-soft);
+      transition: background var(--motion-base) ease, border-color var(--motion-base) ease, transform var(--motion-base) ease;
+    }
+    .shortcut:hover { transform: translateY(-1px); border-color: var(--color-border-strong); background: var(--surface-hover); }
+    .shortcut-icon { width: 32px; height: 32px; background: var(--color-primary-soft); color: var(--color-primary); }
+    .shortcut-name { overflow: hidden; font-size: var(--text-sm); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .shortcut-desc { color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.4; }
+    .shortcut-hint { margin-top: auto; color: var(--color-primary); font-size: var(--text-xs); font-weight: 650; }
+
+    .design-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px dashed var(--color-border-strong);
+      border-radius: var(--radius-element);
+      color: var(--color-text-muted);
+      font-size: var(--text-xs);
+    }
+    .design-note .icon { width: 15px; height: 15px; margin-top: 1px; color: var(--color-primary); }
+
+    @media (max-width: 1100px) {
+      .nav-panel { display: none; }
+      .sidebar { border-right: 0; }
+      .main { padding-inline: 20px; }
+      .workspace-grid { grid-template-columns: minmax(0, 1.35fr) minmax(270px, .8fr); gap: 14px; }
+      .shortcut-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 900px) {
+      .workspace-grid { grid-template-columns: 1fr; }
+      .column { display: contents; }
+      .running-panel { order: 1; }
+      .updates-panel { order: 2; }
+      .tasks-panel { order: 3; }
+      .shortcuts-panel { order: 4; }
+    }
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+      .shell { height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; }
+      .sidebar {
+        display: flex;
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 1001;
+        transform: translateX(-100%);
+        box-shadow: var(--shadow-panel);
+        transition: transform var(--motion-base) ease;
+      }
+      body.nav-open { overflow: hidden; }
+      body.nav-open .sidebar { transform: translateX(0); }
+      body.nav-open .nav-panel { display: flex; background: var(--surface-chrome); }
+      .nav-mask {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        border: 0;
+        background: var(--overlay-mask);
+        cursor: pointer;
+      }
+      body.nav-open .nav-mask { display: block; }
+      .main { height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+      .page-header { align-items: flex-start; gap: 10px; min-height: 44px; margin-bottom: 12px; padding-left: 46px; position: relative; }
+      .mobile-menu { position: absolute; left: 0; top: 0; width: 38px; height: 38px; display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text-muted); box-shadow: var(--shadow-small); }
+      .eyebrow { display: none; }
+      h1 { font-size: var(--text-lg); }
+      .page-note { margin-top: 2px; }
+      .sample-tag { padding-inline: 7px; }
+      .sample-tag span { display: none; }
+      .summary-grid { grid-template-columns: 1fr; gap: 8px; }
+      .summary-card { min-height: 68px; padding: 10px 12px; }
+      .workspace-grid, .column { gap: 12px; }
+      .panel { border-radius: var(--radius-element); }
+      .shortcut-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+      .page-note { font-size: var(--text-xs); }
+      .running-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px 12px; }
+      .running-row .resource-time { grid-column: 1 / -1; padding-left: 40px; }
+      .update-note { margin-left: 0; }
+      .task-row { grid-template-columns: 30px minmax(0, 1fr); }
+      .task-result { grid-column: 2; }
+      .shortcut-grid { padding: 10px; gap: 8px; }
+      .shortcut { min-height: 112px; padding: 10px; }
+    }
+    @media (max-width: 390px) {
+      .main { padding-inline: max(10px, env(safe-area-inset-left)); }
+      .page-header { padding-left: 44px; }
+      .summary-card { grid-template-columns: 34px minmax(0, 1fr) auto; }
+      .summary-icon { width: 34px; height: 34px; }
+      .summary-value { font-size: var(--text-xl); }
+      .section-head { padding-inline: 12px; }
+      .section-sub { display: none; }
+      .section-action { padding-inline: 8px; }
+      .resource-desc { white-space: normal; }
+      .shortcut-name { white-space: normal; }
+    }
+    @media (pointer: coarse) {
+      .section-action, .mobile-menu, .icon-button { min-width: 44px; min-height: 44px; }
+      .module-link { min-height: 48px; }
+      .shortcut { min-height: 116px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden">
+    <defs>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/></symbol>
+      <symbol id="i-network" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><path d="M12 7.5v4M7.2 16.5l3.2-4.1h3.2l3.2 4.1"/></symbol>
+      <symbol id="i-system" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="12" rx="2"/><path d="M8 20h8M12 16v4M8 8h8M8 12h5"/></symbol>
+      <symbol id="i-desktop" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 22h8M12 18v4"/></symbol>
+      <symbol id="i-office" viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v5h5M10 12h6M10 16h6"/></symbol>
+      <symbol id="i-media" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m10 9 6 3-6 3zM7 4v16M17 4v16"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 7 2 7H4s2-2 2-7M10 20h4"/></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2.2-.6a7 7 0 0 0-.7-1.7l1.1-2-2.1-2.1-2 1.1a7 7 0 0 0-1.7-.7L10.5 2h-3l-.6 2.4a7 7 0 0 0-1.7.7l-2-1.1-2.1 2.1 1.1 2a7 7 0 0 0-.7 1.7L-1 10.5v3l2.4.6a7 7 0 0 0 .7 1.7l-1.1 2 2.1 2.1 2-1.1a7 7 0 0 0 1.7.7l.6 2.4h3l.6-2.4a7 7 0 0 0 1.7-.7l2 1.1 2.1-2.1-1.1-2a7 7 0 0 0 .7-1.7Z" transform="translate(2) scale(.83)"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-update" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.2 9A7 7 0 0 0 6 6.8L4 9M5.8 15A7 7 0 0 0 18 17.2l2-2.2"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19zM12 9v4M12 17h.01"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-9 12h7l-1 8 9-12h-7z"/></symbol>
+      <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8.5 7.5 11 9M8.5 16.5 19.5 7"/></symbol>
+      <symbol id="i-note" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="m5 18 5-5 3 3 3-3 3 4"/></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+      <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5zM3 8v9l9 4 9-4V8M12 13v8"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="工作台导航预览">
+      <button class="nav-mask" type="button" aria-label="关闭导航"></button>
+      <nav class="rail" aria-label="主导航">
+        <a class="rail-button active" href="#top" aria-label="首页" aria-current="page"><svg class="icon"><use href="#i-home"/></svg></a>
+        <div class="rail-separator" aria-hidden="true"></div>
+        <a class="rail-button" href="#running" aria-label="网络与传输，10 个模块，有模块运行中"><svg class="icon"><use href="#i-network"/></svg><span class="rail-count">10</span><span class="rail-run" title="有模块运行中"></span></a>
+        <a class="rail-button" href="#tasks" aria-label="系统管理，6 个模块"><svg class="icon"><use href="#i-system"/></svg><span class="rail-count">6</span></a>
+        <a class="rail-button" href="#shortcuts" aria-label="桌面增强，10 个模块"><svg class="icon"><use href="#i-desktop"/></svg><span class="rail-count">10</span></a>
+        <a class="rail-button" href="#shortcuts" aria-label="效率办公，7 个模块"><svg class="icon"><use href="#i-office"/></svg><span class="rail-count">7</span><span class="rail-run" title="有模块运行中"></span></a>
+        <a class="rail-button" href="#updates" aria-label="媒体影音，4 个模块"><svg class="icon"><use href="#i-media"/></svg><span class="rail-count">4</span></a>
+        <a class="rail-button" href="#tasks" aria-label="开发者工具，4 个模块"><svg class="icon"><use href="#i-code"/></svg><span class="rail-count">4</span></a>
+        <div class="rail-spacer"></div>
+        <button class="rail-button" type="button" aria-label="通知中心，2 条未读"><svg class="icon"><use href="#i-bell"/></svg><span class="rail-badge">2</span></button>
+        <button class="rail-button" type="button" aria-label="设置"><svg class="icon"><use href="#i-gear"/></svg></button>
+      </nav>
+
+      <section class="nav-panel" aria-labelledby="nav-panel-title">
+        <header class="panel-head">
+          <span class="panel-head-icon"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg></span>
+          <div class="panel-head-copy"><div class="panel-title" id="nav-panel-title">工作台</div><div class="panel-sub">常用与最近使用的模块</div></div>
+        </header>
+        <div class="panel-list">
+          <div class="panel-label">常用</div>
+          <a class="module-link" href="#running"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg></span><span class="module-copy"><span class="module-name">frpc 联调</span><span class="module-meta">网络与传输</span></span><span class="state-dot" title="运行中"></span></a>
+          <a class="module-link" href="#shortcuts"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></span><span class="module-copy"><span class="module-name">Everything 搜索</span><span class="module-meta">效率办公</span></span></a>
+          <a class="module-link" href="#shortcuts"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-scissors"/></svg></span><span class="module-copy"><span class="module-name">Snipaste</span><span class="module-meta">效率办公</span></span><span class="state-dot" title="运行中"></span></a>
+          <div class="panel-label with-rule">最近使用</div>
+          <a class="module-link" href="#tasks"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg></span><span class="module-copy"><span class="module-name">极客随手记</span><span class="module-meta">12 分钟前</span></span></a>
+          <a class="module-link" href="#updates"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg></span><span class="module-copy"><span class="module-name">文字识别</span><span class="module-meta">昨天 21:36</span></span></a>
+          <a class="module-link" href="#tasks"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></span><span class="module-copy"><span class="module-name">CC Switch</span><span class="module-meta">昨天 18:12</span></span></a>
+        </div>
+        <footer class="panel-foot">
+          <div class="panel-counts"><span>41 个模块</span><span><b>3</b> 运行中</span></div>
+          <div class="workbench-state"><span class="state-dot"></span><span>工作台已就绪</span></div>
+        </footer>
+      </section>
+    </aside>
+
+    <main class="main" id="top">
+      <div class="content">
+        <header class="page-header">
+          <button class="mobile-menu" type="button" aria-label="打开导航" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+          <div class="page-title">
+            <p class="eyebrow">本机工具概览</p>
+            <h1>工作台</h1>
+            <p class="page-note">聚合运行状态、待处理事项与最近任务。</p>
+          </div>
+          <span class="sample-tag"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>样例数据</span></span>
+        </header>
+
+        <section class="summary-grid" aria-label="工作台摘要，样例数据">
+          <article class="summary-card">
+            <span class="summary-icon"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg></span>
+            <div><div class="summary-label">正在运行</div><div class="summary-detail">frpc、Snipaste、FlClash</div></div>
+            <strong class="summary-value">3</strong>
+          </article>
+          <article class="summary-card warning">
+            <span class="summary-icon"><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg></span>
+            <div><div class="summary-label">待处理</div><div class="summary-detail">1 项失败 · 1 项待确认</div></div>
+            <strong class="summary-value">2</strong>
+          </article>
+          <article class="summary-card info">
+            <span class="summary-icon"><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg></span>
+            <div><div class="summary-label">可用更新</div><div class="summary-detail">托管工具的新版本</div></div>
+            <strong class="summary-value">4</strong>
+          </article>
+        </section>
+
+        <div class="workspace-grid">
+          <div class="column">
+            <section class="panel running-panel" id="running" aria-labelledby="running-title">
+              <header class="section-head">
+                <div class="section-title-copy"><h2 class="section-title" id="running-title">正在运行</h2><div class="section-sub">后台服务与桌面工具 · 样例状态</div></div>
+                <button class="section-action" type="button">查看全部</button>
+              </header>
+              <ul class="running-list">
+                <li class="running-row">
+                  <div class="resource-main"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg></span><div class="module-copy"><div class="resource-title">frpc 联调</div><div class="resource-desc mono">cn-east · 4 条隧道在线</div></div></div>
+                  <span class="resource-time mono">2h 18m</span><span class="status-chip positive">运行中</span>
+                </li>
+                <li class="running-row">
+                  <div class="resource-main"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-scissors"/></svg></span><div class="module-copy"><div class="resource-title">Snipaste</div><div class="resource-desc">托盘驻留 · 快捷键可用</div></div></div>
+                  <span class="resource-time mono">46m</span><span class="status-chip positive">运行中</span>
+                </li>
+                <li class="running-row">
+                  <div class="resource-main"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-globe"/></svg></span><div class="module-copy"><div class="resource-title">FlClash 代理</div><div class="resource-desc mono">系统代理 · 127.0.0.1:7890</div></div></div>
+                  <span class="resource-time mono">6h 03m</span><span class="status-chip positive">已连接</span>
+                </li>
+              </ul>
+            </section>
+
+            <section class="panel tasks-panel" id="tasks" aria-labelledby="tasks-title">
+              <header class="section-head">
+                <div class="section-title-copy"><h2 class="section-title" id="tasks-title">最近任务</h2><div class="section-sub">最近完成或需要关注的操作 · 样例数据</div></div>
+                <button class="section-action" type="button">任务记录</button>
+              </header>
+              <ol class="task-list">
+                <li class="task-row"><span class="task-icon success"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></span><div class="task-copy"><div class="task-title">文字识别完成</div><div class="task-meta">发票截图 · 38 行文本</div></div><span class="task-result">12:41</span></li>
+                <li class="task-row"><span class="task-icon success"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></span><div class="task-copy"><div class="task-title">Everything 索引刷新</div><div class="task-meta">本机 6 个磁盘 · 1,284,906 项</div></div><span class="task-result">11:58</span></li>
+                <li class="task-row"><span class="task-icon warning"><svg class="icon" aria-hidden="true"><use href="#i-warning"/></svg></span><div class="task-copy"><div class="task-title">ddns-go 更新失败</div><div class="task-meta">网络暂不可用，可从模块页重试</div></div><span class="task-result">09:16</span></li>
+              </ol>
+            </section>
+          </div>
+
+          <div class="column">
+            <section class="panel updates-panel" id="updates" aria-labelledby="updates-title">
+              <header class="section-head">
+                <div class="section-title-copy"><h2 class="section-title" id="updates-title">待处理更新</h2><div class="section-sub">托管工具版本 · 样例数据</div></div>
+                <button class="section-action" type="button">版本管理</button>
+              </header>
+              <ul class="update-list">
+                <li class="update-row"><div class="update-top"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></span><div class="update-title"><div class="update-name">VS Code</div><div class="version-line">1.104.0 → 1.104.2</div></div><span class="meta-chip">稳定版</span></div><p class="update-note">已下载，等待退出当前进程后安装。</p></li>
+                <li class="update-row"><div class="update-top"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-desktop"/></svg></span><div class="update-title"><div class="update-name">MarkerOn 标注</div><div class="version-line">0.9.2 → 0.10.0</div></div><span class="meta-chip">新版本</span></div><p class="update-note">可查看变更后选择更新时间。</p></li>
+                <li class="update-row"><div class="update-top"><span class="module-icon"><svg class="icon" aria-hidden="true"><use href="#i-box"/></svg></span><div class="update-title"><div class="update-name">Rufus</div><div class="version-line">4.9 → 4.10</div></div><span class="meta-chip">便携版</span></div></li>
+              </ul>
+            </section>
+
+            <section class="panel shortcuts-panel" id="shortcuts" aria-labelledby="shortcuts-title">
+              <header class="section-head"><div class="section-title-copy"><h2 class="section-title" id="shortcuts-title">常用入口</h2><div class="section-sub">固定四项，直达高频工具</div></div></header>
+              <nav class="shortcut-grid" aria-label="常用工具">
+                <a class="shortcut" href="#"><span class="shortcut-icon"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></span><span class="shortcut-name">Everything 搜索</span><span class="shortcut-desc">快速定位本机文件与目录</span><span class="shortcut-hint">打开工具 <svg class="icon" aria-hidden="true" style="display:inline-block;width:12px;height:12px;vertical-align:-2px"><use href="#i-arrow"/></svg></span></a>
+                <a class="shortcut" href="#"><span class="shortcut-icon"><svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg></span><span class="shortcut-name">frpc 联调</span><span class="shortcut-desc">管理隧道与连接状态</span><span class="shortcut-hint">打开工具 <svg class="icon" aria-hidden="true" style="display:inline-block;width:12px;height:12px;vertical-align:-2px"><use href="#i-arrow"/></svg></span></a>
+                <a class="shortcut" href="#"><span class="shortcut-icon"><svg class="icon" aria-hidden="true"><use href="#i-note"/></svg></span><span class="shortcut-name">极客随手记</span><span class="shortcut-desc">检索与整理本地便签</span><span class="shortcut-hint">打开工具 <svg class="icon" aria-hidden="true" style="display:inline-block;width:12px;height:12px;vertical-align:-2px"><use href="#i-arrow"/></svg></span></a>
+                <a class="shortcut" href="#"><span class="shortcut-icon"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg></span><span class="shortcut-name">文字识别</span><span class="shortcut-desc">从本地图片提取文本</span><span class="shortcut-hint">打开工具 <svg class="icon" aria-hidden="true" style="display:inline-block;width:12px;height:12px;vertical-align:-2px"><use href="#i-arrow"/></svg></span></a>
+              </nav>
+            </section>
+          </div>
+        </div>
+
+        <aside class="design-note" aria-label="设计稿说明"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><span>本页面仅用于设计评审。模块名取自 Hanxi 当前注册表；数量、状态、版本、时间和任务结果均为样例数据，不连接 Wails API。</span></aside>
+      </div>
+    </main>
+  </div>
+  <script>
+    (() => {
+      const menu = document.querySelector('.mobile-menu')
+      const mask = document.querySelector('.nav-mask')
+      const sidebar = document.querySelector('.sidebar')
+      const setOpen = (open) => {
+        document.body.classList.toggle('nav-open', open)
+        menu?.setAttribute('aria-expanded', String(open))
+      }
+      menu?.addEventListener('click', () => setOpen(!document.body.classList.contains('nav-open')))
+      mask?.addEventListener('click', () => setOpen(false))
+      sidebar?.addEventListener('click', (event) => {
+        if (event.target.closest('a') && matchMedia('(max-width: 760px)').matches) setOpen(false)
+      })
+      addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') setOpen(false)
+      })
+    })()
+  </script>
+</body>
+</html>

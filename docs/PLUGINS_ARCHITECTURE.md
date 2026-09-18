@@ -1,6 +1,6 @@
 # Hanxi 单体零开销懒加载架构改造方案
 
-> **状态注记（2026-09-16）**：本文为早期（6 个内置模块时代）的改造设计方案，**已落地并演进**。最终实现的 `Module` 契约为 `Info()/Nav()/Services()/Permissions()/Protocol()` + `OnInit()/OnDestroy()/IsInitialized()`（见 `internal/extapi/module.go`），与下文初稿设想的 `ID()/Title()/Route()/Icon()/Level()` 方法签名不同；`EnsureActive`、`SetEnabled` 停用回收（`runtime.GC()` + `debug.FreeOSMemory()`）与前端路由联动均已按此形态落地，模块数已从方案中的 6 个增长到 37 个。**现行架构事实以 `docs/ARCHITECTURE.md` 为准**，本文仅作历史决策留档保留，不再随代码更新。
+> **状态注记（2026-09-18）**：本文为早期（6 个内置模块时代）的改造设计方案，**已落地并继续演进**。当前源码共有 41 个静态注册的内建模块；现行 `Module` 契约为 `Info()/Nav()/Services()` + `OnInit()/OnDestroy()/IsInitialized()`，不包含下文初稿中的 `ID()/Title()/Route()/Icon()/Level()`，也不包含曾预留但现已移除的 `Permissions()/Protocol()`。`Permission` 类型与 `LevelExternal` 枚举目前仅作未来能力预留，Hanxi 当前不是开放插件平台。**现行架构事实以 `docs/ARCHITECTURE.md` 为准，插件化时机与演进判断见 `docs/PLUGINIZATION_AND_PRODUCT_EVOLUTION.md`；本文以下内容仅作历史决策留档，不再随代码更新。**
 
 ## 一、 方案概述与目标
 

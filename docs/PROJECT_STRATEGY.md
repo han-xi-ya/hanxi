@@ -12,6 +12,7 @@
 - `ARCHITECTURE.md` 描述当前已落地的系统结构；
 - `DEVPLAN.md` 记录阶段任务和完成状态；
 - `TROUBLESHOOTING.md` 沉淀已验证的问题与修复经验；
+- `PLUGINIZATION_AND_PRODUCT_EVOLUTION.md` 专门回答插件化时机、可拆边界、演进路线、未来形态及其指标与风险；
 - **本文档负责决定“为什么做、先做什么、什么不做”。**
 
 当新增工具或功能与本文的产品边界冲突时，应先完成战略评审，而不是先实现再形成既成事实。
@@ -756,6 +757,7 @@ failed
 
 - 产品边界和长期取舍：`PROJECT_STRATEGY.md`；
 - 当前实现事实：`ARCHITECTURE.md`；
+- 插件化时机、可拆边界与产品演进专题：`PLUGINIZATION_AND_PRODUCT_EVOLUTION.md`；
 - 具体需求：`PRD.md`；
 - 当前任务和里程碑：`DEVPLAN.md`；
 - 已验证技术问题：`TROUBLESHOOTING.md`。

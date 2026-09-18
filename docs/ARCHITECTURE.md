@@ -2,7 +2,7 @@
 
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
-> **更新日期**：2026-09-16
+> **更新日期**：2026-09-18
 > **技术基线**：Go ≥1.26 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration)
 
@@ -23,12 +23,12 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │  internal/app/  Composition Root (应用唯一装配点)       │
 │  - 生命周期管理、系统托盘 (Systray)、关闭拦截、优雅退出│
 │  - AppService (通用设置/日志/导航/关于信息)            │
-│  - 37 个模块统一注册与 Wails 服务注入                  │
+│  - 41 个模块统一注册与 Wails 服务注入                  │
 └──────┬────────────────────┬────────────────────┬───────┘
        │                    │                    │
 ┌──────▼───────────┐ ┌──────▼───────────┐ ┌──────▼───────┐
 │ internal/modules │ │ internal/extapi  │ │ internal/    │
-│ 37 个业务模块    │ │ 模块生命周期契约 │ │ settings     │
+│ 41 个业务模块    │ │ 模块生命周期契约 │ │ settings     │
 │ 自建: frpc 网络  │ │ 与按需懒加载注册 │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ (Info/Nav/       │ │ 与配置持久化 │
 │ 快传 随手记等    │ │  Services/       │ ├──────────────┤
@@ -61,22 +61,22 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 为了在保持单个二进制文件的同时实现极致的内存与 CPU 节省，系统定义了标准的模块生命周期契约（以 `internal/extapi/module.go` 实际定义为准）：
 
 ```go
-// Module 是扩展契约（支持单体零开销懒加载生命周期）。
+// Module 是单体内建模块的统一契约。
 type Module interface {
-    Info() ModuleInfo          // 元信息（ID 全局唯一，含 Name/Version/Description/Author/Level）
-    Nav() []NavEntry           // 左侧导航条目（SectionCore/SectionExt 分区 + Order 排序）
-    Services() []Service       // 已包装的 Wails 服务（extapi.NewService 泛型包装）
-    Permissions() []Permission // 能力白名单声明（kill-process / lan-scan / network）
-    Protocol() int             // 契约版本，为未来子进程插件握手预留
+    Info() ModuleInfo    // 元信息（ID 全局唯一，含 Name/Version/Description/Author/Level）
+    Nav() []NavEntry     // 左侧导航条目（SectionCore/SectionExt 分区 + Order 排序）
+    Services() []Service // 已包装的 Wails 服务
 
-    // --- 懒加载生命周期钩子 ---
-    OnInit(ctx context.Context) error // 首次激活时分配资源（进入路由或调用 API 触发）
+    // --- 按需运行资源生命周期钩子 ---
+    OnInit(ctx context.Context) error // Registry 首次激活时分配运行资源
     OnDestroy() error                 // 停用/退出时释放协程、句柄与缓存
-    IsInitialized() bool              // 运行时资源是否已分配
+    IsInitialized() bool              // 模块自身报告的运行资源状态
 }
 ```
 
-- **两级模块级别**：`LevelBuiltin` 编译进主程序、仅可启停；`LevelExternal` 预留给未来独立子进程插件（manifest + JSON-RPC over stdio），当前全部模块为内建级。
+- **模块级别现状**：`LevelBuiltin` 为编译进主程序的内建模块；`LevelExternal` 仅是未来外部子进程扩展的枚举预留。当前 41 个模块全部为 `LevelBuiltin`，没有动态安装或加载第三方 Hanxi 插件的运行时。
+- **权限现状**：`Permission` 类型及 `kill-process` / `lan-scan` / `network` 常量仍保留供未来外部扩展能力握手复用，但 `Permissions()` 已从 `Module` 接口移除，当前内建模块没有统一的 Permission Gateway。模块启停、各业务服务的安全校验，以及四个只读 MCP 工具的 `access.json` 授权是不同层次，不能表述为通用插件权限隔离。
+- **生命周期状态现状**：Registry 以 `ModuleWrapper.initialized` 作为实际激活判断；`IsInitialized()` 仍是接口成员，但 Registry 当前不读取它，因此尚未形成完全统一的单一状态源。
 - **懒激活链路**：前端进入模块路由 → `AppService.EnsureModuleActive(id)` → `Registry.EnsureActive` → 首次触发 `OnInit()`。例外：`wechat` 启动时即预激活（常驻监听语义所需）。
 - **动态回收**：设置页停用模块时调用 `OnDestroy()` 清空对象并触发 `runtime.GC()` 与 `debug.FreeOSMemory()` 将内存彻底归还操作系统；启用状态经 `Registry` 持久化（Store）。
 - **退出编排**：`OnShutdown → Registry.ShutdownAll()`，JobObject 受管工具连带退出；脱管工具（Snipaste 等）保留原生托盘不受波及。
