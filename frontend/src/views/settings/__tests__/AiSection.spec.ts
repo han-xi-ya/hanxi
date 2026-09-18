@@ -74,10 +74,10 @@ describe('AI 接入分区', () => {
     const w = await mountView()
     const rows = w.findAll('.client-row')
     expect(rows).toHaveLength(3)
-    expect(rows[0].text()).toContain('未接入 hanxi')
+    expect(rows[0].text()).toContain('尚未接入')
     expect(rows[1].text()).toContain('已接入')
-    expect(rows[1].text()).toContain('卸载')
-    expect(rows[2].text()).toContain('拒绝自动改')
+    expect(rows[1].text()).toContain('断开')
+    expect(rows[2].text()).toContain('暂不可自动接入')
     expect(w.text()).toContain('D:\\hx\\hanxi.exe')
     // 冲突/拒动行给"查看指引"（预览弹窗只读态）
     expect(rows[2].text()).toContain('查看指引')
@@ -220,7 +220,7 @@ describe('AI 接入分区', () => {
     await w.findAll('.client-row')[0].findAll('button')[0].trigger('click')
     await flushPromises()
     expect(w.text()).toContain('零改动（幂等）')
-    expect(w.find('.modal-actions .btn-primary').text()).toBe('确认安装')
+    expect(w.find('.modal-actions .btn-primary').text()).toBe('确认接入')
   })
 
   it('卸载预览链走 ConfirmUninstall；回滚结果呈现警告态', async () => {
@@ -244,15 +244,15 @@ describe('AI 接入分区', () => {
   it('access 卡片：四开关行呈现读方视角状态与即时生效文案，打开所在目录传目录父路径', async () => {
     stubStatus([client('claude', 'Claude Code')])
     const w = await mountView()
-    expect(w.text()).toContain('正常 · v1')
-    expect(w.text()).toContain('保存即生效，无需重启 hanxi mcp')
+    expect(w.text()).toContain('状态正常')
+    expect(w.text()).toContain('拨动开关立即生效，不用重启任何软件')
     const rows = w.findAll('.tool-row')
     expect(rows).toHaveLength(4)
     const switches = w.findAll('.switch')
     expect((switches[0].element as HTMLInputElement).checked).toBe(true) // envcheck
     expect((switches[1].element as HTMLInputElement).checked).toBe(false) // everything
-    expect(rows[0].text()).toContain('已授权')
-    expect(rows[1].text()).toContain('未授权')
+    expect(rows[0].text()).toContain('已开放')
+    expect(rows[1].text()).toContain('未开放')
     expect(rows[0].text()).toContain('hanxi_envcheck_detect')
     expect(switches[0].attributes('disabled')).toBeUndefined() // 正常态可拨
     await w.findAll('.access-foot button')[0].trigger('click')
@@ -270,9 +270,9 @@ describe('AI 接入分区', () => {
     await flushPromises()
     expect(wizardSvc.SetToolAccess).toHaveBeenCalledWith('everything', true)
     expect((w.findAll('.switch')[1].element as HTMLInputElement).checked).toBe(true)
-    expect(w.findAll('.tool-row')[1].text()).toContain('已授权')
-    expect(useToast().toastMsg.value).toContain('全盘搜索已授权')
-    expect(useToast().toastMsg.value).toContain('无需重启')
+    expect(w.findAll('.tool-row')[1].text()).toContain('已开放')
+    expect(useToast().toastMsg.value).toContain('全盘文件搜索已开放')
+    expect(useToast().toastMsg.value).toContain('不用重启')
   })
 
   it('缺文件合法态：文案给"开关即建档"，开关不禁用（首拨凭空建档）', async () => {
@@ -302,7 +302,7 @@ describe('AI 接入分区', () => {
     expect(useToast().toastMsg.value).toContain('授权改动未生效')
     expect(useToast().toastMsg.value).toContain('修复')
     expect(wizardSvc.GetAccessOverview).toHaveBeenCalled()
-    expect(w.find('.chip-danger').text()).toContain('已损坏 · fail-closed')
+    expect(w.find('.chip-danger').text()).toContain('授权档损坏 · AI 什么都拿不到')
   })
 
   it('损坏态：开关锁死 + 修复按钮走二次确认 → ResetAccess → 总览刷新', async () => {
@@ -312,7 +312,7 @@ describe('AI 接入分区', () => {
       note: '授权文件损坏或超纲——MCP 读者对其 fail-closed，视同全部未授权。可点「修复（覆盖重置）」',
     })
     const w = await mountView()
-    expect(w.text()).toContain('已损坏 · fail-closed')
+    expect(w.text()).toContain('授权档损坏 · AI 什么都拿不到')
     expect(w.text()).toContain('fail-closed')
     for (const sw of w.findAll('.switch')) {
       expect(sw.attributes('disabled')).toBeDefined() // 危险态锁死，盲写无门
@@ -355,7 +355,7 @@ describe('AI 接入分区', () => {
     settleConfirm(true)
     await flushPromises()
     expect(useToast().toastMsg.value).toContain('hanxi-bak')
-    expect(w.find('.chip-positive').text()).toContain('正常 · v1')
+    expect(w.find('.chip-positive').text()).toContain('状态正常')
     expect((w.findAll('.switch')[0].element as HTMLInputElement).checked).toBe(false) // 全关
     expect(w.find('.access-repair').exists()).toBe(false) // 危险态解除
   })

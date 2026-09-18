@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // 设置分区·AI 接入（F4b MCP 安装向导 + R6 授权开关，PLAN_MCP §2.5/§6/§8 拍板）：
-// 三态红线流：客户端列表 → 预览（before/after 差异；JSONC/冲突给手动片段）
-// → 确认写入（备份→原子写→复验→失败回滚，结果三态：成功/回滚/拒动）。
-// access.json 自 R6 起是本分区的写入口：四工具开关拨动即整档原子回写、保存即生效
-// （MCP 读者每次调用重读盘）；损坏/超纲档拒绝盲写，只经「修复（覆盖重置）」
-// 二次确认链（旧档另存 .bak 再重写全关）。卸载走对称逆向链。
+// 2026-09-18 文案重设计（用户反馈"太专业差点没搞明白"）：页面收束为两步心智——
+// ① 接入（把 hanxi 登记进 AI 软件配置）② 开放哪些内容（工具授权开关），
+// 术语（MCP/stdio/工具名/路径）全部退入「技术细节」折叠区；三态红线流与写链不变：
+// 预览（before/after 差异；JSONC/冲突给手动片段）→ 确认写入（备份→原子写→复验→失败回滚）。
+// access.json 自 R6 起是本分区的写入口：开关拨动即整档原子回写、保存即生效（读者每次重读盘）；
+// 损坏/超纲档拒绝盲写，只经「修复（覆盖重置）」二次确认链（旧档另存 .bak 再重写全关）。卸载走对称逆向链。
 import { ref, computed, onMounted } from 'vue'
 import * as McpWizardAPI from '../../../bindings/hanxi/internal/mcpwizard'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
@@ -34,22 +35,23 @@ const modal = ref<{
   checkBusy: boolean
 } | null>(null)
 
-// 标签主语恒为「hanxi 接入条目」而非客户端软件本身——envcheck 页管"客户端装没装"，
-// 本页只关心"该客户端配置里写没写 hanxi 的 MCP 条目"。曾省主语致与 envcheck 观感冲突（"未安装"被读成软件未装）。
+// 标签主语恒为「hanxi 接入条目」而非客户端软件本身——"该软件装没装"归 envcheck 页管。
+// 2026-09-18 口语化：blocked 有两种成因（客户端无踪迹 / 文件不敢自动改），
+// 标签取中性"暂不可自动接入"，具体原因由后端 detail 行原样直出。
 const stateMeta: Record<string, { label: string; chip: string }> = {
-  'not-installed': { label: '未接入 hanxi', chip: 'chip-neutral' },
+  'not-installed': { label: '尚未接入', chip: 'chip-neutral' },
   installed: { label: '已接入', chip: 'chip-positive' },
-  'needs-repair': { label: '条目缺失 · 可修复', chip: 'chip-warning' },
-  conflict: { label: '冲突 · 拒动', chip: 'chip-danger' },
-  blocked: { label: '拒绝自动改', chip: 'chip-warning' },
+  'needs-repair': { label: '需重新接入', chip: 'chip-warning' },
+  conflict: { label: '有出入 · 先别动', chip: 'chip-danger' },
+  blocked: { label: '暂不可自动接入', chip: 'chip-warning' },
 }
 
 const accessMeta = computed(() => {
   const a = status.value?.access
   if (!a) return { label: '读取中…', chip: 'chip-neutral' }
   if (!a.exists) return { label: '尚未生成 · 默认全关', chip: 'chip-neutral' }
-  if (!a.readable) return { label: '已损坏 · fail-closed', chip: 'chip-danger' }
-  return { label: `正常 · v${a.version}`, chip: 'chip-positive' }
+  if (!a.readable) return { label: '授权档损坏 · AI 什么都拿不到', chip: 'chip-danger' }
+  return { label: '状态正常', chip: 'chip-positive' }
 })
 
 // 读者不采信档（存在但 readable=false）= 危险态：开关锁死，出路只剩修复链。
@@ -58,14 +60,31 @@ const accessCorrupt = computed(() => {
   return !!a && a.exists && !a.readable
 })
 
-// 四行工具开关（键名=access.json 契约四键；MCP 工具名供对照 server 面）。
+// 四行工具开关（键名=access.json 契约四键）：主文案说人话——AI 将看到什么、
+// 敏感级直书；MCP 工具名退入行内「技术细节」。
 const accessTools = computed(() => {
   const t = status.value?.access.tools
   return [
-    { key: 'envcheck', name: '环境体检', tool: 'hanxi_envcheck_detect', on: !!t?.envcheck },
-    { key: 'everything', name: '全盘搜索', tool: 'hanxi_file_search', on: !!t?.everything },
-    { key: 'ocr', name: 'OCR 识图', tool: 'hanxi_ocr_recognize', on: !!t?.ocr },
-    { key: 'memo', name: '便签检索', tool: 'hanxi_memo_search', on: !!t?.memo },
+    {
+      key: 'envcheck', name: '环境体检', tool: 'hanxi_envcheck_detect', on: !!t?.envcheck,
+      desc: 'AI 可查看你装了哪些开发工具、各自什么版本。',
+      risk: { text: '低敏感', chip: 'chip-neutral' },
+    },
+    {
+      key: 'everything', name: '全盘文件搜索', tool: 'hanxi_file_search', on: !!t?.everything,
+      desc: 'AI 可搜索本机文件；命中的文件名和所在路径会进入 AI 对话。',
+      risk: { text: '会暴露文件位置', chip: 'chip-warning' },
+    },
+    {
+      key: 'ocr', name: '图片文字识别', tool: 'hanxi_ocr_recognize', on: !!t?.ocr,
+      desc: '你交给 AI 的图片在本机识别成文字——图片不上网，返回的是文字。',
+      risk: { text: '只回文字', chip: 'chip-neutral' },
+    },
+    {
+      key: 'memo', name: '便签内容检索', tool: 'hanxi_memo_search', on: !!t?.memo,
+      desc: 'AI 可搜索你便签里的文字内容——最私密的一项，建议保持关闭。',
+      risk: { text: '含个人笔记 · 建议关', chip: 'chip-danger' },
+    },
   ]
 })
 
@@ -81,7 +100,7 @@ async function setTool(t: { key: string; name: string }, enabled: boolean) {
   accessBusy.value = true
   try {
     applyAccess(await McpWizardAPI.McpWizardService.SetToolAccess(t.key, enabled))
-    showToast(`${t.name}已${enabled ? '授权' : '撤销'}——保存即生效，无需重启 hanxi mcp`)
+    showToast(`${t.name}已${enabled ? '开放' : '收回'}——立即生效，不用重启任何软件`)
   } catch (e: unknown) {
     showToast(`授权改动未生效: ${getErrorMessage(e)}`)
     await refreshAccess()
@@ -94,9 +113,9 @@ async function setTool(t: { key: string; name: string }, enabled: boolean) {
 async function repairAccess() {
   if (accessBusy.value) return
   const accepted = await confirm({
-    title: '修复授权文件（覆盖重置）？',
-    description: '当前 access.json 被 MCP 读者拒读（视同全部未授权）。修复会先把旧档另存 .bak，再重写为默认全关标准档；随后需逐项重新授权。',
-    confirmLabel: '覆盖重置',
+    title: '修复授权设置？',
+    description: '授权文件目前格式有问题，AI 侧已按「全部禁止」处理。修复会先备份旧文件，再重置为全部关闭；之后你可以逐个重新打开。',
+    confirmLabel: '备份并重置',
     tone: 'danger',
     details: status.value?.access.path ? [{ label: '文件', value: status.value.access.path }] : [],
   })
@@ -139,8 +158,9 @@ async function refresh() {
   }
 }
 
+// 对外话术统一「接入 / 断开」；Go 面与令牌语义仍是 install/uninstall。
 function actionWord(mode: 'install' | 'uninstall'): string {
-  return mode === 'install' ? '安装' : '卸载'
+  return mode === 'install' ? '接入' : '断开'
 }
 
 async function openWizard(client: ClientState, mode: 'install' | 'uninstall') {
@@ -229,29 +249,23 @@ onMounted(refresh)
 
 <template>
   <section class="page">
-    <PageHeader title="AI 接入" subtitle="把 hanxi 以 MCP server 接入 Claude Code / Codex / Cursor。写入你的客户端配置必经「预览 → 确认」，落盘前自动备份、复验不过自动回滚，绝不静默覆盖。">
+    <PageHeader title="AI 接入" subtitle="让 Claude Code / Codex / Cursor 里的 AI 助手直接使用 hanxi 的本机能力。只需两步：先在下方点「接入」，再打开愿意让 AI 查询的内容开关。每一步都先预览、你确认了才动文件；随时可关、可断开。">
       <template #actions>
-        <span class="chip chip-information">hanxi mcp · stdio</span>
+        <span class="chip chip-information">只读能力 · hanxi 不替 AI 改任何东西</span>
       </template>
     </PageHeader>
 
-    <!-- server 启动命令（写入配置的值本体，让"要写什么"一目了然） -->
-    <div class="card server-row">
-      <span class="server-label">写入的启动命令</span>
-      <code class="server-cmd" :title="serverCmd">{{ serverCmd }}</code>
-      <span v-if="status && !status.server.ready" class="chip chip-danger">路径不可解析 · 安装已禁用</span>
-    </div>
-
-    <!-- 客户端列表 -->
+    <!-- ① 接入：客户端列表（主文案只讲"接没接"，配置文件路径退入行内技术细节） -->
     <div class="card">
       <div class="card-head">
-        <span class="card-title">MCP 客户端</span>
+        <span class="card-title"><span class="step-no">①</span> 接入你的 AI 软件</span>
         <span class="card-meta">
           <button class="btn btn-ghost btn-small" :disabled="loading" @click="refresh">
             <AppIcon name="search" :size="13" /> {{ loading ? '探测中…' : '重新探测' }}
           </button>
         </span>
       </div>
+      <div class="step-note">「接入」= 在 AI 软件自己的配置里登记一行 hanxi 启动命令。动手前先给你看改什么，写完自动校验，不对就自动还原。</div>
       <div v-if="loading && !status" class="ai-empty">正在探测客户端配置文件…</div>
       <div v-else class="client-list">
         <div v-for="c in status?.clients ?? []" :key="c.id" class="client-row">
@@ -260,35 +274,44 @@ onMounted(refresh)
               {{ c.name }}
               <span class="chip" :class="stateMeta[c.state]?.chip ?? 'chip-neutral'">{{ stateMeta[c.state]?.label ?? c.state }}</span>
             </span>
-            <code class="client-path" :title="c.configPath">{{ c.configPath || '—' }}</code>
             <span v-if="c.detail" class="client-detail" :class="{ 'detail-warn': c.state === 'conflict' || c.state === 'blocked' }">{{ c.detail }}</span>
-            <span v-if="c.installedAt" class="client-time">登记于 {{ c.installedAt }}</span>
+            <span v-if="c.installedAt" class="client-time">接入于 {{ c.installedAt }}</span>
+            <details v-if="c.configPath" class="row-tech">
+              <summary>技术细节</summary>
+              <code class="client-path" :title="c.configPath">{{ c.configPath }}</code>
+            </details>
           </div>
           <div class="client-actions">
             <button class="btn btn-secondary btn-small" @click="openWizard(c, 'install')" :disabled="!c.canInstall">
-              {{ c.state === 'needs-repair' ? '修复安装' : '安装' }}
+              {{ c.state === 'needs-repair' ? '重新接入' : '接入' }}
             </button>
-            <button class="btn btn-ghost btn-small" @click="openWizard(c, 'uninstall')" :disabled="!c.canUninstall">卸载</button>
+            <button class="btn btn-ghost btn-small" @click="openWizard(c, 'uninstall')" :disabled="!c.canUninstall">断开</button>
             <button v-if="!c.canInstall && !c.canUninstall" class="btn btn-ghost btn-small" @click="openWizard(c, 'install')">查看指引</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 工具授权（access.json · 本分区即写入口，R6）：四开关保存即生效；损坏档锁死并给修复链 -->
+    <!-- ② 开放内容（access.json · 本分区即写入口，R6）：四开关保存即生效；损坏档锁死并给修复链 -->
     <div class="card">
       <div class="card-head">
-        <span class="card-title">工具授权（access.json）</span>
+        <span class="card-title"><span class="step-no">②</span> 允许 AI 查询哪些内容</span>
         <span class="chip" :class="accessMeta.chip">{{ accessMeta.label }}</span>
       </div>
+      <div class="step-note">没打开的项，AI 问不到任何内容；拨动开关立即生效，不用重启任何软件。</div>
       <div class="access-tools">
         <div v-for="t in accessTools" :key="t.key" class="tool-row">
           <div class="tool-main">
             <span class="tool-name">
               {{ t.name }}
-              <span class="chip" :class="t.on ? 'chip-positive' : 'chip-neutral'">{{ t.on ? '已授权' : '未授权' }}</span>
+              <span class="chip" :class="t.risk.chip">{{ t.risk.text }}</span>
+              <span class="chip" :class="t.on ? 'chip-positive' : 'chip-neutral'">{{ t.on ? '已开放' : '未开放' }}</span>
             </span>
-            <code class="tool-id">{{ t.tool }}</code>
+            <span class="tool-desc">{{ t.desc }}</span>
+            <details class="row-tech">
+              <summary>技术细节</summary>
+              <code class="tool-id">{{ t.tool }}</code>
+            </details>
           </div>
           <input
             type="checkbox"
@@ -304,17 +327,35 @@ onMounted(refresh)
       </div>
       <div v-if="status?.access.note" class="access-note" :class="{ 'note-danger': accessCorrupt }">{{ status.access.note }}</div>
       <div v-if="accessCorrupt" class="access-repair">
-        <button class="btn btn-danger-outline btn-small" :disabled="accessBusy" @click="repairAccess">修复（覆盖重置）</button>
-        <span class="access-hint">旧档会先另存 .bak 再重写全关，绝不无退路覆盖</span>
-      </div>
-      <div v-else class="access-hint">保存即生效，无需重启 hanxi mcp——MCP 读者每次工具调用都重读授权文件。</div>
-      <div class="access-foot">
-        <code class="client-path" :title="status?.access.path">{{ status?.access.path || '—' }}</code>
-        <button class="btn btn-secondary btn-small" :disabled="!status?.access.path" @click="openAccessDir">
-          <AppIcon name="folder" :size="13" /> 打开所在目录
-        </button>
+        <button class="btn btn-danger-outline btn-small" :disabled="accessBusy" @click="repairAccess">修复（备份并重置）</button>
+        <span class="access-hint">旧文件会先备份，再重置为全部关闭——不会无退路覆盖</span>
       </div>
     </div>
+
+    <!-- 技术细节汇总（术语全量收纳：启动命令、stdio、授权档路径与开关名对照） -->
+    <details class="card tech-details">
+      <summary class="tech-summary">技术细节（给开发者）</summary>
+      <div class="tech-body">
+        <div class="tech-line">
+          <span class="tech-label">MCP 传输</span>
+          <code class="server-cmd" :title="serverCmd">{{ serverCmd }}</code>
+          <span v-if="status && !status.server.ready" class="chip chip-danger">路径不可解析 · 接入已禁用</span>
+        </div>
+        <table class="tech-table">
+          <thead><tr><th>开关</th><th>MCP 工具名</th><th>access.json 键</th></tr></thead>
+          <tbody>
+            <tr v-for="t in accessTools" :key="t.key"><td>{{ t.name }}</td><td><code>{{ t.tool }}</code></td><td><code>{{ t.key }}</code></td></tr>
+          </tbody>
+        </table>
+        <div class="access-foot">
+          <code class="client-path" :title="status?.access.path">授权文件：{{ status?.access.path || '—' }}</code>
+          <button class="btn btn-secondary btn-small" :disabled="!status?.access.path" @click="openAccessDir">
+            <AppIcon name="folder" :size="13" /> 打开所在目录
+          </button>
+        </div>
+        <div class="access-hint">协议形态：stdio（客户端拉起 <code>hanxi mcp</code> 子进程对话）；读者每次工具调用重读授权文件，撤销即时生效。</div>
+      </div>
+    </details>
 
     <!-- 向导弹窗：预览(diff/手动片段) → 确认 → 结果三态 -->
     <div v-if="modal" class="modal-backdrop" @click.self="closeWizard">
@@ -333,9 +374,9 @@ onMounted(refresh)
                 <span v-if="modal.preview.zeroDiff" class="chip chip-neutral">零改动（幂等）</span>
               </div>
               <template v-if="modal.preview.allowed">
-                <!-- 安装前自检（R2）：spawn 自家 hanxi mcp 走 initialize→tools/list -->
+                <!-- 接入前自检（R2）：spawn 自家 hanxi mcp 走 initialize→tools/list -->
                 <div v-if="modal.mode === 'install'" class="check-row">
-                  <span class="check-label">安装前自检</span>
+                  <span class="check-label">接入前自检</span>
                   <span v-if="modal.checkBusy && !modal.check" class="chip chip-neutral">握手中…</span>
                   <template v-else-if="modal.check">
                     <span class="chip" :class="modal.check.state === 'ok' ? 'chip-positive' : 'chip-danger'"
@@ -347,8 +388,8 @@ onMounted(refresh)
                       {{ modal.checkBusy ? '握手中…' : '重新自检' }}
                     </button>
                     <div v-if="modal.check.state !== 'ok'" class="check-hint">
-                      自检失败不阻断本次写入——条目在客户端真正拉起 hanxi mcp 之前不会生效，工具面另有 access.json 授权门兜底。
-                      若客户端日后连不上 hanxi：检查杀毒软件/企业策略是否拦截其子进程，或在终端运行 hanxi mcp 观察 stderr 报错后「重新自检」。
+                      自检失败不阻断本次写入——条目在客户端真正拉起 hanxi mcp 之前不会生效，工具面另有授权开关兜底。
+                      若客户端日后连不上 hanxi：检查杀毒软件/企业策略是否拦截其子进程，或在终端运行 hanxi mcp 观察报错后「重新自检」。
                     </div>
                   </template>
                 </div>
@@ -361,7 +402,7 @@ onMounted(refresh)
               </template>
               <template v-else>
                 <div class="refuse-block">
-                  <div class="refuse-title">已拒绝自动修改（fail-closed）</div>
+                  <div class="refuse-title">为安全起见，不会自动改你的文件</div>
                   <div class="refuse-reason">{{ modal.preview.reason || '该文件无法安全合并' }}</div>
                   <pre v-if="modal.preview.manualSnippet" class="snippet">{{ modal.preview.manualSnippet }}</pre>
                 </div>
@@ -398,8 +439,9 @@ onMounted(refresh)
 /* 行骨架复用全局 .card / .chip / .btn / .setting 原子，此处仅本分区专属皮 */
 .card { margin-bottom: 16px; }
 
-.server-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.server-label { font-size: var(--text-sm); color: var(--color-text-muted); flex: none; }
+.step-no { color: var(--color-primary); font-weight: 700; margin-right: 2px; }
+.step-note { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: 8px; }
+
 .server-cmd {
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text);
   background: var(--surface-chrome); border: 1px solid var(--color-border); border-radius: var(--radius-control);
@@ -428,21 +470,37 @@ onMounted(refresh)
 .client-time { font-size: var(--text-xs); color: var(--color-text-subtle); }
 .client-actions { display: flex; gap: 6px; flex: none; }
 
+.row-tech { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.row-tech summary { cursor: pointer; list-style: none; user-select: none; width: fit-content; }
+.row-tech summary::-webkit-details-marker { display: none; }
+.row-tech summary::before { content: '▸ '; }
+.row-tech[open] summary::before { content: '▾ '; }
+.row-tech > *:not(summary) { margin-top: 2px; }
+
 .access-tools { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
 .tool-row {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-element);
+  padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-element);
 }
 .tool-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.tool-name { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-text); }
+.tool-name { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); font-weight: 600; color: var(--color-text); flex-wrap: wrap; }
+.tool-desc { font-size: var(--text-sm); color: var(--color-text-muted); }
 .tool-id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle); }
 .switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
 .switch:disabled { cursor: not-allowed; }
 .access-note { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: 8px; }
 .access-note.note-danger { color: var(--state-danger, var(--color-text)); }
 .access-repair { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.access-hint { font-size: var(--text-xs); color: var(--color-text-subtle); margin-bottom: 8px; }
+.access-hint { font-size: var(--text-xs); color: var(--color-text-subtle); margin-top: 6px; }
 .access-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+
+.tech-details summary { cursor: pointer; font-size: var(--text-sm); color: var(--color-text-muted); user-select: none; }
+.tech-body { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.tech-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tech-label { font-size: var(--text-sm); color: var(--color-text-muted); flex: none; }
+.tech-table { border-collapse: collapse; font-size: var(--text-xs); width: fit-content; }
+.tech-table th, .tech-table td { text-align: left; padding: 3px 12px 3px 0; border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); }
+.tech-table code { font-family: var(--font-mono); color: var(--color-text); }
 
 /* 向导弹窗（皮对齐 SnapshotSection 的 .modal-* 家族） */
 .modal-backdrop {
@@ -470,7 +528,7 @@ onMounted(refresh)
 .pv-path code { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
 .pv-reason { font-size: var(--text-sm); color: var(--color-text-muted); }
 
-/* 安装前自检行（R2）：一行结论徽章 + 原因 + 重检按钮；失败时追加指引段 */
+/* 接入前自检行（R2）：一行结论徽章 + 原因 + 重检按钮；失败时追加指引段 */
 .check-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .check-label { font-size: var(--text-sm); color: var(--color-text-muted); flex: none; }
 .check-msg { font-size: var(--text-sm); color: var(--color-text-muted); min-width: 0; }
