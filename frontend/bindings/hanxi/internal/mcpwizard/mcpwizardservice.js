@@ -39,11 +39,12 @@ export function ConfirmUninstall(clientID, token) {
 }
 
 /**
- * GetAccessInfo 单独刷新授权呈现（授权文件 ≤16KB，读放大无虞）。
+ * GetAccessOverview 单独刷新授权总览（R6）：四键当前态按读方视角即时重读盘呈现，
+ * 缺文件 = 四 false 的合法默认态。授权文件 ≤16 KiB，读放大无虞。
  * @returns {$CancellablePromise<$models.AccessInfo>}
  */
-export function GetAccessInfo() {
-    return $Call.ByID(3138478511);
+export function GetAccessOverview() {
+    return $Call.ByID(3488798052);
 }
 
 /**
@@ -73,6 +74,16 @@ export function PreviewUninstall(clientID) {
 }
 
 /**
+ * ResetAccess 覆盖修复的唯一出口（前端二次确认后调用）：旧档存在则先另存
+ * .hanxi-bak-<时间戳>（损坏内容也要保全体证），再写标准全关档。备份失败即中止，
+ * 目标文件不动——绝不无退路覆盖。
+ * @returns {$CancellablePromise<$models.OpResult>}
+ */
+export function ResetAccess() {
+    return $Call.ByID(2827493052);
+}
+
+/**
  * SelfCheck 执行（或复用）一次安装前自检。refresh=true 忽略缓存强制重 spawn
  * （前端「重新自检」按钮）。返回的 error 仅代表编程错误，业务失败在
  * State=failed + Message 里表达——绑定面友好，前端无须 try/catch 双轨。
@@ -82,4 +93,17 @@ export function PreviewUninstall(clientID) {
  */
 export function SelfCheck(refresh) {
     return $Call.ByID(1925285191, refresh);
+}
+
+/**
+ * SetToolAccess 开关单个工具的授权：读现档 → 改一键 → 整档原子回写（恰好四键）。
+ * 文件缺失是合法起点（凭空建档）；文件存在但读方不采信（损坏/超纲/未知键/版本≠1）
+ * 时拒绝盲写并报中文指引——覆盖修复归 ResetAccess 显式确认，不提供静默台阶。
+ * 成功返回写后呈现；保存即生效（读方每次调用重读盘，无需重启 hanxi mcp）。
+ * @param {string} tool
+ * @param {boolean} enabled
+ * @returns {$CancellablePromise<$models.AccessInfo>}
+ */
+export function SetToolAccess(tool, enabled) {
+    return $Call.ByID(3256880577, tool, enabled);
 }
