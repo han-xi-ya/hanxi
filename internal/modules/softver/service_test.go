@@ -16,13 +16,15 @@ func (f *fakeOpener) OpenURL(url string) error { f.urls = append(f.urls, url); r
 
 func newTestService(probe func() (localData, error)) *SoftverService {
 	return &SoftverService{
-		probeLocal: probe,
-		fetchPage:  func(context.Context) (string, error) { return "", errors.New("未配置") },
-		walk:       walkDirSize,
-		emit:       func(string, any) {},
-		reveal:     func(string) error { return nil },
-		sizes:      map[string]*DirSize{},
-		scans:      map[string]context.CancelFunc{},
+		probeLocal:    probe,
+		fetchPage:     func(context.Context) (string, error) { return "", errors.New("未配置") },
+		walk:          walkDirSize,
+		canonicalPath: func(path string) (string, error) { return strings.ToLower(path), nil },
+		emit:          func(string, any) {},
+		reveal:        func(string) error { return nil },
+		sizes:         map[string]*DirSize{},
+		scans:         map[string]*scanJob{},
+		activePaths:   map[string]string{},
 	}
 }
 
@@ -201,7 +203,7 @@ func TestScanGuards(t *testing.T) {
 	if err := s.StartDirScan(st.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.StartDirScan(st.ID); err == nil || !strings.Contains(err.Error(), "正在扫描") {
+	if err := s.StartDirScan(st.ID); err == nil || !strings.Contains(err.Error(), "排队或扫描") {
 		t.Errorf("重入应报忙: %v", err)
 	}
 	if err := s.CancelDirScan(st.ID); err != nil {
@@ -235,6 +237,219 @@ func TestScanMissingDirRejected(t *testing.T) {
 	}
 }
 
+func TestDirScanGlobalLimitFIFOAndQueuedCancel(t *testing.T) {
+	slots := []DirSlot{
+		{ID: "a", Path: `D:\a`, Exists: true},
+		{ID: "b", Path: `D:\b`, Exists: true},
+		{ID: "c", Path: `D:\c`, Exists: true},
+	}
+	s := newTestService(func() (localData, error) { return localData{Dirs: slots}, nil })
+	s.local = localData{Dirs: slots}
+
+	started := make(chan string, 3)
+	releases := map[string]chan struct{}{
+		`D:\a`: make(chan struct{}),
+		`D:\b`: make(chan struct{}),
+		`D:\c`: make(chan struct{}),
+	}
+	s.walk = func(ctx context.Context, path string, _ func(scanStat, string)) (scanStat, error) {
+		started <- path
+		select {
+		case <-releases[path]:
+			return scanStat{}, nil
+		case <-ctx.Done():
+			return scanStat{}, ctx.Err()
+		}
+	}
+	events := make(chan ScanProgress, 32)
+	s.emit = func(_ string, p any) { events <- p.(ScanProgress) }
+
+	for _, id := range []string{"a", "b", "c"} {
+		if err := s.StartDirScan(id); err != nil {
+			t.Fatalf("StartDirScan(%s): %v", id, err)
+		}
+	}
+	if got := waitStartedPath(t, started); got != `D:\a` {
+		t.Fatalf("首个运行任务 = %q，期望 a", got)
+	}
+	waitEventForIDState(t, events, "a", "running")
+	waitEventForIDState(t, events, "b", "queued")
+	waitEventForIDState(t, events, "c", "queued")
+	select {
+	case got := <-started:
+		t.Fatalf("全局并发上限失效，a 未释放时启动了 %q", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := s.CancelDirScan("b"); err != nil {
+		t.Fatalf("取消排队任务: %v", err)
+	}
+	if ev := waitEventForIDState(t, events, "b", "canceled"); !strings.Contains(ev.Message, "排队") {
+		t.Fatalf("排队取消事件不诚实: %+v", ev)
+	}
+	close(releases[`D:\a`])
+	if got := waitStartedPath(t, started); got != `D:\c` {
+		t.Fatalf("FIFO/取消后下一任务 = %q，期望 c", got)
+	}
+	close(releases[`D:\c`])
+	waitEventForIDState(t, events, "c", "done")
+}
+
+func TestDirScanFIFOAcrossDifferentIDs(t *testing.T) {
+	slots := []DirSlot{
+		{ID: "a", Path: `D:\a`, Exists: true},
+		{ID: "b", Path: `D:\b`, Exists: true},
+		{ID: "c", Path: `D:\c`, Exists: true},
+	}
+	s := newTestService(func() (localData, error) { return localData{Dirs: slots}, nil })
+	s.local = localData{Dirs: slots}
+	started := make(chan string, 3)
+	release := make(chan struct{}, 3)
+	events := make(chan ScanProgress, 16)
+	s.emit = func(_ string, p any) { events <- p.(ScanProgress) }
+	s.walk = func(ctx context.Context, path string, _ func(scanStat, string)) (scanStat, error) {
+		started <- path
+		select {
+		case <-release:
+			return scanStat{}, nil
+		case <-ctx.Done():
+			return scanStat{}, ctx.Err()
+		}
+	}
+	for _, id := range []string{"a", "b", "c"} {
+		if err := s.StartDirScan(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wants := []struct {
+		id   string
+		path string
+	}{{"a", `D:\a`}, {"b", `D:\b`}, {"c", `D:\c`}}
+	for i, want := range wants {
+		if got := waitStartedPath(t, started); got != want.path {
+			t.Fatalf("第 %d 个运行任务 = %q，期望 %q", i+1, got, want.path)
+		}
+		waitEventForIDState(t, events, want.id, "running")
+		release <- struct{}{}
+	}
+}
+
+func TestDirScanDeduplicatesCanonicalPathAliases(t *testing.T) {
+	slots := []DirSlot{
+		{ID: "primary", Path: `D:\WeChat`, Exists: true},
+		{ID: "alias", Path: `D:\alias`, Exists: true},
+	}
+	s := newTestService(func() (localData, error) { return localData{Dirs: slots}, nil })
+	s.local = localData{Dirs: slots}
+	s.canonicalPath = func(string) (string, error) { return `d:\wechat`, nil }
+	s.walk = func(ctx context.Context, _ string, _ func(scanStat, string)) (scanStat, error) {
+		<-ctx.Done()
+		return scanStat{}, ctx.Err()
+	}
+	if err := s.StartDirScan("primary"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StartDirScan("alias"); err == nil || !strings.Contains(err.Error(), "同一目录") {
+		t.Fatalf("最终路径别名应拒绝重复扫描: %v", err)
+	}
+	if err := s.CancelDirScan("primary"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDirScanPanicReleasesSlotAndContinuesQueue(t *testing.T) {
+	slots := []DirSlot{
+		{ID: "panic", Path: `D:\panic`, Exists: true},
+		{ID: "next", Path: `D:\next`, Exists: true},
+	}
+	s := newTestService(func() (localData, error) { return localData{Dirs: slots}, nil })
+	s.local = localData{Dirs: slots}
+	started := make(chan string, 2)
+	s.walk = func(_ context.Context, path string, _ func(scanStat, string)) (scanStat, error) {
+		started <- path
+		if path == `D:\panic` {
+			panic("boom")
+		}
+		return scanStat{}, nil
+	}
+	events := make(chan ScanProgress, 16)
+	s.emit = func(_ string, p any) { events <- p.(ScanProgress) }
+	if err := s.StartDirScan("panic"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StartDirScan("next"); err != nil {
+		t.Fatal(err)
+	}
+	waitEventForIDState(t, events, "panic", "error")
+	if got := waitStartedPath(t, started); got != `D:\panic` {
+		t.Fatalf("首个启动 = %q", got)
+	}
+	if got := waitStartedPath(t, started); got != `D:\next` {
+		t.Fatalf("panic 后队列未继续，启动 = %q", got)
+	}
+	waitEventForIDState(t, events, "next", "done")
+}
+
+func TestCancelAllDirScansCancelsRunningAndQueued(t *testing.T) {
+	slots := []DirSlot{
+		{ID: "running", Path: `D:\running`, Exists: true},
+		{ID: "queued", Path: `D:\queued`, Exists: true},
+	}
+	s := newTestService(func() (localData, error) { return localData{Dirs: slots}, nil })
+	s.local = localData{Dirs: slots}
+	started := make(chan string, 1)
+	s.walk = func(ctx context.Context, path string, _ func(scanStat, string)) (scanStat, error) {
+		started <- path
+		<-ctx.Done()
+		return scanStat{}, ctx.Err()
+	}
+	events := make(chan ScanProgress, 16)
+	s.emit = func(_ string, p any) { events <- p.(ScanProgress) }
+	if err := s.StartDirScan("running"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StartDirScan("queued"); err != nil {
+		t.Fatal(err)
+	}
+	waitStartedPath(t, started)
+	s.cancelAllDirScans()
+	waitEventForIDState(t, events, "queued", "canceled")
+	waitEventForIDState(t, events, "running", "canceled")
+
+	s.mu.Lock()
+	remaining := len(s.scans)
+	s.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("取消全部后仍有 %d 个任务登记", remaining)
+	}
+}
+
+func waitStartedPath(t *testing.T, ch <-chan string) string {
+	t.Helper()
+	select {
+	case path := <-ch:
+		return path
+	case <-time.After(5 * time.Second):
+		t.Fatal("等待扫描启动超时")
+		return ""
+	}
+}
+
+func waitEventForIDState(t *testing.T, ch <-chan ScanProgress, id, state string) ScanProgress {
+	t.Helper()
+	for {
+		select {
+		case ev := <-ch:
+			if ev.ID == id && ev.State == state {
+				return ev
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("等待事件 %s/%s 超时", id, state)
+			return ScanProgress{}
+		}
+	}
+}
+
 func TestDirSlotIDStable(t *testing.T) {
 	a := dirSlotID("data40", `E:\System\文档\xwechat_files\`)
 	b := dirSlotID("data40", `e:\system\文档\xwechat_files`)
@@ -246,13 +461,13 @@ func TestDirSlotIDStable(t *testing.T) {
 	}
 }
 
-// waitScanEvent 等终态事件（running 进度事件按节流可能出现，跳过不算异常）。
+// waitScanEvent 等终态事件（queued/running 状态事件按需出现，跳过不算异常）。
 func waitScanEvent(t *testing.T, ch chan ScanProgress) ScanProgress {
 	t.Helper()
 	for {
 		select {
 		case ev := <-ch:
-			if ev.State == "running" {
+			if ev.State == "queued" || ev.State == "running" {
 				continue
 			}
 			return ev

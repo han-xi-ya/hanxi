@@ -21,6 +21,10 @@ const EventDirScan = "softver:dir-scan"
 // scanProgressInterval 运行中进度的推送节流（终态必发，不限流）。
 const scanProgressInterval = 250 * time.Millisecond
 
+// maxConcurrentDirScans 是目录 Walk 的全局并发上限。机械盘/大目录并发 Walk
+// 会放大随机 IO，默认串行并按入队顺序调度。
+const maxConcurrentDirScans = 1
+
 // urlOpener 平台外呼最小面（wsl/envcheck 同款解耦，单测注入 fake）。
 type urlOpener interface {
 	OpenURL(url string) error
@@ -33,16 +37,28 @@ type localData struct {
 	Notes    []string
 }
 
+// scanJob 是一次已登记的目录扫描。任务从入队起即拥有独立 context，因而
+// 排队期间也能取消；pathKey 按最终路径归一化，用于拦截不同槽位指向同一目录。
+type scanJob struct {
+	id      string
+	path    string
+	pathKey string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	running bool
+}
+
 // SoftverService Wails 绑定服务：微信（首个跟踪目标）的本机双口径版本、
 // 目录槽位与大小、官方最新版对照。探测/取页函数一律字段注入，
 // 单测替换后即可离线断言；页面进入零隐式外呼（官方取数只在显式 RefreshOfficial）。
 type SoftverService struct {
-	opener     urlOpener
-	probeLocal func() (localData, error)
-	fetchPage  func(context.Context) (string, error)
-	walk       func(context.Context, string, func(scanStat, string)) (scanStat, error)
-	emit       func(name string, payload any)
-	reveal     func(path string) error
+	opener        urlOpener
+	probeLocal    func() (localData, error)
+	fetchPage     func(context.Context) (string, error)
+	walk          func(context.Context, string, func(scanStat, string)) (scanStat, error)
+	canonicalPath func(string) (string, error)
+	emit          func(name string, payload any)
+	reveal        func(path string) error
 
 	mu sync.Mutex
 	// local 最近一次探测结果：StartDirScan/CancelDirScan/RevealDir 只认这里的
@@ -51,8 +67,12 @@ type SoftverService struct {
 	// sizes 扫描结果缓存（key=槽位 ID，跨次探测稳定）：只存终态成功值，
 	// 取消/失败不留半成品；重扫覆盖旧值。
 	sizes map[string]*DirSize
-	// scans 进行中的扫描取消通道。
-	scans map[string]context.CancelFunc
+	// scans 包含排队与运行中的任务；scanQueue 保持 FIFO 公平性，runningScans
+	// 只统计真正占用 Walk 槽位的任务。activePaths 防止槽位别名重复扫描同一路径。
+	scans        map[string]*scanJob
+	scanQueue    []*scanJob
+	activePaths  map[string]string
+	runningScans int
 
 	official    *OfficialRelease
 	officialErr string
@@ -61,13 +81,15 @@ type SoftverService struct {
 // NewSoftverService 构造服务并按平台挂载探测默认值。
 func NewSoftverService(opener urlOpener) *SoftverService {
 	s := &SoftverService{
-		opener:    opener,
-		fetchPage: fetchUpdatesPage, // 官方页抓取跨平台通用；本机探测按平台挂载
-		walk:      walkDirSize,
-		emit:      emitEvent,
-		reveal:    revealInExplorer,
-		sizes:     map[string]*DirSize{},
-		scans:     map[string]context.CancelFunc{},
+		opener:        opener,
+		fetchPage:     fetchUpdatesPage, // 官方页抓取跨平台通用；本机探测按平台挂载
+		walk:          walkDirSize,
+		canonicalPath: canonicalPathKey,
+		emit:          emitEvent,
+		reveal:        revealInExplorer,
+		sizes:         map[string]*DirSize{},
+		scans:         map[string]*scanJob{},
+		activePaths:   map[string]string{},
 	}
 	attachPlatformDefaults(s)
 	return s
@@ -77,6 +99,20 @@ func NewSoftverService(opener urlOpener) *SoftverService {
 // 跨次探测与扫描缓存挂接都用它；RevealDir/StartDirScan 只认完整 ID）。
 func dirSlotID(kind, path string) string {
 	return kind + "|" + strings.ToLower(filepath.Clean(path))
+}
+
+// canonicalPathKey 解析已存在目录的最终路径并转成不区分大小写的比较键。
+// EvalSymlinks 在 Windows 会展开 symlink/junction；Abs 同时消除相对路径别名。
+func canonicalPathKey(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	resolved, err = filepath.Abs(resolved)
+	if err != nil {
+		return "", err
+	}
+	return strings.ToLower(filepath.Clean(resolved)), nil
 }
 
 // emitEvent 经 Wails 事件总线推送；无 app 实例（单测/装配前）静默跳过。
@@ -170,7 +206,8 @@ func (s *SoftverService) OpenUpdatesPage() error {
 }
 
 // StartDirScan 异步扫描指定目录槽位大小（终态/进度经 softver:dir-scan 事件推送）。
-// id 必须来自最近一次 Snapshot 的槽位列表；同槽位扫描中拒绝重入。
+// id 必须来自最近一次 Snapshot 的槽位列表；不同 ID 若解析到同一最终路径也拒绝重入。
+// 任务统一进入 FIFO 队列，最多 maxConcurrentDirScans 个 Walk 同时运行。
 func (s *SoftverService) StartDirScan(id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -186,39 +223,75 @@ func (s *SoftverService) StartDirScan(id string) error {
 		s.mu.Lock()
 	}
 	slot, ok := s.findSlotLocked(id)
+	s.mu.Unlock()
 	if !ok {
-		s.mu.Unlock()
 		return fmt.Errorf("未知目录槽位 %q（请刷新后重试）", id)
 	}
 	if !slot.Exists {
-		s.mu.Unlock()
 		return fmt.Errorf("目录不存在，无法扫描：%s", slot.Path)
 	}
-	if _, busy := s.scans[id]; busy {
-		s.mu.Unlock()
-		return fmt.Errorf("该目录正在扫描中，请稍候或先取消")
+
+	pathKey, err := s.canonicalPath(slot.Path)
+	if err != nil {
+		return fmt.Errorf("解析目录最终路径失败: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.scans[id] = cancel
+	job := &scanJob{id: id, path: slot.Path, pathKey: pathKey, ctx: ctx, cancel: cancel}
+
+	s.mu.Lock()
+	if _, busy := s.scans[id]; busy {
+		s.mu.Unlock()
+		cancel()
+		return errors.New("该目录已在排队或扫描中，请稍候或先取消")
+	}
+	if activeID, busy := s.activePaths[pathKey]; busy {
+		s.mu.Unlock()
+		cancel()
+		return fmt.Errorf("同一目录已由槽位 %q 排队或扫描，已拒绝重复任务", activeID)
+	}
+	s.scans[id] = job
+	s.activePaths[pathKey] = id
+	s.scanQueue = append(s.scanQueue, job)
 	s.mu.Unlock()
 
-	go s.runScan(id, slot.Path, ctx, cancel)
+	s.emit(EventDirScan, ScanProgress{ID: id, State: "queued", Message: "已排队等待扫描"})
+	s.dispatchScans()
 	return nil
 }
 
-func (s *SoftverService) runScan(id, path string, ctx context.Context, cancel context.CancelFunc) {
-	// recover 兜底：扫描协程若意外 panic 也必须发终态事件——否则前端该槽位
-	// 永远停在"进行中"（defer LIFO 下本函数最后执行，登记与取消通道已先清）。
+// dispatchScans 按 FIFO 顺序占用全局 Walk 槽位。事件在启动 goroutine 前发出，
+// 保证观察者不会先看到进度、后看到 running 状态。
+func (s *SoftverService) dispatchScans() {
+	var ready []*scanJob
+	s.mu.Lock()
+	for s.runningScans < maxConcurrentDirScans && len(s.scanQueue) > 0 {
+		job := s.scanQueue[0]
+		s.scanQueue = s.scanQueue[1:]
+		if s.scans[job.id] != job { // 已在排队期间取消
+			continue
+		}
+		job.running = true
+		s.runningScans++
+		ready = append(ready, job)
+	}
+	s.mu.Unlock()
+	for _, job := range ready {
+		s.emit(EventDirScan, ScanProgress{ID: job.id, State: "running", Message: "正在扫描"})
+		go s.runScan(job)
+	}
+}
+
+func (s *SoftverService) runScan(job *scanJob) {
+	released := false
+	defer job.cancel()
 	defer func() {
 		if r := recover(); r != nil {
-			s.emit(EventDirScan, ScanProgress{ID: id, State: "error", Message: fmt.Sprintf("扫描异常中止: %v", r)})
+			if !released {
+				s.releaseScan(job, nil)
+				s.emit(EventDirScan, ScanProgress{ID: job.id, State: "error", Message: fmt.Sprintf("扫描异常中止: %v", r)})
+			}
+			s.dispatchScans()
 		}
-	}()
-	defer cancel()
-	defer func() {
-		s.mu.Lock()
-		delete(s.scans, id)
-		s.mu.Unlock()
 	}()
 
 	var lastEmit time.Time
@@ -228,47 +301,109 @@ func (s *SoftverService) runScan(id, path string, ctx context.Context, cancel co
 		}
 		lastEmit = time.Now()
 		s.emit(EventDirScan, ScanProgress{
-			ID: id, State: "running", Bytes: stat.Bytes, Files: stat.Files,
+			ID: job.id, State: "running", Bytes: stat.Bytes, Files: stat.Files,
 			Dirs: stat.Dirs, Skipped: stat.Skipped, Current: current,
 		})
 	}
-	stat, err := s.walk(ctx, path, throttled)
-	// 先摘扫描登记、再发终态事件：前端收到终态即可立即重扫/取消，
-	// 不留"事件已到一个登记未清"的窗口（defer 兜底 panic 路径）。
-	s.mu.Lock()
-	delete(s.scans, id)
-	s.mu.Unlock()
+	stat, err := s.walk(job.ctx, job.path, throttled)
+
+	var size *DirSize
+	state := "done"
+	message := ""
+	now := ""
 	switch {
 	case errors.Is(err, context.Canceled):
-		s.emit(EventDirScan, ScanProgress{
-			ID: id, State: "canceled", Bytes: stat.Bytes, Files: stat.Files,
-			Dirs: stat.Dirs, Skipped: stat.Skipped, Message: "已取消，本次结果未缓存",
-		})
+		state = "canceled"
+		message = "已取消，本次结果未缓存"
 	case err != nil:
-		s.emit(EventDirScan, ScanProgress{ID: id, State: "error", Message: err.Error()})
+		state = "error"
+		message = err.Error()
 	default:
-		now := time.Now().Format(time.RFC3339)
-		size := &DirSize{Bytes: stat.Bytes, Files: stat.Files, Dirs: stat.Dirs, Skipped: stat.Skipped, ScannedAt: now}
-		s.mu.Lock()
-		s.sizes[id] = size
+		now = time.Now().Format(time.RFC3339)
+		size = &DirSize{Bytes: stat.Bytes, Files: stat.Files, Dirs: stat.Dirs, Skipped: stat.Skipped, ScannedAt: now}
+	}
+	s.releaseScan(job, size)
+	released = true
+	s.emit(EventDirScan, ScanProgress{
+		ID: job.id, State: state, Bytes: stat.Bytes, Files: stat.Files,
+		Dirs: stat.Dirs, Skipped: stat.Skipped, Message: message, ScannedAt: now,
+	})
+	s.dispatchScans()
+}
+
+// releaseScan 释放登记与全局 Walk 槽位；成功结果与释放在同一临界区提交。
+func (s *SoftverService) releaseScan(job *scanJob, size *DirSize) {
+	s.mu.Lock()
+	if s.scans[job.id] == job {
+		delete(s.scans, job.id)
+		delete(s.activePaths, job.pathKey)
+		if job.running {
+			s.runningScans--
+		}
+		if size != nil {
+			s.sizes[job.id] = size
+		}
+	}
+	s.mu.Unlock()
+}
+
+// CancelDirScan 请求取消指定槽位排队或运行中的扫描（半成品不缓存）。
+func (s *SoftverService) CancelDirScan(id string) error {
+	id = strings.TrimSpace(id)
+	s.mu.Lock()
+	job, ok := s.scans[id]
+	if !ok {
 		s.mu.Unlock()
-		s.emit(EventDirScan, ScanProgress{
-			ID: id, State: "done", Bytes: size.Bytes, Files: size.Files,
-			Dirs: size.Dirs, Skipped: size.Skipped, ScannedAt: now,
-		})
+		return errors.New("该目录当前没有排队或进行中的扫描")
+	}
+	if job.running {
+		s.mu.Unlock()
+		job.cancel()
+		return nil
+	}
+	delete(s.scans, id)
+	delete(s.activePaths, job.pathKey)
+	s.removeQueuedScanLocked(job)
+	s.mu.Unlock()
+	job.cancel()
+	s.emit(EventDirScan, ScanProgress{ID: id, State: "canceled", Message: "已取消排队任务，本次结果未缓存"})
+	s.dispatchScans()
+	return nil
+}
+
+// cancelAllDirScans 是模块生命周期使用的包内取消入口，不扩展 Wails 绑定面。
+// 排队任务立即发 canceled；运行任务由 Walk 响应 context 后发终态。
+func (s *SoftverService) cancelAllDirScans() {
+	var queued []*scanJob
+	var running []*scanJob
+	s.mu.Lock()
+	for _, job := range s.scans {
+		if job.running {
+			running = append(running, job)
+			continue
+		}
+		queued = append(queued, job)
+		delete(s.scans, job.id)
+		delete(s.activePaths, job.pathKey)
+	}
+	s.scanQueue = nil
+	s.mu.Unlock()
+	for _, job := range queued {
+		job.cancel()
+		s.emit(EventDirScan, ScanProgress{ID: job.id, State: "canceled", Message: "已取消排队任务，本次结果未缓存"})
+	}
+	for _, job := range running {
+		job.cancel()
 	}
 }
 
-// CancelDirScan 请求取消指定槽位进行中的扫描（半成品不缓存）。
-func (s *SoftverService) CancelDirScan(id string) error {
-	s.mu.Lock()
-	cancel, ok := s.scans[strings.TrimSpace(id)]
-	s.mu.Unlock()
-	if !ok {
-		return errors.New("该目录当前没有进行中的扫描")
+func (s *SoftverService) removeQueuedScanLocked(target *scanJob) {
+	for i, job := range s.scanQueue {
+		if job == target {
+			s.scanQueue = append(s.scanQueue[:i], s.scanQueue[i+1:]...)
+			return
+		}
 	}
-	cancel()
-	return nil
 }
 
 // RevealDir 在资源管理器中打开槽位目录（路径经后端槽位面解析获得，拒收任意路径）。
