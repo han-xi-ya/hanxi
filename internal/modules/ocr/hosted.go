@@ -11,8 +11,9 @@ package ocr
 //   - 命名规范 hanxi-ocr-<engine>-<version>.zip：可解析时必须与 manifest 一致
 //     （矛盾拒收），不可解析的文件名以 manifest 为准（内容强、命名宽）。
 //
-// 落位：versions/hanxi-ocr/<engine>-<version>/（tmp 解压后 rename 原子换入，
-// 同版本重装旧目录先移开、失败回滚）；zip 与旁挂件移存 installers/hanxi-ocr/。
+// 落位：versions/hanxi-ocr/<engine>-<version>/（tmp 解压后 rename 原子落位）；
+// 同 engine+version+SHA256 幂等返回，不同 SHA256 拒绝覆盖并要求发布新版本号；
+// zip 与旁挂件移存 installers/hanxi-ocr/。
 //
 // 安全闸门：zip 炸弹上限（条目数/单文件与总展开字节）、ZipSlip 路径逃逸拒绝、
 // 版本令牌白名单（目录名由版本拼接，注入面收死）。wechat 包只认本地拖入，
@@ -31,7 +32,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"hanxi/internal/product"
 )
 
 const (
@@ -101,7 +105,144 @@ func (m hostedManifest) validate() error {
 	if !strings.EqualFold(strings.TrimSpace(m.Entry), serviceExeName) {
 		return fmt.Errorf("manifest entry 契约要求为 %s（实际 %q），本安装包与 Hanxi 不兼容", serviceExeName, m.Entry)
 	}
+	if err := validateMinHanxi(m.MinHanxi, product.Version); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateMinHanxi 按 SemVer 比较安装包最低 Hanxi 版本；空值保持旧包兼容。
+func validateMinHanxi(minVersion, currentVersion string) error {
+	minVersion = strings.TrimSpace(minVersion)
+	if minVersion == "" {
+		return nil
+	}
+	minSemver, ok := parseHostedSemver(minVersion)
+	if !ok {
+		return fmt.Errorf("manifest minHanxi %q 不是合法 SemVer", minVersion)
+	}
+	currentSemver, ok := parseHostedSemver(currentVersion)
+	if !ok {
+		return fmt.Errorf("当前 Hanxi 版本 %q 不是合法 SemVer，无法校验安装包最低版本要求", currentVersion)
+	}
+	if compareParsedSemver(currentSemver, minSemver) < 0 {
+		return fmt.Errorf("安装包要求 Hanxi >= %s，当前版本为 %s；请先升级 Hanxi", minVersion, currentVersion)
+	}
+	return nil
+}
+
+type hostedSemver struct {
+	major uint64
+	minor uint64
+	patch uint64
+	pre   []string
+}
+
+func parseHostedSemver(version string) (hostedSemver, bool) {
+	var out hostedSemver
+	v := strings.TrimSpace(version)
+	if strings.HasPrefix(v, "v") {
+		v = v[1:]
+	}
+	if v == "" || strings.ContainsAny(v, " \t\r\n") {
+		return out, false
+	}
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		if i == len(v)-1 || !validSemverIdentifiers(v[i+1:], false) {
+			return out, false
+		}
+		v = v[:i]
+	}
+	pre := ""
+	if i := strings.IndexByte(v, '-'); i >= 0 {
+		pre = v[i+1:]
+		v = v[:i]
+		if !validSemverIdentifiers(pre, true) {
+			return out, false
+		}
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return out, false
+	}
+	numbers := []*uint64{&out.major, &out.minor, &out.patch}
+	for i, part := range parts {
+		if part == "" || len(part) > 1 && part[0] == '0' {
+			return hostedSemver{}, false
+		}
+		value, err := strconv.ParseUint(part, 10, 64)
+		if err != nil {
+			return hostedSemver{}, false
+		}
+		*numbers[i] = value
+	}
+	if pre != "" {
+		out.pre = strings.Split(pre, ".")
+	}
+	return out, true
+}
+
+func validSemverIdentifiers(value string, rejectNumericLeadingZero bool) bool {
+	for _, ident := range strings.Split(value, ".") {
+		if ident == "" {
+			return false
+		}
+		numeric := true
+		for _, r := range ident {
+			if !(r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r == '-') {
+				return false
+			}
+			if r < '0' || r > '9' {
+				numeric = false
+			}
+		}
+		if rejectNumericLeadingZero && numeric && len(ident) > 1 && ident[0] == '0' {
+			return false
+		}
+	}
+	return true
+}
+
+func compareParsedSemver(a, b hostedSemver) int {
+	for _, pair := range [][2]uint64{{a.major, b.major}, {a.minor, b.minor}, {a.patch, b.patch}} {
+		if pair[0] < pair[1] {
+			return -1
+		}
+		if pair[0] > pair[1] {
+			return 1
+		}
+	}
+	if len(a.pre) == 0 && len(b.pre) == 0 {
+		return 0
+	}
+	if len(a.pre) == 0 {
+		return 1
+	}
+	if len(b.pre) == 0 {
+		return -1
+	}
+	for i := 0; i < len(a.pre) && i < len(b.pre); i++ {
+		an, aErr := strconv.ParseUint(a.pre[i], 10, 64)
+		bn, bErr := strconv.ParseUint(b.pre[i], 10, 64)
+		switch {
+		case aErr == nil && bErr == nil:
+			if an < bn {
+				return -1
+			}
+			if an > bn {
+				return 1
+			}
+		case aErr == nil:
+			return -1
+		case bErr == nil:
+			return 1
+		default:
+			if cmp := strings.Compare(a.pre[i], b.pre[i]); cmp != 0 {
+				return cmp
+			}
+		}
+	}
+	return len(a.pre) - len(b.pre)
 }
 
 // validateVersionToken 版本令牌白名单校验（中文报错）。
@@ -156,10 +297,27 @@ func compareHostedVersion(a, b string) int {
 type hostedManager struct {
 	versionsRoot   string // <数据根>/versions/hanxi-ocr
 	installersRoot string // <数据根>/installers/hanxi-ocr
+	mu             *sync.RWMutex
+}
+
+var hostedTreeLocks sync.Map // map[clean versionsRoot]*sync.RWMutex
+
+func hostedTreeLock(versionsRoot string) *sync.RWMutex {
+	key := strings.ToLower(filepath.Clean(versionsRoot))
+	lock, _ := hostedTreeLocks.LoadOrStore(key, &sync.RWMutex{})
+	return lock.(*sync.RWMutex)
+}
+
+func deleteHostedTreeLock(versionsRoot string) {
+	hostedTreeLocks.Delete(strings.ToLower(filepath.Clean(versionsRoot)))
 }
 
 func newHostedManager(versionsRoot, installersRoot string) *hostedManager {
-	return &hostedManager{versionsRoot: versionsRoot, installersRoot: installersRoot}
+	return &hostedManager{
+		versionsRoot:   versionsRoot,
+		installersRoot: installersRoot,
+		mu:             hostedTreeLock(versionsRoot),
+	}
 }
 
 // ---------- 校验链 ----------
@@ -297,11 +455,16 @@ func verifyHostedZipSHA(zipPath string) (string, error) {
 
 // ---------- 安装 ----------
 
-// installZip 完整安装链：sha256 旁挂核对 → 静态校验 → tmp 解压 → 原子换入
+// installZip 完整安装链：sha256 旁挂核对 → 静态校验 → tmp 解压 → 原子落位
 // versions/hanxi-ocr/<engine>-<version>/ → zip 与旁挂件移存 installers/。
-// 同版本重装：旧目录先移开（rename aside），新目录换入成功后删除旧目录；
-// 任一步失败回滚旧目录并清理 tmp，不留半成品。
+// 同版本同哈希幂等返回；同版本不同哈希拒绝覆盖，防止版本号内容漂移。
 func (hm *hostedManager) installZip(zipPath string) (HostedVersion, error) {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+	return hm.installZipLocked(zipPath)
+}
+
+func (hm *hostedManager) installZipLocked(zipPath string) (HostedVersion, error) {
 	var empty HostedVersion
 	zipPath = filepath.Clean(strings.TrimSpace(zipPath))
 
@@ -318,6 +481,22 @@ func (hm *hostedManager) installZip(zipPath string) (HostedVersion, error) {
 		return empty, fmt.Errorf("创建托管目录失败: %w", err)
 	}
 	target := filepath.Join(hm.versionsRoot, hostedVersionDirName(m.Engine, m.Version))
+	if installedSHA, ok := readHostedSHA(filepath.Join(target, "meta.json")); ok {
+		if strings.EqualFold(installedSHA, zipSHA) {
+			return hm.hostedVersionLocked(target, m), nil
+		}
+		return empty, fmt.Errorf("%s v%s 已安装，但现有包与本次安装包 SHA256 不同；为防止同版本内容漂移，拒绝覆盖，请发布并使用新版本号",
+			engineLabel(m.Engine), m.Version)
+	}
+	if st, statErr := os.Lstat(target); statErr == nil {
+		if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+			return empty, fmt.Errorf("托管版本目标不是普通目录，拒绝覆盖：%s", target)
+		}
+		return empty, fmt.Errorf("%s v%s 已安装但缺少可信 SHA256 元信息；拒绝覆盖，请卸载后重装或发布新版本号",
+			engineLabel(m.Engine), m.Version)
+	} else if !os.IsNotExist(statErr) {
+		return empty, fmt.Errorf("检查现有托管版本失败: %w", statErr)
+	}
 	tmp, err := os.MkdirTemp(hm.versionsRoot, hostedTmpPrefix+m.Engine+"-")
 	if err != nil {
 		return empty, fmt.Errorf("创建临时解压目录失败: %w", err)
@@ -332,39 +511,25 @@ func (hm *hostedManager) installZip(zipPath string) (HostedVersion, error) {
 		return empty, err
 	}
 
-	// 原子换入：旧版本目录先移开（可能被锁，失败即中止并清理 tmp），新目录 rename 顶上
-	aside := ""
-	if st, e := os.Lstat(target); e == nil && st.IsDir() {
-		aside = target + ".old-" + strconv.FormatInt(time.Now().UnixNano(), 10)
-		if e := os.Rename(target, aside); e != nil {
-			_ = os.RemoveAll(tmp)
-			return empty, fmt.Errorf("替换旧版本目录失败（组件文件可能正在运行，请先停止识别服务）：%v", e)
-		}
-	}
+	// 目标不存在才原子落位；同 engine+version 已在前面按包哈希判定幂等或拒绝。
 	if err := os.Rename(tmp, target); err != nil {
-		if aside != "" {
-			_ = os.Rename(aside, target) // 尽力回滚
-		} else {
-			_ = os.RemoveAll(target)
-		}
 		_ = os.RemoveAll(tmp)
 		return empty, fmt.Errorf("版本目录落位失败: %w", err)
 	}
-	if aside != "" {
-		if e := os.RemoveAll(aside); e != nil {
-			slog.Warn("ocr 托管安装：旧版本目录清理失败（不影响新版本）", "dir", aside, "err", e)
-		}
-	}
 
 	// 元信息（安装时间/包哈希/来源）与托管族 meta.json 口径一致
-	_ = writeHostedJSON(filepath.Join(target, "meta.json"), map[string]any{
-		"installedAt": time.Now().Format("2006-01-02 15:04:05"),
+	installedAt := time.Now().Format("2006-01-02 15:04:05")
+	if err := writeHostedJSON(filepath.Join(target, "meta.json"), map[string]any{
+		"installedAt": installedAt,
 		"isImport":    true,
 		"sha256":      zipSHA,
 		"source":      filepath.Base(zipPath),
 		"engine":      m.Engine,
 		"version":     m.Version,
-	})
+	}); err != nil {
+		_ = os.RemoveAll(target)
+		return empty, fmt.Errorf("写入托管版本元信息失败: %w", err)
+	}
 
 	// zip 原件移存 installers/（移存失败不判安装失败：组件已落位，仅归档降级为警告）
 	if err := hm.archiveInstaller(zipPath); err != nil {
@@ -383,10 +548,55 @@ func (hm *hostedManager) installZip(zipPath string) (HostedVersion, error) {
 		Dir:         target,
 		ExePath:     exe,
 		Size:        size,
-		InstalledAt: time.Now().Format("2006-01-02 15:04:05"),
+		InstalledAt: installedAt,
 		Note:        m.Note,
 		State:       hostedStateReady,
 	}, nil
+}
+
+func readHostedSHA(metaPath string) (string, bool) {
+	raw, err := os.ReadFile(metaPath)
+	if err != nil {
+		return "", false
+	}
+	var meta struct {
+		SHA256 string `json:"sha256"`
+	}
+	if json.Unmarshal(raw, &meta) != nil {
+		return "", false
+	}
+	sha := strings.ToLower(strings.TrimSpace(meta.SHA256))
+	if len(sha) != 64 {
+		return "", false
+	}
+	if _, err := hex.DecodeString(sha); err != nil {
+		return "", false
+	}
+	return sha, true
+}
+
+func (hm *hostedManager) hostedVersionLocked(target string, m hostedManifest) HostedVersion {
+	exe := filepath.Join(target, serviceExeName)
+	state := hostedStateReady
+	errText := ""
+	size := int64(0)
+	if st, err := os.Lstat(exe); err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
+		state = hostedStateBroken
+		errText = fmt.Sprintf("入口文件缺失或损坏：%s", exe)
+	} else {
+		size = st.Size()
+	}
+	return HostedVersion{
+		Engine:      m.Engine,
+		Version:     m.Version,
+		Dir:         target,
+		ExePath:     exe,
+		Size:        size,
+		InstalledAt: readHostedInstalledAt(filepath.Join(target, "meta.json")),
+		Note:        m.Note,
+		State:       state,
+		Error:       errText,
+	}
 }
 
 // verifyHostedFiles 按 manifest.files 逐文件复核解压结果（sha256 一致才算装好）。
@@ -553,6 +763,12 @@ const (
 // list 扫描托管版本树（engine 升序按 engineOrder，engine 内版本降序）。
 // 条目名不合规的目录直接忽略（可能是外来文件）；合规但入口损坏的列入 broken 态。
 func (hm *hostedManager) list() []HostedVersion {
+	hm.mu.RLock()
+	defer hm.mu.RUnlock()
+	return hm.listLocked()
+}
+
+func (hm *hostedManager) listLocked() []HostedVersion {
 	entries, err := os.ReadDir(hm.versionsRoot)
 	if err != nil {
 		return nil
@@ -625,8 +841,22 @@ func readHostedInstalledAt(metaPath string) string {
 }
 
 // resolve 解析引擎的托管最新可用版本（manifest + 入口双检），返回 exe 与版本号。
+func (hm *hostedManager) resolveLatest(engineID string) (exe, version string, ok bool) {
+	hm.mu.RLock()
+	defer hm.mu.RUnlock()
+	return hostedResolveLatestLocked(hm.versionsRoot, engineID)
+}
+
+// hostedResolveLatest 保留纯路径入口供解析链与单测使用，并与同根 manager 共用树读锁。
 // hostedRoot 为空（未接线/测试旧路径）恒返回 ok=false。
 func hostedResolveLatest(hostedRoot, engineID string) (exe, version string, ok bool) {
+	lock := hostedTreeLock(hostedRoot)
+	lock.RLock()
+	defer lock.RUnlock()
+	return hostedResolveLatestLocked(hostedRoot, engineID)
+}
+
+func hostedResolveLatestLocked(hostedRoot, engineID string) (exe, version string, ok bool) {
 	if strings.TrimSpace(hostedRoot) == "" || !isKnownEngine(engineID) {
 		return "", "", false
 	}
@@ -664,25 +894,32 @@ func hostedDirOfExe(hostedRoot, exe string) string {
 	if strings.TrimSpace(hostedRoot) == "" || strings.TrimSpace(exe) == "" {
 		return ""
 	}
-	prefix := filepath.Clean(hostedRoot) + string(filepath.Separator)
+	root := filepath.Clean(hostedRoot)
 	p := filepath.Clean(exe)
-	if !strings.HasPrefix(p, prefix) {
+	rel, err := filepath.Rel(root, p)
+	if err != nil || rel == "." || filepath.IsAbs(rel) {
 		return ""
 	}
-	rel := p[len(prefix):]
-	idx := strings.IndexAny(rel, `/\`)
-	if idx <= 0 {
+	parts := strings.FieldsFunc(rel, func(r rune) bool { return r == '/' || r == '\\' })
+	if len(parts) < 2 || parts[0] == ".." || hostedVersionRe.FindStringSubmatch(strings.ToLower(parts[0])) == nil {
 		return ""
 	}
-	dirName := rel[:idx]
-	if hostedVersionRe.FindStringSubmatch(dirName) == nil {
+	candidate := filepath.Join(root, parts[0])
+	expected, err := filepath.Rel(root, candidate)
+	if err != nil || !strings.EqualFold(expected, parts[0]) {
 		return ""
 	}
-	return filepath.Join(hostedRoot, dirName)
+	return candidate
 }
 
 // remove 删除一个托管版本目录（名字白名单 + 拒绝符号链接目录，RemoveAll 收口）。
 func (hm *hostedManager) remove(engine, version string) (string, error) {
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+	return hm.removeLocked(engine, version)
+}
+
+func (hm *hostedManager) removeLocked(engine, version string) (string, error) {
 	name := hostedVersionDirName(engine, version)
 	if hostedVersionRe.FindStringSubmatch(name) == nil {
 		return "", fmt.Errorf("非法的托管版本名：%q", name)

@@ -139,11 +139,15 @@ func (s *OcrService) addr() string { return fmt.Sprintf("127.0.0.1:%d", s.store.
 // resolveEngineExe 按指定引擎解析组件路径（F7 托管优先：登记件为空/托管登记
 // 悬空时先看托管版本树最新，再走各自旧自动发现锚点）。
 func (s *OcrService) resolveEngineExe(id string) (path string, fromStore bool, err error) {
-	root := ""
 	if s.hosted != nil {
-		root = s.hosted.versionsRoot
+		return resolveServiceExeWithHostedResolver(
+			s.exeDir, s.dataDir, s.hosted.versionsRoot, id, s.store.GetEnginePath(id),
+			func(_ string, engineID string) (string, string, bool) {
+				return s.hosted.resolveLatest(engineID)
+			},
+		)
 	}
-	return resolveServiceExe(s.exeDir, s.dataDir, root, id, s.store.GetEnginePath(id))
+	return resolveServiceExe(s.exeDir, s.dataDir, "", id, s.store.GetEnginePath(id))
 }
 
 // resolveActiveExe 按当前活跃引擎解析组件路径——启停与截屏拉起的唯一取径

@@ -11,7 +11,6 @@ package ocr
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -52,29 +51,27 @@ func (s *OcrService) InstallHostedZip(srcPath string) (DropResult, error) {
 	if err != nil {
 		return s.dropResultFail("import", "路径解析失败: "+err.Error()), nil
 	}
-	m, _, err := inspectHostedZip(abs)
+	_, _, err = inspectHostedZip(abs)
 	if err != nil {
 		return s.dropResultFail("import", err.Error()), nil
 	}
-	// 同版本重装：在用的旧入口先拒（Windows 文件锁会让换入必然失败）
-	target := filepath.Join(s.hosted.versionsRoot, hostedVersionDirName(m.Engine, m.Version))
-	if st, e := os.Stat(target); e == nil && st.IsDir() {
-		if s.hostedInUse(target) {
-			return s.dropResultFail("import", fmt.Sprintf(
-				"%s v%s 正在被识别服务使用，无法覆盖安装；请先停止服务（或切换到其他引擎）后重新拖入",
-				engineLabel(m.Engine), m.Version)), nil
-		}
-	}
-	hv, err := s.hosted.installZip(abs)
+
+	// 托管树写锁覆盖落位与登记，避免并发安装/卸载让 store 指向已被另一操作移除的版本。
+	s.hosted.mu.Lock()
+	hv, err := s.hosted.installZipLocked(abs)
 	if err != nil {
+		s.hosted.mu.Unlock()
 		return s.dropResultFail("import", err.Error()), nil
 	}
 	if err := s.store.SetEnginePath(hv.Engine, hv.ExePath); err != nil {
+		s.hosted.mu.Unlock()
 		return DropResult{}, err
 	}
 	if err := s.store.SetEngineVersion(hv.Engine, hv.Version); err != nil {
+		s.hosted.mu.Unlock()
 		return DropResult{}, err
 	}
+	s.hosted.mu.Unlock()
 
 	msg := fmt.Sprintf("已安装托管引擎 %s v%s（%s）", engineLabel(hv.Engine), hv.Version, fmtMB(hv.Size))
 	if hv.Engine == EnginePaddle {
@@ -125,22 +122,28 @@ func (s *OcrService) UninstallHostedVersion(engine, version string) (ControlOutc
 	if err := validateVersionToken(v); err != nil {
 		return ControlOutcome{}, err
 	}
+
+	s.hosted.mu.Lock()
 	target := filepath.Join(s.hosted.versionsRoot, hostedVersionDirName(id, v))
-	if s.hostedInUse(target) {
+	if s.hostedInUseLocked(target) {
+		s.hosted.mu.Unlock()
 		return ControlOutcome{Action: "refused-in-use", Message: fmt.Sprintf(
 			"%s v%s 正在被识别服务使用，无法卸载；请先停止服务（或切换到其他引擎）再卸载",
 			engineLabel(id), v)}, nil
 	}
-	dir, err := s.hosted.remove(id, v)
+	dir, err := s.hosted.removeLocked(id, v)
 	if err != nil {
+		s.hosted.mu.Unlock()
 		return ControlOutcome{}, err
 	}
 	// 登记悬空复位：指向被删目录的登记件改回自动发现（树内还有别的版本则解析自愈）
-	if stored := s.store.GetEnginePath(id); hostedDirOfExe(s.hosted.versionsRoot, stored) == dir {
+	if stored := s.store.GetEnginePath(id); samePathFold(hostedDirOfExe(s.hosted.versionsRoot, stored), dir) {
 		if err := s.store.SetEnginePath(id, ""); err != nil {
+			s.hosted.mu.Unlock()
 			return ControlOutcome{}, err
 		}
 	}
+	s.hosted.mu.Unlock()
 	s.refresh()
 	return ControlOutcome{Action: "uninstalled",
 		Message: fmt.Sprintf("已卸载 %s v%s", engineLabel(id), v)}, nil
@@ -149,13 +152,23 @@ func (s *OcrService) UninstallHostedVersion(engine, version string) (ControlOutc
 // hostedInUse 目标版本目录是否正被在跑的托管实例使用（生效解析入口落在目录内）。
 // 纯判定拆出便于单测；external 实例不归本引擎管，其 exe 是否同路径无从探知，
 // 由删目录时的文件锁报错兜底。
-func (s *OcrService) hostedInUse(targetDir string) bool {
+func (s *OcrService) hostedInUseLocked(targetDir string) bool {
 	snap := s.engine.Snapshot()
-	exe, _, err := s.resolveActiveExe()
+	exe, _, err := s.resolveActiveExeLocked()
 	if err != nil {
 		return false
 	}
 	return hostedExeInUse(snap.State, exe, targetDir)
+}
+
+func (s *OcrService) resolveActiveExeLocked() (path string, fromStore bool, err error) {
+	active := s.store.GetActiveEngine()
+	return resolveServiceExeWithHostedResolver(
+		s.exeDir, s.dataDir, s.hosted.versionsRoot, active, s.store.GetEnginePath(active),
+		func(_ string, engineID string) (string, string, bool) {
+			return hostedResolveLatestLocked(s.hosted.versionsRoot, engineID)
+		},
+	)
 }
 
 func hostedExeInUse(state instance.State, activeExe, targetDir string) bool {
@@ -165,7 +178,15 @@ func hostedExeInUse(state instance.State, activeExe, targetDir string) bool {
 	if strings.TrimSpace(activeExe) == "" {
 		return false
 	}
-	return strings.EqualFold(filepath.Clean(filepath.Dir(activeExe)), filepath.Clean(targetDir))
+	return samePathFold(filepath.Dir(activeExe), targetDir)
+}
+
+func samePathFold(a, b string) bool {
+	if strings.TrimSpace(a) == "" || strings.TrimSpace(b) == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(a), filepath.Clean(b))
+	return err == nil && strings.EqualFold(rel, ".")
 }
 
 func fmtMB(n int64) string {

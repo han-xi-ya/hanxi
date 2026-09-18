@@ -11,7 +11,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"hanxi/internal/modules/ocr/instance"
 )
@@ -59,10 +62,10 @@ func makeValidHostedZip(t *testing.T, dir, engine, version string) string {
 	return path
 }
 
-func hostedZipEntries(engine, version, extra string) []zipEntry {
+func hostedZipEntriesWithMin(engine, version, minHanxi, extra string) []zipEntry {
 	manifest, _ := json.Marshal(hostedManifest{
 		Schema: hostedManifestSchema, Engine: engine, Version: version,
-		Entry: serviceExeName, MinHanxi: "", Note: "测试包 " + version,
+		Entry: serviceExeName, MinHanxi: minHanxi, Note: "测试包 " + version,
 	})
 	return []zipEntry{
 		{name: manifestName, body: string(manifest)},
@@ -70,6 +73,10 @@ func hostedZipEntries(engine, version, extra string) []zipEntry {
 		{name: "models", isDir: true},
 		{name: "models/model.onnx", body: extra},
 	}
+}
+
+func hostedZipEntries(engine, version, extra string) []zipEntry {
+	return hostedZipEntriesWithMin(engine, version, "", extra)
 }
 
 // writeHostedSidecar 计算并旁挂 sha256（withBOM/尾空白用于宽容性测试）。
@@ -88,7 +95,9 @@ func writeHostedSidecar(t *testing.T, zipPath string) {
 func newTestHostedManager(t *testing.T) *hostedManager {
 	t.Helper()
 	base := t.TempDir()
-	return newHostedManager(filepath.Join(base, "versions", hostedDirName), filepath.Join(base, "installers", hostedDirName))
+	hm := newHostedManager(filepath.Join(base, "versions", hostedDirName), filepath.Join(base, "installers", hostedDirName))
+	t.Cleanup(func() { deleteHostedTreeLock(hm.versionsRoot) })
+	return hm
 }
 
 // ---------- manifest 矩阵 ----------
@@ -119,6 +128,47 @@ func TestHostedManifestValidation(t *testing.T) {
 		if err := c.m.validate(); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Fatalf("%s: got %v, want 含 %q", c.name, err, c.want)
 		}
+	}
+}
+
+func TestHostedMinHanxiSemverMatrix(t *testing.T) {
+	cases := []struct {
+		name    string
+		minimum string
+		current string
+		wantErr string
+	}{
+		{name: "空值兼容旧包", minimum: "", current: "0.3.0"},
+		{name: "低于当前", minimum: "0.2.9", current: "0.3.0"},
+		{name: "恰等于当前", minimum: "0.3.0", current: "0.3.0"},
+		{name: "构建元数据不影响优先级", minimum: "0.3.0+pack.7", current: "0.3.0+hanxi.2"},
+		{name: "当前正式版高于同版本预发布", minimum: "0.3.0-rc.1", current: "0.3.0"},
+		{name: "当前预发布低于正式版", minimum: "0.3.0", current: "0.3.0-rc.1", wantErr: "请先升级"},
+		{name: "数字预发布按数值", minimum: "0.3.0-rc.10", current: "0.3.0-rc.2", wantErr: "请先升级"},
+		{name: "最低版本更高", minimum: "0.4.0", current: "0.3.0", wantErr: "请先升级"},
+		{name: "最低版本非法", minimum: "0.3", current: "0.3.0", wantErr: "minHanxi"},
+		{name: "最低版本前导零非法", minimum: "0.03.0", current: "0.3.0", wantErr: "minHanxi"},
+		{name: "当前版本非法", minimum: "0.3.0", current: "dev", wantErr: "当前 Hanxi 版本"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateMinHanxi(tc.minimum, tc.current)
+			if tc.wantErr == "" && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("error = %v, want 含 %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestInspectHostedZipRejectsMinHanxiBeforeExtraction(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hanxi-ocr-paddle-1.0.0.zip")
+	makeHostedZip(t, path, hostedZipEntriesWithMin("paddle", "1.0.0", "999.0.0", "model"))
+	if _, _, err := inspectHostedZip(path); err == nil || !strings.Contains(err.Error(), "请先升级") {
+		t.Fatalf("更高 minHanxi 应在解压前拒收: %v", err)
 	}
 }
 
@@ -339,7 +389,7 @@ func TestHostedInstallHappyPath(t *testing.T) {
 	}
 }
 
-func TestHostedInstallOverwriteSameVersion(t *testing.T) {
+func TestHostedInstallIdempotentSameVersion(t *testing.T) {
 	hm := newTestHostedManager(t)
 	dir := t.TempDir()
 
@@ -349,14 +399,14 @@ func TestHostedInstallOverwriteSameVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 重复安装同版本：覆盖成功、无 tmp/old 残留、只有一份版本目录
+	// 重复安装同版本同哈希：幂等成功、无 tmp/old 残留、只有一份版本目录
 	zipPath2 := filepath.Join(t.TempDir(), "hanxi-ocr-wechat-1.0.0.zip")
 	if err := os.WriteFile(zipPath2, mustRead(t, filepath.Join(hm.installersRoot, filepath.Base(zipPath))), 0644); err != nil {
 		t.Fatal(err)
 	}
 	writeHostedSidecar(t, zipPath2)
 	if _, err := hm.installZip(zipPath2); err != nil {
-		t.Fatalf("重复覆盖安装应成功: %v", err)
+		t.Fatalf("重复幂等安装应成功: %v", err)
 	}
 	entries, _ := os.ReadDir(hm.versionsRoot)
 	for _, e := range entries {
@@ -368,7 +418,145 @@ func TestHostedInstallOverwriteSameVersion(t *testing.T) {
 		}
 	}
 	if n := len(hm.list()); n != 1 {
-		t.Fatalf("覆盖后应仍只有一份版本, got %d", n)
+		t.Fatalf("幂等后应仍只有一份版本, got %d", n)
+	}
+}
+
+func TestHostedInstallSameVersionHashPolicy(t *testing.T) {
+	hm := newTestHostedManager(t)
+	firstDir := t.TempDir()
+	first := makeValidHostedZip(t, firstDir, "wechat", "1.0.0")
+	writeHostedSidecar(t, first)
+	if _, err := hm.installZip(first); err != nil {
+		t.Fatal(err)
+	}
+	installedExe := filepath.Join(hm.versionsRoot, "wechat-1.0.0", serviceExeName)
+	before := mustRead(t, installedExe)
+	archived := filepath.Join(hm.installersRoot, filepath.Base(first))
+
+	// 同 engine+version 且包哈希相同：幂等成功，不改版本树；源包也不归档/删除。
+	same := filepath.Join(t.TempDir(), filepath.Base(first))
+	if err := os.WriteFile(same, mustRead(t, archived), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeHostedSidecar(t, same)
+	if hv, err := hm.installZip(same); err != nil || hv.State != hostedStateReady {
+		t.Fatalf("同哈希应幂等成功: %+v %v", hv, err)
+	}
+	if !isRegularFile(same) || !isRegularFile(same+".sha256") {
+		t.Fatal("幂等命中不应移动调用方安装包")
+	}
+	if got := mustRead(t, installedExe); string(got) != string(before) {
+		t.Fatal("幂等安装不得改写已装内容")
+	}
+
+	// 同 engine+version 但包哈希不同：拒绝覆盖，并要求发布新版本号。
+	different := filepath.Join(t.TempDir(), filepath.Base(first))
+	makeHostedZip(t, different, hostedZipEntries("wechat", "1.0.0", "different-model"))
+	writeHostedSidecar(t, different)
+	if _, err := hm.installZip(different); err == nil || !strings.Contains(err.Error(), "新版本号") {
+		t.Fatalf("不同哈希应拒绝覆盖: %v", err)
+	}
+	if got := mustRead(t, installedExe); string(got) != string(before) {
+		t.Fatal("拒绝覆盖后已装内容必须保持不变")
+	}
+}
+
+func TestHostedInstallConcurrentSameVersion(t *testing.T) {
+	hm := newTestHostedManager(t)
+	const workers = 8
+	packages := make([]string, workers)
+	for i := range packages {
+		dir := t.TempDir()
+		packages[i] = makeValidHostedZip(t, dir, "paddle", "1.2.3")
+		writeHostedSidecar(t, packages[i])
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	var failures atomic.Int32
+	for _, packagePath := range packages {
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
+			<-start
+			if _, err := hm.installZip(path); err != nil {
+				failures.Add(1)
+			}
+		}(packagePath)
+	}
+	close(start)
+	wg.Wait()
+	if failures.Load() != 0 {
+		t.Fatalf("并发同哈希安装应全部幂等成功，失败 %d 次", failures.Load())
+	}
+	if list := hm.list(); len(list) != 1 || list[0].State != hostedStateReady {
+		t.Fatalf("并发安装后版本树异常: %+v", list)
+	}
+	entries, err := os.ReadDir(hm.versionsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), hostedTmpPrefix) || strings.Contains(entry.Name(), ".old-") {
+			t.Fatalf("并发安装留下半成品: %s", entry.Name())
+		}
+	}
+}
+
+func TestHostedTreeLockSerializesWritesAndResolve(t *testing.T) {
+	hm := newTestHostedManager(t)
+	hm.mu.Lock()
+	writeDone := make(chan struct{})
+	resolveDone := make(chan struct{})
+	go func() {
+		defer close(writeDone)
+		_, _ = hm.remove("paddle", "1.0.0")
+	}()
+	go func() {
+		defer close(resolveDone)
+		_, _, _ = hm.resolveLatest(EnginePaddle)
+	}()
+	select {
+	case <-writeDone:
+		t.Fatal("写操作未等待托管树写锁")
+	case <-resolveDone:
+		t.Fatal("resolve 未等待托管树写锁")
+	case <-time.After(30 * time.Millisecond):
+	}
+	hm.mu.Unlock()
+	select {
+	case <-writeDone:
+	case <-time.After(time.Second):
+		t.Fatal("释放写锁后写操作未完成")
+	}
+	select {
+	case <-resolveDone:
+	case <-time.After(time.Second):
+		t.Fatal("释放写锁后 resolve 未完成")
+	}
+}
+
+func TestHostedResolveWaitsForTreeWriteLock(t *testing.T) {
+	root := filepath.Join(t.TempDir(), hostedDirName)
+	hm := newHostedManager(root, filepath.Join(t.TempDir(), hostedDirName))
+	t.Cleanup(func() { deleteHostedTreeLock(root) })
+	hm.mu.Lock()
+	resolveDone := make(chan struct{})
+	go func() {
+		defer close(resolveDone)
+		_, _, _ = hostedResolveLatest(root, EnginePaddle)
+	}()
+	select {
+	case <-resolveDone:
+		t.Fatal("解析链未等待同根托管树写锁")
+	case <-time.After(30 * time.Millisecond):
+	}
+	hm.mu.Unlock()
+	select {
+	case <-resolveDone:
+	case <-time.After(time.Second):
+		t.Fatal("释放写锁后解析链未完成")
 	}
 }
 
@@ -755,8 +943,31 @@ func newTestHostedService(t *testing.T) (*OcrService, *hostedManager) {
 	t.Helper()
 	s := newTestService(t, "")
 	base := t.TempDir()
-	s.hosted = newHostedManager(filepath.Join(base, "versions", hostedDirName), filepath.Join(base, "installers", hostedDirName))
+	hm := newHostedManager(filepath.Join(base, "versions", hostedDirName), filepath.Join(base, "installers", hostedDirName))
+	t.Cleanup(func() { deleteHostedTreeLock(hm.versionsRoot) })
+	s.hosted = hm
 	return s, s.hosted
+}
+
+func TestServiceResolveWaitsForTreeWriteLock(t *testing.T) {
+	s, hm := newTestHostedService(t)
+	hm.mu.Lock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = s.resolveEngineExe(EngineWechat)
+	}()
+	select {
+	case <-done:
+		t.Fatal("服务 resolve 未等待托管树写锁")
+	case <-time.After(30 * time.Millisecond):
+	}
+	hm.mu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("释放写锁后服务 resolve 未完成")
+	}
 }
 
 func TestInstallHostedZipServiceWechat(t *testing.T) {
@@ -839,6 +1050,25 @@ func TestUninstallHostedVersionFlow(t *testing.T) {
 	if res, err := s.InstallHostedZip(zipPath); err != nil || !res.Ok {
 		t.Fatalf("前置安装失败: %+v %v", res, err)
 	}
+	// 同 engine+version 且同 hash：服务面幂等成功。
+	archive := filepath.Join(hm.installersRoot, "hanxi-ocr-wechat-1.0.0.zip")
+	same := filepath.Join(t.TempDir(), filepath.Base(archive))
+	if err := os.WriteFile(same, mustRead(t, archive), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeHostedSidecar(t, same)
+	if res, err := s.InstallHostedZip(same); err != nil || !res.Ok {
+		t.Fatalf("同哈希服务重装应幂等成功: %+v %v", res, err)
+	}
+
+	// 同 engine+version 但不同 hash：服务面折进业务失败，要求新版本号。
+	different := filepath.Join(t.TempDir(), filepath.Base(archive))
+	makeHostedZip(t, different, hostedZipEntries("wechat", "1.0.0", "changed"))
+	writeHostedSidecar(t, different)
+	if res, err := s.InstallHostedZip(different); err != nil || res.Ok || !strings.Contains(res.Message, "新版本号") {
+		t.Fatalf("不同哈希服务重装应拒绝: %+v %v", res, err)
+	}
+
 	out, err := s.UninstallHostedVersion("wechat", "1.0.0")
 	if err != nil || out.Action != "uninstalled" {
 		t.Fatalf("卸载失败: %+v %v", out, err)
@@ -865,6 +1095,9 @@ func TestHostedExeInUsePure(t *testing.T) {
 	exe := filepath.Join(dir, serviceExeName)
 	if !hostedExeInUse(instance.StateRunning, exe, dir) {
 		t.Fatal("running 命中目录应在用")
+	}
+	if !hostedExeInUse(instance.StateRunning, strings.ToUpper(exe), strings.ToLower(dir)) {
+		t.Fatal("Windows 路径大小写不同仍应判定在用")
 	}
 	if !hostedExeInUse(instance.StateStarting, exe, filepath.Clean(dir)) {
 		t.Fatal("starting 亦应在用")
@@ -899,6 +1132,15 @@ func TestHostedDirOfExe(t *testing.T) {
 	inside := filepath.Join(root, "paddle-1.0", serviceExeName)
 	if got := hostedDirOfExe(root, inside); got != filepath.Join(root, "paddle-1.0") {
 		t.Fatalf("树内登记件应回目录: %q", got)
+	}
+	caseRoot := strings.ToUpper(root)
+	caseInside := filepath.Join(caseRoot, "PADDLE-1.0", strings.ToUpper(serviceExeName))
+	if got := hostedDirOfExe(root, caseInside); !samePathFold(got, filepath.Join(root, "paddle-1.0")) {
+		t.Fatalf("Windows 大小写不同仍应认作树内路径: %q", got)
+	}
+	prefixSibling := root + "-backup"
+	if got := hostedDirOfExe(root, filepath.Join(prefixSibling, "paddle-1.0", serviceExeName)); got != "" {
+		t.Fatalf("仅字符串前缀相同的兄弟目录不得认作树内: %q", got)
 	}
 	if got := hostedDirOfExe(root, filepath.Join(root, serviceExeName)); got != "" {
 		t.Fatalf("根下散文件不属于任何版本: %q", got)
