@@ -65,6 +65,27 @@ func TestRestoreFileRoutesMemoToHotRestorer(t *testing.T) {
 	}
 }
 
+func TestPendingRestoreStagesConfigForNextStartup(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := StagePendingRestore(dataDir, rootConfig, []byte(`{"theme":"old"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, rootConfig)); !os.IsNotExist(err) {
+		t.Fatalf("config 不应在运行中直接覆写: %v", err)
+	}
+	applied, err := ApplyPendingRestores(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(applied) != 1 || applied[0] != rootConfig {
+		t.Fatalf("applied = %v", applied)
+	}
+	data, err := os.ReadFile(filepath.Join(dataDir, rootConfig))
+	if err != nil || string(data) != `{"theme":"old"}` {
+		t.Fatalf("恢复结果 = %q err=%v", data, err)
+	}
+}
+
 func TestRestoreFileGuards(t *testing.T) {
 	svc := &CheckpointService{eng: &fakeEngine{}}
 	if err := svc.RestoreFile("zzz", "config.json"); err == nil {

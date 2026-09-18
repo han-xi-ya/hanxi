@@ -467,8 +467,8 @@ func (s *CheckpointService) PreviewFile(id, path string) (FilePreview, error) {
 }
 
 // RestoreFile 单文件回滚。memo/ 下的便签走热恢复（内存换装 + memo:changed 事件，
-// 重启无感）；config.json / state JSON 直写盘后 notify 提示重启生效——
-// 运行中内存态与盘面对齐的热回滚 v1 不做（违背 settings.Update 不变式）。
+// 重启无感）；config.json / state JSON 发布 pending restore 包，由下次启动在内存态
+// 构造前应用，避免运行时盘面与 Store 内存分叉。
 func (s *CheckpointService) RestoreFile(id, path string) error {
 	eng, err := s.engineReady()
 	if err != nil {
@@ -497,12 +497,11 @@ func (s *CheckpointService) RestoreFile(id, path string) error {
 			return (*restorer)(memoID, string(data))
 		}
 	}
-	return writeRestoredFile(s.paths.DataDir(), rel, data)
+	return StagePendingRestore(s.paths.DataDir(), rel, data)
 }
 
-// writeRestoredFile 白名单文件原子回写数据根（tmp+rename，与 jsonstore 同构防半途
-// 断电；不走 jsonstore.Save——恢复的是原样字节，可能是 md 也可能含 JSON 校验外形态）。
-// 非 memo 文件写盘后 notify 提示重启生效（运行中内存态分叉是 v1 明确边界）。
+// writeRestoredFile 仅保留供既有原子写测试与兼容调用；config/state 的 RPC 恢复已改为
+// StagePendingRestore，启动前由 ApplyPendingRestores 应用。
 func writeRestoredFile(dataDir, rel string, data []byte) error {
 	target := filepath.Join(dataDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
