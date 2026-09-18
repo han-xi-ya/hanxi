@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // newFilesService 直接组装文件库模式的 MemoService（绕过 settings.Paths 全局解析，
@@ -134,6 +135,64 @@ func TestMemoRestoreFile(t *testing.T) {
 	legacy := &MemoService{items: []MemoItem{}}
 	if err := legacy.RestoreFile("x", string(data)); err == nil {
 		t.Error("回落旧库模式应拒绝热恢复")
+	}
+}
+
+func TestMemoMutationsRollbackOnDiskFailure(t *testing.T) {
+	base := t.TempDir()
+	blocker := filepath.Join(base, "memo-blocker")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	original := MemoItem{
+		ID:        "memo_txn",
+		Title:     "旧标题",
+		Content:   "secret",
+		Tags:      []string{"#old"},
+		IsPinned:  false,
+		IsMasked:  true,
+		ColorTag:  "blue",
+		CreatedAt: time.Now().Add(-time.Hour),
+		UpdatedAt: time.Now().Add(-time.Minute),
+	}
+	events := 0
+	svc := &MemoService{
+		files:     NewFileStore(blocker),
+		useFiles:  true,
+		items:     []MemoItem{original},
+		onChanged: func() { events++ },
+	}
+
+	if _, err := svc.Update(original.ID, "新标题", "changed", []string{"new"}, "rose"); err == nil {
+		t.Fatal("Update 写盘失败必须返回错误")
+	}
+	assertMemoUnchanged(t, svc, original, events)
+
+	if state, err := svc.TogglePin(original.ID); err == nil || state != original.IsPinned {
+		t.Fatalf("TogglePin 失败应返回旧状态与错误: state=%v err=%v", state, err)
+	}
+	assertMemoUnchanged(t, svc, original, events)
+
+	if state, err := svc.ToggleMask(original.ID); err == nil || state != original.IsMasked {
+		t.Fatalf("ToggleMask 失败应钉死原隐私态: state=%v err=%v", state, err)
+	}
+	assertMemoUnchanged(t, svc, original, events)
+}
+
+func assertMemoUnchanged(t *testing.T, svc *MemoService, want MemoItem, events int) {
+	t.Helper()
+	items := svc.List(MemoFilter{})
+	if len(items) != 1 {
+		t.Fatalf("内存条目数变化: %+v", items)
+	}
+	got := items[0]
+	if got.ID != want.ID || got.Title != want.Title || got.Content != want.Content ||
+		got.IsPinned != want.IsPinned || got.IsMasked != want.IsMasked || got.ColorTag != want.ColorTag ||
+		!got.UpdatedAt.Equal(want.UpdatedAt) {
+		t.Fatalf("磁盘失败后内存发生变化: got=%+v want=%+v", got, want)
+	}
+	if events != 0 {
+		t.Fatalf("磁盘失败不应广播事件, got %d", events)
 	}
 }
 
