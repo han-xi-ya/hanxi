@@ -49,6 +49,9 @@ func (e *Module) Services() []extapi.Service {
 
 func (e *Module) OnInit(ctx context.Context) error { return nil } // 探测/扫描均按需触发，无常驻资源
 
-func (e *Module) OnDestroy() error { return nil }
+func (e *Module) OnDestroy() error {
+	e.svc.cancelAllDirScans()
+	return nil
+}
 
 func (e *Module) IsInitialized() bool { return true }
