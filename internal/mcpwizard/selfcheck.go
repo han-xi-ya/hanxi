@@ -46,6 +46,11 @@ const (
 const (
 	selfCheckTTL     = 90 * time.Second
 	selfCheckTimeout = 15 * time.Second
+
+	// WaitDelay 限制子进程退出后仍被后代继承的 stderr 管道；reapTimeout 则只给
+	// deadline 强杀后的 cmd.Wait 协程一段固定收尸窗口，窗口耗尽后调用方直接返回。
+	probeWaitDelay   = time.Second
+	probeReapTimeout = 3 * time.Second
 )
 
 // SelfCheckInfo 安装前自检结果（Wails 绑定 DTO）。Message 恒非空：
@@ -108,54 +113,96 @@ func (s *McpWizardService) SelfCheck(refresh bool) (SelfCheckInfo, error) {
 	return out, nil
 }
 
+type probeOut struct {
+	tools []string
+	err   error
+}
+
+var probeCommand = func(ctx context.Context, command string) *exec.Cmd {
+	return exec.CommandContext(ctx, command, serverArgs...)
+}
+
 // spawnProbe 生产真接线：exec.CommandContext 拉起当前 exe + ["mcp"]，
-// stdin/stdout 双管道，ctx 截止即杀（Go 1.20+ 语义：ctx done 立刻 Kill，
-// 无需等 Wait）；无论成败败都收敛 stdin 句柄并 Wait 收尸，不留孤儿进程。
-// 子进程日志钉在 stderr（#63），截尾附进失败原因供排障。
+// stdin/stdout 双管道；probe 与进程退出共同参与协调。cmd.Wait 只由唯一 wait
+// goroutine 调用，任何分支都不再同步 Wait。ctx 截止后显式 Kill 并关闭双管道，
+// 只在固定窗口内等 wait goroutine 收尸；到期立即返回，避免病态子进程拖死向导。
+// WaitDelay 兜住子进程已退、后代却继承 stderr 管道的场景。子进程日志截尾附进
+// 失败原因供排障（#63：stdout 必须纯协议）。
 func (s *McpWizardService) spawnProbe(ctx context.Context) ([]string, error) {
 	if s.command == "" {
 		return nil, errors.New("无法解析 hanxi 可执行文件路径（os.Executable 失败）")
 	}
-	cmd := exec.CommandContext(ctx, s.command, serverArgs...)
+	cmd := probeCommand(ctx, s.command)
 	cmd.SysProcAttr = hideChildWindow()
+	cmd.WaitDelay = probeWaitDelay
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("建立 stdin 管道失败: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		_ = stdin.Close()
 		return nil, fmt.Errorf("建立 stdout 管道失败: %w", err)
 	}
 	var stderr syncBuffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
 		return nil, fmt.Errorf("拉起 hanxi mcp 子进程失败: %w", err)
 	}
-	type probeOut struct {
-		tools []string
-		err   error
-	}
-	ch := make(chan probeOut, 1) // 缓冲 1：超时放弃等待时协程写回不阻塞、不泄露
+
+	probeDone := make(chan probeOut, 1)
 	go func() {
 		tools, perr := probeStdio(stdin, stdout)
-		ch <- probeOut{tools: tools, err: perr}
+		probeDone <- probeOut{tools: tools, err: perr}
 	}()
+	waitDone := make(chan error, 1)
+	go func() { waitDone <- cmd.Wait() }()
 
 	var res probeOut
 	select {
-	case res = <-ch:
-	case <-ctx.Done():
-		// Kill 已发出，进程死亡即管道 EOF，probe 随即返回；定性以超时为准。
-		// 再给 3s 收尾窗口；「杀而不死」属病态环境，放弃等待（缓冲通道不泄露，
-		// 代价是一次句柄泄漏，换绝不自锁）。
+	case res = <-probeDone:
+		_ = stdin.Close()
 		select {
-		case <-ch:
-		case <-time.After(3 * time.Second):
+		case exitErr := <-waitDone:
+			return finishProbe(res, exitErr, &stderr)
+		case <-ctx.Done():
+			return finishTimedOutProbe(cmd, stdin, stdout, waitDone, &stderr, s.probeBudget())
 		}
-		res = probeOut{err: fmt.Errorf("握手超时（%s 内未完成 initialize→tools/list，子进程已终止）", s.probeBudget())}
+	case exitErr := <-waitDone:
+		_ = stdin.Close()
+		_ = stdout.Close()
+		select {
+		case res = <-probeDone:
+		default:
+			res.err = errors.New("握手完成前服务退出（stdout EOF）")
+		}
+		return finishProbe(res, exitErr, &stderr)
+	case <-ctx.Done():
+		return finishTimedOutProbe(cmd, stdin, stdout, waitDone, &stderr, s.probeBudget())
+	}
+}
+
+func finishTimedOutProbe(cmd *exec.Cmd, stdin io.Closer, stdout io.Closer, waitDone <-chan error, stderr *syncBuffer, budget time.Duration) ([]string, error) {
+	// CommandContext 也会发 Kill；这里显式补发并主动关管道，让仍阻塞在
+	// read/write 的 probe 立刻松开。收尸只等固定窗口，绝不再同步 Wait。
+	if cmd.Process != nil {
+		_ = cmd.Process.Kill()
 	}
 	_ = stdin.Close()
-	exitErr := cmd.Wait()
+	_ = stdout.Close()
+	timer := time.NewTimer(probeReapTimeout)
+	defer timer.Stop()
+	select {
+	case <-waitDone:
+	case <-timer.C:
+	}
+	res := probeOut{err: fmt.Errorf("握手超时（%s 内未完成 initialize→tools/list，子进程已终止）", budget)}
+	return finishProbe(res, nil, stderr)
+}
+
+func finishProbe(res probeOut, exitErr error, stderr *syncBuffer) ([]string, error) {
 	if res.err != nil {
 		if tail := stderr.Tail(200); tail != "" {
 			return nil, fmt.Errorf("%w；子进程 stderr: %s", res.err, tail)
