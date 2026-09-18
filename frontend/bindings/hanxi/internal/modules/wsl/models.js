@@ -194,9 +194,12 @@ import * as usbipd$0 from "./usbipd/models.js";
  * USBShareEntry 账本里的一条"期望共享"记录（设备 × 目标发行版）。
  * @typedef {Object} USBShareEntry
  * @property {string} id
- * @property {string} busId - 记录时的总线号（重放主匹配键）
+ * @property {string} busId - 记录时的总线号（仅作位置提示，命中仍须核验物理身份）
+ * @property {string} [instanceId]
  * @property {string} [vid]
  * @property {string} [pid]
+ * @property {string} [serial]
+ * @property {string} [guid]
  * @property {string} [description] - 设备名快照（账本表可读性）
  * @property {string} distro
  * @property {boolean} enabled

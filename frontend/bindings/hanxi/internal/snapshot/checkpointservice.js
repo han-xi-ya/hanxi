@@ -85,8 +85,8 @@ export function PreviewFile(id, path) {
 
 /**
  * RestoreFile 单文件回滚。memo/ 下的便签走热恢复（内存换装 + memo:changed 事件，
- * 重启无感）；config.json / state JSON 直写盘后 notify 提示重启生效——
- * 运行中内存态与盘面对齐的热回滚 v1 不做（违背 settings.Update 不变式）。
+ * 重启无感）；config.json / state JSON 发布 pending restore 包，由下次启动在内存态
+ * 构造前应用，避免运行时盘面与 Store 内存分叉。
  * @param {string} id
  * @param {string} path
  * @returns {$CancellablePromise<void>}

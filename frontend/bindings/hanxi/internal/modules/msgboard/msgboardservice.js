@@ -26,7 +26,8 @@ import * as $models from "./models.js";
 
 /**
  * Dismiss 撤牌并真销毁窗口（摘 WindowClosing hook 后 Close 走 Wails 内部销毁
- * 路径，#53），同时释放防休眠诉求。未挂牌时幂等返回。
+ * 路径，#53），同时释放防休眠诉求。若 Show 在途则等待并接管其终态；stop
+ * 接管期间普通 Dismiss 无需争抢。
  * @returns {$CancellablePromise<void>}
  */
 export function Dismiss() {
@@ -88,7 +89,8 @@ export function SetConfig(cfg) {
 
 /**
  * Show 在全屏透明窗挂出留言牌：定位目标显示器 → 真全屏 → 置前抢焦点（Esc
- * 直达）→ 登记防休眠。已在挂出或操作在途时幂等返回。
+ * 直达）→ 登记防休眠。操作严格串行；stop 一旦开始，新的或在途 Show 都不能
+ * 在停用完成后提交窗口状态。
  * @returns {$CancellablePromise<void>}
  */
 export function Show() {

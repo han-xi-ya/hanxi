@@ -327,8 +327,8 @@ export function SetServiceExePath(path) {
 }
 
 /**
- * SetSnipHotkey 改键：规范化校验 → 落系统重绑 → 失败回滚持久化。
- * 键位非法（纯键位不开/未知修饰键）在第一步即中文拒绝，不触系统。
+ * SetSnipHotkey 改键采用先系统换绑、后持久化的新值事务。保存失败时先把系统
+ * 换回旧键；store setter 自身保证保存失败不污染内存态，因此成功/失败后三态一致。
  * @param {string} raw
  * @returns {$CancellablePromise<void>}
  */
@@ -345,8 +345,8 @@ export function SetSnipHotkeyBinding(b) {
 }
 
 /**
- * SetSnipHotkeyEnabled 开关热键：先落系统（开=注册/关=注销），成功才持久化——
- * 注册失败（键位被占用）直接报错返回，配置保持原样，UI 不留"显示开了实际没绑"。
+ * SetSnipHotkeyEnabled 以“系统态 + 持久化态”补偿事务切换开关：先落系统，保存
+ * 失败则把系统恢复到旧开关；补偿也失败时 errors.Join 同时保留两段诊断。
  * @param {boolean} v
  * @returns {$CancellablePromise<void>}
  */

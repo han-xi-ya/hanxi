@@ -16,7 +16,10 @@
  * @typedef {Object} DropResult
  * @property {string} kind - import / image
  * @property {boolean} ok
- * @property {string} exePath - 导入成功后的托管副本路径
+ * @property {string} exePath - 导入成功后的组件入口路径
+ * @property {string} engine - import 成功时的目标引擎（wechat / paddle）
+ * @property {boolean} activated - import 后目标引擎是否为当前引擎
+ * @property {boolean} shouldStart - 前端是否应按本次回执启动服务；不得再按旧状态猜测
  * @property {ImageRef | null} image - 图片通道成功时的选图结果
  * @property {string} message - 中文人话（成功说明或失败原因）
  */

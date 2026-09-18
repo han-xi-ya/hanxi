@@ -18,7 +18,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * CancelDirScan 请求取消指定槽位进行中的扫描（半成品不缓存）。
+ * CancelDirScan 请求取消指定槽位排队或运行中的扫描（半成品不缓存）。
  * @param {string} id
  * @returns {$CancellablePromise<void>}
  */
@@ -63,7 +63,8 @@ export function Snapshot() {
 
 /**
  * StartDirScan 异步扫描指定目录槽位大小（终态/进度经 softver:dir-scan 事件推送）。
- * id 必须来自最近一次 Snapshot 的槽位列表；同槽位扫描中拒绝重入。
+ * id 必须来自最近一次 Snapshot 的槽位列表；不同 ID 若解析到同一最终路径也拒绝重入。
+ * 任务统一进入 FIFO 队列，最多 maxConcurrentDirScans 个 Walk 同时运行。
  * @param {string} id
  * @returns {$CancellablePromise<void>}
  */

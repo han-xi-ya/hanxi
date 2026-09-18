@@ -59,7 +59,7 @@
 
 /**
  * ScanProgress softver:dir-scan 事件载荷（目录大小扫描进度流）。
- * State：running | done | canceled | error；done/canceled/error 为终态。
+ * State：queued | running | done | canceled | error；done/canceled/error 为终态。
  * @typedef {Object} ScanProgress
  * @property {string} id
  * @property {string} state
