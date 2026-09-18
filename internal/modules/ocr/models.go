@@ -173,6 +173,13 @@ func isContractName(name string) bool { return contractNames[name] }
 //
 // versionsRoot 为空（托管未接线/旧测试注入）时托管两闸自然跳过，行为与改造前一致。
 func resolveServiceExe(exeDir, dataDir, versionsRoot, engineID, stored string) (path string, fromStore bool, err error) {
+	return resolveServiceExeWithHostedResolver(exeDir, dataDir, versionsRoot, engineID, stored, hostedResolveLatest)
+}
+
+func resolveServiceExeWithHostedResolver(
+	exeDir, dataDir, versionsRoot, engineID, stored string,
+	resolveLatest func(string, string) (string, string, bool),
+) (path string, fromStore bool, err error) {
 	if !isKnownEngine(engineID) {
 		return "", false, fmt.Errorf("未知 OCR 引擎：%s（可选 wechat / paddle）", engineID)
 	}
@@ -182,7 +189,7 @@ func resolveServiceExe(exeDir, dataDir, versionsRoot, engineID, stored string) (
 			if isRegularNonEmpty(p) {
 				return p, true, nil
 			}
-			if exe, _, ok := hostedResolveLatest(versionsRoot, engineID); ok {
+			if exe, _, ok := resolveLatest(versionsRoot, engineID); ok {
 				return exe, false, nil
 			}
 			// 引擎整体卸载：落到下方托管树（必空）与旧锚点链
@@ -196,7 +203,7 @@ func resolveServiceExe(exeDir, dataDir, versionsRoot, engineID, stored string) (
 			return "", true, fmt.Errorf("设置的服务路径已失效：%s，请在设置中重新指定", p)
 		}
 	}
-	if exe, _, ok := hostedResolveLatest(versionsRoot, engineID); ok {
+	if exe, _, ok := resolveLatest(versionsRoot, engineID); ok {
 		return exe, false, nil
 	}
 	switch engineID {
