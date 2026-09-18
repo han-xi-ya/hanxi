@@ -560,7 +560,7 @@ func TestHostedResolveWaitsForTreeWriteLock(t *testing.T) {
 	}
 }
 
-func TestHostedInstallFailureLeavesTargetIntact(t *testing.T) {
+func TestHostedImmutableVersionRefusalLeavesTargetIntact(t *testing.T) {
 	hm := newTestHostedManager(t)
 	target := filepath.Join(hm.versionsRoot, "paddle-1.0.0")
 	if err := os.MkdirAll(target, 0755); err != nil {
@@ -583,12 +583,13 @@ func TestHostedInstallFailureLeavesTargetIntact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 解压中途越限 → 报错，旧版本目录原封不动，无 tmp 残留
+	// 同版本同摘要按不可变版本契约直接幂等成功：不得再解压、不得改旧目录，
+	// 即使当前解压预算被故意压到 4 字节也不应触碰安装链。
 	origFile := maxHostedFileBytes
 	maxHostedFileBytes = 4
 	defer func() { maxHostedFileBytes = origFile }()
-	if _, err := hm.installZip(zipPath); err == nil || !strings.Contains(err.Error(), "超") {
-		t.Fatalf("应解压失败: %v", err)
+	if _, err := hm.installZip(zipPath); err != nil {
+		t.Fatalf("同摘要重装应幂等成功且不触碰旧目录: %v", err)
 	}
 	if !isRegularFile(marker) {
 		t.Fatal("失败安装不得动旧版本")
@@ -602,7 +603,7 @@ func TestHostedInstallFailureLeavesTargetIntact(t *testing.T) {
 			t.Fatalf("tmp 残留未清理: %s", e.Name())
 		}
 	}
-	// 校验失败的 zip 原位保留（未被移存）
+	// 幂等安装的源包按现有行为仍留原位（没有重复归档必要）。
 	if !isRegularFile(zipPath) {
 		t.Fatal("拒收包应留在原位供用户排查")
 	}
