@@ -144,8 +144,8 @@ func TestKeepAwakeScopeReplace(t *testing.T) {
 	assertCalls(t, f.snapshotCalls(), platform.KeepAwakeSystem, platform.KeepAwakeDisplay, 0)
 }
 
-// 失败不吞状态：syscall 失败时 applied 不前进，后续变化自动重试；
-// 归零失败时 owner 不退场（通道句柄保留），下一次投递打到同一 owner 重试。
+// 失败不吞状态：syscall 失败时 applied 不前进，失败 owner 立即退场；后续变化
+// 启动全新 owner 重试，避免复用可能留下半成功系统状态的 OS 线程。
 func TestKeepAwakeFailureRetry(t *testing.T) {
 	var mu sync.Mutex
 	attempts := 0
@@ -169,7 +169,17 @@ func TestKeepAwakeFailureRetry(t *testing.T) {
 		t.Fatalf("Acquire 失败应回滚登记，Holders=%v", got)
 	}
 
-	// 失败的诉求不会潜伏进后续并集：下一次同步只反映在场持有人。
+	// 首次失败必须已关闭 owner 并清空句柄；否则第二次 Acquire 仍会复用
+	// 一条落点结果不可信的 locked OS 线程。
+	k.mu.Lock()
+	ownerCleared := k.owner == nil && k.ack == nil && k.ownerDone == nil
+	k.mu.Unlock()
+	if !ownerCleared {
+		t.Fatal("首次 Apply 失败后 owner 应已 UnlockOSThread 并清空引用")
+	}
+
+	// 失败的诉求不会潜伏进后续并集：下一次同步只反映在场持有人，
+	// 并由新 owner 执行。
 	if err := k.Acquire("other", platform.KeepAwakeDisplay); err != nil {
 		t.Fatalf("第二次 Acquire 应成功: %v", err)
 	}
@@ -178,7 +188,7 @@ func TestKeepAwakeFailureRetry(t *testing.T) {
 		t.Fatalf("Release other: %v", err)
 	}
 
-	// 归零一次失败：owner 保留（失败不清退），下一次对账重试清 0 成功。
+	// 归零一次失败：失败 owner 同样退场；下一次对账在新 owner 上重试清 0。
 	f2 := &fakeApplier{failFn: func(scope platform.KeepAwakeScope) error {
 		if scope == 0 {
 			return fmt.Errorf("模拟清零失败")
@@ -191,6 +201,12 @@ func TestKeepAwakeFailureRetry(t *testing.T) {
 	}
 	if err := k2.Release("a"); err == nil {
 		t.Fatal("归零失败应上抛")
+	}
+	k2.mu.Lock()
+	ownerCleared = k2.owner == nil && k2.ack == nil && k2.ownerDone == nil
+	k2.mu.Unlock()
+	if !ownerCleared {
+		t.Fatal("归零失败后 owner 应已退场并清空引用")
 	}
 	f2.mu.Lock()
 	f2.failFn = nil

@@ -2,7 +2,12 @@ package msgboard
 
 import (
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"hanxi/internal/platform"
+	"hanxi/internal/platform/apppackage"
 )
 
 // 无头环境可测的服务层路径：热键改判失败回滚、挂牌入口的实例守卫、
@@ -10,12 +15,15 @@ import (
 
 func newTestService(t *testing.T) *MsgBoardService {
 	t.Helper()
-	return &MsgBoardService{plat: nil, store: newMsgBoardStore(t.TempDir())}
+	return newMsgBoardService(nil, newMsgBoardStore(t.TempDir()))
 }
 
 func TestServiceToggleWithoutApp(t *testing.T) {
 	// 无头：application.Get()==nil，Show 必须报"需应用运行"而非 panic。
 	s := newTestService(t)
+	if err := s.start(); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Show(); err == nil || !strings.Contains(err.Error(), "应用运行") {
 		t.Fatalf("无应用实例 Show 应中文报错，实得 %v", err)
 	}
@@ -94,5 +102,117 @@ func TestServiceStopIdempotent(t *testing.T) {
 	}
 	if err := s.stop(); err != nil {
 		t.Fatalf("重复 stop: %v", err)
+	}
+}
+
+type blockingKeepAwake struct {
+	mu             sync.Mutex
+	acquireStarted chan struct{}
+	acquireRelease chan struct{}
+	holders        map[string]platform.KeepAwakeScope
+}
+
+func newBlockingKeepAwake() *blockingKeepAwake {
+	return &blockingKeepAwake{
+		acquireStarted: make(chan struct{}),
+		acquireRelease: make(chan struct{}),
+		holders:        make(map[string]platform.KeepAwakeScope),
+	}
+}
+
+func (k *blockingKeepAwake) Acquire(holder string, scope platform.KeepAwakeScope) error {
+	close(k.acquireStarted)
+	<-k.acquireRelease
+	k.mu.Lock()
+	k.holders[holder] = scope
+	k.mu.Unlock()
+	return nil
+}
+
+func (k *blockingKeepAwake) Release(holder string) error {
+	k.mu.Lock()
+	delete(k.holders, holder)
+	k.mu.Unlock()
+	return nil
+}
+
+func (k *blockingKeepAwake) Holders() []string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	out := make([]string, 0, len(k.holders))
+	for holder := range k.holders {
+		out = append(out, holder)
+	}
+	return out
+}
+
+type msgboardTestPlatform struct{ keepAwake platform.KeepAwakeAPI }
+
+func (p msgboardTestPlatform) Network() platform.NetworkAPI                       { return nil }
+func (p msgboardTestPlatform) Port() platform.PortAPI                             { return nil }
+func (p msgboardTestPlatform) Process() platform.ProcessAPI                       { return nil }
+func (p msgboardTestPlatform) Job() platform.JobAPI                               { return nil }
+func (p msgboardTestPlatform) AppPackage() apppackage.API                         { return nil }
+func (p msgboardTestPlatform) KeepAwake() platform.KeepAwakeAPI                   { return p.keepAwake }
+func (p msgboardTestPlatform) DesktopDir() (string, error)                        { return "", nil }
+func (p msgboardTestPlatform) CreateDesktopShortcut(string, string, string) error { return nil }
+func (p msgboardTestPlatform) OpenURL(string) error                               { return nil }
+
+// stop 必须等待在途挂牌收口，并在返回前清除最终状态；这里用阻塞 KeepAwake
+// 精确模拟 Show 已建窗提交、但 Acquire 尚未返回的竞态窗口。
+func TestServiceStopWaitsForInflightShowCleanup(t *testing.T) {
+	awake := newBlockingKeepAwake()
+	s := newMsgBoardService(msgboardTestPlatform{keepAwake: awake}, newMsgBoardStore(t.TempDir()))
+
+	s.mu.Lock()
+	s.started = true
+	s.generation = 1
+	s.opInFlight = true
+	s.shown = true
+	s.mu.Unlock()
+
+	showDone := make(chan struct{})
+	go func() {
+		s.acquireKeepAwake()
+		s.endOperation()
+		close(showDone)
+	}()
+	<-awake.acquireStarted
+
+	stopDone := make(chan error, 1)
+	go func() { stopDone <- s.stop() }()
+	select {
+	case err := <-stopDone:
+		t.Fatalf("stop 不应越过在途 Show 返回：%v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	close(awake.acquireRelease)
+	select {
+	case <-showDone:
+	case <-time.After(time.Second):
+		t.Fatal("在途 Show 未收口")
+	}
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stop 未在 Show 收口后完成")
+	}
+
+	if st := s.GetStatus(); st.Shown || st.KeepAwake || st.HotkeyActive {
+		t.Fatalf("stop 返回后状态未清空：%+v", st)
+	}
+	if holders := awake.Holders(); len(holders) != 0 {
+		t.Fatalf("stop 返回后仍有 KeepAwake 持有人：%v", holders)
+	}
+	s.mu.Lock()
+	board := s.board
+	started, stopping, inFlight := s.started, s.stopping, s.opInFlight
+	s.mu.Unlock()
+	if board != nil || started || stopping || inFlight {
+		t.Fatalf("stop 最终状态异常：board=%v started=%v stopping=%v inFlight=%v", board, started, stopping, inFlight)
 	}
 }

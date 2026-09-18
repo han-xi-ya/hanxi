@@ -49,12 +49,13 @@ func setThreadExecutionState(scope platform.KeepAwakeScope) error {
 // 归零清场后 owner 退出（locked 线程随协程结束被 runtime 回收，系统顺带
 // 自动擦除该线程全部残留诉求——双保险），下次 Acquire 再懒起新 owner。
 type keepAwakeAPI struct {
-	mu      sync.Mutex
-	holders map[string]platform.KeepAwakeScope  // 活跃持有人 → 诉求 scope
-	applied platform.KeepAwakeScope             // owner 线程当前生效的并集
-	owner   chan platform.KeepAwakeScope        // 非 nil 表示 owner 在跑
-	ack     chan error                          // 与 owner 一问一答（全程持 mu，恒无并发请求）
-	apply   func(platform.KeepAwakeScope) error // 落点缝：单测注入假实现
+	mu        sync.Mutex
+	holders   map[string]platform.KeepAwakeScope  // 活跃持有人 → 诉求 scope
+	applied   platform.KeepAwakeScope             // owner 线程当前生效的并集
+	owner     chan platform.KeepAwakeScope        // 非 nil 表示 owner 在跑
+	ack       chan error                          // 与 owner 一问一答（全程持 mu，恒无并发请求）
+	ownerDone chan struct{}                       // owner 已 UnlockOSThread 并退出的完成信号
+	apply     func(platform.KeepAwakeScope) error // 落点缝：单测注入假实现
 }
 
 // NewKeepAwake 返回进程级 Windows 防休眠聚合器（真实 SetThreadExecutionState 落点）。
@@ -129,34 +130,53 @@ func (k *keepAwakeAPI) syncLocked() error {
 	if k.owner == nil {
 		req := make(chan platform.KeepAwakeScope)
 		ack := make(chan error)
-		k.owner, k.ack = req, ack
-		go keepAwakeOwner(k.apply, req, ack)
+		done := make(chan struct{})
+		k.owner, k.ack, k.ownerDone = req, ack, done
+		go keepAwakeOwner(k.apply, req, ack, done)
 	}
 	k.owner <- desired
 	err := <-k.ack
 	if err != nil {
 		slog.Warn("keepawake: 防休眠状态更新失败", "scope", desired, "err", err)
-		return err // applied 保持旧值，下次状态变化自动重试
+		// owner 线程上一次失败调用的系统后果不可证明；立即关停 owner，让
+		// UnlockOSThread/线程退场替本周期兜底清理。尤其首次置位失败时，若仍
+		// 留着 owner，下一次 Acquire 会复用一条可能残留半成功状态的线程。
+		k.shutdownOwnerLocked()
+		return err // applied 保持旧值，下次状态变化会启动全新 owner 重试
 	}
 	k.applied = desired
 	if desired == 0 {
-		// owner 收到归零诉求、回完 ack 即退场；此处同步弃用其通道句柄，
-		// 下次 Acquire 懒起新 owner（旧协程不会再接收到任何投递）。
-		k.owner, k.ack = nil, nil
+		// owner 收到归零诉求后自行退场；等它完成 UnlockOSThread 再清引用，
+		// 保证下一周期不会与旧 owner 的线程清场交叠。
+		<-k.ownerDone
+		k.owner, k.ack, k.ownerDone = nil, nil, nil
 	}
 	return nil
 }
 
-// keepAwakeOwner 独占 OS 线程执行全部 ES 调用；收到归零诉求并清偿后即退场。
-func keepAwakeOwner(apply func(platform.KeepAwakeScope) error, req <-chan platform.KeepAwakeScope, ack chan<- error) {
+// shutdownOwnerLocked 关闭当前 owner 并等待其 UnlockOSThread 退场（调用方持 k.mu）。
+// owner 从不获取 k.mu，因此等待不形成锁环。
+func (k *keepAwakeAPI) shutdownOwnerLocked() {
+	if k.owner == nil {
+		return
+	}
+	close(k.owner)
+	<-k.ownerDone
+	k.owner, k.ack, k.ownerDone = nil, nil, nil
+}
+
+// keepAwakeOwner 独占 OS 线程执行全部 ES 调用；收到归零诉求并清偿，或请求通道
+// 被关闭时退场。defer 确保所有路径都 UnlockOSThread 并通知等待者。
+func keepAwakeOwner(apply func(platform.KeepAwakeScope) error, req <-chan platform.KeepAwakeScope, ack chan<- error, done chan<- struct{}) {
 	runtime.LockOSThread()
+	defer func() {
+		runtime.UnlockOSThread()
+		close(done)
+	}()
 	for scope := range req {
 		err := apply(scope)
 		ack <- err
 		if err == nil && scope == 0 {
-			// 归零退场：UnlockOSThread 后协程结束，locked 线程被 runtime 回收，
-			// 该线程上的 ES 诉求随之被系统自动清除。
-			runtime.UnlockOSThread()
 			return
 		}
 	}
