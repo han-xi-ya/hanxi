@@ -570,9 +570,18 @@ func TestHostedInstallFailureLeavesTargetIntact(t *testing.T) {
 	if err := os.WriteFile(marker, []byte("old"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	// 新不可变版本契约要求既有目录带可信 meta.sha256 才允许同 hash 幂等判断；
+	// 本用例要走到「解压中途失败仍保旧目录」分支，先给旧目录写入与安装包一致的摘要。
 
 	zipPath := makeValidHostedZip(t, t.TempDir(), "paddle", "1.0.0")
 	writeHostedSidecar(t, zipPath)
+	zipSum, err := verifyHostedZipSHA(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHostedJSON(filepath.Join(target, "meta.json"), map[string]any{"sha256": zipSum}); err != nil {
+		t.Fatal(err)
+	}
 
 	// 解压中途越限 → 报错，旧版本目录原封不动，无 tmp 残留
 	origFile := maxHostedFileBytes
