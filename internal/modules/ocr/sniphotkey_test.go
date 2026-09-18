@@ -125,11 +125,15 @@ func TestSnipHotkeyStoreCorruptValueFallback(t *testing.T) {
 type stubBinding struct {
 	applied    []string // "accel|enabled" 序列
 	failWith   error
+	failAt     map[int]error
 	registered bool
 }
 
 func (b *stubBinding) Apply(accel string, enabled bool) error {
 	b.applied = append(b.applied, accel+"|"+boolStr(enabled))
+	if err := b.failAt[len(b.applied)]; err != nil {
+		return err
+	}
 	if b.failWith != nil {
 		return b.failWith
 	}
@@ -166,6 +170,98 @@ func TestSetSnipHotkeyRollbackOnBindFailure(t *testing.T) {
 	}
 	if len(b.applied) != 2 || b.applied[1] != "Ctrl+Alt+Q|1" {
 		t.Fatalf("Apply 调用序列失真: %v", b.applied)
+	}
+}
+
+func breakStoreSave(t *testing.T, s *ocrStore) {
+	t.Helper()
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocker, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s.filePath = filepath.Join(blocker, "ocr.json")
+}
+
+func TestSnipHotkeyStoreSetterRollbackOnSaveFailure(t *testing.T) {
+	s := newOcrStore(t.TempDir())
+	breakStoreSave(t, s)
+
+	if _, err := s.SetSnipHotkey("Ctrl+Alt+R"); err == nil {
+		t.Fatal("写盘失败应返回错误")
+	}
+	if enabled, accel := s.GetSnipHotkey(); !enabled || accel != defaultSnipHotkey {
+		t.Fatalf("键位保存失败不得污染内存态: %v %q", enabled, accel)
+	}
+	if err := s.SetSnipHotkeyEnabled(false); err == nil {
+		t.Fatal("开关写盘失败应返回错误")
+	}
+	if enabled, _ := s.GetSnipHotkey(); !enabled {
+		t.Fatal("开关保存失败不得污染内存态")
+	}
+}
+
+func TestSetSnipHotkeySaveFailureRollsBackBinding(t *testing.T) {
+	s := newTestService(t, "")
+	b := &stubBinding{registered: true}
+	s.SetSnipHotkeyBinding(b)
+	breakStoreSave(t, s.store)
+
+	err := s.SetSnipHotkey("Ctrl+Alt+R")
+	if err == nil {
+		t.Fatal("保存失败应返回错误")
+	}
+	if got := strings.Join(b.applied, ","); got != "Ctrl+Alt+R|1,Ctrl+Alt+T|1" {
+		t.Fatalf("保存失败应把系统换回旧键: %v", b.applied)
+	}
+	if enabled, accel := s.store.GetSnipHotkey(); !enabled || accel != defaultSnipHotkey {
+		t.Fatalf("保存失败后三态配置应保持旧值: %v %q", enabled, accel)
+	}
+}
+
+func TestSetSnipHotkeySaveAndBindingRollbackFailureJoined(t *testing.T) {
+	s := newTestService(t, "")
+	rollbackErr := errors.New("rollback binding failed")
+	b := &stubBinding{registered: true, failAt: map[int]error{2: rollbackErr}}
+	s.SetSnipHotkeyBinding(b)
+	breakStoreSave(t, s.store)
+
+	err := s.SetSnipHotkey("Ctrl+Alt+R")
+	if err == nil || !errors.Is(err, rollbackErr) || !strings.Contains(err.Error(), "恢复全局热键旧键") {
+		t.Fatalf("保存与补偿双失败应 errors.Join: %v", err)
+	}
+	if _, accel := s.store.GetSnipHotkey(); accel != defaultSnipHotkey {
+		t.Fatalf("即使系统补偿失败，配置仍须保持旧键: %q", accel)
+	}
+}
+
+func TestSetSnipHotkeyEnabledSaveFailureCompensates(t *testing.T) {
+	s := newTestService(t, "")
+	b := &stubBinding{registered: true}
+	s.SetSnipHotkeyBinding(b)
+	breakStoreSave(t, s.store)
+
+	err := s.SetSnipHotkeyEnabled(false)
+	if err == nil {
+		t.Fatal("保存失败应返回错误")
+	}
+	if got := strings.Join(b.applied, ","); got != defaultSnipHotkey+"|0,"+defaultSnipHotkey+"|1" {
+		t.Fatalf("开关保存失败应恢复系统旧态: %v", b.applied)
+	}
+	if enabled, _ := s.store.GetSnipHotkey(); !enabled {
+		t.Fatal("开关保存失败后配置应保持开启")
+	}
+}
+
+func TestSetSnipHotkeyEnabledSaveAndRollbackFailureJoined(t *testing.T) {
+	s := newTestService(t, "")
+	rollbackErr := errors.New("reenable failed")
+	b := &stubBinding{registered: true, failAt: map[int]error{2: rollbackErr}}
+	s.SetSnipHotkeyBinding(b)
+	breakStoreSave(t, s.store)
+
+	err := s.SetSnipHotkeyEnabled(false)
+	if err == nil || !errors.Is(err, rollbackErr) || !strings.Contains(err.Error(), "恢复全局热键旧开关") {
+		t.Fatalf("开关保存与补偿双失败应 errors.Join: %v", err)
 	}
 }
 

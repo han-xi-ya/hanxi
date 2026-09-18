@@ -1,5 +1,10 @@
 package ocr
 
+import (
+	"errors"
+	"fmt"
+)
+
 // ---------- 剪贴板识图全局热键（F2-③）：服务接缝与前端 API ----------
 //
 // 热键的系统绑定归装配根（internal/hotkey 通用注册器包装 Wails GlobalShortcut），
@@ -44,31 +49,57 @@ func (s *OcrService) GetSnipHotkey() SnipHotkeyState {
 	return SnipHotkeyState{Enabled: enabled, Accel: accel, Registered: enabled && b != nil && b.Registered()}
 }
 
-// SetSnipHotkeyEnabled 开关热键：先落系统（开=注册/关=注销），成功才持久化——
-// 注册失败（键位被占用）直接报错返回，配置保持原样，UI 不留"显示开了实际没绑"。
+// SetSnipHotkeyEnabled 以“系统态 + 持久化态”补偿事务切换开关：先落系统，保存
+// 失败则把系统恢复到旧开关；补偿也失败时 errors.Join 同时保留两段诊断。
 func (s *OcrService) SetSnipHotkeyEnabled(v bool) error {
-	_, accel := s.store.GetSnipHotkey()
-	if b := s.snipHotkeyBinding(); b != nil {
+	s.hotkeyMu.Lock()
+	defer s.hotkeyMu.Unlock()
+
+	prevEnabled, accel := s.store.GetSnipHotkey()
+	b := s.hotkeyBinding
+	if b != nil {
 		if err := b.Apply(accel, v); err != nil {
 			return err
 		}
 	}
-	return s.store.SetSnipHotkeyEnabled(v)
+	if err := s.store.SetSnipHotkeyEnabled(v); err != nil {
+		if b == nil {
+			return err
+		}
+		if rollbackErr := b.Apply(accel, prevEnabled); rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("恢复全局热键旧开关失败：%w", rollbackErr))
+		}
+		return err
+	}
+	return nil
 }
 
-// SetSnipHotkey 改键：规范化校验 → 落系统重绑 → 失败回滚持久化。
-// 键位非法（纯键位不开/未知修饰键）在第一步即中文拒绝，不触系统。
+// SetSnipHotkey 改键采用先系统换绑、后持久化的新值事务。保存失败时先把系统
+// 换回旧键；store setter 自身保证保存失败不污染内存态，因此成功/失败后三态一致。
 func (s *OcrService) SetSnipHotkey(raw string) error {
-	enabled, prev := s.store.GetSnipHotkey()
-	norm, err := s.store.SetSnipHotkey(raw)
+	norm, err := NormalizeSnipHotkey(raw)
 	if err != nil {
 		return err
 	}
-	if b := s.snipHotkeyBinding(); b != nil {
+
+	s.hotkeyMu.Lock()
+	defer s.hotkeyMu.Unlock()
+
+	enabled, prev := s.store.GetSnipHotkey()
+	b := s.hotkeyBinding
+	if b != nil {
 		if err := b.Apply(norm, enabled); err != nil {
-			_, _ = s.store.SetSnipHotkey(prev) // 回滚配置，保持"配置=系统态"不变式
 			return err
 		}
+	}
+	if _, err := s.store.SetSnipHotkey(norm); err != nil {
+		if b == nil {
+			return err
+		}
+		if rollbackErr := b.Apply(prev, enabled); rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("恢复全局热键旧键 %s 失败：%w", prev, rollbackErr))
+		}
+		return err
 	}
 	return nil
 }
