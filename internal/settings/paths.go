@@ -68,7 +68,9 @@ func InitPaths() *Paths {
 			// 搬迁必须在 ensureDirs 派生空目录之前：闸门以"新家尚无数据根
 			// 特征"为条件，先建 versions/ 会让真·新家被误判为已安身。
 			migrateLegacyHome(globalPaths.baseDir)
-			_ = ensureDirs(globalPaths)
+			if err := ensureDirs(globalPaths); err != nil {
+				globalPaths.initErr = fmt.Errorf("初始化数据目录失败: %w。\n%s", err, guideSuffix)
+			}
 		}
 	})
 	return globalPaths
@@ -142,9 +144,9 @@ func ensureDir(dir string) error {
 }
 
 // readBindFile 读取 exe 同级绑定声明。返回 (target, declared, err)：
-// 文件不存在或内容全空白 → ("", false, nil) 无声明，走同级默认；
-// 声明有效绝对路径 → (path, true, nil)；
-// 存在但读不出合法声明 → (_, true, err) 由解析链 fail loud。
+// 文件不存在 → ("", false, nil) 无声明，走同级默认；
+// 文件存在但内容为空白或损坏 → (_, true, err)，必须 fail loud；
+// 声明有效绝对路径 → (path, true, nil)。
 func readBindFile(exeDir string) (string, bool, error) {
 	path := filepath.Join(exeDir, bindFileName)
 	raw, err := os.ReadFile(path)
@@ -158,7 +160,10 @@ func readBindFile(exeDir string) (string, bool, error) {
 	if perr != nil {
 		return "", true, fmt.Errorf("%v。\n%s", perr, guideSuffix)
 	}
-	return target, declared, nil
+	if !declared {
+		return "", true, fmt.Errorf("绑定声明 %s 已存在但内容为空白，视为损坏；如需解绑请显式删除该文件。\n%s", path, guideSuffix)
+	}
+	return target, true, nil
 }
 
 // parseBindContent 从声明内容提取绑定目标（纯函数）：取首个非空行并去
@@ -178,9 +183,9 @@ func parseBindContent(raw []byte) (string, bool, error) {
 	return "", false, nil
 }
 
-// writeBindFile 落绑定指针（LF 单行，记事本可直接编辑）。
+// writeBindFile 以 tmp+fsync+原子替换落绑定指针；任一步失败旧绑定保持不变。
 func writeBindFile(exeDir, target string) error {
-	return os.WriteFile(filepath.Join(exeDir, bindFileName), []byte(target+"\n"), 0644)
+	return writeAtomicFile(filepath.Join(exeDir, bindFileName), []byte(target+"\n"))
 }
 
 // BindDataDir 显式绑定数据根：校验绝对路径并预创建目标，随后写 exe 同级
@@ -256,7 +261,7 @@ func buildPaths(mode Mode, base string) *Paths {
 func ensureDirs(p *Paths) error {
 	dirs := []string{p.baseDir, p.configDir, p.stateDir, p.logsDir, p.versionsDir, p.runtimeDir}
 	for _, d := range dirs {
-		if err := os.MkdirAll(d, 0755); err != nil {
+		if err := ensureDir(d); err != nil {
 			return err
 		}
 	}

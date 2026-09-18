@@ -20,12 +20,13 @@ import (
 // 存储后端二态：默认文件库（memo/<id>.md，写盘点单条化）；仅当旧库 memo.json
 // 仍在位且迁移未成功（损坏/暂存失败）时回落旧整库 Store，保证"迁移不成也不丢数据"。
 type MemoService struct {
-	files    *FileStore
-	store    *Store // 旧库回落态才非 nil；文件库模式恒 nil
-	useFiles bool
-	mu       sync.RWMutex
-	items    []MemoItem
-	wailsApp *application.App
+	files     *FileStore
+	store     *Store // 旧库回落态才非 nil；文件库模式恒 nil
+	useFiles  bool
+	mu        sync.RWMutex
+	items     []MemoItem
+	wailsApp  *application.App
+	onChanged func() // 测试/内部观察钩子；仅在提交成功后调用
 }
 
 // NewMemoService 实例化便签服务：启动清扫/迁移旧库，然后把权威数据全量装载进内存
@@ -258,76 +259,77 @@ func (s *MemoService) Update(id, title, content string, tags []string, colorTag 
 		return MemoItem{}, fmt.Errorf("便签不存在: %s", id)
 	}
 
-	s.items[idx].Title = strings.TrimSpace(title)
-	s.items[idx].Content = content
-	s.items[idx].Tags = cleanTags(tags)
+	candidate := s.items[idx]
+	candidate.Title = strings.TrimSpace(title)
+	candidate.Content = content
+	candidate.Tags = cleanTags(tags)
 	if colorTag != "" {
-		s.items[idx].ColorTag = colorTag
+		candidate.ColorTag = colorTag
 	}
-	s.items[idx].UpdatedAt = time.Now()
+	candidate.UpdatedAt = time.Now()
 
-	updated := s.items[idx]
-	if err := s.persist(updated); err != nil {
+	if err := s.persistCandidate(candidate); err != nil {
 		return MemoItem{}, err
 	}
+	s.items[idx] = candidate
 
 	s.emitChanged()
-	return updated, nil
+	return candidate, nil
 }
 
-// persist 将单条最新内容落盘：文件库模式只写该条文件（整体重写点从 5 处降为
-// 单条，git diff 从此精确到"改了哪一条"）；回落态整库原子重写。
-func (s *MemoService) persist(item MemoItem) error {
+// persistCandidate 只把候选态落盘，不触碰现有内存；调用者须在成功后换装。
+func (s *MemoService) persistCandidate(item MemoItem) error {
 	if s.useFiles {
 		return s.files.SaveItem(item)
 	}
-	for i, it := range s.items {
+	next := append([]MemoItem(nil), s.items...)
+	for i, it := range next {
 		if it.ID == item.ID {
-			s.items[i] = item
+			next[i] = item
+			break
 		}
 	}
-	return s.store.Save(s.items)
+	return s.store.Save(next)
 }
 
-// TogglePin 切换置顶状态。
-// 与 Create/Update/Delete 的差异：那几个写盘失败直接回错误让前端回滚重试，
-// 本方法回传的是「切换后的状态」这一内存事实，UI 已按新状态渲染；置顶仅是视图偏好，
-// 丢一次持久化的代价远小于把成功态标成失败让用户以为按钮失灵，故签名保持 (bool, error)
-// 中 error 只用于"便签不存在"，落盘失败改为 slog.Error 记录（不静默吞掉，重启后回退可见）。
+// TogglePin 切换置顶状态。候选值先落盘，失败则内存与事件均不变。
 func (s *MemoService) TogglePin(id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for i, it := range s.items {
 		if it.ID == id {
-			s.items[i].IsPinned = !s.items[i].IsPinned
-			s.items[i].UpdatedAt = time.Now()
-			cur := s.items[i].IsPinned
-			if err := s.persist(s.items[i]); err != nil {
-				slog.Error("便签置顶状态落盘失败（内存态已切换，重启后会回退）", "err", err, "id", id, "pinned", cur)
+			candidate := it
+			candidate.IsPinned = !candidate.IsPinned
+			candidate.UpdatedAt = time.Now()
+			if err := s.persistCandidate(candidate); err != nil {
+				return it.IsPinned, err
 			}
+			s.items[i] = candidate
 			s.emitChanged()
-			return cur, nil
+			return candidate.IsPinned, nil
 		}
 	}
 	return false, fmt.Errorf("便签不存在: %s", id)
 }
 
-// ToggleMask 切换敏感信息遮罩。
-// 落盘失败的处理策略与 TogglePin 一致：状态值本身已成功切换，持久化异常记 error 日志而非回错。
+// ToggleMask 切换敏感信息遮罩。隐私态必须与持久化提交绑定：写盘失败时
+// 保持原遮罩状态且不广播，避免 UI 误以为敏感信息已被安全遮住。
 func (s *MemoService) ToggleMask(id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for i, it := range s.items {
 		if it.ID == id {
-			s.items[i].IsMasked = !s.items[i].IsMasked
-			cur := s.items[i].IsMasked
-			if err := s.persist(s.items[i]); err != nil {
-				slog.Error("便签遮罩状态落盘失败（内存态已切换，重启后会回退）", "err", err, "id", id, "masked", cur)
+			candidate := it
+			candidate.IsMasked = !candidate.IsMasked
+			candidate.UpdatedAt = time.Now()
+			if err := s.persistCandidate(candidate); err != nil {
+				return it.IsMasked, err
 			}
+			s.items[i] = candidate
 			s.emitChanged()
-			return cur, nil
+			return candidate.IsMasked, nil
 		}
 	}
 	return false, fmt.Errorf("便签不存在: %s", id)
@@ -399,6 +401,9 @@ func (s *MemoService) RestoreFile(id, content string) error {
 }
 
 func (s *MemoService) emitChanged() {
+	if s.onChanged != nil {
+		s.onChanged()
+	}
 	// memo:changed 以 Void 注册（无载荷事件），Emit 不带任何数据参数
 	if s.wailsApp != nil && s.wailsApp.Event != nil {
 		s.wailsApp.Event.Emit("memo:changed")

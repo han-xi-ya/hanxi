@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,14 +124,81 @@ func TestMigrateFromLegacyHome(t *testing.T) {
 	mustWrite(t, filepath.Join(secondOld, "config.json"), "LEGACY")
 	mustWrite(t, filepath.Join(secondOld, "keepme.json"), "keep")
 	mustWrite(t, filepath.Join(newHome, "keepme.json"), "NEWER")
-	if err := migrateFromLegacyHome(secondOld, newHome); err != nil {
-		t.Fatal(err)
+	if err := migrateFromLegacyHome(secondOld, newHome); err == nil {
+		t.Fatal("存在同名冲突时必须报告迁移未完成")
 	}
 	if got, err := os.ReadFile(filepath.Join(newHome, "keepme.json")); err != nil || string(got) != "NEWER" {
 		t.Errorf("新家同名条目被覆盖: %q (%v)", got, err)
 	}
 	if _, err := os.Stat(filepath.Join(secondOld, "keepme.json")); err != nil {
-		t.Error("存在跳过条目时旧家原件不得被删除")
+		t.Error("存在冲突条目时旧家原件不得被删除")
+	}
+	if _, err := os.Stat(filepath.Join(newHome, migrationJournalName)); err != nil {
+		t.Error("存在冲突时 journal 必须保留，不得宣布迁移完成")
+	}
+}
+
+func TestMigrateFromLegacyHomeResumesPendingAfterFailure(t *testing.T) {
+	root := t.TempDir()
+	oldHome := filepath.Join(root, "old")
+	newHome := filepath.Join(root, "new")
+	mustWrite(t, filepath.Join(oldHome, "a.json"), "a")
+	mustWrite(t, filepath.Join(oldHome, "b.json"), "b")
+
+	original := moveLegacyPath
+	t.Cleanup(func() { moveLegacyPath = original })
+	failed := false
+	moveLegacyPath = func(src, dst string) error {
+		if filepath.Base(src) == "b.json" && !failed {
+			failed = true
+			return errors.New("injected move failure")
+		}
+		return movePath(src, dst)
+	}
+	if err := migrateFromLegacyHome(oldHome, newHome); err == nil {
+		t.Fatal("故障注入后首轮应失败")
+	}
+	if got, err := os.ReadFile(filepath.Join(newHome, "a.json")); err != nil || string(got) != "a" {
+		t.Fatalf("首项应已提交: %q %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(oldHome, "b.json")); err != nil {
+		t.Fatal("失败项源文件必须保留")
+	}
+
+	moveLegacyPath = original
+	if err := migrateFromLegacyHome(oldHome, newHome); err != nil {
+		t.Fatalf("续跑应完成剩余项: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(newHome, "b.json")); err != nil || string(got) != "b" {
+		t.Fatalf("续跑未提交失败项: %q %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(newHome, migrationJournalName)); !os.IsNotExist(err) {
+		t.Fatal("全部完成后 journal 应删除")
+	}
+	if _, err := os.Stat(oldHome); !os.IsNotExist(err) {
+		t.Fatal("全部完成后旧家应清理")
+	}
+}
+
+func TestMigrateLegacyHomeResumesDespiteNewRootFeature(t *testing.T) {
+	root := t.TempDir()
+	appData := filepath.Join(root, "appdata")
+	oldHome := legacyAppDataHome(appData)
+	newHome := filepath.Join(root, "new")
+	mustWrite(t, filepath.Join(oldHome, "config.json"), "{}")
+	mustWrite(t, filepath.Join(oldHome, "later.json"), "later")
+	if err := os.MkdirAll(newHome, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveMigrationJournal(filepath.Join(newHome, migrationJournalName), []string{"later.json"}); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(newHome, "config.json"), "{}")
+	t.Setenv("APPDATA", appData)
+
+	migrateLegacyHome(newHome)
+	if got, err := os.ReadFile(filepath.Join(newHome, "later.json")); err != nil || string(got) != "later" {
+		t.Fatalf("已有 journal 时不得被新家特征挡住续跑: %q %v", got, err)
 	}
 }
 
