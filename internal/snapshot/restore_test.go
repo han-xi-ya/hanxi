@@ -10,16 +10,23 @@ import (
 
 // fakeEngine 只测服务层路由与门卫，不触真 git。
 type fakeEngine struct {
-	data    []byte
-	calls   []string
-	fileErr error
+	data         []byte
+	calls        []string
+	fileErr      error
+	changedFiles []string
+	commitFn     func() error
 }
 
 func (f *fakeEngine) mode() string { return ModeGit }
 func (f *fakeEngine) changes(context.Context) ([]string, error) {
-	return nil, nil
+	return f.changedFiles, nil
 }
-func (f *fakeEngine) commit(context.Context, []string) error { return nil }
+func (f *fakeEngine) commit(context.Context, []string) error {
+	if f.commitFn != nil {
+		return f.commitFn()
+	}
+	return nil
+}
 func (f *fakeEngine) revisions(context.Context, int) ([]Revision, error) {
 	return nil, nil
 }

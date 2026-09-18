@@ -1,11 +1,49 @@
 package snapshot
 
 import (
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestRunCheckpointKeepsCommitWindowWriteDirty(t *testing.T) {
+	dataDir := t.TempDir()
+	path := filepath.Join(dataDir, rootConfig)
+	if err := os.WriteFile(path, []byte(`{"v":1}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	beforeCommit, found := ScanMtime(dataDir)
+	if !found {
+		t.Fatal("应发现初始配置")
+	}
+
+	eng := &fakeEngine{changedFiles: []string{rootConfig}}
+	eng.commitFn = func() error {
+		if err := os.WriteFile(path, []byte(`{"v":2}`), 0644); err != nil {
+			return err
+		}
+		written := beforeCommit.Add(2 * time.Second)
+		return os.Chtimes(path, written, written)
+	}
+	svc := &CheckpointService{scannedMT: beforeCommit, scanMtimeFn: func() (time.Time, bool) {
+		return ScanMtime(dataDir)
+	}}
+	svc.runCheckpoint(eng)
+
+	afterCommit, found := ScanMtime(dataDir)
+	if !found || !afterCommit.After(beforeCommit) {
+		t.Fatalf("测试造景失败: before=%v after=%v found=%v", beforeCommit, afterCommit, found)
+	}
+	svc.mu.Lock()
+	watermark := svc.scannedMT
+	svc.mu.Unlock()
+	if !watermark.Before(afterCommit) {
+		t.Fatalf("commit 期间新写被水位吞掉: watermark=%v write=%v", watermark, afterCommit)
+	}
+}
 
 func TestDecideTick(t *testing.T) {
 	base := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
