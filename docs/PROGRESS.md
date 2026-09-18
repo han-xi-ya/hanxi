@@ -43,7 +43,14 @@
 
 ## 完工总览（2026-09-18 收尾批后）
 
-**九件套 9/9 全部入 dev**（F4 拆 a/b、F7 拆主仓/后厨共 11 支），另有 R1-R5 随批线四清一裁。收尾批已完成：gofmt 全仓清账（6cdf9d7）、F9 卡上游纠偏回写 + DEVPLAN 模块数核正 41（ac37090）。**最终门禁全家福**：`go build` ✅、`go test ./...` 除 instance 沙箱噪音 ✅、vitest **92 文件 923 用例** ✅、vue-tsc ✅、bindings 再生零 diff ✅。全部本地提交，未 push（等你指令）。
+**九件套 9/9 全部入库；2026-09-18 深审质量加固完成。** 本轮不是风格清扫，而是对三路源码审查确认的真实缺陷做四波修复：
+
+- **Wave 1 数据安全**：snapshot 水位/链接越界/原子备份/pending restore；F6 迁移续跑+bind 原子写+派生目录 fail-loud；memo 候选提交；MCP 合法 JSON+向导条件写；USB 物理身份；后厨腾讯资产 denylist+双包原子发布。
+- **Wave 2 并发/生命周期**：hotkey+OCR 双写补偿；KeepAwake owner 回收；msgboard/extapi operation lease；selfcheck 有界 Wait；OCR 托管树锁/不可变版本/minHanxi；softver 全局串行队列。
+- **Wave 3 集成契约**：OCR 安装启动由后端回执裁决；WSL USB 逐条 bind 回执+热插拔边沿重放+关闭竞态+UI 现态；前后端模块/导航/事件/关键 bindings 集合对拍。
+- **后厨独立仓**：`fix/release-quality`（72dd9e1/346a2a6），selftest 15/15，真实双包摘要未变。
+
+**最新门禁全家福**：gofmt 零漂移、go vet 全绿、`PATH` 补 System32 后 `go test -count=1 ./...` **全绿（连 instance 包都过）**、前端 **94 文件 939 用例**、vue-tsc/vite build 全绿、go mod tidy 内容零差异、bindings 已按 DTO 重生。质量分支 `fix/nine-suite-quality`，未 push。
 
 ### 人工真机验收清单（按优先序，都是 agent 变不出显示器的项）
 
