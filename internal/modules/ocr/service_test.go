@@ -547,7 +547,7 @@ func TestImportServiceExeAcceptsBothForms(t *testing.T) {
 	if got := s.store.GetExePath(); got != single {
 		t.Fatalf("设定应指向导入件: %s", got)
 	}
-	if res.ExePath != single || res.Kind != "import" {
+	if res.ExePath != single || res.Kind != "import" || res.Engine != EngineWechat || !res.Activated || !res.ShouldStart {
 		t.Fatalf("回执字段异常: %+v", res)
 	}
 
@@ -560,6 +560,26 @@ func TestImportServiceExeAcceptsBothForms(t *testing.T) {
 	res2, err := s.ImportServiceExe(fake)
 	if err != nil || !res2.Ok {
 		t.Fatalf("目录版(带引擎同级)应导入成功: %+v %v", res2, err)
+	}
+}
+
+func TestImportServiceExeInactiveWechatDoesNotRequestStart(t *testing.T) {
+	s := newTestService(t, "")
+	if _, err := s.ImportPaddleDir(mkPaddleDir(t, "0.4.0")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.ImportServiceExe(mkFakeExe(t, t.TempDir(), serviceExeName, 36<<20))
+	if err != nil || !res.Ok {
+		t.Fatalf("微信件应登记成功: %+v %v", res, err)
+	}
+	if res.Engine != EngineWechat || res.Activated || res.ShouldStart {
+		t.Fatalf("active=paddle + stopped 时微信件只能登记: %+v", res)
+	}
+	if s.store.GetActiveEngine() != EnginePaddle || s.engine.Snapshot().State != instance.StateStopped {
+		t.Fatalf("导入非当前引擎不得切换或启动: active=%s state=%s", s.store.GetActiveEngine(), s.engine.Snapshot().State)
+	}
+	if !strings.Contains(res.Message, "仅完成登记") {
+		t.Fatalf("回执须诚实说明未激活: %q", res.Message)
 	}
 }
 
@@ -699,7 +719,7 @@ func TestImportPaddleDirRegistersAndActivates(t *testing.T) {
 		t.Fatalf("合法引擎目录应登记成功: %+v %v", res, err)
 	}
 	exe := filepath.Join(dir, "hanxi-ocr.exe")
-	if res.Kind != "import" || res.ExePath != exe {
+	if res.Kind != "import" || res.ExePath != exe || res.Engine != EnginePaddle || !res.Activated || !res.ShouldStart {
 		t.Fatalf("回执字段失真: %+v", res)
 	}
 	if got := s.store.GetEnginePath(EnginePaddle); got != exe {

@@ -74,8 +74,12 @@ func (s *OcrService) InstallHostedZip(srcPath string) (DropResult, error) {
 	s.hosted.mu.Unlock()
 
 	msg := fmt.Sprintf("已安装托管引擎 %s v%s（%s）", engineLabel(hv.Engine), hv.Version, fmtMB(hv.Size))
+	activated := s.store.GetActiveEngine() == hv.Engine
+	shouldStart := false
 	if hv.Engine == EnginePaddle {
-		// 登记即激活（与目录式 ImportPaddleDir 同语义）；外部实例占位时只登记不越权
+		// 登记即激活（与目录式 ImportPaddleDir 同语义）；external 只登记不越权；
+		// stopped/failed 时后端通过 ShouldStart 明确授权前端拉起。
+		beforeSwitch := s.engine.Snapshot().State
 		outcome, err := s.SetActiveEngine(EnginePaddle)
 		if err != nil {
 			return s.dropResultFail("import", "PP-OCR 引擎已安装，但切换为当前引擎失败: "+err.Error()), nil
@@ -83,10 +87,26 @@ func (s *OcrService) InstallHostedZip(srcPath string) (DropResult, error) {
 		if outcome.Action != "switched" && outcome.Action != "already-active" {
 			return s.dropResultFail("import", msg+"；但"+outcome.Message), nil
 		}
-		msg += "；" + outcome.Message
+		activated = true
+		shouldStart = importShouldStart(beforeSwitch)
+		if shouldStart {
+			msg += "；已切换为 PP-OCR 开源引擎，正在启动服务"
+		} else {
+			msg += "；" + outcome.Message
+		}
+	} else if activated {
+		shouldStart = importShouldStart(s.engine.Snapshot().State)
+		if shouldStart {
+			msg += "；当前微信引擎已更新，正在启动服务"
+		}
+	} else {
+		msg += "；微信引擎未设为当前，仅完成登记"
 	}
 	s.refresh()
-	res := DropResult{Kind: "import", Ok: true, ExePath: hv.ExePath, Message: msg}
+	res := DropResult{
+		Kind: "import", Ok: true, ExePath: hv.ExePath, Engine: hv.Engine,
+		Activated: activated, ShouldStart: shouldStart, Message: msg,
+	}
 	s.emitDropResult(res)
 	return res, nil
 }

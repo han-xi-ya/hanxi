@@ -989,7 +989,7 @@ func TestInstallHostedZipServiceWechat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Ok || res.Kind != "import" {
+	if !res.Ok || res.Kind != "import" || res.Engine != EngineWechat || !res.Activated || !res.ShouldStart {
 		t.Fatalf("安装回执失败: %+v", res)
 	}
 	exe := filepath.Join(hm.versionsRoot, "wechat-4.1.15.9", serviceExeName)
@@ -1017,8 +1017,33 @@ func TestInstallHostedZipServicePaddleActivates(t *testing.T) {
 	if err != nil || !res.Ok {
 		t.Fatalf("paddle 安装失败: %+v %v", res, err)
 	}
+	if res.Engine != EnginePaddle || !res.Activated || !res.ShouldStart {
+		t.Fatalf("paddle 安装回执语义异常: %+v", res)
+	}
 	if s.store.GetActiveEngine() != EnginePaddle {
 		t.Fatalf("paddle 登记应即激活, active=%q", s.store.GetActiveEngine())
+	}
+}
+
+func TestInstallHostedZipServiceWechatInactiveOnlyRegisters(t *testing.T) {
+	s, _ := newTestHostedService(t)
+	if _, err := s.ImportPaddleDir(mkPaddleDir(t, "0.4.0")); err != nil {
+		t.Fatal(err)
+	}
+	zipPath := makeValidHostedZip(t, t.TempDir(), EngineWechat, "4.1.15.9")
+	writeHostedSidecar(t, zipPath)
+	res, err := s.InstallHostedZip(zipPath)
+	if err != nil || !res.Ok {
+		t.Fatalf("微信引擎安装失败: %+v %v", res, err)
+	}
+	if res.Engine != EngineWechat || res.Activated || res.ShouldStart {
+		t.Fatalf("active=paddle + stopped 时微信包只能登记: %+v", res)
+	}
+	if s.store.GetActiveEngine() != EnginePaddle || s.engine.Snapshot().State != instance.StateStopped {
+		t.Fatalf("安装非当前微信引擎不得切换或启动: active=%s state=%s", s.store.GetActiveEngine(), s.engine.Snapshot().State)
+	}
+	if !strings.Contains(res.Message, "仅完成登记") {
+		t.Fatalf("回执须诚实说明未激活: %q", res.Message)
 	}
 }
 
