@@ -238,6 +238,15 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		// 绝不静默回退用户目录——旧 %APPDATA% 兜底已按裁定废弃。
 		settings.ExitWithBindingGuide(err)
 	}
+	// 历史版本的 config/state 恢复采用「先暂存、下次启动前提交」：必须严格早于
+	// settings.Store 与任何模块 store 构造，否则旧进程内存态会把刚恢复的盘面重新覆盖。
+	// pending 清单/摘要任一不可信即 fail loud，绝不带旧盘面继续启动制造假成功。
+	if applied, err := snapshot.ApplyPendingRestores(paths.DataDir()); err != nil {
+		slog.Error("应用待恢复配置/状态失败，拒绝以旧盘面继续启动", "err", err)
+		panic(err)
+	} else if len(applied) > 0 {
+		slog.Info("历史版本待恢复文件已在 store 加载前应用", "files", applied)
+	}
 	store, err := settings.NewStore(paths.ConfigFile())
 	if err != nil {
 		quarantine := fmt.Sprintf("%s.corrupt-%s", paths.ConfigFile(), time.Now().Format("20060102-150405"))
