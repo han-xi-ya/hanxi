@@ -39,8 +39,11 @@ type MsgBoardService struct {
 	store *msgBoardStore
 
 	mu          sync.Mutex
+	cond        *sync.Cond
 	started     bool
-	opBusy      bool // 挂/撤操作互斥锁：热键连按/托盘连点时后进者静默忽略
+	stopping    bool // stop 已接管：拒绝新 Show，等待在途操作收口
+	opInFlight  bool // 串行挂牌操作租约；等待者由 cond 唤醒，不再静默丢弃 Dismiss
+	generation  uint64
 	shown       bool
 	board       *application.WebviewWindow
 	offClosing  func()           // WindowClosing 拦截 hook 的注销闭包（销毁前摘除，#53 通路）
@@ -51,7 +54,13 @@ type MsgBoardService struct {
 // NewMsgBoardService 装配服务单例：构造仅读盘建 store，不碰窗口与热键
 // （懒建于 OnInit/start，与 quickmenu 同策略）。
 func NewMsgBoardService(plat platform.Platform, paths *settings.Paths) *MsgBoardService {
-	return &MsgBoardService{plat: plat, store: newMsgBoardStore(paths.StateDir())}
+	return newMsgBoardService(plat, newMsgBoardStore(paths.StateDir()))
+}
+
+func newMsgBoardService(plat platform.Platform, store *msgBoardStore) *MsgBoardService {
+	s := &MsgBoardService{plat: plat, store: store}
+	s.cond = sync.NewCond(&s.mu)
+	return s
 }
 
 // ---------- 生命周期（由 module.go 的 OnInit/OnDestroy 驱动） ----------
@@ -60,11 +69,16 @@ func NewMsgBoardService(plat platform.Platform, paths *settings.Paths) *MsgBoard
 // 失败不致命：只降级为托盘/轮盘唤起，状态页如实显示"热键未在位"。
 func (s *MsgBoardService) start() error {
 	s.mu.Lock()
+	for s.stopping {
+		s.cond.Wait()
+	}
 	if s.started {
 		s.mu.Unlock()
 		return nil
 	}
+	s.stopping = false
 	s.started = true
+	s.generation++
 	s.mu.Unlock()
 
 	if key := s.store.Get().Hotkey; key != "" {
@@ -76,23 +90,43 @@ func (s *MsgBoardService) start() error {
 	return nil
 }
 
-// stop 摘热键、撤牌（含防休眠释放）——模块停用/应用退出都必须把系统状态还回去。
+// stop 摘热键、接管并等待在途 Show、撤牌与释放防休眠。模块停用/应用退出
+// 返回时保证最终无窗、shown=false、KeepAwake/热键均已释放。
 func (s *MsgBoardService) stop() error {
 	s.mu.Lock()
-	if !s.started {
+	if !s.started && !s.stopping {
+		s.mu.Unlock()
+		return nil
+	}
+	if s.stopping {
+		for s.stopping {
+			s.cond.Wait()
+		}
 		s.mu.Unlock()
 		return nil
 	}
 	s.started = false
+	s.stopping = true
+	s.generation++ // 使已取得 Show 租约但尚未提交的结果作废
+	for s.opInFlight {
+		s.cond.Wait()
+	}
+	s.opInFlight = true // stop 独占最后一次 Dismiss，阻止并发操作插队
 	s.mu.Unlock()
 
-	// 槽位解绑（注册器幂等：未绑定静默成功；启动期 OS 回滚的残账也直接抹除）。
+	// 不持服务锁调用热键/Wails/平台能力，避免与其内部主线程锁形成反向等待。
 	if r := s.hotkeyRegistry(); r != nil {
 		if err := r.Unbind(hotkeySlot); err != nil {
 			slog.Warn("msgboard: 全局热键注销失败", "err", err)
 		}
 	}
-	s.Dismiss()
+	s.dismissOwned()
+
+	s.mu.Lock()
+	s.opInFlight = false
+	s.stopping = false
+	s.cond.Broadcast()
+	s.mu.Unlock()
 	return nil
 }
 
@@ -101,8 +135,15 @@ func (s *MsgBoardService) stop() error {
 // Toggle 挂出↔撤牌一键互切（托盘/轮盘命令与热键回调的入口）。
 func (s *MsgBoardService) Toggle() error {
 	s.mu.Lock()
+	for s.opInFlight && !s.stopping {
+		s.cond.Wait()
+	}
 	shown := s.shown
+	stopping := s.stopping
 	s.mu.Unlock()
+	if stopping {
+		return nil
+	}
 	if shown {
 		s.Dismiss()
 		return nil
@@ -111,12 +152,14 @@ func (s *MsgBoardService) Toggle() error {
 }
 
 // Show 在全屏透明窗挂出留言牌：定位目标显示器 → 真全屏 → 置前抢焦点（Esc
-// 直达）→ 登记防休眠。已在挂出或操作在途时幂等返回。
+// 直达）→ 登记防休眠。操作严格串行；stop 一旦开始，新的或在途 Show 都不能
+// 在停用完成后提交窗口状态。
 func (s *MsgBoardService) Show() error {
-	if !s.beginOp() {
-		return nil // 连按防抖：前一次挂/撤尚未完成
+	generation, ok := s.beginShow()
+	if !ok {
+		return nil
 	}
-	defer s.endOp()
+	defer s.endOperation()
 
 	a := application.Get()
 	if a == nil || a.Window == nil {
@@ -169,9 +212,19 @@ func (s *MsgBoardService) Show() error {
 		slog.Debug("msgboard: 留言牌强制置前失败（依赖托盘/轮盘撤牌）", "err", err)
 	}
 
+	// stop 可能在建窗期间宣告停用。提交前复核 generation；失效结果必须由
+	// 当前 Show 自行真销毁，不能把清理责任留给已经在等待的 stop。
 	s.mu.Lock()
-	s.board, s.offClosing, s.shown = board, offClosing, true
+	stale := s.stopping || !s.started || s.generation != generation
+	if !stale {
+		s.board, s.offClosing, s.shown = board, offClosing, true
+	}
 	s.mu.Unlock()
+	if stale {
+		offClosing()
+		board.Close()
+		return nil
+	}
 
 	s.acquireKeepAwake()
 	s.emitChanged()
@@ -180,48 +233,70 @@ func (s *MsgBoardService) Show() error {
 }
 
 // Dismiss 撤牌并真销毁窗口（摘 WindowClosing hook 后 Close 走 Wails 内部销毁
-// 路径，#53），同时释放防休眠诉求。未挂牌时幂等返回。
+// 路径，#53），同时释放防休眠诉求。若 Show 在途则等待并接管其终态；stop
+// 接管期间普通 Dismiss 无需争抢。
 func (s *MsgBoardService) Dismiss() {
-	if !s.beginOp() {
-		return // 挂/撤操作互斥：在途操作会自行收敛到终态
-	}
-	defer s.endOp()
-
-	s.mu.Lock()
-	if s.board == nil && !s.shown {
-		s.mu.Unlock()
+	if !s.beginDismiss() {
 		return
 	}
+	defer s.endOperation()
+	s.dismissOwned()
+}
+
+func (s *MsgBoardService) dismissOwned() {
+	s.mu.Lock()
 	board, off := s.board, s.offClosing
+	hadState := board != nil || s.shown || s.keepAwakeOn
 	s.board, s.offClosing, s.shown = nil, nil, false
 	s.mu.Unlock()
 
+	// 即使本地 keepAwakeOn 为 false 也幂等 Release：Acquire 成功与状态标记之间
+	// 若遇停用接管，仍由聚合器持有人账本兜底收口。
 	s.releaseKeepAwake()
 	if off != nil {
-		off() // 摘除"关即收起"拦截，让下面的 Close 放行到真销毁
+		off()
 	}
 	if board != nil {
 		board.Close()
 	}
-	s.emitChanged()
-	slog.Info("msgboard: 留言牌已撤下（窗口已真销毁，WebView2 视图内存释放）")
+	if hadState {
+		s.emitChanged()
+		slog.Info("msgboard: 留言牌已撤下（窗口已真销毁，WebView2 视图内存释放）")
+	}
 }
 
-// beginOp/endOp 挂撤操作互斥（独立于状态锁）：热键连按、托盘连点、Alt+F4 拦截
-// 转发的 goroutine 等多路入口同触时，后进者直接放弃——操作终态由先到者收敛。
-func (s *MsgBoardService) beginOp() bool {
+// beginShow/beginDismiss/endOperation 构成串行状态机。等待只发生在 cond 上，
+// Wails、热键与 KeepAwake 调用均在 s.mu 外执行，避免锁反转。
+func (s *MsgBoardService) beginShow() (uint64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.opBusy {
+	for s.opInFlight && !s.stopping {
+		s.cond.Wait()
+	}
+	if s.stopping || !s.started {
+		return 0, false
+	}
+	s.opInFlight = true
+	return s.generation, true
+}
+
+func (s *MsgBoardService) beginDismiss() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for s.opInFlight && !s.stopping {
+		s.cond.Wait()
+	}
+	if s.stopping {
 		return false
 	}
-	s.opBusy = true
+	s.opInFlight = true
 	return true
 }
 
-func (s *MsgBoardService) endOp() {
+func (s *MsgBoardService) endOperation() {
 	s.mu.Lock()
-	s.opBusy = false
+	s.opInFlight = false
+	s.cond.Broadcast()
 	s.mu.Unlock()
 }
 
@@ -236,7 +311,20 @@ func (s *MsgBoardService) acquireKeepAwake() {
 		s.setKeepAwakeOn(false)
 		return
 	}
-	s.setKeepAwakeOn(true)
+
+	// Acquire 不持服务锁；stop 可能已在此期间开始。若生命周期已失效，立即
+	// 归还刚取得的租约，绝不在停用完成后留下 KeepAwake 持有人。
+	s.mu.Lock()
+	valid := s.started && !s.stopping && s.shown
+	if valid {
+		s.keepAwakeOn = true
+	}
+	s.mu.Unlock()
+	if !valid {
+		if err := s.plat.KeepAwake().Release(keepAwakeHolder); err != nil {
+			slog.Warn("msgboard: 停用接管时防休眠释放失败", "err", err)
+		}
+	}
 }
 
 func (s *MsgBoardService) releaseKeepAwake() {
@@ -301,10 +389,18 @@ func (s *MsgBoardService) SetConfig(cfg Config) error {
 	if old.Screen != next.Screen {
 		s.mu.Lock()
 		shown := s.shown
+		generation := s.generation
+		active := s.started && !s.stopping
 		s.mu.Unlock()
-		if shown {
+		if shown && active {
 			go func() {
 				s.Dismiss()
+				s.mu.Lock()
+				stillActive := s.started && !s.stopping && s.generation == generation
+				s.mu.Unlock()
+				if !stillActive {
+					return
+				}
 				if err := s.Show(); err != nil {
 					slog.Warn("msgboard: 换屏重挂失败", "err", err)
 				}
