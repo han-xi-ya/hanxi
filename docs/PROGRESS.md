@@ -56,6 +56,7 @@
 7. **F5**：大数据目录首扫耗时/取消手感；有 3.x 微信的机器补验旧代口径。
 8. **F1**：便携/标准两目录各开一次确认 history.json 落点（随 F6 搬家验）。
 9. **F4**：真 Claude/Codex/Cursor 三客户端红队（C9）——向导装完各拉一次工具调用。
+   **2026-09-18 协调者协议级实测（C9 半程）**：向导真装 Claude Code ✓（回执 11:09）；以 MCP 帧直驱生产 exe 全过——envcheck 真数据✓零泄密、file_search 真搜✓、**memo 未授权当场拒并中文指路✓（fail-closed 实锤）**、ocr 服务离线正确指引✓（不代启动）。留尾：用户重启 Claude Code 从真客户端拉一次；ocr 全链识别待服务启动后补。授权现值 envcheck/everything/ocr=true、**memo=false（刻意，隐私闸门留用户亲手开）**。
 
 ## 恢复协议（断了怎么接上）
 
