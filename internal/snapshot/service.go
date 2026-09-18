@@ -33,6 +33,7 @@ type CheckpointService struct {
 	inFlight     atomic.Bool // 单飞闸：忙即跳过，不制造排队假象（wsl tryBegin 同款）
 	lastCommitAt time.Time
 	scannedMT    time.Time // 上次检查点落定时的白名单 mtime 水位（脏判定基线）
+	scanMtimeFn  func() (time.Time, bool)
 
 	failMu           sync.Mutex
 	consecutiveFails int
@@ -75,6 +76,13 @@ func (s *CheckpointService) config() settings.SnapshotConfig {
 		cfg.IntervalMinutes = 5
 	}
 	return cfg
+}
+
+func (s *CheckpointService) scanMtime() (time.Time, bool) {
+	if s.scanMtimeFn != nil {
+		return s.scanMtimeFn()
+	}
+	return ScanMtime(s.paths.DataDir())
 }
 
 // ---------- 生命周期 ----------
@@ -190,7 +198,7 @@ func (s *CheckpointService) FlushOnExit() {
 // tick 5s 巡检：白名单 mtime 脏判定 + 三源触发 + 间隔闸门。
 func (s *CheckpointService) tick() {
 	cfg := s.config()
-	maxMT, found := ScanMtime(s.paths.DataDir())
+	maxMT, found := s.scanMtime()
 
 	s.mu.Lock()
 	eng := s.eng
@@ -277,6 +285,9 @@ func (s *CheckpointService) runCheckpoint(eng engine) {
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
 
+	// 水位必须在检查/提交前固定。此后发生的写入无论是否恰好被本轮引擎捕获，
+	// mtime 都仍高于该水位，下一拍会再次核验，不能被提交后的重扫吞掉。
+	watermark, watermarkFound := s.scanMtime()
 	changes, err := eng.changes(ctx)
 	if err != nil {
 		s.noteFailure(eng, "检查变更", err)
@@ -284,24 +295,23 @@ func (s *CheckpointService) runCheckpoint(eng engine) {
 	}
 	if len(changes) == 0 {
 		// 内容相同（原子写原样重写）或已被上一发覆盖：推进水位，停止空转重试。
-		s.advanceWatermark()
+		s.advanceWatermark(watermark, watermarkFound)
 		return
 	}
 	if err := eng.commit(ctx, changes); err != nil {
 		s.noteFailure(eng, "提交检查点", err)
 		return
 	}
-	s.advanceWatermark()
+	s.advanceWatermark(watermark, watermarkFound)
 	s.failMu.Lock()
 	s.consecutiveFails, s.failureWarned = 0, false
 	s.failMu.Unlock()
 	slog.Debug("snapshot: 检查点已固化", "mode", eng.mode(), "files", len(changes))
 }
 
-// advanceWatermark 记录提交时刻并推进 mtime 水位（水位取当前扫描值：commit 期间的
-// 新写入 mtime 更大，下一拍 After(水位) 仍成立，不丢触发）。
-func (s *CheckpointService) advanceWatermark() {
-	mt, found := ScanMtime(s.paths.DataDir())
+// advanceWatermark 记录提交时刻，并仅推进到本轮开始前采集的 mtime。
+// commit 期间的新写保持在水位之后，下个 tick 必会再次核验。
+func (s *CheckpointService) advanceWatermark(mt time.Time, found bool) {
 	s.mu.Lock()
 	s.lastCommitAt = time.Now()
 	if found && mt.After(s.scannedMT) {
@@ -457,8 +467,8 @@ func (s *CheckpointService) PreviewFile(id, path string) (FilePreview, error) {
 }
 
 // RestoreFile 单文件回滚。memo/ 下的便签走热恢复（内存换装 + memo:changed 事件，
-// 重启无感）；config.json / state JSON 直写盘后 notify 提示重启生效——
-// 运行中内存态与盘面对齐的热回滚 v1 不做（违背 settings.Update 不变式）。
+// 重启无感）；config.json / state JSON 发布 pending restore 包，由下次启动在内存态
+// 构造前应用，避免运行时盘面与 Store 内存分叉。
 func (s *CheckpointService) RestoreFile(id, path string) error {
 	eng, err := s.engineReady()
 	if err != nil {
@@ -487,12 +497,11 @@ func (s *CheckpointService) RestoreFile(id, path string) error {
 			return (*restorer)(memoID, string(data))
 		}
 	}
-	return writeRestoredFile(s.paths.DataDir(), rel, data)
+	return StagePendingRestore(s.paths.DataDir(), rel, data)
 }
 
-// writeRestoredFile 白名单文件原子回写数据根（tmp+rename，与 jsonstore 同构防半途
-// 断电；不走 jsonstore.Save——恢复的是原样字节，可能是 md 也可能含 JSON 校验外形态）。
-// 非 memo 文件写盘后 notify 提示重启生效（运行中内存态分叉是 v1 明确边界）。
+// writeRestoredFile 仅保留供既有原子写测试与兼容调用；config/state 的 RPC 恢复已改为
+// StagePendingRestore，启动前由 ApplyPendingRestores 应用。
 func writeRestoredFile(dataDir, rel string, data []byte) error {
 	target := filepath.Join(dataDir, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {

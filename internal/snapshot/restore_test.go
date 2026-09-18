@@ -10,16 +10,23 @@ import (
 
 // fakeEngine 只测服务层路由与门卫，不触真 git。
 type fakeEngine struct {
-	data    []byte
-	calls   []string
-	fileErr error
+	data         []byte
+	calls        []string
+	fileErr      error
+	changedFiles []string
+	commitFn     func() error
 }
 
 func (f *fakeEngine) mode() string { return ModeGit }
 func (f *fakeEngine) changes(context.Context) ([]string, error) {
-	return nil, nil
+	return f.changedFiles, nil
 }
-func (f *fakeEngine) commit(context.Context, []string) error { return nil }
+func (f *fakeEngine) commit(context.Context, []string) error {
+	if f.commitFn != nil {
+		return f.commitFn()
+	}
+	return nil
+}
 func (f *fakeEngine) revisions(context.Context, int) ([]Revision, error) {
 	return nil, nil
 }
@@ -55,6 +62,27 @@ func TestRestoreFileRoutesMemoToHotRestorer(t *testing.T) {
 	svc.SetMemoRestorer(func(string, string) error { return errors.New("回落模式") })
 	if err := svc.RestoreFile("aaaabbbb1234", "memo/memo_9.md"); err == nil {
 		t.Fatal("钩子错误应透传")
+	}
+}
+
+func TestPendingRestoreStagesConfigForNextStartup(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := StagePendingRestore(dataDir, rootConfig, []byte(`{"theme":"old"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, rootConfig)); !os.IsNotExist(err) {
+		t.Fatalf("config 不应在运行中直接覆写: %v", err)
+	}
+	applied, err := ApplyPendingRestores(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(applied) != 1 || applied[0] != rootConfig {
+		t.Fatalf("applied = %v", applied)
+	}
+	data, err := os.ReadFile(filepath.Join(dataDir, rootConfig))
+	if err != nil || string(data) != `{"theme":"old"}` {
+		t.Fatalf("恢复结果 = %q err=%v", data, err)
 	}
 }
 

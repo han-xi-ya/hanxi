@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"hanxi/internal/jsonstore"
 )
 
 // backupEngine：git 不可用（未安装 / Microsoft Store 假存根 / 仓库连炸）时的
@@ -29,17 +27,35 @@ const backupKeepCount = 30
 // manifestName 每份备份的内容指纹清单文件名（不进 revisions/revisionFiles 视野）。
 const manifestName = "manifest.json"
 
+const pendingBackupPrefix = ".pending-"
+
+type backupOps struct {
+	copyFile  func(src, dst string) error
+	writeFile func(path string, data []byte, perm os.FileMode) error
+	syncFile  func(path string) error
+	syncDir   func(path string) error
+	rename    func(oldPath, newPath string) error
+}
+
 type backupEngine struct {
 	dataDir    string
 	backupRoot string // <snapshotDir>/backup
 
-	mu sync.Mutex // 与 gitEngine 同款仓库级串行闸（三源共一目录）
+	mu  sync.Mutex // 与 gitEngine 同款仓库级串行闸（三源共一目录）
+	ops backupOps
 }
 
 func newBackupEngine(dataDir, snapshotDir string) *backupEngine {
 	return &backupEngine{
 		dataDir:    dataDir,
 		backupRoot: filepath.Join(snapshotDir, backupDirName),
+		ops: backupOps{
+			copyFile:  copyFile,
+			writeFile: os.WriteFile,
+			syncFile:  syncFile,
+			syncDir:   syncDirectory,
+			rename:    os.Rename,
+		},
 	}
 }
 
@@ -82,7 +98,7 @@ func (b *backupEngine) changes(ctx context.Context) ([]string, error) {
 	return files, nil
 }
 
-// commit 全量白名单影子拷贝进新时间戳目录 + manifest，再滚动修剪。
+// commit 先在 .pending-* 目录完成全量拷贝与 manifest 落盘、fsync，最后原子改名发布。
 func (b *backupEngine) commit(ctx context.Context, _ []string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -94,20 +110,50 @@ func (b *backupEngine) commit(ctx context.Context, _ []string) error {
 	if len(cur) == 0 {
 		return nil // 白名单为空：拍一份空目录没有意义
 	}
-	dir, err := b.newBackupDir()
+	id, err := b.nextBackupID()
 	if err != nil {
 		return err
 	}
+	pending, err := os.MkdirTemp(b.backupRoot, pendingBackupPrefix+id+"-")
+	if err != nil {
+		return err
+	}
+	published := false
+	defer func() {
+		if published {
+			return
+		}
+		// 故障残骸保留为 .pending-* 供诊断；列表与基线永不承认它。
+	}()
 	for rel := range cur {
-		if err := copyFile(
+		if err := b.ops.copyFile(
 			filepath.Join(b.dataDir, filepath.FromSlash(rel)),
-			filepath.Join(dir, filepath.FromSlash(rel)),
+			filepath.Join(pending, filepath.FromSlash(rel)),
 		); err != nil {
 			return fmt.Errorf("影子拷贝 %s 失败: %w", rel, err)
 		}
 	}
-	if err := jsonstore.Save(filepath.Join(dir, manifestName), cur); err != nil {
+	manifest, err := json.Marshal(cur)
+	if err != nil {
+		return fmt.Errorf("编码备份清单失败: %w", err)
+	}
+	manifestPath := filepath.Join(pending, manifestName)
+	if err := b.ops.writeFile(manifestPath, manifest, 0644); err != nil {
 		return fmt.Errorf("写备份清单失败: %w", err)
+	}
+	if err := b.ops.syncFile(manifestPath); err != nil {
+		return fmt.Errorf("同步备份清单失败: %w", err)
+	}
+	if err := b.ops.syncDir(pending); err != nil {
+		return fmt.Errorf("同步备份暂存目录失败: %w", err)
+	}
+	final := filepath.Join(b.backupRoot, id)
+	if err := b.ops.rename(pending, final); err != nil {
+		return fmt.Errorf("发布备份失败: %w", err)
+	}
+	published = true
+	if err := b.ops.syncDir(b.backupRoot); err != nil {
+		return fmt.Errorf("同步备份目录失败: %w", err)
 	}
 	return b.prune()
 }
@@ -174,6 +220,13 @@ func (b *backupEngine) file(ctx context.Context, id, relPath string) ([]byte, er
 	if !backupIDRe.MatchString(id) {
 		return nil, fmt.Errorf("备份模式版本标识应为时间戳目录: %s", id)
 	}
+	_, ok, err := b.readManifest(id)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("备份版本 %s 不存在或清单无效", id)
+	}
 	target := filepath.Join(b.backupRoot, id, filepath.FromSlash(relPath))
 	// Join 后仍须落在该份备份目录内（双保险）
 	absDir, _ := filepath.Abs(filepath.Join(b.backupRoot, id))
@@ -197,32 +250,17 @@ func (b *backupEngine) heal(ctx context.Context) {}
 // 白名单 JSON 均 KB 级，全量哈希成本可忽略，换来"内容相同即无变更"的精确语义
 // （mtime 跳变但字节不变——如 wechat 原样回写——不会灌碎历史）。
 func fingerprint(dataDir string) (map[string]string, error) {
-	out := make(map[string]string)
-	consider := func(rel string) {
-		sum, err := hashFile(filepath.Join(dataDir, filepath.FromSlash(rel)))
+	files, err := enumerateWhitelist(dataDir, true)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(files))
+	for _, file := range files {
+		sum, err := hashFile(file.Path)
 		if err != nil {
-			return // 原子写 rename 竞态：下一拍再看
+			return nil, fmt.Errorf("计算 %s 指纹失败: %w", file.Rel, err)
 		}
-		out[rel] = sum
-	}
-	if _, err := os.Stat(filepath.Join(dataDir, rootConfig)); err == nil {
-		consider(rootConfig)
-	}
-	for _, dir := range []string{rootState, rootMemo} {
-		base := filepath.Join(dataDir, dir)
-		_ = filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return nil
-			}
-			rel, rerr := filepath.Rel(dataDir, p)
-			if rerr == nil {
-				rel = filepath.ToSlash(rel)
-				if Whitelisted(rel) {
-					consider(rel)
-				}
-			}
-			return nil
-		})
+		out[file.Rel] = sum
 	}
 	return out, nil
 }
@@ -262,33 +300,36 @@ func (b *backupEngine) backupDirs() ([]string, error) {
 	}
 	var out []string
 	for _, e := range entries {
-		if e.IsDir() && backupIDRe.MatchString(e.Name()) {
-			out = append(out, e.Name())
+		if !e.IsDir() || !backupIDRe.MatchString(e.Name()) {
+			continue
 		}
+		manifest, ok, err := b.readManifest(e.Name())
+		if err != nil {
+			return nil, err
+		}
+		if !ok || !validManifest(manifest) {
+			continue
+		}
+		out = append(out, e.Name())
 	}
 	return out, nil
 }
 
-// newBackupDir 创建下一份时间戳目录（同秒撞名追加 -n 序号）。
-func (b *backupEngine) newBackupDir() (string, error) {
+// nextBackupID 选择下一份发布时间戳 ID（同秒撞名追加 -n 序号），不提前创建正式目录。
+func (b *backupEngine) nextBackupID() (string, error) {
 	if err := os.MkdirAll(b.backupRoot, 0755); err != nil {
 		return "", err
 	}
 	base := time.Now().Format(backupTimeLayout)
 	name := base
 	for i := 2; ; i++ {
-		if _, err := os.Stat(filepath.Join(b.backupRoot, name)); os.IsNotExist(err) {
-			break
+		if _, err := os.Lstat(filepath.Join(b.backupRoot, name)); os.IsNotExist(err) {
+			return name, nil
 		} else if err != nil {
 			return "", err
 		}
 		name = fmt.Sprintf("%s-%d", base, i)
 	}
-	dir := filepath.Join(b.backupRoot, name)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
-	}
-	return dir, nil
 }
 
 // latestManifest 最近一份备份的指纹清单（无备份返回 ok=false）。
@@ -310,10 +351,34 @@ func (b *backupEngine) readManifest(dirName string) (map[string]string, bool, er
 		return nil, false, err
 	}
 	m := map[string]string{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, false, nil // 清单损坏：视作无基线（下拍重建覆盖）
+	if err := json.Unmarshal(data, &m); err != nil || !validManifest(m) {
+		return nil, false, nil
 	}
 	return m, true, nil
+}
+
+func validManifest(manifest map[string]string) bool {
+	if manifest == nil {
+		return false
+	}
+	for path, sum := range manifest {
+		if !Whitelisted(path) || len(sum) != sha256.Size*2 {
+			return false
+		}
+		if _, err := hex.DecodeString(sum); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func syncFile(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
 }
 
 // prune 滚动修剪：字典序倒排（新在前），保留最近 backupKeepCount 份。
