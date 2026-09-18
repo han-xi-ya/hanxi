@@ -1,7 +1,6 @@
 package mcpwizard
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,7 +17,7 @@ import (
 // 一次性握手的新鲜度备忘，不持有任何文件句柄或后台协程。
 type McpWizardService struct {
 	receiptPath string // <DataDir>/mcp/install.json（本包所有）
-	accessPath  string // <DataDir>/mcp/access.json（F4a 所有，只读呈现）
+	accessPath  string // <DataDir>/mcp/access.json（读方契约归 F4a；写引擎见 access_write.go，R6）
 	home        string
 	env         func(string) string
 	command     string // hanxi exe 绝对路径（os.Executable，写入配置的 command 值）
@@ -89,7 +88,9 @@ type AccessTools struct {
 	Memo       bool `json:"memo"`
 }
 
-// AccessInfo access.json 只读呈现（写入口归 F4a 引擎，本服务绝不写）。
+// AccessInfo access.json 的读方视角呈现：Tools 恒等于 MCP 读者此刻的采信结果
+// （缺文件/损坏/超纲都呈现为四 false——读者 fail-closed 语义），不呈现读者不认的
+// "字面值"。写入口在本分区（SetToolAccess/ResetAccess，R6）。
 type AccessInfo struct {
 	Path     string      `json:"path"`
 	Exists   bool        `json:"exists"`
@@ -165,8 +166,9 @@ func (s *McpWizardService) ConfirmUninstall(clientID, token string) (OpResult, e
 	return s.confirm(clientID, token, true)
 }
 
-// GetAccessInfo 单独刷新授权呈现（授权文件 ≤16KB，读放大无虞）。
-func (s *McpWizardService) GetAccessInfo() (AccessInfo, error) {
+// GetAccessOverview 单独刷新授权总览（R6）：四键当前态按读方视角即时重读盘呈现，
+// 缺文件 = 四 false 的合法默认态。授权文件 ≤16 KiB，读放大无虞。
+func (s *McpWizardService) GetAccessOverview() (AccessInfo, error) {
 	return s.accessInfo(), nil
 }
 
@@ -382,43 +384,29 @@ func rollbackWord(rolled bool, bak string) string {
 	return "未能自动回滚，且新建文件无备份可恢复——请手工检查该路径"
 }
 
-// —— access.json 只读呈现 ——
+// —— access.json 读方视角呈现 ——
 
-// accessFile 按 PLAN §6 字面结构解析；未知额外键忽略不报错（前向兼容呈现）。
-type accessFile struct {
-	Version int             `json:"version"`
-	Tools   map[string]bool `json:"tools"`
-}
-
+// accessInfo 按读方严格规则（strictLoadAccess，与 internal/mcp/access.go 同款判定）
+// 呈现"读者此刻看到什么"：采信→真实四键；不采信（损坏/超纲/未知键/版本≠1）或
+// 缺文件→四 false。呈现与判定永不分家，杜绝"界面显示已授权、读者实际全拒"的口径裂缝。
 func (s *McpWizardService) accessInfo() AccessInfo {
-	info := AccessInfo{Path: s.accessPath}
-	data, err := os.ReadFile(s.accessPath)
+	st := strictLoadAccess(s.accessPath)
+	info := AccessInfo{Path: s.accessPath, Exists: st.exists}
 	switch {
-	case os.IsNotExist(err):
-		// 如实口径（F4a 零落盘承诺）：全仓没有任何代码创建/重建 access.json，
-		// 缺失是合法的默认全关态，需用户手工放置后对应工具方被开放。
-		info.Note = "授权文件尚未放置——MCP 引擎默认全关（fail-closed），按 PLAN_MCP §6 字面结构在本目录手工放置后对应工具方被开放；本向导不代为写入"
-		return info
-	case err != nil:
-		info.Note = fmt.Sprintf("读取失败: %v", err)
-		return info
-	}
-	info.Exists = true
-	var af accessFile
-	if jsonErr := json.Unmarshal(data, &af); jsonErr != nil {
-		info.Note = "授权文件已损坏——MCP server 对其 fail-closed（视同全工具未授权）。本向导不代为修复，请手工检查 JSON 语法（该文件全仓无任何自动创建/重建方，删除也不会被代生成）"
-		return info
-	}
-	info.Readable = true
-	info.Version = af.Version
-	if info.Version != 1 {
-		info.Note = fmt.Sprintf("版本为 %d（当前向导按版本 1 解读字段），如有升级请以 PLAN_MCP §6 为准", af.Version)
-	}
-	info.Tools = AccessTools{
-		Envcheck:   af.Tools["envcheck"],
-		Everything: af.Tools["everything"],
-		Ocr:        af.Tools["ocr"],
-		Memo:       af.Tools["memo"],
+	case st.missing:
+		info.Note = "授权文件尚未生成——MCP 读者对此默认全关（fail-closed），这是合法默认态；拨动下方任一开关即自动建档并保存即生效"
+	case !st.legal:
+		info.Note = fmt.Sprintf("授权文件损坏或超纲（%s）——MCP 读者对其 fail-closed，视同全部未授权。"+
+			"可点「修复（覆盖重置）」：旧档先另存 .bak，再重写标准全关档，随后逐项重新授权", st.reason)
+	default:
+		info.Readable = true
+		info.Version = accessSchemaVer
+		info.Tools = AccessTools{
+			Envcheck:   st.tools["envcheck"],
+			Everything: st.tools["everything"],
+			Ocr:        st.tools["ocr"],
+			Memo:       st.tools["memo"],
+		}
 	}
 	return info
 }
