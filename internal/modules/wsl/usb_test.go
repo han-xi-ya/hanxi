@@ -84,6 +84,19 @@ func dev(busID, vid, pid, state string) usbipd.Device {
 	return usbipd.Device{BusID: busID, Vid: vid, Pid: pid, Description: "dev " + busID, State: state}
 }
 
+func identifiedDev(busID, vid, pid, instanceID, serial, guid, state string) usbipd.Device {
+	return usbipd.Device{
+		BusID:       busID,
+		Vid:         vid,
+		Pid:         pid,
+		InstanceID:  instanceID,
+		Serial:      serial,
+		Guid:        guid,
+		Description: "dev " + busID,
+		State:       state,
+	}
+}
+
 func entry(id, busID, vid, pid, distro string) USBShareEntry {
 	return USBShareEntry{ID: id, BusID: busID, Vid: vid, Pid: pid, Description: "dev " + busID, Distro: distro, Enabled: true}
 }
@@ -97,6 +110,20 @@ func runningSet(names ...string) map[string]bool {
 }
 
 // ---- 重放计划纯函数 ----
+
+func TestPlanUsbReplayRejectsDifferentDeviceReusingBusID(t *testing.T) {
+	// 账本记录的是 VID=aaaa 的 A；同一端口如今插着 VID=bbbb 的 B。
+	// BusID 只是拓扑位置，不能绕过物理身份核验触发 bind/attach。
+	entries := []USBShareEntry{entry("e1", "2-3", "aaaa", "0001", "Ubuntu")}
+	devices := []usbipd.Device{dev("2-3", "bbbb", "0002", usbipd.StateNotShared)}
+	steps := planUsbReplay(entries, devices, runningSet("Ubuntu"), true)
+	if len(steps) != 1 || steps[0].Kind != usbStepSkip {
+		t.Fatalf("同端口换成其他设备必须 skip，绝不能 bind/attach: %+v", steps)
+	}
+	if !strings.Contains(steps[0].Reason, "身份") {
+		t.Fatalf("skip 必须明确归因物理身份不匹配: %+v", steps[0])
+	}
+}
 
 func TestPlanUsbReplayMatrix(t *testing.T) {
 	entries := []USBShareEntry{
