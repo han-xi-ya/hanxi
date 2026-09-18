@@ -185,6 +185,53 @@ func TestPlanUsbReplayAmbiguousVidPidSkips(t *testing.T) {
 	if len(steps) != 1 || steps[0].Kind != usbStepSkip {
 		t.Fatalf("同 VID:PID 多义必须 skip 而非挑一个: %+v", steps)
 	}
+	if !strings.Contains(steps[0].Reason, "多个") || !strings.Contains(steps[0].Reason, "身份") {
+		t.Fatalf("多义跳过必须给出明确身份归因: %+v", steps[0])
+	}
+}
+
+func TestPlanUsbReplayStableSerialSurvivesPortChange(t *testing.T) {
+	e := entry("e1", "2-3", "aaaa", "0001", "Ubuntu")
+	e.InstanceID = `USB\\VID_AAAA&PID_0001\\SERIAL-A`
+	e.Serial = "SERIAL-A"
+	devices := []usbipd.Device{
+		identifiedDev("4-1", "aaaa", "0001", `USB\\VID_AAAA&PID_0001\\SERIAL-A`, "SERIAL-A", "", usbipd.StateShared),
+		identifiedDev("4-2", "aaaa", "0001", `USB\\VID_AAAA&PID_0001\\SERIAL-B`, "SERIAL-B", "", usbipd.StateShared),
+	}
+	steps := planUsbReplay([]USBShareEntry{e}, devices, runningSet("Ubuntu"), true)
+	if len(steps) != 1 || steps[0].Kind != usbStepAttach || steps[0].BusID != "4-1" {
+		t.Fatalf("换口应按唯一稳定序列号命中原设备: %+v", steps)
+	}
+}
+
+func TestPlanUsbReplayStableIdentityDoesNotFallbackToVidPid(t *testing.T) {
+	e := entry("e1", "2-3", "aaaa", "0001", "Ubuntu")
+	e.InstanceID = `USB\\VID_AAAA&PID_0001\\SERIAL-A`
+	e.Serial = "SERIAL-A"
+	devices := []usbipd.Device{
+		identifiedDev("4-1", "aaaa", "0001", `USB\\VID_AAAA&PID_0001\\SERIAL-B`, "SERIAL-B", "", usbipd.StateShared),
+	}
+	steps := planUsbReplay([]USBShareEntry{e}, devices, runningSet("Ubuntu"), true)
+	if len(steps) != 1 || steps[0].Kind != usbStepSkip {
+		t.Fatalf("已有稳定身份时禁止降级按 VID/PID 串挂同型号设备: %+v", steps)
+	}
+}
+
+func TestPlanUsbReplayLegacyLedgerConservativeCompatibility(t *testing.T) {
+	legacy := entry("e1", "9-9", "aaaa", "0001", "Ubuntu") // 无新增身份字段
+	one := planUsbReplay([]USBShareEntry{legacy}, []usbipd.Device{
+		dev("4-1", "aaaa", "0001", usbipd.StateShared),
+	}, runningSet("Ubuntu"), true)
+	if len(one) != 1 || one[0].Kind != usbStepAttach || one[0].BusID != "4-1" {
+		t.Fatalf("旧账本唯一 VID/PID 候选应继续兼容: %+v", one)
+	}
+	many := planUsbReplay([]USBShareEntry{legacy}, []usbipd.Device{
+		dev("4-1", "aaaa", "0001", usbipd.StateShared),
+		dev("4-2", "aaaa", "0001", usbipd.StateShared),
+	}, runningSet("Ubuntu"), true)
+	if len(many) != 1 || many[0].Kind != usbStepSkip {
+		t.Fatalf("旧账本多候选必须 fail closed: %+v", many)
+	}
 }
 
 func TestPlanUsbReplayRunningUnknown(t *testing.T) {
@@ -200,7 +247,8 @@ func TestPlanUsbReplayRunningUnknown(t *testing.T) {
 // ---- 账本落盘 ----
 
 func TestUsbLedgerRoundTripAndUpsert(t *testing.T) {
-	cli := &fakeUSB{version: "5.3.0", devices: []usbipd.Device{dev("2-3", "aaaa", "0001", usbipd.StateNotShared)}}
+	device := identifiedDev("2-3", "aaaa", "0001", `USB\\VID_AAAA&PID_0001\\SERIAL-A`, "SERIAL-A", "12345678-1234-1234-1234-123456789abc", usbipd.StateNotShared)
+	cli := &fakeUSB{version: "5.3.0", devices: []usbipd.Device{device}}
 	svc, _ := newUSBFakeService(t, cli, wslNames([]string{"Ubuntu", "Debian"}, []string{"Ubuntu"}))
 
 	out, err := svc.SetUsbShare("2-3", "Ubuntu")
@@ -210,6 +258,10 @@ func TestUsbLedgerRoundTripAndUpsert(t *testing.T) {
 	led, err := svc.usbLoad()
 	if err != nil || len(led.Entries) != 1 || led.Entries[0].Distro != "Ubuntu" {
 		t.Fatalf("账本落盘异常: %+v %v", led, err)
+	}
+	got := led.Entries[0]
+	if got.InstanceID != device.InstanceID || got.Vid != device.Vid || got.Pid != device.Pid || got.Serial != device.Serial || got.Guid != device.Guid {
+		t.Fatalf("账本未完整保存物理身份: got=%+v device=%+v", got, device)
 	}
 	if led.AutoEnabled {
 		t.Error("总开关默认必须关（卡片裁定）")
@@ -245,6 +297,22 @@ func TestUsbLedgerRoundTripAndUpsert(t *testing.T) {
 	// 发行版白名单：不在 `wsl -l -q` 名单里的名字必须被拒（不触达任何写盘）。
 	if _, err := svc.SetUsbShare("2-3", "Evil;calc"); err == nil {
 		t.Error("非白名单发行版必须拒绝")
+	}
+}
+
+func TestUsbLedgerLegacyJSONCompatibility(t *testing.T) {
+	cli := &fakeUSB{version: "5.3.0"}
+	svc, _ := newUSBFakeService(t, cli, wslNames(nil, nil))
+	legacy := `{"autoEnabled":true,"entries":[{"id":"old","busId":"2-3","vid":"aaaa","pid":"0001","description":"legacy","distro":"Ubuntu","enabled":true,"addedAt":"2026-01-01 00:00:00"}]}`
+	if err := os.WriteFile(svc.usbPath, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	led, err := svc.usbLoad()
+	if err != nil {
+		t.Fatalf("旧账本必须可读: %v", err)
+	}
+	if len(led.Entries) != 1 || led.Entries[0].InstanceID != "" || led.Entries[0].Serial != "" || led.Entries[0].Guid != "" {
+		t.Fatalf("旧账本缺失新增字段时应按零值兼容: %+v", led)
 	}
 }
 
@@ -310,6 +378,28 @@ func TestReplayManualAttachesAndRecords(t *testing.T) {
 	}
 	if !strings.Contains(led.Entries[1].LastStatus, "附加失败") || led.Entries[1].LastAt == "" {
 		t.Errorf("e2 失败状态未落账: %+v", led.Entries[1])
+	}
+}
+
+func TestReplayDifferentDeviceReusingBusIDDoesNothing(t *testing.T) {
+	cli := &fakeUSB{version: "5.3.0", devices: []usbipd.Device{dev("2-3", "bbbb", "0002", usbipd.StateNotShared)}}
+	svc, ev := newUSBFakeService(t, cli, wslNames([]string{"Ubuntu"}, []string{"Ubuntu"}))
+	svc.usbSave(usbLedger{AutoEnabled: true, Entries: []USBShareEntry{
+		entry("e1", "2-3", "aaaa", "0001", "Ubuntu"),
+	}})
+	out, err := svc.ReplayUsbNow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ev.calls) != 0 || len(cli.attachLog) != 0 {
+		t.Fatalf("同端口其他设备绝不能产生 bind/attach: elev=%v attach=%v", ev.calls, cli.attachLog)
+	}
+	if !strings.Contains(out.Message, "跳过 1 台") {
+		t.Fatalf("回执应计入跳过: %+v", out)
+	}
+	led, _ := svc.usbLoad()
+	if !strings.Contains(led.Entries[0].LastStatus, "身份不匹配") {
+		t.Fatalf("账本须明确记录身份不匹配: %+v", led.Entries[0])
 	}
 }
 
