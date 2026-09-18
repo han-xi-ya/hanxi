@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 type registryTestModule struct {
@@ -15,6 +16,9 @@ type registryTestModule struct {
 	initErr    error
 	initCount  atomic.Int32
 	destroyCnt atomic.Int32
+	runStarted chan struct{}
+	runRelease chan struct{}
+	runCount   atomic.Int32
 }
 
 func (m *registryTestModule) Info() ModuleInfo    { return m.info }
@@ -25,6 +29,25 @@ func (m *registryTestModule) OnDestroy() error    { m.destroyCnt.Add(1); return 
 func (m *registryTestModule) OnInit(context.Context) error {
 	m.initCount.Add(1)
 	return m.initErr
+}
+func (m *registryTestModule) TrayCommands() []TrayCommand {
+	return []TrayCommand{{
+		ID: "run",
+		Run: func(context.Context) error {
+			m.runCount.Add(1)
+			if m.runStarted != nil {
+				select {
+				case <-m.runStarted:
+				default:
+					close(m.runStarted)
+				}
+			}
+			if m.runRelease != nil {
+				<-m.runRelease
+			}
+			return nil
+		},
+	}}
 }
 
 type registryTestStore struct {
@@ -146,6 +169,62 @@ func TestRegistryDisableDestroysOnce(t *testing.T) {
 	}
 	if registry.IsEnabled("module") || registry.IsActive("module") {
 		t.Fatal("disabled module should be disabled and inactive")
+	}
+}
+
+func TestRegistryDisableWaitsForInflightCommand(t *testing.T) {
+	registry := NewRegistry(nil)
+	module := newRegistryTestModule("module")
+	module.runStarted = make(chan struct{})
+	module.runRelease = make(chan struct{})
+	if err := registry.Register(module); err != nil {
+		t.Fatal(err)
+	}
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- registry.RunTrayCommand(context.Background(), "module/run") }()
+	select {
+	case <-module.runStarted:
+	case <-time.After(time.Second):
+		t.Fatal("command did not start")
+	}
+
+	disableDone := make(chan error, 1)
+	go func() { disableDone <- registry.SetEnabled("module", false) }()
+	select {
+	case err := <-disableDone:
+		t.Fatalf("disable returned before in-flight command: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	// stopping/Enabled=false 已关门，后来的命令必须被拒绝且不能增加执行次数。
+	if err := registry.RunTrayCommand(context.Background(), "module/run"); !errors.Is(err, ErrModuleDisabled) {
+		t.Fatalf("new command while disabling error = %v", err)
+	}
+	if got := module.runCount.Load(); got != 1 {
+		t.Fatalf("run count while stopping = %d, want 1", got)
+	}
+	if got := module.destroyCnt.Load(); got != 0 {
+		t.Fatalf("OnDestroy ran before command completed: %d", got)
+	}
+
+	close(module.runRelease)
+	if err := <-runDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-disableDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("disable did not finish after command")
+	}
+	if got := module.destroyCnt.Load(); got != 1 {
+		t.Fatalf("OnDestroy count = %d, want 1", got)
+	}
+	if registry.IsEnabled("module") || registry.IsActive("module") {
+		t.Fatal("module should be disabled and inactive after drain")
 	}
 }
 

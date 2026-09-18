@@ -27,12 +27,16 @@ type StateStorage interface {
 }
 
 // ModuleWrapper 包装具体模块与其运行时状态。
-// mu 统一保护 Enabled、initialized 以及生命周期转换。
+// mu 保护启停状态、生命周期转换与命令 operation lease；模块业务回调一律在锁外执行。
 type ModuleWrapper struct {
-	Module      Module
-	Enabled     bool
-	initialized bool
-	mu          sync.Mutex
+	Module       Module
+	Enabled      bool
+	initialized  bool
+	initializing bool
+	stopping     bool
+	inFlight     int
+	mu           sync.Mutex
+	cond         *sync.Cond
 }
 
 // Registry 管理内建扩展的注册、生命周期与启用状态。
@@ -71,10 +75,12 @@ func (r *Registry) Register(exts ...Module) error {
 			enabled = r.store.IsModuleEnabled(id, true)
 		}
 
-		r.modules[id] = &ModuleWrapper{
+		wrapper := &ModuleWrapper{
 			Module:  e,
 			Enabled: enabled,
 		}
+		wrapper.cond = sync.NewCond(&wrapper.mu)
+		r.modules[id] = wrapper
 	}
 	return nil
 }
@@ -97,26 +103,52 @@ func (r *Registry) wrappers() []*ModuleWrapper {
 }
 
 // EnsureActive 确保指定模块已完成懒初始化。在模块页面进入或业务接口调用前统一调用。
+// 生命周期回调在 wrapper.mu 外执行；initializing/stopping + cond 串行转换。
 func (r *Registry) EnsureActive(moduleID string) error {
 	moduleID = strings.TrimSpace(moduleID)
 	wrapper, ok := r.wrapper(moduleID)
 	if !ok {
 		return fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
 	}
+	return ensureActive(wrapper, moduleID)
+}
 
+func ensureActive(wrapper *ModuleWrapper, moduleID string) error {
 	wrapper.mu.Lock()
-	defer wrapper.mu.Unlock()
-
-	if !wrapper.Enabled {
+	for wrapper.initializing {
+		wrapper.cond.Wait()
+		if !wrapper.Enabled || wrapper.stopping {
+			wrapper.mu.Unlock()
+			return fmt.Errorf("%w %q", ErrModuleDisabled, moduleID)
+		}
+		if wrapper.initialized {
+			wrapper.mu.Unlock()
+			return nil
+		}
+	}
+	if !wrapper.Enabled || wrapper.stopping {
+		wrapper.mu.Unlock()
 		return fmt.Errorf("%w %q", ErrModuleDisabled, moduleID)
 	}
 	if wrapper.initialized {
+		wrapper.mu.Unlock()
 		return nil
 	}
-	if err := wrapper.Module.OnInit(context.Background()); err != nil {
+	wrapper.initializing = true
+	wrapper.mu.Unlock()
+
+	err := wrapper.Module.OnInit(context.Background())
+
+	wrapper.mu.Lock()
+	wrapper.initializing = false
+	if err == nil && wrapper.Enabled && !wrapper.stopping {
+		wrapper.initialized = true
+	}
+	wrapper.cond.Broadcast()
+	wrapper.mu.Unlock()
+	if err != nil {
 		return fmt.Errorf("registry: init module %q failed: %w", moduleID, err)
 	}
-	wrapper.initialized = true
 	return nil
 }
 
@@ -195,30 +227,58 @@ func (r *Registry) IsActive(id string) bool {
 	return wrapper.initialized
 }
 
-// SetEnabled 启停扩展。停用时立即触发 OnDestroy 销毁内部资源并向操作系统归还内存。
+// SetEnabled 启停扩展。停用先阻止新命令并等待在飞命令/初始化完成，再于锁外
+// 调用 OnDestroy；返回时模块已不可执行且运行时资源已收口。
 func (r *Registry) SetEnabled(id string, enabled bool) error {
 	wrapper, ok := r.wrapper(id)
 	if !ok {
 		return fmt.Errorf("%w %q", ErrUnknownModule, id)
 	}
 
+	var destroy bool
 	wrapper.mu.Lock()
-	defer wrapper.mu.Unlock()
-
-	if !enabled && wrapper.initialized {
-		// 1. 调用模块自身析构
-		if err := wrapper.Module.OnDestroy(); err != nil {
-			slog.Warn("registry: OnDestroy failed", "module", id, "err", err)
+	if enabled {
+		for wrapper.stopping {
+			wrapper.cond.Wait()
 		}
-		wrapper.initialized = false
+		wrapper.Enabled = true
+		wrapper.mu.Unlock()
+	} else {
+		// 先关门：command lease 在同一把锁下检查 Enabled/stopping，之后不再有新命令进入。
+		wrapper.Enabled = false
+		if wrapper.stopping {
+			for wrapper.stopping {
+				wrapper.cond.Wait()
+			}
+			wrapper.mu.Unlock()
+		} else {
+			wrapper.stopping = true
+			for wrapper.initializing || wrapper.inFlight > 0 {
+				wrapper.cond.Wait()
+			}
+			destroy = wrapper.initialized
+			wrapper.mu.Unlock()
 
-		// 2. 主动触发 Go 垃圾回收并将空闲虚拟内存立即交还操作系统
-		go func() {
-			runtime.GC()
-			debug.FreeOSMemory()
-		}()
+			if destroy {
+				if err := wrapper.Module.OnDestroy(); err != nil {
+					slog.Warn("registry: OnDestroy failed", "module", id, "err", err)
+				}
+			}
+
+			wrapper.mu.Lock()
+			wrapper.initialized = false
+			wrapper.stopping = false
+			wrapper.cond.Broadcast()
+			wrapper.mu.Unlock()
+
+			if destroy {
+				go func() {
+					runtime.GC()
+					debug.FreeOSMemory()
+				}()
+			}
+		}
 	}
-	wrapper.Enabled = enabled
 
 	if r.store != nil {
 		return r.store.SetModuleEnabled(id, enabled)
@@ -276,26 +336,45 @@ func (r *Registry) ListTrayCommands() []TrayCommandInfo {
 	return out
 }
 
-// RunTrayCommand 按 key 执行托盘命令：要求模块已启用，先完成懒初始化再调用命令 Run。
-// 可安全从宿主后台协程（如托盘点击回调）调用。
+// RunTrayCommand 按 key 执行托盘命令。命令取得 operation lease 后在 wrapper.mu
+// 外执行；停用先关门阻止新 lease，再等待 inFlight 归零后 OnDestroy。
 func (r *Registry) RunTrayCommand(ctx context.Context, key string) error {
 	moduleID, cmdID, ok := splitTrayKey(key)
 	if !ok {
 		return fmt.Errorf("registry: invalid tray command key %q", key)
 	}
-	if err := r.EnsureActive(moduleID); err != nil {
+	wrapper, ok := r.wrapper(moduleID)
+	if !ok {
+		return fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
+	}
+	if err := ensureActive(wrapper, moduleID); err != nil {
 		return err
 	}
 
-	wrapper, _ := r.wrapper(moduleID)
 	wrapper.mu.Lock()
+	if !wrapper.Enabled || wrapper.stopping || !wrapper.initialized {
+		wrapper.mu.Unlock()
+		return fmt.Errorf("%w %q", ErrModuleDisabled, moduleID)
+	}
 	provider, ok := wrapper.Module.(TrayCommandsProvider)
 	if !ok {
 		wrapper.mu.Unlock()
 		return fmt.Errorf("registry: module %q provides no tray commands", moduleID)
 	}
-	commands := provider.TrayCommands()
+	wrapper.inFlight++
 	wrapper.mu.Unlock()
+	defer func() {
+		wrapper.mu.Lock()
+		wrapper.inFlight--
+		if wrapper.inFlight == 0 {
+			wrapper.cond.Broadcast()
+		}
+		wrapper.mu.Unlock()
+	}()
+
+	// provider 枚举与命令业务均在锁外执行，但 operation lease 全程覆盖；停用会
+	// 等待本次查找/执行结束后才析构模块。
+	commands := provider.TrayCommands()
 	for _, cmd := range commands {
 		if cmd.ID == cmdID && cmd.Run != nil {
 			return cmd.Run(ctx)
@@ -313,16 +392,32 @@ func splitTrayKey(key string) (moduleID, cmdID string, ok bool) {
 	return parts[0], parts[1], true
 }
 
-// ShutdownAll 应用退出时清理所有已初始化的模块。
+// ShutdownAll 应用退出时清理所有已初始化的模块。与 SetEnabled(false) 同样先
+// 阻止新命令、等待 operation lease 清空，再在锁外析构。
 func (r *Registry) ShutdownAll() {
 	for _, wrapper := range r.wrappers() {
 		wrapper.mu.Lock()
-		if wrapper.initialized {
+		wrapper.Enabled = false
+		for wrapper.stopping {
+			wrapper.cond.Wait()
+		}
+		wrapper.stopping = true
+		for wrapper.initializing || wrapper.inFlight > 0 {
+			wrapper.cond.Wait()
+		}
+		destroy := wrapper.initialized
+		wrapper.mu.Unlock()
+
+		if destroy {
 			if err := wrapper.Module.OnDestroy(); err != nil {
 				slog.Warn("registry: ShutdownAll OnDestroy failed", "err", err)
 			}
-			wrapper.initialized = false
 		}
+
+		wrapper.mu.Lock()
+		wrapper.initialized = false
+		wrapper.stopping = false
+		wrapper.cond.Broadcast()
 		wrapper.mu.Unlock()
 	}
 }
