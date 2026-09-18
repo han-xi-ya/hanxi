@@ -299,6 +299,92 @@ func TestStaleTokenRejected(t *testing.T) {
 	}
 }
 
+func TestFinalWriteConditionRejectsExternalRewrite(t *testing.T) {
+	svc, home := newTestService(t, nil)
+	target := filepath.Join(home, ".claude.json")
+	original := `{"a":1}`
+	external := `{"a":1,"external":true}`
+	writeFile(t, target, original)
+
+	pv, err := svc.PreviewInstall("claude")
+	if err != nil || !pv.Allowed {
+		t.Fatal(pv, err)
+	}
+	var hookCalls int
+	svc.afterWriteCheck = func(path string) {
+		hookCalls++
+		writeFile(t, path, external)
+	}
+	res, err := svc.ConfirmInstall("claude", pv.Token)
+	if !errors.Is(err, ErrStalePreview) {
+		t.Fatalf("最终条件检查后的外部改写必须返回 ErrStalePreview: res=%+v err=%v", res, err)
+	}
+	if !strings.Contains(err.Error(), "重新预览") {
+		t.Fatalf("陈旧错误必须要求重新预览: %v", err)
+	}
+	if hookCalls != 1 {
+		t.Fatalf("afterWriteCheck calls = %d, want 1", hookCalls)
+	}
+	if got := readFile(t, target); got != external {
+		t.Fatalf("不得覆盖外部改写: got %q want %q", got, external)
+	}
+	matches, globErr := filepath.Glob(target + ".hanxi-bak-*")
+	if globErr != nil || len(matches) != 1 {
+		t.Fatalf("backup matches = %v, err=%v", matches, globErr)
+	}
+	if got := readFile(t, matches[0]); got != original {
+		t.Fatalf("备份必须对应预览 expected 字节: got %q want %q", got, original)
+	}
+}
+
+func TestConfirmSamePathSerializesFinalCondition(t *testing.T) {
+	svc, home := newTestService(t, nil)
+	target := filepath.Join(home, ".claude.json")
+	writeFile(t, target, `{"a":1}`)
+	pv, err := svc.PreviewInstall("claude")
+	if err != nil || !pv.Allowed {
+		t.Fatal(pv, err)
+	}
+
+	firstChecked := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	svc.afterWriteCheck = func(string) {
+		select {
+		case <-firstChecked:
+		default:
+			close(firstChecked)
+		}
+		<-releaseFirst
+	}
+	type outcome struct {
+		res OpResult
+		err error
+	}
+	first := make(chan outcome, 1)
+	second := make(chan outcome, 1)
+	go func() {
+		res, err := svc.ConfirmInstall("claude", pv.Token)
+		first <- outcome{res: res, err: err}
+	}()
+	<-firstChecked
+	go func() {
+		res, err := svc.ConfirmInstall("claude", pv.Token)
+		second <- outcome{res: res, err: err}
+	}()
+	select {
+	case got := <-second:
+		t.Fatalf("同路径第二个确认绕过串行锁提前返回: %+v", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseFirst)
+	if got := <-first; got.err != nil || !got.res.Success {
+		t.Fatalf("首个确认失败: %+v", got)
+	}
+	if got := <-second; !errors.Is(got.err, ErrStalePreview) || got.res.Success {
+		t.Fatalf("第二个旧预览必须在串行重规划后判 stale: %+v", got)
+	}
+}
+
 func TestConflictAfterUserEdit(t *testing.T) {
 	svc, home := newTestService(t, nil)
 	target := filepath.Join(home, ".claude.json")
@@ -432,7 +518,10 @@ func TestApplyChainRollbackRestore(t *testing.T) {
 			dirExists: true, exists: true},
 		allowed: true, newData: newData, newFingerprint: "bogus",
 	}
-	res := svc.applyChain(p, false, newReceipt())
+	res, applyErr := svc.applyChain(p, false, newReceipt())
+	if applyErr != nil {
+		t.Fatal(applyErr)
+	}
 	if res.Success || !res.RolledBack {
 		t.Fatalf("应自动回滚: %+v", res)
 	}
@@ -455,7 +544,10 @@ func TestApplyChainRollbackRemovesCreatedFile(t *testing.T) {
 		a:       clientAnalysis{spec: clientSpecs[0], dir: home, path: target, dirExists: true, exists: false},
 		allowed: true, newData: newData, newFingerprint: "bogus",
 	}
-	res := svc.applyChain(p, false, newReceipt())
+	res, applyErr := svc.applyChain(p, false, newReceipt())
+	if applyErr != nil {
+		t.Fatal(applyErr)
+	}
 	if res.Success || !res.RolledBack {
 		t.Fatalf("新建文件复验失败应删除回滚: %+v", res)
 	}
