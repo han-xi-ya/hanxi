@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"hanxi/internal/product"
@@ -48,7 +50,11 @@ func shouldMigrateLegacyHome(oldHome, newHome string) bool {
 // 旧家数据永远保持可找回。
 func migrateLegacyHome(newHome string) {
 	oldHome := legacyAppDataHome(os.Getenv("APPDATA"))
-	if !shouldMigrateLegacyHome(oldHome, newHome) {
+	journalExists := false
+	if _, err := os.Stat(filepath.Join(newHome, migrationJournalName)); err == nil {
+		journalExists = true
+	}
+	if !journalExists && !shouldMigrateLegacyHome(oldHome, newHome) {
 		return
 	}
 	slog.Info("detected legacy %APPDATA% home, migrating to new data root once",
@@ -59,41 +65,110 @@ func migrateLegacyHome(newHome string) {
 	}
 }
 
-// migrateFromLegacyHome 把旧家顶层条目逐一搬进新家。搬迁语义：
-// os.Rename 优先（同卷原子）；跨卷/权限失败退化为整棵子树复制，且**复制
-// 全部成功后才删源**——任何一步失败都旧家原样保留，绝不先删。
-// 新家同名条目跳过不覆盖（新家优先）；全部搬成且无跳过时顺带清理空旧家，
-// 完成"退出用户目录"的最后一米。
+const migrationJournalName = ".hanxi-home-migration.json"
+
+type migrationJournal struct {
+	Pending []string `json:"pending"`
+}
+
+var (
+	moveLegacyPath    = movePath
+	replaceAtomicFile = replaceFileOS
+)
+
+// migrateFromLegacyHome 把旧家顶层条目逐一搬进新家。pending journal 在每项
+// 成功后立即落盘，因此后项失败或进程中断时，下次只续跑未完成项。目标冲突会
+// 保留在 pending，绝不把迁移宣布完成；journal 仅在 pending 清空后删除。
 func migrateFromLegacyHome(oldHome, newHome string) error {
-	entries, err := os.ReadDir(oldHome)
-	if err != nil {
-		return fmt.Errorf("读取旧家 %s 失败: %w", oldHome, err)
+	if err := os.MkdirAll(newHome, 0755); err != nil {
+		return fmt.Errorf("创建新家 %s 失败: %w", newHome, err)
 	}
-	var moved, skipped int
+	journalPath := filepath.Join(newHome, migrationJournalName)
+	pending, err := loadOrCreateMigrationJournal(oldHome, journalPath)
+	if err != nil {
+		return err
+	}
+
+	var moved int
 	var errs []error
-	for _, e := range entries {
-		src := filepath.Join(oldHome, e.Name())
-		dst := filepath.Join(newHome, e.Name())
+	for len(pending) > 0 {
+		name := pending[0]
+		src := filepath.Join(oldHome, name)
+		dst := filepath.Join(newHome, name)
 		if _, err := os.Stat(dst); err == nil {
-			slog.Warn("legacy home migration: entry already exists in new home, skipped (new home wins)", "entry", e.Name())
-			skipped++
-			continue
+			errs = append(errs, fmt.Errorf("%s: 新家存在同名条目，保留待处理", name))
+			break
+		} else if !os.IsNotExist(err) {
+			errs = append(errs, fmt.Errorf("%s: 检查新家目标失败: %w", name, err))
+			break
 		}
-		if err := movePath(src, dst); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", e.Name(), err))
+		if _, err := os.Stat(src); os.IsNotExist(err) {
+			// 上次已完成移动、但在 journal 更新前中断：按已提交恢复。
+			pending = pending[1:]
+			if err := saveMigrationJournal(journalPath, pending); err != nil {
+				return fmt.Errorf("更新搬迁 journal 失败: %w", err)
+			}
 			continue
+		} else if err != nil {
+			errs = append(errs, fmt.Errorf("%s: 检查旧家源失败: %w", name, err))
+			break
+		}
+		if err := moveLegacyPath(src, dst); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+			break
 		}
 		moved++
+		pending = pending[1:]
+		if err := saveMigrationJournal(journalPath, pending); err != nil {
+			return fmt.Errorf("%s 已搬迁但更新 journal 失败: %w", name, err)
+		}
 	}
-	slog.Info("legacy home migration finished", "moved", moved, "skipped", skipped, "failed", len(errs))
 
-	// 只有"搬光且没留"才清空旧家；残留任何条目/失败项时保留原地，人工可查。
-	if len(errs) == 0 && skipped == 0 {
+	if len(pending) == 0 {
+		if err := os.Remove(journalPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("清理搬迁 journal 失败: %w", err)
+		}
 		if err := os.Remove(oldHome); err != nil && !os.IsNotExist(err) {
 			slog.Debug("legacy home dir not empty or removable, left as-is", "path", oldHome, "err", err)
 		}
 	}
+	slog.Info("legacy home migration pass finished", "moved", moved, "pending", len(pending), "failed", len(errs))
 	return errors.Join(errs...)
+}
+
+func loadOrCreateMigrationJournal(oldHome, journalPath string) ([]string, error) {
+	raw, err := os.ReadFile(journalPath)
+	if err == nil {
+		var journal migrationJournal
+		if err := json.Unmarshal(raw, &journal); err != nil {
+			return nil, fmt.Errorf("解析搬迁 journal 失败: %w", err)
+		}
+		return journal.Pending, nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("读取搬迁 journal 失败: %w", err)
+	}
+	entries, err := os.ReadDir(oldHome)
+	if err != nil {
+		return nil, fmt.Errorf("读取旧家 %s 失败: %w", oldHome, err)
+	}
+	pending := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		pending = append(pending, entry.Name())
+	}
+	sort.Strings(pending)
+	if err := saveMigrationJournal(journalPath, pending); err != nil {
+		return nil, fmt.Errorf("创建搬迁 journal 失败: %w", err)
+	}
+	return pending, nil
+}
+
+func saveMigrationJournal(path string, pending []string) error {
+	raw, err := json.Marshal(migrationJournal{Pending: pending})
+	if err != nil {
+		return err
+	}
+	return writeAtomicFile(path, append(raw, '\n'))
 }
 
 // movePath 搬迁单个顶层条目：rename 直通，跨卷（%APPDATA% 在 C 盘、新家
@@ -154,4 +229,36 @@ func copyFile(src, dst string, perm fs.FileMode) error {
 		return err
 	}
 	return out.Close()
+}
+
+func writeAtomicFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := replaceAtomicFile(tmpName, path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
