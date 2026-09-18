@@ -251,17 +251,54 @@ describe('OcrView 组件导入', () => {
     wrapper.unmount()
   })
 
-  it('导入成功回执：提示 + 自动启动托管', async () => {
+  it('安装回执明确要求启动时才启动当前引擎', async () => {
     stubStatus()
     const wrapper = await mountView()
     svc.StartService.mockResolvedValue({ action: 'started', external: false, message: 'hanxi-ocr 服务已启动（127.0.0.1:53120）' })
     runtime.handlers['ocr:file-drop-result']({
-      data: { kind: 'import', ok: true, exePath: 'D:\\x\\hanxi-ocr.exe', image: null, message: '已导入 hanxi-ocr.exe（47.9 MB），正在启动服务' },
+      data: {
+        kind: 'import', ok: true, exePath: 'D:\\x\\hanxi-ocr.exe', engine: 'wechat',
+        activated: true, shouldStart: true, image: null,
+        message: '已安装托管引擎 微信引擎 v4.1.15.9；当前微信引擎已更新，正在启动服务',
+      },
     })
     await flushPromises()
-    // 单条全局 toast：导入提示随后被启动成功回执顶掉，证明两步链路都走完
+    // 单条全局 toast：安装提示随后被启动成功回执顶掉，证明明确回执驱动两步链路
     expect(useToast().toastMsg.value).toContain('已启动')
     expect(svc.StartService).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('stopped 下安装非当前微信引擎只登记，不按旧状态擅自启动', async () => {
+    stubStatus({ ...stoppedState, engineID: 'paddle' })
+    const wrapper = await mountView()
+    runtime.handlers['ocr:file-drop-result']({
+      data: {
+        kind: 'import', ok: true, exePath: 'D:\\x\\hanxi-ocr.exe', engine: 'wechat',
+        activated: false, shouldStart: false, image: null,
+        message: '已安装托管引擎 微信引擎 v4.1.15.9；微信引擎未设为当前，仅完成登记',
+      },
+    })
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('仅完成登记')
+    expect(svc.StartService).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('paddle 安装回执明确要求启动时，前端按后端契约启动一次', async () => {
+    stubStatus({ ...stoppedState, engineID: 'wechat' })
+    svc.StartService.mockResolvedValue({ action: 'started', external: false, message: 'hanxi-ocr 服务已启动（127.0.0.1:53120）' })
+    const wrapper = await mountView()
+    runtime.handlers['ocr:file-drop-result']({
+      data: {
+        kind: 'import', ok: true, exePath: 'D:\\x\\hanxi-ocr-paddle.exe', engine: 'paddle',
+        activated: true, shouldStart: true, image: null,
+        message: '已安装托管引擎 PP-OCR 开源引擎 v0.5.0；已切换为 PP-OCR 开源引擎，正在启动服务',
+      },
+    })
+    await flushPromises()
+    expect(svc.StartService).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toContain('已启动')
     wrapper.unmount()
   })
 
@@ -409,7 +446,12 @@ describe('OcrView 引擎列表（双引擎并存）', () => {
     const statusBefore = svc.GetStatus.mock.calls.length
     const enginesBefore = svc.GetEngines.mock.calls.length
     runtime.handlers['ocr:file-drop-result']({
-      data: { kind: 'import', ok: true, exePath: 'D:\\ocr\\hanxi-ocr-paddle\\hanxi-ocr.exe', image: null, message: '已登记 PP-OCR 引擎目录（v0.4.0-alpha）；已切换为 PP-OCR 开源引擎' },
+      data: {
+        kind: 'import', ok: true,
+        exePath: 'D:\\ocr\\hanxi-ocr-paddle\\hanxi-ocr.exe', engine: 'paddle',
+        activated: true, shouldStart: false, image: null,
+        message: '已登记 PP-OCR 引擎目录（v0.4.0-alpha）；已切换为 PP-OCR 开源引擎',
+      },
     })
     await flushPromises()
     expect(useToast().toastMsg.value).toContain('已登记')
@@ -522,7 +564,12 @@ describe('OcrView 托管版本（F7 zip 安装 / 列表 / 卸载）', () => {
     const enginesBefore = svc.GetEngines.mock.calls.length
     const hostedBefore = svc.ListHostedVersions.mock.calls.length
     runtime.handlers['ocr:file-drop-result']({
-      data: { kind: 'import', ok: true, exePath: 'C:\\hx\\versions\\hanxi-ocr\\paddle-0.5.0\\hanxi-ocr.exe', image: null, message: '已安装托管引擎 PP-OCR 开源引擎 v0.5.0（36.2 MB）' },
+      data: {
+        kind: 'import', ok: true,
+        exePath: 'C:\\hx\\versions\\hanxi-ocr\\paddle-0.5.0\\hanxi-ocr.exe', engine: 'paddle',
+        activated: true, shouldStart: false, image: null,
+        message: '已安装托管引擎 PP-OCR 开源引擎 v0.5.0（36.2 MB）',
+      },
     })
     await flushPromises()
     expect(useToast().toastMsg.value).toContain('已安装托管引擎')

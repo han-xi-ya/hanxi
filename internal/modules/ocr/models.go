@@ -78,11 +78,14 @@ type SnipResult struct {
 // DropResult 原生文件拖放/组件导入的统一回执（事件 ocr:file-drop-result 与各
 // 导入方法共用）。按 Kind 分流：import 结果刷状态，image 结果直接设为待识别图。
 type DropResult struct {
-	Kind    string    `json:"kind"` // import / image
-	Ok      bool      `json:"ok"`
-	ExePath string    `json:"exePath"` // 导入成功后的托管副本路径
-	Image   *ImageRef `json:"image"`   // 图片通道成功时的选图结果
-	Message string    `json:"message"` // 中文人话（成功说明或失败原因）
+	Kind        string    `json:"kind"` // import / image
+	Ok          bool      `json:"ok"`
+	ExePath     string    `json:"exePath"`     // 导入成功后的组件入口路径
+	Engine      string    `json:"engine"`      // import 成功时的目标引擎（wechat / paddle）
+	Activated   bool      `json:"activated"`   // import 后目标引擎是否为当前引擎
+	ShouldStart bool      `json:"shouldStart"` // 前端是否应按本次回执启动服务；不得再按旧状态猜测
+	Image       *ImageRef `json:"image"`       // 图片通道成功时的选图结果
+	Message     string    `json:"message"`     // 中文人话（成功说明或失败原因）
 }
 
 // HostedVersion 托管版本清单一件（F7：引擎 zip 安装进 versions/hanxi-ocr 的落位件）。

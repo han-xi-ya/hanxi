@@ -6,7 +6,7 @@
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
-import type { DropResult, EngineInfo, HostedVersion, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
+import type { DropResult as GeneratedDropResult, EngineInfo, HostedVersion, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
 import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
@@ -26,6 +26,13 @@ import HistoryPanel from '../components/tool/HistoryPanel.vue'
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
+
+// DropResult 的新增字段由本次 Go DTO 提供；绑定产物按协作约定由协调者统一生成。
+type DropResult = GeneratedDropResult & {
+  engine: string
+  activated: boolean
+  shouldStart: boolean
+}
 
 // ---------- 状态 ----------
 const state = ref<ServiceState | null>(null) // null = 首帧尚未取得
@@ -124,6 +131,7 @@ async function stopService() {
 }
 
 // ---------- 组件导入（拖放/对话框；回执统一走 ocr:file-drop-result 事件） ----------
+// 后端回执是安装后激活/启动语义的唯一真相；前端不得再从事件到达时的旧 state 推断。
 // 微信引擎：单文件 exe（后端按形态分流，拖文件走原校验链）。
 async function importViaDialog() {
   try {
@@ -236,10 +244,9 @@ useWailsEvent<DropResult>('ocr:file-drop-result', (r) => {
     void refreshAll()
     return
   }
-  showToast(r.message || '组件已导入')
+  showToast(r.message || (r.activated ? '引擎已安装并设为当前' : '引擎已安装'))
   void refreshAll()
-  const st = state.value?.state
-  if (st === 'stopped' || st === 'failed') void startService() // 导入即托管：拖进来就能跑
+  if (r.shouldStart) void startService()
 })
 
 // 从未发现组件的首启场景：自动展开设置面板，让导入区直达视线（只提示一次）
@@ -657,7 +664,7 @@ onMounted(() => {
           role="button" tabindex="0" aria-label="拖入引擎安装包 zip 托管安装；点击可选取 zip"
           @click="installZipViaDialog" @keydown.enter.prevent="installZipViaDialog">
           📦 推荐：把引擎安装包 <b>hanxi-ocr-&lt;engine&gt;-&lt;version&gt;.zip</b>（旁挂同名 .sha256）
-          拖到这里或点「安装引擎包…」——自动识别引擎、校验落位，升级=再拖一次新版
+          拖到这里或点「安装引擎包…」——自动识别引擎并校验落位；非当前引擎只登记，是否启动以后端安装回执为准
         </div>
       </div>
       <div class="ocr-set-row">

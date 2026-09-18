@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+
+	"hanxi/internal/modules/ocr/instance"
 )
 
 // minSingleExeBytes 单文件版 hanxi-ocr.exe 体积下限（v0.3.0 实测 ≈48MB，
@@ -54,13 +56,21 @@ func (s *OcrService) ImportServiceExe(srcPath string) (DropResult, error) {
 				"该文件仅 %.1f MB 且同级没有引擎文件，无法独立运行（v0.3 起请收发单文件版 %s，约 48 MB）", float64(st.Size())/(1<<20), serviceExeName)), nil
 		}
 	}
+	wasActive := s.store.GetActiveEngine() == EngineWechat
 	if err := s.store.SetEnginePath(EngineWechat, abs); err != nil {
 		return DropResult{}, err
 	}
 	s.refresh()
+	shouldStart := wasActive && importShouldStart(s.engine.Snapshot().State)
+	msg := fmt.Sprintf("已导入 %s（%.1f MB）", serviceExeName, float64(st.Size())/(1<<20))
+	if shouldStart {
+		msg += "，正在启动服务"
+	} else if !wasActive {
+		msg += "；微信引擎未设为当前，仅完成登记"
+	}
 	res := DropResult{
-		Kind: "import", Ok: true, ExePath: abs,
-		Message: fmt.Sprintf("已导入 %s（%.1f MB），正在启动服务", serviceExeName, float64(st.Size())/(1<<20)),
+		Kind: "import", Ok: true, ExePath: abs, Engine: EngineWechat,
+		Activated: wasActive, ShouldStart: shouldStart, Message: msg,
 	}
 	s.emitDropResult(res)
 	return res, nil
@@ -107,7 +117,9 @@ func (s *OcrService) ImportPaddleDir(srcDir string) (DropResult, error) {
 		return DropResult{}, err
 	}
 
-	// 登记即激活：切换语义（含停旧起新/外部不越权判定）收口在 SetActiveEngine
+	// 登记即激活：切换语义（含停旧起新/外部不越权判定）收口在 SetActiveEngine。
+	// stopped/failed 时 SetActiveEngine 只登记不拉起，由本回执明确授权前端启动。
+	beforeSwitch := s.engine.Snapshot().State
 	outcome, err := s.SetActiveEngine(EnginePaddle)
 	if err != nil {
 		return s.dropResultFail("import", "PP-OCR 引擎已登记，但切换为当前引擎失败: "+err.Error()), nil
@@ -121,7 +133,16 @@ func (s *OcrService) ImportPaddleDir(srcDir string) (DropResult, error) {
 		// 典型为 external-unmanaged：登记成功但未激活
 		return s.dropResultFail("import", msg+"；但"+outcome.Message), nil
 	}
-	res := DropResult{Kind: "import", Ok: true, ExePath: exe, Message: msg + "；" + outcome.Message}
+	shouldStart := importShouldStart(beforeSwitch)
+	if shouldStart {
+		msg += "；已切换为 PP-OCR 开源引擎，正在启动服务"
+	} else {
+		msg += "；" + outcome.Message
+	}
+	res := DropResult{
+		Kind: "import", Ok: true, ExePath: exe, Engine: EnginePaddle,
+		Activated: true, ShouldStart: shouldStart, Message: msg,
+	}
 	s.emitDropResult(res)
 	return res, nil
 }
@@ -189,6 +210,10 @@ func (s *OcrService) HandleNativeDrop(files []string) {
 		return
 	}
 	s.dropResultFail("image", fmt.Sprintf("无法识别的拖放文件类型（%s）：支持图片文件、引擎安装包 .zip、%s 与 PP-OCR 引擎目录", ext, serviceExeName))
+}
+
+func importShouldStart(state instance.State) bool {
+	return state == instance.StateStopped || state == instance.StateFailed
 }
 
 func (s *OcrService) dropResultFail(kind, msg string) DropResult {
