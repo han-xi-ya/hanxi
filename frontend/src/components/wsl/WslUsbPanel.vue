@@ -240,10 +240,34 @@ async function copyWinget() {
   }
 }
 
-// 账本行 × 设备表现态 → 呈现徽标（与计划函数同一判据：busid 在场优先）。
-function entryLive(d: USBShareEntry): { tone: 'positive' | 'information' | 'warning' | 'danger' | 'neutral'; text: string } {
-  const dev = devices.value.find(x => x.busId.toLowerCase() === d.busId.toLowerCase() && !x.busId)
-    || devices.value.find(x => x.vid === d.vid && x.pid === d.pid && !!d.vid && !x.busId)
+type USBShareIdentity = USBShareEntry & Partial<Pick<Device, 'instanceId' | 'serial' | 'guid'>>
+
+function sameNonEmpty(a?: string, b?: string): boolean {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase()
+}
+
+function stableIdentityMatches(e: USBShareIdentity, d: Device): boolean {
+  if (sameNonEmpty(e.serial, d.serial)) return true
+  if (sameNonEmpty(e.instanceId, d.instanceId)) return true
+  return sameNonEmpty(e.guid, d.guid)
+}
+
+// 账本行 × 设备表现态 → 呈现徽标。优先后端现态：同 busid 仅在双方非空时
+// EqualFold 命中；换口再按稳定身份，最后才兼容旧账本的唯一 VID:PID。
+function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | 'warning' | 'danger' | 'neutral'; text: string } {
+  const d = entry as USBShareIdentity
+  const sameBus = devices.value.find(x => !!d.busId && !!x.busId && x.busId.toLowerCase() === d.busId.toLowerCase())
+  let dev = sameBus
+  if (!dev) {
+    const stable = devices.value.filter(x => !!x.busId && stableIdentityMatches(d, x))
+    if (stable.length === 1) dev = stable[0]
+  }
+  if (!dev && !d.instanceId && !d.serial && !d.guid && d.vid && d.pid) {
+    const legacy = devices.value.filter(x => !!x.busId
+      && !!x.vid && x.vid.toLowerCase() === d.vid!.toLowerCase()
+      && !!x.pid && x.pid.toLowerCase() === d.pid!.toLowerCase())
+    if (legacy.length === 1) dev = legacy[0]
+  }
   if (!dev) return { tone: 'warning', text: '不在场' }
   if (dev.state === 'attached') return { tone: 'positive', text: '已附加' }
   if (dev.state === 'shared') return { tone: 'information', text: '待附加' }

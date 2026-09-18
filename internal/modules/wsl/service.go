@@ -70,11 +70,13 @@ type WslService struct {
 	ppPending bool // 规则有增删改但尚未点「应用」挂到系统
 	// USB 直通（usbipd-win，F9）：账本持久化（<StateDir>/wsl-usbipd.json）、
 	// CLI 注入面（单测替身）与重放单飞/取消（均以 mu 守护）。
-	usbRun          usbCLI
-	usbPath         string
-	usbReplayBusy   bool
-	usbReplayMsg    string
-	usbReplayCancel context.CancelFunc
+	usbRun           usbCLI
+	usbPath          string
+	usbReplayBusy    bool
+	usbReplayMsg     string
+	usbReplayCancel  context.CancelFunc
+	usbWatcherCancel context.CancelFunc
+	usbAutomationGen uint64
 	// 安装落位偏好持久化（<StateDir>/wsl-install-pref.json）：
 	// 取代前端 localStorage 的「空串粘滞、错路径粘 C、跨包各自为政」三坑，
 	// 详见 installdir.go 与 docs/TROUBLESHOOTING.md。

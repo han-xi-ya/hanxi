@@ -24,6 +24,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -99,6 +100,14 @@ var usbStartupReplayDelay = 12 * time.Second
 
 // usbDistroReplayDelay 发行版启动后补打重放的小窗口（等 guest 服务就绪）。
 var usbDistroReplayDelay = 3 * time.Second
+
+// usbWatcherInterval 是自动共享插拔观察器的低频采样周期；只在总开关开启且
+// 账本非空时常驻。包级变量供单测缩短。
+var usbWatcherInterval = 15 * time.Second
+
+// usbWatcherDebounce absent→present 边沿的去抖窗口；连续两拍确认仍在场后才重放，
+// 避免 USB 枚举过程中的瞬态设备表触发 UAC/attach。
+var usbWatcherDebounce = 2 * time.Second
 
 // ---- 账本持久化 ----
 
@@ -259,6 +268,66 @@ func usbVidPidMatches(e USBShareEntry, d usbipd.Device) bool {
 	return strings.EqualFold(e.Vid, d.Vid) && strings.EqualFold(e.Pid, d.Pid)
 }
 
+// usbBindReceipt 是批量提权 bind 脚本写到标准输出的一条机器回执。
+type usbBindReceipt struct {
+	BusID    string
+	ExitCode int
+}
+
+const usbBindReceiptPrefix = "HANXI_USB_BIND|"
+
+func usbBindReceiptPath() string {
+	return fmt.Sprintf("%s\\hanxi-usb-bind-%d-%d.log", os.TempDir(), os.Getpid(), time.Now().UnixNano())
+}
+
+// buildUsbBindBatchScript 构造一次 UAC 内逐条执行且不中断的 bind 脚本。每条命令
+// 无论成败都把 busid 与退出码追加到仅后端生成的临时文件；外层脚本固定以 0 收口，
+// 让所有设备都有执行机会。提权承载层不回传目标 stdout，故不能靠控制台文本传回执。
+func buildUsbBindBatchScript(busIDs []string, receiptPath string) string {
+	parts := []string{fmt.Sprintf("Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue", psQuote(receiptPath))}
+	for _, busID := range busIDs {
+		parts = append(parts, fmt.Sprintf(
+			"& usbipd bind --busid %s; $c=$LASTEXITCODE; Add-Content -LiteralPath %s -Value ('%s%s|' + $c) -Encoding UTF8",
+			busID, psQuote(receiptPath), usbBindReceiptPrefix, busID,
+		))
+	}
+	return strings.Join(parts, "; ") + "; exit 0"
+}
+
+// parseUsbBindReceipts 只接受本模块固定前缀与白名单 busid，忽略 usbipd 自身日志。
+func parseUsbBindReceipts(out string) map[string]usbBindReceipt {
+	receipts := make(map[string]usbBindReceipt)
+	for _, line := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, usbBindReceiptPrefix) {
+			continue
+		}
+		fields := strings.Split(strings.TrimPrefix(line, usbBindReceiptPrefix), "|")
+		if len(fields) != 2 {
+			continue
+		}
+		busID, err := usbipd.CheckBusID(fields[0])
+		if err != nil {
+			continue
+		}
+		var code int
+		if _, err := fmt.Sscanf(fields[1], "%d", &code); err != nil {
+			continue
+		}
+		receipts[strings.ToLower(busID)] = usbBindReceipt{BusID: busID, ExitCode: code}
+	}
+	return receipts
+}
+
+func deviceSharedAtBusID(devices []usbipd.Device, busID string) bool {
+	for _, d := range devices {
+		if strings.EqualFold(d.BusID, busID) {
+			return d.State == usbipd.StateShared || d.State == usbipd.StateAttached
+		}
+	}
+	return false
+}
+
 // ---- 重放执行 ----
 
 // runUsbReplay 执行一轮重放；distroFilter 空=全账本，非空=只重放该发行版的条目。
@@ -278,9 +347,7 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 		s.mu.Unlock()
 	}()
 
-	if !usbLedgerMu.TryLock() {
-		return OperationOutcome{}, errUsbLedgerBusy
-	}
+	usbLedgerMu.Lock()
 	defer usbLedgerMu.Unlock()
 
 	led, err := s.usbLoad()
@@ -321,37 +388,71 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 			continue
 		case usbStepBind:
 			binds = append(binds, st)
-			attaches[st.Entry.ID] = st
 		case usbStepAttach:
 			attaches[st.Entry.ID] = st
 		}
 	}
 
-	// 第一段：需要补绑定的设备合批提权（一次 UAC；portproxy 同款链式脚本+逐条传播码）。
+	// 第一段：需要补绑定的设备合批提权。一次 UAC 内逐条执行、逐条输出结构化
+	// 回执，不因前项失败截断后项；回执缺失时重读 state 对账，绝不凭整体成功猜测。
 	if len(binds) > 0 {
-		cmds := make([]string, 0, len(binds))
+		valid := make([]usbPlanStep, 0, len(binds))
+		busIDs := make([]string, 0, len(binds))
 		for _, b := range binds {
-			args, err := usbipd.BindArgs(b.BusID, false)
-			if err != nil { // busid 出自后端设备表理论不该坏；坏则单条记因跳过
+			id, err := usbipd.CheckBusID(b.BusID)
+			if err != nil {
 				s.usbSetEntryStatus(&led, b.Entry.ID, "绑定参数不合法："+err.Error())
-				delete(attaches, b.Entry.ID)
+				lines = append(lines, fmt.Sprintf("%s 绑定参数不合法：%s", b.BusID, err))
 				continue
 			}
-			cmds = append(cmds, "usbipd "+strings.Join(args, " "))
+			valid = append(valid, b)
+			busIDs = append(busIDs, id)
 		}
-		if len(cmds) > 0 {
-			script := strings.Join(cmds, "; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; ") + "; exit 0"
-			out, err := s.elevProc(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
-			if err != nil || !out.Success {
-				text := usbipdErrText(err)
-				if err == nil {
-					text = out.Message
+		if len(valid) > 0 {
+			if err := ctx.Err(); err != nil {
+				return OperationOutcome{}, err
+			}
+			receiptPath := usbBindReceiptPath()
+			defer os.Remove(receiptPath)
+			out, callErr := s.elevProc(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", buildUsbBindBatchScript(busIDs, receiptPath))
+			receiptBytes, _ := os.ReadFile(receiptPath)
+			receipts := parseUsbBindReceipts(string(receiptBytes))
+			var reconciled []usbipd.Device
+			missingReceipt := false
+			for _, b := range valid {
+				if _, ok := receipts[strings.ToLower(b.BusID)]; !ok {
+					missingReceipt = true
+					break
 				}
-				for _, b := range binds {
-					s.usbSetEntryStatus(&led, b.Entry.ID, "绑定未完成："+text)
-					delete(attaches, b.Entry.ID)
+			}
+			if missingReceipt {
+				if state, stateErr := s.usbRun.State(ctx); stateErr == nil {
+					reconciled = state
 				}
-				lines = append(lines, fmt.Sprintf("绑定失败（%d 台）：%s", len(binds), text))
+			}
+			fallbackText := usbipdErrText(callErr)
+			if callErr == nil && !out.Success {
+				fallbackText = strings.TrimSpace(out.Message)
+			}
+			if fallbackText == "" {
+				fallbackText = "提权批次未返回该设备的结构化回执"
+			}
+			for _, b := range valid {
+				receipt, ok := receipts[strings.ToLower(b.BusID)]
+				switch {
+				case ok && receipt.ExitCode == 0:
+					attaches[b.Entry.ID] = b
+				case ok:
+					text := fmt.Sprintf("usbipd bind 退出码 %d", receipt.ExitCode)
+					s.usbSetEntryStatus(&led, b.Entry.ID, "绑定失败："+text)
+					lines = append(lines, fmt.Sprintf("%s 绑定失败：%s", b.BusID, text))
+				case deviceSharedAtBusID(reconciled, b.BusID):
+					attaches[b.Entry.ID] = b
+					lines = append(lines, fmt.Sprintf("%s 回执缺失，重读现态确认已共享", b.BusID))
+				default:
+					s.usbSetEntryStatus(&led, b.Entry.ID, "绑定未确认："+fallbackText)
+					lines = append(lines, fmt.Sprintf("%s 绑定未确认：%s", b.BusID, fallbackText))
+				}
 			}
 		}
 	}
@@ -361,6 +462,9 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 		step, queued := attaches[st.Entry.ID]
 		if !queued || st.Kind == usbStepSkip {
 			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return OperationOutcome{}, err
 		}
 		if err := s.usbRun.Attach(ctx, step.Distro, step.BusID); err != nil {
 			text := usbipdErrText(err)
@@ -418,43 +522,180 @@ func usbipdErrText(err error) string {
 	return err.Error()
 }
 
-// ---- 异步重放调度（启动/发行版启动钩子） ----
+// ---- 异步重放调度与插拔观察 ----
+
+// usbGenerationCurrent 是后台自动任务执行动作前的最后一道代际门。关闭总开关、
+// 模块销毁或更新自动化配置都会递增 generation，使旧 goroutine 即使晚醒也不能执行。
+func (s *WslService) usbGenerationCurrent(gen uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.usbAutomationGen == gen
+}
 
 // scheduleUsbReplay 后台补打一发重放（不阻塞调用方；单飞闸兜并发）。
-// delay 用于启动场景等 usbipd 服务就绪；distroFilter 非空时只重放该发行版。
-func (s *WslService) scheduleUsbReplay(trigger string, delay time.Duration, distroFilter string) {
+// explicit=true 仅用于用户显式要求的立即重放，可忽略自动化 generation；其余任务
+// 都必须在等待后再次验代际，确保总开关关闭后旧任务不能复活。
+func (s *WslService) scheduleUsbReplay(trigger string, delay time.Duration, distroFilter string, explicit bool) {
 	s.mu.Lock()
 	if s.usbReplayCancel != nil {
-		s.usbReplayCancel() // 上一发还在等待窗口：撤旧换新（同一目标状态，无需排队）
+		s.usbReplayCancel()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.usbReplayCancel = cancel
+	gen := s.usbAutomationGen
 	s.mu.Unlock()
 	go func() {
 		defer cancel()
 		if delay > 0 {
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
 			select {
-			case <-time.After(delay):
+			case <-timer.C:
 			case <-ctx.Done():
 				return
 			}
 		}
+		if !explicit && !s.usbGenerationCurrent(gen) {
+			return
+		}
 		rctx, rcancel := context.WithTimeout(ctx, 3*time.Minute)
 		defer rcancel()
-		if _, err := s.runUsbReplay(rctx, distroFilter, trigger); err != nil {
+		if _, err := s.runUsbReplay(rctx, distroFilter, trigger); err != nil && !errors.Is(err, context.Canceled) {
 			s.noteUsbReplay(fmt.Sprintf("[%s] 自动重放未完成：%s", time.Now().Format("15:04:05"), usbipdErrText(err)))
 		}
 	}()
 }
 
-// cancelUsbReplay 收回未到点/在飞的后台重放（模块 OnDestroy 收口）。
-func (s *WslService) cancelUsbReplay() {
+// startUsbWatcherIfNeeded 按持久化开关与账本决定是否常驻低频 watcher。
+func (s *WslService) startUsbWatcherIfNeeded() {
+	usbLedgerMu.Lock()
+	led, err := s.usbLoad()
+	usbLedgerMu.Unlock()
+	if err != nil || !led.AutoEnabled || len(led.Entries) == 0 {
+		s.stopUsbWatcher()
+		return
+	}
+
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.usbWatcherCancel != nil {
+		s.mu.Unlock()
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.usbWatcherCancel = cancel
+	gen := s.usbAutomationGen
+	s.mu.Unlock()
+	go s.runUsbWatcher(ctx, gen)
+}
+
+func (s *WslService) stopUsbWatcher() {
+	s.mu.Lock()
+	if s.usbWatcherCancel != nil {
+		s.usbWatcherCancel()
+		s.usbWatcherCancel = nil
+	}
+	s.mu.Unlock()
+}
+
+// usbPresentSet 只标记当前设备表里能安全命中启用账本条目的在场设备。
+func usbPresentSet(entries []USBShareEntry, devices []usbipd.Device) map[string]bool {
+	present := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if !e.Enabled {
+			continue
+		}
+		if d, _, ok := matchUsbDevice(e, devices); ok && d.Connected() {
+			present[e.ID] = true
+		}
+	}
+	return present
+}
+
+func (s *WslService) usbWatcherSnapshot(ctx context.Context) (map[string]bool, bool) {
+	usbLedgerMu.Lock()
+	led, err := s.usbLoad()
+	usbLedgerMu.Unlock()
+	if err != nil || !led.AutoEnabled || len(led.Entries) == 0 {
+		return nil, false
+	}
+	devices, err := s.usbRun.State(ctx)
+	if err != nil {
+		return nil, true // 采样失败不伪造 absent 边沿，保留上一帧
+	}
+	return usbPresentSet(led.Entries, devices), true
+}
+
+// runUsbWatcher 对 absent→present 做双阶段去抖：首见只记候选，持续满窗口且仍在场
+// 才调度全账本重放。设备再次 absent 后才能形成下一条边沿。
+func (s *WslService) runUsbWatcher(ctx context.Context, gen uint64) {
+	defer func() {
+		s.mu.Lock()
+		if s.usbAutomationGen == gen {
+			s.usbWatcherCancel = nil
+		}
+		s.mu.Unlock()
+	}()
+
+	previous, keep := s.usbWatcherSnapshot(ctx)
+	if !keep {
+		return
+	}
+	candidates := make(map[string]time.Time)
+	ticker := time.NewTicker(usbWatcherInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			if !s.usbGenerationCurrent(gen) {
+				return
+			}
+			current, keep := s.usbWatcherSnapshot(ctx)
+			if !keep {
+				return
+			}
+			if current == nil { // state 采样失败
+				continue
+			}
+			trigger := false
+			for id := range current {
+				if since, ok := candidates[id]; ok {
+					if now.Sub(since) >= usbWatcherDebounce {
+						trigger = true
+						delete(candidates, id)
+					}
+				} else if !previous[id] {
+					candidates[id] = now
+				}
+			}
+			for id := range candidates {
+				if !current[id] {
+					delete(candidates, id)
+				}
+			}
+			if trigger {
+				s.scheduleUsbReplay("watcher", 0, "", false)
+			}
+			previous = current
+		}
+	}
+}
+
+// cancelUsbAutomation 收回等待/在飞自动重放与 watcher，并先递增 generation 防旧任务
+// 在取消信号到达前越过边界。显式 ReplayUsbNow 不使用这里的上下文。
+func (s *WslService) cancelUsbAutomation() {
+	s.mu.Lock()
+	s.usbAutomationGen++
 	if s.usbReplayCancel != nil {
 		s.usbReplayCancel()
 		s.usbReplayCancel = nil
 	}
+	if s.usbWatcherCancel != nil {
+		s.usbWatcherCancel()
+		s.usbWatcherCancel = nil
+	}
+	s.mu.Unlock()
 }
 
 // ---- Wails 绑定方法（参数白名单化，前端零拼接面） ----
@@ -600,10 +841,13 @@ func (s *WslService) SetUsbAutoAttach(enabled bool) (OperationOutcome, error) {
 	}
 	usbLedgerMu.Unlock()
 	if enabled {
-		s.scheduleUsbReplay("manual", 0, "")
+		s.cancelUsbAutomation()
+		s.startUsbWatcherIfNeeded()
+		s.scheduleUsbReplay("enabled", 0, "", false)
 		return OperationOutcome{Success: true, Message: "已开启开机自动共享，并立即按账本补打一发（结果见账本行内状态）"}, nil
 	}
-	return OperationOutcome{Success: true, Message: "已关闭开机自动共享（账本保留，hanxi 启动/发行版启动不再自动附加）"}, nil
+	s.cancelUsbAutomation()
+	return OperationOutcome{Success: true, Message: "已关闭开机自动共享；等待中与在飞的自动任务已取消（账本保留，显式立即重放仍可用）"}, nil
 }
 
 // SetUsbShare 登记/更新"设备 → 发行版"的自动共享条目（以 busid 一设备一条）。
@@ -637,9 +881,9 @@ func (s *WslService) SetUsbShare(busID, distro string) (OperationOutcome, error)
 	if !usbLedgerMu.TryLock() {
 		return OperationOutcome{}, errUsbLedgerBusy
 	}
-	defer usbLedgerMu.Unlock()
 	led, err := s.usbLoad()
 	if err != nil {
+		usbLedgerMu.Unlock()
 		return OperationOutcome{}, err
 	}
 	idx := slices.IndexFunc(led.Entries, func(e USBShareEntry) bool {
@@ -666,8 +910,11 @@ func (s *WslService) SetUsbShare(busID, distro string) (OperationOutcome, error)
 		led.Entries = append(led.Entries, entry)
 	}
 	if err := s.usbSave(led); err != nil {
+		usbLedgerMu.Unlock()
 		return OperationOutcome{}, err
 	}
+	usbLedgerMu.Unlock()
+	s.startUsbWatcherIfNeeded()
 	if existed {
 		return OperationOutcome{Success: true, Message: fmt.Sprintf("设备 %s（%s）的自动共享目标已改为 %s", entry.BusID, entry.Description, distro)}, nil
 	}
@@ -684,20 +931,24 @@ func (s *WslService) RemoveUsbShare(id string) (OperationOutcome, error) {
 	if !usbLedgerMu.TryLock() {
 		return OperationOutcome{}, errUsbLedgerBusy
 	}
-	defer usbLedgerMu.Unlock()
 	led, err := s.usbLoad()
 	if err != nil {
+		usbLedgerMu.Unlock()
 		return OperationOutcome{}, err
 	}
 	idx := slices.IndexFunc(led.Entries, func(e USBShareEntry) bool { return e.ID == id })
 	if idx < 0 {
+		usbLedgerMu.Unlock()
 		return OperationOutcome{}, fmt.Errorf("账本条目 %s 不存在（可能已被删除）", id)
 	}
 	removed := led.Entries[idx]
 	led.Entries = slices.Delete(led.Entries, idx, idx+1)
 	if err := s.usbSave(led); err != nil {
+		usbLedgerMu.Unlock()
 		return OperationOutcome{}, err
 	}
+	usbLedgerMu.Unlock()
+	s.startUsbWatcherIfNeeded()
 	return OperationOutcome{Success: true, Message: fmt.Sprintf("已移除 %s（%s）的自动共享登记；usbipd 的系统绑定未动，需要退绑请点该设备的「取消共享」", removed.BusID, removed.Description)}, nil
 }
 
@@ -705,19 +956,23 @@ func (s *WslService) usbPatchEntry(id string, patch func(*USBShareEntry)) (Opera
 	if !usbLedgerMu.TryLock() {
 		return OperationOutcome{}, errUsbLedgerBusy
 	}
-	defer usbLedgerMu.Unlock()
 	led, err := s.usbLoad()
 	if err != nil {
+		usbLedgerMu.Unlock()
 		return OperationOutcome{}, err
 	}
 	idx := slices.IndexFunc(led.Entries, func(e USBShareEntry) bool { return e.ID == id })
 	if idx < 0 {
+		usbLedgerMu.Unlock()
 		return OperationOutcome{}, fmt.Errorf("账本条目 %s 不存在（可能已被删除）", id)
 	}
 	patch(&led.Entries[idx])
 	if err := s.usbSave(led); err != nil {
+		usbLedgerMu.Unlock()
 		return OperationOutcome{}, err
 	}
+	usbLedgerMu.Unlock()
+	s.startUsbWatcherIfNeeded()
 	return OperationOutcome{Success: true, Message: "账本已更新"}, nil
 }
 
@@ -732,5 +987,6 @@ func (s *WslService) ReplayUsbNow() (OperationOutcome, error) {
 
 // scheduleUsbStartupReplay 模块激活时（hanxi 启动预激活）补打启动重放。
 func (s *WslService) scheduleUsbStartupReplay() {
-	s.scheduleUsbReplay("startup", usbStartupReplayDelay, "")
+	s.startUsbWatcherIfNeeded()
+	s.scheduleUsbReplay("startup", usbStartupReplayDelay, "", false)
 }
