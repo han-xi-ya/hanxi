@@ -35,7 +35,7 @@
 | F9 WSL USB 共享 | ✅ 已合并 | feat/f9-wslusb | 三 | 91f5ce3 | **卡片合同有误已按上游实况纠偏**（list 无 --json，改 state 源）——BACKLOG 回写列入收尾批；真机闸门清单 7 条见 F9 报告 |
 | F7k 后厨发布流水线 | ✅ 已交付(独立仓) | hanxi-ocr-dev `4300765`/`e8ab2b2`/`3330dbf` | 三 | - | 真双包已产出并核验；manifest 超集裁定+version 语义三令已转 F7 主仓侧；selftest 11/11 |
 | R1 热键收编 | ✅ 已合并 | feat/r1-hotkey | 三 | d96aac6 | msgboard→internal/hotkey 槽位 msgboard/toggle；改键序内部升级为"先新后旧"，用户可见零差异 |
-| R6 MCP 授权写入口 | 🟡 开发中 | feat/r6-authui | 收尾 | - | 用户拍板"补"（2026-09-18）；对拍测灵魂条款；交付后 R5 自动销案 |
+| R6 MCP 授权写入口 | ✅ 已合并 | feat/r6-authui | 收尾 | 6096a4f | GUI 四开关写 access.json+16 组合真读方对拍矩阵+R5 文案转正；auth 子命令裁定不做；坑 #69 |
 
 图例：⬜ 未开始 / 🟡 开发中 / 🔶 待审查 / ✅ 已合并 / ⛔ 阻塞
 
