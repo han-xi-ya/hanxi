@@ -1029,9 +1029,16 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 
 ### 68. Go 源码字符串字面量里的"裸 BOM 字符"直接编译失败：`illegal byte order mark`（F9 USB 直通）
 
-- **另见**：#65（F6 字面 BOM 与 GNU sed 替换吞字）、#66（F7 AI 工具混入 U+FEFF）——同族坑第三次踩中，AI 生成含不可见字符的源码请一律 hexdump 复核关键文件。
+- **另见**：#65（F6 字面 BOM 与 GNU sed 替换吞字）、#66（F7 AI 工具混入 U+FEFF）、#69 顺带（R6 第四次踩中——这回污染源是 agent 编辑工具把 u+FEFF 转义在往返中归一化成真字符；当反斜杠转义写法都救不了时，改用 `string([]byte{0xEF, 0xBF, 0xBF})` 纯 ASCII 字节切片，任何往返都改不坏）——同族坑反复踩，AI 生成含不可见字符的源码请一律 hexdump 复核关键文件。
 
 - **问题现象与错误原因**：usbipd 输出要剥 UTF-8 BOM，代码顺手写成 `strings.TrimPrefix(s, "<U+FEFF字面量>")`——把 BOM **字符本身**粘进了源码字符串。`go vet/build` 报 `runner.go:201:87: illegal byte order mark`：Go 词法器只容忍文件开头的 BOM，源码任何位置（含字符串字面量内）出现裸 U+FEFF 一律拒收。多轮 sed/perl 修补时又把替换目标打成 `"Feff"` 文本、还一度让 perl 报 `Wide character in print`——非 ASCII 字面在 shell 引号层里的往返比问题本身更费时间。
 - **排查过程**：`cat -A` 看字节确认 `M-oM-;M-?`（EF BB BF）确在字面量内；`grep -c $'\xef\xbb\xbf'` 定位污染行；对 Edit 工具"看着一样却报 same"的两行做 hexdump 才坐实转义又被解释成了真字符。
 - **正确做法与标准修复方案**：Go 源里写纯 ASCII 的十六进制转义 `"\xEF\xBB\xBF"`（或 `"\uFEFF"` 转义形态）表达 BOM，绝不粘裸字符；被污染的行用 `head -N + printf '%s\n' + tail` 的纯 ASCII 拼接法重写（避开 sed `\u` 大小写标记与 perl 双字节输出的坑）。
 - **避坑防重犯建议**：① 源码里需要不可见字符（BOM/NUL/零宽空格）时**永远用转义**，判据是 `cat -A` 只见可打印 ASCII；② Windows Git Bash 里改 Go 文件慎用 sed/perl 的 `-i` 打非 ASCII——GNU sed 替换段的 `\u` 是大小写标记、perl 缺省按字节流写宽字符，两者都安静地产出错内容而非报错；改完必 `go build` + `grep -c $'\xef\xbb\xbf'` 双查；③ 文本修补连环失败两轮即止损：整段重写（Write/编辑器落盘）比第三次 sed 便宜。
+
+### 69. Git Bash 里 `python` 是 WindowsApps 存根：静默失败（exit 49 零输出），脚本化改文件会"没做成但没报错"（R6 授权写入口）
+
+- **问题现象与错误原因**：想用一次性 python 脚本拆分/修改测试文件，`python - <<'EOF'` 显示正常走完且后续命令照跑，实际上 python 根本没执行——`which python` 指向 `WindowsApps/python.exe` 应用商店存根，非交互场景直接以 49 退出、stdout/stderr 全空。链式命令里没接 `&&` 的 `echo done` 照样打印，制造了"拆分管用"的假象；更隐蔽的是第二次同类脚本连带的 `assert` 也没有红——因为整个解释器压根没起来。
+- **排查过程**：go test 报出本应被拆走的老测试仍在原文件里，`ls r5_test.go` 发现"已创建"的文件不存在，才回溯到 python 环节；`python -c "print('py ok')"` 同样 49 无输出坐实存根。
+- **正确做法与标准修复方案**：本仓会话内改文件一律走 Claude Code 的 Edit/Write 工具直落盘；确需脚本处理时用绝对路径调真解释器并检查退出码（`cmd //c py` 或全路径 python3，失败必须可见）。顺带复用本轮实战：Go 测试常量要表达裸 BOM 而编辑工具把 `\uFEFF` 转义在往返中归一化成真字符时，用 `string([]byte{0xEF, 0xBF, 0xBF})` 这类**纯 ASCII 字节切片**写法，任何管道都改不坏它。
+- **避坑防重犯建议**：① Windows 机器上 `python`/`python3` 先做冒烟（`python -c "print(1)"`）再谈依赖，或直接永久视为不可用；② shell 里"看起来成功"不算数——产物文件用 `ls`/`git status` 验尸，别信 echo；③ 与 #68 同族教训：不可见字符与静默失败叠加时，先 `od -c`/`cat -A` 看字节再动手。

@@ -87,7 +87,7 @@
 - F4b 所有权回执在 `<DataDir>/mcp/install.json`（version/installs{configPath,fingerprint,installedAt}）。
 - **若 F4a 实际落盘 `state/mcp/` 或字段超纲**：以 F4a 报告为准改 `mcpwizard/service.go` NewService 两行路径，字段扩展要求 F4a 报告单列。
 - **R2**：✅ 已收口（eee224a）——SelfCheck spawn 握手 + 90s TTL 缓存 + 预览页呈现；阻断性裁定=自检失败**不阻断**写入（PLAN §2.5 口径落档）；access 缺档文案假承诺一并纠正；实弹冒烟（HANXI_EXE opt-in 真 hanxi.exe）已过；坑 #64 归 R2。
-- **R5 登记（与 §6 写入口待裁项并案）**：`internal/mcp/server.go` gateMiddleware 拒绝文案引导用户"到 设置→AI 接入 开启"，但该分区对 access.json 只读无开启入口（写入口缺位=R4 上报的待裁项）——用户裁决"补写入口"则文案变真、裁决"维持手工放置"则该文案须改口径，二选一后此单自动关闭。
+- **R5 登记（与 §6 写入口待裁项并案）**：✅ 已随 R6 销案（2026-09-18，用户裁决"补写入口"）——「设置 → AI 接入」四工具开关真写 access.json（mcpwizard 写引擎+保存即生效），server.go 指引文案自此为真；`internal/mcpwizard/r5_test.go` 源文本互核钉死（internal/mcp 领地只读未动）。
 - 踩坑号定序（全部已占）：#61=F4b JSON 外科合并、#62=F4a 离线 GOMODCACHE 洞、#63=F4a windowsgui stdio；后续从 **#64** 起。
 - **R3**：✅ 已收口（`8476ff3`/`f09fc19`，FF 合入）。goproxy.cn 可达实证，cast replace 已撤、tidy 内容级零 diff、离线自洽复核全绿；easyjson v0.9.0 维持（回退=逆钉红线，且符合"用新不用旧"）。附注：本机 `core.autocrlf=true`，`go mod tidy -diff` 对 go.sum 报**假全文件 diff（纯 EOL）**，内容级核验用 `go mod tidy`+`git diff`。
 - **R4**：✅ 已收口（74f8fa7）——PLAN_MCP 注记回写/BACKLOG 销账/DEVPLAN v1.5 指针改口/MOOTOOL 打勾四合一入；其发现的 mcpwizard 文案与事实矛盾点已塞给 R2 顺路修；遗留待用户裁决：PLAN §6 两个 access.json 授权写入口均未实现（GUI 只读+无 auth 子命令），现状=手工放置文件。
@@ -96,7 +96,7 @@
 ### 待用户裁决清单（不阻塞合并，收尾时逐项拍板）
 
 1. ~~**MSIX 形态去留**（F6）~~：**已销案**（2026-09-18 用户口径：从未有上架计划，此项为排期时假想敌；F6 的 fail-loud 弹窗兜底维持现状，不为 MSIX 做任何专门工作）。
-2. **access.json 授权写入口**（F4 §6 + R5 并案）：补 GUI 开关/auth 子命令 → MCP 拒权文案变真；或维持手工放置 → 改文案口径。
+2. ~~**access.json 授权写入口**（F4 §6 + R5 并案）~~：**已销案**（用户裁决"补"→ R6 落地 GUI 四开关写入口+保存即生效，R5 文案同步核真；auth 子命令维持不做，见 PLAN_MCP §6 注记）。
 3. **48MB 单文件版去留**（F7 卡片遗留）：托管化落地后是否停产？
 4. **paddle 源码拆仓**（F7 卡片遗留）。
 5. **sha256 旁挂件缺失的宽容度**（F7 实现裁定）：现按契约"三件套"**必检拒收**；若私发链路存在只发 zip 单件的习惯，放宽为"缺旁挂仅告警"一行可改。
