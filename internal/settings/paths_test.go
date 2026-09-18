@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +17,7 @@ func writeBindForTest(t *testing.T, exeDir, content string) {
 }
 
 // TestResolveDataRootBinding 绑定指针优先级：有绑定认绑定（含跨目录目标），
-// 空声明视作无声明落同级；无效声明 fail loud，绝不静默忽略、绝不落用户目录。
+// 空白声明视为损坏并 fail loud；无效声明 fail loud，绝不静默忽略、绝不落用户目录。
 func TestResolveDataRootBinding(t *testing.T) {
 	t.Run("绑定生效：指针目标目录存在即用", func(t *testing.T) {
 		exeDir := t.TempDir()
@@ -67,16 +68,16 @@ func TestResolveDataRootBinding(t *testing.T) {
 		}
 	})
 
-	t.Run("空声明等于无声明，落同级默认", func(t *testing.T) {
+	t.Run("空白绑定文件视为损坏并 fail loud", func(t *testing.T) {
 		exeDir := t.TempDir()
 		writeBindForTest(t, exeDir, "  \n\r\n")
 
-		base, mode, err := resolveDataRoot(exeDir)
-		if err != nil {
-			t.Fatal(err)
+		_, mode, err := resolveDataRoot(exeDir)
+		if err == nil {
+			t.Fatal("存在但空白的绑定文件必须报错，不得等同解绑")
 		}
-		if mode != modeSibling || base != filepath.Join(exeDir, siblingDataDirName) {
-			t.Fatalf("空指针应回落同级, got (%q, %v)", base, mode)
+		if mode != modeSibling || !strings.Contains(err.Error(), "显式删除") {
+			t.Fatalf("错误应说明显式解绑，got (%v, %v)", mode, err)
 		}
 	})
 
@@ -229,6 +230,20 @@ func TestBindFileRoundTrip(t *testing.T) {
 		t.Fatalf("回读不一致, got (%q, %v, %v)", got, declared, err)
 	}
 
+	oldRaw, err := os.ReadFile(filepath.Join(exeDir, bindFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalReplace := replaceAtomicFile
+	t.Cleanup(func() { replaceAtomicFile = originalReplace })
+	replaceAtomicFile = func(_, _ string) error { return errors.New("injected replace failure") }
+	if err := writeBindFile(exeDir, filepath.Join(t.TempDir(), "new target")); err == nil {
+		t.Fatal("原子替换故障应返回错误")
+	}
+	if after, err := os.ReadFile(filepath.Join(exeDir, bindFileName)); err != nil || string(after) != string(oldRaw) {
+		t.Fatalf("替换失败必须保留旧绑定: %q %v", after, err)
+	}
+
 	// 校验层（不触真实 exe 目录）：空串与非绝对路径必须拒
 	if err := BindDataDir("  "); err == nil {
 		t.Fatal("空路径应拒绝")
@@ -277,5 +292,27 @@ func TestEnsureDirs(t *testing.T) {
 		if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
 			t.Errorf("目录未就绪: %s (%v)", d, err)
 		}
+	}
+}
+
+func TestEnsureDirsRejectsDerivedPathFiles(t *testing.T) {
+	for _, name := range []string{"state", "logs", "versions"} {
+		t.Run(name, func(t *testing.T) {
+			base := filepath.Join(t.TempDir(), siblingDataDirName)
+			if err := os.MkdirAll(base, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(base, name), []byte("blocker"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			p := buildPaths(modeSibling, base)
+			if err := ensureDirs(p); err == nil {
+				t.Fatalf("%s 同名文件必须令目录初始化失败", name)
+			}
+			p.initErr = ensureDirs(p)
+			if p.InitError() == nil {
+				t.Fatalf("%s 初始化失败必须进入 InitError", name)
+			}
+		})
 	}
 }
