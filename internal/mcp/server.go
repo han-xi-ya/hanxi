@@ -144,19 +144,22 @@ func listResult(items []any, cappedByLimit bool) (*mcp.CallToolResult, error) {
 }
 
 // textResult 直接序列化一个对象载荷（调用方保证无列表或列表已经 listResult 处理过）。
+// 超过预算时返回固定的合法 JSON 错误信封；绝不在序列化后的 JSON 字节上硬截断，
+// 因为截断可能切进转义序列、字符串或对象结构，产出无效 JSON。
 func textResult(payload any) (*mcp.CallToolResult, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return mcp.NewToolResultErrorFromErr("结果序列化失败", err), nil
 	}
 	if len(data) > maxPayloadBytes {
-		// 非列表形态无法逐条裁剪：按 rune 边界裁字节并附截断标记文本。
-		s := string(data)
-		cut := maxPayloadBytes - 64
-		for cut > 0 && !utf8.RuneStart(s[cut]) {
-			cut--
+		data, err = json.Marshal(resultPayload{
+			"ok":        false,
+			"error":     fmt.Sprintf("结果超过 %d 字节上限，已省略；请缩小查询范围后重试", maxPayloadBytes),
+			"truncated": true,
+		})
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("超限结果信封序列化失败", err), nil
 		}
-		return mcp.NewToolResultText(s[:cut] + `…(payload truncated)}`), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
 }

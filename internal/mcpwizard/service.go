@@ -1,6 +1,7 @@
 package mcpwizard
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -22,7 +23,10 @@ type McpWizardService struct {
 	env         func(string) string
 	command     string // hanxi exe 绝对路径（os.Executable，写入配置的 command 值）
 	writeFn     func(path string, data []byte) error
-	now         func() time.Time
+	// afterWriteCheck 是仅供回归测试放大“最终条件检查→原子替换”窗口的钩子。
+	// 生产恒为 nil；钩子返回后 writeIfUnchanged 会再次检查 expected，故外部改写不会被覆盖。
+	afterWriteCheck func(path string)
+	now             func() time.Time
 
 	// —— 安装前自检（PLAN §2.5，R2）——
 	checkMu      sync.Mutex    // 串行化自检：同刻至多一个握手子进程
@@ -128,6 +132,70 @@ type OpResult struct {
 	RolledBack bool   `json:"rolledBack"`
 	BackupPath string `json:"backupPath"`
 	Message    string `json:"message"`
+}
+
+var (
+	// ErrStalePreview 表示预览所依据的目标字节已经变化；调用方必须重新预览，
+	// 不得把它降级为普通写失败后盲目重试。
+	ErrStalePreview = errors.New("预览已过期")
+
+	confirmPathLocks sync.Map // map[规范化路径]*sync.Mutex；同一路径的最终确认链在进程内严格串行
+)
+
+func confirmPathLock(path string) *sync.Mutex {
+	key := filepath.Clean(path)
+	if abs, err := filepath.Abs(key); err == nil {
+		key = abs
+	}
+	lock, _ := confirmPathLocks.LoadOrStore(key, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
+
+func stalePreviewError(action string) error {
+	return fmt.Errorf("%w：预览后目标文件已被改动，本次%s整体取消——请重新预览确认", ErrStalePreview, action)
+}
+
+func readCurrent(path string) ([]byte, bool, error) {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		return data, true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	return nil, false, err
+}
+
+func matchesExpected(path string, expected []byte, expectedExists bool) (bool, error) {
+	current, exists, err := readCurrent(path)
+	if err != nil {
+		return false, err
+	}
+	return exists == expectedExists && bytes.Equal(current, expected), nil
+}
+
+// writeIfUnchanged 在真正替换前以 expected/new 作为条件写契约。
+// afterWriteCheck 仅为测试钩子；钩子后再做一次最终比较，确保测试能稳定证明
+// “最终检查后发生的外部改写”不会被本次写入覆盖。
+func (s *McpWizardService) writeIfUnchanged(path string, expected []byte, expectedExists bool, newData []byte) error {
+	matched, err := matchesExpected(path, expected, expectedExists)
+	if err != nil {
+		return fmt.Errorf("最终条件检查失败: %w", err)
+	}
+	if !matched {
+		return ErrStalePreview
+	}
+	if s.afterWriteCheck != nil {
+		s.afterWriteCheck(path)
+		matched, err = matchesExpected(path, expected, expectedExists)
+		if err != nil {
+			return fmt.Errorf("最终条件复查失败: %w", err)
+		}
+		if !matched {
+			return ErrStalePreview
+		}
+	}
+	return s.writeFn(path, newData)
 }
 
 // —— 服务方法（Wails 绑定面）——
@@ -261,6 +329,22 @@ func (s *McpWizardService) preview(clientID string, uninstall bool) (WizardPrevi
 }
 
 func (s *McpWizardService) confirm(clientID, token string, uninstall bool) (OpResult, error) {
+	// 首次规划只用于解析规范路径；真正的状态/令牌裁定必须在同路径锁内重做，
+	// 防止两个确认调用都拿着旧计划穿过检查后相互覆盖。
+	initial, err := s.planFor(clientID, uninstall)
+	if err != nil {
+		return OpResult{}, err
+	}
+	if initial.a.path == "" {
+		if !initial.allowed {
+			return OpResult{}, fmt.Errorf("当前状态拒绝%s：%s", actionWord(uninstall), initial.reason)
+		}
+		return OpResult{}, errors.New("目标配置路径为空")
+	}
+	pathLock := confirmPathLock(initial.a.path)
+	pathLock.Lock()
+	defer pathLock.Unlock()
+
 	p, err := s.planFor(clientID, uninstall)
 	if err != nil {
 		return OpResult{}, err
@@ -268,11 +352,19 @@ func (s *McpWizardService) confirm(clientID, token string, uninstall bool) (OpRe
 	if !p.allowed {
 		return OpResult{}, fmt.Errorf("当前状态拒绝%s：%s", actionWord(uninstall), p.reason)
 	}
+	act := actionWord(uninstall)
 	if p.token != token {
-		return OpResult{}, fmt.Errorf("预览后目标文件已被改动（或预览令牌失效），本次%s整体取消——请重新预览确认", actionWord(uninstall))
+		return OpResult{}, stalePreviewError(act)
 	}
 	r := loadReceipt(s.receiptPath)
 	if p.zeroDiff {
+		matched, merr := matchesExpected(p.a.path, p.a.data, p.a.exists)
+		if merr != nil {
+			return OpResult{}, fmt.Errorf("零差异确认的最终条件检查失败: %w", merr)
+		}
+		if !matched {
+			return OpResult{}, stalePreviewError(act)
+		}
 		// 幂等路径：文件一个字节不动，只校准回执（不制造备份、不触发写入链）
 		if uninstall {
 			r.remove(clientID)
@@ -284,26 +376,34 @@ func (s *McpWizardService) confirm(clientID, token string, uninstall bool) (OpRe
 		}
 		return OpResult{Success: true, Message: "条目状态已一致，未改动文件（回执已登记）"}, nil
 	}
-	return s.applyChain(p, uninstall, r), nil
+	res, err := s.applyChain(p, uninstall, r)
+	if errors.Is(err, ErrStalePreview) {
+		return res, stalePreviewError(act)
+	}
+	return res, err
 }
 
-// applyChain 红线写链：备份 → 原子写 → 读回复验 → 不一致则回滚（仅当文件仍等于我们写的）。
-func (s *McpWizardService) applyChain(p plan, uninstall bool, r *receipt) OpResult {
+// applyChain 红线写链：备份 expected → expected/new 条件写 → 读回复验 →
+// 不一致则回滚（仅当文件仍等于我们写的）。
+func (s *McpWizardService) applyChain(p plan, uninstall bool, r *receipt) (OpResult, error) {
 	act := actionWord(uninstall)
 	path := p.a.path
 	bak := ""
 	if p.a.exists {
 		bak = path + ".hanxi-bak-" + s.now().Format("20060102-150405")
 		if werr := os.WriteFile(bak, p.a.data, 0o600); werr != nil {
-			return OpResult{BackupPath: bak, Message: fmt.Sprintf("备份原文件失败，%s中止（目标文件未动）: %v", act, werr)}
+			return OpResult{BackupPath: bak, Message: fmt.Sprintf("备份原文件失败，%s中止（目标文件未动）: %v", act, werr)}, nil
 		}
 	}
-	if werr := s.writeFn(path, p.newData); werr != nil {
+	if werr := s.writeIfUnchanged(path, p.a.data, p.a.exists, p.newData); werr != nil {
+		if errors.Is(werr, ErrStalePreview) {
+			return OpResult{BackupPath: bak}, ErrStalePreview
+		}
 		msg := fmt.Sprintf("写入失败，目标文件未改动: %v", werr)
 		if bak != "" {
 			msg += fmt.Sprintf("（备份在 %s）", bak)
 		}
-		return OpResult{BackupPath: bak, Message: msg}
+		return OpResult{BackupPath: bak, Message: msg}, nil
 	}
 	if vmsg := s.verify(path, p, uninstall); vmsg != "" {
 		// 复验失败：仅当文件仍等于我们写的内容才回滚（避免覆盖第三方改动）
@@ -317,7 +417,7 @@ func (s *McpWizardService) applyChain(p plan, uninstall bool, r *receipt) OpResu
 				rolled = true
 			}
 		}
-		return OpResult{RolledBack: rolled, BackupPath: bak, Message: fmt.Sprintf("写入后复验不通过：%s；%s", vmsg, rollbackWord(rolled, bak))}
+		return OpResult{RolledBack: rolled, BackupPath: bak, Message: fmt.Sprintf("写入后复验不通过：%s；%s", vmsg, rollbackWord(rolled, bak))}, nil
 	}
 	if uninstall {
 		r.remove(p.a.spec.ID)
@@ -328,7 +428,7 @@ func (s *McpWizardService) applyChain(p plan, uninstall bool, r *receipt) OpResu
 	if serr := saveReceipt(s.receiptPath, r); serr != nil {
 		receiptNote = fmt.Sprintf("（注意：所有权回执写入失败 %v，下次状态判定可能保守化为冲突拒动）", serr)
 	}
-	return OpResult{Success: true, BackupPath: bak, Message: fmt.Sprintf("%s成功：%s%s", act, path, receiptNote)}
+	return OpResult{Success: true, BackupPath: bak, Message: fmt.Sprintf("%s成功：%s%s", act, path, receiptNote)}, nil
 }
 
 // verify 读回复验：目标文件可解析、条目指纹符合期望（安装=指纹一致；卸载=条目消失）。
