@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,16 +18,21 @@ import (
 
 // fakeUSB usbipd 用户态命令面替身（接口注入，全离线）。
 type fakeUSB struct {
-	version    string
-	versionErr error
-	devices    []usbipd.Device
-	stateErr   error
-	attachLog  []string // "distro|busid"
-	attachErr  map[string]error
-	detachLog  []string
+	mu          sync.Mutex
+	version     string
+	versionErr  error
+	devices     []usbipd.Device
+	stateErr    error
+	stateCalls  int
+	attachLog   []string // "distro|busid"
+	attachErr   map[string]error
+	attachBlock <-chan struct{}
+	detachLog   []string
 }
 
 func (f *fakeUSB) Version(context.Context) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.versionErr != nil {
 		return "", f.versionErr
 	}
@@ -32,21 +40,59 @@ func (f *fakeUSB) Version(context.Context) (string, error) {
 }
 
 func (f *fakeUSB) State(context.Context) ([]usbipd.Device, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stateCalls++
 	if f.stateErr != nil {
 		return nil, f.stateErr
 	}
-	return f.devices, nil
+	return slices.Clone(f.devices), nil
 }
 
-func (f *fakeUSB) Attach(_ context.Context, distro, busID string) error {
+func (f *fakeUSB) Attach(ctx context.Context, distro, busID string) error {
+	if f.attachBlock != nil {
+		select {
+		case <-f.attachBlock:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	key := distro + "|" + busID
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.attachLog = append(f.attachLog, key)
 	return f.attachErr[key]
 }
 
 func (f *fakeUSB) Detach(_ context.Context, busID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.detachLog = append(f.detachLog, busID)
 	return nil
+}
+
+func (f *fakeUSB) setDevices(devices []usbipd.Device) {
+	f.mu.Lock()
+	f.devices = slices.Clone(devices)
+	f.mu.Unlock()
+}
+
+func (f *fakeUSB) attaches() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.attachLog)
+}
+
+func (f *fakeUSB) stateCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stateCalls
+}
+
+func (f *fakeUSB) detachCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.detachLog)
 }
 
 // wslNames 构造 runWsl 替身：`-l -q[ --running]` 出名单，其余命令默认成功。
@@ -67,8 +113,26 @@ func newUSBFakeService(t *testing.T, cli usbCLI, runWsl func(context.Context, ..
 	t.Helper()
 	ev := &fakeElevated{out: OperationOutcome{Success: true, Message: "ok"}}
 	svc := &WslService{
-		opener:        &fakeOpener{},
-		elevProc:      ev.run,
+		opener: &fakeOpener{},
+		elevProc: func(ctx context.Context, file string, args ...string) (OperationOutcome, error) {
+			out, err := ev.run(ctx, file, args...)
+			if file == "powershell.exe" && err == nil && out.Success && len(args) > 0 {
+				script := args[len(args)-1]
+				path := extractPSLiteralAfter(script, "Remove-Item -LiteralPath ")
+				if path != "" {
+					matches := regexp.MustCompile(`HANXI_USB_BIND\|([0-9]+-[0-9]+(?:\.[0-9]+)?)`).FindAllStringSubmatch(script, -1)
+					if len(matches) == 0 {
+						matches = regexp.MustCompile(`--busid ([0-9]+-[0-9]+(?:\.[0-9]+)?)`).FindAllStringSubmatch(script, -1)
+					}
+					var lines []string
+					for _, m := range matches {
+						lines = append(lines, usbBindReceiptPrefix+m[1]+"|0")
+					}
+					_ = os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600)
+				}
+			}
+			return out, err
+		},
 		runWsl:        runWsl,
 		usbRun:        cli,
 		usbPath:       filepath.Join(t.TempDir(), "wsl-usbipd.json"),
@@ -431,6 +495,100 @@ func TestReplayBindsViaSingleUACThenAttaches(t *testing.T) {
 	}
 }
 
+func TestReplayBatchBindReceiptsArePerDevice(t *testing.T) {
+	cli := &fakeUSB{version: "5.3.0", devices: []usbipd.Device{
+		dev("1-1", "aaaa", "0001", usbipd.StateNotShared),
+		dev("2-2", "bbbb", "0002", usbipd.StateNotShared),
+	}}
+	svc, ev := newUSBFakeService(t, cli, wslNames([]string{"Ubuntu"}, []string{"Ubuntu"}))
+	svc.usbSave(usbLedger{AutoEnabled: true, Entries: []USBShareEntry{
+		entry("e1", "1-1", "aaaa", "0001", "Ubuntu"),
+		entry("e2", "2-2", "bbbb", "0002", "Ubuntu"),
+	}})
+	svc.elevProc = func(_ context.Context, file string, args ...string) (OperationOutcome, error) {
+		ev.calls = append(ev.calls, elevatedCall{file: file, args: args})
+		script := args[len(args)-1]
+		path := extractPSLiteralAfter(script, "Remove-Item -LiteralPath ")
+		if path == "" {
+			t.Fatalf("脚本未含后端生成的回执文件: %s", script)
+		}
+		data := usbBindReceiptPrefix + "1-1|0\n" + usbBindReceiptPrefix + "2-2|17\n"
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return OperationOutcome{Success: true, Message: "操作已执行完毕"}, nil
+	}
+
+	out, err := svc.ReplayUsbNow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cli.attaches(); strings.Join(got, ",") != "Ubuntu|1-1" {
+		t.Fatalf("仅 bind 成功项可继续 attach: %v", got)
+	}
+	if !strings.Contains(out.Message, "2-2 绑定失败") || !strings.Contains(out.Message, "退出码 17") {
+		t.Fatalf("失败项须逐条结构化归因: %+v", out)
+	}
+	led, _ := svc.usbLoad()
+	if !strings.Contains(led.Entries[0].LastStatus, "已附加") || !strings.Contains(led.Entries[1].LastStatus, "绑定失败") {
+		t.Fatalf("逐条账本状态不诚实: %+v", led.Entries)
+	}
+}
+
+func TestReplayMissingBindReceiptReconcilesState(t *testing.T) {
+	cli := &fakeUSB{version: "5.3.0", devices: []usbipd.Device{
+		dev("1-1", "aaaa", "0001", usbipd.StateNotShared),
+		dev("2-2", "bbbb", "0002", usbipd.StateNotShared),
+	}}
+	svc, _ := newUSBFakeService(t, cli, wslNames([]string{"Ubuntu"}, []string{"Ubuntu"}))
+	svc.usbSave(usbLedger{AutoEnabled: true, Entries: []USBShareEntry{
+		entry("e1", "1-1", "aaaa", "0001", "Ubuntu"),
+		entry("e2", "2-2", "bbbb", "0002", "Ubuntu"),
+	}})
+	svc.elevProc = func(_ context.Context, _ string, args ...string) (OperationOutcome, error) {
+		path := extractPSLiteralAfter(args[len(args)-1], "Remove-Item -LiteralPath ")
+		if err := os.WriteFile(path, []byte(usbBindReceiptPrefix+"1-1|0\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cli.setDevices([]usbipd.Device{
+			dev("1-1", "aaaa", "0001", usbipd.StateShared),
+			dev("2-2", "bbbb", "0002", usbipd.StateShared),
+		})
+		return OperationOutcome{Success: true}, nil
+	}
+
+	out, err := svc.ReplayUsbNow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cli.attaches(); len(got) != 2 {
+		t.Fatalf("缺回执但 state 确认已共享的项应继续 attach: %v", got)
+	}
+	if !strings.Contains(out.Message, "回执缺失，重读现态确认已共享") {
+		t.Fatalf("对账路径须进入摘要: %+v", out)
+	}
+	if cli.stateCount() < 2 {
+		t.Fatalf("缺回执必须重读 state 对账, state calls=%d", cli.stateCount())
+	}
+}
+
+func extractPSLiteralAfter(script, marker string) string {
+	start := strings.Index(script, marker)
+	if start < 0 {
+		return ""
+	}
+	rest := script[start+len(marker):]
+	if len(rest) == 0 || rest[0] != '\'' {
+		return ""
+	}
+	rest = rest[1:]
+	end := strings.Index(rest, "'")
+	if end < 0 {
+		return ""
+	}
+	return strings.ReplaceAll(rest[:end], "''", "'")
+}
+
 func TestReplayUacCancelKeepsLedgerHonest(t *testing.T) {
 	cli := &fakeUSB{version: "5.3.0", devices: []usbipd.Device{dev("1-1", "aaaa", "0001", usbipd.StateNotShared)}}
 	svc, ev := newUSBFakeService(t, cli, wslNames([]string{"Ubuntu"}, []string{"Ubuntu"}))
@@ -440,14 +598,14 @@ func TestReplayUacCancelKeepsLedgerHonest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UAC 取消不能炸调用链: %v", err)
 	}
-	if !strings.Contains(out.Message, "绑定失败") {
-		t.Errorf("回执须点名绑定失败: %+v", out)
+	if !strings.Contains(out.Message, "绑定未确认") {
+		t.Errorf("回执须点名绑定未确认: %+v", out)
 	}
 	if len(cli.attachLog) != 0 {
 		t.Error("绑定未成不得抢跑 attach")
 	}
 	led, _ := svc.usbLoad()
-	if !strings.Contains(led.Entries[0].LastStatus, "绑定未完成") {
+	if !strings.Contains(led.Entries[0].LastStatus, "绑定未确认") {
 		t.Errorf("取消 UAC 要落在账本状态上: %q", led.Entries[0].LastStatus)
 	}
 }
@@ -542,6 +700,52 @@ func TestAttachUsbDeviceWhitelistAndLift(t *testing.T) {
 	}
 }
 
+func TestWatcherReplaysDebouncedAbsentToPresentEdge(t *testing.T) {
+	oldInterval, oldDebounce := usbWatcherInterval, usbWatcherDebounce
+	usbWatcherInterval, usbWatcherDebounce = 10*time.Millisecond, 15*time.Millisecond
+	defer func() { usbWatcherInterval, usbWatcherDebounce = oldInterval, oldDebounce }()
+
+	cli := &fakeUSB{version: "5.3.0"}
+	svc, _ := newUSBFakeService(t, cli, wslNames([]string{"Ubuntu"}, []string{"Ubuntu"}))
+	svc.usbSave(usbLedger{AutoEnabled: true, Entries: []USBShareEntry{entry("e1", "1-1", "aaaa", "0001", "Ubuntu")}})
+	svc.startUsbWatcherIfNeeded()
+	defer svc.cancelUsbAutomation()
+	time.Sleep(15 * time.Millisecond)
+	cli.setDevices([]usbipd.Device{dev("1-1", "aaaa", "0001", usbipd.StateShared)})
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) && len(cli.attaches()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := cli.attaches(); len(got) != 1 || got[0] != "Ubuntu|1-1" {
+		t.Fatalf("absent→present 稳定边沿应只重放一次: %v", got)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := cli.attaches(); len(got) != 1 {
+		t.Fatalf("持续 present 不得反复重放: %v", got)
+	}
+}
+
+func TestDisableCancelsWaitingAutomaticReplayButManualStillWorks(t *testing.T) {
+	cli := &fakeUSB{version: "5.3.0", devices: []usbipd.Device{dev("1-1", "aaaa", "0001", usbipd.StateShared)}}
+	svc, _ := newUSBFakeService(t, cli, wslNames([]string{"Ubuntu"}, []string{"Ubuntu"}))
+	svc.usbSave(usbLedger{AutoEnabled: true, Entries: []USBShareEntry{entry("e1", "1-1", "aaaa", "0001", "Ubuntu")}})
+	svc.scheduleUsbReplay("test", 80*time.Millisecond, "", false)
+	if _, err := svc.SetUsbAutoAttach(false); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(120 * time.Millisecond)
+	if got := cli.attaches(); len(got) != 0 {
+		t.Fatalf("关闭后旧自动任务不得执行: %v", got)
+	}
+	if _, err := svc.ReplayUsbNow(); err != nil {
+		t.Fatal(err)
+	}
+	if got := cli.attaches(); len(got) != 1 {
+		t.Fatalf("显式立即重放应忽略总开关: %v", got)
+	}
+}
+
 func TestSetUsbAutoAttachTurnsOnAndReplays(t *testing.T) {
 	cli := &fakeUSB{version: "5.3.0", devices: []usbipd.Device{dev("1-1", "aaaa", "0001", usbipd.StateShared)}}
 	svc, _ := newUSBFakeService(t, cli, wslNames([]string{"Ubuntu"}, []string{"Ubuntu"}))
@@ -564,8 +768,9 @@ func TestSetUsbAutoAttachTurnsOnAndReplays(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if len(cli.attachLog) != 1 || cli.attachLog[0] != "Ubuntu|1-1" {
-		t.Fatalf("打开总开关未触发补打一发: %v", cli.attachLog)
+	if got := cli.attaches(); len(got) != 1 || got[0] != "Ubuntu|1-1" {
+		led, _ := svc.usbLoad()
+		t.Fatalf("打开总开关未触发补打一发: %v ledger=%+v msg=%q", got, led, svc.usbReplayMsg)
 	}
 	led, _ = svc.usbLoad()
 	if !strings.Contains(led.Entries[0].LastStatus, "已附加到 Ubuntu") {

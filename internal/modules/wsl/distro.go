@@ -323,7 +323,7 @@ func (s *WslService) OpenTerminal(name string) (DistroOpResult, error) {
 	// F9 WSL 启动事件钩子：本发行版起来后补打一发 USB 自动共享重放。
 	// 刻意不带发行版过滤器（全账本重放，他版设备自然被计划函数按"未运行"跳过）——
 	// 调度是"撤旧换新"语义，过滤器会让后到的一发吞掉前到一发的覆盖面。
-	s.scheduleUsbReplay("distro", usbDistroReplayDelay, "")
+	s.scheduleUsbReplay("distro", usbDistroReplayDelay, "", false)
 	return DistroOpResult{Success: true, Message: fmt.Sprintf("已为 %s 启动终端会话", name)}, nil
 }
 
@@ -361,7 +361,7 @@ func (s *WslService) OpenDistroFolder(name string) (DistroOpResult, error) {
 		return DistroOpResult{}, fmt.Errorf("打开资源管理器失败: %w", err)
 	}
 	if lifted { // F9：顺手拉起了实例 = 一次 WSL 启动事件，补打 USB 自动共享重放
-		s.scheduleUsbReplay("distro", usbDistroReplayDelay, "")
+		s.scheduleUsbReplay("distro", usbDistroReplayDelay, "", false)
 	}
 	msg := fmt.Sprintf("已在资源管理器打开 \\\\wsl$\\%s", name)
 	if lifted {
@@ -409,7 +409,7 @@ func (s *WslService) RestartDistro(name string) (DistroOpResult, error) {
 	if out, err := s.runWsl(ctx, "-d", name, "--exec", "/bin/echo", "hanxi-restart-ok"); err != nil {
 		return DistroOpResult{}, fmt.Errorf("%s 启动失败，重启未完成: %w %s", name, err, strings.TrimSpace(out))
 	}
-	s.scheduleUsbReplay("distro", usbDistroReplayDelay, "") // F9：重启后设备会随实例停机回落，补挂
+	s.scheduleUsbReplay("distro", usbDistroReplayDelay, "", false) // F9：重启后设备会随实例停机回落，补挂
 	return DistroOpResult{
 		Success: true,
 		Message: fmt.Sprintf("%s 已重启：启动验证通过。之后不进入终端的话，发行版空闲片刻会自动回落为「已停止」——属平台常态 %s", name, caveat),

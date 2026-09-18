@@ -57,7 +57,7 @@ func (e *Module) OnInit(ctx context.Context) error {
 }
 
 func (e *Module) OnDestroy() error {
-	e.svc.cancelUsbReplay() // 收回未到点的启动重放/在飞等待（F9 生命周期收口）
+	e.svc.cancelUsbAutomation() // 收回自动重放/watcher，并以 generation 阻断旧任务
 	return nil
 }
 
