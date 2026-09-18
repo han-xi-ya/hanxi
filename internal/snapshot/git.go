@@ -172,10 +172,15 @@ func (g *gitEngine) changes(ctx context.Context) ([]string, error) {
 		if e.Orig != "" && Whitelisted(e.Orig) && !Whitelisted(path) {
 			path = e.Orig // 改名出白名单：旧路径的删除也要入保
 		}
-		if Whitelisted(path) && !seen[path] {
-			seen[path] = true
-			files = append(files, path)
+		if !Whitelisted(path) || seen[path] {
+			continue
 		}
+		allowMissing := e.Status[0] == 'D' || e.Status[1] == 'D' || (e.Orig != "" && path == e.Orig)
+		if err := validateWhitelistPathOnDisk(g.workTree, path, allowMissing); err != nil {
+			return nil, err
+		}
+		seen[path] = true
+		files = append(files, path)
 	}
 	return files, nil
 }
@@ -186,6 +191,9 @@ func (g *gitEngine) commit(ctx context.Context, files []string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	if _, err := enumerateWhitelist(g.workTree, true); err != nil {
+		return err
+	}
 	if _, se, err := g.runLockedAware(ctx, "add", "-A"); err != nil {
 		return fmt.Errorf("git add 失败: %v (%s)", err, strings.TrimSpace(se))
 	}

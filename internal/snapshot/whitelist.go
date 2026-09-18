@@ -68,14 +68,19 @@ func inWhitelistScope(rel string) bool {
 // 只列存在的条目：pathspec 指向不存在路径会让 git add 直接报错。
 func WhitelistRoots(dataDir string) []string {
 	roots := make([]string, 0, 3)
-	if _, err := os.Stat(filepath.Join(dataDir, rootConfig)); err == nil {
-		roots = append(roots, rootConfig)
-	}
-	if fi, err := os.Stat(filepath.Join(dataDir, rootState)); err == nil && fi.IsDir() {
-		roots = append(roots, rootState)
-	}
-	if fi, err := os.Stat(filepath.Join(dataDir, rootMemo)); err == nil && fi.IsDir() {
-		roots = append(roots, rootMemo)
+	for _, root := range []string{rootConfig, rootState, rootMemo} {
+		path := filepath.Join(dataDir, root)
+		info, err := os.Lstat(path)
+		if err != nil {
+			continue
+		}
+		unsafe, err := unsafeLinkLike(path, info)
+		if err != nil || unsafe {
+			continue
+		}
+		if root == rootConfig && info.Mode().IsRegular() || root != rootConfig && info.IsDir() {
+			roots = append(roots, root)
+		}
 	}
 	return roots
 }
@@ -85,28 +90,14 @@ func WhitelistRoots(dataDir string) []string {
 // 返回零 time 与 found=false 表示白名单内暂无文件；单个条目 Stat 失败静默跳过
 // （文件正被原子写 rename，下一拍再看）。
 func ScanMtime(dataDir string) (max time.Time, found bool) {
-	consider := func(path string) {
-		fi, err := os.Stat(path)
-		if err != nil || fi.IsDir() {
-			return
-		}
-		if m := fi.ModTime(); m.After(max) {
+	files, err := enumerateWhitelist(dataDir, false)
+	if err != nil {
+		return time.Time{}, false
+	}
+	for _, file := range files {
+		if m := file.Info.ModTime(); m.After(max) {
 			max, found = m, true
 		}
-	}
-	consider(filepath.Join(dataDir, rootConfig))
-	for _, dir := range []string{rootState, rootMemo} {
-		base := filepath.Join(dataDir, dir)
-		_ = filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return nil // 目录不存在/条目竞态消失：跳过（原子写 rename 下一拍再看）
-			}
-			rel, rerr := filepath.Rel(dataDir, p)
-			if rerr == nil && Whitelisted(rel) {
-				consider(p)
-			}
-			return nil
-		})
 	}
 	return max, found
 }

@@ -197,32 +197,17 @@ func (b *backupEngine) heal(ctx context.Context) {}
 // 白名单 JSON 均 KB 级，全量哈希成本可忽略，换来"内容相同即无变更"的精确语义
 // （mtime 跳变但字节不变——如 wechat 原样回写——不会灌碎历史）。
 func fingerprint(dataDir string) (map[string]string, error) {
-	out := make(map[string]string)
-	consider := func(rel string) {
-		sum, err := hashFile(filepath.Join(dataDir, filepath.FromSlash(rel)))
+	files, err := enumerateWhitelist(dataDir, true)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(files))
+	for _, file := range files {
+		sum, err := hashFile(file.Path)
 		if err != nil {
-			return // 原子写 rename 竞态：下一拍再看
+			return nil, fmt.Errorf("计算 %s 指纹失败: %w", file.Rel, err)
 		}
-		out[rel] = sum
-	}
-	if _, err := os.Stat(filepath.Join(dataDir, rootConfig)); err == nil {
-		consider(rootConfig)
-	}
-	for _, dir := range []string{rootState, rootMemo} {
-		base := filepath.Join(dataDir, dir)
-		_ = filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return nil
-			}
-			rel, rerr := filepath.Rel(dataDir, p)
-			if rerr == nil {
-				rel = filepath.ToSlash(rel)
-				if Whitelisted(rel) {
-					consider(rel)
-				}
-			}
-			return nil
-		})
+		out[file.Rel] = sum
 	}
 	return out, nil
 }
