@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -305,8 +306,144 @@ func TestSelfCheckSerializesConcurrentCallers(t *testing.T) {
 	}
 }
 
-// —— spawnProbe 真实 exec 面（cmd.exe 冒充坏协议子进程，验证「早退不挂死、
-// 句柄全收敛」；hanxi mcp 真身管道冒烟已由 #63 实测，不在单测重复）——
+// —— spawnProbe 真实 exec 面（测试进程 helper 覆盖正常预算、晚归与超时强杀；
+// cmd.exe 冒充坏协议子进程继续兜住真实早退路径）——
+
+func TestSelfCheckHelperProcess(t *testing.T) {
+	if os.Getenv("HANXI_SELFCHECK_HELPER") != "1" {
+		return
+	}
+	switch os.Getenv("HANXI_SELFCHECK_MODE") {
+	case "healthy":
+		helperServeMCP(0)
+	case "late":
+		helperServeMCP(250 * time.Millisecond)
+	case "late-exit":
+		if pidFile := os.Getenv("HANXI_SELFCHECK_PID_FILE"); pidFile != "" {
+			_ = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0o600)
+		}
+		time.Sleep(250 * time.Millisecond)
+		os.Exit(0)
+	case "hang":
+		if pidFile := os.Getenv("HANXI_SELFCHECK_PID_FILE"); pidFile != "" {
+			_ = os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0o600)
+		}
+		for {
+			time.Sleep(time.Hour)
+		}
+	}
+	os.Exit(2)
+}
+
+func helperServeMCP(delay time.Duration) {
+	sc := bufio.NewScanner(os.Stdin)
+	enc := json.NewEncoder(os.Stdout)
+	for sc.Scan() {
+		var f fakeFrame
+		if json.Unmarshal(sc.Bytes(), &f) != nil {
+			continue
+		}
+		if delay > 0 {
+			time.Sleep(delay)
+			delay = 0
+		}
+		switch f.ID.String() {
+		case "1":
+			var res any
+			_ = json.Unmarshal([]byte(initOKFrame("hanxi")), &res)
+			_ = enc.Encode(res)
+		case "2":
+			var res any
+			_ = json.Unmarshal([]byte(toolsOKFrame("a", "b", "c", "d")), &res)
+			_ = enc.Encode(res)
+			_ = os.Stdout.Close()
+			os.Exit(0)
+		}
+	}
+}
+
+func helperProbeService(t *testing.T, mode string) *McpWizardService {
+	t.Helper()
+	old := probeCommand
+	probeCommand = func(ctx context.Context, command string) *exec.Cmd {
+		cmd := exec.CommandContext(ctx, command, "-test.run=^TestSelfCheckHelperProcess$")
+		cmd.Env = append(os.Environ(), "HANXI_SELFCHECK_HELPER=1", "HANXI_SELFCHECK_MODE="+mode)
+		return cmd
+	}
+	t.Cleanup(func() { probeCommand = old })
+	svc, _ := newTestService(t, nil)
+	svc.command = os.Args[0]
+	return svc
+}
+
+func TestSpawnProbeHelperBudgetAndLateReturn(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		mode    string
+		budget  time.Duration
+		wantErr bool
+	}{
+		{name: "预算内完成", mode: "healthy", budget: 2 * time.Second},
+		{name: "晚归越界", mode: "late", budget: 50 * time.Millisecond, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := helperProbeService(t, tc.mode)
+			ctx, cancel := context.WithTimeout(context.Background(), tc.budget)
+			defer cancel()
+			tools, err := svc.spawnProbe(ctx)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "握手超时") {
+					t.Fatalf("应按预算超时，得 tools=%v err=%v", tools, err)
+				}
+				return
+			}
+			if err != nil || len(tools) != 4 {
+				t.Fatalf("预算内 helper 应成功，得 tools=%v err=%v", tools, err)
+			}
+		})
+	}
+}
+
+func TestSpawnProbeHelperTimeoutLeavesNoProcess(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("PID 残留探测仅 Windows")
+	}
+	for _, mode := range []string{"late-exit", "hang"} {
+		t.Run(mode, func(t *testing.T) {
+			pidFile := filepath.Join(t.TempDir(), "pid")
+			old := probeCommand
+			probeCommand = func(ctx context.Context, command string) *exec.Cmd {
+				cmd := exec.CommandContext(ctx, command, "-test.run=^TestSelfCheckHelperProcess$")
+				cmd.Env = append(os.Environ(), "HANXI_SELFCHECK_HELPER=1", "HANXI_SELFCHECK_MODE="+mode, "HANXI_SELFCHECK_PID_FILE="+pidFile)
+				return cmd
+			}
+			t.Cleanup(func() { probeCommand = old })
+			svc, _ := newTestService(t, nil)
+			svc.command = os.Args[0]
+			ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+			defer cancel()
+			start := time.Now()
+			_, err := svc.spawnProbe(ctx)
+			if err == nil || !strings.Contains(err.Error(), "握手超时") {
+				t.Fatalf("%s helper 应超时: %v", mode, err)
+			}
+			if elapsed := time.Since(start); elapsed > probeReapTimeout+2*time.Second {
+				t.Fatalf("超时返回超过固定收尸窗口: %v", elapsed)
+			}
+			data, readErr := os.ReadFile(pidFile)
+			if readErr != nil {
+				t.Fatalf("读取 helper PID: %v", readErr)
+			}
+			pid, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
+			if convErr != nil {
+				t.Fatalf("解析 helper PID: %v", convErr)
+			}
+			if processExists(pid) {
+				t.Fatalf("超时返回后 helper 仍存活: pid=%d", pid)
+			}
+		})
+	}
+}
 
 func TestSpawnProbeRealExeBadChild(t *testing.T) {
 	if runtime.GOOS != "windows" {
