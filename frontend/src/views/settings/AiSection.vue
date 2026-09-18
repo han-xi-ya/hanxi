@@ -1,18 +1,22 @@
 <script setup lang="ts">
-// 设置分区·AI 接入（F4b MCP 安装向导，PLAN_MCP §2.5/§8 拍板）：
+// 设置分区·AI 接入（F4b MCP 安装向导 + R6 授权开关，PLAN_MCP §2.5/§6/§8 拍板）：
 // 三态红线流：客户端列表 → 预览（before/after 差异；JSONC/冲突给手动片段）
 // → 确认写入（备份→原子写→复验→失败回滚，结果三态：成功/回滚/拒动）。
-// access.json 只读呈现（授权引擎归 F4a，本分区无写入口）；卸载走对称逆向链。
+// access.json 自 R6 起是本分区的写入口：四工具开关拨动即整档原子回写、保存即生效
+// （MCP 读者每次调用重读盘）；损坏/超纲档拒绝盲写，只经「修复（覆盖重置）」
+// 二次确认链（旧档另存 .bak 再重写全关）。卸载走对称逆向链。
 import { ref, computed, onMounted } from 'vue'
 import * as McpWizardAPI from '../../../bindings/hanxi/internal/mcpwizard'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
-import type { WizardStatus, ClientState, WizardPreview, OpResult, SelfCheckInfo } from '../../../bindings/hanxi/internal/mcpwizard/models'
+import type { WizardStatus, AccessInfo, ClientState, WizardPreview, OpResult, SelfCheckInfo } from '../../../bindings/hanxi/internal/mcpwizard/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
+import { useConfirm } from '../../composables/useConfirm'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 
 const { showToast } = useToast()
+const { confirm } = useConfirm()
 
 const status = ref<WizardStatus | null>(null)
 const loading = ref(false)
@@ -41,20 +45,80 @@ const stateMeta: Record<string, { label: string; chip: string }> = {
 const accessMeta = computed(() => {
   const a = status.value?.access
   if (!a) return { label: '读取中…', chip: 'chip-neutral' }
-  if (!a.exists) return { label: '尚未生成', chip: 'chip-neutral' }
+  if (!a.exists) return { label: '尚未生成 · 默认全关', chip: 'chip-neutral' }
   if (!a.readable) return { label: '已损坏 · fail-closed', chip: 'chip-danger' }
   return { label: `正常 · v${a.version}`, chip: 'chip-positive' }
 })
 
+// 读者不采信档（存在但 readable=false）= 危险态：开关锁死，出路只剩修复链。
+const accessCorrupt = computed(() => {
+  const a = status.value?.access
+  return !!a && a.exists && !a.readable
+})
+
+// 四行工具开关（键名=access.json 契约四键；MCP 工具名供对照 server 面）。
 const accessTools = computed(() => {
   const t = status.value?.access.tools
   return [
-    { key: 'envcheck', name: '环境体检', on: !!t?.envcheck },
-    { key: 'everything', name: '全盘搜索', on: !!t?.everything },
-    { key: 'ocr', name: 'OCR 识图', on: !!t?.ocr },
-    { key: 'memo', name: '便签检索', on: !!t?.memo },
+    { key: 'envcheck', name: '环境体检', tool: 'hanxi_envcheck_detect', on: !!t?.envcheck },
+    { key: 'everything', name: '全盘搜索', tool: 'hanxi_file_search', on: !!t?.everything },
+    { key: 'ocr', name: 'OCR 识图', tool: 'hanxi_ocr_recognize', on: !!t?.ocr },
+    { key: 'memo', name: '便签检索', tool: 'hanxi_memo_search', on: !!t?.memo },
   ]
 })
+
+const accessBusy = ref(false)
+
+function applyAccess(info: AccessInfo) {
+  if (status.value) status.value = { ...status.value, access: info }
+}
+
+/** setTool 拨开关即写盘：成功以回传呈现就地更新；被拒（损坏档盲写等）toast 中文指引并重读盘。 */
+async function setTool(t: { key: string; name: string }, enabled: boolean) {
+  if (accessBusy.value || accessCorrupt.value) return
+  accessBusy.value = true
+  try {
+    applyAccess(await McpWizardAPI.McpWizardService.SetToolAccess(t.key, enabled))
+    showToast(`${t.name}已${enabled ? '授权' : '撤销'}——保存即生效，无需重启 hanxi mcp`)
+  } catch (e: unknown) {
+    showToast(`授权改动未生效: ${getErrorMessage(e)}`)
+    await refreshAccess()
+  } finally {
+    accessBusy.value = false
+  }
+}
+
+/** repairAccess 损坏档唯一出路：二次确认 → ResetAccess（旧档 .bak 后覆盖全关）→ 刷新总览。 */
+async function repairAccess() {
+  if (accessBusy.value) return
+  const accepted = await confirm({
+    title: '修复授权文件（覆盖重置）？',
+    description: '当前 access.json 被 MCP 读者拒读（视同全部未授权）。修复会先把旧档另存 .bak，再重写为默认全关标准档；随后需逐项重新授权。',
+    confirmLabel: '覆盖重置',
+    tone: 'danger',
+    details: status.value?.access.path ? [{ label: '文件', value: status.value.access.path }] : [],
+  })
+  if (!accepted) return
+  accessBusy.value = true
+  try {
+    const res = await McpWizardAPI.McpWizardService.ResetAccess()
+    showToast(res.message)
+    if (!res.success) await refresh() // 备份/写入失败细节在 message，整卡重探一次口径最全
+    else applyAccess(await McpWizardAPI.McpWizardService.GetAccessOverview())
+  } catch (e: unknown) {
+    showToast(`修复失败: ${getErrorMessage(e)}`)
+  } finally {
+    accessBusy.value = false
+  }
+}
+
+async function refreshAccess() {
+  try {
+    applyAccess(await McpWizardAPI.McpWizardService.GetAccessOverview())
+  } catch {
+    /* GetStatus 重探兜底，静默即可 */
+  }
+}
 
 const serverCmd = computed(() => {
   const s = status.value?.server
@@ -209,19 +273,39 @@ onMounted(refresh)
       </div>
     </div>
 
-    <!-- access.json 只读呈现（引擎归 F4a；本分区不写） -->
+    <!-- 工具授权（access.json · 本分区即写入口，R6）：四开关保存即生效；损坏档锁死并给修复链 -->
     <div class="card">
       <div class="card-head">
-        <span class="card-title">工具授权（access.json · 只读）</span>
+        <span class="card-title">工具授权（access.json）</span>
         <span class="chip" :class="accessMeta.chip">{{ accessMeta.label }}</span>
       </div>
       <div class="access-tools">
-        <span v-for="t in accessTools" :key="t.key" class="tool-item">
-          <span class="tool-name">{{ t.name }}</span>
-          <span class="chip" :class="t.on ? 'chip-positive' : 'chip-neutral'">{{ t.on ? '已授权' : '未授权' }}</span>
-        </span>
+        <div v-for="t in accessTools" :key="t.key" class="tool-row">
+          <div class="tool-main">
+            <span class="tool-name">
+              {{ t.name }}
+              <span class="chip" :class="t.on ? 'chip-positive' : 'chip-neutral'">{{ t.on ? '已授权' : '未授权' }}</span>
+            </span>
+            <code class="tool-id">{{ t.tool }}</code>
+          </div>
+          <input
+            type="checkbox"
+            class="switch"
+            role="switch"
+            :aria-checked="t.on"
+            :aria-label="`授权工具 ${t.name}`"
+            :checked="t.on"
+            :disabled="accessBusy || accessCorrupt"
+            @change="setTool(t, ($event.target as HTMLInputElement).checked)"
+          />
+        </div>
       </div>
-      <div v-if="status?.access.note" class="access-note">{{ status.access.note }}</div>
+      <div v-if="status?.access.note" class="access-note" :class="{ 'note-danger': accessCorrupt }">{{ status.access.note }}</div>
+      <div v-if="accessCorrupt" class="access-repair">
+        <button class="btn btn-danger-outline btn-small" :disabled="accessBusy" @click="repairAccess">修复（覆盖重置）</button>
+        <span class="access-hint">旧档会先另存 .bak 再重写全关，绝不无退路覆盖</span>
+      </div>
+      <div v-else class="access-hint">保存即生效，无需重启 hanxi mcp——MCP 读者每次工具调用都重读授权文件。</div>
       <div class="access-foot">
         <code class="client-path" :title="status?.access.path">{{ status?.access.path || '—' }}</code>
         <button class="btn btn-secondary btn-small" :disabled="!status?.access.path" @click="openAccessDir">
@@ -342,11 +426,21 @@ onMounted(refresh)
 .client-time { font-size: var(--text-xs); color: var(--color-text-subtle); }
 .client-actions { display: flex; gap: 6px; flex: none; }
 
-.access-tools { display: flex; gap: 18px; flex-wrap: wrap; margin: 4px 0 8px; }
-.tool-item { display: inline-flex; align-items: center; gap: 6px; }
-.tool-name { font-size: var(--text-sm); color: var(--color-text); }
+.access-tools { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
+.tool-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-element);
+}
+.tool-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tool-name { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--color-text); }
+.tool-id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle); }
+.switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
+.switch:disabled { cursor: not-allowed; }
 .access-note { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: 8px; }
-.access-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.access-note.note-danger { color: var(--state-danger, var(--color-text)); }
+.access-repair { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.access-hint { font-size: var(--text-xs); color: var(--color-text-subtle); margin-bottom: 8px; }
+.access-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
 
 /* 向导弹窗（皮对齐 SnapshotSection 的 .modal-* 家族） */
 .modal-backdrop {

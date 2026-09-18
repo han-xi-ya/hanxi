@@ -514,42 +514,28 @@ func TestUnknownClient(t *testing.T) {
 	}
 }
 
+// TestAccessInfoReadOnlyPresentation 呈现路径的读盘红线：GetStatus/accessInfo 只读
+// 呈现，任何情况下不得触碰 access.json 一个字节（写只属于 SetToolAccess/ResetAccess）。
+// 呈现语义本身的用例在 access_write_test.go（R6 起本分区即写入口）。
 func TestAccessInfoReadOnlyPresentation(t *testing.T) {
 	svc, _ := newTestService(t, nil)
-	info := svc.accessInfo()
-	if info.Exists || info.Readable || !strings.Contains(info.Note, "尚未放置") || !strings.Contains(info.Note, "默认全关") {
-		t.Fatalf("缺文件呈现异常: %+v", info)
-	}
-	// F4a 零落盘承诺的文案红线：全仓无人创建/重建 access.json，禁止再出现
-	// 「首次运行初始化」「由 hanxi mcp 重建」这类与事实矛盾的指引
-	if strings.Contains(info.Note, "首次运行") {
-		t.Errorf("缺档文案不得暗示存在自动初始化方: %s", info.Note)
-	}
-	// 写入 PLAN §6 样例后只读呈现
-	writeFile(t, svc.accessPath, `{"version":1,"tools":{"envcheck":true,"everything":false,"ocr":false,"memo":false}}`)
-	info = svc.accessInfo()
-	if !info.Exists || !info.Readable || info.Version != 1 {
-		t.Fatalf("正常文件呈现异常: %+v", info)
-	}
-	if !info.Tools.Envcheck || info.Tools.Everything || info.Tools.Ocr || info.Tools.Memo {
-		t.Errorf("工具开关解析错: %+v", info.Tools)
-	}
-	// 损坏：fail-closed 文案，且向导绝不代写修复
-	writeFile(t, svc.accessPath, `{"version":1,,}`)
-	info = svc.accessInfo()
-	if !info.Exists || info.Readable || !strings.Contains(info.Note, "损坏") || !strings.Contains(info.Note, "不代为修复") {
-		t.Fatalf("损坏文件呈现异常: %+v", info)
-	}
-	if strings.Contains(info.Note, "重建") && !strings.Contains(info.Note, "不会被代生成") {
-		t.Errorf("损坏文案不得暗示存在自动重建方: %s", info.Note)
-	}
-	before := readFile(t, svc.accessPath)
+	before := readFile(t, writeSeedAccess(t, svc))
 	if _, err := svc.GetStatus(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.GetAccessOverview(); err != nil {
 		t.Fatal(err)
 	}
 	if readFile(t, svc.accessPath) != before {
 		t.Error("呈现路径不得触碰 access.json")
 	}
+}
+
+// writeSeedAccess 在 svc 的 accessPath 落一份合法样例档，返回其路径。
+func writeSeedAccess(t *testing.T, svc *McpWizardService) string {
+	t.Helper()
+	writeFile(t, svc.accessPath, `{"version":1,"tools":{"envcheck":true,"everything":false,"ocr":false,"memo":false}}`)
+	return svc.accessPath
 }
 
 func TestReceiptSurvivesRoundTrip(t *testing.T) {
