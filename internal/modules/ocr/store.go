@@ -381,8 +381,16 @@ func (s *ocrStore) GetSnipHotkey() (bool, string) {
 func (s *ocrStore) SetSnipHotkeyEnabled(v bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.snipHotkeyEnabled == v {
+		return nil
+	}
+	prev := s.snipHotkeyEnabled
 	s.snipHotkeyEnabled = v
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		s.snipHotkeyEnabled = prev
+		return err
+	}
+	return nil
 }
 
 // SetSnipHotkey 校验并规范化键位后落盘；返回规范化结果供上层回显。
@@ -394,8 +402,13 @@ func (s *ocrStore) SetSnipHotkey(raw string) (string, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.snipHotkey == norm {
+		return norm, nil
+	}
+	prev := s.snipHotkey
 	s.snipHotkey = norm
 	if err := s.saveLocked(); err != nil {
+		s.snipHotkey = prev
 		return norm, err
 	}
 	return norm, nil
