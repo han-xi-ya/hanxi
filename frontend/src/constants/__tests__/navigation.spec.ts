@@ -7,6 +7,16 @@ import {
   SETTINGS_SECTIONS, settingsSectionOf,
 } from '../navigation'
 import { ICON_NAMES } from '../icons'
+import compositionContract from '../../../../scripts/fixture/composition_contract.json'
+
+const contractModules = compositionContract.modules
+  .map(({ id, route, group }) => `${id}|${route}|${group}`)
+  .sort()
+
+const frontendModules = () => Object.entries(ROUTES)
+  .filter((entry): entry is [string, (typeof ROUTES)[string] & { moduleId: string }] => entry[1].moduleId !== undefined)
+  .map(([route, def]) => `${def.moduleId}|${route}|${MODULE_GROUP[def.moduleId]}`)
+  .sort()
 
 describe('constants/navigation', () => {
   it('登记了全部 53 条路由（含设置页 8 个分区子路由）', () => {
@@ -19,12 +29,17 @@ describe('constants/navigation', () => {
     }
   })
 
-  it('模块门禁集合与原 ROUTE_MODULE_MAP 一致（39 个 ext + frpc + paseo，核心页无 moduleId）', () => {
+  it('ROUTES/MODULE_GROUP 与后端 composition contract 的具体 ID/route/group 集合一致', () => {
+    expect(frontendModules()).toEqual(contractModules)
+    expect(frontendModules()).toHaveLength(compositionContract.counts.modules)
+  })
+
+  it('模块门禁集合覆盖后端 contract，核心页无 moduleId', () => {
     const withModule = Object.entries(ROUTES)
       .filter(([, def]) => def.moduleId !== undefined)
       .map(([route, def]) => `${route}=${def.moduleId}`)
       .sort()
-    expect(withModule).toHaveLength(41)
+    expect(withModule).toHaveLength(compositionContract.counts.modules)
     expect(withModule).toContain('/frpc=frpc')
     expect(withModule).toContain('/ext/webapp=webapp')
     expect(withModule).toContain('/ext/ocr=ocr')
@@ -65,7 +80,7 @@ describe('constants/navigation', () => {
       if (def.moduleId) expect(MODULE_GROUP[def.moduleId]).toBeDefined()
     }
     for (const g of Object.values(MODULE_GROUP)) expect(groups.has(g)).toBe(true)
-    expect(Object.keys(MODULE_GROUP)).toHaveLength(41)
+    expect(Object.keys(MODULE_GROUP)).toHaveLength(compositionContract.counts.modules)
   })
 
   it('groupOfModule：已知返回分组，未知返回 undefined', () => {
