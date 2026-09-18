@@ -140,6 +140,62 @@ func TestBackupEngineFileGuards(t *testing.T) {
 	}
 }
 
+func TestBackupEngineIgnoresUnpublishedAndInvalidBackups(t *testing.T) {
+	eng, dataDir := newTestBackupEngine(t)
+	ctx := context.Background()
+	write(t, dataDir, rootConfig, `{}`)
+	if err := eng.commit(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(eng.backupRoot, ".pending-debris"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	invalid := filepath.Join(eng.backupRoot, "20990101-000000")
+	if err := os.MkdirAll(invalid, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalid, manifestName), []byte(`{"../evil":"bad"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	revs, err := eng.revisions(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revs) != 1 {
+		t.Fatalf("列表只应承认合法已发布 manifest，got %+v", revs)
+	}
+}
+
+func TestBackupEnginePublishFailureLeavesNoVisibleRevision(t *testing.T) {
+	eng, dataDir := newTestBackupEngine(t)
+	ctx := context.Background()
+	write(t, dataDir, rootConfig, `{}`)
+	eng.ops.rename = func(string, string) error { return fmt.Errorf("injected rename failure") }
+	if err := eng.commit(ctx, nil); err == nil {
+		t.Fatal("故障注入应使发布失败")
+	}
+	revs, err := eng.revisions(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revs) != 0 {
+		t.Fatalf("未原子发布的备份不得可见: %+v", revs)
+	}
+	entries, err := os.ReadDir(eng.backupRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundPending := false
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), pendingBackupPrefix) {
+			foundPending = true
+		}
+	}
+	if !foundPending {
+		t.Fatal("失败暂存目录应保留供诊断")
+	}
+}
+
 func TestParseBackupDirTime(t *testing.T) {
 	ts := parseBackupDirTime("20260917-143000")
 	if ts.Format(backupTimeLayout) != "20260917-143000" {
