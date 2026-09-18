@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -363,6 +364,45 @@ func TestStdioFrameLoop(t *testing.T) {
 	}
 	if err := <-listenErr; err != nil && !strings.Contains(err.Error(), "EOF") {
 		t.Logf("stdio Listen exit: %v", err) // 正常收尾形态差异不作失败断言
+	}
+}
+
+func TestTextResultOversizeAlwaysReturnsBoundedJSON(t *testing.T) {
+	payload := resultPayload{
+		"ok":   true,
+		"text": strings.Repeat("你\x00\n\t\\\"", maxPayloadBytes),
+	}
+	res, err := textResult(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Content) != 1 {
+		t.Fatalf("content count = %d, want 1", len(res.Content))
+	}
+	content, ok := res.Content[0].(mcp.TextContent)
+	if !ok {
+		t.Fatalf("content type = %T, want mcp.TextContent", res.Content[0])
+	}
+	data := []byte(content.Text)
+	if len(data) > maxPayloadBytes {
+		t.Fatalf("payload size = %d, want <= %d", len(data), maxPayloadBytes)
+	}
+	if !utf8.Valid(data) {
+		t.Fatal("payload must be valid UTF-8")
+	}
+	if !json.Valid(data) {
+		t.Fatalf("payload must remain valid JSON: %q", content.Text)
+	}
+	var envelope struct {
+		OK        bool   `json:"ok"`
+		Error     string `json:"error"`
+		Truncated bool   `json:"truncated"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.OK || envelope.Error == "" || !envelope.Truncated {
+		t.Fatalf("oversize envelope = %+v", envelope)
 	}
 }
 
