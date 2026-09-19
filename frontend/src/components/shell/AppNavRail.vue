@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 一级图标轨道（双栏外壳左列，收起 64px / 展开 188px，结构参照
 // docs/design/shell-redesign/mockup-b-icon-rail.html）。
-// 纯展示组件：首页 / 六个分类按钮（GROUP_META 驱动，模块数角标 + 组内运行绿点）/
+// 纯展示组件：首页 / 模块中心（一级核心入口，Wave 1 占位页，目录计数徽标留待
+// Wave 2）/ 六个分类按钮（GROUP_META 驱动，模块数角标 + 组内运行绿点）/
 // rail-bottom（展开收起钮、通知中心徽标、设置）。日志与关于入口、主题三态切换
 // 已按用户决策收进设置页（views/settings/WorkbenchSection + ThemeSection），
 // rail 只保留高频导航职责。设置钮对 /settings 及其全部子分区路由点亮。
@@ -11,8 +12,11 @@
 //
 // 激活态：surface-selected 底 + 左侧 3px 主色条（::before），图标转主色。
 // 无障碍：原生 button 可 Tab；title 中文悬浮提示；aria-label 中文名；
-// 当前分类 aria-current="page"；展开钮 aria-expanded。运行绿点为附加信息，颜色外以 title 说明。
+// 当前分类 aria-current="page"；展开钮 aria-expanded；:focus-visible 内收焦点环；
+// prefers-reduced-motion 翻 reduced-motion 类，宽度位移动画归零。
+// 运行绿点为附加信息，颜色外以 title 说明。
 import { computed, ref } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import AppIcon from '../ui/AppIcon.vue'
 import type { IconName } from '../../constants/icons'
 import {
@@ -103,6 +107,10 @@ function loadRailExpanded(): boolean {
 
 const expanded = ref(loadRailExpanded())
 
+// prefers-reduced-motion 类钩子：rail 宽度过渡（64↔188 位移）归零。
+// 与 AppSidebar 的 reduced-motion 钩子同一套语义，base.css 全局块仅作最后兜底。
+const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+
 function toggleExpanded() {
   expanded.value = !expanded.value
   try {
@@ -114,7 +122,7 @@ function toggleExpanded() {
 </script>
 
 <template>
-  <nav class="rail" :class="{ expanded }" aria-label="主导航">
+  <nav class="rail" :class="{ expanded, 'reduced-motion': reduceMotion }" aria-label="主导航">
     <button
       class="rail-btn rail-home"
       :class="{ active: activeRoute === '/' }"
@@ -125,6 +133,19 @@ function toggleExpanded() {
     >
       <AppIcon name="home" :size="20" />
       <span class="rail-label">首页</span>
+    </button>
+
+    <!-- 模块中心：一级核心入口（Wave 1 占位页；目录计数徽标属 Wave 2，现在不加） -->
+    <button
+      class="rail-btn rail-modules"
+      :class="{ active: isCoreActive('/modules') }"
+      title="模块中心"
+      aria-label="模块中心"
+      :aria-current="isCoreActive('/modules') ? 'page' : undefined"
+      @click="emit('navigate', '/modules')"
+    >
+      <AppIcon name="grid" :size="20" />
+      <span class="rail-label">模块中心</span>
     </button>
 
     <div class="rail-sep" role="presentation"></div>
@@ -363,5 +384,16 @@ function toggleExpanded() {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+/* 键盘焦点环：rail 仅 64px 且纵向可滚，offset 内收防被轨道边缘裁切 */
+.rail-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--color-primary));
+  outline-offset: -2px;
+}
+
+/* reduced-motion 类钩子：64↔188 宽度位移动画归零（hover 变色属着色过渡，保留） */
+.rail.reduced-motion {
+  transition: none;
 }
 </style>

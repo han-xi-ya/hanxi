@@ -4,15 +4,17 @@
 // 二级面板折叠（hanxi.navPanelCollapsed 持久化 + rail 回展钮）、
 // 分组渲染规则（后端 group 优先 → route 末段回落 → 'other' 兜底）、
 // 首页态「常用 + 最近使用」（localStorage hanxi.recentRoutes）、页脚计数、
-// 状态条、窄屏降级 DOM（把手/遮罩/rail-open 类）。
+// 状态条、窄屏降级 DOM（把手/遮罩/rail-open 类）、窄屏键盘可达性
+// （抽屉开合焦点流转、Esc 关浮层归还焦点、flyout 非模态不抢焦点、reduced-motion 类钩子）。
 // 旧的 outerHTML 逐字节基线（AppSidebar.dom.baseline.html）随单栏结构退役：
 // 双栏改造即为打破该结构，机检目标转为"根节点单元素 aside.sidebar + rail/panel 并排"。
 // 依赖真实 constants/navigation.ts 契约导出（数据层已落地）。
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import AppSidebar from '../AppSidebar.vue'
 import { GROUP_META } from '../../../constants/navigation'
-import { RECENT_ROUTES_KEY, type NavEntryWithGroup } from '../navGrouping'
+import { FAV_MODULE_IDS, RECENT_ROUTES_KEY, moduleIdOfNav, type NavEntryWithGroup } from '../navGrouping'
 
 const nav = (route: string, title: string, icon: string, group?: string): NavEntryWithGroup => ({
   id: `${route.split('/').pop()}-manager`,
@@ -199,14 +201,17 @@ describe('面板模块行', () => {
 })
 
 describe('首页态：常用与最近使用', () => {
-  it('activeRoute="/" 面板显示首页态：常用固定三项（存在才显示）+ 最近使用空提示', () => {
-    const w = factory({ navs: [MEMO, FRPC, EVERYTHING, SNIPASTE] })
+  it('activeRoute="/" 面板显示首页态：常用固定项（存在才显示）+ 最近使用空提示', () => {
+    const navs = [MEMO, FRPC, EVERYTHING, SNIPASTE]
+    const w = factory({ navs })
     expect(w.find('.panel-title').text()).toBe('工作台')
     const labels = w.findAll('.panel-section-label').map((l) => l.text())
     expect(labels).toEqual(['常用', '最近使用'])
-    expect(w.findAll('.mod').map((b) => b.find('.mod-name').text())).toEqual([
-      'FRP 内网穿透', 'Everything 搜索', 'Snipaste 截图',
-    ])
+    // 期望值从 navGrouping.FAV_MODULE_IDS 单一来源推导（特征测试：常用区 = FAV 清单的可见项），不抄字面量
+    const favTitles = FAV_MODULE_IDS.map((id) => navs.find((n) => moduleIdOfNav(n) === id)?.title).filter(
+      (t): t is string => !!t,
+    )
+    expect(w.findAll('.mod').map((b) => b.find('.mod-name').text())).toEqual(favTitles)
     expect(w.find('.panel-hint').text()).toContain('自动记录最近使用')
   })
 
@@ -228,9 +233,10 @@ describe('首页态：常用与最近使用', () => {
     // 重挂载（新组件实例从 localStorage 恢复），首页态最近使用可点击直达
     const w2 = factory({ navs })
     expect(w2.findAll('.panel-hint')).toHaveLength(0)
-    const recents = w2.findAll('.mod') // 常用 3 + 最近 2
-    expect(recents.map((b) => b.find('.mod-name').text()).slice(3)).toEqual(['FRP 内网穿透', '随手记'])
-    await recents[3].trigger('click')
+    const recents = w2.findAll('.mod') // 常用（FAV 可见项）+ 最近 2
+    const favCount = FAV_MODULE_IDS.length
+    expect(recents.map((b) => b.find('.mod-name').text()).slice(favCount)).toEqual(['FRP 内网穿透', '随手记'])
+    await recents[favCount].trigger('click')
     expect(w2.emitted('navigate')).toEqual([['/frpc']])
   })
 
@@ -346,5 +352,112 @@ describe('props/emits 向后兼容通道', () => {
     await w.setProps({ backendReady: true })
     expect(w.find('.status-dot').classes()).toContain('online')
     expect(w.find('.status-text').text()).toBe('工作台已就绪')
+  })
+})
+
+describe('窄屏键盘可达性', () => {
+  /**
+   * stub matchMedia：1100 断点与 prefers-reduced-motion 按参数命中，其余查询恒 false。
+   * 范式沿用既有 mockNarrow（AppSidebar.spec 内先例），扩展出 reduced 维度。
+   */
+  function mockMedia({ narrow = false, reduced = false }: { narrow?: boolean; reduced?: boolean } = {}) {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query.includes('1100') ? narrow : query.includes('prefers-reduced-motion') ? reduced : false,
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList,
+    )
+  }
+
+  /** 焦点断言要求节点在文档内（happy-dom activeElement 语义），挂载到 body。 */
+  function mountAttached(props: Parameters<typeof factory>[0] = {}) {
+    return mount(AppSidebar, {
+      props: { navs: [], activeRoute: '/', unreadCount: 0, backendReady: true, ...props },
+      attachTo: document.body,
+    })
+  }
+
+  const pressEscape = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    document.body.innerHTML = ''
+  })
+
+  it('抽屉打开：焦点进入 rail 首个可交互按钮；Esc 关闭、aria-expanded 复位、焦点归还把手', async () => {
+    const w = mountAttached()
+    const handle = w.find('.rail-handle')
+    expect(handle.attributes('aria-expanded')).toBe('false')
+
+    await handle.trigger('click')
+    await flushPromises()
+    expect(handle.attributes('aria-expanded')).toBe('true')
+    expect(document.activeElement).toBe(w.find('.rail .rail-btn').element)
+
+    pressEscape()
+    await nextTick()
+    expect(w.classes()).not.toContain('rail-open')
+    expect(handle.attributes('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(handle.element)
+    w.unmount()
+  })
+
+  it('抽屉经遮罩关闭：焦点同样归还把手', async () => {
+    const w = mountAttached()
+    await w.find('.rail-handle').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(w.find('.rail .rail-btn').element)
+
+    await w.find('.rail-mask').trigger('click')
+    await nextTick()
+    expect(w.classes()).not.toContain('rail-open')
+    expect(document.activeElement).toBe(w.find('.rail-handle').element)
+    w.unmount()
+  })
+
+  it('flyout：Esc 关闭并把焦点还给触发的 rail 分组钮；遮罩即收保持非模态不抢焦点', async () => {
+    mockMedia({ narrow: true })
+    const w = mountAttached()
+    const group = w.findAll('.rail-group')[0] // network
+
+    await group.trigger('click')
+    expect(w.classes()).toContain('panel-flyout')
+
+    // 遮罩收回：焦点保持原位（不抢焦点、不做焦点迁移——常驻导航浮出语义）
+    const before = document.activeElement
+    await w.find('.flyout-mask').trigger('click')
+    await nextTick()
+    expect(w.classes()).not.toContain('panel-flyout')
+    expect(document.activeElement).toBe(before)
+
+    // 重新弹出后 Esc：关闭且焦点归还触发分组钮
+    await group.trigger('click')
+    expect(w.classes()).toContain('panel-flyout')
+    pressEscape()
+    await nextTick()
+    expect(w.classes()).not.toContain('panel-flyout')
+    expect(document.activeElement).toBe(group.element)
+    w.unmount()
+  })
+
+  it('prefers-reduced-motion 命中：sidebar 与内嵌 rail 根节点均挂 reduced-motion 类', () => {
+    mockMedia({ reduced: true })
+    const w = factory()
+    expect(w.classes()).toContain('reduced-motion')
+    expect(w.find('.rail').classes()).toContain('reduced-motion')
+  })
+
+  it('未开启减弱动效时不挂 reduced-motion 类', () => {
+    mockMedia({ reduced: false })
+    const w = factory()
+    expect(w.classes()).not.toContain('reduced-motion')
+    expect(w.find('.rail').classes()).not.toContain('reduced-motion')
   })
 })

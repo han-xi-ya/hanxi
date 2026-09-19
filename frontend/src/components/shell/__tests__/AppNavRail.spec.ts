@@ -1,11 +1,13 @@
 // AppNavRail 特征测试：一级图标轨道（双栏改造新增）。
 // 锁契约：GROUP_META 驱动的六分类按钮（顺序/计数角标/运行绿点）、select-group 上抛、
-// 首页与 rail-bottom 核心页 navigate 上抛、activeGroup/activeRoute 高亮与 aria-current、
-// 未读徽标显隐、面板折叠回展钮（panelCollapsed → .panel-toggle 与 toggle-panel 上抛）。
+// 首页/模块中心与 rail-bottom 核心页 navigate 上抛、activeGroup/activeRoute 高亮与 aria-current、
+// 未读徽标显隐、面板折叠回展钮（panelCollapsed → .panel-toggle 与 toggle-panel 上抛）、
+// prefers-reduced-motion 的 reduced-motion 类钩子（位移动画归零的组件级开关）。
+// 模块中心钮为 Wave 1 一级核心入口：锁存在/active/select，不锁徽标（目录计数属 Wave 2）。
 // 主题三态已迁至设置页「外观」卡片（SettingsView.spec 覆盖），rail 不再承载。
 // 依赖真实 constants/navigation.ts 的 GROUP_META（数据层已落地），断言从 GROUP_META 取，不抄字面量。
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import AppNavRail from '../AppNavRail.vue'
 import { GROUP_META, type NavGroup } from '../../../constants/navigation'
 import { orderedRailGroups, type NavEntryWithGroup } from '../navGrouping'
@@ -75,10 +77,11 @@ describe('AppNavRail', () => {
   it('每个导航按钮均携带 .rail-label 文字（收起态由 CSS 隐藏）', () => {
     const w = factory({ navs: [nav('/ext/memo', '随手记', 'i:sticky-note', 'efficiency')] })
     const labels = w.findAll('.rail-btn .rail-label')
-    // 首页 + 6 分类 + 通知 + 设置 = 9（展开钮/面板回展钮保持仅图标）
-    expect(labels).toHaveLength(9)
+    // 首页 + 模块中心 + 6 分类 + 通知 + 设置 = 10（展开钮/面板回展钮保持仅图标）
+    expect(labels).toHaveLength(10)
     expect(labels[0].text()).toBe('首页')
-    expect(labels[1].text()).toBe(GROUP_META.network.title)
+    expect(labels[1].text()).toBe('模块中心')
+    expect(labels[2].text()).toBe(GROUP_META.network.title)
     expect(labels.at(-1)?.text()).toBe('设置')
   })
 
@@ -167,5 +170,59 @@ describe('AppNavRail', () => {
     const w = factory({ activeRoute: '/settings' })
     await w.find('.rail-home').trigger('click')
     expect(w.emitted('navigate')).toEqual([['/']])
+  })
+
+  describe('模块中心钮（Wave 1 一级核心入口）', () => {
+    it('位于首页钮正下方、分隔线之上，图标走 AppIcon 内联 SVG，无目录计数徽标', () => {
+      const w = factory()
+      const btn = w.find('.rail-modules')
+      expect(btn.exists()).toBe(true)
+      expect(btn.attributes('aria-label')).toBe('模块中心')
+      expect(btn.find('svg.app-icon').exists()).toBe(true)
+      // 顶块结构：home → modules → sep（模块中心不落入 rail-core 底部族）
+      const topBtns = w.findAll('.rail > .rail-btn')
+      expect(topBtns[0].classes()).toContain('rail-home')
+      expect(topBtns[1].classes()).toContain('rail-modules')
+      expect(w.find('.rail-core.rail-modules').exists()).toBe(false)
+      expect(btn.find('.rail-count').exists()).toBe(false)
+      expect(btn.find('.nav-badge').exists()).toBe(false)
+    })
+
+    it('activeRoute=/modules 点亮 active + aria-current；子路由前缀同样点亮', () => {
+      const w = factory({ activeRoute: '/modules' })
+      const btn = w.find('.rail-modules')
+      expect(btn.classes()).toContain('active')
+      expect(btn.attributes('aria-current')).toBe('page')
+      expect(w.find('.rail-home').classes()).not.toContain('active')
+      const sub = factory({ activeRoute: '/modules/detail' })
+      expect(sub.find('.rail-modules').classes()).toContain('active')
+    })
+
+    it('点击 emit navigate("/modules")', async () => {
+      const w = factory({ activeRoute: '/' })
+      await w.find('.rail-modules').trigger('click')
+      expect(w.emitted('navigate')).toEqual([['/modules']])
+    })
+  })
+
+  describe('prefers-reduced-motion 类钩子', () => {
+    afterEach(() => vi.restoreAllMocks())
+
+    it('命中减弱动效 → rail 根挂 reduced-motion；未命中不挂', () => {
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query: string) =>
+          ({
+            matches: query.includes('prefers-reduced-motion'),
+            media: query,
+            onchange: null,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+          }) as unknown as MediaQueryList,
+      )
+      expect(factory().find('.rail').classes()).toContain('reduced-motion')
+    })
   })
 })

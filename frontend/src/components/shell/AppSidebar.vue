@@ -14,11 +14,15 @@
 // 图标双轨制（AppIcon 阶段1，docs/FRONTEND.md §8）：nav.icon 为 `i:` 前缀时渲染
 // 内联 SVG，裸字符/emoji 走文本回退分支（后端 Icon 全量改写 i: 名后回退分支自然退役）。
 //
-// 窄屏降级（CSS media query，无 JS 断点探测）：
-//   ≤1100px 二级面板整体隐藏，仅留 64px rail；
+// 窄屏降级（布局仍 CSS media query；开合焦点行为为组件内 JS，无新依赖）：
+//   ≤1100px 二级面板整体隐藏，仅留 64px rail；点分类以 flyout 浮出——保持非模态
+//   （点遮罩/导航即收不抢焦点），仅 Esc 关闭时把焦点归还触发的 rail 分组钮；
 //   ≤760px rail 也收成 overlay 抽屉：rail 定位固定、translateX 移出（150ms 位移动画），
 //   左上角浮出 ☰ 把手钮，开抽屉出遮罩，点遮罩/导航后自动收回（railOpen 组件本地态）。
-import { computed, ref, watch } from 'vue'
+//   抽屉键盘可达：打开时焦点进 rail 首个按钮，Esc/关闭后焦点归还把手。
+//   prefers-reduced-motion 经 useMediaQuery 翻成 reduced-motion 类，位移过渡归零
+//   （base.css 全局块是最后兜底，组件级类钩子让 shell 行为独立且可测）。
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import AppIcon from '../ui/AppIcon.vue'
 import AppNavRail from './AppNavRail.vue'
@@ -26,18 +30,18 @@ import type { IconName } from '../../constants/icons'
 import type { NavEntry } from '../../../bindings/hanxi/internal/extapi/models'
 import {
   GROUP_META,
-  MODULE_PRESENTATION,
   SETTINGS_SECTIONS,
   settingsSectionOf,
   type NavGroup,
 } from '../../constants/navigation'
 import {
+  favNavsOf,
   groupIconName,
   groupNavs,
   groupOfNav,
   isNavRunning,
   loadRecentRoutes,
-  moduleIdOfNav,
+  navsOfRoutes,
   pushRecentRoute,
   runningCountOf,
   type NavEntryWithGroup,
@@ -78,6 +82,52 @@ const panelFlyout = ref(false)
 watch(isNarrow, (narrow) => {
   if (!narrow) panelFlyout.value = false // 回到宽屏：面板回归常驻列，浮层语义失效
 })
+
+// ── 键盘可达性：抽屉开合焦点流转 + Esc 关闭浮层（组件内逻辑，无新依赖） ──
+const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+
+/** aside 根节点与 ☰ 把手模板引用：焦点查询/归还的锚点 */
+const sidebarEl = ref<HTMLElement | null>(null)
+const handleEl = ref<HTMLElement | null>(null)
+/** 弹出 flyout 的 rail 按钮：Esc 收回时焦点归还于此（shallowRef：DOM 节点不做深响应） */
+const flyoutTrigger = shallowRef<HTMLElement | null>(null)
+
+// 抽屉开：焦点进 rail 首个可交互按钮（把手之后的合理落点）；抽屉关：焦点归还把手。
+// 遮罩/导航/点把手任意路径关闭均归还——关闭后 rail 移出画布，焦点若滞留即成暗礁。
+watch(railOpen, async (open) => {
+  if (open) {
+    await nextTick() // 等 .rail-open 类落地再查询焦点目标
+    sidebarEl.value?.querySelector<HTMLElement>('.rail button')?.focus()
+  } else {
+    handleEl.value?.focus()
+  }
+})
+
+// flyout 经遮罩/导航等非 Esc 路径收回时清掉触发器引用，防陈旧节点滞留
+watch(panelFlyout, (open) => {
+  if (!open) flyoutTrigger.value = null
+})
+
+/** 按 aria-label 查 rail 内指定钮（分组钮/设置钮均可定位，标题无引号，选择器安全） */
+function findRailButton(cls: string, label: string): HTMLElement | null {
+  return sidebarEl.value?.querySelector<HTMLElement>(`.rail .${cls}[aria-label="${label}"]`) ?? null
+}
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || e.isComposing) return
+  if (e.defaultPrevented) return // 已被更上层浮层（如命令面板）消费则让行
+  if (railOpen.value) {
+    e.preventDefault()
+    railOpen.value = false // 焦点归还把手由 railOpen watch 统一执行
+  } else if (panelFlyout.value) {
+    e.preventDefault()
+    panelFlyout.value = false
+    flyoutTrigger.value?.focus()
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
 
 // ── 二级面板折叠（纯视觉开关，localStorage 持久化，与 rail 展开态同哲学）──
 const PANEL_COLLAPSED_KEY = 'hanxi.navPanelCollapsed'
@@ -146,26 +196,12 @@ const panelMeta = computed(() => {
 
 const groupRunningCount = computed(() => runningCountOf(shownNavs.value, props.runningIds))
 
-// ── 首页态：常用（固定 3 项，模块未启用则跳过）+ 最近使用（localStorage）──
-const FAV_MODULES = ['frpc', 'everything', 'snipaste'] as const
-
-function navOfModuleId(id: string): NavEntryWithGroup | undefined {
-  const route = MODULE_PRESENTATION[id]?.route
-  return navList.value.find((n) => n.route === route) ?? navList.value.find((n) => moduleIdOfNav(n) === id)
-}
-
-const favNavs = computed(() =>
-  FAV_MODULES.map((id) => navOfModuleId(id)).filter((n): n is NavEntryWithGroup => !!n),
-)
+// ── 首页态：常用 + 最近使用（清单与解析规则单一来源在 navGrouping，本组件只消费）──
+const favNavs = computed(() => favNavsOf(navList.value))
 
 const recentRoutes = ref<string[]>(loadRecentRoutes())
 // 最近使用渲染时实时过滤：模块被禁用（navs 消失）后不再显示
-const recentNavs = computed(() => {
-  const byRoute = new Map(navList.value.map((n) => [n.route, n]))
-  return recentRoutes.value
-    .map((r) => byRoute.get(r))
-    .filter((n): n is NavEntryWithGroup => !!n)
-})
+const recentNavs = computed(() => navsOfRoutes(navList.value, recentRoutes.value))
 
 // 最近使用仅记录模块路由（首页与核心页不占位）；未启用/已下架模块不会进入。
 function onNavigate(route: string) {
@@ -174,13 +210,17 @@ function onNavigate(route: string) {
   panelFlyout.value = false // flyout 内导航后同样即点即收
   // 窄屏进设置：分区菜单以 flyout 随页弹出（否则第二栏不可见，无从切换分区）；
   // 分区之间互切（/settings/xxx）不再弹，让位给内容区。
-  if (isNarrow.value && route === '/settings') panelFlyout.value = true
+  if (isNarrow.value && route === '/settings') {
+    flyoutTrigger.value = findRailButton('rail-core', '设置') // Esc 收回时焦点归设置钮
+    panelFlyout.value = true
+  }
   emit('navigate', route)
 }
 
 function onSelectGroup(group: NavGroup) {
   groupOverride.value = group
   if (isNarrow.value) {
+    flyoutTrigger.value = findRailButton('rail-group', GROUP_META[group].title)
     panelFlyout.value = true
     railOpen.value = false // ≤760 抽屉语境下让位给 flyout，避免双浮层叠罗汉
   }
@@ -194,11 +234,18 @@ function iconSvg(icon: string | undefined): IconName | null {
 
 <template>
   <aside
+    ref="sidebarEl"
     class="sidebar"
-    :class="{ 'rail-open': railOpen, 'panel-collapsed': panelCollapsed, 'panel-flyout': panelFlyout }"
+    :class="{
+      'rail-open': railOpen,
+      'panel-collapsed': panelCollapsed,
+      'panel-flyout': panelFlyout,
+      'reduced-motion': reduceMotion,
+    }"
   >
-    <!-- ≤760px 浮出的抽屉把手（CSS 控制显隐，宽屏零占位） -->
+    <!-- ≤760px 浮出的抽屉把手（CSS 控制显隐，宽屏零占位；焦点在抽屉关闭后归还于此） -->
     <button
+      ref="handleEl"
       class="rail-handle"
       :aria-label="railOpen ? '关闭导航' : '打开导航'"
       :aria-expanded="railOpen ? 'true' : 'false'"
@@ -714,5 +761,28 @@ function iconSvg(icon: string | undefined): IconName | null {
   .sidebar.rail-open .rail {
     transform: translateX(0);
   }
+}
+
+/* coarse pointer：把手命中区提到 44px（与 rail-btn 同基线；base.css 的 button 全局
+   min 兜底仍在，组件级显式声明防全局规则漂移）。置于 760 块之后：同权重后者优先） */
+@media (pointer: coarse) {
+  .rail-handle {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* 键盘可达性：抽屉/把手焦点环（覆盖 base.css 全局环为 --focus-ring 语义色；
+   抽屉内 rail 钮焦点环在 AppNavRail 自身作用域） */
+.rail-handle:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--color-primary));
+  outline-offset: 2px;
+}
+
+/* reduced-motion 类钩子：抽屉滑入/面板开合的位移动画归零（useMediaQuery 驱动，
+   可测且独立于 base.css 全局兜底）。0-3-0 权重稳定压过 760 块内 0-2-0 过渡声明 */
+.sidebar.reduced-motion .rail,
+.sidebar.reduced-motion .rail-handle {
+  transition: none;
 }
 </style>
