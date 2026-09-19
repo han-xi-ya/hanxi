@@ -1,63 +1,62 @@
 <script setup lang="ts">
-import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
-import * as SnipasteAPI from '../../bindings/hanxi/internal/modules/snipaste/snipasteservice'
-import type { LaunchOutcome, QuitOutcome } from '../../bindings/hanxi/internal/modules/snipaste/models'
+import { computed, onActivated, onMounted, ref } from 'vue'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/snipaste/instance/models'
-import type { DownloadProgress, SnipasteRelease, SnipasteVersionInfo } from '../../bindings/hanxi/internal/modules/snipaste/version/models'
+import type { SnipasteRelease, SnipasteVersionInfo } from '../../bindings/hanxi/internal/modules/snipaste/version/models'
+import { createSnipasteAdapter } from '../adapters/snipaste'
+import { useSnipasteDownloadTickets, type SnipasteDownloadTicket } from '../composables/useSnipasteDownloadTickets'
 import { useToast } from '../composables/useToast'
-import { useWailsEvent } from '../composables/useWailsEvent'
-import { usePolling } from '../composables/usePolling'
-import { useConfirm } from '../composables/useConfirm'
-import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
-import { fmtDuration } from '../utils/format'
-import PageHeader from '../components/ui/PageHeader.vue'
-import MainTabNav from '../components/ui/MainTabNav.vue'
+import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
+import type { ManagedConsoleStore } from '../components/managed/store'
+import SnipasteControlPanel from '../components/snipaste/SnipasteControlPanel.vue'
+import SnipasteVersionsPanel from '../components/snipaste/SnipasteVersionsPanel.vue'
 
 const { showToast } = useToast()
-const { confirm } = useConfirm()
-const { prompt } = usePrompt()
-const activeMainTab = ref<'console' | 'versions'>('console')
-
-const MAIN_TABS = [
-  { key: 'console', label: '控制台' },
-  { key: 'versions', label: '版本管理' },
-]
-const releases = ref<SnipasteRelease[]>([])
 const installed = ref<SnipasteVersionInfo[]>([])
+const releases = ref<SnipasteRelease[]>([])
 const activeVersion = ref('')
 const siteURL = ref('')
 const localLoading = ref(false)
 const remoteLoading = ref(false)
 const localError = ref('')
 const remoteError = ref('')
-const rowErrors = ref<Record<string, string>>({})
-const busy = ref(false)
-const snapshot = ref<Snapshot | null>(null)
+const actionBusy = ref(false)
 const controlResult = ref<{ tone: 'info' | 'warning' | 'error'; text: string } | null>(null)
-const uptimeSec = ref(0)
-const downloading = ref<Record<string, DownloadProgress>>({})
-// 安装完成票据的延迟清理计时器（非轮询；随组件卸载统一清算）
-const cleanupTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-const selected = computed(() => installed.value.find(item => item.version === activeVersion.value) ?? installed.value[0] ?? null)
-const stale = computed(() => releases.value.some(item => item.stale))
-const instanceState = computed(() => snapshot.value?.state ?? 'stopped')
-const ownedRunning = computed(() => ['starting', 'running', 'quitting'].includes(instanceState.value))
-const stateText = computed(() => ({
-  stopped: '本会话未托管', starting: '正在启动', running: '本会话实例运行中',
-  quitting: '正在退出', failed: '实例操作失败',
-}[instanceState.value] ?? '本会话未托管'))
+const tickets = useSnipasteDownloadTickets()
+let storeRef: ManagedConsoleStore | null = null
+const adapter = createSnipasteAdapter((progress) => {
+  void tickets.handleProgress(progress, refreshLocal, isInstalled)
+})
+
+const selected = computed(() => installed.value.find((item) => item.version === activeVersion.value) ?? installed.value[0] ?? null)
+const stale = computed(() => releases.value.some((item) => item.stale))
 
 type ReleaseStatus = 'installed' | 'downloading' | 'error' | 'idle'
+
+function bindStore(store: ManagedConsoleStore): void {
+  storeRef = store
+}
+
+function snapshot(): Snapshot | null {
+  return storeRef?.snap as Snapshot | null ?? null
+}
+
+function instanceState(): string {
+  return snapshot()?.state ?? 'stopped'
+}
+
+function isInstalled(version: string): boolean {
+  return installed.value.some((item) => item.version === version)
+}
 
 async function refreshLocal(): Promise<boolean> {
   localLoading.value = true
   localError.value = ''
   try {
     const [local, active] = await Promise.all([
-      SnipasteAPI.ListInstalledVersions(),
-      SnipasteAPI.GetActiveVersion(),
+      adapter.snipaste.listInstalled(),
+      adapter.snipaste.getActive(),
     ])
     installed.value = local ?? []
     activeVersion.value = active ?? ''
@@ -74,7 +73,7 @@ async function refreshRemote(): Promise<boolean> {
   remoteLoading.value = true
   remoteError.value = ''
   try {
-    releases.value = (await SnipasteAPI.ListReleases()) ?? []
+    releases.value = (await adapter.snipaste.listReleases()) ?? []
     return true
   } catch (error) {
     remoteError.value = `获取 Snipaste 官网版本失败：${getErrorMessage(error)}`
@@ -84,233 +83,153 @@ async function refreshRemote(): Promise<boolean> {
   }
 }
 
-async function loadSiteURL() {
+async function loadSiteURL(): Promise<void> {
   try {
-    siteURL.value = (await SnipasteAPI.OfficialSiteURL()) ?? ''
+    siteURL.value = (await adapter.snipaste.officialSiteURL()) ?? ''
   } catch (error) {
     console.warn('load Snipaste site URL failed:', getErrorMessage(error))
   }
 }
 
-async function loadPageData() {
-  await Promise.allSettled([refreshLocal(), refreshRemote(), loadSiteURL()])
-}
-
-async function refreshStatus() {
-  try {
-    snapshot.value = await SnipasteAPI.GetStatus()
-  } catch (error) {
-    console.warn('refresh Snipaste status failed:', getErrorMessage(error))
-  }
-}
-
-async function launch() {
-  if (busy.value || !selected.value || ownedRunning.value) return
-  busy.value = true
+async function launch(store: ManagedConsoleStore): Promise<void> {
+  if (actionBusy.value || !selected.value || ['starting', 'running', 'quitting'].includes(instanceState())) return
+  actionBusy.value = true
   controlResult.value = null
   try {
-    const outcome: LaunchOutcome = await SnipasteAPI.Launch()
+    const outcome = await adapter.snipaste.launch()
     controlResult.value = { tone: 'info', text: outcome.message }
     showToast(outcome.message)
-    await Promise.allSettled([refreshLocal(), refreshStatus()])
+    await Promise.allSettled([refreshLocal(), store.refresh()])
   } catch (error) {
     const text = `启动失败：${getErrorMessage(error)}`
     controlResult.value = { tone: 'error', text }
     showToast(text)
   } finally {
-    busy.value = false
+    actionBusy.value = false
   }
 }
 
-async function quitProcess() {
-  if (busy.value || !ownedRunning.value) return
-  const accepted = await confirm({
-    title: '退出本会话 Snipaste',
-    description: 'Hanxi 会先向本会话启动的 Snipaste 发送关闭请求；若未在宽限期内退出，将自动强制结束。强制结束可能丢失未落盘状态。外部实例不受影响。',
-    tone: 'warning',
-  })
-  if (!accepted) return
-  busy.value = true
+async function quitProcess(store: ManagedConsoleStore): Promise<void> {
+  if (actionBusy.value || !['starting', 'running', 'quitting'].includes(instanceState()) || instanceState() === 'quitting') return
+  actionBusy.value = true
   controlResult.value = null
   try {
-    const outcome: QuitOutcome = await SnipasteAPI.Quit()
+    const outcome = await adapter.snipaste.quit()
+    if (!outcome) return
     controlResult.value = { tone: outcome.forced ? 'warning' : 'info', text: outcome.message }
     showToast(outcome.message)
-    await refreshStatus()
+    await store.refresh()
   } catch (error) {
     controlResult.value = { tone: 'error', text: `退出失败：${getErrorMessage(error)}` }
   } finally {
-    busy.value = false
+    actionBusy.value = false
   }
 }
 
-function setTicket(progress: DownloadProgress) {
-  downloading.value = { ...downloading.value, [progress.version]: progress }
-}
-
-function clearTicket(version: string) {
-  const next = { ...downloading.value }
-  delete next[version]
-  downloading.value = next
-}
-
-function cancelCleanup(version: string) {
-  const timer = cleanupTimers.get(version)
-  if (timer) clearTimeout(timer)
-  cleanupTimers.delete(version)
-}
-
-function ticketOf(version: string): DownloadProgress | undefined {
-  return downloading.value[version]
+function ticketOf(version: string): SnipasteDownloadTicket | undefined {
+  return tickets.ticketOf(version)
 }
 
 function statusOf(release: SnipasteRelease): ReleaseStatus {
   const ticket = ticketOf(release.version)
   if (ticket?.stage === 'error') return 'error'
   if (ticket) return 'downloading'
-  return installed.value.some(item => item.version === release.version) ? 'installed' : 'idle'
+  return isInstalled(release.version) ? 'installed' : 'idle'
 }
 
-function isDownloadBusy(version: string): boolean {
-  const ticket = ticketOf(version)
-  return !!ticket && ticket.stage !== 'error'
-}
-
-async function download(release: SnipasteRelease) {
-  if (isDownloadBusy(release.version)) return
-  cancelCleanup(release.version)
-  rowErrors.value[release.version] = ''
-  setTicket({ version: release.version, stage: 'pending', done: 0, total: 0, message: '正在创建下载任务' })
+async function download(release: SnipasteRelease): Promise<void> {
+  if (tickets.isBusy(release.version)) return
+  tickets.begin(release.version)
   try {
-    const result = await SnipasteAPI.DownloadVersion(release.version)
+    const result = await adapter.snipaste.download(release.version)
     if (result === 'already-installed') {
       const refreshed = await refreshLocal()
-      if (refreshed) clearTicket(release.version)
+      if (refreshed) tickets.clearTicket(release.version)
       else {
-        setTicket({ version: release.version, stage: 'done', done: 100, total: 100, message: '版本已安装，本地列表刷新失败' })
-        rowErrors.value[release.version] = '版本已安装，但本地列表刷新失败，请重试读取本地版本'
+        tickets.setTicket({ key: release.version, stage: 'done', done: 100, total: 100, message: '版本已安装，本地列表刷新失败' })
+        tickets.setRowError(release.version, '版本已安装，但本地列表刷新失败，请重试读取本地版本')
       }
     } else if (result === 'in-progress') {
-      setTicket({ version: release.version, stage: 'pending', done: 0, total: 0, message: '已有下载任务正在进行' })
+      tickets.markInProgress(release.version)
       showToast(`Snipaste ${release.version} 已在下载中`)
     }
   } catch (error) {
-    const message = getErrorMessage(error)
-    setTicket({ version: release.version, stage: 'error', done: 0, total: 0, message })
-    rowErrors.value[release.version] = message
+    tickets.fail(release.version, getErrorMessage(error))
   }
 }
 
-async function handleDownloadProgress(progress: DownloadProgress) {
-  cancelCleanup(progress.version)
-  setTicket(progress)
-  if (progress.stage === 'error') {
-    rowErrors.value[progress.version] = progress.message || '安装失败'
-    return
-  }
-  rowErrors.value[progress.version] = ''
-  if (progress.stage !== 'done') return
-
-  setTicket({ ...progress, message: '安装完成，正在同步本地版本' })
-  const refreshed = await refreshLocal()
-  const installedNow = installed.value.some(item => item.version === progress.version)
-  if (!refreshed || !installedNow) {
-    rowErrors.value[progress.version] = '安装已完成，但本地版本列表刷新失败，请重试读取本地版本'
-    return
-  }
-  const timer = setTimeout(() => {
-    if (ticketOf(progress.version)?.stage === 'done' && installed.value.some(item => item.version === progress.version)) {
-      clearTicket(progress.version)
-    }
-    cleanupTimers.delete(progress.version)
-  }, 900)
-  cleanupTimers.set(progress.version, timer)
-}
-
-async function setActive(item: SnipasteVersionInfo) {
-  rowErrors.value[item.version] = ''
+async function setActive(item: SnipasteVersionInfo): Promise<void> {
+  tickets.clearRowError(item.version)
   try {
-    activeVersion.value = await SnipasteAPI.SetActiveVersion(item.version)
+    activeVersion.value = await adapter.snipaste.setActive(item.version)
     showToast(`已将 ${item.version} 设为启动版本`)
   } catch (error) {
-    rowErrors.value[item.version] = getErrorMessage(error)
+    tickets.setRowError(item.version, getErrorMessage(error))
   }
-}
-
-function isActiveVersion(version: string): boolean {
-  return version === activeVersion.value
 }
 
 function isRunningVersion(version: string): boolean {
-  return !!snapshot.value?.version && snapshot.value.version === version && ['starting', 'running', 'quitting'].includes(snapshot.value.state)
+  const snap = snapshot()
+  return !!snap?.version && snap.version === version && ['starting', 'running', 'quitting'].includes(snap.state)
 }
 
 function cannotRemoveVersion(item: SnipasteVersionInfo): boolean {
-  return isActiveVersion(item.version) || isRunningVersion(item.version)
+  return item.version === activeVersion.value || isRunningVersion(item.version)
 }
 
 function removeDisabledTitle(item: SnipasteVersionInfo): string {
   if (isRunningVersion(item.version)) {
-    if (instanceState.value === 'starting') return '该版本正在启动'
-    if (instanceState.value === 'quitting') return '该版本正在退出'
+    if (instanceState() === 'starting') return '该版本正在启动'
+    if (instanceState() === 'quitting') return '该版本正在退出'
     return '该版本正在运行，请先退出进程'
   }
-  if (isActiveVersion(item.version)) return '当前使用版本不可卸载，请先选择其他版本'
+  if (item.version === activeVersion.value) return '当前使用版本不可卸载，请先选择其他版本'
   return '卸载此版本'
 }
 
-async function removeVersion(item: SnipasteVersionInfo) {
+async function removeVersion(item: SnipasteVersionInfo): Promise<void> {
   if (cannotRemoveVersion(item)) return
-  const accepted = await confirm({
-    title: `确定卸载 Snipaste ${item.version}？`,
-    description: '将删除该版本的完整隔离目录，此操作不可恢复。',
-    tone: 'danger',
-  })
-  if (!accepted) return
-  if (cannotRemoveVersion(item)) return // 确认期间状态可能已变，二次门禁（脱管语义原样保留）
-  rowErrors.value[item.version] = ''
   try {
-    await SnipasteAPI.RemoveVersion(item.version)
+    const removed = await adapter.snipaste.remove(item, () => !cannotRemoveVersion(item))
+    if (!removed) return
+    tickets.clearRowError(item.version)
     showToast(`已卸载 Snipaste ${item.version}`)
     await refreshLocal()
   } catch (error) {
-    rowErrors.value[item.version] = getErrorMessage(error)
+    tickets.setRowError(item.version, getErrorMessage(error))
   }
 }
 
-async function importLocal() {
-  const path = await prompt({ title: '请输入 Snipaste 免安装目录完整路径（目录内应包含 Snipaste.exe）' })
-  if (!path) return
-  busy.value = true
+async function importLocal(): Promise<void> {
+  actionBusy.value = true
   localError.value = ''
   try {
-    const info = await SnipasteAPI.ImportLocal(path.trim())
+    const info = await adapter.snipaste.importLocal()
+    if (!info) return
     showToast(`已导入 Snipaste ${info.version}`)
     await refreshLocal()
   } catch (error) {
     localError.value = `导入失败：${getErrorMessage(error)}`
   } finally {
-    busy.value = false
+    actionBusy.value = false
   }
 }
 
-async function openDir(path: string) {
-  try { await SnipasteAPI.OpenDir(path) } catch (error) { showToast(`打开目录失败：${getErrorMessage(error)}`) }
+async function openDir(item: SnipasteVersionInfo): Promise<void> {
+  try { await adapter.snipaste.openDir(item.dir) } catch (error) { showToast(`打开目录失败：${getErrorMessage(error)}`) }
 }
 
-async function openSite() {
-  try { await SnipasteAPI.OpenOfficialSite() } catch (error) { showToast(`打开官网失败：${getErrorMessage(error)}`) }
+async function openSite(): Promise<void> {
+  try { await adapter.snipaste.openOfficialSite() } catch (error) { showToast(`打开官网失败：${getErrorMessage(error)}`) }
 }
 
-// 本视图 fmtSize 空值语义是「未知」（官网大小常缺失），与 utils/format 的「—」
-// 口径不同——按铁律 1 保留本地实现不硬凑；fmtDuration 与标准形一致，已收编 utils/format。
 function fmtSize(bytes: number): string {
   if (!bytes) return '未知'
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.round(bytes / 1024)} KB`
 }
 
-function stageText(progress?: DownloadProgress): string {
+function stageText(progress?: SnipasteDownloadTicket): string {
   if (!progress) return ''
   const names: Record<string, string> = {
     pending: '准备中', resolve: '解析官网版本', downloading: '下载中',
@@ -320,7 +239,7 @@ function stageText(progress?: DownloadProgress): string {
   return progress.message || names[progress.stage] || progress.stage
 }
 
-function percent(progress?: DownloadProgress): number | null {
+function percent(progress?: SnipasteDownloadTicket): number | null {
   if (!progress || progress.stage !== 'downloading' || !progress.total) return null
   return Math.min(99, Math.round((progress.done / progress.total) * 100))
 }
@@ -334,231 +253,94 @@ function verificationLabel(item: SnipasteVersionInfo | SnipasteRelease): string 
   return item.officialHash ? '官方 SHA-1' : '大小 + ZIP CRC + 布局'
 }
 
-function uptimeTick() {
-  if (snapshot.value?.state === 'running' && snapshot.value.startedAt) {
-    const started = new Date(snapshot.value.startedAt).getTime()
-    uptimeSec.value = Number.isNaN(started) ? 0 : Math.max(0, Math.floor((Date.now() - started) / 1000))
-  }
-}
-
-// 状态兜底轮询 + 每秒时长 tick（usePolling 内置 KeepAlive 激活/停用契约）；
-// 首帧不自动跑——由 onMounted/onActivated 显式刷新，与迁移前请求节奏逐拍一致。
-usePolling(refreshStatus, 2500, { immediateFirstRun: false })
-usePolling(uptimeTick, 1000, { immediateFirstRun: false })
-
-onDeactivated(() => {
-  uptimeSec.value = 0 // 停用归零运行时长（业务状态复位）
-})
-
-// 事件订阅（setup 期注册不丢早期推送，卸载自动注销）
-useWailsEvent<DownloadProgress>('snipaste:version-download', (data) => {
-  if (data) void handleDownloadProgress(data)
-})
-useWailsEvent<Snapshot>('snipaste:instance-state', (data) => {
-  if (data) snapshot.value = data
-})
-
 onMounted(() => {
-  void Promise.allSettled([loadPageData(), refreshStatus()])
+  void Promise.allSettled([refreshLocal(), refreshRemote(), loadSiteURL()])
 })
 
 onActivated(() => {
-  void Promise.allSettled([refreshLocal(), refreshStatus()])
-})
-
-// 票据清理计时器非轮询，卸载时统一清算（事件/轮询注销由 composable 自理）
-onUnmounted(() => {
-  cleanupTimers.forEach(clearTimeout)
-  cleanupTimers.clear()
+  void refreshLocal()
+  void storeRef?.refresh()
 })
 </script>
 
 <template>
-  <section class="page snipaste-view">
-    <PageHeader title="Snipaste" subtitle="管理并启动官方 Windows x64 免安装版；原生截图、贴图、托盘和快捷键保持不变。">
-      <template #icon>
-        <span class="snipaste-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M9.4 7.7 5.8 4.1a2.6 2.6 0 1 0-1.7 4.5c.7 0 1.3-.3 1.8-.7l2.2 2.2m6.5-2.4 3.6-3.6a2.6 2.6 0 1 1 1.7 4.5c-.7 0-1.3-.3-1.8-.7L8.7 17.3a2.6 2.6 0 1 1-1.8-1.8L17 5.4M10 14l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </span>
-      </template>
-      <template #actions>
-        <MainTabNav v-model="activeMainTab" :tabs="MAIN_TABS" id-prefix="snipaste" label="Snipaste 页面" />
-      </template>
-    </PageHeader>
+  <ManagedConsoleShell
+    class="snipaste-view"
+    :adapter="adapter"
+    title="Snipaste"
+    subtitle="管理并启动官方 Windows x64 免安装版；原生截图、贴图、托盘和快捷键保持不变。"
+    console-tab-label="控制台"
+    versions-tab-label="版本管理"
+    tab-id-prefix="snipaste"
+    tab-label="Snipaste 页面"
+  >
+    <template #icon>
+      <span class="snipaste-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.4 7.7 5.8 4.1a2.6 2.6 0 1 0-1.7 4.5c.7 0 1.3-.3 1.8-.7l2.2 2.2m6.5-2.4 3.6-3.6a2.6 2.6 0 1 1 1.7 4.5c-.7 0-1.3-.3-1.8-.7L8.7 17.3a2.6 2.6 0 1 1-1.8-1.8L17 5.4M10 14l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+    </template>
 
-    <div id="snipaste-console-panel" v-show="activeMainTab === 'console'" class="tab-body" role="tabpanel" aria-labelledby="snipaste-console-tab">
-      <div class="control-panel snipaste-control-panel">
-        <div class="snipaste-control-main">
-          <div class="snipaste-control-state">
-            <span class="snipaste-status" :data-state="instanceState">{{ stateText }}</span>
-            <span v-if="snapshot?.pid" class="mono-meta">PID {{ snapshot.pid }} · {{ fmtDuration(uptimeSec) }}</span>
-          </div>
-          <strong class="version-value">{{ snapshot?.version || selected?.version || '尚未安装' }}</strong>
-          <code v-if="snapshot?.exePath || selected" class="path-value">{{ snapshot?.exePath || selected?.exePath }}</code>
-          <p v-else class="muted-copy">先下载官网免安装版，或导入已有的 Snipaste 便携目录。</p>
-          <span v-if="snapshot?.error" class="snipaste-row-error" role="alert">{{ snapshot.error }}</span>
-        </div>
-        <div class="btn-group">
-          <button v-if="!selected" class="btn btn-secondary" @click="activeMainTab = 'versions'">前往版本管理</button>
-          <button class="btn btn-primary" :disabled="busy || !selected || ownedRunning" @click="launch">{{ instanceState === 'starting' ? '正在启动…' : '启动 Snipaste' }}</button>
-          <button class="btn btn-danger-outline" :disabled="busy || !ownedRunning || instanceState === 'quitting'" @click="quitProcess">{{ instanceState === 'quitting' ? '正在退出…' : '退出进程' }}</button>
-        </div>
-      </div>
+    <template #control-bar="{ store, selectTab }">
+      <SnipasteControlPanel
+        :ref="() => bindStore(store)"
+        :store="store"
+        :selected="selected"
+        :busy="actionBusy || store.busy"
+        :control-result="controlResult"
+        @launch="launch(store)"
+        @quit="quitProcess(store)"
+        @select-versions="selectTab('versions')"
+      />
+    </template>
 
-      <div v-if="localError" class="state-box state-error" role="alert"><strong>本地版本不可用</strong><span>{{ localError }}</span><button class="state-action" @click="refreshLocal">重新读取</button></div>
-      <div v-if="controlResult" class="state-box" :class="`state-${controlResult.tone}`" aria-live="polite">{{ controlResult.text }}</div>
+    <article class="info-panel">
+      <h2>运行边界</h2>
+      <ul>
+        <li>Hanxi 只控制当前会话直接启动并成功登记的 Snipaste 进程。</li>
+        <li>外部或上个 Hanxi 会话启动的实例不会被认领，也不会被退出。</li>
+        <li>退出 Hanxi 或停用本模块后，Snipaste 仍会保留托盘与全局快捷键。</li>
+        <li>页面退出会先发送尽力关闭请求，超时后强制结束。</li>
+      </ul>
+      <button class="link-button" @click="openSite">打开 Snipaste 官网<span v-if="siteURL"> · {{ siteURL }}</span></button>
+    </article>
 
-      <article class="info-panel">
-        <h2>运行边界</h2>
-        <ul>
-          <li>Hanxi 只控制当前会话直接启动并成功登记的 Snipaste 进程。</li>
-          <li>外部或上个 Hanxi 会话启动的实例不会被认领，也不会被退出。</li>
-          <li>退出 Hanxi 或停用本模块后，Snipaste 仍会保留托盘与全局快捷键。</li>
-          <li>页面退出会先发送尽力关闭请求，超时后强制结束。</li>
-        </ul>
-        <button class="link-button" @click="openSite">打开 Snipaste 官网<span v-if="siteURL"> · {{ siteURL }}</span></button>
-      </article>
-    </div>
-
-    <div id="snipaste-versions-panel" v-show="activeMainTab === 'versions'" class="tab-body" role="tabpanel" aria-labelledby="snipaste-versions-tab">
-      <div class="control-panel versions-overview">
-        <div>
-          <h2>版本资源</h2>
-          <p>已安装 {{ installed.length }} 个版本 · 官网可用 {{ releases.length }} 个版本</p>
-          <span>官方包按大小、SHA-1（可用时）、ZIP CRC 与布局校验后原子安装。</span>
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-secondary" :disabled="busy" @click="importLocal">导入本地</button>
-          <button class="btn btn-secondary" :disabled="remoteLoading" @click="refreshRemote">{{ remoteLoading ? '刷新中…' : '刷新官网' }}</button>
-        </div>
-      </div>
-
-      <div v-if="localError" class="state-box state-error" role="alert"><strong>读取本地版本失败</strong><span>{{ localError }}</span><button class="state-action" @click="refreshLocal">重试</button></div>
-
-      <div class="section-title-row"><div><h2>已安装版本</h2><p>版本相互隔离，当前使用和正在运行可能是不同版本。</p></div></div>
-      <div v-if="localLoading && !installed.length" class="state-box">正在读取本地版本…</div>
-      <div v-else-if="!installed.length" class="state-box state-empty"><strong>尚未安装 Snipaste</strong><span>可从下方官网下载，或导入已有便携目录。</span></div>
-      <div v-else class="installed-grid">
-        <article v-for="item in installed" :key="item.version" class="installed-card">
-          <div class="inst-card-top">
-            <strong class="ver-tag">{{ item.version }}</strong>
-            <div class="badge-group">
-              <span v-if="isActiveVersion(item.version)" class="chip chip-information">当前使用</span>
-              <span v-if="isRunningVersion(item.version)" class="chip chip-positive">运行中</span>
-              <span v-if="item.isImport" class="chip chip-neutral">本地导入</span>
-            </div>
-          </div>
-          <code class="path-value">{{ item.dir }}</code>
-          <p class="inst-meta">{{ fmtSize(item.size) }} · {{ verificationLabel(item) }}</p>
-          <p v-if="rowErrors[item.version]" class="snipaste-row-error" role="alert">{{ rowErrors[item.version] }}</p>
-          <div class="inst-actions">
-            <button class="btn btn-ghost" @click="openDir(item.dir)">打开位置</button>
-            <button v-if="!isActiveVersion(item.version)" class="btn btn-secondary" @click="setActive(item)">设为使用</button>
-            <button class="btn btn-danger-outline" :disabled="cannotRemoveVersion(item)" :title="removeDisabledTitle(item)" @click="removeVersion(item)">卸载</button>
-          </div>
-        </article>
-      </div>
-
-      <div class="section-title-row remote-title"><div><h2>官网 Windows x64 免安装版</h2><p>仅从 Snipaste 官方域名下载，不使用第三方镜像。</p></div></div>
-      <div v-if="remoteError" class="state-box state-error" role="alert"><strong>官网版本刷新失败</strong><span>{{ remoteError }}</span><button class="state-action" @click="refreshRemote">重试</button></div>
-      <div v-if="stale" class="state-box state-warning"><strong>正在显示缓存数据</strong><span>官网暂时不可用，请留意版本信息可能不是最新。</span></div>
-      <div v-if="remoteLoading && !releases.length" class="state-box">正在解析 Snipaste 官网版本…</div>
-      <div v-else-if="!releases.length" class="state-box state-empty"><strong>没有可用的官网版本</strong><span>官网页面结构可能已变化，可稍后重试或导入本地版本。</span></div>
-      <div v-else class="table-container">
-        <table class="tbl">
-          <thead><tr><th>版本</th><th>状态</th><th>大小</th><th>发布时间</th><th>校验</th><th class="action-col">操作</th></tr></thead>
-          <tbody>
-            <tr v-for="release in releases" :key="release.version">
-              <td><div class="release-version"><strong>{{ release.version }}</strong><span v-if="release.isPre" class="chip chip-warning">预发布</span><span v-if="release.stale" class="chip chip-warning">缓存</span></div></td>
-              <td>
-                <span v-if="statusOf(release) === 'installed'" class="snipaste-ver-status installed">已安装</span>
-                <span v-else-if="statusOf(release) === 'error'" class="snipaste-ver-status error">失败</span>
-                <span v-else-if="statusOf(release) === 'downloading'" class="snipaste-ver-status working">{{ stageText(ticketOf(release.version)) }}</span>
-                <span v-else class="snipaste-ver-status idle">可安装</span>
-              </td>
-              <td class="mono-meta">{{ fmtSize(release.size) }}</td>
-              <td>{{ release.published || '未知' }}</td>
-              <td>{{ verificationLabel(release) }}</td>
-              <td class="action-col">
-                <template v-if="statusOf(release) === 'downloading'">
-                  <div v-if="ticketOf(release.version)?.stage === 'downloading'" class="snipaste-progress-wrap">
-                    <div class="snipaste-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="percent(ticketOf(release.version)) ?? undefined" :aria-valuetext="stageText(ticketOf(release.version))">
-                      <span v-if="percent(ticketOf(release.version)) !== null" :style="{ width: `${percent(ticketOf(release.version))}%` }"></span>
-                      <span v-else class="snipaste-progress-indeterminate"></span>
-                    </div>
-                    <small v-if="percent(ticketOf(release.version)) !== null">{{ percent(ticketOf(release.version)) }}%</small>
-                  </div>
-                  <span v-else class="download-stage">{{ stageText(ticketOf(release.version)) }}</span>
-                </template>
-                <button v-else-if="statusOf(release) === 'error'" class="link-button" @click="download(release)">重试</button>
-                <span v-else-if="statusOf(release) === 'installed'" class="installed-label">已安装</span>
-                <button v-else class="btn btn-primary btn-small" @click="download(release)">下载并安装</button>
-                <p v-if="rowErrors[release.version]" class="snipaste-row-error" role="alert">{{ rowErrors[release.version] }}</p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
+    <template #versions-body="{ store }">
+      <SnipasteVersionsPanel
+        :ref="() => bindStore(store)"
+        :installed="installed"
+        :releases="releases"
+        :active-version="activeVersion"
+        :local-loading="localLoading"
+        :remote-loading="remoteLoading"
+        :local-error="localError"
+        :remote-error="remoteError"
+        :stale="stale"
+        :busy="actionBusy || store.busy"
+        :row-errors="tickets.rowErrors.value"
+        :is-running-version="isRunningVersion"
+        :cannot-remove-version="cannotRemoveVersion"
+        :remove-disabled-title="removeDisabledTitle"
+        :status-of="statusOf"
+        :ticket-of="ticketOf"
+        :fmt-size="fmtSize"
+        :verification-label="verificationLabel"
+        :stage-text="stageText"
+        :percent="percent"
+        @import="importLocal"
+        @refresh-local="refreshLocal"
+        @refresh-remote="refreshRemote"
+        @open-dir="openDir"
+        @set-active="setActive"
+        @remove="removeVersion"
+        @download="download"
+      />
+    </template>
+  </ManagedConsoleShell>
 </template>
 
 <style scoped>
-/* 页头/选项卡/btn 家族/badge→chip/state-box/tbl/subtitle/焦点环/减动效/触屏热区：
-   由 PageHeader、MainTabNav 与 components.css + base.css 全局原子接管（§9.5-3 二次收编） */
 .snipaste-view { max-width: 1120px; margin: 0 auto; }
 .snipaste-mark { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: var(--radius-control); color: var(--color-primary); background: var(--surface-selected); }
 .snipaste-mark svg { width: 25px; height: 25px; }
-.tab-body { display: grid; gap: 14px; }
-/* 补差 against 全局原子 .control-panel：本视图面板为 element 圆角 + 16px 内距的大卡 */
-.control-panel { border-radius: var(--radius-element); padding: 16px; }
 .info-panel { border: 1px solid var(--color-border); border-radius: var(--radius-element); background: var(--surface-panel); padding: 16px; }
-.control-panel h2, .section-title-row h2, .info-panel h2 { margin: 0; }
-.control-panel p, .section-title-row p { margin: 4px 0 0; color: var(--color-text-muted); }
-.snipaste-control-panel, .versions-overview { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.snipaste-control-main { display: grid; gap: 6px; min-width: 0; }
-.snipaste-control-state, .badge-group, .release-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* 补差 against 全局原子 .btn-group / .inst-actions：本视图行需垂直居中并允许换行 */
-.btn-group { align-items: center; flex-wrap: wrap; }
-.inst-actions { align-items: center; flex-wrap: wrap; }
-.version-value, .path-value, .mono-meta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-/* 补差 against 全局原子 .ver-tag：等宽数字 */
-.ver-tag { font-variant-numeric: tabular-nums; }
-.version-value { font-size: var(--text-xl); }
-.path-value { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); font-size: var(--text-sm); line-height: 1.5; }
-.mono-meta { color: var(--color-text-muted); font-size: var(--text-sm); }
-.muted-copy { margin: 0; color: var(--color-text-muted); }
-/* 状态胶囊带视图前缀防全局碰撞（托管家族 ver-status 惯例） */
-.snipaste-status, .snipaste-ver-status { display: inline-flex; align-items: center; width: fit-content; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
-.snipaste-status { padding: 3px 8px; border: 1px solid var(--color-border); color: var(--color-text-muted); }
-.snipaste-status[data-state="running"] { color: var(--state-positive); border-color: color-mix(in srgb, var(--state-positive) 35%, var(--color-border)); }
-.snipaste-status[data-state="starting"], .snipaste-status[data-state="quitting"] { color: var(--state-warning); }
-.snipaste-status[data-state="failed"] { color: var(--state-danger); }
-.snipaste-row-error { margin: 0; font-size: var(--text-sm); line-height: 1.45; white-space: normal; color: var(--state-danger); }
+.info-panel h2 { margin: 0; }
 .info-panel ul { margin: 10px 0 14px; padding-left: 20px; color: var(--color-text-muted); line-height: 1.7; }
-.section-title-row { margin-top: 4px; }
-.remote-title { margin-top: 10px; }
-/* 已装卡家族为 Snipaste 双列方言：基形由全局原子接管，此处只留差异（补差 against 全局原子） */
-.installed-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.installed-card { display: grid; gap: 10px; min-width: 0; padding: 14px; border-radius: var(--radius-element); }
-.inst-card-top { align-items: flex-start; gap: 10px; }
-.inst-meta { margin: 0; color: var(--color-text-muted); }
-.inst-actions { margin-top: auto; }
-/* 补差 against 全局原子 .table-container：element 圆角 */
-.table-container { border-radius: var(--radius-element); }
-.table-container .tbl { min-width: 830px; }
-.action-col { width: 170px; }
-.snipaste-ver-status { padding: 3px 7px; }
-.snipaste-ver-status.installed { color: var(--state-positive); background: color-mix(in srgb, var(--state-positive) 10%, transparent); }
-.snipaste-ver-status.error { color: var(--state-danger); background: color-mix(in srgb, var(--state-danger) 9%, transparent); }
-.snipaste-ver-status.working { color: var(--state-warning); background: color-mix(in srgb, var(--state-warning) 9%, transparent); }
-.snipaste-ver-status.idle { color: var(--color-text-muted); background: var(--surface-hover); }
-.snipaste-progress-wrap { display: flex; align-items: center; gap: 7px; min-width: 125px; }
-.snipaste-progress { position: relative; flex: 1; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-hover); }
-.snipaste-progress span { display: block; height: 100%; background: var(--color-primary); transition: width var(--motion-fast) linear; }
-.snipaste-progress-indeterminate { width: 35%; animation: snipaste-slide 1.1s ease-in-out infinite; }
-.download-stage, .installed-label { color: var(--color-text-muted); font-size: var(--text-sm); }
-@keyframes snipaste-slide { from { transform: translateX(-110%); } to { transform: translateX(390%); } }
-@media (max-width: 760px) { .snipaste-control-panel, .versions-overview { align-items: stretch; flex-direction: column; } .installed-grid { grid-template-columns: 1fr; } .btn-group { justify-content: flex-start; } }
-@media (max-width: 460px) { .btn-group .btn { flex: 1 1 auto; } .path-value { white-space: normal; overflow-wrap: anywhere; } }
 </style>
