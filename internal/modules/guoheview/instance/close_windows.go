@@ -9,6 +9,10 @@ import (
 
 const wmClose = 0x0010
 
+// postCloseFn WM_CLOSE 投递接缝（默认真实实现，单测注入以断言"按自有 PID
+// 收敛"的投递目标——误伤用户窗口是事故，此账目必须可测）。
+var postCloseFn = postCloseForPID
+
 // postCloseForPID 向归属指定 PID 的可见带标题顶层窗口投递 WM_CLOSE。
 // 真机实测（3.2.7）：果核看图关窗即退（无托盘驻留），全部窗口收到 WM_CLOSE
 // 后 3 秒内进程退出——优雅退出通道存在且有效（与 piclite"关窗藏托盘"相反）。

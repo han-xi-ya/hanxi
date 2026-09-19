@@ -8,12 +8,21 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
 
+// md5HexRe 官方 MD5 摘要形状（32 位十六进制，大小写均可）——bespoke 下载链
+// 的"官方摘要必检"闸门（ADR-0002 §5 薄适配器裁定：官方仅 MD5 的弱摘要上游
+// 不放宽内核 Fetch 的 SHA-256 信任根，校验段留模块；弱摘要仅作完整性、
+// 不作发布者信任）。
+var md5HexRe = regexp.MustCompile(`^[0-9a-fA-F]{32}$`)
+
 // downloadTo 下载到目标文件。上游发布源只有官方单域（无 GitHub 镜像生态可回退），
 // 故"候选 URL 列表"退化为同一 URL 多轮重试（网络抖动/半途中断均可能）。
+// 本链为按 ADR-0002 §5 保留的 bespoke 下载段（不委托 artifact.Fetch），
+// 事务记账由调用方（service 的 ops.BeginTxn）覆盖，与解包器无关。
 func downloadTo(client *http.Client, urls []string, dest string, onProgress func(done int64)) error {
 	const maxRetries = 2
 	var lastErr error
@@ -122,7 +131,9 @@ func verifyMD5(path, want string) error {
 	return nil
 }
 
-// fileSHA256 计算文件 sha256（仅作托管侧诊断记录，校验不使用）。
+// fileSHA256 计算文件 sha256。不参与下载校验主流程（官方信任根只有 MD5），
+// 但作为本地包摘要写入 artifact.Meta.ZipSHA256，供 Tree.Commit 的同版本幂等/
+// 异摘要拒装防漂移判定与账本诊断使用。
 func fileSHA256(path string) string {
 	f, err := os.Open(path)
 	if err != nil {

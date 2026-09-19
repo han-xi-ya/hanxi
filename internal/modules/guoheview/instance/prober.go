@@ -23,6 +23,11 @@
 //     拉起。托管实例的子进程由 JobObject 继承兜底，更新弹窗在页面提示条
 //     引导用户回 Hanxi 管理版本（不越权改写上游配置键语义）。
 //
+// 进程治理主流程（spawn → Job 绑定 → 退出分类 → 收口）已收口共享内核
+// packages/go/supervisor（packages/go/{artifact,supervisor} 迁移，ADR-0002），
+// 本包保留薄适配层：多实例上游的探针契约（按自有 PID 收敛的归属判定/唤窗/
+// WM_CLOSE）、独立窗口信使拉起、以及内核快照 → 本包 Snapshot 的词表映射。
+//
 // 本包零框架依赖，便于单元测试。
 package instance
 
@@ -32,6 +37,11 @@ import "time"
 type ViewProbe interface {
 	// IsRunning 是否存在 GuoheView.exe 进程（不区分自有/外部实例）。
 	IsRunning() bool
+	// RunningBesides 是否存在归属非 ownPID 的 GuoheView.exe 进程
+	// （外部/自有归属判定按探针 PID；ownPID=0 时等价于 IsRunning）。
+	// 内核探针 Inspect 走本方法：自有托管进程退出瞬间，Toolhelp 快照可能
+	// 仍列出自己，按 PID 排除才不会把"实例已全部退场"误判为"外部接管"。
+	RunningBesides(ownPID uint32) bool
 	// WaitForReady 轮询等待出现可见带标题的 GuoheView 顶层窗口，超时返回 false。
 	WaitForReady(timeout time.Duration) bool
 	// FocusMainWindow 将指定 PID 的可见顶层窗口恢复并置于前台，成功返回 true。

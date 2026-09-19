@@ -57,6 +57,19 @@ func (p *windowsViewProbe) IsRunning() bool {
 	return false
 }
 
+// RunningBesides 外部/自有归属判定按探针 PID：枚举所有 GuoheView.exe，
+// 存在 PID ≠ ownPID 者即"有非自有实例在场"（ownPID=0 时任何进程都算，
+// 等价于 IsRunning）。多实例上游的实例计数账目不在此收口（内核单 ProcInfo
+// 公理表达不了计数，计数留模块，见 instance.go 的 supProbe 注释）。
+func (p *windowsViewProbe) RunningBesides(ownPID uint32) bool {
+	for pid := range viewPIDs() {
+		if pid != ownPID {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *windowsViewProbe) WaitForReady(timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for {

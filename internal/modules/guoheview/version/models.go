@@ -2,6 +2,12 @@
 // （rj.lovestu.com，非 GitHub）版本查询、Windows x64 便携 zip 下载（官方 MD5
 // 校验）、保布局解压隔离安装与本地导入。
 //
+// 共享内核委托边界（Wave 4，ADR-0002 §5 弱摘要上游裁定）：解包委托
+// artifact.UnpackZip、落位/扫描/卸载委托 artifact.Tree（guoheview_<version>
+// 布局同构）；"下载 + 官方 MD5 校验"段留本包 bespoke——内核 Fetch 以官方
+// SHA-256 为唯一信任根不因单家放宽，官方摘要必检的精神不变（官方弱摘要仅作
+// 完整性、不作发布者信任）。
+//
 // 与 GitHub releases 家族的差异（上游实证结论，勿照抄模板）：
 //   - 发布接口每次仅返回"当前版本"（stable/beta 两个 channel 各一），
 //     无历史版本列表——远程表至多两条，回滚只能靠 ImportLocal 导入本地已有目录；

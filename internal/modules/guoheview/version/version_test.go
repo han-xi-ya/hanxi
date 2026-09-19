@@ -1,11 +1,12 @@
 package version
 
 import (
-	"archive/zip"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/packages/go/artifact"
 )
 
 // fakeStableJSON 与真实发布接口同构的样例（3.2.7 实测响应裁剪）：
@@ -67,106 +68,128 @@ func TestFindPortableZipEnglishFallback(t *testing.T) {
 	}
 }
 
-// makePortableZip 构造与官方 3.2.7 便携 zip 同构的样例：顶层 GuoheViewPortable/
-// 包装目录 + exe/DLL/portable.ini/plugins 空目录 + 根外杂质 entry。
-func makePortableZip(t *testing.T, path string) {
+// ---------- zip 夹具（官方 3.2.7 便携 zip 同构） ----------
+
+// buildPortableZip 构造与官方 3.2.7 便携 zip 同构的样例字节：顶层
+// GuoheViewPortable/ 包装目录 + exe/DLL/portable.ini/plugins 空目录 + 根外杂质。
+func buildPortableZip(t *testing.T) []byte {
 	t.Helper()
-	zf, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer zf.Close()
-	zw := zip.NewWriter(zf)
-	add := func(name, content string) {
-		w, err := zw.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, _ = w.Write([]byte(content))
-	}
-	add("GuoheViewPortable/", "")
-	add("GuoheViewPortable/GuoheView.exe", "fake-exe-bytes")
-	add("GuoheViewPortable/ghde.dll", "fake-dll")
-	add("GuoheViewPortable/portable.ini", "; portable flag")
-	add("GuoheViewPortable/plugins/decoder/", "")
-	add("GuoheViewPortable/plugins/decoder/readme.txt", "readme")
-	add("README-outside.txt", "junk outside payload root")
-	_ = zw.Close()
+	buf := writeZipToBuffer(t, map[string]string{
+		"GuoheViewPortable/":                           "",
+		"GuoheViewPortable/GuoheView.exe":              "fake-exe-bytes",
+		"GuoheViewPortable/ghde.dll":                   "fake-dll",
+		"GuoheViewPortable/portable.ini":               "; portable flag",
+		"GuoheViewPortable/plugins/decoder/":           "",
+		"GuoheViewPortable/plugins/decoder/readme.txt": "readme",
+		"README-outside.txt":                           "junk outside payload root",
+	})
+	return buf
 }
 
-// TestExtractAllHarvestsPortableRoot 收割便携根目录：exe 平铺到目标根、
-// 根外杂质不带入、子目录结构保留。
-func TestExtractAllHarvestsPortableRoot(t *testing.T) {
+// TestHarvestPortableRoot 收割便携根目录（委托 UnpackZip 解包后，模块布局收口）：
+// exe 平铺到 staging 根、根外杂质不带入、子目录结构保留、包装链移除。
+func TestHarvestPortableRoot(t *testing.T) {
 	zipPath := filepath.Join(t.TempDir(), "portable.zip")
-	makePortableZip(t, zipPath)
-	dst := filepath.Join(t.TempDir(), "guoheview_3.2.7.98")
+	if err := os.WriteFile(zipPath, buildPortableZip(t), 0644); err != nil {
+		t.Fatal(err)
+	}
+	staging := filepath.Join(t.TempDir(), ".tmp-harvest")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
+	}
 
-	if err := extractAll(zipPath, dst); err != nil {
-		t.Fatalf("extractAll: %v", err)
+	if err := harvestPortableRoot(staging); err != nil {
+		t.Fatalf("harvestPortableRoot: %v", err)
 	}
 	for _, rel := range []string{exeName, "ghde.dll", portableMarkName, filepath.Join("plugins", "decoder", "readme.txt")} {
-		if _, err := os.Stat(filepath.Join(dst, rel)); err != nil {
+		if _, err := os.Stat(filepath.Join(staging, rel)); err != nil {
 			t.Errorf("缺少 %s: %v", rel, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dst, "GuoheViewPortable")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(staging, "GuoheViewPortable")); !os.IsNotExist(err) {
 		t.Error("包装目录不应作为层级保留")
 	}
-	if _, err := os.Stat(filepath.Join(dst, "README-outside.txt")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(staging, "README-outside.txt")); !os.IsNotExist(err) {
 		t.Error("payload 根外杂质不应被收割")
 	}
 }
 
-// TestExtractAllRejectsMissingLayout 布局自检：无 exe / 无便携标记都报错并清理。
-func TestExtractAllRejectsMissingLayout(t *testing.T) {
-	// 无 exe
-	bad := filepath.Join(t.TempDir(), "bad.zip")
-	zf, _ := os.Create(bad)
-	zw := zip.NewWriter(zf)
-	w, _ := zw.Create("Some/thing.dll")
-	_, _ = w.Write([]byte("x"))
-	_ = zw.Close()
-	zf.Close()
-	dst := filepath.Join(t.TempDir(), "guoheview_9.9.9.9")
-	if err := extractAll(bad, dst); err == nil {
-		t.Fatal("缺 exe 的 zip 应报错")
+// TestHarvestFlatLayoutKeepsRootEntries zip 已是平铺布局（exe 在根）：根内
+// 内容全收（口径同原 extractAll 的 payloadRoot="."）。
+func TestHarvestFlatLayoutKeepsRootEntries(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "flat.zip")
+	if err := os.WriteFile(zipPath, writeZipToBuffer(t, map[string]string{
+		exeName:          "fake-exe",
+		portableMarkName: ";",
+		"extra.txt":      "kept",
+	}), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Error("失败后目标目录应被清理")
+	staging := filepath.Join(t.TempDir(), ".tmp-flat")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
 	}
-
-	// 有 exe 无 portable.ini
-	noMark := filepath.Join(t.TempDir(), "nomark.zip")
-	zf2, _ := os.Create(noMark)
-	zw2 := zip.NewWriter(zf2)
-	w2, _ := zw2.Create(exeName)
-	_, _ = w2.Write([]byte("fake-exe"))
-	_ = zw2.Close()
-	zf2.Close()
-	if err := extractAll(noMark, filepath.Join(t.TempDir(), "guoheview_8.8.8.8")); err == nil {
-		t.Fatal("缺便携标记的 zip 应报错")
+	if err := harvestPortableRoot(staging); err != nil {
+		t.Fatalf("harvestPortableRoot: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(staging, "extra.txt")); err != nil {
+		t.Errorf("平铺布局根内文件应保留: %v", err)
 	}
 }
 
-// TestExtractAllRejectsZipSlip 逃逸路径 entry 必须拒绝。
-func TestExtractAllRejectsZipSlip(t *testing.T) {
-	zipPath := filepath.Join(t.TempDir(), "evil.zip")
-	zf, _ := os.Create(zipPath)
-	zw := zip.NewWriter(zf)
-	w, _ := zw.Create(exeName)
-	_, _ = w.Write([]byte("fake-exe"))
-	w, _ = zw.Create(portableMarkName)
-	_, _ = w.Write([]byte(";"))
-	w, _ = zw.Create("../../evil.dll")
-	_, _ = w.Write([]byte("x"))
-	_ = zw.Close()
-	zf.Close()
-	dst := filepath.Join(t.TempDir(), "guoheview_7.7.7.7")
-	if err := extractAll(zipPath, dst); err == nil {
-		t.Fatal("ZipSlip entry 应报错")
+// TestHarvestRejectsInvalidLayout 收割自检：无 exe / 多个 exe 都判定布局无效。
+func TestHarvestRejectsInvalidLayout(t *testing.T) {
+	// 无 exe
+	noExe := filepath.Join(t.TempDir(), "noexe.zip")
+	if err := os.WriteFile(noExe, writeZipToBuffer(t, map[string]string{"Some/thing.dll": "x"}), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(t.TempDir(), "evil.dll")); !os.IsNotExist(err) {
-		t.Error("逃逸文件不应落盘")
+	st1 := filepath.Join(t.TempDir(), ".tmp-noexe")
+	if err := artifact.UnpackZip(noExe, st1, artifact.DefaultLimits, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := harvestPortableRoot(st1); err == nil || !strings.Contains(err.Error(), "缺少可用的") {
+		t.Fatalf("缺 exe 的 zip 应判定布局无效, got %v", err)
+	}
+
+	// 多个 exe（根 + 包装目录各一）
+	dup := filepath.Join(t.TempDir(), "dup.zip")
+	if err := os.WriteFile(dup, writeZipToBuffer(t, map[string]string{
+		exeName:                        "a",
+		"GuoheViewPortable/" + exeName: "b",
+	}), 0644); err != nil {
+		t.Fatal(err)
+	}
+	st2 := filepath.Join(t.TempDir(), ".tmp-dup")
+	if err := artifact.UnpackZip(dup, st2, artifact.DefaultLimits, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := harvestPortableRoot(st2); err == nil || !strings.Contains(err.Error(), "无法判定便携根") {
+		t.Fatalf("多个 exe 应判定布局无效, got %v", err)
+	}
+}
+
+// TestEnsurePortableMark 便携标记兜底：缺失补写官方开关、在场原样保留
+// （上游语义"程序只读不改"，补写仅恢复托管隔离前提）。
+func TestEnsurePortableMark(t *testing.T) {
+	dir := t.TempDir()
+	if err := ensurePortableMark(dir); err != nil {
+		t.Fatalf("补写: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, portableMarkName))
+	if err != nil || !strings.Contains(string(b), "便携模式开关") {
+		t.Fatalf("补写内容异常: %s %v", b, err)
+	}
+
+	mark := filepath.Join(t.TempDir(), "keep")
+	os.MkdirAll(mark, 0755)
+	os.WriteFile(filepath.Join(mark, portableMarkName), []byte("; official original"), 0644)
+	if err := ensurePortableMark(mark); err != nil {
+		t.Fatalf("ensurePortableMark: %v", err)
+	}
+	b, _ = os.ReadFile(filepath.Join(mark, portableMarkName))
+	if string(b) != "; official original" {
+		t.Error("已有便携标记不得被改写")
 	}
 }
 
@@ -207,6 +230,10 @@ func TestListInstalledAndRemove(t *testing.T) {
 	if v := byVer["v3.2.7.97"]; v.IsImport || v.InstalledAt == "" {
 		t.Errorf("旧版本默认元信息错误: %+v", v)
 	}
+	// Tree 扫描按版本号降序（原 ReadDir 字典序在多位数段有误，迁移后由 versioncmp 保证）
+	if list[0].Version != "v3.2.7.98" {
+		t.Errorf("列表应最新在前: %+v", list)
+	}
 
 	if exe, err := m.ResolveExe("v3.2.7.98"); err != nil || filepath.Base(exe) != exeName {
 		t.Errorf("ResolveExe(v3.2.7.98): %v %v", exe, err)
@@ -227,6 +254,13 @@ func TestListInstalledAndRemove(t *testing.T) {
 	list, _ = m.ListInstalled()
 	if len(list) != 1 {
 		t.Errorf("卸载后应剩 1 个版本，实际 %d", len(list))
+	}
+	// Tree.Remove 走 .removing- 隔离：卸载后版本树不得留事务残件
+	ents, _ := os.ReadDir(versionsDir)
+	for _, e := range ents {
+		if strings.Contains(e.Name(), ".removing") || strings.HasPrefix(e.Name(), ".tmp-") {
+			t.Errorf("卸载后残留事务目录: %s", e.Name())
+		}
 	}
 }
 
@@ -267,6 +301,11 @@ func TestImportLocalWholeDirectory(t *testing.T) {
 	meta, err := os.ReadFile(filepath.Join(info.Dir, "meta.json"))
 	if err != nil || !strings.Contains(string(meta), `"isImport": true`) {
 		t.Errorf("meta.json 应为导入重写: %s %v", meta, err)
+	}
+	// 导入链账本可被 Tree 扫描识别（isImport/source 展示语义不漂移）
+	list, lerr := m.ListInstalled()
+	if lerr != nil || len(list) != 1 || !list[0].IsImport || list[0].Source != src {
+		t.Errorf("导入版本列表账本异常: %+v %v", list, lerr)
 	}
 
 	// 重复导入同一目录（兜底版本含秒级时间戳，同秒内重复必冲突；跨秒则目录不同）

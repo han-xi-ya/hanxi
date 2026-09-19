@@ -15,7 +15,10 @@
 //     浏览（与 piclite 关窗藏托盘的空闲语义本质不同）；
 //   - 内置更新器只节流不越权：config.ini 无官方关闭自动更新开关（实测键表仅
 //     [update] min_check_interval），不改写上游配置语义，版本管理入口引导回
-//     Hanxi，Updater 子进程由 JobObject 继承兜底（详见 instance 包注释）。
+//     Hanxi，Updater 子进程由 JobObject 继承兜底（详见 instance 包注释）；
+//   - 共享内核委托（Wave 4，ADR-0002 §5）：解包/落位/卸载走 artifact
+//     （UnpackZip+Tree），进程治理走 supervisor；官方仅 MD5 的"下载+校验"段
+//     留模块 bespoke，安装事务经 ops.BeginTxn 全链记账（事务与解包器无关）。
 package guoheview
 
 import (
@@ -37,8 +40,12 @@ type Module struct {
 
 // New 在 app 装配期创建模块（构造无 IO，重活延迟到 OnInit 与 service 方法）。
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewGuoheViewService(plat)}
+	return &Module{svc: NewGuoheViewService(plat, extapi.NewLeaseHolder(ID))}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
 func (e *Module) Info() extapi.ModuleInfo {
@@ -74,7 +81,7 @@ func (e *Module) OnInit(ctx context.Context) error {
 
 // OnDestroy 交回 service 做资源收尾；错误仅记录，注册表不因此阻断停用流程。
 func (e *Module) OnDestroy() error {
-	e.svc.Shutdown()
+	e.svc.shutdown()
 	return nil
 }
 
