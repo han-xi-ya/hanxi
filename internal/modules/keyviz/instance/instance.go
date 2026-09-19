@@ -1,13 +1,15 @@
 package instance
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"os/exec"
-	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
 	"hanxi/internal/platform"
+	sup "hanxi/packages/go/supervisor"
 )
 
 // State 引擎状态机：stopped → starting → running → (stopped | failed | external)
@@ -20,6 +22,23 @@ const (
 	StateFailed   State = "failed"   // 启动失败 / 异常退出
 	StateExternal State = "external" // 外部用户自启的 Keyviz 主实例（非本引擎托管）
 )
+
+// quitGraceWindow Quit 交给内核 Stop 的 grace 预算。Keyviz 的 QuitHook 恒即时
+// 返错（无优雅通道，见 NewEngine 注释），预算实际不会被消耗；保留非零值是让
+// 内核确实咨询钩子——grace==0 会跳过钩子调用，"通道不存在"的显式声明就退化
+// 成永不执行的死代码。
+const quitGraceWindow = 2 * time.Second
+
+// errNoGracefulQuit Keyviz 优雅退出通道不存在的显式声明：QuitHook 恒返本错误，
+// 按 supervisor 语义（"钩子返回错误时直接进入强制终止"），Quit 收敛为
+// JobObject 直接强杀。刻意不采用"不注册钩子"的写法——两者内核行为等价（都强杀），
+// 但注册即时返错的钩子把"无通道"从缺省沉默变成显式事实源：读代码即知这不是
+// 漏配，上游若将来补出优雅通道（如 CLI 参数），只需替换本钩子实现。
+var errNoGracefulQuit = errors.New("keyviz: 上游无优雅退出通道（退出仅在托盘回调，WM_CLOSE 会拆除单实例协议载体），直接强制终止")
+
+// manualStopWording 内核手动停止的收口文案；keyviz 既有快照口径在 stopped
+// 态不带文案（Error 为空），映射时如实还原。
+const manualStopWording = "已手动停止"
 
 // Snapshot 引擎状态快照：事件推送与前端渲染共用同一模型。
 type Snapshot struct {
@@ -53,217 +72,111 @@ type Callbacks struct {
 	OnState func(snap Snapshot)
 }
 
-// Engine Keyviz 单实例运行引擎。
+// Engine Keyviz 单实例运行引擎：组合内核 supervisor.Engine，
+// 本层持有 Keyviz 专属账目（退出码/停止时刻）与"无优雅通道"QuitHook 声明。
 type Engine struct {
 	mu        sync.Mutex
-	state     State
-	version   string
-	pid       uint32
-	exitCode  int
-	errMsg    string
-	external  bool
-	startedAt time.Time
-	stoppedAt time.Time
-	stopping  bool // 手动停止/退出标记：防止进程终止后误判为异常退出
+	exitCode  int       // 自有实例最近一次异常退出码（Start 时清零）
+	stoppedAt time.Time // 自有实例最近一次落终态的时刻
 
-	startMu sync.Mutex // Start/Quit 互斥临界区
+	sup   *sup.Engine
+	probe KeyvizProbe
+	cb    Callbacks
 
-	cmd    *exec.Cmd
-	job    platform.Job
-	jobAPI platform.JobAPI
-	probe  KeyvizProbe
-	cb     Callbacks
+	// specArgs 真机冒烟专用注入缝：生产 Keyviz 恒无参拉起（nil，无参即驻托盘
+	// + 按键可视化），测试注入让替身进程（cmd.exe）在精简 stdin 环境下也能
+	// 稳定存活的确定性命令参数。
+	specArgs []string
 }
 
 // NewEngine 创建托管运行引擎（初始 stopped，无任何系统副作用）；
 // JobAPI/Probe/Callbacks 由 service 层注入，保持本包零框架依赖。
 func NewEngine(jobAPI platform.JobAPI, probe KeyvizProbe, cb Callbacks) *Engine {
-	return &Engine{
-		state:  StateStopped,
-		jobAPI: jobAPI,
-		probe:  probe,
-		cb:     cb,
+	e := &Engine{
+		probe: probe,
+		cb:    cb,
 	}
+	e.sup = sup.NewEngine(jobAPI, supProbe{probe}, sup.Callbacks{OnState: e.onSupState})
+	// 无优雅退出通道的显式声明：钩子即时返错 → 内核 Stop 跳过 grace 窗口，
+	// 直接走 killSequence（JobObject Terminate 优先，兜底强杀）；
+	// store.json 为修改即节流写盘（autoSave 1s），进程级终止不丢历史设置。
+	e.sup.SetQuitHook(func(context.Context) error {
+		return errNoGracefulQuit
+	})
+	return e
 }
 
-// Start 启动自有实例：创建进程 → 绑定 JobObject → 状态 running。
+// Start 启动自有实例（委托内核：创建进程 → 绑定 JobObject → running）。
 // Keyviz 唯一启动语义即"无参拉起 → 驻托盘 + 全局按键可视化"（overlay 主窗口
 // 常态不可见，设置窗口须用户经托盘菜单自行打开——上游无唤窗契约，见包注释）。
-// 本方法不做互斥体探测：冷启动与外部实例竞速的 TOCTOU 交给 wait() 退出分类兜底。
+// 工作目录锁定到 exe 所在目录由内核默认保证。本方法不做互斥体探测：冷启动与
+// 外部实例竞速的 TOCTOU 交给内核 wait 退出分类兜底（ReadyTimeout=0 即 markeron
+// 同款冷启动语义；就绪等待由 service 层经 WaitReady 另行执行）。
 func (e *Engine) Start(opts StartOptions) error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
 	if err := opts.validate(); err != nil {
 		return err
 	}
 
 	e.mu.Lock()
-	e.version = opts.Version
-	e.external = false
-	e.stopping = false
-	e.mu.Unlock()
-
-	e.transition(StateStarting, "")
-
-	// Keyviz 是 GUI 子系统程序，无需隐藏控制台窗口。
-	cmd := exec.Command(opts.Exe)
-	cmd.Dir = filepath.Dir(opts.Exe) // 工作目录锁定：与版本隔离目录同构语义（配置实际落 %APPDATA%，此行为仅为一致性）
-	if err := cmd.Start(); err != nil {
-		e.transition(StateFailed, "进程启动失败: "+err.Error())
-		return err
-	}
-
-	e.mu.Lock()
-	e.cmd = cmd // 立即登记
-	e.pid = uint32(cmd.Process.Pid)
 	e.exitCode = 0
-	e.errMsg = ""
-	e.startedAt = time.Now()
 	e.stoppedAt = time.Time{}
 	e.mu.Unlock()
 
-	job, jerr := e.jobAPI.Create()
-	if jerr != nil {
-		_ = cmd.Process.Kill()
-		go e.wait()
-		e.transition(StateFailed, "创建 Job Object 失败: "+jerr.Error())
-		return fmt.Errorf("创建 Job Object 失败: %w", jerr)
-	}
-	if aerr := job.Assign(e.pid); aerr != nil {
-		job.Close()
-		_ = cmd.Process.Kill()
-		go e.wait()
-		e.transition(StateFailed, "JobObject 绑定失败: "+aerr.Error())
-		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
-	}
-	if opts.Detached {
-		// 解除退出联动：Hanxi 退出/崩溃不再连带杀本实例（"不随 Hanxi 关闭"开关）
-		if derr := job.SetAllowKillOnClose(false); derr != nil {
-			job.Close()
-			_ = cmd.Process.Kill()
-			go e.wait()
-			e.transition(StateFailed, "解除退出联动失败: "+derr.Error())
-			return fmt.Errorf("解除退出联动失败: %w", derr)
+	// Keyviz 是 GUI 子系统程序，无需 HideWindow 等窗口干预（零 fork 承诺）。
+	return e.sup.Start(context.Background(), sup.Spec{
+		Version:       opts.Version,
+		Exe:           opts.Exe,
+		Args:          e.specArgs,    // 生产恒 nil；仅真机冒烟注入
+		DetachFromJob: opts.Detached, // "不随 Hanxi 关闭"开关 → SetAllowKillOnClose(false)
+	})
+}
+
+// Quit 退出引擎托管的 Keyviz（幂等；external/stopped 状态无自有进程，按既有
+// 契约映射为无操作成功）。与 ccswitch 模板的关键差异——直接强杀（同 piclite）：
+// QuitHook 即时返错使内核跳过 grace 窗口进入强制终止（理由与数据安全论证见
+// errNoGracefulQuit 与包注释）。
+func (e *Engine) Quit() error {
+	return e.stopWithGrace(quitGraceWindow)
+}
+
+// Stop 立即强杀自有实例（幂等，grace=0 连钩子都不咨询）。与 Quit 语义在
+// Keyviz 处收敛为同一路径（都是 JobObject 终止），保留两个入口维持家族 API
+// 一致（应用退出 Shutdown 通道用）。
+func (e *Engine) Stop() error {
+	return e.stopWithGrace(0)
+}
+
+func (e *Engine) stopWithGrace(grace time.Duration) error {
+	if err := e.sup.Stop(grace); err != nil {
+		if errors.Is(err, sup.ErrExternal) {
+			return nil // external 状态不在管辖范围内：指引文案由 service 层给出
 		}
+		return err
 	}
-
-	e.mu.Lock()
-	e.job = job
-	e.mu.Unlock()
-
-	go e.wait()
-	e.transition(StateRunning, "")
 	return nil
 }
 
-// Quit 退出引擎托管的 Keyviz（幂等；external/stopped 状态无自有进程，直接返回 nil）。
-//
-// 与 ccswitch 模板的关键差异——无优雅退出通道，直接 JobObject 终止（同 piclite）：
-//   - 上游退出仅存在于托盘菜单回调（process::exit(0)），无 -quit CLI、无命令管道；
-//   - overlay 主窗口常态隐形（visible:false, focusable:false），设置窗口可能根本
-//     未创建，WM_CLOSE 无可送达的"应用退出"目标；
-//   - 向单实例消息窗口（-siw）投 WM_CLOSE 是净损害：DefWindowProc 直接
-//     DestroyWindow，既不触发退出，又拆掉单实例协议载体。
-//
-// 数据安全：store.json 为设置窗口修改即节流写盘（autoSave 1s），
-// 进程级终止不丢历史设置。
-func (e *Engine) Quit() error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
-	e.mu.Lock()
-	state, cmd := e.state, e.cmd
-	e.stopping = true // 先标记：其后 wait() 收尾归类为"手动退出"
-	e.mu.Unlock()
-	if state != StateRunning && state != StateStarting {
-		return nil
-	}
-	return e.forceKill(cmd)
-}
-
-// Stop 立即强杀自有实例（幂等）。与 Quit 语义在 Keyviz 处收敛为同一路径，
-// 保留两个入口维持家族 API 一致（应用退出 Shutdown 通道用）。
-func (e *Engine) Stop() error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
-	e.mu.Lock()
-	state, cmd := e.state, e.cmd
-	e.stopping = true
-	e.mu.Unlock()
-	if state != StateRunning && state != StateStarting {
-		return nil
-	}
-	return e.forceKill(cmd)
-}
-
-// forceKill JobObject 强杀自有实例（Keyviz 唯一可用的终止原语）。
-func (e *Engine) forceKill(cmd *exec.Cmd) error {
-	e.mu.Lock()
-	job := e.job
-	e.mu.Unlock()
-	if job != nil {
-		return job.Terminate(1)
-	}
-	if cmd != nil && cmd.Process != nil {
-		return cmd.Process.Kill()
-	}
-	return fmt.Errorf("实例没有可终止的进程")
-}
-
-// RefreshExternal 探测外部实例校正 external/stopped 状态。
-// 仅对静止态生效：running/starting 时探测到的正是自己，会误导状态机。
+// RefreshExternal 探测命名互斥体校正 external/stopped 状态（委托内核）。
+// 仅对静止态生效：running/starting/stopping 时探测到的正是自己，会误导状态机。
 func (e *Engine) RefreshExternal() {
-	e.mu.Lock()
-	state := e.state
-	e.mu.Unlock()
-	if state != StateStopped && state != StateFailed && state != StateExternal {
-		return
-	}
-
-	running := e.probe.IsRunning()
-
-	e.mu.Lock()
-	var snap Snapshot
-	changed := false
-	switch {
-	case running && e.state != StateExternal:
-		e.state = StateExternal
-		e.external = true
-		e.pid = 0
-		e.errMsg = ""
-		changed = true
-	case !running && e.state == StateExternal:
-		e.state = StateStopped
-		e.external = false
-		e.stoppedAt = time.Now()
-		changed = true
-	}
-	if changed {
-		snap = e.snapshotLocked()
-	}
-	e.mu.Unlock()
-	if changed {
-		e.emit(snap) // 无变化不广播
-	}
+	e.sup.RefreshExternal()
 }
 
 // Snapshot 返回当前状态快照。
 func (e *Engine) Snapshot() Snapshot {
+	outer := e.sup.Snapshot()
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.snapshotLocked()
+	return e.snapshotLocked(outer)
 }
 
-// Exe 返回当前自有实例的可执行路径（非 running 时为空）。
+// Exe 返回当前自有实例的可执行路径（非 running/starting 时为空串）。
 func (e *Engine) Exe() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.cmd == nil {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning && s.State != sup.StateStarting {
 		return ""
 	}
-	return e.cmd.Path
+	return s.Exe
 }
 
 // WaitReady 阻塞等待 Keyviz 实例就绪（单实例互斥体出现），超时返回 false。
@@ -273,26 +186,106 @@ func (e *Engine) WaitReady(timeout time.Duration) bool {
 
 // RunningDuration 自有实例已运行时长。
 func (e *Engine) RunningDuration() time.Duration {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.state != StateRunning || e.startedAt.IsZero() {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning || s.Since.IsZero() {
 		return 0
 	}
-	return time.Since(e.startedAt)
+	return time.Since(s.Since)
+}
+
+// ---------- 内核 → keyviz 形状映射 ----------
+
+// onSupState 内核状态广播 → 映射为本包 Snapshot 后转发（回调在内核锁外执行）。
+func (e *Engine) onSupState(s sup.Snapshot) {
+	var snap Snapshot
+	e.mu.Lock()
+	snap = e.snapshotLocked(s)
+	e.mu.Unlock()
+	e.emit(snap)
 }
 
 // snapshotLocked 前置条件：已持 e.mu。
-func (e *Engine) snapshotLocked() Snapshot {
+func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
+	switch s.State {
+	case sup.StateStopped, sup.StateFailed:
+		if e.stoppedAt.IsZero() {
+			e.stoppedAt = time.Now()
+		}
+	}
+	if s.State == sup.StateFailed {
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			e.exitCode = code
+		}
+	}
 	return Snapshot{
-		Version:   e.version,
-		State:     e.state,
-		PID:       e.pid,
+		Version:   s.Version,
+		State:     mapState(s.State),
+		PID:       s.PID,
 		ExitCode:  e.exitCode,
-		Error:     e.errMsg,
-		External:  e.external,
-		StartedAt: e.startedAt,
+		Error:     mapErrorMessage(s),
+		External:  s.State == sup.StateExternal,
+		StartedAt: s.Since,
 		StoppedAt: e.stoppedAt,
 	}
+}
+
+// mapState 状态词表映射：
+//
+//	supervisor stopped  → stopped
+//	supervisor starting → starting
+//	supervisor running  → running
+//	supervisor stopping → running（keyviz 既有词表无 stopping：终止窗口对前端保持
+//	                      运行语义，收口后由 stopped/failed 终态广播纠正）
+//	supervisor external → external
+//	supervisor failed   → failed
+func mapState(s sup.State) State {
+	switch s {
+	case sup.StateStarting:
+		return StateStarting
+	case sup.StateRunning, sup.StateStopping:
+		return StateRunning
+	case sup.StateExternal:
+		return StateExternal
+	case sup.StateFailed:
+		return StateFailed
+	default:
+		return StateStopped
+	}
+}
+
+// kernelAbnormalExitRe 匹配内核异常退出文案中的退出码。措辞耦合自
+// supervisor.wait 的分类消息"托管进程异常退出（退出码 %d）"——内核文案变更时
+// 本处回退为透传 Error（ExitCode 保持账目值），不会崩溃，仅少一层改写。
+var kernelAbnormalExitRe = regexp.MustCompile(`托管进程异常退出（退出码 (-?\d+)）`)
+
+// exitCodeFromKernelMessage 从内核异常退出文案中提取退出码。
+func exitCodeFromKernelMessage(msg string) (int, bool) {
+	g := kernelAbnormalExitRe.FindStringSubmatch(msg)
+	if g == nil {
+		return 0, false
+	}
+	var code int
+	if _, err := fmt.Sscanf(g[1], "%d", &code); err != nil {
+		return 0, false
+	}
+	return code, true
+}
+
+// mapErrorMessage 还原 keyviz 既有失败文案：
+//   - 内核异常退出消息改回"Keyviz 异常退出（退出码 N）。请确认已安装
+//     WebView2 Runtime"；
+//   - 内核手动停止的"已手动停止"折回本引擎既有的空文案（stopped 态不带话术）；
+//   - 其余（启动失败等）透传。
+func mapErrorMessage(s sup.Snapshot) string {
+	if s.State == sup.StateFailed {
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			return fmt.Sprintf("Keyviz 异常退出（退出码 %d）。请确认已安装 WebView2 Runtime", code)
+		}
+	}
+	if s.State == sup.StateStopped && s.Error == manualStopWording {
+		return ""
+	}
+	return s.Error
 }
 
 // emit 状态广播（回调在锁外执行，防止回调内重入本引擎造成死锁）。
@@ -302,72 +295,11 @@ func (e *Engine) emit(snap Snapshot) {
 	}
 }
 
-// transition 切换状态并广播。
-func (e *Engine) transition(s State, errMsg string) {
-	var snap Snapshot
-	e.mu.Lock()
-	e.state = s
-	e.errMsg = errMsg
-	switch s {
-	case StateRunning:
-		e.stoppedAt = time.Time{}
-		e.errMsg = ""
-	case StateStopped, StateFailed:
-		if e.stoppedAt.IsZero() {
-			e.stoppedAt = time.Now()
-		}
-	}
-	snap = e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
-}
+// supProbe 把 KeyvizProbe（命名互斥体存在性）适配为内核统一探针契约。
+// 互斥体探测为瞬时系统调用、天然不可取消（任何失败按"不存在"处理，永不报错），
+// 因此不产出 ProcInfo（外部实例归属只认 running 事实，PID 无从取得，沿用原口径）。
+type supProbe struct{ p KeyvizProbe }
 
-// wait 阻塞等待自有进程退出并分类收尾。
-func (e *Engine) wait() {
-	err := e.cmd.Wait()
-	code := 0
-	if err != nil && e.cmd.ProcessState != nil {
-		code = e.cmd.ProcessState.ExitCode()
-	}
-
-	e.mu.Lock()
-	e.exitCode = code
-	e.stoppedAt = time.Now()
-	stopped := e.stopping
-	prev := e.state
-	e.external = false
-	if e.job != nil {
-		_ = e.job.Close()
-		e.job = nil
-	}
-	e.cmd = nil
-	e.mu.Unlock()
-
-	// 分支顺序不可换：冷启动竞速场我们的进程信使化自退（exit 0），必须先判外部接管——
-	// 互斥体仍被持有说明真正存活的是外部主实例
-	externalTaken := !stopped && e.probe.IsRunning()
-
-	switch {
-	case stopped:
-		e.transition(StateStopped, "")
-	case externalTaken && prev != StateFailed:
-		e.setStateExternal()
-	case code == 0 && prev == StateRunning:
-		e.transition(StateStopped, "") // 用户在 Keyviz 自己退出（托盘菜单 Quit 等）
-	default:
-		e.transition(StateFailed, fmt.Sprintf("Keyviz 异常退出（退出码 %d）。请确认已安装 WebView2 Runtime", code))
-	}
-}
-
-// setStateExternal 将引擎标记为外部实例运行中（进程归属不在本引擎）。
-func (e *Engine) setStateExternal() {
-	var snap Snapshot
-	e.mu.Lock()
-	e.state = StateExternal
-	e.external = true
-	e.pid = 0
-	e.errMsg = ""
-	snap = e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
+func (s supProbe) Inspect(_ context.Context) (bool, *platform.ProcInfo, error) {
+	return s.p.IsRunning(), nil, nil
 }
