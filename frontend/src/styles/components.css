@@ -11,18 +11,33 @@
  * 本文件内禁止再出现裸 px 字号。
  * ============================================================ */
 
-/* ---------- 页面骨架 ---------- */
+/* ---------- 页面骨架（容器三档 --container-*，UI 专项 §8.5） ----------
+ * 页面容器只管宽度与水平居中；视口安全边距归 Shell（App.vue .content-area padding），禁止双重 padding。
+ * workbench/wide 两档为过渡期原子：旧页删私有 max-width 副本后直接换挂本类即可落回标准形
+ *（几何/标题/正文规则与 .page 逐字同形，仅宽度档不同）；PageContainer.vue 即映射本组类。 */
 :where(.page) {
-  max-width: 1000px;
+  max-width: var(--container-standard);
   margin: 0 auto;
 }
-:where(.page h1) {
+:where(.page-workbench) {
+  max-width: var(--container-workbench);
+  margin: 0 auto;
+}
+:where(.page-wide) {
+  max-width: var(--container-wide);
+  margin: 0 auto;
+}
+/* 满宽例外档：终端/日志类页面放弃居中宽度（替换变体类使用） */
+:where(.page-fluid) {
+  max-width: none;
+}
+:where(.page h1, .page-workbench h1, .page-wide h1, .page-fluid h1) {
   font-size: var(--text-xl);
   font-weight: 600;
   margin: 0 0 16px;
   color: var(--color-text);
 }
-:where(.page p) {
+:where(.page p, .page-workbench p, .page-wide p, .page-fluid p) {
   line-height: 1.6;
   color: var(--color-text-muted);
   font-size: var(--text-base);
@@ -56,6 +71,10 @@
   cursor: pointer;
   transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
 }
+/* 禁用态统一口径（2026-09 焦点/禁用 token 收口裁决）：控件级禁用定档 opacity 方案，
+ * 不换成 --surface-disabled 实底——.btn 家族六种变体底各不相同（primary 实底/描边/ghost），
+ * 实底禁用需逐变体覆写且引入色板联动负担；opacity 对任意底色与色板等效、天然压住
+ * 各 :hover:not(:disabled) 规则。--surface-disabled 只承担大面积禁用底（见下方输入档）。 */
 :where(.btn:disabled) {
   opacity: 0.5;
   cursor: not-allowed;
@@ -393,6 +412,13 @@
   border-radius: 6px;
   font-size: var(--text-base);
   background: var(--surface-panel);
+}
+/* 输入类禁用底：--surface-disabled 首个锚定消费（大面积底走实底 token，
+ * 与 .btn:disabled 的 opacity 口径互补；只新增禁用态视觉，常态零变化） */
+:where(.text-input:disabled),
+:where(.select-input:disabled) {
+  background: var(--surface-disabled);
+  cursor: not-allowed;
 }
 :where(.quick-targets) {
   display: flex;

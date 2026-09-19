@@ -29,9 +29,14 @@ textarea {
   color: inherit;
 }
 
-/* 一致的键盘焦点环（鼠标点按不显示） */
+/* 一致的键盘焦点环（鼠标点按不显示）。
+ * 颜色单一真相 = --focus-ring（随主题/色板独立标定，见 tokens.css），
+ * 与 ConfirmDialog、WSL 面板等既有消费形（outline … solid var(--focus-ring)）同口径；
+ * outline 方案与线宽/偏移维持原状，仅收口色源。
+ * 禁用态统一口径定档于 components.css :where(.btn:disabled)（原子层归原子文件，
+ * 本文件按文件头纪律只放应用级规则）。 */
 :focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 

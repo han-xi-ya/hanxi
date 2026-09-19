@@ -35,6 +35,12 @@
   --surface-hover: #eef5f5;
   --surface-selected: #e2f1f0;
 
+  /* 禁用态表面（结构派生值，类比 --terminal-* 派生纪律：引用主题变量自动随色板联动，
+   * 不属色板覆写集契约，覆写块不得搬运此名为裸色）。
+   * 统一口径：控件级禁用走 opacity（components.css :where(.btn:disabled)），
+   * 本档只承担「大面积禁用底」（只读输入组、禁用工作区背景）。 */
+  --surface-disabled: color-mix(in srgb, var(--color-text) 10%, var(--surface-panel));
+
   /* 文字 */
   --color-text: #14252c;
   --color-text-muted: #667980;
@@ -90,6 +96,16 @@
   --control-h-lg: 36px;
   --control-h-md: 30px;
   --control-h-sm: 24px;
+
+  /* 页面容器三档（UI 专项 §8.5；主题无关结构值，只进 :root，色板/深色不覆写）。
+   * 分工纪律：页面容器负责宽度与水平居中（components.css .page 家族原子 / ui/PageContainer.vue），
+   * Shell 负责视口安全边距（App.vue .content-area padding），禁止双重 padding。
+   *   standard  1000px  阅读 / 设置 / 简单 CRUD 默认档（与 :where(.page) 现状同值）
+   *   workbench 1200px  多面板工作台档（HomeView 等仪表盘页现值）
+   *   wide      1440px  密集表格 / 资源管理宽档（FileShare 双栏页现值，1120/1360 散值迁移期归拢） */
+  --container-standard: 1000px;
+  --container-workbench: 1200px;
+  --container-wide: 1440px;
 
   /* 半径 / 阴影 / 动效 */
   --radius-micro: 4px;   /* 键帽/行内微件小圆角（B/C 组治理诉求，2026-09） */
@@ -449,4 +465,6 @@
  *  - 新明暗模式 = 新增 [data-theme='xxx'] 变量块；新色板 = 新增 [data-theme=…][data-accent='yyy'] 覆写块，组件零改动。
  *  - 覆写集契约：主色 4 + 表面 5 + 文字 4 + 边框 2 + 主色光晕 + 焦点环（浅模式另加小/面板阴影；
  *    状态色/遮罩/终端跨色板恒定，唯 onyx 按无障碍职能覆写状态色）。
+ *    表面禁用档 --surface-disabled 为 color-mix 派生值（同 --terminal- 系列纪律，随主题变量自动联动，
+ *    不入覆写集）；布局结构值（--text- 、--control-h- 、--container- 各族）恒只进 :root。
  *  - 选中行使用纪律（精修复审固化）：强染色 selected 行内禁放 muted/subtle 小字，状态语义必须走 chip 软底。 */
