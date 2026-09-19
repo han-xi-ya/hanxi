@@ -10,6 +10,7 @@
 ### 1.1 契约版本
 - `extapi.ModuleContractSchema = 1` 随 ModuleState/Operation 投影下发;前端与契约测试以 schema 判定兼容性。
 - 破坏性变更(枚举值语义、字段删除、状态机优先级)必须递增 schema 并在本目录另立 ADR,禁止静默改语义。字段新增属于兼容演进,不升 schema。
+- **修订(2026-09-19,冻结收尾)**:`ModuleCatalogItem.delivery` 更名 `deliveryKind`——原与 `ModuleState.delivery`(生命周期维度)同名同 JSON 键、语义正交,消费端易拿错。契约从未对外发布、仓内消费者已全部同步,属发布前收口而非破坏性变更,schema 保持 1;两键自此**永久异名,禁止回撞**。
 
 ### 1.2 三模型职责(单一真相)
 | 模型 | 权威源 | 消费者 |

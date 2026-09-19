@@ -371,7 +371,7 @@ func buildItems(contract *contractFixture, evidences []moduleEvidence) ([]extapi
 			Name:         ev.name,
 			Description:  ev.description,
 			Category:     module.Group,
-			Delivery:     extapi.DeliveryBuiltinLogical,
+			DeliveryKind: extapi.DeliveryBuiltinLogical,
 			Capabilities: capabilitiesOf(ev, preactivated),
 			Entrypoints:  entrypointsOf(ev, preactivated),
 			Compatibility: extapi.Compatibility{
@@ -500,7 +500,7 @@ func renderGoSource(items []extapi.ModuleCatalogItem) ([]byte, error) {
 		fmt.Fprintf(&b, "\t\tName: %s,\n", strconv.Quote(item.Name))
 		fmt.Fprintf(&b, "\t\tDescription: %s,\n", strconv.Quote(item.Description))
 		fmt.Fprintf(&b, "\t\tCategory: %s,\n", strconv.Quote(item.Category))
-		fmt.Fprintf(&b, "\t\tDelivery: %s,\n", deliveryConst[item.Delivery])
+		fmt.Fprintf(&b, "\t\tDeliveryKind: %s,\n", deliveryConst[item.DeliveryKind])
 		fmt.Fprintf(&b, "\t\tCapabilities: %s,\n", quoteStrings(item.Capabilities, "string"))
 		fmt.Fprintf(&b, "\t\tEntrypoints: %s,\n", quoteEntrypoints(item.Entrypoints))
 		fmt.Fprintf(&b, "\t\tCompatibility: extapi.Compatibility{HostRange: %s, Platform: %s},\n",

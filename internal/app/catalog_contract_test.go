@@ -117,8 +117,8 @@ func TestCatalogEnumValidity(t *testing.T) {
 	// 静态表与冻结基线两个口径都必须只用 extapi 契约常量表达 delivery/entrypoint。
 	for _, batch := range [][]extapi.ModuleCatalogItem{CatalogItems(), fixture.Items} {
 		for _, item := range batch {
-			if !slices.Contains(validDeliveries, item.Delivery) {
-				t.Errorf("模块 %s delivery=%q 不在 extapi 交付常量内", item.ID, item.Delivery)
+			if !slices.Contains(validDeliveries, item.DeliveryKind) {
+				t.Errorf("模块 %s deliveryKind=%q 不在 extapi 交付常量内", item.ID, item.DeliveryKind)
 			}
 			for _, entry := range item.Entrypoints {
 				if !slices.Contains(validEntrypoints, entry) {

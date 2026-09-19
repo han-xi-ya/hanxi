@@ -6,7 +6,7 @@
       "name": "BC 卸载工具",
       "description": "收纳批量卸载工具 Bulk Crap Uninstaller：版本管理、JobObject 托管启停与窗口唤起",
       "category": "system",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process"
@@ -30,7 +30,7 @@
       "name": "Bili23 Downloader",
       "description": "收纳开源 B 站视频下载器 Bili23 Downloader：版本管理、JobObject 托管启停与窗口唤起",
       "category": "media",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -56,7 +56,7 @@
       "name": "CC Switch",
       "description": "收纳 Claude Code / Codex 多供应商切换工具 CC Switch：版本管理、JobObject 托管启停与窗口唤起",
       "category": "developer",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -82,7 +82,7 @@
       "name": "ddns-go",
       "description": "托管动态域名解析工具 ddns-go：版本管理、JobObject 启停与内嵌 Web 控制台",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "dedicated-window",
         "hosted-versions",
@@ -110,7 +110,7 @@
       "name": "Douzy 全能下载器",
       "description": "多平台视频桌面下载器 Douzy（抖音/TikTok/YouTube/Telegram/X）的内测安装包版本管理：远程列表、官方哈希校验下载与安装向导拉起（仅版本管理+下载，不接管进程运行）",
       "category": "media",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions"
       ],
@@ -133,7 +133,7 @@
       "name": "EarTrumpet",
       "description": "轻量音量控制托盘工具：官方直装渠道的检测、启动、退出、卸载与安装更新（并存商店版仅警告）",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "tray-commands"
       ],
@@ -157,7 +157,7 @@
       "name": "开发环境检测",
       "description": "检测本机开发工具链，查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载",
       "category": "system",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "mcp-tools"
       ],
@@ -181,7 +181,7 @@
       "name": "Everything 搜索",
       "description": "收纳文件搜索工具 Everything：版本管理、后台索引托管与内嵌秒级文件搜索",
       "category": "efficiency",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -209,7 +209,7 @@
       "name": "局域网文件快传",
       "description": "零客户端依赖的局域网极速文件/文本分享站，手机电脑扫码即用",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "embedded-server"
       ],
@@ -232,7 +232,7 @@
       "name": "FlClash 代理",
       "description": "收纳 Clash 系代理客户端 FlClash：版本管理、JobObject 托管启停与窗口唤起",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -258,7 +258,7 @@
       "name": "frpc 联调",
       "description": "管理 frp 内网穿透项目、多实例进程与本地版本",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process"
@@ -282,7 +282,7 @@
       "name": "果核看图",
       "description": "果核看图 GuoheView 极速 RAW 图片查看器：官方发布接口版本管理、JobObject 托管启停与窗口唤起",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -308,7 +308,7 @@
       "name": "Keyviz",
       "description": "开源按键/鼠标可视化工具 Keyviz：MSI 托管安装、JobObject 启停与运行状态探测",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -334,7 +334,7 @@
       "name": "局域网扫描",
       "description": "扫描局域网在线设备、备注设备信息并快速复制 IP",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [],
       "entrypoints": [
         "rpc",
@@ -355,7 +355,7 @@
       "name": "LiteMonitor",
       "description": "托管桌面硬件监控 LiteMonitor：版本管理、JobObject 启停与窗口唤起（CPU/GPU/内存/磁盘/网速横条与任务栏显示）",
       "category": "system",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -381,7 +381,7 @@
       "name": "MangoDisk",
       "description": "MangoDisk 原版 GUI：官方版本校验、JobObject 托管启停与单实例窗口唤起",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -407,7 +407,7 @@
       "name": "MarkerOn 标注",
       "description": "收纳屏幕标注工具 MarkerOn：版本管理、JobObject 托管启停与标注开关",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process"
@@ -431,7 +431,7 @@
       "name": "极客随手记",
       "description": "极轻量本地持久化备忘录与临时代码片段站，支持标签云、置顶与敏感脱敏",
       "category": "efficiency",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "mcp-tools"
       ],
@@ -455,7 +455,7 @@
       "name": "桌面留言板",
       "description": "一键全屏挂出离岗告示牌（预设+自定义文案），挂牌期间阻止休眠，托盘/轮盘/热键三通道唤出",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "background-listener",
         "dedicated-window",
@@ -485,7 +485,7 @@
       "name": "NanaZip",
       "description": "安装、升级和卸载 NanaZip 官方 stable MSIX 完整版",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions"
       ],
@@ -508,7 +508,7 @@
       "name": "文字识别",
       "description": "本地 OCR 服务托管与图片文字识别：探测/一键启停 hanxi-ocr，拖图即识别（离线免费，需自备服务组件）",
       "category": "efficiency",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "dedicated-window",
         "hotkey-slot",
@@ -539,7 +539,7 @@
       "name": "PaperTodo",
       "description": "托管桌面便签 PaperTodo：双变体版本管理与 JobObject 启停，唤窗/收拢/退出走官方命令信使",
       "category": "efficiency",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -565,7 +565,7 @@
       "name": "Paseo",
       "description": "托管开源 coding agent 编排器 Paseo：双通道版本管理、官方便携 zip 多版本托管、JobObject 启停与窗口唤起",
       "category": "developer",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -591,7 +591,7 @@
       "name": "PicLite",
       "description": "本地优先图片/GIF 压缩工具 PicLite 图轻：MSI 托管安装、JobObject 启停与窗口唤起",
       "category": "media",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -617,7 +617,7 @@
       "name": "释放端口",
       "description": "按端口定位占用进程，复核后安全结束",
       "category": "system",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [],
       "entrypoints": [
         "rpc",
@@ -638,7 +638,7 @@
       "name": "端口扫描与指纹",
       "description": "高并发多端口快速扫描，集成 Nmap 深度服务指纹识别",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [],
       "entrypoints": [
         "rpc",
@@ -659,7 +659,7 @@
       "name": "IP 查看",
       "description": "查看公网 IPv4/IPv6、局域网 IP、临时 IPv6、网关与 DNS",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [],
       "entrypoints": [
         "rpc",
@@ -680,7 +680,7 @@
       "name": "QuickLook",
       "description": "开源空格秒预览工具 QuickLook：便携 zip 托管安装、JobObject 启停、命名管道优雅退出与运行状态探测",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -706,7 +706,7 @@
       "name": "快捷菜单",
       "description": "任意处右键长按唤出圆形快捷轮盘（条目与托盘配置共用，支持分组二级子盘）",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "background-listener",
         "dedicated-window"
@@ -732,7 +732,7 @@
       "name": "Recordly",
       "description": "托管开源录屏工具 Recordly：双通道版本管理、NSIS 静默安装、JobObject 启停与窗口唤起",
       "category": "media",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -758,7 +758,7 @@
       "name": "Rufus",
       "description": "托管 USB 启动盘制作工具 Rufus：版本管理、JobObject 启停与窗口唤起（格式化 U 盘 / 写入 ISO 镜像）",
       "category": "system",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process"
@@ -782,7 +782,7 @@
       "name": "RustDesk",
       "description": "跨公网 ID/中继远程桌面（自托管首选）：版本管理、JobObject 托管启停与窗口唤起，支持自建信号服务器",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -808,7 +808,7 @@
       "name": "Snipaste",
       "description": "管理并启动 Snipaste 官方 Windows 免安装版，保留原生托盘与快捷键",
       "category": "efficiency",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -834,7 +834,7 @@
       "name": "软件版本",
       "description": "日常装机软件版本跟踪（微信首个目标）：本机版本注册表×PE 双口径、官方最新版对照与下载直链、安装/数据目录两代探测与占用扫描",
       "category": "system",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [],
       "entrypoints": [
         "rpc",
@@ -855,7 +855,7 @@
       "name": "SubnetDesk",
       "description": "局域网直连远程桌面（RustDesk LAN fork）：版本管理、JobObject 托管启停与窗口唤起，默认端口 TCP 21118",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -881,7 +881,7 @@
       "name": "TranslucentTB",
       "description": "收纳任务栏透明工具 TranslucentTB：版本管理、JobObject 托管启停与任务栏状态重设",
       "category": "desktop",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -907,7 +907,7 @@
       "name": "VS Code",
       "description": "托管 Visual Studio Code：便携版版本管理 + 安装版静默升级，JobObject 启停与窗口唤起",
       "category": "developer",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
         "managed-process",
@@ -933,7 +933,7 @@
       "name": "网页应用",
       "description": "把常用网站当作独立窗口使用：网址条目管理、内嵌窗口打开、轮盘/托盘直达（预置微信文件传输助手）",
       "category": "efficiency",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "dedicated-window",
         "tray-commands"
@@ -959,7 +959,7 @@
       "name": "微信 ClawBot",
       "description": "微信 iLink 智能机器人网关，支持扫码登录、会话保持、文字与图片多模态加密推送",
       "category": "efficiency",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "background-listener"
       ],
@@ -983,7 +983,7 @@
       "name": "WiFi 密码",
       "description": "查看本机已保存的 Wi-Fi 网络明文密码",
       "category": "network",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [],
       "entrypoints": [
         "rpc",
@@ -1004,7 +1004,7 @@
       "name": "WSL2",
       "description": "Windows Subsystem for Linux：就绪体检、GitHub 通道诊断、官方版本管理、发行版管理控制台（六操作+克隆/导入/取证/wsl.conf/瘦身）、端口转发与 USB 直通（usbipd-win 集成，面向 WSL2 完整内核工作流）",
       "category": "developer",
-      "delivery": "builtin-logical",
+      "deliveryKind": "builtin-logical",
       "capabilities": [
         "background-listener"
       ],

@@ -135,7 +135,7 @@ func TestListCatalogShape(t *testing.T) {
 		t.Fatalf("内建目录应 41 项, got %d", len(items))
 	}
 	for _, it := range items {
-		if it.Delivery != extapi.DeliveryBuiltinLogical || it.Owner == "" || it.Name == "" {
+		if it.DeliveryKind != extapi.DeliveryBuiltinLogical || it.Owner == "" || it.Name == "" {
 			t.Errorf("目录项异常: %+v", it)
 		}
 		seen := map[extapi.Entrypoint]bool{}

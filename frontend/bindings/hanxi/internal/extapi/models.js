@@ -227,7 +227,7 @@ export const Level = {
  * @property {string} name
  * @property {string} description - 展示描述（与 ModuleInfo.Description 同源，模块中心卡片/搜索消费）
  * @property {string} category - NavGroup 六组值之一；"core" 保留给控制平面
- * @property {DeliveryKind} delivery
+ * @property {DeliveryKind} deliveryKind - DeliveryKind 是静态交付形态（builtin-logical 等），与 ModuleState.Delivery （安装生命周期维度）语义正交,故键名刻意区分,消费端禁止互相拿错。
  * @property {string[] | null} capabilities - 能力标记（如 managed-versions/tray-commands）
  * @property {Entrypoint[] | null} entrypoints - 该模块暴露的全部入口
  * @property {Compatibility} compatibility

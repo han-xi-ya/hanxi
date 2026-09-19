@@ -205,11 +205,13 @@ type Compatibility struct {
 // 不承载瞬时进度；由装配根 Catalog 表（app/catalog.go）投影，
 // 基线冻结于 scripts/fixture/module_catalog.json 并由契约测试守护。
 type ModuleCatalogItem struct {
-	ID            string        `json:"id"`
-	Name          string        `json:"name"`
-	Description   string        `json:"description"` // 展示描述（与 ModuleInfo.Description 同源，模块中心卡片/搜索消费）
-	Category      string        `json:"category"`    // NavGroup 六组值之一；"core" 保留给控制平面
-	Delivery      DeliveryKind  `json:"delivery"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"` // 展示描述（与 ModuleInfo.Description 同源，模块中心卡片/搜索消费）
+	Category    string `json:"category"`    // NavGroup 六组值之一；"core" 保留给控制平面
+	// DeliveryKind 是静态交付形态（builtin-logical 等），与 ModuleState.Delivery
+	// （安装生命周期维度）语义正交,故键名刻意区分,消费端禁止互相拿错。
+	DeliveryKind  DeliveryKind  `json:"deliveryKind"`
 	Capabilities  []string      `json:"capabilities"` // 能力标记（如 managed-versions/tray-commands）
 	Entrypoints   []Entrypoint  `json:"entrypoints"`  // 该模块暴露的全部入口
 	Compatibility Compatibility `json:"compatibility"`
