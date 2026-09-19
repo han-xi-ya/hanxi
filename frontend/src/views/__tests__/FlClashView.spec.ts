@@ -1,5 +1,8 @@
-// 特征测试（组 C）：FlClashView——迁移前锁定现状行为基线（Phase 4 铁律）。
-// 断言"做了什么"而非"怎么做"：迁移到共享层后除 confirm/prompt 驱动方式外全部必须保持绿。
+// 特征测试（组 C · 批 0 共享契约迁入件）：FlClashView 收敛为 ManagedConsoleShell +
+// adapter（src/adapters/flclash），编排/渲染全部由 managed 家族承载。
+// 断言"做了什么"而非"怎么做"：启停动词、卸载/导入确认文案、下载进度呈现、
+// 联动失败回滚、轮询与 KeepAlive 契约逐字保留；仅表格徽标类名由视图私有
+// .fl-ver-status 落回共享标准形 .ver-status（选择器随结构更新，用例数不降）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -75,8 +78,8 @@ async function mountInKeepAlive() {
   return { wrapper, show }
 }
 
-// 迁移注记：window.confirm/prompt 已被 useConfirm/usePrompt 单例收编（蓝图 §5 Phase 2），
-// 测试改经 settle* 驱动对话框裁决——"危险操作必须二次确认"的行为断言语义不变。
+// confirm/prompt 经全局单例收编（adapter 内消费），测试以 settle* 驱动裁决——
+// "危险操作必须二次确认"的行为断言语义不变。
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
@@ -107,7 +110,7 @@ describe('FlClashView 初始装载与状态矩阵', () => {
     stubDefaults({ state: 'stopped' }, [installedV])
     const { wrapper } = await mountInKeepAlive()
     expect(wrapper.find('.status-word').text()).toBe('未运行')
-    expect(wrapper.find('.hint-banner').exists()).toBe(false)
+    expect(wrapper.find('.banner').exists()).toBe(false)
     expect(wrapper.find('.hint-line').text()).toContain('尚未运行：点击「打开窗口」启动 FlClash')
     const btns = wrapper.findAll('.control-btns .btn')
     expect(btns[1].attributes('disabled')).toBeDefined() // 退出禁用
@@ -181,7 +184,7 @@ describe('FlClashView 操作流', () => {
     wrapper.unmount()
   })
 
-  it('卸载取消不动后端，确认则删除并 toast', async () => {
+  it('卸载取消不动后端，确认则删除并 toast（确认文案逐字锁定）', async () => {
     stubDefaults({ state: 'stopped' }, [installedV])
     const { wrapper } = await mountInKeepAlive()
     const uninstall = () => wrapper.findAll('.installed-card button').find((b) => b.text() === '卸载')!
@@ -189,6 +192,7 @@ describe('FlClashView 操作流', () => {
     await flushMicrotasks()
     expect(confirmState.open).toBe(true)
     expect(confirmState.options.title).toContain('确定卸载 FlClash v0.8.79？')
+    expect(confirmState.options.description).toContain('%APPDATA% 下的代理配置不受影响')
     settleConfirm(false) // 取消
     await flushMicrotasks()
     expect(svc.RemoveVersion).not.toHaveBeenCalled()
@@ -217,6 +221,7 @@ describe('FlClashView 操作流', () => {
     await wrapper.find('.control-panel .btn-group .btn').trigger('click')
     await flushMicrotasks()
     expect(promptState.open).toBe(true)
+    expect(promptState.options.title).toContain('FlClash 安装目录完整路径')
     settlePrompt(null) // 取消
     await flushMicrotasks()
     expect(svc.ImportLocal).not.toHaveBeenCalled()
@@ -236,12 +241,12 @@ describe('FlClashView 操作流', () => {
     const { wrapper } = await mountInKeepAlive()
     runtime.handlers['flclash:version-download']({ data: { version: 'v0.8.80', stage: 'downloading', done: 50, total: 100 } })
     await nextTick()
-    expect(wrapper.find('.fl-ver-status.downloading').exists()).toBe(true)
+    expect(wrapper.find('.ver-status.downloading').exists()).toBe(true)
     expect(wrapper.find('.dl-percent').text()).toBe('50%')
     wrapper.unmount()
   })
 
-  it('下载完成事件：800ms 后清除票条并刷新版本列表', async () => {
+  it('下载完成事件：立即复刷版本列表，800ms 后清除票条', async () => {
     vi.useFakeTimers()
     try {
       stubDefaults({ state: 'stopped' }, [], [{ version: 'v0.8.80', size: 100, published: '2026-08-02T00:00:00Z', isPre: false }])
@@ -251,14 +256,14 @@ describe('FlClashView 操作流', () => {
       await vi.advanceTimersByTimeAsync(0)
       expect(svc.ListReleases.mock.calls.length).toBeGreaterThan(before) // 立即刷新
       await vi.advanceTimersByTimeAsync(800)
-      expect(wrapper.find('.fl-ver-status.downloading').exists()).toBe(false) // 票条清除
+      expect(wrapper.find('.ver-status.downloading').exists()).toBe(false) // 票条清除
       wrapper.unmount()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('instance-state 事件即时改写界面；非运行态清零 uptime 展示', async () => {
+  it('instance-state 事件即时改写界面（不待轮询）', async () => {
     stubDefaults({ state: 'stopped' }, [installedV])
     const { wrapper } = await mountInKeepAlive()
     runtime.handlers['flclash:instance-state']({ data: { state: 'running', version: 'v0.8.79', pid: 4242 } })

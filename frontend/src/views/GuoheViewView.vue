@@ -1,43 +1,29 @@
 <script setup lang="ts">
-// 果核看图托管工作台：控制台（唤窗/退出）+ 版本管理（官方发布接口 MD5 校验安装、
-// 导入本地便携目录、卸载）。多实例上游："打开窗口"= 聚焦/唤回/另开三分支。
-import { ref, computed, onMounted, onActivated, onDeactivated } from 'vue'
-import * as GuoheViewAPI from '../../bindings/hanxi/internal/modules/guoheview/guoheviewservice'
-import type { ViewRelease, ViewVersionInfo, DownloadProgress } from '../../bindings/hanxi/internal/modules/guoheview/version/models'
-import type { Snapshot } from '../../bindings/hanxi/internal/modules/guoheview/instance/models'
-import type { ControlOutcome, QuitOutcome } from '../../bindings/hanxi/internal/modules/guoheview/models'
+// 果核看图控制台（Wave 5 · 批 1 收敛件，模式照抄 CCSwitchView）：共享面全部进
+// 托管控制台家族——adapter（src/adapters/guoheview）承载业务投影（RPC/事件/文案），
+// useManagedConsole 单源状态轮询/uptime/进度 map/busy 闩，ManagedControlBar 管
+// 状态头与启停钮（多实例 OpenWindow 聚焦/唤回/另开三分支在 adapter.control.primary
+// run 内部消化，UI 恒为一钮），ManagedExtrasCard 管随关与官网联动卡。
+// 方言区：版本 Tab 为官方发布接口表（通道列/安装中文案/无发布时间列），
+// 共享 ManagedVersionPanel 形态不符，照 everything 通道表先例留视图，
+// 但数据与动作全部消费 store 单源。
+import { computed, ref } from 'vue'
 import { useToast } from '../composables/useToast'
-import { useWailsEvent } from '../composables/useWailsEvent'
-import { usePolling } from '../composables/usePolling'
-import { loadManagedVersions } from '../composables/loadManagedVersions'
-import { useConfirm } from '../composables/useConfirm'
-import { usePrompt } from '../composables/usePrompt'
-import { useClipboard } from '../composables/useClipboard'
 import { getErrorMessage } from '../utils/errors'
-import { fmtSize, fmtDuration } from '../utils/format'
-import { toolStateMeta } from '../constants/status'
-import UiBanner from '../components/ui/UiBanner.vue'
-import UiStatusChip from '../components/ui/UiStatusChip.vue'
+import { createGuoheViewAdapter } from '../adapters/guoheview'
+import { useManagedConsole } from '../components/managed/store'
+import ManagedControlBar from '../components/managed/ManagedControlBar.vue'
+import ManagedExtrasCard from '../components/managed/ManagedExtrasCard.vue'
+import type { ManagedReleaseRecord, NormalizedProgress } from '../components/managed/adapter'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
+import UiStatusChip from '../components/ui/UiStatusChip.vue'
+import { fmtSize } from '../utils/format'
 
-// ---------- 状态 ----------
-const snap = ref<Snapshot | null>(null)
-const releases = ref<ViewRelease[]>([])
-const installed = ref<ViewVersionInfo[]>([])
-const activeVersion = ref('')
-const loading = ref(false)
-const listError = ref('')
-const busy = ref(false)
-const uptimeSec = ref(0)
-
-// 下载进度 map（按版本索引）
-const downloading = ref<Record<string, DownloadProgress>>({})
+const adapter = createGuoheViewAdapter()
+const store = useManagedConsole(adapter)
 
 const { showToast } = useToast()
-const { confirm } = useConfirm()
-const { prompt } = usePrompt()
-const { copyWithToast } = useClipboard()
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 ccswitch/piclite 同构）
 const activeMainTab = ref('console')
@@ -46,255 +32,34 @@ const MAIN_TABS = [
   { key: 'versions', label: '📦 版本管理' },
 ]
 
-// ---------- 派生状态 ----------
-const state = computed(() => snap.value?.state ?? '')
-const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
-const isExternal = computed(() => state.value === 'external')
-
-// 五态通用文案接 constants/status 单一来源（§9.5-5）；业务扩展话术视图自行覆写。
-const stateText = computed(() => toolStateMeta(state.value).text)
-
-const runningVersion = computed(() => snap.value?.version ?? '')
-
-// 条件提示条（三个变体互斥；文案承载多实例与更新器两条真实契约）
-const banner = computed(() => {
-  if (state.value === 'external') {
-    return {
-      tone: 'warn' as const,
-      text: '检测到你在 Hanxi 之外打开的看图窗口（双击图片等）。「打开窗口」会唤回它或另开独立新窗口；这类窗口不受 Hanxi 管退。',
-    }
-  }
-  if (state.value === 'failed') {
-    return { tone: 'error' as const, text: snap.value?.error || '果核看图异常退出' }
-  }
-  if (state.value === 'running') {
-    return {
-      tone: 'ok' as const,
-      text: '托管实例正在运行。浏览、缩放与色彩管理在 GuoheView 自有窗口完成（关窗即退出）；上游自带更新检查，版本升级请回这里走托管安装，避免内置更新覆写托管目录。',
-    }
-  }
-  return null
-})
-
-// ---------- 数据加载 ----------
-async function loadVersions() {
-  await loadManagedVersions({
-    remote: GuoheViewAPI.ListReleases,
-    local: GuoheViewAPI.ListInstalledVersions,
-    active: GuoheViewAPI.GetActiveVersion,
-    setRemote: value => { releases.value = value },
-    setLocal: value => { installed.value = value },
-    setActive: value => { activeVersion.value = value },
-    setLoading: value => { loading.value = value },
-    setError: value => { listError.value = value },
-  })
-}
-
-async function refreshStatus() {
-  try {
-    snap.value = await GuoheViewAPI.GetStatus()
-  } catch (e) {
-    // 轮询静默失败：保留上次快照即可
-    console.warn('guoheview GetStatus failed:', getErrorMessage(e))
-  }
-}
-
-function stepOf(p: DownloadProgress): number {
+// ---------- 方言表格投影 ----------
+function stepOf(p: NormalizedProgress): number {
   if (p.stage === 'done') return 100
   if (p.stage !== 'downloading') return 0
   if (!p.total) return 0
   return Math.min(99, Math.round((p.done / p.total) * 100))
 }
 
-function statusOf(rel: ViewRelease): 'installed' | 'downloading' | 'error' | 'idle' {
-  const p = downloading.value[rel.version]
+function statusOf(rel: ManagedReleaseRecord): 'installed' | 'downloading' | 'error' | 'idle' {
+  const p = store.downloading[rel.version]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
-  const hit = installed.value.find(v => v.version === rel.version)
+  const hit = store.installed.find((v) => v.version === rel.version)
   return hit ? 'installed' : 'idle'
 }
 
-// ---------- 控制操作 ----------
-async function openWindow() {
-  if (busy.value) return
-  busy.value = true
+// 方言动词：本模块下载失败词为「安装失败」（官方接口安装语义），与 store.runDownload
+// 的通用「下载失败」前缀不同，故视图侧直调 adapter.versions.download 保词表逐字。
+async function download(rel: ManagedReleaseRecord) {
   try {
-    const out: ControlOutcome = await GuoheViewAPI.OpenWindow()
-    showToast(out.message)
-    await refreshStatus()
-  } catch (e) {
-    showToast(getErrorMessage(e))
-    await refreshStatus()
-  } finally {
-    busy.value = false
-  }
-}
-
-async function quitView() {
-  if (busy.value) return
-  busy.value = true
-  try {
-    const out: QuitOutcome = await GuoheViewAPI.Quit()
-    showToast(out.message)
-    await refreshStatus()
-  } catch (e) {
-    showToast(`退出失败: ${getErrorMessage(e)}`)
-    await refreshStatus()
-  } finally {
-    busy.value = false
-  }
-}
-
-// ---------- 版本管理操作 ----------
-async function download(rel: ViewRelease) {
-  try {
-    const res = await GuoheViewAPI.DownloadVersion(rel.version)
-    if (res === 'already-installed') {
-      showToast(`版本 ${rel.version} 已安装`)
-      await loadVersions()
-    }
+    const res = await adapter.versions.download(rel)
+    if (res.message) showToast(res.message)
+    if (res.reloadVersions) await store.load()
   } catch (e) {
     showToast(`安装失败: ${getErrorMessage(e)}`)
   }
 }
 
-async function setActive(v: ViewVersionInfo) {
-  try {
-    const ver = await GuoheViewAPI.SetActiveVersion(v.version)
-    activeVersion.value = ver
-    showToast(`已将 ${ver} 设为使用版本`)
-  } catch (e) {
-    showToast(`设置失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function openDir(path: string) {
-  try {
-    await GuoheViewAPI.OpenDir(path)
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function removeVersion(v: ViewVersionInfo) {
-  const accepted = await confirm({
-    title: `确定卸载果核看图 ${v.version}？`,
-    description: '该版本托管目录（含其 config.ini 设置）将被删除，不可恢复。',
-    tone: 'danger',
-  })
-  if (!accepted) return
-  try {
-    await GuoheViewAPI.RemoveVersion(v.version)
-    showToast(`已卸载 ${v.version}`)
-    await loadVersions()
-  } catch (e) {
-    showToast(`卸载失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function importLocal() {
-  const path = await prompt({
-    title: '请输入本机果核看图便携目录完整路径（整个解压目录，含 GuoheView.exe）',
-    description: '设置（config.ini）随目录一并收纳进托管；安装版目录也可导入，将自动转为便携模式',
-  })
-  if (!path) return
-  try {
-    busy.value = true
-    const info = await GuoheViewAPI.ImportLocal(path.trim())
-    showToast(`已导入果核看图 ${info.version}`)
-    await loadVersions()
-  } catch (e) {
-    showToast(`导入失败: ${getErrorMessage(e)}`)
-  } finally {
-    busy.value = false
-  }
-}
-
-// ---------- 时长 ticker 与轮询（usePolling 内置 KeepAlive 激活/停用契约） ----------
-function uptimeTick() {
-  if (snap.value?.state === 'running' && snap.value.startedAt) {
-    const started = new Date(snap.value.startedAt).getTime()
-    if (!Number.isNaN(started)) {
-      uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
-    }
-  }
-}
-
-// 状态兜底轮询 + 每秒时长 tick；首帧不自动跑——与迁移前一致，由挂载/激活显式刷新。
-usePolling(refreshStatus, 2500, { immediateFirstRun: false })
-usePolling(uptimeTick, 1000, { immediateFirstRun: false })
-
-// 停用归零运行时长（业务状态复位，非定时器管理）
-onDeactivated(() => {
-  uptimeSec.value = 0
-})
-
-// ---------- 联动开关与官网入口 ----------
-const followOnExit = ref(false)
-const siteUrl = ref('')
-
-async function loadExtras() {
-  try {
-    const [f, u] = await Promise.all([GuoheViewAPI.GetFollowOnExit(), GuoheViewAPI.RepositoryURL()])
-    followOnExit.value = f
-    siteUrl.value = u
-  } catch (e) {
-    console.warn('loadExtras failed:', getErrorMessage(e))
-  }
-}
-
-async function onFollowToggle() {
-  const next = !followOnExit.value
-  followOnExit.value = next // 用户点击已将勾选框翻转，ref 同步跟进，保持绑定状态一致
-  try {
-    await GuoheViewAPI.SetFollowOnExit(next)
-    showToast(next ? '已开启：Hanxi 退出时一并关闭托管实例' : '已关闭：Hanxi 退出不影响该工具，托管实例继续独立运行（下次启动生效）')
-  } catch (e) {
-    followOnExit.value = !next // 失败回滚：ref 变化驱动勾选框复位到后端真实值
-    showToast('设置失败: ' + getErrorMessage(e))
-  }
-}
-
-async function copySite() {
-  await copyWithToast(siteUrl.value, '官网地址已复制')
-}
-
-async function openSite() {
-  try {
-    await GuoheViewAPI.OpenRepository()
-  } catch (e) {
-    showToast('打开失败: ' + getErrorMessage(e))
-  }
-}
-
-// ---------- 事件订阅（setup 期注册即不丢早期推送，卸载自动注销） ----------
-useWailsEvent<DownloadProgress>('guoheview:version-download', (t) => {
-  if (!t || !t.version) return
-  downloading.value = { ...downloading.value, [t.version]: t }
-  if (t.stage === 'done') {
-    setTimeout(() => {
-      const next = { ...downloading.value }
-      delete next[t.version]
-      downloading.value = next
-    }, 800)
-    loadVersions()
-  }
-})
-
-useWailsEvent<Snapshot>('guoheview:instance-state', (s) => {
-  if (!s) return
-  snap.value = s
-  if (s.state !== 'running') uptimeSec.value = 0
-})
-
-// ---------- 生命周期 ----------
-onMounted(async () => {
-  await Promise.all([refreshStatus(), loadVersions(), loadExtras()])
-})
-
-// KeepAlive：页面激活时立即刷新一帧（轮询由 usePolling 随激活恢复）
-onActivated(() => {
-  refreshStatus()
-})
+const runningVersion = computed(() => store.runningVersion)
 </script>
 
 <template>
@@ -305,45 +70,11 @@ onActivated(() => {
       </template>
     </PageHeader>
 
-    <div v-if="listError" class="error-box">{{ listError }}</div>
+    <div v-if="store.listError" class="error-box">{{ store.listError }}</div>
 
-    <!-- 控制台 Tab -->
+    <!-- 控制台 Tab：状态头/提示条/引导行由 ManagedControlBar 按 adapter 投影渲染 -->
     <div v-show="activeMainTab === 'console'" class="tab-body">
-      <!-- 顶部整合条：状态 + 启停按钮，一行内解决问题 -->
-      <div class="control-bar">
-        <div class="control-top">
-          <div class="control-status">
-            <span class="gv-status-light" :class="state"></span>
-            <span class="status-word">{{ stateText }}</span>
-            <template v-if="isRunningOrStarting && runningVersion">
-              <span class="ver-pill">{{ runningVersion }}</span>
-              <span v-if="snap?.pid" class="mono pid-tag">PID {{ snap.pid }}</span>
-            </template>
-            <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
-          </div>
-          <div class="control-btns">
-            <button
-              class="btn btn-secondary btn-small"
-              :disabled="busy || state === 'starting'"
-              :title="state === 'running' ? '唤起托管实例窗口' : isExternal ? '唤回已有窗口，无窗可聚焦时另开独立新窗' : state === 'starting' ? '启动中…' : '启动托管实例并打开浏览窗口'"
-              @click="openWindow"
-            >🗔 打开窗口</button>
-            <button
-              class="btn btn-danger-outline btn-small"
-              :disabled="busy || (state !== 'running' && state !== 'starting' && !isExternal)"
-              :title="isExternal ? '外部窗口请在其窗口内关闭（Hanxi 不代关）' : '优雅退出：向托管窗口投递关窗消息，设置随窗口落盘'"
-              @click="quitView"
-            >⏻ 退出</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 条件提示条 / 引导行 -->
-      <UiBanner v-if="banner" :tone="banner.tone">{{ banner.text }}</UiBanner>
-      <div v-else-if="state === 'stopped'" class="hint-line">
-        尚未运行：点击「打开窗口」启动托管实例，浏览 RAW/HEIC/WebP 等格式在它自己的窗口内完成（关窗即退）。便携托管实例的设置保存在版本目录内的 config.ini。
-      </div>
-      <div v-else-if="state === 'starting'" class="hint-line">正在拉起果核看图（极速内核，通常 1 秒内）…</div>
+      <ManagedControlBar :adapter="adapter" :store="store" :banner-slim="false" />
 
       <!-- 说明卡（可折叠） -->
       <details class="info-details">
@@ -355,56 +86,43 @@ onActivated(() => {
       </details>
     </div>
 
-    <!-- 联动与官网设置卡 -->
-    <div class="extras-card">
-      <div class="extras-row">
-        <label class="toggle-label">
-          <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
-          <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响托管实例；你自行打开的看图窗口从不受影响）</span></span>
-        </label>
-      </div>
-      <div class="repo-row">
-        <span class="k">官网</span>
-        <code class="mono repo-addr">{{ siteUrl }}</code>
-        <button class="link-button" @click="copySite">复制</button>
-        <button class="link-button" @click="openSite">浏览器打开</button>
-      </div>
-    </div>
+    <!-- 联动与官网设置卡（随关 + 官网行，条目文案在 adapter） -->
+    <ManagedExtrasCard :adapter="adapter" />
 
-    <!-- 版本管理 Tab -->
+    <!-- 版本管理 Tab（方言区：官方发布接口表，数据与动作全走 store） -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
       <div class="control-panel">
         <div class="meta-info">
-          <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 官方当前发布 {{ releases.length }} 个</span>
+          <span>已安装 <strong>{{ store.installed.length }}</strong> 个版本 · 官方当前发布 {{ store.releases.length }} 个</span>
           <span class="hint-dim">安装源为果核官方发布接口的 Windows x64 便携 zip（官方 MD5 + 字节数 + CRC + 布局四层校验），解压进隔离目录，不触碰系统</span>
           <span class="hint-dim">上游只发布当前版本、无历史列表；「导入本地」可把你机器上已有的便携目录（含设置）收纳进托管</span>
         </div>
         <div class="btn-group">
-          <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地目录</button>
-          <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadVersions">
-            {{ loading ? '刷新中…' : '↻ 刷新发布接口' }}
+          <button class="btn btn-secondary btn-small" @click="store.runImport()" :disabled="store.busy">⇥ 导入本地目录</button>
+          <button class="btn btn-secondary btn-small" :disabled="store.loading" @click="store.load()">
+            {{ store.loading ? '刷新中…' : '↻ 刷新发布接口' }}
           </button>
         </div>
       </div>
 
       <!-- 已安装版本 -->
-      <div class="section-title"><h3>已安装版本 ({{ installed.length }})</h3></div>
+      <div class="section-title"><h3>已安装版本 ({{ store.installed.length }})</h3></div>
 
-      <div v-if="installed.length === 0" class="empty-state first-use">
+      <div v-if="store.installed.length === 0" class="empty-state first-use">
         <p>尚未安装果核看图 —— 下载官方当前版本，或「导入本地目录」把现有便携目录收纳进来</p>
-        <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
-          安装最新版 {{ releases[0].version }}
+        <button v-if="store.releases.length" class="btn btn-primary" @click="download(store.releases[0])">
+          安装最新版 {{ store.releases[0].version }}
         </button>
-        <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新发布接口</button>
+        <button v-else-if="!store.loading" class="btn btn-secondary" @click="store.load()">↻ 刷新发布接口</button>
       </div>
 
       <div class="installed-grid">
-        <div v-for="v in installed" :key="v.version" class="installed-card" :class="{ 'card-active': activeVersion === v.version }">
+        <div v-for="v in store.installed" :key="v.version" class="installed-card" :class="{ 'card-active': store.activeVersion === v.version }">
           <div class="inst-card-top">
             <span class="ver-tag">{{ v.version }}</span>
             <div class="inst-badges">
-              <UiStatusChip v-if="activeVersion === v.version" tone="positive">使用中</UiStatusChip>
-              <UiStatusChip v-else-if="state === 'running' && runningVersion === v.version" tone="information">运行中</UiStatusChip>
+              <UiStatusChip v-if="store.activeVersion === v.version" tone="positive">使用中</UiStatusChip>
+              <UiStatusChip v-else-if="store.state === 'running' && runningVersion === v.version" tone="information">运行中</UiStatusChip>
               <UiStatusChip v-if="v.isImport" tone="information">本地导入</UiStatusChip>
               <UiStatusChip v-else tone="neutral">官方便携</UiStatusChip>
             </div>
@@ -415,13 +133,13 @@ onActivated(() => {
             <div class="meta-line" v-if="v.isImport && v.source"><span class="k">来源</span><span class="hint-dim">{{ v.source }}</span></div>
           </div>
           <div class="inst-actions">
-            <button v-if="activeVersion !== v.version" class="btn btn-primary btn-small" @click="setActive(v)">设为使用</button>
-            <button class="btn btn-secondary btn-small" @click="openDir(v.dir)">📂 打开位置</button>
+            <button v-if="store.activeVersion !== v.version" class="btn btn-primary btn-small" @click="store.runSetActive(v)">设为使用</button>
+            <button class="btn btn-secondary btn-small" @click="store.runOpenDir(v)">📂 打开位置</button>
             <button
               class="btn btn-danger-outline btn-small"
-              :disabled="state === 'running' && runningVersion === v.version"
-              :title="state === 'running' && runningVersion === v.version ? '请先退出托管实例' : ''"
-              @click="removeVersion(v)"
+              :disabled="store.state === 'running' && runningVersion === v.version"
+              :title="store.state === 'running' && runningVersion === v.version ? '请先退出托管实例' : ''"
+              @click="store.runRemove(v)"
             >卸载</button>
           </div>
         </div>
@@ -441,7 +159,7 @@ onActivated(() => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="rel in releases" :key="rel.version">
+            <tr v-for="rel in store.releases" :key="rel.version">
               <td><strong class="ver-name">{{ rel.version }}</strong></td>
               <td>
                 <UiStatusChip v-if="rel.isPre" tone="warning">beta</UiStatusChip>
@@ -456,19 +174,19 @@ onActivated(() => {
               </td>
               <td>{{ fmtSize(rel.size) }}</td>
               <td>
-                <div v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'" class="download-cell">
+                <div v-if="statusOf(rel) === 'downloading' && store.downloading[rel.version]!.stage === 'downloading'" class="download-cell">
                   <div class="dl-bar-wrap">
-                    <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
+                    <div class="dl-bar-inner" :style="{ width: `${stepOf(store.downloading[rel.version]!)}%` }"></div>
                   </div>
-                  <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
+                  <span class="dl-percent">{{ stepOf(store.downloading[rel.version]!) }}%</span>
                 </div>
                 <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
-                  <span v-if="downloading[rel.version]!.stage === 'verify'">MD5 校验…</span>
-                  <span v-else-if="downloading[rel.version]!.stage === 'extract'">解压安装…</span>
-                  <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
+                  <span v-if="store.downloading[rel.version]!.stage === 'verify'">MD5 校验…</span>
+                  <span v-else-if="store.downloading[rel.version]!.stage === 'extract'">解压安装…</span>
+                  <span v-else class="dl-error" :title="store.downloading[rel.version]!.message">{{ store.downloading[rel.version]!.message }}</span>
                 </div>
                 <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
-                  <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
+                  <span class="dl-error" :title="store.downloading[rel.version]!.message">{{ store.downloading[rel.version]!.message }}</span>
                 </div>
                 <button
                   v-if="statusOf(rel) === 'idle'"
@@ -479,7 +197,7 @@ onActivated(() => {
                 <button v-if="statusOf(rel) === 'error'" class="link-button" @click="download(rel)">重试</button>
               </td>
             </tr>
-            <tr v-if="releases.length === 0 && !loading">
+            <tr v-if="store.releases.length === 0 && !store.loading">
               <td colspan="5" class="empty-hint">官方发布接口暂不可达——可稍后点击「↻ 刷新发布接口」重试，或「导入本地目录」安装你已有的便携版</td>
             </tr>
           </tbody>
@@ -490,22 +208,15 @@ onActivated(() => {
 </template>
 
 <style scoped>
-/* 原子层已提供的类（.btn 家族/.tbl/.error-box/.empty-state/.mono/.link-button/
-   .header-row/.subtitle/.chip）副本已全部删除，由 components.css 接管。 */
+/* 页头/控制条/提示条/联动卡由 managed 组件 + components.css 全局原子接管
+   （原 .gv-status-light 复制体已由 .status-light 标准形替代）；
+   本页仅余方言版本 Tab 与私有形。 */
 .guoheview-view { display: flex; flex-direction: column; gap: 10px; }
 .tab-body { display: flex; flex-direction: column; gap: 10px; }
 
-/* ---------- 顶部整合控制条（control-bar 四件套由全局原子接管；
-   本视图原 gap:10px 散差按标准形 gap:8px 定档删除） ---------- */
-/* 信号灯类名带 gv- 前缀，与全局样式隔离（markeron 垂直字体事故教训） */
-.gv-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
-.gv-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
-.gv-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
-.gv-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
-.gv-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
-/* status-word/pid-tag/uptime-tag/control-btns 由全局原子接管 */
-/* 补差 against 全局原子 .ver-pill：版本胶囊数字等宽 */
-.ver-pill { font-variant-numeric: tabular-nums; }
+/* 补差 against 全局原子 .ver-pill：版本胶囊数字等宽（渲染在 ManagedControlBar
+   子件内部，父级 scoped 穿不过去，:deep 维持逐字同形） */
+.guoheview-view :deep(.ver-pill) { font-variant-numeric: tabular-nums; }
 
 /* ---------- 提示与说明卡（hint-line 原 line-height:1.6 散差按标准形定档删除；
    info-details/info-body p 由全局原子接管；本视图折叠标题为自名 .summary-text，非原子选择器，留局部） ---------- */
@@ -519,8 +230,8 @@ onActivated(() => {
 .control-panel { gap: 10px; flex-wrap: wrap; }
 /* meta-info/btn-group、section-title h3/empty-hint 由全局原子接管 */
 
-/* ---------- 已安装卡片（installed-grid/installed-card(.card-active)/ver-tag/inst-meta/
-   meta-line .k/table-container 由全局原子接管；本视图原 minmax(340px) 散差按标准形 minmax(320px) 定档删除） ---------- */
+/* ---------- 已安装卡片（installed-grid/installed-card(.card-active) 由全局原子接管；
+   本视图原 minmax(340px) 散差按标准形 minmax(320px) 定档删除） ---------- */
 /* 补差 against 全局原子 .inst-card-top / .inst-badges / .inst-actions：窄卡允许换行 */
 .inst-card-top { gap: 8px; flex-wrap: wrap; }
 .inst-badges { flex-wrap: wrap; }
@@ -528,7 +239,7 @@ onActivated(() => {
 /* 补差 against 全局原子 .meta-line：窄列允许收缩 */
 .meta-line { min-width: 0; }
 
-/* ---------- 远程表格 ---------- */
+/* ---------- 远程表格（table-container 由全局原子接管） ---------- */
 /* 补差 against 全局原子 .ver-name：版本名字符串（等宽数字） */
 .ver-name { font-variant-numeric: tabular-nums; }
 

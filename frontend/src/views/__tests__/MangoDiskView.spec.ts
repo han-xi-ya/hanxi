@@ -1,5 +1,8 @@
-// 特征测试：MangoDiskView（原版 GUI 纯托管 + 完整性漂移检测 + 双定时器 +
-// window.confirm/prompt 原生弹窗基线——迁移到 useConfirm/usePrompt 后机制变、语义不变）。
+// 特征测试（批 0 共享契约迁入件）：MangoDiskView 保留自绘版式（页头状态徽标、
+// 动态主钮、完整性优先级横幅、方言完整性表、自绘联动开关），编排面全部换接
+// useManagedConsole + adapter（src/adapters/mangodisk）。断言"做了什么"而非"怎么做"：
+// 启停动词（含成功双复刷/失败仅复刷版本）、卸载/导入确认文案、进度呈现、
+// 联动成功翻转语义、轮询与 KeepAlive 契约逐字保留，用例数不降。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -105,6 +108,7 @@ describe('MangoDiskView 控制台状态', () => {
     expect(wrapper.find('.banner').classes()).toContain('banner-ok')
     expect(wrapper.find('.banner').text()).toContain('正在运行')
     expect(wrapper.find('.md-control-copy').text()).toContain('PID 1234')
+    expect(wrapper.findAll('.md-actions button')[1].attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 
@@ -114,6 +118,7 @@ describe('MangoDiskView 控制台状态', () => {
     expect(wrapper.find('.banner').classes()).toContain('banner-warn')
     expect(wrapper.find('.banner').text()).toContain('外部实例')
     expect(wrapper.find('.btn-primary').text()).toBe('打开窗口')
+    expect(wrapper.findAll('.md-actions button')[1].attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
@@ -137,6 +142,16 @@ describe('MangoDiskView 控制台状态', () => {
     expect(svc.OpenWindow.mock.calls.length).toBe(1)
     expect(svc.GetStatus.mock.calls.length).toBeGreaterThan(1)
     expect(svc.ListInstalledVersions.mock.calls.length).toBeGreaterThan(1)
+    expect(useToast().toastMsg.value).toBe('窗口已唤起')
+    wrapper.unmount()
+
+    // 失败路径：toast 原始错误串，复刷版本区（快照不强刷——现状口径）
+    svc.OpenWindow.mockRejectedValue(new Error('EXE 完整性无效'))
+    const listsBefore = svc.ListInstalledVersions.mock.calls.length
+    await wrapper.find('.btn-primary').trigger('click')
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toContain('EXE 完整性无效')
+    expect(svc.ListInstalledVersions.mock.calls.length).toBeGreaterThan(listsBefore)
     wrapper.unmount()
   })
 })
@@ -161,7 +176,7 @@ describe('MangoDiskView 版本仓库', () => {
     wrapper.unmount()
   })
 
-  it('卸载走确认：取消不调后端，确认则 RemoveVersion + toast（机制已由 window.confirm 收编至 useConfirm，语义不变）', async () => {
+  it('卸载走确认：取消不调后端，确认则 RemoveVersion + toast（useConfirm 文案逐字）', async () => {
     const { confirmState, settleConfirm } = useConfirm()
     stubDefaults(snapOf(), [installedOf('1.0.0')], [], '')
     svc.RemoveVersion.mockResolvedValue(undefined)
@@ -173,6 +188,7 @@ describe('MangoDiskView 版本仓库', () => {
     expect(confirmState.open).toBe(true)
     expect(confirmState.options.title).toContain('MangoDisk 1.0.0')
     expect(confirmState.options.description).toContain('不会删除 %LOCALAPPDATA%')
+    expect(confirmState.options.confirmLabel).toBe('卸载')
     expect(confirmState.options.tone).toBe('danger')
     settleConfirm(false)
     await flushMicrotasks()
@@ -186,7 +202,7 @@ describe('MangoDiskView 版本仓库', () => {
     wrapper.unmount()
   })
 
-  it('导入本地：prompt 取消/空串不动后端；有值 trim 后 ImportLocal（机制已由 window.prompt 收编至 usePrompt，语义不变）', async () => {
+  it('导入本地：prompt 取消/空串不动后端；有值 trim 后 ImportLocal（usePrompt 语义不变）', async () => {
     const { promptState, settlePrompt } = usePrompt()
     stubDefaults(snapOf(), [], [], '')
     svc.ImportLocal.mockResolvedValue(installedOf('9.9.9'))
@@ -210,10 +226,11 @@ describe('MangoDiskView 版本仓库', () => {
     settlePrompt('  C:\\x\\MangoDisk.exe  ')
     await flushMicrotasks()
     expect(svc.ImportLocal.mock.calls[0]).toEqual(['C:\\x\\MangoDisk.exe'])
+    expect(useToast().toastMsg.value).toBe('已导入 9.9.9')
     wrapper.unmount()
   })
 
-  it('退出联动开关：成功翻转+toast；失败回滚不翻转', async () => {
+  it('退出联动开关：成功翻转+toast；失败不翻转', async () => {
     stubDefaults(snapOf(), [installedOf('1.1.0')], [], '1.1.0')
     svc.SetFollowOnExit.mockResolvedValue(undefined)
     const { wrapper } = await mountView()
@@ -223,6 +240,7 @@ describe('MangoDiskView 版本仓库', () => {
     await flushMicrotasks()
     expect(svc.SetFollowOnExit).toHaveBeenCalledWith(false)
     expect(wrapper.find('.md-switch').text()).toBe('已关闭')
+    expect(useToast().toastMsg.value).toBe('已关闭退出联动（下次启动生效）')
     svc.SetFollowOnExit.mockRejectedValue(new Error('存储锁'))
     await wrapper.find('.md-switch').trigger('click')
     await flushMicrotasks()
@@ -230,7 +248,7 @@ describe('MangoDiskView 版本仓库', () => {
     wrapper.unmount()
   })
 
-  it('远程下载：进度事件渲染百分比条；done 800ms 后消失并复刷列表', async () => {
+  it('远程下载：进度事件渲染百分比条；done 即复刷列表、800ms 后清除票条', async () => {
     vi.useFakeTimers()
     try {
       stubDefaults(snapOf(), [], [releaseOf('1.2.0')], '')
@@ -240,15 +258,16 @@ describe('MangoDiskView 版本仓库', () => {
       runtime.handlers['mangodisk:version-download']({
         data: { version: '1.2.0', stage: 'downloading', done: 40, total: 100 },
       })
-      await nextTick()
+      await vi.advanceTimersByTimeAsync(0)
       expect(wrapper.find('.md-progress').exists()).toBe(true)
+      expect(wrapper.find('.md-progress').attributes('aria-valuenow')).toBe('40')
+      const lists = svc.ListInstalledVersions.mock.calls.length
       runtime.handlers['mangodisk:version-download']({
         data: { version: '1.2.0', stage: 'done', done: 100, total: 100 },
       })
-      await nextTick()
-      const lists = svc.ListInstalledVersions.mock.calls.length
       await vi.advanceTimersByTimeAsync(820)
-      expect(svc.ListInstalledVersions.mock.calls.length).toBe(lists + 1)
+      expect(svc.ListInstalledVersions.mock.calls.length).toBeGreaterThan(lists) // done 复刷
+      expect(wrapper.find('.md-progress').exists()).toBe(false) // 800ms 后票条清除
       wrapper.unmount()
     } finally {
       vi.useRealTimers()
@@ -284,4 +303,3 @@ describe('MangoDiskView 版本仓库', () => {
     wrapper.unmount()
   })
 })
-

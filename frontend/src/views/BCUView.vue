@@ -1,42 +1,40 @@
 <script setup lang="ts">
-// 状态 / 版本管理 / 下载进度 / 时长 ticker / 生命周期
-import { ref, computed, watch, onMounted } from 'vue'
-import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
-import type { BCURelease, BCUVersionInfo } from '../../bindings/hanxi/internal/modules/bcu/version/models'
-import type { Snapshot } from '../../bindings/hanxi/internal/modules/bcu/instance/models'
-import type { ControlOutcome, QuitOutcome, DotnetEnv } from '../../bindings/hanxi/internal/modules/bcu/models'
-import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/bcu/version/models'
-import { useToast } from '../composables/useToast'
-import { useWailsEvent } from '../composables/useWailsEvent'
-import { usePolling } from '../composables/usePolling'
-import { loadManagedVersions } from '../composables/loadManagedVersions'
-import { useClipboard } from '../composables/useClipboard'
-import { useConfirm } from '../composables/useConfirm'
-import { usePrompt } from '../composables/usePrompt'
-import { getErrorMessage } from '../utils/errors'
-import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
-import { toolStateMeta } from '../constants/status'
+// BCU 控制台（Wave 5 · 批 1 收敛件，模式照抄 CCSwitchView）：共享面全部进托管
+// 控制台家族——adapter（src/adapters/bcu）承载业务投影（RPC/事件/文案/确认输入），
+// useManagedConsole 单源状态轮询/uptime/下载进度 map/busy 闩编排，
+// ManagedControlBar 管状态头与启停钮，ManagedExtrasCard 管联动辅助卡。
+// 方言区（依 everything 通道表先例，DOM 与文案零改动）：双变体下载表——
+// 共享面板单钮形态表达不下「便携版/精简版」双入口与 version|variant 复合进度键；
+// .NET 环境诊断为版本 Tab 推荐变体的输入，留在原 meta 位（验证 DOM 等价最稳：
+// 原位零迁移，adapter.hint 只读快照无法承载环境态）。方言区全部消费 store 现值。
+import { computed, onMounted, ref } from 'vue'
+import type { BCURelease } from '../../bindings/hanxi/internal/modules/bcu/version/models'
+import type { DotnetEnv } from '../../bindings/hanxi/internal/modules/bcu/models'
+import { createBCUAdapter, variantRelease, type BCUVariant } from '../adapters/bcu'
+import { useManagedConsole } from '../components/managed/store'
+import ManagedControlBar from '../components/managed/ManagedControlBar.vue'
+import ManagedExtrasCard from '../components/managed/ManagedExtrasCard.vue'
+import type { NormalizedProgress } from '../components/managed/adapter'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
-import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
-import ElevateRestart from '../components/ElevateRestart.vue'
 import UiEmptyState from '../components/ui/UiEmptyState.vue'
+import ElevateRestart from '../components/ElevateRestart.vue'
+import { getErrorMessage } from '../utils/errors'
+import { fmtSize, fmtDate } from '../utils/format'
 
-// ---------- 状态 ----------
-const snap = ref<Snapshot | null>(null)
-const releases = ref<BCURelease[]>([])
-const installed = ref<BCUVersionInfo[]>([])
-const activeVersion = ref('')
-const loading = ref(false)
-const listError = ref('')
-const busy = ref(false)
-const uptimeSec = ref(0)
+const adapter = createBCUAdapter()
+const store = useManagedConsole(adapter)
 
-// 下载进度 map（版本+变体复合索引，防同版本双变体互相覆盖）
-const downloading = ref<Record<string, DownloadProgress>>({})
+// 顶层主选项卡：console = 控制台，versions = 版本管理（与各工具模块同构）
+const activeMainTab = ref<'console' | 'versions'>('console')
 
-// .NET 桌面运行时环境（框架依赖变体的可用性与推荐依据）
+const MAIN_TABS = [
+  { key: 'console', label: '🧹 控制台' },
+  { key: 'versions', label: '📦 版本管理' },
+]
+
+// ---------- .NET 环境诊断（方言版本 Tab：推荐变体输入） ----------
 const dotnetEnv = ref<DotnetEnv | null>(null)
 const envLoading = ref(false)
 
@@ -47,84 +45,38 @@ const recommendedVariant = computed<'portable' | 'fdd' | null>(() => {
   return dotnetEnv.value.hasNet8 ? 'fdd' : 'portable'
 })
 
-const { showToast } = useToast()
-const { confirm } = useConfirm()
-const { prompt } = usePrompt()
-const { copyWithToast } = useClipboard()
-
-// 顶层主选项卡：console = 控制台，versions = 版本管理（与各工具模块同构）
-const activeMainTab = ref<'console' | 'versions'>('console')
-
-const MAIN_TABS = [
-  { key: 'console', label: '🧹 控制台' },
-  { key: 'versions', label: '📦 版本管理' },
-]
-
-// ---------- 派生状态 ----------
-const state = computed(() => snap.value?.state ?? '')
-const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
-const isExternal = computed(() => state.value === 'external')
-
-// 五态通用文案接 constants/status 单一来源（§9.5-5）；业务扩展话术视图自行覆写。
-const stateText = computed(() => toolStateMeta(state.value).text)
-
-const runningVersion = computed(() => snap.value?.version ?? '')
-
-// 条件提示条（三个变体互斥）
-const banner = computed(() => {
-  if (state.value === 'external') {
-    return {
-      tone: 'warn' as const,
-      text: '检测到外部 BCUninstaller 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 BCU 窗口内关闭。',
-    }
+async function loadDotnetEnv() {
+  envLoading.value = true
+  try {
+    dotnetEnv.value = (await adapter.getDotnetEnv()) ?? null
+  } catch (e) {
+    console.warn('bcu GetDotnetEnvironment failed:', getErrorMessage(e))
+  } finally {
+    envLoading.value = false
   }
-  if (state.value === 'failed') {
-    return { tone: 'error' as const, text: snap.value?.error || 'BCU 异常退出' }
-  }
-  if (state.value === 'running') {
-    return {
-      tone: 'ok' as const,
-      text: 'BCU 正在运行：批量卸载在其窗口内完成，设置数据（BCUninstaller.settings）保存在版本目录内。',
-    }
-  }
-  return null
-})
+}
 
 // 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
-const needsElevate = computed(() => state.value === 'failed' && (snap.value?.error || '').includes('管理员'))
+const needsElevate = computed(() => store.state === 'failed' && (store.snap?.error || '').includes('管理员'))
 
-// ---------- 数据加载 ----------
-async function loadVersions() {
-  await loadManagedVersions({
-    remote: BCUAPI.ListReleases,
-    local: BCUAPI.ListInstalledVersions,
-    active: BCUAPI.GetActiveVersion,
-    setRemote: value => { releases.value = value },
-    setLocal: value => { installed.value = value },
-    setActive: value => { activeVersion.value = value },
-    setLoading: value => { loading.value = value },
-    setError: value => { listError.value = value },
-  })
+// ---------- 方言表格投影（复合进度键 version|variant，防同版本双变体互相覆盖） ----------
+const releases = computed(() => store.releases as BCURelease[])
+const installed = computed(() => store.installed)
+
+// 列内推荐变体的下载按钮样式与提示
+function variantLabel(variant: string): string {
+  return variant === 'fdd' ? '精简版' : '便携版'
 }
 
-async function refreshStatus() {
-  try {
-    snap.value = await BCUAPI.GetStatus()
-  } catch (e) {
-    // 轮询静默失败：保留上次快照即可
-    console.warn('bcu GetStatus failed:', getErrorMessage(e))
-  }
-}
-
-function stepOf(p: DownloadProgress): number {
+function stepOf(p: NormalizedProgress): number {
   if (p.stage === 'done') return 100
   if (p.stage !== 'downloading') return 0
   if (!p.total) return 0
   return Math.min(99, Math.round((p.done / p.total) * 100))
 }
 
-function statusOf(rel: BCURelease, variant: 'portable' | 'fdd'): 'installed' | 'downloading' | 'error' | 'idle' {
-  const p = downloading.value[`${rel.version}|${variant}`]
+function statusOf(rel: BCURelease, variant: BCUVariant): 'installed' | 'downloading' | 'error' | 'idle' {
+  const p = store.downloading[`${rel.version}|${variant}`]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
   // 同版本任一形态已装则该版本整体视为已装（目录共享）
   const hit = installed.value.find(v => v.version === rel.version)
@@ -132,7 +84,7 @@ function statusOf(rel: BCURelease, variant: 'portable' | 'fdd'): 'installed' | '
 }
 
 // 状态列的整体判定：任一形态 downloading/error 即反映（双变体并存场景）
-const VARIANTS = ['portable', 'fdd'] as const
+const VARIANTS: readonly BCUVariant[] = ['portable', 'fdd']
 
 function statusOverall(rel: BCURelease): 'installed' | 'downloading' | 'error' | 'idle' {
   for (const v of VARIANTS) {
@@ -142,211 +94,17 @@ function statusOverall(rel: BCURelease): 'installed' | 'downloading' | 'error' |
   return statusOf(rel, 'portable')
 }
 
-async function loadDotnetEnv() {
-  envLoading.value = true
-  try {
-    dotnetEnv.value = await BCUAPI.GetDotnetEnvironment()
-  } catch (e) {
-    console.warn('bcu GetDotnetEnvironment failed:', getErrorMessage(e))
-  } finally {
-    envLoading.value = false
-  }
-}
-
-// ---------- 控制操作 ----------
-async function openWindow() {
-  if (busy.value) return
-  busy.value = true
-  try {
-    const out: ControlOutcome = await BCUAPI.OpenWindow()
-    showToast(out.message)
-    await refreshStatus()
-  } catch (e) {
-    showToast(getErrorMessage(e))
-    await refreshStatus()
-  } finally {
-    busy.value = false
-  }
-}
-
-async function quitBCU() {
-  if (busy.value) return
-  busy.value = true
-  try {
-    const out: QuitOutcome = await BCUAPI.Quit()
-    showToast(out.message)
-    await refreshStatus()
-  } catch (e) {
-    showToast(`退出失败: ${getErrorMessage(e)}`)
-    await refreshStatus()
-  } finally {
-    busy.value = false
-  }
-}
-
-// ---------- 版本管理操作 ----------
-function variantLabel(variant: string): string {
-  return variant === 'fdd' ? '精简版' : '便携版'
-}
-
-async function download(rel: BCURelease, variant: string) {
-  try {
-    const res = await BCUAPI.DownloadVersion(rel.version, variant)
-    if (res === 'already-installed') {
-      showToast(`版本 ${rel.version} 已安装`)
-      await loadVersions()
-    }
-  } catch (e) {
-    showToast(`下载失败: ${getErrorMessage(e)}`)
-  }
-}
-
-// 列内推荐变体的下载按钮样式与提示
-function isRecommended(rel: BCURelease, variant: string): boolean {
+function isRecommended(rel: BCURelease, variant: BCUVariant): boolean {
   return recommendedVariant.value === variant && !!rel.fddName
 }
 
-async function setActive(v: BCUVersionInfo) {
-  try {
-    const ver = await BCUAPI.SetActiveVersion(v.version)
-    activeVersion.value = ver
-    showToast(`已将 ${ver} 设为使用版本`)
-  } catch (e) {
-    showToast(`设置失败: ${getErrorMessage(e)}`)
-  }
+function downloadVariant(rel: BCURelease, variant: BCUVariant) {
+  void store.runDownload(variantRelease(rel, variant))
 }
 
-async function openDir(path: string) {
-  try {
-    await BCUAPI.OpenDir(path)
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function removeVersion(v: BCUVersionInfo) {
-  const ok = await confirm({
-    title: `确定卸载 BCU ${v.version}？`,
-    description: '该版本隔离目录（含卸载历史与设置数据）将被删除，不可恢复。',
-    tone: 'danger',
-  })
-  if (!ok) return
-  try {
-    await BCUAPI.RemoveVersion(v.version)
-    showToast(`已卸载 ${v.version}`)
-    await loadVersions()
-  } catch (e) {
-    showToast(`卸载失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function importLocal() {
-  const path = await prompt({
-    title: '导入本地安装',
-    label: '请输入 BCU 便携目录完整路径（含 BCUninstaller.exe）',
-    description: '将整套迁入：exe + 运行时 + BCUninstaller.settings 卸载历史均保留',
-    placeholder: 'C:\\Program Files\\BCUninstaller',
-  })
-  if (!path) return
-  try {
-    busy.value = true
-    const info = await BCUAPI.ImportLocal(path.trim())
-    showToast(`已导入 BCU ${info.version}（设置与数据一并迁移）`)
-    await loadVersions()
-  } catch (e) {
-    showToast(`导入失败: ${getErrorMessage(e)}`)
-  } finally {
-    busy.value = false
-  }
-}
-
-// ---------- 时长 ticker 与状态轮询（usePolling 内置 KeepAlive 生命周期契约） ----------
-const statusPolling = usePolling(refreshStatus, 2500) // 状态兜底轮询（事件推送之外）
-usePolling(() => {
-  if (snap.value?.state === 'running' && snap.value.startedAt) {
-    const started = new Date(snap.value.startedAt).getTime()
-    if (!Number.isNaN(started)) {
-      uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
-    }
-  }
-}, 1000, { immediateFirstRun: false })
-
-// 停止轮询（切后台/卸载）时运行时长归零——对齐迁移前 stopTimers 语义
-watch(statusPolling.isPolling, (running) => {
-  if (!running) uptimeSec.value = 0
-})
-
-// ---------- 联动开关 / 桌面快捷方式 / GitHub 仓库 ----------
-const followOnExit = ref(false)
-const repoUrl = ref('')
-
-async function loadExtras() {
-  try {
-    const [fo, u] = await Promise.all([BCUAPI.GetFollowOnExit(), BCUAPI.RepositoryURL()])
-    followOnExit.value = fo
-    repoUrl.value = u
-  } catch (e) {
-    console.warn('loadExtras failed:', getErrorMessage(e))
-  }
-}
-
-async function onFollowToggle() {
-  const next = !followOnExit.value
-  followOnExit.value = next // 用户点击已将勾选框翻转，ref 同步跟进，保持绑定状态一致
-  try {
-    await BCUAPI.SetFollowOnExit(next)
-    showToast(next ? '已开启：Hanxi 退出时一并关闭该工具' : '已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
-  } catch (e) {
-    followOnExit.value = !next // 失败回滚：ref 变化驱动勾选框复位到后端真实值
-    showToast('设置失败: ' + getErrorMessage(e))
-  }
-}
-
-async function createShortcut() {
-  try {
-    await BCUAPI.CreateDesktopShortcut()
-    showToast('桌面快捷方式已创建（指向当前使用版本）')
-  } catch (e) {
-    showToast('创建快捷方式失败: ' + getErrorMessage(e))
-  }
-}
-
-async function copyRepo() {
-  await copyWithToast(repoUrl.value, '仓库地址已复制')
-}
-
-async function openRepo() {
-  try {
-    await BCUAPI.OpenRepository()
-  } catch (e) {
-    showToast('打开失败: ' + getErrorMessage(e))
-  }
-}
-
-// ---------- 事件订阅（useWailsEvent 自动注销）与初始装载 ----------
-useWailsEvent<DownloadProgress>('bcu:version-download', (t) => {
-  if (!t || !t.version) return
-  const key = `${t.version}|${t.variant || 'portable'}`
-  downloading.value = { ...downloading.value, [key]: t }
-  if (t.stage === 'done') {
-    setTimeout(() => {
-      const next = { ...downloading.value }
-      delete next[key]
-      downloading.value = next
-    }, 800)
-    loadVersions()
-  }
-})
-
-useWailsEvent<Snapshot>('bcu:instance-state', (s) => {
-  if (!s) return
-  snap.value = s
-  if (s.state !== 'running') uptimeSec.value = 0
-})
-
+// ---------- 初始装载（状态首帧与版本区由 store 的 mounted 即触发） ----------
 onMounted(() => {
-  // 状态首帧由 usePolling 的 mounted 即触发（immediateFirstRun）
-  void Promise.all([loadVersions(), loadDotnetEnv(), loadExtras()])
+  void loadDotnetEnv()
 })
 </script>
 
@@ -358,246 +116,185 @@ onMounted(() => {
       </template>
     </PageHeader>
 
-    <div v-if="listError" class="error-box">{{ listError }}</div>
+    <div v-if="store.listError" class="error-box">{{ store.listError }}</div>
 
-    <!-- 控制台 Tab -->
+    <!-- 控制台 Tab：状态头/提示条/引导行由 ManagedControlBar 按 adapter 投影渲染 -->
     <div v-show="activeMainTab === 'console'" class="tab-body">
-    <!-- 顶部整合条：状态 + 启停按钮，一行内解决问题 -->
-    <div class="control-bar">
-      <div class="control-top">
-        <div class="control-status">
-          <span class="bcu-status-light" :class="state"></span>
-          <span class="status-word">{{ stateText }}</span>
-          <template v-if="isRunningOrStarting && runningVersion">
-            <span class="ver-pill">{{ runningVersion }}</span>
-            <span v-if="snap?.pid" class="mono pid-tag">PID {{ snap.pid }}</span>
-          </template>
-          <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
+      <ManagedControlBar :adapter="adapter" :store="store" />
+      <ElevateRestart v-if="needsElevate" route="/ext/bcu" />
+
+      <!-- 说明卡（可折叠） -->
+      <details class="info-details">
+        <summary class="info-summary">什么是 BCU</summary>
+        <div class="info-body">
+          <p>开源批量卸载工具（<a class="inline-link" href="https://github.com/BCUninstaller/Bulk-Crap-Uninstaller" target="_blank" rel="noopener">BCUninstaller/Bulk-Crap-Uninstaller</a>，Apache-2.0）：静默卸载、残留清理、孤儿检测、开机项管理一站式完成。版本下载自官方 GitHub Releases（sha256 四层校验），启停受 JobObject 管控。</p>
+          <p class="hint-dim">版本目录携带各自独立的 BCUninstaller.settings，「导入本地」整套搬入；「设为使用」在多版本间切换。</p>
         </div>
-        <div class="control-btns">
-          <UiButton
-            variant="secondary"
-            small
-            :disabled="busy || state === 'starting'"
-            :title="state === 'running' ? '唤起窗口' : state === 'starting' ? '启动中…' : '启动 BCU 并打开主窗口'"
-            @click="openWindow"
-          >🗔 打开窗口</UiButton>
-          <UiButton
-            variant="danger"
-            small
-            :disabled="busy || (state !== 'running' && state !== 'starting' && !isExternal)"
-            :title="isExternal ? '外部实例请在 BCU 窗口内关闭' : '关闭窗口消息（挂起时强杀兜底）'"
-            @click="quitBCU"
-          >⏻ 退出</UiButton>
-        </div>
-      </div>
+      </details>
     </div>
 
-    <!-- 条件提示条 / 引导行 -->
-    <UiBanner v-if="banner" :tone="banner.tone" class="slim">{{ banner.text }}</UiBanner>
-    <ElevateRestart v-if="needsElevate" route="/ext/bcu" />
-    <div v-else-if="state === 'stopped'" class="hint-line">
-      尚未运行：点击「打开窗口」启动 BCU，批量卸载在其窗口内完成。便携包自含 .NET 运行时（约 76MB），无需系统预装。BCU 上游 manifest 强制管理员权限：需以管理员身份运行 Hanxi 方可启动（否则系统直拒，不代弹 UAC）。
-    </div>
-    <div v-else-if="state === 'starting'" class="hint-line">正在拉起 BCU（自包含 .NET 首次启动约 3~10 秒）…</div>
+    <!-- 联动与辅助设置卡（随关/桌面快捷方式/GitHub 仓库，条目文案在 adapter） -->
+    <ManagedExtrasCard :adapter="adapter" />
 
-    <!-- 说明卡（可折叠） -->
-    <details class="info-details">
-      <summary class="info-summary">什么是 BCU</summary>
-      <div class="info-body">
-        <p>开源批量卸载工具（<a class="inline-link" href="https://github.com/BCUninstaller/Bulk-Crap-Uninstaller" target="_blank" rel="noopener">BCUninstaller/Bulk-Crap-Uninstaller</a>，Apache-2.0）：静默卸载、残留清理、孤儿检测、开机项管理一站式完成。版本下载自官方 GitHub Releases（sha256 四层校验），启停受 JobObject 管控。</p>
-        <p class="hint-dim">版本目录携带各自独立的 BCUninstaller.settings，「导入本地」整套搬入；「设为使用」在多版本间切换。</p>
-      </div>
-    </details>
-    </div>
-
-    <!-- 联动与辅助设置卡 -->
-    <div class="extras-card">
-      <div class="extras-row">
-        <label class="toggle-label">
-          <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
-          <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具）</span></span>
-        </label>
-        <UiButton variant="secondary" small @click="createShortcut">🖥 创建桌面快捷方式</UiButton>
-      </div>
-      <div class="repo-row">
-        <span class="k">GitHub 仓库</span>
-        <code class="mono repo-addr">{{ repoUrl }}</code>
-        <button class="link-button" @click="copyRepo">复制</button>
-        <button class="link-button" @click="openRepo">浏览器打开</button>
-      </div>
-    </div>
-    <!-- 版本管理 Tab -->
+    <!-- 版本管理 Tab（方言区：双变体表 + .NET 环境诊断，数据与动作全走 store） -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
-    <div class="control-panel">
-      <div class="meta-info">
-        <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程版本 {{ releases.length }} 个</span>
-        <span class="hint-dim">两种形态：自包含便携版（内嵌 .NET 运行时，76MB）+ 精简版（框架依赖，12MB，需本机 .NET 8 桌面运行时）——均经官方 digest 四层校验</span>
-        <span class="hint-dim">2024 年末前的旧版本无官方哈希不入列表（完整性第一优先）；6.1 起资产版本号与 tag 对齐校验防串版</span>
-        <!-- .NET 环境徽标：决定推荐变体 -->
-        <span v-if="envLoading" class="hint-dim">正在检测本机 .NET 桌面运行时…</span>
-        <span v-else-if="dotnetEnv" class="dotnet-banner" :class="dotnetEnv.hasNet8 ? 'ok' : 'warn'">
-          <template v-if="dotnetEnv.hasNet8">
-            本机已装 .NET 8 桌面运行时（{{ dotnetEnv.desktopVersions?.join(' / ') }}）→ 推荐下载<b>精简版</b>（12MB，省约 60MB）
-          </template>
-          <template v-else>
-            未检测到 .NET 8 桌面运行时 → 推荐下载<b>自包含便携版</b>（76MB，免依赖）。精简版安装后会无法启动
-          </template>
-        </span>
+      <div class="control-panel">
+        <div class="meta-info">
+          <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程版本 {{ releases.length }} 个</span>
+          <span class="hint-dim">两种形态：自包含便携版（内嵌 .NET 运行时，76MB）+ 精简版（框架依赖，12MB，需本机 .NET 8 桌面运行时）——均经官方 digest 四层校验</span>
+          <span class="hint-dim">2024 年末前的旧版本无官方哈希不入列表（完整性第一优先）；6.1 起资产版本号与 tag 对齐校验防串版</span>
+          <!-- .NET 环境徽标：决定推荐变体 -->
+          <span v-if="envLoading" class="hint-dim">正在检测本机 .NET 桌面运行时…</span>
+          <span v-else-if="dotnetEnv" class="dotnet-banner" :class="dotnetEnv.hasNet8 ? 'ok' : 'warn'">
+            <template v-if="dotnetEnv.hasNet8">
+              本机已装 .NET 8 桌面运行时（{{ dotnetEnv.desktopVersions?.join(' / ') }}）→ 推荐下载<b>精简版</b>（12MB，省约 60MB）
+            </template>
+            <template v-else>
+              未检测到 .NET 8 桌面运行时 → 推荐下载<b>自包含便携版</b>（76MB，免依赖）。精简版安装后会无法启动
+            </template>
+          </span>
+        </div>
+        <div class="btn-group">
+          <UiButton variant="secondary" small :disabled="store.busy" @click="store.runImport()">⇥ 导入本地安装</UiButton>
+          <UiButton variant="secondary" small :disabled="store.loading" @click="store.load()">
+            {{ store.loading ? '刷新中…' : '↻ 刷新远程列表' }}
+          </UiButton>
+        </div>
       </div>
-      <div class="btn-group">
-        <UiButton variant="secondary" small :disabled="busy" @click="importLocal">⇥ 导入本地安装</UiButton>
-        <UiButton variant="secondary" small :disabled="loading" @click="loadVersions">
-          {{ loading ? '刷新中…' : '↻ 刷新远程列表' }}
+
+      <!-- 已安装版本 -->
+      <div class="section-title"><h3>已安装版本 ({{ installed.length }})</h3></div>
+
+      <UiEmptyState v-if="installed.length === 0" class="first-use">
+        <p>尚未安装 BCU —— 下载官方便携版，或「导入本地安装」把现有 BCU 收纳进来</p>
+        <UiButton v-if="releases.length && recommendedVariant" variant="primary" @click="downloadVariant(releases[0], recommendedVariant)">
+          下载最新版 {{ releases[0].version }}（{{ variantLabel(recommendedVariant) }}，推荐）
         </UiButton>
-      </div>
-    </div>
+        <UiButton v-else-if="releases.length" variant="primary" @click="downloadVariant(releases[0], 'portable')">
+          下载最新版 {{ releases[0].version }}
+        </UiButton>
+        <UiButton v-else-if="!store.loading" variant="secondary" @click="store.load()">↻ 刷新远程列表</UiButton>
+      </UiEmptyState>
 
-    <!-- 已安装版本 -->
-    <div class="section-title"><h3>已安装版本 ({{ installed.length }})</h3></div>
-
-    <UiEmptyState v-if="installed.length === 0" class="first-use">
-      <p>尚未安装 BCU —— 下载官方便携版，或「导入本地安装」把现有 BCU 收纳进来</p>
-      <UiButton v-if="releases.length && recommendedVariant" variant="primary" @click="download(releases[0], recommendedVariant)">
-        下载最新版 {{ releases[0].version }}（{{ variantLabel(recommendedVariant) }}，推荐）
-      </UiButton>
-      <UiButton v-else-if="releases.length" variant="primary" @click="download(releases[0], 'portable')">
-        下载最新版 {{ releases[0].version }}
-      </UiButton>
-      <UiButton v-else-if="!loading" variant="secondary" @click="loadVersions">↻ 刷新远程列表</UiButton>
-    </UiEmptyState>
-
-    <div class="installed-grid">
-      <div v-for="v in installed" :key="v.version" class="installed-card" :class="{ 'card-active': activeVersion === v.version }">
-        <div class="inst-card-top">
-          <span class="ver-tag">{{ v.version }}</span>
-          <div class="inst-badges">
-            <span v-if="activeVersion === v.version" class="badge badge-active">使用中</span>
-            <span v-else-if="state === 'running' && runningVersion === v.version" class="badge badge-running">运行中</span>
-            <span v-if="v.isImport" class="badge badge-import">本地导入</span>
-            <span v-else class="badge badge-official">官方下载</span>
+      <div class="installed-grid">
+        <div v-for="v in installed" :key="v.version" class="installed-card" :class="{ 'card-active': store.activeVersion === v.version }">
+          <div class="inst-card-top">
+            <span class="ver-tag">{{ v.version }}</span>
+            <div class="inst-badges">
+              <span v-if="store.activeVersion === v.version" class="badge badge-active">使用中</span>
+              <span v-else-if="store.state === 'running' && store.runningVersion === v.version" class="badge badge-running">运行中</span>
+              <span v-if="v.isImport" class="badge badge-import">本地导入</span>
+              <span v-else class="badge badge-official">官方下载</span>
+            </div>
+          </div>
+          <div class="inst-meta">
+            <div class="meta-line"><span class="k">路径</span><code class="mono">{{ v.exePath }}</code></div>
+            <div class="meta-line"><span class="k">大小</span><span>{{ fmtSize(v.size) }} · 安装于 {{ v.installedAt }}</span></div>
+            <div class="meta-line" v-if="v.isImport && v.source"><span class="k">来源</span><span class="hint-dim">{{ v.source }}</span></div>
+          </div>
+          <div class="inst-actions">
+            <UiButton v-if="store.activeVersion !== v.version" variant="primary" small @click="store.runSetActive(v)">设为使用</UiButton>
+            <UiButton variant="secondary" small @click="store.runOpenDir(v)">📂 打开位置</UiButton>
+            <UiButton
+              variant="danger"
+              small
+              :disabled="store.state === 'running' && store.runningVersion === v.version"
+              :title="store.state === 'running' && store.runningVersion === v.version ? '请先退出 BCU' : ''"
+              @click="store.runRemove(v)"
+            >卸载</UiButton>
           </div>
         </div>
-        <div class="inst-meta">
-          <div class="meta-line"><span class="k">路径</span><code class="mono">{{ v.exePath }}</code></div>
-          <div class="meta-line"><span class="k">大小</span><span>{{ fmtSize(v.size) }} · 安装于 {{ v.installedAt }}</span></div>
-          <div class="meta-line" v-if="v.isImport && v.source"><span class="k">来源</span><span class="hint-dim">{{ v.source }}</span></div>
-        </div>
-        <div class="inst-actions">
-          <UiButton v-if="activeVersion !== v.version" variant="primary" small @click="setActive(v)">设为使用</UiButton>
-          <UiButton variant="secondary" small @click="openDir(v.dir)">📂 打开位置</UiButton>
-          <UiButton
-            variant="danger"
-            small
-            :disabled="state === 'running' && runningVersion === v.version"
-            :title="state === 'running' && runningVersion === v.version ? '请先退出 BCU' : ''"
-            @click="removeVersion(v)"
-          >卸载</UiButton>
-        </div>
       </div>
-    </div>
 
-    <!-- 远程可用版本 -->
-    <div class="section-title"><h3>远程可用版本</h3></div>
-    <div class="table-container">
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th style="width: 140px;">版本</th>
-            <th style="width: 170px;">状态</th>
-            <th style="width: 90px;">大小</th>
-            <th style="width: 110px;">发布时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="rel in releases" :key="rel.version">
-            <td>
-              <strong class="ver-name">{{ rel.version }}</strong>
-              <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
-            </td>
-            <td>
-              <!-- 类名刻意用 bcu-status（含 bcu- 前缀）——全局原子有 .chip 族，防语义混淆 -->
-              <span v-if="statusOverall(rel) === 'installed'" class="bcu-ver-status installed">已安装</span>
-              <span v-else-if="statusOverall(rel) === 'downloading'" class="bcu-ver-status downloading">下载中</span>
-              <span v-else-if="statusOverall(rel) === 'error'" class="bcu-ver-status error">失败</span>
-              <span v-else class="bcu-ver-status idle">可安装</span>
-            </td>
-            <td>{{ fmtSize(rel.size) }}</td>
-            <td>{{ fmtDate(rel.published) }}</td>
-            <td>
-              <template v-if="statusOf(rel, 'portable') === 'installed'">
-                <span class="chip chip-positive">已安装</span>
-              </template>
-              <template v-else>
-                <!-- 双变体下载：推荐项主按钮高亮 -->
-                <div class="variant-btns">
-                  <button
-                    :class="['btn btn-small', isRecommended(rel, 'portable') || recommendedVariant === null ? 'btn-primary' : 'btn-secondary']"
-                    :disabled="statusOf(rel, 'portable') === 'downloading' || (!rel.fddName && statusOf(rel, 'fdd') === 'downloading')"
-                    @click="download(rel, 'portable')"
-                  >便携版 {{ fmtSize(rel.size) }}</button>
-                  <button
-                    v-if="rel.fddName"
-                    :class="['btn btn-small', isRecommended(rel, 'fdd') ? 'btn-primary' : 'btn-secondary']"
-                    :disabled="statusOf(rel, 'fdd') === 'downloading' || statusOf(rel, 'portable') === 'downloading'"
-                    @click="download(rel, 'fdd')"
-                  >精简版 {{ rel.fddSize ? fmtSize(rel.fddSize) : '' }}</button>
-                </div>
-                <div v-if="['downloading', 'error'].includes(statusOf(rel, 'portable')) || ['downloading', 'error'].includes(statusOf(rel, 'fdd'))" class="variant-progress">
-                  <template v-for="v in VARIANTS" :key="v">
-                    <div v-if="statusOf(rel, v) === 'downloading' || statusOf(rel, v) === 'error'" class="dl-meta-text">
-                      <span v-if="['verify', 'extract'].includes(downloading[`${rel.version}|${v}`]!.stage)">
-                        {{ variantLabel(v) }}校验解压安装…
-                      </span>
-                      <span v-else-if="downloading[`${rel.version}|${v}`]!.stage === 'downloading'" class="download-cell">
-                        <div class="dl-bar-wrap">
-                          <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[`${rel.version}|${v}`]!)}%` }"></div>
-                        </div>
-                        <span class="dl-percent">{{ stepOf(downloading[`${rel.version}|${v}`]!) }}%</span>
-                      </span>
-                      <span v-else class="dl-error" :title="downloading[`${rel.version}|${v}`]!.message">
-                        {{ downloading[`${rel.version}|${v}`]!.message }}
-                      </span>
-                      <a class="retry-link" @click="download(rel, v)">重试</a>
-                    </div>
-                  </template>
-                </div>
-              </template>
-            </td>
-          </tr>
-          <tr v-if="releases.length === 0 && !loading">
-            <td colspan="5" class="empty-hint">无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <!-- 远程可用版本 -->
+      <div class="section-title"><h3>远程可用版本</h3></div>
+      <div class="table-container">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width: 140px;">版本</th>
+              <th style="width: 170px;">状态</th>
+              <th style="width: 90px;">大小</th>
+              <th style="width: 110px;">发布时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="rel in releases" :key="rel.version">
+              <td>
+                <strong class="ver-name">{{ rel.version }}</strong>
+                <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
+              </td>
+              <td>
+                <!-- 类名刻意用 bcu-status（含 bcu- 前缀）——全局原子有 .chip 族，防语义混淆 -->
+                <span v-if="statusOverall(rel) === 'installed'" class="bcu-ver-status installed">已安装</span>
+                <span v-else-if="statusOverall(rel) === 'downloading'" class="bcu-ver-status downloading">下载中</span>
+                <span v-else-if="statusOverall(rel) === 'error'" class="bcu-ver-status error">失败</span>
+                <span v-else class="bcu-ver-status idle">可安装</span>
+              </td>
+              <td>{{ fmtSize(rel.size) }}</td>
+              <td>{{ fmtDate(rel.published) }}</td>
+              <td>
+                <template v-if="statusOf(rel, 'portable') === 'installed'">
+                  <span class="chip chip-positive">已安装</span>
+                </template>
+                <template v-else>
+                  <!-- 双变体下载：推荐项主按钮高亮 -->
+                  <div class="variant-btns">
+                    <button
+                      :class="['btn btn-small', isRecommended(rel, 'portable') || recommendedVariant === null ? 'btn-primary' : 'btn-secondary']"
+                      :disabled="statusOf(rel, 'portable') === 'downloading' || (!rel.fddName && statusOf(rel, 'fdd') === 'downloading')"
+                      @click="downloadVariant(rel, 'portable')"
+                    >便携版 {{ fmtSize(rel.size) }}</button>
+                    <button
+                      v-if="rel.fddName"
+                      :class="['btn btn-small', isRecommended(rel, 'fdd') ? 'btn-primary' : 'btn-secondary']"
+                      :disabled="statusOf(rel, 'fdd') === 'downloading' || statusOf(rel, 'portable') === 'downloading'"
+                      @click="downloadVariant(rel, 'fdd')"
+                    >精简版 {{ rel.fddSize ? fmtSize(rel.fddSize) : '' }}</button>
+                  </div>
+                  <div v-if="['downloading', 'error'].includes(statusOf(rel, 'portable')) || ['downloading', 'error'].includes(statusOf(rel, 'fdd'))" class="variant-progress">
+                    <template v-for="v in VARIANTS" :key="v">
+                      <div v-if="statusOf(rel, v) === 'downloading' || statusOf(rel, v) === 'error'" class="dl-meta-text">
+                        <span v-if="['verify', 'extract'].includes(store.downloading[`${rel.version}|${v}`]!.stage)">
+                          {{ variantLabel(v) }}校验解压安装…
+                        </span>
+                        <span v-else-if="store.downloading[`${rel.version}|${v}`]!.stage === 'downloading'" class="download-cell">
+                          <div class="dl-bar-wrap">
+                            <div class="dl-bar-inner" :style="{ width: `${stepOf(store.downloading[`${rel.version}|${v}`]!)}%` }"></div>
+                          </div>
+                          <span class="dl-percent">{{ stepOf(store.downloading[`${rel.version}|${v}`]!) }}%</span>
+                        </span>
+                        <span v-else class="dl-error" :title="store.downloading[`${rel.version}|${v}`]!.message">
+                          {{ store.downloading[`${rel.version}|${v}`]!.message }}
+                        </span>
+                        <a class="retry-link" @click="downloadVariant(rel, v)">重试</a>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </td>
+            </tr>
+            <tr v-if="releases.length === 0 && !store.loading">
+              <td colspan="5" class="empty-hint">无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-/* 仅保留本视图独有的业务样式；
-   .btn 家族 / .tbl / .header-row / .subtitle / .error-box / .empty-state / .mono /
-   .chip / .banner / .link-button / main-tab-* / keyframes pulse 等通用形
-   已上收 components.css 与 ui/* 组件，重复副本全部删除。 */
+/* 状态头/启停钮/提示条/引导行/联动卡由 managed 组件 + components.css 全局原子接管；
+   本页仅余方言版本 Tab 的业务样式与两处对标准形的补差。 */
 .bcu-view { display: flex; flex-direction: column; gap: 10px; }
 
-/* UiBanner 沿用迁移前 slim 密度：模板改挂 class="slim"，由全局 .banner.slim 原子接管 */
-
-/* ---------- 顶部整合控制条（control-bar 四件套由全局原子接管；
-   本视图原 gap:10px 散差按标准形 gap:8px 定档删除） ---------- */
-/* 补差 against 全局原子 .control-bar / .ver-pill：本视图控制条与版本胶囊为小圆角方片形制
-   （标准形为 radius-element / radius-pill） */
-.control-bar { border-radius: var(--radius-control); }
-.ver-pill { border-radius: 4px; }
-/* 信号灯类名带 bcu- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
-.bcu-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
-.bcu-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
-.bcu-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
-.bcu-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
-.bcu-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
-/* status-word/pid-tag/uptime-tag/control-btns 由全局原子接管 */
+/* 补差 against 全局原子（标准形为 radius-element / radius-pill，本视图控制条与
+   版本胶囊为小圆角方片形制）：控制条/胶囊渲染进 ManagedControlBar 子件内部，
+   用 :deep 穿层维持逐字同形（原 .bcu-status-light 复制体已由 .status-light 标准形替代） */
+.bcu-view :deep(.control-bar) { border-radius: var(--radius-control); }
+.bcu-view :deep(.ver-pill) { border-radius: 4px; }
 
 /* ---------- 折叠说明（info-details/info-summary::after/info-body p 由全局原子接管） ---------- */
 /* 补差 against 全局原子 .info-summary：本视图标题前带图标，加 4px 间距 */
@@ -605,21 +302,14 @@ onMounted(() => {
 .inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
 
-/* ---------- 联动与辅助设置卡（extras-card/extras-row/toggle-label/repo-row(.k)/repo-addr 由全局原子接管） ---------- */
-
-/* control-panel/meta-info/btn-group、section-title h3/empty-hint 由全局原子接管 */
-/* .hint-dim 同名同义 scoped 副本已删除，落回 components.css 全局原子 */
-
-/* ---------- 已安装卡片（installed-grid/installed-card(.card-active)/inst-card-top/inst-badges/ver-tag 由全局原子接管；
-   本视图原 minmax(340px) 散差按标准形 minmax(320px) 定档删除） ---------- */
-/* .badge 基形与 components.css 全局原子逐字同义，scoped 副本已删除；以下仅本视图配色变体 */
+/* control-panel/meta-info/btn-group、section-title h3/empty-hint、installed-grid/
+   installed-card(.card-active)/inst-* /ver-tag、table-container/ver-name 由全局原子接管；
+   .badge 基形与 components.css 全局原子逐字同义，以下仅本视图配色变体 */
 .badge-active { background: var(--state-positive-soft); color: var(--state-positive); }
 .badge-running { background: var(--state-information-soft); color: var(--state-information); }
 .badge-import { background: var(--state-information-soft); color: var(--state-information); }
 .badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
-
-/* inst-meta/meta-line(.k)/inst-actions、table-container/ver-name 由全局原子接管 */
 
 .bcu-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .bcu-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
@@ -628,10 +318,9 @@ onMounted(() => {
 .bcu-ver-status.error::before { background: var(--state-danger); }
 .bcu-ver-status.idle::before { background: var(--color-text-subtle); }
 
-/* download-cell/dl-* 家族与 retry-link(:hover) 由全局原子接管（本视图原 dl-bar-inner
-   "fast linear" 散差按标准形 "base ease" 定档删除） */
+/* download-cell/dl-* 家族与 retry-link(:hover) 由全局原子接管 */
 
-/* ---------- 双变体下载与 .NET 环境徽标 ---------- */
+/* ---------- 双变体下载与 .NET 环境徽标（方言区核心） ---------- */
 .variant-btns { display: flex; gap: 6px; align-items: center; }
 .variant-progress { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .variant-progress .dl-meta-text { font-size: var(--text-xs); }

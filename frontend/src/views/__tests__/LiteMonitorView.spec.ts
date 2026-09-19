@@ -1,5 +1,11 @@
-// 特征测试（组 B）：LiteMonitorView 迁移前行为基线；迁移后除确认/输入交互机制外逐字保持。
-// LiteMonitor 特有：.NET 8 运行时缺失常驻警示（独立于状态横幅）、GetRuntimeStatus 拉取。
+// 特征测试（组 B · 批 1 迁移件）：LiteMonitorView 收敛进托管控制台共享契约
+// （src/adapters/litemonitor + components/managed），行为基线对照迁移前视图逐字保持。
+// 特化点断言：① GetRuntimeStatus 第三路数据经 adapter 快照扩展字段并入——
+// 视图生命周期内仅单发（轮询期不重探）、缺运行时警示独立于状态横幅可并存；
+// ② 740 提权直拒（error 含"管理员"）→ #console-extra 槽渲染 ElevateRestart；
+// ③ 辅助卡「📂 打开位置」经 adapter 三源镜像解析目标目录（无版本时失败回执）。
+// 迁移注记（有意变更）：导入钮词「⇥ 导入本地套件」按共享面板定档为「⇥ 导入本地安装」；
+// 警示横幅相对状态横幅/引导行的位置由"上方"移至状态头之后（元素与文案不变）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -16,6 +22,9 @@ const svc = vi.hoisted(() => ({
   CreateDesktopShortcut: vi.fn(), RepositoryURL: vi.fn(), OpenRepository: vi.fn(),
 }))
 
+// ElevateRestart 组件挂载时探测 IsElevated（未提权 → 显示提权重启钮）
+const app = vi.hoisted(() => ({ AppService: { IsElevated: vi.fn(), RestartElevated: vi.fn() } }))
+
 const runtime = vi.hoisted(() => ({ handlers: {} as Record<string, (event: { data: unknown }) => void> }))
 
 vi.mock('@wailsio/runtime', () => ({
@@ -27,6 +36,7 @@ vi.mock('@wailsio/runtime', () => ({
   },
 }))
 
+vi.mock('../../../bindings/hanxi/internal/app', () => app)
 vi.mock('../../../bindings/hanxi/internal/modules/litemonitor/litemonitorservice', () => svc)
 
 const installedV = { version: '1.0.5', exePath: 'C:\\hx\\lm\\LiteMonitor.exe', dir: 'C:\\hx\\lm', size: 1572864, installedAt: '2026-08-01', isImport: false }
@@ -40,6 +50,7 @@ function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version:
   svc.GetFollowOnExit.mockResolvedValue(true)
   svc.GetRuntimeStatus.mockResolvedValue({ hasDesktop8 })
   svc.RepositoryURL.mockResolvedValue('https://github.com/Diorser/LiteMonitor')
+  app.AppService.IsElevated.mockResolvedValue(false)
 }
 
 async function flushMicrotasks(times = 25) {
@@ -54,8 +65,7 @@ async function mountView() {
   return { wrapper, show }
 }
 
-// 迁移注记（有意变更）：window.confirm/prompt 已由 useConfirm/usePrompt 全局单例收编，
-// 交互面驱动相应改为 settleConfirm/settlePrompt；文案与调用序列断言逐字保持。
+// 确认/输入交互经 useConfirm/usePrompt 全局单例驱动；文案断言逐字保持。
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
@@ -67,11 +77,11 @@ afterEach(() => {
 })
 
 describe('LiteMonitorView', () => {
-  it('挂载拉全量（含运行时检测）+ 订阅双事件', async () => {
+  it('挂载拉全量（含运行时检测单发）+ 订阅双事件', async () => {
     stubDefaults({ state: 'stopped' })
     const { wrapper } = await mountView()
     expect(svc.GetStatus).toHaveBeenCalled()
-    expect(svc.GetRuntimeStatus).toHaveBeenCalled()
+    expect(svc.GetRuntimeStatus).toHaveBeenCalledTimes(1)
     expect(Object.keys(runtime.handlers).sort()).toEqual(['litemonitor:instance-state', 'litemonitor:version-download'])
     wrapper.unmount()
   })
@@ -86,6 +96,16 @@ describe('LiteMonitorView', () => {
     ctx = await mountView()
     expect(ctx.wrapper.text()).not.toContain('未检测到 .NET 8 桌面运行时')
     ctx.wrapper.unmount()
+  })
+
+  it('警示与状态横幅独立并存（快照扩展字段随事件回流不丢失）', async () => {
+    stubDefaults({ state: 'stopped' }, [installedV], [], false)
+    const { wrapper } = await mountView()
+    runtime.handlers['litemonitor:instance-state']({ data: { state: 'running', version: '1.0.5', startedAt: new Date().toISOString() } })
+    await nextTick()
+    expect(wrapper.find('.banner-ok').text()).toContain('LiteMonitor 正在运行')
+    expect(wrapper.find('.banner-warn').text()).toContain('未检测到 .NET 8 桌面运行时')
+    wrapper.unmount()
   })
 
   it('唤窗动作与状态文案', async () => {
@@ -104,6 +124,20 @@ describe('LiteMonitorView', () => {
     const ctx = await mountView()
     expect(ctx.wrapper.find('.status-word').text()).toBe('运行中')
     expect(ctx.wrapper.find('.banner-ok').text()).toContain('LiteMonitor 正在运行')
+    ctx.wrapper.unmount()
+  })
+
+  it('740 提权直拒：failed 且错误含"管理员"时出现提权重启钮；普通异常不出现', async () => {
+    stubDefaults({ state: 'failed', error: '需要管理员权限运行（Win32 740 elevateHint）' })
+    let ctx = await mountView()
+    expect(ctx.wrapper.find('.banner-error').exists()).toBe(true)
+    expect(ctx.wrapper.find('.elevate-restart').exists()).toBe(true)
+    ctx.wrapper.unmount()
+
+    stubDefaults({ state: 'failed', error: '进程闪退' })
+    ctx = await mountView()
+    expect(ctx.wrapper.find('.banner-error').exists()).toBe(true)
+    expect(ctx.wrapper.find('.elevate-restart').exists()).toBe(false)
     ctx.wrapper.unmount()
   })
 
@@ -130,7 +164,7 @@ describe('LiteMonitorView', () => {
     wrapper.unmount()
   })
 
-  it('下载失败 toast 用「下载失败」前缀（本视图特有措辞）', async () => {
+  it('下载失败 toast 用「下载失败」前缀（本视图特有措辞，与共享契约词源一致）', async () => {
     stubDefaults({ state: 'stopped' }, [], [release1])
     svc.DownloadVersion.mockRejectedValue(new Error('GitHub 限流'))
     const { wrapper } = await mountView()
@@ -162,7 +196,29 @@ describe('LiteMonitorView', () => {
     wrapper.unmount()
   })
 
-  it('轮询激活启动、停用停止', async () => {
+  it('联动开关注释、随关回执与「打开位置」三源解析', async () => {
+    stubDefaults({ state: 'stopped' }, [installedV])
+    svc.SetFollowOnExit.mockResolvedValue(undefined)
+    svc.OpenDir.mockResolvedValue(undefined)
+    const { wrapper } = await mountView()
+    expect(wrapper.find('.toggle-label .hint-dim').text()).toContain('开启监控条常驻可关除此项')
+
+    await wrapper.find('.extras-card input[type="checkbox"]').trigger('change')
+    await flushMicrotasks()
+    expect(svc.SetFollowOnExit).toHaveBeenCalledWith(false)
+    expect(useToast().toastMsg.value).toBe('已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
+
+    await wrapper.findAll('.extras-card .btn').find((b) => b.text().includes('打开位置'))!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.OpenDir).toHaveBeenCalledWith('C:\\hx\\lm')
+
+    await wrapper.findAll('.extras-card .btn').find((b) => b.text().includes('快捷方式'))!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.CreateDesktopShortcut).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('轮询激活启动、停用停止；运行时探测轮询期不重发', async () => {
     vi.useFakeTimers()
     try {
       stubDefaults({ state: 'stopped' })
@@ -170,6 +226,7 @@ describe('LiteMonitorView', () => {
       const base = svc.GetStatus.mock.calls.length
       await vi.advanceTimersByTimeAsync(2500 * 3)
       expect(svc.GetStatus.mock.calls.length).toBeGreaterThanOrEqual(base + 3)
+      expect(svc.GetRuntimeStatus).toHaveBeenCalledTimes(1)
       show.value = false
       await nextTick()
       const after = svc.GetStatus.mock.calls.length

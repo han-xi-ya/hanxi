@@ -1,4 +1,9 @@
-// 特征测试（组 B）：PicLiteView 迁移前行为基线；迁移后除确认/输入交互机制外逐字保持。
+// 特征测试（组 B · 批 1 迁移件）：PicLiteView 收敛进托管控制台共享契约
+// （src/adapters/piclite + components/managed），行为基线对照迁移前视图逐字保持——
+// 仅共享面板表内标准词按批 0 契约形定档（安装中→下载中、verify/extract 阶段
+// 合并为「校验解压安装…」、官方 MSI→官方下载、空态 CTA 安装最新版→下载最新版、
+// 下载失败前缀 安装失败:→下载失败: 收编进 ACTION_ERROR_PREFIX 单一词源），
+// 调用序列/toast/确认输入/轮询/事件断言逐字保留。绑定/事件经 vi.mock 打桩。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +16,8 @@ const svc = vi.hoisted(() => ({
   ListReleases: vi.fn(), ListInstalledVersions: vi.fn(), GetActiveVersion: vi.fn(),
   GetStatus: vi.fn(), OpenWindow: vi.fn(), Quit: vi.fn(),
   DownloadVersion: vi.fn(), SetActiveVersion: vi.fn(), RemoveVersion: vi.fn(),
-  ImportLocal: vi.fn(), OpenDir: vi.fn(), GetFollowOnExit: vi.fn(), SetFollowOnExit: vi.fn(),
+  ImportLocal: vi.fn(), OpenDir: vi.fn(), OpenConfigDir: vi.fn(),
+  GetFollowOnExit: vi.fn(), SetFollowOnExit: vi.fn(),
   CreateDesktopShortcut: vi.fn(), RepositoryURL: vi.fn(), OpenRepository: vi.fn(),
 }))
 
@@ -52,8 +58,7 @@ async function mountView() {
   return { wrapper, show }
 }
 
-// 迁移注记（有意变更）：window.confirm/prompt 已由 useConfirm/usePrompt 全局单例收编，
-// 交互面驱动相应改为 settleConfirm/settlePrompt；文案与调用序列断言逐字保持。
+// 确认/输入交互经 useConfirm/usePrompt 全局单例驱动；文案断言逐字保持。
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
@@ -70,6 +75,10 @@ describe('PicLiteView', () => {
     const { wrapper } = await mountView()
     expect(svc.GetStatus).toHaveBeenCalled()
     expect(svc.GetActiveVersion).toHaveBeenCalled()
+    expect(svc.ListReleases).toHaveBeenCalled()
+    expect(svc.ListInstalledVersions).toHaveBeenCalled()
+    expect(svc.GetFollowOnExit).toHaveBeenCalled()
+    expect(svc.RepositoryURL).toHaveBeenCalled()
     expect(Object.keys(runtime.handlers).sort()).toEqual(['piclite:instance-state', 'piclite:version-download'])
     wrapper.unmount()
   })
@@ -80,11 +89,21 @@ describe('PicLiteView', () => {
     const { wrapper } = await mountView()
     const [openBtn, quitBtn] = wrapper.findAll('.control-btns .btn')
     expect(openBtn.text()).toContain('打开窗口')
+    expect(openBtn.attributes('title')).toBe('启动 PicLite 并打开工作台窗口')
     expect(quitBtn.attributes('disabled')).toBeDefined()
     await openBtn.trigger('click')
     await flushMicrotasks()
     expect(svc.OpenWindow).toHaveBeenCalled()
     expect(useToast().toastMsg.value).toBe('PicLite 已启动并打开工作台')
+    wrapper.unmount()
+  })
+
+  it('外部实例：退出钮可点且 title 指引托盘退出', async () => {
+    stubDefaults({ state: 'external' })
+    const { wrapper } = await mountView()
+    const quitBtn = wrapper.findAll('.control-btns .btn')[1]
+    expect(quitBtn.attributes('disabled')).toBeUndefined()
+    expect(quitBtn.attributes('title')).toBe('外部实例请在 PicLite 托盘菜单退出')
     wrapper.unmount()
   })
 
@@ -137,16 +156,31 @@ describe('PicLiteView', () => {
     wrapper.unmount()
   })
 
-  it('下载进度事件：百分比与管理提取文案', async () => {
+  it('下载进度事件：百分比与管理提取阶段文案（契约定档「校验解压安装…」）', async () => {
     stubDefaults({ state: 'stopped' }, [], [release1])
     const { wrapper } = await mountView()
     runtime.handlers['piclite:version-download']({ data: { version: '1.2.0', stage: 'downloading', done: 75, total: 100 } })
     await nextTick()
-    expect(wrapper.find('.pl-ver-status.downloading').exists()).toBe(true)
+    expect(wrapper.find('.ver-status.downloading').exists()).toBe(true)
     expect(wrapper.find('.dl-percent').text()).toBe('75%')
     runtime.handlers['piclite:version-download']({ data: { version: '1.2.0', stage: 'extract', done: 100, total: 100 } })
     await nextTick()
-    expect(wrapper.find('.dl-meta-text').text()).toContain('管理提取安装')
+    expect(wrapper.find('.dl-meta-text').text()).toContain('校验解压安装')
+    wrapper.unmount()
+  })
+
+  it('联动开关与数据目录：经 adapter extras 走后端并回执 toast', async () => {
+    stubDefaults({ state: 'stopped' })
+    svc.SetFollowOnExit.mockResolvedValue(undefined)
+    const { wrapper } = await mountView()
+    await wrapper.find('.extras-card input[type="checkbox"]').trigger('change')
+    await flushMicrotasks()
+    expect(svc.SetFollowOnExit).toHaveBeenCalledWith(false)
+    expect(useToast().toastMsg.value).toBe('已关闭：Hanxi 退出不影响该工具，PicLite 继续独立运行（下次启动生效）')
+
+    await wrapper.findAll('.extras-card .btn').find((b) => b.text().includes('数据目录'))!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.OpenConfigDir).toHaveBeenCalled()
     wrapper.unmount()
   })
 

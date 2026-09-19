@@ -1,4 +1,10 @@
-// 特征测试（组 B）：KeyvizView 迁移前行为基线；迁移后除确认/输入交互机制外逐字保持。
+// 特征测试（组 B · 批 1 迁移件）：KeyvizView 收敛进托管控制台共享契约
+// （src/adapters/keyviz + components/managed），行为基线对照迁移前视图逐字保持——
+// 仅共享面板表内标准词按批 0 契约形定档（安装中→下载中、verify/extract 阶段
+// 合并为「校验解压安装…」、官方 MSI→官方下载、空态 CTA 安装最新版→下载最新版、
+// 下载失败前缀 安装失败:→下载失败: 收编进 ACTION_ERROR_PREFIX 单一词源），
+// 调用序列/toast/确认输入/轮询/事件断言逐字保留。键显特有：主钮「▶ 启动可视化」
+// 走 StartKeyviz，运行中禁用；上游无桌面快捷方式（extras 卡无该钮）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +17,8 @@ const svc = vi.hoisted(() => ({
   ListReleases: vi.fn(), ListInstalledVersions: vi.fn(), GetActiveVersion: vi.fn(),
   GetStatus: vi.fn(), StartKeyviz: vi.fn(), Quit: vi.fn(),
   DownloadVersion: vi.fn(), SetActiveVersion: vi.fn(), RemoveVersion: vi.fn(),
-  ImportLocal: vi.fn(), OpenDir: vi.fn(), GetFollowOnExit: vi.fn(), SetFollowOnExit: vi.fn(),
+  ImportLocal: vi.fn(), OpenDir: vi.fn(), OpenConfigDir: vi.fn(),
+  GetFollowOnExit: vi.fn(), SetFollowOnExit: vi.fn(),
   RepositoryURL: vi.fn(), OpenRepository: vi.fn(),
 }))
 
@@ -52,8 +59,7 @@ async function mountView() {
   return { wrapper, show }
 }
 
-// 迁移注记（有意变更）：window.confirm/prompt 已由 useConfirm/usePrompt 全局单例收编，
-// 交互面驱动相应改为 settleConfirm/settlePrompt；文案与调用序列断言逐字保持。
+// 确认/输入交互经 useConfirm/usePrompt 全局单例驱动；文案断言逐字保持。
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
@@ -78,6 +84,7 @@ describe('KeyvizView', () => {
     stubDefaults({ state: 'stopped' })
     let ctx = await mountView()
     expect(ctx.wrapper.find('.status-word').text()).toBe('未运行')
+    expect(ctx.wrapper.find('.hint-line').text()).toContain('点击「启动可视化」')
     ctx.wrapper.unmount()
 
     stubDefaults({ state: 'running', version: '1.1.3', startedAt: new Date().toISOString() }, [installedV])
@@ -102,10 +109,22 @@ describe('KeyvizView', () => {
     svc.StartKeyviz.mockResolvedValue({ message: 'Keyviz 已启动' })
     const { wrapper } = await mountView()
     const [startBtn, quitBtn] = wrapper.findAll('.control-btns .btn')
+    expect(startBtn.text()).toContain('启动可视化')
     expect(quitBtn.attributes('disabled')).toBeDefined()
     await startBtn.trigger('click')
     await flushMicrotasks()
+    expect(svc.StartKeyviz).toHaveBeenCalled()
     expect(useToast().toastMsg.value).toBe('Keyviz 已启动')
+    wrapper.unmount()
+  })
+
+  it('运行中：启动钮禁用（实例已在运行），退出钮可用', async () => {
+    stubDefaults({ state: 'running', version: '1.1.3', startedAt: new Date().toISOString() }, [installedV])
+    const { wrapper } = await mountView()
+    const [startBtn, quitBtn] = wrapper.findAll('.control-btns .btn')
+    expect(startBtn.attributes('disabled')).toBeDefined()
+    expect(startBtn.attributes('title')).toBe('实例已在运行')
+    expect(quitBtn.attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 
@@ -158,7 +177,7 @@ describe('KeyvizView', () => {
     wrapper.unmount()
   })
 
-  it('事件推送改写状态与下载进度（管理提取文案）', async () => {
+  it('事件推送改写状态与下载进度（管理提取文案定档）', async () => {
     stubDefaults({ state: 'stopped' }, [], [release1])
     const { wrapper } = await mountView()
     runtime.handlers['keyviz:instance-state']({ data: { state: 'running', version: '1.1.3', startedAt: new Date().toISOString() } })
@@ -170,7 +189,24 @@ describe('KeyvizView', () => {
     expect(wrapper.find('.dl-percent').text()).toBe('25%')
     runtime.handlers['keyviz:version-download']({ data: { version: '1.1.3', stage: 'extract', done: 100, total: 100 } })
     await nextTick()
-    expect(wrapper.find('.dl-meta-text').text()).toContain('管理提取安装')
+    expect(wrapper.find('.dl-meta-text').text()).toContain('校验解压安装')
+    wrapper.unmount()
+  })
+
+  it('联动开关与数据目录：经 adapter extras 走后端并回执 toast（无快捷方式钮）', async () => {
+    stubDefaults({ state: 'stopped' })
+    svc.SetFollowOnExit.mockResolvedValue(undefined)
+    const { wrapper } = await mountView()
+    const btnTexts = wrapper.findAll('.extras-card .btn').map((b) => b.text())
+    expect(btnTexts.some((t) => t.includes('快捷方式'))).toBe(false)
+    await wrapper.find('.extras-card input[type="checkbox"]').trigger('change')
+    await flushMicrotasks()
+    expect(svc.SetFollowOnExit).toHaveBeenCalledWith(false)
+    expect(useToast().toastMsg.value).toBe('已关闭：Hanxi 退出不影响该工具，Keyviz 继续独立运行（下次启动生效）')
+
+    await wrapper.findAll('.extras-card .btn').find((b) => b.text().includes('数据目录'))!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.OpenConfigDir).toHaveBeenCalled()
     wrapper.unmount()
   })
 

@@ -1,6 +1,9 @@
-// 特征测试（组 B）：QuickLookView 迁移前行为基线。
-// 迁移（Phase 4：useConfirm/usePrompt/useWailsEvent/usePolling/共享件接管）后本文件
-// 除"确认/输入框交互机制"按有意变更调整外，其余断言必须逐字保持全绿。
+// 特征测试（组 B · 批 0 共享契约迁入件）：QuickLookView 迁移（ManagedControlBar/
+// ManagedExtrasCard + store + adapter）后的行为基线。
+// 断言"做了什么"而非"怎么做"：启停/重载三钮矩阵、卸载/导入确认文案、方言表进度
+// 呈现（安装中/哈希校验/解压安装）、双事件订阅、轮询与 KeepAlive 契约逐字保留；
+// 状态灯类名由视图私有 .ql-status-light 落回共享标准形 .status-light（选择器随
+// 结构更新），并新增重载动词回执用例锁定 reset 扩展槽接线。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -56,8 +59,8 @@ async function mountView() {
   return { wrapper, show }
 }
 
-// 迁移注记（有意变更）：window.confirm/prompt 已由 useConfirm/usePrompt 全局单例收编，
-// 交互面驱动相应改为 settleConfirm/settlePrompt；文案与调用序列断言逐字保持。
+// confirm/prompt 由 useConfirm/usePrompt 全局单例收编（adapter 内消费），
+// 交互面经 settle* 驱动；文案与调用序列断言逐字保持。
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
@@ -79,26 +82,32 @@ describe('QuickLookView', () => {
     wrapper.unmount()
   })
 
-  it('状态灯五态文案与按钮禁用矩阵', async () => {
+  it('状态灯五态文案与三钮禁用矩阵（stopped：启动可点、重载/退出禁用）', async () => {
     stubDefaults({ state: 'stopped' })
     const { wrapper } = await mountView()
     expect(wrapper.find('.status-word').text()).toBe('未运行')
-    expect(wrapper.find('.ql-status-light').classes()).toContain('stopped')
+    expect(wrapper.find('.status-light').classes()).toContain('stopped')
     const startBtn = wrapper.findAll('.control-btns .btn')[0]
+    const reloadBtn = wrapper.findAll('.control-btns .btn')[1]
     const quitBtn = wrapper.findAll('.control-btns .btn')[2]
     expect(startBtn.attributes('disabled')).toBeUndefined()
+    expect(reloadBtn.attributes('disabled')).toBeDefined() // 仅运行中可重载
     expect(quitBtn.attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
-  it('running：banner-ok + 重载可用 + 启动禁用 + 运行时长行', async () => {
+  it('running：banner-ok(slim) + 重载可用 + 启动禁用 + 运行时长行', async () => {
     stubDefaults({ state: 'running', version: '0.4.0', pid: 777, startedAt: new Date().toISOString() }, [installedV])
     const { wrapper } = await mountView()
     expect(wrapper.find('.status-word').text()).toBe('运行中')
     expect(wrapper.find('.banner-ok').exists()).toBe(true)
+    expect(wrapper.find('.banner-ok').classes()).toContain('slim')
     expect(wrapper.find('.banner-ok').text()).toContain('QuickLook 正在运行')
     expect(wrapper.find('.pid-tag').text()).toContain('777')
     expect(wrapper.find('.uptime-tag').exists()).toBe(true)
+    const btns = wrapper.findAll('.control-btns .btn')
+    expect(btns[0].attributes('disabled')).toBeDefined() // 启动禁用（已在运行）
+    expect(btns[1].attributes('disabled')).toBeUndefined() // 重载可用
     wrapper.unmount()
   })
 
@@ -106,6 +115,9 @@ describe('QuickLookView', () => {
     stubDefaults({ state: 'external' })
     let ctx = await mountView()
     expect(ctx.wrapper.find('.banner-warn').text()).toContain('外部 QuickLook 实例')
+    const quit = ctx.wrapper.findAll('.control-btns .btn')[2]
+    expect(quit.attributes('disabled')).toBeUndefined() // external 可点（title 指引托盘退出）
+    expect(quit.attributes('title')).toBe('外部实例请在 QuickLook 托盘菜单退出')
     ctx.wrapper.unmount()
 
     stubDefaults({ state: 'failed', error: '命名管道连接失败' })
@@ -129,6 +141,24 @@ describe('QuickLookView', () => {
     await wrapper.findAll('.control-btns .btn')[0].trigger('click')
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toContain('找不到版本')
+    wrapper.unmount()
+  })
+
+  it('重载配置（#primary-action 槽 + adapter.reset）：成功 toast 回执；失败前缀「重载失败: 」（不刷状态）', async () => {
+    stubDefaults({ state: 'running', version: '0.4.0', pid: 1, startedAt: new Date().toISOString() }, [installedV])
+    svc.Reload.mockResolvedValue('已请求重载配置')
+    const { wrapper } = await mountView()
+    const before = svc.GetStatus.mock.calls.length
+    await wrapper.findAll('.control-btns .btn')[1].trigger('click')
+    await flushMicrotasks()
+    expect(svc.Reload).toHaveBeenCalled()
+    expect(useToast().toastMsg.value).toBe('已请求重载配置')
+    expect(svc.GetStatus.mock.calls.length).toBe(before) // 现状：重载动作不触发状态复刷
+
+    svc.Reload.mockRejectedValue(new Error('管道断开'))
+    await wrapper.findAll('.control-btns .btn')[1].trigger('click')
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toBe('重载失败: 管道断开')
     wrapper.unmount()
   })
 

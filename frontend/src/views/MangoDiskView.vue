@@ -1,57 +1,59 @@
 <script setup lang="ts">
+// MangoDisk 工作台（Wave 5 · 批 0 共享契约迁入件）：
+// adapter（src/adapters/mangodisk）承载 RPC/事件/文案；useManagedConsole 单源接管
+// 快照轮询/事件订阅/下载进度 map/busy 闩/版本区加载/动作回执与失败前缀。
+// 本视图版式超出托管控制台通用形（页头状态徽标、动态主钮文案、完整性优先级横幅、
+// 方言完整性版本表、自绘退出联动开关），故不套 ManagedConsoleShell/ControlBar/
+// VersionPanel 皮，DOM 逐字保留现状、数据动作全部换接共享 store——
+// 「共享件零模块知识」的另一半契约：方言面自留，编排面单源。
 import { computed, onMounted, ref } from 'vue'
-import * as MangoDiskAPI from '../../bindings/hanxi/internal/modules/mangodisk/mangodiskservice'
-import type { Snapshot } from '../../bindings/hanxi/internal/modules/mangodisk/instance/models'
-import type { ControlOutcome, QuitOutcome } from '../../bindings/hanxi/internal/modules/mangodisk/models'
-import type { DownloadProgress, MangoDiskRelease, MangoDiskVersionInfo } from '../../bindings/hanxi/internal/modules/mangodisk/version/models'
+import { createMangoDiskAdapter } from '../adapters/mangodisk'
+import { useManagedConsole } from '../components/managed/store'
+import type { NormalizedProgress } from '../components/managed/adapter'
+import type { MangoDiskVersionInfo } from '../../bindings/hanxi/internal/modules/mangodisk/version/models'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import UiEmptyState from '../components/ui/UiEmptyState.vue'
 import { useToast } from '../composables/useToast'
-import { useWailsEvent } from '../composables/useWailsEvent'
-import { usePolling } from '../composables/usePolling'
-import { useConfirm } from '../composables/useConfirm'
-import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
 import { toolStateMeta } from '../constants/status'
 
-const snap = ref<Snapshot | null>(null)
-const releases = ref<MangoDiskRelease[]>([])
-const installed = ref<MangoDiskVersionInfo[]>([])
-const activeVersion = ref('')
+const adapter = createMangoDiskAdapter()
+const store = useManagedConsole(adapter)
+
+const { showToast } = useToast()
+const follow = adapter.extras!.followOnExit!
+const shortcut = adapter.extras!.shortcut!
+const repo = adapter.extras!.repo!
+
+// 版本区/状态数据取自共享 store；方言列（integrity 族）经结构断言还原为模块记录形
+const rows = computed(() => store.installed as MangoDiskVersionInfo[])
 const followOnExit = ref(false)
 const activeMainTab = ref<'console' | 'versions'>('console')
-const downloading = ref<Record<string, DownloadProgress>>({})
-const loading = ref(false)
-const busy = ref(false)
-const listError = ref('')
-const uptimeSec = ref(0)
-const { showToast } = useToast()
-const { confirm } = useConfirm()
-const { prompt } = usePrompt()
 
 const tabs = computed(() => [
   { key: 'console', label: '控制台' },
-  { key: 'versions', label: `版本管理 ${installed.value.length}` },
+  { key: 'versions', label: `版本管理 ${rows.value.length}` },
 ])
 
-const state = computed(() => snap.value?.state ?? 'stopped')
+const state = computed(() => store.snap?.state ?? 'stopped')
 const isExternal = computed(() => state.value === 'external')
 const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
-// 文案口径保留本视图现状（"运行中"，与 TOOL_STATE_META.running="已启动" 存在家族级
-// 文案分歧——待主线统一，此处不强行对齐以免破坏特征基线）。
+// 文案口径保留本视图现状（"运行中"），五态通用词接 constants/status 单一来源（§9.5-5）。
 const stateText = computed(() => toolStateMeta(state.value).text)
-const currentVersion = computed(() => snap.value?.version || activeVersion.value || '自动选择')
-const currentInstalled = computed(() => installed.value.find(item => item.version === currentVersion.value) ?? null)
+const currentVersion = computed(() => store.snap?.version || store.activeVersion || '自动选择')
+const currentInstalled = computed(() => rows.value.find((item) => item.version === currentVersion.value) ?? null)
 
+// 提示条含完整性优先级（drifted/invalid 压过运行态），需读已装列表——超出
+// adapter.banner(快照) 投影面，留视图自算（文案逐字保留现状）。
 const banner = computed(() => {
   if (currentInstalled.value?.integrity === 'drifted') return { tone: 'warn' as const, text: currentInstalled.value.integrityNote }
   if (currentInstalled.value?.integrity === 'invalid') return { tone: 'error' as const, text: currentInstalled.value.integrityNote }
   if (state.value === 'external') return { tone: 'warn' as const, text: '检测到安装版、portable 或其他版本的外部实例。Hanxi 可唤起窗口，但不会强制终止它。' }
-  if (state.value === 'failed') return { tone: 'error' as const, text: snap.value?.error || 'MangoDisk 异常退出' }
+  if (state.value === 'failed') return { tone: 'error' as const, text: store.snap?.error || 'MangoDisk 异常退出' }
   if (state.value === 'running') return { tone: 'ok' as const, text: 'MangoDisk 正在运行；磁盘扫描、清理与系统设置均在原版窗口内完成。' }
   return null
 })
@@ -60,127 +62,67 @@ function integrityLabel(value: string): string {
   return ({ verified: '官方校验', 'local-baseline': '本地基线', drifted: '文件已漂移', invalid: '安装无效' } as Record<string, string>)[value] || '未知'
 }
 function shortHash(value?: string): string { return value ? `${value.slice(0, 10)}…${value.slice(-6)}` : '—' }
-function progressOf(item: DownloadProgress): number {
+function progressOf(item: NormalizedProgress): number {
   if (item.stage === 'done') return 100
   if (item.stage !== 'downloading' || !item.total) return 0
-  return Math.min(99, Math.round(item.done / item.total * 100))
+  return Math.min(99, Math.round((item.done / item.total) * 100))
 }
 
-async function loadVersions() {
-  loading.value = true
-  listError.value = ''
-  const localTask = Promise.all([MangoDiskAPI.ListInstalledVersions(), MangoDiskAPI.GetActiveVersion(), MangoDiskAPI.GetFollowOnExit()])
-    .then(([local, active, follow]) => {
-      installed.value = local ?? []
-      activeVersion.value = active ?? ''
-      followOnExit.value = follow
-    })
-    .catch((error: unknown) => { listError.value = `读取本地版本失败: ${getErrorMessage(error)}` })
-  void MangoDiskAPI.ListReleases()
-    .then(remote => { releases.value = remote ?? [] })
-    .catch((error: unknown) => { listError.value = `获取远程版本列表失败: ${getErrorMessage(error)}` })
-    .finally(() => { loading.value = false })
-  await localTask
-}
-
-async function refreshStatus() {
-  try { snap.value = await MangoDiskAPI.GetStatus() } catch (error) { console.warn('mangodisk status:', getErrorMessage(error)) }
-}
-
+// 启动/唤窗统一入口（动词 RPC/回执经 adapter）：现状双复刷——成功并列刷状态与
+// 版本区（冷启动可能激活自动版本），失败仅复刷版本区；主钮文案随状态翻转。
 async function openWindow() {
-  if (busy.value) return
-  busy.value = true
+  if (store.busy) return
+  store.busy = true
   try {
-    const out: ControlOutcome = await MangoDiskAPI.OpenWindow()
-    showToast(out.message)
-    await Promise.all([refreshStatus(), loadVersions()])
+    const res = await adapter.control!.primary!.run()
+    if (res?.message !== undefined) showToast(res.message)
+    await Promise.all([store.refresh(), store.load()])
   } catch (error) {
     showToast(getErrorMessage(error))
-    await loadVersions()
-  } finally { busy.value = false }
-}
-
-async function quit() {
-  if (busy.value) return
-  busy.value = true
-  try {
-    const out: QuitOutcome = await MangoDiskAPI.Quit()
-    showToast(out.message)
-    await refreshStatus()
-  } catch (error) { showToast(`退出失败：${getErrorMessage(error)}`) } finally { busy.value = false }
-}
-
-async function download(rel: MangoDiskRelease) {
-  try {
-    const result = await MangoDiskAPI.DownloadVersion(rel.version)
-    if (result === 'already-installed') { showToast(`${rel.version} 已安装`); await loadVersions() }
-  } catch (error) { showToast(`下载失败：${getErrorMessage(error)}`) }
-}
-
-async function setActive(item: MangoDiskVersionInfo) {
-  try { activeVersion.value = await MangoDiskAPI.SetActiveVersion(item.version); showToast(`已将 ${item.version} 设为使用版本`) }
-  catch (error) { showToast(`设置失败：${getErrorMessage(error)}`) }
-}
-
-async function removeVersion(item: MangoDiskVersionInfo) {
-  // 原 window.confirm 收编至全局 useConfirm（文案逐字保留）
-  const accepted = await confirm({
-    title: `确定卸载 MangoDisk ${item.version}？`,
-    description: '仅删除 Hanxi 版本目录，不会删除 %LOCALAPPDATA%\\app.mangodisk.desktop 中的数据。',
-    confirmLabel: '卸载',
-    tone: 'danger',
-  })
-  if (!accepted) return
-  try { await MangoDiskAPI.RemoveVersion(item.version); showToast(`已卸载 ${item.version}`); await loadVersions() }
-  catch (error) { showToast(`卸载失败：${getErrorMessage(error)}`) }
-}
-
-async function importLocal() {
-  // 原 window.prompt 收编至全局 usePrompt（说明文案逐字保留于 description）
-  const path = await prompt({
-    title: '导入本地 EXE',
-    description: '请输入本地 MangoDisk EXE 完整路径。Hanxi 只导入该 EXE，不搬运用户数据。',
-    label: 'EXE 完整路径',
-  })
-  if (!path) return
-  try { const item = await MangoDiskAPI.ImportLocal(path.trim()); showToast(`已导入 ${item.version}`); await loadVersions() }
-  catch (error) { showToast(`导入失败：${getErrorMessage(error)}`) }
+    await store.load()
+  } finally {
+    store.busy = false
+  }
 }
 
 async function toggleFollow() {
   const next = !followOnExit.value
-  try { await MangoDiskAPI.SetFollowOnExit(next); followOnExit.value = next; showToast(next ? '已启用退出联动（下次启动生效）' : '已关闭退出联动（下次启动生效）') }
-  catch (error) { showToast(`设置失败：${getErrorMessage(error)}`) }
-}
-
-async function createShortcut() {
-  if (busy.value) return
-  busy.value = true
   try {
-    await MangoDiskAPI.CreateDesktopShortcut()
-    showToast('桌面快捷方式已创建（指向当前使用版本）')
+    const res = await follow.set(next)
+    followOnExit.value = next // 成功后才翻转（本视图开关现状，非乐观回滚形）
+    if (res?.message !== undefined) showToast(res.message)
   } catch (error) {
-    showToast(`创建快捷方式失败：${getErrorMessage(error)}`)
-  } finally {
-    busy.value = false
+    showToast(`设置失败: ${getErrorMessage(error)}`)
   }
 }
 
-async function openDir(path: string) { try { await MangoDiskAPI.OpenDir(path) } catch (error) { showToast(getErrorMessage(error)) } }
-async function openRepository() { try { await MangoDiskAPI.OpenRepository() } catch (error) { showToast(getErrorMessage(error)) } }
+async function createShortcut() {
+  if (store.busy) return
+  store.busy = true
+  try {
+    const res = await shortcut.create()
+    if (res?.message !== undefined) showToast(res.message)
+  } catch (error) {
+    showToast(`创建快捷方式失败: ${getErrorMessage(error)}`)
+  } finally {
+    store.busy = false
+  }
+}
 
-// 状态兜底轮询 2.5s + uptime 秒级 tick（KeepAlive 激活/停用生命周期由 usePolling 承载）
-usePolling(refreshStatus, 2500, { immediateFirstRun: false })
-usePolling(() => { if (state.value === 'running') uptimeSec.value++ }, 1000, { immediateFirstRun: false })
+async function openRepository() {
+  try {
+    await repo.open()
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  }
+}
 
-useWailsEvent<DownloadProgress>('mangodisk:version-download', (p) => {
-  if (!p) return
-  downloading.value = { ...downloading.value, [p.version]: p }
-  if (p.stage === 'done') setTimeout(async () => { delete downloading.value[p.version]; await loadVersions() }, 800)
+// 联动开关初值读取（原随版本加载并发，迁后独立拉取、失败静默不挡版本区）
+onMounted(() => {
+  Promise.resolve(follow.get())
+    .then((v) => { followOnExit.value = v })
+    .catch((error: unknown) => console.warn('mangodisk follow-on-exit:', getErrorMessage(error)))
 })
-useWailsEvent<Snapshot>('mangodisk:instance-state', (data) => { if (data) snap.value = data })
-
-onMounted(() => { void Promise.all([loadVersions(), refreshStatus()]) })
 </script>
 
 <template>
@@ -200,19 +142,19 @@ onMounted(() => { void Promise.all([loadVersions(), refreshStatus()]) })
           <div class="md-app-mark" aria-hidden="true">M</div>
           <div class="md-control-copy">
             <strong>{{ currentVersion }}</strong>
-            <span>{{ isExternal ? '非 Hanxi 托管' : isRunningOrStarting ? `PID ${snap?.pid || '—'} · ${fmtDuration(uptimeSec)}` : '等待启动' }}</span>
+            <span>{{ isExternal ? '非 Hanxi 托管' : isRunningOrStarting ? `PID ${store.snap?.pid || '—'} · ${fmtDuration(store.uptimeSec)}` : '等待启动' }}</span>
           </div>
         </div>
         <div class="md-actions">
-          <UiButton variant="primary" :disabled="busy" @click="openWindow">{{ state === 'running' || state === 'external' ? '打开窗口' : '启动 MangoDisk' }}</UiButton>
-          <UiButton variant="danger" :disabled="busy || !isRunningOrStarting || isExternal" @click="quit">退出</UiButton>
+          <UiButton variant="primary" :disabled="store.busy" @click="openWindow">{{ state === 'running' || state === 'external' ? '打开窗口' : '启动 MangoDisk' }}</UiButton>
+          <UiButton variant="danger" :disabled="store.busy || !isRunningOrStarting || isExternal" @click="store.runControl('quit')">退出</UiButton>
         </div>
       </section>
 
       <section class="md-panel md-settings">
         <div><strong>退出联动</strong><span>Hanxi 退出时关闭自己托管的 MangoDisk；外部实例不受影响。</span></div>
         <div class="md-settings-actions">
-          <UiButton :disabled="busy || !installed.length" @click="createShortcut">创建桌面快捷方式</UiButton>
+          <UiButton :disabled="store.busy || !rows.length" @click="createShortcut">创建桌面快捷方式</UiButton>
           <button class="md-switch" :aria-pressed="followOnExit" @click="toggleFollow"><span></span>{{ followOnExit ? '已开启' : '已关闭' }}</button>
         </div>
       </section>
@@ -231,36 +173,36 @@ onMounted(() => { void Promise.all([loadVersions(), refreshStatus()]) })
 
     <div v-show="activeMainTab === 'versions'" class="md-stack">
       <section class="md-toolbar">
-        <div><strong>版本仓库</strong><span>{{ installed.length }} 个已安装 · {{ releases.length }} 个远程版本</span></div>
-        <div class="md-actions"><UiButton @click="importLocal">导入本地 EXE</UiButton><UiButton :disabled="loading" @click="loadVersions">刷新</UiButton></div>
+        <div><strong>版本仓库</strong><span>{{ rows.length }} 个已安装 · {{ store.releases.length }} 个远程版本</span></div>
+        <div class="md-actions"><UiButton @click="store.runImport()">导入本地 EXE</UiButton><UiButton :disabled="store.loading" @click="store.load()">刷新</UiButton></div>
       </section>
 
-      <div v-if="listError" class="md-state-box md-error"><strong>版本列表加载失败</strong><span>{{ listError }}</span><UiButton small @click="loadVersions">重试</UiButton></div>
-      <UiEmptyState v-else-if="loading && !installed.length"><strong>正在读取 MangoDisk 版本</strong><span>正在检查 GitHub Releases 与本地安装完整性。</span></UiEmptyState>
+      <div v-if="store.listError" class="md-state-box md-error"><strong>版本列表加载失败</strong><span>{{ store.listError }}</span><UiButton small @click="store.load()">重试</UiButton></div>
+      <UiEmptyState v-else-if="store.loading && !rows.length"><strong>正在读取 MangoDisk 版本</strong><span>正在检查 GitHub Releases 与本地安装完整性。</span></UiEmptyState>
 
       <section v-else class="md-panel">
         <div class="md-section-head"><div><h2>已安装版本</h2><p>每次加载和冷启动前复核 EXE 哈希与 PE 身份。</p></div></div>
-        <UiEmptyState v-if="!installed.length"><strong>尚未安装 MangoDisk</strong><span>从下方远程列表下载官方 portable EXE，或导入本地 MangoDisk EXE。</span></UiEmptyState>
+        <UiEmptyState v-if="!rows.length"><strong>尚未安装 MangoDisk</strong><span>从下方远程列表下载官方 portable EXE，或导入本地 MangoDisk EXE。</span></UiEmptyState>
         <div v-else class="md-version-list">
-          <article v-for="item in installed" :key="item.version" class="md-version-row">
+          <article v-for="item in rows" :key="item.version" class="md-version-row">
             <div class="md-version-main">
-              <div class="md-version-title"><strong>{{ item.version }}</strong><span v-if="activeVersion === item.version" class="md-pill md-pill-primary">使用中</span><span class="md-pill" :data-integrity="item.integrity">{{ integrityLabel(item.integrity) }}</span></div>
+              <div class="md-version-title"><strong>{{ item.version }}</strong><span v-if="store.activeVersion === item.version" class="md-pill md-pill-primary">使用中</span><span class="md-pill" :data-integrity="item.integrity">{{ integrityLabel(item.integrity) }}</span></div>
               <p>{{ item.integrityNote }}</p>
               <div class="md-meta"><span>{{ fmtSize(item.size) }}</span><span>{{ fmtDate(item.installedAt) }}</span><span>{{ item.isImport ? '本地导入' : '官方下载' }}</span><span class="md-mono">SHA {{ shortHash(item.currentSha256) }}</span></div>
               <div v-if="item.integrity === 'drifted' || item.integrity === 'invalid'" class="md-integrity-detail"><span>标称 {{ item.version }}</span><span>当前 FileVersion {{ item.fileVersion || '未知' }}</span></div>
             </div>
-            <div class="md-row-actions"><UiButton :disabled="activeVersion === item.version || item.integrity === 'invalid'" @click="setActive(item)">设为使用</UiButton><UiButton @click="openDir(item.dir)">打开位置</UiButton><UiButton variant="danger" :disabled="snap?.version === item.version && isRunningOrStarting" @click="removeVersion(item)">卸载</UiButton></div>
+            <div class="md-row-actions"><UiButton :disabled="store.activeVersion === item.version || item.integrity === 'invalid'" @click="store.runSetActive(item)">设为使用</UiButton><UiButton @click="store.runOpenDir(item)">打开位置</UiButton><UiButton variant="danger" :disabled="store.snap?.version === item.version && isRunningOrStarting" @click="store.runRemove(item)">卸载</UiButton></div>
           </article>
         </div>
       </section>
 
       <section class="md-panel">
         <div class="md-section-head"><div><h2>远程版本</h2><p>只接收带 GitHub 官方 SHA-256 digest 的 Windows x64 portable EXE。</p></div></div>
-        <UiEmptyState v-if="!releases.length"><strong>暂无远程版本</strong><span>请检查网络后刷新；当前本地版本仍可继续使用。</span></UiEmptyState>
+        <UiEmptyState v-if="!store.releases.length"><strong>暂无远程版本</strong><span>请检查网络后刷新；当前本地版本仍可继续使用。</span></UiEmptyState>
         <div v-else class="md-table-wrap">
           <table class="tbl">
             <thead><tr><th>版本</th><th>发布时间</th><th>大小</th><th>完整性</th><th>操作</th></tr></thead>
-            <tbody><tr v-for="rel in releases" :key="rel.version"><td class="md-mono"><strong>{{ rel.version }}</strong><span v-if="rel.isPre" class="md-pill">预发布</span></td><td>{{ fmtDate(rel.published) }}</td><td>{{ fmtSize(rel.size) }}</td><td><span class="md-pill md-pill-ok">GitHub SHA-256</span></td><td><template v-if="downloading[rel.version]"><div class="md-progress" :aria-label="`${rel.version} 下载进度`" role="progressbar" :aria-valuenow="progressOf(downloading[rel.version])" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: `${progressOf(downloading[rel.version])}%` }"></span></div><small>{{ downloading[rel.version].stage }} {{ progressOf(downloading[rel.version]) || '' }}</small></template><span v-else-if="installed.some(item => item.version === rel.version)" class="md-installed">已安装</span><UiButton v-else variant="primary" small @click="download(rel)">下载</UiButton></td></tr></tbody>
+            <tbody><tr v-for="rel in store.releases" :key="rel.version"><td class="md-mono"><strong>{{ rel.version }}</strong><span v-if="rel.isPre" class="md-pill">预发布</span></td><td>{{ fmtDate(rel.published) }}</td><td>{{ fmtSize(rel.size) }}</td><td><span class="md-pill md-pill-ok">GitHub SHA-256</span></td><td><template v-if="store.downloading[rel.version]"><div class="md-progress" :aria-label="`${rel.version} 下载进度`" role="progressbar" :aria-valuenow="progressOf(store.downloading[rel.version])" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: `${progressOf(store.downloading[rel.version])}%` }"></span></div><small>{{ store.downloading[rel.version].stage }} {{ progressOf(store.downloading[rel.version]) || '' }}</small></template><span v-else-if="rows.some(item => item.version === rel.version)" class="md-installed">已安装</span><UiButton v-else variant="primary" small @click="store.runDownload(rel)">下载</UiButton></td></tr></tbody>
           </table>
         </div>
       </section>
