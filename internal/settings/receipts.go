@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -125,7 +126,11 @@ func (s *ReceiptStore) MarkInstalled(moduleID string, kind extapi.ReceiptKind) e
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.markInstalledLocked(moduleID, kind)
+}
 
+// markInstalledLocked 落盘凭据的主体（调用方必须已持有 s.mu 写锁）。
+func (s *ReceiptStore) markInstalledLocked(moduleID string, kind extapi.ReceiptKind) error {
 	rec, found, err := s.readReceipt(moduleID)
 	switch {
 	case err != nil:
@@ -214,4 +219,75 @@ func (s *ReceiptStore) EnsureInstalled(moduleIDs []string, kind extapi.ReceiptKi
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// knownLedgerFile 是 receipts 目录内的"已见模块"名单（非凭据文件，故 sanitize
+// 校验不过它的文件名也无妨——它不参与 IsInstalled 判定）。
+const knownLedgerFile = "known-modules.json"
+
+// knownLedger state 落盘形状：登记过的模块 ID 定序清单。迁移记忆由本名单承载
+// 而非凭据本身——否则"每次启动全量补建"会让用户卸载的模块重启后复活。
+type knownLedger struct {
+	Schema    int      `json:"schema"`
+	ModuleIDs []string `json:"moduleIds"`
+}
+
+// EnsureSeen 以当前注册模块全集驱动一次性迁移与增量安装：
+// 名单内模块绝不补建（卸载永久生效）；名单外"新看见"的模块补建 builtin-logical
+// 凭据并计入名单——首次运行名单为空,即等价全量迁移（Enabled=true→installed+enabled、
+// Enabled=false→installed+disabled,ADR-0001 §1.5）；此后版本升级新增的模块自动安装。
+// 名单缺失/损坏按空名单起步（一次性把现存模块重新认全,不丢数据;边界:若恰有
+// 已卸载模块会获一次重建,可再次卸载）。返回本轮新看见的模块 ID 列表。
+func (s *ReceiptStore) EnsureSeen(registeredIDs []string, kind extapi.ReceiptKind) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path := filepath.Join(s.dir, knownLedgerFile)
+	known := map[string]bool{}
+	if raw, err := os.ReadFile(path); err == nil {
+		var led knownLedger
+		if json.Unmarshal(raw, &led) == nil && led.Schema == extapi.ModuleContractSchema {
+			for _, id := range led.ModuleIDs {
+				known[id] = true
+			}
+		} else {
+			slog.Warn("安装名单不可解析，按空名单起步（现存模块将重新认全）", "path", path)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		slog.Warn("安装名单读取异常，按空名单起步", "path", path, "err", err)
+	}
+
+	var errs []error
+	var added []string
+	for _, id := range registeredIDs {
+		if known[id] {
+			continue
+		}
+		if err := sanitizeModuleID(id); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := s.markInstalledLocked(id, kind); err != nil {
+			errs = append(errs, err)
+			continue // 失败的模块不入名单，下次启动重试
+		}
+		known[id] = true
+		added = append(added, id)
+	}
+
+	if len(added) > 0 {
+		ids := make([]string, 0, len(known))
+		for id := range known {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		raw, err := json.MarshalIndent(knownLedger{Schema: extapi.ModuleContractSchema, ModuleIDs: ids}, "", "  ")
+		if err != nil {
+			return added, errors.Join(append(errs, err)...)
+		}
+		if err := writeAtomicFile(path, raw); err != nil {
+			errs = append(errs, fmt.Errorf("写入安装名单失败: %w", err))
+		}
+	}
+	return added, errors.Join(errs...)
 }

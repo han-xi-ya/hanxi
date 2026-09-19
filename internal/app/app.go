@@ -322,9 +322,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		markeron.ID: markeronversion.OpenTree(paths.VersionsDir()),
 		rufus.ID:    rufusversion.OpenTree(paths.VersionsDir()),
 		// 迁移到共享内核的托管模块逐批登记（journal 背书法启动恢复的认领面）。
-		ccswitch.ID: ccswitchversion.OpenTree(paths.VersionsDir()),
-		ddnsgo.ID:   ddnsgoversion.OpenTree(paths.VersionsDir()),
-		// 注:piclite 走系统 msiexec 直装、无 artifact.Tree staging,不适用登记。
+		ccswitch.ID:      ccswitchversion.OpenTree(paths.VersionsDir()),
+		ddnsgo.ID:        ddnsgoversion.OpenTree(paths.VersionsDir()),
 		translucenttb.ID: ttbversion.OpenTree(paths.VersionsDir()),
 		keyviz.ID:        keyvizversion.OpenTree(paths.VersionsDir()),
 		flclash.ID:       flclashversion.OpenTree(paths.VersionsDir()),
@@ -469,15 +468,16 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		panic(err) // 内建模块注册失败属于编程错误，直接暴露
 	}
 
-	// 老用户无损迁移（Wave 1，幂等）：为全部注册模块补建 builtin-logical receipt，
-	// Enabled=true→installed+enabled、Enabled=false→installed+disabled，
-	// 入口与数据零丢失（ADR-0001 §1.5）。失败仅告警不阻断启动：缺凭据的模块
-	// 按未安装呈现，可在模块中心一键安装找回。
+	// 一次性安装迁移 + 增量认新（EnsureSeen 名单账本，ADR-0001 §1.5）：首次运行
+	// 为全部注册模块补建 builtin-logical 凭据（Enabled=true→installed+enabled、
+	// false→installed+disabled，入口与数据零丢失）；用户卸载过的模块**永不复活**；
+	// 版本升级新增的模块自动安装。失败仅告警不阻断启动：缺凭据的模块按未安装
+	// 呈现，可在模块中心一键安装找回。
 	registeredIDs := make([]string, 0, len(modulesToRegister))
 	for _, info := range registry.List() {
 		registeredIDs = append(registeredIDs, info.ID)
 	}
-	if err := receipts.EnsureInstalled(registeredIDs, extapi.ReceiptBuiltinLogical); err != nil {
+	if _, err := receipts.EnsureSeen(registeredIDs, extapi.ReceiptBuiltinLogical); err != nil {
 		slog.Warn("逻辑安装凭据迁移未完成，部分模块可能呈现未安装（可在模块中心安装找回）", "err", err)
 	}
 

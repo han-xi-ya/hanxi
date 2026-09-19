@@ -217,3 +217,44 @@ func TestReceiptStoreInstalledScan(t *testing.T) {
 		t.Fatal("目录缺失应判未安装")
 	}
 }
+
+// TestEnsureSeenUninstallPersists 名单账本核心行为：卸载过的已知模块重启不复活；
+// 名单外新模块自动安装；名单缺失时按空名单重认全（现存凭据不丢）。
+func TestEnsureSeenUninstallPersists(t *testing.T) {
+	dir := t.TempDir()
+	store := NewReceiptStore(dir)
+
+	added, err := store.EnsureSeen([]string{"alpha", "beta"}, extapi.ReceiptBuiltinLogical)
+	if err != nil || len(added) != 2 {
+		t.Fatalf("首轮应全量迁移: added=%v err=%v", added, err)
+	}
+	// 用户卸载 beta → 再次启动（同一目录重开 store）不得复活。
+	if err := store.MarkAbsent("beta"); err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewReceiptStore(dir)
+	added, err = reopened.EnsureSeen([]string{"alpha", "beta", "gamma"}, extapi.ReceiptBuiltinLogical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.IsInstalled("beta") {
+		t.Error("已卸载的已知模块不得被启动迁移复活")
+	}
+	if !reopened.IsInstalled("gamma") {
+		t.Error("名单外新模块应自动安装")
+	}
+	if len(added) != 1 || added[0] != "gamma" {
+		t.Errorf("added = %v, want [gamma]", added)
+	}
+	// 名单损坏 → 空名单起步：现存模块重新认全，但不覆盖既有凭据时间戳由幂等保证。
+	if err := os.WriteFile(filepath.Join(dir, knownLedgerFile), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fresh := NewReceiptStore(dir)
+	if _, err := fresh.EnsureSeen([]string{"alpha", "beta", "gamma"}, extapi.ReceiptBuiltinLogical); err != nil {
+		t.Fatal(err)
+	}
+	if !fresh.IsInstalled("alpha") || !fresh.IsInstalled("gamma") {
+		t.Error("名单丢失重认后现存模块应仍为已安装")
+	}
+}

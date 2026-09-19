@@ -24,13 +24,13 @@ HideWindow/Env/OnLog 列为 instance 引擎侧事实;难度按迁移到 supervis
 | paseo | 便携 zip(electron) | 进程名+EnumWindows | 否 | 否 | 否 | 唤窗优先 Win32;长宽限 | Paseo.exe + app.asar | S |
 | bcu | 便携 zip 双层(bootstrapper+真身) | 互斥体+EnumWindows | 否 | 否 | 否 | Start 必须直指内层(外层秒退误判);740 提权特判 | 外 BCUninstaller + win-x64/内层 | M |
 | recordly | NSIS 静默,单固定目录 | 进程名+EnumWindows | 否 | 是(RECORDLY_DISABLE_AUTO_UPDATES=1) | 否 | 版本面偏离 zip 模板(单目录非隔离) | Recordly.exe | M |
-| quicklook | 便携 zip(longpath 特例) | 互斥体 | 否 | 否 | 否 | 热重启管道 Quit+Reload 双令——**缺命令通道泛化** | QuickLook.exe + portable.lock | M |
+| quicklook | 便携 zip(longpath 特例) | 互斥体 | 否 | 否 | 否 | ✅version 已迁(2026-09-19);解包因长路径留 bespoke extractAll;instance 留 bespoke(ADR-0003 §4) | | QuickLook.exe + portable.lock | M |
 | litemonitor | 便携 zip(语言包锚点) | 进程枚举+按 PID 窗 | 否 | 否 | 否 | PreStart 播种;740 特判;Updater 子进程靠 Job | LiteMonitor.exe + zh.json | M |
 | guoheview | 便携 zip(包装收割;**官方仅 MD5**) | 进程名(多实例)+按自有 PID | 否 | 否 | 否 | 【已迁 2026-09-19 薄适配】计数留模块(RunningBesides 排除自有 PID),未扩内核 | GuoheView.exe + portable.ini | M |
 | ddnsgo | 官方 zip 单 exe | 进程名+TCP 端口就绪 | 是 | 是(DDNS_GO_DAEMON=1) | 是 | 端口预检/iframe 控制台;内核 Env/ReadyTimeout/OnLog 已备料 | ddns-go.exe | M |
 | vscode | 双形态(便携 zip+Inno 注册表) | 分治:互斥体/镜像前缀枚举 | 否 | 否 | 否 | 一模块两台 Engine(双形态并行,可组合表达) | Code.exe + bin/ + product.json | M |
 | ocr | 私有 zip 导入 only(manifest+旁挂 sha256) | 端口 TCP+HTTP 契约 | 是 | 否 | 是(ringbuf) | 资产侧私有契约与双探针留薄适配,只换进程治理段 | hanxi-ocr.exe(manifest.entry) | M(仅引擎段) |
-| bili23 | 便携 zip(PE 版本不可信) | 互斥体 GUID+QLocalServer 信使 | 否 | 否 | 否 | 退出三态如实上报+**无强杀兜底**——与 Stop 固定 killSequence 冲突 | Bili23.exe + main.py | L |
+| bili23 | 便携 zip(PE 版本不可信) | 互斥体 GUID+QLocalServer 信使 | 否 | 否 | 否 | ✅version 已迁(2026-09-19);instance 留 bespoke:退出三态+无强杀兜底与内核 Stop 语义冲突(ADR-0003 §4) | Bili23.exe + main.py | L |
 | rustdesk | 双形态(packer+MSI 交互装) | 镜像前缀父 PID 闭包 | 否 | 否 | 否 | **树锚点特例**:外层秒退击穿"自有句柄=生命周期"公理 | rustdesk.exe + LOCALAPPDATA | L(不迁) |
 | subnetdesk | 同 rustdesk | 同 rustdesk | 否 | 否 | 否 | 同 rustdesk | subnetdesk.exe + LOCALAPPDATA | L(不迁) |
 | frpc | 官方 zip/本地导入 | 无外部探针 | 是 | 否 | 是(环形+DPAPI 脱敏) | 多实例 map+临时 TOML 擦除+连接嗅探,差异>共性 | frp_vX/frpc.exe | L(不迁) |
@@ -58,8 +58,8 @@ HideWindow/Env/OnLog 列为 instance 引擎侧事实;难度按迁移到 supervis
 
 ## 迁移执行状态(2026-09-19 收口时点,真相对账)
 
-- **✅ 已迁内核(19)**:markeron、rufus(Wave 4 双样本)+ ccswitch、snipaste†、ddnsgo、papertodo†、translucenttb、keyviz、flclash、everything、paseo、mangodisk、bcu、litemonitor、piclite、vscode、guoheview、recordly‡(†薄适配器:下载/落位段留 bespoke,理由见 ADR-0002 §5;‡NSIS 覆盖式单目录,无 Tree 可登记)。全部 journal 事务化 + `.tmp-<txnID>` 背书法启动恢复登记(app.go versionTrees,recordly/piclite 无树例外),真机冒烟确定性化(-count=5 零 flake)。
-- **⬜ ②名单未迁(待内核扩展裁定)**:quicklook(Reload 第二命令钩子)、bili23(Stop 三态+NoForceKill)。
+- **✅ 已迁内核(19)**:markeron、rufus(Wave 4 双样本)+ ccswitch、snipaste†、ddnsgo、papertodo†、translucenttb、keyviz、flclash、everything、paseo、mangodisk、bcu、litemonitor、piclite、vscode、guoheview、recordly‡(†薄适配器:下载/落位段留 bespoke,理由见 ADR-0002 §5;‡NSIS 覆盖式单目录,无 Tree 可登记)。全部 journal 事务化 + `.tmp-<txnID>` 背书法启动恢复登记(app.go versionTrees 共 18 棵,**仅 recordly 无树例外**——piclite 用 artifact.Tree staging,已登记),真机冒烟确定性化(-count=5 零 flake)。
+- **⬜ ②名单(已按 ADR-0003 §4 裁决:version 迁、instance 留 bespoke,不再等内核扩展)**:quicklook、bili23。
 - **⬜ ③明示 bespoke 未动**:frpc、rustdesk、subnetdesk、douzy、nanazip、ocr 资产侧(其 instance 测试在本会话为既有环境红,非回归)。
 - **登记节奏**:S 批后新增两笔待裁——"安装器执行族"已 3 家(keyviz/piclite MSI + recordly NSIS),达 ADR-0002 §3 阈值,是否入 artifact 策略族(受控枚举 `installPolicy`)进 Wave 5 签名批次一并裁;信任根缺位第 3 家(vscode 历史版无 digest)同理复议弱摘要窄接口。
 - **重复代码基线**:25 份 version 下载链、24 份 instance 进程治理主流程已收敛至 1+19(19 委托,余 5=②③ 名单);downloader.go 样板平均 −110 行/模块。
