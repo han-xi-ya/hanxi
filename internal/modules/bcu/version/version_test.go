@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/packages/go/artifact"
 )
 
 // fakeReleasesJSON 构造与真实 GitHub API 同构的样例响应：
@@ -217,59 +219,92 @@ func makeTestZip(t *testing.T, entries map[string]string) string {
 	return path
 }
 
-func TestExtractAll(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := makeTestZip(t, map[string]string{
-		exeName:       "fake-exe",
-		"sub/dll.dll": "fake-dll",
-	})
-	if err := extractAll(zipPath, filepath.Join(dir, "dst")); err != nil {
-		t.Fatalf("extractAll: %v", err)
+// TestVersionFromToken 版本令牌形状（原 dirNameRe 收纳口径）：
+// 3~4 段数字与数字起头的点/字母数字串、imported-时间戳收纳；
+// v 前缀/字母起头/中文目录名拒绝（不列入）。
+func TestVersionFromToken(t *testing.T) {
+	tests := []struct {
+		token  string
+		wantOK bool
+	}{
+		{"6.2.0", true},
+		{"6.1.0.1", true},
+		{"imported-20260827-100000", true},
+		{"v6.2.0", false},        // BCU 惯例无 v 前缀
+		{"ccswitch-3.20", false}, // 非数字起头
+		{"", false},
 	}
-	if _, err := os.Stat(filepath.Join(dir, "dst", exeName)); err != nil {
-		t.Errorf("%s 未解压: %v", exeName, err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "dst", "sub", "dll.dll")); err != nil {
-		t.Errorf("子目录条目未解压: %v", err)
+	for _, tt := range tests {
+		ver, ok := versionFromToken(tt.token)
+		if ok != tt.wantOK {
+			t.Errorf("versionFromToken(%q) ok = %v, want %v", tt.token, ok, tt.wantOK)
+		}
+		if ok && ver != tt.token {
+			t.Errorf("versionFromToken(%q) = %q, BCU 展示口径应原样无 v 前缀", tt.token, ver)
+		}
 	}
 }
 
-func TestExtractAllZipSlip(t *testing.T) {
-	dir := t.TempDir()
-	f, err := os.CreateTemp("", "evil-*.zip")
-	if err != nil {
+// ---------- 内核解包 + 模块布局自检（替代原 extractAll 时代的用例） ----------
+
+func TestUnpackWithBCULayout(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{
+		exeName:                "bootstrapper", // 外层接力启动器
+		"win-x64/" + exeName:   "real-app",     // 内层真身（锚点）
+		"win-x64/bulkcrap.dll": "fake-dll",
+		"LICENSE":              "Apache-2.0",
+	})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
+	}
+	if err := checkLayout(staging); err != nil {
+		t.Fatalf("checkLayout: %v", err)
+	}
+	for _, name := range []string{exeName, "win-x64/" + exeName, "win-x64/bulkcrap.dll", "LICENSE"} {
+		if _, err := os.Stat(filepath.Join(staging, filepath.FromSlash(name))); err != nil {
+			t.Errorf("布局缺失 %s: %v", name, err)
+		}
+	}
+	// 账本锚点必须落在内层真身（外层 bootstrapper 不进托管生命周期视野）
+	if got := entryRel(staging); got != innerExeRel {
+		t.Errorf("entryRel 应指内层真身: got %q want %q", got, innerExeRel)
+	}
+}
+
+func TestUnpackRejectsPathTraversal(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{
+		"../evil.txt": "escape",
+	})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err == nil {
+		t.Fatal("UnpackZip 应拒绝路径逃逸条目")
+	}
+}
+
+func TestLayoutMissingOuterExe(t *testing.T) {
+	// 仅有 win-x64 子层、根目录无 BCUninstaller.exe：不符官方便携包布局，拒装
+	staging := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(staging, "win-x64"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	path := f.Name()
-	t.Cleanup(func() { os.Remove(path) })
-	zw := zip.NewWriter(f)
-	w, _ := zw.Create("../evil.txt")
-	w.Write([]byte("evil"))
-	w2, _ := zw.Create(exeName)
-	w2.Write([]byte("fake"))
-	zw.Close()
-	f.Close()
-
-	dst := filepath.Join(dir, "dst")
-	if err := extractAll(path, dst); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
+	if err := os.WriteFile(filepath.Join(staging, "win-x64", exeName), []byte("real"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Errorf("失败后目标目录应被清理, stat err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); !os.IsNotExist(err) {
-		t.Fatal("恶意条目逃逸到了目标目录之外")
+	err := checkLayout(staging)
+	if err == nil || !strings.Contains(err.Error(), "zip 布局无效") {
+		t.Fatalf("缺外层启动器应自检失败, got %v", err)
 	}
 }
 
-func TestExtractAllMissingExe(t *testing.T) {
-	zipPath := makeTestZip(t, map[string]string{"README.txt": "hello"})
-	dst := filepath.Join(t.TempDir(), "dst")
-	if err := extractAll(zipPath, dst); err == nil {
-		t.Fatal("缺少 exe 的 zip 应被拒绝")
+func TestEntryRelFallsBackToOuter(t *testing.T) {
+	// 老布局（fdd 精简包等无 win-x64 子层）：账本锚点回退外层本体
+	staging := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staging, exeName), []byte("real-exe"), 0644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Errorf("失败后目标目录应被清理")
+	if got := entryRel(staging); got != exeName {
+		t.Errorf("无内层时 entryRel 应回退外层: got %q", got)
 	}
 }
 
@@ -296,6 +331,9 @@ func TestListInstalledAndRemove(t *testing.T) {
 	if len(list) != 2 {
 		t.Fatalf("期望 2 个版本，实际 %d: %+v", len(list), list)
 	}
+	if list[0].Version != "6.2.0" { // Tree 扫描按版本号降序，最新在前
+		t.Errorf("列表应最新在前: %+v", list)
+	}
 	byVer := map[string]BCUVersionInfo{}
 	for _, v := range list {
 		byVer[v.Version] = v
@@ -321,7 +359,7 @@ func TestListInstalledAndRemove(t *testing.T) {
 		t.Error("路径穿越式版本号必须报错")
 	}
 
-	// Remove
+	// Remove（Tree：rename 隔离后删除）
 	if err := m.Remove("6.2.0"); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
@@ -405,7 +443,11 @@ func TestImportLocal(t *testing.T) {
 		t.Errorf("meta.json 未落盘: %v", err)
 	}
 
-	// 兜底版本可解析/可卸载
+	// 导入目录必须同时被版本树扫描半径收纳（列出、可解析、可卸载）
+	list, lerr := m.ListInstalled()
+	if lerr != nil || len(list) != 1 || list[0].Version != info.Version {
+		t.Fatalf("导入版本应被 ListInstalled 收纳: %+v %v", list, lerr)
+	}
 	if _, err := m.ResolveExe(info.Version); err != nil {
 		t.Errorf("兜底版本应可解析: %v", err)
 	}

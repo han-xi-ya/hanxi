@@ -11,11 +11,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/bcu/instance"
 	"hanxi/internal/modules/bcu/version"
 	"hanxi/internal/notify"
+	"hanxi/internal/ops"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/settings"
@@ -29,11 +32,14 @@ const (
 // BCUService 向前端暴露 BCU 版本管理与窗口唤起能力。
 // 批量卸载操作不内嵌：打开 BCU 自有窗口操作（界面完整，卸载流程涉及
 // 多种权限与清理策略，由原版实现最稳妥）。
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type BCUService struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *bcuStore
 	engine  *instance.Engine
+	holder  *extapi.LeaseHolder
 
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
@@ -42,12 +48,13 @@ type BCUService struct {
 }
 
 // NewBCUService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
-func NewBCUService(plat platform.Platform) *BCUService {
+func NewBCUService(plat platform.Platform, holder *extapi.LeaseHolder) *BCUService {
 	paths := settings.GetPaths()
 	svc := &BCUService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newBCUStore(paths.StateDir()),
+		holder:  holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewBCUProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -102,17 +109,41 @@ func shouldIdleQuit(instance.Snapshot, bool, time.Duration) bool {
 
 // ListReleases 获取远程可用版本列表（多镜像回退，10 分钟缓存）。
 func (s *BCUService) ListReleases() ([]version.BCURelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 获取本地已安装版本列表。
 func (s *BCUService) ListInstalledVersions() ([]version.BCUVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
+// bcuInstallSteps 托管资产事务的 journal 步骤词汇（Wave 4）：bcu 是便携 zip
+// 形态，verify（官方摘要双核）由内核 Fetch 折进 download 步内完成，模块进度
+// 词表不单独可见，如实不造幻影步骤（ccswitch 同构）。
+var bcuInstallSteps = []string{"download", "unpack", "place"}
+
 // DownloadVersion 后台下载指定版本（variant：portable/fdd）：立即返回，
-// 全程经事件 bcu:version-download 推送进度（载荷带变体标识，前端按版本+变体索引）。
+// 全程经事件 bcu:version-download 推送进度（载荷带变体标识，前端按版本+变体索引）；
+// 同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链追加版本，
+// managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段迁移逐步
+// Advance，收口经观察面 Handle 自动落账并广播 operation:changed（与既有模块
+// 事件双通道并行，Wave 4-B 接线，markeron/rufus/ccswitch 同构）。
 func (s *BCUService) DownloadVersion(targetVersion, variant string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if variant == "" {
 		variant = version.VariantPortable
@@ -131,12 +162,44 @@ func (s *BCUService) DownloadVersion(targetVersion, variant string) (string, err
 			}
 		}
 	}
+	opKind := extapi.OpInstall
+	if err == nil && len(installed) > 0 {
+		opKind = extapi.OpUpdate
+	}
+	txnID := uuid.NewString()
 
 	go func() {
+		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+			targetVersion, txnID, bcuInstallSteps)
+		if terr != nil {
+			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
+			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("bcu:version-download", version.DownloadProgress{Version: targetVersion, Variant: variant, Stage: "error", Message: terr.Error()})
+			}
+			notify.Error("bcu", "版本下载失败", fmt.Sprintf("BCU %s 事务开启失败: %v", targetVersion, terr), "/ext/bcu")
+			return
+		}
+		stepIdx := -1
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("bcu download progress", "version", p.Version, "variant", p.Variant, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("bcu:version-download", p)
+			}
+			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；
+			// 下载分块进度仅进观察面内存投影，不产生 fsync 风暴
+			switch p.Stage {
+			case "downloading":
+				if stepIdx < 0 {
+					stepIdx = 0
+					txn.Step(stepIdx)
+				}
+				txn.Progress(p.Done, p.Total)
+			case "extract":
+				if stepIdx < 1 {
+					stepIdx = 1
+					txn.Step(stepIdx)
+				}
 			}
 			if p.Stage == "done" {
 				label := "便携版"
@@ -146,11 +209,13 @@ func (s *BCUService) DownloadVersion(targetVersion, variant string) (string, err
 				notify.Success("bcu", "版本下载成功", fmt.Sprintf("BCU %s（%s）已成功安装", p.Version, label), "/ext/bcu")
 			}
 		}
-		if err := s.manager.Download(targetVersion, variant, emit); err != nil {
+		if err := s.manager.Download(txnID, targetVersion, variant, emit); err != nil {
+			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Variant: variant, Stage: "error", Message: err.Error()})
 			notify.Error("bcu", "版本下载失败", fmt.Sprintf("BCU %s 下载失败: %v", targetVersion, err), "/ext/bcu")
 			return
 		}
+		txn.Done()
 		// 未设使用版本时自动把刚下载完的版本设为使用版本：
 		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
 		if s.store.GetActive() == "" {
@@ -163,6 +228,11 @@ func (s *BCUService) DownloadVersion(targetVersion, variant string) (string, err
 
 // GetDotnetEnvironment 探测本机 .NET 桌面运行时（框架依赖变体的可用性与推荐依据）。
 func (s *BCUService) GetDotnetEnvironment() (DotnetEnv, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DotnetEnv{}, gateErr
+	}
+	defer release()
 	vers := version.DesktopRuntimeVersions()
 	return DotnetEnv{
 		DesktopVersions: vers,
@@ -172,6 +242,11 @@ func (s *BCUService) GetDotnetEnvironment() (DotnetEnv, error) {
 
 // RemoveVersion 卸载指定版本（正在运行的版本拒绝卸载）。
 func (s *BCUService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning &&
 		strings.EqualFold(snap.Version, targetVersion) {
@@ -189,6 +264,11 @@ func (s *BCUService) RemoveVersion(targetVersion string) error {
 
 // SetActiveVersion 设定使用版本（先校验已安装，再持久化）。
 func (s *BCUService) SetActiveVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
@@ -201,12 +281,22 @@ func (s *BCUService) SetActiveVersion(targetVersion string) (string, error) {
 
 // GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动用最新已装）。
 func (s *BCUService) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return s.store.GetActive(), nil
 }
 
 // ImportLocal 导入本地已有的 BCU 便携安装（黑名单整搬：exe+settings+所有数据）。
 // 运行中的实例拒绝导入：Windows 下运行中的 exe 文件被独占，拷贝必然失败。
 func (s *BCUService) ImportLocal(srcDir string) (version.BCUVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.BCUVersionInfo{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
 		return version.BCUVersionInfo{}, fmt.Errorf("BCU 正在运行，请先退出再导入")
 	}
@@ -219,6 +309,11 @@ func (s *BCUService) ImportLocal(srcDir string) (version.BCUVersionInfo, error) 
 // 刻意不复用 AppService.OpenPath：其 explorer.exe <file> 语义在文件对象上是"执行"
 // 而非"打开"（markeron「打开安装目录」按钮的事故教训：传 exe 路径直接启动了程序）。
 func (s *BCUService) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		return fmt.Errorf("目录路径不能为空")
@@ -235,6 +330,11 @@ func (s *BCUService) OpenDir(dir string) error {
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
 func (s *BCUService) GetStatus() (instance.Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return instance.Snapshot{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	return s.engine.Snapshot(), nil
 }
@@ -244,6 +344,11 @@ func (s *BCUService) GetStatus() (instance.Snapshot, error) {
 //   - running：自有实例直接信使唤窗；
 //   - stopped/failed：解析 active 版本直接无参启动（BCU 唯一启动语义即开窗）。
 func (s *BCUService) OpenWindow() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
@@ -295,6 +400,11 @@ func (s *BCUService) OpenWindow() (ControlOutcome, error) {
 // Quit 退出引擎托管的 BCU。
 // external 状态不越权强杀（互斥体探测拿不到 PID）：仅返回人性化指引。
 func (s *BCUService) Quit() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
 			Message: "当前是外部自行启动的实例，请在 BCU 窗口内关闭"}, nil
@@ -305,9 +415,22 @@ func (s *BCUService) Quit() (QuitOutcome, error) {
 	return QuitOutcome{Stopped: true, Message: "BCU 已退出"}, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
-// 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+// Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+// 拒绝即早退——Wave 3 口径：void 方法不改签名。前端当前不调用本方法，
+// 但它属绑定面，必须经门收口。
 func (s *BCUService) Shutdown() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
+	s.shutdown()
+}
+
+// shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
+// 装配布线:Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)。
+// 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+func (s *BCUService) shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
 		close(s.watchStop)
@@ -360,16 +483,31 @@ func (s *BCUService) resolveInstalledExeAny() (string, error) {
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *BCUService) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
 	return s.store.GetFollowOnExit(), nil
 }
 
 // SetFollowOnExit 设定开关（下次启动生效）。
 func (s *BCUService) SetFollowOnExit(b bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.store.SetFollowOnExit(b)
 }
 
 // CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
 func (s *BCUService) CreateDesktopShortcut() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	_, exe, err := s.resolveActiveVersion()
 	if err != nil {
 		return err
@@ -379,10 +517,20 @@ func (s *BCUService) CreateDesktopShortcut() error {
 
 // RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
 func (s *BCUService) RepositoryURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.RepoURL(), nil
 }
 
 // OpenRepository 用默认浏览器打开上游仓库页面。
 func (s *BCUService) OpenRepository() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.RepoURL())
 }

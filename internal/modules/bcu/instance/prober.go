@@ -1,8 +1,18 @@
-// Package instance 实现 BCU 单实例运行引擎：
+// Package instance 实现 BCU 单实例运行引擎（Wave 4 内核委托形态）：
 //
-// BCU（Bulk Crap Uninstaller，.NET 8 WinForms 自包含应用）由本引擎启动后绑定
-// Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），Hanxi 退出时内核
-// 连带终止进程树，杜绝孤儿驻留。
+// 进程治理主流程（spawn → Job Object 绑定 → 就绪/退出分类 → 手动停止/外部甄别）
+// 收口至共享内核 hanxi/packages/go/supervisor；本包只保留 BCU 领域适配：
+//   - 命名互斥体探针（supervisor.Probe 形状适配，探针实现见 prober/probe_windows）；
+//   - 状态词表映射：内核 stopped/starting/running/external/failed/stopping →
+//     本包既有 stopped/starting/running/external/failed（stopping 折并入 running，
+//     终止窗口对前端保持运行语义，收口后由终态广播纠正）；
+//   - Snapshot 形状映射：内核快照 + 本包推算的 ExitCode/StoppedAt/740 提权
+//     指引覆盖拼回既有事件契约（前端与 wails 事件载荷零漂移）；
+//   - EnumWindows 按 PID 的 WM_CLOSE 优雅退出钩子与信使唤窗（见 messenger.go）。
+//
+// BCU（Bulk Crap Uninstaller，.NET 8 WinForms 自包含应用）由内核启动后绑定
+// Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），Hanxi 无论以何种
+// 方式退出（托盘退出/崩溃/强杀），内核都会连带终止进程树，杜绝孤儿驻留。
 //
 // 上游契约（EntryPoint.cs 源码实证）：
 //   - 命名互斥体 Global\BCU-singleinstance 作单实例锁；
@@ -16,9 +26,11 @@
 //     托管实例存在即蕴含 Hanxi 已提权，UIPI 不再成为唤窗/关窗的暗坑；
 //   - 外层启动器接力（真机实证 2026-09-06）：版本根目录的 BCUninstaller.exe
 //     仅是约 350KB 的 bootstrapper，执行后拉起 win-x64\ 下真身并在 ~20ms 内
-//     自退——若以外层为锚，wait() 会按"我方进程秒退+互斥体存活"误判 external，
-//     且真身生于绑 Job 之前不受 KILL_ON_JOB_CLOSE 管辖。启动/唤窗一律经
-//     version.ResolveExe 直指内层真身（工作目录仍钉版本根，settings 落点不变）。
+//     自退——若以外层为锚，内核 supervisor.wait 会按"我方进程秒退+互斥体
+//     存活"的 external-takeover 分类误判为 external（与迁移前本包 wait 的
+//     同款规则），且真身生于绑 Job 之前不受 KILL_ON_JOB_CLOSE 管辖。
+//     启动/唤窗一律经 version.ResolveExe 直指内层真身（工作目录锁定 exe
+//     所在目录由内核默认保证，settings 落点不变）。
 //
 // 本包零框架依赖，便于单元测试。
 package instance
