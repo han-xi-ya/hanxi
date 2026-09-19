@@ -11,7 +11,7 @@ import UiPromptDialog from './components/ui/UiPromptDialog.vue'
 import ErrorBoundary from './components/ui/ErrorBoundary.vue'
 import AppSidebar from './components/shell/AppSidebar.vue'
 import CommandPalette from './components/shell/CommandPalette.vue'
-import { moduleIdOf, routeComponent, placeholderComponent, fallbackComponent } from './constants/navigation'
+import { moduleIdOf, routeComponent, placeholderComponent, fallbackComponent, isCoreRoute } from './constants/navigation'
 import { useNotification } from './composables/useNotification'
 import { useConfirm } from './composables/useConfirm'
 import { usePrompt } from './composables/usePrompt'
@@ -42,10 +42,11 @@ async function refreshNavs() {
     navs.value = list ?? []
 
     // 如果当前所在路由对应的是已被禁用的扩展，则平滑重定向回首页
+    //（核心页豁免清单单一来源 navigation.CORE_ROUTES，含首页与模块中心）
     const currentModID = moduleIdOf(activeRoute.value)
     if (currentModID) {
       const isRouteAvailable = navs.value.some(n => n.route === activeRoute.value)
-      if (!isRouteAvailable && activeRoute.value !== '/' && activeRoute.value !== '/settings' && activeRoute.value !== '/logs' && activeRoute.value !== '/about') {
+      if (!isRouteAvailable && !isCoreRoute(activeRoute.value)) {
         activeRoute.value = '/'
       }
     }

@@ -41,6 +41,9 @@ const SettingsAi = defineAsyncComponent(() => import('@/views/settings/AiSection
 
 export const ROUTES: Record<string, RouteDef> = {
   '/': { component: defineAsyncComponent(() => import('@/views/HomeView.vue')) },
+  // 模块中心：一级核心入口（Wave 1 占位骨架，Wave 2 接真实目录投影）。
+  // 无 moduleId：不进 EnsureModuleActive 门禁，也不受"模块停用弹回首页"拦截。
+  '/modules': { component: defineAsyncComponent(() => import('@/views/ModuleCenterView.vue')) },
   '/frpc': { component: defineAsyncComponent(() => import('@/views/FrpcProjectsView.vue')), moduleId: 'frpc' },
   '/ext/fileshare': { component: defineAsyncComponent(() => import('@/views/FileShareView.vue')), moduleId: 'fileshare' },
   '/ext/memo': { component: defineAsyncComponent(() => import('@/views/MemoView.vue')), moduleId: 'memo' },
@@ -93,6 +96,19 @@ export const ROUTES: Record<string, RouteDef> = {
   '/settings/snapshot': { component: SettingsSnapshot },
   '/settings/ai': { component: SettingsAi },
   '/about': { component: defineAsyncComponent(() => import('@/views/AboutView.vue')) },
+}
+
+/**
+ * 一级核心页豁免清单（单一来源）：不隶属后端模块注册表，App.vue 的
+ * "模块停用弹回首页"逻辑对它们不生效。精确匹配语义与迁移前的字面量
+ * || 串逐字一致（设置子分区本就无 moduleId、永不进入弹回判定，
+ * 故不在此展开前缀匹配，保持行为零漂移）。
+ */
+export const CORE_ROUTES = ['/', '/modules', '/settings', '/logs', '/about'] as const
+
+/** route 是否为核心页（豁免模块弹回拦截）。 */
+export function isCoreRoute(route: string): boolean {
+  return (CORE_ROUTES as readonly string[]).includes(route)
 }
 
 /** 设置页分区（二级面板设置态菜单的单一来源）。 */

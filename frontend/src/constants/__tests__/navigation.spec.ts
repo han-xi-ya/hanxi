@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ROUTES, moduleIdOf, routeComponent, placeholderComponent, fallbackComponent,
   GROUP_META, MODULE_GROUP, groupOfModule, MODULE_PRESENTATION, FALLBACK_MODULE_ICON,
-  SETTINGS_SECTIONS, settingsSectionOf,
+  SETTINGS_SECTIONS, settingsSectionOf, CORE_ROUTES, isCoreRoute,
 } from '../navigation'
 import { ICON_NAMES } from '../icons'
 import compositionContract from '../../../../scripts/fixture/composition_contract.json'
@@ -19,9 +19,9 @@ const frontendModules = () => Object.entries(ROUTES)
   .sort()
 
 describe('constants/navigation', () => {
-  it('登记了全部 53 条路由（含设置页 8 个分区子路由）', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(53)
-    for (const route of ['/', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard']) {
+  it('登记了全部 54 条路由（含设置页 8 个分区子路由与模块中心）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(54)
+    for (const route of ['/', '/modules', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard']) {
       expect(ROUTES[route]).toBeDefined()
     }
     for (const s of SETTINGS_SECTIONS) {
@@ -54,6 +54,18 @@ describe('constants/navigation', () => {
     expect(withModule).toContain('/ext/quickmenu=quickmenu')
     expect(moduleIdOf('/')).toBeUndefined()
     expect(moduleIdOf('/settings')).toBeUndefined()
+    expect(moduleIdOf('/modules')).toBeUndefined() // 模块中心为核心入口，不进模块门禁
+    expect(routeComponent('/modules')).toBeTruthy()
+  })
+
+  it('CORE_ROUTES 豁免清单：核心页精确命中；模块路由与设置子分区不命中', () => {
+    for (const r of ['/', '/modules', '/settings', '/logs', '/about']) {
+      expect(CORE_ROUTES).toContain(r)
+      expect(isCoreRoute(r)).toBe(true)
+    }
+    expect(isCoreRoute('/ext/memo')).toBe(false)
+    expect(isCoreRoute('/settings/theme')).toBe(false) // 与迁移前字面量 || 串同语义（精确匹配零漂移）
+    expect(isCoreRoute('/modulesx')).toBe(false) // 前缀相似不误伤
   })
 
   it('route 与 moduleId 自洽：/ext/<id> 路由的 moduleId 即 <id>', () => {

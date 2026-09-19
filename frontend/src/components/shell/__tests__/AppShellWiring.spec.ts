@@ -17,24 +17,37 @@ const appSvc = vi.hoisted(() => ({
   GetTheme: vi.fn(),
   SetTheme: vi.fn(),
   SetWindowDarkMode: vi.fn(),
+  // Wave 2 模块中心投影面（useModuleCatalog 冷加载消费）
+  ListCatalog: vi.fn(),
+  ListModuleStates: vi.fn(),
+  // Wave 4 操作观察面（OperationBanner/useOperations 冷加载消费）
+  ListOperations: vi.fn(),
+  DismissResumable: vi.fn(),
 }))
 const notifySvc = vi.hoisted(() => ({ GetHistory: vi.fn() }))
+const historySvc = vi.hoisted(() => ({ List: vi.fn() }))
 const runtime = vi.hoisted(() => ({ On: vi.fn(() => vi.fn()) }))
 
 vi.mock('@wailsio/runtime', () => ({ Events: runtime }))
 vi.mock('../../../../bindings/hanxi/internal/app', () => ({ AppService: appSvc }))
 vi.mock('../../../../bindings/hanxi/internal/app/appservice.js', () => ({ EnsureModuleActive: vi.fn() }))
 vi.mock('../../../../bindings/hanxi/internal/notify', () => ({ NotificationService: notifySvc }))
+vi.mock('../../../../bindings/hanxi/internal/history/historyservice', () => ({ List: historySvc.List }))
 
 async function mountApp() {
   appSvc.GetNavs.mockResolvedValue([
     { id: 'memo', route: '/ext/memo', title: '随手记', icon: '📝', section: 'ext', order: 0 },
   ])
   appSvc.ListModules.mockResolvedValue([])
+  appSvc.ListCatalog.mockResolvedValue([])
+  appSvc.ListModuleStates.mockResolvedValue([])
+  appSvc.ListOperations.mockResolvedValue([])
+  appSvc.DismissResumable.mockResolvedValue(null)
   appSvc.GetAppInfo.mockResolvedValue({ version: '0.0.0', name: 'Hanxi' })
   appSvc.SetTheme.mockResolvedValue(null)
   appSvc.SetWindowDarkMode.mockResolvedValue(null)
   notifySvc.GetHistory.mockResolvedValue([])
+  historySvc.List.mockResolvedValue([])
   const w = mount(App, { attachTo: document.body })
   await flushPromises()
   return w
@@ -83,6 +96,24 @@ describe('App.vue ↔ AppSidebar 接线', () => {
     expect(w.find('.theme-toggle').exists()).toBe(false)
     const titles = w.findAll('.rail-core').map((b) => b.attributes('title'))
     expect(titles).toEqual(['设置'])
+    w.unmount()
+  })
+
+  // 模块中心接线锁（Wave 2 起页面已是真实目录投影）：核心页无 moduleId →
+  // navigateTo 不过 EnsureModuleActive 门禁、refreshNavs 的"禁用扩展弹回首页"
+  // 豁免清单（navigation.CORE_ROUTES）含 /modules，即便后端 navs 里没有该 route
+  // 也停在模块中心不弹回（高亮留在模块中心钮即为不弹回）。
+  it('rail 点模块中心：直达 /modules 目录投影，navs 未登记不触发弹回', async () => {
+    const w = await mountApp()
+    await w.find('.rail-modules').trigger('click')
+    // 换页落定：异步组件解析（微任务）+ Transition 帧驱动（happy-dom rAF 走真定时器）。
+    // 全量并发跑时 worker 抢占会让双帧 out-in 超过固定预算,故用 waitFor 轮询到条件成立
+    // （对负载不敏感,单跑/全量/CI 一致),而非"让出 N 轮固定 timer"。
+    await vi.waitFor(() => {
+      expect(w.find('.rail-modules.active').exists()).toBe(true)
+      expect(w.find('.rail-home.active').exists()).toBe(false)
+      expect(w.find('.content-area').text()).toContain('完整模块目录与安装管理')
+    }, { timeout: 2000, interval: 20 })
     w.unmount()
   })
 })
