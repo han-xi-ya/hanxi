@@ -7,10 +7,13 @@
 //     内嵌重做性价比低，且悬浮流依赖上游全局快捷键——所有图片操作在 PicLite 自有窗口完成；
 //   - MSI 管理提取路线：上游 46 个版本均无便携 zip，仅 NSIS perMachine setup.exe
 //     （需提权、写卸载注册表，否决）与 WiX MSI。msiexec /a 管理提取免管理员、
-//     免注册表副作用拆出单 exe，已真机验证（详见 version.extractMSI 注释）；
+//     免注册表副作用拆出单 exe，已真机验证（详见 version.extractMSI 注释）。
+//     Wave 4 内核收口：下载+官方 SHA-256 校验委托 artifact.Fetch，提取搬运留
+//     模块（ADR-0002 §5 裁定 MSI 策略不进 artifact），落位走 Tree 事务；
 //   - 退出即强杀：上游关窗语义是"隐藏驻托盘"且 ExitRequested 默认拦截，
-//     不存在任何外部优雅退出通道（无 -quit CLI、无命令管道），Quit 直接 JobObject
-//     终止；配置前端即时写盘，不丢设置（详见 instance 包注释）。
+//     不存在任何外部优雅退出通道（无 -quit CLI、无命令管道），QuitHook 即时
+//     返错使 supervisor 内核直落 JobObject 强杀（ADR-0002 §5"天然兼容"）；
+//     配置前端即时写盘，不丢设置（详见 instance 包注释）。
 package piclite
 
 import (
@@ -32,7 +35,7 @@ type Module struct {
 
 // New 在 app 装配期创建模块（构造无 IO，重活延迟到 OnInit 与 service 方法）。
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewPicLiteService(plat)}
+	return &Module{svc: NewPicLiteService(plat, extapi.NewLeaseHolder(ID))}
 }
 
 // Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
@@ -46,6 +49,10 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Level:       extapi.LevelBuiltin,
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
@@ -69,7 +76,8 @@ func (e *Module) OnInit(ctx context.Context) error {
 
 // OnDestroy 交回 service 做资源收尾；错误仅记录，注册表不因此阻断停用流程。
 func (e *Module) OnDestroy() error {
-	e.svc.Shutdown()
+	// 装配布线:Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)
+	e.svc.shutdown()
 	return nil
 }
 

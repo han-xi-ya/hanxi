@@ -1,13 +1,15 @@
 package instance
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"os/exec"
-	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
 	"hanxi/internal/platform"
+	sup "hanxi/packages/go/supervisor"
 )
 
 // State 引擎状态机：stopped → starting → running → (stopped | failed | external)
@@ -20,6 +22,30 @@ const (
 	StateFailed   State = "failed"   // 启动失败 / 异常退出
 	StateExternal State = "external" // 外部用户自启的 PicLite 主实例（非本引擎托管）
 )
+
+// quitGraceWindow Quit 交给内核 Stop 的 grace 预算。PicLite 的 QuitHook 恒即时
+// 返错（无优雅通道，见 NewEngine 注释），预算实际不会被消耗；保留非零值是让
+// 内核确实咨询钩子——grace==0 会跳过钩子调用，"通道不存在"的显式声明就退化
+// 成永不执行的死代码。
+const quitGraceWindow = 2 * time.Second
+
+// errNoGracefulQuit PicLite 优雅退出通道不存在的显式声明：QuitHook 恒返本错误，
+// 按 supervisor 语义（"钩子返回错误时直接进入强制终止"），Quit 收敛为
+// JobObject 直接强杀。刻意不采用"不注册钩子"的写法——两者内核行为等价（都强杀），
+// 但注册即时返错的钩子把"无通道"从缺省沉默变成显式事实源：读代码即知这不是
+// 漏配，上游若将来补出优雅通道（如 CLI 参数），只需替换本钩子实现。
+//
+// 上游实证（勿回退照抄 ccswitch 模板）：
+//   - 主窗口 WM_CLOSE 被 prevent_close+hide 拦下（关窗只藏进托盘，不退进程）；
+//     ExitRequested 未置 quitting 标志也被 prevent_exit 拦截，且无 -quit 类 CLI、
+//     无命名管道命令词表；
+//   - 向单实例消息窗口投 WM_CLOSE 是净损害：DefWindowProc 直接 DestroyWindow，
+//     既不触发退出，又拆掉单实例协议载体（后续信使失联）。
+var errNoGracefulQuit = errors.New("piclite: 上游无优雅退出通道（关窗只藏进托盘、WM_CLOSE 会拆除单实例协议载体），直接强制终止")
+
+// manualStopWording 内核手动停止的收口文案；piclite 既有快照口径在 stopped
+// 态不带文案（Error 为空），映射时如实还原。
+const manualStopWording = "已手动停止"
 
 // Snapshot 引擎状态快照：事件推送与前端渲染共用同一模型。
 type Snapshot struct {
@@ -53,238 +79,123 @@ type Callbacks struct {
 	OnState func(snap Snapshot)
 }
 
-// Engine PicLite 单实例运行引擎。
+// Engine PicLite 单实例运行引擎：组合内核 supervisor.Engine，
+// 本层持有 PicLite 专属账目（退出码/停止时刻）、"无优雅通道"QuitHook 声明
+// 与信使唤窗。
 type Engine struct {
 	mu        sync.Mutex
-	state     State
-	version   string
-	pid       uint32
-	exitCode  int
-	errMsg    string
-	external  bool
-	startedAt time.Time
-	stoppedAt time.Time
-	stopping  bool // 手动停止/退出标记：防止进程终止后误判为异常退出
+	exitCode  int       // 自有实例最近一次异常退出码（Start 时清零）
+	stoppedAt time.Time // 自有实例最近一次落终态的时刻
 
-	startMu sync.Mutex // Start/Quit 互斥临界区
+	sup   *sup.Engine
+	probe PicLiteProbe
+	cb    Callbacks
 
-	cmd    *exec.Cmd
-	job    platform.Job
-	jobAPI platform.JobAPI
-	probe  PicLiteProbe
-	cb     Callbacks
+	spawnMessenger func(exe string) error // 信使拉起接缝（默认真实 spawn，测试注入）
 }
 
 // NewEngine 创建托管运行引擎（初始 stopped，无任何系统副作用）；
 // JobAPI/Probe/Callbacks 由 service 层注入，保持本包零框架依赖。
 func NewEngine(jobAPI platform.JobAPI, probe PicLiteProbe, cb Callbacks) *Engine {
-	return &Engine{
-		state:  StateStopped,
-		jobAPI: jobAPI,
-		probe:  probe,
-		cb:     cb,
+	e := &Engine{
+		probe:          probe,
+		cb:             cb,
+		spawnMessenger: spawnMessenger,
 	}
+	e.sup = sup.NewEngine(jobAPI, supProbe{probe}, sup.Callbacks{OnState: e.onSupState})
+	// 无优雅退出通道的显式声明：钩子即时返错 → 内核 Stop 跳过 grace 窗口，
+	// 直接走 killSequence（JobObject Terminate 优先，兜底强杀）；
+	// PicLite 配置（app-profile/upload-profile JSON）为前端修改即写盘，
+	// 进程级终止不丢设置（进行中的批量压缩中断，与上游自身崩溃等价，可接受）。
+	e.sup.SetQuitHook(func(context.Context) error {
+		return errNoGracefulQuit
+	})
+	return e
 }
 
-// Start 启动自有实例：创建进程 → 绑定 JobObject → 状态 running。
-// PicLite 唯一启动语义即"无参拉起 → 主窗口显示"（--minimized 自启参数刻意不用：
-// 托管入口是"打开窗口"，带参启动反而需要二次信使唤窗竞态）。
-// 本方法不做互斥体探测：冷启动与外部实例竞速的 TOCTOU 交给 wait() 退出分类兜底。
+// Start 启动自有实例（委托内核：创建进程 → 绑定 JobObject → running；
+// 工作目录锁定到 exe 所在目录由内核默认保证）。
+// PicLite 唯一启动语义即"无参拉起 → 主窗口显示"（--minimized 自启参数刻意
+// 不用：托管入口是"打开窗口"，带参启动反而需要二次信使唤窗竞态）。
+// 本方法不做互斥体探测：冷启动与外部实例竞速的 TOCTOU 交给内核 wait 退出分类
+// 兜底（ReadyTimeout=0 即 markeron 同款冷启动语义；就绪等待由 service 层经
+// WaitReady 另行执行）。
 func (e *Engine) Start(opts StartOptions) error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
 	if err := opts.validate(); err != nil {
 		return err
 	}
 
 	e.mu.Lock()
-	e.version = opts.Version
-	e.external = false
-	e.stopping = false
-	e.mu.Unlock()
-
-	e.transition(StateStarting, "")
-
-	// PicLite 是 GUI 子系统程序，无需隐藏控制台窗口。
-	cmd := exec.Command(opts.Exe)
-	cmd.Dir = filepath.Dir(opts.Exe) // 工作目录锁定：与信使拉起保持同构语义
-	if err := cmd.Start(); err != nil {
-		e.transition(StateFailed, "进程启动失败: "+err.Error())
-		return err
-	}
-
-	e.mu.Lock()
-	e.cmd = cmd // 立即登记
-	e.pid = uint32(cmd.Process.Pid)
 	e.exitCode = 0
-	e.errMsg = ""
-	e.startedAt = time.Now()
 	e.stoppedAt = time.Time{}
 	e.mu.Unlock()
 
-	job, jerr := e.jobAPI.Create()
-	if jerr != nil {
-		_ = cmd.Process.Kill()
-		go e.wait()
-		e.transition(StateFailed, "创建 Job Object 失败: "+jerr.Error())
-		return fmt.Errorf("创建 Job Object 失败: %w", jerr)
-	}
-	if aerr := job.Assign(e.pid); aerr != nil {
-		job.Close()
-		_ = cmd.Process.Kill()
-		go e.wait()
-		e.transition(StateFailed, "JobObject 绑定失败: "+aerr.Error())
-		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
-	}
-	if opts.Detached {
-		// 解除退出联动：Hanxi 退出/崩溃不再连带杀本实例（"不随 Hanxi 关闭"开关）
-		if derr := job.SetAllowKillOnClose(false); derr != nil {
-			job.Close()
-			_ = cmd.Process.Kill()
-			go e.wait()
-			e.transition(StateFailed, "解除退出联动失败: "+derr.Error())
-			return fmt.Errorf("解除退出联动失败: %w", derr)
-		}
-	}
-
-	e.mu.Lock()
-	e.job = job
-	e.mu.Unlock()
-
-	go e.wait()
-	e.transition(StateRunning, "")
-	return nil
+	// 刻意不设置 HideWindow 等窗口干预：PicLite 是 GUI 子系统程序，既不产生
+	// 控制台窗口，且需保留其原版行为（零 fork 承诺）。
+	return e.sup.Start(context.Background(), sup.Spec{
+		Version:       opts.Version,
+		Exe:           opts.Exe,
+		DetachFromJob: opts.Detached, // "不随 Hanxi 关闭"开关 → SetAllowKillOnClose(false)
+	})
 }
 
-// OpenWindow 完成单实例协议的窗口唤起：
-//   - 已有主实例（自有/外部）→ 无参拉起"信使"进程，单实例插件回调无条件 show+focus 主窗口；
-//   - 无实例 → 返回 false 由 service 层直接走 Start。
-//
-// 信使进程 Start 后立即 Release、刻意不 Wait（避免阻塞 RPC）、不进 Job
-// （不属于托管生命周期）。此决策理由请勿在后续维护中"好心"改成 Wait。
+// OpenWindow 完成单实例协议的窗口唤起：拉起同路径第二个 PicLite 实例充当
+// "信使"，tauri-plugin-single-instance 回调无条件 show+focus 主窗口（见
+// messenger.go 的拉起纪律）；主实例是否存在由 service 层依据快照判定。
 func (e *Engine) OpenWindow(exe string) (opened bool, err error) {
-	cmd := exec.Command(exe)
-	cmd.Dir = filepath.Dir(exe)
-	if err := cmd.Start(); err != nil {
-		return false, fmt.Errorf("拉起窗口信使失败: %w", err)
+	if err := e.spawnMessenger(exe); err != nil {
+		return false, err
 	}
-	_ = cmd.Process.Release()
-
-	e.mu.Lock()
-	snap := e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
+	e.emit(e.Snapshot())
 	return true, nil
 }
 
-// Quit 退出引擎托管的 PicLite（幂等；external/stopped 状态无自有进程，直接返回 nil）。
-//
-// 与 ccswitch 模板的关键差异——无优雅退出通道，直接 JobObject 终止：
-//   - 上游把"关窗"与"退出"做成两回事：主窗口 WM_CLOSE 被 prevent_close+hide
-//     拦下（驻留托盘），连 ExitRequested 也非 quitting 标志就 prevent_exit；
-//   - 上游无 -quit CLI、无命名管道命令词表（papertodo 路线不存在）；
-//   - 向单实例消息窗口投 WM_CLOSE 是净损害：DefWindowProc 直接 DestroyWindow，
-//     既不触发退出，又拆掉单实例协议载体。
-//
-// 数据安全：PicLite 配置（app-profile/upload-profile JSON）为前端修改即写盘，
-// 进程级终止不丢设置；进行中的批量压缩会中断（与上游自身崩溃等价，可接受）。
+// Quit 退出引擎托管的 PicLite（幂等；external/stopped 状态无自有进程，按既有
+// 契约映射为无操作成功）。与 ccswitch 模板的关键差异——直接强杀（同 keyviz）：
+// QuitHook 即时返错使内核跳过 grace 窗口进入强制终止（理由与数据安全论证见
+// errNoGracefulQuit 与包注释）。
 func (e *Engine) Quit() error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
-	e.mu.Lock()
-	state, cmd := e.state, e.cmd
-	e.stopping = true // 先标记：其后 wait() 收尾归类为"手动退出"
-	e.mu.Unlock()
-	if state != StateRunning && state != StateStarting {
-		return nil
-	}
-	return e.forceKill(cmd)
+	return e.stopWithGrace(quitGraceWindow)
 }
 
-// Stop 立即强杀自有实例（幂等）。与 Quit 语义在 PicLite 处收敛为同一路径，
-// 保留两个入口维持家族 API 一致（应用退出 Shutdown 通道用）。
+// Stop 立即强杀自有实例（幂等，grace=0 连钩子都不咨询）。与 Quit 语义在
+// PicLite 处收敛为同一路径（都是 JobObject 终止），保留两个入口维持家族 API
+// 一致（应用退出 Shutdown 通道用）。
 func (e *Engine) Stop() error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
-	e.mu.Lock()
-	state, cmd := e.state, e.cmd
-	e.stopping = true
-	e.mu.Unlock()
-	if state != StateRunning && state != StateStarting {
-		return nil
-	}
-	return e.forceKill(cmd)
+	return e.stopWithGrace(0)
 }
 
-// forceKill JobObject 强杀自有实例（PicLite 唯一可用的终止原语）。
-func (e *Engine) forceKill(cmd *exec.Cmd) error {
-	e.mu.Lock()
-	job := e.job
-	e.mu.Unlock()
-	if job != nil {
-		return job.Terminate(1)
+func (e *Engine) stopWithGrace(grace time.Duration) error {
+	if err := e.sup.Stop(grace); err != nil {
+		if errors.Is(err, sup.ErrExternal) {
+			return nil // external 状态不在管辖范围内：指引文案由 service 层给出
+		}
+		return err
 	}
-	if cmd != nil && cmd.Process != nil {
-		return cmd.Process.Kill()
-	}
-	return fmt.Errorf("实例没有可终止的进程")
+	return nil
 }
 
-// RefreshExternal 探测外部实例校正 external/stopped 状态。
-// 仅对静止态生效：running/starting 时探测到的正是自己，会误导状态机。
+// RefreshExternal 探测命名互斥体校正 external/stopped 状态（委托内核）。
+// 仅对静止态生效：running/starting/stopping 时探测到的正是自己，会误导状态机。
 func (e *Engine) RefreshExternal() {
-	e.mu.Lock()
-	state := e.state
-	e.mu.Unlock()
-	if state != StateStopped && state != StateFailed && state != StateExternal {
-		return
-	}
-
-	running := e.probe.IsRunning()
-
-	e.mu.Lock()
-	var snap Snapshot
-	changed := false
-	switch {
-	case running && e.state != StateExternal:
-		e.state = StateExternal
-		e.external = true
-		e.pid = 0
-		e.errMsg = ""
-		changed = true
-	case !running && e.state == StateExternal:
-		e.state = StateStopped
-		e.external = false
-		e.stoppedAt = time.Now()
-		changed = true
-	}
-	if changed {
-		snap = e.snapshotLocked()
-	}
-	e.mu.Unlock()
-	if changed {
-		e.emit(snap) // 无变化不广播
-	}
+	e.sup.RefreshExternal()
 }
 
 // Snapshot 返回当前状态快照。
 func (e *Engine) Snapshot() Snapshot {
+	outer := e.sup.Snapshot()
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.snapshotLocked()
+	return e.snapshotLocked(outer)
 }
 
-// Exe 返回当前自有实例的可执行路径（非 running 时为空）。
+// Exe 返回当前自有实例的可执行路径（非 running/starting 时为空串）。
 func (e *Engine) Exe() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.cmd == nil {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning && s.State != sup.StateStarting {
 		return ""
 	}
-	return e.cmd.Path
+	return s.Exe
 }
 
 // WaitReady 阻塞等待 PicLite 实例就绪（单实例互斥体出现），超时返回 false。
@@ -293,40 +204,117 @@ func (e *Engine) WaitReady(timeout time.Duration) bool {
 }
 
 // IsUserWindowOpen 自有实例是否有可见用户窗口——空闲自动退出的豁免信号。
-// 按自有进程 PID 判定；非 running（PID=0，含 external 态）恒为 false。
+// 按自有进程 PID 判定（探针领域能力，不经内核）；非 running 恒为 false。
 func (e *Engine) IsUserWindowOpen() bool {
-	e.mu.Lock()
-	pid := e.pid
-	state := e.state
-	e.mu.Unlock()
-	if state != StateRunning {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning {
 		return false
 	}
-	return e.probe.IsMainWindowOpen(pid)
+	return e.probe.IsMainWindowOpen(s.PID)
 }
 
 // RunningDuration 自有实例已运行时长。
 func (e *Engine) RunningDuration() time.Duration {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.state != StateRunning || e.startedAt.IsZero() {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning || s.Since.IsZero() {
 		return 0
 	}
-	return time.Since(e.startedAt)
+	return time.Since(s.Since)
+}
+
+// ---------- 内核 → piclite 形状映射 ----------
+
+// onSupState 内核状态广播 → 映射为本包 Snapshot 后转发（回调在内核锁外执行）。
+func (e *Engine) onSupState(s sup.Snapshot) {
+	var snap Snapshot
+	e.mu.Lock()
+	snap = e.snapshotLocked(s)
+	e.mu.Unlock()
+	e.emit(snap)
 }
 
 // snapshotLocked 前置条件：已持 e.mu。
-func (e *Engine) snapshotLocked() Snapshot {
+func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
+	switch s.State {
+	case sup.StateStopped, sup.StateFailed:
+		if e.stoppedAt.IsZero() {
+			e.stoppedAt = time.Now()
+		}
+	}
+	if s.State == sup.StateFailed {
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			e.exitCode = code
+		}
+	}
 	return Snapshot{
-		Version:   e.version,
-		State:     e.state,
-		PID:       e.pid,
+		Version:   s.Version,
+		State:     mapState(s.State),
+		PID:       s.PID,
 		ExitCode:  e.exitCode,
-		Error:     e.errMsg,
-		External:  e.external,
-		StartedAt: e.startedAt,
+		Error:     mapErrorMessage(s),
+		External:  s.State == sup.StateExternal,
+		StartedAt: s.Since,
 		StoppedAt: e.stoppedAt,
 	}
+}
+
+// mapState 状态词表映射：
+//
+//	supervisor stopped  → stopped
+//	supervisor starting → starting
+//	supervisor running  → running
+//	supervisor stopping → running（piclite 既有词表无 stopping：终止窗口对前端保持
+//	                      运行语义，收口后由 stopped/failed 终态广播纠正）
+//	supervisor external → external
+//	supervisor failed   → failed
+func mapState(s sup.State) State {
+	switch s {
+	case sup.StateStarting:
+		return StateStarting
+	case sup.StateRunning, sup.StateStopping:
+		return StateRunning
+	case sup.StateExternal:
+		return StateExternal
+	case sup.StateFailed:
+		return StateFailed
+	default:
+		return StateStopped
+	}
+}
+
+// kernelAbnormalExitRe 匹配内核异常退出文案中的退出码。措辞耦合自
+// supervisor.wait 的分类消息"托管进程异常退出（退出码 %d）"——内核文案变更时
+// 本处回退为透传 Error（ExitCode 保持账目值），不会崩溃，仅少一层改写。
+var kernelAbnormalExitRe = regexp.MustCompile(`托管进程异常退出（退出码 (-?\d+)）`)
+
+// exitCodeFromKernelMessage 从内核异常退出文案中提取退出码。
+func exitCodeFromKernelMessage(msg string) (int, bool) {
+	g := kernelAbnormalExitRe.FindStringSubmatch(msg)
+	if g == nil {
+		return 0, false
+	}
+	var code int
+	if _, err := fmt.Sscanf(g[1], "%d", &code); err != nil {
+		return 0, false
+	}
+	return code, true
+}
+
+// mapErrorMessage 还原 piclite 既有失败文案：
+//   - 内核异常退出消息改回"PicLite 异常退出（退出码 N）。请确认已安装
+//     WebView2 Runtime"；
+//   - 内核手动停止的"已手动停止"折回本引擎既有的空文案（stopped 态不带话术）；
+//   - 其余（启动失败等）透传。
+func mapErrorMessage(s sup.Snapshot) string {
+	if s.State == sup.StateFailed {
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			return fmt.Sprintf("PicLite 异常退出（退出码 %d）。请确认已安装 WebView2 Runtime", code)
+		}
+	}
+	if s.State == sup.StateStopped && s.Error == manualStopWording {
+		return ""
+	}
+	return s.Error
 }
 
 // emit 状态广播（回调在锁外执行，防止回调内重入本引擎造成死锁）。
@@ -336,72 +324,12 @@ func (e *Engine) emit(snap Snapshot) {
 	}
 }
 
-// transition 切换状态并广播。
-func (e *Engine) transition(s State, errMsg string) {
-	var snap Snapshot
-	e.mu.Lock()
-	e.state = s
-	e.errMsg = errMsg
-	switch s {
-	case StateRunning:
-		e.stoppedAt = time.Time{}
-		e.errMsg = ""
-	case StateStopped, StateFailed:
-		if e.stoppedAt.IsZero() {
-			e.stoppedAt = time.Now()
-		}
-	}
-	snap = e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
-}
+// supProbe 把 PicLiteProbe（命名互斥体存在性）适配为内核统一探针契约。
+// 互斥体探测为瞬时系统调用、天然不可取消（任何失败按"不存在"处理，永不报错），
+// 因此不产出 ProcInfo（外部实例归属只认 running 事实，PID 无从取得，沿用原口径；
+// 空闲豁免所需的 PID 由 running 态自有进程经 IsUserWindowOpen 独立取得）。
+type supProbe struct{ p PicLiteProbe }
 
-// wait 阻塞等待自有进程退出并分类收尾。
-func (e *Engine) wait() {
-	err := e.cmd.Wait()
-	code := 0
-	if err != nil && e.cmd.ProcessState != nil {
-		code = e.cmd.ProcessState.ExitCode()
-	}
-
-	e.mu.Lock()
-	e.exitCode = code
-	e.stoppedAt = time.Now()
-	stopped := e.stopping
-	prev := e.state
-	e.external = false
-	if e.job != nil {
-		_ = e.job.Close()
-		e.job = nil
-	}
-	e.cmd = nil
-	e.mu.Unlock()
-
-	// 分支顺序不可换：冷启动竞速场我们的进程信使化自退（exit 0），必须先判外部接管——
-	// 互斥体仍被持有说明真正存活的是外部主实例
-	externalTaken := !stopped && e.probe.IsRunning()
-
-	switch {
-	case stopped:
-		e.transition(StateStopped, "")
-	case externalTaken && prev != StateFailed:
-		e.setStateExternal()
-	case code == 0 && prev == StateRunning:
-		e.transition(StateStopped, "") // 用户在 PicLite 自己退出（托盘菜单退出等）
-	default:
-		e.transition(StateFailed, fmt.Sprintf("PicLite 异常退出（退出码 %d）。请确认已安装 WebView2 Runtime", code))
-	}
-}
-
-// setStateExternal 将引擎标记为外部实例运行中（进程归属不在本引擎）。
-func (e *Engine) setStateExternal() {
-	var snap Snapshot
-	e.mu.Lock()
-	e.state = StateExternal
-	e.external = true
-	e.pid = 0
-	e.errMsg = ""
-	snap = e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
+func (s supProbe) Inspect(_ context.Context) (bool, *platform.ProcInfo, error) {
+	return s.p.IsRunning(), nil, nil
 }
