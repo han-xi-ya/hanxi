@@ -33,6 +33,7 @@ import {
   operationKindMeta,
   operationPhaseText,
   operationStatusMeta,
+  updateAvailableText,
 } from '../constants/status'
 import {
   loadRecentRoutes,
@@ -126,6 +127,12 @@ const updateEntries = computed(() =>
 )
 /** 健康维度词表条目：text「有可用更新」+ tone + icon（禁自造状态词）。 */
 const updateHealth = healthMeta('update-available')
+
+/** 更新行徽标短语：投影带 remoteVersion 时"有可用更新 → 新版本号"（与卡片
+ * 健康徽标同一口径 updateAvailableText），无版本不编造、只显词表原文。 */
+function updateChipText(e: ModuleEntry): string {
+  return updateAvailableText(e.state?.remoteVersion)
+}
 
 /** 更新行直达：有登记路由进模块，否则回落模块中心（更新操作在模块中心/模块页处理）。 */
 function gotoUpdate(e: ModuleEntry) {
@@ -391,7 +398,8 @@ onMounted(async () => {
 
       <!-- 可用更新（W2b 点亮）：条目 = useModuleCatalog 中 health==='update-available'
            的真实投影（updatewatch 感知链裁决，updates:checked 驱动重拉）。
-           行=模块名+派生摘要合并短语（SUMMARY_META：正在运行/有更新等口径）+健康徽标+直达；
+           行=模块名+派生摘要合并短语（SUMMARY_META：正在运行/有更新等口径）+健康徽标
+           （投影带 remoteVersion 时含"→ 新版本号"短语，与卡片同口径）+直达；
            无条目整区隐藏，不放占位。 -->
       <section v-if="updateEntries.length > 0" class="wb-panel updates-panel" aria-labelledby="updates-title">
         <header class="wb-head">
@@ -415,8 +423,13 @@ onMounted(async () => {
                 <span class="row-name">{{ e.catalog.name }}</span>
                 <span class="row-desc">{{ updateRowSummary(e) }}</span>
               </span>
-              <UiStatusChip class="update-chip" :tone="updateHealth.tone">
-                <AppIcon :name="updateHealth.icon" /> {{ updateHealth.text }}
+              <UiStatusChip
+                class="update-chip"
+                :tone="updateHealth.tone"
+                :title="updateChipText(e) !== updateHealth.text ? updateChipText(e) : undefined"
+              >
+                <AppIcon :name="updateHealth.icon" />
+                <span class="update-chip-text">{{ updateChipText(e) }}</span>
               </UiStatusChip>
               <span class="row-goto"><AppIcon name="goto" :size="14" /></span>
             </button>
@@ -737,6 +750,14 @@ onMounted(async () => {
 
 .update-chip {
   flex: none;
+  max-width: 46%;
+}
+/* 徽标文字段（可能带"→ 新版本号"短语）：超长截断，全文由 title 承载 */
+.update-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .row-goto {

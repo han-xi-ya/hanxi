@@ -25,6 +25,7 @@ import {
   policyMeta,
   runtimeMeta,
   toolStateMeta,
+  updateAvailableText,
   type DeliveryStateValue,
   type HealthStateValue,
   type OperationKindValue,
@@ -131,6 +132,20 @@ describe('四维状态词表', () => {
       expect(getter(undefined as unknown as string)).toEqual(UNKNOWN)
     })
   }
+})
+
+describe('updateAvailableText（有可用更新 + 版本短语统一口径）', () => {
+  it('带 remoteVersion 时追加" → 版本号"，基底锚定 HEALTH_META 词表原文', () => {
+    expect(updateAvailableText('2.3.4')).toBe(`${HEALTH_META['update-available'].text} → 2.3.4`)
+  })
+
+  it('无版本记录（空串/缺省/null）只回词表原文——绝不编造版本', () => {
+    const base = HEALTH_META['update-available'].text
+    expect(updateAvailableText()).toBe(base)
+    expect(updateAvailableText('')).toBe(base)
+    expect(updateAvailableText(null)).toBe(base)
+    expect(updateAvailableText(undefined)).toBe(base)
+  })
 })
 
 describe('PRIMARY_ACTION_META', () => {

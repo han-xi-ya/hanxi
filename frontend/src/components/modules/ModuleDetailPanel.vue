@@ -11,6 +11,7 @@ import {
   healthMeta,
   policyMeta,
   runtimeMeta,
+  updateAvailableText,
 } from '../../constants/status'
 import { MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../../constants/navigation'
 import { ICON_NAMES, type IconName } from '../../constants/icons'
@@ -25,11 +26,16 @@ const state = computed(() => props.entry.state)
 /** 四维逐行：值 → META 文案（未知/缺失兜底"状态未知"，不抛错不推断）。 */
 const dims = computed(() => {
   const s = state.value
+  const health = healthMeta(s?.health ?? '')
+  // update-available 行与卡片徽标同一口径：带投影里的上游新版本，无版本不编造。
+  const healthText = String(s?.health ?? '') === 'update-available'
+    ? updateAvailableText(s?.remoteVersion)
+    : health.text
   return [
     { key: 'delivery', label: '交付', meta: deliveryMeta(s?.delivery ?? '') },
     { key: 'policy', label: '策略', meta: policyMeta(s?.policy ?? '') },
     { key: 'runtime', label: '运行', meta: runtimeMeta(s?.runtime ?? '') },
-    { key: 'health', label: '健康', meta: healthMeta(s?.health ?? '') },
+    { key: 'health', label: '健康', meta: { ...health, text: healthText } },
   ]
 })
 

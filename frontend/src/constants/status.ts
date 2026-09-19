@@ -197,6 +197,17 @@ export function healthMeta(value: string): SemanticMeta {
   return HEALTH_META[value as HealthStateValue] ?? UNKNOWN_STATE_META
 }
 
+/**
+ * update-available 展示短语：投影带 remoteVersion 时追加" → 新版本号"，
+ * 无版本记录（旧缓存迁移/感知未拿到版本）原样返回词表文案——绝不编造版本。
+ * 徽标/详情行/首页更新列表共用此单一口径，保证跨页一致。
+ */
+export function updateAvailableText(version?: string | null): string {
+  const base = HEALTH_META['update-available'].text
+  const v = String(version ?? '')
+  return v ? `${base} → ${v}` : base
+}
+
 // ---------------------------------------------------------------------------
 // 统一 Operation 观察面词表（Wave 4）
 // kind/status 两族取值逐字对齐 bindings 的 OperationKind / OperationStatus 枚举；

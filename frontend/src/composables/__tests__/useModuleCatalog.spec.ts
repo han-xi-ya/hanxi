@@ -164,11 +164,15 @@ describe('useModuleCatalog', () => {
       runtime.handlers['ext:changed']()
       expect(appSvc.ListModuleStates.mock.calls.length).toBe(before)
 
-      // 感知链收口后的新健康值只经重拉到达（前端不本地改缓存）
-      appSvc.ListModuleStates.mockResolvedValue([stateOf('memo', { health: 'update-available', summary: 'running-update' })])
+      // 感知链收口后的新健康值（含展示用 remoteVersion）只经重拉到达（前端不本地改缓存）
+      appSvc.ListModuleStates.mockResolvedValue([
+        stateOf('memo', { health: 'update-available', summary: 'running-update', remoteVersion: '9.0.0' }),
+      ])
       await vi.advanceTimersByTimeAsync(300)
       expect(appSvc.ListModuleStates.mock.calls.length).toBe(before + 1)
       expect(entries.value[0].state?.health).toBe('update-available')
+      // mergeEntries 原样透传整个 state 对象：remoteVersion 直达投影消费方
+      expect(entries.value[0].state?.remoteVersion).toBe('9.0.0')
     } finally {
       vi.useRealTimers()
     }

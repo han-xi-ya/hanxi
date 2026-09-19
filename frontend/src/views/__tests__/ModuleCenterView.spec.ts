@@ -133,7 +133,7 @@ describe('ModuleCenterView', () => {
   it('健康维度筛选档「有可用更新 N」：读 state.health 分桶，卡片呈现词表健康徽标（W2b）', async () => {
     appSvc.ListCatalog.mockResolvedValue([cat('memo'), cat('wifi'), cat('frpc')])
     appSvc.ListModuleStates.mockResolvedValue([
-      st('memo', { health: 'update-available', summary: 'running-update' }),
+      st('memo', { health: 'update-available', summary: 'running-update', remoteVersion: '1.2.3' }),
       st('wifi', { health: 'update-available', policy: 'disabled', runtime: 'inactive', primaryAction: 'enable', summary: 'installed-disabled' }),
       st('frpc'),
     ])
@@ -151,10 +151,10 @@ describe('ModuleCenterView', () => {
       expect.stringContaining('模块 memo'),
       expect.stringContaining('模块 wifi'),
     ])
-    // healthBadge 自动呈现：非 current 健康值走词表徽标（不只靠颜色，文字承载）
-    for (const card of cards) {
-      expect(card.findAll('.badge-row .chip').map((c) => c.text())).toContain('有可用更新')
-    }
+    // healthBadge 自动呈现：非 current 健康值走词表徽标（不只靠颜色，文字承载）；
+    // 投影带 remoteVersion 的卡片附版本短语，无版本只有词表原文（不编造）
+    expect(cards[0].findAll('.badge-row .chip').map((c) => c.text())).toContain('有可用更新 → 1.2.3')
+    expect(cards[1].findAll('.badge-row .chip').map((c) => c.text())).toContain('有可用更新')
     // memo summary=running-update → 摘要徽标词表短语
     expect(cards[0].find('.summary-chip').text()).toBe('运行中，有更新')
     w.unmount()

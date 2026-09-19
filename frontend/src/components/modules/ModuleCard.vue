@@ -15,6 +15,7 @@ import {
   operationPhaseText,
   operationStatusMeta,
   runtimeMeta,
+  updateAvailableText,
   type PrimaryActionMeta,
   type StateTone,
   type SummaryKeyValue,
@@ -105,9 +106,16 @@ const runtimeBadge = computed(() => {
   const s = state.value
   return s && String(s.runtime) !== 'inactive' ? runtimeMeta(String(s.runtime)) : null
 })
+// update-available 徽标带投影里的上游新版本（"有可用更新 → x.y.z"）；
+// 无 remoteVersion 时按词表原文呈现，不编造。长版本串截断 + title 承载全文。
 const healthBadge = computed(() => {
   const s = state.value
-  return s && String(s.health) !== 'current' ? healthMeta(String(s.health)) : null
+  if (!s || String(s.health) === 'current') return null
+  const meta = healthMeta(String(s.health))
+  const text = String(s.health) === 'update-available'
+    ? updateAvailableText(s.remoteVersion)
+    : meta.text
+  return { icon: meta.icon, tone: meta.tone, text, full: text !== meta.text ? text : '' }
 })
 const reasonText = computed(() => state.value?.reason || '')
 
@@ -183,8 +191,8 @@ const categoryLabel = computed(() =>
       <UiStatusChip v-if="runtimeBadge" :tone="runtimeBadge.tone">
         <AppIcon :name="runtimeBadge.icon" /> {{ runtimeBadge.text }}
       </UiStatusChip>
-      <UiStatusChip v-if="healthBadge" :tone="healthBadge.tone">
-        <AppIcon :name="healthBadge.icon" /> {{ healthBadge.text }}
+      <UiStatusChip v-if="healthBadge" :tone="healthBadge.tone" :title="healthBadge.full || undefined">
+        <AppIcon :name="healthBadge.icon" /> <span class="health-text">{{ healthBadge.text }}</span>
       </UiStatusChip>
     </div>
 
@@ -257,6 +265,15 @@ const categoryLabel = computed(() =>
 }
 
 .badge-row { display: flex; flex-wrap: wrap; gap: 6px; }
+/* 健康徽标文字段（update-available 可能带"→ 新版本号"短语）：长版本串截断，
+   全文由 chip 的 title 承载，不撑破卡片布局。 */
+.health-text {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .card-reason {
   margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

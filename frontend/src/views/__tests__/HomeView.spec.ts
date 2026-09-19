@@ -326,14 +326,16 @@ describe('HomeView（工作台首页）', () => {
     w.unmount()
   })
 
-  it('可用更新列表点亮：update-available → 计数卡 + 合并行（摘要短语+健康徽标），点击直达模块、无路由回落模块中心', async () => {
+  it('可用更新列表点亮：update-available → 计数卡 + 合并行（摘要短语+健康徽标含版本短语），点击直达模块、无路由回落模块中心', async () => {
     stubCore(
       [mod('memo', '极客随手记', { initialized: true })],
       [nav('memo', '/ext/memo', '极客随手记')],
     )
     appSvc.ListCatalog.mockResolvedValue([catItem('memo', '极客随手记'), catItem('latermod', '后加模块')])
     appSvc.ListModuleStates.mockResolvedValue([
-      stateItem('memo', { health: 'update-available', summary: 'running-update' }),
+      // memo：投影带 remoteVersion → 徽标"有可用更新 → 新版本号"
+      stateItem('memo', { health: 'update-available', summary: 'running-update', remoteVersion: '2.3.4' }),
+      // latermod：无版本记录 → 徽标仅词表原文，不编造版本
       stateItem('latermod', {
         health: 'update-available', summary: 'installed-disabled', policy: 'disabled', runtime: 'inactive',
       }),
@@ -348,8 +350,11 @@ describe('HomeView（工作台首页）', () => {
     // 合并短语走 SUMMARY_META 词表（运行中，有更新 / 已安装，未启用），零本地推断
     expect(rows[0].find('.row-desc').text()).toBe('运行中，有更新')
     expect(rows[1].find('.row-desc').text()).toBe('已安装，未启用')
-    // 健康徽标走 HEALTH_META 词表（不只靠颜色，文字承载）
-    expect(rows[0].find('.update-chip').text()).toBe('有可用更新')
+    // 健康徽标走 HEALTH_META 词表（不只靠颜色，文字承载）；有 remoteVersion 时追加版本短语
+    expect(rows[0].find('.update-chip').text()).toBe('有可用更新 → 2.3.4')
+    expect(rows[0].find('.update-chip').attributes('title')).toBe('有可用更新 → 2.3.4')
+    expect(rows[1].find('.update-chip').text()).toBe('有可用更新')
+    expect(rows[1].find('.update-chip').attributes('title')).toBeUndefined()
     const home = w.findComponent(HomeView)
     // memo 有路由 → 直达模块页；latermod 无路由 → 回落模块中心处理
     await rows[0].trigger('click')

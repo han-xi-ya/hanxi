@@ -100,6 +100,35 @@ describe('ModuleCard', () => {
     expect(w.find('.summary-chip').classes()).toContain('chip-information')
   })
 
+  it('健康徽标 update-available 带投影版本："有可用更新 → x.y.z"，title 承载全文', () => {
+    const w = mountCard(entry({
+      state: { delivery: 'installed', policy: 'enabled', runtime: 'active', health: 'update-available', primaryAction: 'open', summary: 'running-update', remoteVersion: '2.3.4' },
+    }))
+    const chip = w.findAll('.badge-row .chip').find((c) => c.text().includes('有可用更新'))
+    expect(chip).toBeDefined()
+    expect(chip!.text()).toBe('有可用更新 → 2.3.4')
+    expect(chip!.attributes('title')).toBe('有可用更新 → 2.3.4')
+    // 版本短语承载于可截断文字段（长版本串不撑破卡片）
+    expect(chip!.find('.health-text').exists()).toBe(true)
+  })
+
+  it('健康徽标无版本不编造：无 remoteVersion 时仅词表原文且无 title；非 update-available 健康值不带版本', () => {
+    const noVersion = mountCard(entry({
+      state: { delivery: 'installed', policy: 'enabled', runtime: 'active', health: 'update-available', primaryAction: 'open', summary: 'running-update' },
+    }))
+    const chip = noVersion.findAll('.badge-row .chip').find((c) => c.text().includes('有可用更新'))
+    expect(chip!.text()).toBe('有可用更新')
+    expect(chip!.attributes('title')).toBeUndefined()
+
+    // 其他健康值（撤回类）即便 fixture 混入版本也不显示箭头短语（版本仅属 update-available）
+    const revoked = mountCard(entry({
+      state: { delivery: 'installed', policy: 'enabled', runtime: 'inactive', health: 'revoked', primaryAction: 'none', summary: 'blocked', remoteVersion: '9.9.9' },
+    }))
+    const rChip = revoked.findAll('.badge-row .chip').find((c) => c.text().includes('撤回'))
+    expect(rChip!.text()).toBe('版本已被官方撤回')
+    expect(rChip!.text()).not.toContain('9.9.9')
+  })
+
   it('次操作：运行中模块给出"停用/卸载/详情"；点击分别上抛 setEnabled/uninstall/detail', async () => {
     const e = entry()
     const w = mountCard(e)
