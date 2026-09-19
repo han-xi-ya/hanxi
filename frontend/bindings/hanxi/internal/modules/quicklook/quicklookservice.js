@@ -28,7 +28,11 @@ import * as version$0 from "./version/models.js";
 import * as $models from "./models.js";
 
 /**
- * DownloadVersion 后台下载指定版本：立即返回，全程经事件 quicklook:version-download 推送进度。
+ * DownloadVersion 后台下载指定版本：立即返回，全程经事件 quicklook:version-download
+ * 推送进度；同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链
+ * 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+ * 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+ * （与既有模块事件双通道并行，Wave 4-B 接线，ccswitch/markeron 同构）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */

@@ -8,6 +8,7 @@ import (
 	"hanxi/internal/extapi"
 	"hanxi/internal/product"
 	"hanxi/internal/settings"
+	"hanxi/internal/updatewatch"
 	"hanxi/packages/go/operation"
 )
 
@@ -46,6 +47,8 @@ type AppService struct {
 	opHub *operation.Hub
 	// opDismiss resumable 残留事务忽略通道（装配根组装，可能为 nil=账本未初始化）。
 	opDismiss func(txnID string) error
+	// updateWatcher 可用更新感知调度器（装配根经 SetUpdateWatcher 注入，可能为 nil）。
+	updateWatcher *updatewatch.Scheduler
 }
 
 // NewAppService 创建基础服务。trayRebuild / windowDark 回调此时为 nil，

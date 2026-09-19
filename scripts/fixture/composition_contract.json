@@ -110,6 +110,7 @@
     "translucenttb:instance-state",
     "translucenttb:version-download",
     "tray:navigate",
+    "updates:checked",
     "vscode:instance-state",
     "vscode:version-download",
     "webapp:windows-changed",
@@ -133,7 +134,7 @@
       "EnsureModuleActive", "GetNavs", "ListModules", "SetModuleEnabled", "RestartElevated",
       "GetTrayMenu", "SetTrayMenu", "SetWindowDarkMode",
       "ListCatalog", "ListModuleStates", "SetModuleInstalled",
-      "ListOperations", "DismissResumable"
+      "ListOperations", "DismissResumable", "RefreshUpdates"
     ],
     "modules/ocr/ocrservice.js": [
       "GetEngines", "GetSnipHotkey", "GetSnipResult", "HandleNativeDrop", "RecognizeClipboardImage",
@@ -151,6 +152,6 @@
   },
   "counts": {
     "modules": 41,
-    "events": 76
+    "events": 77
   }
 }

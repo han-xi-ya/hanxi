@@ -20,6 +20,9 @@ import * as extapi$0 from "../extapi/models.js";
 import * as settings$0 from "../settings/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as updatewatch$0 from "../updatewatch/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as operation$0 from "../../packages/go/operation/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -238,6 +241,16 @@ export function ReadLogContent(fileName, maxLines) {
 }
 
 /**
+ * RefreshUpdates 手动触发（或加入）一轮全量可用更新感知，阻塞至收口，
+ * 返回本轮成功判定的模块数。逐模块失败保持原健康值不谎报（updatewatch 口径）；
+ * 远程列表各有 10 分钟 TTL 缓存，连点不放大网络请求（single-flight 合并）。
+ * @returns {$CancellablePromise<number>}
+ */
+export function RefreshUpdates() {
+    return $Call.ByID(1481217676);
+}
+
+/**
  * RestartElevated 经一次 UAC 以管理员身份重启 Hanxi（requireAdministrator
  * 托管模块 BCU/Rufus/LiteMonitor 的 740 直拒解药，见 elevateHint 文案与
  * TROUBLESHOOTING #17）。route 为重启后前端应直达的路由，传空则默认首页。
@@ -350,6 +363,16 @@ export function SetTrayMenu(items) {
  */
 export function SetTrayRebuilder(fn) {
     return $Call.ByID(178488523, fn);
+}
+
+/**
+ * SetUpdateWatcher 装配根注入更新感知调度器（与 SetOperations 同级的装配缝）。
+ * 未注入（如降级装配/单测）时 RefreshUpdates 如实报错，绝不静默假成功。
+ * @param {updatewatch$0.Scheduler | null} watcher
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetUpdateWatcher(watcher) {
+    return $Call.ByID(3432574336, watcher);
 }
 
 /**

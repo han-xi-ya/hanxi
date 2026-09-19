@@ -110,6 +110,7 @@ import (
 	"hanxi/internal/product"
 	"hanxi/internal/settings"
 	"hanxi/internal/snapshot"
+	"hanxi/internal/updatewatch"
 	"hanxi/packages/go/artifact"
 	"hanxi/packages/go/operation"
 )
@@ -139,6 +140,9 @@ func RegisterEvents() {
 	// operation:changed 是无载荷事件（在途操作观察面登记/收口类变化推送，
 	// 前端消费方经 ListOperations 重拉），必须用 Void 注册。
 	application.RegisterEvent[application.Void]("operation:changed")
+	// updates:checked 是无载荷事件（updatewatch 一轮可用更新感知收口，
+	// 健康维度已写入 Registry 覆盖项），消费方经 ListModuleStates 重拉投影。
+	application.RegisterEvent[application.Void]("updates:checked")
 	application.RegisterEvent[lan.LanProgress]("lan:progress")
 	application.RegisterEvent[portscan.ScanProgress]("portscan:progress")
 	application.RegisterEvent[wechat.InboundMessage]("wechat:message-received")
@@ -333,6 +337,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		litemonitor.ID:   litemonitorversion.OpenTree(paths.VersionsDir()),
 		vscode.ID:        vscodeversion.OpenTree(paths.VersionsDir()),
 		guoheview.ID:     guoheviewversion.OpenTree(paths.VersionsDir()),
+		quicklook.ID:     quicklookversion.OpenTree(paths.VersionsDir()),
+		bili23.ID:        bili23version.OpenTree(paths.VersionsDir()),
 	}
 	var opHub *operation.Hub
 	if opStore != nil {
@@ -374,6 +380,13 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 			}
 		}
 	}
+	// 文件面收尸（ADR-0002 §4）：Fetch 强杀遗留的 `<name>.<rand>.part-<hex>`
+	// 临时件不在目录背书清理职责内，这里对 installers/、versions/ 两根各扫
+	// 一轮——只删超龄普通文件（目录/链接拒删，活跃下载不受扰），与 journal
+	// 可用性无关，账本降级模式下照常执行。
+	// 残件主要产端是 os.CreateTemp(destPath="%TEMP%\\hanxi-*")，故三根同扫;
+	// 形状+超龄+普通文件三闸俱备才删，不碰他程序文件(见 artifact.CleanStaleParts)。
+	ops.CleanStaleDownloadParts([]string{os.TempDir(), paths.InstallersDir(), paths.VersionsDir()})
 	// 恢复之后构造观察面：resumable 回灌投影反映收口后的现态（§2.3）。
 	// opStore 打开失败时得到纯内存 Hub（仍可观察在途操作，只是不落账）。
 	opHub = operation.NewHub(opStore)
@@ -484,6 +497,14 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// Wave 4-B 操作观察面 RPC：在途/近期事务查询与 resumable 残留忽略
 	// （双样本 markeron/rufus 的安装事务由此对前端可见可处置）。
 	appSvc.SetOperations(opHub, makeDismissResumable(opStore, opHub, versionTrees))
+	// "可用更新"感知链（Wave 4+ 健康维度的真实来源）：从注册模块中收集实现
+	// extapi.UpdateChecker 的托管模块交给调度器；Restore 回灌上轮结果供前端
+	// 首帧投影，Start 仅挂一次性延迟首检（无常驻 ticker，按需刷新走
+	// RefreshUpdates RPC）。调度器直调检查器、不经调用门与懒激活，构造/回灌
+	// 零网络 IO，网络比较全部延迟到延迟首检与手动触发。
+	updateWatcher := updatewatch.New(registry, collectUpdateCheckers(modulesToRegister), paths.StateDir())
+	updateWatcher.Restore()
+	appSvc.SetUpdateWatcher(updateWatcher)
 	// 历史版本（自动快照平台底座）：非 extapi 模块，服务面与 AppService 同级；
 	// 触发接线在主窗创建后（见下方窗口事件钩子），退出补拍挂 OnShutdown 链。
 	snapSvc := snapshot.New(paths, store)
@@ -582,6 +603,10 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	win.OnWindowEvent(events.Common.WindowUnMinimise, func(*application.WindowEvent) { snapSvc.NoteActivated() })
 	snapSvc.Start()
 
+	// 可用更新感知一次性延迟首检（主窗就绪后挂起，不建常驻 ticker）；
+	// 退出经 cleanup 的 Stop 收口未触发的延迟 goroutine。
+	updateWatcher.Start()
+
 	// 全仓唯一一张热键注册表（底层即 Wails GlobalShortcut 管理器）：ocr 剪贴板
 	// 识图、留言板 toggle 等所有热键槽位共用同一份记账与原子换键语义（F2-③）。
 	hk := hotkey.NewRegistry(a.GlobalShortcut)
@@ -673,6 +698,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	})
 
 	cleanup := func() {
+		updateWatcher.Stop()
 		snapSvc.Stop()
 		if logCleanup != nil {
 			logCleanup()

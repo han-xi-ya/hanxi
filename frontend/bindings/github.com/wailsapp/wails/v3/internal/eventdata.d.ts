@@ -247,6 +247,7 @@ declare module "@wailsio/runtime" {
             "translucenttb:instance-state": instance$21.Snapshot;
             "translucenttb:version-download": version$21.DownloadProgress;
             "tray:navigate": string;
+            "updates:checked": void;
             "vscode:instance-state": instance$22.Snapshot;
             "vscode:version-download": version$22.DownloadProgress;
             "webapp:windows-changed": void;
