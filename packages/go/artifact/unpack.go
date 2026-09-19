@@ -144,7 +144,10 @@ func UnpackZip(zipPath, targetDir string, lim Limits, allowFiles map[string]stri
 			return fmt.Errorf("zip 含非法路径条目 %q: %w", f.Name, err)
 		}
 		key := strings.ToLower(clean)
-		if f.FileInfo().IsDir() {
+		// 目录判定双通道:mode 位之外,ZIP 惯例的目录条目还以原始名尾斜杠标识
+		// (`Plugins\x86\` 这类包 common;实测 QuickLook 官方包部分条目 mode 位
+		// 不带目录标志,单靠 IsDir() 会落成 0 字节文件并连坐"祖先被文件占位"整包拒收)。
+		if f.FileInfo().IsDir() || strings.HasSuffix(f.Name, "/") || strings.HasSuffix(f.Name, "\\") {
 			if owner, dup := occupied[key]; dup && owner == "file" {
 				return fmt.Errorf("zip 条目 %q 与同名文件冲突（目录/文件互相占位），拒收", f.Name)
 			}

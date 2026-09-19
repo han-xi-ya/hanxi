@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -323,6 +324,59 @@ func unwrapURLError(err error) error {
 		return ue.Err
 	}
 	return err
+}
+
+// partResidueRe 匹配 Fetch 强杀残件的落地形状：`.part-` 标记后为纯小写十六
+// 进制随机后缀且到此结尾（randomHex(6) = 12 位；熵源退化时 UnixNano 的 %x
+// 为 16 位，取 {6,} 留裕度）。锚定结尾并要求 hex 字符集，避免误伤恰含
+// ".part-" 字样的外来文件（如 report.part-1.zip）。
+var partResidueRe = regexp.MustCompile(`\.part-[0-9a-f]{6,}$`)
+
+// CleanStaleParts 受控清理入口：收尸 Fetch 遭遇强杀时来不及删除的
+// `<name>.<rand>.part-<hex>` 临时件（目录面 CleanupAbandoned/AbandonedDirs
+// 只认事务目录前缀，文件面残件由本函数负责，见 ADR-0002 §4）。
+//
+// 纪律：
+//   - 逐目录浅扫（不递归），目录不存在/不可读静默跳过（懒建根下属常态）；
+//   - 三条件齐备才删：文件名匹配 .part-<hex> 形状、Lstat 为普通文件
+//     （拒目录与符号链接占名）、修改时间早于 olderThan 截止线
+//     （活跃下载的 mtime 随写盘持续刷新，天然受保护）；
+//   - 返回实际删除的文件路径清单（供调用方落日志）；单项删除失败
+//     （仍被占用/权限拒绝）静默跳过，留待下次启动重试。
+func CleanStaleParts(dirs []string, olderThan time.Duration) []string {
+	if olderThan <= 0 {
+		return nil // 非正预算视为调用方配置错误，宁可不删不误删
+	}
+	cutoff := time.Now().Add(-olderThan)
+	var removed []string
+	for _, dir := range dirs {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, ent := range entries {
+			if !partResidueRe.MatchString(ent.Name()) {
+				continue
+			}
+			full := filepath.Join(dir, ent.Name())
+			st, err := os.Lstat(full)
+			if err != nil || !st.Mode().IsRegular() {
+				continue // 目录/链接占名：形状命中也不碰
+			}
+			if st.ModTime().After(cutoff) {
+				continue // 未超龄：可能是仍在推进的下载
+			}
+			if err := os.Remove(full); err != nil {
+				continue // 删不掉留待下次收尸
+			}
+			removed = append(removed, full)
+		}
+	}
+	return removed
 }
 
 // randomHex 生成 n 字节随机十六进制串（临时件唯一后缀）。

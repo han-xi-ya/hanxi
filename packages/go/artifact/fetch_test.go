@@ -280,6 +280,84 @@ func TestFetchConfigErrors(t *testing.T) {
 	}
 }
 
+// TestCleanStaleParts 覆盖强杀残件收尸入口：超龄 .part-<hex> 形状文件删除、
+// 新件保留、形状外文件保留、目录/符号链接拒删、坏目录静默跳过。
+func TestCleanStaleParts(t *testing.T) {
+	const shape = "hanxi-demo-1234.zip.pkg.zip.part-abcdef123456" // Fetch 实际落地形状
+	stale := time.Now().Add(-48 * time.Hour)
+
+	writeAt := func(path string, age time.Time) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, age, age); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dir := t.TempDir()
+	gone := filepath.Join(dir, shape)
+	writeAt(gone, stale)
+	keepFresh := filepath.Join(dir, "pkg.zip.d.part-abcdef123456") // 形状命中但未超龄：在途下载
+	writeAt(keepFresh, time.Now())
+	keepShape := filepath.Join(dir, "report.part-1.zip") // 含 .part- 字样但非收尸形状
+	writeAt(keepShape, stale)
+	keepOther := filepath.Join(dir, "readme.md")
+	writeAt(keepOther, stale)
+	if err := os.Mkdir(filepath.Join(dir, "dir.part-abcdef123456"), 0755); err != nil { // 目录占名拒删
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(dir, "dir.part-abcdef123456"), stale, stale); err != nil {
+		t.Fatal(err)
+	}
+
+	// 符号链接占名（能建才测；Windows 无符号链接权限时跳过该分支）。
+	linkPath := filepath.Join(dir, "link.part-abcdef123456")
+	linkTarget := filepath.Join(dir, "link-target.bin")
+	writeAt(linkTarget, stale)
+	symlinkOK := true
+	if err := os.Symlink(linkTarget, linkPath); err != nil {
+		symlinkOK = false
+		t.Logf("当前环境无法创建符号链接（%v），跳过链接拒删分支", err)
+	}
+
+	ghost := filepath.Join(dir, "not-exist-dir")
+	removed := CleanStaleParts([]string{dir, ghost, "  "}, 24*time.Hour)
+	if len(removed) != 1 || removed[0] != gone {
+		t.Fatalf("删除清单应只含超龄形状文件，实际: %v", removed)
+	}
+	assertMissing(t, gone)
+	assertPresent(t, keepFresh)
+	assertPresent(t, keepShape)
+	assertPresent(t, keepOther)
+	if _, err := os.Lstat(filepath.Join(dir, "dir.part-abcdef123456")); err != nil { // 目录（Size 为 0，不适用 assertPresent）
+		t.Fatalf("目录占名应保留: %v", err)
+	}
+	assertPresent(t, linkTarget)
+	if symlinkOK {
+		if _, err := os.Lstat(linkPath); err != nil {
+			t.Fatalf("符号链接拒删却被移除: %v", err)
+		}
+	}
+
+	// 非正 olderThan 视为配置错误：宁可不删。
+	again := filepath.Join(dir, "pkg.zip.x.part-0123456789ab")
+	writeAt(again, stale)
+	if got := CleanStaleParts([]string{dir}, 0); got != nil {
+		t.Fatalf("olderThan<=0 应拒绝删除，实际: %v", got)
+	}
+	assertPresent(t, again)
+
+	// 正常阈值下该件会被下一轮收走（守卫只是本轮不删）；收干净后重扫无副作用。
+	if got := CleanStaleParts([]string{dir}, 24*time.Hour); len(got) != 1 || got[0] != again {
+		t.Fatalf("第二轮应删除超龄形状件 %s，实际: %v", again, got)
+	}
+	if got := CleanStaleParts([]string{dir}, 24*time.Hour); len(got) != 0 {
+		t.Fatalf("已收干净的重扫应为空，实际: %v", got)
+	}
+}
+
 func assertMissing(t *testing.T, path string) {
 	t.Helper()
 	if _, err := os.Stat(path); !os.IsNotExist(err) {

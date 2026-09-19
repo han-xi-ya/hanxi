@@ -192,3 +192,50 @@ func TestUnpackZipNoOverwrite(t *testing.T) {
 		t.Fatalf("二次解包必须被空目录闸门拒绝（不存在覆盖语义）: %v", err)
 	}
 }
+
+// TestUnpackZipBackslashDirEntries 回归:部分打包器(实测 QuickLook 官方包)把目录
+// 条目写成反斜杠结尾且不带 ModeDir 位。旧判定只认 f.FileInfo().IsDir(),这类条目
+// 会误落成 0 字节同名文件,随后其子文件触发"祖先被文件占位"整包拒收。修复后按目录处理。
+func TestUnpackZipBackslashDirEntries(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "pkg.zip")
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	// "Plugins\" 目录条目:名字反斜杠结尾,mode 刻意为普通 0644(不带 ModeDir)。
+	hdr := &zip.FileHeader{Name: "Plugins\\", Method: zip.Store}
+	hdr.SetMode(0644)
+	if _, err := zw.CreateHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	// 其下真实文件:旧代码会因 "Plugins" 已被 0 字节文件占位而整包拒收。
+	fh := &zip.FileHeader{Name: "Plugins/core.dll", Method: zip.Deflate}
+	fh.SetMode(0644)
+	w, err := zw.CreateHeader(fh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(w, "payload"); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(dir, "out")
+	if err := UnpackZip(zipPath, target, DefaultLimits, nil); err != nil {
+		t.Fatalf("反斜杠目录条目包应可解: %v", err)
+	}
+	if st, err := os.Stat(filepath.Join(target, "Plugins")); err != nil || !st.IsDir() {
+		t.Fatalf("Plugins 应为目录: err=%v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(target, "Plugins", "core.dll"))
+	if err != nil || string(body) != "payload" {
+		t.Fatalf("子文件落盘异常: %v %q", err, body)
+	}
+}
