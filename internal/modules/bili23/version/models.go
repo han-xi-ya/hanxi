@@ -1,5 +1,6 @@
 // Package version 实现 Bili23 Downloader 版本管理引擎：GitHub Releases 远程列表、
-// Windows 便携 zip 下载（官方 sha256 校验）、保布局解压安装、隔离目录管理与本地导入。
+// Windows 便携 zip 下载（官方 sha256 校验，委托共享内核 artifact.Fetch）、
+// 安全解包（artifact.UnpackZip）+ 顶层目录收割、内核 Tree 原子落位与本地导入。
 //
 // 上游是 Python/PySide6 桌面应用，便携 zip 内为「静态 Python 运行时 + 源码 script/」
 // 的完整目录（顶层单目录 Bili23-Downloader/，解压时剥离展平），体积 ~43MB（108MB 展开），

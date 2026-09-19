@@ -1,25 +1,33 @@
 package version
 
 import (
-	"archive/zip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
+
+	"hanxi/packages/go/artifact"
 )
 
 const (
 	exeName       = "Bili23.exe"          // 入口（Python-Static 静态解释器改壳，GUI 子系统，进程常驻）
 	bootstrapName = "_pystand_static.int" // 启动引导脚本（与 exe 同级，缺失即布局损坏）
 	scriptMainRel = "script/main.py"      // 应用主模块相对路径（布局自检第三锚点）
-	topDirName    = "Bili23-Downloader"   // 官方 zip 的顶层单目录名（解压时剥离展平）
-	dirPrefix     = "bili23_"             // 版本隔离目录前缀（与 ccswitch_x.y.z / markeron_vX 同构）
+	topDirName    = "Bili23-Downloader"   // 官方 zip 的顶层单目录名（收割展平的对象）
+
+	// treeEntryName 版本树目录前缀（<root>/bili23_<version>，与历史布局
+	// bili23_2.15.0 / bili23_imported-<时间戳> 一致）。
+	treeEntryName = "bili23"
+	// dirPrefix 导入链直造目录时的版本隔离目录前缀（与 Tree 的 entry 命名同源）。
+	dirPrefix = treeEntryName + "_"
+	// fetchBudget 单次下载的总超时预算（沿用原下载客户端 15 分钟口径，便携包 ~43MB，镜像网络给足余量）。
+	fetchBudget = 15 * time.Minute
 )
 
 // plainVersionRe 纯版本号（如 2.15.0 / 2.00.7——允许上游的前导零变体），用于目录名与导入探测校验
@@ -33,23 +41,43 @@ var appVersionRe = regexp.MustCompile(`app_version\s*=\s*["'](\d+\.\d+\.\d+)["']
 // importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
 var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
 
-// dirNameRe 版本目录名（bili23_2.15.0 / bili23_2.00.7）；
-// imported- 分支收纳版本探测失败时间戳兜底的导入
-var dirNameRe = regexp.MustCompile(`^` + dirPrefix + `(?:[0-9][0-9a-zA-Z.]+|imported-\d{8}-\d{6})$`)
+// fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
+// 流式上限），失败注入测试替换为模拟中断/坏摘要源。
+type fetcher func(ctx context.Context, src artifact.Source, destPath string, prog func(artifact.Progress), timeout time.Duration) error
 
-// Manager Bili23 Downloader 版本管理引擎：远程列表、下载完整性校验、
-// 保布局解压隔离（整目录）、本地导入（整目录复制）。
+// Manager Bili23 Downloader 版本管理引擎：远程列表（GitHub 元数据）与
+// "下载 → 校验 → 解包 → 落位"主流程委托 Wave 4 共享内核 packages/go/artifact
+// （Fetch + UnpackZip + Tree）——官方摘要事实核查（2026-09-19）：上游
+// Bili23-Downloader 各版 windows_x64_portable.zip 资产全量携带 GitHub
+// asset.digest（SHA-256），无需走 snipaste/guoheview 的弱摘要薄适配器路线，
+// 下载校验段可整体委托内核。本包只保留 Bili23 领域知识：便携资产筛选、
+// 镜像 URL 模板、版本目录形状（x.y.z 含前导零变体 / imported-时间戳）、
+// 顶层 Bili23-Downloader/ 包装目录收割、三锚点（Bili23.exe +
+// _pystand_static.int + script/main.py）布局自检、导入版本探测
+// （PE 版本不可信、版本藏 config.py）与既有进度词表映射。
 type Manager struct {
 	versionsDir string
-	client      *http.Client // 下载客户端（长超时）
+	tree        *artifact.Tree
+
+	fetch   fetcher
+	mirrors func(version, assetName string) []string
 }
 
-// NewManager 以指定 versions 根目录创建版本管理引擎；构造无副作用。
+// NewManager 以指定 versions 根目录创建版本管理引擎；构造无副作用
+// （Tree 打开不触盘，staging/账本操作全部延迟到 Download/Remove）。
 func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		versionsDir: versionsDir,
-		client:      &http.Client{Timeout: 15 * time.Minute}, // 便携包 ~43MB，镜像网络给足余量
+		tree:        OpenTree(versionsDir),
+		fetch:       artifact.Fetch,
+		mirrors:     assetMirrors,
 	}
+}
+
+// OpenTree 打开 Bili23 版本树（装配根启动恢复按事务背书清理现场时用；
+// 目录前缀等领域知识只在本包定义，调用方不重复拼写）。
+func OpenTree(versionsDir string) *artifact.Tree {
+	return artifact.OpenTree(versionsDir, treeEntryName)
 }
 
 // ListRemote 获取远程可用版本（10 分钟内命中缓存）
@@ -57,24 +85,25 @@ func (m *Manager) ListRemote() ([]Bili23Release, error) {
 	return remoteCache.get()
 }
 
-// ListInstalled 扫描本地已安装版本目录。
-// 布局三锚点（Bili23.exe 非空 + _pystand_static.int + script/main.py）任一缺失
-// 均视为损坏安装跳过——本应用是"运行时+源码"目录形态，缺件即无法启动。
+// ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
+// 目录命名 bili23_2.15.0 / bili23_2.00.7（下载/导入的正规版本）或
+// bili23_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；其余形状的
+// 版本令牌不列入。布局三锚点（Bili23.exe 非空 + _pystand_static.int +
+// script/main.py）任一缺失均视为损坏安装跳过——本应用是"运行时+源码"
+// 目录形态，缺件即无法启动。
 func (m *Manager) ListInstalled() ([]Bili23VersionInfo, error) {
-	entries, err := os.ReadDir(m.versionsDir)
+	vers, err := m.tree.Versions()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 
 	var list []Bili23VersionInfo
-	for _, e := range entries {
-		if !e.IsDir() || !dirNameRe.MatchString(e.Name()) {
+	for _, v := range vers {
+		version, ok := versionFromToken(v.Version)
+		if !ok {
 			continue
 		}
-		dir := filepath.Join(m.versionsDir, e.Name())
+		dir := v.Dir
 		if !verifyLayout(dir) {
 			continue
 		}
@@ -85,24 +114,23 @@ func (m *Manager) ListInstalled() ([]Bili23VersionInfo, error) {
 		}
 
 		info := Bili23VersionInfo{
-			Version: "v" + strings.TrimPrefix(e.Name(), dirPrefix),
+			Version: version,
 			ExePath: exe,
 			Dir:     dir,
 			Size:    dirSize(dir),
 		}
-		// 读取元信息（安装时间、导入来源）
-		if meta, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
-			var mm map[string]any
-			if json.Unmarshal(meta, &mm) == nil {
-				if at, ok := mm["installedAt"].(string); ok {
-					info.InstalledAt = at
-				}
-				if isIm, ok := mm["isImport"].(bool); ok {
-					info.IsImport = isIm
-				}
-				if src, ok := mm["source"].(string); ok {
-					info.Source = src
-				}
+		// 新下载链走内核统一账本（artifact.Meta，含 schema）；导入链与迁移前
+		// 的历史账本走模块自写 map 形态，installedAt 原样展示、isImport/source
+		// 仅导入账携带。
+		if !v.Meta.InstalledAt.IsZero() {
+			info.InstalledAt = v.Meta.InstalledAt.Local().Format("2006-01-02 15:04:05")
+		}
+		if info.InstalledAt == "" {
+			legacyAt, isImport, src := readLegacyMetaFields(dir)
+			info.InstalledAt = legacyAt
+			if isImport {
+				info.IsImport = true
+				info.Source = src
 			}
 		}
 		if info.InstalledAt == "" {
@@ -113,22 +141,30 @@ func (m *Manager) ListInstalled() ([]Bili23VersionInfo, error) {
 	return list, nil
 }
 
-// Download 下载便携 zip 并解压安装到 versions/bili23_X.Y.Z/。
-// 上游提供官方 sha256（GitHub API digest），完整性四层兜底：
-//  1. 官方 sha256 校验（第一主依据）；
-//  2. 下载落盘字节数 == release API 声明的 size（防截断/代理篡改）；
-//  3. archive/zip 读取每个 entry 时强制 CRC32 校验（extractAll 读满不提前返回）；
-//  4. 提取后布局自检（Bili23.exe + _pystand_static.int + script/main.py），失败清理目录。
+// Download 下载便携 zip 并安装到 versions/bili23_X.Y.Z/。
+// 完整性主流程收口至内核 artifact.Fetch：以 GitHub API 官方资产摘要（digest，
+// 已解析进 Bili23Release.SHA256，无摘要的 release 根本不进列表）为信任根做
+// 流式 + 落盘双 SHA-256 校验，Content-Length 与流式上限双核（对齐原
+// "字节数 == release 声明 size"层），镜像只是同摘要的备用传输来源；解包经
+// artifact.UnpackZip（ZipSlip/炸弹/CRC32 全量闸门，取代原 extractAll），落位
+// 经 Tree.Commit（staging + 原子 rename，同版本异摘要防漂移——原实现直写
+// 最终目录，半件即污染安装）。
+// 进度回调沿用本模块既有词表（downloading/verify/extract/done/error）：
+// verify（官方摘要双核）由内核 Fetch 在流式+落盘复核完成后上报，映射进
+// 既有词汇保持前端展示段零漂移。
 //
-// onProgress 可选：实时上报各阶段进度（下载字节、校验、解压）。
-func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) error {
+// txnID 为调用方事务 ID（journal 背书用：staging 目录名 .tmp-<txnID>，崩溃
+// 恢复据此按事务定位并清理现场，见 internal/ops.CleanTxnResidue）。
+//
+// onProgress 可选：实时上报各阶段进度（下载字节、校验、解压落位）。
+func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
 		}
 	}
 
-	// 1. 解析目标版本对应的远程资产
+	// 1. 解析目标版本对应的远程资产（模块知识：GitHub 元数据与资产筛选）
 	releases, err := remoteCache.get()
 	if err != nil {
 		emit("error", 0, 0, fmt.Sprintf("获取远程版本列表失败: %v", err))
@@ -146,6 +182,12 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 		emit("error", 0, 0, err.Error())
 		return err
 	}
+	// 官方摘要信任根缺失一律拒装，不做无校验安装。
+	if rel.SHA256 == "" {
+		err := fmt.Errorf("上游未提供 Bili23 Downloader %s 的官方 SHA-256 摘要，拒绝无校验安装", version)
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 
 	tmpZip, err := os.CreateTemp("", "hanxi-bili23-*.zip")
 	if err != nil {
@@ -155,89 +197,241 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 	defer os.Remove(tmpZipPath)
 	tmpZip.Close()
 
-	// 2. 下载 zip（直连 + 镜像逐个回退）
+	// 2. 受控下载（主址 + 镜像逐个回退；下载/校验/字节数双核全部委托内核）
+	urls := m.mirrors(version, rel.AssetName)
+	src := artifact.Source{
+		URL:      urls[0],
+		Mirrors:  urls[1:],
+		SHA256:   rel.SHA256,
+		MaxBytes: rel.Size, // 与 release API 声明大小对齐：超限即断，杜绝异常放大
+		FileName: rel.AssetName,
+	}
 	emit("downloading", 0, rel.Size, "")
-	if err := downloadTo(m.client, assetMirrors(version, rel.AssetName), tmpZipPath, func(done int64) {
-		emit("downloading", done, rel.Size, "")
-	}); err != nil {
-		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", err))
-		return err
+	fetchErr := m.fetch(context.Background(), src, tmpZipPath, func(p artifact.Progress) {
+		// 内核进度 → 既有词表：流式下载对应 downloading，摘要双核通过对应 verify
+		switch p.Stage {
+		case artifact.StageDownload:
+			emit("downloading", p.Done, p.Total, "")
+		case artifact.StageVerify:
+			emit("verify", 0, 0, "")
+		}
+	}, fetchBudget)
+	if fetchErr != nil {
+		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", fetchErr))
+		return fetchErr
 	}
 
-	// 3. 字节数校验
-	actual, err := fileSize(tmpZipPath)
+	// 3. 解包进独占中转目录（staging 与最终目录同卷，供原子落位；
+	// 目录名 .tmp-<txnID> 由事务 ID 派生，journal 背书恢复据此收口现场）
+	token := strings.TrimPrefix(version, "v")
+	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
-		emit("error", 0, rel.Size, fmt.Sprintf("读取临时文件失败: %v", err))
+		emit("error", 0, 0, err.Error())
 		return err
 	}
-	if actual != rel.Size {
-		err := fmt.Errorf("下载不完整：期望 %d 字节，实际 %d 字节", rel.Size, actual)
-		emit("error", 0, rel.Size, err.Error())
-		return err
-	}
+	defer discard() // 成功 Commit 后为 no-op；任一步失败不留半件
 
-	// 4. 官方 sha256 校验
-	emit("verify", 0, 0, "")
-	if err := verifySHA256(tmpZipPath, rel.SHA256); err != nil {
-		emit("error", 0, rel.Size, err.Error())
-		return fmt.Errorf("官方哈希校验失败（下载文件疑似被篡改或损坏）: %w", err)
-	}
-
-	// 5. 解压保布局安装到隔离目录（zip 内建 CRC32 在此阶段逐 entry 校验）
 	emit("extract", 0, 0, "")
-	targetDir := filepath.Join(m.versionsDir, dirPrefix+strings.TrimPrefix(version, "v"))
-	if err := extractAll(tmpZipPath, targetDir); err != nil {
+	if err := artifact.UnpackZip(tmpZipPath, staging, artifact.DefaultLimits, nil); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("解压失败: %v", err))
 		return err
 	}
-
-	// 6. 落盘元信息
-	meta := map[string]any{
-		"installedAt":  time.Now().Format("2006-01-02 15:04:05"),
-		"source":       rel.AssetName,
-		"zipSize":      rel.Size,
-		"zipSHA256":    fileSHA256(tmpZipPath),
-		"assetSHA256":  rel.SHA256,
-		"verifiedHash": true,
+	// 4. 顶层包装目录收割 + 三锚点布局自检（Bili23 领域策略，内核不感知，
+	// Commit 前收口）：官方 zip 顶层是 Bili23-Downloader/ 单目录，必须展平
+	// 使三锚点落在隔离目录根；上游若改为扁平布局自然兼容（收割为 no-op）。
+	if err := harvestPayloadRoot(staging); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
 	}
-	_ = writeJSON(filepath.Join(targetDir, "meta.json"), meta)
+	if !verifyLayout(staging) {
+		err := fmt.Errorf("zip 布局无效：缺少 %s / %s / %s 三锚点", exeName, bootstrapName, scriptMainRel)
+		emit("error", 0, 0, err.Error())
+		return err
+	}
+	// exe 诊断摘要入账（避免每次扫描现场哈希；Bili23VersionInfo 不展示，纯账本诊断）
+	assetSHA := fileSHA256(filepath.Join(staging, exeName))
+
+	// 5. 原子落位 + 写账本（meta.json 由内核统一形状落盘；同版本同摘要幂等，
+	// 异摘要拒绝——防止同版本号内容漂移）
+	meta := artifact.Meta{
+		Entry:       exeName,
+		ZipSHA256:   rel.SHA256,
+		AssetSHA256: assetSHA,
+		Source:      artifact.SourceRemote,
+	}
+	if err := m.tree.Commit(staging, token, meta); err != nil {
+		emit("error", 0, 0, fmt.Sprintf("落位失败: %v", err))
+		return err
+	}
 
 	emit("done", 100, 100, "")
 	return nil
 }
 
-// Remove 卸载指定版本（删除隔离目录）
+// Remove 卸载指定版本（委托 Tree：rename 隔离后删除，文件占用时留下可恢复状态）
 func (m *Manager) Remove(version string) error {
-	dir, err := m.resolveVersionDir(version)
+	_, token, err := m.resolveVersionDir(version)
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(dir)
+	return m.tree.Remove(token, nil)
 }
 
 // ResolveExe 返回指定版本的 Bili23.exe 路径（不存在返回错误）
 func (m *Manager) ResolveExe(version string) (string, error) {
-	dir, err := m.resolveVersionDir(version)
+	dir, _, err := m.resolveVersionDir(version)
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（bili23_X.Y.Z 或 bili23_imported-时间戳）
-func (m *Manager) resolveVersionDir(version string) (string, error) {
-	ver := strings.TrimPrefix(strings.TrimSpace(version), "v")
-	if !plainVersionRe.MatchString(ver) {
-		if !importedDirRe.MatchString(ver) {
-			return "", fmt.Errorf("非法版本号: %q", version)
+// resolveVersionDir 定位版本隔离目录（bili23_X.Y.Z 或 bili23_imported-时间戳）。
+// 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
+func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
+	token = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if !plainVersionRe.MatchString(token) && !importedDirRe.MatchString(token) {
+		return "", "", fmt.Errorf("非法版本号: %q", version)
+	}
+	if d, rerr := m.tree.Resolve(token); rerr == nil {
+		return d, token, nil
+	}
+	return "", "", fmt.Errorf("版本 %s 未安装，请先在下方版本管理下载或导入", version)
+}
+
+// versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z 展示形式
+// （2.15.0 → v2.15.0、2.00.7 → v2.00.7，与原目录名剥前缀加 v 的口径一致）。
+// 仅接受纯 x.y.z（含前导零变体）或 imported-时间戳形状，
+// bili23_v2.15.0 之类带 v 前缀的历史/外来目录名不列入。
+func versionFromToken(token string) (string, bool) {
+	if plainVersionRe.MatchString(token) || importedDirRe.MatchString(token) {
+		return "v" + token, true
+	}
+	return "", false
+}
+
+// readLegacyMetaFields 读取模块自写的导入账本与迁移前历史账本（无 schema 的
+// map 形态）：installedAt 原样字符串、isImport 布尔、source 导入来源目录。
+// 新下载链的 artifact.Meta 账本（含 schema）不走本函数（InstalledAt 由内核
+// 解析、source 为 "remote" 展示语义已由 isImport 标志承载）。
+func readLegacyMetaFields(dir string) (installedAt string, isImport bool, source string) {
+	raw, err := os.ReadFile(filepath.Join(dir, "meta.json"))
+	if err != nil {
+		return "", false, ""
+	}
+	var mm map[string]any
+	if json.Unmarshal(raw, &mm) != nil {
+		return "", false, ""
+	}
+	installedAt, _ = mm["installedAt"].(string)
+	isImport, _ = mm["isImport"].(bool)
+	source, _ = mm["source"].(string)
+	return installedAt, isImport, source
+}
+
+// ---------- 布局收割与导入探测（Bili23 领域判定，内核不感知） ----------
+
+// harvestPayloadRoot 收割顶层包装目录（Bili23 布局策略，Commit 前收口）：
+// 官方便携 zip 顶层是 Bili23-Downloader/ 单目录（7z 在 PowerShell 下通配符
+// 未展开所致，实测 v2.10.0–v2.15.0 稳定如此），原样保留会深一层、破坏
+// "版本目录即安装目录"的全家族布局（ResolveExe / 三锚点约定都在根上）。
+// 以唯一 Bili23.exe 所在目录为 payload 根，把根内内容平铺进 staging 根、
+// 根外杂质一概不带入；zip 已是扁平布局（exe 就在 staging 根）时为 no-op，
+// 上游某天改扁平天然兼容。
+func harvestPayloadRoot(staging string) error {
+	root, err := locatePayloadRoot(staging)
+	if err != nil {
+		return err
+	}
+	if root == staging {
+		return nil // 扁平布局：根即目录本身
+	}
+
+	// staging 下通往 payload 根的第一段祖先是"保留链"；其余顶层 entry 为根外杂质
+	rel, err := filepath.Rel(staging, root)
+	if err != nil {
+		return err
+	}
+	top := strings.SplitN(filepath.ToSlash(rel), "/", 2)[0]
+	entries, err := os.ReadDir(staging)
+	if err != nil {
+		return fmt.Errorf("读取中转目录失败: %w", err)
+	}
+	for _, e := range entries {
+		if e.Name() == top {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(staging, e.Name())); err != nil {
+			return fmt.Errorf("清除根外杂质失败: %w", err)
 		}
 	}
-	dir := filepath.Join(m.versionsDir, dirPrefix+ver)
-	if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-		return dir, nil
+
+	// payload 根内容平铺到 staging 根，随后移除包装链（含链上残留杂质）
+	items, err := os.ReadDir(root)
+	if err != nil {
+		return fmt.Errorf("读取便携根失败: %w", err)
 	}
-	return "", fmt.Errorf("版本 %s 未安装，请先在下方版本管理下载或导入", version)
+	for _, it := range items {
+		if err := os.Rename(filepath.Join(root, it.Name()), filepath.Join(staging, it.Name())); err != nil {
+			return fmt.Errorf("收割顶层目录失败: %w", err)
+		}
+	}
+	if err := os.RemoveAll(filepath.Join(staging, top)); err != nil {
+		return fmt.Errorf("清理包装目录失败: %w", err)
+	}
+
+	// 复验收割结果：exe 落回 staging 根且非空
+	fi, err := os.Stat(filepath.Join(staging, exeName))
+	if err != nil || fi.IsDir() || fi.Size() == 0 {
+		return fmt.Errorf("zip 布局无效：缺少可用的 %s", exeName)
+	}
+	return nil
 }
+
+// locatePayloadRoot 在 staging 内定位唯一的 Bili23.exe（常规文件且非空），
+// 返回其所在目录作为 payload 根；零个或多个都无法确立"版本目录即安装目录"布局。
+func locatePayloadRoot(staging string) (string, error) {
+	var roots []string
+	err := filepath.WalkDir(staging, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.EqualFold(d.Name(), exeName) {
+			return nil
+		}
+		if fi, serr := d.Info(); serr == nil && fi.Mode().IsRegular() && fi.Size() > 0 {
+			roots = append(roots, filepath.Dir(p))
+		}
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("扫描解压布局失败: %w", err)
+	}
+	switch len(roots) {
+	case 1:
+		return roots[0], nil
+	case 0:
+		return "", fmt.Errorf("zip 布局无效：缺少可用的 %s", exeName)
+	default:
+		return "", fmt.Errorf("zip 布局无效：找到 %d 个 %s，无法判定 payload 根", len(roots), exeName)
+	}
+}
+
+// verifyLayout 安装布局三锚点校验（目录形态应用：缺任一件即无法启动）。
+func verifyLayout(dir string) bool {
+	if fi, err := os.Stat(filepath.Join(dir, exeName)); err != nil || fi.IsDir() || fi.Size() == 0 {
+		return false
+	}
+	if fi, err := os.Stat(filepath.Join(dir, bootstrapName)); err != nil || fi.IsDir() {
+		return false
+	}
+	if fi, err := os.Stat(filepath.Join(dir, filepath.FromSlash(scriptMainRel))); err != nil || fi.IsDir() || fi.Size() == 0 {
+		return false
+	}
+	return true
+}
+
+// ---------- 本地导入（Bili23 领域流程，无内核对应物） ----------
 
 // ImportLocal 导入本地已有的 Bili23 Downloader（安装版目录 / 手动解压的便携目录均可）。
 // 与 ccswitch 的单 exe 导入不同：本应用是"静态 Python 运行时 + 源码"整目录形态，
@@ -303,20 +497,6 @@ func (m *Manager) ImportLocal(srcDir string) (Bili23VersionInfo, error) {
 	}, nil
 }
 
-// verifyLayout 安装布局三锚点校验（目录形态应用：缺任一件即无法启动）。
-func verifyLayout(dir string) bool {
-	if fi, err := os.Stat(filepath.Join(dir, exeName)); err != nil || fi.IsDir() || fi.Size() == 0 {
-		return false
-	}
-	if fi, err := os.Stat(filepath.Join(dir, bootstrapName)); err != nil || fi.IsDir() {
-		return false
-	}
-	if fi, err := os.Stat(filepath.Join(dir, filepath.FromSlash(scriptMainRel))); err != nil || fi.IsDir() || fi.Size() == 0 {
-		return false
-	}
-	return true
-}
-
 // detectAppVersion 从 script/util/common/config.py 解析 app_version 常量（失败返回空串）。
 func detectAppVersion(dir string) string {
 	data, err := os.ReadFile(filepath.Join(dir, "script", "util", "common", "config.py"))
@@ -370,117 +550,6 @@ func copyTree(src, dst string) error {
 		}
 		return copyFileTo(path, target)
 	})
-}
-
-// extractAll 全量解压 zip 到目标目录，剥离官方包的顶层单目录 Bili23-Downloader/，
-// 使 Bili23.exe 直接落在隔离目录根上（与 ResolveExe/布局约定统一）。
-// 每个 entry 必须读满——completion 路径中的 io.Copy 跑完触发 archive/zip 内建 CRC32 校验。
-// 提取完成后自检布局（三锚点），不符即清理目标目录报错。
-func extractAll(zipPath, targetDir string) error {
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return err
-	}
-
-	fail := func(err error) error {
-		_ = os.RemoveAll(targetDir)
-		return err
-	}
-
-	zr, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return fmt.Errorf("open zip: %w", err)
-	}
-	defer zr.Close()
-
-	if len(zr.File) == 0 {
-		return fail(fmt.Errorf("zip 为空归档"))
-	}
-	// 顶层目录探测：官方便携包所有 entry 共享单一顶层目录（7z 在 PowerShell 下
-	// 通配符未展开所致，实测 v2.10.0–v2.15.0 稳定如此）；若上游某天改为扁平布局，
-	// 这里返回空前缀自然兼容。
-	prefix := commonTopDirPrefix(zr.File)
-
-	for _, f := range zr.File {
-		// ZipSlip 防护：拒绝绝对路径与逃逸出目标目录的条目
-		clean := filepath.Clean(filepath.FromSlash(f.Name))
-		if filepath.IsAbs(clean) || clean == ".." ||
-			strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return fail(fmt.Errorf("zip 含非法路径条目 %q", f.Name))
-		}
-		rel := clean
-		if prefix != "" {
-			slash := filepath.ToSlash(clean)
-			if slash != prefix && !strings.HasPrefix(slash, prefix+"/") {
-				return fail(fmt.Errorf("zip 顶层布局异常：条目 %q 不在 %s/ 下", f.Name, prefix))
-			}
-			if slash == prefix {
-				// 顶层目录条目自身（Clean 已去尾斜杠）：目录则跳过，散文件不可能
-				continue
-			}
-			stripped := strings.TrimPrefix(strings.TrimPrefix(slash, prefix), "/")
-			rel = filepath.Clean(filepath.FromSlash(stripped))
-		}
-		target := filepath.Join(targetDir, rel)
-		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return fail(err)
-			}
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return fail(err)
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return fail(err)
-		}
-		out, err := os.Create(target)
-		if err != nil {
-			rc.Close()
-			return fail(err)
-		}
-		// 必须读满：提前返回会跳过 CRC32 校验
-		_, copyErr := io.Copy(out, rc)
-		rc.Close()
-		out.Close()
-		if copyErr != nil {
-			return fail(copyErr)
-		}
-	}
-
-	// 布局自检：三锚点齐备且 exe 非空（官方 zip 恒有）
-	if !verifyLayout(targetDir) {
-		return fail(fmt.Errorf("zip 布局无效：缺少 %s / %s / %s 三锚点", exeName, bootstrapName, scriptMainRel))
-	}
-	return nil
-}
-
-// commonTopDirPrefix 返回所有 entry 共享的单一顶层目录名（斜杠形式）；
-// entry 数不足、存在多顶层目录或扁平文件时返回空串（不剥离）。
-func commonTopDirPrefix(files []*zip.File) string {
-	first := ""
-	for i, f := range files {
-		name := filepath.ToSlash(f.Name)
-		// 去掉首段：目录条目 "A/" 与文件条目 "A/b" 取法一致
-		idx := strings.Index(name, "/")
-		if idx <= 0 { // 无斜杠（根下散文件）或首段为空（绝对路径，ZipSlip 循环内另有拒绝）
-			return ""
-		}
-		head := name[:idx]
-		if i == 0 {
-			first = head
-		} else if head != first {
-			return ""
-		}
-	}
-	if first == "" || len(files) == 0 {
-		return ""
-	}
-	// 只有一个 entry 时无法区分"顶层目录"与"单文件"，不冒险剥离
-	if len(files) == 1 {
-		return ""
-	}
-	return first
 }
 
 func copyFileTo(src, dst string) error {

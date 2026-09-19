@@ -2,10 +2,13 @@ package version
 
 import (
 	"archive/zip"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/packages/go/artifact"
 )
 
 // fakeReleasesJSON 构造与真实 GitHub API 同构的样例响应：
@@ -155,13 +158,29 @@ func bili23ZipEntries() map[string]string {
 	}
 }
 
-// TestExtractAllFlattensTopDir 解压必须剥离顶层 Bili23-Downloader/ 使 exe 落在隔离目录根。
-func TestExtractAllFlattensTopDir(t *testing.T) {
+// unpackAndHarvest 模拟 Download 主流程的解包+收割段（内核 UnpackZip + 本包
+// harvestPayloadRoot + 三锚点自检），ZipSlip/CRC32/炸弹预算已由内核闸门收口。
+func unpackAndHarvest(t *testing.T, zipPath, dst string) error {
+	t.Helper()
+	if err := artifact.UnpackZip(zipPath, dst, artifact.DefaultLimits, nil); err != nil {
+		return err
+	}
+	if err := harvestPayloadRoot(dst); err != nil {
+		return err
+	}
+	if !verifyLayout(dst) {
+		return fmt.Errorf("zip 布局无效：缺少 %s / %s / %s 三锚点", exeName, bootstrapName, scriptMainRel)
+	}
+	return nil
+}
+
+// TestUnpackAndHarvestFlattensTopDir 解包后必须收割顶层 Bili23-Downloader/ 使三锚点落在隔离目录根。
+func TestUnpackAndHarvestFlattensTopDir(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := makeTestZip(t, bili23ZipEntries())
 	dst := filepath.Join(dir, "dst")
-	if err := extractAll(zipPath, dst); err != nil {
-		t.Fatalf("extractAll: %v", err)
+	if err := unpackAndHarvest(t, zipPath, dst); err != nil {
+		t.Fatalf("解包+收割: %v", err)
 	}
 	for _, rel := range []string{exeName, bootstrapName, filepath.FromSlash(scriptMainRel), filepath.Join("runtime", "python313.dll")} {
 		if _, err := os.Stat(filepath.Join(dst, rel)); err != nil {
@@ -170,39 +189,41 @@ func TestExtractAllFlattensTopDir(t *testing.T) {
 	}
 	// 顶层目录残影绝不允许出现
 	if _, err := os.Stat(filepath.Join(dst, topDirName)); !os.IsNotExist(err) {
-		t.Error("顶层目录未被剥离")
+		t.Error("顶层目录未被收割")
 	}
 }
 
-// TestExtractAllFlatLayoutCompat 上游若某天改为扁平布局，同样要能装。
-func TestExtractAllFlatLayoutCompat(t *testing.T) {
+// TestUnpackAndHarvestFlatLayoutCompat 上游若某天改为扁平布局，同样要能装。
+func TestUnpackAndHarvestFlatLayoutCompat(t *testing.T) {
 	zipPath := makeTestZip(t, map[string]string{
 		exeName:                         "fake-exe",
 		bootstrapName:                   "bootstrap",
 		filepath.ToSlash(scriptMainRel): "def _main(): pass",
 	})
 	dst := filepath.Join(t.TempDir(), "dst")
-	if err := extractAll(zipPath, dst); err != nil {
-		t.Fatalf("扁平布局 extractAll: %v", err)
+	if err := unpackAndHarvest(t, zipPath, dst); err != nil {
+		t.Fatalf("扁平布局解包+收割: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dst, exeName)); err != nil {
 		t.Errorf("exe 未解压: %v", err)
 	}
 }
 
-func TestExtractAllZipSlip(t *testing.T) {
+// TestUnpackZipSlipRejectedByKernel ZipSlip 条目（根级逃逸与顶层内逃逸两种写法）
+// 由内核 UnpackZip 清洗闸门拒收——原 bespoke extractAll 的防护职责已上收内核。
+func TestUnpackZipSlipRejectedByKernel(t *testing.T) {
 	cases := map[string][]string{
-		"根级逃逸":  {"../evil.txt", exeName, bootstrapName, scriptMainRel},
-		"顶层内逃逸": {topDirName + "/../../evil.txt", topDirName + "/" + exeName, topDirName + "/" + bootstrapName, topDirName + "/" + scriptMainRel},
+		"根级逃逸":  {"../evil.txt", exeName, bootstrapName, filepath.ToSlash(scriptMainRel)},
+		"顶层内逃逸": {topDirName + "/../../evil.txt", topDirName + "/" + exeName, topDirName + "/" + bootstrapName, topDirName + "/" + filepath.ToSlash(scriptMainRel)},
 	}
 	for name, entries := range cases {
 		zipPath := makeTestZip(t, zipMap(entries))
 		dst := filepath.Join(t.TempDir(), "dst")
-		if err := extractAll(zipPath, dst); err == nil {
-			t.Fatalf("%s: ZipSlip 条目应被拒绝", name)
+		if err := artifact.UnpackZip(zipPath, dst, artifact.DefaultLimits, nil); err == nil {
+			t.Fatalf("%s: ZipSlip 条目应被内核拒绝", name)
 		}
-		if _, err := os.Stat(dst); !os.IsNotExist(err) {
-			t.Errorf("%s: 失败后目标目录应被清理", name)
+		if _, err := os.Stat(filepath.Join(t.TempDir(), "evil.txt")); err == nil {
+			t.Errorf("%s: 逃逸文件不应落盘", name)
 		}
 	}
 }
@@ -212,7 +233,7 @@ func zipMap(names []string) map[string]string {
 	for _, n := range names {
 		m[n] = "x"
 	}
-	// exe 锚点不能为空内容（verifyLayout 拒绝零字节 exe）
+	// exe 锚点不能为空内容（verifyLayout/locatePayloadRoot 拒绝零字节 exe）
 	for k := range m {
 		if strings.HasSuffix(k, exeName) {
 			m[k] = "fake-exe"
@@ -221,7 +242,9 @@ func zipMap(names []string) map[string]string {
 	return m
 }
 
-func TestExtractAllMissingBits(t *testing.T) {
+// TestUnpackAndHarvestMissingBits 三锚点缺件/坏件：payload 根定位（缺 exe/exe 为空）
+// 或收割后的 verifyLayout（缺引导脚本/主模块）必须拒装。
+func TestUnpackAndHarvestMissingBits(t *testing.T) {
 	cases := map[string]map[string]string{
 		"缺引导脚本": {
 			topDirName + "/Bili23.exe":     "fake-exe",
@@ -236,16 +259,38 @@ func TestExtractAllMissingBits(t *testing.T) {
 			topDirName + "/_pystand_static.int": "x",
 			topDirName + "/script/main.py":      "x",
 		},
+		"完全缺 exe": {
+			topDirName + "/readme":              "x",
+			topDirName + "/_pystand_static.int": "x",
+		},
 	}
 	for name, entries := range cases {
 		zipPath := makeTestZip(t, entries)
 		dst := filepath.Join(t.TempDir(), "dst")
-		if err := extractAll(zipPath, dst); err == nil {
+		if err := unpackAndHarvest(t, zipPath, dst); err == nil {
 			t.Errorf("%s: 应被拒绝", name)
 		}
-		if _, err := os.Stat(dst); !os.IsNotExist(err) {
-			t.Errorf("%s: 失败后目标目录应被清理", name)
-		}
+	}
+}
+
+// TestHarvestDropsOutsideJunk 顶层目录之外的散件杂质：收割时一概不带入版本目录。
+func TestHarvestDropsOutsideJunk(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{
+		topDirName + "/" + exeName:       "fake-exe",
+		topDirName + "/" + bootstrapName: "bootstrap",
+		topDirName + "/script/main.py":   "def _main(): pass",
+		"stray-root-file.txt":            "junk",
+		"another-junk-dir/whatever.bin":  "junk",
+	})
+	dst := filepath.Join(t.TempDir(), "dst")
+	if err := unpackAndHarvest(t, zipPath, dst); err != nil {
+		t.Fatalf("解包+收割: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "stray-root-file.txt")); !os.IsNotExist(err) {
+		t.Error("根外杂质不应落进版本目录")
+	}
+	if _, err := os.Stat(filepath.Join(dst, "another-junk-dir")); !os.IsNotExist(err) {
+		t.Error("根外杂质目录不应落进版本目录")
 	}
 }
 

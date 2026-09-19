@@ -1,5 +1,6 @@
 // Package version 实现 QuickLook 版本管理引擎：GitHub Releases 远程列表、
-// 便携 zip 下载（官方 sha256 校验）、保布局解压安装、隔离目录管理与本地导入。
+// 便携 zip 下载（官方 sha256 校验，委托共享内核 artifact.Fetch）、保布局解压
+// 安装（longpath/反斜杠条目特例留本包）、内核 Tree 原子落位与本地导入。
 //
 // 上游 QuickLook 每个正式版并列发布 .7z/.appx/.exe/.msi/.zip 五种资产，其中
 // 唯有 .zip 是免安装便携包（根目录即 QuickLook.exe + portable.lock + 原生/插件

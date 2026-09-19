@@ -8,12 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/modules/quicklook/instance"
 	"hanxi/internal/modules/quicklook/version"
 	"hanxi/internal/notify"
+	"hanxi/internal/ops"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/windows"
@@ -125,7 +127,19 @@ func (s *QuickLookService) ListInstalledVersions() ([]version.QuickLookVersionIn
 	return s.manager.ListInstalled()
 }
 
-// DownloadVersion 后台下载指定版本：立即返回，全程经事件 quicklook:version-download 推送进度。
+// quicklookInstallSteps 托管资产事务的 journal 步骤词汇（Wave 4）：quicklook 是
+// 便携 zip 形态（GitHub 官方摘要上游），下载+摘要双核由内核 artifact.Fetch
+// 原子折进 download 步（无独立失败边界，journal 不造幻影步骤，ccswitch 同构）；
+// 进度事件里的 verify 阶段仍照常发出——那是前端既有展示词表（"哈希校验…"），
+// 与事务记账是两个面。解包段为本包 bespoke（longpath/反斜杠条目特例），
+// 落位经内核 Tree staging，边界与委托纪律见 version 包注释与 ADR-0003。
+var quicklookInstallSteps = []string{"download", "unpack", "place"}
+
+// DownloadVersion 后台下载指定版本：立即返回，全程经事件 quicklook:version-download
+// 推送进度；同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链
+// 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+// 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+// （与既有模块事件双通道并行，Wave 4-B 接线，ccswitch/markeron 同构）。
 func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -146,22 +160,57 @@ func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error)
 			}
 		}
 	}
+	opKind := extapi.OpInstall
+	if err == nil && len(installed) > 0 {
+		opKind = extapi.OpUpdate
+	}
+	txnID := uuid.NewString()
 
 	go func() {
+		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+			targetVersion, txnID, quicklookInstallSteps)
+		if terr != nil {
+			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
+			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("quicklook:version-download", version.DownloadProgress{Version: targetVersion, Stage: "error", Message: terr.Error()})
+			}
+			notify.Error("quicklook", "版本安装失败", fmt.Sprintf("QuickLook %s 事务开启失败: %v", targetVersion, terr), "/ext/quicklook")
+			return
+		}
+		stepIdx := -1
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("quicklook download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("quicklook:version-download", p)
 			}
+			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；
+			// 下载分块进度仅进观察面内存投影，不产生 fsync 风暴。
+			// verify 事件不映射步骤（折在 download 步内，见 steps 词汇注释）。
+			switch p.Stage {
+			case "downloading":
+				if stepIdx < 0 {
+					stepIdx = 0
+					txn.Step(stepIdx)
+				}
+				txn.Progress(p.Done, p.Total)
+			case "extract":
+				if stepIdx < 1 {
+					stepIdx = 1
+					txn.Step(stepIdx)
+				}
+			}
 			if p.Stage == "done" {
 				notify.Success("quicklook", "版本安装成功", fmt.Sprintf("QuickLook %s 已成功安装", p.Version), "/ext/quicklook")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
+		if err := s.manager.Download(txnID, targetVersion, emit); err != nil {
+			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("quicklook", "版本安装失败", fmt.Sprintf("QuickLook %s 安装失败: %v", targetVersion, err), "/ext/quicklook")
 			return
 		}
+		txn.Done()
 		// 未设使用版本时自动把刚下载完的版本设为使用版本：
 		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
 		if s.store.GetActive() == "" {

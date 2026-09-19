@@ -8,10 +8,11 @@ import (
 	"testing"
 )
 
-// 一次性真机全链路校验：真实 GitHub API + 镜像下载 + 官方 sha256 + 顶层目录展平解压。
+// 一次性真机全链路校验：真实 GitHub API + 内核 artifact.Fetch（官方 digest
+// 双核 + 镜像回退）+ UnpackZip 安全解包 + 顶层目录收割 + Tree 原子落位。
 // 默认不参与常规 go test ./...（受 build tag 门控），手动 `go test -tags live_e2e` 触发。
 func TestLiveDownloadLatest(t *testing.T) {
-	rels, err := (&Manager{versionsDir: t.TempDir()}).ListRemote()
+	rels, err := NewManager(t.TempDir()).ListRemote()
 	if err != nil {
 		t.Fatalf("ListRemote: %v", err)
 	}
@@ -23,7 +24,7 @@ func TestLiveDownloadLatest(t *testing.T) {
 
 	dir := t.TempDir()
 	m := NewManager(dir)
-	if err := m.Download(latest.Version, func(p DownloadProgress) {
+	if err := m.Download("live-e2e", latest.Version, func(p DownloadProgress) {
 		t.Logf("progress: %s done=%d total=%d %s", p.Stage, p.Done, p.Total, p.Message)
 	}); err != nil {
 		t.Fatalf("Download: %v", err)
