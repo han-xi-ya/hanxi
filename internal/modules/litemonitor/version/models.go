@@ -1,5 +1,6 @@
 // Package version 实现 LiteMonitor 版本管理引擎：GitHub Releases 远程列表、
-// 便携 zip 下载（官方 sha256 校验）、嵌套布局解压安装、隔离目录管理与本地导入。
+// 便携 zip 下载/校验/解包/落位主流程委托共享内核 packages/go/artifact，
+// 隔离目录账本读扫与本地整套导入留在本包（领域知识）。
 //
 // 集成范围决策（用户拍板）：纯托管，不做网页监控内嵌——LiteMonitor 的核心价值
 // 是桌面常驻横条/任务栏监控，显示界面留在上游本体；上游自带的网页版监控
@@ -33,7 +34,7 @@ type LMVersionInfo struct {
 // DownloadProgress 下载过程实时进度。
 type DownloadProgress struct {
 	Version string `json:"version"` // 目标版本
-	Stage   string `json:"stage"`   // resolve/downloading/verify/extract/install/done/error
+	Stage   string `json:"stage"`   // downloading/extract/done/error（verify 由内核 Fetch 折进 download、install 折进 done，不造幻影步骤）
 	Done    int64  `json:"done"`    // 已下载字节
 	Total   int64  `json:"total"`   // 总字节（未知为 0）
 	Message string `json:"message"` // 附加信息（如错误描述）

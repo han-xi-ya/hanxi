@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"hanxi/packages/go/artifact"
 )
 
 // fakeReleasesJSON 构造与真实 GitHub API 同构的样例响应：
@@ -147,11 +149,12 @@ func makeTestZip(t *testing.T, names []string, contents map[string]string) strin
 	return path
 }
 
-// lmZipEntries 官方 zip 真实布局的最小复刻：单层包装目录 + exe + 语言包锚点。
+// lmZipEntries 官方 zip 真实布局的最小复刻：单层包装目录 + exe + 语言包锚点
+// （wrapper 为空串表示平铺布局——剥掉空首段，避免拼出 "/xxx" 绝对路径条目）。
 func lmZipEntries(wrapper string) ([]string, map[string]string) {
 	p := func(rel ...string) string {
 		full := append([]string{wrapper}, rel...)
-		return strings.Join(full, "/")
+		return strings.Join(slices.DeleteFunc(full, func(s string) bool { return s == "" }), "/")
 	}
 	names := []string{p(exeName), p("resources/lang/zh.json"), p("resources/themes/DarkFlat_Classic.json")}
 	contents := map[string]string{
@@ -162,14 +165,40 @@ func lmZipEntries(wrapper string) ([]string, map[string]string) {
 	return names, contents
 }
 
-func TestExtractAllNestedLayout(t *testing.T) {
-	dir := t.TempDir()
+// TestVersionFromToken 版本令牌形状：纯 x.y.z 与 imported-时间戳收纳，
+// v 前缀/两段/含连字符杂名目录拒绝（与原 dirNameRe 口径一致）。
+func TestVersionFromToken(t *testing.T) {
+	tests := []struct {
+		token   string
+		wantVer string
+		wantOK  bool
+	}{
+		{"1.3.6", "v1.3.6", true},
+		{"imported-20260903-120000", "vimported-20260903-120000", true},
+		{"v1.3.6", "", false}, // 带 v 前缀的目录名非本模块落位格式
+		{"1.3", "", false},    // 必须纯 x.y.z
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		ver, ok := versionFromToken(tt.token)
+		if ok != tt.wantOK || ver != tt.wantVer {
+			t.Errorf("versionFromToken(%q) = (%q,%v), want (%q,%v)", tt.token, ver, ok, tt.wantVer, tt.wantOK)
+		}
+	}
+}
+
+// ---------- 内核解包 + 模块嵌套布局吸收/锚点自检（替代原 extractAll 时代的用例） ----------
+
+func TestResolveStagedRootNestedLayout(t *testing.T) {
 	names, contents := lmZipEntries("LiteMonitor_v1.3.6-win-x64")
 	zipPath := makeTestZip(t, names, contents)
-	staging := filepath.Join(dir, "staging")
-	root, err := extractAll(zipPath, staging)
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
+	}
+	root, err := resolveStagedRoot(staging)
 	if err != nil {
-		t.Fatalf("extractAll: %v", err)
+		t.Fatalf("resolveStagedRoot: %v", err)
 	}
 	if filepath.Base(root) != "LiteMonitor_v1.3.6-win-x64" {
 		t.Errorf("installRoot 应为包装目录，实际 %s", root)
@@ -179,70 +208,80 @@ func TestExtractAllNestedLayout(t *testing.T) {
 	}
 }
 
-func TestExtractAllFlatLayout(t *testing.T) {
+func TestResolveStagedRootFlatLayout(t *testing.T) {
 	// 上游若改为平铺发布（无包装目录），同样应被吸收
 	names, contents := lmZipEntries("")
 	zipPath := makeTestZip(t, names, contents)
-	root, err := extractAll(zipPath, filepath.Join(t.TempDir(), "staging"))
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip(平铺): %v", err)
+	}
+	root, err := resolveStagedRoot(staging)
 	if err != nil {
-		t.Fatalf("extractAll(平铺): %v", err)
+		t.Fatalf("resolveStagedRoot(平铺): %v", err)
 	}
 	if filepath.Base(root) != "staging" {
 		t.Errorf("平铺布局 installRoot 应为暂存根，实际 %s", root)
 	}
 }
 
-func TestExtractAllZipSlip(t *testing.T) {
-	names, contents := lmZipEntries("w")
-	evil := "../evil.txt"
-	names = append([]string{evil}, names...)
-	contents[evil] = "evil"
-	zipPath := makeTestZip(t, names, contents)
-
-	dir := t.TempDir()
-	dst := filepath.Join(dir, "staging")
-	if _, err := extractAll(zipPath, dst); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); !os.IsNotExist(err) {
-		t.Fatal("恶意条目逃逸到了目标目录之外")
-	}
-}
-
-func TestExtractAllMissingBits(t *testing.T) {
+func TestResolveStagedRootRejects(t *testing.T) {
 	cases := map[string]struct {
 		names    []string
 		contents map[string]string
+		wantMsg  string
 	}{
 		"缺 exe": {
 			names:    []string{"w/resources/lang/zh.json"},
 			contents: map[string]string{"w/resources/lang/zh.json": "{}"},
+			wantMsg:  "必须位于根目录或单层包装目录",
 		},
 		"缺语言包锚点": {
 			names:    []string{"w/" + exeName},
 			contents: map[string]string{"w/" + exeName: "fake-exe"},
+			wantMsg:  "缺少 resources/lang/zh.json",
 		},
 		"exe 为空": {
 			names:    []string{"w/" + exeName, "w/resources/lang/zh.json"},
 			contents: map[string]string{"w/" + exeName: "", "w/resources/lang/zh.json": "{}"},
+			wantMsg:  "必须位于根目录或单层包装目录",
 		},
 		"exe 重复": {
 			names: []string{"a/" + exeName, "b/" + exeName,
 				"b/resources/lang/zh.json"},
 			contents: map[string]string{"a/" + exeName: "x", "b/" + exeName: "y",
 				"b/resources/lang/zh.json": "{}"},
+			wantMsg: "期望唯一的",
 		},
 		"布局过深": {
 			names:    []string{"w/deep/inner/" + exeName, "w/deep/inner/resources/lang/zh.json"},
 			contents: map[string]string{"w/deep/inner/" + exeName: "x", "w/deep/inner/resources/lang/zh.json": "{}"},
+			wantMsg:  "必须位于根目录或单层包装目录",
 		},
 	}
 	for name, tc := range cases {
 		zipPath := makeTestZip(t, tc.names, tc.contents)
-		dst := filepath.Join(t.TempDir(), "staging")
-		if _, err := extractAll(zipPath, dst); err == nil {
-			t.Errorf("%s: 应被拒绝", name)
+		staging := filepath.Join(t.TempDir(), "staging")
+		if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+			t.Errorf("%s: UnpackZip 前置失败: %v", name, err)
+			continue
 		}
+		_, err := resolveStagedRoot(staging)
+		if err == nil {
+			t.Errorf("%s: 应被拒绝", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), tc.wantMsg) {
+			t.Errorf("%s: 错误口径异常: %v", name, err)
+		}
+	}
+}
+
+func TestUnpackRejectsPathTraversal(t *testing.T) {
+	zipPath := makeTestZip(t, []string{"../evil.txt"}, map[string]string{"../evil.txt": "escape"})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err == nil {
+		t.Fatal("UnpackZip 应拒绝路径逃逸条目")
 	}
 }
 
@@ -275,13 +314,19 @@ func TestListInstalledAndRemove(t *testing.T) {
 		}
 	}
 	mkVersion("litemonitor_imported-20260903-120000", `{"installedAt":"2026-09-03 12:00:00","isImport":true,"source":"D:\\LiteMonitor"}`)
-	mkVersion("litemonitor_0.9.9", "") // 假目录（无 PE 版本资源）：windows 上因核对失败被跳过，
-	// 非 windows 上会保留——断言按平台分支
+	// 假目录（无 PE 版本资源）：windows 上因核对失败被跳过，非 windows 上会保留
+	// （versioninfo 为 windows 构建专属，测试态 fileVersion 是"读真 PE 必失败"的
+	// 生产注入）——断言按平台分支；TestDownloadPEVersionMismatchRejects 在 windows
+	// 上以注入假 PE 账目核正向拒装路径，两平台合计覆盖核账闸门。
+	mkVersion("litemonitor_0.9.9", "")
 	os.MkdirAll(filepath.Join(versionsDir, "ccswitch_3.20.0"), 0755)   // 异模块目录必须跳过
 	os.MkdirAll(filepath.Join(versionsDir, "litemonitor_1.0.0"), 0755) // 缺 exe 的损坏安装必须跳过
 	// 缺语言包锚点的半残目录必须跳过
 	os.MkdirAll(filepath.Join(versionsDir, "litemonitor_2.0.0"), 0755)
 	os.WriteFile(filepath.Join(versionsDir, "litemonitor_2.0.0", exeName), []byte("fake"), 0644)
+	// 事务前缀目录不得入列表（Tree 扫描忽略 .tmp-/removing；.installing- 直造目录
+	// 由 versionFromToken 形状闸拒绝——迁移后防护换形不换口径）
+	os.MkdirAll(filepath.Join(versionsDir, "litemonitor_3.0.0.installing-1725350400000000000"), 0755)
 
 	list, err := m.ListInstalled()
 	if err != nil {
@@ -294,7 +339,11 @@ func TestListInstalledAndRemove(t *testing.T) {
 	if _, ok := found["litemonitor_ghost"]; ok {
 		t.Error("未创建目录不应出现")
 	}
-	if v, ok := found["vimported-20260903-120000"]; !ok || !v.IsImport || v.Source != "D:\\LiteMonitor" {
+	if _, ok := found["v3.0.0"]; ok {
+		t.Error(".installing- 事务目录不应出现在列表")
+	}
+	if v, ok := found["vimported-20260903-120000"]; !ok || !v.IsImport || v.Source != "D:\\LiteMonitor" ||
+		v.InstalledAt != "2026-09-03 12:00:00" {
 		t.Errorf("imported 兜底目录应可列出并解析元信息: %+v (all: %v)", found, keys(found))
 	}
 	if _, ok := found["v1.0.0"]; ok {
@@ -397,6 +446,28 @@ func TestImportLocal(t *testing.T) {
 	}
 	if _, err := m.ImportLocal(amb); err == nil {
 		t.Error("exe 不唯一应报错")
+	}
+}
+
+// TestListingSkipsImportFallbackRecord ImportLocal 的兜底目录名也必须在
+// ListInstalled 的扫描半径内（可被列出、可被卸载）——迁移到 Tree 扫描后口径不变。
+func TestListingSkipsImportFallbackRecord(t *testing.T) {
+	versionsDir := t.TempDir()
+	dir := filepath.Join(versionsDir, dirPrefix+"imported-20260903-150405")
+	os.MkdirAll(filepath.Join(dir, "resources", "lang"), 0755)
+	os.WriteFile(filepath.Join(dir, exeName), []byte("fake"), 0644)
+	os.WriteFile(filepath.Join(dir, "resources", "lang", "zh.json"), []byte("{}"), 0644)
+	m := NewManager(versionsDir)
+
+	list, err := m.ListInstalled()
+	if err != nil {
+		t.Fatalf("ListInstalled: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("兜底目录应被列出，实际 %d: %+v", len(list), list)
+	}
+	if err := m.Remove(list[0].Version); err != nil {
+		t.Errorf("兜底版本应可卸载: %v", err)
 	}
 }
 
