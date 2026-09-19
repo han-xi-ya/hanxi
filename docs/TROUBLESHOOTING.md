@@ -1104,3 +1104,32 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：go test 报出本应被拆走的老测试仍在原文件里，`ls r5_test.go` 发现"已创建"的文件不存在，才回溯到 python 环节；`python -c "print('py ok')"` 同样 49 无输出坐实存根。
 - **正确做法与标准修复方案**：本仓会话内改文件一律走 Claude Code 的 Edit/Write 工具直落盘；确需脚本处理时用绝对路径调真解释器并检查退出码（`cmd //c py` 或全路径 python3，失败必须可见）。顺带复用本轮实战：Go 测试常量要表达裸 BOM 而编辑工具把 `\uFEFF` 转义在往返中归一化成真字符时，用 `string([]byte{0xEF, 0xBF, 0xBF})` 这类**纯 ASCII 字节切片**写法，任何管道都改不坏它。
 - **避坑防重犯建议**：① Windows 机器上 `python`/`python3` 先做冒烟（`python -c "print(1)"`）再谈依赖，或直接永久视为不可用；② shell 里"看起来成功"不算数——产物文件用 `ls`/`git status` 验尸，别信 echo；③ 与 #68 同族教训：不可见字符与静默失败叠加时，先 `od -c`/`cat -A` 看字节再动手。
+
+### 78. CSS 注释里的 `*/` 序列会提前终结注释，只在生产构建 minify 时炸
+
+- **问题现象与错误原因**：在 tokens/base/components 的 CSS 注释里写 token 家族名（如 `--text-*/--control-h-*`）时，`*/` 把注释提前闭合，后续文字被当作选择器解析。dev（vite serve）不报，`vite build` 的 lightningcss minify 阶段才失败，容易误判为"CI 专属问题"。
+- **排查过程**：dev 正常、build 失败定位到压缩阶段；回查新增注释原文发现 `*/` 序列。
+- **正确做法与标准修复方案**：CSS 注释提及 token 家族时用 `--text-<n>` 或加空格断开（`* /`），写完注释立刻跑一次生产构建验证。
+- **避坑防重犯建议**：前端门禁必须包含 `vite build` 而不仅是 typecheck/dev；"dev 能跑"≠"构建能过"。
+
+### 79. Git Bash 会话的 PATH 是 POSIX 形态，Windows 原生 Go 测试进程 exec.LookPath 整片假红
+
+- **问题现象与错误原因**：在 Git Bash 里跑 `go test ./...`，全部 `internal/modules/*/instance` 进程冒烟包失败报 `exec: "cmd": executable file not found in %PATH%` 或 "cmd.exe 不可用"，而 `which cmd.exe` 明明存在。根因有二：① MSYS/Git Bash 注入子进程的 PATH 是 `/c/Windows/system32` 形态，Windows 原生 Go 进程用 Win32 文件 API 逐段探测该路径必然不中；② shell 环境不带 PATHEXT，无扩展名查找（`LookPath("cmd")`）也失效。手工 `export PATH="C:\\..."` 与 POSIX 段混排仍不可靠。
+- **排查过程**：单包 `-v` 复跑定位失败行在 LookPath；确认 `git diff` 对应包代码零改动；同包在无该环境问题的会话/CI 全绿，坐实环境性假红而非代码回归。
+- **正确做法与标准修复方案**：会话内批量验证把进程冒烟族（`*/instance`）排除出必跑集：`go test -count=1 $(go list ./... | grep -v "/instance")`，另用 `git diff --stat -- "internal/modules/*/instance/"` 证明该族未被本次改动触碰；真实覆盖交给 CI（windows-latest + `-race`）与用户本机终端。
+- **避坑防重犯建议**：见到"一整族同类测试同时红、且报错含 executable not found"，先怀疑 shell 环境（PATH 形态/PATHEXT/代理），再怀疑被测代码；用"代码是否被触碰 + 单包最小复现"两步区分，禁止为绕环境红去改用例断言。
+
+### 80. resumable 回灌记录的 `Operation.id` 带 `resumed-` 前缀，直接喂给 DismissResumable 必失败（Wave 4 前端接线）
+
+- **问题现象与错误原因**：模块中心"忽略残留"若按直觉写 `DismissResumable(op.id)`，后端 `makeDismissResumable` 里 `store.Get(txnID)` 查的是裸事务 ID，而 `packages/go/operation/hub.go` 的回灌合成载荷写的是 `ID: "resumed-" + j.TransactionID`（`ForgetResumable` 也靠这个前缀反查），于是 RPC 稳定报"操作记录不存在或不可读"，残留永远关不掉。`extapi.Operation` 契约里**没有**独立的 txnID 字段，前缀是唯一携带渠道，且它是生成器之外的实现细节、不出现在 bindings 类型里。
+- **排查过程**：读 `internal/app/operations_service.go` 的收口链路 → `ForgetResumable` 的 `id := "resumed-" + txnID` 暴露两侧不对称；比对 `refilledOperation` 合成载荷字段清单确认无 txnID 可取。
+- **正确做法与标准修复方案**：前端在 `composables/useOperations.ts` 登记 `RESUMABLE_ID_PREFIX` 常量并导出 `resumableTxnID(op)`（命中前缀则剥离、否则原样返回），`OperationBanner` 的忽略动作只允许经该函数取参；事务 ID 为 UUID，裸 ID 不可能自带该前缀，剥离无歧义。
+- **避坑防重犯建议**：观察面载荷的 `id` 是"展示身份"不是"账本主键"，任何以 journal 事务为键的 RPC（忽略/重试/补偿）都必须先核对后端合成记录的 ID 拼法；若后端后续把前缀提为导出常量或给 `Operation` 加 `txnId` 字段，前端应改为 import 契约常量而不是保留本地字面量。
+- **最终解决（同日收口，Wave 4 主线）**：按上述建议的正解落地——`extapi.Operation` 兼容新增 `TxnID string json:"txnId,omitempty"` 契约字段（ADR-0001 §1.1 属新增非破坏），hub 回灌与活事务载荷两处均填充，`ForgetResumable` 改按 `TxnID` 匹配；前端 `resumableTxnID` 优先消费 `op.txnId`，剥前缀降级路径仅留给旧投影兼容。教训升级为通用纪律：**跨端收口键必须是契约字段，禁止用展示 ID 的字符串拼法承载第二重身份**——剥前缀的"无歧义"只是当下巧合，不是接口承诺。
+
+### 81. 实例冒烟的"裸 cmd.exe 挂起等输入"假设在受限 shell 会话不成立：stdin=NUL 秒退 + cmd 检索 ping 时灵时不灵（piclite 迁移实跑）
+
+- **问题现象与错误原因**：piclite 迁移 Wave 4 内核后按 ccswitch 模板把真进程冒烟搬过来（`Start(裸 cmd.exe)` → 断言 running/已运行时长为正），同会话 5 连跑 3 次翻车：快照显示 cmd.exe 仅存活约 5ms、exit 0。根因两层：① `exec.Cmd` 的 `Stdin==nil` 语义是"子进程读 NUL 设备"，裸 `cmd.exe` 交互循环第一口读到 EOF 即退——"挂起等待输入"只在 stdin 真是控制台句柄时成立；② 把"必然被杀所以必须活着"的载体换成 `cmd /c ping -n 30` 后仍时灵时不灵：受限 shell（Git Bash，坑 #79 同源）把 POSIX 形态 PATH 传给子代 cmd，cmd 的 PATH 检索找不到 `ping`（"not recognized" → exit 1 秒退），CreateProcess 兜底搜索序不覆盖 cmd 内建检索。
+- **排查过程**：失败快照 `StartedAt/StoppedAt` 差值 ~5ms 与 ExitCode 0/1 两种形态各自复现；写独立 `go run` 验尸程序打印 cmd 输出，实锤 `"'ping' is not recognized..."`；对照 ccswitch 同构冒烟在本会话 5/5 通过——其通过靠的是"断言窗口恰好跑在 5ms 退场之前"的时序运气，模板本身潜伏同样的掷硬币。
+- **正确做法与标准修复方案**：凡"必须保证子进程在世到断言时刻"的冒烟，不依赖裸交互进程——用受控 argv 起确定性长驻进程（`cmd.exe /c <SystemRoot>\System32\ping.exe -n 30 127.0.0.1`），路径一律取 `SystemRoot` 绝对寻径（与 `mustCmdExe` 的 #79 兜底同款），不经任何检索；反向利用"裸 cmd 秒退"则是好素材：`Engine.Start` 生产正例（同步升 running → 自然 EOF exit 0 → 分类 stopped 无文案）恰因此确定性成立，已在 piclite `TestStartSmokeNaturalExit` 钉死。
+- **避坑防重犯建议**：① 迁移模板时把模板里每条"环境断言"当假设重新实测，别继承其通过史（ccswitch 的 running 断言与 piclite 同码同环境，一个 5/5 绿一个 3/5 红，都是掷硬币的样本噪声）；② 测试里凡"活着/时长为正"类断言，其载体进程的生命期必须是命令语义保证的（sleep 族），不能是"没理由退出"的侥幸；③ 该发现反哺模板族：ccswitch/markeron 同款冒烟后续维护若见零星红，先查此处再查代码。
