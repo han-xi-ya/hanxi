@@ -36,7 +36,7 @@
 
 ## 4. 已知遗留(登记不隐瞒)
 
-- artifact `Fetch` 的 `.part-*` 下载残件不在 `AbandonedDirs` 目录盘点内;Wave 5 事务接线批次统一补文件面收尸。
+- artifact `Fetch` 的 `.part-*` 下载残件不在 `AbandonedDirs` 目录盘点内——**已解决(2026-09-19)**:内核新增 `CleanStaleParts(dirs, olderThan)` 受控清理入口(只删超龄 `.part-<hex>` 形状普通文件,拒目录/链接),装配根启动恢复阶段对 `installers/`、`versions/` 根各扫一轮(`internal/ops.CleanStaleDownloadParts` 接线,残件年龄阈值 24h)。
 - `Tree.CleanupAbandoned` 未接生产(共享根误伤风险),恢复走 journal 背书法;无背书孤儿仅报告。
 - supervisor 对 markeron 的 `stopping→running` 词表映射属兼容妥协,Wave 5 收口 instance 词表时重审。
 - 校验强度升级:资产安装要求官方 SHA-256(GitHub `asset.digest`),无摘要资产拒装;离线导入通道不受影响。

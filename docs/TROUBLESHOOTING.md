@@ -1133,3 +1133,10 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：失败快照 `StartedAt/StoppedAt` 差值 ~5ms 与 ExitCode 0/1 两种形态各自复现；写独立 `go run` 验尸程序打印 cmd 输出，实锤 `"'ping' is not recognized..."`；对照 ccswitch 同构冒烟在本会话 5/5 通过——其通过靠的是"断言窗口恰好跑在 5ms 退场之前"的时序运气，模板本身潜伏同样的掷硬币。
 - **正确做法与标准修复方案**：凡"必须保证子进程在世到断言时刻"的冒烟，不依赖裸交互进程——用受控 argv 起确定性长驻进程（`cmd.exe /c <SystemRoot>\System32\ping.exe -n 30 127.0.0.1`），路径一律取 `SystemRoot` 绝对寻径（与 `mustCmdExe` 的 #79 兜底同款），不经任何检索；反向利用"裸 cmd 秒退"则是好素材：`Engine.Start` 生产正例（同步升 running → 自然 EOF exit 0 → 分类 stopped 无文案）恰因此确定性成立，已在 piclite `TestStartSmokeNaturalExit` 钉死。
 - **避坑防重犯建议**：① 迁移模板时把模板里每条"环境断言"当假设重新实测，别继承其通过史（ccswitch 的 running 断言与 piclite 同码同环境，一个 5/5 绿一个 3/5 红，都是掷硬币的样本噪声）；② 测试里凡"活着/时长为正"类断言，其载体进程的生命期必须是命令语义保证的（sleep 族），不能是"没理由退出"的侥幸；③ 该发现反哺模板族：ccswitch/markeron 同款冒烟后续维护若见零星红，先查此处再查代码。
+
+### 82. Git Bash 直调 `wails3 generate bindings` 报 "go executable not found"：Windows 子进程的 PATH 交接坑（#79 同族）
+
+- **问题现象与错误原因**：在 Git Bash 里直接跑 `wails3 generate bindings -clean=true ...`，生成器秒退并报 `go command required, not found: exec: "go": executable file not found in %PATH%`——尽管同一 shell 里 `go build` 一切正常。wails3.exe 是 Windows 原生进程，它再派生 `go` 子进程时拿到的 PATH 经 MSYS 转换后与 bash 自身的查找序不一致（坑 #79 同族的另一张脸：坑在 shell→原生子进程交接段，不在 Go 工具链）。
+- **排查过程**：`which go`/`go env GOROOT` 正常排除安装问题；改从 `cmd //c` 入口调用并给足 Windows 形态 PATH（GOROOT\bin + GOPATH\bin + system32），一次通过（423 包、77 事件、729 方法）。
+- **正确做法与标准修复方案**：绑定生成固定走 `PATH="<win形态目录s>:$PATH" cmd //c "<绝对路径>\wails3.exe generate bindings ..."`；或直接在 cmd/PowerShell 会话执行。生成后以 `git status --short frontend/bindings` 验尸产物。
+- **避坑防重犯建议**：凡"Windows 原生 CLI 再派生子进程"的工具（wails3/npm 等，与个人记忆里 npm shim 坑并列），在 Git Bash 里的第一失败永远先怀疑 PATH 交接而非工具本身；Taskfile 常规入口（task verify:bindings）在正常终端不受影响。
