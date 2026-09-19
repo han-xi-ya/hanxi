@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hanxi/packages/go/artifact"
 )
 
 // fakeReleasesJSON 构造与真实 GitHub API 同构的样例响应，形态取自实测上游
@@ -148,61 +150,289 @@ func TestCompareSemver(t *testing.T) {
 	}
 }
 
-func TestVersionDirRe(t *testing.T) {
-	ok := []string{"paseo_0.8.0", "paseo_0.8.0-beta.1", "paseo_imported-20260915-010203"}
-	bad := []string{"paseo_", "paseo_x", "paseo_0.8", "paseo_0.8.0.zip", "vscode_1.0", "paseo_-1"}
+func TestTokenVersionRe(t *testing.T) {
+	ok := []string{"0.8.0", "0.8.0-beta.1", "imported-20260915-010203"}
+	bad := []string{"", "x", "0.8", "0.8.0.zip", "-1", "v0.8.0", "imported-2026", "../../../windows"}
 	for _, s := range ok {
-		if !versionDirRe.MatchString(s) {
+		if !tokenVersionRe.MatchString(s) {
 			t.Errorf("应接受 %s", s)
 		}
 	}
 	for _, s := range bad {
-		if versionDirRe.MatchString(s) {
+		if tokenVersionRe.MatchString(s) {
 			t.Errorf("应拒绝 %s", s)
 		}
 	}
 }
 
-func TestExtractAllLayoutAndSlip(t *testing.T) {
-	dir := t.TempDir()
+// ---------- 内核解包 + 模块双锚点自检（替代原 extractAll 时代的用例） ----------
 
-	// 合法 win-unpacked 布局：根目录直落 Paseo.exe + resources/app.asar（无根包裹）
-	good := filepath.Join(dir, "good.zip")
-	writeTestZip(t, good, map[string][]byte{
-		"Paseo.exe":                     []byte("MZ fake exe"),
-		"resources/app.asar":            []byte("asar"),
-		"resources/app-dist/index.html": []byte("<html>"),
+// makeTestZip 构造测试用 zip（win-unpacked 形态中央目录无根包裹：
+// Paseo.exe 落在包根，勿按"包内单根目录"直觉改造）。
+func makeTestZip(t *testing.T, entries map[string]string) string {
+	t.Helper()
+	f, err := os.CreateTemp("", "pasctest-*.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := f.Name()
+	t.Cleanup(func() { os.Remove(path) })
+	zw := zip.NewWriter(f)
+	for name, content := range entries {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	return path
+}
+
+func TestUnpackWithElectronAnchors(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{
+		"Paseo.exe":                     "MZ fake exe",
+		"resources/app.asar":            "asar",
+		"resources/app-dist/index.html": "<html>",
 	})
-	target := filepath.Join(dir, "out")
-	if err := extractAll(good, target); err != nil {
-		t.Fatalf("合法 zip 解压失败: %v", err)
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(target, exeName)); err != nil {
-		t.Fatalf("Paseo.exe 应落在目标根目录: %v", err)
+	if err := layoutCheck(staging); err != nil {
+		t.Fatalf("layoutCheck: %v", err)
+	}
+	for _, name := range []string{"Paseo.exe", "resources/app.asar", "resources/app-dist/index.html"} {
+		if _, err := os.Stat(filepath.Join(staging, name)); err != nil {
+			t.Errorf("布局缺失 %s: %v", name, err)
+		}
+	}
+}
+
+func TestUnpackRejectsPathTraversal(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{"../escaped.txt": "x"})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err == nil {
+		t.Fatal("UnpackZip 应拒绝路径逃逸条目")
+	}
+}
+
+func TestLayoutCheckMissingAsar(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{"Paseo.exe": "fake-exe"})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("解包失败: %v", err)
+	}
+	err := layoutCheck(staging)
+	if err == nil {
+		t.Fatal("缺 resources/app.asar 应自检失败")
+	}
+	if !strings.Contains(err.Error(), "app.asar") {
+		t.Errorf("错误信息应指出缺失主包: %v", err)
+	}
+}
+
+func TestLayoutCheckEmptyExe(t *testing.T) {
+	staging := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(staging, "resources"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staging, exeName), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(staging, asarRelPath), []byte("asar"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := layoutCheck(staging); err == nil {
+		t.Fatal("空 exe 应判定为损坏安装")
+	}
+}
+
+// ---------- 版本树扫描 / 解析 / 卸载（委托 Tree） ----------
+
+func TestListInstalledAndRemove(t *testing.T) {
+	versionsDir := t.TempDir()
+	m := NewManager(versionsDir)
+
+	mkVersion := func(dir, asar string, exeContent string, meta string) {
+		full := filepath.Join(versionsDir, dir)
+		if err := os.MkdirAll(filepath.Join(full, "resources"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(full, exeName), []byte(exeContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if asar != "" {
+			if err := os.WriteFile(filepath.Join(full, asarRelPath), []byte(asar), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if meta != "" {
+			if err := os.WriteFile(filepath.Join(full, "meta.json"), []byte(meta), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	mkVersion("paseo_0.8.0", "asar", "exe080",
+		`{"installedAt":"2026-09-15 10:00:00","isImport":true,"source":"E:\\Paseo","verifiedHash":false}`)
+	mkVersion("paseo_0.7.2", "asar", "exe072", "")
+	mkVersion("paseo_0.8.0-beta.1", "asar", "exeBeta", "")
+	mkVersion("paseo_broken-noasar", "", "exe", "") // 缺 app.asar 的损坏安装必须跳过
+	mkVersion("paseo_0.9.0", "asar", "", "")        // 空 exe 的损坏安装必须跳过
+	if err := os.MkdirAll(filepath.Join(versionsDir, "vscode_1.0"), 0755); err != nil {
+		t.Fatal(err) // 异模块目录必须跳过
+	}
+	if err := os.MkdirAll(filepath.Join(versionsDir, "paseo_x"), 0755); err != nil {
+		t.Fatal(err) // 形状外令牌必须跳过
 	}
 
-	// ZipSlip：逃逸条目必须拒绝并清理目标目录
-	evil := filepath.Join(dir, "evil.zip")
-	writeTestZip(t, evil, map[string][]byte{
-		"../escaped.txt": []byte("x"),
-		"Paseo.exe":      []byte("MZ"),
-	})
-	badTarget := filepath.Join(dir, "bad")
-	if err := extractAll(evil, badTarget); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
+	list, err := m.ListInstalled()
+	if err != nil {
+		t.Fatalf("ListInstalled: %v", err)
 	}
-	if _, err := os.Stat(badTarget); !os.IsNotExist(err) {
-		t.Error("解压失败后应清理目标目录")
+	byVer := map[string]PaseoVersionInfo{}
+	for _, v := range list {
+		byVer[v.Version] = v
 	}
-	if _, err := os.Stat(filepath.Join(dir, "escaped.txt")); err == nil {
-		t.Error("逃逸文件不得落盘")
+	if len(list) != 3 {
+		t.Fatalf("期望 3 个版本，实际 %d: %+v", len(list), list)
+	}
+	// 历史导入账本（无 schema map）：installedAt 原样、isImport/source/verifiedHash 收纳
+	if v := byVer["0.8.0"]; !v.IsImport || v.InstalledAt != "2026-09-15 10:00:00" ||
+		v.Source != `E:\Paseo` || v.VerifiedHash {
+		t.Errorf("0.8.0 导入账本解析错误: %+v", v)
+	}
+	if v := byVer["0.7.2"]; v.IsImport || v.InstalledAt == "" {
+		t.Errorf("0.7.2 默认元信息错误: %+v", v)
 	}
 
-	// 布局自检：缺 app.asar 拒绝
-	nolayout := filepath.Join(dir, "nolayout.zip")
-	writeTestZip(t, nolayout, map[string][]byte{"Paseo.exe": []byte("MZ")})
-	if err := extractAll(nolayout, filepath.Join(dir, "out2")); err == nil {
-		t.Error("缺 resources/app.asar 的布局应自检失败")
+	// ResolveExe / 非法版本 / 路径穿越
+	if exe, err := m.ResolveExe("v0.7.2"); err != nil || filepath.Base(exe) != exeName {
+		t.Errorf("ResolveExe(带 v 前缀): %v %v", exe, err)
+	}
+	if _, err := m.ResolveExe("0.7.2"); err != nil {
+		t.Errorf("裸版本应可解析: %v", err)
+	}
+	if _, err := m.ResolveExe("0.8.0-beta.1"); err != nil {
+		t.Errorf("预发布版本应可解析: %v", err)
+	}
+	if _, err := m.ResolveExe("9.9.9"); err == nil {
+		t.Error("未安装版本应报错")
+	}
+	if _, err := m.ResolveExe("0.7"); err == nil {
+		t.Error("形状外版本号应报错")
+	}
+	if _, err := m.ResolveExe("../../windows"); err == nil {
+		t.Error("路径穿越式版本号必须报错")
+	}
+
+	// Remove（委托 Tree：隔离后删除）
+	if err := m.Remove("0.7.2"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	list, _ = m.ListInstalled()
+	if len(list) != 2 {
+		t.Errorf("卸载后应剩 2 个版本，实际 %d", len(list))
+	}
+}
+
+// ---------- 本地导入（整套 Electron 目录迁移） ----------
+
+func TestImportLocal(t *testing.T) {
+	m := NewManager(t.TempDir())
+
+	src := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(src, "resources"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, exeName), []byte("fake-exe-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, asarRelPath), []byte("asar"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "resources", "default_app.asar"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "readme.txt"), []byte("noise"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// 顶层 meta 噪声文件不搬运（skip 名单）
+	if err := os.WriteFile(filepath.Join(src, "meta.json"), []byte("stale"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := m.ImportLocal(src)
+	if err != nil {
+		t.Fatalf("ImportLocal: %v", err)
+	}
+	// 假 PE 无法读版本信息 → 时间戳兜底（真实 exe 会得到 FileVersion）
+	if !strings.HasPrefix(info.Version, "imported-") {
+		t.Errorf("版本号格式异常: %q", info.Version)
+	}
+	if !info.IsImport || info.Source != src || info.VerifiedHash {
+		t.Errorf("导入标记错误: %+v", info)
+	}
+	// 程序目录整套迁移：exe + resources/* 齐备
+	for _, rel := range []string{exeName, asarRelPath, filepath.Join("resources", "default_app.asar"), "readme.txt"} {
+		if _, err := os.Stat(filepath.Join(info.Dir, rel)); err != nil {
+			t.Errorf("导入后缺少 %s: %v", rel, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(info.Dir, "meta.json")); err != nil {
+		t.Errorf("导入账本应重写落位: %v", err)
+	}
+
+	// 兜底版本必须可以从目录名解析并支持卸载
+	dir := filepath.Join(m.versionsDir, dirPrefix+info.Version)
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("兜底版本目录不存在: %v", err)
+	}
+	if _, err := m.ResolveExe(info.Version); err != nil {
+		t.Errorf("兜底版本应可解析: %v", err)
+	}
+
+	// 重复导入同版本应被拒绝；若二次导入跨入新时间戳秒（目录名不同）则属
+	// 合法新收纳，断言其目录与首次不同即可。
+	if info2, err := m.ImportLocal(src); err == nil && info2.Dir == info.Dir {
+		t.Error("命中同名目标目录时重复导入应报错")
+	} else if err != nil && !strings.Contains(err.Error(), "已存在") {
+		t.Errorf("重复导入错误口径异常: %v", err)
+	}
+
+	// 缺 exe / 缺 app.asar 的源目录应报错
+	if _, err := m.ImportLocal(t.TempDir()); err == nil {
+		t.Error("无 exe 的目录应报错")
+	}
+	noAsar := t.TempDir()
+	if err := os.WriteFile(filepath.Join(noAsar, exeName), []byte("MZ"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.ImportLocal(noAsar); err == nil {
+		t.Error("缺 app.asar 的目录应报错")
+	}
+}
+
+func TestImportRefusesHostedTreeSelf(t *testing.T) {
+	versionsDir := t.TempDir()
+	m := NewManager(versionsDir)
+	src := filepath.Join(versionsDir, "paseo_0.8.0")
+	if err := os.MkdirAll(filepath.Join(src, "resources"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, exeName), []byte("MZ"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, asarRelPath), []byte("asar"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.ImportLocal(src); err == nil || !strings.Contains(err.Error(), "托管目录内") {
+		t.Fatalf("托管目录内的源应拒绝导入, got %v", err)
 	}
 }
 
@@ -216,27 +446,5 @@ func TestIsUnderDir(t *testing.T) {
 	}
 	if isUnderDir(base, base) {
 		t.Error("自身不算 under")
-	}
-}
-
-func writeTestZip(t *testing.T, path string, files map[string][]byte) {
-	t.Helper()
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	zw := zip.NewWriter(f)
-	for name, content := range files {
-		w, err := zw.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := w.Write(content); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
 	}
 }

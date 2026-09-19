@@ -1,6 +1,7 @@
 // Package version 实现 Paseo 版本管理引擎：GitHub Releases 远程列表（stable/beta 双通道）、
 // 官方 Windows 便携 zip（electron-builder win zip target，资产名 Paseo-Setup-<ver>-<arch>.zip）
-// 下载与四层完整性校验、保布局解压进多版本隔离目录、本地导入与卸载。
+// 的"下载 → 校验 → 安全解包 → 版本树落位"主流程委托 Wave 4 共享内核
+// packages/go/artifact（Fetch + UnpackZip + Tree），本地导入与卸载保留领域流程。
 //
 // 与 recordly（NSIS 单目录）的关键差异：上游同时发布 win zip 便携形态
 // （electron-builder.yml win.target = [nsis, zip]，v0.7.0 起连续在发），

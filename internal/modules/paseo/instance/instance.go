@@ -1,13 +1,15 @@
 package instance
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"os/exec"
-	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
 	"hanxi/internal/platform"
+	sup "hanxi/packages/go/supervisor"
 )
 
 // State 引擎状态机：stopped → starting → running → (stopped | failed | external)
@@ -24,14 +26,19 @@ const (
 // closeGracePeriod Quit 的 WM_CLOSE 优雅退出宽限：超时则 JobObject 强杀兜底。
 // Paseo 关闭要走 daemon 清理生命周期（before-quit 收敛内置 daemon 与其拉起的
 // agent/PTY 进程树），比裸 Electron 应用重一档，取 8s（recordly 为 3s）。
-// 包级变量仅为单测可压缩等待时长。
+// 包级变量仅为单测可压缩等待时长，生产值保持 8s。
 var closeGracePeriod = 8 * time.Second
 
-// externalSettle wait() 判外部接管前的静默期：进程名探测是进程树级的，
-// 自有主进程刚退出时 Electron 子进程需要短暂时间随之消亡，立即探测会把
-// "自己刚退"误判成"外部实例还在"。包级变量供单测压缩；生产 500ms 足够
-// 覆盖 Chromium 子进程收敛（recordly 同参数）。
+// externalSettle wait 判外部接管前的静默期：进程名探测是进程树级的，
+// 外层 Electron 主进程刚退出时 Chromium 子进程/helper 需要短暂时间随之消亡，
+// 立即探测会把"自己刚退"误判成"外部实例还在"。由 supProbe 在内核退出分类
+// 探针调用前落地（仅对受管在途探针生效，静止态校正保持即时）。包级变量供
+// 单测压缩；生产 500ms 足够覆盖 Chromium 子进程收敛（recordly 同参数）。
 var externalSettle = 500 * time.Millisecond
+
+// manualStopWording 内核手动停止的收口文案；paseo 既有快照口径在 stopped
+// 态不带文案（Error 为空），映射时如实还原。
+const manualStopWording = "已手动停止"
 
 // Snapshot 引擎状态快照：事件推送与前端渲染共用同一模型。
 type Snapshot struct {
@@ -67,294 +74,249 @@ type Callbacks struct {
 	OnState func(snap Snapshot)
 }
 
-// Engine Paseo 单实例运行引擎。
+// Engine Paseo 单实例运行引擎：组合内核 supervisor.Engine，
+// 本层只保留 Paseo 领域适配（进程名+窗口探针、Win32 直唤/信使兜底两条
+// 唤窗通道、WM_CLOSE 优雅退出钩子、状态词表与快照形状映射、
+// 退出分类探针的树级静默期 externalSettle）。
 type Engine struct {
 	mu        sync.Mutex
-	state     State
-	version   string
-	pid       uint32
-	exitCode  int
-	errMsg    string
-	external  bool
-	startedAt time.Time
-	stoppedAt time.Time
-	stopping  bool // 手动停止/退出标记：防止进程终止后误判为异常退出
+	exitCode  int       // 自有实例最近一次异常退出码（Start 时清零）
+	stoppedAt time.Time // 自有实例最近一次落终态的时刻
 
-	startMu sync.Mutex // Start/Quit 互斥临界区
+	sup   *sup.Engine
+	probe PaseoProbe
+	cb    Callbacks
 
-	cmd    *exec.Cmd
-	job    platform.Job
-	jobAPI platform.JobAPI
-	probe  PaseoProbe
-	cb     Callbacks
+	spawnMessenger func(exe string) error // 信使拉起接缝（默认真实 spawn，测试注入）
 }
 
 // NewEngine 创建托管运行引擎（初始 stopped，无任何系统副作用）；
 // JobAPI/Probe/Callbacks 由 service 层注入，保持本包零框架依赖。
 func NewEngine(jobAPI platform.JobAPI, probe PaseoProbe, cb Callbacks) *Engine {
-	return &Engine{
-		state:  StateStopped,
-		jobAPI: jobAPI,
-		probe:  probe,
-		cb:     cb,
+	e := &Engine{
+		probe:          probe,
+		cb:             cb,
+		spawnMessenger: spawnMessenger,
 	}
+	e.sup = sup.NewEngine(jobAPI, supProbe{probe: probe, e: e}, sup.Callbacks{OnState: e.onSupState})
+	// 优雅退出通道：Quit 的 grace 窗口内向 Paseo 可见窗口投递 WM_CLOSE
+	// （上游 Windows 无托盘，主窗口关闭 → window-all-closed → app.quit()，
+	// before-quit 完成 daemon 清理），超时由内核 JobObject 强杀兜底。
+	e.sup.SetQuitHook(func(context.Context) error {
+		postClose()
+		return nil
+	})
+	return e
 }
 
-// Start 启动自有实例：创建进程 → 绑定 JobObject → 状态 running。
+// Start 启动自有实例（委托内核：创建进程 → 绑定 JobObject → running；
+// 工作目录锁定到 exe 所在目录由内核默认保证）。
 // Paseo 无后台启动 CLI，唯一启动语义即"无参拉起 → 主窗口显示"。
-// 本方法不做单实例探测：冷启动与外部实例竞速的 TOCTOU 交给 wait() 退出分类
-// 兜底（我方第二实例拿不到锁会自退，探测到进程树仍在 = 外部主实例接管）。
+// 本方法不做单实例探测：冷启动与外部实例竞速的 TOCTOU 交给内核 wait 退出分类
+// 兜底（我方第二实例拿不到锁会自退，探测到进程树仍在 = 外部主实例接管，
+// ReadyTimeout=0 即 markeron 同款冷启动语义）。
+//
+// 进程治理收口说明（daemon/PTY 树）：Electron 主进程与其派生的内置 daemon
+// （ELECTRON_RUN_AS_NODE 复用同一镜像）、agent/PTY 子进程全部落在同一
+// JobObject（Create 即 KILL_ON_JOB_CLOSE、无 breakaway 许可，子进程自动继承），
+// 整树终止归 Job：Stop/Quit 的 job.Terminate 一次收口全树，Hanxi 崩溃退出
+// 句柄关闭同样连带全树——迁移前后语义不变。
 func (e *Engine) Start(opts StartOptions) error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
 	if err := opts.validate(); err != nil {
 		return err
 	}
 
 	e.mu.Lock()
-	e.version = opts.Version
-	e.external = false
-	e.stopping = false
-	e.mu.Unlock()
-
-	e.transition(StateStarting, "")
-
-	// Paseo 是 GUI 子系统程序，无需隐藏控制台窗口。
-	cmd := exec.Command(opts.Exe)
-	cmd.Dir = filepath.Dir(opts.Exe) // 工作目录锁定：与 recordly/ccswitch 同款防御性约定
-	if err := cmd.Start(); err != nil {
-		e.transition(StateFailed, "进程启动失败: "+err.Error())
-		return err
-	}
-
-	e.mu.Lock()
-	e.cmd = cmd // 立即登记
-	e.pid = uint32(cmd.Process.Pid)
 	e.exitCode = 0
-	e.errMsg = ""
-	e.startedAt = time.Now()
 	e.stoppedAt = time.Time{}
 	e.mu.Unlock()
 
-	job, jerr := e.jobAPI.Create()
-	if jerr != nil {
-		_ = cmd.Process.Kill()
-		go e.wait()
-		e.transition(StateFailed, "创建 Job Object 失败: "+jerr.Error())
-		return fmt.Errorf("创建 Job Object 失败: %w", jerr)
-	}
-	if aerr := job.Assign(e.pid); aerr != nil {
-		job.Close()
-		_ = cmd.Process.Kill()
-		go e.wait()
-		e.transition(StateFailed, "JobObject 绑定失败: "+aerr.Error())
-		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
-	}
-	if opts.Detached {
-		// 解除退出联动：Hanxi 退出/崩溃不再连带杀本实例（"不随 Hanxi 关闭"开关）
-		if derr := job.SetAllowKillOnClose(false); derr != nil {
-			job.Close()
-			_ = cmd.Process.Kill()
-			go e.wait()
-			e.transition(StateFailed, "解除退出联动失败: "+derr.Error())
-			return fmt.Errorf("解除退出联动失败: %w", derr)
-		}
-	}
-
-	e.mu.Lock()
-	e.job = job
-	e.mu.Unlock()
-
-	go e.wait()
-	e.transition(StateRunning, "")
-	return nil
+	// 刻意不设置 HideWindow 等窗口干预：Paseo 是 GUI 子系统程序（Electron），
+	// 既不产生控制台窗口，且需保留其原版行为（零 fork 承诺）。
+	return e.sup.Start(context.Background(), sup.Spec{
+		Version:       opts.Version,
+		Exe:           opts.Exe,
+		DetachFromJob: opts.Detached, // "不随 Hanxi 关闭"开关 → SetAllowKillOnClose(false)
+	})
 }
 
-// FocusWindow 唤起已运行实例的可见窗口（自有或外部均可——共享数据下全局
-// 至多一个桌面主实例，无归属歧义）。返回 false = 进程在但无可见窗，调用方
-// 可退到 OpenMessenger 请求开新窗。
+// FocusWindow 唤起已运行实例的可见窗口（Win32 直唤，自有或外部均可——共享数据
+// 下全局至多一个桌面主实例，无归属歧义）。返回 false = 进程在但无可见窗，
+// 调用方才可退到 OpenMessenger 请求开新窗（上游 second-instance 语义是
+// openAdditional 新开窗口而非聚焦，唤窗优先直唤、信使仅兜底——两条通道
+// 都属 Paseo 领域策略，留在本包不经内核）。
 func (e *Engine) FocusWindow() bool {
 	return e.probe.FocusWindow()
 }
 
-// OpenMessenger 拉起"信使"二次进程请求开新窗：
-// Paseo 的 second-instance 回调是 openAdditional（新开窗口而非聚焦，main.ts
-// 实证）——仅在无可见窗口时作为兜底通道使用（有窗时唤窗一律走 FocusWindow，
-// 避免"点一次开一扇新窗"的直觉反差）。
-//
-// 信使进程 Start 后立即 Release、刻意不 Wait（避免阻塞 RPC）、不进 Job
-// （不属于托管生命周期）。此决策理由请勿在后续维护中"好心"改成 Wait
-// （markeron 先例：改了就拖慢冷启动）。
+// OpenMessenger 拉起"信使"二次进程请求开新窗（见 messenger.go 的拉起纪律）：
+// 仅在无可见窗口时作为兜底通道使用（有窗时唤窗一律走 FocusWindow，避免
+// "点一次开一扇新窗"的直觉反差）。
 func (e *Engine) OpenMessenger(exe string) error {
-	cmd := exec.Command(exe)
-	cmd.Dir = filepath.Dir(exe)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("拉起窗口信使失败: %w", err)
+	if err := e.spawnMessenger(exe); err != nil {
+		return err
 	}
-	_ = cmd.Process.Release()
-
-	e.mu.Lock()
-	snap := e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
+	e.emit(e.Snapshot())
 	return nil
 }
 
-// Quit 退出自有实例（幂等；external/stopped 状态无自有进程，直接返回 nil）：
-//  1. 向 Paseo 可见窗口投递 WM_CLOSE——上游 Windows 无托盘，主窗口关闭
-//     走 window-all-closed → app.quit()，before-quit 完成 daemon 清理；
-//  2. 宽限 closeGracePeriod 轮询进程自然退出；
-//  3. 超时（多工作区窗口未收、daemon 收尾慢等）JobObject 强杀兜底——
-//     daemon 账本为文件持久化，进程级终止风险收敛到会话中断，不毁配置。
+// Quit 优雅退出自有实例（委托内核 Stop 的 grace 语义）：QuitHook 投递 WM_CLOSE
+// → 宽限 closeGracePeriod 内等进程自然收口（daemon 清理生命周期）→ 超时
+// JobObject 强杀兜底（daemon 账本为文件持久化，进程级终止风险收敛到会话
+// 中断，不毁配置）。幂等；external 态按既有契约映射为无操作成功。
 func (e *Engine) Quit() error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
-	e.mu.Lock()
-	state, cmd := e.state, e.cmd
-	e.mu.Unlock()
-	if state != StateRunning && state != StateStarting {
-		return nil
-	}
-
-	// 1. 尽力优雅（窗口不存在时静默 no-op）
-	postClose()
-
-	e.mu.Lock()
-	e.stopping = true // 先标记：其后 wait() 无论何因收尾都归类为"手动退出"
-	e.mu.Unlock()
-
-	// 2. 宽限轮询：进程自然退出
-	deadline := time.Now().Add(closeGracePeriod)
-	for time.Now().Before(deadline) {
-		e.mu.Lock()
-		stillRunning := e.state == StateRunning || e.state == StateStarting
-		e.mu.Unlock()
-		if !stillRunning {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// 3. 超时强杀兜底
-	return e.forceKill(cmd)
+	return e.stopWithGrace(closeGracePeriod)
 }
 
-// Stop 立即强杀自有实例（幂等）。与 Quit 的差别：不做 WM_CLOSE 优雅退出，
-// 直接 JobObject 终止（应用退出时 Shutdown 通道用，无需等待动画）。
+// Stop 立即强杀自有实例（幂等）。与 Quit 的差别：不投 WM_CLOSE、不耗宽限，
+// 直接 JobObject 终止整树（应用退出时 Shutdown 通道用，无需等待 daemon 清理）。
 func (e *Engine) Stop() error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
-	e.mu.Lock()
-	state, cmd := e.state, e.cmd
-	e.mu.Unlock()
-	if state != StateRunning && state != StateStarting {
-		return nil
-	}
-
-	e.mu.Lock()
-	e.stopping = true
-	e.mu.Unlock()
-	return e.forceKill(cmd)
+	return e.stopWithGrace(0)
 }
 
-// forceKill JobObject 强杀自有实例（WM_CLOSE 不可达时的兜底路径）。
-func (e *Engine) forceKill(cmd *exec.Cmd) error {
-	e.mu.Lock()
-	job := e.job
-	e.mu.Unlock()
-	if job != nil {
-		return job.Terminate(1)
+func (e *Engine) stopWithGrace(grace time.Duration) error {
+	if err := e.sup.Stop(grace); err != nil {
+		if errors.Is(err, sup.ErrExternal) {
+			return nil // external 状态不在管辖范围内：指引文案由 service 层给出
+		}
+		return err
 	}
-	if cmd != nil && cmd.Process != nil {
-		return cmd.Process.Kill()
-	}
-	return fmt.Errorf("实例没有可终止的进程")
+	return nil
 }
 
-// RefreshExternal 探测外部实例校正 external/stopped 状态。
-// 仅对静止态生效：running/starting 时探测到的正是自己，会误导状态机。
+// RefreshExternal 探测进程名+窗口校正 external/stopped 状态（委托内核）。
+// 仅对静止态生效：running/starting/stopping 时探测到的正是自己，会误导状态机。
 func (e *Engine) RefreshExternal() {
-	e.mu.Lock()
-	state := e.state
-	e.mu.Unlock()
-	if state != StateStopped && state != StateFailed && state != StateExternal {
-		return
-	}
-
-	running := e.probe.IsRunning()
-
-	e.mu.Lock()
-	var snap Snapshot
-	changed := false
-	switch {
-	case running && e.state != StateExternal:
-		e.state = StateExternal
-		e.external = true
-		e.pid = 0
-		e.errMsg = ""
-		changed = true
-	case !running && e.state == StateExternal:
-		e.state = StateStopped
-		e.external = false
-		e.stoppedAt = time.Now()
-		changed = true
-	}
-	if changed {
-		snap = e.snapshotLocked()
-	}
-	e.mu.Unlock()
-	if changed {
-		e.emit(snap) // 无变化不广播
-	}
+	e.sup.RefreshExternal()
 }
 
 // Snapshot 返回当前状态快照。
 func (e *Engine) Snapshot() Snapshot {
+	outer := e.sup.Snapshot()
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.snapshotLocked()
+	return e.snapshotLocked(outer)
 }
 
-// Exe 返回当前自有实例的可执行路径（非 running 时为空串）。
+// Exe 返回当前自有实例的可执行路径（非 running/starting 时为空串）。
 func (e *Engine) Exe() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.cmd == nil {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning && s.State != sup.StateStarting {
 		return ""
 	}
-	return e.cmd.Path
+	return s.Exe
 }
 
 // WaitReady 阻塞等待 Paseo 实例就绪（主窗口出现），超时返回 false。
+// 探针领域能力不经内核（Electron 冷启动 + 内置 daemon 拉起，就绪信号是窗口
+// 而非进程在场；service 层以 readyTimeout=45s 调用）。
 func (e *Engine) WaitReady(timeout time.Duration) bool {
 	return e.probe.WaitForReady(timeout)
 }
 
 // RunningDuration 自有实例已运行时长。
 func (e *Engine) RunningDuration() time.Duration {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.state != StateRunning || e.startedAt.IsZero() {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning || s.Since.IsZero() {
 		return 0
 	}
-	return time.Since(e.startedAt)
+	return time.Since(s.Since)
+}
+
+// ---------- 内核 → paseo 形状映射 ----------
+
+// onSupState 内核状态广播 → 映射为本包 Snapshot 后转发（回调在内核锁外执行）。
+func (e *Engine) onSupState(s sup.Snapshot) {
+	var snap Snapshot
+	e.mu.Lock()
+	snap = e.snapshotLocked(s)
+	e.mu.Unlock()
+	e.emit(snap)
 }
 
 // snapshotLocked 前置条件：已持 e.mu。
-func (e *Engine) snapshotLocked() Snapshot {
+func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
+	if s.State == sup.StateFailed {
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			e.exitCode = code
+		}
+	}
+	switch s.State {
+	case sup.StateStopped, sup.StateFailed:
+		if e.stoppedAt.IsZero() {
+			e.stoppedAt = time.Now()
+		}
+	}
 	return Snapshot{
-		Version:   e.version,
-		State:     e.state,
-		PID:       e.pid,
+		Version:   s.Version,
+		State:     mapState(s.State),
+		PID:       s.PID,
 		ExitCode:  e.exitCode,
-		Error:     e.errMsg,
-		External:  e.external,
-		StartedAt: e.startedAt,
+		Error:     mapErrorMessage(s),
+		External:  s.State == sup.StateExternal,
+		StartedAt: s.Since,
 		StoppedAt: e.stoppedAt,
 	}
+}
+
+// mapState 状态词表映射：
+//
+//	supervisor stopped  → stopped
+//	supervisor starting → starting
+//	supervisor running  → running
+//	supervisor stopping → running（paseo 既有词表无 stopping：终止窗口对前端保持
+//	                      运行语义，收口后由 stopped/failed 终态广播纠正）
+//	supervisor external → external
+//	supervisor failed   → failed
+func mapState(s sup.State) State {
+	switch s {
+	case sup.StateStarting:
+		return StateStarting
+	case sup.StateRunning, sup.StateStopping:
+		return StateRunning
+	case sup.StateExternal:
+		return StateExternal
+	case sup.StateFailed:
+		return StateFailed
+	default:
+		return StateStopped
+	}
+}
+
+// kernelAbnormalExitRe 匹配内核异常退出文案中的退出码。措辞耦合自
+// supervisor.wait 的分类消息"托管进程异常退出（退出码 %d）"——内核文案变更时
+// 本处回退为透传 Error（ExitCode 保持账目值），不会崩溃，仅少一层改写。
+var kernelAbnormalExitRe = regexp.MustCompile(`托管进程异常退出（退出码 (-?\d+)）`)
+
+// exitCodeFromKernelMessage 从内核异常退出文案中提取退出码。
+func exitCodeFromKernelMessage(msg string) (int, bool) {
+	g := kernelAbnormalExitRe.FindStringSubmatch(msg)
+	if g == nil {
+		return 0, false
+	}
+	var code int
+	if _, err := fmt.Sscanf(g[1], "%d", &code); err != nil {
+		return 0, false
+	}
+	return code, true
+}
+
+// mapErrorMessage 还原 paseo 既有失败文案：
+//   - 内核异常退出消息改回"Paseo 异常退出（退出码 N）。若刚拉起即退出…"；
+//   - 内核手动停止的"已手动停止"折回本引擎既有的空文案（stopped 态不带话术）；
+//   - 其余（启动失败等）透传——内核 Job 链路失败文案（"创建 Job Object 失败
+//     …"等）与原实现口径同源。
+func mapErrorMessage(s sup.Snapshot) string {
+	if s.State == sup.StateFailed {
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			return fmt.Sprintf(
+				"Paseo 异常退出（退出码 %d）。若刚拉起即退出，请检查杀毒软件是否拦截未签名程序，或先退出正在运行的 Paseo 实例后重试", code)
+		}
+	}
+	if s.State == sup.StateStopped && s.Error == manualStopWording {
+		return ""
+	}
+	return s.Error
 }
 
 // emit 状态广播（回调在锁外执行，防止回调内重入本引擎造成死锁）。
@@ -364,79 +326,24 @@ func (e *Engine) emit(snap Snapshot) {
 	}
 }
 
-// transition 切换状态并广播。
-func (e *Engine) transition(s State, errMsg string) {
-	var snap Snapshot
-	e.mu.Lock()
-	e.state = s
-	e.errMsg = errMsg
-	switch s {
-	case StateRunning:
-		e.stoppedAt = time.Time{}
-		e.errMsg = ""
-	case StateStopped, StateFailed:
-		if e.stoppedAt.IsZero() {
-			e.stoppedAt = time.Now()
-		}
-	}
-	snap = e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
+// supProbe 把 PaseoProbe（进程名 Paseo.exe + EnumWindows 树级信号）适配为
+// 内核统一探针契约。探测为瞬时系统调用、天然不可取消（任何失败按"不存在"
+// 处理，永不报错），因此不产出 ProcInfo（外部实例归属只认 running 事实，
+// PID 无从取得，沿用原口径）。
+//
+// externalSettle 落地纪律：仅当内核仍持受管进程（starting/running 态的探针
+// 调用必来自 wait 退出分类或 awaitReady——静止态的 RefreshExternal/classify
+// 均不满足本条件）时先静默 externalSettle 再探测，与迁移前 wait 口径逐拍
+// 对齐："外层主进程退出但 daemon 残树仍在"→ 外部接管 external，绝不因
+// helper 随主进程消亡的短暂滞后而误判。
+type supProbe struct {
+	probe PaseoProbe
+	e     *Engine
 }
 
-// wait 阻塞等待自有进程退出并分类收尾。
-func (e *Engine) wait() {
-	err := e.cmd.Wait()
-	code := 0
-	if err != nil && e.cmd.ProcessState != nil {
-		code = e.cmd.ProcessState.ExitCode()
-	}
-
-	e.mu.Lock()
-	e.exitCode = code
-	e.stoppedAt = time.Now()
-	stopped := e.stopping
-	prev := e.state
-	e.external = false
-	if e.job != nil {
-		_ = e.job.Close()
-		e.job = nil
-	}
-	e.cmd = nil
-	e.mu.Unlock()
-
-	// 分支顺序不可换：冷启动竞速场我们的进程信使化自退（exit 0），必须先判外部接管——
-	// 进程树仍存活说明真正主实例是外部自启的那一个（共享数据同锁组，recordly 同理）。
-	// 进程名探测是树级信号，自有主进程退出后 Electron 子进程需短暂收敛，
-	// 先等 externalSettle 再探测，防"自己刚退"误判为外部。
-	externalTaken := false
-	if !stopped {
+func (s supProbe) Inspect(_ context.Context) (bool, *platform.ProcInfo, error) {
+	if st := s.e.sup.Snapshot().State; st == sup.StateRunning || st == sup.StateStarting {
 		time.Sleep(externalSettle)
-		externalTaken = e.probe.IsRunning()
 	}
-
-	switch {
-	case stopped:
-		e.transition(StateStopped, "")
-	case externalTaken && prev != StateFailed:
-		e.setStateExternal()
-	case code == 0 && prev == StateRunning:
-		e.transition(StateStopped, "") // 用户在 Paseo 自己退出
-	default:
-		e.transition(StateFailed, fmt.Sprintf(
-			"Paseo 异常退出（退出码 %d）。若刚拉起即退出，请检查杀毒软件是否拦截未签名程序，或先退出正在运行的 Paseo 实例后重试", code))
-	}
-}
-
-// setStateExternal 将引擎标记为外部实例运行中（进程归属不在本引擎）。
-func (e *Engine) setStateExternal() {
-	var snap Snapshot
-	e.mu.Lock()
-	e.state = StateExternal
-	e.external = true
-	e.pid = 0
-	e.errMsg = ""
-	snap = e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
+	return s.probe.IsRunning(), nil, nil
 }
