@@ -1,9 +1,12 @@
 // Package version 实现 Recordly 版本管理引擎：GitHub Releases 远程列表（stable/beta 双通道）、
-// NSIS 在线安装器下载（官方 digest sha256 + SHA256SUMS.txt 双源校验）、
-// 静默安装进隔离目录、本地导入（整套安装目录 / 裸安装器）与卸载。
+// NSIS 在线安装器下载（"下载 + 官方 digest SHA-256 校验"段委托 Wave 4 共享内核
+// packages/go/artifact.Fetch，SHA256SUMS.txt 双源交叉比对留本包）、
+// 静默安装进固定托管目录（NSIS 执行链 bespoke）、本地导入与卸载。
 //
 // 与 ccswitch（解 zip 保布局）的关键差异：上游 Windows 只有 NSIS 安装器
-// （Recordly-windows-x64.exe），"免安装"经 `/S /D=<隔离目录>` 静默安装实现。
+// （Recordly-windows-x64.exe），"免安装"经 `/S /D=<托管目录>` 静默安装实现；
+// oneClick 语义决定单版本覆盖式目录，artifact.Tree 的 <entry>_<version>
+// 版本树模型不适用（详见 Manager 注释与 ADR-0002 §5）。
 package version
 
 // RecordlyRelease 远程 GitHub Release 中可用的 Recordly Windows x64 安装器。

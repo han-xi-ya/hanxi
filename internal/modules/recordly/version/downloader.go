@@ -1,17 +1,15 @@
 package version
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
-	"time"
 )
 
-// assetMirrors 构造直连与镜像下载 URL 候选列表（与 ccswitch/markeron 同一组镜像前缀）。
+// assetMirrors 构造直连与镜像下载 URL 候选列表（与 markeron/ccswitch 同一组镜像前缀）。
+// 路径模板对任意 owner/repo 泛化；首个为主址，其余为同摘要备用传输来源，
+// 实际下载/校验/回退纪律已收口内核 artifact.Fetch。
 func assetMirrors(version, assetName string) []string {
 	relPath := fmt.Sprintf("%s/%s/releases/download/%s/%s", repoOwner, repoName, version, assetName)
 	return []string{
@@ -22,79 +20,8 @@ func assetMirrors(version, assetName string) []string {
 	}
 }
 
-// downloadTo 依次尝试候选 URL 下载到目标文件，支持重试与镜像故障转移。
-func downloadTo(client *http.Client, urls []string, dest string, onProgress func(done int64)) error {
-	const maxRetries = 2
-	var lastErr error
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
-		}
-		for _, u := range urls {
-			err := tryDownloadSingle(client, u, dest, onProgress)
-			if err == nil {
-				return nil
-			}
-			lastErr = err
-		}
-	}
-	if lastErr != nil {
-		return fmt.Errorf("所有下载源与重试均失败: %w", lastErr)
-	}
-	return fmt.Errorf("所有下载源均失败")
-}
-
-func tryDownloadSingle(client *http.Client, url, dest string, onProgress func(done int64)) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", userAgent)
-
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	switch {
-	case resp.StatusCode == http.StatusOK:
-	case resp.StatusCode >= 300 && resp.StatusCode < 400:
-		return fmt.Errorf("unexpected redirect to %s", resp.Header.Get("Location"))
-	case resp.StatusCode >= 400:
-		return fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
-	}
-
-	buf := make([]byte, 64*1024)
-	var done int64
-	for {
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, werr := out.Write(buf[:n]); werr != nil {
-				return werr
-			}
-			done += int64(n)
-			if onProgress != nil {
-				onProgress(done)
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			return readErr
-		}
-	}
-	return nil
-}
-
 // downloadSmall 拉取小体积资产（SHA256SUMS.txt 级别），限制最大读取字节防失控。
+// 仅服务官方校验清单交叉比对（第二只眼）；主交付资产的受控下载走内核 artifact.Fetch。
 func downloadSmall(client *http.Client, urls []string, maxBytes int64) ([]byte, error) {
 	var lastErr error
 	for _, u := range urls {
@@ -124,47 +51,15 @@ func downloadSmall(client *http.Client, urls []string, maxBytes int64) ([]byte, 
 	return nil, lastErr
 }
 
-// fileSize 返回文件字节数。
-func fileSize(path string) (int64, error) {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-	return fi.Size(), nil
-}
-
-// fileSHA256 计算文件 sha256（下载校验与 SHA256SUMS 交叉比对的实际值来源）。
-func fileSHA256(path string) string {
-	f, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return ""
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-// verifySHA256 校验文件 sha256 是否与期望一致（大小写不敏感）。
-func verifySHA256(path, want string) error {
-	got := fileSHA256(path)
-	if got == "" {
-		return fmt.Errorf("无法读取下载文件")
-	}
-	if !strings.EqualFold(got, want) {
-		return fmt.Errorf("sha256 不匹配：期望 %s，实际 %s", want, got)
-	}
-	return nil
-}
-
 // crossCheckSums 用官方 SHA256SUMS.txt 交叉比对安装器校验和（GitHub digest 之外的第二只眼）。
 // 清单行格式容错解析：`<64位hex> [可选*或空格]<文件名>`；
 // 网络拉取失败仅告警放行（digest 已是官方第一依据），但清单存在且与安装器名匹配却
 // 哈希不一致时硬失败——两个官方来源互相矛盾说明下载链路有篡改。
-func crossCheckSums(client *http.Client, version, installerName, localSHA string) error {
-	body, err := downloadSmall(client, assetMirrors(version, sumsAssetName), 64<<10)
+// localSHA 传入内核 Fetch 已双核验证的官方摘要（与重读安装体自哈希等价）；
+// urls 由调用方经 mirrors 接缝构造（与安装器同一组候选前缀，失败注入测试
+// 可把清单请求一并引到回环假源）。
+func crossCheckSums(client *http.Client, urls []string, installerName, localSHA string) error {
+	body, err := downloadSmall(client, urls, 64<<10)
 	if err != nil {
 		// 清单缺失/网络失败不阻断：降级为单一官方源校验
 		return nil

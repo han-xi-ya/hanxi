@@ -16,6 +16,18 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
+// NSIS 安装链执行接缝（keyviz msiExtract 同族纪律）：下载安装主链已收口内核
+// artifact.Fetch，而"执行安装器"是模块领域策略——NSIS 策略族未达 ADR-0002 §3
+// 入内核阈值（MSI 不进的先例同判），留本包经接缝收口。失败注入测试替换为
+// 假实现（不真跑安装器、不碰注册表、不删真实快捷方式）；真实成功路径为
+// 真机验证链路。本包经 internal/platform/versioninfo 已是 Windows-only，
+// 接缝与真实实现同文件承载。
+var (
+	nsisInstall         = runInstallerSilent
+	foreignInstallCheck = foreignInstallLocation
+	purgeShortcuts      = cleanupShortcuts
+)
+
 // runInstallerSilent 以 electron-builder NSIS 语义静默安装：
 //
 //	instaler.exe /S /D=<targetDir>

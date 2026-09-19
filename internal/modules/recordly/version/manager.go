@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,12 +12,16 @@ import (
 	"time"
 
 	"hanxi/internal/platform/versioninfo"
+	"hanxi/packages/go/artifact"
 )
 
 const (
 	exeName        = "Recordly.exe"
 	asarRelPath    = "resources" + string(filepath.Separator) + "app.asar" // Electron 主包，布局自检依据
 	installDirName = "recordly"                                            // 固定托管目录名（见下方单版本说明）
+
+	// fetchBudget 单次下载的总超时预算（214MB NSIS 安装体，沿用原下载客户端 20 分钟口径）。
+	fetchBudget = 20 * time.Minute
 )
 
 // 单版本安装目录设计（与 ccswitch 的 recordly_X.Y.Z 多版本隔离不同，系上游约束所致）：
@@ -24,14 +29,29 @@ const (
 // 静默卸载"上一个安装"——多版本共存会让每装一版就抹掉其他版本目录，形同虚设。
 // 因此 Recordly 托管收敛为固定 versions/recordly 单目录，"版本管理"语义 =
 // 在线安装/覆盖升级 + 导入本地整套目录。切换版本 = 重新安装目标版本。
+// 该形态刻意不进 artifact.Tree：<entry>_<version> 版本树模型表达不了"覆盖式
+// 单目录"，无 staging/落位可委托，本包不导出 OpenTree（装配根背书清理面
+// 因此不登记 recordly，见 internal/app 注释与 ADR-0002 §5 先例——piclite
+// 走系统安装器直装同样无树可登记）。
 //
-// Manager Recordly 版本管理引擎：远程列表（双通道）、安装器下载与双源校验、
-// NSIS 静默安装、本地导入、卸载。
+// Manager Recordly 版本管理引擎："下载 → 官方摘要校验"段委托 Wave 4 共享内核
+// packages/go/artifact（Fetch：GitHub digest 信任根 + 镜像回退 + 字节双核 +
+// 流式上限）；NSIS 静默安装链（安装器执行、外部安装卫兵、快捷方式清理）与
+// SHA256SUMS.txt 交叉比对、本地导入、卸载留在本包 bespoke——策略族扩展
+// （NSIS 类安装器执行）未达 ADR-0002 §3 "≥3 家需求才入内核"阈值（MSI 不进
+// 的先例，keyviz/piclite 同判）。
 type Manager struct {
 	versionsDir string
-	client      *http.Client  // 下载客户端（214MB 安装器，长超时）
+	client      *http.Client  // 校验清单拉取客户端（下载主链已收口内核 Fetch）
 	desktopDir  func() string // 桌面目录探测（service 注入 plat.DesktopDir；nil 时尽力而为）
+
+	fetch   fetcher
+	mirrors func(version, assetName string) []string
 }
+
+// fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
+// 流式上限），失败注入测试替换为模拟中断/坏摘要源。
+type fetcher func(ctx context.Context, src artifact.Source, destPath string, prog func(artifact.Progress), timeout time.Duration) error
 
 // NewManager 以指定 versions 根目录创建版本管理引擎；构造无副作用。
 func NewManager(versionsDir string) *Manager {
@@ -44,6 +64,8 @@ func NewManagerWithDesktop(versionsDir string, desktopDir func() string) *Manage
 		versionsDir: versionsDir,
 		client:      &http.Client{Timeout: 20 * time.Minute},
 		desktopDir:  desktopDir,
+		fetch:       artifact.Fetch,
+		mirrors:     assetMirrors,
 	}
 }
 
@@ -115,17 +137,27 @@ func (m *Manager) resolveInstalledVersion(dir, exe string) string {
 }
 
 // Download 下载 NSIS 安装器并静默安装到 versions/recordly/。
-// 完整性四层兜底（与 ccswitch 同构，第二/三层因资产是裸 exe 而调整）：
-//  1. 官方 sha256 校验（GitHub API digest，第一主依据）；
-//  2. 官方 SHA256SUMS.txt 交叉比对（第二只眼，清单缺失时降级为单一官方源）；
-//  3. 下载落盘字节数 == release API 声明的 size（防截断/代理篡改）；
-//  4. 安装后布局自检（Recordly.exe 非空 + resources/app.asar），失败清理目录。
+// 完整性防线与托管族模板对齐、按"裸 exe 安装器 + 覆盖式单目录"形态特化：
+//  1. 受控下载收口内核 artifact.Fetch：官方 SHA-256（GitHub API digest，
+//     第一主依据）为信任根做流式 + 落盘双核，Content-Length 与流式上限双核
+//     （对齐原"字节数 == release 声明 size"层），镜像只是同摘要的备用传输
+//     来源——安装器缓存为临时 .exe，装完即删；
+//  2. 官方 SHA256SUMS.txt 交叉比对（第二只眼，清单缺失时降级为单一官方源；
+//     比对基准直接用 Fetch 已双核验证的官方摘要，免对 214MB 安装体重复哈希）；
+//  3. NSIS 静默安装 + 安装后布局自检（Recordly.exe 非空 + resources/app.asar）
+//     为本包 bespoke（安装器执行链不进内核，理由见 Manager 注释）。
 //
-// NSIS oneClick 会顺带静默卸载注册表指向的旧安装：安装前经 foreignInstallLocation
+// NSIS oneClick 会顺带静默卸载注册表指向的旧安装：安装前经 foreignInstallCheck
 // 卫兵拦截"注册表指向用户自装副本"的场，绝不让托管动作抹掉用户自己的安装。
 //
-// onProgress 可选：实时上报各阶段进度。
-func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) error {
+// txnID 为调用方事务 ID（journal 背书用：安装器缓存目录名带 txnID 前缀，
+// 崩溃现场可按事务定位；本模块无 artifact.Tree staging，恢复期如实上报
+// 未登记事务、不动盘——见 ADR-0002 §8.8 口径与 internal/app 登记面注释）。
+//
+// onProgress 可选：实时上报各阶段进度（既有词表 downloading/verify/install/
+// done/error：verify（官方摘要双核 + 清单交叉比对）由内核 Fetch 阶段映射与
+// 本包交叉比对共同构成，词表逐字不变）。
+func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -147,64 +179,71 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 		emit("error", 0, 0, err.Error())
 		return err
 	}
+	// 官方摘要信任根：GitHub release API 的 asset.digest（parseReleasesBody
+	// 已剥前缀入 RecordlyRelease.SHA256，无摘要的 release 根本不进列表）。
+	// 缺失一律拒装，不做无校验安装。
+	if rel.SHA256 == "" {
+		err := fmt.Errorf("上游未提供 Recordly %s 的官方 SHA-256 摘要，拒绝无校验安装", version)
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 
 	// 2. 外部安装卫兵：注册表指向托管目录之外的 Recordly 安装时拒绝
 	//（继续会让 oneClick 静默卸载用户自装副本，红线）
-	if loc, foreign := foreignInstallLocation(m.versionsDir); foreign {
+	if loc, foreign := foreignInstallCheck(m.versionsDir); foreign {
 		err := fmt.Errorf("检测到独立安装的 Recordly（%s）。在线安装会覆盖其安装位置，请先在系统「设置-应用」中卸载该版本（配置与录像不受影响），或用「导入本地」将其收编", loc)
 		emit("error", 0, 0, err.Error())
 		return err
 	}
 
-	tmpDir, err := os.MkdirTemp("", "hanxi-recordly-")
+	// 3. 安装器缓存目录：前缀携带事务 ID（可诊断、可按事务定位崩溃残骸）；
+	// txnID 过不了版本令牌白名单时退化为纯随机后缀（MkdirTemp 原语义）。
+	pattern := "hanxi-recordly-"
+	if validateTxnToken(txnID) {
+		pattern += txnID + "-"
+	}
+	tmpDir, err := os.MkdirTemp("", pattern)
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(tmpDir)
 	tmpInstaller := filepath.Join(tmpDir, rel.AssetName)
 
-	// 3. 下载安装器（直连 + 镜像逐个回退）
+	// 4. 受控下载安装器（主址 + 镜像逐个回退；下载/摘要双核/字节数双核全部委托内核）
+	urls := m.mirrors(version, rel.AssetName)
+	src := artifact.Source{
+		URL:      urls[0],
+		Mirrors:  urls[1:],
+		SHA256:   rel.SHA256,
+		MaxBytes: rel.Size, // 与 release API 声明大小对齐：超限即断，杜绝异常放大
+		FileName: rel.AssetName,
+	}
 	emit("downloading", 0, rel.Size, "")
-	if err := downloadTo(m.client, assetMirrors(version, rel.AssetName), tmpInstaller, func(done int64) {
-		emit("downloading", done, rel.Size, "")
-	}); err != nil {
-		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", err))
-		return err
+	fetchErr := m.fetch(context.Background(), src, tmpInstaller, func(p artifact.Progress) {
+		// 内核进度 → 既有词表：流式下载映射 downloading，摘要双核映射 verify
+		switch p.Stage {
+		case artifact.StageDownload:
+			emit("downloading", p.Done, p.Total, "")
+		case artifact.StageVerify:
+			emit("verify", 0, 0, "")
+		}
+	}, fetchBudget)
+	if fetchErr != nil {
+		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", fetchErr))
+		return fetchErr
 	}
 
-	// 4. 字节数校验
-	actual, err := fileSize(tmpInstaller)
-	if err != nil {
-		emit("error", 0, rel.Size, fmt.Sprintf("读取临时文件失败: %v", err))
-		return err
-	}
-	if actual != rel.Size {
-		err := fmt.Errorf("下载不完整：期望 %d 字节，实际 %d 字节", rel.Size, actual)
+	// 5. SHA256SUMS.txt 交叉比对（清单缺失/网络失败仅降级放行；两官方源矛盾即硬失败）。
+	// 比对基准取 rel.SHA256：内核 Fetch 已对流式字节与落盘文件双核验证该摘要，
+	// 与重读安装器文件自哈希等价，省下对 214MB 安装体的一次全量哈希遍历。
+	if err := crossCheckSums(m.client, m.mirrors(version, sumsAssetName), rel.AssetName, rel.SHA256); err != nil {
 		emit("error", 0, rel.Size, err.Error())
 		return err
 	}
 
-	// 5. 官方 digest sha256 + SHA256SUMS.txt 交叉比对
-	emit("verify", 0, 0, "")
-	localSHA := fileSHA256(tmpInstaller)
-	if localSHA == "" {
-		err := fmt.Errorf("无法读取下载文件")
-		emit("error", 0, 0, err.Error())
-		return err
-	}
-	if !strings.EqualFold(localSHA, rel.SHA256) {
-		err := fmt.Errorf("sha256 不匹配：期望 %s，实际 %s", rel.SHA256, localSHA)
-		emit("error", 0, rel.Size, err.Error())
-		return fmt.Errorf("官方哈希校验失败（下载文件疑似被篡改或损坏）: %w", err)
-	}
-	if err := crossCheckSums(m.client, version, rel.AssetName, localSHA); err != nil {
-		emit("error", 0, rel.Size, err.Error())
-		return err
-	}
-
-	// 6. NSIS 静默安装进托管目录
+	// 6. NSIS 静默安装进托管目录（本包 bespoke 执行段）
 	emit("install", 0, 0, "NSIS 静默安装中，请勿操作")
-	if err := runInstallerSilent(tmpInstaller, m.InstallDir()); err != nil {
+	if err := nsisInstall(tmpInstaller, m.InstallDir()); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("静默安装失败: %v", err))
 		return err
 	}
@@ -218,7 +257,7 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 	if m.desktopDir != nil {
 		desktop = m.desktopDir()
 	}
-	cleanupShortcuts(m.versionsDir, desktop)
+	purgeShortcuts(m.versionsDir, desktop)
 
 	// 8. 落盘元信息（tag 记录 beta 后缀等 PE 版本承载不了的信息）
 	meta := map[string]any{
@@ -273,7 +312,7 @@ func (m *Manager) Remove(version string) error {
 	if m.desktopDir != nil {
 		desktop = m.desktopDir()
 	}
-	cleanupShortcuts(m.versionsDir, desktop)
+	purgeShortcuts(m.versionsDir, desktop)
 	return nil
 }
 
@@ -373,6 +412,13 @@ func (m *Manager) ImportLocal(srcDir string) (RecordlyVersionInfo, error) {
 		IsImport:    true,
 		Source:      srcDir,
 	}, nil
+}
+
+// validateTxnToken 事务 ID 形状白名单（安装器缓存目录命名用）：与内核
+// artifact.ValidateVersionToken 同一令牌纪律——事务 ID 由 service 层以 UUID
+// 生成，异常形状退化为纯随机临时目录（不让命名锦上添花反噬主流程）。
+func validateTxnToken(txnID string) bool {
+	return artifact.ValidateVersionToken(txnID) == nil
 }
 
 // isUnderDir 判断 path 是否位于 parent 目录内（大小写不敏感，Windows 语义）。
