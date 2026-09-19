@@ -43,8 +43,10 @@ import (
 
 // ModuleGate 是工具调用前的"模块可用"门（真实现 = registryGate；单测注入假件）。
 type ModuleGate interface {
-	// Check 报告模块当前可服务：已启用且懒初始化就绪。返回的 error 面向模型可读。
-	Check(moduleID string) error
+	// Check 裁决模块当前可服务（安装/启用/就绪）并取得 operation lease：
+	// 返回的 release 必须在工具调用结束后 defer 调用（停用 drain 覆盖无头在途）；
+	// 返回的 error 面向模型可读。
+	Check(moduleID string) (release func(), err error)
 }
 
 // registryGate 组合 extapi.Registry（envcheck 等已注册模块）与 settings.Store
@@ -52,28 +54,40 @@ type ModuleGate interface {
 type registryGate struct {
 	registry *extapi.Registry
 	store    *settings.Store
+	// receipts 承载 memo 特殊通道的逻辑安装态（其余模块经 registry receipt 门）；
+	// nil 时按已安装处理，与 Registry 未注入时的回退语义一致。
+	receipts extapi.ReceiptStorage
 }
 
-func (g *registryGate) Check(moduleID string) error {
+func (g *registryGate) Check(moduleID string) (func(), error) {
+	noop := func() {}
 	// memo 模块构造带文件库迁移写盘副作用，与无头"零落盘"承诺冲突（包注释决策 3）：
-	// 不进 registry、不走 EnsureActive，门禁直读 config.json 的 enabled 位保持同语义。
+	// 不进 registry、不走 Acquire，门禁直读 config.json 的 enabled 位 + receipt
+	// 保持同语义（未安装同样拒绝，杜绝卸载旁路）；无租约可占用，release 为空操作。
 	if moduleID == memo.ID {
 		if !g.store.IsModuleEnabled(moduleID, true) {
-			return fmt.Errorf("「极客随手记」模块已在 hanxi 中停用，请先在设置中启用该模块")
+			return noop, fmt.Errorf("「极客随手记」模块已在 hanxi 中停用，请先在设置中启用该模块")
 		}
-		return nil
+		if g.receipts != nil && !g.receipts.IsInstalled(moduleID) {
+			return noop, fmt.Errorf("「极客随手记」模块尚未安装，请先在 hanxi 模块中心安装该模块")
+		}
+		return noop, nil
 	}
-	if err := g.registry.EnsureActive(moduleID); err != nil {
+	// 经统一 Acquire 取租约：无头在途调用同样纳入停用/退出的 drain 门。
+	_, release, err := g.registry.Acquire(moduleID)
+	if err != nil {
 		switch {
 		case errors.Is(err, extapi.ErrModuleDisabled):
-			return fmt.Errorf("模块「%s」已在 hanxi 中停用，请先在设置中启用", moduleID)
+			return nil, fmt.Errorf("模块「%s」已在 hanxi 中停用，请先在设置中启用", moduleID)
+		case errors.Is(err, extapi.ErrModuleNotInstalled):
+			return nil, fmt.Errorf("模块「%s」尚未安装，请先在 hanxi 模块中心安装", moduleID)
 		case errors.Is(err, extapi.ErrUnknownModule):
-			return fmt.Errorf("hanxi 无头模式未装配模块「%s」（版本不匹配或该模块不可用）", moduleID)
+			return nil, fmt.Errorf("hanxi 无头模式未装配模块「%s」（版本不匹配或该模块不可用）", moduleID)
 		default:
-			return fmt.Errorf("模块「%s」初始化失败: %v", moduleID, err)
+			return nil, fmt.Errorf("模块「%s」初始化失败: %v", moduleID, err)
 		}
 	}
-	return nil
+	return release, nil
 }
 
 // Run 是 `hanxi mcp` 的无头主流程（由 cmd/hanxi 在 flag.Parse 之前短路进来）：
@@ -107,6 +121,10 @@ func Run() error {
 	}
 
 	registry := extapi.NewRegistry(store)
+	// 逻辑安装态与 GUI 同账（只读）：未安装模块经 EnsureActive 的 receipt 门
+	// 拒绝无头调用，杜绝"GUI 卸载、MCP 仍可用"旁路；无头零落盘承诺不受影响。
+	headlessReceipts := settings.NewReceiptStore(paths.ModulesReceiptsDir())
+	registry.SetReceiptStorage(headlessReceipts)
 	ocrModule := ocr.New(plat) // 类型断言取 service 作识图后端（与 GUI 同一 service 契约）
 	if err := registry.Register(append(mcpModules(plat), ocrModule)...); err != nil {
 		return fmt.Errorf("注册无头模块失败: %w", err)
@@ -115,10 +133,12 @@ func Run() error {
 
 	deps := Deps{
 		Access: NewAccess(filepath.Join(paths.DataDir(), accessDirName, AccessFileName)),
-		Gate:   &registryGate{registry: registry, store: store},
+		Gate:   &registryGate{registry: registry, store: store, receipts: headlessReceipts},
 		// envcheck 后端独立于模块实例直构（plat 仅作 OpenURL，nil 守卫）——
 		// 与 registry 中模块共享同一份探测框架（detect 包级注册表），无状态分歧。
-		EnvCheck: envcheck.NewEnvCheckService(nil),
+		// holder 不注门：本直构实例不属无头 registry 的租约账（无 Init/Destroy 生命周期），
+		// 工具面门禁已由 registryGate.Acquire 承担，此处放行不构成旁路。
+		EnvCheck: envcheck.NewEnvCheckService(nil, extapi.NewLeaseHolder("envcheck")),
 		// everything 走独立严格只读通道（不复用 service.Search 的懒启动/下载编排，
 		// 决策 3-B）；registry 内仍注册该模块，只取 enabled 门禁与生命周期收口。
 		Search: newStrictSearcher(plat),

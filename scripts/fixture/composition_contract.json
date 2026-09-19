@@ -85,6 +85,7 @@
     "ocr:file-drop-result",
     "ocr:service-state",
     "ocr:snip-result",
+    "operation:changed",
     "papertodo:instance-state",
     "papertodo:version-download",
     "paseo:instance-state",
@@ -130,7 +131,9 @@
   "bindings": {
     "app/appservice.js": [
       "EnsureModuleActive", "GetNavs", "ListModules", "SetModuleEnabled", "RestartElevated",
-      "GetTrayMenu", "SetTrayMenu", "SetWindowDarkMode"
+      "GetTrayMenu", "SetTrayMenu", "SetWindowDarkMode",
+      "ListCatalog", "ListModuleStates", "SetModuleInstalled",
+      "ListOperations", "DismissResumable"
     ],
     "modules/ocr/ocrservice.js": [
       "GetEngines", "GetSnipHotkey", "GetSnipResult", "HandleNativeDrop", "RecognizeClipboardImage",
@@ -148,6 +151,6 @@
   },
   "counts": {
     "modules": 41,
-    "events": 75
+    "events": 76
   }
 }

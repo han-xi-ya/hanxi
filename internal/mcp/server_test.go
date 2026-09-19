@@ -28,9 +28,9 @@ type fakeEnvChecker struct {
 	calls int
 }
 
-func (f *fakeEnvChecker) DetectAll() []detect.ToolInfo {
+func (f *fakeEnvChecker) DetectAll() ([]detect.ToolInfo, error) {
 	f.calls++
-	return f.tools
+	return f.tools, nil
 }
 
 type fakeGate struct {
@@ -38,27 +38,34 @@ type fakeGate struct {
 	enabled  map[string]bool
 	checkErr map[string]error
 	checks   map[string]int
+	releases map[string]int
 }
 
 func newFakeGate(ids ...string) *fakeGate {
-	g := &fakeGate{enabled: map[string]bool{}, checkErr: map[string]error{}, checks: map[string]int{}}
+	g := &fakeGate{enabled: map[string]bool{}, checkErr: map[string]error{}, checks: map[string]int{}, releases: map[string]int{}}
 	for _, id := range ids {
 		g.enabled[id] = true
 	}
 	return g
 }
 
-func (g *fakeGate) Check(moduleID string) error {
+// Check 模拟带租约的门禁：成功返回计数 release，失败返回 nil release
+// （与 ModuleGate 契约一致：middleware 必须在 release != nil 时 defer）。
+func (g *fakeGate) Check(moduleID string) (func(), error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.checks[moduleID]++
 	if err, ok := g.checkErr[moduleID]; ok {
-		return err
+		return nil, err
 	}
 	if !g.enabled[moduleID] {
-		return fmt.Errorf("模块「%s」已在 hanxi 中停用", moduleID)
+		return nil, fmt.Errorf("模块「%s」已在 hanxi 中停用", moduleID)
 	}
-	return nil
+	return func() {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		g.releases[moduleID]++
+	}, nil
 }
 
 // newTestServer 组装进程内可测的全链 server：临时 access 文件 + 假件后端。

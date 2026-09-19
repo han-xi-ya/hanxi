@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -11,9 +12,9 @@ import (
 )
 
 // EnvChecker 是 hanxi_envcheck_detect 的后端能力面（真 = *envcheck.EnvCheckService，
-// 单测注入假件避免真实 spawn 版本命令）。
+// 单测注入假件避免真实 spawn 版本命令）。error 为调用门拒绝通道（Wave 3）。
 type EnvChecker interface {
-	DetectAll() []detect.ToolInfo
+	DetectAll() ([]detect.ToolInfo, error)
 }
 
 // buildEnvCheckTool 开发环境体检只读查询（PLAN_MCP §2.2 envcheck 行：
@@ -31,7 +32,10 @@ func buildEnvCheckTool(deps Deps) (mcp.Tool, server.ToolHandlerFunc) {
 		if deps.EnvCheck == nil {
 			return mcp.NewToolResultError("envcheck 后端未装配：请在 hanxi 主程序中确认「开发环境检测」模块可用"), nil
 		}
-		tools := deps.EnvCheck.DetectAll()
+		tools, err := deps.EnvCheck.DetectAll()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("envcheck 探测被拒绝: %v", err)), nil
+		}
 		items := make([]any, 0, len(tools))
 		for _, t := range tools {
 			// 红线：hint 可能携带版本命令的失败输出（环境回声），统一过 Redact 口径。

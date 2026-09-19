@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -19,16 +20,18 @@ import (
 )
 
 // trayMenuBuilder 负责按当前配置组装托盘右键菜单并分发点击动作。
+// registry 供装配期按模块启停过滤引用条目（可见性收口），可为 nil（此时不过滤）。
 type trayMenuBuilder struct {
-	app   *application.App
-	win   *application.WebviewWindow
-	tray  *application.SystemTray
-	disp  *launcher.Dispatcher
-	store *settings.Store
+	app      *application.App
+	win      *application.WebviewWindow
+	tray     *application.SystemTray
+	disp     *launcher.Dispatcher
+	store    *settings.Store
+	registry *extapi.Registry
 }
 
 func newTrayMenuBuilder(a *application.App, win *application.WebviewWindow, tray *application.SystemTray, registry *extapi.Registry, store *settings.Store) *trayMenuBuilder {
-	b := &trayMenuBuilder{app: a, win: win, tray: tray, store: store}
+	b := &trayMenuBuilder{app: a, win: win, tray: tray, store: store, registry: registry}
 	// route 条目动作：唤出主窗口并请求前端导航（与固定项"设置…"同一条事件通道）。
 	b.disp = launcher.New(registry, store, func(route string) {
 		b.showAndFocus()
@@ -55,6 +58,9 @@ func (b *trayMenuBuilder) build() *application.Menu {
 	var configured []settings.TrayMenuItem
 	if b.disp != nil {
 		configured = b.disp.EnabledItems()
+		// 可见性收口（Wave 1）：用户开关（EnabledItems）之外，引用了停用模块的
+		// route/命令条目也整条滤除——执行侧本就被模块门禁挡住，入口不再残留。
+		configured = filterDisabledModuleItems(configured, b.moduleEnabledState())
 	}
 
 	if len(configured) > 0 {
@@ -95,6 +101,62 @@ func (b *trayMenuBuilder) build() *application.Menu {
 		b.app.Quit()
 	})
 	return menu
+}
+
+// moduleEnabledState 快照当前注册表的模块启停表（ID → Enabled）。
+// registry 为 nil 时返回空表，即"注册表里查不到"，配合 filterDisabledModuleItems
+// 的未知 ID 保留语义保证不过滤任何条目。
+func (b *trayMenuBuilder) moduleEnabledState() map[string]bool {
+	state := make(map[string]bool)
+	if b.registry != nil {
+		for _, info := range b.registry.List() {
+			state[info.ID] = info.Enabled
+		}
+	}
+	return state
+}
+
+// itemModuleID 解析条目引用的模块 ID：command 取 Ref 的 key 前缀
+// （"moduleId/commandId"），route 取 "/ext/<id>" 前缀下的首段；exe、核心
+// 路由（如 /settings）与其他非模块引用返回空串。
+func itemModuleID(item settings.TrayMenuItem) string {
+	switch item.Type {
+	case settings.TrayItemCommand:
+		if i := strings.IndexByte(item.Ref, '/'); i > 0 {
+			return item.Ref[:i]
+		}
+	case settings.TrayItemRoute:
+		const prefix = "/ext/"
+		if rest := strings.TrimPrefix(item.Ref, prefix); rest != item.Ref {
+			if i := strings.IndexByte(rest, '/'); i >= 0 {
+				rest = rest[:i]
+			}
+			return rest
+		}
+	}
+	return ""
+}
+
+// filterDisabledModuleItems 滤除引用了停用模块的条目（含 group 子条目，递归）。
+// 仅当 moduleId 存在于 state（注册表已知）且为 false 时剔除；未知 ID（历史残留
+// 配置、非模块体系条目）原样保留，与 launcher 的"配置为准"语义一致。
+func filterDisabledModuleItems(items []settings.TrayMenuItem, state map[string]bool) []settings.TrayMenuItem {
+	if len(items) == 0 {
+		return items
+	}
+	out := make([]settings.TrayMenuItem, 0, len(items))
+	for _, item := range items {
+		if id := itemModuleID(item); id != "" {
+			if enabled, known := state[id]; known && !enabled {
+				continue
+			}
+		}
+		if item.Type == settings.TrayItemGroup {
+			item.Children = filterDisabledModuleItems(item.Children, state)
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 // dispatch 分发点击动作；耗时操作一律进 goroutine，避免阻塞托盘回调。

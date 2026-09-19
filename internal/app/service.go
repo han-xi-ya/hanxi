@@ -8,8 +8,7 @@ import (
 	"hanxi/internal/extapi"
 	"hanxi/internal/product"
 	"hanxi/internal/settings"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
+	"hanxi/packages/go/operation"
 )
 
 // 基础服务按职责拆分同包多文件（纯移动，签名零变化）：
@@ -43,6 +42,10 @@ type AppService struct {
 	trayRebuild func() // 托盘菜单热重建回调（由装配根注入，可能为 nil）
 	// windowDark 主窗口标题栏深色/色板应用回调（由装配根在窗口创建后注入，可能为 nil）。
 	windowDark func(dark bool, accent string) error
+	// opHub 在途操作观察面（Wave 4-B，装配根经 SetOperations 注入，可能为 nil）。
+	opHub *operation.Hub
+	// opDismiss resumable 残留事务忽略通道（装配根组装，可能为 nil=账本未初始化）。
+	opDismiss func(txnID string) error
 }
 
 // NewAppService 创建基础服务。trayRebuild / windowDark 回调此时为 nil，
@@ -94,10 +97,9 @@ func (s *AppService) SetModuleEnabled(id string, enabled bool) (*extapi.ModuleIn
 		return nil, ae
 	}
 
-	// 广播扩展与导航变化事件，通知前端实时热更新侧边栏与页面
-	if app := application.Get(); app != nil && app.Event != nil {
-		app.Event.Emit("ext:changed")
-	}
+	// 广播扩展与导航变化事件 + 托盘菜单同步重建：停用模块的引用条目（route/命令）
+	// 随之从菜单消失，与前端侧边栏同频收口可见性（执行侧本就被模块门禁挡住）。
+	s.broadcastModuleChange()
 
 	info := s.registry.List()
 	for i := range info {

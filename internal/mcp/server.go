@@ -103,8 +103,14 @@ func gateMiddleware(deps Deps) server.ToolHandlerMiddleware {
 						"授权即时生效，无需重启本服务。", req.Params.Name, moduleID)), nil
 			}
 			if deps.Gate != nil {
-				if err := deps.Gate.Check(moduleID); err != nil {
+				// 门禁同时取得 operation lease：无头工具调用在途期间，
+				// GUI 停用/退出的 drain 会等待本次调用收口（Wave 3 统一门）。
+				release, err := deps.Gate.Check(moduleID)
+				if err != nil {
 					return mcp.NewToolResultError(fmt.Sprintf("工具 %s 暂不可用：%v", req.Params.Name, err)), nil
+				}
+				if release != nil {
+					defer release()
 				}
 			}
 			return next(ctx, req)

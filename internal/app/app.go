@@ -34,6 +34,7 @@ import (
 	"hanxi/internal/modules/envcheck/npmtool"
 	"hanxi/internal/modules/everything"
 	everythinginstance "hanxi/internal/modules/everything/instance"
+	evversion "hanxi/internal/modules/everything/version"
 	"hanxi/internal/modules/fileshare"
 	"hanxi/internal/modules/flclash"
 	flclashinstance "hanxi/internal/modules/flclash/instance"
@@ -104,10 +105,13 @@ import (
 	"hanxi/internal/modules/wifi"
 	"hanxi/internal/modules/wsl"
 	"hanxi/internal/notify"
+	"hanxi/internal/ops"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/product"
 	"hanxi/internal/settings"
 	"hanxi/internal/snapshot"
+	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/operation"
 )
 
 // 主窗口外观与启动交接参数：集中常量化，避免魔法数字散落装配代码。
@@ -132,6 +136,9 @@ func RegisterEvents() {
 	application.RegisterEvent[application.Void]("quickmenu:opening")
 	// webapp:windows-changed 同为无载荷事件（开窗/收起/销毁后前端重拉条目窗态）。
 	application.RegisterEvent[application.Void]("webapp:windows-changed")
+	// operation:changed 是无载荷事件（在途操作观察面登记/收口类变化推送，
+	// 前端消费方经 ListOperations 重拉），必须用 Void 注册。
+	application.RegisterEvent[application.Void]("operation:changed")
 	application.RegisterEvent[lan.LanProgress]("lan:progress")
 	application.RegisterEvent[portscan.ScanProgress]("portscan:progress")
 	application.RegisterEvent[wechat.InboundMessage]("wechat:message-received")
@@ -296,8 +303,88 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// 的竞态窗口压到最小（迁移本身幂等、冲突不覆盖，竞态无损）。
 	settings.MigrateRootStateFiles(paths)
 
+	// Wave 4 安装事务账本与在途操作观察面（PLAN §8）：journal 目录由消费方
+	// 懒建；崩溃恢复先于业务开放——与 MigrateRootStateFiles 同阶段，位于一切
+	// 模块构造与 wails 应用启动之前（§8.8）。补偿器按"背书"逐事务清理：只动
+	// 该事务在各自版本树内的 .tmp-<txnID> staging 与 .removing-<txnID> 同名
+	// 目录，无背书孤儿一律如实 Report、不自动删盘（共享 versions 根防误伤）。
+	opStore, opErr := operation.OpenStore(paths.ModulesJournalsDir())
+	if opErr != nil {
+		slog.Warn("journal 账本打开失败，托管事务降级为无账模式（不阻断启动）", "err", opErr)
+	}
+	// 参与背书清理的托管版本树（目录前缀等领域知识由各模块 version 包持有）；
+	// 后续模块接入安装事务时在此登记各自的树。
+	versionTrees := map[string]*artifact.Tree{
+		markeron.ID: markeronversion.OpenTree(paths.VersionsDir()),
+		rufus.ID:    rufusversion.OpenTree(paths.VersionsDir()),
+		// 迁移到共享内核的托管模块逐批登记（journal 背书法启动恢复的认领面）。
+		ccswitch.ID: ccswitchversion.OpenTree(paths.VersionsDir()),
+		ddnsgo.ID:   ddnsgoversion.OpenTree(paths.VersionsDir()),
+		// 注:piclite 走系统 msiexec 直装、无 artifact.Tree staging,不适用登记。
+		translucenttb.ID: ttbversion.OpenTree(paths.VersionsDir()),
+		keyviz.ID:        keyvizversion.OpenTree(paths.VersionsDir()),
+		flclash.ID:       flclashversion.OpenTree(paths.VersionsDir()),
+		paseo.ID:         paseoversion.OpenTree(paths.VersionsDir()),
+		mangodisk.ID:     mangodiskversion.OpenTree(paths.VersionsDir()),
+		bcu.ID:           bcuversion.OpenTree(paths.VersionsDir()),
+		piclite.ID:       picliteversion.OpenTree(paths.VersionsDir()),
+		papertodo.ID:     papertodoversion.OpenTree(paths.VersionsDir()),
+		everything.ID:    evversion.OpenTree(paths.VersionsDir()),
+		litemonitor.ID:   litemonitorversion.OpenTree(paths.VersionsDir()),
+		vscode.ID:        vscodeversion.OpenTree(paths.VersionsDir()),
+		guoheview.ID:     guoheviewversion.OpenTree(paths.VersionsDir()),
+	}
+	var opHub *operation.Hub
+	if opStore != nil {
+		report, rerr := operation.Recover(opStore, func(j operation.Journal) (bool, error) {
+			tree, ok := versionTrees[j.ModuleID]
+			if !ok {
+				return false, nil // 未登记补偿的模块：不猜测、不自动执行（§8.8）
+			}
+			if err := ops.CleanTxnResidue(tree, j.TransactionID); err != nil {
+				return true, err
+			}
+			// 背书清理后账本 Complete(compensated) 落账：该态仍留在 Pending，
+			// 由观察面以 resumable 呈现，最终闭环交用户忽略/后续落账
+			return true, opStore.Complete(j.TransactionID, string(operation.TxnCompensated), nil)
+		})
+		if rerr != nil {
+			slog.Warn("journal 启动恢复扫描失败（不阻断启动）", "err", rerr)
+		}
+		if len(report.Resumed) > 0 || len(report.RolledBack) > 0 {
+			slog.Info("journal 启动恢复已收口", "resumed", len(report.Resumed), "rolledBack", len(report.RolledBack))
+		}
+		for _, j := range report.Orphaned {
+			slog.Warn("未收口事务无补偿接管，待用户处置（操作观察面可忽略）",
+				"txn", j.TransactionID, "module", j.ModuleID, "operation", j.Operation, "state", j.State)
+		}
+		for _, j := range report.Quarantined {
+			slog.Warn("journal 文件损坏，已改名隔离取证", "entry", j.TransactionID)
+		}
+		// 无背书事务前缀残骸：只上报不动盘（删除决策永远保留给有账本背书的收口路径）
+		if pending, perr := opStore.Pending(); perr == nil {
+			backed := make(map[string]bool, len(pending))
+			for _, j := range pending {
+				backed[j.TransactionID] = true
+			}
+			for id, tree := range versionTrees {
+				for _, name := range ops.ListUnbackedTxnDirs(tree, backed) {
+					slog.Warn("托管版本树存在无 journal 背书的事务前缀残骸（不自动清理）", "module", id, "dir", name)
+				}
+			}
+		}
+	}
+	// 恢复之后构造观察面：resumable 回灌投影反映收口后的现态（§2.3）。
+	// opStore 打开失败时得到纯内存 Hub（仍可观察在途操作，只是不落账）。
+	opHub = operation.NewHub(opStore)
+	ops.SetKernel(opStore, opHub)
+
 	// 4. 初始化模块注册表并注入持久化 Store
 	registry := extapi.NewRegistry(store)
+	// Wave 1 逻辑安装态：注入 receipt 存储。未安装 = 不导航、不初始化、不业务调用
+	// （ADR-0001 §1.5）；老用户无损迁移在下方 Register 成功后幂等补建凭据。
+	receipts := settings.NewReceiptStore(paths.ModulesReceiptsDir())
+	registry.SetReceiptStorage(receipts)
 
 	// 5. 初始化 fileshare 与 memo 模块并建立数据互联
 	// quickmenu 需在装配根持有引用：弹窗 route 条目要唤出稍后创建的主窗口。
@@ -369,6 +456,18 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		panic(err) // 内建模块注册失败属于编程错误，直接暴露
 	}
 
+	// 老用户无损迁移（Wave 1，幂等）：为全部注册模块补建 builtin-logical receipt，
+	// Enabled=true→installed+enabled、Enabled=false→installed+disabled，
+	// 入口与数据零丢失（ADR-0001 §1.5）。失败仅告警不阻断启动：缺凭据的模块
+	// 按未安装呈现，可在模块中心一键安装找回。
+	registeredIDs := make([]string, 0, len(modulesToRegister))
+	for _, info := range registry.List() {
+		registeredIDs = append(registeredIDs, info.ID)
+	}
+	if err := receipts.EnsureInstalled(registeredIDs, extapi.ReceiptBuiltinLogical); err != nil {
+		slog.Warn("逻辑安装凭据迁移未完成，部分模块可能呈现未安装（可在模块中心安装找回）", "err", err)
+	}
+
 	// 统一历史记录：公共 Store 挂 state/history.json，装配根注入首批三处接缝
 	//（ocr 识别 / portkill 查询与查杀 / npmtool 装升卸）。记录点与口径见各模块接入提交。
 	historyStore := history.NewStore(paths.StateDir())
@@ -382,6 +481,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	npmtool.SetHistory(historyStore)
 
 	appSvc := NewAppService(registry, store)
+	// Wave 4-B 操作观察面 RPC：在途/近期事务查询与 resumable 残留忽略
+	// （双样本 markeron/rufus 的安装事务由此对前端可见可处置）。
+	appSvc.SetOperations(opHub, makeDismissResumable(opStore, opHub, versionTrees))
 	// 历史版本（自动快照平台底座）：非 extapi 模块，服务面与 AppService 同级；
 	// 触发接线在主窗创建后（见下方窗口事件钩子），退出补拍挂 OnShutdown 链。
 	snapSvc := snapshot.New(paths, store)
