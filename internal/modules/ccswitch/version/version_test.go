@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/packages/go/artifact"
 )
 
 // fakeReleasesJSON 构造与真实 GitHub API 同构的样例响应：
@@ -150,65 +152,85 @@ func makeTestZip(t *testing.T, entries map[string]string) string {
 	return path
 }
 
-func TestExtractAll(t *testing.T) {
-	dir := t.TempDir()
+// TestVersionFromToken 版本令牌形状：纯 x.y.z 与 imported-时间戳收纳，
+// v 前缀/两段/中文目录名拒绝（与原 dirNameRe 口径一致）。
+func TestVersionFromToken(t *testing.T) {
+	tests := []struct {
+		token   string
+		wantVer string
+		wantOK  bool
+	}{
+		{"3.20.0", "v3.20.0", true},
+		{"imported-20260826-150405", "vimported-20260826-150405", true},
+		{"v3.20.0", "", false}, // 带 v 前缀的目录名非本模块落位格式
+		{"3.20", "", false},    // 必须纯 x.y.z
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		ver, ok := versionFromToken(tt.token)
+		if ok != tt.wantOK || ver != tt.wantVer {
+			t.Errorf("versionFromToken(%q) = (%q,%v), want (%q,%v)", tt.token, ver, ok, tt.wantVer, tt.wantOK)
+		}
+	}
+}
+
+// ---------- 内核解包 + 模块锚点自检（替代原 extractAll 时代的用例） ----------
+
+func TestUnpackWithPortableAnchor(t *testing.T) {
 	zipPath := makeTestZip(t, map[string]string{
 		exeName:          "fake-exe",
-		portableMarkName: "portable=true\n",
+		portableMarkName: "portable=true\n", // 绿色版标记（内容任意，存在即激活）
+		"README.md":      "CC Switch",
 	})
-	if err := extractAll(zipPath, filepath.Join(dir, "dst")); err != nil {
-		t.Fatalf("extractAll: %v", err)
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
 	}
-	for _, name := range []string{exeName, portableMarkName} {
-		if _, err := os.Stat(filepath.Join(dir, "dst", name)); err != nil {
-			t.Errorf("%s 未解压: %v", name, err)
+	if err := checkPortableLayout(staging); err != nil {
+		t.Fatalf("checkPortableLayout: %v", err)
+	}
+	for _, name := range []string{exeName, portableMarkName, "README.md"} {
+		if _, err := os.Stat(filepath.Join(staging, name)); err != nil {
+			t.Errorf("布局缺失 %s: %v", name, err)
 		}
 	}
 }
 
-func TestExtractAllZipSlip(t *testing.T) {
-	dir := t.TempDir()
-	f, err := os.CreateTemp("", "evil-*.zip")
-	if err != nil {
+func TestUnpackRejectsPathTraversal(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{
+		"../evil.txt": "escape",
+	})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err == nil {
+		t.Fatal("UnpackZip 应拒绝路径逃逸条目")
+	}
+}
+
+func TestPortableAnchorMissingMark(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{exeName: "fake-exe"})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
+	}
+	err := checkPortableLayout(staging)
+	if err == nil {
+		t.Fatal("缺 portable.ini 应自检失败")
+	}
+	if !strings.Contains(err.Error(), "便携标记") {
+		t.Errorf("错误信息应指出缺失便携标记: %v", err)
+	}
+}
+
+func TestPortableAnchorEmptyExe(t *testing.T) {
+	staging := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staging, exeName), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
-	path := f.Name()
-	t.Cleanup(func() { os.Remove(path) })
-	zw := zip.NewWriter(f)
-	w, _ := zw.Create("../evil.txt")
-	w.Write([]byte("evil"))
-	w2, _ := zw.Create(exeName)
-	w2.Write([]byte("fake"))
-	zw.Close()
-	f.Close()
-
-	dst := filepath.Join(dir, "dst")
-	if err := extractAll(path, dst); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
+	if err := os.WriteFile(filepath.Join(staging, portableMarkName), nil, 0644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Errorf("失败后目标目录应被清理, stat err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); !os.IsNotExist(err) {
-		t.Fatal("恶意条目逃逸到了目标目录之外")
-	}
-}
-
-func TestExtractAllMissingBits(t *testing.T) {
-	cases := map[string]map[string]string{
-		"缺 exe":  {portableMarkName: "portable=true\n"},
-		"缺便携标记":  {exeName: "fake-exe"},
-		"exe 为空": {exeName: "", portableMarkName: "portable=true\n"},
-	}
-	for name, entries := range cases {
-		zipPath := makeTestZip(t, entries)
-		dst := filepath.Join(t.TempDir(), "dst")
-		if err := extractAll(zipPath, dst); err == nil {
-			t.Errorf("%s: 应被拒绝", name)
-		}
-		if _, err := os.Stat(dst); !os.IsNotExist(err) {
-			t.Errorf("%s: 失败后目标目录应被清理", name)
-		}
+	if err := checkPortableLayout(staging); err == nil {
+		t.Fatal("空 exe 应判定为损坏安装")
 	}
 }
 
