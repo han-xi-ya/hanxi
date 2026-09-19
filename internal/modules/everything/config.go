@@ -1,13 +1,15 @@
-package instance
+package everything
 
 import (
 	"os"
 	"strings"
 )
 
-// ensureHiddenTray 托管实例启动前确保其托盘图标隐藏（show_tray_icon=0）：
+// ensureHiddenTray 托管实例启动前（PreStart）确保其托盘图标隐藏（show_tray_icon=0）：
 // Everything 内嵌进 Hanxi 后，启停/唤窗全由 Hanxi 按钮负责，托盘图标是多余的视觉噪音，
 // 隐藏后关闭搜索窗也不会误触托盘退出路径（实例仍驻留后台）。
+// 启动前配置播种属服务层编排职责（内核 Spec 只承载进程治理受控字段），
+// 由 service 在 engine.Start 之前对解析出的版本隔离目录调用。
 //
 // Everything.ini 是 key=value 行式文件（单 [Everything] 段）：
 //   - 已存在 show_tray_icon 行 → 原位替换值（保留该行缩进与 CRLF）；

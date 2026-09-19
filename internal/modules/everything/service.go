@@ -11,12 +11,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	evinstance "hanxi/internal/modules/everything/instance"
 	evsearch "hanxi/internal/modules/everything/search"
 	evversion "hanxi/internal/modules/everything/version"
 	"hanxi/internal/notify"
+	"hanxi/internal/ops"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/windows"
@@ -33,15 +36,19 @@ const (
 )
 
 // EverythingService 向前端暴露 Everything 版本管理、托管控制与内嵌搜索能力。
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type EverythingService struct {
 	plat    platform.Platform
 	manager *evversion.Manager
 	store   *everythingStore
 	engine  *evinstance.Engine
+	holder  *extapi.LeaseHolder
 	esDir   string // ES 搜索组件目录（dataDir/everything/es，版本无关）
 
-	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
-	controlMu  sync.Mutex // Start/OpenWindow/Quit/Search 编排串行化
+	downloadMu sync.Mutex          // 防止同一时间并发触发多个下载
+	downloads  map[string]struct{} // 在途下载版本集合（journal 单写纪律的前端防抖）
+	controlMu  sync.Mutex          // Start/OpenWindow/Quit/Search 编排串行化
 	watchMu    sync.Mutex
 	watching   bool
 	watchStop  chan struct{}
@@ -51,12 +58,14 @@ type EverythingService struct {
 }
 
 // NewEverythingService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
-func NewEverythingService(plat platform.Platform) *EverythingService {
+func NewEverythingService(plat platform.Platform, holder *extapi.LeaseHolder) *EverythingService {
 	paths := settings.GetPaths()
 	svc := &EverythingService{
-		plat:    plat,
-		manager: evversion.NewManager(paths.VersionsDir()),
-		store:   newEverythingStore(paths.StateDir()),
+		plat:      plat,
+		manager:   evversion.NewManager(paths.VersionsDir()),
+		store:     newEverythingStore(paths.StateDir()),
+		holder:    holder,
+		downloads: make(map[string]struct{}),
 		// esDir 挂数据根而非 state/：ES 是组件二进制（版本无关），非状态文件。
 		esDir: filepath.Join(paths.DataDir(), "everything", "es"),
 	}
@@ -165,12 +174,22 @@ func shouldIdleQuit(snap evinstance.Snapshot, windowOpen bool, idle time.Duratio
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）
 func (s *EverythingService) GetStatus() (evinstance.Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return evinstance.Snapshot{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	return s.engine.Snapshot(), nil
 }
 
 // StartBackground 启动后台实例（-startup：后台驻留建索引，不弹搜索窗）。
 func (s *EverythingService) StartBackground() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.controlMu.Lock()
 	defer s.controlMu.Unlock()
 	s.touch()
@@ -194,6 +213,9 @@ func (s *EverythingService) startBackgroundLocked() (ControlOutcome, error) {
 	if err != nil {
 		return ControlOutcome{}, err
 	}
+	// PreStart 配置播种（服务层自理，见 config.go）：内嵌托管隐藏托盘图标。
+	// 失败静默容忍：托盘可见不影响功能，仅少一层"纯内嵌"观感。
+	_ = ensureHiddenTray(filepath.Join(filepath.Dir(exe), "Everything.ini"))
 	if err := s.engine.Start(evinstance.StartOptions{Version: v, Exe: exe, Mode: evinstance.ModeBackground, Detached: !s.store.GetFollowOnExit()}); err != nil {
 		return ControlOutcome{}, fmt.Errorf("启动 Everything 失败: %w", err)
 	}
@@ -214,6 +236,11 @@ func (s *EverythingService) startBackgroundLocked() (ControlOutcome, error) {
 //   - 运行中（自有/外部）→ 单实例协议信使唤窗；
 //   - 未运行 → 窗口模式冷启动。
 func (s *EverythingService) OpenWindow() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.controlMu.Lock()
 	defer s.controlMu.Unlock()
 	s.touch()
@@ -244,6 +271,7 @@ func (s *EverythingService) OpenWindow() (ControlOutcome, error) {
 	if err != nil {
 		return ControlOutcome{}, err
 	}
+	_ = ensureHiddenTray(filepath.Join(filepath.Dir(exe), "Everything.ini")) // PreStart 播种（同后台启动路径）
 	if err := s.engine.Start(evinstance.StartOptions{Version: v, Exe: exe, Mode: evinstance.ModeWindow, Detached: !s.store.GetFollowOnExit()}); err != nil {
 		return ControlOutcome{}, fmt.Errorf("启动 Everything 失败: %w", err)
 	}
@@ -263,6 +291,11 @@ func (s *EverythingService) OpenWindow() (ControlOutcome, error) {
 // 外部实例不越权强杀（实例探测拿不到 PID）：仅返回人性化指引。
 // 自有实例走 -quit 优雅退出（先落盘索引库），超时由引擎强杀兜底。
 func (s *EverythingService) Quit() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	s.controlMu.Lock()
 	defer s.controlMu.Unlock()
 
@@ -277,9 +310,22 @@ func (s *EverythingService) Quit() (QuitOutcome, error) {
 	return QuitOutcome{Stopped: true, Message: "Everything 已退出"}, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 按联动开关收尾自有实例。
-// 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+// Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+// 拒绝即早退——Wave 3 口径：void 方法不改签名。前端当前不调用本方法，
+// 但它属绑定面，必须经门收口。
 func (s *EverythingService) Shutdown() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
+	s.shutdown()
+}
+
+// shutdown 模块停用/应用退出：停后台轮询 + 按联动开关收尾自有实例。
+// 装配布线:Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)。
+// 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+func (s *EverythingService) shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
 		close(s.watchStop)
@@ -295,6 +341,11 @@ func (s *EverythingService) Shutdown() {
 
 // EnsureSearchTool 确保 ES 搜索组件已安装（幂等；下载进度经 everything:download 事件推送）。
 func (s *EverythingService) EnsureSearchTool() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	if err := evsearch.EnsureESExe(s.esDir, func(stage string) {
 		s.emitDownload(DownloadTicket{Component: "es", Version: evsearch.ESVersion(), Stage: stage})
 	}); err != nil {
@@ -306,6 +357,11 @@ func (s *EverythingService) EnsureSearchTool() (string, error) {
 // Search 内嵌搜索：查询运行中实例的索引，返回路径列表。
 // 无实例时先懒启动后台实例（等待就绪后查询），用户无感衔接。
 func (s *EverythingService) Search(query string, limit int) ([]evsearch.Result, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	s.controlMu.Lock()
 	defer s.controlMu.Unlock()
 	s.touch()
@@ -340,6 +396,11 @@ func (s *EverythingService) Search(query string, limit int) ([]evsearch.Result, 
 //   - 目录 → 资源管理器打开该目录；
 //   - 文件 → 默认关联程序打开（rundll32 FileProtocolHandler，不限于 exe 等可执行文件）。
 func (s *EverythingService) OpenTarget(path string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return fmt.Errorf("目标路径不能为空")
@@ -360,6 +421,11 @@ func (s *EverythingService) OpenTarget(path string) error {
 // windows.RevealFile（explorer /select, 习语——刻意不走 explorer.exe <file> 的"执行"语义，
 // markeron「打开安装目录」按钮的事故教训）。
 func (s *EverythingService) RevealTarget(path string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return fmt.Errorf("目标路径不能为空")
@@ -374,43 +440,113 @@ func (s *EverythingService) RevealTarget(path string) error {
 
 // ListReleases 获取远程可用版本槽位（稳定版 + 1.5 测试版，stale 标记降级状态）
 func (s *EverythingService) ListReleases() ([]evversion.EverythingRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 获取本地已安装版本列表
 func (s *EverythingService) ListInstalledVersions() ([]evversion.EverythingVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
-// DownloadVersion 后台下载指定版本：立即返回，全程经事件 everything:download 推送进度。
+// everythingInstallSteps 托管资产事务的 journal 步骤词汇（Wave 4）：everything 是
+// 官网便携 zip 形态，官方 sha256 摘要双核（verify）由内核 Fetch 折进 download
+// 步内完成——journal 步骤不为其单列（模块进度事件词表中的 verify 是如实映射
+// 的可见阶段，两套词表各司其职，markeron/ccswitch 同构裁定）。
+var everythingInstallSteps = []string{"download", "unpack", "place"}
+
+// DownloadVersion 后台下载指定版本：立即返回，全程经事件 everything:download
+// 推送进度；同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链
+// 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+// 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+// （与既有模块事件双通道并行，Wave 4-B 接线，markeron/ccswitch 同构）。
 func (s *EverythingService) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 
 	s.downloadMu.Lock()
-	defer s.downloadMu.Unlock()
+	if _, ok := s.downloads[targetVersion]; ok {
+		s.downloadMu.Unlock()
+		return "in-progress", nil
+	}
 
 	// 已安装则直接返回，避免重复下载
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
 		for _, v := range installed {
 			if strings.EqualFold(v.Version, targetVersion) {
+				s.downloadMu.Unlock()
 				return "already-installed", nil
 			}
 		}
 	}
+	opKind := extapi.OpInstall
+	if err == nil && len(installed) > 0 {
+		opKind = extapi.OpUpdate
+	}
+	txnID := uuid.NewString()
+
+	s.downloads[targetVersion] = struct{}{}
+	s.downloadMu.Unlock()
 
 	go func() {
+		defer func() {
+			s.downloadMu.Lock()
+			delete(s.downloads, targetVersion)
+			s.downloadMu.Unlock()
+		}()
+		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+			targetVersion, txnID, everythingInstallSteps)
+		if terr != nil {
+			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
+			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
+			s.emitDownload(DownloadTicket{Component: "app", Version: targetVersion, Stage: "error", Message: terr.Error()})
+			notify.Error("everything", "版本下载失败", fmt.Sprintf("Everything %s 事务开启失败: %v", targetVersion, terr), "/ext/everything")
+			return
+		}
+		stepIdx := -1
 		emit := func(p evversion.DownloadProgress) {
+			slog.Debug("everything download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			s.emitDownload(DownloadTicket{Component: "app", Version: p.Version, Stage: p.Stage, Done: p.Done, Total: p.Total, Message: p.Message})
+			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；下载分块进度
+			// 与 verify（内核摘要双核的可见映射）只进观察面内存投影，不产生 fsync 风暴
+			switch p.Stage {
+			case "downloading":
+				if stepIdx < 0 {
+					stepIdx = 0
+					txn.Step(stepIdx)
+				}
+				txn.Progress(p.Done, p.Total)
+			case "extract":
+				if stepIdx < 1 {
+					stepIdx = 1
+					txn.Step(stepIdx)
+				}
+			}
 			if p.Stage == "done" {
 				notify.Success("everything", "版本下载成功", fmt.Sprintf("Everything %s 已成功安装", p.Version), "/ext/everything")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
+		if err := s.manager.Download(txnID, targetVersion, emit); err != nil {
+			txn.Fail("asset-install-failed", err.Error())
 			emit(evversion.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("everything", "版本下载失败", fmt.Sprintf("Everything %s 下载失败: %v", targetVersion, err), "/ext/everything")
 			return
 		}
+		txn.Done()
 		// 未设使用版本时自动把刚下载完的版本设为使用版本：
 		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
 		if s.store.GetActive() == "" {
@@ -423,6 +559,11 @@ func (s *EverythingService) DownloadVersion(targetVersion string) (string, error
 
 // RemoveVersion 卸载指定版本（正在运行的版本拒绝卸载）
 func (s *EverythingService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if snap := s.engine.Snapshot(); snap.State == evinstance.StateRunning &&
 		strings.EqualFold(snap.Version, targetVersion) {
@@ -440,6 +581,11 @@ func (s *EverythingService) RemoveVersion(targetVersion string) error {
 
 // SetActiveVersion 设定使用版本（先校验已安装，再持久化）
 func (s *EverythingService) SetActiveVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
@@ -452,22 +598,42 @@ func (s *EverythingService) SetActiveVersion(targetVersion string) (string, erro
 
 // GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动用最新已装）
 func (s *EverythingService) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return s.store.GetActive(), nil
 }
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *EverythingService) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
 	return s.store.GetFollowOnExit(), nil
 }
 
 // SetFollowOnExit 设定开关（下次启动生效）。
 func (s *EverythingService) SetFollowOnExit(b bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.store.SetFollowOnExit(b)
 }
 
 // ImportLocal 导入本地便携安装整套（exe+配置+语言包+索引库）。
 // 源目录实例运行中（自有/外部）时拒绝：索引库被写锁，拷贝结果不可信。
 func (s *EverythingService) ImportLocal(srcDir string) (evversion.EverythingVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return evversion.EverythingVersionInfo{}, gateErr
+	}
+	defer release()
 	srcDir = strings.TrimSpace(srcDir)
 	if srcDir == "" {
 		return evversion.EverythingVersionInfo{}, fmt.Errorf("请填写 Everything 安装目录路径")

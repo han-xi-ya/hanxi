@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"hanxi/internal/extapi"
 	evinstance "hanxi/internal/modules/everything/instance"
 	evversion "hanxi/internal/modules/everything/version"
 	"hanxi/internal/platform/windows"
@@ -27,6 +28,7 @@ func newTestService(t *testing.T) (*EverythingService, string) {
 		store:   newEverythingStore(t.TempDir()),
 		manager: evversion.NewManager(versionsDir),
 		esDir:   filepath.Join(t.TempDir(), "everything", "es"),
+		holder:  extapi.NewLeaseHolder(ID),
 	}
 	s.engine = evinstance.NewEngine(plat.Job(), evinstance.NewEverythingProbe(), evinstance.Callbacks{
 		OnState: s.emitInstanceState,

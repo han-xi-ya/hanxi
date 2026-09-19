@@ -89,66 +89,37 @@ func makeTestZip(t *testing.T, entries map[string]string) string {
 	return path
 }
 
-func TestExtractAll(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := makeTestZip(t, map[string]string{
-		"Everything.exe": "fake-exe",
-		"Everything.lng": "fake-lng",
-	})
-	if err := extractAll(zipPath, filepath.Join(dir, "dst")); err != nil {
-		t.Fatalf("extractAll: %v", err)
+// TestPortableLayoutAnchor 大小写容错锚点自检（Commit 前模块策略）：
+// 大写/小写 exe 均通过并回报实际文件名；空 exe 与缺 exe 拒绝。
+func TestPortableLayoutAnchor(t *testing.T) {
+	cases := []struct {
+		name    string
+		entries map[string]string
+		wantErr bool
+		wantExe string
+	}{
+		{"1.5 大写命名", map[string]string{"Everything.exe": "fake", "Everything.ini": "[Everything]"}, false, "Everything.exe"},
+		{"1.4 小写命名", map[string]string{"everything.exe": "fake"}, false, "everything.exe"},
+		{"缺 exe", map[string]string{"README.txt": "hello"}, true, ""},
+		{"空 exe", map[string]string{"Everything.exe": ""}, true, ""},
 	}
-	if _, err := os.Stat(filepath.Join(dir, "dst", "Everything.exe")); err != nil {
-		t.Errorf("Everything.exe 未解压: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "dst", "Everything.lng")); err != nil {
-		t.Errorf("Everything.lng 未解压: %v", err)
-	}
-
-	// 小写 exe 命名（1.4 通道）同样通过自检
-	dir2 := t.TempDir()
-	zip2 := makeTestZip(t, map[string]string{"everything.exe": "fake"})
-	if err := extractAll(zip2, filepath.Join(dir2, "dst")); err != nil {
-		t.Fatalf("小写 exe 自检失败: %v", err)
-	}
-}
-
-func TestExtractAllZipSlip(t *testing.T) {
-	dir := t.TempDir()
-	f, err := os.CreateTemp("", "evil-*.zip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := f.Name()
-	t.Cleanup(func() { os.Remove(path) })
-	zw := zip.NewWriter(f)
-	w, _ := zw.Create("../evil.txt")
-	w.Write([]byte("evil"))
-	w2, _ := zw.Create("Everything.exe")
-	w2.Write([]byte("fake"))
-	zw.Close()
-	f.Close()
-
-	dst := filepath.Join(dir, "dst")
-	if err := extractAll(path, dst); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
-	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Errorf("失败后目标目录应被清理, stat err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); !os.IsNotExist(err) {
-		t.Fatal("恶意条目逃逸到了目标目录之外")
-	}
-}
-
-func TestExtractAllMissingExe(t *testing.T) {
-	zipPath := makeTestZip(t, map[string]string{"README.txt": "hello"})
-	dst := filepath.Join(t.TempDir(), "dst")
-	if err := extractAll(zipPath, dst); err == nil {
-		t.Fatal("缺少 exe 的 zip 应被拒绝")
-	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Errorf("失败后目标目录应被清理")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for name, content := range c.entries {
+				p := filepath.Join(dir, name)
+				if err := os.WriteFile(p, []byte(content), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			exe, err := checkPortableLayout(dir)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, c.wantErr)
+			}
+			if exe != c.wantExe {
+				t.Errorf("回报 exe 名 = %q, want %q", exe, c.wantExe)
+			}
+		})
 	}
 }
 
@@ -217,9 +188,12 @@ func TestListInstalledAndRemove(t *testing.T) {
 	}
 	mkVersion("everything_v1.5.0.1422b", "Everything.exe",
 		`{"installedAt":"2026-08-26 10:00:00","isImport":true,"source":"E:\\Everything"}`)
-	mkVersion("everything_v1.4.1.1032", "everything.exe", "")          // 1.4 小写 exe + 无 meta
-	os.MkdirAll(filepath.Join(versionsDir, "frp_v0.61.1"), 0755)       // 异模块目录必须跳过
-	os.MkdirAll(filepath.Join(versionsDir, "everything_v9.9.9"), 0755) // 缺 exe 的损坏安装必须跳过
+	mkVersion("everything_v1.4.1.1032", "everything.exe", "")                             // 1.4 小写 exe + 无 meta
+	os.MkdirAll(filepath.Join(versionsDir, "frp_v0.61.1"), 0755)                          // 异模块目录必须跳过
+	os.MkdirAll(filepath.Join(versionsDir, "everything_v9.9.9"), 0755)                    // 缺 exe 的损坏安装必须跳过
+	os.MkdirAll(filepath.Join(versionsDir, "everything_vimported-20260101-000000"), 0755) // 导入兜底目录沿历史口径不列入
+	os.MkdirAll(filepath.Join(versionsDir, "everything_2.0.0"), 0755)                     // 无 v 前缀外来目录不列入
+	os.WriteFile(filepath.Join(versionsDir, "everything_2.0.0", "Everything.exe"), []byte("fake-exe"), 0644)
 
 	list, err := m.ListInstalled()
 	if err != nil {
@@ -232,11 +206,15 @@ func TestListInstalledAndRemove(t *testing.T) {
 	for _, v := range list {
 		byVer[v.Version] = v
 	}
-	if v := byVer["1.5.0.1422b"]; !v.IsImport || v.InstalledAt != "2026-08-26 10:00:00" {
-		t.Errorf("1.5 元信息解析错误: %+v", v)
+	if v := byVer["1.5.0.1422b"]; !v.IsImport || v.InstalledAt != "2026-08-26 10:00:00" || v.Source != "E:\\Everything" {
+		t.Errorf("1.5 历史 map 账本解析错误: %+v", v)
 	}
 	if v := byVer["1.4.1.1032"]; v.IsImport || v.InstalledAt == "" {
 		t.Errorf("1.4 默认元信息错误: %+v", v)
+	}
+	// 最新在前（剥 v 后按 versioncmp 数值分段排序）
+	if list[0].Version != "1.5.0.1422b" {
+		t.Errorf("列表应最新在前, got %s", list[0].Version)
 	}
 
 	// ResolveExe 大小写不敏感（Windows 上候选名以 Everything.exe 命中小写文件亦合法）
@@ -250,7 +228,7 @@ func TestListInstalledAndRemove(t *testing.T) {
 		t.Error("非法版本号应报错")
 	}
 
-	// Remove
+	// Remove（Tree：rename 隔离后删除）
 	if err := m.Remove("1.4.1.1032"); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}

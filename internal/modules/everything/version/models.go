@@ -1,5 +1,6 @@
-// Package version 实现 Everything 版本管理引擎：官网下载页槽位解析、直链下载
-// 完整性校验、解压隔离安装、本地整套导入。
+// Package version 实现 Everything 版本管理引擎：官网下载页槽位解析（remote.go，
+// 非标准 releases 形状的资产 URL/digest 解析层留本模块），"下载 → 校验 → 解包 →
+// 落位"主流程委托共享内核 packages/go/artifact，另含本地整套导入链（离线通道）。
 package version
 
 // EverythingRelease 远程可用版本槽位（官网仅暴露各通道当前最新版，
@@ -9,7 +10,7 @@ type EverythingRelease struct {
 	Channel   string `json:"channel"`   // stable / beta（来源于下载页区块标题）
 	Published string `json:"published"` // 资产 Last-Modified（yyyy-MM-dd，抓取失败则保留原样）
 	AssetURL  string `json:"assetUrl"`  // x64 便携 zip 直链
-	SHA256    string `json:"sha256"`    // 官方 sha256 清单中该 zip 的哈希（清单不可得时为空，校验降级）
+	SHA256    string `json:"sha256"`    // 官方 sha256 清单中该 zip 的哈希（清单不可得时为空；下载链视为无校验安装一律拒装）
 	Size      int64  `json:"size"`      // HEAD Content-Length（探测失败为 0，跳过字节级校验）
 	Stale     bool   `json:"stale"`     // 来自旧缓存或内置快照，非实时数据
 }

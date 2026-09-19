@@ -1,38 +1,74 @@
 package version
 
 import (
-	"archive/zip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
+	"sort"
 	"strings"
 	"time"
 
+	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
+	"hanxi/packages/go/artifact"
 )
 
 const (
-	dirPrefix = "everything_v" // 版本隔离目录前缀（与 frp_v0.61.1 / markeron_v2.9.4 同构）
+	// treeEntryName 版本树目录前缀（<root>/everything_<token>，历史布局
+	// everything_v1.4.1.1032 以 token "v1.4.1.1032" 表达，v 前缀留在令牌内）。
+	treeEntryName = "everything"
+	// dirPrefix 导入链直造目录时的版本隔离目录前缀（与 Tree 的 entry 命名同源：
+	// everything_ + "v" == everything_v）。
+	dirPrefix = treeEntryName + "_" + "v"
+	// fetchBudget 单次下载的总超时预算（沿用原下载客户端 10 分钟口径）。
+	fetchBudget = 10 * time.Minute
 )
 
 // exeCandidates 各通道便携 zip 内的 exe 命名不统一（1.4 为小写 everything.exe、1.5 为 Everything.exe），
 // 定位时大小写不敏感逐一尝试。
 var exeCandidates = []string{"Everything.exe", "everything.exe"}
 
-// dirNameRe 版本目录名（允许尾字母，如 everything_v1.5.0.1422b）
-var dirNameRe = regexp.MustCompile(`^everything_v[0-9][0-9a-zA-Z.]+$`)
+// fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 流式上限 +
+// 落盘全核），失败注入测试替换为模拟中断/坏摘要源。
+type fetcher func(ctx context.Context, src artifact.Source, destPath string, prog func(artifact.Progress), timeout time.Duration) error
 
-// Manager Everything 版本管理引擎：远程槽位、直链下载校验、解压隔离、本地整套导入。
+// enricher 槽位活体补齐接缝（HEAD 补大小 + 官方 sha256 清单），测试注入恒等函数
+// 以隔离远程解析层。
+type enricher func(rel EverythingRelease) EverythingRelease
+
+// Manager Everything 版本管理引擎："下载 → 校验 → 解包 → 落位"主流程委托
+// Wave 4 共享内核 packages/go/artifact（Fetch + UnpackZip + Tree）；本包只保留
+// Everything 领域知识：官网下载页槽位解析（remote.go——非标准 releases 形状，
+// 资产 URL/digest 的解析层留模块，Fetch 只管拿 bytes+验摘要）、Everything.exe
+// 大小写容错锚点与平铺布局自检、本地整套导入链、既有进度词表映射。
 type Manager struct {
 	versionsDir string
+	tree        *artifact.Tree
+
+	fetch  fetcher
+	enrich enricher
 }
 
-// NewManager 以指定 versions 根目录创建版本管理引擎；构造无副作用。
+// NewManager 以指定 versions 根目录创建版本管理引擎；构造无副作用
+// （Tree 打开不触盘，staging/账本操作全部延迟到 Download/Remove）。
 func NewManager(versionsDir string) *Manager {
-	return &Manager{versionsDir: versionsDir}
+	return &Manager{
+		versionsDir: versionsDir,
+		tree:        OpenTree(versionsDir),
+		fetch:       artifact.Fetch,
+		enrich:      enrichLive,
+	}
+}
+
+// OpenTree 打开 Everything 版本树（装配根启动恢复按事务背书清理现场时用；
+// 目录前缀等领域知识只在本包定义，调用方不重复拼写）。
+func OpenTree(versionsDir string) *artifact.Tree {
+	return artifact.OpenTree(versionsDir, treeEntryName)
 }
 
 // ListRemote 获取远程可用版本槽位（10 分钟缓存，失败降级快照）
@@ -40,24 +76,26 @@ func (m *Manager) ListRemote() ([]EverythingRelease, error) {
 	return remoteCache.get()
 }
 
-// ListInstalled 扫描本地已安装版本目录。
-// exe 缺失/为空视为损坏安装跳过；配置与索引库若损坏属 Everything 运行期问题，不在此拦截。
+// ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描）。
+// 目录命名 everything_vX.Y.Z（token 含 v 前缀，与历史布局一致）；
+// token 剥 v 后仅接受 x.y.z 数字起头形状（imported-时间戳 等导入兜底目录
+// 沿历史口径不列入）；exe 缺失/为空视为损坏安装跳过（配置与索引库若损坏属
+// Everything 运行期问题，不在此拦截）。
+// 排序收口在本层：Tree 按目录令牌（v 前缀）做数值分段比较会退化字典序
+// （1.10 与 1.5 一类多位数段会错序），剥 v 后用 versioncmp 重排为最新在前。
 func (m *Manager) ListInstalled() ([]EverythingVersionInfo, error) {
-	entries, err := os.ReadDir(m.versionsDir)
+	vers, err := m.tree.Versions()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 
 	var list []EverythingVersionInfo
-	for _, e := range entries {
-		if !e.IsDir() || !dirNameRe.MatchString(e.Name()) {
+	for _, v := range vers {
+		version, ok := versionFromToken(v.Version)
+		if !ok {
 			continue
 		}
-		dir := filepath.Join(m.versionsDir, e.Name())
-		exe, ok := findExe(dir)
+		exe, ok := findExe(v.Dir)
 		if !ok {
 			continue
 		}
@@ -67,45 +105,194 @@ func (m *Manager) ListInstalled() ([]EverythingVersionInfo, error) {
 		}
 
 		info := EverythingVersionInfo{
-			Version: strings.TrimPrefix(e.Name(), dirPrefix),
+			Version: version,
 			ExePath: exe,
-			Dir:     dir,
+			Dir:     v.Dir,
 			Size:    fi.Size(),
 		}
-		if meta, err := os.ReadFile(filepath.Join(dir, "meta.json")); err == nil {
-			var mm map[string]any
-			if json.Unmarshal(meta, &mm) == nil {
-				if at, ok := mm["installedAt"].(string); ok {
-					info.InstalledAt = at
-				}
-				if isIm, ok := mm["isImport"].(bool); ok {
-					info.IsImport = isIm
-				}
-				if src, ok := mm["source"].(string); ok {
-					info.Source = src
-				}
+		// 账本双形态：新下载链走内核统一账本（artifact.Meta，含 schema），来源
+		// 展示按官方资产名重建；导入链与迁移前的历史账本走模块自写 map 形态
+		// （installedAt 原样展示、isImport/source 携带）。
+		if !v.Meta.InstalledAt.IsZero() {
+			info.InstalledAt = v.Meta.InstalledAt.Local().Format("2006-01-02 15:04:05")
+			if v.Meta.Source == artifact.SourceRemote {
+				info.Source = assetName(version)
 			}
+		}
+		if info.InstalledAt == "" {
+			legacyAt, isImport, src := readLegacyMetaFields(v.Dir)
+			info.InstalledAt = legacyAt
+			info.IsImport = isImport
+			info.Source = src
 		}
 		if info.InstalledAt == "" {
 			info.InstalledAt = fi.ModTime().Format("2006-01-02 15:04:05")
 		}
 		list = append(list, info)
 	}
+	sort.SliceStable(list, func(i, j int) bool {
+		return versioncmp.Compare(list[i].Version, list[j].Version) > 0
+	})
 	return list, nil
 }
 
-// Remove 卸载指定版本（删除隔离目录）
-func (m *Manager) Remove(version string) error {
-	dir, err := m.resolveVersionDir(version)
+// Download 下载官方 x64 便携 zip 并安装到 versions/everything_v<版本>/。
+// 完整性主流程收口至内核 artifact.Fetch：以 voidtools 官方 sha256 清单中该资产
+// 的哈希（remote.go 解析层已入 EverythingRelease.SHA256）为信任根做流式 + 落盘
+// 双 SHA-256 校验，Content-Length 与流式上限双核；解包经 artifact.UnpackZip
+// （ZipSlip/炸弹/CRC32 全量闸门，取代原 extractAll），落位经 Tree.Commit
+// （staging + 原子 rename，同版本异摘要防漂移——原实现直写最终目录，半件即污染安装）。
+// 原"四级完整性"链的归属：第 1 级（官方清单 sha256）升级为必检——清单缺失不再
+// 降级直装，与内核"无校验安装一律拒绝"的裁定对齐；第 2 级（HEAD 声明字节数）
+// 保留为 Fetch 后的活体双核；第 3 级（zip 逐条目 CRC32）由 UnpackZip 收口；
+// 第 4 级（Everything.exe 大小写容错锚点 + 平铺布局自检）属领域判定，留本模块
+// Commit 前自检（仿 checkPortableLayout）。
+// 进度回调沿用本模块既有词表（downloading/verify/extract/done/error），不发明新词
+// ——内核的 verify 阶段与官方摘要校验同名，如实映射而非折并造幻影。
+//
+// txnID 为调用方事务 ID（journal 背书用：staging 目录名 .tmp-<txnID>，崩溃
+// 恢复据此按事务定位并清理现场，见 internal/ops.CleanTxnResidue）。
+//
+// onProgress 可选：实时上报各阶段进度（下载字节、校验、解压落位）。
+func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
+	emit := func(stage string, done, total int64, msg string) {
+		if onProgress != nil {
+			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
+		}
+	}
+
+	// 1. 解析目标版本对应的远程槽位（模块知识：官网下载页解析，列表可能来自
+	// stale 缓存，下载前补一次活体详情，保证校验强度）
+	releases, err := m.ListRemote()
+	if err != nil {
+		emit("error", 0, 0, fmt.Sprintf("获取远程版本列表失败: %v", err))
+		return err
+	}
+	var rel *EverythingRelease
+	for i := range releases {
+		if releases[i].Version == version {
+			rel = &releases[i]
+			break
+		}
+	}
+	if rel == nil {
+		err := fmt.Errorf("远程列表不存在版本 %s", version)
+		emit("error", 0, 0, err.Error())
+		return err
+	}
+	if rel.Stale || rel.SHA256 == "" || rel.Size == 0 {
+		r := m.enrich(*rel)
+		rel = &r
+	}
+	// 官方摘要信任根：voidtools 按版本发布 Everything-<v>.sha256 清单（覆盖全部
+	// 资产）。清单不可得即拒装——不再沿原"四级兜底"第 1 级的降级直装形态
+	// （内核纪律：托管下载不允许无校验安装）。
+	if rel.SHA256 == "" {
+		err := fmt.Errorf("上游未提供 Everything %s 的官方 SHA-256 摘要，拒绝无校验安装", version)
+		emit("error", 0, 0, err.Error())
+		return err
+	}
+
+	tmpZip, err := os.CreateTemp("", "hanxi-everything-*.zip")
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(dir)
+	tmpZipPath := tmpZip.Name()
+	defer os.Remove(tmpZipPath)
+	tmpZip.Close()
+
+	// 2. 受控下载（voidtools 无镜像，单源直连；下载/摘要双核/字节数双核全部委托内核）
+	src := artifact.Source{
+		URL:      rel.AssetURL,
+		SHA256:   rel.SHA256,
+		MaxBytes: rel.Size, // 与 HEAD 声明大小对齐：超限即断，杜绝异常放大
+		FileName: assetName(version),
+	}
+	emit("downloading", 0, rel.Size, "")
+	fetchErr := m.fetch(context.Background(), src, tmpZipPath, func(p artifact.Progress) {
+		// 内核进度 → 既有词表：download 对应 downloading（内核未见 Content-Length
+		// 时回退槽位声明的 HEAD 大小，进度条口径不劣于原实现）；verify 与既有
+		// 词表同名如实映射；其余阶段本模块不上报
+		switch p.Stage {
+		case artifact.StageDownload:
+			total := p.Total
+			if total == 0 {
+				total = rel.Size
+			}
+			emit("downloading", p.Done, total, "")
+		case artifact.StageVerify:
+			emit("verify", 0, 0, "")
+		}
+	}, fetchBudget)
+	if fetchErr != nil {
+		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", fetchErr))
+		return fetchErr
+	}
+	// HEAD 声明字节数活体双核（Fetch 已核 GET 侧 Content-Length 与流式上限，
+	// 此处对齐槽位探测声明值，保留原"四级完整性"第 2 级口径）
+	if rel.Size > 0 {
+		if fi, serr := os.Stat(tmpZipPath); serr != nil {
+			emit("error", 0, rel.Size, fmt.Sprintf("读取临时文件失败: %v", serr))
+			return serr
+		} else if fi.Size() != rel.Size {
+			err := fmt.Errorf("下载不完整：期望 %d 字节，实际 %d 字节", rel.Size, fi.Size())
+			emit("error", 0, rel.Size, err.Error())
+			return err
+		}
+	}
+
+	// 3. 解包进独占中转目录（staging 与最终目录同卷，供原子落位；
+	// 目录名 .tmp-<txnID> 由事务 ID 派生，journal 背书恢复据此收口现场）
+	staging, discard, err := m.tree.StageDir(txnID)
+	if err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
+	defer discard() // 成功 Commit 后为 no-op；任一步失败不留半件
+
+	emit("extract", 0, 0, "")
+	if err := artifact.UnpackZip(tmpZipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		emit("error", 0, 0, fmt.Sprintf("解压失败: %v", err))
+		return err
+	}
+	// 4. 大小写容错锚点 + 平铺布局自检（模块策略，内核不感知）
+	exeName, err := checkPortableLayout(staging)
+	if err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
+	// exe 诊断摘要入账（ListInstalled 不展示，纯账本诊断）
+	assetSHA, _ := fileSHA256(filepath.Join(staging, exeName))
+
+	// 5. 原子落位 + 写账本（meta.json 由内核统一形状落盘；同版本同摘要幂等，
+	// 异摘要拒绝——防止同版本号内容漂移）。token 携 v 前缀对齐历史目录名。
+	meta := artifact.Meta{
+		Entry:       exeName,
+		ZipSHA256:   rel.SHA256,
+		AssetSHA256: assetSHA,
+		Source:      artifact.SourceRemote,
+	}
+	if err := m.tree.Commit(staging, "v"+version, meta); err != nil {
+		emit("error", 0, 0, fmt.Sprintf("落位失败: %v", err))
+		return err
+	}
+
+	emit("done", 100, 100, "")
+	return nil
+}
+
+// Remove 卸载指定版本（委托 Tree：rename 隔离后删除，文件占用时留下可恢复状态）
+func (m *Manager) Remove(version string) error {
+	_, token, err := m.resolveVersionDir(version)
+	if err != nil {
+		return err
+	}
+	return m.tree.Remove(token, nil)
 }
 
 // ResolveExe 返回指定版本的 Everything.exe 路径（不存在返回错误）
 func (m *Manager) ResolveExe(version string) (string, error) {
-	dir, err := m.resolveVersionDir(version)
+	dir, _, err := m.resolveVersionDir(version)
 	if err != nil {
 		return "", err
 	}
@@ -116,21 +303,117 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return exe, nil
 }
 
-// resolveVersionDir 定位版本隔离目录（everything_vX.Y.Z）
-func (m *Manager) resolveVersionDir(version string) (string, error) {
+// resolveVersionDir 定位版本隔离目录（everything_vX.Y.Z）。形状外令牌（含路径
+// 穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
+func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	ver := strings.TrimSpace(version)
 	if !plainVersionRe.MatchString(ver) {
-		return "", fmt.Errorf("非法版本号: %q", ver)
+		return "", "", fmt.Errorf("非法版本号: %q", ver)
 	}
-	dir := filepath.Join(m.versionsDir, dirPrefix+ver)
-	if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-		return dir, nil
+	if d, rerr := m.tree.Resolve("v" + ver); rerr == nil {
+		return d, "v" + ver, nil
 	}
-	return "", fmt.Errorf("版本 %s 未安装，请先在下方版本管理下载或导入", ver)
+	return "", "", fmt.Errorf("版本 %s 未安装，请先在下方版本管理下载或导入", ver)
+}
+
+// versionFromToken 把 Tree 扫出的版本令牌规范化为裸版本号
+// （v1.5.0.1422b → 1.5.0.1422b，与原目录名剥离 everything_v 前缀的口径一致）。
+// 刻意要求 v 前缀（原 dirNameRe `^everything_v[0-9]...` 同款严格）：
+// everything_1.2.3 之类无前缀外来目录不列入（列了也无法按裸版本 Remove）；
+// everything_vimported-<时间戳> 之类导入兜底目录沿历史口径不列入。
+func versionFromToken(token string) (string, bool) {
+	rest, hadV := strings.CutPrefix(strings.TrimSpace(token), "v")
+	if hadV && plainVersionRe.MatchString(rest) {
+		return rest, true
+	}
+	return "", false
+}
+
+// checkPortableLayout 大小写容错锚点自检（模块策略）：staging 平铺根内存在
+// 非空 Everything 主 exe（1.4 小写/1.5 大写/模糊兜底）。返回磁盘实际条目名
+// 供账本 Entry 记录（Windows 大小写不敏感，findExe 命中的是候选拼写而非实名，
+// 故按目录枚举做 EqualFold 还原）；不符即判定安装无效，调用方丢弃 staging。
+func checkPortableLayout(staging string) (string, error) {
+	exe, ok := findExe(staging)
+	if !ok {
+		return "", fmt.Errorf("zip 布局无效：缺少 Everything.exe")
+	}
+	fi, err := os.Stat(exe)
+	if err != nil || fi.IsDir() || fi.Size() == 0 {
+		return "", fmt.Errorf("zip 布局无效：缺少可用的 Everything.exe")
+	}
+	base := filepath.Base(exe)
+	entries, err := os.ReadDir(staging)
+	if err != nil {
+		return "", fmt.Errorf("读取中转目录失败: %w", err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.EqualFold(e.Name(), base) {
+			return e.Name(), nil
+		}
+	}
+	return base, nil
+}
+
+// assetName 按官方资产命名模板拼 x64 便携 zip 文件名（落盘名与来源展示共用）。
+func assetName(version string) string {
+	return fmt.Sprintf("Everything-%s.x64.zip", version)
+}
+
+// enrichLive 对 stale/字段缺失的槽位记录做活体补齐：HEAD 补大小与时间、拉取官方 sha256。
+func enrichLive(rel EverythingRelease) EverythingRelease {
+	probeAssets([]EverythingRelease{rel})
+	return rel
+}
+
+// readLegacyMetaFields 读取模块自写的导入账本与迁移前历史账本（无 schema 的
+// map 形态）：installedAt 原样字符串、isImport 布尔、source 来源（资产名/导入目录）。
+// 新下载链的 artifact.Meta 账本（含 schema）不走本函数（其 Source 为 "remote"
+// 语义，展示来源由调用方按资产名重建）。
+func readLegacyMetaFields(dir string) (installedAt string, isImport bool, source string) {
+	raw, err := os.ReadFile(filepath.Join(dir, "meta.json"))
+	if err != nil {
+		return "", false, ""
+	}
+	var mm map[string]any
+	if json.Unmarshal(raw, &mm) != nil {
+		return "", false, ""
+	}
+	installedAt, _ = mm["installedAt"].(string)
+	isImport, _ = mm["isImport"].(bool)
+	source, _ = mm["source"].(string)
+	return installedAt, isImport, source
+}
+
+// ---------- 领域流程（不进内核的部分） ----------
+
+// findExe 在目录内大小写不敏感定位 Everything.exe（1.4 小写 / 1.5 大写）。
+func findExe(dir string) (string, bool) {
+	for _, name := range exeCandidates {
+		p := filepath.Join(dir, name)
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode().IsRegular() {
+			return p, true
+		}
+	}
+	// 兜底：大小写之外的未来命名（如 Everything64.exe）不硬枚举，读目录模糊匹配
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", false
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			if n := e.Name(); strings.HasPrefix(strings.ToLower(n), "everything") && strings.HasSuffix(strings.ToLower(n), ".exe") {
+				return filepath.Join(dir, n), true
+			}
+		}
+	}
+	return "", false
 }
 
 // ImportLocal 导入本地便携安装整套（exe + 配置 + 语言包 + 索引库），保留用户的定制体验。
 // 与 frpc 只拷单 exe 的 ImportLocal 不同：Everything 的价值一半在索引库与配置上。
+// 离线导入通道不依赖远程摘要（内核纪律仅约束远程下载链），账本沿模块自写 map
+// 形态落盘，ListInstalled 经 readLegacyMetaFields 回读。
 // 调用方需先确保源目录实例未运行（索引库被写锁时拷贝结果不可信）。
 func (m *Manager) ImportLocal(srcDir string) (EverythingVersionInfo, error) {
 	srcExe, ok := findExe(srcDir)
@@ -142,11 +425,7 @@ func (m *Manager) ImportLocal(srcDir string) (EverythingVersionInfo, error) {
 		return EverythingVersionInfo{}, err
 	}
 
-	version, vErr := versioninfo.FileVersion(srcExe)
-	if vErr != nil || !plainVersionRe.MatchString(version) {
-		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与 frpc ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
-	}
+	version := importVersionTag(srcExe)
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {
 		return EverythingVersionInfo{}, fmt.Errorf("版本 %s 已安装，请先卸载再导入", version)
@@ -203,89 +482,6 @@ func (m *Manager) ImportLocal(srcDir string) (EverythingVersionInfo, error) {
 	}, nil
 }
 
-// findExe 在目录内大小写不敏感定位 Everything.exe（1.4 小写 / 1.5 大写）。
-func findExe(dir string) (string, bool) {
-	for _, name := range exeCandidates {
-		p := filepath.Join(dir, name)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode().IsRegular() {
-			return p, true
-		}
-	}
-	// 兜底：大小写之外的未来命名（如 Everything64.exe）不硬枚举，读目录模糊匹配
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return "", false
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			if n := e.Name(); strings.HasPrefix(strings.ToLower(n), "everything") && strings.HasSuffix(strings.ToLower(n), ".exe") {
-				return filepath.Join(dir, n), true
-			}
-		}
-	}
-	return "", false
-}
-
-// extractAll 全量解压 zip 到目标目录。每个 entry 必须读满——
-// completion 路径中的 io.Copy 跑完触发 archive/zip 内建 CRC32 校验。
-// 提取完成后自检 exe 存在，不符（缺 exe/恶意条目）即清理目标目录报错。
-func extractAll(zipPath, targetDir string) error {
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return err
-	}
-
-	fail := func(err error) error {
-		_ = os.RemoveAll(targetDir)
-		return err
-	}
-
-	zr, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return fmt.Errorf("open zip: %w", err)
-	}
-	defer zr.Close()
-
-	for _, f := range zr.File {
-		// ZipSlip 防护：拒绝绝对路径与逃逸出目标目录的条目
-		clean := filepath.Clean(f.Name)
-		if filepath.IsAbs(clean) || clean == ".." ||
-			strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return fail(fmt.Errorf("zip 含非法路径条目 %q", f.Name))
-		}
-		target := filepath.Join(targetDir, clean)
-		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return fail(err)
-			}
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return fail(err)
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return fail(err)
-		}
-		out, err := os.Create(target)
-		if err != nil {
-			rc.Close()
-			return fail(err)
-		}
-		// 必须读满：提前返回会跳过 CRC32 校验
-		_, copyErr := io.Copy(out, rc)
-		rc.Close()
-		out.Close()
-		if copyErr != nil {
-			return fail(copyErr)
-		}
-	}
-
-	if _, ok := findExe(targetDir); !ok {
-		return fail(fmt.Errorf("zip 布局无效：缺少 Everything.exe"))
-	}
-	return nil
-}
-
 // isTempLike 识别导入时不应搬运的临时/锁文件。
 func isTempLike(name string) bool {
 	lower := strings.ToLower(name)
@@ -293,9 +489,19 @@ func isTempLike(name string) bool {
 		return true
 	}
 	if strings.Contains(lower, "-wal") || strings.Contains(lower, "-shm") {
-		return true
+		return true // SQLite 锁态文件：索引库一致性要求拷贝时坚决不碰
 	}
 	return false
+}
+
+// importVersionTag 读取导入源的版本标签：FileVersion 探测失败（非 Windows
+// 平台或资源缺失）时时间戳兜底，与 frpc ImportLocal 同构。
+func importVersionTag(srcExe string) string {
+	version, vErr := versioninfo.FileVersion(srcExe)
+	if vErr != nil || !plainVersionRe.MatchString(version) {
+		return "imported-" + time.Now().Format("20060102-150405")
+	}
+	return version
 }
 
 func copyFileTo(src, dst string) error {
@@ -344,4 +550,20 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// fileSHA256 计算文件全量 SHA-256（十六进制小写）。
+// 注意：仅用于诊断展示链（exe 自哈希入账），不参与下载校验主流程
+// （下载完整性已由内核 artifact.Fetch 的官方摘要双核收口）。
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
