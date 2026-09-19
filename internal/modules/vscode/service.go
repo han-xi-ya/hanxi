@@ -9,11 +9,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/vscode/instance"
 	"hanxi/internal/modules/vscode/version"
 	"hanxi/internal/notify"
+	"hanxi/internal/ops"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/windows"
@@ -32,10 +35,14 @@ const (
 // 感知/静默安装升级 + 两形态独立启停唤窗。
 // 编辑器操作在 VS Code 自有窗口内完成（其界面即产品，内嵌无意义）；
 // 不设空闲自动退出（关窗即退、窗口开着 = 用户正在编辑，强退反需求）。
+//
+// 所有业务 RPC 方法（含双形态全部通道）经 holder.Enter() 接入统一调用门
+// （Wave 3）：未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type VSCodeService struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *vscodeStore
+	holder  *extapi.LeaseHolder
 
 	portableEngine  *instance.Engine
 	installerEngine *instance.Engine
@@ -47,12 +54,13 @@ type VSCodeService struct {
 }
 
 // NewVSCodeService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
-func NewVSCodeService(plat platform.Platform) *VSCodeService {
+func NewVSCodeService(plat platform.Platform, holder *extapi.LeaseHolder) *VSCodeService {
 	paths := settings.GetPaths()
 	svc := &VSCodeService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newVSCodeStore(paths.StateDir()),
+		holder:  holder,
 	}
 	svc.portableEngine = instance.NewEngine(plat.Job(),
 		instance.NewPortableProbe(paths.VersionsDir()),
@@ -107,24 +115,58 @@ func (s *VSCodeService) activate() {
 
 // ListRemoteVersions 获取指定形态（portable/installer）的远程可用版本（官方端点，10 分钟缓存）。
 func (s *VSCodeService) ListRemoteVersions(form string) ([]version.Release, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote(version.Form(strings.TrimSpace(form)))
 }
 
 // ListInstalledVersions 获取本地已安装便携版列表。
 func (s *VSCodeService) ListInstalledVersions() ([]version.VersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
 // GetInstalledApp 探测本机安装版 VS Code（HKCU 注册表；含用户自行安装的）。
 func (s *VSCodeService) GetInstalledApp() (version.InstalledInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.InstalledInfo{}, gateErr
+	}
+	defer release()
 	return version.DetectInstalled(), nil
 }
+
+// vscodePortableInstallSteps / vscodeInstallerInstallSteps 托管资产事务的 journal
+// 步骤词汇（Wave 4）：便携 zip 形态走 download→unpack→place（verify 由内核 Fetch
+// 折进 download 步内完成，模块进度词表不单独可见，如实不造幻影步骤）；安装版形态
+// Inno 交互安装留模块 bespoke，事务只记 download→install 两步。
+var (
+	vscodePortableInstallSteps  = []string{"download", "unpack", "place"}
+	vscodeInstallerInstallSteps = []string{"download", "install"}
+)
 
 // DownloadVersion 下载并安装便携版：立即返回，全程经事件 vscode:version-download 推送进度。
 // 安装版（form=installer）通道 = 下载 + Inno 静默安装/升级，复用同一进度事件。
 // confirm 是安装版确认闸回执：检测到运行中实例时首次调用返回 confirm-required，
 // 前端全局确认框放行后带 confirm=true 重入（不带参数会永远被拦成死锁）。
+//
+// 同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链追加版本或
+// 升级安装版，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+// 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+// （与既有模块事件双通道并行，Wave 4-B 接线，ccswitch 同构）。
 func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confirm bool) (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	targetVersion = normalizeVersion(targetVersion)
 	f := version.Form(strings.TrimSpace(strings.ToLower(form)))
 	if f != version.FormInstaller {
@@ -144,6 +186,8 @@ func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confi
 	s.downloadMu.Lock()
 	defer s.downloadMu.Unlock()
 
+	opKind := extapi.OpInstall
+	steps := vscodePortableInstallSteps
 	// 便携版已安装则直接返回，避免重复下载（安装版恒可重装=升级语义，不做此拦截）
 	if f == version.FormPortable {
 		installed, err := s.manager.ListInstalled()
@@ -154,23 +198,63 @@ func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confi
 				}
 			}
 		}
+		if err == nil && len(installed) > 0 {
+			opKind = extapi.OpUpdate // 向已托管工具链追加版本 = update
+		}
+	} else {
+		steps = vscodeInstallerInstallSteps
+		if version.DetectInstalled().Installed {
+			opKind = extapi.OpUpdate // 静默升级既有安装
+		}
 	}
+	txnID := uuid.NewString()
 
 	go func() {
+		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+			targetVersion, txnID, steps)
+		if terr != nil {
+			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
+			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("vscode:version-download", version.DownloadProgress{
+					Version: targetVersion, Form: string(f), Stage: "error", Message: terr.Error()})
+			}
+			notify.Error("vscode", "VS Code 安装失败", fmt.Sprintf("VS Code %s（%s）事务开启失败: %v", targetVersion, labelForm(string(f)), terr), "/ext/vscode")
+			return
+		}
+		stepIdx := -1
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("vscode download progress", "version", p.Version, "form", p.Form, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("vscode:version-download", p)
 			}
+			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；
+			// 下载分块进度仅进观察面内存投影，不产生 fsync 风暴；
+			// verify 由内核折进 download 步、不单独映射，error/done 收口时统一落账
+			switch p.Stage {
+			case "downloading":
+				if stepIdx < 0 {
+					stepIdx = 0
+					txn.Step(stepIdx)
+				}
+				txn.Progress(p.Done, p.Total)
+			case "extract", "install":
+				if stepIdx < 1 {
+					stepIdx = 1
+					txn.Step(stepIdx)
+				}
+			}
 			if p.Stage == "done" {
 				notify.Success("vscode", "VS Code 安装成功", fmt.Sprintf("VS Code %s（%s）已就绪", p.Version, labelForm(p.Form)), "/ext/vscode")
 			}
 		}
-		if err := s.manager.Download(targetVersion, f, emit); err != nil {
+		if err := s.manager.Download(txnID, targetVersion, f, emit); err != nil {
+			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Form: string(f), Stage: "error", Message: err.Error()})
 			notify.Error("vscode", "VS Code 安装失败", fmt.Sprintf("VS Code %s（%s）失败: %v", targetVersion, labelForm(string(f)), err), "/ext/vscode")
 			return
 		}
+		txn.Done()
 		// 便携版：未设定使用版本时自动把刚下载完的版本设为使用版本
 		if f == version.FormPortable && s.store.GetActive() == "" {
 			_ = s.store.SetActive(targetVersion)
@@ -183,6 +267,11 @@ func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confi
 
 // RemoveVersion 卸载指定便携版（正在运行的版本拒绝卸载）。
 func (s *VSCodeService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = normalizeVersion(targetVersion)
 	if snap := s.portableEngine.Snapshot(); snap.State == instance.StateRunning &&
 		strings.EqualFold(snap.Version, targetVersion) {
@@ -199,6 +288,11 @@ func (s *VSCodeService) RemoveVersion(targetVersion string) error {
 
 // SetActiveVersion 设定便携版使用版本（先校验已安装，再持久化）。
 func (s *VSCodeService) SetActiveVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = normalizeVersion(targetVersion)
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
@@ -211,12 +305,22 @@ func (s *VSCodeService) SetActiveVersion(targetVersion string) (string, error) {
 
 // GetActiveVersion 返回便携版设定版本（空字符串 = 未指定，冷启动自动用最新已装）。
 func (s *VSCodeService) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return s.store.GetActive(), nil
 }
 
 // ImportLocal 导入本地便携版 VS Code 目录（整套迁移，data\ 除外）。
 // 运行中的实例拒绝导入：Windows 下运行中的 exe 被独占，且语义易混。
 func (s *VSCodeService) ImportLocal(srcDir string) (version.VersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.VersionInfo{}, gateErr
+	}
+	defer release()
 	if p := s.portableEngine.Snapshot(); p.State == instance.StateRunning || p.State == instance.StateExternal {
 		return version.VersionInfo{}, fmt.Errorf("便携版实例正在运行，请先退出再导入")
 	}
@@ -241,6 +345,11 @@ func (s *VSCodeService) engineFor(form string) *instance.Engine {
 //   - running：自有实例直接信使唤窗；
 //   - stopped/failed：解析当前版本无参启动。
 func (s *VSCodeService) OpenWindow(form string) (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	isInstaller := strings.EqualFold(strings.TrimSpace(form), formInstaller)
 	engine := s.engineFor(form)
 	engine.RefreshExternal()
@@ -297,6 +406,11 @@ func (s *VSCodeService) OpenWindow(form string) (ControlOutcome, error) {
 // OpenPreferredWindow 托盘快捷入口：优先便携版（托管隔离通道），
 // 无已装便携版时回落安装版；两者皆无则引导先下载。
 func (s *VSCodeService) OpenPreferredWindow() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	if installed, err := s.manager.ListInstalled(); err == nil && len(installed) > 0 {
 		return s.OpenWindow(formPortable)
 	}
@@ -310,6 +424,11 @@ func (s *VSCodeService) OpenPreferredWindow() (ControlOutcome, error) {
 // external 状态不越权强杀（安装版互斥体探测拿不到 PID；便携版可能是用户日常实例）：
 // 仅返回人性化指引。
 func (s *VSCodeService) Quit(form string) (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	engine := s.engineFor(form)
 	if snap := engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
@@ -321,9 +440,22 @@ func (s *VSCodeService) Quit(form string) (QuitOutcome, error) {
 	return QuitOutcome{Stopped: true, Message: "VS Code 已退出"}, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 按开关联动终止自有实例。
+// Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+// 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
+func (s *VSCodeService) Shutdown() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	s.shutdown()
+	return nil
+}
+
+// shutdown 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）。
+// 模块停用/应用退出：停后台轮询 + 按开关联动终止自有实例。
 // 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
-func (s *VSCodeService) Shutdown() {
+func (s *VSCodeService) shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
 		close(s.watchStop)
@@ -340,11 +472,21 @@ func (s *VSCodeService) Shutdown() {
 // 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
 // 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *VSCodeService) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return windows.RevealDir(dir)
 }
 
 // GetStatus 返回两引擎快照 + 安装版注册表探测 + 开关（先各做一次静止态外部校正）。
 func (s *VSCodeService) GetStatus() (Status, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Status{}, gateErr
+	}
+	defer release()
 	s.portableEngine.RefreshExternal()
 	s.installerEngine.RefreshExternal()
 	ps := s.portableEngine.Snapshot()
@@ -414,16 +556,31 @@ func (s *VSCodeService) resolveExeAny(isInstaller bool) (string, error) {
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false，两形态共用）。
 func (s *VSCodeService) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
 	return s.store.GetFollowOnExit(), nil
 }
 
 // SetFollowOnExit 设定开关（下次启动生效）。
 func (s *VSCodeService) SetFollowOnExit(b bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.store.SetFollowOnExit(b)
 }
 
 // CreateDesktopShortcut 在桌面为当前使用便携版创建快捷方式（同名覆盖）。
 func (s *VSCodeService) CreateDesktopShortcut() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	_, exe, err := s.resolveStartTarget(false)
 	if err != nil {
 		return err
@@ -433,11 +590,21 @@ func (s *VSCodeService) CreateDesktopShortcut() error {
 
 // RepositoryURL 上游官网地址（页面展示与复制）。
 func (s *VSCodeService) RepositoryURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.RepoURL(), nil
 }
 
 // OpenRepository 用默认浏览器打开上游官网。
 func (s *VSCodeService) OpenRepository() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.RepoURL())
 }
 

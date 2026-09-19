@@ -173,56 +173,9 @@ func goodPortableZip(t *testing.T) string {
 	})
 }
 
-func TestExtractAll(t *testing.T) {
-	dir := t.TempDir()
-	dst := filepath.Join(dir, "vscode_1.136.1")
-	if err := extractAll(goodPortableZip(t), dst); err != nil {
-		t.Fatalf("extractAll: %v", err)
-	}
-	for _, rel := range []string{"Code.exe", filepath.Join("bin", "code.cmd")} {
-		if _, err := os.Stat(filepath.Join(dst, rel)); err != nil {
-			t.Errorf("%s 未解压: %v", rel, err)
-		}
-	}
-	// 便携模式激活器必须自动补齐
-	if fi, err := os.Stat(filepath.Join(dst, dataDirName)); err != nil || !fi.IsDir() {
-		t.Errorf("extractAll 应补建 data\\ 目录: %v", err)
-	}
-}
-
-func TestExtractAllZipSlip(t *testing.T) {
-	dst := filepath.Join(t.TempDir(), "dst")
-	bad := makeTestZip(t, map[string]string{
-		"../evil.txt":  "evil",
-		"Code.exe":     "fake",
-		"bin/code.cmd": "@",
-	})
-	if err := extractAll(bad, dst); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
-	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Error("失败后目标目录应被清理")
-	}
-}
-
-func TestExtractAllMissingBits(t *testing.T) {
-	cases := map[string]map[string]string{
-		"缺 exe":          {"bin/code.cmd": "@", "x/resources/app/product.json": "{}"},
-		"缺 bin 脚本":       {"Code.exe": "fake", "x/resources/app/product.json": "{}"},
-		"缺 product.json": {"Code.exe": "fake", "bin/code.cmd": "@"},
-		"exe 为空":         {"Code.exe": "", "bin/code.cmd": "@", "x/resources/app/product.json": "{}"},
-	}
-	for name, entries := range cases {
-		zipPath := makeTestZip(t, entries)
-		dst := filepath.Join(t.TempDir(), "dst")
-		if err := extractAll(zipPath, dst); err == nil {
-			t.Errorf("%s: 应被布局自检拒绝", name)
-		}
-		if _, err := os.Stat(dst); !os.IsNotExist(err) {
-			t.Errorf("%s: 失败后目标目录应被清理", name)
-		}
-	}
-}
+// extractAll/ZipSlip/炸弹闸门的等价覆盖已收口至共享内核（artifact.UnpackZip
+// 自带测试）+ 下载链失败注入用例（download_test.go：布局锚点拒装、半件残留、
+// data\ 激活器补齐等在本包 staging→Commit 全链断言）。
 
 // mkPortableDir 造一个通过布局自检的便携版本目录
 func mkPortableDir(t *testing.T, versionsDir, dirName, meta string) string {
