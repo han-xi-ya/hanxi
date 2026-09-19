@@ -24,7 +24,7 @@ import * as application$0 from "../../../../github.com/wailsapp/wails/v3/pkg/app
 import * as $models from "./models.js";
 
 /**
- * Dismiss 收起弹窗（前端 Esc / 空背景点击调用），并武装空闲销毁。
+ * Dismiss 收起弹窗（前端 Esc / 空背景点击调用的 RPC 导出版：接统一调用门），并武装空闲销毁。
  * @returns {$CancellablePromise<void>}
  */
 export function Dismiss() {
@@ -78,6 +78,7 @@ export function OpenSettings() {
 
 /**
  * SetMainWindow 注入主窗口引用（装配根在窗口创建后调用一次）。
+ * 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门。
  * @param {application$0.WebviewWindow | null} win
  * @returns {$CancellablePromise<void>}
  */

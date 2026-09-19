@@ -5,6 +5,8 @@
 /**
  * SnipasteService 面向前端的 Snipaste 托管服务：官网 zip 下载、本地导入、版本切换与会话内启停。
  * downloads 记录进行中的下载版本号（按版本去重，允许不同版本并行下载）。
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 

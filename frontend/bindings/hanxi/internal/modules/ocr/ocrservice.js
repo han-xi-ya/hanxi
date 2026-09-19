@@ -6,6 +6,11 @@
  * OcrService 向前端暴露 hanxi-ocr 本地服务的托管启停、状态探测与图片识别转发。
  * 定位边界：识别能力全部在上游服务内，本服务只做"探活 + 转发 + 生命周期"，
  * 不重复实现上游功能面（与 ddnsgo 托管口径一致）。
+ * 全部业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：前端调用、
+ * 轮盘/托盘命令与热键派发链（RunTrayCommand 已持租约）、MCP 无头后端共用
+ * 同一 service 契约，门语义一致；SetHistory/SetSnipHotkeyBinding 为装配布线
+ * （豁免表）；Shutdown 导出壳接门（纯 void 拒即早退），OnDestroy 生命周期收口
+ * 直调内部 shutdown()（此刻门已关，见 ADR-0001 Wave 3 注记）。
  * @module
  */
 
@@ -31,6 +36,8 @@ export function BrowseServiceExeDialog() {
 
 /**
  * CardDragEnd 拖拽把手 mouseup 调用：结束跟手移动会话（幂等）。
+ * 纯 void 绑定方法：Wave 3 口径——拒绝即早退，不改签名；
+ * 模块停用中拖拽会话已由窗口侧收口。
  * @returns {$CancellablePromise<void>}
  */
 export function CardDragEnd() {
@@ -41,6 +48,7 @@ export function CardDragEnd() {
  * CardDragStart 拖拽把手 mousedown 调用：进入跟手移动会话（重入忽略）。
  * Wails beta.10 没有拖拽区 API（v2 SetDragRegion 已移除），原生轮询实现见
  * card_windows.go；结束走 CardDragEnd 与左键态检测双通道。
+ * 纯 void 绑定方法：Wave 3 口径——拒绝即早退，不改签名。
  * @returns {$CancellablePromise<void>}
  */
 export function CardDragStart() {
@@ -91,6 +99,8 @@ export function GetServiceExePath() {
 
 /**
  * GetSnipHotkey 拉取热键开关、键位与系统注册实况（前端设置页回显用）。
+ * Wave 3 口径：单值绑定签名扩为 (SnipHotkeyState, error)，门拒绝如实上抛，
+ * 禁止回零值态造成"热键未启用"的假象。
  * @returns {$CancellablePromise<$models.SnipHotkeyState>}
  */
 export function GetSnipHotkey() {
@@ -100,6 +110,8 @@ export function GetSnipHotkey() {
 /**
  * GetSnipResult 卡片挂载/刷新时拉取当前结果（事件双保险，常驻窗体不漏帧）。
  * found 仅在存在成功结果时为真——取消帧不进卡片通道（showSnipCard 只在成功时调用）。
+ * Wave 3 口径：补 error 通道，门拒绝如实上抛，禁止回 (空, false) 伪造"暂无结果"
+ * （前端 resolve 仍为 [result, found] 数组，语义不变）。
  * @returns {$CancellablePromise<[$models.SnipResult, boolean]>}
  */
 export function GetSnipResult() {
@@ -119,6 +131,8 @@ export function GetStatus() {
  * 标记 data-file-drop-target 元素上的文件才会到达）。分流：.zip → 托管安装包
  * （F7：契约校验后自动解压落位）；目录 → PP-OCR 引擎包导入；.exe → 微信件导入；
  * 图片 → 真实路径直接选为待识别对象（免走 dataURL 全量 IPC）；其余给中文提示。
+ * 事件窗口直调、纯 void 绑定方法：接门是对的——停用/未安装模块的文件落放应被拒，
+ * 拒绝即早退（Wave 3 口径：void 不改签名，落日志便于排障）；放行后经门转发各导入链。
  * @param {string[] | null} files
  * @returns {$CancellablePromise<void>}
  */
@@ -299,6 +313,7 @@ export function SetFollowOnExit(v) {
  * SetHistory 注入统一历史存储与"全文入库"档位读取器（装配根接线，
  * 照 memo↔fileshare SetMemoHook 先例）。fullText 为 config.json 开关的实时读取
  * 闭包（Q1：默认开=全文入库；关=只记图片路径与摘要）；nil 视为开。
+ * 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）
  * @param {history$0.Store | null} h
  * @param {any} fullText
  * @returns {$CancellablePromise<void>}
@@ -337,6 +352,8 @@ export function SetSnipHotkey(raw) {
 }
 
 /**
+ * SetSnipHotkeyBinding 注入热键落实通道（app/hotkeys.go 装配根接线）。
+ * 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）
  * @param {$models.SnipHotkeyBinding} b
  * @returns {$CancellablePromise<void>}
  */
@@ -355,8 +372,8 @@ export function SetSnipHotkeyEnabled(v) {
 }
 
 /**
- * Shutdown 模块销毁：停 watch；随退联动开启时强杀托管实例（限时通道，
- * 不走上游优雅退出——OnDestroy 必须快速返回，照 ddnsgo 决策）。
+ * Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+ * 拒绝即早退（Wave 3 口径：void 方法不改签名）。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {
@@ -375,6 +392,7 @@ export function SnipAndRecognize() {
 
 /**
  * SnipCardDismiss 收起悬浮卡（前端关闭钮/Esc 调用；只隐藏不销毁）。
+ * 纯 void 绑定方法：Wave 3 口径——拒绝即早退，不改签名。
  * @returns {$CancellablePromise<void>}
  */
 export function SnipCardDismiss() {

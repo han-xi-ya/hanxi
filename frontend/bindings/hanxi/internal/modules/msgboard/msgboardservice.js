@@ -13,6 +13,9 @@
  * 拦截 hook 后 Close 走 Wails 内部销毁路径，WebView2 内存归还，同名窗口可重建，
  * 不得白边/残影）；不养常驻隐藏窗。显隐判定走服务层状态机（shown），窗口 API
  * （Show/Close/Fullscreen 均为主线程 InvokeSync）一律在 s.mu 之外调用，防锁反转。
+ * 
+ * RPC 收口（Wave 3）：Toggle/Show/Dismiss 与全部前端绑定方法接统一调用门；
+ * 热键回调与窗体事件（Closing hook、SetConfig 换屏重挂协程）走同名无门内部版。
  * @module
  */
 
@@ -25,9 +28,8 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * Dismiss 撤牌并真销毁窗口（摘 WindowClosing hook 后 Close 走 Wails 内部销毁
- * 路径，#53），同时释放防休眠诉求。若 Show 在途则等待并接管其终态；stop
- * 接管期间普通 Dismiss 无需争抢。
+ * Dismiss 撤牌并真销毁窗口（RPC 导出版：接统一调用门）。
+ * 若 Show 在途则等待并接管其终态；stop 接管期间普通 Dismiss 无需争抢。
  * @returns {$CancellablePromise<void>}
  */
 export function Dismiss() {
@@ -98,7 +100,7 @@ export function Show() {
 }
 
 /**
- * Toggle 挂出↔撤牌一键互切（托盘/轮盘命令与热键回调的入口）。
+ * Toggle 挂出↔撤牌一键互切（RPC/托盘轮盘命令的导出版：接统一调用门）。
  * @returns {$CancellablePromise<void>}
  */
 export function Toggle() {

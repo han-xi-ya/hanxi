@@ -18,6 +18,9 @@ import * as extapi$0 from "../extapi/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as settings$0 from "../settings/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as operation$0 from "../../packages/go/operation/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -41,6 +44,17 @@ export function BindDataDir(target) {
  */
 export function ClearLogs() {
     return $Call.ByID(3711438991);
+}
+
+/**
+ * DismissResumable 用户显式忽略一笔未收口事务：按背书清理该事务的托管现场
+ * （staging/.removing-<txnID> 同名目录），journal 以 failed 收口，并从观察面
+ * 摘除 resumable 回灌记录。对已成功/已失败收口的账本拒绝翻案（审计单收口）。
+ * @param {string} txnID
+ * @returns {$CancellablePromise<void>}
+ */
+export function DismissResumable(txnID) {
+    return $Call.ByID(845832995, txnID);
 }
 
 /**
@@ -111,6 +125,16 @@ export function IsElevated() {
 }
 
 /**
+ * ListCatalog 返回静态模块目录（身份/交付形态/入口/能力/owner），按 ID 排序。
+ * 表是生成物（internal/app/catalog.go，基线 scripts/fixture/module_catalog.json），
+ * 与运行状态分离——瞬时进度变化不重建目录（ADR-0001 §1.2）。
+ * @returns {$CancellablePromise<extapi$0.ModuleCatalogItem[] | null>}
+ */
+export function ListCatalog() {
+    return $Call.ByID(3105382302);
+}
+
+/**
  * ListLogFiles 获取日志目录下的所有日志文件列表（按时间倒序排列）
  * @returns {$CancellablePromise<$models.LogFileInfo[] | null>}
  */
@@ -119,11 +143,29 @@ export function ListLogFiles() {
 }
 
 /**
+ * ListModuleStates 返回全部模块的四维状态投影（含派生主操作与摘要），按 ID 排序。
+ * @returns {$CancellablePromise<extapi$0.ModuleState[] | null>}
+ */
+export function ListModuleStates() {
+    return $Call.ByID(804655545);
+}
+
+/**
  * ListModules 返回模块清单与启用状态（设置页）。
  * @returns {$CancellablePromise<extapi$0.ModuleInfo[] | null>}
  */
 export function ListModules() {
     return $Call.ByID(3944382308);
+}
+
+/**
+ * ListOperations 返回在途与近期操作记录：Active（queued/running，按登记序）
+ * 与 Recent(30)（终态 + resumable 回灌，按 StartedAt 倒序）合并去重。
+ * 前端不依赖组件内存——刷新后从后端恢复全部现态（§2.3）。
+ * @returns {$CancellablePromise<extapi$0.Operation[] | null>}
+ */
+export function ListOperations() {
+    return $Call.ByID(1651320537);
 }
 
 /**
@@ -255,6 +297,30 @@ export function SetGeneralSettings(gen) {
  */
 export function SetModuleEnabled(id, enabled) {
     return $Call.ByID(3661323466, id, enabled);
+}
+
+/**
+ * SetModuleInstalled 执行逻辑安装/卸载（模块中心"安装/卸载"按钮的后端事务）。
+ * Phase 1-2 内建模块的交付形态固定为 builtin-logical：安装=登记凭据+默认启用；
+ * 卸载=drain/析构+移除凭据，用户数据默认保留。宿主内建代码不随卸载释放——
+ * UI 文案必须如实呈现（delivery kind 由投影强制携带）。
+ * @param {string} id
+ * @param {boolean} installed
+ * @returns {$CancellablePromise<extapi$0.ModuleState | null>}
+ */
+export function SetModuleInstalled(id, installed) {
+    return $Call.ByID(487368773, id, installed);
+}
+
+/**
+ * SetOperations 装配根注入操作观察面与 resumable 忽略通道（Wave 4-B）。
+ * hub 恒非 nil（纯内存降级由装配根保证）；dismiss 为装配根组装的背书收口函数。
+ * @param {operation$0.Hub | null} hub
+ * @param {any} dismiss
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetOperations(hub, dismiss) {
+    return $Call.ByID(3186440155, hub, dismiss);
 }
 
 /**

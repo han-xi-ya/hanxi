@@ -7,6 +7,9 @@
  * 任务栏透明样式设置不内嵌：上游 UI 就是系统托盘 XAML 飞控（无主窗口可唤），
  * Hanxi 侧提供版本管理、启停、状态重设与 settings.json 所在目录直达。
  * 本模块禁用空闲自动退出（常驻特效工具：退出 = 任务栏特效消失，与托管诉求正相反）。
+ * 
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 
@@ -26,7 +29,11 @@ import * as version$0 from "./version/models.js";
 import * as $models from "./models.js";
 
 /**
- * DownloadVersion 后台下载指定版本：立即返回，全程经事件 translucenttb:version-download 推送进度。
+ * DownloadVersion 后台下载指定版本：立即返回，全程经事件 translucenttb:version-download
+ * 推送进度；同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链
+ * 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+ * 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+ * （与既有模块事件双通道并行，Wave 4-B 接线，markeron/ccswitch 同构）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
@@ -164,8 +171,8 @@ export function SetFollowOnExit(b) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例（仅在联动开启时）。
- * 外部实例不受影响（非我方托管）；自有实例另受 JobObject 联动口径约束。
+ * Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+ * 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

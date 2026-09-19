@@ -7,6 +7,9 @@
  * 感知/静默安装升级 + 两形态独立启停唤窗。
  * 编辑器操作在 VS Code 自有窗口内完成（其界面即产品，内嵌无意义）；
  * 不设空闲自动退出（关窗即退、窗口开着 = 用户正在编辑，强退反需求）。
+ * 
+ * 所有业务 RPC 方法（含双形态全部通道）经 holder.Enter() 接入统一调用门
+ * （Wave 3）：未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 
@@ -35,6 +38,11 @@ export function CreateDesktopShortcut() {
  * 安装版（form=installer）通道 = 下载 + Inno 静默安装/升级，复用同一进度事件。
  * confirm 是安装版确认闸回执：检测到运行中实例时首次调用返回 confirm-required，
  * 前端全局确认框放行后带 confirm=true 重入（不带参数会永远被拦成死锁）。
+ * 
+ * 同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链追加版本或
+ * 升级安装版，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+ * 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+ * （与既有模块事件双通道并行，Wave 4-B 接线，ccswitch 同构）。
  * @param {string} targetVersion
  * @param {string} form
  * @param {boolean} confirm
@@ -190,8 +198,8 @@ export function SetFollowOnExit(b) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 按开关联动终止自有实例。
- * 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+ * Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+ * 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

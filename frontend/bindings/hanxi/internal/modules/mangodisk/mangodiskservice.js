@@ -4,6 +4,8 @@
 
 /**
  * MangoDiskService 只托管原版 GUI；磁盘扫描、清理和系统设置仍在上游窗口内完成。
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 
@@ -35,6 +37,10 @@ export function CreateDesktopShortcut() {
  * DownloadVersion 异步下载指定版本：立即返回 "started"（已在本地则返回 "already-installed"），
  * 进度与结果经 "mangodisk:version-download" 事件与通知推送。同一时刻仅允许一个下载
  * （TryLock 失败直接报"正在下载"），未设置使用版本时下载完成后自动设为当前版本。
+ * 同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链追加版本，
+ * managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段迁移逐步
+ * Advance，收口经观察面 Handle 自动落账并广播 operation:changed（与既有模块
+ * 事件双通道并行，Wave 4-B 接线，ccswitch/rufus 同构）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
@@ -165,7 +171,9 @@ export function SetFollowOnExit(enabled) {
 }
 
 /**
- * Shutdown 在模块 OnDestroy 时调用：终止嗅探 goroutine，并按"随 Hanxi 退出"开关决定是否停止托管实例。
+ * Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+ * 拒绝即早退——Wave 3 口径：void 方法不改签名。前端当前不调用本方法，
+ * 但它属绑定面，必须经门收口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

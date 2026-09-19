@@ -5,6 +5,9 @@
 /**
  * NanaZipService 官方 stable MSIX 的安装/更新/降级/卸载托管。
  * 同一时刻仅允许一个包操作（operationMu+operation 互斥）；revision 为快照单调序号。
+ * 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；OperationProgress 终态
+ * 广播与后台操作 goroutine 走未接门的 snapshotWithTimeout 内部路径（fire-and-forget
+ * 派生 goroutine 不得依赖运行态门，操作生命周期由单槽位互斥与 JobObject 兜底）。
  * @module
  */
 
@@ -66,6 +69,7 @@ export function ListReleases() {
 }
 
 /**
+ * OpenRepo 用默认浏览器打开上游仓库页面。
  * @returns {$CancellablePromise<void>}
  */
 export function OpenRepo() {
@@ -82,7 +86,8 @@ export function RemoveCachedPackage(targetVersion) {
 }
 
 /**
- * RepoURL / OpenRepo 上游 GitHub 仓库入口。
+ * RepoURL 上游 GitHub 仓库地址（页面展示与复制）。
+ * Wave 3 口径：单值绑定签名扩为 (string, error)，门拒绝如实上抛，禁止回空串。
  * @returns {$CancellablePromise<string>}
  */
 export function RepoURL() {

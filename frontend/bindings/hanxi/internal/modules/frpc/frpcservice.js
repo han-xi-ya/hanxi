@@ -5,6 +5,10 @@
 /**
  * FrpcService 向前端暴露 frp 版本管理与项目实例管理能力
  * （M4.1 版本管理 + M4.2 项目 CRUD + M4.3 多实例运行引擎）。
+ * 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；实例引擎的
+ * OnState/OnLog 回调（emitInstanceState/emitInstanceLog）是引擎 goroutine
+ * 直调路径，刻意不接门；Shutdown 导出壳接门（纯 void 拒即早退），OnDestroy
+ * 生命周期收口直调内部 shutdown()（见 ADR-0001 Wave 3 注记）。
  * @module
  */
 
@@ -154,8 +158,8 @@ export function SaveProject(p) {
 }
 
 /**
- * Shutdown 销毁实例引擎，终止所有正在运行的 frpc 子进程，
- * 并擦除运行时 TOML（含明文 token）——停用/退出路径不落敏感残留。
+ * Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+ * 拒绝即早退（Wave 3 口径：void 方法不改签名）。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

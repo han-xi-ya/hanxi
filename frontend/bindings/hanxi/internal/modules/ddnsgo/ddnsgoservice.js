@@ -6,6 +6,10 @@
  * DdnsGoService 向前端暴露 ddns-go 版本管理、托管启停与内嵌 Web 控制台能力。
  * DNS 解析配置操作在子 Webview 窗口内的上游原生页面完成（决策记录见包注释），
  * 本服务只做托管：拉起/退出/状态/日志/端口设置，不重复实现上游功能面。
+ * 
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
+ * 独立控制台子窗入口（Start/OpenConsole）一并接门：停用模块点窗被拒符合预期。
  * @module
  */
 
@@ -194,9 +198,8 @@ export function SetListenPort(port) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例（强杀通道，不等待
- * 配置写静默期——OnShutdown 阻塞返回）。外部实例不受影响；自有实例另受
- * JobObject KILL_ON_JOB_CLOSE 内核兜底。
+ * Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+ * 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

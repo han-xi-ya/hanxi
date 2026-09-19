@@ -35,7 +35,7 @@ export function DeleteAccount(id) {
 }
 
 /**
- * Destroy 销毁模块并彻底停止所有后台监听 Goroutine
+ * Destroy 销毁服务并彻底停止所有后台监听（RPC 导出版：接统一调用门）。
  * @returns {$CancellablePromise<void>}
  */
 export function Destroy() {
@@ -70,7 +70,7 @@ export function GetPendingMessages(accountID) {
 }
 
 /**
- * GetState 获取全局/主账号运行时状态（兼容旧前端接口）
+ * GetState 获取全局/主账号运行时状态（兼容旧前端接口；RPC 导出版：接统一调用门）
  * @returns {$CancellablePromise<$models.WechatState>}
  */
 export function GetState() {
@@ -78,7 +78,7 @@ export function GetState() {
 }
 
 /**
- * InitOnDemand 按需懒初始化：用户进入页面或首次调用时拉起所有已配置账号的后台监听
+ * InitOnDemand 按需懒初始化（RPC 导出版：接统一调用门）。
  * @returns {$CancellablePromise<void>}
  */
 export function InitOnDemand() {
@@ -95,7 +95,7 @@ export function InspectOutgoingAttachment(filePath) {
 }
 
 /**
- * ListAccounts 获取所有账号及其运行时状态
+ * ListAccounts 获取所有账号及其运行时状态（RPC 导出版：接统一调用门）。
  * @returns {$CancellablePromise<$models.WechatAccountState[] | null>}
  */
 export function ListAccounts() {
@@ -219,7 +219,7 @@ export function SendTextMessage(accountID, toUserID, text) {
 }
 
 /**
- * StartAccountListener 启动指定账号的后台监听
+ * StartAccountListener 启动指定账号的后台监听（RPC 导出版：接统一调用门）
  * @param {string} accountID
  * @returns {$CancellablePromise<void>}
  */
@@ -228,7 +228,7 @@ export function StartAccountListener(accountID) {
 }
 
 /**
- * StopAccountListener 停止指定账号的后台监听
+ * StopAccountListener 停止指定账号的后台监听（RPC 导出版：接统一调用门）。
  * @param {string} accountID
  * @returns {$CancellablePromise<boolean>}
  */

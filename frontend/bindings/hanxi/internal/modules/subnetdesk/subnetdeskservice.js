@@ -11,6 +11,9 @@
  * 
  * 远程桌面画面本身不内嵌（上游 GUI 完整，内嵌不可行）：
  * 连接、局域网设置（用户名/密码/CIDR 白名单/端口 21118）均在 SubnetDesk 自有窗口操作。
+ * 
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 
@@ -215,8 +218,8 @@ export function SetFollowOnExit(b) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
- * 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+ * Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+ * 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

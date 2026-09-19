@@ -6,7 +6,7 @@
  * DownloadProgress 下载过程实时进度。
  * @typedef {Object} DownloadProgress
  * @property {string} version - 目标版本
- * @property {string} stage - resolve/downloading/verify/extract/install/done/error
+ * @property {string} stage - downloading/extract/done/error（verify 由内核 Fetch 折进 download、install 折进 done，不造幻影步骤）
  * @property {number} done - 已下载字节
  * @property {number} total - 总字节（未知为 0）
  * @property {string} message - 附加信息（如错误描述）

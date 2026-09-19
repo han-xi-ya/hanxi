@@ -56,6 +56,8 @@ export function ListEntries() {
  * Open 打开（或置顶/恢复）指定条目的网页窗。幂等三态：
  * 可见→仅置顶；收起驻留→取消 TTL 热复用秒显；无窗→按需新建。
  * 登录 cookie 在共享 WebView2 user data folder，真销毁重建也不丢网页会话。
+ * 导出版接门：停用/未安装模块不得开出网页窗；托盘/轮盘命令经 registry 派发链
+ * 先持同模块租约，此处二次入账（计数器语义）不冲突。
  * @param {string} entryID
  * @returns {$CancellablePromise<void>}
  */

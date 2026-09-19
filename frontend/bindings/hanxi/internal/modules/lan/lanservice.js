@@ -6,6 +6,8 @@
  * LanService 局域网扫描服务。同一时刻仅允许一轮扫描：
  * scanning 原子标志做快速拒重入，cancelScan 记录在途扫描的取消函数（mu 保护读写），
  * 模块 OnDestroy/用户手动停止都经 Cancel 终止 goroutine 并释放 context。
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 停用/未安装模块的任何方法调用被拒，扫描在途期间停用会等待 drain。
  * @module
  */
 
@@ -18,7 +20,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * Cancel 取消当前正在进行的扫描
+ * Cancel 取消当前正在进行的扫描（前端 RPC 导出版：接调用门，停用后拒绝新调用）。
  * @returns {$CancellablePromise<void>}
  */
 export function Cancel() {

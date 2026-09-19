@@ -222,6 +222,7 @@ declare module "@wailsio/runtime" {
             "ocr:file-drop-result": ocr$0.DropResult;
             "ocr:service-state": ocr$0.ServiceState;
             "ocr:snip-result": ocr$0.SnipResult;
+            "operation:changed": void;
             "papertodo:instance-state": instance$12.Snapshot;
             "papertodo:version-download": version$12.DownloadProgress;
             "paseo:instance-state": instance$13.Snapshot;

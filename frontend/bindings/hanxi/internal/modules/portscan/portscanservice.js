@@ -7,6 +7,8 @@
  * cancelMap 按任务 ID 登记每轮扫描的 context.CancelFunc，供 StopScan 精准取消；任务结束须删除条目防泄露。
  * current 记录最新一轮任务 ID（而非 CancelFunc）：任务收尾按 ID 比对后才摘除标记，
  * 否则旧任务的清理路径会把新任务刚登记的 current 一并删掉，导致 StopScan 兜底失效。
+ * 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；StopScan 拆出未接门的
+ * 内部版供 OnDestroy 直调（停用流程门已关，生命周期收口不得依赖运行态）。
  * @module
  */
 
@@ -28,7 +30,8 @@ export function CheckEgressIP(proxyURL) {
 }
 
 /**
- * GetPresets 返回常见预设端口组合
+ * GetPresets 返回常见预设端口组合。
+ * Wave 3 口径：单值绑定签名扩为 ([]PresetGroup, error)，门拒绝如实上抛，禁止回空表。
  * @returns {$CancellablePromise<$models.PresetGroup[] | null>}
  */
 export function GetPresets() {
@@ -36,7 +39,8 @@ export function GetPresets() {
 }
 
 /**
- * StartScan 启动端口扫描任务（异步），通过 Wails 事件 "portscan:progress" 实时推送进度
+ * StartScan 启动端口扫描任务（异步），通过 Wails 事件 "portscan:progress" 实时推送进度。
+ * operation lease 覆盖整个扫描过程：扫描在途时停用需等待 drain（或由 drain 超时强制收口）。
  * @param {$models.ScanRequest} req
  * @returns {$CancellablePromise<$models.ScanSummary | null>}
  */
@@ -45,8 +49,8 @@ export function StartScan(req) {
 }
 
 /**
- * StopScan 中止指定任务；指定 ID 未在册（或为空）时回退中止 current 任务。
- * 兜底路径按 current 记录的 ID 反查取消函数，两条路径都遵循"取消即摘除条目"。
+ * StopScan 中止指定任务（前端 RPC 入口，经调用门）。
+ * Wave 3 口径：单值绑定签名扩为 (bool, error)，门拒绝如实上抛，禁止回 false 假象。
  * @param {string} taskID
  * @returns {$CancellablePromise<boolean>}
  */

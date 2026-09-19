@@ -86,7 +86,10 @@ export function SaveConfig(cfg) {
 }
 
 /**
- * SetMemoHook 注册投递自动进入备忘录的钩子
+ * SetMemoHook 注册投递自动进入备忘录的钩子。
+ * 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门；
+ * 钩子本体是 memo.MemoService.QuickCreate（RPC 导出版带门）：memo 停用时投递
+ * 写入被门拒绝，回调侧如实记录并上浮通知，不静默吞。
  * @param {any} hook
  * @returns {$CancellablePromise<void>}
  */
@@ -95,7 +98,8 @@ export function SetMemoHook(hook) {
 }
 
 /**
- * SetWailsApp 设置 Wails App 引用以便发送事件
+ * SetWailsApp 设置 Wails App 引用以便发送事件。
+ * 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门。
  * @param {application$0.App | null} app
  * @returns {$CancellablePromise<void>}
  */
@@ -112,7 +116,7 @@ export function StartServer() {
 }
 
 /**
- * StopServer 停止快传服务
+ * StopServer 停止快传服务（RPC 导出版：接统一调用门）。
  * @returns {$CancellablePromise<void>}
  */
 export function StopServer() {

@@ -60,7 +60,9 @@ export function List(filter) {
 }
 
 /**
- * QuickCreate 快捷创建 (主要供 fileshare 跨模块投递联动使用)
+ * QuickCreate 快捷创建 (主要供 fileshare 跨模块投递联动使用)。
+ * 导出版接门：memo 停用时返回明确的门拒绝错误（当前签名即返回 error，
+ * 直调方 fileshare 如实上浮/记录，不静默吞）。
  * @param {string} title
  * @param {string} content
  * @param {string[] | null} tags
@@ -76,6 +78,7 @@ export function QuickCreate(title, content, tags) {
  * memo:changed——前端全量重拉即见，热生效无重启。回落旧库模式不支持（无单条概念），
  * 返回可读错误引导重启。content 用 string 承载原样字节（Go string 不校验 UTF-8，
  * 无损；同时避开绑定面对 []byte 的形态特化）。
+ * memo 停用时热恢复被门拒绝并上浮明确错误（快照页单文件回滚可见），属预期语义。
  * @param {string} id
  * @param {string} content
  * @returns {$CancellablePromise<void>}
@@ -85,7 +88,8 @@ export function RestoreFile(id, content) {
 }
 
 /**
- * SetWailsApp 设置 Wails App 引用
+ * SetWailsApp 设置 Wails App 引用。
+ * 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门。
  * @param {application$0.App | null} app
  * @returns {$CancellablePromise<void>}
  */

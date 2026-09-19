@@ -6,6 +6,8 @@
  * SoftverService Wails 绑定服务：微信（首个跟踪目标）的本机双口径版本、
  * 目录槽位与大小、官方最新版对照。探测/取页函数一律字段注入，
  * 单测替换后即可离线断言；页面进入零隐式外呼（官方取数只在显式 RefreshOfficial）。
+ * 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；扫描 goroutine 与
+ * 生命周期取消（cancelAllDirScans）走未接门的内部路径。
  * @module
  */
 

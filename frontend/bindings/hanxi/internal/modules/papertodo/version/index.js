@@ -11,9 +11,10 @@ import * as $models from "./models.js";
 
 /**
  * PaperAsset 单个发布资产的下载要素。
- * SHA256 为 GitHub API digest（官方计算）。实证：PaperTodo 当前所有 release
- * 资产均无 digest 字段——存在时（GitHub 逐批回刷后）Download 会升级为官方哈希硬校验，
- * 缺失时降级为"字节数 + PE 版本核对 + sha256 指纹存档"链（详见 manager 注释）。
+ * SHA256 为 GitHub API digest（官方计算）。实证：PaperTodo 集成初期所有 release
+ * 资产均无 digest 字段，GitHub 2026-09 复核已回刷覆盖现存版本——digest 在场走
+ * 内核 artifact.Fetch 官方哈希硬校验，缺失时降级为"字节数 + MZ + PE 版本核对
+ * + sha256 指纹存档"链（详见 manager 注释），两路并存、不做硬过滤。
  * @typedef {$models.PaperAsset} PaperAsset
  */
 

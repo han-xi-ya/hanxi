@@ -10,7 +10,7 @@
  * @property {string} channel - stable / beta（来源于下载页区块标题）
  * @property {string} published - 资产 Last-Modified（yyyy-MM-dd，抓取失败则保留原样）
  * @property {string} assetUrl - x64 便携 zip 直链
- * @property {string} sha256 - 官方 sha256 清单中该 zip 的哈希（清单不可得时为空，校验降级）
+ * @property {string} sha256 - 官方 sha256 清单中该 zip 的哈希（清单不可得时为空；下载链视为无校验安装一律拒装）
  * @property {number} size - HEAD Content-Length（探测失败为 0，跳过字节级校验）
  * @property {boolean} stale - 来自旧缓存或内置快照，非实时数据
  */

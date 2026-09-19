@@ -6,6 +6,7 @@
  * PublicIPService 公网/局域网信息聚合服务。
  * 对上游查询源做进程内 TTL 缓存（RWMutex 读写锁）：TTL 内的重复请求直接回吐 cachedData，
  * 前端轮询不放大外部请求量；缓存含部分失败结果（某源挂掉不会立即重查）。
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
  * @module
  */
 

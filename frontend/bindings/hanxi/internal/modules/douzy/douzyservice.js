@@ -8,6 +8,7 @@
  * 刻意窄于 ccswitch/rustdesk 等托管模块：本模块**不做进程托管**——
  * 仅"列版本 → 下载官方安装包 → sha256 校验 → 拉起上游安装向导（发射后不管）"。
  * 原因见 version 包注释：桌面版内测、Electron 壳闭源、Windows 仅 NSIS 安装版。
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
  * @module
  */
 

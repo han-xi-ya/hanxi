@@ -6,7 +6,7 @@
  * DownloadProgress 下载过程实时进度（事件 papertodo:version-download 载荷）。
  * @typedef {Object} DownloadProgress
  * @property {string} version - 目标版本
- * @property {string} stage - resolve/downloading/verify/done/error（单 exe 无解压阶段）
+ * @property {string} stage - downloading/verify/done/error（单 exe 无解压阶段）
  * @property {number} done - 已下载字节
  * @property {number} total - 总字节（未知为 0）
  * @property {string} message - 附加信息（如错误描述）
@@ -14,9 +14,10 @@
 
 /**
  * PaperAsset 单个发布资产的下载要素。
- * SHA256 为 GitHub API digest（官方计算）。实证：PaperTodo 当前所有 release
- * 资产均无 digest 字段——存在时（GitHub 逐批回刷后）Download 会升级为官方哈希硬校验，
- * 缺失时降级为"字节数 + PE 版本核对 + sha256 指纹存档"链（详见 manager 注释）。
+ * SHA256 为 GitHub API digest（官方计算）。实证：PaperTodo 集成初期所有 release
+ * 资产均无 digest 字段，GitHub 2026-09 复核已回刷覆盖现存版本——digest 在场走
+ * 内核 artifact.Fetch 官方哈希硬校验，缺失时降级为"字节数 + MZ + PE 版本核对
+ * + sha256 指纹存档"链（详见 manager 注释），两路并存、不做硬过滤。
  * @typedef {Object} PaperAsset
  * @property {string} name - 资产文件名（原样用于拼接上游下载 URL）
  * @property {number} size - API 声明字节数

@@ -6,6 +6,9 @@
  * QuickLookService 向前端暴露 QuickLook 版本管理与托管启停能力。
  * 空格预览本身不内嵌：预览窗与插件查看器依赖上游 Manager 进程与全局键盘钩子，
  * 样式设置全在 QuickLook 自有设置窗口完成（入口=托盘左键，上游无唤窗契约）。
+ * 
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 
@@ -158,8 +161,8 @@ export function SetFollowOnExit(b) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
- * 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+ * Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+ * 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

@@ -9,6 +9,9 @@
  * 
  * 与 ccswitch service 的显著差异：**没有空闲自动退出**——下载器无法从外部感知
  * 任务活跃度（无 CLI 状态通道），静默退出打断在途下载的代价远大于省内存的收益。
+ * 
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 
@@ -190,10 +193,8 @@ export function SetFollowOnExit(b) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
- * 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
- * 刻意走 Stop（强杀）而非 Quit（优雅）：应用退出通道不能阻塞等待上游下载线程收敛，
- * 且用户若不希望退出被中断，可关闭"随 Hanxi 退出"开关（解除 Job 联动）。
+ * Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+ * 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

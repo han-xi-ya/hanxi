@@ -5,6 +5,7 @@
 /**
  * EnvCheckService Wails 绑定服务：本机开发工具链探测、Git/Go/Node.js/Java/Python/.NET
  * 官网版本查询，以及目录内 npm 全局 CLI 工具（Claude Code、Codex 等）的一键安装/升级/卸载。
+ * 全部业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
  * @module
  */
 
@@ -48,6 +49,7 @@ export function Detect(name) {
 
 /**
  * DetectAll 并发探测全部已注册工具，同步返回完整列表（前端主入口）。
+ * Wave 3 口径：单值绑定签名扩为 ([]detect.ToolInfo, error)，门拒绝如实上抛。
  * @returns {$CancellablePromise<detect$0.ToolInfo[] | null>}
  */
 export function DetectAll() {

@@ -14,6 +14,9 @@
  *   - 便携模式经预置 rufus.ini 激活（顺带永久关闭上游更新检查）；
  *   - 不做空闲自动退出：Rufus 是"用完即关窗"的对话框应用，无驻留形态，
  *     进程生命周期与窗口天然同生共死，空闲退出语义不成立。
+ * 
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 
@@ -33,7 +36,11 @@ import * as version$0 from "./version/models.js";
 import * as $models from "./models.js";
 
 /**
- * DownloadVersion 后台下载指定版本：立即返回，全程经事件 rufus:version-download 推送进度。
+ * DownloadVersion 后台下载指定版本：立即返回，全程经事件 rufus:version-download
+ * 推送进度；同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链
+ * 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+ * 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+ * （与既有模块事件双通道并行，Wave 4-B 接线，markeron 同构）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
@@ -169,9 +176,9 @@ export function SetFollowOnExit(b) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
- * 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底
- * （开关"独立运行"解除联动时除外）。
+ * Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+ * 拒绝即早退——Wave 3 口径：void 方法不改签名。前端当前不调用本方法，
+ * 但它属绑定面，必须经门收口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {

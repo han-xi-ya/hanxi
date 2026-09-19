@@ -16,7 +16,8 @@
  */
 
 /**
- * State 引擎状态机：stopped → starting → running ⇄ quitting → (stopped | failed)。
+ * State 引擎状态机：stopped → starting → running → (stopped | failed)；
+ * 手动退出窗口内 running/starting/stopping 一律呈现为 quitting。
  * @readonly
  * @enum {string}
  */

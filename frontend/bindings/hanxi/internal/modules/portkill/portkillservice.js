@@ -4,6 +4,8 @@
 
 /**
  * PortKillService 端口占用查询与查杀服务（无内部状态，每次 RPC 即时快照系统表）。
+ * 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：门只加不改语义，
+ * 权限红线与提权逻辑全部保留在门后原路径。
  * @module
  */
 
@@ -65,6 +67,7 @@ export function QueryPort(port) {
 
 /**
  * SetHistory 注入统一历史存储（装配根接线，照 memo↔fileshare SetMemoHook 先例）。
+ * 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）
  * @param {history$0.Store | null} h
  * @returns {$CancellablePromise<void>}
  */

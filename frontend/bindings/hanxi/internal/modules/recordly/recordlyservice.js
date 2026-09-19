@@ -6,6 +6,8 @@
  * RecordlyService 向前端暴露 Recordly 版本管理与窗口唤起能力。
  * 录屏/剪辑操作不内嵌：打开 Recordly 自有窗口完成（其界面完整，内嵌重做
  * 性价比低，且录屏依赖其原生 helper 进程树——决策记录见 module.go 包注释）。
+ * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+ * 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
  * @module
  */
 
@@ -34,8 +36,13 @@ export function CreateDesktopShortcut() {
 }
 
 /**
- * DownloadVersion 后台下载并静默安装指定版本：立即返回，
- * 全程经事件 recordly:version-download 推送进度。
+ * DownloadVersion 后台下载并静默安装指定版本：立即返回，全程经事件
+ * recordly:version-download 推送进度；同时开一笔 journal 托管事务
+ * （install 首装 / update 覆盖升级，managed-declarative 资产形态）——journal
+ * 先落盘再副作用，进度阶段迁移逐步 Advance，收口经观察面 Handle 自动落账并
+ * 广播 operation:changed（与既有模块事件双通道并行，Wave 4-B 接线，
+ * markeron/ccswitch/translucenttb 同构；本模块无 artifact.Tree staging，
+ * 恢复期未登记事务按"如实上报不动盘"口径处理，见 internal/app 登记面）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
@@ -181,8 +188,9 @@ export function SetReleaseChannel(channel) {
 }
 
 /**
- * Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
- * 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+ * Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+ * 拒绝即早退——Wave 3 口径：void 方法不改签名。前端当前不调用本方法，
+ * 但它属绑定面，必须经门收口。
  * @returns {$CancellablePromise<void>}
  */
 export function Shutdown() {
