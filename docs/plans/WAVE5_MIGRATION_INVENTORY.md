@@ -58,7 +58,7 @@ HideWindow/Env/OnLog 列为 instance 引擎侧事实;难度按迁移到 supervis
 
 ## 迁移执行状态(2026-09-19 收口时点,真相对账)
 
-- **✅ 已迁内核(19)**:markeron、rufus(Wave 4 双样本)+ ccswitch、snipaste†、ddnsgo、papertodo†、translucenttb、keyviz、flclash、everything、paseo、mangodisk、bcu、litemonitor、piclite、vscode、guoheview、recordly‡(†薄适配器:下载/落位段留 bespoke,理由见 ADR-0002 §5;‡NSIS 覆盖式单目录,无 Tree 可登记)。全部 journal 事务化 + `.tmp-<txnID>` 背书法启动恢复登记(app.go versionTrees 共 18 棵,**仅 recordly 无树例外**——piclite 用 artifact.Tree staging,已登记),真机冒烟确定性化(-count=5 零 flake)。
+- **✅ 已迁内核(18,另 quicklook/bili23 仅版本面迁入=版本面共 20)**:markeron、rufus(Wave 4 双样本)+ ccswitch、snipaste†、ddnsgo、papertodo†、translucenttb、keyviz、flclash、everything、paseo、mangodisk、bcu、litemonitor、piclite、vscode、guoheview、recordly‡(†薄适配器:下载/落位段留 bespoke,理由见 ADR-0002 §5;‡NSIS 覆盖式单目录,无 Tree 可登记)。全部 journal 事务化 + `.tmp-<txnID>` 背书法启动恢复登记(app.go versionTrees 共 18 棵,**仅 recordly 无树例外**——piclite 用 artifact.Tree staging,已登记),真机冒烟确定性化(-count=5 零 flake)。
 - **⬜ ②名单(已按 ADR-0003 §4 裁决:version 迁、instance 留 bespoke,不再等内核扩展)**:quicklook、bili23。
 - **⬜ ③明示 bespoke 未动**:frpc、rustdesk、subnetdesk、douzy、nanazip、ocr 资产侧(其 instance 测试在本会话为既有环境红,非回归)。
 - **登记节奏**:S 批后新增两笔待裁——"安装器执行族"已 3 家(keyviz/piclite MSI + recordly NSIS),达 ADR-0002 §3 阈值,是否入 artifact 策略族(受控枚举 `installPolicy`)进 Wave 5 签名批次一并裁;信任根缺位第 3 家(vscode 历史版无 digest)同理复议弱摘要窄接口。

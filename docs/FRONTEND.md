@@ -2,16 +2,17 @@
 
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
-> **更新日期**：2026-09-17
-> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；全仓 515 用例、build/lint/typecheck/verify 全绿；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移，522 用例全绿）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。**§9.7 字号/按钮体系化治理波 ✅**（2026-09-16/17：九档字号+三档控件高 token、~1000 处裸 px 视图层清零、家族 ~895 条副本删净落回、WSLView 2209→441 拆分、§9.6-10 六项裁决全清、822 用例全绿）；当前待办＝§9.7-下轮候选（ManagedConsoleShell 壳收编、UiModal、可访问性散点）、AppIcon 阶段2/3（挂起）、真机目视（§9.7 目视项清单①–⑩）；蓝图 Phase 0–6 主体全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
+> **更新日期**：2026-09-19
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。**§9.7 字号/按钮体系化治理波 ✅**（2026-09-16/17：九档字号+三档控件高 token、~1000 处裸 px 视图层清零、家族 ~895 条副本删净落回、WSLView 2209→441 拆分、§9.6-10 六项裁决全清）。**Wave 0–5S 契约批 ✅**（2026-09-18/19，ADR-0001/0002/0003）：四维状态投影消费 + 模块中心 `/modules` 一级入口 + 首页工作台化 + Operation 观察面（恢复条/在途条）+ 可用更新徽标（updatewatch 真实来源）+ `status.ts` 七族与操作三表 + contract-enum Go↔TS 契约门禁，详见 §12；当前测试规模 **101 spec 文件 / 1052 用例全绿**（含 build/lint/typecheck/verify 全绿）。当前待办＝§9.7-下轮候选（ManagedConsoleShell 壳收编、UiModal、可访问性散点）、AppIcon 阶段2/3（挂起）、真机目视（§9.7 目视项清单①–⑩）；蓝图 Phase 0–6 主体与 Wave 0–5S 契约批全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
 
 ## 1. 角色与约束
 
 - 前端是 Wails 桌面壳内的**本地 SPA**（WebView2），不面向公网、不做 SSR。
-- 与 Go 后端**只经 `frontend/bindings/` 的生成封装**通信（类型化 RPC + 事件 `Events`）；绑定为自动生成物，**禁止手改**，由 CI `verify:bindings` 守护。
+- 与 Go 后端**只经 `frontend/bindings/` 的生成封装**通信（类型化 RPC + 事件 `Events`）；绑定为自动生成物，**禁止手改**，由 `task verify:bindings`（重生成后 `git diff --exit-code -- frontend/bindings`，Taskfile 与 CI 门禁）守护。
 - 设计语言遵循 `hanxi-workbench-ui` 技能：冷静、紧凑、低噪声、状态清晰、浅/深双主题、无障碍与响应式内建。
+- **模块状态单一真相**：安装/启用/运行/健康一律消费后端 `ListModuleStates()` 投影（ADR-0001 §1.2），前端只缓存投影副本（§12.1），禁止页面私存或推导第二份业务状态。
 
 ---
 
@@ -19,28 +20,44 @@
 
 ```
 main.ts ── createApp(App) + 三份 styles/ 全局样式      # 无 router、无 store
-App.vue  ── 应用外壳（薄壳，路由表已外移）
-  ├─ 路由→组件与模块门禁清单在 constants/navigation.ts  # 单一来源 + defineAsyncComponent 异步
+App.vue  ── 应用外壳（薄编排：路由/门禁/事件桥/弹窗壳，展示层已组件化）
+  ├─ constants/navigation.ts 单一来源：ROUTES（41 模块路由 + 核心页 +
+  │    设置八分区，defineAsyncComponent 全异步）+ CORE_ROUTES 豁免清单
+  │    （含 /modules，模块中心自身不受"模块停用弹回"拦截）
   ├─ EnsureModuleActive 门禁 + navigationRequestID 防乱序
   ├─ <component :is> + <KeepAlive :max=10> + <ErrorBoundary>   # 动态视图 + 缓存 + 崩溃兜底
   ├─ Events 顶层桥：ext:changed / notify:received / tray:navigate
-  ├─ 设置语境第二栏：activeRoute ∈ /settings* 时 AppSidebar 面板切换为
-  │    SETTINGS_SECTIONS 分区菜单（constants/navigation.ts 单一来源，
-  │    子路由 /settings/<id>；'/settings' 兼容入口内容等同常规偏好）
-  └─ 主题 token 住 styles/tokens.css（浅/深双主题）           # 不再内联于 App.vue
-views/*.vue + views/settings/                    # 37 个后端模块各一视图 + 系统页/占位/弹窗壳（最大 WSLView.vue 2209 行）；
-                                                   # settings/ 为设置页拆分六分区（General/Theme/Tray/Storage/System/Workbench）
-components/{ui,tool,shell}/                        # 原子件 / 托管家族共用壳 / 外壳组件；业务组件按族目录放置
+  │    （updates:checked / operation:changed 由单例投影 composable 各自订阅，§12.1）
+  ├─ components/shell/ 双栏外壳：AppNavRail（左栏一级入口：首页/模块中心/
+  │    六组目录（计数+运行点）/底部通知与设置；日志、关于、主题已收进设置页）
+  │    + AppSidebar（第二栏：模块导航或 SETTINGS_SECTIONS 分区菜单，
+  │    含通知徽标/主题钮/状态条）+ CommandPalette +
+  │    navGrouping.ts（六组聚合、FAV_MODULE_IDS、最近使用路由）
+  └─ 主题 token 住 styles/tokens.css（浅/深双主题 + 色板双轴）      # 不再内联于 App.vue
+
+views/*.vue                    # 41 个后端模块各一视图 + 模块中心/日志/关于/占位
+                               # + 三个弹窗壳（QuickMenu/MsgBoard/SnipCard），
+                               # 最大 HomeView 956 行；settings/ 为设置页八分区
+                               # （General/Theme/Tray/Storage/System/Workbench/Snapshot/AI）
+components/ui/                 # 无业务原子件（+ PageContainer 三档容器 token，§7.3）
+components/tool/               # HistoryPanel + MsixToolHeader/MsixOverview 孪生壳
+components/modules/            # ModuleCard / ModuleDetailPanel / OperationBanner
+components/{envcheck,everything,fileshare,publicip,quickmenu,wechatbot,wsl}/
+                               # 巨型视图拆分后的族目录
 composables/  useToast · useNotification · useTheme · useWailsEvent · usePolling ·
-              useConfirm · usePrompt · useAsyncAction · useClipboard · 视图级 composable
+              useConfirm · usePrompt · useAsyncAction · useClipboard ·
+              useModuleCatalog · useOperations（模块级单例投影家族，§12.1）·
+              视图级 composable（useWechatBot / usePublicIpDiagnostics / …）
 utils/        errors.ts: getErrorMessage · format.ts: fmtSize/fmtDate/fmtDuration · paste.ts: parsePaste/pasteImage 粘贴分流
 ```
 
-**已做对、应保留**：`useToast`/`useNotification` 单例模式；`getErrorMessage` 统一异常；`ConfirmDialog`（Teleport+焦点陷阱+`tone/busy/details`+`v-model:open`）是可访问性标杆；事件订阅均有 unlisten 清理、`onActivated/onDeactivated` 管轮询的生命周期纪律。
+**已做对、应保留**：`useToast`/`useNotification`/`useTheme` 与 Wave 批新增的 `useModuleCatalog`/`useOperations` 同风格模块级单例（只缓存投影、事件到达只重拉、失败保留旧投影标注 stale，§12.1）；`getErrorMessage` 统一异常；`ConfirmDialog`（Teleport+焦点陷阱+`tone/busy/details`+`v-model:open`）是可访问性标杆；事件订阅均有 unlisten 清理、`onActivated/onDeactivated` 管轮询的生命周期纪律。
 
 ---
 
 ## 3. 已知结构问题（重构动因）
+
+> **历史快照声明**：下表为 2026-09 重构启动时的基线事实（本文档保留其作为迁移动因），各行均已在 Phase 0–6 与 Wave 0–5S 契约批中化解——落点见 §5 路线表、§9 手册与 §12；现状以 §2 为准。
 
 | 维度 | 事实 | 影响 |
 |---|---|---|
@@ -78,6 +95,8 @@ src/
 
 **依赖策略**：新增 `@vueuse/core`（定时器/监听/媒体查询/存储/剪贴板的自动清理与少写胶水）；版本锁定，遵 `.npmrc` 供应链策略。
 
+**落地差异（蓝图兑现对账，只登记不改写规划原文）**：`components/tool/` 实际落点为 `HistoryPanel` + MSIX 孪生壳（`MsixToolHeader`/`MsixOverview`），`ManagedConsoleShell`/`VersionGrid`/`StatusHeader` 与 `useManagedTool` 未立（§9.7-下轮候选）；`UiModal` 同理（§9.6-8）；`constants/` 实际三文件（status/navigation/icons）；Wave 0–5S 增补 `components/modules/` 与单例投影 composable 家族（§12）。
+
 ---
 
 ## 5. 分阶段路线图
@@ -89,11 +108,13 @@ src/
 | **2 共享件** ✅ | `utils/format`、`constants/status`、`constants/navigation`、`components/ui/*`、`composables/*`；`useConfirm` 收编 confirm、**`usePrompt`（UiPrompt 带输入）收编 14 处 `window.prompt`**；`ErrorBoundary` + `app.config.errorHandler` 兜底（单视图崩溃不再整壳白屏）；`CORE_VIEWS` 视图**异步化**（`defineAsyncComponent` 点哪个加载哪个）+ 单测 | 共享层就绪 + 首屏瘦身 + 崩溃兜底（不迁移视图） | 低 |
 | **3 试点** ✅ | 迁 `MarkerOnView`+`CCSwitchView` 到新骨架，锁特征测试一致，产出迁移模板+checklist（§9 手册） | 前后对照样板 | 中 |
 | **4 铺开托管家族** ✅ | 五路并行 fork + 主线模板组，19/19 托管视图套 §9 手册迁移（含 rustdesk/subnetdesk/everything/ddnsgo 等特殊形态）；envcheck 对齐 token 留 Phase 5 | 家族重复基本消除 | 中：逐视图验活 |
-| **5 工具视图顺手治理** | Wifi/Lan/PortScan/PublicIp/PortKill/FileShare/Memo/Wechat 等"改到哪治到哪"：`useWailsEvent/usePolling/useConfirm/usePrompt/format/UiXxx`；NanaZip/EarTrumpet 合并；**长尾认领：frpc 双视图（FrpcProjects/Versions + Frpc* 组件）、系统页 Home/Logs/Settings/About、ExtPlaceholderView** | 长尾收敛 | 低-中 |
+| **5 工具视图顺手治理** ✅ | Wifi/Lan/PortScan/PublicIp/PortKill/FileShare/Memo/Wechat 等"改到哪治到哪"：`useWailsEvent/usePolling/useConfirm/usePrompt/format/UiXxx`；NanaZip/EarTrumpet 合并；**长尾认领：frpc 双视图（FrpcProjects/Versions + Frpc* 组件）、系统页 Home/Logs/Settings/About、ExtPlaceholderView** | 长尾收敛 | 低-中 |
 | **6 ✅ 拆分收官** | 巨型孤本四组全拆：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173（`d3c0815`…`9f9cc2f`）/ WechatBot 2176→235（`424015c`），574 用例全绿、原特征测试断言零改动；别名层整删（`4bfaf90`）。App.vue 进一步组件化留低优 | — | 中：逐视图特征测试先行 |
-| **7 文档** | 技术栈漂移已修；本蓝图持续更新 | 文档一致 | 低 |
+| **7 文档** | 技术栈漂移已修；本蓝图持续更新（§2 现状、§3 历史基线声明、§12 Wave 契约批） | 文档一致 | 低 |
 
 > **全量认领对账（35 视图，无漏网）**：Phase 4 托管家族 19（含 rustdesk/subnetdesk/envcheck）；Phase 5 工具与长尾 16（网络类 8 + frpc 2 + 系统页 4 + ExtPlaceholder + Memo/FileShare 重叠计一）。SettingsView 的主题切换器属 Phase 1 最小改动，其余治理在 Phase 5。
+
+> **Wave 0–5S（蓝图后的契约批，2026-09-18/19 交付）**：与后端"工作台界面 × 官方模块分发"共同契约（ADR-0001/0002/0003）同步落地的前端面——模块中心 `/modules`、首页工作台化、单例投影家族、状态词表扩充、OperationBanner、可用更新徽标、contract-enum 契约门禁。已实现事实全部收在 §12，不并入上表（表为历史蓝图）。
 
 ---
 
@@ -109,6 +130,7 @@ src/
 8. 每 Phase 独立中文 Conventional Commit，可单独回滚；不碰 `internal/**` 后端——**唯一例外**：Phase 1 的 DWM 深色标题栏同步调用（§7.2）。
 9. **新视图冻结线**：Phase 3 模板产出后，新增/增量视图（含新纳入的托管工具模块）必须直接按新骨架 + 共享胶水编写，禁止再复制旧方言样板——否则迁完 15 个又冒出新的复制体。
 10. **独立分支**：重构在专用分支（`refactor/frontend`）小步提交、每 Phase 绿后合回 `dev`，与 dev 上的新功能迭代互不阻塞。
+11. **状态词表只读**（Wave 0 契约批追加）：模块/操作状态展示一律经 `constants/status.ts` 词表 + 后端投影字段（`primaryAction`/`summary`/`reason`/`health`）渲染，页面禁止本地堆叠状态推断；枚举漂移由 `contract-enum.spec` 当场拦截（§12.4）。
 
 ---
 
@@ -144,6 +166,7 @@ src/
 - **字族**：`--font-text / --font-display / --font-mono`；仅机器值（路径/端口/版本/速率/日志）用 mono + `tabular-nums`。
 - **字号阶梯（2026-09 体系化治理落地，全库唯一合法字号源）**：`--text-micro/xs/sm/base/md/lg/xl/2xl/3xl` = **10/11/12/13/14/16/18/22/28px**，基准 13px（紧凑工作台裁决）；角色映射：micro 角标注记 / xs 元数据 caption chip / sm 表格正文控件标签小按钮 / base 正文主按钮 / md 分区标题 / lg 区块标题 / xl 页面标题 / 2xl·3xl 大数字与 KPI。视图/组件**禁止裸 px 字号**，一律 var() 就近取档（历史散值映射：9/9.5/10/10.5→micro、11/11.5→xs、12/12.5→sm、14/15→md、16/17→lg、18/19/20→xl、21/22/24→2xl、其余→3xl 封顶）。**豁免区**：`.popup-shell` 独立悬浮窗（轮盘/SnipCard，字号与窗口尺寸后端互锁）与终端 ANSI 日志区（`--terminal-*` 行距体系）。
 - **按钮与控件三档（同上治理）**：`--control-h-lg/md/sm` = **36/30/24px** 对应 `.btn`/`.btn-small`/`.btn-micro`；行内微操作一律收 `.btn .btn-small/.btn-micro` 或 `.link-button` 标准家族，禁私有钮形；粗指针 44px 兜底在 base.css。
+- **页面容器三档**：宽度真相 = tokens.css `--container-standard/workbench/wide` = **1000/1200/1440px**，映射 components.css `.page/.page-workbench/.page-wide` 骨架原子；`page-fluid` 为终端/日志类满宽例外档。`components/ui/PageContainer.vue` 是组件化入口（`variant` 三档 + `fluid` 例外，Wave 批新页采用；既有视图仍直接使用全局原子类，宽度真相同一处）。页面容器不叠加页面级 padding（视口安全边距归外壳内容区，禁双重 padding）。
 - **半径/阴影/动效**：control 8 / element 12 / panel 16 / pill 999；动效 100–180ms、≤6px；**必须含 `prefers-reduced-motion` 全局块**。
 - **无障碍**：`:focus-visible` 清晰环；`pointer:coarse ≥44px`、桌面按钮 ≥36–38px、资源行 ≥52–56px；状态不只靠颜色；网格文本子项 `min-width:0`。
 - **字体栈写实**：`--font-text` 含中文回退（如 `"Segoe UI", "Microsoft YaHei UI", system-ui`），`--font-mono` 用 `Consolas, "Cascadia Mono", monospace`；组件视图不得再自带 `font-family` 声明。
@@ -160,7 +183,7 @@ src/
 - **Prettier 一次性**：全仓格式化独立成一个 `style:` 提交（`git blame --ignore-rev` 记录该 SHA 保护 blame），此后每 Phase 只格式化 touched 文件，不顺手全仓。
 - **AppIcon 图标集**（§8 清单已落定，阶段1 ✅）：注册表 `constants/icons.ts`（24 viewBox 纯 path、`currentColor` 描边 1.8、禁散写 `<svg>`）+ 渲染器 `components/ui/AppIcon.vue`（缺省 aria-hidden 装饰，传 label 升格 role=img；特征测试 6 例）。导航双轨前缀约定：`i:name` 走 SVG、裸值文本回退。分批：阶段1 壳与状态（home/file-text/gear/info/bell/inbox/sun/moon/monitor + 通知严重度改 CSS 色点）✅；**阶段2**（navigation.ts 模块图标 26 枚，含侧栏渲染层以前端表覆盖后端 GetNavs emoji 的单一来源方案，调研已毕）与**阶段3**（MAIN_TABS 前缀与控制按钮 emoji ≈50 处，含 SettingsView 🔔）**均经用户决策暂停（2026-09-05）**，恢复时按本清单续做。全部自绘无第三方图标库，THIRD_PARTY_NOTICES 不涉。
 - **依赖兼容矩阵**：Vitest 大版本必须实测支持 Vite 8；ESLint flat config + `eslint-plugin-vue` + `@typescript-eslint`；全部锁进 devDeps（`.npmrc` 供应链策略下）。
-- **生成物必须排除在 lint/format/test 之外**：`frontend/bindings/**` 进 ESLint ignores、`.prettierignore`、vitest include 白名单之外——生成物一旦被格式化，CI `verify:bindings`（git diff 校验）当场爆红。
+- **生成物必须排除在 lint/format/test 之外**：`frontend/bindings/**` 进 ESLint ignores、`.prettierignore`、vitest include 白名单之外——生成物一旦被格式化，`verify:bindings`（git diff 校验）当场爆红。
 - **WebView2 能力假设**：`:where()`、`color-mix()`、`100dvh` 等依赖较新 Chromium——WebView2 为 Evergreen 自动更新，Win10 22H2+ 基线基本无忧；若目标机器存在固定版本 Runtime 需先用后写。
 - **localStorage 便携性缺口**：WebView2 的 localStorage 在系统 profile，**不随 `hanxidata/` 迁移**（`EverythingView` 列宽等既有用法同病）——需跨机保留的数据一律进后端 settings；localStorage 只配作首帧缓存这类可弃用途。
 - **不受影响项（已核实）**：ddns-go 面板子窗口加载上游原生页面（外部 URL），不吃本项目 token，主题重构无需处理。
@@ -253,3 +276,35 @@ src/
    （命名槽位 + 先注册新键后注销旧键 + 冲突中文报错降级），派发目标一律
    TrayCommand 键（`registry.RunTrayCommand`），不各自触碰 Wails、更不写键盘钩子。
    首例：`Ctrl+Alt+T` 剪贴板识图（`ocr/snip-clipboard`，键位可在文字识别页改）。
+
+## 12. 模块状态投影消费与契约门禁（Wave 0–5S 落地事实）
+
+> 权威源是后端 `extapi.Registry.ListStates()` 四维投影（`internal/app/catalog_service.go`
+> 的 `ListCatalog`/`ListModuleStates`/`SetModuleInstalled` + `operations_service.go` 的
+> `ListOperations`/`DismissResumable` + `updates_service.go` 的 `RefreshUpdates`）。
+> 前端**只缓存投影副本**：不持久化第二份真相、操作成功后不本地 patch state、
+> 卡片主操作零本地推断。本节是该契约的前端侧条款。
+
+### 12.1 单例投影 composable（与 useTheme/useToast 同一模式）
+
+- `composables/useModuleCatalog.ts`：并发拉 `ListCatalog`（静态身份 + description）+ `ListModuleStates`（四维事实）两源，按 moduleId 合并为 `ModuleEntry[]` 进程内共享；`ext:changed` / `updates:checked` 到达**只重拉不本地改**（300ms 突发合并窗口 + in-flight 单飞合流）；刷新失败保留旧投影并如实标注 stale，不清空不假装新鲜；模块级单例的事件订阅随模块存活于应用全生命周期，二次进入零冷启动。
+- `composables/useOperations.ts`：只读 `ListOperations()`（Active queued/running + Recent(30)，终态与 resumable 回灌合并去重），`operation:changed` 到达只重拉；resumable 合成记录展示 ID 前缀 `resumed-` 仅作呈现，**收口通道一律消费契约字段 `op.txnId`**（禁止从展示 ID 剥前缀反推事务，catalog.go Operation.TxnID 注记同口径）。
+
+### 12.2 模块中心（`/modules`，AppNavRail 一级入口）
+
+- `views/ModuleCenterView.vue`（Wave 2 起）：数据全部来自 `useModuleCatalog` 合并投影；**全部 + 五档状态筛选**（已安装 / 可安装 / 异常 / 有可用更新 / 运行中，带计数）+ 名称/ID/描述搜索；卡片主按钮只读 `state.primaryAction`/`reason`，文案经 `constants/status.ts` 词表映射；组件族 `components/modules/ModuleCard.vue` + `ModuleDetailPanel.vue`；后端未下发某模块状态时显示"状态未知"，禁本地推断。
+- `components/modules/OperationBanner.vue`（Wave 4 统一 Operation 呈现，恢复条/在途条两用，置于错误框之后、筛选之前）：resumable 残留引导「前往模块页重试」或「忽略残留」（难撤销动作走确认框，以 failed 收口进账本——审计单收口不可翻案，并清理托管现场；同模块未收口事务的**单写约束**如实告知）；在途事务渲染 `Operation.progress`（nil = 不可量化，不造百分比）。
+- 逻辑安装口径如实呈现：`SetModuleInstalled` 对 builtin-logical 只动入口与凭据、**不释放宿主体积**（ADR-0001 §1.5）；页头计数与分桶只做展示派生。
+
+### 12.3 首页工作台（HomeView，不再承担完整模块目录与启停——归模块中心）
+
+- **四摘要卡**：正在运行 / 模块总数 / 已启用 / **可用更新**（前三为 ListModules 真实计数；可用更新 = 投影 `health==='update-available'` 条目数，由后端 `internal/updatewatch` 真实上游对比驱动，非占位）。
+- **可用更新条目行**：`useModuleCatalog` 过滤 update-available 合并列表（有则显示、无则整区隐藏），行=模块名+摘要合并短语（直取 `SUMMARY_META`，零本地推断）+健康徽标+直达；徽标短语经 `status.ts` 的 `updateAvailableText(state.remoteVersion)` 渲染——投影带 `remoteVersion`（后端更新感知链写入的纯展示字段）时"有可用更新 → 新版本号"，未带时按词表原文呈现**不编造**；页头「检查更新」→ `RefreshUpdates` 手动一轮。
+- **常用入口**：固定常用（`components/shell/navGrouping.ts` 的 `FAV_MODULE_IDS` 单一来源）+ 最近使用（`loadRecentRoutes`）合并去重、按可见 navs 过滤，最多 4 个直达。
+- **最近任务双源**：`HistoryService.List` 三桶（ocr/portkill/envcheck）+ 统一 Operation 终态记录（`useOperations.recentFinished`）两源按时间降序取最近 5 条；在途（queued/running）不进本列表（归模块中心在途条）；无数据整区隐藏。
+
+### 12.4 状态词表与 Go↔TS 契约门禁
+
+- `constants/status.ts` 是前端展示词汇唯一落点：**四维 `DELIVERY/POLICY/RUNTIME/HEALTH_META` + `PRIMARY_ACTION/SUMMARY/ENTRYPOINT_META` 七族**与**操作三表 `OPERATION_KIND/OPERATION_STATUS/PHASE_META`**，逐值 `satisfies Record<枚举值联合, Meta>` 穷举守卫——后端增删枚举值即 TS 编译失败；tone 词表与 components.css `.chip-{tone}/.banner-{tone}` 严格对齐；`TOOL_STATE_META`/`ENV_STATUS_META` 为历史视图表（头注登记 Wave 3 收口事项）。
+- `constants/__tests__/contract-enum.spec.ts`（Wave 0 DoD 门禁）三层锁定：bindings 生成 JS enum 值集 == `status.ts` 词表键集 == `internal/extapi/catalog.go` const 值集 == `scripts/fixture/module_catalog.json` 基线（schema==1、41 项）+ `composition_contract.json` 关键导出可见性；`$zero` 生成器占位剔除比对。纪律：bindings 为生成物，发现问题改 Go 源或重跑生成，绝不在 spec 迁就产物。
+- 测试规模（2026-09-19 实测）：**101 个 spec 文件 / 1052 用例全绿**（`vitest run`），含契约门禁与各家族特征测试。
