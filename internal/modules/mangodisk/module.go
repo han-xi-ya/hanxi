@@ -62,3 +62,10 @@ func (m *Module) TrayCommands() []extapi.TrayCommand {
 		}},
 	}
 }
+
+// CheckUpdate 实现 extapi.UpdateChecker 可选契约：宿主更新感知调度器直调
+// （不经懒激活与统一调用门），转发版本引擎比较，返回语义见
+// version.Manager.CheckUpdate 注释。
+func (e *Module) CheckUpdate(ctx context.Context) (local, remote string, hasUpdate bool, err error) {
+	return e.svc.manager.CheckUpdate(ctx)
+}
