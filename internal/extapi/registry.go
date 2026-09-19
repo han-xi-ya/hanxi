@@ -10,6 +10,16 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
+)
+
+// drain 预算：停用/退出的有界等待。存量模块普遍缺取消通道，属专项计划
+// 认可的过渡态（"先实现拒绝新操作和有界 drain，逐模块补取消"）；超时后
+// 强制收口并以 Error 显式告警，绝不静默——在途调用由模块内部锁兜底，
+// JobObject 保证进程侧无孤儿。
+const (
+	drainBudgetDisable  = 30 * time.Second
+	drainBudgetShutdown = 60 * time.Second
 )
 
 // 哨兵错误：调用方可用 errors.Is 区分"模块不存在"与"模块已禁用"两类失败。
@@ -18,6 +28,9 @@ var (
 	ErrUnknownModule = errors.New("registry: unknown module")
 	// ErrModuleDisabled 表示模块存在但当前处于禁用状态，拒绝初始化或调用。
 	ErrModuleDisabled = errors.New("registry: module disabled")
+	// ErrModuleNotInstalled 表示模块存在且启用，但缺少逻辑安装凭据（receipt），
+	// 调用门拒绝执行。Phase 1-2 由模块中心"安装/卸载"操作驱动该维度。
+	ErrModuleNotInstalled = errors.New("registry: module not installed")
 )
 
 // StateStorage 状态持久化抽象接口
@@ -35,15 +48,31 @@ type ModuleWrapper struct {
 	initializing bool
 	stopping     bool
 	inFlight     int
-	mu           sync.Mutex
-	cond         *sync.Cond
+	// failed 滞留上次 OnInit 失败事实：投影为 RuntimeFailed，直到重试成功、
+	// 重新启用或完成析构收口（Wave 0 契约四维状态的运行维度输入）。
+	failed bool
+	mu     sync.Mutex
+	cond   *sync.Cond
+}
+
+// stateOverride 承载不由 wrapper 现场派生的维度事实：
+// mandatory（Core 控制平面）与 blocked（安全/撤回阻止）由装配根或后续
+// 事务引擎注入；health 预留给 Wave 5+ 的签名目录裁决，内建逻辑模块恒 current。
+type stateOverride struct {
+	mandatory bool
+	blocked   bool
+	health    HealthState
 }
 
 // Registry 管理内建扩展的注册、生命周期与启用状态。
 type Registry struct {
-	mu      sync.RWMutex
-	modules map[string]*ModuleWrapper
-	store   StateStorage
+	mu        sync.RWMutex
+	modules   map[string]*ModuleWrapper
+	store     StateStorage
+	receipts  ReceiptStorage
+	overrides map[string]*stateOverride
+	// onLifecycles 启停副作用钩子链（托盘重建、热键注销等），在 wrapper 锁外依次调用。
+	onLifecycles []func(moduleID string, enabled bool)
 }
 
 // NewRegistry 创建注册表。store 可为 nil，此时启用状态不持久化（仅内存生效，重启后恢复默认）。
@@ -56,17 +85,31 @@ func NewRegistry(store StateStorage) *Registry {
 
 // Register 注册一个或多个扩展（此时仅注册元数据，不分配运行时重资源）。
 func (r *Registry) Register(exts ...Module) error {
+	gated, err := r.registerLocked(exts)
+	if err != nil {
+		return err
+	}
+	// 调用门注入在 Registry 锁外统一执行（模块 SetGate 可能触碰自身状态，
+	// 不在写锁内回调业务代码）。
+	gate := gateView{registry: r}
+	for _, e := range gated {
+		e.(GateAware).SetGate(gate)
+	}
+	return nil
+}
+
+func (r *Registry) registerLocked(exts []Module) ([]Module, error) {
+	var gated []Module
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	for _, e := range exts {
 		info := e.Info()
 		id := info.ID
 		if id == "" {
-			return fmt.Errorf("registry: extension with empty id")
+			return nil, fmt.Errorf("registry: extension with empty id")
 		}
 		if _, dup := r.modules[id]; dup {
-			return fmt.Errorf("registry: duplicate extension id %q", id)
+			return nil, fmt.Errorf("registry: duplicate extension id %q", id)
 		}
 
 		// 优先从持久化 store 读取状态，默认 true
@@ -81,8 +124,12 @@ func (r *Registry) Register(exts ...Module) error {
 		}
 		wrapper.cond = sync.NewCond(&wrapper.mu)
 		r.modules[id] = wrapper
+
+		if _, ok := e.(GateAware); ok {
+			gated = append(gated, e)
+		}
 	}
-	return nil
+	return gated, nil
 }
 
 func (r *Registry) wrapper(id string) (*ModuleWrapper, bool) {
@@ -90,6 +137,39 @@ func (r *Registry) wrapper(id string) (*ModuleWrapper, bool) {
 	wrapper, ok := r.modules[id]
 	r.mu.RUnlock()
 	return wrapper, ok
+}
+
+// waitForIdleLocked 有界等待 initializing 与 inFlight 归零（调用方持有 w.mu）。
+// 返回是否完全收口；超时后不再等待——停用死锁是比残留更糟的失败模式。
+// 超时时在途调用仍持租约，其安全由模块内部锁兜底，投影随后自然收敛。
+func (w *ModuleWrapper) waitForIdleLocked(budget time.Duration) bool {
+	if !w.initializing && w.inFlight == 0 {
+		return true
+	}
+	stopWake := make(chan struct{})
+	defer close(stopWake)
+	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				w.mu.Lock()
+				w.cond.Broadcast()
+				w.mu.Unlock()
+			case <-stopWake:
+				return
+			}
+		}
+	}()
+	deadline := time.Now().Add(budget)
+	for w.initializing || w.inFlight > 0 {
+		if time.Now().After(deadline) {
+			return false
+		}
+		w.cond.Wait()
+	}
+	return true
 }
 
 func (r *Registry) wrappers() []*ModuleWrapper {
@@ -110,7 +190,22 @@ func (r *Registry) EnsureActive(moduleID string) error {
 	if !ok {
 		return fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
 	}
+	if err := r.checkInstalled(moduleID); err != nil {
+		return err
+	}
 	return ensureActive(wrapper, moduleID)
+}
+
+// checkInstalled 裁决 Delivery 维度（Wave 1 口径：未安装 = 不初始化、不进入口、
+// 不允许业务调用）。receipts 未注入时（单测、无头进程）全部按已安装处理。
+func (r *Registry) checkInstalled(moduleID string) error {
+	r.mu.RLock()
+	receipts := r.receipts
+	r.mu.RUnlock()
+	if receipts != nil && !receipts.IsInstalled(moduleID) {
+		return fmt.Errorf("%w %q", ErrModuleNotInstalled, moduleID)
+	}
+	return nil
 }
 
 func ensureActive(wrapper *ModuleWrapper, moduleID string) error {
@@ -145,6 +240,10 @@ func ensureActive(wrapper *ModuleWrapper, moduleID string) error {
 		// OnInit 已成功分配的资源必须入账，即使停用已在等待；这样停用方才能
 		// 在唤醒后执行 OnDestroy，而不是因 initialized=false 泄露资源。
 		wrapper.initialized = true
+		wrapper.failed = false
+	} else {
+		// 失败事实滞留供四维投影呈现 RuntimeFailed，重试成功或收口时清除。
+		wrapper.failed = true
 	}
 	disabled := !wrapper.Enabled || wrapper.stopping
 	wrapper.cond.Broadcast()
@@ -168,20 +267,36 @@ func (r *Registry) List() []ModuleInfo {
 		info.Enabled = wrapper.Enabled
 		info.Initialized = wrapper.initialized
 		wrapper.mu.Unlock()
+		info.Installed = r.IsInstalled(info.ID)
 		out = append(out, info)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
-// GetEnabledNavs 返回所有已启用模块的导航条目，按稳定键全局排序。
+// IsInstalled 查询模块是否持有逻辑安装凭据（receipts 未注入时恒为 true）。
+func (r *Registry) IsInstalled(moduleID string) bool {
+	r.mu.RLock()
+	receipts := r.receipts
+	r.mu.RUnlock()
+	return receipts == nil || receipts.IsInstalled(moduleID)
+}
+
+// GetEnabledNavs 返回所有已启用且已安装模块的导航条目，按稳定键全局排序。
+// 未安装（缺逻辑 receipt）模块不进导航（Wave 1 可见性口径，ADR-0001 §1.4）。
 func (r *Registry) GetEnabledNavs() []NavEntry {
 	wrappers := r.wrappers()
+	r.mu.RLock()
+	receipts := r.receipts
+	r.mu.RUnlock()
 	var out []NavEntry
 	for _, wrapper := range wrappers {
 		wrapper.mu.Lock()
 		if wrapper.Enabled {
-			out = append(out, wrapper.Module.Nav()...)
+			id := wrapper.Module.Info().ID
+			if receipts == nil || receipts.IsInstalled(id) {
+				out = append(out, wrapper.Module.Nav()...)
+			}
 		}
 		wrapper.mu.Unlock()
 	}
@@ -240,6 +355,17 @@ func (r *Registry) SetEnabled(id string, enabled bool) error {
 	if !ok {
 		return fmt.Errorf("%w %q", ErrUnknownModule, id)
 	}
+	// 启用门：未安装模块不得直接启用（安装动作属于 SetInstalled 事务通道）。
+	// 停用不受安装态限制，保证异常残留时仍可收口。
+	if enabled {
+		if err := r.checkInstalled(id); err != nil {
+			return err
+		}
+	} else if r.IsMandatory(id) {
+		// Core 守卫：mandatory 模块不允许停用，杜绝"停用成功但投影仍显
+		// mandatory"的双源分叉（ADR-0001 §1.4）。
+		return fmt.Errorf("registry: module %q is mandatory core, cannot be disabled", id)
+	}
 
 	var destroy bool
 	wrapper.mu.Lock()
@@ -248,6 +374,7 @@ func (r *Registry) SetEnabled(id string, enabled bool) error {
 			wrapper.cond.Wait()
 		}
 		wrapper.Enabled = true
+		wrapper.failed = false
 		wrapper.mu.Unlock()
 	} else {
 		// 先关门：command lease 在同一把锁下检查 Enabled/stopping，之后不再有新命令进入。
@@ -259,8 +386,9 @@ func (r *Registry) SetEnabled(id string, enabled bool) error {
 			wrapper.mu.Unlock()
 		} else {
 			wrapper.stopping = true
-			for wrapper.initializing || wrapper.inFlight > 0 {
-				wrapper.cond.Wait()
+			if !wrapper.waitForIdleLocked(drainBudgetDisable) {
+				slog.Error("registry: 停用 drain 超时强制收口，在途调用由模块内部锁兜底",
+					"module", id, "budget", drainBudgetDisable.String())
 			}
 			destroy = wrapper.initialized
 			wrapper.mu.Unlock()
@@ -274,6 +402,7 @@ func (r *Registry) SetEnabled(id string, enabled bool) error {
 			wrapper.mu.Lock()
 			wrapper.initialized = false
 			wrapper.stopping = false
+			wrapper.failed = false
 			wrapper.cond.Broadcast()
 			wrapper.mu.Unlock()
 
@@ -286,10 +415,25 @@ func (r *Registry) SetEnabled(id string, enabled bool) error {
 		}
 	}
 
+	// 启停副作用（托盘重建、热键注销等）在 wrapper 锁外、持久化前触发；
+	// 钩子 panic 不允许吞掉状态变更，持久化失败仍按原语义上抛。
+	r.fireLifecycle(id, enabled)
+
 	if r.store != nil {
 		return r.store.SetModuleEnabled(id, enabled)
 	}
 	return nil
+}
+
+// fireLifecycle 在全部锁外语境下依次调用启停钩子；钩子由装配根注册，必须自容错。
+func (r *Registry) fireLifecycle(id string, enabled bool) {
+	r.mu.RLock()
+	hooks := make([]func(string, bool), len(r.onLifecycles))
+	copy(hooks, r.onLifecycles)
+	r.mu.RUnlock()
+	for _, hook := range hooks {
+		hook(id, enabled)
+	}
 }
 
 // TrayCommandInfo 托盘命令目录项：设置页候选与托盘装配统一按 Key 引用。
@@ -321,6 +465,10 @@ func (r *Registry) ListTrayCommands() []TrayCommandInfo {
 			wrapper.mu.Unlock()
 			continue
 		}
+		if !r.IsInstalled(id) {
+			wrapper.mu.Unlock()
+			continue
+		}
 		provider, ok := wrapper.Module.(TrayCommandsProvider)
 		if !ok {
 			wrapper.mu.Unlock()
@@ -342,41 +490,23 @@ func (r *Registry) ListTrayCommands() []TrayCommandInfo {
 	return out
 }
 
-// RunTrayCommand 按 key 执行托盘命令。命令取得 operation lease 后在 wrapper.mu
-// 外执行；停用先关门阻止新 lease，再等待 inFlight 归零后 OnDestroy。
+// RunTrayCommand 按 key 执行托盘命令。命令经统一 Acquire 取得 operation lease 后
+// 在 wrapper.mu 外执行；停用先关门阻止新 lease，再等待 inFlight 归零后 OnDestroy。
 func (r *Registry) RunTrayCommand(ctx context.Context, key string) error {
 	moduleID, cmdID, ok := splitTrayKey(key)
 	if !ok {
 		return fmt.Errorf("registry: invalid tray command key %q", key)
 	}
-	wrapper, ok := r.wrapper(moduleID)
-	if !ok {
-		return fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
-	}
-	if err := ensureActive(wrapper, moduleID); err != nil {
+	wrapper, release, err := r.Acquire(moduleID)
+	if err != nil {
 		return err
 	}
+	defer release()
 
-	wrapper.mu.Lock()
-	if !wrapper.Enabled || wrapper.stopping || !wrapper.initialized {
-		wrapper.mu.Unlock()
-		return fmt.Errorf("%w %q", ErrModuleDisabled, moduleID)
-	}
 	provider, ok := wrapper.Module.(TrayCommandsProvider)
 	if !ok {
-		wrapper.mu.Unlock()
 		return fmt.Errorf("registry: module %q provides no tray commands", moduleID)
 	}
-	wrapper.inFlight++
-	wrapper.mu.Unlock()
-	defer func() {
-		wrapper.mu.Lock()
-		wrapper.inFlight--
-		if wrapper.inFlight == 0 {
-			wrapper.cond.Broadcast()
-		}
-		wrapper.mu.Unlock()
-	}()
 
 	// provider 枚举与命令业务均在锁外执行，但 operation lease 全程覆盖；停用会
 	// 等待本次查找/执行结束后才析构模块。
@@ -398,6 +528,232 @@ func splitTrayKey(key string) (moduleID, cmdID string, ok bool) {
 	return parts[0], parts[1], true
 }
 
+// ---------------------------------------------------------------------------
+// Wave 1：四维状态投影与统一调用门（catalog.go 契约的 Registry 侧实现）
+// ---------------------------------------------------------------------------
+
+// Install 执行逻辑安装事务（Phase 1 最小形态，ADR-0001 §1.5/§8.4 口径）：
+// 登记 receipt → 默认启用（安装即可用）；幂等，重复安装保留首次凭据。
+// 内建逻辑模块的"安装"不复制宿主代码，UI 必须如实呈现不释放体积。
+func (r *Registry) Install(moduleID string, kind ReceiptKind) error {
+	r.mu.RLock()
+	receipts := r.receipts
+	r.mu.RUnlock()
+	if receipts == nil {
+		return fmt.Errorf("registry: receipt storage not configured")
+	}
+	if _, ok := r.wrapper(moduleID); !ok {
+		return fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
+	}
+	if !receipts.IsInstalled(moduleID) {
+		if err := receipts.MarkInstalled(moduleID, kind); err != nil {
+			return fmt.Errorf("registry: install module %q: %w", moduleID, err)
+		}
+	}
+	return r.SetEnabled(moduleID, true)
+}
+
+// Uninstall 执行逻辑卸载事务：先 SetEnabled(false) 完成 drain/析构收口，
+// 再移除 receipt；用户数据默认保留（数据策略由调用方在 UI 层单独裁决）。幂等。
+func (r *Registry) Uninstall(moduleID string) error {
+	r.mu.RLock()
+	receipts := r.receipts
+	r.mu.RUnlock()
+	if receipts == nil {
+		return fmt.Errorf("registry: receipt storage not configured")
+	}
+	if _, ok := r.wrapper(moduleID); !ok {
+		return fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
+	}
+	if r.IsMandatory(moduleID) {
+		return fmt.Errorf("registry: module %q is mandatory core, cannot be uninstalled", moduleID)
+	}
+	if err := r.SetEnabled(moduleID, false); err != nil {
+		return err
+	}
+	if err := receipts.MarkAbsent(moduleID); err != nil {
+		return fmt.Errorf("registry: uninstall module %q: %w", moduleID, err)
+	}
+	slog.Info("registry: 模块已逻辑卸载（宿主内建代码仍存在，未释放主程序体积）", "module", moduleID)
+	return nil
+}
+
+// SetReceiptStorage 注入逻辑安装凭据存储。未注入时全部内建模块按已安装处理
+// （兼容注册表单测与旧装配路径）；注入后 Delivery 维度以 receipt 为权威。
+func (r *Registry) SetReceiptStorage(rs ReceiptStorage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.receipts = rs
+}
+
+// OnLifecycle 追加一个模块启停副作用钩子（托盘重建、热键注销等）。
+// 钩子在 wrapper 锁外、Registry 持久化前按注册顺序依次调用；钩子必须自容错。
+func (r *Registry) OnLifecycle(fn func(moduleID string, enabled bool)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.onLifecycles = append(r.onLifecycles, fn)
+}
+
+// SetMandatory 标记/解除 Core 模块（策略维度投影为 mandatory，禁止停用与卸载）。
+func (r *Registry) SetMandatory(moduleID string, mandatory bool) {
+	r.overrideOf(moduleID).mandatory = mandatory
+}
+
+// IsMandatory 查询模块是否为 Core 强制项。
+func (r *Registry) IsMandatory(moduleID string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.overrides != nil && r.overrides[moduleID] != nil && r.overrides[moduleID].mandatory
+}
+
+// SetBlocked 标记/解除安全阻止（撤回、不兼容、恢复失败等）；blocked 拒绝 Acquire。
+func (r *Registry) SetBlocked(moduleID string, blocked bool) {
+	r.overrideOf(moduleID).blocked = blocked
+}
+
+// SetHealth 写入健康维度覆盖（Wave 5+ 签名目录裁决用）；传空串恢复 current。
+func (r *Registry) SetHealth(moduleID string, health HealthState) {
+	o := r.overrideOf(moduleID)
+	if health == "" {
+		health = HealthCurrent
+	}
+	o.health = health
+}
+
+func (r *Registry) overrideOf(moduleID string) *stateOverride {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.overrides == nil {
+		r.overrides = map[string]*stateOverride{}
+	}
+	o := r.overrides[moduleID]
+	if o == nil {
+		o = &stateOverride{health: HealthCurrent}
+		r.overrides[moduleID] = o
+	}
+	return o
+}
+
+// runtimeStateLocked 把 wrapper 现场标志折算为运行维度投影。
+func (w *ModuleWrapper) runtimeStateLocked() RuntimeState {
+	switch {
+	case w.stopping:
+		return RuntimeStopping
+	case w.initializing:
+		return RuntimeActivating
+	case w.initialized && w.inFlight > 0:
+		return RuntimeBusy
+	case w.initialized:
+		return RuntimeActive
+	case w.failed:
+		return RuntimeFailed
+	default:
+		return RuntimeInactive
+	}
+}
+
+// ListStates 返回全部模块的四维状态投影（含派生主操作与摘要），按 ID 稳定排序。
+// Registry 是权威源；任何前端/页面不得据此再推导第二份状态。
+func (r *Registry) ListStates() []ModuleState {
+	wrappers := r.wrappers()
+	out := make([]ModuleState, 0, len(wrappers))
+	for _, wrapper := range wrappers {
+		wrapper.mu.Lock()
+		moduleID := wrapper.Module.Info().ID
+		enabled := wrapper.Enabled
+		runtime := wrapper.runtimeStateLocked()
+		wrapper.mu.Unlock()
+		out = append(out, r.projectState(moduleID, enabled, runtime))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ModuleID < out[j].ModuleID })
+	return out
+}
+
+// projectState 合并 wrapper 现场与 overrides，计算一维完整投影。
+func (r *Registry) projectState(moduleID string, enabled bool, runtime RuntimeState) ModuleState {
+	r.mu.RLock()
+	receipts := r.receipts
+	ov := r.overrides[moduleID]
+	r.mu.RUnlock()
+
+	policy := PolicyDisabled
+	if enabled {
+		policy = PolicyEnabled
+	}
+	health := HealthCurrent
+	if ov != nil {
+		if ov.mandatory {
+			policy = PolicyMandatory
+		} else if ov.blocked {
+			policy = PolicyBlocked
+		}
+		if ov.health != "" {
+			health = ov.health
+		}
+	}
+	delivery := DeliveryInstalled
+	if receipts != nil && !receipts.IsInstalled(moduleID) {
+		delivery = DeliveryAbsent
+	}
+	return StateInput{
+		ModuleID: moduleID,
+		Delivery: delivery,
+		Policy:   policy,
+		Runtime:  runtime,
+		Health:   health,
+	}.Project()
+}
+
+// Acquire 是统一调用门的入口形态（Wave 3 全入口接线）：检查顺序为
+// blocked → receipt 已安装 → 懒激活（Enabled/并发初始化）→ operation lease 入账。
+// blocked 先于安装检查：撤回/阻止类安全裁决优先于一切状态呈现（与 Project()
+// 状态机优先级一致，ADR-0001 §1.3/§1.4）。
+// 返回的 release 必须在业务结束时调用（defer 即可，可重入安全）；
+// 停用与退出的 drain 以 lease 归零为门，语义与原托盘命令一致。
+func (r *Registry) Acquire(moduleID string) (*ModuleWrapper, func(), error) {
+	moduleID = strings.TrimSpace(moduleID)
+	wrapper, ok := r.wrapper(moduleID)
+	if !ok {
+		return nil, nil, fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
+	}
+
+	r.mu.RLock()
+	blocked := r.overrides != nil && r.overrides[moduleID] != nil && r.overrides[moduleID].blocked
+	r.mu.RUnlock()
+	if blocked {
+		return nil, nil, fmt.Errorf("%w %q (blocked)", ErrModuleDisabled, moduleID)
+	}
+	if err := r.checkInstalled(moduleID); err != nil {
+		slog.Info("registry: 调用门拒绝未安装模块", "module", moduleID)
+		return nil, nil, err
+	}
+
+	if err := ensureActive(wrapper, moduleID); err != nil {
+		return nil, nil, err
+	}
+
+	wrapper.mu.Lock()
+	if !wrapper.Enabled || wrapper.stopping || !wrapper.initialized {
+		wrapper.mu.Unlock()
+		return nil, nil, fmt.Errorf("%w %q", ErrModuleDisabled, moduleID)
+	}
+	wrapper.inFlight++
+	wrapper.mu.Unlock()
+
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			wrapper.mu.Lock()
+			wrapper.inFlight--
+			if wrapper.inFlight == 0 {
+				wrapper.cond.Broadcast()
+			}
+			wrapper.mu.Unlock()
+		})
+	}
+	return wrapper, release, nil
+}
+
 // ShutdownAll 应用退出时清理所有已初始化的模块。与 SetEnabled(false) 同样先
 // 阻止新命令、等待 operation lease 清空，再在锁外析构。
 func (r *Registry) ShutdownAll() {
@@ -408,8 +764,9 @@ func (r *Registry) ShutdownAll() {
 			wrapper.cond.Wait()
 		}
 		wrapper.stopping = true
-		for wrapper.initializing || wrapper.inFlight > 0 {
-			wrapper.cond.Wait()
+		if !wrapper.waitForIdleLocked(drainBudgetShutdown) {
+			slog.Error("registry: 退出 drain 超时强制收口（JobObject 保证无进程孤儿，内存残留随进程释放）",
+				"budget", drainBudgetShutdown.String())
 		}
 		destroy := wrapper.initialized
 		wrapper.mu.Unlock()

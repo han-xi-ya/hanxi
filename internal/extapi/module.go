@@ -73,6 +73,7 @@ type ModuleInfo struct {
 	Removable   bool   `json:"removable"` // 仅 LevelExternal 为 true
 	Enabled     bool   `json:"enabled"`
 	Initialized bool   `json:"initialized"` // 当前是否已被按需分配运行时资源
+	Installed   bool   `json:"installed"`   // 是否持有逻辑安装凭据（receipt，ADR-0001 §1.5）
 }
 
 // TrayCommand 模块向宿主托盘暴露的一条可执行命令（如"启动 Snipaste"）。
