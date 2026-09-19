@@ -151,6 +151,12 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
       return null
     },
 
+    // ⑥：本模块下载失败现词「安装失败: 」（官方接口安装语义）经前缀覆写回
+    // store 词源表——视图不再直调 adapter.versions.download 绕行保词表。
+    copy: {
+      errorPrefix: { download: '安装失败: ' },
+    },
+
     extras: {
       followOnExit: {
         get: () => GuoheViewAPI.GetFollowOnExit(),

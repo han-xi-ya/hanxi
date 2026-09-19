@@ -7,8 +7,9 @@
 // 特殊处：标注开关是六态钮（state × drawing × busy × installedCount 四维），
 // ManagedControlVerb 的"label 定值 + state 纯函数"形状装不下 → 钮体不进 control，
 // 按批 0 槽位约定走 adapter.toggle + #primary-action 槽：
-//   - adapter.toggle.run：ToggleAnnotate 动词注入（成功回 { message }，失败抛错，
-//     裸串 toast 由视图钮处理器负责——原 toggleAnnotate 口径）；
+//   - 点击编排走 store.runToggle（增强批⑥）：回执 message 裸 toast、成功/失败后
+//     refresh 快照（版本徽标即时）、started 回执 reloadVersions 重拉版本区——
+//     视图钮处理器自此只负责六态矩阵拼装与禁用前置判定；
 //   - annotateToggleView()：六态 label/sub/variant/disabled/hint 矩阵纯函数
 //     （契约注释所指"矩阵输入由模块自算"即收在此处，视图只做拼装）；
 //   - annotateBusy：切换进行中闩，视图钮（处理中…文案/禁用）与
@@ -17,7 +18,8 @@
 // 单键最简形态）；快照业务扩展字段 drawing 走 ManagedSnapshot 可选扩展
 // （S=binding Snapshot 直接充当泛型实参，projection 函数里直读，零 cast）。
 // 注意：ToggleAnnotate/StopAnnotate 引发的状态迁移由后端 emit 的 instance-state
-// 事件即时回推（原视图动作后的显式 refreshStatus 由事件+2.5s 轮询等价承接）。
+// 事件即时回推；toggle 动作另有 store.runToggle 的事后 refresh（原视图动作后的
+// 显式 refreshStatus 由事件+轮询等价承接，增强批后 toggle 路径单源补齐）。
 // ============================================================================
 
 import { ref } from 'vue'
@@ -214,7 +216,9 @@ export function createMarkerOnAdapter(): ManagedModuleAdapter<Snapshot> {
         annotateBusy.value = true
         try {
           const out: ToggleOutcome = await MarkerAPI.ToggleAnnotate()
-          return { message: out.message }
+          // ⑥：冷启动可能激活自动版本——started 回执要求重拉版本区（runToggle 消费，
+          // 「使用中」徽标即时）；toggled/external-toggled 不动版本区。
+          return { message: out.message, reloadVersions: out.outcome === 'started' }
         } finally {
           annotateBusy.value = false
         }

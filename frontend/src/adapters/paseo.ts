@@ -1,37 +1,66 @@
 // ============================================================================
-// Paseo → 托管控制台 adapter（Wave 5 · 批 0 真实消费件）
+// Paseo → 托管控制台 adapter（Wave 5 · 批 0 真实消费件；共享契约增强批收编件）
 //
 // 逐字迁移自 PaseoView 原编排段（启停/版本/通道/仓库全部 RPC 与文案零变化）。
-// 与黄金样本 ccswitch / 同批 recordly 的契约差异（批 0 成色实测，均不改共享件）：
-//  ① 多版本目录并存但「使用版本」可为空（空=自动最新已装）：getActive/setActive
-//     照常提供；视图侧的自动最新回退高亮（activeVersion 空时亮最新已装卡）属
-//     业务方言，共享面板无此位——版本表留视图渲染，store.activeVersion 消费。
-//  ② 动词词面「安装」+ 失败现词 '安装失败: ' 与 store 统一前缀 '下载失败: ' 冲突：
-//     download 自捕获自弹（同 recordly 差异②）。
-//  ③ 设定版本失败后现行为要求重拉列表核对：store 的失败路径不 reloadVersions，
-//     setActive 内自捕获 toast 后回 {reloadVersions:true} 走成功通道达成重拉
-//     （'设置失败: ' 词面与共享前缀相同，行为差异才是自捕获的理由）。
-//  ④ 双数据目录入口（%APPDATA%\Paseo 与 ~/.paseo）：contract extras.dataDir
-//     只有一位——Electron 数据走 dataDir 槽，daemon 数据钮留视图 #extras-action。
-// 另：ManagedVersionRecord 无 verifiedHash 扩展位（快照有 S 泛型、版本记录没有），
-//     该方言列的视图渲染走 cast 读取（见 PaseoView 的 unverifiedHash 辅助）。
+// 增强批收编（批 0 四处「adapter 内吃掉/留视图」差异的回迁）：
+//  ①「active 为空=自动最新已装」：契约新增 versions.implicitActive 位（⑤）——
+//     最新已装卡由共享面板亮隐式「使用版本」徽标（copy.activeBadge）且不显
+//     「设为使用」钮；引导行经 hint 上下文（②）引用将启版本，视图方言表退役。
+//  ② 动词词面「安装」+ 失败现词 '安装失败: '：不再自捕获，download 直接抛错，
+//     前缀经 copy.errorPrefix.download 回 store 词源（⑥）。
+//  ③ 设定版本失败后重拉核对：失败抛错走 store 统一 '设置失败: ' 前缀；
+//     失败后不 reload 与共享件口径一致——activeVersion 现值本就以成功回执
+//     settle 为准，重拉属过度防御，收编后视图不再互抄。
+//  ④ 双数据目录入口不变：Electron 数据走 extras.dataDir，daemon 数据钮经
+//     视图 #extras-action 槽（⑦ 已带作用域）。
+// 另：verifiedHash 方言徽标——ManagedVersionRecord<V> 泛型化（③）后
+//     store.installed 直接带该字段，面板 #version-row-extra 槽渲染免 cast。
 // 事件面：`paseo:instance-state` / `paseo:version-download`（进度键=version）。
 // ============================================================================
 
 import * as PaseoAPI from '../../bindings/hanxi/internal/modules/paseo/paseoservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/paseo/instance/models'
-import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/paseo/version/models'
+import type { DownloadProgress, PaseoVersionInfo } from '../../bindings/hanxi/internal/modules/paseo/version/models'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
-import { useToast } from '../composables/useToast'
-import { getErrorMessage } from '../utils/errors'
+import { fmtSize } from '../utils/format'
 import type {
   ManagedActionResult,
   ManagedModuleAdapter,
+  ManagedProjection,
   ManagedReleaseRecord,
   ManagedVersionRecord,
 } from '../components/managed/adapter'
+
+/** 已装记录方言字段包（③）：共享面板/视图经 store.installed 直读 verifiedHash，零 cast。 */
+export type PaseoVersionDialect = Pick<PaseoVersionInfo, 'verifiedHash'>
+
+/** 规范版本目录名（后端已新→旧排序；imported- 等非常规目录不参与隐式判定）。 */
+function canonicalVersion(v: string): boolean {
+  return /^\d+\.\d+\.\d+/.test(v)
+}
+
+// 核心版本号（去预发布后缀）：升级判定用数值核心对比，不可解析退化字典序
+function coreOf(v: string): string {
+  return v.replace(/-.*$/, '')
+}
+
+function coreCompare(a: string, b: string): number {
+  const pa = coreOf(a).split('.').map(Number)
+  const pb = coreOf(b).split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    const na = pa[i], nb = pb[i]
+    if (Number.isNaN(na) || Number.isNaN(nb)) return coreOf(a) < coreOf(b) ? -1 : coreOf(a) > coreOf(b) ? 1 : 0
+    if (na !== nb) return na > nb ? 1 : -1
+  }
+  return 0
+}
+
+/** 升级谓词（视图升级警告条唯一入口）：最新已装核心 < 当前通道最新核心。 */
+export function paseoUpgradeAvailable(installedVersion: string, latestVersion: string): boolean {
+  return coreCompare(installedVersion, latestVersion) < 0
+}
 
 /**
  * 「🐾 daemon 数据」钮的 RPC（OpenDaemonHome 族）：extras.dataDir 槽批 0 只有一位
@@ -42,10 +71,9 @@ export async function openPaseoDaemonHome(): Promise<void> {
   await PaseoAPI.OpenDaemonHome()
 }
 
-export function createPaseoAdapter(): ManagedModuleAdapter {
+export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersionDialect> {
   const { confirm } = useConfirm()
   const { prompt } = usePrompt()
-  const { showToast } = useToast()
 
   return {
     getStatus: () => PaseoAPI.GetStatus(),
@@ -69,30 +97,23 @@ export function createPaseoAdapter(): ManagedModuleAdapter {
       listReleases: () => PaseoAPI.ListReleases(),
       getActive: () => PaseoAPI.GetActiveVersion(),
 
+      /** ⑤：隐式使用版本——active 为空 = 自动最新已装（规范版本目录首条）。 */
+      implicitActive: (installedList) => installedList.find((v) => canonicalVersion(v.version))?.version ?? '',
+
       async setActive(version): Promise<ManagedActionResult> {
-        try {
-          const ver = await PaseoAPI.SetActiveVersion(version)
-          return { message: `下次启动将使用 Paseo ${version}`, activeVersion: ver }
-        } catch (e) {
-          // 差异③：失败后重拉列表核对后端真实值（现视图逐字行为）
-          showToast(`设置失败: ${getErrorMessage(e)}`)
-          return { reloadVersions: true }
-        }
+        // ③收编：失败直接抛错，store 统一 '设置失败: ' 前缀；不再自捕获重拉
+        const ver = await PaseoAPI.SetActiveVersion(version)
+        return { message: `下次启动将使用 Paseo ${version}`, activeVersion: ver }
       },
 
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
-        try {
-          // 运行中不拒绝（解压目标是独立新版本目录）：现视图无禁用钮、忽略返回值
-          await PaseoAPI.DownloadVersion(rel.version)
-          return {}
-        } catch (e) {
-          // 差异②：词面「安装失败: 」保持逐字现词，静默回执避免双 toast
-          showToast(`安装失败: ${getErrorMessage(e)}`)
-          return {}
-        }
+        // 运行中不拒绝（解压目标是独立新版本目录）：现视图无禁用钮、忽略返回值。
+        // ②收编：失败抛错走词源表（copy.errorPrefix.download = '安装失败: '）。
+        await PaseoAPI.DownloadVersion(rel.version)
+        return {}
       },
 
-      async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
+      async remove(v: ManagedVersionRecord<PaseoVersionDialect>): Promise<ManagedActionResult> {
         // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
         const accepted = await confirm({
           title: `确定卸载 Paseo ${v.version}？`,
@@ -117,7 +138,7 @@ export function createPaseoAdapter(): ManagedModuleAdapter {
         return { message: `已导入 Paseo ${info.version}`, reloadVersions: true }
       },
 
-      async openDir(v: ManagedVersionRecord): Promise<ManagedActionResult> {
+      async openDir(v: ManagedVersionRecord<PaseoVersionDialect>): Promise<ManagedActionResult> {
         await PaseoAPI.OpenDir(v.dir)
         return {}
       },
@@ -159,20 +180,58 @@ export function createPaseoAdapter(): ManagedModuleAdapter {
       return null
     },
 
-    // hint 缺位说明：stopped 引导行引用「将启动的版本」（activeVersion 空时回退
-    // 最新已装），纯快照投影 + 无自动最新位——引导行留视图模板渲染。
+    // ②收编：stopped 引导行引用「将启动的版本」（active 空回退隐式自动最新）——
+    // 第二参版本区投影携带已装列表，原视图模板的三态引导行逐字迁回 hint 槽。
+    hint: (s, ctx: ManagedProjection<PaseoVersionDialect>) => {
+      if (s.state === 'stopped') {
+        const launch = ctx.active || (ctx.installed.find((v) => canonicalVersion(v.version))?.version ?? '')
+        return launch
+          ? `尚未运行：点击「打开窗口」启动 Paseo ${launch}。agent 编排与手机配对在其窗口内操作；数据在 %APPDATA%\\Paseo 与 ~/.paseo，与托管版本目录无关。`
+          : '尚未安装：请到「版本管理」在线安装或导入本地副本。'
+      }
+      if (s.state === 'starting') {
+        return '正在拉起 Paseo（Electron 冷启动 + 内置 daemon 拉起，约 2~15 秒）…'
+      }
+      return null
+    },
 
     channel: {
       options: [
         { value: 'stable', label: 'Stable 稳定' },
-        { value: 'beta', label: 'Beta 预发布' },
+        { value: 'beta', label: 'Beta 预发布', warn: 'beta 为上游预发布版，仅供尝鲜' },
       ],
       get: () => PaseoAPI.GetReleaseChannel(),
       async set(value: string): Promise<ManagedActionResult> {
         await PaseoAPI.SetReleaseChannel(value)
-        // 通道变更影响远程列表取数口径：请消费方重拉版本区
+        // 通道变更影响远程列表取数口径：store.runChannel 消费回执重拉版本区
         return { reloadVersions: true }
       },
+    },
+
+    // ④收编：共享面板词面覆写（视图方言表退役后逐字现词全部回本表）。
+    copy: {
+      metaLead: (ctx) => {
+        const implicit = ctx.installed.find((v) => canonicalVersion(v.version))?.version ?? ''
+        const shown = ctx.active || (implicit ? `自动最新（${implicit}）` : '未安装')
+        return `使用版本 ${shown}`
+      },
+      remoteSummary: (n) => `远程版本 ${n} 个`,
+      metaHints: [
+        '官方 Windows 便携 zip 解压进独立版本目录（GitHub digest sha256 + 字节数 + zip CRC + 布局四层校验），多版本共存，数据共享不受版本增删影响',
+      ],
+      installedSectionTitle: '托管版本',
+      activeBadge: '使用版本',
+      setActiveTitle: '下次启动使用该版本（运行中的实例不受影响）',
+      firstUseEmpty: '尚未安装 Paseo —— 在线安装官方便携 zip 解压版，或「导入本地安装」把机器上已有的程序目录收编进来',
+      remoteUnavailable: '无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试',
+      uninstallRunningHint: '请先退出该版本',
+      uninstallIdleHint: '仅删本版本目录，共享数据不受影响',
+      downloadLabel: () => '安装',
+      firstUseDownloadLabel: (rel) => `安装最新版 ${rel.version}（约 ${fmtSize(rel.size)}）`,
+      downloadingWord: '安装中',
+      stageWord: (stage) => (['verify', 'extract'].includes(stage) ? '校验并解压…' : ''),
+      installedChipTone: 'positive',
+      errorPrefix: { download: '安装失败: ' },
     },
 
     extras: {

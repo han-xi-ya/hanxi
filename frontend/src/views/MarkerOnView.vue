@@ -4,32 +4,25 @@
 // ManagedConsoleShell 管页头页签骨架，ManagedControlBar 管状态头与启停钮区，
 // 标注开关钮体经 #primary-action 槽自绘——钮序按 Shell 约定：
 // 声明主钮（本模块空置）→ 槽内 toggle → 退出钮「⏻ 停止」恒居末位。
-// 状态轮询/uptime/下载进度 map/busy 闩等编排由 store 单源；切换动作引发的
-// 状态刷新由后端 instance-state 事件即时回推 + 2.5s 轮询等价承接。
+// 状态轮询/uptime/下载进度 map/busy 闩等编排由 store 单源；标注开关点击经
+// store.runToggle（增强批⑥）：裸串失败 toast、成功后 refresh（版本徽标即时）、
+// started 回执 reloadVersions 重拉版本区——视图只余六态矩阵拼装与禁用前置判定。
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import type { ManagedSnapshot } from '../components/managed/adapter'
+import type { ManagedConsoleStore } from '../components/managed/store'
 import { annotateToggleView, createMarkerOnAdapter } from '../adapters/markeron'
-import { useToast } from '../composables/useToast'
-import { getErrorMessage } from '../utils/errors'
 
 const adapter = createMarkerOnAdapter()
-
-const { showToast } = useToast()
 
 /** 快照业务扩展：drawing 经 ManagedSnapshot 可选字段读出（共享件不感知业务键）。 */
 function drawingOf(snap: ManagedSnapshot | null): boolean {
   return !!(snap as { drawing?: boolean } | null)?.drawing
 }
 
-/** 标注开关点击：动词经 adapter.toggle 槽注入；失败 toast 保持裸串（原文案口径）。 */
-async function onToggle(input: { state: string; drawing: boolean; busy: boolean; installedCount: number }) {
+/** 标注开关点击：禁用前置判定后交 store.runToggle（编排与 toast 词源单源在 store）。 */
+function onToggle(store: ManagedConsoleStore, input: { state: string; drawing: boolean; busy: boolean; installedCount: number }) {
   if (annotateToggleView(input).disabled) return
-  try {
-    const res = await adapter.toggle?.run()
-    if (res?.message !== undefined) showToast(res.message)
-  } catch (e) {
-    showToast(getErrorMessage(e))
-  }
+  void store.runToggle()
 }
 </script>
 
@@ -42,14 +35,15 @@ async function onToggle(input: { state: string; drawing: boolean; busy: boolean;
     console-tab-key="annotate"
     console-tab-label="✎ 标注开关"
   >
-    <!-- 六态标注开关钮（#primary-action 槽注入位；矩阵算法在 adapters/markeron） -->
-    <template #primary-action="{ state, busy, installedCount, snap }">
+    <!-- 六态标注开关钮（#primary-action 槽注入位；矩阵算法在 adapters/markeron，
+         动词编排经槽内 store.runToggle 走共享单源） -->
+    <template #primary-action="{ state, busy, installedCount, snap, store }">
       <button
         class="btn btn-small annotate-toggle"
         :class="annotateToggleView({ state, drawing: drawingOf(snap), busy, installedCount }).variant"
         :disabled="annotateToggleView({ state, drawing: drawingOf(snap), busy, installedCount }).disabled"
         :title="annotateToggleView({ state, drawing: drawingOf(snap), busy, installedCount }).title"
-        @click="onToggle({ state, drawing: drawingOf(snap), busy, installedCount })"
+        @click="onToggle(store, { state, drawing: drawingOf(snap), busy, installedCount })"
       >✎ {{ annotateToggleView({ state, drawing: drawingOf(snap), busy, installedCount }).label }}</button>
     </template>
 

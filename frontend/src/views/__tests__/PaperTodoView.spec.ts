@@ -169,6 +169,26 @@ describe('PaperTodoView 变体体系（adapter.variant 槽）', () => {
     wrapper.unmount()
   })
 
+  it('SetVariant 成功后重拉版本投影，远程大小随 no-runtime 资产更新', async () => {
+    stubDefaults({ state: 'stopped' })
+    svc.SetVariant.mockResolvedValue(undefined)
+    const { wrapper } = await mountView()
+    const releasesBefore = svc.ListReleases.mock.calls.length
+    const installedBefore = svc.GetInstalledVersion.mock.calls.length
+    const remoteSize = () => wrapper.findAll('.tbl tbody tr')[0].findAll('td')[2].text()
+    expect(remoteSize()).toBe('71.0 MB')
+
+    const radios = wrapper.findAll('.variant-opt input[type="radio"]')
+    await radios[1].trigger('change')
+    await flushMicrotasks()
+
+    expect(svc.SetVariant).toHaveBeenCalledWith('no-runtime')
+    expect(svc.ListReleases).toHaveBeenCalledTimes(releasesBefore + 1)
+    expect(svc.GetInstalledVersion).toHaveBeenCalledTimes(installedBefore + 1)
+    expect(remoteSize()).toBe('2.3 MB')
+    wrapper.unmount()
+  })
+
   it('切换变体成功 toast；失败回滚选中态', async () => {
     stubDefaults({ state: 'stopped' })
     const { wrapper } = await mountView()

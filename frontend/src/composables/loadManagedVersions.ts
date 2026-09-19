@@ -35,5 +35,7 @@ export async function loadManagedVersions<Remote, Local>(sources: ManagedVersion
     })
     .finally(() => sources.setLoading(false))
 
+  // 保持“本地优先返回”：调用方可先呈现已装与 active；store 层以请求代次
+  // 包住全部 setter，负责丢弃旧远程响应与旧请求的 loading 收尾。
   await localTask
 }

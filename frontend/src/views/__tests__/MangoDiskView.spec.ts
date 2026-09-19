@@ -134,7 +134,7 @@ describe('MangoDiskView 控制台状态', () => {
     wrapper.unmount()
   })
 
-  it('启动动作：OpenWindow → toast → 双复刷；失败仅 loadVersions', async () => {
+  it('启动动作经 store.runControl：成功 reloadVersions 双复刷；失败裸串 toast 并刷快照（runControl 契约口径）', async () => {
     stubDefaults(snapOf())
     const { wrapper } = await mountView()
     await wrapper.find('.btn-primary').trigger('click')
@@ -145,14 +145,18 @@ describe('MangoDiskView 控制台状态', () => {
     expect(useToast().toastMsg.value).toBe('窗口已唤起')
     wrapper.unmount()
 
-    // 失败路径：toast 原始错误串，复刷版本区（快照不强刷——现状口径）
+    // 失败路径：完整性拒启可能同步修正 active/安装事实，故共享 runControl
+    // 同时重拉版本区与快照，避免横幅和使用中徽标滞留旧值。
     svc.OpenWindow.mockRejectedValue(new Error('EXE 完整性无效'))
+    const { wrapper: w2 } = await mountView()
     const listsBefore = svc.ListInstalledVersions.mock.calls.length
-    await wrapper.find('.btn-primary').trigger('click')
+    const statusBefore = svc.GetStatus.mock.calls.length
+    await w2.find('.btn-primary').trigger('click')
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toContain('EXE 完整性无效')
+    expect(svc.GetStatus.mock.calls.length).toBeGreaterThan(statusBefore)
     expect(svc.ListInstalledVersions.mock.calls.length).toBeGreaterThan(listsBefore)
-    wrapper.unmount()
+    w2.unmount()
   })
 })
 

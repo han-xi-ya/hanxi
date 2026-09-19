@@ -250,11 +250,14 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
         await PaperAPI.SetVariant(next)
         variantPref = next
         variantLoad = Promise.resolve(next) // set 成功即事实，缓存跟进（失败不落缓存）
+        // ⑥：变体切换影响远程表 size 列（按变体资产投影）——reloadVersions
+        // 回执交 store.runVariant 统一重拉，视图侧 load() 补丁退役
         return {
           message:
             next === 'no-runtime'
               ? '下载变体已切换为精简版（下次下载生效，不追溯已装版本）'
               : '下载变体已切换为完整版（下次下载生效）',
+          reloadVersions: true,
         }
       },
     },

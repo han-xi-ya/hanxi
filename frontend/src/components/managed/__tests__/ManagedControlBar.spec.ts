@@ -2,10 +2,11 @@
 // 锁死状态头的 adapter 消费面——五态词表映射与未知态回退、快照扩展字段经
 // stateText 覆写投影、UiBanner/hint-line 互斥条件、#primary-action 槽注入
 // （markeron 六态钮的批 1 通路）与声明式启停钮的成功/失败回执口径。
-import { defineComponent, h } from 'vue'
+import { KeepAlive, defineComponent, h, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ManagedControlBar from '../ManagedControlBar.vue'
+import { useManagedConsole } from '../store'
 import type { ManagedModuleAdapter, ManagedSnapshot, NormalizedProgress } from '../adapter'
 import { useToast } from '../../../composables/useToast'
 
@@ -227,5 +228,139 @@ describe('ManagedControlBar 钮区（声明 + #primary-action 槽）', () => {
     await btns[0].trigger('click')
     expect(toggleRun).toHaveBeenCalled()
     w.unmount()
+  })
+})
+
+// ===== Wave 5 · 共享契约增强批新增消费面 =====
+describe('ManagedControlBar 增强批契约（①②⑦⑧⑨）', () => {
+  it('① label 纯函数词形：钮面随状态翻转（mangodisk 动态主钮）', async () => {
+    const { full } = fakeAdapter({
+      getStatus: vi.fn(async () => snap({ state: 'running', version: 'v1' })) as never,
+      control: {
+        primary: {
+          run: vi.fn(async () => ({})),
+          label: (state, s) => (state === 'running' || state === 'external' ? '打开窗口' : `启动 · ${s?.version ?? ''}`),
+        },
+      },
+    })
+    const w = await mountBar(full)
+    expect(w.find('.control-btns .btn').text()).toBe('打开窗口')
+    w.unmount()
+
+    const { full: idle } = fakeAdapter({
+      getStatus: vi.fn(async () => snap({ version: 'v9' })) as never,
+      control: {
+        primary: {
+          run: vi.fn(async () => ({})),
+          label: (state, s) => (state === 'running' || state === 'external' ? '打开窗口' : `启动 · ${s?.version ?? ''}`),
+        },
+      },
+    })
+    const w2 = await mountBar(idle)
+    expect(w2.find('.control-btns .btn').text()).toBe('启动 · v9')
+    w2.unmount()
+  })
+
+  it('② banner/hint 第二参版本区投影：installed/releases/active 可读（mangodisk 完整性优先级型）', async () => {
+    const { full } = fakeAdapter({
+      getStatus: vi.fn(async () => snap({ state: 'running', version: 'v1' })) as never,
+      banner: (s, ctx) =>
+        ctx.installed[0]?.version === 'v-drifted'
+          ? { tone: 'warn' as const, text: `漂移压过运行态（${ctx.active}）` }
+          : { tone: 'ok' as const, text: `正常（远程 ${ctx.releases.length} 个）` },
+    })
+    const w = await mountBar(full)
+    expect(w.find('.banner').text()).toBe('正常（远程 0 个）')
+    w.unmount()
+  })
+
+  it('⑧ statusTone 自定义色档：running+hidden 落 warn 琥珀类', async () => {
+    const { full } = fakeAdapter({
+      getStatus: vi.fn(async () => snap({ state: 'running' })) as never,
+      statusTone: (s) => (s.state === 'running' ? 'warn' : s.state),
+    })
+    const w = await mountBar(full)
+    const light = w.find('.status-light')
+    expect(light.classes()).toContain('warn')
+    expect(light.classes()).not.toContain('running')
+    w.unmount()
+  })
+
+  it('⑦ dangerBusy 联动：强杀在途并入共享 busy 闩（启停钮一并禁用）', async () => {
+    const busyRef = ref(false)
+    const { full } = fakeAdapter({
+      getStatus: vi.fn(async () => snap({ state: 'running' })) as never,
+      dangerBusy: busyRef,
+      control: {
+        primary: { run: vi.fn(async () => ({})), label: '打开窗口' },
+        quit: { run: vi.fn(async () => ({})), label: '退出' },
+      },
+    })
+    const w = await mountBar(full)
+    expect(w.findAll('.control-btns .btn')[0].attributes('disabled')).toBeUndefined()
+    busyRef.value = true
+    await w.vm.$nextTick()
+    const [open, quit] = w.findAll('.control-btns .btn')
+    expect(open.attributes('disabled')).toBeDefined()
+    expect(quit.attributes('disabled')).toBeDefined()
+    w.unmount()
+  })
+
+  it('⑥ runControl 消费 reloadVersions：主钮成功回执并列重拉版本区', async () => {
+    let listCallsAtClick = 0
+    const { full } = fakeAdapter({
+      getStatus: vi.fn(async () => snap({})) as never,
+      versions: {
+        listInstalled: vi.fn(async () => {
+          listCallsAtClick++
+          return []
+        }),
+      } as never,
+      control: {
+        primary: { run: vi.fn(async () => ({ message: '已唤起', reloadVersions: true })), label: '启动' },
+      },
+    })
+    const w = await mountBar(full)
+    await flushPromises()
+    listCallsAtClick = 0
+    await w.find('.control-btns .btn').trigger('click')
+    await vi.waitFor(() => expect(listCallsAtClick).toBeGreaterThan(0))
+    w.unmount()
+  })
+
+  it('⑨ 轮询停止（KeepAlive 停用）→ uptime 归零（recordly 点 7 回归 store）', async () => {
+    vi.useFakeTimers()
+    try {
+      const started = new Date(Date.now() - 5000).toISOString()
+      const { full } = fakeAdapter({
+        getStatus: vi.fn(async () => snap({ state: 'running', version: 'v1', startedAt: started })) as never,
+      })
+      // 探针组件：setup 期建 store 并闭包捕获，直接读 uptimeSec（不依赖渲染时机）
+      let probeStore: { uptimeSec: number } | null = null
+      const Probe = defineComponent({
+        setup: () => {
+          probeStore = useManagedConsole(full) as unknown as { uptimeSec: number }
+          return () => h('span')
+        },
+      })
+      const show = ref(true)
+      const Host = defineComponent({
+        render: () => (show.value ? h(KeepAlive, null, h(Probe)) : h('div')),
+      })
+      const w = mount(Host, { attachTo: document.body })
+      await vi.advanceTimersByTimeAsync(1100)
+      expect(probeStore!.uptimeSec).toBe(6) // fake Date 随 tick 前进：5s 前启动 +1.1s
+      show.value = false // KeepAlive 停用：轮询停止即 uptime 归零（watch pre-flush 两拍落定）
+      await w.vm.$nextTick()
+      await w.vm.$nextTick()
+      expect(probeStore!.uptimeSec).toBe(0)
+      show.value = true // 回活：首 tick 重算恢复
+      await w.vm.$nextTick()
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(probeStore!.uptimeSec).toBeGreaterThan(6)
+      w.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

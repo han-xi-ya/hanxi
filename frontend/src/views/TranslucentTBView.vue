@@ -46,16 +46,15 @@ const openDirTarget = computed(() => {
 // 成功弹后端 message、失败裸错误串、两分支均不刷快照（runControl 恒刷不适用）
 async function runReset() {
   const reset = adapter.reset
-  if (!reset || store.busy) return
-  store.busy = true
-  try {
-    const res = await reset.run()
-    if (res.message !== undefined) showToast(res.message)
-  } catch (e) {
-    showToast(getErrorMessage(e))
-  } finally {
-    store.busy = false
-  }
+  if (!reset) return
+  await store.runExclusive(async () => {
+    try {
+      const res = await reset.run()
+      if (res.message !== undefined) showToast(res.message)
+    } catch (e) {
+      showToast(getErrorMessage(e))
+    }
+  })
 }
 </script>
 

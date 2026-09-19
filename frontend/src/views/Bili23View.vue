@@ -5,17 +5,28 @@
 // 页头与页签骨架，状态头/启停钮/版本区/联动辅助卡全由共享件按声明渲染。
 // 退出语义差异（三态回执 stopped/hidden/asked+message）经 control.quit 的
 // ManagedActionResult.message 原样上墙，禁止吞态；本视图仅余两件私有物：
-// 业务说明卡（默认槽）与「强制结束」危险动作（#danger-extra 契约位，
-// 钮体现态/在途闩/动词本体全部来自 adapter.danger 私有槽）。
-import { computed } from 'vue'
+// 业务说明卡（默认槽）与「强制结束」危险动作（#danger-extra 契约位）。
+// 增强批⑦：危险钮现态/在途闩全部回归共享件——钮禁用与 title 用槽作用域
+// {state, busy}（busy 已含 adapter.dangerBusy 联动），执行后经 {store} 回读
+// 现态；adapter 内的快照镜像与并行 busy 源自此退役。running+hidden 琥珀灯
+// 经 adapter.statusTone（⑧）、联动卡「托管位置」行经 copy.dataDirRow（⑨）。
 import { createBili23Adapter } from '../adapters/bili23'
+import type { ManagedConsoleStore } from '../components/managed/store'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 
 const adapter = createBili23Adapter()
 
-// #danger-extra 钮的禁用/title：读 adapter 现态镜像（与控制台 store 同源写口，永不分叉）
-const dangerDisabled = computed(() => adapter.danger.busy.value || adapter.danger.disabledFor(adapter.danger.snapshot.value))
-const dangerTitle = computed(() => adapter.danger.titleFor(adapter.danger.snapshot.value))
+/** 强杀点击：整段交共享单飞闩，adapter 内确认/回执，最后在同一 busy 窗口内回读现态。 */
+async function runDanger(store: ManagedConsoleStore): Promise<void> {
+  await store.runExclusive(async () => {
+    try {
+      await adapter.danger.run()
+    } finally {
+      // 强杀 RPC 报错也可能已产生副作用，成功/失败均立即回读真实状态。
+      await store.refresh()
+    }
+  })
+}
 </script>
 
 <template>
@@ -36,17 +47,18 @@ const dangerTitle = computed(() => adapter.danger.titleFor(adapter.danger.snapsh
     </details>
 
     <!-- 危险动作位（契约：联动卡之后、恒居控制台尾部）：强制结束——
-         ForceStop 不在共享七动词内，确认/回执/刷新收在 adapter.danger 内 -->
-    <template #danger-extra>
+         ForceStop 不在共享七动词内，确认/回执收在 adapter.danger 内；
+         现态与在途闩（含 dangerBusy 联动）经 ⑦ 作用域槽直给 -->
+    <template #danger-extra="{ state, busy, store }">
       <div class="control-bar b23-danger-extra">
         <div class="control-top">
           <span class="hint-line">危险操作：「退出」按 Bili23 自身「关闭窗口」设置执行，可能被收入托盘或弹窗询问拦截；需要立即终结时用「强制结束」。</span>
           <div class="control-btns">
             <button
               class="btn btn-danger-outline btn-small"
-              :disabled="dangerDisabled"
-              :title="dangerTitle"
-              @click="adapter.danger.run()"
+              :disabled="busy || adapter.danger.disabledFor(state)"
+              :title="adapter.danger.titleFor(state)"
+              @click="runDanger(store)"
             >{{ adapter.danger.label }}</button>
           </div>
         </div>

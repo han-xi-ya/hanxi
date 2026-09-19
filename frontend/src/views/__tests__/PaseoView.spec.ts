@@ -2,8 +2,8 @@
 // 锁定：stable/beta 双通道、使用版本三态（未设=自动最新回退高亮 / 显式设定 /
 // 设定失败重拉）、「未验证哈希」方言列、多版本卡片逐版本卸载禁用、升级警告条、
 // 常驻自动更新提示条、安装动词词面、双数据目录钮（extras.dataDir + #extras-action）、
-// 事件改写与 KeepAlive 轮询契约；并挂载共享 ManagedVersionPanel 锁真实 adapter
-// 供 getActive/setActive 时面板的成色（含「使用中」与页面「使用版本」的词面差）。
+// 事件改写与 KeepAlive 轮询契约；增强批④收编后版本区即共享面板本体（词面/隐式
+// 自动最新/方言徽标槽全部 adapter 声明），面板成色用例改锁 copy 覆写路径。
 // 绑定/事件经 vi.mock 打桩；KeepAlive 宿主复刻 App.vue 外壳。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -142,8 +142,10 @@ describe('PaseoView 装载与通道', () => {
     svc.SetReleaseChannel.mockResolvedValue('beta')
     svc.GetReleaseChannel.mockResolvedValue('beta')
     await wrapper.findAll('.channel-seg button')[1].trigger('click')
+    // 共享块路径：runChannel(settle+reloadVersions) 完成后组件翻转选中态
     await vi.waitFor(() => expect(svc.SetReleaseChannel).toHaveBeenCalledWith('beta'))
     expect(svc.ListReleases.mock.calls.length).toBeGreaterThan(before)
+    await vi.waitFor(() => expect(wrapper.find('.beta-warn').exists()).toBe(true))
     expect(wrapper.find('.beta-warn').text()).toBe('beta 为上游预发布版，仅供尝鲜')
     wrapper.unmount()
   })
@@ -280,15 +282,24 @@ describe('PaseoView 升级判定与提示条', () => {
     expect(wrapper.find('.hint-line').text()).toContain('启动 Paseo 0.8.0')
     wrapper.unmount()
   })
+
+  it('未运行引导行优先引用显式 active=0.7.0，而非隐式最新已装 0.8.0', async () => {
+    stubDefaults({ state: 'stopped' }, { active: '0.7.0' })
+    const { wrapper } = await mountView()
+    const hint = wrapper.find('.hint-line').text()
+    expect(hint).toContain('启动 Paseo 0.7.0')
+    expect(hint).not.toContain('启动 Paseo 0.8.0')
+    wrapper.unmount()
+  })
 })
 
 describe('PaseoView 安装动词与导入', () => {
-  it('安装钮词面「安装」：调 DownloadVersion；失败自弹「安装失败: 」（store 前缀「下载失败: 」被吃掉）', async () => {
+  it('安装钮词面「安装」（copy.downloadLabel 进面板）：调 DownloadVersion；失败走 store.runDownload 词源，「安装失败: 」经 copy.errorPrefix 覆写逐字保持', async () => {
     stubDefaults({ state: 'stopped' }, { releases: [release090] })
     svc.DownloadVersion.mockResolvedValue('started')
     const { wrapper } = await mountView()
     const row = wrapper.findAll('.tbl tbody tr')[0]
-    expect(row.find('.ps-ver-status').classes()).toContain('idle')
+    expect(row.find('.ver-status').classes()).toContain('idle')
     await row.findAll('button').find((b) => b.text() === '安装')!.trigger('click')
     await vi.waitFor(() => expect(svc.DownloadVersion).toHaveBeenCalledWith('0.9.0'))
     wrapper.unmount()
@@ -301,12 +312,12 @@ describe('PaseoView 安装动词与导入', () => {
     r2.wrapper.unmount()
   })
 
-  it('安装状态精确匹配（目录名与去 v tag 互等，无 coreCompare 方言）：0.8.0 行显已安装', async () => {
+  it('安装状态精确匹配（paseo 未声明 sameVersion，面板缺省逐字符互等）：0.8.0 行显已安装', async () => {
     stubDefaults({ state: 'stopped' }, { releases: [release090, release080] })
     const { wrapper } = await mountView()
     const rows = wrapper.findAll('.tbl tbody tr')
-    expect(rows[0].find('.ps-ver-status').classes()).toContain('idle')
-    expect(rows[1].find('.ps-ver-status').classes()).toContain('installed')
+    expect(rows[0].find('.ver-status').classes()).toContain('idle')
+    expect(rows[1].find('.ver-status').classes()).toContain('installed')
     wrapper.unmount()
   })
 
@@ -418,18 +429,20 @@ describe('PaseoView 事件与轮询', () => {
   })
 })
 
-describe('PaseoView 真实 adapter 挂共享面板（setActive 供位成色对照）', () => {
-  it('面板对 paseo 的 getActive/setActive 正常消费：使用中位 + 设钮，词面为面板标准形「使用中」（页面方言为「使用版本」，故本页不采面板渲染）', async () => {
+describe('PaseoView 真实 adapter 挂共享面板（增强批④词面收编成色）', () => {
+  it('面板消费 paseo adapter 的 getActive/setActive + copy 覆写：徽标词随「使用版本」走（页面方言表退役后面板即正形），非 active 卡留设钮', async () => {
     stubDefaults({ state: 'stopped' }, { active: '0.8.0' })
     const adapter = createPaseoAdapter()
     expect(adapter.versions.getActive).toBeTypeOf('function')
     expect(adapter.versions.setActive).toBeTypeOf('function')
+    expect(adapter.copy?.activeBadge).toBe('使用版本')
     const w = mount(ManagedVersionPanel, { props: { adapter } })
     await flushPromises()
     await flushPromises()
     const cards = w.findAll('.installed-card')
     expect(cards[0].classes()).toContain('card-active')
-    expect(cards[0].find('.badge-active').text()).toBe('使用中') // 面板标准词面
+    expect(cards[0].find('.badge-active').text()).toBe('使用版本') // copy.activeBadge 覆写词面进面板
+    expect(cards[0].findAll('button').map((b) => b.text())).not.toContain('设为使用')
     expect(cards[1].findAll('button').map((b) => b.text())).toContain('设为使用')
     w.unmount()
   })

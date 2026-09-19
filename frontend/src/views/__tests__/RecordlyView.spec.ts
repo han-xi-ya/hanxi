@@ -2,8 +2,10 @@
 // 锁定：升级检测（核心版本互认）、stable/beta 双通道、单目录覆盖安装语义、
 // 确认/导入文案、事件改写与 KeepAlive 轮询契约。
 // 批 0 收敛新增：真实 adapter 的缺省 active 形状（ManagedVersionPanel 消费面）、
-// 「安装失败/已安装」动词词面经 adapter 自捕获、联动辅助卡（ManagedExtrasCard）
-// 对 adapter.extras 的驱动。
+// 联动辅助卡（ManagedExtrasCard）对 adapter.extras 的驱动。
+// 增强批收编改锁契约路径：「安装失败/已安装」动词词面经 copy.errorPrefix/downloadLabel
+// 等覆写走 store.runDownload 词源；版本区即共享面板（互认经 versions.sameVersion、
+// 封锁经 downloadBlock、引导行经 adapter.hint 投影上下文）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -125,7 +127,7 @@ describe('RecordlyView 通道与升级检测', () => {
     stubDefaults({ state: 'stopped' }, { releases: [release120beta] })
     const { wrapper } = await mountView()
     expect(wrapper.text()).toContain('发现可升级版本 1.2.0-beta1') // 核心 1.2.0 > 1.0.0
-    expect(wrapper.find('.rd-ver-status').classes()).toContain('idle') // tag 不同且核心不同 → 可安装
+    expect(wrapper.find('.ver-status').classes()).toContain('idle') // tag 不同且核心不同 → 可安装
     wrapper.unmount()
   })
 
@@ -323,7 +325,7 @@ describe('RecordlyView 批 0 契约成色（缺省 active / 安装动词词面 /
     w.unmount()
   })
 
-  it('安装动词词面：DownloadVersion 失败自弹「安装失败: 」（store 统一前缀「下载失败: 」被 adapter 吃掉，无双 toast）', async () => {
+  it('安装动词词面：DownloadVersion 失败经 store.runDownload + copy.errorPrefix 弹「安装失败: 」（词源单源，逐字现词、无双 toast）', async () => {
     stubDefaults({ state: 'stopped' }, { releases: [release110] })
     svc.DownloadVersion.mockRejectedValue(new Error('网络断'))
     const { wrapper } = await mountView()

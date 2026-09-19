@@ -15,8 +15,10 @@
 //
 // ② 「强制结束」（ForceStop）不属于共享启停动词：经 danger 私有槽交给视图，
 //    由 ManagedConsoleShell 的 #danger-extra 契约位渲染；强杀回执
-//    （stopped/external 两态 message）同样如实上墙。snapshot/busy 为只读
-//    现态镜像与在途闩，写源与控制台 store 同一条 readStatus 路径，绝不分叉。
+//    （stopped/external 两态 message）同样如实上墙。增强批⑦收编：
+//    钮现态改由槽作用域 {snap,state,busy,store} 提供、在途闩经 adapter.dangerBusy
+//    并进共享 busy（强杀进行中启停/导入钮一并闩住）——视图自绘的现态镜像与
+//    并行 busy 自此退役，disabledFor/titleFor 降维为 state 纯函数。
 //
 // ③ 事件面归一在订阅层完成：`bili23:instance-state` 推的是引擎
 //    instance.Snapshot（不带 windowVisible——那是 service 聚合视图字段），
@@ -25,7 +27,7 @@
 //    `bili23:version-download` 进度键 = version（单键，与 ccswitch 同形）。
 // ============================================================================
 
-import { ref, type Ref } from 'vue'
+import { ref } from 'vue'
 import * as Bili23API from '../../bindings/hanxi/internal/modules/bili23/service'
 import type { Status } from '../../bindings/hanxi/internal/modules/bili23/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/bili23/instance/models'
@@ -39,22 +41,21 @@ import { toolStateMeta } from '../constants/status'
 import type { ManagedActionResult, ManagedModuleAdapter } from '../components/managed/adapter'
 
 /**
- * 危险动作私有槽（批 0 槽位清单 #danger-extra 的 bili23 落形）：
- * ForceStop 族动词不在共享七动词内，钮体由视图自绘；本槽提供钮的
- * 现态/在途输入与动词本体，RPC/确认/回执 toast 全部收在 adapter 内。
+ * 危险动作私有槽（#danger-extra 的 bili23 落形；增强批⑦收编版）：
+ * ForceStop 族动词不在共享七动词内，钮体由视图自绘；钮现态/在途改由
+ * 槽作用域 {snap,state,busy,store} + adapter.dangerBusy 提供（视图不再
+ * 自持快照镜像与并行 busy 源），disabledFor/titleFor 降维为 state 纯函数。
+ * run() 返回 true=已实际执行（调用方经 scoped store.refresh 回读现态），
+ * false=未裁决/在途闩拒入（确认框取消或强杀进行中）。
  */
 export interface Bili23DangerSpec {
-  /** 快照现态镜像：与控制台 store 共用 readStatus 写源，永不分叉。 */
-  readonly snapshot: Ref<Status | null>
-  /** 强杀在途闩（视图 disabled 计算的模块侧位，与共享 busy 闩并列）。 */
-  readonly busy: Ref<boolean>
   /** 钮面完整文案（含图标 emoji），逐字沿用视图原词。 */
   label: string
-  run(): Promise<void>
+  run(): Promise<boolean>
   /** 模块级禁用条件：running/starting/external 可点（external 点了也只得到"不强制执行"的回执）。 */
-  disabledFor(snap: Status | null): boolean
+  disabledFor(state: string): boolean
   /** 悬停指引（external 态给管辖边界说明）。 */
-  titleFor(snap: Status | null): string
+  titleFor(state: string): string
 }
 
 /** 总适配面：快照以聚合 Status 携带业务扩展（windowVisible），经投影函数消费。 */
@@ -67,55 +68,47 @@ export function createBili23Adapter(): Bili23Adapter {
   const { prompt } = usePrompt()
   const { showToast } = useToast()
 
-  // ---------- 现态镜像与强杀在途闩（danger 槽的两个响应式位） ----------
-  const snapshot = ref<Status | null>(null)
+  // ---------- 强杀在途闩（⑦：经 adapter.dangerBusy 并进共享 busy 闩） ----------
   const busy = ref(false)
 
-  /** 唯一快照写源：控制台轮询/动作刷新/事件回读都经此，镜像与 store 恒同步。 */
-  async function readStatus(): Promise<Status | null> {
-    const s = await Bili23API.GetStatus()
-    snapshot.value = s
-    return s
-  }
-
-  async function runForceStop(): Promise<void> {
-    // 危险操作经全局确认框（useConfirm 单例）：下载器强杀必须让用户知道代价
-    // （在途下载中断，可靠续传兜底），文案逐字保留
-    const accepted = await confirm({
-      title: '强制结束 Bili23？',
-      description:
-        '立即终止进程，跳过优雅收尾：在途下载将中断（下次启动可断点续传），等待落盘的任务状态可能回退。\n建议优先使用「退出」或到 Bili23 窗口/托盘内正常退出。',
-      tone: 'danger',
-    })
-    if (!accepted) return
-    if (busy.value) return
+  async function runForceStop(): Promise<boolean> {
+    if (busy.value) return false
+    // 确认框也属于危险动作在途期：先置闩，防用户在确认未裁决时并发 Quit/Open。
     busy.value = true
     try {
+      // 危险操作经全局确认框（useConfirm 单例）：下载器强杀必须让用户知道代价
+      // （在途下载中断，可靠续传兜底），文案逐字保留
+      const accepted = await confirm({
+        title: '强制结束 Bili23？',
+        description:
+          '立即终止进程，跳过优雅收尾：在途下载将中断（下次启动可断点续传），等待落盘的任务状态可能回退。\n建议优先使用「退出」或到 Bili23 窗口/托盘内正常退出。',
+        tone: 'danger',
+      })
+      if (!accepted) return false
       const out = await Bili23API.ForceStop()
       // 强杀回执如实上墙：stopped（已终结）/ external（不越权执行）两态原样透出
       showToast(out.message)
+      return true
     } catch (e) {
       showToast(`强制结束失败: ${getErrorMessage(e)}`)
-    }
-    try {
-      await readStatus()
-    } catch (e) {
-      // 回读失败静默：引擎事件与轮询兜底（对齐原视图 refreshStatus 口径）
-      console.warn('bili23 ForceStop refresh failed:', getErrorMessage(e))
+      return false
     } finally {
       busy.value = false
     }
   }
 
   const adapter: Bili23Adapter = {
-    getStatus: () => readStatus(),
+    getStatus: () => Bili23API.GetStatus(),
+
+    // ⑦：强杀进行中并入共享 busy 闩（启停/导入钮一并禁用）
+    dangerBusy: busy,
 
     subscribeInstanceState: (cb) => {
       // 归一铁律③：payload 带类型声明为引擎快照、只当迁移信号用——
       // 回读聚合 Status（含 windowVisible）后再交付共享件，单一状态源。
       useWailsEvent<Snapshot>('bili23:instance-state', (s) => {
         if (!s) return
-        readStatus().then((fresh) => {
+        Bili23API.GetStatus().then((fresh) => {
           if (fresh) cb(fresh)
         }).catch((e) => console.warn('bili23 instance-state refetch failed:', getErrorMessage(e)))
       })
@@ -201,22 +194,21 @@ export function createBili23Adapter(): Bili23Adapter {
     },
 
     danger: {
-      snapshot,
-      busy,
       label: '⛔ 强制结束',
       run: runForceStop,
-      disabledFor: (s) => {
-        const st = s?.state ?? ''
-        return st !== 'running' && st !== 'starting' && st !== 'external'
-      },
-      titleFor: (s) => (s?.state === 'external' ? '外部实例不在 Hanxi 管辖范围' : '立即终止进程（在途下载中断，可靠续传兜底）'),
+      // ⑦：钮现态入参降维为 state（槽作用域直给）；external 可点但只得到"不强制执行"回执
+      disabledFor: (state) => state !== 'running' && state !== 'starting' && state !== 'external',
+      titleFor: (state) => (state === 'external' ? '外部实例不在 Hanxi 管辖范围' : '立即终止进程（在途下载中断，可靠续传兜底）'),
     },
 
-    // 状态词覆写：运行中但窗口收入托盘时如实报"已收入托盘"（五态灯位不变，措辞先行）
+    // 状态词覆写：运行中但窗口收入托盘时如实报"已收入托盘"（措辞先行）
     stateText: (s) => {
       if (s.state === 'running' && !s.windowVisible) return '运行中 · 已收入托盘'
       return toolStateMeta(s.state).text
     },
+
+    // ⑧色档覆写：running+hidden 状态灯转琥珀（warn）——五态灯位语义不吞，仅灯色如实
+    statusTone: (s) => (s.state === 'running' && !s.windowVisible ? 'warn' : s.state),
 
     // 条件提示条（四个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
     banner: (s) => {
@@ -252,6 +244,19 @@ export function createBili23Adapter(): Bili23Adapter {
       firstUseEmpty: '尚未安装 Bili23 —— 下载官方便携版（约 43MB），或「导入本地安装」把现有 Bili23 收纳进来',
       remoteUnavailable: '无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试',
       uninstallRunningHint: '请先退出 Bili23',
+
+      // ⑨：「托管位置」数据行回契约（迁移批被删的联动卡行）——优先运行版本目录、
+      // 其次 active 版本、最后任一已装；打开走 OpenDir 族（与「打开位置」同源）。
+      dataDirRow: {
+        dirFor: (ctx) => {
+          const running = ctx.snap?.state === 'running' && ctx.snap.version ? ctx.snap.version : ctx.active
+          return (ctx.installed.find((v) => v.version === running) ?? ctx.installed[0])?.dir ?? ''
+        },
+        async open(dir: string): Promise<ManagedActionResult> {
+          await Bili23API.OpenDir(dir)
+          return {}
+        },
+      },
     },
 
     extras: {

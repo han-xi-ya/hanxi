@@ -196,6 +196,17 @@ describe('GuoheViewView 操作流', () => {
     wrapper.unmount()
   })
 
+  it('下载安装失败：DownloadVersion 原因逐字接在「安装失败: 」后，且不退回「下载失败」', async () => {
+    stubDefaults({ state: 'stopped' }, [], [{ version: '1.9.5', size: 100, isPre: false }])
+    svc.DownloadVersion.mockRejectedValue(new Error('网络断'))
+    const { wrapper } = await mountInKeepAlive()
+    await wrapper.findAll('.main-tab-btn')[1].trigger('click')
+    await wrapper.find('.tbl .btn-primary').trigger('click')
+    await vi.waitFor(() => expect(useToast().toastMsg.value).toBe('安装失败: 网络断'))
+    expect(useToast().toastMsg.value).not.toContain('下载失败')
+    wrapper.unmount()
+  })
+
   it('下载完成事件：刷新列表并清除票条', async () => {
     vi.useFakeTimers()
     try {

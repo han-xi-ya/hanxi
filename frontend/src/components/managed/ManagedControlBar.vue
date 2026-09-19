@@ -48,7 +48,8 @@ const quitTitle = computed(() => quit.value?.titleFor?.(store.state) ?? '')
   <div class="control-bar">
     <div class="control-top">
       <div class="control-status">
-        <span class="status-light" :class="store.state"></span>
+        <!-- 色档（⑧）：缺省随五态；adapter.statusTone 覆写（bili23 running+hidden→warn 琥珀） -->
+        <span class="status-light" :class="store.statusTone"></span>
         <span class="status-word">{{ store.stateText }}</span>
         <template v-if="store.isRunningOrStarting && store.runningVersion">
           <span class="ver-pill">{{ store.runningVersion }}</span>
@@ -64,13 +65,14 @@ const quitTitle = computed(() => quit.value?.titleFor?.(store.state) ?? '')
           :disabled="primaryDisabled"
           :title="primaryTitle"
           @click="store.runControl('primary')"
-        >{{ primary.label }}</button>
+        >{{ store.primaryLabel }}</button>
         <slot
           name="primary-action"
           :snap="store.snap"
           :state="store.state"
           :busy="store.busy"
           :installed-count="store.installed.length"
+          :store="store"
         />
         <button
           v-if="quit"
@@ -78,7 +80,7 @@ const quitTitle = computed(() => quit.value?.titleFor?.(store.state) ?? '')
           :disabled="quitDisabled"
           :title="quitTitle"
           @click="store.runControl('quit')"
-        >{{ quit.label }}</button>
+        >{{ store.quitLabel }}</button>
       </div>
     </div>
   </div>
@@ -96,4 +98,7 @@ const quitTitle = computed(() => quit.value?.titleFor?.(store.state) ?? '')
 .status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
 .status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
 .status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
+/* 自定义色档「warn」（⑧）：adapter.statusTone 返回 'warn' 时压过五态——
+   bili23 running+hidden（窗口收入托盘）琥珀，语义同 external 档 */
+.status-light.warn { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
 </style>

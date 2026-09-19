@@ -57,16 +57,15 @@ const removeTitle = (v: ManagedVersionRecord) => (isRunning(v) ? '请先退出 Q
 // ---------- 重载配置（adapter.reset 扩展槽的视图侧接线：共享件批 0 不消费该槽） ----------
 async function runReload(): Promise<void> {
   const reset = adapter.reset
-  if (!reset || store.busy) return
-  store.busy = true
-  try {
-    const res = await reset.run()
-    if (res?.message !== undefined) showToast(res.message)
-  } catch (e) {
-    showToast(`重载失败: ${getErrorMessage(e)}`)
-  } finally {
-    store.busy = false
-  }
+  if (!reset) return
+  await store.runExclusive(async () => {
+    try {
+      const res = await reset.run()
+      if (res?.message !== undefined) showToast(res.message)
+    } catch (e) {
+      showToast(`重载失败: ${getErrorMessage(e)}`)
+    }
+  })
 }
 
 </script>

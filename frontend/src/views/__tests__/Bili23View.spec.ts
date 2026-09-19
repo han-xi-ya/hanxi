@@ -57,6 +57,20 @@ const installedV2150 = {
   source: '',
 }
 
+const installedV2140 = {
+  ...installedV2150,
+  version: 'v2.14.0',
+  exePath: 'C:\\data\\bili23\\v2.14.0\\Bili23.exe',
+  dir: 'C:\\data\\bili23\\v2.14.0',
+}
+
+const installedV2130 = {
+  ...installedV2150,
+  version: 'v2.13.0',
+  exePath: 'C:\\data\\bili23\\v2.13.0\\Bili23.exe',
+  dir: 'C:\\data\\bili23\\v2.13.0',
+}
+
 const releaseV2160 = {
   version: 'v2.16.0',
   published: '2026-08-15T00:00:00Z',
@@ -144,12 +158,14 @@ describe('Bili23View 装载与状态投影', () => {
     wrapper.unmount()
   })
 
-  it('运行中但窗口收入托盘：状态词覆写 + banner-warn（windowVisible 经 adapter 投影）', async () => {
+  it('运行中但窗口收入托盘：状态词覆写 + banner-warn + 琥珀状态灯（windowVisible 经 adapter 投影）', async () => {
     stubDefaults(statusOf({ state: 'running', version: 'v2.15.0', pid: 777, windowVisible: false, startedAt: new Date().toISOString() }), [installedV2150])
     const { wrapper } = await mountInKeepAlive()
     expect(wrapper.find('.status-word').text()).toBe('运行中 · 已收入托盘')
     expect(wrapper.find('.banner').classes()).toContain('banner-warn')
     expect(wrapper.find('.banner').text()).toContain('窗口已隐藏')
+    expect(wrapper.find('.status-light').classes()).toContain('warn')
+    expect(wrapper.find('.status-light').classes()).not.toContain('running')
     wrapper.unmount()
   })
 
@@ -279,6 +295,41 @@ describe('Bili23View 强制结束（#danger-extra 位）', () => {
     wrapper.unmount()
   })
 
+  it('ForceStop pending：dangerBusy 同时禁用危险位、常规控制钮与共享导入，完成后恢复', async () => {
+    stubDefaults(statusOf({ state: 'running', version: 'v2.15.0', pid: 777, windowVisible: true }), [installedV2150])
+    let resolveForceStop!: (outcome: Record<string, unknown>) => void
+    svc.ForceStop.mockImplementation(() => new Promise((resolve) => {
+      resolveForceStop = resolve
+    }))
+    const { settleConfirm } = useConfirm()
+    const { wrapper } = await mountInKeepAlive()
+
+    const importLocal = findBtn(wrapper, '导入本地')
+    expect(importLocal.attributes('disabled')).toBeUndefined()
+    await findBtn(wrapper, '强制结束').trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
+    await flushMicrotasks()
+
+    expect(svc.ForceStop).toHaveBeenCalledTimes(1)
+    expect(findBtn(wrapper, '强制结束').attributes('disabled')).toBeDefined()
+    expect(findBtn(wrapper, '打开窗口').attributes('disabled')).toBeDefined()
+    expect(findBtn(wrapper, '退出').attributes('disabled')).toBeDefined()
+    expect(importLocal.attributes('disabled')).toBeDefined()
+
+    resolveForceStop({
+      stopped: true, external: false, hidden: false, asked: false,
+      message: 'Bili23 已被强制结束',
+    })
+    await flushPromises()
+
+    expect(findBtn(wrapper, '强制结束').attributes('disabled')).toBeUndefined()
+    expect(findBtn(wrapper, '打开窗口').attributes('disabled')).toBeUndefined()
+    expect(findBtn(wrapper, '退出').attributes('disabled')).toBeUndefined()
+    expect(importLocal.attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('外部实例：钮可点（title 指引管辖边界），回执如实透出"不强制执行"', async () => {
     stubDefaults(statusOf({ state: 'external' }), [installedV2150])
     svc.ForceStop.mockResolvedValue({
@@ -301,6 +352,24 @@ describe('Bili23View 强制结束（#danger-extra 位）', () => {
 })
 
 describe('Bili23View 联动辅助与版本操作', () => {
+  it('copy.dataDirRow 展示「托管位置」：运行版本优先于 active/首个已装，打开调用 OpenDir(展示目录)', async () => {
+    const installed = [installedV2150, installedV2140, installedV2130]
+    stubDefaults(statusOf({ state: 'running', version: 'v2.14.0', pid: 777, windowVisible: true }), installed)
+    svc.GetActiveVersion.mockResolvedValue('v2.13.0')
+    const { wrapper } = await mountInKeepAlive()
+    const hostDirRow = wrapper.findAll('.repo-row').find((row) => row.find('.k').text() === '托管位置')!
+
+    expect(hostDirRow.exists()).toBe(true)
+    expect(hostDirRow.find('.repo-addr').text()).toBe(installedV2140.dir)
+    expect(hostDirRow.text()).not.toContain(installedV2130.dir)
+    expect(hostDirRow.text()).not.toContain(installedV2150.dir)
+
+    await hostDirRow.find('button').trigger('click')
+    await flushPromises()
+    expect(svc.OpenDir).toHaveBeenCalledWith(installedV2140.dir)
+    wrapper.unmount()
+  })
+
   it('数据目录钮经 extras.dataDir 直达 OpenConfigDir（成功静默）', async () => {
     stubDefaults(statusOf(), [installedV2150])
     const { wrapper } = await mountInKeepAlive()

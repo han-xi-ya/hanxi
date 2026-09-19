@@ -3,6 +3,7 @@
 // （vscode 型复合键）、双空态、下载→事件流（进度驻留/完成重拉/失败重试）
 // 与导入钮能力自适应。面板独立挂载（自建 store），事件经 fake adapter 的
 // subscribeProgress 捕获回调直推，不触真实 Wails runtime。
+import { h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ManagedVersionPanel from '../ManagedVersionPanel.vue'
@@ -158,13 +159,16 @@ describe('ManagedVersionPanel 空态与导入能力自适应', () => {
   it('首用空态：引导文案 + 一键下载最新；无远程列表时降级为刷新钮', async () => {
     const { adapter } = fakeAdapter({
       releases: [rel('v9.9.9')],
-      copy: { firstUseEmpty: '尚未安装示例工具——下载官方便携版，或「导入本地安装」' },
+      copy: {
+        firstUseEmpty: '尚未安装示例工具——下载官方便携版，或「导入本地安装」',
+        firstUseDownloadLabel: (r) => `立即安装 ${r.version}`,
+      },
     })
     const w = await mountPanel(adapter)
     const empty = w.find('.empty-state.first-use')
     expect(empty.text()).toContain('尚未安装示例工具')
-    const dlBtn = empty.findAll('button').find((b) => b.text().includes('下载最新版'))!
-    expect(dlBtn.text()).toContain('v9.9.9')
+    const dlBtn = empty.findAll('button').find((b) => b.text() === '立即安装 v9.9.9')!
+    expect(dlBtn.exists()).toBe(true)
     w.unmount()
 
     const { adapter: w2a } = fakeAdapter({ releases: [] })
@@ -180,13 +184,19 @@ describe('ManagedVersionPanel 空态与导入能力自适应', () => {
     w.unmount()
   })
 
-  it('无 importLocal 的模块不渲染导入钮；有时点击走 store.runImport 回执', async () => {
+  it('无 importLocal 的模块不渲染导入钮；有时点击走 store.runImport 回执且词面可覆写', async () => {
     const { adapter } = fakeAdapter({ releases: [rel('v1')] })
     const w = await mountPanel(adapter)
     expect(w.findAll('.btn-group button').map((b) => b.text())).toEqual(['↻ 刷新远程列表'])
-    adapter.versions.importLocal = vi.fn(async () => ({ message: '已导入 v2', reloadVersions: true }))
-    const w2 = await mountPanel(adapter)
-    const importBtn = w2.findAll('.btn-group button').find((b) => b.text().includes('导入本地'))!
+
+    const { adapter: importAdapter } = fakeAdapter({
+      releases: [rel('v1')],
+      copy: { importLabel: '⇥ 选择本地目录' },
+    })
+    importAdapter.versions.importLocal = vi.fn(async () => ({ message: '已导入 v2', reloadVersions: true }))
+    const w2 = await mountPanel(importAdapter)
+    const importBtn = w2.findAll('.btn-group button').find((b) => b.text() === '⇥ 选择本地目录')!
+    expect(importBtn.exists()).toBe(true)
     await importBtn.trigger('click')
     await vi.waitFor(() => expect(useToast().toastMsg.value).toBe('已导入 v2'))
     w2.unmount()
@@ -244,6 +254,136 @@ describe('ManagedVersionPanel 下载→事件流', () => {
     const w = await mountPanel(adapter)
     await w.findAll('.tbl button').find((b) => b.text() === '下载安装')!.trigger('click')
     await vi.waitFor(() => expect(useToast().toastMsg.value).toBe('下载失败: 网络断'))
+    w.unmount()
+  })
+})
+
+// ===== Wave 5 · 共享契约增强批新增消费面 =====
+describe('ManagedVersionPanel 增强批等效钩子（⑤）', () => {
+  it('sameVersion 互认：精确不命中的核心版本判已安装，运行徽标按同一性点亮', async () => {
+    const { adapter, events } = fakeAdapter({
+      installed: [rec('1.0.0')],
+      releases: [rel('1.0.0-beta1')],
+    })
+    ;(adapter.versions as unknown as Record<string, unknown>).sameVersion = (a: string, b: string) =>
+      a.replace(/-.*$/, '') === b.replace(/-.*$/, '')
+    const w = await mountPanel(adapter)
+    // 远程行：tag 精确不命中但核心一致 → 已安装（chip 缺省 ghost 形）
+    expect(w.find('.ver-status').classes()).toContain('installed')
+    // 运行版本带 -beta 后缀：已装卡亮「运行中」而非精确失配
+    events.instance[0]({ state: 'running', version: '1.0.0-beta1', pid: 1, error: '', startedAt: '' } as never)
+    await w.vm.$nextTick()
+    expect(w.find('.installed-card .badge').text()).toBe('运行中')
+    w.unmount()
+  })
+
+  it('statusOf 覆写优先于缺省互认（recordly 型核心判定）', async () => {
+    const { adapter } = fakeAdapter({ installed: [rec('1.0.0')], releases: [rel('2.0.0')] })
+    ;(adapter.versions as unknown as Record<string, unknown>).statusOf = (
+      _rel: ManagedReleaseRecord,
+      installedList: Array<{ version: string }>,
+    ) => (installedList.length > 0 ? 'idle' : 'installed')
+    const w = await mountPanel(adapter)
+    expect(w.find('.ver-status').classes()).toContain('idle') // 有已装反而判 idle：证明覆写生效
+    w.unmount()
+  })
+
+  it('implicitActive：active 为空时最新已装卡高亮且不显设钮（徽标词走 copy.activeBadge）', async () => {
+    const { adapter } = fakeAdapter({
+      installed: [rec('1.1.0'), rec('1.0.0')],
+      releases: [rel('1.1.0')],
+      active: '',
+      copy: { activeBadge: '使用版本' },
+    })
+    ;(adapter.versions as unknown as Record<string, unknown>).implicitActive = (list: Array<{ version: string }>) =>
+      list[0]?.version ?? ''
+    const w = await mountPanel(adapter)
+    await flushPromises()
+    const cards = w.findAll('.installed-card')
+    expect(cards[0].classes()).toContain('card-active')
+    expect(cards[0].find('.badge-active').text()).toBe('使用版本')
+    expect(cards[0].findAll('button').map((b) => b.text())).not.toContain('设为使用')
+    expect(cards[1].findAll('button').map((b) => b.text())).toContain('设为使用')
+    w.unmount()
+  })
+
+  it('downloadBlock：声明封锁态时空闲行下载钮禁用并带 title 指引', async () => {
+    const { adapter, events } = fakeAdapter({ releases: [rel('v1')] })
+    ;(adapter.versions as unknown as Record<string, unknown>).downloadBlock = (state: string) =>
+      state === 'running' ? '请先退出运行中的示例工具' : null
+    const w = await mountPanel(adapter)
+    expect(w.findAll('.tbl button').find((b) => b.text() === '下载安装')!.attributes('disabled')).toBeUndefined()
+    events.instance[0]({ state: 'running', version: 'v9', pid: 1, error: '', startedAt: '' } as never)
+    await w.vm.$nextTick()
+    const blocked = w.findAll('.tbl button').find((b) => b.text() === '下载安装')!
+    expect(blocked.attributes('disabled')).toBeDefined()
+    expect(blocked.attributes('title')).toBe('请先退出运行中的示例工具')
+    w.unmount()
+  })
+})
+
+describe('ManagedVersionPanel 增强批词面/槽位（③④⑥）', () => {
+  it('copy 词面覆写全集：区节标题/徽标词/下载词族/进行词/阶段词/chip 色调/常态卸载 title/metaLead', async () => {
+    const { adapter, events } = fakeAdapter({
+      installed: [rec('1.0.0')],
+      releases: [rel('2.0.0'), rel('1.0.0')],
+      copy: {
+        metaLead: (ctx) => `当前托管 ${ctx.installed[0]?.version ?? '未安装'}`,
+        installedSectionTitle: '托管安装',
+        remoteSectionTitle: '可获取版本',
+        officialBadge: '官方便携',
+        setActiveLabel: '切换使用',
+        downloadLabel: (ctx) => (ctx.installedCount ? '覆盖安装' : '安装'),
+        firstUseDownloadLabel: (r) => `安装最新版 ${r.version}`,
+        downloadingWord: '安装中',
+        stageWord: (stage) => (stage === 'install' ? '校验并静默安装…' : ''),
+        installedChipTone: 'positive',
+        uninstallIdleHint: '仅删本目录',
+      },
+    })
+    const w = await mountPanel(adapter)
+    expect(w.find('.meta-info').text()).toContain('当前托管 1.0.0')
+    expect(w.findAll('.section-title h3').map((h) => h.text())).toEqual(['托管安装 (1)', '可获取版本'])
+    const card = w.find('.installed-card')
+    expect(card.find('.badge-official').text()).toBe('官方便携')
+    expect(card.findAll('button').map((b) => b.text())).toContain('切换使用')
+    expect(card.findAll('button').find((b) => b.text() === '卸载')!.attributes('title')).toBe('仅删本目录')
+    // 空闲行词族：已装存在 → 覆盖安装
+    expect(w.find('.tbl button').text()).toBe('覆盖安装')
+    events.progress[0]({ key: '2.0.0', stage: 'downloading', done: 1, total: 4, message: '' })
+    await w.vm.$nextTick()
+    expect(w.find('.ver-status').text()).toBe('安装中')
+    events.progress[0]({ key: '2.0.0', stage: 'install', done: 0, total: 0, message: '' })
+    await w.vm.$nextTick()
+    expect(w.find('.dl-meta-text').text()).toBe('校验并静默安装…')
+    events.progress[0]({ key: '2.0.0', stage: 'error', done: 0, total: 0, message: '网络断' })
+    await w.vm.$nextTick()
+    // 已装行 chip 色调覆写：positive 语义色片形
+    expect(w.findAll('.tbl tbody tr')[1].find('.chip').classes()).toContain('chip-positive')
+    w.unmount()
+  })
+
+  it('#version-row-extra 方言徽标槽：作用域 record 渲染进已装卡徽标区', async () => {
+    const { adapter } = fakeAdapter({ installed: [rec('1.0.0')] })
+    const w = mount(ManagedVersionPanel, {
+      props: { adapter },
+      slots: {
+        'version-row-extra': (scope: { record: { version: string } }) =>
+          h('span', { class: 'badge badge-import' }, `方言:${scope.record.version}`),
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+    expect(w.find('.inst-badges').text()).toContain('方言:1.0.0')
+    w.unmount()
+  })
+
+  it('⑥ copy.errorPrefix.download 覆写失败前缀（「安装失败: 」词表位走 store 词源）', async () => {
+    const { adapter } = fakeAdapter({ releases: [rel('v1')], copy: { errorPrefix: { download: '安装失败: ' } } })
+    ;(adapter.versions.download as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('网络断'))
+    const w = await mountPanel(adapter)
+    await w.findAll('.tbl button').find((b) => b.text() === '下载安装')!.trigger('click')
+    await vi.waitFor(() => expect(useToast().toastMsg.value).toBe('安装失败: 网络断'))
     w.unmount()
   })
 })

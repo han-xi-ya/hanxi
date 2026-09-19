@@ -1,29 +1,38 @@
 // ============================================================================
-// MangoDisk → 托管控制台 adapter（Wave 5 · 批 0 共享契约迁入件）
+// MangoDisk → 托管控制台 adapter（Wave 5 · 批 0 共享契约迁入件；增强批收编版）
 //
 // 逐字迁移自 MangoDiskView 原编排段（启停/版本/联动全部 RPC 与文案零变化）。
 // 事件面：`mangodisk:instance-state` / `mangodisk:version-download`（进度键=version，
 // 单键最简形态）；动词面：OpenWindow→control.primary、Quit→control.quit。
 //
-// 模块特例（本视图保留自绘版式、只收敛数据与动作面）：
-//  - 主钮文案随状态翻转（running/external→「打开窗口」，其余→「启动 MangoDisk」）——
-//    契约 label 为静态词，翻转词与双复刷（成功后 status+versions 并列刷新、失败仅
-//    复刷 versions）的编排留视图，经 control.primary.run 复用本 adapter 的 RPC/回执；
-//  - 提示条含「已装版本完整性（drifted/invalid）压过运行态」的优先级判定——
-//    banner 投影读不到 installed 列表，故 banner 位留在视图自算，本 adapter 不声明；
-//  - 版本区为完整性方言表（integrity pill / SHA / 漂移详情），ManagedVersionPanel
-//    无对应列形，由视图自留表格承接，数据与动作走共享 store。
+// 增强批收编（本视图保留自绘版式，但「留视图」的三条编排差异全部回契约）：
+//  - 主钮翻转词（running/external→「打开窗口」，其余→「启动 MangoDisk」）改由
+//    label 纯函数声明（①），视图经 store.primaryLabel 取词、不再自持词表；
+//  - 启动成功「状态+版本区」双复刷：primary.run 回 { reloadVersions: true }，
+//    runControl 消费（⑥）——视图侧手写编排退役；
+//  - 「已装完整性（drifted/invalid）压过运行态」横幅：banner 入参升级为投影
+//    上下文（②），installed 进投影面后判定回 adapter 单源。
+// 版本记录方言（integrity 族）经 ManagedVersionRecord<V> 泛型展开（③）：
+// store.installed 直读 integrity/integrityNote/currentSha256/fileVersion，
+// 视图与投影函数均免 cast。方言完整性表版式超出共享面板形态，仍由视图自留，
+// 数据与动作全走 store（「共享件零模块知识」的另一半契约：方言面自留、编排面单源）。
 // ============================================================================
 
 import * as MangoDiskAPI from '../../bindings/hanxi/internal/modules/mangodisk/mangodiskservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/mangodisk/instance/models'
-import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/mangodisk/version/models'
+import type { DownloadProgress, MangoDiskVersionInfo } from '../../bindings/hanxi/internal/modules/mangodisk/version/models'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import type { ManagedActionResult, ManagedModuleAdapter, ManagedReleaseRecord, ManagedVersionRecord } from '../components/managed/adapter'
 
-export function createMangoDiskAdapter(): ManagedModuleAdapter {
+/** 已装记录方言字段包（③）：完整性族字段随 store.installed 类型直读。 */
+export type MangoDiskVersionDialect = Pick<
+  MangoDiskVersionInfo,
+  'integrity' | 'integrityNote' | 'expectedSha256' | 'currentSha256' | 'fileVersion' | 'productName'
+>
+
+export function createMangoDiskAdapter(): ManagedModuleAdapter<Snapshot, MangoDiskVersionDialect> {
   const { confirm } = useConfirm()
   const { prompt } = usePrompt()
 
@@ -62,7 +71,7 @@ export function createMangoDiskAdapter(): ManagedModuleAdapter {
         return {}
       },
 
-      async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
+      async remove(v: ManagedVersionRecord<MangoDiskVersionDialect>): Promise<ManagedActionResult> {
         // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
         const accepted = await confirm({
           title: `确定卸载 MangoDisk ${v.version}？`,
@@ -87,7 +96,7 @@ export function createMangoDiskAdapter(): ManagedModuleAdapter {
         return { message: `已导入 ${item.version}`, reloadVersions: true }
       },
 
-      async openDir(v: ManagedVersionRecord): Promise<ManagedActionResult> {
+      async openDir(v: ManagedVersionRecord<MangoDiskVersionDialect>): Promise<ManagedActionResult> {
         await MangoDiskAPI.OpenDir(v.dir)
         return {}
       },
@@ -97,10 +106,11 @@ export function createMangoDiskAdapter(): ManagedModuleAdapter {
       primary: {
         async run(): Promise<ManagedActionResult> {
           const out = await MangoDiskAPI.OpenWindow()
-          return { message: out.message }
+          // ⑥：冷启动可能激活自动版本——成功回执要求重拉版本区（runControl 双复刷）
+          return { message: out.message, reloadVersions: true }
         },
-        // 静态位标签（实际钮面按状态翻转，翻转词表在视图）
-        label: '启动 MangoDisk',
+        // ①：钮面随状态翻转的动态词（原视图词表迁入 label 纯函数）
+        label: (state) => (state === 'running' || state === 'external' ? '打开窗口' : '启动 MangoDisk'),
       },
       quit: {
         async run(): Promise<ManagedActionResult> {
@@ -108,7 +118,28 @@ export function createMangoDiskAdapter(): ManagedModuleAdapter {
           return { message: out.message }
         },
         label: '退出',
+        // 原视图禁用式 store.busy || !isRunningOrStarting 的状态半边收编
+        disabledFor: (state) => state !== 'running' && state !== 'starting',
       },
+    },
+
+    // ②：完整性优先级横幅——drifted/invalid 压过运行态（第二参版本区投影后
+    // 判定回 adapter；文案三变体逐字保留视图现词）
+    banner: (s, ctx) => {
+      const currentVersion = s.version || ctx.active || ''
+      const currentInstalled = currentVersion ? ctx.installed.find((item) => item.version === currentVersion) ?? null : null
+      if (currentInstalled?.integrity === 'drifted') return { tone: 'warn', text: currentInstalled.integrityNote }
+      if (currentInstalled?.integrity === 'invalid') return { tone: 'error', text: currentInstalled.integrityNote }
+      if (s.state === 'external') {
+        return { tone: 'warn', text: '检测到安装版、portable 或其他版本的外部实例。Hanxi 可唤起窗口，但不会强制终止它。' }
+      }
+      if (s.state === 'failed') {
+        return { tone: 'error', text: s.error || 'MangoDisk 异常退出' }
+      }
+      if (s.state === 'running') {
+        return { tone: 'ok', text: 'MangoDisk 正在运行；磁盘扫描、清理与系统设置均在原版窗口内完成。' }
+      }
+      return null
     },
 
     extras: {

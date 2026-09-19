@@ -212,6 +212,24 @@ describe('MarkerOnView 操作流', () => {
     wrapper.unmount()
   })
 
+  it('ToggleAnnotate 返回 started 时按 reloadVersions 重拉已装与远程版本投影', async () => {
+    stubDefaults({ state: 'stopped' }, [installedV102], [
+      { version: 'v1.2.0', size: 100, published: '2026-08-02T00:00:00Z', isPre: false },
+    ])
+    svc.ToggleAnnotate.mockResolvedValue({ outcome: 'started', message: 'MarkerOn 已启动' })
+    const { wrapper } = await mountInKeepAlive()
+    const installedCalls = svc.ListInstalledVersions.mock.calls.length
+    const releaseCalls = svc.ListReleases.mock.calls.length
+
+    await wrapper.find('.annotate-toggle').trigger('click')
+    await flushPromises()
+
+    expect(svc.ToggleAnnotate).toHaveBeenCalledTimes(1)
+    expect(svc.ListInstalledVersions).toHaveBeenCalledTimes(installedCalls + 1)
+    expect(svc.ListReleases).toHaveBeenCalledTimes(releaseCalls + 1)
+    wrapper.unmount()
+  })
+
   it('ToggleAnnotate 抛错走裸串 toast（无前缀）且恢复非 busy', async () => {
     stubDefaults({ state: 'stopped' }, [installedV102])
     svc.ToggleAnnotate.mockRejectedValue(new Error('信使通道超时'))

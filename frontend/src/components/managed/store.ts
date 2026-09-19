@@ -1,25 +1,40 @@
 // ============================================================================
-// 托管控制台运行时 store（Wave 5 · 批 0）
+// 托管控制台运行时 store（Wave 5 · 批 0；共享契约增强批扩装）
 //
 // 由 ManagedConsoleShell（或单独挂载的控制条/版本面板）在组件 setup 期内调用
 // useManagedConsole(adapter) 创建：集中持有快照/版本区/下载进度 map/busy 闩，
 // 并完成四类接线——实例态订阅、进度订阅、2.5s 状态轮询、1s uptime ticker。
 // 各视图此前逐字同构的 ~120 行"状态+编排"段自此单源。
 //
+// 增强批新增编排（全部向后兼容）：
+//  - runControl/runToggle/runDownload/runChannel/runVariant 统一消费
+//    ManagedActionResult 的 message/reloadVersions/activeVersion——控制动词
+//    成功回执带 reloadVersions 时并列复刷版本区（mangodisk 启动双复刷、
+//    markeron toggle 版本徽标即时、papertodo 变体切换列表刷新自此回归 store，
+//    视图侧补丁退役）；
+//  - busy 闩 = 动作在途 OR adapter.dangerBusy（⑦ 强制结束联动）；
+//  - banner/hint 新增第二参版本区投影（②：{installed, releases, active}，
+//    store 单源直填，少收第二参的旧 adapter 零改动）；
+//  - primaryLabel/quitLabel 解析 label 联合词形（① 动态主钮）；
+//  - statusTone 色档覆写（⑧）；
+//  - 轮询停止（KeepAlive 停用/卸载）→ uptime 归零（⑨，recordly 现案收编）。
+//
 // 纪律：
 //  - 本文件只编排，不解读业务：状态词/按钮声明/文案全部来自 adapter 投影。
 //  - 失败 toast 前缀是跨模块逐字同形词（自 ccswitch/markeron 等视图原样收编），
-//    集中于此单一来源；成功回执文案经 ManagedActionResult.message 上抛。
+//    集中于此单一来源，且支持 copy.errorPrefix 逐动词覆写（⑥，「安装失败: 」
+//    词表回契约）；成功回执文案经 ManagedActionResult.message 上抛。
 //  - 控制动词成功后恒刷一次状态快照（对齐现状 openWindow/quit 的双分支刷新）。
 // ============================================================================
 
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onDeactivated, onMounted, onUnmounted, reactive, ref, shallowRef } from 'vue'
 import type {
   ManagedActionResult,
   ManagedControlVerb,
   ManagedModuleAdapter,
   ManagedReleaseRecord,
   ManagedSnapshot,
+  ManagedVersionDialect,
   ManagedVersionRecord,
   NormalizedProgress,
 } from './adapter'
@@ -29,7 +44,7 @@ import { useToast } from '../../composables/useToast'
 import { getErrorMessage } from '../../utils/errors'
 import { toolStateMeta } from '../../constants/status'
 
-/** 动作失败 toast 前缀（逐字沿用视图现词；primary 失败为裸错误串，无前缀）。 */
+/** 动作失败 toast 前缀（逐字沿用视图现词；primary/toggle 失败为裸错误串，无前缀）。 */
 const ACTION_ERROR_PREFIX = {
   quit: '退出失败: ',
   download: '下载失败: ',
@@ -37,6 +52,8 @@ const ACTION_ERROR_PREFIX = {
   remove: '卸载失败: ',
   import: '导入失败: ',
   openDir: '打开目录失败: ',
+  channel: '切换通道失败: ',
+  variant: '设置失败: ',
 } as const
 
 /** 状态轮询间隔（全托管视图现状统一 2500ms；uptime 每秒从 startedAt 重算）。 */
@@ -45,86 +62,150 @@ const UPTIME_TICK_MS = 1000
 /** 下载完成票据的表内驻留时长（现状 800ms 后清除并重拉版本列表）。 */
 const DONE_TICK_RETIRE_MS = 800
 
-/** 控制条/版本面板消费的控制台共享状态与动作面（reactive 解包后的现值视图）。 */
-export interface ManagedConsoleStore {
-  snap: ManagedSnapshot | null
-  busy: boolean
-  uptimeSec: number
-  releases: ManagedReleaseRecord[]
-  installed: ManagedVersionRecord[]
-  activeVersion: string
-  loading: boolean
+/**
+ * 控制条/版本面板消费的控制台共享状态与动作面（reactive 解包后的现值视图）。
+ * V 为已装版本记录方言字段包（增强批③，缺省纯基型）；宽型消费方
+ * （ControlBar/Shell 等）按默认实例化，typed store 传入宽 prop 处协变兼容。
+ */
+export interface ManagedConsoleStore<V = ManagedVersionDialect> {
+  readonly snap: ManagedSnapshot | null
+  /** busy 闩：声明式动作在途 OR adapter.dangerBusy 联动（⑦）。 */
+  readonly busy: boolean
+  readonly uptimeSec: number
+  readonly releases: ManagedReleaseRecord[]
+  readonly installed: ManagedVersionRecord<V>[]
+  readonly activeVersion: string
+  readonly loading: boolean
   listError: string
-  downloading: Record<string, NormalizedProgress>
+  readonly downloading: Record<string, NormalizedProgress>
 
-  state: string
-  stateText: string
-  runningVersion: string
-  isRunningOrStarting: boolean
-  isExternal: boolean
-  banner: { tone: 'ok' | 'info' | 'warn' | 'error'; text: string } | null
-  hint: string | null
+  readonly state: string
+  readonly stateText: string
+  /** 状态灯色档词（⑧，缺省 = state）。 */
+  readonly statusTone: string
+  readonly runningVersion: string
+  readonly isRunningOrStarting: boolean
+  readonly isExternal: boolean
+  readonly banner: { tone: 'ok' | 'info' | 'warn' | 'error'; text: string } | null
+  readonly hint: string | null
+  /** 启停钮面词（①：label 字符串或 (state, snap) 纯函数的统一解析结果）。 */
+  readonly primaryLabel: string
+  readonly quitLabel: string
 
-  load: () => Promise<void>
-  refresh: () => Promise<void>
-  progressKeyOf: (release: ManagedReleaseRecord) => string
-  runControl: (which: 'primary' | 'quit') => Promise<void>
-  runDownload: (release: ManagedReleaseRecord) => Promise<void>
-  runSetActive: (info: ManagedVersionRecord) => Promise<void>
-  runRemove: (info: ManagedVersionRecord) => Promise<void>
-  runImport: () => Promise<void>
-  runOpenDir: (info: ManagedVersionRecord) => Promise<void>
+  /**
+   * 注：动作面一律方法语法声明——strictFunctionTypes 下属性函数按逆变检查，
+   * 方法语法保留双变，使「带方言 V 的 store」可直接喂进宽型 ManagedConsoleStore prop。
+   */
+  load(): Promise<void>
+  refresh(): Promise<void>
+  progressKeyOf(release: ManagedReleaseRecord): string
+  runControl(which: 'primary' | 'quit'): Promise<void>
+  /** 扩展槽动作统一占用共享 busy 闩，避免自绘动作直接改写只读派生 busy。 */
+  runExclusive<T>(action: () => PromiseLike<T>): Promise<T | undefined>
+  /** toggle 槽动词（markeron 六态钮经 store 单源编排）。 */
+  runToggle(): Promise<void>
+  /** channel 槽切换；true=成功（调用方翻转选中态）。 */
+  runChannel(next: string): Promise<boolean>
+  /** variant 槽切换；true=成功。 */
+  runVariant(next: string): Promise<boolean>
+  runDownload(release: ManagedReleaseRecord): Promise<void>
+  runSetActive(info: ManagedVersionRecord<V>): Promise<void>
+  runRemove(info: ManagedVersionRecord<V>): Promise<void>
+  runImport(): Promise<void>
+  runOpenDir(info: ManagedVersionRecord<V>): Promise<void>
+}
+
+/** 启停钮面词解析（label 联合词形；ControlBar 与自定义视图同源取词）。 */
+function resolveVerbLabel(
+  verb: ManagedControlVerb | undefined,
+  state: string,
+  snap: ManagedSnapshot | null,
+): string {
+  if (!verb) return ''
+  return typeof verb.label === 'function' ? verb.label(state, snap) : verb.label
 }
 
 /**
  * 在组件 setup 同步期内创建控制台 store（内部含 usePolling/useWailsEvent
  * 接线与 onMounted 首拉；宿主卸载自动停轮询、注销订阅）。
+ * V 为已装版本记录方言字段包（增强批③）：自 adapter 泛型推断，store.installed
+ * 直接携带方言字段类型（paseo verifiedHash / mangodisk integrity 族视图去 cast）。
  */
-export function useManagedConsole(adapter: ManagedModuleAdapter): ManagedConsoleStore {
+export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V = ManagedVersionDialect>(
+  adapter: ManagedModuleAdapter<S, V>,
+): ManagedConsoleStore<V> {
   const { showToast } = useToast()
 
   const snap = ref<ManagedSnapshot | null>(null)
-  const busy = ref(false)
+  const actionBusy = ref(false)
   const uptimeSec = ref(0)
 
   const releases = ref<ManagedReleaseRecord[]>([])
-  const installed = ref<ManagedVersionRecord[]>([])
+  // installed 用 shallowRef：泛型交叉型经 ref 深解包会折叠掉方言 V 分量；
+  // 版本区整组替换（load/settle 从不原地改写成员），shallow 语义正合。
+  const installed = shallowRef<ManagedVersionRecord<V>[]>([])
   const activeVersion = ref('')
   const loading = ref(false)
   const listError = ref('')
   const downloading = ref<Record<string, NormalizedProgress>>({})
+  /** load 请求代次：后发请求拥有写权，防通道切换后的旧响应反向覆盖。 */
+  let loadGeneration = 0
 
   // ---------- 派生投影（只读 adapter/快照，零本地状态推断） ----------
   const state = computed(() => snap.value?.state ?? '')
+  // 共享件按宽型持有快照；投影位 adapter 声明其收窄 S——方法位双变，
+  // 运行期同一对象，类型收敛仅此一处 cast，视图零感知。
+  const narrowSnap = computed(() => snap.value as S | null)
   const stateText = computed(() =>
-    snap.value && adapter.stateText ? adapter.stateText(snap.value) : toolStateMeta(state.value).text,
+    narrowSnap.value && adapter.stateText ? adapter.stateText(narrowSnap.value) : toolStateMeta(state.value).text,
+  )
+  /** 状态灯色档（⑧）：缺省随 state 五态；adapter.statusTone 覆写（bili23 running+hidden→warn）。 */
+  const statusTone = computed(() =>
+    narrowSnap.value && adapter.statusTone ? adapter.statusTone(narrowSnap.value) : state.value,
   )
   const runningVersion = computed(() => snap.value?.version ?? '')
   const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
   const isExternal = computed(() => state.value === 'external')
-  const banner = computed(() => (snap.value && adapter.banner ? adapter.banner(snap.value) : null))
-  const hint = computed(() => (snap.value && adapter.hint ? adapter.hint(snap.value) : null))
+  /** busy 闩（⑦）：声明式动作在途 OR 危险动作 dangerBusy 联动。 */
+  const busy = computed(() => actionBusy.value || adapter.dangerBusy?.value === true)
+
+  // ②：banner/hint 第二参版本区投影（store 单源直填，少收第二参的旧 adapter 零感知）
+  const versionCtx = computed(() => ({
+    installed: installed.value,
+    releases: releases.value,
+    active: activeVersion.value,
+  }))
+  const banner = computed(() =>
+    narrowSnap.value && adapter.banner ? adapter.banner(narrowSnap.value, versionCtx.value) : null,
+  )
+  const hint = computed(() =>
+    narrowSnap.value && adapter.hint ? adapter.hint(narrowSnap.value, versionCtx.value) : null,
+  )
+  /** 启停钮面词（①）：label 联合词形统一解析，声明式控制条与自定义视图同源。 */
+  const primaryLabel = computed(() => resolveVerbLabel(adapter.control?.primary, state.value, snap.value))
+  const quitLabel = computed(() => resolveVerbLabel(adapter.control?.quit, state.value, snap.value))
 
   // ---------- 数据加载 ----------
   async function load(): Promise<void> {
+    const generation = ++loadGeneration
     await loadManagedVersions({
       remote: () => adapter.versions.listReleases(),
       local: () => adapter.versions.listInstalled(),
       active: adapter.versions.getActive ?? (async () => ''),
       setRemote: (value) => {
-        releases.value = value
+        if (generation === loadGeneration) releases.value = value
       },
       setLocal: (value) => {
-        installed.value = value
+        if (generation === loadGeneration) installed.value = value
       },
       setActive: (value) => {
-        activeVersion.value = value
+        if (generation === loadGeneration) activeVersion.value = value
       },
       setLoading: (value) => {
-        loading.value = value
+        if (generation === loadGeneration) loading.value = value
       },
       setError: (value) => {
-        listError.value = value
+        if (generation === loadGeneration) listError.value = value
       },
     })
   }
@@ -139,78 +220,188 @@ export function useManagedConsole(adapter: ManagedModuleAdapter): ManagedConsole
   }
 
   // ---------- 动作编排 ----------
-  function settle(res: ManagedActionResult | void | undefined): void {
+  function errorPrefix(which: keyof typeof ACTION_ERROR_PREFIX): string {
+    return adapter.copy?.errorPrefix?.[which] ?? ACTION_ERROR_PREFIX[which]
+  }
+
+  /** 回执结算：message 弹 toast、activeVersion 即时迁移高亮；返回是否需重拉版本区。 */
+  function settle(res: ManagedActionResult | void | undefined): boolean {
     if (res?.message !== undefined) showToast(res.message)
     if (res?.activeVersion !== undefined) activeVersion.value = res.activeVersion
+    return res?.reloadVersions === true
   }
 
   async function runControl(which: 'primary' | 'quit'): Promise<void> {
     const verb: ManagedControlVerb | undefined =
       which === 'primary' ? adapter.control?.primary : adapter.control?.quit
-    if (!verb || busy.value) return
-    busy.value = true
+    if (!verb || actionBusy.value) return
+    actionBusy.value = true
     try {
-      settle(await verb.run())
+      const res = await verb.run()
+      if (settle(res)) await load()
       await refresh()
     } catch (e) {
-      showToast((which === 'quit' ? ACTION_ERROR_PREFIX.quit : '') + getErrorMessage(e))
+      showToast((which === 'quit' ? errorPrefix('quit') : '') + getErrorMessage(e))
+      // 个别冷启动检查会在拒绝启动前刷新版本事实（如 MangoDisk 完整性）；
+      // primary 失败后重拉版本区，避免 banner/版本卡继续展示旧快照。
+      if (which === 'primary') await load()
       await refresh()
     } finally {
-      busy.value = false
+      actionBusy.value = false
+    }
+  }
+
+  /**
+   * 自绘扩展动作（reset/快捷方式/专属控制钮）共享单飞闩。
+   * busy 本身是 actionBusy ∨ dangerBusy 的只读投影，消费方不得直接赋值。
+   */
+  async function runExclusive<T>(action: () => PromiseLike<T>): Promise<T | undefined> {
+    if (busy.value) return undefined
+    actionBusy.value = true
+    try {
+      return await action()
+    } finally {
+      actionBusy.value = false
+    }
+  }
+
+  /** toggle 槽动词（markeron 六态钮）：成功回执/重拉/刷态统一；失败裸串 toast（原口径）。 */
+  async function runToggle(): Promise<void> {
+    const toggle = adapter.toggle
+    if (!toggle || actionBusy.value) return
+    actionBusy.value = true
+    try {
+      const res = await toggle.run()
+      if (settle(res)) await load()
+      await refresh()
+    } catch (e) {
+      showToast(getErrorMessage(e))
+      await refresh()
+    } finally {
+      actionBusy.value = false
+    }
+  }
+
+  /** channel 槽切换（⑧ 共享块/视图单选卡共用）：返回 true=切换成功（调用方翻转选中态）。 */
+  async function runChannel(next: string): Promise<boolean> {
+    const channel = adapter.channel
+    if (!channel || busy.value) return false
+    actionBusy.value = true
+    try {
+      const res = await channel.set(next)
+      if (settle(res)) await load()
+      return true
+    } catch (e) {
+      showToast(`${errorPrefix('channel')}${getErrorMessage(e)}`)
+      return false
+    } finally {
+      actionBusy.value = false
+    }
+  }
+
+  /** variant 槽切换（papertodo 变体卡）：同上语义，失败前缀缺省「设置失败: 」（原逐字现词）。 */
+  async function runVariant(next: string): Promise<boolean> {
+    const variant = adapter.variant
+    if (!variant || busy.value) return false
+    actionBusy.value = true
+    try {
+      const res = await variant.set(next)
+      if (settle(res)) await load()
+      return true
+    } catch (e) {
+      showToast(`${errorPrefix('variant')}${getErrorMessage(e)}`)
+      return false
+    } finally {
+      actionBusy.value = false
     }
   }
 
   async function runDownload(rel: ManagedReleaseRecord): Promise<void> {
+    const key = progressKeyOf(rel)
+    const existing = downloading.value[key]
+    if (busy.value || (existing && existing.stage !== 'error')) return
+    actionBusy.value = true
+    // RPC 返还前先挂 pending 票据，封住双击窗口；首个真实进度事件会覆盖它。
+    downloading.value = {
+      ...downloading.value,
+      [key]: { key, stage: 'resolve', done: 0, total: 0, message: '正在创建下载任务…' },
+    }
     try {
       const res = await adapter.versions.download(rel)
-      settle(res)
-      if (res?.reloadVersions) await load()
+      const reload = settle(res)
+      if (reload) {
+        await load()
+        // already-installed 等同步终态无进度事件，以重拉后的已装事实收票。
+        if (installed.value.some((v) => v.version === rel.version)) {
+          const next = { ...downloading.value }
+          delete next[key]
+          downloading.value = next
+        }
+      }
     } catch (e) {
-      showToast(`${ACTION_ERROR_PREFIX.download}${getErrorMessage(e)}`)
+      const message = `${errorPrefix('download')}${getErrorMessage(e)}`
+      showToast(message)
+      downloading.value = {
+        ...downloading.value,
+        [key]: { key, stage: 'error', done: 0, total: 0, message },
+      }
+    } finally {
+      actionBusy.value = false
     }
   }
 
-  async function runSetActive(v: ManagedVersionRecord): Promise<void> {
-    if (!adapter.versions.setActive) return
+  async function runSetActive(v: ManagedVersionRecord<V>): Promise<void> {
+    if (!adapter.versions.setActive || busy.value) return
+    actionBusy.value = true
     try {
       const res = await adapter.versions.setActive(v.version)
-      settle(res)
-      if (res?.reloadVersions) await load()
+      if (settle(res)) await load()
     } catch (e) {
-      showToast(`${ACTION_ERROR_PREFIX.setActive}${getErrorMessage(e)}`)
+      showToast(`${errorPrefix('setActive')}${getErrorMessage(e)}`)
+      // ⑥：设版失败恒重拉版本区核对后端真实值（原 paseo 差异③「自捕获重拉」
+      // 的契约化表达——词源单源 + 安全网通用化，不再由 adapter 逐模块抄写）。
+      await load()
+    } finally {
+      actionBusy.value = false
     }
   }
 
-  async function runRemove(v: ManagedVersionRecord): Promise<void> {
+  async function runRemove(v: ManagedVersionRecord<V>): Promise<void> {
+    if (busy.value) return
+    actionBusy.value = true
     try {
       const res = await adapter.versions.remove(v)
-      settle(res)
-      if (res?.reloadVersions) await load()
+      if (settle(res)) await load()
     } catch (e) {
-      showToast(`${ACTION_ERROR_PREFIX.remove}${getErrorMessage(e)}`)
+      showToast(`${errorPrefix('remove')}${getErrorMessage(e)}`)
+    } finally {
+      actionBusy.value = false
     }
   }
 
   async function runImport(): Promise<void> {
     const importLocal = adapter.versions.importLocal
-    if (!importLocal || busy.value) return
-    busy.value = true
+    if (!importLocal || actionBusy.value) return
+    actionBusy.value = true
     try {
       const res = await importLocal()
-      settle(res)
-      if (res?.reloadVersions) await load()
+      if (settle(res)) await load()
     } catch (e) {
-      showToast(`${ACTION_ERROR_PREFIX.import}${getErrorMessage(e)}`)
+      showToast(`${errorPrefix('import')}${getErrorMessage(e)}`)
     } finally {
-      busy.value = false
+      actionBusy.value = false
     }
   }
 
-  async function runOpenDir(v: ManagedVersionRecord): Promise<void> {
+  async function runOpenDir(v: ManagedVersionRecord<V>): Promise<void> {
+    if (busy.value) return
+    actionBusy.value = true
     try {
       settle(await adapter.versions.openDir(v))
     } catch (e) {
-      showToast(`${ACTION_ERROR_PREFIX.openDir}${getErrorMessage(e)}`)
+      showToast(`${errorPrefix('openDir')}${getErrorMessage(e)}`)
+    } finally {
+      actionBusy.value = false
     }
   }
 
@@ -226,6 +417,9 @@ export function useManagedConsole(adapter: ManagedModuleAdapter): ManagedConsole
 
   adapter.subscribeProgress((p) => {
     adapter.onProgress?.(p)
+    // custom 版本体自行持有票据、刷新与清理时序（VS Code 双表、Snipaste
+    // 事实核验票据）；共享 store 仅保证事件单订阅并转交 onProgress。
+    if (adapter.versions.orchestration === 'custom') return
     downloading.value = { ...downloading.value, [p.key]: p }
     if (p.stage === 'done') {
       setTimeout(() => {
@@ -247,9 +441,18 @@ export function useManagedConsole(adapter: ManagedModuleAdapter): ManagedConsole
       }
     }
   }, UPTIME_TICK_MS)
+  // ⑨：轮询停止（KeepAlive 停用/卸载）即 uptime 归零——对齐 recordly 迁移前
+  // stopTimers 语义。用停用/卸载钩子而非 watch(isPolling)：失活组件的 watch
+  // 回调被暂停，归零要同步发生在停用当下。
+  onDeactivated(() => {
+    uptimeSec.value = 0
+  })
+  onUnmounted(() => {
+    uptimeSec.value = 0
+  })
 
   onMounted(() => {
-    void load()
+    if (adapter.versions.orchestration !== 'custom') void load()
   })
 
   return reactive({
@@ -264,19 +467,26 @@ export function useManagedConsole(adapter: ManagedModuleAdapter): ManagedConsole
     downloading,
     state,
     stateText,
+    statusTone,
     runningVersion,
     isRunningOrStarting,
     isExternal,
     banner,
     hint,
+    primaryLabel,
+    quitLabel,
     load,
     refresh,
     progressKeyOf,
     runControl,
+    runExclusive,
+    runToggle,
+    runChannel,
+    runVariant,
     runDownload,
     runSetActive,
     runRemove,
     runImport,
     runOpenDir,
-  }) as ManagedConsoleStore
+  }) as unknown as ManagedConsoleStore<V>
 }

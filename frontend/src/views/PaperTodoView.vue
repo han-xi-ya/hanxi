@@ -44,19 +44,12 @@ onMounted(() => {
   })
 })
 
+// ⑥：变体切换交 store.runVariant——回执 toast、reloadVersions 重拉版本区
+// （远程表 size 列按新变体资产重投影）与失败 '设置失败: ' 前缀全部单源；
+// 视图只在成功后翻转本地投影、失败不动（原视图侧手动 load 补丁退役）。
 async function chooseVariant(v: PaperVariant) {
   if (v === variant.value) return
-  const prev = variant.value
-  variant.value = v
-  try {
-    const res = await adapter.variant.set(v)
-    if (res.message !== undefined) showToast(res.message)
-    // 变体切换后重载版本区：远程表 size 列按新变体资产重投影（单列成色对齐现状）
-    await store.load()
-  } catch (e) {
-    variant.value = prev // 失败回滚
-    showToast(`设置失败: ${getErrorMessage(e)}`)
-  }
+  if (await store.runVariant(v)) variant.value = v
 }
 
 // no-runtime 变体的运行时可用性提示（GetRuntimeStatus 经快照扩展字段回流）

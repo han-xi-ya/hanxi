@@ -8,8 +8,6 @@
 // 共享 ManagedVersionPanel 形态不符，照 everything 通道表先例留视图，
 // 但数据与动作全部消费 store 单源。
 import { computed, ref } from 'vue'
-import { useToast } from '../composables/useToast'
-import { getErrorMessage } from '../utils/errors'
 import { createGuoheViewAdapter } from '../adapters/guoheview'
 import { useManagedConsole } from '../components/managed/store'
 import ManagedControlBar from '../components/managed/ManagedControlBar.vue'
@@ -22,8 +20,6 @@ import { fmtSize } from '../utils/format'
 
 const adapter = createGuoheViewAdapter()
 const store = useManagedConsole(adapter)
-
-const { showToast } = useToast()
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 ccswitch/piclite 同构）
 const activeMainTab = ref('console')
@@ -47,18 +43,9 @@ function statusOf(rel: ManagedReleaseRecord): 'installed' | 'downloading' | 'err
   return hit ? 'installed' : 'idle'
 }
 
-// 方言动词：本模块下载失败词为「安装失败」（官方接口安装语义），与 store.runDownload
-// 的通用「下载失败」前缀不同，故视图侧直调 adapter.versions.download 保词表逐字。
-async function download(rel: ManagedReleaseRecord) {
-  try {
-    const res = await adapter.versions.download(rel)
-    if (res.message) showToast(res.message)
-    if (res.reloadVersions) await store.load()
-  } catch (e) {
-    showToast(`安装失败: ${getErrorMessage(e)}`)
-  }
-}
-
+// ⑥收编：本模块下载失败现词「安装失败: 」经 adapter.copy.errorPrefix 回
+// store 词源表，视图直调 adapter.versions.download 的绕行保词表自此退役——
+// 方言表下载/重试全部走 store.runDownload。
 const runningVersion = computed(() => store.runningVersion)
 </script>
 
@@ -110,7 +97,7 @@ const runningVersion = computed(() => store.runningVersion)
 
       <div v-if="store.installed.length === 0" class="empty-state first-use">
         <p>尚未安装果核看图 —— 下载官方当前版本，或「导入本地目录」把现有便携目录收纳进来</p>
-        <button v-if="store.releases.length" class="btn btn-primary" @click="download(store.releases[0])">
+        <button v-if="store.releases.length" class="btn btn-primary" @click="store.runDownload(store.releases[0])">
           安装最新版 {{ store.releases[0].version }}
         </button>
         <button v-else-if="!store.loading" class="btn btn-secondary" @click="store.load()">↻ 刷新发布接口</button>
@@ -191,10 +178,10 @@ const runningVersion = computed(() => store.runningVersion)
                 <button
                   v-if="statusOf(rel) === 'idle'"
                   class="btn btn-primary btn-small"
-                  @click="download(rel)"
+                  @click="store.runDownload(rel)"
                 >下载安装</button>
                 <UiStatusChip v-if="statusOf(rel) === 'installed'" tone="positive">已安装</UiStatusChip>
-                <button v-if="statusOf(rel) === 'error'" class="link-button" @click="download(rel)">重试</button>
+                <button v-if="statusOf(rel) === 'error'" class="link-button" @click="store.runDownload(rel)">重试</button>
               </td>
             </tr>
             <tr v-if="store.releases.length === 0 && !store.loading">
