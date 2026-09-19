@@ -1,6 +1,8 @@
-// 特征测试：DdnsGoView 托管契约 + 本视图特有面（进程日志流 / Web 端口设置 / 面板子窗口动作）。
-// 基线先以迁移前形态跑绿（16/16），迁移后仅卸载/导入两例改经 useConfirm/usePrompt 单例驱动，
-// 可观察行为（是否调后端/toast/文案要素）不变。
+// 特征测试：DdnsGoView（批 0 共享契约收敛件）托管契约 + 本视图特有面
+// （进程日志流 / Web 端口设置 / 面板子窗口动作）。共享面断言经 ManagedConsoleShell
+// 家族 DOM（.status-word/.banner/.installed-card/.dl-percent 等）逐字承接；
+// 事件 mock 与共享件同构改为数组收集（instance-state 有 store 与视图日志重取
+// 两个独立监听），可观察行为（是否调后端/toast/文案要素）与迁移前一致。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -32,17 +34,26 @@ const svc = vi.hoisted(() => ({
 }))
 
 const runtime = vi.hoisted(() => ({
-  handlers: {} as Record<string, (event: { data: unknown }) => void>,
+  // 数组收集：同事件多监听器（store 快照订阅 + 视图日志重取边沿订阅）
+  handlers: {} as Record<string, Array<(event: { data: unknown }) => void>>,
 }))
 
 vi.mock('@wailsio/runtime', () => ({
   Events: {
     On: (name: string, cb: (event: { data: unknown }) => void) => {
-      runtime.handlers[name] = cb
-      return vi.fn()
+      const list = (runtime.handlers[name] ??= [])
+      list.push(cb)
+      return () => {
+        const i = list.indexOf(cb)
+        if (i >= 0) list.splice(i, 1)
+      }
     },
   },
 }))
+
+function emit(name: string, data: unknown) {
+  for (const cb of [...(runtime.handlers[name] ?? [])]) cb({ data })
+}
 
 vi.mock('../../../bindings/hanxi/internal/modules/ddnsgo/ddnsgoservice', () => svc)
 
@@ -86,6 +97,8 @@ afterEach(() => {
   // 对话框单例兜底复位（正常用例内都已 settle）
   useConfirm().settleConfirm(false)
   usePrompt().settlePrompt(null)
+  // 事件注册表清空（防跨用例串听）
+  for (const key of Object.keys(runtime.handlers)) delete runtime.handlers[key]
 })
 
 describe('DdnsGoView 初始装载', () => {
@@ -99,13 +112,15 @@ describe('DdnsGoView 初始装载', () => {
     w.unmount()
   })
 
-  it('订阅三条事件（download/state/log）', async () => {
+  it('订阅三条事件（download/state/log），其中 state 为 store+视图日志边沿双监听', async () => {
     stubDefaults({ state: 'stopped' })
     const w = await mountView()
     expect(Object.keys(runtime.handlers).sort()).toEqual(
       ['ddnsgo:instance-log', 'ddnsgo:instance-state', 'ddnsgo:version-download'],
     )
+    expect(runtime.handlers['ddnsgo:instance-state'].length).toBe(2)
     w.unmount()
+    expect(runtime.handlers['ddnsgo:instance-state'].length).toBe(0)
   })
 })
 
@@ -145,8 +160,8 @@ describe('DdnsGoView 进程日志流', () => {
   it('instance-log 事件逐行追加；warnish 特征词行挂警示着色；「未变化」不算异常', async () => {
     stubDefaults({ state: 'running', version: '6.6.0', listenAddr: '127.0.0.1:9876' })
     const w = await mountView()
-    runtime.handlers['ddnsgo:instance-log']({ data: { line: '更新失败: AliDNS refused' } })
-    runtime.handlers['ddnsgo:instance-log']({ data: { line: 'IP 未变化，跳过更新' } })
+    emit('ddnsgo:instance-log', { line: '更新失败: AliDNS refused' })
+    emit('ddnsgo:instance-log', { line: 'IP 未变化，跳过更新' })
     await nextTick()
     const lines = w.findAll('.dd-log-line')
     expect(lines[lines.length - 2].classes()).toContain('dd-log-warn')
@@ -167,7 +182,7 @@ describe('DdnsGoView 进程日志流', () => {
     stubDefaults({ state: 'stopped' })
     const w = await mountView()
     const before = svc.Logs.mock.calls.length
-    runtime.handlers['ddnsgo:instance-state']({ data: { state: 'running', version: '6.6.0', listenAddr: '127.0.0.1:9876' } })
+    emit('ddnsgo:instance-state', { state: 'running', version: '6.6.0', listenAddr: '127.0.0.1:9876' })
     await flushMicrotasks()
     expect(svc.Logs.mock.calls.length).toBeGreaterThan(before)
     w.unmount()
@@ -193,11 +208,13 @@ describe('DdnsGoView 控制操作', () => {
     w.unmount()
   })
 
-  it('打开控制台走 OpenConsole（子 Webview 窗口）', async () => {
+  it('打开控制台走 OpenConsole（子 Webview 窗口，#primary-action 槽第三钮）', async () => {
     stubDefaults({ state: 'stopped' })
     svc.OpenConsole.mockResolvedValue({ message: '面板窗口已打开' })
     const w = await mountView()
-    await w.findAll('.control-btns .btn')[1].trigger('click')
+    const btn = w.findAll('.control-btns .btn')[1]
+    expect(btn.text()).toBe('🖥 打开控制台')
+    await btn.trigger('click')
     await flushMicrotasks()
     expect(svc.OpenConsole).toHaveBeenCalledTimes(1)
     expect(useToast().toastMsg.value).toBe('面板窗口已打开')
@@ -241,7 +258,7 @@ describe('DdnsGoView Web 端口设置', () => {
 })
 
 describe('DdnsGoView 版本管理', () => {
-  it('卸载经确认：取消不动后端（迁移后走 useConfirm 单例，文案要素锁定）', async () => {
+  it('卸载经确认：取消不动后端（adapter 内 useConfirm 单例，文案要素锁定）', async () => {
     const { confirmState, settleConfirm } = useConfirm()
     stubDefaults({ state: 'stopped' }, [installedV66])
     const w = await mountView()
@@ -249,6 +266,7 @@ describe('DdnsGoView 版本管理', () => {
     await uninstallBtn.trigger('click')
     await flushMicrotasks()
     expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('卸载 ddns-go 6.6.0')
     expect(JSON.stringify(confirmState.options.details)).toContain('ddns_go_config')
     settleConfirm(false)
     await flushMicrotasks()
@@ -256,7 +274,22 @@ describe('DdnsGoView 版本管理', () => {
     w.unmount()
   })
 
-  it('导入本地：取消不动后端；有值 trim 调 ImportLocal（迁移后走 usePrompt 单例）', async () => {
+  it('确认卸载：RemoveVersion + toast 回执', async () => {
+    const { settleConfirm } = useConfirm()
+    stubDefaults({ state: 'stopped' }, [installedV66])
+    svc.RemoveVersion.mockResolvedValue(undefined)
+    const w = await mountView()
+    const uninstallBtn = w.findAll('.installed-card button').find((b) => b.text() === '卸载')!
+    await uninstallBtn.trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(svc.RemoveVersion).toHaveBeenCalledWith('6.6.0')
+    expect(useToast().toastMsg.value).toBe('已卸载 6.6.0')
+    w.unmount()
+  })
+
+  it('导入本地：有值 trim 调 ImportLocal（adapter 内 usePrompt 单例）', async () => {
     const { promptState, settlePrompt } = usePrompt()
     stubDefaults({ state: 'stopped' })
     svc.ImportLocal.mockResolvedValue({ version: '6.5.0' })
@@ -275,10 +308,10 @@ describe('DdnsGoView 版本管理', () => {
     vi.useFakeTimers()
     stubDefaults({ state: 'stopped' }, [], [{ version: '6.7.0', size: 100, published: '2026-08-02T00:00:00Z', isPre: false }])
     const w = await mountView()
-    runtime.handlers['ddnsgo:version-download']({ data: { version: '6.7.0', stage: 'downloading', done: 60, total: 100 } })
+    emit('ddnsgo:version-download', { version: '6.7.0', stage: 'downloading', done: 60, total: 100 })
     await nextTick()
     expect(w.find('.dl-percent').text()).toBe('60%')
-    runtime.handlers['ddnsgo:version-download']({ data: { version: '6.7.0', stage: 'done', done: 100, total: 100 } })
+    emit('ddnsgo:version-download', { version: '6.7.0', stage: 'done', done: 100, total: 100 })
     await vi.advanceTimersByTimeAsync(900)
     expect(w.find('.dl-percent').exists()).toBe(false)
     w.unmount()

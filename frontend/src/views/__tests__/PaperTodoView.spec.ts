@@ -1,6 +1,8 @@
-// 特征测试（Phase 4 组 E）：PaperTodoView 迁移前行为基线。
-// 锁定：双变体三态操作（安装/换装/已装）、卸载确认文案随数据在册动态变化、
-// 重试沿用最近变体、变体失败回滚、官方命令通道三按钮、轮询生命周期。
+// 特征测试（Wave 5 · 批 0 迁移后基线）：PaperTodoView 已收敛至托管控制台共享契约
+// （ManagedControlBar/ManagedVersionPanel/ManagedExtrasCard + adapters/papertodo）。
+// 锁定：双变体经 variant 槽声明与切换（失败回滚）、单变体下载/换装/已装语义、
+// 卸载确认文案随数据在册动态变化（保留数据承诺逐字）、重试按当前变体、
+// 官方命令通道三按钮、listInstalled 退化 0/1 的 meta 成色、轮询与订阅生命周期。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -94,7 +96,7 @@ const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
 beforeEach(() => {
-  // 迁移后交互面：确认/输入经 useConfirm/usePrompt 全局单例（见 BCUView.spec 同注释）
+  // 交互面：确认/输入经 useConfirm/usePrompt 全局单例（见 BCUView.spec 同注释）
   settleConfirm(false)
   settlePrompt(null)
 })
@@ -105,22 +107,23 @@ afterEach(() => {
 })
 
 describe('PaperTodoView 控制台与命令通道', () => {
-  it('挂载拉取状态/版本/变体/运行时/联动', async () => {
+  it('挂载拉取状态/版本/变体/运行时/联动/仓库', async () => {
     stubDefaults({ state: 'stopped' })
     const { wrapper } = await mountView()
-    for (const fn of [svc.GetStatus, svc.ListReleases, svc.GetInstalledVersion, svc.GetVariant, svc.GetRuntimeStatus, svc.GetFollowOnExit]) {
+    for (const fn of [svc.GetStatus, svc.ListReleases, svc.GetInstalledVersion, svc.GetVariant, svc.GetRuntimeStatus, svc.GetFollowOnExit, svc.RepositoryURL]) {
       expect(fn).toHaveBeenCalled()
     }
     wrapper.unmount()
   })
 
-  it('三按钮命令通道：唤回/收拢/退出各自落 API 并 toast 回执', async () => {
+  it('三按钮命令通道：唤回(primary)/收拢(#primary-action 槽)/退出(quit) 各自落 API 并 toast 回执', async () => {
     stubDefaults({ state: 'running', version: '1.2.0' })
     svc.OpenWindow.mockResolvedValue({ message: '已唤回全部纸片' })
     svc.HidePapers.mockResolvedValue({ message: '已收拢全部纸片' })
     svc.Quit.mockResolvedValue({ message: '已发送退出命令' })
     const { wrapper } = await mountView()
     const btns = wrapper.findAll('.control-btns button')
+    expect(btns).toHaveLength(3)
     await btns[0].trigger('click')
     await flushMicrotasks()
     expect(svc.OpenWindow).toHaveBeenCalled()
@@ -132,21 +135,32 @@ describe('PaperTodoView 控制台与命令通道', () => {
     await btns[2].trigger('click')
     await flushMicrotasks()
     expect(svc.Quit).toHaveBeenCalled()
+    expect(useToast().toastMsg.value).toBe('已发送退出命令')
     wrapper.unmount()
   })
 
-  it('stopped 态：收拢/退出禁用', async () => {
+  it('stopped 态：收拢/退出禁用；引导行按 adapter.hint 现词', async () => {
     stubDefaults({ state: 'stopped' })
     const { wrapper } = await mountView()
     const btns = wrapper.findAll('.control-btns button')
     expect(btns[1].attributes('disabled')).toBeDefined()
     expect(btns[2].attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.hint-line').text()).toContain('尚未运行：点击「唤回纸片」启动')
+    wrapper.unmount()
+  })
+
+  it('external 态：banner-warn 原词（经 adapter.banner 投影）', async () => {
+    stubDefaults({ state: 'external' })
+    const { wrapper } = await mountView()
+    const banner = wrapper.find('.banner')
+    expect(banner.classes()).toContain('banner-warn')
+    expect(banner.text()).toContain('检测到外部 PaperTodo 实例（非 Hanxi 托管）')
     wrapper.unmount()
   })
 })
 
-describe('PaperTodoView 变体体系', () => {
-  it('no-runtime 变体 + 无 .NET 10 运行时 → 警示注记 warn', async () => {
+describe('PaperTodoView 变体体系（adapter.variant 槽）', () => {
+  it('no-runtime 变体 + 无 .NET 10 运行时 → 警示注记 warn（运行时经快照扩展字段回流）', async () => {
     stubDefaults({ state: 'stopped' }, { variant: 'no-runtime', runtime: { hasDesktop10: false, desktopRuntimes: [] } })
     const { wrapper } = await mountView()
     const note = wrapper.find('.variant-note')
@@ -160,6 +174,7 @@ describe('PaperTodoView 变体体系', () => {
     const { wrapper } = await mountView()
     svc.SetVariant.mockResolvedValue(undefined)
     const radios = wrapper.findAll('.variant-opt input[type="radio"]')
+    expect(radios).toHaveLength(2)
     await radios[1].trigger('change')
     await flushMicrotasks()
     expect(svc.SetVariant).toHaveBeenCalledWith('no-runtime')
@@ -173,66 +188,98 @@ describe('PaperTodoView 变体体系', () => {
     wrapper.unmount()
   })
 
-  it('双变体三态：本版同变体=已安装、本版异变体=换装、异版本=安装', async () => {
+  it('异版本行=下载安装（按当前变体偏好落参）', async () => {
     stubDefaults({ state: 'stopped' })
+    svc.DownloadVersion.mockResolvedValue('started')
     const { wrapper } = await mountView()
     const row = wrapper.findAll('.tbl tbody tr')[0]
-    const cells = row.findAll('.asset-cell')
-    // release 1.3.0 vs installed 1.2.0 → 两个变体都是"安装"
-    expect(cells[0].find('button').text()).toBe('安装')
-    expect(cells[1].find('button').text()).toBe('安装')
-    // 装此版 覆盖链接存在（installed 版本不同）
-    expect(row.text()).toContain('装此版')
+    expect(row.find('.ver-status').classes()).toContain('idle')
+    const btn = row.findAll('button').find((b) => b.text() === '下载安装')!
+    await btn.trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledWith('1.3.0', 'self-contained')
     wrapper.unmount()
   })
 
-  it('同版本异变体 → 换装；同版本同变体 → 已安装', async () => {
-    stubDefaults({ state: 'stopped' }, { installed: { ...installed120 }, variant: 'no-runtime' })
-    // 当前托管 1.2.0（installed），远程表只有 1.3.0 —— 改用 1.2.0 远程行验证三态
+  it('同版本同变体=已安装（行内无下载钮）；选另一变体后变体卡出现「换装」并可落参下载', async () => {
+    stubDefaults({ state: 'stopped' }, { variant: 'no-runtime' })
     svc.ListReleases.mockResolvedValue([{ ...release130, version: '1.2.0' }])
-    await flushMicrotasks()
-    const { wrapper } = await mountView()
-    await flushMicrotasks()
-    const row = wrapper.findAll('.tbl tbody tr')[0]
-    expect(row.find('.pt-ver-status').classes()).toContain('installed')
-    const cells = row.findAll('.asset-cell')
-    // installed variant=self-contained：完整版列=已安装，精简版列=换装
-    expect(cells[0].text()).toContain('已安装')
-    expect(cells[1].find('button').text()).toBe('换装')
+    svc.SetVariant.mockResolvedValue(undefined)
     svc.DownloadVersion.mockResolvedValue('started')
-    await cells[1].find('button').trigger('click')
+    const { wrapper } = await mountView()
+    // installed 1.2.0 self-contained = 远程 1.2.0 → 已安装态；当前变体偏好 no-runtime → 换装可用
+    const row = wrapper.findAll('.tbl tbody tr')[0]
+    expect(row.find('.ver-status').classes()).toContain('installed')
+    expect(row.text()).not.toContain('下载安装')
+    const switchBtn = wrapper.findAll('.variant-card button').find((b) => b.text() === '换装')!
+    expect(switchBtn.attributes('title')).toContain('覆盖安装为精简版变体（便签数据不动）')
+    await switchBtn.trigger('click')
+    await flushMicrotasks()
     expect(svc.DownloadVersion).toHaveBeenCalledWith('1.2.0', 'no-runtime')
     wrapper.unmount()
   })
 
-  it('error 事件后状态列显失败，错误详情与重试链接呈现（§9.5-2 修复）', async () => {
-    // 修复后语义：error 态并入下载模板分支渲染——详情可见，retryDownload/lastVariant 复活。
+  it('同版本同变体 → 无换装入口（仅已安装态）', async () => {
+    stubDefaults({ state: 'stopped' })
+    svc.ListReleases.mockResolvedValue([{ ...release130, version: '1.2.0' }])
+    const { wrapper } = await mountView()
+    const row = wrapper.findAll('.tbl tbody tr')[0]
+    expect(row.find('.ver-status').classes()).toContain('installed')
+    expect(wrapper.text()).not.toContain('换装')
+    wrapper.unmount()
+  })
+
+  it('error 事件后状态列显失败，错误详情与重试链接呈现（重试按当前变体）', async () => {
     stubDefaults({ state: 'stopped' })
     svc.DownloadVersion.mockResolvedValue('started')
     const { wrapper } = await mountView()
     runtime.handlers['papertodo:version-download']({ data: { version: '1.3.0', stage: 'error', message: '网络中断' } })
     await nextTick()
-    expect(wrapper.find('.pt-ver-status').classes()).toContain('error')
-    expect(wrapper.find('.pt-ver-status').text()).toBe('失败')
+    expect(wrapper.find('.ver-status').classes()).toContain('error')
+    expect(wrapper.find('.ver-status').text()).toBe('失败')
     expect(wrapper.find('.dl-error').text()).toBe('网络中断')
     const retry = wrapper.findAll('.retry-link').find((a) => a.text() === '重试')!
     await retry.trigger('click')
     await flushMicrotasks()
-    expect(svc.DownloadVersion).toHaveBeenCalledWith('1.3.0', expect.any(String)) // 复下载走 lastVariant/当前变体
+    expect(svc.DownloadVersion).toHaveBeenCalledWith('1.3.0', 'self-contained')
+    wrapper.unmount()
+  })
+
+  it('already-installed 回执弹变体名 toast', async () => {
+    stubDefaults({ state: 'stopped' })
+    svc.DownloadVersion.mockResolvedValue('already-installed')
+    const { wrapper } = await mountView()
+    const btn = wrapper.findAll('.tbl tbody tr')[0].findAll('button').find((b) => b.text() === '下载安装')!
+    await btn.trigger('click')
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toBe('版本 1.3.0（完整版）已安装')
     wrapper.unmount()
   })
 })
 
 describe('PaperTodoView 卸载/导入（数据保留语义）', () => {
+  it('已装卡 0/1 成色：meta 行携当前托管变体、数据在册与单目录覆盖升级话术', async () => {
+    stubDefaults({ state: 'stopped' })
+    const { wrapper } = await mountView()
+    const meta = wrapper.find('.meta-info')
+    expect(meta.text()).toContain('已安装')
+    expect(meta.text()).toContain('当前托管 1.2.0 · 完整版')
+    expect(meta.text()).toContain('便签数据在册')
+    expect(meta.text()).toContain('单目录覆盖升级：便签数据原地保留；「卸载」只删程序不删数据；回滚旧版 = 在下方重新安装该版本')
+    expect(meta.text()).toContain('此为审计基线')
+    wrapper.unmount()
+  })
+
   it('便签数据在册：确认文案承诺原地保留；确认只调 RemoveInstalled', async () => {
     stubDefaults({ state: 'stopped' })
     svc.RemoveInstalled.mockResolvedValue(undefined)
     const { wrapper } = await mountView()
-    const uninstallBtn = wrapper.findAll('.installed-card button').find((b) => b.text() === '卸载（保留数据）')!
+    const uninstallBtn = wrapper.findAll('.installed-card button').find((b) => b.text() === '卸载')!
 
     await uninstallBtn.trigger('click')
     await flushMicrotasks()
     expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('确定卸载 PaperTodo？')
     expect(confirmState.options.description).toContain('便签数据（data.json、图片库、plugins）将原地保留')
     settleConfirm(false)
     await flushMicrotasks()
@@ -250,7 +297,7 @@ describe('PaperTodoView 卸载/导入（数据保留语义）', () => {
   it('无数据态：确认文案如实说明当前没有便签数据', async () => {
     stubDefaults({ state: 'stopped' }, { installed: { ...installed120, hasData: false } })
     const { wrapper } = await mountView()
-    const uninstallBtn = wrapper.findAll('.installed-card button').find((b) => b.text() === '卸载（保留数据）')!
+    const uninstallBtn = wrapper.findAll('.installed-card button').find((b) => b.text() === '卸载')!
     await uninstallBtn.trigger('click')
     await flushMicrotasks()
     expect(confirmState.options.description).toContain('当前没有便签数据')
@@ -258,7 +305,7 @@ describe('PaperTodoView 卸载/导入（数据保留语义）', () => {
     wrapper.unmount()
   })
 
-  it('导入本地：hasData 回执带数据随行标注', async () => {
+  it('导入本地：hasData 回执带数据随行标注；取消不动后端', async () => {
     stubDefaults({ state: 'stopped' }, { installed: null })
     svc.ImportLocal.mockResolvedValue({ version: '1.1.0', hasData: true })
     const { wrapper } = await mountView()
@@ -266,10 +313,28 @@ describe('PaperTodoView 卸载/导入（数据保留语义）', () => {
     await flushMicrotasks()
     expect(promptState.open).toBe(true)
     expect(promptState.options.label).toContain('PaperTodo.exe') // 原 prompt 首行指引逐字保留
+    settlePrompt(null)
+    await flushMicrotasks()
+    expect(svc.ImportLocal).not.toHaveBeenCalled()
+
+    await wrapper.findAll('.btn-group button')[0].trigger('click')
+    await flushMicrotasks()
     settlePrompt(' C:\\mine\\PaperTodo ')
     await flushMicrotasks()
     expect(svc.ImportLocal).toHaveBeenCalledWith('C:\\mine\\PaperTodo')
     expect(useToast().toastMsg.value).toBe('已导入 PaperTodo 1.1.0（便签数据随行）')
+    wrapper.unmount()
+  })
+
+  it('首用空态：引导话术逐字 + 下载最新版按当前变体落参', async () => {
+    stubDefaults({ state: 'stopped' }, { installed: null })
+    svc.DownloadVersion.mockResolvedValue('started')
+    const { wrapper } = await mountView()
+    const empty = wrapper.find('.empty-state')
+    expect(empty.text()).toContain('尚未安装 PaperTodo —— 下载官方绿色版')
+    await empty.find('button').trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledWith('1.3.0', 'self-contained')
     wrapper.unmount()
   })
 })
@@ -290,7 +355,7 @@ describe('PaperTodoView 事件与轮询', () => {
     stubDefaults({ state: 'stopped' })
     svc.OpenReleasesPage.mockResolvedValue(undefined)
     const { wrapper } = await mountView()
-    const releasesBtn = wrapper.findAll('.repo-row button').find((b) => b.text() === 'Releases 页')!
+    const releasesBtn = wrapper.findAll('.extras-card button').find((b) => b.text() === 'Releases 页')!
     await releasesBtn.trigger('click')
     expect(svc.OpenReleasesPage).toHaveBeenCalledTimes(1)
     wrapper.unmount()

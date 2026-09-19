@@ -1,10 +1,15 @@
-// 特征测试（Phase 4 组 E）：RecordlyView 迁移前行为基线。
+// 特征测试（Phase 4 组 E · Wave 5 批 0 收敛续版）：RecordlyView 行为基线。
 // 锁定：升级检测（核心版本互认）、stable/beta 双通道、单目录覆盖安装语义、
 // 确认/导入文案、事件改写与 KeepAlive 轮询契约。
+// 批 0 收敛新增：真实 adapter 的缺省 active 形状（ManagedVersionPanel 消费面）、
+// 「安装失败/已安装」动词词面经 adapter 自捕获、联动辅助卡（ManagedExtrasCard）
+// 对 adapter.extras 的驱动。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RecordlyView from '../RecordlyView.vue'
+import ManagedVersionPanel from '../../components/managed/ManagedVersionPanel.vue'
+import { createRecordlyAdapter } from '../../adapters/recordly'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
 import { usePrompt } from '../../composables/usePrompt'
@@ -19,6 +24,7 @@ const svc = vi.hoisted(() => ({
   Quit: vi.fn(),
   DownloadVersion: vi.fn(),
   OpenDir: vi.fn(),
+  OpenConfigDir: vi.fn(),
   RemoveVersion: vi.fn(),
   ImportLocal: vi.fn(),
   GetFollowOnExit: vi.fn(),
@@ -287,5 +293,98 @@ describe('RecordlyView 事件与轮询', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('RecordlyView 批 0 契约成色（缺省 active / 安装动词词面 / extras 投影）', () => {
+  it('缺省 active 首样：视图不碰任何 GetActiveVersion RPC，界面「使用中」位缺席', async () => {
+    // recordly 后端本无 GetActiveVersion/SetActiveVersion——svc 桩刻意不提供，
+    // 视图与 store 若误触会 TypeError；此处锁「契约首次消费可缺省 active」的真实形态
+    stubDefaults({ state: 'stopped' })
+    const { wrapper } = await mountView()
+    expect(wrapper.text()).not.toContain('使用中')
+    expect(wrapper.text()).not.toContain('设为使用')
+    wrapper.unmount()
+  })
+
+  it('真实 recordly adapter 挂共享版本面板：可缺省 active 处理成色（无使用中徽标/设钮，卡片与卸载照常）', async () => {
+    stubDefaults({ state: 'stopped' }, { installed: [installed100], releases: [release100] })
+    const adapter = createRecordlyAdapter()
+    expect(adapter.versions.getActive).toBeUndefined()
+    expect(adapter.versions.setActive).toBeUndefined()
+    const w = mount(ManagedVersionPanel, { props: { adapter } })
+    await flushPromises()
+    await flushPromises()
+    const card = w.find('.installed-card')
+    expect(card.exists()).toBe(true)
+    expect(card.classes()).not.toContain('card-active') // activeVersion 恒空串：无高亮位（成色观察项）
+    expect(card.findAll('button').map((b) => b.text())).toEqual(['📂 打开位置', '卸载'])
+    expect(w.find('.badge').text()).toBe('官方下载')
+    w.unmount()
+  })
+
+  it('安装动词词面：DownloadVersion 失败自弹「安装失败: 」（store 统一前缀「下载失败: 」被 adapter 吃掉，无双 toast）', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release110] })
+    svc.DownloadVersion.mockRejectedValue(new Error('网络断'))
+    const { wrapper } = await mountView()
+    const btn = wrapper.findAll('.tbl tbody tr')[0].findAll('button').find((b) => b.text() === '覆盖安装')!
+    await btn.trigger('click')
+    await vi.waitFor(() => expect(useToast().toastMsg.value).toBe('安装失败: 网络断'))
+    wrapper.unmount()
+  })
+
+  it('already-installed 回执：toast 现词 + 即时重拉版本区', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release110] })
+    svc.DownloadVersion.mockResolvedValue('already-installed')
+    const { wrapper } = await mountView()
+    const before = svc.ListInstalledVersions.mock.calls.length
+    const btn = wrapper.findAll('.tbl tbody tr')[0].findAll('button').find((b) => b.text() === '覆盖安装')!
+    await btn.trigger('click')
+    await vi.waitFor(() => expect(useToast().toastMsg.value).toBe('版本 1.1.0 已安装'))
+    expect(svc.ListInstalledVersions.mock.calls.length).toBeGreaterThan(before)
+    wrapper.unmount()
+  })
+
+  it('通道切换失败：toast「切换通道失败: 」且通道态不翻转、不重拉', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release110, release120beta] })
+    svc.SetReleaseChannel.mockRejectedValue(new Error('离线'))
+    const { wrapper } = await mountView()
+    const before = svc.ListReleases.mock.calls.length
+    await wrapper.findAll('.channel-seg button')[1].trigger('click')
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toBe('切换通道失败: 离线')
+    expect(wrapper.find('.beta-warn').exists()).toBe(false)
+    expect(svc.ListReleases.mock.calls.length).toBe(before)
+    wrapper.unmount()
+  })
+
+  it('通道首拉失败保留现词「读取本地版本失败: 」（原 localTask 错误面）', async () => {
+    stubDefaults({ state: 'stopped' })
+    svc.GetReleaseChannel.mockRejectedValue(new Error('配置损坏'))
+    const { wrapper } = await mountView()
+    expect(wrapper.find('.error-box').text()).toContain('读取本地版本失败: 配置损坏')
+    wrapper.unmount()
+  })
+
+  it('联动辅助卡经 adapter.extras 驱动：随关勾选/快捷方式/数据目录回执与 RPC 一致', async () => {
+    stubDefaults({ state: 'stopped' })
+    svc.SetFollowOnExit.mockResolvedValue(undefined)
+    svc.CreateDesktopShortcut.mockResolvedValue(undefined)
+    svc.OpenConfigDir.mockResolvedValue(undefined)
+    const { wrapper } = await mountView()
+    const card = wrapper.find('.extras-card')
+    expect(card.exists()).toBe(true)
+    // 勾选翻转 → SetFollowOnExit(false)（stub 初值 true）+ 现词 toast
+    await card.find('.toggle-label input').setValue(false)
+    await vi.waitFor(() => expect(svc.SetFollowOnExit).toHaveBeenCalledWith(false))
+    expect(useToast().toastMsg.value).toBe('已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
+    await card.findAll('button').find((b) => b.text().includes('创建桌面快捷方式'))!.trigger('click')
+    await vi.waitFor(() => expect(svc.CreateDesktopShortcut).toHaveBeenCalled())
+    expect(useToast().toastMsg.value).toBe('桌面快捷方式已创建（指向托管安装）')
+    await card.findAll('button').find((b) => b.text().includes('数据目录'))!.trigger('click')
+    await vi.waitFor(() => expect(svc.OpenConfigDir).toHaveBeenCalled())
+    // 仓库行展示
+    expect(card.find('.repo-addr').text()).toBe('https://github.com/webadderallorg/Recordly')
+    wrapper.unmount()
   })
 })

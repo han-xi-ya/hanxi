@@ -1,44 +1,32 @@
 <script setup lang="ts">
-// 状态 / 版本管理 / 安装进度 / 时长 ticker / 生命周期
+// Recordly 控制台（Wave 5 · 批 0 契约收敛件）：状态/版本加载/安装进度 map/
+// 时长 ticker/busy 闩/启停编排/联动辅助卡全部收进 adapters/recordly +
+// components/managed 家族（store 一份，控制条与辅助卡共享注入）。
+// 本视图只余业务方言（共享面板装不下、逐字保持）：单目录「托管安装」卡片、
+// 远程表核心版本互认（coreCompare）、安装中/校验并静默安装等本模块词面、
+// stable/beta 通道行（adapter.channel 槽的真实页面消费位）、升级警告条与
+// 引用已装版本号的引导行（纯快照投影承载不了）。
 // 与 CCSwitchView 的结构差异：单版本托管目录（NSIS oneClick 语义，无"设为使用"）、
 // stable/beta 双通道切换、安装器未签名风险文案。
-import { ref, computed, watch, onMounted } from 'vue'
-import * as RecordlyAPI from '../../bindings/hanxi/internal/modules/recordly/recordlyservice'
-import type { RecordlyRelease, RecordlyVersionInfo, DownloadProgress } from '../../bindings/hanxi/internal/modules/recordly/version/models'
-import type { Snapshot } from '../../bindings/hanxi/internal/modules/recordly/instance/models'
-import type { ControlOutcome, QuitOutcome } from '../../bindings/hanxi/internal/modules/recordly/models'
+import { computed, onMounted, ref } from 'vue'
+import type { ManagedReleaseRecord, NormalizedProgress } from '../components/managed/adapter'
+import { createRecordlyAdapter } from '../adapters/recordly'
+import { useManagedConsole } from '../components/managed/store'
+import ManagedControlBar from '../components/managed/ManagedControlBar.vue'
+import ManagedExtrasCard from '../components/managed/ManagedExtrasCard.vue'
 import { useToast } from '../composables/useToast'
-import { useWailsEvent } from '../composables/useWailsEvent'
-import { usePolling } from '../composables/usePolling'
-import { useClipboard } from '../composables/useClipboard'
-import { useConfirm } from '../composables/useConfirm'
-import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
-import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
-import { toolStateMeta } from '../constants/status'
+import { fmtSize, fmtDate } from '../utils/format'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import UiEmptyState from '../components/ui/UiEmptyState.vue'
 
-// ---------- 状态 ----------
-const snap = ref<Snapshot | null>(null)
-const releases = ref<RecordlyRelease[]>([])
-const installed = ref<RecordlyVersionInfo[]>([])
-const loading = ref(false)
-const listError = ref('')
-const busy = ref(false)
-const uptimeSec = ref(0)
-const channel = ref<'stable' | 'beta'>('stable')
-
-// 安装进度 map（按版本索引）
-const downloading = ref<Record<string, DownloadProgress>>({})
+const adapter = createRecordlyAdapter()
+const store = useManagedConsole(adapter)
 
 const { showToast } = useToast()
-const { confirm } = useConfirm()
-const { prompt } = usePrompt()
-const { copyWithToast } = useClipboard()
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 frpc/markeron/everything/ccswitch 同构）
 const activeMainTab = ref<'console' | 'versions'>('console')
@@ -48,16 +36,34 @@ const MAIN_TABS = [
   { key: 'versions', label: '📦 版本管理' },
 ]
 
+// ---------- 更新通道（adapter.channel 槽批 0 无共享 UI，视图驱动） ----------
+const channel = ref<'stable' | 'beta'>('stable')
+
+async function switchChannel(target: 'stable' | 'beta') {
+  if (target === channel.value) return
+  try {
+    const res = await adapter.channel!.set(target)
+    channel.value = target
+    if (res?.reloadVersions) await store.load()
+  } catch (e) {
+    showToast(`切换通道失败: ${getErrorMessage(e)}`)
+  }
+}
+
+onMounted(() => {
+  // 通道初值（迁移前随 loadVersions 的 localTask 并带取回；store 版本区无通道位，
+  // 改视图侧独立拉取，读取失败保留现词 '读取本地版本失败: '）
+  void Promise.resolve(adapter.channel!.get())
+    .then((ch) => {
+      channel.value = ch === 'beta' ? 'beta' : 'stable'
+    })
+    .catch((e: unknown) => {
+      store.listError = `读取本地版本失败: ${getErrorMessage(e)}`
+    })
+})
+
 // ---------- 派生状态 ----------
-const state = computed(() => snap.value?.state ?? '')
-const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
-const isExternal = computed(() => state.value === 'external')
-
-// 五态通用文案接 constants/status 单一来源（§9.5-5）；业务扩展话术视图自行覆写。
-const stateText = computed(() => toolStateMeta(state.value).text)
-
-const runningVersion = computed(() => snap.value?.version ?? '')
-const installedInfo = computed(() => installed.value[0] ?? null)
+const installedInfo = computed(() => store.installed[0] ?? null)
 
 // 核心版本号（去预发布后缀）：NSIS 单目录语义下 beta 的 PE 版本与 tag 互认依据
 function coreOf(v: string): string {
@@ -78,68 +84,16 @@ function coreCompare(a: string, b: string): number {
 
 // 可升级：已装核心 < 当前通道最新核心
 const upgradeAvailable = computed(() => {
-  if (!installedInfo.value || releases.value.length === 0) return false
-  return coreCompare(installedInfo.value.version, releases.value[0].version) < 0
+  if (!installedInfo.value || store.releases.length === 0) return false
+  return coreCompare(installedInfo.value.version, store.releases[0].version) < 0
 })
 
-// 条件提示条（变体互斥）
-const banner = computed(() => {
-  if (state.value === 'external') {
-    return {
-      tone: 'warn' as const,
-      text: '检测到外部 Recordly 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 Recordly 窗口内关闭。',
-    }
-  }
-  if (state.value === 'failed') {
-    return { tone: 'error' as const, text: snap.value?.error || 'Recordly 异常退出' }
-  }
-  if (state.value === 'running') {
-    return {
-      tone: 'ok' as const,
-      text: 'Recordly 正在运行：录制与剪辑在其窗口内操作（配置与录像存于 %APPDATA%\\Recordly，跨版本共享）。闲置 5 分钟自动退出。',
-    }
-  }
-  return null
-})
+// 单目录卡片「运行中」徽标：核心互认（PE 版本与 tag 后缀互认场）
+const runningBadge = computed(
+  () => store.state === 'running' && !!installedInfo.value && coreCompare(store.runningVersion, installedInfo.value.version) === 0,
+)
 
-// ---------- 数据加载 ----------
-async function loadVersions() {
-  loading.value = true
-  listError.value = ''
-  const localTask = Promise.all([RecordlyAPI.ListInstalledVersions(), RecordlyAPI.GetReleaseChannel()])
-    .then(([local, ch]) => {
-      installed.value = local ?? []
-      channel.value = ch === 'beta' ? 'beta' : 'stable'
-    })
-    .catch((error: unknown) => { listError.value = `读取本地版本失败: ${getErrorMessage(error)}` })
-  void RecordlyAPI.ListReleases()
-    .then(remote => { releases.value = remote ?? [] })
-    .catch((error: unknown) => { listError.value = `获取远程版本列表失败: ${getErrorMessage(error)}` })
-    .finally(() => { loading.value = false })
-  await localTask
-}
-
-async function switchChannel(target: 'stable' | 'beta') {
-  if (target === channel.value) return
-  try {
-    await RecordlyAPI.SetReleaseChannel(target)
-    channel.value = target
-    await loadVersions()
-  } catch (e) {
-    showToast(`切换通道失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function refreshStatus() {
-  try {
-    snap.value = await RecordlyAPI.GetStatus()
-  } catch (e) {
-    // 轮询静默失败：保留上次快照即可
-    console.warn('recordly GetStatus failed:', getErrorMessage(e))
-  }
-}
-
-function stepOf(p: DownloadProgress): number {
+function stepOf(p: NormalizedProgress): number {
   if (p.stage === 'done') return 100
   if (p.stage !== 'downloading') return 0
   if (!p.total) return 0
@@ -147,197 +101,12 @@ function stepOf(p: DownloadProgress): number {
 }
 
 // 安装状态判定：精确 tag 命中，或数值核心一致（PE 版本抹掉 -beta 后缀的互认场）
-function statusOf(rel: RecordlyRelease): 'installed' | 'downloading' | 'error' | 'idle' {
-  const p = downloading.value[rel.version]
+function statusOf(rel: ManagedReleaseRecord): 'installed' | 'downloading' | 'error' | 'idle' {
+  const p = store.downloading[rel.version]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
-  const hit = installed.value.find(v => v.version === rel.version || coreCompare(v.version, rel.version) === 0)
+  const hit = store.installed.find((v) => v.version === rel.version || coreCompare(v.version, rel.version) === 0)
   return hit ? 'installed' : 'idle'
 }
-
-// ---------- 控制操作 ----------
-async function openWindow() {
-  if (busy.value) return
-  busy.value = true
-  try {
-    const out: ControlOutcome = await RecordlyAPI.OpenWindow()
-    showToast(out.message)
-    await refreshStatus()
-  } catch (e) {
-    showToast(getErrorMessage(e))
-    await refreshStatus()
-  } finally {
-    busy.value = false
-  }
-}
-
-async function quitRecordly() {
-  if (busy.value) return
-  busy.value = true
-  try {
-    const out: QuitOutcome = await RecordlyAPI.Quit()
-    showToast(out.message)
-    await refreshStatus()
-  } catch (e) {
-    showToast(`退出失败: ${getErrorMessage(e)}`)
-    await refreshStatus()
-  } finally {
-    busy.value = false
-  }
-}
-
-// ---------- 版本管理操作 ----------
-async function install(rel: RecordlyRelease) {
-  try {
-    const res = await RecordlyAPI.DownloadVersion(rel.version)
-    if (res === 'already-installed') {
-      showToast(`版本 ${rel.version} 已安装`)
-      await loadVersions()
-    }
-  } catch (e) {
-    showToast(`安装失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function openDir(path: string) {
-  try {
-    await RecordlyAPI.OpenDir(path)
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
-}
-
-
-async function openConfigDir() {
-  try {
-    await RecordlyAPI.OpenConfigDir()
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function removeVersion(v: RecordlyVersionInfo) {
-  const ok = await confirm({
-    title: `确定卸载 Recordly ${v.version}？`,
-    description: '托管安装目录将被删除。\n（%APPDATA%\\Recordly 中的配置与录像不受影响）',
-    tone: 'danger',
-  })
-  if (!ok) return
-  try {
-    await RecordlyAPI.RemoveVersion(v.version)
-    showToast(`已卸载 ${v.version}`)
-    await loadVersions()
-  } catch (e) {
-    showToast(`卸载失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function importLocal() {
-  const path = await prompt({
-    title: '导入本地安装',
-    label: '请输入 Recordly 安装目录完整路径（含 Recordly.exe 与 resources\\app.asar 的整套目录）',
-    description: '默认安装位置：%LOCALAPPDATA%\\Programs\\Recordly\n提示：配置与录像恒在 %APPDATA%\\Recordly，与安装位置无关',
-    placeholder: '%LOCALAPPDATA%\\Programs\\Recordly',
-  })
-  if (!path) return
-  try {
-    busy.value = true
-    const info = await RecordlyAPI.ImportLocal(path.trim())
-    showToast(`已导入 Recordly ${info.version}`)
-    await loadVersions()
-  } catch (e) {
-    showToast(`导入失败: ${getErrorMessage(e)}`)
-  } finally {
-    busy.value = false
-  }
-}
-
-// ---------- 时长 ticker 与状态轮询（usePolling 内置 KeepAlive 生命周期契约） ----------
-const statusPolling = usePolling(refreshStatus, 2500) // 状态兜底轮询（事件推送之外）
-usePolling(() => {
-  if (snap.value?.state === 'running' && snap.value.startedAt) {
-    const started = new Date(snap.value.startedAt).getTime()
-    if (!Number.isNaN(started)) {
-      uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
-    }
-  }
-}, 1000, { immediateFirstRun: false })
-
-// 停止轮询（切后台/卸载）时运行时长归零——对齐迁移前 stopTimers 语义
-watch(statusPolling.isPolling, (running) => {
-  if (!running) uptimeSec.value = 0
-})
-
-// ---------- 联动开关 / 桌面快捷方式 / GitHub 仓库 ----------
-const followOnExit = ref(false)
-const repoUrl = ref('')
-
-async function loadExtras() {
-  try {
-    const [f, u] = await Promise.all([RecordlyAPI.GetFollowOnExit(), RecordlyAPI.RepositoryURL()])
-    followOnExit.value = f
-    repoUrl.value = u
-  } catch (e) {
-    console.warn('loadExtras failed:', getErrorMessage(e))
-  }
-}
-
-async function onFollowToggle() {
-  const next = !followOnExit.value
-  followOnExit.value = next // 用户点击已将勾选框翻转，ref 同步跟进，保持绑定状态一致
-  try {
-    await RecordlyAPI.SetFollowOnExit(next)
-    showToast(next ? '已开启：Hanxi 退出时一并关闭该工具' : '已关闭：Hanxi 退出不影响该工具，继续独立运行（下次启动生效）')
-  } catch (e) {
-    followOnExit.value = !next // 失败回滚：ref 变化驱动勾选框复位到后端真实值
-    showToast('设置失败: ' + getErrorMessage(e))
-  }
-}
-
-async function createShortcut() {
-  try {
-    await RecordlyAPI.CreateDesktopShortcut()
-    showToast('桌面快捷方式已创建（指向托管安装）')
-  } catch (e) {
-    showToast('创建快捷方式失败: ' + getErrorMessage(e))
-  }
-}
-
-async function copyRepo() {
-  await copyWithToast(repoUrl.value, '仓库地址已复制')
-}
-
-async function openRepo() {
-  try {
-    await RecordlyAPI.OpenRepository()
-  } catch (e) {
-    showToast('打开失败: ' + getErrorMessage(e))
-  }
-}
-
-// ---------- 事件订阅（useWailsEvent 自动注销）与初始装载 ----------
-useWailsEvent<DownloadProgress>('recordly:version-download', (t) => {
-  if (!t || !t.version) return
-  downloading.value = { ...downloading.value, [t.version]: t }
-  if (t.stage === 'done') {
-    setTimeout(() => {
-      const next = { ...downloading.value }
-      delete next[t.version]
-      downloading.value = next
-    }, 800)
-    loadVersions()
-  }
-})
-
-useWailsEvent<Snapshot>('recordly:instance-state', (s) => {
-  if (!s) return
-  snap.value = s
-  if (s.state !== 'running') uptimeSec.value = 0
-})
-
-onMounted(() => {
-  // 状态首帧由 usePolling 的 mounted 即触发（immediateFirstRun）
-  void Promise.all([loadVersions(), loadExtras()])
-})
 </script>
 
 <template>
@@ -348,229 +117,177 @@ onMounted(() => {
       </template>
     </PageHeader>
 
-    <div v-if="listError" class="error-box">{{ listError }}</div>
+    <div v-if="store.listError" class="error-box">{{ store.listError }}</div>
 
-    <!-- 控制台 Tab -->
+    <!-- 控制台 Tab：状态头/启停钮/条件提示条由 ManagedControlBar（adapter 投影）承载 -->
     <div v-show="activeMainTab === 'console'" class="tab-body">
-    <!-- 顶部整合条：状态 + 启停按钮，一行内解决问题 -->
-    <div class="control-bar">
-      <div class="control-top">
-        <div class="control-status">
-          <span class="rd-status-light" :class="state"></span>
-          <span class="status-word">{{ stateText }}</span>
-          <template v-if="isRunningOrStarting && runningVersion">
-            <span class="ver-pill">{{ runningVersion }}</span>
-            <span v-if="snap?.pid" class="mono pid-tag">PID {{ snap.pid }}</span>
-          </template>
-          <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
+      <ManagedControlBar :adapter="adapter" :store="store" />
+
+      <!-- 引导行（banner 缺席时）：文案引用已装版本，共享 hint(snap) 承载不了，留视图 -->
+      <template v-if="!store.banner">
+        <div v-if="store.state === 'stopped' && installedInfo" class="hint-line">
+          尚未运行：点击「打开窗口」启动 Recordly {{ installedInfo.version }}，录制与剪辑在其窗口内完成。配置恒存于 %APPDATA%\Recordly，与托管版本无关。
         </div>
-        <div class="control-btns">
-          <UiButton
-            variant="secondary"
-            small
-            :disabled="busy || state === 'starting'"
-            :title="state === 'running' ? '唤起窗口' : state === 'starting' ? '启动中…' : '启动 Recordly 并打开窗口'"
-            @click="openWindow"
-          >🗔 打开窗口</UiButton>
-          <UiButton
-            variant="danger"
-            small
-            :disabled="busy || (state !== 'running' && state !== 'starting' && !isExternal)"
-            :title="isExternal ? '外部实例请在 Recordly 窗口内退出' : '关闭其窗口（多窗口收尾不及会兜底强杀）'"
-            @click="quitRecordly"
-          >⏻ 退出</UiButton>
+        <div v-else-if="store.state === 'stopped'" class="hint-line">
+          尚未安装：请到「版本管理」在线安装或导入本地副本。
         </div>
-      </div>
+        <div v-else-if="store.state === 'starting'" class="hint-line">正在拉起 Recordly（Electron 冷启动约 2~10 秒）…</div>
+      </template>
+
+      <UiBanner v-if="upgradeAvailable && installedInfo" tone="warn" class="slim">
+        发现可升级版本 {{ store.releases[0].version }}（当前 {{ installedInfo.version }}）——到「版本管理」一键安装，安装期间请先退出运行中的实例。
+      </UiBanner>
+
+      <!-- 说明卡（可折叠） -->
+      <details class="info-details">
+        <summary class="info-summary">什么是 Recordly</summary>
+        <div class="info-body">
+          <p>开源演示录屏与自动剪辑工具（<a class="inline-link" href="https://github.com/webadderallorg/Recordly" target="_blank" rel="noopener">webadderallorg/Recordly</a>，AGPL-3.0）。Hanxi 仅做官方原版安装器的下载托管与启停管理，不内嵌不打包其代码。</p>
+          <p class="hint-dim">上游无 Windows 免安装包：在线安装使用官方 NSIS 安装器静默装进 Hanxi 托管目录，安装器自动更新已由官方开关禁用，版本升级统一走此处版本管理。安装器未数字签名，托管直装不触发 SmartScreen；若杀毒软件误拦请把托管目录加入白名单。</p>
+        </div>
+      </details>
     </div>
 
-    <!-- 条件提示条 / 引导行 -->
-    <UiBanner v-if="banner" :tone="banner.tone" class="slim">{{ banner.text }}</UiBanner>
-    <div v-else-if="state === 'stopped' && installedInfo" class="hint-line">
-      尚未运行：点击「打开窗口」启动 Recordly {{ installedInfo.version }}，录制与剪辑在其窗口内完成。配置恒存于 %APPDATA%\Recordly，与托管版本无关。
-    </div>
-    <div v-else-if="state === 'stopped'" class="hint-line">
-      尚未安装：请到「版本管理」在线安装或导入本地副本。
-    </div>
-    <div v-else-if="state === 'starting'" class="hint-line">正在拉起 Recordly（Electron 冷启动约 2~10 秒）…</div>
+    <!-- 联动与辅助设置卡（随关/快捷方式/数据目录/仓库，全部经 adapter.extras 投影） -->
+    <ManagedExtrasCard :adapter="adapter" />
 
-    <UiBanner v-if="upgradeAvailable && installedInfo" tone="warn" class="slim">
-      发现可升级版本 {{ releases[0].version }}（当前 {{ installedInfo.version }}）——到「版本管理」一键安装，安装期间请先退出运行中的实例。
-    </UiBanner>
-
-    <!-- 说明卡（可折叠） -->
-    <details class="info-details">
-      <summary class="info-summary">什么是 Recordly</summary>
-      <div class="info-body">
-        <p>开源演示录屏与自动剪辑工具（<a class="inline-link" href="https://github.com/webadderallorg/Recordly" target="_blank" rel="noopener">webadderallorg/Recordly</a>，AGPL-3.0）。Hanxi 仅做官方原版安装器的下载托管与启停管理，不内嵌不打包其代码。</p>
-        <p class="hint-dim">上游无 Windows 免安装包：在线安装使用官方 NSIS 安装器静默装进 Hanxi 托管目录，安装器自动更新已由官方开关禁用，版本升级统一走此处版本管理。安装器未数字签名，托管直装不触发 SmartScreen；若杀毒软件误拦请把托管目录加入白名单。</p>
-      </div>
-    </details>
-    </div>
-
-    <!-- 联动与辅助设置卡 -->
-    <div class="extras-card">
-      <div class="extras-row">
-        <label class="toggle-label">
-          <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
-          <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出完全不影响该工具）</span></span>
-        </label>
-        <UiButton variant="secondary" small @click="createShortcut">🖥 创建桌面快捷方式</UiButton>
-        <button class="btn btn-secondary btn-small" title="打开 Recordly 用户数据目录（%APPDATA%\Recordly，配置与录像库）" @click="openConfigDir">🗂 数据目录</button>
-      </div>
-      <div class="repo-row">
-        <span class="k">GitHub 仓库</span>
-        <code class="mono repo-addr">{{ repoUrl }}</code>
-        <button class="link-button" @click="copyRepo">复制</button>
-        <button class="link-button" @click="openRepo">浏览器打开</button>
-      </div>
-    </div>
-
-    <!-- 版本管理 Tab -->
+    <!-- 版本管理 Tab（方言表：单目录托管安装卡 + 核心互认远程表，留视图） -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
-    <div class="control-panel">
-      <div class="meta-info">
-        <span>
-          当前托管 <strong>{{ installedInfo ? installedInfo.version : '未安装' }}</strong> · {{ channel === 'beta' ? 'beta 通道（含预发布）' : 'stable 通道' }} · 远程版本 {{ releases.length }} 个
-        </span>
-        <span class="hint-dim">Windows 仅提供 NSIS 在线安装器（GitHub digest + SHA256SUMS 双源校验），安装/升级统一静默落进托管目录，多版本不共存为上游安装器语义所限</span>
+      <div class="control-panel">
+        <div class="meta-info">
+          <span>
+            当前托管 <strong>{{ installedInfo ? installedInfo.version : '未安装' }}</strong> · {{ channel === 'beta' ? 'beta 通道（含预发布）' : 'stable 通道' }} · 远程版本 {{ store.releases.length }} 个
+          </span>
+          <span class="hint-dim">Windows 仅提供 NSIS 在线安装器（GitHub digest + SHA256SUMS 双源校验），安装/升级统一静默落进托管目录，多版本不共存为上游安装器语义所限</span>
+        </div>
+        <div class="btn-group">
+          <UiButton variant="secondary" small :disabled="store.busy" @click="store.runImport()">⇥ 导入本地安装</UiButton>
+          <UiButton variant="secondary" small :disabled="store.loading" @click="store.load()">
+            {{ store.loading ? '刷新中…' : '↻ 刷新远程列表' }}
+          </UiButton>
+        </div>
       </div>
-      <div class="btn-group">
-        <UiButton variant="secondary" small :disabled="busy" @click="importLocal">⇥ 导入本地安装</UiButton>
-        <UiButton variant="secondary" small :disabled="loading" @click="loadVersions">
-          {{ loading ? '刷新中…' : '↻ 刷新远程列表' }}
+
+      <!-- 更新通道切换（adapter.channel：Get/SetReleaseChannel 的真实页面消费位） -->
+      <div class="channel-row">
+        <span class="k">更新通道</span>
+        <div class="channel-seg">
+          <button :class="{ active: channel === 'stable' }" @click="switchChannel('stable')">Stable 稳定</button>
+          <button :class="{ active: channel === 'beta' }" @click="switchChannel('beta')">Beta 预发布</button>
+        </div>
+        <span v-if="channel === 'beta'" class="beta-warn">beta 版上游标注"可能不稳定"，仅供尝鲜</span>
+      </div>
+
+      <!-- 已安装 -->
+      <div class="section-title"><h3>托管安装</h3></div>
+
+      <UiEmptyState v-if="!installedInfo" class="first-use">
+        <p>尚未安装 Recordly —— 在线安装官方版本，或「导入本地安装」把机器上已有的安装目录收编进来</p>
+        <UiButton v-if="store.releases.length" variant="primary" @click="store.runDownload(store.releases[0])">
+          安装最新版 {{ store.releases[0].version }}（约 {{ fmtSize(store.releases[0].size) }}）
         </UiButton>
-      </div>
-    </div>
+        <UiButton v-else-if="!store.loading" variant="secondary" @click="store.load()">↻ 刷新远程列表</UiButton>
+      </UiEmptyState>
 
-    <!-- 更新通道切换 -->
-    <div class="channel-row">
-      <span class="k">更新通道</span>
-      <div class="channel-seg">
-        <button :class="{ active: channel === 'stable' }" @click="switchChannel('stable')">Stable 稳定</button>
-        <button :class="{ active: channel === 'beta' }" @click="switchChannel('beta')">Beta 预发布</button>
-      </div>
-      <span v-if="channel === 'beta'" class="beta-warn">beta 版上游标注"可能不稳定"，仅供尝鲜</span>
-    </div>
-
-    <!-- 已安装 -->
-    <div class="section-title"><h3>托管安装</h3></div>
-
-    <UiEmptyState v-if="!installedInfo" class="first-use">
-      <p>尚未安装 Recordly —— 在线安装官方版本，或「导入本地安装」把机器上已有的安装目录收编进来</p>
-      <UiButton v-if="releases.length" variant="primary" @click="install(releases[0])">
-        安装最新版 {{ releases[0].version }}（约 {{ fmtSize(releases[0].size) }}）
-      </UiButton>
-      <UiButton v-else-if="!loading" variant="secondary" @click="loadVersions">↻ 刷新远程列表</UiButton>
-    </UiEmptyState>
-
-    <div v-else class="installed-grid">
-      <div class="installed-card card-active">
-        <div class="inst-card-top">
-          <span class="ver-tag">{{ installedInfo.version }}</span>
-          <div class="inst-badges">
-            <span v-if="state === 'running' && coreCompare(runningVersion, installedInfo.version) === 0" class="badge badge-running">运行中</span>
-            <span v-if="installedInfo.isImport" class="badge badge-import">本地导入</span>
-            <span v-else class="badge badge-official">官方下载</span>
+      <div v-else class="installed-grid">
+        <div class="installed-card card-active">
+          <div class="inst-card-top">
+            <span class="ver-tag">{{ installedInfo.version }}</span>
+            <div class="inst-badges">
+              <span v-if="runningBadge" class="badge badge-running">运行中</span>
+              <span v-if="installedInfo.isImport" class="badge badge-import">本地导入</span>
+              <span v-else class="badge badge-official">官方下载</span>
+            </div>
+          </div>
+          <div class="inst-meta">
+            <div class="meta-line"><span class="k">路径</span><code class="mono">{{ installedInfo.exePath }}</code></div>
+            <div class="meta-line"><span class="k">大小</span><span>{{ fmtSize(installedInfo.size) }} · 安装于 {{ installedInfo.installedAt }}</span></div>
+            <div class="meta-line" v-if="installedInfo.isImport && installedInfo.source"><span class="k">来源</span><span class="hint-dim">{{ installedInfo.source }}</span></div>
+          </div>
+          <div class="inst-actions">
+            <UiButton variant="secondary" small @click="store.runOpenDir(installedInfo)">📂 打开位置</UiButton>
+            <UiButton
+              variant="danger"
+              small
+              :disabled="store.state === 'running'"
+              :title="store.state === 'running' ? '请先退出 Recordly' : ''"
+              @click="store.runRemove(installedInfo)"
+            >卸载</UiButton>
           </div>
         </div>
-        <div class="inst-meta">
-          <div class="meta-line"><span class="k">路径</span><code class="mono">{{ installedInfo.exePath }}</code></div>
-          <div class="meta-line"><span class="k">大小</span><span>{{ fmtSize(installedInfo.size) }} · 安装于 {{ installedInfo.installedAt }}</span></div>
-          <div class="meta-line" v-if="installedInfo.isImport && installedInfo.source"><span class="k">来源</span><span class="hint-dim">{{ installedInfo.source }}</span></div>
-        </div>
-        <div class="inst-actions">
-          <UiButton variant="secondary" small @click="openDir(installedInfo.dir)">📂 打开位置</UiButton>
-          <UiButton
-            variant="danger"
-            small
-            :disabled="state === 'running'"
-            :title="state === 'running' ? '请先退出 Recordly' : ''"
-            @click="removeVersion(installedInfo)"
-          >卸载</UiButton>
-        </div>
       </div>
-    </div>
 
-    <!-- 远程可用版本 -->
-    <div class="section-title"><h3>远程可用版本</h3></div>
-    <div class="table-container">
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th style="width: 160px;">版本</th>
-            <th style="width: 170px;">状态</th>
-            <th style="width: 90px;">大小</th>
-            <th style="width: 110px;">发布时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="rel in releases" :key="rel.version">
-            <td>
-              <strong class="ver-name">{{ rel.version }}</strong>
-              <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
-            </td>
-            <td>
-              <!-- 类名刻意用 rd-ver-status（含 rd- 前缀）与全局原子族隔离 -->
-              <span v-if="statusOf(rel) === 'installed'" class="rd-ver-status installed">已安装</span>
-              <span v-else-if="statusOf(rel) === 'downloading'" class="rd-ver-status downloading">安装中</span>
-              <span v-else-if="statusOf(rel) === 'error'" class="rd-ver-status error">失败</span>
-              <span v-else class="rd-ver-status idle">可安装</span>
-            </td>
-            <td>{{ fmtSize(rel.size) }}</td>
-            <td>{{ fmtDate(rel.published) }}</td>
-            <td>
-              <div v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'" class="download-cell">
-                <div class="dl-bar-wrap">
-                  <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
+      <!-- 远程可用版本 -->
+      <div class="section-title"><h3>远程可用版本</h3></div>
+      <div class="table-container">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th style="width: 160px;">版本</th>
+              <th style="width: 170px;">状态</th>
+              <th style="width: 90px;">大小</th>
+              <th style="width: 110px;">发布时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="rel in store.releases" :key="rel.version">
+              <td>
+                <strong class="ver-name">{{ rel.version }}</strong>
+                <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
+              </td>
+              <td>
+                <!-- 类名刻意用 rd-ver-status（含 rd- 前缀）与全局原子族隔离 -->
+                <span v-if="statusOf(rel) === 'installed'" class="rd-ver-status installed">已安装</span>
+                <span v-else-if="statusOf(rel) === 'downloading'" class="rd-ver-status downloading">安装中</span>
+                <span v-else-if="statusOf(rel) === 'error'" class="rd-ver-status error">失败</span>
+                <span v-else class="rd-ver-status idle">可安装</span>
+              </td>
+              <td>{{ fmtSize(rel.size) }}</td>
+              <td>{{ fmtDate(rel.published) }}</td>
+              <td>
+                <div v-if="statusOf(rel) === 'downloading' && store.downloading[rel.version]!.stage === 'downloading'" class="download-cell">
+                  <div class="dl-bar-wrap">
+                    <div class="dl-bar-inner" :style="{ width: `${stepOf(store.downloading[rel.version]!)}%` }"></div>
+                  </div>
+                  <span class="dl-percent">{{ stepOf(store.downloading[rel.version]!) }}%</span>
                 </div>
-                <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
-              </div>
-              <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
-                <span v-if="['verify', 'install'].includes(downloading[rel.version]!.stage)">校验并静默安装…</span>
-                <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
-              </div>
-              <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
-                <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
-              </div>
-              <UiButton
-                v-if="statusOf(rel) === 'idle'"
-                variant="primary"
-                small
-                :disabled="isRunningOrStarting"
-                :title="isRunningOrStarting ? '请先退出运行中的 Recordly' : ''"
-                @click="install(rel)"
-              >{{ installedInfo ? '覆盖安装' : '安装' }}</UiButton>
-              <span v-if="statusOf(rel) === 'installed'" class="chip chip-positive">已安装</span>
-              <a v-if="statusOf(rel) === 'error'" class="retry-link" @click="install(rel)">重试</a>
-            </td>
-          </tr>
-          <tr v-if="releases.length === 0 && !loading">
-            <td colspan="5" class="empty-hint">无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+                <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
+                  <span v-if="['verify', 'install'].includes(store.downloading[rel.version]!.stage)">校验并静默安装…</span>
+                  <span v-else class="dl-error" :title="store.downloading[rel.version]!.message">{{ store.downloading[rel.version]!.message }}</span>
+                </div>
+                <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
+                  <span class="dl-error" :title="store.downloading[rel.version]!.message">{{ store.downloading[rel.version]!.message }}</span>
+                </div>
+                <UiButton
+                  v-if="statusOf(rel) === 'idle'"
+                  variant="primary"
+                  small
+                  :disabled="store.isRunningOrStarting"
+                  :title="store.isRunningOrStarting ? '请先退出运行中的 Recordly' : ''"
+                  @click="store.runDownload(rel)"
+                >{{ installedInfo ? '覆盖安装' : '安装' }}</UiButton>
+                <span v-if="statusOf(rel) === 'installed'" class="chip chip-positive">已安装</span>
+                <a v-if="statusOf(rel) === 'error'" class="retry-link" @click="store.runDownload(rel)">重试</a>
+              </td>
+            </tr>
+            <tr v-if="store.releases.length === 0 && !store.loading">
+              <td colspan="5" class="empty-hint">无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-/* 仅保留本视图独有的业务样式；.btn 家族、.tbl、.header-row、.subtitle、.error-box、
-   .empty-state、.mono、.chip、.banner、.link-button、main-tab 族、keyframes pulse 已上收。 */
+/* 页头/控制条/提示条/联动卡/页签与 flex 骨架由 managed 组件 + components.css
+   全局原子接管；本视图仅余方言表（rd-ver-status）与通道行等私有形。 */
 .recordly-view { display: flex; flex-direction: column; gap: 10px; }
 
-/* UiBanner 沿用迁移前 slim 密度：改挂 class="slim"，由全局 .banner.slim 原子接管 */
-
-/* ---------- 顶部整合控制条（control-bar 四件套由全局原子接管；
-   本视图原 gap:10px 散差按标准形 gap:8px 定档删除） ---------- */
-/* 信号灯类名带 rd- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
-.rd-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
-.rd-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
-.rd-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
-.rd-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
-.rd-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
-/* status-word/ver-pill/pid-tag/uptime-tag/control-btns 由全局原子接管 */
+/* status-word/ver-pill/pid-tag/uptime-tag/control-btns 与状态信号灯由
+   ManagedControlBar 承载（前缀复制体 .rd-status-light 自此退役） */
 
 /* hint-line/info-details/info-summary/info-body p 等由全局原子接管 */
 .inline-link { color: var(--color-primary); text-decoration: none; }
@@ -608,5 +325,6 @@ onMounted(() => {
 /* download-cell/dl-* 家族与 retry-link(:hover) 由全局原子接管（本视图原 dl-bar-inner
    "fast linear" 散差按标准形 "base ease" 定档删除） */
 
-/* ---------- 联动与辅助设置卡（extras-card/extras-row/toggle-label/repo-row(.k)/repo-addr 由全局原子接管） ---------- */
+/* ---------- 联动与辅助设置卡（extras-card/extras-row/toggle-label/repo-row(.k)/repo-addr 由全局原子接管，
+   卡体由 ManagedExtrasCard 承载） ---------- */
 </style>

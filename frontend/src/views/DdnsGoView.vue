@@ -1,119 +1,43 @@
 <script setup lang="ts">
-// 状态 / 内嵌控制台入口 / 进程日志 / 版本管理 / 下载进度 / 时长 ticker / 生命周期
-// （骨架基于重构共享层；日志流面板与 Web 端口设置为 ddns-go 特有业务，原样保留）
-import { ref, computed, onMounted, onDeactivated, nextTick, watch } from 'vue'
-import * as DdnsGoAPI from '../../bindings/hanxi/internal/modules/ddnsgo/ddnsgoservice'
-import type { DdnsRelease, DdnsVersionInfo, DownloadProgress } from '../../bindings/hanxi/internal/modules/ddnsgo/version/models'
+// ddns-go 控制台（Wave 5 · 批 0 共享契约收敛件；模式照抄 ccswitch 黄金样本）：
+// 共享面全部收敛进 components/managed 托管控制台家族——adapter（src/adapters/ddnsgo）
+// 承载业务投影（启停/版本/联动 RPC + log/port 数据面），ManagedConsoleShell 管页头
+// 与页签骨架，store 单源轮询/uptime/进度 map/busy 闩。本视图仅剩装配与
+// #primary-action 第三钮、#console-extra 业务大件（监听地址行、进程日志面板、
+// Web 监听端口行）与说明卡。
+import { computed, nextTick, onMounted, ref } from 'vue'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/ddnsgo/instance/models'
-import { useToast } from '../composables/useToast'
+import { createDdnsGoAdapter } from '../adapters/ddnsgo'
+import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
-import { usePolling } from '../composables/usePolling'
-import { loadManagedVersions } from '../composables/loadManagedVersions'
 import { useAsyncAction } from '../composables/useAsyncAction'
-import { useClipboard } from '../composables/useClipboard'
-import { useConfirm } from '../composables/useConfirm'
-import { usePrompt } from '../composables/usePrompt'
+import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
-import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
-import { toolStateMeta } from '../constants/status'
-import PageHeader from '../components/ui/PageHeader.vue'
-import MainTabNav from '../components/ui/MainTabNav.vue'
-import UiBanner from '../components/ui/UiBanner.vue'
-import UiEmptyState from '../components/ui/UiEmptyState.vue'
 
-// ---------- 状态 ----------
-const snap = ref<Snapshot | null>(null)
-const releases = ref<DdnsRelease[]>([])
-const installed = ref<DdnsVersionInfo[]>([])
-const activeVersion = ref('')
-const loading = ref(false)
-const listError = ref('')
-const uptimeSec = ref(0)
-
-const { busy, run } = useAsyncAction()
+const adapter = createDdnsGoAdapter()
 const { showToast } = useToast()
-const { confirm } = useConfirm()
-const { prompt } = usePrompt()
-const { copyWithToast } = useClipboard()
 
-// 下载进度 map（按版本索引）
-const downloading = ref<Record<string, DownloadProgress>>({})
+// ---------- listenAddr 投影 ----------
+// listenAddr 属 ddnsgo 快照扩展字段（ManagedSnapshot 基型之外），共享状态头
+// 不渲染模块字段；本视图经 Shell 槽作用域 snap 以 addrOf 收口 cast 后展示。
+function addrOf(snap: unknown): string {
+  return (snap as Snapshot | null | undefined)?.listenAddr ?? ''
+}
 
-// 进程输出日志（事件流累积 + 挂载时拉最近 200 行）
+// ---------- 进程输出日志面板（log 槽首个实战：数据面经 adapter.log，UI 在本视图） ----------
 const MAX_LOG_LINES = 400
 const logLines = ref<string[]>([])
 const logAutoScroll = ref(true)
 const logBodyRef = ref<HTMLElement | null>(null)
-
-// 顶层主选项卡：console = 控制台，versions = 版本管理（与 ccswitch/flclash 同构）
-const activeMainTab = ref('console')
-const mainTabs = [
-  { key: 'console', label: '🌐 控制台' },
-  { key: 'versions', label: '📦 版本管理' },
-]
-
-// ---------- 派生状态 ----------
-const state = computed(() => snap.value?.state ?? '')
-const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
-const isExternal = computed(() => state.value === 'external')
-
-// 五态通用文案接 constants/status 单一来源（§9.5-5）；业务扩展话术视图自行覆写。
-const stateText = computed(() => toolStateMeta(state.value).text)
-
-const runningVersion = computed(() => snap.value?.version ?? '')
-const listenAddr = computed(() => snap.value?.listenAddr ?? '')
 
 // DDNS 更新日志的成败着色（上游输出含中英文两种语言）
 function logWarnish(line: string): boolean {
   return /失败|错误|异常|error|fail|refused|timeout/i.test(line) && !/未变化|no change/i.test(line)
 }
 
-// 条件提示条（三个变体互斥）
-const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(() => {
-  if (state.value === 'external') {
-    return {
-      tone: 'warn',
-      text: '检测到外部 ddns-go 实例（自行启动或 Windows 服务，非 Hanxi 托管）。可直接打开其面板查看；托管启动需先退出外部实例。',
-    }
-  }
-  if (state.value === 'failed') {
-    return { tone: 'error', text: snap.value?.error || 'ddns-go 异常退出' }
-  }
-  if (state.value === 'running') {
-    return {
-      tone: 'ok',
-      text: `ddns-go 正在运行：Web 面板 ${listenAddr.value ? 'http://' + listenAddr.value : ''}（仅回环，不外露局域网）。DNS 服务商与域名配置在其页面内完成，保存即生效。`,
-    }
-  }
-  return null
-})
-
-// ---------- 数据加载 ----------
-async function loadVersions() {
-  await loadManagedVersions({
-    remote: DdnsGoAPI.ListReleases,
-    local: DdnsGoAPI.ListInstalledVersions,
-    active: DdnsGoAPI.GetActiveVersion,
-    setRemote: value => { releases.value = value },
-    setLocal: value => { installed.value = value },
-    setActive: value => { activeVersion.value = value },
-    setLoading: value => { loading.value = value },
-    setError: value => { listError.value = value },
-  })
-}
-
-async function refreshStatus() {
-  try {
-    snap.value = await DdnsGoAPI.GetStatus()
-  } catch (e) {
-    // 轮询静默失败：保留上次快照即可
-    console.warn('ddnsgo GetStatus failed:', getErrorMessage(e))
-  }
-}
-
 async function loadLogHistory() {
   try {
-    const lines = await DdnsGoAPI.Logs(200)
+    const lines = await adapter.log.pull()
     if (Array.isArray(lines) && lines.length) {
       logLines.value = lines.slice(-MAX_LOG_LINES)
       scrollToBottom()
@@ -141,164 +65,25 @@ function clearLogs() {
   logLines.value = []
 }
 
-function stepOf(p: DownloadProgress): number {
-  if (p.stage === 'done') return 100
-  if (p.stage !== 'downloading') return 0
-  if (!p.total) return 0
-  return Math.min(99, Math.round((p.done / p.total) * 100))
-}
+// 事件流逐行接入（视图 setup 期订阅 adapter.log，随宿主卸载自动注销）
+adapter.log.subscribe(appendLog)
 
-function statusOf(rel: DdnsRelease): 'installed' | 'downloading' | 'error' | 'idle' {
-  const p = downloading.value[rel.version]
-  if (p) return p.stage === 'error' ? 'error' : 'downloading'
-  const hit = installed.value.find(v => v.version === rel.version)
-  return hit ? 'installed' : 'idle'
-}
-
-// ---------- 控制操作 ----------
-async function startDdns() {
-  if (busy.value) return
-  const r = await run(() => DdnsGoAPI.Start())
-  showToast(r.ok ? r.data.message : getErrorMessage(r.error))
-  await refreshStatus()
-}
-
-async function openConsole() {
-  if (busy.value) return
-  const r = await run(() => DdnsGoAPI.OpenConsole())
-  showToast(r.ok ? r.data.message : getErrorMessage(r.error))
-  await refreshStatus()
-}
-
-async function quitDdns() {
-  if (busy.value) return
-  const r = await run(() => DdnsGoAPI.Quit())
-  showToast(r.ok ? r.data.message : `退出失败: ${getErrorMessage(r.error)}`)
-  await refreshStatus()
-}
-
-// ---------- 版本管理操作 ----------
-async function download(rel: DdnsRelease) {
-  try {
-    const res = await DdnsGoAPI.DownloadVersion(rel.version)
-    if (res === 'already-installed') {
-      showToast(`版本 ${rel.version} 已安装`)
-      await loadVersions()
-    }
-  } catch (e) {
-    showToast(`下载失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function setActive(v: DdnsVersionInfo) {
-  try {
-    const ver = await DdnsGoAPI.SetActiveVersion(v.version)
-    activeVersion.value = ver
-    showToast(`已将 ${ver} 设为使用版本`)
-  } catch (e) {
-    showToast(`设置失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function openDir(path: string) {
-  try {
-    await DdnsGoAPI.OpenDir(path)
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
-}
-
-
-async function openConfigDir() {
-  try {
-    await DdnsGoAPI.OpenConfigDir()
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function removeVersion(v: DdnsVersionInfo) {
-  const ok = await confirm({
-    title: `卸载 ddns-go ${v.version}`,
-    description: '该版本隔离目录将被删除，不可恢复。',
-    details: [{ label: '域名配置', value: '~/.ddns_go_config.yaml 不受影响，后续版本继续共用' }],
-    tone: 'danger',
-    confirmLabel: '卸载',
-  })
-  if (!ok) return
-  try {
-    await DdnsGoAPI.RemoveVersion(v.version)
-    showToast(`已卸载 ${v.version}`)
-    await loadVersions()
-  } catch (e) {
-    showToast(`卸载失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function importLocal() {
-  const path = await prompt({
-    title: '导入本地安装',
-    label: 'ddns-go 所在目录完整路径',
-    description: '含 ddns-go.exe 的官方下载解压目录即可。域名配置恒在 ~/.ddns_go_config.yaml，与 exe 位置无关',
-  })
-  if (!path) return
-  const r = await run(() => DdnsGoAPI.ImportLocal(path.trim()))
-  if (r.ok) {
-    showToast(`已导入 ddns-go ${r.data.version}`)
-    await loadVersions()
-  } else {
-    showToast(`导入失败: ${getErrorMessage(r.error)}`)
-  }
-}
-
-// ---------- 时长 ticker 与轮询（usePolling 内置 KeepAlive 激活/停用契约） ----------
-usePolling(refreshStatus, 2500) // 状态兜底轮询（事件推送之外）
-usePolling(() => {
-  if (snap.value?.state === 'running' && snap.value.startedAt) {
-    const started = new Date(snap.value.startedAt).getTime()
-    if (!Number.isNaN(started)) {
-      uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
-    }
-  }
-}, 1000)
-
-// 停用即清零运行时长（对齐迁移前 stopTimers 语义）
-onDeactivated(() => {
-  uptimeSec.value = 0
+// 状态从非运行切到 running 时重取日志历史（引擎环形缓冲随新进程重启）。
+// instance-state 的快照订阅已被 store 占用，这里另起一个独立订阅只看该边沿——
+// Wails runtime 支持同事件多监听器，互不影响；切换以事件推送为准（2.5s 轮询
+// 仅是快照兜底，非迁移前 watch(snap) 的同义，实际转移恒有事件到达）。
+let lastState = ''
+useWailsEvent<Snapshot>('ddnsgo:instance-state', (s) => {
+  if (!s) return
+  const prev = lastState
+  lastState = s.state
+  if (s.state === 'running' && prev !== 'running' && prev !== 'starting') void loadLogHistory()
 })
 
-// ---------- 联动开关 / 端口 / GitHub 仓库 ----------
-const followOnExit = ref(false)
-const repoUrl = ref('')
+// ---------- Web 监听端口行（port 槽：读写经 adapter.port，输入态校验/回滚在本视图） ----------
 const listenPort = ref(9876)
 const portInput = ref(9876)
 const portDirty = computed(() => String(portInput.value) !== String(listenPort.value))
-
-async function loadExtras() {
-  try {
-    const [f, u, p] = await Promise.all([DdnsGoAPI.GetFollowOnExit(), DdnsGoAPI.RepositoryURL(), DdnsGoAPI.GetListenPort()])
-    followOnExit.value = f
-    repoUrl.value = u
-    listenPort.value = p
-    portInput.value = p
-  } catch (e) {
-    console.warn('loadExtras failed:', getErrorMessage(e))
-  }
-}
-
-async function onFollowToggle() {
-  const next = !followOnExit.value
-  followOnExit.value = next // 用户点击已将勾选框翻转，ref 同步跟进，保持绑定状态一致
-  try {
-    await DdnsGoAPI.SetFollowOnExit(next)
-    showToast(next
-      ? '已开启：Hanxi 退出时一并关闭 ddns-go'
-      : '已关闭：Hanxi 退出不影响 ddns-go，继续独立解析')
-  } catch (e) {
-    followOnExit.value = !next // 失败回滚：ref 变化驱动勾选框复位到后端真实值
-    showToast('设置失败: ' + getErrorMessage(e))
-  }
-}
 
 async function applyPort() {
   const n = Number(portInput.value)
@@ -307,124 +92,66 @@ async function applyPort() {
     return
   }
   try {
-    const res = await DdnsGoAPI.SetListenPort(n)
+    const res = await adapter.port.set(n)
     listenPort.value = n
-    showToast(res === 'pending'
-      ? `端口已设为 ${n}（当前运行实例不变，下次启动生效）`
-      : `监听端口已设为 ${n}`)
+    if (res.message !== undefined) showToast(res.message)
   } catch (e) {
     showToast(`设置失败: ${getErrorMessage(e)}`)
     portInput.value = listenPort.value
   }
 }
 
-async function copyRepo() {
-  await copyWithToast(repoUrl.value, '仓库地址已复制')
-}
+// ---------- 第三钮「打开控制台」（#primary-action 槽注入；store.busy 串行禁用，
+// 本钮单飞经视图 useAsyncAction；成功后状态刷新由 instance-state 事件与轮询兜底） ----------
+const { busy: consoleBusy, run: runConsoleAction } = useAsyncAction()
 
-async function openRepo() {
-  try {
-    await DdnsGoAPI.OpenRepository()
-  } catch (e) {
-    showToast('打开失败: ' + getErrorMessage(e))
+async function openConsole() {
+  const r = await runConsoleAction(() => Promise.resolve(adapter.openConsole.run()))
+  if (r.ok) {
+    if (r.data?.message !== undefined) showToast(r.data.message)
+  } else {
+    showToast(getErrorMessage(r.error))
   }
 }
-
-// ---------- 事件订阅（自动注销）与装载 ----------
-useWailsEvent<DownloadProgress>('ddnsgo:version-download', (t) => {
-  if (!t || !t.version) return
-  downloading.value = { ...downloading.value, [t.version]: t }
-  if (t.stage === 'done') {
-    setTimeout(() => {
-      const next = { ...downloading.value }
-      delete next[t.version]
-      downloading.value = next
-    }, 800)
-    loadVersions()
-  }
-})
-
-useWailsEvent<Snapshot>('ddnsgo:instance-state', (s) => {
-  if (!s) return
-  snap.value = s
-  if (s.state !== 'running') uptimeSec.value = 0
-})
-
-useWailsEvent<{ line?: string }>('ddnsgo:instance-log', (entry) => {
-  if (entry?.line) appendLog(entry.line)
-})
 
 onMounted(async () => {
-  await Promise.all([refreshStatus(), loadVersions(), loadExtras(), loadLogHistory()])
-})
-
-// 状态从非运行切到 running 时清空旧进程日志（引擎环形缓冲同点重启）
-watch(() => snap.value?.state, (now, prev) => {
-  if (now === 'running' && prev !== 'starting' && prev !== 'running') {
-    void loadLogHistory()
+  void loadLogHistory()
+  try {
+    const p = await adapter.port.get()
+    listenPort.value = p
+    portInput.value = p
+  } catch (e) {
+    console.warn('ddnsgo GetListenPort failed:', getErrorMessage(e))
   }
 })
 </script>
 
 <template>
-  <section class="page ddnsgo-view">
-    <PageHeader
-      title="ddns-go"
-      subtitle="托管动态域名解析工具：版本管理、JobObject 启停与内嵌 Web 控制台。"
-    >
-      <template #actions>
-        <MainTabNav v-model="activeMainTab" :tabs="mainTabs" />
-      </template>
-    </PageHeader>
+  <ManagedConsoleShell
+    class="ddnsgo-view"
+    :adapter="adapter"
+    title="ddns-go"
+    subtitle="托管动态域名解析工具：版本管理、JobObject 启停与内嵌 Web 控制台。"
+    console-tab-label="🌐 控制台"
+    :banner-slim="false"
+  >
+    <!-- 第三钮：打开内嵌 Web 控制台（钮序保持原"启动 → 打开控制台 → 退出"） -->
+    <template #primary-action="{ busy, state }">
+      <button
+        class="btn btn-primary btn-small"
+        :disabled="busy || consoleBusy || adapter.openConsole.disabledFor?.(state)"
+        :title="adapter.openConsole.titleFor?.(state)"
+        @click="openConsole"
+      >{{ adapter.openConsole.label }}</button>
+    </template>
 
-    <div v-if="listError" class="error-box">{{ listError }}</div>
-
-    <!-- 控制台 Tab -->
-    <div v-show="activeMainTab === 'console'" class="tab-body">
-      <!-- 顶部整合条：状态 + 控制按钮，一行内解决问题 -->
-      <div class="control-bar">
-        <div class="control-top">
-          <div class="control-status">
-            <span class="dd-status-light" :class="state"></span>
-            <span class="status-word">{{ stateText }}</span>
-            <template v-if="isRunningOrStarting && runningVersion">
-              <span class="ver-pill">{{ runningVersion }}</span>
-              <span v-if="snap?.pid" class="mono pid-tag">PID {{ snap.pid }}</span>
-            </template>
-            <span v-if="state === 'running' && listenAddr" class="mono addr-tag">🖥 {{ listenAddr }}</span>
-            <span v-if="state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(uptimeSec) }}</span>
-          </div>
-          <div class="control-btns">
-            <button
-              class="btn btn-secondary btn-small"
-              :disabled="busy || state === 'starting'"
-              :title="state === 'running' ? '已运行，无需重复启动' : '后台拉起 ddns-go（不打开面板）'"
-              @click="startDdns"
-            >▶ 启动</button>
-            <button
-              class="btn btn-primary btn-small"
-              :disabled="busy || (!isRunningOrStarting && !isExternal && state !== 'stopped' && state !== 'failed')"
-              title="打开内嵌 Web 控制台（未运行时先自动启动）"
-              @click="openConsole"
-            >🖥 打开控制台</button>
-            <button
-              class="btn btn-danger-outline btn-small"
-              :disabled="busy || (state !== 'running' && state !== 'starting' && !isExternal)"
-              :title="isExternal ? '外部实例请在其面板或 Windows 服务中退出' : '终止托管实例（含配置写静默期保护）'"
-              @click="quitDdns"
-            >⏻ 退出</button>
-          </div>
-        </div>
+    <!-- 控制台内联大件：监听地址行 + 进程日志面板（log 槽 UI）+ Web 端口行（port 槽 UI） -->
+    <template #console-extra="{ snap, state, busy }">
+      <!-- listenAddr 展示：文案与样式类逐字保留，仅从状态头迁入槽位顶行 -->
+      <div v-if="state === 'running' && addrOf(snap)" class="dd-addr-line">
+        <span class="mono addr-tag">🖥 {{ addrOf(snap) }}</span>
       </div>
 
-      <!-- 条件提示条 / 引导行 -->
-      <UiBanner v-if="banner" :tone="banner.tone">{{ banner.text }}</UiBanner>
-      <div v-else-if="state === 'stopped'" class="hint-line">
-        尚未运行：点击「打开控制台」启动并在窗口内配置 DNS 服务商与域名；域名配置恒存 ~/.ddns_go_config.yaml，与你自行运行的 ddns-go 无缝共享。
-      </div>
-      <div v-else-if="state === 'starting'" class="hint-line">正在拉起 ddns-go 并等待 Web 端口就绪…</div>
-
-      <!-- 进程输出日志面板 -->
       <div class="dd-log-card">
         <div class="dd-log-head">
           <span class="dd-log-title">进程输出（更新动态 / 错误）</span>
@@ -445,184 +172,48 @@ watch(() => snap.value?.state, (now, prev) => {
         </div>
       </div>
 
-      <!-- 说明卡（可折叠） -->
-      <details class="info-details">
-        <summary class="info-summary">什么是 ddns-go</summary>
-        <div class="info-body">
-          <p>开源动态域名解析工具（<a class="inline-link" href="https://github.com/jeessy2/ddns-go" target="_blank" rel="noopener">jeessy2/ddns-go</a>，MIT）：家用宽带无固定公网 IP 时，自动把最新 IP 同步到阿里云 / DNSPod / Cloudflare 等域名解析，支持 IPv4/IPv6 与十余家服务商。版本下载自官方 GitHub Releases（sha256 四层校验），启停受 JobObject 管控。</p>
-          <p class="hint-dim">安全边界：Hanxi 托管实例固定绑定 127.0.0.1（仅本机可访问面板）；需要把面板暴露到局域网请自行运行原版。首次使用请在面板设置用户名/密码。</p>
-        </div>
-      </details>
-    </div>
-
-    <!-- 联动与辅助设置卡 -->
-    <div class="extras-card">
-      <div class="extras-row">
-        <label class="toggle-label">
-          <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
-          <span>随 Hanxi 一起关闭 <span class="hint-dim">（关闭后 Hanxi 退出不影响 ddns-go，继续独立解析）</span></span>
-        </label>
-        <span class="port-ctrl">
-          <span class="hint-dim">Web 监听端口</span>
-          <input v-model.number="portInput" class="dd-port-input mono" type="number" min="1024" max="65535" />
-          <button class="btn btn-secondary btn-small" :disabled="!portDirty || busy" @click="applyPort">应用</button>
-        </span>
-        <button class="btn btn-secondary btn-small" title="在资源管理器中定位 ddns-go 配置文件（%USERPROFILE%\.ddns_go_config.yaml）" @click="openConfigDir">🗂 数据目录</button>
-      </div>
-      <div class="repo-row">
-        <span class="k">GitHub 仓库</span>
-        <code class="mono repo-addr">{{ repoUrl }}</code>
-        <button class="link-button" @click="copyRepo">复制</button>
-        <button class="link-button" @click="openRepo">浏览器打开</button>
-      </div>
-    </div>
-
-    <!-- 版本管理 Tab -->
-    <div v-show="activeMainTab === 'versions'" class="tab-body">
-      <div class="control-panel">
-        <div class="meta-info">
-          <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程版本 {{ releases.length }} 个</span>
-          <span class="hint-dim">便携包下载自 GitHub Releases（ddns-go_*_windows_x86_64.zip，官方 digest 校验）；或「导入本地」把你机器上已有的解压目录收纳进来</span>
-          <span class="hint-dim">域名配置（~/.ddns_go_config.yaml）各版本共享，升级/切换版本不影响现有解析设置</span>
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地安装</button>
-          <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadVersions">
-            {{ loading ? '刷新中…' : '↻ 刷新远程列表' }}
-          </button>
+      <!-- Web 监听端口设置：原 extras-row 的 .port-ctrl 整行迁入（校验/回执文案逐字保留），
+           复用 extras-card/extras-row 全局原子皮 -->
+      <div class="extras-card">
+        <div class="extras-row">
+          <span class="port-ctrl">
+            <span class="hint-dim">Web 监听端口</span>
+            <input v-model.number="portInput" class="dd-port-input mono" type="number" min="1024" max="65535" />
+            <button class="btn btn-secondary btn-small" :disabled="!portDirty || busy" @click="applyPort">应用</button>
+          </span>
         </div>
       </div>
+    </template>
 
-      <!-- 已安装版本 -->
-      <div class="section-title"><h3>已安装版本 ({{ installed.length }})</h3></div>
-
-      <UiEmptyState v-if="installed.length === 0">
-        <p>尚未安装 ddns-go —— 下载官方 Windows x64 包，或「导入本地」把现有解压目录收纳进来</p>
-        <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
-          下载最新版 {{ releases[0].version }}
-        </button>
-        <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新远程列表</button>
-      </UiEmptyState>
-
-      <div class="installed-grid">
-        <div v-for="v in installed" :key="v.version" class="installed-card" :class="{ 'card-active': activeVersion === v.version }">
-          <div class="inst-card-top">
-            <span class="ver-tag">{{ v.version }}</span>
-            <div class="inst-badges">
-              <span v-if="activeVersion === v.version" class="badge badge-active">使用中</span>
-              <span v-else-if="state === 'running' && runningVersion === v.version" class="badge badge-running">运行中</span>
-              <span v-if="v.isImport" class="badge badge-import">本地导入</span>
-              <span v-else class="badge badge-official">官方下载</span>
-            </div>
-          </div>
-          <div class="inst-meta">
-            <div class="meta-line"><span class="k">路径</span><code class="mono">{{ v.exePath }}</code></div>
-            <div class="meta-line"><span class="k">大小</span><span>{{ fmtSize(v.size) }} · 安装于 {{ v.installedAt }}</span></div>
-            <div class="meta-line" v-if="v.isImport && v.source"><span class="k">来源</span><span class="hint-dim">{{ v.source }}</span></div>
-          </div>
-          <div class="inst-actions">
-            <button v-if="activeVersion !== v.version" class="btn btn-primary btn-small" @click="setActive(v)">设为使用</button>
-            <button class="btn btn-secondary btn-small" @click="openDir(v.dir)">📂 打开位置</button>
-            <button
-              class="btn btn-danger-outline btn-small"
-              :disabled="state === 'running' && runningVersion === v.version"
-              :title="state === 'running' && runningVersion === v.version ? '请先退出 ddns-go' : ''"
-              @click="removeVersion(v)"
-            >卸载</button>
-          </div>
-        </div>
+    <!-- 控制台 Tab 主体：说明卡（可折叠，文案逐字保留） -->
+    <details class="info-details">
+      <summary class="info-summary">什么是 ddns-go</summary>
+      <div class="info-body">
+        <p>开源动态域名解析工具（<a class="inline-link" href="https://github.com/jeessy2/ddns-go" target="_blank" rel="noopener">jeessy2/ddns-go</a>，MIT）：家用宽带无固定公网 IP 时，自动把最新 IP 同步到阿里云 / DNSPod / Cloudflare 等域名解析，支持 IPv4/IPv6 与十余家服务商。版本下载自官方 GitHub Releases（sha256 四层校验），启停受 JobObject 管控。</p>
+        <p class="hint-dim">安全边界：Hanxi 托管实例固定绑定 127.0.0.1（仅本机可访问面板）；需要把面板暴露到局域网请自行运行原版。首次使用请在面板设置用户名/密码。</p>
       </div>
-
-      <!-- 远程可用版本 -->
-      <div class="section-title"><h3>远程可用版本</h3></div>
-      <div class="table-container">
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th style="width: 140px;">版本</th>
-              <th style="width: 170px;">状态</th>
-              <th style="width: 90px;">大小</th>
-              <th style="width: 110px;">发布时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="rel in releases" :key="rel.version">
-              <td>
-                <strong class="ver-name">{{ rel.version }}</strong>
-                <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
-              </td>
-              <td>
-                <!-- 类名刻意带 dd- 前缀——防与全局/其他视图状态点样式碰撞（markeron 垂直字体事故教训） -->
-                <span v-if="statusOf(rel) === 'installed'" class="dd-ver-status installed">已安装</span>
-                <span v-else-if="statusOf(rel) === 'downloading'" class="dd-ver-status downloading">下载中</span>
-                <span v-else-if="statusOf(rel) === 'error'" class="dd-ver-status error">失败</span>
-                <span v-else class="dd-ver-status idle">可安装</span>
-              </td>
-              <td>{{ fmtSize(rel.size) }}</td>
-              <td>{{ fmtDate(rel.published) }}</td>
-              <td>
-                <div v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'" class="download-cell">
-                  <div class="dl-bar-wrap">
-                    <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
-                  </div>
-                  <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
-                </div>
-                <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
-                  <span v-if="['verify', 'extract'].includes(downloading[rel.version]!.stage)">校验解压安装…</span>
-                  <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
-                </div>
-                <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
-                  <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
-                </div>
-                <button
-                  v-if="statusOf(rel) === 'idle'"
-                  class="btn btn-primary btn-small"
-                  @click="download(rel)"
-                >下载安装</button>
-                <span v-if="statusOf(rel) === 'installed'" class="installed-tag">已安装</span>
-                <a v-if="statusOf(rel) === 'error'" class="retry-link" @click="download(rel)">重试</a>
-              </td>
-            </tr>
-            <tr v-if="releases.length === 0 && !loading">
-              <td colspan="5" class="empty-hint">无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
+    </details>
+  </ManagedConsoleShell>
 </template>
 
 <style scoped>
-/* 共享层已接管：.page/.header-row/.subtitle/.error-box/.btn 家族/.tbl/.mono/.link-button/
-   .empty-state/.banner(UiBanner)/.main-tab-nav(MainTabNav)——此处只留本视图业务样式。 */
-.ddnsgo-view { display: flex; flex-direction: column; gap: 10px; }
-.tab-body { display: flex; flex-direction: column; gap: 10px; }
+/* 页头/控制条/提示条/联动卡/版本区/页签与 flex 骨架全部由 managed 组件 +
+   components.css 全局原子接管（原 .control-bar/.ver-pill 小圆角方片私有覆写
+   与 .dd-status-light 复制体随迁入共享件而废止，落回标准形）；
+   本页仅余 #console-extra 业务件样式。 */
 
-/* ---------- 顶部整合控制条（control-bar 四件套由全局原子接管；
-   本视图原 gap:10px 散差按标准形 gap:8px 定档删除） ---------- */
-/* 补差 against 全局原子 .control-bar / .ver-pill：本视图控制条与版本胶囊为小圆角方片形制
-   （标准形为 radius-element / radius-pill） */
-.control-bar { border-radius: var(--radius-control); }
-.ver-pill { border-radius: 4px; }
-/* 信号灯类名带 dd- 前缀，与全局样式隔离（markeron 垂直字体事故教训） */
-.dd-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
-.dd-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
-.dd-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
-.dd-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
-.dd-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
-/* status-word/pid-tag/uptime-tag/control-btns 由全局原子接管 */
+/* 监听地址行：状态头无模块字段位，addr-tag 迁入控制台槽顶行 */
+.dd-addr-line { display: flex; align-items: center; gap: 8px; }
 .addr-tag { font-size: var(--text-xs); color: var(--color-text-subtle); }
 
-/* ---------- 提示行与说明卡（hint-line/info-details/info-summary/info-body p 等由全局原子接管） ---------- */
+/* 说明卡内联链接 */
 .inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
 
 /* ---------- 进程输出日志面板（终端态：固定深底不随主题反相，tokens.css 设计决策；
    色阶由 --terminal-* 与 --ansi-* 派生，不再散落裸色。
    字号豁免：dd-log-title / dd-auto-scroll / dd-log-body 的 12px 属 ANSI 终端区，
-   与后端输出行距互锁（§9.5-4 约定），本次治理不改、报告登记现值） ---------- */
+   与后端输出行距互锁（§9.5-4 约定），不改、登记现值） ---------- */
 .dd-log-card { border: 1px solid var(--terminal-border); border-radius: var(--radius-control); overflow: hidden; }
 .dd-log-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -642,38 +233,7 @@ watch(() => snap.value?.state, (now, prev) => {
 .dd-log-warn { color: var(--terminal-warn); }
 .dd-log-empty { color: var(--terminal-faint-fg); text-align: center; padding: 28px 0; }
 
-/* ---------- 版本区（control-panel/meta-info/btn-group、section-title h3/empty-hint 由全局原子接管） ---------- */
-/* .hint-dim 同名同义 scoped 副本已删除，落回 components.css 全局原子 */
-
-/* ---------- 已安装卡片（installed-grid/installed-card(.card-active)/inst-card-top/inst-badges/ver-tag 由全局原子接管；
-   本视图原 minmax(340px) 散差按标准形 minmax(320px) 定档删除） ---------- */
-/* .badge 基形与 components.css 全局原子逐字同义，scoped 副本已删除；以下仅本视图配色变体 */
-.badge-active { background: var(--state-positive-soft); color: var(--state-positive); }
-.badge-running { background: var(--state-information-soft); color: var(--state-information); }
-.badge-import { background: var(--state-information-soft); color: var(--state-information); }
-.badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
-.badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
-
-/* inst-meta/meta-line(.k)/inst-actions、table-container/ver-name 由全局原子接管 */
-
-.dd-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
-.dd-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.dd-ver-status.installed::before { background: var(--state-positive); }
-.dd-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
-.dd-ver-status.error::before { background: var(--state-danger); }
-.dd-ver-status.idle::before { background: var(--color-text-subtle); }
-
-/* 「已安装」表内标记：区别于全局 .btn-ghost（悬停幽灵按钮）的静态标签态 */
-.installed-tag {
-  display: inline-flex; align-items: center; padding: 4px 12px; font-size: var(--text-sm);
-  border-radius: var(--radius-control); border: 1px solid var(--color-border);
-  background: var(--surface-hover); color: var(--color-text-muted);
-}
-
-/* download-cell/dl-* 家族与 retry-link(:hover) 由全局原子接管（本视图原 dl-bar-inner
-   "fast linear" 散差按标准形 "base ease" 定档删除） */
-
-/* ---------- 联动与辅助设置卡（extras-card/extras-row/toggle-label/repo-row(.k)/repo-addr 由全局原子接管） ---------- */
+/* ---------- Web 端口行（card 皮用全局原子 extras-card/extras-row；本视图私有形） ---------- */
 .port-ctrl { display: flex; align-items: center; gap: 8px; font-size: var(--text-base); }
 .dd-port-input { width: 84px; padding: 4px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-panel); font-size: var(--text-sm); }
 </style>
