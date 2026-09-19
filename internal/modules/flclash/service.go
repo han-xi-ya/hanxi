@@ -10,12 +10,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/flclash/instance"
 	"hanxi/internal/modules/flclash/version"
 	"hanxi/internal/modules/modpath"
 	"hanxi/internal/notify"
+	"hanxi/internal/ops"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/windows"
@@ -34,11 +37,14 @@ const (
 // FlClashService 向前端暴露 FlClash 版本管理与窗口唤起能力。
 // 代理订阅/节点配置不内嵌：打开 FlClash 自有窗口操作（界面完整，
 // 配置数据在 %APPDATA% 用户目录，各版本共享）。
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type FlClashService struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *flclashStore
 	engine  *instance.Engine
+	holder  *extapi.LeaseHolder
 
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
@@ -47,12 +53,13 @@ type FlClashService struct {
 }
 
 // NewFlClashService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
-func NewFlClashService(plat platform.Platform) *FlClashService {
+func NewFlClashService(plat platform.Platform, holder *extapi.LeaseHolder) *FlClashService {
 	paths := settings.GetPaths()
 	svc := &FlClashService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newFlClashStore(paths.StateDir()),
+		holder:  holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewFlClashProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -107,16 +114,40 @@ func shouldIdleQuit(instance.Snapshot, bool, time.Duration) bool {
 
 // ListReleases 获取远程可用版本列表（多镜像回退，10 分钟缓存）。
 func (s *FlClashService) ListReleases() ([]version.FlClashRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 获取本地已安装版本列表。
 func (s *FlClashService) ListInstalledVersions() ([]version.FlClashVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
-// DownloadVersion 后台下载指定版本：立即返回，全程经事件 flclash:version-download 推送进度。
+// flclashInstallSteps 托管资产事务的 journal 步骤词汇（Wave 4）：flclash 是
+// 便携 zip 形态，verify（官方摘要双核）由内核 Fetch 折进 download 步内完成，
+// 模块进度词表不单独可见，如实不造幻影步骤。
+var flclashInstallSteps = []string{"download", "unpack", "place"}
+
+// DownloadVersion 后台下载指定版本：立即返回，全程经事件 flclash:version-download
+// 推送进度；同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链
+// 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+// 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+// （与既有模块事件双通道并行，Wave 4-B 接线，markeron/ccswitch 同构）。
 func (s *FlClashService) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 
 	s.downloadMu.Lock()
@@ -131,22 +162,56 @@ func (s *FlClashService) DownloadVersion(targetVersion string) (string, error) {
 			}
 		}
 	}
+	opKind := extapi.OpInstall
+	if err == nil && len(installed) > 0 {
+		opKind = extapi.OpUpdate
+	}
+	txnID := uuid.NewString()
 
 	go func() {
+		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+			targetVersion, txnID, flclashInstallSteps)
+		if terr != nil {
+			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
+			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("flclash:version-download", version.DownloadProgress{Version: targetVersion, Stage: "error", Message: terr.Error()})
+			}
+			notify.Error("flclash", "版本下载失败", fmt.Sprintf("FlClash %s 事务开启失败: %v", targetVersion, terr), "/ext/flclash")
+			return
+		}
+		stepIdx := -1
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("flclash download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("flclash:version-download", p)
 			}
+			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；
+			// 下载分块进度仅进观察面内存投影，不产生 fsync 风暴
+			switch p.Stage {
+			case "downloading":
+				if stepIdx < 0 {
+					stepIdx = 0
+					txn.Step(stepIdx)
+				}
+				txn.Progress(p.Done, p.Total)
+			case "extract":
+				if stepIdx < 1 {
+					stepIdx = 1
+					txn.Step(stepIdx)
+				}
+			}
 			if p.Stage == "done" {
 				notify.Success("flclash", "版本下载成功", fmt.Sprintf("FlClash %s 已成功安装", p.Version), "/ext/flclash")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
+		if err := s.manager.Download(txnID, targetVersion, emit); err != nil {
+			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("flclash", "版本下载失败", fmt.Sprintf("FlClash %s 下载失败: %v", targetVersion, err), "/ext/flclash")
 			return
 		}
+		txn.Done()
 		// 未设使用版本时自动把刚下载完的版本设为使用版本：
 		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
 		if s.store.GetActive() == "" {
@@ -159,6 +224,11 @@ func (s *FlClashService) DownloadVersion(targetVersion string) (string, error) {
 
 // RemoveVersion 卸载指定版本（正在运行的版本拒绝卸载）。
 func (s *FlClashService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning &&
 		strings.EqualFold(snap.Version, targetVersion) {
@@ -176,6 +246,11 @@ func (s *FlClashService) RemoveVersion(targetVersion string) error {
 
 // SetActiveVersion 设定使用版本（先校验已安装，再持久化）。
 func (s *FlClashService) SetActiveVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
@@ -188,12 +263,22 @@ func (s *FlClashService) SetActiveVersion(targetVersion string) (string, error) 
 
 // GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动用最新已装）。
 func (s *FlClashService) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return s.store.GetActive(), nil
 }
 
 // ImportLocal 导入本地已有的 FlClash 便携目录（黑名单整搬：exe+dll+data+全套）。
 // 运行中的实例拒绝导入：Windows 下运行中的 exe 文件被独占，拷贝必然失败。
 func (s *FlClashService) ImportLocal(srcDir string) (version.FlClashVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.FlClashVersionInfo{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
 		return version.FlClashVersionInfo{}, fmt.Errorf("FlClash 正在运行，请先退出再导入")
 	}
@@ -206,11 +291,21 @@ func (s *FlClashService) ImportLocal(srcDir string) (version.FlClashVersionInfo,
 // 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
 // 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *FlClashService) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 FlClash 的用户数据目录（订阅配置 config.yaml、profiles 与数据库所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
 func (s *FlClashService) OpenConfigDir() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	dir, err := modpath.UserConfigDir(dataDirName)
 	if err != nil {
 		return err
@@ -223,6 +318,11 @@ func (s *FlClashService) OpenConfigDir() error {
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
 func (s *FlClashService) GetStatus() (instance.Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return instance.Snapshot{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	return s.engine.Snapshot(), nil
 }
@@ -233,6 +333,11 @@ func (s *FlClashService) GetStatus() (instance.Snapshot, error) {
 //   - running：自有实例同样直操作窗口；
 //   - stopped/failed：解析 active 版本直接无参启动（FlClash 启动即开窗）。
 func (s *FlClashService) OpenWindow() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
@@ -276,6 +381,11 @@ func (s *FlClashService) OpenWindow() (ControlOutcome, error) {
 // Quit 退出引擎托管的 FlClash。
 // external 状态不越权强杀（进程枚举拿到的 PID 非我方托管）：仅返回人性化指引。
 func (s *FlClashService) Quit() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
 			Message: "当前是外部自行启动的实例，请在 FlClash 窗口/托盘内退出"}, nil
@@ -286,9 +396,22 @@ func (s *FlClashService) Quit() (QuitOutcome, error) {
 	return QuitOutcome{Stopped: true, Message: "FlClash 已退出"}, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
-// 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+// Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+// 拒绝即早退——Wave 3 口径：void 方法不改签名。前端当前不调用本方法，
+// 但它属绑定面，必须经门收口。
 func (s *FlClashService) Shutdown() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
+	s.shutdown()
+}
+
+// shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
+// 装配布线:Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)。
+// 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
+func (s *FlClashService) shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
 		close(s.watchStop)
@@ -329,16 +452,31 @@ func (s *FlClashService) resolveActiveVersion() (string, string, error) {
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *FlClashService) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
 	return s.store.GetFollowOnExit(), nil
 }
 
 // SetFollowOnExit 设定开关（下次启动生效）。
 func (s *FlClashService) SetFollowOnExit(b bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.store.SetFollowOnExit(b)
 }
 
 // CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
 func (s *FlClashService) CreateDesktopShortcut() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	_, exe, err := s.resolveActiveVersion()
 	if err != nil {
 		return err
@@ -348,10 +486,20 @@ func (s *FlClashService) CreateDesktopShortcut() error {
 
 // RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
 func (s *FlClashService) RepositoryURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.RepoURL(), nil
 }
 
 // OpenRepository 用默认浏览器打开上游仓库页面。
 func (s *FlClashService) OpenRepository() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.RepoURL())
 }

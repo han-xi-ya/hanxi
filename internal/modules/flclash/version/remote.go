@@ -140,6 +140,9 @@ func (c *releaseCache) get() ([]FlClashRelease, error) {
 // parseReleasesBody 解析 GitHub API 响应为版本列表（单测直接注入样例响应复用）。
 // 过滤规则：draft / 无 x64 便携资产 / tag 与资产版本不一致 /
 // 官方 sha256 缺失的 release 一律不入列表。
+// digest 覆盖度实测（2026-09）：GitHub 自 2025 年末起为新上传资产计算 digest，
+// FlClash 近期 release（v0.8.85 起）全量携带、更早资产无——本过滤层即
+// "进列表必有官方摘要"的闸门，内核 artifact.Fetch 的摘要必检因此恒可满足。
 func parseReleasesBody(body []byte) ([]FlClashRelease, error) {
 	var releases []release
 	if err := json.Unmarshal(body, &releases); err != nil {

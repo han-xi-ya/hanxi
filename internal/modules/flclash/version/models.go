@@ -1,12 +1,16 @@
-// Package version 实现 FlClash 版本管理引擎：
-// GitHub Releases 远程列表、Windows 便携 zip 下载（官方 sha256 四层校验）、
-// 保布局解压隔离、本地整目录导入。
+// Package version 实现 FlClash 版本管理引擎：GitHub Releases 远程列表、
+// Windows 便携 zip 下载（官方 SHA-256 摘要必检）、保布局解压隔离、本地整目录导入。
+// "下载 → 校验 → 解包 → 落位"主流程委托 Wave 4 共享内核
+// packages/go/artifact（Fetch + UnpackZip + Tree），本包只保留领域知识。
 //
 // FlClash 的发布形态（侦查实证）：
 //   - Windows 便携资产 FlClash-<ver>-windows-amd64.zip（Flutter 自包含，
 //     FlClash.exe + flutter_windows.dll + data/，解压即用，约 58MB）；
-//   - tag 与资产版本完全同形（v0.8.96 == 0.8.96），digest 全量覆盖，
-//     且另有 SHA256SUMS 资产双保险（digest 已是权威层，未重复使用）；
+//   - tag 与资产版本完全同形（v0.8.96 == 0.8.96），下载路径按 tag 拼接；
+//     GitHub API 资产 digest（官方 SHA-256）实测仅近期 release 携带
+//     （2026-09 核查：v0.8.85 起全量，更早无）——解析层把无 digest 的
+//     release 一律滤出列表，进列表者摘要必得，另有 SHA256SUMS 资产双保险
+//     （digest 已是权威层，未重复使用）；
 //   - 数据目录在 %APPDATA%（非 exe 目录），单实例为文件锁第二实例直接退出。
 package version
 
@@ -36,7 +40,7 @@ type FlClashVersionInfo struct {
 // DownloadProgress 下载过程实时进度。
 type DownloadProgress struct {
 	Version string `json:"version"` // 目标版本
-	Stage   string `json:"stage"`   // resolve/downloading/verify/extract/done/error
+	Stage   string `json:"stage"`   // downloading/extract/done/error（verify 由内核 Fetch 折进 downloading）
 	Done    int64  `json:"done"`    // 已下载字节
 	Total   int64  `json:"total"`   // 总字节（未知为 0）
 	Message string `json:"message"` // 附加信息（如错误描述）

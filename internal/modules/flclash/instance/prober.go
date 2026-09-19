@@ -1,17 +1,26 @@
-// Package instance 实现 FlClash 单实例运行引擎：
+// Package instance 实现 FlClash 单实例运行引擎（Wave 4 内核委托形态）：
 //
-// FlClash（Flutter 桌面代理客户端）由本引擎启动后绑定 Windows Job Object
-// （JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），Hanxi 退出时内核连带终止进程树。
+// 进程治理主流程（spawn → Job Object 绑定 → 就绪/退出分类 → 手动停止/外部甄别）
+// 收口至共享内核 hanxi/packages/go/supervisor；本包只保留 FlClash 领域适配：
+//   - 进程快照枚举探针（CreateToolhelp32Snapshot 命中 FlClash.exe；上游契约
+//     lib/common/lock.dart 实证单实例 = %APPDATA% 数据目录下 lock 文件的
+//     RandomAccessFile.lock，无命名互斥体可 OpenMutex，与 markeron/ccswitch 的
+//     互斥体探测不同——探针实现见 prober/probe_windows；Inspect 适配器附带
+//     存活 PID，external 快照据此充实，supervisor.Probe 形状适配见 instance.go）；
+//   - 状态词表映射：内核 stopped/starting/running/external/failed/stopping →
+//     本包既有 stopped/starting/running/external/failed（stopping 折并入 running，
+//     终止窗口对前端保持运行语义，终态由后续广播给出）；
+//   - Snapshot 形状映射：内核快照 + 本包推算的 ExitCode/StoppedAt 拼回既有事件
+//     契约（前端与 wails 事件载荷零漂移），"已手动停止"折回本引擎的空文案；
+//   - 唤窗 Win32 直操作（EnumWindows 按 PID → ShowWindow(SW_RESTORE) +
+//     SetForegroundWindow，自有/外部实例通用）与 WM_CLOSE 优雅退出钩子
+//     （内核 Stop grace 窗口内按 PID 投递）——信使二次拉起在 FlClash 上游
+//     只触发文件锁单实例检查后 exit(0)、不唤窗（与 markeron 信使语义根本不同，
+//     论证见 messenger.go），两条路都留在本包、不进内核。
 //
-// 上游契约（lib/common/lock.dart + window.dart 源码实证）：
-//   - 单实例 = 文件锁（%APPDATA%\应用数据目录下的 lock 文件经 RandomAccessFile.lock），
-//     第二实例获取失败直接 exit(0)——**无唤窗行为**（与 BCU 的 SetForegroundWindow
-//     信使不同，二次启动不可用作"打开窗口"）；
-//   - 无命名互斥体 → 存活探测走进程快照枚举（FlClash.exe），与既有模块的
-//     互斥体探测不同；
-//   - 唤窗由本引擎直接执行：EnumWindows 按 PID 定位顶层窗口 →
-//     ShowWindow(SW_RESTORE) + SetForegroundWindow，自有/外部实例通用；
-//   - 无 CLI 退出：WM_CLOSE（Flutter 默认关窗即退；驻托盘由强杀兜底）。
+// FlClash 由内核启动后绑定 Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），
+// Hanxi 无论以何种方式退出（托盘退出/崩溃/强杀），内核都会连带终止 FlClash
+// 进程树，杜绝孤儿驻留。
 //
 // 本包零框架依赖，便于单元测试。
 package instance

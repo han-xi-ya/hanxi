@@ -2,10 +2,14 @@ package version
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"hanxi/packages/go/artifact"
 )
 
 // fakeReleasesJSON 构造与真实 GitHub API 同构的样例响应：
@@ -70,6 +74,7 @@ func fakeReleasesJSON(t *testing.T) []byte {
 // TestParseReleasesBody 解析过滤：
 // 0.8.96/0.8.95 入列表（预发布 0.8.94 保留），tag 与资产版本不一致的 v0.8.93
 // 丢弃，缺 digest 的 v0.8.92 丢弃；跨平台/arm64/setup 资产绝不混入。
+// 缺 digest 即出列是"内核 artifact.Fetch 摘要必检恒可满足"的闸门（见 remote.go 实测注记）。
 func TestParseReleasesBody(t *testing.T) {
 	list, err := parseReleasesBody(fakeReleasesJSON(t))
 	if err != nil {
@@ -131,48 +136,84 @@ func makeTestZip(t *testing.T, entries map[string]string) string {
 	return path
 }
 
-func TestExtractAll(t *testing.T) {
-	dir := t.TempDir()
+// TestVersionFromToken 版本令牌形状：2~4 段纯数字与 imported-时间戳收纳（令牌
+// 即展示版本，flclash 无 v 前缀），v 前缀/带字母尾段/中文目录名拒绝
+// （与原 resolveVersionDir 白名单口径一致）。
+func TestVersionFromToken(t *testing.T) {
+	tests := []struct {
+		token   string
+		wantVer string
+		wantOK  bool
+	}{
+		{"0.8.96", "0.8.96", true},
+		{"0.8.96.1", "0.8.96.1", true},
+		{"imported-20260826-150405", "imported-20260826-150405", true},
+		{"v0.8.96", "", false}, // 带 v 前缀的目录名非本模块落位格式
+		{"0.8.96b", "", false}, // 字母尾段非规整版本号
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		ver, ok := versionFromToken(tt.token)
+		if ok != tt.wantOK || ver != tt.wantVer {
+			t.Errorf("versionFromToken(%q) = (%q,%v), want (%q,%v)", tt.token, ver, ok, tt.wantVer, tt.wantOK)
+		}
+	}
+}
+
+// ---------- 内核解包 + 模块锚点自检（替代原 extractAll 时代的用例） ----------
+
+func TestUnpackWithFlClashLayout(t *testing.T) {
 	zipPath := makeTestZip(t, map[string]string{
 		exeName:               "fake-exe",
 		"flutter_windows.dll": "fake-dll",
 		"data/flutter_assets": "assets",
 	})
-	if err := extractAll(zipPath, filepath.Join(dir, "dst")); err != nil {
-		t.Fatalf("extractAll: %v", err)
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
+	}
+	if err := checkLayout(staging); err != nil {
+		t.Fatalf("checkLayout: %v", err)
 	}
 	for _, name := range []string{exeName, "flutter_windows.dll"} {
-		if _, err := os.Stat(filepath.Join(dir, "dst", name)); err != nil {
-			t.Errorf("%s 未解压: %v", name, err)
+		if _, err := os.Stat(filepath.Join(staging, name)); err != nil {
+			t.Errorf("布局缺失 %s: %v", name, err)
 		}
 	}
 }
 
-func TestExtractAllZipSlip(t *testing.T) {
-	dir := t.TempDir()
-	f, err := os.CreateTemp("", "evil-*.zip")
-	if err != nil {
+func TestUnpackRejectsPathTraversal(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{
+		"../evil.txt": "escape",
+	})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err == nil {
+		t.Fatal("UnpackZip 应拒绝路径逃逸条目")
+	}
+}
+
+func TestCheckLayoutMissingExe(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{"flutter_windows.dll": "fake-dll"})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
+	}
+	err := checkLayout(staging)
+	if err == nil {
+		t.Fatal("缺 FlClash.exe 应自检失败")
+	}
+	if !strings.Contains(err.Error(), "缺少可用的 FlClash.exe") {
+		t.Errorf("错误信息应保持既有口径: %v", err)
+	}
+}
+
+func TestCheckLayoutEmptyExe(t *testing.T) {
+	staging := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staging, exeName), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
-	path := f.Name()
-	t.Cleanup(func() { os.Remove(path) })
-	zw := zip.NewWriter(f)
-	w, _ := zw.Create("../evil.txt")
-	w.Write([]byte("evil"))
-	w2, _ := zw.Create(exeName)
-	w2.Write([]byte("fake"))
-	zw.Close()
-	f.Close()
-
-	dst := filepath.Join(dir, "dst")
-	if err := extractAll(path, dst); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
-	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Errorf("失败后目标目录应被清理, stat err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); !os.IsNotExist(err) {
-		t.Fatal("恶意条目逃逸到了目标目录之外")
+	if err := checkLayout(staging); err == nil {
+		t.Fatal("空 exe 应判定为损坏安装")
 	}
 }
 
@@ -187,6 +228,7 @@ func TestListInstalledAndRemove(t *testing.T) {
 			os.WriteFile(filepath.Join(versionsDir, dir, "meta.json"), []byte(meta), 0644)
 		}
 	}
+	// 迁移前的历史账本（无 schema 的 map 形态）：导入账读 installedAt/isImport/source
 	mkVersion("flclash_0.8.96", `{"installedAt":"2026-08-27 12:00:00","isImport":true,"source":"E:\\flclash"}`)
 	mkVersion("flclash_0.8.95", "")
 	os.MkdirAll(filepath.Join(versionsDir, "bcu_6.2.0"), 0755)      // 异模块目录必须跳过
@@ -213,6 +255,12 @@ func TestListInstalledAndRemove(t *testing.T) {
 	if exe, err := m.ResolveExe("0.8.96"); err != nil || filepath.Base(exe) != exeName {
 		t.Errorf("ResolveExe(0.8.96): %v %v", exe, err)
 	}
+	if _, err := m.ResolveExe("v0.8.96"); err == nil {
+		t.Error("带 v 前缀非本模块版本形状，应报错")
+	}
+	if _, err := m.ResolveExe("0.8.93"); err == nil {
+		t.Error("未安装版本应报错")
+	}
 	if _, err := m.ResolveExe("../../windows"); err == nil {
 		t.Error("路径穿越式版本号必须报错")
 	}
@@ -223,6 +271,44 @@ func TestListInstalledAndRemove(t *testing.T) {
 	list, _ = m.ListInstalled()
 	if len(list) != 1 {
 		t.Errorf("卸载后应剩 1 个版本，实际 %d", len(list))
+	}
+}
+
+// TestListInstalledReadsKernelLedger 新下载链的 artifact.Meta 账本（含 schema）：
+// installedAt 由内核统一解析为展示串（Tree.Commit 必填；生产链不落零值账本，
+// 夹具如实携带时刻），isImport/source 不携带。
+func TestListInstalledReadsKernelLedger(t *testing.T) {
+	versionsDir := t.TempDir()
+	m := NewManager(versionsDir)
+	installedAt := time.Date(2026, 9, 1, 8, 30, 0, 0, time.UTC)
+	meta, err := json.Marshal(artifact.Meta{
+		Schema:      artifact.DefaultSchema,
+		Entry:       exeName,
+		Version:     "0.8.97",
+		ZipSHA256:   strings.Repeat("a", 64),
+		AssetSHA256: strings.Repeat("b", 64),
+		InstalledAt: installedAt,
+		Source:      artifact.SourceRemote,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Join(versionsDir, "flclash_0.8.97"), 0755)
+	os.WriteFile(filepath.Join(versionsDir, "flclash_0.8.97", exeName), []byte("fake-exe"), 0644)
+	os.WriteFile(filepath.Join(versionsDir, "flclash_0.8.97", "meta.json"), meta, 0644)
+
+	list, err := m.ListInstalled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].Version != "0.8.97" {
+		t.Fatalf("内核账本目录应被列出: %+v", list)
+	}
+	if list[0].IsImport || list[0].Source != "" {
+		t.Errorf("下载链不得携带导入语义: %+v", list[0])
+	}
+	if want := installedAt.Local().Format("2006-01-02 15:04:05"); list[0].InstalledAt != want {
+		t.Errorf("installedAt 应经内核解析并保持展示口径: got %q want %q", list[0].InstalledAt, want)
 	}
 }
 
@@ -270,5 +356,26 @@ func TestImportLocal(t *testing.T) {
 	// 源目录不含 exe → 报错
 	if _, err := m.ImportLocal(t.TempDir()); err == nil {
 		t.Fatal("无 exe 的目录应报错")
+	}
+}
+
+// TestListingSkipsImportFallbackRecord ImportLocal 的兜底目录名也必须在
+// ListInstalled 的扫描半径内（可被列出、可被卸载）。
+func TestListingSkipsImportFallbackRecord(t *testing.T) {
+	versionsDir := t.TempDir()
+	dir := filepath.Join(versionsDir, dirPrefix+"imported-20260826-150405")
+	os.MkdirAll(dir, 0755)
+	os.WriteFile(filepath.Join(dir, exeName), []byte("fake"), 0644)
+	m := NewManager(versionsDir)
+
+	list, err := m.ListInstalled()
+	if err != nil {
+		t.Fatalf("ListInstalled: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("兜底目录应被列出，实际 %d: %+v", len(list), list)
+	}
+	if err := m.Remove(list[0].Version); err != nil {
+		t.Errorf("兜底版本应可卸载: %v", err)
 	}
 }

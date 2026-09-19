@@ -1,10 +1,13 @@
 // Package flclash 内置模块：FlClash 代理客户端托管
-// （版本管理 + JobObject 托管启停 + 窗口唤起 + 闲置自动退出）。
+// （版本管理 + JobObject 托管启停 + 窗口唤起）。
 // 与 frpc/markeron/everything/ccswitch/bcu 完全平等的模块——统一注册、统一启停。
 // 方案要点：不移植 FlClash 代码，从上游 GitHub Releases 下载 Windows 便携 zip
-// （官方 sha256 四层校验）、解压隔离安装、JobObject 托管生命周期。
+// （GitHub API digest 官方 SHA-256 必检）、解压隔离安装、JobObject 托管生命周期；
+// 下载/解包/落位与进程治理主流程委托 Wave 4 共享内核 packages/go/{artifact,
+// supervisor}，安装链经 journal 事务背书。
 // 上游单实例是文件锁且第二实例不唤窗——窗口唤起由本模块 EnumWindows 直接
-// 置前台（自有/外部实例通用），不依赖二次启动信使。
+// 置前台（自有/外部实例通用），不依赖二次启动信使（信使语义辨析见 instance
+// 包 messenger.go）。
 // 代理订阅与节点配置在 FlClash 自有窗口内完成（界面完整，无内嵌分叉）。
 package flclash
 
@@ -27,7 +30,7 @@ type Module struct {
 
 // New 在 app 装配期创建模块（构造无 IO，重活延迟到 OnInit 与 service 方法）。
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewFlClashService(plat)}
+	return &Module{svc: NewFlClashService(plat, extapi.NewLeaseHolder(ID))}
 }
 
 // Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
@@ -41,6 +44,10 @@ func (e *Module) Info() extapi.ModuleInfo {
 		Level:       extapi.LevelBuiltin,
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
@@ -64,7 +71,8 @@ func (e *Module) OnInit(ctx context.Context) error {
 
 // OnDestroy 交回 service 做资源收尾；错误仅记录，注册表不因此阻断停用流程。
 func (e *Module) OnDestroy() error {
-	e.svc.Shutdown()
+	// 装配布线:Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)
+	e.svc.shutdown()
 	return nil
 }
 
