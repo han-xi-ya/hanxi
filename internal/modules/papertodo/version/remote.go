@@ -68,7 +68,7 @@ type release struct {
 type asset struct {
 	Name   string `json:"name"`
 	Size   int64  `json:"size"`
-	Digest string `json:"digest"` // 官方 sha256（格式 "sha256:<hex>"；PaperTodo 实证暂缺）
+	Digest string `json:"digest"` // 官方 sha256（格式 "sha256:<hex>"；GitHub 2026-09 已回刷覆盖，集成初期实证暂缺）
 }
 
 // apiClient GitHub API 请求客户端（12s 超时）
@@ -162,8 +162,9 @@ func (c *releaseCache) findRelease(version string) (PaperRelease, bool) {
 // 资产版本号与 tag 不一致的 release 一律不入列表。
 //
 // 与 ccswitch 的关键差异：**不做"官方 digest 缺失即剔除"的硬过滤**——
-// 实证 PaperTodo 全部资产均无 digest 字段，照搬会把版本表清空。
-// 完整性校验降级链（字节数 + MZ/PE 核对 + sha256 指纹）见 manager.Download。
+// 集成实证期 PaperTodo 全部资产无 digest（GitHub 2026-09 才逐批回刷），
+// 照搬会把历史版本表清空。digest 在场走内核 Fetch 硬校验，缺失走降级链
+// （字节数 + MZ/PE 核对 + sha256 指纹），见 manager.Download。
 func parseReleasesBody(body []byte) ([]PaperRelease, error) {
 	var releases []release
 	if err := json.Unmarshal(body, &releases); err != nil {

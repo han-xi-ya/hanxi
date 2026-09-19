@@ -199,7 +199,7 @@ func TestSwapInExe(t *testing.T) {
 	dir := t.TempDir()
 
 	// 首次安装：无旧 exe，直接换入
-	tmp := filepath.Join(dir, exeName+tmpSuffix)
+	tmp := filepath.Join(dir, exeName+legacyTmpSuffix)
 	if err := os.WriteFile(tmp, []byte("NEW"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestSwapInExe(t *testing.T) {
 	}
 
 	// tmp 缺失 → 报错且不得抹掉现有 exe
-	if err := swapInExe(dir, filepath.Join(dir, "missing"+tmpSuffix)); err == nil {
+	if err := swapInExe(dir, filepath.Join(dir, "missing"+legacyTmpSuffix)); err == nil {
 		t.Error("tmp 缺失应报错")
 	}
 	if data, _ := os.ReadFile(filepath.Join(dir, exeName)); string(data) != "NEW2" {

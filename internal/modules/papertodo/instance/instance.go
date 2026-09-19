@@ -1,13 +1,15 @@
 package instance
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"os/exec"
-	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
 	"hanxi/internal/platform"
+	sup "hanxi/packages/go/supervisor"
 )
 
 // State 引擎状态机：stopped → starting → running → (stopped | failed | external)
@@ -26,20 +28,9 @@ const (
 // 包级变量仅为单测可压缩等待时长，生产值保持 3s（便签含图片库落盘稍重）。
 var closeGracePeriod = 3 * time.Second
 
-// launchMessenger 拉起"信使"二次实例：PaperTodo 的 SingleInstanceHelper 会把
-// 其命令行参数经命名管道转发给主实例（show/hide/exit 命令词表见包注释），
-// 随后信使自行退出。Start 后立即 Release、刻意不 Wait（避免阻塞 RPC）、
-// 不进 Job（不属于托管生命周期）。此决策请勿在后续维护中"好心"改成 Wait。
-// 包级变量便于单测注入（真实信使是 GUI 进程，测试只断言命令与参数）。
-var launchMessenger = func(exe string, args ...string) error {
-	cmd := exec.Command(exe, args...)
-	cmd.Dir = filepath.Dir(exe)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	_ = cmd.Process.Release()
-	return nil
-}
+// manualStopWording 内核手动停止的收口文案；papertodo 既有快照口径在 stopped
+// 态不带文案（Error 为空），映射时如实还原（ccswitch/rufus 同款折回）。
+const manualStopWording = "已手动停止"
 
 // Snapshot 引擎状态快照：事件推送与前端渲染共用同一模型。
 type Snapshot struct {
@@ -73,260 +64,135 @@ type Callbacks struct {
 	OnState func(snap Snapshot)
 }
 
-// Engine PaperTodo 单实例运行引擎。
+// Engine PaperTodo 单实例运行引擎：组合内核 supervisor.Engine，
+// 本层持有 PaperTodo 专属账目（退出码/停止时刻）与命令信使（show/hide 唤窗
+// 收拢、exit 优雅退出钩子）。
 type Engine struct {
 	mu        sync.Mutex
-	state     State
-	version   string
-	pid       uint32
-	exitCode  int
-	errMsg    string
-	external  bool
-	startedAt time.Time
-	stoppedAt time.Time
-	stopping  bool // 手动停止/退出标记：防止进程终止后误判为异常退出
+	exitCode  int       // 自有实例最近一次异常退出码（Start 时清零）
+	stoppedAt time.Time // 自有实例最近一次落终态的时刻
 
-	startMu sync.Mutex // Start/Quit 互斥临界区
+	sup   *sup.Engine
+	probe PaperProbe
+	cb    Callbacks
 
-	cmd    *exec.Cmd
-	job    platform.Job
-	jobAPI platform.JobAPI
-	probe  PaperProbe
-	cb     Callbacks
+	// launchMessenger 命令信使拉起接缝（默认真实 spawn，测试注入）：
+	// PaperTodo 信使带命令行参数（上游把它经命名管道转发给主实例执行）。
+	launchMessenger func(exe string, args ...string) error
 }
 
 // NewEngine 创建托管运行引擎（初始 stopped，无任何系统副作用）；
 // JobAPI/Probe/Callbacks 由 service 层注入，保持本包零框架依赖。
 func NewEngine(jobAPI platform.JobAPI, probe PaperProbe, cb Callbacks) *Engine {
-	return &Engine{
-		state:  StateStopped,
-		jobAPI: jobAPI,
-		probe:  probe,
-		cb:     cb,
+	e := &Engine{
+		probe:           probe,
+		cb:              cb,
+		launchMessenger: spawnMessenger,
 	}
+	e.sup = sup.NewEngine(jobAPI, supProbe{probe}, sup.Callbacks{OnState: e.onSupState})
+	// 优雅退出通道（官方命令词表实证）：Quit 的 grace 窗口内先拉起携 exit
+	// 参数的信使——主实例经命名管道收到后保存数据自退，比 WM_CLOSE/裸强杀
+	// 更干净且天然覆盖"优雅退出保存数据"；信使投递失败如实吞掉（管道监听
+	// 未就绪等场），超时由内核 JobObject 强杀兜底（上游"写盘前自动快照备份"
+	// 保证强杀最坏也只回滚到最近快照）。
+	e.sup.SetQuitHook(func(context.Context) error {
+		s := e.sup.Snapshot()
+		if s.Exe != "" {
+			_ = e.launchMessenger(s.Exe, "exit")
+		}
+		return nil
+	})
+	return e
 }
 
-// Start 启动自有实例：创建进程 → 绑定 JobObject → 状态 running。
+// Start 启动自有实例（委托内核：创建进程 → 绑定 JobObject → running；
+// 工作目录锁定到 exe 所在目录由内核默认保证——便签数据按相对路径解析依赖此）。
 // PaperTodo 无后台启动 CLI，启动语义即"无参拉起 → 纸片出现在桌面 + 托盘常驻"。
-// 若外部主实例已在场，本次进程会自动信使化并退出，由 wait() 外部接管分类兜底。
-// 本方法不做互斥体探测：冷启动与外部实例竞速的 TOCTOU 交给 wait() 退出分类处理。
+// 本方法不做互斥体探测：冷启动与外部实例竞速的 TOCTOU 交给内核 wait 退出分类
+// 兜底（ReadyTimeout=0 即 markeron 同款冷启动语义——我方进程信使化自退后，
+// 互斥体仍被外部主实例持有 → external）。
 func (e *Engine) Start(opts StartOptions) error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
 	if err := opts.validate(); err != nil {
 		return err
 	}
 
 	e.mu.Lock()
-	e.version = opts.Version
-	e.external = false
-	e.stopping = false
-	e.mu.Unlock()
-
-	e.transition(StateStarting, "")
-
-	// PaperTodo 是 GUI 子系统程序，无需隐藏控制台窗口。
-	cmd := exec.Command(opts.Exe)
-	cmd.Dir = filepath.Dir(opts.Exe) // 工作目录锁定：便签数据按 exe 同目录相对路径读写
-	if err := cmd.Start(); err != nil {
-		e.transition(StateFailed, "进程启动失败: "+err.Error())
-		return err
-	}
-
-	e.mu.Lock()
-	e.cmd = cmd // 立即登记
-	e.pid = uint32(cmd.Process.Pid)
 	e.exitCode = 0
-	e.errMsg = ""
-	e.startedAt = time.Now()
 	e.stoppedAt = time.Time{}
 	e.mu.Unlock()
 
-	job, jerr := e.jobAPI.Create()
-	if jerr != nil {
-		_ = cmd.Process.Kill()
-		go e.wait()
-		e.transition(StateFailed, "创建 Job Object 失败: "+jerr.Error())
-		return fmt.Errorf("创建 Job Object 失败: %w", jerr)
-	}
-	if aerr := job.Assign(e.pid); aerr != nil {
-		job.Close()
-		_ = cmd.Process.Kill()
-		go e.wait()
-		e.transition(StateFailed, "JobObject 绑定失败: "+aerr.Error())
-		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
-	}
-	if opts.Detached {
-		// 解除退出联动：Hanxi 退出/崩溃不再连带杀本实例（"不随 Hanxi 关闭"开关）
-		if derr := job.SetAllowKillOnClose(false); derr != nil {
-			job.Close()
-			_ = cmd.Process.Kill()
-			go e.wait()
-			e.transition(StateFailed, "解除退出联动失败: "+derr.Error())
-			return fmt.Errorf("解除退出联动失败: %w", derr)
-		}
-	}
-
-	e.mu.Lock()
-	e.job = job
-	e.mu.Unlock()
-
-	go e.wait()
-	e.transition(StateRunning, "")
-	return nil
+	// 刻意不设置 HideWindow 等窗口干预：PaperTodo 是 GUI 子系统程序，既不产生
+	// 控制台窗口，且需保留其原版行为（零 fork 承诺）。
+	return e.sup.Start(context.Background(), sup.Spec{
+		Version:       opts.Version,
+		Exe:           opts.Exe,
+		DetachFromJob: opts.Detached, // "不随 Hanxi 关闭"开关 → SetAllowKillOnClose(false)
+	})
 }
 
 // OpenWindow 唤回纸片：向主实例（自有或外部）发送 show 命令信使——
-// 上游回调 ShowAllPapers()，把散落/折叠的纸片全部找回。
-// 信使语义约束见 launchMessenger 注释（勿改成 Wait）。
+// 上游回调 ShowAllPapers()，把散落/折叠的纸片全部找回（见 messenger.go 的拉起纪律）。
 func (e *Engine) OpenWindow(exe string) error {
-	if err := launchMessenger(exe, "show"); err != nil {
+	if err := e.launchMessenger(exe, "show"); err != nil {
 		return fmt.Errorf("拉起窗口信使失败: %w", err)
 	}
-	e.mu.Lock()
-	snap := e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
+	e.emit(e.Snapshot())
 	return nil
 }
 
 // HidePapers 收拢纸片：hide 命令信使（主实例在场才有意义，service 层限定状态）。
 func (e *Engine) HidePapers(exe string) error {
-	if err := launchMessenger(exe, "hide"); err != nil {
+	if err := e.launchMessenger(exe, "hide"); err != nil {
 		return fmt.Errorf("拉起收拢信使失败: %w", err)
 	}
 	return nil
 }
 
-// Quit 退出引擎托管的 PaperTodo（幂等；external/stopped 状态无自有进程，直接返回 nil）：
-//  1. 发送 exit 命令信使——上游官方优雅通道（保存数据后自退），
-//     比 markeron 时代的裸强杀多一层体面；管道监听未就绪时信使会静默失败；
-//  2. 宽限 closeGracePeriod 轮询进程自然退出；
-//  3. 超时 JobObject 强杀兜底——上游"写盘前自动快照备份"，强杀最坏丢当前
-//     未保存输入且有快照可回，非常态路径。
+// Quit 优雅退出自有实例（委托内核 Stop 的 grace 语义）：QuitHook 派 exit 命令
+// 信使 → 宽限 closeGracePeriod 内等进程自然收口（保存数据后自退）→ 超时
+// JobObject 强杀兜底。幂等；external 态按既有契约映射为无操作成功（指引文案
+// 由 service 层给出）。
 func (e *Engine) Quit() error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
-	e.mu.Lock()
-	state, cmd := e.state, e.cmd
-	e.mu.Unlock()
-	if state != StateRunning && state != StateStarting {
-		return nil
-	}
-
-	// 1. 尽力优雅：exit 命令信使（自有实例 exe 即管道服务端同机进程）。
-	// 信使拉不起不阻断退出流程（管道监听未就绪等场）：宽限后强杀兜底。
-	if cmd != nil && cmd.Path != "" {
-		_ = launchMessenger(cmd.Path, "exit")
-	}
-
-	e.mu.Lock()
-	e.stopping = true // 先标记：其后 wait() 无论何因收尾都归类为"手动退出"
-	e.mu.Unlock()
-
-	// 2. 宽限轮询：进程自然退出
-	deadline := time.Now().Add(closeGracePeriod)
-	for time.Now().Before(deadline) {
-		e.mu.Lock()
-		stillRunning := e.state == StateRunning || e.state == StateStarting
-		e.mu.Unlock()
-		if !stillRunning {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	// 3. 超时强杀兜底
-	return e.forceKill(cmd)
+	return e.stopWithGrace(closeGracePeriod)
 }
 
 // Stop 立即强杀自有实例（幂等）。与 Quit 的差别：不派 exit 信使、不等宽限，
-// 直接 JobObject 终止（应用退出时 Shutdown 通道用，无需等待动画）。
+// 直接 JobObject 终止（应用退出时 Shutdown 通道用，无需等待保存动画）。
 func (e *Engine) Stop() error {
-	e.startMu.Lock()
-	defer e.startMu.Unlock()
-
-	e.mu.Lock()
-	state, cmd := e.state, e.cmd
-	e.mu.Unlock()
-	if state != StateRunning && state != StateStarting {
-		return nil
-	}
-
-	e.mu.Lock()
-	e.stopping = true
-	e.mu.Unlock()
-	return e.forceKill(cmd)
+	return e.stopWithGrace(0)
 }
 
-// forceKill JobObject 强杀自有实例（exit 信使不可达时的兜底路径）。
-func (e *Engine) forceKill(cmd *exec.Cmd) error {
-	e.mu.Lock()
-	job := e.job
-	e.mu.Unlock()
-	if job != nil {
-		return job.Terminate(1)
+func (e *Engine) stopWithGrace(grace time.Duration) error {
+	if err := e.sup.Stop(grace); err != nil {
+		if errors.Is(err, sup.ErrExternal) {
+			return nil // external 状态不在管辖范围内
+		}
+		return err
 	}
-	if cmd != nil && cmd.Process != nil {
-		return cmd.Process.Kill()
-	}
-	return fmt.Errorf("实例没有可终止的进程")
+	return nil
 }
 
-// RefreshExternal 探测外部实例校正 external/stopped 状态。
-// 仅对静止态生效：running/starting 时探测到的正是自己，会误导状态机。
+// RefreshExternal 探测命名互斥体校正 external/stopped 状态（委托内核）。
+// 仅对静止态生效：running/starting/stopping 时探测到的正是自己，会误导状态机。
 func (e *Engine) RefreshExternal() {
-	e.mu.Lock()
-	state := e.state
-	e.mu.Unlock()
-	if state != StateStopped && state != StateFailed && state != StateExternal {
-		return
-	}
-
-	running := e.probe.IsRunning()
-
-	e.mu.Lock()
-	var snap Snapshot
-	changed := false
-	switch {
-	case running && e.state != StateExternal:
-		e.state = StateExternal
-		e.external = true
-		e.pid = 0
-		e.errMsg = ""
-		changed = true
-	case !running && e.state == StateExternal:
-		e.state = StateStopped
-		e.external = false
-		e.stoppedAt = time.Now()
-		changed = true
-	}
-	if changed {
-		snap = e.snapshotLocked()
-	}
-	e.mu.Unlock()
-	if changed {
-		e.emit(snap) // 无变化不广播
-	}
+	e.sup.RefreshExternal()
 }
 
 // Snapshot 返回当前状态快照。
 func (e *Engine) Snapshot() Snapshot {
+	outer := e.sup.Snapshot()
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.snapshotLocked()
+	return e.snapshotLocked(outer)
 }
 
-// Exe 返回当前自有实例的可执行路径（非 running 时为空串）。
+// Exe 返回当前自有实例的可执行路径（非 running/starting 时为空串）。
 func (e *Engine) Exe() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.cmd == nil {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning && s.State != sup.StateStarting {
 		return ""
 	}
-	return e.cmd.Path
+	return s.Exe
 }
 
 // WaitReady 阻塞等待 PaperTodo 实例就绪（单实例互斥体出现），超时返回 false。
@@ -336,26 +202,105 @@ func (e *Engine) WaitReady(timeout time.Duration) bool {
 
 // RunningDuration 自有实例已运行时长。
 func (e *Engine) RunningDuration() time.Duration {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.state != StateRunning || e.startedAt.IsZero() {
+	s := e.sup.Snapshot()
+	if s.State != sup.StateRunning || s.Since.IsZero() {
 		return 0
 	}
-	return time.Since(e.startedAt)
+	return time.Since(s.Since)
+}
+
+// ---------- 内核 → papertodo 形状映射 ----------
+
+// onSupState 内核状态广播 → 映射为本包 Snapshot 后转发（回调在内核锁外执行）。
+func (e *Engine) onSupState(s sup.Snapshot) {
+	var snap Snapshot
+	e.mu.Lock()
+	snap = e.snapshotLocked(s)
+	e.mu.Unlock()
+	e.emit(snap)
 }
 
 // snapshotLocked 前置条件：已持 e.mu。
-func (e *Engine) snapshotLocked() Snapshot {
+func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
+	switch s.State {
+	case sup.StateStopped, sup.StateFailed:
+		if e.stoppedAt.IsZero() {
+			e.stoppedAt = time.Now()
+		}
+	}
+	if s.State == sup.StateFailed {
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			e.exitCode = code
+		}
+	}
 	return Snapshot{
-		Version:   e.version,
-		State:     e.state,
-		PID:       e.pid,
+		Version:   s.Version,
+		State:     mapState(s.State),
+		PID:       s.PID,
 		ExitCode:  e.exitCode,
-		Error:     e.errMsg,
-		External:  e.external,
-		StartedAt: e.startedAt,
+		Error:     mapErrorMessage(s),
+		External:  s.State == sup.StateExternal,
+		StartedAt: s.Since,
 		StoppedAt: e.stoppedAt,
 	}
+}
+
+// mapState 状态词表映射：
+//
+//	supervisor stopped  → stopped
+//	supervisor starting → starting
+//	supervisor running  → running
+//	supervisor stopping → running（papertodo 既有词表无 stopping：终止窗口对前端保持
+//	                      运行语义，收口后由 stopped/failed 终态广播纠正）
+//	supervisor external → external
+//	supervisor failed   → failed
+func mapState(s sup.State) State {
+	switch s {
+	case sup.StateStarting:
+		return StateStarting
+	case sup.StateRunning, sup.StateStopping:
+		return StateRunning
+	case sup.StateExternal:
+		return StateExternal
+	case sup.StateFailed:
+		return StateFailed
+	default:
+		return StateStopped
+	}
+}
+
+// kernelAbnormalExitRe 匹配内核异常退出文案中的退出码。措辞耦合自
+// supervisor.wait 的分类消息"托管进程异常退出（退出码 %d）"——内核文案变更时
+// 本处回退为透传 Error（ExitCode 保持账目值），不会崩溃，仅少一层改写。
+var kernelAbnormalExitRe = regexp.MustCompile(`托管进程异常退出（退出码 (-?\d+)）`)
+
+// exitCodeFromKernelMessage 从内核异常退出文案中提取退出码。
+func exitCodeFromKernelMessage(msg string) (int, bool) {
+	g := kernelAbnormalExitRe.FindStringSubmatch(msg)
+	if g == nil {
+		return 0, false
+	}
+	var code int
+	if _, err := fmt.Sscanf(g[1], "%d", &code); err != nil {
+		return 0, false
+	}
+	return code, true
+}
+
+// mapErrorMessage 还原 papertodo 既有失败文案：内核异常退出消息改回
+// "PaperTodo 异常退出（退出码 N）。若使用 no-runtime 精简变体，请确认…"
+// （运行时依赖指引是本模块领域文案）；内核手动停止的"已手动停止"折回本引擎
+// 既有的空文案（stopped 态不带话术）；其余（启动失败等）透传。
+func mapErrorMessage(s sup.Snapshot) string {
+	if s.State == sup.StateFailed {
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			return fmt.Sprintf("PaperTodo 异常退出（退出码 %d）。若使用 no-runtime 精简变体，请确认系统已安装 .NET 10 桌面运行时（环境检测页可查看）", code)
+		}
+	}
+	if s.State == sup.StateStopped && s.Error == manualStopWording {
+		return ""
+	}
+	return s.Error
 }
 
 // emit 状态广播（回调在锁外执行，防止回调内重入本引擎造成死锁）。
@@ -365,72 +310,11 @@ func (e *Engine) emit(snap Snapshot) {
 	}
 }
 
-// transition 切换状态并广播。
-func (e *Engine) transition(s State, errMsg string) {
-	var snap Snapshot
-	e.mu.Lock()
-	e.state = s
-	e.errMsg = errMsg
-	switch s {
-	case StateRunning:
-		e.stoppedAt = time.Time{}
-		e.errMsg = ""
-	case StateStopped, StateFailed:
-		if e.stoppedAt.IsZero() {
-			e.stoppedAt = time.Now()
-		}
-	}
-	snap = e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
-}
+// supProbe 把 PaperProbe（命名互斥体存在性）适配为内核统一探针契约。
+// 互斥体探测为瞬时系统调用、天然不可取消（任何失败按"不存在"处理，永不报错），
+// 因此不产出 ProcInfo（外部实例归属只认 running 事实，PID 无从取得，沿用原口径）。
+type supProbe struct{ p PaperProbe }
 
-// wait 阻塞等待自有进程退出并分类收尾。
-func (e *Engine) wait() {
-	err := e.cmd.Wait()
-	code := 0
-	if err != nil && e.cmd.ProcessState != nil {
-		code = e.cmd.ProcessState.ExitCode()
-	}
-
-	e.mu.Lock()
-	e.exitCode = code
-	e.stoppedAt = time.Now()
-	stopped := e.stopping
-	prev := e.state
-	e.external = false
-	if e.job != nil {
-		_ = e.job.Close()
-		e.job = nil
-	}
-	e.cmd = nil
-	e.mu.Unlock()
-
-	// 分支顺序不可换：冷启动竞速场我们的进程信使化自退（exit 0），必须先判外部接管——
-	// 互斥体仍被持有说明真正存活的是外部主实例
-	externalTaken := !stopped && e.probe.IsRunning()
-
-	switch {
-	case stopped:
-		e.transition(StateStopped, "")
-	case externalTaken && prev != StateFailed:
-		e.setStateExternal()
-	case code == 0 && prev == StateRunning:
-		e.transition(StateStopped, "") // 用户在 PaperTodo 托盘菜单自行退出
-	default:
-		e.transition(StateFailed, fmt.Sprintf("PaperTodo 异常退出（退出码 %d）。若使用 no-runtime 精简变体，请确认系统已安装 .NET 10 桌面运行时（环境检测页可查看）", code))
-	}
-}
-
-// setStateExternal 将引擎标记为外部实例运行中（进程归属不在本引擎）。
-func (e *Engine) setStateExternal() {
-	var snap Snapshot
-	e.mu.Lock()
-	e.state = StateExternal
-	e.external = true
-	e.pid = 0
-	e.errMsg = ""
-	snap = e.snapshotLocked()
-	e.mu.Unlock()
-	e.emit(snap)
+func (s supProbe) Inspect(_ context.Context) (bool, *platform.ProcInfo, error) {
+	return s.p.IsRunning(), nil, nil
 }

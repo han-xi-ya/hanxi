@@ -1,5 +1,7 @@
 // Package papertodo 内置模块：PaperTodo 桌面便签的便携托管
 // （GitHub Releases 双变体下载 + 单目录覆盖安装 + JobObject 启停 + show/hide/exit 命令信使）。
+// Wave 5 起进程治理委托 packages/go/supervisor、受控下载与事务中转委托
+// packages/go/artifact（journal 记账同 markeron/rufus/ccswitch）。
 //
 // 集成决策记录（https://github.com/snownico0722/PaperTodo）：
 //   - 许可证：PolyForm Noncommercial 1.0.0 + 个人职业使用附加条款——允许自然人免费
@@ -9,11 +11,15 @@
 //   - 发行形态：绿色单文件 exe（self-contained 内嵌 .NET 10 / no-runtime 需系统运行时），
 //     便签数据（data.json、note-assets.lmdb、plugins/）恒在 exe 同目录——
 //     因此采用固定单目录覆盖升级（数据永不迁移），卸载只删程序保留数据；
-//   - 完整性：实证上游资产无 GitHub digest、未收录 winget、body 无哈希，
-//     ccswitch 的 digest 硬过滤照搬会清空版本表；降级链见 version/manager.go 包注释，
+//     此盘上契约与 artifact.Tree 的"版本目录隔离落位"互斥，落位原子性由模块自持
+//     （staging 独占 + rename，纪律同内核），登记见 version.Manager 注释；
+//   - 完整性：集成实证期上游资产无 GitHub digest（2026-09 已回刷）、未收录 winget、
+//     body 无哈希，ccswitch 的 digest 硬过滤照搬会清空历史版本表——digest 在场走
+//     内核 Fetch 硬校验，缺失走降级链（见 version/manager.go 包注释），
 //     坑点沉淀于 docs/TROUBLESHOOTING.md；
 //   - 单实例契约：WPF 自建协议（互斥体 + 命名管道转发命令行参数），
-//     探测用 OpenMutex，唤窗/收拢/退出对应 show/hide/exit 命令信使（源码实证）；
+//     探测用 OpenMutex，唤窗/收拢/退出对应 show/hide/exit 命令信使（源码实证），
+//     exit 信使经 supervisor.SetQuitHook 收编为内核 grace 优雅退出通道；
 //   - 不做空闲自动退出：桌面便签是常驻环境型工具，与 ccswitch 的"无人用即释放内存"
 //     语义相反；不碰 --mcp 便签内容通道（未来需求另立模块评估）。
 package papertodo
@@ -37,7 +43,7 @@ type Module struct {
 
 // New 在 app 装配期创建模块（构造无 IO，重活延迟到 OnInit 与 service 方法）。
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewPaperTodoService(plat)}
+	return &Module{svc: NewPaperTodoService(plat, extapi.NewLeaseHolder(ID))}
 }
 
 // Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
@@ -51,6 +57,10 @@ func (m *Module) Info() extapi.ModuleInfo {
 		Level:       extapi.LevelBuiltin,
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {
@@ -74,7 +84,8 @@ func (m *Module) OnInit(ctx context.Context) error {
 
 // OnDestroy 交回 service 做资源收尾；错误仅记录，注册表不因此阻断停用流程。
 func (m *Module) OnDestroy() error {
-	m.svc.Shutdown()
+	// 装配布线:Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)
+	m.svc.shutdown()
 	return nil
 }
 

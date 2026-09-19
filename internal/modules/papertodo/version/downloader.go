@@ -7,9 +7,13 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 )
+
+// 说明：官方摘要在场路径的下载主流程（多源回退、流式 SHA-256、字节双核、
+// 原子临时件）已收口至内核 artifact.Fetch；本文件保留 PaperTodo 领域辅助——
+// 镜像 URL 模板，以及上游无 digest 场的降级传输链（manager.Download 第 3 步
+// else 分支，完整性由 manager 的"字节数 + MZ + PE 核对"链条收口）。
 
 // assetMirrors 构造直连与镜像下载 URL 候选列表（与 markeron/ccswitch/frpc 同一组镜像前缀）。
 func assetMirrors(tag, assetName string) []string {
@@ -22,7 +26,7 @@ func assetMirrors(tag, assetName string) []string {
 	}
 }
 
-// downloadTo 依次尝试候选 URL 下载到目标文件，支持重试与镜像故障转移。
+// downloadTo 依次尝试候选 URL 下载到目标文件，支持重试与镜像故障转移（降级链传输）。
 // 默认 http.Client 自动跟随 https 重定向（github.com → CDN），
 // tryDownloadSingle 中显式拒绝的 3xx 仅在自定义 CheckRedirect 干预时出现，属防御分支。
 func downloadTo(client *http.Client, urls []string, dest string, onProgress func(done int64)) error {
@@ -105,8 +109,9 @@ func fileSize(path string) (int64, error) {
 	return fi.Size(), nil
 }
 
-// fileSHA256 计算文件 sha256。上游无官方 digest 时本值作为"下载指纹"
-// 写入 hanxi-meta.json（篡改/盘上损坏的审计基线，见 manager 完整性链注释）。
+// fileSHA256 计算文件 sha256。作为"下载指纹"写入 hanxi-meta.json
+// （篡改/盘上损坏的审计基线，见 manager 完整性链注释；官方摘要在场时
+// 硬校验已由内核 Fetch 流式 + 落盘双核收口，本值与官方摘要同值入账）。
 func fileSHA256(path string) string {
 	f, err := os.Open(path)
 	if err != nil {
@@ -118,18 +123,6 @@ func fileSHA256(path string) string {
 		return ""
 	}
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-// verifySHA256 校验文件 sha256 是否与期望一致（大小写不敏感）。
-func verifySHA256(path, want string) error {
-	got := fileSHA256(path)
-	if got == "" {
-		return fmt.Errorf("无法读取下载文件")
-	}
-	if !strings.EqualFold(got, want) {
-		return fmt.Errorf("sha256 不匹配：期望 %s，实际 %s", want, got)
-	}
-	return nil
 }
 
 // checkMZMagic PE 魔数哨兵：下载物必须以 MZ 开头，否则根本不是可执行文件
