@@ -1,4 +1,4 @@
-// 特征测试（二波收敛前置 · 新建密网）：VSCodeView 现状行为基线。本页此前无任何 spec。
+// 回归测试（二波收敛完成版）：VSCodeView 双形态托管控制台正式行为基线。
 // 全部断言按「现行为」逐字锁定（不代表收敛后目标形态）：双形态状态快照与 banner 分叉、
 // 进度键 form:version 隔离、OpenWindow/Quit 按 form 分派与错误文案不对称（打开失败无前缀 /
 // 退出失败带「退出失败: 」）、安装版 confirm-required 二段闸、DownloadVersion 动作回执分支、
@@ -10,6 +10,7 @@ import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import VSCodeView from '../VSCodeView.vue'
+import ManagedConsoleShell from '../../components/managed/ManagedConsoleShell.vue'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
 import { usePrompt } from '../../composables/usePrompt'
@@ -141,6 +142,19 @@ afterEach(() => {
   useToast().clearToast()
   settleConfirm(false)
   settlePrompt(null)
+})
+
+describe('VSCodeView 共享壳接线', () => {
+  it('采用 custom 版本编排，并通过 control-bar / versions-body 两个专属槽收口双形态 UI', async () => {
+    stubDefaults(statusOfForms(snap('stopped'), snap('stopped')))
+    const { wrapper } = await mountView()
+    const shell = wrapper.findComponent(ManagedConsoleShell)
+    expect(shell.exists()).toBe(true)
+    expect(shell.props('adapter').versions.orchestration).toBe('custom')
+    expect(shell.vm.$slots['control-bar']).toBeTypeOf('function')
+    expect(shell.vm.$slots['versions-body']).toBeTypeOf('function')
+    wrapper.unmount()
+  })
 })
 
 describe('VSCodeView 装载与双形态快照', () => {
