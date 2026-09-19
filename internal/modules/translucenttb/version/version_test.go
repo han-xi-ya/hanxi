@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/packages/go/artifact"
 )
 
 // fakeFullLayout 官方便携 zip 的完整文件集（2022.1~2026.2 实测恒定布局，测试复用）
@@ -159,70 +161,91 @@ func makeTestZip(t *testing.T, entries map[string]string) string {
 	return path
 }
 
-func TestExtractAll(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := makeTestZip(t, fakeFullLayout())
-	if err := extractAll(zipPath, filepath.Join(dir, "dst")); err != nil {
-		t.Fatalf("extractAll: %v", err)
+// TestVersionFromToken 版本令牌形状：纯 YYYY.N 与 imported-时间戳收纳（原样返回，
+// 无 v 前缀），v 前缀/非年份域/中文目录名拒绝（与原 dirNameRe 口径一致）。
+func TestVersionFromToken(t *testing.T) {
+	tests := []struct {
+		token   string
+		wantVer string
+		wantOK  bool
+	}{
+		{"2026.2", "2026.2", true},
+		{"imported-20260906-150405", "imported-20260906-150405", true},
+		{"v2026.2", "", false}, // 上游惯例无 v 前缀，v 开头目录非本模块落位格式
+		{"2026", "", false},    // 必须 YYYY.N 两段
+		{"9.9.9", "", false},   // 非年份域
+		{"", "", false},
 	}
-	for _, name := range append([]string{exeName}, companionNames...) {
-		if _, err := os.Stat(filepath.Join(dir, "dst", name)); err != nil {
-			t.Errorf("%s 未解压: %v", name, err)
+	for _, tt := range tests {
+		ver, ok := versionFromToken(tt.token)
+		if ok != tt.wantOK || ver != tt.wantVer {
+			t.Errorf("versionFromToken(%q) = (%q,%v), want (%q,%v)", tt.token, ver, ok, tt.wantVer, tt.wantOK)
 		}
 	}
 }
 
-func TestExtractAllZipSlip(t *testing.T) {
-	dir := t.TempDir()
-	f, err := os.CreateTemp("", "evil-*.zip")
-	if err != nil {
+// ---------- 内核解包 + 模块锚点自检（替代原 extractAll 时代的用例） ----------
+
+func TestUnpackWithCompanionAnchors(t *testing.T) {
+	entries := fakeFullLayout()
+	entries["Assets/SplashScreen.jpeg"] = "jpeg" // 官方便携包附带展示资源，非锚点但必须能全量解出
+	entries["README.md"] = "TranslucentTB"
+	zipPath := makeTestZip(t, entries)
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
+	}
+	if err := checkPortableLayout(staging); err != nil {
+		t.Fatalf("checkPortableLayout: %v", err)
+	}
+	for name := range entries {
+		if _, err := os.Stat(filepath.Join(staging, filepath.FromSlash(name))); err != nil {
+			t.Errorf("布局缺失 %s: %v", name, err)
+		}
+	}
+}
+
+func TestUnpackRejectsPathTraversal(t *testing.T) {
+	zipPath := makeTestZip(t, map[string]string{"../evil.txt": "escape"})
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err == nil {
+		t.Fatal("UnpackZip 应拒绝路径逃逸条目")
+	}
+}
+
+// TestPortableAnchorMissingCompanion 锚点是"全套伴生文件"：exe 之外缺任何一件
+// （注入器/UI 线程库/日志/WinUI 页面/资源索引）都判布局无效，错误列明缺项。
+func TestPortableAnchorMissingCompanion(t *testing.T) {
+	for _, drop := range companionNames {
+		entries := fakeFullLayout()
+		delete(entries, drop)
+		zipPath := makeTestZip(t, entries)
+		staging := filepath.Join(t.TempDir(), "staging")
+		if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+			t.Fatalf("UnpackZip(%s): %v", drop, err)
+		}
+		err := checkPortableLayout(staging)
+		if err == nil {
+			t.Fatalf("缺 %s 应自检失败", drop)
+		}
+		if !strings.Contains(err.Error(), drop) || !strings.Contains(err.Error(), "伴生") {
+			t.Errorf("错误信息应点名列出缺失伴生文件 %s: %v", drop, err)
+		}
+	}
+}
+
+func TestPortableAnchorEmptyExe(t *testing.T) {
+	staging := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staging, exeName), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
-	path := f.Name()
-	t.Cleanup(func() { os.Remove(path) })
-	zw := zip.NewWriter(f)
-	w, _ := zw.Create("../evil.txt")
-	w.Write([]byte("evil"))
-	w2, _ := zw.Create(exeName)
-	w2.Write([]byte("fake"))
-	zw.Close()
-	f.Close()
-
-	dst := filepath.Join(dir, "dst")
-	if err := extractAll(path, dst); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
-	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Errorf("失败后目标目录应被清理, stat err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); !os.IsNotExist(err) {
-		t.Fatal("恶意条目逃逸到了目标目录之外")
-	}
-}
-
-func TestExtractAllMissingBits(t *testing.T) {
-	less := func(drop string) map[string]string {
-		m := fakeFullLayout()
-		delete(m, drop)
-		return m
-	}
-	cases := map[string]map[string]string{
-		"缺 exe":     less(exeName),
-		"缺注入器":      less("ExplorerTAP.dll"),
-		"缺 UI 库":    less("Xaml.dll"),
-		"缺资源索引":     less("resources.pri"),
-		"exe 为空":    {exeName: ""},
-		"全套但 exe 空": func() map[string]string { m := fakeFullLayout(); m[exeName] = ""; return m }(),
-	}
-	for name, entries := range cases {
-		zipPath := makeTestZip(t, entries)
-		dst := filepath.Join(t.TempDir(), "dst")
-		if err := extractAll(zipPath, dst); err == nil {
-			t.Errorf("%s: 应被拒绝", name)
+	for _, c := range companionNames {
+		if err := os.WriteFile(filepath.Join(staging, c), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
 		}
-		if _, err := os.Stat(dst); !os.IsNotExist(err) {
-			t.Errorf("%s: 失败后目标目录应被清理", name)
-		}
+	}
+	if err := checkPortableLayout(staging); err == nil {
+		t.Fatal("空 exe 应判定为损坏安装")
 	}
 }
 
@@ -305,7 +328,7 @@ func TestListInstalledAndRemove(t *testing.T) {
 		t.Error("路径穿越式版本号必须报错")
 	}
 
-	// Remove
+	// Remove（内核 rename 隔离后删除）
 	if err := m.Remove("2026.2"); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}

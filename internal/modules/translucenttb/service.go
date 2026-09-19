@@ -8,11 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/translucenttb/instance"
 	"hanxi/internal/modules/translucenttb/version"
 	"hanxi/internal/notify"
+	"hanxi/internal/ops"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/windows"
@@ -28,11 +31,15 @@ const (
 // 任务栏透明样式设置不内嵌：上游 UI 就是系统托盘 XAML 飞控（无主窗口可唤），
 // Hanxi 侧提供版本管理、启停、状态重设与 settings.json 所在目录直达。
 // 本模块禁用空闲自动退出（常驻特效工具：退出 = 任务栏特效消失，与托管诉求正相反）。
+//
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type TranslucentTBService struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *translucenttbStore
 	engine  *instance.Engine
+	holder  *extapi.LeaseHolder
 
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
@@ -41,12 +48,13 @@ type TranslucentTBService struct {
 }
 
 // NewTranslucentTBService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
-func NewTranslucentTBService(plat platform.Platform) *TranslucentTBService {
+func NewTranslucentTBService(plat platform.Platform, holder *extapi.LeaseHolder) *TranslucentTBService {
 	paths := settings.GetPaths()
 	svc := &TranslucentTBService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newTranslucentTBStore(paths.StateDir()),
+		holder:  holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewTBProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -96,16 +104,40 @@ func (s *TranslucentTBService) activate() {
 
 // ListReleases 获取远程可用版本列表（多镜像回退，10 分钟缓存）。
 func (s *TranslucentTBService) ListReleases() ([]version.TBRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 获取本地已安装版本列表。
 func (s *TranslucentTBService) ListInstalledVersions() ([]version.TBVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
-// DownloadVersion 后台下载指定版本：立即返回，全程经事件 translucenttb:version-download 推送进度。
+// translucenttbInstallSteps 托管资产事务的 journal 步骤词汇（Wave 4）：translucenttb 是
+// 便携 zip 形态，verify（官方摘要双核）由内核 Fetch 折进 download 步内完成，
+// 模块进度词表不单独可见，如实不造幻影步骤。
+var translucenttbInstallSteps = []string{"download", "unpack", "place"}
+
+// DownloadVersion 后台下载指定版本：立即返回，全程经事件 translucenttb:version-download
+// 推送进度；同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链
+// 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
+// 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
+// （与既有模块事件双通道并行，Wave 4-B 接线，markeron/ccswitch 同构）。
 func (s *TranslucentTBService) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 
 	s.downloadMu.Lock()
@@ -120,22 +152,56 @@ func (s *TranslucentTBService) DownloadVersion(targetVersion string) (string, er
 			}
 		}
 	}
+	opKind := extapi.OpInstall
+	if err == nil && len(installed) > 0 {
+		opKind = extapi.OpUpdate
+	}
+	txnID := uuid.NewString()
 
 	go func() {
+		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+			targetVersion, txnID, translucenttbInstallSteps)
+		if terr != nil {
+			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
+			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("translucenttb:version-download", version.DownloadProgress{Version: targetVersion, Stage: "error", Message: terr.Error()})
+			}
+			notify.Error("translucenttb", "版本下载失败", fmt.Sprintf("TranslucentTB %s 事务开启失败: %v", targetVersion, terr), "/ext/translucenttb")
+			return
+		}
+		stepIdx := -1
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("translucenttb download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("translucenttb:version-download", p)
 			}
+			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；
+			// 下载分块进度仅进观察面内存投影，不产生 fsync 风暴
+			switch p.Stage {
+			case "downloading":
+				if stepIdx < 0 {
+					stepIdx = 0
+					txn.Step(stepIdx)
+				}
+				txn.Progress(p.Done, p.Total)
+			case "extract":
+				if stepIdx < 1 {
+					stepIdx = 1
+					txn.Step(stepIdx)
+				}
+			}
 			if p.Stage == "done" {
 				notify.Success("translucenttb", "版本下载成功", fmt.Sprintf("TranslucentTB %s 已成功安装", p.Version), "/ext/translucenttb")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
+		if err := s.manager.Download(txnID, targetVersion, emit); err != nil {
+			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("translucenttb", "版本下载失败", fmt.Sprintf("TranslucentTB %s 下载失败: %v", targetVersion, err), "/ext/translucenttb")
 			return
 		}
+		txn.Done()
 		// 未设使用版本时自动把刚下载完的版本设为使用版本：
 		// 首个版本下载完成后无需再手动点一下设置（与 ccswitch 既有行为对齐）。
 		if s.store.GetActive() == "" {
@@ -150,6 +216,11 @@ func (s *TranslucentTBService) DownloadVersion(targetVersion string) (string, er
 // 注意：TranslucentTB 的 settings.json 就在版本目录内，卸载连同用户配置一起删除
 // （前端卸载确认框如实预告）。
 func (s *TranslucentTBService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning &&
 		strings.EqualFold(snap.Version, targetVersion) {
@@ -167,6 +238,11 @@ func (s *TranslucentTBService) RemoveVersion(targetVersion string) error {
 
 // SetActiveVersion 设定使用版本（先校验已安装，再持久化）。
 func (s *TranslucentTBService) SetActiveVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
@@ -179,6 +255,11 @@ func (s *TranslucentTBService) SetActiveVersion(targetVersion string) (string, e
 
 // GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动用最新已装）。
 func (s *TranslucentTBService) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return s.store.GetActive(), nil
 }
 
@@ -186,6 +267,11 @@ func (s *TranslucentTBService) GetActiveVersion() (string, error) {
 // 整套随目录迁移，与 ccswitch 的单 exe 导入不同）。
 // 运行中的实例拒绝导入：Windows 下运行中的 exe 文件被独占，拷贝必然失败。
 func (s *TranslucentTBService) ImportLocal(srcDir string) (version.TBVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.TBVersionInfo{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
 		return version.TBVersionInfo{}, fmt.Errorf("TranslucentTB 正在运行，请先退出再导入")
 	}
@@ -201,6 +287,11 @@ func (s *TranslucentTBService) ImportLocal(srcDir string) (version.TBVersionInfo
 //   - stopped/failed：解析 active 版本无参启动。首启会弹上游欢迎授权窗口，
 //     互斥体先于该 UI 创建，WaitReady 不受阻塞。
 func (s *TranslucentTBService) Start() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
@@ -247,6 +338,11 @@ func (s *TranslucentTBService) Start() (ControlOutcome, error) {
 //   - starting：前序启动未完，提示稍候；
 //   - stopped/failed：无实例可通知——拉起只会冷启动新实例，语义不是"重设"，明确报错。
 func (s *TranslucentTBService) ResetState() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
@@ -280,6 +376,11 @@ func (s *TranslucentTBService) ResetState() (ControlOutcome, error) {
 // Quit 退出引擎托管的 TranslucentTB（WM_CLOSE 优雅：保存 settings.json 后退出）。
 // external 状态不越权强杀（互斥体探测拿不到 PID）：仅返回人性化指引。
 func (s *TranslucentTBService) Quit() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
 			Message: "当前是外部自行启动的实例，请在 TranslucentTB 托盘菜单中退出"}, nil
@@ -290,9 +391,22 @@ func (s *TranslucentTBService) Quit() (QuitOutcome, error) {
 	return QuitOutcome{Stopped: true, Message: "TranslucentTB 已退出，任务栏已还原默认外观"}, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例（仅在联动开启时）。
+// Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+// 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
+func (s *TranslucentTBService) Shutdown() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	s.shutdown()
+	return nil
+}
+
+// shutdown 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）。
+// 模块停用/应用退出：停后台轮询 + 终止自有实例（仅在联动开启时）。
 // 外部实例不受影响（非我方托管）；自有实例另受 JobObject 联动口径约束。
-func (s *TranslucentTBService) Shutdown() {
+func (s *TranslucentTBService) shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
 		close(s.watchStop)
@@ -310,11 +424,21 @@ func (s *TranslucentTBService) Shutdown() {
 // 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
 // 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *TranslucentTBService) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return windows.RevealDir(dir)
 }
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
 func (s *TranslucentTBService) GetStatus() (instance.Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return instance.Snapshot{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	return s.engine.Snapshot(), nil
 }
@@ -367,20 +491,40 @@ func versionCompare(a, b string) int {
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *TranslucentTBService) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
 	return s.store.GetFollowOnExit(), nil
 }
 
 // SetFollowOnExit 设定开关（下次启动生效）。
 func (s *TranslucentTBService) SetFollowOnExit(b bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.store.SetFollowOnExit(b)
 }
 
 // RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
 func (s *TranslucentTBService) RepositoryURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.RepoURL(), nil
 }
 
 // OpenRepository 用默认浏览器打开上游仓库页面。
 func (s *TranslucentTBService) OpenRepository() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.RepoURL())
 }
