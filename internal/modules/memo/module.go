@@ -23,12 +23,18 @@ type Module struct {
 // New 实例化模块。少数在装配期即可能失败的模块之一（数据文件损坏/不可读），
 // 返回错误时注册表跳过该模块，不影响其余装配。
 func New(paths *settings.Paths) (extapi.Module, error) {
-	svc, err := NewMemoService(paths)
+	svc, err := NewMemoService(paths, extapi.NewLeaseHolder(ID))
 	if err != nil {
 		return nil, err
 	}
 	return &Module{svc: svc}, nil
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务 RPC 经该门取 operation lease（Wave 3 调用门）。
+// 跨模块直调（fileshare 投递→QuickCreate、snapshot 热恢复→RestoreFile）
+// 捕获的正是这些导出版：memo 停用时直调被门拒绝并携带明确错误上浮，属预期语义。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // GetService 获取底层 Service 引用 (方便跨模块直接交互)
 func (m *Module) GetService() *MemoService {

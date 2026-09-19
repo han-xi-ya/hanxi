@@ -22,9 +22,15 @@ type Module struct {
 // New 在 app 装配期创建模块；多账号凭据由 settings.Store 持久化，构造无网络 IO。
 func New(store *settings.Store) extapi.Module {
 	return &Module{
-		svc: NewWechatService(store),
+		svc: NewWechatService(store, extapi.NewLeaseHolder(ID)),
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service RPC 导出版经该门取 operation lease（Wave 3 调用门）。
+// 入站监听回调链（Listener goroutine → emit wechat:message-received）是 Go 内部
+// 通路，不走 service 方法面、不接门。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。
 func (m *Module) Info() extapi.ModuleInfo {
@@ -61,16 +67,19 @@ func (m *Module) Services() []extapi.Service {
 }
 
 func (m *Module) OnInit(ctx context.Context) error {
-	m.svc.InitOnDemand()
+	// 生命周期路径走内部无门版：OnInit 在 ensureActive 内执行，此刻 initialized
+	// 尚未置真，经门的调用会被自家裁决拒绝。
+	m.svc.initOnDemand()
 	return nil
 }
 
 func (m *Module) OnDestroy() error {
-	m.svc.Destroy()
+	// 同走无门内部版：stopping 态门恒拒，Destroy 必须无条件停尽监听 goroutine。
+	m.svc.destroy()
 	return nil
 }
 
-// IsInitialized InitOnDemand 无失败路径，注册表懒初始化后恒为已就绪。
+// IsInitialized initOnDemand 无失败路径，注册表懒初始化后恒为已就绪。
 func (m *Module) IsInitialized() bool {
 	return true
 }

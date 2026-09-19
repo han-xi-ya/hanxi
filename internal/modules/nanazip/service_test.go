@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/nanazip/version"
 	"hanxi/internal/platform/apppackage"
 )
@@ -53,7 +54,7 @@ func (f *fakeVersions) RemoveCached(string) error { return nil }
 
 func TestPackageSnapshotUsesSystemState(t *testing.T) {
 	packages := &fakePackages{pkg: &apppackage.Package{Version: "6.5.1800.0", PackageFullName: "full", Family: PackageFamily, Architecture: "x64", Status: "Ok"}}
-	svc := newNanaZipService(nil, packages, &fakeVersions{})
+	svc := newNanaZipService(nil, packages, &fakeVersions{}, extapi.NewLeaseHolder(ID))
 	snapshot, err := svc.GetPackageSnapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +66,7 @@ func TestPackageSnapshotUsesSystemState(t *testing.T) {
 
 func TestLaunchUsesPackageAPI(t *testing.T) {
 	packages := &fakePackages{pkg: &apppackage.Package{Version: "6.5.1800.0"}}
-	svc := newNanaZipService(nil, packages, &fakeVersions{})
+	svc := newNanaZipService(nil, packages, &fakeVersions{}, extapi.NewLeaseHolder(ID))
 	if err := svc.Launch(); err != nil {
 		t.Fatal(err)
 	}

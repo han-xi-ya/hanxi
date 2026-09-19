@@ -28,27 +28,39 @@ type InstallDirPref struct {
 
 // GetDistroInstallDir 读取落位偏好。路径不可用、文件缺失或损坏都回退
 // "未设置"：偏好读不出来不该影响添加实例页的任何功能。
-func (s *WslService) GetDistroInstallDir() InstallDirPref {
+func (s *WslService) GetDistroInstallDir() (InstallDirPref, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return InstallDirPref{}, gateErr
+	}
+	defer release()
+
 	if s.installPrefPath == "" {
-		return InstallDirPref{}
+		return InstallDirPref{}, nil
 	}
 	data, err := os.ReadFile(s.installPrefPath)
 	if err != nil {
-		return InstallDirPref{}
+		return InstallDirPref{}, nil
 	}
 	var store struct {
 		Dir string `json:"dir"`
 	}
 	if json.Unmarshal(data, &store) != nil {
-		return InstallDirPref{}
+		return InstallDirPref{}, nil
 	}
-	return InstallDirPref{Set: true, Dir: store.Dir}
+	return InstallDirPref{Set: true, Dir: store.Dir}, nil
 }
 
 // SetDistroInstallDir 写入落位偏好：空串=显式"系统默认位置"；非空须是
 // 绝对路径形态（moveTarget 同款校验口径）——写偏好时就把明显坏掉的拼写拦下，
 // 好过让它粘在记忆里反复坑后续操作。长度封顶防呆（路径实用上限远低于此）。
 func (s *WslService) SetDistroInstallDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	if s.installPrefPath == "" {
 		return fmt.Errorf("数据存储路径不可用，无法记住安装目录")
 	}

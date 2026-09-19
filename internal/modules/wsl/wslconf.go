@@ -98,6 +98,12 @@ func (s *WslService) wslGuestReady(ctx context.Context, name string) error {
 // 读取本身会经 wsl -d 拉起停止的发行版——这是显式点「配置」的预期动作。
 // 存在性以 test -f 退出码为判据（与 Save 的备份决策同一口径），不猜文案。
 func (s *WslService) GetWslConf(name string) (WslConfDoc, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return WslConfDoc{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -127,6 +133,12 @@ func (s *WslService) GetWslConf(name string) (WslConfDoc, error) {
 
 // SaveWslConf 写回 /etc/wsl.conf：校验 → （原文件在则）root 备份 → tee 覆盖 → 复验。
 func (s *WslService) SaveWslConf(name, text string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()

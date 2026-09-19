@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/platform"
 )
 
@@ -31,9 +32,11 @@ type NetworkOverview struct {
 // PublicIPService 公网/局域网信息聚合服务。
 // 对上游查询源做进程内 TTL 缓存（RWMutex 读写锁）：TTL 内的重复请求直接回吐 cachedData，
 // 前端轮询不放大外部请求量；缓存含部分失败结果（某源挂掉不会立即重查）。
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
 type PublicIPService struct {
 	plat   platform.Platform
 	client *http.Client
+	holder *extapi.LeaseHolder
 
 	cacheMu    sync.RWMutex
 	cachedData NetworkOverview
@@ -42,10 +45,11 @@ type PublicIPService struct {
 }
 
 // NewPublicIPService 创建服务：单源 HTTP 超时 3s（多源轮询兜底），结果缓存 2 分钟。
-func NewPublicIPService(plat platform.Platform) *PublicIPService {
+func NewPublicIPService(plat platform.Platform, holder *extapi.LeaseHolder) *PublicIPService {
 	return &PublicIPService{
 		plat:     plat,
 		client:   &http.Client{Timeout: 3 * time.Second},
+		holder:   holder,
 		cacheTTL: 2 * time.Minute, // 默认缓存 2 分钟
 	}
 }
@@ -74,6 +78,12 @@ var (
 
 // GetNetworkOverview 获取完整的出口公网 IP、局域网 IP、网关与 DNS 列表（2分钟内直接命中缓存）
 func (s *PublicIPService) GetNetworkOverview(forceRefresh bool) (NetworkOverview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return NetworkOverview{}, gateErr
+	}
+	defer release()
+
 	// 1. 如果不是强制刷新，且在缓存有效期内，秒级直接返回
 	if !forceRefresh {
 		s.cacheMu.RLock()
@@ -210,6 +220,12 @@ type PingSummary struct {
 
 // PingTarget 对目标域名或 IP 执行探测（默认探测 4 次）
 func (s *PublicIPService) PingTarget(target string, count int) (PingSummary, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return PingSummary{}, gateErr
+	}
+	defer release()
+
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return PingSummary{}, fmt.Errorf("目标地址不能为空")
@@ -315,6 +331,12 @@ type TracerouteSummary struct {
 
 // TraceRoute 执行路由追踪（基于 tracert / 本地探测，最大 30 跳）
 func (s *PublicIPService) TraceRoute(target string, maxHops int) (TracerouteSummary, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return TracerouteSummary{}, gateErr
+	}
+	defer release()
+
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return TracerouteSummary{}, fmt.Errorf("目标地址不能为空")

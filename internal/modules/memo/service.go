@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"hanxi/internal/extapi"
 	"hanxi/internal/notify"
 	"hanxi/internal/settings"
 )
@@ -27,11 +28,14 @@ type MemoService struct {
 	items     []MemoItem
 	wailsApp  *application.App
 	onChanged func() // 测试/内部观察钩子；仅在提交成功后调用
+	holder    *extapi.LeaseHolder
 }
 
 // NewMemoService 实例化便签服务：启动清扫/迁移旧库，然后把权威数据全量装载进内存
 // （实测千条以下全量缓存模式，前端 List/GetStats 语义迁移前后不变）。
-func NewMemoService(paths *settings.Paths) (*MemoService, error) {
+// 全部业务 RPC 方法经 holder 接入统一调用门（Wave 3）：停用/未安装模块的任何
+// 方法调用被拒并返回明确错误，调用在途期间停用会等待 drain。
+func NewMemoService(paths *settings.Paths, holder *extapi.LeaseHolder) (*MemoService, error) {
 	dataDir := paths.DataDir()
 	legacyPath := filepath.Join(paths.StateDir(), "memo.json")
 	memoDir := filepath.Join(dataDir, "memo")
@@ -48,7 +52,7 @@ func NewMemoService(paths *settings.Paths) (*MemoService, error) {
 	}
 
 	files := NewFileStore(memoDir)
-	s := &MemoService{files: files}
+	s := &MemoService{files: files, holder: holder}
 
 	hasFiles, herr := memoDirHasFiles(memoDir)
 	if herr != nil {
@@ -92,7 +96,8 @@ func NewMemoService(paths *settings.Paths) (*MemoService, error) {
 	return s, nil
 }
 
-// SetWailsApp 设置 Wails App 引用
+// SetWailsApp 设置 Wails App 引用。
+// 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门。
 func (s *MemoService) SetWailsApp(app *application.App) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -100,7 +105,13 @@ func (s *MemoService) SetWailsApp(app *application.App) {
 }
 
 // List 根据过滤条件检索便签
-func (s *MemoService) List(filter MemoFilter) []MemoItem {
+func (s *MemoService) List(filter MemoFilter) ([]MemoItem, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -162,11 +173,17 @@ func (s *MemoService) List(filter MemoFilter) []MemoItem {
 		return result[i].UpdatedAt.After(result[j].UpdatedAt)
 	})
 
-	return result
+	return result, nil
 }
 
 // GetStats 获取便签统计数据与标签云
-func (s *MemoService) GetStats() MemoStats {
+func (s *MemoService) GetStats() (MemoStats, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return MemoStats{}, gateErr
+	}
+	defer release()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -191,11 +208,22 @@ func (s *MemoService) GetStats() MemoStats {
 		}
 	}
 
-	return stats
+	return stats, nil
 }
 
 // Create 创建新便签
 func (s *MemoService) Create(title, content string, tags []string, colorTag string) (MemoItem, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return MemoItem{}, gateErr
+	}
+	defer release()
+	return s.createItem(title, content, tags, colorTag)
+}
+
+// createItem 创建落盘与内存换装的内部核心（不带调用门）：
+// 供导出版 Create 与 QuickCreate 复用，QuickCreate 不再经带门 Create 二次入账。
+func (s *MemoService) createItem(title, content string, tags []string, colorTag string) (MemoItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -236,14 +264,27 @@ func (s *MemoService) Create(title, content string, tags []string, colorTag stri
 	return item, nil
 }
 
-// QuickCreate 快捷创建 (主要供 fileshare 跨模块投递联动使用)
+// QuickCreate 快捷创建 (主要供 fileshare 跨模块投递联动使用)。
+// 导出版接门：memo 停用时返回明确的门拒绝错误（当前签名即返回 error，
+// 直调方 fileshare 如实上浮/记录，不静默吞）。
 func (s *MemoService) QuickCreate(title, content string, tags []string) error {
-	_, err := s.Create(title, content, tags, "amber")
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	_, err := s.createItem(title, content, tags, "amber")
 	return err
 }
 
 // Update 更新已有便签
 func (s *MemoService) Update(id, title, content string, tags []string, colorTag string) (MemoItem, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return MemoItem{}, gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -294,6 +335,12 @@ func (s *MemoService) persistCandidate(item MemoItem) error {
 
 // TogglePin 切换置顶状态。候选值先落盘，失败则内存与事件均不变。
 func (s *MemoService) TogglePin(id string) (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -316,6 +363,12 @@ func (s *MemoService) TogglePin(id string) (bool, error) {
 // ToggleMask 切换敏感信息遮罩。隐私态必须与持久化提交绑定：写盘失败时
 // 保持原遮罩状态且不广播，避免 UI 误以为敏感信息已被安全遮住。
 func (s *MemoService) ToggleMask(id string) (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -337,6 +390,12 @@ func (s *MemoService) ToggleMask(id string) (bool, error) {
 
 // Delete 删除指定便签
 func (s *MemoService) Delete(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -366,7 +425,14 @@ func (s *MemoService) Delete(id string) error {
 // memo:changed——前端全量重拉即见，热生效无重启。回落旧库模式不支持（无单条概念），
 // 返回可读错误引导重启。content 用 string 承载原样字节（Go string 不校验 UTF-8，
 // 无损；同时避开绑定面对 []byte 的形态特化）。
+// memo 停用时热恢复被门拒绝并上浮明确错误（快照页单文件回滚可见），属预期语义。
 func (s *MemoService) RestoreFile(id, content string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	data := []byte(content)
 	item, derr := DecodeMemo(id+".md", data)
 	if derr != nil {

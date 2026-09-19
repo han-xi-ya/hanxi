@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hanxi/internal/extapi"
 )
 
 // 服务面单测：探测/取页/扫描/外呼全部桩注入，离线断言不碰注册表与网络。
@@ -16,6 +18,7 @@ func (f *fakeOpener) OpenURL(url string) error { f.urls = append(f.urls, url); r
 
 func newTestService(probe func() (localData, error)) *SoftverService {
 	return &SoftverService{
+		holder:        extapi.NewLeaseHolder(ID),
 		probeLocal:    probe,
 		fetchPage:     func(context.Context) (string, error) { return "", errors.New("未配置") },
 		walk:          walkDirSize,

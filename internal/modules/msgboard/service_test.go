@@ -31,8 +31,10 @@ func TestServiceToggleWithoutApp(t *testing.T) {
 		t.Fatalf("Toggle 应透传 Show 错误，实得 %v", err)
 	}
 	// 未挂牌时 Dismiss 幂等无操作。
-	s.Dismiss()
-	if st := s.GetStatus(); st.Shown {
+	if err := s.Dismiss(); err != nil {
+		t.Fatalf("Dismiss（未挂牌幂等）不应报错: %v", err)
+	}
+	if st, _ := s.GetStatus(); st.Shown {
 		t.Fatal("Show 失败后不应留在已挂出态")
 	}
 }
@@ -62,26 +64,26 @@ func TestServiceSetConfigKeepsHotkeyUnbound(t *testing.T) {
 	if err := s.SetConfig(cfg); err != nil {
 		t.Fatalf("同值保存不应报错：%v", err)
 	}
-	if st := s.GetStatus(); st.HotkeyActive {
+	if st, _ := s.GetStatus(); st.HotkeyActive {
 		t.Fatal("无头环境热键不可能在位，HotkeyActive 谎报")
 	}
 }
 
 func TestServiceBoardContentAndPresets(t *testing.T) {
 	s := newTestService(t)
-	if c := s.GetBoardContent(); c.Text != Presets[0] || c.FontSize != 64 {
+	if c, _ := s.GetBoardContent(); c.Text != Presets[0] || c.FontSize != 64 {
 		t.Fatalf("默认挂牌内容 %+v，期望回落首条预设 64 号", c)
 	}
 	if err := s.SetConfig(Config{Text: "请勿动我电脑", FontSize: 120, Screen: "", Hotkey: defaultHotkey}); err != nil {
 		t.Fatal(err)
 	}
-	if c := s.GetBoardContent(); c.Text != "请勿动我电脑" || c.FontSize != 120 {
+	if c, _ := s.GetBoardContent(); c.Text != "请勿动我电脑" || c.FontSize != 120 {
 		t.Fatalf("挂牌内容未随配置更新：%+v", c)
 	}
-	if got := s.ListPresets(); len(got) != len(Presets) {
+	if got, _ := s.ListPresets(); len(got) != len(Presets) {
 		t.Fatalf("预设清单长度 %d", len(got))
 	}
-	got := s.ListPresets()
+	got, _ := s.ListPresets()
 	got[0] = "污染"
 	if Presets[0] == "污染" {
 		t.Fatal("ListPresets 必须返回副本，不得暴露内部切片")
@@ -202,7 +204,7 @@ func TestServiceStopWaitsForInflightShowCleanup(t *testing.T) {
 		t.Fatal("stop 未在 Show 收口后完成")
 	}
 
-	if st := s.GetStatus(); st.Shown || st.KeepAwake || st.HotkeyActive {
+	if st, _ := s.GetStatus(); st.Shown || st.KeepAwake || st.HotkeyActive {
 		t.Fatalf("stop 返回后状态未清空：%+v", st)
 	}
 	if holders := awake.Holders(); len(holders) != 0 {

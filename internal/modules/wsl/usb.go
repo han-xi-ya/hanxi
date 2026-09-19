@@ -703,6 +703,12 @@ func (s *WslService) cancelUsbAutomation() {
 // GetUsbOverview "USB 直通"页总取数：usbipd 存在性 + 设备表 + 账本 + 开关态。
 // 未安装不是错误（installed=false，前端渲染引导卡）；设备表拉取失败如实进 error。
 func (s *WslService) GetUsbOverview() (UsbView, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return UsbView{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	view := UsbView{ReleasesPage: usbipdReleasesURL, Devices: []usbipd.Device{}}
@@ -743,11 +749,23 @@ func (s *WslService) GetUsbOverview() (UsbView, error) {
 
 // OpenUsbipdReleases 打开 usbipd-win 官方发布页（固定地址白名单）。
 func (s *WslService) OpenUsbipdReleases() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	return s.opener.OpenURL(usbipdReleasesURL)
 }
 
 // BindUsbDevice 共享设备（bind，提权；--force 留作真机验证后的进阶口，UI 暂不放）。
 func (s *WslService) BindUsbDevice(busID string, force bool) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	args, err := usbipd.BindArgs(busID, force)
 	if err != nil {
 		return OperationOutcome{}, err
@@ -759,6 +777,12 @@ func (s *WslService) BindUsbDevice(busID string, force bool) (OperationOutcome, 
 
 // UnbindUsbDevice 取消共享（在场设备按 busid，提权）。
 func (s *WslService) UnbindUsbDevice(busID string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	args, err := usbipd.UnbindArgs(busID)
 	if err != nil {
 		return OperationOutcome{}, err
@@ -770,6 +794,12 @@ func (s *WslService) UnbindUsbDevice(busID string) (OperationOutcome, error) {
 
 // UnbindAbsentUsbDevice 取消共享（"已共享但不在场"的设备按 GUID，提权）。
 func (s *WslService) UnbindAbsentUsbDevice(guid string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	args, err := usbipd.UnbindGUIDArgs(guid)
 	if err != nil {
 		return OperationOutcome{}, err
@@ -795,6 +825,12 @@ func (s *WslService) elevateUsb(ctx context.Context, args ...string) (OperationO
 // 白名单（InstallDistro 同纪律）；未运行的发行版顺手拉起（OpenDistroFolder 同
 // 先例——attach 的硬前提是实例在跑，用户点名要挂给它，拉起在意图之内）。
 func (s *WslService) AttachUsbDevice(busID, distro string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	distro = strings.TrimSpace(distro)
@@ -816,6 +852,12 @@ func (s *WslService) AttachUsbDevice(busID, distro string) (OperationOutcome, er
 
 // DetachUsbDevice 从客户端卸下（用户态）。
 func (s *WslService) DetachUsbDevice(busID string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	if err := s.usbRun.Detach(ctx, busID); err != nil {
@@ -826,6 +868,12 @@ func (s *WslService) DetachUsbDevice(busID string) (OperationOutcome, error) {
 
 // SetUsbAutoAttach 开机自动共享总开关（默认关；打开即补打一发重放）。
 func (s *WslService) SetUsbAutoAttach(enabled bool) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	if !usbLedgerMu.TryLock() {
 		return OperationOutcome{}, errUsbLedgerBusy
 	}
@@ -854,6 +902,12 @@ func (s *WslService) SetUsbAutoAttach(enabled bool) (OperationOutcome, error) {
 // 设备名/VID/PID 取自当前设备表快照（供换插口回落匹配）；此刻不在场的设备拒绝
 // 登记（没有 busid 快照与匹配线索，登记了也重放不动）。
 func (s *WslService) SetUsbShare(busID, distro string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	id, err := usbipd.CheckBusID(busID)
 	if err != nil {
 		return OperationOutcome{}, err
@@ -923,11 +977,23 @@ func (s *WslService) SetUsbShare(busID, distro string) (OperationOutcome, error)
 
 // SetUsbShareEnabled 勾选/停用单条账本（"可勾选停用"卡片要求）。
 func (s *WslService) SetUsbShareEnabled(id string, enabled bool) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	return s.usbPatchEntry(id, func(e *USBShareEntry) { e.Enabled = enabled })
 }
 
 // RemoveUsbShare 删除账本条目（不触碰 usbipd 的系统绑定）。
 func (s *WslService) RemoveUsbShare(id string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	if !usbLedgerMu.TryLock() {
 		return OperationOutcome{}, errUsbLedgerBusy
 	}
@@ -978,6 +1044,12 @@ func (s *WslService) usbPatchEntry(id string, patch func(*USBShareEntry)) (Opera
 
 // ReplayUsbNow 手动补打一发重放（忽略总开关——手动点击即显式意图）。
 func (s *WslService) ReplayUsbNow() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	return s.runUsbReplay(ctx, "", "manual")

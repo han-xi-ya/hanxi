@@ -23,8 +23,13 @@ type Module struct {
 }
 
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewOcrService(plat)}
+	return &Module{svc: NewOcrService(plat, extapi.NewLeaseHolder(ID))}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+// MCP 无头进程构造同一 Module 并 Register，门语义与 GUI 一致。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
@@ -84,7 +89,8 @@ func (m *Module) OnInit(ctx context.Context) error {
 }
 
 func (m *Module) OnDestroy() error {
-	m.svc.Shutdown()
+	// 装配布线:Go 直调路径,不得依赖运行态（见 ADR-0001 Wave 3 注记）
+	m.svc.shutdown()
 	return nil
 }
 

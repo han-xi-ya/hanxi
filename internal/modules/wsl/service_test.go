@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/wsl/readiness"
 	"hanxi/internal/modules/wsl/releases"
 )
@@ -40,6 +41,7 @@ func newTestService() (*WslService, *fakeElevated, *fakeOpener) {
 	ev := &fakeElevated{out: OperationOutcome{Success: true, Message: "ok"}}
 	op := &fakeOpener{}
 	svc := &WslService{
+		holder: extapi.NewLeaseHolder(ID),
 		opener: op,
 		probe: func(context.Context) (readiness.ProbeResult, error) {
 			return readiness.ProbeResult{OSBuild: 26200, Arch: "AMD64", Hypervisor: true, Store: true, FeatureVM: true}, nil

@@ -8,7 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"log/slog"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"hanxi/internal/extapi"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
 )
@@ -27,10 +30,13 @@ type FileShareService struct {
 	server       *Server
 	wailsApp     *application.App
 	onDropToMemo func(title, content string, tags []string) error
+	// holder 统一调用门持有器（Wave 3）：RPC 导出版全部经 Enter() 入账；
+	// server.go 的 HTTP 处理与投递回调不走 service 方法面，不接门。
+	holder *extapi.LeaseHolder
 }
 
 // NewFileShareService 实例化服务
-func NewFileShareService(plat platform.Platform) *FileShareService {
+func NewFileShareService(plat platform.Platform, holder *extapi.LeaseHolder) *FileShareService {
 	// 默认配置
 	homeDir, _ := os.UserHomeDir()
 	defaultShare := filepath.Join(homeDir, defaultShareDirName)
@@ -39,7 +45,8 @@ func NewFileShareService(plat platform.Platform) *FileShareService {
 	}
 
 	return &FileShareService{
-		plat: plat,
+		plat:   plat,
+		holder: holder,
 		config: ShareConfig{
 			Port:            DefaultSharePort,
 			SharePath:       defaultShare,
@@ -51,14 +58,18 @@ func NewFileShareService(plat platform.Platform) *FileShareService {
 	}
 }
 
-// SetWailsApp 设置 Wails App 引用以便发送事件
+// SetWailsApp 设置 Wails App 引用以便发送事件。
+// 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门。
 func (s *FileShareService) SetWailsApp(app *application.App) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.wailsApp = app
 }
 
-// SetMemoHook 注册投递自动进入备忘录的钩子
+// SetMemoHook 注册投递自动进入备忘录的钩子。
+// 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门；
+// 钩子本体是 memo.MemoService.QuickCreate（RPC 导出版带门）：memo 停用时投递
+// 写入被门拒绝，回调侧如实记录并上浮通知，不静默吞。
 func (s *FileShareService) SetMemoHook(hook func(title, content string, tags []string) error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -66,14 +77,26 @@ func (s *FileShareService) SetMemoHook(hook func(title, content string, tags []s
 }
 
 // GetConfig 获取当前配置
-func (s *FileShareService) GetConfig() ShareConfig {
+func (s *FileShareService) GetConfig() (ShareConfig, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ShareConfig{}, gateErr
+	}
+	defer release()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.config
+	return s.config, nil
 }
 
 // SaveConfig 保存并应用配置
 func (s *FileShareService) SaveConfig(cfg ShareConfig) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -98,6 +121,12 @@ func (s *FileShareService) SaveConfig(cfg ShareConfig) error {
 
 // StartServer 启动局域网快传服务
 func (s *FileShareService) StartServer() (ServerStatus, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ServerStatus{}, gateErr
+	}
+	defer release()
+
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
 	s.mu.Lock()
@@ -121,7 +150,14 @@ func (s *FileShareService) StartServer() (ServerStatus, error) {
 			if item.IsURL {
 				title = fmt.Sprintf("网页收藏 (%s)", item.SenderIP)
 			}
-			_ = hook(title, item.Content, []string{"#手机投递", "#Inbox"})
+			// 钩子即 memo.MemoService.QuickCreate（带门导出版）：memo 停用/被拒时
+			// 返回错误。投递文本本身已入投递箱可查，但写库失败不得静默吞——
+			// 记日志并通知用户（可到投递箱手动导入便签）。
+			if herr := hook(title, item.Content, []string{"#手机投递", "#Inbox"}); herr != nil {
+				slog.Warn("fileshare: 投递自动写入便签失败", "err", herr)
+				notify.Error(ID, "投递未写入便签",
+					fmt.Sprintf("文本已收入投递箱，但自动存便签失败：%v", herr), "/ext/fileshare")
+			}
 		}
 	}, func(evt TransferEvent) {
 		s.emitEvent("fileshare:transfer", evt)
@@ -148,8 +184,20 @@ func (s *FileShareService) StartServer() (ServerStatus, error) {
 	return status, nil
 }
 
-// StopServer 停止快传服务
+// StopServer 停止快传服务（RPC 导出版：接统一调用门）。
 func (s *FileShareService) StopServer() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	return s.stopServer()
+}
+
+// stopServer 停服的内部无门版：Module.OnDestroy 在 stopping 态必须无条件停服
+// 释放监听端口，不能经门（门此时恒拒）。
+func (s *FileShareService) stopServer() error {
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
 
@@ -173,10 +221,16 @@ func (s *FileShareService) StopServer() error {
 }
 
 // GetServerStatus 获取服务当前状态
-func (s *FileShareService) GetServerStatus() ServerStatus {
+func (s *FileShareService) GetServerStatus() (ServerStatus, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ServerStatus{}, gateErr
+	}
+	defer release()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.getStatusLocked()
+	return s.getStatusLocked(), nil
 }
 
 // getStatusLocked 内部获取状态 (需在持有锁情况下调用)
@@ -224,11 +278,17 @@ func (s *FileShareService) getStatusLocked() ServerStatus {
 }
 
 // GetNetworkEndpoints 获取所有可访问的局域网接入点
-func (s *FileShareService) GetNetworkEndpoints() []NetworkEndpoint {
+func (s *FileShareService) GetNetworkEndpoints() ([]NetworkEndpoint, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	s.mu.RLock()
 	port := s.config.Port
 	s.mu.RUnlock()
-	return s.getNetworkEndpointsInternal(port)
+	return s.getNetworkEndpointsInternal(port), nil
 }
 
 func (s *FileShareService) getNetworkEndpointsInternal(port int) []NetworkEndpoint {
@@ -282,25 +342,37 @@ func (s *FileShareService) getNetworkEndpointsInternal(port int) []NetworkEndpoi
 }
 
 // GetDropInbox 获取投递箱列表
-func (s *FileShareService) GetDropInbox() []DropItem {
+func (s *FileShareService) GetDropInbox() ([]DropItem, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.server == nil {
-		return []DropItem{}
+		return []DropItem{}, nil
 	}
 	s.server.mu.RLock()
 	defer s.server.mu.RUnlock()
 	res := make([]DropItem, len(s.server.dropInbox))
 	copy(res, s.server.dropInbox)
-	return res
+	return res, nil
 }
 
 // DeleteDropItem 删除单条投递记录
-func (s *FileShareService) DeleteDropItem(id string) {
+func (s *FileShareService) DeleteDropItem(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.server == nil {
-		return
+		return nil
 	}
 	s.server.mu.Lock()
 	defer s.server.mu.Unlock()
@@ -312,22 +384,36 @@ func (s *FileShareService) DeleteDropItem(id string) {
 		}
 	}
 	s.server.dropInbox = filtered
+	return nil
 }
 
 // ClearDropInbox 清空投递箱
-func (s *FileShareService) ClearDropInbox() {
+func (s *FileShareService) ClearDropInbox() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.server == nil {
-		return
+		return nil
 	}
 	s.server.mu.Lock()
 	defer s.server.mu.Unlock()
 	s.server.dropInbox = make([]DropItem, 0)
+	return nil
 }
 
 // ChooseDirectory 调起操作系统原生目录选择对话框
 func (s *FileShareService) ChooseDirectory() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+
 	app := application.Get()
 	if app == nil || app.Dialog == nil {
 		return "", fmt.Errorf("系统对话框服务不可用")

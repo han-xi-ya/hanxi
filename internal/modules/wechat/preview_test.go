@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/settings"
 )
 
@@ -145,7 +146,7 @@ func newWechatTestService(t *testing.T) *WechatService {
 	if err != nil {
 		t.Fatalf("settings.NewStore: %v", err)
 	}
-	return NewWechatService(store)
+	return NewWechatService(store, extapi.NewLeaseHolder(ID))
 }
 
 func TestPreviewInboundImageRejectsMissingAttachment(t *testing.T) {

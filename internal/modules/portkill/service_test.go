@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/history"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/apppackage"
@@ -57,7 +58,7 @@ func (p *fakeProc) IsProtected(uint32, platform.ProcInfo) bool { return p.protec
 
 func newSvcWithHistory(t *testing.T, plat platform.Platform) (*PortKillService, *history.Store) {
 	t.Helper()
-	s := NewPortKillService(plat)
+	s := NewPortKillService(plat, extapi.NewLeaseHolder(ID))
 	h := history.NewStore(t.TempDir())
 	s.SetHistory(h)
 	return s, h
@@ -104,8 +105,9 @@ func TestKillProcessRecordsSuccessAndFailure(t *testing.T) {
 	proc := &fakeProc{}
 	s, h := newSvcWithHistory(t, fakePlat{proc: proc})
 
-	if res := s.KillProcess(4321, `C:\node\node.exe`, 0); !res.Success {
-		t.Fatalf("桩查杀应成功: %+v", res)
+	res, gateErr := s.KillProcess(4321, `C:\node\node.exe`, 0)
+	if gateErr != nil || !res.Success {
+		t.Fatalf("桩查杀应成功: err=%v %+v", gateErr, res)
 	}
 	records, _ := h.List(ID, "")
 	if len(records) != 1 || records[0].Extra != "kill" || !strings.Contains(records[0].Summary, "成功") {
@@ -116,8 +118,9 @@ func TestKillProcessRecordsSuccessAndFailure(t *testing.T) {
 	}
 
 	proc.killErr = platform.ErrAccessDenied
-	if res := s.KillProcess(4321, `C:\node\node.exe`, 0); !res.NeedElevate {
-		t.Fatalf("权限不足应给 needElevate: %+v", res)
+	res, gateErr = s.KillProcess(4321, `C:\node\node.exe`, 0)
+	if gateErr != nil || !res.NeedElevate {
+		t.Fatalf("权限不足应给 needElevate: err=%v %+v", gateErr, res)
 	}
 	records, _ = h.List(ID, "")
 	if len(records) != 2 || !strings.HasSuffix(records[0].Extra, "kill|fail") ||
@@ -132,7 +135,8 @@ func TestKillProcessElevatedDeniesRecorded(t *testing.T) {
 	s, h := newSvcWithHistory(t, fakePlat{proc: &fakeProc{}})
 
 	// 系统红线（pid=4）本地直拒——不触 powershell
-	if res := s.KillProcessElevated(4); res.Success {
+	res, gateErr := s.KillProcessElevated(4)
+	if gateErr != nil || res.Success {
 		t.Fatal("pid 4 应被拒")
 	}
 	records, _ := h.List(ID, "")
@@ -142,7 +146,8 @@ func TestKillProcessElevatedDeniesRecorded(t *testing.T) {
 
 	// 目标不存在（非拒绝语义）→ fail 不标 denied
 	s2, h2 := newSvcWithHistory(t, fakePlat{proc: &fakeProc{queryErr: context.DeadlineExceeded}})
-	if res := s2.KillProcessElevated(999999); res.Success {
+	res2, gateErr2 := s2.KillProcessElevated(999999)
+	if gateErr2 != nil || res2.Success {
 		t.Fatal("不存在目标应失败")
 	}
 	records2, _ := h2.List(ID, "")
@@ -154,7 +159,8 @@ func TestKillProcessElevatedDeniesRecorded(t *testing.T) {
 	s3, h3 := newSvcWithHistory(t, fakePlat{proc: &fakeProc{
 		info: platform.ProcInfo{PID: 777, Name: "csrss.exe"}, protected: true,
 	}})
-	if res := s3.KillProcessElevated(777); res.Success {
+	res3, gateErr3 := s3.KillProcessElevated(777)
+	if gateErr3 != nil || res3.Success {
 		t.Fatal("保护进程应被拒")
 	}
 	records3, _ := h3.List(ID, "")
@@ -169,11 +175,12 @@ func TestWithoutHistoryNoop(t *testing.T) {
 	s := NewPortKillService(fakePlat{
 		port: fakePort{tcp: map[platform.Family][]platform.TCPRow{}},
 		proc: &fakeProc{},
-	})
+	}, extapi.NewLeaseHolder(ID))
 	if _, err := s.QueryPort(1234); err != nil {
 		t.Fatal(err)
 	}
-	if res := s.KillProcess(1, "", 0); !res.Success {
+	res, gateErr := s.KillProcess(1, "", 0)
+	if gateErr != nil || !res.Success {
 		t.Fatalf("未接历史不得影响查杀: %+v", res)
 	}
 }

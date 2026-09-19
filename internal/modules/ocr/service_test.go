@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/history"
 	"hanxi/internal/modules/ocr/instance"
 )
@@ -190,6 +191,7 @@ func newTestService(t *testing.T, url string) *OcrService {
 	var p int
 	fmt.Sscanf(port, "%d", &p)
 	s := &OcrService{
+		holder:  extapi.NewLeaseHolder(ID),
 		store:   newOcrStore(t.TempDir()),
 		client:  &http.Client{Transport: &http.Transport{Proxy: nil}},
 		exeDir:  t.TempDir(),
@@ -448,6 +450,7 @@ func TestHistoryWiringIsOptional(t *testing.T) {
 
 func TestSavePastedImageLifecycle(t *testing.T) {
 	s := &OcrService{
+		holder: extapi.NewLeaseHolder(ID),
 		store:  newOcrStore(t.TempDir()),
 		client: &http.Client{},
 		tmpDir: filepath.Join(t.TempDir(), "ocr"),
@@ -650,7 +653,7 @@ func TestShowSnipCardWithoutApp(t *testing.T) {
 	if !res.Ok || res.Text != "x" {
 		t.Fatal("结果应被记录供 GetSnipResult 拉取")
 	}
-	if _, found := s.GetSnipResult(); !found {
+	if _, found, _ := s.GetSnipResult(); !found {
 		t.Fatal("有结果时 found 应为 true")
 	}
 }

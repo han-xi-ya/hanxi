@@ -20,9 +20,13 @@ type Module struct {
 // New 在 app 装配期创建模块（扫描引擎无状态，无需外部依赖注入）。
 func New() extapi.Module {
 	return &Module{
-		svc: NewPortScanService(),
+		svc: NewPortScanService(extapi.NewLeaseHolder(ID)),
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 业务方法经该门取 operation lease（Wave 3 调用门）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。
 func (m *Module) Info() extapi.ModuleInfo {
@@ -62,8 +66,9 @@ func (m *Module) OnInit(ctx context.Context) error {
 }
 
 func (m *Module) OnDestroy() error {
-	// 停用模块时强制终止所有正在进行的扫描
-	m.svc.StopScan("")
+	// 停用模块时强制终止所有正在进行的扫描：走未接门的内部版
+	// （生命周期收口路径，停用流程中调用门已关，不得依赖运行态）
+	m.svc.stopScan("")
 	return nil
 }
 

@@ -201,6 +201,12 @@ func (s *WslService) validateRule(ctx context.Context, r PortRule) (PortRule, er
 
 // ListPortRules 总览：账本规则逐条对照 netsh 现态 + 发行版运行态/IP 漂移。
 func (s *WslService) ListPortRules() (PortProxyView, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return PortProxyView{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	rules, err := s.ppLoad()
@@ -269,6 +275,12 @@ func (s *WslService) ListPortRules() (PortProxyView, error) {
 
 // AddPortRule 新增规则（只写账本；生效要点「应用」）。
 func (s *WslService) AddPortRule(distro string, port, guest int, listen string, firewall bool, note string) (PortRuleView, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return PortRuleView{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	r, err := s.validateRule(ctx, PortRule{
@@ -302,6 +314,12 @@ func (s *WslService) AddPortRule(distro string, port, guest int, listen string, 
 
 // UpdatePortRule 按 ID 整条替换（改端口/防火墙开关/启停/备注）。
 func (s *WslService) UpdatePortRule(rule PortRule) (PortRuleView, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return PortRuleView{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if !ppLedgerMu.TryLock() {
@@ -335,6 +353,12 @@ func (s *WslService) UpdatePortRule(rule PortRule) (PortRuleView, error) {
 
 // RemovePortRule 删除账本规则；若系统里还有对应转发，提醒去「应用」摘除。
 func (s *WslService) RemovePortRule(id string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	if !ppLedgerMu.TryLock() {
 		return OperationOutcome{}, errLedgerBusy
 	}
@@ -367,6 +391,12 @@ func (s *WslService) markPending() {
 // ApplyPortRules 把账本期望态同步到系统：目标解析 → 组装 netsh 批量脚本 →
 // 单次 UAC 执行 → 退出码如实上报。停机/无 IP 的发行版跳过并在回执点名。
 func (s *WslService) ApplyPortRules() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	// 挂重操作闸：netsh 批量与迁移/克隆/瘦身互斥，避免"边搬盘边改转发"。
@@ -501,6 +531,12 @@ func (s *WslService) clearPending() {
 // ClearPortLedgerFile 账本损坏/误拦时的逃生口：只删账本文件，不碰系统
 // 现态（其中原属本工具的转发会转列为"外部转发"，需要摘除时手工 netsh delete）。
 func (s *WslService) ClearPortLedgerFile() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	if s.ppPath == "" {
 		return OperationOutcome{}, errors.New("数据存储路径不可用")
 	}
@@ -518,6 +554,12 @@ func (s *WslService) ClearPortLedgerFile() (OperationOutcome, error) {
 
 // CleanupPortRules 一键清理：摘除账本全部规则的系统转发与防火墙规则并清空账本。
 func (s *WslService) CleanupPortRules() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	finish, ok := s.tryBeginHeavyOp()

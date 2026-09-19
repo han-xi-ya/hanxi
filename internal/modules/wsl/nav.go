@@ -20,11 +20,23 @@ var wslAssetNameRe = regexp.MustCompile(`^wsl\.\d+\.\d+\.\d+\.\d+\.(x64|arm64)\.
 
 // OpenReleasesPage 打开 microsoft/WSL 官方发布页。
 func (s *WslService) OpenReleasesPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	return s.openURL("WSL 官方发布页", releases.ReleasesPageURL())
 }
 
 // OpenReleaseTag 打开指定版本 tag 的发行说明页（tag 必须为纯数字点分版本）。
 func (s *WslService) OpenReleaseTag(tag string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	tag = strings.TrimSpace(strings.TrimPrefix(tag, "v"))
 	if !wslTagRe.MatchString(tag) {
 		return fmt.Errorf("版本号 %q 格式不合法", tag)
@@ -44,12 +56,24 @@ func assetDownloadURL(tag, name string) (string, error) {
 
 // OpenOfficialDocs 打开微软官方 WSL 安装文档。
 func (s *WslService) OpenOfficialDocs() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	return s.openURL("WSL 官方文档", "https://learn.microsoft.com/windows/wsl/install")
 }
 
 // OpenPowerSettings 打开系统「电源」设置页：功能启用/关闭后引导用户自行重启
 // （不代点重启——重启是打断用户工作的高危动作）。
 func (s *WslService) OpenPowerSettings() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	return s.openURL("系统电源设置", "ms-settings:power")
 }
 

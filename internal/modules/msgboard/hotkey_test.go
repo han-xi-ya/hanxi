@@ -73,13 +73,13 @@ func TestHotkeyStartStopRebind(t *testing.T) {
 	if err := s.start(); err != nil {
 		t.Fatal(err)
 	}
-	if !st.registered[defaultHotkey] || !s.GetStatus().HotkeyActive {
+	if !st.registered[defaultHotkey] || !statusOf(t, s).HotkeyActive {
 		t.Fatalf("start 后默认热键应在位: %v", st.calls)
 	}
 
 	// OS 侧掉绑（等价启动期 pending 回滚）：自记不谎报，实况 false。
 	delete(st.registered, defaultHotkey)
-	if st2 := s.GetStatus(); st2.HotkeyActive {
+	if st2 := statusOf(t, s); st2.HotkeyActive {
 		t.Fatal("系统未绑定时 HotkeyActive 不得谎报 true")
 	}
 
@@ -93,7 +93,7 @@ func TestHotkeyStartStopRebind(t *testing.T) {
 	if err := s.start(); err != nil {
 		t.Fatal(err)
 	}
-	if !st.registered[defaultHotkey] || !s.GetStatus().HotkeyActive {
+	if !st.registered[defaultHotkey] || !statusOf(t, s).HotkeyActive {
 		t.Fatal("重启后必须重新绑定")
 	}
 }
@@ -114,7 +114,7 @@ func TestHotkeyRebindSuccess(t *testing.T) {
 	if !st.registered["Ctrl+Alt+R"] || st.registered[defaultHotkey] {
 		t.Fatalf("换键后系统占用表失真: %v", st.registered)
 	}
-	if got := s.GetStatus(); !got.HotkeyActive || got.Hotkey != "Ctrl+Alt+R" {
+	if got := statusOf(t, s); !got.HotkeyActive || got.Hotkey != "Ctrl+Alt+R" {
 		t.Fatalf("状态回显失真: %+v", got)
 	}
 }
@@ -148,7 +148,7 @@ func TestHotkeyRebindConflictKeepsOldKeyAlive(t *testing.T) {
 			t.Fatalf("冲突路径绝不允许先注销旧键（会短暂丢键）: %v", st.calls)
 		}
 	}
-	if got := s.GetStatus(); !got.HotkeyActive {
+	if got := statusOf(t, s); !got.HotkeyActive {
 		t.Fatal("旧键仍在位，状态不得报 inactive")
 	}
 	// 正文等非热键字段照常保留（回滚只回热键字段）。
@@ -170,7 +170,7 @@ func TestHotkeyDisableUnbinds(t *testing.T) {
 	if len(st.registered) != 0 {
 		t.Fatalf("停用后系统不应留有绑定: %v", st.registered)
 	}
-	if got := s.GetStatus(); got.HotkeyActive || got.Hotkey != "" {
+	if got := statusOf(t, s); got.HotkeyActive || got.Hotkey != "" {
 		t.Fatalf("停用状态失真: %+v", got)
 	}
 	// 停用态再 start/stop 一圈，不得凭空注册。
@@ -196,8 +196,18 @@ func TestHotkeyCallbackWiredToToggle(t *testing.T) {
 	if cb == nil {
 		t.Fatal("注册回调缺失")
 	}
-	cb() // 无头：Toggle→Show 报"需应用运行"，仅记日志
-	if got := s.GetStatus(); got.Shown {
+	cb() // 无头：toggle→show 报"需应用运行"，仅记日志
+	if got := statusOf(t, s); got.Shown {
 		t.Fatal("无头触发回调不应进入已挂出态")
 	}
+}
+
+// statusOf 测试小件：经 RPC 导出版取状态（测试期 gate 未注入即放行）。
+func statusOf(t *testing.T, s *MsgBoardService) Status {
+	t.Helper()
+	st, err := s.GetStatus()
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	return st
 }

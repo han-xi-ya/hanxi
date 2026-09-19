@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"hanxi/internal/extapi"
 )
 
 // newFilesService 直接组装文件库模式的 MemoService（绕过 settings.Paths 全局解析，
@@ -12,7 +14,8 @@ import (
 func newFilesService(t *testing.T) (*MemoService, string) {
 	t.Helper()
 	memoDir := filepath.Join(t.TempDir(), "memo")
-	return &MemoService{files: NewFileStore(memoDir), useFiles: true, items: []MemoItem{}}, memoDir
+	return &MemoService{files: NewFileStore(memoDir), useFiles: true, items: []MemoItem{},
+		holder: extapi.NewLeaseHolder(ID)}, memoDir
 }
 
 // TestMemoFilesCRUD 文件库模式端到端：创建/更新/置顶/删除只动单条文件，
@@ -62,7 +65,7 @@ func TestMemoFilesCRUD(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(memoDir, updated.ID+".md")); !os.IsNotExist(err) {
 		t.Error("Delete 未删单条文件")
 	}
-	if len(svc.List(MemoFilter{})) != 1 {
+	if items, _ := svc.List(MemoFilter{}); len(items) != 1 {
 		t.Error("内存清单未同步删除")
 	}
 }
@@ -84,7 +87,7 @@ func TestMemoFilesMigrationIntegration(t *testing.T) {
 	if committed, err := migrateMemoToFiles(legacy, memoDir); !committed || err != nil {
 		t.Fatalf("迁移: %v %v", committed, err)
 	}
-	svc := &MemoService{files: NewFileStore(memoDir), useFiles: true}
+	svc := &MemoService{files: NewFileStore(memoDir), useFiles: true, holder: extapi.NewLeaseHolder(ID)}
 	svc.items, _ = svc.files.LoadAll()
 	if len(svc.items) != 2 {
 		t.Fatalf("迁移后装载 = %d", len(svc.items))
@@ -92,7 +95,7 @@ func TestMemoFilesMigrationIntegration(t *testing.T) {
 	if _, err := svc.Create("迁移后新建", "c", nil, ""); err != nil {
 		t.Fatal(err)
 	}
-	if len(svc.List(MemoFilter{})) != 3 {
+	if items, _ := svc.List(MemoFilter{}); len(items) != 3 {
 		t.Error("迁移后新增异常")
 	}
 }
@@ -116,7 +119,7 @@ func TestMemoRestoreFile(t *testing.T) {
 	if err := svc.RestoreFile(created.ID, string(data)); err != nil {
 		t.Fatal(err)
 	}
-	items := svc.List(MemoFilter{})
+	items, _ := svc.List(MemoFilter{})
 	if len(items) != 1 || items[0].Title != "历史标题" {
 		t.Fatalf("内存未换装: %+v", items)
 	}
@@ -132,7 +135,7 @@ func TestMemoRestoreFile(t *testing.T) {
 	if err := svc.RestoreFile("other_id", string(data)); err == nil {
 		t.Error("ID 不符应拒")
 	}
-	legacy := &MemoService{items: []MemoItem{}}
+	legacy := &MemoService{items: []MemoItem{}, holder: extapi.NewLeaseHolder(ID)}
 	if err := legacy.RestoreFile("x", string(data)); err == nil {
 		t.Error("回落旧库模式应拒绝热恢复")
 	}
@@ -161,6 +164,7 @@ func TestMemoMutationsRollbackOnDiskFailure(t *testing.T) {
 		useFiles:  true,
 		items:     []MemoItem{original},
 		onChanged: func() { events++ },
+		holder:    extapi.NewLeaseHolder(ID),
 	}
 
 	if _, err := svc.Update(original.ID, "新标题", "changed", []string{"new"}, "rose"); err == nil {
@@ -181,7 +185,7 @@ func TestMemoMutationsRollbackOnDiskFailure(t *testing.T) {
 
 func assertMemoUnchanged(t *testing.T, svc *MemoService, want MemoItem, events int) {
 	t.Helper()
-	items := svc.List(MemoFilter{})
+	items, _ := svc.List(MemoFilter{})
 	if len(items) != 1 {
 		t.Fatalf("内存条目数变化: %+v", items)
 	}
@@ -223,8 +227,9 @@ func TestMemoStoreAndCRUD(t *testing.T) {
 
 	// 2. 测试通过 Service 操作
 	svc := &MemoService{
-		store: store,
-		items: items,
+		store:  store,
+		items:  items,
+		holder: extapi.NewLeaseHolder(ID),
 	}
 
 	created, err := svc.Create("测试 SQL 片段", "SELECT * FROM users WHERE active = 1;", []string{"SQL", "Database"}, "blue")
@@ -236,7 +241,7 @@ func TestMemoStoreAndCRUD(t *testing.T) {
 	}
 
 	// 3. 测试查询与标签过滤
-	listRes := svc.List(MemoFilter{Tag: "SQL"})
+	listRes, _ := svc.List(MemoFilter{Tag: "SQL"})
 	if len(listRes) != 1 {
 		t.Fatalf("expected 1 item with tag SQL, got %d", len(listRes))
 	}
@@ -254,7 +259,7 @@ func TestMemoStoreAndCRUD(t *testing.T) {
 	}
 
 	// 6. 测试统计数据
-	stats := svc.GetStats()
+	stats, _ := svc.GetStats()
 	if stats.TotalCount != 1 || stats.PinnedCount != 1 {
 		t.Errorf("unexpected stats: %+v", stats)
 	}
@@ -266,7 +271,7 @@ func TestMemoStoreAndCRUD(t *testing.T) {
 	if err := svc.Delete(created.ID); err != nil {
 		t.Fatalf("failed to delete memo: %v", err)
 	}
-	if len(svc.List(MemoFilter{})) != 0 {
+	if items, _ := svc.List(MemoFilter{}); len(items) != 0 {
 		t.Errorf("expected 0 items after delete")
 	}
 }

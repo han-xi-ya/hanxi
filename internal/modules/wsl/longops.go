@@ -54,6 +54,12 @@ func (s *WslService) finishClone(src string) {
 
 // CancelClone 请求取消指定发行版进行中的克隆。
 func (s *WslService) CancelClone(src string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	src = strings.TrimSpace(src)
 	k := strings.ToLower(src)
 	s.mu.Lock()
@@ -88,6 +94,12 @@ func (s *WslService) finishCompact() {
 
 // CancelCompact 请求取消进行中的瘦身；已进入数据盘处理/重建段则拒绝。
 func (s *WslService) CancelCompact() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	h := s.compactOp
 	s.mu.Unlock()
@@ -124,6 +136,12 @@ func (s *WslService) finishDownload() {
 
 // CancelMsiDownload 取消进行中的 MSI 下载（.part 临时文件随协程清理，正式文件不受影响）。
 func (s *WslService) CancelMsiDownload() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	h := s.dlOp
 	s.mu.Unlock()

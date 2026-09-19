@@ -35,6 +35,12 @@ type DownloadProgress struct {
 // DownloadMsi 把官方 MSI 下到系统"下载"文件夹（应用内进度、绝不甩给浏览器）。
 // 单飞：同一时刻仅允许一路下载；tag/文件名走 assetDownloadURL 双重白名单。
 func (s *WslService) DownloadMsi(tag, name string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	rawURL, err := assetDownloadURL(tag, name)
 	if err != nil {
 		return OperationOutcome{}, err
@@ -81,6 +87,12 @@ func (s *WslService) DownloadMsi(tag, name string) (OperationOutcome, error) {
 // RevealDownload 在资源管理器中定位已下载的 MSI；只认本会话自己登记过的路径，
 // 不接受前端传入任意路径（envcheck RevealToolPath 同款红线）。
 func (s *WslService) RevealDownload(tag, name string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	key := strings.TrimSpace(strings.TrimPrefix(tag, "v")) + "/" + strings.TrimSpace(name)
 	s.mu.Lock()
 	path := s.dlPaths[key]

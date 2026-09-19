@@ -12,6 +12,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/modpath"
 	"hanxi/internal/modules/rustdesk/instance"
 	"hanxi/internal/modules/rustdesk/version"
@@ -43,11 +44,15 @@ const (
 // 远程桌面画面本身不内嵌（上游 GUI 完整，内嵌不可行）：
 // 连接发起（输入对端 ID）、永久密码设置与自建服务器（rendezvous/relay）配置
 // 均在 RustDesk 自有窗口操作。
+//
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type RustDeskService struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *rustdeskStore
 	engine  *instance.Engine
+	holder  *extapi.LeaseHolder
 
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
@@ -56,12 +61,13 @@ type RustDeskService struct {
 }
 
 // NewRustDeskService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
-func NewRustDeskService(plat platform.Platform) *RustDeskService {
+func NewRustDeskService(plat platform.Platform, holder *extapi.LeaseHolder) *RustDeskService {
 	paths := settings.GetPaths()
 	svc := &RustDeskService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newRustDeskStore(paths.StateDir()),
+		holder:  holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewRustDeskProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -114,6 +120,11 @@ func (s *RustDeskService) activate() {
 
 // ListReleases 获取远程可用版本列表（多镜像回退，10 分钟缓存）。
 func (s *RustDeskService) ListReleases() ([]version.RDRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
@@ -121,6 +132,11 @@ func (s *RustDeskService) ListReleases() ([]version.RDRelease, error) {
 // 按版本序在前，系统安装版（如探测命中）追加于尾部——安装版全局至一条
 // （MSI MajorUpgrade 就地替换，真机实证），且不可按删目录方式卸载。
 func (s *RustDeskService) ListInstalledVersions() ([]version.RDVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	list, err := s.manager.ListInstalled()
 	if err != nil {
 		return nil, err
@@ -133,6 +149,11 @@ func (s *RustDeskService) ListInstalledVersions() ([]version.RDVersionInfo, erro
 
 // DownloadVersion 后台下载指定版本：立即返回，全程经事件 rustdesk:version-download 推送进度。
 func (s *RustDeskService) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 
 	s.downloadMu.Lock()
@@ -178,6 +199,11 @@ func (s *RustDeskService) DownloadVersion(targetVersion string) (string, error) 
 // 前台向导（含 UAC），全程由用户操作，Hanxi 只等待结果并以注册表探测做事实核验。
 // 与 DownloadVersion 共用下载锁：Windows Installer 同一时刻只允许一个装机任务。
 func (s *RustDeskService) InstallVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 
 	s.downloadMu.Lock()
@@ -220,6 +246,11 @@ func (s *RustDeskService) InstallVersion(targetVersion string) (string, error) {
 // RemoveVersion 卸载指定便携版本（删除隔离目录；正在运行的版本拒绝卸载）。
 // 仅作用于隔离目录：系统安装版不走本入口（卸载引导至系统设置，见 OpenUninstallSettings）。
 func (s *RustDeskService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning &&
 		strings.EqualFold(strings.TrimPrefix(snap.Version, "v"), strings.TrimPrefix(targetVersion, "v")) {
@@ -238,6 +269,11 @@ func (s *RustDeskService) RemoveVersion(targetVersion string) error {
 // SetActiveVersion 设定使用版本与形态（先校验可用，再持久化）。
 // form：portable = 隔离目录版本；installed = 系统安装版（版本须与探测一致）。
 func (s *RustDeskService) SetActiveVersion(targetVersion string, form string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	form = strings.TrimSpace(form)
 	if form == "" {
@@ -263,12 +299,22 @@ func (s *RustDeskService) SetActiveVersion(targetVersion string, form string) (s
 
 // GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动回退）。
 func (s *RustDeskService) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	v, _ := s.store.GetActive()
 	return v, nil
 }
 
 // GetActiveForm 返回当前设定形态（portable / installed；未指定时为空）。
 func (s *RustDeskService) GetActiveForm() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	_, f := s.store.GetActive()
 	return f, nil
 }
@@ -277,6 +323,11 @@ func (s *RustDeskService) GetActiveForm() (string, error) {
 // 配置恒在 %APPDATA%\RustDesk 不受导入影响；仅迁移 exe。
 // 运行中的实例拒绝导入：Windows 下运行中的 exe 被独占，拷贝必然失败。
 func (s *RustDeskService) ImportLocal(srcPath string) (version.RDVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.RDVersionInfo{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal || snap.State == instance.StateStarting {
 		return version.RDVersionInfo{}, fmt.Errorf("RustDesk 正在运行，请先退出再导入")
 	}
@@ -289,11 +340,21 @@ func (s *RustDeskService) ImportLocal(srcPath string) (version.RDVersionInfo, er
 // 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
 // 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *RustDeskService) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 RustDesk 的用户数据目录（身份密钥、地址簿与设置所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
 func (s *RustDeskService) OpenConfigDir() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	dir, err := modpath.UserConfigDir(dataDirName)
 	if err != nil {
 		return err
@@ -306,6 +367,11 @@ func (s *RustDeskService) OpenConfigDir() error {
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
 func (s *RustDeskService) GetStatus() (instance.Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return instance.Snapshot{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	return s.engine.Snapshot(), nil
 }
@@ -315,6 +381,11 @@ func (s *RustDeskService) GetStatus() (instance.Snapshot, error) {
 //   - running：优先唤起自有窗口；窗口已销毁（藏托盘）则派生新实例开窗（同 Job 托管）；
 //   - stopped/failed：解析 active 版本冷启动。
 func (s *RustDeskService) OpenWindow() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
@@ -377,6 +448,11 @@ func (s *RustDeskService) OpenWindow() (ControlOutcome, error) {
 // Quit 退出引擎托管的 RustDesk（终止整个进程树，含被控监听端）。
 // external 状态不越权强杀：仅返回人性化指引。
 func (s *RustDeskService) Quit() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	snap := s.engine.Snapshot()
 	if snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
@@ -393,9 +469,22 @@ func (s *RustDeskService) Quit() (QuitOutcome, error) {
 		Message: "RustDesk 已退出（便携版无优雅退出通道，进程树整体终止——进行中的远程会话会断开）"}, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
+// Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+// 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
+func (s *RustDeskService) Shutdown() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	s.shutdown()
+	return nil
+}
+
+// shutdown 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）。
+// 模块停用/应用退出：停后台轮询 + 终止自有实例。
 // 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
-func (s *RustDeskService) Shutdown() {
+func (s *RustDeskService) shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
 		close(s.watchStop)
@@ -456,16 +545,31 @@ func versionCompare(a, b string) int {
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *RustDeskService) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
 	return s.store.GetFollowOnExit(), nil
 }
 
 // SetFollowOnExit 设定开关（下次启动生效）。
 func (s *RustDeskService) SetFollowOnExit(b bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.store.SetFollowOnExit(b)
 }
 
 // CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
 func (s *RustDeskService) CreateDesktopShortcut() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	_, exe, _, err := s.resolveActiveVersion()
 	if err != nil {
 		return err
@@ -477,15 +581,30 @@ func (s *RustDeskService) CreateDesktopShortcut() error {
 // 刻意不代执行 msiexec /x：卸载系统级软件（连带移除服务）属用户决策的高危
 // 操作，交还 Windows 原生入口（遵循项目敏感操作确认守则）。
 func (s *RustDeskService) OpenUninstallSettings() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL("ms-settings:appsfeatures")
 }
 
 // RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
 func (s *RustDeskService) RepositoryURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.RepoURL(), nil
 }
 
 // OpenRepository 用默认浏览器打开上游仓库页面。
 func (s *RustDeskService) OpenRepository() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.RepoURL())
 }

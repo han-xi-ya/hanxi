@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/apppackage"
 	"hanxi/internal/platform/versioncmp"
@@ -44,11 +45,14 @@ type EarTrumpetService struct {
 	procs     platform.ProcessAPI
 	findProcs func(installLocation string) []platform.ProcInfo
 	remote    remoteCache
+	holder    *extapi.LeaseHolder
 }
 
-// NewEarTrumpetService 从平台聚合接口取包管理、URL 打开与进程能力。
-func NewEarTrumpetService(plat platform.Platform) *EarTrumpetService {
+// NewEarTrumpetService 从平台聚合接口取包管理、URL 打开与进程能力，
+// holder 为统一调用门持有器（Wave 3：全部业务 RPC 经 holder.Enter() 入账）。
+func NewEarTrumpetService(plat platform.Platform, holder *extapi.LeaseHolder) *EarTrumpetService {
 	s := newEarTrumpetService(plat.AppPackage(), plat, httpGet, httpSave)
+	s.holder = holder
 	s.procs = plat.Process()
 	s.findProcs = func(installLocation string) []platform.ProcInfo {
 		return findProcessesUnder(installLocation, s.procs)
@@ -57,7 +61,9 @@ func NewEarTrumpetService(plat platform.Platform) *EarTrumpetService {
 }
 
 func newEarTrumpetService(packages apppackage.API, opener URLOpener, fetch func(context.Context, string) ([]byte, error), download func(context.Context, string, string) error) *EarTrumpetService {
-	return &EarTrumpetService{packages: packages, openURL: opener, fetch: fetch, download: download}
+	// 自带放行 holder（gate 未注入即 no-op）：测试构造与装配构造（New 覆写）同走门代码。
+	return &EarTrumpetService{packages: packages, openURL: opener, fetch: fetch, download: download,
+		holder: extapi.NewLeaseHolder(ID)}
 }
 
 // GetStatus 查询直装渠道注册状态，并顺带检测商店版并存。
@@ -65,6 +71,12 @@ func newEarTrumpetService(packages apppackage.API, opener URLOpener, fetch func(
 // 每个 Query 都要冷启动一次 PowerShell 子进程（实测约 1.8s/次），两个
 // 查询并发执行把耗时压回单次延迟。
 func (s *EarTrumpetService) GetStatus() (PackageSnapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return PackageSnapshot{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -110,6 +122,12 @@ func (s *EarTrumpetService) isRunning(pkg *apppackage.Package) bool {
 // GetRemoteVersion 返回官方直装渠道当前最新版本号（10 分钟缓存，
 // 网络失败回退上次核验成功的清单）。
 func (s *EarTrumpetService) GetRemoteVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), listTimeout)
 	defer cancel()
 	rel, err := s.remote.fetch(ctx, s.fetch)
@@ -127,6 +145,12 @@ func (s *EarTrumpetService) GetRemoteVersion() (string, error) {
 // 注意上游单实例语义：若已有实例在运行（含并存时的商店版实例），第二个
 // 实例会因单实例互斥静默退出且不会唤起 UI——上游没有唤窗通道。
 func (s *EarTrumpetService) Launch() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -146,6 +170,12 @@ func (s *EarTrumpetService) Launch() error {
 // LocalSettings 容器，音量状态由系统音频栈持有。只影响当前会话——它注册了
 // 登录自启，下次登录仍会出现；真要常驻移除请卸载，Hanxi 不改它的自启注册。
 func (s *EarTrumpetService) Exit() (int, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return 0, gateErr
+	}
+	defer release()
+
 	if s.procs == nil || s.findProcs == nil {
 		return 0, fmt.Errorf("进程探测能力不可用")
 	}
@@ -186,6 +216,12 @@ func (s *EarTrumpetService) Exit() (int, error) {
 // 风险提示：设置（热键、音量覆盖、Actions 规则等）保存在包的 LocalSettings
 // 容器内，随包卸载一并删除。
 func (s *EarTrumpetService) Uninstall() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -213,6 +249,12 @@ func (s *EarTrumpetService) Uninstall() error {
 //
 // 与商店版并存会争抢单实例互斥且配置分裂，检测到 Store 版时直接拒绝。
 func (s *EarTrumpetService) Install() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), downloadBudget+installBudget)
 	defer cancel()
 
@@ -305,5 +347,11 @@ func fileSHA256(path string) (string, error) {
 
 // OpenRepo 打开 EarTrumpet 的 GitHub 项目主页。
 func (s *EarTrumpetService) OpenRepo() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	return s.openURL.OpenURL(repoURL)
 }

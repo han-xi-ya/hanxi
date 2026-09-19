@@ -30,6 +30,8 @@ type SnipHotkeyState struct {
 	Registered bool   `json:"registered"` // 系统侧真实绑定状态（禁用中恒 false）
 }
 
+// SetSnipHotkeyBinding 注入热键落实通道（app/hotkeys.go 装配根接线）。
+// 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）
 func (s *OcrService) SetSnipHotkeyBinding(b SnipHotkeyBinding) {
 	s.hotkeyMu.Lock()
 	defer s.hotkeyMu.Unlock()
@@ -43,15 +45,27 @@ func (s *OcrService) snipHotkeyBinding() SnipHotkeyBinding {
 }
 
 // GetSnipHotkey 拉取热键开关、键位与系统注册实况（前端设置页回显用）。
-func (s *OcrService) GetSnipHotkey() SnipHotkeyState {
+// Wave 3 口径：单值绑定签名扩为 (SnipHotkeyState, error)，门拒绝如实上抛，
+// 禁止回零值态造成"热键未启用"的假象。
+func (s *OcrService) GetSnipHotkey() (SnipHotkeyState, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return SnipHotkeyState{}, gateErr
+	}
+	defer release()
 	enabled, accel := s.store.GetSnipHotkey()
 	b := s.snipHotkeyBinding()
-	return SnipHotkeyState{Enabled: enabled, Accel: accel, Registered: enabled && b != nil && b.Registered()}
+	return SnipHotkeyState{Enabled: enabled, Accel: accel, Registered: enabled && b != nil && b.Registered()}, nil
 }
 
 // SetSnipHotkeyEnabled 以“系统态 + 持久化态”补偿事务切换开关：先落系统，保存
 // 失败则把系统恢复到旧开关；补偿也失败时 errors.Join 同时保留两段诊断。
 func (s *OcrService) SetSnipHotkeyEnabled(v bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	s.hotkeyMu.Lock()
 	defer s.hotkeyMu.Unlock()
 
@@ -77,6 +91,11 @@ func (s *OcrService) SetSnipHotkeyEnabled(v bool) error {
 // SetSnipHotkey 改键采用先系统换绑、后持久化的新值事务。保存失败时先把系统
 // 换回旧键；store setter 自身保证保存失败不污染内存态，因此成功/失败后三态一致。
 func (s *OcrService) SetSnipHotkey(raw string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	norm, err := NormalizeSnipHotkey(raw)
 	if err != nil {
 		return err

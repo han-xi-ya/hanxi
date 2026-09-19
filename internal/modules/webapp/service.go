@@ -17,6 +17,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
@@ -50,18 +51,28 @@ type WebAppService struct {
 	// （Show/Hide/Close/Size/Position），UI 一律锁外执行（踩坑 #53）。
 	mu   sync.Mutex
 	wins map[string]*winHandle
+	// holder 统一调用门持有器（Wave 3）：全部 RPC 导出版经 Enter() 入账，
+	// 停用后不得再开/收起网页窗；shutdown/destroy/handleClosed 等生命周期与
+	// 窗体事件路径走内部无门版。
+	holder *extapi.LeaseHolder
 }
 
 // NewWebAppService 创建服务；openURL 传 nil 回退系统默认浏览器实现。构造无网络 IO、无窗口操作。
-func NewWebAppService(store *settings.Store, openURL func(string) error) *WebAppService {
+func NewWebAppService(store *settings.Store, openURL func(string) error, holder *extapi.LeaseHolder) *WebAppService {
 	if openURL == nil {
 		openURL = windows.OpenURL
 	}
-	return &WebAppService{store: store, openURL: openURL, wins: make(map[string]*winHandle)}
+	return &WebAppService{store: store, openURL: openURL, wins: make(map[string]*winHandle), holder: holder}
 }
 
 // ListEntries 返回全部条目（保持配置顺序）及其运行时窗态。
-func (s *WebAppService) ListEntries() []WebAppEntryView {
+func (s *WebAppService) ListEntries() ([]WebAppEntryView, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	entries := s.store.GetWebAppEntries()
 
 	s.mu.Lock()
@@ -81,13 +92,19 @@ func (s *WebAppService) ListEntries() []WebAppEntryView {
 		}
 		views = append(views, v)
 	}
-	return views
+	return views, nil
 }
 
 // SaveEntry 新增或更新条目：entryID 为空即新建（服务端定 ID），
 // 非空必须命中现有条目（防前端拿着已删 ID 复活幽灵条目）。
 // 名称/URL 闸门不过返回用户可读错误；成功返回定稿条目 ID。
 func (s *WebAppService) SaveEntry(entryID, name, rawURL, icon string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", fmt.Errorf("名称不能为空")
@@ -137,6 +154,12 @@ func (s *WebAppService) SaveEntry(entryID, name, rawURL, icon string) (string, e
 
 // DeleteEntry 删除条目（Store 层同步清理托盘/轮盘死引用），存活窗连带真销毁。
 func (s *WebAppService) DeleteEntry(entryID string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	entryID = strings.TrimSpace(entryID)
 	if entryID == "" {
 		return fmt.Errorf("条目 ID 不能为空")
@@ -153,6 +176,12 @@ func (s *WebAppService) DeleteEntry(entryID string) error {
 
 // OpenExternal 用系统默认浏览器打开条目地址（不进内嵌窗，适合临时跳外链）。
 func (s *WebAppService) OpenExternal(entryID string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	entryID = strings.TrimSpace(entryID)
 	entry, ok := s.store.GetWebAppEntryByID(entryID)
 	if !ok {
@@ -166,7 +195,15 @@ func (s *WebAppService) OpenExternal(entryID string) error {
 // Open 打开（或置顶/恢复）指定条目的网页窗。幂等三态：
 // 可见→仅置顶；收起驻留→取消 TTL 热复用秒显；无窗→按需新建。
 // 登录 cookie 在共享 WebView2 user data folder，真销毁重建也不丢网页会话。
+// 导出版接门：停用/未安装模块不得开出网页窗；托盘/轮盘命令经 registry 派发链
+// 先持同模块租约，此处二次入账（计数器语义）不冲突。
 func (s *WebAppService) Open(entryID string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	entryID = strings.TrimSpace(entryID)
 	if entryID == "" {
 		return fmt.Errorf("条目 ID 不能为空")
@@ -230,6 +267,17 @@ func (s *WebAppService) Open(entryID string) error {
 // Collapse 收起条目窗口：Hide + 武装空闲 TTL，到期真销毁归还 WebView2 内存。
 // 无窗/已收起时幂等无操作。
 func (s *WebAppService) Collapse(entryID string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	return s.collapse(entryID)
+}
+
+// collapse 收起的内部无门版：供带门 Collapse 与 CollapseAll 复用（同链不二次入账）。
+func (s *WebAppService) collapse(entryID string) error {
 	entryID = strings.TrimSpace(entryID)
 
 	s.mu.Lock()
@@ -264,6 +312,12 @@ func (s *WebAppService) Collapse(entryID string) error {
 // 返回 error 恒为 nil：全仓 Wails 服务先例（Dismiss 等）以 error 收尾
 // 保持绑定面一致，前端 await 契约不因后续演进突变。
 func (s *WebAppService) CollapseAll() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	ids := make([]string, 0, len(s.wins))
 	for id, h := range s.wins {
@@ -274,7 +328,7 @@ func (s *WebAppService) CollapseAll() error {
 	s.mu.Unlock()
 
 	for _, id := range ids {
-		_ = s.Collapse(id)
+		_ = s.collapse(id)
 	}
 	return nil
 }

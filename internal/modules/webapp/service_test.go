@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/settings"
 )
 
@@ -14,7 +15,8 @@ func newTestService(t *testing.T) (*WebAppService, *settings.Store) {
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
-	return NewWebAppService(store, func(string) error { return nil }), store
+	// gate 未注入的放行 holder：测试走同一套门代码路径。
+	return NewWebAppService(store, func(string) error { return nil }, extapi.NewLeaseHolder(ID)), store
 }
 
 func TestValidateURL(t *testing.T) {
@@ -55,8 +57,8 @@ func TestSaveEntryLifecycle(t *testing.T) {
 	if !strings.HasPrefix(id, "webapp_") {
 		t.Errorf("新建 ID 应带 webapp_ 前缀，实际 %q", id)
 	}
-	if len(svc.ListEntries()) != 2 { // 预置 filehelper + 新建
-		t.Fatalf("新建后应共 2 条，实际 %+v", svc.ListEntries())
+	if views, _ := svc.ListEntries(); len(views) != 2 { // 预置 filehelper + 新建
+		t.Fatalf("新建后应共 2 条，实际 %+v", views)
 	}
 
 	// 更新：命中现有 ID 改名，不新增条目
@@ -67,8 +69,8 @@ func TestSaveEntryLifecycle(t *testing.T) {
 	if !ok || got.Name != "改名后" || got.URL != "https://example.com/x" {
 		t.Errorf("更新未生效: %+v ok=%v", got, ok)
 	}
-	if len(svc.ListEntries()) != 2 {
-		t.Errorf("更新不应增加条目: %+v", svc.ListEntries())
+	if views, _ := svc.ListEntries(); len(views) != 2 {
+		t.Errorf("更新不应增加条目: %+v", views)
 	}
 
 	// 闸门与幽灵引用
@@ -114,7 +116,7 @@ func TestWindowStateHelpersHeadless(t *testing.T) {
 	}
 	svc.shutdown() // 空表不应 panic
 
-	views := svc.ListEntries()
+	views, _ := svc.ListEntries()
 	if len(views) != 1 || views[0].WindowOpen || views[0].WindowHidden {
 		t.Errorf("无窗时窗态徽标应全 false: %+v", views)
 	}
@@ -129,7 +131,7 @@ func TestDeleteEntryAndOpenExternal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := NewWebAppService(store, func(u string) error { opened = u; return nil })
+	svc := NewWebAppService(store, func(u string) error { opened = u; return nil }, extapi.NewLeaseHolder(ID))
 
 	if err := svc.DeleteEntry("webapp_filehelper"); err != nil {
 		t.Fatalf("删除预置条目: %v", err)

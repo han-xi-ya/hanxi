@@ -105,7 +105,7 @@ func TestSnipClipboardSuccessWithAutoCopy(t *testing.T) {
 		t.Fatalf("按开关应自动复制文字: %+v %v", res, fs.written)
 	}
 	// 悬浮卡通道：无 Wails 实例只记结果不建窗（单测口径），GetSnipResult 可拉取
-	card, found := s.GetSnipResult()
+	card, found, _ := s.GetSnipResult()
 	if !found || card.Text != res.Text {
 		t.Fatal("成功结果应进悬浮卡通道")
 	}

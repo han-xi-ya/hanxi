@@ -8,6 +8,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/hotkey"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
@@ -34,6 +35,9 @@ const (
 // 拦截 hook 后 Close 走 Wails 内部销毁路径，WebView2 内存归还，同名窗口可重建，
 // 不得白边/残影）；不养常驻隐藏窗。显隐判定走服务层状态机（shown），窗口 API
 // （Show/Close/Fullscreen 均为主线程 InvokeSync）一律在 s.mu 之外调用，防锁反转。
+//
+// RPC 收口（Wave 3）：Toggle/Show/Dismiss 与全部前端绑定方法接统一调用门；
+// 热键回调与窗体事件（Closing hook、SetConfig 换屏重挂协程）走同名无门内部版。
 type MsgBoardService struct {
 	plat  platform.Platform
 	store *msgBoardStore
@@ -49,16 +53,22 @@ type MsgBoardService struct {
 	offClosing  func()           // WindowClosing 拦截 hook 的注销闭包（销毁前摘除，#53 通路）
 	hk          *hotkey.Registry // 全仓通用热键注册器（装配根注入，槽位记账归注册器）
 	keepAwakeOn bool             // 防休眠诉求是否在账（状态页如实回显）
+	holder      *extapi.LeaseHolder
 }
 
 // NewMsgBoardService 装配服务单例：构造仅读盘建 store，不碰窗口与热键
-// （懒建于 OnInit/start，与 quickmenu 同策略）。
-func NewMsgBoardService(plat platform.Platform, paths *settings.Paths) *MsgBoardService {
-	return newMsgBoardService(plat, newMsgBoardStore(paths.StateDir()))
+// （懒建于 OnInit/start，与 quickmenu 同策略）。RPC 导出版方法经 holder
+// 接入统一调用门（Wave 3）；内部生命周期（start/stop）、热键回调与窗体
+// 事件走无门内部版，不依赖运行态。
+func NewMsgBoardService(plat platform.Platform, paths *settings.Paths, holder *extapi.LeaseHolder) *MsgBoardService {
+	s := newMsgBoardService(plat, newMsgBoardStore(paths.StateDir()))
+	s.holder = holder
+	return s
 }
 
 func newMsgBoardService(plat platform.Platform, store *msgBoardStore) *MsgBoardService {
-	s := &MsgBoardService{plat: plat, store: store}
+	// 自带放行 holder（gate 未注入即 no-op）：测试构造与装配构造（New 覆写）同走门代码。
+	s := &MsgBoardService{plat: plat, store: store, holder: extapi.NewLeaseHolder(ID)}
 	s.cond = sync.NewCond(&s.mu)
 	return s
 }
@@ -132,8 +142,21 @@ func (s *MsgBoardService) stop() error {
 
 // ---------- 挂牌 / 撤牌（三通道共同汇聚点） ----------
 
-// Toggle 挂出↔撤牌一键互切（托盘/轮盘命令与热键回调的入口）。
+// Toggle 挂出↔撤牌一键互切（RPC/托盘轮盘命令的导出版：接统一调用门）。
 func (s *MsgBoardService) Toggle() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	return s.toggle()
+}
+
+// toggle 挂撤互切的内部无门版：热键回调（hotkey.go onHotkey）直调——热键随
+// start/stop 绑定/注销已在生命周期账内，停用竞态由 stopping 守卫兜底，不得再
+// 经门（回调线程不属于 RPC 面，也不该在 drain 中额外入账）。
+func (s *MsgBoardService) toggle() error {
 	s.mu.Lock()
 	for s.opInFlight && !s.stopping {
 		s.cond.Wait()
@@ -145,16 +168,26 @@ func (s *MsgBoardService) Toggle() error {
 		return nil
 	}
 	if shown {
-		s.Dismiss()
+		s.dismiss()
 		return nil
 	}
-	return s.Show()
+	return s.show()
 }
 
 // Show 在全屏透明窗挂出留言牌：定位目标显示器 → 真全屏 → 置前抢焦点（Esc
 // 直达）→ 登记防休眠。操作严格串行；stop 一旦开始，新的或在途 Show 都不能
 // 在停用完成后提交窗口状态。
 func (s *MsgBoardService) Show() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	return s.show()
+}
+
+func (s *MsgBoardService) show() error {
 	generation, ok := s.beginShow()
 	if !ok {
 		return nil
@@ -198,7 +231,7 @@ func (s *MsgBoardService) Show() error {
 	// Alt+F4 拦截为撤牌；销毁动作 go 异步，避免在 WM_CLOSE 派发栈内重入 Close。
 	offClosing := board.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
 		ev.Cancel()
-		go s.Dismiss()
+		go s.dismiss() // 窗体事件走无门内部版（撤牌线程不属 RPC 面，不得依赖运行态门）
 	})
 
 	board.Show()
@@ -232,10 +265,22 @@ func (s *MsgBoardService) Show() error {
 	return nil
 }
 
-// Dismiss 撤牌并真销毁窗口（摘 WindowClosing hook 后 Close 走 Wails 内部销毁
-// 路径，#53），同时释放防休眠诉求。若 Show 在途则等待并接管其终态；stop
-// 接管期间普通 Dismiss 无需争抢。
-func (s *MsgBoardService) Dismiss() {
+// Dismiss 撤牌并真销毁窗口（RPC 导出版：接统一调用门）。
+// 若 Show 在途则等待并接管其终态；stop 接管期间普通 Dismiss 无需争抢。
+func (s *MsgBoardService) Dismiss() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	s.dismiss()
+	return nil
+}
+
+// dismiss 撤牌内部无门版：Alt+F4 Closing hook 与热键 toggle 直调（窗体事件
+// 线程不属于 RPC 面）。
+func (s *MsgBoardService) dismiss() {
 	if !s.beginDismiss() {
 		return
 	}
@@ -349,7 +394,13 @@ func (s *MsgBoardService) setKeepAwakeOn(on bool) {
 // （Registry.Registered 底层即 manager.IsRegistered）而非自记状态：开机期
 // Register 只入 pending、OS 拒绑发生在 Run 之后（错误走 Wails 错误通道不回流
 // 本模块），自记标志会谎报，以系统实存为准。
-func (s *MsgBoardService) GetStatus() Status {
+func (s *MsgBoardService) GetStatus() (Status, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Status{}, gateErr
+	}
+	defer release()
+
 	cfg := s.store.Get()
 	s.mu.Lock()
 	shown, awake := s.shown, s.keepAwakeOn
@@ -361,15 +412,29 @@ func (s *MsgBoardService) GetStatus() Status {
 		Hotkey:       cfg.Hotkey,
 		HotkeyActive: active,
 		KeepAwake:    awake,
-	}
+	}, nil
 }
 
 // GetConfig 返回偏好快照（模块页表单初值）。
-func (s *MsgBoardService) GetConfig() Config { return s.store.Get() }
+func (s *MsgBoardService) GetConfig() (Config, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Config{}, gateErr
+	}
+	defer release()
+
+	return s.store.Get(), nil
+}
 
 // SetConfig 保存偏好：正文/字号即时热更（弹窗拉新）；热键改判失败自动回滚
 // 旧键并报错回前端；换屏则拆牌重挂（真销毁重建，与手动撤挂同路径）。
 func (s *MsgBoardService) SetConfig(cfg Config) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	old := s.store.Get()
 	next, err := s.store.Set(cfg)
 	if err != nil {
@@ -393,15 +458,17 @@ func (s *MsgBoardService) SetConfig(cfg Config) error {
 		active := s.started && !s.stopping
 		s.mu.Unlock()
 		if shown && active {
+			// 换屏重挂协程：SetConfig 租约已归还后才执行，必须走无门内部版，
+			// 在途性由 started/stopping/generation 守卫兜底（与 stop 竞态同策）。
 			go func() {
-				s.Dismiss()
+				s.dismiss()
 				s.mu.Lock()
 				stillActive := s.started && !s.stopping && s.generation == generation
 				s.mu.Unlock()
 				if !stillActive {
 					return
 				}
-				if err := s.Show(); err != nil {
+				if err := s.show(); err != nil {
 					slog.Warn("msgboard: 换屏重挂失败", "err", err)
 				}
 			}()
@@ -411,17 +478,29 @@ func (s *MsgBoardService) SetConfig(cfg Config) error {
 }
 
 // ListPresets 返回内置预设文案模板（模块页一键填词候选）。
-func (s *MsgBoardService) ListPresets() []string {
+func (s *MsgBoardService) ListPresets() ([]string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	out := make([]string, len(Presets))
 	copy(out, Presets)
-	return out
+	return out, nil
 }
 
 // ListScreens 返回挂牌可选显示器清单；应用未运行时返回空表（前端隐藏选择器）。
-func (s *MsgBoardService) ListScreens() []ScreenInfo {
+func (s *MsgBoardService) ListScreens() ([]ScreenInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	a := application.Get()
 	if a == nil || a.Screen == nil {
-		return []ScreenInfo{}
+		return []ScreenInfo{}, nil
 	}
 	screens := a.Screen.GetAll()
 	out := make([]ScreenInfo, 0, len(screens))
@@ -436,13 +515,19 @@ func (s *MsgBoardService) ListScreens() []ScreenInfo {
 			IsPrimary: scr.IsPrimary,
 		})
 	}
-	return out
+	return out, nil
 }
 
 // GetBoardContent 挂牌弹窗拉取的正文（自定义为空回落第一条预设，永不空白）。
-func (s *MsgBoardService) GetBoardContent() BoardContent {
+func (s *MsgBoardService) GetBoardContent() (BoardContent, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return BoardContent{}, gateErr
+	}
+	defer release()
+
 	cfg := s.store.Get()
-	return BoardContent{Text: effectiveText(cfg), FontSize: cfg.FontSize}
+	return BoardContent{Text: effectiveText(cfg), FontSize: cfg.FontSize}, nil
 }
 
 // ---------- 内部小件 ----------

@@ -67,6 +67,12 @@ func backupDirOr(target string) (string, error) {
 // backupDir 留空即用默认导出目录；备份/停机前的安全段可取消，
 // 进入数据盘处理/重建段后取消会被拒绝（CancelCompact）。
 func (s *WslService) CompactDistro(name, backupDir string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

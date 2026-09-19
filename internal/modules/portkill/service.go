@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/history"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
@@ -38,22 +39,31 @@ type KillResult struct {
 }
 
 // PortKillService 端口占用查询与查杀服务（无内部状态，每次 RPC 即时快照系统表）。
+// 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：门只加不改语义，
+// 权限红线与提权逻辑全部保留在门后原路径。
 type PortKillService struct {
 	plat    platform.Platform
 	history *history.Store // 统一历史记录（nil=未接线，静默不记）
+	holder  *extapi.LeaseHolder
 }
 
 // NewPortKillService 注入平台能力创建服务。
-func NewPortKillService(plat platform.Platform) *PortKillService {
-	return &PortKillService{plat: plat}
+func NewPortKillService(plat platform.Platform, holder *extapi.LeaseHolder) *PortKillService {
+	return &PortKillService{plat: plat, holder: holder}
 }
 
 // SetHistory 注入统一历史存储（装配根接线，照 memo↔fileshare SetMemoHook 先例）。
+// 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）
 func (s *PortKillService) SetHistory(h *history.Store) { s.history = h }
 
 // QueryPort 查询指定端口号的占用情况 (TCP + UDP)。
 // 统一历史：Q2 裁定 portkill 查询入库（轻量——占用清单文本，回填价值主体）。
 func (s *PortKillService) QueryPort(port int) (result []PortOccupant, err error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	defer func() { s.recordQuery(port, result, err) }()
 	if port <= 0 || port > 65535 {
 		return nil, fmt.Errorf("invalid port number: %d", port)
@@ -119,6 +129,11 @@ func (s *PortKillService) QueryPort(port int) (result []PortOccupant, err error)
 
 // ListListeningPorts 列举当前系统处于 LISTEN / 占用的常见活跃端口
 func (s *PortKillService) ListListeningPorts() ([]PortOccupant, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	var list []PortOccupant
 	seen := make(map[string]bool)
 
@@ -168,7 +183,14 @@ func (s *PortKillService) ListListeningPorts() ([]PortOccupant, error) {
 
 // KillProcess 通过安全令牌终止目标进程。
 // 统一历史：Q2 动作全记，defer 单点成败同记。
-func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix int64) (result KillResult) {
+func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix int64) (result KillResult, err error) {
+	// Wave 3 口径：单值无 error 的绑定方法必须扩为 (T, error)，门拒绝如实上抛，
+	// 禁止回失败态空值静默消化。
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return KillResult{}, gateErr
+	}
+	defer release()
 	defer func() { s.recordKill(pid, exePath, "kill", result) }()
 	var startedAt time.Time
 	if startedAtUnix > 0 {
@@ -184,10 +206,10 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	err := s.plat.Process().KillVerified(ctx, token, true)
+	err = s.plat.Process().KillVerified(ctx, token, true)
 	if err == nil {
 		notify.Success("portkill", "进程已终止", fmt.Sprintf("已成功终止进程 PID: %d (%s)", pid, exePath), "/ext/portkill")
-		return KillResult{Success: true}
+		return KillResult{Success: true}, nil
 	}
 
 	if err == platform.ErrAccessDenied {
@@ -195,13 +217,13 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 			Success:      false,
 			NeedElevate:  true,
 			ErrorMessage: "权限不足，目标进程需要管理员 UAC 权限终止",
-		}
+		}, nil
 	}
 
 	return KillResult{
 		Success:      false,
 		ErrorMessage: fmt.Sprintf("终止失败: %v", err),
-	}
+	}, nil
 }
 
 // KillProcessElevated 触发 UAC 提权 Helper 查杀管理员进程。
@@ -210,27 +232,34 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 // 命中系统关键进程红线则在本地直接拒绝，不弹 UAC。
 // helper 的真实成败经 Start-Process -PassThru 的 ExitCode 传播回来，杜绝"helper 失败仍报成功"。
 // 统一历史：defer 单点记录；Q3 裁定拒绝类失败同样入库并标 denied（回看"当时为什么没杀掉"）。
-func (s *PortKillService) KillProcessElevated(pid uint32) (result KillResult) {
+func (s *PortKillService) KillProcessElevated(pid uint32) (result KillResult, err error) {
+	// Wave 3 口径：单值无 error 的绑定方法必须扩为 (T, error)，门拒绝如实上抛，
+	// 禁止回失败态空值静默消化。
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return KillResult{}, gateErr
+	}
+	defer release()
 	defer func() { s.recordKill(pid, "", "elevated", result) }()
 	if pid == 0 || pid == 4 || pid == uint32(os.Getpid()) {
 		return KillResult{
 			Success:      false,
 			ErrorMessage: "受系统保护的关键进程不可查杀",
-		}
+		}, nil
 	}
 
 	procAPI := s.plat.Process()
 	info, err := procAPI.Query(pid)
 	if err != nil {
-		return KillResult{Success: false, ErrorMessage: fmt.Sprintf("目标进程 PID %d 不存在或已退出", pid)}
+		return KillResult{Success: false, ErrorMessage: fmt.Sprintf("目标进程 PID %d 不存在或已退出", pid)}, nil
 	}
 	if procAPI.IsProtected(pid, info) {
-		return KillResult{Success: false, ErrorMessage: "受系统保护的关键进程不可查杀"}
+		return KillResult{Success: false, ErrorMessage: "受系统保护的关键进程不可查杀"}, nil
 	}
 
 	exe, err := os.Executable()
 	if err != nil {
-		return KillResult{Success: false, ErrorMessage: "无法定位宿主程序路径"}
+		return KillResult{Success: false, ErrorMessage: "无法定位宿主程序路径"}, nil
 	}
 
 	// 组装 helper 参数：始终携带镜像路径指纹；创建时间可查时一并携带
@@ -255,19 +284,19 @@ func (s *PortKillService) KillProcessElevated(pid uint32) (result KillResult) {
 	if err != nil {
 		outStr := strings.TrimSpace(string(out))
 		if strings.Contains(outStr, "canceled by the user") || strings.Contains(outStr, "1223") {
-			return KillResult{Success: false, ErrorMessage: "用户取消了 UAC 授权"}
+			return KillResult{Success: false, ErrorMessage: "用户取消了 UAC 授权"}, nil
 		}
 		switch helperExitCode(err) {
 		case 2:
-			return KillResult{Success: false, ErrorMessage: "目标为系统关键进程，已拒绝查杀"}
+			return KillResult{Success: false, ErrorMessage: "目标为系统关键进程，已拒绝查杀"}, nil
 		case 3:
-			return KillResult{Success: false, ErrorMessage: "目标进程身份已变化（PID 可能被复用），已安全中止，请重新扫描"}
+			return KillResult{Success: false, ErrorMessage: "目标进程身份已变化（PID 可能被复用），已安全中止，请重新扫描"}, nil
 		default:
-			return KillResult{Success: false, ErrorMessage: fmt.Sprintf("提权查杀失败: %v %s", err, outStr)}
+			return KillResult{Success: false, ErrorMessage: fmt.Sprintf("提权查杀失败: %v %s", err, outStr)}, nil
 		}
 	}
 
-	return KillResult{Success: true}
+	return KillResult{Success: true}, nil
 }
 
 // helperExitCode 从 powershell 的 exec 错误中提取 helper 传播回来的退出码；无法判定时返回 -1。

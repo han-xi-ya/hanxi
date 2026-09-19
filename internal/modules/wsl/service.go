@@ -11,6 +11,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/wsl/readiness"
 	"hanxi/internal/modules/wsl/releases"
 	"hanxi/internal/modules/wsl/usbipd"
@@ -87,6 +88,10 @@ type WslService struct {
 	cloneOps  map[string]longOpHandle // key: 源名小写
 	compactOp *longOpHandle
 	dlOp      *longOpHandle
+
+	// holder 统一调用门持有器（Wave 3）：全部 RPC 导出方法经 Enter() 入账；
+	// USB 自动重放/watcher（runUsbReplay 等）、OnDestroy cancel 路径为 Go 内部，不接门。
+	holder *extapi.LeaseHolder
 }
 
 // longOpHandle 后台长操作的取消句柄与当前阶段。
@@ -95,7 +100,7 @@ type longOpHandle struct {
 	stage  string
 }
 
-func NewWslService(opener urlOpener, paths *settings.Paths) *WslService {
+func NewWslService(opener urlOpener, paths *settings.Paths, holder *extapi.LeaseHolder) *WslService {
 	rulesPath := ""
 	installPref := ""
 	usbLedger := ""
@@ -105,6 +110,7 @@ func NewWslService(opener urlOpener, paths *settings.Paths) *WslService {
 		usbLedger = filepath.Join(paths.StateDir(), "wsl-usbipd.json")
 	}
 	return &WslService{
+		holder:          holder,
 		opener:          opener,
 		ppPath:          rulesPath,
 		installPrefPath: installPref,
@@ -145,6 +151,12 @@ func emitEvent(name string, payload any) {
 // 三源并发、先到先推（system / wsl / net 阶段逐项落位），全齐后 done 阶段整体收口。
 // 重复调用会静默终止上一轮，永不双跑串扰。
 func (s *WslService) StartReadiness() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	s.readinessPublish.Lock()
 	defer s.readinessPublish.Unlock()
 	s.mu.Lock()
@@ -243,6 +255,12 @@ func (s *WslService) setLastProbe(p readiness.ProbeResult) {
 
 // ListOnlineDistros 返回官方在线可安装发行版清单（需 wsl.exe 已具备 --list --online 能力）。
 func (s *WslService) ListOnlineDistros() ([]readiness.DistroOption, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	return s.onlineDistros(ctx)
@@ -252,6 +270,12 @@ func (s *WslService) ListOnlineDistros() ([]readiness.DistroOption, error) {
 // API 被拦（如 api.github.com 对部分云出口 IP 区域封锁 403）时自动降级
 // Atom 订阅源（github.com 域通常畅通），载荷 fallback 标记供前端如实标注。
 func (s *WslService) GetReleases() (releases.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return releases.Overview{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	local := ""
@@ -267,21 +291,45 @@ func (s *WslService) GetReleases() (releases.Overview, error) {
 // （--install 捆绑模式会把默认 Ubuntu 一起塞进来，与"用户手动挑系统"的
 // 产品语义冲突，故本模块操作面固定走 --no-distribution）。
 func (s *WslService) InstallWsl() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	return s.elevateWsl("--install", "--no-distribution")
 }
 
 // UpdateWsl 经默认通道更新 WSL 本体。
 func (s *WslService) UpdateWsl() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	return s.elevateWsl("--update")
 }
 
 // UpdateWslWebDownload 强制 GitHub 直连更新（商店通道不通时）。
 func (s *WslService) UpdateWslWebDownload() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	return s.elevateWsl("--update", "--web-download")
 }
 
 // SetDefaultVersion2 将新装发行版默认设为 WSL2。
 func (s *WslService) SetDefaultVersion2() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	return s.elevateWsl("--set-default-version", "2")
 }
 
@@ -296,6 +344,12 @@ func (s *WslService) elevateWsl(args ...string) (OperationOutcome, error) {
 // wsl --status 证词："WSL2 无法启动，因为此计算机上未启用虚拟化"），
 // 此时点击安装只是白白弹出 UAC 再失败——提前拦下并指路，探针自身不可得时放行（失败由退出码通道如实上报）。
 func (s *WslService) InstallDistro(id string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	id = strings.TrimSpace(id)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -345,6 +399,12 @@ const (
 // "已装在 C、无需重装、点🧭迁移补救"）；成功后注册表 BasePath 复验（MoveDistro
 // 同款，退出码 0 不等于真落位）。
 func (s *WslService) InstallDistroTo(id, location string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	loc := strings.TrimSpace(location)
 	if loc == "" {
 		return s.InstallDistro(id)

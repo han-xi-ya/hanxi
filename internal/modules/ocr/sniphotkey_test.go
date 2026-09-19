@@ -271,7 +271,10 @@ func TestSetSnipHotkeyEnabledAndState(t *testing.T) {
 	if err := s.SetSnipHotkeyEnabled(false); err != nil {
 		t.Fatal(err)
 	}
-	st := s.GetSnipHotkey()
+	st, hotkeyErr := s.GetSnipHotkey()
+	if hotkeyErr != nil {
+		t.Fatal(hotkeyErr)
+	}
 	if st.Enabled || st.Accel != defaultSnipHotkey || st.Registered {
 		t.Fatalf("无通道时状态失真: %+v", st)
 	}
@@ -284,7 +287,10 @@ func TestSetSnipHotkeyEnabledAndState(t *testing.T) {
 	if b.applied[len(b.applied)-1] != defaultSnipHotkey+"|1" {
 		t.Fatalf("开启应带当前键位落系统: %v", b.applied)
 	}
-	st = s.GetSnipHotkey()
+	st, hotkeyErr = s.GetSnipHotkey()
+	if hotkeyErr != nil {
+		t.Fatal(hotkeyErr)
+	}
 	if !st.Enabled || !st.Registered {
 		t.Fatalf("注册成功后状态失真: %+v", st)
 	}
@@ -294,7 +300,7 @@ func TestSetSnipHotkeyEnabledAndState(t *testing.T) {
 	if b.applied[len(b.applied)-1] != defaultSnipHotkey+"|0" {
 		t.Fatalf("关闭应通知注销: %v", b.applied)
 	}
-	if st := s.GetSnipHotkey(); st.Registered {
+	if st, hotkeyErr := s.GetSnipHotkey(); hotkeyErr != nil || st.Registered {
 		t.Fatal("禁用中 Registered 恒 false")
 	}
 

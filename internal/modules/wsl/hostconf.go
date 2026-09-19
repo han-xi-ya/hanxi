@@ -101,6 +101,12 @@ func hostNetworkMode() (mode string) {
 
 // GetWslHostConf 读取 .wslconfig（纯宿主文件读，无副作用）。
 func (s *WslService) GetWslHostConf() (HostConfDoc, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return HostConfDoc{}, gateErr
+	}
+	defer release()
+
 	doc := HostConfDoc{Path: hostWslConfigPath(), NetworkMode: hostNetworkMode()}
 	if doc.Path == "" {
 		return HostConfDoc{}, fmt.Errorf("无法定位用户主目录，.wslconfig 不可得")
@@ -128,6 +134,12 @@ func (s *WslService) GetWslHostConf() (HostConfDoc, error) {
 
 // SaveWslHostConf 写回 .wslconfig：语法闸门 + 网络模式白名单 → 备份 → 原子写 → 复核。
 func (s *WslService) SaveWslHostConf(text string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	path := hostWslConfigPath()
 	if path == "" {
 		return DistroOpResult{}, fmt.Errorf("无法定位用户主目录，.wslconfig 不可写")
@@ -179,6 +191,12 @@ func (s *WslService) SaveWslHostConf(text string) (DistroOpResult, error) {
 // ShutdownWsl 执行 wsl --shutdown：打停全部发行版（数据无损，下次访问自动再启动）。
 // 与迁移/克隆/瘦身共用重操作闸，避免"边搬盘边全停"。
 func (s *WslService) ShutdownWsl() (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	finish, ok := s.tryBeginHeavyOp()

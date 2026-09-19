@@ -17,6 +17,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/history"
 	"hanxi/internal/modules/ocr/instance"
 	"hanxi/internal/modules/ocr/snip"
@@ -44,8 +45,14 @@ const (
 // OcrService 向前端暴露 hanxi-ocr 本地服务的托管启停、状态探测与图片识别转发。
 // 定位边界：识别能力全部在上游服务内，本服务只做"探活 + 转发 + 生命周期"，
 // 不重复实现上游功能面（与 ddnsgo 托管口径一致）。
+// 全部业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：前端调用、
+// 轮盘/托盘命令与热键派发链（RunTrayCommand 已持租约）、MCP 无头后端共用
+// 同一 service 契约，门语义一致；SetHistory/SetSnipHotkeyBinding 为装配布线
+// （豁免表）；Shutdown 导出壳接门（纯 void 拒即早退），OnDestroy 生命周期收口
+// 直调内部 shutdown()（此刻门已关，见 ADR-0001 Wave 3 注记）。
 type OcrService struct {
 	plat    platform.Platform
+	holder  *extapi.LeaseHolder
 	store   *ocrStore
 	engine  *instance.Engine
 	client  *http.Client   // 回环专用：Proxy 显式置 nil，防系统代理污染（netx 教训）
@@ -93,10 +100,11 @@ type probeCache struct {
 	checkedAt     time.Time
 }
 
-func NewOcrService(plat platform.Platform) *OcrService {
+func NewOcrService(plat platform.Platform, holder *extapi.LeaseHolder) *OcrService {
 	paths := settings.GetPaths()
 	svc := &OcrService{
 		plat:   plat,
+		holder: holder,
 		store:  newOcrStore(paths.StateDir()),
 		client: &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
 		exeDir: exeDirOf(),
@@ -126,6 +134,7 @@ func exeDirOf() string {
 // SetHistory 注入统一历史存储与"全文入库"档位读取器（装配根接线，
 // 照 memo↔fileshare SetMemoHook 先例）。fullText 为 config.json 开关的实时读取
 // 闭包（Q1：默认开=全文入库；关=只记图片路径与摘要）；nil 视为开。
+// 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）
 func (s *OcrService) SetHistory(h *history.Store, fullText func() bool) {
 	s.history = h
 	s.historyFullText = fullText
@@ -254,9 +263,21 @@ func (s *OcrService) activate() {
 	}()
 }
 
-// Shutdown 模块销毁：停 watch；随退联动开启时强杀托管实例（限时通道，
-// 不走上游优雅退出——OnDestroy 必须快速返回，照 ddnsgo 决策）。
+// Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+// 拒绝即早退（Wave 3 口径：void 方法不改签名）。
 func (s *OcrService) Shutdown() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
+	s.shutdown()
+}
+
+// shutdown 模块销毁：停 watch；随退联动开启时强杀托管实例（限时通道，
+// 不走上游优雅退出——OnDestroy 必须快速返回，照 ddnsgo 决策）。
+// 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）。
+func (s *OcrService) shutdown() {
 	s.watchMu.Lock()
 	if s.watchStop != nil {
 		close(s.watchStop)
@@ -328,12 +349,22 @@ func (s *OcrService) probeStatus(addr string) probeCache {
 
 // GetStatus 返回合并状态（先做一次同步探测，弥补轮询间隙与首帧）。
 func (s *OcrService) GetStatus() (ServiceState, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ServiceState{}, gateErr
+	}
+	defer release()
 	s.refresh()
 	return s.buildState(s.engine.Snapshot()), nil
 }
 
 // StartService 冷启动托管实例（external 占位转为幂等说明而非报错）。
 func (s *OcrService) StartService() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	snap := s.engine.Snapshot()
 	switch snap.State {
 	case instance.StateRunning:
@@ -366,6 +397,11 @@ func (s *OcrService) StartService() (ControlOutcome, error) {
 // StopService 停止托管实例：优先上游优雅退出（POST /api/shutdown），兜底强杀；
 // external 不越权（进程归属不在本引擎）。
 func (s *OcrService) StopService() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	snap := s.engine.Snapshot()
 	switch snap.State {
 	case instance.StateStopped:
@@ -418,6 +454,11 @@ func (s *OcrService) waitAddrReleased(addr string, timeout time.Duration) bool {
 
 // Logs 返回最近 n 行托管实例输出（排障）。
 func (s *OcrService) Logs(n int) ([]string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	if n <= 0 {
 		n = 100
 	}
@@ -434,6 +475,11 @@ func (s *OcrService) Logs(n int) ([]string, error) {
 // 统一历史：识别动作的唯一记录点在 recognizeImage 的 defer 单点（成功与失败同记），
 // 截屏链路经 snip 来源标记复用同一记录点，勿二处插。
 func (s *OcrService) RecognizeImage(path string) (OcrOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OcrOutcome{}, gateErr
+	}
+	defer release()
 	return s.recognizeImage(path, "ui")
 }
 
@@ -539,6 +585,11 @@ func (s *OcrService) fullTextOn() bool {
 
 // PickImageDialog 打开系统图片选择对话框；取消返回空串。
 func (s *OcrService) PickImageDialog() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	app := application.Get()
 	if app == nil {
 		return "", fmt.Errorf("应用实例不可用")
@@ -552,6 +603,11 @@ func (s *OcrService) PickImageDialog() (string, error) {
 
 // InspectImage 校验对话框所选图片并生成预览（不落盘、temporary=false）。
 func (s *OcrService) InspectImage(path string) (ImageRef, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ImageRef{}, gateErr
+	}
+	defer release()
 	p := strings.TrimSpace(path)
 	if p == "" {
 		return ImageRef{}, fmt.Errorf("图片路径不能为空")
@@ -579,6 +635,11 @@ func (s *OcrService) InspectImage(path string) (ImageRef, error) {
 // SavePastedImage 拖拽/粘贴通道：File→dataURL 解码落盘 RuntimeDir()/ocr，
 // 返回统一 ImageRef（temporary=true）。替换删除上一张粘贴临时件，目录不膨胀。
 func (s *OcrService) SavePastedImage(fileName, dataURL string) (ImageRef, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ImageRef{}, gateErr
+	}
+	defer release()
 	data, mime, err := decodeDataURL(dataURL)
 	if err != nil {
 		return ImageRef{}, err
@@ -621,6 +682,11 @@ func (s *OcrService) SavePastedImage(fileName, dataURL string) (ImageRef, error)
 
 // GetServiceExePath 返回当前生效的服务程序路径（活跃引擎的自动发现结果或登记件）。
 func (s *OcrService) GetServiceExePath() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	exe, _, err := s.resolveActiveExe()
 	return exe, err
 }
@@ -628,14 +694,25 @@ func (s *OcrService) GetServiceExePath() (string, error) {
 // SetServiceExePath 设定活跃引擎的登记路径；""=恢复自动发现。返回当前生效值。
 // （双引擎口径：本方法作用于 active 引擎注册件；另一引擎的登记走导入分流。）
 func (s *OcrService) SetServiceExePath(path string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	if err := s.store.SetEnginePath(s.store.GetActiveEngine(), path); err != nil {
 		return "", err
 	}
+	// GetServiceExePath 同为门后方法：嵌套取租约同门同模块，安全幂等
 	return s.GetServiceExePath()
 }
 
 // BrowseServiceExeDialog 打开系统对话框挑选 hanxi-ocr.exe。
 func (s *OcrService) BrowseServiceExeDialog() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	app := application.Get()
 	if app == nil {
 		return "", fmt.Errorf("应用实例不可用")
@@ -647,10 +724,22 @@ func (s *OcrService) BrowseServiceExeDialog() (string, error) {
 }
 
 // GetListenPort 服务端口（默认 53120）。
-func (s *OcrService) GetListenPort() (int, error) { return s.store.GetListenPort(), nil }
+func (s *OcrService) GetListenPort() (int, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return 0, gateErr
+	}
+	defer release()
+	return s.store.GetListenPort(), nil
+}
 
 // SetListenPort 设定端口并落盘；托管实例运行中返回 pending（下次启动生效）。
 func (s *OcrService) SetListenPort(port int) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	if err := s.store.SetListenPort(port); err != nil {
 		return "", err
 	}
@@ -663,13 +752,41 @@ func (s *OcrService) SetListenPort(port int) (string, error) {
 }
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关。
-func (s *OcrService) GetFollowOnExit() (bool, error) { return s.store.GetFollowOnExit(), nil }
+func (s *OcrService) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
+	return s.store.GetFollowOnExit(), nil
+}
 
 // GetAutoCopy 返回「截屏识别后自动复制文字」开关（默认 true）。
-func (s *OcrService) GetAutoCopy() (bool, error) { return s.store.GetAutoCopy(), nil }
+func (s *OcrService) GetAutoCopy() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
+	return s.store.GetAutoCopy(), nil
+}
 
 // SetAutoCopy 设定自动复制开关（下一次截屏识别起生效）。
-func (s *OcrService) SetAutoCopy(v bool) error { return s.store.SetAutoCopy(v) }
+func (s *OcrService) SetAutoCopy(v bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	return s.store.SetAutoCopy(v)
+}
 
 // SetFollowOnExit 设定开关（已运行实例的联动在下一次启动时生效）。
-func (s *OcrService) SetFollowOnExit(v bool) error { return s.store.SetFollowOnExit(v) }
+func (s *OcrService) SetFollowOnExit(v bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	return s.store.SetFollowOnExit(v)
+}

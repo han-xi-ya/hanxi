@@ -22,9 +22,13 @@ type Module struct {
 // New 实例化模块
 func New(plat platform.Platform) extapi.Module {
 	return &Module{
-		svc: NewFileShareService(plat),
+		svc: NewFileShareService(plat, extapi.NewLeaseHolder(ID)),
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service RPC 导出版经该门取 operation lease（Wave 3 调用门）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Service 获取底层业务服务实例
 func (m *Module) Service() *FileShareService {
@@ -70,7 +74,8 @@ func (m *Module) OnInit(ctx context.Context) error {
 }
 
 func (m *Module) OnDestroy() error {
-	return m.svc.StopServer()
+	// 停用兜底停服走内部无门版：此时模块已 stopping，经门的 StopServer 会被拒导致端口不释放。
+	return m.svc.stopServer()
 }
 
 // IsInitialized 本模块 OnInit 无副作用，懒初始化后恒为已就绪。

@@ -4,12 +4,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"hanxi/internal/extapi"
 )
 
 func newPrefService(t *testing.T) (*WslService, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "wsl-install-pref.json")
-	return &WslService{installPrefPath: path}, path
+	return &WslService{installPrefPath: path, holder: extapi.NewLeaseHolder(ID)}, path
 }
 
 // 三态语义：未设置（回退前端默认）与"显式系统默认（空串）"必须可区分——
@@ -17,14 +19,14 @@ func newPrefService(t *testing.T) (*WslService, string) {
 func TestInstallDirPrefThreeStates(t *testing.T) {
 	svc, path := newPrefService(t)
 
-	if got := svc.GetDistroInstallDir(); got.Set || got.Dir != "" {
+	if got, _ := svc.GetDistroInstallDir(); got.Set || got.Dir != "" {
 		t.Fatalf("文件缺失应为未设置: %+v", got)
 	}
 
 	if err := svc.SetDistroInstallDir(`D:\wsl`); err != nil {
 		t.Fatal(err)
 	}
-	if got := svc.GetDistroInstallDir(); !got.Set || got.Dir != `D:\wsl` {
+	if got, _ := svc.GetDistroInstallDir(); !got.Set || got.Dir != `D:\wsl` {
 		t.Fatalf("往返不一致: %+v", got)
 	}
 
@@ -32,7 +34,7 @@ func TestInstallDirPrefThreeStates(t *testing.T) {
 	if err := svc.SetDistroInstallDir("   "); err != nil {
 		t.Fatal(err)
 	}
-	if got := svc.GetDistroInstallDir(); !got.Set || got.Dir != "" {
+	if got, _ := svc.GetDistroInstallDir(); !got.Set || got.Dir != "" {
 		t.Fatalf("显式系统默认应为 Set=true+Dir=\"\": %+v", got)
 	}
 
@@ -40,7 +42,7 @@ func TestInstallDirPrefThreeStates(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{ broken"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := svc.GetDistroInstallDir(); got.Set {
+	if got, _ := svc.GetDistroInstallDir(); got.Set {
 		t.Fatalf("损坏偏好文件应降级为未设置: %+v", got)
 	}
 	if err := svc.SetDistroInstallDir(`E:\wsl`); err != nil {
@@ -62,11 +64,11 @@ func TestSetDistroInstallDirValidates(t *testing.T) {
 	}
 
 	// 路径不可用（单测/装配前）：如实报错不静默吞。
-	orphan := &WslService{}
+	orphan := &WslService{holder: extapi.NewLeaseHolder(ID)}
 	if err := orphan.SetDistroInstallDir(`D:\wsl`); err == nil {
 		t.Fatal("存储路径不可用须报错")
 	}
-	if got := orphan.GetDistroInstallDir(); got.Set {
+	if got, _ := orphan.GetDistroInstallDir(); got.Set {
 		t.Fatal("存储路径不可用应读为未设置")
 	}
 }

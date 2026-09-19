@@ -12,6 +12,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/bili23/instance"
 	"hanxi/internal/modules/bili23/version"
 	"hanxi/internal/modules/modpath"
@@ -37,11 +38,15 @@ const (
 //
 // 与 ccswitch service 的显著差异：**没有空闲自动退出**——下载器无法从外部感知
 // 任务活跃度（无 CLI 状态通道），静默退出打断在途下载的代价远大于省内存的收益。
+//
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type Service struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *bili23Store
 	engine  *instance.Engine
+	holder  *extapi.LeaseHolder
 
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
@@ -50,12 +55,13 @@ type Service struct {
 }
 
 // NewService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
-func NewService(plat platform.Platform) *Service {
+func NewService(plat platform.Platform, holder *extapi.LeaseHolder) *Service {
 	paths := settings.GetPaths()
 	svc := &Service{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newBili23Store(paths.StateDir()),
+		holder:  holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewBili23Probe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -105,16 +111,31 @@ func (s *Service) activate() {
 
 // ListReleases 获取远程可用版本列表（多镜像回退，10 分钟缓存）。
 func (s *Service) ListReleases() ([]version.Bili23Release, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 获取本地已安装版本列表。
 func (s *Service) ListInstalledVersions() ([]version.Bili23VersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
 // DownloadVersion 后台下载指定版本：立即返回，全程经事件 bili23:version-download 推送进度。
 func (s *Service) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 
 	s.downloadMu.Lock()
@@ -157,6 +178,11 @@ func (s *Service) DownloadVersion(targetVersion string) (string, error) {
 
 // RemoveVersion 卸载指定版本（正在运行的版本拒绝卸载）。
 func (s *Service) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning &&
 		strings.EqualFold(strings.TrimPrefix(snap.Version, "v"), strings.TrimPrefix(targetVersion, "v")) {
@@ -174,6 +200,11 @@ func (s *Service) RemoveVersion(targetVersion string) error {
 
 // SetActiveVersion 设定使用版本（先校验已安装，再持久化）。
 func (s *Service) SetActiveVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
@@ -186,6 +217,11 @@ func (s *Service) SetActiveVersion(targetVersion string) (string, error) {
 
 // GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动用最新已装）。
 func (s *Service) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return s.store.GetActive(), nil
 }
 
@@ -193,6 +229,11 @@ func (s *Service) GetActiveVersion() (string, error) {
 // 整目录复制（~108MB）；用户配置恒在 %APPDATA%\Bili23 Downloader\ 不受导入影响。
 // 运行中的实例拒绝导入：Windows 下运行中的 exe 文件被独占，拷贝必然失败。
 func (s *Service) ImportLocal(srcDir string) (version.Bili23VersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.Bili23VersionInfo{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
 		return version.Bili23VersionInfo{}, fmt.Errorf("Bili23 Downloader 正在运行，请先退出再导入")
 	}
@@ -205,12 +246,22 @@ func (s *Service) ImportLocal(srcDir string) (version.Bili23VersionInfo, error) 
 // 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
 // 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *Service) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 打开 Bili23 的用户数据目录（%APPDATA%\Bili23 Downloader，
 // 配置/任务库/日志所在）——纯托管下用户想看"数据在哪"的直达入口。只读导航，不改写。
 func (s *Service) OpenConfigDir() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	dir, err := modpath.UserConfigDir(dataDirName)
 	if err != nil {
 		return err
@@ -223,6 +274,11 @@ func (s *Service) OpenConfigDir() error {
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
 func (s *Service) GetStatus() (Status, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Status{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 	return statusFrom(snap, s.engine.IsWindowVisible()), nil
@@ -233,6 +289,11 @@ func (s *Service) GetStatus() (Status, error) {
 //   - running：自有实例直接信使唤窗（窗口收入托盘后同样经此唤回）；
 //   - stopped/failed：解析 active 版本直接无参启动（Bili23 唯一启动语义即开窗）。
 func (s *Service) OpenWindow() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
@@ -289,6 +350,11 @@ func (s *Service) OpenWindow() (ControlOutcome, error) {
 //
 // external 状态不越权强杀（互斥体探测拿不到 PID）：仅返回人性化指引。
 func (s *Service) Quit() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
 			Message: "当前是外部自行启动的实例，请在 Bili23 窗口或其托盘菜单中退出"}, nil
@@ -314,6 +380,11 @@ func (s *Service) Quit() (QuitOutcome, error) {
 // ForceStop 立即强杀自有实例（「强制结束」按钮）：跳过优雅收尾，在途下载中断——
 // 上游断点续传 + SQLite WAL 保证下次启动可恢复。external 实例不受管辖。
 func (s *Service) ForceStop() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
 			Message: "当前是外部自行启动的实例，Hanxi 不对其强制执行"}, nil
@@ -324,11 +395,24 @@ func (s *Service) ForceStop() (QuitOutcome, error) {
 	return QuitOutcome{Stopped: true, Message: "Bili23 已被强制结束（在途下载已中断，下次启动可续传）"}, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例。
+// Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+// 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
+func (s *Service) Shutdown() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	s.shutdown()
+	return nil
+}
+
+// shutdown 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）。
+// 模块停用/应用退出：停后台轮询 + 终止自有实例。
 // 外部实例不受影响（非我方托管）；自有实例另受 JobObject KILL_ON_JOB_CLOSE 内核兜底。
 // 刻意走 Stop（强杀）而非 Quit（优雅）：应用退出通道不能阻塞等待上游下载线程收敛，
 // 且用户若不希望退出被中断，可关闭"随 Hanxi 退出"开关（解除 Job 联动）。
-func (s *Service) Shutdown() {
+func (s *Service) shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
 		close(s.watchStop)
@@ -390,16 +474,31 @@ func versionCompare(a, b string) int {
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *Service) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
 	return s.store.GetFollowOnExit(), nil
 }
 
 // SetFollowOnExit 设定开关（下次启动生效）。
 func (s *Service) SetFollowOnExit(b bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.store.SetFollowOnExit(b)
 }
 
 // CreateDesktopShortcut 在桌面为当前使用版本创建快捷方式（同名覆盖）。
 func (s *Service) CreateDesktopShortcut() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	_, exe, err := s.resolveActiveVersion()
 	if err != nil {
 		return err
@@ -409,10 +508,20 @@ func (s *Service) CreateDesktopShortcut() error {
 
 // RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
 func (s *Service) RepositoryURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.RepoURL(), nil
 }
 
 // OpenRepository 用默认浏览器打开上游仓库页面。
 func (s *Service) OpenRepository() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.RepoURL())
 }

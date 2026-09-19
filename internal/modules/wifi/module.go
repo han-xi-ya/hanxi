@@ -20,9 +20,13 @@ type Module struct {
 // New 在 app 装配期创建模块（无外部依赖注入）。
 func New() extapi.Module {
 	return &Module{
-		svc: NewWifiService(),
+		svc: NewWifiService(extapi.NewLeaseHolder(ID)),
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。明文密码展示受系统权限约束（部分配置需管理员），由上游 netsh 决定。
 func (e *Module) Info() extapi.ModuleInfo {

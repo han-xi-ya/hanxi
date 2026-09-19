@@ -12,6 +12,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/platform/versioncmp"
 )
 
@@ -51,7 +52,10 @@ type scanJob struct {
 // SoftverService Wails 绑定服务：微信（首个跟踪目标）的本机双口径版本、
 // 目录槽位与大小、官方最新版对照。探测/取页函数一律字段注入，
 // 单测替换后即可离线断言；页面进入零隐式外呼（官方取数只在显式 RefreshOfficial）。
+// 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；扫描 goroutine 与
+// 生命周期取消（cancelAllDirScans）走未接门的内部路径。
 type SoftverService struct {
+	holder        *extapi.LeaseHolder
 	opener        urlOpener
 	probeLocal    func() (localData, error)
 	fetchPage     func(context.Context) (string, error)
@@ -79,8 +83,9 @@ type SoftverService struct {
 }
 
 // NewSoftverService 构造服务并按平台挂载探测默认值。
-func NewSoftverService(opener urlOpener) *SoftverService {
+func NewSoftverService(opener urlOpener, holder *extapi.LeaseHolder) *SoftverService {
 	s := &SoftverService{
+		holder:        holder,
 		opener:        opener,
 		fetchPage:     fetchUpdatesPage, // 官方页抓取跨平台通用；本机探测按平台挂载
 		walk:          walkDirSize,
@@ -132,6 +137,17 @@ var revealInExplorer = func(path string) error {
 // Snapshot 返回页面全量数据：本机探测（快、无网络）× 官方缓存 × 对比结论。
 // 目录槽位自动挂接缓存的扫描结果；不隐式发起官方页抓取。
 func (s *SoftverService) Snapshot() (Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Snapshot{}, gateErr
+	}
+	defer release()
+	return s.querySnapshot()
+}
+
+// querySnapshot Snapshot 的内部共用版：不接调用门，供 RPC 门后与
+// StartDirScan 冷启动自调等已在门内/门外的内部路径复用。
+func (s *SoftverService) querySnapshot() (Snapshot, error) {
 	data, err := s.probeLocal()
 	if err != nil {
 		return Snapshot{}, err
@@ -166,6 +182,11 @@ func (s *SoftverService) Snapshot() (Snapshot, error) {
 // RefreshOfficial 显式抓取并解析官方更新页；成功更新缓存，失败缓存原因
 // （页面结构改版即失配——前端据 OfficialError 降级为"打开官方页"，不猜不编）。
 func (s *SoftverService) RefreshOfficial() (OfficialRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OfficialRelease{}, gateErr
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), officialFetchTimeout+5*time.Second)
 	defer cancel()
 	rel, err := s.fetchOfficial(ctx)
@@ -196,6 +217,11 @@ func (s *SoftverService) fetchOfficial(ctx context.Context) (*OfficialRelease, e
 
 // OpenUpdatesPage 拉起浏览器打开官方更新页（官方通道失配时的保底动线）。
 func (s *SoftverService) OpenUpdatesPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	if s.opener == nil {
 		return errors.New("打开官方页失败: 平台能力不可用")
 	}
@@ -209,6 +235,11 @@ func (s *SoftverService) OpenUpdatesPage() error {
 // id 必须来自最近一次 Snapshot 的槽位列表；不同 ID 若解析到同一最终路径也拒绝重入。
 // 任务统一进入 FIFO 队列，最多 maxConcurrentDirScans 个 Walk 同时运行。
 func (s *SoftverService) StartDirScan(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return errors.New("目录槽位 ID 不能为空")
@@ -216,8 +247,8 @@ func (s *SoftverService) StartDirScan(id string) error {
 	s.mu.Lock()
 	if len(s.local.Dirs) == 0 {
 		s.mu.Unlock()
-		// 冷启动直调（未先 Snapshot）：补一次探测建立槽位面
-		if _, err := s.Snapshot(); err != nil {
+		// 冷启动直调（未先 Snapshot）：补一次探测建立槽位面（已在门内，走内部版）
+		if _, err := s.querySnapshot(); err != nil {
 			return err
 		}
 		s.mu.Lock()
@@ -349,6 +380,11 @@ func (s *SoftverService) releaseScan(job *scanJob, size *DirSize) {
 
 // CancelDirScan 请求取消指定槽位排队或运行中的扫描（半成品不缓存）。
 func (s *SoftverService) CancelDirScan(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	id = strings.TrimSpace(id)
 	s.mu.Lock()
 	job, ok := s.scans[id]
@@ -408,6 +444,11 @@ func (s *SoftverService) removeQueuedScanLocked(target *scanJob) {
 
 // RevealDir 在资源管理器中打开槽位目录（路径经后端槽位面解析获得，拒收任意路径）。
 func (s *SoftverService) RevealDir(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	s.mu.Lock()
 	slot, ok := s.findSlotLocked(strings.TrimSpace(id))
 	s.mu.Unlock()

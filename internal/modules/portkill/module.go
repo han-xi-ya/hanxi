@@ -22,9 +22,13 @@ type Module struct {
 // New 在 app 装配期创建模块；plat 提供端口表与进程查杀能力。
 func New(plat platform.Platform) extapi.Module {
 	return &Module{
-		svc: NewPortKillService(plat),
+		svc: NewPortKillService(plat, extapi.NewLeaseHolder(ID)),
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。
 func (e *Module) Info() extapi.ModuleInfo {

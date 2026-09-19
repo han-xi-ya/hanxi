@@ -45,6 +45,12 @@ type DistroForensics struct {
 // GetDistroForensics 展开行取证：名称先过实时白名单（与六操作同基线），
 // 全部子项只读、单项失败不拖垮整体，缺口进 Notes。
 func (s *WslService) GetDistroForensics(name string) (DistroForensics, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroForensics{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

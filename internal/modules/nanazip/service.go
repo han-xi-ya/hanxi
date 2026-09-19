@@ -11,6 +11,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/nanazip/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
@@ -32,10 +33,14 @@ type versionManager interface {
 
 // NanaZipService 官方 stable MSIX 的安装/更新/降级/卸载托管。
 // 同一时刻仅允许一个包操作（operationMu+operation 互斥）；revision 为快照单调序号。
+// 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；OperationProgress 终态
+// 广播与后台操作 goroutine 走未接门的 snapshotWithTimeout 内部路径（fire-and-forget
+// 派生 goroutine 不得依赖运行态门，操作生命周期由单槽位互斥与 JobObject 兜底）。
 type NanaZipService struct {
 	plat     platform.Platform
 	packages apppackage.API
 	manager  versionManager
+	holder   *extapi.LeaseHolder
 
 	operationMu sync.Mutex
 	operation   *operationState
@@ -50,40 +55,85 @@ type operationState struct {
 }
 
 // NewNanaZipService 装配包管理 API 与缓存管理器；构造无 IO。
-func NewNanaZipService(plat platform.Platform) *NanaZipService {
-	return newNanaZipService(plat, plat.AppPackage(), version.NewManager(settings.GetPaths().VersionsDir()))
+func NewNanaZipService(plat platform.Platform, holder *extapi.LeaseHolder) *NanaZipService {
+	return newNanaZipService(plat, plat.AppPackage(), version.NewManager(settings.GetPaths().VersionsDir()), holder)
 }
 
 // newNanaZipService 依赖注入缝：单测以假 packages/manager 验证操作状态机。
-func newNanaZipService(plat platform.Platform, packages apppackage.API, manager versionManager) *NanaZipService {
-	return &NanaZipService{plat: plat, packages: packages, manager: manager}
+func newNanaZipService(plat platform.Platform, packages apppackage.API, manager versionManager, holder *extapi.LeaseHolder) *NanaZipService {
+	return &NanaZipService{plat: plat, packages: packages, manager: manager, holder: holder}
 }
 
-// GetPackageSnapshot 同步查询当前用户包注册状态（20s 超时兜底 PowerShell 冷启动）。
-// 每次调用 revision+1，事件与轮询结果以前端看到的最大 Revision 为准。
-func (s *NanaZipService) GetPackageSnapshot() (PackageSnapshot, error) {
+// snapshotWithTimeout 快照查询的内部共用版（20s 超时兜底 PowerShell 冷启动）：
+// 不接调用门——供 RPC 门后复用与后台 goroutine 终态广播直调。
+func (s *NanaZipService) snapshotWithTimeout() (PackageSnapshot, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	return s.querySnapshot(ctx)
 }
 
+// GetPackageSnapshot 同步查询当前用户包注册状态（20s 超时兜底 PowerShell 冷启动）。
+// 每次调用 revision+1，事件与轮询结果以前端看到的最大 Revision 为准。
+func (s *NanaZipService) GetPackageSnapshot() (PackageSnapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return PackageSnapshot{}, gateErr
+	}
+	defer release()
+	return s.snapshotWithTimeout()
+}
+
 // ListReleases / ListCachedPackages 透传缓存管理器：远端发布列表与本地可信包缓存清单。
-func (s *NanaZipService) ListReleases() ([]version.Release, error) { return s.manager.ListReleases() }
+func (s *NanaZipService) ListReleases() ([]version.Release, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+	return s.manager.ListReleases()
+}
 func (s *NanaZipService) ListCachedPackages() ([]version.CachedPackage, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListCached()
 }
 
-// RepoURL / OpenRepo 上游 GitHub 仓库入口。
-func (s *NanaZipService) RepoURL() string { return version.RepoURL() }
-func (s *NanaZipService) OpenRepo() error { return s.plat.OpenURL(version.RepoURL()) }
+// RepoURL 上游 GitHub 仓库地址（页面展示与复制）。
+// Wave 3 口径：单值绑定签名扩为 (string, error)，门拒绝如实上抛，禁止回空串。
+func (s *NanaZipService) RepoURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return version.RepoURL(), nil
+}
+
+// OpenRepo 用默认浏览器打开上游仓库页面。
+func (s *NanaZipService) OpenRepo() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	return s.plat.OpenURL(version.RepoURL())
+}
 
 // InstallVersion 异步安装/更新/降级（Kind 依目标与当前版本比较自动归类）。
 // 当前版本==目标 幂等返回 already-installed；降级须 allowDowngrade=true，否则要求用户确认。
 // 受理后后台 goroutine 执行 runInstall，进度经 "nanazip:operation-progress" 事件推送；
 // 已有操作在途时返回冲突错误。
 func (s *NanaZipService) InstallVersion(targetVersion string, allowDowngrade bool) (OperationAccepted, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationAccepted{}, gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimSpace(targetVersion)
-	before, err := s.GetPackageSnapshot()
+	before, err := s.snapshotWithTimeout()
 	if err != nil {
 		return OperationAccepted{}, err
 	}
@@ -114,7 +164,12 @@ func (s *NanaZipService) InstallVersion(targetVersion string, allowDowngrade boo
 
 // Uninstall 异步卸载当前用户的 NanaZip 注册（不动本地安装包缓存）。未安装时幂等返回 already-uninstalled。
 func (s *NanaZipService) Uninstall() (OperationAccepted, error) {
-	before, err := s.GetPackageSnapshot()
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationAccepted{}, gateErr
+	}
+	defer release()
+	before, err := s.snapshotWithTimeout()
 	if err != nil {
 		return OperationAccepted{}, err
 	}
@@ -131,6 +186,11 @@ func (s *NanaZipService) Uninstall() (OperationAccepted, error) {
 
 // Launch 激活已注册的 NanaZip 主应用（Query 确认存在后 Activate，30s 超时）。未安装返回错误。
 func (s *NanaZipService) Launch() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	pkg, err := s.packages.Query(ctx, packageIdentity)
@@ -145,6 +205,11 @@ func (s *NanaZipService) Launch() error {
 
 // RemoveCachedPackage 删除指定版本的可信包缓存；任何包操作在途时拒绝（缓存文件可能正被部署使用）。
 func (s *NanaZipService) RemoveCachedPackage(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	s.operationMu.Lock()
 	defer s.operationMu.Unlock()
 	if s.operation != nil {
@@ -289,8 +354,9 @@ func (s *NanaZipService) emitProgress(progress OperationProgress) {
 	}
 }
 
+// emitSnapshot 操作终态快照广播：后台 goroutine 直调路径，走未接门的内部快照版。
 func (s *NanaZipService) emitSnapshot() {
-	snapshot, err := s.GetPackageSnapshot()
+	snapshot, err := s.snapshotWithTimeout()
 	if err == nil {
 		if app := application.Get(); app != nil && app.Event != nil {
 			app.Event.Emit("nanazip:package-snapshot", snapshot)

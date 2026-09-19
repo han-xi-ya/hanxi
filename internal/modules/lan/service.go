@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"hanxi/internal/extapi"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
 	"hanxi/internal/settings"
@@ -46,24 +47,34 @@ type LanProgress struct {
 // LanService 局域网扫描服务。同一时刻仅允许一轮扫描：
 // scanning 原子标志做快速拒重入，cancelScan 记录在途扫描的取消函数（mu 保护读写），
 // 模块 OnDestroy/用户手动停止都经 Cancel 终止 goroutine 并释放 context。
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 停用/未安装模块的任何方法调用被拒，扫描在途期间停用会等待 drain。
 type LanService struct {
 	plat       platform.Platform
 	store      *settings.Store
 	cancelScan context.CancelFunc
 	scanning   atomic.Bool
 	mu         sync.Mutex
+	holder     *extapi.LeaseHolder
 }
 
-// NewLanService 装配平台能力与备注持久化；构造无副作用。
-func NewLanService(plat platform.Platform, store *settings.Store) *LanService {
+// NewLanService 装配平台能力、备注持久化与调用门持有器；构造无副作用。
+func NewLanService(plat platform.Platform, store *settings.Store, holder *extapi.LeaseHolder) *LanService {
 	return &LanService{
-		plat:  plat,
-		store: store,
+		plat:   plat,
+		store:  store,
+		holder: holder,
 	}
 }
 
 // GetSubnets 列出所有可用于扫描的候选网卡子网，支持常见掩码计算
 func (s *LanService) GetSubnets() ([]SubnetInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	adapters, err := s.plat.Network().Adapters()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get network adapters: %w", err)
@@ -102,6 +113,12 @@ func (s *LanService) GetSubnets() ([]SubnetInfo, error) {
 
 // SetRemark 保存 IP 或 MAC 的用户自定义备注
 func (s *LanService) SetRemark(key, remark string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	if s.store == nil {
 		return nil
 	}
@@ -211,6 +228,12 @@ func parseTargets(targetInput string) ([]string, error) {
 
 // Scan 执行并发网段/IP范围扫描
 func (s *LanService) Scan(targetRange string) ([]DeviceInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	if s.scanning.Swap(true) {
 		return nil, fmt.Errorf("scan already in progress")
 	}
@@ -381,8 +404,21 @@ func (s *LanService) Scan(targetRange string) ([]DeviceInfo, error) {
 	return foundDevices, nil
 }
 
-// Cancel 取消当前正在进行的扫描
-func (s *LanService) Cancel() {
+// Cancel 取消当前正在进行的扫描（前端 RPC 导出版：接调用门，停用后拒绝新调用）。
+func (s *LanService) Cancel() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	s.cancel()
+	return nil
+}
+
+// cancel 取消在途扫描的内部无门版：Module.OnDestroy 在 stopping 态必须无条件取消，
+// 不能经门（门此时恒拒），故与导出版拆分。
+func (s *LanService) cancel() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.cancelScan != nil {

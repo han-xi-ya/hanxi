@@ -55,8 +55,10 @@ func (s *MsgBoardService) applyHotkey(newKey string) error {
 }
 
 // onHotkey 热键回调（manager 保证在独立 goroutine 上派发，不占用任何消息泵线程）。
+// 走无门内部版 toggle()：热键绑定/注销随 start/stop 生命周期收口，
+// 回调线程不是 RPC 面，不得依赖调用门运行态。
 func (s *MsgBoardService) onHotkey() {
-	if err := s.Toggle(); err != nil {
+	if err := s.toggle(); err != nil {
 		slog.Warn("msgboard: 热键切换留言牌失败", "err", err)
 	}
 }

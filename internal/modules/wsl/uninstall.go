@@ -37,6 +37,12 @@ $n = @(Get-ChildItem 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss' -Err
 // 边界如实申明：不强删注册表、不触碰可选功能（另见 DisableWslFeatures）；
 // Lxss 历史发行版注册键属正规卸载器不管辖的残留，巡查后如实报告而非暗中删除。
 func (s *WslService) UninstallWsl() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -91,6 +97,12 @@ func (s *WslService) UninstallWsl() (OperationOutcome, error) {
 // 两条 dism 之间显式传播 $LASTEXITCODE：`;` 链的退出码只反映最后一条命令，
 // 曾因"第一条失败、第二条成功"被整体误报为成功（实机 UAC 窗口一闪而过的漏报事故）。
 func (s *WslService) EnableWslFeatures() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	inner := "dism /online /enable-feature /featurename:VirtualMachinePlatform /norestart; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; " +
 		"dism /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /norestart; exit $LASTEXITCODE"
 	out, err := s.elevProc(context.Background(), "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", inner)
@@ -106,6 +118,12 @@ func (s *WslService) EnableWslFeatures() (OperationOutcome, error) {
 // DisableWslFeatures 提权经 DISM 关闭两个可选功能（虚拟机平台 + WSL 旧功能开关），
 // 这是"把 Windows 自身被 WSL 改变的开关还原回去"的正道；/norestart 交由用户择机重启。
 func (s *WslService) DisableWslFeatures() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	inner := "dism /online /disable-feature /featurename:VirtualMachinePlatform /norestart; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; " +
 		"dism /online /disable-feature /featurename:Microsoft-Windows-Subsystem-Linux /norestart; exit $LASTEXITCODE"
 	out, err := s.elevProc(context.Background(), "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", inner)

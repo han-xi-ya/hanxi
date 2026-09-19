@@ -22,9 +22,13 @@ type Module struct {
 // New 在 app 装配期创建模块；条目由 settings.Store 持久化，构造无网络/窗口 IO。
 func New(store *settings.Store) extapi.Module {
 	return &Module{
-		svc: NewWebAppService(store, windows.OpenURL),
+		svc: NewWebAppService(store, windows.OpenURL, extapi.NewLeaseHolder(ID)),
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部 RPC 导出版经该门取 operation lease（停用后不得开网页窗，Wave 3）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。
 func (m *Module) Info() extapi.ModuleInfo {

@@ -13,6 +13,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"hanxi/internal/domain"
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/frpc/docgen"
 	"hanxi/internal/modules/frpc/instance"
 	"hanxi/internal/modules/frpc/version"
@@ -23,11 +24,16 @@ import (
 
 // FrpcService 向前端暴露 frp 版本管理与项目实例管理能力
 // （M4.1 版本管理 + M4.2 项目 CRUD + M4.3 多实例运行引擎）。
+// 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；实例引擎的
+// OnState/OnLog 回调（emitInstanceState/emitInstanceLog）是引擎 goroutine
+// 直调路径，刻意不接门；Shutdown 导出壳接门（纯 void 拒即早退），OnDestroy
+// 生命周期收口直调内部 shutdown()（见 ADR-0001 Wave 3 注记）。
 type FrpcService struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *frpcStore
 	engine  *instance.Manager
+	holder  *extapi.LeaseHolder
 
 	runDir     string // 实例配置落盘目录（RuntimeDir）
 	downloadMu sync.Mutex
@@ -37,12 +43,13 @@ type FrpcService struct {
 
 // NewFrpcService 装配版本管理器、项目 store 与多实例引擎。构造无 IO；
 // 实例引擎的事件回调指回本 service，因此 service 与 engine 生命周期必须一致（模块级单例）。
-func NewFrpcService(plat platform.Platform) *FrpcService {
+func NewFrpcService(plat platform.Platform, holder *extapi.LeaseHolder) *FrpcService {
 	paths := settings.GetPaths()
 	svc := &FrpcService{
 		plat:      plat,
 		manager:   version.NewManager(paths.VersionsDir()),
 		store:     newFrpcStore(paths.StateDir()),
+		holder:    holder,
 		runDir:    filepath.Join(paths.RuntimeDir(), "frpc"),
 		downloads: make(map[string]struct{}),
 	}
@@ -90,16 +97,31 @@ func (s *FrpcService) emitInstanceLog(projectID, line string) {
 
 // ListReleases 获取远程可用版本列表（GitHub 官方源 + 镜像回退，10 分钟缓存）
 func (s *FrpcService) ListReleases() ([]version.FrpRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 获取本地已安装版本列表
 func (s *FrpcService) ListInstalledVersions() ([]version.FrpVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
 // OpenDir 在系统文件管理器中打开 frpc.exe 所在目录。
 func (s *FrpcService) OpenDir(exePath string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	dir, err := resolveExeDir(exePath)
 	if err != nil {
 		return err
@@ -115,6 +137,11 @@ func (s *FrpcService) OpenDir(exePath string) error {
 // OpenConfigDir 打开 frpc 实例配置目录（Hanxi RuntimeDir/frpc，各项目启动时生成的 TOML 落盘处）。
 // frpc 为 CLI 托管无自有用户数据，此目录即 Hanxi 侧全部可看数据；自有目录缺失时先备后打开。
 func (s *FrpcService) OpenConfigDir() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	if err := os.MkdirAll(s.runDir, 0o755); err != nil {
 		return fmt.Errorf("无法准备实例配置目录: %v", err)
 	}
@@ -146,6 +173,11 @@ func resolveExeDir(exePath string) (string, error) {
 
 // DownloadVersion 后台下载指定版本：立即返回，全程经由事件 frpc:version-download 推送进度。
 func (s *FrpcService) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	targetVersion = "v" + targetVersion
 
@@ -194,6 +226,11 @@ func (s *FrpcService) DownloadVersion(targetVersion string) (string, error) {
 
 // ImportLocalFrpc 弹窗选择本地 frpc.exe 并导入（自动探测版本号）
 func (s *FrpcService) ImportLocalFrpc() (version.FrpVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.FrpVersionInfo{}, gateErr
+	}
+	defer release()
 	app := application.Get()
 	if app == nil || app.Dialog == nil {
 		return version.FrpVersionInfo{}, fmt.Errorf("dialog unavailable")
@@ -215,6 +252,11 @@ func (s *FrpcService) ImportLocalFrpc() (version.FrpVersionInfo, error) {
 
 // RemoveVersion 卸载已安装版本
 func (s *FrpcService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.manager.Remove(strings.TrimSpace(targetVersion))
 }
 
@@ -222,11 +264,21 @@ func (s *FrpcService) RemoveVersion(targetVersion string) error {
 
 // ListProjects 返回全部 frpc 项目
 func (s *FrpcService) ListProjects() ([]domain.Project, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.store.List()
 }
 
 // GetProject 按 ID 查询单个项目
 func (s *FrpcService) GetProject(id string) (*domain.Project, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	if err := s.store.LoadError(); err != nil {
 		return nil, err
 	}
@@ -239,6 +291,11 @@ func (s *FrpcService) GetProject(id string) (*domain.Project, error) {
 
 // SaveProject 新建或更新项目（空 ID 表示新建）
 func (s *FrpcService) SaveProject(p domain.Project) (domain.Project, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return domain.Project{}, gateErr
+	}
+	defer release()
 	p.ID = strings.TrimSpace(p.ID)
 	p.Name = strings.TrimSpace(p.Name)
 	if p.Name == "" && p.ID == "" {
@@ -259,8 +316,14 @@ func (s *FrpcService) SaveProject(p domain.Project) (domain.Project, error) {
 
 // DeleteProject 删除项目（若实例在运行则先停止再移除）
 func (s *FrpcService) DeleteProject(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	id = strings.TrimSpace(id)
-	if err := s.StopProject(id); err != nil {
+	// 已在门内，停进程走未接门的内部版，避免同一次调用重复占租约
+	if err := s.stopProject(id); err != nil {
 		slog.Warn("stop before delete failed", "project", id, "err", err)
 	}
 	// engine.Remove 为无返回值的实例表清理（Stop 已在上一步兜底），无错误可传播；
@@ -302,11 +365,21 @@ func (s *FrpcService) cleanupRuntimeConfigs() {
 
 // GenerateToml 生成项目配置的 TOML 预览文本（不落盘，供编辑页展示与校验）
 func (s *FrpcService) GenerateToml(p domain.Project) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return docgen.Generate(&p)
 }
 
 // ParseToml 从用户粘贴/导入的 frp TOML 配置解析回领域模型（兼容 v1.x 与 v0.x 格式）
 func (s *FrpcService) ParseToml(content string) (domain.Project, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return domain.Project{}, gateErr
+	}
+	defer release()
 	p, err := docgen.Parse(content)
 	if err != nil {
 		return domain.Project{}, err
@@ -327,6 +400,11 @@ func (s *FrpcService) projectLock(id string) *sync.Mutex {
 // StartProject 启动项目实例：解析绑定版本 → 生成 TOML 落盘 → 拉起 frpc.exe 并绑定 JobObject。
 // 启动后状态/日志经事件 frpc:instance-state / frpc:instance-log 持续推送。
 func (s *FrpcService) StartProject(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	id = strings.TrimSpace(id)
 	lock := s.projectLock(id)
 	lock.Lock()
@@ -382,6 +460,16 @@ func (s *FrpcService) StartProject(id string) error {
 
 // StopProject 停止项目实例（幂等），并清除生成的运行时临时配置。
 func (s *FrpcService) StopProject(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	return s.stopProject(id)
+}
+
+// stopProject StopProject 的内部共用版：不接调用门，供门内路径（DeleteProject）复用。
+func (s *FrpcService) stopProject(id string) error {
 	id = strings.TrimSpace(id)
 	lock := s.projectLock(id)
 	lock.Lock()
@@ -397,11 +485,21 @@ func (s *FrpcService) StopProject(id string) error {
 
 // ListInstanceStates 返回全部项目实例状态（含已停止的历史实例）。
 func (s *FrpcService) ListInstanceStates() ([]instance.Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.engine.AllSnapshots(), nil
 }
 
 // GetProjectLogs 拉取项目实例最近日志（lastN <= 0 返回全部缓冲）。
 func (s *FrpcService) GetProjectLogs(id string, lastN int) ([]string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	logs, err := s.engine.Logs(strings.TrimSpace(id), lastN)
 	if err != nil {
 		return nil, err
@@ -412,9 +510,21 @@ func (s *FrpcService) GetProjectLogs(id string, lastN int) ([]string, error) {
 	return logs, nil
 }
 
-// Shutdown 销毁实例引擎，终止所有正在运行的 frpc 子进程，
-// 并擦除运行时 TOML（含明文 token）——停用/退出路径不落敏感残留。
+// Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，
+// 拒绝即早退（Wave 3 口径：void 方法不改签名）。
 func (s *FrpcService) Shutdown() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
+	s.shutdown()
+}
+
+// shutdown 生命周期收口：销毁实例引擎，终止所有正在运行的 frpc 子进程，
+// 并擦除运行时 TOML（含明文 token）——停用/退出路径不落敏感残留。
+// 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）。
+func (s *FrpcService) shutdown() {
 	if s.engine != nil {
 		s.engine.Shutdown()
 	}

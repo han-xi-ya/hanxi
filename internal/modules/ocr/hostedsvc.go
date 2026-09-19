@@ -22,6 +22,11 @@ import (
 // ListHostedVersions 托管版本树清单（engineOrder 次序、engine 内版本降序），
 // 并标记当前生效版本（活跃引擎解析结果所在目录）。未安装返回空列表。
 func (s *OcrService) ListHostedVersions() ([]HostedVersion, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	if s.hosted == nil {
 		return nil, fmt.Errorf("托管版本树未接线")
 	}
@@ -40,6 +45,11 @@ func (s *OcrService) ListHostedVersions() ([]HostedVersion, error) {
 // 成功后：登记该引擎指向托管入口并记录版本；paddle 沿用"登记即激活"语义
 // （停旧起新/外部不越权判定收口 SetActiveEngine），wechat 仅登记不切换。
 func (s *OcrService) InstallHostedZip(srcPath string) (DropResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DropResult{}, gateErr
+	}
+	defer release()
 	if s.hosted == nil {
 		return DropResult{}, fmt.Errorf("托管版本树未接线")
 	}
@@ -113,6 +123,11 @@ func (s *OcrService) InstallHostedZip(srcPath string) (DropResult, error) {
 
 // InstallHostedZipDialog 对话框式安装（与拖放同一校验链；取消静默）。
 func (s *OcrService) InstallHostedZipDialog() (DropResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DropResult{}, gateErr
+	}
+	defer release()
 	app := application.Get()
 	if app == nil {
 		return DropResult{}, fmt.Errorf("应用实例不可用")
@@ -131,6 +146,11 @@ func (s *OcrService) InstallHostedZipDialog() (DropResult, error) {
 // 在用拒卸：托管/启动中实例的生效解析正落在该目录 → 拒绝并给指引。
 // 成功后该引擎登记件若指向被删目录则复位自动发现（解析链自愈/落回旧锚点）。
 func (s *OcrService) UninstallHostedVersion(engine, version string) (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	if s.hosted == nil {
 		return ControlOutcome{}, fmt.Errorf("托管版本树未接线")
 	}

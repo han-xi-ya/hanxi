@@ -45,8 +45,12 @@ type Module struct {
 
 // New 在 app 装配期创建模块（构造无 IO，重活延迟到 OnInit 与 service 方法）。
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewEarTrumpetService(plat)}
+	return &Module{svc: NewEarTrumpetService(plat, extapi.NewLeaseHolder(ID))}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务 RPC 方法经该门取 operation lease（Wave 3 调用门）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
 func (m *Module) Info() extapi.ModuleInfo {

@@ -17,6 +17,11 @@ import (
 // Installed 判定即时解析（登记件在位或自动发现锚点命中）；活跃引擎在线时
 // Version 以 /api/status 实测值优先（探测顺带回写注册表，见 probeStatus）。
 func (s *OcrService) GetEngines() ([]EngineInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	active := s.store.GetActiveEngine()
 	s.mu.Lock()
 	liveVersion := s.probe.version
@@ -56,6 +61,11 @@ func (s *OcrService) GetEngines() ([]EngineInfo, error) {
 //
 // 幂等：切到当前活跃引擎直接返回 already-active。
 func (s *OcrService) SetActiveEngine(id string) (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	id = strings.ToLower(strings.TrimSpace(id))
 	if !isKnownEngine(id) {
 		return ControlOutcome{}, fmt.Errorf("未知 OCR 引擎：%s（可选 wechat / paddle）", id)

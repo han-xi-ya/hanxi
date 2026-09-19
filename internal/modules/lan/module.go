@@ -22,9 +22,13 @@ type Module struct {
 // New 在 app 装配期创建模块；plat 提供网卡/邻居表能力，store 持久化设备备注。
 func New(plat platform.Platform, store *settings.Store) extapi.Module {
 	return &Module{
-		svc: NewLanService(plat, store),
+		svc: NewLanService(plat, store, extapi.NewLeaseHolder(ID)),
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务 RPC 方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。
 func (e *Module) Info() extapi.ModuleInfo {
@@ -66,8 +70,9 @@ func (e *Module) OnInit(ctx context.Context) error {
 }
 
 func (e *Module) OnDestroy() error {
-	// 停用模块时强制取消正在进行的任何扫描操作并释放上下文
-	e.svc.Cancel()
+	// 停用模块时强制取消正在进行的任何扫描操作并释放上下文。
+	// 走内部无门版：OnDestroy 执行时模块已 stopping，经门的 Cancel 会被拒导致取消失效。
+	e.svc.cancel()
 	return nil
 }
 

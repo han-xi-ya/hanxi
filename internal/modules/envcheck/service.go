@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/envcheck/detect"
 	"hanxi/internal/modules/envcheck/dotnetversion"
 	"hanxi/internal/modules/envcheck/gitversion"
@@ -26,7 +27,9 @@ type urlOpener interface {
 
 // EnvCheckService Wails 绑定服务：本机开发工具链探测、Git/Go/Node.js/Java/Python/.NET
 // 官网版本查询，以及目录内 npm 全局 CLI 工具（Claude Code、Codex 等）的一键安装/升级/卸载。
+// 全部业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
 type EnvCheckService struct {
+	holder         *extapi.LeaseHolder
 	opener         urlOpener
 	detectOne      func(context.Context, string) (detect.ToolInfo, error)
 	recentReleases func() ([]gitversion.Release, error)
@@ -40,8 +43,9 @@ type EnvCheckService struct {
 
 // NewEnvCheckService 装配探测与各官网版本源。字段全部为函数值注入（而非直连包函数），
 // 单测可逐个替换为假数据源；各版本源内部自带 TTL 缓存，这里不重复缓存。
-func NewEnvCheckService(opener urlOpener) *EnvCheckService {
+func NewEnvCheckService(opener urlOpener, holder *extapi.LeaseHolder) *EnvCheckService {
 	return &EnvCheckService{
+		holder:         holder,
 		opener:         opener,
 		detectOne:      detect.RunOne,
 		recentReleases: gitversion.RecentReleases,
@@ -55,17 +59,33 @@ func NewEnvCheckService(opener urlOpener) *EnvCheckService {
 }
 
 // DetectAll 并发探测全部已注册工具，同步返回完整列表（前端主入口）。
-func (s *EnvCheckService) DetectAll() []detect.ToolInfo {
-	return detect.RunAll(context.Background())
+// Wave 3 口径：单值绑定签名扩为 ([]detect.ToolInfo, error)，门拒绝如实上抛。
+func (s *EnvCheckService) DetectAll() ([]detect.ToolInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+	return detect.RunAll(context.Background()), nil
 }
 
 // Detect 按注册名探测单个工具（预留单卡刷新扩展），未知名返回错误。
 func (s *EnvCheckService) Detect(name string) (detect.ToolInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return detect.ToolInfo{}, gateErr
+	}
+	defer release()
 	return s.detectOne(context.Background(), name)
 }
 
 // GetGitForWindowsOverview 并发查询本机 Git 与官网近期稳定版本。
 func (s *EnvCheckService) GetGitForWindowsOverview() (gitversion.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gitversion.Overview{}, gateErr
+	}
+	defer release()
 	var (
 		local       detect.ToolInfo
 		localErr    error
@@ -105,11 +125,21 @@ func (s *EnvCheckService) GetGitForWindowsOverview() (gitversion.Overview, error
 
 // OpenGitForWindowsDownloadPage 使用系统默认浏览器打开固定官方下载页。
 func (s *EnvCheckService) OpenGitForWindowsDownloadPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.openURL("Git", gitversion.DownloadPageURL())
 }
 
 // GetGoOverview 并发查询本机 Go 与官网 Stable/Oldstable 版本。
 func (s *EnvCheckService) GetGoOverview() (goversion.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return goversion.Overview{}, gateErr
+	}
+	defer release()
 	local, channels, stale, fetchedAt, err := s.getChannelOverview("go", s.goChannels, goversion.Compare, goversion.VersionLine)
 	if err != nil {
 		return goversion.Overview{Local: local}, err
@@ -121,11 +151,21 @@ func (s *EnvCheckService) GetGoOverview() (goversion.Overview, error) {
 
 // OpenGoDownloadPage 使用系统默认浏览器打开固定 Go 官方下载页。
 func (s *EnvCheckService) OpenGoDownloadPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.openURL("Go", goversion.DownloadPageURL())
 }
 
 // GetNodeOverview 并发查询本机 Node.js 与官网 LTS/Current 版本。
 func (s *EnvCheckService) GetNodeOverview() (nodeversion.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nodeversion.Overview{}, gateErr
+	}
+	defer release()
 	local, channels, stale, fetchedAt, err := s.getChannelOverview("node", s.nodeChannels, nodeversion.Compare, nodeversion.VersionLine)
 	if err != nil {
 		return nodeversion.Overview{Local: local}, err
@@ -137,11 +177,21 @@ func (s *EnvCheckService) GetNodeOverview() (nodeversion.Overview, error) {
 
 // OpenNodeDownloadPage 使用系统默认浏览器打开固定 Node.js 官方下载页。
 func (s *EnvCheckService) OpenNodeDownloadPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.openURL("Node.js", nodeversion.DownloadPageURL())
 }
 
 // GetJavaOverview 并发查询本机 Java 与 Eclipse Temurin GA 版本。
 func (s *EnvCheckService) GetJavaOverview() (javaversion.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return javaversion.Overview{}, gateErr
+	}
+	defer release()
 	var (
 		local     detect.ToolInfo
 		localErr  error
@@ -179,11 +229,21 @@ func (s *EnvCheckService) GetJavaOverview() (javaversion.Overview, error) {
 
 // OpenJavaDownloadPage 使用系统默认浏览器打开固定 Temurin 下载页。
 func (s *EnvCheckService) OpenJavaDownloadPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.openURL("Eclipse Temurin", javaversion.DownloadPageURL())
 }
 
 // GetPythonOverview 查询本机 Python、Python.org 最新稳定版及本机受支持版本线。
 func (s *EnvCheckService) GetPythonOverview() (pythonversion.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return pythonversion.Overview{}, gateErr
+	}
+	defer release()
 	local, err := s.detectOne(context.Background(), "python")
 	if err != nil {
 		return pythonversion.Overview{}, fmt.Errorf("检测本机 Python 失败: %w", err)
@@ -217,6 +277,11 @@ func (s *EnvCheckService) GetPythonOverview() (pythonversion.Overview, error) {
 
 // OpenPythonDownloadPage 使用系统默认浏览器打开固定 Python 官方下载页。
 func (s *EnvCheckService) OpenPythonDownloadPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.openURL("Python", pythonversion.DownloadPageURL())
 }
 
@@ -224,6 +289,11 @@ func (s *EnvCheckService) OpenPythonDownloadPage() error {
 // 卡片展示版本为 SDK 优先，但通道关系统一使用运行时（Microsoft.NETCore.App）版本比较：
 // 官方 latest-runtime 是运行时编号体系（9.0.19），与 SDK 编号（9.0.100）不可直接比较。
 func (s *EnvCheckService) GetDotNetOverview() (dotnetversion.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return dotnetversion.Overview{}, gateErr
+	}
+	defer release()
 	var (
 		local     detect.ToolInfo
 		localErr  error
@@ -269,6 +339,11 @@ func (s *EnvCheckService) GetDotNetOverview() (dotnetversion.Overview, error) {
 
 // OpenDotNetDownloadPage 使用系统默认浏览器打开固定 .NET 官方下载页。
 func (s *EnvCheckService) OpenDotNetDownloadPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.openURL(".NET", dotnetversion.DownloadPageURL())
 }
 
@@ -318,6 +393,11 @@ var revealInExplorer = func(path string) error {
 // 前端只允许传注册名，路径由后端探测器基于实机 PATH 解析重新获得，
 // 不接受前端传入任意路径字符串，避免本模块被用作任意本地路径探测面。
 func (s *EnvCheckService) RevealToolPath(name string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	local, err := s.detectOne(context.Background(), strings.TrimSpace(name))
 	if err != nil {
 		return fmt.Errorf("探测 %s 失败: %w", name, err)
@@ -330,6 +410,11 @@ func (s *EnvCheckService) RevealToolPath(name string) error {
 
 // GetNpmToolsOverview 汇总目录内各 npm 全局 CLI：本机探测 × registry 最新版关系与安全提醒。
 func (s *EnvCheckService) GetNpmToolsOverview() (npmtool.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return npmtool.Overview{}, gateErr
+	}
+	defer release()
 	return s.npmOverview(context.Background())
 }
 
@@ -339,16 +424,31 @@ func (s *EnvCheckService) GetNpmToolsOverview() (npmtool.Overview, error) {
 // 本模块的"零执行面"哲学自此定向开洞——仅目录白名单内的 npm 命令、隐藏窗口、
 // 不提权、卸载须前端二次确认。长任务进度经 envcheck:npm-tool-* 事件流式回推。
 func (s *EnvCheckService) InstallNpmTool(id string) (npmtool.OperationAccepted, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return npmtool.OperationAccepted{}, gateErr
+	}
+	defer release()
 	return npmtool.Install(id)
 }
 
 // UpgradeNpmTool / UninstallNpmTool 与 InstallNpmTool 同款安全口径：id 必须是目录白名单键，
 // 实际包名与参数取自后端常量；异步执行返回受理回执，终态经事件推送。
 func (s *EnvCheckService) UpgradeNpmTool(id string) (npmtool.OperationAccepted, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return npmtool.OperationAccepted{}, gateErr
+	}
+	defer release()
 	return npmtool.Upgrade(id)
 }
 
 func (s *EnvCheckService) UninstallNpmTool(id string) (npmtool.OperationAccepted, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return npmtool.OperationAccepted{}, gateErr
+	}
+	defer release()
 	return npmtool.Uninstall(id)
 }
 

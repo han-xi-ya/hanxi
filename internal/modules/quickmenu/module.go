@@ -34,8 +34,12 @@ type Module struct {
 
 // New 返回具体 *Module（而非 extapi.Module 接口）：装配根需要 SetMainWindow 回填主窗引用。
 func New(store *settings.Store, registry *extapi.Registry) *Module {
-	return &Module{svc: NewQuickMenuService(store, registry)}
+	return &Module{svc: NewQuickMenuService(store, registry, extapi.NewLeaseHolder(ID))}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service RPC 导出版经该门取 operation lease；鼠标钩子协程与窗体事件走内部无门版（Wave 3）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
 func (m *Module) Info() extapi.ModuleInfo {

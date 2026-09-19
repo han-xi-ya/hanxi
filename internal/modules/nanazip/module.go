@@ -17,7 +17,13 @@ const ID = "nanazip"
 type Module struct{ svc *NanaZipService }
 
 // New 在 app 装配期创建模块（构造无 IO，包查询/操作全部延迟到 service 方法）。
-func New(plat platform.Platform) extapi.Module { return &Module{svc: NewNanaZipService(plat)} }
+func New(plat platform.Platform) extapi.Module {
+	return &Module{svc: NewNanaZipService(plat, extapi.NewLeaseHolder(ID))}
+}
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 业务方法经该门取 operation lease（Wave 3 调用门）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
 func (m *Module) Info() extapi.ModuleInfo {

@@ -38,8 +38,12 @@ type Module struct {
 
 // New 返回具体 *Module（全局热键开机即待命，装配根需常驻激活本模块）。
 func New(plat platform.Platform, paths *settings.Paths) *Module {
-	return &Module{svc: NewMsgBoardService(plat, paths)}
+	return &Module{svc: NewMsgBoardService(plat, paths, extapi.NewLeaseHolder(ID))}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service RPC 导出版经该门取 operation lease；热键/窗体事件走内部无门版（Wave 3）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。
 func (m *Module) Info() extapi.ModuleInfo {

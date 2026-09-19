@@ -23,9 +23,13 @@ type Module struct {
 // New 在 app 装配期创建模块；plat 仅用于"打开官网"类跳转，无其他资源。
 func New(plat platform.Platform) extapi.Module {
 	return &Module{
-		svc: NewEnvCheckService(plat),
+		svc: NewEnvCheckService(plat, extapi.NewLeaseHolder(ID)),
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。
 func (e *Module) Info() extapi.ModuleInfo {

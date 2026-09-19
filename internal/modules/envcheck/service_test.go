@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/envcheck/detect"
 	"hanxi/internal/modules/envcheck/gitversion"
 	"hanxi/internal/modules/envcheck/npmtool"
@@ -45,7 +46,7 @@ func TestGetGitForWindowsOverview(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := NewEnvCheckService(nil)
+			svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 			svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) { return tt.local, nil }
 			svc.recentReleases = func() ([]gitversion.Release, error) { return tt.releases, nil }
 			overview, err := svc.GetGitForWindowsOverview()
@@ -63,7 +64,7 @@ func TestGetGitForWindowsOverview(t *testing.T) {
 }
 
 func TestGetGitForWindowsOverviewRemoteFailureKeepsLocal(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	wantLocal := detect.ToolInfo{Name: "git", Version: "2.50.0", Status: detect.StatusInstalled}
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) { return wantLocal, nil }
 	svc.recentReleases = func() ([]gitversion.Release, error) { return nil, errors.New("offline") }
@@ -75,7 +76,7 @@ func TestGetGitForWindowsOverviewRemoteFailureKeepsLocal(t *testing.T) {
 }
 
 func TestGetGitForWindowsOverviewLocalFailure(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
 		return detect.ToolInfo{}, errors.New("unknown detector")
 	}
@@ -89,7 +90,7 @@ func TestGetGitForWindowsOverviewLocalFailure(t *testing.T) {
 
 func TestOpenGitForWindowsDownloadPage(t *testing.T) {
 	opener := &fakeOpener{}
-	svc := NewEnvCheckService(opener)
+	svc := NewEnvCheckService(opener, extapi.NewLeaseHolder(ID))
 	if err := svc.OpenGitForWindowsDownloadPage(); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +141,7 @@ func TestGetChannelOverviews(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := NewEnvCheckService(nil)
+			svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 			svc.detectOne = func(_ context.Context, name string) (detect.ToolInfo, error) {
 				if name != tt.tool {
 					t.Fatalf("tool=%q", name)
@@ -165,7 +166,7 @@ func TestGetChannelOverviews(t *testing.T) {
 
 func TestOpenGoAndNodeDownloadPages(t *testing.T) {
 	opener := &fakeOpener{}
-	svc := NewEnvCheckService(opener)
+	svc := NewEnvCheckService(opener, extapi.NewLeaseHolder(ID))
 	if err := svc.OpenGoDownloadPage(); err != nil || opener.url != "https://go.dev/dl/" {
 		t.Fatalf("go url=%q err=%v", opener.url, err)
 	}
@@ -175,7 +176,7 @@ func TestOpenGoAndNodeDownloadPages(t *testing.T) {
 }
 
 func TestGetChannelOverviewPrioritizesLocalLine(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
 		return detect.ToolInfo{Version: "1.25.12", Status: detect.StatusInstalled}, nil
 	}
@@ -198,7 +199,7 @@ func TestGetChannelOverviewPrioritizesLocalLine(t *testing.T) {
 }
 
 func TestGetNodeOverviewPrioritizesLocalLine(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
 		return detect.ToolInfo{Version: "v26.1.2", Status: detect.StatusInstalled}, nil
 	}
@@ -221,7 +222,7 @@ func TestGetNodeOverviewPrioritizesLocalLine(t *testing.T) {
 }
 
 func TestGetJavaOverviewPrioritizesFeatureLine(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
 		return detect.ToolInfo{
 			Version: "25.0.1+8", Status: detect.StatusInstalled,
@@ -244,7 +245,7 @@ func TestGetJavaOverviewPrioritizesFeatureLine(t *testing.T) {
 }
 
 func TestGetJavaOverviewVendorAware(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
 		return detect.ToolInfo{
 			Version: "21.0.5+11", Status: detect.StatusInstalled,
@@ -264,7 +265,7 @@ func TestGetJavaOverviewVendorAware(t *testing.T) {
 }
 
 func TestGetPythonOverviewChannels(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) {
 		return detect.ToolInfo{Version: "3.12.4", Status: detect.StatusInstalled}, nil
 	}
@@ -299,7 +300,7 @@ func TestRevealToolPath(t *testing.T) {
 		return nil
 	}
 
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	svc.detectOne = func(_ context.Context, name string) (detect.ToolInfo, error) {
 		switch name {
 		case "dotnet":
@@ -327,7 +328,7 @@ func TestRevealToolPath(t *testing.T) {
 
 func dotnetService(t *testing.T, local detect.ToolInfo) *EnvCheckService {
 	t.Helper()
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	svc.detectOne = func(context.Context, string) (detect.ToolInfo, error) { return local, nil }
 	svc.dotnetChannels = func() ([]remoteversion.Channel, bool, time.Time, error) {
 		return []remoteversion.Channel{
@@ -445,7 +446,7 @@ func TestGetDotNetOverview(t *testing.T) {
 
 func TestOpenDotNetDownloadPage(t *testing.T) {
 	opener := &fakeOpener{}
-	svc := NewEnvCheckService(opener)
+	svc := NewEnvCheckService(opener, extapi.NewLeaseHolder(ID))
 	if err := svc.OpenDotNetDownloadPage(); err != nil || opener.url != "https://dotnet.microsoft.com/download/dotnet" {
 		t.Fatalf("url=%q err=%v", opener.url, err)
 	}
@@ -453,7 +454,7 @@ func TestOpenDotNetDownloadPage(t *testing.T) {
 
 func TestOpenJavaAndPythonDownloadPages(t *testing.T) {
 	opener := &fakeOpener{}
-	svc := NewEnvCheckService(opener)
+	svc := NewEnvCheckService(opener, extapi.NewLeaseHolder(ID))
 	if err := svc.OpenJavaDownloadPage(); err != nil || opener.url != "https://adoptium.net/temurin/releases/" {
 		t.Fatalf("java url=%q err=%v", opener.url, err)
 	}
@@ -464,7 +465,7 @@ func TestOpenJavaAndPythonDownloadPages(t *testing.T) {
 
 // TestGetNpmToolsOverviewForwardsSeam 验证绑定方法经注入缝转发，不触真实探测/registry。
 func TestGetNpmToolsOverviewForwardsSeam(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	want := npmtool.Overview{Tools: []npmtool.ToolOverview{{Tool: npmtool.ToolBrief{Command: "claude", Display: "Claude Code"}}}}
 	svc.npmOverview = func(context.Context) (npmtool.Overview, error) { return want, nil }
 	got, err := svc.GetNpmToolsOverview()
@@ -476,7 +477,7 @@ func TestGetNpmToolsOverviewForwardsSeam(t *testing.T) {
 // TestNpmToolOperationsRejectUnknownID 覆盖安全红线：非目录 ID 一律同步拒绝，
 // 不经 lookNpm/执行层（此路径在无 npm 的 CI 上亦成立）。
 func TestNpmToolOperationsRejectUnknownID(t *testing.T) {
-	svc := NewEnvCheckService(nil)
+	svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
 	if _, err := svc.UninstallNpmTool("nope"); err == nil {
 		t.Fatal("unknown id should error")
 	}

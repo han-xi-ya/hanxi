@@ -29,6 +29,11 @@ const minSingleExeBytes = 35 << 20
 // 校验失败不置 error（属业务结果），统一折进 DropResult.Message 并广播
 // ocr:file-drop-result 事件；取消对话框等无操作场景不发事件。
 func (s *OcrService) ImportServiceExe(srcPath string) (DropResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DropResult{}, gateErr
+	}
+	defer release()
 	p := strings.TrimSpace(srcPath)
 	if p == "" {
 		return s.dropResultFail("import", "未收到文件路径"), nil
@@ -82,6 +87,11 @@ func (s *OcrService) ImportServiceExe(srcPath string) (DropResult, error) {
 // 在跑的托管实例会停旧起新，外部实例占位时只登记不切换（不越权）。
 // 回执与事件复用 ocr:file-drop-result（Kind=import）。
 func (s *OcrService) ImportPaddleDir(srcDir string) (DropResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DropResult{}, gateErr
+	}
+	defer release()
 	p := strings.TrimSpace(srcDir)
 	if p == "" {
 		return s.dropResultFail("import", "未收到目录路径"), nil
@@ -150,6 +160,11 @@ func (s *OcrService) ImportPaddleDir(srcDir string) (DropResult, error) {
 // ImportPaddleDirDialog 目录选择框式导入 PP-OCR 引擎包（系统文件夹框为原生
 // 能力，拖放之外的通道；取消返回空回执）。选定后走 ImportPaddleDir 同一套校验。
 func (s *OcrService) ImportPaddleDirDialog() (DropResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DropResult{}, gateErr
+	}
+	defer release()
 	app := application.Get()
 	if app == nil {
 		return DropResult{}, fmt.Errorf("应用实例不可用")
@@ -165,6 +180,11 @@ func (s *OcrService) ImportPaddleDirDialog() (DropResult, error) {
 
 // ImportServiceExeDialog 对话框式导入（与拖放共用同一套校验）。取消返回空回执。
 func (s *OcrService) ImportServiceExeDialog() (DropResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DropResult{}, gateErr
+	}
+	defer release()
 	path, err := s.BrowseServiceExeDialog()
 	if err != nil {
 		return DropResult{}, err
@@ -179,10 +199,18 @@ func (s *OcrService) ImportServiceExeDialog() (DropResult, error) {
 // 标记 data-file-drop-target 元素上的文件才会到达）。分流：.zip → 托管安装包
 // （F7：契约校验后自动解压落位）；目录 → PP-OCR 引擎包导入；.exe → 微信件导入；
 // 图片 → 真实路径直接选为待识别对象（免走 dataURL 全量 IPC）；其余给中文提示。
+// 事件窗口直调、纯 void 绑定方法：接门是对的——停用/未安装模块的文件落放应被拒，
+// 拒绝即早退（Wave 3 口径：void 不改签名，落日志便于排障）；放行后经门转发各导入链。
 func (s *OcrService) HandleNativeDrop(files []string) {
 	if len(files) == 0 {
 		return
 	}
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		slog.Warn("调用门拒绝主窗文件落放（OCR 模块未启用、未安装或停用中）", "err", gateErr, "files", len(files))
+		return
+	}
+	defer release()
 	src := strings.TrimSpace(files[0])
 	ext := strings.ToLower(filepath.Ext(src))
 	// F7 托管安装通道：.zip 引擎安装包（校验链与错误回执收口 InstallHostedZip）

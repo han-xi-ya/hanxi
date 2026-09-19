@@ -26,6 +26,11 @@ const (
 // 成功后弹悬浮卡并按开关自动复制文字。业务失败以中文 error 返回
 // （命令派发链路与前端按钮的提示系统会接住）；用户放弃选区静默返回 Cancelled。
 func (s *OcrService) SnipAndRecognize() (SnipResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return SnipResult{}, gateErr
+	}
+	defer release()
 	if !s.snipMu.TryLock() {
 		return SnipResult{}, fmt.Errorf("截屏识别正在进行中，请稍候")
 	}
@@ -64,6 +69,11 @@ func (s *OcrService) SnipAndRecognize() (SnipResult, error) {
 // 贴 snipaste 工作流）。成功后悬浮卡 + 按开关自动复制。
 // 歧义处理：GrabImage 只认图像格式，复制的文字/文件一律如实报"剪贴板中无图片"。
 func (s *OcrService) RecognizeClipboardImage() (SnipResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return SnipResult{}, gateErr
+	}
+	defer release()
 	if !s.snipMu.TryLock() {
 		return SnipResult{}, fmt.Errorf("识别正在进行中，请稍候")
 	}

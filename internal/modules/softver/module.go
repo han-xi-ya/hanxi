@@ -17,8 +17,12 @@ type Module struct {
 }
 
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewSoftverService(plat)}
+	return &Module{svc: NewSoftverService(plat, extapi.NewLeaseHolder(ID))}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 业务方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/wsl/usbipd"
 )
 
@@ -113,6 +114,7 @@ func newUSBFakeService(t *testing.T, cli usbCLI, runWsl func(context.Context, ..
 	t.Helper()
 	ev := &fakeElevated{out: OperationOutcome{Success: true, Message: "ok"}}
 	svc := &WslService{
+		holder: extapi.NewLeaseHolder(ID),
 		opener: &fakeOpener{},
 		elevProc: func(ctx context.Context, file string, args ...string) (OperationOutcome, error) {
 			out, err := ev.run(ctx, file, args...)

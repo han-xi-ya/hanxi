@@ -85,6 +85,12 @@ type ExportRecord struct {
 // Lxss 注册表补安装路径与 VHDX 占用。任何一路取数失败都不谎报：
 // 缺失字段留空、状态回退 -l -v 原文判读，列表本体拿不到才报错。
 func (s *WslService) ListInstances() ([]DistroInstance, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), listInstancesTimeout)
 	defer cancel()
 
@@ -311,6 +317,12 @@ var errDistroBusy = fmt.Errorf("该发行版或 WSL 子系统有操作正在进�
 // 刻意不做后台保活——WSL 无前台进程时自动停机是平台语义，
 // 塞一个野生的 sleep 进程换"常亮"状态，生命周期没人收尸，得不偿失。
 func (s *WslService) OpenTerminal(name string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), openTerminalTimeout)
 	defer cancel()
@@ -344,6 +356,12 @@ func openDistroFolderExplorer(_ context.Context, name string) error {
 // 持有目录句柄期间 9P 会话活跃不会被空闲停机，关窗后按平台语义自然回落。
 // 与唤终端同属"只读外呼"：免确认、免单飞闸（无状态改动可竞）。
 func (s *WslService) OpenDistroFolder(name string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), openFolderTimeout)
 	defer cancel()
@@ -376,6 +394,12 @@ func (s *WslService) OpenDistroFolder(name string) (DistroOpResult, error) {
 // （见 OpenTerminal 注释），回执如实讲清，不拿保活假装"常亮运行"。
 // 探针走 runWsl（HideWindow 捕获输出）而非 startTerm：重启不该弹终端窗口。
 func (s *WslService) RestartDistro(name string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), restartDistroTimeout)
 	defer cancel()
@@ -437,6 +461,12 @@ func (s *WslService) waitDistroStopped(ctx context.Context, key string) error {
 
 // TerminateDistro 终止发行版（wsl --terminate，用户态命令，数据无损、幂等）。
 func (s *WslService) TerminateDistro(name string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), terminateDistroTimeout)
 	defer cancel()
@@ -456,6 +486,12 @@ func (s *WslService) TerminateDistro(name string) (DistroOpResult, error) {
 
 // SetDefaultDistro 设默认发行版（wsl --set-default，用户态命令）。
 func (s *WslService) SetDefaultDistro(name string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), setDefaultTimeout)
 	defer cancel()
@@ -478,6 +514,12 @@ func (s *WslService) SetDefaultDistro(name string) (DistroOpResult, error) {
 // 发行版直接 unregister 可能长时间挂起；terminate 失败不拦路（本就停止则
 // 是幂等空转），unregister 的成败以退出码与输出如实上报。
 func (s *WslService) UnregisterDistro(name string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), unregisterTimeout)
 	defer cancel()
@@ -547,6 +589,12 @@ var exportDir = func() string { return filepath.Join(downloadDir(), exportDirNam
 // 同名不覆盖——不收前端路径参数，杜绝本接口被当任意写盘面。
 // 长操作同步等待（重型通道 30 分钟护栏），失败清理半成品文件并如实报因。
 func (s *WslService) ExportDistro(name string, gzip bool) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
@@ -604,7 +652,13 @@ func (s *WslService) exportCore(ctx context.Context, name string, gzip bool, dir
 
 // ListDistroExports 返回本会话全部导出工件登记（新→旧）。
 // 登记只在内存：跨会话的旧工件到「下载\WSL 导出」文件夹自查。
-func (s *WslService) ListDistroExports() []ExportRecord {
+func (s *WslService) ListDistroExports() ([]ExportRecord, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	s.mu.Lock()
 	out := make([]ExportRecord, 0, len(s.exportRecords))
 	for _, r := range s.exportRecords {
@@ -612,12 +666,18 @@ func (s *WslService) ListDistroExports() []ExportRecord {
 	}
 	s.mu.Unlock()
 	slices.SortFunc(out, func(a, b ExportRecord) int { return strings.Compare(b.At, a.At) })
-	return out
+	return out, nil
 }
 
 // RevealDistroExport 在资源管理器中定位导出产物；只认本会话后端自己登记过的
 // 工件名（RevealDownload 同款红线：不接受任意路径）。
 func (s *WslService) RevealDistroExport(id string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	id = strings.TrimSpace(id)
 	if !exportIDRe.MatchString(id) {
 		return fmt.Errorf("导出文件名 %q 格式不合法", id)
@@ -711,6 +771,12 @@ func validMovePath(p string) bool {
 // 重试至多 5 次 → $LASTEXITCODE 逐层传播（#37 红线：绝不"执行完毕"式假成功）。
 // 提权理由与参考项目一致：WSL 2.7.8+ 不提权移动常撞 E_ACCESSDENIED。
 func (s *WslService) MoveDistro(name, target string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name = strings.TrimSpace(name)
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()

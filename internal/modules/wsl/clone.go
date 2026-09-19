@@ -68,6 +68,12 @@ func (s *WslService) validateNewDistroName(ctx context.Context, newName string) 
 // CloneDistro 克隆发行版。校验全同步（失败即时报错），拷贝/导入转后台协程
 // 推 wsl:clone 事件——数十 GB 的盘对拷不该吊死一次 RPC。
 func (s *WslService) CloneDistro(name, newName, target string) (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
 	name, newName = strings.TrimSpace(name), strings.TrimSpace(newName)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -246,6 +252,12 @@ func (s *WslService) runClone(parent context.Context, name, newName, vhdx, destD
 // 同源复用 underDir）。同步等待（wsl --import 内部完成解包，数十分钟级），
 // 成功后复验在册。
 func (s *WslService) ImportDistro(name, target, tarPath string) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name, tarPath = strings.TrimSpace(name), strings.TrimSpace(filepath.Clean(tarPath))
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
@@ -292,6 +304,12 @@ var vhdxExtRe = regexp.MustCompile(`(?i)\.(vhd|vhdx)$`)
 //
 // 两形态都要求 WSL 2.7.3+（vhdxMinVersion，与克隆同闸）；盘须 ext4 文件系统格式。
 func (s *WslService) ImportDistroVhd(name, location, vhdxPath string, copyToLocation bool) (DistroOpResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return DistroOpResult{}, gateErr
+	}
+	defer release()
+
 	name, vhdxPath = strings.TrimSpace(name), strings.TrimSpace(filepath.Clean(vhdxPath))
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
@@ -344,6 +362,12 @@ func (s *WslService) ImportDistroVhd(name, location, vhdxPath string, copyToLoca
 // PickDistroImageDialog 打开系统文件选择框为「添加实例」挑镜像源：
 // kind = "vhdx" 过滤发行盘，其余按 rootfs tar 过滤；取消返回空串不报错。
 func (s *WslService) PickDistroImageDialog(kind string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+
 	app := application.Get()
 	if app == nil {
 		return "", fmt.Errorf("应用实例不可用，请直接手动填写路径")
@@ -369,6 +393,12 @@ func (s *WslService) PickDistroImageDialog(kind string) (string, error) {
 // 场景——目录通常不存在也要能选中父级，故用目录框而非手拼路径）。取消返回空串
 // 不报错；宿主不可用时如实报错，前端指路手填。
 func (s *WslService) PickFolderDialog(title string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+
 	app := application.Get()
 	if app == nil {
 		return "", fmt.Errorf("应用实例不可用，请直接手动填写路径")

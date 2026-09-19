@@ -11,6 +11,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/douzy/version"
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
@@ -24,20 +25,23 @@ import (
 // 刻意窄于 ccswitch/rustdesk 等托管模块：本模块**不做进程托管**——
 // 仅"列版本 → 下载官方安装包 → sha256 校验 → 拉起上游安装向导（发射后不管）"。
 // 原因见 version 包注释：桌面版内测、Electron 壳闭源、Windows 仅 NSIS 安装版。
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
 type DouzyService struct {
 	plat    platform.Platform
 	manager *version.Manager
+	holder  *extapi.LeaseHolder
 
 	downloadMu sync.Mutex
 	downloads  map[string]struct{}
 }
 
 // NewDouzyService 装配版本管理器与下载槽位；构造无 IO（store/引擎由后续流程按形态创建）。
-func NewDouzyService(plat platform.Platform) *DouzyService {
+func NewDouzyService(plat platform.Platform, holder *extapi.LeaseHolder) *DouzyService {
 	paths := settings.GetPaths()
 	return &DouzyService{
 		plat:      plat,
 		manager:   version.NewManager(paths.VersionsDir()),
+		holder:    holder,
 		downloads: make(map[string]struct{}),
 	}
 }
@@ -46,11 +50,21 @@ func NewDouzyService(plat platform.Platform) *DouzyService {
 
 // ListReleases 获取远程可用版本列表（多镜像回退，10 分钟缓存，按上游发布顺序新在前）。
 func (s *DouzyService) ListReleases() ([]version.DouzyRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 获取本地已下载安装包列表（按版本数值降序，最新在前）。
 func (s *DouzyService) ListInstalledVersions() ([]version.DouzyVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	list, err := s.manager.ListInstalled()
 	if err != nil {
 		return nil, err
@@ -64,6 +78,11 @@ func (s *DouzyService) ListInstalledVersions() ([]version.DouzyVersionInfo, erro
 // DownloadVersion 后台下载指定版本安装包：立即返回，全程经事件 douzy:version-download 推送进度。
 // 返回 "started" / "in-progress" / "already-installed"，语义与 ccswitch 对齐供前端复用。
 func (s *DouzyService) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 
 	s.downloadMu.Lock()
@@ -113,6 +132,11 @@ func (s *DouzyService) DownloadVersion(targetVersion string) (string, error) {
 // 与托管引擎无关：不 Wait、不绑 JobObject、不探测生命周期——UAC 授权与向导
 // 全程由用户操作，Hanxi 只负责"把包交出去"。安装结果本模块无从得知（壳闭源）。
 func (s *DouzyService) LaunchInstaller(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	exe, err := s.manager.InstallerPath(targetVersion)
 	if err != nil {
@@ -128,6 +152,11 @@ func (s *DouzyService) LaunchInstaller(targetVersion string) error {
 
 // RemoveVersion 删除指定版本的已下载安装包目录。
 func (s *DouzyService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	return s.manager.Remove(targetVersion)
 }
@@ -138,16 +167,31 @@ func (s *DouzyService) RemoveVersion(targetVersion string) error {
 // 收口至 windows.RevealDir：非空与目录存在性校验及中文报错内置，explorer.exe <dir> 直启；
 // 刻意不走 explorer.exe <file> 的"执行"语义（markeron「打开安装目录」按钮的事故教训）。
 func (s *DouzyService) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return windows.RevealDir(dir)
 }
 
 // RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
 func (s *DouzyService) RepositoryURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.RepoURL(), nil
 }
 
 // OpenRepository 用默认浏览器打开上游仓库页面。
 func (s *DouzyService) OpenRepository() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.RepoURL())
 }
 

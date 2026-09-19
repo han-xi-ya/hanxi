@@ -1,27 +1,41 @@
 package wifi
 
-import "log/slog"
+import (
+	"log/slog"
 
-// WifiService Wails 绑定服务：查看本机已保存的 Wi-Fi 密码
-type WifiService struct{}
+	"hanxi/internal/extapi"
+)
+
+// WifiService Wails 绑定服务：查看本机已保存的 Wi-Fi 密码。
+// 业务方法经 holder.Enter() 接入统一调用门（Wave 3）；门拒绝如实上抛 error，
+// 禁止回空表静默消化（Wave 3 口径）。
+type WifiService struct {
+	holder *extapi.LeaseHolder
+}
 
 // NewWifiService 创建无状态查询服务（每次调用即时执行 netsh，不缓存明文密码）。
-func NewWifiService() *WifiService {
-	return &WifiService{}
+func NewWifiService(holder *extapi.LeaseHolder) *WifiService {
+	return &WifiService{holder: holder}
 }
 
 // ListProfiles 直接获取全部 WiFi 名称与明文密码。
-// 绑定签名只回传列表（无 error 通道），故枚举失败与"本机确无已保存配置"在返回值上
-// 都表现为空表——前端无从分辨；这里把失败原因落到日志（含 netsh 报错原文），
-// 排障时看 slog 即可判定是 WLAN 服务/权限问题还是真的一个配置都没有。
-func (s *WifiService) ListProfiles() []Profile {
+// Wave 3 口径：门拒绝如实上抛（前端以错误提示呈现），不回空表。
+// netsh 枚举失败仍按既有约定落日志回空表（"WLAN 服务/权限问题 vs 确无配置"
+// 看 slog 分辨），该语义先于调用门存在，本次不动。
+func (s *WifiService) ListProfiles() ([]Profile, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	profiles, err := GetAllWiFiPasswords()
 	if err != nil {
 		slog.Warn("枚举已保存的 Wi-Fi 配置失败，前端将看到空列表（并非无配置）", "err", err)
-		return []Profile{}
+		return []Profile{}, nil
 	}
 	if len(profiles) == 0 {
 		slog.Debug("本机无已保存的 Wi-Fi 配置")
 	}
-	return profiles
+	return profiles, nil
 }

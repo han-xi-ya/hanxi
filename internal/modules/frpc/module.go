@@ -22,8 +22,12 @@ type Module struct {
 
 // New 在 app 装配期创建模块（构造无 IO；实例进程均由 service 方法按需拉起）。
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewFrpcService(plat)}
+	return &Module{svc: NewFrpcService(plat, extapi.NewLeaseHolder(ID))}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 业务方法经该门取 operation lease（Wave 3 调用门）。
+func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Info 返回模块元信息。
 func (e *Module) Info() extapi.ModuleInfo {
@@ -45,7 +49,7 @@ func (e *Module) Nav() []extapi.NavEntry {
 }
 
 // 以下方法实现 extapi.Module 契约，逐项语义见接口文档。
-// OnDestroy 经 svc.Shutdown 收敛全部 frpc 子进程/日志流 goroutine，停用后不得有残留。
+// OnDestroy 经 svc.shutdown 收敛全部 frpc 子进程/日志流 goroutine，停用后不得有残留。
 func (e *Module) Services() []extapi.Service {
 	return []extapi.Service{
 		application.NewService(e.svc),
@@ -60,7 +64,8 @@ func (e *Module) OnInit(ctx context.Context) error {
 }
 
 func (e *Module) OnDestroy() error {
-	e.svc.Shutdown()
+	// 装配布线:Go 直调路径,不得依赖运行态（见 ADR-0001 Wave 3 注记）
+	e.svc.shutdown()
 	return nil
 }
 

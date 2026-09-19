@@ -63,17 +63,21 @@ type QuickMenuService struct {
 	popupClosing func() // WindowClosing 拦截 hook 的注销闭包（销毁前摘除，放行 Close 走 Wails 内部销毁路径）
 	popupIdle    *time.Timer
 	trap         *mousetrap.Trap
+	holder       *extapi.LeaseHolder
 }
 
 // NewQuickMenuService 装配常驻单例服务：条目派发器复用 internal/launcher（与托盘菜单同语义），
 // navigateMain 回调用于 route 条目唤起主窗口；构造无 IO，钩子与弹窗由 start 懒建。
-func NewQuickMenuService(store *settings.Store, registry *extapi.Registry) *QuickMenuService {
-	s := &QuickMenuService{store: store, registry: registry}
+// RPC 导出版方法经 holder 接入统一调用门（Wave 3）；钩子协程（consumeEvents →
+// showAt/dismissIfOutside）与窗体事件（Closing/LostFocus → hidePopup）走内部无门版。
+func NewQuickMenuService(store *settings.Store, registry *extapi.Registry, holder *extapi.LeaseHolder) *QuickMenuService {
+	s := &QuickMenuService{store: store, registry: registry, holder: holder}
 	s.disp = launcher.New(registry, store, s.navigateMain)
 	return s
 }
 
 // SetMainWindow 注入主窗口引用（装配根在窗口创建后调用一次）。
+// 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门。
 func (s *QuickMenuService) SetMainWindow(win *application.WebviewWindow) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -386,22 +390,42 @@ func (s *QuickMenuService) navigateMain(route string) {
 // ---------- 前端绑定 API ----------
 
 // GetStatus 返回快捷菜单运行态（模块页展示 + 二级轮盘开关回显）。
-func (s *QuickMenuService) GetStatus() Status {
+func (s *QuickMenuService) GetStatus() (Status, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Status{}, gateErr
+	}
+	defer release()
+
 	return Status{
 		TrapActive: s.trapActive(),
 		HoldMs:     int(triggerHold / time.Millisecond),
 		MoveTol:    triggerMove,
 		ItemCount:  len(s.wheelView()),
 		TwoTier:    s.twoTierOn(),
-	}
+	}, nil
 }
 
 // GetTwoTier 返回二级轮盘开关状态（模块页独立读取用）。
-func (s *QuickMenuService) GetTwoTier() bool { return s.twoTierOn() }
+func (s *QuickMenuService) GetTwoTier() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
+
+	return s.twoTierOn(), nil
+}
 
 // SetTwoTier 保存二级轮盘开关：开启时分组扇区点击展开子盘，关闭时分组子条目
 // 拍平进主盘。热生效——弹窗每次唤出都经 wheelView 重算，无需重启。
 func (s *QuickMenuService) SetTwoTier(on bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	if s.store == nil {
 		return fmt.Errorf("配置存储不可用")
 	}
@@ -457,7 +481,13 @@ func enabledLeaves(items []settings.TrayMenuItem) []settings.TrayMenuItem {
 
 // ListItems 返回弹窗菜单条目树（复用托盘配置中启用的条目，展示序即索引序；
 // 二级轮盘关闭时 group 已被拍平，树只有一层）。
-func (s *QuickMenuService) ListItems() []MenuItem {
+func (s *QuickMenuService) ListItems() ([]MenuItem, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
+
 	view := s.wheelView()
 	out := make([]MenuItem, 0, len(view))
 	for i, node := range view {
@@ -468,7 +498,7 @@ func (s *QuickMenuService) ListItems() []MenuItem {
 		}
 		out = append(out, mi)
 	}
-	return out
+	return out, nil
 }
 
 // menuItem 把配置条目解析为一个轮盘扇区视图模型（Index 为所在层展示序）。
@@ -514,6 +544,12 @@ func (s *QuickMenuService) resolveIcon(item settings.TrayMenuItem) string {
 // 拒绝）。与 ListItems 共用 wheelView，索引一致。先收起弹窗给即时反馈，派发进
 // goroutine，失败统一走通知 Hub（与托盘失败反馈同构）。
 func (s *QuickMenuService) Launch(path []int) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	if len(path) == 0 {
 		return fmt.Errorf("未指定菜单条目")
 	}
@@ -537,7 +573,7 @@ func (s *QuickMenuService) Launch(path []int) error {
 	}
 	item := node.item
 
-	s.Dismiss()
+	s.dismiss() // 内部无门版：本调用已持门租约，不再二次入账
 	go func() {
 		if err := s.disp.Dispatch(context.Background(), item); err != nil {
 			slog.Warn("quickmenu: launch failed", "type", item.Type, "ref", item.Ref, "err", err)
@@ -553,13 +589,33 @@ func (s *QuickMenuService) Launch(path []int) error {
 }
 
 // OpenSettings 引导至设置页托盘菜单配置区（弹窗空态的"去配置"动作），并收起弹窗。
-func (s *QuickMenuService) OpenSettings() {
+func (s *QuickMenuService) OpenSettings() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
 	s.navigateMain("/settings")
-	s.Dismiss()
+	s.dismiss()
+	return nil
 }
 
-// Dismiss 收起弹窗（前端 Esc / 空背景点击调用），并武装空闲销毁。
-func (s *QuickMenuService) Dismiss() {
+// Dismiss 收起弹窗（前端 Esc / 空背景点击调用的 RPC 导出版：接统一调用门），并武装空闲销毁。
+func (s *QuickMenuService) Dismiss() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	s.dismiss()
+	return nil
+}
+
+// dismiss 收起弹窗的内部无门版：供带门方法内部复用（避免同一调用链重复入账）。
+// 窗体事件（Closing/LostFocus/点击外部）本就直接走 hidePopup，不经此入口。
+func (s *QuickMenuService) dismiss() {
 	s.hidePopup()
 }
 

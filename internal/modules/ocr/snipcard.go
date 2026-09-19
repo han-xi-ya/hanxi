@@ -113,14 +113,26 @@ func (s *OcrService) cardResult() SnipResult {
 
 // GetSnipResult 卡片挂载/刷新时拉取当前结果（事件双保险，常驻窗体不漏帧）。
 // found 仅在存在成功结果时为真——取消帧不进卡片通道（showSnipCard 只在成功时调用）。
-func (s *OcrService) GetSnipResult() (SnipResult, bool) {
+// Wave 3 口径：补 error 通道，门拒绝如实上抛，禁止回 (空, false) 伪造"暂无结果"
+// （前端 resolve 仍为 [result, found] 数组，语义不变）。
+func (s *OcrService) GetSnipResult() (SnipResult, bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return SnipResult{}, false, gateErr
+	}
+	defer release()
 	res := s.cardResult()
-	return res, res.Ok
+	return res, res.Ok, nil
 }
 
 // SnipCopyText 手动复制卡片全文（Go 代理写剪贴板，绕开 webview 安全上下文
 // 限制），成功后收起卡片。
 func (s *OcrService) SnipCopyText() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	res := s.cardResult()
 	if strings.TrimSpace(res.Text) == "" {
 		return fmt.Errorf("没有可复制的识别文字")
@@ -135,7 +147,13 @@ func (s *OcrService) SnipCopyText() error {
 // CardDragStart 拖拽把手 mousedown 调用：进入跟手移动会话（重入忽略）。
 // Wails beta.10 没有拖拽区 API（v2 SetDragRegion 已移除），原生轮询实现见
 // card_windows.go；结束走 CardDragEnd 与左键态检测双通道。
+// 纯 void 绑定方法：Wave 3 口径——拒绝即早退，不改签名。
 func (s *OcrService) CardDragStart() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
 	s.cardMu.Lock()
 	card := s.card
 	s.cardMu.Unlock()
@@ -143,7 +161,14 @@ func (s *OcrService) CardDragStart() {
 }
 
 // CardDragEnd 拖拽把手 mouseup 调用：结束跟手移动会话（幂等）。
+// 纯 void 绑定方法：Wave 3 口径——拒绝即早退，不改签名；
+// 模块停用中拖拽会话已由窗口侧收口。
 func (s *OcrService) CardDragEnd() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
 	s.cardDragMu.Lock()
 	if s.cardDragStop != nil {
 		close(s.cardDragStop)
@@ -153,7 +178,13 @@ func (s *OcrService) CardDragEnd() {
 }
 
 // SnipCardDismiss 收起悬浮卡（前端关闭钮/Esc 调用；只隐藏不销毁）。
+// 纯 void 绑定方法：Wave 3 口径——拒绝即早退，不改签名。
 func (s *OcrService) SnipCardDismiss() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
 	s.cardMu.Lock()
 	card := s.card
 	s.cardMu.Unlock()
