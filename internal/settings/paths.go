@@ -40,14 +40,18 @@ const guideSuffix = "Hanxi 不会把数据目录静默挪进用户目录。处�
 
 // Paths 数据目录布局快照，字段在 InitPaths 时一次性解析，之后只读，可并发访问。
 type Paths struct {
-	mode        Mode
-	baseDir     string
-	configDir   string
-	dataDir     string
-	stateDir    string
-	logsDir     string
-	versionsDir string
-	runtimeDir  string
+	mode               Mode
+	baseDir            string
+	configDir          string
+	dataDir            string
+	stateDir           string
+	logsDir            string
+	versionsDir        string
+	runtimeDir         string
+	modulesDir         string
+	modulesReceiptsDir string
+	modulesJournalsDir string
+	installersDir      string
 	// initErr 数据根解析失败原因（fail loud 载体）；为 nil 时布局可用。
 	// 装配根必须在启动最早处检查并 ExitWithBindingGuide，不允许带病继续。
 	initErr error
@@ -243,23 +247,34 @@ func isHanxiDataRoot(dir string) bool {
 // buildPaths 按数据根派生全套子目录布局（同级根与绑定根共用同一形态）。
 // 根目录只留应用级锚点：config.json（数据根特征签名，isHanxiDataRoot 依赖，
 // 不可下迁）、logs/、versions/、runtime/、installers/（与 versions 同级，
-// 托管模块的安装包缓存/组件二进制锚）与各模块状态文件（state/，经
-// StateDir() 访问，v0.3.x 起由启动迁移从根目录收拢，见 state_migrate.go）。
+// 托管模块的安装包缓存/组件二进制锚，消费方懒建）、modules/（模块工作台
+// 数据树，Wave 1 起：receipts/ 安装凭据随布局预建，journals/ 操作日志由
+// 消费方懒建）与各模块状态文件（state/，经 StateDir() 访问，v0.3.x 起由
+// 启动迁移从根目录收拢，见 state_migrate.go）。
 func buildPaths(mode Mode, base string) *Paths {
+	modules := filepath.Join(base, "modules")
 	return &Paths{
-		mode:        mode,
-		baseDir:     base,
-		configDir:   base,
-		dataDir:     base,
-		stateDir:    filepath.Join(base, "state"),
-		logsDir:     filepath.Join(base, "logs"),
-		versionsDir: filepath.Join(base, "versions"),
-		runtimeDir:  filepath.Join(base, "runtime"),
+		mode:               mode,
+		baseDir:            base,
+		configDir:          base,
+		dataDir:            base,
+		stateDir:           filepath.Join(base, "state"),
+		logsDir:            filepath.Join(base, "logs"),
+		versionsDir:        filepath.Join(base, "versions"),
+		runtimeDir:         filepath.Join(base, "runtime"),
+		modulesDir:         modules,
+		modulesReceiptsDir: filepath.Join(modules, "receipts"),
+		modulesJournalsDir: filepath.Join(modules, "journals"),
+		installersDir:      filepath.Join(base, "installers"),
 	}
 }
 
+// ensureDirs 预建数据根必备目录。modules/receipts/ 在此预建：安装凭据是
+// Registry 投影的必读目录，开机即建免得首读撞空目录分支；journals/ 与
+// installers/ 刻意不进本表——各自只有个别消费方用到，懒建（MkdirAll）
+// 归消费方，避免裸启动凭空多出常年空转的目录。
 func ensureDirs(p *Paths) error {
-	dirs := []string{p.baseDir, p.configDir, p.stateDir, p.logsDir, p.versionsDir, p.runtimeDir}
+	dirs := []string{p.baseDir, p.configDir, p.stateDir, p.logsDir, p.versionsDir, p.runtimeDir, p.modulesReceiptsDir}
 	for _, d := range dirs {
 		if err := ensureDir(d); err != nil {
 			return err
@@ -279,3 +294,10 @@ func (p *Paths) LogsDir() string     { return p.logsDir }
 func (p *Paths) VersionsDir() string { return p.versionsDir }
 func (p *Paths) RuntimeDir() string  { return p.runtimeDir }
 func (p *Paths) ConfigFile() string  { return filepath.Join(p.configDir, "config.json") }
+
+// Wave 1 模块化改造新增的只读访问器（同上：解析后只读、无副作用；
+// receipts 随 ensureDirs 预建，journals 与 installers 由消费方懒建）。
+func (p *Paths) ModulesDir() string         { return p.modulesDir }
+func (p *Paths) ModulesReceiptsDir() string { return p.modulesReceiptsDir }
+func (p *Paths) ModulesJournalsDir() string { return p.modulesJournalsDir }
+func (p *Paths) InstallersDir() string      { return p.installersDir }

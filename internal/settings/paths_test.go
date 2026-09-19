@@ -265,10 +265,14 @@ func TestBuildPaths(t *testing.T) {
 		t.Fatalf("正常布局不应带解析错误: %v", p.InitError())
 	}
 	for name, got := range map[string]string{
-		"state":    p.StateDir(),
-		"logs":     p.LogsDir(),
-		"versions": p.VersionsDir(),
-		"runtime":  p.RuntimeDir(),
+		"state":                              p.StateDir(),
+		"logs":                               p.LogsDir(),
+		"versions":                           p.VersionsDir(),
+		"runtime":                            p.RuntimeDir(),
+		"modules":                            p.ModulesDir(),
+		"installers":                         p.InstallersDir(),
+		filepath.Join("modules", "receipts"): p.ModulesReceiptsDir(),
+		filepath.Join("modules", "journals"): p.ModulesJournalsDir(),
 	} {
 		if want := filepath.Join(base, name); got != want {
 			t.Errorf("%s 子目录派生错误: got %q, want %q", name, got, want)
@@ -288,9 +292,15 @@ func TestEnsureDirs(t *testing.T) {
 	if err := ensureDirs(p); err != nil {
 		t.Fatalf("二跑应幂等: %v", err)
 	}
-	for _, d := range []string{p.StateDir(), p.LogsDir(), p.VersionsDir(), p.RuntimeDir()} {
+	for _, d := range []string{p.StateDir(), p.LogsDir(), p.VersionsDir(), p.RuntimeDir(), p.ModulesReceiptsDir()} {
 		if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
 			t.Errorf("目录未就绪: %s (%v)", d, err)
+		}
+	}
+	// journals/ 与 installers/ 刻意懒建（归消费方 MkdirAll），ensureDirs 不得抢跑
+	for _, d := range []string{p.ModulesJournalsDir(), p.InstallersDir()} {
+		if _, err := os.Stat(d); !os.IsNotExist(err) {
+			t.Errorf("懒建目录不应被 ensureDirs 预建: %s (%v)", d, err)
 		}
 	}
 }
@@ -315,4 +325,19 @@ func TestEnsureDirsRejectsDerivedPathFiles(t *testing.T) {
 			}
 		})
 	}
+
+	// receipts 是 Wave 1 起唯一预建的二级目录，同口径受挡必炸
+	t.Run("modules/receipts", func(t *testing.T) {
+		base := filepath.Join(t.TempDir(), siblingDataDirName)
+		if err := os.MkdirAll(filepath.Join(base, "modules"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(base, "modules", "receipts"), []byte("blocker"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		p := buildPaths(modeSibling, base)
+		if err := ensureDirs(p); err == nil {
+			t.Fatal("modules/receipts 同名文件必须令目录初始化失败")
+		}
+	})
 }
