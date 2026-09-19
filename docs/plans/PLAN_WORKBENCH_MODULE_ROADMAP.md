@@ -2,7 +2,7 @@
 
 > 状态：执行路线；2026-09-18 依据 [项目缘起](../MOTIVATION.md) 完成受众校准（v2）。校准只动优先级与启动条件，Wave 0–3 已冻结契约与在建内容不回头。
 >
-> **2026-09-19 执行进度与范围裁剪（[ADR-0003](../adr/ADR-0003-scope-cuts-for-personal-nas-first-tool.md)，以此为准）**：Wave 0–4 全部落地并提交；Wave 5 的托管模块去重复已完成（21 模块迁移内核，quicklook/bili23 按 ADR-0002 §3 留 bespoke 豁免），其**签名 Catalog / 声明式 manifest / key 轮换相关 DoD 整体 N/A**；Wave 6 物理拆包与多产物发布降级为**条件触发项**（宿主体积或真实发布通道出现时重开），不再按波次排期。
+> **2026-09-19 执行进度与范围裁剪（[ADR-0003](../adr/ADR-0003-scope-cuts-for-personal-nas-first-tool.md)，以此为准）**：Wave 0–4 全部落地并提交；Wave 5 的托管模块去重复已完成（版本面 20 家委托 artifact、instance 面 18 家委托 supervisor，quicklook/bili23 仅版本面迁入、其 instance 与 frpc/rustdesk/subnetdesk 按 ADR-0002 §3/ADR-0003 §4 留 bespoke），其**签名 Catalog / 声明式 manifest / key 轮换相关 DoD 整体 N/A**；Wave 6 物理拆包与多产物发布降级为**条件触发项**（宿主体积或真实发布通道出现时重开），不再按波次排期。
 >
 > 专项文档：[界面与主题优化计划](./PLAN_UI_THEME_REFINEMENT.md) · [官方模块分发计划](./PLAN_OFFICIAL_MODULE_DISTRIBUTION.md) · [为什么做 Hanxi](../MOTIVATION.md)
 >
@@ -551,6 +551,8 @@ interface Operation {
 - 多产物签名、撤回和密钥轮换流程人为失误。
 
 ## 11A. Wave 4X：外部实例控制与退出兜底（2026-09-19 新增，机主确认制启动）
+
+> **状态（2026-09-19）：延期。** 机主裁决:工作台/模块化收尾(页面收敛批次)全部入库前不启动,届时以新任务书重新对齐排期;等待期内**两侧零落码**(含 ADR 修订、词表扩维、supervisor 通道)。本节任务书内容保持有效,作为下次启用的底稿。
 
 ### 目标
 
