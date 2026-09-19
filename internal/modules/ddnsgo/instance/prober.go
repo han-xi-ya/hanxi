@@ -1,6 +1,15 @@
-// Package instance 实现 ddns-go 单实例运行引擎：
+// Package instance 实现 ddns-go 单实例运行引擎（Wave 4 内核委托形态）：
 //
-// ddns-go（Go 编写的后台 DDNS 更新器，Web 管理界面）由本引擎启动后绑定
+// 进程治理主流程（spawn → Job Object 绑定 → 端口就绪/退出分类 → 手动终止收口）
+// 收口至共享内核 hanxi/packages/go/supervisor；本包只保留 ddns-go 领域适配：
+//   - 双通道探针形状适配（readiness=TCP 端口 / external=进程名扫描，见 supProbe）
+//     与启动前置端口预检（甄别 external/他人占用，内核 Spec 无启动前挂点，留本层）；
+//   - 控制台子系统无窗拉起经 Spec.HideWindow、DDNS_GO_DAEMON=1 环境注入经
+//     Spec.Env（均交内核落地，本包不再自带 child_windows）；
+//   - 日志环形缓冲与 DNS 服务商凭据脱敏（内核 OnLog 逐行透传，策略在本层回调）；
+//   - 状态词表/错误文案映射与退出码、停止时刻账目（前端事件契约零漂移）。
+//
+// ddns-go（Go 编写的后台 DDNS 更新器，Web 管理界面）由内核启动后绑定
 // Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），Hanxi 以何种方式
 // 退出内核都会连带终止进程，杜绝孤儿占端口。
 //
@@ -17,8 +26,7 @@
 //     sleep 1 分钟才 os.Exit(1)。因此就绪判定必须走 TCP 端口探测而非
 //     "进程活着 = 启动成功"，且启动前做端口预检。
 //
-// 存活探测无互斥体可用（与 ccswitch 不同），采用 flclash 的进程名快照枚举；
-// 就绪判定用自有监听地址的 TCP 连通性（web 服务起来才算可托管）。
+// 存活探测无互斥体可用（与 ccswitch 不同），采用 flclash 的进程名快照枚举。
 //
 // 本包零框架依赖，便于单元测试。
 package instance

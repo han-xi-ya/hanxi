@@ -1,5 +1,8 @@
-// Package version 实现 ddns-go 版本管理引擎：GitHub Releases 远程列表、
-// Windows x64 zip 下载（官方 sha256 校验）、保布局解压安装、隔离目录管理与本地导入。
+// Package version 实现 ddns-go 版本管理引擎（Wave 4 内核委托形态）：
+// GitHub Releases 远程列表与"下载 → 校验 → 安全解包 → 版本树落位"主流程
+// 收口至共享内核 hanxi/packages/go/artifact（Fetch + UnpackZip + Tree）；
+// 本包只保留 ddns-go 领域知识：资产筛选、镜像模板、版本形状、布局自检、
+// 导入语义与既有进度/账目契约（事件 payload 零漂移）。
 package version
 
 // DdnsRelease 远程 GitHub Release 中可用的 ddns-go Windows x64 版本。

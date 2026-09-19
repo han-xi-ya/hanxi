@@ -10,18 +10,25 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/jsonstore"
 	"hanxi/internal/modules/ddnsgo/instance"
 	"hanxi/internal/modules/ddnsgo/version"
 	"hanxi/internal/notify"
+	"hanxi/internal/ops"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
+
+// ddnsInstallSteps 资产安装事务的 journal 步骤账目,与进度词表
+// downloading/verify/extract 一一对应(download 覆盖流式下载段)。
+var ddnsInstallSteps = []string{"download", "verify", "unpack"}
 
 const (
 	watchInterval = 5 * time.Second // 外部实例感知轮询间隔
@@ -42,11 +49,16 @@ const (
 // DdnsGoService 向前端暴露 ddns-go 版本管理、托管启停与内嵌 Web 控制台能力。
 // DNS 解析配置操作在子 Webview 窗口内的上游原生页面完成（决策记录见包注释），
 // 本服务只做托管：拉起/退出/状态/日志/端口设置，不重复实现上游功能面。
+//
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
+// 独立控制台子窗入口（Start/OpenConsole）一并接门：停用模块点窗被拒符合预期。
 type DdnsGoService struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *ddnsgoStore
 	engine  *instance.Engine
+	holder  *extapi.LeaseHolder
 
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
@@ -59,12 +71,13 @@ type DdnsGoService struct {
 }
 
 // NewDdnsGoService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
-func NewDdnsGoService(plat platform.Platform) *DdnsGoService {
+func NewDdnsGoService(plat platform.Platform, holder *extapi.LeaseHolder) *DdnsGoService {
 	paths := settings.GetPaths()
 	svc := &DdnsGoService{
 		plat:    plat,
 		manager: version.NewManager(paths.VersionsDir()),
 		store:   newDdnsgoStore(paths.StateDir()),
+		holder:  holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -124,16 +137,31 @@ func (s *DdnsGoService) activate() {
 
 // ListReleases 获取远程可用版本列表（多镜像回退，10 分钟缓存）。
 func (s *DdnsGoService) ListReleases() ([]version.DdnsRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 获取本地已安装版本列表。
 func (s *DdnsGoService) ListInstalledVersions() ([]version.DdnsVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
 // DownloadVersion 后台下载指定版本：立即返回，全程经事件 ddnsgo:version-download 推送进度。
 func (s *DdnsGoService) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 
 	s.downloadMu.Lock()
@@ -149,21 +177,62 @@ func (s *DdnsGoService) DownloadVersion(targetVersion string) (string, error) {
 		}
 	}
 
+	// Wave 4-B 资产安装事务：journal 先落盘再执行副作用，崩溃残件由
+	// .tmp-<txnID> staging 经启动恢复背书法认领（照 ccswitch 定稿形态）。
+	opKind := extapi.OpInstall
+	if err == nil && len(installed) > 0 {
+		opKind = extapi.OpUpdate
+	}
+	txnID := uuid.NewString()
+
 	go func() {
+		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+			targetVersion, txnID, ddnsInstallSteps)
+		if terr != nil {
+			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
+			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("ddnsgo:version-download", version.DownloadProgress{Version: targetVersion, Stage: "error", Message: terr.Error()})
+			}
+			notify.Error("ddnsgo", "版本下载失败", fmt.Sprintf("ddns-go %s 事务开启失败: %v", targetVersion, terr), "/ext/ddnsgo")
+			return
+		}
+		stepIdx := -1
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("ddnsgo download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("ddnsgo:version-download", p)
 			}
+			// journal 只在阶段迁移处落盘（§8.2）；下载分块进度只进观察面内存
+			switch p.Stage {
+			case "downloading":
+				if stepIdx < 0 {
+					stepIdx = 0
+					txn.Step(stepIdx)
+				}
+				txn.Progress(p.Done, p.Total)
+			case "verify":
+				if stepIdx < 1 {
+					stepIdx = 1
+					txn.Step(stepIdx)
+				}
+			case "extract":
+				if stepIdx < 2 {
+					stepIdx = 2
+					txn.Step(stepIdx)
+				}
+			}
 			if p.Stage == "done" {
 				notify.Success("ddnsgo", "版本下载成功", fmt.Sprintf("ddns-go %s 已成功安装", p.Version), "/ext/ddnsgo")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
+		if err := s.manager.Download(txnID, targetVersion, emit); err != nil {
+			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("ddnsgo", "版本下载失败", fmt.Sprintf("ddns-go %s 下载失败: %v", targetVersion, err), "/ext/ddnsgo")
 			return
 		}
+		txn.Done()
 		// 未设使用版本时自动把刚下载完的版本设为使用版本：
 		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
 		if s.store.GetActive() == "" {
@@ -176,6 +245,11 @@ func (s *DdnsGoService) DownloadVersion(targetVersion string) (string, error) {
 
 // RemoveVersion 卸载指定版本（正在运行的版本拒绝卸载）。
 func (s *DdnsGoService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning &&
 		strings.EqualFold(strings.TrimPrefix(snap.Version, "v"), strings.TrimPrefix(targetVersion, "v")) {
@@ -193,6 +267,11 @@ func (s *DdnsGoService) RemoveVersion(targetVersion string) error {
 
 // SetActiveVersion 设定使用版本（先校验已安装，再持久化）。
 func (s *DdnsGoService) SetActiveVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
@@ -205,6 +284,11 @@ func (s *DdnsGoService) SetActiveVersion(targetVersion string) (string, error) {
 
 // GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动用最新已装）。
 func (s *DdnsGoService) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return s.store.GetActive(), nil
 }
 
@@ -212,6 +296,11 @@ func (s *DdnsGoService) GetActiveVersion() (string, error) {
 // 配置恒在 ~/.ddns_go_config.yaml 不受导入影响；仅迁移单 exe。
 // 运行中的实例拒绝导入：Windows 下运行中的 exe 文件被独占，拷贝必然失败。
 func (s *DdnsGoService) ImportLocal(srcDir string) (version.DdnsVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.DdnsVersionInfo{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
 		return version.DdnsVersionInfo{}, fmt.Errorf("ddns-go 正在运行，请先退出再导入")
 	}
@@ -223,6 +312,11 @@ func (s *DdnsGoService) ImportLocal(srcDir string) (version.DdnsVersionInfo, err
 // Start 托管启动自有 ddns-go 实例（不弹面板）：
 // external 状态不越权接管、running 幂等直返、stopped/failed 冷启动。
 func (s *DdnsGoService) Start() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
@@ -250,6 +344,11 @@ func (s *DdnsGoService) Start() (ControlOutcome, error) {
 //   - external：按候选端口（设定端口 + 上游默认 9876）探测外部 web 服务；
 //   - stopped/failed：冷启动后打开。
 func (s *DdnsGoService) OpenConsole() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	snap := s.engine.Snapshot()
 
@@ -294,6 +393,11 @@ func (s *DdnsGoService) OpenConsole() (ControlOutcome, error) {
 // Quit 退出引擎托管的 ddns-go（经配置写静默期防护后终止）。
 // external 状态不越权强杀（进程归属不在本引擎）：仅返回人性化指引。
 func (s *DdnsGoService) Quit() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
 			Message: "当前是外部自行启动的实例，请在 ddns-go 面板或其 Windows 服务中退出"}, nil
@@ -324,10 +428,23 @@ func (s *DdnsGoService) startOwned() (string, error) {
 	return addr, nil
 }
 
-// Shutdown 模块停用/应用退出：停后台轮询 + 终止自有实例（强杀通道，不等待
+// Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
+// 停用/阻止态下被门拒属预期——OnDestroy 路径走内部版，不经本入口。
+func (s *DdnsGoService) Shutdown() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	s.shutdown()
+	return nil
+}
+
+// shutdown 装配布线：Go 直调路径，不得依赖运行态（见 ADR-0001 Wave 3 注记）。
+// 模块停用/应用退出：停后台轮询 + 终止自有实例（强杀通道，不等待
 // 配置写静默期——OnShutdown 阻塞返回）。外部实例不受影响；自有实例另受
 // JobObject KILL_ON_JOB_CLOSE 内核兜底。
-func (s *DdnsGoService) Shutdown() {
+func (s *DdnsGoService) shutdown() {
 	s.watchMu.Lock()
 	if s.watching {
 		close(s.watchStop)
@@ -423,12 +540,22 @@ func (s *DdnsGoService) hideConsole() {
 
 // GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补轮询间隙的即时性）。
 func (s *DdnsGoService) GetStatus() (instance.Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return instance.Snapshot{}, gateErr
+	}
+	defer release()
 	s.engine.RefreshExternal()
 	return s.engine.Snapshot(), nil
 }
 
 // Logs 返回实例最近 n 行进程输出（引擎重启会清空，前端另以事件流累积）。
 func (s *DdnsGoService) Logs(n int) ([]string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	if n <= 0 || n > instance.LogCapacityHint {
 		n = instance.LogCapacityHint
 	}
@@ -439,11 +566,21 @@ func (s *DdnsGoService) Logs(n int) ([]string, error) {
 
 // GetListenPort 返回 web 监听端口。
 func (s *DdnsGoService) GetListenPort() (int, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return 0, gateErr
+	}
+	defer release()
 	return s.store.GetListenPort(), nil
 }
 
 // SetListenPort 设定端口（1024~65535，下次启动生效；运行中实例不变）。
 func (s *DdnsGoService) SetListenPort(port int) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	if err := jsonstore.ValidateListenPort(port); err != nil {
 		return "", err
 	}
@@ -458,21 +595,41 @@ func (s *DdnsGoService) SetListenPort(port int) (string, error) {
 
 // GetFollowOnExit 返回"随 Hanxi 退出一起关闭"开关值（默认 false）。
 func (s *DdnsGoService) GetFollowOnExit() (bool, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return false, gateErr
+	}
+	defer release()
 	return s.store.GetFollowOnExit(), nil
 }
 
 // SetFollowOnExit 设定开关（下次启动生效）。
 func (s *DdnsGoService) SetFollowOnExit(b bool) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.store.SetFollowOnExit(b)
 }
 
 // RepositoryURL 上游 GitHub 仓库地址（页面展示与复制）。
 func (s *DdnsGoService) RepositoryURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.RepoURL(), nil
 }
 
 // OpenRepository 用默认浏览器打开上游仓库页面。
 func (s *DdnsGoService) OpenRepository() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.RepoURL())
 }
 
@@ -480,12 +637,22 @@ func (s *DdnsGoService) OpenRepository() error {
 // 收口至 windows.RevealDir（存在性/类型校验与中文报错内置；入参恒为目录，
 // 刻意不走 explorer.exe <file> 的"执行"语义——markeron「打开安装目录」按钮的事故教训）。
 func (s *DdnsGoService) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return windows.RevealDir(dir)
 }
 
 // OpenConfigDir 在资源管理器中定位 ddns-go 的配置文件（%USERPROFILE%\.ddns_go_config.yaml）——
 // 上游配置为单文件而非目录，直接打开整个用户主目录噪音过大，采用 /select 高亮定位。只读导航，不改写。
 func (s *DdnsGoService) OpenConfigDir() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	file, err := userConfigFile()
 	if err != nil {
 		return err

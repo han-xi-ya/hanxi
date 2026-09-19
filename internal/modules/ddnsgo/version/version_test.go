@@ -1,9 +1,6 @@
 package version
 
 import (
-	"archive/zip"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -115,101 +112,22 @@ func TestFindPortableAsset(t *testing.T) {
 	}
 }
 
-// makeTestZip 构造测试用 zip
-func makeTestZip(t *testing.T, entries map[string]string) string {
-	t.Helper()
-	f, err := os.CreateTemp("", "ddnstest-*.zip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := f.Name()
-	t.Cleanup(func() { os.Remove(path) })
-	zw := zip.NewWriter(f)
-	for name, content := range entries {
-		w, err := zw.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := w.Write([]byte(content)); err != nil {
-			t.Fatal(err)
+// TestVersionFromToken 版本令牌形状（承迁移前 dirNameRe 口径）：语义版本与
+// imported- 时间戳收纳并规范化为 v 前缀；外来/畸形令牌拒绝。
+// （注：宽数字起头分支与 ccswitch 模板同构，"6.17.6.bak" 这类手工杂物目录会被
+// 收纳扫描但 exe 缺失即跳过，不构成损坏误判。）
+func TestVersionFromToken(t *testing.T) {
+	ok := map[string]string{"6.17.6": "v6.17.6", "10.0.1": "v10.0.1", "6.17.6.bak": "v6.17.6.bak",
+		"imported-20260819-121314": "vimported-20260819-121314"}
+	for token, want := range ok {
+		got, accepted := versionFromToken(token)
+		if !accepted || got != want {
+			t.Errorf("versionFromToken(%q) = (%q, %v), want (%q, true)", token, got, accepted, want)
 		}
 	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
-	return path
-}
-
-func TestExtractAll(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := makeTestZip(t, map[string]string{
-		exeName:   "fake-exe",
-		"LICENSE": "MIT",
-	})
-	if err := extractAll(zipPath, filepath.Join(dir, "dst")); err != nil {
-		t.Fatalf("extractAll: %v", err)
-	}
-	for _, name := range []string{exeName, "LICENSE"} {
-		if _, err := os.Stat(filepath.Join(dir, "dst", name)); err != nil {
-			t.Errorf("%s 未解压: %v", name, err)
-		}
-	}
-}
-
-func TestExtractAllZipSlip(t *testing.T) {
-	dir := t.TempDir()
-	f, err := os.CreateTemp("", "evil-*.zip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := f.Name()
-	t.Cleanup(func() { os.Remove(path) })
-	zw := zip.NewWriter(f)
-	w, _ := zw.Create("../evil.txt")
-	w.Write([]byte("evil"))
-	w2, _ := zw.Create(exeName)
-	w2.Write([]byte("fake"))
-	zw.Close()
-	f.Close()
-
-	dst := filepath.Join(dir, "dst")
-	if err := extractAll(path, dst); err == nil {
-		t.Fatal("ZipSlip 条目应被拒绝")
-	}
-	if _, err := os.Stat(dst); !os.IsNotExist(err) {
-		t.Errorf("失败后目标目录应被清理, stat err=%v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); !os.IsNotExist(err) {
-		t.Fatal("恶意条目逃逸到了目标目录之外")
-	}
-}
-
-func TestExtractAllMissingExe(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := makeTestZip(t, map[string]string{"LICENSE": "MIT"})
-	if err := extractAll(zipPath, filepath.Join(dir, "dst")); err == nil {
-		t.Fatal("缺 exe 的 zip 应被布局自检查拒")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "dst")); !os.IsNotExist(err) {
-		t.Error("自检失败后目标目录应被清理")
-	}
-}
-
-// TestDirNameRe 目录名规则：语义版本与 imported- 时间戳收纳，其余（如手建杂物目录）拒绝。
-func TestDirNameRe(t *testing.T) {
-	// 注：字符类与 ccswitch 模板同构（数字起头 + [0-9a-zA-Z.] 续），"ddnsgo_6.17.6.bak"
-	// 这类手工杂物目录会被收纳扫描但 exe 缺失即跳过，不构成损坏误判。
-	ok := []string{"ddnsgo_6.17.6", "ddnsgo_10.0.1", "ddnsgo_imported-20260819-121314"}
-	bad := []string{"ddnsgo_", "ddnsgo_v6.17.6", "ccswitch_3.20.0", "ddnsgo_x"}
-	for _, s := range ok {
-		if !dirNameRe.MatchString(s) {
-			t.Errorf("应接受目录名 %s", s)
-		}
-	}
-	for _, s := range bad {
-		if dirNameRe.MatchString(s) {
-			t.Errorf("应拒绝目录名 %s", s)
+	for _, token := range []string{"v6.17.6", "x", "", "6", "imported-1"} {
+		if _, accepted := versionFromToken(token); accepted {
+			t.Errorf("应拒绝版本令牌 %q", token)
 		}
 	}
 }
@@ -218,8 +136,18 @@ func TestDirNameRe(t *testing.T) {
 func TestResolveVersionDirRejection(t *testing.T) {
 	m := NewManager(t.TempDir())
 	for _, v := range []string{"../../etc", "v6.17", "6.17.6-extra", ""} {
-		if _, err := m.resolveVersionDir(v); err == nil {
+		if _, _, err := m.resolveVersionDir(v); err == nil {
 			t.Errorf("非法版本号 %q 应被拒绝", v)
 		}
+	}
+}
+
+// TestResolveVersionDirNotInstalledGuidance 合法但未安装的版本号给出引导文案
+// （与迁移前逐字一致，RPC 错误面零漂移）。
+func TestResolveVersionDirNotInstalledGuidance(t *testing.T) {
+	m := NewManager(t.TempDir())
+	_, _, err := m.resolveVersionDir("v6.17.6")
+	if err == nil || err.Error() != "版本 v6.17.6 未安装，请先在下方版本管理下载或导入" {
+		t.Fatalf("未安装引导文案漂移: %v", err)
 	}
 }
