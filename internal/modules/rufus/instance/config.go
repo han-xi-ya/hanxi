@@ -25,12 +25,13 @@ const iniSeed = ";; Hanxi managed-mode seed for Rufus.\n" +
 	";; Feel free to edit or remove this file; Hanxi never rewrites it once present.\n" +
 	"UpdateCheckInterval = -1\n"
 
-// seedPortableSettings 托管实例启动前播种 rufus.ini：仅当文件**不存在**时写入。
-// 文件已存在时绝不改写——用户（或「导入本地」搬来的源配置）之后的任何设置
-// 都是明确意图，Hanxi 不越权覆盖。失败不阻断启动（最坏回到上游默认行为：
-// 设置落注册表 + 弹更新检查），调用方记录即可。
-// 只对托管实例的版本隔离目录生效；外部实例的配置从不触碰。
-func seedPortableSettings(installDir string) error {
+// SeedPortableSettings 为托管目录播种 rufus.ini：仅当文件**不存在**时写入。
+// 两处消费：version 包安装落位时定锚（新装目录自带便携开关），以及 instance
+// 引擎启动前兜底（迁移前的历史安装目录）。文件已存在时绝不改写——用户（或
+// 「导入本地」搬来的源配置）之后的任何设置都是明确意图，Hanxi 不越权覆盖。
+// 启动侧失败不阻断（最坏回到上游默认行为：设置落注册表 + 弹更新检查），
+// 调用方记录即可。只对托管实例的版本隔离目录生效；外部实例的配置从不触碰。
+func SeedPortableSettings(installDir string) error {
 	path := filepath.Join(installDir, iniFileName)
 	if _, err := os.Stat(path); err == nil {
 		return nil // 已有配置（含导入携带 / 用户自建），尊重现状

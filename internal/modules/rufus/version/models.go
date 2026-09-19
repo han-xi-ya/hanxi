@@ -1,6 +1,7 @@
 // Package version 实现 Rufus 版本管理引擎：GitHub Releases 远程列表、
-// 单文件便携 exe 下载（GitHub API digest 官方 sha256 三重校验）、
-// 隔离目录管理与本地导入。
+// 单文件便携 exe 下载（完整性主流程委托共享内核 artifact.Fetch 官方摘要双核，
+// MZ 魔数断言等模块策略留本包）、版本树隔离落位（artifact.Tree staging +
+// 原子 rename）与本地导入。
 //
 // 集成范围决策（用户拍板）：纯托管，不做启动盘制作功能内嵌——
 // 磁盘级写入（分区/格式化/镜像落盘）是工作站上数据销毁风险最高的操作，

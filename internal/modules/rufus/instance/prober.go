@@ -1,8 +1,20 @@
-// Package instance 实现 Rufus 单实例运行引擎：
+// Package instance 实现 Rufus 单实例运行引擎（Wave 4 内核委托形态）：
 //
-// Rufus（Win32 原生启动盘制作工具）由本引擎启动后绑定 Windows Job Object
-// （JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），Hanxi 退出时内核连带终止进程，
-// 杜绝孤儿驻留。
+// 进程治理主流程（spawn → Job Object 绑定 → 就绪/退出分类 → 手动停止/外部甄别）
+// 收口至共享内核 hanxi/packages/go/supervisor；本包只保留 Rufus 领域适配：
+//   - 互斥体 + 进程枚举探针（supervisor.Probe 形状适配，探针实现见 prober/probe_windows）；
+//   - WM_CLOSE 优雅退出经内核 SetQuitHook 投递（close_windows 领域函数留本包）；
+//   - 状态词表映射：内核 stopped/starting/running/external/failed/stopping →
+//     本包既有 stopped/starting/running/external/failed（stopping 折并入 running，
+//     终止窗口对前端保持运行语义，终态由后续广播给出）；
+//   - Snapshot 形状映射：内核快照 + 本包推算的账目（ExitCode/StoppedAt/提权指引
+//     覆盖文案）拼回既有事件契约（前端与 wails 事件载荷零漂移）；
+//   - 唤窗/拒杀纪律（restoreWindowByPID/elevateHint）等平台领域函数留在本包文件，
+//     不经内核。
+//
+// Rufus（Win32 原生启动盘制作工具）由内核启动后绑定 Windows Job Object
+// （JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），Hanxi 无论以何种方式退出（托盘退出/
+// 崩溃/强杀），内核都会连带终止进程，杜绝孤儿驻留。
 //
 // 上游契约（src/rufus.c / src/net.c / src/settings.h 源码实证）：
 //   - 单实例 = 固定命名互斥体 Global\Rufus（CreateMutexA(NULL, TRUE,
