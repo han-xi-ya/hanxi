@@ -22,7 +22,7 @@ type Module struct {
 
 // New 在 app 装配期创建模块（构造无 IO；本模块 OnInit 亦无重活，懒初始化仅为统一生命周期）。
 func New(plat platform.Platform) extapi.Module {
-	return &Module{svc: NewSnipasteService(plat)}
+	return &Module{svc: NewSnipasteService(plat, extapi.NewLeaseHolder(ID))}
 }
 
 // Info 返回模块元信息（Version 是实现版本，与被管工具版本无关）。
@@ -36,6 +36,10 @@ func (m *Module) Info() extapi.ModuleInfo {
 		Level:       extapi.LevelBuiltin,
 	}
 }
+
+// SetGate 实现 extapi.GateAware：装配根注册时注入统一调用门，
+// service 全部业务方法经该门取 operation lease（Wave 3 调用门）。
+func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Nav 声明侧边栏入口（Order/Group 决定效率组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {

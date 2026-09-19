@@ -1,7 +1,6 @@
 package version
 
 import (
-	"archive/zip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
+	"hanxi/packages/go/artifact"
 )
 
 const (
@@ -25,6 +25,19 @@ const (
 var plainVersionRe = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)+(?:-Beta[0-9]*)?$`)
 
 // Manager 管理 Snipaste 官网免安装版的隔离安装目录。
+//
+// Wave 4 内核委托边界（与 markeron/rufus 的差异皆由 Snipaste 上游事实决定）：
+//   - 解包主流程委托 artifact.UnpackZip（ZipSlip/链接/炸弹/CRC32/Windows 文件名
+//     纪律全闸门，取代本包此前手写的 extractAll 安全解压副本）；
+//   - 下载校验不可委托 artifact.Fetch：内核以官方 SHA-256 为唯一信任根（必检
+//     64 位十六进制），而 Snipaste 官网独立校验清单只发布 SHA-1（sha-1.txt）且
+//     zip 内无官方 SHA-256 可比对——委托即等于放弃可信校验或造假，故保留本包
+//     "官网域名锁 + 尺寸核验 + 官方 SHA-1 + 布局/FileVersion 自检"链；
+//   - 落位/扫描/卸载不可委托 artifact.Tree：内核版本树目录名固定为
+//     <entry>_<version>，表达不了既有 snipaste_v<version> 布局（多一枚下划线即
+//     改变盘上目录名）；内核统一账本 artifact.Meta 也承载不了 SnipasteVersionInfo
+//     的 verificationMode/officialHash/hashAlgorithm/isImport 字段（前端契约）。
+//     原子落位（staging+rename）与 .removing- 隔离卸载由本包自持，纪律同内核。
 type Manager struct {
 	versionsDir string
 	client      *http.Client
@@ -110,8 +123,9 @@ func readMeta(path string, info *SnipasteVersionInfo) {
 	info.VerificationMode = meta.VerificationMode
 }
 
-// Download 下载官网免安装 zip 并解压到隔离目录：下载→SHA256→解压 staging→
-// 校验 Snipaste.exe 存在且 FileVersion 匹配→Rename 原子落位；onProgress 收 downloading/extract/verify/done|error。
+// Download 下载官网免安装 zip 并解压到隔离目录：下载→尺寸/官方哈希核验→
+// 内核安全解包 staging→布局与 FileVersion 自检→Rename 原子落位；
+// onProgress 收 resolve/downloading/verify-*/verify-archive/install/done|error（既有词表）。
 // 版本号先过 plainVersionRe 白名单再拼路径，拒绝注入；已安装直接报错不覆盖。
 func (m *Manager) Download(targetVersion string, onProgress func(DownloadProgress)) error {
 	version := normalizeVersion(targetVersion)
@@ -193,7 +207,12 @@ func (m *Manager) Download(targetVersion string, onProgress func(DownloadProgres
 	stagingDir := filepath.Join(m.versionsDir, dirPrefix+version+fmt.Sprintf(".installing-%d", time.Now().UnixNano()))
 	defer os.RemoveAll(stagingDir)
 	emit("verify-archive", 0, 0, "正在校验 ZIP 与解压布局")
-	installRoot, err := extractAll(tmpZipPath, stagingDir)
+	// 解包主流程委托内核（恶意 zip 全部安全闸门收口于 artifact.UnpackZip）；
+	// "唯一 Snipaste.exe、根或单层包装目录"是 Snipaste 布局策略，留在本包自检。
+	if err := artifact.UnpackZip(tmpZipPath, stagingDir, artifact.DefaultLimits, nil); err != nil {
+		return err
+	}
+	installRoot, err := locateInstallRoot(stagingDir)
 	if err != nil {
 		return err
 	}
@@ -337,77 +356,38 @@ func normalizeVersion(version string) string {
 	return strings.ReplaceAll(version, " ", "")
 }
 
-// extractAll 安全解压并返回实际包含 Snipaste.exe 的安装根目录。
-func extractAll(zipPath, stagingDir string) (string, error) {
-	if err := os.MkdirAll(stagingDir, 0755); err != nil {
-		return "", err
-	}
-	zr, err := zip.OpenReader(zipPath)
+// locateInstallRoot Snipaste 解包布局自检（模块策略，内核不感知）：Snipaste.exe
+// 必须唯一存在（常规文件且非空）于 staging 根目录或单层包装目录下，返回实际
+// 安装根目录。安全闸门（ZipSlip/链接/炸弹/CRC32/Windows 文件名纪律）已由
+// artifact.UnpackZip 收口，此处只做"包内容是否符合 Snipaste 免安装形态"的领域判定。
+func locateInstallRoot(stagingDir string) (string, error) {
+	var roots []string
+	err := filepath.Walk(stagingDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if strings.EqualFold(info.Name(), exeName) && info.Mode().IsRegular() && info.Size() > 0 {
+			roots = append(roots, filepath.Dir(path))
+		}
+		return nil
+	})
 	if err != nil {
-		return "", fmt.Errorf("打开 ZIP 失败: %w", err)
+		return "", fmt.Errorf("扫描解压布局失败: %w", err)
 	}
-	defer zr.Close()
-
-	var exeCandidates []string
-	for _, entry := range zr.File {
-		clean := filepath.Clean(filepath.FromSlash(entry.Name))
-		if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			return "", fmt.Errorf("ZIP 含非法路径条目 %q", entry.Name)
-		}
-		target := filepath.Join(stagingDir, clean)
-		rel, err := filepath.Rel(stagingDir, target)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			return "", fmt.Errorf("ZIP 条目逃逸目标目录 %q", entry.Name)
-		}
-		if entry.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, 0755); err != nil {
-				return "", err
-			}
-			continue
-		}
-		if entry.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("ZIP 含不支持的符号链接 %q", entry.Name)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return "", err
-		}
-		rc, err := entry.Open()
-		if err != nil {
-			return "", err
-		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, entry.Mode().Perm())
-		if err != nil {
-			rc.Close()
-			return "", err
-		}
-		_, copyErr := io.Copy(out, rc)
-		closeErr := out.Close()
-		rc.Close()
-		if copyErr != nil {
-			return "", fmt.Errorf("读取 ZIP 条目 %q 失败: %w", entry.Name, copyErr)
-		}
-		if closeErr != nil {
-			return "", closeErr
-		}
-		if strings.EqualFold(filepath.Base(target), exeName) {
-			fi, err := os.Stat(target)
-			if err == nil && fi.Mode().IsRegular() && fi.Size() > 0 {
-				exeCandidates = append(exeCandidates, target)
-			}
-		}
+	if len(roots) != 1 {
+		return "", fmt.Errorf("ZIP 布局无效：期望唯一的 %s，实际找到 %d 个", exeName, len(roots))
 	}
-	if len(exeCandidates) != 1 {
-		return "", fmt.Errorf("ZIP 布局无效：期望唯一的 %s，实际找到 %d 个", exeName, len(exeCandidates))
-	}
-	root := filepath.Dir(exeCandidates[0])
-	relRoot, err := filepath.Rel(stagingDir, root)
+	relRoot, err := filepath.Rel(stagingDir, roots[0])
 	if err != nil {
 		return "", err
 	}
 	if relRoot != "." && strings.Contains(relRoot, string(filepath.Separator)) {
 		return "", fmt.Errorf("ZIP 布局过深：%s 必须位于根目录或单层包装目录", exeName)
 	}
-	return root, nil
+	return roots[0], nil
 }
 
 func copyPortableDir(srcDir, dstDir string) error {

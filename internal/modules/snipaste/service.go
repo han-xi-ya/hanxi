@@ -10,6 +10,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/snipaste/instance"
 	"hanxi/internal/modules/snipaste/version"
 	"hanxi/internal/notify"
@@ -20,22 +21,26 @@ import (
 
 // SnipasteService 面向前端的 Snipaste 托管服务：官网 zip 下载、本地导入、版本切换与会话内启停。
 // downloads 记录进行中的下载版本号（按版本去重，允许不同版本并行下载）。
+// 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
+// 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type SnipasteService struct {
 	plat    platform.Platform
 	manager *version.Manager
 	store   *snipasteStore
 	engine  *instance.Engine
+	holder  *extapi.LeaseHolder
 
 	downloadMu sync.Mutex
 	downloads  map[string]struct{}
 }
 
 // NewSnipasteService 装配版本管理器、store 与实例引擎；构造无 IO。
-func NewSnipasteService(plat platform.Platform) *SnipasteService {
+func NewSnipasteService(plat platform.Platform, holder *extapi.LeaseHolder) *SnipasteService {
 	paths := settings.GetPaths()
 	svc := &SnipasteService{
 		plat: plat, manager: version.NewManager(paths.VersionsDir()),
 		store: newSnipasteStore(paths.StateDir()), downloads: make(map[string]struct{}),
+		holder: holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), plat.Process(), instance.Callbacks{OnState: svc.emitInstanceState})
 	return svc
@@ -53,11 +58,21 @@ func (s *SnipasteService) emitInstanceState(snapshot instance.Snapshot) {
 
 // ListReleases 拉取官网发布通道列表（远端缓存），网络失败返回错误。
 func (s *SnipasteService) ListReleases() ([]version.SnipasteRelease, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListRemote()
 }
 
 // ListInstalledVersions 扫描本地已装版本目录。
 func (s *SnipasteService) ListInstalledVersions() ([]version.SnipasteVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return nil, gateErr
+	}
+	defer release()
 	return s.manager.ListInstalled()
 }
 
@@ -65,6 +80,11 @@ func (s *SnipasteService) ListInstalledVersions() ([]version.SnipasteVersionInfo
 // 同版本下载中返回 "in-progress"（不报错，前端按状态渲染）。进度经
 // "snipaste:version-download" 事件推送；首个版本装完自动设为使用版本。
 func (s *SnipasteService) DownloadVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = normalizeVersion(targetVersion)
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
@@ -109,6 +129,11 @@ func (s *SnipasteService) DownloadVersion(targetVersion string) (string, error) 
 
 // ImportLocal 导入本地 Snipaste 目录为托管版本；未设使用版本时自动激活导入结果。
 func (s *SnipasteService) ImportLocal(srcDir string) (version.SnipasteVersionInfo, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return version.SnipasteVersionInfo{}, gateErr
+	}
+	defer release()
 	info, err := s.manager.ImportLocal(strings.TrimSpace(srcDir))
 	if err != nil {
 		return version.SnipasteVersionInfo{}, err
@@ -121,6 +146,11 @@ func (s *SnipasteService) ImportLocal(srcDir string) (version.SnipasteVersionInf
 
 // RemoveVersion 删除本地版本；本会话正在运行该版本、或该版本为"当前使用版本"时拒绝。
 func (s *SnipasteService) RemoveVersion(targetVersion string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	targetVersion = normalizeVersion(targetVersion)
 	snapshot := instance.Snapshot{}
 	if s.engine != nil {
@@ -137,6 +167,11 @@ func (s *SnipasteService) RemoveVersion(targetVersion string) error {
 
 // SetActiveVersion 切换使用版本；ResolveExe 确认版本目录内主程序存在后才落盘。
 func (s *SnipasteService) SetActiveVersion(targetVersion string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	targetVersion = normalizeVersion(targetVersion)
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
@@ -149,12 +184,22 @@ func (s *SnipasteService) SetActiveVersion(targetVersion string) (string, error)
 
 // GetActiveVersion 返回使用版本号，未设置时为空串（error 恒 nil，统一前端签名）。
 func (s *SnipasteService) GetActiveVersion() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return s.store.GetActive(), nil
 }
 
 // Launch 启动当前使用版本（无 active 时回退最新可运行版本）。启动前复核 exe 为非空常规文件，
 // 交给 engine.Start 建身份与 Job 绑定；重复启动由 engine 拒绝。
 func (s *SnipasteService) Launch() (LaunchOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return LaunchOutcome{}, gateErr
+	}
+	defer release()
 	selected, exe, err := s.resolveActiveVersion()
 	if err != nil {
 		return LaunchOutcome{}, err
@@ -177,12 +222,22 @@ func (s *SnipasteService) Launch() (LaunchOutcome, error) {
 
 // GetStatus 返回引擎状态快照（纯内存读，无系统调用）。
 func (s *SnipasteService) GetStatus() (instance.Snapshot, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return instance.Snapshot{}, gateErr
+	}
+	defer release()
 	return s.engine.Snapshot(), nil
 }
 
 // Quit 执行分层退出并把 engine 的 Method 归因翻译成用户文案；
 // 身份复核被拒时保留 Stopped/Method 字段返回错误，供前端精确提示"未误杀"场景。
 func (s *SnipasteService) Quit() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
 	result, err := s.engine.Quit()
 	if err != nil {
 		return QuitOutcome{Stopped: result.Stopped, Forced: result.Forced, CloseRequested: result.CloseRequested, Method: result.Method}, err
@@ -227,6 +282,11 @@ func (s *SnipasteService) resolveActiveVersion() (string, string, error) {
 
 // OpenDir 用资源管理器打开版本目录（先校验存在，explorer 自身不报错）。
 func (s *SnipasteService) OpenDir(dir string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	dir = strings.TrimSpace(dir)
 	fi, err := os.Stat(dir)
 	if err != nil || !fi.IsDir() {
@@ -237,10 +297,20 @@ func (s *SnipasteService) OpenDir(dir string) error {
 
 // OfficialSiteURL / OpenOfficialSite 提供 Snipaste 官网入口（error 恒 nil，统一前端签名）。
 func (s *SnipasteService) OfficialSiteURL() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
 	return version.OfficialSiteURL(), nil
 }
 
 func (s *SnipasteService) OpenOfficialSite() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
 	return s.plat.OpenURL(version.OfficialSiteURL())
 }
 

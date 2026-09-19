@@ -7,8 +7,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"hanxi/packages/go/artifact"
 )
 
 func TestParseDownloadPage(t *testing.T) {
@@ -75,35 +78,92 @@ func TestRemoteSourceFetchRemote(t *testing.T) {
 	}
 }
 
-func TestExtractAllLayoutsAndZipSlip(t *testing.T) {
+// TestUnpackAndLocateLayouts 解包已委托内核 artifact.UnpackZip（恶意 zip 闸门
+// 由 packages/go/artifact 自测覆盖）；本测试锁定"解包 + Snipaste 布局自检"的
+// 组合行为：官方双层布局可用、ZipSlip 被拒。
+func TestUnpackAndLocateLayouts(t *testing.T) {
 	zipPath := filepath.Join(t.TempDir(), "ok.zip")
 	writeZip(t, zipPath, map[string][]byte{
 		"Snipaste-2.11.3/Snipaste.exe": []byte("exe"),
 		"Snipaste-2.11.3/config.ini":   []byte("cfg"),
 	})
-	root, err := extractAll(zipPath, filepath.Join(t.TempDir(), "staging"))
+	staging := filepath.Join(t.TempDir(), "staging")
+	if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+		t.Fatalf("UnpackZip: %v", err)
+	}
+	root, err := locateInstallRoot(staging)
 	if err != nil || filepath.Base(root) != "Snipaste-2.11.3" {
 		t.Fatalf("root=%q err=%v", root, err)
 	}
 
 	badZip := filepath.Join(t.TempDir(), "bad.zip")
 	writeZip(t, badZip, map[string][]byte{"../evil.txt": []byte("x"), "Snipaste.exe": []byte("exe")})
-	if _, err := extractAll(badZip, filepath.Join(t.TempDir(), "bad")); err == nil {
+	if err := artifact.UnpackZip(badZip, filepath.Join(t.TempDir(), "bad"), artifact.DefaultLimits, nil); err == nil {
 		t.Fatal("ZipSlip should fail")
 	}
 }
 
-func TestExtractAllRejectsMissingOrMultipleExe(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "missing.zip")
-	writeZip(t, missing, map[string][]byte{"readme.txt": []byte("x")})
-	if _, err := extractAll(missing, filepath.Join(t.TempDir(), "missing")); err == nil {
-		t.Fatal("missing exe should fail")
+func TestLocateInstallRootRejectsMissingMultipleOrDeep(t *testing.T) {
+	cases := []struct {
+		name  string
+		files map[string][]byte
+	}{
+		{"missing exe", map[string][]byte{"readme.txt": []byte("x")}},
+		{"multiple exe", map[string][]byte{"Snipaste.exe": []byte("x"), "nested/Snipaste.exe": []byte("y")}},
+		{"too deep", map[string][]byte{"a/b/Snipaste.exe": []byte("y")}},
+		{"empty exe", map[string][]byte{"Snipaste.exe": {}}},
 	}
-	multiple := filepath.Join(t.TempDir(), "multiple.zip")
-	writeZip(t, multiple, map[string][]byte{"Snipaste.exe": []byte("x"), "nested/Snipaste.exe": []byte("y")})
-	if _, err := extractAll(multiple, filepath.Join(t.TempDir(), "multiple")); err == nil {
-		t.Fatal("multiple exe should fail")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			zipPath := filepath.Join(t.TempDir(), "case.zip")
+			writeZip(t, zipPath, c.files)
+			staging := filepath.Join(t.TempDir(), "staging")
+			if err := artifact.UnpackZip(zipPath, staging, artifact.DefaultLimits, nil); err != nil {
+				t.Fatalf("UnpackZip: %v", err)
+			}
+			if _, err := locateInstallRoot(staging); err == nil {
+				t.Fatalf("%s should fail", c.name)
+			}
+		})
 	}
+}
+
+func TestDownloadFailures(t *testing.T) {
+	// 失败注入（真 tmp 目录）：非法版本、远程解析失败、目标已安装三类前置闸。
+	t.Run("illegal version rejected before IO", func(t *testing.T) {
+		versionsDir := t.TempDir()
+		m := NewManager(versionsDir)
+		if err := m.Download("../evil", nil); err == nil {
+			t.Fatal("path traversal version should fail")
+		}
+		ents, _ := os.ReadDir(versionsDir)
+		if len(ents) != 0 {
+			t.Fatalf("非法版本不应触盘: %v", ents)
+		}
+	})
+	t.Run("remote resolve failure propagates", func(t *testing.T) {
+		m := NewManager(t.TempDir())
+		m.cache = newReleaseCache(remoteSource{
+			client: &http.Client{Timeout: time.Second}, downloadPage: "http://127.0.0.1:1", manifestURL: "http://127.0.0.1:1",
+		})
+		if err := m.Download("2.11.3", nil); err == nil {
+			t.Fatal("unreachable official site should fail")
+		}
+	})
+	t.Run("already installed rejected", func(t *testing.T) {
+		versionsDir := t.TempDir()
+		dir := filepath.Join(versionsDir, dirPrefix+"2.11.3")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, exeName), []byte("exe"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		m := NewManager(versionsDir)
+		if err := m.Download("2.11.3", nil); err == nil || !strings.Contains(err.Error(), "已安装") {
+			t.Fatalf("err=%v", err)
+		}
+	})
 }
 
 func TestManagerImportListResolveRemove(t *testing.T) {

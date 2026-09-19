@@ -1,21 +1,40 @@
-// Package instance 实现 Snipaste 自有实例的进程生命周期托管：
-// 启动建身份 token → JobObject 绑定（解除退出联动）→ 分层退出（WM_CLOSE→宽限→强杀）。
-// 依赖方向：仅依赖 internal/platform 抽象，事件回调解耦由 Callbacks 注入，不引用 service/wails。
+// Package instance 实现 Snipaste 自有实例的进程生命周期托管（Wave 4 内核委托形态）：
+//
+// 进程治理主流程（spawn → Job Object 绑定 → 退出分类 → 强制终止兜底）收口至
+// 共享内核 hanxi/packages/go/supervisor；本包只保留 Snipaste 领域适配：
+//   - 无外部探针：Snipaste 只跟踪自有实例（管理边界=本会话启动的进程树），
+//     内核探针恒报"不在运行"，因此内核的 external 分类天然不可达、状态词表
+//     无 external 态——与原实现口径一致，属预期而非缺失；
+//   - 分层退出归因（QuitResult）：退出前身份复核、WM_CLOSE 投递、宽限窗口、
+//     强杀前身份复核均为内核未表达的模块策略，由本层驱动；内核 Stop(0) 仅承担
+//     最后一层强制终止（job.Terminate 整树语义 → KillVerified 兜底）；
+//   - 恒脱管：Snipaste 设计上跨 Hanxi 生命周期存活，Start 固定
+//     Spec.DetachFromJob=true（SetAllowKillOnClose(false)），页面手动 Quit
+//     是唯一收尾入口；
+//   - 启动身份自检：Query 实起进程路径核对（防启动器转发到意外进程）属模块
+//     策略，内核不复核路径；
+//   - 状态词表与快照形状映射：内核 stopping→quitting、"已手动停止"文案抹平、
+//     异常退出码提取回写、退出收口后 PID 清零、startup 自检失败文案锁存。
+//
+// 本包零框架依赖，便于单元测试。
 package instance
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"hanxi/internal/platform"
+	sup "hanxi/packages/go/supervisor"
 )
 
-// State 引擎状态机：stopped → starting → running ⇄ quitting → (stopped | failed)。
+// State 引擎状态机：stopped → starting → running → (stopped | failed)；
+// 手动退出窗口内 running/starting/stopping 一律呈现为 quitting。
 type State string
 
 const (
@@ -47,6 +66,13 @@ type StartOptions struct {
 	Exe     string // Snipaste.exe 绝对路径（版本隔离目录内）
 }
 
+func (o StartOptions) validate() error {
+	if o.Exe == "" {
+		return fmt.Errorf("Snipaste.exe 路径不能为空")
+	}
+	return nil
+}
+
 // Callbacks 引擎事件回调（免框架依赖；service 层接 Wails 事件推送）。
 type Callbacks struct {
 	OnState func(Snapshot)
@@ -61,170 +87,189 @@ type QuitResult struct {
 	Method         string
 }
 
-// Engine Snipaste 自有实例运行引擎（不嗅探外部实例，管理边界=本会话启动的进程树）。
-// opMu 串行化 Start/Quit 整段操作；mu 仅保护字段读写。
-// generation 为启动代际号：wait goroutine 结束旧进程时若代际已推进，则跳过状态回写（防止误覆盖新一轮状态）。
+// noExternalProbe 恒"不在运行"探针：Snipaste 不嗅探外部实例，管理边界=本会话
+// 启动的进程树。内核据此把一切静止态判为 OwnNone（external 分类不可达），
+// Stop 的归属甄别退化为幂等无操作——与本模块原有语义一致。
+type noExternalProbe struct{}
+
+func (noExternalProbe) Inspect(context.Context) (bool, *platform.ProcInfo, error) {
+	return false, nil, nil
+}
+
+// Engine Snipaste 自有实例运行引擎：组合内核 supervisor.Engine，
+// 本层持有 Snipaste 专属账目（退出归因标记、宽限收口通道、异常退出码/停止
+// 时刻、启动自检锁存文案）。opMu 串行化 Start/Quit 整段操作（内核 startMu
+// 只锁自身原语，分层退出的"投递→观察→复核→强杀"序列必须整段互斥）。
 type Engine struct {
 	opMu sync.Mutex
 	mu   sync.Mutex
 
-	state      State
-	version    string
-	pid        uint32
-	exePath    string
-	exitCode   int
-	errMsg     string
-	startedAt  time.Time
-	stoppedAt  time.Time
-	stopping   bool
-	generation uint64
+	manualExit   bool   // Quit 入口置位（承原 stopping 语义）：窗口内任何落终都归因手动退出，收口时清零
+	quitReported bool   // 已向呈现层报告 quitting（原 transition(StateQuitting) 时点）
+	latchedErr   string // 启动身份自检失败的锁存文案（下次 Start 清除）
+	exitCode     int
+	stoppedAt    time.Time
+	settle       chan struct{} // 进程落终态时关闭；nil=无在途进程
 
-	cmd      *exec.Cmd
-	job      platform.Job
-	token    platform.VerifyToken
-	waitDone chan struct{}
-
-	jobAPI     platform.JobAPI
+	sup        *sup.Engine
 	processAPI platform.ProcessAPI
 	closeByPID func(uint32) int
 	cb         Callbacks
 }
 
-// NewEngine 创建引擎（初始 stopped）。closeByPID 固定用 Win32 WM_CLOSE 投递实现，单测可换替身。
+// NewEngine 创建引擎（初始 stopped）。Job/Process API 与 closeByPID 的
+// Win32 WM_CLOSE 投递实现由内核/平台层承接，单测可替换 closeByPID 替身。
 func NewEngine(jobAPI platform.JobAPI, processAPI platform.ProcessAPI, cb Callbacks) *Engine {
-	return &Engine{
-		state: StateStopped, jobAPI: jobAPI, processAPI: processAPI,
-		closeByPID: postCloseByPID, cb: cb,
-	}
+	e := &Engine{processAPI: processAPI, closeByPID: postCloseByPID, cb: cb}
+	e.sup = sup.NewEngine(jobAPI, noExternalProbe{}, sup.Callbacks{OnState: e.onSupState}).
+		WithProcessAPI(processAPI) // 内核兜底强杀走 KillVerified 复核，防 PID 复用误杀
+	return e
 }
 
-// Start 冷启动自有实例：进程创建 → Query 建立身份 token 并核对 exe 路径（防启动器转发到意外进程）
-// → 挂入 JobObject 后立即解除 KILL_ON_JOB_CLOSE（Snipaste 设计上跨 Hanxi 生命周期存活，
-// 页面手动 Quit 才负责收尾）。任一环节失败即杀进程并回收句柄，状态落 failed。
-// 已在运行/启动中/退出中时拒绝重复启动；wait goroutine 随本方法成功而启动。
+// Start 冷启动自有实例（委托内核：创建进程 → 绑定 JobObject → 解除退出联动 →
+// running），随后执行模块侧身份自检。已在运行/启动中/退出中时拒绝重复启动。
 func (e *Engine) Start(opts StartOptions) error {
 	e.opMu.Lock()
 	defer e.opMu.Unlock()
-	if opts.Exe == "" {
-		return fmt.Errorf("Snipaste.exe 路径不能为空")
+	if err := opts.validate(); err != nil {
+		return err
 	}
-	e.mu.Lock()
-	if e.state == StateRunning || e.state == StateStarting || e.state == StateQuitting {
-		e.mu.Unlock()
+	if st := e.sup.Snapshot().State; st == sup.StateRunning || st == sup.StateStarting || st == sup.StateStopping {
 		return fmt.Errorf("本会话启动的 Snipaste 已在运行")
 	}
-	e.generation++
-	gen := e.generation
-	e.version, e.exePath, e.stopping = opts.Version, opts.Exe, false
-	e.errMsg, e.exitCode = "", 0
+	e.mu.Lock()
+	e.manualExit, e.quitReported, e.latchedErr = false, false, ""
+	e.exitCode, e.stoppedAt = 0, time.Time{}
 	e.mu.Unlock()
-	e.transition(StateStarting, "")
 
-	cmd := exec.Command(opts.Exe)
-	cmd.Dir = filepath.Dir(opts.Exe)
-	if err := cmd.Start(); err != nil {
-		e.transition(StateFailed, "进程启动失败: "+err.Error())
+	// Snipaste 设计上恒脱管：绑定 Job 后立即解除退出联动（Hanxi 退出/崩溃不
+	// 连带结束，页面手动 Quit 才负责收尾），与"不随 Hanxi 关闭"开关同形。
+	if err := e.sup.Start(context.Background(), sup.Spec{
+		Version:       opts.Version,
+		Exe:           opts.Exe,
+		DetachFromJob: true,
+	}); err != nil {
 		return err
 	}
-	pid := uint32(cmd.Process.Pid)
-	info, err := e.processAPI.Query(pid)
+
+	// 启动身份自检（模块策略，内核不复核路径）：确认实起进程就是目标 exe，
+	// 防启动器转发到意外进程；失败即经内核强制终止并锁存 failed 文案。
+	// 与原实现的口径差异：自检发生在 Job 绑定之后（原来在绑定之前、以裸
+	// Kill 收场），误起进程同样被整树终止，只是事件流多一次短暂 running。
+	snap := e.sup.Snapshot()
+	if snap.State != sup.StateRunning {
+		return nil // 竞态：启动即已退出，以内核终态分类为准
+	}
+	info, err := e.processAPI.Query(snap.PID)
 	if err != nil {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		e.transition(StateFailed, "建立进程身份失败: "+err.Error())
-		return fmt.Errorf("建立进程身份失败: %w", err)
+		return e.abortFailedStartup("建立进程身份失败: "+err.Error(), fmt.Errorf("建立进程身份失败: %w", err))
 	}
 	if info.ExePath != "" && !strings.EqualFold(filepath.Clean(info.ExePath), filepath.Clean(opts.Exe)) {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		err := fmt.Errorf("启动进程路径不匹配: %s", info.ExePath)
-		e.transition(StateFailed, err.Error())
-		return err
+		msg := fmt.Sprintf("启动进程路径不匹配: %s", info.ExePath)
+		return e.abortFailedStartup(msg, errors.New(msg))
 	}
-
-	job, err := e.jobAPI.Create()
-	if err != nil {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		e.transition(StateFailed, "创建 Job Object 失败: "+err.Error())
-		return err
-	}
-	if err := job.Assign(pid); err != nil {
-		_ = job.Close()
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-		e.transition(StateFailed, "JobObject 绑定失败: "+err.Error())
-		return err
-	}
-	if err := job.SetAllowKillOnClose(false); err != nil {
-		_ = job.Terminate(1)
-		_ = job.Close()
-		_ = cmd.Wait()
-		e.transition(StateFailed, "解除 Hanxi 退出联动失败: "+err.Error())
-		return err
-	}
-	// 关闭 KILL_ON_JOB_CLOSE 后，即使 Hanxi 退出时丢失 Job 句柄，Snipaste 也会继续运行。
-	// 页面手动 Quit 仍可在本会话存活期间通过该 Job 精确终止自有进程树。
-
-	waitDone := make(chan struct{})
-	e.mu.Lock()
-	e.cmd, e.job, e.pid = cmd, job, pid
-	e.token = platform.VerifyToken{PID: pid, ExePath: info.ExePath, StartedAt: info.StartedAt}
-	e.startedAt, e.stoppedAt, e.waitDone = info.StartedAt, time.Time{}, waitDone
-	if e.startedAt.IsZero() {
-		e.startedAt = time.Now()
-		e.token.StartedAt = e.startedAt
-	}
-	e.mu.Unlock()
-	go e.wait(cmd, job, waitDone, gen)
-	e.transition(StateRunning, "")
 	return nil
 }
 
-// Quit 分层退出：投递 WM_CLOSE → 等待宽限期 → Job 强杀 → KillVerified 兜底。
-// 每次动手前 verifyToken 复核 PID 身份（路径+启动时间），身份不匹配立即拒绝并报错——
-// 宁可退出失败也不误杀复用同一 PID 的其他进程。非托管状态返回 Method="not-managed" 不视为错误。
+// abortFailedStartup 启动自检失败的统一收口：先锁存失败文案（内核收口广播据
+// 此跳过停止时刻记账，还原原实现"自检失败不落 stoppedAt"的语义），再经内核
+// 强制终止误起进程，最后把静止态改写为 failed 并透传原始错误。
+func (e *Engine) abortFailedStartup(latchMsg string, cause error) error {
+	e.mu.Lock()
+	e.latchedErr = latchMsg
+	e.mu.Unlock()
+	_ = e.sup.Stop(0)
+	outer := e.sup.Snapshot()
+	e.mu.Lock()
+	snap := e.snapshotLocked(outer)
+	e.mu.Unlock()
+	e.emit(snap)
+	return cause
+}
+
+// Quit 分层退出（模块层驱动归因，内核只承担最后一层强制终止）：
+// 身份复核 → 投递 WM_CLOSE → 等待宽限期 → 再复核身份 → sup.Stop(0) 强杀。
+// 每次动手前 verifyToken 复核 PID 身份（路径+启动时间），身份不匹配立即拒绝
+// 并报错——宁可退出失败也不误杀复用同一 PID 的其他进程。
+// 非托管状态返回 Method="not-managed" 不视为错误。
 func (e *Engine) Quit() (QuitResult, error) {
 	e.opMu.Lock()
 	defer e.opMu.Unlock()
 
-	e.mu.Lock()
-	if e.state != StateRunning && e.state != StateStarting {
-		e.mu.Unlock()
+	snap := e.sup.Snapshot()
+	if snap.State != sup.StateRunning && snap.State != sup.StateStarting {
 		return QuitResult{Method: "not-managed"}, nil
 	}
-	token, pid, job, waitDone := e.token, e.pid, e.job, e.waitDone
-	e.stopping = true
+	e.mu.Lock()
+	e.manualExit = true // 先于一切置位（承原 stopping 语义）：此后任何落终都归因手动退出
+	settle := e.settle
 	e.mu.Unlock()
 
-	if err := e.verifyToken(token); err != nil {
-		if err == platform.ErrProcessNotFound {
+	// 动手前身份复核：进程已消失按"已退出"归因（不投 WM_CLOSE），身份不符拒操作。
+	if err := e.verifyToken(quitToken(snap)); err != nil {
+		if errors.Is(err, platform.ErrProcessNotFound) {
 			return QuitResult{Stopped: true, Method: "already-exited"}, nil
 		}
 		return QuitResult{Method: "ownership-lost"}, fmt.Errorf("进程身份复核失败，已拒绝退出以避免误杀: %w", err)
 	}
-	e.transition(StateQuitting, "")
-	requested := e.closeByPID(pid) > 0
-	select {
-	case <-waitDone:
-		return QuitResult{Stopped: true, CloseRequested: requested, Method: "close-request"}, nil
-	case <-time.After(closeGracePeriod):
+
+	e.mu.Lock()
+	e.quitReported = true
+	e.emit(e.snapshotLocked(snap)) // 原 transition(StateQuitting, "")：先报 quitting 再投递
+	e.mu.Unlock()
+
+	requested := e.closeByPID(snap.PID) > 0
+	settled := settle == nil // 竞态：门控后进程已收口（原 select 即刻命中 waitDone）
+	if !settled {
+		timer := time.NewTimer(closeGracePeriod)
+		select {
+		case <-settle:
+			settled = true
+		case <-timer.C:
+		}
+		timer.Stop()
 	}
-	if err := e.verifyToken(token); err != nil {
-		if err == platform.ErrProcessNotFound {
+	return e.finishQuit(snap, requested, settled)
+}
+
+// finishQuit 宽限窗口收口后的归因判定（委托内核强制终止）。
+func (e *Engine) finishQuit(snap sup.Snapshot, requested, settled bool) (QuitResult, error) {
+	return e.finishQuitWith(snap, requested, settled, e.verifyToken, func() error { return e.sup.Stop(0) })
+}
+
+// finishQuitWith 归因决策表（seam 参数供表驱动单测注入假复核/假强杀）：
+//
+//	settled                        → close-request（进程在宽限窗口内自然收口）
+//	verify ErrProcessNotFound      → already-exited（宽限期后才发现进程已消失）
+//	verify 其他失败                 → ownership-lost + error（拒强杀，防 PID 复用误伤）
+//	force nil                      → forced-job（内核整树终止成功，含 KillVerified 兜底成功）
+//	force err                      → forced-process + error（所有终止通道均失败）
+//
+// 与原实现的口径差异（内核把强制通道收口为一个 Stop 调用，无法回报具体是哪
+// 层成功）：原 forced-process 仅在"job.Terminate 失败、KillVerified 兜底成功"
+// 时出现——该罕见成功态现统一记为 forced-job（用户可见语义一致）；失败态仍
+// 记 forced-process + error。
+func (e *Engine) finishQuitWith(snap sup.Snapshot, requested, settled bool,
+	verify func(platform.VerifyToken) error, force func() error) (QuitResult, error) {
+	if settled {
+		return QuitResult{Stopped: true, CloseRequested: requested, Method: "close-request"}, nil
+	}
+	if err := verify(quitToken(snap)); err != nil {
+		if errors.Is(err, platform.ErrProcessNotFound) {
 			return QuitResult{Stopped: true, CloseRequested: requested, Method: "already-exited"}, nil
 		}
 		return QuitResult{CloseRequested: requested, Method: "ownership-lost"}, fmt.Errorf("强制结束前进程身份已变化，已拒绝操作: %w", err)
 	}
-	if job != nil {
-		if err := job.Terminate(1); err == nil {
-			return QuitResult{Stopped: true, Forced: true, CloseRequested: requested, Method: "forced-job"}, nil
-		}
-	}
-	if err := e.processAPI.KillVerified(context.Background(), token, true); err != nil {
+	if err := force(); err != nil {
 		return QuitResult{CloseRequested: requested, Method: "forced-process"}, err
 	}
-	return QuitResult{Stopped: true, Forced: true, CloseRequested: requested, Method: "forced-process"}, nil
+	return QuitResult{Stopped: true, Forced: true, CloseRequested: requested, Method: "forced-job"}, nil
+}
+
+// quitToken 从内核快照重建身份令牌：PID/Exe/StartedAt 均在 Start 登记时经
+// Query 建立（与内核内部 VerifyToken 同源），本层复核用同一形状。
+func quitToken(s sup.Snapshot) platform.VerifyToken {
+	return platform.VerifyToken{PID: s.PID, ExePath: s.Exe, StartedAt: s.Since}
 }
 
 // verifyToken 复核 PID 现身的进程与 token 是否同一实体：路径需一致（大小写不敏感），
@@ -246,53 +291,138 @@ func (e *Engine) verifyToken(token platform.VerifyToken) error {
 	return nil
 }
 
-// wait 后台 goroutine（Start 派生）：阻塞至进程退出，关闭 Job 句柄并回写终态。
-// gen 不匹配说明已有新一轮 Start 接管状态字段，仅关闭 done 后静默退出，绝不回写。
-// stopping 或退出码 0 归为正常 stopped，其余非零码落 failed 供前端提示。
-func (e *Engine) wait(cmd *exec.Cmd, job platform.Job, done chan struct{}, gen uint64) {
-	err := cmd.Wait()
-	code := 0
-	if err != nil && cmd.ProcessState != nil {
-		code = cmd.ProcessState.ExitCode()
-	}
-	_ = job.Close()
-
-	e.mu.Lock()
-	if gen != e.generation {
-		e.mu.Unlock()
-		close(done)
-		return
-	}
-	stopping := e.stopping
-	e.exitCode, e.stoppedAt = code, time.Now()
-	e.cmd, e.job, e.pid, e.waitDone = nil, nil, 0, nil
-	e.token = platform.VerifyToken{}
-	e.mu.Unlock()
-	close(done)
-	if stopping || code == 0 {
-		e.transition(StateStopped, "")
-	} else {
-		e.transition(StateFailed, fmt.Sprintf("Snipaste 异常退出（退出码 %d）", code))
-	}
-}
-
-// Snapshot 返回当前状态的一致性拷贝（字段级快照，不保证跨字段时序）。
+// Snapshot 返回当前状态的一致性快照。
 func (e *Engine) Snapshot() Snapshot {
+	outer := e.sup.Snapshot()
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.snapshotLocked()
+	return e.snapshotLocked(outer)
 }
 
-func (e *Engine) transition(state State, message string) {
+// ---------- 内核 → snipaste 形状映射 ----------
+
+// onSupState 内核状态广播 → 映射为本包 Snapshot 后转发（回调在内核锁外执行）。
+// 收口记账：终态时提取退出码、落停止时刻、关闭 settle 通道唤醒 Quit。
+func (e *Engine) onSupState(s sup.Snapshot) {
+	var snap Snapshot
 	e.mu.Lock()
-	e.state, e.errMsg = state, message
-	snap := e.snapshotLocked()
+	switch s.State {
+	case sup.StateStopped, sup.StateFailed:
+		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
+			e.exitCode = code
+		}
+		if e.latchedErr == "" && e.stoppedAt.IsZero() {
+			e.stoppedAt = time.Now()
+		}
+	default: // starting/running/stopping：进程在途，保证 Quit 可等待的收口通道存在
+		if e.settle == nil {
+			e.settle = make(chan struct{})
+		}
+	}
+	// 映射先行（failed+manualExit→stopped 的归因改写依赖标记），再清账并收口。
+	snap = e.snapshotLocked(s)
+	if terminal := s.State == sup.StateStopped || s.State == sup.StateFailed; terminal {
+		e.manualExit, e.quitReported = false, false
+		if e.settle != nil {
+			close(e.settle)
+			e.settle = nil
+		}
+	}
 	e.mu.Unlock()
+	e.emit(snap)
+}
+
+// snapshotLocked 前置条件：已持 e.mu。
+func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
+	state, errMsg := e.mapKernelState(s)
+	pid := s.PID
+	switch state {
+	case StateStopped, StateFailed:
+		pid = 0 // 原语义：进程收口后快照 PID 清零
+	}
+	return Snapshot{
+		Version:   s.Version,
+		State:     state,
+		PID:       pid,
+		ExePath:   s.Exe,
+		ExitCode:  e.exitCode,
+		Error:     errMsg,
+		StartedAt: s.Since,
+		StoppedAt: e.stoppedAt,
+	}
+}
+
+// mapKernelState 状态词表映射（前置条件：已持 e.mu）：
+//
+//	supervisor starting/running → starting/running（Quit 窗口内呈现 quitting）
+//	supervisor stopping         → quitting（Snipaste 词表原生有退出中态，直映射）
+//	supervisor failed           → failed；手动退出窗口内改判 stopped（承原
+//	                              stopping 先置位语义：Quit 期间任何落终都算手动退出）
+//	supervisor stopped          → stopped；启动自检锁存文案在场时改写为 failed
+//	                              （还原原实现身份/路径自检失败的落点）
+//	supervisor external         → stopped（探针恒不在场，原理上不可达；防御收口）
+func (e *Engine) mapKernelState(s sup.Snapshot) (State, string) {
+	switch s.State {
+	case sup.StateStarting:
+		if e.quitReported {
+			return StateQuitting, ""
+		}
+		return StateStarting, ""
+	case sup.StateRunning:
+		if e.quitReported {
+			return StateQuitting, ""
+		}
+		return StateRunning, ""
+	case sup.StateStopping:
+		return StateQuitting, ""
+	case sup.StateFailed:
+		if e.manualExit {
+			return StateStopped, ""
+		}
+		return StateFailed, mapKernelError(s.Error)
+	default: // stopped / external（不可达）
+		if e.latchedErr != "" {
+			return StateFailed, e.latchedErr
+		}
+		return StateStopped, mapKernelError(s.Error)
+	}
+}
+
+// mapKernelError 还原 snipaste 既有终态文案："已手动停止"抹平为空串（原实现
+// 手动退出终态无错误文案）；内核异常退出消息改回"Snipaste 异常退出（退出码
+// N）"；其余（进程创建/Job 绑定失败等）透传内核措辞。
+func mapKernelError(msg string) string {
+	switch {
+	case msg == "", msg == "已手动停止":
+		return ""
+	}
+	if code, ok := exitCodeFromKernelMessage(msg); ok {
+		return fmt.Sprintf("Snipaste 异常退出（退出码 %d）", code)
+	}
+	return msg
+}
+
+// kernelAbnormalExitRe 匹配内核异常退出文案中的退出码。措辞耦合自
+// supervisor.wait 的分类消息"托管进程异常退出（退出码 %d）"——内核文案变更时
+// 本处回退为透传 Error（ExitCode 保持账目值），不会崩溃，仅少一层改写。
+var kernelAbnormalExitRe = regexp.MustCompile(`托管进程异常退出（退出码 (-?\d+)）`)
+
+// exitCodeFromKernelMessage 从内核异常退出文案中提取退出码。
+func exitCodeFromKernelMessage(msg string) (int, bool) {
+	g := kernelAbnormalExitRe.FindStringSubmatch(msg)
+	if g == nil {
+		return 0, false
+	}
+	var code int
+	if _, err := fmt.Sscanf(g[1], "%d", &code); err != nil {
+		return 0, false
+	}
+	return code, true
+}
+
+// emit 状态广播（回调在锁外执行，防止回调内重入本引擎造成死锁）。
+func (e *Engine) emit(snap Snapshot) {
 	if e.cb.OnState != nil {
 		e.cb.OnState(snap)
 	}
-}
-
-func (e *Engine) snapshotLocked() Snapshot {
-	return Snapshot{Version: e.version, State: e.state, PID: e.pid, ExePath: e.exePath, ExitCode: e.exitCode, Error: e.errMsg, StartedAt: e.startedAt, StoppedAt: e.stoppedAt}
 }

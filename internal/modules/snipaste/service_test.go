@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"hanxi/internal/extapi"
 	"hanxi/internal/modules/snipaste/version"
 )
 
@@ -56,7 +57,7 @@ func TestRemoveActiveVersionRejected(t *testing.T) {
 	if err := store.SetActive("2.11.3"); err != nil {
 		t.Fatal(err)
 	}
-	svc := &SnipasteService{manager: version.NewManager(t.TempDir()), store: store, downloads: map[string]struct{}{}}
+	svc := &SnipasteService{manager: version.NewManager(t.TempDir()), store: store, downloads: map[string]struct{}{}, holder: extapi.NewLeaseHolder(ID)}
 	if err := svc.RemoveVersion("2.11.3"); err == nil {
 		t.Fatal("active version removal should fail")
 	}
