@@ -229,12 +229,15 @@ func (i ModuleCatalogItem) IsCore() bool { return i.Category == "core" }
 // ModuleState 是模块在当前设备上的四维事实 + 派生主操作。
 // Registry 是唯一权威源；前端只缓存投影，不得持久化第二份真相。
 type ModuleState struct {
-	Schema        int           `json:"schema"` // ModuleContractSchema
-	ModuleID      string        `json:"moduleId"`
-	Delivery      DeliveryState `json:"delivery"`
-	Policy        PolicyState   `json:"policy"`
-	Runtime       RuntimeState  `json:"runtime"`
-	Health        HealthState   `json:"health"`
+	Schema   int           `json:"schema"` // ModuleContractSchema
+	ModuleID string        `json:"moduleId"`
+	Delivery DeliveryState `json:"delivery"`
+	Policy   PolicyState   `json:"policy"`
+	Runtime  RuntimeState  `json:"runtime"`
+	Health   HealthState   `json:"health"`
+	// RemoteVersion 是 health=update-available 时的上游新版本号（由更新感知链
+	// 写入;其余健康值为空）。仅用于展示"x.y.z → 新版",不参与状态机裁决。
+	RemoteVersion string        `json:"remoteVersion,omitempty"`
 	PrimaryAction PrimaryAction `json:"primaryAction"`
 	Reason        string        `json:"reason,omitempty"` // ActionNone/受阻时的人类可读原因
 	Summary       SummaryKey    `json:"summary"`          // 派生摘要语义键

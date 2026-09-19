@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -86,6 +86,19 @@ func healthOf(t *testing.T, registry *extapi.Registry, id string) extapi.HealthS
 	return ""
 }
 
+// remoteVersionOf 取状态投影中展示的远程新版本号（health≠update-available
+// 或无版本记录时为空串）。
+func remoteVersionOf(t *testing.T, registry *extapi.Registry, id string) string {
+	t.Helper()
+	for _, st := range registry.ListStates() {
+		if st.ModuleID == id {
+			return st.RemoteVersion
+		}
+	}
+	t.Fatalf("模块 %q 不在状态投影中", id)
+	return ""
+}
+
 func staticResult(local, remote string, up bool, err error) func(context.Context) (string, string, bool, error) {
 	return func(context.Context) (string, string, bool, error) {
 		return local, remote, up, err
@@ -100,8 +113,8 @@ func TestSweepHealthOutcomes(t *testing.T) {
 	fail := &fakeModule{id: "gamma", fn: staticResult("", "", false, os.ErrDeadlineExceeded)}
 
 	sched, registry, _ := newSched(t, t.TempDir(), up, cur, fail)
-	// gamma 预置 update-available：检查失败后必须原样保留。
-	registry.SetHealth("gamma", extapi.HealthUpdateAvailable)
+	// gamma 预置 update-available（含展示版本）：检查失败后健康值与版本都必须原样保留。
+	registry.SetHealth("gamma", extapi.HealthUpdateAvailable, "3.0.0")
 
 	checked, err := sched.CheckNow(context.Background())
 	if err != nil {
@@ -118,6 +131,17 @@ func TestSweepHealthOutcomes(t *testing.T) {
 	}
 	if got := healthOf(t, registry, "gamma"); got != extapi.HealthUpdateAvailable {
 		t.Errorf("gamma 检查失败后 health = %q, want 保持 update-available", got)
+	}
+	// 版本贯穿断言：成功判定的 remote 经 SetHealth 落到 ListStates 投影；
+	// current 判定不带版本；失败模块既有版本不被清除。
+	if got := remoteVersionOf(t, registry, "alpha"); got != "1.1.0" {
+		t.Errorf("alpha remoteVersion = %q, want 1.1.0", got)
+	}
+	if got := remoteVersionOf(t, registry, "beta"); got != "" {
+		t.Errorf("beta remoteVersion = %q, want 空（current 不带版本）", got)
+	}
+	if got := remoteVersionOf(t, registry, "gamma"); got != "3.0.0" {
+		t.Errorf("gamma 检查失败后 remoteVersion = %q, want 保持 3.0.0", got)
 	}
 }
 
@@ -231,9 +255,8 @@ func TestCacheMergeAndRestore(t *testing.T) {
 	if err := json.Unmarshal(data, &snap); err != nil {
 		t.Fatalf("解析缓存: %v", err)
 	}
-	sort.Strings(snap.Available)
-	if got, want := snap.Available, []string{"a-up", "b-up"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
-		t.Errorf("Available = %v, want %v", got, want)
+	if want := map[string]string{"a-up": "2", "b-up": "2"}; !reflect.DeepEqual(snap.Available, want) {
+		t.Errorf("Available = %v, want %v", snap.Available, want)
 	}
 
 	// 第二轮：a-up 变 current（条目移除），b-up 保持，c-fail 不在本轮结果——
@@ -249,11 +272,11 @@ func TestCacheMergeAndRestore(t *testing.T) {
 	if err := json.Unmarshal(data, &snap); err != nil {
 		t.Fatal(err)
 	}
-	if len(snap.Available) != 1 || snap.Available[0] != "b-up" {
-		t.Errorf("二轮后 Available = %v, want [b-up]", snap.Available)
+	if want := map[string]string{"b-up": "2"}; !reflect.DeepEqual(snap.Available, want) {
+		t.Errorf("二轮后 Available = %v, want %v", snap.Available, want)
 	}
 
-	// 全新调度器 + 空 registry：Restore 回灌 b-up。
+	// 全新调度器 + 空 registry：Restore 回灌 b-up（版本号一并回灌，供首帧投影展示）。
 	sched2, registry2, _ := newSched(t, dir, upA, upB, fail)
 	if n := sched2.Restore(); n != 1 {
 		t.Fatalf("Restore = %d, want 1", n)
@@ -261,8 +284,54 @@ func TestCacheMergeAndRestore(t *testing.T) {
 	if got := healthOf(t, registry2, "b-up"); got != extapi.HealthUpdateAvailable {
 		t.Errorf("回灌后 b-up health = %q", got)
 	}
+	if got := remoteVersionOf(t, registry2, "b-up"); got != "2" {
+		t.Errorf("回灌后 b-up remoteVersion = %q, want 2", got)
+	}
 	if got := healthOf(t, registry2, "a-up"); got != extapi.HealthCurrent {
 		t.Errorf("回灌不应越界点亮 a-up：%q", got)
+	}
+}
+
+// TestCacheLegacyFormatMigration 旧落盘形状（available 为 []string、无版本号）
+// 容忍迁移：Restore 仍按 update-available 点亮（版本留空不谎报），merge 一轮后
+// 自动升级为新 map 形状。
+func TestCacheLegacyFormatMigration(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "updates.json")
+	legacy := `{"checkedAt":"2026-01-01T00:00:00Z","available":["old-a","old-b"]}`
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	upA := &fakeModule{id: "old-a", fn: staticResult("1", "1", false, nil)}
+	upB := &fakeModule{id: "old-b", fn: staticResult("1", "2", true, nil)}
+	sched, registry, _ := newSched(t, dir, upA, upB)
+	if n := sched.Restore(); n != 2 {
+		t.Fatalf("旧格式 Restore = %d, want 2", n)
+	}
+	for _, id := range []string{"old-a", "old-b"} {
+		if got := healthOf(t, registry, id); got != extapi.HealthUpdateAvailable {
+			t.Errorf("旧格式回灌 %s health = %q, want update-available", id, got)
+		}
+		if got := remoteVersionOf(t, registry, id); got != "" {
+			t.Errorf("旧格式无版本记录，%s remoteVersion = %q, want 空（不谎报）", id, got)
+		}
+	}
+
+	// 一轮成功判定后落盘升级为新形状：old-a 转 current 移除，old-b 带版本保留。
+	if _, err := sched.CheckNow(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snap snapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("迁移后缓存应可按新形状解析: %v", err)
+	}
+	if want := map[string]string{"old-b": "2"}; !reflect.DeepEqual(snap.Available, want) {
+		t.Errorf("迁移后 Available = %v, want %v", snap.Available, want)
 	}
 }
 

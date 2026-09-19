@@ -2,7 +2,8 @@
 //
 // 职责边界：本包只做"调度 + 裁决写入"——遍历实现了 extapi.UpdateChecker 的
 // 托管模块，逐个廉价比较（本地账目 + 带缓存远程列表，实现约束见契约注释），
-// 依据结果写 registry.SetHealth("update-available"|"current")，并广播
+// 依据结果写 registry.SetHealth("update-available"|"current")——update-available
+// 时附带上游新版本号（投影展示"→ 新版"，不参与状态机裁决），并广播
 // updates:checked 事件提示前端重拉 ListModuleStates 投影。前端零新 RPC、
 // 不持久化第二份真相（ADR-0001 投影唯一权威源纪律）。
 //
@@ -84,8 +85,10 @@ func New(registry *extapi.Registry, checkers map[string]extapi.UpdateChecker, st
 // 回灌 registry，供前端首帧投影即时点亮；无任何其他副作用。返回回灌条数。
 func (s *Scheduler) Restore() int {
 	applied := 0
-	for id := range s.cache.load().AvailableSet() {
-		s.registry.SetHealth(id, extapi.HealthUpdateAvailable)
+	for id, remote := range s.cache.load().AvailableSet() {
+		// 缓存里带的版本号一并回灌（旧格式迁移或检查时未拿到版本时为空串，
+		// 仅点亮 update-available，不谎报版本）。
+		s.registry.SetHealth(id, extapi.HealthUpdateAvailable, remote)
 		applied++
 	}
 	if applied > 0 {
@@ -162,7 +165,7 @@ func (s *Scheduler) sweep(r *round) int {
 		wg      sync.WaitGroup
 		mu      sync.Mutex
 		checked int
-		result  = map[string]bool{} // moduleID → hasUpdate（仅成功判定的模块入账）
+		result  = map[string]verdict{} // moduleID → 本轮结论（仅成功判定的模块入账）
 	)
 	sem := make(chan struct{}, s.concurrency)
 	for _, id := range ids {
@@ -187,10 +190,12 @@ func (s *Scheduler) sweep(r *round) int {
 			if hasUpdate {
 				health = extapi.HealthUpdateAvailable
 			}
-			s.registry.SetHealth(id, health)
+			// remote 只在 update-available 时被 Registry 记录（展示用上游
+			// 新版本）；current 判定连带清掉旧版本残留。
+			s.registry.SetHealth(id, health, remote)
 			mu.Lock()
 			checked++
-			result[id] = hasUpdate
+			result[id] = verdict{hasUpdate: hasUpdate, remote: remote}
 			if hasUpdate {
 				slog.Info("updatewatch: 检测到可用更新", "module", id, "local", local, "remote", remote)
 			}

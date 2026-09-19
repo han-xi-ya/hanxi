@@ -260,6 +260,7 @@ export const Level = {
  * @property {PolicyState} policy
  * @property {RuntimeState} runtime
  * @property {HealthState} health
+ * @property {string} [remoteVersion] - RemoteVersion 是 health=update-available 时的上游新版本号（由更新感知链 写入;其余健康值为空）。仅用于展示"x.y.z → 新版",不参与状态机裁决。
  * @property {PrimaryAction} primaryAction
  * @property {string} [reason] - ActionNone/受阻时的人类可读原因
  * @property {SummaryKey} summary - 派生摘要语义键

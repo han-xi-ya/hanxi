@@ -59,9 +59,10 @@ type ModuleWrapper struct {
 // mandatory（Core 控制平面）与 blocked（安全/撤回阻止）由装配根或后续
 // 事务引擎注入；health 预留给 Wave 5+ 的签名目录裁决，内建逻辑模块恒 current。
 type stateOverride struct {
-	mandatory bool
-	blocked   bool
-	health    HealthState
+	mandatory     bool
+	blocked       bool
+	health        HealthState
+	remoteVersion string // health=update-available 时的上游新版本（仅展示,不裁决）
 }
 
 // Registry 管理内建扩展的注册、生命周期与启用状态。
@@ -612,12 +613,19 @@ func (r *Registry) SetBlocked(moduleID string, blocked bool) {
 }
 
 // SetHealth 写入健康维度覆盖（Wave 5+ 签名目录裁决用）；传空串恢复 current。
-func (r *Registry) SetHealth(moduleID string, health HealthState) {
+// remoteVersion 仅在 health=update-available 时随记录写入（更新感知链给出的上游
+// 新版本号，纯展示输入，不进状态机）；health 为 current 或其他值时一律清空。
+func (r *Registry) SetHealth(moduleID string, health HealthState, remoteVersion string) {
 	o := r.overrideOf(moduleID)
 	if health == "" {
 		health = HealthCurrent
 	}
 	o.health = health
+	if health == HealthUpdateAvailable {
+		o.remoteVersion = remoteVersion
+	} else {
+		o.remoteVersion = ""
+	}
 }
 
 func (r *Registry) overrideOf(moduleID string) *stateOverride {
@@ -695,13 +703,19 @@ func (r *Registry) projectState(moduleID string, enabled bool, runtime RuntimeSt
 	if receipts != nil && !receipts.IsInstalled(moduleID) {
 		delivery = DeliveryAbsent
 	}
-	return StateInput{
+	out := StateInput{
 		ModuleID: moduleID,
 		Delivery: delivery,
 		Policy:   policy,
 		Runtime:  runtime,
 		Health:   health,
 	}.Project()
+	// remoteVersion 是纯展示附加：仅当 health=update-available 且感知链留有
+	// 版本号时盖进投影；不进 StateInput/Project()，不参与状态机裁决。
+	if health == HealthUpdateAvailable && ov != nil {
+		out.RemoteVersion = ov.remoteVersion
+	}
+	return out
 }
 
 // Acquire 是统一调用门的入口形态（Wave 3 全入口接线）：检查顺序为

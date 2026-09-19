@@ -553,3 +553,41 @@ func TestMandatoryCoreGuards(t *testing.T) {
 		t.Errorf("Policy = %s, want disabled", got.Policy)
 	}
 }
+
+// TestSetHealthRemoteVersion 覆盖健康维度覆盖写入的版本账目：update-available
+// 记录上游新版本并盖进投影（纯展示附加，不进状态机）；current/其他健康值
+// 一律清空；投影仅在 health=update-available 时携带 RemoteVersion。
+func TestSetHealthRemoteVersion(t *testing.T) {
+	reg := NewRegistry(nil)
+	demo := newRegistryTestModule("demo")
+	if err := reg.Register(demo); err != nil {
+		t.Fatal(err)
+	}
+
+	reg.SetHealth("demo", HealthUpdateAvailable, "2.3.4")
+	got := stateFor(t, reg, "demo")
+	eq(t, "demo.health", got.Health, HealthUpdateAvailable)
+	eq(t, "demo.remoteVersion", got.RemoteVersion, "2.3.4")
+
+	// 旧格式回灌等无版本场景：update-available 点亮但版本留空，不谎报。
+	reg.SetHealth("demo", HealthUpdateAvailable, "")
+	eq(t, "demo.remoteVersion（无版本回灌）", stateFor(t, reg, "demo").RemoteVersion, "")
+
+	// 回到 current：即便误传版本也必须清空。
+	reg.SetHealth("demo", HealthCurrent, "9.9.9")
+	got = stateFor(t, reg, "demo")
+	eq(t, "demo.health", got.Health, HealthCurrent)
+	eq(t, "demo.remoteVersion（current 清空）", got.RemoteVersion, "")
+
+	// 其他健康值（撤回类）同样不带版本。
+	reg.SetHealth("demo", HealthUpdateAvailable, "2.3.4")
+	reg.SetHealth("demo", HealthRevoked, "")
+	got = stateFor(t, reg, "demo")
+	eq(t, "demo.health", got.Health, HealthRevoked)
+	eq(t, "demo.remoteVersion（revoked 清空）", got.RemoteVersion, "")
+
+	// 空串恢复 current 缺省：版本一并收口。
+	reg.SetHealth("demo", HealthUpdateAvailable, "2.3.4")
+	reg.SetHealth("demo", "", "")
+	eq(t, "demo.remoteVersion（空串恢复 current）", stateFor(t, reg, "demo").RemoteVersion, "")
+}
