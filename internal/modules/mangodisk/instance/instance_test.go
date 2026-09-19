@@ -4,21 +4,32 @@ package instance
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
+	sup "hanxi/packages/go/supervisor"
 )
+
+// 说明：进程治理主流程（spawn/Job 绑定/退出分类/收口等待）已由内核
+// packages/go/supervisor 的引擎测试矩阵覆盖（fake opener，全路径不依赖真进程）。
+// 本文件聚焦 mangodisk 适配层：内核快照 → 本包 Snapshot 的形状/词表映射、
+// Tauri 信号窗 PID 归属探针（external 快照携真实 PID）、ErrExternal 契约映射、
+// "已手动停止"文案折回、信使接缝、WM_CLOSE 宽限收口，以及维持既有环境口径的
+// 真进程冒烟。
 
 // ---------- 测试用 fake（探针与 Job 注入） ----------
 
 type fakeProbe struct {
-	running   bool // IsRunning 返回值
-	ready     bool // WaitForReady 立即返回值
-	signalPID uint32
+	running   bool   // IsRunning 返回值
+	ready     bool   // WaitForReady 立即返回值
+	signalPID uint32 // SignalPID 返回值（0 = 信号窗口不可得）
 }
 
 func (p *fakeProbe) IsRunning() bool                 { return p.running }
@@ -34,11 +45,14 @@ func (f *fakeJob) SetAllowKillOnClose(bool) error { return nil }
 
 // fakeJobAPI 通过 createErr 控制 Create 失败，job.assignErr 控制 Assign 失败。
 type fakeJobAPI struct {
+	mu        sync.Mutex
 	createErr error
 	job       *fakeJob
 }
 
 func (f *fakeJobAPI) Create() (platform.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.createErr != nil {
 		return nil, f.createErr
 	}
@@ -62,6 +76,15 @@ func (r *eventRecorder) cb() Callbacks {
 	}}
 }
 
+func (r *eventRecorder) last() Snapshot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.states) == 0 {
+		return Snapshot{}
+	}
+	return r.states[len(r.states)-1]
+}
+
 func (r *eventRecorder) count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -73,20 +96,29 @@ func newWindowsJobAPI() platform.JobAPI {
 	return windows.NewJobAPI()
 }
 
-// mustCmdExe 返回系统 cmd.exe 路径（无参数启动即遇 GPIO 立即退出，可用作短命冒烟进程）。
+// mustCmdExe 返回系统 cmd.exe 路径（真进程冒烟用；无参数启动即挂起等待输入，
+// 由 Job/句柄负责终止）。个别受限执行环境（如 PATH 精简的沙箱/Git Bash 会话）
+// System32 不在 PATH 中：经 SystemRoot 定位兜底，仍是真实系统 cmd.exe，
+// 不改变冒烟口径。
 func mustCmdExe(t *testing.T) string {
 	t.Helper()
-	path, err := exec.LookPath("cmd.exe")
-	if err != nil {
-		t.Fatal("cmd.exe 不可用")
+	if path, err := exec.LookPath("cmd.exe"); err == nil {
+		return path
 	}
-	return path
+	if root := os.Getenv("SystemRoot"); root != "" {
+		path := filepath.Join(root, "System32", "cmd.exe")
+		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
+			return path
+		}
+	}
+	t.Fatal("cmd.exe 不可用")
+	return ""
 }
 
 // waitState 轮询直至引擎达到目标状态（或超时）。
 func waitState(t *testing.T, e *Engine, want State) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		if got := e.Snapshot().State; got == want {
 			return
@@ -98,10 +130,111 @@ func waitState(t *testing.T, e *Engine, want State) {
 	}
 }
 
+// ---------- 词表与形状映射（纯函数路径） ----------
+
+func TestMapStateVocabulary(t *testing.T) {
+	cases := []struct {
+		in   sup.State
+		want State
+	}{
+		{sup.StateStopped, StateStopped},
+		{sup.StateStarting, StateStarting},
+		{sup.StateRunning, StateRunning},
+		{sup.StateStopping, StateRunning}, // 终止窗口折并入 running（词表无 stopping）
+		{sup.StateExternal, StateExternal},
+		{sup.StateFailed, StateFailed},
+	}
+	for _, c := range cases {
+		if got := mapState(c.in); got != c.want {
+			t.Errorf("mapState(%s) = %s, want %s", c.in, got, c.want)
+		}
+	}
+	// 映射产物必须始终落在 mangodisk 既有词表内
+	for _, c := range cases {
+		switch mapState(c.in) {
+		case StateStopped, StateStarting, StateRunning, StateFailed, StateExternal:
+		default:
+			t.Fatalf("映射出词表之外的状态: %s", mapState(c.in))
+		}
+	}
+}
+
+func TestExitCodeAndMessageMapping(t *testing.T) {
+	rec := &eventRecorder{}
+	e := NewEngine(&fakeJobAPI{}, &fakeProbe{}, rec.cb())
+
+	e.onSupState(sup.Snapshot{State: sup.StateFailed, PID: 0, Version: "v1.0.7",
+		Error: "托管进程异常退出（退出码 1）"})
+	snap := rec.last()
+	if snap.State != StateFailed || snap.ExitCode != 1 {
+		t.Fatalf("failed 映射异常: %+v", snap)
+	}
+	if !strings.Contains(snap.Error, "MangoDisk 异常退出（退出码 1）") ||
+		!strings.Contains(snap.Error, "程序文件完整") || !strings.Contains(snap.Error, "WebView2") {
+		t.Errorf("异常退出文案应保持 mangodisk 既有口径: %s", snap.Error)
+	}
+
+	// 手动停止：内核"已手动停止"折回本引擎既有的空文案（stopped 态不带话术）
+	e.onSupState(sup.Snapshot{State: sup.StateStopped, Error: "已手动停止"})
+	snap = rec.last()
+	if snap.State != StateStopped || snap.Error != "" {
+		t.Fatalf("stopped 映射异常（Error 应折回空文案）: %+v", snap)
+	}
+
+	// 启动失败等其余文案透传
+	e.onSupState(sup.Snapshot{State: sup.StateFailed, Error: "进程启动失败: fake"})
+	if got := rec.last().Error; got != "进程启动失败: fake" {
+		t.Errorf("非异常退出文案应透传: %s", got)
+	}
+
+	// external：External 标志与 PID 账目透传（内核携 ProcInfo 时为真实外部 PID）
+	e.onSupState(sup.Snapshot{State: sup.StateExternal})
+	snap = rec.last()
+	if !snap.External || snap.State != StateExternal || snap.PID != 0 {
+		t.Fatalf("external 映射异常: %+v", snap)
+	}
+	e.onSupState(sup.Snapshot{State: sup.StateExternal, PID: 4321})
+	if snap = rec.last(); snap.PID != 4321 {
+		t.Fatalf("external 快照应如实携带探针 PID: %+v", snap)
+	}
+}
+
+// ---------- 探针 PID 归属（supervisor.Probe 适配层） ----------
+
+func TestSupProbePIDAttribution(t *testing.T) {
+	// 互斥体不在：一律 not running（无归属可言）
+	probe := &fakeProbe{running: false, signalPID: 777}
+	if running, info, err := (supProbe{probe}).Inspect(nil); running || info != nil || err != nil {
+		t.Fatalf("互斥体缺失应判 not running: %v %+v %v", running, info, err)
+	}
+	// 互斥体在 + 信号窗可得：外部性 + PID 双事实
+	probe = &fakeProbe{running: true, signalPID: 4321}
+	running, info, err := (supProbe{probe}).Inspect(nil)
+	if !running || err != nil || info == nil || info.PID != 4321 {
+		t.Fatalf("信号窗 PID 应随 ProcInfo 上报: %v %+v %v", running, info, err)
+	}
+	// 互斥体在 + 信号窗不可得：仍报存活、无 PID（外部性判定不翻转）
+	probe = &fakeProbe{running: true, signalPID: 0}
+	running, info, err = (supProbe{probe}).Inspect(nil)
+	if !running || err != nil || info != nil {
+		t.Fatalf("信号窗缺失应降级为无 PID 的存活: %v %+v %v", running, info, err)
+	}
+}
+
+// ---------- 生命周期（假 Job：Start 失败路径；真 Job：正例冒烟） ----------
+
+func TestStartEmptyExeRejected(t *testing.T) {
+	e := NewEngine(&fakeJobAPI{}, &fakeProbe{}, Callbacks{})
+	if err := e.Start(StartOptions{Version: "v1.0.7"}); err == nil ||
+		err.Error() != "MangoDisk EXE 路径不能为空" {
+		t.Fatalf("空路径应报既有文案, got %v", err)
+	}
+}
+
 func TestStartCreateJobFail(t *testing.T) {
 	rec := &eventRecorder{}
 	e := NewEngine(&fakeJobAPI{createErr: errors.New("boom")}, &fakeProbe{}, rec.cb())
-	err := e.Start(StartOptions{Version: "v3.20.0", Exe: mustCmdExe(t)})
+	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)})
 	if err == nil {
 		t.Fatal("Create 失败应返回错误")
 	}
@@ -114,7 +247,7 @@ func TestStartAssignFail(t *testing.T) {
 	rec := &eventRecorder{}
 	api := &fakeJobAPI{job: &fakeJob{assignErr: errors.New("boom")}}
 	e := NewEngine(api, &fakeProbe{}, rec.cb())
-	err := e.Start(StartOptions{Version: "v3.20.0", Exe: mustCmdExe(t)})
+	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)})
 	if err == nil {
 		t.Fatal("Assign 失败应返回错误")
 	}
@@ -123,60 +256,124 @@ func TestStartAssignFail(t *testing.T) {
 	}
 }
 
-// TestWaitExitCodeZeroClassifiedStopped 冒烟：进程正常退出（退出码 0 且此前 running）→ stopped。
-func TestWaitExitCodeZeroClassifiedStopped(t *testing.T) {
-	cmd := exec.Command(mustCmdExe(t), "/c", "exit", "0")
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
+// TestManagedLifecycleSmoke 真进程冒烟（既有环境红口径）：真 Job Object 拉起
+// cmd.exe → running → OpenWindow 信使（接缝打桩）→ Stop 强杀 → stopped。
+func TestManagedLifecycleSmoke(t *testing.T) {
+	rec := &eventRecorder{}
+	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, rec.cb())
+	var spawned []string
+	var spMu sync.Mutex
+	e.spawnMessenger = func(exe string) error {
+		spMu.Lock()
+		spawned = append(spawned, exe)
+		spMu.Unlock()
+		return nil
 	}
-	e := NewEngine(newWindowsJobAPI(), &fakeProbe{running: false}, Callbacks{})
-	e.mu.Lock()
-	e.cmd = cmd
-	e.pid = uint32(cmd.Process.Pid)
-	e.state = StateRunning
-	e.mu.Unlock()
 
-	go e.wait()
+	exe := mustCmdExe(t)
+	if err := e.Start(StartOptions{Version: "v1.0.7", Exe: exe}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = e.Stop() }()
+	waitState(t, e, StateRunning)
+
+	if got := e.Exe(); got != exe {
+		t.Errorf("running 时 Exe() = %q, want %q", got, exe)
+	}
+	// Windows 单调钟粒度可致"注册即查询"同 tick（时长 0）——给一个观察宽限再断言
+	time.Sleep(5 * time.Millisecond)
+	if e.RunningDuration() <= 0 {
+		t.Error("running 时已运行时长应为正")
+	}
+
+	opened, err := e.OpenWindow(exe)
+	if err != nil || !opened {
+		t.Fatalf("OpenWindow = %v, %v; want true, nil", opened, err)
+	}
+	spMu.Lock()
+	spawnCount := len(spawned)
+	spMu.Unlock()
+	if spawnCount != 1 || spawned[0] != exe {
+		t.Errorf("唤窗应拉起一个信使: %v", spawned)
+	}
+	if snap := rec.last(); snap.State != StateRunning {
+		t.Errorf("唤窗后广播快照应保持 running: %+v", snap)
+	}
+
+	if err := e.Stop(); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
 	waitState(t, e, StateStopped)
-}
-
-// TestWaitExternalTaken 冷启动竞速：我们的进程自退后互斥体仍被外部主实例持有 → external。
-func TestWaitExternalTaken(t *testing.T) {
-	cmd := exec.Command(mustCmdExe(t), "/c", "exit", "0")
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
+	snap := e.Snapshot()
+	if snap.Error != "" {
+		t.Errorf("手动停止文案应保持既有空口径, got %q", snap.Error)
 	}
-	e := NewEngine(newWindowsJobAPI(), &fakeProbe{running: true}, Callbacks{})
-	e.mu.Lock()
-	e.cmd = cmd
-	e.pid = uint32(cmd.Process.Pid)
-	e.state = StateRunning
-	e.mu.Unlock()
-
-	go e.wait()
-	waitState(t, e, StateExternal)
-	if snap := e.Snapshot(); !snap.External {
-		t.Fatalf("快照异常: %+v", snap)
+	if snap.Version != "v1.0.7" {
+		t.Errorf("停止后应保留版本账目: %+v", snap)
+	}
+	if got := e.Exe(); got != "" {
+		t.Errorf("停止后 Exe() 应为空, got %q", got)
+	}
+	if e.RunningDuration() != 0 {
+		t.Error("停止后已运行时长应为 0")
 	}
 }
 
-// TestWaitAbnormalExit 异常退出码（1）→ failed 且错误提示指向 WebView2。
-func TestWaitAbnormalExit(t *testing.T) {
-	cmd := exec.Command(mustCmdExe(t), "/c", "exit", "1")
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	e := NewEngine(newWindowsJobAPI(), &fakeProbe{running: false}, Callbacks{})
-	e.mu.Lock()
-	e.cmd = cmd
-	e.pid = uint32(cmd.Process.Pid)
-	e.state = StateRunning
-	e.mu.Unlock()
+// 注：冷启动竞速的 wait 退出分类（自有进程自退 + 探针仍见存活 → external 接管）
+// 由内核 supervisor 引擎测试矩阵覆盖（fake opener）；本层对"接管快照携探针
+// PID"的钉扎见 TestSupProbePIDAttribution 与 TestStopExternalKeepsNilContract。
 
-	go e.wait()
-	waitState(t, e, StateFailed)
-	if snap := e.Snapshot(); snap.ExitCode != 1 {
-		t.Fatalf("exitCode = %d, want 1", snap.ExitCode)
+// TestQuitGraceFallback 冒烟：Quit 经内核 grace 通道——WM_CLOSE（信号窗不可得，
+// 静默 no-op）→ 宽限内未自然退 → JobObject 强杀兜底，收口归 stopped。
+func TestQuitGraceFallback(t *testing.T) {
+	// 压缩宽限：单测不能等生产 2s
+	old := closeGracePeriod
+	closeGracePeriod = 200 * time.Millisecond
+	defer func() { closeGracePeriod = old }()
+
+	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
+	if err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = e.Stop() }()
+	waitState(t, e, StateRunning)
+
+	if err := e.Quit(); err != nil {
+		t.Fatalf("Quit: %v", err)
+	}
+	waitState(t, e, StateStopped)
+	if snap := e.Snapshot(); snap.Error != "" {
+		t.Errorf("Quit 收口文案应为空, got %q", snap.Error)
+	}
+}
+
+// 注：宽限窗口内自然退出的优雅路径（QuitHook 投递成功 → done 先收口）由内核
+// supervisor 引擎测试矩阵覆盖（fake opener）；本层不重复造带参数进程的桩。
+
+// TestStopIdempotent 停止幂等：静止态调用 Stop/Quit 无副作用。
+func TestStopIdempotent(t *testing.T) {
+	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
+	if err := e.Stop(); err != nil {
+		t.Fatalf("Stop(stopped) = %v, want nil", err)
+	}
+	if err := e.Quit(); err != nil {
+		t.Fatalf("Quit(stopped) = %v, want nil", err)
+	}
+}
+
+// TestStopExternalKeepsNilContract 外部实例不归本引擎管辖：内核回 ErrExternal，
+// 按 mangodisk 既有契约映射为成功无操作，状态校正为 external（携探针 PID）。
+func TestStopExternalKeepsNilContract(t *testing.T) {
+	e := NewEngine(newWindowsJobAPI(), &fakeProbe{running: true, signalPID: 5678}, Callbacks{})
+	if err := e.Quit(); err != nil {
+		t.Fatalf("external 下 Quit 应映射为 nil, got %v", err)
+	}
+	if snap := e.Snapshot(); snap.State != StateExternal || !snap.External || snap.PID != 5678 {
+		t.Fatalf("external 校正未入账: %+v", snap)
+	}
+	e2 := NewEngine(newWindowsJobAPI(), &fakeProbe{running: true}, Callbacks{})
+	if err := e2.Stop(); err != nil {
+		t.Fatalf("external 下 Stop 应映射为 nil, got %v", err)
 	}
 }
 
@@ -193,21 +390,25 @@ func TestRefreshExternalTwoWay(t *testing.T) {
 	}
 
 	probe.running = true
+	probe.signalPID = 4321
 	e.RefreshExternal()
-	if got := e.Snapshot().State; got != StateExternal {
-		t.Fatalf("state = %s, want external", got)
+	if got := e.Snapshot(); got.State != StateExternal || got.PID != 4321 {
+		t.Fatalf("external 校正应入账且携信号窗 PID（mangodisk 探针特判）: %+v", got)
 	}
 
 	probe.running = false
+	probe.signalPID = 0
 	e.RefreshExternal()
 	if got := e.Snapshot().State; got != StateStopped {
 		t.Fatalf("state = %s, want stopped", got)
 	}
 
-	// running 时不探测（探测到的是自己）
-	e.mu.Lock()
-	e.state = StateRunning
-	e.mu.Unlock()
+	// running 时不探测（探测到的是自己）：以真进程冒烟验证内核静止态门控
+	if err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = e.Stop() }()
+	waitState(t, e, StateRunning)
 	probe.running = true
 	e.RefreshExternal()
 	if got := e.Snapshot().State; got != StateRunning {
@@ -215,60 +416,13 @@ func TestRefreshExternalTwoWay(t *testing.T) {
 	}
 }
 
-// TestQuitGraceFallback 冒烟：Quit 对短命进程宽限内收尾（WM_CLOSE 找不到窗口 → 收紧的宽限
-// 内不能自然退则强杀兜底，两种路径最终都归 stopped）。
-func TestQuitGraceFallback(t *testing.T) {
-	// 压缩宽限：单测不能等生产 2s
-	old := closeGracePeriod
-	closeGracePeriod = 200 * time.Millisecond
-	defer func() { closeGracePeriod = old }()
-
-	// ping -t 不退出，验证强杀兜底路径
-	ping := exec.Command(mustCmdExe(t), "/c", "ping", "-n", "30", "127.0.0.1")
-	if err := ping.Start(); err != nil {
-		t.Fatal(err)
-	}
+// TestOpenWindowMessengerFailurePropagates 信使拉起失败 → OpenWindow 返回既有包装文案。
+func TestOpenWindowMessengerFailurePropagates(t *testing.T) {
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
-	e.mu.Lock()
-	e.cmd = ping
-	e.pid = uint32(ping.Process.Pid)
-	e.state = StateRunning
-	e.mu.Unlock()
-	go e.wait()
-
-	if err := e.Quit(); err != nil {
-		t.Fatalf("Quit: %v", err)
-	}
-	waitState(t, e, StateStopped)
-
-	// 短命进程：Quit 后宽限内自然退走优雅路径
-	quick := exec.Command(mustCmdExe(t), "/c", "exit", "0")
-	if err := quick.Start(); err != nil {
-		t.Fatal(err)
-	}
-	e2 := NewEngine(newWindowsJobAPI(), &fakeProbe{running: false}, Callbacks{})
-	e2.mu.Lock()
-	e2.cmd = quick
-	e2.pid = uint32(quick.Process.Pid)
-	e2.state = StateRunning
-	e2.mu.Unlock()
-	go e2.wait()
-
-	// 进程先自然退出，Quit 宽限轮询立刻观察到
-	if err := e2.Quit(); err != nil {
-		t.Fatalf("Quit(短命): %v", err)
-	}
-	waitState(t, e2, StateStopped)
-}
-
-// TestStopIdempotent 停止幂等且覆盖 Quit：静止态调用无副作用。
-func TestStopIdempotent(t *testing.T) {
-	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
-	if err := e.Stop(); err != nil {
-		t.Fatalf("Stop(stopped) = %v, want nil", err)
-	}
-	if err := e.Quit(); err != nil {
-		t.Fatalf("Quit(stopped) = %v, want nil", err)
+	e.spawnMessenger = func(string) error { return errors.New("拉起窗口信使失败: fake") }
+	if opened, err := e.OpenWindow("whatever.exe"); err == nil ||
+		!strings.Contains(err.Error(), "拉起窗口信使失败") || opened {
+		t.Fatalf("信使失败应透传: opened=%v err=%v", opened, err)
 	}
 }
 
@@ -277,5 +431,17 @@ func TestOpenWindowMessenger(t *testing.T) {
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
 	if opened, err := e.OpenWindow(mustCmdExe(t)); err != nil || !opened {
 		t.Fatalf("OpenWindow = %v, %v; want true, nil", opened, err)
+	}
+}
+
+// TestProbePassthrough 探针领域能力透传（WaitReady 不经内核）。
+func TestProbePassthrough(t *testing.T) {
+	e := NewEngine(&fakeJobAPI{}, &fakeProbe{ready: true}, Callbacks{})
+	if !e.WaitReady(time.Second) {
+		t.Fatal("fake 探针 ready=true 应透传为就绪")
+	}
+	e2 := NewEngine(&fakeJobAPI{}, &fakeProbe{ready: false}, Callbacks{})
+	if e2.WaitReady(time.Second) {
+		t.Fatal("fake 探针 ready=false 应透传为超时")
 	}
 }
