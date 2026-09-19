@@ -1,516 +1,809 @@
 <script setup lang="ts">
+// 工作台首页（Wave 2，UI 专项 §7.2/§7.4 + ADR-0001 §1.8）：
+// 职责 = 运行摘要 + 常用入口 + 最近任务，不再承担完整模块目录与启停（归模块中心）。
+// 数据铁律：全部区块只消费后端真实投影，无来源的分区隐藏并注释说明，禁止样例数据。
+//   · 正在运行   AppService.ListModules()，initialized ∧ enabled = 已分配运行资源；
+//   · 摘要三项   ListModules 真实计数（待处理/可用更新两张卡本期隐藏，见模板注释）；
+//   · 常用入口   固定常用（navGrouping.FAV_MODULE_IDS 单一来源）+ 最近使用（loadRecentRoutes），
+//                经后端 navs 实时过滤可见性（模块停用即消失），最多 4 个直达；
+//   · 最近任务   HistoryService.List 三桶（ocr/portkill/envcheck）+ 统一 Operation
+//                recentFinished 两源合并、按时间降序取最近 5 条，无数据整区隐藏（Wave 4）。
 import { ref, shallowRef, computed, onMounted } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
-import type { ModuleInfo, NavEntry } from '../../bindings/hanxi/internal/extapi/models'
+import * as HistoryAPI from '../../bindings/hanxi/internal/history/historyservice'
+import type { ModuleInfo, NavEntry, Operation } from '../../bindings/hanxi/internal/extapi/models'
+import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
 import type { AppInfo } from '../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
+import { useOperations } from '../composables/useOperations'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../constants/navigation'
 import { ICON_NAMES, type IconName } from '../constants/icons'
+import { operationKindMeta, operationPhaseText, operationStatusMeta } from '../constants/status'
+import {
+  loadRecentRoutes,
+  mergeFavRecentNavs,
+  moduleIdOfNav,
+  type NavEntryWithGroup,
+} from '../components/shell/navGrouping'
 import AppIcon from '../components/ui/AppIcon.vue'
+import UiButton from '../components/ui/UiButton.vue'
+import UiEmptyState from '../components/ui/UiEmptyState.vue'
+import PageContainer from '../components/ui/PageContainer.vue'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
 }>()
 
 const { showToast } = useToast()
+// 统一 Operation 观察面（模块级单例）：首页"最近任务"取终态收口记录，
+// 与历史三桶合并呈现；在途（queued/running）不进本列表（归模块中心在途条）。
+const { recentFinished } = useOperations()
 
 const modules = shallowRef<ModuleInfo[]>([])
 const navs = shallowRef<NavEntry[]>([])
 const appInfo = ref<AppInfo | null>(null)
-const toggling = ref<string | null>(null)
+const loading = ref(true)
+const loadError = ref<string | null>(null)
+const recentTasks = shallowRef<HistoryRecord[]>([])
+const recentRoutes = ref<string[]>(loadRecentRoutes())
 
-// 模块展示元数据（图标/首选路由）单一来源在 constants/navigation（三份清单收编）
-const MODULE_META = MODULE_PRESENTATION
+// ── 展示元数据工具（图标 `i:` 前缀双轨：注册过的走 AppIcon SVG，其余文本回退）──
 
-async function loadData() {
-  try {
-    const [mods, navList, info] = await Promise.all([
-      AppAPI.AppService.ListModules(),
-      AppAPI.AppService.GetNavs(),
-      AppAPI.AppService.GetAppInfo(),
-    ])
-    modules.value = mods ?? []
-    navs.value = navList ?? []
-    appInfo.value = info
-  } catch (err: unknown) {
-    showToast(`获取工作台信息失败: ${getErrorMessage(err)}`)
-  }
-}
-
-const enabledModules = computed(() => modules.value.filter(m => m.enabled))
-const disabledModules = computed(() => modules.value.filter(m => !m.enabled))
-
-function getModuleIcon(id: string): string {
-  return MODULE_META[id]?.icon || FALLBACK_MODULE_ICON
-}
-
-/** `i:` 前缀且已登记 → SVG 图标名；否则 undefined（走文本回退渲染）。 */
-function moduleIconName(id: string): IconName | undefined {
-  const icon = getModuleIcon(id)
-  if (!icon.startsWith('i:')) return undefined
+function iconNameFromIconString(icon: string | undefined): IconName | undefined {
+  if (!icon || !icon.startsWith('i:')) return undefined
   const name = icon.slice(2)
   return (ICON_NAMES as readonly string[]).includes(name) ? (name as IconName) : undefined
 }
 
+function getModuleIcon(id: string): string {
+  return MODULE_PRESENTATION[id]?.icon || FALLBACK_MODULE_ICON
+}
+
+function moduleIconName(id: string): IconName | undefined {
+  return iconNameFromIconString(getModuleIcon(id))
+}
+
 function getModuleRoute(id: string): string {
-  if (MODULE_META[id]?.route) {
-    return MODULE_META[id].route
+  if (MODULE_PRESENTATION[id]?.route) {
+    return MODULE_PRESENTATION[id].route
   }
-  const match = navs.value.find(n => n.id === id || n.route.includes(id))
+  const match = navs.value.find((n) => n.id === id || n.route.includes(id))
   return match?.route || '/'
 }
 
 function enterModule(m: ModuleInfo) {
   const route = getModuleRoute(m.id)
-  emit('navigate', route)
+  if (route !== '/') emit('navigate', route)
 }
 
-async function toggle(m: ModuleInfo) {
-  toggling.value = m.id
+// ── 核心投影：ListModules / GetNavs / GetAppInfo（ext:changed 热刷新复用同链路）──
+
+async function loadCore() {
   try {
-    const nextState = !m.enabled
-    await AppAPI.AppService.SetModuleEnabled(m.id, nextState)
-    showToast(nextState ? `已启用「${m.name}」` : `已停用「${m.name}」，已回收运行时资源`)
-    await loadData()
-    // 后端 SetModuleEnabled 已通过 ext:changed 事件广播导航热更新，前端无需重复补发
+    const [mods, navList, info] = await Promise.all([
+      AppAPI.AppService.ListModules(),
+      AppAPI.AppService.GetNavs(),
+      AppAPI.AppService.GetAppInfo()
+    ])
+    modules.value = mods ?? []
+    navs.value = navList ?? []
+    appInfo.value = info
+    loadError.value = null
   } catch (err: unknown) {
-    showToast(`操作失败: ${getErrorMessage(err)}`)
+    loadError.value = getErrorMessage(err)
+    showToast(`获取工作台信息失败: ${getErrorMessage(err)}`)
   } finally {
-    toggling.value = null
+    loading.value = false
   }
 }
 
+// 正在运行 = 已启用且已分配运行时资源（initialized）。单一口径，不在前端推导第二份状态。
+const runningModules = computed(() => modules.value.filter((m) => m.enabled && m.initialized))
+const enabledCount = computed(() => modules.value.filter((m) => m.enabled).length)
+
+// ── 最近任务：历史服务分桶 RPC（后端 Save 的 FuncType 与模块注册 ID 对齐，
+// 当前写入方为识别 ocr / 查杀 portkill / 环境检测 npm envcheck 三桶）。
+// TODO(Wave 4+)：后端统一 Operation 投影（PLAN_OFFICIAL_MODULE_DISTRIBUTION）落地后
+// 改接统一真相源，新增历史桶需同步本清单（RPC 无跨桶列取方法，只能逐桶合并）。
+const HISTORY_BUCKETS = ['ocr', 'portkill', 'envcheck']
+const RECENT_TASKS_MAX = 5
+
+async function loadRecentTasks() {
+  const lists = await Promise.all(HISTORY_BUCKETS.map((bucket) => HistoryAPI.List(bucket, '').catch(() => null)))
+  // 部分桶失败按空桶处理（局部数据缺失不炸首页）；id 全局单调递增，降序即最新在前。
+  const merged = lists.flatMap((l) => l ?? [])
+  merged.sort((a, b) => b.id - a.id)
+  recentTasks.value = merged.slice(0, RECENT_TASKS_MAX)
+}
+
+function taskTitle(rec: HistoryRecord): string {
+  return rec.summary || rec.input || '历史记录'
+}
+
+function taskIconName(rec: HistoryRecord): IconName {
+  // 桶键对齐模块注册 ID，图标取自 MODULE_PRESENTATION；未登记桶回落 box（不引入 emoji 轨道）
+  return iconNameFromIconString(MODULE_PRESENTATION[rec.funcType]?.icon) ?? 'box'
+}
+
+/** 紧凑任务时间：当天 HH:mm，同年 MM-DD HH:mm，更早仅日期。 */
+function fmtTaskTime(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const now = new Date()
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) {
+    return hm
+  }
+  const md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return d.getFullYear() === now.getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md}`
+}
+
+// ── 最近任务合并呈现（Wave 4）：历史三桶 + 统一 Operation 终态记录两源，
+// 按时间降序取 5。历史行为不动；operation 行如实取后端投影（模块名回落 ID、
+// 错误回落阶段短语），error.message 原文透出，不本地推断成败。
+interface TaskRow {
+  key: string
+  iconName: IconName
+  title: string
+  meta: string
+  time: string
+}
+
+function moduleNameOf(id: string): string {
+  return modules.value.find((m) => m.id === id)?.name || id
+}
+
+function operationTitle(op: Operation): string {
+  return `${moduleNameOf(op.moduleId)} · ${operationKindMeta(String(op.kind)).text}`
+}
+
+function operationMeta(op: Operation): string {
+  if (op.error?.message) return op.error.message
+  const phase = String(op.phase ?? '')
+  return phase ? operationPhaseText(phase) : operationStatusMeta(String(op.status)).text
+}
+
+const taskRows = computed<TaskRow[]>(() => {
+  const historyRows: TaskRow[] = recentTasks.value.map((rec) => ({
+    key: `h-${rec.id}`,
+    iconName: taskIconName(rec),
+    title: taskTitle(rec),
+    meta: rec.funcType,
+    time: rec.createdAt,
+  }))
+  const operationRows: TaskRow[] = recentFinished(RECENT_TASKS_MAX).map((op) => ({
+    key: `o-${op.id}`,
+    iconName: operationStatusMeta(String(op.status)).icon,
+    title: operationTitle(op),
+    meta: operationMeta(op),
+    time: op.finishedAt || op.startedAt,
+  }))
+  return [...historyRows, ...operationRows]
+    .sort((a, b) => Date.parse(b.time) - Date.parse(a.time))
+    .slice(0, RECENT_TASKS_MAX)
+})
+
+// ── 常用入口：固定常用 + 最近使用合并去重、按可见 navs 过滤，最多 4 个直达。
+// 清单与合并规则单一来源在 navGrouping（mergeFavRecentNavs，AppSidebar 首页态同源），
+// 本页仅做展示层富化（描述/图标回退），不得复制字面量。
+const SHORTCUT_MAX = 4
+
+interface ShortcutEntry {
+  route: string
+  title: string
+  desc: string
+  iconName?: IconName
+  iconText: string
+}
+
+const shortcuts = computed<ShortcutEntry[]>(() =>
+  mergeFavRecentNavs(navs.value as NavEntryWithGroup[], recentRoutes.value, SHORTCUT_MAX).map(
+    (nav) => {
+      const mod = modules.value.find((m) => m.id === moduleIdOfNav(nav))
+      return {
+        route: nav.route,
+        title: nav.title,
+        desc: mod?.description ?? '',
+        iconName: iconNameFromIconString(nav.icon) ?? moduleIconName(mod?.id ?? ''),
+        iconText: nav.icon || FALLBACK_MODULE_ICON,
+      }
+    },
+  ),
+)
+
 useWailsEvent('ext:changed', () => {
-  loadData()
+  loadCore()
+  loadRecentTasks()
 })
 
 onMounted(async () => {
-  await loadData()
+  await loadCore()
+  loadRecentTasks()
 })
 </script>
 
 <template>
-  <section class="page home-dashboard">
-    <!-- 顶部状态栏 -->
-    <div class="header-row">
-      <div class="title-group">
-        <div class="title-with-badge">
-          <h1>工具工作台</h1>
-          <span class="version-tag" v-if="appInfo">v{{ appInfo.version }}</span>
+  <PageContainer variant="workbench">
+    <section class="home-dashboard">
+      <!-- 紧凑页头：eyebrow + 标题 + 一句现态说明；全局动作仅"管理模块" -->
+      <header class="home-header">
+        <div class="header-copy">
+          <p class="eyebrow">本机工具概览</p>
+          <div class="title-line">
+            <h1>工作台</h1>
+            <span v-if="appInfo" class="version-tag mono">v{{ appInfo.version }}</span>
+          </div>
+          <p class="page-note">聚合运行状态、最近任务与常用入口；完整模块管理请进入模块中心。</p>
         </div>
-        <p class="subtitle">
-          按需启闭功能模块；未启用的工具零开销、不占后台内存，即开即用。
-        </p>
+        <UiButton class="modules-entry-btn" @click="emit('navigate', '/modules')">管理模块</UiButton>
+      </header>
+
+      <!-- 摘要区：三项真实计数（ListModules）。
+           「待处理 / 可用更新」两张卡本期隐藏——后端投影尚无 update-available
+           真相（Phase 1 内建模块恒 current），Wave 4+ 接统一状态投影后启用
+           （UI 专项 §7.4：无真实来源不填模拟数据）。 -->
+      <div class="summary-grid" role="group" aria-label="工作台摘要">
+        <div class="summary-card">
+          <span class="summary-icon run"><AppIcon name="activity" :size="17" /></span>
+          <span class="summary-label">正在运行</span>
+          <strong class="summary-value mono">{{ runningModules.length }}</strong>
+        </div>
+        <div class="summary-card">
+          <span class="summary-icon total"><AppIcon name="grid" :size="17" /></span>
+          <span class="summary-label">模块总数</span>
+          <strong class="summary-value mono">{{ modules.length }}</strong>
+        </div>
+        <div class="summary-card">
+          <span class="summary-icon enabled"><AppIcon name="check-square" :size="17" /></span>
+          <span class="summary-label">已启用</span>
+          <strong class="summary-value mono">{{ enabledCount }}</strong>
+        </div>
       </div>
 
-      <div class="stats-card">
-        <div class="stat-item">
-          <span class="stat-num text-success">{{ enabledModules.length }}</span>
-          <span class="stat-label">已启用</span>
-        </div>
-        <div class="stat-divider">/</div>
-        <div class="stat-item">
-          <span class="stat-num text-muted">{{ modules.length }}</span>
-          <span class="stat-label">总功能</span>
-        </div>
-      </div>
-    </div>
+      <div class="workspace-grid">
+        <!-- 左列：正在运行（initialized ∧ enabled） -->
+        <section class="wb-panel running-panel" aria-labelledby="running-title">
+          <header class="wb-head">
+            <h2 class="wb-title" id="running-title">正在运行</h2>
+            <span class="count-tag mono">{{ runningModules.length }}</span>
+          </header>
 
-    <!-- 已启用的功能 -->
-    <div class="section-container">
-      <div class="section-title">
-        <span class="dot-status ok"></span>
-        <h2>已启用的功能 ({{ enabledModules.length }})</h2>
-        <span class="section-hint">点击卡片可快速直达对应功能操作页</span>
-      </div>
-
-      <div v-if="enabledModules.length > 0" class="cards-grid">
-        <div
-          v-for="m in enabledModules"
-          :key="m.id"
-          class="module-card enabled-card"
-          @click="enterModule(m)"
-        >
-          <div class="card-top">
-            <div class="icon-wrap active-icon">
-              <AppIcon v-if="moduleIconName(m.id)" :name="moduleIconName(m.id)!" :size="18" />
-              <span v-else class="mod-icon">{{ getModuleIcon(m.id) }}</span>
-            </div>
-            <div class="card-actions" @click.stop>
-              <button
-                class="btn-toggle-off"
-                :disabled="toggling === m.id"
-                title="停用此模块以释放内存"
-                @click="toggle(m)"
-              >
-                {{ toggling === m.id ? '处理中…' : '停用' }}
+          <div v-if="loading" class="wb-state">正在加载工作台数据…</div>
+          <div v-else-if="loadError" class="wb-state error">
+            <span>工作台数据获取失败：{{ loadError }}</span>
+            <UiButton small variant="ghost" @click="loadCore()">重试</UiButton>
+          </div>
+          <ul v-else-if="runningModules.length > 0" class="running-list">
+            <li v-for="m in runningModules" :key="m.id">
+              <button class="running-row" type="button" :title="`进入「${m.name}」`" @click="enterModule(m)">
+                <span class="row-icon">
+                  <AppIcon v-if="moduleIconName(m.id)" :name="moduleIconName(m.id)!" :size="16" />
+                  <template v-else>{{ getModuleIcon(m.id) }}</template>
+                </span>
+                <span class="row-copy">
+                  <span class="row-name">{{ m.name }}</span>
+                  <span class="row-desc">{{ m.description }}</span>
+                </span>
               </button>
-            </div>
-          </div>
+            </li>
+          </ul>
+          <UiEmptyState v-else class="running-empty">
+            <p>当前没有运行中的模块</p>
+            <UiButton small variant="ghost" @click="emit('navigate', '/modules')">进入模块中心</UiButton>
+          </UiEmptyState>
+        </section>
 
-          <div class="card-info">
-            <div class="card-title-row">
-              <h3 class="mod-name">{{ m.name }}</h3>
-              <span class="level-badge" :class="m.initialized ? 'badge-active' : 'badge-idle'">
-                {{ m.initialized ? '活跃运行中' : '待命懒加载' }}
-              </span>
-            </div>
-            <p class="mod-desc">{{ m.description }}</p>
-          </div>
-
-          <div class="card-bottom">
-            <span class="enter-link">进入功能 →</span>
-            <span class="author-tag">v{{ m.version }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-else class="empty-state">
-        <p>暂无启用的功能模块，可从下方列表中挑选并开启。</p>
-      </div>
-    </div>
-
-    <!-- 未启用的功能 -->
-    <div class="section-container">
-      <div class="section-title">
-        <span class="dot-status off"></span>
-        <h2>待启用 / 未激活功能 ({{ disabledModules.length }})</h2>
-        <span class="section-hint">已停用状态下不占用任何后台系统资源与内存</span>
-      </div>
-
-      <div v-if="disabledModules.length > 0" class="cards-grid">
-        <div
-          v-for="m in disabledModules"
-          :key="m.id"
-          class="module-card disabled-card"
-        >
-          <div class="card-top">
-            <div class="icon-wrap idle-icon">
-              <AppIcon v-if="moduleIconName(m.id)" :name="moduleIconName(m.id)!" :size="18" />
-              <span v-else class="mod-icon">{{ getModuleIcon(m.id) }}</span>
-            </div>
+        <!-- 右列：常用入口（固定 + 最近，最多 4，直达 navigate） -->
+        <section class="wb-panel shortcuts-panel" aria-labelledby="shortcuts-title">
+          <header class="wb-head">
+            <h2 class="wb-title" id="shortcuts-title">常用入口</h2>
+            <span class="wb-sub">固定与最近使用 · 最多 {{ SHORTCUT_MAX }} 个</span>
+          </header>
+          <nav v-if="shortcuts.length > 0" class="shortcut-grid" aria-label="常用工具">
             <button
-              class="btn-toggle-on"
-              :disabled="toggling === m.id"
-              @click="toggle(m)"
+              v-for="s in shortcuts"
+              :key="s.route"
+              class="shortcut"
+              type="button"
+              :title="`打开 ${s.title}`"
+              @click="emit('navigate', s.route)"
             >
-              {{ toggling === m.id ? '正在启用…' : '+ 启用模块' }}
+              <span class="sc-icon">
+                <AppIcon v-if="s.iconName" :name="s.iconName" :size="16" />
+                <template v-else>{{ s.iconText }}</template>
+              </span>
+              <span class="sc-name">{{ s.title }}</span>
+              <span class="sc-desc">{{ s.desc }}</span>
+              <span class="sc-hint">打开工具<AppIcon name="goto" :size="12" /></span>
             </button>
-          </div>
-
-          <div class="card-info">
-            <div class="card-title-row">
-              <h3 class="mod-name">{{ m.name }}</h3>
-              <span class="level-badge badge-off">已休眠</span>
-            </div>
-            <p class="mod-desc">{{ m.description }}</p>
-          </div>
-
-          <div class="card-bottom">
-            <span class="zero-cost-tag">⚡ 零后台常驻</span>
-            <span class="author-tag">v{{ m.version }}</span>
-          </div>
-        </div>
+          </nav>
+          <div v-else class="wb-state">暂无可用入口：启用模块或访问功能页后自动出现</div>
+        </section>
       </div>
 
-      <div v-else class="empty-state ok-state">
-        <p>🎉 所有功能模块均已开启！</p>
-      </div>
-    </div>
-  </section>
+      <!-- 最近任务（Wave 4）：历史三桶 + 统一 Operation 终态两源按时间降序合并取 5；
+           无数据（两源皆空或全部不可用）时整区隐藏，不放占位样例。
+           完整任务历史与诊断归模块中心/各模块页。 -->
+      <section v-if="taskRows.length > 0" class="wb-panel tasks-panel" aria-labelledby="tasks-title">
+        <header class="wb-head">
+          <h2 class="wb-title" id="tasks-title">最近任务</h2>
+          <span class="wb-sub">操作与识别 · 端口查杀 · 环境检测记录，最新 {{ taskRows.length }} 条</span>
+        </header>
+        <ol class="task-list">
+          <li v-for="row in taskRows" :key="row.key" class="task-row">
+            <span class="task-icon"><AppIcon :name="row.iconName" :size="15" /></span>
+            <span class="task-copy">
+              <span class="task-title">{{ row.title }}</span>
+              <span class="task-meta">{{ row.meta }}</span>
+            </span>
+            <time class="task-time mono" :datetime="row.time">{{ fmtTaskTime(row.time) }}</time>
+          </li>
+        </ol>
+      </section>
+    </section>
+  </PageContainer>
 </template>
 
 <style scoped>
 .home-dashboard {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  max-width: 1200px;
+  gap: 16px;
+  /* 宽度归 PageContainer（--container-workbench），本页不再私有 max-width */
 }
 
-/* 首页页头为"标题 + 统计卡"复合行，结构区别于通用 .header-row 原子，保留本地 */
-.header-row {
+/* ── 紧凑页头 ── */
+.home-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   gap: 16px;
-  background: var(--surface-panel);
-  border: 1px solid var(--color-border);
-  padding: 16px 20px;
-  border-radius: var(--radius-element);
 }
 
-.title-with-badge {
+.header-copy {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  color: var(--color-text-subtle);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.title-line {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.title-with-badge h1 {
+.home-header h1 {
   font-size: var(--text-xl);
   font-weight: 700;
   margin: 0;
+  letter-spacing: -0.01em;
 }
 
 .version-tag {
   font-size: var(--text-xs);
-  font-family: var(--font-mono);
-  background: var(--surface-page);
   color: var(--color-text-muted);
-  padding: 2px 6px;
-  border-radius: 4px;
+  background: var(--surface-soft);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
 }
 
-.subtitle {
-  margin: 6px 0 0; /* 颜色/字号由全局 .subtitle 原子提供 */
-}
-
-.stats-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--surface-page);
-  border: 1px solid var(--color-border);
-  padding: 8px 18px;
-  border-radius: var(--radius-control);
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* KPI 大数字收 --text-2xl 档（原 18px 散值） */
-.stat-num {
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-/* .text-success 与 .text-muted 与全局原子逐字同义，副本删净落回
-   （§9.6-10 冻结裁决已落地：muted 派定档全局同名同值） */
-
-.stat-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-}
-
-.stat-divider {
-  font-size: var(--text-lg);
-  color: var(--color-border);
-}
-
-.section-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.section-title h2 {
-  font-size: var(--text-md);
-  font-weight: 600;
-  margin: 0;
-}
-
-.section-hint {
+.page-note {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
-  color: var(--color-text-subtle);
-  margin-left: 4px;
+  line-height: 1.5;
 }
 
-.dot-status {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.dot-status.ok { background: var(--state-positive); }
-.dot-status.off { background: var(--color-text-subtle); }
-
-.cards-grid {
+/* ── 摘要卡（本期三项；待处理/可用更新隐藏，见模板注释） ── */
+.summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.module-card {
+.summary-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-element);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease, transform var(--motion-base) ease, opacity var(--motion-base) ease;
+  box-shadow: var(--shadow-small);
 }
 
-.enabled-card {
-  cursor: pointer;
-}
-.enabled-card:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 4px 16px var(--color-primary-glow);
-  transform: translateY(-2px);
-}
-
-.disabled-card {
-  opacity: 0.85;
-  background: var(--surface-soft);
-}
-.disabled-card:hover {
-  opacity: 1;
-  border-color: var(--color-border-strong);
-}
-
-.card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.icon-wrap {
-  width: 38px;
-  height: 38px;
+.summary-icon {
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-control);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.active-icon {
-  background: var(--surface-selected);
-}
-
-.idle-icon {
-  background: var(--surface-hover);
-}
-
-.mod-icon {
-  font-size: var(--text-xl);
-}
-
-.btn-toggle-off {
-  font-size: var(--text-xs);
-  padding: 4px 10px;
-  border-radius: var(--radius-control);
-  border: 1px solid var(--color-border);
-  background: var(--surface-panel);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
-}
-.btn-toggle-off:hover {
-  background: var(--state-danger-soft);
-  border-color: var(--state-danger-glow);
-  color: var(--state-danger);
-}
-
-.btn-toggle-on {
-  font-size: var(--text-xs);
-  padding: 5px 12px;
-  border-radius: var(--radius-control);
-  border: 1px solid var(--color-primary);
-  background: var(--surface-selected);
+.summary-icon.run {
+  background: var(--color-primary-soft);
   color: var(--color-primary);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--motion-base) ease, color var(--motion-base) ease;
 }
-.btn-toggle-on:hover {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
+.summary-icon.total {
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
 }
-
-.card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-
-.card-title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.mod-name {
-  font-size: var(--text-md);
-  font-weight: 600;
-  margin: 0;
-  color: var(--color-text);
-}
-
-.level-badge {
-  font-size: var(--text-micro);
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
-  font-weight: 500;
-}
-
-.badge-active {
-  background: var(--state-positive-soft);
-  color: var(--state-positive);
-}
-
-.badge-idle {
+.summary-icon.enabled {
   background: var(--state-information-soft);
   color: var(--state-information);
 }
 
-.badge-off {
-  background: var(--surface-hover);
+.summary-label {
   color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 650;
 }
 
-.mod-desc {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+.summary-value {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ── 双列工作区：左=正在运行，右=常用入口；窄窗口单列 ── */
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.75fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.wb-panel {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-small);
+}
+
+.wb-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.wb-title {
   margin: 0;
-  line-height: 1.5;
+  font-size: var(--text-md);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.wb-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-subtle);
+  font-size: var(--text-xs);
+}
+
+.count-tag {
+  margin-left: auto;
+  padding: 1px 8px;
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* 加载 / 错误 / 局部空态共用虚线盒（.state-box 原子的面板内变体） */
+.wb-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 14px;
+  padding: 12px 14px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.wb-state.error {
+  border-color: var(--state-danger-glow);
+  color: var(--state-danger);
+}
+
+/* ── 正在运行列表 ── */
+.running-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.running-list li {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.running-list li:last-child {
+  border-bottom: 0;
+}
+
+.running-row {
+  width: 100%;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--color-text);
+  transition: background var(--motion-base) ease;
+}
+
+.running-row:hover {
+  background: var(--surface-soft);
+}
+
+.row-icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--radius-control);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-base);
+}
+
+.row-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.row-name {
+  font-size: var(--text-sm);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-desc {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.running-empty {
+  margin: 14px;
+  width: auto;
+}
+.running-empty p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ── 常用入口 2×2 ── */
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.shortcut {
+  min-width: 0;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  text-align: left;
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-element);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background var(--motion-base) ease,
+    border-color var(--motion-base) ease;
+}
+
+.shortcut:hover {
+  background: var(--surface-hover);
+  border-color: var(--color-border-strong);
+}
+
+.sc-icon {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--radius-control);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-base);
+}
+
+.sc-name {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.card-bottom {
+.sc-hint {
+  margin-top: auto;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding-top: 8px;
-  border-top: 1px solid var(--color-border);
+  gap: 3px;
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
+
+/* ── 最近任务 ── */
+.task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.task-list li:last-child {
+  border-bottom: 0;
+}
+
+.task-row:hover {
+  background: var(--surface-soft);
+}
+
+.task-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-base);
+}
+
+.task-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.task-title {
+  font-size: var(--text-sm);
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-meta {
+  margin-top: 1px;
+  color: var(--color-text-subtle);
   font-size: var(--text-xs);
 }
 
-.enter-link {
-  color: var(--color-primary);
-  font-weight: 600;
-}
-
-.author-tag {
+.task-time {
   color: var(--color-text-subtle);
-  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
 }
 
-.zero-cost-tag {
-  color: var(--color-text-muted);
+/* ── 响应式重排：双列→单列；摘要三卡→一列；200% 缩放按同规则降级 ── */
+@media (max-width: 1100px) {
+  .workspace-grid {
+    grid-template-columns: minmax(0, 1.3fr) minmax(260px, 0.8fr);
+    gap: 14px;
+  }
 }
 
-/* .empty-state 全局原子接管；此处仅留"全部启用"变体覆写 */
-.ok-state {
-  border-style: solid;
-  background: var(--surface-soft);
-  color: var(--state-positive);
+@media (max-width: 900px) {
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .home-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .summary-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .summary-card {
+    min-height: 56px;
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 520px) {
+  .running-row {
+    min-height: 54px;
+    padding: 9px 12px;
+  }
+  .task-row {
+    grid-template-columns: 30px minmax(0, 1fr);
+    row-gap: 2px;
+  }
+  .task-time {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .shortcut-grid {
+    padding: 10px;
+    gap: 8px;
+  }
+}
+
+/* 粗指针：入口卡与行钮保持 44px+ 命中区 */
+@media (pointer: coarse) {
+  .shortcut {
+    min-height: 116px;
+  }
+  .running-row {
+    min-height: 64px;
+  }
 }
 </style>
