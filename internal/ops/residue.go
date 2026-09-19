@@ -3,13 +3,19 @@ package ops
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"hanxi/packages/go/artifact"
 	"hanxi/packages/go/operation"
 )
+
+// StalePartAge 文件面收尸的残件最小年龄：远大于任何模块的 Fetch 预算
+// （现值 10-15 分钟），启动扫描只针对崩溃/强杀遗留，绝不与在途下载抢地盘。
+const StalePartAge = 24 * time.Hour
 
 // CleanTxnResidue 按事务"背书"清理托管版本树内属于该事务的现场目录：
 // staging（.tmp-<txnID>）与隔离待删（.removing-<txnID>）两个精确同名目录。
@@ -77,4 +83,19 @@ func ListUnbackedTxnDirs(tree *artifact.Tree, backed map[string]bool) []string {
 		}
 	}
 	return out
+}
+
+// CleanStaleDownloadParts 启动恢复阶段的文件面收尸：对给定目录（installers/、
+// versions/ 根）扫描一轮 artifact Fetch 强杀遗留的 `.part-<hex>` 临时件，
+// 只删超龄（StalePartAge）普通文件，目录/符号链接拒删（语义见
+// artifact.CleanStaleParts）。与 CleanTxnResidue 的目录面背书清理互补，
+// 收口 ADR-0002 §4"文件面收尸"遗留项；删除清单落 slog 供追溯。
+// 本清理不依赖 journal（账本降级为无账模式时照常执行），删除天然幂等。
+func CleanStaleDownloadParts(dirs []string) []string {
+	removed := artifact.CleanStaleParts(dirs, StalePartAge)
+	if len(removed) > 0 {
+		slog.Info("ops: 已清理 Fetch 强杀遗留的 .part-* 下载残件",
+			"count", len(removed), "files", strings.Join(removed, "; "))
+	}
+	return removed
 }
