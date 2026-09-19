@@ -1,31 +1,41 @@
-// 工作台首页特征测试（Wave 2 重构，UI 专项 §7.2/§7.4 + ADR-0001 §1.8）：
+// 工作台首页特征测试（Wave 2 重构，UI 专项 §7.2/§7.4 + ADR-0001 §1.8；
+// W2b 更新感知链点亮后改动态导入模式——useModuleCatalog 为模块级单例，
+// 须经 vi.resetModules 逐例隔离）：
 // 锁死"数据铁律"——运行列表只来自 initialized∧enabled（不再渲染完整目录/启停钮）、
-// 摘要计数为 ListModules 真实计算、常用入口=固定+最近经 navs 实时过滤（≤4）、
-// 最近任务=历史服务三桶合并（无数据/取数失败整区隐藏）、待处理/可用更新分区不渲染样例。
+// 摘要为真实计数 + 可用更新卡 = ListModuleStates 健康投影（update-available）计数、
+// 无 update-available 时更新列表区整区隐藏不占位、页头「检查更新」接线
+// （RefreshUpdates + busy 防重入 + 如实 toast）、updates:checked 驱动目录重拉、
+// 常用入口=固定+最近经 navs 实时过滤（≤4）、最近任务=历史三桶合并（无数据整区隐藏）。
 import { KeepAlive, defineComponent, h } from 'vue'
+import type { Component } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import HomeView from '../HomeView.vue'
-import { useToast } from '../../composables/useToast'
 import { FAV_MODULE_IDS, RECENT_ROUTES_KEY, moduleIdOfNav } from '../../components/shell/navGrouping'
 
 const appSvc = vi.hoisted(() => ({
   ListModules: vi.fn(),
   GetNavs: vi.fn(),
   GetAppInfo: vi.fn(),
-  ListOperations: vi.fn()
+  ListOperations: vi.fn(),
+  ListCatalog: vi.fn(),
+  ListModuleStates: vi.fn(),
+  RefreshUpdates: vi.fn(),
 }))
 const histSvc = vi.hoisted(() => ({
   List: vi.fn(),
   Delete: vi.fn(),
   Clear: vi.fn()
 }))
-const runtime = vi.hoisted(() => ({ handlers: {} as Record<string, (e: { data: unknown }) => void> }))
+// 事件按名多路：HomeView(useWailsEvent) 与 useModuleCatalog 可能订阅同名事件，
+// 单槽记录会互相覆盖，这里按数组收集后逐个触发。
+const runtime = vi.hoisted(() => ({
+  handlers: {} as Record<string, Array<(e: { data: unknown }) => void>>
+}))
 
 vi.mock('@wailsio/runtime', () => ({
   Events: {
     On: (name: string, cb: (e: { data: unknown }) => void) => {
-      runtime.handlers[name] = cb
+      ;(runtime.handlers[name] ??= []).push(cb)
       return vi.fn()
     }
   }
@@ -33,6 +43,26 @@ vi.mock('@wailsio/runtime', () => ({
 vi.mock('../../../bindings/hanxi/internal/app', () => ({ AppService: appSvc }))
 vi.mock('../../../bindings/hanxi/internal/app/appservice.js', () => ({ EnsureModuleActive: vi.fn() }))
 vi.mock('../../../bindings/hanxi/internal/history/historyservice', () => histSvc)
+
+type UseToast = typeof import('../../composables/useToast')['useToast']
+
+let HomeView: Component
+let useToast: UseToast
+
+beforeEach(async () => {
+  localStorage.clear()
+  vi.resetModules()
+  vi.clearAllMocks()
+  runtime.handlers = {}
+  HomeView = (await import('../HomeView.vue')).default
+  useToast = (await import('../../composables/useToast')).useToast
+})
+
+afterEach(() => {
+  useToast().clearToast()
+  document.body.innerHTML = ''
+  vi.useRealTimers()
+})
 
 const mod = (id: string, name: string, opts: { enabled?: boolean; initialized?: boolean } = {}) => ({
   id,
@@ -66,12 +96,40 @@ const histRec = (id: number, funcType: string, summary = `记录 ${id}`) => ({
   createdAt: '2026-09-17T10:00:00+08:00'
 })
 
+// useModuleCatalog 两源桩（目录项 + 四维状态投影）
+const catItem = (id: string, name = `模块 ${id}`) => ({
+  id,
+  name,
+  description: `${name}描述`,
+  category: 'desktop',
+  delivery: 'hosted-binary',
+  capabilities: [],
+  entrypoints: ['rpc'],
+  compatibility: { hostRange: '*', platform: ['windows'] },
+  permissions: [],
+  owner: 'hanxi',
+})
+const stateItem = (id: string, over: Record<string, unknown> = {}) => ({
+  schema: 1,
+  moduleId: id,
+  delivery: 'installed',
+  policy: 'enabled',
+  runtime: 'active',
+  health: 'current',
+  primaryAction: 'open',
+  summary: 'running',
+  ...over,
+})
+
 function stubCore(modules: unknown[], navs: unknown[] = []) {
   appSvc.ListModules.mockResolvedValue(modules)
   appSvc.GetNavs.mockResolvedValue(navs)
   appSvc.GetAppInfo.mockResolvedValue({ version: '0.3.0', name: 'Hanxi' })
   // 统一 Operation 观察面默认空投影（需要 operation 行的用例在其后覆盖本桩）
   appSvc.ListOperations.mockResolvedValue([])
+  // 可用更新区块默认空目录（健康维度无条目）
+  appSvc.ListCatalog.mockResolvedValue([])
+  appSvc.ListModuleStates.mockResolvedValue([])
 }
 
 function stubTasks(byBucket: Record<string, unknown[]> | 'fail') {
@@ -88,14 +146,10 @@ async function mountView() {
   return wrapper
 }
 
-beforeEach(() => {
-  localStorage.clear()
-})
-
-afterEach(() => {
-  vi.clearAllMocks()
-  useToast().clearToast()
-})
+/** 按名逐个触发全部订阅者（HomeView 与 useModuleCatalog 可能各自订阅同名事件）。 */
+function fireEvent(name: string) {
+  for (const fn of runtime.handlers[name] ?? []) fn({ data: undefined })
+}
 
 describe('HomeView（工作台首页）', () => {
   it('不再渲染完整模块目录：无卡片网格/启停钮/等级徽标，摘要为真实计数', async () => {
@@ -115,8 +169,8 @@ describe('HomeView（工作台首页）', () => {
     expect(w.findAll('.btn-toggle-on')).toHaveLength(0)
     expect(w.findAll('.btn-toggle-off')).toHaveLength(0)
     expect(w.findAll('.level-badge')).toHaveLength(0)
-    // 摘要三项 = ListModules 真实计算：运行 1 / 总数 3 / 启用 2
-    expect(w.findAll('.summary-value').map((v) => v.text())).toEqual(['1', '3', '2'])
+    // 摘要 = 三项 ListModules 真实计数 + 可用更新健康投影计数：运行 1 / 总数 3 / 启用 2 / 更新 0
+    expect(w.findAll('.summary-value').map((v) => v.text())).toEqual(['1', '3', '2', '0'])
     w.unmount()
   })
 
@@ -127,7 +181,7 @@ describe('HomeView（工作台首页）', () => {
     )
     stubTasks('fail')
     const w = await mountView()
-    const rows = w.findAll('.running-row')
+    const rows = w.findAll('.running-row:not(.update-row)')
     expect(rows).toHaveLength(1)
     expect(rows[0].text()).toContain('极客随手记')
     expect(rows[0].text()).toContain('极客随手记描述') // 描述摘要
@@ -143,10 +197,10 @@ describe('HomeView（工作台首页）', () => {
     stubTasks('fail')
     const w = await mountView()
     const home = w.findComponent(HomeView)
-    await w.findAll('.running-row')[0].trigger('click')
+    await w.findAll('.running-row:not(.update-row)')[0].trigger('click')
     expect(home.emitted('navigate')?.[0]).toEqual(['/ext/memo'])
     // latermod 未建档且不在 navs：route 回落 '/'，被守卫拦下，不追加 emit
-    await w.findAll('.running-row')[1].trigger('click')
+    await w.findAll('.running-row:not(.update-row)')[1].trigger('click')
     expect(home.emitted('navigate')).toHaveLength(1)
     w.unmount()
   })
@@ -256,31 +310,116 @@ describe('HomeView（工作台首页）', () => {
     expect(rows[0].find('.task-icon svg.app-icon').exists()).toBe(true)
     expect(rows[0].find('time.task-time').text()).not.toBe('')
     w.unmount()
-    // 还原空投影：useOperations 是模块级单例，不清理会污染后续"整区隐藏"用例
-    appSvc.ListOperations.mockResolvedValue([])
-    await useOperations().refresh()
   })
 
-  it('待处理/可用更新分区本期隐藏：页面不出现相关文案与样例数字', async () => {
+  // ── W2b：更新感知链点亮 ──
+
+  it('可用更新摘要卡常亮真实计数：无 update-available 投影时计数 0，更新列表区整区隐藏不占位', async () => {
     stubCore([mod('memo', '随手记', { initialized: true })], [nav('memo', '/ext/memo', '随手记')])
+    appSvc.ListCatalog.mockResolvedValue([catItem('memo', '随手记')])
+    appSvc.ListModuleStates.mockResolvedValue([stateItem('memo')]) // health=current
     stubTasks('fail')
     const w = await mountView()
-    expect(w.text()).not.toContain('待处理')
-    expect(w.text()).not.toContain('可用更新')
-    expect(w.findAll('.summary-card')).toHaveLength(3)
+    expect(w.findAll('.summary-card')).toHaveLength(4)
+    expect(w.findAll('.summary-value')[3].text()).toBe('0')
+    expect(w.find('.updates-panel').exists()).toBe(false)
     w.unmount()
   })
 
-  it('页头「管理模块」过渡入口：emit navigate /modules', async () => {
+  it('可用更新列表点亮：update-available → 计数卡 + 合并行（摘要短语+健康徽标），点击直达模块、无路由回落模块中心', async () => {
+    stubCore(
+      [mod('memo', '极客随手记', { initialized: true })],
+      [nav('memo', '/ext/memo', '极客随手记')],
+    )
+    appSvc.ListCatalog.mockResolvedValue([catItem('memo', '极客随手记'), catItem('latermod', '后加模块')])
+    appSvc.ListModuleStates.mockResolvedValue([
+      stateItem('memo', { health: 'update-available', summary: 'running-update' }),
+      stateItem('latermod', {
+        health: 'update-available', summary: 'installed-disabled', policy: 'disabled', runtime: 'inactive',
+      }),
+    ])
+    stubTasks('fail')
+    const w = await mountView()
+    // 摘要第四卡 = 健康投影计数
+    expect(w.findAll('.summary-value')[3].text()).toBe('2')
+    const rows = w.findAll('.update-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].find('.row-name').text()).toBe('极客随手记')
+    // 合并短语走 SUMMARY_META 词表（运行中，有更新 / 已安装，未启用），零本地推断
+    expect(rows[0].find('.row-desc').text()).toBe('运行中，有更新')
+    expect(rows[1].find('.row-desc').text()).toBe('已安装，未启用')
+    // 健康徽标走 HEALTH_META 词表（不只靠颜色，文字承载）
+    expect(rows[0].find('.update-chip').text()).toBe('有可用更新')
+    const home = w.findComponent(HomeView)
+    // memo 有路由 → 直达模块页；latermod 无路由 → 回落模块中心处理
+    await rows[0].trigger('click')
+    expect(home.emitted('navigate')?.[0]).toEqual(['/ext/memo'])
+    await rows[1].trigger('click')
+    expect(home.emitted('navigate')?.[1]).toEqual(['/modules'])
+    w.unmount()
+  })
+
+  it('页头「检查更新」：RefreshUpdates 一轮判定，busy 禁用防连点，成功 toast 如实报判定模块数', async () => {
     stubCore([], [])
     stubTasks('fail')
+    let resolveCheck: (n: number) => void = () => {}
+    appSvc.RefreshUpdates.mockReturnValue(new Promise<number>((r) => { resolveCheck = r }))
     const w = await mountView()
-    const home = w.findComponent(HomeView)
-    const btn = w.find('.modules-entry-btn')
-    expect(btn.text()).toBe('管理模块')
+    const btn = w.find('.check-updates-btn')
+    expect(btn.text()).toContain('检查更新')
     await btn.trigger('click')
-    expect(home.emitted('navigate')?.[0]).toEqual(['/modules'])
+    expect(appSvc.RefreshUpdates).toHaveBeenCalledTimes(1)
+    // busy：阻塞式 RPC 在途按钮禁用 + 文案进"检查中"（宽度保持，不跳动）
+    expect(btn.attributes('disabled')).toBeDefined()
+    expect(w.find('.check-updates-btn').text()).toContain('检查中')
+    // 重放派发也不破防（视图侧 busy 守卫）
+    await w.find('.check-updates-btn').trigger('click')
+    expect(appSvc.RefreshUpdates).toHaveBeenCalledTimes(1)
+    resolveCheck(12)
+    await flushPromises()
+    expect(useToast().toastMsg.value).toBe('检查更新完成：本轮成功判定 12 个模块')
+    expect(w.find('.check-updates-btn').attributes('disabled')).toBeUndefined()
     w.unmount()
+  })
+
+  it('检查更新失败：错误 toast 如实透出后端原因，不谎报完成，busy 复位', async () => {
+    stubCore([], [])
+    stubTasks('fail')
+    appSvc.RefreshUpdates.mockRejectedValue(new Error('更新感知调度器未装配'))
+    const w = await mountView()
+    await w.find('.check-updates-btn').trigger('click')
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('检查更新失败')
+    expect(useToast().toastMsg.value).toContain('更新感知调度器未装配')
+    expect(w.find('.check-updates-btn').attributes('disabled')).toBeUndefined()
+    w.unmount()
+  })
+
+  it('updates:checked 一轮收口驱动目录重拉：计数卡与更新行就地更新（300ms 节流窗）', async () => {
+    vi.useFakeTimers()
+    try {
+      stubCore([mod('memo', '随手记')], [nav('memo', '/ext/memo', '随手记')])
+      appSvc.ListCatalog.mockResolvedValue([catItem('memo', '随手记')])
+      appSvc.ListModuleStates.mockResolvedValue([])
+      stubTasks({})
+      const w = await mountView()
+      expect(w.findAll('.summary-value')[3].text()).toBe('0')
+      const before = appSvc.ListModuleStates.mock.calls.length
+
+      // 感知链收口：健康值已在后端 registry 落位，前端只经重拉到达
+      appSvc.ListModuleStates.mockResolvedValue([
+        stateItem('memo', { health: 'update-available', summary: 'running-update' }),
+      ])
+      fireEvent('updates:checked')
+      await vi.advanceTimersByTimeAsync(300)
+      expect(appSvc.ListModuleStates.mock.calls.length).toBe(before + 1)
+      expect(w.findAll('.summary-value')[3].text()).toBe('1')
+      expect(w.find('.updates-panel').exists()).toBe(true)
+      expect(w.findAll('.update-row')).toHaveLength(1)
+      w.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('ext:changed 事件触发热刷新（核心投影与最近任务同链路重拉）', async () => {
@@ -288,7 +427,7 @@ describe('HomeView（工作台首页）', () => {
     stubTasks('fail')
     const w = await mountView()
     const before = appSvc.ListModules.mock.calls.length
-    runtime.handlers['ext:changed']({ data: undefined })
+    fireEvent('ext:changed')
     await flushPromises()
     expect(appSvc.ListModules.mock.calls.length).toBeGreaterThan(before)
     w.unmount()
@@ -298,6 +437,8 @@ describe('HomeView（工作台首页）', () => {
     appSvc.ListModules.mockRejectedValue(new Error('后端未就绪'))
     appSvc.GetNavs.mockRejectedValue(new Error('后端未就绪'))
     appSvc.GetAppInfo.mockRejectedValue(new Error('后端未就绪'))
+    appSvc.ListCatalog.mockResolvedValue([])
+    appSvc.ListModuleStates.mockResolvedValue([])
     stubTasks('fail')
     const w = await mountView()
     expect(useToast().toastMsg.value).toContain('后端未就绪')

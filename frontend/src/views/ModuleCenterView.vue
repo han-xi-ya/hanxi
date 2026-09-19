@@ -17,7 +17,7 @@ import { useOperations } from '../composables/useOperations'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
-import { PRIMARY_ACTION_META } from '../constants/status'
+import { PRIMARY_ACTION_META, healthMeta } from '../constants/status'
 import { MODULE_PRESENTATION } from '../constants/navigation'
 import PageContainer from '../components/ui/PageContainer.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -40,16 +40,6 @@ const { confirm } = useConfirm()
 const { showToast, showErrorToast } = useToast()
 
 // —— 筛选与搜索（展示派生，不改写投影）——
-const FILTER_TABS: Array<{ key: string; label: string }> = [
-  { key: 'all', label: '全部' },
-  { key: 'installed', label: '已安装' },
-  { key: 'installable', label: '可安装' },
-  { key: 'fault', label: '异常' },
-  { key: 'running', label: '运行中' },
-]
-const activeTab = ref<string>('all')
-const keyword = ref('')
-
 const summaryOf = (e: ModuleEntry) => String(e.state?.summary ?? '')
 const healthOf = (e: ModuleEntry) => String(e.state?.health ?? '')
 const isNotInstalled = (e: ModuleEntry) => summaryOf(e) === 'not-installed'
@@ -57,12 +47,28 @@ const isRunning = (e: ModuleEntry) => summaryOf(e) === 'running' || summaryOf(e)
 const isFault = (e: ModuleEntry) =>
   ['blocked', 'faulted'].includes(summaryOf(e))
   || ['corrupt', 'revoked'].includes(healthOf(e))
+// 健康维度直读（W2b 更新感知链）：不叠合成分支，标签词与计数都取自真实投影，
+// 文案锚定 HEALTH_META['update-available']（禁自造状态词）。
+const isUpdateAvailable = (e: ModuleEntry) => healthOf(e) === 'update-available'
+const updateAvailableLabel = healthMeta('update-available').text
+
+const FILTER_TABS = computed<Array<{ key: string; label: string }>>(() => [
+  { key: 'all', label: '全部' },
+  { key: 'installed', label: '已安装' },
+  { key: 'installable', label: '可安装' },
+  { key: 'fault', label: '异常' },
+  { key: 'update', label: `${updateAvailableLabel} ${entries.value.filter(isUpdateAvailable).length}` },
+  { key: 'running', label: '运行中' },
+])
+const activeTab = ref<string>('all')
+const keyword = ref('')
 
 function matchesTab(e: ModuleEntry): boolean {
   switch (activeTab.value) {
     case 'installed': return !isNotInstalled(e)
     case 'installable': return isNotInstalled(e)
     case 'fault': return isFault(e)
+    case 'update': return isUpdateAvailable(e)
     case 'running': return isRunning(e)
     default: return true
   }
@@ -107,7 +113,7 @@ async function act(entry: ModuleEntry, run: () => Promise<unknown>, okMessage: s
   }
 }
 
-const isBuiltinLogical = (e: ModuleEntry) => String(e.catalog.delivery) === 'builtin-logical'
+const isBuiltinLogical = (e: ModuleEntry) => String(e.catalog.deliveryKind) === 'builtin-logical'
 
 /** builtin-logical 卸载确认（§1.5 强制口径）：如实列明移除范围与体积事实。 */
 async function confirmUninstall(entry: ModuleEntry): Promise<boolean> {

@@ -37,7 +37,7 @@ async function setup() {
   appSvc.ListCatalog.mockResolvedValue([
     {
       id: 'markeron', name: 'MarkerOn 标注', description: '', category: 'desktop',
-      delivery: 'builtin-logical', capabilities: [], entrypoints: [],
+      deliveryKind: 'builtin-logical', capabilities: [], entrypoints: [],
       compatibility: { hostRange: '*', platform: ['windows'] }, permissions: [], owner: 'hanxi',
     },
   ])

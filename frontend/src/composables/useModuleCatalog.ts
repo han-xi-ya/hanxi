@@ -5,7 +5,8 @@
 // 其 enabled/installed 状态字段本就与投影真相重叠，属双写面）。
 //
 // 纪律：只缓存投影副本，不写任何持久状态、不打补丁推导第二份真相；
-// ext:changed 到达只重拉、不本地改 entries（安装/启停的落点在后端事务）。
+// ext:changed / updates:checked 到达只重拉、不本地改 entries
+// （安装/启停的落点在后端事务，健康维度（可用更新感知）的落点在 updatewatch）。
 // 模块级单例（与 useTheme/useToast 同一模式）：事件订阅随模块存活于
 // 应用全生命周期，视图卸载后缓存仍被事件保鲜，二次进入零冷启动。
 import { ref } from 'vue'
@@ -89,13 +90,16 @@ function scheduleEventRefresh() {
 }
 
 /**
- * 模块中心投影入口（单例）。首调用触发冷加载；ext:changed 只登记一次全局
- * 订阅（处理器仅调度重拉、不触碰组件状态，无泄漏面，故不随视图卸载）。
+ * 模块中心投影入口（单例）。首调用触发冷加载；ext:changed / updates:checked
+ * 只登记一次全局订阅（处理器仅调度重拉、不触碰组件状态，无泄漏面，故不随
+ * 视图卸载）。updates:checked 是可用更新感知一轮收口的无载荷广播（updatewatch
+ * 写 registry.SetHealth 后发出），健康维度的变化同样只经重拉到达、不本地改缓存。
  */
 export function useModuleCatalog() {
   if (!eventSubscribed) {
     eventSubscribed = true
     Events.On('ext:changed', scheduleEventRefresh)
+    Events.On('updates:checked', scheduleEventRefresh)
   }
   if (!loaded.value && !inflight) void refresh()
   return { entries, loading, error, loaded, refresh }

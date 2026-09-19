@@ -17,7 +17,7 @@ function entry(over: {
       name: '极客随手记',
       description: '本机随手记事与标签检索',
       category: 'efficiency',
-      delivery: 'builtin-logical',
+      deliveryKind: 'builtin-logical',
       capabilities: ['tray-commands'],
       entrypoints: ['rpc', 'navigation', 'tray'],
       compatibility: { hostRange: '*', platform: ['windows'] },
@@ -56,7 +56,7 @@ describe('ModuleCard', () => {
 
   it('builtin-logical 安装文案如实：按钮"加入工作台"+title"不影响主程序体积"', () => {
     const e = entry({
-      catalog: { id: 'wifi', delivery: 'builtin-logical' },
+      catalog: { id: 'wifi', deliveryKind: 'builtin-logical' },
       state: { delivery: 'absent', policy: 'disabled', runtime: 'inactive', health: 'current', primaryAction: 'install', summary: 'not-installed' },
     })
     const w = mountCard(e)
@@ -67,7 +67,7 @@ describe('ModuleCard', () => {
 
   it('非 builtin-logical 的 install 保持词表原案"安装"', () => {
     const e = entry({
-      catalog: { id: 'future', delivery: 'managed-declarative' },
+      catalog: { id: 'future', deliveryKind: 'managed-declarative' },
       state: { delivery: 'absent', policy: 'disabled', runtime: 'inactive', health: 'current', primaryAction: 'install', summary: 'not-installed' },
     })
     const w = mountCard(e)

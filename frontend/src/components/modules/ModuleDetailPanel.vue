@@ -102,7 +102,7 @@ const iconName = computed<IconName | undefined>(() => {
 
     <h3 class="section-label">目录信息</h3>
     <div class="kv-row">
-      <span class="k">交付形态</span><span class="v mono">{{ entry.catalog.delivery }}</span>
+      <span class="k">交付形态</span><span class="v mono">{{ entry.catalog.deliveryKind }}</span>
     </div>
     <div class="kv-row">
       <span class="k">维护 owner</span><span class="v">{{ entry.catalog.owner || '—' }}</span>

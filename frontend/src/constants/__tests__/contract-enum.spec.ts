@@ -116,12 +116,12 @@ describe('module_catalog.json 契约基线', () => {
     expect(moduleCatalog.items).toHaveLength(41)
   })
 
-  it('每个模块项的 delivery/entrypoints 取值均落在 bindings 枚举值集内', () => {
-    // 注意：ModuleCatalogItem.delivery 是静态交付形态 DeliveryKind，非动态交付维度 DeliveryState。
+  it('每个模块项的 deliveryKind/entrypoints 取值均落在 bindings 枚举值集内', () => {
+    // 注意：ModuleCatalogItem.deliveryKind 是静态交付形态(与 ModuleState.delivery 生命周期维度刻意异名) DeliveryKind，非动态交付维度 DeliveryState。
     const kindValues = new Set(enumValues(DeliveryKind))
     const entrypointValues = new Set(enumValues(Entrypoint))
     for (const item of moduleCatalog.items) {
-      expect(kindValues.has(item.delivery), `${item.id} 的 delivery=${item.delivery} 不在枚举内`).toBe(true)
+      expect(kindValues.has(item.deliveryKind), `${item.id} 的 deliveryKind=${item.deliveryKind} 不在枚举内`).toBe(true)
       for (const entry of item.entrypoints ?? []) {
         expect(entrypointValues.has(entry), `${item.id} 的 entrypoint=${entry} 不在枚举内`).toBe(true)
       }

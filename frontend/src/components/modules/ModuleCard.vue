@@ -65,7 +65,7 @@ const SUMMARY_TONE: Record<SummaryKeyValue, StateTone> = {
 }
 
 const state = computed(() => props.entry.state)
-const deliveryKind = computed(() => String(props.entry.catalog.delivery))
+const deliveryKind = computed(() => String(props.entry.catalog.deliveryKind))
 const isBuiltinLogical = computed(() => deliveryKind.value === DELIVERY_KIND_BUILTIN_LOGICAL)
 
 // —— 主操作：零状态推断，映射 PRIMARY_ACTION_META ——

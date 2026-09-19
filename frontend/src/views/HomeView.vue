@@ -3,7 +3,12 @@
 // 职责 = 运行摘要 + 常用入口 + 最近任务，不再承担完整模块目录与启停（归模块中心）。
 // 数据铁律：全部区块只消费后端真实投影，无来源的分区隐藏并注释说明，禁止样例数据。
 //   · 正在运行   AppService.ListModules()，initialized ∧ enabled = 已分配运行资源；
-//   · 摘要三项   ListModules 真实计数（待处理/可用更新两张卡本期隐藏，见模板注释）；
+//   · 摘要四项   ListModules 真实计数 + 可用更新计数（W2b 点亮：useModuleCatalog
+//                健康维度 health==='update-available' 真实投影；「待处理」仍无独立
+//                来源，继续隐藏不占位）；
+//   · 可用更新   update-available 条目合并列表行（有则显示、无则整区隐藏）；页头
+//                「检查更新」触发 AppService.RefreshUpdates()（阻塞式一轮感知），
+//                投影刷新由 updates:checked 驱动 useModuleCatalog 节流重拉，本页不重复拉；
 //   · 常用入口   固定常用（navGrouping.FAV_MODULE_IDS 单一来源）+ 最近使用（loadRecentRoutes），
 //                经后端 navs 实时过滤可见性（模块停用即消失），最多 4 个直达；
 //   · 最近任务   HistoryService.List 三桶（ocr/portkill/envcheck）+ 统一 Operation
@@ -18,9 +23,17 @@ import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import { useOperations } from '../composables/useOperations'
 import { useWailsEvent } from '../composables/useWailsEvent'
+import { useAsyncAction } from '../composables/useAsyncAction'
+import { useModuleCatalog, type ModuleEntry } from '../composables/useModuleCatalog'
 import { MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../constants/navigation'
 import { ICON_NAMES, type IconName } from '../constants/icons'
-import { operationKindMeta, operationPhaseText, operationStatusMeta } from '../constants/status'
+import {
+  SUMMARY_META,
+  healthMeta,
+  operationKindMeta,
+  operationPhaseText,
+  operationStatusMeta,
+} from '../constants/status'
 import {
   loadRecentRoutes,
   mergeFavRecentNavs,
@@ -30,13 +43,14 @@ import {
 import AppIcon from '../components/ui/AppIcon.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import UiEmptyState from '../components/ui/UiEmptyState.vue'
+import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import PageContainer from '../components/ui/PageContainer.vue'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
 }>()
 
-const { showToast } = useToast()
+const { showToast, showErrorToast } = useToast()
 // 统一 Operation 观察面（模块级单例）：首页"最近任务"取终态收口记录，
 // 与历史三桶合并呈现；在途（queued/running）不进本列表（归模块中心在途条）。
 const { recentFinished } = useOperations()
@@ -102,6 +116,42 @@ async function loadCore() {
 // 正在运行 = 已启用且已分配运行时资源（initialized）。单一口径，不在前端推导第二份状态。
 const runningModules = computed(() => modules.value.filter((m) => m.enabled && m.initialized))
 const enabledCount = computed(() => modules.value.filter((m) => m.enabled).length)
+
+// ── 可用更新（W2b 更新感知链点亮）：唯一口径 = useModuleCatalog（ListModuleStates）
+// 健康维度 health==='update-available' 真实投影（updatewatch 调度器裁决写入，
+// 无真实来源时计数为 0、列表区整区隐藏，不放占位）。文案全部取自 status 词表。
+const { entries: catalogEntries } = useModuleCatalog()
+const updateEntries = computed(() =>
+  catalogEntries.value.filter((e) => String(e.state?.health ?? '') === 'update-available'),
+)
+/** 健康维度词表条目：text「有可用更新」+ tone + icon（禁自造状态词）。 */
+const updateHealth = healthMeta('update-available')
+
+/** 更新行直达：有登记路由进模块，否则回落模块中心（更新操作在模块中心/模块页处理）。 */
+function gotoUpdate(e: ModuleEntry) {
+  const route = getModuleRoute(e.catalog.id)
+  emit('navigate', route !== '/' ? route : '/modules')
+}
+
+/** 更新行的运行/更新合并短语：直接取派生摘要键词表（SUMMARY_META），零本地推断。 */
+function updateRowSummary(e: ModuleEntry): string {
+  return (SUMMARY_META as Record<string, string>)[String(e.state?.summary ?? '')] ?? '状态未知'
+}
+
+// 页头「检查更新」：手动触发（或加入）一轮全量感知，阻塞式 RPC 不阻塞 UI——
+// busy 防重入（后端 TTL 缓存 + single-flight 已不放大网络，这里只防连点态错乱）；
+// 回执只报"本轮成功判定模块数"（后端如实口径），不推断有无更新；
+// 投影刷新交给 updates:checked → useModuleCatalog 节流重拉，此处不重复拉。
+const { busy: checkingUpdates, run: runCheckUpdates } = useAsyncAction()
+async function checkUpdates() {
+  if (checkingUpdates.value) return // 在途重放直接吞掉（disabled 已挡用户点击，此为防御性守卫）
+  const res = await runCheckUpdates(() => AppAPI.AppService.RefreshUpdates())
+  if (res.ok) {
+    showToast(`检查更新完成：本轮成功判定 ${res.data} 个模块`)
+  } else {
+    showErrorToast(`检查更新失败: ${getErrorMessage(res.error)}`)
+  }
+}
 
 // ── 最近任务：历史服务分桶 RPC（后端 Save 的 FuncType 与模块注册 ID 对齐，
 // 当前写入方为识别 ocr / 查杀 portkill / 环境检测 npm envcheck 三桶）。
@@ -239,13 +289,22 @@ onMounted(async () => {
           </div>
           <p class="page-note">聚合运行状态、最近任务与常用入口；完整模块管理请进入模块中心。</p>
         </div>
-        <UiButton class="modules-entry-btn" @click="emit('navigate', '/modules')">管理模块</UiButton>
+        <div class="header-actions">
+          <UiButton
+            class="check-updates-btn"
+            :disabled="checkingUpdates"
+            :title="checkingUpdates ? '上一轮检查仍在进行' : '手动触发一轮全量可用更新感知'"
+            @click="checkUpdates"
+          >
+            <AppIcon name="refresh-cw" :size="14" /> {{ checkingUpdates ? '检查中…' : '检查更新' }}
+          </UiButton>
+          <UiButton class="modules-entry-btn" @click="emit('navigate', '/modules')">管理模块</UiButton>
+        </div>
       </header>
 
-      <!-- 摘要区：三项真实计数（ListModules）。
-           「待处理 / 可用更新」两张卡本期隐藏——后端投影尚无 update-available
-           真相（Phase 1 内建模块恒 current），Wave 4+ 接统一状态投影后启用
-           （UI 专项 §7.4：无真实来源不填模拟数据）。 -->
+      <!-- 摘要区：三项 ListModules 真实计数 + 可用更新计数（useModuleCatalog
+           健康维度 update-available 真实投影，W2b 更新感知链点亮）。
+           「待处理」仍无独立真实来源，继续隐藏不占位（UI 专项 §7.4）。 -->
       <div class="summary-grid" role="group" aria-label="工作台摘要">
         <div class="summary-card">
           <span class="summary-icon run"><AppIcon name="activity" :size="17" /></span>
@@ -261,6 +320,11 @@ onMounted(async () => {
           <span class="summary-icon enabled"><AppIcon name="check-square" :size="17" /></span>
           <span class="summary-label">已启用</span>
           <strong class="summary-value mono">{{ enabledCount }}</strong>
+        </div>
+        <div class="summary-card">
+          <span class="summary-icon update"><AppIcon :name="updateHealth.icon" :size="17" /></span>
+          <span class="summary-label">可用更新</span>
+          <strong class="summary-value mono">{{ updateEntries.length }}</strong>
         </div>
       </div>
 
@@ -324,6 +388,41 @@ onMounted(async () => {
           <div v-else class="wb-state">暂无可用入口：启用模块或访问功能页后自动出现</div>
         </section>
       </div>
+
+      <!-- 可用更新（W2b 点亮）：条目 = useModuleCatalog 中 health==='update-available'
+           的真实投影（updatewatch 感知链裁决，updates:checked 驱动重拉）。
+           行=模块名+派生摘要合并短语（SUMMARY_META：正在运行/有更新等口径）+健康徽标+直达；
+           无条目整区隐藏，不放占位。 -->
+      <section v-if="updateEntries.length > 0" class="wb-panel updates-panel" aria-labelledby="updates-title">
+        <header class="wb-head">
+          <h2 class="wb-title" id="updates-title">可用更新</h2>
+          <span class="wb-sub">版本感知判定存在兼容更新，点击前往处理</span>
+          <span class="count-tag mono">{{ updateEntries.length }}</span>
+        </header>
+        <ul class="update-list">
+          <li v-for="e in updateEntries" :key="e.catalog.id">
+            <button
+              class="running-row update-row"
+              type="button"
+              :title="`前往「${e.catalog.name}」查看并更新`"
+              @click="gotoUpdate(e)"
+            >
+              <span class="row-icon">
+                <AppIcon v-if="moduleIconName(e.catalog.id)" :name="moduleIconName(e.catalog.id)!" :size="16" />
+                <template v-else>{{ getModuleIcon(e.catalog.id) }}</template>
+              </span>
+              <span class="row-copy">
+                <span class="row-name">{{ e.catalog.name }}</span>
+                <span class="row-desc">{{ updateRowSummary(e) }}</span>
+              </span>
+              <UiStatusChip class="update-chip" :tone="updateHealth.tone">
+                <AppIcon :name="updateHealth.icon" /> {{ updateHealth.text }}
+              </UiStatusChip>
+              <span class="row-goto"><AppIcon name="goto" :size="14" /></span>
+            </button>
+          </li>
+        </ul>
+      </section>
 
       <!-- 最近任务（Wave 4）：历史三桶 + 统一 Operation 终态两源按时间降序合并取 5；
            无数据（两源皆空或全部不可用）时整区隐藏，不放占位样例。
@@ -405,10 +504,19 @@ onMounted(async () => {
   line-height: 1.5;
 }
 
-/* ── 摘要卡（本期三项；待处理/可用更新隐藏，见模板注释） ── */
+/* ── 页头动作组（检查更新 + 管理模块） ── */
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── 摘要卡（四项：三项 ListModules 计数 + 可用更新健康投影计数；待处理仍隐藏） ── */
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -444,6 +552,11 @@ onMounted(async () => {
   color: var(--color-text-muted);
 }
 .summary-icon.enabled {
+  background: var(--state-information-soft);
+  color: var(--state-information);
+}
+/* 可用更新：tone 跟随 HEALTH_META['update-available']（information），文字标签承载语义 */
+.summary-icon.update {
   background: var(--state-information-soft);
   color: var(--state-information);
 }
@@ -603,6 +716,36 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
+/* ── 可用更新列表（行钮复用 .running-row 语法，右侧健康徽标 + 直达箭头） ── */
+.update-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.update-list li {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.update-list li:last-child {
+  border-bottom: 0;
+}
+
+.update-list .running-row {
+  gap: 12px;
+}
+
+.update-chip {
+  flex: none;
+}
+
+.row-goto {
+  flex: none;
+  display: flex;
+  align-items: center;
+  color: var(--color-text-subtle);
+}
+
 .running-empty {
   margin: 14px;
   width: auto;
@@ -760,6 +903,10 @@ onMounted(async () => {
 @media (max-width: 900px) {
   .workspace-grid {
     grid-template-columns: 1fr;
+  }
+  /* 摘要四卡中屏降为 2×2（KPI 4→2→1 档位） */
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

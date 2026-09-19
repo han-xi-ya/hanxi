@@ -36,7 +36,7 @@ let useToast: UseToast
 function cat(id: string, name = `模块 ${id}`) {
   return {
     id, name, description: `这是 ${name} 的功能描述`,
-    category: 'desktop', delivery: 'builtin-logical',
+    category: 'desktop', deliveryKind: 'builtin-logical',
     capabilities: [], entrypoints: ['rpc'],
     compatibility: { hostRange: '*', platform: ['windows'] },
     permissions: [], owner: 'hanxi',
@@ -127,6 +127,36 @@ describe('ModuleCenterView', () => {
     expect(w.findAll('.module-card')).toHaveLength(31)
     await byLabel('全部').trigger('click')
     expect(w.findAll('.module-card')).toHaveLength(41)
+    w.unmount()
+  })
+
+  it('健康维度筛选档「有可用更新 N」：读 state.health 分桶，卡片呈现词表健康徽标（W2b）', async () => {
+    appSvc.ListCatalog.mockResolvedValue([cat('memo'), cat('wifi'), cat('frpc')])
+    appSvc.ListModuleStates.mockResolvedValue([
+      st('memo', { health: 'update-available', summary: 'running-update' }),
+      st('wifi', { health: 'update-available', policy: 'disabled', runtime: 'inactive', primaryAction: 'enable', summary: 'installed-disabled' }),
+      st('frpc'),
+    ])
+    appSvc.ListOperations.mockResolvedValue([])
+    const w = mount(view, { attachTo: document.body })
+    await flushPromises()
+    // 标签带真实计数，词表锚定 HEALTH_META['update-available']
+    const tabs = w.findAll('.main-tab-btn')
+    const updateTab = tabs.find((t) => t.text().startsWith('有可用更新'))!
+    expect(updateTab.text()).toBe('有可用更新 2')
+    await updateTab.trigger('click')
+    const cards = w.findAll('.module-card')
+    expect(cards).toHaveLength(2)
+    expect(cards.map((c) => c.text())).toEqual([
+      expect.stringContaining('模块 memo'),
+      expect.stringContaining('模块 wifi'),
+    ])
+    // healthBadge 自动呈现：非 current 健康值走词表徽标（不只靠颜色，文字承载）
+    for (const card of cards) {
+      expect(card.findAll('.badge-row .chip').map((c) => c.text())).toContain('有可用更新')
+    }
+    // memo summary=running-update → 摘要徽标词表短语
+    expect(cards[0].find('.summary-chip').text()).toBe('运行中，有更新')
     w.unmount()
   })
 

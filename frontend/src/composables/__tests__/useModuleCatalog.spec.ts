@@ -31,7 +31,7 @@ function catalogItem(id: string, over: Record<string, unknown> = {}) {
     name: `模块 ${id}`,
     description: `这是 ${id} 的功能描述`,
     category: 'efficiency',
-    delivery: 'builtin-logical',
+    deliveryKind: 'builtin-logical',
     capabilities: ['tray-commands'],
     entrypoints: ['rpc', 'navigation'],
     compatibility: { hostRange: '*', platform: ['windows'] },
@@ -143,6 +143,32 @@ describe('useModuleCatalog', () => {
       await vi.advanceTimersByTimeAsync(300)
       expect(appSvc.ListCatalog.mock.calls.length).toBe(before + 1)
       expect(entries.value[0].state?.summary).toBe('installed-disabled')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('updates:checked（感知一轮收口）复用 ext:changed 的节流重拉：突发 2 连击只重拉一次', async () => {
+    vi.useFakeTimers()
+    try {
+      const mod = await freshModule()
+      stubTwoSources([catalogItem('memo')], [stateOf('memo', { health: 'current' })])
+      const { entries } = mod.useModuleCatalog()
+      await vi.advanceTimersByTimeAsync(0) // 放行冷加载微任务
+      expect(runtime.handlers['updates:checked']).toBeTypeOf('function')
+      const before = appSvc.ListModuleStates.mock.calls.length
+
+      // 与 ext:changed 共用防抖窗口：连击不放大拉取
+      runtime.handlers['updates:checked']()
+      runtime.handlers['updates:checked']()
+      runtime.handlers['ext:changed']()
+      expect(appSvc.ListModuleStates.mock.calls.length).toBe(before)
+
+      // 感知链收口后的新健康值只经重拉到达（前端不本地改缓存）
+      appSvc.ListModuleStates.mockResolvedValue([stateOf('memo', { health: 'update-available', summary: 'running-update' })])
+      await vi.advanceTimersByTimeAsync(300)
+      expect(appSvc.ListModuleStates.mock.calls.length).toBe(before + 1)
+      expect(entries.value[0].state?.health).toBe('update-available')
     } finally {
       vi.useRealTimers()
     }
