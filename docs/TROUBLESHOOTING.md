@@ -966,6 +966,14 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：① 用一次性 spec 把组件挂载后 `throw new Error(w.html())` 导出 HTML，发现 head 区整体是 `<!--v-if-->`，顺推 `wantPaste` 恒 false 才定位到 Boolean casting；② 给失败测试所在 shell 补 `PATH="/c/Windows/System32:$PATH"` 后同一命令全绿，确认与改动无关。
 - **正确做法与标准修复方案**：① 组件布尔开关一律设计成**默认态即 false 的"否定/追加"形**（`hidePaste`/`hideCopy`/`allowCopy`），缺省 false 与 casting 结果同值，语义自明；需要"跟随另一 prop"的派生态放 computed 里组合，不依赖 undefined 三态。② 生成绑定与跑 instance 系测试用 `cmd //c "set PATH=C:\Windows\System32;%PATH% && wails3 generate bindings -clean=true -i ./cmd/hanxi ./internal/..."` 形态（Taskfile 口径 `-f` 参数在 cmd 下会被吞成畸形 flag，可省略）；报告 Go 测试基线前先在补好 PATH 的环境复测一次。
 - **避坑防重犯建议**：① 写可选 Boolean prop 前先问"缺省 false 是不是我要的语义"——是，则随便 cast；不是（需要三态），**必须**改成否定命名或 string 枚举，别指望 `?? undefined` 分支；happy-dom 的 spec 是最便宜的探针，组件"整块不渲染"优先 dump HTML 看 v-if 落点；② Windows 上"测试红一批但只红同一类（都要 spawn cmd.exe/go）"先怀疑 shell PATH，再怀疑代码；给同事的复现命令请附 PATH 前提；③ 组件的粘贴钮/复制钮显隐属交互契约，spec 里"默认见 X 不见 Y"要逐态钉死（本次补的 8 例已锁）。
+
+### 58.1 Vue computed 的依赖按实际执行路径收集：非响应式探针置于短路左侧，会把首评空态永久缓存
+
+- **问题现象与错误原因**：PaperTodo 托管页把“同版本已安装但切到另一下载变体”投影写成 `computed(() => !adapter.installedInfo() ? null : store.releases.find(...))`。`installedInfo()` 是 adapter 内普通闭包快照，不是 Vue ref；组件首评时它尚为空，`!info` 直接短路，后面的 `variant.value` / `store.releases` 从未被读取，computed 因而**没有收集任何响应式依赖**。后续版本列表与变体都已加载，换装按钮仍永久不出现，且 TypeScript、lint、单测若只测稳定态都不报错。根因是误把 computed 当“每次渲染都重算”；实际它只在已收集依赖失效时重算，依赖集合又只来自本次 getter 的真实执行路径。
+- **排查过程**：沿“后端状态已变、DOM 仍无按钮”反查视图投影，确认首评路径在普通函数返回空时提前退出；把响应式读取移到短路之前后，`variant` 或 `releases` 任一变化都会使 getter 重跑，问题消失。该坑与可选链本身无关，关键是**短路前是否至少读取了能代表该事实变化的 reactive/ref**。
+- **正确做法与标准修复方案**：computed getter 先无条件读取它应追踪的响应式输入，再读取非响应式辅助探针并分支，例如 `const selected = variant.value; const list = store.releases; const info = adapter.installedInfo(); if (!info || info.variant === selected) return null; return list.find(...) ?? null`。更优方案是让 adapter 的动态事实直接进入共享 store/ref，避免普通闭包成为第二状态源；若暂时保留闭包，必须由一个明确的响应式版本/状态信号驱动复算。
+- **避坑防重犯建议**：① 审 computed/watchEffect 时按“首评每条短路路径”画依赖，而不是只看源码里出现过哪些 `.value`；`if (!plainProbe()) return`、`plain && reactive.value`、`plain ?? reactive.value` 都是高危形状。② 动态业务事实优先做 ref/reactive 或随已存在的 store 投影携带，普通 getter 只适合真正静态值。③ 回归测试必须从“首帧空 → 异步填充”推进状态，不能只把最终数据一次性塞好后挂载，否则锁不住依赖收集缺口。
+
 ### 59. `wails3 generate bindings` 报 "go not found"：原生工具看不见 bash profile 注入的 PATH
 
 - **问题现象与错误原因**：worktree 根执行 `wails3 generate bindings -clean=true -i ./cmd/hanxi ./internal/...`，先打出 `Processed: 0 Packages, 0 Services...` 随即 `ERROR err: go command required, not found: exec: "go": executable file not found in %PATH%`。同一 shell 里 `go build` 明明正常。根因：`go` 目录只写进了 bash profile（Git Bash 的 `$PATH`），**原生 Windows 可执行文件 wails3.exe 解析的是进程环境块**，`cmd //c "go version"` 同样不识别——即宿主 PATH 里根本没有 go。更险的是 `-clean=true` 若先于失败执行会清空 `frontend/bindings/`（本次幸而失败发生在分析阶段前、git 里也有存量兜底）。
