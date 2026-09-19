@@ -1,6 +1,7 @@
 package version
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,6 +53,9 @@ type asset struct {
 	Name string `json:"name"`
 	URL  string `json:"url"` // 资产直链（302 到 objects.githubusercontent.com）
 	Size int64  `json:"size"`
+	// Digest GitHub 官方发布的资产摘要（形如 "sha256:<hex>"）。上游虽无独立
+	// checksums 资产，API 摘要即官方信任根——下载校验（artifact.Fetch）以它为准。
+	Digest string `json:"digest"`
 }
 
 // apiClient GitHub API 请求客户端（12s 超时）
@@ -116,11 +120,21 @@ func findPortableAsset(assets []asset, version string) (asset, bool) {
 	return asset{}, false
 }
 
-// releaseCache 远程列表缓存（防 GitHub 限流；MarkerOn 无官方 checksums 资产，无需哈希表）
+// releaseCache 远程列表缓存（防 GitHub 限流）。MarkerOn 无独立 checksums 资产，
+// 但 GitHub API 的资产 digest 字段提供官方 SHA-256——单独留一份 version→digest
+// 映射供下载校验使用（不进 MarkerRelease 对外契约面）。
 type releaseCache struct {
 	mu        sync.Mutex
 	data      []MarkerRelease
+	digests   map[string]string // version → 资产 SHA-256（64 位十六进制小写）
 	fetchedAt time.Time
+}
+
+// digest 返回指定版本的官方资产摘要（未拉取到/上游未提供时为空）
+func (c *releaseCache) digest(version string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.digests[version]
 }
 
 func (c *releaseCache) get() ([]MarkerRelease, error) {
@@ -145,6 +159,7 @@ func (c *releaseCache) get() ([]MarkerRelease, error) {
 	}
 
 	var list []MarkerRelease
+	digests := make(map[string]string, len(releases))
 	for _, r := range releases {
 		// 未认证 API 本就不返回 draft，防御性再跳一次；tag 非纯 x.y.z 直接丢弃
 		if r.Draft || !plainSemverTag.MatchString(r.TagName) {
@@ -162,11 +177,28 @@ func (c *releaseCache) get() ([]MarkerRelease, error) {
 			AssetURL:  arch.URL,
 			Size:      arch.Size,
 		})
+		if want, sha, ok := parseAssetDigest(arch.Digest); ok && want == "sha256" {
+			digests[r.TagName] = sha
+		}
 	}
 
 	c.data = list
+	c.digests = digests
 	c.fetchedAt = time.Now()
 	return list, nil
+}
+
+// parseAssetDigest 解析 GitHub 资产摘要字段（"algo:hex" 形式）；
+// 仅接受 sha256 + 64 位十六进制，其余（含缺失/未来换算法）视为无可用摘要。
+func parseAssetDigest(raw string) (algo, hex64 string, ok bool) {
+	algo, hex64, found := strings.Cut(strings.ToLower(strings.TrimSpace(raw)), ":")
+	if !found || algo != "sha256" || len(hex64) != 64 {
+		return "", "", false
+	}
+	if _, err := hex.DecodeString(hex64); err != nil {
+		return "", "", false
+	}
+	return algo, hex64, true
 }
 
 var remoteCache = &releaseCache{}
