@@ -16,7 +16,7 @@
 | 批 2 | 异步托管下载提前释放 Acquire 租约;journal 步进失败仍执行副作用(fail-open);Artifact Commit rename 后/meta 前崩溃窗口 | `internal/modules/*/service.go`、`internal/ops/ops.go`、`packages/go/artifact/` |
 | 批 3 | 前端旧快照冒充实时状态、本地/远程版本加载竞态、`already-installed` 清票未走版本互认、旧响应覆盖(generation)、多份 busy 真相、无障碍缺口 | `frontend/src/components/managed/`、`frontend/src/composables/loadManagedVersions.ts` |
 
-- 每批开工前先形成正式修复计划确认范围;批 1、2 完成后补 `go test -race`(需具备 CGO/GCC 的 Windows 环境)与组合级故障注入。
+- 每批开工前先形成正式修复计划确认范围;批 1、2 完成后补 `go test -race`(Windows 侧走 CI/真机;云侧已具备 hanxi-dev:2404 容器回路,43 个 Linux 可构建包可本地跑 race,Windows-only 包仍须 CI——配方与豁免清单见踩坑 #84)与组合级故障注入。
 - 审查文档 §5 另有 9 项"已发现待复核/裁决"事项,随批次一并收口。
 
 ## P1:真机验收债
