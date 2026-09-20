@@ -1148,3 +1148,17 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：`which go`/`go env GOROOT` 正常排除安装问题；改从 `cmd //c` 入口调用并给足 Windows 形态 PATH（GOROOT\bin + GOPATH\bin + system32），一次通过（423 包、77 事件、729 方法）。
 - **正确做法与标准修复方案**：绑定生成固定走 `PATH="<win形态目录s>:$PATH" cmd //c "<绝对路径>\wails3.exe generate bindings ..."`；或直接在 cmd/PowerShell 会话执行。生成后以 `git status --short frontend/bindings` 验尸产物。
 - **避坑防重犯建议**：凡"Windows 原生 CLI 再派生子进程"的工具（wails3/npm 等，与个人记忆里 npm shim 坑并列），在 Git Bash 里的第一失败永远先怀疑 PATH 交接而非工具本身；Taskfile 常规入口（task verify:bindings）在正常终端不受影响。
+
+### 83. Linux 云环境装 wails3 CLI 与交叉编译的两道依赖门：pkg-config/webkitgtk-6.0 与 `frontend/dist` 占位
+
+- **问题现象与错误原因**：Ubuntu 22.04 云服务器上 `go install wails3@v3.0.0-beta.10` 两连败——先报 `exec: "pkg-config": executable file not found`（wails 模块图里的包在 Linux 构建时用 pkg-config 探测系统库），补装 pkg-config 后再报 `No package 'webkitgtk-6.0' found`。另外首次 `GOOS=windows go build ./cmd/hanxi` 报 `pattern all:frontend/dist: no matching files`——根包 `//go:embed all:frontend/dist` 要求 dist 先存在。
+- **排查过程**：22.04 主源无 webkitgtk-6.0，但 backport 源有 `libwebkitgtk-6.0-dev 2.50.4`（`apt-cache policy` 确认 candidate 即可下单）；装上 `libgtk-4-dev libwebkitgtk-6.0-dev` 后 CLI 编译通过。交叉编译前先 `npm --prefix frontend run build` 产出 dist（或占位 index.html 亦可过 embed）。
+- **正确做法与标准修复方案**：Linux 云侧标准配方——`apt install build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev` + `go install wails3` + `go install task`；绑定生成直接可跑（实测 435 包/729 方法零漂移，Linux 生成结果与入库版一致）。出可跑真机的 exe：`npm --prefix frontend run build && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H=windowsgui" -o bin/hanxi.exe ./cmd/hanxi`（本仓零 CGO，交叉编译干净）。
+- **避坑防重犯建议**：`go install X | tail` 这类管道会吞掉退出码（本坑第一次就是这么被掩盖成"安装成功"的）——CLI 安装后必须跑一次 `wails3 version`/`task --version` 实锤；embed 前置依赖(dist)决定了"Go 门禁"必须排在"前端构建"之后，CI 步骤顺序即答案。
+
+### 84. 22.04 宿主机跑不了本仓 Linux 侧 Go 测试：wails pkg/application 需 GTK ≥ 4.10，容器绕行还要过 VCS 戳记门
+
+- **问题现象与错误原因**：宿主机装好 webkit6 头文件后，`go test ./internal/settings/` 仍炸在 wails `linux_cgo.go`：`unknown type name 'GtkFileDialog'`——wails v3 beta.10 的 Linux WebKit 代码用了 GTK 4.10+ API（`gtk_file_dialog_*`、`gtk_css_provider_load_from_string`、`gdk_monitor_get_scale`），而 22.04 的 libgtk-4-dev 停在 4.6（WebKit 有回移植、GTK4 没有）。改用 ubuntu:24.04 容器又遇 `error obtaining VCS status: exit status 128`——容器内 root 对宿主用户属主的挂载目录跑 git 被 dubious ownership 拒绝，go 的 buildvcs 戳记全盘失败。
+- **排查过程**：`go list ./...` 在容器里返回 0 包 → 单跑 `go env`/`go list` 暴露 VCS 错误 → 挂 `GOFLAGS=-buildvcs=false` 后恢复。全树探测：138 包中 43 个 Linux 可构建（模块服务层多为 `_windows.go`，符合 Windows-only 产品形态）。
+- **正确做法与标准修复方案**：云侧 race 测试标准命令（镜像 `hanxi-dev:2404` = ubuntu:24.04 + build-essential + libgtk-4-dev + libwebkitgtk-6.0-dev + Go，Dockerfile 在开发机 `~/hanxi-dev/`，缓存走命名卷）：`docker run --rm -e GOFLAGS=-buildvcs=false -v <repo>:/src -v hanxi-gomod:/root/go -v hanxi-gobuild:/root/.cache -w /src hanxi-dev:2404 go test -count=1 -race <linux可构建包列表>`。实测 21 个含测试的包全绿、零 DATA RACE。三个已知 Linux 侧豁免（均非回归）：`softver`（槽位 ID 归一化按 Windows 路径语义，Linux 必不相等）、`supervisor` 冒烟（cmd.exe 缺失应 SKIP 未守卫）、`mcpwizard`（测试文件 import Windows-only 代码编不动）——这三项的真机/CI 侧仍全量把关。
+- **避坑防重犯建议**：容器挂宿主仓库时，凡构建步骤会调 git 的语言工具链（Go buildvcs、npm 等）都要预留 `-buildvcs=false` 或 `git config safe.directory`；"测试假设 OS"类用例新增时按 #79/#81 教训配 runtime.GOOS 守卫，让 Linux 侧安静 SKIP 而不是红。
