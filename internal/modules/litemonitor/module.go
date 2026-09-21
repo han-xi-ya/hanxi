@@ -40,7 +40,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "LiteMonitor",
 		Version:     "0.1.0",
-		Description: "托管桌面硬件监控 LiteMonitor：版本管理、JobObject 启停与窗口唤起（CPU/GPU/内存/磁盘/网速横条与任务栏显示）",
+		Description: "托管桌面硬件监控 LiteMonitor：版本管理、JobObject 启停与窗口唤起（CPU/GPU/内存/磁盘/网速横条与任务栏显示；上游另具内存清理、FPS 计数与插件扩展）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
