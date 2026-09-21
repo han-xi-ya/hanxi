@@ -12,7 +12,7 @@
 
 | 批次 | 内容 | 关键落点 |
 |---|---|---|
-| 批 1 | Registry 覆盖状态数据竞态;receipt 与 `known-modules.json` 成组设计缺陷 | `internal/extapi/registry.go`、`internal/settings/receipts.go` |
+| 批 1 ✅ **已完成(2026-09-21,f63d9b2+c679764)** | Registry 覆盖状态数据竞态(值类型投影消灭指针逃逸);receipt 与 `known-modules.json` 成组缺陷(账本独立命名空间/独立 schema/三态保守重建/fail-closed 卸载事务;计划见 [PLAN_P0_BATCH1_FIX](PLAN_P0_BATCH1_FIX.md)) | `internal/extapi/registry.go`、`internal/settings/receipts.go` |
 | 批 2 | 异步托管下载提前释放 Acquire 租约;journal 步进失败仍执行副作用(fail-open);Artifact Commit rename 后/meta 前崩溃窗口 | `internal/modules/*/service.go`、`internal/ops/ops.go`、`packages/go/artifact/` |
 | 批 3 | 前端旧快照冒充实时状态、本地/远程版本加载竞态、`already-installed` 清票未走版本互认、旧响应覆盖(generation)、多份 busy 真相、无障碍缺口 | `frontend/src/components/managed/`、`frontend/src/composables/loadManagedVersions.ts` |
 
@@ -71,7 +71,7 @@
 |---|---|---|---|
 | **W1 决策与前置调研**(半天,不写码) → **✅ 全部收口(2026-09-21)** | ①N3 决策(**已裁:采纳 C+风险分档**——`force_free` 档低损外部实例优雅后直接强杀、`confirm_force` 档打扰类须明示确认后杀、未声明默认保守档,详见 [PLAN_W1_DECISIONS §1](PLAN_W1_DECISIONS.md));②N15 查证销项(→已定可行,免费路径);③N5 核实 starpie 仓库(→Star-Pie/StarPie,高置信);④N8 的 7z 方案选型(→前提反转,WindTerm 全 zip,选型无需,归档见 §4)。成果载体:[PLAN_W1_DECISIONS](PLAN_W1_DECISIONS.md) | 小 | 四项全是后续波次的门闸,一次沟通全部裁决 |
 | **W2 外部实例治理**(真机) | N1+N2 同批按 W1 裁决(C+分档)实施:平台层"外部 PID 取得+分档退出执行器"公共件 → snipaste(external 探测+toggle-images 唤窗+`force_free` 退出)、everything(按名取 PID+优雅信号+`force_free` 强杀兜底);N12 纯文案 30 分钟搭车 | 中 | 机主真机报告的在用功能故障,痛感最高;与 P1 F10 冒烟同场跑,合并真机验收 |
-| **W3 空间可见性** | 先下沉 walk 目录统计公共包 → N11/N14 各自接线 | 中 | 原登记已自判同批;"新功能第一天走公共包"纪律;纯本地可开发,适合真机等待期填充 |
+| **W3 空间可见性** → **进行中:公共件 `packages/go/dirstats` ✅(7bf1b3a)、N11 数据根占用一览 ✅(46119bb)、N14 envcheck 家底接线 ⬜ 下一主任务** | 先下沉 walk 目录统计公共包 → N11/N14 各自接线 | 中 | 原登记已自判同批;"新功能第一天走公共包"纪律;纯本地可开发,适合真机等待期填充 |
 | **W4 托管集成批** | N7 飞牛同步 → **N8+N9 双端(恢复原"同批互相抄验",W1 实测 WindTerm 全 zip,7z 门槛不存在)** → N4 RAMMap | 大 | N7 缘起级用途、N3 裁决落地后即可开工(先确认静默参数/升级语义);N8/N9 皆为 zip 绿色形态、同技能同管线,互相抄验效率最高;N4 提权+一次性语义开工前正式计划 |
 | **W5 体验债** | N6 msgboard 方案先行→实施(纯前端、盘子较小先做);N5 轮盘改进(前后端几何同源改造,大活,含踩坑 #50 欠账);P3 前端打磨批次一可同窗并流 | 大 | 属重设计而非修 bug,须先出方案给机主过目;出方案可与 W3/W4 并行,动代码排队 |
 | **W6 契约收口** | N13 全平台安装包+形态标注,一次扫过 21+ 模块 models 与前端契约 | 大 | 后置于全部新托管落地,避免逐模块返工;与 P0 批 3(managed 前端)同域,排在批 3 之后;开工前正式计划评审 |
