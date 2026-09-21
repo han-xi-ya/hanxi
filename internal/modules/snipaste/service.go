@@ -1,6 +1,7 @@
 package snipaste
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/settings"
+	"hanxi/packages/go/externalquit"
 )
 
 // SnipasteService 面向前端的 Snipaste 托管服务：官网 zip 下载、本地导入、版本切换与会话内启停。
@@ -42,7 +44,8 @@ func NewSnipasteService(plat platform.Platform, holder *extapi.LeaseHolder) *Sni
 		store: newSnipasteStore(paths.StateDir()), downloads: make(map[string]struct{}),
 		holder: holder,
 	}
-	svc.engine = instance.NewEngine(plat.Job(), plat.Process(), instance.Callbacks{OnState: svc.emitInstanceState})
+	svc.engine = instance.NewEngine(plat.Job(), plat.Process(), instance.NewSnipasteProbe(plat.Process()),
+		instance.Callbacks{OnState: svc.emitInstanceState})
 	return svc
 }
 
@@ -200,6 +203,12 @@ func (s *SnipasteService) Launch() (LaunchOutcome, error) {
 		return LaunchOutcome{}, gateErr
 	}
 	defer release()
+	// 外部实例在场时二次启动只会转发让位（Qt 单实例），不会建立托管——
+	// 提前甄别并如实告知处置选项（N3 分档下页面可直接退出外部实例）。
+	s.engine.RefreshExternal()
+	if s.engine.ExternalRunning() {
+		return LaunchOutcome{}, fmt.Errorf("检测到外部自行启动的 Snipaste 正在运行：可直接在页面退出让 hanxi 接管，或用「显隐贴图」唤起它；托管启动需先退出该实例")
+	}
 	selected, exe, err := s.resolveActiveVersion()
 	if err != nil {
 		return LaunchOutcome{}, err
@@ -220,24 +229,32 @@ func (s *SnipasteService) Launch() (LaunchOutcome, error) {
 	}, nil
 }
 
-// GetStatus 返回引擎状态快照（纯内存读，无系统调用）。
+// GetStatus 返回引擎状态快照；读取前做一次外部探针校正（瞬时枚举调用，
+// 内核在运行/启动/退出中自行短路，不会误探自家进程——external 感知为拉取式，
+// 前端定时刷新即得）。
 func (s *SnipasteService) GetStatus() (instance.Snapshot, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
 		return instance.Snapshot{}, gateErr
 	}
 	defer release()
+	s.engine.RefreshExternal()
 	return s.engine.Snapshot(), nil
 }
 
 // Quit 执行分层退出并把 engine 的 Method 归因翻译成用户文案；
 // 身份复核被拒时保留 Stopped/Method 字段返回错误，供前端精确提示"未误杀"场景。
+// 外部实例（N3 终裁 force-free 档）走 quitExternal 独立通道，不触碰自有语义。
 func (s *SnipasteService) Quit() (QuitOutcome, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
 		return QuitOutcome{}, gateErr
 	}
 	defer release()
+	s.engine.RefreshExternal()
+	if s.engine.ExternalRunning() {
+		return s.quitExternal()
+	}
 	result, err := s.engine.Quit()
 	if err != nil {
 		return QuitOutcome{Stopped: result.Stopped, Forced: result.Forced, CloseRequested: result.CloseRequested, Method: result.Method}, err
@@ -256,6 +273,53 @@ func (s *SnipasteService) Quit() (QuitOutcome, error) {
 		out.Message = "Snipaste 退出操作已完成"
 	}
 	return out, nil
+}
+
+// quitExternal 外部实例按 N3 终裁低损档（force-free）退出：WM_CLOSE 尽力投递
+// → 宽限观察 → 身份复核 → 强杀。低损论证：Snipaste 配置即时写盘、贴图有自动
+// 备份恢复机制（W1 调研 §2）。提权目标被 UIPI 拦截时如实降级为指引。
+func (s *SnipasteService) quitExternal() (QuitOutcome, error) {
+	res, err := s.engine.QuitExternal(context.Background(), externalquit.PolicyForceFree, "", nil)
+	out := QuitOutcome{Stopped: res.Stopped, Forced: res.Forced, Method: res.Method, External: true,
+		CloseRequested: res.Method == externalquit.MethodGraceful}
+	switch res.Method {
+	case externalquit.MethodGraceful:
+		out.Message = "外部自行启动的 Snipaste 已响应关闭请求优雅退出"
+	case externalquit.MethodAlreadyGone:
+		out.Message = "外部 Snipaste 实例已经退出"
+	case externalquit.MethodForced:
+		out.Message = "外部 Snipaste 未响应关闭请求，已强制结束（贴图由其自动备份机制兜底，下次启动会恢复）"
+	case externalquit.MethodBlocked:
+		out.Message = "外部 Snipaste 以管理员权限运行，hanxi 无法代为终止，请在其托盘图标退出"
+	case externalquit.MethodDeclined:
+		out.Message = "已取消退出"
+	}
+	return out, err
+}
+
+// ShowImages 唤起 Snipaste 贴图显隐——Snipaste 无传统主窗口，官方 `toggle-images`
+// 命令即其"唤窗"等价物（Qt 单实例转发通道，免费命令，外部/自有实例通用，
+// W1 调研 §2）。命令仅在实例已在运行时有实效，静止态先引导启动。
+func (s *SnipasteService) ShowImages() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	s.engine.RefreshExternal()
+	snap := s.engine.Snapshot()
+	switch snap.State {
+	case instance.StateRunning, instance.StateExternal:
+	default:
+		return "", fmt.Errorf("Snipaste 未在运行（当前状态 %s）：官方命令仅在实例运行时生效，请先启动", snap.State)
+	}
+	if snap.ExePath == "" {
+		return "", fmt.Errorf("未能取得在运行 Snipaste 实例的可执行路径，请改用其自身热键（默认 Shift+F3 显隐贴图）")
+	}
+	if err := instance.SpawnCommandMessenger(snap.ExePath, "toggle-images"); err != nil {
+		return "", err
+	}
+	return "已向 Snipaste 发出贴图显隐切换指令（该命令为切换开关：贴图隐藏时将其唤出）", nil
 }
 
 // resolveActiveVersion 解析启动目标：active 可用则直用（损坏自动清空回退），

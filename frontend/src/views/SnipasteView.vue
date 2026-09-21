@@ -110,7 +110,8 @@ async function launch(store: ManagedConsoleStore): Promise<void> {
 }
 
 async function quitProcess(store: ManagedConsoleStore): Promise<void> {
-  if (actionBusy.value || !['starting', 'running', 'quitting'].includes(instanceState()) || instanceState() === 'quitting') return
+  // external 态同样可退出（N3 分档：外部实例先优雅请求、无响应按低损档强制结束）。
+  if (actionBusy.value || !['starting', 'running', 'quitting', 'external'].includes(instanceState()) || instanceState() === 'quitting') return
   actionBusy.value = true
   controlResult.value = null
   try {
@@ -223,6 +224,26 @@ async function openSite(): Promise<void> {
   try { await adapter.snipaste.openOfficialSite() } catch (error) { showToast(`打开官网失败：${getErrorMessage(error)}`) }
 }
 
+// 显隐贴图：Snipaste 无传统主窗口，官方 toggle-images 命令即其"唤窗"等价物
+// （外部/自有实例通用；命令为切换开关）。
+async function showImages(): Promise<void> {
+  if (actionBusy.value) return
+  actionBusy.value = true
+  controlResult.value = null
+  try {
+    const text = await adapter.snipaste.showImages()
+    if (text) {
+      controlResult.value = { tone: 'info', text }
+      showToast(text)
+    }
+    await storeRef?.refresh()
+  } catch (error) {
+    controlResult.value = { tone: 'error', text: `唤起贴图失败：${getErrorMessage(error)}` }
+  } finally {
+    actionBusy.value = false
+  }
+}
+
 function fmtSize(bytes: number): string {
   if (!bytes) return '未知'
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -287,6 +308,7 @@ onActivated(() => {
         :control-result="controlResult"
         @launch="launch(store)"
         @quit="quitProcess(store)"
+        @show-images="showImages()"
         @select-versions="selectTab('versions')"
       />
     </template>
@@ -294,10 +316,10 @@ onActivated(() => {
     <article class="info-panel">
       <h2>运行边界</h2>
       <ul>
-        <li>Hanxi 只控制当前会话直接启动并成功登记的 Snipaste 进程。</li>
-        <li>外部或上个 Hanxi 会话启动的实例不会被认领，也不会被退出。</li>
+        <li>当前会话启动的实例由 Hanxi 托管；外部或上个会话启动的实例可被识别为「外部运行」并分档接管。</li>
+        <li>外部实例接管按低损档执行：先投递优雅关闭请求，宽限期内未退出即强制结束（Snipaste 贴图有自动备份恢复机制）；以管理员权限运行的实例无法代杀，会如实提示自行从托盘退出。</li>
         <li>退出 Hanxi 或停用本模块后，Snipaste 仍会保留托盘与全局快捷键。</li>
-        <li>页面退出会先发送尽力关闭请求，超时后强制结束。</li>
+        <li>页面退出（含外部实例）都会先发送尽力关闭请求，超时后强制结束。</li>
       </ul>
       <button class="link-button" @click="openSite">打开 Snipaste 官网<span v-if="siteURL"> · {{ siteURL }}</span></button>
     </article>

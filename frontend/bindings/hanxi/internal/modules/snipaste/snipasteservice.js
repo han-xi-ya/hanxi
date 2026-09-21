@@ -45,7 +45,9 @@ export function GetActiveVersion() {
 }
 
 /**
- * GetStatus 返回引擎状态快照（纯内存读，无系统调用）。
+ * GetStatus 返回引擎状态快照；读取前做一次外部探针校正（瞬时枚举调用，
+ * 内核在运行/启动/退出中自行短路，不会误探自家进程——external 感知为拉取式，
+ * 前端定时刷新即得）。
  * @returns {$CancellablePromise<instance$0.Snapshot>}
  */
 export function GetStatus() {
@@ -113,6 +115,7 @@ export function OpenOfficialSite() {
 /**
  * Quit 执行分层退出并把 engine 的 Method 归因翻译成用户文案；
  * 身份复核被拒时保留 Stopped/Method 字段返回错误，供前端精确提示"未误杀"场景。
+ * 外部实例（N3 终裁 force-free 档）走 quitExternal 独立通道，不触碰自有语义。
  * @returns {$CancellablePromise<$models.QuitOutcome>}
  */
 export function Quit() {
@@ -135,4 +138,14 @@ export function RemoveVersion(targetVersion) {
  */
 export function SetActiveVersion(targetVersion) {
     return $Call.ByID(3736058005, targetVersion);
+}
+
+/**
+ * ShowImages 唤起 Snipaste 贴图显隐——Snipaste 无传统主窗口，官方 `toggle-images`
+ * 命令即其"唤窗"等价物（Qt 单实例转发通道，免费命令，外部/自有实例通用，
+ * W1 调研 §2）。命令仅在实例已在运行时有实效，静止态先引导启动。
+ * @returns {$CancellablePromise<string>}
+ */
+export function ShowImages() {
+    return $Call.ByID(2434302400);
 }

@@ -167,7 +167,7 @@ func TestNoExternalProbeAlwaysAbsent(t *testing.T) {
 
 func TestMapKernelStateVocabulary(t *testing.T) {
 	rec := &eventRecorder{}
-	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, rec.cb())
+	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, nil, rec.cb())
 
 	cases := []struct {
 		name string
@@ -216,7 +216,7 @@ func TestMapKernelStateVocabulary(t *testing.T) {
 
 func TestStoppedMessageAndPidShape(t *testing.T) {
 	rec := &eventRecorder{}
-	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, rec.cb())
+	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, nil, rec.cb())
 
 	e.onSupState(sup.Snapshot{State: sup.StateRunning, Version: "2.11.3", PID: 4242, Exe: `C:\v\Snipaste.exe`, Since: time.Now()})
 	run := rec.last()
@@ -238,7 +238,7 @@ func TestStoppedMessageAndPidShape(t *testing.T) {
 
 func TestStartupSelfCheckLatchMapsFailed(t *testing.T) {
 	rec := &eventRecorder{}
-	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, rec.cb())
+	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, nil, rec.cb())
 	// 自检失败锁存后：内核收口的 stopped 事件必须改写为 failed + 锁存文案，
 	// 且不落停止时刻（还原原实现"启动期失败无运行终态"语义）。
 	e.mu.Lock()
@@ -257,7 +257,7 @@ func TestStartupSelfCheckLatchMapsFailed(t *testing.T) {
 // ---------- Quit 分层归因决策表（seam 注入，不依赖真进程） ----------
 
 func TestFinishQuitAttributionTable(t *testing.T) {
-	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, Callbacks{})
+	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, nil, Callbacks{})
 	snap := sup.Snapshot{State: sup.StateRunning, PID: 42, Exe: `C:\v\Snipaste.exe`}
 
 	notFound := func(platform.VerifyToken) error { return platform.ErrProcessNotFound }
@@ -315,7 +315,7 @@ func TestFinishQuitAttributionTable(t *testing.T) {
 func TestQuitPrecheckRejectsMismatchedIdentity(t *testing.T) {
 	// 动手前复核不通过：拒绝投递与强杀（宁可退出失败也不误杀复用 PID 的进程）。
 	rec := &eventRecorder{}
-	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, rec.cb())
+	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, nil, rec.cb())
 	e.mu.Lock()
 	e.settle = make(chan struct{})
 	e.mu.Unlock()
@@ -328,7 +328,7 @@ func TestQuitPrecheckRejectsMismatchedIdentity(t *testing.T) {
 
 func TestVerifyTokenRejectsPathMismatch(t *testing.T) {
 	proc := &fakeProcessAPI{info: platform.ProcInfo{PID: 10, ExePath: filepath.Join(t.TempDir(), "other.exe"), StartedAt: time.Now()}}
-	engine := NewEngine(&fakeJobAPI{}, proc, Callbacks{})
+	engine := NewEngine(&fakeJobAPI{}, proc, nil, Callbacks{})
 	err := engine.verifyToken(platform.VerifyToken{PID: 10, ExePath: filepath.Join(t.TempDir(), "Snipaste.exe"), StartedAt: proc.info.StartedAt})
 	if err != platform.ErrTokenMismatch {
 		t.Fatalf("err=%v", err)
@@ -345,7 +345,7 @@ func TestStartKeepsIndependentJobAndTracksProcess(t *testing.T) {
 	}
 	jobs := &fakeJobAPI{}
 	proc := windows.NewProcessAPI() // 真查询：身份自检与终局清理都要如实
-	engine := NewEngine(jobs, proc, Callbacks{})
+	engine := NewEngine(jobs, proc, nil, Callbacks{})
 	if err := engine.Start(StartOptions{Version: "test", Exe: cmdExe}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestStartKeepsIndependentJobAndTracksProcess(t *testing.T) {
 }
 
 func TestStartRejectsEmptyExe(t *testing.T) {
-	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, Callbacks{})
+	e := NewEngine(&fakeJobAPI{}, &fakeProcessAPI{}, nil, Callbacks{})
 	if err := e.Start(StartOptions{Version: "v2.11.3"}); err == nil || err.Error() != "Snipaste.exe 路径不能为空" {
 		t.Fatalf("空路径应报既有文案, got %v", err)
 	}
@@ -376,7 +376,7 @@ func TestStartIdentityMismatchAborts(t *testing.T) {
 	cmdExe := mustCmdExe(t)
 	proc := &fakeProcessAPI{info: platform.ProcInfo{ExePath: `C:\Else\other.exe`, StartedAt: time.Now()}}
 	rec := &eventRecorder{}
-	e := NewEngine(newWindowsJobAPI(), proc, rec.cb())
+	e := NewEngine(newWindowsJobAPI(), proc, nil, rec.cb())
 	err := e.Start(StartOptions{Version: "2.11.3", Exe: cmdExe})
 	if err == nil {
 		// cmd 在自检时点已自行退出（stdin 环境所致）——abort 路径无从触发，如实跳过。
@@ -394,7 +394,7 @@ func TestStartIdentityMismatchAborts(t *testing.T) {
 
 func TestStartRejectsWhenActive(t *testing.T) {
 	cmdExe := mustCmdExe(t)
-	e := NewEngine(newWindowsJobAPI(), aliveCmdProc(cmdExe), Callbacks{})
+	e := NewEngine(newWindowsJobAPI(), aliveCmdProc(cmdExe), nil, Callbacks{})
 	e.closeByPID = func(uint32) int { return 0 }
 	startCmdLoop(t, e, 30)
 	if err := e.Start(StartOptions{Version: "2.11.3", Exe: cmdExe}); err == nil ||
@@ -415,7 +415,7 @@ func TestStartRejectsWhenActive(t *testing.T) {
 func TestQuitCloseRequestSmoke(t *testing.T) {
 	cmdExe := mustCmdExe(t)
 	// 存活约 2s 的 cmd：自然退出（退出码 0）落在 3s 宽限内。
-	engine := NewEngine(newWindowsJobAPI(), aliveCmdProc(cmdExe), Callbacks{})
+	engine := NewEngine(newWindowsJobAPI(), aliveCmdProc(cmdExe), nil, Callbacks{})
 	engine.closeByPID = func(uint32) int { return 1 }
 	origGrace := closeGracePeriod
 	closeGracePeriod = 3 * time.Second
@@ -440,7 +440,7 @@ func TestQuitCloseRequestSmoke(t *testing.T) {
 func TestQuitForcedJobSmoke(t *testing.T) {
 	cmdExe := mustCmdExe(t)
 	rec := &eventRecorder{}
-	engine := NewEngine(newWindowsJobAPI(), aliveCmdProc(cmdExe), rec.cb())
+	engine := NewEngine(newWindowsJobAPI(), aliveCmdProc(cmdExe), nil, rec.cb())
 	engine.closeByPID = func(uint32) int { return 0 } // 顶层窗口不可投（等价无头进程），记未投递
 	origGrace := closeGracePeriod
 	closeGracePeriod = 100 * time.Millisecond
@@ -465,7 +465,7 @@ func TestQuitForcedJobSmoke(t *testing.T) {
 func TestQuitOwnershipLostSmoke(t *testing.T) {
 	cmdExe := mustCmdExe(t)
 	proc := aliveCmdProc(cmdExe)
-	engine := NewEngine(newWindowsJobAPI(), proc, Callbacks{})
+	engine := NewEngine(newWindowsJobAPI(), proc, nil, Callbacks{})
 	engine.closeByPID = func(uint32) int {
 		proc.diverge() // 投递动作发生时点即"身份已变化"
 		return 0

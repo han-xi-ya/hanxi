@@ -2,9 +2,10 @@
 //
 // 进程治理主流程（spawn → Job Object 绑定 → 退出分类 → 强制终止兜底）收口至
 // 共享内核 hanxi/packages/go/supervisor；本包只保留 Snipaste 领域适配：
-//   - 无外部探针：Snipaste 只跟踪自有实例（管理边界=本会话启动的进程树），
-//     内核探针恒报"不在运行"，因此内核的 external 分类天然不可达、状态词表
-//     无 external 态——与原实现口径一致，属预期而非缺失；
+//   - 外部实例探针（W2/N1，2026-09-21 起）：进程名枚举探测外部 Snipaste，
+//     状态词表含 external 态；外部实例的退出走本包 QuitExternal（委托
+//     packages/go/externalquit 按 N3 终裁分档执行），内核 Stop 对 external
+//     依旧只甄别不触碰（ErrExternal 边界不变）；
 //   - 分层退出归因（QuitResult）：退出前身份复核、WM_CLOSE 投递、宽限窗口、
 //     强杀前身份复核均为内核未表达的模块策略，由本层驱动；内核 Stop(0) 仅承担
 //     最后一层强制终止（job.Terminate 整树语义 → KillVerified 兜底）；
@@ -30,6 +31,7 @@ import (
 	"time"
 
 	"hanxi/internal/platform"
+	"hanxi/packages/go/externalquit"
 	sup "hanxi/packages/go/supervisor"
 )
 
@@ -43,12 +45,14 @@ const (
 	StateRunning  State = "running"  // 自有托管实例运行中
 	StateQuitting State = "quitting" // 已发关闭请求、等待退出（宽限期内）
 	StateFailed   State = "failed"   // 启动失败或异常退出
+	StateExternal State = "external" // 外部自行启动的实例（非本会话托管，N3 分档治理）
 )
 
 // closeGracePeriod Quit 的 WM_CLOSE 优雅退出宽限；包级变量供单测压缩，生产 2.5s。
 var closeGracePeriod = 2500 * time.Millisecond
 
-// Snapshot 引擎状态快照，事件推送与前端渲染共用；仅本引擎自有实例，无 external 态。
+// Snapshot 引擎状态快照，事件推送与前端渲染共用；external 态时 PID/ExePath
+// 为探针实测的外部实例事实（版本/启动时刻同样如实展示）。
 type Snapshot struct {
 	Version   string    `json:"version"`
 	State     State     `json:"state"`
@@ -87,9 +91,8 @@ type QuitResult struct {
 	Method         string
 }
 
-// noExternalProbe 恒"不在运行"探针：Snipaste 不嗅探外部实例，管理边界=本会话
-// 启动的进程树。内核据此把一切静止态判为 OwnNone（external 分类不可达），
-// Stop 的归属甄别退化为幂等无操作——与本模块原有语义一致。
+// noExternalProbe 恒"不在运行"探针：仅作为 NewEngine 未注入探针时的兼容兜底
+// （external 分类退化为不可达，回到 W2 之前的管理边界语义）。
 type noExternalProbe struct{}
 
 func (noExternalProbe) Inspect(context.Context) (bool, *platform.ProcInfo, error) {
@@ -118,12 +121,53 @@ type Engine struct {
 }
 
 // NewEngine 创建引擎（初始 stopped）。Job/Process API 与 closeByPID 的
-// Win32 WM_CLOSE 投递实现由内核/平台层承接，单测可替换 closeByPID 替身。
-func NewEngine(jobAPI platform.JobAPI, processAPI platform.ProcessAPI, cb Callbacks) *Engine {
+// Win32 WM_CLOSE 投递实现由内核/平台层承接，单测可替换 closeByPID 替身；
+// probe 传 nil 时退化为恒不在场（兼容旧口径，external 态不可达）。
+func NewEngine(jobAPI platform.JobAPI, processAPI platform.ProcessAPI, probe Probe, cb Callbacks) *Engine {
+	if probe == nil {
+		probe = noExternalProbe{}
+	}
 	e := &Engine{processAPI: processAPI, closeByPID: postCloseByPID, cb: cb}
-	e.sup = sup.NewEngine(jobAPI, noExternalProbe{}, sup.Callbacks{OnState: e.onSupState}).
+	e.sup = sup.NewEngine(jobAPI, probe, sup.Callbacks{OnState: e.onSupState}).
 		WithProcessAPI(processAPI) // 内核兜底强杀走 KillVerified 复核，防 PID 复用误杀
 	return e
+}
+
+// RefreshExternal 探针校正 external/stopped 静止态（service 层状态查询前置/
+// 轮询入口；运行/启动/退出中内核自行短路，不会误探自家进程）。
+func (e *Engine) RefreshExternal() { e.sup.RefreshExternal() }
+
+// ExternalRunning 报告当前快照是否为外部实例态。
+func (e *Engine) ExternalRunning() bool {
+	return e.sup.Snapshot().State == sup.StateExternal
+}
+
+// QuitExternal 对当前外部实例执行 N3 终裁分档退出（委托 externalquit）：
+// WM_CLOSE 尽力投递 → 宽限观察 → 身份复核 → 按档强杀（force-free 直杀 /
+// confirm-force 经 Confirm 回调同意后杀）。提权目标（UIPI）如实返回
+// Method="blocked"，调用方降级为指引。调用前须自查状态为 external。
+func (e *Engine) QuitExternal(ctx context.Context, policy externalquit.Policy, risk string, confirm func(string) bool) (QuitResult, error) {
+	e.opMu.Lock()
+	defer e.opMu.Unlock()
+
+	snap := e.sup.Snapshot()
+	if snap.State != sup.StateExternal {
+		return QuitResult{Method: "not-external"}, nil
+	}
+	token := platform.VerifyToken{PID: snap.PID, ExePath: snap.Exe, StartedAt: snap.Since}
+	deps := externalquit.Deps{
+		Proc: e.processAPI, Risk: risk, Confirm: confirm,
+		Graceful: func(context.Context) error {
+			if e.closeByPID(token.PID) <= 0 {
+				return errors.New("未找到可投递关闭消息的窗口")
+			}
+			return nil
+		},
+	}
+	res, err := externalquit.Quit(ctx, token, policy, deps)
+	// 无论成否都让内核复探收口：杀掉→external 撤销落 stopped；杀不动→维持 external。
+	e.sup.RefreshExternal()
+	return QuitResult{Stopped: res.Stopped, Forced: res.Forced, Method: res.Method}, err
 }
 
 // Start 冷启动自有实例（委托内核：创建进程 → 绑定 JobObject → 解除退出联动 →
@@ -191,7 +235,8 @@ func (e *Engine) abortFailedStartup(latchMsg string, cause error) error {
 // 身份复核 → 投递 WM_CLOSE → 等待宽限期 → 再复核身份 → sup.Stop(0) 强杀。
 // 每次动手前 verifyToken 复核 PID 身份（路径+启动时间），身份不匹配立即拒绝
 // 并报错——宁可退出失败也不误杀复用同一 PID 的其他进程。
-// 非托管状态返回 Method="not-managed" 不视为错误。
+// 非托管状态返回 Method="not-managed" 不视为错误；external 态的退出走
+// QuitExternal 独立入口（本方法不越权触碰外部实例）。
 func (e *Engine) Quit() (QuitResult, error) {
 	e.opMu.Lock()
 	defer e.opMu.Unlock()
@@ -360,7 +405,8 @@ func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
 //	                              stopping 先置位语义：Quit 期间任何落终都算手动退出）
 //	supervisor stopped          → stopped；启动自检锁存文案在场时改写为 failed
 //	                              （还原原实现身份/路径自检失败的落点）
-//	supervisor external         → stopped（探针恒不在场，原理上不可达；防御收口）
+//	supervisor external         → external（探针在场时可达；未注入探针的兼容
+//	                              兜底态下原理上不可达）
 func (e *Engine) mapKernelState(s sup.Snapshot) (State, string) {
 	switch s.State {
 	case sup.StateStarting:
@@ -375,12 +421,14 @@ func (e *Engine) mapKernelState(s sup.Snapshot) (State, string) {
 		return StateRunning, ""
 	case sup.StateStopping:
 		return StateQuitting, ""
+	case sup.StateExternal:
+		return StateExternal, ""
 	case sup.StateFailed:
 		if e.manualExit {
 			return StateStopped, ""
 		}
 		return StateFailed, mapKernelError(s.Error)
-	default: // stopped / external（不可达）
+	default: // stopped
 		if e.latchedErr != "" {
 			return StateFailed, e.latchedErr
 		}

@@ -29,6 +29,7 @@ export interface SnipasteAdapter
     getActive(): Promise<string | null | undefined>
     launch(): Promise<LaunchOutcome>
     quit(): Promise<QuitOutcome | null>
+    showImages(): Promise<string | null | undefined>
     download(version: string): Promise<string>
     setActive(version: string): Promise<string>
     remove(info: SnipasteVersionInfo, canRemove: () => boolean): Promise<boolean>
@@ -51,11 +52,13 @@ export function createSnipasteAdapter(
     getActive: () => SnipasteAPI.GetActiveVersion(),
     launch: () => SnipasteAPI.Launch(),
 
+    showImages: () => SnipasteAPI.ShowImages(),
+
     async quit(): Promise<QuitOutcome | null> {
       const accepted = await confirm({
-        title: '退出本会话 Snipaste',
+        title: '退出 Snipaste',
         description:
-          'Hanxi 会先向本会话启动的 Snipaste 发送关闭请求；若未在宽限期内退出，将自动强制结束。强制结束可能丢失未落盘状态。外部实例不受影响。',
+          'Hanxi 会先向在运行的 Snipaste 发送优雅关闭请求；宽限期内未退出将强制结束。本会话实例的未落盘状态可能丢失；外部实例的贴图由其自动备份机制兜底。以管理员权限运行的实例无法代杀，会如实转为指引。',
         tone: 'warning',
       })
       return accepted ? SnipasteAPI.Quit() : null
@@ -142,6 +145,7 @@ export function createSnipasteAdapter(
       running: '本会话实例运行中',
       quitting: '正在退出',
       failed: '实例操作失败',
+      external: '外部实例运行中',
     })[snapshot.state] ?? '本会话未托管',
 
     statusTone: (snapshot) => snapshot.state === 'quitting' ? 'starting' : snapshot.state,

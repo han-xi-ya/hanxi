@@ -9,6 +9,7 @@ export {
 import * as $models from "./models.js";
 
 /**
- * Snapshot 引擎状态快照，事件推送与前端渲染共用；仅本引擎自有实例，无 external 态。
+ * Snapshot 引擎状态快照，事件推送与前端渲染共用；external 态时 PID/ExePath
+ * 为探针实测的外部实例事实（版本/启动时刻同样如实展示）。
  * @typedef {$models.Snapshot} Snapshot
  */

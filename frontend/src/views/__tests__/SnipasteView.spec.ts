@@ -104,9 +104,13 @@ describe('SnipasteView 脱管状态语义', () => {
     expect(status.text()).toBe('本会话未托管')
     expect(status.attributes('data-state')).toBe('stopped')
     const btns = wrapper.findAll('.snipaste-control-panel .btn-group .btn')
+    // 钮序：[0]启动 [1]显隐贴图 [2]退出（W2 起三位一体）
     expect(btns[0].text()).toBe('启动 Snipaste')
     expect(btns[0].attributes('disabled')).toBeUndefined()
+    expect(btns[1].text()).toBe('显隐贴图')
     expect(btns[1].attributes('disabled')).toBeDefined()
+    expect(btns[2].text()).toBe('退出进程')
+    expect(btns[2].attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
@@ -116,7 +120,8 @@ describe('SnipasteView 脱管状态语义', () => {
     expect(wrapper.find('.snipaste-status').text()).toBe('本会话实例运行中')
     const btns = wrapper.findAll('.snipaste-control-panel .btn-group .btn')
     expect(btns[0].attributes('disabled')).toBeDefined()
-    expect(btns[1].attributes('disabled')).toBeUndefined()
+    expect(btns[1].attributes('disabled')).toBeUndefined() // 自有运行中也可显隐贴图
+    expect(btns[2].attributes('disabled')).toBeUndefined()
     expect(wrapper.find('.version-value').text()).toBe('2.2.2')
     expect(wrapper.find('.path-value').text()).toBe(installed222.exePath)
     wrapper.unmount()
@@ -126,24 +131,25 @@ describe('SnipasteView 脱管状态语义', () => {
     stubDefaults({ state: 'quitting', version: '2.2.2' }, [installed222])
     const { wrapper } = await mountInKeepAlive()
     const btns = wrapper.findAll('.snipaste-control-panel .btn-group .btn')
-    expect(btns[1].text()).toBe('正在退出…')
-    await btns[1].trigger('click')
+    expect(btns[2].text()).toBe('正在退出…')
+    await btns[2].trigger('click')
     await flushMicrotasks()
     expect(svc.Quit).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })
 
-describe('SnipasteView 退出确认（脱管关键契约）', () => {
-  it('取消退出不动后端；确认文案逐字锁定（宽限期/强杀/外部实例不受影响）', async () => {
+describe('SnipasteView 退出确认（N3 分档契约）', () => {
+  it('取消退出不动后端；确认文案逐字锁定（优雅请求/宽限期强杀/备份兜底/提权指引）', async () => {
     stubDefaults({ state: 'running', version: '2.2.2' }, [installed222])
     const { wrapper } = await mountInKeepAlive()
-    await wrapper.findAll('.snipaste-control-panel .btn-group .btn')[1].trigger('click')
+    await wrapper.findAll('.snipaste-control-panel .btn-group .btn')[2].trigger('click')
     await flushMicrotasks()
     expect(confirmState.open).toBe(true)
-    expect(confirmState.options.description).toContain('向本会话启动的 Snipaste 发送关闭请求')
-    expect(confirmState.options.description).toContain('若未在宽限期内退出，将自动强制结束')
-    expect(confirmState.options.description).toContain('外部实例不受影响')
+    expect(confirmState.options.description).toContain('优雅关闭请求')
+    expect(confirmState.options.description).toContain('宽限期内未退出将强制结束')
+    expect(confirmState.options.description).toContain('自动备份机制兜底')
+    expect(confirmState.options.description).toContain('管理员权限运行的实例无法代杀')
     settleConfirm(false)
     await flushMicrotasks()
     expect(svc.Quit).not.toHaveBeenCalled()
@@ -154,7 +160,7 @@ describe('SnipasteView 退出确认（脱管关键契约）', () => {
     stubDefaults({ state: 'running', version: '2.2.2' }, [installed222])
     svc.Quit.mockResolvedValue({ message: '未在宽限期内退出，已强制结束', forced: true })
     const { wrapper } = await mountInKeepAlive()
-    await wrapper.findAll('.snipaste-control-panel .btn-group .btn')[1].trigger('click')
+    await wrapper.findAll('.snipaste-control-panel .btn-group .btn')[2].trigger('click')
     await flushMicrotasks()
     settleConfirm(true)
     await flushMicrotasks()
@@ -338,7 +344,7 @@ describe('SnipasteView 控制动词回执全谱', () => {
     stubDefaults({ state: 'running', version: '2.2.2' }, [installed222])
     svc.Quit.mockResolvedValue({ message: '已优雅退出', forced: false })
     const { wrapper } = await mountInKeepAlive()
-    await wrapper.findAll('.snipaste-control-panel .btn-group .btn')[1].trigger('click')
+    await wrapper.findAll('.snipaste-control-panel .btn-group .btn')[2].trigger('click')
     await flushMicrotasks()
     settleConfirm(true)
     await flushMicrotasks()
@@ -351,7 +357,7 @@ describe('SnipasteView 控制动词回执全谱', () => {
     stubDefaults({ state: 'running', version: '2.2.2' }, [installed222])
     svc.Quit.mockRejectedValue(new Error('管道断了'))
     const m2 = await mountInKeepAlive()
-    await m2.wrapper.findAll('.snipaste-control-panel .btn-group .btn')[1].trigger('click')
+    await m2.wrapper.findAll('.snipaste-control-panel .btn-group .btn')[2].trigger('click')
     await flushMicrotasks()
     settleConfirm(true)
     await flushMicrotasks()
@@ -362,7 +368,7 @@ describe('SnipasteView 控制动词回执全谱', () => {
     m2.wrapper.unmount()
   })
 
-  it('quitting 全貌：状态词「正在退出」+ data-state、启动钮禁用（ownedRunning 含 quitting）', async () => {
+  it('quitting 全貌：状态词「正在退出」+ data-state、启动/退出禁用、显隐贴图仍可用', async () => {
     stubDefaults({ state: 'quitting', version: '2.2.2' }, [installed222])
     const { wrapper } = await mountInKeepAlive()
     const status = wrapper.find('.snipaste-status')
@@ -370,21 +376,25 @@ describe('SnipasteView 控制动词回执全谱', () => {
     expect(status.attributes('data-state')).toBe('quitting')
     const btns = wrapper.findAll('.snipaste-control-panel .btn-group .btn')
     expect(btns[0].attributes('disabled')).toBeDefined()
-    expect(btns[1].attributes('disabled')).toBeDefined() // 「正在退出…」+ 门禁（点击面已另锁）
+    expect(btns[1].attributes('disabled')).toBeUndefined() // 宽限窗口内贴图仍可显隐（ownedRunning 含 quitting）
+    expect(btns[2].attributes('disabled')).toBeDefined() // 「正在退出…」+ 门禁（点击面已另锁）
     wrapper.unmount()
   })
 
-  it('external 快照=不认领：状态词兜底「本会话未托管」但 data-state 透出、启动可用退出禁用（无强杀面）', async () => {
+  it('external 快照=分档接管：状态词「外部实例运行中」、启动禁用（带指引 title）、显隐贴图与退出放行', async () => {
     stubDefaults({ state: 'stopped' }, [installed222])
     const { wrapper } = await mountInKeepAlive()
     runtime.handlers['snipaste:instance-state']({ data: { state: 'external', version: '2.2.2', pid: 5 } })
     await nextTick()
     const status = wrapper.find('.snipaste-status')
-    expect(status.text()).toBe('本会话未托管') // stateText 词表外兜底
+    expect(status.text()).toBe('外部实例运行中') // W2/N1：external 入词表（N3 分档接管）
     expect(status.attributes('data-state')).toBe('external')
     const btns = wrapper.findAll('.snipaste-control-panel .btn-group .btn')
-    expect(btns[0].attributes('disabled')).toBeUndefined() // ownedRunning 不含 external
-    expect(btns[1].attributes('disabled')).toBeDefined()
+    expect(btns[0].attributes('disabled')).toBeDefined() // 外部在场时托管启动门禁（二次启动仅转发让位）
+    expect(btns[0].attributes('title')).toContain('外部实例运行中')
+    expect(btns[1].attributes('disabled')).toBeUndefined() // 官方 toggle-images 对外部实例通用
+    expect(btns[2].attributes('disabled')).toBeUndefined() // N3 分档接管面
+    expect(btns[2].text()).toBe('退出外部实例')
     expect(wrapper.find('.version-value').text()).toBe('2.2.2')
     wrapper.unmount()
   })

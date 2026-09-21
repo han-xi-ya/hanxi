@@ -10,12 +10,13 @@
  */
 
 /**
- * QuitOutcome 表示页面手动退出当前会话自有实例的结果。
+ * QuitOutcome 表示页面手动退出实例的结果（自有实例或按 N3 分档处置的外部实例）。
  * @typedef {Object} QuitOutcome
  * @property {boolean} stopped
  * @property {boolean} forced
  * @property {boolean} closeRequested
  * @property {string} method
+ * @property {boolean} external - true = 本轮面对的是外部自行启动的实例
  * @property {string} message
  */
 

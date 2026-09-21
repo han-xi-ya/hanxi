@@ -14,6 +14,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   launch: []
   quit: []
+  'show-images': []
   'select-versions': []
 }>()
 
@@ -23,6 +24,16 @@ function stateOf(snapshot: Snapshot | null): string {
 
 function ownedRunning(snapshot: Snapshot | null): boolean {
   return ['starting', 'running', 'quitting'].includes(stateOf(snapshot))
+}
+
+// quitAllowed：自有实例或外部实例（N3 分档接管）；quitting 进行中除外。
+function quitAllowed(snapshot: Snapshot | null): boolean {
+  const s = stateOf(snapshot)
+  return (ownedRunning(snapshot) || s === 'external') && s !== 'quitting'
+}
+
+function isExternal(snapshot: Snapshot | null): boolean {
+  return stateOf(snapshot) === 'external'
 }
 </script>
 
@@ -41,11 +52,23 @@ function ownedRunning(snapshot: Snapshot | null): boolean {
       </div>
       <div class="btn-group">
         <button v-if="!selected" class="btn btn-secondary" @click="emit('select-versions')">前往版本管理</button>
-        <button class="btn btn-primary" :disabled="props.busy || !selected || ownedRunning(store.snap as Snapshot | null)" @click="emit('launch')">
+        <button
+          class="btn btn-primary"
+          :disabled="props.busy || !selected || ownedRunning(store.snap as Snapshot | null) || isExternal(store.snap as Snapshot | null)"
+          :title="isExternal(store.snap as Snapshot | null) ? '外部实例运行中：可「显隐贴图」唤起，或「退出进程」后由 Hanxi 重新托管' : undefined"
+          @click="emit('launch')"
+        >
           {{ stateOf(store.snap as Snapshot | null) === 'starting' ? '正在启动…' : '启动 Snipaste' }}
         </button>
-        <button class="btn btn-danger-outline" :disabled="props.busy || !ownedRunning(store.snap as Snapshot | null) || stateOf(store.snap as Snapshot | null) === 'quitting'" @click="emit('quit')">
-          {{ stateOf(store.snap as Snapshot | null) === 'quitting' ? '正在退出…' : '退出进程' }}
+        <button
+          class="btn btn-secondary"
+          :disabled="props.busy || !(ownedRunning(store.snap as Snapshot | null) || isExternal(store.snap as Snapshot | null))"
+          @click="emit('show-images')"
+        >
+          显隐贴图
+        </button>
+        <button class="btn btn-danger-outline" :disabled="props.busy || !quitAllowed(store.snap as Snapshot | null)" @click="emit('quit')">
+          {{ stateOf(store.snap as Snapshot | null) === 'quitting' ? '正在退出…' : isExternal(store.snap as Snapshot | null) ? '退出外部实例' : '退出进程' }}
         </button>
       </div>
     </div>
@@ -69,6 +92,7 @@ function ownedRunning(snapshot: Snapshot | null): boolean {
 .snipaste-status { display: inline-flex; align-items: center; width: fit-content; padding: 3px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-pill); color: var(--color-text-muted); font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
 .snipaste-status[data-state="running"] { color: var(--state-positive); border-color: color-mix(in srgb, var(--state-positive) 35%, var(--color-border)); }
 .snipaste-status[data-state="starting"], .snipaste-status[data-state="quitting"] { color: var(--state-warning); }
+.snipaste-status[data-state="external"] { color: var(--state-warning); border-color: color-mix(in srgb, var(--state-warning) 35%, var(--color-border)); }
 .snipaste-status[data-state="failed"] { color: var(--state-danger); }
 .snipaste-row-error { margin: 0; font-size: var(--text-sm); line-height: 1.45; white-space: normal; color: var(--state-danger); }
 @media (max-width: 760px) { .snipaste-control-panel { align-items: stretch; flex-direction: column; } .btn-group { justify-content: flex-start; } }
