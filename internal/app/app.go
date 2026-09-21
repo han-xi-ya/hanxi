@@ -395,7 +395,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	registry := extapi.NewRegistry(store)
 	// Wave 1 逻辑安装态：注入 receipt 存储。未安装 = 不导航、不初始化、不业务调用
 	// （ADR-0001 §1.5）；老用户无损迁移在下方 Register 成功后幂等补建凭据。
-	receipts := settings.NewReceiptStore(paths.ModulesReceiptsDir())
+	receipts := settings.NewReceiptStore(paths.ModulesReceiptsDir(), paths.ModulesLedgerFile())
 	registry.SetReceiptStorage(receipts)
 
 	// 5. 初始化 fileshare 与 memo 模块并建立数据互联

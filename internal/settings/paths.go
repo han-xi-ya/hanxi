@@ -299,5 +299,9 @@ func (p *Paths) ConfigFile() string  { return filepath.Join(p.configDir, "config
 // receipts 随 ensureDirs 预建，journals 与 installers 由消费方懒建）。
 func (p *Paths) ModulesDir() string         { return p.modulesDir }
 func (p *Paths) ModulesReceiptsDir() string { return p.modulesReceiptsDir }
+
+// ModulesLedgerFile 模块名单账本路径（P0 批 1 项二：独立于 receipts 命名空间，
+// 落 state/ 下；同目录旧版 receipts/known-modules.json 由 ReceiptStore 一次性迁移）。
+func (p *Paths) ModulesLedgerFile() string  { return filepath.Join(p.stateDir, "modules-ledger.json") }
 func (p *Paths) ModulesJournalsDir() string { return p.modulesJournalsDir }
 func (p *Paths) InstallersDir() string      { return p.installersDir }

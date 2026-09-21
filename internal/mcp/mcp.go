@@ -123,7 +123,7 @@ func Run() error {
 	registry := extapi.NewRegistry(store)
 	// 逻辑安装态与 GUI 同账（只读）：未安装模块经 EnsureActive 的 receipt 门
 	// 拒绝无头调用，杜绝"GUI 卸载、MCP 仍可用"旁路；无头零落盘承诺不受影响。
-	headlessReceipts := settings.NewReceiptStore(paths.ModulesReceiptsDir())
+	headlessReceipts := settings.NewReceiptStore(paths.ModulesReceiptsDir(), paths.ModulesLedgerFile())
 	registry.SetReceiptStorage(headlessReceipts)
 	ocrModule := ocr.New(plat) // 类型断言取 service 作识图后端（与 GUI 同一 service 契约）
 	if err := registry.Register(append(mcpModules(plat), ocrModule)...); err != nil {

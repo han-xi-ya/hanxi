@@ -10,6 +10,36 @@ import (
 	"hanxi/internal/extapi"
 )
 
+// newLedgerPath 账本注入位：独立 TempDir，绝不落在被测 receipts 目录内
+// （否则 Installed 扫描与落盘文件数断言会被账本文件污染）。
+func newLedgerPath(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "modules-ledger.json")
+}
+
+// readLedgerForTest 直读账本原始 JSON（断言 seen/uninstalled 归位）。
+func readLedgerForTest(t *testing.T, path string) moduleLedger {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读取账本失败: %v", err)
+	}
+	var led moduleLedger
+	if err := json.Unmarshal(raw, &led); err != nil {
+		t.Fatalf("账本 JSON 解析失败: %v raw=%s", err, raw)
+	}
+	return led
+}
+
+func containsString(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
 // readReceiptFileForTest 读取指定模块的凭据文件原始内容（不存在直接 Fatal）。
 func readReceiptFileForTest(t *testing.T, dir, moduleID string) []byte {
 	t.Helper()
@@ -23,7 +53,7 @@ func readReceiptFileForTest(t *testing.T, dir, moduleID string) []byte {
 // TestReceiptStoreRoundTrip 基本回环：登记→落盘→查询→投影→卸载→幂等卸载。
 func TestReceiptStoreRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	store := NewReceiptStore(dir)
+	store := NewReceiptStore(dir, newLedgerPath(t))
 
 	if store.IsInstalled("markeron") {
 		t.Fatal("空目录应判未安装")
@@ -65,7 +95,7 @@ func TestReceiptStoreRoundTrip(t *testing.T) {
 // 一字不改（InstalledAt 保留首次值）。
 func TestReceiptStoreMarkInstalledIdempotent(t *testing.T) {
 	dir := t.TempDir()
-	store := NewReceiptStore(dir)
+	store := NewReceiptStore(dir, newLedgerPath(t))
 	if err := store.MarkInstalled("envcheck", extapi.ReceiptBuiltinLogical); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +113,7 @@ func TestReceiptStoreMarkInstalledIdempotent(t *testing.T) {
 // 且旧凭据原样保留。
 func TestReceiptStoreKindDriftRejected(t *testing.T) {
 	dir := t.TempDir()
-	store := NewReceiptStore(dir)
+	store := NewReceiptStore(dir, newLedgerPath(t))
 	if err := store.MarkInstalled("everything", extapi.ReceiptBuiltinLogical); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +135,7 @@ func TestReceiptStoreKindDriftRejected(t *testing.T) {
 // 查询侧静默 false、卸载侧拒绝，且绝不在凭据目录外拼出任何文件。
 func TestReceiptStoreIllegalModuleIDs(t *testing.T) {
 	dir := t.TempDir()
-	store := NewReceiptStore(dir)
+	store := NewReceiptStore(dir, newLedgerPath(t))
 
 	illegal := []string{"", "Foo", "foo bar", "a/b", `a\b`, "..", ".", "a.b", "a.json",
 		"../../outside", "模块", "a\x00b", "A-1", "a_b"}
@@ -140,7 +170,7 @@ func TestReceiptStoreIllegalModuleIDs(t *testing.T) {
 // 保留原时刻不改写；坏 ID 聚合报错但不波及其他补建；重跑幂等。
 func TestReceiptStoreEnsureInstalled(t *testing.T) {
 	dir := t.TempDir()
-	store := NewReceiptStore(dir)
+	store := NewReceiptStore(dir, newLedgerPath(t))
 	if err := store.MarkInstalled("legacy-a", extapi.ReceiptBuiltinLogical); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +199,7 @@ func TestReceiptStoreEnsureInstalled(t *testing.T) {
 // 跳过不阻断。目录缺失按空集处理。
 func TestReceiptStoreInstalledScan(t *testing.T) {
 	dir := t.TempDir()
-	store := NewReceiptStore(dir)
+	store := NewReceiptStore(dir, newLedgerPath(t))
 	if err := store.MarkInstalled("good-a", extapi.ReceiptBuiltinLogical); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +239,7 @@ func TestReceiptStoreInstalledScan(t *testing.T) {
 	}
 
 	// 目录缺失（全新安装常态）：投影空集、查询静默 false，不得 panic
-	missing := NewReceiptStore(filepath.Join(dir, "no-such-dir"))
+	missing := NewReceiptStore(filepath.Join(dir, "no-such-dir"), newLedgerPath(t))
 	if len(missing.Installed()) != 0 {
 		t.Fatal("目录缺失投影应为空集")
 	}
@@ -218,43 +248,204 @@ func TestReceiptStoreInstalledScan(t *testing.T) {
 	}
 }
 
-// TestEnsureSeenUninstallPersists 名单账本核心行为：卸载过的已知模块重启不复活；
-// 名单外新模块自动安装；名单缺失时按空名单重认全（现存凭据不丢）。
+// TestEnsureSeenUninstallPersists 账本核心行为（批 1 项二强化版）：
+// 卸载过的已知模块重启不复活；账本在场时新模块自动安装；
+// 账本主备俱损时按凭据事实保守重建——beta 依然不得复活
+// （旧版"空名单起步重认全"正是本批要根除的复活通道）。
 func TestEnsureSeenUninstallPersists(t *testing.T) {
 	dir := t.TempDir()
-	store := NewReceiptStore(dir)
+	ledger := newLedgerPath(t)
 
+	store := NewReceiptStore(dir, ledger)
 	added, err := store.EnsureSeen([]string{"alpha", "beta"}, extapi.ReceiptBuiltinLogical)
 	if err != nil || len(added) != 2 {
-		t.Fatalf("首轮应全量迁移: added=%v err=%v", added, err)
+		t.Fatalf("首轮应全量认全: added=%v err=%v", added, err)
 	}
-	// 用户卸载 beta → 再次启动（同一目录重开 store）不得复活。
+	// 用户卸载 beta（tombstone fail-closed 先行）。
 	if err := store.MarkAbsent("beta"); err != nil {
 		t.Fatal(err)
 	}
-	reopened := NewReceiptStore(dir)
+	reopened := NewReceiptStore(dir, ledger)
 	added, err = reopened.EnsureSeen([]string{"alpha", "beta", "gamma"}, extapi.ReceiptBuiltinLogical)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if reopened.IsInstalled("beta") {
-		t.Error("已卸载的已知模块不得被启动迁移复活")
+		t.Error("tombstone 在册的已卸载模块不得复活")
 	}
-	if !reopened.IsInstalled("gamma") {
-		t.Error("名单外新模块应自动安装")
+	if !reopened.IsInstalled("gamma") || len(added) != 1 || added[0] != "gamma" {
+		t.Errorf("正常账本下新模块应自动安装: added=%v gamma=%v", added, reopened.IsInstalled("gamma"))
 	}
-	if len(added) != 1 || added[0] != "gamma" {
-		t.Errorf("added = %v, want [gamma]", added)
+	led := readLedgerForTest(t, ledger)
+	if !containsString(led.Uninstalled, "beta") || !containsString(led.Seen, "gamma") {
+		t.Fatalf("账本归位异常: %+v", led)
 	}
-	// 名单损坏 → 空名单起步：现存模块重新认全，但不覆盖既有凭据时间戳由幂等保证。
-	if err := os.WriteFile(filepath.Join(dir, knownLedgerFile), []byte("{broken"), 0o600); err != nil {
-		t.Fatal(err)
+
+	// 主备俱损 → "缺席=已卸载"保守重建：现存凭据认全，beta 不复活。
+	for _, p := range []string{ledger, ledger + ".bak"} {
+		if err := os.WriteFile(p, []byte("{ broken json"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	fresh := NewReceiptStore(dir)
-	if _, err := fresh.EnsureSeen([]string{"alpha", "beta", "gamma"}, extapi.ReceiptBuiltinLogical); err != nil {
+	fresh := NewReceiptStore(dir, ledger)
+	added, err = fresh.EnsureSeen([]string{"alpha", "beta", "gamma"}, extapi.ReceiptBuiltinLogical)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !fresh.IsInstalled("alpha") || !fresh.IsInstalled("gamma") {
-		t.Error("名单丢失重认后现存模块应仍为已安装")
+		t.Error("重建后现存凭据模块应仍为已安装")
+	}
+	if fresh.IsInstalled("beta") || len(added) != 0 {
+		t.Errorf("全损重建必须把无凭据的注册模块判已卸载（不补建不复活）: added=%v", added)
+	}
+	if led := readLedgerForTest(t, ledger); !containsString(led.Uninstalled, "beta") {
+		t.Fatalf("重建的保守裁决应落 tombstone 固化: %+v", led)
+	}
+}
+
+// TestLedgerLegacyMigration 旧版 receipts/known-modules.json 一次性迁移：
+// 旧名单 ∩ 凭据事实归位 seen/uninstalled，旧文件改名 .migrated 离场。
+func TestLedgerLegacyMigration(t *testing.T) {
+	dir := t.TempDir()
+	ledger := newLedgerPath(t)
+	// 手工铺旧世界：alpha 在册且已装；beta 在册但已卸载（无凭据）。
+	if err := os.WriteFile(filepath.Join(dir, "alpha.json"),
+		[]byte(`{"schema":1,"moduleId":"alpha","kind":"builtin-logical","installedAt":"2026-01-01T00:00:00Z"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, legacyLedgerFile),
+		[]byte(`{"schema":1,"moduleIds":["alpha","beta"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewReceiptStore(dir, ledger)
+	added, err := store.EnsureSeen([]string{"alpha", "beta", "gamma"}, extapi.ReceiptBuiltinLogical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(added) != 0 {
+		t.Errorf("迁移轮不应有新补建（gamma 缺席=已卸载）: %v", added)
+	}
+	led := readLedgerForTest(t, ledger)
+	if !containsString(led.Seen, "alpha") || !containsString(led.Uninstalled, "beta") || !containsString(led.Uninstalled, "gamma") {
+		t.Fatalf("迁移归位异常: %+v", led)
+	}
+	if _, err := os.Stat(filepath.Join(dir, legacyLedgerFile)); !os.IsNotExist(err) {
+		t.Error("旧账本应改名离场")
+	}
+	if _, err := os.Stat(filepath.Join(dir, legacyLedgerFile+".migrated")); err != nil {
+		t.Errorf("迁移残留未就位: %v", err)
+	}
+	if store.IsInstalled("beta") {
+		t.Error("迁移判定的已卸载模块不得被补建")
+	}
+}
+
+// TestLedgerBakRescue 主文件损坏由 .bak 救回，tombstone 记忆无损。
+func TestLedgerBakRescue(t *testing.T) {
+	dir := t.TempDir()
+	ledger := newLedgerPath(t)
+	store := NewReceiptStore(dir, ledger)
+	if _, err := store.EnsureSeen([]string{"alpha", "beta"}, extapi.ReceiptBuiltinLogical); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkAbsent("beta"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ledger, []byte("{ corrupt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := NewReceiptStore(dir, ledger)
+	if _, err := reopened.EnsureSeen([]string{"alpha", "beta"}, extapi.ReceiptBuiltinLogical); err != nil {
+		t.Fatal(err)
+	}
+	if reopened.IsInstalled("beta") {
+		t.Error("主文件损坏应由 .bak 保住 tombstone，beta 不得复活")
+	}
+	if led := readLedgerForTest(t, ledger); !containsString(led.Uninstalled, "beta") {
+		t.Errorf("救回后主文件应被修复回写: %+v", led)
+	}
+}
+
+// TestLedgerReadOnlyFutureSchema 更高未知 schema：全场只读——不补建、
+// 不改写文件、卸载显式报错（摧毁未来字段比拒绝服务恶劣）。
+func TestLedgerReadOnlyFutureSchema(t *testing.T) {
+	dir := t.TempDir()
+	ledger := newLedgerPath(t)
+	future := `{"schema":99,"seen":["alpha"],"uninstalled":[]}`
+	if err := os.MkdirAll(filepath.Dir(ledger), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ledger, []byte(future), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewReceiptStore(dir, ledger)
+	added, err := store.EnsureSeen([]string{"alpha", "beta"}, extapi.ReceiptBuiltinLogical)
+	if err != nil || len(added) != 0 {
+		t.Fatalf("只读模式不得补建: added=%v err=%v", added, err)
+	}
+	if err := store.MarkAbsent("alpha"); err == nil {
+		t.Error("只读模式卸载必须显式失败（fail-closed）")
+	}
+	if raw, _ := os.ReadFile(ledger); string(raw) != future {
+		t.Error("只读模式不得改写未来版本账本")
+	}
+}
+
+// TestMarkAbsentFailClosed 账本写失败（账本父路径被文件占位）→ 卸载报错、
+// 凭据原样保留——"半卸载"与"重启复活"两头都堵死。
+func TestMarkAbsentFailClosed(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(t.TempDir(), "blocker") // 占位成普通文件，MkdirAll 必败
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := filepath.Join(blocker, "modules-ledger.json")
+	store := NewReceiptStore(dir, ledger)
+	if err := store.MarkInstalled("alpha", extapi.ReceiptBuiltinLogical); err == nil {
+		t.Fatal("账本不可写时 MarkInstalled 必须上抛（卸载记忆状态是否可靠属用户可见语义）")
+	}
+	// 但凭据本身已落盘（安装动作与记账分离），安装对用户成立。
+	if !store.IsInstalled("alpha") {
+		t.Fatal("账本不可写不应阻止凭据落盘")
+	}
+	if err := store.MarkAbsent("alpha"); err == nil {
+		t.Fatal("账本写失败时卸载必须报错")
+	}
+	if !store.IsInstalled("alpha") {
+		t.Fatal("tombstone 未落账前绝不删凭据（fail-closed 顺序）")
+	}
+}
+
+// TestReservedModuleIDAndTombstoneLift 保留名拒绝 + 显式重装注销 tombstone。
+func TestReservedModuleIDAndTombstoneLift(t *testing.T) {
+	dir := t.TempDir()
+	ledger := newLedgerPath(t)
+	store := NewReceiptStore(dir, ledger)
+	if err := store.MarkInstalled("known-modules", extapi.ReceiptBuiltinLogical); err == nil {
+		t.Fatal("known-modules 应被保留名闸门拒绝")
+	}
+
+	if _, err := store.EnsureSeen([]string{"alpha"}, extapi.ReceiptBuiltinLogical); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkAbsent("alpha"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkInstalled("alpha", extapi.ReceiptBuiltinLogical); err != nil {
+		t.Fatal(err)
+	}
+	led := readLedgerForTest(t, ledger)
+	if containsString(led.Uninstalled, "alpha") || !containsString(led.Seen, "alpha") {
+		t.Fatalf("显式安装应注销 tombstone 并归位 seen: %+v", led)
+	}
+	// 重装后重启不失踪也不"被卸载"：EnsureSeen 正常跳过。
+	if _, err := store.EnsureSeen([]string{"alpha"}, extapi.ReceiptBuiltinLogical); err != nil {
+		t.Fatal(err)
+	}
+	if !store.IsInstalled("alpha") {
+		t.Error("重装后的模块应稳定保持已安装")
 	}
 }

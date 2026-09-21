@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"hanxi/internal/extapi"
@@ -28,7 +29,7 @@ func (m *stubModule) IsInitialized() bool          { return true }
 
 func newTestAppService(t *testing.T, ids ...string) (*AppService, *extapi.Registry, *settings.ReceiptStore) {
 	t.Helper()
-	store := settings.NewReceiptStore(t.TempDir())
+	store := settings.NewReceiptStore(t.TempDir(), filepath.Join(t.TempDir(), "modules-ledger.json"))
 	registry := extapi.NewRegistry(nil)
 	registry.SetReceiptStorage(store)
 	mods := make([]extapi.Module, 0, len(ids))
