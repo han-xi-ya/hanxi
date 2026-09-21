@@ -81,7 +81,7 @@ const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(
   if (state.value === 'external') {
     return {
       tone: 'warn',
-      text: '检测到外部 Everything 实例（非 Hanxi 托管）。可唤起其搜索窗口；如需彻底退出请在 Everything 托盘操作。内嵌搜索对默认实例有效。',
+      text: '检测到外部 Everything 实例（非 Hanxi 托管）。可唤起其搜索窗口，也可按低损档退出：先经 -quit 优雅请求（落盘索引库），无响应时强制结束——索引将在下次启动增量重建。以管理员权限运行的实例无法代杀，需在托盘自行退出。内嵌搜索对默认实例有效。',
     }
   }
   if (state.value === 'failed') {

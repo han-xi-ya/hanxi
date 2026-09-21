@@ -25,8 +25,10 @@
 /**
  * QuitOutcome 退出执行结果。
  * @typedef {Object} QuitOutcome
- * @property {boolean} stopped - 是否真正终止了自有实例
- * @property {boolean} external - true = 当前为外部实例，未越权终止
+ * @property {boolean} stopped - 目标实例已终止（自有，或按 N3 分档处置成功的外部实例）
+ * @property {boolean} external - true = 本轮面对的是外部自行启动的实例
+ * @property {boolean} forced - true = 走了强杀通道（外部实例优雅失效后的兜底）
+ * @property {string} method - 结果归因（graceful-request/forced/blocked-elevated/...，见 externalquit）
  * @property {string} message - 面向用户的执行说明
  */
 

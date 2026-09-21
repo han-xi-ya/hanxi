@@ -46,7 +46,7 @@ type strictSearcher struct {
 func newStrictSearcher(plat platform.Platform) *strictSearcher {
 	paths := settings.GetPaths()
 	return &strictSearcher{
-		engine: evinstance.NewEngine(plat.Job(), evinstance.NewEverythingProbe(), evinstance.Callbacks{}),
+		engine: evinstance.NewEngine(plat.Job(), evinstance.NewEverythingProbe(plat.Process()), evinstance.Callbacks{}),
 		// esExe 与 EverythingService.esDir 同谱（数据根/everything/es，版本无关）。
 		esExe: evsearch.ESExePath(filepath.Join(paths.DataDir(), "everything", "es")),
 	}

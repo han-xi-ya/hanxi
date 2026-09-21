@@ -120,8 +120,10 @@ export function OpenWindow() {
 }
 
 /**
- * Quit 退出 Everything。
- * 外部实例不越权强杀（实例探测拿不到 PID）：仅返回人性化指引。
+ * Quit 退出 Everything（W2/N2 起按 N3 终裁分档）。
+ * 外部实例（force-free 低损档）：以探针实测路径投 -quit 信使优雅退出 →
+ * 宽限期观察 → 身份复核 → 仍存活强杀（Everything 重启按 USN 日志增量重建，
+ * 低损成立）；提权目标（UIPI）如实降级指引，declined/blocked 均不误报成功。
  * 自有实例走 -quit 优雅退出（先落盘索引库），超时由引擎强杀兜底。
  * @returns {$CancellablePromise<$models.QuitOutcome>}
  */

@@ -11,6 +11,7 @@
  * @property {number} exitCode
  * @property {string} error
  * @property {boolean} external - state==external 时为 true
+ * @property {string} exePath - 展示与信使定位用：自有=托管登记路径，external=探针实测路径（可能为空）
  * @property {string} mode - 最近一次已知运行模式（信息提示，不承诺精确）
  * @property {string} startedAt
  * @property {string} stoppedAt

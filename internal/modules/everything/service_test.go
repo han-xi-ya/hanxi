@@ -30,7 +30,7 @@ func newTestService(t *testing.T) (*EverythingService, string) {
 		esDir:   filepath.Join(t.TempDir(), "everything", "es"),
 		holder:  extapi.NewLeaseHolder(ID),
 	}
-	s.engine = evinstance.NewEngine(plat.Job(), evinstance.NewEverythingProbe(), evinstance.Callbacks{
+	s.engine = evinstance.NewEngine(plat.Job(), evinstance.NewEverythingProbe(plat.Process()), evinstance.Callbacks{
 		OnState: s.emitInstanceState,
 	})
 	return s, versionsDir

@@ -1,6 +1,10 @@
 package instance
 
-import "time"
+import (
+	"time"
+
+	"hanxi/internal/platform"
+)
 
 // WindowClass Everything 主实例始终创建的托盘通知窗口类名（1.4/1.5 相同通道名）。
 // ES.exe 经该类窗口的 IPC 通道向主实例发查询——是"已有 Everything 实例在运行"的权威信号。
@@ -22,4 +26,8 @@ type EverythingProbe interface {
 	WaitForEverythingReady(timeout time.Duration) bool
 	// IsSearchWindowOpen 搜索主窗口是否打开（空闲自动退出的豁免信号）
 	IsSearchWindowOpen() bool
+	// FindInstance 补充归属事实：按进程名枚举 Everything.exe 并查询路径/启动
+	// 时刻（W2/N2 起供 external 快照充实与分档退出令牌）。拿不到（权限/竞态）
+	// 返回 nil，不影响"在运行"判定本身。
+	FindInstance() *platform.ProcInfo
 }

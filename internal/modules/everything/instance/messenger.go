@@ -40,3 +40,7 @@ func spawnQuitMessenger(exe string) error {
 	_ = cmd.Process.Release()
 	return nil
 }
+
+// SpawnQuitMessenger 对外暴露 -quit 信使（W2/N2）：service 层对 external 实例
+// 走 externalquit 分档执行器时，以探针实测的实例路径充当优雅信号通道。
+func SpawnQuitMessenger(exe string) error { return spawnQuitMessenger(exe) }

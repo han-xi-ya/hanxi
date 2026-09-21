@@ -27,14 +27,16 @@ import (
 // ---------- 测试用 fake（探针与 Job 注入） ----------
 
 type fakeProbe struct {
-	running    bool // IsEverythingRunning 返回值
-	ready      bool // WaitForEverythingReady 立即返回值
-	windowOpen bool // IsSearchWindowOpen 返回值（空闲退出豁免信号）
+	running    bool               // IsEverythingRunning 返回值
+	ready      bool               // WaitForEverythingReady 立即返回值
+	windowOpen bool               // IsSearchWindowOpen 返回值（空闲退出豁免信号）
+	instInfo   *platform.ProcInfo // FindInstance 返回值（默认 nil=不产出归属细节，旧口径）
 }
 
 func (p *fakeProbe) IsEverythingRunning() bool                 { return p.running }
 func (p *fakeProbe) WaitForEverythingReady(time.Duration) bool { return p.ready }
 func (p *fakeProbe) IsSearchWindowOpen() bool                  { return p.windowOpen }
+func (p *fakeProbe) FindInstance() *platform.ProcInfo          { return p.instInfo }
 
 type fakeJob struct{ assignErr error }
 

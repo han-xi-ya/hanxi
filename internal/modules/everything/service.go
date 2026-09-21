@@ -1,6 +1,7 @@
 package everything
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
+	"hanxi/packages/go/externalquit"
 )
 
 const (
@@ -70,7 +72,7 @@ func NewEverythingService(plat platform.Platform, holder *extapi.LeaseHolder) *E
 		esDir: filepath.Join(paths.DataDir(), "everything", "es"),
 	}
 	svc.lastActivity = time.Now()
-	svc.engine = evinstance.NewEngine(plat.Job(), evinstance.NewEverythingProbe(), evinstance.Callbacks{
+	svc.engine = evinstance.NewEngine(plat.Job(), evinstance.NewEverythingProbe(plat.Process()), evinstance.Callbacks{
 		OnState: svc.emitInstanceState,
 	})
 	return svc
@@ -287,8 +289,10 @@ func (s *EverythingService) OpenWindow() (ControlOutcome, error) {
 	return ControlOutcome{Action: "started-window", Message: fmt.Sprintf("Everything %s 已启动，搜索窗口已打开", v)}, nil
 }
 
-// Quit 退出 Everything。
-// 外部实例不越权强杀（实例探测拿不到 PID）：仅返回人性化指引。
+// Quit 退出 Everything（W2/N2 起按 N3 终裁分档）。
+// 外部实例（force-free 低损档）：以探针实测路径投 -quit 信使优雅退出 →
+// 宽限期观察 → 身份复核 → 仍存活强杀（Everything 重启按 USN 日志增量重建，
+// 低损成立）；提权目标（UIPI）如实降级指引，declined/blocked 均不误报成功。
 // 自有实例走 -quit 优雅退出（先落盘索引库），超时由引擎强杀兜底。
 func (s *EverythingService) Quit() (QuitOutcome, error) {
 	release, gateErr := s.holder.Enter()
@@ -301,13 +305,41 @@ func (s *EverythingService) Quit() (QuitOutcome, error) {
 
 	s.engine.RefreshExternal()
 	if snap := s.engine.Snapshot(); snap.State == evinstance.StateExternal {
-		return QuitOutcome{Stopped: false, External: true,
-			Message: "当前是外部自行启动的实例，请在 Everything 托盘图标上退出"}, nil
+		return s.quitExternal(snap)
 	}
 	if err := s.engine.Quit(); err != nil {
 		return QuitOutcome{}, err
 	}
 	return QuitOutcome{Stopped: true, Message: "Everything 已退出"}, nil
+}
+
+// quitExternal 外部实例的分档退出（force-free）；执行后让内核复探收口，
+// 快照自动从 external 落回 stopped（杀成）或维持 external（杀不动/被拒）。
+func (s *EverythingService) quitExternal(snap evinstance.Snapshot) (QuitOutcome, error) {
+	if snap.PID == 0 {
+		// 探针在场但枚举不到 PID（句柄权限受限等）：保守回指引，不猜身份。
+		return QuitOutcome{Stopped: false, External: true, Method: "probe-missing-pid",
+			Message: "检测到外部自行启动的 Everything，但未能取得其实例身份，已在操作前拒绝——请在其托盘图标退出"}, nil
+	}
+	token := platform.VerifyToken{PID: snap.PID, ExePath: snap.ExePath, StartedAt: snap.StartedAt}
+	deps := externalquit.Deps{Proc: s.plat.Process()}
+	if snap.ExePath != "" {
+		deps.Graceful = func(context.Context) error { return evinstance.SpawnQuitMessenger(snap.ExePath) }
+	}
+	res, err := externalquit.Quit(context.Background(), token, externalquit.PolicyForceFree, deps)
+	s.engine.RefreshExternal()
+	out := QuitOutcome{Stopped: res.Stopped, External: true, Forced: res.Forced, Method: res.Method}
+	switch res.Method {
+	case externalquit.MethodGraceful:
+		out.Message = "外部自行启动的 Everything 已响应 -quit 请求优雅退出"
+	case externalquit.MethodAlreadyGone:
+		out.Message = "外部自行启动的 Everything 已经退出"
+	case externalquit.MethodForced:
+		out.Message = "外部 Everything 未响应优雅退出请求，已强制结束（索引库将在下次启动时增量重建）"
+	case externalquit.MethodBlocked:
+		out.Message = "外部 Everything 以管理员权限运行，hanxi 无法代为终止，请在其托盘图标退出"
+	}
+	return out, err
 }
 
 // Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，

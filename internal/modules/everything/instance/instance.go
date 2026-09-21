@@ -73,6 +73,7 @@ type Snapshot struct {
 	ExitCode  int       `json:"exitCode"`
 	Error     string    `json:"error"`
 	External  bool      `json:"external"` // state==external 时为 true
+	ExePath   string    `json:"exePath"`  // 展示与信使定位用：自有=托管登记路径，external=探针实测路径（可能为空）
 	Mode      string    `json:"mode"`     // 最近一次已知运行模式（信息提示，不承诺精确）
 	StartedAt time.Time `json:"startedAt"`
 	StoppedAt time.Time `json:"stoppedAt"`
@@ -306,6 +307,7 @@ func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
 		ExitCode:  e.exitCode,
 		Error:     mapErrorMessage(s),
 		External:  s.State == sup.StateExternal,
+		ExePath:   s.Exe,
 		Mode:      e.mode,
 		StartedAt: s.Since,
 		StoppedAt: e.stoppedAt,
@@ -379,10 +381,14 @@ func (e *Engine) emit(snap Snapshot) {
 
 // supProbe 把 EverythingProbe（窗口类双通道：TASKBAR_NOTIFICATION 托盘通知窗口类
 // 优先、命名互斥体兜底）适配为内核统一探针契约。探测为瞬时系统调用、天然不可
-// 取消（任何失败按"不存在"处理，永不报错），因此不产出 ProcInfo（外部实例归属
-// 只认 running 事实，PID 无从取得，沿用原口径）。
+// 取消（任何失败按"不存在"处理，永不报错）。running 成立时附带进程名枚举的
+// ProcInfo（W2/N2 起：external 快照充实 PID/路径/启动时刻，供分档退出取令牌；
+// 枚举拿不到时 info=nil，归属判定不受影响）。
 type supProbe struct{ p EverythingProbe }
 
 func (s supProbe) Inspect(_ context.Context) (bool, *platform.ProcInfo, error) {
-	return s.p.IsEverythingRunning(), nil, nil
+	if !s.p.IsEverythingRunning() {
+		return false, nil, nil
+	}
+	return true, s.p.FindInstance(), nil
 }
