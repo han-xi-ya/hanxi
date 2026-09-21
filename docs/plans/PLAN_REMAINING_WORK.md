@@ -13,7 +13,7 @@
 | 批次 | 内容 | 关键落点 |
 |---|---|---|
 | 批 1 ✅ **已完成(2026-09-21,f63d9b2+c679764)** | Registry 覆盖状态数据竞态(值类型投影消灭指针逃逸);receipt 与 `known-modules.json` 成组缺陷(账本独立命名空间/独立 schema/三态保守重建/fail-closed 卸载事务;计划见 [PLAN_P0_BATCH1_FIX](PLAN_P0_BATCH1_FIX.md)) | `internal/extapi/registry.go`、`internal/settings/receipts.go` |
-| 批 2 | 异步托管下载提前释放 Acquire 租约;journal 步进失败仍执行副作用(fail-open);Artifact Commit rename 后/meta 前崩溃窗口 | `internal/modules/*/service.go`、`internal/ops/ops.go`、`packages/go/artifact/` |
+| 批 2 → **2a ✅ 已完成(2026-09-21,4725e52+5881c8e)**:journal 步进 fail-closed 闸门(降级拒新事务+journal-degraded 收口+GetJournalHealth 观察面);Artifact Commit 原子边界收口 rename(黑户隔离放行重装)。**2b ⏳ 待机主选案**:事务生命周期机制(A=仅租约随事务/半天;B=ctx+租约一并买断 §3.2/§3.4 并预留真取消/一天,推荐 B) | 2b 落点:`internal/modules/*/service.go`+各 manager `Download` 加 ctx;对比表见 [PLAN_P0_BATCH2_FIX](PLAN_P0_BATCH2_FIX.md) |
 | 批 3 | 前端旧快照冒充实时状态、本地/远程版本加载竞态、`already-installed` 清票未走版本互认、旧响应覆盖(generation)、多份 busy 真相、无障碍缺口 | `frontend/src/components/managed/`、`frontend/src/composables/loadManagedVersions.ts` |
 
 - 每批开工前先形成正式修复计划确认范围;批 1、2 完成后补 `go test -race`(Windows 侧走 CI/真机;云侧已具备 hanxi-dev:2404 容器回路,43 个 Linux 可构建包可本地跑 race,Windows-only 包仍须 CI——配方与豁免清单见踩坑 #84)与组合级故障注入。
