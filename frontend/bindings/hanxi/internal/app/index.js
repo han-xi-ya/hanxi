@@ -25,6 +25,11 @@ import * as $models from "./models.js";
  */
 
 /**
+ * StorageUsageItem 一级子项占用（Partial=true 时 Bytes 为下限估算）。
+ * @typedef {$models.StorageUsageItem} StorageUsageItem
+ */
+
+/**
  * TrayMenuOption 设置页可选的托盘菜单候选项（托管命令与扩展页面导航）。
  * 自定义外部程序不属候选目录，由前端构造 type=exe 条目随 SetTrayMenu 提交。
  * @typedef {$models.TrayMenuOption} TrayMenuOption

@@ -4,7 +4,7 @@
 // 绑定指针是 exe 同级 hanxi.bind，"绑定哪个用哪个"，换绑/解绑重启后生效。
 import { ref, computed, onMounted } from 'vue'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
-import type { AppInfo } from '../../../bindings/hanxi/internal/app/models'
+import type { AppInfo, StorageUsageItem } from '../../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import { usePrompt } from '../../composables/usePrompt'
@@ -86,7 +86,40 @@ async function unbind() {
   }
 }
 
-onMounted(refresh)
+// ---------- 数据根占用一览（N11）----------
+// 每个一级子目录 = 一块家底（便携软件/数据类目）。后端 15s 预算截断 + 3 分钟
+// 缓存：进页即测走缓存/快速测量；巨目录超时不谎报——Partial 行标"≥"下限。
+const usage = ref<StorageUsageItem[]>([])
+const usageLoading = ref(false)
+const usageAt = ref('')
+
+function fmtSize(bytes: number): string {
+  if (!bytes) return '0 B'
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  return `${bytes} B`
+}
+
+async function loadUsage(force = false) {
+  if (usageLoading.value) return
+  usageLoading.value = true
+  try {
+    usage.value = (await AppAPI.AppService.DataRootUsage(force)) ?? []
+    usageAt.value = new Date().toLocaleTimeString()
+  } catch (e: unknown) {
+    showToast(`占用测量失败: ${getErrorMessage(e)}`)
+  } finally {
+    usageLoading.value = false
+  }
+}
+
+const usageAnyPartial = computed(() => usage.value.some((u) => u.partial))
+
+onMounted(() => {
+  void refresh()
+  void loadUsage()
+})
 </script>
 
 <template>
@@ -126,6 +159,37 @@ onMounted(refresh)
         </button>
       </div>
     </div>
+
+    <!-- 数据根占用一览：每个一级子目录（= 每个便携软件/数据类目）一块家底 -->
+    <div class="card dir-list">
+      <div class="setting-row">
+        <span class="setting-main">
+          <span class="setting-name">数据根占用一览 <span class="chip chip-neutral dir-badge">一级子目录 · 软件与数据类目</span></span>
+          <code class="setting-desc dir-path">
+            <template v-if="usageLoading">正在测量（巨目录限时 15 秒，超时按"≥"下限呈现）…</template>
+            <template v-else-if="usageAt">测量于 {{ usageAt }}{{ usageAnyPartial ? ' · 含下限估算项' : '' }}</template>
+            <template v-else>尚未测量</template>
+          </code>
+        </span>
+        <button class="btn btn-secondary btn-small" :disabled="usageLoading" @click="loadUsage(true)">
+          <AppIcon name="refresh-cw" :size="14" /> 重新测量
+        </button>
+      </div>
+      <div v-for="item in usage" :key="item.name" class="setting-row usage-row">
+        <span class="setting-main">
+          <span class="setting-name">
+            {{ item.name }}
+            <span v-if="item.partial" class="chip chip-warning dir-badge" title="测量超时被截断，此值为下限估算">≥ 下限</span>
+            <span v-else-if="item.errorCount" class="chip chip-neutral dir-badge" :title="`${item.errorCount} 个条目读取失败已跳过`">{{ item.errorCount }} 项跳过</span>
+          </span>
+          <code v-if="item.isDir && item.files" class="setting-desc dir-path">{{ item.files.toLocaleString() }} 个文件</code>
+        </span>
+        <span class="usage-size" :class="{ 'usage-partial': item.partial }" :title="`${item.bytes.toLocaleString()} 字节${item.partial ? '（下限）' : ''}`">
+          {{ item.partial ? '≥ ' : '' }}{{ fmtSize(item.bytes) }}
+        </span>
+      </div>
+      <p v-if="!usageLoading && !usage.length" class="setting-desc">数据根当前没有可统计的子目录。</p>
+    </div>
   </section>
 </template>
 
@@ -138,4 +202,9 @@ onMounted(refresh)
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .root-actions { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.usage-size {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-sm);
+  color: var(--color-text-muted); flex-shrink: 0; align-self: center;
+}
+.usage-partial { color: var(--state-warning); }
 </style>

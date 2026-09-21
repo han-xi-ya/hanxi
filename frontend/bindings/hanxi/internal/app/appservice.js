@@ -50,6 +50,17 @@ export function ClearLogs() {
 }
 
 /**
+ * DataRootUsage 度量数据根一级子项占用（按 Bytes 降序）。force=false 时
+ * 优先回 3 分钟内的缓存（数据根未变）；跨会话换绑自动失效（以根路径为键）。
+ * 部分子项超时截断不算错误：Partial 逐行透出，UI 负责"≥ 此值"话术。
+ * @param {boolean} force
+ * @returns {$CancellablePromise<$models.StorageUsageItem[] | null>}
+ */
+export function DataRootUsage(force) {
+    return $Call.ByID(2728018590, force);
+}
+
+/**
  * DismissResumable 用户显式忽略一笔未收口事务：按背书清理该事务的托管现场
  * （staging/.removing-<txnID> 同名目录），journal 以 failed 收口，并从观察面
  * 摘除 resumable 回灌记录。对已成功/已失败收口的账本拒绝翻案（审计单收口）。

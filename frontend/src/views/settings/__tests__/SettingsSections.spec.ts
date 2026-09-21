@@ -28,6 +28,7 @@ const appSvc = vi.hoisted(() => ({
   OpenPath: vi.fn(),
   BindDataDir: vi.fn(),
   UnbindDataDir: vi.fn(),
+  DataRootUsage: vi.fn(),
   OpenHostsFile: vi.fn(),
   OpenNetworkConnections: vi.fn(),
   OpenSystemEnvSettings: vi.fn(),
@@ -61,6 +62,7 @@ function stubs() {
   appSvc.GetAppInfo.mockResolvedValue(appInfoStub())
   appSvc.BindDataDir.mockResolvedValue(undefined)
   appSvc.UnbindDataDir.mockResolvedValue(undefined)
+  appSvc.DataRootUsage.mockResolvedValue([])
   appSvc.GetGeneralSettings.mockResolvedValue({ autoStart: false, minimizeToTray: true, logRetainDays: 7 })
   appSvc.SetGeneralSettings.mockResolvedValue(undefined)
   appSvc.ListTrayMenuOptions.mockResolvedValue([{ type: 'command', ref: 'frpc/start', label: '启动 frpc', moduleName: 'frpc' }])
@@ -240,7 +242,7 @@ describe('存储目录分区', () => {
     expect(w.text()).not.toContain('便携')
     expect(w.text()).not.toContain('标准模式')
     const rows = w.findAll('.setting-row')
-    expect(rows).toHaveLength(4) // 数据根 + 日志/版本仓/运行时
+    expect(rows).toHaveLength(5) // 数据根 + 日志/版本仓/运行时 + 占用一览头行（N11）
     expect(rows[0].text()).toContain('D:\\hx') // 数据根 = baseDir
     const rootBtns = rows[0].findAll('button')
     expect(rootBtns).toHaveLength(2) // 未绑定：打开目录 + 更改位置，无"回到同级"
@@ -261,6 +263,28 @@ describe('存储目录分区', () => {
     await flushPromises()
     expect(appSvc.UnbindDataDir).toHaveBeenCalledTimes(1)
     expect(useToast().toastMsg.value).toContain('重启')
+  })
+
+  it('数据根占用一览（N11）：挂载即测、GiB 呈现、Partial 行标"≥下限"、重测走 force', async () => {
+    stubs()
+    appSvc.DataRootUsage.mockResolvedValue([
+      { name: 'everything', isDir: true, bytes: 3221225472, files: 81234, partial: false, errorCount: 0 },
+      { name: 'snapshots', isDir: true, bytes: 5368709120, files: 42, partial: true, errorCount: 3 },
+    ])
+    const w = await mountView(StorageSection)
+    await flushPromises()
+    expect(appSvc.DataRootUsage).toHaveBeenCalledWith(false) // 挂载走缓存路径
+    const rows = w.findAll('.usage-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].text()).toContain('everything')
+    expect(rows[0].text()).toContain('3.00 GiB')
+    expect(rows[0].text()).toContain('81,234 个文件')
+    expect(rows[1].text()).toContain('≥')
+    expect(rows[1].find('.chip-warning').exists()).toBe(true) // 下限徽标
+    const usageHead = w.findAll('.setting-row')[4]
+    await usageHead.find('button').trigger('click')
+    await flushPromises()
+    expect(appSvc.DataRootUsage).toHaveBeenLastCalledWith(true) // 重新测量穿透缓存
   })
 
   it('更改位置：prompt 取消不调后端，提交绝对路径走 BindDataDir 并提示重启生效', async () => {
