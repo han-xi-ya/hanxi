@@ -71,7 +71,7 @@ type Registry struct {
 	modules   map[string]*ModuleWrapper
 	store     StateStorage
 	receipts  ReceiptStorage
-	overrides map[string]*stateOverride
+	overrides map[string]stateOverride // 值类型：读写均经 editOverride/overrideSnapshot 单通道，指针不出锁域
 	// onLifecycles 启停副作用钩子链（托盘重建、热键注销等），在 wrapper 锁外依次调用。
 	onLifecycles []func(moduleID string, enabled bool)
 }
@@ -597,49 +597,61 @@ func (r *Registry) OnLifecycle(fn func(moduleID string, enabled bool)) {
 
 // SetMandatory 标记/解除 Core 模块（策略维度投影为 mandatory，禁止停用与卸载）。
 func (r *Registry) SetMandatory(moduleID string, mandatory bool) {
-	r.overrideOf(moduleID).mandatory = mandatory
+	r.editOverride(moduleID, func(o *stateOverride) { o.mandatory = mandatory })
 }
 
 // IsMandatory 查询模块是否为 Core 强制项。
 func (r *Registry) IsMandatory(moduleID string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.overrides != nil && r.overrides[moduleID] != nil && r.overrides[moduleID].mandatory
+	ov, _ := r.overrideSnapshot(moduleID)
+	return ov.mandatory
 }
 
 // SetBlocked 标记/解除安全阻止（撤回、不兼容、恢复失败等）；blocked 拒绝 Acquire。
 func (r *Registry) SetBlocked(moduleID string, blocked bool) {
-	r.overrideOf(moduleID).blocked = blocked
+	r.editOverride(moduleID, func(o *stateOverride) { o.blocked = blocked })
 }
 
 // SetHealth 写入健康维度覆盖（Wave 5+ 签名目录裁决用）；传空串恢复 current。
 // remoteVersion 仅在 health=update-available 时随记录写入（更新感知链给出的上游
 // 新版本号，纯展示输入，不进状态机）；health 为 current 或其他值时一律清空。
+// health 与 remoteVersion 在同一把写锁内成对落账——投影读到的永远是同一轮事实。
 func (r *Registry) SetHealth(moduleID string, health HealthState, remoteVersion string) {
-	o := r.overrideOf(moduleID)
-	if health == "" {
-		health = HealthCurrent
-	}
-	o.health = health
-	if health == HealthUpdateAvailable {
-		o.remoteVersion = remoteVersion
-	} else {
-		o.remoteVersion = ""
-	}
+	r.editOverride(moduleID, func(o *stateOverride) {
+		if health == "" {
+			health = HealthCurrent
+		}
+		o.health = health
+		if health == HealthUpdateAvailable {
+			o.remoteVersion = remoteVersion
+		} else {
+			o.remoteVersion = ""
+		}
+	})
 }
 
-func (r *Registry) overrideOf(moduleID string) *stateOverride {
+// editOverride 覆盖态唯一写通道：全程持写锁做"取值→闭包改→回存"，
+// 临时指针不出锁域（批 1 竞态修复：原 overrideOf 让内部指针逃逸到锁外被并发读写）。
+func (r *Registry) editOverride(moduleID string, edit func(*stateOverride)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.overrides == nil {
-		r.overrides = map[string]*stateOverride{}
+		r.overrides = map[string]stateOverride{}
 	}
-	o := r.overrides[moduleID]
-	if o == nil {
-		o = &stateOverride{health: HealthCurrent}
-		r.overrides[moduleID] = o
+	o := r.overrides[moduleID] // 值拷贝
+	edit(&o)
+	r.overrides[moduleID] = o
+}
+
+// overrideSnapshot 覆盖态唯一读通道：锁内复制值，缺省字段即零值
+// （health 空串由投影侧按 current 处理，与原构造默认等义）。
+func (r *Registry) overrideSnapshot(moduleID string) (stateOverride, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.overrides == nil {
+		return stateOverride{}, false
 	}
-	return o
+	o, ok := r.overrides[moduleID]
+	return o, ok
 }
 
 // runtimeStateLocked 把 wrapper 现场标志折算为运行维度投影。
@@ -681,23 +693,21 @@ func (r *Registry) ListStates() []ModuleState {
 func (r *Registry) projectState(moduleID string, enabled bool, runtime RuntimeState) ModuleState {
 	r.mu.RLock()
 	receipts := r.receipts
-	ov := r.overrides[moduleID]
 	r.mu.RUnlock()
+	ov, _ := r.overrideSnapshot(moduleID) // 锁内值拷贝：health/remoteVersion 同源一轮
 
 	policy := PolicyDisabled
 	if enabled {
 		policy = PolicyEnabled
 	}
 	health := HealthCurrent
-	if ov != nil {
-		if ov.mandatory {
-			policy = PolicyMandatory
-		} else if ov.blocked {
-			policy = PolicyBlocked
-		}
-		if ov.health != "" {
-			health = ov.health
-		}
+	if ov.mandatory {
+		policy = PolicyMandatory
+	} else if ov.blocked {
+		policy = PolicyBlocked
+	}
+	if ov.health != "" {
+		health = ov.health
 	}
 	delivery := DeliveryInstalled
 	if receipts != nil && !receipts.IsInstalled(moduleID) {
@@ -712,7 +722,7 @@ func (r *Registry) projectState(moduleID string, enabled bool, runtime RuntimeSt
 	}.Project()
 	// remoteVersion 是纯展示附加：仅当 health=update-available 且感知链留有
 	// 版本号时盖进投影；不进 StateInput/Project()，不参与状态机裁决。
-	if health == HealthUpdateAvailable && ov != nil {
+	if health == HealthUpdateAvailable {
 		out.RemoteVersion = ov.remoteVersion
 	}
 	return out
@@ -731,10 +741,8 @@ func (r *Registry) Acquire(moduleID string) (*ModuleWrapper, func(), error) {
 		return nil, nil, fmt.Errorf("%w %q", ErrUnknownModule, moduleID)
 	}
 
-	r.mu.RLock()
-	blocked := r.overrides != nil && r.overrides[moduleID] != nil && r.overrides[moduleID].blocked
-	r.mu.RUnlock()
-	if blocked {
+	ovSnap, _ := r.overrideSnapshot(moduleID)
+	if ovSnap.blocked {
 		return nil, nil, fmt.Errorf("%w %q (blocked)", ErrModuleDisabled, moduleID)
 	}
 	if err := r.checkInstalled(moduleID); err != nil {

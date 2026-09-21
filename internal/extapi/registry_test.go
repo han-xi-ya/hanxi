@@ -50,6 +50,66 @@ func (m *registryTestModule) TrayCommands() []TrayCommand {
 	}}
 }
 
+// TestRegistryOverrideProjectionConsistency 批 1 §3.1 回归：并发
+// SetHealth(health 与 remoteVersion 成对落账) × ListStates 交错——
+// update-available 投影永不得携带空 remoteVersion。旧实现（overrideOf 指针
+// 逃逸锁域、字段各自锁外读写）不仅 data race，还会把两轮更新混进同一投影；
+// 本断言不依赖 race 探测器也能抓到混帧。
+func TestRegistryOverrideProjectionConsistency(t *testing.T) {
+	registry := NewRegistry(&registryTestStore{enabled: make(map[string]bool)})
+	module := newRegistryTestModule("module")
+	if err := registry.Register(module); err != nil {
+		t.Fatal(err)
+	}
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { // 感知链：每轮成对写入新版本号
+		defer wg.Done()
+		for i := 1; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			registry.SetHealth("module", HealthUpdateAvailable, fmt.Sprintf("9.9.%d", i))
+		}
+	}()
+	go func() { // 清账链：current + 清空版本号（同锁成对）
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			registry.SetHealth("module", HealthCurrent, "")
+		}
+	}()
+	go func() { // 投影观察链：混帧即刻现形
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			for _, st := range registry.ListStates() {
+				if st.ModuleID == "module" && st.Health == HealthUpdateAvailable && st.RemoteVersion == "" {
+					t.Error("混帧投影：update-available 却携带空 remoteVersion（跨轮事实拼装）")
+					return
+				}
+			}
+		}
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+	registry.ShutdownAll()
+}
+
 type registryTestStore struct {
 	mu      sync.Mutex
 	enabled map[string]bool
