@@ -182,6 +182,9 @@ func TestMeasureChildrenUnreadableDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows 目录 ACL 语义不同，chmod 不生效")
 	}
+	if os.Geteuid() == 0 {
+		t.Skip("root 无视目录权限位（容器常态），chmod 造不出不可读场景")
+	}
 	root := t.TempDir()
 	bad := filepath.Join(root, "locked")
 	if err := os.Mkdir(bad, 0o755); err != nil {
