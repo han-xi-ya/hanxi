@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/envcheckservice'
 import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
 import type { ToolInfo } from '../../bindings/hanxi/internal/modules/envcheck/detect/models'
+import type { ToolUsage } from '../../bindings/hanxi/internal/modules/envcheck/diskusage/models'
 import type { Overview as DotNetOverview } from '../../bindings/hanxi/internal/modules/envcheck/dotnetversion/models'
 import type { Overview as GitOverview } from '../../bindings/hanxi/internal/modules/envcheck/gitversion/models'
 import type { Overview as GoOverview } from '../../bindings/hanxi/internal/modules/envcheck/goversion/models'
@@ -43,6 +44,41 @@ const everLoaded = ref(false)
 const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { copyWithToast } = useClipboard()
+
+// ---------- 空间家底（N14）----------
+// 按需测量（按钮触发，服务端 30s 整场预算）：本体安装目录 + 依赖/缓存目录
+// 逐行呈现；Partial 行标"≥"下限，推导在场但磁盘缺席的行灰显"未落地"。
+const usageRows = ref<ToolUsage[]>([])
+const usageLoading = ref(false)
+const usageAt = ref('')
+const usageError = ref('')
+const usageAnyPartial = computed(() =>
+  usageRows.value.some((tu) => (tu.dirs ?? []).some((d) => d.partial)),
+)
+
+function fmtSize(bytes: number): string {
+  if (!bytes) return '0 B'
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  return `${bytes} B`
+}
+
+async function loadDiskUsage() {
+  if (usageLoading.value) return
+  usageLoading.value = true
+  usageError.value = ''
+  try {
+    usageRows.value = (await EnvCheckAPI.GetDiskUsage()) ?? []
+    usageAt.value = new Date().toLocaleTimeString()
+  } catch (e: unknown) {
+    usageRows.value = []
+    usageAt.value = ''
+    usageError.value = `空间家底测量失败: ${getErrorMessage(e)}`
+  } finally {
+    usageLoading.value = false
+  }
+}
 
 const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
   git: { overview: null, loading: false, error: '' },
@@ -410,6 +446,35 @@ onMounted(() => {
       <div v-else-if="everLoaded" class="empty-state">
         <p>未返回可识别的开发工具，请重新检测。</p>
       </div>
+
+      <!-- 空间家底（N14）：本体目录 + 依赖/缓存占用总览 -->
+      <section class="usage-panel" aria-label="空间家底">
+        <header class="usage-head">
+          <span class="usage-title">空间家底 <span class="chip chip-neutral">安装目录 · 依赖缓存</span></span>
+          <span class="usage-sub" aria-live="polite">
+            <template v-if="usageLoading">正在测量（整场 30 秒封顶，超时项按"≥"下限呈现）…</template>
+            <template v-else-if="usageError">{{ usageError }}</template>
+            <template v-else-if="usageAt">测量于 {{ usageAt }}{{ usageAnyPartial ? ' · 含下限估算项' : '' }}</template>
+            <template v-else>测量各开发工具的本体与缓存目录，看清磁盘肥瘦</template>
+          </span>
+          <button class="btn btn-secondary btn-small" :disabled="usageLoading" @click="loadDiskUsage">
+            ↻ {{ usageRows.length ? '重新测量' : '测量空间家底' }}
+          </button>
+        </header>
+        <div v-for="tu in usageRows" :key="tu.tool" class="usage-tool">
+          <div class="usage-tool-name">{{ tu.display }}</div>
+          <div v-for="d in (tu.dirs ?? [])" :key="d.label" class="usage-line" :class="{ 'usage-offline': !d.exists }">
+            <span class="usage-kind" :class="d.kind === 'install' ? 'kind-install' : 'kind-cache'">{{ d.kind === 'install' ? '本体' : '缓存' }}</span>
+            <span class="usage-label">{{ d.label }}</span>
+            <code class="mono usage-path" :title="d.path">{{ d.path || '未能推导' }}</code>
+            <span v-if="!d.exists" class="usage-muted">未落地</span>
+            <span v-else class="mono usage-size" :class="{ 'usage-partial': d.partial }" :title="`${d.bytes.toLocaleString()} 字节${d.partial ? '（下限）' : ''}`">
+              {{ d.partial ? '≥ ' : '' }}{{ fmtSize(d.bytes) }}
+            </span>
+          </div>
+        </div>
+        <p v-if="usageAt && !usageError && !usageRows.length" class="usage-sub">未识别到可测量家底的本体/缓存目录。</p>
+      </section>
     </div>
 
     <div
@@ -539,6 +604,23 @@ onMounted(() => {
 .tool-grid, .management-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
 .compact-grid { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
 .tool-card, .management-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.usage-panel { margin-top: 12px; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.usage-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.usage-head .btn { margin-left: auto; }
+.usage-title { font-weight: 700; }
+.usage-sub { color: var(--color-text-muted); font-size: var(--text-sm); }
+.usage-tool { display: flex; flex-direction: column; gap: 4px; }
+.usage-tool-name { font-weight: 600; font-size: var(--text-sm); color: var(--color-text-subtle); }
+.usage-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.usage-line.usage-offline { opacity: 0.6; }
+.usage-kind { flex: 0 0 auto; font-size: var(--text-xs); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); }
+.usage-kind.kind-install { color: var(--state-positive); }
+.usage-kind.kind-cache { color: var(--state-warning); }
+.usage-label { flex: 0 0 auto; font-size: var(--text-sm); }
+.usage-path { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-subtle); font-size: var(--text-xs); }
+.usage-size { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: var(--text-sm); color: var(--color-text-muted); }
+.usage-size.usage-partial { color: var(--state-warning); }
+.usage-muted { flex: 0 0 auto; font-size: var(--text-xs); color: var(--color-text-subtle); }
 .tool-card { border-left: 3px solid var(--color-border); transition: opacity var(--motion-base) ease; }
 .tool-card.local-refreshing { opacity: 0.68; }
 .tool-card.status-installed { border-left-color: var(--state-positive); }

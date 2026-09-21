@@ -18,6 +18,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as detect$0 from "./detect/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as diskusage$0 from "./diskusage/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as dotnetversion$0 from "./dotnetversion/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -54,6 +57,16 @@ export function Detect(name) {
  */
 export function DetectAll() {
     return $Call.ByID(635938415);
+}
+
+/**
+ * GetDiskUsage 重新探测本机工具链并按家底清单度量。
+ * 无耗时保护诉求的手动动作（前端按钮触发），不做服务端缓存；
+ * 结果按工具 → 目录逐行返回，Exists=false 的行由前端决定灰列或隐藏。
+ * @returns {$CancellablePromise<diskusage$0.ToolUsage[] | null>}
+ */
+export function GetDiskUsage() {
+    return $Call.ByID(3079167491);
 }
 
 /**

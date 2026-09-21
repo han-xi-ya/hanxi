@@ -78,6 +78,12 @@ func Measure(root string, opt Options) Stats {
 	return measure(context.Background(), root, opt)
 }
 
+// MeasureWith 带外部 ctx 的单目录度量：供"多目录共享一份总预算"的编排方
+// （如 envcheck 空间家底：一次 RPC 扫多个缓存目录，全场限时而非每目录限时）。
+func MeasureWith(ctx context.Context, root string, opt Options) Stats {
+	return measure(ctx, root, opt)
+}
+
 // measure 带 ctx 的内部实现（MeasureChildren 的共享截止时间经 ctx 下发）。
 func measure(ctx context.Context, root string, opt Options) Stats {
 	var s Stats

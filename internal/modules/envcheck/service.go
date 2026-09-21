@@ -10,6 +10,7 @@ import (
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/modules/envcheck/detect"
+	"hanxi/internal/modules/envcheck/diskusage"
 	"hanxi/internal/modules/envcheck/dotnetversion"
 	"hanxi/internal/modules/envcheck/gitversion"
 	"hanxi/internal/modules/envcheck/goversion"
@@ -39,6 +40,7 @@ type EnvCheckService struct {
 	pythonChannels pythonversion.MinorChannel
 	dotnetChannels func() ([]remoteversion.Channel, bool, time.Time, error)
 	npmOverview    func(context.Context) (npmtool.Overview, error)
+	collectUsage   func(context.Context, []detect.ToolInfo) []diskusage.ToolUsage
 }
 
 // NewEnvCheckService 装配探测与各官网版本源。字段全部为函数值注入（而非直连包函数），
@@ -55,6 +57,7 @@ func NewEnvCheckService(opener urlOpener, holder *extapi.LeaseHolder) *EnvCheckS
 		pythonChannels: pythonversion.ChannelsForLocal,
 		dotnetChannels: dotnetversion.Channels,
 		npmOverview:    npmtool.BuildOverview,
+		collectUsage:   diskusage.Collect,
 	}
 }
 
