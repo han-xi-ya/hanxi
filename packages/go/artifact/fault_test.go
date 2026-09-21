@@ -274,14 +274,30 @@ func TestTreeVersionsHalfWrittenMeta(t *testing.T) {
 		t.Fatalf("Resolve('') 应跳过坏账本取可信最新: %s", latest)
 	}
 
-	// 半写账本目录同版本再提交：拒绝覆盖（防止把伪安装洗成合法），且原目录不被破坏。
+	// 半写账本目录重装（P0 批 2a 新契约）：坏账本改名 .corrupt- 隔离取证后
+	// 放行干净重装——既不再死锁重装，也不销毁任何现场。
 	s2 := stageContent(t, tree, "tx-recommit", "app.exe", "y")
-	if err := tree.Commit(s2, "1.1.0", Meta{ZipSHA256: strings.Repeat("22", 32)}); err == nil ||
-		!strings.Contains(err.Error(), "缺少可信元信息") {
-		t.Fatalf("对坏账本目录的再提交必须拒绝: %v", err)
+	if err := tree.Commit(s2, "1.1.0", Meta{ZipSHA256: strings.Repeat("22", 32)}); err != nil {
+		t.Fatalf("半写账本目录应隔离放行重装: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "demo_1.1.0", metaFileName)); err != nil {
-		t.Fatal("拒绝路径不得破坏既有现场")
+	if _, err := tree.Resolve("1.1.0"); err != nil {
+		t.Fatalf("重装后应可信可解析: %v", err)
+	}
+	var quarantined bool
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), ".corrupt-demo_1.1.0") {
+			quarantined = true
+			if _, err := os.Stat(filepath.Join(root, e.Name(), metaFileName)); err != nil {
+				t.Fatalf("隔离目录必须保留坏账本取证: %v", err)
+			}
+		}
+	}
+	if !quarantined {
+		t.Fatal("半写账本目录应被改名隔离而非删除或覆盖")
 	}
 }
 

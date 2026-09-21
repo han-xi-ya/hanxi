@@ -111,11 +111,13 @@ func TestTreeCommitIdempotentAndDrift(t *testing.T) {
 	}
 }
 
-func TestTreeCommitRejectsResidue(t *testing.T) {
+func TestTreeCommitQuarantinesResidue(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "versions")
 	tree := OpenTree(root, "demo")
 
-	// 落位中断模拟：目标名已被"无账本非空目录"占用
+	// 黑户现场：目标名被"无账本非空目录"占用（历史崩溃窗口/外来拷贝）。
+	// P0 批 2a 新契约：改名隔离放行重装（黑户可恢复），外来内容完整保留、
+	// 隔离目录对扫描/解析隐形；绝不静默覆盖，也绝不删除。
 	target := filepath.Join(root, "demo_9.9.9")
 	if err := os.MkdirAll(target, 0755); err != nil {
 		t.Fatal(err)
@@ -124,12 +126,27 @@ func TestTreeCommitRejectsResidue(t *testing.T) {
 		t.Fatal(err)
 	}
 	staging := stageContent(t, tree, "tx1", "app.exe", "x")
-	if err := tree.Commit(staging, "9.9.9", Meta{ZipSHA256: strings.Repeat("ee", 32)}); err == nil ||
-		!strings.Contains(err.Error(), "缺少可信元信息") {
-		t.Fatalf("疑似残留目录必须拒绝覆盖: %v", err)
+	if err := tree.Commit(staging, "9.9.9", Meta{ZipSHA256: strings.Repeat("ee", 32)}); err != nil {
+		t.Fatalf("黑户应隔离放行重装: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(target, "junk.txt")); err != nil {
-		t.Fatal("拒绝路径不得破坏既有残留目录")
+	if _, err := tree.Resolve("9.9.9"); err != nil {
+		t.Fatalf("重装后必须可解析: %v", err)
+	}
+	var quarantined []string
+	ents, _ := os.ReadDir(root)
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), ".corrupt-demo_9.9.9") {
+			quarantined = append(quarantined, e.Name())
+			if _, err := os.Stat(filepath.Join(root, e.Name(), "junk.txt")); err != nil {
+				t.Fatalf("隔离目录内外来文件必须完整: %v", err)
+			}
+		}
+	}
+	if len(quarantined) != 1 {
+		t.Fatalf("应恰好生成一个隔离目录: %v", quarantined)
+	}
+	if vs, err := tree.Versions(); err != nil || len(vs) != 1 {
+		t.Fatalf("版本列表应仅含新装的 9.9.9（隔离目录隐形）: %+v err=%v", vs, err)
 	}
 
 	// staging 越界（根目录外）必须拒绝
@@ -295,5 +312,37 @@ func TestTreeInvalidEntryNameDefersError(t *testing.T) {
 	}
 	if leftovers := tree.CleanupAbandoned(); leftovers != nil {
 		t.Fatal("CleanupAbandoned 对坏树应静默返回空")
+	}
+}
+
+// TestTreeCommitMetaWrittenInStaging 验证 Commit 原子边界收口在 rename（P0 批 2a）：
+// meta 写入受阻时 staging 原样未落位、target 不出现，重试可行；
+// 阻塞手法用"meta.json 占位目录"（双平台确定性失败，不依赖 chmod 语义）。
+func TestTreeCommitMetaWrittenInStaging(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "versions")
+	tree := OpenTree(root, "demo")
+	staging := stageContent(t, tree, "tx-meta-block", "app.exe", "x")
+	if err := os.Mkdir(filepath.Join(staging, "meta.json"), 0o755); err != nil { // 目录挡写 → writeJSONFile 必败
+		t.Fatal(err)
+	}
+	err := tree.Commit(staging, "4.0.0", Meta{ZipSHA256: strings.Repeat("ab", 32)})
+	if err == nil || !strings.Contains(err.Error(), "staging 未落位") {
+		t.Fatalf("meta 写失败必须报「未落位可重试」: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "demo_4.0.0")); !os.IsNotExist(err) {
+		t.Fatal("meta 写失败时 target 绝不得出现（黑户窗口根除）")
+	}
+	if _, err := os.Stat(filepath.Join(staging, "app.exe")); err != nil {
+		t.Fatal("staging 现场必须原样保留供重试")
+	}
+	// 排障后重试成功（staging 未动，走 NewStaging 重建亦可；此处直接清障重试）。
+	if err := os.Remove(filepath.Join(staging, "meta.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tree.Commit(staging, "4.0.0", Meta{ZipSHA256: strings.Repeat("ab", 32)}); err != nil {
+		t.Fatalf("清障后重试应成功: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "demo_4.0.0", "meta.json")); err != nil {
+		t.Fatalf("落位目录必须自带可信账本: %v", err)
 	}
 }

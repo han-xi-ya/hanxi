@@ -26,6 +26,9 @@ import (
 const (
 	// tmpPrefix 解压中转目录前缀（StageDir 产物，扫描时忽略）。
 	tmpPrefix = ".tmp-"
+	// corruptPrefix 黑户隔离目录前缀（无可信账本的目标目录改名让位，永久保留取证，
+	// 与 .tmp-/.removing- 一样对扫描/解析隐形；删除决策永远留给用户）。
+	corruptPrefix = ".corrupt-"
 	// removingMarker 卸载隔离标记（Remove 中途产物，扫描时忽略）。
 	removingMarker = ".removing-"
 	// metaFileName 落位元信息文件名。
@@ -165,9 +168,11 @@ func (t *Tree) StageDir(txnID string) (string, func(), error) {
 	return staging, func() { _ = os.RemoveAll(staging) }, nil
 }
 
-// Commit 将 staging 原子落位为 <root>/<entryName>_<version>/ 并写 meta.json。
+// Commit 将 staging 原子落位为 <root>/<entryName>_<version>/。
 // 校验链：版本令牌白名单 → staging 归属与类型（Lstat 拒链接）→ 目标既有态检查
-// （同版本同 ZipSHA256 幂等；异摘要拒绝防漂移；无账本目录拒绝覆盖）→ rename → 写账本。
+// （同版本同 ZipSHA256 幂等；异摘要拒绝防漂移；无可信账本的黑户目录改名
+// .corrupt- 隔离后放行重装）→ meta 先在 staging 写全 → rename 一步定终身
+// （P0 批 2a：Commit 原子边界收口于 rename，杜绝"rename 后写账前"崩溃黑户）。
 func (t *Tree) Commit(staging, version string, meta Meta) error {
 	if t.initErr != nil {
 		return t.initErr
@@ -215,14 +220,21 @@ func (t *Tree) Commit(staging, version string, meta Meta) error {
 		}
 		existing, merr := readTreeMeta(target)
 		if merr != nil {
-			return fmt.Errorf("版本 %s 的目录已存在但缺少可信元信息（疑似残留/外来目录），拒绝覆盖，请先卸载后重装", version)
+			// 无可信账本的伪残留（历史崩溃窗口的"有内容无 meta"黑户、手工拷入的
+			// 外来目录）：改名隔离后放行重装——绝不静默覆盖，也绝不删除（数据主权
+			// 留给用户，隔离目录因不匹配托管族命名而对扫描/解析隐形）。
+			quarantine := filepath.Join(t.Root, corruptPrefix+filepath.Base(target)+"-"+time.Now().Format("20060102-150405"))
+			if rerr := os.Rename(target, quarantine); rerr != nil {
+				return fmt.Errorf("版本 %s 目录缺少可信元信息且隔离搬迁失败（拒绝覆盖以保数据）: %w", version, rerr)
+			}
+		} else {
+			// 已有可信账本：同摘要幂等复用，异摘要拒绝（防同版本内容漂移）。
+			if meta.ZipSHA256 != "" && strings.EqualFold(existing.ZipSHA256, meta.ZipSHA256) {
+				_ = os.RemoveAll(staging)
+				return nil
+			}
+			return fmt.Errorf("版本 %s 已安装，但本次包摘要与已装账本不同；为防止同版本内容漂移拒绝覆盖，请发布并使用新版本号", version)
 		}
-		// 已有可信账本：同摘要幂等复用，异摘要拒绝（防同版本内容漂移）。
-		if meta.ZipSHA256 != "" && strings.EqualFold(existing.ZipSHA256, meta.ZipSHA256) {
-			_ = os.RemoveAll(staging)
-			return nil
-		}
-		return fmt.Errorf("版本 %s 已安装，但本次包摘要与已装账本不同；为防止同版本内容漂移拒绝覆盖，请发布并使用新版本号", version)
 	} else if !os.IsNotExist(lerr) {
 		return fmt.Errorf("检查现有版本目录失败: %w", lerr)
 	}
@@ -230,7 +242,10 @@ func (t *Tree) Commit(staging, version string, meta Meta) error {
 	if err := os.MkdirAll(t.Root, 0755); err != nil {
 		return fmt.Errorf("创建版本树根目录失败: %w", err)
 	}
-	// 补全账本缺省字段后原子落位。
+	// 补全账本缺省字段；meta 先在 staging 内完整写好，再整体 rename——
+	// Commit 原子边界收口在 rename 一步（P0 批 2a，审查 §3.5：杜绝旧序
+	// "先落位后写账"崩溃留下的"有内容无账本"黑户窗口）。账本写失败时
+	// staging 原样未入位，无需回退逻辑，重试/背书清理均走既有通道。
 	meta.Schema = DefaultSchema
 	meta.Tool = firstNonEmpty(meta.Tool, t.EntryName)
 	meta.Version = version
@@ -238,15 +253,11 @@ func (t *Tree) Commit(staging, version string, meta Meta) error {
 	if meta.InstalledAt.IsZero() {
 		meta.InstalledAt = time.Now()
 	}
+	if err := writeJSONFile(filepath.Join(staging, metaFileName), meta); err != nil {
+		return fmt.Errorf("写入版本元信息失败（staging 未落位，可直接重试）: %w", err)
+	}
 	if err := os.Rename(staging, target); err != nil {
 		return fmt.Errorf("版本目录落位失败: %w", err)
-	}
-	if err := writeJSONFile(filepath.Join(target, metaFileName), meta); err != nil {
-		// 账本写失败：尝试搬回中转目录，失败则整体清理（不留下"有内容无账本"的伪安装）。
-		if backErr := os.Rename(target, staging); backErr != nil {
-			_ = os.RemoveAll(target)
-		}
-		return fmt.Errorf("写入版本元信息失败（落位已回退）: %w", err)
 	}
 	return nil
 }
@@ -274,7 +285,7 @@ func (t *Tree) scanLocked() ([]Version, error) {
 	var out []Version
 	for _, ent := range entries {
 		name := ent.Name()
-		if !ent.IsDir() || strings.HasPrefix(name, tmpPrefix) || strings.Contains(name, removingMarker) {
+		if !ent.IsDir() || strings.HasPrefix(name, tmpPrefix) || strings.HasPrefix(name, corruptPrefix) || strings.Contains(name, removingMarker) {
 			continue
 		}
 		g := t.dirRe.FindStringSubmatch(name)
