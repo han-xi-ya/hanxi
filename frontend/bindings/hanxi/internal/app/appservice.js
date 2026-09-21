@@ -106,6 +106,15 @@ export function GetGeneralSettings() {
 }
 
 /**
+ * GetJournalHealth 报告 journal 账本健康：degraded 原因如实透传（含处置指引——
+ * 重启 Hanxi 恢复账本；只读功能不受影响）。
+ * @returns {$CancellablePromise<$models.JournalHealth>}
+ */
+export function GetJournalHealth() {
+    return $Call.ByID(2743250062);
+}
+
+/**
  * GetNavs 返回前端左侧导航（核心 + 已启用扩展）。
  * @returns {$CancellablePromise<extapi$0.NavEntry[] | null>}
  */

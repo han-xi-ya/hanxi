@@ -28,6 +28,14 @@
  */
 
 /**
+ * JournalHealth journal 账本健康状态（P0 批 2a 观察面暴露）：降级即托管写
+ * 事务闸门关闭；前端据此挂"账本降级"横幅并置灰安装入口（批 3 接线）。
+ * @typedef {Object} JournalHealth
+ * @property {boolean} ok
+ * @property {string} [reason]
+ */
+
+/**
  * LogFileInfo 日志文件基本元数据
  * @typedef {Object} LogFileInfo
  * @property {string} name

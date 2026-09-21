@@ -93,3 +93,19 @@ func makeDismissResumable(store *operation.Store, hub *operation.Hub, versionTre
 		return nil
 	}
 }
+
+// JournalHealth journal 账本健康状态（P0 批 2a 观察面暴露）：降级即托管写
+// 事务闸门关闭；前端据此挂"账本降级"横幅并置灰安装入口（批 3 接线）。
+type JournalHealth struct {
+	OK     bool   `json:"ok"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// GetJournalHealth 报告 journal 账本健康：degraded 原因如实透传（含处置指引——
+// 重启 Hanxi 恢复账本；只读功能不受影响）。
+func (s *AppService) GetJournalHealth() JournalHealth {
+	if reason := ops.JournalDegraded(); reason != nil {
+		return JournalHealth{OK: false, Reason: reason.Error() + "（重启 Hanxi 可恢复账本；只读功能不受影响）"}
+	}
+	return JournalHealth{OK: true}
+}

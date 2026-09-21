@@ -314,8 +314,11 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// 目录，无背书孤儿一律如实 Report、不自动删盘（共享 versions 根防误伤）。
 	opStore, opErr := operation.OpenStore(paths.ModulesJournalsDir())
 	if opErr != nil {
-		slog.Warn("journal 账本打开失败，托管事务降级为无账模式（不阻断启动）", "err", opErr)
+		slog.Warn("journal 账本打开失败，托管写事务将保持拒绝直至重启（不阻断启动与只读功能）", "err", opErr)
 	}
+	// journalFault 汇总装配期账本不可信根因（打开失败/恢复扫描失败），
+	// 在 SetKernel 之后统一挂降级牌（P0 批 2a fail-closed，审查 §3.4）。
+	journalFault := opErr
 	// 参与背书清理的托管版本树（目录前缀等领域知识由各模块 version 包持有）；
 	// 后续模块接入安装事务时在此登记各自的树。
 	versionTrees := map[string]*artifact.Tree{
@@ -354,7 +357,10 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 			return true, opStore.Complete(j.TransactionID, string(operation.TxnCompensated), nil)
 		})
 		if rerr != nil {
-			slog.Warn("journal 启动恢复扫描失败（不阻断启动）", "err", rerr)
+			slog.Warn("journal 启动恢复扫描失败（冻结托管写事务直至重启）", "err", rerr)
+			if journalFault == nil {
+				journalFault = rerr
+			}
 		}
 		if len(report.Resumed) > 0 || len(report.RolledBack) > 0 {
 			slog.Info("journal 启动恢复已收口", "resumed", len(report.Resumed), "rolledBack", len(report.RolledBack))
@@ -390,6 +396,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// opStore 打开失败时得到纯内存 Hub（仍可观察在途操作，只是不落账）。
 	opHub = operation.NewHub(opStore)
 	ops.SetKernel(opStore, opHub)
+	if journalFault != nil {
+		ops.MarkJournalDegraded(journalFault) // 装配期账本不可信：新托管写事务一律拒绝（重启恢复）
+	}
 
 	// 4. 初始化模块注册表并注入持久化 Store
 	registry := extapi.NewRegistry(store)
