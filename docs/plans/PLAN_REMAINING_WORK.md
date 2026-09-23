@@ -13,7 +13,7 @@
 | 批次 | 内容 | 关键落点 |
 |---|---|---|
 | 批 1 ✅ **已完成(2026-09-21,f63d9b2+c679764)** | Registry 覆盖状态数据竞态(值类型投影消灭指针逃逸);receipt 与 `known-modules.json` 成组缺陷(账本独立命名空间/独立 schema/三态保守重建/fail-closed 卸载事务;计划见 [PLAN_P0_BATCH1_FIX](PLAN_P0_BATCH1_FIX.md)) | `internal/extapi/registry.go`、`internal/settings/receipts.go` |
-| 批 2 → **2a ✅ 已完成(2026-09-21,4725e52+5881c8e)**:journal 步进 fail-closed 闸门(降级拒新事务+journal-degraded 收口+GetJournalHealth 观察面);Artifact Commit 原子边界收口 rename(黑户隔离放行重装)。**2b ⏳ 待机主选案**:事务生命周期机制(A=仅租约随事务/半天;B=ctx+租约一并买断 §3.2/§3.4 并预留真取消/一天,推荐 B) | 2b 落点:`internal/modules/*/service.go`+各 manager `Download` 加 ctx;对比表见 [PLAN_P0_BATCH2_FIX](PLAN_P0_BATCH2_FIX.md) |
+| 批 2 → **2a ✅ 已完成(2026-09-21,4725e52+5881c8e)**:journal 步进 fail-closed 闸门(降级拒新事务+journal-degraded 收口+GetJournalHealth 观察面);Artifact Commit 原子边界收口 rename(黑户隔离放行重装)。**2b 🔄 施工中(机主 2026-09-22 选案 B)**:ctx+租约一并买断。内核已落(`extapi.BackgroundLease`/`EnterBackground`+Registry 停用先 cancel 再 drain+`ops.BeginTxnWithLifecycle`/`Txn.Context/Cancel/Close/JournalFailed`+`artifact.UnpackZipContext` 可取消解包);**已迁移 19/19 journal 模块**(黄金样本 flclash/paseo;普通 zip 族 markeron/ccswitch/everything/litemonitor/ddnsgo/bcu/bili23/mangodisk/rufus/translucenttb;特殊形态 quicklook(bespoke extractAll ctx 化)/keyviz+piclite(MSI:提取器返回后与轮询边界收口,msiexec 不可强杀如实注释)/papertodo(降级下载链 ctx 化)/guoheview(MD5 bespoke 链 ctx 化)/recordly+vscode(安装器一旦拉起即走完,启动前审取消;双形态全链 ctx),全仓 build/vet/单测绿);**2b 遗留待办**:①下载中停用/退出三场景 service 级集成测试(计划 2b-4,现仅 ops/extapi 层有 lease 取消测试);②`go test -race` Windows 侧补跑;③已知环境 flake 与本批无关:papertodo/instance(cmd.exe 秒退 #81 家族)、portscan(port+1 撞外部监听)(zip+Fetch 族为机械迁移;keyviz/piclite MSI、recordly/vscode 安装器、guoheview bespoke 需按各自取消边界处理,不伪造即时取消) | 迁移模板见 flclash service/manager 两文件;对比表见 [PLAN_P0_BATCH2_FIX](PLAN_P0_BATCH2_FIX.md) |
 | 批 3 | 前端旧快照冒充实时状态、本地/远程版本加载竞态、`already-installed` 清票未走版本互认、旧响应覆盖(generation)、多份 busy 真相、无障碍缺口 | `frontend/src/components/managed/`、`frontend/src/composables/loadManagedVersions.ts` |
 
 - 每批开工前先形成正式修复计划确认范围;批 1、2 完成后补 `go test -race`(Windows 侧走 CI/真机;云侧已具备 hanxi-dev:2404 容器回路,43 个 Linux 可构建包可本地跑 race,Windows-only 包仍须 CI——配方与豁免清单见踩坑 #84)与组合级故障注入。
@@ -72,6 +72,15 @@
 | **W1 决策与前置调研**(半天,不写码) → **✅ 全部收口(2026-09-21)** | ①N3 决策(**已裁:采纳 C+风险分档**——`force_free` 档低损外部实例优雅后直接强杀、`confirm_force` 档打扰类须明示确认后杀、未声明默认保守档,详见 [PLAN_W1_DECISIONS §1](PLAN_W1_DECISIONS.md));②N15 查证销项(→已定可行,免费路径);③N5 核实 starpie 仓库(→Star-Pie/StarPie,高置信);④N8 的 7z 方案选型(→前提反转,WindTerm 全 zip,选型无需,归档见 §4)。成果载体:[PLAN_W1_DECISIONS](PLAN_W1_DECISIONS.md) | 小 | 四项全是后续波次的门闸,一次沟通全部裁决 |
 | **W2 外部实例治理**(真机) | N1+N2 同批按 W1 裁决(C+分档)实施:平台层"外部 PID 取得+分档退出执行器"公共件 → snipaste(external 探测+toggle-images 唤窗+`force_free` 退出)、everything(按名取 PID+优雅信号+`force_free` 强杀兜底);N12 纯文案 30 分钟搭车 | 中 | 机主真机报告的在用功能故障,痛感最高;与 P1 F10 冒烟同场跑,合并真机验收 |
 | **W3 空间可见性** → **✅ 全部收口(2026-09-21)**:公共件 `packages/go/dirstats`(7bf1b3a)→ N11 数据根占用一览(46119bb)→ N14 envcheck 空间家底(f384948) | 先下沉 walk 目录统计公共包 → N11/N14 各自接线。真机验收项:家底路径族(AppData/GOROOT 推导)与占用数值抽查 | 中 | 原登记已自判同批;"新功能第一天走公共包"纪律;纯本地可开发,适合真机等待期填充 |
+
+#### W3 真机反馈(2026-09-21 机主实测;三件当日实施完毕,待真机复验)
+
+| # | 反馈 | 定位与方案 |
+|---|---|---|
+| W3-a ✅ | **重新测量时黑窗连闪** | 已修:`defaultRun` 套 `windows.HideConsole`(detect 家族本就 Windows-only,无需 stub);**并查出更深一层**——`.cmd/.bat` 分发器未如 `detect.runVersionCommand` 做 `cmd /C` 包装,命令实际可能静默走默认路径回退,已同型补齐 |
+| W3-b ✅ | **versions 目录要再展开一层** | 已实现:`AppService.DataRootSubUsage(sub, force)`(安全单段名校验,扫描面锁数据根内)+ `groupBySoftware` 按首个 `_` 前缀聚合(纯函数带单测)+ `StorageSection.vue` versions 行"展开到每软件",N 版本 chip 悬停列版本目录清单 |
+| W3-c ✅ | **占用行直接标删留建议** | 已实现:后端 `DirUsage.Verdict` 四档词表(keep/recommended/redownload/caution,静态建议非删除入口)+ `EnvCheckView` 徽章行;数据根一级行 `logs/memo/.snapshots/versions` 前端静态徽章(未列名目录不戴章,宁缺毋滥)。**一键清理动作仍未做**(待裁决) |
+| 附注 ✅ | 小瑕疵两处 | 随 W3-a 顺收:`normalizePath`(Clean 去尾分隔符+盘符大写)统一所有推导路径;整串大小写如需彻底规一(GetLongPathName)另议 |
 | **W4 托管集成批** | N7 飞牛同步 → **N8+N9 双端(恢复原"同批互相抄验",W1 实测 WindTerm 全 zip,7z 门槛不存在)** → N4 RAMMap | 大 | N7 缘起级用途、N3 裁决落地后即可开工(先确认静默参数/升级语义);N8/N9 皆为 zip 绿色形态、同技能同管线,互相抄验效率最高;N4 提权+一次性语义开工前正式计划 |
 | **W5 体验债** | N6 msgboard 方案先行→实施(纯前端、盘子较小先做);N5 轮盘改进(前后端几何同源改造,大活,含踩坑 #50 欠账);P3 前端打磨批次一可同窗并流 | 大 | 属重设计而非修 bug,须先出方案给机主过目;出方案可与 W3/W4 并行,动代码排队 |
 | **W6 契约收口** | N13 全平台安装包+形态标注,一次扫过 21+ 模块 models 与前端契约 | 大 | 后置于全部新托管落地,避免逐模块返工;与 P0 批 3(managed 前端)同域,排在批 3 之后;开工前正式计划评审 |
