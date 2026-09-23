@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"hanxi/internal/extapi"
 	"hanxi/packages/go/operation"
@@ -137,5 +138,112 @@ func TestAssembleTimeDegradationAndReset(t *testing.T) {
 	SetKernel(nil, nil) // 重建内核 = 明示账本已恢复
 	if JournalDegraded() != nil {
 		t.Fatal("SetKernel 应复位降级标记")
+	}
+}
+
+// ---------- 2b-4：下载中停用/退出全链集成（真 Registry + 真 journal） ----------
+
+// lifecycleModule 最小模块替身：ops 集成测试需要可被 Acquire/停用的真注册表模块。
+type lifecycleModule struct {
+	id     string
+	inited bool
+}
+
+func (m *lifecycleModule) Info() extapi.ModuleInfo {
+	return extapi.ModuleInfo{ID: m.id, Name: m.id}
+}
+func (m *lifecycleModule) Nav() []extapi.NavEntry       { return nil }
+func (m *lifecycleModule) Services() []extapi.Service   { return nil }
+func (m *lifecycleModule) OnInit(context.Context) error { m.inited = true; return nil }
+func (m *lifecycleModule) OnDestroy() error             { m.inited = false; return nil }
+func (m *lifecycleModule) IsInitialized() bool          { return m.inited }
+
+// TestDeactivateCancelsInFlightTxn 模拟机主口述场景「下载一半停用模块」：
+// 后台租约事务步进（journal 落 running）→ Registry 停用 drain 先 Cancel →
+// worker 感知 ctx 取消、按 operation-cancelled 收口落账、Release 后 drain 放行；
+// journal 终态必须 failed/operation-cancelled，不得出现 succeeded 假账。
+func TestDeactivateCancelsInFlightTxn(t *testing.T) {
+	store, _ := freshStore(t)
+	SetKernel(store, operation.NewHub(store))
+	t.Cleanup(func() { SetKernel(nil, nil) })
+
+	reg := extapi.NewRegistry(nil)
+	if err := reg.Register(&lifecycleModule{id: "dl-sim"}); err != nil {
+		t.Fatal(err)
+	}
+	holder := extapi.NewLeaseHolder("dl-sim")
+	holder.SetGate(reg.Gate())
+
+	lease, err := holder.EnterBackground(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	txn, err := BeginTxnWithLifecycle(context.Background(), lease, "dl-sim", extapi.OpInstall,
+		extapi.DeliveryManagedDeclarative, "9.9.9", "txn-it-cancel", []string{"download", "unpack"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	workerDone := make(chan error, 1)
+	go func() { // 模拟 service worker：步进落账后等待取消，按 2b 纪律收口
+		if err := txn.Step(0); err != nil {
+			workerDone <- err
+			return
+		}
+		<-txn.Context().Done()
+		if txn.JournalFailed() {
+			txn.Fail("journal-degraded", "journal 步进失败")
+		} else if txn.Err() != nil {
+			txn.Fail("operation-cancelled", "托管操作已取消")
+		}
+		txn.Close()
+		workerDone <- nil
+	}()
+
+	// 等 journal 落 download/running 后再停用（确保测的是「在途中断」）
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		j, gerr := store.Get("txn-it-cancel")
+		if gerr == nil && j.Phase == "download" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("journal 步进未落账: %+v err %v", j, gerr)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	disableDone := make(chan error, 1)
+	go func() { disableDone <- reg.SetEnabled("dl-sim", false) }()
+
+	select {
+	case err := <-workerDone:
+		if err != nil {
+			t.Fatalf("worker 收口异常: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("停用未取消在途事务（drain 未收到取消信号或 worker 未收口）")
+	}
+	select {
+	case err := <-disableDone:
+		if err != nil {
+			t.Fatalf("SetEnabled: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker 收口后 drain 未放行（lease 释放链断裂）")
+	}
+
+	j, err := store.Get("txn-it-cancel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.State != operation.TxnFailed {
+		t.Fatalf("journal 终态应为 failed，实际 %s", j.State)
+	}
+	if j.Error == nil || j.Error.Code != "operation-cancelled" {
+		t.Fatalf("终态错误码应为 operation-cancelled，实际 %+v", j.Error)
+	}
+	if txn.Done() == nil {
+		t.Fatal("已收口事务的 Done 必须返回非 nil（不得补记成功）")
 	}
 }
