@@ -107,6 +107,15 @@ type AssetNote struct {   // 纯展示元数据，永不参与下载/校验路�
 - 上游资产改名风险：分类器失配时降级为 `other/archive + 原名展示`，
   绝不猜标（表驱动 fixture 测试钉住 28 家现行命名）。
 
+## 2.9 实施进度
+
+- ✅ **步骤 1 地基（2026-09-23）**：`packages/go/hostfeed` 分类器落地——
+  Platform/Form 枚举（含诚实的 `binary` 态：裸 exe 无便携/安装证据不猜标）、
+  元数据过滤、Notes 托管标记；测试钉表 = curated 55 例真名 + 273 名全量
+  枚举冒烟。**过程中真名面试出两处真 bug**：产品名 "BCUninstaller" 撞
+  "install" 子串误判安装器（zip 判据收紧为 setup/nsis 强标记）；
+  Notes 未过滤形态级 meta（SHASUMS 类拼写变体漏网）。
+
 ## 3. 实施拆分（评审通过后）
 
 1. packages/go/releasefeed：Platform/Form 词汇 + 分类器 + 底账 fixture 测试；
