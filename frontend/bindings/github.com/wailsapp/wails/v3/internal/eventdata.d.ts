@@ -157,25 +157,31 @@ import type * as instance$20 from "../../../../../hanxi/internal/modules/subnetd
 import type * as version$20 from "../../../../../hanxi/internal/modules/subnetdesk/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$21 from "../../../../../hanxi/internal/modules/translucenttb/instance/models.js";
+import type * as instance$21 from "../../../../../hanxi/internal/modules/termora/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$21 from "../../../../../hanxi/internal/modules/translucenttb/version/models.js";
+import type * as version$21 from "../../../../../hanxi/internal/modules/termora/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$22 from "../../../../../hanxi/internal/modules/vscode/instance/models.js";
+import type * as instance$22 from "../../../../../hanxi/internal/modules/translucenttb/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$22 from "../../../../../hanxi/internal/modules/vscode/version/models.js";
+import type * as version$22 from "../../../../../hanxi/internal/modules/translucenttb/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as instance$23 from "../../../../../hanxi/internal/modules/vscode/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$23 from "../../../../../hanxi/internal/modules/vscode/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as wechat$0 from "../../../../../hanxi/internal/modules/wechat/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as instance$23 from "../../../../../hanxi/internal/modules/windterm/instance/models.js";
+import type * as instance$24 from "../../../../../hanxi/internal/modules/windterm/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as version$23 from "../../../../../hanxi/internal/modules/windterm/version/models.js";
+import type * as version$24 from "../../../../../hanxi/internal/modules/windterm/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as wsl$0 from "../../../../../hanxi/internal/modules/wsl/models.js";
@@ -250,17 +256,19 @@ declare module "@wailsio/runtime" {
             "softver:dir-scan": softver$0.ScanProgress;
             "subnetdesk:instance-state": instance$20.Snapshot;
             "subnetdesk:version-download": version$20.DownloadProgress;
-            "translucenttb:instance-state": instance$21.Snapshot;
-            "translucenttb:version-download": version$21.DownloadProgress;
+            "termora:instance-state": instance$21.Snapshot;
+            "termora:version-download": version$21.DownloadProgress;
+            "translucenttb:instance-state": instance$22.Snapshot;
+            "translucenttb:version-download": version$22.DownloadProgress;
             "tray:navigate": string;
             "updates:checked": void;
-            "vscode:instance-state": instance$22.Snapshot;
-            "vscode:version-download": version$22.DownloadProgress;
+            "vscode:instance-state": instance$23.Snapshot;
+            "vscode:version-download": version$23.DownloadProgress;
             "webapp:windows-changed": void;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
-            "windterm:instance-state": instance$23.Snapshot;
-            "windterm:version-download": version$23.DownloadProgress;
+            "windterm:instance-state": instance$24.Snapshot;
+            "windterm:version-download": version$24.DownloadProgress;
             "wsl:clone": wsl$0.CloneProgress;
             "wsl:compact": wsl$0.CompactProgress;
             "wsl:msi-download": wsl$0.DownloadProgress;
