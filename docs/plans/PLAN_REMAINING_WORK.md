@@ -40,8 +40,8 @@
 
 | # | 事项 | 现状与落点 |
 |---|---|---|
-| N1 | **snipaste 打开/退出异常**(机主真机报告) | 模块无 OpenWindow 动词(仅 Launch);状态词表无 external——`noExternalProbe` 恒报"不在运行"(`internal/modules/snipaste/instance/instance.go`),管理边界=本会话启动的进程树。先真机复现定位,再定修复范围(含是否引入外部检测)。 |
-| N2 | **everything 外部实例可检测但退不掉**(机主真机报告) | external 探测与信使唤窗可用;`Quit()` 在 external 态刻意不越权、只回指引(`internal/modules/everything/service.go` ~303 行,探针窗口类/互斥体通道拿不到 PID)。需补"外部 PID 取得(按进程名/窗口枚举)→ `-quit` 优雅退出或 WM_CLOSE"。 |
+| N1 | **snipaste 打开/退出异常**(机主真机报告) → **✅ 实施已落(4cfd83f,待真机复验)** | 模块无 OpenWindow 动词(仅 Launch);状态词表无 external——`noExternalProbe` 恒报"不在运行"(`internal/modules/snipaste/instance/instance.go`),管理边界=本会话启动的进程树。先真机复现定位,再定修复范围(含是否引入外部检测)。 |
+| N2 | **everything 外部实例可检测但退不掉**(机主真机报告) → **✅ 实施已落(de27a5f,待真机复验)** | external 探测与信使唤窗可用;`Quit()` 在 external 态刻意不越权、只回指引(`internal/modules/everything/service.go` ~303 行,探针窗口类/互斥体通道拿不到 PID)。需补"外部 PID 取得(按进程名/窗口枚举)→ `-quit` 优雅退出或 WM_CLOSE"。 |
 | N3 | **Wave 4X 复活评估:托管家族外部实例退出/唤窗策略统一** | 唤窗两方案并存(单实例信使:ccswitch/everything;按 PID EnumWindows:rustdesk/litemonitor/subnetdesk/rufus/flclash/bcu/guoheview);外部实例退出一律只指引。已知隐患:①`focusWindowsByPIDs` 族以 `IsWindowVisible` 判恢复,最小化窗仍带 Visible 标志→不 SW_RESTORE、置前台无效,guoheview 的 `IsIconic` 方案为标杆;②托盘/后台唤起需 `platform/windows.SetForegroundForce` 借前台特权,族内多用裸 `SetForegroundWindow`。收口"是否越权强杀外部实例"决策后按模块推开,吸收 N1/N2 结论。 |
 | N4 | **RAMMap64 托管集成**(微软 Sysinternals 内存释放) | 单文件绿色 exe,源 `download.sysinternals.com/files/RAMMap.zip`(非 GitHub,借用 integrate-github-tool 托管模式但换下载源);一次性"清空待机列表"语义、需提权、非常驻 GUI,形态近 recordly/paseo 单目录家族,提权与退出语义开工前正式计划确认。 |
 | N5 | **quickmenu 右键轮盘交互改进**(机主:"实在是不好用") | 借鉴 GitHub 开源项目 starpie(登记日检索未定位到确切仓库,开工先核实链接)。落点 `QuickMenuPopup.vue`/`useWheelRingState.ts`/`wheelGeometry.ts`/`internal/modules/quickmenu/`;既有欠账:前后端几何不同源(512 DIP vs 376 viewBox,见 FEATURES_OVERVIEW 与踩坑 #50)、触发时长/容差为编译期常量。先出改进分析+实施计划,再动代码。 |
@@ -51,7 +51,7 @@
 | N9 | **Termora 托管集成** | 仓库 `github.com/TermoraDev/termora`(机主指定),同技能同模式。jpackage 双发布型:zip(内嵌 JRE 绿色,优先收编版本目录)与 exe 安装器(若采则归 N7 安装型先例族);Java 应用注意子进程树收口。与 N8 同类,建议同批实施、互相抄验。 |
 | N10 | **借鉴 MooTool 系统信息功能**(自研新模块) | 参照 [rememberber/MooTool](https://github.com/rememberber/MooTool) 的系统信息工具:CPU/内存/磁盘/主板/显卡/OS/网络等软硬件档案一览。借鉴纪律沿 `docs/MOOTOOL_ANALYSIS.md`(学机制不抄实现);Go 候选 gopsutil 或 WMI/syscall 直采,开工定。划界:envcheck=开发工具链、litemonitor=托管第三方实时监控,本模块=静态软硬件档案,独立模块或并入 envcheck 家族开工定。 |
 | N11 | **数据根占用可视化**(hanxidata 每子文件夹大小一览) | 数据根解析走 `internal/settings/paths.go` 现成通道(同级 `hanxidata/` 或 `hanxi.bind` 绑定);每个一级子文件夹大小=每便携软件磁盘占用,一眼看清。要点:walk 统计缓存+手动/后台刷新、巨型目录(Everything 索引/快照库)限时渐进、紧凑排序列表走 hanxi-workbench-ui;挂设置页「存储目录」分区还是独立模块开工定。 |
-| N12 | **litemonitor 简介补「释放内存」能力**(机主指出) | 上游 LiteMonitor 支持释放内存,hanxi 模块简介未写。定位 catalog/视图简介文案,对照上游功能清单核实后补齐,顺带排查其他"已支持未宣传"缺项;纯文案低风险可插空。与 N4(RAMMap 内存释放)同主题,文案口径可同批收口。 |
+| N12 | **litemonitor 简介补「释放内存」能力**(机主指出) → **✅ 已落(f41f1a7)** | 上游 LiteMonitor 支持释放内存,hanxi 模块简介未写。定位 catalog/视图简介文案,对照上游功能清单核实后补齐,顺带排查其他"已支持未宣传"缺项;纯文案低风险可插空。与 N4(RAMMap 内存释放)同主题,文案口径可同批收口。 |
 | N13 | **托管版本列表显示全平台安装包并标注形态** | 现 release 被过滤到只剩当前 Win 机器可用包(以 flclash 为例);改为展示 Windows/macOS/Android APK(Linux 可不要),逐包写清**便携版/标准安装版**。三处落点:①各模块 `version` 包平台过滤改"全量返回+平台标注";②共享契约 `ManagedReleaseRecord`(现仅 version/published/size/isPre)扩平台/形态/URL 字段,Wave 5 版本面板加平台与形态 chip——**跨模块契约变更,开工前出正式计划评审**;③非 Windows 资产只给"浏览器打开下载",不进 hanxi 下载/设使用链路。 |
 | N14 | **envcheck 扩展:环境本体+依赖目录占用显示** | 现只报"装了什么/什么版本",看不到空间家底:①每个环境**本体安装目录**大小(Go SDK、Node、JDK、Python、.NET 各占多大);②依赖/缓存目录位置与大小(Go `GOPATH/pkg/mod`/GOCACHE、npm 全局包与缓存、pip/Maven `~/.m2`/Gradle/NuGet)。落点 `internal/modules/envcheck/` 检测器补双目录推导(env var→默认路径→工具命令三级回退)+`EnvCheckView` 展示"本体/依赖家底"两列。**与 N11 共用同一 walk 目录统计公共件,两项同批:先下沉公共包再各自接线**(实践"新功能第一天走公共包"纪律);UI 走 hanxi-workbench-ui。 |
 | N15 | **评估:OCR 与 Snipaste 结合**(机主:"不能就算了") → **✅ 已定:可行,免费路径可落地,W1 调研收口** | 核心机制=Qt 单实例命令行通道(`Snipaste.exe snip -o 文件` 免费,外部实例同样可达),hanxi 目录监听落盘文件接现有 `ocr` 模块;PRO 另有 exec/`ocr_clipboard`/`--block` 增强。边界:目标提权运行被 UIPI 拦→降级指引;免费版无官方退出命令(`exit` 属 PRO)。详见 [PLAN_W1_DECISIONS §2](PLAN_W1_DECISIONS.md)。 |
@@ -70,7 +70,7 @@
 | 波次 | 内容 | 成本 | 排位理由 |
 |---|---|---|---|
 | **W1 决策与前置调研**(半天,不写码) → **✅ 全部收口(2026-09-21)** | ①N3 决策(**已裁:采纳 C+风险分档**——`force_free` 档低损外部实例优雅后直接强杀、`confirm_force` 档打扰类须明示确认后杀、未声明默认保守档,详见 [PLAN_W1_DECISIONS §1](PLAN_W1_DECISIONS.md));②N15 查证销项(→已定可行,免费路径);③N5 核实 starpie 仓库(→Star-Pie/StarPie,高置信);④N8 的 7z 方案选型(→前提反转,WindTerm 全 zip,选型无需,归档见 §4)。成果载体:[PLAN_W1_DECISIONS](PLAN_W1_DECISIONS.md) | 小 | 四项全是后续波次的门闸,一次沟通全部裁决 |
-| **W2 外部实例治理**(真机) | N1+N2 同批按 W1 裁决(C+分档)实施:平台层"外部 PID 取得+分档退出执行器"公共件 → snipaste(external 探测+toggle-images 唤窗+`force_free` 退出)、everything(按名取 PID+优雅信号+`force_free` 强杀兜底);N12 纯文案 30 分钟搭车 | 中 | 机主真机报告的在用功能故障,痛感最高;与 P1 F10 冒烟同场跑,合并真机验收 |
+| **W2 外部实例治理** → **代码侧收口✅(2026-09-22,余真机验收)**:公共件 `packages/go/externalquit`(5f12779,force-free/confirm-force 双档执行器,未声明默认保守档已入包文档)→ snipaste(4cfd83f:external 按名取 PID、OpenWindow 重定为官方 toggle-images 显隐贴图、Quit 分档+UIPI 提权降级)→ everything(de27a5f:-quit 信使优雅→验证→强杀兜底)+ N12(f41f1a7)。**真机验收项**:①snipaste 外部实例探测/显隐/退出;②everything 外部实例退出(优雅与强杀两路);③提权实例降级指引。catalog 级档位字段未预建(现两模块服务层显式决策即终裁口径,W4 新托管接入时如需声明再加) | N1+N2 同批按 W1 裁决(C+分档)实施:平台层"外部 PID 取得+分档退出执行器"公共件 → snipaste(external 探测+toggle-images 唤窗+`force_free` 退出)、everything(按名取 PID+优雅信号+`force_free` 强杀兜底);N12 纯文案 30 分钟搭车 | 中 | 机主真机报告的在用功能故障,痛感最高;与 P1 F10 冒烟同场跑,合并真机验收 |
 | **W3 空间可见性** → **✅ 全部收口(2026-09-21)**:公共件 `packages/go/dirstats`(7bf1b3a)→ N11 数据根占用一览(46119bb)→ N14 envcheck 空间家底(f384948) | 先下沉 walk 目录统计公共包 → N11/N14 各自接线。真机验收项:家底路径族(AppData/GOROOT 推导)与占用数值抽查 | 中 | 原登记已自判同批;"新功能第一天走公共包"纪律;纯本地可开发,适合真机等待期填充 |
 
 #### W3 真机反馈(2026-09-21 机主实测;三件当日实施完毕,待真机复验)
