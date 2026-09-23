@@ -47,7 +47,7 @@ const histSvc = vi.hoisted(() => ({
 }))
 vi.mock('../../../../bindings/hanxi/internal/app', () => ({ AppService: appSvc }))
 vi.mock('../../../../bindings/hanxi/internal/history/historyservice', () => histSvc)
-vi.mock('@wailsio/runtime', () => ({ Events: { On: vi.fn(() => vi.fn()) } }))
+vi.mock('@wailsio/runtime', () => ({ Events: { On: vi.fn(() => vi.fn()), Emit: vi.fn() } }))
 
 // F6 后 mode 为数据根来源内部标记（sibling/bound），不再是运行模式
 function appInfoStub(over: Record<string, unknown> = {}) {

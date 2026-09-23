@@ -5,7 +5,18 @@
 // 明暗 + 色板双轴一并同步，标题栏底色对齐 --surface-chrome 外壳层。
 import { computed, ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
+import { Events } from '@wailsio/runtime'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
+
+// N39 主题跨窗广播：轮盘/挂牌/OCR 结果卡等浮窗是独立 webview，首帧经
+// initTheme 各读各的缓存/后端，但**存活的浮窗**对主窗之后的切换无感（旧深色
+// 残留即此病根）。走 Wails 事件总线——前端 Events.Emit 经内建通道进 Go
+// EventManager 再广播到全部窗口（含发起窗自收，v3 messageprocessor
+// EventsEmit→EmitEvent 实证）：用户动作窗发 `theme:changed`，各窗监听后只回写
+// 本地 ref——应用统一由既有 watch 完成（DOM/缓存/DWM 一条路），收端同值赋值
+// 不触发 watch，天然无回环。本事件是纯前端发起的跨窗信号（载荷为持久化前的
+// 意图值，真相仍由 SetTheme/SetAccent RPC 落 settings），不入后端业务事件面。
+const THEME_EVENT = 'theme:changed'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type AccentMode = 'teal' | 'sky' | 'iris' | 'jade' | 'onyx'
@@ -71,6 +82,11 @@ function applyAccentToDom(accent: AccentMode) {
   document.documentElement.dataset.accent = accent
 }
 
+/** 用户动作后向全员广播双轴当前值（自收为同值 no-op，见 THEME_EVENT 注释）。 */
+function broadcastTheme() {
+  Events.Emit(THEME_EVENT, { mode: themeMode.value, accent: accent.value })
+}
+
 // 模块级单例状态（与 useToast/useNotification 同一模式）
 const themeMode = ref<ThemeMode>(readCache() ?? 'light')
 const accent = ref<AccentMode>(readAccentCache() ?? DEFAULT_ACCENT)
@@ -93,10 +109,24 @@ watch(accent, (value) => {
   syncWindowChrome(resolvedTheme.value)
 })
 
+/** 收端回写：只动 ref，应用统一走既有 watch（同值不触发 watch——无回环的前提）。 */
+function onThemeBroadcast(ev: { data?: { mode?: unknown; accent?: unknown } }) {
+  const d = ev?.data
+  if (!d) return
+  if (VALID_MODES.includes(d.mode as ThemeMode) && d.mode !== themeMode.value) {
+    themeMode.value = d.mode as ThemeMode
+  }
+  if (VALID_ACCENTS.includes(d.accent as AccentMode) && d.accent !== accent.value) {
+    accent.value = d.accent as AccentMode
+  }
+}
+
 /** 在 createApp 前调用：先用缓存同步定主题（明暗 + 色板），再异步以后端为准校正。 */
 export async function initTheme(): Promise<void> {
   if (initialized) return
   initialized = true
+  // 每个 webview（主窗/浮窗）各自订阅一次；订阅前错过的切换由首帧缓存/后端校正兜底
+  Events.On(THEME_EVENT, onThemeBroadcast)
   applyToDom(themeMode.value, systemDark.value)
   applyAccentToDom(accent.value)
   try {
@@ -124,6 +154,7 @@ export function useTheme() {
   function setThemeMode(mode: ThemeMode) {
     if (!VALID_MODES.includes(mode)) return
     themeMode.value = mode
+    broadcastTheme()
     AppAPI.AppService.SetTheme(mode).catch((err: unknown) => {
       console.warn('[theme] 主题持久化失败:', err)
     })
@@ -140,6 +171,7 @@ export function useTheme() {
   function setAccent(next: AccentMode) {
     if (!VALID_ACCENTS.includes(next)) return
     accent.value = next
+    broadcastTheme()
     AppAPI.AppService.SetAccent(next).catch((err: unknown) => {
       console.warn('[theme] 色板持久化失败:', err)
     })
