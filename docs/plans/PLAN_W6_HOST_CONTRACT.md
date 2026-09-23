@@ -109,6 +109,12 @@ type AssetNote struct {   // 纯展示元数据，永不参与下载/校验路�
 
 ## 2.9 实施进度
 
+- ✅ **步骤 3 数据层（2026-09-23）**：20 家 GitHub 模块 remote 全量接
+  hostfeed 矩阵（批一 windterm/termora/markeron/ccswitch → 批五
+  rufus/ttb/bcu/papertodo，五批五提交），bindings 重生成 20 文件纯增量；
+  nanazip/eartrumpet 商店直装型按 §2.3 不编矩阵；**非 GitHub 源 5 家
+  （everything/guoheview/snipaste/vscode/rammap）待专项批**——官网/自建
+  API/CDN 的资产矩阵来源各异（vscode 双形态本就自绘），单独评审接入方式。
 - ✅ **步骤 1 地基（2026-09-23）**：`packages/go/hostfeed` 分类器落地——
   Platform/Form 枚举（含诚实的 `binary` 态：裸 exe 无便携/安装证据不猜标）、
   元数据过滤、Notes 托管标记；测试钉表 = curated 55 例真名 + 273 名全量
