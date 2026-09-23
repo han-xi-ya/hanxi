@@ -16,6 +16,13 @@ import (
 // invoke 类高频短租约因此有界，不会把账撑爆。
 const hubRecentCapacity = 256
 
+// progressNotifyInterval 是量化进度广播的节流窗口（N28）：下载逐块 Progress
+// 高频到达，逐次广播 operation:changed 会酿成前端重拉风暴；窗口内首个事件
+// 立即放行（读数不再冻在 0%），其后合并丢弃——在途下载事件流持续，两面读数
+// 的偏差上限即本窗口；收口/相位迁移的结构性广播走 ops 既有通道不受节流。
+// 包级变量供单测压缩窗口，生产 800ms。
+var progressNotifyInterval = 800 * time.Millisecond
+
 // opSeq 是跨 Hub 单调递增的载荷 ID 序列（同进程唯一，配合纳秒时间戳防撞）。
 var opSeq atomic.Uint64
 
@@ -32,9 +39,21 @@ var opSeq atomic.Uint64
 type Hub struct {
 	store *Store
 
-	mu       sync.Mutex
-	live     []*Handle          // 插入序；含未收口与近期终态
-	refilled []extapi.Operation // NewHub 回灌的历史未收口事务合成记录
+	mu         sync.Mutex
+	live       []*Handle          // 插入序；含未收口与近期终态
+	refilled   []extapi.Operation // NewHub 回灌的历史未收口事务合成记录
+	notifier   func()             // 进度变化节流广播回调（装配根注入；nil=不广播）
+	nextNotify time.Time          // 下一放行时刻（零值=立即可放行；mu 守护）
+}
+
+// SetChangeNotifier 注入"进度有变化"的节流广播通道（装配根把 ops.BroadcastChanged
+// 接进来——operation 包零框架依赖，不认识 Wails）。重复调用以最后一次为准；
+// 换注时清节流窗，首事件即时放行。
+func (h *Hub) SetChangeNotifier(fn func()) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.notifier = fn
+	h.nextNotify = time.Time{}
 }
 
 // NewHub 构造观察面。store 传 nil 得到纯内存 Hub（不做回灌、终态不写 journal，
@@ -195,25 +214,39 @@ func (hd *Handle) Phase(phase string) {
 // queued 状态经首次 Phase/Progress 迁移为 running。
 func (hd *Handle) Progress(pct *int) {
 	h := hd.hub
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if hd.done || hd.op.Status == extapi.OpCancelled || hd.op.Status == extapi.OpFailed || hd.op.Status == extapi.OpSucceeded {
-		return
-	}
-	var v *int
-	if pct != nil {
-		c := *pct
-		if c < 0 {
-			c = 0
+	var fire func()
+	func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if hd.done || hd.op.Status == extapi.OpCancelled || hd.op.Status == extapi.OpFailed || hd.op.Status == extapi.OpSucceeded {
+			return
 		}
-		if c > 100 {
-			c = 100
+		var v *int
+		if pct != nil {
+			c := *pct
+			if c < 0 {
+				c = 0
+			}
+			if c > 100 {
+				c = 100
+			}
+			v = &c
 		}
-		v = &c
-	}
-	hd.op.Progress = v
-	if hd.op.Status == extapi.OpQueued {
-		hd.op.Status = extapi.OpRunning
+		hd.op.Progress = v
+		if hd.op.Status == extapi.OpQueued {
+			hd.op.Status = extapi.OpRunning
+		}
+		// N28 节流放行判定（回调摘出锁外调用）
+		if h.notifier != nil {
+			now := time.Now()
+			if h.nextNotify.IsZero() || !now.Before(h.nextNotify) {
+				h.nextNotify = now.Add(progressNotifyInterval)
+				fire = h.notifier
+			}
+		}
+	}()
+	if fire != nil {
+		fire()
 	}
 }
 

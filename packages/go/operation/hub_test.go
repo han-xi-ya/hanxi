@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"hanxi/internal/extapi"
 )
@@ -399,5 +400,58 @@ func TestHubCancellableHonesty(t *testing.T) {
 		if got := hd.Snapshot().Cancellable; got != tc.want {
 			t.Errorf("kind %q cancellable = %v, want %v", tc.kind, got, tc.want)
 		}
+	}
+}
+
+// N28 节流广播：窗口内首个进度即时放行、后续合并；收口句柄不再触发；未注
+// 回调（既有 Hub 用法）完全静默——行为对既有测试零漂移。
+func TestProgressThrottleNotify(t *testing.T) {
+	old := progressNotifyInterval
+	progressNotifyInterval = 40 * time.Millisecond
+	defer func() { progressNotifyInterval = old }()
+
+	h := NewHub(nil)
+	var mu sync.Mutex
+	var count int
+	h.SetChangeNotifier(func() { mu.Lock(); count++; mu.Unlock() })
+
+	hd := h.Begin("m", extapi.OpInstall, "txn-throttle")
+	get := func() int { mu.Lock(); defer mu.Unlock(); return count }
+
+	p := 10
+	hd.Progress(&p) // 首事件：窗口开启，即时放行
+	if get() != 1 {
+		t.Fatalf("首个进度应即时广播, got %d", get())
+	}
+	for i := 0; i < 8; i++ { // 风暴：窗口内合并
+		q := 11 + i
+		hd.Progress(&q)
+	}
+	if get() != 1 {
+		t.Fatalf("窗口内不得重复广播, got %d", get())
+	}
+	time.Sleep(60 * time.Millisecond) // 越窗
+	r := 50
+	hd.Progress(&r)
+	if get() != 2 {
+		t.Fatalf("过窗后下一事件应放行, got %d", get())
+	}
+	hd.Done()
+	for i := 0; i < 5; i++ { // 已收口：进度终态闸，一律不广播
+		q := 90 + i
+		hd.Progress(&q)
+	}
+	time.Sleep(80 * time.Millisecond)
+	if get() != 2 {
+		t.Fatalf("收口后不得再广播, got %d", get())
+	}
+
+	// 未注入回调的 Hub：Progress 正常更新载荷、不 panic
+	h2 := NewHub(nil)
+	hd2 := h2.Begin("m2", extapi.OpInstall, "txn-silent")
+	v := 5
+	hd2.Progress(&v)
+	if len(h2.Active()) != 1 || *h2.Active()[0].Progress != 5 {
+		t.Fatal("无回调 Hub 的进度载荷更新失真")
 	}
 }

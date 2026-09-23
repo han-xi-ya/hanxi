@@ -414,6 +414,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	// 恢复之后构造观察面：resumable 回灌投影反映收口后的现态（§2.3）。
 	// opStore 打开失败时得到纯内存 Hub（仍可观察在途操作，只是不落账）。
 	opHub = operation.NewHub(opStore)
+	// N28：量化进度经 Hub 节流窗口（800ms 合并）汇入 operation:changed，
+	// 观察面横幅与模块内进度条不再两面脱节；结构性广播维持即时。
+	opHub.SetChangeNotifier(ops.BroadcastChanged)
 	ops.SetKernel(opStore, opHub)
 	if journalFault != nil {
 		ops.MarkJournalDegraded(journalFault) // 装配期账本不可信：新托管写事务一律拒绝（重启恢复）
