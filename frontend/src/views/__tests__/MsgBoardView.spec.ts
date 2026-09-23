@@ -1,5 +1,6 @@
-// 桌面留言板模块页（MsgBoardView）特征测试：加载回显、预设填词与脏态、
-// 保存走 SetConfig 全量快照、保存失败回读不私留假状态、挂/撤按钮与状态事件。
+// 桌面留言板模块页（MsgBoardView，N6 重设计）特征测试：加载回显、类型速挂
+// （单击填词/双击保存+挂出）、保存走 SetConfig 全量快照、保存失败回读不私留
+// 假状态、挂/撤与状态事件、异常 chip 只在异常时出现、预览与表单同源联动。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MsgBoardView from '../MsgBoardView.vue'
@@ -8,12 +9,8 @@ const api = vi.hoisted(() => ({
   GetStatus: vi.fn(),
   GetConfig: vi.fn(),
   SetConfig: vi.fn(),
-  ListPresets: vi.fn(),
   ListScreens: vi.fn(),
   Toggle: vi.fn(),
-  Show: vi.fn(),
-  Dismiss: vi.fn(),
-  GetBoardContent: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -43,7 +40,6 @@ const screens = [
 async function mountView(st = status(), cfg = config()) {
   api.GetStatus.mockResolvedValue(st)
   api.GetConfig.mockResolvedValue(cfg)
-  api.ListPresets.mockResolvedValue(['马上回来', '会议中，请勿打扰', '下班了，有事请留言', '请勿动我电脑'])
   api.ListScreens.mockResolvedValue(screens)
   const wrapper = mount(MsgBoardView, { attachTo: document.body })
   await flushPromises()
@@ -53,7 +49,6 @@ async function mountView(st = status(), cfg = config()) {
 beforeEach(() => {
   api.GetStatus.mockResolvedValue(status())
   api.GetConfig.mockResolvedValue(config())
-  api.ListPresets.mockResolvedValue(['马上回来', '会议中，请勿打扰'])
   api.ListScreens.mockResolvedValue(screens)
   api.SetConfig.mockResolvedValue(undefined)
   api.Toggle.mockResolvedValue(undefined)
@@ -65,12 +60,16 @@ afterEach(() => {
 })
 
 describe('MsgBoardView', () => {
-  it('挂载并行拉取状态/配置/预设/显示器并回显表单', async () => {
+  it('挂载并行拉取状态/配置/显示器并回显表单；预览与正文同源', async () => {
     const wrapper = await mountView()
     expect((wrapper.find('#mb-text').element as HTMLTextAreaElement).value).toBe('马上回来')
     expect((wrapper.find('.mb-hotkey').element as HTMLInputElement).value).toBe('Ctrl+Alt+B')
-    expect(wrapper.text()).toContain('热键在位 Ctrl+Alt+B')
     expect(wrapper.text()).toContain('未挂牌')
+    // 健康态头章只有"未挂牌"一枚 chip：热键/防休眠不再仪表盘化
+    expect(wrapper.text()).not.toContain('热键在位')
+    expect(wrapper.text()).not.toContain('热键未在位')
+    // 实时预览渲染当前草稿正文（BoardCard 同源画法）
+    expect(wrapper.find('.bc-title').text()).toBe('马上回来')
     // 下拉只列副屏（主屏走"默认"空值项）
     const options = wrapper.findAll('.select-input option')
     expect(options).toHaveLength(2)
@@ -79,18 +78,48 @@ describe('MsgBoardView', () => {
     wrapper.unmount()
   })
 
-  it('点预设填词 → 出现未保存脏态 → 保存把全量快照交给 SetConfig', async () => {
-    const wrapper = await mountView()
-    const preset = wrapper.findAll('.preset-chip')[1]
-    await preset.trigger('click')
-    expect((wrapper.find('#mb-text').element as HTMLTextAreaElement).value).toBe('会议中，请勿打扰')
+  it('类型钮单击=填词进脏态（不保存不挂出），高亮当前匹配类型', async () => {
+    const wrapper = await mountView(status(), config({ text: '' }))
+    const tea = wrapper.findAll('.type-btn')[2] // ☕ 茶水
+    await tea.trigger('click')
+    expect((wrapper.find('#mb-text').element as HTMLTextAreaElement).value).toContain('去茶水间了')
     expect(wrapper.text()).toContain('未保存')
+    expect(api.SetConfig).not.toHaveBeenCalled()
+    expect(api.Toggle).not.toHaveBeenCalled()
+    // 预览即时联动（编辑所见即所得）
+    expect(wrapper.find('.bc-title').text()).toContain('去茶水间了')
+    wrapper.unmount()
+  })
 
-    await wrapper.find('.panel-actions .btn-primary').trigger('click')
+  it('类型钮双击=填词+保存一步挂出（未挂态 Save→Toggle 各一次）', async () => {
+    const wrapper = await mountView(status({ shown: false }), config({ text: '' }))
+    const walk = wrapper.findAll('.type-btn')[3] // 🚶 小憩
+    await walk.trigger('dblclick')
+    await flushPromises()
+    expect(api.SetConfig).toHaveBeenCalledTimes(1)
+    expect(api.SetConfig.mock.calls[0][0].text).toContain('遛弯回血')
+    expect(api.Toggle).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('类型钮双击在已挂态只热更不 Toggle（Toggle 是翻转语义，盲调会撤牌）', async () => {
+    const wrapper = await mountView(status({ shown: true, keepAwake: true }))
+    const lunch = wrapper.findAll('.type-btn')[1]
+    await lunch.trigger('dblclick')
+    await flushPromises()
+    expect(api.SetConfig).toHaveBeenCalledTimes(1)
+    expect(api.Toggle).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('保存把全量快照交给 SetConfig；成功落"已保存"', async () => {
+    const wrapper = await mountView()
+    await wrapper.find('#mb-text').setValue('🍜 干饭去了\n一小时后回')
+    await wrapper.find('.action-row .btn-secondary').trigger('click')
     await flushPromises()
     expect(api.SetConfig).toHaveBeenCalledTimes(1)
     expect(api.SetConfig.mock.calls[0][0]).toEqual({
-      text: '会议中，请勿打扰', fontSize: 64, screen: '', hotkey: 'Ctrl+Alt+B',
+      text: '🍜 干饭去了\n一小时后回', fontSize: 64, screen: '', hotkey: 'Ctrl+Alt+B',
     })
     expect(wrapper.text()).toContain('已保存')
     wrapper.unmount()
@@ -102,7 +131,7 @@ describe('MsgBoardView', () => {
     const wrapper = await mountView()
 
     await wrapper.find('.mb-hotkey').setValue('Ctrl+Alt+J')
-    await wrapper.find('.panel-actions .btn-primary').trigger('click')
+    await wrapper.find('.action-row .btn-secondary').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('注册失败')
     expect((wrapper.find('.mb-hotkey').element as HTMLInputElement).value).toBe('Ctrl+Alt+B')
@@ -111,7 +140,7 @@ describe('MsgBoardView', () => {
 
   it('挂/撤按钮调 Toggle；msgboard:changed 事件刷新状态徽标', async () => {
     const wrapper = await mountView(status({ shown: false }))
-    await wrapper.find('.panel-actions .btn:last-child').trigger('click')
+    await wrapper.find('.action-row .btn-primary').trigger('click')
     expect(api.Toggle).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('立即挂牌')
 
@@ -119,13 +148,16 @@ describe('MsgBoardView', () => {
     runtime.handlers['msgboard:changed']({ data: undefined })
     await flushPromises()
     expect(wrapper.text()).toContain('已挂牌')
-    expect(wrapper.text()).toContain('防休眠生效')
+    expect(wrapper.text()).toContain('撤下留言牌')
+    // 正常防休眠不再上 chip（只有失败才警示）
+    expect(wrapper.text()).not.toContain('防休眠')
     wrapper.unmount()
   })
 
-  it('热键未在位时给警示横幅与黄色徽标', async () => {
+  it('热键未在位：警示 chip + 折叠区横幅 + 高级设置异常旗标', async () => {
     const wrapper = await mountView(status({ hotkeyActive: false }))
     expect(wrapper.text()).toContain('热键未在位')
+    expect(wrapper.find('.adv-flag').exists()).toBe(true)
     expect(wrapper.find('.banner-warn').text()).toContain('已被其它程序抢占')
     wrapper.unmount()
   })
@@ -133,7 +165,7 @@ describe('MsgBoardView', () => {
   it('正文超上限：保存按钮本地拦截并报错，不往返后端', async () => {
     const wrapper = await mountView()
     await wrapper.find('#mb-text').setValue('长'.repeat(401))
-    await wrapper.find('.panel-actions .btn-primary').trigger('click')
+    await wrapper.find('.action-row .btn-secondary').trigger('click')
     await flushPromises()
     expect(api.SetConfig).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('超出上限')

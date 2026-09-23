@@ -1,5 +1,6 @@
-// 全屏留言牌（MsgBoardPopup）特征测试：透明壳弹窗的拉取渲染、字号内联、
-// 事件热更新、Esc 与点击撤牌契约。绑定与 Wails 运行时按仓库统一打桩范式。
+// 全屏留言牌（MsgBoardPopup）特征测试：透明壳弹窗的拉取渲染、便利贴版式
+// 契约（第一行主题/其余行副行）、字号换算、事件热更新、Esc 与点击撤牌。
+// 绑定与 Wails 运行时按仓库统一打桩范式。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import MsgBoardPopup from '../MsgBoardPopup.vue'
@@ -27,7 +28,7 @@ vi.mock('../../../bindings/hanxi/internal/modules/msgboard', () => ({
   MsgBoardService: api,
 }))
 
-async function mountBoard(content = { text: '马上回来', fontSize: 96 }) {
+async function mountBoard(content = { text: '☕ 去茶水间了\n20 分钟内回来', fontSize: 96 }) {
   api.GetBoardContent.mockResolvedValue(content)
   const wrapper = mount(MsgBoardPopup, { attachTo: document.body })
   await flushPromises()
@@ -40,22 +41,32 @@ afterEach(() => {
 })
 
 describe('MsgBoardPopup', () => {
-  it('挂载拉取 GetBoardContent：正文渲染、字号进内联样式', async () => {
+  it('挂载拉取 GetBoardContent：首行主题、次行副行，字号与换算进内联样式', async () => {
     const wrapper = await mountBoard()
     expect(api.GetBoardContent).toHaveBeenCalledTimes(1)
-    expect(wrapper.find('.board-text').text()).toBe('马上回来')
-    expect(wrapper.find('.board-text').attributes('style')).toContain('font-size: 96px')
+    // BoardCard 版式契约：主题=第一行，副行=其余行（×0.42 显式像素换算）
+    expect(wrapper.find('.bc-title').text()).toBe('☕ 去茶水间了')
+    expect(wrapper.find('.bc-sub').text()).toBe('20 分钟内回来')
+    expect(wrapper.find('.bc-card').attributes('style')).toContain('font-size: 96px')
+    expect(wrapper.find('.bc-sub').attributes('style')).toContain('font-size: 40px')
     wrapper.unmount()
   })
 
   it('msgboard:changed 事件触发重新拉取（改文案热更到在挂的牌）', async () => {
     const wrapper = await mountBoard()
-    api.GetBoardContent.mockResolvedValue({ text: '会议中，请勿打扰', fontSize: 64 })
+    api.GetBoardContent.mockResolvedValue({ text: '🤝 开会中\n请勿打扰', fontSize: 64 })
     expect(runtime.handlers['msgboard:changed']).toBeTruthy()
     runtime.handlers['msgboard:changed']({ data: undefined })
     await flushPromises()
     expect(api.GetBoardContent).toHaveBeenCalledTimes(2)
-    expect(wrapper.find('.board-text').text()).toBe('会议中，请勿打扰')
+    expect(wrapper.find('.bc-title').text()).toBe('🤝 开会中')
+    wrapper.unmount()
+  })
+
+  it('单行正文不产生空气副行节点', async () => {
+    const wrapper = await mountBoard({ text: '马上回来', fontSize: 64 })
+    expect(wrapper.find('.bc-title').text()).toBe('马上回来')
+    expect(wrapper.find('.bc-sub').exists()).toBe(false)
     wrapper.unmount()
   })
 

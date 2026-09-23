@@ -2,10 +2,16 @@
 // 全屏留言牌（挂牌弹窗视图）：Go 侧 MsgBoardService 创建的透明全屏窗内容，
 // main.ts 按 #msgboard hash 分流挂载并打 .popup-shell（html/body 全透明，见
 // 踩坑 #50——牌体观感全部由本页自绘，窗口本体不允许有任何实底）。
-// 交互：点击任意处或 Esc 撤牌；正文/字号经 msgboard:changed 事件热更新。
+//
+// N6 重设计：整屏黑板 → "贴在屏幕上的便利贴"（牌面画法收进 BoardCard，与
+// 管理页预览同源）；背景只留轻微压暗（既保"牌在屏幕上"的聚焦感，也保住
+// 全屏点击撤牌的命中区）。撤牌提示改为限时淡出——前几秒给操作者看，之后
+// 还给旁观者一张干净的牌；防休眠说明移回管理页，不再印在牌上。
+// 交互契约不变：点击任意处或 Esc 撤牌；正文/字号经 msgboard:changed 热更。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as MsgBoardAPI from '../../bindings/hanxi/internal/modules/msgboard'
 import type { BoardContent } from '../../bindings/hanxi/internal/modules/msgboard/models'
+import BoardCard from '../components/msgboard/BoardCard.vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 
 const content = ref<BoardContent | null>(null)
@@ -29,7 +35,7 @@ function onKey(e: KeyboardEvent) {
 useWailsEvent<void>('msgboard:changed', () => { void pull() })
 
 const text = computed(() => content.value?.text ?? '')
-const fontStyle = computed(() => ({ fontSize: `${content.value?.fontSize ?? 64}px` }))
+const fontSize = computed(() => content.value?.fontSize ?? 64)
 
 onMounted(() => {
   window.addEventListener('keydown', onKey)
@@ -40,65 +46,64 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <div v-if="content" class="board" role="dialog" aria-label="留言牌" @click="dismiss">
-    <div class="board-body">
-      <div class="board-text" :style="fontStyle">{{ text }}</div>
-      <div class="board-hint">点击任意处或按 <kbd class="board-kbd">Esc</kbd> 撤牌 · 挂出期间屏幕保持常亮</div>
-    </div>
+    <BoardCard class="board-card" :text="text" :font-size="fontSize" />
+    <div class="board-hint" aria-hidden="true">点击任意处或按 <kbd class="board-kbd">Esc</kbd> 撤牌</div>
   </div>
 </template>
 
 <style scoped>
-/* 牌体是"物理挂牌"而非工作台面板：深底白字为产品决定，不随亮/暗主题反转
-   （离岗告示在任何主题下都该一眼可读且明显是"牌"）。rgba 字面值在此处是
-   刻意豁免，非未迁移视图的裸色泄漏（区分见踩坑 #33 的教训——那类是漏改，
-   此类是设计本体）。透明窗规范（#50）：本层半透深色即全屏唯一可见底，
-   四周不再另叠边框/圆角，入场仅淡入、不缩放露底。 */
+/* 压暗层是全屏唯一"底"（透明窗规范 #50：除此之外不得有任何实底/边框露出）。
+   轻微压暗而非黑板实底：便利贴悬浮在真实桌面上的隐喻成立的前提。 */
 .board {
   position: fixed;
   inset: 0;
   height: 100vh;
   display: grid;
   place-items: center;
-  background: rgba(6, 13, 16, 0.86);
-  color: #eef6f7;
+  background: rgba(6, 10, 14, 0.38);
   cursor: pointer;
   user-select: none;
-  font-family: var(--font-display);
   animation: board-in 150ms ease-out;
+}
+.board-card {
+  /* 全屏牌的最大高度：留 18% 视口呼吸，超高裁剪纪律在 BoardCard 内部 */
+  --bc-max-h: 74vh;
 }
 @keyframes board-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-.board-body {
-  min-width: 0;
-  max-width: min(86vw, 1200px);
-  padding: 24px;
-  text-align: center;
-}
-.board-text {
-  font-weight: 600;
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-  white-space: pre-wrap; /* 自定义正文允许手工换行 */
-  overflow-wrap: break-word;
-  max-height: 70vh;
-  overflow: hidden; /* 极端超长只裁不滚：牌是看的，不是读的 */
-}
+/* 限时提示：给操作者的说明书，不是给旁观者的贴纸——驻留 5s 后 1s 淡出 */
 .board-hint {
-  margin-top: 48px;
-  font-size: var(--text-lg);
-  color: rgba(238, 246, 247, 0.55);
+  position: absolute;
+  bottom: 26px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: var(--text-md);
+  color: rgba(238, 246, 247, 0.62);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  animation: hint-life 6s ease-in forwards;
+  pointer-events: none;
+}
+@keyframes hint-life {
+  0%, 76% { opacity: 1; }
+  100% { opacity: 0; }
 }
 .board-kbd {
   font-family: var(--font-mono);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   border: 1px solid rgba(238, 246, 247, 0.4);
   border-bottom-width: 2px;
   border-radius: 4px;
   padding: 0 6px;
 }
+@media (prefers-reduced-motion: reduce) {
+  .board { animation: none; }
+  /* 提示不播淡出而是直接常驻末尾透明态：无动效环境保留可见性 */
+  .board-hint { animation: none; opacity: 1; }
+}
 @media (max-width: 720px) {
-  .board-hint { margin-top: 24px; font-size: var(--text-md); }
+  .board-hint { font-size: var(--text-sm); }
 }
 </style>
