@@ -8,6 +8,8 @@
 //   - bonus:自包含便携 zip 约 76MB（.NET 8 桌面运行时内置）真正免安装。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // BCURelease 远程 GitHub Release 中可用的 BCU Windows 便携版。
 // 两个发布变体：
 //   - 自包含便携版（_portable.zip，内嵌 .NET 运行时，免依赖，约 76MB）——主资产；
@@ -22,6 +24,8 @@ type BCURelease struct {
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址（302 到 CDN）
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256（GitHub API digest 去掉前缀）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 
 	FddName   string `json:"fddName"`   // 框架依赖变体资产名（如 _net8.0-windows10.0.18362.0.zip）；空 = 不可用
 	FddURL    string `json:"fddUrl"`    // 下载地址

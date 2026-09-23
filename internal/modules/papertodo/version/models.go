@@ -2,6 +2,8 @@
 // 绿色单 exe 下载与多层完整性校验、固定单目录覆盖安装、本地导入与卸载（保留便签数据）。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // 运行库变体常量（与上游资产后缀同名，持久化在 papertodo.json，取值即协议）。
 const (
 	VariantSelfContained = "self-contained" // 内嵌 .NET 10 运行时，体积 ~71MB，零依赖
@@ -34,6 +36,8 @@ type PaperRelease struct {
 	Published     string     `json:"published"`     // 发布时间（RFC3339）
 	SelfContained PaperAsset `json:"selfContained"` // 完整版资产
 	NoRuntime     PaperAsset `json:"noRuntime"`     // 精简版资产
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层；托管标打在 self-contained 主变体上）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // PaperVersionInfo 本地托管安装信息（固定单目录 versions/papertodo，至多一条）。
