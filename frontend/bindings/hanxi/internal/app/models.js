@@ -44,6 +44,17 @@
  */
 
 /**
+ * StorageSubUsageItem 一级子目录二次展开后的"按软件"聚合占用（W3-b）。
+ * @typedef {Object} StorageSubUsageItem
+ * @property {string} name
+ * @property {number} bytes
+ * @property {number} files
+ * @property {boolean} partial
+ * @property {number} errorCount
+ * @property {string[] | null} entries - 聚合进来的原始子目录名（versions 下=版本目录清单，前端 title 悬停呈现）
+ */
+
+/**
  * StorageUsageItem 一级子项占用（Partial=true 时 Bytes 为下限估算）。
  * @typedef {Object} StorageUsageItem
  * @property {string} name

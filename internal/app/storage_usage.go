@@ -6,6 +6,10 @@ package app
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,4 +66,88 @@ func (s *AppService) DataRootUsage(force bool) ([]StorageUsageItem, error) {
 	}
 	usageCache, usageCacheAt, usageRoot = items, time.Now(), root
 	return items, nil
+}
+
+// StorageSubUsageItem 一级子目录二次展开后的"按软件"聚合占用（W3-b）。
+type StorageSubUsageItem struct {
+	Name       string   `json:"name"`
+	Bytes      int64    `json:"bytes"`
+	Files      int64    `json:"files"`
+	Partial    bool     `json:"partial"`
+	ErrorCount int64    `json:"errorCount"`
+	Entries    []string `json:"entries"` // 聚合进来的原始子目录名（versions 下=版本目录清单，前端 title 悬停呈现）
+}
+
+// subCache 子级度量缓存（按子目录名分桶，与 DataRootUsage 同一 TTL 纪律）。
+type subCache struct {
+	items []StorageSubUsageItem
+	at    time.Time
+	root  string // 产出时的数据根（换绑失效）
+}
+
+var subUsageCache = map[string]subCache{}
+
+// DataRootSubUsage 展开一级子目录 sub 并按"软件"聚合占用（W3-b：versions 目录
+// 的 `<模块>_<版本>` 子目录按首个下划线前缀聚合成每软件一行；无下划线者自成一
+// 组，如实呈现不硬套模块分类）。sub 仅收安全单段名（拒绝分隔符与遍历，扫描面
+// 锁死在数据根之内）；3 分钟缓存与 force 穿透语义同 DataRootUsage。
+func (s *AppService) DataRootSubUsage(sub string, force bool) ([]StorageSubUsageItem, error) {
+	usageMu.Lock()
+	defer usageMu.Unlock()
+
+	if sub == "" || sub == "." || sub == ".." || strings.ContainsAny(sub, `/\`) {
+		return nil, fmt.Errorf("非法子目录名: %q", sub)
+	}
+	root := settings.GetPaths().DataDir()
+	dir := filepath.Join(root, sub)
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return nil, fmt.Errorf("子目录不存在或不是目录（%s）", dir)
+	}
+	if c, ok := subUsageCache[sub]; ok && !force && c.root == root && time.Since(c.at) < storageUsageTTL {
+		return c.items, nil
+	}
+
+	children, err := dirstats.MeasureChildren(dir, dirstats.Options{TimeBudget: storageUsageBudget})
+	if err != nil {
+		return nil, fmt.Errorf("扫描失败（%s）: %w", dir, err)
+	}
+	items := groupBySoftware(children)
+	subUsageCache[sub] = subCache{items: items, at: time.Now(), root: root}
+	return items, nil
+}
+
+// groupBySoftware 按目录名首个 "_" 前缀分组聚合，Bytes 降序（同值按名）。
+func groupBySoftware(children []dirstats.Child) []StorageSubUsageItem {
+	byName := map[string]*StorageSubUsageItem{}
+	var order []string
+	for _, c := range children {
+		name := c.Name
+		if c.IsDir {
+			if i := strings.Index(name, "_"); i > 0 {
+				name = name[:i]
+			}
+		}
+		g, ok := byName[name]
+		if !ok {
+			g = &StorageSubUsageItem{Name: name}
+			byName[name] = g
+			order = append(order, name)
+		}
+		g.Bytes += c.Bytes
+		g.Files += c.Files
+		g.ErrorCount += c.ErrorCount
+		g.Partial = g.Partial || c.Partial
+		g.Entries = append(g.Entries, c.Name)
+	}
+	items := make([]StorageSubUsageItem, 0, len(order))
+	for _, n := range order {
+		items = append(items, *byName[n])
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Bytes != items[j].Bytes {
+			return items[i].Bytes > items[j].Bytes
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items
 }

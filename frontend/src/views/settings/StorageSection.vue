@@ -4,7 +4,7 @@
 // 绑定指针是 exe 同级 hanxi.bind，"绑定哪个用哪个"，换绑/解绑重启后生效。
 import { ref, computed, onMounted } from 'vue'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
-import type { AppInfo, StorageUsageItem } from '../../../bindings/hanxi/internal/app/models'
+import type { AppInfo, StorageUsageItem, StorageSubUsageItem } from '../../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import { usePrompt } from '../../composables/usePrompt'
@@ -107,6 +107,8 @@ async function loadUsage(force = false) {
   try {
     usage.value = (await AppAPI.AppService.DataRootUsage(force)) ?? []
     usageAt.value = new Date().toLocaleTimeString()
+    // 重测穿透时，展开着的 versions 明细同步刷新（同一 force 语义）
+    if (force && versionsOpen.value) void loadSub(true)
   } catch (e: unknown) {
     showToast(`占用测量失败: ${getErrorMessage(e)}`)
   } finally {
@@ -115,6 +117,44 @@ async function loadUsage(force = false) {
 }
 
 const usageAnyPartial = computed(() => usage.value.some((u) => u.partial))
+
+// ---------- versions 按软件展开（W3-b）----------
+// 后端把 `<模块>_<版本>` 子目录聚合成每软件一行（Entries 携版本目录清单）。
+const versionsOpen = ref(false)
+const subUsage = ref<StorageSubUsageItem[]>([])
+const subLoading = ref(false)
+const subError = ref('')
+
+async function loadSub(force = false) {
+  if (subLoading.value) return
+  subLoading.value = true
+  subError.value = ''
+  try {
+    subUsage.value = (await AppAPI.AppService.DataRootSubUsage('versions', force)) ?? []
+  } catch (e: unknown) {
+    subUsage.value = []
+    subError.value = getErrorMessage(e)
+  } finally {
+    subLoading.value = false
+  }
+}
+
+function toggleVersions() {
+  versionsOpen.value = !versionsOpen.value
+  if (versionsOpen.value && !subUsage.value.length) void loadSub()
+}
+
+// 数据根级删留徽章（W3-c）：仅静态建议不提供删除钮；未列名的目录不戴章——宁缺毋滥。
+const ROOT_VERDICTS: Record<string, { word: string; tone: string; tip: string }> = {
+  versions: { word: '保留', tone: 'chip-neutral', tip: '托管软件本体所在；腾容量请到各托管页按版本卸载' },
+  memo: { word: '保留', tone: 'chip-warning', tip: '随手记数据，删了=丢笔记' },
+  '.snapshots': { word: '保留', tone: 'chip-neutral', tip: '数据自动快照的保命符，确认不再需要回滚前别删' },
+  logs: { word: '可删', tone: 'chip-information', tip: '历史运行日志而已，删了只影响翻旧账' },
+}
+const NO_BADGE = { word: '', tone: 'chip-neutral', tip: '' }
+function rootVerdict(name?: string) {
+  return (name ? ROOT_VERDICTS[name] : undefined) ?? NO_BADGE
+}
 
 onMounted(() => {
   void refresh()
@@ -175,19 +215,47 @@ onMounted(() => {
           <AppIcon name="refresh-cw" :size="14" /> 重新测量
         </button>
       </div>
-      <div v-for="item in usage" :key="item.name" class="setting-row usage-row">
-        <span class="setting-main">
-          <span class="setting-name">
-            {{ item.name }}
-            <span v-if="item.partial" class="chip chip-warning dir-badge" title="测量超时被截断，此值为下限估算">≥ 下限</span>
-            <span v-else-if="item.errorCount" class="chip chip-neutral dir-badge" :title="`${item.errorCount} 个条目读取失败已跳过`">{{ item.errorCount }} 项跳过</span>
+      <template v-for="item in usage" :key="item.name">
+        <div class="setting-row usage-row">
+          <span class="setting-main">
+            <span class="setting-name">
+              {{ item.name }}
+              <span v-if="item.partial" class="chip chip-warning dir-badge" title="测量超时被截断，此值为下限估算">≥ 下限</span>
+              <span v-else-if="item.errorCount" class="chip chip-neutral dir-badge" :title="`${item.errorCount} 个条目读取失败已跳过`">{{ item.errorCount }} 项跳过</span>
+              <span v-if="rootVerdict(item.name).word" class="chip dir-badge" :class="rootVerdict(item.name).tone" :title="rootVerdict(item.name).tip">{{ rootVerdict(item.name).word }}</span>
+            </span>
+            <code v-if="item.isDir && item.files" class="setting-desc dir-path">{{ item.files.toLocaleString() }} 个文件</code>
           </span>
-          <code v-if="item.isDir && item.files" class="setting-desc dir-path">{{ item.files.toLocaleString() }} 个文件</code>
-        </span>
-        <span class="usage-size" :class="{ 'usage-partial': item.partial }" :title="`${item.bytes.toLocaleString()} 字节${item.partial ? '（下限）' : ''}`">
-          {{ item.partial ? '≥ ' : '' }}{{ fmtSize(item.bytes) }}
-        </span>
-      </div>
+          <button v-if="item.name === 'versions'" class="btn btn-secondary btn-small" :disabled="subLoading" @click="toggleVersions">
+            {{ versionsOpen ? '收起软件明细' : '展开到每软件' }}
+          </button>
+          <span class="usage-size" :class="{ 'usage-partial': item.partial }" :title="`${item.bytes.toLocaleString()} 字节${item.partial ? '（下限）' : ''}`">
+            {{ item.partial ? '≥ ' : '' }}{{ fmtSize(item.bytes) }}
+          </span>
+        </div>
+        <!-- versions 展开：每个软件一行（悬停看版本清单） -->
+        <template v-if="item.name === 'versions' && versionsOpen">
+          <div v-if="subLoading" class="setting-row usage-subrow">
+            <span class="setting-main"><code class="setting-desc dir-path">正在按软件测量（限时 15 秒，超时按"≥"下限）…</code></span>
+          </div>
+          <div v-else-if="subError" class="setting-row usage-subrow">
+            <span class="setting-main"><code class="setting-desc dir-path usage-sub-err">展开测量失败: {{ subError }}</code></span>
+          </div>
+          <div v-for="g in subUsage" :key="g.name" class="setting-row usage-subrow">
+            <span class="setting-main">
+              <span class="setting-name">
+                {{ g.name }}
+                <span v-if="g.entries && g.entries.length > 1" class="chip chip-neutral dir-badge" :title="`版本目录: ${g.entries.join('、')}`">{{ g.entries.length }} 个版本</span>
+                <span v-if="g.partial" class="chip chip-warning dir-badge" title="测量超时被截断，此值为下限估算">≥ 下限</span>
+              </span>
+              <code v-if="g.files" class="setting-desc dir-path">{{ g.files.toLocaleString() }} 个文件</code>
+            </span>
+            <span class="usage-size" :class="{ 'usage-partial': g.partial }" :title="`${g.bytes.toLocaleString()} 字节${g.partial ? '（下限）' : ''} · 删了=卸掉该软件，用时要重新下载安装`">
+              {{ g.partial ? '≥ ' : '' }}{{ fmtSize(g.bytes) }}
+            </span>
+          </div>
+        </template>
+      </template>
       <p v-if="!usageLoading && !usage.length" class="setting-desc">数据根当前没有可统计的子目录。</p>
     </div>
   </section>
@@ -207,4 +275,6 @@ onMounted(() => {
   color: var(--color-text-muted); flex-shrink: 0; align-self: center;
 }
 .usage-partial { color: var(--state-warning); }
+.usage-subrow { padding-left: 22px; }
+.usage-sub-err { color: var(--state-warning); }
 </style>

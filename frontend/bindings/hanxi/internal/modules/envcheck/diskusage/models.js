@@ -14,6 +14,7 @@
  * @property {boolean} partial
  * @property {number} errorCount
  * @property {string} [note] - 度量失败原因（存在但扫不动时如实呈现）
+ * @property {string} verdict - 删留判定（Verdict* 常量；空串=未判定）
  */
 
 /**

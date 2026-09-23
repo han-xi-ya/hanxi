@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"hanxi/internal/modules/envcheck/detect"
+	"hanxi/internal/platform/windows"
 	"hanxi/packages/go/dirstats"
 )
 
@@ -30,6 +31,15 @@ import (
 const (
 	KindInstall = "install" // 本体安装目录
 	KindCache   = "cache"   // 依赖/缓存目录
+)
+
+// Verdict 删留判定（W3-c）：静态建议徽章，只回答"能不能删、删了会怎样"，
+// 不是删除执行入口——清理动作留在包外（go clean、npm cache clean 等归机主）。
+const (
+	VerdictKeep        = "keep"        // 保留：本体安装/数据目录，删了=拆软件
+	VerdictRecommended = "recommended" // 推荐删：纯构建缓存，删后自动重建，代价只是下次构建变慢
+	VerdictRedownload  = "redownload"  // 可删·会重下：下次用到时自动重新下载，付网络与等待
+	VerdictCaution     = "caution"     // 慎删：有连带后果（硬链断链、全局 CLI 即卸），先确认再动
 )
 
 // dirBudgetPerEntry 单目录兜底预算（整体预算由调用方 ctx 控制；
@@ -47,6 +57,7 @@ type DirUsage struct {
 	Partial    bool   `json:"partial"`
 	ErrorCount int64  `json:"errorCount"`
 	Note       string `json:"note,omitempty"` // 度量失败原因（存在但扫不动时如实呈现）
+	Verdict    string `json:"verdict"`        // 删留判定（Verdict* 常量；空串=未判定）
 }
 
 // ToolUsage 一个工具的家底清单（Dirs 首项恒为本体，若可推导）。
@@ -93,6 +104,7 @@ func collectWith(ctx context.Context, infos []detect.ToolInfo, env envLookupFunc
 		dirs := res(ctx, info, env, run)
 		measured := make([]DirUsage, 0, len(dirs))
 		for _, d := range dirs {
+			d.Path = normalizePath(d.Path) // 尾分隔符/盘符大小写等命令回显风格统一归一
 			measureDir(ctx, &d)
 			measured = append(measured, d)
 		}
@@ -134,7 +146,7 @@ func resolveGo(ctx context.Context, info detect.ToolInfo, env envLookupFunc, run
 	if root == "" {
 		root = parentOf(info.Path) // bin 目录（go.exe 同级即 bin/）
 	}
-	dirs = append(dirs, DirUsage{Kind: KindInstall, Label: "Go SDK (GOROOT)", Path: root})
+	dirs = append(dirs, DirUsage{Kind: KindInstall, Label: "Go SDK (GOROOT)", Path: root, Verdict: VerdictKeep})
 	// 模块缓存：GOMODCACHE → go env → GOPATH/pkg/mod → HOME/go/pkg/mod。
 	mod := env("GOMODCACHE")
 	if mod == "" {
@@ -144,7 +156,7 @@ func resolveGo(ctx context.Context, info detect.ToolInfo, env envLookupFunc, run
 		gopath := firstNonEmpty(env("GOPATH"), filepath.Join(homeOf(env), "go"))
 		mod = filepath.Join(strings.Split(gopath, string(os.PathListSeparator))[0], "pkg", "mod")
 	}
-	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "模块缓存 (GOMODCACHE)", Path: mod})
+	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "模块缓存 (GOMODCACHE)", Path: mod, Verdict: VerdictRedownload})
 	// 构建缓存：GOCACHE → go env → 平台默认。
 	build := env("GOCACHE")
 	if build == "" {
@@ -153,13 +165,13 @@ func resolveGo(ctx context.Context, info detect.ToolInfo, env envLookupFunc, run
 	if build == "" {
 		build = filepath.Join(localAppDataOf(env), "go-build")
 	}
-	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "构建缓存 (GOCACHE)", Path: build})
+	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "构建缓存 (GOCACHE)", Path: build, Verdict: VerdictRecommended})
 	return dirs
 }
 
 func resolveNode(ctx context.Context, info detect.ToolInfo, env envLookupFunc, run runOutputFunc) []DirUsage {
 	// node.exe 同级即安装目录（Windows 官方 zip/installer 形态）。
-	return []DirUsage{{Kind: KindInstall, Label: "Node.js 安装目录", Path: parentOf(info.Path)}}
+	return []DirUsage{{Kind: KindInstall, Label: "Node.js 安装目录", Path: parentOf(info.Path), Verdict: VerdictKeep}}
 }
 
 func resolveNpm(ctx context.Context, info detect.ToolInfo, env envLookupFunc, run runOutputFunc) []DirUsage {
@@ -171,12 +183,12 @@ func resolveNpm(ctx context.Context, info detect.ToolInfo, env envLookupFunc, ru
 	if cache == "" {
 		cache = filepath.Join(localAppDataOf(env), "npm-cache")
 	}
-	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "npm 缓存", Path: cache})
+	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "npm 缓存", Path: cache, Verdict: VerdictRedownload})
 	global := cmdFirstLine(ctx, info.Path, run, "root", "-g")
 	if global == "" {
 		global = filepath.Join(parentOf(info.Path), "node_modules")
 	}
-	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "全局包目录", Path: global})
+	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "全局包目录", Path: global, Verdict: VerdictCaution}) // 删=卸掉全部全局 CLI（含 claude 等）
 	return dirs
 }
 
@@ -185,16 +197,17 @@ func resolvePnpm(ctx context.Context, info detect.ToolInfo, env envLookupFunc, r
 	if store == "" {
 		store = filepath.Join(localAppDataOf(env), "pnpm", "store")
 	}
-	return []DirUsage{{Kind: KindCache, Label: "pnpm 内容库", Path: store}}
+	// 现存工程的 node_modules 硬链指向内容库，直接删会坏依赖——要清走 pnpm store prune。
+	return []DirUsage{{Kind: KindCache, Label: "pnpm 内容库", Path: store, Verdict: VerdictCaution}}
 }
 
 func resolvePython(ctx context.Context, info detect.ToolInfo, env envLookupFunc, run runOutputFunc) []DirUsage {
-	dirs := []DirUsage{{Kind: KindInstall, Label: "Python 安装目录", Path: parentOf(info.Path)}}
+	dirs := []DirUsage{{Kind: KindInstall, Label: "Python 安装目录", Path: parentOf(info.Path), Verdict: VerdictKeep}}
 	pip := cmdFirstLine(ctx, info.Path, run, "-m", "pip", "cache", "dir")
 	if pip == "" {
 		pip = filepath.Join(localAppDataOf(env), "pip", "Cache")
 	}
-	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "pip 缓存", Path: pip})
+	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "pip 缓存", Path: pip, Verdict: VerdictRedownload})
 	return dirs
 }
 
@@ -204,28 +217,28 @@ func resolveJava(ctx context.Context, info detect.ToolInfo, env envLookupFunc, r
 	if base := filepath.Base(info.Path); !strings.EqualFold(base, "java.exe") && !strings.EqualFold(base, "java") {
 		jdk = parentOf(info.Path) // 非 bin/java 形态（如 shim），退回 exe 同级
 	}
-	dirs := []DirUsage{{Kind: KindInstall, Label: "JDK/JRE 安装目录", Path: jdk}}
+	dirs := []DirUsage{{Kind: KindInstall, Label: "JDK/JRE 安装目录", Path: jdk, Verdict: VerdictKeep}}
 	// Maven/Gradle 家底归属 JVM 生态：仅磁盘真实存在时列出（存在性判定在 measureDir）。
 	if home := homeOf(env); home != "" {
-		dirs = append(dirs, DirUsage{Kind: KindCache, Label: "Maven 仓库", Path: filepath.Join(home, ".m2", "repository")})
-		dirs = append(dirs, DirUsage{Kind: KindCache, Label: "Gradle 缓存", Path: filepath.Join(home, ".gradle", "caches")})
+		dirs = append(dirs, DirUsage{Kind: KindCache, Label: "Maven 仓库", Path: filepath.Join(home, ".m2", "repository"), Verdict: VerdictRedownload})
+		dirs = append(dirs, DirUsage{Kind: KindCache, Label: "Gradle 缓存", Path: filepath.Join(home, ".gradle", "caches"), Verdict: VerdictRedownload})
 	}
 	return dirs
 }
 
 func resolveDotnet(ctx context.Context, info detect.ToolInfo, env envLookupFunc, run runOutputFunc) []DirUsage {
-	dirs := []DirUsage{{Kind: KindInstall, Label: ".NET 安装目录", Path: parentOf(info.Path)}}
+	dirs := []DirUsage{{Kind: KindInstall, Label: ".NET 安装目录", Path: parentOf(info.Path), Verdict: VerdictKeep}}
 	nuget := env("NUGET_PACKAGES")
 	if nuget == "" {
 		out := cmdRaw(ctx, info.Path, run, "nuget", "locals", "global-packages", "--list")
-		if i := strings.Index(out, ":"); i >= 0 {
-			nuget = strings.TrimSpace(out[i+1:])
+		if _, after, found := strings.Cut(out, ":"); found {
+			nuget = strings.TrimSpace(after)
 		}
 	}
 	if nuget == "" {
 		nuget = filepath.Join(homeOf(env), ".nuget", "packages")
 	}
-	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "NuGet 全局包", Path: nuget})
+	dirs = append(dirs, DirUsage{Kind: KindCache, Label: "NuGet 全局包", Path: nuget, Verdict: VerdictRedownload})
 	return dirs
 }
 
@@ -234,9 +247,9 @@ func resolveGit(ctx context.Context, info detect.ToolInfo, env envLookupFunc, ru
 	// 上两级命中根目录，取不到再退回 exe 同级。
 	twoUp := filepath.Dir(parentOf(info.Path))
 	if isGitRoot(twoUp) {
-		return []DirUsage{{Kind: KindInstall, Label: "Git 安装目录", Path: twoUp}}
+		return []DirUsage{{Kind: KindInstall, Label: "Git 安装目录", Path: twoUp, Verdict: VerdictKeep}}
 	}
-	return []DirUsage{{Kind: KindInstall, Label: "Git 安装目录", Path: parentOf(info.Path)}}
+	return []DirUsage{{Kind: KindInstall, Label: "Git 安装目录", Path: parentOf(info.Path), Verdict: VerdictKeep}}
 }
 
 func isGitRoot(dir string) bool {
@@ -282,6 +295,19 @@ func firstLine(s string) string {
 
 func parentOf(exe string) string { return filepath.Dir(filepath.Clean(exe)) }
 
+// normalizePath 推导路径归一：去尾分隔符（filepath.Clean）+ 盘符大写
+// （pip 等命令回显整串小写，与 os 默认路径行风格不一）。
+func normalizePath(p string) string {
+	if p == "" {
+		return ""
+	}
+	p = filepath.Clean(p)
+	if len(p) >= 2 && p[1] == ':' && p[0] >= 'a' && p[0] <= 'z' {
+		p = string(p[0]-32) + p[1:]
+	}
+	return p
+}
+
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if v != "" {
@@ -301,7 +327,13 @@ func localAppDataOf(env envLookupFunc) string {
 var defaultRun runOutputFunc = func(ctx context.Context, exe string, args ...string) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	// npm/pnpm 等 .cmd 分发器经 CreateProcess 无法直启批处理，须 cmd /C 包装
+	// （detect.runVersionCommand 同款处理；此前漏包导致命令实际全走默认路径回退）。
 	cmd := exec.CommandContext(cctx, exe, args...)
+	if ext := strings.ToLower(filepath.Ext(exe)); ext == ".cmd" || ext == ".bat" {
+		cmd = exec.CommandContext(cctx, "cmd", append([]string{"/C", exe}, args...)...)
+	}
+	windows.HideConsole(cmd) // 藏控制台子进程：推导命令不再逐条闪黑框（W3-a）
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

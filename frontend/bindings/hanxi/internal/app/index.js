@@ -31,6 +31,11 @@ import * as $models from "./models.js";
  */
 
 /**
+ * StorageSubUsageItem 一级子目录二次展开后的"按软件"聚合占用（W3-b）。
+ * @typedef {$models.StorageSubUsageItem} StorageSubUsageItem
+ */
+
+/**
  * StorageUsageItem 一级子项占用（Partial=true 时 Bytes 为下限估算）。
  * @typedef {$models.StorageUsageItem} StorageUsageItem
  */

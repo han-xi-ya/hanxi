@@ -56,6 +56,18 @@ const usageAnyPartial = computed(() =>
   usageRows.value.some((tu) => (tu.dirs ?? []).some((d) => d.partial)),
 )
 
+// 删留徽章（W3-c）：后端 verdict 词表的前端投影——纯静态建议，不提供删除动作。
+const VERDICTS: Record<string, { word: string; tone: string; tip: string }> = {
+  keep: { word: '保留', tone: 'chip-neutral', tip: '本体安装/数据目录，删了=拆软件' },
+  recommended: { word: '推荐删', tone: 'chip-positive', tip: '纯构建缓存，删后自动重建（只是下次构建变慢）' },
+  redownload: { word: '可删·会重下', tone: 'chip-information', tip: '删后下次用到时自动重新下载（付网络与等待）' },
+  caution: { word: '慎删', tone: 'chip-warning', tip: '有连带后果（硬链断链、全局 CLI 即卸），先确认再动' },
+}
+const NO_VERDICT = { word: '', tone: 'chip-neutral', tip: '' }
+function verdictOf(code?: string) {
+  return (code ? VERDICTS[code] : undefined) ?? NO_VERDICT
+}
+
 function fmtSize(bytes: number): string {
   if (!bytes) return '0 B'
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
@@ -466,6 +478,7 @@ onMounted(() => {
           <div v-for="d in (tu.dirs ?? [])" :key="d.label" class="usage-line" :class="{ 'usage-offline': !d.exists }">
             <span class="usage-kind" :class="d.kind === 'install' ? 'kind-install' : 'kind-cache'">{{ d.kind === 'install' ? '本体' : '缓存' }}</span>
             <span class="usage-label">{{ d.label }}</span>
+            <span v-if="d.exists && verdictOf(d.verdict).word" class="chip usage-verdict" :class="verdictOf(d.verdict).tone" :title="verdictOf(d.verdict).tip">{{ verdictOf(d.verdict).word }}</span>
             <code class="mono usage-path" :title="d.path">{{ d.path || '未能推导' }}</code>
             <span v-if="!d.exists" class="usage-muted">未落地</span>
             <span v-else class="mono usage-size" :class="{ 'usage-partial': d.partial }" :title="`${d.bytes.toLocaleString()} 字节${d.partial ? '（下限）' : ''}`">
@@ -617,6 +630,7 @@ onMounted(() => {
 .usage-kind.kind-install { color: var(--state-positive); }
 .usage-kind.kind-cache { color: var(--state-warning); }
 .usage-label { flex: 0 0 auto; font-size: var(--text-sm); }
+.usage-verdict { flex: 0 0 auto; }
 .usage-path { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-subtle); font-size: var(--text-xs); }
 .usage-size { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: var(--text-sm); color: var(--color-text-muted); }
 .usage-size.usage-partial { color: var(--state-warning); }

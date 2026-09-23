@@ -50,6 +50,19 @@ export function ClearLogs() {
 }
 
 /**
+ * DataRootSubUsage 展开一级子目录 sub 并按"软件"聚合占用（W3-b：versions 目录
+ * 的 `<模块>_<版本>` 子目录按首个下划线前缀聚合成每软件一行；无下划线者自成一
+ * 组，如实呈现不硬套模块分类）。sub 仅收安全单段名（拒绝分隔符与遍历，扫描面
+ * 锁死在数据根之内）；3 分钟缓存与 force 穿透语义同 DataRootUsage。
+ * @param {string} sub
+ * @param {boolean} force
+ * @returns {$CancellablePromise<$models.StorageSubUsageItem[] | null>}
+ */
+export function DataRootSubUsage(sub, force) {
+    return $Call.ByID(2864538338, sub, force);
+}
+
+/**
  * DataRootUsage 度量数据根一级子项占用（按 Bytes 降序）。force=false 时
  * 优先回 3 分钟内的缓存（数据根未变）；跨会话换绑自动失效（以根路径为键）。
  * 部分子项超时截断不算错误：Partial 逐行透出，UI 负责"≥ 此值"话术。
