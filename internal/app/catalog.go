@@ -364,6 +364,18 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
+		ID:            "rammap",
+		Name:          "RAMMap",
+		Description:   "托管微软 Sysinternals RAMMap 内存观察工具：官方直链版本管理与 JobObject 启停（需管理员运行）",
+		Category:      "system",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{"hosted-versions", "managed-process"},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "recordly",
 		Name:          "Recordly",
 		Description:   "托管开源录屏工具 Recordly：双通道版本管理、NSIS 静默安装、JobObject 启停与窗口唤起",

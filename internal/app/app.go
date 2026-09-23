@@ -78,6 +78,9 @@ import (
 	quicklookinstance "hanxi/internal/modules/quicklook/instance"
 	quicklookversion "hanxi/internal/modules/quicklook/version"
 	"hanxi/internal/modules/quickmenu"
+	"hanxi/internal/modules/rammap"
+	rammapinstance "hanxi/internal/modules/rammap/instance"
+	rammapversion "hanxi/internal/modules/rammap/version"
 	"hanxi/internal/modules/recordly"
 	recordlyinstance "hanxi/internal/modules/recordly/instance"
 	recordlyversion "hanxi/internal/modules/recordly/version"
@@ -208,6 +211,8 @@ func RegisterEvents() {
 	application.RegisterEvent[ttbversion.DownloadProgress]("translucenttb:version-download")
 	application.RegisterEvent[ttbinstance.Snapshot]("translucenttb:instance-state")
 	application.RegisterEvent[termoraversion.DownloadProgress]("termora:version-download")
+	application.RegisterEvent[rammapversion.DownloadProgress]("rammap:version-download")
+	application.RegisterEvent[rammapinstance.Snapshot]("rammap:instance-state")
 	application.RegisterEvent[terminstance.Snapshot]("termora:instance-state")
 	application.RegisterEvent[windtermversion.DownloadProgress]("windterm:version-download")
 	application.RegisterEvent[windterminstance.Snapshot]("windterm:instance-state")
@@ -344,6 +349,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		paseo.ID:         paseoversion.OpenTree(paths.VersionsDir()),
 		windterm.ID:      windtermversion.OpenTree(paths.VersionsDir()),
 		termora.ID:       termoraversion.OpenTree(paths.VersionsDir()),
+		rammap.ID:        rammapversion.OpenTree(paths.VersionsDir()),
 		mangodisk.ID:     mangodiskversion.OpenTree(paths.VersionsDir()),
 		bcu.ID:           bcuversion.OpenTree(paths.VersionsDir()),
 		piclite.ID:       picliteversion.OpenTree(paths.VersionsDir()),
@@ -469,6 +475,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		paseo.New(plat),
 		windterm.New(plat),
 		termora.New(plat),
+		rammap.New(plat),
 		douzy.New(plat),
 		ocrModule,
 		lan.New(plat, store),

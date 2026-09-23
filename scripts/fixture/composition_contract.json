@@ -29,6 +29,7 @@
     { "id": "publicip", "route": "/ext/publicip", "group": "network" },
     { "id": "quicklook", "route": "/ext/quicklook", "group": "desktop" },
     { "id": "quickmenu", "route": "/ext/quickmenu", "group": "desktop" },
+    { "id": "rammap", "route": "/ext/rammap", "group": "system" },
     { "id": "recordly", "route": "/ext/recordly", "group": "media" },
     { "id": "rufus", "route": "/ext/rufus", "group": "system" },
     { "id": "rustdesk", "route": "/ext/rustdesk", "group": "network" },
@@ -39,10 +40,10 @@
     { "id": "termora", "route": "/ext/termora", "group": "developer" },
     { "id": "translucenttb", "route": "/ext/translucenttb", "group": "desktop" },
     { "id": "vscode", "route": "/ext/vscode", "group": "developer" },
-    { "id": "windterm", "route": "/ext/windterm", "group": "developer" },
     { "id": "webapp", "route": "/ext/webapp", "group": "efficiency" },
     { "id": "wechat", "route": "/ext/wechat", "group": "efficiency" },
     { "id": "wifi", "route": "/ext/wifi", "group": "network" },
+    { "id": "windterm", "route": "/ext/windterm", "group": "developer" },
     { "id": "wsl", "route": "/ext/wsl", "group": "developer" }
   ],
   "events": [
@@ -93,14 +94,14 @@
     "papertodo:version-download",
     "paseo:instance-state",
     "paseo:version-download",
-    "windterm:instance-state",
-    "windterm:version-download",
     "piclite:instance-state",
     "piclite:version-download",
     "portscan:progress",
     "quicklook:instance-state",
     "quicklook:version-download",
     "quickmenu:opening",
+    "rammap:instance-state",
+    "rammap:version-download",
     "recordly:instance-state",
     "recordly:version-download",
     "rufus:instance-state",
@@ -123,6 +124,8 @@
     "webapp:windows-changed",
     "wechat:context-token-updated",
     "wechat:message-received",
+    "windterm:instance-state",
+    "windterm:version-download",
     "wsl:clone",
     "wsl:compact",
     "wsl:msi-download",
@@ -158,7 +161,7 @@
     ]
   },
   "counts": {
-    "modules": 44,
-    "events": 81
+    "modules": 45,
+    "events": 83
   }
 }

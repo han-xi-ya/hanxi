@@ -728,6 +728,30 @@
       "owner": "hanxi"
     },
     {
+      "id": "rammap",
+      "name": "RAMMap",
+      "description": "托管微软 Sysinternals RAMMap 内存观察工具：官方直链版本管理与 JobObject 启停（需管理员运行）",
+      "category": "system",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "hosted-versions",
+        "managed-process"
+      ],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
       "id": "recordly",
       "name": "Recordly",
       "description": "托管开源录屏工具 Recordly：双通道版本管理、NSIS 静默安装、JobObject 启停与窗口唤起",
