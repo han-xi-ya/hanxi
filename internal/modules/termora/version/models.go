@@ -1,5 +1,7 @@
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // TermoraRelease 远程可用版本（GitHub releases 元数据投影）。
 // Version 规范化为 vX.Y.Z[-beta.N] 展示形态；上游 2.x 线全部挂 prerelease
 // 标记（beta 即事实主干），IsPre 如实透出由面板"预发布"徽标呈现。
@@ -10,6 +12,8 @@ type TermoraRelease struct {
 	AssetName string `json:"assetName"`
 	AssetURL  string `json:"assetUrl"`
 	Size      int64  `json:"size"`
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，纯展示，下载路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // TermoraVersionInfo 本地已安装版本记录。ExePath 指向 payload 目录内的

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/packages/go/hostfeed"
 	"time"
 
 	"hanxi/packages/go/artifact"
@@ -267,3 +269,37 @@ func writeTestZip(t *testing.T, files map[string]string) []byte {
 }
 
 func newTxnID() string { return fmt.Sprintf("txn-%d", time.Now().UnixNano()) }
+
+// N13 接线：全资产矩阵随 release 产出（多平台上游 windterm 正身：
+// win/linux/mac 同 release 并列），托管条目标 Managed。
+func TestReleaseAssetsMatrix(t *testing.T) {
+	assets := []asset{
+		{Name: "WindTerm_2.7.0_Linux_Portable_x86_64.zip"},
+		{Name: "WindTerm_2.7.0_Mac_Portable_x86_64.dmg"},
+		{Name: "WindTerm_2.7.0_Windows_Portable_x86_32.zip"},
+		{Name: "WindTerm_2.7.0_Windows_Portable_x86_64.zip"},
+	}
+	notes := notesOf(assets, "WindTerm_2.7.0_Windows_Portable_x86_64.zip")
+	if len(notes) != 4 {
+		t.Fatalf("四发布物全入矩阵: %+v", notes)
+	}
+	var managed *hostfeed.AssetNote
+	for i := range notes {
+		if notes[i].Managed {
+			managed = &notes[i]
+		}
+	}
+	if managed == nil || managed.Label != "WindTerm_2.7.0_Windows_Portable_x86_64.zip" {
+		t.Fatalf("Managed 标必须命中托管所选: %+v", notes)
+	}
+	byLabel := map[string][2]string{}
+	for _, n := range notes {
+		byLabel[n.Label] = [2]string{string(n.Platform), string(n.Form)}
+	}
+	if got := byLabel["WindTerm_2.7.0_Mac_Portable_x86_64.dmg"]; got[0] != "macos" || got[1] != "installer" {
+		t.Fatalf("Mac dmg 平台/形态判型失真: %v", got)
+	}
+	if got := byLabel["WindTerm_2.7.0_Linux_Portable_x86_64.zip"]; got[0] != "linux" || got[1] != "portable" {
+		t.Fatalf("Linux portable 判型失真: %v", got)
+	}
+}

@@ -2,6 +2,8 @@
 // 保布局解压安装、隔离目录管理。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // MarkerRelease 远程 GitHub Release 中可用的 MarkerOn Windows x64 便携版
 type MarkerRelease struct {
 	Version   string `json:"version"`   // 如 v2.9.4
@@ -10,6 +12,8 @@ type MarkerRelease struct {
 	AssetName string `json:"assetName"` // 如 MarkerOn_2.9.4_x64_portable.zip
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址
 	Size      int64  `json:"size"`      // 资产大小（字节）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，纯展示，下载路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // MarkerVersionInfo 本地已安装的 MarkerOn 版本信息

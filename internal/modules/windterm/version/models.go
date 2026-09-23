@@ -1,5 +1,7 @@
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // WindTermRelease 远程可用版本（GitHub releases 元数据投影）。
 // Version 规范化为 vX.Y.Z 展示形态；AssetName/AssetURL 锁定 Windows x64 便携
 // zip（上游唯一对本托管有效的资产形态）。
@@ -10,6 +12,8 @@ type WindTermRelease struct {
 	AssetName string `json:"assetName"`
 	AssetURL  string `json:"assetUrl"`
 	Size      int64  `json:"size"`
+	// Assets 上游全发布物的平台/形态展示矩阵（N13；纯展示，下载路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // WindTermVersionInfo 本地已安装版本记录。ExePath 指向 payload 目录内的

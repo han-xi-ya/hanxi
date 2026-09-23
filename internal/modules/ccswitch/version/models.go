@@ -2,6 +2,8 @@
 // 便携 zip 下载（官方 sha256 校验）、保布局解压安装、隔离目录管理与本地导入。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // CCRelease 远程 GitHub Release 中可用的 CC Switch Windows x64 便携版。
 // SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验的第一依据，
 // 比 markeron 的纯字节数校验更强——cc-switch 是后发优势）。
@@ -13,6 +15,8 @@ type CCRelease struct {
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址（302 到 CDN）
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，纯展示，下载路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // CCVersionInfo 本地已安装的 CC Switch 版本信息。
