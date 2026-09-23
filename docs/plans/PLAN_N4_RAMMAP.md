@@ -67,6 +67,17 @@ RAMMap 的 Empty Standby List 本质是：提权后调
 不托管不开发——在"内存卡"放一个"打开 RAMMap 官方下载页"跳转（浏览器下载后
 用户以管理员自运行）。零维护，但"一键"体验没有。可作 B 落地前的一行过渡。
 
+## 1.5 拍板结果（机主 2026-09-23）
+
+**路线 A：托管 RAMMap 本体**（按登记字面诉求，B 推荐未采纳）。实施要点按侦查事实收敛：
+- 版本模型：**Last-Modified 日期作版本令牌**（rammap_2026-03-26 形态；"同址覆盖式
+  最新版"下的唯一诚实版本语义——日期变=上游发新，CheckUpdate 即比日期）；
+- 完整性：无官方摘要 → WindTerm 同款降级三层（bespoke 下载 + 字节数 + CRC + 布局自检）；
+- 载荷架构：x64 取 RAMMap64.exe（arm64 取 RAMMap64a.exe，按 GOARCH 解析）；
+- 提权三重契约（#17）：Start 走 runas 一次性拉起或提示提权重启 Hanxi——**外部非提权
+  Hanxi 对 elevated 子进程：Job 绑不了、WM_CLOSE 投不进、Terminate 打不动**（UIPI），
+  托管生命周期语义按 litemonitor 先例收敛（其 requireAdministrator 同族已蹚路）。
+
 ## 2. 推荐与拍板点
 
 **推荐 B**（+可选叠加 C 作兜底入口）。核心理由：托管 A 路线的三个硬不适配
