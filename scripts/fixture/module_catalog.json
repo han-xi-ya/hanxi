@@ -877,6 +877,30 @@
       "owner": "hanxi"
     },
     {
+      "id": "termora",
+      "name": "Termora",
+      "description": "托管 Termora SSH/Sftp 终端：版本管理、JobObject 启停与外部实例分档治理",
+      "category": "developer",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "hosted-versions",
+        "managed-process"
+      ],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
       "id": "translucenttb",
       "name": "TranslucentTB",
       "description": "收纳任务栏透明工具 TranslucentTB：版本管理、JobObject 托管启停与任务栏状态重设",

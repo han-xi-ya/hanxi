@@ -94,6 +94,9 @@ import (
 	"hanxi/internal/modules/subnetdesk"
 	subnetdeskinstance "hanxi/internal/modules/subnetdesk/instance"
 	subnetdeskversion "hanxi/internal/modules/subnetdesk/version"
+	"hanxi/internal/modules/termora"
+	terminstance "hanxi/internal/modules/termora/instance"
+	termoraversion "hanxi/internal/modules/termora/version"
 	"hanxi/internal/modules/translucenttb"
 	ttbinstance "hanxi/internal/modules/translucenttb/instance"
 	ttbversion "hanxi/internal/modules/translucenttb/version"
@@ -203,6 +206,8 @@ func RegisterEvents() {
 	application.RegisterEvent[vscodeinstance.Snapshot]("vscode:instance-state")
 	application.RegisterEvent[ttbversion.DownloadProgress]("translucenttb:version-download")
 	application.RegisterEvent[ttbinstance.Snapshot]("translucenttb:instance-state")
+	application.RegisterEvent[termoraversion.DownloadProgress]("termora:version-download")
+	application.RegisterEvent[terminstance.Snapshot]("termora:instance-state")
 	application.RegisterEvent[windtermversion.DownloadProgress]("windterm:version-download")
 	application.RegisterEvent[windterminstance.Snapshot]("windterm:instance-state")
 	application.RegisterEvent[paseoversion.DownloadProgress]("paseo:version-download")
@@ -337,6 +342,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		flclash.ID:       flclashversion.OpenTree(paths.VersionsDir()),
 		paseo.ID:         paseoversion.OpenTree(paths.VersionsDir()),
 		windterm.ID:      windtermversion.OpenTree(paths.VersionsDir()),
+		termora.ID:       termoraversion.OpenTree(paths.VersionsDir()),
 		mangodisk.ID:     mangodiskversion.OpenTree(paths.VersionsDir()),
 		bcu.ID:           bcuversion.OpenTree(paths.VersionsDir()),
 		piclite.ID:       picliteversion.OpenTree(paths.VersionsDir()),
@@ -460,6 +466,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		translucenttb.New(plat),
 		paseo.New(plat),
 		windterm.New(plat),
+		termora.New(plat),
 		douzy.New(plat),
 		ocrModule,
 		lan.New(plat, store),

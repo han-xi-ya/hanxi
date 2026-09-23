@@ -436,6 +436,18 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
+		ID:            "termora",
+		Name:          "Termora",
+		Description:   "托管 Termora SSH/Sftp 终端：版本管理、JobObject 启停与外部实例分档治理",
+		Category:      "developer",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{"hosted-versions", "managed-process"},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "translucenttb",
 		Name:          "TranslucentTB",
 		Description:   "收纳任务栏透明工具 TranslucentTB：版本管理、JobObject 托管启停与任务栏状态重设",

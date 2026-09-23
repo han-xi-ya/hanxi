@@ -54,8 +54,8 @@ func TestModuleCatalogCoversComposition(t *testing.T) {
 	if diff := diffLines(want, got); diff != "" {
 		t.Fatalf("Catalog ID 集合与 composition contract modules 不一致 (-want +got):\n%s", diff)
 	}
-	if len(got) != contract.Counts.Modules || contract.Counts.Modules != 42 {
-		t.Fatalf("Catalog 覆盖数量辅助断言: got %d, contract.counts.modules %d（期望 42）", len(got), contract.Counts.Modules)
+	if len(got) != contract.Counts.Modules || contract.Counts.Modules != 43 {
+		t.Fatalf("Catalog 覆盖数量辅助断言: got %d, contract.counts.modules %d（期望 43）", len(got), contract.Counts.Modules)
 	}
 }
 

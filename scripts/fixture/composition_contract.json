@@ -35,9 +35,10 @@
     { "id": "snipaste", "route": "/ext/snipaste", "group": "efficiency" },
     { "id": "softver", "route": "/ext/softver", "group": "system" },
     { "id": "subnetdesk", "route": "/ext/subnetdesk", "group": "network" },
+    { "id": "termora", "route": "/ext/termora", "group": "developer" },
     { "id": "translucenttb", "route": "/ext/translucenttb", "group": "desktop" },
     { "id": "vscode", "route": "/ext/vscode", "group": "developer" },
-    {"id": "windterm", "route": "/ext/windterm", "group": "developer"},
+    { "id": "windterm", "route": "/ext/windterm", "group": "developer" },
     { "id": "webapp", "route": "/ext/webapp", "group": "efficiency" },
     { "id": "wechat", "route": "/ext/wechat", "group": "efficiency" },
     { "id": "wifi", "route": "/ext/wifi", "group": "network" },
@@ -110,6 +111,8 @@
     "softver:dir-scan",
     "subnetdesk:instance-state",
     "subnetdesk:version-download",
+    "termora:instance-state",
+    "termora:version-download",
     "translucenttb:instance-state",
     "translucenttb:version-download",
     "tray:navigate",
@@ -154,7 +157,7 @@
     ]
   },
   "counts": {
-    "modules": 42,
-    "events": 79
+    "modules": 43,
+    "events": 81
   }
 }
