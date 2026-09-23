@@ -42,7 +42,11 @@ vi.mock('../../../bindings/hanxi/internal/modules/litemonitor/litemonitorservice
 const installedV = { version: '1.0.5', exePath: 'C:\\hx\\lm\\LiteMonitor.exe', dir: 'C:\\hx\\lm', size: 1572864, installedAt: '2026-08-01', isImport: false }
 const release1 = { version: '1.0.5', size: 1572864, published: '2024-08-01T00:00:00Z', isPre: false }
 
-function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version: string }> = [], releases: unknown[] = [], hasDesktop8 = true) {
+// N43 后【stopped+零版本】夹具会落「未安装」呈现——本组视图测描述运行态/动作链，
+// 默认补一条已装记录；确需未安装场景的用例请显式传 []。
+const STUB_INSTALLED: Array<{ version: string }> = [{ version: 'v1.0.0' }]
+
+function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version: string }> = STUB_INSTALLED, releases: unknown[] = [], hasDesktop8 = true) {
   svc.GetStatus.mockResolvedValue(snap)
   svc.ListInstalledVersions.mockResolvedValue(installed)
   svc.ListReleases.mockResolvedValue(releases)

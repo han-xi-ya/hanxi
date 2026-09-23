@@ -30,7 +30,11 @@ function fakeAdapter(adapter: Partial<ManagedModuleAdapter> & { versions?: Parti
     subscribeInstanceState: (cb) => events.instance.push(cb),
     subscribeProgress: (cb) => events.progress.push(cb),
     versions: {
-      listInstalled: vi.fn(async () => []) as never,
+      // N43 后本组夹具语义=「已安装但未运行」（未安装态呈现/直落版本页由
+      // ManagedConsoleStore.spec 的 N43 组专测）；此处保留一条已装记录防守卫改写断言。
+      listInstalled: vi.fn(async () => [
+        { version: 'v1.0.0', exePath: 'C:/x/a.exe', dir: 'C:/x', size: 1, installedAt: '2026-09-23 00:00:00' },
+      ]) as never,
       listReleases: vi.fn(async () => []) as never,
       download: vi.fn(async () => ({})) as never,
       remove: vi.fn(async () => ({})) as never,
@@ -313,7 +317,8 @@ describe('ManagedControlBar 增强批契约（①②⑦⑧⑨）', () => {
       versions: {
         listInstalled: vi.fn(async () => {
           listCallsAtClick++
-          return []
+          // 已装一条：本测的是 run 后 reloadVersions 并列重拉，不是 N43 未安装路由
+          return [{ version: 'v1.0.0', exePath: 'C:/x/a.exe', dir: 'C:/x', size: 1, installedAt: '2026-09-23 00:00:00' }]
         }),
       } as never,
       control: {

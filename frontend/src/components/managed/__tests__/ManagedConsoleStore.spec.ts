@@ -289,3 +289,38 @@ describe('ManagedConsoleStore 批 3 状态真相', () => {
     mounted.wrapper.unmount()
   })
 })
+// ---------- N43 状态真相：未安装 ≠ 未运行 ----------
+describe('N43 未安装呈现', () => {
+  it('本地已解析且零版本：stateText 落"未安装"，hint 指路版本管理', async () => {
+    const { adapter } = fakeAdapter()
+    const probe = mountStore(adapter)
+    await flushPromises()
+    expect(probe.store.notInstalled).toBe(true)
+    expect(probe.store.stateText).toBe('未安装')
+    expect(probe.store.hint ?? '').toContain('版本管理')
+    probe.wrapper.unmount()
+  })
+  it('primary 在未安装态不发起动词 RPC，直走 goVersions 接线', async () => {
+    const { adapter } = fakeAdapter()
+    const runSpy = vi.fn()
+    ;(adapter as unknown as { control: unknown }).control = {
+      primary: { run: runSpy, label: '启动' },
+    }
+    const probe = mountStore(adapter)
+    await flushPromises()
+    let jumped = 0
+    probe.store.goVersions = () => { jumped++ }
+    await probe.store.runControl('primary')
+    expect(runSpy).not.toHaveBeenCalled()
+    expect(jumped).toBe(1)
+    probe.wrapper.unmount()
+  })
+  it('external 在跑实例在场时不判未安装（运行事实优先，N43④口径）', async () => {
+    const { adapter } = fakeAdapter()
+    ;(adapter.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ ...stoppedSnap, state: 'external' })
+    const probe = mountStore(adapter)
+    await flushPromises()
+    expect(probe.store.notInstalled).toBe(false)
+    probe.wrapper.unmount()
+  })
+})

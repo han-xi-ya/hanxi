@@ -43,7 +43,7 @@ import { loadManagedVersions } from '../../composables/loadManagedVersions'
 import { usePolling } from '../../composables/usePolling'
 import { useToast } from '../../composables/useToast'
 import { getErrorMessage } from '../../utils/errors'
-import { toolStateMeta } from '../../constants/status'
+import { SUMMARY_META, toolStateMeta } from '../../constants/status'
 
 /** 动作失败 toast 前缀（逐字沿用视图现词；primary/toggle 失败为裸错误串，无前缀）。 */
 const ACTION_ERROR_PREFIX = {
@@ -92,6 +92,11 @@ export interface ManagedConsoleStore<V = ManagedVersionDialect> {
   readonly localResolved: boolean
 
   readonly state: string
+  /** N43 状态真相：本地事实已解析且无任何托管版本、又无在跑实例（含外部）时，
+   *  呈现口径从"未运行"（暗示"可以起"）回落为中性"未安装"。 */
+  readonly notInstalled: boolean
+  /** 未安装态「启动」直落版本页的接线钩子（Shell 赋值；runControl 消费）。 */
+  goVersions: (() => void) | null
   readonly stateText: string
   /** 状态灯色档词（⑧，缺省 = state）。 */
   readonly statusTone: string
@@ -168,14 +173,27 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
   const lastStatusAt = ref(0)
   const localResolved = ref(false)
 
+  // Shell 接线钩子（见 ManagedConsoleStore.goVersions）：局部可变 + 访问器外露。
+  let goVersionsFn: (() => void) | null = null
+
   // ---------- 派生投影（只读 adapter/快照，零本地状态推断） ----------
   const state = computed(() => snap.value?.state ?? '')
   // 共享件按宽型持有快照；投影位 adapter 声明其收窄 S——方法位双变，
   // 运行期同一对象，类型收敛仅此一处 cast，视图零感知。
   const narrowSnap = computed(() => snap.value as S | null)
-  const stateText = computed(() =>
-    narrowSnap.value && adapter.stateText ? adapter.stateText(narrowSnap.value) : toolStateMeta(state.value).text,
+  // N43：安装维度先于运行维度——未装任何版本且无在跑实例（running/starting/
+  // external/quitting/failed 各有自己的事实要讲）时，"stopped/空"不得渲染成
+  // "未运行"。判定收在共享契约层单点，21+ 视图零方言受益。
+  const notInstalled = computed(
+    () =>
+      localResolved.value &&
+      installed.value.length === 0 &&
+      !['running', 'starting', 'external', 'quitting', 'failed'].includes(state.value),
   )
+  const stateText = computed(() => {
+    if (notInstalled.value) return SUMMARY_META['not-installed'] // 与四维摘要冻结词表同源
+    return narrowSnap.value && adapter.stateText ? adapter.stateText(narrowSnap.value) : toolStateMeta(state.value).text
+  })
   /** 状态灯色档（⑧）：缺省随 state 五态；adapter.statusTone 覆写（bili23 running+hidden→warn）。 */
   const statusTone = computed(() =>
     narrowSnap.value && adapter.statusTone ? adapter.statusTone(narrowSnap.value) : state.value,
@@ -195,9 +213,12 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
   const banner = computed(() =>
     narrowSnap.value && adapter.banner ? adapter.banner(narrowSnap.value, versionCtx.value) : null,
   )
-  const hint = computed(() =>
-    narrowSnap.value && adapter.hint ? adapter.hint(narrowSnap.value, versionCtx.value) : null,
-  )
+  const hint = computed(() => {
+    if (notInstalled.value) {
+      return '尚未安装任何托管版本：「启动」将直接带你到版本管理页，先下载或导入。'
+    }
+    return narrowSnap.value && adapter.hint ? adapter.hint(narrowSnap.value, versionCtx.value) : null
+  })
   /** 启停钮面词（①）：label 联合词形统一解析，声明式控制条与自定义视图同源。 */
   const primaryLabel = computed(() => resolveVerbLabel(adapter.control?.primary, state.value, snap.value))
   const quitLabel = computed(() => resolveVerbLabel(adapter.control?.quit, state.value, snap.value))
@@ -258,6 +279,13 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     const verb: ManagedControlVerb | undefined =
       which === 'primary' ? adapter.control?.primary : adapter.control?.quit
     if (!verb || actionBusy.value) return
+    // N43②：未安装态的「启动」不发起注定失败的 RPC，直落版本管理页；
+    // 独立挂载（无 Shell 接线）时降级为 toast 指路。
+    if (which === 'primary' && notInstalled.value) {
+      if (goVersionsFn) goVersionsFn()
+      else showToast('尚未安装任何版本，请到「版本管理」下载或导入')
+      return
+    }
     actionBusy.value = true
     try {
       const res = await verb.run()
@@ -496,8 +524,15 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     statusError,
     lastStatusAt,
     localResolved,
+    notInstalled,
     state,
     stateText,
+    get goVersions() {
+      return goVersionsFn
+    },
+    set goVersions(fn: (() => void) | null) {
+      goVersionsFn = fn
+    },
     statusTone,
     runningVersion,
     isRunningOrStarting,

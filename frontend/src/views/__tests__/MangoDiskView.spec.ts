@@ -57,7 +57,11 @@ const releaseOf = (version: string, over = {}) => ({
   version, size: 8 * 1024 * 1024, published: '2026-08-02', isPre: false, ...over,
 })
 
-function stubDefaults(snap: Record<string, unknown>, local: unknown[] = [], remote: unknown[] = [], active = '') {
+// N43 后【stopped+零版本】夹具会落「未安装」呈现——本组视图测描述运行态/动作链，
+// 默认补一条已装记录；确需未安装场景的用例请显式传 []。
+const STUB_INSTALLED: Array<{ version: string }> = [{ version: 'v1.0.0' }]
+
+function stubDefaults(snap: Record<string, unknown>, local: unknown[] = STUB_INSTALLED, remote: unknown[] = [], active = '') {
   svc.GetStatus.mockResolvedValue(snap)
   svc.ListInstalledVersions.mockResolvedValue(local)
   svc.ListReleases.mockResolvedValue(remote)

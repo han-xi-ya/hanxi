@@ -69,7 +69,11 @@ async function flushMicrotasks(times = 25) {
   for (let i = 0; i < times; i++) await Promise.resolve()
 }
 
-function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version: string }> = [], releases: Array<Record<string, unknown>> = []) {
+// N43 后【stopped+零版本】夹具会落「未安装」呈现——本组视图测描述运行态/动作链，
+// 默认补一条已装记录；确需未安装场景的用例请显式传 []。
+const STUB_INSTALLED: Array<{ version: string }> = [{ version: 'v1.0.0' }]
+
+function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version: string }> = STUB_INSTALLED, releases: Array<Record<string, unknown>> = []) {
   svc.GetStatus.mockResolvedValue(snap)
   svc.ListInstalledVersions.mockResolvedValue(installed)
   svc.ListReleases.mockResolvedValue(releases)

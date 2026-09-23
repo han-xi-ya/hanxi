@@ -38,7 +38,11 @@ vi.mock('../../../bindings/hanxi/internal/modules/quicklook/quicklookservice', (
 const installedV = { version: '0.4.0', exePath: 'C:\\hx\\0.4.0\\QuickLook.exe', dir: 'C:\\hx\\0.4.0', size: 4194304, installedAt: '2026-08-01', isImport: false }
 const release1 = { version: '0.4.0', size: 4194304, published: '2024-05-01T00:00:00Z', isPre: false }
 
-function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version: string }> = [], releases: unknown[] = []) {
+// N43 后【stopped+零版本】夹具会落「未安装」呈现——本组视图测描述运行态/动作链，
+// 默认补一条已装记录；确需未安装场景的用例请显式传 []。
+const STUB_INSTALLED: Array<{ version: string }> = [{ version: 'v1.0.0' }]
+
+function stubDefaults(snap: Record<string, unknown>, installed: Array<{ version: string }> = STUB_INSTALLED, releases: unknown[] = []) {
   svc.GetStatus.mockResolvedValue(snap)
   svc.ListInstalledVersions.mockResolvedValue(installed)
   svc.ListReleases.mockResolvedValue(releases)

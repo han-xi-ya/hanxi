@@ -67,6 +67,9 @@ const activeMainTab = ref(props.consoleTabKey)
 function selectTab(key: string) {
   activeMainTab.value = key
 }
+// N43②：未安装态「启动」直落版本管理页——store 单源判定，此处只供接线。
+store.goVersions = () => selectTab('versions')
+
 const tabs = computed(() => [
   { key: props.consoleTabKey, label: props.consoleTabLabel },
   {
