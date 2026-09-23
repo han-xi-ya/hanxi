@@ -185,3 +185,107 @@ describe('ManagedConsoleStore runExclusive', () => {
     mounted.wrapper.unmount()
   })
 })
+
+// ---------- P0 批 3：状态真相三态与版本互认（4.1/4.2/4.3） ----------
+
+function batch3Adapter(opts: {
+  getStatus?: () => Promise<ManagedSnapshot>
+  installed?: Array<{ version: string }>
+  sameVersion?: (a: string, b: string) => boolean
+  download?: (rel: ManagedReleaseRecord) => Promise<Record<string, unknown>>
+}) {
+  let stateCb!: (s: ManagedSnapshot) => void
+  const adapter = {
+    getStatus: opts.getStatus ?? (async () => ({ ...stoppedSnap })),
+    subscribeInstanceState: (cb) => {
+      stateCb = cb
+    },
+    subscribeProgress: () => {},
+    versions: {
+      listInstalled: async () => opts.installed ?? [],
+      listReleases: async () => [],
+      getActive: async () => '',
+      sameVersion: opts.sameVersion,
+      download: opts.download ?? (async () => ({})),
+      remove: async () => ({}),
+      openDir: async () => ({}),
+    },
+  } as unknown as ManagedModuleAdapter
+  return { adapter, fireState: (s: ManagedSnapshot) => stateCb(s) }
+}
+
+describe('ManagedConsoleStore 批 3 状态真相', () => {
+  it('4.1 取态失败置 statusError 且保留旧快照，实例事件到达即清除', async () => {
+    let fail = false
+    const { adapter, fireState } = batch3Adapter({
+      getStatus: async () => {
+        if (fail) throw new Error('rpc down')
+        return { ...stoppedSnap, state: 'running', version: '9.9.9', pid: 42 }
+      },
+    })
+    const mounted = mountStore(adapter)
+    await flushPromises()
+    expect(mounted.store.statusError).toBe(false)
+    expect(mounted.store.state).toBe('running')
+
+    fail = true
+    await mounted.store.refresh()
+    expect(mounted.store.statusError).toBe(true)
+    // 旧快照仍在（最后已知事实），但已标记为不可确认
+    expect(mounted.store.runningVersion).toBe('9.9.9')
+    expect(mounted.store.lastStatusAt).toBeGreaterThan(0)
+
+    fireState({ ...stoppedSnap })
+    expect(mounted.store.statusError).toBe(false)
+    expect(mounted.store.state).toBe('stopped')
+    mounted.wrapper.unmount()
+  })
+
+  it('4.2 本地区解析前 localResolved=false，load 完成后为 true', async () => {
+    const gate = deferred<unknown[]>()
+    const { adapter } = batch3Adapter({})
+    ;(adapter.versions as { listInstalled: unknown }).listInstalled = () => gate.promise
+    const mounted = mountStore(adapter)
+    await flushPromises()
+    expect(mounted.store.localResolved).toBe(false)
+
+    gate.resolve([])
+    await flushPromises()
+    expect(mounted.store.localResolved).toBe(true)
+    mounted.wrapper.unmount()
+  })
+
+  it('4.3 already-installed 清票经 sameVersion 互认（beta tag 与核心版本判等）', async () => {
+    const coreMutual = (a: string, b: string) =>
+      a.replace(/^v/, '').replace(/-beta\.\d+$/, '') === b.replace(/^v/, '').replace(/-beta\.\d+$/, '')
+    const betaRelease: ManagedReleaseRecord = { ...release, version: 'v1.0.0-beta.1' }
+    const { adapter } = batch3Adapter({
+      installed: [{ version: '1.0.0' }],
+      sameVersion: coreMutual,
+      download: async () => ({ message: '版本已安装', reloadVersions: true }),
+    })
+    const mounted = mountStore(adapter)
+    await flushPromises()
+
+    await mounted.store.runDownload(betaRelease)
+    // 互认命中（1.0.0 ≡ v1.0.0-beta.1 核心）：pending 票据以重拉后的已装事实收掉
+    expect(mounted.store.downloading['v1.0.0-beta.1']).toBeUndefined()
+    mounted.wrapper.unmount()
+  })
+
+  it('4.3 负例：未互认版本不清票，progressKey 缺省下票据保留待事件收口', async () => {
+    const unrelated: ManagedReleaseRecord = { ...release, version: 'v9.9.9' }
+    const { adapter } = batch3Adapter({
+      installed: [{ version: '1.0.0' }],
+      sameVersion: (a, b) => a === b,
+      download: async () => ({ message: '开始后台安装', reloadVersions: true }),
+    })
+    const mounted = mountStore(adapter)
+    await flushPromises()
+
+    await mounted.store.runDownload(unrelated)
+    expect(mounted.store.downloading['v9.9.9']).toBeDefined()
+    expect(mounted.store.downloading['v9.9.9'].stage).toBe('resolve')
+    mounted.wrapper.unmount()
+  })
+})

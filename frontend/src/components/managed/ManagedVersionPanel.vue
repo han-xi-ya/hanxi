@@ -26,6 +26,7 @@ import type {
   ManagedVersionRecord,
   NormalizedProgress,
 } from './adapter'
+import { sameVersionOf } from './adapter'
 import type { ManagedConsoleStore } from './store'
 import { useManagedConsole } from './store'
 import { fmtSize, fmtDate } from '../../utils/format'
@@ -53,9 +54,9 @@ function ticketOf(rel: ManagedReleaseRecord) {
   return store.downloading[store.progressKeyOf(rel)]
 }
 
-/** 版本同一性（⑤）：缺省逐字符相等；recordly 经 sameVersion 落核心互认。 */
+/** 版本同一性（⑤/批 3·4.3）：委托 sameVersionOf 唯一口径，与 store 清票同源。 */
 function versionEq(a: string, b: string): boolean {
-  return props.adapter.versions.sameVersion ? props.adapter.versions.sameVersion(a, b) : a === b
+  return sameVersionOf(props.adapter.versions, a, b)
 }
 
 /** 隐式使用版本（⑤）：active 为空且模块声明 implicitActive 时回退（paseo 自动最新）。 */
@@ -146,7 +147,13 @@ const installedChipClass = computed(() =>
   <!-- 已安装版本 -->
   <div class="section-title"><h3>{{ copy?.installedSectionTitle ?? '已安装版本' }} ({{ store.installed.length }})</h3></div>
 
-  <div v-if="store.installed.length === 0" class="empty-state first-use">
+  <!-- 批 3·4.2：本地版本区未解析前不判"确无安装"——远程先回时旧口径会闪现
+       首用空态再跳回列表；扫描中呈现明示文案，本地落地后二者必居其一。 -->
+  <div v-if="store.installed.length === 0 && !store.localResolved" class="empty-state">
+    <p>↻ 正在扫描本机已安装版本…</p>
+  </div>
+
+  <div v-else-if="store.installed.length === 0" class="empty-state first-use">
     <p v-if="adapter.copy?.firstUseEmpty">{{ adapter.copy.firstUseEmpty }}</p>
     <button
       v-if="store.releases.length"

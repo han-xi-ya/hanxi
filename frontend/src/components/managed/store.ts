@@ -38,6 +38,7 @@ import type {
   ManagedVersionRecord,
   NormalizedProgress,
 } from './adapter'
+import { sameVersionOf } from './adapter'
 import { loadManagedVersions } from '../../composables/loadManagedVersions'
 import { usePolling } from '../../composables/usePolling'
 import { useToast } from '../../composables/useToast'
@@ -78,6 +79,17 @@ export interface ManagedConsoleStore<V = ManagedVersionDialect> {
   readonly loading: boolean
   listError: string
   readonly downloading: Record<string, NormalizedProgress>
+  /**
+   * 状态真相三态（P0 批 3·4.1/4.2）：
+   *  - statusError：状态 RPC 最近一次失败——快照仍是旧事实，视图须降灰
+   *    呈现「暂不可确认」，不得冒充实时；
+   *  - lastStatusAt：最后一次成功取得状态/收到实例事件的时刻（ms，0=从未）；
+   *  - localResolved：本地版本区至少完成过一次回写——未解析前禁止把
+   *    `installed.length===0` 判成首用空态。
+   */
+  readonly statusError: boolean
+  readonly lastStatusAt: number
+  readonly localResolved: boolean
 
   readonly state: string
   readonly stateText: string
@@ -150,6 +162,11 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
   const downloading = ref<Record<string, NormalizedProgress>>({})
   /** load 请求代次：后发请求拥有写权，防通道切换后的旧响应反向覆盖。 */
   let loadGeneration = 0
+  // 状态真相三态（见 ManagedConsoleStore 注记）：statusError/lastStatusAt 描述
+  // "快照是否可作实时口径"；localResolved 门控首用空态判定。
+  const statusError = ref(false)
+  const lastStatusAt = ref(0)
+  const localResolved = ref(false)
 
   // ---------- 派生投影（只读 adapter/快照，零本地状态推断） ----------
   const state = computed(() => snap.value?.state ?? '')
@@ -208,13 +225,19 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
         if (generation === loadGeneration) listError.value = value
       },
     })
+    // loadManagedVersions 在本地（listInstalled+getActive）落地后 resolve：
+    // 世代未过期即宣布"本地已解析"，此后空列表才是可信的"确无安装"。
+    if (generation === loadGeneration) localResolved.value = true
   }
 
   async function refresh(): Promise<void> {
     try {
       snap.value = (await adapter.getStatus()) ?? snap.value
+      statusError.value = false
+      lastStatusAt.value = Date.now()
     } catch (e) {
-      // 轮询/动作后刷新静默失败：保留上次快照（视图现状口径）
+      // 4.1：保留上次快照但**如实标注不可确认**——旧快照不得冒充实时状态。
+      statusError.value = true
       console.warn('[managed] GetStatus failed:', getErrorMessage(e))
     }
   }
@@ -332,7 +355,9 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
       if (reload) {
         await load()
         // already-installed 等同步终态无进度事件，以重拉后的已装事实收票。
-        if (installed.value.some((v) => v.version === rel.version)) {
+        // 4.3：比较走版本互认唯一口径（sameVersionOf）——预发布 tag 与核心
+        // 版本判等的模块（recordly/paseo 方言）不再"远程行已装、票据永挂"。
+        if (installed.value.some((v) => sameVersionOf(adapter.versions, v.version, rel.version))) {
           const next = { ...downloading.value }
           delete next[key]
           downloading.value = next
@@ -413,6 +438,9 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
   adapter.subscribeInstanceState((s) => {
     snap.value = s
     if (s.state !== 'running') uptimeSec.value = 0
+    // 实例事件是推送来的新鲜事实：清 stale。
+    statusError.value = false
+    lastStatusAt.value = Date.now()
   })
 
   adapter.subscribeProgress((p) => {
@@ -465,6 +493,9 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     loading,
     listError,
     downloading,
+    statusError,
+    lastStatusAt,
+    localResolved,
     state,
     stateText,
     statusTone,

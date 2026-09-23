@@ -302,6 +302,20 @@ export interface ManagedVersionsSpec<V = ManagedVersionDialect> {
   downloadBlock?(state: string): string | null
 }
 
+/**
+ * 版本同一性唯一口径（P0 批 3·4.3）：adapter 声明 sameVersion 即用之
+ * （recordly/paseo 的核心互认方言），缺省回退逐字符相等。
+ * 面板 statusOf、清票、active/running 判定全部经此单源，禁止旁路各写一份
+ * ——「远程行判已装、下载票清不掉」这类分叉正是多份比较规则的产物。
+ */
+export function sameVersionOf<V extends ManagedVersionDialect>(
+  versions: Pick<ManagedVersionsSpec<V>, 'sameVersion'>,
+  a: string,
+  b: string,
+): boolean {
+  return versions.sameVersion ? versions.sameVersion(a, b) : a === b
+}
+
 /** 随关/快捷方式/数据目录/仓库等辅助面条目（全可选，缺项自动隐藏）。 */
 export interface ManagedFollowOnExitSpec {
   get(): PromiseLike<boolean>

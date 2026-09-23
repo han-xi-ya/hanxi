@@ -387,3 +387,21 @@ describe('ManagedVersionPanel 增强批词面/槽位（③④⑥）', () => {
     w.unmount()
   })
 })
+
+// ---------- P0 批 3·4.2：本地未解析不判空 ----------
+describe('ManagedVersionPanel 本地扫描未决期', () => {
+  it('扫描中显示提示，落地后才渲染首用空态', async () => {
+    let resolveList!: (v: unknown[]) => void
+    const { adapter } = fakeAdapter({ releases: [rel('v1.0.0')] })
+    adapter.versions.listInstalled = (() => new Promise((r) => { resolveList = r })) as never
+    const w = await mountPanel(adapter)
+    expect(w.text()).toContain('正在扫描本机已安装版本')
+    expect(w.find('.empty-state.first-use').exists()).toBe(false)
+
+    resolveList([])
+    await flushPromises()
+    await flushPromises()
+    expect(w.find('.empty-state.first-use').exists()).toBe(true)
+    w.unmount()
+  })
+})

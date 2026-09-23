@@ -364,3 +364,38 @@ describe('ManagedControlBar 增强批契约（①②⑦⑧⑨）', () => {
     }
   })
 })
+
+// ---------- P0 批 3·4.1：stale 状态不冒充实时 ----------
+describe('ManagedControlBar 状态暂不可确认', () => {
+  it('取态失败降灰灯并出示 stale 标记，隐藏 PID/uptime；实例事件到达即恢复', async () => {
+    vi.useFakeTimers()
+    try {
+      let fail = false
+      const runningSnap = snap({ state: 'running', version: 'v3.4.2', pid: 777, startedAt: new Date().toISOString() })
+      const { full, events } = fakeAdapter({
+        getStatus: vi.fn(async () => {
+          if (fail) throw new Error('rpc down')
+          return runningSnap
+        }) as never,
+      })
+      const w = mount(ManagedControlBar, { props: { adapter: full } })
+      await vi.waitFor(() => expect(w.find('.status-word').text()).toBe('运行中'))
+      expect(w.find('.pid-tag').exists()).toBe(true)
+
+      fail = true
+      await vi.advanceTimersByTimeAsync(2600)
+      expect(w.find('.status-light').classes()).toContain('stale')
+      expect(w.find('.stale-tag').exists()).toBe(true)
+      expect(w.find('.pid-tag').exists()).toBe(false)
+      expect(w.find('.uptime-tag').exists()).toBe(false)
+
+      events.instance.forEach((cb) => cb(runningSnap))
+      await w.vm.$nextTick()
+      expect(w.find('.stale-tag').exists()).toBe(false)
+      expect(w.find('.status-light').classes()).toContain('running')
+      w.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

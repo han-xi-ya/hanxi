@@ -42,20 +42,28 @@ const quitDisabled = computed(
   () => store.busy || (quit.value?.disabledFor ? quit.value.disabledFor(store.state) : false),
 )
 const quitTitle = computed(() => quit.value?.titleFor?.(store.state) ?? '')
+// stale 悬停指引（P0 批 3·4.1）：最近一次成功取态时刻，从未成功则如实说。
+const staleTip = computed(() =>
+  store.lastStatusAt
+    ? `最近一次成功同步 ${new Date(store.lastStatusAt).toLocaleTimeString()}；此后状态获取持续失败，显示值为最后已知事实`
+    : '尚未成功取得过状态',
+)
 </script>
 
 <template>
   <div class="control-bar">
     <div class="control-top">
       <div class="control-status">
-        <!-- 色档（⑧）：缺省随五态；adapter.statusTone 覆写（bili23 running+hidden→warn 琥珀） -->
-        <span class="status-light" :class="store.statusTone"></span>
+        <!-- 色档（⑧）：缺省随五态；adapter.statusTone 覆写（bili23 running+hidden→warn 琥珀）；
+             状态 RPC 失败时降灰为"暂不可确认"（P0 批 3·4.1），旧快照不冒充实时灯色 -->
+        <span class="status-light" :class="store.statusError ? 'stale' : store.statusTone"></span>
         <span class="status-word">{{ store.stateText }}</span>
-        <template v-if="store.isRunningOrStarting && store.runningVersion">
+        <span v-if="store.statusError" class="stale-tag" :title="staleTip">状态暂不可确认</span>
+        <template v-if="!store.statusError && store.isRunningOrStarting && store.runningVersion">
           <span class="ver-pill">{{ store.runningVersion }}</span>
           <span v-if="store.snap?.pid" class="mono pid-tag">PID {{ store.snap?.pid }}</span>
         </template>
-        <span v-if="store.state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(store.uptimeSec) }}</span>
+        <span v-if="!store.statusError && store.state === 'running'" class="mono uptime-tag">⏱ {{ fmtDuration(store.uptimeSec) }}</span>
       </div>
       <div class="control-btns">
         <!-- 钮序：声明式主钮 → 模块注入钮（#primary-action 槽）→ 退出钮恒居末位 -->
@@ -94,6 +102,13 @@ const quitTitle = computed(() => quit.value?.titleFor?.(store.state) ?? '')
 /* 信号灯标准形（收编各视图 {前缀}-status-light 复制体；markeron 垂直字体事故
    教训的隔离性由组件 scoped 属性天然保证） */
 .status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
+/* 状态暂不可确认：中性灰无光晕无脉冲（取态失败的呈现词，非第六状态色档） */
+.status-light.stale { background: var(--color-text-subtle); box-shadow: none; animation: none; }
+.stale-tag {
+  font-size: var(--text-xs); color: var(--color-text-muted);
+  border: 1px solid var(--color-border); border-radius: var(--radius-pill);
+  padding: 1px 8px; cursor: help;
+}
 .status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
 .status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
 .status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
