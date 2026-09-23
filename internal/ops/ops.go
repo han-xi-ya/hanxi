@@ -23,6 +23,8 @@
 package ops
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -114,38 +116,53 @@ func BroadcastChanged() {
 // （managed-declarative）与逻辑凭据（builtin-logical）。未注入内核时返回
 // 仅记录步骤进度的内存态 Txn（降级：模块照常干活，只是不记账不观察）。
 func BeginTxn(moduleID string, kind extapi.OperationKind, delivery extapi.DeliveryKind, toVersion, txnID string, steps []string) (*Txn, error) {
+	return beginTxn(context.Background(), nil, moduleID, kind, delivery, toVersion, txnID, steps)
+}
+
+// BeginTxnWithLifecycle 开启一笔绑定 context 与后台 lease 的事务。
+// lease 的 ownership 在事务创建成功后转移给 Txn；Begin 失败时由调用方继续负责释放。
+func BeginTxnWithLifecycle(ctx context.Context, lease *extapi.BackgroundLease, moduleID string, kind extapi.OperationKind, delivery extapi.DeliveryKind, toVersion, txnID string, steps []string) (*Txn, error) {
+	return beginTxn(ctx, lease, moduleID, kind, delivery, toVersion, txnID, steps)
+}
+
+func beginTxn(ctx context.Context, lease *extapi.BackgroundLease, moduleID string, kind extapi.OperationKind, delivery extapi.DeliveryKind, toVersion, txnID string, steps []string) (*Txn, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if lease != nil {
+		ctx = lease.Context()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	if err := ctx.Err(); err != nil {
+		cancel()
+		return nil, err
+	}
 	if reason := JournalDegraded(); reason != nil {
+		cancel()
 		return nil, fmt.Errorf("journal 账本当前不可用（%v），为保证操作可恢复性已拒绝新的托管写事务；请重启 Hanxi 恢复账本后重试", reason)
 	}
-	t := &Txn{txnID: txnID}
+	t := &Txn{txnID: txnID, ctx: ctx, cancel: cancel, lease: lease}
 	store, hub := Kernel()
 	if !kernelLoaded() {
-		// 从未注入内核（单测/无账设计模式）：内存态 Txn，照常干活不记账。
 		t.steps = makeSteps(steps, operation.TxnPending)
 		return t, nil
 	}
-	t.store = store // 步进 Advance 直写账本；终态收口仍优先经 Handle 同步落账
-
+	t.store = store
 	op, err := journalOperation(kind)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	if store != nil {
-		if err := store.Begin(operation.Journal{
-			TransactionID: txnID,
-			Operation:     op,
-			DeliveryKind:  delivery,
-			ModuleID:      moduleID,
-			ToVersion:     ptrString(toVersion),
-			Phase:         "resolve",
-		}); err != nil {
+		if err := store.Begin(operation.Journal{TransactionID: txnID, Operation: op, DeliveryKind: delivery, ModuleID: moduleID, ToVersion: ptrString(toVersion), Phase: "resolve"}); err != nil {
+			cancel()
 			return nil, fmt.Errorf("开启安装事务账本失败: %w", err)
 		}
 	}
 	if hub != nil {
 		hubTxnID := txnID
 		if store == nil {
-			hubTxnID = "" // 无账模式：观察面收口不反向落账
+			hubTxnID = ""
 		}
 		t.handle = hub.Begin(moduleID, kind, hubTxnID)
 		BroadcastChanged()
@@ -157,12 +174,18 @@ func BeginTxn(moduleID string, kind extapi.OperationKind, delivery extapi.Delive
 // Txn 一笔模块事务。并发纪律：内部 mu 串行记账；Handle 自身幂等闩保证
 // Done/Fail 只生效一次。未注入内核的降级 Txn 全方法 no-op。
 type Txn struct {
-	mu     sync.Mutex
-	txnID  string
-	store  *operation.Store // 仅"有账无观察面"降级路径直用
-	handle *operation.Handle
-	steps  []operation.Step
-	phase  string
+	mu            sync.Mutex
+	txnID         string
+	store         *operation.Store // 仅"有账无观察面"降级路径直用
+	handle        *operation.Handle
+	steps         []operation.Step
+	phase         string
+	ctx           context.Context
+	cancel        context.CancelFunc
+	lease         *extapi.BackgroundLease
+	closed        bool
+	journalFailed bool
+	life          sync.Once
 }
 
 // TxnID 返回事务 ID（调用方命名 staging 等事务现场用）。
@@ -171,6 +194,39 @@ func (t *Txn) TxnID() string {
 		return ""
 	}
 	return t.txnID
+}
+
+// Context 返回事务绑定的取消上下文；manager 的网络/解包链必须透传它。
+func (t *Txn) Context() context.Context {
+	if t == nil || t.ctx == nil {
+		return context.Background()
+	}
+	return t.ctx
+}
+
+// Err 返回事务取消原因（nil=未取消）。
+func (t *Txn) Err() error {
+	if t == nil {
+		return nil
+	}
+	return t.Context().Err()
+}
+
+func (t *Txn) JournalFailed() bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.journalFailed
+}
+
+// Cancel 请求中止在途副作用，幂等。
+func (t *Txn) Cancel() {
+	if t == nil || t.cancel == nil {
+		return
+	}
+	t.cancel()
 }
 
 // Step 推进到第 i 步（0 起）：之前的步骤记 succeeded、本步记 running，
@@ -185,8 +241,16 @@ func (t *Txn) Step(i int) error {
 		return nil
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
+	if t.closed {
+		t.mu.Unlock()
+		return context.Canceled
+	}
+	if err := t.ctx.Err(); err != nil {
+		t.mu.Unlock()
+		return err
+	}
 	if t.steps == nil || i < 0 || i >= len(t.steps) {
+		t.mu.Unlock()
 		return nil
 	}
 	for j := range t.steps {
@@ -201,12 +265,20 @@ func (t *Txn) Step(i int) error {
 	}
 	t.phase = t.steps[i].Name
 	if err := t.advanceLocked(); err != nil {
+		t.journalFailed = true
 		t.degradeLocked(err)
+		t.closed = true
+		t.cancel()
+		t.mu.Unlock()
+		if t.lease == nil {
+			t.closeLifecycle()
+		}
 		return err
 	}
 	if t.handle != nil {
 		t.handle.Phase(t.phase)
 	}
+	t.mu.Unlock()
 	return nil
 }
 
@@ -232,33 +304,52 @@ func (t *Txn) Progress(done, total int64) {
 // Done 成功收口：全部步骤记 succeeded、Advance 后由 Handle.Done 把 journal
 // Complete(succeeded) 同步落账（无观察面时直用 store），广播 operation:changed。
 // 幂等：重复调用静默。
-func (t *Txn) Done() {
+func (t *Txn) Done() error {
 	if t == nil {
-		return
+		return nil
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.handle == nil && t.store == nil {
-		return // 已收口或未开账
+	if t.closed {
+		failed := t.journalFailed
+		t.mu.Unlock()
+		if failed {
+			return errors.New("journal 事务步进失败")
+		}
+		return context.Canceled
+	}
+	if err := t.ctx.Err(); err != nil {
+		t.mu.Unlock()
+		return err
 	}
 	for i := range t.steps {
 		t.steps[i].State = operation.TxnSucceeded
 	}
 	t.phase = "done"
-	t.advanceLocked()
+	if err := t.advanceLocked(); err != nil {
+		t.journalFailed = true
+		t.degradeLocked(err)
+		t.closed = true
+		t.mu.Unlock()
+		t.closeLifecycle()
+		return err
+	}
+	t.closed = true
 	if t.handle != nil {
 		h := t.handle
 		t.handle = nil
 		t.store = nil
 		h.Done()
-	} else {
+	} else if t.store != nil {
 		s := t.store
 		t.store = nil
 		if err := s.Complete(t.txnID, string(operation.TxnSucceeded), nil); err != nil {
 			slog.Warn("ops: 事务收口落账失败", "txn", t.txnID, "err", err)
 		}
 	}
+	t.mu.Unlock()
+	t.closeLifecycle()
 	BroadcastChanged()
+	return nil
 }
 
 // Fail 失败收口：journal Complete(failed)+error（message 由调用方保证脱敏），
@@ -268,9 +359,13 @@ func (t *Txn) Fail(code, message string) {
 		return
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.handle == nil && t.store == nil {
+	if t.closed {
+		t.mu.Unlock()
 		return
+	}
+	t.closed = true
+	if t.cancel != nil {
+		t.cancel()
 	}
 	for i := range t.steps {
 		if t.steps[i].State == operation.TxnRunning {
@@ -284,14 +379,40 @@ func (t *Txn) Fail(code, message string) {
 		t.handle = nil
 		t.store = nil
 		h.Fail(opErr)
-	} else {
+	} else if t.store != nil {
 		s := t.store
 		t.store = nil
 		if err := s.Complete(t.txnID, string(operation.TxnFailed), opErr); err != nil {
 			slog.Warn("ops: 事务失败落账失败", "txn", t.txnID, "err", err)
 		}
 	}
+	t.mu.Unlock()
+	t.closeLifecycle()
 	BroadcastChanged()
+}
+
+// Close releases the lifecycle lease when the worker has returned. It does not
+// synthesize a terminal journal state; an unfinished transaction remains resumable.
+func (t *Txn) Close() {
+	if t == nil {
+		return
+	}
+	t.closeLifecycle()
+}
+
+func (t *Txn) closeLifecycle() {
+	if t == nil {
+		return
+	}
+	t.life.Do(func() {
+		if t.cancel != nil {
+			t.cancel()
+		}
+		if t.lease != nil {
+			t.lease.Release()
+			t.lease = nil
+		}
+	})
 }
 
 // advanceLocked 把当前步骤快照写进 journal（须持 t.mu；无账模式 no-op）。

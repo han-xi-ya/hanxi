@@ -161,7 +161,20 @@ func (m *Manager) ListInstalled() ([]QuickLookVersionInfo, error) {
 // 恢复据此按事务定位并清理现场，见 internal/ops.CleanTxnResidue）。
 //
 // onProgress 可选：实时上报各阶段进度（下载字节、校验、解压落位）。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消（P0 批 2b 生命周期）。
+// bespoke extractAll 已 ctx 化（entry 边界即时中止并自清半件）。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -213,7 +226,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 		FileName: rel.AssetName,
 	}
 	emit("downloading", 0, rel.Size, "")
-	fetchErr := m.fetch(context.Background(), src, tmpZipPath, func(p artifact.Progress) {
+	fetchErr := m.fetch(ctx, src, tmpZipPath, func(p artifact.Progress) {
 		// 内核进度 → 既有词表：流式下载对应 downloading，摘要双核通过对应 verify
 		switch p.Stage {
 		case artifact.StageDownload:
@@ -233,6 +246,10 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	// 目录条目与深层插件树长路径两处特例内核不感知（ADR-0002 §3 单家需求
 	// 不入内核，裁决全文见 ADR-0003），安全闸门（ZipSlip/CRC32 读满）在
 	// extractAll 内自持，纪律同内核。
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	token := strings.TrimPrefix(version, "v")
 	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
@@ -242,7 +259,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	defer discard() // 成功 Commit 后为 no-op；任一步失败不留半件
 
 	emit("extract", 0, 0, "")
-	if err := extractAll(tmpZipPath, staging); err != nil {
+	if err := extractAll(ctx, tmpZipPath, staging); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("解压失败: %v", err))
 		return err
 	}
@@ -397,7 +414,12 @@ func (m *Manager) ImportLocal(srcDir string) (QuickLookVersionInfo, error) {
 // IsDir 判不出，必须"归一后按尾斜杠判目录"；②深层插件树落盘必须加
 // "\\?\" 长路径前缀（longPath），内核解包无此通道。ZipSlip 防护与 CRC32
 // 读满纪律在本包自持。
-func extractAll(zipPath, targetDir string) error {
+// extractAll bespoke 解包（P0 批 2b：ctx 在每个 entry 边界与拷贝前后检查，
+// 取消即删半件目录，纪律与闸门同构内核 UnpackZipContext）。
+func extractAll(ctx context.Context, zipPath, targetDir string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return err
 	}
@@ -414,6 +436,9 @@ func extractAll(zipPath, targetDir string) error {
 	defer zr.Close()
 
 	for _, f := range zr.File {
+		if err := ctx.Err(); err != nil {
+			return fail(err)
+		}
 		// 官方 zip 条目名用反斜杠 "\" 分隔（实测 v4.5.0），标准 zip 惯例为 "/"。
 		// 关键坑：archive/zip 的 FileHeader.IsDir() 仅以"结尾是否为 /"判定，对
 		// "\…\runtimes\" 这类反斜杠结尾的目录条目返回 false → 若沿用 IsDir 会把

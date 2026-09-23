@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -148,7 +149,20 @@ func (m *Manager) ListInstalled() ([]ViewVersionInfo, error) {
 // 解包器无关，bespoke 下载段同样记在账上）。
 //
 // onProgress 可选：实时上报各阶段进度。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消（P0 批 2b 生命周期）。
+// bespoke MD5 下载链已 ctx 化（重试间隙/候选源前/传输读循环均可即时中止）。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -193,7 +207,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	// 2. 下载 zip（官方单域 bespoke 链，同 URL 多轮重试；不委托内核 Fetch 的
 	// 原因见包注释：信任根形状不兼容，纪律仍在模块保留）
 	emit("downloading", 0, rel.Size, "")
-	if err := downloadTo(m.client, []string{rel.AssetURL}, tmpZipPath, func(done int64) {
+	if err := downloadTo(ctx, m.client, []string{rel.AssetURL}, tmpZipPath, func(done int64) {
 		emit("downloading", done, rel.Size, "")
 	}); err != nil {
 		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", err))
@@ -224,6 +238,10 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 
 	// 5. 解包进独占中转目录（staging 与最终目录同卷，供原子落位；
 	// 目录名 .tmp-<txnID> 由事务 ID 派生，journal 背书恢复据此收口现场）
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	token := strings.TrimPrefix(version, "v")
 	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
@@ -233,7 +251,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	defer discard() // 成功 Commit 后为 no-op；任一步失败不留半件
 
 	emit("extract", 0, 0, "")
-	if err := artifact.UnpackZip(tmpZipPath, staging, artifact.DefaultLimits, nil); err != nil {
+	if err := artifact.UnpackZipContext(ctx, tmpZipPath, staging, artifact.DefaultLimits, nil); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("解压失败: %v", err))
 		return err
 	}

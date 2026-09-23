@@ -1,6 +1,7 @@
 package vscode
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -210,9 +211,19 @@ func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confi
 	txnID := uuid.NewString()
 
 	go func() {
-		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+		lease, lerr := s.holder.EnterBackground(context.Background())
+		if lerr != nil {
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("vscode:version-download", version.DownloadProgress{
+					Version: targetVersion, Form: string(f), Stage: "error", Message: lerr.Error()})
+			}
+			notify.Error("vscode", "VS Code 安装失败", fmt.Sprintf("VS Code %s（%s）后台租约开启失败: %v", targetVersion, labelForm(string(f)), lerr), "/ext/vscode")
+			return
+		}
+		txn, terr := ops.BeginTxnWithLifecycle(lease.Context(), lease, ID, opKind, extapi.DeliveryManagedDeclarative,
 			targetVersion, txnID, steps)
 		if terr != nil {
+			lease.Release()
 			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
 			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -223,6 +234,19 @@ func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confi
 			return
 		}
 		stepIdx := -1
+		var stepErr error
+		defer func() {
+			if txn.JournalFailed() {
+				msg := "journal 事务步进失败"
+				if stepErr != nil {
+					msg = stepErr.Error()
+				}
+				txn.Fail("journal-degraded", msg)
+			} else if txn.Err() != nil {
+				txn.Fail("operation-cancelled", "托管操作已取消")
+			}
+			txn.Close()
+		}()
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("vscode download progress", "version", p.Version, "form", p.Form, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -235,26 +259,38 @@ func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confi
 			case "downloading":
 				if stepIdx < 0 {
 					stepIdx = 0
-					txn.Step(stepIdx)
+					stepErr = txn.Step(stepIdx)
+					if stepErr != nil {
+						txn.Cancel()
+						return
+					}
 				}
 				txn.Progress(p.Done, p.Total)
 			case "extract", "install":
 				if stepIdx < 1 {
 					stepIdx = 1
-					txn.Step(stepIdx)
+					stepErr = txn.Step(stepIdx)
+					if stepErr != nil {
+						txn.Cancel()
+						return
+					}
 				}
 			}
 			if p.Stage == "done" {
 				notify.Success("vscode", "VS Code 安装成功", fmt.Sprintf("VS Code %s（%s）已就绪", p.Version, labelForm(p.Form)), "/ext/vscode")
 			}
 		}
-		if err := s.manager.Download(txnID, targetVersion, f, emit); err != nil {
+		if err := s.manager.DownloadContext(txn.Context(), txnID, targetVersion, f, emit); err != nil {
 			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Form: string(f), Stage: "error", Message: err.Error()})
 			notify.Error("vscode", "VS Code 安装失败", fmt.Sprintf("VS Code %s（%s）失败: %v", targetVersion, labelForm(string(f)), err), "/ext/vscode")
 			return
 		}
-		txn.Done()
+		if err := txn.Done(); err != nil {
+			emit(version.DownloadProgress{Version: targetVersion, Form: string(f), Stage: "error", Message: err.Error()})
+			notify.Error("vscode", "VS Code 安装失败", fmt.Sprintf("VS Code %s（%s）事务收口失败: %v", targetVersion, labelForm(string(f)), err), "/ext/vscode")
+			return
+		}
 		// 便携版：未设定使用版本时自动把刚下载完的版本设为使用版本
 		if f == version.FormPortable && s.store.GetActive() == "" {
 			_ = s.store.SetActive(targetVersion)

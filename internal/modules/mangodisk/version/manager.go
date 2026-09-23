@@ -158,7 +158,19 @@ func (m *Manager) VerifyBeforeLaunch(version string) (MangoDiskVersionInfo, erro
 //
 // 进度回调沿用本模块既有词表（downloading/verify/install/done|error）：
 // 官方摘要双核由内核折进 download 阶段，不发明新词。onProgress 可选。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, onProgress func(DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消（P0 批 2b 生命周期）。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, onProgress func(DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	version = normalizeVersion(version)
 	emit := func(stage string, done, total int64, message string) {
 		if onProgress != nil {
@@ -197,6 +209,10 @@ func (m *Manager) Download(txnID, version string, onProgress func(DownloadProgre
 	// 由事务 ID 派生，journal 背书恢复据此收口现场）。exe 直接定名落进
 	// staging，无需系统临时区中转。
 	token := strings.TrimPrefix(version, "v")
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
 		emit("error", 0, 0, err.Error())
@@ -215,7 +231,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(DownloadProgre
 		FileName: rel.AssetName,
 	}
 	emit("downloading", 0, rel.Size, "")
-	fetchErr := m.fetch(context.Background(), src, stagedExe, func(p artifact.Progress) {
+	fetchErr := m.fetch(ctx, src, stagedExe, func(p artifact.Progress) {
 		// 内核进度 → 既有词表：只有流式下载阶段对应 downloading，其余阶段本模块不上报
 		if p.Stage == artifact.StageDownload {
 			emit("downloading", p.Done, p.Total, "")

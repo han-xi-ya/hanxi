@@ -48,6 +48,7 @@ type ModuleWrapper struct {
 	initializing bool
 	stopping     bool
 	inFlight     int
+	background   map[*BackgroundLease]struct{} // 后台操作 lease：停用/退出先 cancel 再 drain
 	// failed 滞留上次 OnInit 失败事实：投影为 RuntimeFailed，直到重试成功、
 	// 重新启用或完成析构收口（Wave 0 契约四维状态的运行维度输入）。
 	failed bool
@@ -120,8 +121,9 @@ func (r *Registry) registerLocked(exts []Module) ([]Module, error) {
 		}
 
 		wrapper := &ModuleWrapper{
-			Module:  e,
-			Enabled: enabled,
+			Module:     e,
+			Enabled:    enabled,
+			background: make(map[*BackgroundLease]struct{}),
 		}
 		wrapper.cond = sync.NewCond(&wrapper.mu)
 		r.modules[id] = wrapper
@@ -140,7 +142,14 @@ func (r *Registry) wrapper(id string) (*ModuleWrapper, bool) {
 	return wrapper, ok
 }
 
-// waitForIdleLocked 有界等待 initializing 与 inFlight 归零（调用方持有 w.mu）。
+// cancelBackgroundLocked 向所有后台操作发取消信号（须持 wrapper.mu）。Cancel
+// 不释放 lease；后台 goroutine 完成清理并 Release 后，inFlight 才真正归零。
+func (w *ModuleWrapper) cancelBackgroundLocked() {
+	for lease := range w.background {
+		lease.Cancel()
+	}
+}
+
 // 返回是否完全收口；超时后不再等待——停用死锁是比残留更糟的失败模式。
 // 超时时在途调用仍持租约，其安全由模块内部锁兜底，投影随后自然收敛。
 func (w *ModuleWrapper) waitForIdleLocked(budget time.Duration) bool {
@@ -387,6 +396,7 @@ func (r *Registry) SetEnabled(id string, enabled bool) error {
 			wrapper.mu.Unlock()
 		} else {
 			wrapper.stopping = true
+			wrapper.cancelBackgroundLocked()
 			if !wrapper.waitForIdleLocked(drainBudgetDisable) {
 				slog.Error("registry: 停用 drain 超时强制收口，在途调用由模块内部锁兜底",
 					"module", id, "budget", drainBudgetDisable.String())
@@ -776,7 +786,35 @@ func (r *Registry) Acquire(moduleID string) (*ModuleWrapper, func(), error) {
 	return wrapper, release, nil
 }
 
-// ShutdownAll 应用退出时清理所有已初始化的模块。与 SetEnabled(false) 同样先
+// acquireBackground 取得一笔可取消的后台租约。停用/退出会先 Cancel，再等待
+// goroutine 调用 Release 完成清理与 inFlight 归零。
+func (r *Registry) acquireBackground(moduleID string, parent context.Context) (*BackgroundLease, error) {
+	wrapper, release, err := r.Acquire(moduleID)
+	if err != nil {
+		return nil, err
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
+	lease := &BackgroundLease{ctx: ctx, cancel: cancel}
+	lease.release = func() {
+		wrapper.mu.Lock()
+		delete(wrapper.background, lease)
+		wrapper.mu.Unlock()
+		release()
+	}
+	wrapper.mu.Lock()
+	if wrapper.stopping || !wrapper.Enabled {
+		wrapper.mu.Unlock()
+		lease.Release()
+		return nil, fmt.Errorf("%w %q", ErrModuleDisabled, moduleID)
+	}
+	wrapper.background[lease] = struct{}{}
+	wrapper.mu.Unlock()
+	return lease, nil
+}
+
 // 阻止新命令、等待 operation lease 清空，再在锁外析构。
 func (r *Registry) ShutdownAll() {
 	for _, wrapper := range r.wrappers() {
@@ -786,6 +824,7 @@ func (r *Registry) ShutdownAll() {
 			wrapper.cond.Wait()
 		}
 		wrapper.stopping = true
+		wrapper.cancelBackgroundLocked()
 		if !wrapper.waitForIdleLocked(drainBudgetShutdown) {
 			slog.Error("registry: 退出 drain 超时强制收口（JobObject 保证无进程孤儿，内存残留随进程释放）",
 				"budget", drainBudgetShutdown.String())

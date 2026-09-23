@@ -2,6 +2,7 @@ package version
 
 import (
 	"archive/zip"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,7 +154,7 @@ func TestExtractAll(t *testing.T) {
 		`QuickLook.Plugin\QuickLook.Plugin.TextViewer\dll`: "plugin",
 	})
 	dst := filepath.Join(dir, "dst")
-	if err := extractAll(zipPath, dst); err != nil {
+	if err := extractAll(context.Background(), zipPath, dst); err != nil {
 		t.Fatalf("extractAll: %v", err)
 	}
 	for _, name := range []string{exeName, portableMarkName, nativeMarkName} {
@@ -180,7 +181,7 @@ func TestExtractAllBackslashDirEntries(t *testing.T) {
 		`QuickLook.Plugin\QuickLook.Plugin.FontViewer\runtimes\win-x64\native\lib.dll`: "dll", // 其下文件
 	})
 	dst := filepath.Join(dir, "dst")
-	if err := extractAll(zipPath, dst); err != nil {
+	if err := extractAll(context.Background(), zipPath, dst); err != nil {
 		t.Fatalf("extractAll 反斜杠目录条目: %v", err)
 	}
 	rt := filepath.Join(dst, "QuickLook.Plugin", "QuickLook.Plugin.FontViewer", "runtimes")
@@ -205,7 +206,7 @@ func TestExtractAllRealPortableZip(t *testing.T) {
 		t.Fatalf("真 zip 不存在: %v", err)
 	}
 	dst := filepath.Join(t.TempDir(), "quicklook_real")
-	if err := extractAll(zipPath, dst); err != nil {
+	if err := extractAll(context.Background(), zipPath, dst); err != nil {
 		t.Fatalf("真实便携 zip 解压失败: %v", err)
 	}
 	if err := checkLayout(dst); err != nil {
@@ -241,7 +242,7 @@ func TestExtractAllZipSlip(t *testing.T) {
 	f.Close()
 
 	dst := filepath.Join(dir, "dst")
-	if err := extractAll(path, dst); err == nil {
+	if err := extractAll(context.Background(), path, dst); err == nil {
 		t.Fatal("ZipSlip 条目应被拒绝")
 	}
 	if _, err := os.Stat(dst); !os.IsNotExist(err) {
@@ -262,7 +263,7 @@ func TestExtractAllMissingBits(t *testing.T) {
 	for name, entries := range cases {
 		zipPath := makeTestZip(t, entries)
 		dst := filepath.Join(t.TempDir(), "dst")
-		if err := extractAll(zipPath, dst); err == nil {
+		if err := extractAll(context.Background(), zipPath, dst); err == nil {
 			t.Errorf("%s: 应被拒绝", name)
 		}
 		if _, err := os.Stat(dst); !os.IsNotExist(err) {

@@ -157,7 +157,21 @@ func (m *Manager) resolveInstalledVersion(dir, exe string) string {
 // onProgress 可选：实时上报各阶段进度（既有词表 downloading/verify/install/
 // done/error：verify（官方摘要双核 + 清单交叉比对）由内核 Fetch 阶段映射与
 // 本包交叉比对共同构成，词表逐字不变）。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消（P0 批 2b 生命周期）。
+// 取消边界：下载流即时中止、NSIS 静默安装启动前最后审一次取消；
+// 安装程序一旦拉起即走完（半途放弃比跑完更危险——NSIS 覆盖式装机不可回滚）。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -219,7 +233,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 		FileName: rel.AssetName,
 	}
 	emit("downloading", 0, rel.Size, "")
-	fetchErr := m.fetch(context.Background(), src, tmpInstaller, func(p artifact.Progress) {
+	fetchErr := m.fetch(ctx, src, tmpInstaller, func(p artifact.Progress) {
 		// 内核进度 → 既有词表：流式下载映射 downloading，摘要双核映射 verify
 		switch p.Stage {
 		case artifact.StageDownload:
@@ -243,6 +257,10 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 
 	// 6. NSIS 静默安装进托管目录（本包 bespoke 执行段）
 	emit("install", 0, 0, "NSIS 静默安装中，请勿操作")
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	if err := nsisInstall(tmpInstaller, m.InstallDir()); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("静默安装失败: %v", err))
 		return err

@@ -2,8 +2,10 @@ package artifact
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -64,6 +66,19 @@ func mustSHA(t *testing.T, s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func TestUnpackZipContextCancelBeforeWork(t *testing.T) {
+	src := t.TempDir()
+	zipPath := buildZip(t, src, "cancel.zip", zipEnt{name: "a.txt", body: "payload"})
+	target := filepath.Join(t.TempDir(), "stage")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := UnpackZipContext(ctx, zipPath, target, DefaultLimits, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("取消后应返回 context.Canceled，实际: %v", err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("预先取消不应创建 staging 目录，stat err=%v", err)
+	}
+}
 func TestUnpackZipNormal(t *testing.T) {
 	src := t.TempDir()
 	zipPath := buildZip(t, src, "ok.zip",

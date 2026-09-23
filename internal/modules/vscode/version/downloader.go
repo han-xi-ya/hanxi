@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -17,13 +18,24 @@ import (
 const downloadAttempts = 3
 
 // downloadTo 带重试地下载单个 URL 到目标文件，onProgress 回报累计字节。
-func downloadTo(client *http.Client, url, dest string, onProgress func(done int64)) error {
+// ctx 取消在重试间隙与请求/读流内即时响应（P0 批 2b）。
+func downloadTo(ctx context.Context, client *http.Client, url, dest string, onProgress func(done int64)) error {
 	var lastErr error
 	for attempt := 0; attempt < downloadAttempts; attempt++ {
-		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		if err := tryDownloadSingle(client, url, dest, onProgress); err != nil {
+		if attempt > 0 {
+			select {
+			case <-time.After(time.Duration(attempt) * time.Second):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		if err := tryDownloadSingle(ctx, client, url, dest, onProgress); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			lastErr = err
 			continue
 		}
@@ -35,8 +47,8 @@ func downloadTo(client *http.Client, url, dest string, onProgress func(done int6
 	return fmt.Errorf("官方源下载失败")
 }
 
-func tryDownloadSingle(client *http.Client, url, dest string, onProgress func(done int64)) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func tryDownloadSingle(ctx context.Context, client *http.Client, url, dest string, onProgress func(done int64)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}

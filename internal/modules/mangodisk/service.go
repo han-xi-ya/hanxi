@@ -1,6 +1,7 @@
 package mangodisk
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -152,9 +153,18 @@ func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error)
 	txnID := uuid.NewString()
 	go func() {
 		defer s.downloadMu.Unlock()
-		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+		lease, lerr := s.holder.EnterBackground(context.Background())
+		if lerr != nil {
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("mangodisk:version-download", version.DownloadProgress{Version: targetVersion, Stage: "error", Message: lerr.Error()})
+			}
+			notify.Error("mangodisk", "版本下载失败", fmt.Sprintf("MangoDisk %s 后台租约开启失败: %v", targetVersion, lerr), "/ext/mangodisk")
+			return
+		}
+		txn, terr := ops.BeginTxnWithLifecycle(lease.Context(), lease, ID, opKind, extapi.DeliveryManagedDeclarative,
 			targetVersion, txnID, mangodiskInstallSteps)
 		if terr != nil {
+			lease.Release()
 			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
 			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -164,6 +174,19 @@ func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error)
 			return
 		}
 		stepIdx := -1
+		var stepErr error
+		defer func() {
+			if txn.JournalFailed() {
+				msg := "journal 事务步进失败"
+				if stepErr != nil {
+					msg = stepErr.Error()
+				}
+				txn.Fail("journal-degraded", msg)
+			} else if txn.Err() != nil {
+				txn.Fail("operation-cancelled", "托管操作已取消")
+			}
+			txn.Close()
+		}()
 		emit := func(progress version.DownloadProgress) {
 			slog.Debug("mangodisk download progress", "version", progress.Version, "stage", progress.Stage, "done", progress.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -175,31 +198,47 @@ func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error)
 			case "downloading":
 				if stepIdx < 0 {
 					stepIdx = 0
-					txn.Step(stepIdx)
+					stepErr = txn.Step(stepIdx)
+					if stepErr != nil {
+						txn.Cancel()
+						return
+					}
 				}
 				txn.Progress(progress.Done, progress.Total)
 			case "verify":
 				if stepIdx < 1 {
 					stepIdx = 1
-					txn.Step(stepIdx)
+					stepErr = txn.Step(stepIdx)
+					if stepErr != nil {
+						txn.Cancel()
+						return
+					}
 				}
 			case "install":
 				if stepIdx < 2 {
 					stepIdx = 2
-					txn.Step(stepIdx)
+					stepErr = txn.Step(stepIdx)
+					if stepErr != nil {
+						txn.Cancel()
+						return
+					}
 				}
 			}
 			if progress.Stage == "done" {
 				notify.Success("mangodisk", "版本下载成功", fmt.Sprintf("MangoDisk %s 已成功安装", progress.Version), "/ext/mangodisk")
 			}
 		}
-		if err := s.manager.Download(txnID, targetVersion, emit); err != nil {
+		if err := s.manager.DownloadContext(txn.Context(), txnID, targetVersion, emit); err != nil {
 			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("mangodisk", "版本下载失败", fmt.Sprintf("MangoDisk %s 下载失败: %v", targetVersion, err), "/ext/mangodisk")
 			return
 		}
-		txn.Done()
+		if err := txn.Done(); err != nil {
+			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
+			notify.Error("mangodisk", "版本下载失败", fmt.Sprintf("MangoDisk %s 事务收口失败: %v", targetVersion, err), "/ext/mangodisk")
+			return
+		}
 		// 未设使用版本时自动把刚下载完的版本设为使用版本：
 		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
 		if s.store.GetActive() == "" {

@@ -18,6 +18,7 @@ package artifact
 
 import (
 	"archive/zip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -72,6 +73,18 @@ func (l Limits) normalize() Limits {
 // 点名文件必须齐备，且逐文件按摘要复核。任一条目违规即报错中止，
 // 已写出的残件由调用方连同 staging 目录整体清理（本包只写入 targetDir 内）。
 func UnpackZip(zipPath, targetDir string, lim Limits, allowFiles map[string]string) error {
+	return UnpackZipContext(context.Background(), zipPath, targetDir, lim, allowFiles)
+}
+
+// UnpackZipContext 是可取消的安全解包入口。取消发生在目录/文件条目边界或
+// 文件流读取中时立即停止；调用方负责删除 staging 目录内已写残件。
+func UnpackZipContext(ctx context.Context, zipPath, targetDir string, lim Limits, allowFiles map[string]string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("解包已取消: %w", err)
+	}
 	lim = lim.normalize()
 
 	// ---- 目标目录闸门 ----
@@ -139,6 +152,9 @@ func UnpackZip(zipPath, targetDir string, lim Limits, allowFiles map[string]stri
 	provided := map[string]bool{} // 包内实际文件集（清单完整性复核用）
 
 	for _, f := range zr.File {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("解包已取消: %w", err)
+		}
 		clean, err := sanitizeRelPath(f.Name)
 		if err != nil {
 			return fmt.Errorf("zip 含非法路径条目 %q: %w", f.Name, err)
@@ -217,12 +233,18 @@ func UnpackZip(zipPath, targetDir string, lim Limits, allowFiles map[string]stri
 
 	// ---- 第二遍：落盘（O_EXCL 独占 + 双预算实写 + 读满触发 CRC + 逐文件 SHA 复核） ----
 	for _, d := range dirs {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("解包已取消: %w", err)
+		}
 		if err := os.MkdirAll(filepath.Join(targetDir, filepath.FromSlash(d)), 0755); err != nil {
 			return fmt.Errorf("创建目录条目 %q 失败: %w", d, err)
 		}
 	}
 	var writtenTotal int64
 	for _, it := range files {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("解包已取消: %w", err)
+		}
 		full := filepath.Join(targetDir, filepath.FromSlash(it.clean))
 		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
 			return fmt.Errorf("创建 %q 父目录失败: %w", it.clean, err)
@@ -238,8 +260,9 @@ func UnpackZip(zipPath, targetDir string, lim Limits, allowFiles map[string]stri
 		}
 		h := sha256.New()
 		cw := &cappedWriter{w: io.MultiWriter(out, h), maxFile: lim.MaxFileBytes, total: &writtenTotal, maxTotal: lim.MaxTotalBytes}
-		// 必须读满：提前返回会跳过 archive/zip 内建 CRC32 校验
-		_, copyErr := io.Copy(cw, rc)
+		// 必须读满：提前返回会跳过 archive/zip 内建 CRC32 校验；contextReader
+		// 在每次底层读取前检查取消，避免大文件解包长时间无响应。
+		_, copyErr := io.Copy(cw, contextReader{ctx: ctx, r: rc})
 		rc.Close()
 		closeErr := out.Close()
 		if copyErr != nil {
@@ -260,7 +283,19 @@ func UnpackZip(zipPath, targetDir string, lim Limits, allowFiles map[string]stri
 	return nil
 }
 
-// sanitizeRelPath 清洗 zip 条目/清单路径为目标目录下安全的 slash 相对形式。
+// contextReader 把取消检查插入任意 io.Reader 的 Read 边界。
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, fmt.Errorf("解包已取消: %w", err)
+	}
+	return r.r.Read(p)
+}
+
 // 清洗前后双查：反斜杠归一为分隔后仍出现绝对/盘符/UNC/空组件/.. 一律拒绝。
 func sanitizeRelPath(raw string) (string, error) {
 	if raw == "" {
@@ -282,7 +317,7 @@ func sanitizeRelPath(raw string) (string, error) {
 	if name == "" {
 		return "", errors.New("路径为空")
 	}
-	for _, comp := range strings.Split(name, "/") {
+	for comp := range strings.SplitSeq(name, "/") {
 		if err := checkPathComponent(comp); err != nil {
 			return "", err
 		}

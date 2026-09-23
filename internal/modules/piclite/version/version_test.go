@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -316,7 +317,7 @@ func TestExtractMSIFakeRunnerSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	staging := t.TempDir()
-	if err := extractMSI(msi, staging); err != nil {
+	if err := extractMSI(context.Background(), msi, staging); err != nil {
 		t.Fatalf("extractMSI: %v", err)
 	}
 	if gotMSI != msi {
@@ -343,7 +344,7 @@ func TestExtractMSIRunnerErrorPropagates(t *testing.T) {
 		return &fakeExtractError{}
 	})
 	staging := t.TempDir()
-	if err := extractMSI(filepath.Join(t.TempDir(), "x.msi"), staging); err == nil {
+	if err := extractMSI(context.Background(), filepath.Join(t.TempDir(), "x.msi"), staging); err == nil {
 		t.Fatal("接缝报错应透传")
 	}
 	ents, _ := os.ReadDir(staging)
@@ -362,7 +363,7 @@ func TestExtractMSIMissingPayload(t *testing.T) {
 	compressMSIPollWindow(t)
 	withFakeMSIExtract(t, func(_, stage string) error { return nil }) // 空映像
 	staging := t.TempDir()
-	err := extractMSI(filepath.Join(t.TempDir(), "x.msi"), staging)
+	err := extractMSI(context.Background(), filepath.Join(t.TempDir(), "x.msi"), staging)
 	if err == nil || !strings.Contains(err.Error(), "管理提取无效") {
 		t.Fatalf("空映像应报管理提取无效, got %v", err)
 	}
@@ -381,7 +382,7 @@ func TestExtractMSIEmptyExeRejected(t *testing.T) {
 		}
 		return os.WriteFile(filepath.Join(payload, exeName), nil, 0644)
 	})
-	if err := extractMSI(filepath.Join(t.TempDir(), "x.msi"), t.TempDir()); err == nil ||
+	if err := extractMSI(context.Background(), filepath.Join(t.TempDir(), "x.msi"), t.TempDir()); err == nil ||
 		!strings.Contains(err.Error(), "MSI 布局无效") {
 		t.Fatalf("空 exe 应判布局无效, got %v", err)
 	}
@@ -396,7 +397,7 @@ func TestExtractMSIGarbageInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	staging := t.TempDir()
-	if err := extractMSI(bad, staging); err == nil {
+	if err := extractMSI(context.Background(), bad, staging); err == nil {
 		t.Fatal("垃圾 MSI 输入应报错")
 	}
 	if ents, _ := os.ReadDir(staging); len(ents) != 0 {

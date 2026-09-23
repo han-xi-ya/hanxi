@@ -174,7 +174,21 @@ func (m *Manager) ListInstalled() ([]PicVersionInfo, error) {
 // 恢复据此按事务定位并清理现场，见 internal/ops.CleanTxnResidue）。
 //
 // onProgress 可选：实时上报各阶段进度（下载字节、校验、提取）。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消（P0 批 2b 生命周期）。
+// 取消边界：下载流即时中止；msiexec 管理提取为外部 Installer 调用，
+// 不可中途强杀——在其返回后的轮询/收割/落位边界收口（staging 随 discard 丢弃）。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -226,7 +240,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 		FileName: rel.AssetName,
 	}
 	emit("downloading", 0, rel.Size, "")
-	fetchErr := m.fetch(context.Background(), src, tmpMSIPath, func(p artifact.Progress) {
+	fetchErr := m.fetch(ctx, src, tmpMSIPath, func(p artifact.Progress) {
 		// 内核进度 → 既有词表：流式下载映射 downloading，摘要双核映射 verify
 		switch p.Stage {
 		case artifact.StageDownload:
@@ -243,6 +257,10 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	// 3. 独占中转目录（staging 与最终目录同卷，供原子落位；
 	// 目录名 .tmp-<txnID> 由事务 ID 派生，journal 背书恢复据此收口现场）
 	token := strings.TrimPrefix(version, "v")
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
 		emit("error", 0, 0, err.Error())
@@ -253,7 +271,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	// 4. msiexec 管理提取 + 布局收割（模块领域段，Installer 内建 CRC 校验
 	// 在此阶段完成；失败连同 staging 一并丢弃）
 	emit("extract", 0, 0, "")
-	if err := extractMSI(tmpMSIPath, staging); err != nil {
+	if err := extractMSI(ctx, tmpMSIPath, staging); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("提取失败: %v", err))
 		return err
 	}
@@ -365,7 +383,10 @@ func readLegacyMetaFields(dir string) (installedAt string, isImport bool, source
 //  4. 布局自检：staging 内 piclite.exe 存在且非空，失败由调用方 discard。
 //
 // 提取完整性依赖 Windows Installer 对 cabinet 流的内建 CRC 校验（防线 2）。
-func extractMSI(msiPath, staging string) error {
+func extractMSI(ctx context.Context, msiPath, staging string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	stage, err := os.MkdirTemp("", "hanxi-piclite-msi-")
 	if err != nil {
 		return err
@@ -373,6 +394,10 @@ func extractMSI(msiPath, staging string) error {
 	defer os.RemoveAll(stage)
 
 	if err := msiExtract(msiPath, stage); err != nil {
+		return err
+	}
+	// msiexec 客户端不可中途强杀（Installer 服务侧事务），其返回后先审取消
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 
@@ -386,7 +411,11 @@ func extractMSI(msiPath, staging string) error {
 		if time.Now().After(deadline) {
 			return fmt.Errorf("管理提取无效：映像中未找到 %s", exeName)
 		}
-		time.Sleep(msiPayloadPollInterval)
+		select {
+		case <-time.After(msiPayloadPollInterval):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	if err := copyTree(payload, staging); err != nil {

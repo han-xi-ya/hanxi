@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,36 @@ import (
 	"hanxi/internal/extapi"
 	"hanxi/packages/go/operation"
 )
+
+func TestBeginTxnWithLifecycleTerminalReleasesLease(t *testing.T) {
+	SetKernel(nil, nil)
+	defer SetKernel(nil, nil)
+
+	holder := extapi.NewLeaseHolder("demo")
+	lease, err := holder.EnterBackground(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	txn, err := BeginTxnWithLifecycle(context.Background(), lease, "demo", extapi.OpInstall, extapi.DeliveryManagedDeclarative, "1.0", "txn-release", []string{"download"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := txn.Step(0); err != nil {
+		t.Fatalf("健康步进失败: %v", err)
+	}
+	if err := txn.Done(); err != nil {
+		t.Fatalf("Done: %v", err)
+	}
+	// 终态后 lease 归事务释放：context 已取消、重复收口安全（once 双保险）
+	if err := txn.Context().Err(); err == nil {
+		t.Fatal("Done 后事务 ctx 应已取消")
+	}
+	lease.Release() // 再释放一次不得 panic、不得双重扣减
+	txn.Fail("late", "迟到的失败收口")
+	if err := txn.Step(0); err == nil {
+		t.Fatal("收口后 Step 必须被拒")
+	}
+}
 
 // freshStore 打开真实 journal Store（临时目录），返回 (store, dir)。
 func freshStore(t *testing.T) (*operation.Store, string) {
@@ -22,6 +53,28 @@ func freshStore(t *testing.T) (*operation.Store, string) {
 	return store, dir
 }
 
+func TestBeginTxnWithLifecyclePreservesAndCancelsContext(t *testing.T) {
+	SetKernel(nil, nil)
+	defer SetKernel(nil, nil)
+
+	parent, parentCancel := context.WithCancel(context.Background())
+	defer parentCancel()
+	txn, err := BeginTxnWithLifecycle(parent, nil, "demo", extapi.OpInstall, extapi.DeliveryManagedDeclarative, "1.0", "txn-lifecycle", []string{"download"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := txn.Context().Err(); err != nil {
+		t.Fatalf("transaction context unexpectedly canceled: %v", err)
+	}
+	parentCancel()
+	if err := txn.Context().Err(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("parent cancellation not propagated: %v", err)
+	}
+	if err := txn.Step(0); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Step after cancellation = %v, want context.Canceled", err)
+	}
+	txn.Fail("operation-cancelled", "test canceled")
+}
 func TestBeginTxnNoKernelDesignMode(t *testing.T) {
 	// SetKernel 从未调用过的"无账设计模式"（单测/头less）：BeginTxn 返回内存态 Txn。
 	// 注意本测试对全局 kernelSet 有顺序依赖：必须最先注册且其它测试自行 SetKernel。

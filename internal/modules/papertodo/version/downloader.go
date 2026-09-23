@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -29,17 +30,28 @@ func assetMirrors(tag, assetName string) []string {
 // downloadTo 依次尝试候选 URL 下载到目标文件，支持重试与镜像故障转移（降级链传输）。
 // 默认 http.Client 自动跟随 https 重定向（github.com → CDN），
 // tryDownloadSingle 中显式拒绝的 3xx 仅在自定义 CheckRedirect 干预时出现，属防御分支。
-func downloadTo(client *http.Client, urls []string, dest string, onProgress func(done int64)) error {
+// ctx 取消在重试间隙、每个候选源之前与传输读循环内均即时响应（P0 批 2b）。
+func downloadTo(ctx context.Context, client *http.Client, urls []string, dest string, onProgress func(done int64)) error {
 	const maxRetries = 2
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
+			select {
+			case <-time.After(time.Duration(attempt) * time.Second):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 		for _, u := range urls {
-			err := tryDownloadSingle(client, u, dest, onProgress)
+			err := tryDownloadSingle(ctx, client, u, dest, onProgress)
 			if err == nil {
 				return nil
+			}
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
 			}
 			lastErr = err
 		}
@@ -50,8 +62,8 @@ func downloadTo(client *http.Client, urls []string, dest string, onProgress func
 	return fmt.Errorf("所有下载源均失败")
 }
 
-func tryDownloadSingle(client *http.Client, url, dest string, onProgress func(done int64)) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func tryDownloadSingle(ctx context.Context, client *http.Client, url, dest string, onProgress func(done int64)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}

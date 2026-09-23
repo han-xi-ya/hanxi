@@ -287,7 +287,21 @@ func (m *Manager) ImportLocal(srcDir string) (VersionInfo, error) {
 // txnID 为调用方事务 ID（journal 背书用：便携版 staging 目录名 .tmp-<txnID>，
 // 崩溃恢复据此按事务定位并清理现场，见 internal/ops.CleanTxnResidue；
 // 安装版无 staging，仅随事务留账不落地使用）。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, form Form, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, form, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消（P0 批 2b 生命周期）。
+// 取消边界：两条传输链（内核 Fetch / 官方源降级链）均即时中止；解包/换目录
+// 前后审取消；静默安装器（Inno）一旦拉起即走完——半途放弃比跑完更危险。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, form Form, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	version = strings.TrimSpace(strings.TrimPrefix(version, "v"))
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
@@ -324,7 +338,7 @@ func (m *Manager) Download(txnID, version string, form Form, onProgress func(p D
 			MaxBytes: rel.Size, // 与 HEAD 实测大小对齐：超限即断，杜绝异常放大
 			FileName: rel.AssetName,
 		}
-		if ferr := m.fetch(context.Background(), src, tmpPath, func(p artifact.Progress) {
+		if ferr := m.fetch(ctx, src, tmpPath, func(p artifact.Progress) {
 			// 内核进度 → 既有词表：只有流式下载阶段对应 downloading，
 			// verify（官方摘要双核）由内核折进 download，不造幻影步骤
 			if p.Stage == artifact.StageDownload {
@@ -339,7 +353,7 @@ func (m *Manager) Download(txnID, version string, form Form, onProgress func(p D
 		// 降级链（历史便携版无官方摘要 / 安装版）：downloadTo 重试 + 字节数核对。
 		// 安装版另有 MZ 魔数形态兜底（rustdesk 单 exe 先例），见下方 verify 段。
 		emit("downloading", 0, rel.Size, "")
-		if derr := downloadTo(m.client, rel.DownloadURL, tmpPath, func(done int64) {
+		if derr := downloadTo(ctx, m.client, rel.DownloadURL, tmpPath, func(done int64) {
 			emit("downloading", done, rel.Size, "")
 		}); derr != nil {
 			emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", derr))
@@ -377,6 +391,10 @@ func (m *Manager) Download(txnID, version string, form Form, onProgress func(p D
 	}
 
 	if form == FormInstaller {
+		if err := ctx.Err(); err != nil {
+			emit("error", 0, 0, err.Error())
+			return err
+		}
 		emit("install", 0, 0, "")
 		if err := runInstallerSilent(tmpPath, rel.Version); err != nil {
 			emit("error", 0, 0, fmt.Sprintf("静默安装失败: %v", err))
@@ -392,6 +410,10 @@ func (m *Manager) Download(txnID, version string, form Form, onProgress func(p D
 		emit("error", 0, 0, err.Error())
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
 		emit("error", 0, 0, err.Error())
@@ -402,7 +424,7 @@ func (m *Manager) Download(txnID, version string, form Form, onProgress func(p D
 	emit("extract", 0, 0, "")
 	// 官方归档 zip 无根目录，Code.exe 落在解包根——ZipSlip/炸弹/CRC32 全量闸门
 	// 收口于内核（取代原 extractAll；每个 entry 读满触发 CRC 复核的纪律由内核承接）
-	if err := artifact.UnpackZip(tmpPath, staging, artifact.DefaultLimits, nil); err != nil {
+	if err := artifact.UnpackZipContext(ctx, tmpPath, staging, artifact.DefaultLimits, nil); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("解压失败: %v", err))
 		return err
 	}

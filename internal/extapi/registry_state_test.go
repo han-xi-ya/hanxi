@@ -4,6 +4,7 @@
 package extapi
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -254,6 +255,42 @@ func enumStringsOf(states []ModuleState) []string {
 // ---------------------------------------------------------------------------
 // Acquire 调用门与 lease
 // ---------------------------------------------------------------------------
+
+func TestAcquireBackgroundCancelsOnDisable(t *testing.T) {
+	reg := NewRegistry(nil)
+	module := newRegistryTestModule("background")
+	if err := reg.Register(module); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := reg.Gate().(BackgroundGate).AcquireBackground("background", context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRuntime(t, reg, "background", RuntimeBusy, time.Second)
+
+	done := make(chan error, 1)
+	go func() { done <- reg.SetEnabled("background", false) }()
+	select {
+	case <-lease.Context().Done():
+	case <-time.After(time.Second):
+		t.Fatal("停用时后台 lease 未收到取消")
+	}
+	select {
+	case err := <-done:
+		t.Fatal("后台 lease 尚未 Release，停用不应提前完成", err)
+	default:
+	}
+	lease.Release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("释放后台 lease 后停用未收口")
+	}
+	lease.Release()
+}
 
 func TestAcquireGateAndLease(t *testing.T) {
 	t.Run("unknown module 拒绝", func(t *testing.T) {

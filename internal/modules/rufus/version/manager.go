@@ -167,7 +167,19 @@ func importedRank(version string) int {
 //
 // 进度回调沿用本模块既有词表（resolve/downloading/verify/install/done/error），
 // 不发明新词。onProgress 可选：实时上报各阶段进度。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消（P0 批 2b 生命周期）。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -205,6 +217,10 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	// 2. 独占中转目录（staging 与最终目录同卷，供原子落位）；exe 直接
 	// 定名 rufus.exe 落进 staging，无需系统临时区中转
 	token := strings.TrimPrefix(version, "v")
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
 		emit("error", 0, 0, err.Error())
@@ -223,7 +239,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 		FileName: rel.AssetName,
 	}
 	emit("downloading", 0, rel.Size, "")
-	fetchErr := m.fetch(context.Background(), src, stagedExe, func(p artifact.Progress) {
+	fetchErr := m.fetch(ctx, src, stagedExe, func(p artifact.Progress) {
 		// 内核进度 → 既有词表：只有流式下载阶段对应 downloading，其余阶段本模块不上报
 		if p.Stage == artifact.StageDownload {
 			emit("downloading", p.Done, p.Total, "")

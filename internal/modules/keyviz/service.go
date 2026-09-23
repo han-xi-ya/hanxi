@@ -1,6 +1,7 @@
 package keyviz
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -178,9 +179,18 @@ func (s *KeyvizService) DownloadVersion(targetVersion string) (string, error) {
 			delete(s.downloads, targetVersion)
 			s.downloadMu.Unlock()
 		}()
-		txn, terr := ops.BeginTxn(ID, opKind, extapi.DeliveryManagedDeclarative,
+		lease, lerr := s.holder.EnterBackground(context.Background())
+		if lerr != nil {
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("keyviz:version-download", version.DownloadProgress{Version: targetVersion, Stage: "error", Message: lerr.Error()})
+			}
+			notify.Error("keyviz", "版本安装失败", fmt.Sprintf("Keyviz %s 后台租约开启失败: %v", targetVersion, lerr), "/ext/keyviz")
+			return
+		}
+		txn, terr := ops.BeginTxnWithLifecycle(lease.Context(), lease, ID, opKind, extapi.DeliveryManagedDeclarative,
 			targetVersion, txnID, keyvizInstallSteps)
 		if terr != nil {
+			lease.Release()
 			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
 			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -190,6 +200,19 @@ func (s *KeyvizService) DownloadVersion(targetVersion string) (string, error) {
 			return
 		}
 		stepIdx := -1
+		var stepErr error
+		defer func() {
+			if txn.JournalFailed() {
+				msg := "journal 事务步进失败"
+				if stepErr != nil {
+					msg = stepErr.Error()
+				}
+				txn.Fail("journal-degraded", msg)
+			} else if txn.Err() != nil {
+				txn.Fail("operation-cancelled", "托管操作已取消")
+			}
+			txn.Close()
+		}()
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("keyviz download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -202,7 +225,11 @@ func (s *KeyvizService) DownloadVersion(targetVersion string) (string, error) {
 			case "downloading", "verify":
 				if stepIdx < 0 {
 					stepIdx = 0
-					txn.Step(stepIdx)
+					stepErr = txn.Step(stepIdx)
+					if stepErr != nil {
+						txn.Cancel()
+						return
+					}
 				}
 				if p.Stage == "downloading" {
 					txn.Progress(p.Done, p.Total)
@@ -210,20 +237,28 @@ func (s *KeyvizService) DownloadVersion(targetVersion string) (string, error) {
 			case "extract":
 				if stepIdx < 1 {
 					stepIdx = 1
-					txn.Step(stepIdx)
+					stepErr = txn.Step(stepIdx)
+					if stepErr != nil {
+						txn.Cancel()
+						return
+					}
 				}
 			}
 			if p.Stage == "done" {
 				notify.Success("keyviz", "版本安装成功", fmt.Sprintf("Keyviz %s 已成功安装", p.Version), "/ext/keyviz")
 			}
 		}
-		if err := s.manager.Download(txnID, targetVersion, emit); err != nil {
+		if err := s.manager.DownloadContext(txn.Context(), txnID, targetVersion, emit); err != nil {
 			txn.Fail("asset-install-failed", err.Error())
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("keyviz", "版本安装失败", fmt.Sprintf("Keyviz %s 安装失败: %v", targetVersion, err), "/ext/keyviz")
 			return
 		}
-		txn.Done()
+		if err := txn.Done(); err != nil {
+			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
+			notify.Error("keyviz", "版本安装失败", fmt.Sprintf("Keyviz %s 事务收口失败: %v", targetVersion, err), "/ext/keyviz")
+			return
+		}
 		// 未设使用版本时自动把刚下载完的版本设为使用版本：
 		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
 		if s.store.GetActive() == "" {

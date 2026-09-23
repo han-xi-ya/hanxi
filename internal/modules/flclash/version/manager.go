@@ -140,7 +140,19 @@ func (m *Manager) ListInstalled() ([]FlClashVersionInfo, error) {
 // 恢复据此按事务定位并清理现场，见 internal/ops.CleanTxnResidue）。
 //
 // onProgress 可选：实时上报各阶段进度（下载字节、解压落位）。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -193,7 +205,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 		FileName: rel.AssetName,
 	}
 	emit("downloading", 0, rel.Size, "")
-	fetchErr := m.fetch(context.Background(), src, tmpZipPath, func(p artifact.Progress) {
+	fetchErr := m.fetch(ctx, src, tmpZipPath, func(p artifact.Progress) {
 		// 内核进度 → 既有词表：只有流式下载阶段对应 downloading，其余阶段本模块不上报
 		if p.Stage == artifact.StageDownload {
 			emit("downloading", p.Done, p.Total, "")
@@ -204,8 +216,10 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 		return fetchErr
 	}
 
-	// 3. 解包进独占中转目录（staging 与最终目录同卷，供原子落位；
-	// 目录名 .tmp-<txnID> 由事务 ID 派生，journal 背书恢复据此收口现场）
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
 		emit("error", 0, 0, err.Error())
@@ -214,7 +228,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	defer discard() // 成功 Commit 后为 no-op；任一步失败不留半件
 
 	emit("extract", 0, 0, "")
-	if err := artifact.UnpackZip(tmpZipPath, staging, artifact.DefaultLimits, nil); err != nil {
+	if err := artifact.UnpackZipContext(ctx, tmpZipPath, staging, artifact.DefaultLimits, nil); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("解压失败: %v", err))
 		return err
 	}

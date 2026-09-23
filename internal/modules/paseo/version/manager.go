@@ -158,7 +158,19 @@ func (m *Manager) ListInstalled() ([]PaseoVersionInfo, error) {
 // 恢复据此按事务定位并清理现场，见 internal/ops.CleanTxnResidue）。
 //
 // onProgress 可选：实时上报各阶段进度（下载字节、校验、解压落位）。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, version, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	version = strings.TrimSpace(strings.TrimPrefix(version, "v"))
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
@@ -208,7 +220,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 		FileName: rel.AssetName,
 	}
 	emit("downloading", 0, rel.Size, "")
-	fetchErr := m.fetch(context.Background(), src, tmpZipPath, func(p artifact.Progress) {
+	fetchErr := m.fetch(ctx, src, tmpZipPath, func(p artifact.Progress) {
 		// 内核进度 → 既有词表：流式下载对应 downloading，摘要双核完成点
 		// 对应 verify，其余阶段本模块不上报
 		switch p.Stage {
@@ -233,7 +245,7 @@ func (m *Manager) Download(txnID, version string, onProgress func(p DownloadProg
 	defer discard() // 成功 Commit 后为 no-op；任一步失败不留半件
 
 	emit("extract", 0, 0, "")
-	if err := artifact.UnpackZip(tmpZipPath, staging, artifact.DefaultLimits, nil); err != nil {
+	if err := artifact.UnpackZipContext(ctx, tmpZipPath, staging, artifact.DefaultLimits, nil); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("解压失败: %v", err))
 		return err
 	}

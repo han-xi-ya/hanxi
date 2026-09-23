@@ -42,7 +42,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 
 // downloader 降级传输接缝（上游无官方 digest 路径）：默认为本包 downloadTo
 // （多源回退 + 重试），完整性由后续"字节数 + MZ + PE 核对"链条收口。
-type downloader func(client *http.Client, urls []string, dest string, onDone func(done int64)) error
+type downloader func(ctx context.Context, client *http.Client, urls []string, dest string, onDone func(done int64)) error
 
 // Manager PaperTodo 版本管理引擎：远程列表（GitHub 元数据双变体）与受控下载
 // 委托 Wave 4 共享内核——官方摘要在场时走 artifact.Fetch（流式 + 落盘双
@@ -184,7 +184,21 @@ func (r *PaperRelease) assetFor(variant string) (PaperAsset, error) {
 //
 // onProgress 可选：实时上报各阶段进度。进度回调沿用本模块既有词表
 // （downloading/verify/done/error，单 exe 无解压阶段），不发明新词。
+// Download 保留旧调用面，供版本包单测与非事务调用使用。
 func (m *Manager) Download(txnID, targetVersion, variant string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), txnID, targetVersion, variant, onProgress)
+}
+
+// DownloadContext 下载并安装，可由事务 context 取消（P0 批 2b 生命周期）。
+// 两条传输链（内核 Fetch 与无 digest 降级链）均已 ctx 化；换入（swapInExe）
+// 前最后审一次取消，原子 rename 本身不可中断。
+func (m *Manager) DownloadContext(ctx context.Context, txnID, targetVersion, variant string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: targetVersion, Stage: stage, Done: done, Total: total, Message: msg})
@@ -224,6 +238,10 @@ func (m *Manager) Download(txnID, targetVersion, variant string, onProgress func
 
 	// 2. 独占中转目录（与最终目录同卷，供原子换入；目录名 .tmp-<txnID>
 	// 由事务 ID 派生，journal 背书恢复据此收口现场）
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	staging, discard, err := m.tree.StageDir(txnID)
 	if err != nil {
 		emit("error", 0, 0, err.Error())
@@ -245,7 +263,7 @@ func (m *Manager) Download(txnID, targetVersion, variant string, onProgress func
 			MaxBytes: asset.Size, // 与 release API 声明大小对齐：超限即断，杜绝异常放大
 			FileName: asset.Name,
 		}
-		if ferr := m.fetch(context.Background(), src, stagedExe, func(p artifact.Progress) {
+		if ferr := m.fetch(ctx, src, stagedExe, func(p artifact.Progress) {
 			// 内核进度 → 既有词表：只有流式下载阶段对应 downloading，其余阶段本模块不上报
 			if p.Stage == artifact.StageDownload {
 				emit("downloading", p.Done, p.Total, "")
@@ -255,7 +273,7 @@ func (m *Manager) Download(txnID, targetVersion, variant string, onProgress func
 			return ferr
 		}
 	} else {
-		if derr := m.download(m.client, urls, stagedExe, func(done int64) {
+		if derr := m.download(ctx, m.client, urls, stagedExe, func(done int64) {
 			emit("downloading", done, asset.Size, "")
 		}); derr != nil {
 			emit("error", 0, asset.Size, fmt.Sprintf("下载失败: %v", derr))
@@ -291,6 +309,10 @@ func (m *Manager) Download(txnID, targetVersion, variant string, onProgress func
 	}
 
 	// 5. 原子换入：旧 exe 备份 → 改名替换 → 失败回滚（数据原地不动）
+	if err := ctx.Err(); err != nil {
+		emit("error", 0, 0, err.Error())
+		return err
+	}
 	if err := swapInExe(dir, stagedExe); err != nil {
 		emit("error", 0, 0, fmt.Sprintf("安装失败: %v", err))
 		return err
