@@ -109,4 +109,50 @@ describe('SnipCardView', () => {
     expect(api.SnipCardDismiss).toHaveBeenCalled()
     wrapper.unmount()
   })
+
+  describe('字号缩放（N42③）', () => {
+    afterEach(() => localStorage.removeItem('hanxi.snipcard.fs'))
+
+    it('未调档默认 14px（与 --text-md 同值，视觉零变化）', async () => {
+      const wrapper = await mountView()
+      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 14px')
+      wrapper.unmount()
+    })
+
+    it('A+/A− 步进 2px 并钳制边界，档位持久化', async () => {
+      const wrapper = await mountView()
+      const fsBtns = () => wrapper.findAll('.snip-fs-btn')
+      await fsBtns()[1].trigger('click') // A+
+      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 16px')
+      expect(localStorage.getItem('hanxi.snipcard.fs')).toBe('16')
+      await fsBtns()[0].trigger('click') // A−
+      await fsBtns()[0].trigger('click')
+      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 12px')
+      expect(fsBtns()[0].attributes('disabled')).toBeDefined() // 下界禁用，上界仍可用
+      expect(fsBtns()[1].attributes('disabled')).toBeUndefined()
+      wrapper.unmount()
+    })
+
+    it('Ctrl+滚轮上滚放大/下滚缩小；无修饰滚轮不碰字号', async () => {
+      const wrapper = await mountView()
+      await wrapper.find('.snip-card').trigger('wheel', { ctrlKey: true, deltaY: -100 })
+      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 16px')
+      await wrapper.find('.snip-card').trigger('wheel', { ctrlKey: true, deltaY: 120 })
+      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 14px')
+      await wrapper.find('.snip-card').trigger('wheel', { deltaY: -100 }) // 无 Ctrl
+      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 14px')
+      wrapper.unmount()
+    })
+
+    it('档位记忆跨挂载恢复，越界坏值装载即钳制', async () => {
+      localStorage.setItem('hanxi.snipcard.fs', '99')
+      const wrapper = await mountView()
+      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 32px')
+      wrapper.unmount()
+      localStorage.setItem('hanxi.snipcard.fs', 'abc')
+      const w2 = await mountView()
+      expect(w2.find('.snip-card').attributes('style')).toContain('--snip-fs: 14px') // 坏值回落默认
+      w2.unmount()
+    })
+  })
 })

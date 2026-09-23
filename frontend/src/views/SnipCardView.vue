@@ -4,7 +4,7 @@
 // 页面底色必须透明透出 DWM backdrop，见 .popup-shell 规则）。
 // 结果下发双保险：ocr:snip-result 事件即时推送 + 挂载时 GetSnipResult 拉取。
 // 刻意不挂失焦关闭——用户要能在卡内手动选字复制；Esc/关闭钮/复制成功即收起。
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
 import type { SnipResult } from '../../bindings/hanxi/internal/modules/ocr/models'
 import { useWailsEvent } from '../composables/useWailsEvent'
@@ -13,6 +13,47 @@ import { getErrorMessage } from '../utils/errors'
 const res = ref<SnipResult | null>(null)
 const busy = ref(false)
 const tip = ref('') // 卡内轻提示（复制失败等，保留卡片供手动复制）
+
+// —— 内容字号缩放（N42③）——读小字费劲的主诉求。与窗口缩放（②）正交独立：
+// 只管 `.snip-text` 一处 CSS 变量；档位记忆走 localStorage（卡窗同源共享，
+// 与 hanxi.theme 缓存同策略），非法/越界值装载即钳制。
+const SNIP_FS_KEY = 'hanxi.snipcard.fs'
+const SNIP_FS_MIN = 12
+const SNIP_FS_MAX = 32
+const SNIP_FS_DEFAULT = 14 // 与 --text-md 同值：未调档时视觉零变化
+
+function loadFontSize(): number {
+  try {
+    const raw = localStorage.getItem(SNIP_FS_KEY)
+    if (raw !== null && raw !== '') {
+      const n = Number(raw)
+      if (Number.isFinite(n)) return Math.min(SNIP_FS_MAX, Math.max(SNIP_FS_MIN, Math.round(n)))
+    }
+  } catch {
+    /* 存储不可用：默认档继续 */
+  }
+  return SNIP_FS_DEFAULT
+}
+
+const fontSize = ref(loadFontSize())
+watch(fontSize, (v) => {
+  try {
+    localStorage.setItem(SNIP_FS_KEY, String(v))
+  } catch {
+    /* 静默：缓存只是偏好，不是真相 */
+  }
+})
+
+/** ± 步进（2px 一档）；Ctrl+滚轮同口径（上滚放大）。 */
+function bumpFontSize(delta: number) {
+  fontSize.value = Math.min(SNIP_FS_MAX, Math.max(SNIP_FS_MIN, fontSize.value + delta))
+}
+
+function onCardWheel(e: WheelEvent) {
+  if (!e.ctrlKey) return // 无修饰的滚轮留给正文滚动
+  e.preventDefault() // 拦下 WebView 原生页面缩放，字号步进单点归本卡
+  bumpFontSize(e.deltaY < 0 ? 2 : -2)
+}
 
 function apply(r: SnipResult | null | undefined) {
   if (!r || !r.ok) return // 只认成功帧；空帧/取消帧不得顶掉已有内容
@@ -73,7 +114,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="snip-card" role="dialog" aria-label="截屏识别结果">
+  <div class="snip-card" role="dialog" aria-label="截屏识别结果" :style="{ '--snip-fs': fontSize + 'px' }" @wheel="onCardWheel">
     <div v-if="res?.ok && res.text" class="snip-text" tabindex="0">{{ res.text }}</div>
     <div v-else-if="res?.ok" class="snip-state">未识别到文字 —— 框选含文本的区域再试</div>
     <div v-else class="snip-state"><span class="snip-pulse" aria-hidden="true"></span>等待识别结果…</div>
@@ -82,6 +123,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <span v-if="tip" class="snip-tip" role="alert">{{ tip }}</span>
       <span v-else-if="res?.ok" class="snip-meta snip-grip" title="按住拖动" @mousedown="startDrag">识别结果 · {{ res.lineCount }} 行 · {{ res.elapsedMs }} ms</span>
       <span v-else class="snip-meta snip-grip" title="按住拖动" @mousedown="startDrag">识别结果</span>
+      <span class="snip-fs" role="group" aria-label="正文字号">
+        <button class="snip-fs-btn" :disabled="fontSize <= SNIP_FS_MIN" aria-label="缩小字号" title="缩小字号（或 Ctrl+滚轮）" @click="bumpFontSize(-2)">A−</button>
+        <button class="snip-fs-btn" :disabled="fontSize >= SNIP_FS_MAX" aria-label="放大字号" title="放大字号（或 Ctrl+滚轮）" @click="bumpFontSize(2)">A+</button>
+      </span>
       <span v-if="res?.copied" class="chip chip-positive snip-copied">已复制</span>
       <button class="snip-x" aria-label="关闭（Esc）" title="关闭（Esc）" @click="dismiss">✕</button>
       <button class="btn btn-primary btn-small" :disabled="!canCopy" @click="copyAll">
@@ -109,8 +154,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .snip-text {
   flex: 1; min-height: 0; min-width: 0; overflow: auto;
   white-space: pre-wrap; word-break: break-word;
-  font-size: var(--text-md); line-height: 1.65; user-select: text; /* 手动选字复制是核心场景 */
+  font-size: var(--snip-fs, var(--text-md)); /* N42③:字号档位经根 CSS 变量下发 */
+  line-height: 1.65; user-select: text; /* 手动选字复制是核心场景 */
 }
+/* 字号步进器（N42③）：贴元信息尾部的紧凑 A∓ 对，随档位到边界自动禁用 */
+.snip-fs { display: inline-flex; gap: 2px; flex: none; }
+.snip-fs-btn {
+  display: grid; place-items: center; height: 22px; min-width: 24px; padding: 0 4px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  background: none; color: var(--color-text-muted); cursor: pointer;
+  font-size: var(--text-xs); font-weight: 600; line-height: 1;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.snip-fs-btn:hover:not(:disabled) { color: var(--color-text); background: var(--surface-hover); }
+.snip-fs-btn:disabled { opacity: 0.4; cursor: default; }
 .snip-state {
   flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
   font-size: var(--text-sm); color: var(--color-text-muted);
