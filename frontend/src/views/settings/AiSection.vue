@@ -60,8 +60,8 @@ const accessCorrupt = computed(() => {
   return !!a && a.exists && !a.readable
 })
 
-// 四行工具开关（键名=access.json 契约四键）：主文案说人话——AI 将看到什么、
-// 敏感级直书；MCP 工具名退入行内「技术细节」。
+// 六行工具开关（键名=access.json 契约六键，N32/N34 扩充批）：主文案说人话——
+// AI 将看到什么、敏感级直书；MCP 工具名退入行内「技术细节」。
 const accessTools = computed(() => {
   const t = status.value?.access.tools
   return [
@@ -84,6 +84,16 @@ const accessTools = computed(() => {
       key: 'memo', name: '便签内容检索', tool: 'hanxi_memo_search', on: !!t?.memo,
       desc: 'AI 可搜索你便签里的文字内容——最私密的一项，建议保持关闭。',
       risk: { text: '含个人笔记 · 建议关', chip: 'chip-danger' },
+    },
+    {
+      key: 'sysinfo', name: '系统信息', tool: 'hanxi_sysinfo_report', on: !!t?.sysinfo,
+      desc: 'AI 可查看本机软硬件档案：机型、CPU、内存、显卡、磁盘、系统版本（默认摘要档）。',
+      risk: { text: '含计算机名/网络地址', chip: 'chip-warning' },
+    },
+    {
+      key: 'logs', name: '运行日志', tool: 'hanxi_log_read', on: !!t?.logs,
+      desc: 'AI 可回看 hanxi 自身运行日志帮你排查问题——每行先自动打码（IP/邮箱/密钥类）再给 AI。',
+      risk: { text: '已逐行脱敏', chip: 'chip-warning' },
     },
   ]
 })
@@ -292,7 +302,7 @@ onMounted(refresh)
       </div>
     </div>
 
-    <!-- ② 开放内容（access.json · 本分区即写入口，R6）：四开关保存即生效；损坏档锁死并给修复链 -->
+    <!-- ② 开放内容（access.json · 本分区即写入口，R6）：六开关保存即生效；损坏档锁死并给修复链 -->
     <div class="card">
       <div class="card-head">
         <span class="card-title"><span class="step-no">②</span> 允许 AI 查询哪些内容</span>

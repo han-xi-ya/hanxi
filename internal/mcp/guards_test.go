@@ -84,6 +84,8 @@ func TestToolNamesStable(t *testing.T) {
 		"hanxi_file_search":     "everything",
 		"hanxi_ocr_recognize":   "ocr",
 		"hanxi_memo_search":     "memo",
+		"hanxi_sysinfo_report":  "sysinfo",
+		"hanxi_log_read":        "logs",
 	}
 	if len(toolDefs) > len(want) {
 		t.Fatalf("工具面只能从白名单扩张到 %d 件，当前 %d 件", len(want), len(toolDefs))

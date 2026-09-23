@@ -35,6 +35,7 @@ import (
 	"hanxi/internal/modules/everything"
 	"hanxi/internal/modules/memo"
 	"hanxi/internal/modules/ocr"
+	"hanxi/internal/modules/sysinfo"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/product"
@@ -61,6 +62,12 @@ type registryGate struct {
 
 func (g *registryGate) Check(moduleID string) (func(), error) {
 	noop := func() {}
+	// logs 工具（N34）背后没有业务模块——读的是 hanxi 自己的落盘日志，无启用位、
+	// 无生命周期可查：access.json 的 logs 键即唯一授权门（脱敏在 handler 出机前
+	// 强制执行），这里放行不构成旁路，也不存在可被占用的租约。
+	if moduleID == accessKeyLogs {
+		return noop, nil
+	}
 	// memo 模块构造带文件库迁移写盘副作用，与无头"零落盘"承诺冲突（包注释决策 3）：
 	// 不进 registry、不走 Acquire，门禁直读 config.json 的 enabled 位 + receipt
 	// 保持同语义（未安装同样拒绝，杜绝卸载旁路）；无租约可占用，release 为空操作。
@@ -126,7 +133,8 @@ func Run() error {
 	headlessReceipts := settings.NewReceiptStore(paths.ModulesReceiptsDir(), paths.ModulesLedgerFile())
 	registry.SetReceiptStorage(headlessReceipts)
 	ocrModule := ocr.New(plat) // 类型断言取 service 作识图后端（与 GUI 同一 service 契约）
-	if err := registry.Register(append(mcpModules(plat), ocrModule)...); err != nil {
+	sysModule := sysinfo.New() // 同上：N32 系统档案后端取同一 service 实例
+	if err := registry.Register(append(mcpModules(plat), ocrModule, sysModule)...); err != nil {
 		return fmt.Errorf("注册无头模块失败: %w", err)
 	}
 	defer registry.ShutdownAll()
@@ -145,12 +153,20 @@ func Run() error {
 		// memo 走零落盘直读通道（绕开携带迁移/隔离写盘副作用的 MemoService 构造链，
 		// 包注释决策 3）；门禁仍按 config.json enabled 位（registryGate）。
 		Memo: newMemoDiskReader(),
+		// sysinfo（N32）取表内模块同一 service（纯采集零副作用，直构无收益分歧）；
+		// logs（N34）是 hanxi 自身日志的只读 tail，无模块后端，直读 <DataDir>/logs。
+		Logs: newLogDiskReader(),
 	}
 	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
 		// service 无头可用：client 已显式 Proxy:nil（回环 HTTP 纪律）、构造零落盘、
 		// 事件出口 application.Get() nil 守卫；服务离线时 RecognizeImage 返回
 		// "请先启动服务"业务指引而非拉起（§2.2 ocr 行）。
 		deps.OCR = ocrMod.Service()
+	}
+	if sysMod, ok := sysModule.(*sysinfo.Module); ok && sysMod != nil {
+		// GetReport 内 holder.Enter 走统一调用门：门禁已由 registryGate.Acquire
+		// 在中间件层完成（懒激活+租约），此处只是接上同一实例。
+		deps.SysInfo = sysMod.Service()
 	}
 
 	srv := NewMCPServer(deps)

@@ -39,8 +39,8 @@ export function ConfirmUninstall(clientID, token) {
 }
 
 /**
- * GetAccessOverview 单独刷新授权总览（R6）：四键当前态按读方视角即时重读盘呈现，
- * 缺文件 = 四 false 的合法默认态。授权文件 ≤16 KiB，读放大无虞。
+ * GetAccessOverview 单独刷新授权总览（R6）：六键当前态按读方视角即时重读盘呈现，
+ * 缺文件 = 六 false 的合法默认态。授权文件 ≤16 KiB，读放大无虞。
  * @returns {$CancellablePromise<$models.AccessInfo>}
  */
 export function GetAccessOverview() {
@@ -96,7 +96,7 @@ export function SelfCheck(refresh) {
 }
 
 /**
- * SetToolAccess 开关单个工具的授权：读现档 → 改一键 → 整档原子回写（恰好四键）。
+ * SetToolAccess 开关单个工具的授权：读现档 → 改一键 → 整档原子回写（恰好六键）。
  * 文件缺失是合法起点（凭空建档）；文件存在但读方不采信（损坏/超纲/未知键/版本≠1）
  * 时拒绝盲写并报中文指引——覆盖修复归 ResetAccess 显式确认，不提供静默台阶。
  * 成功返回写后呈现；保存即生效（读方每次调用重读盘，无需重启 hanxi mcp）。

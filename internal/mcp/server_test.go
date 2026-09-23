@@ -79,7 +79,7 @@ func newTestServer(t *testing.T) (Deps, *Access, *fakeEnvChecker) {
 	access := NewAccess(t.TempDir() + "/access.json") // 初始不存在：fail-closed 全拒绝
 	deps := Deps{
 		Access:   access,
-		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo"), // 门禁默认全开，授权层单独测
+		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo", "sysinfo", "logs"), // 门禁默认全开，授权层单独测
 		EnvCheck: env,
 	}
 	return deps, access, env
@@ -194,14 +194,16 @@ func TestUnauthorizedFailClosed(t *testing.T) {
 	}
 }
 
-// TestAllToolsUnauthorizedMatrix 全工具 fail-closed 矩阵：无授权文件时四件工具
+// TestAllToolsUnauthorizedMatrix 全工具 fail-closed 矩阵：无授权文件时六件工具
 // 逐一调用都必须指引错误且各自后端零触发（撤权=即时生效已由 access 层单测保证）。
 func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	deps, _, env := newTestServer(t)
 	fs := &fakeSearcher{}
 	fr := &fakeRecognizer{}
 	fm := &fakeMemo{}
-	deps.Search, deps.OCR, deps.Memo = fs, fr, fm
+	fi := &fakeReportSource{}
+	fl := &fakeLogTailer{}
+	deps.Search, deps.OCR, deps.Memo, deps.SysInfo, deps.Logs = fs, fr, fm, fi, fl
 	c := inProcClient(t, deps)
 
 	for _, tc := range []struct {
@@ -212,13 +214,16 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 		{toolSearch, map[string]any{"query": "x"}},
 		{toolOCR, map[string]any{"path": `C:\a.png`}},
 		{toolMemo, nil},
+		{toolSysInfo, nil},
+		{toolLogs, nil},
 	} {
 		res, text := callText(t, c, tc.tool, tc.args)
 		if !res.IsError || !strings.Contains(text, "未获授权") {
 			t.Errorf("%s: must deny without grant: %s", tc.tool, text)
 		}
 	}
-	if env.calls != 0 || fs.lastQ != "" || fr.calls != 0 || len(fm.items) != 0 {
+	if env.calls != 0 || fs.lastQ != "" || fr.calls != 0 || len(fm.items) != 0 ||
+		fi.calls != 0 || fl.calls != 0 {
 		t.Errorf("denied tools must not touch backends")
 	}
 }

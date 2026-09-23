@@ -4,9 +4,9 @@ package mcpwizard
 //
 // 写方（本包 access_write.go）与读方（internal/mcp/access.go，领地只读）各自持有
 // 一套严格规则；本测试不用任何 mock，直接以真读方 mcp.Access 解析写方落盘的字节：
-// 四键 true/false 全矩阵（2^4=16 组合）逐键核对语义一致，另核"保存即生效"
-// （同一 Access 实例在写方改档后立刻翻转）与拒绝形态的双侧同判。
-// 读方规则若有漂移（新加拒读条件/键集变化），这里第一时间红。
+// 六键 true/false 全矩阵（2^6=64 组合，N32/N34 扩充批后自四键扩量）逐键核对语义
+// 一致，另核"保存即生效"（同一 Access 实例在写方改档后立刻翻转）与拒绝形态的双侧
+// 同判。读方规则若有漂移（新加拒读条件/键集变化），这里第一时间红。
 //
 // 边界豁免说明（包注释）：仅测试文件 import internal/mcp，生产编译依赖图不变。
 
@@ -21,8 +21,8 @@ import (
 )
 
 func TestWriterBytesPassStrictReaderMatrix(t *testing.T) {
-	keys := []string{"envcheck", "everything", "ocr", "memo"}
-	for combo := 0; combo < 16; combo++ {
+	keys := accessToolKeys
+	for combo := 0; combo < 1<<len(keys); combo++ {
 		name := ""
 		for i, k := range keys {
 			if combo&(1<<i) != 0 {
@@ -32,7 +32,7 @@ func TestWriterBytesPassStrictReaderMatrix(t *testing.T) {
 		if name == "" {
 			name = "=all-false"
 		}
-		t.Run(fmt.Sprintf("组合%04b%s", combo, name), func(t *testing.T) {
+		t.Run(fmt.Sprintf("组合%0*b%s", len(keys), combo, name), func(t *testing.T) {
 			svc, _ := newTestService(t, nil)
 			// 从"缺文件"合法态出发，逐键走真实 RPC 拨到目标组合。
 			for i, k := range keys {
@@ -81,6 +81,7 @@ func TestStrictLoaderAgreesWithReaderRejections(t *testing.T) {
 	accepted := []string{
 		`{"version":1,"tools":{}}`,
 		`{"version":1,"tools":{"memo":true}}`,
+		`{"version":1,"tools":{"sysinfo":true,"logs":true}}`,
 		"{\"version\":1,\"tools\":{\"envcheck\":true}}\n", // 尾随换行合法（读方 access_test 同款）
 	}
 	for _, content := range append(rejected, accepted...) {
@@ -90,8 +91,12 @@ func TestStrictLoaderAgreesWithReaderRejections(t *testing.T) {
 		}
 		st := strictLoadAccess(path)
 		reader := mcp.NewAccess(path)
-		allDenied := !reader.Allowed("envcheck") && !reader.Allowed("everything") &&
-			!reader.Allowed("ocr") && !reader.Allowed("memo")
+		allDenied := true
+		for _, key := range accessToolKeys {
+			if reader.Allowed(key) {
+				allDenied = false
+			}
+		}
 		wantStrictLegal := !slices.Contains(rejected, content)
 		if st.legal != wantStrictLegal {
 			t.Errorf("strict 判定与测试预期分叉 legal=%v want=%v 内容 %s", st.legal, wantStrictLegal, content)

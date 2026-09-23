@@ -19,12 +19,34 @@ var (
 	// 脱敏正则：匹配 token、secret、password、authorization 等
 	reAssignment = regexp.MustCompile(`(?i)(token|secret|password|passwd|sk|auth|authorization)\s*[:=]\s*["']?([^"'\s,]+)["']?`)
 	reBearer     = regexp.MustCompile(`(?i)(bearer\s+)([a-zA-Z0-9_\-\.]{10,})`)
+
+	// 以下三条属 RedactPII 扩族（MCP 日志工具 N34 行级脱敏）：落盘日志维持
+	// Redact 窄口径不动（本机排障要看得见 IP/邮箱），出机（进云端模型上下文）
+	// 通道才叠加 PII 层——两层职责分开，正则不并入 Redact 以防误伤磁盘取证力。
+	reIPv4  = regexp.MustCompile(`\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`)
+	reEmail = regexp.MustCompile(`\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b`)
+	// reKeyPrefix 常见供应商裸密钥形态（sk-/ghp_/gho_/glpat-/xox 系）：无
+	// key=value 上下文时 reAssignment 够不着，按前缀特征单独收口。
+	reKeyPrefix = regexp.MustCompile(`\b(?:sk|ghp|gho|ghu|ghs|glpat|xox[abprs])[-_][A-Za-z0-9]{16,}\b`)
 )
 
 // Redact 对文本进行敏感信息打码
 func Redact(text string) string {
 	res := reAssignment.ReplaceAllString(text, `$1="******"`)
 	res = reBearer.ReplaceAllString(res, `$1******`)
+	return res
+}
+
+// RedactPII 在 Redact 基础上叠加行级 PII 打码（IPv4/邮箱/供应商前缀密钥）。
+// 专供"内容会离开本机"的出口（MCP 日志工具把日志行喂给用户自己的 AI 客户端）；
+// 磁盘日志不走此口径——排障现场需要原始 IP/邮箱，且脱敏发生在落盘前会毁掉取证。
+// 打码保形不保义：IPv4 换 [ipv4]、邮箱换 [email]、前缀密钥换 [redacted-key]，
+// 行结构（时间/级别/消息骨架）原样保留，问答式排障不因此断链。
+func RedactPII(line string) string {
+	res := Redact(line)
+	res = reKeyPrefix.ReplaceAllString(res, `[redacted-key]`)
+	res = reEmail.ReplaceAllString(res, `[email]`)
+	res = reIPv4.ReplaceAllString(res, `[ipv4]`)
 	return res
 }
 

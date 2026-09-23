@@ -84,12 +84,14 @@ type ClientState struct {
 	InstalledAt  string `json:"installedAt"`
 }
 
-// AccessTools 授权四开关（PLAN §6 固定键名）。
+// AccessTools 授权六开关（PLAN §6 固定键名 + N32/N34 扩充批）。
 type AccessTools struct {
 	Envcheck   bool `json:"envcheck"`
 	Everything bool `json:"everything"`
 	Ocr        bool `json:"ocr"`
 	Memo       bool `json:"memo"`
+	Sysinfo    bool `json:"sysinfo"`
+	Logs       bool `json:"logs"`
 }
 
 // AccessInfo access.json 的读方视角呈现：Tools 恒等于 MCP 读者此刻的采信结果
@@ -234,8 +236,8 @@ func (s *McpWizardService) ConfirmUninstall(clientID, token string) (OpResult, e
 	return s.confirm(clientID, token, true)
 }
 
-// GetAccessOverview 单独刷新授权总览（R6）：四键当前态按读方视角即时重读盘呈现，
-// 缺文件 = 四 false 的合法默认态。授权文件 ≤16 KiB，读放大无虞。
+// GetAccessOverview 单独刷新授权总览（R6）：六键当前态按读方视角即时重读盘呈现，
+// 缺文件 = 六 false 的合法默认态。授权文件 ≤16 KiB，读放大无虞。
 func (s *McpWizardService) GetAccessOverview() (AccessInfo, error) {
 	return s.accessInfo(), nil
 }
@@ -487,8 +489,8 @@ func rollbackWord(rolled bool, bak string) string {
 // —— access.json 读方视角呈现 ——
 
 // accessInfo 按读方严格规则（strictLoadAccess，与 internal/mcp/access.go 同款判定）
-// 呈现"读者此刻看到什么"：采信→真实四键；不采信（损坏/超纲/未知键/版本≠1）或
-// 缺文件→四 false。呈现与判定永不分家，杜绝"界面显示已授权、读者实际全拒"的口径裂缝。
+// 呈现"读者此刻看到什么"：采信→真实六键；不采信（损坏/超纲/未知键/版本≠1）或
+// 缺文件→六 false。呈现与判定永不分家，杜绝"界面显示已授权、读者实际全拒"的口径裂缝。
 func (s *McpWizardService) accessInfo() AccessInfo {
 	st := strictLoadAccess(s.accessPath)
 	info := AccessInfo{Path: s.accessPath, Exists: st.exists}
@@ -506,6 +508,8 @@ func (s *McpWizardService) accessInfo() AccessInfo {
 			Everything: st.tools["everything"],
 			Ocr:        st.tools["ocr"],
 			Memo:       st.tools["memo"],
+			Sysinfo:    st.tools["sysinfo"],
+			Logs:       st.tools["logs"],
 		}
 	}
 	return info

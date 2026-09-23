@@ -16,12 +16,14 @@
  */
 
 /**
- * AccessTools 授权四开关（PLAN §6 固定键名）。
+ * AccessTools 授权六开关（PLAN §6 固定键名 + N32/N34 扩充批）。
  * @typedef {Object} AccessTools
  * @property {boolean} envcheck
  * @property {boolean} everything
  * @property {boolean} ocr
  * @property {boolean} memo
+ * @property {boolean} sysinfo
+ * @property {boolean} logs
  */
 
 /**

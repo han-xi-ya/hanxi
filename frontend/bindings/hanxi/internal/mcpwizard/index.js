@@ -17,7 +17,7 @@ import * as $models from "./models.js";
  */
 
 /**
- * AccessTools 授权四开关（PLAN §6 固定键名）。
+ * AccessTools 授权六开关（PLAN §6 固定键名 + N32/N34 扩充批）。
  * @typedef {$models.AccessTools} AccessTools
  */
 

@@ -1,6 +1,6 @@
 // AI 接入分区（F4b MCP 安装向导 + R6 授权开关）特征测试：三客户端四态渲染、
 // 预览→确认写链（令牌回传）、fail-closed 拒动呈现手动片段、
-// access.json 四开关写链（建档/即时生效文案/拒写指引/损坏态修复确认流）与"打开所在目录"、
+// access.json 六开关写链（建档/即时生效文案/拒写指引/损坏态修复确认流）与"打开所在目录"、
 // 幂等 ZeroDiff 文案、安装前自检行（R2：通过/失败警示不阻断/重检走 refresh/不该 spawn 时不 spawn）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -40,14 +40,14 @@ function stubStatus(clients: unknown[], access: Record<string, unknown> = {}) {
     clients,
     access: {
       path: 'D:\\hx\\hanxidata\\mcp\\access.json', exists: true, readable: true, version: 1,
-      tools: { envcheck: true, everything: false, ocr: false, memo: false }, note: '',
+      tools: { envcheck: true, everything: false, ocr: false, memo: false, sysinfo: false, logs: false }, note: '',
       ...access,
     },
   })
   // 自检默认通过态（R2）；单个用例覆写失败/异常分支
   wizardSvc.SelfCheck.mockResolvedValue({
-    state: 'ok', toolCount: 4, tools: ['hanxi_envcheck_detect', 'hanxi_file_search', 'hanxi_ocr_recognize', 'hanxi_memo_search'],
-    message: 'hanxi mcp 握手成功，4 件工具就位', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
+    state: 'ok', toolCount: 6, tools: ['hanxi_envcheck_detect', 'hanxi_file_search', 'hanxi_ocr_recognize', 'hanxi_memo_search', 'hanxi_sysinfo_report', 'hanxi_log_read'],
+    message: 'hanxi mcp 握手成功，6 件工具就位', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
   })
 }
 
@@ -120,7 +120,7 @@ describe('AI 接入分区', () => {
     expect(wizardSvc.SelfCheck).toHaveBeenCalledWith(false)
     const row = w.find('.check-row')
     expect(row.exists()).toBe(true)
-    expect(row.text()).toContain('通过（4 工具）')
+    expect(row.text()).toContain('通过（6 工具）')
     expect(row.text()).toContain('握手成功')
   })
 
@@ -241,13 +241,13 @@ describe('AI 接入分区', () => {
     expect(w.text()).toContain('已回滚')
   })
 
-  it('access 卡片：四开关行呈现读方视角状态与即时生效文案，打开所在目录传目录父路径', async () => {
+  it('access 卡片：六开关行呈现读方视角状态与即时生效文案，打开所在目录传目录父路径', async () => {
     stubStatus([client('claude', 'Claude Code')])
     const w = await mountView()
     expect(w.text()).toContain('状态正常')
     expect(w.text()).toContain('拨动开关立即生效，不用重启任何软件')
     const rows = w.findAll('.tool-row')
-    expect(rows).toHaveLength(4)
+    expect(rows).toHaveLength(6)
     const switches = w.findAll('.switch')
     expect((switches[0].element as HTMLInputElement).checked).toBe(true) // envcheck
     expect((switches[1].element as HTMLInputElement).checked).toBe(false) // everything
@@ -263,7 +263,7 @@ describe('AI 接入分区', () => {
     stubStatus([client('claude', 'Claude Code')])
     wizardSvc.SetToolAccess.mockResolvedValue({
       path: 'D:\\hx\\hanxidata\\mcp\\access.json', exists: true, readable: true, version: 1,
-      tools: { envcheck: true, everything: true, ocr: false, memo: false }, note: '',
+      tools: { envcheck: true, everything: true, ocr: false, memo: false, sysinfo: false, logs: false }, note: '',
     })
     const w = await mountView()
     await w.findAll('.switch')[1].setValue(true)
@@ -278,7 +278,7 @@ describe('AI 接入分区', () => {
   it('缺文件合法态：文案给"开关即建档"，开关不禁用（首拨凭空建档）', async () => {
     stubStatus([client('claude', 'Claude Code')], {
       exists: false, readable: false, version: 0,
-      tools: { envcheck: false, everything: false, ocr: false, memo: false },
+      tools: { envcheck: false, everything: false, ocr: false, memo: false, sysinfo: false, logs: false },
       note: '授权文件尚未生成——MCP 读者对此默认全关（fail-closed），这是合法默认态；拨动下方任一开关即自动建档并保存即生效',
     })
     const w = await mountView()
@@ -294,7 +294,7 @@ describe('AI 接入分区', () => {
     wizardSvc.SetToolAccess.mockRejectedValue(new Error('授权文件当前读方不采信（含未知工具键），请走「修复（覆盖重置）」'))
     wizardSvc.GetAccessOverview.mockResolvedValue({
       path: 'p', exists: true, readable: false, version: 0,
-      tools: { envcheck: false, everything: false, ocr: false, memo: false }, note: '损坏',
+      tools: { envcheck: false, everything: false, ocr: false, memo: false, sysinfo: false, logs: false }, note: '损坏',
     })
     const w = await mountView()
     await w.findAll('.switch')[0].setValue(false)
@@ -308,7 +308,7 @@ describe('AI 接入分区', () => {
   it('损坏态：开关锁死 + 修复按钮走二次确认 → ResetAccess → 总览刷新', async () => {
     stubStatus([client('claude', 'Claude Code')], {
       exists: true, readable: false, version: 0,
-      tools: { envcheck: false, everything: false, ocr: false, memo: false },
+      tools: { envcheck: false, everything: false, ocr: false, memo: false, sysinfo: false, logs: false },
       note: '授权文件损坏或超纲——MCP 读者对其 fail-closed，视同全部未授权。可点「修复（覆盖重置）」',
     })
     const w = await mountView()
@@ -328,7 +328,7 @@ describe('AI 接入分区', () => {
   it('修复链取消：不落任何写调用', async () => {
     stubStatus([client('claude', 'Claude Code')], {
       exists: true, readable: false, version: 0,
-      tools: { envcheck: false, everything: false, ocr: false, memo: false },
+      tools: { envcheck: false, everything: false, ocr: false, memo: false, sysinfo: false, logs: false },
       note: '损坏',
     })
     wizardSvc.ResetAccess.mockResolvedValue({ success: true, rolledBack: false, backupPath: 'D:\\x\\access.json.hanxi-bak-20260918-120000', message: '授权文件已重置为默认全关，旧档已另存' })
@@ -342,13 +342,13 @@ describe('AI 接入分区', () => {
   it('修复成功后刷新总览并 toast 备份去向', async () => {
     stubStatus([client('claude', 'Claude Code')], {
       exists: true, readable: false, version: 0,
-      tools: { envcheck: false, everything: false, ocr: false, memo: false },
+      tools: { envcheck: false, everything: false, ocr: false, memo: false, sysinfo: false, logs: false },
       note: '损坏',
     })
     wizardSvc.ResetAccess.mockResolvedValue({ success: true, rolledBack: false, backupPath: 'D:\\x\\access.json.hanxi-bak-20260918-120000', message: '授权文件已重置为默认全关，旧档已另存 D:\\x\\access.json.hanxi-bak-20260918-120000' })
     wizardSvc.GetAccessOverview.mockResolvedValue({
       path: 'D:\\hx\\hanxidata\\mcp\\access.json', exists: true, readable: true, version: 1,
-      tools: { envcheck: false, everything: false, ocr: false, memo: false }, note: '',
+      tools: { envcheck: false, everything: false, ocr: false, memo: false, sysinfo: false, logs: false }, note: '',
     })
     const w = await mountView()
     await w.find('.access-repair button').trigger('click')

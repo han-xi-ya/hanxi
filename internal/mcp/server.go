@@ -17,22 +17,30 @@ import (
 const maxPayloadBytes = 1 << 20
 
 // 工具英文名（决策 7：英文名 + 中文 description，PLAN §8-7 示例形态 hanxi_xxx）。
+// 契约扩充批（N32/N34 2026-09-24）加至六件：access.json 键与工具名一一对应。
 const (
 	toolEnvCheck = "hanxi_envcheck_detect"
 	toolSearch   = "hanxi_file_search"
 	toolOCR      = "hanxi_ocr_recognize"
 	toolMemo     = "hanxi_memo_search"
+	toolSysInfo  = "hanxi_sysinfo_report"
+	toolLogs     = "hanxi_log_read"
 )
+
+// accessKeyLogs 是 logs 工具的授权键（无同名业务模块，registryGate 据此放行空门）。
+const accessKeyLogs = "logs"
 
 // Deps 是 MCP server 的全部外联依赖（构造注入，单测以假件驱动全链路）。
 // 真装配见 Run()；各字段允许为 nil——对应工具在调用时报"后端不可用"而非 panic。
 type Deps struct {
-	Access   *Access    // access.json 授权引擎（每次调用重读，fail-closed）
-	Gate     ModuleGate // 模块启用门禁（真 = registry+settings 组合）
-	EnvCheck EnvChecker // hanxi_envcheck_detect 后端
-	Search   Searcher   // hanxi_file_search 后端（严格只读档）
-	OCR      Recognizer // hanxi_ocr_recognize 后端
-	Memo     MemoSource // hanxi_memo_search 后端（零落盘直读）
+	Access   *Access      // access.json 授权引擎（每次调用重读，fail-closed）
+	Gate     ModuleGate   // 模块启用门禁（真 = registry+settings 组合）
+	EnvCheck EnvChecker   // hanxi_envcheck_detect 后端
+	Search   Searcher     // hanxi_file_search 后端（严格只读档）
+	OCR      Recognizer   // hanxi_ocr_recognize 后端
+	Memo     MemoSource   // hanxi_memo_search 后端（零落盘直读）
+	SysInfo  ReportSource // hanxi_sysinfo_report 后端（N32，与 GUI 同一 service）
+	Logs     LogTailer    // hanxi_log_read 后端（N34，只读 tail 按天日志）
 }
 
 // NewMCPServer 按工具面全量组表并挂授权/门禁中间件。
@@ -66,21 +74,27 @@ type toolDef struct {
 }
 
 // knownModuleIDs 授权文件允许出现的工具键集合（出现集合外键 = access.json 非法 = 全拒绝）。
+// 六键契约扩充批（N32/N34）与写方 mcpwizard/access_write.go 的 accessToolKeys 同步演进，
+// 一致性由 access_readmatch_test.go 对拍矩阵把关。
 var knownModuleIDs = map[string]bool{
 	"envcheck":   true,
 	"everything": true,
 	"ocr":        true,
 	"memo":       true,
+	"sysinfo":    true,
+	"logs":       true,
 }
 
-// toolDefs 全量工具面（首版四件，PLAN_MCP C1-C5 收口）。注册顺序即 tools/list
-// 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"红线审（包注释纪律 1），
-// 并同步 knownModuleIDs 与 guards_test.go 的名称白名单。
+// toolDefs 全量工具面（首版四件 PLAN_MCP C1-C5 收口；扩充批 +sysinfo/logs 至六件）。
+// 注册顺序即 tools/list 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"
+// 红线审（包注释纪律 1），并同步 knownModuleIDs 与 guards_test.go 的名称白名单。
 var toolDefs = []toolDef{
 	{Name: toolEnvCheck, ModuleID: "envcheck", Build: buildEnvCheckTool},
 	{Name: toolSearch, ModuleID: "everything", Build: buildEverythingTool},
 	{Name: toolOCR, ModuleID: "ocr", Build: buildOcrTool},
 	{Name: toolMemo, ModuleID: "memo", Build: buildMemoTool},
+	{Name: toolSysInfo, ModuleID: "sysinfo", Build: buildSysInfoTool},
+	{Name: toolLogs, ModuleID: accessKeyLogs, Build: buildLogsTool},
 }
 
 // gateMiddleware 是所有工具调用的统一闸门：授权（每次重读 access.json）→ 模块启用 →
