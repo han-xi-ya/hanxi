@@ -10,7 +10,7 @@ import type { Snapshot } from '../../bindings/hanxi/internal/modules/ddnsgo/inst
 import { createDdnsGoAdapter } from '../adapters/ddnsgo'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
-import { useAsyncAction } from '../composables/useAsyncAction'
+import type { ManagedConsoleStore } from '../components/managed/store'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 
@@ -101,12 +101,19 @@ async function applyPort() {
   }
 }
 
-// ---------- 第三钮「打开控制台」（#primary-action 槽注入；store.busy 串行禁用，
-// 本钮单飞经视图 useAsyncAction；成功后状态刷新由 instance-state 事件与轮询兜底） ----------
-const { busy: consoleBusy, run: runConsoleAction } = useAsyncAction()
-
-async function openConsole() {
-  const r = await runConsoleAction(() => Promise.resolve(adapter.openConsole.run()))
+// ---------- 第三钮「打开控制台」（#primary-action 槽注入） ----------
+// P0 批 3·4.5：单飞从视图自建 busy 收编进共享 store.runExclusive——
+// 本钮在途时启停/退出钮一并禁用，反之亦然，杜绝「多份 busy 真相」交叉并发；
+// 成功后状态刷新由 instance-state 事件与轮询兜底。
+async function openConsole(store: ManagedConsoleStore) {
+  const r = await store.runExclusive(async () => {
+    try {
+      return { ok: true as const, data: await adapter.openConsole.run() }
+    } catch (e) {
+      return { ok: false as const, error: e as unknown }
+    }
+  })
+  if (!r) return // 共享互斥闩占用中：重复点击直接丢弃
   if (r.ok) {
     if (r.data?.message !== undefined) showToast(r.data.message)
   } else {
@@ -136,12 +143,12 @@ onMounted(async () => {
     :banner-slim="false"
   >
     <!-- 第三钮：打开内嵌 Web 控制台（钮序保持原"启动 → 打开控制台 → 退出"） -->
-    <template #primary-action="{ busy, state }">
+    <template #primary-action="{ busy, state, store }">
       <button
         class="btn btn-primary btn-small"
-        :disabled="busy || consoleBusy || adapter.openConsole.disabledFor?.(state)"
+        :disabled="busy || adapter.openConsole.disabledFor?.(state)"
         :title="adapter.openConsole.titleFor?.(state)"
-        @click="openConsole"
+        @click="openConsole(store)"
       >{{ adapter.openConsole.label }}</button>
     </template>
 

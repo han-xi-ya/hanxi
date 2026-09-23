@@ -154,25 +154,29 @@ async function quitEverything() {
 }
 
 // ---------- 版本管理操作 ----------
+// 全部写动作统一经 run()/busy 单飞互斥（P0 批 3·4.5）：下载中可点退出、
+// 设版中可点卸载的并发窗口自此封死。openDir 为只读导航不占闩。
 async function download(rel: EverythingRelease) {
-  try {
-    const res = await EverythingAPI.DownloadVersion(rel.version)
-    if (res === 'already-installed') {
-      showToast(`版本 ${rel.version} 已安装`)
-      await loadVersions()
-    }
-  } catch (e) {
-    showToast(`下载失败: ${getErrorMessage(e)}`)
+  if (busy.value) return
+  const r = await run(() => EverythingAPI.DownloadVersion(rel.version))
+  if (!r.ok) {
+    showToast(`下载失败: ${getErrorMessage(r.error)}`)
+    return
+  }
+  if (r.data === 'already-installed') {
+    showToast(`版本 ${rel.version} 已安装`)
+    await loadVersions()
   }
 }
 
 async function setActive(v: EverythingVersionInfo) {
-  try {
-    const ver = await EverythingAPI.SetActiveVersion(v.version)
-    activeVersion.value = ver
-    showToast(`已将 ${ver} 设为使用版本`)
-  } catch (e) {
-    showToast(`设置失败: ${getErrorMessage(e)}`)
+  if (busy.value) return
+  const r = await run(() => EverythingAPI.SetActiveVersion(v.version))
+  if (r.ok) {
+    activeVersion.value = r.data
+    showToast(`已将 ${r.data} 设为使用版本`)
+  } else {
+    showToast(`设置失败: ${getErrorMessage(r.error)}`)
   }
 }
 
@@ -194,12 +198,13 @@ async function removeVersion(v: EverythingVersionInfo) {
     confirmLabel: '卸载',
   })
   if (!ok) return
-  try {
-    await EverythingAPI.RemoveVersion(v.version)
+  if (busy.value) return
+  const r = await run(() => EverythingAPI.RemoveVersion(v.version))
+  if (r.ok) {
     showToast(`已卸载 ${v.version}`)
     await loadVersions()
-  } catch (e) {
-    showToast(`卸载失败: ${getErrorMessage(e)}`)
+  } else {
+    showToast(`卸载失败: ${getErrorMessage(r.error)}`)
   }
 }
 

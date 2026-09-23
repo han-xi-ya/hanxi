@@ -28,6 +28,14 @@ const { copyWithToast } = useClipboard()
 const followOnExit = ref(false)
 const repoUrl = ref('')
 
+/**
+ * 写动作单飞互斥（P0 批 3·4.5）：有共享 store 时经 runExclusive——与启停/
+ * 下载/控制动词同一 busy 闩互斥；store 缺省（独立挂载/测试）退化为直接执行。
+ */
+function withLock<T>(action: () => Promise<T>): Promise<T | undefined> {
+  return props.store ? props.store.runExclusive(action) : action()
+}
+
 async function loadExtras() {
   const jobs: Promise<unknown>[] = []
   const follow = props.adapter.extras?.followOnExit
@@ -56,37 +64,43 @@ async function loadExtras() {
 async function onFollowToggle() {
   const spec = props.adapter.extras?.followOnExit
   if (!spec) return
-  const next = !followOnExit.value
-  followOnExit.value = next // 用户点击已将勾选框翻转，ref 同步跟进，保持绑定状态一致
-  try {
-    const res = await spec.set(next)
-    if (res?.message !== undefined) showToast(res.message)
-  } catch (e) {
-    followOnExit.value = !next // 失败回滚：ref 变化驱动勾选框复位到后端真实值
-    showToast(`设置失败: ${getErrorMessage(e)}`)
-  }
+  await withLock(async () => {
+    const next = !followOnExit.value
+    followOnExit.value = next // 乐观翻转：ref 变化驱动勾选框即时跟进
+    try {
+      const res = await spec.set(next)
+      if (res?.message !== undefined) showToast(res.message)
+    } catch (e) {
+      followOnExit.value = !next // 失败回滚到后端真实值
+      showToast(`设置失败: ${getErrorMessage(e)}`)
+    }
+  })
 }
 
 async function createShortcut() {
   const spec = props.adapter.extras?.shortcut
   if (!spec) return
-  try {
-    const res = await spec.create()
-    if (res?.message !== undefined) showToast(res.message)
-  } catch (e) {
-    showToast(`创建快捷方式失败: ${getErrorMessage(e)}`)
-  }
+  await withLock(async () => {
+    try {
+      const res = await spec.create()
+      if (res?.message !== undefined) showToast(res.message)
+    } catch (e) {
+      showToast(`创建快捷方式失败: ${getErrorMessage(e)}`)
+    }
+  })
 }
 
 async function openDataDir() {
   const spec = props.adapter.extras?.dataDir
   if (!spec) return
-  try {
-    const res = await spec.open()
-    if (res?.message !== undefined) showToast(res.message)
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
+  await withLock(async () => {
+    try {
+      const res = await spec.open()
+      if (res?.message !== undefined) showToast(res.message)
+    } catch (e) {
+      showToast(`打开目录失败: ${getErrorMessage(e)}`)
+    }
+  })
 }
 
 async function copyRepo() {
@@ -98,12 +112,14 @@ async function copyRepo() {
 async function openRepo() {
   const spec = props.adapter.extras?.repo
   if (!spec) return
-  try {
-    const res = await spec.open()
-    if (res?.message !== undefined) showToast(res.message)
-  } catch (e) {
-    showToast(`打开失败: ${getErrorMessage(e)}`)
-  }
+  await withLock(async () => {
+    try {
+      const res = await spec.open()
+      if (res?.message !== undefined) showToast(res.message)
+    } catch (e) {
+      showToast(`打开失败: ${getErrorMessage(e)}`)
+    }
+  })
 }
 
 // ---- 「托管位置」数据行（增强批⑨）：copy.dataDirRow × store 现态联合驱动 ----
@@ -118,12 +134,14 @@ const hostDir = computed(() => {
 async function openHostDir() {
   const spec = hostDirSpec.value
   if (!spec || !hostDir.value) return
-  try {
-    const res = await spec.open(hostDir.value)
-    if (res?.message !== undefined) showToast(res.message)
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
+  await withLock(async () => {
+    try {
+      const res = await spec.open(hostDir.value)
+      if (res?.message !== undefined) showToast(res.message)
+    } catch (e) {
+      showToast(`打开目录失败: ${getErrorMessage(e)}`)
+    }
+  })
 }
 
 onMounted(() => {
