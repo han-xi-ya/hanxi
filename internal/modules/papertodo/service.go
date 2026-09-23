@@ -250,9 +250,16 @@ func (s *PaperTodoService) DownloadVersion(targetVersion, variant string) (strin
 			}
 		}
 		if err := s.manager.DownloadContext(txn.Context(), txnID, targetVersion, variant, emit); err != nil {
-			txn.Fail("asset-install-failed", err.Error())
-			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
-			notify.Error("papertodo", "PaperTodo 下载失败", fmt.Sprintf("PaperTodo %s 下载失败: %v", targetVersion, err), "/ext/papertodo")
+			// N26 用户主动取消：按 2b 纪律如实收口，票面话术不露 ctx 原始错误；
+			// 主动动作不发"失败"系统通知（前端票面已呈现「已取消」）。
+			if txn.Err() != nil {
+				txn.Fail("operation-cancelled", "托管操作已取消")
+				emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: "托管下载已取消"})
+			} else {
+				txn.Fail("asset-install-failed", err.Error())
+				emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
+				notify.Error("papertodo", "PaperTodo 下载失败", fmt.Sprintf("PaperTodo %s 下载失败: %v", targetVersion, err), "/ext/papertodo")
+			}
 			return
 		}
 		if err := txn.Done(); err != nil {
