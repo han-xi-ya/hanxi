@@ -27,4 +27,25 @@ describe('MainTabNav', () => {
   it('容器具备 tablist 角色', () => {
     expect(mount(MainTabNav, { props: { tabs, modelValue: 'annotate' } }).find('[role="tablist"]').exists()).toBe(true)
   })
+
+  // 批 3·4.6：roving tabindex 与键盘导航
+  it('roving tabindex：仅选中项可 Tab 停留', () => {
+    const w = mount(MainTabNav, { props: { tabs, modelValue: 'versions' } })
+    const btns = w.findAll('[role="tab"]')
+    expect(btns[0].attributes('tabindex')).toBe('-1')
+    expect(btns[1].attributes('tabindex')).toBe('0')
+  })
+
+  it('方向键循环换选、Home/End 跳首尾（change-selects）', async () => {
+    const w = mount(MainTabNav, { props: { tabs, modelValue: 'annotate' } })
+    await w.find('[role="tablist"]').trigger('keydown', { key: 'ArrowRight' })
+    expect(w.emitted('update:modelValue')?.[0]).toEqual(['versions'])
+    await w.setProps({ modelValue: 'versions' })
+    await w.find('[role="tablist"]').trigger('keydown', { key: 'ArrowRight' })
+    expect(w.emitted('update:modelValue')?.[1]).toEqual(['annotate']) // 循环回卷
+    await w.find('[role="tablist"]').trigger('keydown', { key: 'End' })
+    expect(w.emitted('update:modelValue')?.[2]).toEqual(['versions'])
+    await w.find('[role="tablist"]').trigger('keydown', { key: 'Home' })
+    expect(w.emitted('update:modelValue')?.[3]).toEqual(['annotate'])
+  })
 })

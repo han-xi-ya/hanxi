@@ -72,7 +72,14 @@ function channelLabel(channel: string): string {
           <td>{{ fmtDate(rel.published) }}</td>
           <td>
             <div v-if="statusOf(rel) === 'downloading' && downloading[rel.version]!.stage === 'downloading'" class="download-cell">
-              <div class="dl-bar-wrap">
+              <div
+                class="dl-bar-wrap"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="stepOf(downloading[rel.version]!)"
+                aria-label="下载进度"
+              >
                 <div class="dl-bar-inner" :style="{ width: `${stepOf(downloading[rel.version]!)}%` }"></div>
               </div>
               <span class="dl-percent">{{ stepOf(downloading[rel.version]!) }}%</span>
@@ -90,7 +97,7 @@ function channelLabel(channel: string): string {
               @click="emit('download', rel)"
             >下载安装</button>
             <span v-if="statusOf(rel) === 'installed'" class="installed-tag">已安装</span>
-            <a v-if="statusOf(rel) === 'error'" class="retry-link" @click="emit('download', rel)">重试</a>
+            <button v-if="statusOf(rel) === 'error'" type="button" class="retry-link" @click="emit('download', rel)">重试</button>
           </td>
         </tr>
         <tr v-if="releases.length === 0 && !loading">
@@ -133,6 +140,7 @@ function channelLabel(channel: string): string {
 .dl-percent { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
 .dl-meta-text { font-size: var(--text-sm); color: var(--color-primary); }
 .dl-error { color: var(--state-danger); font-size: var(--text-xs); }
-.retry-link { color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; }
+/* 批 3·4.6：重试由无 href 的 <a> 改为 button——键盘可达；外观维持链接形 */
+.retry-link { appearance: none; background: none; border: none; padding: 0; font: inherit; color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; text-align: left; }
 .retry-link:hover { text-decoration: underline; }
 </style>

@@ -238,7 +238,14 @@ const installedChipClass = computed(() =>
           <td>{{ fmtDate(rel.published) }}</td>
           <td>
             <div v-if="statusOf(rel) === 'downloading' && ticketOf(rel)!.stage === 'downloading'" class="download-cell">
-              <div class="dl-bar-wrap">
+              <div
+                class="dl-bar-wrap"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="stepOf(ticketOf(rel)!)"
+                aria-label="下载进度"
+              >
                 <div class="dl-bar-inner" :style="{ width: `${stepOf(ticketOf(rel)!)}%` }"></div>
               </div>
               <span class="dl-percent">{{ stepOf(ticketOf(rel)!) }}%</span>

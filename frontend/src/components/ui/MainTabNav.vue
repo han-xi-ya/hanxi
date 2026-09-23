@@ -4,7 +4,11 @@
 // 本组件 scoped 样式即唯一标准形；后续如需全局化再上收 components.css。
 // idPrefix（可选，§9.5-3）：需要 aria 接线时生成 `${idPrefix}-${key}-tab/-panel`，
 // 面板侧由视图自行 id + aria-labelledby 闭环（对应 tablist 的 label 可选命名）。
-defineProps<{
+// 键盘导航（P0 批 3·4.6）：roving tabindex（仅选中项可聚焦）+ ←/→ 循环、
+// Home/End 跳首尾，change-selects 模式——焦点移即换选，与点击语义一致。
+import { nextTick, ref } from 'vue'
+
+const props = defineProps<{
   tabs: Array<{ key: string; label: string }>
   modelValue: string
   idPrefix?: string
@@ -12,10 +16,32 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [key: string] }>()
+
+const rootEl = ref<HTMLElement | null>(null)
+
+function onKeydown(e: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return
+  const n = props.tabs.length
+  if (n === 0) return
+  e.preventDefault()
+  const idx = props.tabs.findIndex((t) => t.key === props.modelValue)
+  if (idx < 0) return
+  const next =
+    e.key === 'ArrowRight' ? (idx + 1) % n
+    : e.key === 'ArrowLeft' ? (idx - 1 + n) % n
+    : e.key === 'Home' ? 0
+    : n - 1
+  emit('update:modelValue', props.tabs[next].key)
+  // 焦点随选中迁移（roving：非选中项 tabindex=-1 不可 Tab 停留）。
+  void nextTick(() => {
+    const btns = rootEl.value?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    btns?.[next]?.focus()
+  })
+}
 </script>
 
 <template>
-  <div class="main-tab-nav" role="tablist" :aria-label="label">
+  <div ref="rootEl" class="main-tab-nav" role="tablist" :aria-label="label" @keydown="onKeydown">
     <button
       v-for="tab in tabs"
       :key="tab.key"
@@ -26,6 +52,7 @@ const emit = defineEmits<{ 'update:modelValue': [key: string] }>()
       :id="idPrefix ? `${idPrefix}-${tab.key}-tab` : undefined"
       :aria-controls="idPrefix ? `${idPrefix}-${tab.key}-panel` : undefined"
       :aria-selected="modelValue === tab.key"
+      :tabindex="modelValue === tab.key ? 0 : -1"
       @click="emit('update:modelValue', tab.key)"
     >{{ tab.label }}</button>
   </div>
