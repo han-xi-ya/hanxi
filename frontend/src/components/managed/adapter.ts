@@ -231,6 +231,20 @@ export interface ManagedReleaseRecord {
   published: string
   size: number
   isPre?: boolean
+  /**
+   * N13 上游发布物矩阵（hostfeed.AssetNote 同形 JSON）：面板"上游发布"列
+   * 按平台/形态出徽标，managed=true 高亮"当前托管形态"。缺省 = 该模块
+   * 数据层未接矩阵（列留空不装样子）。纯展示，永不参与下载决策。
+   */
+  assets?: ReleaseAssetNote[] | null
+}
+
+/** 发布物展示元数据（与 packages/go/hostfeed.AssetNote 的 JSON 契约同形）。 */
+export interface ReleaseAssetNote {
+  platform?: string
+  form?: string
+  label?: string
+  managed?: boolean | null
 }
 
 /** 启停归一动词（见文件头铁律①）：label/cssClass/disabledFor/titleFor 均为渲染声明。 */

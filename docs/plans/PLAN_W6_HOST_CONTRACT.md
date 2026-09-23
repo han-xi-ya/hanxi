@@ -122,6 +122,15 @@ type AssetNote struct {   // 纯展示元数据，永不参与下载/校验路�
   "install" 子串误判安装器（zip 判据收紧为 setup/nsis 强标记）；
   Notes 未过滤形态级 meta（SHASUMS 类拼写变体漏网）。
 
+## 2.95 UI 步（2026-09-23 落地，观感随真机验收）
+
+- ManagedReleaseRecord 增可选 `assets`（合同随 bindings 真实可空形态放宽
+  `| null`——BCUView 现有链路立刻面试出该收窄必要性）；
+- ManagedVersionPanel 远程表新增「上游发布」列：`平台短词×形态短词` 徽标、
+  托管形态主色描边+tooltip 注「当前托管形态」、超 5 枚折叠 +N（title 全量，
+  rustdesk 26 资产不撑爆行）、无矩阵模块如实留 "—" 不装样子；纯展示，下载
+  钮语义零改动；面板 spec 钉 2 例（高亮/折叠）。
+
 ## 3. 实施拆分（评审通过后）
 
 1. packages/go/releasefeed：Platform/Form 词汇 + 分类器 + 底账 fixture 测试；

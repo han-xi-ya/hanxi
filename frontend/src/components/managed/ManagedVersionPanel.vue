@@ -21,6 +21,7 @@ import { computed } from 'vue'
 import type {
   ManagedModuleAdapter,
   ManagedReleaseRecord,
+  ReleaseAssetNote,
   ManagedSnapshot,
   ManagedVersionDialect,
   ManagedVersionRecord,
@@ -30,6 +31,20 @@ import { sameVersionOf } from './adapter'
 import type { ManagedConsoleStore } from './store'
 import { useManagedConsole } from './store'
 import { fmtSize, fmtDate } from '../../utils/format'
+
+// N13「上游发布」列词表：平台短词×形态短词，托管形态高亮。纯展示——
+// 下载钮永远只跟着"本托管那条"走，非 Windows 行只标不点（知情不引导）。
+const PLAT_WORD: Record<string, string> = {
+  windows: 'Win', macos: 'Mac', linux: 'Linux', android: '安卓', freebsd: 'BSD', other: '其它',
+}
+const FORM_WORD: Record<string, string> = {
+  portable: '便携', installer: '安装器', package: '包', archive: '归档', binary: '程序', meta: '元数据',
+}
+/** 行内徽标硬顶：超出折叠为 +N（title 列全量），rustdesk 26 资产也不撑爆行。 */
+const ASSET_CAP = 5
+const assetWord = (a: ReleaseAssetNote) => `${PLAT_WORD[a.platform ?? 'other'] ?? a.platform ?? '其它'} ${FORM_WORD[a.form ?? 'archive'] ?? a.form ?? '归档'}`
+const assetTip = (a: ReleaseAssetNote) => `${a.label ?? ''}${a.managed ? '（当前托管形态）' : ''}`
+const assetsOverflowTip = (rel: ManagedReleaseRecord) => (rel.assets ?? []).map((a) => a.label ?? '').join('\n')
 
 const props = withDefaults(
   defineProps<{
@@ -219,6 +234,7 @@ const installedChipClass = computed(() =>
           <th style="width: 170px;">状态</th>
           <th style="width: 90px;">大小</th>
           <th style="width: 110px;">发布时间</th>
+          <th style="width: 210px;">上游发布</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -236,6 +252,23 @@ const installedChipClass = computed(() =>
           </td>
           <td>{{ fmtSize(rel.size) }}</td>
           <td>{{ fmtDate(rel.published) }}</td>
+          <td class="asset-cell">
+            <template v-if="rel.assets?.length">
+              <span
+                v-for="(a, ai) in rel.assets.slice(0, ASSET_CAP)"
+                :key="ai"
+                class="chip chip-neutral asset-chip"
+                :class="{ 'asset-managed': a.managed }"
+                :title="assetTip(a)"
+              >{{ assetWord(a) }}</span>
+              <span
+                v-if="rel.assets.length > ASSET_CAP"
+                class="hint-dim asset-more"
+                :title="assetsOverflowTip(rel)"
+              >+{{ rel.assets.length - ASSET_CAP }}</span>
+            </template>
+            <span v-else class="hint-dim">—</span>
+          </td>
           <td>
             <div v-if="statusOf(rel) === 'downloading' && ticketOf(rel)!.stage === 'downloading'" class="download-cell">
               <div
@@ -276,7 +309,7 @@ const installedChipClass = computed(() =>
           </td>
         </tr>
         <tr v-if="store.releases.length === 0 && !store.loading">
-          <td colspan="5" class="empty-hint">{{ adapter.copy?.remoteUnavailable ?? '无法加载远程版本列表——可稍后点击「↻ 刷新远程列表」重试' }}</td>
+          <td colspan="6" class="empty-hint">{{ adapter.copy?.remoteUnavailable ?? '无法加载远程版本列表——可稍后点击「↻ 刷新远程列表」重试' }}</td>
         </tr>
       </tbody>
     </table>
@@ -300,4 +333,10 @@ const installedChipClass = computed(() =>
 .badge-official { background: var(--surface-hover); color: var(--color-text-muted); }
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 .retry-link.disabled { color: var(--color-text-subtle); cursor: not-allowed; text-decoration: none; }
+
+/* N13 上游发布列：徽标密度克制（text-xs、允许换行）；托管形态主色描边一眼锁定 */
+.asset-cell { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.asset-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; }
+.asset-managed { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-soft); }
+.asset-more { font-size: var(--text-xs); }
 </style>

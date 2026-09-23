@@ -405,3 +405,39 @@ describe('ManagedVersionPanel 本地扫描未决期', () => {
     w.unmount()
   })
 })
+// ---------- N13 上游发布列 ----------
+describe('ManagedVersionPanel 上游发布列', () => {
+  const asset = (platform: string, form: string, label: string, managed = false) => ({ platform, form, label, managed })
+
+  it('矩阵行出徽标、托管形态高亮；无矩阵行以 — 如实留空', async () => {
+    const { adapter } = fakeAdapter({
+      releases: [
+        { version: 'v1.0.0', published: '', size: 1, assets: [
+          asset('windows', 'portable', 'tool-win-portable.zip', true),
+          asset('macos', 'installer', 'tool-mac.dmg'),
+        ] },
+        { version: 'v0.9.0', published: '', size: 1 },
+      ],
+    })
+    const w = await mountPanel(adapter)
+    const rows = w.findAll('tbody tr')
+    const chips = rows[0].findAll('.asset-chip')
+    expect(chips.map((c) => c.text())).toEqual(['Win 便携', 'Mac 安装器'])
+    expect(chips[0].classes()).toContain('asset-managed')
+    expect(chips[1].classes()).not.toContain('asset-managed')
+    expect(chips[0].attributes('title')).toContain('当前托管形态')
+    expect(rows[1].find('.asset-cell').text()).toBe('—')
+    w.unmount()
+  })
+
+  it('超 ASSET_CAP 折叠为 +N，全量清单进 title（rustdesk 26 资产不撑爆行）', async () => {
+    const many = Array.from({ length: 7 }, (_, i) => asset('linux', 'package', `pkg-${i}.deb`))
+    const { adapter } = fakeAdapter({ releases: [{ version: 'v1', published: '', size: 1, assets: many }] })
+    const w = await mountPanel(adapter)
+    expect(w.findAll('.asset-chip')).toHaveLength(5)
+    const more = w.find('.asset-more')
+    expect(more.text()).toBe('+2')
+    expect(more.attributes('title')).toContain('pkg-6.deb')
+    w.unmount()
+  })
+})
