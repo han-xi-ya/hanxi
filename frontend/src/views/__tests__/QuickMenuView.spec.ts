@@ -42,6 +42,8 @@ afterEach(() => {
 describe('QuickMenuView', () => {
   it('钩子在位显示正向 chip，并展示阈值参数', async () => {
     const w = await mountReady()
+    // N6-C2：只读页也挂同源预览盘（条目数=扇区数）
+    expect(w.findAll('.wp-sector').length).toBe(2)
     expect(w.find('.chip').classes()).toContain('chip-positive')
     expect(w.find('.chip').text()).toBe('监听在位')
     expect(w.find('.subtitle').text()).toContain('450')

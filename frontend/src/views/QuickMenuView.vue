@@ -5,6 +5,7 @@ import { ref, shallowRef, onMounted } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
 import type { MenuItem, Status } from '../../bindings/hanxi/internal/modules/quickmenu/models'
 import { getErrorMessage } from '../utils/errors'
+import WheelPreview from '../components/quickmenu/WheelPreview.vue'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -62,6 +63,14 @@ async function toggleTwoTier(on: boolean) {
   }
 }
 
+// N6-C2/C3：只读页也挂同源预览盘（条目一变盘即变）；点击盘格定位列表行，
+// 为编辑器内嵌阶段（C1）预铺交互通路——选中仅高亮，不写任何状态。
+const selected = ref<number | null>(null)
+function pickSector(i: number) {
+  selected.value = selected.value === i ? null : i
+  document.getElementById(`qm-item-row-${i}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+}
+
 onMounted(refresh)
 </script>
 
@@ -113,11 +122,13 @@ onMounted(refresh)
           <b class="mono">{{ items.length }}</b> 个扇区{{ twoTier ? '（分组可展开子环）' : '（分组已拍平）' }}。
         </p>
 
+        <div class="qm-layout">
+        <div class="qm-list-col">
         <div v-if="items.length === 0" class="empty-state">
           <p>尚未配置任何条目。先到设置页为托盘菜单添加要快速启动的程序、托管命令或页面。</p>
         </div>
         <ul v-else class="item-list">
-          <li v-for="item in items" :key="item.index" class="item-block">
+          <li v-for="(item, i) in items" :id="`qm-item-row-${i}`" :key="item.index" class="item-block" :class="{ 'is-picked': selected === i }">
             <div class="item-row">
               <span class="item-main">
                 <span class="item-label">{{ item.label }}</span>
@@ -143,6 +154,12 @@ onMounted(refresh)
             前往设置页配置
           </button>
         </div>
+        </div>
+        <aside class="qm-preview-col">
+          <WheelPreview :items="items" :active-index="selected" :scale="0.9" @pick="pickSector" />
+          <p class="qm-preview-hint">与你挂出的轮盘同一几何——点盘格可定位下方条目</p>
+        </aside>
+        </div>
       </section>
 
       <section class="panel usage">
@@ -161,6 +178,13 @@ onMounted(refresh)
 </template>
 
 <style scoped>
+/* N6-C2：列表与同源预览盘并排；窄屏单列堆叠 */
+.qm-layout { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; }
+.qm-list-col { min-width: 0; }
+.qm-preview-col { position: sticky; top: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.qm-preview-hint { margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); text-align: center; }
+.item-block.is-picked { outline: 2px solid var(--color-primary); outline-offset: 1px; border-radius: var(--radius-control); }
+@media (max-width: 860px) { .qm-layout { grid-template-columns: minmax(0, 1fr); } .qm-preview-col { position: static; } }
 .sec-title {
   font-size: var(--text-md);
   font-weight: 600;
