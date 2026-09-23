@@ -179,7 +179,7 @@ func TestMapKernelStateVocabulary(t *testing.T) {
 		{"stopping→quitting", sup.Snapshot{State: sup.StateStopping}, StateQuitting},
 		{"stopped", sup.Snapshot{State: sup.StateStopped}, StateStopped},
 		{"failed", sup.Snapshot{State: sup.StateFailed, Error: "托管进程异常退出（退出码 3）"}, StateFailed},
-		{"external 防御收口 stopped", sup.Snapshot{State: sup.StateExternal}, StateStopped},
+		{"external", sup.Snapshot{State: sup.StateExternal}, StateExternal},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

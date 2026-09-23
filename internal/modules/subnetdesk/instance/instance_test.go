@@ -4,6 +4,7 @@ package instance
 
 import (
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -135,9 +136,12 @@ func newWindowsJobAPI() platform.JobAPI {
 // mustCmdExe 返回系统 cmd.exe 路径（模拟短命外层 packer）。
 func mustCmdExe(t *testing.T) string {
 	t.Helper()
+	if runtime.GOOS != "windows" {
+		t.Skip("需要 Windows cmd.exe 冒烟进程")
+	}
 	path, err := exec.LookPath("cmd.exe")
 	if err != nil {
-		t.Fatal("cmd.exe 不可用")
+		t.Skip("cmd.exe 不可用，跳过 Windows 进程树冒烟")
 	}
 	return path
 }
