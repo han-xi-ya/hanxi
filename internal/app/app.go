@@ -94,6 +94,7 @@ import (
 	"hanxi/internal/modules/subnetdesk"
 	subnetdeskinstance "hanxi/internal/modules/subnetdesk/instance"
 	subnetdeskversion "hanxi/internal/modules/subnetdesk/version"
+	"hanxi/internal/modules/sysinfo"
 	"hanxi/internal/modules/termora"
 	terminstance "hanxi/internal/modules/termora/instance"
 	termoraversion "hanxi/internal/modules/termora/version"
@@ -457,6 +458,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		quicklook.New(plat),
 		litemonitor.New(plat),
 		guoheview.New(plat),
+		sysinfo.New(),
 		ddnsgo.New(plat),
 		rustdesk.New(plat),
 		subnetdesk.New(plat),

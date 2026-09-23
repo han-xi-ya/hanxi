@@ -436,6 +436,18 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
+		ID:            "sysinfo",
+		Name:          "系统信息",
+		Description:   "本机软硬件静态档案一览：CPU/内存/主板/显卡/显示器/磁盘/网络/OS（纯只读采集）",
+		Category:      "system",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "termora",
 		Name:          "Termora",
 		Description:   "托管 Termora SSH/Sftp 终端：版本管理、JobObject 启停与外部实例分档治理",

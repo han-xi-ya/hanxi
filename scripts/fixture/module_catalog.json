@@ -877,6 +877,27 @@
       "owner": "hanxi"
     },
     {
+      "id": "sysinfo",
+      "name": "系统信息",
+      "description": "本机软硬件静态档案一览：CPU/内存/主板/显卡/显示器/磁盘/网络/OS（纯只读采集）",
+      "category": "system",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
       "id": "termora",
       "name": "Termora",
       "description": "托管 Termora SSH/Sftp 终端：版本管理、JobObject 启停与外部实例分档治理",

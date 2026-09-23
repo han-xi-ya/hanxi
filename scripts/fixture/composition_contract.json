@@ -35,6 +35,7 @@
     { "id": "snipaste", "route": "/ext/snipaste", "group": "efficiency" },
     { "id": "softver", "route": "/ext/softver", "group": "system" },
     { "id": "subnetdesk", "route": "/ext/subnetdesk", "group": "network" },
+    { "id": "sysinfo", "route": "/ext/sysinfo", "group": "system" },
     { "id": "termora", "route": "/ext/termora", "group": "developer" },
     { "id": "translucenttb", "route": "/ext/translucenttb", "group": "desktop" },
     { "id": "vscode", "route": "/ext/vscode", "group": "developer" },
@@ -157,7 +158,7 @@
     ]
   },
   "counts": {
-    "modules": 43,
+    "modules": 44,
     "events": 81
   }
 }
