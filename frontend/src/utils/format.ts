@@ -3,8 +3,13 @@
 // 各分支行为与 MarkerOnView 现实现严格逐字一致，保证迁移当天可见输出零变化。
 
 /** 字节大小格式化：0/空值 → '—'；>1MB → 一位小数 MB；否则整数 KB（四舍五入）。 */
+// N21①（2026-09-24）补 GB/TB 档：原上限 MB 令 16GB 内存显示成 "16384.0 MB"；
+// 既有 KB/MB 分支逐字节不动（含"恰好 1MB 走 KB 档"的锁定怪癖），纯高位扩档，
+// 26 家消费视图自动受益。
 export function fmtSize(bytes?: number | null): string {
   if (!bytes) return '—'
+  if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(1)} TB`
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
   if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${(bytes / 1024).toFixed(0)} KB`
 }

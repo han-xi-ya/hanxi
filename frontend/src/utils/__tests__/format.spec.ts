@@ -24,6 +24,17 @@ describe('fmtSize', () => {
     expect(fmtSize(4 * 1024 * 1024)).toBe('4.0 MB')
     expect(fmtSize(1536 * 1024)).toBe('1.5 MB')
   })
+
+  // N21① 扩档：GB/TB 一位小数；>= 判含等号（恰好 1GB 即 GB 档），
+  // MB 档上限口径不变（999.9MB 仍 MB、1023MB 不进位成 GB）。
+  it('≥1GB 换 GB、≥1TB 换 TB', () => {
+    expect(fmtSize(1024 ** 3)).toBe('1.0 GB')
+    expect(fmtSize(16 * 1024 ** 3)).toBe('16.0 GB')
+    expect(fmtSize(1536 * 1024 ** 2)).toBe('1.5 GB')
+    expect(fmtSize(1024 ** 3 - 1)).toBe('1024.0 MB')
+    expect(fmtSize(1024 ** 4)).toBe('1.0 TB')
+    expect(fmtSize(2560 * 1024 ** 3)).toBe('2.5 TB')
+  })
 })
 
 describe('fmtDate', () => {

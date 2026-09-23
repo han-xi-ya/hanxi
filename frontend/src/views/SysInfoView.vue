@@ -8,6 +8,7 @@ import type { Report } from '../../bindings/hanxi/internal/modules/sysinfo/model
 import PageHeader from '../components/ui/PageHeader.vue'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
+import { sortNetAddresses } from '../utils/netaddrs'
 
 const report = ref<Report | null>(null)
 const loading = ref(false)
@@ -164,7 +165,7 @@ const VOL_TYPES: Record<string, string> = {
               <td class="mono">{{ n.mac || '—' }}</td>
               <td>{{ n.mtu }}</td>
               <td><span :class="['ver-status', n.up ? 'installed' : 'idle']">{{ n.up ? '启用' : '停用' }}</span></td>
-              <td class="mono">{{ n.addresses?.join('、') || '—' }}</td>
+              <td class="mono">{{ sortNetAddresses(n.addresses).join('、') || '—' }}</td>
             </tr>
           </tbody>
         </table>
