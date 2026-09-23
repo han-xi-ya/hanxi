@@ -234,6 +234,15 @@ GUI 设置分区与 `hanxi mcp auth` 是仅有的两个写入口。不暴露任�
 > `.hanxi-bak-<ts>` 再重写全关）；写侧严格规则镜像读方，16 组合真读方对拍矩阵（`access_readmatch_test.go`，
 > 不 mock）防口径分叉。`hanxi mcp auth` 子命令仍不实现——写入口自此为 GUI 一条路，与安装面决策 5
 > （"写配置只留 GUI 向导"）同谱；本小节上文"两个写入口"以注记作废为"一个写入口"。
+>
+> **契约扩充批注记（N32/N34，2026-09-24）**：工具面四件扩至六件——新增
+> `hanxi_sysinfo_report`（系统档案，overview/full 两档，默认摘要）与
+> `hanxi_log_read`（运行日志按日 tail，级别/关键字过滤，行数硬顶 500）。
+> access.json 随批一次扩两键（"sysinfo"/"logs"，六键齐全恒定），读写两侧严格规则
+> 同步镜像、对拍矩阵 16 组合扩至 64 组合；四键老档仍是合法态（缺键按 false，写侧
+> 下次回写归一六键），不做版本升级。logs 工具无背后业务模块：access 键即唯一授权门
+> （registryGate 空操作通道），且每行出机前走 `logging.RedactPII`（Redact 全量 +
+> IPv4/邮箱/供应商前缀密钥打码）——磁盘日志维持窄口径不变，PII 层只护"离开本机"方向。
 
 ## 7. 踩坑预登记（写入包注释/后续 TROUBLESHOOTING）
 
