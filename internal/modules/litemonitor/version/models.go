@@ -7,6 +7,8 @@
 // （WebServer，默认关闭）不纳入 Hanxi 视图，避免把上游配置纳入 Hanxi 直接改写。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // LMRelease 远程 GitHub Release 中可用的 LiteMonitor Windows x64 便携版。
 // SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验的第一依据，
 // 与 ccswitch 同款后发优势——上游全量提供 digest）。
@@ -18,6 +20,8 @@ type LMRelease struct {
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址（302 到 CDN）
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // LMVersionInfo 本地已安装的 LiteMonitor 版本信息。

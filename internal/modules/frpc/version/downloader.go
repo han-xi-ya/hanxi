@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+	"hanxi/packages/go/hostfeed"
 )
 
 const (
@@ -194,6 +195,7 @@ func (c *releaseCache) get() ([]FrpRelease, error) {
 			AssetName: arch.Name,
 			AssetURL:  arch.URL,
 			Size:      arch.Size,
+			Assets:    notesOf(r.Assets, arch.Name),
 		}
 		// 尝试获取该版本官方校验哈希（失败不阻塞整个列表）
 		if chk, ok := getChecksumsAsset(r.Assets, r.TagName); ok {
@@ -214,3 +216,13 @@ func (c *releaseCache) get() ([]FrpRelease, error) {
 }
 
 var remoteCache = &releaseCache{}
+
+// notesOf 全资产平台/形态矩阵（N13 展示层）：hostfeed 分类器统一判型，
+// chosen 标"本托管"；签名/清单类元数据已在分类器闸内过滤。
+func notesOf(assets []asset, chosen string) []hostfeed.AssetNote {
+	names := make([]string, 0, len(assets))
+	for _, a := range assets {
+		names = append(names, a.Name)
+	}
+	return hostfeed.Notes(names, chosen)
+}

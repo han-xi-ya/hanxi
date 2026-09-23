@@ -1,6 +1,8 @@
 // Package version 实现 frp 版本管理引擎：远程列表、下载硬校验、解压隔离、本地导入。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // FrpRelease 远程 GitHub Release 中可用的 frp Windows amd64 版本
 type FrpRelease struct {
 	Version   string `json:"version"`   // 如 v0.61.1
@@ -10,6 +12,8 @@ type FrpRelease struct {
 	AssetURL  string `json:"assetUrl"`  // 直链下载地址
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256-checksums.txt 中对应的哈希
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // FrpVersionInfo 本地已安装的 frp 版本信息
