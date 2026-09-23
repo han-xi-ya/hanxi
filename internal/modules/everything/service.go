@@ -710,6 +710,10 @@ func (s *EverythingService) ImportLocal(srcDir string) (evversion.EverythingVers
 	if err != nil {
 		return evversion.EverythingVersionInfo{}, err
 	}
+	// N24 契约：没有任何版本时，第一个到手的版本默认=使用版本（导入链与下载链同源）。
+	if s.store.GetActive() == "" {
+		_ = s.store.SetActive(info.Version)
+	}
 	notify.Success("everything", "导入成功", fmt.Sprintf("Everything %s 已导入（含配置与索引库）", info.Version), "/ext/everything")
 	return info, nil
 }

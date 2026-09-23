@@ -311,7 +311,15 @@ func (s *MangoDiskService) ImportLocal(srcExe string) (version.MangoDiskVersionI
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
 		return version.MangoDiskVersionInfo{}, fmt.Errorf("MangoDisk 正在运行，请先退出再导入")
 	}
-	return s.manager.ImportLocal(strings.TrimSpace(srcExe))
+	info, err := s.manager.ImportLocal(strings.TrimSpace(srcExe))
+	if err != nil {
+		return version.MangoDiskVersionInfo{}, err
+	}
+	// N24 契约：没有任何版本时，第一个到手的版本默认=使用版本（导入链与下载链同源）。
+	if s.store.GetActive() == "" {
+		_ = s.store.SetActive(info.Version)
+	}
+	return info, nil
 }
 
 // OpenDir 用资源管理器打开目录；路径为空或不存在时返回错误（explorer.Start 本身不报错，故先行校验）。

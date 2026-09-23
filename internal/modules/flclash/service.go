@@ -317,7 +317,15 @@ func (s *FlClashService) ImportLocal(srcDir string) (version.FlClashVersionInfo,
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning || snap.State == instance.StateExternal {
 		return version.FlClashVersionInfo{}, fmt.Errorf("FlClash 正在运行，请先退出再导入")
 	}
-	return s.manager.ImportLocal(strings.TrimSpace(srcDir))
+	info, err := s.manager.ImportLocal(strings.TrimSpace(srcDir))
+	if err != nil {
+		return version.FlClashVersionInfo{}, err
+	}
+	// N24 契约：没有任何版本时，第一个到手的版本默认=使用版本（导入链与下载链同源）。
+	if s.store.GetActive() == "" {
+		_ = s.store.SetActive(info.Version)
+	}
+	return info, nil
 }
 
 // ---------- 控制操作 ----------
