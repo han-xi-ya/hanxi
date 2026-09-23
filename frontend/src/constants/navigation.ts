@@ -79,6 +79,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/translucenttb': { component: defineAsyncComponent(() => import('@/views/TranslucentTBView.vue')), moduleId: 'translucenttb' },
   '/ext/paseo': { component: defineAsyncComponent(() => import('@/views/PaseoView.vue')), moduleId: 'paseo' },
   '/ext/douzy': { component: defineAsyncComponent(() => import('@/views/DouzyView.vue')), moduleId: 'douzy' },
+  '/ext/windterm': { component: defineAsyncComponent(() => import('@/views/WindTermView.vue')), moduleId: 'windterm' },
   '/ext/ocr': { component: defineAsyncComponent(() => import('@/views/OcrView.vue')), moduleId: 'ocr' },
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/ext/softver': { component: defineAsyncComponent(() => import('@/views/SoftverView.vue')), moduleId: 'softver' },
@@ -202,6 +203,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   ccswitch: 'developer',
   vscode: 'developer',
   paseo: 'developer',
+  windterm: 'developer',
   wsl: 'developer',
 }
 
@@ -252,6 +254,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   vscode: { icon: 'i:code', route: '/ext/vscode' },
   translucenttb: { icon: 'i:layers', route: '/ext/translucenttb' },
   paseo: { icon: 'i:paw', route: '/ext/paseo' },
+  windterm: { icon: 'i:square-terminal', route: '/ext/windterm' },
   douzy: { icon: 'i:film', route: '/ext/douzy' },
   wsl: { icon: 'i:terminal', route: '/ext/wsl' },
   quickmenu: { icon: 'i:mouse-pointer', route: '/ext/quickmenu' },

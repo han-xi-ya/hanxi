@@ -172,6 +172,12 @@ import type * as version$22 from "../../../../../hanxi/internal/modules/vscode/v
 import type * as wechat$0 from "../../../../../hanxi/internal/modules/wechat/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as instance$23 from "../../../../../hanxi/internal/modules/windterm/instance/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as version$23 from "../../../../../hanxi/internal/modules/windterm/version/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as wsl$0 from "../../../../../hanxi/internal/modules/wsl/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -253,6 +259,8 @@ declare module "@wailsio/runtime" {
             "webapp:windows-changed": void;
             "wechat:context-token-updated": { [_ in string]?: string } | null;
             "wechat:message-received": wechat$0.InboundMessage;
+            "windterm:instance-state": instance$23.Snapshot;
+            "windterm:version-download": version$23.DownloadProgress;
             "wsl:clone": wsl$0.CloneProgress;
             "wsl:compact": wsl$0.CompactProgress;
             "wsl:msi-download": wsl$0.DownloadProgress;
