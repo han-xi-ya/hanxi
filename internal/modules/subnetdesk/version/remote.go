@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+	"hanxi/packages/go/hostfeed"
 )
 
 // userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
@@ -226,6 +227,7 @@ func parseReleasesBody(body []byte) ([]SDRelease, error) {
 			AssetURL:  arch.URL,
 			Size:      arch.Size,
 			SHA256:    sha,
+			Assets:    notesOf(r.Assets, arch.Name),
 		}
 		// 安装版为附属通道：上游未带 msi 只置空该版本字段，不影响版本入列
 		if inst, instSHA, ok := findInstallerAsset(r.Assets, r.TagName); ok {
@@ -240,3 +242,13 @@ func parseReleasesBody(body []byte) ([]SDRelease, error) {
 }
 
 var remoteCache = &releaseCache{}
+
+// notesOf 全资产平台/形态矩阵（N13 展示层）：hostfeed 分类器统一判型，
+// chosen 标"本托管"；签名/清单类元数据已在分类器闸内过滤。
+func notesOf(assets []asset, chosen string) []hostfeed.AssetNote {
+	names := make([]string, 0, len(assets))
+	for _, a := range assets {
+		names = append(names, a.Name)
+	}
+	return hostfeed.Notes(names, chosen)
+}

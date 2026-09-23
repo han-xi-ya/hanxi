@@ -7,6 +7,8 @@
 // 与 cc-switch 的"单 exe 即安装"不同：安装与导入单元都是整个目录。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // Bili23Release 远程 GitHub Release 中可用的 Bili23 Downloader Windows x64 便携版。
 // SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验的第一依据）。
 type Bili23Release struct {
@@ -17,6 +19,8 @@ type Bili23Release struct {
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址（302 到 CDN）
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // Bili23VersionInfo 本地已安装的 Bili23 Downloader 版本信息。

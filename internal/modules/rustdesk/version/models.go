@@ -12,6 +12,8 @@
 // 卸载引导至系统设置（详见 manager 的 Install 与 SystemInstall）。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // 托管形态常量：区分隔离目录便携版（全托管）与系统安装版（客户端纳管、服务侧独立）。
 const (
 	FormPortable  = "portable"
@@ -29,6 +31,8 @@ type RDRelease struct {
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址（302 到 CDN）
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 
 	// 安装版 MSI 资产（rustdesk-1.4.9-x86_64.msi）。上游未附带或官方
 	// digest 缺失时四字段留空——安装版路线对该版本不可用，便携主资产不受影响。

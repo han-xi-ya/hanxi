@@ -14,6 +14,8 @@
 // 故解压/导入均不做任何数据目录搬运或隔离注入。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // PaseoRelease 远程 GitHub Release 中可用的 Paseo Windows 便携 zip。
 // SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验第一依据，
 // 缺 digest 的 release 一律不入列表——与 recordly 同纪律）。
@@ -26,6 +28,8 @@ type PaseoRelease struct {
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址（302 到 CDN）
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // PaseoVersionInfo 本地已安装的 Paseo 版本信息（一个版本目录一条）。
