@@ -353,7 +353,7 @@
     {
       "id": "litemonitor",
       "name": "LiteMonitor",
-      "description": "托管桌面硬件监控 LiteMonitor：版本管理、JobObject 启停与窗口唤起（CPU/GPU/内存/磁盘/网速横条与任务栏显示）",
+      "description": "托管桌面硬件监控 LiteMonitor：版本管理、JobObject 启停与窗口唤起（CPU/GPU/内存/磁盘/网速横条与任务栏显示；上游另具内存清理、FPS 计数与插件扩展）",
       "category": "system",
       "deliveryKind": "builtin-logical",
       "capabilities": [
@@ -985,6 +985,30 @@
       "category": "network",
       "deliveryKind": "builtin-logical",
       "capabilities": [],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
+      "id": "windterm",
+      "name": "WindTerm",
+      "description": "托管 WindTerm SSH/Sftp/Shell/Telnet/Serial 终端：版本管理、JobObject 启停与外部实例分档治理",
+      "category": "developer",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "hosted-versions",
+        "managed-process"
+      ],
       "entrypoints": [
         "rpc",
         "navigation",

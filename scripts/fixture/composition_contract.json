@@ -37,6 +37,7 @@
     { "id": "subnetdesk", "route": "/ext/subnetdesk", "group": "network" },
     { "id": "translucenttb", "route": "/ext/translucenttb", "group": "desktop" },
     { "id": "vscode", "route": "/ext/vscode", "group": "developer" },
+    {"id": "windterm", "route": "/ext/windterm", "group": "developer"},
     { "id": "webapp", "route": "/ext/webapp", "group": "efficiency" },
     { "id": "wechat", "route": "/ext/wechat", "group": "efficiency" },
     { "id": "wifi", "route": "/ext/wifi", "group": "network" },
@@ -90,6 +91,8 @@
     "papertodo:version-download",
     "paseo:instance-state",
     "paseo:version-download",
+    "windterm:instance-state",
+    "windterm:version-download",
     "piclite:instance-state",
     "piclite:version-download",
     "portscan:progress",
@@ -151,7 +154,7 @@
     ]
   },
   "counts": {
-    "modules": 41,
-    "events": 77
+    "modules": 42,
+    "events": 79
   }
 }

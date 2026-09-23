@@ -103,6 +103,9 @@ import (
 	"hanxi/internal/modules/webapp"
 	"hanxi/internal/modules/wechat"
 	"hanxi/internal/modules/wifi"
+	"hanxi/internal/modules/windterm"
+	windterminstance "hanxi/internal/modules/windterm/instance"
+	windtermversion "hanxi/internal/modules/windterm/version"
 	"hanxi/internal/modules/wsl"
 	"hanxi/internal/notify"
 	"hanxi/internal/ops"
@@ -200,6 +203,8 @@ func RegisterEvents() {
 	application.RegisterEvent[vscodeinstance.Snapshot]("vscode:instance-state")
 	application.RegisterEvent[ttbversion.DownloadProgress]("translucenttb:version-download")
 	application.RegisterEvent[ttbinstance.Snapshot]("translucenttb:instance-state")
+	application.RegisterEvent[windtermversion.DownloadProgress]("windterm:version-download")
+	application.RegisterEvent[windterminstance.Snapshot]("windterm:instance-state")
 	application.RegisterEvent[paseoversion.DownloadProgress]("paseo:version-download")
 	application.RegisterEvent[paseoinstance.Snapshot]("paseo:instance-state")
 	application.RegisterEvent[douzyversion.DownloadProgress]("douzy:version-download")
@@ -331,6 +336,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		keyviz.ID:        keyvizversion.OpenTree(paths.VersionsDir()),
 		flclash.ID:       flclashversion.OpenTree(paths.VersionsDir()),
 		paseo.ID:         paseoversion.OpenTree(paths.VersionsDir()),
+		windterm.ID:      windtermversion.OpenTree(paths.VersionsDir()),
 		mangodisk.ID:     mangodiskversion.OpenTree(paths.VersionsDir()),
 		bcu.ID:           bcuversion.OpenTree(paths.VersionsDir()),
 		piclite.ID:       picliteversion.OpenTree(paths.VersionsDir()),
@@ -453,6 +459,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		vscode.New(plat),
 		translucenttb.New(plat),
 		paseo.New(plat),
+		windterm.New(plat),
 		douzy.New(plat),
 		ocrModule,
 		lan.New(plat, store),
