@@ -29,3 +29,6 @@ docs/FEATURES_OVERVIEW.pdf
 
 # Claude 本机个人配置(工具链 PATH 注入,不入库)
 .claude/settings.local.json
+
+# W6/N13 上游发布物探查缓存（GitHub API 限速对策，可再生，勿入库）
+.cache/
