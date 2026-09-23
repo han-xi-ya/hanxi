@@ -15,6 +15,7 @@ const appSvc = vi.hoisted(() => ({
   ListCatalog: vi.fn(),
   ListModuleStates: vi.fn(),
   DismissResumable: vi.fn(),
+  CancelOperation: vi.fn(),
 }))
 const runtime = vi.hoisted(() => ({ handlers: {} as Record<string, () => void> }))
 
@@ -43,6 +44,7 @@ async function setup() {
   ])
   appSvc.ListModuleStates.mockResolvedValue([])
   appSvc.DismissResumable.mockResolvedValue(null)
+  appSvc.CancelOperation.mockResolvedValue(null)
 }
 
 function runningOp(over: Record<string, unknown> = {}) {
@@ -177,4 +179,24 @@ describe('OperationBanner', () => {
       vi.useRealTimers()
     }
   })
+
+  it('N26 在途可取消事务：出「取消」钮 → CancelOperation(moduleId, txnId) + 刷新', async () => {
+    appSvc.ListOperations.mockResolvedValue([runningOp({ txnId: 'txn-9' })])
+    const w = await mountBanner()
+    const btn = w.findAll('.op-actions button').find((b) => b.text().includes('取消'))
+    expect(btn, '取消钮缺席').toBeTruthy()
+    await btn!.trigger('click')
+    await flushPromises()
+    expect(appSvc.CancelOperation).toHaveBeenCalledWith('markeron', 'txn-9')
+    expect(appSvc.ListOperations.mock.calls.length).toBeGreaterThanOrEqual(2)
+    w.unmount()
+  })
+
+  it('N26 无 txnId 的在途记录不出取消钮（无法精确匹配就不给按钮）', async () => {
+    appSvc.ListOperations.mockResolvedValue([runningOp()])
+    const w = await mountBanner()
+    expect(w.text()).not.toContain('取消')
+    w.unmount()
+  })
+
 })

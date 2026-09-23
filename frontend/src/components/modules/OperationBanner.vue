@@ -33,6 +33,27 @@ const { showToast, showErrorToast } = useToast()
 /** 正在发起忽略的事务 ID：RPC 在途期间禁用该行按钮（维稳定、防重复翻案）。 */
 const dismissing = ref<Record<string, boolean>>({})
 
+/** N26 取消信号在途的事务 ID：按钮防连点（取消是信号不是结果——worker
+ *  收口后经 operation:changed 广播回流，本组件只负责把信号发出去）。 */
+const cancelling = ref<Record<string, boolean>>({})
+
+async function cancel(op: Operation) {
+  const txnID = String(op.txnId ?? '')
+  if (!txnID || cancelling.value[txnID]) return
+  cancelling.value = { ...cancelling.value, [txnID]: true }
+  try {
+    await AppAPI.AppService.CancelOperation(String(op.moduleId), txnID)
+    showToast('已发送取消请求，该操作正在收口')
+    await refresh()
+  } catch (err: unknown) {
+    showErrorToast(`取消失败: ${getErrorMessage(err)}`)
+  } finally {
+    const next = { ...cancelling.value }
+    delete next[txnID]
+    cancelling.value = next
+  }
+}
+
 function moduleName(op: Operation): string {
   return entries.value.find((e) => e.catalog.id === op.moduleId)?.catalog.name || op.moduleId
 }
@@ -133,7 +154,16 @@ async function dismiss(op: Operation) {
             </span>
           </div>
           <UiProgressBar v-if="op.progress != null" :percent="op.progress" />
-          <p v-if="!op.cancellable" class="op-note">该操作不支持取消，请等待其自然收口。</p>
+          <div v-if="op.cancellable && op.txnId" class="op-actions">
+            <UiButton
+              small
+              variant="ghost"
+              :disabled="!!cancelling[String(op.txnId)]"
+              title="中断该操作：下载/解包即时停止，半截现场自动清理；已拉起的外部安装器无法中断（如实等其收口）"
+              @click="cancel(op)"
+            >{{ cancelling[String(op.txnId)] ? '取消中…' : '取消' }}</UiButton>
+          </div>
+          <p v-else-if="!op.cancellable" class="op-note">该操作不支持取消，请等待其自然收口。</p>
         </li>
       </ul>
     </UiBanner>
