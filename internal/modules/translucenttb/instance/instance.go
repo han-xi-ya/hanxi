@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -284,21 +285,41 @@ func exitCodeFromKernelMessage(msg string) (int, bool) {
 }
 
 // mapErrorMessage 还原 translucenttb 既有失败文案：
-//   - 内核异常退出消息改回本引擎既有话术（两种高发成因——首启欢迎授权窗口
-//     被关闭属上游正常退出路径、框架包缺失/Win10——在文案里预告，真机首撞者
-//     靠它自查）；
+//   - 内核异常退出消息改回本引擎既有话术（按退出码分档，见 abnormalExitWording）；
 //   - 内核手动停止的"已手动停止"折回本引擎既有的空文案（stopped 态不带话术）；
 //   - 其余（启动失败等）透传。
 func mapErrorMessage(s sup.Snapshot) string {
 	if s.State == sup.StateFailed {
 		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
-			return fmt.Sprintf("TranslucentTB 异常退出（退出码 %d）。若刚关闭了首次启动的欢迎授权窗口，属上游正常退出路径（未同意许可），重新启动即可再次进入欢迎流程；否则便携版要求 Windows 11 且依赖系统已装的 WinUI 2.8 / VCLibs 框架包——弹过「缺少依赖」提示时请先补装框架包或改用 Store 版", code)
+			return abnormalExitWording(code, s.Version)
 		}
 	}
 	if s.State == sup.StateStopped && s.Error == manualStopWording {
 		return ""
 	}
 	return s.Error
+}
+
+// abnormalExitWording 异常退出码 → 用户话术（分档）。
+//
+// 2026-09-22 真机教训：旧话术对一切退出码统一预告"欢迎窗/框架包"两成因，
+// 而实测 0xC0000005（访问违例）两者皆非——拒绝许可走退码 0，缺框架包另弹
+// 「缺少依赖」——统一话术把机主引向错误排查方向。现按码分档：
+//   - 0xC0000005：明说访问违例并给"重启→降级"两步鉴别法（首起断言过
+//     "2026.2 上游回归"，机主证词"同版本此前正常"削弱之——同字节、同机器、
+//     态变了，explorer 里旧注入 DLL 与重装落盘的新 DLL 混态亦可致此，
+//     故话术给可判别的动作序列而非归罪单一成因）；
+//   - 其他码：保留既有"欢迎窗/框架包"预告（两者仍是真高发起因）。
+func abnormalExitWording(code int, version string) string {
+	const avCode = 0xC0000005
+	if uint32(code) == avCode {
+		guide := "先重启一次电脑再启动（排除资源管理器里旧组件残留）；仍崩则到版本列表安装 2026.1 或 2025.1 并设为使用版本鉴别：旧版能跑=本版本构建问题（等上游修，留好 %LOCALAPPDATA%\\CrashDumps 转储可报 issue）；多版全崩而商店版正常=本机环境与未打包路径冲突——首查虚拟显示器（ToDesk/向日葵/GameViewer 等远程工具注入的虚拟显卡会产生\"默认监视器\"空壳，实测崩在此处，见踩坑 #85），次查近期新装的任务栏/外壳类软件"
+		if strings.HasPrefix(version, "2026.2") {
+			return fmt.Sprintf("TranslucentTB 异常退出（退出码 %d / 0x%08X），访问违例，非许可/依赖问题。%s", uint32(code), uint32(code), guide)
+		}
+		return fmt.Sprintf("TranslucentTB 异常退出（退出码 %d / 0x%08X），原生访问违例——不是关闭欢迎窗的退出路径（那属退码 0 正常退出），缺框架包也会另弹明确提示。%s", uint32(code), uint32(code), guide)
+	}
+	return fmt.Sprintf("TranslucentTB 异常退出（退出码 %d）。若刚关闭了首次启动的欢迎授权窗口，属上游正常退出路径（未同意许可），重新启动即可再次进入欢迎流程；否则便携版要求 Windows 11 且依赖系统已装的 WinUI 2.8 / VCLibs 框架包——弹过「缺少依赖」提示时请先补装框架包或改用 Store 版", code)
 }
 
 // emit 状态广播（回调在锁外执行，防止回调内重入本引擎造成死锁）。

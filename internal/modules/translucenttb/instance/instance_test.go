@@ -195,6 +195,36 @@ func TestExitCodeAndMessageMapping(t *testing.T) {
 	}
 }
 
+// TestAbnormalExitWordingAV 0xC0000005 分档话术（2026-09-22 真机教训，
+// TROUBLESHOOTING #85）：明说访问违例 + "重启→降级→鉴别归因"动作序列；
+// AV 分支不再给单一归罪断言（机主证词"同版本此前正常"推翻了初版"上游回归"
+// 定性），也绝不复提"欢迎窗/框架包"误导。
+func TestAbnormalExitWordingAV(t *testing.T) {
+	const av = 3221225477 // 0xC0000005（Windows 退出码在本机账目为正的 32 位值）
+
+	got2262 := abnormalExitWording(av, "2026.2")
+	if !strings.Contains(got2262, "访问违例") || !strings.Contains(got2262, "2026.1") ||
+		!strings.Contains(got2262, "重启") {
+		t.Errorf("2026.2 AV 文案应给重启+降级鉴别动作: %s", got2262)
+	}
+	if strings.Contains(got2262, "上游已知") || strings.Contains(got2262, "已知崩溃回归") {
+		t.Errorf("不得回归单一归罪断言（机主此前同版本正常）: %s", got2262)
+	}
+
+	gotOther := abnormalExitWording(av, "2025.1")
+	// 明说违例 + 否定式纠偏（排除欢迎窗/框架包误导）+ 同一动作序列。
+	if !strings.Contains(gotOther, "访问违例") ||
+		!strings.Contains(gotOther, "不是关闭欢迎窗") ||
+		strings.Contains(gotOther, "属上游正常退出路径，重新启动") {
+		t.Errorf("一般 AV 文案应明说违例并排除误导: %s", gotOther)
+	}
+
+	generic := abnormalExitWording(1, "2026.1")
+	if !strings.Contains(generic, "欢迎授权窗口") || !strings.Contains(generic, "VCLibs") {
+		t.Errorf("非 AV 码保留既有两成因逐字预告: %s", generic)
+	}
+}
+
 // ---------- 生命周期（假 Job：Start 失败路径；真 Job：正例冒烟） ----------
 
 func TestStartEmptyExeRejected(t *testing.T) {
