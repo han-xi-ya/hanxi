@@ -152,6 +152,30 @@ describe('QuickMenuPopup 主环', () => {
   })
 })
 
+describe('N6 牌面重做（F1-F4）', () => {
+  it('密度变量随条目数下发（3 项走 ≤6 宽裕档 64px 按钮宽）', async () => {
+    const w = await mountReady()
+    expect(w.find('.popup').attributes('style')).toContain('--d-btn-w: 64px')
+    w.unmount()
+  })
+  it('分组扇区常挂 ▸ 角标（可展开从意外变预告），叶子无角标', async () => {
+    const w = await mountReady(itemsWithGroup)
+    const btns = w.findAll('.sector-btn')
+    expect(btns[0].find('.sector-caret').exists()).toBe(false)
+    expect(btns[1].find('.sector-caret').text()).toContain('▸')
+    w.unmount()
+  })
+  it('悬停扇区面：is-active 与径向外顶内联样式同步下发', async () => {
+    const w = await mountReady()
+    await w.findAll('.sector')[0].trigger('mouseenter')
+    const path = w.findAll('.sector')[0]
+    expect(path.classes()).toContain('is-active')
+    // 首扇区中线 60°（3 项制）：外顶向量应为有限数值 translate
+    expect(path.attributes('style') ?? '').toContain('translate(')
+    w.unmount()
+  })
+})
+
 describe('外扩子环（扇区级联）', () => {
   it('悬停分组扇区驻留满 dwell 后子环帽带展开，未到点不展开', async () => {
     vi.useFakeTimers()

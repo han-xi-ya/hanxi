@@ -80,11 +80,32 @@ const TYPE_ICON: Record<string, IconName> = {
 const iconOf = (item: MenuItem): IconName =>
   (ICON_NAMES as readonly string[]).includes(item.icon) ? (item.icon as IconName) : TYPE_ICON[item.type] ?? 'box'
 
-// 扇区永远直显条目名（内容优先，图标不得替文字说话）；≤8 项扇区够宽时图标
-// 作类型陪衬，更密时纯文字，全名与详情交给 hub 读数。
-const showIcon = computed(() => items.value.length <= 8)
+// N6 F1 可读性：图标常显（名字再密也留视觉锚点，尺寸随条目数分档收缩），
+// 名称两行折行不再单行省略；档位令牌经 CSS 变量下发给样式层。
+// 密度分档：≤6 宽裕 / 7-9 标准 / 10-12 紧凑 / >12 极限（超密本就应分组收纳）。
+const density = computed(() => {
+  const n = items.value.length
+  if (n <= 6) return { btnW: 64, well: 34, icon: 22, name: 12 }
+  if (n <= 9) return { btnW: 58, well: 30, icon: 18, name: 11 }
+  if (n <= 12) return { btnW: 52, well: 26, icon: 16, name: 10 }
+  return { btnW: 48, well: 24, icon: 15, name: 9.5 }
+})
+const densityVars = computed(() => ({
+  '--d-btn-w': `${density.value.btnW}px`,
+  '--d-well': `${density.value.well}px`,
+  '--d-icon': `${density.value.icon}px`,
+  '--d-name': `${density.value.name}px`,
+}))
 const activeItem = computed(() => (active.value == null ? null : items.value[active.value] ?? null))
 const ready = computed(() => !loading.value && !errorMsg.value)
+
+// N6 F2 选中反馈：激活扇区沿自身中线径向外顶 4px（pie menu 的"拿起"感），
+// 按钮层与扇区面吃同一个位移向量，两层严格同步。
+const POP_OUT = 4
+function radialShift(i: number): { x: number; y: number } {
+  const rad = ((mainCenterDeg(i) - 90) * Math.PI) / 180
+  return { x: +(POP_OUT * Math.cos(rad)).toFixed(2), y: +(POP_OUT * Math.sin(rad)).toFixed(2) }
+}
 
 async function refresh() {
   loading.value = true
@@ -317,6 +338,15 @@ const capRimArc = computed(() => {
   return `M ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} A ${WHEEL.rCapOut + 2} ${WHEEL.rCapOut + 2} 0 ${span > 180 ? 1 : 0} 1 ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`
 })
 
+/** 帽带底环路径：开环分组的中线两侧展开 capSpanDeg，连续环带先于扇区铺底 */
+const capBandPath = computed(() => {
+  const i = ring.openGroup.value
+  if (i == null || capItems.value.length === 0) return ''
+  const span = capSpanDeg(capItems.value.length, stepDeg())
+  const center = mainCenterDeg(i)
+  return wedgePath(WHEEL.rCapIn, WHEEL.rCapOut, center - span / 2, center + span / 2)
+})
+
 // 键盘 Enter 钉住分组后把焦点送进子环首项（clickGroup 的同步语义在模板事件里）
 function onGroupActivate(i: number) {
   const wasOpen = ring.openGroup.value === i
@@ -333,6 +363,7 @@ function onGroupActivate(i: number) {
     :class="{ 'is-cancel': ring.cancelArmed.value }"
     tabindex="0"
     role="menu"
+    :style="densityVars"
     aria-label="快捷启动轮盘"
     :aria-activedescendant="active != null ? `qm-sector-${active}` : (activeCap != null ? `qm-cap-${activeCap}` : undefined)"
     @keydown="onKeydown"
@@ -347,6 +378,8 @@ function onGroupActivate(i: number) {
       <!-- 盘底：真透明窗口上绘制不透明圆盘，边缘天然抗锯齿；缘环即盘缘 -->
       <circle :cx="C" :cy="C" :r="R_DISC" class="disc-face" />
       <circle :cx="C" :cy="C" :r="R_DISC - 1.25" class="disc-edge" />
+      <!-- 内缘高光环：玻璃盘口的一线反光（明暗主题各一档低透明描边） -->
+      <circle :cx="C" :cy="C" :r="R_DISC - 3" class="disc-glint" />
 
       <g :key="entrySeq" class="sectors">
         <path
@@ -355,7 +388,7 @@ function onGroupActivate(i: number) {
           class="sector"
           :class="{ 'is-active': active === i, 'is-pinned': ring.pinnedGroup.value === i }"
           :d="mainWedge(i)"
-          :style="{ animationDelay: `${Math.min(i * 14, 84)}ms` }"
+          :style="{ animationDelay: `${Math.min(i * 14, 84)}ms`, transform: active === i ? `translate(${radialShift(i).x}px, ${radialShift(i).y}px)` : '' }"
           role="presentation"
           @mouseenter="active = i"
           @mouseleave="leaveSector(i)"
@@ -363,8 +396,10 @@ function onGroupActivate(i: number) {
         />
       </g>
 
-      <!-- 外扩子环帽带：常驻主盘之外，角度随父扇区中线展开 -->
+      <!-- 外扩子环帽带：常驻主盘之外，角度随父扇区中线展开；
+           先铺一条连续帽带底环（玻璃盘的"环中环"），扇区透明层叠其上 -->
       <g v-if="capItems.length > 0" :key="`cap-${ring.openGroup.value}`" class="cap">
+        <path v-if="capBandPath" class="cap-band" :d="capBandPath" />
         <path
           v-for="(ch, j) in capItems"
           :key="`cap-${j}-${ch.index}`"
@@ -414,7 +449,7 @@ function onGroupActivate(i: number) {
       type="button"
       class="sector-btn"
       :class="{ 'is-active': active === i }"
-      :style="mainAnchor(i, items.length)"
+      :style="[mainAnchor(i, items.length), active === i ? { transform: `translate(calc(-50% + ${radialShift(i).x}px), calc(-50% + ${radialShift(i).y}px))` } : {}]"
       role="menuitem"
       :aria-haspopup="isGroup(item) ? 'true' : undefined"
       :aria-expanded="isGroup(item) ? ring.openGroup.value === i : undefined"
@@ -423,8 +458,9 @@ function onGroupActivate(i: number) {
       @focus="active = i"
       @click="isGroup(item) ? onGroupActivate(i) : activate(item)"
     >
-      <span v-if="showIcon" class="sector-icon"><AppIcon :name="iconOf(item)" :size="18" /></span>
+      <span class="sector-icon"><AppIcon :name="iconOf(item)" :size="density.icon" /></span>
       <span class="sector-name">{{ item.label }}</span>
+      <span v-if="isGroup(item)" class="sector-caret" aria-hidden="true">▸ {{ item.children?.length ?? 0 }}</span>
     </button>
 
     <!-- 子环帽带按钮层：与帽带扇区同锚点，真实 button 语义与主环一致 -->
@@ -531,13 +567,16 @@ function onGroupActivate(i: number) {
 .disc-face { fill: var(--surface-panel); }
 .disc-edge { fill: none; stroke: var(--color-border-strong); stroke-width: 1.5; }
 
+/* N6 F4 玻璃底盘：扇区不再是"一块块拼图"——面本身透明，连续盘底
+   （disc-face）一镜到底，扇区间以发丝辐线分界；悬停/激活整片浮起
+   primary-soft 光晕 + 径向外顶（F2），"拿起这块"的直觉反馈。 */
 .sector {
   pointer-events: auto;
   cursor: pointer;
-  fill: var(--surface-soft);
+  fill: transparent;
   stroke: var(--color-border);
   stroke-width: 1;
-  transition: fill var(--motion-fast) ease, stroke var(--motion-fast) ease;
+  transition: fill var(--motion-fast) ease, stroke var(--motion-fast) ease, transform var(--motion-fast) ease;
   animation: sector-in 120ms ease-out backwards; /* 错峰淡入：delay 由模板按序下发 */
 }
 @keyframes sector-in {
@@ -545,10 +584,10 @@ function onGroupActivate(i: number) {
   to { opacity: 1; }
 }
 .sector.is-active {
-  fill: var(--surface-selected);
+  fill: var(--color-primary-soft);
   stroke: var(--color-primary);
 }
-.sector.is-pinned { stroke: var(--color-primary); stroke-width: 1.6; }
+.sector.is-pinned { fill: var(--surface-selected); stroke: var(--color-primary); stroke-width: 1.6; }
 
 /* 子环帽带扇区：比主环高一档表面（嵌套控件层），弹性外扩入场 */
 .cap {
@@ -559,8 +598,8 @@ function onGroupActivate(i: number) {
   from { transform: scale(0.94); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
-.cap-sector { fill: var(--surface-hover); }
-.cap-sector.is-active { fill: var(--surface-selected); }
+.cap-sector { fill: transparent; stroke: var(--color-border); }
+.cap-sector.is-active { fill: var(--color-primary-soft); }
 .cap-rim-accent {
   fill: none;
   stroke: var(--color-primary);
@@ -568,6 +607,20 @@ function onGroupActivate(i: number) {
   stroke-linecap: round;
   opacity: 0.85;
 }
+
+.cap-band {
+  fill: var(--surface-hover);
+  stroke: var(--color-border);
+  stroke-width: 1;
+  opacity: 0.9;
+}
+.disc-glint {
+  fill: none;
+  stroke: var(--surface-hover);
+  stroke-width: 2;
+  opacity: 0.6;
+}
+[data-theme='dark'] .disc-glint { opacity: 0.35; }
 
 .ticks line {
   stroke: var(--color-border-strong);
@@ -598,7 +651,7 @@ function onGroupActivate(i: number) {
 .sector-btn {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 56px;
+  width: var(--d-btn-w, 56px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -614,7 +667,7 @@ function onGroupActivate(i: number) {
 }
 .sector-btn.is-active {
   color: var(--color-primary);
-  transform: translate(-50%, -50%) scale(1.07);
+  /* 径向外顶由模板内联 transform 下发（与扇区面同向量）；这里只留微放大基调 */
 }
 .sector-btn:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -622,8 +675,8 @@ function onGroupActivate(i: number) {
 }
 /* 图标井：浅一档底 + 细描边（设计系统 surface 公式的"嵌套控件"层），激活时主色软化 */
 .sector-icon {
-  width: 30px;
-  height: 30px;
+  width: var(--d-well, 30px);
+  height: var(--d-well, 30px);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -638,13 +691,28 @@ function onGroupActivate(i: number) {
 }
 .sector-name {
   max-width: 100%;
-  font-size: 10px;
-  line-height: 1.25;
+  font-size: var(--d-name, 10px);
+  line-height: 1.3;
   font-weight: 600;
   color: var(--color-text);
+  /* 两行折行截断（N6 F1）：单行省略号"看不清全称"的正解是给它两行 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+/* 分组常驻角标（N6 F3）：▸+子数——"这个格子还能展开"从意外变成预告 */
+.sector-caret {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-primary);
+  opacity: 0.9;
 }
 .sector-btn.is-active .sector-name {
   color: var(--color-primary);
