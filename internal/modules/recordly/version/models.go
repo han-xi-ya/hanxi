@@ -9,6 +9,8 @@
 // 版本树模型不适用（详见 Manager 注释与 ADR-0002 §5）。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // RecordlyRelease 远程 GitHub Release 中可用的 Recordly Windows x64 安装器。
 // SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验第一依据），
 // 安装前还会尽力拉取官方 SHA256SUMS.txt 做交叉比对（第三只眼）。
@@ -20,6 +22,8 @@ type RecordlyRelease struct {
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址（302 到 CDN）
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // RecordlyVersionInfo 本地已安装的 Recordly 版本信息。

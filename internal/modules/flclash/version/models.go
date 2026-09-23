@@ -14,6 +14,8 @@
 //   - 数据目录在 %APPDATA%（非 exe 目录），单实例为文件锁第二实例直接退出。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // FlClashRelease 远程 GitHub Release 中可用的 FlClash Windows x64 便携版。
 type FlClashRelease struct {
 	Version   string `json:"version"`   // 如 0.8.96（无 v）
@@ -24,6 +26,8 @@ type FlClashRelease struct {
 	AssetURL  string `json:"assetUrl"`  // 资产下载地址（302 到 CDN）
 	Size      int64  `json:"size"`      // 资产大小（字节）
 	SHA256    string `json:"sha256"`    // 官方 sha256（GitHub API digest 去掉前缀）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // FlClashVersionInfo 本地已安装的 FlClash 版本信息。
