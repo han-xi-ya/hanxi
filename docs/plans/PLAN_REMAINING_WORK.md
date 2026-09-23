@@ -14,7 +14,7 @@
 |---|---|---|
 | 批 1 ✅ **已完成(2026-09-21,f63d9b2+c679764)** | Registry 覆盖状态数据竞态(值类型投影消灭指针逃逸);receipt 与 `known-modules.json` 成组缺陷(账本独立命名空间/独立 schema/三态保守重建/fail-closed 卸载事务;计划见 [PLAN_P0_BATCH1_FIX](PLAN_P0_BATCH1_FIX.md)) | `internal/extapi/registry.go`、`internal/settings/receipts.go` |
 | 批 2 → **2a ✅ 已完成(2026-09-21,4725e52+5881c8e)**:journal 步进 fail-closed 闸门(降级拒新事务+journal-degraded 收口+GetJournalHealth 观察面);Artifact Commit 原子边界收口 rename(黑户隔离放行重装)。**2b 🔄 施工中(机主 2026-09-22 选案 B)**:ctx+租约一并买断。内核已落(`extapi.BackgroundLease`/`EnterBackground`+Registry 停用先 cancel 再 drain+`ops.BeginTxnWithLifecycle`/`Txn.Context/Cancel/Close/JournalFailed`+`artifact.UnpackZipContext` 可取消解包);**已迁移 19/19 journal 模块**(黄金样本 flclash/paseo;普通 zip 族 markeron/ccswitch/everything/litemonitor/ddnsgo/bcu/bili23/mangodisk/rufus/translucenttb;特殊形态 quicklook(bespoke extractAll ctx 化)/keyviz+piclite(MSI:提取器返回后与轮询边界收口,msiexec 不可强杀如实注释)/papertodo(降级下载链 ctx 化)/guoheview(MD5 bespoke 链 ctx 化)/recordly+vscode(安装器一旦拉起即走完,启动前审取消;双形态全链 ctx),全仓 build/vet/单测绿);**2b 遗留待办**:①下载中停用/退出三场景 service 级集成测试(计划 2b-4,现仅 ops/extapi 层有 lease 取消测试);②`go test -race` Windows 侧补跑;③已知环境 flake 与本批无关:papertodo/instance(cmd.exe 秒退 #81 家族)、portscan(port+1 撞外部监听)(zip+Fetch 族为机械迁移;keyviz/piclite MSI、recordly/vscode 安装器、guoheview bespoke 需按各自取消边界处理,不伪造即时取消) | 迁移模板见 flclash service/manager 两文件;对比表见 [PLAN_P0_BATCH2_FIX](PLAN_P0_BATCH2_FIX.md) |
-| 批 3 | 前端旧快照冒充实时状态、本地/远程版本加载竞态、`already-installed` 清票未走版本互认、旧响应覆盖(generation)、多份 busy 真相、无障碍缺口 | `frontend/src/components/managed/`、`frontend/src/composables/loadManagedVersions.ts` |
+| 批 3 ✅ **已完成(2026-09-23,五子批 b3-a~e,计划见 [PLAN_P0_BATCH3_FIX](PLAN_P0_BATCH3_FIX.md))** | 4.1 stale 呈现(statusError/lastStatusAt+降灰灯)、4.2 本地未决不判空(localResolved)、4.3 清票走 sameVersionOf 互认、4.4 vscode/everything 自定义加载代次闸(状态/加载独立计数)、4.5 专属动作统一互斥(ddnsgo console/extras 卡/everything 写动作)、4.6 键盘可达(TabNav roving+方向键、progressbar 语义、重试转按钮)、§5-1 cancellable 诚实标注(仅 install/update 有 2b 真链)。**人工余项**:390px/200% WebView2 真机验收(归 P1 清单随 F6 重跑同场) | `frontend/src/components/managed/`、`adapters/vscode.ts`、`views/EverythingView.vue`、`ui/MainTabNav.vue`、`packages/go/operation/hub.go` |
 
 - 每批开工前先形成正式修复计划确认范围;批 1、2 完成后补 `go test -race`(Windows 侧走 CI/真机;云侧已具备 hanxi-dev:2404 容器回路,43 个 Linux 可构建包可本地跑 race,Windows-only 包仍须 CI——配方与豁免清单见踩坑 #84)与组合级故障注入。
 - 审查文档 §5 另有 9 项"已发现待复核/裁决"事项,随批次一并收口。
@@ -22,7 +22,7 @@
 ## P1:真机验收债
 
 1. **F10 网页应用(webapp)冒烟**:task dev 开微信扫码、X 关窗后 WebView2 内存回落、收起 TTL 释放——唯一纯新未验项,成本最低,建议最先做。
-2. **F6(存储目录)、F3(快照)、F4/F4b(MCP 与向导)、F7(OCR 托管)、F9(WSL USB)**:按 [PROGRESS.md](../PROGRESS.md) 既有人工清单补跑。
+2. **F6(存储目录)、F3(快照)、F4/F4b(MCP 与向导)、F7(OCR 托管)、F9(WSL USB)**:按 [PROGRESS.md](../PROGRESS.md) 既有人工清单补跑;**随 F6 加测批 3 人工余项**——共享托管面板/版本表在 390px 宽 + 200% 缩放下无溢出、TabNav 纯键盘(←/→/Home/End/Tab)可完成换选、NVDA/讲述人可读进度与"暂不可确认"标注。
 3. **A 机 → NAS → 干净 B 机黄金路径**:先完整走一次手工验收(建立模块迁移等级:可携带/需重建缓存/需系统注册/需重填凭据/不适合临时电脑),据结果再决定机器绑定恢复提示与临时电脑模式是否立项。
 
 ## P2:文档与工程卫生
