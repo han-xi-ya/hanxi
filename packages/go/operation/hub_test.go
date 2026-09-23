@@ -379,3 +379,25 @@ func TestHubConcurrent(t *testing.T) {
 		t.Errorf("journal 未随 Done 收口: %v", live)
 	}
 }
+
+// TestHubCancellableHonesty（P0 批 3·§5-1）：可取消标注仅授予批 2b 接通了
+// 真取消链（ctx+租约）的资产安装/更新事务；invoke/activate 等无取消通道如实 false。
+func TestHubCancellableHonesty(t *testing.T) {
+	h := NewHub(nil)
+	for _, tc := range []struct {
+		kind extapi.OperationKind
+		want bool
+	}{
+		{extapi.OpInstall, true},
+		{extapi.OpUpdate, true},
+		{extapi.OpRollback, false},
+		{extapi.OpRemove, false},
+		{extapi.OpRepair, false},
+		{extapi.OpActivate, false},
+	} {
+		hd := h.Begin("m", tc.kind, "")
+		if got := hd.Snapshot().Cancellable; got != tc.want {
+			t.Errorf("kind %q cancellable = %v, want %v", tc.kind, got, tc.want)
+		}
+	}
+}

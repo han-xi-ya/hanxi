@@ -76,13 +76,17 @@ func (h *Hub) Begin(moduleID string, kind extapi.OperationKind, txnID string) *H
 	hd := &Handle{
 		hub: h,
 		op: extapi.Operation{
-			Schema:      extapi.ModuleContractSchema,
-			ID:          fmt.Sprintf("op-%d-%d", time.Now().UnixNano(), opSeq.Add(1)),
-			TxnID:       journalTxn, // 托管事务裸 ID；非托管（invoke/activate 等）为空
-			ModuleID:    moduleID,
-			Kind:        kind,
-			Status:      extapi.OpQueued,
-			Cancellable: true,
+			Schema:   extapi.ModuleContractSchema,
+			ID:       fmt.Sprintf("op-%d-%d", time.Now().UnixNano(), opSeq.Add(1)),
+			TxnID:    journalTxn, // 托管事务裸 ID；非托管（invoke/activate 等）为空
+			ModuleID: moduleID,
+			Kind:     kind,
+			Status:   extapi.OpQueued,
+			// 诚实可取消性（P0 批 3·§5-1）：仅资产安装/更新事务在批 2b 接通了
+			// 真取消链（ctx+租约，停用/退出即中断在途副作用）才标可取消；
+			// 其余 kind（invoke/activate 等）无取消通道，如实 false，前端在途条
+			// 据此显示「不支持取消，请等待自然收口」。
+			Cancellable: kind == extapi.OpInstall || kind == extapi.OpUpdate,
 			StartedAt:   nowRFC3339(),
 		},
 		txnID: journalTxn,
