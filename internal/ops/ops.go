@@ -87,6 +87,28 @@ func Kernel() (*operation.Store, *operation.Hub) {
 	return kern.store, kern.hub
 }
 
+// activeTxns 在途托管事务登记表（N26 用户取消通道）：moduleID → *Txn。
+// 单写纪律（同模块至多一笔未收口 journal 事务）让键即模块；降级无内核事务
+// 同样登记（取消语义=断 ctx + 拒继续副作用，账本侧无差异可言）。
+var activeTxns sync.Map
+
+// CancelModuleTxn 按（模块, 事务 ID）取消在途托管事务：只断 ctx——收口仍由
+// worker 的 2b 纪律完成（journal operation-cancelled、lease 归还、残件 discard/
+// 背书清理），观察面经 Handle 落终态。ID 不匹配 = 页面拿着的已是旧快照，
+// 拒绝盲取消（防误杀刚替换上来的新事务）。
+func CancelModuleTxn(moduleID, txnID string) error {
+	v, ok := activeTxns.Load(moduleID)
+	if !ok {
+		return fmt.Errorf("模块 %s 没有可取消的在途托管事务", moduleID)
+	}
+	t := v.(*Txn)
+	if t.txnID != txnID {
+		return fmt.Errorf("在途事务已更换（请求取消 %s，当前在途 %s），本次取消被拒绝", txnID, t.txnID)
+	}
+	t.Cancel()
+	return nil
+}
+
 // kernelLoaded 报告本进程是否显式注入过内核（SetKernel）。
 func kernelLoaded() bool {
 	kernelMu.RLock()
@@ -141,7 +163,7 @@ func beginTxn(ctx context.Context, lease *extapi.BackgroundLease, moduleID strin
 		cancel()
 		return nil, fmt.Errorf("journal 账本当前不可用（%v），为保证操作可恢复性已拒绝新的托管写事务；请重启 Hanxi 恢复账本后重试", reason)
 	}
-	t := &Txn{txnID: txnID, ctx: ctx, cancel: cancel, lease: lease}
+	t := &Txn{txnID: txnID, moduleID: moduleID, ctx: ctx, cancel: cancel, lease: lease}
 	store, hub := Kernel()
 	if !kernelLoaded() {
 		t.steps = makeSteps(steps, operation.TxnPending)
@@ -168,6 +190,9 @@ func beginTxn(ctx context.Context, lease *extapi.BackgroundLease, moduleID strin
 		BroadcastChanged()
 	}
 	t.steps = makeSteps(steps, operation.TxnPending)
+	// N26 取消通道：单写纪律保证同模块同时至多一笔未收口事务，登记表按
+	// moduleID 挂最新事务；收口（closeLifecycle）比对自己后摘除。
+	activeTxns.Store(moduleID, t)
 	return t, nil
 }
 
@@ -176,6 +201,7 @@ func beginTxn(ctx context.Context, lease *extapi.BackgroundLease, moduleID strin
 type Txn struct {
 	mu            sync.Mutex
 	txnID         string
+	moduleID      string           // 取消通道按模块定位在途事务用（登记/注销见 activeTxns）
 	store         *operation.Store // 仅"有账无观察面"降级路径直用
 	handle        *operation.Handle
 	steps         []operation.Step
@@ -405,6 +431,9 @@ func (t *Txn) closeLifecycle() {
 		return
 	}
 	t.life.Do(func() {
+		if v, ok := activeTxns.Load(t.moduleID); ok && v == t {
+			activeTxns.Delete(t.moduleID) // 只摘自己：同模块新事务已登记时不误删
+		}
 		if t.cancel != nil {
 			t.cancel()
 		}

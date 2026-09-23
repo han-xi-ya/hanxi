@@ -50,6 +50,20 @@ func (s *AppService) ListOperations() []extapi.Operation {
 	return out
 }
 
+// CancelOperation 用户取消一笔在途托管资产事务（N26）：按（模块, 事务 ID）
+// 精确定位并只发取消信号——事务自身持 ctx（P0 批 2b），下载/解包链即时中断，
+// 收口仍由模块 worker 的 2b 纪律完成（journal 以 operation-cancelled 落账、
+// 后台租约归还、半截残件按既有背书清理）。本 RPC 不做任何"代为收口"的越权
+// 动作：取消是信号，不是结果。ID 失配（页面快照过期）如实拒绝，不盲杀新事务。
+func (s *AppService) CancelOperation(moduleID, txnID string) error {
+	moduleID = strings.TrimSpace(moduleID)
+	txnID = strings.TrimSpace(txnID)
+	if moduleID == "" || txnID == "" {
+		return fmt.Errorf("取消需要模块 ID 与事务 ID 同时在场")
+	}
+	return ops.CancelModuleTxn(moduleID, txnID)
+}
+
 // DismissResumable 用户显式忽略一笔未收口事务：按背书清理该事务的托管现场
 // （staging/.removing-<txnID> 同名目录），journal 以 failed 收口，并从观察面
 // 摘除 resumable 回灌记录。对已成功/已失败收口的账本拒绝翻案（审计单收口）。

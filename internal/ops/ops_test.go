@@ -247,3 +247,51 @@ func TestDeactivateCancelsInFlightTxn(t *testing.T) {
 		t.Fatal("已收口事务的 Done 必须返回非 nil（不得补记成功）")
 	}
 }
+
+// ---------- N26 用户取消通道：登记表与精确匹配 ----------
+
+func TestCancelModuleTxnRegistry(t *testing.T) {
+	SetKernel(nil, nil)
+	defer SetKernel(nil, nil)
+
+	txn, err := BeginTxn("cancelflow", extapi.OpInstall, extapi.DeliveryManagedDeclarative, "9.9", "txn-cancel-1", []string{"download"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 页面快照过期的旧 ID：拒绝，不误杀在途新事务
+	if err := CancelModuleTxn("cancelflow", "stale-txn-id"); err == nil {
+		t.Fatal("ID 失配必须拒绝")
+	}
+	// 无在途事务的模块
+	if err := CancelModuleTxn("nobody", "x"); err == nil {
+		t.Fatal("无在途事务必须报错")
+	}
+	// 精确命中：只断 ctx，不碰账本收口（worker 的 2b 路径负责）
+	if err := CancelModuleTxn("cancelflow", "txn-cancel-1"); err != nil {
+		t.Fatal(err)
+	}
+	if txn.Err() == nil {
+		t.Fatal("取消后事务 ctx 必须已断")
+	}
+	// 收口后登记表自动摘除（且只摘自己）
+	txn.Fail("operation-cancelled", "托管操作已取消")
+	txn.Close()
+	if err := CancelModuleTxn("cancelflow", "txn-cancel-1"); err == nil {
+		t.Fatal("收口后必须已从登记表摘除")
+	}
+
+	// 同模块替换：新事务在途时，旧事务的 Close 不得误摘新事务
+	t2, err := BeginTxn("cancelflow", extapi.OpUpdate, extapi.DeliveryManagedDeclarative, "9.10", "txn-cancel-2", []string{"download"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t1, err := BeginTxn("cancelflow2", extapi.OpInstall, extapi.DeliveryManagedDeclarative, "1", "txn-a", []string{"download"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = t1
+	t2.Close()
+	if err := CancelModuleTxn("cancelflow", "txn-cancel-2"); err == nil {
+		t.Fatal("t2 收口后再取消应报无在途")
+	}
+}

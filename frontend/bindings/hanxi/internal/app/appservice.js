@@ -40,6 +40,20 @@ export function BindDataDir(target) {
 }
 
 /**
+ * CancelOperation 用户取消一笔在途托管资产事务（N26）：按（模块, 事务 ID）
+ * 精确定位并只发取消信号——事务自身持 ctx（P0 批 2b），下载/解包链即时中断，
+ * 收口仍由模块 worker 的 2b 纪律完成（journal 以 operation-cancelled 落账、
+ * 后台租约归还、半截残件按既有背书清理）。本 RPC 不做任何"代为收口"的越权
+ * 动作：取消是信号，不是结果。ID 失配（页面快照过期）如实拒绝，不盲杀新事务。
+ * @param {string} moduleID
+ * @param {string} txnID
+ * @returns {$CancellablePromise<void>}
+ */
+export function CancelOperation(moduleID, txnID) {
+    return $Call.ByID(1979951582, moduleID, txnID);
+}
+
+/**
  * ClearLogs 清除所有历史日志（保留当天的）。
  * 逐文件删除失败不再静默吞掉：聚合后一次性返回（如当天之前有文件被杀毒软件占用），
  * 前端可如实提示；目录不存在视为无日志可清，仍按成功处理。
