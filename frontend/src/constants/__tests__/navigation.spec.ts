@@ -140,4 +140,9 @@ describe('设置分区注册表', () => {
     expect(settingsSectionOf('/ext/memo')).toBeNull()
     expect(settingsSectionOf('/settingsx')).toBeNull() // 前缀相似不误伤
   })
+
+  it('运行日志/关于归属工作台入口分区语境（N35：入口跳转第二栏不跳首页态）', () => {
+    expect(settingsSectionOf('/logs')).toBe('workbench')
+    expect(settingsSectionOf('/about')).toBe('workbench')
+  })
 })

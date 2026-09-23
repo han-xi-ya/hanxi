@@ -149,6 +149,20 @@ describe('设置分区菜单（第二栏设置态）', () => {
     expect(items[0].classes()).not.toContain('active')
   })
 
+  it('工作台入口跳 /logs、/about：第二栏保持设置分区菜单且「工作台入口」高亮（N35）', async () => {
+    const w = factory({ navs: [MEMO], activeRoute: '/settings/workbench' })
+    await w.setProps({ activeRoute: '/logs' })
+    expect(w.find('.panel-title').text()).toBe('设置') // 结构不蹦：不回落首页态
+    const wb = () => w.findAll('.mod').find((b) => b.find('.mod-name').text() === '工作台入口')!
+    expect(wb().classes()).toContain('active')
+    await w.setProps({ activeRoute: '/about' })
+    expect(w.find('.panel-title').text()).toBe('设置')
+    expect(wb().classes()).toContain('active')
+    // 首页仍归首页态（辅助页粘滞不殃及显式回台动作）
+    await w.setProps({ activeRoute: '/' })
+    expect(w.find('.panel-title').text()).toBe('工作台')
+  })
+
   it('rail 点分类预览压过设置菜单；路由再变化即复位设置态', async () => {
     const w = factory({ navs: [MEMO], activeRoute: '/settings/tray' })
     await w.findAll('.rail-group')[3].trigger('click') // efficiency 组预览

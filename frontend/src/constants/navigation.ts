@@ -135,8 +135,15 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'ai', title: 'AI 接入', desc: 'MCP 客户端 · 安装向导', icon: 'bot', route: '/settings/ai' },
 ]
 
-/** route → 设置分区 id；'/settings' 与未注册子段回落 general；非设置路由返回 null。 */
+/**
+ * route → 设置分区 id；'/settings' 与未注册子段回落 general；非设置路由返回 null。
+ *
+ * N35：运行日志/关于是「工作台入口」分区（8708953）的直达辅助页，归属 workbench
+ * 语境——入口跳转只换内容区，第二栏设置分区菜单保持稳定、分区高亮跟随；
+ * 否则 routeGroup/settingsSection 双双回落空，左侧面板整个跳去首页态。
+ */
 export function settingsSectionOf(route: string): string | null {
+  if (route === '/logs' || route === '/about') return 'workbench'
   if (route !== '/settings' && !route.startsWith('/settings/')) return null
   const seg = route.slice('/settings/'.length)
   return SETTINGS_SECTIONS.some((s) => s.id === seg) ? seg : 'general'
