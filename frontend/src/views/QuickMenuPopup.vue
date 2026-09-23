@@ -14,8 +14,10 @@
 // 条目与托盘右键菜单共用一份配置（后端 launcher 分发），每次唤出事件重拉。
 //
 // 几何单一来源在 components/quickmenu/wheelGeometry.ts（纯函数 + 常量），角度
-// 约定 0°=12 点、顺时针；三层结构不变：SVG 画扇区命中面，每个条目同时是落在
-// 质点上的真实 <button>（键盘/ARIA 语义），中心 hub 为读数浮层（点击 = 收起）。
+// 约定 0°=12 点、顺时针；三层结构不变：SVG 画扇区视觉面（楔形绘制留 pad 缝），
+// 命中/高亮不再吃 DOM hover 而是 pointermove 按 wheelGeometry.slotOf 名义角域
+// 几何归属（N40①②,缝隙带零死区、圆心静区清态）；每个条目同时是落在质点上的
+// 真实 <button>（键盘/ARIA 语义），中心 hub 为读数浮层（点击 = 收起）。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
 import type { MenuItem } from '../../bindings/hanxi/internal/modules/quickmenu/models'
@@ -472,7 +474,8 @@ function onGroupActivate(i: number) {
       <circle class="hub-hit" :cx="C" :cy="C" :r="R_HUB - 2" role="button" aria-label="收起轮盘" @click="dismiss" />
     </svg>
 
-    <!-- 扇区图标/名称浮层：真实 button 提供键盘与可访问性语义，悬停高亮仍归扇区面 -->
+    <!-- 扇区图标/名称浮层：真实 button 提供键盘与可访问性语义；悬停高亮统一由
+         pointermove 几何路由驱动（N40），DOM 层不再自持 hover -->
     <button
       v-for="(item, i) in items"
       :id="`qm-sector-${i}`"
