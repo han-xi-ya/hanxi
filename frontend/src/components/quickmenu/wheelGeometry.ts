@@ -64,6 +64,16 @@ export function mainSectorAngles(i: number, n: number, padDeg = 0.9): { a0: numb
 }
 
 /**
+ * 极坐标角（0°=12 点、顺时针，任意 [-360,360] 域）→ 主环槽位索引：按名义角域
+ * `floor(ang / step)` 归属，缝隙带（pad）像素归入其所属扇区——命中判定与渲染
+ * 缝合同源，牌面任意落点都有唯一槽位（N40 全扇面命中的角向依据）。
+ */
+export function slotOf(angDeg: number, n: number): number {
+  const step = 360 / n
+  return (Math.floor(((angDeg % 360) + 360) % 360 / step)) % n
+}
+
+/**
  * 帽带总跨角：span = clamp(childCount × 24°, parentStepDeg, 180°)。
  * 下界父步长保证子少时帽带不窄于父楔形占位，上界 180° 保证不越过半盘；
  * childCount ≤ 0 时返回 0（无子可展）。

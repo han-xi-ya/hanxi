@@ -12,6 +12,7 @@ import {
   capSectorAngles,
   capAnchorDeg,
   mainAnchor,
+  slotOf,
 } from '../wheelGeometry'
 
 /** 解析 "x%" 字符串为数值，顺带校验形态 */
@@ -201,5 +202,32 @@ describe('mainAnchor', () => {
     const a = mainAnchor(0, 1) // 名义中线 180°
     expect(a.left).toBe('50%')
     expect(pct(a.top)).toBeCloseTo(((256 + 118) / 512) * 100, 6) // 374/512 = 73.046875%
+  })
+})
+
+describe('slotOf（N40 全扇面角向归属）', () => {
+  it('n=4 名义角域四分：0°→槽0、90°→槽1、270°→槽3', () => {
+    expect(slotOf(0, 4)).toBe(0)
+    expect(slotOf(89.9, 4)).toBe(0) // step=90，89.9 仍在槽 0
+    expect(slotOf(90, 4)).toBe(1)
+    expect(slotOf(270, 4)).toBe(3)
+  })
+
+  it('缝隙带像素归属其所属扇区（pad 边界不判死区）', () => {
+    // 第 0 枚楔形绘制止于 90-0.9=89.1°；89.5° 落在 pad 缝但名义仍属槽 0
+    expect(slotOf(89.5, 4)).toBe(0)
+    // 90.5° 已过名义界，归槽 1（其楔形从 90+0.9 起绘，90.5 也在缝内但仍属槽 1）
+    expect(slotOf(90.5, 4)).toBe(1)
+  })
+
+  it('任意负角/超 360 角归一：-90°→槽3、370°→槽0（360/4）', () => {
+    expect(slotOf(-90, 4)).toBe(3)
+    expect(slotOf(370, 4)).toBe(0)
+  })
+
+  it('n 非整除也恒返回 [0,n) 内合法索引（n=3 覆盖 118/119/359）', () => {
+    expect(slotOf(118, 3)).toBe(0) // step=120
+    expect(slotOf(121, 3)).toBe(1)
+    expect(slotOf(359, 3)).toBe(2)
   })
 })

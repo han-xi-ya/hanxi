@@ -24,7 +24,7 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
 import { ICON_NAMES, type IconName } from '../constants/icons'
 import {
-  WHEEL, polar, wedgePath, mainSectorAngles, capSpanDeg, capSectorAngles, capAnchorDeg, mainAnchor,
+  WHEEL, polar, wedgePath, mainSectorAngles, capSpanDeg, capSectorAngles, capAnchorDeg, mainAnchor, slotOf,
 } from '../components/quickmenu/wheelGeometry'
 import { useWheelRingState } from '../composables/useWheelRingState'
 
@@ -138,6 +138,43 @@ function keepHalfDeg(i: number): number {
   return Math.max(stepDeg(), capSpanDeg(Math.min(n, CAP_MAX), stepDeg())) / 2
 }
 
+/** 半径带边界迟滞（DIP）：楔形↔帽带↔圆心静区交界 ±4 防抖 */
+const HIT_HYST = 4
+
+/**
+ * 悬停高亮的几何单点权威（N40①②）：由 pointer 极坐标解析出当前应高亮的主环
+ * 槽位或子环帽带位,写回 active/activeCap——彻底弃用 SVG `<path>` 的 DOM
+ * mouseenter/leave。旧法两大病灶一并根治:①楔形只覆盖绘制扇形(pad 缝隙、盘缘
+ * 缝带、hub 缓冲环全是死区);②楔形随外顶动效缩放 + 叠放的 `<button>` 抢命中,
+ * 交界 mouseenter/leave 交错致闪烁。此处按名义角域 `slotOf` 归属——牌面任意
+ * 落点(含缝隙空白)都有唯一槽位点亮;`r < R_SEC_IN-迟滞` 为圆心静区清全部悬停。
+ */
+function resolveHover(r: number, ang: number, opened: number | null) {
+  const capN = capItems.value.length
+  // 1. 子环帽带：仅在开环分组的角度张角内认领（帽带可越过邻扇区边界）
+  if (opened != null && capN > 0 && r >= WHEEL.rCapIn - HIT_HYST && r <= WHEEL.rCapOut + HIT_HYST) {
+    const span = capSpanDeg(capN, stepDeg())
+    const rel = wrap180(ang - mainCenterDeg(opened))
+    if (Math.abs(rel) <= span / 2) {
+      const j = Math.min(capN - 1, Math.max(0, Math.floor((rel + span / 2) / (span / capN))))
+      if (activeCap.value !== j) activeCap.value = j
+      return
+    }
+  }
+  // 2. 主环节面:无开环时延伸认领到盘缘外沿(含扇区缝带死区);开环时上界止于帽带
+  //    内缘,指针穿越楔形→帽带全程无缝(缝隙带归父扇区,不断高亮)
+  const outer = opened != null ? WHEEL.rCapIn - HIT_HYST : R_DISC + HIT_HYST
+  if (r >= R_SEC_IN - HIT_HYST && r <= outer) {
+    const idx = slotOf(ang, items.value.length)
+    if (active.value !== idx) active.value = idx
+    if (activeCap.value !== null) activeCap.value = null
+    return
+  }
+  // 3. 圆心静区 / 外虚空 → 清除一切选中悬停态
+  if (active.value !== null) active.value = null
+  if (activeCap.value !== null) activeCap.value = null
+}
+
 function onPointerMove(ev: PointerEvent) {
   const n = items.value.length
   if (n === 0) return
@@ -150,16 +187,19 @@ function onPointerMove(ev: PointerEvent) {
 
   ring.setCancel(r > WHEEL.rCancel)
 
-  // 已开环的保持区优先（帽带角度可越过邻扇区边界）
   const opened = ring.openGroup.value
-  if (opened != null && r >= R_SEC_IN - 4 && r <= WHEEL.rCapOut + 4
+  // 高亮先由几何解析定夺（与开收时序解耦:高亮即时、开收走 dwell）
+  resolveHover(r, ang, opened)
+
+  // 已开环的保持区优先（帽带角度可越过邻扇区边界）
+  if (opened != null && r >= R_SEC_IN - HIT_HYST && r <= WHEEL.rCapOut + HIT_HYST
     && Math.abs(wrap180(ang - mainCenterDeg(opened))) <= keepHalfDeg(opened)) {
     ring.enterGroup(opened)
     return
   }
   // 主环节面保持区：按名义角槽位归属
-  if (r >= R_SEC_IN - 4 && r <= R_SEC_OUT + 4) {
-    const idx = Math.floor((((ang % 360) + 360) % 360) / stepDeg())
+  if (r >= R_SEC_IN - HIT_HYST && r <= R_SEC_OUT + HIT_HYST) {
+    const idx = slotOf(ang, n)
     const node = items.value[idx]
     if (node && isGroup(node) && Math.abs(wrap180(ang - mainCenterDeg(idx))) <= keepHalfDeg(idx)) {
       ring.enterGroup(idx)
@@ -171,6 +211,9 @@ function onPointerMove(ev: PointerEvent) {
 
 function onRootMouseleave() {
   ring.leaveGroup()
+  // 指针离盘：几何路由不再有机会解析,读数一并归位（键盘焦点态由 :focus 独立持有）
+  active.value = null
+  activeCap.value = null
 }
 
 // hub 读数：子环读数 > 主环读数 > 开环面包屑 > 标题态
@@ -209,14 +252,6 @@ function openSettings() {
   QuickMenuAPI.QuickMenuService.OpenSettings().catch((err: unknown) => {
     errorMsg.value = getErrorMessage(err)
   })
-}
-
-// 扇区指针离开即读数归位；仍在悬停旧扇区时才清除，防 enter/leave 交错闪烁
-function leaveSector(i: number) {
-  if (active.value === i) active.value = null
-}
-function leaveCap(j: number) {
-  if (activeCap.value === j) activeCap.value = null
 }
 
 // 主环分组索引变化时子环读数复位（换组即换语境，不残留旧子项高亮）
@@ -390,8 +425,6 @@ function onGroupActivate(i: number) {
           :d="mainWedge(i)"
           :style="{ animationDelay: `${Math.min(i * 14, 84)}ms`, transform: active === i ? `translate(${radialShift(i).x}px, ${radialShift(i).y}px)` : '' }"
           role="presentation"
-          @mouseenter="active = i"
-          @mouseleave="leaveSector(i)"
           @click="isGroup(item) ? onGroupActivate(i) : activate(item)"
         />
       </g>
@@ -408,8 +441,6 @@ function onGroupActivate(i: number) {
           :d="capWedge(j)"
           :style="{ animationDelay: `${Math.min(j * 14, 84)}ms` }"
           role="presentation"
-          @mouseenter="activeCap = j"
-          @mouseleave="leaveCap(j)"
           @click="launchCap(j)"
         />
         <path v-if="capRimArc" class="cap-rim-accent" :d="capRimArc" />

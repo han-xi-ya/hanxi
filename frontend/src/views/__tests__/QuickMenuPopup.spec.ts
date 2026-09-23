@@ -165,14 +165,62 @@ describe('N6 牌面重做（F1-F4）', () => {
     expect(btns[1].find('.sector-caret').text()).toContain('▸')
     w.unmount()
   })
-  it('悬停扇区面：is-active 与径向外顶内联样式同步下发', async () => {
+  it('悬停扇区面：pointermove 几何命中即下发 is-active 与径向外顶（N40①全扇面）', async () => {
     const w = await mountReady()
-    await w.findAll('.sector')[0].trigger('mouseenter')
+    // 弃 DOM mouseenter：主环槽 0 名义中线（3 项制 60°）落点即点亮该扇区（含 pad 缝隙带）
+    await w.find('.popup').trigger('pointermove', mainPoint(0, 3))
+    await flushMicrotasks()
     const path = w.findAll('.sector')[0]
     expect(path.classes()).toContain('is-active')
     // 首扇区中线 60°（3 项制）：外顶向量应为有限数值 translate
     expect(path.attributes('style') ?? '').toContain('translate(')
     w.unmount()
+  })
+})
+
+describe('几何命中路由（N40①②）', () => {
+  it('缝隙带像素也点亮所属扇区：楔形绘制边界的 pad 不再是死区', async () => {
+    const w = await mountReady() // 3 项制：step=120°，槽 0 楔形绘于 0.9°~119.1°
+    // 名义角 0°（=360°）落在槽 0/槽 2 之间的 pad 缝：几何归属判给槽 0
+    await w.find('.popup').trigger('pointermove', polarPoint(118, 0))
+    await flushMicrotasks()
+    const sectors = w.findAll('.sector')
+    expect(sectors[0].classes()).toContain('is-active')
+    expect(sectors[2].classes()).not.toContain('is-active')
+    w.unmount()
+  })
+
+  it('圆心静区：悬停过扇区后移入 hub 半径内清全部高亮，交界不再来回抖', async () => {
+    const w = await mountReady()
+    await w.find('.popup').trigger('pointermove', mainPoint(1, 3))
+    await flushMicrotasks()
+    expect(w.findAll('.sector')[1].classes()).toContain('is-active')
+    await w.find('.popup').trigger('pointermove', polarPoint(40, 120)) // r=40 < rSecIn-迟滞
+    await flushMicrotasks()
+    for (const s of w.findAll('.sector')) expect(s.classes()).not.toContain('is-active')
+    w.unmount()
+  })
+
+  it('楔形→帽带穿越无缝：缝隙带(162~170)内仍点亮父扇区，入帽带角域切子环高亮', async () => {
+    vi.useFakeTimers()
+    const w = await mountReady(itemsWithGroup) // 槽 1 = 分组
+    await w.find('.popup').trigger('pointermove', mainPoint(1, 3))
+    vi.advanceTimersByTime(120)
+    await flushMicrotasks()
+    expect(w.findAll('.cap-btn').length).toBeGreaterThan(0)
+    // 缝带 r=166（开环中外界=rCapIn-4=170 之内）：主环高亮停驻父组，不断档
+    await w.find('.popup').trigger('pointermove', polarPoint(166, 120))
+    vi.advanceTimersByTime(1)
+    await flushMicrotasks()
+    expect(w.findAll('.sector')[1].classes()).toContain('is-active')
+    // 帽带内 r=205：2 子项 span=clamp(48,120,180)=120 以中线 180° 展开 → 右半 j=1
+    await w.find('.popup').trigger('pointermove', polarPoint(205, 210))
+    vi.advanceTimersByTime(1)
+    await flushMicrotasks()
+    const caps = w.findAll('.cap-sector')
+    expect(caps[1].classes()).toContain('is-active')
+    w.unmount()
+    vi.useRealTimers()
   })
 })
 
@@ -262,6 +310,12 @@ describe('外扩子环（扇区级联）', () => {
     ])
     await w.find('.popup').trigger('pointermove', mainPoint(1, 3))
     vi.advanceTimersByTime(120)
+    await flushMicrotasks()
+    expect(w.findAll('.cap-btn')).toHaveLength(8)
+    // 指针停在父扇区面上：几何路由点亮父组 → hub 走主环分组摘要「显示前 8」
+    expect(w.find('.hub').text()).toContain('显示前 8')
+    // 指针收回圆心静区（r<内缘）清主环悬停 → 未到 release 走满，开环保留 → hub 子环面包屑「共 N 仅显示前 8」
+    await w.find('.popup').trigger('pointermove', polarPoint(30, 130))
     await flushMicrotasks()
     expect(w.findAll('.cap-btn')).toHaveLength(8)
     expect(w.find('.hub').text()).toContain('仅显示前 8')
