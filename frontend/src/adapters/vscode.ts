@@ -76,41 +76,52 @@ export function createVSCodeAdapter(): VSCodeAdapterBundle {
   const uptimePortable = ref(0)
   const uptimeInstaller = ref(0)
 
+  // 请求代次（P0 批 3·4.4，口径对齐共享 store）：同类请求后发者拥有写权——
+  // 并发刷新/下载事件重拉中，先发慢回的旧响应不得覆盖新状态、不得清掉新请求
+  // 的 loading。状态轮询与版本加载各自独立计数：二者常态并发（轮询 2.5s），
+  // 共享计数会让状态刷新废掉在途版本加载、把 loading 永久卡死。
+  let statusSeq = 0
+  let loadSeq = 0
+
   async function refreshStatus(): Promise<void> {
-    status.value = await VSCodeAPI.GetStatus()
+    const gen = ++statusSeq
+    const s = await VSCodeAPI.GetStatus()
+    if (gen === statusSeq) status.value = s
   }
 
   async function loadVersions(): Promise<void> {
+    const gen = ++loadSeq
     loading.value = true
     listError.value = ''
 
     const localTask = Promise.all([VSCodeAPI.ListInstalledVersions(), VSCodeAPI.GetActiveVersion()])
       .then(([local, active]) => {
+        if (gen !== loadSeq) return
         installed.value = local ?? []
         activeVersion.value = active ?? ''
       })
       .catch((error: unknown) => {
-        listError.value = `读取本地版本失败: ${getErrorMessage(error)}`
+        if (gen === loadSeq) listError.value = `读取本地版本失败: ${getErrorMessage(error)}`
       })
 
     const portableTask = VSCodeAPI.ListRemoteVersions('portable')
       .then((remote) => {
-        releasesPortable.value = remote ?? []
+        if (gen === loadSeq) releasesPortable.value = remote ?? []
       })
       .catch((error: unknown) => {
-        listError.value = `获取便携版列表失败: ${getErrorMessage(error)}`
+        if (gen === loadSeq) listError.value = `获取便携版列表失败: ${getErrorMessage(error)}`
       })
 
     const installerTask = VSCodeAPI.ListRemoteVersions('installer')
       .then((remote) => {
-        releasesInstaller.value = remote ?? []
+        if (gen === loadSeq) releasesInstaller.value = remote ?? []
       })
       .catch((error: unknown) => {
-        listError.value = `获取安装版列表失败: ${getErrorMessage(error)}`
+        if (gen === loadSeq) listError.value = `获取安装版列表失败: ${getErrorMessage(error)}`
       })
 
     void Promise.allSettled([portableTask, installerTask]).finally(() => {
-      loading.value = false
+      if (gen === loadSeq) loading.value = false
     })
     await localTask
   }

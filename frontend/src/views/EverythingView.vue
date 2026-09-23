@@ -99,24 +99,34 @@ const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(
 })
 
 // ---------- 数据加载 ----------
+// 请求代次（P0 批 3·4.4，口径对齐共享 store）：同类请求后发者拥有写权——轮询、
+// 控制动作后刷新与下载事件重拉并发时，旧响应不得覆盖新状态/清新 loading。
+// 状态刷新与版本加载独立计数（二者常态并发，共享会把 loading 卡死）。
+let loadSeq = 0
+let statusSeq = 0
+
 async function loadVersions() {
+  const generation = ++loadSeq
   await loadManagedVersions({
     remote: EverythingAPI.ListReleases,
     local: EverythingAPI.ListInstalledVersions,
     active: EverythingAPI.GetActiveVersion,
-    setRemote: value => { releases.value = value },
-    setLocal: value => { installed.value = value },
-    setActive: value => { activeVersion.value = value },
-    setLoading: value => { loading.value = value },
-    setError: value => { listError.value = value },
+    setRemote: value => { if (generation === loadSeq) releases.value = value },
+    setLocal: value => { if (generation === loadSeq) installed.value = value },
+    setActive: value => { if (generation === loadSeq) activeVersion.value = value },
+    setLoading: value => { if (generation === loadSeq) loading.value = value },
+    setError: value => { if (generation === loadSeq) listError.value = value },
   })
 }
 
 async function refreshStatus() {
+  const generation = ++statusSeq
   try {
-    snap.value = await EverythingAPI.GetStatus()
+    const s = await EverythingAPI.GetStatus()
+    if (generation === statusSeq) snap.value = s
   } catch (e) {
-    // 轮询静默失败：保留上次快照即可
+    // 轮询静默失败：保留上次快照即可（自定义视图现状口径；stale 呈现收口于
+    // 共享 store 通路，本视图迁移在 P3 打磨批次一并评估）
     console.warn('everything GetStatus failed:', getErrorMessage(e))
   }
 }

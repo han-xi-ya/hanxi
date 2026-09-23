@@ -621,3 +621,33 @@ describe('EverythingView 版本区补锁', () => {
     w.unmount()
   })
 })
+
+// ---------- P0 批 3·4.4：状态刷新代次 ----------
+describe('EverythingView 请求代次', () => {
+  it('旧 GetStatus 响应晚到不覆盖新状态', async () => {
+    vi.useFakeTimers()
+    try {
+      stubDefaults({ state: 'stopped' })
+      let call = 0
+      let releaseSlow!: (v: unknown) => void
+      svc.GetStatus.mockImplementation(() => {
+        call++
+        if (call === 1) return new Promise((r) => { releaseSlow = r }) as unknown as Promise<never>
+        return Promise.resolve({
+          state: 'running', mode: 'background', version: '1.5.0.1371', pid: 42,
+          error: '', external: false, startedAt: new Date().toISOString(),
+        })
+      })
+      const w = await mountView()
+      await vi.advanceTimersByTimeAsync(2600) // 轮询 call2 → 后台运行中
+      expect(w.find('.status-word').text()).toBe('后台运行中')
+      releaseSlow({ state: 'stopped' }) // 首拉旧响应晚到
+      await vi.advanceTimersByTimeAsync(50)
+      await flushMicrotasks()
+      expect(w.find('.status-word').text()).toBe('后台运行中')
+      w.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
