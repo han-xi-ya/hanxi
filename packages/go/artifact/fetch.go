@@ -31,6 +31,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"hanxi/packages/go/netx"
 )
 
 const (
@@ -54,14 +56,12 @@ type Source struct {
 	FileName string   // 落地名（sanitize 后；仅用作临时件命名与诊断）
 }
 
-// fetchTransport 共享传输层：外部走系统代理，回环一律直连。
+// fetchTransport 共享传输层（N25 收口）：外部走 netx 代理链
+// （env→WinINET→直连，"开着系统代理仍下载失败"的断层在本内核一并修复），
+// 回环一律直连——混合闸由公共件 LoopbackAwareProxyFunc 表达，
+// isLoopbackHost 判定上收 netx 后反向复用，消灭两份实现。
 var fetchTransport = &http.Transport{
-	Proxy: func(req *http.Request) (*url.URL, error) {
-		if isLoopbackHost(req.URL.Hostname()) {
-			return nil, nil // 回环禁用代理（本机服务/测试服务器不可被环境代理劫持）
-		}
-		return http.ProxyFromEnvironment(req)
-	},
+	Proxy:               netx.LoopbackAwareProxyFunc(),
 	DialContext:         (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
 	TLSHandshakeTimeout: 15 * time.Second,
 	MaxIdleConnsPerHost: 2,
@@ -264,7 +264,7 @@ func validateEndpoint(raw string) (*url.URL, error) {
 	switch strings.ToLower(u.Scheme) {
 	case "https":
 	case "http":
-		if !isLoopbackHost(u.Hostname()) {
+		if !netx.IsLoopbackHost(u.Hostname()) {
 			return nil, fmt.Errorf("非回环地址禁用明文 http（必须 HTTPS）")
 		}
 	default:
@@ -290,19 +290,6 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 		return fmt.Errorf("重定向目标被拒: %w", err)
 	}
 	return nil
-}
-
-// isLoopbackHost 判定主机名是否回环（localhost / 127.0.0.0/8 / ::1）。
-func isLoopbackHost(host string) bool {
-	host = strings.Trim(strings.TrimSpace(host), "[]")
-	if host == "" {
-		return false
-	}
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 // redactURL 抹去 URL 中的 query/fragment/用户名（可能含 token），只留可诊断的骨架。

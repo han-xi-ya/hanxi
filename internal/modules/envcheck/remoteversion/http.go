@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+	"hanxi/packages/go/netx"
 )
 
 // UserAgent 探测请求统一 UA：派生自产品身份，构建注入 Version 后自动跟随，
@@ -21,13 +22,19 @@ const (
 
 // NewHTTPClient 创建仅信任指定官网主机的客户端：每次重定向都复验目标仍在白名单且为 HTTPS，
 // 防止官网被劫持/重定向后把请求（及潜在凭据）发给任意主机。
+//
+// N25 收口：Transport 走 netx 代理链（env→WinINET→直连）——此前裸默认
+// Transport 只认环境变量代理，"开着 Clash 系统代理仍探测失败"的断层在
+// 本厂一次修复，envcheck 七路在线探针（git/go/node/python/dotnet/java/npm）
+// 与所有经 Fetch 的官网页探测同批受益。
 func NewHTTPClient(allowedHosts ...string) *http.Client {
 	hosts := make(map[string]struct{}, len(allowedHosts))
 	for _, host := range allowedHosts {
 		hosts[strings.ToLower(host)] = struct{}{}
 	}
 	return &http.Client{
-		Timeout: ProbeTimeout,
+		Timeout:   ProbeTimeout,
+		Transport: netx.Transport(),
 		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
 			if err := ValidateURL(req.URL, hosts); err != nil {
 				return fmt.Errorf("拒绝官网重定向: %w", err)

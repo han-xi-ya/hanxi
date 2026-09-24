@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"hanxi/internal/platform/versioncmp"
+
+	"hanxi/packages/go/netx"
 )
 
 // UpdatesPageURL 官方 Windows 更新页（解析锚点与降级外呼共用同一常量）。
@@ -86,7 +88,7 @@ func fetchUpdatesPage(ctx context.Context) (string, error) {
 	req.Header.Set("User-Agent", browserUA)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
 
-	client := &http.Client{Timeout: officialFetchTimeout}
+	client := netx.NewClient(officialFetchTimeout, nil)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("访问官方更新页失败: %w", err)

@@ -6,11 +6,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
+
+	"hanxi/packages/go/netx"
 )
 
-// sharedClient 无自有 Timeout，超时全部由调用方 context 控制，
-// 避免双超时互相纠缠。
-var sharedClient = &http.Client{}
+// sharedClient 共享出网客户端（N25 收口）：走 netx 代理链；15 分钟为整请求
+// 硬顶护栏（此前无 Timeout——挂死的连接只能靠调用方 context 收，属双重不合
+// 规家族唯一漏网）；短操作的超时仍由调用方 context 精细控制，双层不互扰。
+var sharedClient = netx.NewClient(15*time.Minute, nil)
 
 // httpGet 拉取小体积文本资源（appinstaller 清单 / winget yaml）。
 func httpGet(ctx context.Context, rawURL string) ([]byte, error) {

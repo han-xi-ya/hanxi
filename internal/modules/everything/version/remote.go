@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+
+	"hanxi/packages/go/netx"
 )
 
 // userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
@@ -136,7 +138,7 @@ func parseReleases(html string) []EverythingRelease {
 // probeAssets 逐资产 HEAD 探测补充 Size/Published，并拉取官方 sha256 清单。
 // 任一探测失败只清空对应字段（降级校验），不整体失败。
 func probeAssets(list []EverythingRelease) {
-	client := &http.Client{Timeout: probeTimeout}
+	client := netx.NewClient(probeTimeout, nil)
 	for i := range list {
 		rel := &list[i]
 		// 1. HEAD 补大小与发布时间
@@ -178,7 +180,7 @@ func findSHAInManifest(manifest, assetName string) string {
 
 // fetchPage GET 指定 URL 并限制响应体大小（防异常响应撑爆内存）。
 func fetchPage(url string, limit int64) ([]byte, error) {
-	client := &http.Client{Timeout: probeTimeout}
+	client := netx.NewClient(probeTimeout, nil)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

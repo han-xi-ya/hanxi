@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+
+	"hanxi/packages/go/netx"
 )
 
 // userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
@@ -55,7 +57,7 @@ type apiEnvelope struct {
 }
 
 func apiClient() *http.Client {
-	return &http.Client{Timeout: 12 * time.Second}
+	return netx.NewClient(12*time.Second, nil)
 }
 
 // fetchChannel 拉取指定通道（stable/beta）的当前版本并转换为 ViewRelease。

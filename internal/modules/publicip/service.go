@@ -14,6 +14,8 @@ import (
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/platform"
+
+	"hanxi/packages/go/netx"
 )
 
 // NetworkOverview 综合 IP 与网络详情
@@ -45,10 +47,15 @@ type PublicIPService struct {
 }
 
 // NewPublicIPService 创建服务：单源 HTTP 超时 3s（多源轮询兜底），结果缓存 2 分钟。
+//
+// N25 语义决策：出网走 netx 代理链（机主 2026-09-23 扩面点名"publicip 等在线
+// 查询"随浏览器同进退）。诚实边界——开启系统代理时，探得的"公网 IP"实为**代理
+// 出口 IP**而非本机裸出口 IP；这正是"看我现在对外是什么地址"的期望语义，前端
+// 文案不得谎称"本机真实出口"。若要裸出口需另立直连探针（本次不做，避免双出口混淆）。
 func NewPublicIPService(plat platform.Platform, holder *extapi.LeaseHolder) *PublicIPService {
 	return &PublicIPService{
 		plat:     plat,
-		client:   &http.Client{Timeout: 3 * time.Second},
+		client:   netx.NewClient(3*time.Second, nil),
 		holder:   holder,
 		cacheTTL: 2 * time.Minute, // 默认缓存 2 分钟
 	}

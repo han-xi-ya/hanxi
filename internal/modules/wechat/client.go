@@ -52,6 +52,9 @@ func NewClient(baseURL string) *Client {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	transport := &http.Transport{
+		Proxy: nil, // N25 显式定调：腾讯国内端点恒定直连（此前为零值 Transport 的隐性直连）。
+		// 微信协议服务器按地区就近调度，走用户 Clash 式代理反而改出口触发风控/掉线，
+		// 与"浏览器同进退"的下载族诉求相反——收口时点名排除，防止后续公共件改造误伤。
 		DisableKeepAlives:   false,
 		DisableCompression:  true, // 腾讯 CDN 密文下载禁止 gzip 压缩导致字节数变异
 		MaxIdleConns:        10,

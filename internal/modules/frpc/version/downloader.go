@@ -12,6 +12,8 @@ import (
 
 	"hanxi/internal/product"
 	"hanxi/packages/go/hostfeed"
+
+	"hanxi/packages/go/netx"
 )
 
 const (
@@ -50,7 +52,7 @@ type asset struct {
 
 // apiClient GitHub API 请求客户端（10s 超时）
 func apiClient() *http.Client {
-	return &http.Client{Timeout: 12 * time.Second}
+	return netx.NewClient(12*time.Second, nil)
 }
 
 // fetchJSON 按候选地址逐个尝试，成功返回响应体

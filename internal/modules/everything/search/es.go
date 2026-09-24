@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+
+	"hanxi/packages/go/netx"
 )
 
 const (
@@ -77,7 +79,7 @@ func EnsureESExe(toolDir string, onProgress func(stage string)) error {
 	defer os.Remove(tmpPath)
 	tmp.Close()
 
-	client := &http.Client{Timeout: 2 * time.Minute}
+	client := netx.NewClient(2*time.Minute, nil)
 	req, err := http.NewRequest(http.MethodGet, esZipURL, nil)
 	if err != nil {
 		return err

@@ -15,6 +15,8 @@ import (
 
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+
+	"hanxi/packages/go/netx"
 )
 
 const (
@@ -56,7 +58,7 @@ func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		versionsDir: versionsDir,
 		tree:        OpenTree(versionsDir),
-		client:      &http.Client{Timeout: 10 * time.Minute},
+		client:      netx.NewClient(10*time.Minute, nil),
 	}
 }
 

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+
+	"hanxi/packages/go/netx"
 )
 
 // userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
@@ -83,7 +85,7 @@ type manifest struct {
 }
 
 // downloadClient HEAD/GET 官方端点客户端（12s 超时，与 apiClient 同档）。
-func downloadClient() *http.Client { return &http.Client{Timeout: 12 * time.Second} }
+func downloadClient() *http.Client { return netx.NewClient(12*time.Second, nil) }
 
 // fetchJSON 拉取 JSON 响应体（错误带 URL 上下文）。
 func fetchJSON(client *http.Client, url string, out any) error {

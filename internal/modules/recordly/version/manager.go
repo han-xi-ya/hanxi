@@ -13,6 +13,8 @@ import (
 
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+
+	"hanxi/packages/go/netx"
 )
 
 const (
@@ -62,7 +64,7 @@ func NewManager(versionsDir string) *Manager {
 func NewManagerWithDesktop(versionsDir string, desktopDir func() string) *Manager {
 	return &Manager{
 		versionsDir: versionsDir,
-		client:      &http.Client{Timeout: 20 * time.Minute},
+		client:      netx.NewClient(20*time.Minute, nil),
 		desktopDir:  desktopDir,
 		fetch:       artifact.Fetch,
 		mirrors:     assetMirrors,

@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+
+	"hanxi/packages/go/netx"
 )
 
 const (
@@ -64,7 +66,7 @@ type releaseCache struct {
 }
 
 // headClient 元数据探测客户端（12s 超时，HEAD 无正文）。
-func headClient() *http.Client { return &http.Client{Timeout: 12 * time.Second} }
+func headClient() *http.Client { return netx.NewClient(12*time.Second, nil) }
 
 // get 返回单条"最新版"列表。size 供降级链字节数核对（Content-Length 实测）。
 func (c *releaseCache) get() ([]RammapRelease, int64, error) {

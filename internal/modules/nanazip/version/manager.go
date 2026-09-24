@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"hanxi/internal/platform/versioncmp"
+
+	"hanxi/packages/go/netx"
 )
 
 // verificationMode 记录可信链级别，写入每个缓存包的 meta.json；清单外的包不视为可信。
@@ -26,7 +28,7 @@ type Manager struct {
 func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		cacheRoot: filepath.Join(versionsDir, "nanazip", "packages"),
-		client:    &http.Client{Timeout: 15 * time.Minute},
+		client:    netx.NewClient(15*time.Minute, nil),
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"hanxi/internal/product"
+
+	"hanxi/packages/go/netx"
 )
 
 // userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
@@ -53,7 +55,7 @@ type asset struct {
 	Digest string `json:"digest"`
 }
 
-func apiClient() *http.Client { return &http.Client{Timeout: 12 * time.Second} }
+func apiClient() *http.Client { return netx.NewClient(12*time.Second, nil) }
 
 func fetchJSON(urls []string) ([]byte, error) {
 	var lastErr error

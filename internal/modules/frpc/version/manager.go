@@ -15,6 +15,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"hanxi/packages/go/netx"
 )
 
 // Manager frp 版本管理引擎：远程列表、下载硬校验、解压隔离、本地导入。
@@ -27,7 +29,7 @@ type Manager struct {
 func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		versionsDir: versionsDir,
-		client:      &http.Client{Timeout: 10 * time.Minute},
+		client:      netx.NewClient(10*time.Minute, nil),
 	}
 }
 

@@ -13,6 +13,8 @@ import (
 
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/product"
+
+	"hanxi/packages/go/netx"
 )
 
 // userAgent 统一产品 UA：派生自 internal/product 产品身份，构建脚本经 -X
@@ -87,7 +89,7 @@ func (c *releaseCache) get() ([]Release, error) {
 }
 
 func fetchReleases() ([]byte, error) {
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := netx.NewClient(15*time.Second, nil)
 	var lastErr error
 	for _, base := range apiBaseURLs {
 		url := base + "/repos/" + repoOwner + "/" + repoName + "/releases?per_page=60"

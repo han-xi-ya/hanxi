@@ -15,6 +15,8 @@ import (
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+
+	"hanxi/packages/go/netx"
 )
 
 const (
@@ -49,7 +51,7 @@ type Manager struct {
 func NewManager(versionsDir string) *Manager {
 	return &Manager{
 		versionsDir: versionsDir,
-		client:      &http.Client{Timeout: 10 * time.Minute},
+		client:      netx.NewClient(10*time.Minute, nil),
 		cache:       remoteCache,
 		fileVersion: versioninfo.FileVersion,
 	}
