@@ -14,7 +14,8 @@ import {
   updateAvailableText,
 } from '../../constants/status'
 import { MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../../constants/navigation'
-import { ICON_NAMES, type IconName } from '../../constants/icons'
+import { appIconName } from '../../constants/appIcons'
+import type { RenderableIcon } from '../../constants/icons'
 import AppIcon from '../ui/AppIcon.vue'
 import UiStatusChip from '../ui/UiStatusChip.vue'
 
@@ -56,12 +57,9 @@ const permissions = computed(() => props.entry.catalog.permissions ?? [])
 const platformText = computed(() => (props.entry.catalog.compatibility?.platform ?? []).join('、') || '—')
 const hostRangeText = computed(() => props.entry.catalog.compatibility?.hostRange || '—')
 
-const iconName = computed<IconName | undefined>(() => {
-  const icon = MODULE_PRESENTATION[props.entry.catalog.id]?.icon || FALLBACK_MODULE_ICON
-  if (!icon.startsWith('i:')) return undefined
-  const name = icon.slice(2)
-  return (ICON_NAMES as readonly string[]).includes(name) ? (name as IconName) : undefined
-})
+const iconName = computed<RenderableIcon | undefined>(() =>
+  appIconName(MODULE_PRESENTATION[props.entry.catalog.id]?.icon || FALLBACK_MODULE_ICON),
+)
 </script>
 
 <template>

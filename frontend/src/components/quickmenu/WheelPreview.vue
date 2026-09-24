@@ -13,7 +13,8 @@
 import { computed } from 'vue'
 import type { MenuItem } from '../../../bindings/hanxi/internal/modules/quickmenu/models'
 import AppIcon from '../ui/AppIcon.vue'
-import { ICON_NAMES, type IconName } from '../../constants/icons'
+import { appIconName } from '../../constants/appIcons'
+import type { IconName, RenderableIcon } from '../../constants/icons'
 import { WHEEL, wedgePath, mainSectorAngles, mainAnchor } from './wheelGeometry'
 
 const props = withDefaults(defineProps<{
@@ -27,8 +28,9 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ pick: [index: number] }>()
 
 const TYPE_ICON: Record<string, IconName> = { exe: 'box', command: 'terminal', route: 'layout', group: 'layers' }
-const iconOf = (item: MenuItem): IconName =>
-  (ICON_NAMES as readonly string[]).includes(item.icon) ? (item.icon as IconName) : TYPE_ICON[item.type] ?? 'box'
+// N27 批 B：app: 真图标与登记矢量名二轨；漂移回落类型图标（与轮盘弹窗同口径）
+const iconOf = (item: MenuItem): RenderableIcon =>
+  appIconName(item.icon) ?? TYPE_ICON[item.type] ?? 'box'
 const isGroup = (item: MenuItem): boolean => (item.children?.length ?? 0) > 0
 
 const n = computed(() => props.items.length)

@@ -24,7 +24,8 @@ import type { MenuItem } from '../../bindings/hanxi/internal/modules/quickmenu/m
 import AppIcon from '../components/ui/AppIcon.vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
-import { ICON_NAMES, type IconName } from '../constants/icons'
+import { appIconName } from '../constants/appIcons'
+import type { IconName, RenderableIcon } from '../constants/icons'
 import {
   WHEEL, polar, wedgePath, mainSectorAngles, capSpanDeg, capSectorAngles, capAnchorDeg, mainAnchor, slotOf,
 } from '../components/quickmenu/wheelGeometry'
@@ -78,9 +79,10 @@ const TYPE_ICON: Record<string, IconName> = {
   route: 'layout',
   group: 'layers',
 }
-// 后端下发的图标名与注册表漂移（未登记/空/非 i: 形态）时回退类型图标，渲染永不因图标断链
-const iconOf = (item: MenuItem): IconName =>
-  (ICON_NAMES as readonly string[]).includes(item.icon) ? (item.icon as IconName) : TYPE_ICON[item.type] ?? 'box'
+// 后端下发的图标名与注册表漂移（未登记/空/非 i: 形态）时回退类型图标，渲染永不因图标断链；
+// N27 批 B：`app:<id>` 真图标名与登记的裸矢量名走 AppIcon 二轨（解析单点 appIcons）
+const iconOf = (item: MenuItem): RenderableIcon =>
+  appIconName(item.icon) ?? TYPE_ICON[item.type] ?? 'box'
 
 // N6 F1 可读性：图标常显（名字再密也留视觉锚点，尺寸随条目数分档收缩），
 // 名称两行折行不再单行省略；档位令牌经 CSS 变量下发给样式层。

@@ -45,7 +45,7 @@ func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "markeron-annotate", Title: "MarkerOn 标注", Route: "/ext/markeron", Icon: "i:pen-line", Section: extapi.SectionExt, Order: 55, Group: extapi.GroupDesktop},
+		{ID: "markeron-annotate", Title: "MarkerOn 标注", Route: "/ext/markeron", Icon: "app:markeron", Section: extapi.SectionExt, Order: 55, Group: extapi.GroupDesktop},
 	}
 }
 

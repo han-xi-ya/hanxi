@@ -7,6 +7,7 @@ import {
   SETTINGS_SECTIONS, settingsSectionOf, CORE_ROUTES, isCoreRoute,
 } from '../navigation'
 import { ICON_NAMES } from '../icons'
+import { resolveIcon } from '../appIcons'
 import compositionContract from '../../../../scripts/fixture/composition_contract.json'
 
 const contractModules = compositionContract.modules
@@ -101,11 +102,16 @@ describe('constants/navigation', () => {
     expect(groupOfModule('nope')).toBeUndefined()
   })
 
-  it('MODULE_PRESENTATION 图标全部为已登记的 i: 名，回退为 i:box', () => {
+  it('MODULE_PRESENTATION 图标全为可解析形态：登记 i: 名或 N27 真图标 app: 名，回退 i:box', () => {
     expect(FALLBACK_MODULE_ICON).toBe('i:box')
     for (const p of Object.values(MODULE_PRESENTATION)) {
-      expect(p.icon.startsWith('i:')).toBe(true)
-      expect(ICON_NAMES).toContain(p.icon.slice(2))
+      // 三轨解析单点必须判为可渲染（svg 或 app），杜绝未登记前缀混入数据源
+      expect(['svg', 'app'], p.icon).toContain(resolveIcon(p.icon).kind)
+      if (p.icon.startsWith('i:')) expect(ICON_NAMES).toContain(p.icon.slice(2))
+    }
+    // 首批真图标五枚：数据源确已切到 app: 形态
+    for (const id of ['ccswitch', 'keyviz', 'everything', 'snipaste', 'markeron']) {
+      expect(MODULE_PRESENTATION[id]?.icon).toBe(`app:${id}`)
     }
   })
 

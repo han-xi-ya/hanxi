@@ -26,7 +26,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { useMediaQuery } from '@vueuse/core'
 import AppIcon from '../ui/AppIcon.vue'
 import AppNavRail from './AppNavRail.vue'
-import type { IconName } from '../../constants/icons'
+import { appIconName } from '../../constants/appIcons'
+import type { IconName, RenderableIcon } from '../../constants/icons'
 import type { NavEntry } from '../../../bindings/hanxi/internal/extapi/models'
 import {
   GROUP_META,
@@ -226,9 +227,10 @@ function onSelectGroup(group: NavGroup) {
   }
 }
 
-// 行内图标双轨：`i:` 前缀走 AppIcon，其余文本回退（同 rail/旧版约定）
-function iconSvg(icon: string | undefined): IconName | null {
-  return icon?.startsWith('i:') ? (icon.slice(2) as IconName) : null
+// 行内图标三轨（N27 批 B）：`i:` 走 AppIcon 矢量、`app:` 走真图标、
+// 其余文本回退（解析单点在 constants/appIcons，各消费面共用）。
+function iconSvg(icon: string | undefined): RenderableIcon | null {
+  return appIconName(icon) ?? null
 }
 </script>
 

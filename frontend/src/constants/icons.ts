@@ -114,5 +114,8 @@ export type IconName = keyof typeof ICON_PATHS
  */
 export type AppIconName = `app:${string}`
 
+/** 凡可交 AppIcon 渲染的名（矢量注册名或 `app:` 真图标名）——消费面统一签名。 */
+export type RenderableIcon = IconName | AppIconName
+
 /** AppIcon 的 name prop 校验用集合（模板中 `i:` 前缀约定剥离后可查）。 */
 export const ICON_NAMES = Object.keys(ICON_PATHS) as IconName[]

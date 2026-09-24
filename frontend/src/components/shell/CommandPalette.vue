@@ -7,6 +7,7 @@
 // 面板 chrome 图标（search/goto）按注册表存在性守卫，缺失时优雅降级不渲染。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppIcon from '../ui/AppIcon.vue'
+import { appIconName } from '../../constants/appIcons'
 import { ICON_NAMES, type IconName } from '../../constants/icons'
 import { GROUP_META, type NavGroup } from '../../constants/navigation'
 import type { NavEntry } from '../../../bindings/hanxi/internal/extapi/models'
@@ -246,11 +247,8 @@ function isRegistered(name: string): boolean {
   return (ICON_NAMES as string[]).includes(name)
 }
 
-/** 导航项图标：`i:xxx` 且已在注册表登记 → AppIcon；`i:` 未登记（阶段 2 前）→ 空占位；其余文本回退。 */
-function navIconKind(icon: string): 'svg' | 'blank' | 'text' {
-  if (!icon.startsWith('i:')) return 'text'
-  return isRegistered(icon.slice(2)) ? 'svg' : 'blank'
-}
+// 导航项图标三轨（N27 批 B）：登记 `i:` 矢量与 `app:` 真图标走 AppIcon、未登记空占位、
+// 其余文本回退——解析单点在 constants/appIcons（模板经 appIconName 直判）。
 
 // 面板 chrome 图标（search/goto）依赖 icons.ts 阶段 2 登记，缺失时优雅降级为不渲染
 // （禁止散写 svg / emoji 兜底），登记后自动启用。
@@ -293,7 +291,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
               @click="activate(i)"
             >
               <span class="p-ic">
-                <AppIcon v-if="navIconKind(item.nav.icon) === 'svg'" :name="item.nav.icon.slice(2) as IconName" :size="14" />
+                <AppIcon v-if="appIconName(item.nav.icon)" :name="appIconName(item.nav.icon)!" :size="14" />
               </span>
               <span class="p-body">
                 <span class="p-name">

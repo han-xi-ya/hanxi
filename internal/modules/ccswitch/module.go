@@ -47,7 +47,7 @@ func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "ccswitch-manager", Title: "CC Switch", Route: "/ext/ccswitch", Icon: "i:shuffle", Section: extapi.SectionExt, Order: 70, Group: extapi.GroupDeveloper},
+		{ID: "ccswitch-manager", Title: "CC Switch", Route: "/ext/ccswitch", Icon: "app:ccswitch", Section: extapi.SectionExt, Order: 70, Group: extapi.GroupDeveloper},
 	}
 }
 

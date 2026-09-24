@@ -26,7 +26,8 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { useAsyncAction } from '../composables/useAsyncAction'
 import { useModuleCatalog, type ModuleEntry } from '../composables/useModuleCatalog'
 import { MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../constants/navigation'
-import { ICON_NAMES, type IconName } from '../constants/icons'
+import { appIconName } from '../constants/appIcons'
+import type { IconName, RenderableIcon } from '../constants/icons'
 import {
   SUMMARY_META,
   healthMeta,
@@ -66,17 +67,15 @@ const recentRoutes = ref<string[]>(loadRecentRoutes())
 
 // ── 展示元数据工具（图标 `i:` 前缀双轨：注册过的走 AppIcon SVG，其余文本回退）──
 
-function iconNameFromIconString(icon: string | undefined): IconName | undefined {
-  if (!icon || !icon.startsWith('i:')) return undefined
-  const name = icon.slice(2)
-  return (ICON_NAMES as readonly string[]).includes(name) ? (name as IconName) : undefined
+function iconNameFromIconString(icon: string | undefined): RenderableIcon | undefined {
+  return appIconName(icon)
 }
 
 function getModuleIcon(id: string): string {
   return MODULE_PRESENTATION[id]?.icon || FALLBACK_MODULE_ICON
 }
 
-function moduleIconName(id: string): IconName | undefined {
+function moduleIconName(id: string): RenderableIcon | undefined {
   return iconNameFromIconString(getModuleIcon(id))
 }
 
@@ -179,7 +178,7 @@ function taskTitle(rec: HistoryRecord): string {
   return rec.summary || rec.input || '历史记录'
 }
 
-function taskIconName(rec: HistoryRecord): IconName {
+function taskIconName(rec: HistoryRecord): RenderableIcon {
   // 桶键对齐模块注册 ID，图标取自 MODULE_PRESENTATION；未登记桶回落 box（不引入 emoji 轨道）
   return iconNameFromIconString(MODULE_PRESENTATION[rec.funcType]?.icon) ?? 'box'
 }
@@ -204,7 +203,7 @@ function fmtTaskTime(iso: string): string {
 // 错误回落阶段短语），error.message 原文透出，不本地推断成败。
 interface TaskRow {
   key: string
-  iconName: IconName
+  iconName: RenderableIcon
   title: string
   meta: string
   time: string
@@ -253,7 +252,7 @@ interface ShortcutEntry {
   route: string
   title: string
   desc: string
-  iconName?: IconName
+  iconName?: RenderableIcon
   iconText: string
 }
 

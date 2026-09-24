@@ -21,7 +21,8 @@ import {
   type SummaryKeyValue,
 } from '../../constants/status'
 import { GROUP_META, MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../../constants/navigation'
-import { ICON_NAMES, type IconName } from '../../constants/icons'
+import { appIconName } from '../../constants/appIcons'
+import type { RenderableIcon } from '../../constants/icons'
 import AppIcon from '../ui/AppIcon.vue'
 import UiButton from '../ui/UiButton.vue'
 import UiStatusChip from '../ui/UiStatusChip.vue'
@@ -151,12 +152,9 @@ const showUninstall = computed(() => {
 })
 
 // —— 展示身份：图标/分类（与首页共用 navigation 单一来源）——
-const iconName = computed<IconName | undefined>(() => {
-  const icon = MODULE_PRESENTATION[props.entry.catalog.id]?.icon || FALLBACK_MODULE_ICON
-  if (!icon.startsWith('i:')) return undefined
-  const name = icon.slice(2)
-  return (ICON_NAMES as readonly string[]).includes(name) ? (name as IconName) : undefined
-})
+const iconName = computed<RenderableIcon | undefined>(() =>
+  appIconName(MODULE_PRESENTATION[props.entry.catalog.id]?.icon || FALLBACK_MODULE_ICON),
+)
 const categoryLabel = computed(() =>
   (GROUP_META as Partial<Record<string, { title: string }>>)[props.entry.catalog.category]?.title
   ?? props.entry.catalog.category,

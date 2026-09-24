@@ -44,7 +44,7 @@ func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定效率组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "snipaste-manager", Title: "Snipaste", Route: "/ext/snipaste", Icon: "i:scissors", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupEfficiency},
+		{ID: "snipaste-manager", Title: "Snipaste", Route: "/ext/snipaste", Icon: "app:snipaste", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupEfficiency},
 	}
 }
 
