@@ -174,8 +174,10 @@ func (e *Engine) ExternalRunning() bool {
 }
 
 // QuitExternal 对当前外部实例执行 N3 终裁分档退出（委托 externalquit）：
-// WM_CLOSE 尽力投递 → 宽限观察 → 身份复核 → 按档强杀。RAMMap 恒定
-// PolicyConfirmForce：强杀仅在 Confirm 回调取得用户同意后执行；
+// WM_CLOSE 尽力投递 → 宽限观察 → 身份复核 → 按档强杀。调用方（service）
+// 恒定传 PolicyForceFree——RAMMap 是零状态观察工具（打开即重扫、无保存
+// 概念），强杀损失 ≈ 0，论证与 everything 同档同谱（N3 终裁；本注释曾
+// 误写 ConfirmForce 系克隆残留，2026-09-24 N3 收口订正，代码行为从未变）。
 // 提权目标（UIPI）如实返回 Method="blocked"，调用方降级为指引。
 // 调用前须自查状态为 external；token 身份不全（PID=0）时拒执行——
 // 由调用方先行甄别并回指引（不猜身份）。

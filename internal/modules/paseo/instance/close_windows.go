@@ -14,15 +14,10 @@ var (
 	procEnumWindows           = modUser32.NewProc("EnumWindows")
 	procGetWndThreadProcessID = modUser32.NewProc("GetWindowThreadProcessId")
 	procPostMsg               = modUser32.NewProc("PostMessageW")
-	procShowWindow            = modUser32.NewProc("ShowWindow")
-	procSetForegroundWindow   = modUser32.NewProc("SetForegroundWindow")
 )
 
 const (
 	wmClose = 0x0010
-
-	// swRestore 从最小化恢复窗口（ShowWindow 第 2 参）
-	swRestore = 9
 )
 
 // forEachPaseoWindow 枚举归属 Paseo.exe 进程、可见且带标题的顶层窗口。

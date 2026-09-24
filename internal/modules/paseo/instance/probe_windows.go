@@ -8,6 +8,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	win "hanxi/internal/platform/windows"
 )
 
 // exeImageName Paseo 打包主程序进程名（electron-builder executableName 固定）。
@@ -47,19 +49,16 @@ func (p *windowsPaseoProbe) IsWindowOpen() bool {
 	return open
 }
 
-// FocusWindow 恢复并置前台首个可见带标题的 Paseo 窗口（Win32 直操作，
-// 与 litemonitor 的 restoreWindowByPID 同族）。SetForegroundWindow 受前台
-// 锁限制时窗口至少被 ShowWindow 恢复——返回值表达"唤起了窗口"尽力语义，
-// 真机验收含前台性核对。
+// FocusWindow 唤回首可见带标题的 Paseo 窗（N3 收口：委托平台公共件）。
+// 旧实现**无条件** SW_RESTORE——最大化窗会被打回普通尺寸（误伤用户布局），
+// 且裸 SetForegroundWindow 在 hanxi 藏托盘时遭前台锁拒。公共件按 IsIconic
+// 才恢复、借前台特权置前；标题+可见过滤语义与 forEachPaseoWindow 同源。
 func (p *windowsPaseoProbe) FocusWindow() bool {
-	focused := false
-	forEachPaseoWindow(func(hwnd uintptr) bool {
-		_, _, _ = procShowWindow.Call(hwnd, swRestore)
-		_, _, _ = procSetForegroundWindow.Call(hwnd)
-		focused = true
-		return false
-	})
-	return focused
+	set := make(map[uint32]struct{}, len(paseoPIDs()))
+	for pid := range paseoPIDs() {
+		set[pid] = struct{}{}
+	}
+	return win.FocusTopWindowForPIDs(set)
 }
 
 // anyPaseoProcess Toolhelp32 快照按进程名匹配（不查路径，避免跨用户

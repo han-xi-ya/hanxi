@@ -154,6 +154,12 @@ func (e *Engine) QuitExternal(ctx context.Context, policy externalquit.Policy, r
 	if snap.State != sup.StateExternal {
 		return QuitResult{Method: "not-external"}, nil
 	}
+	if snap.PID == 0 {
+		// 身份不全拒执行（rammap/windterm/termora 同族守卫，2026-09-24 N3 收口
+		// 补齐）：PID=0 时 externalquit 的 Query(0) 失败会被误归因 already-exited，
+		// 把"没取得身份"谎报成"已经退了"——调用方据此谎报撤牌成功。
+		return QuitResult{Method: "probe-missing-pid"}, nil
+	}
 	token := platform.VerifyToken{PID: snap.PID, ExePath: snap.Exe, StartedAt: snap.Since}
 	deps := externalquit.Deps{
 		Proc: e.processAPI, Risk: risk, Confirm: confirm,
