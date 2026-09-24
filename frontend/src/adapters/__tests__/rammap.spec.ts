@@ -11,6 +11,7 @@ const svc = vi.hoisted(() => ({
   RemoveVersion: vi.fn(),
   OpenDir: vi.fn(),
   OpenWindow: vi.fn(),
+  OpenWindowElevated: vi.fn(),
   Quit: vi.fn(),
   ImportLocal: vi.fn(),
   GetFollowOnExit: vi.fn(),
