@@ -2,8 +2,10 @@ package sysinfo
 
 import (
 	"log/slog"
+	"sync"
 
 	"hanxi/internal/extapi"
+	"hanxi/internal/platform/windows"
 )
 
 // SysInfoService 面向前端的系统档案服务：单次 RPC 返回全量快照。
@@ -11,12 +13,54 @@ import (
 // 不产生 journal 事务——与托管家族的写事务通道正交，仅经统一调用门
 // （停用/阻止态拒调用）。
 type SysInfoService struct {
-	holder *extapi.LeaseHolder
+	holder  *extapi.LeaseHolder
+	purgeMu sync.Mutex
+	purgeFn func(before, after func() (uint64, error)) (windows.StandbyResult, error)
 }
 
 // NewSysInfoService 构造（无 IO 副作用）。
 func NewSysInfoService(holder *extapi.LeaseHolder) *SysInfoService {
-	return &SysInfoService{holder: holder}
+	return &SysInfoService{holder: holder, purgeFn: windows.PurgeStandbyList}
+}
+
+// PurgeResult 可用内存变化快照；delta 不是精确待机页释放量，只是前后观测差。
+type PurgeResult struct {
+	BeforeAvailableBytes uint64 `json:"beforeAvailableBytes"`
+	AfterAvailableBytes  uint64 `json:"afterAvailableBytes"`
+	AvailableDeltaBytes  uint64 `json:"availableDeltaBytes"`
+	Success              bool   `json:"success"`
+	UsedHelper           bool   `json:"usedHelper"`
+	Elevated             bool   `json:"elevated"`
+	Message              string `json:"message"`
+}
+
+// PurgeStandby 执行一次可回收待机列表清理。首版先支持已提权宿主的直接路径；
+// 普通权限的 shared helper 接线在下一原子提交完成。MCP 不引用此方法。
+func (s *SysInfoService) PurgeStandby() (PurgeResult, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return PurgeResult{}, gateErr
+	}
+	defer release()
+	s.purgeMu.Lock()
+	defer s.purgeMu.Unlock()
+	if !windows.IsElevated() {
+		return PurgeResult{Elevated: false, Message: "当前 Hanxi 未提权，请以管理员身份运行后重试"}, nil
+	}
+	fn := s.purgeFn
+	if fn == nil {
+		fn = windows.PurgeStandbyList
+	}
+	before := func() (uint64, error) { m, err := collectMemory(); return m.AvailableBytes, err }
+	out, err := fn(before, before)
+	if err != nil {
+		return PurgeResult{BeforeAvailableBytes: out.BeforeAvailableBytes, Elevated: true, Message: err.Error()}, nil
+	}
+	delta := uint64(0)
+	if out.AfterAvailableBytes > out.BeforeAvailableBytes {
+		delta = out.AfterAvailableBytes - out.BeforeAvailableBytes
+	}
+	return PurgeResult{BeforeAvailableBytes: out.BeforeAvailableBytes, AfterAvailableBytes: out.AfterAvailableBytes, AvailableDeltaBytes: delta, Success: true, Elevated: true, Message: "已完成清理，可用内存变化仅作前后快照参考（不会关闭程序或删除数据）"}, nil
 }
 
 // GetReport 采集一次本机软硬件档案。段级失败如实记入 Errors（前端告警条
