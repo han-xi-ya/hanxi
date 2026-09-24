@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<!-- N37 双轴主题按钮配色返工 · 静态对照样张（机主过目件，非产品代码） -->
+<!-- token 值全部实抄自 frontend/src/styles/tokens.css 现文；对比度按 WCAG 相对亮度公式预计算标注 -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>N37 五板×明暗 按钮前景/glow 对照样张</title>
+<style>
+  body {
+    margin: 0; padding: 28px 32px 48px;
+    font-family: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    background: #eceff1; color: #1c2328; font-size: 13px; line-height: 1.5;
+  }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .lede { color: #52616b; max-width: 980px; margin: 0 0 22px; }
+  .pal-title { font-size: 15px; font-weight: 700; margin: 26px 0 8px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .block {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px 16px;
+  }
+  .block h2 { font-size: 13px; margin: 0 0 10px; color: var(--text); font-weight: 600; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .col h3 { font-size: 11px; margin: 0 0 8px; color: var(--muted); font-weight: 600; letter-spacing: .4px; }
+  .col .stack { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-height: 32px; padding: 5px 14px; border-radius: 8px;
+    font-size: 13px; font-weight: 500; border: 1px solid transparent; cursor: default;
+    font-family: inherit;
+  }
+  .b-primary   { background: var(--pri);    color: var(--onpri); }
+  .b-primary-h { background: var(--prihov); color: var(--onpri); }
+  .b-secondary { background: var(--panel);  color: var(--text);  border-color: var(--border); }
+  .b-danger    { background: var(--danger); color: var(--ondanger); }
+  .b-cta { background: var(--pri); color: var(--onpri); box-shadow: 0 7px 16px var(--soft); min-width: 148px; }
+  /* 提案列 */
+  .p-primary   { background: var(--pri2);    color: var(--onpri2); }
+  .p-primary-h { background: var(--prihov2); color: var(--onpri2); }
+  .p-secondary { background: var(--panel);   color: var(--text);   border-color: var(--border); }
+  .p-danger    { background: var(--danger);  color: var(--ondanger); }
+  .p-cta-dark  { background: var(--pri2); color: var(--onpri2); border: 1px solid var(--ring); box-shadow: none; min-width: 148px; }
+  .p-cta-light { background: var(--pri2); color: var(--onpri2); border: 1px solid var(--pri2); box-shadow: none; min-width: 148px; }
+  .lights { display: flex; align-items: center; gap: 16px; margin-top: 10px; }
+  .light-item { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--pos); }
+  .dot-halo { box-shadow: 0 0 0 3px var(--glow); }
+  .dot-ring { box-shadow: none; outline: 1px solid var(--ring2); outline-offset: 1px; }
+  .cap { font-size: 10px; color: var(--subtle); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .fail { color: #b3261e; font-weight: 700; }
+  .ok { color: #0a6b45; }
+  .note { font-size: 11px; color: var(--muted); margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 8px; }
+</style>
+</head>
+<body>
+<h1>N37 按钮前景色与 glow 降级 · 五板×明暗对照样张</h1>
+<p class="lede">每板一行：左浅色块、右深色块；每块内左列 = 现状（tokens.css 现值真实渲染），右列 = 提案。
+  数字为白/深前景对实底背景实测 WCAG 对比度，<span class="fail">红色 = 低于 4.5:1 违规</span>。
+  teal 浅提案含底色压暗案（拍板点 1）。danger 实底提案值与现状相同——变化在语义转正（--color-on-accent 契约，拍板点 2）。
+  纯静态文件，无脚本、无外部依赖。</p>
+
+<!-- ================= teal 青壳 ================= -->
+<div class="pal-title">teal 青壳（默认回退板）</div>
+<div class="row">
+  <div class="block" style="--bg:#f3f7f8; --panel:#ffffff; --border:#dce6e8; --text:#14252c; --muted:#667980; --subtle:#8a9aa0;
+       --pri:#0f8b8d; --prihov:#0b7779; --onpri:#ffffff; --danger:#b33736; --ondanger:#ffffff; --pos:#067d4d;
+       --soft:rgba(15,139,141,.1); --glow:rgba(6,125,77,.15);
+       --pri2:#0d8284; --prihov2:#0b7577; --onpri2:#ffffff; --ring2:#0d8284; --ring:none; --soft2:rgba(13,130,132,.08);">
+    <h2>浅色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">白on底 4.12 <span class="fail">FAIL</span></span></span>
+          <span class="btn b-primary-h">hover <span class="cap">5.34 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">停止扫描 <span class="cap">白on红 5.97 ok</span></span>
+          <span class="btn b-cta">▶ 启动快传服务</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-halo"></i>运行灯 halo</span></div>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务 <span class="cap">底色压暗 4.62 <span class="ok">AA</span></span></span>
+          <span class="btn p-primary-h">hover <span class="cap">5.49 ok</span></span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">停止扫描 <span class="cap">改吃 --on-accent 值不变</span></span>
+          <span class="btn p-cta-light" style="box-shadow:0 7px 16px var(--soft2)">▶ 启动快传服务</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-ring"></i>运行灯提亮环(可选豁免)</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="note">拍板点 1 主战场：现状白字 4.12 全库唯一硬违规；右侧为压暗一档方案（色相不动）。若不压暗，此块左右除语义外无视觉差。</div>
+  </div>
+
+  <div class="block" style="--bg:#071318; --panel:#0e1c22; --border:#213840; --text:#e8f2f3; --muted:#9aadb2; --subtle:#748a90;
+       --pri:#42b7b4; --prihov:#59c8c5; --onpri:#052326; --danger:#ff7974; --ondanger:#052326; --pos:#47c792;
+       --soft:rgba(66,183,180,.13); --glow:rgba(71,199,146,.16);
+       --pri2:#42b7b4; --prihov2:#59c8c5; --onpri2:#052326; --ring:#59c8c5; --ring2:#59c8c5;">
+    <h2>深色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">深字on底 6.80 ok</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">8.23 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">停止扫描 <span class="cap">深字on红 6.46 ok</span></span>
+          <span class="btn b-cta">▶ 启动快传服务</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-halo"></i>运行灯彩色 halo（机主主诉发光族）</span></div>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务</span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">停止扫描</span>
+          <span class="btn p-cta-dark">▶ 启动快传服务 <span class="cap">去彩影+1px 提亮描边</span></span>
+          <div class="lights"><span class="light-item"><i class="dot dot-ring"></i>改 1px 提亮环（拍板点 3）</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="note">深色数字全过——本板病灶在影不在字：CTA 彩色落影按②降级，灯环是否豁免见拍板点 3。</div>
+  </div>
+</div>
+
+<!-- ================= sky 碧空 ================= -->
+<div class="pal-title">sky 碧空</div>
+<div class="row">
+  <div class="block" style="--bg:#f1f5fa; --panel:#ffffff; --border:#dae0e8; --text:#192029; --muted:#5e6a79; --subtle:#87909c;
+       --pri:#0064b5; --prihov:#005093; --onpri:#ffffff; --danger:#b33736; --ondanger:#ffffff; --pos:#067d4d;
+       --soft:rgba(0,100,181,.1); --glow:rgba(6,125,77,.15);
+       --pri2:#0064b5; --prihov2:#005093; --onpri2:#ffffff; --ring:none; --ring2:#0064b5; --soft2:rgba(0,100,181,.08);">
+    <h2>浅色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">白on底 6.02 ok</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">8.18 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">危险操作 <span class="cap">5.97 ok</span></span>
+          <span class="btn b-cta">▶ 启动</span>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务 <span class="cap">数字不变，契约转正</span></span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">危险操作 <span class="cap">吃 --on-accent，值同白</span></span>
+          <span class="btn p-cta-light" style="box-shadow:0 7px 16px var(--soft2)">▶ 启动</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block" style="--bg:#151a20; --panel:#1f252c; --border:#38404b; --text:#edf0f6; --muted:#adb5c0; --subtle:#818a95;
+       --pri:#4ebdf7; --prihov:#74ccfe; --onpri:#00243e; --danger:#ff7974; --ondanger:#00243e; --pos:#47c792;
+       --soft:rgba(78,189,247,.15); --glow:rgba(71,199,146,.16);
+       --pri2:#4ebdf7; --prihov2:#74ccfe; --onpri2:#00243e; --ring:#74ccfe; --ring2:#74ccfe;">
+    <h2>深色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">深字on底 7.52 ok（白字仅 2.11 FAIL）</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">8.93 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">危险操作 <span class="cap">6.23 ok</span></span>
+          <span class="btn b-cta">▶ 启动</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-halo"></i>运行灯 halo</span></div>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务</span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">危险操作</span>
+          <span class="btn p-cta-dark">▶ 启动 <span class="cap">实底+提亮描边</span></span>
+          <div class="lights"><span class="light-item"><i class="dot dot-ring"></i>1px 提亮环</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="note">注：sky 深 selected 底上主色字 3.51 不达标（§2c 次级账，拍板点 7，本样张不演示导航行）。</div>
+  </div>
+</div>
+
+<!-- ================= iris 鸢尾 ================= -->
+<div class="pal-title">iris 鸢尾</div>
+<div class="row">
+  <div class="block" style="--bg:#f4f2f9; --panel:#ffffff; --border:#dfdce7; --text:#211d29; --muted:#6c657b; --subtle:#918c9d;
+       --pri:#6741ca; --prihov:#542dae; --onpri:#ffffff; --danger:#b33736; --ondanger:#ffffff; --pos:#067d4d;
+       --soft:rgba(103,65,202,.1); --glow:rgba(6,125,77,.15);
+       --pri2:#6741ca; --prihov2:#542dae; --onpri2:#ffffff; --ring:none; --ring2:#6741ca; --soft2:rgba(103,65,202,.08);">
+    <h2>浅色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">6.59 ok</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">8.89 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">危险操作 <span class="cap">5.97 ok</span></span>
+          <span class="btn b-cta">▶ 启动</span>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务</span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">危险操作</span>
+          <span class="btn p-cta-light" style="box-shadow:0 7px 16px var(--soft2)">▶ 启动</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block" style="--bg:#1a1620; --panel:#25212e; --border:#413b4c; --text:#f1eff5; --muted:#b6b2bf; --subtle:#8b8696;
+       --pri:#bba9fa; --prihov:#c7b8ff; --onpri:#27124b; --danger:#ff7974; --ondanger:#27124b; --pos:#47c792;
+       --soft:rgba(187,169,250,.15); --glow:rgba(71,199,146,.16);
+       --pri2:#bba9fa; --prihov2:#c7b8ff; --onpri2:#27124b; --ring:#c7b8ff; --ring2:#c7b8ff;">
+    <h2>深色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">7.98 ok（白字仅 2.07 FAIL）</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">9.20 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">危险操作 <span class="cap">6.47 ok</span></span>
+          <span class="btn b-cta">▶ 启动</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-halo"></i>运行灯 halo</span></div>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务</span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">危险操作</span>
+          <span class="btn p-cta-dark">▶ 启动</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-ring"></i>1px 提亮环</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= jade 青瓷 ================= -->
+<div class="pal-title">jade 青瓷</div>
+<div class="row">
+  <div class="block" style="--bg:#eef6f6; --panel:#ffffff; --border:#d6e2e1; --text:#142222; --muted:#506363; --subtle:#7d8d8c;
+       --pri:#006869; --prihov:#005657; --onpri:#ffffff; --danger:#b33736; --ondanger:#ffffff; --pos:#067d4d;
+       --soft:rgba(0,104,105,.1); --glow:rgba(6,125,77,.15);
+       --pri2:#006869; --prihov2:#005657; --onpri2:#ffffff; --ring:none; --ring2:#006869; --soft2:rgba(0,104,105,.08);">
+    <h2>浅色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">6.60 ok</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">8.51 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">危险操作 <span class="cap">5.97 ok</span></span>
+          <span class="btn b-cta">▶ 启动</span>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务</span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">危险操作</span>
+          <span class="btn p-cta-light" style="box-shadow:0 7px 16px var(--soft2)">▶ 启动</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block" style="--bg:#0f1b1b; --panel:#192626; --border:#2f4242; --text:#eaf2f2; --muted:#b3c1c1; --subtle:#7c8d8d;
+       --pri:#5dd1cf; --prihov:#81dfdc; --onpri:#002525; --danger:#ff7974; --ondanger:#002525; --pos:#47c792;
+       --soft:rgba(93,209,207,.15); --glow:rgba(71,199,146,.16);
+       --pri2:#5dd1cf; --prihov2:#81dfdc; --onpri2:#002525; --ring:#81dfdc; --ring2:#81dfdc;">
+    <h2>深色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">8.90 ok（白字仅 1.83 FAIL 全库最差）</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">10.47 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">危险操作 <span class="cap">6.38 ok</span></span>
+          <span class="btn b-cta">▶ 启动</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-halo"></i>运行灯 halo</span></div>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务</span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">危险操作</span>
+          <span class="btn p-cta-dark">▶ 启动</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-ring"></i>1px 提亮环</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= onyx 曜石 ================= -->
+<div class="pal-title">onyx 曜石（无障碍高对比板：状态色自定值，特例见拍板点 4）</div>
+<div class="row">
+  <div class="block" style="--bg:#f2f7fc; --panel:#ffffff; --border:#838f9d; --text:#0a0f14; --muted:#333c46; --subtle:#626b77;
+       --pri:#0649b8; --prihov:#003999; --onpri:#ffffff; --danger:#b3261e; --ondanger:#ffffff; --pos:#0a6b45;
+       --soft:rgba(6,73,184,.12); --glow:rgba(10,107,69,.15);
+       --pri2:#0649b8; --prihov2:#003999; --onpri2:#ffffff; --ring:none; --ring2:#0649b8; --soft2:rgba(6,73,184,.1);">
+    <h2>浅色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">7.92 ok（AAA）</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">10.27 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">危险操作 <span class="cap">白on自定红 6.54 AA（未到 AAA 7.0）</span></span>
+          <span class="btn b-cta">▶ 启动</span>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务</span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">危险操作 <span class="cap">AA 即止还是续压？拍板点 4</span></span>
+          <span class="btn p-cta-light" style="box-shadow:0 7px 16px var(--soft2)">▶ 启动</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block" style="--bg:#05070a; --panel:#0d1117; --border:#5c646f; --text:#f2f6fb; --muted:#b9c4d0; --subtle:#8f9bab;
+       --pri:#79b7ff; --prihov:#9bc9ff; --onpri:#04223f; --danger:#ff9690; --ondanger:#04223f; --pos:#5bd88e;
+       --soft:rgba(121,183,255,.16); --glow:rgba(91,216,142,.16);
+       --pri2:#79b7ff; --prihov2:#9bc9ff; --onpri2:#04223f; --ring:#9bc9ff; --ring2:#9bc9ff;">
+    <h2>深色模式</h2>
+    <div class="cols">
+      <div class="col"><h3>现状</h3>
+        <div class="stack">
+          <span class="btn b-primary">启动服务 <span class="cap">7.68 ok</span></span>
+          <span class="btn b-primary-h">hover <span class="cap">9.34 ok</span></span>
+          <span class="btn b-secondary">次要按钮</span>
+          <span class="btn b-danger">危险操作 <span class="cap">深字on自定红 7.67 ok</span></span>
+          <span class="btn b-cta">▶ 启动</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-halo"></i>运行灯 halo</span></div>
+        </div>
+      </div>
+      <div class="col"><h3>提案</h3>
+        <div class="stack">
+          <span class="btn p-primary">启动服务</span>
+          <span class="btn p-primary-h">hover</span>
+          <span class="btn p-secondary">次要按钮</span>
+          <span class="btn p-danger">危险操作</span>
+          <span class="btn p-cta-dark">▶ 启动</span>
+          <div class="lights"><span class="light-item"><i class="dot dot-ring"></i>1px 提亮环</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="lede" style="margin-top:26px">来源核对：全部色值抄自 frontend/src/styles/tokens.css（:root 与五板覆写块现文）；
+  CTA 彩色落影参数抄自 frontend/src/components/fileshare/FileShareHero.vue:165；灯 halo 参数抄自各控制条 status-light 规则。
+  本文件不引任何产品样式，删改自由。</p>
+</body>
+</html>

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>N40③ 轮盘对标 StarPie 美化 · 静态对比样张</title>
+<!--
+  单文件静态样张（机主选向件，非产品代码，不参与构建）。
+  左「现状复刻」右「StarPie 化提案」，同数据同姿态（8 条目 / 「工具」组帽带展开 /
+  第 3 扇区悬停 / 子环第 2 项悬停），明暗各一套（色值实抄 frontend/src/styles/tokens.css
+  默认青壳 teal 色板现值，见下方 THEME 块）。
+  几何全部现场计算自 frontend/src/components/quickmenu/wheelGeometry.ts 的同款纯函数
+  （polar / wedgePath / mainSectorAngles / capSectorAngles，常量 512/256/170/62/74/162/174/236），
+  保证"现状复刻"不是凭印象画的。图标为手绘矢量线稿（禁 emoji）。动效以静帧表达。
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; padding: 28px 32px 64px;
+    background: #eef2f3; color: #14252c;
+    font-family: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 36px 0 14px; padding-bottom: 6px; border-bottom: 1px solid #c7d6d9; }
+  .meta { font-size: 12px; color: #667980; line-height: 1.7; margin-bottom: 8px; }
+  .grid { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .card { background: #fff; border: 1px solid #dce6e8; border-radius: 12px; padding: 14px 16px 10px; }
+  .card h3 { font-size: 13px; margin: 0 0 2px; }
+  .card .sub { font-size: 11px; color: #8a9aa0; margin: 0 0 8px; }
+  .darkrow .card { background: #101c21; border-color: #213840; color: #e8f2f3; }
+  .darkrow .card .sub { color: #748a90; }
+  svg.wheel { width: 512px; height: 512px; display: block; }
+  svg.wheelA { filter: drop-shadow(0 1px 3px rgba(10,20,24,.20)) drop-shadow(0 14px 28px rgba(10,20,24,.24)); }
+  svg.wheelB { filter: drop-shadow(0 12px 24px rgba(8,16,20,.32)); }
+  .legend { max-width: 1060px; font-size: 13px; line-height: 1.75; }
+  .legend li { margin-bottom: 10px; }
+  .legend b { color: #0f8b8d; }
+  .note { max-width: 1060px; font-size: 12px; color: #667980; line-height: 1.7; background: #f7fafb; border: 1px solid #dce6e8; border-radius: 10px; padding: 10px 14px; }
+</style>
+</head>
+<body>
+  <h1>N40 ③ · 快捷轮盘「现状复刻 vs StarPie 化提案」静态样张</h1>
+  <div class="meta">
+    排期出处 docs/plans/PLAN_REMAINING_WORK.md「| N40」③；参照论证与牌面 F1-F4 见 PLAN_N5_QUICKMENU.md。
+    数据与悬停姿态两侧严格一致：8 主条目 · 「工具」组(4 子)帽带展开 · 主环「浏览器」悬停 · 子环「校验」悬停 · 光标以箭头静帧标示。
+    配套拍板文档：docs/plans/PLAN_N40_WHEEL_SKIN.md。
+  </div>
+
+  <h2>浅色主题（teal 色板实抄值）</h2>
+  <div class="grid" id="rowLight"></div>
+
+  <h2>深色主题（teal 色板实抄值，独立标定非反色）</h2>
+  <div class="grid darkrow" id="rowDark"></div>
+
+  <h2>差异点图例（①—⑥ 与盘上角标对应，逐条拍板见 PLAN_N40_WHEEL_SKIN.md §2）</h2>
+  <ol class="legend">
+    <li><b>① 扇区间隙</b> —— 现状：名义缝 0.9° + 发丝描边"一镜到底"连续玻璃盘；提案：缝角 ≈4.2°（外缘 ≈12px）+ 楔形端头圆角化，八枚成为独立"弧段花瓣"，盘缘留连续亮环。</li>
+    <li><b>② 帽带圆角</b> —— 现状：帽带底环+子扇区全部直角楔形（r174→236）；提案：子扇区大圆角厚弧段，底环两端收圆帽，级联"生长感"替代"贴纸感"。</li>
+    <li><b>③ 图标座</b> —— 现状：图标井 = --surface-panel 底 + 1px 边框（暗色下换 surface-hover）；提案：磨砂浮起座（明：白面高光渐变 / 暗：frost 半透），悬停时主色描边 + 主色软底。</li>
+    <li><b>④ 名称排版</b> —— 现状：两行折行截断、10–12px 随密度档；提案：单行 12px + 全称职责完全交 hub 读数，扇区只留短名，视觉重心归图标。</li>
+    <li><b>⑤ 悬停顶出（静帧）</b> —— 现状：径向外顶 4px + primary-soft 填充 + 盘缘高亮弧；提案：外顶 8px + 主色辉光投影，其余扇区整体降透明度，"选中块拿起、全场让位"。</li>
+    <li><b>⑥ 圆心 hub 读数区</b> —— 现状：panel 面 + 虚线环 + 名/型/提示三行文字；提案：hub 升级为"仪表核"——读数 + 类型胶囊 + 8 枚槽位刻度环(点亮当前槽) + 常驻"点按中心收起"提示。</li>
+  </ol>
+  <p class="note">
+    样张口径提醒：提案盘背后的彩色底纹仅为演示"磨砂半透"效果（真实窗口下即桌面内容），最终观感依赖真机 WebView2 的 backdrop-filter 表现；
+    角标数字、引线为样张注释，不会出现在产品里。现状盘的圆心虚线环(hub-ring)、盘缘刻度线(ticks)在提案中被 ⑥ 的槽位刻度环取代。
+  </p>
+
+<script>
+// —— 几何：逐字对照 wheelGeometry.ts（512 窗 / C=256 / rDisc=170 / rHub=62 /
+//    rSecIn=74 / rSecOut=162 / rCapIn=174 / rCapOut=236），0°=12 点、顺时针 ——
+const W = { size:512, c:256, rDisc:170, rHub:62, rSecIn:74, rSecOut:162, rCapIn:174, rCapOut:236 };
+function polar(r, deg){ const rad=(deg-90)*Math.PI/180; return { x: W.c + r*Math.cos(rad), y: W.c + r*Math.sin(rad) }; }
+function f(v){ return v.toFixed(2); }
+function wedgePath(rIn, rOut, a0, a1){
+  const p0=polar(rIn,a0), p1=polar(rOut,a0), p2=polar(rOut,a1), p3=polar(rIn,a1);
+  const large = a1-a0>180?1:0;
+  return `M ${f(p0.x)} ${f(p0.y)} L ${f(p1.x)} ${f(p1.y)} A ${rOut} ${rOut} 0 ${large} 1 ${f(p2.x)} ${f(p2.y)} L ${f(p3.x)} ${f(p3.y)} A ${rIn} ${rIn} 0 ${large} 0 ${f(p0.x)} ${f(p0.y)} Z`;
+}
+function arcPath(r, a0, a1){
+  const p0=polar(r,a0), p1=polar(r,a1); const large=a1-a0>180?1:0;
+  return `M ${f(p0.x)} ${f(p0.y)} A ${r} ${r} 0 ${large} 1 ${f(p1.x)} ${f(p1.y)}`;
+}
+function mainAngles(i, n, pad){ const step=360/n; return { a0: step*i+pad, a1: step*(i+1)-pad }; }
+const N = 8, STEP = 360/N;
+const GROUP = 5, ACTIVE = 2, ACTIVE_CAP = 1, CAPN = 4;
+const CAP_SPAN = Math.min(Math.max(CAPN*24, STEP), 180);          // 96°
+const CAP_START = STEP*(GROUP+0.5) - CAP_SPAN/2;                  // 以父中线对称
+function capAngles(j, pad){ const slot=CAP_SPAN/CAPN; return { a0: CAP_START+slot*j+pad, a1: CAP_START+slot*(j+1)-pad }; }
+function shift(px, deg){ const rad=(deg-90)*Math.PI/180; return { x:+(px*Math.cos(rad)).toFixed(2), y:+(px*Math.sin(rad)).toFixed(2) }; }
+
+// —— 色值：实抄 tokens.css 默认 teal 明暗两块 ——
+const THEME = {
+  light: { dark:false,
+    primary:'#0f8b8d', primarySoft:'rgba(15,139,141,0.1)', onPrimary:'#ffffff',
+    panel:'#ffffff', soft:'#f7fafb', hover:'#eef5f5', selected:'#e2f1f0',
+    text:'#14252c', muted:'#667980', subtle:'#8a9aa0',
+    border:'#dce6e8', borderStrong:'#c7d6d9', glow:'rgba(15,139,141,0.18)'
+  },
+  dark: { dark:true,
+    primary:'#42b7b4', primarySoft:'rgba(66,183,180,0.13)', onPrimary:'#052326',
+    panel:'#0e1c22', soft:'#12252c', hover:'#173039', selected:'#1a3d44',
+    text:'#e8f2f3', muted:'#9aadb2', subtle:'#748a90',
+    border:'#213840', borderStrong:'#31505a', glow:'rgba(66,183,180,0.2)'
+  }
+};
+function hx(hex, a){ const n=parseInt(hex.slice(1),16); return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`; }
+
+// —— 演示数据与矢量线稿图标（24×24 stroke 系，禁 emoji）——
+const ITEMS = [
+  { l:'终端', ic:'term' }, { l:'截图', ic:'camera' }, { l:'浏览器', ic:'globe' }, { l:'音乐', ic:'music' },
+  { l:'锁屏', ic:'lock' }, { l:'工具', ic:'layers', grp:CAPN }, { l:'设置', ic:'sliders' }, { l:'翻译', ic:'trans' },
+];
+const CAPS = [ { l:'压缩', ic:'zip' }, { l:'校验', ic:'shield' }, { l:'分屏', ic:'split' }, { l:'端口', ic:'plug' } ];
+const IC = {
+  term:   '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l3 2-3 2"/><path d="M12.5 14h4.5"/>',
+  camera: '<path d="M4 8.5h3.2L8.7 6.5h6.6l1.5 2H20V19H4z"/><circle cx="12" cy="13.2" r="3.1"/>',
+  globe:  '<circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4c2.8 2.6 2.8 13.4 0 16"/><path d="M12 4c-2.8 2.6-2.8 13.4 0 16"/>',
+  music:  '<path d="M9.2 17.5V6.2l9.3-1.9v11"/><circle cx="7.3" cy="17.7" r="2"/><circle cx="16.6" cy="15.6" r="2"/>',
+  lock:   '<rect x="5.2" y="10.2" width="13.6" height="9.6" rx="2"/><path d="M8.2 10.2V7a3.8 3.8 0 0 1 7.6 0v3.2"/>',
+  layers: '<path d="M12 3.4 2.8 8 12 12.6 21.2 8z"/><path d="M2.8 13 12 17.6 21.2 13"/>',
+  sliders:'<path d="M5 4.5v5.2M5 14.5v5M12 4.5v2.7M12 12v7.5M19 4.5v8M19 17.3v2.2"/><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="9.2" r="2.2"/><circle cx="19" cy="14.5" r="2.2"/>',
+  trans:  '<path d="M3.5 6h8M7.5 4v2M4.6 10.3c1.8 4 4.4 6 6.4 6.4M9.6 10.3c-1.3 3.6-4 5.7-6.2 6.3"/><path d="M13.2 20l3.4-8.2L20 20M14.5 17.2h4.2"/>',
+  zip:    '<rect x="7" y="3.5" width="10" height="17" rx="1.6"/><path d="M10.5 5v1.6h3V8.2h-3v1.6h3V11.4h-3V13h3"/>',
+  shield: '<path d="M12 3.5l7 2.5v5c0 4.2-3 7.5-7 9-4-1.5-7-4.8-7-9v-5z"/><path d="M8.8 11.6l2.3 2.3 4.1-4.6"/>',
+  split:  '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M12 5v14"/>',
+  plug:   '<path d="M9 3.5v4M15 3.5v4"/><path d="M5.5 7.5h13v3.5a6.5 6.5 0 0 1-13 0z"/><path d="M12 17v3.5"/>',
+};
+function icon(key, cx, cy, size, color){
+  const s = size/24;
+  return `<g transform="translate(${f(cx-size/2)} ${f(cy-size/2)}) scale(${s.toFixed(4)})" fill="none" stroke="${color}" stroke-width="${(40/size).toFixed(2)}" stroke-linecap="round" stroke-linejoin="round">${IC[key]}</g>`;
+}
+function cursor(x, y, T){
+  const fill = T.dark ? '#e8f2f3' : '#ffffff', line = T.dark ? '#050b0e' : '#14252c';
+  return `<g transform="translate(${f(x)} ${f(y)})"><path d="M0 0L0 15.5L4.1 11.7L6.7 17.1L9.3 15.8L6.8 10.5L11.8 10.1Z" fill="${fill}" stroke="${line}" stroke-width="1.3" stroke-linejoin="round"/></g>`;
+}
+function badge(n, bx, by, fx, fy, T, filled){
+  const st = T.primary, x1 = f(bx), y1 = f(by);
+  const ld = (fx==null) ? '' :
+    `<line x1="${x1}" y1="${y1}" x2="${f(fx)}" y2="${f(fy)}" stroke="${st}" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3 3"/>`+
+    `<circle cx="${f(fx)}" cy="${f(fy)}" r="2.4" fill="${st}"/>`;
+  const circ = filled
+    ? `<circle cx="${x1}" cy="${y1}" r="9.5" fill="${st}" stroke="${T.panel}" stroke-width="1.5"/>`
+    : `<circle cx="${x1}" cy="${y1}" r="9.5" fill="${T.panel}" stroke="${st}" stroke-width="1.5"/>`;
+  const col = filled ? (T.dark?THEME.dark.onPrimary:'#ffffff') : st;
+  return ld + circ + `<text x="${x1}" y="${f(+by+3.6)}" text-anchor="middle" font-size="11" font-weight="700" fill="${col}">${n}</text>`;
+}
+
+// ============================================================
+// A —— 现状复刻（QuickMenuPopup.vue 现值：连续玻璃盘 + 0.9° 细缝 +
+//      扇区透明描边 + 4px 外顶 + 盘缘高亮弧 + 直角帽带 + 虚线 hub 环）
+// ============================================================
+function renderA(T){
+  const P = [];
+  const g = (inner, cls) => `<g${cls?` class="${cls}"`:''}>${inner}</g>`;
+  // 盘底三件套：disc-face / disc-edge(1.5) / disc-glint
+  P.push(g(
+    `<circle cx="256" cy="256" r="170" fill="${T.panel}"/>`+
+    `<circle cx="256" cy="256" r="168.75" fill="none" stroke="${T.borderStrong}" stroke-width="1.5"/>`+
+    `<circle cx="256" cy="256" r="167" fill="none" stroke="${T.hover}" stroke-width="2" opacity="${T.dark?0.35:0.6}"/>`
+  , 'discbase'));
+  // 主环扇区（透明面 + 发丝描边；激活 primary-soft + 主色描边 + 4px 外顶）
+  const sh = shift(4, STEP*(ACTIVE+0.5));
+  const sectors = ITEMS.map((it,i)=>{
+    const a = mainAngles(i, N, 0.9);
+    if (i===ACTIVE){
+      return `<path d="${wedgePath(W.rSecIn,W.rSecOut,a.a0,a.a1)}" fill="${T.primarySoft}" stroke="${T.primary}" stroke-width="1" transform="translate(${sh.x} ${sh.y})"/>`;
+    }
+    const stroke = T.dark ? T.borderStrong : T.border;
+    return `<path d="${wedgePath(W.rSecIn,W.rSecOut,a.a0,a.a1)}" fill="transparent" stroke="${stroke}" stroke-width="1"/>`;
+  }).join('');
+  P.push(g(sectors,'sectors'));
+  // 帽带：底环(surface-hover) + 直角子扇区(暗色 fill=selected) + 外缘主色提示弧
+  const band = wedgePath(W.rCapIn, W.rCapOut, CAP_START, CAP_START+CAP_SPAN);
+  let cap = `<path d="${band}" fill="${T.hover}" stroke="${T.border}" stroke-width="1" opacity="0.9"/>`;
+  CAPS.forEach((c,j)=>{
+    const a = capAngles(j, 0.9);
+    const fill = j===ACTIVE_CAP ? T.primarySoft : (T.dark ? T.selected : 'transparent');
+    cap += `<path d="${wedgePath(W.rCapIn,W.rCapOut,a.a0,a.a1)}" fill="${fill}" stroke="${T.border}" stroke-width="1"/>`;
+  });
+  cap += `<path d="${arcPath(W.rCapOut+2, CAP_START, CAP_START+CAP_SPAN)}" fill="none" stroke="${T.primary}" stroke-width="2" stroke-linecap="round" opacity="0.85"/>`;
+  P.push(g(cap,'cap'));
+  // 分界刻度（扇区外缘与盘缘细缝带）
+  const ticks = ITEMS.map((_,i)=>{
+    const p1 = polar(W.rSecOut+1.5, STEP*i), p2 = polar(W.rDisc-2.5, STEP*i);
+    return `<line x1="${f(p1.x)}" y1="${f(p1.y)}" x2="${f(p2.x)}" y2="${f(p2.y)}" stroke="${T.borderStrong}" stroke-width="1" opacity="0.55"/>`;
+  }).join('');
+  P.push(g(ticks,'ticks'));
+  // 激活扇区盘缘高亮弧
+  P.push(`<path d="${arcPath(W.rDisc-1.25, STEP*ACTIVE+3, STEP*(ACTIVE+1)-3)}" fill="none" stroke="${T.primary}" stroke-width="2.5" stroke-linecap="round"/>`);
+  // hub：虚线环 + panel 面 + 三行读数（悬停态）
+  P.push(g(
+    `<circle cx="256" cy="256" r="68" fill="none" stroke="${T.border}" stroke-width="1" stroke-dasharray="1 5" stroke-linecap="round"/>`+
+    `<circle cx="256" cy="256" r="62" fill="${T.panel}" stroke="${T.borderStrong}" stroke-width="1"/>`
+  , 'hubring'));
+  P.push(g(
+    `<text x="256" y="247" text-anchor="middle" font-size="12" font-weight="600" fill="${T.text}">浏览器</text>`+
+    `<rect x="236" y="253" width="40" height="15" rx="7.5" fill="none" stroke="${T.border}"/>`+
+    `<text x="256" y="264" text-anchor="middle" font-size="9.5" fill="${T.muted}">程序</text>`+
+    `<text x="256" y="283" text-anchor="middle" font-size="9.5" fill="${T.subtle}">点击或 Enter 执行</text>`
+  , 'hubtext'));
+  // 扇区图标按钮层（standard 档：井 30 / 图标 18 / 名 11px 两行容量）
+  const btns = ITEMS.map((it,i)=>{
+    const p = polar((W.rSecIn+W.rSecOut)/2, STEP*(i+0.5));
+    const act = i===ACTIVE;
+    const dx = act?sh.x:0, dy = act?sh.y:0;
+    const ix = p.x+dx, iy = p.y-16+dy;
+    const wellFill = T.dark ? T.hover : T.panel;
+    const icoCol = act ? T.primary : T.muted;
+    const nameCol = act ? T.primary : T.text;
+    let s = `<circle cx="${f(ix)}" cy="${f(iy)}" r="15" fill="${wellFill}" stroke="${T.border}"/>`;
+    s += icon(it.ic, ix, iy, 18, icoCol);
+    s += `<text x="${f(p.x+dx)}" y="${f(p.y+15+dy)}" text-anchor="middle" font-size="11" font-weight="600" fill="${nameCol}">${it.l}</text>`;
+    if (it.grp){
+      s += `<text x="${f(p.x+24)}" y="${f(p.y-28)}" text-anchor="middle" font-size="9" font-weight="700" fill="${T.primary}" opacity="0.9">▸ ${it.grp}</text>`;
+    }
+    return s;
+  }).join('');
+  P.push(g(btns,'btns'));
+  // 帽带按钮层（井 26 / 图标 15 / 名 9.5px）
+  const capBtns = CAPS.map((c,j)=>{
+    const p = polar((W.rCapIn+W.rCapOut)/2, CAP_START + (CAP_SPAN/CAPN)*(j+0.5));
+    const act = j===ACTIVE_CAP;
+    let s = `<circle cx="${f(p.x)}" cy="${f(p.y-9)}" r="13" fill="${T.dark?T.hover:T.panel}" stroke="${act?T.primary:T.border}"/>`;
+    s += icon(c.ic, p.x, p.y-9, 15, act?T.primary:T.muted);
+    s += `<text x="${f(p.x)}" y="${f(p.y+13)}" text-anchor="middle" font-size="9.5" font-weight="600" fill="${act?T.primary:T.text}">${c.l}</text>`;
+    return s;
+  }).join('');
+  P.push(g(capBtns,'capbtns'));
+  // 光标静帧：尖部落在激活扇区图标座边缘（不遮挡线稿本体）
+  const cp = polar((W.rSecIn+W.rSecOut)/2, STEP*(ACTIVE+0.5));
+  P.push(cursor(cp.x+sh.x+7, cp.y-16+sh.y+7, T));
+  // 注释角标（与提案盘同位同号，空心=现状参照）
+  const b = (n,r,deg,fr,fd)=>{ const bp=polar(r,deg), fp=fr==null?null:polar(fr,fd); return badge(n,bp.x,bp.y,fp?fp.x:null,fp?fp.y:null,T,false); };
+  P.push(b(1,246,46, 165,45)); P.push(b(2,246,186, 205,199.5)); P.push(b(3,246,318, (W.rSecIn+W.rSecOut)/2,337.5));
+  const n4 = polar((W.rSecIn+W.rSecOut)/2, STEP*3.5); P.push(b(4,246,163, n4.x, n4.y+15));
+  P.push(b(5,246,96, W.rDisc-1.25, 112.5)); P.push(b(6,84,0, 66,0));
+  return P.join('');
+}
+
+// ============================================================
+// B —— StarPie 化提案（磨砂连续底盘 + 独立圆角花瓣弧段 + 大间隙 +
+//      浮起图标座 + 8px 外顶辉光/全场让位 + hub 仪表核 + 盘缘亮环）
+// ============================================================
+function renderB(T, uid){
+  const P = [];
+  const g = (inner, cls) => `<g${cls?` class="${cls}"`:''}>${inner}</g>`;
+  // 色值派生（提案皮肤语义，全部锚在 token 实值上）
+  const plateFill   = hx(T.soft, T.dark?0.66:0.62);
+  const plateStroke = hx(T.borderStrong, 0.8);
+  const segFill     = hx(T.text, T.dark?0.10:0.065);
+  const segStroke   = hx(T.text, T.dark?0.17:0.12);
+  const segDim      = hx(T.text, T.dark?0.05:0.035);   // 非激活"让位"档
+  const segDimStroke= hx(T.text, T.dark?0.09:0.07);
+  const actFill     = T.primarySoft;
+  const actStroke   = hx(T.primary, 0.55);
+  const wellFill    = T.dark ? hx(T.text,0.08) : hx(T.panel,0.85);
+  const wellStroke  = T.dark ? hx(T.text,0.16) : hx(T.borderStrong,0.75);
+  const nameCol     = hx(T.text,0.85);
+  const sh = shift(8, STEP*(ACTIVE+0.5));
+  // defs：壁纸底纹（演示桌面）/ 盘缘亮环渐变 / 激活辉光
+  P.push(
+    `<defs>`+
+    `<radialGradient id="wp${uid}" cx="35%" cy="30%" r="90%">`+
+      (T.dark
+        ? `<stop offset="0%" stop-color="#173039"/><stop offset="55%" stop-color="#0d1f26"/><stop offset="100%" stop-color="#071318"/>`
+        : `<stop offset="0%" stop-color="#dcefe9"/><stop offset="55%" stop-color="#c4dbe4"/><stop offset="100%" stop-color="#a9c3d2"/>`)+
+    `</radialGradient>`+
+    `<linearGradient id="rim${uid}" x1="0" y1="0" x2="0" y2="1">`+
+      `<stop offset="0%" stop-color="#ffffff" stop-opacity="${T.dark?0.42:0.85}"/>`+
+      `<stop offset="100%" stop-color="#ffffff" stop-opacity="${T.dark?0.05:0.12}"/>`+
+    `</linearGradient>`+
+    `<filter id="glow${uid}" x="-40%" y="-40%" width="180%" height="180%">`+
+      `<feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="${T.primary}" flood-opacity="${T.dark?0.5:0.42}"/>`+
+    `</filter>`+
+    `</defs>`
+  );
+  // 桌面底纹（裁在窗内），供磨砂层透出去
+  P.push(
+    `<circle cx="256" cy="256" r="252" fill="url(#wp${uid})"/>`+
+    `<circle cx="120" cy="118" r="86" fill="${hx(T.primary,T.dark?0.14:0.20)}"/>`+
+    `<circle cx="402" cy="392" r="120" fill="${hx(T.primary,T.dark?0.10:0.14)}"/>`
+  );
+  // 连续磨砂底盘（真窗口为透明 + backdrop-filter；样张以半透色近似）
+  P.push(
+    `<circle cx="256" cy="256" r="172" fill="${plateFill}" stroke="${plateStroke}" stroke-width="1" style="backdrop-filter:blur(10px) saturate(1.15)"/>`+
+    `<circle cx="256" cy="256" r="176" fill="none" stroke="url(#rim${uid})" stroke-width="2"/>`+
+    `<circle cx="256" cy="256" r="169" fill="none" stroke="${hx(T.text,0.28)}" stroke-width="1"/>`
+  );
+  // 主环：独立圆角花瓣（缝 ≈4.2°，stroke 圆角接合 6px，内窄外宽收拢到 hub 静区）
+  ITEMS.forEach((it,i)=>{
+    const a = mainAngles(i, N, 4.2);
+    const act = i===ACTIVE;
+    const d = wedgePath(80, 158, a.a0, a.a1);
+    const tr = act ? ` transform="translate(${sh.x} ${sh.y})"` : '';
+    const fl = act ? ` filter="url(#glow${uid})"` : '';
+    P.push(`<path${tr}${fl} d="${d}" fill="${act?actFill:segDim}" stroke="${act?actStroke:segDimStroke}" stroke-width="6" stroke-linejoin="round"/>`);
+  });
+  // 帽带：收圆帽底环 + 圆角厚弧段子扇区
+  P.push(`<path d="${arcPath(205, CAP_START-2, CAP_START+CAP_SPAN+2)}" fill="none" stroke="${hx(T.primary,0.10)}" stroke-width="60" stroke-linecap="round"/>`);
+  CAPS.forEach((c,j)=>{
+    const a = capAngles(j, 3.5);
+    const act = j===ACTIVE_CAP;
+    const s2 = act ? shift(7, CAP_START+(CAP_SPAN/CAPN)*(j+0.5)) : {x:0,y:0};
+    const fill = act?actFill:segDim, stroke = act?actStroke:segDimStroke;
+    P.push(`<path${act?` transform="translate(${s2.x} ${s2.y})" filter="url(#glow${uid})"`:''} d="${wedgePath(177,233,a.a0,a.a1)}" fill="${fill}" stroke="${stroke}" stroke-width="6" stroke-linejoin="round"/>`);
+  });
+  // hub 仪表核：浮起磨砂面 + 8 枚槽位刻度环(点亮当前槽) + 类型胶囊 + 常驻收起提示
+  P.push(
+    `<circle cx="256" cy="256" r="64" fill="${hx(T.panel,T.dark?0.82:0.88)}" stroke="${plateStroke}" stroke-width="1" style="backdrop-filter:blur(14px)"/>`+
+    `<circle cx="256" cy="256" r="64.5" fill="none" stroke="url(#rim${uid})" stroke-width="1.4"/>`
+  );
+  for(let i=0;i<N;i++){
+    const p1 = polar(50, STEP*(i+0.5)), p2 = polar(57, STEP*(i+0.5));
+    const act = i===ACTIVE;
+    P.push(`<line x1="${f(p1.x)}" y1="${f(p1.y)}" x2="${f(p2.x)}" y2="${f(p2.y)}" stroke="${act?T.primary:hx(T.text,0.25)}" stroke-width="${act?3:2}" stroke-linecap="round"/>`);
+  }
+  P.push(
+    `<text x="256" y="249" text-anchor="middle" font-size="14" font-weight="700" fill="${T.text}">浏览器</text>`+
+    `<rect x="235" y="255" width="42" height="16" rx="8" fill="${hx(T.primary,0.12)}" stroke="${hx(T.primary,0.35)}"/>`+
+    `<text x="256" y="266.5" text-anchor="middle" font-size="9.5" font-weight="600" fill="${T.primary}">程序</text>`+
+    `<text x="256" y="283" text-anchor="middle" font-size="9" fill="${T.subtle}">点按中心收起</text>`
+  );
+  // 扇区内容层：浮起图标座 + 单行名 + 组数徽标圆点
+  const btns = ITEMS.map((it,i)=>{
+    const p = polar(122, STEP*(i+0.5));
+    const act = i===ACTIVE;
+    const dx = act?sh.x:0, dy = act?sh.y:0;
+    const ix = p.x+dx, iy = p.y-15+dy;
+    let s = `<circle cx="${f(ix)}" cy="${f(iy)}" r="17" fill="${act?hx(T.primary,0.16):wellFill}" stroke="${act?T.primary:wellStroke}"${act?` filter="url(#glow${uid})"`:''}/>`;
+    s += icon(it.ic, ix, iy, 20, act?T.primary:hx(T.text,0.72));
+    s += `<text x="${f(p.x+dx)}" y="${f(p.y+22+dy)}" text-anchor="middle" font-size="12" font-weight="600" fill="${act?T.primary:nameCol}">${it.l}</text>`;
+    if (it.grp){
+      const bp = polar(147, STEP*(i+0.5)+13);
+      s += `<circle cx="${f(bp.x)}" cy="${f(bp.y)}" r="7.5" fill="${hx(T.panel,0.9)}" stroke="${T.primary}" stroke-width="1"/>`;
+      s += `<text x="${f(bp.x)}" y="${f(bp.y+3.2)}" text-anchor="middle" font-size="8.5" font-weight="700" fill="${T.primary}">${it.grp}</text>`;
+    }
+    return s;
+  }).join('');
+  P.push(g(btns,'btns'));
+  const capBtns = CAPS.map((c,j)=>{
+    const p = polar(205, CAP_START+(CAP_SPAN/CAPN)*(j+0.5));
+    const act = j===ACTIVE_CAP;
+    const dx = act?shift(7,CAP_START+(CAP_SPAN/CAPN)*(j+0.5)).x:0, dy = act?shift(7,CAP_START+(CAP_SPAN/CAPN)*(j+0.5)).y:0;
+    let s = `<circle cx="${f(p.x+dx)}" cy="${f(p.y-9+dy)}" r="13.5" fill="${act?hx(T.primary,0.16):wellFill}" stroke="${act?T.primary:wellStroke}"/>`;
+    s += icon(c.ic, p.x+dx, p.y-9+dy, 15, act?T.primary:hx(T.text,0.72));
+    s += `<text x="${f(p.x+dx)}" y="${f(p.y+14+dy)}" text-anchor="middle" font-size="10.5" font-weight="600" fill="${act?T.primary:nameCol}">${c.l}</text>`;
+    return s;
+  }).join('');
+  P.push(g(capBtns,'capbtns'));
+  // 光标静帧（尖落在图标座边缘）
+  const cp = polar(122, STEP*(ACTIVE+0.5));
+  P.push(cursor(cp.x+sh.x+7, cp.y-15+sh.y+7, T));
+  // 注释角标（实心=提案）
+  const b = (n,r,deg,fr,fd)=>{ const bp=polar(r,deg), fp=fr==null?null:polar(fr,fd); return badge(n,bp.x,bp.y,fp?fp.x:null,fp?fp.y:null,T,true); };
+  P.push(b(1,246,46, 163,45)); P.push(b(2,246,186, 205,199)); P.push(b(3,246,318, 122,337.5));
+  const n4 = polar(122, STEP*3.5); P.push(b(4,246,163, n4.x, n4.y+22));
+  P.push(b(5,246,96, 166,112.5)); P.push(b(6,86,0, 66,0));
+  return P.join('');
+}
+
+// —— 装配四块样张 ——
+function card(title, sub, variant, theme, uid){
+  const T = THEME[theme];
+  const body = variant==='A' ? renderA(T) : renderB(T, uid);
+  const cls  = variant==='A' ? 'wheelA' : 'wheelB';
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.innerHTML = `<h3>${title}</h3><p class="sub">${sub}</p><svg class="wheel ${cls}" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+  return div;
+}
+const L = document.getElementById('rowLight'), D = document.getElementById('rowDark');
+L.appendChild(card('现状复刻 · 连续玻璃盘', 'QuickMenuPopup.vue 现值：0.9°细缝 / 透明扇区描边 / 4px外顶 / 直角帽带 / 虚线hub环', 'A','light','lA'));
+L.appendChild(card('StarPie 化提案 · 磨砂花瓣盘', '①—⑥ 为差异点：4.2°间隙圆角花瓣 / 浮起图标座 / 单行名 / 8px辉光 / hub仪表核', 'B','light','lB'));
+D.appendChild(card('现状复刻 · 连续玻璃盘（暗）', '暗色为独立标定：扇区描边升 strong 档、图标井走 hover、帽带子扇区填 selected', 'A','dark','dA'));
+D.appendChild(card('StarPie 化提案 · 磨砂花瓣盘（暗）', '暗色盘：frost 图标座 / 花瓣本底 alpha 上调半档保证分层可辨', 'B','dark','dB'));
+</script>
+</body>
+</html>
