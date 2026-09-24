@@ -229,6 +229,10 @@ func (s *Scanner) createDialerAndHTTPClient(proxyStr string, timeout time.Durati
 			return nil, nil, fmt.Errorf("不支持的代理协议: %s (仅支持 socks5 / http)", u.Scheme)
 		}
 	} else {
+		// 扫描器 HTTP 探测恒定直连（N25 豁免登记）：LAN 端口/HTTP 探测的语义是
+		// "从本机直达目标"，套用户系统代理既无意义（代理看不见 10.x/192.168.x
+		// 内网靶）还会伪造存活结论；用户显式配置的 socks5/http 代理走上分支，
+		// 属主动功能而非系统链。此排除为永久口径，后续公共件改造勿误伤。
 		transport = &http.Transport{
 			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 			DisableKeepAlives:     true,
