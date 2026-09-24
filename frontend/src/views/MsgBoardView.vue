@@ -2,9 +2,11 @@
 // 桌面留言板模块页（N6 重设计）：左侧"类型速挂 → 正文编辑 → 挂/撤动作"
 // 高频动线，右侧与挂牌弹窗同源的便利贴实时预览（所见即所得由 BoardCard
 // 单组件保证）；字号/目标屏/热键等低频配置收进折叠区，异常时汇总警示。
+// N30 补口：右侧预览可放大为「全屏预览」纯前端浮层（同一 BoardCard 全尺寸
+// 呈现，Esc/点击即退，不走挂牌链路）；小预览缩放比按字号动态收缩防横向裁切。
 // 数据闸口与后端契约零改动：pullAll 并行拉取、脏判定以服务端回读为准、
 // 热键占用失败只回滚热键字段保留草稿——原纪律原样保留。
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as MsgBoardAPI from '../../bindings/hanxi/internal/modules/msgboard'
 import type { Config, ScreenInfo, Status } from '../../bindings/hanxi/internal/modules/msgboard/models'
 import { useWailsEvent } from '../composables/useWailsEvent'
@@ -20,6 +22,12 @@ const emit = defineEmits<{
 
 // 与后端 store 同源的上限（校验先行免往返，后端仍是最终闸口）
 const TEXT_LIMIT = 400
+// 字号后端钳位区间（预览换算按钳位后的真实观感走，防手滑输入把预览缩没）
+const FONT_MIN = 24
+const FONT_MAX = 200
+
+// 空牌占位文案（小预览与全屏预览共用，别各写一份）
+const PREVIEW_EMPTY = '（牌面还是空的——点左侧类型或输入文字）'
 
 // 类型速挂钮：表情进正文首行（版式契约见 BoardCard），副行自带回时预期。
 // 这是"预设文案 chip 行"的升格形态——旧 4 条预设语义全部保留在内。
@@ -170,6 +178,34 @@ function screenLabel(s: ScreenInfo): string {
   return `${s.isPrimary ? '主屏' : '副屏'} ${s.device} · ${s.width}×${s.height}`
 }
 
+// ---- 预览（N30）----
+// 小预览防裁切：BoardCard 定标链里卡宽上限＝字号×13（88vw 只会收紧不会放大），
+// 固定 0.34 缩放一旦遇到大字号，卡的自然宽乘完就横向溢出 300px 预览盒被裁
+// （机主报"右侧预览有点问题"的读码复现点之一）。字号超过默认档后把缩放降到
+// 刚好容纳（288＝盒宽 300 − 双侧 6px 呼吸），默认 64 字号观感与旧版完全一致。
+const PREVIEW_BASE_SCALE = 0.34
+const effFontSize = computed(() =>
+  Math.min(FONT_MAX, Math.max(FONT_MIN, form.value.fontSize || 64)),
+)
+const previewScale = computed(() =>
+  Math.min(PREVIEW_BASE_SCALE, 288 / (effFontSize.value * 13)),
+)
+const previewZoom = computed(() => Math.max(3, Math.round(1 / previewScale.value)))
+
+// 全屏预览：纯前端 Teleport 浮层，渲染与真牌同一 BoardCard、同一压暗层与
+// --bc-max-h:74vh 标定——"所看即所挂"（主窗最大化且与目标屏同规格时几乎 1:1）。
+// 刻意不走真挂牌链路：Toggle 是翻转语义，牌已挂着时"预览"会把真牌撤掉；瞬时
+// 挂撤还会惊动 KeepAwake 登记与 N29 窗组账——预览这种只读动作不该有副作用。
+const fullPreview = ref(false)
+function onFullPreviewKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') fullPreview.value = false
+}
+watch(fullPreview, (on) => {
+  if (on) window.addEventListener('keydown', onFullPreviewKey)
+  else window.removeEventListener('keydown', onFullPreviewKey)
+})
+onBeforeUnmount(() => window.removeEventListener('keydown', onFullPreviewKey))
+
 onMounted(refresh)
 </script>
 
@@ -317,11 +353,14 @@ onMounted(refresh)
         <!-- 右：实时预览（与挂牌弹窗同一 BoardCard——所见即所得由组件同源保证） -->
         <aside class="mb-preview" aria-label="牌面预览">
           <div class="mbp-box">
-            <div class="mbp-scaled">
-              <BoardCard :text="form.text || '（牌面还是空的——点左侧类型或输入文字）'" :font-size="form.fontSize || 64" />
+            <div class="mbp-scaled" :style="{ transform: `scale(${previewScale})` }">
+              <BoardCard :text="form.text || PREVIEW_EMPTY" :font-size="form.fontSize || 64" />
             </div>
           </div>
-          <p class="mbp-caption">牌面预览（实际挂出约 3 倍大）· 超高只裁不滚</p>
+          <p class="mbp-caption">牌面预览（实际挂出约 {{ previewZoom }} 倍大）· 超高只裁不滚</p>
+          <div class="mbp-actions">
+            <UiButton variant="secondary" small @click="fullPreview = true">🔍 全屏预览</UiButton>
+          </div>
         </aside>
       </div>
 
@@ -332,6 +371,7 @@ onMounted(refresh)
           <summary class="sec-title usage-summary">使用说明与行为契约</summary>
           <ul class="usage-list">
             <li>牌体全屏覆盖在位显示器（含任务栏区域）上的<b>压暗层</b>，便利贴居中央；多屏默认同时挂出、挂撤整组生效；<kbd>Esc</kbd> 或点击任意处即整组撤牌；窗口不进任务栏与 Alt+Tab。</li>
+            <li>右侧预览可点「<b>全屏预览</b>」：在主窗内以浮层按真实大小渲染牌面观感（与真牌同一 BoardCard、同一压暗层），<kbd>Esc</kbd> 或点击即返回——纯预览动作，绝不写配置，与挂牌链路零交互。</li>
             <li>挂出期间系统不休眠、显示器不息屏（平台层引用计数聚合器，撤牌/停用/退出即释放）。</li>
             <li>撤牌即真销毁窗口、再唤即重建——不留隐藏窗占内存，也不得白边残影（踩坑 #50）。</li>
             <li>三条唤起通道：本页按钮、全局热键（高级设置）、托盘右键/快捷轮盘命令。</li>
@@ -339,6 +379,24 @@ onMounted(refresh)
           </ul>
         </details>
       </section>
+
+      <!-- 全屏预览浮层（N30）：Teleport 到 body 躲开页面滚动容器与层叠上下文，
+           纯前端渲染同源 BoardCard——不挂牌、不动窗组、不进任何后端链路 -->
+      <Teleport to="body">
+        <div
+          v-if="fullPreview"
+          class="mbp-full"
+          role="dialog"
+          aria-label="牌面全屏预览"
+          @click="fullPreview = false"
+        >
+          <span class="mbp-full-badge" aria-hidden="true">预览浮层 · 非真实挂牌</span>
+          <BoardCard class="mbp-full-card" :text="form.text || PREVIEW_EMPTY" :font-size="form.fontSize || 64" />
+          <div class="mbp-full-hint" aria-hidden="true">
+            这是全屏预览，不改变挂牌状态 · 点击任意处或按 <kbd class="mbp-full-kbd">Esc</kbd> 返回
+          </div>
+        </div>
+      </Teleport>
     </template>
   </div>
 </template>
@@ -406,8 +464,66 @@ details[open] > .adv-summary::before { transform: rotate(90deg); }
     radial-gradient(120% 90% at 50% 40%, var(--surface-hover) 0%, var(--surface-soft) 100%);
   border: 1px dashed var(--color-border); border-radius: var(--radius-card, 10px);
 }
-.mbp-scaled { transform: scale(0.34); transform-origin: center; }
+/* 缩放比由脚本按字号动态给出（防大字号横向裁切，见 previewScale），
+   width:max-content 钉死"按卡的自然宽排版"——不受 300px 盒宽挤压换行 */
+.mbp-scaled { transform-origin: center; width: max-content; }
 .mbp-caption { margin: 6px 2px 0; font-size: var(--text-xs); color: var(--color-text-subtle); text-align: center; line-height: 1.5; }
+.mbp-actions { display: flex; justify-content: center; margin-top: 8px; }
+
+/* 全屏预览浮层：与 MsgBoardPopup 真牌同源观感——同值压暗层、同 74vh 牌高
+   标定、同 150ms 入场淡入。差别只有两处：预览角标常驻（操作者要随时知道
+   自己在预览），底部提示不做限时淡出（真牌淡出是给旁观者，这里没旁观者）。
+   层级：高于通知抽屉(10002)，低于命令面板(100000)与 Toast(999999)——
+   预览不该劫持全局快捷键 UI。 */
+.mbp-full {
+  position: fixed;
+  inset: 0;
+  z-index: 99998;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 10, 14, 0.38);
+  cursor: pointer;
+  user-select: none;
+  animation: mbp-full-in 150ms ease-out;
+}
+.mbp-full-card { --bc-max-h: 74vh; }
+@keyframes mbp-full-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.mbp-full-badge {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  padding: 2px 10px;
+  border: 1px solid rgba(238, 246, 247, 0.25);
+  border-radius: 999px;
+  background: rgba(6, 10, 14, 0.55);
+  color: rgba(238, 246, 247, 0.8);
+  font-size: var(--text-sm);
+}
+.mbp-full-hint {
+  position: absolute;
+  bottom: 26px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: var(--text-md);
+  color: rgba(238, 246, 247, 0.62);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.mbp-full-kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  border: 1px solid rgba(238, 246, 247, 0.4);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 6px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mbp-full { animation: none; }
+}
 
 .usage { margin-top: 4px; }
 .usage-summary { cursor: pointer; list-style: none; }

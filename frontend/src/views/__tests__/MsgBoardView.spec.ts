@@ -1,6 +1,7 @@
 // 桌面留言板模块页（MsgBoardView，N6 重设计）特征测试：加载回显、类型速挂
 // （单击填词/双击保存+挂出）、保存走 SetConfig 全量快照、保存失败回读不私留
-// 假状态、挂/撤与状态事件、异常 chip 只在异常时出现、预览与表单同源联动。
+// 假状态、挂/撤与状态事件、异常 chip 只在异常时出现、预览与表单同源联动；
+// N30 追加全屏预览（纯前端浮层，不触后端）与小预览按字号防裁切缩放。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MsgBoardView from '../MsgBoardView.vue'
@@ -195,5 +196,77 @@ describe('MsgBoardView', () => {
     expect(api.SetConfig).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('超出上限')
     wrapper.unmount()
+  })
+})
+
+describe('全屏预览与小预览缩放（N30）', () => {
+  // 浮层经 Teleport 落在 body 上，wrapper.find 够不着——按仓库 Teleport 测试
+  // 惯例直接查 document。
+  const fullLayer = () => document.body.querySelector<HTMLElement>('.mbp-full')
+  const openBtn = (w: Awaited<ReturnType<typeof mountView>>) =>
+    w.findAll('button').find((b) => b.text().includes('全屏预览'))!
+
+  it('默认字号 64 时小预览维持 0.34 基准缩放；字号翻倍后按卡宽上限收缩', async () => {
+    const wrapper = await mountView()
+    const scaled = wrapper.find('.mbp-scaled')
+    expect(scaled.attributes('style')).toContain('scale(0.34)')
+    await wrapper.find('input[aria-label="字号"]').setValue(120)
+    // 卡宽上限＝字号×13，超出 288px 容纳线后缩放＝288/(120×13)≈0.185
+    expect(scaled.attributes('style')).toContain('scale(0.18461538461538463)')
+    expect(wrapper.find('.mbp-caption').text()).toContain('约 5 倍大')
+    wrapper.unmount()
+  })
+
+  it('点「全屏预览」：body 上浮层渲染同源 BoardCard 与当前草稿，后端零调用', async () => {
+    const wrapper = await mountView()
+    await wrapper.find('#mb-text').setValue('☕ 去茶水间了\n5 分钟内回来')
+    expect(fullLayer()).toBeNull()
+    await openBtn(wrapper).trigger('click')
+    const layer = fullLayer()
+    expect(layer).not.toBeNull()
+    expect(layer!.querySelector('.bc-title')?.textContent).toBe('☕ 去茶水间了')
+    expect(layer!.querySelector('.bc-sub')?.textContent).toBe('5 分钟内回来')
+    // 牌面吃真牌同档字号（内联 style 由 BoardCard 定标链给出）
+    expect(layer!.querySelector('.bc-card')?.getAttribute('style')).toContain('font-size: 64px')
+    // 纯前端动作：不保存、不挂牌
+    expect(api.SetConfig).not.toHaveBeenCalled()
+    expect(api.Toggle).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('Esc 与点击浮层任意处都即退；未打开时按 Esc 不误触任何链路', async () => {
+    const wrapper = await mountView()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(api.Toggle).not.toHaveBeenCalled()
+
+    await openBtn(wrapper).trigger('click')
+    expect(fullLayer()).not.toBeNull()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(fullLayer()).toBeNull()
+
+    await openBtn(wrapper).trigger('click')
+    fullLayer()!.click()
+    await flushPromises()
+    expect(fullLayer()).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('浮层打开时编辑草稿即刻反映到牌面（预览联动的是草稿不是已存配置）', async () => {
+    const wrapper = await mountView()
+    await openBtn(wrapper).trigger('click')
+    await wrapper.find('#mb-text').setValue('🤝 开会中')
+    await flushPromises()
+    expect(fullLayer()!.querySelector('.bc-title')?.textContent).toBe('🤝 开会中')
+    wrapper.unmount()
+  })
+
+  it('卸载后 Esc 监听随浮层一起收干净（不留僵尸监听）', async () => {
+    const wrapper = await mountView()
+    await openBtn(wrapper).trigger('click')
+    wrapper.unmount()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(fullLayer()).toBeNull()
   })
 })
