@@ -131,7 +131,6 @@ export function OpenOfficialSite() {
 }
 
 /**
- * OpenWindow 窗口唤起编排（多实例观察工具，见 instance 包注释）：
  *   - running：聚焦自有实例主窗口；
  *   - external：唤回用户自开窗口（RAMMap 窗口无最小化常驻语义，聚焦即达；
  *     无可聚焦窗口如实回指引——二次拉起只会另开一个新窗，不是唤回，
@@ -142,6 +141,16 @@ export function OpenOfficialSite() {
  */
 export function OpenWindow() {
     return $Call.ByID(3067903485);
+}
+
+/**
+ * OpenWindowElevated 仅以管理员启动 RAMMap 目标，不把进程纳入 Hanxi JobObject。
+ * 这是 N22 A 路：Hanxi 保持普通权限，目标作为外部高权限实例存在；不返回 running
+ * 假账、不提供后续 Quit 托管承诺。B 路由现有 AppService.RestartElevated。
+ * @returns {$CancellablePromise<$models.ControlOutcome>}
+ */
+export function OpenWindowElevated() {
+    return $Call.ByID(2790203299);
 }
 
 /**

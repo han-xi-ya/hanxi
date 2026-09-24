@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -343,7 +344,39 @@ func (s *RAMMapService) activeExecutable() (string, error) {
 	return exe, err
 }
 
-// OpenWindow 窗口唤起编排（多实例观察工具，见 instance 包注释）：
+// OpenWindowElevated 仅以管理员启动 RAMMap 目标，不把进程纳入 Hanxi JobObject。
+// 这是 N22 A 路：Hanxi 保持普通权限，目标作为外部高权限实例存在；不返回 running
+// 假账、不提供后续 Quit 托管承诺。B 路由现有 AppService.RestartElevated。
+func (s *RAMMapService) OpenWindowElevated() (ControlOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ControlOutcome{}, gateErr
+	}
+	defer release()
+	if s.isElevated() {
+		return ControlOutcome{}, fmt.Errorf("Hanxi 当前已是管理员权限运行，请直接启动 RAMMap")
+	}
+	v, exe, err := s.resolveActiveVersion()
+	if err != nil {
+		return ControlOutcome{}, err
+	}
+	result, err := windows.RunElevatedDetached(exe, filepath.Dir(exe), nil)
+	if err != nil {
+		return ControlOutcome{}, err
+	}
+	if result.Cancelled {
+		return ControlOutcome{Action: "elevation-cancelled", Message: "已取消 UAC 授权，RAMMap 未启动"}, nil
+	}
+	if !result.Started {
+		return ControlOutcome{}, fmt.Errorf("RAMMap 提权启动未完成")
+	}
+	return ControlOutcome{
+		Action: "started-external-elevated", External: true, Elevated: true,
+		Managed: false, CanQuit: false, LaunchMode: LaunchModeExternalElevated,
+		Message: fmt.Sprintf("已单独以管理员权限启动 RAMMap %s；该实例不属于 Hanxi 托管范围，请在 RAMMap 窗口内关闭", v),
+	}, nil
+}
+
 //   - running：聚焦自有实例主窗口；
 //   - external：唤回用户自开窗口（RAMMap 窗口无最小化常驻语义，聚焦即达；
 //     无可聚焦窗口如实回指引——二次拉起只会另开一个新窗，不是唤回，

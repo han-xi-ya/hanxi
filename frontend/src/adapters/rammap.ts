@@ -29,6 +29,21 @@ export function createRAMMapAdapter(): ManagedModuleAdapter {
   const executionLevel = ref<string>('unknown')
   const externalElevated = ref(false)
   const lastOutcome = ref<{ launchMode?: string; elevated?: boolean; managed?: boolean; canQuit?: boolean } | null>(null)
+
+  async function runElevationChoice(): Promise<ManagedActionResult> {
+    const accepted = await confirm({
+      title: 'RAMMap 需要管理员权限',
+      description: '可以只给 RAMMap 管理员权限（一次性启动，Hanxi 不负责自动关闭），也可以在页面中选择重启整个 Hanxi 后托管。',
+      confirmLabel: '仅启动 RAMMap',
+      cancelLabel: '取消',
+      tone: 'warning',
+    })
+    if (!accepted) return { message: '已取消启动 RAMMap' }
+    const out = await RAMMapAPI.OpenWindowElevated()
+    lastOutcome.value = out
+    externalElevated.value = out.launchMode === 'external-elevated' || (out.external && out.elevated === true)
+    return { message: out.message }
+  }
   void RAMMapAPI.ElevationStatus()
     .then((st) => {
       if (!st) return
@@ -114,6 +129,9 @@ export function createRAMMapAdapter(): ManagedModuleAdapter {
     control: {
       primary: {
         async run(): Promise<ManagedActionResult> {
+          if (hostElevated.value === false && executionLevel.value === 'requireAdministrator') {
+            return runElevationChoice()
+          }
           const out = await RAMMapAPI.OpenWindow()
           lastOutcome.value = out
           externalElevated.value = out.launchMode === 'external-elevated' || (out.external && out.elevated === true)
