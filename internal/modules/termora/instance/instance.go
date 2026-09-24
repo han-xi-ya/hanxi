@@ -180,23 +180,23 @@ func (e *Engine) QuitExternal(ctx context.Context, policy externalquit.Policy, r
 	defer e.opMu.Unlock()
 
 	snap := e.sup.Snapshot()
-	if snap.State != sup.StateExternal {
-		return QuitResult{Method: "not-external"}, nil
-	}
-	if snap.PID == 0 {
-		return QuitResult{Method: "probe-missing-pid"}, nil
-	}
-	token := platform.VerifyToken{PID: snap.PID, ExePath: snap.Exe, StartedAt: snap.Since}
-	deps := externalquit.Deps{
-		Proc: e.processAPI, Risk: risk, Confirm: confirm, Grace: externalGrace,
-		Graceful: func(context.Context) error {
-			if e.closeByPID(token.PID) <= 0 {
+	res, err := externalquit.QuitExternalOf(ctx, externalquit.ExternalQuitRequest{
+		External:  snap.State == sup.StateExternal,
+		PID:       snap.PID,
+		ExePath:   snap.Exe,
+		StartedAt: snap.Since,
+		Policy:    policy,
+		Risk:      risk,
+		Confirm:   confirm,
+		Proc:      e.processAPI,
+		Grace:     externalGrace,
+		Graceful: func(_ context.Context, pid uint32) error {
+			if e.closeByPID(pid) <= 0 {
 				return errors.New("未找到可投递关闭消息的窗口")
 			}
 			return nil
 		},
-	}
-	res, err := externalquit.Quit(ctx, token, policy, deps)
+	})
 	// 无论成否都让内核复探收口：杀掉→external 撤销落 stopped；杀不动→维持 external。
 	e.sup.RefreshExternal()
 	return QuitResult{Stopped: res.Stopped, Forced: res.Forced, CloseRequested: res.Method == externalquit.MethodGraceful, Method: res.Method}, err

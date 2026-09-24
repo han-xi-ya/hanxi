@@ -46,7 +46,51 @@ const (
 	MethodDeclined    = "declined-confirm" // 打扰档用户拒绝（或确认通道缺失）
 	MethodBlocked     = "blocked-elevated" // 权限/红线拦截（典型：目标以管理员运行被 UIPI 挡）
 	MethodOwnership   = "ownership-lost"   // 身份复核不匹配，拒杀上报（防 PID 复用误伤）
+	// 引擎层守卫归因（QuitExternalOf 前置检查产物，与 Method* 同处一表供模块映射文案）：
+	MethodNotExternal     = "not-external"      // 快照已非 external 态（并发撤场），不动手
+	MethodProbeMissingPID = "probe-missing-pid" // 探针未取得实例身份，拒执行（防把"没身份"谎报成"已退出"）
 )
+
+// ExternalQuitRequest 引擎层一次外部退出所需的全部事实（N3 收尾：四份逐字
+// QuitExternal 克隆的守卫+组装序列收编于此，模块只留锁、快照取数与结果映射）。
+type ExternalQuitRequest struct {
+	// External：当前引擎快照是否 external 态——false 即拒（内核绝不由此通道动自家进程）。
+	External bool
+	// PID/ExePath/StartedAt：探针报告的实例身份（PID=0 视为身份不全，拒执行）。
+	PID       uint32
+	ExePath   string
+	StartedAt time.Time
+	// 分档三件套（语义同 Quit 入参）。
+	Policy  Policy
+	Risk    string
+	Confirm func(risk string) bool
+	// Proc 同 Deps.Proc。
+	Proc platform.ProcessAPI
+	// Graceful 优雅通道（典型 WM_CLOSE 按 PID 投递）：nil = 无优雅信号。
+	// 以 pid 入参传递身份，回调内禁止回读引擎可变态（快照取数留在调用方）。
+	Graceful func(ctx context.Context, pid uint32) error
+	// Grace 观察宽限（<=0 走 Deps 缺省 2.5s）。
+	Grace time.Duration
+}
+
+// QuitExternalOf 引擎层外部退出统一入口：守卫（非 external / 身份不全）→
+// token 组装 → 委托 Quit。守卫归因用 MethodNotExternal / MethodProbeMissingPID，
+// 调用方（service）据此映射指引文案。
+func QuitExternalOf(ctx context.Context, req ExternalQuitRequest) (Result, error) {
+	if !req.External {
+		return Result{Method: MethodNotExternal}, nil
+	}
+	if req.PID == 0 {
+		return Result{Method: MethodProbeMissingPID}, nil
+	}
+	token := platform.VerifyToken{PID: req.PID, ExePath: req.ExePath, StartedAt: req.StartedAt}
+	deps := Deps{Proc: req.Proc, Risk: req.Risk, Confirm: req.Confirm, Grace: req.Grace}
+	if req.Graceful != nil {
+		graceful := req.Graceful
+		deps.Graceful = func(c context.Context) error { return graceful(c, req.PID) }
+	}
+	return Quit(ctx, token, req.Policy, deps)
+}
 
 // Deps 执行器依赖（全部由模块服务层注入）。
 type Deps struct {

@@ -167,3 +167,33 @@ func TestRequireProc(t *testing.T) {
 		t.Fatal("未注入 Proc 必须报错")
 	}
 }
+
+// QuitExternalOf 守卫表测（N3 收尾）：非 external 不动手；PID=0 拒执行且
+// 归因区分于 already-exited（防把"没取得身份"谎报成"已退出"）；身份齐全时
+// Graceful 收到探针 pid。
+func TestQuitExternalOfGuards(t *testing.T) {
+	res, err := QuitExternalOf(context.Background(), ExternalQuitRequest{External: false, PID: 7})
+	if err != nil || res.Method != MethodNotExternal {
+		t.Fatalf("非 external 应拒且归因 not-external: %v %v", res, err)
+	}
+	res, err = QuitExternalOf(context.Background(), ExternalQuitRequest{External: true, PID: 0})
+	if err != nil || res.Method != MethodProbeMissingPID {
+		t.Fatalf("身份不全应拒且归因 probe-missing-pid: %v %v", res, err)
+	}
+	if res.Stopped || res.Forced {
+		t.Fatalf("守卫结果不得谎报停止: %+v", res)
+	}
+	var gotPID uint32
+	proc := &fakeProc{alive: true} // 常驻在场：优雅不生效 → 复核通过 → force-free 强杀
+	res, err = QuitExternalOf(context.Background(), ExternalQuitRequest{
+		External: true, PID: 42, Policy: PolicyForceFree, Proc: proc,
+		Graceful: func(_ context.Context, pid uint32) error { gotPID = pid; return nil },
+		Grace:    10 * time.Millisecond,
+	})
+	if err != nil || gotPID != 42 {
+		t.Fatalf("Graceful 应收到探针 PID: %v %v %v", res, gotPID, err)
+	}
+	if !res.Stopped || !res.Forced {
+		t.Fatalf("force-free 通道结果异常: %+v", res)
+	}
+}
