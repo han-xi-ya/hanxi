@@ -12,6 +12,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"hanxi/internal/app/appicons"
 	"hanxi/internal/extapi"
 	"hanxi/internal/launcher"
 	"hanxi/internal/notify"
@@ -80,13 +81,21 @@ func (b *trayMenuBuilder) build() *application.Menu {
 				}
 				sub := menu.AddSubmenu(b.disp.Label(item))
 				for _, ch := range kids {
-					sub.Add(b.disp.Label(ch)).OnClick(func(ctx *application.Context) {
+					ki := sub.Add(b.disp.Label(ch))
+					if png := appicons.For(itemModuleID(ch)); png != nil {
+						ki.SetBitmap(png) // N27 批 C：内嵌真图标（未内嵌恒 nil，回落文字）
+					}
+					ki.OnClick(func(ctx *application.Context) {
 						b.dispatch(ch)
 					})
 				}
 				continue
 			}
-			menu.Add(b.disp.Label(item)).OnClick(func(ctx *application.Context) {
+			mi := menu.Add(b.disp.Label(item))
+			if png := appicons.For(itemModuleID(item)); png != nil {
+				mi.SetBitmap(png)
+			}
+			mi.OnClick(func(ctx *application.Context) {
 				b.dispatch(item)
 			})
 		}
