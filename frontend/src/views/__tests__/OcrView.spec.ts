@@ -732,6 +732,41 @@ describe('OcrView 历史弹窗（统一历史接入）', () => {
     expect(wrapper.find('.ocr-preview').exists()).toBe(true) // 图片已落输入区
     wrapper.unmount()
   })
+
+  // N20（2026-09-25）：弹窗内确认框场景的 Esc 让位与焦点入窗契约
+  it('Esc 关弹窗；确认框在场时 Esc 只归确认框，不一键关两窗', async () => {
+    stubStatus(runningState)
+    const wrapper = await mountView()
+    await wrapper.findAll('.ocr-head-actions .btn').find((b) => b.text().includes('历史'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.hist-dialog').exists()).toBe(true)
+
+    const { confirm, settleConfirm } = useConfirm()
+    void confirm({ title: '清空本桶？', description: '模拟「清空本桶」确认盖在历史弹窗上' })
+    await flushPromises()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(wrapper.find('.hist-dialog').exists()).toBe(true) // Esc 被让位，弹窗仍在
+    settleConfirm(false)
+    await flushPromises()
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(wrapper.find('.hist-dialog').exists()).toBe(false) // 确认框落定后 Esc 恢复关窗
+    wrapper.unmount()
+  })
+
+  it('打开弹窗：焦点移入对话框容器，说明行讲清记录来源与 200 条上限', async () => {
+    stubStatus(runningState)
+    const wrapper = await mountView()
+    await wrapper.findAll('.ocr-head-actions .btn').find((b) => b.text().includes('历史'))!.trigger('click')
+    await settle() // 焦点入窗走 watch+nextTick 异步链，settle 收口
+    const dialog = wrapper.find('.hist-dialog')
+    expect(dialog.exists()).toBe(true)
+    expect(document.activeElement).toBe(dialog.element)
+    expect(dialog.find('.hist-note').text()).toContain('200')
+    wrapper.unmount()
+  })
 })
 
 describe('OcrView 剪贴板识图与识图热键', () => {

@@ -4,7 +4,7 @@
 // 三输入通道（对话框选图 / 拖拽 / 粘贴）汇流为 ImageRef 后统一转发 path 模式识别；
 // 状态以事件为主、5s 轮询兜底。
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
 import type { DropResult as GeneratedDropResult, EngineInfo, HostedVersion, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
 import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
@@ -25,7 +25,7 @@ import HistoryPanel from '../components/tool/HistoryPanel.vue'
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
-const { confirm } = useConfirm()
+const { confirm, confirmState } = useConfirm() // confirmState 只读不写：历史弹窗 Esc 让位用（同 CommandPalette 门禁先例）
 
 // DropResult 的新增字段由本次 Go DTO 提供；绑定产物按协作约定由协调者统一生成。
 type DropResult = GeneratedDropResult & {
@@ -509,7 +509,15 @@ async function copyLine(text: string) {
 }
 
 // ---------- 历史记录（Teleport 弹窗；双击行经 InspectImage 回填图片，Q6 行内数据直用） ----------
+// 面板本体走公共 HistoryPanel（自取数），本视图只管遮罩壳与回填出口。N20（2026-09-25）
+// 对"弹窗里再弹确认"场景做了两处契约适配（ConfirmDialog 是同层 1000 的 App 单例）：
+//   1) Esc 在 confirmState.open 时让位——「清空本桶」确认盖在本弹窗上，一次 Esc
+//      不得同时关掉两层（document 级监听与 ConfirmDialog 自身监听同场竞走）；
+//   2) 本弹窗 z-index 低于 ConfirmDialog——视图经 KeepAlive 懒挂载，本 Teleport 的
+//      DOM 位置天然晚于 App 单例确认框，同层拼 DOM 序不能保证确认框反而在上。
 const showHistory = ref(false)
+const historyDialog = ref<HTMLElement | null>(null)
+let historyPrevFocus: HTMLElement | null = null
 
 async function applyHistoryImage(rec: HistoryRecord) {
   try {
@@ -521,12 +529,40 @@ async function applyHistoryImage(rec: HistoryRecord) {
   }
 }
 
-function onHistoryEsc(e: KeyboardEvent) {
-  if (e.key === 'Escape') showHistory.value = false
+// Tab 焦点环困在弹窗内（选择器镜像 ConfirmDialog 的 trap，补 input/select/textarea——面板有搜索框）
+function onHistoryTabTrap(e: KeyboardEvent) {
+  if (e.key !== 'Tab' || !historyDialog.value) return
+  const focusable = Array.from(historyDialog.value.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input, select, textarea, [href], [tabindex]:not([tabindex="-1"])',
+  ))
+  if (!focusable.length) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault()
+    first.focus()
+  }
 }
-watch(showHistory, (v) => {
-  if (v) document.addEventListener('keydown', onHistoryEsc)
-  else document.removeEventListener('keydown', onHistoryEsc)
+
+function onHistoryEsc(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || confirmState.open) return // 确认框在场时 Esc 归它
+  showHistory.value = false
+}
+
+watch(showHistory, async (v) => {
+  if (v) {
+    historyPrevFocus = document.activeElement as HTMLElement | null
+    document.addEventListener('keydown', onHistoryEsc)
+    await nextTick()
+    historyDialog.value?.focus() // 焦点进弹窗：Esc/Tab 语义自洽，不用回找触发按钮
+  } else {
+    document.removeEventListener('keydown', onHistoryEsc)
+    historyPrevFocus?.focus() // 关窗回位触发点（ConfirmDialog previousFocus 同款语义）
+    historyPrevFocus = null
+  }
 })
 onBeforeUnmount(() => document.removeEventListener('keydown', onHistoryEsc))
 
@@ -787,15 +823,19 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 历史记录弹窗（自取数面板；Esc/遮罩/关闭出口，复用 ConfirmDialog 交互契约） -->
+    <!-- 历史记录弹窗（公共 HistoryPanel 自取数；Esc/遮罩/关闭 + 焦点入窗/回位，N20 适配弹窗内确认框，见脚本注释） -->
     <Teleport to="body">
       <div v-if="showHistory" class="hist-backdrop" @click.self="showHistory = false">
-        <div class="hist-dialog" role="dialog" aria-modal="true" aria-label="识别历史">
+        <div ref="historyDialog" class="hist-dialog" role="dialog" aria-modal="true" aria-labelledby="ocr-hist-title" tabindex="-1" @keydown.tab="onHistoryTabTrap">
           <div class="hist-head">
-            <h2>识别历史</h2>
+            <div class="hist-head-text">
+              <h2 id="ocr-hist-title">识别历史</h2>
+              <!-- 一句话说清记录从哪来/何时产生/留多少，开弹窗即自解释（面板空态文案属公共件，不在本视图私改） -->
+              <p class="hist-note">本页「识别文字」、框选识别、剪贴板识图每次识别各留一条（成败同记，最多保留最近 200 条；关闭设置「识别历史收录 OCR 全文」时只记图片与摘要）。双击记录行或选中后点「应用」，原图回填上方识别区。</p>
+            </div>
             <button class="btn btn-secondary btn-small" @click="showHistory = false">关闭</button>
           </div>
-          <HistoryPanel func-type="ocr" @apply="applyHistoryImage" />
+          <HistoryPanel func-type="ocr" max-height="min(46vh, 420px)" @apply="applyHistoryImage" />
         </div>
       </div>
     </Teleport>
@@ -938,13 +978,19 @@ onMounted(() => {
   .ocr-view :deep(.live-pulse) { animation: none; }
 }
 
-/* 历史弹窗外壳：照 ConfirmDialog 遮罩语系（Teleport 挂 body，scoped 仍生效于本组件模板） */
-.hist-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
+/* 历史弹窗外壳：照 ConfirmDialog 遮罩语系（Teleport 挂 body，scoped 仍生效于本组件模板）。
+   z-index 压在确认框（1000）之下一档：KeepAlive 懒挂载的 DOM 序拼不过 App 单例，靠显式
+   层阶保证「清空本桶」确认永远盖得住本弹窗（N20，理由详见脚本区注释）。 */
+.hist-backdrop { position: fixed; inset: 0; z-index: 950; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
 .hist-dialog {
-  width: min(720px, 100%); max-height: min(80vh, 640px); overflow: auto; display: flex; flex-direction: column; gap: 10px;
+  width: min(720px, 100%); max-height: min(80vh, 640px); overflow: auto; display: flex; flex-direction: column; gap: 12px;
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
   padding: 16px 18px; box-shadow: var(--shadow-small);
 }
-.hist-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* 容器可聚焦（tabindex=-1）：点击开窗不留程序化焦点描边，键盘入窗给标准 focus-visible 环 */
+.hist-dialog:focus { outline: none; }
+.hist-dialog:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.hist-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .hist-head h2 { font-size: var(--text-md); font-weight: 600; margin: 0; }
+.hist-note { margin: 4px 0 0; font-size: var(--text-xs); line-height: 1.6; color: var(--color-text-muted); }
 </style>
