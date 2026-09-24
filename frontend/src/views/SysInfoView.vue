@@ -4,9 +4,11 @@
 // 内存/磁盘占用是快照值，页头明示采集时刻；段级采集告警如实呈现（banner）。
 import { onMounted, ref } from 'vue'
 import * as SysInfoAPI from '../../bindings/hanxi/internal/modules/sysinfo/sysinfoservice'
-import type { Report } from '../../bindings/hanxi/internal/modules/sysinfo/models'
+import type { PurgeResult, Report } from '../../bindings/hanxi/internal/modules/sysinfo/models'
 import PageHeader from '../components/ui/PageHeader.vue'
 import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
+import { useConfirm } from '../composables/useConfirm'
 import { fmtSize } from '../utils/format'
 import { sortNetAddresses } from '../utils/netaddrs'
 
@@ -14,6 +16,10 @@ const report = ref<Report | null>(null)
 const loading = ref(false)
 const loadError = ref('')
 const collectedAt = ref('')
+const purgeBusy = ref(false)
+const purgeResult = ref<PurgeResult | null>(null)
+const { showToast } = useToast()
+const { confirm } = useConfirm()
 
 async function refresh() {
   loading.value = true
@@ -31,6 +37,32 @@ async function refresh() {
   }
 }
 
+async function purgeStandby() {
+  if (purgeBusy.value) return
+  const accepted = await confirm({
+    title: '清理可回收内存？',
+    description: '只清理 Windows 的待机/文件缓存，不关闭程序、不删除文件，也不碰进程私有内存。清理后热数据可能需要重新从磁盘加载；可用内存变化只作前后快照参考。',
+    confirmLabel: '清理可回收内存',
+    tone: 'warning',
+  })
+  if (!accepted) return
+  purgeBusy.value = true
+  purgeResult.value = null
+  try {
+    const result = await SysInfoAPI.PurgeStandby()
+    purgeResult.value = result
+    if (result.success) {
+      showToast(`清理动作完成，可用内存变化 ${fmtSize(result.availableDeltaBytes)}`)
+      await refresh()
+    } else {
+      showToast(result.message || '清理未完成')
+    }
+  } catch (e) {
+    showToast(`清理失败: ${getErrorMessage(e)}`)
+  } finally {
+    purgeBusy.value = false
+  }
+}
 onMounted(refresh)
 
 function pct(part?: number, total?: number): number {
@@ -88,7 +120,12 @@ const VOL_TYPES: Record<string, string> = {
 
       <!-- 内存 -->
       <div class="sys-card">
-        <h3 class="sys-card-title">内存</h3>
+        <div class="sys-card-head">
+          <h3 class="sys-card-title">内存</h3>
+          <button class="btn btn-secondary btn-small" :disabled="purgeBusy" @click="purgeStandby">
+            {{ purgeBusy ? '清理中…' : '清理可回收内存' }}
+          </button>
+        </div>
         <div class="sys-kv"><span class="k">物理总量</span><span class="v">{{ fmtSize(report.memory.totalBytes) }}</span></div>
         <div class="sys-kv"><span class="k">可用</span><span class="v">{{ fmtSize(report.memory.availableBytes) }}</span></div>
         <div class="sys-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="report.memory.loadPercent" aria-label="内存占用">
@@ -96,6 +133,8 @@ const VOL_TYPES: Record<string, string> = {
         </div>
         <div class="sys-kv"><span class="k">占用</span><span class="v">{{ report.memory.loadPercent }}%</span></div>
         <div class="sys-kv"><span class="k">提交</span><span class="v mono">{{ fmtSize(report.memory.commitTotal) }} / {{ fmtSize(report.memory.commitLimit) }}</span></div>
+        <p class="sys-action-note">只清理可回收缓存，不关程序、不删文件；清理后数据可能重新从磁盘预热。</p>
+        <p v-if="purgeResult && !purgeResult.success" class="sys-action-error" role="alert">{{ purgeResult.message }}</p>
       </div>
 
       <!-- 操作系统 -->
@@ -181,6 +220,10 @@ const VOL_TYPES: Record<string, string> = {
 .sys-card-wide { grid-column: 1 / -1; }
 .sys-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-card, 10px); padding: 14px 16px; }
 .sys-card-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); margin: 0 0 10px; }
+.sys-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sys-card-head .sys-card-title { margin-bottom: 10px; }
+.sys-action-note { margin: 8px 0 0; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.5; }
+.sys-action-error { margin: 6px 0 0; font-size: var(--text-xs); color: var(--state-danger); }
 .sys-kv { display: flex; gap: 10px; align-items: baseline; padding: 2px 0; font-size: var(--text-sm); }
 .sys-kv .k { flex: 0 0 92px; color: var(--color-text-subtle); }
 .sys-kv .v { color: var(--color-text); word-break: break-all; }

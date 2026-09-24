@@ -26,3 +26,12 @@ import * as $models from "./models.js";
 export function GetReport() {
     return $Call.ByID(400127653);
 }
+
+/**
+ * PurgeStandby 执行一次可回收待机列表清理。首版先支持已提权宿主的直接路径；
+ * 普通权限的 shared helper 接线在下一原子提交完成。MCP 不引用此方法。
+ * @returns {$CancellablePromise<$models.PurgeResult>}
+ */
+export function PurgeStandby() {
+    return $Call.ByID(1100157317);
+}

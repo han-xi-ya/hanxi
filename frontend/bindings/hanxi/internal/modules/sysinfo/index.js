@@ -50,6 +50,11 @@ import * as $models from "./models.js";
  */
 
 /**
+ * PurgeResult 可用内存变化快照；delta 不是精确待机页释放量，只是前后观测差。
+ * @typedef {$models.PurgeResult} PurgeResult
+ */
+
+/**
  * Report 一次全量档案快照（各段独立降级：单段采集失败其余照常送达）。
  * @typedef {$models.Report} Report
  */
