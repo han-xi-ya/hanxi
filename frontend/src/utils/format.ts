@@ -20,6 +20,22 @@ export function fmtDate(iso?: string | null): string {
   return iso.slice(0, 10)
 }
 
+/**
+ * 智能日期时间（N20b）：同一天的多条记录必须靠时分秒区分（"同图重识两遍
+ * 两行完全一样"病灶），跨范围逐级带日期——今天只给时间、本年补月日、
+ * 往年退全日期。解析失败原样回传（不吞机器值）。
+ */
+export function fmtDateTimeSmart(iso?: string | null, now: Date = new Date()): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const p = (n: number) => String(n).padStart(2, '0')
+  const hm = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) return hm
+  if (d.getFullYear() === now.getFullYear()) return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`
+}
+
 /** 时长格式化：h>0 时 `h:mm:ss`，否则 `mm:ss`（运行时长/耗时共用）。 */
 export function fmtDuration(sec: number): string {
   const h = Math.floor(sec / 3600)

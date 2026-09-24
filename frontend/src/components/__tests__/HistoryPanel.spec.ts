@@ -154,4 +154,25 @@ describe('HistoryPanel', () => {
     expect(w.find('.error-box').exists()).toBe(true)
     expect(w.text()).toContain('读取历史记录失败')
   })
+
+  it('N20b：标记 token 中文化为 chips，未知 token 原样、失败/拒绝升警示色', async () => {
+    api.List.mockResolvedValueOnce([
+      rec({ extra: 'snip|nofull|fail' }),
+      rec({ id: 3, extra: 'future_token' }),
+    ])
+    const w = factory()
+    await settleTimers()
+    const tags = w.findAll('tbody tr')[0].findAll('.hp-tag').map((c) => c.text())
+    expect(tags).toEqual(['框选识别', '未存全文', '失败'])
+    expect(w.findAll('tbody tr')[0].findAll('.hp-tag-danger').length).toBe(1)
+    expect(w.findAll('tbody tr')[1].text()).toContain('future_token')
+  })
+
+  it('N20b：空态按桶说清记录来源', async () => {
+    api.List.mockResolvedValueOnce([])
+    const w = factory()
+    await settleTimers()
+    expect(w.find('.hp-empty').text()).toContain('框选')
+    expect(w.find('.hp-empty').text()).toContain('每桶最多')
+  })
 })

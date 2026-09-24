@@ -1,7 +1,7 @@
 // 特征测试：三个格式化函数的分支行为逐字锁定 MarkerOnView 现实现，
 // Phase 4/5 迁移以此为回归底线（含刻意保留的口径怪癖）。
 import { describe, expect, it } from 'vitest'
-import { fmtDate, fmtDuration, fmtSize } from '../format'
+import { fmtDate, fmtDateTimeSmart, fmtDuration, fmtSize } from '../format'
 
 describe('fmtSize', () => {
   it('0/空值统一显示占位符', () => {
@@ -68,5 +68,18 @@ describe('fmtDuration', () => {
     expect(fmtDuration(3661)).toBe('1:01:01')
     expect(fmtDuration(7325)).toBe('2:02:05')
     expect(fmtDuration(360000)).toBe('100:00:00')
+  })
+})
+
+describe('fmtDateTimeSmart（N20b）', () => {
+  const now = new Date(2026, 8, 25, 23, 59, 59) // 本地时区 2026-09-25 深夜（固定时钟入参，不随真实当下漂移）
+  it('当天只给时分秒；本年补月日；往年退全日期', () => {
+    expect(fmtDateTimeSmart('2026-09-25T13:05:09', now)).toBe('13:05:09')
+    expect(fmtDateTimeSmart('2026-03-01T08:00:00', now)).toBe('03-01 08:00:00')
+    expect(fmtDateTimeSmart('2025-12-31T23:59:59', now)).toBe('2025-12-31 23:59:59')
+  })
+  it('空值占位；解析失败原样回传不吞机器值', () => {
+    expect(fmtDateTimeSmart(null)).toBe('—')
+    expect(fmtDateTimeSmart('不是时间')).toBe('不是时间')
   })
 })

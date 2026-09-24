@@ -10,7 +10,39 @@ import { useToast } from '../../composables/useToast'
 import { useClipboard } from '../../composables/useClipboard'
 import { useConfirm } from '../../composables/useConfirm'
 import { getErrorMessage } from '../../utils/errors'
-import { fmtDate } from '../../utils/format'
+import { fmtDateTimeSmart } from '../../utils/format'
+
+// —— N20b 标记列中文化 ——
+// extra 是各模块记录点写入的机器 token（竖线连拼，见 ocr/portkill/npmtool
+// recordHistory），展示层翻成人话；词表外的未知 token **原样露出**——宁显机器串，
+// 不瞎猜语义。title 恒留原始串供诊断/搜索对账。
+const EXTRA_LABELS: Record<string, string> = {
+  ui: '界面识别',
+  snip: '框选识别',
+  query: '端口查询',
+  kill: '终止进程',
+  elevated: '提权终止',
+  'npm-install': 'npm 安装',
+  'npm-update': 'npm 升级',
+  'npm-remove': 'npm 卸载',
+  nofull: '未存全文',
+  fail: '失败',
+  denied: '已拒绝',
+}
+const EXTRA_DANGER = new Set(['fail', 'denied'])
+function extraChips(extra: string): { key: string; label: string; danger: boolean }[] {
+  return (extra || '')
+    .split('|')
+    .filter((t) => t !== '')
+    .map((t) => ({ key: t, label: EXTRA_LABELS[t] ?? t, danger: EXTRA_DANGER.has(t) }))
+}
+
+// 空态按桶说清"什么时候会有记录"（通用文案只说"暂无"等于没说）。
+const EMPTY_HINTS: Record<string, string> = {
+  ocr: '还没有识别记录——页面上「识别」、右键长按轮盘框选、热键剪贴板识图都会留档（成败同记）；每桶最多保留最近的记录，「清空本桶」只影响这里。',
+  portkill: '还没有查询/终止记录——端口查询与进程终止都留档，被红线或 UAC 拒绝的终止也会记下并标「已拒绝」，方便回看当时为什么没杀掉。',
+  envcheck: '还没有 npm 工具操作记录——环境体检页对 claude/codex 等受管工具的装、升、卸会留在这里。',
+}
 
 const props = withDefaults(
   defineProps<{
@@ -139,7 +171,7 @@ defineExpose({ reload: load })
         <thead>
           <tr>
             <th>摘要</th>
-            <th style="width: 150px;">时间</th>
+            <th style="width: 168px;">时间</th>
             <th style="width: 120px;">标记</th>
           </tr>
         </thead>
@@ -154,13 +186,18 @@ defineExpose({ reload: load })
             @dblclick="showApply && applyRow(rec)"
           >
             <td class="hp-sum" :title="rec.summary">{{ rec.summary || '—' }}</td>
-            <td class="hp-time">{{ fmtDate(rec.createdAt) }}</td>
-            <td class="hp-extra" :title="rec.extra">{{ rec.extra || '—' }}</td>
+            <td class="hp-time" :title="rec.createdAt" :data-ts="rec.createdAt">{{ fmtDateTimeSmart(rec.createdAt) }}</td>
+            <td class="hp-extra" :title="rec.extra" :data-raw-extra="rec.extra">
+              <template v-if="extraChips(rec.extra).length">
+                <span v-for="c in extraChips(rec.extra)" :key="c.key" class="hp-tag" :class="{ 'hp-tag-danger': c.danger }">{{ c.label }}</span>
+              </template>
+              <template v-else>—</template>
+            </td>
           </tr>
         </tbody>
       </table>
       <div v-else-if="!loading" class="empty-state hp-empty">
-        <p>暂无历史记录——用几次本功能后回来看看。</p>
+        <p>{{ EMPTY_HINTS[funcType] ?? '暂无历史记录——用几次本功能后回来看看。' }}</p>
       </div>
     </div>
 
@@ -198,6 +235,9 @@ defineExpose({ reload: load })
 .hp-sum { max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-sm); }
 .hp-time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-xs); color: var(--color-text-muted); white-space: nowrap; }
 .hp-extra { font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* N20b 标记 chips：中性灰底，失败/拒绝升警示色（颜色之外字面已自明） */
+.hp-tag { display: inline-block; margin-right: 4px; padding: 0 6px; border: 1px solid var(--color-border); border-radius: var(--radius-pill, 999px); font-size: var(--text-micro, 10px); color: var(--color-text-muted); background: var(--surface-soft); }
+.hp-tag-danger { color: var(--state-warning); border-color: var(--state-warning); }
 .hp-empty { border: none; }
 
 .hp-detail {
