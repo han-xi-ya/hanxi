@@ -40,16 +40,17 @@ type msgBoardStore struct {
 
 // persistedConfig 磁盘结构（指针字段：未落盘的键保持 nil，加载回落默认值）。
 type persistedConfig struct {
-	Text     *string `json:"text,omitempty"`
-	FontSize *int    `json:"fontSize,omitempty"`
-	Screen   *string `json:"screen,omitempty"`
-	Hotkey   *string `json:"hotkey,omitempty"`
+	Text        *string `json:"text,omitempty"`
+	FontSize    *int    `json:"fontSize,omitempty"`
+	Screen      *string `json:"screen,omitempty"`
+	Hotkey      *string `json:"hotkey,omitempty"`
+	EveryScreen *bool   `json:"everyScreen,omitempty"`
 }
 
-// defaultConfig 出厂偏好：正文空（展示时回落第一条预设）、64 DIP 大字、主屏、
-// Ctrl+Alt+B 热键。
+// defaultConfig 出厂偏好：正文空（展示时回落第一条预设）、64 DIP 大字、多屏同挂
+// （N29 默认全挂在位屏）、Ctrl+Alt+B 热键。
 func defaultConfig() Config {
-	return Config{FontSize: 64, Hotkey: defaultHotkey}
+	return Config{FontSize: 64, Hotkey: defaultHotkey, EveryScreen: true}
 }
 
 func newMsgBoardStore(dir string) *msgBoardStore {
@@ -78,6 +79,9 @@ func (s *msgBoardStore) load() error {
 	if pc.Hotkey != nil {
 		s.cfg.Hotkey = strings.TrimSpace(*pc.Hotkey)
 	}
+	if pc.EveryScreen != nil {
+		s.cfg.EveryScreen = *pc.EveryScreen
+	}
 	return nil
 }
 
@@ -94,10 +98,11 @@ func (s *msgBoardStore) Get() Config {
 // RegisterHotKey 注册结果为准（服务层负责回滚）。
 func (s *msgBoardStore) Set(cfg Config) (Config, error) {
 	next := Config{
-		Text:     strings.TrimSpace(cfg.Text),
-		FontSize: clampFontSize(cfg.FontSize),
-		Screen:   strings.TrimSpace(cfg.Screen),
-		Hotkey:   strings.TrimSpace(cfg.Hotkey),
+		Text:        strings.TrimSpace(cfg.Text),
+		FontSize:    clampFontSize(cfg.FontSize),
+		Screen:      strings.TrimSpace(cfg.Screen),
+		Hotkey:      strings.TrimSpace(cfg.Hotkey),
+		EveryScreen: cfg.EveryScreen,
 	}
 	if utf8.RuneCountInString(next.Text) > maxTextRunes {
 		return next, fmt.Errorf("留言文案过长（%d 字，上限 %d 字）——全屏大字放不下一页纸，请精简",
@@ -109,7 +114,7 @@ func (s *msgBoardStore) Set(cfg Config) (Config, error) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	pc := persistedConfig{Text: &next.Text, FontSize: &next.FontSize, Screen: &next.Screen, Hotkey: &next.Hotkey}
+	pc := persistedConfig{Text: &next.Text, FontSize: &next.FontSize, Screen: &next.Screen, Hotkey: &next.Hotkey, EveryScreen: &next.EveryScreen}
 	if err := jsonstore.Save(s.filePath, pc); err != nil {
 		return next, fmt.Errorf("保存留言板配置失败：%w", err)
 	}

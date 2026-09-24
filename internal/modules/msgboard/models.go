@@ -2,10 +2,14 @@ package msgboard
 
 // Config 留言板偏好（模块页读写的完整快照）：Text 为挂牌正文（留空回落第一条预设）。
 type Config struct {
-	Text     string `json:"text"`
-	FontSize int    `json:"fontSize"` // 正文字号（DIP px，钳位区间见 store）
-	Screen   string `json:"screen"`   // 目标显示器设备名（如 \\.\DISPLAY2）；空=主屏
-	Hotkey   string `json:"hotkey"`   // 全局热键加速器串（如 Ctrl+Alt+B）；空=停用热键
+	Text string `json:"text"`
+	// EveryScreen 多屏同时挂牌（N29）：真=每块在位显示器各挂一窗（窗组原子挂撤）；
+	// 假=只挂 Screen 选中的单屏（F8 旧口径，兼容"副屏跟随主屏选择"用法）。
+	// 默认真——多屏同时生效是本模块的主诉求，Screen 选择器在勾选态下不参与决策。
+	EveryScreen bool   `json:"everyScreen"`
+	FontSize    int    `json:"fontSize"` // 正文字号（DIP px，钳位区间见 store）
+	Screen      string `json:"screen"`   // 目标显示器设备名（如 \\.\DISPLAY2）；空=主屏
+	Hotkey      string `json:"hotkey"`   // 全局热键加速器串（如 Ctrl+Alt+B）；空=停用热键
 }
 
 // Status 留言板运行态（模块页状态区）。HotkeyActive 如实反映热键是否注册在位

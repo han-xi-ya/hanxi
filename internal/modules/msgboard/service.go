@@ -3,7 +3,9 @@ package msgboard
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -25,16 +27,18 @@ const (
 	eventChanged    = "msgboard:changed"
 )
 
-// MsgBoardService 桌面留言板：一键在目标显示器全屏挂出离岗告示牌。
+// MsgBoardService 桌面留言板：一键挂出离岗告示牌——多屏同挂（N29 默认，每屏一窗
+// 的窗组挂撤整组原子）或按偏好只挂单屏（F8 旧口径保留）。
 //
 // 三通道唤起：托盘/轮盘共用 extapi.TrayCommandsProvider 注册的 toggle 命令
 // （条目配置与分发走 internal/launcher 现成通道）；全局热键收编入
 // internal/hotkey 通用注册器槽位 msgboard/toggle（接线与语义见 hotkey.go）。
 //
-// 生命周期纪律：挂牌窗口按需创建、撤牌即真销毁（对齐 #53：注销 WindowClosing
+// 生命周期纪律：挂牌窗组按需创建、撤牌即整组真销毁（对齐 #53：注销 WindowClosing
 // 拦截 hook 后 Close 走 Wails 内部销毁路径，WebView2 内存归还，同名窗口可重建，
-// 不得白边/残影）；不养常驻隐藏窗。显隐判定走服务层状态机（shown），窗口 API
-// （Show/Close/Fullscreen 均为主线程 InvokeSync）一律在 s.mu 之外调用，防锁反转。
+// 不得白边/残影）；不养常驻隐藏窗。挂期间屏拓扑漂移由对账协程整组重挂。
+// 显隐判定走服务层状态机（shown），窗口 API（Show/Close/Fullscreen 均为主线程
+// InvokeSync）一律在 s.mu 之外调用，防锁反转。
 //
 // RPC 收口（Wave 3）：Toggle/Show/Dismiss 与全部前端绑定方法接统一调用门；
 // 热键回调与窗体事件（Closing hook、SetConfig 换屏重挂协程）走同名无门内部版。
@@ -49,11 +53,19 @@ type MsgBoardService struct {
 	opInFlight  bool // 串行挂牌操作租约；等待者由 cond 唤醒，不再静默丢弃 Dismiss
 	generation  uint64
 	shown       bool
-	board       *application.WebviewWindow
-	offClosing  func()           // WindowClosing 拦截 hook 的注销闭包（销毁前摘除，#53 通路）
+	boards      []boardWin       // 挂牌窗组（N29 多屏）：每屏一窗，挂撤整组原子
+	reconcile   chan struct{}    // 屏拓扑对账协程的生命周期通道（撤组即关）
 	hk          *hotkey.Registry // 全仓通用热键注册器（装配根注入，槽位记账归注册器）
 	keepAwakeOn bool             // 防休眠诉求是否在账（状态页如实回显）
 	holder      *extapi.LeaseHolder
+}
+
+// boardWin 挂牌窗组的单员：窗口句柄 + Closing hook 注销闭包 + 所在屏设备名
+// （对账与日志追溯用）。
+type boardWin struct {
+	win        *application.WebviewWindow
+	offClosing func()
+	device     string
 }
 
 // NewMsgBoardService 装配服务单例：构造仅读盘建 store，不碰窗口与热键
@@ -207,42 +219,53 @@ func (s *MsgBoardService) show() error {
 	}
 	s.mu.Unlock()
 
-	scr := findScreen(a.Screen, cfg.Screen)
-	if scr == nil {
+	targets := planScreenTargets(a.Screen.GetAll(), cfg)
+	if len(targets) == 0 {
 		return fmt.Errorf("未检测到可用显示器，无法挂牌")
 	}
 
-	board := a.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:             boardWindowName,
-		Title:            "留言牌",
-		X:                scr.Bounds.X,
-		Y:                scr.Bounds.Y,
-		Width:            scr.Bounds.Width,
-		Height:           scr.Bounds.Height,
-		Hidden:           true, // 建窗即隐藏，摆位完成后一次性露出，防半帧闪
-		Frameless:        true,
-		AlwaysOnTop:      true,
-		DisableResize:    true,
-		BackgroundType:   application.BackgroundTypeTransparent,            // 真透明：牌体观感全部由页面绘制（#50）
-		Windows:          application.WindowsWindow{HiddenOnTaskbar: true}, // 不进任务栏/Alt+Tab
-		URL:              boardWindowURL,
-		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
-	})
-	// Alt+F4 拦截为撤牌；销毁动作 go 异步，避免在 WM_CLOSE 派发栈内重入 Close。
-	offClosing := board.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
-		ev.Cancel()
-		go s.dismiss() // 窗体事件走无门内部版（撤牌线程不属 RPC 面，不得依赖运行态门）
-	})
+	// 窗组整建：一屏一窗（N29）。命名 boardWindowName 为首、后续带序号——
+	// 保持旧名单窗在单屏场景不变（外部按名定位过它的路径零漂移）。
+	boards := make([]boardWin, 0, len(targets))
+	for i, scr := range targets {
+		name := boardWindowName
+		if i > 0 {
+			name = fmt.Sprintf("%s-%d", boardWindowName, i)
+		}
+		board := a.Window.NewWithOptions(application.WebviewWindowOptions{
+			Name:             name,
+			Title:            "留言牌",
+			X:                scr.Bounds.X,
+			Y:                scr.Bounds.Y,
+			Width:            scr.Bounds.Width,
+			Height:           scr.Bounds.Height,
+			Hidden:           true, // 建窗即隐藏，摆位完成后一次性露出，防半帧闪
+			Frameless:        true,
+			AlwaysOnTop:      true,
+			DisableResize:    true,
+			BackgroundType:   application.BackgroundTypeTransparent,            // 真透明：牌体观感全部由页面绘制（#50）
+			Windows:          application.WindowsWindow{HiddenOnTaskbar: true}, // 不进任务栏/Alt+Tab
+			URL:              boardWindowURL,
+			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+		})
+		// Alt+F4 拦截为撤牌（任一窗撤=整组撤，杜绝"一块屏摘了另一块还挂着"）；
+		// 销毁动作 go 异步，避免在 WM_CLOSE 派发栈内重入 Close。
+		offClosing := board.RegisterHook(events.Common.WindowClosing, func(ev *application.WindowEvent) {
+			ev.Cancel()
+			go s.dismiss() // 窗体事件走无门内部版（撤牌线程不属 RPC 面，不得依赖运行态门）
+		})
 
-	board.Show()
-	// Fullscreen 由 Windows 实现按窗口所在显示器取 MonitorFromWindow +
-	// SetWindowPos 铺满整个物理监视器（含任务栏区域、跨缩放比精确），
-	// 比 DIP 尺寸手摆更可靠——这是"全屏挂牌"的语义本体。
-	board.Fullscreen()
-	// Wails 的 Focus 是裸 SetForegroundWindow，主窗藏托盘时被前台锁拒绝——
-	// 借 quickmenu 同款输入特权强制置前，否则页面 Esc 收不到。
-	if err := windows.SetForegroundForce(uintptr(board.NativeWindow())); err != nil {
-		slog.Debug("msgboard: 留言牌强制置前失败（依赖托盘/轮盘撤牌）", "err", err)
+		board.Show()
+		// Fullscreen 由 Windows 实现按窗口所在显示器取 MonitorFromWindow +
+		// SetWindowPos 铺满整个物理监视器（含任务栏区域、跨缩放比精确），
+		// 比 DIP 尺寸手摆更可靠——这是"全屏挂牌"的语义本体。
+		board.Fullscreen()
+		// Wails 的 Focus 是裸 SetForegroundWindow，主窗藏托盘时被前台锁拒绝——
+		// 借 quickmenu 同款输入特权强制置前，否则页面 Esc 收不到。
+		if err := windows.SetForegroundForce(uintptr(board.NativeWindow())); err != nil {
+			slog.Debug("msgboard: 留言牌强制置前失败（依赖托盘/轮盘撤牌）", "err", err, "screen", scr.Name)
+		}
+		boards = append(boards, boardWin{win: board, offClosing: offClosing, device: scr.Name})
 	}
 
 	// stop 可能在建窗期间宣告停用。提交前复核 generation；失效结果必须由
@@ -250,19 +273,140 @@ func (s *MsgBoardService) show() error {
 	s.mu.Lock()
 	stale := s.stopping || !s.started || s.generation != generation
 	if !stale {
-		s.board, s.offClosing, s.shown = board, offClosing, true
+		s.boards, s.shown = boards, true
 	}
 	s.mu.Unlock()
 	if stale {
-		offClosing()
-		board.Close()
+		closeBoards(boards)
 		return nil
 	}
 
 	s.acquireKeepAwake()
+	s.startReconcile(generation)
 	s.emitChanged()
-	slog.Info("msgboard: 已挂出留言牌", "screen", scr.Name, "primary", scr.IsPrimary)
+	devices := make([]string, 0, len(targets))
+	for _, t := range targets {
+		devices = append(devices, t.Name)
+	}
+	slog.Info("msgboard: 已挂出留言牌", "screens", strings.Join(devices, ","), "everyScreen", cfg.EveryScreen)
 	return nil
+}
+
+// closeBoards 拆一组挂牌窗：先摘 Closing hook 再 Close（#53 真销毁通路），
+// 半途失败继续拆余员——残窗比漏拆单窗更糟。
+func closeBoards(boards []boardWin) {
+	for _, b := range boards {
+		if b.offClosing != nil {
+			b.offClosing()
+		}
+		if b.win != nil {
+			b.win.Close()
+		}
+	}
+}
+
+// planScreenTargets 按偏好排定挂牌窗组的屏集合（纯函数，单测锁语义）：
+// EveryScreen=每屏一窗（主屏恒打头，序稳防无谓重挂）；否则单屏旧口径——
+// 设备名失配（拔屏/改名）回主屏，主屏异常退枚举首项，挂牌永远要有落点。
+func planScreenTargets(screens []*application.Screen, cfg Config) []*application.Screen {
+	var out []*application.Screen
+	for _, scr := range screens {
+		if scr != nil {
+			out = append(out, scr)
+		}
+	}
+	if cfg.EveryScreen {
+		// 主屏置首、其余按枚举序；多屏恒挂不回头找"配置里那块屏"
+		for i, scr := range out {
+			if scr.IsPrimary && i > 0 {
+				out[0], out[i] = out[i], out[0]
+			}
+		}
+		return out
+	}
+	for _, scr := range out {
+		if cfg.Screen != "" && scr.Name == cfg.Screen {
+			return []*application.Screen{scr}
+		}
+	}
+	for _, scr := range out {
+		if scr.IsPrimary {
+			return []*application.Screen{scr}
+		}
+	}
+	if len(out) > 0 {
+		return out[:1]
+	}
+	return nil
+}
+
+// startReconcile 挂起屏拓扑对账协程（N29"拔屏收窗组"）：每 5s 比对在位屏集
+// 与窗组屏集（设备名集合），漂移即整组拆挂——不做单窗增删，避免"新屏没牌、
+// 幽灵屏残留"的中间态。generation 守卫防旧协程动新组；通道双保险可被撤组
+// 直接叫醒。仅由 show 提交成功后启动，dismissOwned 负责关停。
+func (s *MsgBoardService) startReconcile(generation uint64) {
+	stop := make(chan struct{})
+	s.mu.Lock()
+	s.reconcile = stop
+	s.mu.Unlock()
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				a := application.Get()
+				if a == nil || a.Screen == nil {
+					continue
+				}
+				cfg := s.store.Get()
+				s.mu.Lock()
+				active := s.started && !s.stopping && s.shown && s.generation == generation
+				var devices []string
+				for _, b := range s.boards {
+					devices = append(devices, b.device)
+				}
+				s.mu.Unlock()
+				if !active {
+					return
+				}
+				var now []string
+				for _, t := range planScreenTargets(a.Screen.GetAll(), cfg) {
+					now = append(now, t.Name)
+				}
+				if sameDeviceSet(devices, now) {
+					continue
+				}
+				slog.Info("msgboard: 显示器拓扑变化，窗组整组重挂",
+					"was", strings.Join(devices, ","), "now", strings.Join(now, ","))
+				s.dismiss()
+				if err := s.show(); err != nil {
+					slog.Warn("msgboard: 屏拓扑变化后重挂失败", "err", err)
+				}
+				return
+			}
+		}
+	}()
+}
+
+// sameDeviceSet 设备名集合等值（顺序无关）：两侧长度不同必不等。
+func sameDeviceSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, x := range a {
+		seen[x]++
+	}
+	for _, y := range b {
+		seen[y]--
+		if seen[y] < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // Dismiss 撤牌并真销毁窗口（RPC 导出版：接统一调用门）。
@@ -290,23 +434,23 @@ func (s *MsgBoardService) dismiss() {
 
 func (s *MsgBoardService) dismissOwned() {
 	s.mu.Lock()
-	board, off := s.board, s.offClosing
-	hadState := board != nil || s.shown || s.keepAwakeOn
-	s.board, s.offClosing, s.shown = nil, nil, false
+	boards := s.boards
+	rc := s.reconcile
+	hadState := len(boards) > 0 || s.shown || s.keepAwakeOn
+	s.boards, s.shown, s.reconcile = nil, false, nil
 	s.mu.Unlock()
 
+	// 对账协程先停：拆组重挂途中不许它再插一手（通道幂等 close 由持有判定保证）。
+	if rc != nil {
+		close(rc)
+	}
 	// 即使本地 keepAwakeOn 为 false 也幂等 Release：Acquire 成功与状态标记之间
 	// 若遇停用接管，仍由聚合器持有人账本兜底收口。
 	s.releaseKeepAwake()
-	if off != nil {
-		off()
-	}
-	if board != nil {
-		board.Close()
-	}
+	closeBoards(boards)
 	if hadState {
 		s.emitChanged()
-		slog.Info("msgboard: 留言牌已撤下（窗口已真销毁，WebView2 视图内存释放）")
+		slog.Info("msgboard: 留言牌已撤下（窗组已整组真销毁，WebView2 视图内存释放）", "count", len(boards))
 	}
 }
 
@@ -444,14 +588,14 @@ func (s *MsgBoardService) SetConfig(cfg Config) error {
 		if herr := s.applyHotkey(next.Hotkey); herr != nil {
 			// 新键不可用：注册器保旧绑定原样在位（先注册新键成功才注销旧键），
 			// 配置热键字段回滚为旧值，错误上抛由页面红字提示改键。
-			if _, rerr := s.store.Set(Config{Text: next.Text, FontSize: next.FontSize, Screen: next.Screen, Hotkey: old.Hotkey}); rerr != nil {
+			if _, rerr := s.store.Set(Config{Text: next.Text, FontSize: next.FontSize, Screen: next.Screen, Hotkey: old.Hotkey, EveryScreen: next.EveryScreen}); rerr != nil {
 				slog.Warn("msgboard: 热键回滚落盘失败", "err", rerr)
 			}
 			return fmt.Errorf("热键 %q 注册失败（可能已被其它程序占用；留空表示停用热键）：%v", next.Hotkey, herr)
 		}
 	}
 	s.emitChanged()
-	if old.Screen != next.Screen {
+	if old.Screen != next.Screen || old.EveryScreen != next.EveryScreen {
 		s.mu.Lock()
 		shown := s.shown
 		generation := s.generation
@@ -531,31 +675,6 @@ func (s *MsgBoardService) GetBoardContent() (BoardContent, error) {
 }
 
 // ---------- 内部小件 ----------
-
-// findScreen 按设备名取显示器；查不到（拔屏/改名）回退主屏，主屏异常再退
-// 枚举首项——挂牌永远要有落点，绝不因配置里的旧设备名而拒绝服务。
-func findScreen(sm *application.ScreenManager, device string) *application.Screen {
-	if sm == nil {
-		return nil
-	}
-	screens := sm.GetAll()
-	if device != "" {
-		for _, scr := range screens {
-			if scr != nil && scr.Name == device {
-				return scr
-			}
-		}
-	}
-	if p := sm.GetPrimary(); p != nil {
-		return p
-	}
-	for _, scr := range screens {
-		if scr != nil {
-			return scr
-		}
-	}
-	return nil
-}
 
 func (s *MsgBoardService) emitChanged() {
 	if a := application.Get(); a != nil && a.Event != nil {

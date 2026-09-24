@@ -36,7 +36,7 @@ const TYPES: BoardType[] = [
 
 const status = shallowRef<Status | null>(null)
 const screens = shallowRef<ScreenInfo[]>([])
-const form = ref<Config>({ text: '', fontSize: 64, screen: '', hotkey: '' })
+const form = ref<Config>({ text: '', fontSize: 64, screen: '', hotkey: '', everyScreen: true })
 const loading = ref(true)
 const saving = ref(false)
 const errorMsg = ref('')
@@ -49,7 +49,8 @@ const textLen = computed(() => Array.from(form.value.text.trim()).length)
 const textOver = computed(() => textLen.value > TEXT_LIMIT)
 
 function sameConfig(a: Config, b: Config): boolean {
-  return a.text === b.text && a.fontSize === b.fontSize && a.screen === b.screen && a.hotkey === b.hotkey
+  return a.text === b.text && a.fontSize === b.fontSize && a.screen === b.screen
+    && a.hotkey === b.hotkey && !!a.everyScreen === !!b.everyScreen
 }
 
 async function pullAll() {
@@ -268,10 +269,17 @@ onMounted(refresh)
                   @input="onFormInput"
                 />
               </div>
-              <div class="setting-row">
+              <label class="setting-row setting-row-tappable">
+                <span class="setting-main">
+                  <span class="setting-name">多屏同时挂牌</span>
+                  <span class="setting-desc">每块在位显示器各挂一窗，挂撤整组生效；拔掉副屏时窗组自动收回</span>
+                </span>
+                <input v-model="form.everyScreen" type="checkbox" aria-label="多屏同时挂牌" class="switch" @change="onFormInput" />
+              </label>
+              <div v-if="!form.everyScreen" class="setting-row">
                 <span class="setting-main">
                   <span class="setting-name">目标显示器</span>
-                  <span class="setting-desc">牌子挂在哪块屏；默认跟随主屏，可指名副屏</span>
+                  <span class="setting-desc">只挂一块屏时生效；默认跟随主屏，可指名副屏</span>
                 </span>
                 <select v-model="form.screen" class="select-input" aria-label="目标显示器" @change="onFormInput">
                   <option value="">主屏（默认）</option>
@@ -279,7 +287,7 @@ onMounted(refresh)
                   <option v-for="s in secondaryScreens" :key="s.device" :value="s.device">{{ screenLabel(s) }}</option>
                 </select>
               </div>
-              <p v-if="screenMissing" class="field-warn">所选显示器当前不在位（可能已拔掉）——挂牌将自动回落主屏。</p>
+              <p v-if="!form.everyScreen && screenMissing" class="field-warn">所选显示器当前不在位（可能已拔掉）——挂牌将自动回落主屏。</p>
               <div class="setting-row">
                 <span class="setting-main">
                   <span class="setting-name">全局热键</span>
@@ -323,7 +331,7 @@ onMounted(refresh)
         <details>
           <summary class="sec-title usage-summary">使用说明与行为契约</summary>
           <ul class="usage-list">
-            <li>牌体全屏覆盖目标显示器（含任务栏区域）上的<b>压暗层</b>，便利贴居中央；<kbd>Esc</kbd> 或点击任意处即撤；窗口不进任务栏与 Alt+Tab。</li>
+            <li>牌体全屏覆盖在位显示器（含任务栏区域）上的<b>压暗层</b>，便利贴居中央；多屏默认同时挂出、挂撤整组生效；<kbd>Esc</kbd> 或点击任意处即整组撤牌；窗口不进任务栏与 Alt+Tab。</li>
             <li>挂出期间系统不休眠、显示器不息屏（平台层引用计数聚合器，撤牌/停用/退出即释放）。</li>
             <li>撤牌即真销毁窗口、再唤即重建——不留隐藏窗占内存，也不得白边残影（踩坑 #50）。</li>
             <li>三条唤起通道：本页按钮、全局热键（高级设置）、托盘右键/快捷轮盘命令。</li>

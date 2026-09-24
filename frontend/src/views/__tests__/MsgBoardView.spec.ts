@@ -31,7 +31,7 @@ vi.mock('../../../bindings/hanxi/internal/modules/msgboard', () => ({
 }))
 
 const status = (over = {}) => ({ shown: false, hotkey: 'Ctrl+Alt+B', hotkeyActive: true, keepAwake: false, ...over })
-const config = (over = {}) => ({ text: '马上回来', fontSize: 64, screen: '', hotkey: 'Ctrl+Alt+B', ...over })
+const config = (over = {}) => ({ text: '马上回来', fontSize: 64, screen: '', hotkey: 'Ctrl+Alt+B', everyScreen: true, ...over })
 const screens = [
   { device: '\\\\.\\DISPLAY1', width: 2560, height: 1440, isPrimary: true },
   { device: '\\\\.\\DISPLAY2', width: 1920, height: 1080, isPrimary: false },
@@ -59,6 +59,36 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+describe('多屏同时挂牌（N29）', () => {
+  it('everyScreen 默认真：目标显示器选择器缺席；关勾后出现且只列副屏', async () => {
+    const w = await mountView()
+    expect(w.find('input[aria-label="多屏同时挂牌"]').exists()).toBe(true)
+    expect((w.find('input[aria-label="多屏同时挂牌"]').element as HTMLInputElement).checked).toBe(true)
+    expect(w.find('select[aria-label="目标显示器"]').exists()).toBe(false)
+    await w.find('input[aria-label="多屏同时挂牌"]').setValue(false)
+    const sel = w.find('select[aria-label="目标显示器"]')
+    expect(sel.exists()).toBe(true)
+    // 下拉只列副屏（主屏走"默认"空值项）——旧口径在单屏模式原样保留
+    const options = sel.findAll('option')
+    expect(options).toHaveLength(2)
+    expect(options[0].attributes('value')).toBe('')
+    expect(options[1].text()).toContain('DISPLAY2')
+    w.unmount()
+  })
+
+  it('勾动态变化计入脏判定，保存全量快照携 everyScreen', async () => {
+    const w = await mountView()
+    await w.find('input[aria-label="多屏同时挂牌"]').setValue(false)
+    await flushPromises()
+    const save = w.findAll('button').find((b) => b.text().includes('保存'))!
+    await save.trigger('click')
+    await flushPromises()
+    expect(api.SetConfig).toHaveBeenCalledTimes(1)
+    expect(api.SetConfig.mock.calls[0][0]).toMatchObject({ everyScreen: false })
+    w.unmount()
+  })
+})
+
 describe('MsgBoardView', () => {
   it('挂载并行拉取状态/配置/显示器并回显表单；预览与正文同源', async () => {
     const wrapper = await mountView()
@@ -70,11 +100,6 @@ describe('MsgBoardView', () => {
     expect(wrapper.text()).not.toContain('热键未在位')
     // 实时预览渲染当前草稿正文（BoardCard 同源画法）
     expect(wrapper.find('.bc-title').text()).toBe('马上回来')
-    // 下拉只列副屏（主屏走"默认"空值项）
-    const options = wrapper.findAll('.select-input option')
-    expect(options).toHaveLength(2)
-    expect(options[0].attributes('value')).toBe('')
-    expect(options[1].text()).toContain('DISPLAY2')
     wrapper.unmount()
   })
 
@@ -119,7 +144,7 @@ describe('MsgBoardView', () => {
     await flushPromises()
     expect(api.SetConfig).toHaveBeenCalledTimes(1)
     expect(api.SetConfig.mock.calls[0][0]).toEqual({
-      text: '🍜 干饭去了\n一小时后回', fontSize: 64, screen: '', hotkey: 'Ctrl+Alt+B',
+      text: '🍜 干饭去了\n一小时后回', fontSize: 64, screen: '', hotkey: 'Ctrl+Alt+B', everyScreen: true,
     })
     expect(wrapper.text()).toContain('已保存')
     wrapper.unmount()

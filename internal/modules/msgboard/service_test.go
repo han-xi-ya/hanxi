@@ -211,10 +211,10 @@ func TestServiceStopWaitsForInflightShowCleanup(t *testing.T) {
 		t.Fatalf("stop 返回后仍有 KeepAwake 持有人：%v", holders)
 	}
 	s.mu.Lock()
-	board := s.board
+	boards := s.boards
 	started, stopping, inFlight := s.started, s.stopping, s.opInFlight
 	s.mu.Unlock()
-	if board != nil || started || stopping || inFlight {
-		t.Fatalf("stop 最终状态异常：board=%v started=%v stopping=%v inFlight=%v", board, started, stopping, inFlight)
+	if len(boards) != 0 || started || stopping || inFlight {
+		t.Fatalf("stop 最终状态异常：boards=%v started=%v stopping=%v inFlight=%v", boards, started, stopping, inFlight)
 	}
 }
