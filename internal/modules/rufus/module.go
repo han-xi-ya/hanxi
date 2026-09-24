@@ -52,7 +52,7 @@ func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "rufus-manager", Title: "Rufus 启动盘", Route: "/ext/rufus", Icon: "i:disc", Section: extapi.SectionExt, Order: 88, Group: extapi.GroupSystem},
+		{ID: "rufus-manager", Title: "Rufus 启动盘", Route: "/ext/rufus", Icon: "app:rufus", Section: extapi.SectionExt, Order: 88, Group: extapi.GroupSystem},
 	}
 }
 

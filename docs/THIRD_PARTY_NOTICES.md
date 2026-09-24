@@ -192,7 +192,7 @@ Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下�
 
 当前 Hanxi 仓库和安装包不包含 Douzy 任何二进制。若未来改为预装或随 Hanxi 再分发，发布流程须随附 MIT 许可证文本与版权声明，并另行评估内测产品的分发责任。
 
-## 托管工具真图标（N27 批 A 入库件）
+## 托管工具真图标（N27 批 A + 批 B-2 入库件）
 
 Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**（32px，
 一次性从官方发行 exe 用 shell32!ExtractIconEx 提取，见 scripts/extract_app_icons.ps1），
@@ -206,9 +206,32 @@ Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位�
 | everything.png | Everything (voidtools) | 免费软件（见上节） | |
 | snipaste.png | Snipaste | 免费软件自有 EULA（见上节） | 风险最高的入库件；如权利方异议即摘除回落通用徽标 |
 | markeron.png | MarkerOn | 见上节 | |
+| bcu.png | Bulk Crap Uninstaller | Apache-2.0（见上节） | 识别性使用 |
+| douzy.png | Douzy 全能下载器 | MIT（见上节） | 识别性使用；提取源为官方 NSIS 安装器（上游无便携形态，主图标随安装器同源） |
+| flclash.png | FlClash | GPL-3.0（见 GPL 族节） | 识别性使用 |
+| mangodisk.png | MangoDisk | GPL-3.0（见上节） | 识别性使用 |
+| papertodo.png | PaperTodo | PolyForm Noncommercial 1.0.0 + 个人附加许可（见上节） | 识别性使用；以 Hanxi 个人非商业项目形态入库，如权利方异议即摘除 |
+| paseo.png | Paseo | Apache-2.0（见上节） | 识别性使用 |
+| piclite.png | PicLite | GPL-3.0（见 GPL 族节） | 识别性使用 |
+| quicklook.png | QuickLook | GPL-3.0（见 GPL 族节） | 识别性使用 |
+| rufus.png | Rufus | GPL-3.0（见 GPL 族节） | 识别性使用 |
+| subnetdesk.png | SubnetDesk | AGPL-3.0（见 AGPL 族节） | 识别性使用；提取源为上游官方便携单文件 packer exe（非 Hanxi 构建件） |
+| translucenttb.png | TranslucentTB | GPL-3.0（见 GPL 族节） | 识别性使用 |
+| windterm.png | WindTerm | 仓库根无 LICENSE 文件，README 自述完全免费商用/非商用（开源部分 Apache-2.0） | 识别性使用；许可口径以自述为据，随批登记留痕 |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
+| ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不落 generic 之外的展示面：保持矢量 `i:gauge`（rammap 系位图一律同判） |
 
-未入库（如实登记）：RAMMap 等 **Sysinternals 系**——微软条款禁再分发其位图，
-落通用徽标；ddnsgo/frpc 为控制台程序（无 GUI 主图标），同样落通用徽标；其余
-托管模块将在批 B 逐个提取+过审后扩充本表。若随 Hanxi 安装包再分发构成任何
-权利方异议，按"摘除位图 → 回落 generic"处理，不动摇功能。
+未入库（如实登记）：**LiteMonitor**——上游仓库未声明 LICENSE（默认"保留所有
+权利"，本模块上节已明示不再分发红线），保持矢量 `i:activity`；**果核看图**
+——闭源 freeware 无再分发授权（上节风险说明），保持矢量 `i:image`；
+**Recordly**——AGPL 附加条款禁将 Recordly 名称/品牌用于自有界面展示（上节
+"刻意不做品牌融合"），保持矢量 `i:video`，将来装了也不入库；**NanaZip**——
+发行形态为 MSIXBundle，无提取通道，且其图标资产含 CC BY-ND 4.0（ND 禁改作），
+保持矢量 `i:archive`；**Bili23 / RustDesk / Termora**——提取时点本机无已装
+便携载荷可提（许可族 GPL/AGPL 已过审，属可入库类别），保持矢量，待装机窗口
+期补提后增补本表；**ddnsgo/frpc** 为控制台程序（无 GUI 主图标），落通用徽标；
+**vscode**——微软商标条款对品牌资产同样收紧，与 Sysinternals 同判不入库，
+保持矢量 `i:code`；**softver/msgboard/quickmenu/sysinfo/envcheck/wechat/wifi 等
+Hanxi 自研功能模块**（wechat/wifi 为桥接/诊断入口，非托管载荷）永不入库。
+若随 Hanxi 安装包再分发构成任何权利方异议，
+按"摘除位图 → 回落 generic"处理，不动摇功能。

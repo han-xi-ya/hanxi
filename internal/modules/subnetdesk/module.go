@@ -56,7 +56,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "subnetdesk-manager", Title: "SubnetDesk 局域网", Route: "/ext/subnetdesk", Icon: "i:network", Section: extapi.SectionExt, Order: 86, Group: extapi.GroupNetwork},
+		{ID: "subnetdesk-manager", Title: "SubnetDesk 局域网", Route: "/ext/subnetdesk", Icon: "app:subnetdesk", Section: extapi.SectionExt, Order: 86, Group: extapi.GroupNetwork},
 	}
 }
 

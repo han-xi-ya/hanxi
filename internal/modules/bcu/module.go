@@ -48,7 +48,7 @@ func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "bcu-manager", Title: "BC 卸载工具", Route: "/ext/bcu", Icon: "i:trash-2", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupSystem},
+		{ID: "bcu-manager", Title: "BC 卸载工具", Route: "/ext/bcu", Icon: "app:bcu", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupSystem},
 	}
 }
 

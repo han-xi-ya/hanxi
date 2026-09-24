@@ -47,7 +47,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "douzy-manager", Title: "Douzy 全能下载器", Route: "/ext/douzy", Icon: "i:film", Section: extapi.SectionExt, Order: 93, Group: extapi.GroupMedia},
+		{ID: "douzy-manager", Title: "Douzy 全能下载器", Route: "/ext/douzy", Icon: "app:douzy", Section: extapi.SectionExt, Order: 93, Group: extapi.GroupMedia},
 	}
 }
 

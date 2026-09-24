@@ -65,7 +65,7 @@ func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "papertodo-manager", Title: "PaperTodo 便签", Route: "/ext/papertodo", Icon: "i:clipboard-list", Section: extapi.SectionExt, Order: 79, Group: extapi.GroupEfficiency},
+		{ID: "papertodo-manager", Title: "PaperTodo 便签", Route: "/ext/papertodo", Icon: "app:papertodo", Section: extapi.SectionExt, Order: 79, Group: extapi.GroupEfficiency},
 	}
 }
 

@@ -57,7 +57,7 @@ func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "piclite-manager", Title: "PicLite 压图", Route: "/ext/piclite", Icon: "i:image-down", Section: extapi.SectionExt, Order: 81, Group: extapi.GroupMedia},
+		{ID: "piclite-manager", Title: "PicLite 压图", Route: "/ext/piclite", Icon: "app:piclite", Section: extapi.SectionExt, Order: 81, Group: extapi.GroupMedia},
 	}
 }
 

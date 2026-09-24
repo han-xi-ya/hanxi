@@ -53,7 +53,7 @@ func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（开发者组排序接 paseo 之后）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "windterm-manager", Title: "WindTerm 终端", Route: "/ext/windterm", Icon: "i:square-terminal", Section: extapi.SectionExt, Order: 94, Group: extapi.GroupDeveloper},
+		{ID: "windterm-manager", Title: "WindTerm 终端", Route: "/ext/windterm", Icon: "app:windterm", Section: extapi.SectionExt, Order: 94, Group: extapi.GroupDeveloper},
 	}
 }
 

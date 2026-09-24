@@ -53,7 +53,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "translucenttb-manager", Title: "TranslucentTB 透明栏", Route: "/ext/translucenttb", Icon: "i:layers", Section: extapi.SectionExt, Order: 91, Group: extapi.GroupDesktop},
+		{ID: "translucenttb-manager", Title: "TranslucentTB 透明栏", Route: "/ext/translucenttb", Icon: "app:translucenttb", Section: extapi.SectionExt, Order: 91, Group: extapi.GroupDesktop},
 	}
 }
 

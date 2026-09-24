@@ -52,7 +52,7 @@ func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "flclash-manager", Title: "FlClash 代理", Route: "/ext/flclash", Icon: "i:shield", Section: extapi.SectionExt, Order: 80, Group: extapi.GroupNetwork},
+		{ID: "flclash-manager", Title: "FlClash 代理", Route: "/ext/flclash", Icon: "app:flclash", Section: extapi.SectionExt, Order: 80, Group: extapi.GroupNetwork},
 	}
 }
 

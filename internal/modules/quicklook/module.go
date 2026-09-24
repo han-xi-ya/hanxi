@@ -61,7 +61,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "quicklook-manager", Title: "QuickLook 预览", Route: "/ext/quicklook", Icon: "i:eye", Section: extapi.SectionExt, Order: 83, Group: extapi.GroupDesktop},
+		{ID: "quicklook-manager", Title: "QuickLook 预览", Route: "/ext/quicklook", Icon: "app:quicklook", Section: extapi.SectionExt, Order: 83, Group: extapi.GroupDesktop},
 	}
 }
 

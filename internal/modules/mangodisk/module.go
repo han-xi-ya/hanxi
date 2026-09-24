@@ -37,7 +37,7 @@ func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 
 // Nav 声明侧边栏入口（Order/Group 决定桌面组内排序，详见 extapi.NavEntry 契约）。
 func (m *Module) Nav() []extapi.NavEntry {
-	return []extapi.NavEntry{{ID: "mangodisk-manager", Title: "MangoDisk", Route: "/ext/mangodisk", Icon: "i:hard-drive", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupDesktop}}
+	return []extapi.NavEntry{{ID: "mangodisk-manager", Title: "MangoDisk", Route: "/ext/mangodisk", Icon: "app:mangodisk", Section: extapi.SectionExt, Order: 75, Group: extapi.GroupDesktop}}
 }
 
 // 以下方法实现 extapi.Module 契约，逐项语义见接口文档。
