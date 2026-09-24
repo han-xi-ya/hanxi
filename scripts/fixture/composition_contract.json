@@ -111,6 +111,7 @@
     "snipaste:instance-state",
     "snipaste:version-download",
     "softver:dir-scan",
+    "softver:installer-download",
     "subnetdesk:instance-state",
     "subnetdesk:version-download",
     "termora:instance-state",
@@ -162,6 +163,6 @@
   },
   "counts": {
     "modules": 45,
-    "events": 83
+    "events": 84
   }
 }

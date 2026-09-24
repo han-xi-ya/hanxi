@@ -231,6 +231,7 @@ func RegisterEvents() {
 	application.RegisterEvent[ocr.DropResult]("ocr:file-drop-result")
 	application.RegisterEvent[ocr.SnipResult]("ocr:snip-result")
 	application.RegisterEvent[softver.ScanProgress]("softver:dir-scan")
+	application.RegisterEvent[softver.InstallerProgress]("softver:installer-download")
 }
 
 // Options 控制应用启动时行为。

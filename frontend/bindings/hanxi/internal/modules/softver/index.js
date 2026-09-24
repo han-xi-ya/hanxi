@@ -22,6 +22,21 @@ import * as $models from "./models.js";
  */
 
 /**
+ * InstallerFile 一次成功下载的官方安装包落位记录（N38：只搬包到下载目录，
+ * 不托管安装/启动——装不装、何时装全由用户双击决定）。
+ * Note 恒为如实的校验声明：微信官方直链从不旁挂摘要值，工具只能核字节数与
+ * 可执行文件头，绝不冒充"校验通过"。
+ * @typedef {$models.InstallerFile} InstallerFile
+ */
+
+/**
+ * InstallerProgress softver:installer-download 事件载荷（安装包下载进度流）。
+ * State：downloading | done | canceled | error；done/canceled/error 为终态。
+ * done 携带 File（供前端直接写回快照，与 dir-scan 同构）。
+ * @typedef {$models.InstallerProgress} InstallerProgress
+ */
+
+/**
  * LocalInstall 本机一套微信安装（注册表命中一条即一套；3.x 与 4.x 可共存）。
  * @typedef {$models.LocalInstall} LocalInstall
  */

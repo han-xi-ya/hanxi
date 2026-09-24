@@ -4,10 +4,11 @@
 
 /**
  * SoftverService Wails 绑定服务：微信（首个跟踪目标）的本机双口径版本、
- * 目录槽位与大小、官方最新版对照。探测/取页函数一律字段注入，
- * 单测替换后即可离线断言；页面进入零隐式外呼（官方取数只在显式 RefreshOfficial）。
- * 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；扫描 goroutine 与
- * 生命周期取消（cancelAllDirScans）走未接门的内部路径。
+ * 目录槽位与大小、官方最新版对照与安装包直连下载（N38：拿完包走人，
+ * 不托管安装/启动）。探测/取页/下载函数一律字段注入，单测替换后即可离线
+ * 断言；页面进入零隐式外呼（官方取数与下载都只在显式动作触发）。
+ * 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；扫描/下载 goroutine
+ * 与生命周期取消（cancelAllDirScans/cancelActiveDownload）走未接门的内部路径。
  * @module
  */
 
@@ -26,6 +27,15 @@ import * as $models from "./models.js";
  */
 export function CancelDirScan(id) {
     return $Call.ByID(696230779, id);
+}
+
+/**
+ * CancelInstallerDownload 请求取消进行中的下载（临时件由下载器清理；
+ * canceled 终态事件由执行协程统一发出，此处不重复播报）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function CancelInstallerDownload() {
+    return $Call.ByID(638365389);
 }
 
 /**
@@ -55,6 +65,15 @@ export function RevealDir(id) {
 }
 
 /**
+ * RevealInstallerFile 在资源管理器中定位最近一次下载的安装包（"打开位置"）。
+ * 路径只认后端成功落位记录，拒收任意路径——与 RevealDir 的红线一致。
+ * @returns {$CancellablePromise<void>}
+ */
+export function RevealInstallerFile() {
+    return $Call.ByID(3314793946);
+}
+
+/**
  * Snapshot 返回页面全量数据：本机探测（快、无网络）× 官方缓存 × 对比结论。
  * 目录槽位自动挂接缓存的扫描结果；不隐式发起官方页抓取。
  * @returns {$CancellablePromise<$models.Snapshot>}
@@ -72,4 +91,15 @@ export function Snapshot() {
  */
 export function StartDirScan(id) {
     return $Call.ByID(1237375271, id);
+}
+
+/**
+ * StartInstallerDownload 异步下载官方直链安装包到系统下载目录（进度/终态经
+ * softver:installer-download 事件推送）。直链取官方缓存读数，未先 RefreshOfficial
+ * 或页面改版没解析出直链一律如实报错——不猜链接。同一时刻只允许一个下载。
+ * 刻意不提供"运行安装器"：边界止于把包交还用户（打开位置由 RevealInstallerFile 负责）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function StartInstallerDownload() {
+    return $Call.ByID(1058731225);
 }

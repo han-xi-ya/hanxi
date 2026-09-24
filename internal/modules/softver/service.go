@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,11 +14,17 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"hanxi/internal/extapi"
+	"hanxi/internal/notify"
 	"hanxi/internal/platform/versioncmp"
 )
 
 // EventDirScan 目录大小扫描进度事件名（app.go 注册载荷类型）。
 const EventDirScan = "softver:dir-scan"
+
+// EventInstallerDownload 安装包下载进度事件名（app.go 注册载荷类型）。
+// 声明与 s.emit 调用同文件——composition contract 的事件提取按"常量定义与
+// emit 调用同文件"解析，跨文件引用会漏收（download.go 承载下载引擎本体）。
+const EventInstallerDownload = "softver:installer-download"
 
 // scanProgressInterval 运行中进度的推送节流（终态必发，不限流）。
 const scanProgressInterval = 250 * time.Millisecond
@@ -29,6 +36,21 @@ const maxConcurrentDirScans = 1
 // urlOpener 平台外呼最小面（wsl/envcheck 同款解耦，单测注入 fake）。
 type urlOpener interface {
 	OpenURL(url string) error
+}
+
+// installerIntegrityNote 下载完成后的如实校验声明（UI 与事件消息共用单一来源）：
+// 官方直链从不旁挂摘要值，能核的只有字节数与可执行文件头，绝不冒充"校验通过"。
+const installerIntegrityNote = "官方直链未提供校验值：已核对传输字节数与可执行文件头（MZ），未做 SHA-256 校验"
+
+// downloadJob 一次进行中的安装包下载（单槽位：同一时刻至多一个下载，
+// 路径与直链在登记时定死，goroutine 不再回读可变的官方缓存）。
+type downloadJob struct {
+	ctx      context.Context
+	cancel   context.CancelFunc
+	url      string
+	version  string
+	fileName string
+	destPath string
 }
 
 // localData 一次本机探测的产物（探测函数按平台注入，Windows 出全量，其余出错误）。
@@ -50,10 +72,11 @@ type scanJob struct {
 }
 
 // SoftverService Wails 绑定服务：微信（首个跟踪目标）的本机双口径版本、
-// 目录槽位与大小、官方最新版对照。探测/取页函数一律字段注入，
-// 单测替换后即可离线断言；页面进入零隐式外呼（官方取数只在显式 RefreshOfficial）。
-// 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；扫描 goroutine 与
-// 生命周期取消（cancelAllDirScans）走未接门的内部路径。
+// 目录槽位与大小、官方最新版对照与安装包直连下载（N38：拿完包走人，
+// 不托管安装/启动）。探测/取页/下载函数一律字段注入，单测替换后即可离线
+// 断言；页面进入零隐式外呼（官方取数与下载都只在显式动作触发）。
+// 业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）；扫描/下载 goroutine
+// 与生命周期取消（cancelAllDirScans/cancelActiveDownload）走未接门的内部路径。
 type SoftverService struct {
 	holder        *extapi.LeaseHolder
 	opener        urlOpener
@@ -63,6 +86,12 @@ type SoftverService struct {
 	canonicalPath func(string) (string, error)
 	emit          func(name string, payload any)
 	reveal        func(path string) error
+
+	// 下载安装包面（N38）：目录解析与"资源管理器定位文件"按平台注入，
+	// downloadFile 字段注入后单测不碰网络。
+	downloadsDir func() (string, error)
+	revealFile   func(path string) error
+	downloadFile installerDownloader
 
 	mu sync.Mutex
 	// local 最近一次探测结果：StartDirScan/CancelDirScan/RevealDir 只认这里的
@@ -78,6 +107,10 @@ type SoftverService struct {
 	activePaths  map[string]string
 	runningScans int
 
+	// dl 进行中的安装包下载（nil = 空闲）；downloaded 最近一次成功落位记录。
+	dl         *downloadJob
+	downloaded *InstallerFile
+
 	official    *OfficialRelease
 	officialErr string
 }
@@ -92,6 +125,8 @@ func NewSoftverService(opener urlOpener, holder *extapi.LeaseHolder) *SoftverSer
 		canonicalPath: canonicalPathKey,
 		emit:          emitEvent,
 		reveal:        revealInExplorer,
+		revealFile:    revealFileInExplorer,
+		downloadFile:  downloadInstallerFile,
 		sizes:         map[string]*DirSize{},
 		scans:         map[string]*scanJob{},
 		activePaths:   map[string]string{},
@@ -130,6 +165,12 @@ func emitEvent(name string, payload any) {
 // revealInExplorer 资源管理器打开目录（包级变量，单测替换避免真拉 explorer）。
 var revealInExplorer = func(path string) error {
 	return exec.Command("explorer.exe", filepath.Clean(path)).Start()
+}
+
+// revealFileInExplorer 资源管理器打开父目录并高亮定位文件（explorer /select
+// 习语，同 windows.RevealFile；包级变量便于单测替换）。
+var revealFileInExplorer = func(path string) error {
+	return exec.Command("explorer.exe", "/select,"+filepath.Clean(path)).Start()
 }
 
 // ---- 对外绑定面 ----
@@ -175,6 +216,8 @@ func (s *SoftverService) querySnapshot() (Snapshot, error) {
 		OfficialError: offErr,
 		Update:        updateHintFor(data.Installs, off),
 		Scanning:      scanning,
+		Downloading:   s.dl != nil,
+		Downloaded:    s.downloaded,
 		Notes:         data.Notes,
 	}, nil
 }
@@ -472,6 +515,174 @@ func (s *SoftverService) findSlotLocked(id string) (DirSlot, bool) {
 		}
 	}
 	return DirSlot{}, false
+}
+
+// ---- 下载安装包（N38：只搬包到下载目录，不托管安装/启动） ----
+
+// StartInstallerDownload 异步下载官方直链安装包到系统下载目录（进度/终态经
+// softver:installer-download 事件推送）。直链取官方缓存读数，未先 RefreshOfficial
+// 或页面改版没解析出直链一律如实报错——不猜链接。同一时刻只允许一个下载。
+// 刻意不提供"运行安装器"：边界止于把包交还用户（打开位置由 RevealInstallerFile 负责）。
+func (s *SoftverService) StartInstallerDownload() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	s.mu.Lock()
+	if s.dl != nil {
+		s.mu.Unlock()
+		return errors.New("已有安装包下载在进行中，请稍候或先取消")
+	}
+	off := s.official
+	if off == nil || off.DownloadURL == "" {
+		s.mu.Unlock()
+		return errors.New("尚未获取到官方下载直链，请先点「获取官方最新版」（页面改版解析不出直链时只能复制/打开官方页）")
+	}
+	if s.downloadsDir == nil {
+		s.mu.Unlock()
+		return errors.New("下载目录能力不可用")
+	}
+	dir, err := s.downloadsDir()
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	fileName := installerFileName(off.DownloadURL, off.Version)
+	destPath, err := uniqueDestPath(dir, fileName)
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	job := &downloadJob{ctx: ctx, cancel: cancel, url: off.DownloadURL, version: off.Version, fileName: filepath.Base(destPath), destPath: destPath}
+	s.dl = job
+	s.mu.Unlock()
+
+	s.emit(EventInstallerDownload, InstallerProgress{State: "downloading", FileName: job.fileName, Message: "开始下载官方安装包"})
+	go s.runInstallerDownload(job)
+	return nil
+}
+
+// runInstallerDownload 执行下载并广播进度：进度事件按 250ms 节流、终态必发；
+// 失败/取消清理登记但绝不下发"成功"，done 只在字节双核 + MZ 断言通过后发出。
+func (s *SoftverService) runInstallerDownload(job *downloadJob) {
+	defer job.cancel()
+	defer func() {
+		if r := recover(); r != nil {
+			if s.clearDownload(job) {
+				s.emit(EventInstallerDownload, InstallerProgress{State: "error", FileName: job.fileName, Message: fmt.Sprintf("下载异常中止: %v", r)})
+				notify.Error("softver", "安装包下载失败", "下载安装包时发生内部错误", navRoute)
+			}
+		}
+	}()
+
+	var lastEmit time.Time
+	bytes, err := s.downloadFile(job.ctx, job.url, job.destPath, func(done, total int64) {
+		if time.Since(lastEmit) < downloadProgressInterval {
+			return
+		}
+		lastEmit = time.Now()
+		s.emit(EventInstallerDownload, InstallerProgress{State: "downloading", FileName: job.fileName, Done: done, Total: total})
+	})
+
+	switch {
+	case err != nil && (errors.Is(err, context.Canceled) || errors.Is(job.ctx.Err(), context.Canceled)):
+		s.clearDownload(job)
+		s.emit(EventInstallerDownload, InstallerProgress{State: "canceled", FileName: job.fileName, Message: "已取消下载，半截临时文件已清理"})
+	case err != nil:
+		s.clearDownload(job)
+		s.emit(EventInstallerDownload, InstallerProgress{State: "error", FileName: job.fileName, Message: err.Error()})
+		notify.Error("softver", "安装包下载失败", err.Error(), navRoute)
+	default:
+		file := &InstallerFile{
+			Path: job.destPath, FileName: filepath.Base(job.destPath), Version: job.version,
+			Bytes: bytes, DownloadedAt: time.Now().Format(time.RFC3339), Note: installerIntegrityNote,
+		}
+		s.finishDownload(job, file)
+		s.emit(EventInstallerDownload, InstallerProgress{
+			State: "done", FileName: file.FileName, Done: bytes, Total: bytes,
+			Message: fmt.Sprintf("下载完成：%s（%s）", file.FileName, installerIntegrityNote), File: file,
+		})
+		notify.Success("softver", "安装包下载完成", installerIntegrityNote+"；安装请自行双击运行，本工具不代管。", navRoute)
+	}
+}
+
+// clearDownload 撤下下载登记（仅当登记的仍是本任务，防误清新任务）。
+func (s *SoftverService) clearDownload(job *downloadJob) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dl == job {
+		s.dl = nil
+		return true
+	}
+	return false
+}
+
+// finishDownload 同一临界区提交"成功记录 + 撤下进行中登记"（快照回显原子）。
+func (s *SoftverService) finishDownload(job *downloadJob, file *InstallerFile) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dl == job {
+		s.dl = nil
+	}
+	s.downloaded = file
+}
+
+// CancelInstallerDownload 请求取消进行中的下载（临时件由下载器清理；
+// canceled 终态事件由执行协程统一发出，此处不重复播报）。
+func (s *SoftverService) CancelInstallerDownload() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	s.mu.Lock()
+	job := s.dl
+	s.mu.Unlock()
+	if job == nil {
+		return errors.New("当前没有进行中的安装包下载")
+	}
+	job.cancel()
+	return nil
+}
+
+// RevealInstallerFile 在资源管理器中定位最近一次下载的安装包（"打开位置"）。
+// 路径只认后端成功落位记录，拒收任意路径——与 RevealDir 的红线一致。
+func (s *SoftverService) RevealInstallerFile() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	s.mu.Lock()
+	file := s.downloaded
+	s.mu.Unlock()
+	if file == nil {
+		return errors.New("尚未成功下载安装包")
+	}
+	if _, err := os.Stat(file.Path); err != nil {
+		return fmt.Errorf("已下载的文件不存在（可能被移动或删除）：%s", file.Path)
+	}
+	if s.revealFile == nil {
+		return errors.New("打开位置能力不可用")
+	}
+	if err := s.revealFile(file.Path); err != nil {
+		return fmt.Errorf("打开下载位置失败: %w", err)
+	}
+	return nil
+}
+
+// cancelActiveDownload 是模块生命周期使用的包内取消入口（OnDestroy），
+// 不扩展 Wails 绑定面；终态事件仍由执行协程发出。
+func (s *SoftverService) cancelActiveDownload() {
+	s.mu.Lock()
+	job := s.dl
+	s.mu.Unlock()
+	if job != nil {
+		job.cancel()
+	}
 }
 
 // ---- 纯函数 helpers（单测直打） ----

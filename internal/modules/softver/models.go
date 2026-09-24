@@ -82,6 +82,31 @@ type UpdateHint struct {
 	Message         string `json:"message"`
 }
 
+// InstallerFile 一次成功下载的官方安装包落位记录（N38：只搬包到下载目录，
+// 不托管安装/启动——装不装、何时装全由用户双击决定）。
+// Note 恒为如实的校验声明：微信官方直链从不旁挂摘要值，工具只能核字节数与
+// 可执行文件头，绝不冒充"校验通过"。
+type InstallerFile struct {
+	Path         string `json:"path"`
+	FileName     string `json:"fileName"`
+	Version      string `json:"version"` // 下载时官方直链对应的版本号
+	Bytes        int64  `json:"bytes"`
+	DownloadedAt string `json:"downloadedAt"`
+	Note         string `json:"note"`
+}
+
+// InstallerProgress softver:installer-download 事件载荷（安装包下载进度流）。
+// State：downloading | done | canceled | error；done/canceled/error 为终态。
+// done 携带 File（供前端直接写回快照，与 dir-scan 同构）。
+type InstallerProgress struct {
+	State    string         `json:"state"`
+	FileName string         `json:"fileName"`
+	Done     int64          `json:"done"`
+	Total    int64          `json:"total"`
+	Message  string         `json:"message,omitempty"`
+	File     *InstallerFile `json:"file,omitempty"`
+}
+
 // ScanProgress softver:dir-scan 事件载荷（目录大小扫描进度流）。
 // State：queued | running | done | canceled | error；done/canceled/error 为终态。
 type ScanProgress struct {
@@ -106,5 +131,7 @@ type Snapshot struct {
 	OfficialError string           `json:"officialError,omitempty"` // 上次官方取数失败原因（降级提示用）
 	Update        *UpdateHint      `json:"update,omitempty"`
 	Scanning      []string         `json:"scanning"` // 进行中的扫描槽位 ID
+	Downloading   bool             `json:"downloading"`
+	Downloaded    *InstallerFile   `json:"downloaded,omitempty"` // 最近一次成功下载的安装包
 	Notes         []string         `json:"notes,omitempty"`
 }

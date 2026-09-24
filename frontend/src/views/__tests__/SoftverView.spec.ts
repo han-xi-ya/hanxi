@@ -1,5 +1,6 @@
 // 软件版本检测页（SoftverView）特征测试：双口径回显、官方读数成功/降级两态、
-// 扫描按钮→槽位 ID 回传、dir-scan 事件驱动的进行中/完成态、打开目录外呼。
+// 扫描按钮→槽位 ID 回传、dir-scan 事件驱动的进行中/完成态、打开目录外呼，
+// 以及下载安装包（N38）：诚实校验文案、进度/取消事件流、done 写回与打开位置。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SoftverView from '../SoftverView.vue'
@@ -11,6 +12,9 @@ const api = vi.hoisted(() => ({
   StartDirScan: vi.fn(),
   CancelDirScan: vi.fn(),
   RevealDir: vi.fn(),
+  StartInstallerDownload: vi.fn(),
+  CancelInstallerDownload: vi.fn(),
+  RevealInstallerFile: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -55,6 +59,7 @@ function snapBase(over = {}) {
     ],
     update: { status: 'noOfficial', localVersion: '4.1.15.9', officialVersion: '', message: '尚未获取官方最新版本' },
     scanning: [],
+    downloading: false,
     ...over,
   }
 }
@@ -89,6 +94,9 @@ async function mountView(officialOk = true) {
   api.CancelDirScan.mockResolvedValue(undefined)
   api.RevealDir.mockResolvedValue(undefined)
   api.OpenUpdatesPage.mockResolvedValue(undefined)
+  api.StartInstallerDownload.mockResolvedValue(undefined)
+  api.CancelInstallerDownload.mockResolvedValue(undefined)
+  api.RevealInstallerFile.mockResolvedValue(undefined)
   const wrapper = mount(SoftverView, { attachTo: document.body })
   await flushPromises()
   return wrapper
@@ -184,5 +192,55 @@ describe('SoftverView', () => {
     const row = wrapper.findAll('.dir-row').find((r) => r.text().includes('xwechat_files'))!
     expect(row.text()).not.toContain('GB')
     wrapper.unmount()
+  })
+
+  it('有直链即给下载安装包按钮，并如实标注官方未提供校验值', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.text()).toContain('官方直链未提供校验值')
+    const btn = wrapper.findAll('button').find((b) => b.text() === '下载安装包')
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    expect(api.StartInstallerDownload).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('下载事件流：进度与取消、done 写回成品行并打开位置', async () => {
+    const wrapper = await mountView()
+    emit('softver:installer-download', { state: 'downloading', fileName: 'WeChatWin_4.1.15.exe', done: 16 * 1024 ** 3, total: 64 * 1024 ** 3 })
+    await flushPromises()
+    const live = wrapper.find('.scan-live')
+    expect(live.text()).toContain('25%')
+    expect(live.text()).toContain('16.0 GB / 64.0 GB')
+    expect(wrapper.findAll('button').find((b) => b.text() === '下载安装包')).toBeFalsy()
+    await wrapper.findAll('button').find((b) => b.text() === '取消')!.trigger('click')
+    expect(api.CancelInstallerDownload).toHaveBeenCalled()
+
+    emit('softver:installer-download', {
+      state: 'done', fileName: 'WeChatWin_4.1.15.exe', done: 32 * 1024 ** 3, total: 32 * 1024 ** 3,
+      message: '下载完成', file: { path: 'C:\\Users\\u\\Downloads\\WeChatWin_4.1.15.exe', fileName: 'WeChatWin_4.1.15.exe', version: '4.1.15', bytes: 32 * 1024 ** 3, downloadedAt: '2026-09-25T10:00:00+08:00', note: '官方直链未提供校验值' },
+    })
+    await flushPromises()
+    const row = wrapper.findAll('.dir-row').find((r) => r.text().includes('已下载安装包'))!
+    expect(row.text()).toContain('WeChatWin_4.1.15.exe')
+    expect(row.text()).toContain('32.0 GB')
+    await row.findAll('button').find((b) => b.text() === '打开位置')!.trigger('click')
+    expect(api.RevealInstallerFile).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('下载失败终态不留假成品；回访快照 downloading 兜底进行中控件', async () => {
+    const wrapper = await mountView()
+    emit('softver:installer-download', { state: 'error', fileName: 'WeChatWin_4.1.15.exe', done: 0, total: 0, message: '传输中断' })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('已下载安装包')
+    wrapper.unmount()
+
+    api.Snapshot.mockResolvedValue({ ...snapOfficial(), downloading: true })
+    const wrapper2 = mount(SoftverView, { attachTo: document.body })
+    await flushPromises()
+    expect(wrapper2.text()).toContain('下载进行中')
+    expect(wrapper2.findAll('button').find((b) => b.text() === '下载安装包')).toBeFalsy()
+    expect(wrapper2.findAll('button').some((b) => b.text() === '取消')).toBe(true)
+    wrapper2.unmount()
   })
 })

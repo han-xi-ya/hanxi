@@ -1,12 +1,15 @@
 <script setup lang="ts">
 // 软件版本检测（F5，微信首个目标）：本机双口径（注册表×PE 并示标源）×
-// 官方最新版（SSR 更新页解析，失配降级为打开官方页）、下载直链复制，
+// 官方最新版（SSR 更新页解析，失配降级为打开官方页）、下载直链复制与
+// 安装包直连下载（N38：只搬包到系统下载目录，不托管安装/启动），
 // 以及安装/两代数据目录的空间勘察（异步扫描 + 可取消 + 结果缓存）。
 // 定位边界：全量软件清单与卸载归 bcu，本页只是白名单跟踪对象的升级引导。
 import { computed, onActivated, onMounted, ref, shallowRef } from 'vue'
 import * as SoftverAPI from '../../bindings/hanxi/internal/modules/softver'
 import type {
   DirSlot,
+  InstallerFile,
+  InstallerProgress,
   LocalInstall,
   ScanProgress,
   Snapshot,
@@ -26,6 +29,9 @@ const errorMsg = ref('')
 const fetchingOfficial = ref(false)
 // 扫描运行态（槽位 ID → 最近进度）：终态事件到达即清；done 同时把结果写回快照。
 const scanStates = ref<Record<string, ScanProgress>>({})
+// 安装包下载运行态（单槽位）：downloading 事件更新、终态清空；
+// 页面回访（KeepAlive）时快照的 downloading 标记兜底恢复"进行中"呈现。
+const dlState = ref<InstallerProgress | null>(null)
 
 const { copyWithToast } = useClipboard()
 const { showToast, showErrorToast } = useToast()
@@ -118,6 +124,76 @@ async function openOfficialPage() {
   }
 }
 
+// ---- 下载安装包（N38：拿完包走人，不托管安装/启动） ----
+
+async function downloadInstaller() {
+  try {
+    await SoftverAPI.SoftverService.StartInstallerDownload()
+  } catch (err) {
+    showErrorToast(getErrorMessage(err))
+  }
+}
+
+async function cancelDownload() {
+  try {
+    await SoftverAPI.SoftverService.CancelInstallerDownload()
+  } catch (err) {
+    showErrorToast(getErrorMessage(err))
+  }
+}
+
+async function revealInstaller() {
+  try {
+    await SoftverAPI.SoftverService.RevealInstallerFile()
+  } catch (err) {
+    showErrorToast(getErrorMessage(err))
+  }
+}
+
+useWailsEvent<InstallerProgress>('softver:installer-download', (p) => {
+  if (p.state === 'downloading') {
+    dlState.value = p
+    return
+  }
+  dlState.value = null
+  if (p.state === 'done' && p.file) {
+    applyDownloaded(p.file)
+    showToast('安装包下载完成')
+  } else if (p.state === 'canceled') {
+    showToast('已取消下载，半截临时文件已清理')
+  } else if (p.state === 'error') {
+    showErrorToast(`下载失败：${p.message || '未知错误'}`)
+  }
+})
+
+// done 事件直接写回快照成品记录（与 dir-scan 写回大小同构），下次 Snapshot
+// 由后端缓存回显，两端同源。
+function applyDownloaded(file: InstallerFile) {
+  const s = snap.value
+  if (!s) return
+  snap.value = { ...s, downloaded: file, downloading: false }
+}
+
+// 进行中口径：事件流优先；KeepAlive 回访错过早期事件时按快照 downloading 标记
+// 兜底（无字节读数，只如实显示"下载进行中"）。
+const activeDownload = computed<InstallerProgress | null>(() => {
+  if (dlState.value) return dlState.value
+  if (snap.value?.downloading) {
+    return { state: 'downloading', fileName: '', done: 0, total: 0 }
+  }
+  return null
+})
+const downloaded = computed(() => snap.value?.downloaded ?? null)
+
+// 进度文案：有声明字节才给百分比（不造假进度），无声明只报已收字节。
+function dlText(p: InstallerProgress): string {
+  if (!p.fileName && !p.done) return '下载进行中…'
+  if (p.total > 0) {
+    return `下载中 ${Math.floor((p.done / p.total) * 100)}% · ${fmtDirSize(p.done)} / ${fmtDirSize(p.total)}`
+  }
+  return `下载中 ${fmtDirSize(p.done)}`
+}
+
 const installs = computed(() => snap.value?.installs ?? [])
 const dirs = computed(() => snap.value?.dirs ?? [])
 const dataSlots = computed(() => dirs.value.filter((d) => d.kind !== 'install'))
@@ -191,7 +267,7 @@ onActivated(async () => {
 
 <template>
   <div class="page">
-    <PageHeader title="软件版本" subtitle="日常装机软件的版本跟踪与升级引导（微信首个目标）：本机注册表×PE 双口径、官方最新版对照、目录空间勘察。">
+    <PageHeader title="软件版本" subtitle="日常装机软件的版本跟踪与升级引导（微信首个目标）：本机注册表×PE 双口径、官方最新版对照与安装包直连下载、目录空间勘察。">
       <template #actions>
         <div class="status-group">
           <UiStatusChip v-if="update" :tone="updateTone">{{ updateText }}</UiStatusChip>
@@ -287,6 +363,26 @@ onActivated(async () => {
           <div v-if="official.downloadUrl" class="link-row">
             <span class="mono cell-path" :title="official.downloadUrl">{{ official.downloadUrl }}</span>
             <UiButton small @click="copyWithToast(official.downloadUrl, '已复制下载直链')">复制直链</UiButton>
+            <template v-if="activeDownload">
+              <span class="scan-live mono">{{ dlText(activeDownload) }}</span>
+              <UiButton small @click="cancelDownload">取消</UiButton>
+            </template>
+            <UiButton v-else small variant="primary" @click="downloadInstaller">下载安装包</UiButton>
+          </div>
+          <p v-if="official.downloadUrl" class="field-warn">
+            官方直链未提供校验值：下载只核对传输字节数与可执行文件头（MZ），不做 SHA-256 校验；
+            安装包存到系统下载目录，本页不代安装、不托管启动。
+          </p>
+          <div v-if="downloaded" class="dir-row">
+            <span class="dir-main">
+              <span class="dir-name">已下载安装包</span>
+              <span class="chip chip-neutral">官方 {{ downloaded.version }}</span>
+              <span class="mono cell-path" :title="downloaded.path">{{ downloaded.fileName }}</span>
+              <span class="size-text">{{ fmtDirSize(downloaded.bytes) }} · {{ fmtDate(downloaded.downloadedAt) }}</span>
+            </span>
+            <span class="dir-ops">
+              <UiButton small @click="revealInstaller">打开位置</UiButton>
+            </span>
           </div>
           <div class="panel-foot">
             <button type="button" class="link-button" @click="openOfficialPage">在浏览器打开官方更新页</button>
@@ -346,7 +442,7 @@ onActivated(async () => {
         <ul class="usage-list">
           <li>双口径不一致时以版本段更全者为主口径（注册表 DisplayVersion 是安装器写入，PE 资源随文件走）；两者并示标源、都可核对证据。</li>
           <li>官方通道是页面抓取而非 API：改版即失配，此时只能"打开官方页"人工对照，工具不猜不编。页内 8.0.x 是移动端系列，已按口径过滤。</li>
-          <li>直链（dldir1v6.qq.com）可复制到浏览器下载升级包；本页不代下载、不静默安装。</li>
+          <li>直链（dldir1v6.qq.com）可"下载安装包"到系统下载目录（走浏览器同款代理出口），也可复制链接自行到浏览器下载；官方不提供校验值，工具只核字节数与可执行文件头并如实标注。本页不静默安装、不托管启动——安装由你双击完成（微信覆盖安装保数据）。</li>
           <li>全量软件清单与卸载归"软件卸载 (BCU)"；本页只跟踪白名单对象的版本与空间。</li>
         </ul>
       </section>

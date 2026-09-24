@@ -262,6 +262,7 @@ declare module "@wailsio/runtime" {
             "snipaste:instance-state": instance$20.Snapshot;
             "snipaste:version-download": version$20.DownloadProgress;
             "softver:dir-scan": softver$0.ScanProgress;
+            "softver:installer-download": softver$0.InstallerProgress;
             "subnetdesk:instance-state": instance$21.Snapshot;
             "subnetdesk:version-download": version$21.DownloadProgress;
             "termora:instance-state": instance$22.Snapshot;

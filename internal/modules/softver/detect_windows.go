@@ -17,6 +17,7 @@ package softver
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,7 @@ import (
 
 func attachPlatformDefaults(s *SoftverService) {
 	s.probeLocal = probeLocal
+	s.downloadsDir = downloadsDir
 }
 
 const uninstallBase = `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`
@@ -549,6 +551,26 @@ func documentsDir() string {
 		return filepath.Join(home, "Documents")
 	}
 	return ""
+}
+
+// downloadsDir 真实"下载"目录（N38 安装包落位；注册表 User Shell Folders
+// 的 KnownFolder GUID 还原重定向，如 OneDrive 接管场景，与 documentsDir 同谱）。
+func downloadsDir() (string, error) {
+	key, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`, registry.READ)
+	if err == nil {
+		raw, _, verr := key.GetStringValue("{374DE290-123F-4565-9164-39C4925E467B}")
+		key.Close()
+		if verr == nil && raw != "" {
+			if expanded, eerr := registry.ExpandString(raw); eerr == nil && expanded != "" {
+				return expanded, nil
+			}
+			return raw, nil
+		}
+	}
+	if home, herr := os.UserHomeDir(); herr == nil {
+		return filepath.Join(home, "Downloads"), nil
+	}
+	return "", errors.New("无法解析系统下载目录，请复制直链到浏览器下载")
 }
 
 // fixedDriveRoots 固定磁盘根目录列表（C:\ D:\ …）。

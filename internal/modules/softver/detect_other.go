@@ -10,4 +10,7 @@ func attachPlatformDefaults(s *SoftverService) {
 	s.probeLocal = func() (localData, error) {
 		return localData{}, errors.New("软件版本检测的本机探测目前仅支持 Windows")
 	}
+	s.downloadsDir = func() (string, error) {
+		return "", errors.New("下载安装包目前仅支持 Windows，可复制直链到浏览器下载")
+	}
 }
