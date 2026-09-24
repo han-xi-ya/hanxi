@@ -6,12 +6,15 @@ import { computed, ref, shallowRef, onMounted } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
 import type { MenuItem, Status } from '../../bindings/hanxi/internal/modules/quickmenu/models'
 import { getErrorMessage } from '../utils/errors'
+import { useToast } from '../composables/useToast'
 import WheelPreview from '../components/quickmenu/WheelPreview.vue'
 import TrayItemsEditor from '../components/tray/TrayItemsEditor.vue'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
 }>()
+
+const { showToast } = useToast()
 
 const status = shallowRef<Status | null>(null)
 const items = shallowRef<MenuItem[]>([])
@@ -99,10 +102,28 @@ async function toggleTwoTier(on: boolean) {
   }
 }
 
-// N5-C1：编辑器保存成功后重拉轮盘实际条目预览（分组展开/拍平的树形态随配置变）。
-// 本页是 KeepAlive 缓存页，SetTrayMenu 只广播 trayRebuild 不会自动刷新本页，
-// 故由宿主在 onSaved（组件 saved 事件）钩子里自行重拉；跨页事件化属后续批次决策。
+// N6-C2/C3：只读页也挂同源预览盘（条目一变盘即变）；C1 内嵌编辑面后补写侧闭环
+// ——点击盘格经身份（type+hint/组 label）定位下方编辑列行并选中，行上出「⇄ 互换」；
+// 选中仅前端高亮，互换落盘仍走既有 SetTrayMenu 保存链（不新增后端写 RPC）。
+const selected = ref<number | null>(null)
+const editorRef = ref<InstanceType<typeof TrayItemsEditor> | null>(null)
+function pickSector(i: number) {
+  if (selected.value === i) {
+    selected.value = null
+    editorRef.value?.clearSelection()
+    return
+  }
+  selected.value = i
+  const m = items.value[i]
+  if (!m || !editorRef.value?.locate({ type: m.type, hint: m.hint ?? '', label: m.label ?? '' })) {
+    // 编辑列可能未加载/该扇区刚被删除或未保存——如实提示不静默
+    showToast('已选中扇区，但编辑列表暂未能定位对应行（若条目刚改动请先保存或重试刷新）')
+  }
+}
+// 盘重新拉取后扇区身份可能移位：清扇区选中与行选中，防错指。
 async function reloadAfterSave() {
+  selected.value = null
+  editorRef.value?.clearSelection()
   try {
     items.value = (await QuickMenuAPI.QuickMenuService.ListItems()) ?? []
   } catch {
@@ -110,13 +131,14 @@ async function reloadAfterSave() {
   }
 }
 
-// N6-C2/C3：只读页也挂同源预览盘（条目一变盘即变）；点击盘格定位列表行，
-// 为编辑器内嵌阶段（C1）预铺交互通路——选中仅高亮，不写任何状态。
-const selected = ref<number | null>(null)
-function pickSector(i: number) {
-  selected.value = selected.value === i ? null : i
-  document.getElementById(`qm-item-row-${i}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-}
+// N5-C4 容量软警示：主盘推荐 ≤8（不禁止，扇区数=条目数自适应，越多越窄）。
+const C4_RECOMMEND_MAX = 8
+const capacityWarn = computed(() => {
+  const n = items.value.length
+  return n > C4_RECOMMEND_MAX
+    ? `主盘已 ${n} 格（建议 ≤${C4_RECOMMEND_MAX}）：条目越多格子越窄，可把同类条目收进"分组"，悬停展开盘外子环收纳。`
+    : ''
+})
 
 onMounted(refresh)
 </script>
@@ -221,7 +243,8 @@ onMounted(refresh)
         </div>
         <aside class="qm-preview-col">
           <WheelPreview :items="items" :active-index="selected" :scale="0.9" @pick="pickSector" />
-          <p class="qm-preview-hint">与你挂出的轮盘同一几何——点盘格可定位下方条目</p>
+          <p v-if="capacityWarn" class="qm-cap-warn" role="status">{{ capacityWarn }}</p>
+          <p class="qm-preview-hint">与你挂出的轮盘同一几何——点盘格可定位下方条目（再点取消；选中行上出「⇄ 互换」）</p>
         </aside>
         </div>
       </section>
@@ -230,7 +253,7 @@ onMounted(refresh)
       <section class="panel">
         <h2 class="sec-title">条目编辑</h2>
         <p class="sec-note">与「设置→托盘右键菜单」是同一份配置：此处勾选、排序、分组，保存后托盘菜单与本页面轮盘预览同时生效。</p>
-        <TrayItemsEditor @saved="reloadAfterSave" />
+        <TrayItemsEditor ref="editorRef" @saved="reloadAfterSave" />
       </section>
 
       <section class="panel usage">
@@ -242,6 +265,7 @@ onMounted(refresh)
           <li>不想选任何条目时，向外甩出盘缘即进入半透明取消态，滑回盘面恢复或 <kbd>Esc</kbd> 收起；点击中心 hub 亦可收起。</li>
           <li>条目"命令"类会先懒初始化对应托管模块；"页面"类会唤出主窗口并导航。</li>
           <li>不需要此能力时，在设置页模块管理中将"快捷菜单"停用即可（全局钩子随停用即时摘除）。</li>
+          <li>扇区数=条目数自适应，<b>建议主盘 ≤8</b>（非硬限）：超出盘面仍可用但格子变窄，把同类条目收进"分组"悬停展开子环是最省力的收纳方式。</li>
         </ul>
       </section>
     </template>
@@ -358,6 +382,8 @@ onMounted(refresh)
 .usage {
   margin-top: 16px;
 }
+/* N5-C4：容量软警示（预览下缘黄字，不禁止保存） */
+.qm-cap-warn { margin: 6px 0 0; font-size: var(--text-xs); color: var(--state-warning); line-height: 1.5; }
 .usage-list {
   margin: 0;
   padding-left: 18px;

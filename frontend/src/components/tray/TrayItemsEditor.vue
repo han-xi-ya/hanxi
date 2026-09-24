@@ -20,6 +20,58 @@ const emit = defineEmits<{
   (e: 'saved'): void
 }>()
 
+// —— N5-C3 点上格互换（读侧：宿主把预览选中扇区的身份喂进来定位行；写侧：行内互换钮）——
+// 身份匹配（type+hint / 组按 label）而非下标换算：编辑列里可能存在被后端 wheelView
+// 滤掉的停用模块行，相对序会错位；扁平拍平形态下组子条目占多扇区，也一律归位到
+// 组行。映射逻辑收在本组件（唯一持有 trayItems 的人），宿主只转发"用户点了哪个扇区"。
+const selectedRow = ref<number | null>(null)
+
+const rowRefs = ref<Record<number, HTMLElement | undefined>>({})
+function setRowRef(i: number, el: unknown) {
+  rowRefs.value[i] = el as HTMLElement | undefined
+}
+
+const normHint = (s: string) => s.trim().toLowerCase().replace(/\//g, '\\')
+function leafMatches(r: TrayMenuItem, type: string, hint: string): boolean {
+  return r.type === type && normHint(r.type === 'exe' ? r.path : r.ref) === normHint(hint)
+}
+function rowIndexOfSector(type: string, hint: string, label: string): number | null {
+  for (let i = 0; i < trayItems.value.length; i++) {
+    const r = trayItems.value[i]
+    if (r.type === 'group') {
+      if (type === 'group' && r.label === label) return i
+      if ((r.children ?? []).some((ch) => leafMatches(ch, type, hint))) return i
+      continue
+    }
+    if (leafMatches(r, type, hint)) return i
+  }
+  return null
+}
+
+/** 宿主预览点击入口：定位并高亮对应编辑行（滚到可见）；命中返回 true。 */
+function locate(sector: { type: string; hint: string; label: string }): boolean {
+  const i = rowIndexOfSector(sector.type, sector.hint ?? '', sector.label ?? '')
+  if (i == null) return false
+  selectedRow.value = i
+  nextTick(() => rowRefs.value[i]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
+  return true
+}
+
+/** 清除选中（宿主在条目列表刷新后调用，防错位选中残留）。 */
+function clearSelection() {
+  selectedRow.value = null
+}
+defineExpose({ locate, clearSelection })
+
+function swapRows(i: number) {
+  const j = selectedRow.value
+  if (j == null || j < 0 || j >= trayItems.value.length || j === i) return
+  const arr = trayItems.value
+  ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  selectedRow.value = i // 选中跟着"扇区内容"走：互换后被点扇区的内容落在被点击的行 i
+  openGroup.value = -1 // 与 moveItem 同纪律：下标错位防护
+}
+
 const { showToast } = useToast()
 
 const trayLoading = ref(true)
@@ -137,11 +189,13 @@ function moveItem(i: number, delta: number) {
   if (j < 0 || j >= arr.length) return
   ;[arr[i], arr[j]] = [arr[j], arr[i]]
   openGroup.value = -1 // 下标错位防护：移动后不再认定原展开组
+  selectedRow.value = null // C3 选中同样按位置索引持有，移动后不作废即错指
 }
 
 function removeItem(i: number) {
   trayItems.value.splice(i, 1)
   openGroup.value = -1
+  selectedRow.value = null
 }
 
 async function browseExe() {
@@ -200,7 +254,7 @@ onMounted(refreshTray)
       <div v-if="trayItems.length > 0" class="tray-list">
         <template v-for="(item, i) in trayItems" :key="`${item.type}|${item.ref}|${item.path}|${i}`">
           <!-- 分组行：轮盘二级扇区 / 托盘子菜单 -->
-          <div v-if="item.type === 'group'" class="tray-row tray-row-group">
+          <div v-if="item.type === 'group'" class="tray-row tray-row-group" :class="{ 'tray-selected': selectedRow === i }" :ref="el => setRowRef(i, el)">
             <div class="tray-row-main">
               <span class="tray-tag tray-tag-group">分组</span>
               <input
@@ -216,6 +270,7 @@ onMounted(refreshTray)
               <button class="btn btn-secondary btn-small" :class="{ 'tray-active': openGroup === i }" @click="openGroup = openGroup === i ? -1 : i">
                 {{ openGroup === i ? '收起子条目' : '子条目' }}
               </button>
+              <button v-if="selectedRow != null && selectedRow !== i" class="btn btn-secondary btn-small" @click="swapRows(i)" :title="`与选中的第 ${selectedRow + 1} 行互换位置（预览盘点对应扇区即选中）`">⇄ 互换</button>
               <button class="btn btn-secondary btn-small" :disabled="i === 0" @click="moveItem(i, -1)" title="上移" aria-label="上移"><AppIcon name="chevron-up" :size="14" /></button>
               <button class="btn btn-secondary btn-small" :disabled="i === trayItems.length - 1" @click="moveItem(i, 1)" title="下移" aria-label="下移"><AppIcon name="chevron-down" :size="14" /></button>
               <button class="btn btn-secondary btn-small tray-remove" @click="removeItem(i)" title="删除分组及其子条目"><AppIcon name="x" :size="14" /> 移除</button>
@@ -257,7 +312,7 @@ onMounted(refreshTray)
             </div>
           </div>
           <!-- 普通叶子行（勿用 v-else：与分组行之间隔着子条目编辑面板，会断链误渲染） -->
-          <div v-if="item.type !== 'group'" class="tray-row">
+          <div v-if="item.type !== 'group'" class="tray-row" :class="{ 'tray-selected': selectedRow === i }" :ref="el => setRowRef(i, el)">
             <div class="tray-row-main">
               <span class="tray-tag" :class="`tray-tag-${item.type}`">{{ typeLabel(item.type) }}</span>
               <input
@@ -272,6 +327,7 @@ onMounted(refreshTray)
               </code>
             </div>
             <div class="setting-actions">
+              <button v-if="selectedRow != null && selectedRow !== i" class="btn btn-secondary btn-small" @click="swapRows(i)" :title="`与选中的第 ${selectedRow + 1} 行互换位置（预览盘点对应扇区即选中）`">⇄ 互换</button>
               <button class="btn btn-secondary btn-small" :disabled="i === 0" @click="moveItem(i, -1)" title="上移" aria-label="上移"><AppIcon name="chevron-up" :size="14" /></button>
               <button class="btn btn-secondary btn-small" :disabled="i === trayItems.length - 1" @click="moveItem(i, 1)" title="下移" aria-label="下移"><AppIcon name="chevron-down" :size="14" /></button>
               <button class="btn btn-secondary btn-small tray-remove" @click="removeItem(i)" title="从托盘菜单移除"><AppIcon name="x" :size="14" /> 移除</button>
@@ -331,6 +387,8 @@ onMounted(refreshTray)
   padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
 }
 .tray-row-group { border-color: var(--color-border-strong); background: var(--surface-panel); }
+/* N5-C3：预览盘选中扇区对应行的双向定位高亮 */
+.tray-selected { border-color: var(--color-primary); box-shadow: inset 3px 0 0 var(--color-primary); }
 .tray-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .tray-tag {
   font-size: var(--text-micro); color: var(--color-text-muted); background: var(--surface-hover);
