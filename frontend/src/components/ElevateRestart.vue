@@ -36,7 +36,7 @@ onMounted(async () => {
 async function restart() {
   const accepted = await confirm({
     title: '以管理员身份重启 Hanxi',
-    description: 'Hanxi 将退出并弹出 UAC 提权对话框，请点击「是」。重启完成后自动回到当前页面；已启动的托管工具会随退出流程关闭，需要重新打开。',
+    description: 'Hanxi 将退出并弹出 UAC 提权对话框，请点击「是」。重启完成后自动回到当前页面；开了「随 Hanxi 关闭」的托管工具会随退出流程关闭，默认独立运行的工具不受影响。',
     confirmLabel: '提权重启',
     tone: 'warning',
   })

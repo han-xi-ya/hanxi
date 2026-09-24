@@ -15,13 +15,20 @@
 import * as RAMMapAPI from '../../bindings/hanxi/internal/modules/rammap/rammapservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/rammap/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/rammap/version/models'
-import { computed, ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import type { ManagedActionResult, ManagedModuleAdapter, ManagedVersionRecord } from '../components/managed/adapter'
 
-export function createRAMMapAdapter(): ManagedModuleAdapter {
+export interface RAMMapAdapter extends ManagedModuleAdapter {
+  /** 宿主未提权且目标 manifest=requireAdministrator 时为真：A/B 双路入口据此显形。 */
+  needsElevationChoice: Ref<boolean>
+  /** A 路：仅给 RAMMap 管理员权限（外部实例，Hanxi 不托管）。 */
+  runElevationChoice(): Promise<ManagedActionResult>
+}
+
+export function createRAMMapAdapter(): RAMMapAdapter {
   const { confirm } = useConfirm()
   const { prompt } = usePrompt()
   // 宿主提权态（三重契约之③）：装载时拉一次，失败保持 null 不谎报
@@ -30,11 +37,14 @@ export function createRAMMapAdapter(): ManagedModuleAdapter {
   const externalElevated = ref(false)
   const lastOutcome = ref<{ launchMode?: string; elevated?: boolean; managed?: boolean; canQuit?: boolean } | null>(null)
 
+  // A 路动作：仅给 RAMMap 管理员权限（外部实例，不进 Job、不负责自动关闭）。
+  // 选择器 UI 在 RAMMapView 的 #console-extra（A/B 两颗钮并排、各有明说），
+  // 本函数只负责确认后的真实启动；共享件主钮在未提权语境下直接引向 A。
   async function runElevationChoice(): Promise<ManagedActionResult> {
     const accepted = await confirm({
-      title: 'RAMMap 需要管理员权限',
-      description: '可以只给 RAMMap 管理员权限（一次性启动，Hanxi 不负责自动关闭），也可以在页面中选择重启整个 Hanxi 后托管。',
-      confirmLabel: '仅启动 RAMMap',
+      title: '仅以管理员启动 RAMMap',
+      description: 'RAMMap 将以外部高权限实例启动：Hanxi 保持普通权限，无法自动关闭它；看完成绩请在 RAMMap 窗口右上角关闭。要长期托管请选重启入口。',
+      confirmLabel: '弹 UAC 启动',
       cancelLabel: '取消',
       tone: 'warning',
     })
@@ -54,6 +64,8 @@ export function createRAMMapAdapter(): ManagedModuleAdapter {
 
   return {
     getStatus: () => RAMMapAPI.GetStatus(),
+    needsElevationChoice: computed(() => hostElevated.value === false && executionLevel.value === 'requireAdministrator'),
+    runElevationChoice,
 
     subscribeInstanceState: (cb) => {
       useWailsEvent<Snapshot>('rammap:instance-state', (s) => {

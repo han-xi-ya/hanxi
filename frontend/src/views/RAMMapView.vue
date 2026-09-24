@@ -3,6 +3,7 @@
 // src/adapters/rammap（RPC/事件/文案/提权预告），本视图仅剩装配与说明卡。
 import { createRAMMapAdapter } from '../adapters/rammap'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
+import ElevateRestart from '../components/ElevateRestart.vue'
 
 const adapter = createRAMMapAdapter()
 </script>
@@ -16,6 +17,16 @@ const adapter = createRAMMapAdapter()
     console-tab-label="🧮 控制台"
     :banner-slim="false"
   >
+    <template #console-extra="{ state, busy }">
+      <div v-if="adapter.needsElevationChoice.value && (state === 'stopped' || state === 'failed')" class="elev-choice">
+        <p class="elev-choice-note">RAMMap 本体要求管理员权限：一次性看数据选「仅提权启动」（外部实例，Hanxi 不负责自动关闭）；当常用工具则重启 Hanxi 继续托管。</p>
+        <div class="elev-choice-actions">
+          <button class="btn btn-primary btn-small" :disabled="busy" @click="adapter.runElevationChoice()">🔑 仅提权启动 RAMMap</button>
+          <ElevateRestart route="/ext/rammap" />
+        </div>
+      </div>
+    </template>
+
     <details class="info-details">
       <summary class="info-summary">关于 RAMMap 托管</summary>
       <div class="info-body">
@@ -29,4 +40,12 @@ const adapter = createRAMMapAdapter()
 <style scoped>
 .inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
+/* A/B 双路选择条（N22）：软底嵌套面，主钮与重启入口并列、说明居上 */
+.elev-choice {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  background: var(--surface-soft);
+}
+.elev-choice-note { margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.55; }
+.elev-choice-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 </style>
