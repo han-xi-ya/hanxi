@@ -117,6 +117,17 @@ async function loadUsage(force = false) {
 }
 
 const usageAnyPartial = computed(() => usage.value.some((u) => u.partial))
+const usageTotal = computed(() => usage.value.reduce((sum, item) => sum + item.bytes, 0))
+const usageKnownFiles = computed(() => usage.value.reduce((sum, item) => sum + item.files, 0))
+const usageMeasuredCount = computed(() => usage.value.length)
+
+// 数据根卡片的总览只做"已测到的家底"摘要，不冒充整盘占用：后端可能因 15s
+// 预算截断，Partial 与下限徽标仍是唯一真相；零目录明确显示空态。
+const usageSummary = computed(() => [
+  { label: '已测目录', value: usageMeasuredCount.value.toLocaleString(), suffix: ' 个' },
+  { label: '已测占用', value: fmtSize(usageTotal.value), suffix: usageAnyPartial.value ? '（含下限）' : '' },
+  { label: '已测文件', value: usageKnownFiles.value.toLocaleString(), suffix: ' 个' },
+])
 
 // ---------- versions 按软件展开（W3-b）----------
 // 后端把 `<模块>_<版本>` 子目录聚合成每软件一行（Entries 携版本目录清单）。
@@ -200,9 +211,8 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 数据根占用一览：每个一级子目录（= 每个便携软件/数据类目）一块家底 -->
-    <div class="card dir-list">
-      <div class="setting-row">
+    <div class="card dir-list usage-card">
+      <div class="setting-row usage-head">
         <span class="setting-main">
           <span class="setting-name">数据根占用一览 <span class="chip chip-neutral dir-badge">一级子目录 · 软件与数据类目</span></span>
           <code class="setting-desc dir-path">
@@ -211,11 +221,21 @@ onMounted(() => {
             <template v-else>尚未测量</template>
           </code>
         </span>
-        <button class="btn btn-secondary btn-small" :disabled="usageLoading" @click="loadUsage(true)">
-          <AppIcon name="refresh-cw" :size="14" /> 重新测量
+        <button class="btn btn-secondary btn-small usage-refresh" :disabled="usageLoading" @click="loadUsage(true)">
+          <AppIcon name="refresh-cw" :size="14" /> <span>重新测量</span>
         </button>
       </div>
-      <template v-for="item in usage" :key="item.name">
+      <div v-if="usage.length" class="usage-summary" aria-label="占用测量摘要">
+        <div v-for="stat in usageSummary" :key="stat.label" class="usage-stat">
+          <span class="usage-stat-label">{{ stat.label }}</span>
+          <strong class="usage-stat-value">{{ stat.value }}<small>{{ stat.suffix }}</small></strong>
+        </div>
+      </div>
+      <div v-if="usageLoading && !usage.length" class="usage-state usage-loading" role="status">
+        <span class="usage-spinner" aria-hidden="true"></span>
+        <span>正在扫描数据根……巨目录最多测量 15 秒</span>
+      </div>
+      <template v-else-if="usage.length" v-for="item in usage" :key="item.name">
         <div class="setting-row usage-row">
           <span class="setting-main">
             <span class="setting-name">
@@ -226,7 +246,7 @@ onMounted(() => {
             </span>
             <code v-if="item.isDir && item.files" class="setting-desc dir-path">{{ item.files.toLocaleString() }} 个文件</code>
           </span>
-          <button v-if="item.name === 'versions'" class="btn btn-secondary btn-small" :disabled="subLoading" @click="toggleVersions">
+          <button v-if="item.name === 'versions'" class="btn btn-secondary btn-small usage-detail-btn" :disabled="subLoading" @click="toggleVersions">
             {{ versionsOpen ? '收起软件明细' : '展开到每软件' }}
           </button>
           <span class="usage-size" :class="{ 'usage-partial': item.partial }" :title="`${item.bytes.toLocaleString()} 字节${item.partial ? '（下限）' : ''}`">
@@ -256,14 +276,50 @@ onMounted(() => {
           </div>
         </template>
       </template>
-      <p v-if="!usageLoading && !usage.length" class="setting-desc">数据根当前没有可统计的子目录。</p>
+      <div v-else-if="!usageLoading" class="usage-state usage-empty">
+        <span class="usage-empty-title">数据根当前没有可统计的子目录</span>
+        <span class="usage-empty-hint">点击「重新测量」再次检查，或先安装/导入一个托管工具。</span>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-/* 目录行复用全局 .setting-row/.card/.chip 原子，此处仅列表节奏与路径机器值皮 */
-.dir-list { display: flex; flex-direction: column; gap: 8px; }
+/* 数据根测量卡（N19）：头部、摘要、资源行三层结构；摘要只报已测下限，
+   不冒充磁盘总占用。 */
+.usage-card { gap: 0; }
+.usage-head { padding-bottom: 10px; }
+.usage-refresh { flex: none; }
+.usage-summary {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+  padding: 0 0 10px;
+}
+.usage-stat {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  background: var(--surface-soft);
+}
+.usage-stat-label { color: var(--color-text-subtle); font-size: var(--text-xs); }
+.usage-stat-value {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--color-text); font-family: var(--font-mono); font-size: var(--text-base);
+  font-variant-numeric: tabular-nums;
+}
+.usage-stat-value small { margin-left: 3px; color: var(--color-text-muted); font-family: var(--font-text); font-size: var(--text-xs); font-weight: 400; }
+.usage-state {
+  display: flex; align-items: center; gap: 8px; min-height: 48px;
+  padding: 10px 12px; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-control);
+  color: var(--color-text-muted); font-size: var(--text-sm);
+}
+.usage-empty { flex-direction: column; align-items: flex-start; gap: 3px; }
+.usage-empty-title { color: var(--color-text); font-weight: 600; }
+.usage-empty-hint { color: var(--color-text-subtle); font-size: var(--text-xs); }
+.usage-spinner {
+  width: 13px; height: 13px; flex: none; border: 2px solid var(--color-border-strong);
+  border-top-color: var(--color-primary); border-radius: 50%; animation: storage-spin .75s linear infinite;
+}
+@keyframes storage-spin { to { transform: rotate(360deg); } }
+
 .dir-badge { margin-left: 6px; vertical-align: 1px; }
 .dir-path {
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
@@ -277,4 +333,25 @@ onMounted(() => {
 .usage-partial { color: var(--state-warning); }
 .usage-subrow { padding-left: 22px; }
 .usage-sub-err { color: var(--state-warning); }
+
+@media (max-width: 640px) {
+  .root-actions { width: 100%; flex-wrap: wrap; }
+  .root-actions .btn { flex: 1 1 140px; }
+  .usage-head { align-items: flex-start; }
+  .usage-refresh { align-self: flex-start; }
+  .usage-summary { grid-template-columns: 1fr; }
+  .usage-row { align-items: flex-start; flex-wrap: wrap; }
+  .usage-row .setting-main { flex: 1 1 100%; }
+  .usage-row .usage-size { margin-left: 0; }
+  .usage-detail-btn { margin-left: 0; }
+  .usage-subrow { padding-left: 12px; }
+}
+
+@media (pointer: coarse) {
+  .usage-refresh, .usage-detail-btn, .root-actions .btn { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-spinner { animation: none; }
+}
 </style>
