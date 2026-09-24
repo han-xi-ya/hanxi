@@ -9,6 +9,8 @@ import QuickMenuView from '../QuickMenuView.vue'
 const svc = vi.hoisted(() => ({
   GetStatus: vi.fn(),
   ListItems: vi.fn().mockResolvedValue([]),
+  GetTriggerConfig: vi.fn().mockResolvedValue([450, 16]),
+  SetTriggerConfig: vi.fn().mockResolvedValue([450, 16]),
 }))
 
 const traySvc = vi.hoisted(() => ({
@@ -95,6 +97,43 @@ describe('QuickMenuView', () => {
     await flushMicrotasks()
     expect(w.find('.state-error').text()).toContain('模块未初始化')
     expect(w.find('.state-box .btn')).toBeTruthy()
+    w.unmount()
+  })
+})
+
+// N5-C2 触发参数：草稿-应用两段式，回显以钳后返回值为准。
+describe('触发参数（N5-C2）', () => {
+  it('出厂回显 450/16，未改动时应用钮禁用', async () => {
+    const w = await mountReady()
+    const hold = w.find('input[aria-label="长按时长毫秒"]')
+    const move = w.find('input[aria-label="位移容差像素"]')
+    expect((hold.element as HTMLInputElement).value).toBe('450')
+    expect((move.element as HTMLInputElement).value).toBe('16')
+    const btn = w.findAll('button').find((b) => b.text().includes('应用'))!
+    expect(btn.attributes('disabled')).toBeDefined()
+    w.unmount()
+  })
+
+  it('改草稿→应用：RPC 带草稿值，回显取钳后返回；后端拒绝时回滚草稿', async () => {
+    const w = await mountReady()
+    await w.find('input[aria-label="长按时长毫秒"]').setValue('300')
+    const btn = w.findAll('button').find((b) => b.text().includes('应用'))!
+    expect(btn.attributes('disabled')).toBeUndefined()
+    svc.SetTriggerConfig.mockResolvedValueOnce([300, 16])
+    await btn.trigger('click')
+    await flushMicrotasks()
+    expect(svc.SetTriggerConfig).toHaveBeenCalledWith(300, 16)
+    expect((w.find('input[aria-label=\"长按时长毫秒\"]').element as HTMLInputElement).value).toBe('300')
+
+    svc.SetTriggerConfig.mockRejectedValueOnce(new Error('配置存储不可用'))
+    await w.find('input[aria-label="长按时长毫秒"]').setValue('80')
+    await w.findAll('button').find((b) => b.text().includes('应用'))!.trigger('click')
+    await flushMicrotasks()
+    // 失败不私留假状态：整页切错误态并如实报错，重试回读后草稿回到确认值 450
+    expect(w.text()).toContain('配置存储不可用')
+    await w.find('.state-box .btn').trigger('click')
+    await flushMicrotasks()
+    expect((w.find('input[aria-label="长按时长毫秒"]').element as HTMLInputElement).value).toBe('450')
     w.unmount()
   })
 })

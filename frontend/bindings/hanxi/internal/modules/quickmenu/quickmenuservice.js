@@ -40,6 +40,14 @@ export function GetStatus() {
 }
 
 /**
+ * GetTriggerConfig 返回当前生效触发参数（钳制后，模块页表单初值）。
+ * @returns {$CancellablePromise<[number, number]>}
+ */
+export function GetTriggerConfig() {
+    return $Call.ByID(1139089451);
+}
+
+/**
  * GetTwoTier 返回二级轮盘开关状态（模块页独立读取用）。
  * @returns {$CancellablePromise<boolean>}
  */
@@ -84,6 +92,17 @@ export function OpenSettings() {
  */
 export function SetMainWindow(win) {
     return $Call.ByID(3119883326, win);
+}
+
+/**
+ * SetTriggerConfig 保存触发参数并热重启鼠标钩子（N5-C2）。入参先钳进合法域再落盘
+ * ——越界不报错回显钳后值（数值输入框防呆口径，与字号族一致）；store 不可用如实拒。
+ * @param {number} holdMs
+ * @param {number} movePx
+ * @returns {$CancellablePromise<[number, number]>}
+ */
+export function SetTriggerConfig(holdMs, movePx) {
+    return $Call.ByID(4189661119, holdMs, movePx);
 }
 
 /**

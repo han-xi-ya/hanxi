@@ -19,11 +19,35 @@ import (
 	"hanxi/internal/settings"
 )
 
-// 触发与弹窗几何参数（最小验证版先固定，后续可外化到设置页）。
+// 触发参数出厂默认与合法域（N5-C2 外化：用户可配，但盘值按不可信输入处理——
+// 出域一律钳回，绝不让坏配置武装鼠标钩子）。几何常量仍为编译期。
 const (
-	triggerHold = 450 * time.Millisecond // 右键按住超过该时长触发
-	triggerMove = 16                     // 抬手前光标位移容差（物理像素）
+	factoryHoldMs, minHoldMs, maxHoldMs = 450, 200, 1500 // 按住触发时长 ms：短于 200 普通右键误触、长于 1.5s 手感死等
+	factoryMovePx, minMovePx, maxMovePx = 16, 4, 64      // 位移容差 px：小于 4 抖动误判、大于 64 长按手势漂移失控
+)
 
+// effectiveTrigger 读盘值并钳制为当前有效参数（0=出厂默认）。纯函数形态便于表测。
+func effectiveTrigger(rawHoldMs, rawMovePx int) (time.Duration, int) {
+	hold := clampInt(rawHoldMs, factoryHoldMs, minHoldMs, maxHoldMs)
+	move := clampInt(rawMovePx, factoryMovePx, minMovePx, maxMovePx)
+	return time.Duration(hold) * time.Millisecond, move
+}
+
+func clampInt(v, def, lo, hi int) int {
+	if v <= 0 {
+		return def
+	}
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// 弹窗几何参数（与前端 wheelGeometry.ts 同源，改动两处需同步——编译期常量，不属外化范围）。
+const (
 	popupWindowName = "quickmenu-popup"
 	// 弹窗收起后的空闲驻留时长：到期真销毁窗口释放 WebView2 内存（下次唤出重建，
 	// 代价数百毫秒）；TTL 内再唤出走热复用，零延迟。常驻隐藏换内存的折中点，
@@ -98,7 +122,8 @@ func (s *QuickMenuService) start() error {
 		return fmt.Errorf("快捷菜单需要在应用运行后初始化，请重试")
 	}
 
-	trap, err := mousetrap.Start(mousetrap.Config{MinHold: triggerHold, MaxMove: triggerMove})
+	hold, move := s.effectiveTrigger()
+	trap, err := mousetrap.Start(mousetrap.Config{MinHold: hold, MaxMove: int32(move)})
 	if err != nil {
 		return err
 	}
@@ -112,8 +137,16 @@ func (s *QuickMenuService) start() error {
 	s.mu.Unlock()
 
 	go s.consumeEvents(trap)
-	slog.Info("quickmenu: 右键长按唤出已启用", "hold", triggerHold, "moveTol", triggerMove)
+	slog.Info("quickmenu: 右键长按唤出已启用", "hold", hold, "moveTol", move)
 	return nil
+}
+
+// effectiveTrigger 当前生效触发参数（store 缺失回出厂值）。
+func (s *QuickMenuService) effectiveTrigger() (time.Duration, int) {
+	if s.store == nil {
+		return time.Duration(factoryHoldMs) * time.Millisecond, factoryMovePx
+	}
+	return effectiveTrigger(s.store.GetQuickMenuTrigger())
 }
 
 // createPopup 按需创建轮盘弹窗（调用方只有 consumeEvents 协程的 acquirePopup，
@@ -397,10 +430,11 @@ func (s *QuickMenuService) GetStatus() (Status, error) {
 	}
 	defer release()
 
+	hold, move := s.effectiveTrigger()
 	return Status{
 		TrapActive: s.trapActive(),
-		HoldMs:     int(triggerHold / time.Millisecond),
-		MoveTol:    triggerMove,
+		HoldMs:     int(hold / time.Millisecond),
+		MoveTol:    move,
 		ItemCount:  len(s.wheelView()),
 		TwoTier:    s.twoTierOn(),
 	}, nil
@@ -435,6 +469,73 @@ func (s *QuickMenuService) SetTwoTier(on bool) error {
 // twoTierOn 读取二级轮盘开关（store 缺失时保守按关闭处理）。
 func (s *QuickMenuService) twoTierOn() bool {
 	return s.store != nil && s.store.GetQuickMenuTwoTier()
+}
+
+// GetTriggerConfig 返回当前生效触发参数（钳制后，模块页表单初值）。
+func (s *QuickMenuService) GetTriggerConfig() (holdMs, movePx int, err error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return 0, 0, gateErr
+	}
+	defer release()
+	hold, move := s.effectiveTrigger()
+	return int(hold / time.Millisecond), move, nil
+}
+
+// SetTriggerConfig 保存触发参数并热重启鼠标钩子（N5-C2）。入参先钳进合法域再落盘
+// ——越界不报错回显钳后值（数值输入框防呆口径，与字号族一致）；store 不可用如实拒。
+func (s *QuickMenuService) SetTriggerConfig(holdMs, movePx int) (int, int, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return 0, 0, gateErr
+	}
+	defer release()
+
+	if s.store == nil {
+		return 0, 0, fmt.Errorf("配置存储不可用")
+	}
+	hold, move := effectiveTrigger(holdMs, movePx) // 先钳制再落盘：盘上只存合法域值
+	hMs := int(hold / time.Millisecond)
+	if err := s.store.SetQuickMenuTrigger(hMs, move); err != nil {
+		return 0, 0, err
+	}
+	if err := s.restartTrap(); err != nil {
+		return hMs, move, err
+	}
+	return hMs, move, nil
+}
+
+// restartTrap 以当前生效参数热换鼠标钩子（未启动则零操作）。旧泵线程随
+// Stop 关闭通道自然收束 consumeEvents；mousetrap 全进程单例约束下 Start
+// 自带前置清理，重启失败如实报错（旧钩子此时已停，页面重试即可恢复）。
+func (s *QuickMenuService) restartTrap() error {
+	s.mu.Lock()
+	if !s.started {
+		s.mu.Unlock()
+		return nil
+	}
+	old := s.trap
+	s.trap = nil
+	s.mu.Unlock()
+
+	_ = old.Stop()
+	hold, move := s.effectiveTrigger()
+	trap, err := mousetrap.Start(mousetrap.Config{MinHold: hold, MaxMove: int32(move)})
+	if err != nil {
+		slog.Warn("quickmenu: 触发参数热重启失败", "err", err)
+		return err
+	}
+	s.mu.Lock()
+	if !s.started { // stop 在途抢跑：刚起的钩子立即归还，不留孤儿线程
+		s.mu.Unlock()
+		_ = trap.Stop()
+		return nil
+	}
+	s.trap = trap
+	s.mu.Unlock()
+	go s.consumeEvents(trap)
+	slog.Info("quickmenu: 触发参数已热更新", "hold", hold, "moveTol", move)
+	return nil
 }
 
 // wheelNode 轮盘展示结构节点：一条主盘扇区（叶子或分组 + 已过滤的启用子条目）。

@@ -81,21 +81,25 @@ type SnapshotConfig struct {
 
 // AppSettings 应用全局配置模型
 type AppSettings struct {
-	Theme              string            `json:"theme"`              // 明暗轴 "light" | "dark" | "system"
-	Accent             string            `json:"accent"`             // 色板轴 "teal" | "sky" | "iris" | "jade" | "onyx"
-	Language           string            `json:"language"`           // "zh-CN" | "en-US"
-	AutoStart          bool              `json:"autoStart"`          // 开机自启
-	MinimizeToTray     bool              `json:"minimizeToTray"`     // 关闭时最小化到托盘
-	LogRetainDays      int               `json:"logRetainDays"`      // 日志保留天数（默认 7）
-	Modules            map[string]bool   `json:"modules"`            // 各模块启用状态 map[moduleId]enabled
-	LanRemarks         map[string]string `json:"lanRemarks"`         // 局域网 IP/MAC 备注 map[identifier]remark
-	TrayMenu           []TrayMenuItem    `json:"trayMenu"`           // 托盘右键菜单自定义条目（有序）
-	QuickMenuTwoTier   bool              `json:"quickMenuTwoTier"`   // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
-	HistoryOcrFullText bool              `json:"historyOcrFullText"` // 历史记录是否收录 OCR 识别全文（默认开；关=只记图片路径与摘要，不存识别文本）
-	Wechat             WechatConfig      `json:"wechat"`             // 微信机器人遗留配置（向下兼容）
-	WechatAccounts     []WechatAccount   `json:"wechatAccounts"`     // 微信多账号列表
-	WebAppEntries      []WebAppEntry     `json:"webAppEntries"`      // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
-	Snapshot           SnapshotConfig    `json:"snapshot"`           // 数据历史版本偏好（internal/snapshot）
+	Theme            string            `json:"theme"`            // 明暗轴 "light" | "dark" | "system"
+	Accent           string            `json:"accent"`           // 色板轴 "teal" | "sky" | "iris" | "jade" | "onyx"
+	Language         string            `json:"language"`         // "zh-CN" | "en-US"
+	AutoStart        bool              `json:"autoStart"`        // 开机自启
+	MinimizeToTray   bool              `json:"minimizeToTray"`   // 关闭时最小化到托盘
+	LogRetainDays    int               `json:"logRetainDays"`    // 日志保留天数（默认 7）
+	Modules          map[string]bool   `json:"modules"`          // 各模块启用状态 map[moduleId]enabled
+	LanRemarks       map[string]string `json:"lanRemarks"`       // 局域网 IP/MAC 备注 map[identifier]remark
+	TrayMenu         []TrayMenuItem    `json:"trayMenu"`         // 托盘右键菜单自定义条目（有序）
+	QuickMenuTwoTier bool              `json:"quickMenuTwoTier"` // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
+	// N5-C2 触发参数外化：0 = 出厂默认（450ms / 16px）。有效值钳制在消费方
+	// quickmenu 服务执行（盘上值按不可信输入对待，坏值不武装鼠标钩子）。
+	QuickMenuHoldMs    int             `json:"quickMenuHoldMs"`
+	QuickMenuMovePx    int             `json:"quickMenuMovePx"`
+	HistoryOcrFullText bool            `json:"historyOcrFullText"` // 历史记录是否收录 OCR 识别全文（默认开；关=只记图片路径与摘要，不存识别文本）
+	Wechat             WechatConfig    `json:"wechat"`             // 微信机器人遗留配置（向下兼容）
+	WechatAccounts     []WechatAccount `json:"wechatAccounts"`     // 微信多账号列表
+	WebAppEntries      []WebAppEntry   `json:"webAppEntries"`      // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
+	Snapshot           SnapshotConfig  `json:"snapshot"`           // 数据历史版本偏好（internal/snapshot）
 }
 
 // DefaultSettings 返回出厂默认配置：浅色主题、青壳色板、中文、关闭时最小化到托盘、日志保留 7 天。
@@ -510,6 +514,23 @@ func (s *Store) GetQuickMenuTwoTier() bool {
 func (s *Store) SetQuickMenuTwoTier(on bool) error {
 	return s.Update(func(cfg *AppSettings) {
 		cfg.QuickMenuTwoTier = on
+	})
+}
+
+// GetQuickMenuTrigger 返回轮盘触发参数**原始盘值**（ms/px；0=未设置走出厂默认）。
+// 有效值判定与钳制归消费方（quickmenu 服务），本 getter 不修值——存储层只见事实。
+func (s *Store) GetQuickMenuTrigger() (holdMs, movePx int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.QuickMenuHoldMs, s.data.QuickMenuMovePx
+}
+
+// SetQuickMenuTrigger 保存轮盘触发参数并原子落盘（0 恒为出厂默认语义，合法域
+// 校验/钳制在调用方完成）。
+func (s *Store) SetQuickMenuTrigger(holdMs, movePx int) error {
+	return s.Update(func(cfg *AppSettings) {
+		cfg.QuickMenuHoldMs = holdMs
+		cfg.QuickMenuMovePx = movePx
 	})
 }
 

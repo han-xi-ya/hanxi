@@ -2,7 +2,7 @@
 // 快捷菜单模块页：全局右键长按唤出能力的状态、条目预览与就地编辑。
 // N5-C1：条目编辑面与托盘右键菜单同挂共享组件 TrayItemsEditor（数据本就是同一份
 // settings.TrayMenu 账），配置改一处两面生效，不再来回跳页。
-import { ref, shallowRef, onMounted } from 'vue'
+import { computed, ref, shallowRef, onMounted } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
 import type { MenuItem, Status } from '../../bindings/hanxi/internal/modules/quickmenu/models'
 import { getErrorMessage } from '../utils/errors'
@@ -48,7 +48,41 @@ async function loadState() {
   const st = await QuickMenuAPI.QuickMenuService.GetStatus()
   status.value = st
   twoTier.value = st.twoTier
+  holdMs.value = st.holdMs
+  movePx.value = st.moveTol
+  holdDraft.value = st.holdMs
+  moveDraft.value = st.moveTol
   return st
+}
+
+// ---- N5-C2 触发参数（长按时长/位移容差）----
+// 有效值口径在后端（钳制 200–1500ms / 4–64px，盘上坏值不武装钩子）；本页只
+// 做草稿-保存两段式：改动亮"应用"，保存回显以钳后返回值为准，失败回滚草稿。
+const holdMs = ref(450)
+const movePx = ref(16)
+const holdDraft = ref(450)
+const moveDraft = ref(16)
+const savingTrigger = ref(false)
+const triggerDirty = computed(
+  () => holdDraft.value !== holdMs.value || moveDraft.value !== movePx.value,
+)
+
+async function saveTrigger() {
+  savingTrigger.value = true
+  try {
+    const [h, m] = await QuickMenuAPI.QuickMenuService.SetTriggerConfig(
+      Number(holdDraft.value) || 0, Number(moveDraft.value) || 0,
+    )
+    holdMs.value = h
+    movePx.value = m
+    holdDraft.value = h
+    moveDraft.value = m
+  } catch (err) {
+    errorMsg.value = getErrorMessage(err)
+    try { await loadState() } catch { /* 回读失败保留错误文案，重试即再拉 */ }
+  } finally {
+    savingTrigger.value = false
+  }
 }
 
 async function toggleTwoTier(on: boolean) {
@@ -126,6 +160,23 @@ onMounted(refresh)
             @change="toggleTwoTier(($event.target as HTMLInputElement).checked)"
           />
         </label>
+        <div class="setting-row">
+          <span class="setting-main">
+            <span class="setting-name">触发参数</span>
+            <span class="setting-desc">
+              右键按住多久唤出轮盘（200–1500ms，出厂 450）与抬手前允许的光标漂移（4–64px，出厂 16）。
+              调短更跟手但普通右键易误触；调大防误触。保存即热更新全局钩子。
+            </span>
+            <span class="trigger-form">
+              <label class="trigger-field">按住 <input v-model.number="holdDraft" type="number" min="200" max="1500" step="50" class="text-input trigger-num mono" aria-label="长按时长毫秒" /></label>
+              <label class="trigger-field">ms · 位移容差 <input v-model.number="moveDraft" type="number" min="4" max="64" step="2" class="text-input trigger-num mono" aria-label="位移容差像素" /></label>
+              <label class="trigger-field">px</label>
+            </span>
+          </span>
+          <button type="button" class="btn btn-small btn-secondary" :disabled="!triggerDirty || savingTrigger" @click="saveTrigger">
+            {{ savingTrigger ? '应用中…' : '应用' }}
+          </button>
+        </div>
       </section>
 
       <section class="panel">
@@ -284,6 +335,10 @@ onMounted(refresh)
   white-space: nowrap;
 }
 
+/* N5-C2 触发参数行：草稿数值对 + 应用钮同行，mono 机器值 */
+.trigger-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.trigger-field { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
+.trigger-num { width: 84px; padding: 3px 8px; }
 .panel-foot {
   display: flex;
   justify-content: flex-end;
