@@ -56,6 +56,25 @@ export function CardDragStart() {
 }
 
 /**
+ * CardResizeEnd 缩放手柄 mouseup 调用：结束缩放会话（幂等；落账在会话
+ * goroutine 的 defer 里做，与此通道竞速丢失 mouseup 时左键态兜底同样收口）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function CardResizeEnd() {
+    return $Call.ByID(1265324596);
+}
+
+/**
+ * CardResizeStart 右下角缩放手柄 mousedown 调用：进入跟手缩放会话（N42②，
+ * 重入忽略）。与拖拽同款 Go 侧原生轮询实现（card_windows.go startCardResize），
+ * 收口时把 DIP 尺寸回写 Wails 记账并持久化。纯 void 绑定：Wave 3 口径不改签名。
+ * @returns {$CancellablePromise<void>}
+ */
+export function CardResizeStart() {
+    return $Call.ByID(851649229);
+}
+
+/**
  * GetAutoCopy 返回「截屏识别后自动复制文字」开关（默认 true）。
  * @returns {$CancellablePromise<boolean>}
  */

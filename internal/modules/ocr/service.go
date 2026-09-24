@@ -77,6 +77,9 @@ type OcrService struct {
 	cardDragMu   sync.Mutex    // 悬浮卡拖拽会话：同一时刻至多一个跟手 goroutine
 	cardDragStop chan struct{} // 非 nil 表示拖拽进行中
 
+	cardResizeMu   sync.Mutex    // 悬浮卡缩放会话（N42②）：与拖拽同族，各自至多一个
+	cardResizeStop chan struct{} // 非 nil 表示缩放进行中
+
 	hotkeyMu      sync.Mutex        // 保护热键绑定通道注入（装配根写、RPC 读）
 	hotkeyBinding SnipHotkeyBinding // 剪贴板识图热键落实通道（未注入 = 纯配置读写）
 

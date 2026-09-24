@@ -168,3 +168,33 @@ func TestStoreEngineRegistryValidation(t *testing.T) {
 		t.Fatalf("同值 SetActiveEngine 应幂等: %v", err)
 	}
 }
+
+// TestSnipCardSizePersistence N42② 卡片尺寸记忆：默认建窗档、往返持久化、
+// 越界钳制、0/坏值回落、相同值静默跳过写盘。
+func TestSnipCardSizePersistence(t *testing.T) {
+	dir := t.TempDir()
+	s := newOcrStore(dir)
+	if w, h := s.GetSnipCardSize(); w != cardWidthDIP || h != cardHeightDIP {
+		t.Fatalf("默认尺寸 = %d×%d, want %d×%d", w, h, cardWidthDIP, cardHeightDIP)
+	}
+	if err := s.SetSnipCardSize(600, 350); err != nil {
+		t.Fatalf("合法尺寸被拒: %v", err)
+	}
+	if w, h := newOcrStore(dir).GetSnipCardSize(); w != 600 || h != 350 {
+		t.Fatalf("重载尺寸 = %d×%d, want 600×350", w, h)
+	}
+	if err := s.SetSnipCardSize(10, 99999); err != nil {
+		t.Fatal(err)
+	}
+	if w, h := s.GetSnipCardSize(); w != cardDIPMinW || h != cardDIPMaxH {
+		t.Fatalf("越界应钳至 [%d,%d]，得 %d×%d", cardDIPMinW, cardDIPMaxH, w, h)
+	}
+	// 0 值回落当前档（防坏档把窗口炸成不可见）
+	bw, bh := s.GetSnipCardSize()
+	if err := s.SetSnipCardSize(0, -5); err != nil {
+		t.Fatal(err)
+	}
+	if w, h := s.GetSnipCardSize(); w != bw || h != bh {
+		t.Fatalf("0/负值应回落当前档 %d×%d，得 %d×%d", bw, bh, w, h)
+	}
+}

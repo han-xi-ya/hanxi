@@ -36,11 +36,12 @@ func (s *OcrService) showSnipCard(res SnipResult) {
 		return
 	}
 	if card == nil {
+		cw, ch := s.store.GetSnipCardSize()
 		card = a.Window.NewWithOptions(application.WebviewWindowOptions{
 			Name:             cardWindowName,
 			Title:            "识别结果",
-			Width:            cardWidthDIP,
-			Height:           cardHeightDIP,
+			Width:            cw,
+			Height:           ch,
 			Hidden:           true,
 			Frameless:        true,
 			AlwaysOnTop:      true,
@@ -58,6 +59,13 @@ func (s *OcrService) showSnipCard(res SnipResult) {
 		s.cardMu.Lock()
 		s.card = card
 		s.cardMu.Unlock()
+	}
+
+	// 复用路径也对齐记忆尺寸（上次会话收口若因降级未回写，此处自愈；
+	// 尺寸变化须在定位前落定，positionSnipCard 的 work-area 钳位才用新宽高）
+	cw, ch := card.Size()
+	if w, h := s.store.GetSnipCardSize(); w != cw || h != ch {
+		card.SetSize(w, h)
 	}
 
 	s.positionSnipCard(card)
@@ -175,6 +183,37 @@ func (s *OcrService) CardDragEnd() {
 		s.cardDragStop = nil
 	}
 	s.cardDragMu.Unlock()
+}
+
+// CardResizeStart 右下角缩放手柄 mousedown 调用：进入跟手缩放会话（N42②，
+// 重入忽略）。与拖拽同款 Go 侧原生轮询实现（card_windows.go startCardResize），
+// 收口时把 DIP 尺寸回写 Wails 记账并持久化。纯 void 绑定：Wave 3 口径不改签名。
+func (s *OcrService) CardResizeStart() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
+	s.cardMu.Lock()
+	card := s.card
+	s.cardMu.Unlock()
+	s.startCardResize(card)
+}
+
+// CardResizeEnd 缩放手柄 mouseup 调用：结束缩放会话（幂等；落账在会话
+// goroutine 的 defer 里做，与此通道竞速丢失 mouseup 时左键态兜底同样收口）。
+func (s *OcrService) CardResizeEnd() {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return
+	}
+	defer release()
+	s.cardResizeMu.Lock()
+	if s.cardResizeStop != nil {
+		close(s.cardResizeStop)
+		s.cardResizeStop = nil
+	}
+	s.cardResizeMu.Unlock()
 }
 
 // SnipCardDismiss 收起悬浮卡（前端关闭钮/Esc 调用；只隐藏不销毁）。

@@ -65,6 +65,32 @@ func MoveWindowBy(hwnd uintptr, dx, dy int32) error {
 	return nil
 }
 
+// QueryWindowRect 返回窗口的物理屏幕矩形（left/top/width/height，像素）。
+// 缩放会话开手快照用：起点尺寸 + 游标物理位移直接推算目标尺寸，全程物理像素
+// 口径（与 MoveWindowBy 同一本账，不碰 Wails DIP 记账）。
+func QueryWindowRect(hwnd uintptr) (left, top, width, height int32, err error) {
+	var r windowRect
+	if rr, _, _ := procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r))); rr == 0 {
+		return 0, 0, 0, 0, fmt.Errorf("GetWindowRect 失败")
+	}
+	return r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, nil
+}
+
+// ResizeWindowTo 将窗口设为指定物理像素尺寸（位置与 Z 序不动），frameless
+// 跟手缩放（N42②）的执行原语，与 MoveWindowBy 同族同纪律：直连 user32，
+// 绕开 Wails DIP 换算；会话收口时由调用方经 SetSize 回写一次保记账一致。
+func ResizeWindowTo(hwnd uintptr, width, height int32) error {
+	r1, _, _ := procSetWindowPos.Call(
+		hwnd, 0, 0, 0,
+		uintptr(uint32(width)), uintptr(uint32(height)),
+		uintptr(swpNoMove|swpNoZorder),
+	)
+	if r1 == 0 {
+		return fmt.Errorf("SetWindowPos 失败")
+	}
+	return nil
+}
+
 // LeftButtonPressed 鼠标左键当前是否按下（异步即时态）。拖拽轮询用它兜底捕捉
 // "指针移出窗口后释放"——前端 mouseup 事件此时可能已丢失。
 func LeftButtonPressed() bool {

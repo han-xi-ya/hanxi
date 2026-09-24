@@ -41,6 +41,11 @@ type ocrStore struct {
 
 	snipHotkeyEnabled bool   // 全局热键"剪贴板识图"开关（默认开）
 	snipHotkey        string // 键位（规范化串，默认 Ctrl+Alt+T；纯键位不开——拍板决策）
+
+	// 悬浮结果卡尺寸（DIP，N42②）：用户拖动右下角缩放手柄后记忆，下次弹出复现；
+	// 与字号档位（前端 localStorage）正交独立。越界装载即钳制。
+	cardW int
+	cardH int
 }
 
 // engineReg 单引擎注册项（内存形态）。
@@ -72,6 +77,14 @@ type ocrConfig struct {
 
 	SnipHotkeyEnabled *bool   `json:"snipHotkeyEnabled"`
 	SnipHotkey        *string `json:"snipHotkey"`
+
+	SnipCardSize *cardSizeConfig `json:"snipCardSize"`
+}
+
+// cardSizeConfig 悬浮结果卡记忆尺寸（DIP，N42②）。
+type cardSizeConfig struct {
+	W int `json:"w"`
+	H int `json:"h"`
 }
 
 // defaultSnipHotkey 剪贴板识图热键默认键位（PLAN_CLIPBOARD 拍板：避让 snipaste
@@ -89,6 +102,9 @@ func newOcrStore(dir string) *ocrStore {
 
 		snipHotkeyEnabled: true, // 拍板：默认开（与截屏工作流同族；冲突时设置页红字引导改键）
 		snipHotkey:        defaultSnipHotkey,
+
+		cardW: cardWidthDIP, // 建窗默认尺寸（snipcard.go 常量单一来源）
+		cardH: cardHeightDIP,
 	}
 	_ = s.load()
 	return s
@@ -204,6 +220,11 @@ func (s *ocrStore) load() error {
 			s.snipHotkey = defaultSnipHotkey
 		}
 	}
+	if cfg.SnipCardSize != nil {
+		// 坏值钳制进允许域（与前端字号档位钳制同口径），零/负/超界不炸默认
+		s.cardW = clampCardDIP(cfg.SnipCardSize.W, cardWidthDIP, cardDIPMinW, cardDIPMaxW)
+		s.cardH = clampCardDIP(cfg.SnipCardSize.H, cardHeightDIP, cardDIPMinH, cardDIPMaxH)
+	}
 	return nil
 }
 
@@ -221,6 +242,8 @@ func (s *ocrStore) saveLocked() error {
 
 		SnipHotkeyEnabled: &s.snipHotkeyEnabled,
 		SnipHotkey:        &s.snipHotkey,
+
+		SnipCardSize: &cardSizeConfig{W: s.cardW, H: s.cardH},
 	})
 }
 
@@ -412,4 +435,55 @@ func (s *ocrStore) SetSnipHotkey(raw string) (string, error) {
 		return norm, err
 	}
 	return norm, nil
+}
+
+// ---------- 悬浮结果卡尺寸记忆（N42②） ----------
+
+// 卡片缩放允许域（DIP）：下界保证正文+底行仍可读可用，上界防巨卡糊屏
+// （4K 全屏约 3840×2160 DIP 顶格也超此值，取常用显示器九成以内）。
+const (
+	cardDIPMinW = 280
+	cardDIPMinH = 160
+	cardDIPMaxW = 1280
+	cardDIPMaxH = 860
+)
+
+// clampCardDIP 把记忆/传入尺寸钳进 [min,max]；0 或坏值回落 def（建窗默认档）。
+func clampCardDIP(v, def, min, max int) int {
+	if v <= 0 {
+		return def
+	}
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// GetSnipCardSize 返回悬浮结果卡记忆尺寸（DIP，默认建窗档）。
+func (s *ocrStore) GetSnipCardSize() (int, int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cardW, s.cardH
+}
+
+// SetSnipCardSize 记录卡片缩放宽高并落盘（DIP，各自钳进允许域）；
+// 与当前相同则静默跳过（拖拽会话每帧上报也不刷盘）。
+func (s *ocrStore) SetSnipCardSize(w, h int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	nw := clampCardDIP(w, s.cardW, cardDIPMinW, cardDIPMaxW)
+	nh := clampCardDIP(h, s.cardH, cardDIPMinH, cardDIPMaxH)
+	if nw == s.cardW && nh == s.cardH {
+		return nil
+	}
+	pw, ph := s.cardW, s.cardH
+	s.cardW, s.cardH = nw, nh
+	if err := s.saveLocked(); err != nil {
+		s.cardW, s.cardH = pw, ph
+		return err
+	}
+	return nil
 }

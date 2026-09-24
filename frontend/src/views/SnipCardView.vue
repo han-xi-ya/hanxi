@@ -73,17 +73,30 @@ async function dismiss() {
   } catch { /* 窗口侧兜底：卡已无处可收时静默 */ }
 }
 
-// 拖拽把手（元信息条）：Wails beta.10 无拖拽区 API，Go 侧原生轮询跟手。
-// mouseup 显式结束；指针移出窗口丢失事件时，Go 侧左键态检测兜底。
+// 跟手手势会话公共件（拖拽/缩放同族）：Wails beta.10 无拖拽/缩放区 API，
+// Go 侧原生轮询跟手。mousedown 起手、window mouseup 显式结束；指针移出窗口
+// 丢失 mouseup 时，Go 侧左键态检测兜底（双通道收口）。尽力而为，异常静默。
+function beginGesture(start: () => Promise<unknown>, end: () => Promise<unknown>) {
+  void start().catch(() => { /* 门拒绝/后端不可用：手势不可得，卡片仍可正常用 */ })
+  const stop = () => {
+    window.removeEventListener('mouseup', stop)
+    void end().catch(() => {})
+  }
+  window.addEventListener('mouseup', stop)
+}
+
+// 拖拽把手（元信息条）
 function startDrag(e: MouseEvent) {
   if (e.button !== 0) return
   e.preventDefault() // 抑制把手上的文本选中
-  OcrAPI.CardDragStart().catch(() => { /* 拖拽尽力而为 */ })
-  const stop = () => {
-    window.removeEventListener('mouseup', stop)
-    OcrAPI.CardDragEnd().catch(() => {})
-  }
-  window.addEventListener('mouseup', stop)
+  beginGesture(OcrAPI.CardDragStart, OcrAPI.CardDragEnd)
+}
+
+// 缩放手柄（右下角）：改窗口宽高并记忆（N42②，尺寸持久化在后端 store）
+function startResize(e: MouseEvent) {
+  if (e.button !== 0) return
+  e.preventDefault() // 抑制 WebView 文本选中/原生缩放手势
+  beginGesture(OcrAPI.CardResizeStart, OcrAPI.CardResizeEnd)
 }
 
 async function copyAll() {
@@ -133,6 +146,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         {{ busy ? '复制中…' : '复制全文' }}
       </button>
     </footer>
+
+    <!-- 右下角缩放手柄（N42②）：与拖拽把手同族 Go 侧跟手，尺寸即时记忆 -->
+    <span class="snip-resize" title="拖动缩放（大小会记住）" aria-hidden="true" @mousedown="startResize"></span>
   </div>
 </template>
 
@@ -144,6 +160,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
    不可读），78% 兼顾毛玻璃质感与 token 设计对比度；1px 内描边确立边缘。
    无标题栏：元信息下沉底行兼作拖拽把手（.snip-grip），"识别结果"由场景自明。 */
 .snip-card {
+  position: relative; /* 缩放手柄锚定窗口右下角 */
   height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column;
   background: color-mix(in srgb, var(--surface-panel) 78%, transparent);
@@ -194,5 +211,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 .snip-x:hover { color: var(--color-text); background: var(--surface-hover); }
+/* 缩放手柄（N42③ 的窗口搭档②）：右下角 16px 热区，三道斜纹示意可拖；
+   贴在 body 底 padding 带上，不侵入正文滚动区与按钮行 */
+.snip-resize {
+  position: absolute; right: 1px; bottom: 1px; width: 16px; height: 16px;
+  cursor: nwse-resize; user-select: none; touch-action: none;
+  background:
+    linear-gradient(45deg, transparent 46%, var(--color-text-subtle) 46%, var(--color-text-subtle) 54%, transparent 54%),
+    linear-gradient(45deg, transparent 64%, var(--color-text-subtle) 64%, var(--color-text-subtle) 72%, transparent 72%),
+    linear-gradient(45deg, transparent 82%, var(--color-text-subtle) 82%, var(--color-text-subtle) 90%, transparent 90%);
+  opacity: 0.55; border-bottom-right-radius: var(--radius-control, 6px);
+}
+.snip-resize:hover { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .snip-card * { transition: none; animation: none; } }
 </style>

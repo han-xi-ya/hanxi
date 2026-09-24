@@ -12,6 +12,8 @@ const api = vi.hoisted(() => ({
   SnipCardDismiss: vi.fn(),
   CardDragStart: vi.fn(),
   CardDragEnd: vi.fn(),
+  CardResizeStart: vi.fn(),
+  CardResizeEnd: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -99,6 +101,18 @@ describe('SnipCardView', () => {
     window.dispatchEvent(new MouseEvent('mouseup', { button: 0 }))
     await flushPromises()
     expect(api.CardDragEnd).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('缩放手柄（N42②）：右下角 mousedown 起缩放会话，mouseup 结束', async () => {
+    api.CardResizeStart.mockResolvedValue(undefined)
+    api.CardResizeEnd.mockResolvedValue(undefined)
+    const wrapper = await mountView()
+    await wrapper.find('.snip-resize').trigger('mousedown', { button: 0 })
+    expect(api.CardResizeStart).toHaveBeenCalledTimes(1)
+    window.dispatchEvent(new MouseEvent('mouseup', { button: 0 }))
+    await flushPromises()
+    expect(api.CardResizeEnd).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
