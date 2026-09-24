@@ -44,11 +44,20 @@ type zipSource struct {
 	srv      *httptest.Server
 }
 
+// newTestManager N25 G5 收编：降级链 client 已切 netx 代理链
+// （env→系统代理→直连），原来的 t.Setenv("NO_PROXY") 口径失效——
+// WinINET 系统代理兜底不认 NO_PROXY，且 http.ProxyFromEnvironment 按进程
+// 缓存（踩坑 #35），进程内改 env 验证不了什么。照 guoheview 先例改为
+// Transport 注入式回环强制直连，超时语义仍随 NewManager 生产预算。
+func newTestManager(t *testing.T) *Manager {
+	t.Helper()
+	m := NewManager(t.TempDir())
+	m.client.Transport = &http.Transport{Proxy: nil}
+	return m
+}
+
 func newZipSource(t *testing.T) *zipSource {
 	t.Helper()
-	// 降级链 downloadTo 走默认 Transport（ProxyFromEnvironment）：显式放行回环，
-	// 防用户环境代理劫持本机测试服务（回环直连纪律，仓内口径）
-	t.Setenv("NO_PROXY", "127.0.0.1,localhost")
 	z := &zipSource{}
 	z.srv = httptest.NewServer(http.HandlerFunc(z.serve))
 	t.Cleanup(z.srv.Close)
@@ -180,7 +189,7 @@ func assertNoTransactionLeftovers(t *testing.T, root string) {
 // data\ 激活器补齐、内核 meta.json + 模块 meta.module.json 双轨账本。
 func TestDownloadLatestStageAndLedger(t *testing.T) {
 	src := newZipSource(t)
-	m := NewManager(t.TempDir())
+	m := newTestManager(t)
 	zipBytes := buildVSZip(t, "latest-exe-bytes")
 	seedAndStage(t, m, src, "1.136.1", zipBytes, shaHex(zipBytes))
 
@@ -234,7 +243,7 @@ func TestDownloadLatestStageAndLedger(t *testing.T) {
 // 降级链（downloadTo + 字节数核对），如实装成 verified=false（不冒领官方校验）。
 func TestDownloadNoDigestLegacyChain(t *testing.T) {
 	src := newZipSource(t)
-	m := NewManager(t.TempDir())
+	m := newTestManager(t)
 	zipBytes := buildVSZip(t, "legacy-exe-bytes")
 	seedAndStage(t, m, src, "1.135.0", zipBytes, "") // 无摘要
 
@@ -261,7 +270,7 @@ func TestDownloadNoDigestLegacyChain(t *testing.T) {
 // 报 error 进度、旧版本完好、版本树无新目录与半件残留。
 func TestDownloadInterruptKeepsOldVersion(t *testing.T) {
 	src := newZipSource(t)
-	m := NewManager(t.TempDir())
+	m := newTestManager(t)
 	installViaChain(t, m, src, "1.135.0", "old-exe-bytes")
 
 	newZip := buildVSZip(t, "brand-new-exe")
@@ -297,7 +306,7 @@ func TestDownloadInterruptKeepsOldVersion(t *testing.T) {
 // TestDownloadBadDigestRejects 摘要错（源内容与官方摘要不符）→ 不落位且旧版完好。
 func TestDownloadBadDigestRejects(t *testing.T) {
 	src := newZipSource(t)
-	m := NewManager(t.TempDir())
+	m := newTestManager(t)
 	installViaChain(t, m, src, "1.135.0", "old-exe-bytes")
 	oldExeHashBefore := fileSHA256(filepath.Join(m.versionsDir, "vscode_1.135.0", exeName))
 
@@ -335,7 +344,7 @@ func TestZipLayoutRejectedKeepsTree(t *testing.T) {
 			t.Fatal(err)
 		}
 		src := newZipSource(t)
-		m := NewManager(t.TempDir())
+		m := newTestManager(t)
 		seedAndStage(t, m, src, "1.136.1", zipBytes, shaHex(zipBytes))
 
 		err = m.Download(newTxnID(), "1.136.1", FormPortable, nil)
@@ -354,7 +363,7 @@ func TestZipLayoutRejectedKeepsTree(t *testing.T) {
 // 落位的同一份字节，摘要才可比对。）
 func TestReinstallSamePackageIdempotent(t *testing.T) {
 	src := newZipSource(t)
-	m := NewManager(t.TempDir())
+	m := newTestManager(t)
 	zipBytes := buildVSZip(t, "same-exe")
 	seedAndStage(t, m, src, "1.136.1", zipBytes, shaHex(zipBytes))
 	if err := m.Download(newTxnID(), "1.136.1", FormPortable, nil); err != nil {
@@ -377,7 +386,7 @@ func TestReinstallSamePackageIdempotent(t *testing.T) {
 // 并存是 VS Code 托管核心卖点）、列表最新在前、卸载新版不动旧版。
 func TestUpdateChainCoexist(t *testing.T) {
 	src := newZipSource(t)
-	m := NewManager(t.TempDir())
+	m := newTestManager(t)
 	installViaChain(t, m, src, "1.135.0", "exe-1.135.0")
 	installViaChain(t, m, src, "1.136.1", "exe-1.136.1")
 
@@ -407,7 +416,7 @@ func TestUpdateChainCoexist(t *testing.T) {
 // TestStagedResidueAbandoned 落位中途强杀等价模拟：staging 半件残留 →
 // Versions 不显示半件；CleanupAbandoned 收尸后目录干净。
 func TestStagedResidueAbandoned(t *testing.T) {
-	m := NewManager(t.TempDir())
+	m := newTestManager(t)
 	staging, discard, err := m.tree.StageDir("inst-kill-sim")
 	if err != nil {
 		t.Fatal(err)

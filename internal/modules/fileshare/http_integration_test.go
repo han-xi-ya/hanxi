@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"hanxi/packages/go/netx"
 )
 
 // 真实 TCP 集成测试：完整模拟 Web 页面的单次二进制流上传流程。
@@ -23,7 +25,9 @@ func TestFileshareSingleStreamRealHTTP(t *testing.T) {
 	defer server.Stop()
 
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
-	client := &http.Client{Timeout: 30 * time.Second}
+	// N25 收编：回环测试靶必须用显式直连客户端——裸 client 走
+	// ProxyFromEnvironment，用户环境的代理（如本机 7890）会劫持 127.0.0.1 请求使测试失真。
+	client := netx.DirectClient(30 * time.Second)
 	content := make([]byte, 6*1024*1024)
 	for i := range content {
 		content[i] = byte(i % 251)

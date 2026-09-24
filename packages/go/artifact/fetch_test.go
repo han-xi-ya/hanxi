@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hanxi/packages/go/netx"
 )
 
 func shaHex(b []byte) string {
@@ -277,6 +279,54 @@ func TestFetchConfigErrors(t *testing.T) {
 			}
 			assertMissing(t, dest)
 		})
+	}
+}
+
+// TestFetchLoopbackBypassesProxy N25 G5：锁死 fetchTransport 所装混合闸
+// （netx.LoopbackAwareProxyFunc）的回环短路语义——发往本机测试靶的请求
+// 永远拿不到代理，用户环境/系统代理不得劫持下载内核的回环候选源。
+// 纪律：注入式纯函数断言，不在进程内改环境变量（踩坑 #35：
+// http.ProxyFromEnvironment 按进程缓存，测试中改 env 不生效且会泄露语义）。
+func TestFetchLoopbackBypassesProxy(t *testing.T) {
+	if fetchTransport.Proxy == nil {
+		t.Fatal("fetchTransport 必须挂代理解析闸（netx.LoopbackAwareProxyFunc）")
+	}
+	srv := serve(t, []byte("x"))
+	// 回环形态全集：httptest 真靶（127.0.0.1）、localhost、127/8 全段、IPv6 ::1。
+	for _, raw := range []string{
+		srv.URL + "/pkg.zip",
+		"http://localhost:8080/pkg.zip",
+		"http://127.0.0.2:9/a.zip",
+		"http://[::1]:9/a.zip",
+	} {
+		req, err := http.NewRequest(http.MethodGet, raw, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		px, err := fetchTransport.Proxy(req)
+		if err != nil {
+			t.Fatalf("%s: 闸返回错误: %v", raw, err)
+		}
+		if px != nil {
+			t.Errorf("%s: 回环请求必须恒定直连，实际代理 %v", raw, px)
+		}
+	}
+	// 非回环端点：闸不得短路，必须如实转交代理链（env→系统代理→直连）。
+	// 与同一链的独立解析结果比对而非断言具体值——测试机可能没配任何代理，
+	// 此时 nil 属"链路尽头直连"的正常回落，锁回环短路语义即可。
+	const nonLoop = "https://example.invalid/pkg.zip"
+	req, err := http.NewRequest(http.MethodGet, nonLoop, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := fetchTransport.Proxy(req)
+	if err != nil {
+		t.Fatalf("%s: 闸返回错误: %v", nonLoop, err)
+	}
+	want, wantErr := netx.ProxyFunc()(req)
+	if (err == nil) != (wantErr == nil) || (got == nil) != (want == nil) ||
+		(got != nil && want != nil && got.String() != want.String()) {
+		t.Errorf("%s: 非回环请求未经代理链解析：闸=%v，链=%v", nonLoop, got, want)
 	}
 }
 
