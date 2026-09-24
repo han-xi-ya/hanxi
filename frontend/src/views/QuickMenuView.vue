@@ -1,11 +1,13 @@
 <script setup lang="ts">
-// 快捷菜单模块页：全局右键长按唤出能力的状态与条目预览（只读）。
-// 条目编辑刻意不在此重复造面——与托盘右键菜单共用 settings.TrayMenu，统一在设置页管理。
+// 快捷菜单模块页：全局右键长按唤出能力的状态、条目预览与就地编辑。
+// N5-C1：条目编辑面与托盘右键菜单同挂共享组件 TrayItemsEditor（数据本就是同一份
+// settings.TrayMenu 账），配置改一处两面生效，不再来回跳页。
 import { ref, shallowRef, onMounted } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
 import type { MenuItem, Status } from '../../bindings/hanxi/internal/modules/quickmenu/models'
 import { getErrorMessage } from '../utils/errors'
 import WheelPreview from '../components/quickmenu/WheelPreview.vue'
+import TrayItemsEditor from '../components/tray/TrayItemsEditor.vue'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -60,6 +62,17 @@ async function toggleTwoTier(on: boolean) {
     await refresh() // 保存失败回滚回显，不私留"看起来已生效"的假状态
   } finally {
     savingTier.value = false
+  }
+}
+
+// N5-C1：编辑器保存成功后重拉轮盘实际条目预览（分组展开/拍平的树形态随配置变）。
+// 本页是 KeepAlive 缓存页，SetTrayMenu 只广播 trayRebuild 不会自动刷新本页，
+// 故由宿主在 onSaved（组件 saved 事件）钩子里自行重拉；跨页事件化属后续批次决策。
+async function reloadAfterSave() {
+  try {
+    items.value = (await QuickMenuAPI.QuickMenuService.ListItems()) ?? []
+  } catch {
+    await refresh() // 预览重拉失败退回整页刷新（错误态自带重试入口，不留假预览）
   }
 }
 
@@ -118,14 +131,14 @@ onMounted(refresh)
       <section class="panel">
         <h2 class="sec-title">当前条目</h2>
         <p class="sec-note">
-          与托盘右键菜单共用同一份配置（在设置页维护），主盘
+          与托盘右键菜单共用同一份配置（本页下方「条目编辑」即可改，无需去设置页），主盘
           <b class="mono">{{ items.length }}</b> 个扇区{{ twoTier ? '（分组可展开子环）' : '（分组已拍平）' }}。
         </p>
 
         <div class="qm-layout">
         <div class="qm-list-col">
         <div v-if="items.length === 0" class="empty-state">
-          <p>尚未配置任何条目。先到设置页为托盘菜单添加要快速启动的程序、托管命令或页面。</p>
+          <p>尚未配置任何条目。可在下方「条目编辑」中添加要快速启动的程序、托管命令或分组。</p>
         </div>
         <ul v-else class="item-list">
           <li v-for="(item, i) in items" :id="`qm-item-row-${i}`" :key="item.index" class="item-block" :class="{ 'is-picked': selected === i }">
@@ -149,7 +162,7 @@ onMounted(refresh)
         </ul>
 
         <div class="panel-foot">
-          <!-- 直达设置·托盘菜单分区：轮盘条目编辑器所在地（'/settings' 拆分后落地常规偏好） -->
+          <!-- N5-C1 后本页已内嵌编辑面，此跳设置入口暂保留（同一配置的等效入口，移除与否待后续批次裁决） -->
           <button type="button" class="btn btn-primary btn-small" @click="emit('navigate', '/settings/tray')">
             前往设置页配置
           </button>
@@ -160,6 +173,13 @@ onMounted(refresh)
           <p class="qm-preview-hint">与你挂出的轮盘同一几何——点盘格可定位下方条目</p>
         </aside>
         </div>
+      </section>
+
+      <!-- N5-C1：与设置页同挂共享编辑面（同一份 settings.TrayMenu 账），保存后托盘与轮盘同时生效 -->
+      <section class="panel">
+        <h2 class="sec-title">条目编辑</h2>
+        <p class="sec-note">与「设置→托盘右键菜单」是同一份配置：此处勾选、排序、分组，保存后托盘菜单与本页面轮盘预览同时生效。</p>
+        <TrayItemsEditor @saved="reloadAfterSave" />
       </section>
 
       <section class="panel usage">

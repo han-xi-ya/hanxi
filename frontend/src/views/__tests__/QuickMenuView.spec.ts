@@ -1,4 +1,6 @@
 // 快捷菜单模块页特征测试：状态 chip、条目预览、空态与"前往设置"导航事件契约。
+// N5-C1 后页面内嵌共享编辑面 TrayItemsEditor（走 AppService 托盘 RPC），按测试 seam
+// 约定补 app 绑定打桩——仅基础设施，断言零改动。
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -9,9 +11,17 @@ const svc = vi.hoisted(() => ({
   ListItems: vi.fn().mockResolvedValue([]),
 }))
 
+const traySvc = vi.hoisted(() => ({
+  ListTrayMenuOptions: vi.fn().mockResolvedValue([]),
+  GetTrayMenu: vi.fn().mockResolvedValue([]),
+  SetTrayMenu: vi.fn().mockResolvedValue(undefined),
+  PickExeFile: vi.fn().mockResolvedValue(''),
+}))
+
 vi.mock('../../../bindings/hanxi/internal/modules/quickmenu', () => ({
   QuickMenuService: svc,
 }))
+vi.mock('../../../bindings/hanxi/internal/app', () => ({ AppService: traySvc }))
 
 const status = { trapActive: true, holdMs: 450, moveTol: 16, itemCount: 2 }
 const items = [
@@ -37,6 +47,8 @@ afterEach(() => {
   vi.clearAllMocks()
   svc.GetStatus.mockResolvedValue(status)
   svc.ListItems.mockResolvedValue(items)
+  traySvc.ListTrayMenuOptions.mockResolvedValue([])
+  traySvc.GetTrayMenu.mockResolvedValue([])
 })
 
 describe('QuickMenuView', () => {
