@@ -107,5 +107,12 @@ export const ICON_PATHS = {
 
 export type IconName = keyof typeof ICON_PATHS
 
+/**
+ * 真图标第二来源（N27 批 A）：`app:<moduleId>` 形态名，AppIcon 据此渲染
+ * assets/apps/<moduleId>.png 位图（缺图自动回落通用徽标，见 constants/appIcons.ts）。
+ * 与 `i:` 矢量并立：矢量是 hanxi 自绘语言，`app:` 是上游软件自己的脸面。
+ */
+export type AppIconName = `app:${string}`
+
 /** AppIcon 的 name prop 校验用集合（模板中 `i:` 前缀约定剥离后可查）。 */
 export const ICON_NAMES = Object.keys(ICON_PATHS) as IconName[]

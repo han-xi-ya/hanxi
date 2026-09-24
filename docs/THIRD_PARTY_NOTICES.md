@@ -191,3 +191,24 @@ Hanxi 纯托管：官方便携 zip 解压进多版本目录（versions/paseo_X.Y
 Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下载，不做进程托管**：上游桌面版尚处内测期、Electron 壳源码未公开、Windows 仅有 NSIS 安装版，三者在"托管启停/探测/唤窗"上都是硬伤，故 Hanxi 只做到 Releases 版本列表侦查 → 官方 sha256 + 字节数 + PE 魔数三重校验下载 → 一键拉起上游 NSIS 安装向导交还用户（集成决策与踩坑详见 docs/TROUBLESHOOTING.md #47）；安装后的运行行为、更新策略与数据目录均由上游本体决定，Hanxi 不修改、不静态链接、不内嵌其源码或二进制。
 
 当前 Hanxi 仓库和安装包不包含 Douzy 任何二进制。若未来改为预装或随 Hanxi 再分发，发布流程须随附 MIT 许可证文本与版权声明，并另行评估内测产品的分发责任。
+
+## 托管工具真图标（N27 批 A 入库件）
+
+Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**（32px，
+一次性从官方发行 exe 用 shell32!ExtractIconEx 提取，见 scripts/extract_app_icons.ps1），
+用途仅为在 hanxi 界面中标识该被托管软件本身（识别性展示），不暗示任何隶属或
+背书关系。逐个许可登记：
+
+| 文件 | 来源软件 | 上游许可（本文对应节） | 备注 |
+|---|---|---|---|
+| ccswitch.png | CC Switch | MIT | 图标随仓库同源 |
+| keyviz.png | Keyviz | GPL-3.0 | 识别性使用 |
+| everything.png | Everything (voidtools) | 免费软件（见上节） | |
+| snipaste.png | Snipaste | 免费软件自有 EULA（见上节） | 风险最高的入库件；如权利方异议即摘除回落通用徽标 |
+| markeron.png | MarkerOn | 见上节 | |
+| generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
+
+未入库（如实登记）：RAMMap 等 **Sysinternals 系**——微软条款禁再分发其位图，
+落通用徽标；ddnsgo/frpc 为控制台程序（无 GUI 主图标），同样落通用徽标；其余
+托管模块将在批 B 逐个提取+过审后扩充本表。若随 Hanxi 安装包再分发构成任何
+权利方异议，按"摘除位图 → 回落 generic"处理，不动摇功能。

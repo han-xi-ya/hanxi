@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import AppIcon from '../AppIcon.vue'
 import { ICON_NAMES, ICON_PATHS, type IconName } from '../../../constants/icons'
+import { APP_ICON_GENERIC_URL, APP_ICON_IDS, appIconUrl } from '../../../constants/appIcons'
 
 describe('AppIcon 注册表', () => {
   it('每个图标名均有非空 path 列表，d 以合法命令字母开头', () => {
@@ -44,5 +45,37 @@ describe('AppIcon 渲染', () => {
     const svg = mount(AppIcon, { props: { name: 'moon' as IconName } }).find('svg')
     expect(svg.attributes('stroke')).toBe('currentColor')
     expect(svg.attributes('fill')).toBe('none')
+  })
+})
+
+describe('AppIcon 真图标第二来源（N27 批 A）', () => {
+  it('注册表：通用徽标存在，首批真图标已入库', () => {
+    expect(APP_ICON_GENERIC_URL).toBeTruthy()
+    for (const id of ['ccswitch', 'keyviz', 'everything', 'snipaste', 'markeron']) {
+      expect(APP_ICON_IDS, id).toContain(id)
+    }
+  })
+
+  it('appIconUrl 命中真图标；缺图回落通用徽标且永不空串', () => {
+    expect(appIconUrl('ccswitch')).toBeTruthy()
+    expect(appIconUrl('no-such-module')).toBe(APP_ICON_GENERIC_URL)
+  })
+
+  it('`app:` 名渲染位图 <img>，装饰态 aria-hidden、label 升格 img 语义', () => {
+    const w = mount(AppIcon, { props: { name: 'app:ccswitch' } })
+    const img = w.find('img')
+    expect(img.exists()).toBe(true)
+    expect(w.find('svg').exists()).toBe(false)
+    expect(img.attributes('src')).toBeTruthy()
+    expect(img.attributes('aria-hidden')).toBe('true')
+    const named = mount(AppIcon, { props: { name: 'app:keyviz', label: 'Keyviz' } })
+    expect(named.find('img').attributes('role')).toBe('img')
+    expect(named.find('img').attributes('aria-label')).toBe('Keyviz')
+  })
+
+  it('`i:` 矢量分支零漂移：仍渲染 <svg>', () => {
+    const w = mount(AppIcon, { props: { name: 'bell' as IconName } })
+    expect(w.find('img').exists()).toBe(false)
+    expect(w.find('svg').exists()).toBe(true)
   })
 })
