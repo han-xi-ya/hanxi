@@ -230,6 +230,12 @@ func collectMemory() (MemoryInfo, error) {
 	}, nil
 }
 
+// availablePhysicalBytes 是 purge 前后观测共用的单一内存读数入口。
+func availablePhysicalBytes() (uint64, error) {
+	m, err := collectMemory()
+	return m.AvailableBytes, err
+}
+
 // displayDeviceW DISPLAY_DEVICEW。
 type displayDeviceW struct {
 	Size       uint32
