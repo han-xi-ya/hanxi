@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as PortKillAPI from '../../bindings/hanxi/internal/modules/portkill'
 import type { PortOccupant, KillResult } from '../../bindings/hanxi/internal/modules/portkill/models'
 import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
@@ -11,7 +11,7 @@ import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import HistoryPanel from '../components/tool/HistoryPanel.vue'
 
 const { showToast } = useToast()
-const { confirm } = useConfirm()
+const { confirm, confirmState } = useConfirm()
 const { copyWithToast } = useClipboard()
 
 const inputPort = ref<number | ''>('')
@@ -155,14 +155,50 @@ function applyHistoryPort(rec: HistoryRecord) {
   void searchPort(Number(raw))
 }
 
-function onHistoryEsc(e: KeyboardEvent) {
-  if (e.key === 'Escape') showHistory.value = false
+// N20 同款壳修复（病灶在两份逐字壳里成对出现）：①Esc 在确认框在场时让位
+// （面板「清空本桶」是 App 单例 ConfirmDialog，document 级监听同场竞走，一次
+// Esc 不得关两层）；②本弹窗 z-index 950 低于确认框 1000——KeepAlive 懒挂载
+// 的 Teleport 锚点晚于 App 单例，同层拼 DOM 序必输；③焦点入窗/Tab trap/回位。
+const historyDialog = ref<HTMLElement | null>(null)
+let historyPrevFocus: HTMLElement | null = null
+
+function onHistoryTabTrap(e: KeyboardEvent) {
+  if (e.key !== 'Tab' || !historyDialog.value) return
+  const focusable = Array.from(historyDialog.value.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input, select, textarea, [href], [tabindex]:not([tabindex="-1"])',
+  ))
+  if (!focusable.length) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault()
+    first.focus()
+  }
 }
-watch(showHistory, (v) => {
-  if (v) document.addEventListener('keydown', onHistoryEsc)
-  else document.removeEventListener('keydown', onHistoryEsc)
+
+function onHistoryEsc(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || confirmState.open) return // 确认框在场时 Esc 归它
+  showHistory.value = false
+}
+watch(showHistory, async (v) => {
+  if (v) {
+    historyPrevFocus = document.activeElement as HTMLElement | null
+    document.addEventListener('keydown', onHistoryEsc)
+    await nextTick()
+    historyDialog.value?.focus()
+  } else {
+    document.removeEventListener('keydown', onHistoryEsc)
+    historyPrevFocus?.focus()
+    historyPrevFocus = null
+  }
 })
-onBeforeUnmount(() => document.removeEventListener('keydown', onHistoryEsc))
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onHistoryEsc)
+  historyDialog.value?.removeEventListener('keydown', onHistoryTabTrap)
+})
 
 // ---------- 输出区复制（PLAN_CLIPBOARD §3.2C：PortKill 整页零复制的缺口补齐） ----------
 // 整表导出按"一行一条、Tab 分隔"，粘进表格/文档即可对齐。
@@ -345,7 +381,7 @@ onMounted(() => {
     <!-- 历史记录弹窗（自取数面板；Esc/遮罩/关闭出口，复用 ConfirmDialog 交互契约） -->
     <Teleport to="body">
       <div v-if="showHistory" class="hist-backdrop" @click.self="showHistory = false">
-        <div class="hist-dialog" role="dialog" aria-modal="true" aria-label="端口查杀历史">
+        <div ref="historyDialog" class="hist-dialog" role="dialog" aria-modal="true" aria-label="端口查杀历史" tabindex="-1" @keydown="onHistoryTabTrap">
           <div class="hist-head">
             <h2>查杀历史</h2>
             <button class="btn btn-secondary btn-small" @click="showHistory = false">关闭</button>
@@ -503,7 +539,7 @@ tr:hover .col-path .link-button,
    挂点为 <td colspan>，虚线卡染进单元格为预期收编效果） */
 
 /* 历史弹窗外壳：照 ConfirmDialog 遮罩语系（与 OcrView 同款，Teleport 挂 body） */
-.hist-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
+.hist-backdrop { position: fixed; inset: 0; z-index: 950; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
 .hist-dialog {
   width: min(720px, 100%); max-height: min(80vh, 640px); overflow: auto; display: flex; flex-direction: column; gap: 10px;
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);

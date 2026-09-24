@@ -278,3 +278,26 @@ describe('PortKillView', () => {
     w.unmount()
   })
 })
+
+// N20 壳契约：确认框在场时 Esc 让位（一次 Esc 只关最上层），确认落定后
+// 再 Esc 才关历史弹窗；z 序 950<ConfirmDialog 1000 由样式承担，不断言。
+describe('历史弹窗 Esc 分层（N20）', () => {
+  it('确认框打开时 Esc 不关弹窗；确认落定后 Esc 关闭', async () => {
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('button').find((b) => b.text().includes('历史'))!.trigger('click')
+    await flushMicrotasks()
+    expect(w.find('.hist-backdrop').exists()).toBe(true)
+
+    confirmState.open = true // 模拟面板内「清空本桶」确认在场（只读态注入，不写业务）
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushMicrotasks()
+    expect(w.find('.hist-backdrop').exists()).toBe(true) // Esc 归确认框，弹窗不关
+
+    settleConfirm(false) // 取消确认
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushMicrotasks()
+    expect(w.find('.hist-backdrop').exists()).toBe(false)
+    w.unmount()
+  })
+})
