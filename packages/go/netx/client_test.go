@@ -56,3 +56,36 @@ func TestChainProxy(t *testing.T) {
 		t.Fatalf("畸形系统代理应直连兜底: %v %v", u, err)
 	}
 }
+
+func TestIsLoopbackHost(t *testing.T) {
+	for _, h := range []string{"localhost", "LOCALHOST", "127.0.0.1", "127.1.2.3", "::1", "[::1]"} {
+		if !IsLoopbackHost(h) {
+			t.Errorf("%q 应判回环", h)
+		}
+	}
+	for _, h := range []string{"", "api.github.com", "10.0.0.8", "192.168.1.31", "::2"} {
+		if IsLoopbackHost(h) {
+			t.Errorf("%q 不应判回环", h)
+		}
+	}
+}
+
+// 回环绕代理短路：链上代理再怎么命中，回环目标必须恒直连
+// （本机 7890 型代理接管 127.0.0.1 测试靶/本机服务即失真——#35 镜像纪律）。
+func TestLoopbackAwareShortCircuits(t *testing.T) {
+	alwaysProxy := func(*http.Request) (*url.URL, error) { return url.Parse("http://127.0.0.1:7890") }
+	chain := loopbackAware(alwaysProxy)
+	for _, target := range []string{"http://127.0.0.1:8080/x", "http://localhost:9/x", "https://[::1]:5/y"} {
+		req, err := http.NewRequest(http.MethodGet, target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u, err := chain(req); err != nil || u != nil {
+			t.Fatalf("回环必须直连（%s）: %v %v", target, u, err)
+		}
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://api.github.com/x", nil)
+	if u, err := chain(req); err != nil || u == nil {
+		t.Fatalf("外部目标应走链: %v %v", u, err)
+	}
+}

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"hanxi/internal/modules/wsl/netx"
 	"hanxi/internal/product"
+	netx "hanxi/packages/go/netx"
 )
 
 // GitHub 安装通道探测端点（固定官方 HTTPS 地址）。

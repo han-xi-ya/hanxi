@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"hanxi/internal/modules/envcheck/remoteversion"
-	"hanxi/internal/modules/wsl/netx"
 	"hanxi/internal/platform/versioncmp"
+	netx "hanxi/packages/go/netx"
 )
 
 // versionTagRe 官方 WSL 版本 tag 形如 2.9.10（可带第四段），必须纯数字点分。

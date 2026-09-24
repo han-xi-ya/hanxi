@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"hanxi/internal/modules/wsl/netx"
 	"hanxi/internal/product"
+	netx "hanxi/packages/go/netx"
 )
 
 // EventMsiDownload 下载进度事件名（app.go 注册载荷类型）。
