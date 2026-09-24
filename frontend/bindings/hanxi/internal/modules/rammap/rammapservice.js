@@ -48,9 +48,8 @@ export function DownloadVersion(targetVersion) {
 }
 
 /**
- * ElevationStatus 提权预告（三重契约之③）：载荷 manifest 强制管理员是上游
- * 事实；宿主未提权时前端引导行/启动钮 title 须如实告知"将以管理员重启
- * Hanxi 后才能启动"，别让用户首撞 740 才看懂。
+ * ElevationStatus 提权预告（三重契约之③）：静态 manifest 已知要求管理员；
+ * executionLevel 仍经平台读取器复核，读取失败回 unknown，740 运行时兜底不变。
  * @returns {$CancellablePromise<$models.StatusInfo>}
  */
 export function ElevationStatus() {

@@ -17,7 +17,7 @@ const svc = vi.hoisted(() => ({
   SetFollowOnExit: vi.fn(),
   OfficialSiteURL: vi.fn(),
   OpenOfficialSite: vi.fn(),
-  ElevationStatus: vi.fn().mockResolvedValue({ requiresElevation: true, hostElevated: false }),
+  ElevationStatus: vi.fn().mockResolvedValue({ requiresElevation: true, hostElevated: false, executionLevel: 'requireAdministrator' }),
 }))
 
 const ui = vi.hoisted(() => ({ confirm: vi.fn(), prompt: vi.fn() }))
@@ -51,6 +51,20 @@ describe('createRAMMapAdapter', () => {
     expect(res.message).toBe('已强制结束')
   })
 
+  it('单独提权启动的外部实例：提示不属于 Hanxi 管控，退出不再调用 Quit RPC', async () => {
+    const adapter = createRAMMapAdapter()
+    svc.OpenWindow.mockResolvedValueOnce({
+      action: 'started-external-elevated', external: true, elevated: true, managed: false,
+      canQuit: false, launchMode: 'external-elevated', message: '已单独提权启动 RAMMap',
+    })
+    const primary = (await adapter.control!.primary!.run()) ?? {}
+    expect(primary.message).toContain('已单独提权')
+    const banner = adapter.banner?.({ state: 'running' } as never, undefined as never)
+    expect(banner?.text).toContain('外部实例')
+    const quit = (await adapter.control!.quit!.run()) ?? {}
+    expect(quit.message).toContain('窗口内关闭')
+    expect(svc.Quit).not.toHaveBeenCalled()
+  })
   it('提权预告：装载即查 ElevationStatus，未提权引导行含"管理员"指引', async () => {
     const adapter = createRAMMapAdapter()
     expect(svc.ElevationStatus).toHaveBeenCalledTimes(1)

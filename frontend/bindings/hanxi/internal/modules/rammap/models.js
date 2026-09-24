@@ -5,8 +5,12 @@
 /**
  * ControlOutcome OpenWindow 编排回执（多实例：聚焦自有/唤回外部/冷启动由后端裁决）。
  * @typedef {Object} ControlOutcome
- * @property {string} action - started / focused / external-focused / starting / external-unreachable
+ * @property {string} action - started / started-external-elevated / focused / external-focused / starting / external-unreachable
  * @property {boolean} external
+ * @property {boolean} elevated
+ * @property {boolean} managed
+ * @property {boolean} canQuit
+ * @property {string} launchMode - managed / external-elevated / external
  * @property {string} message
  */
 
@@ -22,12 +26,11 @@
  */
 
 /**
- * StatusInfo 前端状态投影：引擎快照 + 提权预告（载荷 manifest 强制管理员，
- * stopped 态引导行需如实提示——提权三重契约之③，非提权 Hanxi 会撞 740）。
- * 直接复用 instance.Snapshot 作事件载荷，本结构仅承载 GetStatus 附加位。
+ * StatusInfo 前端状态投影：宿主提权态与目标 manifest 预判。
  * @typedef {Object} StatusInfo
- * @property {boolean} requiresElevation - 恒 true：上游 manifest 事实
- * @property {boolean} hostElevated - 当前 Hanxi 是否已提权（决定能否直接启动）
+ * @property {boolean} requiresElevation
+ * @property {boolean} hostElevated
+ * @property {string} executionLevel
  */
 
 // In interface mode, this file is likely to contain just comments.

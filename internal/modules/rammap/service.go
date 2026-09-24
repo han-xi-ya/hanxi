@@ -321,16 +321,26 @@ func (s *RAMMapService) GetStatus() (instance.Snapshot, error) {
 	return s.engine.Snapshot(), nil
 }
 
-// ElevationStatus 提权预告（三重契约之③）：载荷 manifest 强制管理员是上游
-// 事实；宿主未提权时前端引导行/启动钮 title 须如实告知"将以管理员重启
-// Hanxi 后才能启动"，别让用户首撞 740 才看懂。
+// ElevationStatus 提权预告（三重契约之③）：静态 manifest 已知要求管理员；
+// executionLevel 仍经平台读取器复核，读取失败回 unknown，740 运行时兜底不变。
 func (s *RAMMapService) ElevationStatus() (StatusInfo, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
 		return StatusInfo{}, gateErr
 	}
 	defer release()
-	return StatusInfo{RequiresElevation: true, HostElevated: s.isElevated()}, nil
+	level := string(windows.ExecutionRequireAdministrator)
+	if v, err := s.activeExecutable(); err == nil {
+		if parsed, perr := windows.ReadExecutionLevel(v); perr == nil {
+			level = string(parsed)
+		}
+	}
+	return StatusInfo{RequiresElevation: level == string(windows.ExecutionRequireAdministrator), HostElevated: s.isElevated(), ExecutionLevel: level}, nil
+}
+
+func (s *RAMMapService) activeExecutable() (string, error) {
+	_, exe, err := s.resolveActiveVersion()
+	return exe, err
 }
 
 // OpenWindow 窗口唤起编排（多实例观察工具，见 instance 包注释）：
@@ -355,17 +365,17 @@ func (s *RAMMapService) OpenWindow() (ControlOutcome, error) {
 
 	case instance.StateExternal:
 		if s.engine.FocusExternal() {
-			return ControlOutcome{Action: "external-focused", External: true,
+			return ControlOutcome{Action: "external-focused", External: true, Managed: false, CanQuit: true, LaunchMode: LaunchModeExternal,
 				Message: "已唤回正在运行的 RAMMap 窗口"}, nil
 		}
-		return ControlOutcome{Action: "external-unreachable", External: true,
+		return ControlOutcome{Action: "external-unreachable", External: true, Managed: false, CanQuit: true, LaunchMode: LaunchModeExternal,
 			Message: "检测到外部 RAMMap 实例但无可聚焦窗口；可再次「启动 RAMMap」由 Hanxi 另开一个托管实例"}, nil
 
 	case instance.StateRunning:
 		if !s.engine.Focus() {
 			return ControlOutcome{Action: "starting", Message: "托管实例窗口尚未出现，请稍候片刻再试"}, nil
 		}
-		return ControlOutcome{Action: "focused", Message: "已唤起 RAMMap 窗口"}, nil
+		return ControlOutcome{Action: "focused", Managed: true, CanQuit: true, LaunchMode: LaunchModeManaged, Message: "已唤起 RAMMap 窗口"}, nil
 
 	default:
 		v, exe, err := s.resolveActiveVersion()
@@ -384,7 +394,7 @@ func (s *RAMMapService) OpenWindow() (ControlOutcome, error) {
 		if s.store.GetActive() == "" {
 			_ = s.store.SetActive(v)
 		}
-		return ControlOutcome{Action: "started", Message: fmt.Sprintf("RAMMap %s 已启动", v)}, nil
+		return ControlOutcome{Action: "started", Managed: true, CanQuit: true, LaunchMode: LaunchModeManaged, Message: fmt.Sprintf("RAMMap %s 已启动", v)}, nil
 	}
 }
 

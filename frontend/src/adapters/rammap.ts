@@ -15,7 +15,7 @@
 import * as RAMMapAPI from '../../bindings/hanxi/internal/modules/rammap/rammapservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/rammap/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/rammap/version/models'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
@@ -26,8 +26,15 @@ export function createRAMMapAdapter(): ManagedModuleAdapter {
   const { prompt } = usePrompt()
   // 宿主提权态（三重契约之③）：装载时拉一次，失败保持 null 不谎报
   const hostElevated = ref<boolean | null>(null)
+  const executionLevel = ref<string>('unknown')
+  const externalElevated = ref(false)
+  const lastOutcome = ref<{ launchMode?: string; elevated?: boolean; managed?: boolean; canQuit?: boolean } | null>(null)
   void RAMMapAPI.ElevationStatus()
-    .then((st) => { if (st) hostElevated.value = st.hostElevated })
+    .then((st) => {
+      if (!st) return
+      hostElevated.value = st.hostElevated
+      executionLevel.value = st.executionLevel || 'unknown'
+    })
     .catch(() => { /* 未激活模块被门拒属预期 */ })
 
   return {
@@ -108,6 +115,8 @@ export function createRAMMapAdapter(): ManagedModuleAdapter {
       primary: {
         async run(): Promise<ManagedActionResult> {
           const out = await RAMMapAPI.OpenWindow()
+          lastOutcome.value = out
+          externalElevated.value = out.launchMode === 'external-elevated' || (out.external && out.elevated === true)
           return { message: out.message }
         },
         label: '🗔 启动 RAMMap',
@@ -126,19 +135,27 @@ export function createRAMMapAdapter(): ManagedModuleAdapter {
       },
       quit: {
         async run(): Promise<ManagedActionResult> {
+          if (externalElevated.value) {
+            return { message: '这是单独提权启动的外部 RAMMap，请在 RAMMap 窗口内关闭' }
+          }
           const out = await RAMMapAPI.Quit()
           return { message: out.message }
         },
         label: '⏻ 退出',
-        disabledFor: (state) => state !== 'running' && state !== 'starting' && state !== 'external' && state !== 'quitting',
+        disabledFor: (state) => externalElevated.value || (state !== 'running' && state !== 'starting' && state !== 'external' && state !== 'quitting'),
         titleFor: (state) =>
-          state === 'external'
-            ? '外部实例按低损档治理：优雅退出优先，不响应时直接结束（观察工具无状态损失）'
-            : '关闭 RAMMap 窗口（关窗即退）',
+          externalElevated.value
+            ? '这是单独提权启动的外部实例，请在 RAMMap 窗口内关闭'
+            : state === 'external'
+              ? '外部实例按低损档治理：优雅退出优先，不响应时直接结束（观察工具无状态损失）'
+              : '关闭 RAMMap 窗口（关窗即退）',
       },
     },
 
     banner: (s) => {
+      if (externalElevated.value) {
+        return { tone: 'warn', text: 'RAMMap 已单独以管理员权限启动：这是外部实例，不属于 Hanxi 的托管范围，请在 RAMMap 窗口内关闭。' }
+      }
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到你在 Hanxi 之外启动的 RAMMap（观察工具可多实例并看）：「启动 RAMMap」会唤回其窗口，也可再开一个 Hanxi 托管实例。' }
       }
@@ -152,6 +169,7 @@ export function createRAMMapAdapter(): ManagedModuleAdapter {
     },
 
     hint: (s) => {
+      if (externalElevated.value) return '外部提权实例不会加入 Hanxi Job，也不会由 Hanxi 自动关闭。'
       if (s.state === 'stopped') {
         return hostElevated.value === false
           ? '尚未运行：RAMMap 要求管理员权限（上游 manifest 强制）——点击启动若被拒，请经页面提示以管理员身份重新启动 Hanxi。'

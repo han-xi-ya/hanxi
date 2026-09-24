@@ -20,8 +20,6 @@ import * as $models from "./models.js";
  */
 
 /**
- * StatusInfo 前端状态投影：引擎快照 + 提权预告（载荷 manifest 强制管理员，
- * stopped 态引导行需如实提示——提权三重契约之③，非提权 Hanxi 会撞 740）。
- * 直接复用 instance.Snapshot 作事件载荷，本结构仅承载 GetStatus 附加位。
+ * StatusInfo 前端状态投影：宿主提权态与目标 manifest 预判。
  * @typedef {$models.StatusInfo} StatusInfo
  */
