@@ -354,7 +354,7 @@ onMounted(refresh)
         <aside class="mb-preview" aria-label="牌面预览">
           <div class="mbp-box">
             <div class="mbp-scaled" :style="{ transform: `scale(${previewScale})` }">
-              <BoardCard :text="form.text || PREVIEW_EMPTY" :font-size="form.fontSize || 64" />
+              <BoardCard :text="form.text || PREVIEW_EMPTY" :font-size="effFontSize" />
             </div>
           </div>
           <p class="mbp-caption">牌面预览（实际挂出约 {{ previewZoom }} 倍大）· 超高只裁不滚</p>
@@ -391,7 +391,7 @@ onMounted(refresh)
           @click="fullPreview = false"
         >
           <span class="mbp-full-badge" aria-hidden="true">预览浮层 · 非真实挂牌</span>
-          <BoardCard class="mbp-full-card" :text="form.text || PREVIEW_EMPTY" :font-size="form.fontSize || 64" />
+          <BoardCard class="mbp-full-card" :text="form.text || PREVIEW_EMPTY" :font-size="effFontSize" />
           <div class="mbp-full-hint" aria-hidden="true">
             这是全屏预览，不改变挂牌状态 · 点击任意处或按 <kbd class="mbp-full-kbd">Esc</kbd> 返回
           </div>

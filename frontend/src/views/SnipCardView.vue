@@ -20,7 +20,7 @@ const tip = ref('') // 卡内轻提示（复制失败等，保留卡片供手动
 const SNIP_FS_KEY = 'hanxi.snipcard.fs'
 const SNIP_FS_MIN = 12
 const SNIP_FS_MAX = 32
-const SNIP_FS_DEFAULT = 14 // 与 --text-md 同值：未调档时视觉零变化
+const SNIP_FS_DEFAULT = 14 // 与 --text-md 同值：默认档**不注入**变量，CSS 回退复活（审查 #22）
 
 function loadFontSize(): number {
   try {
@@ -127,7 +127,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="snip-card" role="dialog" aria-label="截屏识别结果" :style="{ '--snip-fs': fontSize + 'px' }" @wheel="onCardWheel">
+  <div class="snip-card" role="dialog" aria-label="截屏识别结果" :style="fontSize !== SNIP_FS_DEFAULT ? { '--snip-fs': fontSize + 'px' } : {}" @wheel="onCardWheel">
     <div v-if="res?.ok && res.text" class="snip-text" tabindex="0">{{ res.text }}</div>
     <div v-else-if="res?.ok" class="snip-state">未识别到文字 —— 框选含文本的区域再试</div>
     <div v-else class="snip-state"><span class="snip-pulse" aria-hidden="true"></span>等待识别结果…</div>

@@ -127,9 +127,9 @@ describe('SnipCardView', () => {
   describe('字号缩放（N42③）', () => {
     afterEach(() => localStorage.removeItem('hanxi.snipcard.fs'))
 
-    it('未调档默认 14px（与 --text-md 同值，视觉零变化）', async () => {
+    it('未调档默认**不注入**变量（审查 #22：CSS 回退 --text-md 复活，单一真相）', async () => {
       const wrapper = await mountView()
-      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 14px')
+      expect(wrapper.find('.snip-card').attributes('style') ?? '').not.toContain('--snip-fs')
       wrapper.unmount()
     })
 
@@ -152,9 +152,9 @@ describe('SnipCardView', () => {
       await wrapper.find('.snip-card').trigger('wheel', { ctrlKey: true, deltaY: -100 })
       expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 16px')
       await wrapper.find('.snip-card').trigger('wheel', { ctrlKey: true, deltaY: 120 })
-      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 14px')
+      expect((wrapper.find('.snip-card').attributes('style') ?? '')).not.toContain('--snip-fs') // 回默认档=不注入
       await wrapper.find('.snip-card').trigger('wheel', { deltaY: -100 }) // 无 Ctrl
-      expect(wrapper.find('.snip-card').attributes('style')).toContain('--snip-fs: 14px')
+      expect((wrapper.find('.snip-card').attributes('style') ?? '')).not.toContain('--snip-fs')
       wrapper.unmount()
     })
 
@@ -165,7 +165,7 @@ describe('SnipCardView', () => {
       wrapper.unmount()
       localStorage.setItem('hanxi.snipcard.fs', 'abc')
       const w2 = await mountView()
-      expect(w2.find('.snip-card').attributes('style')).toContain('--snip-fs: 14px') // 坏值回落默认
+      expect((w2.find('.snip-card').attributes('style') ?? '')).not.toContain('--snip-fs') // 坏值回落默认=不注入
       w2.unmount()
     })
   })
