@@ -26,7 +26,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import { useMediaQuery } from '@vueuse/core'
 import AppIcon from '../ui/AppIcon.vue'
 import AppNavRail from './AppNavRail.vue'
-import { appIconName } from '../../constants/appIcons'
+import { appIconName, resolveIcon } from '../../constants/appIcons'
 import type { IconName, RenderableIcon } from '../../constants/icons'
 import type { NavEntry } from '../../../bindings/hanxi/internal/extapi/models'
 import {
@@ -232,6 +232,14 @@ function onSelectGroup(group: NavGroup) {
 function iconSvg(icon: string | undefined): RenderableIcon | null {
   return appIconName(icon) ?? null
 }
+
+// 文本轨三分（审查 shell#1）：appIconName 把"未登记 i:"与"裸 emoji"双双折叠
+// 为 undefined，旧模板直出 {{ n.icon }} 会把 "i:xxx" 字面量写上屏。改走
+// resolveIcon 四分：text→裸文本、blank（未登记 i:/空）→静默占位不上字面量。
+function iconText(icon: string | undefined): string {
+  const r = resolveIcon(icon)
+  return r.kind === 'text' ? r.text : ''
+}
 </script>
 
 <template>
@@ -326,7 +334,7 @@ function iconSvg(icon: string | undefined): RenderableIcon | null {
           >
             <span class="mod-icon">
               <AppIcon v-if="iconSvg(n.icon)" :name="iconSvg(n.icon)!" :size="15" />
-              <template v-else>{{ n.icon }}</template>
+              <template v-else>{{ iconText(n.icon) }}</template>
             </span>
             <span class="mod-main">
               <span class="nav-text mod-name">{{ n.title }}</span>
@@ -345,7 +353,7 @@ function iconSvg(icon: string | undefined): RenderableIcon | null {
           >
             <span class="mod-icon">
               <AppIcon v-if="iconSvg(n.icon)" :name="iconSvg(n.icon)!" :size="15" />
-              <template v-else>{{ n.icon }}</template>
+              <template v-else>{{ iconText(n.icon) }}</template>
             </span>
             <span class="mod-main">
               <span class="nav-text mod-name">{{ n.title }}</span>
@@ -368,7 +376,7 @@ function iconSvg(icon: string | undefined): RenderableIcon | null {
           >
             <span class="mod-icon">
               <AppIcon v-if="iconSvg(n.icon)" :name="iconSvg(n.icon)!" :size="15" />
-              <template v-else>{{ n.icon }}</template>
+              <template v-else>{{ iconText(n.icon) }}</template>
             </span>
             <span class="mod-main">
               <span class="nav-text mod-name">{{ n.title }}</span>

@@ -102,6 +102,11 @@ describe('constants/navigation', () => {
     expect(groupOfModule('nope')).toBeUndefined()
   })
 
+  it('MODULE_PRESENTATION 键集与后端注册 fixture 一一对应（审查锁：新增模块不建档即红）', () => {
+    const fixtureIds = compositionContract.modules.map(({ id }) => id).sort()
+    expect(Object.keys(MODULE_PRESENTATION).sort()).toEqual(fixtureIds)
+  })
+
   it('MODULE_PRESENTATION 图标全为可解析形态：登记 i: 名或 N27 真图标 app: 名，回退 i:box', () => {
     expect(FALLBACK_MODULE_ICON).toBe('i:box')
     for (const p of Object.values(MODULE_PRESENTATION)) {

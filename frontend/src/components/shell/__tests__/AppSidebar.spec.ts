@@ -28,8 +28,8 @@ const nav = (route: string, title: string, icon: string, group?: string): NavEnt
 
 const MEMO = nav('/ext/memo', '随手记', 'i:sticky-note')
 const FRPC = nav('/frpc', 'FRP 内网穿透', 'i:zap')
-const EVERYTHING = nav('/ext/everything', 'Everything 搜索', 'i:search-code')
-const SNIPASTE = nav('/ext/snipaste', 'Snipaste 截图', 'i:scissors')
+const EVERYTHING = nav('/ext/everything', 'Everything 搜索', 'i:search')
+const SNIPASTE = nav('/ext/snipaste', 'Snipaste 截图', 'i:sticky-note')
 
 function factory(props: Partial<{
   navs: NavEntryWithGroup[]
@@ -209,7 +209,7 @@ describe('面板模块行', () => {
   })
 
   it('页脚统计当前分类：N 个模块', () => {
-    const w = factory({ navs: [MEMO, nav('/ext/papertodo', '纸待办', 'i:clipboard-list')], activeGroup: 'efficiency' })
+    const w = factory({ navs: [MEMO, nav('/ext/papertodo', '纸待办', 'i:inbox')], activeGroup: 'efficiency' })
     expect(w.find('.foot-counts span').text()).toBe('2 个模块')
   })
 })

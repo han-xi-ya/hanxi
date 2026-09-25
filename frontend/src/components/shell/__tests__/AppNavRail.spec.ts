@@ -89,7 +89,7 @@ describe('AppNavRail', () => {
     const w = factory({
       navs: [
         nav('/ext/memo', '随手记', 'i:sticky-note', 'efficiency'),
-        nav('/ext/papertodo', '纸待办', 'i:clipboard-list', 'efficiency'),
+        nav('/ext/papertodo', '纸待办', 'i:inbox', 'efficiency'),
         nav('/frpc', 'FRP 内网穿透', 'i:zap', 'network'),
       ],
     })

@@ -24,8 +24,7 @@ import type { MenuItem } from '../../bindings/hanxi/internal/modules/quickmenu/m
 import AppIcon from '../components/ui/AppIcon.vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
-import { appIconName } from '../constants/appIcons'
-import type { IconName, RenderableIcon } from '../constants/icons'
+import { wheelIconOf } from '../components/quickmenu/wheelIcons'
 import {
   WHEEL, VIS, polar, wedgePath, mainSectorAngles, capSpanDeg, capSectorAngles, capAnchorDeg, mainAnchor, slotOf,
 } from '../components/quickmenu/wheelGeometry'
@@ -73,16 +72,6 @@ const TYPE_LABEL: Record<string, string> = {
   group: '分组',
 }
 const typeLabel = (t: string) => TYPE_LABEL[t] ?? '条目'
-const TYPE_ICON: Record<string, IconName> = {
-  exe: 'box',
-  command: 'terminal',
-  route: 'layout',
-  group: 'layers',
-}
-// 后端下发的图标名与注册表漂移（未登记/空/非 i: 形态）时回退类型图标，渲染永不因图标断链；
-// N27 批 B：`app:<id>` 真图标名与登记的裸矢量名走 AppIcon 二轨（解析单点 appIcons）
-const iconOf = (item: MenuItem): RenderableIcon =>
-  appIconName(item.icon) ?? TYPE_ICON[item.type] ?? 'box'
 
 // N6 F1 可读性 → N40③ 花瓣盘：图标常显，座径四档各 +2px；名称改单行省略，
 // 全称读数完全交 hub 仪表核（F1"hub 干活"路线执行到底）。档位令牌经 CSS 变量
@@ -522,7 +511,7 @@ function onGroupActivate(i: number) {
       @focus="active = i"
       @click="isGroup(item) ? onGroupActivate(i) : activate(item)"
     >
-      <span class="sector-icon"><AppIcon :name="iconOf(item)" :size="density.icon" /></span>
+      <span class="sector-icon"><AppIcon :name="wheelIconOf(item)" :size="density.icon" /></span>
       <span class="sector-name">{{ item.label }}</span>
       <!-- 分组计数徽标（N40③④）：▸N 文字角标退役，圆形徽标只报数 -->
       <span v-if="isGroup(item)" class="sector-caret" aria-hidden="true">{{ item.children?.length ?? 0 }}</span>
@@ -544,7 +533,7 @@ function onGroupActivate(i: number) {
         @focus="activeCap = j"
         @click="launchCap(j)"
       >
-        <span class="sector-icon cap-icon"><AppIcon :name="iconOf(ch)" :size="15" /></span>
+        <span class="sector-icon cap-icon"><AppIcon :name="wheelIconOf(ch)" :size="15" /></span>
         <span class="sector-name cap-name">{{ ch.label }}</span>
       </button>
     </template>

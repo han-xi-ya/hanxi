@@ -13,9 +13,8 @@
 import { computed } from 'vue'
 import type { MenuItem } from '../../../bindings/hanxi/internal/modules/quickmenu/models'
 import AppIcon from '../ui/AppIcon.vue'
-import { appIconName } from '../../constants/appIcons'
-import type { IconName, RenderableIcon } from '../../constants/icons'
-import { WHEEL, wedgePath, mainSectorAngles, mainAnchor } from './wheelGeometry'
+import { wheelIconOf } from './wheelIcons'
+import { WHEEL, VIS, wedgePath, mainSectorAngles, mainAnchor } from './wheelGeometry'
 
 const props = withDefaults(defineProps<{
   items: MenuItem[]
@@ -26,17 +25,14 @@ const props = withDefaults(defineProps<{
 }>(), { activeIndex: null, scale: 1, size: WHEEL.size })
 
 const emit = defineEmits<{ pick: [index: number] }>()
-
-const TYPE_ICON: Record<string, IconName> = { exe: 'box', command: 'terminal', route: 'layout', group: 'layers' }
-// N27 批 B：app: 真图标与登记矢量名二轨；漂移回落类型图标（与轮盘弹窗同口径）
-const iconOf = (item: MenuItem): RenderableIcon =>
-  appIconName(item.icon) ?? TYPE_ICON[item.type] ?? 'box'
 const isGroup = (item: MenuItem): boolean => (item.children?.length ?? 0) > 0
 
 const n = computed(() => props.items.length)
 const wedge = (i: number) => {
-  const a = mainSectorAngles(i, n.value)
-  return wedgePath(WHEEL.rSecIn, WHEEL.rSecOut, a.a0, a.a1)
+  // 审查 #9：预览绘制喂 VIS 观感常量（花瓣缝/收窄环带）——与真盘 N40③
+  // 皮批观感同源；命中语义常量 WHEEL 不参与（预览无命中，纪律同指针侧）。
+  const a = mainSectorAngles(i, n.value, VIS.padDeg)
+  return wedgePath(VIS.rSecIn, VIS.rSecOut, a.a0, a.a1)
 }
 const hubVars = computed(() => ({ '--wp-scale': String(props.scale) }))
 </script>
@@ -70,7 +66,7 @@ const hubVars = computed(() => ({ '--wp-scale': String(props.scale) }))
       tabindex="-1"
       @click="emit('pick', i)"
     >
-      <span class="wp-ico"><AppIcon :name="iconOf(item)" :size="16" /></span>
+      <span class="wp-ico"><AppIcon :name="wheelIconOf(item)" :size="16" /></span>
       <span class="wp-name">{{ item.label }}</span>
       <span v-if="isGroup(item)" class="wp-caret">▸</span>
     </button>
