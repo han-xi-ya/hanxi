@@ -158,11 +158,12 @@ describe('N6 牌面重做（F1-F4）', () => {
     expect(w.find('.popup').attributes('style')).toContain('--d-btn-w: 64px')
     w.unmount()
   })
-  it('分组扇区常挂 ▸ 角标（可展开从意外变预告），叶子无角标', async () => {
+  it('分组扇区常挂计数徽标（可展开从意外变预告），叶子无徽标', async () => {
+    // N40③④：▸N 文字角标 → 圆形计数徽标（呈现层换皮，徽标语义不动）
     const w = await mountReady(itemsWithGroup)
     const btns = w.findAll('.sector-btn')
     expect(btns[0].find('.sector-caret').exists()).toBe(false)
-    expect(btns[1].find('.sector-caret').text()).toContain('▸')
+    expect(btns[1].find('.sector-caret').text()).toBe('2')
     w.unmount()
   })
   it('悬停扇区面：pointermove 几何命中即下发 is-active 与径向外顶（N40①全扇面）', async () => {
@@ -180,7 +181,7 @@ describe('N6 牌面重做（F1-F4）', () => {
 
 describe('几何命中路由（N40①②）', () => {
   it('缝隙带像素也点亮所属扇区：楔形绘制边界的 pad 不再是死区', async () => {
-    const w = await mountReady() // 3 项制：step=120°，槽 0 楔形绘于 0.9°~119.1°
+    const w = await mountReady() // 3 项制：step=120°，槽 0 花瓣绘于 4.2°~115.8°（N40③ 大缝）
     // 名义角 0°（=360°）落在槽 0/槽 2 之间的 pad 缝：几何归属判给槽 0
     await w.find('.popup').trigger('pointermove', polarPoint(118, 0))
     await flushMicrotasks()
