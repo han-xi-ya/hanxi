@@ -12,7 +12,7 @@
     "build:dev": "vue-tsc --noEmit && vite build --minify false --mode development",
     "build": "vue-tsc --noEmit && vite build --mode production",
     "preview": "vite preview",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=11",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write src",
     "format:check": "prettier --check src",

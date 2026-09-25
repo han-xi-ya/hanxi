@@ -372,6 +372,8 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
                     :disabled="opBusy" :title="d.state === 'notshared' ? '未共享：本次点击先 bind 再附加（弹 UAC）' : '附加到右侧发行版（用户态，不弹 UAC）'"
                     @click="attachDevice(d)">▶ 附加</button>
                   <button v-else class="btn btn-secondary btn-small" disabled>不可共享</button>
+                  <button v-if="d.state === 'notshared'" class="btn btn-secondary btn-small" :disabled="opBusy"
+                    title="仅共享进 usbipd 池（需管理员），不立即附加；想用时再点「附加」" @click="bindDevice(d)">⇗ 仅共享</button>
                   <button v-if="d.state === 'shared' || d.state === 'notshared'" class="btn btn-secondary btn-small"
                     :disabled="opBusy" :title="registerTitle(d)"
                     @click="registerShare(d)">⭐ 自动共享</button>

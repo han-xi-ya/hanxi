@@ -114,7 +114,7 @@ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
 | S1 | `.gitignore` 忽略 `hanxidata/` | 🟢 随数据根治理线并行修复 |
 | S2 | everything 的 MCP 文案如实引导（ES 依赖运行中实例，勿承诺代拉起） | 🟢 2026-09-17（`feat/f4-mcp` C3：`hanxi_file_search` description 与前置错误双处如实，测试含文案诚实性断言） |
 | R1 | msgboard 热键薄封装收编 `internal/hotkey` 通用注册器（wave2 接缝债） | 🟢 2026-09-17（`d96aac6` 合入 + bindings 回补 `bb7905a`） |
-| R2 | 安装向导"安装前自检"接线——F4b 合入时 `hanxi mcp` 不存在刻意留白，F4a 合并后补 spawn `hanxi mcp` 跑 listTools + envcheck 真调（见 PLAN §2.5） | 🔵 进行中（分支 `feat/r2-selfcheck`；F4 合入后的真机前闸门） |
+| R2 | 安装向导"安装前自检"接线——F4b 合入时 `hanxi mcp` 不存在刻意留白，F4a 合并后补 spawn `hanxi mcp` 跑 listTools + envcheck 真调（见 PLAN §2.5） | 🟢 2026-09-23（`a468341`+`2bf043f` 前端半边、`eee224a` merge(r2) 已进主干；mcpwizard/selfcheck 真调闸门在位，PROGRESS `fe41347` 清账） |
 | R3 | go.mod `spf13/cast` replace 复核与撤除（#62 离线绕行产物，网络/代理可达后跑 `go mod tidy`） | 🟢 2026-09-17（`8476ff3` dropreplace + 有网 tidy 收敛，`f09fc19` 补记 #62 复核结论） |
 | R4 | PLAN_MCP 回写实际落地形态（ocr/memo 提前落地注记，C10 归收尾批） | 🟢 本批（R4/C10：PLAN_MCP 已加"实际落地"注记，四件套文档同批） |
 
@@ -133,7 +133,7 @@ F1 统一历史 → F2-①② 剪贴板组件+规范 → F3-a 配置快照
 - **本体自更新**（P2）：签名的 update-manifest JSON + NSIS/MSIX 双 packageType + 启动检查托盘提示；MooTool 无签名这点不抄。
 - **轮询自适应降频**（P3）：页面离开时 flclash 等 5s 轮询降为 60s（"懒启动"核源后的残余项，见分析 A 表注）。
 - ~~**防休眠引用计数**~~：已收编进 F8（随留言板交付同一聚合器）；fileshare/recordly 等后续复用。
-- **主题强调色一键切换**（P3）：primary 色相 token 化为设置项（DWM 深色已有）。
+- ~~**主题强调色一键切换**（P3）~~：已实现——五板（teal/sky/iris/jade/onyx）×明暗双轴为设置「外观主题」分区切换项（useTheme + ThemeSection，DWM 标题栏随色板 c26e4e7、跨窗广播 N39）；候选池出池。
 - **大屏时钟**（P3）：复用透明窗基建，锦上添花（留言牌已升格为 F8 排期）。
 
 ### WSL 能力补强（wsl-dashboard 借鉴裁决，USB 已升 F9，其余归池）

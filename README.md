@@ -3,7 +3,7 @@
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
 > 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、抖音下载器等 28 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
-> **v0.3.0 品牌断代**：产品标识、进程名和标准数据目录已切换为 Hanxi，不读取旧版数据、自启项或单实例标识。
+> **v0.3.0 品牌断代**：产品标识、进程名和数据之家已切换为 Hanxi，不读取旧版数据、自启项或单实例标识（数据根现行模型见「绿色便携」节：exe 同级 `hanxidata/` 默认 + `hanxi.bind` 显式绑定）。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-%E2%89%A51.26-00ADD8?logo=go)](https://go.dev/)
