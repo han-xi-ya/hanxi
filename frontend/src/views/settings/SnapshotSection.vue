@@ -1,7 +1,9 @@
 <script setup lang="ts">
-// 设置分区·历史版本（数据自动快照，PLAN_SNAPSHOT §3.5 / N33 批 A）：
-// 状态行 → 偏好行 → 按文件浏览（左清单右时间线，内联对比/恢复）→ 全部版本列表
-// → 预览弹窗（文件清单+内容预览+单文件恢复）。
+// 设置分区·历史版本（数据自动快照，PLAN_SNAPSHOT §3.5 / N33 批 B）：
+// 状态行 → 偏好行 → 按文件浏览（左 SnapshotFileList · 右 SnapshotTimeline）
+// → 全部版本列表 → 预览弹窗（文件清单+内容预览+单文件恢复）。
+// 本件退居编排：RPC 拉取、选中态/加载态、恢复确认链全在这里，两栏只管呈现；
+// 行级 diff 与 hunk 折叠在 SnapshotTimeline（算法件 utils/textdiff）。
 // 恢复走 useConfirm（danger + 明细）；非便签文件写盘后提示重启生效，便签热生效。
 // 被删文件（status D）恢复的是"最后存在版本"（时间线上第一条非 D 事件）——
 // N33 §0 病灶 A 热修复；备份模式自批 A 起与 git 模式同面可浏览可恢复（P4 解禁）。
@@ -11,8 +13,11 @@ import type { StatusInfo, Revision, RevisionFile, FilePreview, TrackedFile, File
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
+import { fmtTime, statusLabels } from '../../constants/snapshotLabels'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
+import SnapshotFileList from './SnapshotFileList.vue'
+import SnapshotTimeline from './SnapshotTimeline.vue'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
@@ -22,7 +27,7 @@ const revisions = ref<Revision[]>([])
 const loading = ref(false)
 const busy = ref(false)
 
-// 文件为轴（N33 批 A）：ListFiles 左清单 + FileHistory 右时间线 + DiffFile 内联对比
+// 文件为轴（N33 批 A/B）：ListFiles 左清单 + FileHistory 右时间线 + DiffFile 内联对比
 const trackedFiles = ref<TrackedFile[]>([])
 const filesLoading = ref(false)
 const selectedPath = ref('')
@@ -46,10 +51,13 @@ const previewLoading = ref(false)
 
 const backupMode = computed(() => !!status.value && status.value.mode === 'backup')
 
+// §6 两模式同口径 chip：一句话说清"当前是什么引擎 + 容量口径"（P8-A：大白话为主）
 const modeChip = computed(() => {
   if (!status.value) return '正在读取快照状态…'
   if (!status.value.enabled) return '已停用 · 不再自动留版本'
-  return status.value.mode === 'git' ? 'Git 历史仓库 · 本机静默提交' : '本机备份模式 · 未检测到可用 Git'
+  return status.value.mode === 'git'
+    ? '版本历史（Git · 可浏览最近 50 版）'
+    : '版本历史（备份 · 保留最近 30 份）'
 })
 
 const modeChipClass = computed(() => {
@@ -57,15 +65,6 @@ const modeChipClass = computed(() => {
   if (!status.value.enabled) return 'chip-neutral'
   return status.value.mode === 'git' ? 'chip-information' : 'chip-warning'
 })
-
-/** RFC3339 → 本地可读 `MM-DD HH:mm`（列表紧凑列宽用）。 */
-function fmtTime(iso: string): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
 
 async function refresh() {
   loading.value = true
@@ -178,9 +177,6 @@ async function showFileContent(file: RevisionFile) {
   }
 }
 
-const statusLabel: Record<string, string> = { M: '修改', A: '新增', D: '删除', R: '改名' }
-const groupLabels: Record<string, string> = { memo: '便签', config: '工作台设置', state: '模块状态' }
-
 /** 时间线（新→旧）里第一条非 D 事件 = 该文件的最后存在版本（§0.3-A 恢复目标）。 */
 function resolveRestoreTarget(events: FileRevision[]): FileRevision | null {
   for (const e of events) {
@@ -189,24 +185,9 @@ function resolveRestoreTarget(events: FileRevision[]): FileRevision | null {
   return null
 }
 
-// ---------- 文件为轴：清单选择 / 时间线 / 内联对比 / 恢复 ----------
-
-const groupedFiles = computed(() => {
-  const out: { group: string; label: string; items: TrackedFile[] }[] = []
-  for (const f of trackedFiles.value) {
-    let g = out.find((o) => o.group === f.group)
-    if (!g) {
-      g = { group: f.group, label: groupLabels[f.group] ?? f.group, items: [] }
-      out.push(g)
-    }
-    g.items.push(f)
-  }
-  return out
-})
+// ---------- 文件为轴：清单选择 / 时间线数据 / 对比拉取 / 恢复链 ----------
 
 const selectedFile = computed(() => trackedFiles.value.find((f) => f.path === selectedPath.value) ?? null)
-// 观察窗如实标注：时间线满 50 条即可能被 maxListRevisions 截断
-const historyCapped = computed(() => history.value.length >= 50)
 
 async function selectFile(path: string) {
   selectedPath.value = path
@@ -272,7 +253,7 @@ async function restoreConfirm(path: string, target: FileRevision, shownStatus: s
     details: [
       { label: '版本', value: `${fmtTime(target.time)} · ${target.revisionId.slice(0, 8)}` },
       { label: '文件', value: path },
-      { label: '变化', value: statusLabel[shownStatus] ?? shownStatus },
+      { label: '变化', value: statusLabels[shownStatus] ?? shownStatus },
     ],
   })
 }
@@ -325,7 +306,7 @@ async function restoreOne(file: RevisionFile) {
     details: [
       { label: '版本', value: `${fmtTime(rev.time)} · ${rev.id.slice(0, 8)}` },
       { label: '文件', value: file.path },
-      { label: '变化', value: statusLabel[file.status] ?? file.status },
+      { label: '变化', value: statusLabels[file.status] ?? file.status },
     ],
   })
   if (!accepted) return
@@ -405,7 +386,7 @@ onMounted(refresh)
       </div>
     </div>
 
-    <!-- 按文件浏览（N33 批 A）：左清单右时间线，行内展开对比与恢复 -->
+    <!-- 按文件浏览（N33）：左清单右时间线，行内展开行级对比与恢复（两栏为批 B 拆出子件） -->
     <div class="card">
       <div class="card-head">
         <span class="card-title">按文件浏览</span>
@@ -414,58 +395,17 @@ onMounted(refresh)
       <div v-if="filesLoading" class="hist-empty">正在读取受保文件清单…</div>
       <div v-else-if="!trackedFiles.length" class="hist-empty">暂无受保文件。留下历史版本后，这里会按文件列出可回滚的时间线。</div>
       <div v-else class="fa-body">
-        <div class="fa-list">
-          <template v-for="g in groupedFiles" :key="g.group">
-            <div class="fa-group">{{ g.label }}</div>
-            <button
-              v-for="f in g.items"
-              :key="f.path"
-              class="fa-file"
-              :class="{ active: f.path === selectedPath }"
-              @click="selectFile(f.path)"
-            >
-              <span class="fa-name" :title="f.path">{{ f.display }}</span>
-              <span v-if="!f.alive" class="chip chip-warning fa-dead">已删除</span>
-              <span class="fa-count mono">{{ f.revisions || '' }}</span>
-            </button>
-          </template>
-        </div>
-        <div class="fa-detail">
-          <div v-if="!selectedFile" class="hist-empty">左侧选择一个文件，查看它的历史时间线。</div>
-          <div v-else-if="historyLoading" class="hist-empty">读取时间线…</div>
-          <template v-else>
-            <div class="fa-detail-head">
-              <span class="fa-title">{{ selectedFile.display }}</span>
-              <code class="fa-path" :title="selectedFile.path">{{ selectedFile.path }}</code>
-              <span v-if="historyCapped" class="chip chip-neutral">仅展示最近 50 版</span>
-            </div>
-            <div v-if="!history.length" class="hist-empty">该文件在观察窗内还没有历史版本。</div>
-            <div v-for="row in history" :key="row.revisionId + row.status" class="fa-ev">
-              <div class="fa-ev-row">
-                <span class="file-st" :class="`st-${row.status}`">{{ statusLabel[row.status] ?? row.status }}</span>
-                <span class="mono fa-time">{{ fmtTime(row.time) }}</span>
-                <span class="fa-sum" :title="row.summary">{{ row.summary }}</span>
-                <span class="row-actions">
-                  <button class="btn btn-ghost btn-small" @click="toggleDiff(row)">{{ diffOpen === row.revisionId ? '收起对比' : '对比' }}</button>
-                  <button class="btn btn-secondary btn-small" @click="restoreRevision(row)">{{ row.status === 'D' ? '恢复被删内容' : '恢复' }}</button>
-                </span>
-              </div>
-              <div v-if="diffOpen === row.revisionId" class="fa-diff">
-                <div v-if="diffLoading" class="hist-empty">读取新旧内容…</div>
-                <template v-else-if="diffData">
-                  <div class="diff-half">
-                    <div class="diff-label">旧内容<span v-if="diffData.oldTruncated" class="chip chip-warning preview-cut">已截断</span></div>
-                    <pre class="preview-body">{{ diffData.old || '（无旧内容）' }}</pre>
-                  </div>
-                  <div class="diff-half">
-                    <div class="diff-label">新内容<span v-if="diffData.newTruncated" class="chip chip-warning preview-cut">已截断</span></div>
-                    <pre class="preview-body">{{ diffData.new || (diffData.status === 'D' ? '（该版本已删除此文件）' : '（空）') }}</pre>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </template>
-        </div>
+        <SnapshotFileList :files="trackedFiles" :selected-path="selectedPath" @select="selectFile" />
+        <SnapshotTimeline
+          :file="selectedFile"
+          :history="history"
+          :loading="historyLoading"
+          :diff-open="diffOpen"
+          :diff-data="diffData"
+          :diff-loading="diffLoading"
+          @toggle-diff="toggleDiff"
+          @restore="restoreRevision"
+        />
       </div>
     </div>
 
@@ -510,7 +450,7 @@ onMounted(refresh)
           <template v-else>
             <div class="file-list">
               <div v-for="f in previewFiles" :key="f.path" class="file-row" :class="{ active: previewDetail?.path === f.path }">
-                <span class="file-st" :class="`st-${f.status}`">{{ statusLabel[f.status] ?? f.status }}</span>
+                <span class="file-st" :class="`st-${f.status}`">{{ statusLabels[f.status] ?? f.status }}</span>
                 <code class="file-path" :title="f.path">{{ f.path }}</code>
                 <span class="row-actions">
                   <!-- D 行不给"内容"预览：该版本文件已不存在，读了必炸（病灶 A）；
@@ -539,7 +479,8 @@ onMounted(refresh)
 </template>
 
 <style scoped>
-/* 行骨架复用全局 .setting-row / .card / .chip / .tbl / .btn 原子，此处仅节奏与专属皮 */
+/* 行骨架复用全局 .setting-row / .card / .chip / .tbl / .btn 原子，此处仅节奏与专属皮；
+   两栏（.fa-list/.fa-detail 及其子孙）皮随批 B 拆进 SnapshotFileList/SnapshotTimeline */
 .pref-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
 .input-inline { display: flex; align-items: center; gap: 6px; }
@@ -599,8 +540,8 @@ onMounted(refresh)
 }
 .file-row.active { background: var(--surface-hover); border-color: var(--color-border); }
 .file-st { flex: none; width: 40px; font-size: var(--text-xs); color: var(--color-text-muted); }
-.file-st.st-A { color: var(--color-success, var(--color-primary)); }
-.file-st.st-D { color: var(--color-danger, var(--color-text)); }
+.file-st.st-A { color: var(--state-positive); }
+.file-st.st-D { color: var(--state-danger); }
 .file-path {
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
@@ -618,58 +559,9 @@ onMounted(refresh)
   white-space: pre-wrap; word-break: break-all; background: var(--surface-panel);
 }
 
-/* 按文件浏览（N33 批 A 最小可用；窄屏纵深堆与徽标体系归批 C 打磨） */
+/* 按文件浏览的容器（两栏内部皮随子件走，这里只留横向骨架与窄屏堆叠） */
 .fa-body { display: flex; gap: 14px; align-items: stretch; }
-.fa-list {
-  flex: none; width: 236px; max-height: 380px; overflow: auto;
-  display: flex; flex-direction: column; gap: 2px;
-  border-right: 1px solid var(--color-border); padding-right: 10px;
-}
-.fa-group {
-  font-size: var(--text-xs); color: var(--color-text-subtle);
-  padding: 8px 8px 2px; letter-spacing: 0.04em;
-}
-.fa-file {
-  display: flex; align-items: center; gap: 6px; width: 100%;
-  padding: 5px 8px; border: 1px solid transparent; border-radius: var(--radius-control);
-  background: transparent; color: var(--color-text); font-size: var(--text-sm);
-  text-align: left; cursor: pointer; font-family: inherit;
-}
-.fa-file:hover { background: var(--surface-hover); }
-.fa-file.active { background: var(--surface-hover); border-color: var(--color-border); }
-.fa-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.fa-dead { flex: none; font-size: var(--text-xs); padding: 0 5px; }
-.fa-count { flex: none; color: var(--color-text-subtle); }
-.fa-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.fa-detail-head {
-  display: flex; align-items: center; gap: 8px;
-  padding-bottom: 6px; border-bottom: 1px solid var(--color-border);
-}
-.fa-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); flex: none; }
-.fa-path {
-  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
-}
-.fa-ev-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; }
-.fa-time { flex: none; }
-.fa-sum {
-  flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--color-text-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.fa-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 2px 4px 10px; }
-.diff-half { min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-element); overflow: hidden; }
-.diff-label {
-  display: flex; align-items: center; gap: 6px; padding: 6px 10px;
-  background: var(--surface-chrome); border-bottom: 1px solid var(--color-border);
-  font-size: var(--text-xs); color: var(--color-text-muted);
-}
-.fa-diff .preview-body { max-height: 180px; }
 @media (max-width: 720px) {
   .fa-body { flex-direction: column; }
-  .fa-list {
-    width: auto; max-height: 220px; border-right: none; padding-right: 0;
-    border-bottom: 1px solid var(--color-border); padding-bottom: 6px;
-  }
-  .fa-diff { grid-template-columns: 1fr; }
 }
 </style>

@@ -1,5 +1,6 @@
 // 历史版本分区特征测试：状态回填、git/备份双模式呈现（P4 解禁后同面）、立即快照、
-// 按文件浏览（N33 批 A：清单分组/时间线切换/对比/恢复解算链）、
+// 按文件浏览（N33 批 A 立链、批 B 拆分后行为零回退：清单分组/时间线切换/行级对比/
+// 恢复解算链——断言穿过 SnapshotFileList/SnapshotTimeline 两子件的组合渲染）、
 // 预览弹窗文件清单与恢复确认链（mock 打桩范式照 SettingsSections.spec）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -69,7 +70,7 @@ describe('历史版本分区', () => {
     expect(snapSvc.GetStatus).toHaveBeenCalled()
     const switches = w.findAll('.switch')
     expect((switches[0].element as HTMLInputElement).checked).toBe(true)
-    expect(w.text()).toContain('Git 历史仓库')
+    expect(w.text()).toContain('版本历史（Git') // §6 批 B 新 chip 口径（模式+容量一句话说清）
     expect(w.text()).toContain('D:\\hx\\.snapshots')
     const rows = w.findAll('tbody tr')
     expect(rows).toHaveLength(2)
@@ -90,6 +91,7 @@ describe('历史版本分区', () => {
     snapSvc.ListFiles.mockResolvedValue(tracked)
     const w = await mountView()
     expect(w.text()).toContain('本机备份模式')
+    expect(w.text()).toContain('版本历史（备份 · 保留最近 30 份）') // §6 备份 chip 口径
     expect(w.text()).toContain('最近 30 份')
     expect(snapSvc.ListRevisions).toHaveBeenCalled()
     expect(snapSvc.ListFiles).toHaveBeenCalled()
@@ -165,7 +167,7 @@ describe('历史版本分区', () => {
     expect(snapSvc.RestoreFile).not.toHaveBeenCalled()
   })
 
-  it('对比内联展开：DiffFile 带版本 id 与路径，新旧文本呈现', async () => {
+  it('对比内联展开：DiffFile 带版本 id 与路径，行级 diff 删加着色呈现（批 B 统一单栏）', async () => {
     stubGitStatus()
     snapSvc.ListRevisions.mockResolvedValue([])
     snapSvc.ListFiles.mockResolvedValue(tracked)
@@ -182,6 +184,9 @@ describe('历史版本分区', () => {
     expect(snapSvc.DiffFile).toHaveBeenCalledWith('aaaa111122223333', 'memo/memo_9.md')
     expect(w.text()).toContain('旧内容A')
     expect(w.text()).toContain('新内容B')
+    // 行级呈现：单行互改 = 一删一加，删行在前（textdiff 在子件里算，父只管喂数据）
+    expect(w.findAll('.dl-del')).toHaveLength(1)
+    expect(w.findAll('.dl-add')).toHaveLength(1)
     // 再点收起
     await w.findAll('.fa-ev-row')[1].findAll('button')[0].trigger('click')
     await flushPromises()
