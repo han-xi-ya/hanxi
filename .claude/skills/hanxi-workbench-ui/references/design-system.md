@@ -36,6 +36,19 @@ Use role-based tokens. Components must not depend on theme-specific literals.
 | `warning` | `#b66f08` | `#f0ac45` | Attention and incomplete state |
 | `danger` | `#d64545` | `#ff7974` | Errors and destructive actions |
 
+### On-color foreground contract (N37)
+
+Colored solid surfaces (primary / state-danger / state-positive backgrounds) must take their foreground text from the paired on-color token — never `--color-text`, never a hard-coded white/black:
+
+- `--color-on-primary` — foreground on `--color-primary` solid surfaces (buttons, active chips).
+- `--color-on-accent` — foreground on **state-color** solids (`--state-danger`, `--state-positive`, and similar accents). Borrowing `--color-on-primary` or `--color-text-inverse` for these backgrounds is prohibited even when the ratio happens to pass — the token pair is the contract that keeps every accent × mode combination audited.
+- Directional rule (WCAG verified across 5 accents × 2 modes): light-mode colored solids take white foreground; dark-mode colored solids take the board's deep foreground value. A surface that cannot reach 4.5:1 with any foreground (e.g. mid-tone teal) must have its **background darkened**, not its text color compromised.
+- Non-text indicators on color (switch knobs, avatar glyphs) follow the 3:1 graphics criterion and are exempt from the text tokens, but must be listed where they are introduced.
+
+### Elevation and glow rule (N37)
+
+Ambient color glow (`box-shadow`/`outline` using `*-glow` tokens) is reserved for **in-progress pulsing** only (loading/starting/live indicators). Persistent states (running / online / selected / primary CTAs at rest) express themselves through solid fill plus a 1px brightened rim (`inset 0 0 0 1px color-mix(in srgb, <color> 45%, white)`) or neutral layer shadows (`--shadow-small`, `--shadow-panel`). Focus rings always consume `--focus-ring`, never raw glow values. Soft same-color **borders** (`border-color: *-glow`, a low-alpha outline in disguise) remain allowed as banner treatment.
+
 ### Surface formula
 
 1. Paint the page with `page`.

@@ -478,7 +478,7 @@ onMounted(() => {
   border-radius: 4px;
   outline: none;
   background: var(--surface-panel);
-  box-shadow: 0 0 0 2px var(--color-primary-glow);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 /* .rtt-tag 基形（mono + 600 + sm）已全局定档（§9.6-10 裁决落地），副本删净落回；

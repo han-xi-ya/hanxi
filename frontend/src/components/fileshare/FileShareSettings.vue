@@ -443,7 +443,7 @@ function setQuickPort(port: number) {
 
 .quick-port-chip:focus-visible,
 .input-control:focus-visible {
-  outline: 2px solid var(--color-primary-glow);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
