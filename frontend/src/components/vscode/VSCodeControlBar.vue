@@ -96,10 +96,10 @@ function banner(): { tone: 'warn' | 'error' | 'ok'; text: string } | null {
 }
 .form-tag.installer { background: var(--state-information-soft); color: var(--state-information); }
 .vc-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
-.vc-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
+.vc-status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
 .vc-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
-.vc-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
-.vc-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
+.vc-status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
+.vc-status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
 .inline-action {
   display: inline;
   padding: 0;

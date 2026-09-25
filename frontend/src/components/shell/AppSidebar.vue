@@ -651,7 +651,7 @@ function iconSvg(icon: string | undefined): RenderableIcon | null {
 
 .status-dot.online {
   background: var(--state-positive);
-  box-shadow: 0 0 0 2px var(--state-positive-glow);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white);
 }
 
 /* ── 窄屏 overlay 抽屉件：宽屏零显示 ── */

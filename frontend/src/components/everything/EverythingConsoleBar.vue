@@ -115,10 +115,10 @@ function onInput(e: Event) {
 .control-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* 注意：状态卡信号灯类名带 ev- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
 .ev-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
-.ev-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
+.ev-status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
 .ev-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
-.ev-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
-.ev-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
+.ev-status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
+.ev-status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
 .status-word { font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
 .ver-pill { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: 4px; padding: 1px 8px; color: var(--color-text); }
 .pid-tag { font-size: var(--text-xs); color: var(--color-text-subtle); }
@@ -136,5 +136,5 @@ function onInput(e: Event) {
   font-size: var(--text-base); background: var(--surface-soft); color: var(--color-text); outline: none;
   transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
-.search-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-glow); }
+.search-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--focus-ring); }
 </style>

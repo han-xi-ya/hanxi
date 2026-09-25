@@ -663,7 +663,7 @@ onMounted(async () => {
   padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: box-shadow var(--motion-base) ease;
 }
 .project-card:hover { box-shadow: var(--shadow-small); }
-.project-card.active { border-color: var(--state-positive-glow); box-shadow: 0 0 0 1px var(--state-positive-glow); }
+.project-card.active { border-color: var(--state-positive-glow); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
 
 .proj-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .proj-title-box { display: flex; align-items: center; gap: 8px; min-width: 0; }

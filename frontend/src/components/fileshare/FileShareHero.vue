@@ -66,7 +66,7 @@ const emit = defineEmits<{ toggle: [] }>()
 
 .status-indicator.online {
   background: var(--state-positive);
-  box-shadow: 0 0 8px var(--state-positive-glow);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white);
 }
 
 .hero-panel {
@@ -110,6 +110,8 @@ const emit = defineEmits<{ toggle: [] }>()
   letter-spacing: -0.02em;
 }
 
+/* 前景白色系渐变底（primary→information）两态对比度实测 ≥4.62 / ≥5.17 达标
+   （N37 §1a#7 转正入册）；N37 降级：彩色投影换中性 shadow-small，保留图标块浮起语义 */
 .title-icon {
   display: inline-flex;
   align-items: center;
@@ -120,7 +122,7 @@ const emit = defineEmits<{ toggle: [] }>()
   font-size: var(--text-2xl);
   background: linear-gradient(135deg, var(--color-primary), var(--state-information));
   border-radius: 10px;
-  box-shadow: 0 7px 16px var(--color-primary-glow);
+  box-shadow: var(--shadow-small);
 }
 
 .page-desc {
@@ -162,7 +164,8 @@ const emit = defineEmits<{ toggle: [] }>()
 .hero-action {
   min-width: 150px;
   padding: 10px 17px;
-  box-shadow: 0 7px 16px var(--color-primary-soft);
+  /* N37 降级（主诉本尊）：彩色外发光投影→中性层次影；如需彻底扁平可改 none */
+  box-shadow: var(--shadow-small);
   transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -171,7 +174,7 @@ const emit = defineEmits<{ toggle: [] }>()
 }
 
 .hero-action:focus-visible {
-  outline: 2px solid var(--color-primary-glow);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 

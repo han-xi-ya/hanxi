@@ -633,10 +633,10 @@ onMounted(async () => {
 .ver-pill { border-radius: 4px; }
 /* 信号灯类名带 rd- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
 .rd-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
-.rd-status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
+.rd-status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
 .rd-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
-.rd-status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
-.rd-status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
+.rd-status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
+.rd-status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
 /* status-word/pid-tag/uptime-tag/control-btns 由全局原子接管 */
 /* 形态徽标：安装版（系统服务形态）与便携版区分，运行态一目了然 */
 .form-pill { font-size: var(--text-xs); padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-weight: 600; }

@@ -123,7 +123,7 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
 }
 
 .tab-item:focus-visible {
-  outline: 2px solid var(--color-primary-glow);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 

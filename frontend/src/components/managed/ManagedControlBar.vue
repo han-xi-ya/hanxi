@@ -109,11 +109,11 @@ const staleTip = computed(() =>
   border: 1px solid var(--color-border); border-radius: var(--radius-pill);
   padding: 1px 8px; cursor: help;
 }
-.status-light.running { background: var(--state-positive); box-shadow: 0 0 0 3px var(--state-positive-glow); }
+.status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
 .status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
-.status-light.external { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
-.status-light.failed { background: var(--state-danger); box-shadow: 0 0 0 3px var(--state-danger-glow); }
+.status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
+.status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
 /* 自定义色档「warn」（⑧）：adapter.statusTone 返回 'warn' 时压过五态——
    bili23 running+hidden（窗口收入托盘）琥珀，语义同 external 档 */
-.status-light.warn { background: var(--state-warning); box-shadow: 0 0 0 3px var(--state-warning-glow); }
+.status-light.warn { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
 </style>
