@@ -469,7 +469,7 @@ onUnmounted(() => {
 .btn-group { gap: 10px; }
 
 /* 实心红"终止扫描"为本视图专属变体（全局仅有描边红形） */
-.btn-danger { background: var(--state-danger); color: var(--color-on-primary); border-color: var(--state-danger); }
+.btn-danger { background: var(--state-danger); color: var(--color-on-accent); border-color: var(--state-danger); }
 .btn-danger:hover:not(:disabled) { filter: brightness(0.92); }
 
 /* 进度卡片 */

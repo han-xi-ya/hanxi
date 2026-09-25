@@ -358,7 +358,7 @@ onMounted(() => {
 /* 实心红"停止扫描"为本视图专属变体（全局只有 btn-danger-outline 描边形） */
 .btn-danger {
   background: var(--state-danger);
-  color: var(--color-on-primary);
+  color: var(--color-on-accent);
 }
 .btn-danger:hover:not(:disabled) {
   filter: brightness(0.92);

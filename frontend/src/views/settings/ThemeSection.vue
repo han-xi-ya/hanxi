@@ -19,7 +19,7 @@ const hint = computed(() => {
 // 圆点必须独立于当前主题硬编码（否则选中别的色板后预览点跟着变色，失去预览意义），
 // 属「裸色只在 tokens.css」铁律的登记豁免项——仅存于本视图数据源，不得扩散进组件配色。
 const ACCENTS: ReadonlyArray<{ key: AccentMode; label: string; dot: string }> = [
-  { key: 'teal', label: '青壳', dot: '#0f8b8d' },
+  { key: 'teal', label: '青壳', dot: '#0d8284' },
   { key: 'sky', label: '碧空', dot: '#0064b5' },
   { key: 'iris', label: '鸢尾', dot: '#6741ca' },
   { key: 'jade', label: '青瓷', dot: '#006869' },

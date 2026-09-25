@@ -87,7 +87,7 @@ footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
 .workbench-confirm-btn { min-height:var(--control-h-lg); padding:0 16px; border:1px solid var(--color-border); border-radius:var(--radius-control); font-weight:650; cursor:pointer; }
 .workbench-confirm-btn.secondary { background:var(--surface-soft); color:var(--color-text); }
 .workbench-confirm-btn.primary { border-color:transparent; background:var(--color-primary); color:var(--color-on-primary); }
-.is-danger .workbench-confirm-btn.primary { background:var(--state-danger); }
+.is-danger .workbench-confirm-btn.primary { background:var(--state-danger); color:var(--color-on-accent); }
 .workbench-confirm-btn:disabled { opacity:.55; cursor:not-allowed; }
 .workbench-confirm-btn:focus-visible { outline:3px solid var(--focus-ring); outline-offset:2px; }
 @media (max-width:460px) { .workbench-confirm-backdrop{align-items:end;padding:12px}.workbench-confirm{padding:16px}.workbench-confirm footer{flex-direction:column-reverse}.workbench-confirm-btn{min-height:44px;width:100%}.workbench-confirm-details div{grid-template-columns:1fr}.workbench-confirm-details dt{margin-bottom:2px} }

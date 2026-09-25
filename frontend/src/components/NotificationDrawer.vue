@@ -166,7 +166,7 @@ function handleItemClick(item: Notification) {
 
 .badge-unread {
   background: var(--state-danger);
-  color: var(--color-on-primary);
+  color: var(--color-on-accent);
   font-size: var(--text-xs);
   font-weight: 600;
   padding: 1px 6px;

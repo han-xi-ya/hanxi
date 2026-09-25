@@ -368,7 +368,7 @@ function toggleExpanded() {
   height: 15px;
   border-radius: var(--radius-pill);
   background: var(--state-danger);
-  color: var(--color-text-inverse);
+  color: var(--color-on-accent);
   font-size: var(--text-micro);
   font-weight: 800;
   display: flex;

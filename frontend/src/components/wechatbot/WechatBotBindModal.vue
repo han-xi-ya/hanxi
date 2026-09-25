@@ -197,7 +197,7 @@ onUnmounted(() => {
 
 .btn-retry-qr {
   background: var(--state-positive);
-  color: var(--color-text-inverse);
+  color: var(--color-on-accent);
   border: none;
   padding: 4px 12px;
   border-radius: 4px;

@@ -130,7 +130,7 @@ function formatFileSize(bytes: number): string {
 .attachment-meta span { font-size: var(--text-xs); color: var(--color-text-subtle); }
 .attachment-remove, .attachment-send, .attachment-error button { border-radius: 6px; padding: 6px 10px; font-size: var(--text-sm); cursor: pointer; }
 .attachment-remove { border: 1px solid var(--color-border); color: var(--color-text-muted); background: transparent; }
-.attachment-send { border: 0; color: var(--color-text-inverse); background: var(--state-positive); min-width: 74px; }
+.attachment-send { border: 0; color: var(--color-on-accent); background: var(--state-positive); min-width: 74px; }
 .attachment-remove:disabled, .attachment-send:disabled { opacity: .55; cursor: not-allowed; }
 .attachment-error { padding: 9px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--state-danger); font-size: var(--text-sm); }
 .attachment-error button { border: 1px solid var(--color-border); background: var(--surface-panel); color: var(--color-text); }
@@ -138,7 +138,7 @@ function formatFileSize(bytes: number): string {
 .wechat-textarea { width: 100%; height: 100%; border: none; outline: none; resize: none; font-size: var(--text-base); color: var(--color-text); font-family: inherit; line-height: 1.5; background: transparent; }
 .input-footer-row { padding: 4px 14px 8px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .shortcut-tip { font-size: var(--text-xs); color: var(--color-text-subtle); }
-.btn-send-message { background: var(--state-positive); color: var(--color-text-inverse); border: none; padding: 5px 16px; border-radius: 4px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: all .15s ease; }
+.btn-send-message { background: var(--state-positive); color: var(--color-on-accent); border: none; padding: 5px 16px; border-radius: 4px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: all .15s ease; }
 .btn-send-message:disabled { background: var(--surface-hover); color: var(--color-text-subtle); cursor: not-allowed; }
 button:focus-visible, .wechat-textarea:focus-visible { outline: 2px solid var(--color-primary, #0f8b8d); outline-offset: 2px; }
 @media (max-width: 640px) { .paste-tip { display: none; } .attachment-preview-card { grid-template-columns: 46px minmax(0, 1fr); } .attachment-remove, .attachment-send { grid-row: 2; } .attachment-send { grid-column: 2; } .shortcut-tip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }

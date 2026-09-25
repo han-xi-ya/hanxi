@@ -17,11 +17,13 @@
 :root {
   color-scheme: light;
 
-  /* 主色（青绿系，design-system.md） */
-  --color-primary: #0f8b8d;
-  --color-primary-hover: #0b7779;
-  --color-primary-soft: rgba(15, 139, 141, 0.1);
+  /* 主色（青绿系，design-system.md）。N37 案 A：浅底白字实测 4.12 不达 AA，
+     底色压暗一档（旧值 #0f8b8d/#0b7779）→ 白字 base 4.62 / hover 5.49 双过 */
+  --color-primary: #0d8284;
+  --color-primary-hover: #0b7577;
+  --color-primary-soft: rgba(13, 130, 132, 0.1);
   --color-on-primary: #ffffff;
+  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   /* 外壳层（Fluent 式）：DWM 标题栏 + 双栏导航共用底色，与内容区分离；
    * 原生窗框配色在 internal/platform/windows/darkmode.go 表内同步（改此处必改彼处） */
@@ -68,11 +70,11 @@
   --state-information-glow: rgba(37, 99, 235, 0.15);
   --state-warning-glow: rgba(149, 94, 0, 0.15);
   --state-danger-glow: rgba(179, 55, 54, 0.15);
-  --color-primary-glow: rgba(15, 139, 141, 0.18);
+  --color-primary-glow: rgba(13, 130, 132, 0.18);
 
   /* 遮罩 */
   --overlay-mask: rgba(10, 24, 29, 0.46);
-  --focus-ring: rgba(15, 139, 141, 0.24);
+  --focus-ring: rgba(13, 130, 132, 0.24);
 
   /* 字体栈（写实含中文回退；public/style.css 自带其旧名 --font-family 定义，不依赖本文件） */
   --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
@@ -162,6 +164,7 @@
   --color-primary-hover: #59c8c5;
   --color-primary-soft: rgba(66, 183, 180, 0.13);
   --color-on-primary: #052326;
+  --color-on-accent: #052326; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #0b181d;
   --surface-chrome-hover: #202c30;
@@ -214,6 +217,7 @@
   --color-primary-hover: #005093;
   --color-primary-soft: rgba(0, 100, 181, 0.1);
   --color-on-primary: #ffffff;
+  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #e8f1f8;
   --surface-chrome-hover: #d8e1e8;
@@ -244,6 +248,7 @@
   --color-primary-hover: #74ccfe;
   --color-primary-soft: rgba(78, 189, 247, 0.15);
   --color-on-primary: #00243e;
+  --color-on-accent: #00243e; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #1a2026;
   --surface-chrome-hover: #2d3338;
@@ -275,6 +280,7 @@
   --color-primary-hover: #542dae;
   --color-primary-soft: rgba(103, 65, 202, 0.1);
   --color-on-primary: #ffffff;
+  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #ece7f9;
   --surface-chrome-hover: #ddd8e9;
@@ -304,6 +310,7 @@
   --color-primary-hover: #c7b8ff;
   --color-primary-soft: rgba(187, 169, 250, 0.15);
   --color-on-primary: #27124b;
+  --color-on-accent: #27124b; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #201c27;
   --surface-chrome-hover: #332f39;
@@ -334,6 +341,7 @@
   --color-primary-hover: #005657;
   --color-primary-soft: rgba(0, 104, 105, 0.1);
   --color-on-primary: #ffffff;
+  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #e8f1f2;
   --surface-chrome-hover: #d8e1e2;
@@ -363,6 +371,7 @@
   --color-primary-hover: #81dfdc;
   --color-primary-soft: rgba(93, 209, 207, 0.15);
   --color-on-primary: #002525;
+  --color-on-accent: #002525; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #142121;
   --surface-chrome-hover: #283434;
@@ -393,6 +402,7 @@
   --color-primary-hover: #003999;
   --color-primary-soft: rgba(6, 73, 184, 0.12);
   --color-on-primary: #ffffff;
+  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #dce6f5;
   --surface-chrome-hover: #ccd6e4;
@@ -431,6 +441,7 @@
   --color-primary-hover: #9bc9ff;
   --color-primary-soft: rgba(121, 183, 255, 0.16);
   --color-on-primary: #04223f;
+  --color-on-accent: #04223f; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
 
   --surface-chrome: #090c11;
   --surface-chrome-hover: #1e2125;

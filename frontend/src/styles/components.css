@@ -592,7 +592,7 @@
 /* 绑定账号钮家族（Sidebar ⇄ WechatBotView 占位大按钮逐字同形；视图副本在途，暂冻结） */
 :where(.btn-bind-account) {
   background: var(--state-positive);
-  color: var(--color-text-inverse);
+  color: var(--color-on-accent);
   border: none;
   padding: 4px 10px;
   border-radius: 6px;
