@@ -30,6 +30,25 @@ export const WHEEL = {
   rCancel: 244, // 取消判定半径（指针越界置取消态，常量供前端使用）
 } as const
 
+/**
+ * N40③ 皮批专用绘制观感常量（StarPie 磨砂花瓣盘）——与 WHEEL 命中语义完全解耦，
+ * 只喂渲染调用（mainWedge/capWedge/帽带底环/hub 刻度）实参，不参与任何极坐标归属：
+ * 缝隙变大是"绘制缝"，命中始终按名义角域 slotOf（N40① 设计红利，缝多大都无死区）。
+ * 花瓣角向缝由 pad 绘制扣出，楔形另有 stroke-width 6 同色膨胀（径向 ±3），
+ * 故 VIS 环带四周恒内缩于 WHEEL 命中带 ≥3 DIP，牌面缝隙像素仍归属邻扇区。
+ */
+export const VIS = {
+  padDeg: 4.2, // 主环花瓣绘制缝角（每侧；外缘净缝 ≈17px、内缘 ≈6px，内窄外宽收拢感）
+  capPadDeg: 3.5, // 帽带子扇区绘制缝角（每侧）
+  rSecIn: 80, // 主环绘制带内缘（命中内缘仍 74）
+  rSecOut: 158, // 主环绘制带外缘（158→176 盘缘段让给连续亮环）
+  rCapIn: 177, // 帽带绘制内缘（命中仍 174）
+  rCapOut: 233, // 帽带绘制外缘（命中仍 236；+2 为帽带外缘提示弧位）
+  rHubFace: 64, // hub 仪表核磨砂面绘制半径（点击命中仍 rHub-2=60）
+  rTickIn: 50, // hub 槽位刻度内端
+  rTickOut: 57, // hub 槽位刻度外端
+} as const
+
 /** 极坐标 → 直角坐标：0° 取 12 点方向，顺时针增长（与 QuickMenuPopup.polar 同约定） */
 export function polar(r: number, deg: number): { x: number; y: number } {
   const rad = ((deg - 90) * Math.PI) / 180

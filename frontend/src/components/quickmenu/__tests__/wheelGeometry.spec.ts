@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   WHEEL,
+  VIS,
   polar,
   wedgePath,
   mainSectorAngles,
@@ -43,6 +44,40 @@ describe('WHEEL 常量表', () => {
     expect(WHEEL.rDisc).toBeLessThan(WHEEL.rCapIn)
     expect(WHEEL.rCapOut).toBeLessThan(WHEEL.rCancel)
     expect(WHEEL.rCancel).toBeLessThan(WHEEL.c) // 取消圆不出窗口
+  })
+})
+
+describe('VIS 观感常量（N40③ 皮批）', () => {
+  it('StarPie 花瓣盘绘制值逐字锁定', () => {
+    expect(VIS).toEqual({
+      padDeg: 4.2,
+      capPadDeg: 3.5,
+      rSecIn: 80,
+      rSecOut: 158,
+      rCapIn: 177,
+      rCapOut: 233,
+      rHubFace: 64,
+      rTickIn: 50,
+      rTickOut: 57,
+    })
+  })
+
+  it('与 WHEEL 命中语义解耦：绘制带严格内缩于命中带，hub 面大于命中圆且刻度不落面上', () => {
+    expect(VIS.rSecIn).toBeGreaterThan(WHEEL.rSecIn)
+    expect(VIS.rSecOut).toBeLessThan(WHEEL.rSecOut)
+    expect(VIS.rCapIn).toBeGreaterThan(WHEEL.rCapIn)
+    expect(VIS.rCapOut).toBeLessThan(WHEEL.rCapOut)
+    expect(VIS.rHubFace).toBeGreaterThan(WHEEL.rHub) // 面 r64 纯绘制；命中仍 rHub-2
+    expect(VIS.rTickOut).toBeLessThan(VIS.rHubFace)
+    expect(VIS.rTickIn).toBeGreaterThan(0)
+  })
+
+  it('绘制缝大于发丝缝，但角度函数默认 padDeg 仍 0.9（命中/名义角域语义不随皮批漂移）', () => {
+    expect(VIS.padDeg).toBeGreaterThan(0.9)
+    expect(VIS.capPadDeg).toBeGreaterThan(0.9)
+    expect(mainSectorAngles(0, 4).a0).toBeCloseTo(0.9, 9) // 默认值锁定：仅渲染调用方显式传 VIS
+    const lit = capSectorAngles(4, 100, 90, 0, VIS.capPadDeg)!
+    expect(lit.a0).toBeCloseTo(100 - 48 + VIS.capPadDeg, 9) // 显式传参生效（span=96 起点 52）
   })
 })
 
