@@ -285,8 +285,9 @@ func (e *Engine) finish(state State, msg string, code int) {
 	e.transition(state, msg)
 }
 
-// RestoreWindow 唤起自有实例窗口：EnumWindows 按自有 PID 集合
-// SW_RESTORE + SetForegroundWindow（等价其托盘双击语义）。
+// RestoreWindow 唤起自有实例窗口：委托平台唤窗公共件按自有 PID 集合
+// 逐个唤可聚焦顶层窗（可见+标题过滤、IsIconic 才 SW_RESTORE、借权置前 +
+// SwitchToThisWindow 兜底——等价其托盘双击语义）。
 // 返回命中窗口数；0 = 驻留托盘且窗口已销毁，调用方应改用 SpawnWindow。
 func (e *Engine) RestoreWindow() int {
 	e.mu.Lock()

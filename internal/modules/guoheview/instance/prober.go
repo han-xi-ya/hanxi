@@ -9,8 +9,9 @@
 //     候选命名互斥体（GuoheView / MagicView / {id}-sim 等）OpenMutex 全部
 //     ERROR_FILE_NOT_FOUND——不存在可依赖的单实例锁，探测一律走进程名
 //     GuoheView.exe（Toolhelp32 快照，recordly/bcu 同族方案）；
-//   - "打开窗口"没有信使语义：自有实例在跑 → 聚焦它的主窗口（EnumWindows
-//     按自有 PID 过滤 → SW_RESTORE + SwitchToThisWindow）；没在跑 → 直接拉起
+//   - "打开窗口"没有信使语义：自有实例在跑 → 聚焦它的主窗口（委托平台
+//     唤窗公共件：按自有 PID 过滤，可见+标题判据、IsIconic 才 SW_RESTORE、
+//     借前台特权置前 + SwitchToThisWindow 兜底）；没在跑 → 直接拉起
 //     新托管实例。窗口类 UiCore_Window 是果核 core-ui 框架共享类名，
 //     绝不按类名 FindWindow（多实例与兄弟应用全撞车）；
 //   - 关窗即退：向任一可见主窗投递 WM_CLOSE，实例数 3 秒内归零（实测）——

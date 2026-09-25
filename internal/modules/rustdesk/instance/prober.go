@@ -48,7 +48,8 @@ type RustDeskProbe interface {
 	IsRunning() bool
 	// HasVisibleWindow 给定进程集合中是否存在可见顶层窗口。
 	HasVisibleWindow(pids []uint32) bool
-	// FocusWindows 唤起给定进程的全部顶层窗口（SW_RESTORE + SetForegroundWindow），
+	// FocusWindows 唤起给定进程的全部可聚焦顶层窗（平台公共件三要素：
+	// 可见+标题过滤、IsIconic 才 SW_RESTORE、借前台特权置前+SwitchToThisWindow 兜底），
 	// 返回命中的窗口数（0 = 驻留托盘且窗口已销毁）。
 	FocusWindows(pids []uint32) int
 }

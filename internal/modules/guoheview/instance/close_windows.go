@@ -3,8 +3,7 @@
 package instance
 
 import (
-	"syscall"
-	"unsafe"
+	win "hanxi/internal/platform/windows"
 )
 
 const wmClose = 0x0010
@@ -23,18 +22,24 @@ func postCloseForPID(pid uint32) {
 	if pid == 0 {
 		return
 	}
-	cb := syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
+	forEachWindow(func(hwnd uintptr, wpid uint32) bool {
 		if visible, _, _ := procIsWinVisible.Call(hwnd); visible == 0 {
-			return 1
+			return true
 		}
 		if length, _, _ := procGetWindowTextLen.Call(hwnd, 0, 0); length == 0 {
-			return 1
+			return true
 		}
-		var wpid uint32
-		if r, _, _ := procGetWndThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&wpid))); r != 0 && wpid == pid {
+		if wpid == pid {
 			_, _, _ = procPostMsg.Call(hwnd, wmClose, 0, 0)
 		}
-		return 1 // 继续枚举：自有进程多窗口场全部送达
+		return true // 继续枚举：自有进程多窗口场全部送达
 	})
-	_, _, _ = procEnumWindows.Call(cb, 0)
+}
+
+// forEachWindow 统一封装顶层窗枚举：委托平台公共件静态回调（旧写法每次调用
+// syscall.NewCallback 现场注册闭包烧回调槽，池上限 2000 且永不回收——定时
+// 炸弹，根治模板见 winfocus_windows.go）。visit 返回 false 停止枚举；
+// 属主 PID 查询失败的顶层窗由公共件跳过，与旧 "r != 0" 判据语义一致。
+func forEachWindow(visit func(hwnd uintptr, wpid uint32) bool) {
+	win.EnumTopWindows(visit)
 }

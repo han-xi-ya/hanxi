@@ -3,6 +3,8 @@
 package windows
 
 import (
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
 )
@@ -27,23 +29,46 @@ var (
 
 const swRestoreWin = 9 // SW_RESTORE
 
+// wfEnumCtx 每次枚举的调用方状态。经 lParam 携带的是**自增 ID**而非指针
+// （uintptr→unsafe.Pointer 直转是 vet unsafeptr 禁忌；ID→sync.Map 查表同样
+// 零闭包零槽消耗，且并发/重入枚举各持各的 ctx、查无此 id 一律停枚举）。
+type wfEnumCtx struct {
+	visit func(hwnd uintptr, pid uint32) bool
+}
+
+var (
+	wfCtxSeq atomic.Uint64
+	wfCtxMap sync.Map // id(uintptr) → *wfEnumCtx
+)
+
+// wfEnumProc 包级唯一回调。**必须静态**：Go/Windows 的
+// syscall.NewCallback 池上限 2000 槽且按闭包 funcval 去重、永不回收
+// （审查 P0 实证：每次调用现场造闭包注册 = 每次烧一槽，常驻托盘应用
+// 千余次唤窗/探测后 `fatal error: too many callback functions` 硬崩、
+// 不可 recover）。本文件是全仓该模式的根治模板。
+var wfEnumProc = syscall.NewCallback(func(hwnd, lParam uintptr) uintptr {
+	v, ok := wfCtxMap.Load(lParam)
+	if !ok {
+		return 0 // 未知/已回收的枚举上下文：立即停止，宁可不服务不乱调
+	}
+	ctx := v.(*wfEnumCtx)
+	var pid uint32
+	if r, _, _ := procWFGetWinPID.Call(hwnd, uintptr(unsafe.Pointer(&pid))); r == 0 {
+		return 1 // 拿不到属主 PID 的窗（极罕见异常态）跳过继续枚举
+	}
+	if !ctx.visit(hwnd, pid) {
+		return 0 // 回调要求停止枚举
+	}
+	return 1
+})
+
 // EnumTopWindows 枚举全部顶层窗口（回调返 false 提前停止）。
-// 拿不到属主 PID 的窗（极罕见异常态）跳过回调继续枚举。
-func EnumTopWindows(visit func(hwnd, pid uintptr) bool) {
-	cont := true
-	procWFEnumWindows.Call(syscall.NewCallback(func(hwnd, lParam uintptr) uintptr {
-		if !cont {
-			return 0
-		}
-		var pid uint32
-		if r, _, _ := procWFGetWinPID.Call(hwnd, uintptr(unsafe.Pointer(&pid))); r == 0 {
-			return 1
-		}
-		if !visit(hwnd, uintptr(pid)) {
-			cont = false
-		}
-		return 1
-	}), 0)
+// 同步执行：调用期间 ctx 由本帧持有，无逃逸风险。
+func EnumTopWindows(visit func(hwnd uintptr, pid uint32) bool) {
+	id := wfCtxSeq.Add(1)
+	wfCtxMap.Store(id, &wfEnumCtx{visit: visit})
+	defer wfCtxMap.Delete(id)
+	procWFEnumWindows.Call(wfEnumProc, uintptr(id))
 }
 
 // focusableTopWindow 判定"可作为唤窗目标的顶层窗"：可见且标题非空。
@@ -64,8 +89,8 @@ func focusableTopWindow(hwnd uintptr) bool {
 // 只动第一个命中窗即停枚举——多窗应用唤"哪个"由上游 z-order 决定，不自作主张。
 func FocusTopWindowForPIDs(pids map[uint32]struct{}) bool {
 	done := false
-	EnumTopWindows(func(hwnd, pid uintptr) bool {
-		if _, ok := pids[uint32(pid)]; !ok {
+	EnumTopWindows(func(hwnd uintptr, pid uint32) bool {
+		if _, ok := pids[pid]; !ok {
 			return true
 		}
 		if !focusableTopWindow(hwnd) {
@@ -97,8 +122,8 @@ func FocusTopWindowForPID(pid uint32) bool {
 // 单主窗应用勿用本口——逐个置前只会让最后一个赢，用首停版本语义更干净。
 func FocusAllTopWindowsForPIDs(pids map[uint32]struct{}) int {
 	count := 0
-	EnumTopWindows(func(hwnd, pid uintptr) bool {
-		if _, ok := pids[uint32(pid)]; !ok {
+	EnumTopWindows(func(hwnd uintptr, pid uint32) bool {
+		if _, ok := pids[pid]; !ok {
 			return true
 		}
 		if !focusableTopWindow(hwnd) {
@@ -121,8 +146,8 @@ func FocusAllTopWindowsForPIDs(pids map[uint32]struct{}) int {
 // "外部实例在场但唤不动"的账面源头——本件判在唤窗同一口径上，两问共用一判。
 func HasFocusableTopWindowForPIDs(pids map[uint32]struct{}) bool {
 	found := false
-	EnumTopWindows(func(hwnd, pid uintptr) bool {
-		if _, ok := pids[uint32(pid)]; !ok {
+	EnumTopWindows(func(hwnd uintptr, pid uint32) bool {
+		if _, ok := pids[pid]; !ok {
 			return true
 		}
 		if focusableTopWindow(hwnd) {

@@ -4,15 +4,14 @@ package instance
 
 import (
 	"syscall"
-	"unsafe"
+
+	win "hanxi/internal/platform/windows"
 )
 
 var (
-	modUser32                 = syscall.NewLazyDLL("user32.dll")
-	procPostMsg               = modUser32.NewProc("PostMessageW")
-	procIsWinVisible          = modUser32.NewProc("IsWindowVisible")
-	procEnumWindows           = modUser32.NewProc("EnumWindows")
-	procGetWndThreadProcessID = modUser32.NewProc("GetWindowThreadProcessId")
+	modUser32        = syscall.NewLazyDLL("user32.dll")
+	procPostMsg      = modUser32.NewProc("PostMessageW")
+	procIsWinVisible = modUser32.NewProc("IsWindowVisible")
 )
 
 const wmClose = 0x0010
@@ -32,18 +31,10 @@ func postCloseByPID(pid uint32) {
 	})
 }
 
-// forEachWindow 统一封装 EnumWindows 枚举：回调返回 false 停止枚举。
+// forEachWindow 统一封装顶层窗枚举：委托平台公共件静态回调（旧写法每次调用
+// syscall.NewCallback 现场注册闭包烧回调槽，池上限 2000 且永不回收——定时
+// 炸弹，根治模板见 winfocus_windows.go）。visit 返回 false 停止枚举；
+// 属主 PID 查询失败的顶层窗由公共件跳过，与旧 "r == 0" 判据语义一致。
 func forEachWindow(visit func(hwnd uintptr, wpid uint32) bool) {
-	cb := syscall.NewCallback(func(hwnd uintptr, lParam uintptr) uintptr {
-		var wpid uint32
-		r, _, _ := procGetWndThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&wpid)))
-		if r == 0 {
-			return 1 // 拿不到 PID 的顶层窗（极罕见异常态）跳过
-		}
-		if visit(hwnd, wpid) {
-			return 1
-		}
-		return 0
-	})
-	_, _, _ = procEnumWindows.Call(cb, 0)
+	win.EnumTopWindows(visit)
 }

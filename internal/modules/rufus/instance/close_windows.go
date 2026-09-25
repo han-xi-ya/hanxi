@@ -5,23 +5,17 @@ package instance
 import (
 	"errors"
 	"syscall"
-	"unsafe"
 
 	win "hanxi/internal/platform/windows"
 )
 
 var (
-	modUser32                 = syscall.NewLazyDLL("user32.dll")
-	procPostMsg               = modUser32.NewProc("PostMessageW")
-	procEnumWindows           = modUser32.NewProc("EnumWindows")
-	procGetWndThreadProcessID = modUser32.NewProc("GetWindowThreadProcessId")
+	modUser32   = syscall.NewLazyDLL("user32.dll")
+	procPostMsg = modUser32.NewProc("PostMessageW")
 )
 
 const (
 	wmClose = 0x0010
-
-	// swRestore 从最小化恢复窗口（ShowWindow 第 2 参）
-	swRestore = 9
 
 	// errorElevationRequired CreateProcessW 对 requireAdministrator 清单目标的
 	// 直接失败码——未提权的 Hanxi 拉起 Rufus 时得到它（不会代弹 UAC）。
@@ -44,7 +38,7 @@ func postCloseByPID(pid uint32) {
 // restoreWindowByPID 唤起指定进程的主窗口（N3 收口：委托平台公共件——
 // 可见+标题过滤、IsIconic 恢复、借前台特权置前；旧 "Visible==0 才恢复"
 // 判据永不触发 SW_RESTORE 的病灶在公共件根除）。
-// FlClash 上游二次启动无唤窗行为，此路径是"打开窗口"的唯一实现。
+// Rufus 上游二次启动弹"已在运行"系统模态错误框而非唤窗，此路径是"打开窗口"的唯一实现。
 func restoreWindowByPID(pid uint32) {
 	win.FocusTopWindowForPID(pid)
 }
@@ -66,18 +60,10 @@ func elevateHint(err error) string {
 	return ""
 }
 
-// forEachWindow 统一封装 EnumWindows 枚举：回调返回 false 停止枚举。
+// forEachWindow 统一封装顶层窗枚举：委托平台公共件静态回调（旧写法每次调用
+// syscall.NewCallback 现场注册闭包烧回调槽，池上限 2000 且永不回收——定时
+// 炸弹，根治模板见 winfocus_windows.go）。visit 返回 false 停止枚举；
+// 属主 PID 查询失败的顶层窗由公共件跳过，与旧 "r == 0" 判据语义一致。
 func forEachWindow(visit func(hwnd uintptr, wpid uint32) bool) {
-	cb := syscall.NewCallback(func(hwnd uintptr, lParam uintptr) uintptr {
-		var wpid uint32
-		r, _, _ := procGetWndThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&wpid)))
-		if r == 0 {
-			return 1 // 拿不到 PID 的顶层窗（极罕见异常态）跳过
-		}
-		if visit(hwnd, wpid) {
-			return 1
-		}
-		return 0
-	})
-	_, _, _ = procEnumWindows.Call(cb, 0)
+	win.EnumTopWindows(visit)
 }

@@ -8,6 +8,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	win "hanxi/internal/platform/windows"
 )
 
 // mutexName tauri-plugin-single-instance 的 Windows 互斥体命名：
@@ -18,12 +20,10 @@ import (
 const mutexName = "com.piclite.desktop-sim"
 
 var (
-	modUser32           = syscall.NewLazyDLL("user32.dll")
-	procEnumWindows     = modUser32.NewProc("EnumWindows")
-	procGetWinThreadPID = modUser32.NewProc("GetWindowThreadProcessId")
-	procIsWinVisible    = modUser32.NewProc("IsWindowVisible")
-	procGetWinLong      = modUser32.NewProc("GetWindowLongW")
-	procGetWinRect      = modUser32.NewProc("GetWindowRect")
+	modUser32        = syscall.NewLazyDLL("user32.dll")
+	procIsWinVisible = modUser32.NewProc("IsWindowVisible")
+	procGetWinLong   = modUser32.NewProc("GetWindowLongW")
+	procGetWinRect   = modUser32.NewProc("GetWindowRect")
 )
 
 const (
@@ -75,36 +75,36 @@ func (p *windowsPicProbe) WaitForReady(timeout time.Duration) bool {
 // 完全无法反映主窗口显隐；插件消息窗口自身又是 WS_EX_TOOLWINDOW，
 // 恰好被本函数的过滤条件排除。标题匹配同样不可取——webview 可通过
 // document.title 联动改窗口标题，PID + 形态判定才是稳定契约。
+//
+// 形态判据（非工具窗口 + 尺寸下限）为本模块特殊口径，公共件不覆盖，
+// 保留自实现；但枚举机制委托 win.EnumTopWindows（静态回调 + lParam 携带
+// 状态，visit 闭包零注册消耗）——旧写法每次调用 syscall.NewCallback 现场
+// 注册闭包，回调槽池（上限 2000、永不回收）扛不住空闲巡检的长年累月。
+// 属主 PID 由公共件回调直接给出，本文件不再自取 GetWindowThreadProcessId。
 func (p *windowsPicProbe) IsMainWindowOpen(pid uint32) bool {
 	if pid == 0 {
 		return false
 	}
 	var open bool
-	cb := syscall.NewCallback(func(hwnd, _ uintptr) uintptr {
-		if open {
-			return 0 // 提前终止枚举
-		}
-		var procID uint32
-		procGetWinThreadPID.Call(hwnd, uintptr(unsafe.Pointer(&procID)))
-		if procID != pid {
-			return 1
+	win.EnumTopWindows(func(hwnd uintptr, procID uint32) bool {
+		if open || procID != pid {
+			return true
 		}
 		if vis, _, _ := procIsWinVisible.Call(hwnd); vis == 0 {
-			return 1
+			return true
 		}
 		if ex, _, _ := procGetWinLong.Call(hwnd, gwlExStyle); ex&wsExToolwindow != 0 {
-			return 1
+			return true
 		}
 		var r rect
 		if ret, _, _ := procGetWinRect.Call(hwnd, uintptr(unsafe.Pointer(&r))); ret == 0 {
-			return 1
+			return true
 		}
 		if r.right-r.left < 80 || r.bottom-r.top < 80 {
-			return 1 // 0x0 隐形消息泵类窗口不算"在用"
+			return true // 0x0 隐形消息泵类窗口不算"在用"
 		}
 		open = true
-		return 0
+		return false // 命中即停
 	})
-	procEnumWindows.Call(cb, 0)
 	return open
 }

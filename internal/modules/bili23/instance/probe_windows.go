@@ -3,11 +3,11 @@
 package instance
 
 import (
-	"syscall"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	win "hanxi/internal/platform/windows"
 )
 
 // mutexName 上游 src/main.py 的 APP_MUTEX_NAME：主实例在 Application.__init__
@@ -49,27 +49,13 @@ func (p *windowsBili23Probe) WaitForReady(timeout time.Duration) bool {
 
 // HasVisibleWindow 指定进程是否有带标题的可见顶层窗口。
 // Bili23 主窗口、模态询问对话框均计入；收入托盘（主窗口 hide）后返回 false。
-// pid 为 0（external 或未启动）直接 false。
+// pid 为 0（external 或未启动）直接 false。判据（可见+标题，过滤 Qt 内部
+// 消息/工具隐形窗口）委托平台公共件——与本包唤窗同口径；旧写法每次调用
+// syscall.NewCallback 现场注册闭包，回调槽池（上限 2000、永不回收）千次探测
+// 即爆，公共件静态回调 + lParam 携带状态根治。
 func (p *windowsBili23Probe) HasVisibleWindow(pid uint32) bool {
 	if pid == 0 {
 		return false
 	}
-	found := false
-	cb := syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
-		if visible, _, _ := procIsWinVisible.Call(hwnd); visible == 0 {
-			return 1
-		}
-		// 只认带标题的窗口：过滤 Qt 内部的消息/工具隐形窗口
-		if length, _, _ := procGetWindowTextLen.Call(hwnd); length == 0 {
-			return 1
-		}
-		var wpid uint32
-		if r, _, _ := procGetWndThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&wpid))); r != 0 && wpid == pid {
-			found = true
-			return 0 // 提前结束枚举
-		}
-		return 1
-	})
-	_, _, _ = procEnumWindows.Call(cb, 0)
-	return found
+	return win.HasFocusableTopWindowForPIDs(map[uint32]struct{}{pid: {}})
 }

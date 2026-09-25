@@ -4,11 +4,12 @@ package instance
 
 import (
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	win "hanxi/internal/platform/windows"
 )
 
 // exeImageName Recordly 打包主程序进程名（electron-builder executableName 固定）。
@@ -39,32 +40,27 @@ func (p *windowsRecordlyProbe) WaitForReady(timeout time.Duration) bool {
 	}
 }
 
-// IsMainWindowOpen 存在归属 Recordly.exe 进程、可见且带标题的顶层窗口。
+// IsMainWindowOpen 存在归属 Recordly.exe 进程、可见且带标题的顶层窗口
+// （无标题窗口不作为"主窗口在场"证据——判据即平台公共件口径）。
 // Electron 无固定窗口类名（类名是 Chromium 通用 Chrome_WidgetWin_1，
-// 不能当身份用），只能 EnumWindows + 进程名过滤；要求标题非空以排除
-// 启动早期的隐藏宿主窗口与无题辅助窗口。
+// 不能当身份用），只能顶层窗口枚举 + 进程名过滤。旧写法每次调用
+// syscall.NewCallback 现场注册闭包烧回调槽（池上限 2000、永不回收），
+// 现委托公共件静态回调枚举；本包 WM_CLOSE 投递仍是自实现枚举（close_windows.go）。
 func (p *windowsRecordlyProbe) IsMainWindowOpen() bool {
 	pids := recordlyPIDs()
 	if len(pids) == 0 {
-		return false
+		return false // 无进程在场免枚举（WaitForReady 轮询快路径）
 	}
-	found := false
-	cb := syscall.NewCallback(func(hwnd uintptr, _ uintptr) uintptr {
-		if visible, _, _ := procIsWinVisible.Call(hwnd); visible == 0 {
-			return 1
-		}
-		if length, _, _ := procGetWindowTextLen.Call(hwnd, 0, 0); length == 0 {
-			return 1 // 无标题窗口不作为"主窗口在场"证据
-		}
-		var wpid uint32
-		if r, _, _ := procGetWndThreadProcessID.Call(hwnd, uintptr(unsafe.Pointer(&wpid))); r != 0 && pids[wpid] {
-			found = true
-			return 0
-		}
-		return 1
-	})
-	_, _, _ = procEnumWindows.Call(cb, 0)
-	return found
+	return win.HasFocusableTopWindowForPIDs(toWinPIDSet(pids))
+}
+
+// toWinPIDSet 把包内 map[uint32]bool 的 PID 集合转成平台公共件的集合形状。
+func toWinPIDSet(pids map[uint32]bool) map[uint32]struct{} {
+	set := make(map[uint32]struct{}, len(pids))
+	for pid := range pids {
+		set[pid] = struct{}{}
+	}
+	return set
 }
 
 // anyRecordlyProcess Toolhelp32 快照按进程名匹配（不查路径，避免跨用户

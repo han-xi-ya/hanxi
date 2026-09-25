@@ -20,8 +20,9 @@
 //     修改即写盘（app-profile.json），进程级终止不丢设置；
 //   - 主窗口可见性不能借用 -siw 窗口判断：插件创建它时恒置 WS_VISIBLE
 //     （靠 LAYERED 扩展样式隐形），IsWindowVisible 永远为 true——ccswitch 模板
-//     该探针依赖窗口形态，对 PicLite 失真。改为按 PID EnumWindows 找可见的
-//     正常顶层窗口（悬浮结果/监测等任何用户面窗口出现都视为"在用"，空闲退避更保守）；
+//     该探针依赖窗口形态，对 PicLite 失真。改为按 PID 枚举顶层窗口找可见的
+//     正常窗口（悬浮结果/监测等任何用户面窗口出现都视为"在用"，空闲退避更保守；
+//     形态判据自实现，枚举机制委托平台公共件静态回调，见 probe_windows.go）；
 //   - 外部实例检测用单实例插件的命名互斥体（{identifier}-sim），与 ccswitch 同构。
 //
 // PicLite 由内核启动后绑定 Windows Job Object（JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE），
