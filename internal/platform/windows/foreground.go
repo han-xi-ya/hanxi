@@ -44,7 +44,11 @@ func SetForegroundForce(hwnd uintptr) error {
 		procAttachThreadInput.Call(curTid, fgTid, 0)
 	}
 	if set == 0 {
-		return fmt.Errorf("SetForegroundWindow 失败: %w", err)
+		// 审查 #22 修正：API 返回 FALSE 但没写 last error 时（Call 的 err 为
+		// nil），%w 会打 "%!w(<nil>)"；事后重取 GetLastError 在 Go 运行时
+		// 里每次 syscall 前都被清零、本就不可靠——统一 %v 诚实呈现 lasterr
+		// 现值，调用方只当诊断信息不当控制流。
+		return fmt.Errorf("SetForegroundWindow 返回 FALSE（lasterr=%v）", err)
 	}
 	return nil
 }

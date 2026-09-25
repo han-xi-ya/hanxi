@@ -117,7 +117,6 @@ func treeLockFor(root string) *sync.RWMutex {
 type Tree struct {
 	Root      string // 版本树根目录（如 <数据根>/versions/litemonitor）
 	EntryName string // 目录名前缀（<entryName>_<version>）
-	Lim       Limits // 解包预算（InstallZip 便利方法使用；默认 DefaultLimits）
 
 	dirRe   *regexp.Regexp
 	initErr error
@@ -126,7 +125,7 @@ type Tree struct {
 
 // OpenTree 以版本树根目录与入口名前缀创建 Tree（不触盘）。
 func OpenTree(root, entryName string) *Tree {
-	t := &Tree{Root: filepath.Clean(strings.TrimSpace(root)), EntryName: entryName, Lim: DefaultLimits}
+	t := &Tree{Root: filepath.Clean(strings.TrimSpace(root)), EntryName: entryName}
 	switch {
 	case t.Root == "" || t.Root == string(filepath.Separator):
 		t.initErr = fmt.Errorf("版本树根目录无效: %q", root)
@@ -397,20 +396,6 @@ func (t *Tree) CleanupAbandoned() []string {
 		}
 	}
 	return leftovers
-}
-
-// InstallZip 便利方法：StageDir → UnpackZip（使用树自带 Lim 预算）→ Commit 一条龙。
-// allowFiles 语义见 UnpackZip。任一步失败自动丢弃 staging。
-func (t *Tree) InstallZip(zipPath, version string, meta Meta, allowFiles map[string]string) error {
-	staging, discard, err := t.StageDir(fmt.Sprintf("inst-%d", time.Now().UnixNano()))
-	if err != nil {
-		return err
-	}
-	defer discard()
-	if err := UnpackZip(zipPath, staging, t.Lim, allowFiles); err != nil {
-		return fmt.Errorf("解包失败: %w", err)
-	}
-	return t.Commit(staging, version, meta)
 }
 
 // readTreeMeta 读取并验证版本目录账本（schema 非零才算可信）。

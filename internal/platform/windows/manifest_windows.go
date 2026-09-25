@@ -3,6 +3,7 @@
 package windows
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -50,7 +51,7 @@ func ReadExecutionLevel(path string) (ExecutionLevel, error) {
 // 独立成纯函数，测试不需要准备真实 PE；XML namespace 只看 Local 名，兼容
 // Windows manifest 的多种 namespace 前缀与默认 namespace 写法。
 func ParseExecutionLevel(data []byte) (ExecutionLevel, error) {
-	dec := xml.NewDecoder(strings.NewReader(string(data)))
+	dec := xml.NewDecoder(bytes.NewReader(data))
 	for {
 		tok, err := dec.Token()
 		if errors.Is(err, io.EOF) {

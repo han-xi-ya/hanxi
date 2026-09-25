@@ -43,8 +43,6 @@ const (
 	StageResolve  = "resolve"  // 解析候选源 / 目标版本
 	StageDownload = "download" // 流式下载
 	StageVerify   = "verify"   // 摘要 / 大小核验
-	StageUnpack   = "unpack"   // 安全解包
-	StagePlace    = "place"    // 原子落位
 	StageDone     = "done"     // 全链完成
 	StageError    = "error"    // 任一阶段失败
 )

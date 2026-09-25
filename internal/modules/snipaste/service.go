@@ -293,7 +293,7 @@ func (s *SnipasteService) quitExternal() (QuitOutcome, error) {
 		out.Message = "外部 Snipaste 以管理员权限运行，hanxi 无法代为终止，请在其托盘图标退出"
 	case externalquit.MethodDeclined:
 		out.Message = "已取消退出"
-	case "probe-missing-pid":
+	case externalquit.MethodProbeMissingPID:
 		out.Message = "检测到外部自行启动的 Snipaste，但未能取得其实例身份，已在操作前拒绝——请在其托盘图标退出"
 	}
 	return out, err

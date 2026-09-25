@@ -479,7 +479,7 @@ func (s *RAMMapService) quitExternal() (QuitOutcome, error) {
 		out.Message = "外部 RAMMap 未响应关闭请求，已强制结束（观察工具无状态损失）"
 	case externalquit.MethodBlocked:
 		out.Message = "外部 RAMMap 以管理员权限运行，当前 Hanxi 无法代为终止——请以管理员身份重新启动 Hanxi，或在其窗口右上角关闭"
-	case "probe-missing-pid":
+	case externalquit.MethodProbeMissingPID:
 		out.Message = "检测到外部自行启动的 RAMMap，但未能取得其实例身份，已在操作前拒绝——请在其窗口右上角关闭"
 	case externalquit.MethodDeclined:
 		out.Message = "已取消退出（外部实例保持运行）"

@@ -410,7 +410,7 @@ func (s *WindTermService) quitExternal(confirm bool) (QuitOutcome, error) {
 	base := QuitOutcome{External: true}
 	if snap.PID == 0 {
 		// 探针在场但枚举不到 PID（身份查询受限）：保守回指引，不猜身份。
-		return QuitOutcome{Stopped: false, External: true, Method: "probe-missing-pid",
+		return QuitOutcome{Stopped: false, External: true, Method: externalquit.MethodProbeMissingPID,
 			Message: "检测到外部自行启动的 WindTerm，但未能取得其实例身份，已在操作前拒绝——请在其窗口内退出"}, nil
 	}
 	if !confirm {

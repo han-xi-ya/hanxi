@@ -316,17 +316,24 @@ func (s *EverythingService) Quit() (QuitOutcome, error) {
 // quitExternal 外部实例的分档退出（force-free）；执行后让内核复探收口，
 // 快照自动从 external 落回 stopped（杀成）或维持 external（杀不动/被拒）。
 func (s *EverythingService) quitExternal(snap evinstance.Snapshot) (QuitOutcome, error) {
-	if snap.PID == 0 {
-		// 探针在场但枚举不到 PID（句柄权限受限等）：保守回指引，不猜身份。
-		return QuitOutcome{Stopped: false, External: true, Method: "probe-missing-pid",
-			Message: "检测到外部自行启动的 Everything，但未能取得其实例身份，已在操作前拒绝——请在其托盘图标退出"}, nil
-	}
-	token := platform.VerifyToken{PID: snap.PID, ExePath: snap.ExePath, StartedAt: snap.StartedAt}
-	deps := externalquit.Deps{Proc: s.plat.Process()}
-	if snap.ExePath != "" {
-		deps.Graceful = func(context.Context) error { return evinstance.SpawnQuitMessenger(snap.ExePath) }
-	}
-	res, err := externalquit.Quit(context.Background(), token, externalquit.PolicyForceFree, deps)
+	// 审查 D2/#12：手搓 Deps+守卫的第五份内联变体收编进 QuitExternalOf
+	// （PID==0 守卫由入口统一承担，归因用常量不再字面量；本包快照字段
+	// ExePath/StartedAt 与 supervisor 口径核对无误）。信使（-quit）为
+	// 优雅通道，语义原样保留。
+	res, err := externalquit.QuitExternalOf(context.Background(), externalquit.ExternalQuitRequest{
+		External:  snap.State == evinstance.StateExternal,
+		PID:       snap.PID,
+		ExePath:   snap.ExePath,
+		StartedAt: snap.StartedAt,
+		Policy:    externalquit.PolicyForceFree,
+		Proc:      s.plat.Process(),
+		Graceful: func(context.Context, uint32) error {
+			if snap.ExePath == "" {
+				return nil // 无路径不弹信使进程；按档直处置（与旧 deps 条件等价）
+			}
+			return evinstance.SpawnQuitMessenger(snap.ExePath)
+		},
+	})
 	s.engine.RefreshExternal()
 	out := QuitOutcome{Stopped: res.Stopped, External: true, Forced: res.Forced, Method: res.Method}
 	switch res.Method {
@@ -338,6 +345,10 @@ func (s *EverythingService) quitExternal(snap evinstance.Snapshot) (QuitOutcome,
 		out.Message = "外部 Everything 未响应优雅退出请求，已强制结束（索引库将在下次启动时增量重建）"
 	case externalquit.MethodBlocked:
 		out.Message = "外部 Everything 以管理员权限运行，hanxi 无法代为终止，请在其托盘图标退出"
+	case externalquit.MethodProbeMissingPID:
+		out.Message = "检测到外部自行启动的 Everything，但未能取得其实例身份，已在操作前拒绝——请在其托盘图标退出"
+	case externalquit.MethodNotExternal:
+		out.Message = "外部实例状态已变化（可能已自行退出），本次操作未执行"
 	}
 	return out, err
 }

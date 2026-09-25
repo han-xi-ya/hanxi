@@ -109,8 +109,8 @@ type Deps struct {
 	// Confirm 打扰档用户确认回调：true=同意强杀。nil 一律按拒绝处理
 	// （宁可退回指引，不可未经同意越权）。force-free 档不调用本回调。
 	Confirm func(risk string) bool
-	// Now/Sleep 时钟注入位（单测压缩等待窗口；nil 用真实时钟）。
-	Now   func() time.Time
+	// Sleep 轮询注入位（单测压缩等待窗口；nil 用真实时钟）。Now 注入位
+	// 曾声明"时钟注入"但包内从不引用，审查死字段已删。
 	Sleep func(d time.Duration) <-chan time.Time
 }
 

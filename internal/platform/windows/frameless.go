@@ -80,6 +80,14 @@ func QueryWindowRect(hwnd uintptr) (left, top, width, height int32, err error) {
 // 跟手缩放（N42②）的执行原语，与 MoveWindowBy 同族同纪律：直连 user32，
 // 绕开 Wails DIP 换算；会话收口时由调用方经 SetSize 回写一次保记账一致。
 func ResizeWindowTo(hwnd uintptr, width, height int32) error {
+	// 审查 #20：原语自防——负/零宽高经 uint32 桥接是 SetWindowPos 未定义行为，
+	// 现调用方已在 DIP 域钳制，这里补物理域最后一道闸（≥1px）。
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
 	r1, _, _ := procSetWindowPos.Call(
 		hwnd, 0, 0, 0,
 		uintptr(uint32(width)), uintptr(uint32(height)),
