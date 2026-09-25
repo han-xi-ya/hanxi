@@ -2,9 +2,9 @@
 
 > **产品名称**：Hanxi
 > **文档版本**：v1.2  
-> **更新日期**：2026-09-16  
+> **更新日期**：2026-09-25  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64（纯 Windows 原生调用）  
-> **发布形态**：**绿色便携单二进制**（默认便携版，支持同级 `hanxidata/` 目录免安装常驻）  
+> **发布形态**：**绿色便携单二进制**（默认便携版，数据家为 exe 同级 `hanxidata/`，可经 `hanxi.bind` 指针显式绑定他处）  
 > **技术栈**：Go 1.26+ / Wails v3.0-beta / Vue 3 + TypeScript + Vite  
 
 ---
@@ -13,12 +13,12 @@
 
 Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装、管理与运行常用开源软件。产品由两条主线构成：
 
-1. **自建功能模块**：frpc 内网穿透、微信机器人、端口扫描/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、WSL2 就绪体检、局域网文件快传、极客随手记、右键快捷菜单等，能力原生内置于单二进制；
-2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、抖音下载器（Douzy）等 25 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；抖音下载器为仅"版本管理 + 下载"托管的特例）。
+1. **自建功能模块**：frpc 内网穿透、微信机器人、端口扫描/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、软件版本跟踪、系统信息、WSL2 就绪体检、局域网文件快传、文字识别（OCR）、极客随手记、网页应用、右键快捷菜单、桌面留言板等，能力原生内置于单二进制；
+2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、WindTerm、Termora、RAMMap、抖音下载器（Douzy）等 28 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；抖音下载器为仅"版本管理 + 下载"托管的特例）。
 
 所有能力以平等模块身份注册到统一入口，按需懒加载启停。
 
-> **v0.3.0 品牌断代**：Hanxi 使用全新的 `hanxi.exe`、`io.hanxi.desktop`、`Run\\Hanxi` 与 `%APPDATA%/Hanxi`，不迁移或读取旧产品数据。
+> **v0.3.0 品牌断代**：Hanxi 使用全新的 `hanxi.exe`、`io.hanxi.desktop`、`Run\\Hanxi` 与自有数据家（exe 同级 `hanxidata/`），不迁移或读取旧产品数据。
 
 ### 1.1 核心设计原则
 
@@ -33,7 +33,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 
 ## 2. 模块能力矩阵
 
-### 2.1 自建功能模块（12）
+### 2.1 自建功能模块（17）
 
 | 模块名称 | 模块标识 | 核心能力说明 | 安全与特权机制 |
 | :--- | :--- | :--- | :--- |
@@ -45,12 +45,17 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **网络诊断** | `publicip` | 双栈公网 IP 查询、网卡拓扑透视、ICMP Ping 稳定性统计、Traceroute 路由追踪 | 原生 API、无黑窗口静默调用 |
 | **WiFi 密码** | `wifi` | 已保存 Wi-Fi 配置与明文密码查看（`netsh wlan`） | 仅限当前用户可见配置、GBK 解码归一 |
 | **开发环境检测** | `envcheck` | Git/Go/Node/Java/Python/.NET 本机工具链盘点、官网最新版本通道查询与按本机版本线置顶、包管理器升级提示、资源管理器定位安装路径、.NET 并排安装与官方支持线对照 | 只读检测、外网仅访问官方站点 |
+| **系统信息** | `sysinfo` | 本机软硬件静态档案一屏总览：CPU/主板/内存/显卡/显示器/磁盘卷/网络接口/OS（借鉴 MooTool 机制） | 纯只读采集，零常驻 IO（采集全部延迟到 RPC 调用触发） |
+| **软件版本** | `softver` | 日常装机软件版本跟踪（微信首个目标）：本机版本注册表×PE 双口径对照、官方最新版比对与安装包直连下载、安装/数据目录两代探测与磁盘占用扫描 | 只读探测；下载安装包不托管安装；外网仅访问官方渠道 |
 | **局域网文件快传** | `fileshare` | 零客户端局域网分享站（手机扫码互传）、监听端点枚举、收件箱管理、文本投递联动随手记 | 局域网边界监听、服务显式起停 |
 | **极客随手记** | `memo` | 本地持久化备忘/代码片段、快速新建、置顶、一键复制、统计汇总 | 敏感内容脱敏开关 |
+| **文字识别** | `ocr` | 本地 hanxi-ocr 服务消费方集成：探活、JobObject 一键启停托管、图片识别转发（拖图即识别）、框选截屏识别与剪贴板识图（全局热键） | 私有组件自备红线：`hanxi-ocr.exe` 含专有组件，永不进 Hanxi 公开包，本模块不做版本管理/下载；回环调用绕代理 |
+| **网页应用** | `webapp` | 把常用网站当独立窗口使用：网址条目管理、内嵌 WebView2 窗口打开、轮盘/托盘直达命令（预置微信文件传输助手） | 条目随 settings.Store 持久化；模块停用/退出即真销毁全部网页窗归还内存 |
 | **WSL2 就绪体检** | `wsl` | 十项门槛流式只读体检与三态结论（可开启/注意项/硬阻塞）、安装形态三路信号互证与正规双路卸载、虚拟机平台对称开关、microsoft/WSL Releases 版本管理（API 被拦自动降级 Atom 双源）与应用内 MSI 下载器、发行版白名单安装 | 只读探针免管理员；变更操作固定参数白名单提权、逐条传播退出码 |
 | **右键快捷菜单** | `quickmenu` | 任意界面右键长按（默认 450ms）唤出 Quicker 式快捷启动菜单，条目与托盘配置共用，失焦收起 frameless 置顶弹窗、多显示器/屏幕边缘钳位 | 进程内 `WH_MOUSE_LL` 低级钩子（非注入）"吞按下、短按回放"，普通右键零损失，退出自动摘除零残渣 |
+| **桌面留言板** | `msgboard` | 离开工位一键全屏挂出离岗告示牌（内置预设模板 + 自定义文案字号、可选副屏单屏挂牌），托盘/轮盘/全局热键三通道唤出 | frameless 真透明置顶窗按需创建、撤牌即真销毁；挂牌期间经 KeepAwake 引用计数聚合器阻止系统/显示器休眠，撤牌即释放 |
 
-### 2.2 第三方工具托管模块（25）
+### 2.2 第三方工具托管模块（28）
 
 统一骨架：`version/` 版本管理子包（ListReleases / DownloadVersion / RemoveVersion / 本地导入）+ `instance/` 实例引擎子包（JobObject 启停、状态探测、唤窗、跟随退出）+ 前端托管控制台视图。例外：`douzy` 上游尚处内测期，止步于 `version/` 版本管理与安装包下载拉起，不做进程托管（无 `instance/` 子包）。
 
@@ -80,6 +85,9 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **VS Code 编辑器** | `vscode` | Microsoft（官方 CDN update.code.visualstudio.com） | MIT（源码）+ 二进制许可条款 | **双形态托管**：ZIP 便携（`data/` 自包含激活器）与 User Installer 免 UAC 静默安装/升级确认闸；哈希仅最新版可得，历史版降级三层校验 |
 | **TranslucentTB** | `translucenttb` | TranslucentTB/TranslucentTB | GPL-3.0 | 任务栏透明/模糊特效：信使语义为重设任务栏状态（非唤窗），托盘消息窗口 WM_CLOSE 优雅退出（通用类名验属主）；Win11 + 框架包双重系统前提预告 |
 | **Paseo 编排器** | `paseo` | getpaseo/paseo | Apache-2.0（自定义根 LICENSE） | coding agent 编排器：官方便携 zip 多版本目录托管、共享数据模式（与自装实例同 `%APPDATA%\Paseo` + `~/.paseo`）、进程名探测 + Win32 直唤、WM_CLOSE 优雅退出宽限覆盖 daemon 清理 |
+| **WindTerm 终端** | `windterm` | kingToolbox/WindTerm | 部分开源（thirdparty 外 Apache-2.0，完全免费可商用） | 官方 Windows x64 便携 zip 纯托管（无内嵌重做）：多实例 Qt 无单实例锁与 CLI 信使；releases 无官方摘要，降级三层校验（字节数 + CRC + 布局自检）UI 如实标注；外部实例退出按 confirm-force 档治理 |
+| **Termora 终端** | `termora` | TermoraDev/termora | AGPL-3.0 或商业许可（双许可） | 官方便携托管（jpackage app-image 自带 JRE、零系统 Java 依赖）：单实例互斥体 + 二次拉起信使唤窗；全资产官方 digest 主链校验；2.x 线全量 prerelease 如实全列；外部实例退出按 confirm-force 档治理 |
+| **RAMMap 内存观察** | `rammap` | Microsoft Sysinternals（官方 download.sysinternals.com 直链） | 免费试用件、无再分发条款（二进制不入库） | 上游"同址覆盖式最新版"无历史资产：版本令牌取 zip 的 Last-Modified 日期；官方不按工具发布摘要，降级三层校验、UI 如实标注"未经官方哈希校验"；载荷 manifest `requireAdministrator`——托管启动要求 Hanxi 以管理员运行（提权三重契约） |
 | **抖音下载器** | `douzy` | jiji262/douyin-downloader | MIT | **仅版本+下载托管特例**：上游内测、无便携形态—— Releases 列表侦查 → `Douzy-Setup-*.exe` 官方 sha256 + 字节数 + PE 魔数三重校验下载 → 一键拉起上游 NSIS 安装向导，不接管进程 |
 
 ### 2.3 宿主服务
@@ -139,9 +147,10 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 
 1. **运行环境**：Windows 10 22H2 及以上 / Windows 11 x64。
 2. **冷启动内存**：初始加载仅 **18MB ~ 25MB**（仅 Wails 内核与主框架），极低系统资源占用。
-3. **绿色便携**：
-   - 优先检测可执行文件同级 `hanxidata/` 目录（存在即生效）；若存在则以便携模式运行，数据全落入 `hanxidata/`；旧便携包的泛化名 `data/` 仅当已含 Hanxi 数据根特征（`config.json` 或 `versions/`）时仍被识别，空目录不再触发；
-   - 若不存在则默认落入 `%APPDATA%/Hanxi/`，不污染系统其它目录；
-   - frpc 版本/运行时、托管工具版本与实例数据统一落在对应模块的托管子目录下，随 `hanxidata/` 整体拷贝迁移；
-   - 数据根只留 `config.json`（便携标记）与锚点子目录，各模块状态 JSON 收纳于 `state/`（历史根目录平铺文件启动时自动迁移）。
+3. **绿色便携**（F6 定稿，实现见 `internal/settings/paths.go` 与 `docs/plans/PLAN_PATHS.md`）：
+   - 数据根解析链只有两级：**绑定指针优先**——exe 同级小文件 `hanxi.bind`（首个非空行 = 数据目录绝对路径）有绑定认绑定，"绑定哪个用哪个"；否则落 **exe 同级 `hanxidata/`**——不存在则自动创建，裸 exe 双击即活；
+   - 全程**无 `%APPDATA%` 等用户目录静默兜底**；两者皆不可用即 fail loud（原生弹窗呈现原因与处置指引、非零退出，无头 `hanxi mcp` 走 stderr 不弹窗），绝不带病运行；
+   - 旧便携包泛化名 `data/` 兼容正式废弃：**零识别零迁移**，仅在其携旧数据根特征时打一条 WARN 指路；`%APPDATA%\Hanxi` 不再作为家，仅充当首启一次性搬迁来源（move 语义，搬迁成功前不删旧家、新家同名条目跳过不覆盖）；
+   - 换绑/重定位只改声明不自动搬数据，重启生效；整个应用文件夹拷贝即整体带走；frpc 版本/运行时、托管工具版本与实例数据统一落在数据根的托管子目录（`versions/`、`runtime/`）下；
+   - 数据根只留 `config.json` 与锚点子目录，各模块状态 JSON 收纳于 `state/`（历史根目录平铺文件启动时自动迁移）。
 4. **编译与交付**：纯 Go 原生编译（`CGO_ENABLED=0`），无 GCC / MinGW 外部依赖，产出单一 `hanxi.exe`。
