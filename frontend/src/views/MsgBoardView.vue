@@ -6,7 +6,7 @@
 // 呈现，Esc/点击即退，不走挂牌链路）；小预览缩放比按字号动态收缩防横向裁切。
 // 数据闸口与后端契约零改动：pullAll 并行拉取、脏判定以服务端回读为准、
 // 热键占用失败只回滚热键字段保留草稿——原纪律原样保留。
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, watch } from 'vue'
 import * as MsgBoardAPI from '../../bindings/hanxi/internal/modules/msgboard'
 import type { Config, ScreenInfo, Status } from '../../bindings/hanxi/internal/modules/msgboard/models'
 import { useWailsEvent } from '../composables/useWailsEvent'
@@ -204,7 +204,17 @@ watch(fullPreview, (on) => {
   if (on) window.addEventListener('keydown', onFullPreviewKey)
   else window.removeEventListener('keydown', onFullPreviewKey)
 })
-onBeforeUnmount(() => window.removeEventListener('keydown', onFullPreviewKey))
+function unhookFullPreviewKey() {
+  window.removeEventListener('keydown', onFullPreviewKey)
+}
+onBeforeUnmount(unhookFullPreviewKey)
+// 审查 #20（与 UiHistoryDialog #5 同族）：KeepAlive 切页时浮层可能仍开着，
+// window 级监听在场会让异页按 Esc 幽灵收起隐藏预览——deactivate 摘、
+// activate 按浮层现态补挂。
+onDeactivated(unhookFullPreviewKey)
+onActivated(() => {
+  if (fullPreview.value) window.addEventListener('keydown', onFullPreviewKey)
+})
 
 onMounted(refresh)
 </script>

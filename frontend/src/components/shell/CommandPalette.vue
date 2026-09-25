@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // Ctrl+K 命令面板（外壳重设计 · 方案 C 启动器浮层，草图 mockup-c-launcher.html 下半部）。
 // 自包含组件：全局热键（Ctrl/⌘+K）toggle、Teleport 浮层、模糊搜索、键盘选单全部自理，
-// 暂未接线 App.vue——导航动作只上抛 navigate(route)，路由切换/门禁编排由宿主完成。
+// 导航动作只上抛 navigate(route)，路由切换/门禁编排由宿主 App.vue 完成（已接线）。
 // 设计纪律：配色全走 token（--overlay-mask 遮罩 + 2px backdrop-blur 为壳层唯一允许模糊处）；
-// 图标零 emoji 零散写 svg——导航项图标沿用 AppSidebar 双轨制（`i:` 前缀经 AppIcon，其余文本回退），
+// 图标零 emoji 零散写 svg——导航项图标与 AppSidebar 同走三轨解析（i:/app: 经 AppIcon，未登记空占位），
 // 面板 chrome 图标（search/goto）按注册表存在性守卫，缺失时优雅降级不渲染。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AppIcon from '../ui/AppIcon.vue'
@@ -247,8 +247,10 @@ function isRegistered(name: string): boolean {
   return (ICON_NAMES as string[]).includes(name)
 }
 
-// 导航项图标三轨（N27 批 B）：登记 `i:` 矢量与 `app:` 真图标走 AppIcon、未登记空占位、
-// 其余文本回退——解析单点在 constants/appIcons（模板经 appIconName 直判）。
+// 导航项图标：登记 `i:` 矢量与 `app:` 真图标走 AppIcon，其余（未登记 i:/裸文本）
+// 渲染空 .p-ic 占位保持行对齐——当前后端 nav.icon 恒为 i:/app: 形态，文本轨
+// 仅防御性存在；若未来要真回退 emoji 需补模板分支（审查 shell#2 注记，勿再
+// 声称未实现的回退）。解析单点在 constants/appIcons。
 
 // 面板 chrome 图标（search/goto）依赖 icons.ts 阶段 2 登记，缺失时优雅降级为不渲染
 // （禁止散写 svg / emoji 兜底），登记后自动启用。
