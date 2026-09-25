@@ -27,17 +27,23 @@ func RunElevatedDetached(exe, workingDir string, args []string) (ElevatedRunResu
 	if err := validateElevatedTarget(exe); err != nil {
 		return ElevatedRunResult{}, err
 	}
-	quotedArgs := make([]string, 0, len(args))
-	for _, arg := range args {
-		quotedArgs = append(quotedArgs, PsQuote(arg))
+	// 审查 P0#2：空 args 必须**整段省略** -ArgumentList——PowerShell 对
+	// `-ArgumentList  -Verb` 形态报 Missing an argument（实测 UAC 根本不弹，
+	// RAMMap A 路必挂）；参数段与工作目录段同法条件拼接。
+	argPart := ""
+	if len(args) > 0 {
+		quoted := make([]string, 0, len(args))
+		for _, a := range args {
+			quoted = append(quoted, PsQuote(a))
+		}
+		argPart = " -ArgumentList " + strings.Join(quoted, ", ")
 	}
-	argList := strings.Join(quotedArgs, ", ")
 	work := ""
 	if workingDir != "" {
 		work = " -WorkingDirectory " + PsQuote(workingDir)
 	}
 	// Start-Process 自身同步等待 UAC 决策；不加 -Wait，目标启动后立即返回。
-	script := fmt.Sprintf("Start-Process -FilePath %s -ArgumentList %s -Verb RunAs%s", PsQuote(exe), argList, work)
+	script := fmt.Sprintf("Start-Process -FilePath %s%s -Verb RunAs%s", PsQuote(exe), argPart, work)
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	HideConsole(cmd)
 	out, err := cmd.CombinedOutput()
@@ -64,13 +70,14 @@ func validateElevatedTarget(exe string) error {
 	return nil
 }
 
+// isUACCancelled 只锚定强特征（审查 #7 收紧）：裸 "1223"/泛 "已取消" 会把
+// 任何含该字样的普通失败（尺寸、PID、超时提示）误判成用户取消并吞掉错误。
 func isUACCancelled(out string) bool {
 	lower := strings.ToLower(out)
 	return strings.Contains(lower, "canceled by the user") ||
 		strings.Contains(lower, "user cancelled") ||
 		strings.Contains(lower, "0x800704c7") ||
-		strings.Contains(lower, "1223") || strings.Contains(out, "已被用户取消") ||
-		strings.Contains(out, "已取消")
+		strings.Contains(out, "已被用户取消")
 }
 
 // ElevatedRunExitCode 从等待型 PowerShell helper 的 exec 错误中取退出码。

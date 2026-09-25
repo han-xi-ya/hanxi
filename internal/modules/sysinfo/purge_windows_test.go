@@ -13,8 +13,10 @@ import (
 func TestRunPurgeStandbyHelperRejectsForeignPath(t *testing.T) {
 	dir := t.TempDir()
 	err := RunPurgeStandbyHelper(filepath.Join(dir, "elsewhere.json"), "purge-request", false)
-	if err == nil || !strings.Contains(err.Error(), "request ID") {
-		t.Fatalf("应拒绝与 request ID 不匹配的结果路径，got %v", err)
+	// 审查 P1#6 收紧后由 runtime 目录钉死校验先行拒止——任何拒绝文案均可，
+	// 关键是**必须拒**（旧契约只验 ID 前缀，可被同形状他目录路径绕过）。
+	if err == nil || !strings.Contains(err.Error(), "拒") {
+		t.Fatalf("应拒绝外目录/不匹配的结果路径，got %v", err)
 	}
 }
 

@@ -4,10 +4,13 @@ package windows
 
 import (
 	"fmt"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
+
+var modAdvapi32SP = syscall.NewLazyDLL("advapi32.dll")
 
 const (
 	// SeProfileSingleProcessPrivilege 是 NtSetSystemInformation 清理待机列表
@@ -45,6 +48,14 @@ func PurgeStandbyList(before, after func() (uint64, error)) (StandbyResult, erro
 	return StandbyResult{BeforeAvailableBytes: beforeBytes, AfterAvailableBytes: afterBytes}, nil
 }
 
+const errorNotAllAssigned syscall.Errno = 1300 // ERROR_NOT_ALL_ASSIGNED
+
+// enablePrivilege 启用具名权限。审查 P1#3 修正：Windows 上
+// AdjustTokenPrivileges 对"部分权限未分配"**照常返回 TRUE**，唯一信号是
+// 紧随其后的 GetLastError()==1300；而 x/sys 包装器的 err 只覆盖调用本身，
+// 且 Go 运行时在**每次** syscall 前 SetLastError(0)——调用完再独立取
+// GetLastError 恒为 0（实测 `<nil>`），是死分支。唯一可信取法：本函数
+// 直连 proc 拿 SyscallN 第三返回值（同调用栈内抓 lasterr，不被清零）。
 func enablePrivilege(name string) error {
 	var token windows.Token
 	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_ADJUST_PRIVILEGES|windows.TOKEN_QUERY, &token); err != nil {
@@ -61,11 +72,13 @@ func enablePrivilege(name string) error {
 	}
 	state := windows.Tokenprivileges{PrivilegeCount: 1}
 	state.Privileges[0] = windows.LUIDAndAttributes{Luid: luid, Attributes: windows.SE_PRIVILEGE_ENABLED}
-	if err := windows.AdjustTokenPrivileges(token, false, &state, 0, nil, nil); err != nil {
-		return fmt.Errorf("启用 %s 权限失败: %w", name, err)
+	proc := modAdvapi32SP.NewProc("AdjustTokenPrivileges")
+	r1, _, e1 := syscall.SyscallN(proc.Addr(), uintptr(token), 0, uintptr(unsafe.Pointer(&state)), 0, 0, 0)
+	if r1 == 0 {
+		return fmt.Errorf("启用 %s 权限失败: %v", name, e1)
 	}
-	if err := windows.GetLastError(); err != nil {
-		return fmt.Errorf("启用 %s 权限未获分配: %w", name, err)
+	if e1 == errorNotAllAssigned {
+		return fmt.Errorf("当前令牌未持有 %s 权限（组策略/完整性等级限制）", name)
 	}
 	return nil
 }

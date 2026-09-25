@@ -3,7 +3,7 @@
 package windows
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,10 +13,8 @@ import (
 )
 
 const (
-	PurgeHelperMode       = "purge-standby"
-	purgeHelperTimeout    = 90 * time.Second
-	purgeHelperExitFailed = 1
-	purgeHelperExitDenied = 2
+	PurgeHelperMode    = "purge-standby"
+	purgeHelperTimeout = 90 * time.Second
 )
 
 // RunPurgeHelper 以 UAC 拉起同一个 Hanxi 的一次性 purge helper，等待其写回
@@ -40,21 +38,26 @@ func RunPurgeHelper(exe, runtimeDir, requestID string) (PurgeResultFile, error) 
 		quoted = append(quoted, PsQuote(arg))
 	}
 	script := fmt.Sprintf("$p = Start-Process -FilePath %s -ArgumentList %s -Verb RunAs -Wait -WindowStyle Hidden -PassThru; if ($null -eq $p) { exit 1 }; exit [int]$p.ExitCode", PsQuote(exe), strings.Join(quoted, ","))
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	// 审查 P1#4：WaitDelay 无 Context 时只约束"进程退出后的 I/O 收尾"，
+	// 防不住"Start-Process -Wait 卡在无人应答的 UAC 上"——必须 CommandContext
+	// + WithTimeout，到点真杀 powershell，purgeMu 才有封顶可言。
+	ctx, cancel := context.WithTimeout(context.Background(), purgeHelperTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	HideConsole(cmd)
-	cmd.WaitDelay = purgeHelperTimeout
+	cmd.WaitDelay = 5 * time.Second
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		if errors.Is(err, exec.ErrWaitDelay) {
-			return PurgeResultFile{}, fmt.Errorf("purge helper 超时或等待异常: %w", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			return PurgeResultFile{}, fmt.Errorf("purge helper 超时（%s，含 UAC 等待），已终止", purgeHelperTimeout)
 		}
 		if isUACCancelled(string(out)) {
 			return PurgeResultFile{State: "cancelled", Message: "已取消 UAC 授权，清理未执行"}, nil
 		}
+		// 审查 P1#5：helper 失败只有 exit 1（denied 走结果文件），曾据的
+		// exit 2 协议位从无生成方且 Go panic 退 2 会谎报"权限未分配"——
+		// 死分支删除，未知退出码统一归启动失败附原始输出。
 		code := ElevatedRunExitCode(err)
-		if code == purgeHelperExitDenied {
-			return PurgeResultFile{State: "denied", Message: "管理员权限未获分配，清理未执行"}, nil
-		}
 		return PurgeResultFile{}, fmt.Errorf("purge helper 启动失败（退出码 %d）: %w %s", code, err, strings.TrimSpace(string(out)))
 	}
 	result, err := ReadPurgeResult(resultPath, requestID)
@@ -64,7 +67,14 @@ func RunPurgeHelper(exe, runtimeDir, requestID string) (PurgeResultFile, error) 
 	return result, nil
 }
 
-func purgeHelperResultPathAllowed(path, runtimeDir string) bool {
+// PurgeResultPathAllowed 钉死结果文件必须位于主进程 runtime 目录且形状合规
+// （审查 P1#6：只验形状不验目录=提权 helper 可被诱导往任意可写目录写合规
+// JSON）。由 sysinfo.RunPurgeStandbyHelper 以自身解析的 runtime 目录接线。
+func PurgeResultPathAllowed(path, runtimeDir string) bool {
+	if path == "" || runtimeDir == "" {
+		return false
+	}
 	base := filepath.Base(path)
-	return filepath.Dir(path) == runtimeDir && strings.HasPrefix(base, purgeResultPrefix) && strings.HasSuffix(base, ".json")
+	return filepath.Dir(filepath.Clean(path)) == filepath.Clean(runtimeDir) &&
+		strings.HasPrefix(base, purgeResultPrefix) && strings.HasSuffix(base, ".json")
 }

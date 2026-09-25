@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"hanxi/internal/platform/windows"
+	"hanxi/internal/settings"
 )
 
 // RunPurgeStandbyHelper 供 cmd/hanxi 一次性提权子命令调用：不装配 GUI、
@@ -18,23 +19,30 @@ func RunPurgeStandbyHelper(resultPath, requestID string, elevated bool) error {
 	if resultPath == "" || requestID == "" {
 		return errors.New("purge helper: 缺少结果文件或 request ID")
 	}
+	if !windows.PurgeResultPathAllowed(resultPath, settings.GetPaths().RuntimeDir()) {
+		return errors.New("purge helper: 结果路径不在本数据根 runtime 目录或形状不符，拒写")
+	}
+	// 形状双保险：request ID 必须与文件前缀一致（同 runtime 目录多请求防串写）
 	base := filepath.Base(resultPath)
-	if !strings.HasPrefix(base, "hanxi-purge-"+requestID) || !strings.HasSuffix(base, ".json") {
+	if !strings.HasPrefix(base, "hanxi-purge-"+requestID) {
 		return errors.New("purge helper: 结果路径与 request ID 不匹配")
 	}
+	// 审查 E1：本函数只在 --elevated=true 的 helper 进程里跑，拒绝态同样
+	// 发生在已提升环境——曾恒写 elevated:false 与直连路径账目相反，
+	// UI 会"清理被拒+未提权"双误导；elevated 原样透传。
 	before, err := availablePhysicalBytes()
 	if err != nil {
-		return writeDenied(resultPath, requestID, err)
+		return writeDenied(resultPath, requestID, elevated, err)
 	}
 	out, err := windows.PurgeStandbyList(func() (uint64, error) { return before, nil }, availablePhysicalBytes)
 	if err != nil {
-		return writeDenied(resultPath, requestID, err)
+		return writeDenied(resultPath, requestID, elevated, err)
 	}
 	return windows.WritePurgeResult(resultPath, requestID, "success", "清理完成", "", out.BeforeAvailableBytes, out.AfterAvailableBytes, elevated)
 }
 
-func writeDenied(path, requestID string, cause error) error {
-	if err := windows.WritePurgeResult(path, requestID, "denied", cause.Error(), "privilege-or-action-failed", 0, 0, false); err != nil {
+func writeDenied(path, requestID string, elevated bool, cause error) error {
+	if err := windows.WritePurgeResult(path, requestID, "denied", cause.Error(), "privilege-or-action-failed", 0, 0, elevated); err != nil {
 		return fmt.Errorf("写 purge 拒绝态失败: %w（原始原因: %v）", err, cause)
 	}
 	return nil
