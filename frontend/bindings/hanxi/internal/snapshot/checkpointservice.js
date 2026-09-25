@@ -25,6 +25,28 @@ export function CheckpointNow() {
 }
 
 /**
+ * DiffFile 单文件新旧对照（≤512KB 各截断；行 diff 由前端 textdiff 计算）。
+ * @param {string} id
+ * @param {string} path
+ * @returns {$CancellablePromise<$models.FileDiff>}
+ */
+export function DiffFile(id, path) {
+    return $Call.ByID(640236872, id, path);
+}
+
+/**
+ * FileHistory 单文件时间线（新→旧，只含该文件有变化的版本）。limit 观察窗
+ * 在 maxListRevisions 内取值（≤0 或超限回 50）；备份模式事件由相邻清单差集
+ * 读时算（A/M/D 真事件，非硬造）。返回恒为非 nil 切片。
+ * @param {string} path
+ * @param {number} limit
+ * @returns {$CancellablePromise<$models.FileRevision[] | null>}
+ */
+export function FileHistory(path, limit) {
+    return $Call.ByID(1737129545, path, limit);
+}
+
+/**
  * FlushOnExit 退出前同步补最后一发（挂 OnShutdown 链，3s 闸门卡死不拖退出）。
  * @returns {$CancellablePromise<void>}
  */
@@ -38,6 +60,17 @@ export function FlushOnExit() {
  */
 export function GetStatus() {
     return $Call.ByID(1290192213);
+}
+
+/**
+ * ListFiles 受保文件清单（文件为轴左栏）：引擎观察窗内出现过变化的路径 ∪
+ * 盘上现存白名单文件（新写未拍也有行，版本数如实为 0）。Alive 以盘上现状为准
+ * （已删除文件保留历史可见，恢复链见 FileHistory+RestoreFile）；Display 对
+ * memo/ 走标题 resolver，其余回落文件名（批 C 上中文名表）。
+ * @returns {$CancellablePromise<$models.TrackedFile[] | null>}
+ */
+export function ListFiles() {
+    return $Call.ByID(1316337368);
 }
 
 /**
@@ -74,13 +107,27 @@ export function OpenHistoryDir() {
 }
 
 /**
- * PreviewFile 单文件内容预览（≤512KB 文本）。
+ * PreviewFile 单文件内容预览（≤512KB 文本）。既有绑定面，语义 = 当前版本预览；
+ * 新页一律走 PreviewRevision（可指定历史版本，两模式统一读面）。
  * @param {string} id
  * @param {string} path
  * @returns {$CancellablePromise<$models.FilePreview>}
  */
 export function PreviewFile(id, path) {
     return $Call.ByID(2570073445, id, path);
+}
+
+/**
+ * PreviewRevision 读取某白名单文件的正文：revision 空 = 盘上当前内容（两模式
+ * 同口径直读，git index 受提交时序干扰不可作"现值"），非空 = 指定历史版本
+ * （引擎读面，被删文件在其最后存在版本同样可读——热修复 A 的"看被删内容"）。
+ * ≤512KB 截断照旧。
+ * @param {string} path
+ * @param {string} revision
+ * @returns {$CancellablePromise<$models.FilePreview>}
+ */
+export function PreviewRevision(path, revision) {
+    return $Call.ByID(1532962234, path, revision);
 }
 
 /**
@@ -111,6 +158,15 @@ export function RevisionDetail(id) {
  */
 export function SetMemoRestorer(fn) {
     return $Call.ByID(3479758725, fn);
+}
+
+/**
+ * SetMemoTitleResolver 注入便签标题映射回调（仅装配根调用；nil 安全）。
+ * @param {any} fn
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetMemoTitleResolver(fn) {
+    return $Call.ByID(3675311691, fn);
 }
 
 /**

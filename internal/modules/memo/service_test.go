@@ -275,3 +275,22 @@ func TestMemoStoreAndCRUD(t *testing.T) {
 		t.Errorf("expected 0 items after delete")
 	}
 }
+
+// TestTitleForWhitelistPath 快照 ListFiles 标题 resolver（N33 §2 装配根注入面）：
+// memo/<id>.md → 标题；形态不符 / 未命中 / 空标题一律 false（快照侧回落文件名）。
+func TestTitleForWhitelistPath(t *testing.T) {
+	svc, _ := newFilesService(t)
+	created, err := svc.Create("数据库笔记", "SELECT 1;", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title, ok := svc.TitleForWhitelistPath("memo/" + created.ID + ".md"); !ok || title != "数据库笔记" {
+		t.Errorf("命中 = %q %v", title, ok)
+	}
+	svc.items = append(svc.items, MemoItem{ID: "blank", Title: "   "})
+	for _, rel := range []string{"config.json", "memo/nope.md", "memo/", "state/x.json", "memo/blank.md", "memo/evil/../x.md"} {
+		if _, ok := svc.TitleForWhitelistPath(rel); ok {
+			t.Errorf("%q 不应命中", rel)
+		}
+	}
+}

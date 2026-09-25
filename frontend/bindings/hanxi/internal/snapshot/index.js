@@ -10,8 +10,19 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * FileDiff 单文件新旧对照（行 diff 在前端算，后端只回原样文本，N33 §4）。
+ * Old/New 各按 maxPreviewBytes 截断，对应 Truncated 标记如实置位。
+ * @typedef {$models.FileDiff} FileDiff
+ */
+
+/**
  * FilePreview 单文件内容预览（≤512KB 文本，超出截断）。
  * @typedef {$models.FilePreview} FilePreview
+ */
+
+/**
+ * FileRevision 文件时间线的一行（该文件在此版本发生变化）。
+ * @typedef {$models.FileRevision} FileRevision
  */
 
 /**
@@ -33,4 +44,11 @@ import * as $models from "./models.js";
 /**
  * StatusInfo "历史版本"分区顶部状态行。
  * @typedef {$models.StatusInfo} StatusInfo
+ */
+
+/**
+ * TrackedFile 受保文件清单行（N33 批 A，文件为轴左栏）。
+ * Display 回落文件名——便签标题经装配根注入的 resolver 映射，config/state 的
+ * 中文名表在批 C 落地；Revisions 口径受 maxListRevisions 观察窗约束，如实标注。
+ * @typedef {$models.TrackedFile} TrackedFile
  */

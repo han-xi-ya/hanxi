@@ -234,3 +234,186 @@ func names(entries []os.DirEntry) []string {
 	}
 	return out
 }
+
+func TestFollowChainEvents(t *testing.T) {
+	// 查询名是改名后的新名：R 到达事件记 R（PrePath=旧名），链名回拨后，
+	// 更老的记录（git 以旧名上报）折入同一条时间线。
+	recs := []versionChanges{
+		{ID: "cccc3333", Time: "t3", Summary: "c3", Changes: []fileChange{
+			{Status: "R", Path: "memo/renamed.md", Orig: "memo/keep.md"},
+		}},
+		{ID: "aaaa1111", Time: "t1", Summary: "c1", Changes: []fileChange{
+			{Status: "A", Path: "memo/keep.md"},
+		}},
+	}
+	evts := followChainEvents("memo/renamed.md", recs)
+	if len(evts) != 2 {
+		t.Fatalf("evts = %+v", evts)
+	}
+	if evts[0].Status != "R" || evts[0].AtPath != "memo/renamed.md" || evts[0].PrePath != "memo/keep.md" {
+		t.Errorf("改名到达 = %+v", evts[0])
+	}
+	if evts[1].Status != "A" || evts[1].AtPath != "memo/keep.md" || evts[1].PrePath != "memo/keep.md" {
+		t.Errorf("链上更早事件 = %+v", evts[1])
+	}
+
+	// 兜底折算：流里把"改名离开"报成 R 对（而非 git 实探的 D）时，旧名侧仍记 D
+	evts2 := followChainEvents("memo/keep.md", recs)
+	if len(evts2) != 2 || evts2[0].Status != "D" || evts2[0].AtPath != "memo/keep.md" {
+		t.Errorf("改名离开兜底 = %+v", evts2)
+	}
+	if evts2[1].Status != "A" {
+		t.Errorf("旧名更早事件 = %+v", evts2[1])
+	}
+}
+
+// TestGitEngineEmptyRepoReadsEmpty 首拍前空仓库：全部读面给"空"而非错误。
+func TestGitEngineEmptyRepoReadsEmpty(t *testing.T) {
+	eng, _ := newTestGitEngine(t)
+	ctx := context.Background()
+	recs, err := eng.fileChanges(ctx, 10)
+	if err != nil || len(recs) != 0 {
+		t.Fatalf("empty fileChanges = %v %v", recs, err)
+	}
+	revs, err := eng.revisions(ctx, 10)
+	if err != nil || revs == nil || len(revs) != 0 {
+		t.Fatalf("empty revisions = %+v %v (须非 nil)", revs, err)
+	}
+	hist, err := eng.fileHistory(ctx, "config.json", 10)
+	if err != nil || len(hist) != 0 {
+		t.Fatalf("empty fileHistory = %+v %v", hist, err)
+	}
+}
+
+// TestGitEngineFileAxis N33 批 A 文件为轴读面全链路（真实仓库）：
+// fileChanges 事件流、fileHistory 改名链、fileDiff 新旧双读、
+// 以及热修复 A 的"被删文件 → 最后存在版本可读"。
+func TestGitEngineFileAxis(t *testing.T) {
+	eng, dataDir := newTestGitEngine(t)
+	ctx := context.Background()
+
+	// c1: 三个文件诞生
+	write(t, dataDir, "memo/gone.md", "v1")
+	write(t, dataDir, "memo/keep.md", "keep")
+	write(t, dataDir, "config.json", `{"theme":"light"}`)
+	if err := eng.commit(ctx, []string{"config.json", "memo/gone.md", "memo/keep.md"}); err != nil {
+		t.Fatal(err)
+	}
+	// c2: 改 config、删 gone
+	write(t, dataDir, "config.json", `{"theme":"dark"}`)
+	if err := os.Remove(filepath.Join(dataDir, "memo", "gone.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.commit(ctx, []string{"config.json", "memo/gone.md"}); err != nil {
+		t.Fatal(err)
+	}
+	// c3: keep → renamed（内容不变，git 按 R100 报）
+	write(t, dataDir, "memo/renamed.md", "keep")
+	if err := os.Remove(filepath.Join(dataDir, "memo", "keep.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.commit(ctx, []string{"memo/keep.md", "memo/renamed.md"}); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := eng.fileChanges(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 3 {
+		t.Fatalf("fileChanges = %+v", recs)
+	}
+	// 新→旧：c3(R) / c2(M config, D gone) / c1(三个 A)
+	per := aggregateFileEvents(recs)
+	if got := statusSeq(per["memo/gone.md"]); got != "DA" {
+		t.Errorf("gone 时间线（聚合） = %s", got)
+	}
+	if got := statusSeq(per["memo/renamed.md"]); got != "R" {
+		t.Errorf("renamed 时间线（聚合） = %s", got)
+	}
+	if got := statusSeq(per["memo/keep.md"]); got != "DA" {
+		t.Errorf("keep 时间线（聚合，改名离开折算 D） = %s", got)
+	}
+	if got := statusSeq(per["config.json"]); got != "MA" {
+		t.Errorf("config 时间线（聚合） = %s", got)
+	}
+
+	// fileHistory：--follow 沿链（新名查得 R 到达 + 旧名时代的 A）
+	hNew, err := eng.fileHistory(ctx, "memo/renamed.md", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := statusSeq(hNew); got != "RA" {
+		t.Errorf("renamed 时间线（follow） = %s", got)
+	}
+	// 热修复核心：被删文件的时间线首个非 D 版本 = 最后存在版本，内容可读回
+	hGone, err := eng.fileHistory(ctx, "memo/gone.md", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := statusSeq(hGone); got != "DA" {
+		t.Fatalf("gone 时间线（follow） = %s", got)
+	}
+	lastAlive := ""
+	for _, e := range hGone {
+		if e.Status != "D" {
+			lastAlive = e.RevisionID
+			break
+		}
+	}
+	if lastAlive != recs[2].ID {
+		t.Fatalf("最后存在版本 = %q, want c1 %q", lastAlive, recs[2].ID)
+	}
+	if data, err := eng.file(ctx, lastAlive, "memo/gone.md"); err != nil || string(data) != "v1" {
+		t.Fatalf("最后存在版本内容 = %q err=%v", data, err)
+	}
+	// 对照：删除版本自身取不到内容（病灶的引擎侧根因）
+	if _, err := eng.file(ctx, recs[1].ID, "memo/gone.md"); err == nil {
+		t.Error("已删除版本读内容应失败")
+	}
+
+	// fileDiff：删除 / 改名 / 新增 / 短 hash / 窗外
+	d, err := eng.fileDiff(ctx, recs[1].ID, "memo/gone.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != "D" || d.New != "" || d.Old != "v1" {
+		t.Errorf("D 对比 = %+v", d)
+	}
+	d, err = eng.fileDiff(ctx, recs[0].ID, "memo/renamed.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != "R" || d.New != "keep" || d.Old != "keep" {
+		t.Errorf("R 对比（父版本按旧名取） = %+v", d)
+	}
+	d, err = eng.fileDiff(ctx, recs[2].ID, "config.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != "A" || d.Old != "" || d.New != `{"theme":"light"}` {
+		t.Errorf("A 对比（首版无旧） = %+v", d)
+	}
+	d, err = eng.fileDiff(ctx, recs[1].ID[:9], "memo/gone.md") // 短 hash 前缀
+	if err != nil || d.Status != "D" {
+		t.Errorf("短 hash = %+v err=%v", d, err)
+	}
+	if _, err := eng.fileDiff(ctx, recs[0].ID, "config.json"); err == nil ||
+		!strings.Contains(err.Error(), "无变化记录") {
+		t.Errorf("未触及该文件的版本应如实报错, got %v", err)
+	}
+	if _, err := eng.fileDiff(ctx, recs[0].ID, "runtime/x.toml"); err == nil {
+		t.Error("白名单外对比应拒")
+	}
+	if _, err := eng.fileDiff(ctx, "20260917-143000", "config.json"); err == nil {
+		t.Error("备份形态标识在 git 模式应拒")
+	}
+}
+
+func statusSeq(revs []FileRevision) string {
+	var b strings.Builder
+	for _, r := range revs {
+		b.WriteString(r.Status)
+	}
+	return b.String()
+}

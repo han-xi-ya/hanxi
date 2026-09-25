@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,9 +18,15 @@ import (
 	"hanxi/internal/settings"
 )
 
+// dataRootPaths CheckpointService 需要的数据根最小能力面（*settings.Paths 天然
+// 满足；收窄成单方法便于测试注入临时目录造景，与全局单例解耦）。
+type dataRootPaths interface {
+	DataDir() string
+}
+
 // CheckpointService 历史版本服务（绑定面）。
 type CheckpointService struct {
-	paths *settings.Paths
+	paths dataRootPaths
 	store *settings.Store
 
 	mu      sync.Mutex
@@ -42,11 +49,20 @@ type CheckpointService struct {
 	// memoRestorer 便签热恢复钩子（装配根注入 memo.MemoService.RestoreFile）：
 	// memo/ 文件回写后同步内存换装 + emit memo:changed，热生效无感。
 	memoRestorer atomic.Pointer[func(id, content string) error]
+	// memoTitle 便签标题只读映射钩子（装配根注入 memo.MemoService 侧查询）：
+	// ListFiles 左栏把 memo/<id>.md 显示为标题，避免裸文件名串（N33 §2）。
+	// 与 memoRestorer 同款 DI，规避 snapshot→memo 包引用。
+	memoTitle atomic.Pointer[func(relPath string) (string, bool)]
 }
 
 // New 构造服务（纯装配无 IO；探测与引擎选择在 Start）。
+// nil paths 显式落为接口 nil（防"类型非 nil 值为 nil"的哑指针陷阱）。
 func New(paths *settings.Paths, store *settings.Store) *CheckpointService {
-	return &CheckpointService{paths: paths, store: store}
+	s := &CheckpointService{store: store}
+	if paths != nil {
+		s.paths = paths
+	}
+	return s
 }
 
 // SetMemoRestorer 注入便签热恢复回调（仅装配根调用；nil 安全）。
@@ -56,6 +72,15 @@ func (s *CheckpointService) SetMemoRestorer(fn func(id, content string) error) {
 		return
 	}
 	s.memoRestorer.Store(&fn)
+}
+
+// SetMemoTitleResolver 注入便签标题映射回调（仅装配根调用；nil 安全）。
+func (s *CheckpointService) SetMemoTitleResolver(fn func(relPath string) (string, bool)) {
+	if fn == nil {
+		s.memoTitle.Store(nil)
+		return
+	}
+	s.memoTitle.Store(&fn)
 }
 
 // snapshotDir 数据根下的快照驻留目录（git-dir 与影子备份共同的老家）。
@@ -437,24 +462,50 @@ func (s *CheckpointService) RevisionDetail(id string) ([]RevisionFile, error) {
 	return files, nil
 }
 
-// PreviewFile 单文件内容预览（≤512KB 文本）。
+// PreviewFile 单文件内容预览（≤512KB 文本）。既有绑定面，语义 = 当前版本预览；
+// 新页一律走 PreviewRevision（可指定历史版本，两模式统一读面）。
 func (s *CheckpointService) PreviewFile(id, path string) (FilePreview, error) {
-	eng, err := s.engineReady()
-	if err != nil {
-		return FilePreview{}, err
-	}
-	if err := checkRevisionID(id); err != nil {
-		return FilePreview{}, err
-	}
+	return s.PreviewRevision(path, id)
+}
+
+// PreviewRevision 读取某白名单文件的正文：revision 空 = 盘上当前内容（两模式
+// 同口径直读，git index 受提交时序干扰不可作"现值"），非空 = 指定历史版本
+// （引擎读面，被删文件在其最后存在版本同样可读——热修复 A 的"看被删内容"）。
+// ≤512KB 截断照旧。
+func (s *CheckpointService) PreviewRevision(path string, revision string) (FilePreview, error) {
 	rel, err := normalizeWhitelistPath(path)
 	if err != nil {
 		return FilePreview{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
-	defer cancel()
-	data, err := eng.file(ctx, id, rel)
-	if err != nil {
-		return FilePreview{}, err
+	revision = strings.TrimSpace(revision)
+
+	var data []byte
+	if revision == "" {
+		if s.paths == nil {
+			return FilePreview{}, errors.New("历史版本服务尚未启动")
+		}
+		// 磁盘边界自检（链接/reparse 拒绝），再读
+		if err := validateWhitelistPathOnDisk(s.paths.DataDir(), rel, false); err != nil {
+			return FilePreview{}, err
+		}
+		data, err = os.ReadFile(filepath.Join(s.paths.DataDir(), filepath.FromSlash(rel)))
+		if err != nil {
+			return FilePreview{}, fmt.Errorf("读取当前内容失败: %w", err)
+		}
+	} else {
+		eng, eerr := s.engineReady()
+		if eerr != nil {
+			return FilePreview{}, eerr
+		}
+		if err := checkRevisionID(revision); err != nil {
+			return FilePreview{}, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+		defer cancel()
+		data, err = eng.file(ctx, revision, rel)
+		if err != nil {
+			return FilePreview{}, err
+		}
 	}
 	fe := FilePreview{Path: rel, Size: int64(len(data))}
 	if len(data) > maxPreviewBytes {
@@ -464,6 +515,183 @@ func (s *CheckpointService) PreviewFile(id, path string) (FilePreview, error) {
 		fe.Content = string(data)
 	}
 	return fe, nil
+}
+
+// FileHistory 单文件时间线（新→旧，只含该文件有变化的版本）。limit 观察窗
+// 在 maxListRevisions 内取值（≤0 或超限回 50）；备份模式事件由相邻清单差集
+// 读时算（A/M/D 真事件，非硬造）。返回恒为非 nil 切片。
+func (s *CheckpointService) FileHistory(path string, limit int) ([]FileRevision, error) {
+	eng, err := s.engineReady()
+	if err != nil {
+		return nil, err
+	}
+	rel, err := normalizeWhitelistPath(path)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 || limit > maxListRevisions {
+		limit = maxListRevisions
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	revs, err := eng.fileHistory(ctx, rel, maxListRevisions)
+	if err != nil {
+		return nil, err
+	}
+	if len(revs) > limit {
+		revs = revs[:limit]
+	}
+	if revs == nil {
+		revs = []FileRevision{}
+	}
+	return revs, nil
+}
+
+// ListFiles 受保文件清单（文件为轴左栏）：引擎观察窗内出现过变化的路径 ∪
+// 盘上现存白名单文件（新写未拍也有行，版本数如实为 0）。Alive 以盘上现状为准
+// （已删除文件保留历史可见，恢复链见 FileHistory+RestoreFile）；Display 对
+// memo/ 走标题 resolver，其余回落文件名（批 C 上中文名表）。
+func (s *CheckpointService) ListFiles() ([]TrackedFile, error) {
+	eng, err := s.engineReady()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	recs, err := eng.fileChanges(ctx, maxListRevisions)
+	if err != nil {
+		return nil, err
+	}
+	perFile := aggregateFileEvents(recs)
+
+	// 盘上现状合并：白名单枚举给 Alive 与"从未入版"文件的最近 mtime。
+	// 枚举失败/未装配 paths 时降级为"以事件流口径为准"（末事件非 D 即视为在盘）。
+	disk := map[string]time.Time{}
+	diskReliable := false
+	if s.paths != nil {
+		if files, derr := enumerateWhitelist(s.paths.DataDir(), false); derr == nil {
+			diskReliable = true
+			for _, f := range files {
+				disk[f.Rel] = f.Info.ModTime()
+			}
+		}
+	}
+
+	out := make([]TrackedFile, 0, len(perFile)+len(disk))
+	for rel, events := range perFile {
+		_, alive := disk[rel]
+		if !diskReliable {
+			// events 恒非空且新→旧（aggregateFileEvents 保证）：降级口径取末次事件形态
+			alive = events[0].Status != "D"
+		}
+		out = append(out, TrackedFile{
+			Path:       rel,
+			Display:    s.fileDisplay(rel),
+			Group:      fileGroup(rel),
+			Revisions:  len(events),
+			LastChange: events[0].Time,
+			Alive:      alive,
+		})
+	}
+	for rel, de := range disk {
+		if _, seen := perFile[rel]; seen {
+			continue
+		}
+		out = append(out, TrackedFile{
+			Path:       rel,
+			Display:    s.fileDisplay(rel),
+			Group:      fileGroup(rel),
+			Revisions:  0,
+			LastChange: de.Format(time.RFC3339),
+			Alive:      true,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		gi, gj := groupRank(out[i].Group), groupRank(out[j].Group)
+		if gi != gj {
+			return gi < gj
+		}
+		if out[i].Display != out[j].Display {
+			return out[i].Display < out[j].Display
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out, nil
+}
+
+// fileDisplay 标题 resolver 优先，映射不到回落文件名（未注入钩子 = 一律文件名）。
+func (s *CheckpointService) fileDisplay(rel string) string {
+	if fn := s.memoTitle.Load(); fn != nil {
+		if title, ok := (*fn)(rel); ok && strings.TrimSpace(title) != "" {
+			return title
+		}
+	}
+	if i := strings.LastIndex(rel, "/"); i >= 0 {
+		return rel[i+1:]
+	}
+	return rel
+}
+
+// fileGroup / groupRank 三组归类：便签（主场景）→ 工作台设置 → 模块状态。
+func fileGroup(rel string) string {
+	switch {
+	case strings.HasPrefix(rel, memoPrefix):
+		return "memo"
+	case rel == rootConfig:
+		return "config"
+	case strings.HasPrefix(rel, statePrefix):
+		return "state"
+	default:
+		return "state" // 白名单收口后不可达，兜底归状态组
+	}
+}
+
+func groupRank(group string) int {
+	switch group {
+	case "memo":
+		return 0
+	case "config":
+		return 1
+	case "state":
+		return 2
+	default:
+		return 3
+	}
+}
+
+// DiffFile 单文件新旧对照（≤512KB 各截断；行 diff 由前端 textdiff 计算）。
+func (s *CheckpointService) DiffFile(id, path string) (FileDiff, error) {
+	eng, err := s.engineReady()
+	if err != nil {
+		return FileDiff{}, err
+	}
+	if err := checkRevisionID(id); err != nil {
+		return FileDiff{}, err
+	}
+	rel, err := normalizeWhitelistPath(path)
+	if err != nil {
+		return FileDiff{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	defer cancel()
+	raw, err := eng.fileDiff(ctx, id, rel)
+	if err != nil {
+		return FileDiff{}, err
+	}
+	fd := FileDiff{Path: rel, Status: raw.Status, Summary: raw.Summary}
+	if len(raw.Old) > maxPreviewBytes {
+		fd.Old = raw.Old[:maxPreviewBytes]
+		fd.OldTruncated = true
+	} else {
+		fd.Old = raw.Old
+	}
+	if len(raw.New) > maxPreviewBytes {
+		fd.New = raw.New[:maxPreviewBytes]
+		fd.NewTruncated = true
+	} else {
+		fd.New = raw.New
+	}
+	return fd, nil
 }
 
 // RestoreFile 单文件回滚。memo/ 下的便签走热恢复（内存换装 + memo:changed 事件，

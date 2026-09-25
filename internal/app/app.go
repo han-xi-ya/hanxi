@@ -605,6 +605,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		// 历史版本 → 便签热恢复：memo/<id>.md 回滚走 RestoreFile（原样落盘 +
 		// 内存换装 + memo:changed），前端即时可见，无需重启。
 		snapSvc.SetMemoRestorer(mMod.GetService().RestoreFile)
+		// 历史版本 → 文件清单标题映射：ListFiles 左栏把 memo/<id>.md 显示成
+		// 便签标题（N33 §2），映射不到由快照侧回落文件名。
+		snapSvc.SetMemoTitleResolver(mMod.GetService().TitleForWhitelistPath)
 	}
 
 	// 交接路由以 hash 形态挂进初始 URL（前端无 URL 路由，hash 仅回航提示用；

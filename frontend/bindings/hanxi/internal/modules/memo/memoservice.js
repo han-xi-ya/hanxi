@@ -98,6 +98,19 @@ export function SetWailsApp(app) {
 }
 
 /**
+ * TitleForWhitelistPath 把快照白名单路径 memo/<id>.md 映射为便签标题（N33 §2
+ * ListFiles 左栏展示用；经装配根注入 internal/snapshot 的标题 resolver 钩子，
+ * 规避 snapshot→memo 包引用）。走标准调用门（RPC 门覆盖矩阵同口径）：memo
+ * 停用期返 false，快照页如实回落文件名，不借标题旁路复活停用模块的数据面。
+ * 非 memo 形态、未命中或空标题同样返 false。
+ * @param {string} rel
+ * @returns {$CancellablePromise<[string, boolean]>}
+ */
+export function TitleForWhitelistPath(rel) {
+    return $Call.ByID(3778068714, rel);
+}
+
+/**
  * ToggleMask 切换敏感信息遮罩。隐私态必须与持久化提交绑定：写盘失败时
  * 保持原遮罩状态且不广播，避免 UI 误以为敏感信息已被安全遮住。
  * @param {string} id

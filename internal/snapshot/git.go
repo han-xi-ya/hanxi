@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -239,46 +241,17 @@ func lockIsStale(lock string) bool {
 	return time.Since(fi.ModTime()) > localStaleLockAfter
 }
 
-// revisions git log 精简形态（%x1f 字段分隔 + -z 记录分隔，正文自产无分隔符）。
+// revisions git log 精简形态（统一读面 fileChanges 的映射投影：id/时间/摘要）。
 func (g *gitEngine) revisions(ctx context.Context, limit int) ([]Revision, error) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	out, se, err := g.run(ctx,
-		"log", "-z", fmt.Sprintf("--max-count=%d", limit),
-		"--pretty=format:%H%x1f%ct%x1f%s")
+	recs, err := g.fileChanges(ctx, limit)
 	if err != nil {
-		// 空仓库（首拍前）不是错误
-		if strings.Contains(se, "does not have any commits yet") {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("git log 失败: %v (%s)", err, strings.TrimSpace(se))
+		return nil, err
 	}
-	return parseGitLog(out), nil
-}
-
-// parseGitLog 拆 git log -z 记录（独立函数供 fixture 单测）。
-func parseGitLog(out string) []Revision {
-	revs := make([]Revision, 0, 16)
-	for _, rec := range strings.Split(out, "\x00") {
-		rec = strings.Trim(rec, "\n")
-		if strings.TrimSpace(rec) == "" {
-			continue
-		}
-		fields := strings.SplitN(rec, "\x1f", 3)
-		if len(fields) != 3 {
-			continue
-		}
-		var unixSec int64
-		if _, err := fmt.Sscanf(fields[1], "%d", &unixSec); err != nil {
-			continue
-		}
-		revs = append(revs, Revision{
-			ID:      fields[0],
-			Time:    time.Unix(unixSec, 0).Format(time.RFC3339),
-			Summary: strings.TrimPrefix(fields[2], "checkpoint: "),
-		})
+	revs := make([]Revision, 0, len(recs))
+	for _, rec := range recs {
+		revs = append(revs, Revision{ID: rec.ID, Time: rec.Time, Summary: rec.Summary})
 	}
-	return revs
+	return revs, nil
 }
 
 // revisionFiles：git show --name-status --format=<id> 的清单解析。
@@ -314,17 +287,288 @@ func parseNameStatus(out string) []RevisionFile {
 	return files
 }
 
-// file 取版本内字节（Output 而非 Combined：stdout 之外一个字节都不能混）。
-func (g *gitEngine) file(ctx context.Context, id, relPath string) ([]byte, error) {
+// fileChanges：`git log -z --name-status` 全版本变化事件流（ListFiles/FileHistory/
+// DiffFile 共同读面）。-z 形态实探：STATUS 与每个 PATH 各成独立 NUL token
+// （非 "M\tpath" 合并形态），R/C 记录后跟两个路径 token（旧名在前新名在后）。
+func (g *gitEngine) fileChanges(ctx context.Context, window int) ([]versionChanges, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	cmd := g.command(ctx, "show", id+":"+relPath)
+	return g.fileChangesLocked(ctx, window)
+}
+
+func (g *gitEngine) fileChangesLocked(ctx context.Context, window int) ([]versionChanges, error) {
+	if window <= 0 || window > maxListRevisions {
+		window = maxListRevisions
+	}
+	out, se, err := g.run(ctx,
+		"log", "-z", "--name-status", fmt.Sprintf("--max-count=%d", window),
+		"--format=%H%x1f%ct%x1f%s")
+	if err != nil {
+		// 空仓库（首拍前）不是错误
+		if strings.Contains(se, "does not have any commits yet") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("git log 失败: %v (%s)", err, strings.TrimSpace(se))
+	}
+	return parseFileLog(out), nil
+}
+
+// fileStatusRe -z 流中的变化状态 token（可带 git 残留的前置换行）：字母 + 可选分数。
+var fileStatusRe = regexp.MustCompile(`^\n?[A-Z]{1,2}[0-9]*$`)
+
+// parseFileLog 拆 `git log -z --name-status` 的 NUL token 流（独立供 fixture 单测）。
+// token 分类：含 \x1f → 版本头；形如 M/A/D/R100 的状态词 → 其后跟 1 个
+// （R/C 为 2 个）路径 token；其余忽略。白名单外路径剔除（改名只留一侧时
+// 相应折算：新名出保 → 旧名记 D）。
+func parseFileLog(out string) []versionChanges {
+	var recs []versionChanges
+	var pending string // 当前状态 token
+	var pendingOrig string
+	want := 0
+	addChange := func(c fileChange) {
+		if len(recs) == 0 {
+			return
+		}
+		last := &recs[len(recs)-1]
+		last.Changes = append(last.Changes, c)
+	}
+	for _, tok := range strings.Split(out, "\x00") {
+		if i := strings.IndexByte(tok, '\x1f'); i >= 0 {
+			fields := strings.SplitN(strings.TrimPrefix(tok, "\n"), "\x1f", 3)
+			pending, pendingOrig, want = "", "", 0
+			if len(fields) < 2 {
+				continue
+			}
+			unixSec, err := strconv.ParseInt(strings.TrimSpace(fields[1]), 10, 64)
+			if err != nil {
+				continue
+			}
+			subject := ""
+			if len(fields) == 3 {
+				subject = strings.TrimSuffix(fields[2], "\n")
+			}
+			recs = append(recs, versionChanges{
+				ID:      fields[0],
+				Time:    time.Unix(unixSec, 0).Format(time.RFC3339),
+				Summary: strings.TrimPrefix(subject, "checkpoint: "),
+			})
+			continue
+		}
+		t := strings.Trim(tok, "\n\r")
+		if t == "" {
+			pending, pendingOrig, want = "", "", 0
+			continue
+		}
+		if want > 0 {
+			p := filepath.ToSlash(t)
+			want--
+			if want > 0 { // R/C 第一段 = 旧名
+				pendingOrig = p
+				continue
+			}
+			st := ""
+			if pending != "" {
+				st = string(pending[0])
+			}
+			origOK := pendingOrig != "" && Whitelisted(pendingOrig)
+			pathOK := Whitelisted(p)
+			switch {
+			case origOK && pathOK:
+				addChange(fileChange{Status: st, Path: p, Orig: pendingOrig})
+			case origOK: // 改名出保：对旧名等同删除
+				addChange(fileChange{Status: "D", Path: pendingOrig})
+			case pathOK: // 自保外改名而来：只报新名
+				addChange(fileChange{Status: st, Path: p})
+			}
+			pending, pendingOrig = "", ""
+			continue
+		}
+		if fileStatusRe.MatchString(tok) {
+			pending = t
+			pendingOrig = ""
+			want = 1
+			if t[0] == 'R' || t[0] == 'C' {
+				want = 2
+			}
+		}
+	}
+	return recs
+}
+
+// fileHistory 单文件时间线：`git log --follow -z --name-status -- <path>` 读面，
+// 改名链沿途回旧名。git 对"旧名在改名 commit"本身就报 D（实探口径），与新名
+// 侧的 R 事件合成 N33 §0.3-A 恢复链的两半。
+func (g *gitEngine) fileHistory(ctx context.Context, rel string, window int) ([]FileRevision, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	evts, err := g.followEventsLocked(ctx, rel, window)
+	if err != nil {
+		return nil, err
+	}
+	revs := make([]FileRevision, 0, len(evts))
+	for _, e := range evts {
+		revs = append(revs, e.FileRevision)
+	}
+	return revs, nil
+}
+
+// followEvent 改名链上一个时间线事件：AtPath 为该版本中文件实际使用的链上名，
+// PrePath 为其内容在父版本中挂名的路径（A 事件无意义，取同 AtPath）。
+type followEvent struct {
+	FileRevision
+	AtPath  string
+	PrePath string
+}
+
+// followEventsLocked git log --follow 读面 + 链名折算（调用方持 g.mu）。
+func (g *gitEngine) followEventsLocked(ctx context.Context, rel string, window int) ([]followEvent, error) {
+	if window <= 0 || window > maxListRevisions {
+		window = maxListRevisions
+	}
+	out, se, err := g.run(ctx, "log", "--follow", "-z", "--name-status",
+		fmt.Sprintf("--max-count=%d", window), "--format=%H%x1f%ct%x1f%s", "--", rel)
+	if err != nil {
+		// 空仓库（首拍前）不是错误
+		if strings.Contains(se, "does not have any commits yet") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("git log 失败: %v (%s)", err, strings.TrimSpace(se))
+	}
+	return followChainEvents(rel, parseFileLog(out)), nil
+}
+
+// followChainEvents 把 follow 流记录折算为查询名的时间线（纯函数，独立供单测）：
+// 链名自查询名起，遇"改名到达"（R 记录的新侧）事件记 R、链名回拨旧名；
+// 其余记录路径即链上名。git 已把"改名离开"对旧名报为 D，无需再折算。
+func followChainEvents(rel string, recs []versionChanges) []followEvent {
+	chain := rel
+	var out []followEvent
+	for _, rec := range recs {
+		ch, ok := matchFileChange(rec.Changes, chain)
+		if !ok {
+			continue
+		}
+		st := ch.Status
+		if st == "" {
+			st = "M"
+		}
+		at := ch.Path
+		pre := ch.Path
+		if ch.Orig != "" {
+			if ch.Orig == chain && ch.Path != chain {
+				// 该名字改名离开：对它是 D（git 多数已直接报 D，此处兜底折算）
+				st = "D"
+				at = chain
+				pre = chain
+			} else {
+				// 改名到达本名：事件 R；父版本内容挂在旧名下
+				st = "R"
+				pre = ch.Orig
+				chain = ch.Orig // 更老的记录以旧名续查
+			}
+		}
+		out = append(out, followEvent{
+			FileRevision: FileRevision{RevisionID: rec.ID, Time: rec.Time, Status: st, Summary: rec.Summary},
+			AtPath:       at,
+			PrePath:      pre,
+		})
+	}
+	return out
+}
+
+// matchFileChange 在该版变化事件里找与链名对应的记录（新旧名两侧都认）。
+func matchFileChange(changes []fileChange, rel string) (fileChange, bool) {
+	for _, c := range changes {
+		if c.Path == rel || c.Orig == rel {
+			return c, true
+		}
+	}
+	return fileChange{}, false
+}
+
+// fileDiff 新旧双读：New=show id:<链上名>，Old=show id^:<旧链名>；A 无旧、D 无新、
+// 首版无父/父中无该形态 → Old 空（N33 §3）。id 允许短 hash，命中的版本补全为
+// 完整 hash 再取 blob；不在观察窗内如实报错，不伪造对比。
+func (g *gitEngine) fileDiff(ctx context.Context, id, relPath string) (fileDiffRaw, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !Whitelisted(relPath) || strings.Contains(relPath, "..") {
+		return fileDiffRaw{}, fmt.Errorf("非法的对比路径: %s", relPath)
+	}
+	if !gitHexRe.MatchString(id) {
+		return fileDiffRaw{}, fmt.Errorf("git 模式版本标识应为 commit hash: %s", id)
+	}
+	evts, err := g.followEventsLocked(ctx, relPath, maxListRevisions)
+	if err != nil {
+		return fileDiffRaw{}, err
+	}
+	for _, e := range evts {
+		if e.RevisionID != id && !strings.HasPrefix(e.RevisionID, id) {
+			continue
+		}
+		full := e.RevisionID
+		raw := fileDiffRaw{Status: e.Status, Summary: e.Summary}
+		if raw.Status == "D" {
+			// 删除事件：新版所无，旧版仍在
+			raw.Old = g.parentBlob(ctx, full, e.PrePath)
+			return raw, nil
+		}
+		data, berr := g.readBlob(ctx, full+":"+e.AtPath)
+		if berr != nil {
+			return fileDiffRaw{}, fmt.Errorf("该版本中不存在 %s（git show: %v）", relPath, berr)
+		}
+		raw.New = string(data)
+		if raw.Status != "A" {
+			raw.Old = g.parentBlob(ctx, full, e.PrePath)
+		}
+		return raw, nil
+	}
+	return fileDiffRaw{}, fmt.Errorf("版本 %s 中 %s 无变化记录（或已超出最近 %d 版观察窗）", id, relPath, maxListRevisions)
+}
+
+// parentBlob 父版本 blob 宽容读：无父（首版）、父中无该路径或改名链错位 → 空。
+func (g *gitEngine) parentBlob(ctx context.Context, fullID, path string) string {
+	if !g.hasParent(ctx, fullID) {
+		return ""
+	}
+	data, err := g.readBlob(ctx, fullID+"^:"+path)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// hasParent rev-parse --verify --quiet 判父存在（快照历史线性，父即上一版）。
+func (g *gitEngine) hasParent(ctx context.Context, id string) bool {
+	out, _, err := g.run(ctx, "rev-parse", "--verify", "--quiet", id+"^")
+	return err == nil && strings.TrimSpace(out) != ""
+}
+
+// readBlob show <rev-spec> 的 stdout 字节（Output 而非 Combined：一个字节都不能混）。
+// 调用方必须已持 g.mu（gitEngine 仓库级串行闸）。
+func (g *gitEngine) readBlob(ctx context.Context, revSpec string) ([]byte, error) {
+	cmd := g.command(ctx, "show", revSpec)
 	var so bytes.Buffer
 	cmd.Stdout = &so
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("该版本中不存在 %s（git show: %v）", relPath, err)
+		return nil, err
 	}
 	return so.Bytes(), nil
+}
+
+// file 取版本内字节（gitEngine 仓库级串行闸）。路径引擎侧自检白名单，
+// 与服务层闸门构成双重防线（双闸纪律，N33 §3）。
+func (g *gitEngine) file(ctx context.Context, id, relPath string) ([]byte, error) {
+	if !Whitelisted(relPath) || strings.Contains(relPath, "..") {
+		return nil, fmt.Errorf("非法的快照路径: %s", relPath)
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	data, err := g.readBlob(ctx, id+":"+relPath)
+	if err != nil {
+		return nil, fmt.Errorf("该版本中不存在 %s（git show: %v）", relPath, err)
+	}
+	return data, nil
 }
 
 // heal 连续失败自愈：现仓库整体改名保留（尽力不丢历史），重 init 空仓库再战

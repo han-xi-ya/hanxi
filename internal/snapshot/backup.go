@@ -212,11 +212,16 @@ func (b *backupEngine) revisionFiles(ctx context.Context, id string) ([]Revision
 // file 读某份备份中的文件字节。rel 先过白名单+穿越双闸（引擎侧防御，
 // 不依赖服务层先行校验的时序）。
 func (b *backupEngine) file(ctx context.Context, id, relPath string) ([]byte, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.fileLocked(id, relPath)
+}
+
+// fileLocked file 的免锁内核（调用方持 b.mu）。
+func (b *backupEngine) fileLocked(id, relPath string) ([]byte, error) {
 	if !Whitelisted(relPath) || strings.Contains(relPath, "..") {
 		return nil, fmt.Errorf("非法的恢复路径: %s", relPath)
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
 	if !backupIDRe.MatchString(id) {
 		return nil, fmt.Errorf("备份模式版本标识应为时间戳目录: %s", id)
 	}
@@ -239,6 +244,179 @@ func (b *backupEngine) file(ctx context.Context, id, relPath string) ([]byte, er
 		return nil, fmt.Errorf("该版本中不存在 %s: %w", relPath, err)
 	}
 	return data, nil
+}
+
+// fileChanges 读时算：旧→新逐对相邻 manifest 指纹差集，摊平为该窗内全部变化
+// 事件（首份备份中出现的文件计 A；无改名检测——影子拷贝形态上就不具备，
+// 如实以独立 A/D 呈现，不硬造"改名"假信号）。返回按新→旧排序，Changes 定序。
+func (b *backupEngine) fileChanges(ctx context.Context, window int) ([]versionChanges, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	dirs, err := b.backupDirs()
+	if err != nil {
+		return nil, err
+	}
+	if window <= 0 || window > maxListRevisions {
+		window = maxListRevisions
+	}
+	// 差集必须带着"窗外前一份"做基线：先截窗再差分会把窗外旧版误报成 A
+	// （"从未存在过"假信号），故对全量目录差分、输出端再截窗。
+	type entry struct {
+		id      string
+		time    time.Time
+		changes []fileChange
+		summary string
+	}
+	var evts []entry
+	var prev map[string]string
+	for _, d := range dirs {
+		m, ok, err := b.readManifest(d)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		var chs []fileChange
+		for p, sum := range m {
+			if old, had := prev[p]; !had || old != sum {
+				chs = append(chs, fileChange{Status: "A", Path: p})
+				if had {
+					chs[len(chs)-1].Status = "M"
+				}
+			}
+		}
+		for p := range prev {
+			if _, alive := m[p]; !alive {
+				chs = append(chs, fileChange{Status: "D", Path: p})
+			}
+		}
+		sort.Slice(chs, func(i, j int) bool {
+			if chs[i].Path != chs[j].Path {
+				return chs[i].Path < chs[j].Path
+			}
+			return chs[i].Status < chs[j].Status
+		})
+		evts = append(evts, entry{
+			id: d, time: parseBackupDirTime(d), changes: chs,
+			summary: fmt.Sprintf("%d 个文件", len(m)),
+		})
+		prev = m
+	}
+	// 截窗（保留最近 window 份）后反转为新→旧
+	if len(evts) > window {
+		evts = evts[len(evts)-window:]
+	}
+	out := make([]versionChanges, 0, len(evts))
+	for i := len(evts) - 1; i >= 0; i-- {
+		out = append(out, versionChanges{
+			ID: evts[i].id, Time: evts[i].time.Format(time.RFC3339),
+			Summary: evts[i].summary, Changes: evts[i].changes,
+		})
+	}
+	return out, nil
+}
+
+// fileHistory 单文件时间线：fileChanges 差集事件按路径过滤（备份无改名概念，
+// 独立 A/D 如实呈现，与 git 侧口径对齐）。
+func (b *backupEngine) fileHistory(ctx context.Context, rel string, window int) ([]FileRevision, error) {
+	recs, err := b.fileChanges(ctx, window)
+	if err != nil {
+		return nil, err
+	}
+	var out []FileRevision
+	for _, rec := range recs {
+		for _, ch := range rec.Changes {
+			if ch.Path == rel {
+				st := ch.Status
+				if st == "" {
+					st = "M"
+				}
+				out = append(out, FileRevision{
+					RevisionID: rec.ID, Time: rec.Time, Status: st, Summary: rec.Summary,
+				})
+			}
+		}
+	}
+	return out, nil
+}
+
+// fileDiff 全量拷贝形态随处可取：New=本目录文件（不在清单则空），Old=本目录之前
+// 最近一份含该路径的目录文件；状态按与紧邻前一份的差集口径（无变化记录如实报错）。
+func (b *backupEngine) fileDiff(ctx context.Context, id, relPath string) (fileDiffRaw, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !Whitelisted(relPath) || strings.Contains(relPath, "..") {
+		return fileDiffRaw{}, fmt.Errorf("非法的对比路径: %s", relPath)
+	}
+	if !backupIDRe.MatchString(id) {
+		return fileDiffRaw{}, fmt.Errorf("备份模式版本标识应为时间戳目录: %s", id)
+	}
+	dirs, err := b.backupDirs()
+	if err != nil {
+		return fileDiffRaw{}, err
+	}
+	sort.Strings(dirs)
+	idx := sort.SearchStrings(dirs, id)
+	if idx >= len(dirs) || dirs[idx] != id {
+		return fileDiffRaw{}, fmt.Errorf("备份版本 %s 不存在或清单无效", id)
+	}
+	cur, curOK, err := b.readManifest(id)
+	if err != nil {
+		return fileDiffRaw{}, err
+	}
+	if !curOK {
+		return fileDiffRaw{}, fmt.Errorf("备份版本 %s 不存在或清单无效", id)
+	}
+	raw := fileDiffRaw{Summary: fmt.Sprintf("%d 个文件", len(cur))}
+	_, hasNow := cur[relPath]
+	var prevMap map[string]string
+	var hadPrev bool
+	if idx > 0 {
+		if m, ok, merr := b.readManifest(dirs[idx-1]); merr == nil && ok {
+			prevMap = m
+			_, hadPrev = m[relPath]
+		}
+	}
+	switch {
+	case hasNow && !hadPrev:
+		raw.Status = "A"
+	case hasNow && prevMap[relPath] != cur[relPath]:
+		raw.Status = "M"
+	case !hasNow && hadPrev:
+		raw.Status = "D"
+	default:
+		return fileDiffRaw{}, fmt.Errorf("版本 %s 中 %s 无变化记录", id, relPath)
+	}
+	if hasNow {
+		data, ferr := b.fileLocked(id, relPath)
+		if ferr != nil {
+			return fileDiffRaw{}, ferr
+		}
+		raw.New = string(data)
+	}
+	// 旧内容：向前找最近一份含该路径的目录（全量拷贝，不必紧邻）
+	if raw.Status != "A" {
+		for i := idx - 1; i >= 0; i-- {
+			m, ok, merr := b.readManifest(dirs[i])
+			if merr != nil {
+				return fileDiffRaw{}, merr
+			}
+			if !ok {
+				continue
+			}
+			if _, has := m[relPath]; !has {
+				continue
+			}
+			data, ferr := b.fileLocked(dirs[i], relPath)
+			if ferr != nil {
+				return fileDiffRaw{}, ferr
+			}
+			raw.Old = string(data)
+			break
+		}
+	}
+	return raw, nil
 }
 
 // heal 备份目录无"仓库损坏"概念（每份独立时间戳目录），no-op。

@@ -466,6 +466,35 @@ func (s *MemoService) RestoreFile(id, content string) error {
 	return nil
 }
 
+// TitleForWhitelistPath 把快照白名单路径 memo/<id>.md 映射为便签标题（N33 §2
+// ListFiles 左栏展示用；经装配根注入 internal/snapshot 的标题 resolver 钩子，
+// 规避 snapshot→memo 包引用）。走标准调用门（RPC 门覆盖矩阵同口径）：memo
+// 停用期返 false，快照页如实回落文件名，不借标题旁路复活停用模块的数据面。
+// 非 memo 形态、未命中或空标题同样返 false。
+func (s *MemoService) TitleForWhitelistPath(rel string) (string, bool) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", false
+	}
+	defer release()
+
+	if !strings.HasPrefix(rel, "memo/") || !strings.HasSuffix(rel, ".md") {
+		return "", false
+	}
+	id := strings.TrimSuffix(rel[strings.LastIndex(rel, "/")+1:], ".md")
+	if id == "" {
+		return "", false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, it := range s.items {
+		if it.ID == id {
+			return it.Title, strings.TrimSpace(it.Title) != ""
+		}
+	}
+	return "", false
+}
+
 func (s *MemoService) emitChanged() {
 	if s.onChanged != nil {
 		s.onChanged()

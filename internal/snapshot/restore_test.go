@@ -15,6 +15,10 @@ type fakeEngine struct {
 	fileErr      error
 	changedFiles []string
 	commitFn     func() error
+	versionRecs  []versionChanges // fileChanges 桩素材
+	historyRevs  []FileRevision   // fileHistory 桩素材
+	diffErr      error            // fileDiff 桩错误
+	diffRaw      fileDiffRaw      // fileDiff 桩结果
 }
 
 func (f *fakeEngine) mode() string { return ModeGit }
@@ -39,6 +43,17 @@ func (f *fakeEngine) file(ctx context.Context, id, rel string) ([]byte, error) {
 		return nil, f.fileErr
 	}
 	return f.data, nil
+}
+func (f *fakeEngine) fileChanges(context.Context, int) ([]versionChanges, error) {
+	f.calls = append(f.calls, "fileChanges")
+	return f.versionRecs, nil
+}
+func (f *fakeEngine) fileHistory(context.Context, string, int) ([]FileRevision, error) {
+	f.calls = append(f.calls, "fileHistory")
+	return f.historyRevs, nil
+}
+func (f *fakeEngine) fileDiff(context.Context, string, string) (fileDiffRaw, error) {
+	return f.diffRaw, f.diffErr
 }
 func (f *fakeEngine) heal(context.Context) {}
 

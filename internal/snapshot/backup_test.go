@@ -196,6 +196,107 @@ func TestBackupEnginePublishFailureLeavesNoVisibleRevision(t *testing.T) {
 	}
 }
 
+// TestBackupEngineFileAxis N33 批 A 备份模式文件为轴读面：相邻 manifest 差集
+// 的 A/M/D 真事件、单文件时间线、全量拷贝形态下的新旧双读与门卫。
+func TestBackupEngineFileAxis(t *testing.T) {
+	eng, dataDir := newTestBackupEngine(t)
+	ctx := context.Background()
+
+	write(t, dataDir, "config.json", `{"a":1}`)
+	write(t, dataDir, "memo/a.md", "alpha")
+	if err := eng.commit(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dataDir, "config.json", `{"a":2}`)
+	if err := os.Remove(filepath.Join(dataDir, "memo", "a.md")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dataDir, "state/x.json", `{}`)
+	if err := eng.commit(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := eng.fileChanges(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) != 2 {
+		t.Fatalf("recs = %+v", recs)
+	}
+	// 新→旧；新版事件按路径定序：config M / memo D / state A
+	wantNew := []fileChange{
+		{Status: "M", Path: "config.json"},
+		{Status: "D", Path: "memo/a.md"},
+		{Status: "A", Path: "state/x.json"},
+	}
+	if len(recs[0].Changes) != 3 {
+		t.Fatalf("new changes = %+v", recs[0].Changes)
+	}
+	for i, c := range recs[0].Changes {
+		if c != wantNew[i] {
+			t.Errorf("new change %d = %+v want %+v", i, c, wantNew[i])
+		}
+	}
+	if got := changeSeq(recs[1].Changes); got != "AA" {
+		t.Errorf("首份应全 A: %s", got)
+	}
+	// 观察窗截到 1 份：差集基线仍在窗外，不得把 M 报成 A
+	if one, err := eng.fileChanges(ctx, 1); err != nil || len(one) != 1 ||
+		changeSeq(one[0].Changes) != "MDA" {
+		t.Errorf("window=1 = %+v %v", one, err)
+	}
+
+	hist, err := eng.fileHistory(ctx, "memo/a.md", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := statusSeq(hist); got != "DA" {
+		t.Errorf("memo/a 时间线 = %s", got)
+	}
+	if h2, _ := eng.fileHistory(ctx, "state/unknown.json", 10); len(h2) != 0 {
+		t.Errorf("无关路径应为空: %+v", h2)
+	}
+
+	// fileDiff：删除回取旧文、修改双读、首版 A 无旧
+	d, err := eng.fileDiff(ctx, recs[0].ID, "memo/a.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Status != "D" || d.New != "" || d.Old != "alpha" {
+		t.Errorf("D 对比 = %+v", d)
+	}
+	if d, err := eng.fileDiff(ctx, recs[0].ID, "config.json"); err != nil ||
+		d.Status != "M" || d.Old != `{"a":1}` || d.New != `{"a":2}` {
+		t.Errorf("M 对比 = %+v %v", d, err)
+	}
+	if d, err := eng.fileDiff(ctx, recs[1].ID, "config.json"); err != nil ||
+		d.Status != "A" || d.Old != "" {
+		t.Errorf("首版 A 对比 = %+v %v", d, err)
+	}
+	// 该版未触及此文件：如实报错
+	if _, err := eng.fileDiff(ctx, recs[1].ID, "state/x.json"); err == nil {
+		t.Error("无变化记录应报错")
+	}
+	// 门卫：git hash 形态、非法目录、越界路径
+	if _, err := eng.fileDiff(ctx, "deadbeef999", "config.json"); err == nil {
+		t.Error("git hash 形态在备份模式应拒")
+	}
+	if _, err := eng.fileDiff(ctx, "20200101-000000", "config.json"); err == nil {
+		t.Error("不存在的版本应报错")
+	}
+	if _, err := eng.fileDiff(ctx, recs[0].ID, "runtime/x.toml"); err == nil {
+		t.Error("白名单外应拒")
+	}
+}
+
+func changeSeq(chs []fileChange) string {
+	var b strings.Builder
+	for _, c := range chs {
+		b.WriteString(c.Status)
+	}
+	return b.String()
+}
+
 func TestParseBackupDirTime(t *testing.T) {
 	ts := parseBackupDirTime("20260917-143000")
 	if ts.Format(backupTimeLayout) != "20260917-143000" {
