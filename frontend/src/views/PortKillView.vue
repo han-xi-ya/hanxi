@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { onMounted, ref, shallowRef } from 'vue'
 import * as PortKillAPI from '../../bindings/hanxi/internal/modules/portkill'
 import type { PortOccupant, KillResult } from '../../bindings/hanxi/internal/modules/portkill/models'
 import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
@@ -12,7 +12,7 @@ import HistoryPanel from '../components/tool/HistoryPanel.vue'
 import UiHistoryDialog from '../components/ui/UiHistoryDialog.vue'
 
 const { showToast } = useToast()
-const { confirm, confirmState } = useConfirm()
+const { confirm } = useConfirm()
 const { copyWithToast } = useClipboard()
 
 const inputPort = ref<number | ''>('')

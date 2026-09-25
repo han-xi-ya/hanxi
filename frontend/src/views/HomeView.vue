@@ -27,7 +27,7 @@ import { useAsyncAction } from '../composables/useAsyncAction'
 import { useModuleCatalog, type ModuleEntry } from '../composables/useModuleCatalog'
 import { MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../constants/navigation'
 import { appIconName } from '../constants/appIcons'
-import type { IconName, RenderableIcon } from '../constants/icons'
+import type { RenderableIcon } from '../constants/icons'
 import {
   SUMMARY_META,
   healthMeta,

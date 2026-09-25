@@ -4,7 +4,7 @@
 // 三输入通道（对话框选图 / 拖拽 / 粘贴）汇流为 ImageRef 后统一转发 path 模式识别；
 // 状态以事件为主、5s 轮询兜底。
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
 import type { DropResult as GeneratedDropResult, EngineInfo, HostedVersion, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
 import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
@@ -26,7 +26,7 @@ import UiHistoryDialog from '../components/ui/UiHistoryDialog.vue'
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
-const { confirm, confirmState } = useConfirm() // confirmState 只读不写：历史弹窗 Esc 让位用（同 CommandPalette 门禁先例）
+const { confirm } = useConfirm()
 
 // DropResult 的新增字段由本次 Go DTO 提供；绑定产物按协作约定由协调者统一生成。
 type DropResult = GeneratedDropResult & {

@@ -48,7 +48,7 @@ describe('useTheme 跨窗广播（N39）', () => {
   })
 
   it('initTheme 订阅 theme:changed；启动后端校正不广播', async () => {
-    const mod = await loadFresh()
+    await loadFresh()
     expect(handlers.has('theme:changed')).toBe(true)
     // 再装一窗：后端 dark 与缓存 light 分歧 → 校正只应用 DOM，不 Emit
     // （防每窗起手都播一场事件风暴；真相已在后端，无需回声）
