@@ -17,9 +17,13 @@ const api = vi.hoisted(() => ({
   OpenUsbipdReleases: vi.fn(),
 }))
 
+// confirm/toast 提升为受控替身：一键直通三岔（UAC 同意/取消、失败归因文案）逐条断言。
+const confirmMock = vi.hoisted(() => vi.fn(async () => true))
+const showToast = vi.hoisted(() => vi.fn())
+
 vi.mock('../../../../bindings/hanxi/internal/modules/wsl/wslservice', () => api)
-vi.mock('../../../composables/useToast', () => ({ useToast: () => ({ showToast: vi.fn() }) }))
-vi.mock('../../../composables/useConfirm', () => ({ useConfirm: () => ({ confirm: vi.fn(async () => true) }) }))
+vi.mock('../../../composables/useToast', () => ({ useToast: () => ({ showToast }) }))
+vi.mock('../../../composables/useConfirm', () => ({ useConfirm: () => ({ confirm: confirmMock }) }))
 vi.mock('../../../composables/usePolling', () => ({ usePolling: (fn: () => unknown) => { void fn(); return {} } }))
 
 const entry = {
@@ -35,11 +39,54 @@ function device(state: string, busId = '2-3') {
   }
 }
 
+function instance(name: string, opts: Partial<{ running: boolean; default: boolean; version: string }> = {}) {
+  return {
+    name, running: true, default: false, version: '2',
+    stateText: '', basePath: '', vhdxPath: '', sizeBytes: 0, ...opts,
+  }
+}
+
+function overview(devices: ReturnType<typeof device>[], over: Record<string, unknown> = {}) {
+  return {
+    installed: true, version: '5.3.0', devices, ledger: [], autoEnabled: false,
+    replayBusy: false, releasesPage: 'https://github.com/dorssel/usbipd-win/releases', ...over,
+  }
+}
+
+// 选择框走真 Teleport（teleport 桩会掐断插槽内依赖追踪，弹窗成了死 DOM）；
+// 挂载点钉在 body，弹窗断言一律 document.body 直查，用例间清场。
+async function mountPanel(ov: ReturnType<typeof overview>, instances: ReturnType<typeof instance>[] = []) {
+  api.GetUsbOverview.mockResolvedValue(ov)
+  const wrapper = mount(WslUsbPanel, { props: { instances }, attachTo: document.body })
+  await flushPromises()
+  return wrapper
+}
+
+function pickDialog(): HTMLElement | null {
+  return document.body.querySelector('[role="dialog"]')
+}
+function pickRadio(dialog: HTMLElement, name: string): HTMLInputElement {
+  return Array.from(dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]')).find(r => r.value === name)!
+}
+function dialogButton(dialog: HTMLElement, text: string): HTMLButtonElement {
+  return Array.from(dialog.querySelectorAll<HTMLButtonElement>('button')).find(b => b.textContent?.includes(text))!
+}
+async function chooseDistro(name: string) {
+  const dialog = pickDialog()
+  expect(dialog).not.toBeNull()
+  const radio = pickRadio(dialog!, name)
+  radio.checked = true
+  radio.dispatchEvent(new Event('change', { bubbles: true }))
+  await flushPromises()
+  dialogButton(dialog!, '直通').click()
+  await flushPromises()
+}
+
+const byText = (wrapper: Awaited<ReturnType<typeof mountPanel>>, text: string) =>
+  wrapper.findAll('button').find(b => b.text().includes(text))
+
 async function statusFor(devices: ReturnType<typeof device>[]) {
-  api.GetUsbOverview.mockResolvedValue({
-    installed: true, version: '5.3.0', devices, ledger: [entry], autoEnabled: true,
-    replayBusy: false, releasesPage: 'https://github.com/dorssel/usbipd-win/releases',
-  })
+  api.GetUsbOverview.mockResolvedValue(overview(devices, { ledger: [entry], autoEnabled: true }))
   const wrapper = mount(WslUsbPanel, { props: { instances: [] } })
   await flushPromises()
   const ledgerTable = wrapper.findAll('table')[1]
@@ -58,5 +105,147 @@ describe('WslUsbPanel 账本现态', () => {
 
   it('空 busid 设备不可能误命中，呈现不在场', async () => {
     expect(await statusFor([device('shared', '')])).toContain('不在场')
+  })
+})
+
+describe('WslUsbPanel 一键直通（N31 方案 A）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    confirmMock.mockResolvedValue(true)
+    // 高级操作折叠态持久化在 localStorage：清空防跨用例串味（默认收起）。
+    localStorage.clear()
+    // attachTo 挂载与 Teleport 弹窗都落在 body：逐例清场防串扰。
+    document.body.innerHTML = ''
+  })
+
+  it('未装 usbipd：只渲染引导卡（复制命令+发布页出路），没有直通按钮', async () => {
+    const w = await mountPanel(overview([], { installed: false }))
+    expect(w.text()).toContain('需要 usbipd-win')
+    expect(byText(w, '一键直通')).toBeUndefined()
+    expect(byText(w, '📋 复制命令')).toBeDefined()
+    expect(byText(w, '打开官方发布页')).toBeDefined()
+  })
+
+  it('唯一发行版+未共享：UAC 明示 → bind 成功后 attach（一次点击全链）', async () => {
+    api.BindUsbDevice.mockResolvedValue({ success: true, message: '已共享' })
+    api.AttachUsbDevice.mockResolvedValue({ success: true, message: '已附加' })
+    const w = await mountPanel(overview([device('notshared')]), [instance('Ubuntu')])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    // UAC 事前明示（确认文案点破"会弹系统授权"）
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(confirmMock.mock.calls[0])).toContain('UAC')
+    expect(api.BindUsbDevice).toHaveBeenCalledWith('2-3', false)
+    expect(api.AttachUsbDevice).toHaveBeenCalledWith('2-3', 'Ubuntu')
+    // bind 在前、attach 在后
+    expect(api.BindUsbDevice.mock.invocationCallOrder[0]).toBeLessThan(api.AttachUsbDevice.mock.invocationCallOrder[0])
+  })
+
+  it('已共享+唯一发行版：不弹 UAC，直接 attach', async () => {
+    api.AttachUsbDevice.mockResolvedValue({ success: true, message: '已附加' })
+    const w = await mountPanel(overview([device('shared')]), [instance('Ubuntu')])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    expect(confirmMock).not.toHaveBeenCalled()
+    expect(api.BindUsbDevice).not.toHaveBeenCalled()
+    expect(api.AttachUsbDevice).toHaveBeenCalledWith('2-3', 'Ubuntu')
+  })
+
+  it('UAC 预确认取消：bind 与 attach 都不发生', async () => {
+    confirmMock.mockResolvedValue(false)
+    const w = await mountPanel(overview([device('notshared')]), [instance('Ubuntu')])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    expect(api.BindUsbDevice).not.toHaveBeenCalled()
+    expect(api.AttachUsbDevice).not.toHaveBeenCalled()
+  })
+
+  it('bind 回执失败（如系统 UAC 被拒）：中止 attach，中文归因提示分步重试', async () => {
+    api.BindUsbDevice.mockResolvedValue({ success: false, message: '用户在 UAC 授权窗口点了取消' })
+    const w = await mountPanel(overview([device('notshared')]), [instance('Ubuntu')])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    expect(api.AttachUsbDevice).not.toHaveBeenCalled()
+    const msg = showToast.mock.calls.map(c => String(c[0])).join('\n')
+    expect(msg).toContain('共享（bind）未完成')
+    expect(msg).toContain('用户在 UAC 授权窗口点了取消')
+    expect(msg).toContain('高级操作')
+  })
+
+  it('attach 抛错：withOp 兜底中文回执且不误报成功', async () => {
+    api.AttachUsbDevice.mockRejectedValue(new Error('附加失败: 设备尚未共享'))
+    const w = await mountPanel(overview([device('shared')]), [instance('Ubuntu')])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    const msg = showToast.mock.calls.map(c => String(c[0])).join('\n')
+    expect(msg).toContain('附加失败')
+  })
+
+  it('多发行版无默认：先弹选择框，选定 Debian 才附加', async () => {
+    api.AttachUsbDevice.mockResolvedValue({ success: true, message: '已附加' })
+    const instances = [instance('Ubuntu', { running: false }), instance('Debian')]
+    const w = await mountPanel(overview([device('shared')]), instances)
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    const dialog = pickDialog()
+    expect(dialog?.textContent).toContain('直通给哪个发行版')
+    expect(dialog?.textContent).toContain('顺手拉起') // 未运行提示如实标注
+    expect(api.AttachUsbDevice).not.toHaveBeenCalled()
+    await chooseDistro('Debian')
+    expect(api.AttachUsbDevice).toHaveBeenCalledWith('2-3', 'Debian')
+  })
+
+  it('选择框点取消：整条直通链不动', async () => {
+    const w = await mountPanel(overview([device('shared')]), [instance('Ubuntu'), instance('Debian')])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    expect(pickDialog()).not.toBeNull()
+    dialogButton(pickDialog()!, '取消').click()
+    await flushPromises()
+    expect(pickDialog()).toBeNull()
+    expect(api.AttachUsbDevice).not.toHaveBeenCalled()
+    expect(api.BindUsbDevice).not.toHaveBeenCalled()
+  })
+
+  it('选择框选定后按行记忆：第二次直通不再弹选', async () => {
+    api.AttachUsbDevice.mockResolvedValue({ success: true, message: '已附加' })
+    const instances = [instance('Ubuntu'), instance('Debian')]
+    const w = await mountPanel(overview([device('shared')]), instances)
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    await chooseDistro('Debian')
+    // 行级记忆生效：第二次点击不弹框，直接按 Debian 附加
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    expect(pickDialog()).toBeNull()
+    expect(api.AttachUsbDevice).toHaveBeenCalledTimes(2)
+    expect(api.AttachUsbDevice).toHaveBeenLastCalledWith('2-3', 'Debian')
+  })
+
+  it('零 WSL2 发行版：直通中止并引导去装发行版，不碰 usbipd 命令', async () => {
+    const w = await mountPanel(overview([device('notshared')]), [instance('Legacy', { version: '1' })])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    expect(api.BindUsbDevice).not.toHaveBeenCalled()
+    expect(api.AttachUsbDevice).not.toHaveBeenCalled()
+    expect(showToast.mock.calls.map(c => String(c[0])).join('\n')).toContain('还没有 WSL2 发行版')
+  })
+
+  it('高级操作默认收起；点「🔧 高级操作」展开后细粒度按钮回来且选择被记住', async () => {
+    const w = await mountPanel(overview([device('shared')]), [instance('Ubuntu')])
+    expect(byText(w, '取消共享')).toBeUndefined()
+    expect(byText(w, '附加')).toBeUndefined()
+    await byText(w, '高级操作')!.trigger('click')
+    expect(byText(w, '✂ 取消共享')).toBeDefined()
+    expect(byText(w, '▶ 附加')).toBeDefined()
+    expect(byText(w, '⭐ 自动共享')).toBeDefined()
+    expect(localStorage.getItem('hanxi.wsl.usb.advanced')).toBe('1')
+  })
+
+  it('高级操作展开态跨挂载记忆（localStorage）', async () => {
+    localStorage.setItem('hanxi.wsl.usb.advanced', '1')
+    const w = await mountPanel(overview([device('shared')]), [instance('Ubuntu')])
+    expect(byText(w, '✂ 取消共享')).toBeDefined()
   })
 })

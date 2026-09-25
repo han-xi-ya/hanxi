@@ -1,13 +1,16 @@
 <script setup lang="ts">
-// WSL「🔌 USB 直通」页签（F9：usbipd-win 集成）。
-// 列集对齐 wsl-dashboard 实测（总线号/VID:PID/描述/序列号/状态/客户端 IP），
-// 操作全部点点点：共享 bind（提权 UAC）、附加 attach（用户态，未共享时先补 bind）、
-// 卸下 detach、取消共享 unbind（在场按 busid、不在场按 GUID）。
+// WSL「🔌 USB 直通」页签（F9：usbipd-win 集成；N31 方案 A：零门槛一键直通）。
+// 列集对齐 wsl-dashboard 实测（总线号/VID:PID/描述/序列号/状态/客户端 IP）。
+// 主路径（A 方案）：设备行「⚡ 一键直通」一次点击自动完成 目标发行版解析 →
+// 未共享时 bind（提权 UAC，事前明示）→ attach；默认/唯一发行版直接附加，
+// 多发行版且无默认才弹选择框；每步失败中文如实归因，刷新后按现态可单独重试。
+// 细粒度操作（仅共享/下拉选发行版附加/取消共享等）收进「高级操作」折叠区
+// （面板级开关 + localStorage 记忆），高级用户仍全量可用，一个不删。
 // 开机自动共享 = Hanxi 账本 + 重放（不自建计划任务、不碰 usbipd 原生 auto-attach）：
 // 设备行「⭐ 登记」写账本，hanxi 启动/发行版启动自动重放，总开关默认关。
 // 本面板随页签 v-if 挂载：usePolling 生命周期即开关（离开页签零轮询，
 // 对齐 usePolling 的 KeepAlive 契约与"冷页避免无谓探测"的 wsl 模块惯例）。
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import * as WSLAPI from '../../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { USBShareEntry, UsbView } from '../../../bindings/hanxi/internal/modules/wsl/models'
 import type { Device } from '../../../bindings/hanxi/internal/modules/wsl/usbipd/models'
@@ -41,6 +44,64 @@ const defaultDistro = computed(() => {
   return def?.name ?? ''
 })
 const distroFor = (d: Device) => rowDistro.value[d.busId] || defaultDistro.value
+
+// ---- N31 方案 A：零门槛一键直通 ----
+// 目标解析顺位：行级手选（高级模式遗留）> 默认 WSL2 发行版 > 唯一 WSL2 发行版；
+// 多发行版且无默认才弹选择框（用户没点名时绝不代猜）。发行版未运行不用管——
+// AttachUsbDevice 后端顺手拉起。
+const wsl2Instances = computed(() => props.instances.filter(i => i.version === '2'))
+
+function autoTarget(): string {
+  const cands = wsl2Instances.value
+  const def = cands.find(i => i.default)
+  if (def) return def.name
+  return cands.length === 1 ? cands[0].name : ''
+}
+// 一行设备此刻的直通目标（按钮标题与折叠态目标列共用）。
+const passthroughTarget = (d: Device) => rowDistro.value[d.busId] || autoTarget()
+
+// 「高级操作」折叠：默认收起（零门槛用户只见一键直通/卸下），选择跨会话记忆。
+const ADV_KEY = 'hanxi.wsl.usb.advanced'
+const advancedOpen = ref(readAdvancedPref())
+function readAdvancedPref(): boolean {
+  try { return localStorage.getItem(ADV_KEY) === '1' } catch { return false }
+}
+function toggleAdvanced() {
+  advancedOpen.value = !advancedOpen.value
+  try { localStorage.setItem(ADV_KEY, advancedOpen.value ? '1' : '0') } catch { /* 隐私模式写失败：不记忆即可 */ }
+}
+
+// 多发行版选择框（面板内微型模态）：resolve 选中名，取消/Esc/遮罩 resolve null。
+const pickOpen = ref(false)
+const pickChoice = ref('')
+const pickDialog = ref<HTMLElement | null>(null)
+const pickDevice = ref<Device | null>(null)
+let pickResolve: ((name: string | null) => void) | null = null
+
+function askDistroChoice(d: Device): Promise<string | null> {
+  pickDevice.value = d
+  pickChoice.value = ''
+  pickOpen.value = true
+  return new Promise((resolve) => { pickResolve = resolve })
+}
+function settlePick(name: string | null) {
+  if (!pickOpen.value) return
+  pickOpen.value = false
+  pickResolve?.(name)
+  pickResolve = null
+}
+// Enter 提交（Esc 绑在弹窗上）；未选时不给落定，保持等待。
+function submitPick() {
+  if (pickChoice.value) settlePick(pickChoice.value)
+}
+watch(pickOpen, async (open) => {
+  if (open) {
+    await nextTick()
+    pickDialog.value?.focus()
+  }
+})
+// 面板卸载时未决选择框按取消落定，防 Promise 悬挂（共享弹窗泄漏兜底同款纪律）。
+onBeforeUnmount(() => settlePick(null))
 
 async function load(silent = false) {
   if (loading.value) return
@@ -140,20 +201,50 @@ const unbindAbsent = (d: Device) => withOp(async () => {
   showToast(out?.message || '已提交取消共享')
 })
 
+// 主按钮 title：把"会发生什么"（UAC 与否、目标谁）说在人点之前。
+function oneClickTitle(d: Device): string {
+  const t = passthroughTarget(d)
+  const target = t ? `附加到 ${t}` : wsl2Instances.value.length > 1 ? '先弹选目标发行版再附加' : '自动选目标发行版附加'
+  return d.state === 'notshared'
+    ? `一次点击直通：先 bind 共享（需管理员，会弹 UAC），再${target}`
+    : `一次点击直通：${target}（用户态，不弹 UAC）`
+}
+
+// 一键直通（A 方案主按钮）：目标解析 →（未共享时 UAC 明示 + bind）→ attach。
+// 每步失败中文如实归因后中止；withOp 收尾必刷新，行现态即真相——
+// bind 成功、attach 失败时设备已变「已共享」，再点直通自动跳过 bind 只补附加（天然分步重试）。
+const oneClickAttach = (d: Device) => withOp(async () => {
+  let distro = passthroughTarget(d)
+  if (!distro) {
+    if (!wsl2Instances.value.length) {
+      showToast('本机还没有 WSL2 发行版——先到「本机发行版」页装一个', { duration: 8000 })
+      return
+    }
+    const chosen = await askDistroChoice(d)
+    if (!chosen) return // 用户放弃选择：整链不动
+    // 按行记忆本次点选，同排设备下次直通不再弹选（行内下拉与标题同步跟随）。
+    rowDistro.value[d.busId] = chosen
+    distro = chosen
+  }
+  if (d.state === 'notshared') {
+    if (!(await askUac(`一键直通 ${d.busId}（${d.description}）到 ${distro}？`, `一次点击完成两步：先 bind 共享（需管理员），再附加到 ${distro}。`))) return
+    const b = await WSLAPI.BindUsbDevice(d.busId, false)
+    if (!b?.success) {
+      showToast(`共享（bind）未完成：${b?.message || '原因未知'}。附加已中止——可重试一键直通，或在「高级操作」里单独共享`, { duration: 8000 })
+      return
+    }
+  }
+  const out = await WSLAPI.AttachUsbDevice(d.busId, distro)
+  showToast(out?.message || `已附加到 ${distro}`)
+})
+
+// 高级操作·附加：纯 attach（用户态、不弹 UAC），目标取行内下拉；
+// 与一键直通的分工=这里绝不自动补 bind——「先共享后附加」的编排交给主按钮。
 const attachDevice = (d: Device) => withOp(async () => {
   const distro = distroFor(d)
   if (!distro) {
     showToast('本机还没有 WSL2 发行版——先到「本机发行版」页装一个')
     return
-  }
-  // 一键直通（蓝本同款体验）：未共享时在同一次点击里先补 bind 再 attach。
-  if (d.state === 'notshared') {
-    if (!(await askUac(`直通设备 ${d.busId} 到 ${distro}？`, `设备尚未共享，本次将先执行 bind（管理员）再附加到 ${distro}。`))) return
-    const b = await WSLAPI.BindUsbDevice(d.busId, false)
-    if (!b?.success) {
-      showToast(b?.message || 'bind 未完成，附加已中止')
-      return
-    }
   }
   const out = await WSLAPI.AttachUsbDevice(d.busId, distro)
   showToast(out?.message || '已提交附加')
@@ -282,7 +373,11 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
     <p class="guide-text">
       「USB 直通」把 Windows 本机 USB 设备（串口、加密狗、存储类等）共享并附加给 WSL2 发行版，
       底层由开源工具 <b>usbipd-win</b> 承担。安装一次即可长期使用；绑定（bind）需管理员，
-      附加/卸下无需。
+      附加/卸下无需。装好后本页每台设备一行一个「⚡ 一键直通」，一次点击完成共享+附加。
+    </p>
+    <p class="guide-text hint-dim">
+      为什么不代装：usbipd-win 要落系统服务 + ViPciBus 内核驱动 + 证书，属系统级安装，
+      交给上游正规安装器（MSI/winget）完成最稳妥，hanxi 不越俎代庖。
     </p>
     <ol class="guide-steps">
       <li>官方发布页下载 MSI 安装（或复制下方 winget 命令）：
@@ -311,7 +406,7 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
     <div class="control-panel">
       <div class="meta-info">
         <span>usbipd <b class="mono">v{{ view.version || '?' }}</b> · 列：总线号 / VID:PID / 设备 / 序列号 / 状态 / 客户端；
-          共享(bind)需管理员，附加(attach)/卸下(detach)用户态即行。</span>
+          日常只需「⚡ 一键直通」（自动共享+附加，未共享时弹 UAC），细粒度拆分在「🔧 高级操作」。</span>
         <span class="hint-dim">只登记与管理 Hanxi 账本内的自动共享；usbipd 自身与他机远程 usbip 不触碰</span>
       </div>
       <label class="auto-switch" :key="switchKey" title="开机自动共享总开关：hanxi 启动/拉起发行版时按账本补挂（默认关）">
@@ -322,6 +417,9 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
         <button class="btn btn-secondary btn-small" :disabled="loading || opBusy" @click="load()">{{ loading ? '读取中…' : '↻ 刷新' }}</button>
         <button class="btn btn-secondary btn-small" :disabled="opBusy || !ledger.length"
           title="立即按账本重放 bind(欠账补)+attach（与开机自动共享同一通道）" @click="replayNow">⟳ 重放共享</button>
+        <button class="btn btn-secondary btn-small" :aria-expanded="advancedOpen"
+          :title="advancedOpen ? '收起细粒度操作（仅共享/指定发行版附加/取消共享等）' : '展开细粒度操作：单独共享、下拉指定发行版、取消共享等（选择会记住）'"
+          @click="toggleAdvanced">🔧 高级操作 {{ advancedOpen ? '▴' : '▾' }}</button>
       </div>
     </div>
 
@@ -341,7 +439,7 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
             <th style="width: 130px;">序列号</th>
             <th style="width: 128px;">状态</th>
             <th style="width: 120px;">目标发行版</th>
-            <th style="width: 260px;">操作</th>
+            <th :style="{ width: advancedOpen ? '320px' : '150px' }">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -355,12 +453,16 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
               <span v-if="d.clientIp" class="mono client-ip">{{ d.clientIp }}</span>
             </td>
             <td>
-              <select v-if="isConn(d)" class="input distro-select" :value="distroFor(d)"
-                :aria-label="`设备 ${d.busId} 的目标发行版`" @change="rowDistro[d.busId] = ($event.target as HTMLSelectElement).value">
-                <option v-for="i in instances" :key="i.name" :value="i.name" :disabled="i.version !== '2'">
-                  {{ i.name }}{{ i.version !== '2' ? '（WSL1 不可用）' : i.running ? '' : '（未运行）' }}
-                </option>
-              </select>
+              <template v-if="isConn(d)">
+                <select v-if="advancedOpen" class="input distro-select" :value="distroFor(d)"
+                  :aria-label="`设备 ${d.busId} 的目标发行版`" @change="rowDistro[d.busId] = ($event.target as HTMLSelectElement).value">
+                  <option v-for="i in instances" :key="i.name" :value="i.name" :disabled="i.version !== '2'">
+                    {{ i.name }}{{ i.version !== '2' ? '（WSL1 不可用）' : i.running ? '' : '（未运行）' }}
+                  </option>
+                </select>
+                <span v-else-if="passthroughTarget(d)" class="hint-dim" title="一键直通的自动目标；要改点上方「🔧 高级操作」">{{ passthroughTarget(d) }}</span>
+                <span v-else class="hint-dim" title="多个发行版且无默认——点「一键直通」时会让你选">自动选择</span>
+              </template>
               <span v-else class="hint-dim">不在场</span>
             </td>
             <td>
@@ -369,16 +471,19 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
                   <button v-if="d.state === 'attached'" class="btn btn-secondary btn-small" :disabled="opBusy"
                     title="从 WSL 卸下，设备回到 Windows" @click="detachDevice(d)">⏏ 卸下</button>
                   <button v-else-if="d.state === 'shared' || d.state === 'notshared'" class="btn btn-primary btn-small"
-                    :disabled="opBusy" :title="d.state === 'notshared' ? '未共享：本次点击先 bind 再附加（弹 UAC）' : '附加到右侧发行版（用户态，不弹 UAC）'"
-                    @click="attachDevice(d)">▶ 附加</button>
+                    :disabled="opBusy" :title="oneClickTitle(d)" @click="oneClickAttach(d)">⚡ 一键直通</button>
                   <button v-else class="btn btn-secondary btn-small" disabled>不可共享</button>
-                  <button v-if="d.state === 'notshared'" class="btn btn-secondary btn-small" :disabled="opBusy"
-                    title="仅共享进 usbipd 池（需管理员），不立即附加；想用时再点「附加」" @click="bindDevice(d)">⇗ 仅共享</button>
-                  <button v-if="d.state === 'shared' || d.state === 'notshared'" class="btn btn-secondary btn-small"
-                    :disabled="opBusy" :title="registerTitle(d)"
-                    @click="registerShare(d)">⭐ 自动共享</button>
-                  <button v-if="d.state === 'shared'" class="btn btn-secondary btn-small" :disabled="opBusy"
-                    title="收回共享绑定（需管理员）；已附加请先卸下" @click="unbindDevice(d)">✂ 取消共享</button>
+                  <template v-if="advancedOpen">
+                    <button v-if="d.state === 'shared'" class="btn btn-secondary btn-small" :disabled="opBusy"
+                      title="只附加到行内下拉选中的发行版（用户态，不弹 UAC；未共享请先「仅共享」）" @click="attachDevice(d)">▶ 附加</button>
+                    <button v-if="d.state === 'notshared'" class="btn btn-secondary btn-small" :disabled="opBusy"
+                      title="仅共享进 usbipd 池（需管理员），不立即附加；想用时再点「附加」" @click="bindDevice(d)">⇗ 仅共享</button>
+                    <button v-if="d.state === 'shared' || d.state === 'notshared'" class="btn btn-secondary btn-small"
+                      :disabled="opBusy" :title="registerTitle(d)"
+                      @click="registerShare(d)">⭐ 自动共享</button>
+                    <button v-if="d.state === 'shared'" class="btn btn-secondary btn-small" :disabled="opBusy"
+                      title="收回共享绑定（需管理员）；已附加请先卸下" @click="unbindDevice(d)">✂ 取消共享</button>
+                  </template>
                 </template>
                 <template v-else>
                   <button class="btn btn-danger-outline btn-small" :disabled="opBusy"
@@ -441,6 +546,29 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
       同 VID:PID 多义时不猜、跳过并记因。
     </p>
   </template>
+
+  <!-- 一键直通·多发行版选择框（仅"多个 WSL2 且无默认"时出现；Esc/遮罩=放弃本次直通） -->
+  <Teleport to="body">
+    <div v-if="pickOpen" class="pick-backdrop" @mousedown.self="settlePick(null)">
+      <section ref="pickDialog" class="pick" role="dialog" aria-modal="true" aria-labelledby="usb-pick-title" tabindex="-1"
+        @keydown.esc="settlePick(null)" @keydown.enter="submitPick">
+        <header>
+          <h2 id="usb-pick-title">直通给哪个发行版？</h2>
+          <p>本机有多个 WSL2 发行版且未设默认——设备 {{ pickDevice?.busId }}（{{ pickDevice?.description }}）附加给谁？</p>
+        </header>
+        <label v-for="i in wsl2Instances" :key="i.name" class="pick-option">
+          <input v-model="pickChoice" type="radio" name="usb-pick-distro" :value="i.name" />
+          <span class="mono">{{ i.name }}</span>
+          <span v-if="i.running" class="pick-tag">运行中</span>
+          <span v-else class="pick-tag dim">未运行（直通时顺手拉起）</span>
+        </label>
+        <footer>
+          <button type="button" class="btn btn-secondary btn-small" @click="settlePick(null)">取消</button>
+          <button type="button" class="btn btn-primary btn-small" :disabled="!pickChoice" @click="settlePick(pickChoice)">⚡ 直通</button>
+        </footer>
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -482,4 +610,24 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
   padding: 4px 8px; font-size: var(--text-sm); color: var(--color-text); font-family: inherit;
 }
 .input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+
+/* 直通目标选择框：与 UiPromptDialog 同族表面语言（遮罩/面板/页脚），选项为纵向单选 */
+.pick-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
+.pick {
+  width: min(440px, 100%); padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-panel);
+  background: var(--surface-panel); box-shadow: var(--shadow-panel); color: var(--color-text);
+}
+.pick h2 { margin: 0 0 6px; font-size: var(--text-lg); }
+.pick header p { margin: 0; color: var(--color-text-muted); font-size: var(--text-base); line-height: 1.65; }
+.pick-option {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 9px 12px; cursor: pointer;
+  border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--surface-soft);
+}
+.pick-option:hover { background: var(--surface-hover); }
+.pick-option:has(input:checked) { border-color: var(--color-primary); outline: 1px solid var(--color-primary); }
+.pick-option input { accent-color: var(--color-primary); margin: 0; }
+.pick-tag { font-size: var(--text-sm); color: var(--color-text-muted); }
+.pick-tag.dim { opacity: 0.8; }
+.pick footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+@media (max-width: 460px) { .pick-backdrop { align-items: end; padding: 12px } .pick { padding: 16px } .pick footer { flex-direction: column-reverse } }
 </style>

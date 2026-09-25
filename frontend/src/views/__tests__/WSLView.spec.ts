@@ -1107,9 +1107,9 @@ describe('WSLView USB 直通页（F9）', () => {
     w.unmount()
   })
 
-  it('附加：已共享设备免确认直达（目标发行版=默认 WSL2 实例），停止实例由后端顺手拉起', async () => {
+  it('一键直通：已共享设备免确认直达（目标发行版=默认 WSL2 实例），停止实例由后端顺手拉起', async () => {
     const w = await usbMounted()
-    await usbRowBtn(w, 0, '附加').trigger('click')
+    await usbRowBtn(w, 0, '直通').trigger('click')
     await flushPromises()
     expect(api.AttachUsbDevice).toHaveBeenCalledWith('2-3', 'Ubuntu')
     expect(confirmFn).not.toHaveBeenCalled()
@@ -1118,7 +1118,7 @@ describe('WSLView USB 直通页（F9）', () => {
 
   it('一键直通：未共享设备先经 UAC 确认补 bind 再 attach；bind 未成即中止', async () => {
     const w = await usbMounted()
-    await usbRowBtn(w, 1, '附加').trigger('click')
+    await usbRowBtn(w, 1, '直通').trigger('click')
     await flushPromises()
     expect(confirmFn).toHaveBeenCalled()
     expect(api.BindUsbDevice).toHaveBeenCalledWith('1-1', false)
@@ -1126,15 +1126,16 @@ describe('WSLView USB 直通页（F9）', () => {
     // bind 回执 success=false（UAC 取消族）：不得抢跑 attach
     api.BindUsbDevice.mockResolvedValueOnce({ success: false, message: '已取消 UAC 授权' })
     api.AttachUsbDevice.mockClear()
-    await usbRowBtn(w, 1, '附加').trigger('click')
+    await usbRowBtn(w, 1, '直通').trigger('click')
     await flushPromises()
     expect(api.AttachUsbDevice).not.toHaveBeenCalled()
     w.unmount()
   })
 
-  it('卸下/取消共享/不在场退绑：各自路由到对应命令', async () => {
+  it('卸下/取消共享/不在场退绑：各自路由到对应命令（取消共享收在高级操作区）', async () => {
     api.UnbindUsbDevice.mockResolvedValue(ok('已取消共享'))
     api.UnbindAbsentUsbDevice.mockResolvedValue(ok('已取消共享'))
+    localStorage.setItem('hanxi.wsl.usb.advanced', '1') // 高级操作默认收起：本用例按展开态挂载
     const w = await usbMounted()
     await usbRowBtn(w, 2, '卸下').trigger('click')
     await flushPromises()
@@ -1149,6 +1150,7 @@ describe('WSLView USB 直通页（F9）', () => {
   })
 
   it('账本操作：登记走 SetUsbShare，停用/移除走条目命令；手动重放走 ReplayUsbNow', async () => {
+    localStorage.setItem('hanxi.wsl.usb.advanced', '1') // 「⭐ 自动共享」在高级操作区内
     const w = await usbMounted()
     await usbRowBtn(w, 0, '自动共享').trigger('click')
     await flushPromises()
