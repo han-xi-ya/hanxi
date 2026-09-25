@@ -62,7 +62,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "guoheview-manager", Title: "果核看图", Route: "/ext/guoheview", Icon: "i:image", Section: extapi.SectionExt, Order: 85, Group: extapi.GroupDesktop},
+		{ID: "guoheview-manager", Title: "果核看图", Route: "/ext/guoheview", Icon: "app:guoheview", Section: extapi.SectionExt, Order: 85, Group: extapi.GroupDesktop},
 	}
 }
 

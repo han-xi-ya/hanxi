@@ -192,7 +192,7 @@ Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下�
 
 当前 Hanxi 仓库和安装包不包含 Douzy 任何二进制。若未来改为预装或随 Hanxi 再分发，发布流程须随附 MIT 许可证文本与版权声明，并另行评估内测产品的分发责任。
 
-## 托管工具真图标（N27 批 A + 批 B-2 入库件）
+## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行入库件）
 
 Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**（32px，
 一次性从官方发行 exe 用 shell32!ExtractIconEx 提取，见 scripts/extract_app_icons.ps1），
@@ -218,13 +218,12 @@ Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位�
 | subnetdesk.png | SubnetDesk | AGPL-3.0（见 AGPL 族节） | 识别性使用；提取源为上游官方便携单文件 packer exe（非 Hanxi 构建件） |
 | translucenttb.png | TranslucentTB | GPL-3.0（见 GPL 族节） | 识别性使用 |
 | windterm.png | WindTerm | 仓库根无 LICENSE 文件，README 自述完全免费商用/非商用（开源部分 Apache-2.0） | 识别性使用；许可口径以自述为据，随批登记留痕 |
+| litemonitor.png | LiteMonitor | 上游仓库未声明 LICENSE（见上节，默认"保留所有权利"） | 机主拍板放行（2026-09-25，按 Snipaste 同口径）；识别性使用，权利方异议即摘 |
+| guoheview.png | 果核看图 GuoheView | 闭源 freeware，官方声明无再分发授权（见上节） | 机主拍板放行（2026-09-25，按 Snipaste 同口径）；识别性使用，权利方异议即摘 |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
 | ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不落 generic 之外的展示面：保持矢量 `i:gauge`（rammap 系位图一律同判） |
 
-未入库（如实登记）：**LiteMonitor**——上游仓库未声明 LICENSE（默认"保留所有
-权利"，本模块上节已明示不再分发红线），保持矢量 `i:activity`；**果核看图**
-——闭源 freeware 无再分发授权（上节风险说明），保持矢量 `i:image`；
-**Recordly**——AGPL 附加条款禁将 Recordly 名称/品牌用于自有界面展示（上节
+未入库（如实登记）：**Recordly**——AGPL 附加条款禁将 Recordly 名称/品牌用于自有界面展示（上节
 "刻意不做品牌融合"），保持矢量 `i:video`，将来装了也不入库；**NanaZip**——
 发行形态为 MSIXBundle，无提取通道，且其图标资产含 CC BY-ND 4.0（ND 禁改作），
 保持矢量 `i:archive`；**Bili23 / RustDesk / Termora**——提取时点本机无已装

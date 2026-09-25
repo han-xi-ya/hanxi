@@ -49,7 +49,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "litemonitor-manager", Title: "LiteMonitor", Route: "/ext/litemonitor", Icon: "i:activity", Section: extapi.SectionExt, Order: 84, Group: extapi.GroupSystem},
+		{ID: "litemonitor-manager", Title: "LiteMonitor", Route: "/ext/litemonitor", Icon: "app:litemonitor", Section: extapi.SectionExt, Order: 84, Group: extapi.GroupSystem},
 	}
 }
 

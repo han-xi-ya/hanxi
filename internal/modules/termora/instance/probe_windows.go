@@ -103,16 +103,6 @@ func (p *windowsProbe) FocusAnyWindow() bool {
 	return p.focusInPids(termoraPIDs())
 }
 
-// anyVisibleWindow pids 集合内是否存在可见且带标题的顶层窗口（判据即平台
-// 公共件口径）。注意：Termora 就绪判定走 MutexHeld，本方法当前无调用方——
-// 家族模板残留，保留仅因契约形状对齐（见存疑点报告），未随本轮删除。
-func (p *windowsProbe) anyVisibleWindow(pids map[uint32]bool) bool {
-	if len(pids) == 0 {
-		return false
-	}
-	return win.HasFocusableTopWindowForPIDs(toWinPIDSet(pids))
-}
-
 // focusInPids 唤回给定 PID 集合中第一个可聚焦顶层窗——委托平台公共件
 // （可见+标题过滤、IsIconic 才 SW_RESTORE、SetForegroundForce 借权置前、
 // SwitchToThisWindow 兜底；guoheview 标杆形态的收口结果）。
