@@ -488,5 +488,4 @@ tr:hover .col-path .link-button,
 /* 裸文字 32px 档副本删净，落回全局 .empty-hint 标准虚线卡形（§9.6-10 定档裁决——目视项；
    挂点为 <td colspan>，虚线卡染进单元格为预期收编效果） */
 
-/* 历史弹窗外壳：照 ConfirmDialog 遮罩语系（与 OcrView 同款，Teleport 挂 body） */
 </style>

@@ -164,6 +164,10 @@ function resolveHover(r: number, ang: number, opened: number | null) {
     if (Math.abs(rel) <= span / 2) {
       const j = Math.min(capN - 1, Math.max(0, Math.floor((rel + span / 2) / (span / capN))))
       if (activeCap.value !== j) activeCap.value = j
+      // 父锚定（审查 #6）：帽带张角可越父扇区名义角域伸入邻区——指针从邻区楔形
+      // 直穿帽带时 active 会停在邻扇区，造成"正开环的花瓣被让位降半档、邻瓣反而
+      // 辉光顶出、hub 读帽带"三指打架。帽带在场则高亮恒归父组（opened 索引）。
+      if (active.value !== opened) active.value = opened
       return
     }
   }
@@ -546,7 +550,9 @@ function onGroupActivate(i: number) {
     </template>
 
     <!-- 中心 hub：默认标题 / 悬停读数 / 子环面包屑与收起 / 状态与动作；点击盘面外语义：hub=收起 -->
-    <div class="hub" aria-live="polite" @click.self="dismiss">
+    <!-- hub 浮层全程 pointer-events:none，点击穿到下层 SVG .hub-hit 圆收起
+         （审查 #10：原 @click.self 为死绑定，已删） -->
+    <div class="hub" aria-live="polite">
       <template v-if="ready && items.length > 0">
         <template v-if="hubNode">
           <span class="hub-label">{{ hubNode.label }}</span>

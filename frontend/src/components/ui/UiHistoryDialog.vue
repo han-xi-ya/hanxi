@@ -11,7 +11,7 @@
 //     Teleport 锚点 DOM 序天然晚于 App 单例，同层拼位置必输；
 //  3) 开窗焦点入 dialog（tabindex=-1）、Tab 环困在窗内（选择器镜像 ConfirmDialog
 //     并补 input/select/textarea——面板有搜索框）、关窗焦点回位触发点。
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { useConfirm } from '../../composables/useConfirm'
 
 const props = defineProps<{
@@ -64,7 +64,23 @@ watch(
       prevFocus = null
     }
   },
+  // immediate：宿主以 open=true 首挂（如未来持久化弹窗态）也要注册监听/进焦点；
+  // false 起步时走 else 分支完全幂等（removeEventListener 无害、prevFocus 为空）
+  { immediate: true },
 )
+
+// document 级监命的生命周期兜底（审查 P1）：宿主页 KeepAlive LRU 逐出/切页时
+// 弹窗可能仍开着——旧两壳各有 onBeforeUnmount 摘除，共享件缺一行就是
+// "每逐出一次叠一份 keydown 监听"的真泄漏；deactivate（切页未卸载）摘、
+// activate（回访仍开着）补挂，杜绝异页按 Esc 幽灵关闭隐藏弹窗。
+function unhook() {
+  document.removeEventListener('keydown', onEsc)
+}
+onBeforeUnmount(unhook)
+onDeactivated(unhook)
+onActivated(() => {
+  if (props.open) document.addEventListener('keydown', onEsc)
+})
 </script>
 
 <template>
