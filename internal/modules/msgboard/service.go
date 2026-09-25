@@ -475,7 +475,11 @@ func (s *MsgBoardService) beginDismiss() bool {
 	for s.opInFlight && !s.stopping {
 		s.cond.Wait()
 	}
-	if s.stopping {
+	// 审查 B3：与 beginShow 对称的双守卫——旧 dismiss 在 cond.Wait 上睡着时，
+	// stop 可能已完成整个周期（stopping 归 false、opInFlight 归 false）且模块
+	// 已重启、新 Show 提交了新窗组；此时只查 stopping 会让这条旧 dismiss 醒来
+	// 通过守卫、把**新会话**的窗组误拆。started 同查即封死该唤醒缝隙。
+	if s.stopping || !s.started {
 		return false
 	}
 	s.opInFlight = true
@@ -588,7 +592,11 @@ func (s *MsgBoardService) SetConfig(cfg Config) error {
 		if herr := s.applyHotkey(next.Hotkey); herr != nil {
 			// 新键不可用：注册器保旧绑定原样在位（先注册新键成功才注销旧键），
 			// 配置热键字段回滚为旧值，错误上抛由页面红字提示改键。
-			if _, rerr := s.store.Set(Config{Text: next.Text, FontSize: next.FontSize, Screen: next.Screen, Hotkey: old.Hotkey, EveryScreen: next.EveryScreen}); rerr != nil {
+			// 审查 B6：从生效值派生回滚、只改热键一个字段——逐字段重建式回滚
+			// 在 Config 未来加字段时会静默清零新位（本行历史踩坑注记）。
+			rollback := next
+			rollback.Hotkey = old.Hotkey
+			if _, rerr := s.store.Set(rollback); rerr != nil {
 				slog.Warn("msgboard: 热键回滚落盘失败", "err", rerr)
 			}
 			return fmt.Errorf("热键 %q 注册失败（可能已被其它程序占用；留空表示停用热键）：%v", next.Hotkey, herr)
