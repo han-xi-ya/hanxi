@@ -192,10 +192,12 @@ Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下�
 
 当前 Hanxi 仓库和安装包不包含 Douzy 任何二进制。若未来改为预装或随 Hanxi 再分发，发布流程须随附 MIT 许可证文本与版权声明，并另行评估内测产品的分发责任。
 
-## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行入库件）
+## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行 + 开源上游仓库取材入库件）
 
 Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**（32px，
-一次性从官方发行 exe 用 shell32!ExtractIconEx 提取，见 scripts/extract_app_icons.ps1），
+早期件一次性从官方发行 exe 用 shell32!ExtractIconEx 提取，见
+scripts/extract_app_icons.ps1；开源仓库取材件来自上游仓库现成位图资产
+或官方 MSIX 原生小尺寸图，ICO 取最大画幅等比缩 32、原生 ≤64px 小件零改作直用），
 用途仅为在 hanxi 界面中标识该被托管软件本身（识别性展示），不暗示任何隶属或
 背书关系。逐个许可登记：
 
@@ -220,15 +222,16 @@ Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位�
 | windterm.png | WindTerm | 仓库根无 LICENSE 文件，README 自述完全免费商用/非商用（开源部分 Apache-2.0） | 识别性使用；许可口径以自述为据，随批登记留痕 |
 | litemonitor.png | LiteMonitor | 上游仓库未声明 LICENSE（见上节，默认"保留所有权利"） | 机主拍板放行（2026-09-25，按 Snipaste 同口径）；识别性使用，权利方异议即摘 |
 | guoheview.png | 果核看图 GuoheView | 闭源 freeware，官方声明无再分发授权（见上节） | 机主拍板放行（2026-09-25，按 Snipaste 同口径）；识别性使用，权利方异议即摘 |
+| rustdesk.png | RustDesk | AGPL-3.0（见 AGPL 族节） | 识别性使用；来源=上游仓库 github.com/rustdesk/rustdesk `res/icon.ico`（256px 最大画幅等比缩 32） |
+| bili23.png | Bili23-Downloader | GPL-3.0（见 GPL 族节） | 识别性使用；来源=上游仓库 github.com/ScottSloan/Bili23-Downloader `assets/app.icns`（实为 1024px PNG，等比缩 32；仓库内无 ICO/PNG 现成件与更优位图通道） |
+| termora.png | Termora | 仓库根无 LICENSE 文件，README 自述 AGPL-3.0/专有双许可 | 识别性使用；来源=上游仓库 github.com/TermoraDev/termora `src/main/resources/icons/termora_32x32.png`（官方原生 32px 件零改作直用）；许可口径以 README 自述为据，随批登记留痕 |
+| nanazip.png | NanaZip | 代码 MIT；应用图标资产 CC BY-ND 4.0（见上节） | 识别性使用；来源=官方 MSIXBundle 6.5.1800.0 x64 载荷 `Assets/Square44x44Logo.targetsize-32_altform-unplated.png`（官方原生 32px 小尺寸件零改作直用，规避 ND 禁改作条款——不缩放/不裁剪/不合成） |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
 | ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不落 generic 之外的展示面：保持矢量 `i:gauge`（rammap 系位图一律同判） |
 
-未入库（如实登记）：**Recordly**——AGPL 附加条款禁将 Recordly 名称/品牌用于自有界面展示（上节
-"刻意不做品牌融合"），保持矢量 `i:video`，将来装了也不入库；**NanaZip**——
-发行形态为 MSIXBundle，无提取通道，且其图标资产含 CC BY-ND 4.0（ND 禁改作），
-保持矢量 `i:archive`；**Bili23 / RustDesk / Termora**——提取时点本机无已装
-便携载荷可提（许可族 GPL/AGPL 已过审，属可入库类别），保持矢量，待装机窗口
-期补提后增补本表；**ddnsgo/frpc** 为控制台程序（无 GUI 主图标），落通用徽标；
+未入库（如实登记）：**Recordly**——AGPL 附加条款明文禁将 Recordly 名称/品牌
+图标套用于 Hanxi 自有 UI 展示（上节"刻意不做品牌融合"），用了即违约，
+保持矢量 `i:video`，将来装了也不入库；**ddnsgo/frpc** 为控制台程序（无 GUI 主图标），落通用徽标；
 **vscode**——微软商标条款对品牌资产同样收紧，与 Sysinternals 同判不入库，
 保持矢量 `i:code`；**softver/msgboard/quickmenu/sysinfo/envcheck/wechat/wifi 等
 Hanxi 自研功能模块**（wechat/wifi 为桥接/诊断入口，非托管载荷）永不入库。

@@ -55,7 +55,7 @@ func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（开发者组排序接 windterm 之后）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "termora-manager", Title: "Termora 终端", Route: "/ext/termora", Icon: "i:server", Section: extapi.SectionExt, Order: 95, Group: extapi.GroupDeveloper},
+		{ID: "termora-manager", Title: "Termora 终端", Route: "/ext/termora", Icon: "app:termora", Section: extapi.SectionExt, Order: 95, Group: extapi.GroupDeveloper},
 	}
 }
 

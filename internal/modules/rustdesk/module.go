@@ -57,7 +57,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "rustdesk-manager", Title: "RustDesk 公网", Route: "/ext/rustdesk", Icon: "i:cast", Section: extapi.SectionExt, Order: 87, Group: extapi.GroupNetwork},
+		{ID: "rustdesk-manager", Title: "RustDesk 公网", Route: "/ext/rustdesk", Icon: "app:rustdesk", Section: extapi.SectionExt, Order: 87, Group: extapi.GroupNetwork},
 	}
 }
 

@@ -32,7 +32,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 
 // Nav 声明侧边栏入口（Order/Group 决定桌面组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {
-	return []extapi.NavEntry{{ID: "nanazip-manager", Title: "NanaZip", Route: "/ext/nanazip", Icon: "i:archive", Section: extapi.SectionExt, Order: 76, Group: extapi.GroupDesktop}}
+	return []extapi.NavEntry{{ID: "nanazip-manager", Title: "NanaZip", Route: "/ext/nanazip", Icon: "app:nanazip", Section: extapi.SectionExt, Order: 76, Group: extapi.GroupDesktop}}
 }
 
 // 以下方法实现 extapi.Module 契约，逐项语义见接口文档；

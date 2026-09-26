@@ -56,7 +56,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "bili23-manager", Title: "Bili23 下载", Route: "/ext/bili23", Icon: "i:tv", Section: extapi.SectionExt, Order: 89, Group: extapi.GroupMedia},
+		{ID: "bili23-manager", Title: "Bili23 下载", Route: "/ext/bili23", Icon: "app:bili23", Section: extapi.SectionExt, Order: 89, Group: extapi.GroupMedia},
 	}
 }
 
