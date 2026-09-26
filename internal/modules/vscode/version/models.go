@@ -29,6 +29,12 @@ type Release struct {
 	// SHA256 官方哈希（feed 更新清单 sha256hash）。上游仅对"最新版"发布官方
 	// 哈希（feed 恒返最新清单），旧版恒为空——下载时降级三层完整性校验。
 	SHA256 string `json:"sha256"`
+	// Form 本条 release 的分发形态（N13 形态标注，纯展示，manager.ListRemote
+	// 按查询形态回填）：portable=win32-x64-archive 便携 zip / installer=
+	// win32-x64-user 用户安装器（Inno）。全家族 Form 字段的方言先例——值域
+	// portable/installer 与 hostfeed.Form 词表逐字同名；vscode 双形态行行
+	// 各异，不经 hostedForm 常量而随查询入参。
+	Form Form `json:"form,omitempty"`
 }
 
 // VersionInfo 本地便携版已安装版本信息（versions/vscode_X.Y.Z/）。

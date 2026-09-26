@@ -17,7 +17,14 @@ type TBRelease struct {
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// portable——TranslucentTB-portable-x64.zip 解压即用，机械判名与安装链
+	// 事实一致（上游另有 msix/appx 包形态资产，托管不收）。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormPortable
 
 // TBVersionInfo 本地已安装的 TranslucentTB 版本信息。
 type TBVersionInfo struct {

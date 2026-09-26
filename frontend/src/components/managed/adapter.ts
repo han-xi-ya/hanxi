@@ -237,6 +237,35 @@ export interface ManagedReleaseRecord {
    * 数据层未接矩阵（列留空不装样子）。纯展示，永不参与下载决策。
    */
   assets?: ReleaseAssetNote[] | null
+  /**
+   * N13 托管形态标注（hostfeed.Form 词表：portable / installer / package /
+   * archive / binary）：本模块托管那条资产的形态**事实**，后端 manager.
+   * ListRemote 逐行回填——与 assets 的机械判名（只看资产名、宁降级不猜标）
+   * 分属两层：形态以安装链事实自证为准（如 recordly 的裸 .exe 资产机械判
+   * binary，安装链是 NSIS 静默安装即 installer）。面板远程行版本列出
+   * "形态 chip"（词表经 releaseFormWord）；缺省 = 模块数据层未回填（chip
+   * 缺席不装样子）。纯展示，永不参与下载决策。
+   */
+  form?: string
+}
+
+/**
+ * 托管形态 chip 统一词表（N13）：hostfeed.Form 词表 → 面板短词。
+ * 共享面板与方言视图（vscode 双表 / snipaste、rammap 自绘版本区）同源取词，
+ * 词表外值如实透传（后端扩词不静默吞标）。
+ */
+export const RELEASE_FORM_WORD: Record<string, string> = {
+  portable: '便携',
+  installer: '安装器',
+  package: '包',
+  archive: '归档',
+  binary: '程序',
+}
+
+/** 形态短词解析：空/未定义回空串（无 chip 可画）；词表外原样透传。 */
+export function releaseFormWord(form?: string | null): string {
+  if (!form) return ''
+  return RELEASE_FORM_WORD[form] ?? form
 }
 
 /** 发布物展示元数据（与 packages/go/hostfeed.AssetNote 的 JSON 契约同形）。 */

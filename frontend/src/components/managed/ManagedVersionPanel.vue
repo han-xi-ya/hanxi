@@ -27,19 +27,19 @@ import type {
   ManagedVersionRecord,
   NormalizedProgress,
 } from './adapter'
-import { sameVersionOf } from './adapter'
+import { sameVersionOf, RELEASE_FORM_WORD, releaseFormWord } from './adapter'
 import type { ManagedConsoleStore } from './store'
 import { useManagedConsole } from './store'
 import { fmtSize, fmtDate } from '../../utils/format'
 
 // N13「上游发布」列词表：平台短词×形态短词，托管形态高亮。纯展示——
 // 下载钮永远只跟着"本托管那条"走，非 Windows 行只标不点（知情不引导）。
+// 形态短词与版本行"形态 chip"同源（RELEASE_FORM_WORD 收在共享契约层，
+// 方言视图免互抄）；meta 词仅矩阵兜底保留（行形态字段永不取 meta 值）。
 const PLAT_WORD: Record<string, string> = {
   windows: 'Win', macos: 'Mac', linux: 'Linux', android: '安卓', freebsd: 'BSD', other: '其它',
 }
-const FORM_WORD: Record<string, string> = {
-  portable: '便携', installer: '安装器', package: '包', archive: '归档', binary: '程序', meta: '元数据',
-}
+const FORM_WORD: Record<string, string> = { ...RELEASE_FORM_WORD, meta: '元数据' }
 /** 行内徽标硬顶：超出折叠为 +N（title 列全量），rustdesk 26 资产也不撑爆行。 */
 const ASSET_CAP = 5
 const assetWord = (a: ReleaseAssetNote) => `${PLAT_WORD[a.platform ?? 'other'] ?? a.platform ?? '其它'} ${FORM_WORD[a.form ?? 'archive'] ?? a.form ?? '归档'}`
@@ -243,6 +243,13 @@ const installedChipClass = computed(() =>
           <td>
             <strong class="ver-name">{{ rel.version }}</strong>
             <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
+            <!-- N13 统一形态 chip：本托管资产形态事实（后端 ListRemote 回填，
+                 纯展示）；词表外值如实透传，未回填模块 chip 缺席 -->
+            <span
+              v-if="rel.form"
+              class="chip chip-neutral form-chip"
+              :title="`本托管形态（安装链事实）：${releaseFormWord(rel.form)}`"
+            >{{ releaseFormWord(rel.form) }}</span>
           </td>
           <td>
             <span v-if="statusOf(rel) === 'installed'" class="ver-status installed">已安装</span>
@@ -339,4 +346,8 @@ const installedChipClass = computed(() =>
 .asset-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; }
 .asset-managed { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-soft); }
 .asset-more { font-size: var(--text-xs); }
+
+/* N13 统一形态 chip（版本行）：与预发布徽标、上游发布列徽标族共排不打架，
+   密度同 asset-chip 档；缺 form 的行不渲染、不留占位 */
+.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; margin-left: 4px; vertical-align: middle; }
 </style>

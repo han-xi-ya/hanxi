@@ -24,7 +24,15 @@ type RecordlyRelease struct {
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示）：恒 installer——上游 Windows
+	// 线只有 NSIS 安装器，托管链为 /S /D 静默安装（Download 实证）。机械判名
+	// Classify("Recordly-windows-x64.exe") 因资产名无 setup/install 字样保守
+	// 降为 binary，形态以安装事实自证为准（ListRemote 回填）。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormInstaller
 
 // RecordlyVersionInfo 本地已安装的 Recordly 版本信息。
 type RecordlyVersionInfo struct {

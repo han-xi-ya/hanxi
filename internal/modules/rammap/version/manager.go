@@ -80,9 +80,19 @@ func OpenTree(versionsDir string) *artifact.Tree {
 }
 
 // ListRemote 获取"最新版"单条列表（HEAD 探测 Last-Modified）。
+// N13 形态标注：逐行回填 Form=hostedForm——TTL 命中时 get 交回的是缓存
+// 共享切片，先拷贝断开引用再回填（不污染缓存源，免与并发读互相踩踏）。
 func (m *Manager) ListRemote() ([]RammapRelease, error) {
 	list, _, err := remoteCache.get()
-	return list, err
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RammapRelease, len(list))
+	copy(out, list)
+	for i := range out {
+		out[i].Form = hostedForm
+	}
+	return out, nil
 }
 
 // ListInstalled 扫描本地已装版本（按日期令牌降序；payload exe 缺失/为空跳过）。

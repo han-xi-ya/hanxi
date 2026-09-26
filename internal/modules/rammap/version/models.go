@@ -1,5 +1,7 @@
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // RammapRelease 远程版本。上游 RAMMap 为"同址覆盖式最新版"（无版本目录、无
 // 历史资产），Version 取官方 zip 的 Last-Modified 日期（如 2026-03-26）作
 // 唯一诚实版本语义——日期变即上游发新。列表恒单条。
@@ -10,7 +12,15 @@ type RammapRelease struct {
 	AssetName string `json:"assetName"`
 	AssetURL  string `json:"assetUrl"`
 	Size      int64  `json:"size"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// portable——官方 RAMMap.zip 是绿色单文件 exe 的投递容器（三架构同包，
+	// 解压平铺直用、零安装动作）；资产名无平台/便携字样，机械判名 Classify
+	// 保守降为 other/archive，形态以托管安装链事实自证为准。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormPortable
 
 // RammapVersionInfo 本地已装版本。Version 同为日期令牌；落位目录
 // rammap_<YYYY-MM-DD>/，payload 平铺（RAMMap64.exe 直在版本目录，官方 zip 无

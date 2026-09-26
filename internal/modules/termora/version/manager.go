@@ -79,8 +79,19 @@ func OpenTree(versionsDir string) *artifact.Tree {
 
 // ListRemote 获取远程可用版本（10 分钟内命中缓存；stable+beta 全量，
 // IsPre 如实透出）。
+// N13 形态标注：逐行回填 Form=hostedForm——缓存命中时 get 交回的是缓存
+// 共享切片，先拷贝断开引用再回填（不污染缓存源，免与并发读互相踩踏）。
 func (m *Manager) ListRemote() ([]TermoraRelease, error) {
-	return remoteCache.get()
+	list, err := remoteCache.get()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TermoraRelease, len(list))
+	copy(out, list)
+	for i := range out {
+		out[i].Form = hostedForm
+	}
+	return out, nil
 }
 
 // ListInstalled 扫描本地已装版本（Tree 目录扫描 + payload exe 定位；

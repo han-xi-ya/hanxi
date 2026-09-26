@@ -60,8 +60,17 @@ func NewManager(versionsDir string) *Manager {
 }
 
 // ListRemote 返回官网发布通道列表（releaseCache 缓存命中则免网络）。
+// N13 形态标注：逐行回填 Form=hostedForm——get 各路径交回的都是克隆新切片
+// （cloneReleases），就地回填不触碰缓存源。
 func (m *Manager) ListRemote() ([]SnipasteRelease, error) {
-	return m.cache.get()
+	list, err := m.cache.get()
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		list[i].Form = hostedForm
+	}
+	return list, nil
 }
 
 // ListInstalled 枚举 snipaste_v<ver> 版本目录；跳过 .installing-/.removing- 前缀的

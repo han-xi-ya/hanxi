@@ -441,3 +441,49 @@ describe('ManagedVersionPanel 上游发布列', () => {
     w.unmount()
   })
 })
+
+// ---------- N13 统一形态 chip（版本行） ----------
+describe('ManagedVersionPanel 形态 chip', () => {
+  it('行带 form 词值出版本行 chip（词表同源短词），悬停注记安装链事实；未回填行 chip 缺席', async () => {
+    const { adapter } = fakeAdapter({
+      releases: [rel('v1.1.0', { form: 'installer' }), rel('v1.0.0', { form: 'portable' }), rel('v0.9.0')],
+    })
+    const w = await mountPanel(adapter)
+    const rows = w.findAll('tbody tr')
+    expect(rows[0].find('.form-chip').text()).toBe('安装器')
+    expect(rows[0].find('.form-chip').attributes('title')).toContain('本托管形态（安装链事实）')
+    expect(rows[1].find('.form-chip').text()).toBe('便携')
+    expect(rows[2].find('.form-chip').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('词表外值如实透传（后端扩词不静默吞标）', async () => {
+    const { adapter } = fakeAdapter({ releases: [rel('v1', { form: 'appimage' })] })
+    const w = await mountPanel(adapter)
+    expect(w.find('.form-chip').text()).toBe('appimage')
+    w.unmount()
+  })
+
+  it('与预发布徽标、上游发布列托管高亮共存不打架：一行三件齐现', async () => {
+    const { adapter } = fakeAdapter({
+      releases: [rel('v2.0.0-beta.1', {
+        isPre: true,
+        form: 'installer',
+        assets: [
+          { platform: 'windows', form: 'binary', label: 'tool-windows-x64.exe', managed: true },
+          { platform: 'macos', form: 'installer', label: 'tool-mac.dmg' },
+        ],
+      })],
+    })
+    const w = await mountPanel(adapter)
+    const row = w.findAll('tbody tr')[0]
+    expect(row.find('.badge-pre').exists()).toBe(true)
+    expect(row.find('.form-chip').text()).toBe('安装器')
+    const chips = row.findAll('.asset-chip')
+    expect(chips).toHaveLength(2)
+    expect(chips[0].classes()).toContain('asset-managed')
+    // 机械判名（binary→程序）与形态事实（installer→安装器）分列并存，互不覆写
+    expect(chips[0].text()).toBe('Win 程序')
+    w.unmount()
+  })
+})

@@ -14,7 +14,14 @@ type WindTermRelease struct {
 	Size      int64  `json:"size"`
 	// Assets 上游全发布物的平台/形态展示矩阵（N13；纯展示，下载路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// portable——WindTerm_X_Windows_Portable_x86_64.zip，资产名自带便携证据，
+	// 机械判名与安装链事实一致（上游全平台发布物均为 zip 家族，无安装器线）。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormPortable
 
 // WindTermVersionInfo 本地已安装版本记录。ExePath 指向 payload 目录内的
 // WindTerm.exe（zip 带 WindTerm_X.Y.Z 根目录包裹，托管保持原布局不解套）。

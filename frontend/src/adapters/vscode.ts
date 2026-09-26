@@ -54,7 +54,10 @@ export function vscodeProgressKey(form: VSCodeForm, version: string): string {
 }
 
 function managedRelease(release: Release): ManagedReleaseRecord {
-  return { version: release.version, size: release.size, published: '' }
+  // N13 形态标注：共享 store 只承接便携链行（listReleases 固定查 portable，
+  // 安装版表留在 VSCodeVersionsPanel 方言双表、表级已分形态）——form 如实
+  // 标 portable，与后端 Release.Form 回填词表同源。
+  return { version: release.version, size: release.size, published: '', form: 'portable' }
 }
 
 /**

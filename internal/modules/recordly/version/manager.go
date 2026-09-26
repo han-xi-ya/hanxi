@@ -79,8 +79,17 @@ func (m *Manager) InstallDir() string {
 }
 
 // ListRemote 获取远程可用版本（includePre=true 时含 beta 通道；10 分钟缓存）。
+// N13 形态标注：返回前逐行回填 Form=hostedForm（本模块恒 NSIS 安装器形态；
+// 缓存出口已按通道产出新切片，就地回填不触碰缓存源）。
 func (m *Manager) ListRemote(includePre bool) ([]RecordlyRelease, error) {
-	return remoteCache.get(includePre)
+	list, err := remoteCache.get(includePre)
+	if err != nil {
+		return nil, err
+	}
+	for i := range list {
+		list[i].Form = hostedForm
+	}
+	return list, nil
 }
 
 // ListInstalled 扫描托管安装目录（至多一条）。

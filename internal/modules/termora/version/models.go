@@ -14,7 +14,15 @@ type TermoraRelease struct {
 	Size      int64  `json:"size"`
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，纯展示，下载路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// portable——jpackage app-image zip 解压即用（自带 runtime，零安装动作）；
+	// 资产名 termora-X-windows-x86-64.zip 无 portable 字样，机械判名
+	// Classify 保守降为 archive，形态以托管安装链事实自证为准。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormPortable
 
 // TermoraVersionInfo 本地已安装版本记录。ExePath 指向 payload 目录内的
 // Termora.exe（jpackage app-image 固定布局：包根 Termora/ 包裹，主 exe +

@@ -86,9 +86,20 @@ func OpenTree(versionsDir string) *artifact.Tree {
 	return artifact.OpenTree(versionsDir, treeEntryName)
 }
 
-// ListRemote 获取远程可用版本（10 分钟内命中缓存）
+// ListRemote 获取远程可用版本（10 分钟内命中缓存）。
+// N13 形态标注：逐行回填 Form=hostedForm——缓存命中时 get 交回的是缓存
+// 共享切片，先拷贝断开引用再回填（不污染缓存源，免与并发读互相踩踏）。
 func (m *Manager) ListRemote() ([]TBRelease, error) {
-	return remoteCache.get()
+	list, err := remoteCache.get()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TBRelease, len(list))
+	copy(out, list)
+	for i := range out {
+		out[i].Form = hostedForm
+	}
+	return out, nil
 }
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。

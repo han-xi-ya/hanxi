@@ -85,8 +85,23 @@ func OpenTree(versionsDir string) *artifact.Tree {
 }
 
 // ListRemote 获取指定形态的远程可用版本（10 分钟内命中缓存）。
+// N13 形态标注：逐行回填 Form=查询形态——缓存命中时包级 ListRemote 交回的
+// 是缓存共享切片，先拷贝断开引用再回填（不污染缓存源，免与并发读互相踩踏）；
+// 形态归一与 platformOf 同口径（非 installer 一律按便携链取数，标注随之）。
 func (m *Manager) ListRemote(form Form) ([]Release, error) {
-	return ListRemote(form)
+	list, err := ListRemote(form)
+	if err != nil {
+		return nil, err
+	}
+	if form != FormInstaller {
+		form = FormPortable
+	}
+	out := make([]Release, len(list))
+	copy(out, list)
+	for i := range out {
+		out[i].Form = form
+	}
+	return out, nil
 }
 
 // ---------- 便携版 ----------
