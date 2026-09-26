@@ -155,6 +155,16 @@ function toggleVersions() {
   if (versionsOpen.value && !subUsage.value.length) void loadSub()
 }
 
+// 单版本软件行的版本号 chip（机主反馈三）：从版本目录名 `<模块>_<版本>` 取
+// 后缀；多版本行沿用既有「N 个版本」计数 chip 承载，不重复铺版本号。
+function singleVersionOf(g: StorageSubUsageItem): string {
+  const entries = g.entries ?? []
+  if (entries.length !== 1) return ''
+  const name = entries[0]
+  const i = name.indexOf('_')
+  return i > 0 ? name.slice(i + 1) : ''
+}
+
 // 数据根级删留徽章（W3-c）：仅静态建议不提供删除钮；未列名的目录不戴章——宁缺毋滥。
 const ROOT_VERDICTS: Record<string, { word: string; tone: string; tip: string }> = {
   versions: { word: '保留', tone: 'chip-neutral', tip: '托管软件本体所在；腾容量请到各托管页按版本卸载' },
@@ -255,15 +265,16 @@ onMounted(() => {
         </div>
         <!-- versions 展开：每个软件一行（悬停看版本清单） -->
         <template v-if="item.name === 'versions' && versionsOpen">
-          <div v-if="subLoading" class="setting-row usage-subrow">
+          <div v-if="subLoading" class="setting-row usage-subrow subrow-attributed">
             <span class="setting-main"><code class="setting-desc dir-path">正在按软件测量（限时 15 秒，超时按"≥"下限）…</code></span>
           </div>
-          <div v-else-if="subError" class="setting-row usage-subrow">
+          <div v-else-if="subError" class="setting-row usage-subrow subrow-attributed">
             <span class="setting-main"><code class="setting-desc dir-path usage-sub-err">展开测量失败: {{ subError }}</code></span>
           </div>
-          <div v-for="g in subUsage" :key="g.name" class="setting-row usage-subrow">
+          <div v-for="g in subUsage" :key="g.name" class="setting-row usage-subrow subrow-attributed">
             <span class="setting-main">
               <span class="setting-name">
+                <span v-if="singleVersionOf(g)" class="chip chip-neutral version-chip" :title="`版本目录: ${g.entries?.[0]}`">{{ singleVersionOf(g) }}</span>
                 {{ g.name }}
                 <span v-if="g.entries && g.entries.length > 1" class="chip chip-neutral dir-badge" :title="`版本目录: ${g.entries.join('、')}`">{{ g.entries.length }} 个版本</span>
                 <span v-if="g.partial" class="chip chip-warning dir-badge" title="测量超时被截断，此值为下限估算">≥ 下限</span>
@@ -287,7 +298,12 @@ onMounted(() => {
 <style scoped>
 /* 数据根测量卡（N19）：头部、摘要、资源行三层结构；摘要只报已测下限，
    不冒充磁盘总占用。 */
-.usage-card { gap: 0; }
+/* 归属色条 token（机主反馈三）：展开子行左缘的从属信号，primary 30% 混透明，
+   明暗双主题皆由 --color-primary 派生，不用裸色。 */
+.usage-card {
+  gap: 0;
+  --attribution-line: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
 .usage-head { padding-bottom: 10px; }
 .usage-refresh { flex: none; }
 .usage-summary {
@@ -331,8 +347,19 @@ onMounted(() => {
   color: var(--color-text-muted); flex-shrink: 0; align-self: center;
 }
 .usage-partial { color: var(--state-warning); }
-.usage-subrow { padding-left: 22px; }
+.usage-subrow { padding-left: 34px; }
+/* 归属标记（机主反馈三）：展开子行左缘 2px primary 混色条，覆掉行框左边框，
+   一眼看清"这几行归上面 versions 管"；单独成 class 而非压在 .usage-subrow 上，
+   结构断言与语义都更明确。 */
+.subrow-attributed { border-left: 2px solid var(--attribution-line); }
+/* 单版本行版本号 chip：mono 字体贴合版本令牌观感；多版本行沿用「N 个版本」
+   计数 chip，两种 chip 互斥不重复铺。 */
+.version-chip {
+  margin-right: 6px; vertical-align: 1px;
+  font-family: var(--font-mono);
+}
 .usage-sub-err { color: var(--state-warning); }
+.usage-detail-btn { flex: none; white-space: nowrap; }
 
 @media (max-width: 640px) {
   .root-actions { width: 100%; flex-wrap: wrap; }
@@ -343,8 +370,9 @@ onMounted(() => {
   .usage-row { align-items: flex-start; flex-wrap: wrap; }
   .usage-row .setting-main { flex: 1 1 100%; }
   .usage-row .usage-size { margin-left: 0; }
-  .usage-detail-btn { margin-left: 0; }
-  .usage-subrow { padding-left: 12px; }
+  /* 窄屏行内换行后，展开/收起钮与容量值同排挤：靠右落位且 flex:none 不缩，仍可点 */
+  .usage-detail-btn { margin-left: auto; }
+  .usage-subrow { padding-left: 24px; }
 }
 
 @media (pointer: coarse) {

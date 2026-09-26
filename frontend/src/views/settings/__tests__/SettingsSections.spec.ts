@@ -29,6 +29,7 @@ const appSvc = vi.hoisted(() => ({
   BindDataDir: vi.fn(),
   UnbindDataDir: vi.fn(),
   DataRootUsage: vi.fn(),
+  DataRootSubUsage: vi.fn(),
   OpenHostsFile: vi.fn(),
   OpenNetworkConnections: vi.fn(),
   OpenSystemEnvSettings: vi.fn(),
@@ -63,6 +64,7 @@ function stubs() {
   appSvc.BindDataDir.mockResolvedValue(undefined)
   appSvc.UnbindDataDir.mockResolvedValue(undefined)
   appSvc.DataRootUsage.mockResolvedValue([])
+  appSvc.DataRootSubUsage.mockResolvedValue([])
   appSvc.GetGeneralSettings.mockResolvedValue({ autoStart: false, minimizeToTray: true, logRetainDays: 7 })
   appSvc.SetGeneralSettings.mockResolvedValue(undefined)
   appSvc.ListTrayMenuOptions.mockResolvedValue([{ type: 'command', ref: 'frpc/start', label: '启动 frpc', moduleName: 'frpc' }])
@@ -285,6 +287,33 @@ describe('存储目录分区', () => {
     await usageHead.find('button').trigger('click')
     await flushPromises()
     expect(appSvc.DataRootUsage).toHaveBeenLastCalledWith(true) // 重新测量穿透缓存
+  })
+
+  // 机主反馈三：versions 展开子行与外层难区分——子行必须带归属标记 class
+  // （左缘 primary 混色条），单版本行铺 mono 版本号 chip，多版本行沿用计数 chip。
+  it('展开软件明细（反馈三）：子行带归属标记 class，单版本铺版本号 chip、多版本走计数 chip', async () => {
+    stubs()
+    appSvc.DataRootUsage.mockResolvedValue([
+      { name: 'versions', isDir: true, bytes: 75240857, files: 900, partial: false, errorCount: 0 },
+    ])
+    appSvc.DataRootSubUsage.mockResolvedValue([
+      { name: 'termora', bytes: 75240857, files: 400, partial: false, errorCount: 0, entries: ['termora_v2.16.1'] },
+      { name: 'everything', bytes: 12345678, files: 50, partial: false, errorCount: 0, entries: ['everything_1.4.11', 'everything_1.4.12'] },
+    ])
+    const w = await mountView(StorageSection)
+    expect(w.findAll('.usage-subrow')).toHaveLength(0) // 默认收起
+    await w.find('.usage-detail-btn').trigger('click')
+    await flushPromises()
+    expect(appSvc.DataRootSubUsage).toHaveBeenCalledWith('versions', false)
+    const subs = w.findAll('.usage-subrow')
+    expect(subs).toHaveLength(2)
+    for (const s of subs) expect(s.classes()).toContain('subrow-attributed')
+    // 单版本：名称前铺版本号 chip（取自目录名后缀），不再叠计数 chip
+    expect(subs[0].find('.version-chip').text()).toBe('v2.16.1')
+    expect(subs[0].text()).not.toContain('1 个版本')
+    // 多版本：计数 chip 承载，不重复铺版本号
+    expect(subs[1].find('.version-chip').exists()).toBe(false)
+    expect(subs[1].text()).toContain('2 个版本')
   })
 
   it('更改位置：prompt 取消不调后端，提交绝对路径走 BindDataDir 并提示重启生效', async () => {
