@@ -60,7 +60,18 @@
  * N38 按钮配色治理（2026-09-26）：层级定档——primary 实底加深色描边（"主"）、
  * secondary/accent-outline 用 --btn-outline-edge 立细边（次级可辨）、danger 描边/
  * 实心双档一眼危险、disabled 全族去饱和（灰掉但不消失）、:active 全族下沉 1px 反馈。
- * 色值单一真相在 tokens.css 派生档，本文件只挂语义引用。 */
+ * 色值单一真相在 tokens.css 派生档，本文件只挂语义引用。
+ *
+ * N37② glow 降级落地形制（PLAN_N37_ONCOLOR §4）：本层按钮/胶囊**零彩色外发光**——
+ * 家族内不存在任何 box-shadow，实心档一律"实底 + 1px 描边"（primary/danger 实心吃
+ * --btn-solid-edge / --btn-danger-edge，次级吃 --btn-outline-edge）；彩色投影此后
+ * 只许"进行中"脉冲使用（指路见下方 .live-pulse 块），稳态发光不得回流本层。
+ *
+ * N37① 字色契约（组件禁自取）：彩底实底前景一律显式取 on-* token——primary 底用
+ * --color-on-primary，danger/positive 等状态彩底用 --color-on-accent（十板×明暗
+ * 逐对实测过 AA，见 PLAN §4 矩阵）。禁用 --color-text / --color-text-inverse /
+ * 裸色值充当彩底前景；on-* 为每板每模式的成对定义，hover/active 换底与 disabled
+ * 去饱和均自动跟随同一前景，各态无需（也禁止）单独覆写 color。 */
 :where(.btn) {
   display: inline-flex;
   align-items: center;
@@ -397,6 +408,12 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+/* N37② 指路：本类是全库"进行中"脉冲的标准形（opacity 呼吸、零投影）。
+ * 按拍板点 6 现行口径，彩色投影/光晕**只许**挂在"进行中"语义上——视图侧唯一
+ * 带光合法件为 SnipCardView .snip-pulse（primary 点 + glow 呼吸）；托管家族
+ * *-status-light.starting 六族为无投影 opacity 脉冲，同为合法件。按钮、胶囊、
+ * 状态灯稳态（running/external/online 等）的常态发光已按②降级为实底+提亮描边，
+ * 新增稳态 glow 一律视为违规回流。 */
 :where(.live-pulse) {
   animation: hx-pulse 1.8s ease-in-out infinite;
 }
