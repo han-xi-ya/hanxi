@@ -8,15 +8,39 @@
 // 即时重绘、任何 DPR 都锐利，故只有 app: 真图标中招——与机主"软件图标发糊"的
 // 描述严格吻合。
 //
-// 策略（纯函数，组件侧只对 app: 位图消费；根治还要重切 64px 源档，见交付报告）：
+// 策略（纯函数，组件侧只对 app: 位图消费；2026-09-26 资产已升切 64 封顶，
+// 本表按 sources.go 台账逐枚给源——放大凑数与静默小图两头都堵死）：
 //  1. 物理边长取整——杜绝分数设备像素的亚像素重采样糊；
 //  2. 永不放大——物理目标超过源档即钉死 1:1（宁可小半档，不可糊一档）；
-//  3. 降采样区间向源的干净二分档（32/16…）吸附（差 ≤ SNAP_TOL_PX 物理 px 时），
+//  3. 降采样区间向源的干净二分档（64/32/16…）吸附（差 ≤ SNAP_TOL_PX 物理 px 时），
 //     整数比降采样是 1:1 之下最锐利的档位。
 // 返回值仍是 CSS px（物理边长 / dpr），直接喂 <AppIcon :size>。
 
-/** assets/apps 位图统一分辨率（与提取脚本 -Px 默认值同源；改脚本须同步此值）。 */
-export const APP_ICON_SRC_PX = 32
+/** assets/apps 展示档默认分辨率（升切批出货主档；改提取脚本 -Px 须同步此值与台账）。 */
+export const APP_ICON_SRC_PX = 64
+
+/** 逐枚源尺寸台账（对齐 internal/app/appicons/sources.go 的 26 键；升切批出货实况：
+ *  24 枚 64 封顶、ddnsgo/frpc 源天花板 48；generic 自绘 32 不入册，托盘菜单变体不
+ *  走本预算。新件入库须同批登记，未登记名保守按 32 档防放大凑数）。导出供测试对账。 */
+export const ICON_SRC_LEDGER: Record<string, number> = {
+  ...Object.fromEntries(
+    [
+      'bcu', 'bili23', 'ccswitch', 'douzy', 'eartrumpet', 'everything', 'flclash',
+      'guoheview', 'keyviz', 'litemonitor', 'mangodisk', 'markeron', 'nanazip',
+      'papertodo', 'paseo', 'piclite', 'quicklook', 'rufus', 'rustdesk', 'snipaste',
+      'subnetdesk', 'termora', 'translucenttb', 'windterm',
+    ].map((id) => [id, APP_ICON_SRC_PX] as const),
+  ),
+  ddnsgo: 48,
+  frpc: 48,
+}
+
+/** app: 图标名的源档查询——预算封顶按枚给，不再用统一常数（未知名=文件不在位，
+ *  AppIcon 回落 32px 自绘 generic，保守取 32 防把通用徽图当 64 源放大）。 */
+export function srcPxForWheelIcon(icon: string): number {
+  const id = icon.startsWith('app:') ? icon.slice(4) : ''
+  return ICON_SRC_LEDGER[id] ?? 32
+}
 
 /** 干净二分档吸附容差（物理 px）：差在容差内才换挡，否则保持期望边长。 */
 const SNAP_TOL_PX = 2

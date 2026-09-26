@@ -29,7 +29,7 @@ import {
   WHEEL, VIS, polar, wedgePath, mainSectorAngles, capSpanDeg, capSectorAngles, capAnchorDeg, mainAnchor, slotOf,
 } from '../components/quickmenu/wheelGeometry'
 import { useWheelRingState } from '../composables/useWheelRingState'
-import { isRasterWheelIcon, snapIconCssPx } from '../components/quickmenu/wheelIconBudget'
+import { isRasterWheelIcon, snapIconCssPx, srcPxForWheelIcon } from '../components/quickmenu/wheelIconBudget'
 import { useWheelDpr } from '../components/quickmenu/useWheelDpr'
 import {
   fetchWheelSkin, readWheelSkin, saveWheelSkin, wheelSkinVars, wheelTintCss, WHEEL_SKIN_STORAGE_KEY, type WheelSkin,
@@ -138,7 +138,7 @@ function sectorTint(item: MenuItem): string | undefined {
 const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
 /** 图标渲染边长：app: 位图轨吃 DPR 像素预算，i: 矢量轨原档直出（见 wheelIconBudget） */
 function iconPx(item: MenuItem, base: number): number {
-  return isRasterWheelIcon(wheelIconOf(item)) ? snapIconCssPx(base, dpr.value || 1) : base
+  return isRasterWheelIcon(wheelIconOf(item)) ? snapIconCssPx(base, dpr.value || 1, srcPxForWheelIcon(wheelIconOf(item))) : base
 }
 const activeItem = computed(() => (active.value == null ? null : items.value[active.value] ?? null))
 const ready = computed(() => !loading.value && !errorMsg.value)

@@ -425,20 +425,21 @@ describe('皮肤与清晰度（机主反馈 2026-09-26）', () => {
     w.unmount()
   })
 
-  it('DPR=2 时 app: 位图吃像素预算（22→16），矢量轨保持原档（22）', async () => {
+  it('DPR=2 时 app: 位图吃逐枚源台账：64 源满档直出 22，未登记件保守 32 源钉 16；矢量轨原档', async () => {
     const original = window.devicePixelRatio
     Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 })
     try {
       const crisp: MenuItem[] = [
         { ...leaf(0, 'Snipaste', 'exe', 'p'), icon: 'app:snipaste' },
-        { ...leaf(1, '命令', 'command', 'c'), icon: 'i:terminal' },
+        { ...leaf(1, '幽灵件', 'exe', 'q'), icon: 'app:nope-not-registered' },
+        { ...leaf(2, '命令', 'command', 'c'), icon: 'i:terminal' },
       ]
       const w = await mountReady(crisp)
-      // 两枚都在 ≤6 宽裕档（density.icon=22）：位图轨被钉到源 1:1=16，矢量轨原样
-      const img = w.findAll('.sector-icon')[0].find('img,svg')
-      expect(img.attributes('style')).toContain('width: 16px')
-      const vec = w.findAll('.sector-icon')[1].find('img,svg')
-      expect(vec.attributes('style')).toContain('width: 22px')
+      // 三枚都在 ≤6 宽裕档（density.icon=22）：升切后 64 源容得下 44 物理，满档不缩；
+      // 未登记名按 generic 回落 32 源封顶 1:1=16；矢量轨原样
+      expect(w.findAll('.sector-icon')[0].find('img,svg').attributes('style')).toContain('width: 22px')
+      expect(w.findAll('.sector-icon')[1].find('img,svg').attributes('style')).toContain('width: 16px')
+      expect(w.findAll('.sector-icon')[2].find('img,svg').attributes('style')).toContain('width: 22px')
       w.unmount()
     } finally {
       Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: original })
