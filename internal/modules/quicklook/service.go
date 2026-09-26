@@ -41,6 +41,10 @@ type QuickLookService struct {
 	engine  *instance.Engine
 	holder  *extapi.LeaseHolder
 
+	// download 下载→落位链的函数接缝：生产装配指向 manager.DownloadContext，
+	// 测试注入假实现以隔离网络驱动 emit 收口时序（eartrumpet 注入接缝同法）。
+	download func(ctx context.Context, txnID, targetVersion string, emit func(version.DownloadProgress)) error
+
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
 	watching   bool
@@ -59,6 +63,7 @@ func NewQuickLookService(plat platform.Platform, holder *extapi.LeaseHolder) *Qu
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewQuickLookProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
 	})
+	svc.download = svc.manager.DownloadContext
 	return svc
 }
 
@@ -203,6 +208,14 @@ func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error)
 			txn.Close()
 		}()
 		emit := func(p version.DownloadProgress) {
+			// 首装自动设使用的落账必须在 done 事件发出之前（termora 2ac9b3b 同构
+			// 竞态）：前端共享 store 收到 done 即复刷版本区读 GetActiveVersion，
+			// 事件先行于落账时瞬时复刷读到空值。done 仅在落位 Commit 成功后发出，
+			// 此时版本已真实在场；未设使用时才立首装（与 snipaste 行为对齐），
+			// 后续升级不改动用户手选的 active。
+			if p.Stage == "done" && s.store.GetActive() == "" {
+				_ = s.store.SetActive(targetVersion)
+			}
 			slog.Debug("quicklook download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("quicklook:version-download", p)
@@ -235,7 +248,7 @@ func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error)
 				notify.Success("quicklook", "版本安装成功", fmt.Sprintf("QuickLook %s 已成功安装", p.Version), "/ext/quicklook")
 			}
 		}
-		if err := s.manager.DownloadContext(txn.Context(), txnID, targetVersion, emit); err != nil {
+		if err := s.download(txn.Context(), txnID, targetVersion, emit); err != nil {
 			// N26 用户主动取消：按 2b 纪律如实收口，票面话术不露 ctx 原始错误；
 			// 主动动作不发"失败"系统通知（前端票面已呈现「已取消」）。
 			if txn.Err() != nil {
@@ -253,11 +266,7 @@ func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error)
 			notify.Error("quicklook", "版本安装失败", fmt.Sprintf("QuickLook %s 事务收口失败: %v", targetVersion, err), "/ext/quicklook")
 			return
 		}
-		// 未设使用版本时自动把刚下载完的版本设为使用版本：
-		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
-		if s.store.GetActive() == "" {
-			_ = s.store.SetActive(targetVersion)
-		}
+		// "首装自动设使用"已在 emit 闭包收口 done 时先于事件落账，此处不再重复。
 	}()
 
 	return "started", nil
