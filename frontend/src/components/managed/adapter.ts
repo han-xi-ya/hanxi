@@ -251,8 +251,10 @@ export interface ManagedReleaseRecord {
 
 /**
  * 托管形态 chip 统一词表（N13）：hostfeed.Form 词表 → 面板短词。
- * 共享面板与方言视图（vscode 双表 / snipaste、rammap 自绘版本区）同源取词，
- * 词表外值如实透传（后端扩词不静默吞标）。
+ * 共享面板与自绘远程行的方言表（vscode 双表 / snipaste / quicklook /
+ * everything）同源取词，词表外值如实透传（后端扩词不静默吞标）。
+ * （旧注误点 "rammap 自绘版本区"：RAMMap 实吃共享面板，取词天然经
+ * ManagedVersionPanel 同源，无须单列；余如 litemonitor 等同理。）
  */
 export const RELEASE_FORM_WORD: Record<string, string> = {
   portable: '便携',

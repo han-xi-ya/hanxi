@@ -46,8 +46,8 @@ function stubStatus(clients: unknown[], access: Record<string, unknown> = {}) {
   })
   // 自检默认通过态（R2）；单个用例覆写失败/异常分支
   wizardSvc.SelfCheck.mockResolvedValue({
-    state: 'ok', toolCount: 6, tools: ['hanxi_envcheck_detect', 'hanxi_file_search', 'hanxi_ocr_recognize', 'hanxi_memo_search', 'hanxi_sysinfo_report', 'hanxi_log_read'],
-    message: 'hanxi mcp 握手成功，6 件工具就位', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
+    state: 'ok', toolCount: 7, tools: ['hanxi_envcheck_detect', 'hanxi_file_search', 'hanxi_ocr_recognize', 'hanxi_memo_search', 'hanxi_memo_stats', 'hanxi_sysinfo_report', 'hanxi_log_read'],
+    message: 'hanxi mcp 握手成功，7 件工具就位', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
   })
 }
 
@@ -120,7 +120,7 @@ describe('AI 接入分区', () => {
     expect(wizardSvc.SelfCheck).toHaveBeenCalledWith(false)
     const row = w.find('.check-row')
     expect(row.exists()).toBe(true)
-    expect(row.text()).toContain('通过（6 工具）')
+    expect(row.text()).toContain('通过（7 工具）')
     expect(row.text()).toContain('握手成功')
   })
 
@@ -254,6 +254,9 @@ describe('AI 接入分区', () => {
     expect(rows[0].text()).toContain('已开放')
     expect(rows[1].text()).toContain('未开放')
     expect(rows[0].text()).toContain('hanxi_envcheck_detect')
+    // memo 键一键控全族（d87654c 起两件工具）：行文案必须覆盖检索+统计全族名
+    expect(rows[3].text()).toContain('便签检索与统计')
+    expect(rows[3].text()).toContain('hanxi_memo_search · hanxi_memo_stats')
     expect(switches[0].attributes('disabled')).toBeUndefined() // 正常态可拨
     await w.findAll('.access-foot button')[0].trigger('click')
     expect(appSvc.OpenPath).toHaveBeenCalledWith('D:\\hx\\hanxidata\\mcp')
