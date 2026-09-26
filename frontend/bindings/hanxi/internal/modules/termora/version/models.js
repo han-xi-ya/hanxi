@@ -29,6 +29,7 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
  * @property {string} assetUrl
  * @property {number} size
  * @property {hostfeed$0.AssetNote[] | null} [assets] - Assets 上游全发布物平台/形态矩阵（N13 展示层，纯展示，下载路径不消费）。
+ * @property {hostfeed$0.Form} [form] - Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒 portable——jpackage app-image zip 解压即用（自带 runtime，零安装动作）； 资产名 termora-X-windows-x86-64.zip 无 portable 字样，机械判名 Classify 保守降为 archive，形态以托管安装链事实自证为准。
  */
 
 /**

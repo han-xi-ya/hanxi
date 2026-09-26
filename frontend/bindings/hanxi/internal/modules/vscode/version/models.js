@@ -14,6 +14,21 @@
  */
 
 /**
+ * Form 分发形态：portable 免安装归档 / installer 用户安装器。
+ * @readonly
+ * @enum {string}
+ */
+export const Form = {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero: "",
+
+    FormPortable: "portable",
+    FormInstaller: "installer",
+};
+
+/**
  * InstalledInfo 安装版（本机唯一一份，含用户自行安装的）探测信息。
  * 安装位置与版本均来自 HKCU 卸载注册表（用户安装时可选任意目录，
  * 实测存在自定义到非默认位置的情况，路径必须以注册表为准）。
@@ -33,6 +48,7 @@
  * @property {number} size - 字节数（HEAD 实测，防截断）
  * @property {string} assetName - 如 VSCode-win32-x64-1.136.1.zip / VSCodeUserSetup-x64-1.136.1.exe
  * @property {string} sha256 - SHA256 官方哈希（feed 更新清单 sha256hash）。上游仅对"最新版"发布官方 哈希（feed 恒返最新清单），旧版恒为空——下载时降级三层完整性校验。
+ * @property {Form} [form] - Form 本条 release 的分发形态（N13 形态标注，纯展示，manager.ListRemote 按查询形态回填）：portable=win32-x64-archive 便携 zip / installer= win32-x64-user 用户安装器（Inno）。全家族 Form 字段的方言先例——值域 portable/installer 与 hostfeed.Form 词表逐字同名；vscode 双形态行行 各异，不经 hostedForm 常量而随查询入参。
  */
 
 /**

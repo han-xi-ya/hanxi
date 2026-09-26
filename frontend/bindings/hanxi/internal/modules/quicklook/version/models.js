@@ -29,6 +29,7 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
  * @property {number} size - 资产大小（字节）
  * @property {string} sha256 - 官方 sha256（digest 去掉前缀）
  * @property {hostfeed$0.AssetNote[] | null} [assets] - Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+ * @property {hostfeed$0.Form} [form] - Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒 portable——findPortableAsset 判据恒收 QuickLook-<ver>.zip（五资产并列 中唯一免安装便携包，portable.lock 在场）；资产名无便携字样，机械判名 Classify 保守降为 archive，形态以实测布局与安装链事实自证为准。
  */
 
 /**

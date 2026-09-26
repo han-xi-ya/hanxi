@@ -19,8 +19,10 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
 /**
  * PicRelease 远程 GitHub Release 中可用的 PicLite Windows x64 MSI 安装包。
  * SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验的第一依据）。
- * 注意：上游不提供便携 zip，MSI 是唯一免管理员可拆解的资产形态
- * （-setup.exe 为 perMachine NSIS，需要提权且写卸载注册表，不可用于托管）。
+ * 注意：MSI 是本包收口的唯一免管理员可拆解资产形态（-setup.exe 为
+ * perMachine NSIS，需要提权且写卸载注册表，不可用于托管）；上游现行
+ * release 已并发 PicLite-Windows-<arch>-portable.zip（2026-09-23 底账
+ * 实证），选包判据未变，便携线现状以 Assets 矩阵如实展示。
  * @typedef {Object} PicRelease
  * @property {string} version - 如 v1.4.1
  * @property {string} published - 发布时间（RFC3339）
@@ -30,6 +32,7 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
  * @property {number} size - 资产大小（字节）
  * @property {string} sha256 - 官方 sha256（digest 去掉前缀）
  * @property {hostfeed$0.AssetNote[] | null} [assets] - Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+ * @property {hostfeed$0.Form} [form] - Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒 installer——findMSIAsset 判据恒收 PicLite_<ver>_x64_en-US.msi；机械判名 Classify 按 .msi 扩展归 package，形态以选包判据与安装链事实 （msiexec /a 管理提取免安装化）自证为准。
  */
 
 /**

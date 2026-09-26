@@ -18,6 +18,16 @@ import * as $models from "./models.js";
  */
 
 /**
+ * Skin 轮盘皮肤账（机主拍板 2026-09-26"轮盘皮肤做"）：纯视觉偏好入后端账，
+ * 皮肤随 hanxidata 数据目录 NAS 同步随身。前端呈现侧归一语义与此同源
+ * （wheelSkin.ts：预设白名单/数值钳域，坏值归正不报错）：Preset ∈ frost|veil|ink；
+ * FaceAlpha 为盘纱不透明度整数百分比（有效域 35–100，再透桌面噪点透出、
+ * 盘面读不出"一块盘"）；Stroke 为扇区描边强度 0–100；FollowModuleColor 开启时
+ * 描边改用条目真图标主色（灰图标/矢量轨回落类型色）。
+ * @typedef {$models.Skin} Skin
+ */
+
+/**
  * Status 快捷菜单运行态（模块页展示 + 开关回显）。
  * @typedef {$models.Status} Status
  */

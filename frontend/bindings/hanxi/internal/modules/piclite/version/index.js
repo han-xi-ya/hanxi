@@ -12,8 +12,10 @@ import * as $models from "./models.js";
 /**
  * PicRelease 远程 GitHub Release 中可用的 PicLite Windows x64 MSI 安装包。
  * SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验的第一依据）。
- * 注意：上游不提供便携 zip，MSI 是唯一免管理员可拆解的资产形态
- * （-setup.exe 为 perMachine NSIS，需要提权且写卸载注册表，不可用于托管）。
+ * 注意：MSI 是本包收口的唯一免管理员可拆解资产形态（-setup.exe 为
+ * perMachine NSIS，需要提权且写卸载注册表，不可用于托管）；上游现行
+ * release 已并发 PicLite-Windows-<arch>-portable.zip（2026-09-23 底账
+ * 实证），选包判据未变，便携线现状以 Assets 矩阵如实展示。
  * @typedef {$models.PicRelease} PicRelease
  */
 

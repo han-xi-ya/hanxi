@@ -29,6 +29,7 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
  * @property {string} assetUrl
  * @property {number} size
  * @property {hostfeed$0.AssetNote[] | null} [assets] - Assets 上游全发布物的平台/形态展示矩阵（N13；纯展示，下载路径不消费）。
+ * @property {hostfeed$0.Form} [form] - Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒 portable——WindTerm_X_Windows_Portable_x86_64.zip，资产名自带便携证据， 机械判名与安装链事实一致（上游全平台发布物均为 zip 家族，无安装器线）。
  */
 
 /**

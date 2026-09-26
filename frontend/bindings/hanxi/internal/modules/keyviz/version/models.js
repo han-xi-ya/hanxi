@@ -28,6 +28,7 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
  * @property {number} size - 资产大小（字节）
  * @property {string} sha256 - 官方 sha256（digest 去掉前缀）
  * @property {hostfeed$0.AssetNote[] | null} [assets] - Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+ * @property {hostfeed$0.Form} [form] - Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒 installer——上游 v2 正式版线 win 侧只有 keyviz_<ver>_windows.msi； 机械判名 Classify 按 .msi 扩展归 package，形态以选包判据（findMSIAsset） 与安装链事实（msiexec /a 管理提取免安装化）自证为准。
  */
 
 /**

@@ -26,6 +26,7 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
  * @property {string} assetUrl - 资产下载地址
  * @property {number} size - 资产大小（字节）
  * @property {hostfeed$0.AssetNote[] | null} [assets] - Assets 上游全发布物平台/形态矩阵（N13 展示层，纯展示，下载路径不消费）。
+ * @property {hostfeed$0.Form} [form] - Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒 portable——上游 win 侧虽安装器并立（-setup.exe / _x64-setup.nsis.zip / _zh-CN.msi），findPortableAsset 判据恒收官方便携归档 _x64_portable.zip， 机械判名与安装链事实一致（资产名 portable 字样在场）。
  */
 
 /**

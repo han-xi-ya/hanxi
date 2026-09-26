@@ -32,6 +32,15 @@ export function Dismiss() {
 }
 
 /**
+ * GetSkin 返回当前生效轮盘皮肤（归一后，设置页表单初值与弹窗唤出读数）。
+ * store 缺失按出厂素瓷盘降级——读侧永不因皮肤断链（弹窗与预览同受此保证）。
+ * @returns {$CancellablePromise<$models.Skin>}
+ */
+export function GetSkin() {
+    return $Call.ByID(453820254);
+}
+
+/**
  * GetStatus 返回快捷菜单运行态（模块页展示 + 二级轮盘开关回显）。
  * @returns {$CancellablePromise<$models.Status>}
  */
@@ -92,6 +101,17 @@ export function OpenSettings() {
  */
 export function SetMainWindow(win) {
     return $Call.ByID(3119883326, win);
+}
+
+/**
+ * SetSkin 归一皮肤后落盘并回显生效值（越界/坏值只归正不报错——表单防呆口径，
+ * 与 SetTriggerConfig 同款；仅 store 不可用如实拒）。热生效：弹窗每次唤出
+ * 重读 + 同源 storage 镜像即时跟皮，无需重启。
+ * @param {$models.Skin} skin
+ * @returns {$CancellablePromise<$models.Skin>}
+ */
+export function SetSkin(skin) {
+    return $Call.ByID(1612907522, skin);
 }
 
 /**
