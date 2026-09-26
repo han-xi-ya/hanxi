@@ -10,7 +10,9 @@
 // （GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet，N16 B 批）——
 // 底部「悬浮速记卡」面板管热键配置与实况，页头钮可不经热键直接唤卡。
 // memo:changed 事件重拉纪律照旧。
-// 敏感遮罩纪律原样：IsMasked 条目卡片/详情/预览三处都不落明文，揭示是显式动作。
+// 敏感遮罩纪律原样：IsMasked 条目卡片/详情/预览三处都不落明文，揭示是显式动作；
+// N16 C 批导出面同守此纪——masked 条目无导出钮，全库导出默认剔除敏感条目且
+// 确认框明说排除条数（导出件脱离应用即无遮罩，纸面必须交代清楚）。
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
 import type {
@@ -21,6 +23,13 @@ import type {
 import { getErrorMessage } from '../utils/errors'
 import { fmtDate } from '../utils/format'
 import { looksLikeMarkdown, renderMarkdown } from '../utils/markdown'
+import {
+  buildLibraryDigest,
+  buildMemoFile,
+  downloadTextFile,
+  safeExportFileName,
+  safeLibraryFileName,
+} from '../utils/memoexport'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
@@ -378,6 +387,70 @@ const detailHtml = computed(() =>
     : '',
 )
 
+// ---- 导出（N16 C 批：单条 .md + 全库汇总 .md，纯前端零新后端）----
+// 单条：与 <数据根>/memo/<id>.md 同格式的 frontmatter 文档（可回灌）；通道为
+// 浏览器原生下载，不可用时降级"复制原文到剪贴板"（同一份文档，不另做取舍）。
+function exportFromDetail() {
+  const cur = detailItem.value
+  if (!cur || cur.isMasked) return // 遮罩语义：明文不落导出文件，同"复制全文"纪律
+  const doc = buildMemoFile(cur)
+  const fileName = safeExportFileName(cur)
+  if (downloadTextFile(fileName, doc)) {
+    showToast(`已导出 ${fileName}`)
+  } else {
+    void copyWithToast(doc, '保存通道不可用，原文已复制到剪贴板')
+  }
+}
+
+// 全库：永远按无过滤全集重拉（当前检索/标签视图不得缩小导出面）；IsMasked
+// 条目默认剔除且确认框明说条数——排除动作发生在取数后、进汇总器之前，
+// 敏感明文根本不进导出字符串。
+const exporting = ref(false)
+
+async function handleExportLibrary() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const all =
+      (await MemoAPI.MemoService.List({
+        keyword: '',
+        tag: '',
+        pinned: null,
+        sortBy: 'updated',
+        sortDesc: true,
+      })) ?? []
+    const kept = all.filter((m) => !m.isMasked)
+    const maskedCount = all.length - kept.length
+    if (kept.length === 0) {
+      showToast(all.length === 0 ? '便签库是空的，没有可导出的内容' : '全部条目均为敏感遮罩，默认不导出')
+      return
+    }
+    const accepted = await confirm({
+      title: '导出全库汇总文件？',
+      description:
+        '将生成一个 Markdown 汇总文件（浏览器下载）。敏感遮罩条目默认排除，明文不会写入导出文件；导出件离开应用后不再有遮罩保护，请妥善保管。',
+      confirmLabel: `导出 ${kept.length} 条`,
+      tone: 'warning',
+      details: [
+        { label: '导出条数', value: `${kept.length} 条` },
+        { label: '敏感排除', value: maskedCount > 0 ? `${maskedCount} 条（明文未写入）` : '无' },
+      ],
+    })
+    if (!accepted) return
+    const digest = buildLibraryDigest(kept, { excludedMasked: maskedCount })
+    const fileName = safeLibraryFileName()
+    if (downloadTextFile(fileName, digest)) {
+      showToast(`已导出 ${kept.length} 条 → ${fileName}`)
+    } else {
+      void copyWithToast(digest, '下载通道不可用，汇总全文已复制到剪贴板')
+    }
+  } catch (err: unknown) {
+    showToast(`导出失败: ${getErrorMessage(err)}`)
+  } finally {
+    exporting.value = false
+  }
+}
+
 // ---- 卡片微操作 ----
 async function handleTogglePin(item: MemoItem) {
   try {
@@ -481,6 +554,14 @@ onUnmounted(() => {
           <UiButton variant="primary" @click="openCreateModal">＋ 新建便签</UiButton>
           <UiButton variant="secondary" title="唤出悬浮速记卡（与全局热键同一入口）" @click="openQuickSheet">
             浮窗速记
+          </UiButton>
+          <UiButton
+            variant="secondary"
+            :disabled="stats.totalCount === 0 || exporting"
+            :title="`导出全库为单个 Markdown 汇总文件（敏感遮罩条目默认排除），需确认`"
+            @click="handleExportLibrary"
+          >
+            {{ exporting ? '导出中…' : '导出全库' }}
           </UiButton>
           <UiButton
             variant="danger"
@@ -636,9 +717,13 @@ onUnmounted(() => {
               <span
                 v-for="t in item.tags"
                 :key="t"
-                class="tag-pill memo-tag"
+                class="tag-pill tag-pill-clickable memo-tag"
                 :class="{ 'memo-tag-active': selectedTag === t }"
+                role="button"
+                tabindex="0"
                 @click="handleSelectTag(t)"
+                @keydown.enter.prevent="handleSelectTag(t)"
+                @keydown.space.prevent="handleSelectTag(t)"
               >
                 {{ t }}
               </span>
@@ -707,13 +792,18 @@ onUnmounted(() => {
           <span
             v-for="t in detailItem.tags"
             :key="t"
-            class="tag-pill memo-tag"
+            class="tag-pill tag-pill-clickable memo-tag"
+            role="button"
+            tabindex="0"
             @click="handleSelectTag(t); closeDetail()"
+            @keydown.enter.prevent="handleSelectTag(t); closeDetail()"
+            @keydown.space.prevent="handleSelectTag(t); closeDetail()"
           >{{ t }}</span>
         </footer>
         <footer class="dlg-foot">
-          <!-- 遮罩条目不给复制全文：遮罩语义是"明文不落眼也不落他人剪贴板" -->
+          <!-- 遮罩条目不给复制全文/导出：遮罩语义是"明文不落眼、不落他人剪贴板也不落成文件" -->
           <UiButton v-if="!detailItem.isMasked" variant="secondary" small @click="copyMemoContent(detailItem.content)">📋 复制全文</UiButton>
+          <UiButton v-if="!detailItem.isMasked" variant="secondary" small title="导出为与文件库同格式的 .md（含 frontmatter，可回灌）" @click="exportFromDetail">⬇ 导出 .md</UiButton>
           <UiButton variant="secondary" small @click="maskFromDetail">
             {{ detailItem.isMasked ? '👁️ 揭示明文' : '🕶️ 脱敏遮罩' }}
           </UiButton>
@@ -802,7 +892,8 @@ onUnmounted(() => {
    （components.css :where 家族：btn 全族、text-input、tag-pill、chip、state-box、
    banner、mono、text-muted/text-danger 等）与全局 token 变量——跨页面观感一律
    以共享件为准。页面私有需求全部走 memo- 前缀私有类，与共享类同挂叠加组合
-   （如 tag-pill + memo-tag：外观基座归全局，交互态/色差归私有）。 */
+   （如 tag-pill + tag-pill-clickable：外观基座与可点交互档归全局；
+     tag-pill + memo-tag-active：选中态色差等页面私有色差仍归私有）。 */
 .memo-page { display: flex; flex-direction: column; gap: 14px; }
 
 .head-btns { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -885,9 +976,10 @@ onUnmounted(() => {
 
 .memo-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .memo-tags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
-/* 标签丸外观基座归全局 .tag-pill 原子，本层只叠加"可点选过滤丸"的交互差 */
-.memo-tag { cursor: pointer; }
-.memo-tag:hover { background: var(--surface-hover); }
+/* 标签丸外观基座归全局 .tag-pill 原子；"可点过滤丸"的 cursor/hover/焦点三差已收编
+   全局 :where(.tag-pill-clickable)（模板同挂落回），本层只剩选中态私有色差。
+   编辑浮层的可移除丸（memo-tag-removable）丸体无点击动作（移除由 ✕ 承担），
+   不挂交互档；其原 hover 加深与自身底色同为 --surface-hover 本就无差，删净零变化。 */
 .memo-tag-active { background: var(--color-primary-soft); color: var(--color-primary); }
 .foot-right { display: flex; align-items: center; gap: 6px; flex: none; }
 .memo-time { font-size: var(--text-xs); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }

@@ -10,7 +10,7 @@
 // ShowQuickSheet，本 spec 尾部「悬浮速记卡配置」一族钉死）。
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MemoView from '../MemoView.vue'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
@@ -46,6 +46,14 @@ vi.mock('@wailsio/runtime', () => ({
 vi.mock('../../../bindings/hanxi/internal/modules/memo', () => ({
   MemoService: svc,
 }))
+
+// 导出 util 部分打桩：只掐下载通道（可编排成功/降级两路），builder 留真身——
+// 这样"masked 明文不进导出文件"是拿真实产出文本断言，不是断言一句假想调用。
+const exportUtil = vi.hoisted(() => ({ downloadTextFile: vi.fn() }))
+vi.mock('../../utils/memoexport', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../utils/memoexport')>()
+  return { ...mod, downloadTextFile: exportUtil.downloadTextFile }
+})
 
 const memo = (over: Record<string, unknown> = {}) => ({
   id: 'm1',
@@ -568,5 +576,119 @@ describe('悬浮速记卡配置', () => {
     const w3 = await mountView([memo()], { '#SQL': 1 }, 'fail')
     expect(w3.find('.memo-sheet-settings').exists()).toBe(false)
     w3.unmount()
+  })
+})
+
+// N16 C 批导出面（单条 .md + 全库汇总 .md，零新后端）：详情浮层导出钮与
+// 复制全文同挂遮罩纪律；下载通道不可用降级复制原文（同一份文档）。全库导出
+// 三钉：取数永远无过滤重拉（视图过滤不得缩面）、确认框明说敏感排除条数、
+// masked 明文经真实 builder 产出文本反证不进导出。
+describe('导出（单条 .md 与全库汇总）', () => {
+  beforeEach(() => {
+    exportUtil.downloadTextFile.mockReset() // 本族既编排返回值又数调用次数，须从净胎起
+  })
+
+  const dlgBtn = (w: ReturnType<typeof mount>, scope: string, text: string) =>
+    w.findAll(`${scope} button`).find((b) => b.text().includes(text))
+
+  it('详情浮层「导出 .md」：下载与文件库同格式的 frontmatter 文档并按名播报', async () => {
+    const w = await mountView([memo()])
+    await w.find('.memo-content-box').trigger('click')
+    exportUtil.downloadTextFile.mockReturnValue(true)
+    await dlgBtn(w, '.detail-dialog', '导出 .md')!.trigger('click')
+    await flushMicrotasks()
+    expect(exportUtil.downloadTextFile).toHaveBeenCalledTimes(1)
+    const [fileName, doc] = exportUtil.downloadTextFile.mock.calls[0] as [string, string]
+    expect(fileName).toBe('生产库连接串-m1.md')
+    expect(doc.startsWith('---\nid: m1\ntitle: 生产库连接串\ntags: ["#SQL"]')).toBe(true)
+    expect(doc).toContain('masked: false')
+    expect(doc.endsWith('---\nhost=10.0.0.1;pw=topsecret')).toBe(true)
+    expect(useToast().toastMsg.value).toBe('已导出 生产库连接串-m1.md')
+    w.unmount()
+  })
+
+  it('下载通道不可用：降级把同一份原文复制到剪贴板并如实播报', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('isSecureContext', true)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    const w = await mountView([memo()])
+    await w.find('.memo-content-box').trigger('click')
+    exportUtil.downloadTextFile.mockReturnValue(false)
+    await dlgBtn(w, '.detail-dialog', '导出 .md')!.trigger('click')
+    await flushMicrotasks()
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(writeText.mock.calls[0][0] as string).toContain('id: m1')
+    expect(useToast().toastMsg.value).toBe('保存通道不可用，原文已复制到剪贴板')
+    w.unmount()
+  })
+
+  it('masked 条目详情浮层：无复制全文亦无导出钮（明文不落眼不落剪贴板不落文件）', async () => {
+    const w = await mountView([memo({ isMasked: true })])
+    await w.find('.memo-content-box').trigger('click')
+    expect(dlgBtn(w, '.detail-dialog', '导出 .md')).toBeUndefined()
+    expect(dlgBtn(w, '.detail-dialog', '复制全文')).toBeUndefined()
+    w.unmount()
+  })
+
+  it('全库导出：无过滤重拉→确认框明说排除条数→汇总文本经反证不含敏感明文', async () => {
+    const items = [
+      memo({ id: 'k1', title: '甲', content: 'kept-plain', isMasked: false }),
+      memo({ id: 's1', title: '密', content: 'pw=topsecret', isMasked: true }),
+      memo({ id: 'k2', title: '乙', content: 'kept-plain-2', isMasked: false, isPinned: true }),
+    ]
+    const w = await mountView(items)
+    exportUtil.downloadTextFile.mockReturnValue(true)
+    await byText(w, '导出全库')!.trigger('click')
+    await flushMicrotasks()
+    // 取数面：最后一次 List 必须是无过滤全集（当前视图若有过滤也不得带入）
+    expect(svc.List.mock.calls.at(-1)![0]).toMatchObject({ keyword: '', tag: '', pinned: null })
+    const opts = useConfirm().confirmState.options
+    expect(opts.tone).toBe('warning')
+    expect(opts.confirmLabel).toBe('导出 2 条')
+    expect(opts.description).toContain('默认排除')
+    expect(opts.details).toEqual([
+      { label: '导出条数', value: '2 条' },
+      { label: '敏感排除', value: '1 条（明文未写入）' },
+    ])
+    useConfirm().settleConfirm(true)
+    await flushMicrotasks()
+    expect(exportUtil.downloadTextFile).toHaveBeenCalledTimes(1)
+    const [fileName, digest] = exportUtil.downloadTextFile.mock.calls[0] as [string, string]
+    expect(fileName).toMatch(/^hanxi-随手记导出-\d{8}-\d{6}\.md$/)
+    expect(digest).toContain('kept-plain')
+    expect(digest).toContain('kept-plain-2')
+    expect(digest).toContain('1 条已排除，明文未写入本文件')
+    expect(digest).not.toContain('pw=topsecret')
+    expect(digest).not.toContain('## 密')
+    expect(useToast().toastMsg.value).toContain(`已导出 2 条 → ${fileName}`)
+    w.unmount()
+  })
+
+  it('视图正带过滤时导出仍拉全集；确认取消则一个字都不落', async () => {
+    const w = await mountView([memo({ id: 'k1', content: 'a' }), memo({ id: 'k2', content: 'b', isMasked: true })], { '#SQL': 2 })
+    await w.find('.search-input').setValue('a')
+    exportUtil.downloadTextFile.mockReturnValue(true)
+    await byText(w, '导出全库')!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.List.mock.calls.at(-1)![0]).toMatchObject({ keyword: '', tag: '', pinned: null })
+    useConfirm().settleConfirm(false)
+    await flushMicrotasks()
+    expect(exportUtil.downloadTextFile).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('全是敏感条目：不进确认框直接如实播报；空库钮禁用', async () => {
+    const w = await mountView([memo({ isMasked: true })])
+    await byText(w, '导出全库')!.trigger('click')
+    await flushMicrotasks()
+    expect(useConfirm().confirmState.open).toBe(false)
+    expect(useToast().toastMsg.value).toBe('全部条目均为敏感遮罩，默认不导出')
+    expect(exportUtil.downloadTextFile).not.toHaveBeenCalled()
+    w.unmount()
+
+    const w2 = await mountView([], {})
+    const btn = byText(w2, '导出全库')!
+    expect((btn.element as HTMLButtonElement).disabled).toBe(true)
+    w2.unmount()
   })
 })
