@@ -1,0 +1,115 @@
+/* ============================================================
+ * N36 字体层：随仓分发的 Web 字体 @font-face 声明 + 字族 token 定义
+ *
+ * 本文件是 --font-ui / --font-mono 的唯一字面定义处；tokens.css 的
+ * --font-text / --font-display / --font-mono 旧行由集成补丁改为
+ * 委托/删除（见文末「接线说明」）。三枚字体均经子集化/格式转换，
+ * 完整许可文本随仓于 src/assets/fonts/licenses/。
+ *
+ * ── 素材溯源（ink 版本 / 子集构建 2026-09-26，fontTools 4.66 + brotli）──
+ *
+ * 1) LXGW WenKai GB Screen Regular v1.522（正文主字族）
+ *    来源 https://github.com/lxgw/LxgwWenKai-Screen/releases/download/v1.522/LXGWWenKaiGBScreen.ttf
+ *         （源件 26,037,854 B，SHA-256 23ec023913e1851925eb94462c4b0ccd1d78bb89533745aaa8cc682ccd339dc0）
+ *    许可 SIL OFL 1.1 + 作者保留名附加条款（licenses/OFL-LXGW-WenKai.txt）；
+ *         本件属该附加条款明文豁免的场景——"仅为网页端渲染优化而子集化/
+ *         转 WOFF2 且不作为可安装桌面字体"——故保留原字体名，属合规特例。
+ *    子集 22,457 字符：Latin-1/扩展A · 广义标点/箭头/数学/箱线/块元素/
+ *         几何/杂符/装饰符 · CJK 标点 · 基本区 U+4E00-9FFF 全量 · 全角符号
+ *    产物 LXGWWenKaiGBScreen-Regular.woff2 6,133,168 B
+ *         SHA-256 f9c8acfa300dad02e9778f67fb9407ada496b1946be4f47cfdb830e3be46d6cc
+ *
+ * 2) Noto Sans SC Variable（回落补集字族，wght 100–900）
+ *    来源 https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf
+ *         （V2.004，思源黑体 SC 的 Google 更名上游；源件 SHA-256 a3041811a78c361b…）
+ *    许可 SIL OFL 1.1（licenses/OFL-NotoSansSC.txt；保留名仅 'Source'，本名不受限）
+ *    子集 7,586 字符 = 常载集合 − 文楷已覆盖集（假名/生僻部件区/CJK 扩展A/
+ *         兼容表意/序号区等，仅作文楷缺字时的按字回落，kai∩noto 重合 2 字符）
+ *    产物 NotoSansSC-Extra.woff2 2,265,092 B
+ *         SHA-256 561db0adb3ea19e8dc7839125358ea6f8248fc483f0add6a338bbf9f89f6edc1
+ *
+ * 3) JetBrains Mono 400/500/600/700（等宽字族，官方 WOFF2 零改动直嵌）
+ *    来源 https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip
+ *         （fonts/webfonts/，包体 SHA-256 6f6376c6ed2960ea…）
+ *    许可 SIL OFL 1.1（licenses/OFL-JetBrainsMono.txt，无保留名声明）
+ *    SHA-256（四件） a9cb1cd8…(Regular) 086c48df…(Medium)
+ *                   918edad5…(SemiBold) c503cc5e…(Bold)
+ *
+ * 复建命令：python -m fontTools.subset <src> --unicodes=<表内集>
+ *           --ignore-missing-unicodes --name-IDs=* --layout-features=*
+ *           --no-glyph-names --flavor=woff2 --output-file=<out>
+ * ============================================================ */
+
+/* ---------- ① 霞鹜文楷 GB 屏幕版（正文中文主字族，Medium 基线 Regular 字面） ---------- */
+@font-face {
+  font-family: "LXGW WenKai GB Screen";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/LXGWWenKaiGBScreen-Regular.woff2") format("woff2");
+}
+
+/* ---------- ② Noto Sans SC（文楷缺字按字符回落 + 可变字重供给） ---------- */
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../assets/fonts/NotoSansSC-Extra.woff2") format("woff2");
+}
+
+/* ---------- ③ JetBrains Mono（代码/数字/路径等宽族） ---------- */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../assets/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../assets/fonts/JetBrainsMono-SemiBold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../assets/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+}
+
+/* ============================================================
+ * 字族 token：--font-ui / --font-mono 唯一字面定义处。
+ * 栈尾保留原系统字体链——字体加载失败即整体回落旧观感（零回归红线）。
+ * ============================================================ */
+:root {
+  --font-ui: "LXGW WenKai GB Screen", "Noto Sans SC", "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "LXGW WenKai GB Screen", "Noto Sans SC", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* 存量消费面桥接（tokens.css 治理前即生效，勿在新代码引用本两行）：
+   * 全仓 80+ 处 var(--font-text/--font-display) 经此委托吃到新字族；
+   * 配色战线收口后 tokens.css 同步把旧三行改为委托/删除。 */
+  --font-text: var(--font-ui);
+  --font-display: var(--font-ui);
+}
+
+/* ============================================================
+ * 接线说明（集成补丁清单，主会话在配色战线收口后套用）：
+ *   ① main.ts：在 `import './styles/tokens.css'` 之后加
+ *      `import './styles/fonts.css'`（顺序敏感：本文件 :root 必须
+ *      晚于 tokens.css 旧 --font-mono 行生效；补丁②落地后顺序免疫）。
+ *   ② tokens.css 第 80–82 行（--font-text/--font-display/--font-mono
+ *      字面栈）整删或改为注释指针「定义已迁 fonts.css」。
+ *   ③ base.css body / 各 view 的 var(--font-text)/var(--font-mono)
+ *      引用零改动——全部经 token 委托自动换装。
+ * ============================================================ */

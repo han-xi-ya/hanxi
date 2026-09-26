@@ -242,3 +242,26 @@ Hanxi 自研功能模块**（wechat/wifi 为桥接/诊断入口，非托管载�
 同轮补录 **eartrumpet**（官方包原生 32px 件）。三枚自入库起同时供托盘子菜单消费。）
 若随 Hanxi 安装包再分发构成任何权利方异议，
 按"摘除位图 → 回落 generic"处理，不动摇功能。
+
+## 前端内嵌字体（N36）
+
+- 项目：前端工作台字族三件——LXGW WenKai GB Screen Regular v1.522（正文中文主字族）、
+  Noto Sans SC Variable（文楷缺字按字符回落补集）、JetBrains Mono 400/500/600/700（代码等宽族）
+- 上游仓库：https://github.com/lxgw/LxgwWenKai-Screen 、
+  https://github.com/google/fonts （`ofl/notosanssc`，即思源黑体 SC 的 Google 发行上游）、
+  https://github.com/JetBrains/JetBrainsMono
+- 许可证：三件均为 **SIL OFL 1.1**（文楷另含作者自定的保留名称附加条款，全文见
+  `frontend/src/assets/fonts/licenses/OFL-LXGW-WenKai.txt`；Noto 与 JetBrains Mono
+  许可文本同目录随附）
+- 发行方式：与全文"按需下载、不捆绑"基线不同，本组属 **仓库与安装包内嵌分发**——
+  OFL 正是允许字体原件/改作随证再分发的许可，六枚 WOFF2 落
+  `frontend/src/assets/fonts/`，经 `src/styles/fonts.css` @font-face 由 WebView 加载。
+
+分发形态豁免说明（为何文楷子集可继续沿用原名）：OFL 第 3 条要求衍生件不得沿用保留名称，
+但文楷许可文本 [ADDITIONAL PERMISSION] 明文豁免"仅为网页端渲染优化（Web Font）之目的而
+子集化或转 WOFF/WOFF2、且不将其作为可安装的桌面字体文件提供给公众下载"的改作。
+Hanxi 分发包内不存在 TTF/OTF 等可安装形态、仅以 @font-face 供应用内嵌 WebView 消费，
+按该条款文义适用豁免；Noto 子集的 Adobe 保留名仅 'Source'（本名不含），JetBrains Mono
+为官方 WOFF2 零改动直嵌。如权利方对口径另有异议，处置预案为改字族名重新发布（字形数据不变）。
+溯源：源件 URL/SHA-256/子集字符集与复建命令全部记录于 fonts.css 文件头注释；
+子集化属一次性构建动作（fontTools 4.66 + brotli，--user 构建期工具，不入项目依赖清单）。

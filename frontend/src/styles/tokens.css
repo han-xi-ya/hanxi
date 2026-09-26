@@ -96,10 +96,9 @@
   --overlay-mask: rgba(10, 24, 29, 0.46);
   --focus-ring: rgba(13, 130, 132, 0.8);
 
-  /* 字体栈（写实含中文回退；public/style.css 自带其旧名 --font-family 定义，不依赖本文件） */
-  --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
-  --font-display: "Segoe UI Variable Display", "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  /* 字体栈（N36）：唯一定义在 fonts.css——--font-ui/--font-mono 字面栈与
+     --font-text/--font-display 委托桥皆出自该文件（晚于本文件导入）；
+     本文件不得再回写桥字面。public/style.css 自带旧名 --font-family，不依赖此处。 */
 
   /* 字号阶梯（紧凑工作台，基准 13px；docs/FRONTEND.md §7.3）
    * 视图/组件禁止再写裸 px 字号，一律 var() 引用本阶梯就近取档；
