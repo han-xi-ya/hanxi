@@ -1235,3 +1235,21 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：按用例失败反查 logger.go 正则族确认口径边界；同载荷里 email/IPv4 均正常打码，唯 pwd= 逃逸，坐实是词形缺口而非调用漏挂。
 - **正确做法与标准修复方案**：用例改用词形内的 `password=`（与 portscan banner 用例同款口径）；**不**为此扩 Redact——磁盘日志取证力优先，扩词形须另开批次统一裁决（影响面是所有落盘日志行）。工具描述里"打码"承诺只描述既有口径能力，不暗示全覆盖。
 - **避坑防重犯建议**：写"敏感信息已脱敏"类断言前，先读脱敏正则的完整词形清单，测试样本必须落在能力边界内——拿能力外的样本当回归锚，等于给脱敏层挂了个永远兑现不了的承诺，真漏洞反而被这条假绿掩盖。
+
+### 96. vi.mock 挡不住"未落盘绑定"的编译期失败：三线并行前端线必须先补 vitest 解析缝（piik C 线实证）
+- **问题现象与错误原因**：并行开发中前端线 spec 按冻结契约 import 未来绑定路径（`bindings/hanxi/internal/modules/<新模块>/<模块>service`），虽然 spec 已 `vi.mock` 全打桩，Vite import 分析在 **transform 阶段**就对不可解析的相对导入直接报 `Failed to resolve import` 挂掉——mock 运行在解析之后，救不了编译期。dbx/gonavi 的 spec 头注所称"真实生成物落盘前由 vitest.config 的解析缝兜底"当时**并无此件**（两线实测都是绑定生成物先落盘才跑的 spec），注释兑现为空头支票。
+- **排查过程**：用最小探针 spec（vi.mock 工厂 + import 不存在路径）在加缝前后各跑一次 vitest 定位：报错栈在 vite 的 normalizeUrl/_formatLog，属 transform 期；`vi.mock` 工厂与模块存在性无关。
+- **正确做法与标准修复方案**：`frontend/vitest.config.ts` 增补 `missingBindingSeam()` 内联插件：对 `bindings/hanxi/**` 下候选路径（原样 / .js / .ts / index.js）**确实都不存在**的相对导入解析出 `\0missing-binding:` 虚拟空壳模块（`export {}`）；真实生成物落盘后插件自动放行、零维护成本；生产构建走 vite.config 不受影响。探针验毕删除。
+- **避坑防重犯建议**：以后凡"spec 全 mock 未来绑定"的并行前端线，落地第一刀就是确认解析缝在位；spec 头注引用机制前先核对该机制真实存在，空头支票型注释比没有注释更坏（误导后续三线照抄）。另注意 happy-dom/vitest 下 mock 掉空壳模块的命名空间后，`Promise.resolve().then(() => API.X())` 式守卫可让工厂期懒拉在桩缺返回值时也只是静默，不要让 adapter 工厂同步 await 绑定。
+
+### 97. 机读字段解析的"零值≠未命中"踩踏：一行口令打点抹掉先前 Local access 入账（piik A 线实证）
+- **问题现象与错误原因**：piik instance 引擎按 stdout 逐行解析机读字段入快照，喂入 `Local access: open` 后再喂 `Local access password: X`，快照 LocalAccessOpen 被复位为 false。原因：解析器返回 machineUpdate 值结构，载荷布尔零值无法区分"本行没带这个字段"与"本行明确报 false"；入账侧用 `u.localOpen != e.localOpen` 判改，非相关行的零值即"改写指令"，字段间互相踩踏。
+- **排查过程**：全量喂行调试脚本先定位"open=false"反直觉现象，再顺 recordMachineLine 逐字段核对写入条件，坐实 access 行是唯一被零值反向覆盖的载荷（lan/public 有非空守卫、noBrowser/password 为置位向，天然免疫）。
+- **正确做法与标准修复方案**：给每个布尔载荷配显式 hit 位（accessHit/passwordHit），入账侧只认 `hit && 值变`；"未命中的字段绝不参与账目改写"写进类型注释。修复后 TestMachineFieldsToSnapshotAndMaskedLogs 全序钉死。
+- **避坑防重犯建议**：凡"解析器产出值结构 + 调用方按 != 判改"的模式，先问零值有没有歧义——事件型协议（每行只携带一个字段）里载荷必须有 presence 标志，别拿 Go 零值当"未提供"用；测试必须按真实行序全量喂（单行用例各自为政恰好盖不住跨行踩踏）。
+
+### 98. 托管引擎选型：supervisor 内核 processHandle 无 stdin 通道，stdin 信令停机型工具暂留 frpc 自带治理形制（piik A 线架构决策）
+- **问题现象与错误原因**：piik 家族形制应组合 packages/go/supervisor（ccswitch/dbx/paseo/ddnsgo 同款），但其优雅退出 = 向子进程 stdin 写任意字节，内核 Spec/processHandle 不提供 stdin 写端（优雅通道只覆盖 SetQuitHook 的管道命令/WM_CLOSE/HTTP shutdown），引擎在 spawn 前拿不到、跨代管不了 stdin 句柄。
+- **排查过程**：读 supervisor 三件套（supervisor.go/engine.go/proc.go）确认句柄接口边界；对照 frpc 蓝本（自带泵/环形日志/JobObject 的独立引擎）确认服务型口径有既有先例可循。
+- **正确做法与标准修复方案**：本模块按 frpc 形制自带治理主流程，其余纪律（startMu/mu 分离、单一 Wait 所有者、收口前拒启动、external 只甄别、wait 四分类顺序、锁外广播）与内核逐条对齐并在包注释申明差异与原因；跨线架构变更（内核加 Spec.Stdin + Engine 取用口 + 全族测试 fake 补件）留 owner 裁决，届时本包可平移收敛。
+- **避坑防重犯建议**：新托管模块选型先核"优雅退出通道形态"是否在内核既有四类之内——stdin/自定义 IO 通道类信令（上游 Go CLI 工具常见"收任意字节退出"）当前必须走自带引擎或先补内核；集成 skill 落地时把这一条列入选型检查表，别等 instance.go 写到一半才发现句柄拿不到。
