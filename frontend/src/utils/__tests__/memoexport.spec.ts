@@ -82,7 +82,7 @@ describe('buildLibraryDigest（全库汇总稿）', () => {
       [item(), item({ id: 'm2', title: '', content: '周报', tags: null, isPinned: true, isMasked: false })],
       { exportedAt: new Date(2026, 8, 26, 14, 5, 0), excludedMasked: 3 },
     )
-    expect(md).toContain('# 极客随手记 · 全库导出')
+    expect(md).toContain('# 随手记 · 全库导出')
     expect(md).toContain('- 导出时间：2026-09-26 14:05')
     expect(md).toContain('- 便签条数：2')
     expect(md).toContain('- 敏感遮罩条目：3 条已排除，明文未写入本文件')

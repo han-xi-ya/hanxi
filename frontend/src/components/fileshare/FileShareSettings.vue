@@ -127,7 +127,7 @@ function setQuickPort(port: number) {
             <input v-model="form.allowTextDrop" type="checkbox" />
           </label>
           <label class="permission-item">
-            <span><strong>同步到极客随手记</strong><small>自动保存移动端投递内容</small></span>
+            <span><strong>同步到随手记</strong><small>自动保存移动端投递内容</small></span>
             <input v-model="form.autoSaveToMemo" type="checkbox" />
           </label>
         </div>

@@ -2,10 +2,13 @@
 //
 // 本包是 ADR，三条核心决策（与 GUI 主程序的行为差异全部收口在这里）：
 //
-//  1. 只暴露只读工具。工具面 = access.json 授权 ∩ 模块启用，两门全过也只放行查询；
-//     提权/写操作（portkill、frpc、配置写入、OpenTarget 执行链等）永不注册为工具，
-//     这是编译期事实而非运行期约束——tools/list 里没有的东西，客户端永远调不到。
-//     一切工具输出按"会原样进入云端模型上下文"审视：敏感串过 logging.Redact，
+//  1. 只暴露"不改状态"的工具：纯查询族（envcheck/everything/ocr/memo/sysinfo/logs）
+//     严格只读；扫描族（portscan/lan）是**主动网络探测**——不修改本机或任何设备
+//     状态，但会出网、结果含网络拓扑，因此各立授权键（access.json 八键，默认全关），
+//     参数面收口为有界小扫描（见 tools_scan.go 包注），与纯查询工具同等门禁。
+//     提权/写操作（portkill 杀进程、frpc、配置写入、OpenTarget 执行链等）永不注册
+//     为工具，这是编译期事实而非运行期约束——tools/list 里没有的东西，客户端永远调不到。
+//     一切工具输出按"会原样进入云端模型上下文"审视：敏感串过 logging.Redact 家族，
 //     memo 遮罩条目（IsMasked）整条不下发，载荷上限 1MB（截断显式置 truncated 标志）。
 //
 //  2. stdout 即协议通道。MCP 走 stdio JSON-RPC，本包任何代码（含日志）不得写
@@ -33,8 +36,10 @@ import (
 	"hanxi/internal/logging"
 	"hanxi/internal/modules/envcheck"
 	"hanxi/internal/modules/everything"
+	"hanxi/internal/modules/lan"
 	"hanxi/internal/modules/memo"
 	"hanxi/internal/modules/ocr"
+	"hanxi/internal/modules/portscan"
 	"hanxi/internal/modules/sysinfo"
 	"hanxi/internal/platform"
 	"hanxi/internal/platform/windows"
@@ -73,10 +78,10 @@ func (g *registryGate) Check(moduleID string) (func(), error) {
 	// 保持同语义（未安装同样拒绝，杜绝卸载旁路）；无租约可占用，release 为空操作。
 	if moduleID == memo.ID {
 		if !g.store.IsModuleEnabled(moduleID, true) {
-			return noop, fmt.Errorf("「极客随手记」模块已在 hanxi 中停用，请先在设置中启用该模块")
+			return noop, fmt.Errorf("「随手记」模块已在 hanxi 中停用，请先在设置中启用该模块")
 		}
 		if g.receipts != nil && !g.receipts.IsInstalled(moduleID) {
-			return noop, fmt.Errorf("「极客随手记」模块尚未安装，请先在 hanxi 模块中心安装该模块")
+			return noop, fmt.Errorf("「随手记」模块尚未安装，请先在 hanxi 模块中心安装该模块")
 		}
 		return noop, nil
 	}
@@ -134,7 +139,13 @@ func Run() error {
 	registry.SetReceiptStorage(headlessReceipts)
 	ocrModule := ocr.New(plat) // 类型断言取 service 作识图后端（与 GUI 同一 service 契约）
 	sysModule := sysinfo.New() // 同上：N32 系统档案后端取同一 service 实例
-	if err := registry.Register(append(mcpModules(plat), ocrModule, sysModule)...); err != nil {
+	// 扫描族（AI 接入批）：两模块构造均零副作用（无落盘/无常驻资源，OnInit nil），
+	// 进无头 registry 取"与 GUI 同谱的启用位门禁 + lease drain 收口"；lan 的
+	// service 实例被 MCP 后端复用（单飞闸与动态超时同谱），portscan 只进门禁、
+	// 后端直构 Scanner（规避 StartScan 的 GUI last-wins 顶任务语义，见 tools_scan.go）。
+	lanModule := lan.New(plat, store)
+	portscanModule := portscan.New()
+	if err := registry.Register(append(mcpModules(plat), ocrModule, sysModule, lanModule, portscanModule)...); err != nil {
 		return fmt.Errorf("注册无头模块失败: %w", err)
 	}
 	defer registry.ShutdownAll()
@@ -156,6 +167,13 @@ func Run() error {
 		// sysinfo（N32）取表内模块同一 service（纯采集零副作用，直构无收益分歧）；
 		// logs（N34）是 hanxi 自身日志的只读 tail，无模块后端，直读 <DataDir>/logs。
 		Logs: newLogDiskReader(),
+		// 扫描族（AI 接入批）：portscan 直构引擎实例（MCP 面单飞闸在 backend 内，
+		// 门禁由 registryGate.Acquire("portscan") 承担——envcheck 直构同款口径）；
+		// lan 复用表内模块 service（单飞/超时/ARP 补全与 GUI 同谱）。
+		PortScan: newPortScanBackend(),
+	}
+	if lanMod, ok := lanModule.(*lan.Module); ok && lanMod != nil {
+		deps.Lan = lanProbe{svc: lanMod.Service()}
 	}
 	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
 		// service 无头可用：client 已显式 Proxy:nil（回环 HTTP 纪律）、构造零落盘、

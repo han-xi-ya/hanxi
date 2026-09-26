@@ -60,7 +60,7 @@ export function buildLibraryDigest(
   const at = fmtLocal((opts.exportedAt ?? new Date()).toISOString())
   const excluded = opts.excludedMasked ?? 0
   const head = [
-    '# 极客随手记 · 全库导出',
+    '# 随手记 · 全库导出',
     '',
     `- 导出时间：${at}`,
     `- 便签条数：${items.length}`,

@@ -155,11 +155,11 @@ describe('HomeView（工作台首页）', () => {
   it('不再渲染完整模块目录：无卡片网格/启停钮/等级徽标，摘要为真实计数', async () => {
     stubCore(
       [
-        mod('memo', '极客随手记', { initialized: true }),
+        mod('memo', '随手记', { initialized: true }),
         mod('wifi', 'WiFi 密码'),
         mod('ocr', '文字识别', { enabled: false })
       ],
-      [nav('memo', '/ext/memo', '极客随手记')]
+      [nav('memo', '/ext/memo', '随手记')]
     )
     stubTasks('fail')
     const w = await mountView()
@@ -176,15 +176,15 @@ describe('HomeView（工作台首页）', () => {
 
   it('运行列表来自 initialized∧enabled：已启用未初始化模块不出现', async () => {
     stubCore(
-      [mod('memo', '极客随手记', { initialized: true }), mod('wifi', 'WiFi 密码')],
-      [nav('memo', '/ext/memo', '极客随手记'), nav('wifi', '/ext/wifi', 'WiFi 密码')]
+      [mod('memo', '随手记', { initialized: true }), mod('wifi', 'WiFi 密码')],
+      [nav('memo', '/ext/memo', '随手记'), nav('wifi', '/ext/wifi', 'WiFi 密码')]
     )
     stubTasks('fail')
     const w = await mountView()
     const rows = w.findAll('.running-row:not(.update-row)')
     expect(rows).toHaveLength(1)
-    expect(rows[0].text()).toContain('极客随手记')
-    expect(rows[0].text()).toContain('极客随手记描述') // 描述摘要
+    expect(rows[0].text()).toContain('随手记')
+    expect(rows[0].text()).toContain('随手记描述') // 描述摘要
     expect(rows[0].find('svg.app-icon').exists()).toBe(true) // MODULE_PRESENTATION 图标
     w.unmount()
   })
@@ -222,7 +222,7 @@ describe('HomeView（工作台首页）', () => {
     const navsFixture = [
       nav('frpc', '/frpc', 'frpc 联调'),
       nav('everything', '/ext/everything', 'Everything 搜索'),
-      nav('memo', '/ext/memo', '极客随手记'),
+      nav('memo', '/ext/memo', '随手记'),
       nav('wifi', '/ext/wifi', 'WiFi 密码')
       // snipaste 未启用（不在 navs）→ 固定项跳过；/ext/gone、/ext/ocr 无 nav → 实时过滤
     ]
@@ -235,11 +235,11 @@ describe('HomeView（工作台首页）', () => {
     const favTitles = navsFixture
       .filter((n) => FAV_MODULE_IDS.includes(moduleIdOfNav(n)))
       .map((n) => n.title)
-    const expected = [...favTitles, '极客随手记', 'WiFi 密码'].slice(0, 4)
+    const expected = [...favTitles, '随手记', 'WiFi 密码'].slice(0, 4)
     expect(items).toHaveLength(expected.length)
     expect(items.map((i) => i.find('.sc-name').text())).toEqual(expected)
     const home = w.findComponent(HomeView)
-    await items[expected.indexOf('极客随手记')].trigger('click')
+    await items[expected.indexOf('随手记')].trigger('click')
     expect(home.emitted('navigate')?.[0]).toEqual(['/ext/memo'])
     w.unmount()
   })
@@ -328,10 +328,10 @@ describe('HomeView（工作台首页）', () => {
 
   it('可用更新列表点亮：update-available → 计数卡 + 合并行（摘要短语+健康徽标含版本短语），点击直达模块、无路由回落模块中心', async () => {
     stubCore(
-      [mod('memo', '极客随手记', { initialized: true })],
-      [nav('memo', '/ext/memo', '极客随手记')],
+      [mod('memo', '随手记', { initialized: true })],
+      [nav('memo', '/ext/memo', '随手记')],
     )
-    appSvc.ListCatalog.mockResolvedValue([catItem('memo', '极客随手记'), catItem('latermod', '后加模块')])
+    appSvc.ListCatalog.mockResolvedValue([catItem('memo', '随手记'), catItem('latermod', '后加模块')])
     appSvc.ListModuleStates.mockResolvedValue([
       // memo：投影带 remoteVersion → 徽标"有可用更新 → 新版本号"
       stateItem('memo', { health: 'update-available', summary: 'running-update', remoteVersion: '2.3.4' }),
@@ -346,7 +346,7 @@ describe('HomeView（工作台首页）', () => {
     expect(w.findAll('.summary-value')[3].text()).toBe('2')
     const rows = w.findAll('.update-row')
     expect(rows).toHaveLength(2)
-    expect(rows[0].find('.row-name').text()).toBe('极客随手记')
+    expect(rows[0].find('.row-name').text()).toBe('随手记')
     // 合并短语走 SUMMARY_META 词表（运行中，有更新 / 已安装，未启用），零本地推断
     expect(rows[0].find('.row-desc').text()).toBe('运行中，有更新')
     expect(rows[1].find('.row-desc').text()).toBe('已安装，未启用')

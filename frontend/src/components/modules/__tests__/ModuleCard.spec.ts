@@ -14,7 +14,7 @@ function entry(over: {
   return {
     catalog: {
       id: 'memo',
-      name: '极客随手记',
+      name: '随手记',
       description: '本机随手记事与标签检索',
       category: 'efficiency',
       deliveryKind: 'builtin-logical',

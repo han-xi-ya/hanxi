@@ -147,7 +147,7 @@ func memoInWindow(it memo.MemoItem, since, until time.Time, hasSince, hasUntil b
 // N16 C 批深化：since/until 更新时间窗参数（"上周记的那条 SQL 在哪"式找回）。
 func buildMemoTool(deps Deps) (mcp.Tool, server.ToolHandlerFunc) {
 	tool := mcp.NewTool(toolMemo,
-		mcp.WithDescription("按关键词/标签/时间窗检索 hanxi「极客随手记」本地便签库（只读，不改动任何条目）。"+
+		mcp.WithDescription("按关键词/标签/时间窗检索 hanxi「随手记」本地便签库（只读，不改动任何条目）。"+
 			"安全约定：标记为敏感遮罩（IsMasked，通常为 API Key/Token 类条目）的便签整条不下发，"+
 			"不会出现在结果中（命中数因此可能少于库内实况）；其余条目的标题/正文也经过敏感串脱敏。"+
 			"keyword 为空时按更新时间倒序返回最近条目；since/until 按更新时间过滤，"+
@@ -163,7 +163,7 @@ func buildMemoTool(deps Deps) (mcp.Tool, server.ToolHandlerFunc) {
 	)
 	handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if deps.Memo == nil {
-			return mcp.NewToolResultError("memo 后端未装配：请确认 hanxi 已启用「极客随手记」模块"), nil
+			return mcp.NewToolResultError("memo 后端未装配：请确认 hanxi 已启用「随手记」模块"), nil
 		}
 		since, hasSince, serr := parseMemoTimeBound(req.GetString("since", ""), false)
 		if serr != nil {
@@ -265,7 +265,7 @@ func memoTagMatched(tags []string, want string) bool {
 // 不存在正文出机面。授权与检索同键（access.json memo 键控整个便签工具族）。
 func buildMemoStatsTool(deps Deps) (mcp.Tool, server.ToolHandlerFunc) {
 	tool := mcp.NewTool(toolMemoStats,
-		mcp.WithDescription("统计 hanxi「极客随手记」本地便签库概况（只读，零改动）："+
+		mcp.WithDescription("统计 hanxi「随手记」本地便签库概况（只读，零改动）："+
 			"非遮罩条目总数、置顶数、标签云（计数降序，≤200 个）、最早/最近创建与更新时间。"+
 			"支持 since/until 更新时间窗（YYYY-MM-DD 或 RFC3339）圈定「这段时间记了多少」。"+
 			"安全约定：敏感遮罩（IsMasked）条目在计数与标签云之前即整条剔除，"+
@@ -278,7 +278,7 @@ func buildMemoStatsTool(deps Deps) (mcp.Tool, server.ToolHandlerFunc) {
 	)
 	handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if deps.Memo == nil {
-			return mcp.NewToolResultError("memo 后端未装配：请确认 hanxi 已启用「极客随手记」模块"), nil
+			return mcp.NewToolResultError("memo 后端未装配：请确认 hanxi 已启用「随手记」模块"), nil
 		}
 		since, hasSince, serr := parseMemoTimeBound(req.GetString("since", ""), false)
 		if serr != nil {

@@ -17,7 +17,7 @@
 | **M4: frpc 多实例工具** | 多实例并发、TOML生成、版本管理与重试、DPAPI 凭据加密、连接状态嗅探 | 🟢 已达成 | `internal/modules/frpc` |
 | **M5: 扩展生态与工具套件** | 微信机器人助手、Gonmap 端口服务指纹扫描、内置日志查看器 | 🟢 已达成 | `modules/wechat`、`modules/portscan`、日志查看器 |
 | **M6: 极致优化与便携交付** | 按需懒加载零开销架构、关闭最小化托盘常驻、单二进制构建 | 🟢 已达成 | `bin/hanxi.exe`、零内存泄漏保证 |
-| **M7: 桌面协同与局域网套件** | WiFi 密码查看、局域网文件快传、极客随手记（快传联动）、全局通知中心、品牌断代迁移 | 🟢 已达成 | `modules/wifi`、`modules/fileshare`、`modules/memo`、`internal/notify`、`internal/product` |
+| **M7: 桌面协同与局域网套件** | WiFi 密码查看、局域网文件快传、随手记（快传联动）、全局通知中心、品牌断代迁移 | 🟢 已达成 | `modules/wifi`、`modules/fileshare`、`modules/memo`、`internal/notify`、`internal/product` |
 | **M8: 开发环境检测增强** | Git/Go/Node/Java/Python/.NET 工具链盘点、官网最新版本通道（按本机版本线置顶）、包管理器升级提示、资源管理器定位安装路径、.NET 并排安装与官方支持线 | 🟢 已达成 | `modules/envcheck`（模块版本 0.5.0）、前端环境页 |
 | **M9: 开源工具托管生态** | 托管模式框架化（`version/`+`instance/` 三件套）并规模化至 25 款桌面工具（含 `douzy` 仅版本+下载的特例形态）；安装布局矩阵（zip/MSI 管理提取/NSIS 静默/MSIX/AppInstaller/单文件下载即安装/MSI 安装版双形态）；唤窗与退出治理矩阵（含多实例上游进程名探测契约、退出三态如实上报无强杀兜底形态）；第三方许可合规登记 | 🟢 已达成 | `modules/{markeron,everything,ccswitch,snipaste,nanazip,eartrumpet,mangodisk,bcu,flclash,recordly,papertodo,piclite,keyviz,quicklook,litemonitor,guoheview,ddnsgo,rustdesk,subnetdesk,rufus,bili23,vscode,translucenttb,paseo,douzy}`、`platform/apppackage` |
 | **M10: 系统就绪与桌面效率** | WSL2 十项流式只读体检与三态结论（根因诊断"硬件不满足 vs API 被拦"、双源降级）、安装形态取证与正规卸载、白名单固定参数提权通道；Quicker 式右键长按快捷菜单（低级鼠标钩子吞/放策略、frameless 弹窗 DIP 钳位）；全托管模块"随 Hanxi 关闭"默认翻转为关（Detached 独立运行） | 🟢 已达成 | `modules/wsl`（`netx`+`readiness`+`releases` 子包）、`modules/quickmenu`（`mousetrap` 子包） |

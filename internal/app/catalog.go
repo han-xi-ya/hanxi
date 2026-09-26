@@ -245,7 +245,7 @@ var catalogItems = []extapi.ModuleCatalogItem{
 	},
 	{
 		ID:            "memo",
-		Name:          "极客随手记",
+		Name:          "随手记",
 		Description:   "极轻量本地持久化备忘录与临时代码片段站，支持 Markdown 便签、速记、标签云、置顶、敏感脱敏、一键全删与全局热键悬浮速记卡",
 		Category:      "efficiency",
 		DeliveryKind:  extapi.DeliveryBuiltinLogical,

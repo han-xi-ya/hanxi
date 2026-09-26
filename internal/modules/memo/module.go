@@ -20,7 +20,7 @@ import (
 // ID 是模块注册键，同时用作通知/事件的 moduleID。
 const ID = "memo"
 
-// Module 极客随手记模块
+// Module 随手记模块
 type Module struct {
 	svc *MemoService
 }
@@ -55,7 +55,7 @@ func (m *Module) SetHotkeyRegistry(r *hotkey.Registry) { m.svc.setHotkeyRegistry
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
-		Name:        "极客随手记",
+		Name:        "随手记",
 		Version:     "0.3.0",
 		Description: "极轻量本地持久化备忘录与临时代码片段站，支持 Markdown 便签、速记、标签云、置顶、敏感脱敏、一键全删与全局热键悬浮速记卡",
 		Author:      "Hanxi",
@@ -67,7 +67,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{
 		ID:      ID,
-		Title:   "随手备忘录",
+		Title:   "随手记",
 		Icon:    "i:sticky-note",
 		Route:   "/ext/memo",
 		Section: extapi.SectionExt,

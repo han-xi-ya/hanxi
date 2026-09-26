@@ -55,7 +55,7 @@ const DIR_INTENTS: Record<string, string> = {
   runtime: '运行期瞬态件（动态配置、PID、图片暂存），可安全删除',
   installers: '安装包装件归档（zip/安装包原件），供重装与追溯参考',
   modules: '模块安装凭据（receipts）与操作日志（journals）',
-  memo: '极客随手记文件库：全部笔记数据都在这里',
+  memo: '随手记文件库：全部笔记数据都在这里',
   '.snapshots': '数据自动快照库：「数据与存储」分区单文件回滚的来源',
   mcp: 'AI 接入凭据与授权开关（install/access 声明）',
 }

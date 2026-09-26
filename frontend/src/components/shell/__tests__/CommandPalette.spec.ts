@@ -24,7 +24,7 @@ const nav = (route: string, title: string, icon: string, order: number, group?: 
 const NAVS: PaletteNav[] = [
   nav('/ext/portscan', '端口扫描', 'i:search', 5, 'network'),
   nav('/ext/portkill', '释放端口', '✕', 2, 'system'),
-  nav('/ext/memo', '随手备忘录', 'i:file-text', 4, 'efficiency'),
+  nav('/ext/memo', '随手记', 'i:file-text', 4, 'efficiency'),
   nav('/logs', '日志', 'i:file-text', 90, ''),
 ]
 
@@ -76,7 +76,7 @@ describe('CommandPalette', () => {
       '网络与传输', '系统管理', '效率办公', '其他',
     ])
     expect(w.findAll('.p-item').map((b) => b.find('.p-name').text())).toEqual([
-      '端口扫描', '释放端口', '随手备忘录', '日志',
+      '端口扫描', '释放端口', '随手记', '日志',
     ])
   })
 
