@@ -2,7 +2,8 @@
 // - 空数据（无 resumable / 无 active / 无错误）整件不渲染，不放占位；
 // - resumable：告警条逐条「模块名 + 上次操作失败于 phase + 原因文案」，
 //   [前往重试] 上抛 /ext/<id>，[忽略残留] 经确认框调 DismissResumable（消费契约 txnId）
-//   + toast，且"单写约束"如实文案在位；
+//   + toast；"单写约束"文案按 journal 态区分（F-a）：pending/running（含态锚点
+//   读不出的保守档）保留占位警告，compensated 改口"不占名额、忽略仅为收口账目"；
 // - active：information 条渲染 UiProgressBar（percent=progress），
 //   cancellable=false 不伪装可取消（无取消钮 + 明说不可取消）；
 // - 刷新失败保留旧投影：stale 错误条 + 重试。
@@ -54,13 +55,22 @@ function runningOp(over: Record<string, unknown> = {}) {
     ...over,
   }
 }
+// 默认按占写位（journal state=running）形态：与后端 refilledOperation 的
+// 「journal state=X」锚点拼法一致（operation/hub.go），单写警告分支消费。
 function resumableOp(over: Record<string, unknown> = {}) {
   return {
     schema: 1, id: 'resumed-abc123', txnId: 'abc123', moduleId: 'markeron', kind: 'install', phase: 'download',
     status: 'failed', cancellable: false, startedAt: '2026-09-18T09:00:00+08:00',
-    error: { code: 'resumable', message: '上次进程未收口的托管事务', recoverable: true },
+    error: { code: 'resumable', message: '上次进程未收口的托管事务（journal state=running, phase=download），等待启动恢复处理', recoverable: true },
     ...over,
   }
+}
+/** compensated 形态：恢复流已接管补偿，不占写位（store.go 单写判定只看 pending/running）。 */
+function compensatedOp(over: Record<string, unknown> = {}) {
+  return resumableOp({
+    error: { code: 'resumable', message: '上次进程未收口的托管事务（journal state=compensated, phase=remove），等待启动恢复处理', recoverable: true },
+    ...over,
+  })
 }
 
 async function mountBanner() {
@@ -83,7 +93,7 @@ describe('OperationBanner', () => {
     w.unmount()
   })
 
-  it('resumable：告警条呈现模块名/失败阶段/原因 + 单写约束如实文案', async () => {
+  it('resumable（pending/running 占位态）：告警条呈现模块名/失败阶段/原因 + 单写约束如实文案', async () => {
     appSvc.ListOperations.mockResolvedValue([resumableOp()])
     const w = await mountBanner()
     expect(w.find('.op-resume').exists()).toBe(true)
@@ -92,7 +102,45 @@ describe('OperationBanner', () => {
     expect(row.text()).toContain('安装')
     expect(row.text()).toContain('下载') // phase=download → 中文词表
     expect(row.text()).toContain('上次进程未收口的托管事务') // error.message 原文
-    // 单写约束文案在位（忽略前无法开始新的安装事务）
+    // 单写约束文案在位（journal state=running 占写位 → 忽略前无法开始新的安装事务）
+    expect(w.find('.op-resume .op-note').text()).toContain('无法开始新的安装事务')
+    w.unmount()
+  })
+
+  it('resumable（compensated 态）：不占写位——收口注记改口，不再声称无法开新事务', async () => {
+    appSvc.ListOperations.mockResolvedValue([compensatedOp()])
+    const w = await mountBanner()
+    const note = w.find('.op-resume .op-note').text()
+    expect(note).toContain('不占用新事务名额')
+    expect(note).toContain('忽略仅为收口账目')
+    expect(note).not.toContain('无法开始新的安装事务') // overstated 警告不得出现在补偿态
+    w.unmount()
+  })
+
+  it('resumable（compensated 态）：确认框"对新事务影响"如实给不占位口径', async () => {
+    const { useConfirm } = await import('../../../composables/useConfirm')
+    appSvc.ListOperations.mockResolvedValue([compensatedOp()])
+    const w = await mountBanner()
+    await w.findAll('.op-actions button').find((b) => b.text() === '忽略残留')!.trigger('click')
+    await flushPromises()
+    const { confirmState, settleConfirm } = useConfirm()
+    expect(confirmState.open).toBe(true)
+    const impact = (confirmState.options.details ?? []).find((d) => d.label === '对新事务影响')
+    expect(impact?.value).toContain('不占用写位')
+    expect(impact?.value).toContain('忽略仅为收口这笔账目')
+    // 收口前限制的占位断言不得出现在补偿态确认框里
+    expect((confirmState.options.details ?? []).some((d) => d.value.includes('无法开始新的安装事务'))).toBe(false)
+    settleConfirm(false)
+    await flushPromises()
+    w.unmount()
+  })
+
+  it('resumable（混态）：存在占写位残留时整条注记保守保留单写警告', async () => {
+    appSvc.ListOperations.mockResolvedValue([
+      compensatedOp({ id: 'resumed-c', txnId: 'c' }),
+      resumableOp(), // running 占位
+    ])
+    const w = await mountBanner()
     expect(w.find('.op-resume .op-note').text()).toContain('无法开始新的安装事务')
     w.unmount()
   })

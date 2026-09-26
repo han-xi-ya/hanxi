@@ -3,8 +3,9 @@
 // 消费纪律：只读 useOperations 投影，文案全取 constants/status 词表，零本地状态推断；
 // 观察面刷新失败时保留旧投影并如实标注（stale），不清空、不假装新鲜。
 // 「忽略残留」会把该事务以 failed 收口进账本（审计单收口、不可翻案）且清理托管现场，
-// 属难以撤销动作，故走确认框；单写约束（同模块存在未收口事务时开不了新事务）如实告知。
-import { ref } from 'vue'
+// 属难以撤销动作，故走确认框；单写约束按 journal 态如实区分——占写位的只有
+// pending/running 滞留（compensated 已被恢复流接管、不阻塞新事务，忽略仅为收口账目）。
+import { computed, ref } from 'vue'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
 import type { Operation } from '../../../bindings/hanxi/internal/extapi/models'
 import { resumableTxnID, useOperations } from '../../composables/useOperations'
@@ -68,8 +69,24 @@ function phaseText(op: Operation): string {
   return phase ? operationPhaseText(phase) : ''
 }
 
+/**
+ * 该残留是否已处于 compensated（恢复流已接管补偿）：单写占位判定的依据——
+ * 后端 Begin 的单写检查只看 pending/running（packages/go/operation/store.go），
+ * compensated 不占写位。journal 态是后端真相，前端唯一的到达通道是回灌合成
+ * 记录 error.message 里的「journal state=X」锚点（operation/hub.go
+ * refilledOperation 拼法）；读不出锚点（旧后端/自由文本）一律保守按占位处理，
+ * 宁可保留警告也不漏报。
+ */
+function isCompensatedResumable(op: Operation): boolean {
+  return /journal state=compensated\b/.test(String(op.error?.message ?? ''))
+}
+
+/** 残留集合中是否存在占写位（pending/running/态未知）的事务：决定恢复条的约束文案。 */
+const hasBlockingResumable = computed(() => resumable.value.some((op) => !isCompensatedResumable(op)))
+
 async function dismiss(op: Operation) {
   const name = moduleName(op)
+  const compensated = isCompensatedResumable(op)
   const accepted = await confirm({
     title: `忽略「${name}」的残留事务？`,
     description: '忽略会按背书清理该事务的托管现场，并在账本以失败收口；收口后的审计记录不可翻案。',
@@ -78,7 +95,9 @@ async function dismiss(op: Operation) {
     details: [
       { label: '清理内容', value: '该事务遗留的暂存目录与安装现场' },
       { label: '账本影响', value: '以失败收口登记（保留审计记录，不可翻案）' },
-      { label: '收口前限制', value: '该模块在此之前无法开始新的安装事务' },
+      compensated
+        ? { label: '对新事务影响', value: '该残留已被启动恢复接管，不占用写位；忽略仅为收口这笔账目' }
+        : { label: '收口前限制', value: '该模块在此之前无法开始新的安装事务' },
     ],
   })
   if (!accepted) return
@@ -133,7 +152,12 @@ async function dismiss(op: Operation) {
         </li>
       </ul>
       <p class="op-note">
-        单写约束：忽略残留前，该模块无法开始新的安装事务（同一模块同时只允许一笔未收口事务）。
+        <template v-if="hasBlockingResumable">
+          单写约束：忽略残留前，该模块无法开始新的安装事务（同一模块同时只允许一笔未收口事务）。
+        </template>
+        <template v-else>
+          这些残留已被启动恢复接管：不占用新事务名额，可以直接开始新的安装；忽略仅为收口账目。
+        </template>
       </p>
     </UiBanner>
 

@@ -167,12 +167,17 @@ function handlePrimary(entry: ModuleEntry) {
         `已停用「${name}」，已回收运行时资源`)
       break
     case 'open':
+    case 'retry':
+      // retry 与 open 同通道：failed 滞留模块下次进入时 ensureActive 天然重跑
+      // OnInit（internal/extapi/registry.go 懒激活），打开模块页即真重试；
+      // 若再失败，navigateTo 的 EnsureModuleActive 会如实报"模块初始化失败"。
       openModule(entry)
       break
     case 'none':
       break // 按钮恒禁用，正常不可达；防御空点
     default: {
-      // update/repair/retry 等操作面属 Wave 4+（后端尚无对应事务），如实告知不虚装
+      // update/repair 等操作面属 Wave 4+（后端尚无对应事务），如实告知不虚装
+      //（retry 已于上方接回 open 通道，不再是死路兜底）
       const label = ((PRIMARY_ACTION_META as Record<string, { label: string }>)[action ?? '']?.label) || '该操作'
       showErrorToast(`「${name}」的${label}操作将在后续版本开放`)
     }
