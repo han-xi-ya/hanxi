@@ -632,6 +632,21 @@ func (s *QuickMenuService) resolveIcon(item settings.TrayMenuItem) string {
 		}
 		return "layout"
 	case settings.TrayItemCommand:
+		// 命令条目优先解析其归属模块的导航图标（ref 形如 "moduleId/commandId"，
+		// 模块页路由约定 /ext/<moduleId>）——修机主反馈"轮盘命令扇区全是通用
+		// 方块"：app: 前缀原样透传（前端 wheelIconOf 二轨认得），i: 剥前缀与
+		// route 分支同口径；查不到导航仍回 terminal，渲染不断链。
+		if s.registry != nil {
+			mod := item.Ref
+			if i := strings.IndexByte(mod, '/'); i > 0 {
+				mod = mod[:i]
+			}
+			for _, nav := range s.registry.GetEnabledNavs() {
+				if nav.Route == "/ext/"+mod {
+					return strings.TrimPrefix(nav.Icon, "i:")
+				}
+			}
+		}
 		return "terminal"
 	case settings.TrayItemGroup:
 		return "layers"
