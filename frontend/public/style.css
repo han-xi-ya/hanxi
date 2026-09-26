@@ -1,4 +1,9 @@
 /* Hanxi 基础排版重置与常用变量 */
+
+/* N36 定案：本文件是 index.html 直链的 pre-mount 壳层样式（首帧背景/重置），
+   先于打包 CSS（含 fonts.css 的 @font-face）生效，此刻文楷/思源/JBM 的 woff2
+   尚未声明也未解码，并入新字族栈只会是悬空族名——此处恒留系统栈，不收编。
+   应用内正式字面栈唯一权威在 src/styles/fonts.css（--font-ui/--font-mono）。 */
 :root {
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;
 }

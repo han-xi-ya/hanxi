@@ -101,4 +101,17 @@ describe('fonts.css（N36 字体层）', () => {
       expect(readFileSync(p, 'utf8')).toMatch(/SIL OPEN FONT LICENSE|Open Font License/i)
     }
   })
+
+  it('许可文本分发面双保险接线在位（N36 尾账）', () => {
+    // 路一：vite 构建尾部把 licenses/ 显式拷入 dist（fonts.css 未引用它们，vite 不会自动带上）
+    const viteConfig = readFileSync(join(process.cwd(), 'vite.config.ts'), 'utf8')
+    expect(viteConfig).toContain('assets/fonts/licenses')
+    expect(viteConfig).toContain('cpSync')
+    expect(viteConfig).toContain('font-licenses')
+    // 路二：关于页 ?raw 内联全文（文本进 JS bundle → EXE 内可查）
+    const aboutView = readFileSync(join(process.cwd(), 'src', 'views', 'AboutView.vue'), 'utf8')
+    for (const lic of ['OFL-LXGW-WenKai', 'OFL-NotoSansSC', 'OFL-JetBrainsMono']) {
+      expect(aboutView, lic).toContain(`licenses/${lic}.txt?raw`)
+    }
+  })
 })

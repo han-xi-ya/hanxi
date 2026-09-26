@@ -56,4 +56,27 @@ describe('AboutView', () => {
     expect(w.find('.error-panel').exists()).toBe(true)
     expect(w.find('.error-panel').text()).toContain('绑定未就绪')
   })
+
+  // N36 尾账：OFL「随副本分发」义务 App 内侧（?raw 内联全文进产物，dist 静态拷贝为另一保险）
+  it('字体许可区渲染三份 OFL 全文折叠段，摘要含字族与许可名', async () => {
+    const w = await mountWith(INFO, MODULES)
+    const blocks = w.findAll('.license-details')
+    expect(blocks).toHaveLength(3)
+    for (const b of blocks) {
+      expect(b.find('summary').text()).toContain('SIL OFL 1.1')
+      expect(b.find('.license-text').text()).toMatch(/SIL OPEN FONT LICENSE/i)
+      expect(b.find('.license-text').text().length).toBeGreaterThan(1000)
+    }
+    expect(blocks.map((b) => b.find('summary').text()).join('\n')).toContain('LXGW WenKai GB Screen')
+    expect(blocks.map((b) => b.find('summary').text()).join('\n')).toContain('JetBrains Mono')
+  })
+
+  it('字体许可为静态合规内容：加载失败态下同样在位', async () => {
+    appSvc.GetAppInfo.mockRejectedValue(new Error('绑定未就绪'))
+    appSvc.ListModules.mockRejectedValue(new Error('绑定未就绪'))
+    const w = mount(AboutView)
+    await flushPromises()
+    expect(w.find('.error-panel').exists()).toBe(true)
+    expect(w.findAll('.license-details')).toHaveLength(3)
+  })
 })

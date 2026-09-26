@@ -4,6 +4,17 @@ import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { AppInfo } from '../../bindings/hanxi/internal/app'
 import type { ModuleInfo } from '../../bindings/hanxi/internal/extapi/models'
 import { getErrorMessage } from '../utils/errors'
+// N36 OFL「随副本分发」义务 App 内侧（与 vite.config 的 dist 静态拷贝双保险）：
+// ?raw 把许可全文内联进构建产物，EXE 内可查全文；纯静态内容，不依赖绑定就绪。
+import oflLXGW from '../assets/fonts/licenses/OFL-LXGW-WenKai.txt?raw'
+import oflNotoSC from '../assets/fonts/licenses/OFL-NotoSansSC.txt?raw'
+import oflJetBrains from '../assets/fonts/licenses/OFL-JetBrainsMono.txt?raw'
+
+const fontLicenses = [
+  { name: 'LXGW WenKai GB Screen（霞鹜文楷 GB 屏幕版）', text: oflLXGW },
+  { name: 'Noto Sans SC（思源黑体简中补集）', text: oflNotoSC },
+  { name: 'JetBrains Mono', text: oflJetBrains },
+]
 
 const info = ref<AppInfo | null>(null)
 const modules = ref<ModuleInfo[]>([])
@@ -86,6 +97,22 @@ onMounted(async () => {
         <div v-else class="state-panel">暂无已注册工具。</div>
       </section>
     </template>
+
+    <!-- 字体许可全文：静态合规内容，不随绑定加载态隐藏（加载失败时告知义务仍在） -->
+    <section class="license-panel" aria-label="字体许可">
+      <div class="section-heading">
+        <div>
+          <h2>字体许可</h2>
+          <p>界面字体依 SIL Open Font License 1.1 再分发，全文如下（许可文本同时随产物置于 font-licenses/）。</p>
+        </div>
+      </div>
+      <details v-for="lic in fontLicenses" :key="lic.name" class="info-details license-details">
+        <summary class="info-summary">{{ lic.name }} · SIL OFL 1.1</summary>
+        <div class="info-body">
+          <pre class="license-text">{{ lic.text }}</pre>
+        </div>
+      </details>
+    </section>
   </section>
 </template>
 
@@ -284,6 +311,27 @@ h1 {
 .state-panel {
   padding: 18px;
   color: var(--color-text-muted);
+}
+
+/* 字体许可全文区：info-details 全局原子 + 私有 pre 形（长行可换、超高内滚） */
+.license-panel {
+  margin-top: 16px;
+}
+
+.license-details + .license-details {
+  margin-top: 8px;
+}
+
+.license-text {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 320px;
+  overflow: auto;
 }
 
 .error-panel {
