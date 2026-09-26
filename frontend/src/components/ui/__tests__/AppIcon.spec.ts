@@ -49,7 +49,7 @@ describe('AppIcon 渲染', () => {
 })
 
 describe('AppIcon 真图标第二来源（N27 批 A）', () => {
-  it('注册表：通用徽标存在，真图标入库件（批 A 五枚 + 批 B-2 扩量十二枚 + N27 尾巴放行二枚 + 开源上游仓库取材四枚）在场', () => {
+  it('注册表：通用徽标存在，真图标入库件（批 A 五枚 + 批 B-2 扩量十二枚 + N27 尾巴放行二枚 + 开源上游仓库取材四枚 + 尾巡补录三枚）在场', () => {
     expect(APP_ICON_GENERIC_URL).toBeTruthy()
     for (const id of [
       'ccswitch', 'keyviz', 'everything', 'snipaste', 'markeron',
@@ -57,6 +57,7 @@ describe('AppIcon 真图标第二来源（N27 批 A）', () => {
       'piclite', 'quicklook', 'rufus', 'subnetdesk', 'translucenttb', 'windterm',
       'litemonitor', 'guoheview',
       'rustdesk', 'bili23', 'termora', 'nanazip',
+      'ddnsgo', 'frpc', 'eartrumpet',
     ]) {
       expect(APP_ICON_IDS, id).toContain(id)
     }

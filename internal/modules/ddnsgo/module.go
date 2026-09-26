@@ -51,7 +51,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "ddnsgo-manager", Title: "ddns-go 解析", Route: "/ext/ddnsgo", Icon: "i:link", Section: extapi.SectionExt, Order: 85, Group: extapi.GroupNetwork},
+		{ID: "ddnsgo-manager", Title: "ddns-go 解析", Route: "/ext/ddnsgo", Icon: "app:ddnsgo", Section: extapi.SectionExt, Order: 85, Group: extapi.GroupNetwork},
 	}
 }
 

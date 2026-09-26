@@ -114,13 +114,14 @@ describe('constants/navigation', () => {
       expect(['svg', 'app'], p.icon).toContain(resolveIcon(p.icon).kind)
       if (p.icon.startsWith('i:')) expect(ICON_NAMES).toContain(p.icon.slice(2))
     }
-    // 真图标入库件（批 A 五枚 + 批 B-2 扩量十二枚 + N27 尾巴放行二枚 + 开源上游仓库取材四枚）：数据源确已切到 app: 形态
+    // 真图标入库件（批 A 五枚 + 批 B-2 扩量十二枚 + N27 尾巴放行二枚 + 开源上游仓库取材四枚 + 尾巡补录三枚）：数据源确已切到 app: 形态
     for (const id of [
       'ccswitch', 'keyviz', 'everything', 'snipaste', 'markeron',
       'bcu', 'douzy', 'flclash', 'mangodisk', 'papertodo', 'paseo',
       'piclite', 'quicklook', 'rufus', 'subnetdesk', 'translucenttb', 'windterm',
       'litemonitor', 'guoheview',
       'rustdesk', 'bili23', 'termora', 'nanazip',
+      'ddnsgo', 'frpc', 'eartrumpet',
     ]) {
       expect(MODULE_PRESENTATION[id]?.icon).toBe(`app:${id}`)
     }

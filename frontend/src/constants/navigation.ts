@@ -240,7 +240,7 @@ export function groupOfModule(id: string): NavGroup | undefined {
  * 消费端（HomeView）经 AppIcon 渲染 SVG；无前缀值按文本回退。
  */
 export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }> = {
-  frpc: { icon: 'i:zap', route: '/frpc' },
+  frpc: { icon: 'app:frpc', route: '/frpc' },
   fileshare: { icon: 'i:share-2', route: '/ext/fileshare' },
   memo: { icon: 'i:sticky-note', route: '/ext/memo' },
   webapp: { icon: 'i:monitor', route: '/ext/webapp' },
@@ -255,7 +255,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   ccswitch: { icon: 'app:ccswitch', route: '/ext/ccswitch' },
   snipaste: { icon: 'app:snipaste', route: '/ext/snipaste' },
   nanazip: { icon: 'app:nanazip', route: '/ext/nanazip' },
-  eartrumpet: { icon: 'i:volume-2', route: '/ext/eartrumpet' },
+  eartrumpet: { icon: 'app:eartrumpet', route: '/ext/eartrumpet' },
   mangodisk: { icon: 'app:mangodisk', route: '/ext/mangodisk' },
   bcu: { icon: 'app:bcu', route: '/ext/bcu' },
   flclash: { icon: 'app:flclash', route: '/ext/flclash' },
@@ -266,7 +266,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   quicklook: { icon: 'app:quicklook', route: '/ext/quicklook' },
   litemonitor: { icon: 'app:litemonitor', route: '/ext/litemonitor' },
   guoheview: { icon: 'app:guoheview', route: '/ext/guoheview' },
-  ddnsgo: { icon: 'i:link', route: '/ext/ddnsgo' },
+  ddnsgo: { icon: 'app:ddnsgo', route: '/ext/ddnsgo' },
   subnetdesk: { icon: 'app:subnetdesk', route: '/ext/subnetdesk' },
   rustdesk: { icon: 'app:rustdesk', route: '/ext/rustdesk' },
   rufus: { icon: 'app:rufus', route: '/ext/rufus' },

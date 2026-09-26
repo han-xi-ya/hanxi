@@ -44,7 +44,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明导航入口：frpc 属核心页（SectionCore，非 /ext 前缀），固定排网络组首位。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "frpc-projects", Title: "frpc 穿透", Route: "/frpc", Icon: "i:zap", Section: extapi.SectionCore, Order: 10, Group: extapi.GroupNetwork},
+		{ID: "frpc-projects", Title: "frpc 穿透", Route: "/frpc", Icon: "app:frpc", Section: extapi.SectionCore, Order: 10, Group: extapi.GroupNetwork},
 	}
 }
 

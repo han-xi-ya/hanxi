@@ -66,7 +66,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (m *Module) Nav() []extapi.NavEntry {
-	return []extapi.NavEntry{{ID: "eartrumpet-manager", Title: "EarTrumpet", Route: "/ext/eartrumpet", Icon: "i:volume-2", Section: extapi.SectionExt, Order: 77, Group: extapi.GroupDesktop}}
+	return []extapi.NavEntry{{ID: "eartrumpet-manager", Title: "EarTrumpet", Route: "/ext/eartrumpet", Icon: "app:eartrumpet", Section: extapi.SectionExt, Order: 77, Group: extapi.GroupDesktop}}
 }
 
 // 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。

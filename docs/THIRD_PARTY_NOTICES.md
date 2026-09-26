@@ -226,14 +226,19 @@ scripts/extract_app_icons.ps1；开源仓库取材件来自上游仓库现成位
 | bili23.png | Bili23-Downloader | GPL-3.0（见 GPL 族节） | 识别性使用；来源=上游仓库 github.com/ScottSloan/Bili23-Downloader `assets/app.icns`（实为 1024px PNG，等比缩 32；仓库内无 ICO/PNG 现成件与更优位图通道） |
 | termora.png | Termora | 仓库根无 LICENSE 文件，README 自述 AGPL-3.0/专有双许可 | 识别性使用；来源=上游仓库 github.com/TermoraDev/termora `src/main/resources/icons/termora_32x32.png`（官方原生 32px 件零改作直用）；许可口径以 README 自述为据，随批登记留痕 |
 | nanazip.png | NanaZip | 代码 MIT；应用图标资产 CC BY-ND 4.0（见上节） | 识别性使用；来源=官方 MSIXBundle 6.5.1800.0 x64 载荷 `Assets/Square44x44Logo.targetsize-32_altform-unplated.png`（官方原生 32px 小尺寸件零改作直用，规避 ND 禁改作条款——不缩放/不裁剪/不合成） |
+| ddnsgo.png | ddns-go | MIT（见上节） | 识别性使用；来源=上游仓库 github.com/jeessy2/ddns-go 根目录 `favicon.ico`（官方 Web 管理面板图标，取最大画幅 48px 等比缩 32；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
+| frpc.png | frp (fatedier/frp) | Apache-2.0（见上节） | 识别性使用；来源=上游仓库 github.com/fatedier/frp `web/frpc/public/favicon.ico`（官方 frpc 控制面板图标，48px 单画幅等比缩 32；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
+| eartrumpet.png | EarTrumpet | MIT + Excluded Entities 前言（见上节） | 识别性使用；来源=上游仓库 github.com/File-New-Project/EarTrumpet `EarTrumpet.Package/Assets/Square44x44Logo.altform-unplated_targetsize-32.png`（官方原生 32px 小尺寸件零改作直用）；Excluded Entities 条款仅点名排除三家商事主体，Hanxi 非排除对象，MIT 授权照常成立 |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
 | ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不落 generic 之外的展示面：保持矢量 `i:gauge`（rammap 系位图一律同判） |
 
 未入库（如实登记）：**Recordly**——AGPL 附加条款明文禁将 Recordly 名称/品牌
 图标套用于 Hanxi 自有 UI 展示（上节"刻意不做品牌融合"），用了即违约，
-保持矢量 `i:video`，将来装了也不入库；**ddnsgo/frpc** 为控制台程序（无 GUI 主图标），落通用徽标；
-**vscode**——微软商标条款对品牌资产同样收紧，与 Sysinternals 同判不入库，
-保持矢量 `i:code`；**softver/msgboard/quickmenu/sysinfo/envcheck/wechat/wifi 等
+保持矢量 `i:video`，将来装了也不入库；**vscode**——微软商标条款对品牌资产同样收紧，
+与 Sysinternals 同判不入库，保持矢量 `i:code`；**softver/msgboard/quickmenu/sysinfo/envcheck/wechat/wifi 等
 Hanxi 自研功能模块**（wechat/wifi 为桥接/诊断入口，非托管载荷）永不入库。
+（2026-09-26 尾巡改判注：**ddnsgo/frpc** 原以"控制台程序无 GUI 头件"落通用徽标，
+后经官方仓库实证存在现成品牌位图（favicon），按开源取材通道补录入库（见上表）；
+同轮补录 **eartrumpet**（官方包原生 32px 件）。三枚自入库起同时供托盘子菜单消费。）
 若随 Hanxi 安装包再分发构成任何权利方异议，
 按"摘除位图 → 回落 generic"处理，不动摇功能。
