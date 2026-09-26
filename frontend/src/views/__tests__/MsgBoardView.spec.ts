@@ -1,9 +1,19 @@
-// 桌面留言板模块页（MsgBoardView，N6 重设计 + 重设计 v2 骨架）特征测试：加载回显、
-// 类型速挂（单击填词/双击保存+挂出）、保存走 SetConfig 全量快照、保存失败回读不私留
-// 假状态、挂/撤与状态事件、异常 chip 只在异常时出现、预览与表单同源联动；
-// N30 追加全屏预览（纯前端浮层，不触后端）与小预览按字号防裁切缩放。
-// 重设计 v2（挂牌动作主角化）：语义断言零删减，动作钮选择器随新 DOM 更新——
-// 挂/撤大钮迁入 .mb-hero 主操作区，保存钮迁入 .mb-work 草稿卡的 .work-actions。
+// 桌面留言板模块页（MsgBoardView，N6 重设计 + v2 主角化 + v3 流体三柱工作台）
+// 特征测试：加载回显、类型速挂（单击填词/双击保存+挂出）、保存走 SetConfig 全量
+// 快照、保存失败回读不私留假状态、挂/撤与状态事件、异常 chip 只在异常时出现、
+// 预览与表单同源联动；N30 追加全屏预览（纯前端浮层，不触后端）与小预览按字号
+// 防裁切缩放。
+// 重设计 v3（流体三柱）：语义断言零删减、选择器几乎零迁移——
+//   .mb-hero 从通栏 hero 变成左簇（.mb-rail）顶部的挂牌控制卡（状态字/挂撤大钮/
+//     已存牌面回显三档纵排，类名与断言语义原样）；
+//   .mb-work 由"草稿+预览合并 panel"改为 display:contents 聚合层，#mb-text（草稿台
+//     .mb-draft）与 .mbp-scaled（预览台 .mb-stage）仍是其 DOM 后代，同源联动断言
+//     语义不变；
+//   字号控件由 number 输入升格为 range 滑杆（aria-label="字号"不变，钳位区间不变；
+//     happy-dom 下 ResizeObserver 为空实现，预览缩放回落 v2 常数 300——scale(0.34)/
+//     scale(0.1846…) 逐位一致）；
+//   高级折叠区（details/adv-flag/banner-warn）收进左簇的"参数配置"卡，类名与
+//     异常汇总语义原样保留。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MsgBoardView from '../MsgBoardView.vue'
@@ -201,7 +211,31 @@ describe('MsgBoardView', () => {
   })
 })
 
-describe('重设计 v2 骨架（挂牌动作主角化）', () => {
+describe('重设计 v3 骨架（流体三柱工作台）', () => {
+  it('左簇聚合：挂牌控制卡与类型速挂、参数配置同柱纵排，状态字/挂撤大钮/回显仍在 hero', async () => {
+    const wrapper = await mountView(
+      status({ shown: true, keepAwake: true }),
+      config({ text: '🤝 开会中\n请勿打扰' }),
+    )
+    const rail = wrapper.find('.mb-rail')
+    expect(rail.exists()).toBe(true)
+    // 高频三件套（控制/速挂/配置）全在左簇——换形不换代，窄端拆平也是同一聚合
+    expect(rail.find('.mb-hero').exists()).toBe(true)
+    expect(rail.find('.mb-types .type-grid').exists()).toBe(true)
+    expect(rail.find('.mb-adv details').exists()).toBe(true)
+    // 草稿台与预览台是 .mb-work（display:contents）的两面，聚在 DOM 同源聚合层下
+    const work = wrapper.find('.mb-work')
+    expect(work.find('.mb-draft #mb-text').exists()).toBe(true)
+    expect(work.find('.mb-stage .mbp-box').exists()).toBe(true)
+    // 字号滑杆挂在预览台（改一下看得到）；range 档仍吃 24–200 钳位契约
+    const range = wrapper.find('.mb-stage input[aria-label="字号"]')
+    expect(range.exists()).toBe(true)
+    expect(range.attributes('type')).toBe('range')
+    expect(range.attributes('min')).toBe('24')
+    expect(range.attributes('max')).toBe('200')
+    wrapper.unmount()
+  })
+
   it('主操作区存在：状态字、挂撤大钮与已存牌面回显聚在同一张 hero 卡', async () => {
     const wrapper = await mountView(
       status({ shown: true, keepAwake: true }),
@@ -218,7 +252,7 @@ describe('重设计 v2 骨架（挂牌动作主角化）', () => {
     wrapper.unmount()
   })
 
-  it('预览位归属草稿卡：编辑框与预览同卡联动，页内只此一块牌面画法', async () => {
+  it('草稿与预览同区聚合：编辑框与预览共挂 .mb-work 同源层，页内只此一块牌面画法', async () => {
     const wrapper = await mountView()
     const work = wrapper.find('.mb-work')
     expect(work.exists()).toBe(true)
