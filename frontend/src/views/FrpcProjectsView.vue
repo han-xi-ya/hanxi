@@ -607,7 +607,7 @@ onMounted(async () => {
 
             <div class="proj-actions">
               <template v-if="stateOf(p)?.state === 'running'">
-                <button class="btn btn-stop btn-small" @click="toggleStart(p)">■ 停止</button>
+                <button class="btn btn-danger-outline btn-small" @click="toggleStart(p)">■ 停止</button>
               </template>
               <template v-else>
                 <button
@@ -714,7 +714,10 @@ onMounted(async () => {
   padding: 16px; display: flex; flex-direction: column; gap: 12px; transition: box-shadow var(--motion-base) ease;
 }
 .project-card:hover { box-shadow: var(--shadow-small); }
-.project-card.active { border-color: var(--state-positive-glow); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
+/* 运行中卡片选中环（N37 A 类降级）：原 inset 彩色常亮环系 glow 借值 + color-mix 45%/white
+   自拼"提亮描边"，随常亮发光废除——改 token 实色 1px 边框（与托管家族
+   .installed-card.card-active 吃 --color-primary 实色边的先例同构），hover 中性层次影不再被顶掉。 */
+.project-card.active { border-color: var(--state-positive); }
 
 .proj-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .proj-title-box { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -813,12 +816,13 @@ onMounted(async () => {
 /* .textarea 副本随导入框换装 UiClipboardField 退役（粘贴/复制样式由组件自带 token 化） */
 .form-item { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 
-/* 停止按钮变体（全局原子之外的业务语义色） */
-.btn-stop { background: var(--surface-panel); border-color: var(--state-danger); color: var(--state-danger); }
-.btn-stop:hover { background: var(--state-danger-soft); }
-/* 同名原子不再整名重定义：删除全局 .btn-danger-outline 的色形副本风险，
-   仅按 components.css「祖先锚定」先例追加本视图布局微调（删除钮靠右） */
-.proj-actions .btn-danger-outline { margin-left: auto; }
+/* "停止"钮的 scoped 色形副本（.btn-stop）删净改挂全局 .btn-danger-outline 标准形：
+   旧副本底/边/字与全局逐字同值，唯 hover 用 --state-danger-soft——与常态白底几乎无差、
+   hover 无"变危险"感（N37 §1 已记账），换全局 --btn-danger-outline-hover/active 两档后
+   本视图无色形保留差。 */
+/* 布局微调（components.css「祖先锚定」先例）：删除钮靠右；:last-child 限定，
+   避免也挂同名的"停止"钮误吃 auto 边距（删除恒为 .proj-actions 末子）。 */
+.proj-actions .btn-danger-outline:last-child { margin-left: auto; }
 
 /* 日志抽屉：终端风格固定深底，不随主题反相（tokens.css --terminal-* 约定） */
 .log-drawer {

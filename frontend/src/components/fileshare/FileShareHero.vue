@@ -48,14 +48,10 @@ const emit = defineEmits<{ toggle: [] }>()
 
 <style scoped>
 /* 原私有 .btn-primary 全形（含 :disabled 降透明）与全局 :where(.btn)/.btn-primary 同语义，
-   模板补挂 .btn 基座后 scoped 副本删净落回；hero 仅保留 CTA 差异档（.hero-action）与
-   "运行中变红"覆盖档（.btn-danger，hover 保持红底不吃全局 primary-hover）。 */
-.btn-danger {
-  background: var(--state-danger);
-}
-.btn-danger:hover:not(:disabled) {
-  background: var(--state-danger);
-}
+   模板补挂 .btn 基座后 scoped 副本删净落回；hero 仅保留 CTA 尺寸档（.hero-action）。
+   "运行中变红"的 scoped .btn-danger 覆盖档已删净：N38 收编 :where(.btn-danger) 实心危险标准形后，
+   源码序位于 :where(.btn-primary) 之后同特异性后来者胜，底/前景/描边/字重与 hover 深一档
+   全由全局接管——旧副本"hover 钉死红底防吃 primary-hover"的守护使命就此退役。 */
 
 .status-indicator {
   width: 10px;
@@ -64,9 +60,10 @@ const emit = defineEmits<{ toggle: [] }>()
   background: var(--state-danger);
 }
 
+/* 运行灯为稳态非"进行中"，N37 A 类灯点降级：原 inset color-mix 45%/white 自拼提亮环删净，
+   落回 token 实色扁点，与熄灭态同构。 */
 .status-indicator.online {
   background: var(--state-positive);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white);
 }
 
 .hero-panel {

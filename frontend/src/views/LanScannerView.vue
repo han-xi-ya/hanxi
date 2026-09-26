@@ -355,14 +355,9 @@ onMounted(() => {
 
 /* .btn-group 等值副本删净落回全局 :where(.btn-group) */
 
-/* 实心红"停止扫描"为本视图专属变体（全局只有 btn-danger-outline 描边形） */
-.btn-danger {
-  background: var(--state-danger);
-  color: var(--color-on-accent);
-}
-.btn-danger:hover:not(:disabled) {
-  filter: brightness(0.92);
-}
+/* 实心红"停止扫描"scoped 副本删净，落回全局 :where(.btn-danger) 标准形（N38 已收编实心危险档：
+   底 --state-danger / 前景 --color-on-accent / 深色描边 / 字重 600 / hover 换 --btn-danger-fill-hover
+   实底加深档，替代本视图旧自调 filter: brightness(0.92)——同色加深语义归全局，此处零保留差异）。 */
 
 /* 进度条 */
 .progress-section {

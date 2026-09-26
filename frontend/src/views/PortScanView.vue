@@ -468,9 +468,8 @@ onUnmounted(() => {
 /* display 落回全局 .btn-group；仅 gap 散差（10 vs 全局 8）暂留——定档候选，见收编报告 */
 .btn-group { gap: 10px; }
 
-/* 实心红"终止扫描"为本视图专属变体（全局仅有描边红形） */
-.btn-danger { background: var(--state-danger); color: var(--color-on-accent); border-color: var(--state-danger); }
-.btn-danger:hover:not(:disabled) { filter: brightness(0.92); }
+/* 实心红"终止扫描"scoped 副本删净，落回全局 :where(.btn-danger) 标准形（N38 已收编实心危险档；
+   旧副本把 border-color 钉成同红底无界感、hover 用自调 brightness(0.92)，均换为标准深边 + 深底档）。 */
 
 /* 进度卡片 */
 .progress-card {
