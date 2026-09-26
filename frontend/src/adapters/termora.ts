@@ -18,7 +18,12 @@ import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/ter
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
-import type { ManagedActionResult, ManagedModuleAdapter, ManagedVersionRecord } from '../components/managed/adapter'
+import {
+  soleVersionUninstallNote,
+  type ManagedActionResult,
+  type ManagedModuleAdapter,
+  type ManagedVersionRecord,
+} from '../components/managed/adapter'
 
 export function createTermoraAdapter(): ManagedModuleAdapter {
   const { confirm } = useConfirm()
@@ -87,9 +92,11 @@ export function createTermoraAdapter(): ManagedModuleAdapter {
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
+        // 最后一个版本的卸载 = 模块回到未安装态（后端 guard 已相应放行），确认框如实预告
+        const soleNote = await soleVersionUninstallNote(() => TermoraAPI.ListInstalledVersions())
         const accepted = await confirm({
           title: `确定卸载 Termora ${v.version}？`,
-          description: '该版本托管目录（内含 data\\ 会话与密钥索引数据）将被整体删除，不可恢复。\n如需保留会话数据，请先「打开位置」手动迁出。',
+          description: '该版本托管目录（内含 data\\ 会话与密钥索引数据）将被整体删除，不可恢复。\n如需保留会话数据，请先「打开位置」手动迁出。' + soleNote,
           tone: 'danger',
         })
         if (!accepted) return {}

@@ -172,6 +172,13 @@ func (s *TermoraService) DownloadVersion(targetVersion string) (string, error) {
 			txn.Close()
 		}()
 		emit := func(p version.DownloadProgress) {
+			// 首装自动设使用的落账必须在 done 事件发出之前：前端共享 store 收到
+			// done 即复刷版本区读 GetActiveVersion，旧实现放在 DownloadContext 返回
+			// 之后，事件先行于落账，瞬时复刷读到空值（机主实跑反馈：首个版本下载
+			// 完不显示"使用中"，刷新页面才出现）。done 仅在落位 Commit 成功后发出。
+			if p.Stage == "done" && s.store.GetActive() == "" {
+				_ = s.store.SetActive(targetVersion)
+			}
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("termora:version-download", p)
 			}
@@ -213,9 +220,7 @@ func (s *TermoraService) DownloadVersion(targetVersion string) (string, error) {
 			}
 			return
 		}
-		if s.store.GetActive() == "" {
-			_ = s.store.SetActive(targetVersion)
-		}
+		// done 事件发出前已在 emit 收口"首装自动设使用"，此处不再重复落账。
 		if err := txn.Done(); err != nil {
 			s.emitDownloadProgress(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("termora", "版本下载失败", fmt.Sprintf("Termora %s 事务收口失败: %v", targetVersion, err), "/ext/termora")
@@ -249,8 +254,10 @@ func (s *TermoraService) ImportLocal(srcDir string) (version.TermoraVersionInfo,
 	return info, nil
 }
 
-// RemoveVersion 删除本地版本；本会话正在运行该版本、或该版本为"当前使用
-// 版本"时拒绝。
+// RemoveVersion 删除本地版本；本会话正在运行该版本时拒绝（优先级最高）。
+// "当前使用版本"通常不可卸载（请先切走再卸），但它是唯一已装版本时放行——
+// 否则用户被 guard 死锁（卸掉即清空、不卸又不同意），卸载成功后清空 active
+// 回到"未指定"（与 bcu 家族"卸载清空、冷启动回退最新已装"语义对齐）。
 func (s *TermoraService) RemoveVersion(targetVersion string) error {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -263,10 +270,19 @@ func (s *TermoraService) RemoveVersion(targetVersion string) error {
 		strings.EqualFold(snapshot.Version, targetVersion) {
 		return fmt.Errorf("版本 %s 正由本会话运行，请先退出进程", targetVersion)
 	}
-	if strings.EqualFold(s.store.GetActive(), targetVersion) {
-		return fmt.Errorf("当前使用版本 %s 不可卸载，请先选择其他版本", targetVersion)
+	removingActive := strings.EqualFold(s.store.GetActive(), targetVersion)
+	if removingActive {
+		if installed, err := s.manager.ListInstalled(); err != nil || len(installed) != 1 {
+			return fmt.Errorf("当前使用版本 %s 不可卸载，请先选择其他版本", targetVersion)
+		}
 	}
-	return s.manager.Remove(targetVersion)
+	if err := s.manager.Remove(targetVersion); err != nil {
+		return err
+	}
+	if removingActive {
+		_ = s.store.SetActive("")
+	}
+	return nil
 }
 
 // SetActiveVersion 切换使用版本；ResolveExe 确认 payload 在场后才落盘。

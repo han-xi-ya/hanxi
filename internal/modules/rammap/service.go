@@ -263,7 +263,9 @@ func (s *RAMMapService) ImportLocal(srcDir string) (version.RammapVersionInfo, e
 	return info, nil
 }
 
-// RemoveVersion 删除本地版本；本会话运行中或为当前使用版本时拒绝。
+// RemoveVersion 删除本地版本；本会话运行中时拒绝（优先级最高）。
+// "当前使用版本"通常不可卸载（先切走再卸），但它是唯一已装版本时放行——
+// 否则用户被 guard 死锁，卸载成功后清空 active 回到"未指定"。
 func (s *RAMMapService) RemoveVersion(targetVersion string) error {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -276,10 +278,19 @@ func (s *RAMMapService) RemoveVersion(targetVersion string) error {
 		strings.EqualFold(snapshot.Version, targetVersion) {
 		return fmt.Errorf("版本 %s 正由本会话运行，请先退出进程", targetVersion)
 	}
-	if strings.EqualFold(s.store.GetActive(), targetVersion) {
-		return fmt.Errorf("当前使用版本 %s 不可卸载，请先选择其他版本", targetVersion)
+	removingActive := strings.EqualFold(s.store.GetActive(), targetVersion)
+	if removingActive {
+		if installed, err := s.manager.ListInstalled(); err != nil || len(installed) != 1 {
+			return fmt.Errorf("当前使用版本 %s 不可卸载，请先选择其他版本", targetVersion)
+		}
 	}
-	return s.manager.Remove(targetVersion)
+	if err := s.manager.Remove(targetVersion); err != nil {
+		return err
+	}
+	if removingActive {
+		_ = s.store.SetActive("")
+	}
+	return nil
 }
 
 // SetActiveVersion 切换使用版本（ResolveExe 校验载荷在场后落盘）。

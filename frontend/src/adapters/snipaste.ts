@@ -9,11 +9,12 @@ import type {
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { useWailsEvent } from '../composables/useWailsEvent'
-import type {
-  ManagedActionResult,
-  ManagedModuleAdapter,
-  ManagedVersionRecord,
-  NormalizedProgress,
+import {
+  soleVersionUninstallNote,
+  type ManagedActionResult,
+  type ManagedModuleAdapter,
+  type ManagedVersionRecord,
+  type NormalizedProgress,
 } from '../components/managed/adapter'
 
 export type SnipasteVersionDialect = Pick<
@@ -69,9 +70,11 @@ export function createSnipasteAdapter(
 
     async remove(info, canRemove): Promise<boolean> {
       if (!canRemove()) return false
+      // 最后一个版本的卸载 = 模块回到未安装态（后端 guard 已相应放行），确认框如实预告
+      const soleNote = await soleVersionUninstallNote(() => SnipasteAPI.ListInstalledVersions())
       const accepted = await confirm({
         title: `确定卸载 Snipaste ${info.version}？`,
-        description: '将删除该版本的完整隔离目录，此操作不可恢复。',
+        description: '将删除该版本的完整隔离目录，此操作不可恢复。' + soleNote,
         tone: 'danger',
       })
       if (!accepted || !canRemove()) return false

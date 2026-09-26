@@ -19,7 +19,12 @@ import { computed, ref, type Ref } from 'vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
-import type { ManagedActionResult, ManagedModuleAdapter, ManagedVersionRecord } from '../components/managed/adapter'
+import {
+  soleVersionUninstallNote,
+  type ManagedActionResult,
+  type ManagedModuleAdapter,
+  type ManagedVersionRecord,
+} from '../components/managed/adapter'
 
 export interface RAMMapAdapter extends ManagedModuleAdapter {
   /** 宿主未提权且目标 manifest=requireAdministrator 时为真：A/B 双路入口据此显形。 */
@@ -112,9 +117,11 @@ export function createRAMMapAdapter(): RAMMapAdapter {
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
+        // 最后一个版本的卸载 = 模块回到未安装态（后端 guard 已相应放行），确认框如实预告
+        const soleNote = await soleVersionUninstallNote(() => RAMMapAPI.ListInstalledVersions())
         const accepted = await confirm({
           title: `确定卸载 RAMMap ${v.version}？`,
-          description: '该版本托管目录将被删除（RAMMap 为无状态观察工具，卸载无数据损失）。',
+          description: '该版本托管目录将被删除（RAMMap 为无状态观察工具，卸载无数据损失）。' + soleNote,
           tone: 'danger',
         })
         if (!accepted) return {}

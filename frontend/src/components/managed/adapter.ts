@@ -330,6 +330,27 @@ export function sameVersionOf<V extends ManagedVersionDialect>(
   return versions.sameVersion ? versions.sameVersion(a, b) : a === b
 }
 
+/**
+ * 「卸载最后一个版本」如实预告词（机主反馈四 · WindTerm 卸载死锁连动）：
+ * 后端 guard 已放行"唯一已装版本即使用中版本"的卸载并在成功后清空 active
+ * ——卸载确认后模块回到未安装态。弹卸载二次确认前，adapter 先行探测已装数，
+ * 仅剩这一个时在 description 末尾追加预告句；probe 失败静默回空串
+ * （呈现位瑕疵不拦卸载入口，最终闸门始终在后端）。
+ */
+export async function soleVersionUninstallNote(
+  listInstalled: () => PromiseLike<unknown[] | null | undefined>,
+): Promise<string> {
+  try {
+    const installed = await listInstalled()
+    if (installed && installed.length === 1) {
+      return '\n这是最后一个版本，卸载后将回到未安装状态。'
+    }
+  } catch {
+    // probe 不通即不预告：卸载确认照常弹出
+  }
+  return ''
+}
+
 /** 随关/快捷方式/数据目录/仓库等辅助面条目（全可选，缺项自动隐藏）。 */
 export interface ManagedFollowOnExitSpec {
   get(): PromiseLike<boolean>
