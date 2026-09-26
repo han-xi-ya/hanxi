@@ -15,6 +15,9 @@
   能力自适应：getActive/setActive 缺省的单目录模块（recordly/paseo/papertodo）
   不渲染「使用中」徽标与「设为使用」钮；importLocal 缺省不渲染导入钮。
   store 缺省时自建（独立挂载/测试），组合进壳时由壳注入共享 store。
+  双形态 Wave 落点：#release-actions 具名槽（作用域 {release}，渲染于远程行操作位
+  尾部）——模块方言的远程行第二动词（如 TranslucentTB「装打包版」）自此免抄表；
+  缺省不填 = 全部既有消费模块零变化。
 -->
 <script setup lang="ts" generic="V extends object = ManagedVersionDialect">
 import { computed } from 'vue'
@@ -313,6 +316,8 @@ const installedChipClass = computed(() =>
               :title="downloadBlockedTitle ?? undefined"
               @click="!downloadBlockedTitle && store.runDownload(rel)"
             >重试</a>
+            <!-- 模块方言远程行动作槽（双形态 Wave）：作用域 release，缺省不填零变化 -->
+            <slot name="release-actions" :release="rel" />
           </td>
         </tr>
         <tr v-if="store.releases.length === 0 && !store.loading">

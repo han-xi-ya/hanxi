@@ -1,14 +1,21 @@
-// TranslucentTB adapter 特征测试（崩溃处置升级 2026-09-26）：
+// TranslucentTB adapter 特征测试（崩溃处置升级 2026-09-26 + 双形态 Wave 打包线）：
 //  - 纯函数判据表：isAVCrash（退出码反解码门）、detectVirtualArtifacts
 //    （虚拟显卡名单/非主屏零尺寸空壳监视器）、virtualArtifactWording（点名
-//    措辞纪律：陈述在场不归罪）、cmpTBVersion、pickDowngradeTarget（C-迷你候选）；
+//    措辞纪律：陈述在场不归罪）、cmpTBVersion、pickDowngradeTarget（C-迷你候选）、
+//    hasMsixBundleAsset（N13 矩阵 .msixbundle 判据）、pickAVProbe（鉴别钮双语义取位：
+//    打包对照优先、便携降级回退）；
 //  - B1 banner 异步点名：failed+AV 挂上后 GetReport 恰一次（同笔崩溃负结果也
-//    防重刷、新崩溃换键重检）；sysinfo 停用（reject）静默回通用文案不报错。
+//    防重刷、新崩溃换键重检）；sysinfo 停用（reject）静默回通用文案不报错；
+//  - msix 契约面：GetMsixState 失败静默降级（不抛不 toast、含绑定缺席同路）、
+//    动词 busy 单飞、确认框语义（远程行装走确认框、AV 对照直钮免确认）、
+//    安装成败均重读、后端拦截错误原样上抛。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createTBAdapter,
+  hasMsixBundleAsset,
   isAVCrash,
   detectVirtualArtifacts,
+  pickAVProbe,
   virtualArtifactWording,
   cmpTBVersion,
   pickDowngradeTarget,
@@ -32,6 +39,12 @@ const svc = vi.hoisted(() => ({
   SetFollowOnExit: vi.fn(),
   RepositoryURL: vi.fn(),
   OpenRepository: vi.fn(),
+  // 打包线冻结契约五动词（bindings 待再生，spec 全 mock 顶替）
+  GetMsixState: vi.fn(),
+  InstallMsix: vi.fn(),
+  UninstallMsix: vi.fn(),
+  RemoveMsixCache: vi.fn(),
+  LaunchMsix: vi.fn(),
 }))
 
 const sysinfo = vi.hoisted(() => ({ GetReport: vi.fn() }))
@@ -231,5 +244,181 @@ describe('B1 banner 异步点名', () => {
     expect(res?.text).toContain('退出码 1')
     await flush()
     expect(sysinfo.GetReport).not.toHaveBeenCalled()
+  })
+})
+
+// ---------- 双形态 Wave：打包线契约面（判据纯函数 + adapter.msix） ----------
+
+// 参数刻意收 unknown：null 元素是 hasMsixBundleAsset 的防御性判据面（超出 ReleaseAssetNote[] 类型契约），显式收窄回 assets 类型。
+function msixRel(version: string, assets?: unknown): ManagedReleaseRecord {
+  return { version, published: '2026-08-14T00:00:00Z', size: 1, assets: (assets ?? null) as ManagedReleaseRecord['assets'] }
+}
+const BUNDLE_ASSET = { platform: 'windows', form: 'package', label: 'TranslucentTB_2026.2.0.0_x64.msixbundle' }
+const PORTABLE_ASSET = { platform: 'windows', form: 'portable', label: 'TranslucentTB-portable-x64.zip' }
+
+describe('hasMsixBundleAsset（N13 矩阵打包资产判据）', () => {
+  it('label 以 .msixbundle 收尾判真（大小写不敏感）；null 成员不炸', () => {
+    expect(hasMsixBundleAsset(msixRel('2026.2', [PORTABLE_ASSET, null, BUNDLE_ASSET]))).toBe(true)
+    expect(hasMsixBundleAsset(msixRel('2026.2', [{ ...BUNDLE_ASSET, label: 'TTB.MSIXBUNDLE' }]))).toBe(true)
+  })
+  it('无 assets（undefined/null/空数组）或仅便携/安装器资产 → false（静默缺席不装样子）', () => {
+    expect(hasMsixBundleAsset(msixRel('2026.2'))).toBe(false)
+    expect(hasMsixBundleAsset(msixRel('2026.2', null))).toBe(false)
+    expect(hasMsixBundleAsset(msixRel('2026.2', []))).toBe(false)
+    expect(hasMsixBundleAsset(msixRel('2026.2', [PORTABLE_ASSET, { form: 'installer', label: 'setup.msi' }]))).toBe(false)
+    expect(hasMsixBundleAsset(null)).toBe(false)
+    expect(hasMsixBundleAsset(undefined)).toBe(false)
+  })
+})
+
+describe('pickAVProbe（崩溃鉴别钮：打包对照优先、便携降级回退）', () => {
+  function rel(version: string, isPre = false): ManagedReleaseRecord {
+    return { version, published: '2026-01-01T00:00:00Z', size: 1, isPre }
+  }
+  const withBundle = msixRel('2026.2', [PORTABLE_ASSET, BUNDLE_ASSET])
+  const installedAt262 = [{ version: '2026.2' }]
+
+  it('msixReady 且崩溃版本行有 msixbundle → msix 对照（即便同时存在便携降级候选也置顶）', () => {
+    const p = pickAVProbe({ crashVersion: '2026.2', msixReady: true, installed: installedAt262, releases: [withBundle, rel('2026.1')] })
+    expect(p).toEqual({ mode: 'msix', version: '2026.2', target: null })
+  })
+  it('msixReady 但崩溃版本无 msixbundle 资产/不在远程 → 逐字回退便携降级候选', () => {
+    const p = pickAVProbe({ crashVersion: '2026.2', msixReady: true, installed: installedAt262, releases: [msixRel('2026.2', [PORTABLE_ASSET]), rel('2026.1')] })
+    expect(p?.mode).toBe('portable')
+    expect(p?.version).toBe('2026.1')
+  })
+  it('未 ready（预读失败或打包版已装）→ 便携降级路径行为与双形态前完全一致', () => {
+    const p = pickAVProbe({ crashVersion: '2026.2', msixReady: false, installed: installedAt262, releases: [withBundle, rel('2026.1')] })
+    expect(p).toEqual({ mode: 'portable', version: '2026.1', target: expect.objectContaining({ version: '2026.1' }) })
+  })
+  it('两路皆无候选（无旧版可降且无对照条件）→ null 不硬造', () => {
+    expect(pickAVProbe({ crashVersion: '2026.2', msixReady: false, installed: installedAt262, releases: [withBundle] })).toBeNull()
+    expect(pickAVProbe({ crashVersion: '', msixReady: true, installed: [], releases: [withBundle] })).toBeNull()
+  })
+})
+
+describe('msix 契约面（adapter.msix：降级/单飞/确认/重读）', () => {
+  const notInstalled = { installed: false, version: '', packageFamily: '', cache: [] as never[] }
+
+  it('refresh 成功落 state、probeReady 随 installed 翻转；回 null 亦按失败降级', async () => {
+    svc.GetMsixState.mockResolvedValue(notInstalled)
+    const a = createTBAdapter()
+    await a.msix.refresh()
+    expect(a.msix.state.value).toEqual(notInstalled)
+    expect(a.msix.unavailable.value).toBe(false)
+    expect(a.msix.probeReady.value).toBe(true)
+
+    svc.GetMsixState.mockResolvedValue({ installed: true, version: '2026.2', packageFamily: 'x', cache: [] })
+    await a.msix.refresh()
+    expect(a.msix.probeReady.value).toBe(false)
+
+    svc.GetMsixState.mockResolvedValue(null)
+    await a.msix.refresh()
+    expect(a.msix.state.value).toBeNull()
+    expect(a.msix.unavailable.value).toBe(true)
+    expect(a.msix.probeReady.value).toBe(false)
+  })
+
+  it('refresh 失败静默降级（reject 与再生前绑定缺席的 TypeError 同路），不抛不 toast', async () => {
+    svc.GetMsixState.mockRejectedValue(new Error('Appx 包状态查询失败'))
+    const a = createTBAdapter()
+    await expect(a.msix.refresh()).resolves.toBeUndefined()
+    expect(a.msix.unavailable.value).toBe(true)
+
+    // 再生前 bindings 命名空间缺该函数 → 调用即 TypeError，同 catch 吞掉降级
+    delete (svc as Record<string, unknown>).GetMsixState
+    await expect(a.msix.refresh()).resolves.toBeUndefined()
+    expect(a.msix.unavailable.value).toBe(true)
+    svc.GetMsixState = vi.fn() // 复位给后续用例（hoisted 对象就地回补）
+  })
+
+  it('installFromRelease：确认框先行（互不干扰话术），取消不动 RPC；确认装 → 完成重读 + 回执', async () => {
+    svc.GetMsixState.mockResolvedValue(notInstalled)
+    svc.InstallMsix.mockResolvedValue(undefined)
+    const a = createTBAdapter()
+
+    ui.confirm.mockResolvedValue(false)
+    expect(await a.msix.installFromRelease('2026.2')).toEqual({})
+    expect(svc.InstallMsix).not.toHaveBeenCalled()
+
+    ui.confirm.mockResolvedValue(true)
+    const readsBefore = svc.GetMsixState.mock.calls.length
+    const res = await a.msix.installFromRelease('2026.2')
+    expect(ui.confirm.mock.calls[0][0].title).toBe('安装 TranslucentTB 2026.2 打包版？')
+    expect(ui.confirm.mock.calls[0][0].description).toContain('互不干扰')
+    expect(svc.InstallMsix).toHaveBeenCalledWith('2026.2')
+    expect(res.message).toBe('打包版 2026.2 已安装（便携版未受影响）')
+    expect(svc.GetMsixState.mock.calls.length).toBe(readsBefore + 1)
+  })
+
+  it('probeInstall：对照直钮免确认，成功文案即对照步骤完成宣告', async () => {
+    svc.GetMsixState.mockResolvedValue(notInstalled)
+    svc.InstallMsix.mockResolvedValue(undefined)
+    const a = createTBAdapter()
+    const res = await a.msix.probeInstall('2026.2')
+    expect(ui.confirm).not.toHaveBeenCalled()
+    expect(svc.InstallMsix).toHaveBeenCalledWith('2026.2')
+    expect(res.message).toContain('#85 对照步骤完成')
+  })
+
+  it('安装失败也重读区块（失败笔可能留下已校验缓存），错误原样上抛交视图裸串 toast', async () => {
+    svc.GetMsixState.mockResolvedValue(notInstalled)
+    svc.InstallMsix.mockRejectedValue(new Error('下载校验失败：digest 不匹配'))
+    const a = createTBAdapter()
+    await expect(a.msix.probeInstall('2026.2')).rejects.toThrow('下载校验失败：digest 不匹配')
+    expect(svc.GetMsixState).toHaveBeenCalledTimes(1) // 仅失败路径内的 finally 重读
+    expect(a.msix.busy.value).toBe(false) // 闩已释放
+  })
+
+  it('busy 单飞闩：安装进行中的二次动词回空回执（RPC 不双发），落定后释放', async () => {
+    svc.GetMsixState.mockResolvedValue(notInstalled)
+    let settleInstall: (v: undefined) => void = () => {}
+    svc.InstallMsix.mockImplementation(() => new Promise<void>((res) => { settleInstall = res }))
+    const a = createTBAdapter()
+    const inflight = a.msix.probeInstall('2026.2')
+    expect(a.msix.busy.value).toBe(true)
+    expect(await a.msix.launch()).toEqual({}) // 复入被闩
+    expect(svc.LaunchMsix).not.toHaveBeenCalled()
+    settleInstall(undefined)
+    await expect(inflight).resolves.toMatchObject({ message: expect.stringContaining('已安装') })
+    expect(a.msix.busy.value).toBe(false)
+  })
+
+  it('uninstall：danger 确认（点明便携与缓存不碰）→ UninstallMsix → 重读；取消静默', async () => {
+    svc.GetMsixState.mockResolvedValue({ installed: true, version: '2026.2', packageFamily: 'x', cache: [] })
+    svc.UninstallMsix.mockResolvedValue(undefined)
+    const a = createTBAdapter()
+    await a.msix.refresh()
+
+    ui.confirm.mockResolvedValue(false)
+    expect(await a.msix.uninstall()).toEqual({})
+    expect(svc.UninstallMsix).not.toHaveBeenCalled()
+
+    ui.confirm.mockResolvedValue(true)
+    const res = await a.msix.uninstall()
+    const opts = ui.confirm.mock.calls[ui.confirm.mock.calls.length - 1][0]
+    expect(opts.title).toBe('卸载打包版 TranslucentTB？')
+    expect(opts.tone).toBe('danger')
+    expect(opts.description).toContain('托管便携版文件与安装包缓存均不受影响')
+    expect(svc.UninstallMsix).toHaveBeenCalledTimes(1)
+    expect(res.message).toBe('打包版已卸载（便携版未受影响）')
+  })
+
+  it('launch/removeCache：成功回执与后端拦截错误原样上抛（文案零加工作坊）', async () => {
+    svc.GetMsixState.mockResolvedValue(notInstalled)
+    svc.LaunchMsix.mockResolvedValue(undefined)
+    const a = createTBAdapter()
+    const lr = await a.msix.launch()
+    expect(svc.LaunchMsix).toHaveBeenCalledTimes(1)
+    expect(lr.message).toContain('已提交打包版启动请求')
+
+    svc.RemoveMsixCache.mockRejectedValue(new Error('打包版 2026.2 正在运行，其安装包暂不可移除'))
+    await expect(a.msix.removeCache('2026.2')).rejects.toThrow('打包版 2026.2 正在运行，其安装包暂不可移除')
+
+    svc.RemoveMsixCache.mockResolvedValue(undefined)
+    const rr = await a.msix.removeCache('2026.1')
+    expect(svc.RemoveMsixCache).toHaveBeenCalledWith('2026.1')
+    expect(rr.message).toBe('已移除打包版安装包缓存 2026.1')
+    expect(svc.GetMsixState).toHaveBeenCalledTimes(2) // launch 不重读；removeCache 成败各重读一次
   })
 })

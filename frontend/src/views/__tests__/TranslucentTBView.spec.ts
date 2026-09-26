@@ -1,9 +1,12 @@
-// 特征测试（Wave 5 · 批 1 收敛件）：TranslucentTBView——四件中最完整的共享契约
-// 消费样本（版本 Tab 全量 ManagedVersionPanel）。
+// 特征测试（Wave 5 · 批 1 收敛件 + 双形态 Wave 打包线）：TranslucentTBView——
+// 四件中最完整的共享契约消费样本（版本 Tab 全量 ManagedVersionPanel）。
 // 锁定：控制条钮序（启动/重设/安装目录/退出）与各态禁用与 title、reset 槽动词
 // （成功回执不刷快照）、启动钮的「无已装版本」禁用旁路、banner/hint 互斥、
 // 共享面板词表（校验解压安装/已安装 btn-ghost/预发布徽标/远程空态）、
-// 确认与导入文案逐字、事件改写与 KeepAlive 轮询契约。
+// 确认与导入文案逐字、事件改写与 KeepAlive 轮询契约；
+// 双形态 Wave 追加：打包版区块三态（已装/未装/预读失败降级）、busy 单飞、
+// 缓存拦截文案裸串透传、远程行 #release-actions 标注与确认文案、
+// AV 鉴别钮双语义（打包对照置顶 / 打包线不可用时降级钮零变化）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -29,6 +32,12 @@ const svc = vi.hoisted(() => ({
   SetFollowOnExit: vi.fn(),
   RepositoryURL: vi.fn(),
   OpenRepository: vi.fn(),
+  // 打包线冻结契约五动词（bindings 待再生，spec 全 mock 顶替）
+  GetMsixState: vi.fn(),
+  InstallMsix: vi.fn(),
+  UninstallMsix: vi.fn(),
+  RemoveMsixCache: vi.fn(),
+  LaunchMsix: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -82,9 +91,13 @@ const release20262 = {
   sha256: 'b'.repeat(64),
 }
 
+// 打包线预读缺省形：未装、无缓存——区块渲染"未安装"行、probeReady=true（但
+// 无 msixbundle 资产的远程行不触发对照钮）。既有 36 例即在此基线上零变化。
+const msixNone = { installed: false, version: '', packageFamily: '', cache: [] }
+
 function stubDefaults(
   snap: Record<string, unknown>,
-  opts: { installed?: unknown[]; releases?: unknown[]; active?: string } = {},
+  opts: { installed?: unknown[]; releases?: unknown[]; active?: string; msix?: unknown } = {},
 ) {
   svc.GetStatus.mockResolvedValue(snap)
   svc.ListInstalledVersions.mockResolvedValue(opts.installed ?? [installed20261])
@@ -92,6 +105,7 @@ function stubDefaults(
   svc.GetActiveVersion.mockResolvedValue(opts.active ?? '2026.1')
   svc.GetFollowOnExit.mockResolvedValue(true)
   svc.RepositoryURL.mockResolvedValue('https://github.com/TranslucentTB/TranslucentTB')
+  svc.GetMsixState.mockResolvedValue(opts.msix ?? msixNone)
 }
 
 async function flushMicrotasks(times = 20) {
@@ -492,5 +506,250 @@ describe('TranslucentTBView AV 崩溃处置（B1 点名 + C-迷你降级钮）',
     await flushMicrotasks()
     expect(sysinfo.GetReport.mock.calls.length).toBe(callsBefore)
     r.wrapper.unmount()
+  })
+})
+
+// ---------- 双形态 Wave：打包版（系统管理）区块 / 远程行标注 / AV 打包对照联动 ----------
+
+const release20262Msix = {
+  ...release20262,
+  assets: [
+    { platform: 'windows', form: 'portable', label: 'TranslucentTB-portable-x64.zip', managed: true },
+    { platform: 'windows', form: 'package', label: 'TranslucentTB_2026.2.0.0_x64.msixbundle', managed: false },
+  ],
+}
+
+const msixInstalledState = {
+  installed: true,
+  version: '2026.2',
+  packageFamily: '45896TranslucentTB.TransparentTB_8wekyb3d8bbwe',
+  cache: [
+    { version: '2026.2', path: 'C:\\data\\hanxi\\ttb-msix-cache\\bundle-2026.2.msixbundle', size: 4096000 },
+    { version: '2026.1', path: 'C:\\data\\hanxi\\ttb-msix-cache\\bundle-2026.1.msixbundle', size: 3072000 },
+  ],
+}
+
+describe('TranslucentTBView 打包版区块（状态/缓存/降级/动词）', () => {
+  it('已装态：状态行（已装 vX + 包族 mono 截断带 title）+ 启动/卸载钮 + 缓存行 fmtSize 与移除钮', async () => {
+    stubDefaults({ state: 'stopped' }, { msix: msixInstalledState })
+    const { wrapper } = await mountInKeepAlive()
+    const block = wrapper.find('.tb-msix')
+    expect(block.find('.tb-msix-state.installed').text()).toContain('已装 v2026.2')
+    const family = block.find('.tb-msix-family')
+    expect(family.text()).toBe('45896TranslucentTB.TransparentTB_8wekyb3d8bbwe')
+    expect(family.attributes('title')).toBe('45896TranslucentTB.TransparentTB_8wekyb3d8bbwe')
+    expect(block.findAll('.tb-msix-actions .btn').map((b) => b.text())).toEqual(['▶ 启动', '卸载'])
+    const rows = block.findAll('.tb-msix-cache-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].find('.tb-msix-cache-size').text()).toBe('3.9 MB')
+    expect(rows[1].find('.tb-msix-cache-size').text()).toBe('2.9 MB')
+    expect(rows[1].findAll('button').map((b) => b.text())).toEqual(['移除'])
+    wrapper.unmount()
+  })
+
+  it('未装态：出"未安装"行与「版本管理」指路，无启动/卸载钮', async () => {
+    stubDefaults({ state: 'stopped' }) // 缺省 msixNone
+    const { wrapper } = await mountInKeepAlive()
+    const block = wrapper.find('.tb-msix')
+    expect(block.text()).toContain('未安装')
+    expect(block.text()).toContain('可装打包版')
+    expect(block.findAll('.tb-msix-actions .btn')).toHaveLength(0)
+    expect(block.findAll('.tb-msix-cache-row')).toHaveLength(0)
+    wrapper.unmount()
+  })
+
+  it('GetMsixState 失败：全块降级单行提示（状态/缓存不渲染，便携区照常）', async () => {
+    stubDefaults({ state: 'stopped' })
+    svc.GetMsixState.mockRejectedValue(new Error('Appx 包状态查询失败'))
+    const { wrapper } = await mountInKeepAlive()
+    const block = wrapper.find('.tb-msix')
+    expect(block.find('.tb-msix-degraded').text()).toContain('打包版状态暂不可读取')
+    expect(block.find('.tb-msix-status').exists()).toBe(false)
+    expect(block.find('.tb-msix-cache').exists()).toBe(false)
+    // 便携线零感知：控制条与远程区照常
+    expect(wrapper.findAll('.control-btns .btn')).toHaveLength(4)
+    wrapper.unmount()
+  })
+
+  it('启动钮走 LaunchMsix；卸载经 danger 确认（仅动包、便携缓存不碰）→ UninstallMsix → 重读', async () => {
+    stubDefaults({ state: 'stopped' }, { msix: msixInstalledState })
+    svc.LaunchMsix.mockResolvedValue(undefined)
+    svc.UninstallMsix.mockResolvedValue(undefined)
+    const { wrapper } = await mountInKeepAlive()
+    const btns = () => wrapper.findAll('.tb-msix-actions .btn')
+    await btns()[0].trigger('click')
+    await flushMicrotasks()
+    expect(svc.LaunchMsix).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toContain('已提交打包版启动请求')
+
+    await btns()[1].trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('卸载打包版 TranslucentTB？')
+    expect(confirmState.options.tone).toBe('danger')
+    expect(confirmState.options.description).toContain('2026.2')
+    expect(confirmState.options.description).toContain('便携版文件与安装包缓存均不受影响')
+    const readsBefore = svc.GetMsixState.mock.calls.length
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(svc.UninstallMsix).toHaveBeenCalledTimes(1)
+    expect(svc.GetMsixState.mock.calls.length).toBe(readsBefore + 1)
+    expect(useToast().toastMsg.value).toBe('打包版已卸载（便携版未受影响）')
+    wrapper.unmount()
+  })
+
+  it('缓存移除：运行中拦截等后端错误文案原样透传 toast（不加前缀）；成功走回执+重读', async () => {
+    stubDefaults({ state: 'stopped' }, { msix: msixInstalledState })
+    svc.RemoveMsixCache.mockRejectedValue(new Error('打包版 2026.2 正在运行，其安装包暂不可移除'))
+    const { wrapper } = await mountInKeepAlive()
+    await wrapper.findAll('.tb-msix-cache-row')[0].findAll('button')[0].trigger('click')
+    await flushMicrotasks()
+    expect(svc.RemoveMsixCache).toHaveBeenCalledWith('2026.2')
+    expect(useToast().toastMsg.value).toBe('打包版 2026.2 正在运行，其安装包暂不可移除')
+    wrapper.unmount()
+
+    stubDefaults({ state: 'stopped' }, { msix: msixInstalledState })
+    svc.RemoveMsixCache.mockResolvedValue(undefined)
+    const r = await mountInKeepAlive()
+    const readsBefore = svc.GetMsixState.mock.calls.length
+    await r.wrapper.findAll('.tb-msix-cache-row')[0].findAll('button')[0].trigger('click')
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toBe('已移除打包版安装包缓存 2026.2')
+    expect(svc.GetMsixState.mock.calls.length).toBe(readsBefore + 1)
+    r.wrapper.unmount()
+  })
+
+  it('InstallMsix 在途：busy 闩住全部打包钮（含刷新），落定后复位', async () => {
+    stubDefaults({ state: 'stopped' }, { msix: msixInstalledState, releases: [release20262Msix] })
+    let settleInstall: ((v: undefined) => void) | null = null
+    svc.InstallMsix.mockImplementation(() => new Promise<void>((res) => { settleInstall = res }))
+    const { wrapper } = await mountInKeepAlive()
+    const rowBtn = wrapper.findAll('.tbl button').find((b) => b.text() === '装打包版')!
+    await rowBtn.trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(svc.InstallMsix).toHaveBeenCalledWith('2026.2')
+    // InstallMsix 未落定：区块钮/刷新/行钮全灭，且不误弹成功 toast
+    expect(wrapper.find('.tb-msix-state.installed').classes()).toContain('installed')
+    expect(wrapper.findAll('.tb-msix-actions .btn')[0].attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('.tb-msix-actions .btn')[1].attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.tb-msix-head .btn').attributes('disabled')).toBeDefined()
+    expect(rowBtn.attributes('disabled')).toBeDefined()
+    settleInstall!(undefined)
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toBe('打包版 2026.2 已安装（便携版未受影响）')
+    wrapper.unmount()
+  })
+})
+
+describe('TranslucentTBView 远程行打包标注（ManagedVersionPanel #release-actions 槽）', () => {
+  it('assets 含 .msixbundle：行挂「可装打包版」chip 与「装打包版」钮；确认文案点明互不干扰且不关闭便携实例', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix] })
+    svc.InstallMsix.mockResolvedValue(undefined)
+    const { wrapper } = await mountInKeepAlive()
+    const row = wrapper.findAll('.tbl tbody tr')[0]
+    expect(row.find('.tb-msix-chip').text()).toBe('可装打包版')
+    // chip title 词表走共享件：package → 「包」
+    expect(row.find('.tb-msix-chip').attributes('title')).toContain('包形态')
+    const btn = row.findAll('button').find((b) => b.text() === '装打包版')!
+    await btn.trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.title).toBe('安装 TranslucentTB 2026.2 打包版？')
+    expect(confirmState.options.description).toContain('互不干扰')
+    expect(confirmState.options.description).toContain('不关闭当前运行的便携实例')
+    const readsBefore = svc.GetMsixState.mock.calls.length
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(svc.InstallMsix).toHaveBeenCalledWith('2026.2')
+    expect(svc.GetMsixState.mock.calls.length).toBe(readsBefore + 1) // 完成后刷新 GetMsixState
+    wrapper.unmount()
+  })
+
+  it('确认取消不落 InstallMsix', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix] })
+    const { wrapper } = await mountInKeepAlive()
+    const btn = wrapper.findAll('.tbl button').find((b) => b.text() === '装打包版')!
+    await btn.trigger('click')
+    await flushMicrotasks()
+    settleConfirm(false)
+    await flushMicrotasks()
+    expect(svc.InstallMsix).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('无 form/assets 数据：chip 与钮静默缺席（既有远程行零变化）', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release20262] })
+    const { wrapper } = await mountInKeepAlive()
+    expect(wrapper.find('.tb-msix-chip').exists()).toBe(false)
+    expect(wrapper.findAll('.tbl button').some((b) => b.text() === '装打包版')).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('TranslucentTBView AV 打包对照联动（优先语义，降级钮共存）', () => {
+  it('AV + 打包线可用 + 崩溃版本有 msixbundle → 对照钮顶掉降级钮；点击免确认直 InstallMsix(崩溃版本)，成功文案宣布对照完成', async () => {
+    stubDefaults(
+      avFailed,
+      { installed: [installed20262], releases: [release20262Msix, release20261] },
+    ) // 缺省 msixNone：预读成功且未装 → probeReady
+    svc.InstallMsix.mockResolvedValue(undefined)
+    const { wrapper } = await mountInKeepAlive()
+    await flushMicrotasks()
+    const btns = wrapper.findAll('.control-btns .btn')
+    expect(btns.map((b) => b.text())).toEqual([
+      '🌫️ 启动', '🪄 重设任务栏状态', '🗂 安装目录', '⬇ 装打包版对照（#85 鉴别）', '⏻ 退出',
+    ])
+    await btns[3].trigger('click')
+    await flushMicrotasks()
+    expect(svc.InstallMsix).toHaveBeenCalledWith('2026.2') // 装的是崩溃版本本体：同版本异形态才是真鉴别
+    expect(confirmState.open).toBe(false) // 对照直钮免确认
+    expect(useToast().toastMsg.value).toContain('#85 对照步骤完成')
+    wrapper.unmount()
+  })
+
+  it('打包版已装（probeReady 关）→ 原「⬇ 装 X 试」降级钮逐字回位，点击仍走便携下载链', async () => {
+    stubDefaults(
+      avFailed,
+      { installed: [installed20262], releases: [release20262Msix, release20261], msix: msixInstalledState },
+    )
+    svc.DownloadVersion.mockResolvedValue('started')
+    const { wrapper } = await mountInKeepAlive()
+    const btns = wrapper.findAll('.control-btns .btn')
+    expect(btns.map((b) => b.text())).toEqual([
+      '🌫️ 启动', '🪄 重设任务栏状态', '🗂 安装目录', '⬇ 装 2026.1 试', '⏻ 退出',
+    ])
+    await btns[3].trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledWith('2026.1')
+    expect(svc.InstallMsix).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('打包线预读失败（不可用）→ 对照钮缺席、降级钮零变化（既有 36 例口径）', async () => {
+    stubDefaults(
+      avFailed,
+      { installed: [installed20262], releases: [release20262Msix, release20261] },
+    )
+    svc.GetMsixState.mockRejectedValue(new Error('Appx 包状态查询失败'))
+    const { wrapper } = await mountInKeepAlive()
+    await flushMicrotasks()
+    const btns = wrapper.findAll('.control-btns .btn')
+    expect(btns.map((b) => b.text())).toEqual([
+      '🌫️ 启动', '🪄 重设任务栏状态', '🗂 安装目录', '⬇ 装 2026.1 试', '⏻ 退出',
+    ])
+    wrapper.unmount()
+  })
+
+  it('崩溃版本远程行无 msixbundle 资产 → 即便打包线可用也回降级钮（不硬造对照）', async () => {
+    stubDefaults(
+      avFailed,
+      { installed: [installed20262], releases: [release20262, release20261] },
+    )
+    const { wrapper } = await mountInKeepAlive()
+    await flushMicrotasks()
+    expect(wrapper.findAll('.control-btns .btn')[3].text()).toBe('⬇ 装 2026.1 试')
+    wrapper.unmount()
   })
 })

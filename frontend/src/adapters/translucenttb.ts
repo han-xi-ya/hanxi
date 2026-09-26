@@ -20,10 +20,18 @@
 //    B1 banner 挂上后异步经 SysInfoAPI.GetReport 体检一次，命中虚拟显卡/
 //    空壳监视器名单即点名（sysinfo 停用/RPC 失败/无命中一律静默回通用文案）；
 //    C-迷你 视图 #primary-action 位按 pickDowngradeTarget 出「⬇ 装 X 试」
-//    单动作钮（只走既有 runDownload 链，无编排状态机）。
+//    单动作钮（只走既有 runDownload 链，无编排状态机）；
+//  - 双形态 Wave（2026-09-26）打包版（Windows 包/MSIX）线：冻结契约五动词
+//    GetMsixState/InstallMsix/UninstallMsix/RemoveMsixCache/LaunchMsix 收编为
+//    adapter.msix（TBMsixSurface：状态 refs + 动词回执，确认框照旧在 adapter 内）；
+//    bindings 待主会话统一再生——调用失败（含再生缺席）一律静默落 unavailable，
+//    区块降级单行、便携线零感知。AV 鉴别钮升级为双语义（pickAVProbe）：打包线
+//    预读可用且崩溃版本有 .msixbundle 资产 → 优先「⬇ 装打包版对照（#85 鉴别）」，
+//    否则逐字回退原「⬇ 装 X 试」降级候选，两语义共存一位。
 // ============================================================================
 
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import type { ComputedRef, Ref } from 'vue'
 import * as TBAPI from '../../bindings/hanxi/internal/modules/translucenttb/translucenttbservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/translucenttb/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/translucenttb/version/models'
@@ -31,7 +39,12 @@ import * as SysInfoAPI from '../../bindings/hanxi/internal/modules/sysinfo/sysin
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
-import type { ManagedModuleAdapter, ManagedReleaseRecord, ManagedVersionRecord } from '../components/managed/adapter'
+import type {
+  ManagedActionResult,
+  ManagedModuleAdapter,
+  ManagedReleaseRecord,
+  ManagedVersionRecord,
+} from '../components/managed/adapter'
 
 // ---------- AV 崩溃处置纯函数面（判据/点名/降级候选，spec 直测） ----------
 
@@ -121,9 +134,89 @@ export function pickDowngradeTarget(
   return best
 }
 
+// ---------- 打包版（Windows 包/MSIX）契约面（双形态 Wave，冻结契约镜像） ----------
+
+/**
+ * 契约镜像声明纪律：GetMsixState 返回形按冻结契约在此结构声明（不 import
+ * bindings 类型——MsixState 的再生落点未定，函数面走 TBAPI 命名空间直调，
+ * 再生后只需删除本组 interface 换成绑定导入，字段名逐一对齐 JSON 小驼峰）。
+ */
+export interface TBMsixCacheEntry {
+  version: string
+  path: string
+  size: number
+}
+
+export interface TBMsixState {
+  installed: boolean
+  version: string
+  packageFamily: string
+  cache: TBMsixCacheEntry[] | null
+}
+
+/** 打包线表面：视图直读 refs 渲染区块，动词回 ManagedActionResult 由视图统一弹收。 */
+export interface TBMsixSurface {
+  /** 预读成功交回的事实（null=未读回或已降级）。 */
+  readonly state: Ref<TBMsixState | null>
+  /** GetMsixState 失败（含再生前绑定缺席——同路）：true=全块降级单行提示。 */
+  readonly unavailable: Ref<boolean>
+  /** 在途单飞闩（InstallMsix 含下载校验可数十秒；与 store.busy 并列禁点）。 */
+  readonly busy: Ref<boolean>
+  /** AV 对照钮前置门：预读成功且打包版未装（预读未回/失败恒 false=便携线零变化）。 */
+  readonly probeReady: ComputedRef<boolean>
+  /** 预读/重读区块事实；任何失败静默落 unavailable，不抛不 toast。 */
+  refresh(): Promise<void>
+  /** 远程行「装打包版」：确认框说明与便携互不干扰 → InstallMsix → 完成后重读。 */
+  installFromRelease(version: string): Promise<ManagedActionResult>
+  /** AV 对照直钮：免确认装崩溃版本，成功文案即对照步骤完成宣告。 */
+  probeInstall(version: string): Promise<ManagedActionResult>
+  launch(): Promise<ManagedActionResult>
+  /** 卸载（danger 确认在内）：仅动 Windows 注册的包，便携与缓存不碰。 */
+  uninstall(): Promise<ManagedActionResult>
+  /** 移除指定版本安装包缓存；运行中被后端拦截时错误原样上抛（视图裸串 toast）。 */
+  removeCache(version: string): Promise<ManagedActionResult>
+}
+
+/** 托管 adapter + 模块私有打包线槽（共享契约装不下的双形态方言，视图直消费）。 */
+export type TBAdapter = ManagedModuleAdapter<Snapshot> & { msix: TBMsixSurface }
+
+/** 远程行有可装打包资产：N13 矩阵 label 以 .msixbundle 收尾（hostfeed 机械判名恒 windows/package；无 assets 数据回 false 静默缺席）。 */
+export function hasMsixBundleAsset(rel?: Pick<ManagedReleaseRecord, 'assets'> | null): boolean {
+  return (rel?.assets ?? []).some((a) => !!a && /\.msixbundle$/i.test(a.label ?? ''))
+}
+
+/** 崩溃鉴别钮双语义候选（mode 决定钮词与执行链）。 */
+export interface TBAVProbeAction {
+  mode: 'msix' | 'portable'
+  version: string
+  /** mode=portable 时的降级候选记录（msix 模式为 null）。 */
+  target: ManagedReleaseRecord | null
+}
+
+/**
+ * 崩溃鉴别钮取位（优先级：打包对照 > 便携降级）：
+ *  - msixReady（预读成功且未装）且崩溃版本远程行有 .msixbundle 资产 → 同版本
+ *    异形态才是真鉴别——装打包版对照（InstallMsix 走通即视为对照步骤完成）；
+ *  - 其余一切情形回 pickDowngradeTarget 原「装最近更旧稳定版」候选——打包线
+ *    不可用零变化，后端话术与便携降级语义原样共存。
+ */
+export function pickAVProbe(ctx: {
+  crashVersion: string
+  msixReady: boolean
+  installed: ReadonlyArray<{ version: string }>
+  releases: ReadonlyArray<ManagedReleaseRecord>
+}): TBAVProbeAction | null {
+  if (ctx.msixReady && ctx.crashVersion) {
+    const rel = ctx.releases.find((r) => r.version === ctx.crashVersion)
+    if (rel && hasMsixBundleAsset(rel)) return { mode: 'msix', version: ctx.crashVersion, target: null }
+  }
+  const target = pickDowngradeTarget(ctx.crashVersion, ctx.installed, ctx.releases)
+  return target ? { mode: 'portable', version: target.version, target } : null
+}
+
 // 快照泛型收紧至模块绑定 Snapshot（B1 的 AV 判定要读 exitCode/stoppedAt，
 // 基型 ManagedSnapshot 无此二位；markeron/paseo 同款声明形）。
-export function createTBAdapter(): ManagedModuleAdapter<Snapshot> {
+export function createTBAdapter(): TBAdapter {
   const { confirm } = useConfirm()
   const { prompt } = usePrompt()
 
@@ -145,6 +238,50 @@ export function createTBAdapter(): ManagedModuleAdapter<Snapshot> {
     } finally {
       if (inspectingKey === key) inspectingKey = ''
     }
+  }
+
+  // ---------- 打包版（Windows 包/MSIX）线（双形态 Wave） ----------
+  // GetMsixState 是区块唯一事实源：失败（含 bindings 再生前函数缺席）不抛不
+  // toast，一律静默落 unavailable——视图据此整块降级单行提示，AV 对照门自此恒
+  // false，便携线（含既有 36 例锁定行为）零感知。动词失败上抛裸错误串由视图
+  // toast（缓存运行中拦截等后端文案如实透传，不加词表）。
+  const msixState = ref<TBMsixState | null>(null)
+  const msixUnavailable = ref(false)
+  const msixBusy = ref(false)
+  const msixProbeReady = computed(() => !!msixState.value && !msixState.value.installed)
+
+  async function msixRefresh(): Promise<void> {
+    try {
+      const s = (await TBAPI.GetMsixState()) as TBMsixState | null
+      msixState.value = s ?? null
+      msixUnavailable.value = !s
+    } catch {
+      msixState.value = null
+      msixUnavailable.value = true
+    }
+  }
+
+  /** 打包动词单飞闩：busy 复入回空回执（钮已禁用，此为最后防线）；回执交调用方弹收。 */
+  async function msixExclusive(run: () => PromiseLike<ManagedActionResult>): Promise<ManagedActionResult> {
+    if (msixBusy.value) return {}
+    msixBusy.value = true
+    try {
+      return await run()
+    } finally {
+      msixBusy.value = false
+    }
+  }
+
+  /** InstallMsix 共同链路（确认与文案差异在调用位）：成败均重读区块——失败笔也可能留下已校验缓存。 */
+  function msixInstall(version: string, okMessage: string): Promise<ManagedActionResult> {
+    return msixExclusive(async () => {
+      try {
+        await TBAPI.InstallMsix(version)
+      } finally {
+        await msixRefresh()
+      }
+      return { message: okMessage }
+    })
   }
 
   return {
@@ -321,6 +458,64 @@ export function createTBAdapter(): ManagedModuleAdapter<Snapshot> {
           await TBAPI.OpenRepository()
           return {}
         },
+      },
+    },
+
+    msix: {
+      state: msixState,
+      unavailable: msixUnavailable,
+      busy: msixBusy,
+      probeReady: msixProbeReady,
+      refresh: msixRefresh,
+      async installFromRelease(version) {
+        const accepted = await confirm({
+          title: `安装 TranslucentTB ${version} 打包版？`,
+          description:
+            '打包版走 Windows 包系统（MSIX），与托管便携版互不干扰：不动便携文件、不改「使用中」、不关闭当前运行的便携实例。装完到控制台「打包版（系统管理）」区启动对照。',
+          confirmLabel: '装打包版',
+        })
+        if (!accepted) return {}
+        return msixInstall(version, `打包版 ${version} 已安装（便携版未受影响）`)
+      },
+      probeInstall(version) {
+        return msixInstall(
+          version,
+          `打包版 ${version} 已安装——#85 对照步骤完成：在「打包版（系统管理）」点「▶ 启动」观察打包形态下任务栏表现（便携实例未被关闭）`,
+        )
+      },
+      launch() {
+        return msixExclusive(async () => {
+          await TBAPI.LaunchMsix()
+          return { message: '已提交打包版启动请求：任务栏透明改由打包实例接管，样式在其托盘菜单调整' }
+        })
+      },
+      async uninstall() {
+        const v = msixState.value?.version
+        const accepted = await confirm({
+          title: '卸载打包版 TranslucentTB？',
+          description: `仅移除 Windows 注册的打包版${v ? ` ${v}` : ''}，托管便携版文件与安装包缓存均不受影响。`,
+          tone: 'danger',
+          confirmLabel: '卸载',
+        })
+        if (!accepted) return {}
+        return msixExclusive(async () => {
+          try {
+            await TBAPI.UninstallMsix()
+          } finally {
+            await msixRefresh()
+          }
+          return { message: '打包版已卸载（便携版未受影响）' }
+        })
+      },
+      removeCache(version) {
+        return msixExclusive(async () => {
+          try {
+            await TBAPI.RemoveMsixCache(version)
+          } finally {
+            await msixRefresh()
+          }
+          return { message: `已移除打包版安装包缓存 ${version}` }
+        })
       },
     },
   }
