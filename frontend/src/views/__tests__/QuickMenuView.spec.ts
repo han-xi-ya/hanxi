@@ -7,14 +7,19 @@
 // 另补双栏主区与状态区渲染两条新结构断言。
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import QuickMenuView from '../QuickMenuView.vue'
+import { WHEEL_SKIN_STORAGE_KEY } from '../../components/quickmenu/wheelSkin'
 
 const svc = vi.hoisted(() => ({
   GetStatus: vi.fn(),
   ListItems: vi.fn().mockResolvedValue([]),
   GetTriggerConfig: vi.fn().mockResolvedValue([450, 16]),
   SetTriggerConfig: vi.fn().mockResolvedValue([450, 16]),
+  // 皮肤双源打桩：默认"后端不可达"（reject）→ 存量用例全走 localStorage 镜像降级；
+  // 真相链路（fetch 覆写 / commit 上账）由皮肤专测 Once 开闸。
+  GetSkin: vi.fn().mockRejectedValue(new Error('测试打桩：后端皮肤通道未开')),
+  SetSkin: vi.fn().mockRejectedValue(new Error('测试打桩：后端皮肤通道未开')),
 }))
 
 const traySvc = vi.hoisted(() => ({
@@ -49,12 +54,17 @@ async function mountReady(st = status, list = items) {
   return w
 }
 
+beforeEach(() => localStorage.clear())
+
 afterEach(() => {
   vi.clearAllMocks()
   svc.GetStatus.mockResolvedValue(status)
   svc.ListItems.mockResolvedValue(items)
+  svc.GetSkin.mockRejectedValue(new Error('测试打桩：后端皮肤通道未开'))
+  svc.SetSkin.mockRejectedValue(new Error('测试打桩：后端皮肤通道未开'))
   traySvc.ListTrayMenuOptions.mockResolvedValue([])
   traySvc.GetTrayMenu.mockResolvedValue([])
+  localStorage.clear()
 })
 
 describe('QuickMenuView', () => {
@@ -161,6 +171,78 @@ describe('触发参数（N5-C2）', () => {
     await w.find('.state-box .btn').trigger('click')
     await flushMicrotasks()
     expect((w.find('input[aria-label="长按时长毫秒"]').element as HTMLInputElement).value).toBe('450')
+    w.unmount()
+  })
+})
+
+// 皮肤双源（收权批）：后端为真相、localStorage 为镜像降级。
+describe('轮盘皮肤双源（后端真相 + 镜像兜底）', () => {
+  it('后端可达：初值走 GetSkin（整数百分比 → 0–1），非本地镜像', async () => {
+    // 镜像预埋一份 ink，但后端返回 veil → 真相应覆盖陈旧镜像（NAS 换机场景）
+    localStorage.setItem(WHEEL_SKIN_STORAGE_KEY, JSON.stringify({ preset: 'ink' }))
+    svc.GetSkin.mockResolvedValue({ preset: 'veil', faceAlpha: 60, stroke: 30, followModuleColor: true })
+    const w = await mountReady()
+    const skinSel = w.find('.qm-skin-panel')
+    expect(skinSel.exists()).toBe(true)
+    // veil 预设 chip（索引 1）应为选中态
+    const chips = skinSel.findAll('.qm-skin-chip')
+    expect(chips[1].classes()).toContain('is-on')
+    // 百分比回化：veilPercent=1-0.6=40%、strokePercent=30%
+    expect(skinSel.text()).toContain('40%')
+    expect(skinSel.text()).toContain('30%')
+    // 真相回填镜像（供弹窗降级/换窗读取）
+    expect(JSON.parse(localStorage.getItem(WHEEL_SKIN_STORAGE_KEY)!).preset).toBe('veil')
+    w.unmount()
+  })
+
+  it('后端不可达：初值降级读镜像，不炸面板', async () => {
+    // GetSkin 默认打桩为 reject（见 afterEach 重置）→ 走镜像
+    localStorage.setItem(WHEEL_SKIN_STORAGE_KEY, JSON.stringify({ preset: 'ink', faceAlpha: 0.5, stroke: 0.8 }))
+    const w = await mountReady()
+    const chips = w.findAll('.qm-skin-chip')
+    expect(chips[2].classes()).toContain('is-on') // ink
+    w.unmount()
+  })
+
+  it('切换预设：乐观先行上镜像，随后以 SetSkin 整数百分比线格式上后端', async () => {
+    svc.SetSkin.mockResolvedValue({ preset: 'ink', faceAlpha: 100, stroke: 55, followModuleColor: false })
+    const w = await mountReady()
+    await w.findAll('.qm-skin-chip')[2].trigger('click') // 点 ink
+    await flushMicrotasks()
+    // 线格式：DEFAULT stroke 0.55→55、faceAlpha 1→100，预设 ink
+    expect(svc.SetSkin).toHaveBeenCalledWith({ preset: 'ink', faceAlpha: 100, stroke: 55, followModuleColor: false })
+    expect(JSON.parse(localStorage.getItem(WHEEL_SKIN_STORAGE_KEY)!).preset).toBe('ink')
+    w.unmount()
+  })
+
+  it('SetSkin 后端拒绝：如实提示但页面不整片切错误态（皮肤是纯视觉账），本地镜像保留', async () => {
+    // SetSkin 默认 reject（afterEach 重置）
+    const w = await mountReady()
+    await w.findAll('.qm-skin-chip')[2].trigger('click')
+    await flushMicrotasks()
+    // 无 .state-error 劫持（编辑器/预览仍在），乐观 ink 保留在镜像
+    expect(w.find('.state-error').exists()).toBe(false)
+    expect(w.find('.qm-main').exists()).toBe(true)
+    expect(JSON.parse(localStorage.getItem(WHEEL_SKIN_STORAGE_KEY)!).preset).toBe('ink')
+    w.unmount()
+  })
+
+  it('两段式滑杆：input（连拖）只动镜像不发 RPC，change（落定）才上账；回显覆镜像', async () => {
+    svc.SetSkin.mockResolvedValue({ preset: 'frost', faceAlpha: 40, stroke: 55, followModuleColor: false })
+    const w = await mountReady()
+    const veil = w.find('input[aria-label="盘面透明度百分比"]')
+    // 拖拽中段：只发 input（setSkinLocal 写镜像，不发 RPC）。不用 setValue——
+    // 它会连发 change，跳过分段语义直达提交，测不到"落定才上账"。
+    ;(veil.element as HTMLInputElement).value = '60'
+    await veil.trigger('input') // 透纱 60% → faceAlpha 0.4
+    expect(svc.SetSkin).not.toHaveBeenCalled()
+    expect(JSON.parse(localStorage.getItem(WHEEL_SKIN_STORAGE_KEY)!).faceAlpha).toBeCloseTo(0.4)
+    await veil.trigger('change') // 松手落定 → 一笔上后端（整数百分比线格式）
+    await flushMicrotasks()
+    expect(svc.SetSkin).toHaveBeenCalledWith(expect.objectContaining({ preset: 'frost', faceAlpha: 40 }))
+    // 后端回显（钳域归正版）覆写本地与镜像：faceAlpha 落 0.4 → 面板仍显 60%
+    expect(JSON.parse(localStorage.getItem(WHEEL_SKIN_STORAGE_KEY)!).faceAlpha).toBeCloseTo(0.4)
+    expect(w.find('.qm-skin-panel').text()).toContain('60%')
     w.unmount()
   })
 })

@@ -1,16 +1,19 @@
-// 轮盘皮肤账（机主拍板 2026-09-26"轮盘皮肤做"）：预设 × 盘面透明度 × 描边强度
-// × 跟随模块色开关的模型、缺省兼容与持久化。
+// 轮盘皮肤账（机主拍板 2026-09-26"轮盘皮肤做"；后端化收权批）：预设 × 盘面
+// 透明度 × 描边强度 × 跟随模块色开关的模型、缺省兼容与双源持久化。
 //
-// 持久化通道现状（重要口径）：quickmenu 后端无皮肤字段可用（AppSettings 只有
-// TwoTier/HoldMs/MovePx；本轮纪律禁碰后端与 bindings），故皮肤账走前端
-// localStorage（键 hanxi.wheelSkin）——与 rail 展开态 / 面板折叠 / 最近导航同一
-// "纯视觉开关，localStorage 持久化，不参与业务"哲学（AppNavRail/AppSidebar 先例），
-// 且轮盘弹窗与主窗同源共享 localStorage：设置页存、弹窗经 storage 事件即时跟皮。
-// 升级后端通道时**只需替换本模块读写侧**（GetConfig/SetConfig 契约已按下方
-// WheelSkin 形状在交付报告中给出），消费面零改动。
+// 双源口径（真相在 backend，本模块是唯一读写封装）：
+//  - **真相 = quickmenu 后端账**（AppSettings.QuickMenuSkin，GetSkin/SetSkin）：
+//    皮肤随 hanxidata 数据目录走，NAS 随身同步；
+//  - **localStorage（键 hanxi.wheelSkin）= 同源镜像缓存**：① 后端不可达
+//    （模块停用/RPC 失败）时的降级兜底；② 弹窗与主窗两 webview 的跨窗即时性
+//    （主窗写镜像触发弹窗 storage 事件秒级跟皮，不必等下次唤出重读）。
+//  - 不做"本地旧账一次性上收"：面板落地当日即后端为真，localStorage 里的旧稿
+//    在首次成功读后自然被后端真相覆写镜像（论证见交付报告）。
 //
-// 缺省兼容红线：旧设置里没有这份账 = 读出默认皮肤；JSON 坏值/越界/未知预设
-// 一律归一（normalize），任何输入都不抛错不炸盘。
+// 缺省兼容红线（两侧同源）：旧设置无此账 = 出厂素瓷盘；JSON 坏值/越界/未知预设
+// 一律归一（前端 normalizeWheelSkin 与 Go normalizeSkin 语义一致），任何输入都
+// 不抛错不炸盘。
+import * as QuickMenuAPI from '../../../bindings/hanxi/internal/modules/quickmenu'
 import { hslToCss, type Hsl } from './wheelSkinColors'
 
 export const WHEEL_SKIN_PRESETS = ['frost', 'veil', 'ink'] as const
@@ -78,7 +81,7 @@ export function parseWheelSkin(raw: string | null | undefined): WheelSkin {
   }
 }
 
-/** 读皮肤账（存储被禁用/隐私模式 → 默认皮肤，不抛错）。 */
+/** 读镜像缓存（后端不可达时的降级皮肤源；存储被禁用/隐私模式 → 默认皮肤，不抛错）。 */
 export function readWheelSkin(): WheelSkin {
   try {
     return parseWheelSkin(localStorage.getItem(WHEEL_SKIN_STORAGE_KEY))
@@ -87,7 +90,7 @@ export function readWheelSkin(): WheelSkin {
   }
 }
 
-/** 合入写盘并返回归一后的完整皮肤（存储写失败静默降级为仅内存生效）。 */
+/** 合入写镜像并返回归一后的完整皮肤（存储写失败静默降级为仅内存生效）。 */
 export function saveWheelSkin(patch: Partial<WheelSkin>, current: WheelSkin = readWheelSkin()): WheelSkin {
   const next = normalizeWheelSkin({ ...current, ...patch })
   try {
@@ -96,6 +99,56 @@ export function saveWheelSkin(patch: Partial<WheelSkin>, current: WheelSkin = re
     /* 存储满/隐私模式：皮肤只活本会话，如实降级不炸设置页 */
   }
   return next
+}
+
+// —— 后端真相通道（收权批；wiring 面消费 QuickMenuService.GetSkin/SetSkin，
+// 绑定再生成前此处成员不存在，运行期调用即抛、由双源调用侧落镜像兜底）——
+
+/** 后端 quickmenu.Skin 线格式：整数百分比域（0–100）。 */
+export interface WheelSkinDTO {
+  preset: string
+  faceAlpha: number
+  stroke: number
+  followModuleColor: boolean
+}
+
+/** 线格式值（含脏值/非对象）→ 合法皮肤：整数百分比化回 0–1，同一 normalize 归一。 */
+export function wheelSkinFromDto(raw: unknown): WheelSkin {
+  const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Partial<WheelSkinDTO>
+  return normalizeWheelSkin({
+    preset: r.preset,
+    faceAlpha: typeof r.faceAlpha === 'number' && Number.isFinite(r.faceAlpha) ? r.faceAlpha / 100 : undefined,
+    stroke: typeof r.stroke === 'number' && Number.isFinite(r.stroke) ? r.stroke / 100 : undefined,
+    followModuleColor: r.followModuleColor,
+  })
+}
+
+/** 皮肤 → 写线格式：先本地归一再化百分（线上面永远落在后端合法域，回显=输入）。 */
+export function wheelSkinToDto(skin: WheelSkin): WheelSkinDTO {
+  const s = normalizeWheelSkin(skin)
+  return {
+    preset: s.preset,
+    faceAlpha: Math.round(s.faceAlpha * 100),
+    stroke: Math.round(s.stroke * 100),
+    followModuleColor: s.followModuleColor,
+  }
+}
+
+/**
+ * 读后端真相。任何失败（模块停用、RPC 错误、坏线格式判不出对象）如实抛——
+ * 调用侧契约：catch 后以 readWheelSkin() 镜像降级，绝不用假数据覆写真机皮肤。
+ */
+export async function fetchWheelSkin(): Promise<WheelSkin> {
+  const raw = await QuickMenuAPI.QuickMenuService.GetSkin()
+  if (typeof raw !== 'object' || raw === null) throw new Error('轮盘皮肤线格式非对象，按后端不可达处理')
+  return wheelSkinFromDto(raw)
+}
+
+/** 写后端并取回钳域归正后的回显值（后端 normalize 与本地同语义；失败上抛由调用侧保镜像）。 */
+export async function pushWheelSkin(skin: WheelSkin): Promise<WheelSkin> {
+  const echo = await QuickMenuAPI.QuickMenuService.SetSkin(wheelSkinToDto(skin))
+  if (typeof echo !== 'object' || echo === null) throw new Error('轮盘皮肤回显线格式非对象')
+  return wheelSkinFromDto(echo)
 }
 
 /** 描边强度 0–1 → 色混占比（10%–60%：0 档也不清零，留一丝缝内同色轮廓的收口） */

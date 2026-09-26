@@ -14,6 +14,10 @@ const svc = vi.hoisted(() => ({
   Launch: vi.fn().mockResolvedValue(undefined),
   Dismiss: vi.fn().mockResolvedValue(undefined),
   OpenSettings: vi.fn().mockResolvedValue(undefined),
+  // 皮肤双源：默认打桩"后端通道不可达"（reject）——全部存量用例即走 localStorage
+  // 镜像降级路径；真相覆写链路由专测用 mockResolvedValueOnce 开闸。
+  GetSkin: vi.fn().mockRejectedValue(new Error('测试打桩：后端皮肤通道未开')),
+  SetSkin: vi.fn().mockRejectedValue(new Error('测试打桩：后端皮肤通道未开')),
 }))
 const useWailsEventMock = vi.hoisted(() => vi.fn())
 
@@ -382,7 +386,7 @@ describe('皮肤与清晰度（机主反馈 2026-09-26）', () => {
     w.unmount()
   })
 
-  it('localStorage 皮肤账驱动类名与 CSS 变量，storage 事件即时换皮', async () => {
+  it('localStorage 镜像驱动类名与 CSS 变量，storage 事件即时换皮', async () => {
     localStorage.setItem(WHEEL_SKIN_STORAGE_KEY, JSON.stringify({ preset: 'veil', stroke: 0.2, faceAlpha: 0.6 }))
     const w = await mountReady()
     const popup = w.find('.popup')
@@ -395,6 +399,20 @@ describe('皮肤与清晰度（机主反馈 2026-09-26）', () => {
     await flushMicrotasks()
     expect(w.find('.popup').classes()).toContain('skin-ink')
     expect(w.find('.popup').attributes('style')).toContain('--wf-edge: 60%')
+    w.unmount()
+  })
+
+  it('后端真相（GetSkin 整数百分比）覆盖陈旧镜像并回填', async () => {
+    localStorage.setItem(WHEEL_SKIN_STORAGE_KEY, JSON.stringify({ preset: 'frost' }))
+    svc.GetSkin.mockResolvedValueOnce({ preset: 'ink', faceAlpha: 45, stroke: 80, followModuleColor: true })
+    const w = await mountReady() // refresh → syncSkinFromBackend 覆写
+    await flushMicrotasks()
+    const popup = w.find('.popup')
+    expect(popup.classes()).toContain('skin-ink')
+    expect(popup.attributes('style')).toContain('--wf-face-a: 0.45')
+    expect(popup.attributes('style')).toContain('--wf-edge: 50%')
+    // 真相回填镜像（供下次降级/跨窗读取）
+    expect(JSON.parse(localStorage.getItem(WHEEL_SKIN_STORAGE_KEY)!).preset).toBe('ink')
     w.unmount()
   })
 

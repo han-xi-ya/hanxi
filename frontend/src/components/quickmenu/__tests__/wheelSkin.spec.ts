@@ -1,12 +1,20 @@
-// 皮肤账特征测试：缺省兼容（旧设置无此键/坏 JSON/脏值 → 默认皮肤不炸）与
-// 切换持久化（save 合入语义 + read 回读闭环 + storage 键契约）。
-import { beforeEach, describe, expect, it } from 'vitest'
+// 皮肤账特征测试：缺省兼容（旧账无此键/坏 JSON/脏值 → 默认皮肤不炸）、镜像
+// 持久化（save 合入语义 + read 回读闭环 + storage 键契约）与后端真相通道
+// （DTO 整数百分比双向往返、fetch/push 的失败上抛语义——降级决策在调用侧）。
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_WHEEL_SKIN, FACE_ALPHA_MIN, STROKE_MAX, WHEEL_SKIN_STORAGE_KEY,
-  normalizeWheelSkin, parseWheelSkin, readWheelSkin, saveWheelSkin, wheelSkinVars, wheelStrokeMixPercent,
+  fetchWheelSkin, normalizeWheelSkin, parseWheelSkin, pushWheelSkin, readWheelSkin, saveWheelSkin,
+  wheelSkinFromDto, wheelSkinToDto, wheelSkinVars, wheelStrokeMixPercent,
 } from '../wheelSkin'
 
-beforeEach(() => localStorage.clear())
+const api = vi.hoisted(() => ({ GetSkin: vi.fn(), SetSkin: vi.fn() }))
+vi.mock('../../../../bindings/hanxi/internal/modules/quickmenu', () => ({ QuickMenuService: api }))
+
+beforeEach(() => {
+  localStorage.clear()
+  vi.clearAllMocks()
+})
 
 describe('缺省兼容（老 settings / 坏值读出默认皮肤）', () => {
   it('空存储读出默认', () => {
@@ -63,5 +71,42 @@ describe('皮肤 → 盘面 CSS 变量', () => {
     const vars = wheelSkinVars({ ...DEFAULT_WHEEL_SKIN, faceAlpha: 0.5, stroke: 0 })
     expect(vars['--wf-face-a']).toBe('0.5')
     expect(vars['--wf-edge']).toBe('10%')
+  })
+})
+
+describe('后端真相通道（DTO 线格式 + fetch/push）', () => {
+  it('线格式 ↔ 本地皮肤双向往返：整数百分比化，脏线值同闸归一', () => {
+    expect(wheelSkinToDto({ preset: 'veil', faceAlpha: 0.65, stroke: 0.2, followModuleColor: true }))
+      .toEqual({ preset: 'veil', faceAlpha: 65, stroke: 20, followModuleColor: true })
+    expect(wheelSkinFromDto({ preset: 'ink', faceAlpha: 35, stroke: 100 }))
+      .toEqual({ preset: 'ink', faceAlpha: 0.35, stroke: 1, followModuleColor: false })
+    // 脏线格式：野预设/超域/缺字段/非对象 → normalize 同一闸口
+    expect(wheelSkinFromDto({ preset: 'neon', faceAlpha: 999, stroke: 'x' }))
+      .toEqual({ preset: 'frost', faceAlpha: 1, stroke: DEFAULT_WHEEL_SKIN.stroke, followModuleColor: false })
+    expect(wheelSkinFromDto(null)).toEqual(DEFAULT_WHEEL_SKIN)
+  })
+
+  it('fetch：后端载荷归一为皮肤；野预设回落、超域百分比钳边（缺省兼容到线格式侧）', async () => {
+    api.GetSkin.mockResolvedValue({ preset: 'veil', faceAlpha: 60, stroke: 30, followModuleColor: true })
+    expect(await fetchWheelSkin()).toEqual({ preset: 'veil', faceAlpha: 0.6, stroke: 0.3, followModuleColor: true })
+    api.GetSkin.mockResolvedValue({ preset: 'bogus', faceAlpha: 150, stroke: -3 })
+    expect(await fetchWheelSkin()).toEqual({ preset: 'frost', faceAlpha: 1, stroke: 0, followModuleColor: false })
+  })
+
+  it('fetch：RPC 失败与非对象载荷上抛（降级决策留调用侧，绝不静默出假真相）', async () => {
+    api.GetSkin.mockRejectedValue(new Error('模块已停用'))
+    await expect(fetchWheelSkin()).rejects.toThrow('模块已停用')
+    api.GetSkin.mockResolvedValue(null)
+    await expect(fetchWheelSkin()).rejects.toThrow()
+  })
+
+  it('push：出参为归一+百分比化线格式；回显覆写为真相皮肤', async () => {
+    api.SetSkin.mockResolvedValue({ preset: 'ink', faceAlpha: 35, stroke: 0, followModuleColor: true })
+    const eff = await pushWheelSkin({ preset: 'ink', faceAlpha: 0.2, stroke: 0, followModuleColor: true })
+    // 出线前本地已归一（0.2 → 域下限 0.35 → 35），与后端合法域对齐、往返无损
+    expect(api.SetSkin).toHaveBeenCalledWith({ preset: 'ink', faceAlpha: 35, stroke: 0, followModuleColor: true })
+    // 回显即真相，调用侧照抄
+    expect(eff.faceAlpha).toBeCloseTo(0.35)
+    expect(eff.stroke).toBe(0)
   })
 })

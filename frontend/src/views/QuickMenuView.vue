@@ -14,7 +14,7 @@ import { useToast } from '../composables/useToast'
 import WheelPreview from '../components/quickmenu/WheelPreview.vue'
 import TrayItemsEditor from '../components/tray/TrayItemsEditor.vue'
 import {
-  DEFAULT_WHEEL_SKIN, FACE_ALPHA_MIN, readWheelSkin, saveWheelSkin,
+  DEFAULT_WHEEL_SKIN, FACE_ALPHA_MIN, fetchWheelSkin, pushWheelSkin, readWheelSkin, saveWheelSkin,
   WHEEL_SKIN_PRESETS, WHEEL_SKIN_PRESET_LABEL,
   type WheelSkin, type WheelSkinPreset,
 } from '../components/quickmenu/wheelSkin'
@@ -149,26 +149,59 @@ const capacityWarn = computed(() => {
     : ''
 })
 
-// ---- 轮盘皮肤（机主拍板 2026-09-26"轮盘皮肤做"）----
-// 纯视觉账走 localStorage（读写侧封装在 wheelSkin 模块，升后端账本只换模块内部，
-// 契约见交付报告）：拨杆/勾选即时生效——本页预览靠响应式 skin 换皮，挂出的轮盘
-// 经同源 storage 事件 + 每次唤出重读跟皮，故无"保存"按钮（与二级轮盘开关同语义）。
+// ---- 轮盘皮肤（机主拍板 2026-09-26"轮盘皮肤做"；后端化收权批）----
+// 真相账在后端 quickmenu（GetSkin/SetSkin，随 hanxidata 数据目录走 NAS），
+// 读写封装在 wheelSkin 模块双源函数；localStorage 退为镜像缓存（降级兜底 +
+// 跨窗即时）。拨杆/勾选即时生效——本页预览靠响应式 skin 换皮，挂出的轮盘经
+// 同源 storage 事件 + 每次唤出重读跟皮，故无"保存"按钮（与二级轮盘开关同语义）。
 const skin = ref<WheelSkin>(readWheelSkin())
+const savingSkin = ref(false)
 /** 透纱滑杆量程（%）：alpha 域 [FACE_ALPHA_MIN,1] 反翻成 0..(1-MIN) 正向"越透越大" */
 const SKIN_VEIL_MAX = Math.round((1 - FACE_ALPHA_MIN) * 100)
-function setSkin(patch: Partial<WheelSkin>) {
+// 两段式（对齐滑杆手感）：input（连拖）只写本地镜像即时预览，change（松手/落定）
+// 才上后端真相；回显按"最后写者胜"应用（seq 门闩，与取色侧同款），防旧往返迟归覆新。
+function setSkinLocal(patch: Partial<WheelSkin>) {
   skin.value = saveWheelSkin(patch, skin.value)
 }
+let skinWriteSeq = 0
+async function commitSkin() {
+  const target = skin.value
+  const mine = ++skinWriteSeq
+  savingSkin.value = true
+  try {
+    const eff = await pushWheelSkin(target) // 后端为真相：回显（钳域归一后）覆本地
+    if (mine !== skinWriteSeq) return // 更新一笔已在途：本轮回显作废
+    skin.value = saveWheelSkin(eff, eff) // 回显落镜像（弹窗下次唤出读到归正后的真相）
+  } catch (err) {
+    if (mine !== skinWriteSeq) return
+    // 后端不可达：皮肤是纯视觉账，如实 toast（不劫持页面级加载错误态把编辑器
+    // 整片换脸）——本地镜像先行值保留，下次落定/唤出重读后端自然纠正。
+    showToast(`轮盘皮肤未能存入设置账本，先按本机生效：${getErrorMessage(err)}`)
+  } finally {
+    if (mine === skinWriteSeq) savingSkin.value = false
+  }
+}
 function setSkinPreset(preset: WheelSkinPreset) {
-  setSkin({ preset })
+  setSkinLocal({ preset })
+  void commitSkin()
 }
 function resetSkin() {
-  skin.value = saveWheelSkin(DEFAULT_WHEEL_SKIN)
+  setSkinLocal(DEFAULT_WHEEL_SKIN)
+  void commitSkin()
 }
 const veilPercent = computed(() => Math.round((1 - skin.value.faceAlpha) * 100))
 const strokePercent = computed(() => Math.round(skin.value.stroke * 100))
 
-onMounted(refresh)
+// 皮肤初值以真相为准：后端可达则覆盖镜像（含 NAS 换机后镜像陈旧的场景），
+// 不可达保留本地镜像兜底——两条路径都已在 onMounted 首刷一次。
+onMounted(async () => {
+  await refresh()
+  try {
+    skin.value = saveWheelSkin(await fetchWheelSkin(), skin.value)
+  } catch {
+    /* 后端不可达：镜像已是最新可读态，保留 */
+  }
+})
 </script>
 
 <template>
@@ -242,7 +275,7 @@ onMounted(refresh)
           <section class="panel qm-skin-panel">
             <h2 class="sec-title">轮盘皮肤</h2>
             <p class="sec-note">
-              纯视觉偏好，拨存即生效：上方预览与挂出的轮盘同步换皮。存于本机，不进条目配置。
+              纯视觉偏好，拨存即生效：上方预览与挂出的轮盘同步换皮。随设置账本存入数据目录（NAS 同步随身），不进条目配置。
             </p>
             <div class="qm-skin-row" role="radiogroup" aria-label="盘面色预设">
               <span class="qm-skin-k">盘面色</span>
@@ -255,6 +288,7 @@ onMounted(refresh)
                   :class="{ 'is-on': skin.preset === p }"
                   role="radio"
                   :aria-checked="skin.preset === p"
+                  :disabled="savingSkin"
                   @click="setSkinPreset(p)"
                 ><span class="qm-skin-dot" :class="`dot-${p}`" aria-hidden="true"></span>{{ WHEEL_SKIN_PRESET_LABEL[p] }}</button>
               </span>
@@ -269,7 +303,8 @@ onMounted(refresh)
                 step="5"
                 :value="veilPercent"
                 aria-label="盘面透明度百分比"
-                @input="setSkin({ faceAlpha: 1 - Number(($event.target as HTMLInputElement).value) / 100 })"
+                @input="setSkinLocal({ faceAlpha: 1 - Number(($event.target as HTMLInputElement).value) / 100 })"
+                @change="commitSkin"
               />
               <b class="mono qm-param-v qm-skin-v">{{ veilPercent }}%</b>
             </label>
@@ -283,7 +318,8 @@ onMounted(refresh)
                 step="5"
                 :value="strokePercent"
                 aria-label="描边强度百分比"
-                @input="setSkin({ stroke: Number(($event.target as HTMLInputElement).value) / 100 })"
+                @input="setSkinLocal({ stroke: Number(($event.target as HTMLInputElement).value) / 100 })"
+                @change="commitSkin"
               />
               <b class="mono qm-param-v qm-skin-v">{{ strokePercent }}%</b>
             </label>
@@ -297,11 +333,12 @@ onMounted(refresh)
                 class="switch"
                 :checked="skin.followModuleColor"
                 aria-label="跟随模块色"
-                @change="setSkin({ followModuleColor: ($event.target as HTMLInputElement).checked })"
+                :disabled="savingSkin"
+                @change="setSkinLocal({ followModuleColor: ($event.target as HTMLInputElement).checked }); commitSkin()"
               />
             </label>
             <div class="qm-skin-foot">
-              <button type="button" class="link-button" @click="resetSkin">恢复默认皮肤</button>
+              <button type="button" class="link-button" :disabled="savingSkin" @click="resetSkin">恢复默认皮肤</button>
             </div>
           </section>
 

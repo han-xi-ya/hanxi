@@ -32,7 +32,7 @@ import { useWheelRingState } from '../composables/useWheelRingState'
 import { isRasterWheelIcon, snapIconCssPx } from '../components/quickmenu/wheelIconBudget'
 import { useWheelDpr } from '../components/quickmenu/useWheelDpr'
 import {
-  readWheelSkin, wheelSkinVars, wheelTintCss, WHEEL_SKIN_STORAGE_KEY, type WheelSkin,
+  fetchWheelSkin, readWheelSkin, saveWheelSkin, wheelSkinVars, wheelTintCss, WHEEL_SKIN_STORAGE_KEY, type WheelSkin,
 } from '../components/quickmenu/wheelSkin'
 import { wheelTypeTint } from '../components/quickmenu/wheelSkinColors'
 import { useWheelTints } from '../components/quickmenu/useWheelTints'
@@ -100,13 +100,20 @@ const densityVars = computed(() => ({
 const CAP_ICON = 15 // 帽带子扇区图标档（原模板裸值归口，便于像素预算消费）
 
 // —— 皮肤账与图标像素预算（机主反馈 2026-09-26 两条：小图标糊 / 盘面单调）——
-// 皮肤存 localStorage（纯视觉账，与 rail 展开态同族）；设置页保存后本窗经同源
-// storage 事件即时跟皮，窗口隐藏期错过的改动由每次唤出 refresh() 重读兜底。
+// 真相在后端（GetSkin），localStorage 副本仅作跨窗镜像：本窗首帧用镜像抢即时
+// （不空窗等 RPC），随后 fetch 后端真相覆写；设置页保存经同源 storage 事件秒级
+// 跟皮，后端不可达（模块停用等）如实降级继续用镜像。
 const dpr = useWheelDpr()
 const skin = ref<WheelSkin>(readWheelSkin())
 const skinVars = computed(() => wheelSkinVars(skin.value))
 function onSkinStorage(ev: StorageEvent) {
   if (ev.key === null || ev.key === WHEEL_SKIN_STORAGE_KEY) skin.value = readWheelSkin()
+}
+/** 拉后端皮肤真相覆写本窗皮肤并回填镜像；失败静默保留当前（镜像）皮肤，绝不以假数据覆真机。 */
+function syncSkinFromBackend() {
+  fetchWheelSkin()
+    .then((s) => { skin.value = saveWheelSkin(s, s) }) // 真相到手：回填 + 写镜像（saveWheelSkin 即归一+落盘）
+    .catch(() => { /* 后端不可达：镜像已绘，下次唤出再追真相 */ })
 }
 
 // 模块色取色（"跟随模块色"勾选时启用）：app: 图标主色调喂扇区描边 --tint，
@@ -150,7 +157,8 @@ async function refresh() {
   errorMsg.value = ''
   active.value = null
   activeCap.value = null
-  skin.value = readWheelSkin() // 设置页可能在窗口隐藏期间改皮：唤出即重读兜底
+  skin.value = readWheelSkin() // 首帧用镜像抢即时（不空窗等 RPC），真相由下行异步覆写
+  syncSkinFromBackend() // 后端为真相：拉取覆写；失败保镜像（storage 事件另管跨窗即时）
   ring.reset() // 每次唤出回主环：双环可预测的前提是"层级不跨会话残留"
   try {
     items.value = (await QuickMenuAPI.QuickMenuService.ListItems()) ?? []
