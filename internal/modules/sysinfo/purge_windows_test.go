@@ -33,11 +33,35 @@ func TestWritePurgeResultRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	id := "purge-0123456789abcdef"
 	path := filepath.Join(dir, "hanxi-purge-"+id+"-x.json")
-	if err := windows.WritePurgeResult(path, id, "success", "ok", "", 5, 9, true); err != nil {
+	payload := windows.PurgeResultFile{
+		RequestID: id, Mode: windows.PurgeHelperMode, State: "success", Message: "ok",
+		BeforeAvailableBytes: 5, AfterAvailableBytes: 9,
+		BeforeLedger: windows.MemoryLedger{TotalBytes: 100, AvailableBytes: 5, PagesMeasured: false},
+		AfterLedger:  windows.MemoryLedger{TotalBytes: 100, AvailableBytes: 9, PagesMeasured: false},
+		Elevated:     true,
+	}
+	if err := windows.WritePurgeResult(path, payload); err != nil {
 		t.Fatal(err)
 	}
 	got, err := windows.ReadPurgeResult(path, id)
 	if err != nil || got.State != "success" || got.AfterAvailableBytes != 9 || !got.Elevated {
 		t.Fatalf("helper 结果写读不一致: %+v %v", got, err)
+	}
+}
+
+func TestRunEmptyWorkingSetsHelperRejectsForeignPath(t *testing.T) {
+	dir := t.TempDir()
+	err := RunEmptyWorkingSetsHelper(filepath.Join(dir, "elsewhere.json"), "ews-request", false)
+	if err == nil || !strings.Contains(err.Error(), "拒") {
+		t.Fatalf("workingsets helper 同样必须拒绝外目录结果路径，got %v", err)
+	}
+}
+
+func TestLaunchEmptyWorkingSetsHelperElevatedRequiresPaths(t *testing.T) {
+	if _, err := LaunchEmptyWorkingSetsHelperElevated("", `C:\hanxi.exe`, "ews-1234567890abc"); err == nil {
+		t.Fatal("空 runtime 目录必须拒绝")
+	}
+	if _, err := LaunchEmptyWorkingSetsHelperElevated(`C:\runtime`, "x", "ews-1234567890abc"); err == nil {
+		t.Fatal("空宿主程序必须拒绝")
 	}
 }

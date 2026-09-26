@@ -13,13 +13,19 @@ import (
 )
 
 const (
-	PurgeHelperMode    = "purge-standby"
-	purgeHelperTimeout = 90 * time.Second
+	PurgeHelperMode            = "purge-standby"
+	EmptyWorkingSetsHelperMode = "empty-workingsets"
+	purgeHelperTimeout         = 90 * time.Second
 )
 
-// RunPurgeHelper 以 UAC 拉起同一个 Hanxi 的一次性 purge helper，等待其写回
-// 严格校验的结果文件。helper 不进入 GUI/Wails 生命周期；结果文件读取后立即删除。
-func RunPurgeHelper(exe, runtimeDir, requestID string) (PurgeResultFile, error) {
+// RunPurgeHelper 以 UAC 拉起同一个 Hanxi 的一次性内存 helper，等待其写回
+// 严格校验的结果文件。helper 不进入 GUI/Wails 生命周期；结果文件读取后立即
+// 删除。mode 只接受 PurgeHelperMode / EmptyWorkingSetsHelperMode 两值（两模式
+// 共用同一握手与结果路径白名单；调用方持锁保证同一时刻至多一个 helper 在飞）。
+func RunPurgeHelper(exe, runtimeDir, requestID, mode string) (PurgeResultFile, error) {
+	if mode != PurgeHelperMode && mode != EmptyWorkingSetsHelperMode {
+		return PurgeResultFile{}, fmt.Errorf("未知 helper mode %q", mode)
+	}
 	resultPath, err := NewPurgeRequestFile(runtimeDir, requestID)
 	if err != nil {
 		return PurgeResultFile{}, err
@@ -28,7 +34,7 @@ func RunPurgeHelper(exe, runtimeDir, requestID string) (PurgeResultFile, error) 
 	CleanupStalePurgeResults(runtimeDir, time.Now())
 
 	args := []string{
-		"--mode=" + PurgeHelperMode,
+		"--mode=" + mode,
 		"--result=" + resultPath,
 		"--request-id=" + requestID,
 		"--elevated=true",

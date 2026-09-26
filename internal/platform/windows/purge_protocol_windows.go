@@ -13,24 +13,40 @@ import (
 )
 
 const (
-	PurgeProtocolVersion = 1
-	purgeProtocolVersion = PurgeProtocolVersion
-	purgeResultPrefix    = "hanxi-purge-"
-	purgeResultMaxBytes  = 16 << 10
-	purgeResultMaxAge    = 24 * time.Hour
+	// PurgeProtocolVersion v2：载荷新增 mode/前后账目/工作集计数（读写两端同仓
+	// 同版本发布，v1 载荷因版本严格相等校验自然拒收，不做跨版本兼容层）。
+	PurgeProtocolVersion     = 2
+	purgeProtocolVersion     = PurgeProtocolVersion
+	purgeResultPrefix        = "hanxi-purge-"
+	purgeResultMaxBytes      = 16 << 10
+	purgeResultMaxAge        = 24 * time.Hour
+	purgeStateSuccess        = "success"
+	purgeStateDenied         = "denied"
+	purgeStateFailed         = "failed"
+	purgeStateCancelled      = "cancelled"
+	purgeModeStandby         = PurgeHelperMode
+	purgeModeWorkingSets     = EmptyWorkingSetsHelperMode
+	purgeModeLegacyOrStandby = "" // 兼容空位：无 mode 的载荷按待机清理理解
 )
 
 // PurgeResultFile 是一次性 helper 与宿主之间的私有 JSON 握手载荷。
 // 类型虽然导出以便 sysinfo service 读取，字段只描述结果，不暴露 helper 内部实现。
+// Before/AfterAvailableBytes 保持 v1 语义（可用内存前后观测）；BeforeLedger/
+// AfterLedger 是逐项链账（总量/可用/可实测的待机与修改页），两种 mode 共用。
 type PurgeResultFile struct {
-	ProtocolVersion      int    `json:"protocolVersion"`
-	RequestID            string `json:"requestId"`
-	State                string `json:"state"`
-	BeforeAvailableBytes uint64 `json:"beforeAvailableBytes"`
-	AfterAvailableBytes  uint64 `json:"afterAvailableBytes"`
-	Message              string `json:"message"`
-	ErrorCode            string `json:"errorCode,omitempty"`
-	Elevated             bool   `json:"elevated"`
+	ProtocolVersion      int          `json:"protocolVersion"`
+	Mode                 string       `json:"mode,omitempty"`
+	RequestID            string       `json:"requestId"`
+	State                string       `json:"state"`
+	BeforeAvailableBytes uint64       `json:"beforeAvailableBytes"`
+	AfterAvailableBytes  uint64       `json:"afterAvailableBytes"`
+	BeforeLedger         MemoryLedger `json:"beforeLedger"`
+	AfterLedger          MemoryLedger `json:"afterLedger"`
+	EmptiedProcessCount  int          `json:"emptiedProcessCount,omitempty"`
+	SkippedProcessCount  int          `json:"skippedProcessCount,omitempty"`
+	Message              string       `json:"message"`
+	ErrorCode            string       `json:"errorCode,omitempty"`
+	Elevated             bool         `json:"elevated"`
 }
 
 // NewPurgeRequestFile 在 runtime 目录创建唯一结果文件。文件先占位，helper 只允许
@@ -66,16 +82,30 @@ func validPurgeRequestID(id string) bool {
 	return true
 }
 
-func WritePurgeResult(path, requestID, state, message, errorCode string, before, after uint64, elevated bool) error {
-	if !validPurgeRequestID(requestID) {
+// validPurgeMode 单飞互斥的协议面守卫：mode 必须落在已知两值（或空位）。
+func validPurgeMode(mode string) bool {
+	switch mode {
+	case purgeModeStandby, purgeModeWorkingSets, purgeModeLegacyOrStandby:
+		return true
+	}
+	return false
+}
+
+// WritePurgeResult 原子写回结果载荷。协议版本由本函数统一盖章；path 必须位于
+// 该 request ID 的固定文件名下（防串写）。
+func WritePurgeResult(path string, result PurgeResultFile) error {
+	if !validPurgeRequestID(result.RequestID) {
 		return errors.New("非法 purge request ID")
 	}
+	if !validPurgeMode(result.Mode) {
+		return fmt.Errorf("非法 purge mode %q", result.Mode)
+	}
 	base := filepath.Base(path)
-	if path != filepath.Join(filepath.Dir(path), base) || !strings.HasPrefix(base, purgeResultPrefix+requestID) || !strings.HasSuffix(base, ".json") {
+	if path != filepath.Join(filepath.Dir(path), base) || !strings.HasPrefix(base, purgeResultPrefix+result.RequestID) || !strings.HasSuffix(base, ".json") {
 		return errors.New("purge 结果路径必须位于其 request ID 的固定文件名下")
 	}
-	payload := PurgeResultFile{ProtocolVersion: purgeProtocolVersion, RequestID: requestID, State: state, Message: message, ErrorCode: errorCode, BeforeAvailableBytes: before, AfterAvailableBytes: after, Elevated: elevated}
-	data, err := json.Marshal(payload)
+	result.ProtocolVersion = purgeProtocolVersion
+	data, err := json.Marshal(result)
 	if err != nil {
 		return err
 	}
@@ -112,8 +142,11 @@ func ReadPurgeResult(path, requestID string) (PurgeResultFile, error) {
 	if result.ProtocolVersion != purgeProtocolVersion || result.RequestID != requestID {
 		return PurgeResultFile{}, errors.New("purge 结果协议或 request ID 不匹配")
 	}
+	if !validPurgeMode(result.Mode) {
+		return PurgeResultFile{}, fmt.Errorf("未知 purge mode %q", result.Mode)
+	}
 	switch result.State {
-	case "success", "denied", "failed", "cancelled":
+	case purgeStateSuccess, purgeStateDenied, purgeStateFailed, purgeStateCancelled:
 	default:
 		return PurgeResultFile{}, fmt.Errorf("未知 purge 结果状态 %q", result.State)
 	}

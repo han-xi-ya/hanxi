@@ -33,24 +33,32 @@ func main() {
 		return
 	}
 
-	modeFlag := flag.String("mode", "", "run mode: empty for GUI, 'killhelper' for elevated process terminator, 'purge-standby' for one-shot memory helper")
+	modeFlag := flag.String("mode", "", "run mode: empty for GUI, 'killhelper' for elevated process terminator, 'purge-standby' or 'empty-workingsets' for one-shot memory helpers")
 	pidFlag := flag.Uint("pid", 0, "target PID for killhelper mode")
 	minimizedFlag := flag.Bool("minimized", false, "start with the main window hidden in the system tray")
 	takeoverFlag := flag.Uint("takeover", 0, "elevated restart handoff: wait for this PID (the old instance) to release the single-instance lock")
 	routeFlag := flag.String("route", "", "elevated restart handoff: frontend route to open after start (e.g. /ext/bcu)")
 	killExeFlag := flag.String("exe", "", "killhelper identity recheck: expected executable path of the target (empty = skip path check)")
 	killStartFlag := flag.Int64("start", 0, "killhelper identity recheck: expected target creation time in UNIX nanoseconds (0 = skip)")
-	purgeResultFlag := flag.String("result", "", "purge-standby helper result file")
-	purgeRequestIDFlag := flag.String("request-id", "", "purge-standby helper request ID")
-	purgeElevatedFlag := flag.Bool("elevated", false, "purge-standby helper was launched through UAC")
+	purgeResultFlag := flag.String("result", "", "one-shot memory helper result file")
+	purgeRequestIDFlag := flag.String("request-id", "", "one-shot memory helper request ID")
+	purgeElevatedFlag := flag.Bool("elevated", false, "one-shot memory helper was launched through UAC")
 	flag.Parse()
 
-	// 一次性内存 helper 早于 GUI/Wails/单实例锁分流；结果必须写回主进程预创建的
+	// 一次性内存 helper 早于 GUI/Wails/单实例锁分流（两种模式共用握手协议与结果
+	// 路径白名单，mode 互斥由单值 flag 天然保证）；结果必须写回主进程预创建的
 	// 固定文件，stdout/stderr 只留诊断，不作为协议通道。--elevated 由主进程在
 	// UAC 拉起时携带，用于诚实记录动作发生环境。
 	if *modeFlag == "purge-standby" {
 		if err := sysinfo.RunPurgeStandbyHelper(*purgeResultFlag, *purgeRequestIDFlag, *purgeElevatedFlag); err != nil {
 			fmt.Fprintln(os.Stderr, "hanxi purge helper:", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if *modeFlag == "empty-workingsets" {
+		if err := sysinfo.RunEmptyWorkingSetsHelper(*purgeResultFlag, *purgeRequestIDFlag, *purgeElevatedFlag); err != nil {
+			fmt.Fprintln(os.Stderr, "hanxi workingsets helper:", err)
 			os.Exit(1)
 		}
 		return
