@@ -54,6 +54,14 @@ type CCSwitchService struct {
 	watching   bool
 	watchStop  chan struct{}
 
+	// 单测 seam（生产装配恒不注入，零成本）：downloadDriver 替代版本下载驱动
+	// （缺省走 version.Manager.DownloadContext，测试注入假驱动以隔离网络并同步
+	// 驱动 emit）；downloadProbe 为下载进度事件观测点，在广播位（Wails Emit
+	// 之前）同步收到事件，锁死"done 成功回执送达时首装落账已完成"的时序
+	// （termora 2ac9b3b 同型病灶的回归护栏）。
+	downloadDriver func(ctx context.Context, txnID, targetVersion string, emit func(version.DownloadProgress)) error
+	downloadProbe  func(p version.DownloadProgress)
+
 	idleMu       sync.Mutex
 	lastActivity time.Time // 最近一次 Hanxi 发起的使用（打开窗口）；GetStatus 轮询不计
 }
@@ -271,6 +279,16 @@ func (s *CCSwitchService) DownloadVersion(targetVersion string) (string, error) 
 		}()
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("ccswitch download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
+			// "首装自动设使用"的落账必须发生在 done 事件发出之前：前端共享 store
+			// 收到 done 即复刷 GetActiveVersion，旧实现放在 DownloadContext 返回
+			// 之后，事件先行于落账，瞬时复刷读到空值（termora 2ac9b3b 同型病灶、
+			// 同型修法）。done 仅在 manager 落位 Commit 成功后发出。
+			if p.Stage == "done" && s.store.GetActive() == "" {
+				_ = s.store.SetActive(targetVersion)
+			}
+			if s.downloadProbe != nil {
+				s.downloadProbe(p)
+			}
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("ccswitch:version-download", p)
 			}
@@ -301,7 +319,11 @@ func (s *CCSwitchService) DownloadVersion(targetVersion string) (string, error) 
 				notify.Success("ccswitch", "版本下载成功", fmt.Sprintf("CC Switch %s 已成功安装", p.Version), "/ext/ccswitch")
 			}
 		}
-		if err := s.manager.DownloadContext(txn.Context(), txnID, targetVersion, emit); err != nil {
+		drive := s.downloadDriver
+		if drive == nil {
+			drive = s.manager.DownloadContext
+		}
+		if err := drive(txn.Context(), txnID, targetVersion, emit); err != nil {
 			// N26 用户主动取消：按 2b 纪律如实收口，票面话术不露 ctx 原始错误；
 			// 主动动作不发"失败"系统通知（前端票面已呈现「已取消」）。
 			if txn.Err() != nil {
@@ -319,11 +341,7 @@ func (s *CCSwitchService) DownloadVersion(targetVersion string) (string, error) 
 			notify.Error("ccswitch", "版本下载失败", fmt.Sprintf("CC Switch %s 事务收口失败: %v", targetVersion, err), "/ext/ccswitch")
 			return
 		}
-		// 未设使用版本时自动把刚下载完的版本设为使用版本：
-		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
-		if s.store.GetActive() == "" {
-			_ = s.store.SetActive(targetVersion)
-		}
+		// "首装自动设使用"已在 done 事件发出前的 emit 收口落账（见上），此处不再重复。
 	}()
 
 	return "started", nil

@@ -55,6 +55,14 @@ type EverythingService struct {
 	watching   bool
 	watchStop  chan struct{}
 
+	// 单测 seam（生产装配恒不注入，零成本）：downloadDriver 替代版本下载驱动
+	// （缺省走 version.Manager.DownloadContext，测试注入假驱动以隔离网络并同步
+	// 驱动 emit）；downloadProbe 挂在 emitDownload 广播位（Wails Emit 之前）
+	// 同步收到票据，锁死"done 成功回执送达时首装落账已完成"的时序（termora
+	// 2ac9b3b 同型病灶的回归护栏）。es 组件进度同经此观测点，无副作用。
+	downloadDriver func(ctx context.Context, txnID, targetVersion string, emit func(evversion.DownloadProgress)) error
+	downloadProbe  func(t DownloadTicket)
+
 	idleMu       sync.Mutex
 	lastActivity time.Time // 最近一次 Hanxi 发起的使用（搜索/开窗/启动）；GetStatus 轮询不计
 }
@@ -93,6 +101,9 @@ func (s *EverythingService) emitInstanceState(snap evinstance.Snapshot) {
 
 // emitDownload 统一下载进度事件（app 版本包 / es 搜索组件共用）。
 func (s *EverythingService) emitDownload(t DownloadTicket) {
+	if s.downloadProbe != nil {
+		s.downloadProbe(t)
+	}
 	if app := application.Get(); app != nil && app.Event != nil {
 		app.Event.Emit("everything:download", t)
 	}
@@ -583,6 +594,13 @@ func (s *EverythingService) DownloadVersion(targetVersion string) (string, error
 		}()
 		emit := func(p evversion.DownloadProgress) {
 			slog.Debug("everything download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
+			// "首装自动设使用"的落账必须发生在 done 事件发出之前：前端共享 store
+			// 收到 done 即复刷 GetActiveVersion，旧实现放在 DownloadContext 返回
+			// 之后，事件先行于落账，瞬时复刷读到空值（termora 2ac9b3b 同型病灶、
+			// 同型修法）。done 仅在 manager 落位 Commit 成功后发出。
+			if p.Stage == "done" && s.store.GetActive() == "" {
+				_ = s.store.SetActive(targetVersion)
+			}
 			s.emitDownload(DownloadTicket{Component: "app", Version: p.Version, Stage: p.Stage, Done: p.Done, Total: p.Total, Message: p.Message})
 			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；下载分块进度
 			// 与 verify（内核摘要双核的可见映射）只进观察面内存投影，不产生 fsync 风暴
@@ -611,7 +629,11 @@ func (s *EverythingService) DownloadVersion(targetVersion string) (string, error
 				notify.Success("everything", "版本下载成功", fmt.Sprintf("Everything %s 已成功安装", p.Version), "/ext/everything")
 			}
 		}
-		if err := s.manager.DownloadContext(txn.Context(), txnID, targetVersion, emit); err != nil {
+		drive := s.downloadDriver
+		if drive == nil {
+			drive = s.manager.DownloadContext
+		}
+		if err := drive(txn.Context(), txnID, targetVersion, emit); err != nil {
 			// N26 用户主动取消：按 2b 纪律如实收口，票面话术不露 ctx 原始错误；
 			// 主动动作不发"失败"系统通知（前端票面已呈现「已取消」）。
 			if txn.Err() != nil {
@@ -629,11 +651,7 @@ func (s *EverythingService) DownloadVersion(targetVersion string) (string, error
 			notify.Error("everything", "版本下载失败", fmt.Sprintf("Everything %s 事务收口失败: %v", targetVersion, err), "/ext/everything")
 			return
 		}
-		// 未设使用版本时自动把刚下载完的版本设为使用版本：
-		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
-		if s.store.GetActive() == "" {
-			_ = s.store.SetActive(targetVersion)
-		}
+		// "首装自动设使用"已在 done 事件发出前的 emit 收口落账（见上），此处不再重复。
 	}()
 
 	return "started", nil
