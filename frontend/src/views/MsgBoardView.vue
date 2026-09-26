@@ -248,7 +248,15 @@ const previewScale = computed(() => {
 })
 const previewCardMaxH = computed(() => Math.max(48, Math.floor((boxH.value - 12) / previewScale.value)))
 const previewZoom = computed(() => Math.max(1, Math.round(1 / previewScale.value)))
-const previewZoomNote = computed(() => (previewZoom.value <= 1 ? '近乎实挂' : `约 ${previewZoom.value} 倍大`))
+// 机主反馈（2026-09-26）：旧口径「实际挂出约 N 倍大」要人拿倍数心算原图多大，看不懂。
+// 改一句大白话：先报预览缩到百分之几（所见直接可验），再报真牌相对预览大的倍数，
+// 数字直给、不叠「等效/约…倍大」连环修饰；真实大小的查看引导交给「全屏预览」。
+const previewPct = computed(() => Math.max(1, Math.round(previewScale.value * 100)))
+const previewZoomNote = computed(() => (
+  previewZoom.value <= 1
+    ? `预览缩到 ${previewPct.value}%，和真牌几乎一样大`
+    : `预览缩到 ${previewPct.value}%，真牌大 ${previewZoom.value} 倍`
+))
 
 // 全屏预览：纯前端 Teleport 浮层，渲染与真牌同一 BoardCard、同一压暗层与
 // --bc-max-h:74vh 标定——"所看即所挂"（主窗最大化且与目标屏同规格时几乎 1:1）。
@@ -442,7 +450,7 @@ onMounted(refresh)
                   <BoardCard :text="form.text || PREVIEW_EMPTY" :font-size="effFontSize" />
                 </div>
               </div>
-              <p class="mbp-caption">牌面预览（实际挂出{{ previewZoomNote }}）· 超高只裁不滚</p>
+              <p class="mbp-caption">{{ previewZoomNote }} · 看真实大小点「全屏预览」· 超高只裁不滚</p>
               <!-- 字号滑杆挂在预览台：改一下看得到——它本质是"预览相关"的高频动作，
                    从 v2 的高级折叠里捞出来；后端钳位区间 24–200 不变 -->
               <label class="mb-font">

@@ -278,7 +278,9 @@ describe('全屏预览与小预览缩放（N30）', () => {
     await wrapper.find('input[aria-label="字号"]').setValue(120)
     // 卡宽上限＝字号×13，超出 288px 容纳线后缩放＝288/(120×13)≈0.185
     expect(scaled.attributes('style')).toContain('scale(0.18461538461538463)')
-    expect(wrapper.find('.mbp-caption').text()).toContain('约 5 倍大')
+    // 机主反馈 2026-09-26：文案改一句大白话「预览缩到 18%，真牌大 5 倍」——
+    // 百分比按 scale(0.1846…) 取整，倍数仍走 previewZoom 的 round(1/scale)
+    expect(wrapper.find('.mbp-caption').text()).toContain('预览缩到 18%，真牌大 5 倍')
     wrapper.unmount()
   })
 
