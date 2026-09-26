@@ -1,8 +1,18 @@
-# N37 双轴主题按钮配色返工——分析 + 矩阵对照稿（机主过目件）
+# N37 双轴主题按钮配色返工——分析 + 定案执行收口件（机主过目件）
 
-> 排期出处：`docs/plans/PLAN_REMAINING_WORK.md` N37（四条返工要求：①逐板逐模式 on-color token 按 WCAG AA 4.5:1 逐对核、组件禁自取；②深色 glow 降级为实底+1px 提亮描边，彩色投影只留"进行中"脉冲一处；③产出五板×明暗按钮矩阵对照稿；④设计规范补 on-color 条款）。
-> 本件只做分析与对照，未动 `tokens.css` / `components.css` / 任何视图。
-> 静态样张（双击即开）：`docs/plans/specimens/n37-oncolor-matrix.html`。
+> **状态（2026-09-26 收口）：机主已拍板执行，六路并流落地；逐项拍板点执行态见 §5（未完线标 in-flight）。**
+> 拍板口径摘录（机主 2026-09-26 指令，经六路派单原话转述）：**「teal 方案 A 压暗、glow 全线废除除进行中」**——
+> 即 §4 案 A 选定（浅底 `#0d8284` / hover `#0b7577`，白字 4.12→4.62/5.49 双过 AA）；彩色发光此后只许"进行中"脉冲使用，
+> 稳态 halo 全降为实底+1px 提亮描边（灯点族不豁免）、C 类焦点环并入 `--focus-ring`。
+> 排期出处：`docs/plans/PLAN_REMAINING_WORK.md` N37（机主报告 2026-09-23，四条返工要求：①逐板逐模式 on-color token 按 WCAG AA 4.5:1 逐对核、组件禁自取；②深色 glow 降级为实底+1px 提亮描边，彩色投影只留"进行中"脉冲一处；③产出五板×明暗按钮矩阵对照稿；④设计规范补 on-color 条款——口径不变）。
+> 防回潮守卫锁（六路终结位交付）：`frontend/src/styles/__tests__/buttonColorContract.spec.ts`——
+> a) 按钮家族块零裸 hex/rgb 字面且禁引 glow token（豁免须显式登记理由，失效即红）；
+> b) scoped `.btn-danger` 形制整抄零容忍（2026-09-26 现盘实测历史三份副本已由视图线删净，基线=0，只降不升）；
+> c) tokens.css 十块（五板×明暗）on-primary/on-accent 核心两件必存、逐块恰一条、显式 hex 字面，浅底白字/深底禁白字
+>    两铁律同锁；拆档件 on-danger/on-positive/on-warning 按"全或无"完整性锁（拍板点 2 现盘终裁"不拆"，与本路派单原文
+>    "四件必存"相抵——守卫取双口径待机主终裁，见 §5.2）；d) 案 A 压暗值不回退锁。
+> 本分析件边界：只承载分析与拍板依据，不承载执行 diff（执行改动归各并行线提交；本文按现盘标注执行态）。
+> 静态样张（双击即开，已改版为**定案执行版**单列终稿形制）：`docs/plans/specimens/n37-oncolor-matrix.html`。
 > 对比度口径：WCAG 2.x 相对亮度公式，脚本临时计算（未留仓库）；四舍五入两位小数。
 
 ---
@@ -188,20 +198,28 @@ hover 底（`--color-primary-hover`）补充行（同样 20/30 违规）：
 
 ---
 
-## 5. 机主拍板点清单（共 7 条）
+## 5. 机主拍板点清单（共 7 条——2026-09-26 收口逐项标注执行态）
 
 1. **teal 浅底色压暗案**（观感向，须看样张 A/B）：`#0f8b8d→#0d8284`+hover 微压，白字 4.12→4.62 达标 vs 维持现状容忍 4.12（默认板默认态不达 AA，名分难看）。样张已并排呈现。
+   → **✅ 拍板=案 A，已落地**：tokens.css 浅侧现值 `#0d8284`/`#0b7577`（守卫锁 d 防回退旧值）；连带"主色字 on panel" 4.12→4.62 自动修。
 2. **`--color-on-accent` 命名与覆盖面**：单一对（所有状态彩底共用）还是拆 `--on-danger/--on-positive/…`（未来各状态色独立调底时更稳）？草案按单一对出。
+   → **⚠ 口径两翻、待机主终裁（in-flight）**：盘中 17:0x 前后一度落地拆档五件族（on-accent 通档 + danger/positive/warning 专用档）；随后 token 线按终裁**"不拆"**收口——同值兼容档整删，现盘每板×明暗仅 `--color-on-primary/--color-on-accent` 两件显式字面，消费面（`.btn-danger` 等）吃 on-accent 通档（token 线注释"拍板点 2 终裁不拆"在案，即 §4 草案原口径）。守卫锁 c 采"核心两件硬锁 + 拆档件全或无"双口径：两终裁下都不假绿；若机主终裁实为"拆"，将拆档名目移回 REQUIRED 数组即升级，无需重构。
 3. **深色状态灯 halo 降级范围**：18 处 A 类里，5 个托管家族控制条的 running/external/failed 灯环是"活体感"最强的一族——全降为提亮描边，还是灯点族豁免保留弱 halo（文字/按钮零豁免）？
+   → **✅ 拍板=全线废除、灯点族不豁免**（「glow 全线废除除进行中」）。落地形=1px inset 提亮环（托管控制条六族、AppSidebar 在线点、FrpcProjects 选中卡均已删 halo 落库）；**in-flight**：`AppNavRail.vue` `.rail-dot` 旧 6px halo 尚存，待壳线收编；**新报未列账**：`QuickMenuPopup.vue:753/896` `filter: drop-shadow(… --color-primary-glow)` ×2——§3 盘点未列，属 N40 轮盘皮域，是否纳入"全线废除"请机主明示。
 4. **onyx 板特例**：AAA 定位板，light 状态色白字 5.89–6.56 已过 AA 但未到 AAA 7.0——onyx 的 on-accent 要不要按自家 AAA 口径继续压深/压底，还是 AA 即止？
+   → **✅ 落地=AA 即止（据现盘推定）**：onyx on-* 与他板同取白/本板深值，自定状态色下 6.54–10.26 达标；AAA 续压未做，需要时另启。
 5. **焦点环散差顺带归一**：C 类 5 处 `*-glow` 焦点环并入 `--focus-ring`——本轮顺手做，还是只记 D 类账不动？
+   → **✅ 落地=顺手做毕**：5 处 glow 焦点环已并入 `--focus-ring`（现盘 grep 清零），且十板焦点环透明度已按 N38 提档至合成后 ≥3:1。
 6. **"进行中"脉冲要不要带光**：现 starting 灯只有 opacity 呼吸无彩色投影；②"彩色投影只留脉冲一处"是升格加光（视觉上更活）还是仅"保留 .snip-pulse 现状不加码"？
+   → **✅ 拍板=保留不加码**：`.snip-pulse` 为全库唯一带光脉冲原样保留；starting 六族维持无投影 opacity 呼吸；`components.css` `.live-pulse` 标准形成文，按钮族 glow 回流由守卫锁 a 拦截。
 7. **次级缺口（§2c）是否并案**：sky 深 selected 上主色字 3.51、sky 浅 selected 4.30、teal 浅 selected 3.55（拍板点 1 案 A 只修 teal 的 panel 账，不修 selected 账）——本轮一并核 or 另立小账？
+   → **⏳ 未并案（in-flight 账外）**：六路线面未覆盖 selected 底上主色字旧账，现盘 selected 值原样；建议另立小账待机主点头再动，本文继续挂账不销。
 
 ---
 
-## 6. 样张说明
+## 6. 样张说明（定案执行版）
 
-`docs/plans/specimens/n37-oncolor-matrix.html`：五板×明暗 10 区块，每区块左"现状"右"提案"两列，真实渲染 primary/secondary/danger 实底按钮 + 启动 CTA（含彩色落影降级对照），每枚按钮下标注实测对比度；token 值全部自 `tokens.css` 现文实抄，明暗块并排。双击即开，无外部依赖，无 emoji。
+`docs/plans/specimens/n37-oncolor-matrix.html`：收口时改版为**定案执行版**——五板×明暗 10 区块、单列终稿形制（实底钮+比填充深一档 1px 描边、CTA 中性层次影、灯点 1px inset 提亮环、danger/positive 吃 on-* 正档），每枚按钮标注达标实测值；另设「合法保留件对照」区（`.snip-pulse` 带光呼吸 vs 已降级稳态）与「在途与待办账」区（rail-dot、QuickMenuPopup 未列影、§2c selected 旧账），供机主肉眼验收逐项核对。页眉标注**执行中·以 HEAD 为准**；色值为 2026-09-26 采点自 tokens.css 现文实抄，后续以产品代码为准。双击即开，无外部依赖，无 emoji。
 
-> 边界重申：本件与样张仅新增两文件，未触 tokens/components/视图，未 commit。
+> 边界重申（分析件产出时）：本件与样张仅新增两文件，未触 tokens/components/视图，未 commit。
+> 收口补记（2026-09-26，六路终结位）：本轮仅动本文档、样张与新增守卫 spec（`buttonColorContract.spec.ts`）三处；tokens/components/视图的执行 diff 全部归六路各线自有提交，不在本件账内。
