@@ -34,7 +34,7 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 		t.Fatalf("建档后呈现异常: %+v", info)
 	}
 
-	// 常规链：八键归一、改一键不动其余、撤权回 false（扩充批后 sysinfo/logs/portscan/lan 同台）。
+	// 常规链：九键归一、改一键不动其余、撤权回 false（扩充批后 sysinfo/logs/portscan/lan/portkill 同台）。
 	info, err = svc.SetToolAccess("envcheck", true)
 	if err != nil || !info.Tools.Envcheck {
 		t.Fatalf("开启 envcheck 失败: %+v %v", info, err)
@@ -55,8 +55,8 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 	if info.Tools.Envcheck || !info.Tools.Memo || !info.Tools.Sysinfo || !info.Tools.Logs || !info.Readable {
 		t.Errorf("改一键不应波及其余键: %+v", info.Tools)
 	}
-	// 落盘字面契约：恰好八键（键数=accessToolKeys 契约数，契约扩充批四→六→八键
-	// 的历史硬编码 6 已改随键集自适应，"恰好"语义不变）、version=1、无 BOM（首字节即 '{'）。
+	// 落盘字面契约：恰好九键（键数=accessToolKeys 契约数，契约扩充批四→六→八→九键
+	// 的历史硬编码已改随键集自适应，"恰好"语义不变）、version=1、无 BOM（首字节即 '{'）。
 	data := accessBytes(t, svc)
 	if data[0] != '{' {
 		t.Errorf("不得带 BOM/前导垃圾，首字节 %q", data[0])
@@ -78,6 +78,60 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 	}
 }
 
+// TestSetToolAccessPreservesPortkillRoundTrip 端口查杀批的写侧生命线：
+// portkill 键刻意不进面板（无开关行），但机主手动写入的键值在任何 GUI 写路径
+// （改他键/凭空建档后手补）整档回写时都必须**原样保留**——吞键=面板一次无关
+// 拨动就把破坏性授权静默抹掉（或反向放行），双重不可接受。真读方复核由
+// access_readmatch_test.go 矩阵承担，这里钉"盘上字节"。
+func TestSetToolAccessPreservesPortkillRoundTrip(t *testing.T) {
+	svc, _ := newTestService(t, nil)
+	// 造机主手动双键态：portkill:true 与 envcheck:true 同盘。
+	writeFile(t, svc.accessPath, `{"version":1,"tools":{"envcheck":true,"portkill":true}}`)
+
+	// 走面板 RPC 改一个无关键（memo），整档原子回写。
+	if _, err := svc.SetToolAccess("memo", true); err != nil {
+		t.Fatal(err)
+	}
+	var raw struct {
+		Version int             `json:"version"`
+		Tools   map[string]bool `json:"tools"`
+	}
+	if err := json.Unmarshal(accessBytes(t, svc), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if !raw.Tools["portkill"] {
+		t.Errorf("GUI 改他键不得吞 portkill 盘上值: %s", accessBytes(t, svc))
+	}
+	if !raw.Tools["envcheck"] || !raw.Tools["memo"] {
+		t.Errorf("其余键语义应完好: %v", raw.Tools)
+	}
+
+	// 呈现侧同样如实回显 portkill（总览可见性=机主撤权时能确认现状）。
+	info, err := svc.GetAccessOverview()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Readable || !info.Tools.Portkill {
+		t.Errorf("overview 应呈现 portkill=true 现状: %+v", info.Tools)
+	}
+
+	// 重置路径的既定语义：标准全关档九键齐全且 portkill=false（撤破坏权不靠删键，
+	// 靠显式 false——防止"重置=抹键"未来再被当成未知键连坐全档）。
+	res, err := svc.ResetAccess()
+	if err != nil || !res.Success {
+		t.Fatalf("重置失败: %+v %v", res, err)
+	}
+	if err := json.Unmarshal(accessBytes(t, svc), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := raw.Tools["portkill"]; !ok || v {
+		t.Errorf("重置档应显式携带 portkill:false: %s", accessBytes(t, svc))
+	}
+	if len(raw.Tools) != len(accessToolKeys) {
+		t.Errorf("重置档应恰好 %d 键齐全: %v", len(accessToolKeys), raw.Tools)
+	}
+}
+
 func TestSetToolAccessRejectsUnknownKey(t *testing.T) {
 	svc, _ := newTestService(t, nil)
 	if _, err := svc.SetToolAccess("envchek", true); err == nil || !strings.Contains(err.Error(), "未知授权键") {
@@ -92,7 +146,8 @@ func TestSetToolAccessRejectsUnknownKey(t *testing.T) {
 // 且拒绝路径一个字节不碰目标文件（覆盖修复只认显式 ResetAccess）。
 func TestSetToolAccessRefusesBlindWrite(t *testing.T) {
 	cases := map[string]string{
-		"未知tools键":  `{"version":1,"tools":{"envcheck":true,"portkill":true}}`,
+		// portkill 已入九键白名单（不再是未知键样本）——未知键样本换 format_disk。
+		"未知tools键":  `{"version":1,"tools":{"envcheck":true,"format_disk":true}}`,
 		"未知顶层字段":    `{"version":1,"tools":{"envcheck":true},"extra":1}`,
 		"version为2": `{"version":2,"tools":{"envcheck":true}}`,
 		"缺tools对象":  `{"version":1}`,
@@ -126,7 +181,7 @@ func TestSetToolAccessRefusesBlindWrite(t *testing.T) {
 
 func TestResetAccessBacksUpAndRewritesAllOff(t *testing.T) {
 	svc, _ := newTestService(t, nil)
-	corrupt := `{"version":1,"tools":{"envcheck":true,"portkill":true}}`
+	corrupt := `{"version":1,"tools":{"envcheck":true,"format_disk":true}}` // 未知键档（portkill 入册后须换样本）
 	writeFile(t, svc.accessPath, corrupt)
 
 	res, err := svc.ResetAccess()

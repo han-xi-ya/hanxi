@@ -4,7 +4,7 @@
 
 /**
  * AccessInfo access.json 的读方视角呈现：Tools 恒等于 MCP 读者此刻的采信结果
- * （缺文件/损坏/超纲都呈现为八 false——读者 fail-closed 语义），不呈现读者不认的
+ * （缺文件/损坏/超纲都呈现为九 false——读者 fail-closed 语义），不呈现读者不认的
  * "字面值"。写入口在本分区（SetToolAccess/ResetAccess，R6）。
  * @typedef {Object} AccessInfo
  * @property {string} path
@@ -16,8 +16,12 @@
  */
 
 /**
- * AccessTools 授权八开关（PLAN §6 固定键名 + N32/N34 扩充批 + AI 接入批扫描族
- * portscan/lan；与 Go 侧 mcpwizard.AccessTools 手工同步，勿待再生成）。
+ * AccessTools 授权九开关（PLAN §6 固定键名 + N32/N34 扩充批 + AI 接入批扫描族
+ * portscan/lan + 端口查杀批 portkill；与 Go 侧 mcpwizard.AccessTools 手工同步，
+ * 勿待再生成——沿 b9f7fec/8511992 前例，bindings 再生窗口未到）。
+ * portkill 是破坏族键：AiSection 面板刻意不为其呈现开关行（基建既定决策，
+ * 开启=机主手动 access.json+destructive.json 两文件），字段在册仅供总览
+ * 如实回显与写侧 round-trip 不吞键。
  * @typedef {Object} AccessTools
  * @property {boolean} envcheck
  * @property {boolean} everything
@@ -27,6 +31,7 @@
  * @property {boolean} logs
  * @property {boolean} portscan
  * @property {boolean} lan
+ * @property {boolean} portkill
  */
 
 /**

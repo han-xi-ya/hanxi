@@ -4,9 +4,11 @@ package mcpwizard
 //
 // 写方（本包 access_write.go）与读方（internal/mcp/access.go，领地只读）各自持有
 // 一套严格规则；本测试不用任何 mock，直接以真读方 mcp.Access 解析写方落盘的字节：
-// 八键 true/false 全矩阵（2^8=256 组合，契约自四键→六键→八键逐批扩量）逐键核对语义
-// 一致，另核"保存即生效"（同一 Access 实例在写方改档后立刻翻转）与拒绝形态的双侧
-// 同判。读方规则若有漂移（新加拒读条件/键集变化），这里第一时间红。
+// 九键 true/false 全矩阵（2^9=512 组合，契约自四键→六键→八键→九键逐批扩量、
+// 随 len(accessToolKeys) 自适应）逐键核对语义一致，另核"保存即生效"（同一 Access
+// 实例在写方改档后立刻翻转）与拒绝形态的双侧同判。读方规则若有漂移（新加拒读
+// 条件/键集变化），这里第一时间红。portkill 键自端口查杀批入矩阵：写侧整档回写
+// 不吞破坏族键值由矩阵 + access_write_test 专门 round-trip 双重钉死。
 //
 // 边界豁免说明（包注释）：仅测试文件 import internal/mcp，生产编译依赖图不变。
 
@@ -72,7 +74,8 @@ func TestWriterBytesPassStrictReaderMatrix(t *testing.T) {
 func TestStrictLoaderAgreesWithReaderRejections(t *testing.T) {
 	rejected := []string{
 		`{"version":2,"tools":{"envcheck":true}}`,
-		`{"version":1,"tools":{"envcheck":true,"portkill":true}}`,
+		// portkill 已入九键白名单，不再是未知键样本——换 destructive 侧同款假想键。
+		`{"version":1,"tools":{"envcheck":true,"format_disk":true}}`,
 		`{"version":1,"tools":{"envcheck":true},"future":"x"}`,
 		`{"version":1}`,
 		`{broken`,

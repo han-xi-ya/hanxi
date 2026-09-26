@@ -84,9 +84,13 @@ type ClientState struct {
 	InstalledAt  string `json:"installedAt"`
 }
 
-// AccessTools 授权八开关（PLAN §6 固定键名 + N32/N34 扩充批 + AI 接入批扫描族
-// portscan/lan）。扫描键授权的是"有界主动网络探测"（见 internal/mcp/tools_scan.go
-// 的收口口径），与纯查询工具分键、默认关。
+// AccessTools 授权九开关（PLAN §6 固定键名 + N32/N34 扩充批 + AI 接入批扫描族
+// portscan/lan + 端口查杀批 portkill）。扫描键授权的是"有界主动网络探测"（见
+// internal/mcp/tools_scan.go 的收口口径），与纯查询工具分键、默认关。
+// Portkill 是破坏族授权键（MCP 四道闸之 A1）：**「设置 → AI 接入」面板刻意不
+// 为它呈现开关行**（基建既定决策——破坏性键不进逐键 UI 防误操作，开启=机主
+// 手动 access.json+destructive.json 两文件），但字段在册：总览呈现要如实反映
+// 读者采信结果，且整档回写的 round-trip 依赖它不吞键。
 type AccessTools struct {
 	Envcheck   bool `json:"envcheck"`
 	Everything bool `json:"everything"`
@@ -96,10 +100,11 @@ type AccessTools struct {
 	Logs       bool `json:"logs"`
 	Portscan   bool `json:"portscan"`
 	Lan        bool `json:"lan"`
+	Portkill   bool `json:"portkill"`
 }
 
 // AccessInfo access.json 的读方视角呈现：Tools 恒等于 MCP 读者此刻的采信结果
-// （缺文件/损坏/超纲都呈现为八 false——读者 fail-closed 语义），不呈现读者不认的
+// （缺文件/损坏/超纲都呈现为九 false——读者 fail-closed 语义），不呈现读者不认的
 // "字面值"。写入口在本分区（SetToolAccess/ResetAccess，R6）。
 type AccessInfo struct {
 	Path     string      `json:"path"`
@@ -240,8 +245,8 @@ func (s *McpWizardService) ConfirmUninstall(clientID, token string) (OpResult, e
 	return s.confirm(clientID, token, true)
 }
 
-// GetAccessOverview 单独刷新授权总览（R6）：八键当前态按读方视角即时重读盘呈现，
-// 缺文件 = 八 false 的合法默认态。授权文件 ≤16 KiB，读放大无虞。
+// GetAccessOverview 单独刷新授权总览（R6）：九键当前态按读方视角即时重读盘呈现，
+// 缺文件 = 九 false 的合法默认态。授权文件 ≤16 KiB，读放大无虞。
 func (s *McpWizardService) GetAccessOverview() (AccessInfo, error) {
 	return s.accessInfo(), nil
 }
@@ -493,8 +498,8 @@ func rollbackWord(rolled bool, bak string) string {
 // —— access.json 读方视角呈现 ——
 
 // accessInfo 按读方严格规则（strictLoadAccess，与 internal/mcp/access.go 同款判定）
-// 呈现"读者此刻看到什么"：采信→真实八键；不采信（损坏/超纲/未知键/版本≠1）或
-// 缺文件→八 false。呈现与判定永不分家，杜绝"界面显示已授权、读者实际全拒"的口径裂缝。
+// 呈现"读者此刻看到什么"：采信→真实九键；不采信（损坏/超纲/未知键/版本≠1）或
+// 缺文件→九 false。呈现与判定永不分家，杜绝"界面显示已授权、读者实际全拒"的口径裂缝。
 func (s *McpWizardService) accessInfo() AccessInfo {
 	st := strictLoadAccess(s.accessPath)
 	info := AccessInfo{Path: s.accessPath, Exists: st.exists}
@@ -516,6 +521,7 @@ func (s *McpWizardService) accessInfo() AccessInfo {
 			Logs:       st.tools["logs"],
 			Portscan:   st.tools["portscan"],
 			Lan:        st.tools["lan"],
+			Portkill:   st.tools["portkill"],
 		}
 	}
 	return info
