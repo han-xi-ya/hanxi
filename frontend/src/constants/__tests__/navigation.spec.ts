@@ -20,8 +20,8 @@ const frontendModules = () => Object.entries(ROUTES)
   .sort()
 
 describe('constants/navigation', () => {
-  it('登记了全部 58 条路由（含设置页 8 个分区子路由与模块中心）', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(58)
+  it('登记了全部 60 条路由（含设置页 8 个分区子路由与模块中心）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(60)
     for (const route of ['/', '/modules', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard']) {
       expect(ROUTES[route]).toBeDefined()
     }

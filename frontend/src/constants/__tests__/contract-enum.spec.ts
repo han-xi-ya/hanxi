@@ -5,7 +5,7 @@
 //     == status.ts 各词表的键全集——前端展示词汇与绑定枚举逐值对齐；
 //  2. internal/extapi/catalog.go 的 const 值全集 == bindings enum 值全集——
 //     防止"重新生成绑定时遗漏/改名/手改产物"造成的 Go→TS 漂移；
-//  3. scripts/fixture 基线：module_catalog.json（schema==1、45 项）与
+//  3. scripts/fixture 基线：module_catalog.json（schema==1、47 项）与
 //     composition_contract.json 的 app/appservice.js 关键导出可见性。
 //
 // 纪律：bindings 为生成物，发现问题改 Go 源或重跑生成，绝不在本 spec 迁就产物；
@@ -111,9 +111,9 @@ describe('catalog.go 常量与 bindings enum 值一致（Go→TS 单向锁）', 
 // ── 第 3 层：fixture 基线 ──
 
 describe('module_catalog.json 契约基线', () => {
-  it('顶层 schema==1 且共 45 个模块项', () => {
+  it('顶层 schema==1 且共 47 个模块项', () => {
     expect(moduleCatalog.schema).toBe(1)
-    expect(moduleCatalog.items).toHaveLength(45)
+    expect(moduleCatalog.items).toHaveLength(47)
   })
 
   it('每个模块项的 deliveryKind/entrypoints 取值均落在 bindings 枚举值集内', () => {

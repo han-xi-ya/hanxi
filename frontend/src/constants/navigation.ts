@@ -81,6 +81,8 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/douzy': { component: defineAsyncComponent(() => import('@/views/DouzyView.vue')), moduleId: 'douzy' },
   '/ext/windterm': { component: defineAsyncComponent(() => import('@/views/WindTermView.vue')), moduleId: 'windterm' },
   '/ext/termora': { component: defineAsyncComponent(() => import('@/views/TermoraView.vue')), moduleId: 'termora' },
+  '/ext/gonavi': { component: defineAsyncComponent(() => import('@/views/GoNaviView.vue')), moduleId: 'gonavi' },
+  '/ext/dbx': { component: defineAsyncComponent(() => import('@/views/DbxView.vue')), moduleId: 'dbx' },
   '/ext/sysinfo': { component: defineAsyncComponent(() => import('@/views/SysInfoView.vue')), moduleId: 'sysinfo' },
   '/ext/rammap': { component: defineAsyncComponent(() => import('@/views/RAMMapView.vue')), moduleId: 'rammap' },
   '/ext/ocr': { component: defineAsyncComponent(() => import('@/views/OcrView.vue')), moduleId: 'ocr' },
@@ -224,6 +226,8 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   rammap: 'system',
   windterm: 'developer',
   termora: 'developer',
+  gonavi: 'developer',
+  dbx: 'developer',
   wsl: 'developer',
 }
 
@@ -278,6 +282,8 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   paseo: { icon: 'app:paseo', route: '/ext/paseo' },
   windterm: { icon: 'app:windterm', route: '/ext/windterm' },
   termora: { icon: 'app:termora', route: '/ext/termora' },
+  gonavi: { icon: 'i:database', route: '/ext/gonavi' },
+  dbx: { icon: 'i:server', route: '/ext/dbx' },
   sysinfo: { icon: 'i:cpu', route: '/ext/sysinfo' },
   rammap: { icon: 'rt:rammap|i:gauge', route: '/ext/rammap' },
   douzy: { icon: 'app:douzy', route: '/ext/douzy' },
