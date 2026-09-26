@@ -32,6 +32,108 @@ func TestParseDownloadPage(t *testing.T) {
 	}
 }
 
+// 与真实下载页同构：当前版钮链+历史表重复行+跨平台变体+Beta 双线+截断版号
+// 陷阱+非官方域+校验附属件——资产命名全部取自 2026-09-26 官网实测 href。
+const fakeMatrixPage = `
+<a href="https://download.snipaste.com/archives/Snipaste-2.11.3-x64.zip" title="Snipaste-2.11.3-x64.zip">64-bit</a>
+<a href="https://download.snipaste.com/archives/Snipaste-2.11.3.dmg" title="Snipaste-2.11.3.dmg">Universal</a>
+<a href="https://download.snipaste.com/archives/Snipaste-2.11.3-x86_64.AppImage" title="Snipaste-2.11.3-x86_64.AppImage">AppImage</a>
+<tr><td><a href="https://download.snipaste.com/archives/Snipaste-2.11.3-x64.zip">x64</a></td>
+<td><a href="https://download.snipaste.com/archives/Snipaste-2.11.3-x86.zip">x86</a></td>
+<td><a href="https://download.snipaste.com/archives/Snipaste-2.11.3-arm64.zip">ARM64</a></td></tr>
+<a href="https://download.snipaste.com/archives/Snipaste-2.11.3.sha1">sha-1 附属件</a>
+<a href="https://evil.example/archives/Snipaste-2.11.3-mac.zip">非官方域同名陷阱</a>
+<a href="https://download.snipaste.com/archives/Snipaste-2.11.3-Beta-x64.zip">beta64</a>
+<a href="https://download.snipaste.com/archives/Snipaste-2.11.3-Beta.dmg">betamac</a>
+<a href="https://download.snipaste.com/archives/Snipaste-2.11-x64.zip">截断版号</a>
+<a href="https://download.snipaste.com/archives/Snipaste-1.16.2-x64.zip">v1 x64</a>
+<a href="https://download.snipaste.com/archives/Snipaste-1.16.2-x86.zip">v1 x86</a>
+<a href="https://download.snipaste.com/archives/Snipaste-1.16.2-XP.zip">v1 xp</a>`
+
+// assertMatrix 校验一条槽位注记：Label→平台/形态期望表逐条命中、不多不少、
+// 无重复，Managed 高亮恰一（等于本槽 chosen）。
+func assertMatrix(t *testing.T, rel SnipasteRelease, want map[string][2]string) {
+	t.Helper()
+	if len(rel.Assets) != len(want) {
+		t.Fatalf("槽位 %s 注记数 %d，期望 %d: %+v", rel.Version, len(rel.Assets), len(want), rel.Assets)
+	}
+	seen := map[string]bool{}
+	managed := 0
+	for _, n := range rel.Assets {
+		exp, ok := want[n.Label]
+		if !ok {
+			t.Errorf("槽位 %s 意外资产（去重/边界/域名/附属件闸门失效？）: %s", rel.Version, n.Label)
+			continue
+		}
+		if seen[n.Label] {
+			t.Errorf("资产重复（去重失效）: %s", n.Label)
+		}
+		seen[n.Label] = true
+		if string(n.Platform) != exp[0] {
+			t.Errorf("资产 %s 平台 %s，期望 %s", n.Label, n.Platform, exp[0])
+		}
+		if string(n.Form) != exp[1] {
+			t.Errorf("资产 %s 形态 %s，期望 %s", n.Label, n.Form, exp[1])
+		}
+		if expManaged := n.Label == rel.AssetName; n.Managed != expManaged {
+			t.Errorf("资产 %s Managed=%v，期望 %v", n.Label, n.Managed, expManaged)
+		}
+		if n.Managed {
+			managed++
+		}
+	}
+	if managed != 1 {
+		t.Errorf("槽位 %s Managed 高亮位应恰 1 条，实际 %d", rel.Version, managed)
+	}
+}
+
+// TestReleaseAssetsMatrix N13 形态矩阵：官网 archives 页每版实测最多 5 资产
+// （x86/x64/arm64 zip + dmg + AppImage），zip 整族直判 Windows 便携（win-arm64
+// 频道 302 落 -arm64.zip 实证），dmg/AppImage 交 Classify 判 mac 安装器/linux
+// 便携；.sha1 附属件、非官方域同名、Beta/stable 同前缀互斥、截断版号（"2.11"
+// 不得认领 "Snipaste-2.11.3-x64.zip"）四类噪声全部拒入。
+func TestReleaseAssetsMatrix(t *testing.T) {
+	list := parseDownloadPage(fakeMatrixPage, downloadsPageURL)
+	byVersion := map[string]SnipasteRelease{}
+	for _, rel := range list {
+		byVersion[rel.Version] = rel
+	}
+	if len(list) != 4 {
+		t.Fatalf("期望 4 槽位（2.11.3 / 2.11.3-Beta / 2.11 / 1.16.2），实际 %d: %+v", len(list), list)
+	}
+
+	assertMatrix(t, byVersion["2.11.3"], map[string][2]string{
+		"Snipaste-2.11.3-x64.zip":         {"windows", "portable"}, // 托管所选，高亮恰一
+		"Snipaste-2.11.3-x86.zip":         {"windows", "portable"},
+		"Snipaste-2.11.3-arm64.zip":       {"windows", "portable"},
+		"Snipaste-2.11.3.dmg":             {"macos", "installer"},
+		"Snipaste-2.11.3-x86_64.AppImage": {"linux", "portable"},
+	})
+	assertMatrix(t, byVersion["2.11.3-Beta"], map[string][2]string{
+		"Snipaste-2.11.3-Beta-x64.zip": {"windows", "portable"}, // Beta 槽 own chosen
+		"Snipaste-2.11.3-Beta.dmg":     {"macos", "installer"},
+	})
+	assertMatrix(t, byVersion["2.11"], map[string][2]string{
+		"Snipaste-2.11-x64.zip": {"windows", "portable"}, // 仅本名，".3-x64.zip" 被截断串槽闸拒收
+	})
+	assertMatrix(t, byVersion["1.16.2"], map[string][2]string{
+		"Snipaste-1.16.2-x64.zip": {"windows", "portable"},
+		"Snipaste-1.16.2-x86.zip": {"windows", "portable"},
+		"Snipaste-1.16.2-XP.zip":  {"windows", "portable"}, // XP 变体同走 arch 后缀约定
+	})
+
+	// stable 槽不认领 Beta 命名变体；.sha1 附属件与非官方域同名均被闸掉
+	for _, n := range byVersion["2.11.3"].Assets {
+		lower := strings.ToLower(n.Label)
+		if strings.Contains(lower, "beta") {
+			t.Errorf("stable 槽混入 Beta 变体: %s", n.Label)
+		}
+		if strings.HasSuffix(lower, ".sha1") || strings.Contains(lower, "mac.zip") {
+			t.Errorf("噪声条目漏网（附属件/域名闸失效）: %s", n.Label)
+		}
+	}
+}
+
 func TestFindHashInManifest(t *testing.T) {
 	manifest := "850bd133114a6b24156d19e41a06f057555b21b5 *Snipaste-2.11.3-x64.zip\n" +
 		"bf69d62c6198296153766d16ea83c94b2443dd1f *Snipaste-2.11.3-x86.zip\n"

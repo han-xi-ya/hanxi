@@ -14,6 +14,8 @@ type SnipasteRelease struct {
 	OfficialHash  string `json:"officialHash"`
 	HashAlgorithm string `json:"hashAlgorithm"`
 	Stale         bool   `json:"stale"`
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
 	// portable——官网 archives 下 Snipaste-X.Y.Z-x64.zip 即"免安装版"（解压
 	// 即用）；资产名无便携字样，机械判名 Classify 保守降为 archive，形态以

@@ -16,6 +16,7 @@ import (
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/product"
 
+	"hanxi/packages/go/hostfeed"
 	"hanxi/packages/go/netx"
 )
 
@@ -38,6 +39,9 @@ var (
 	sha1EntryRe   = regexp.MustCompile(`(?im)^([0-9a-f]{40})\s+\*?([^\r\n]+?)\s*$`)
 	dateNearRe    = regexp.MustCompile(`(?i)(20\d{2}[-/.]\d{1,2}[-/.]\d{1,2})`)
 	versionNameRe = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)+(?:-Beta[0-9]*)?$`)
+	// archiveNameRe 抓取下载页 archives 目录下全部发布物直链（href + 文件名两段），
+	// 供 notesOf 投影展示矩阵——托管槽位判据仍只认 assetLinkRe 的 x64 zip。
+	archiveNameRe = regexp.MustCompile(`(?i)href=["']([^"']*/archives/([^"'<>?#]+))["']`)
 )
 
 // OfficialSiteURL 返回前端展示和打开的官方站点地址。
@@ -128,7 +132,8 @@ func (s remoteSource) fetchRemote() ([]SnipasteRelease, error) {
 	return list, nil
 }
 
-// parseDownloadPage 只接受官网 archives 下严格命名的 Windows x64 zip。
+// parseDownloadPage 只接受官网 archives 下严格命名的 Windows x64 zip 作托管
+// 槽位；同版本其余平台/架构变体经 notesOf 投影为展示矩阵（N13，选包判据不变）。
 func parseDownloadPage(body, baseURL string) []SnipasteRelease {
 	matches := assetLinkRe.FindAllStringSubmatch(body, -1)
 	seen := make(map[string]bool, len(matches))
@@ -153,6 +158,7 @@ func parseDownloadPage(body, baseURL string) []SnipasteRelease {
 			IsPre:     strings.Contains(strings.ToLower(version), "beta"),
 			AssetName: assetName,
 			AssetURL:  assetURL,
+			Assets:    notesOf(body, baseURL, version, assetName),
 		})
 	}
 	sort.SliceStable(list, func(i, j int) bool {
@@ -162,6 +168,64 @@ func parseDownloadPage(body, baseURL string) []SnipasteRelease {
 		return versioncmp.Compare(list[i].Version, list[j].Version) > 0
 	})
 	return list
+}
+
+// notesOf 该版本全资产平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+// 判据两处偏离共享 hostfeed.Classify，皆为本产品实证：
+//   - zip 整族直判 Windows 便携——官网归档名走 arch 后缀约定（-x86/-x64/
+//     -arm64/-XP），无 win 字样，按文件名推断会整族降级 other/archive；
+//     实测下载频道 dl.snipaste.com/win-arm64 302 即落 -arm64.zip，zip 归档
+//     仅存世于 Windows 通道（mac 发 .dmg、Linux 发 .AppImage），形态即页面
+//     自述"免安装版"（解压直用，与托管安装链及 Form 字段注释同一事实）；
+//   - 其余归档（.dmg/.AppImage 等）交 Classify 原生判型（mac 安装器/
+//     linux 便携），词表外新形态宁降级不入矩阵，不猜标。
+//
+// 域名信任与托管槽位同一判据（isOfficialAssetURL）：非官方主机的同名资产
+// 不得混入矩阵；校验附属件（官方 sha-1 家族）过滤。
+func notesOf(body, baseURL, version, chosen string) []hostfeed.AssetNote {
+	prefix := "Snipaste-" + version
+	lowerVersion := strings.ToLower(version)
+	var out []hostfeed.AssetNote
+	seen := map[string]bool{}
+	for _, m := range archiveNameRe.FindAllStringSubmatch(body, -1) {
+		name := m[2]
+		if seen[name] || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		rest := strings.ToLower(name[len(prefix):])
+		if !strings.HasPrefix(rest, "-") && !strings.HasPrefix(rest, ".") {
+			continue // 前缀相同但边界不符（Beta/Beta1 同族变体不互串槽位）
+		}
+		if strings.HasPrefix(rest, ".") && strings.Contains(rest[1:], ".") {
+			continue // 截断版本号串槽：形如 "2.11" 不得认领 "Snipaste-2.11.3-x64.zip"
+		}
+		if !strings.Contains(lowerVersion, "beta") && strings.HasPrefix(rest, "-beta") {
+			continue // stable 槽位不认领 Beta 命名变体（官网两线同前缀并列）
+		}
+		if href, err := resolveURL(baseURL, html.UnescapeString(m[1])); err != nil || !isOfficialAssetURL(href) {
+			continue
+		}
+		seen[name] = true
+		lower := strings.ToLower(name)
+		if hostfeed.IsMetadata(name) || strings.HasSuffix(lower, ".sha1") {
+			continue // 校验附属件是清单类，非发布物
+		}
+		var platform hostfeed.Platform
+		var form hostfeed.Form
+		if strings.HasSuffix(lower, ".zip") {
+			platform, form = hostfeed.PlatformWindows, hostfeed.FormPortable
+		} else {
+			platform, form = hostfeed.Classify(name)
+			if platform == hostfeed.PlatformOther || form == hostfeed.FormMeta {
+				continue
+			}
+		}
+		out = append(out, hostfeed.AssetNote{
+			Platform: platform, Form: form, Label: name,
+			Managed: strings.EqualFold(name, chosen),
+		})
+	}
+	return out
 }
 
 func findNearbyDate(body, linkHTML string) string {
