@@ -2,7 +2,8 @@
 // Windows MSI 下载（官方 sha256 校验）、msiexec 管理提取安装、隔离目录管理与本地导入。
 //
 // 上游 v2 正式版线只提供 .msi 安装包（唯一的 zip 便携资产停留在两年前的
-// v2.0.0a3 预发布），与 piclite 同款处境，故复用 msiexec /a 管理提取路线。
+// v2.0.0a3 预发布），故复用 msiexec /a 管理提取路线（piclite 同链路，但
+// 其上游现行已发 Windows 便携 zip，两家处境已不同，见其包注）。
 package version
 
 import "hanxi/packages/go/hostfeed"
@@ -19,7 +20,15 @@ type KeyvizRelease struct {
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// installer——上游 v2 正式版线 win 侧只有 keyviz_<ver>_windows.msi；
+	// 机械判名 Classify 按 .msi 扩展归 package，形态以选包判据（findMSIAsset）
+	// 与安装链事实（msiexec /a 管理提取免安装化）自证为准。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormInstaller
 
 // KeyvizVersionInfo 本地已安装的 Keyviz 版本信息。
 type KeyvizVersionInfo struct {

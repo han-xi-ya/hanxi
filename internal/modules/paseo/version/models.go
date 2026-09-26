@@ -30,7 +30,16 @@ type PaseoRelease struct {
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// portable——findZipAsset 判据收 electron-builder win zip target 产物，
+	// 解压即运行、无注册表卸载语义。诚实边界：资产名 "Setup" 只是上游
+	// artifactName 模板字样，机械判名 Classify 据此误标 installer，形态以
+	// 安装链代码取证（解包直启、与并列 NSIS .exe 两条腿）为准。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormPortable
 
 // PaseoVersionInfo 本地已安装的 Paseo 版本信息（一个版本目录一条）。
 type PaseoVersionInfo struct {

@@ -103,8 +103,10 @@ func fetchJSON(urls []string) ([]byte, error) {
 }
 
 // findMSIAsset 从 release 资产中筛选 Windows x64 MSI 安装包。
-// PicLite 上游不发便携 zip：NSIS -setup.exe 是 perMachine 安装器（需提权、写卸载
-// 注册表），只有 Tauri WiX 的 MSI 能走 msiexec /a 管理提取免安装拆解。
+// 注（2026-09-26 N13 乙组实证）：上游自 v1.8.6 起已并发 Windows portable zip，旧注释
+// "不发便携 zip"过时；现选包判据仍取 MSI 走 msiexec /a 管理提取免安装拆解（NSIS
+// -setup.exe 是 perMachine 安装器需提权不选）。切换到便携 zip 可去 msiexec 依赖，
+// 属选包判据变更的产品决策，登记待裁未擅动。
 // 资产名恒为 PicLite_<ver>_x64_en-US.msi，精确形状天然排除 arm64 msi /
 // *-setup.exe / dmg / deb / AppImage。
 func findMSIAsset(assets []asset, version string) (asset, bool) {

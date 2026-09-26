@@ -23,7 +23,15 @@ type QuickLookRelease struct {
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// portable——findPortableAsset 判据恒收 QuickLook-<ver>.zip（五资产并列
+	// 中唯一免安装便携包，portable.lock 在场）；资产名无便携字样，机械判名
+	// Classify 保守降为 archive，形态以实测布局与安装链事实自证为准。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormPortable
 
 // QuickLookVersionInfo 本地已安装的 QuickLook 版本信息。
 type QuickLookVersionInfo struct {

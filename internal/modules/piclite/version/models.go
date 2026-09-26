@@ -6,8 +6,10 @@ import "hanxi/packages/go/hostfeed"
 
 // PicRelease 远程 GitHub Release 中可用的 PicLite Windows x64 MSI 安装包。
 // SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验的第一依据）。
-// 注意：上游不提供便携 zip，MSI 是唯一免管理员可拆解的资产形态
-// （-setup.exe 为 perMachine NSIS，需要提权且写卸载注册表，不可用于托管）。
+// 注意：MSI 是本包收口的唯一免管理员可拆解资产形态（-setup.exe 为
+// perMachine NSIS，需要提权且写卸载注册表，不可用于托管）；上游现行
+// release 已并发 PicLite-Windows-<arch>-portable.zip（2026-09-23 底账
+// 实证），选包判据未变，便携线现状以 Assets 矩阵如实展示。
 type PicRelease struct {
 	Version   string `json:"version"`   // 如 v1.4.1
 	Published string `json:"published"` // 发布时间（RFC3339）
@@ -18,7 +20,15 @@ type PicRelease struct {
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// installer——findMSIAsset 判据恒收 PicLite_<ver>_x64_en-US.msi；机械判名
+	// Classify 按 .msi 扩展归 package，形态以选包判据与安装链事实
+	// （msiexec /a 管理提取免安装化）自证为准。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormInstaller
 
 // PicVersionInfo 本地已安装的 PicLite 版本信息。
 // 有效载荷即单 exe（Tauri 静态链接，配置恒在 %APPDATA%\com.piclite.desktop，

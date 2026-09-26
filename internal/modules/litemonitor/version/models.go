@@ -22,7 +22,16 @@ type LMRelease struct {
 	SHA256    string `json:"sha256"`    // 官方 sha256（digest 去掉前缀）
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// portable——remote.go findPortableAsset 只收上游 win 线唯一的
+	// LiteMonitor_<ver>-win-x64.zip 便携归档（无安装器变体），解包隔离目录
+	// 直启；资产名无 portable 字样，机械判名 Classify 保守降为 archive，
+	// 形态以托管安装链事实自证为准。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormPortable
 
 // LMVersionInfo 本地已安装的 LiteMonitor 版本信息。
 type LMVersionInfo struct {
