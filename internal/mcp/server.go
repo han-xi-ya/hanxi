@@ -17,14 +17,18 @@ import (
 const maxPayloadBytes = 1 << 20
 
 // 工具英文名（决策 7：英文名 + 中文 description，PLAN §8-7 示例形态 hanxi_xxx）。
-// 契约扩充批（N32/N34 2026-09-24）加至六件：access.json 键与工具名一一对应。
+// 契约扩充批（N32/N34 2026-09-24）加至六件；N16 C 批（2026-09-26）便签族加
+// hanxi_memo_stats 至七件——access.json 六键契约冻结（写方恰六键、读方未知键
+// 整体拒读），新工具挂既有 memo 键：授权粒度=模块，memo 开关同时放行检索与统计，
+// 撤权同样一并生效（fail-closed 语义不因工具族扩充而稀释）。
 const (
-	toolEnvCheck = "hanxi_envcheck_detect"
-	toolSearch   = "hanxi_file_search"
-	toolOCR      = "hanxi_ocr_recognize"
-	toolMemo     = "hanxi_memo_search"
-	toolSysInfo  = "hanxi_sysinfo_report"
-	toolLogs     = "hanxi_log_read"
+	toolEnvCheck  = "hanxi_envcheck_detect"
+	toolSearch    = "hanxi_file_search"
+	toolOCR       = "hanxi_ocr_recognize"
+	toolMemo      = "hanxi_memo_search"
+	toolMemoStats = "hanxi_memo_stats"
+	toolSysInfo   = "hanxi_sysinfo_report"
+	toolLogs      = "hanxi_log_read"
 )
 
 // accessKeyLogs 是 logs 工具的授权键（无同名业务模块，registryGate 据此放行空门）。
@@ -38,7 +42,7 @@ type Deps struct {
 	EnvCheck EnvChecker   // hanxi_envcheck_detect 后端
 	Search   Searcher     // hanxi_file_search 后端（严格只读档）
 	OCR      Recognizer   // hanxi_ocr_recognize 后端
-	Memo     MemoSource   // hanxi_memo_search 后端（零落盘直读）
+	Memo     MemoSource   // 便签族后端（零落盘直读，memo_search 与 memo_stats 共用）
 	SysInfo  ReportSource // hanxi_sysinfo_report 后端（N32，与 GUI 同一 service）
 	Logs     LogTailer    // hanxi_log_read 后端（N34，只读 tail 按天日志）
 }
@@ -85,7 +89,8 @@ var knownModuleIDs = map[string]bool{
 	"logs":       true,
 }
 
-// toolDefs 全量工具面（首版四件 PLAN_MCP C1-C5 收口；扩充批 +sysinfo/logs 至六件）。
+// toolDefs 全量工具面（首版四件 PLAN_MCP C1-C5 收口；扩充批 +sysinfo/logs 至六件；
+// N16 C 批便签族 +memo_stats 至七件）。授权键仍六枚（memo 键下两件只读工具）。
 // 注册顺序即 tools/list 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"
 // 红线审（包注释纪律 1），并同步 knownModuleIDs 与 guards_test.go 的名称白名单。
 var toolDefs = []toolDef{
@@ -93,6 +98,7 @@ var toolDefs = []toolDef{
 	{Name: toolSearch, ModuleID: "everything", Build: buildEverythingTool},
 	{Name: toolOCR, ModuleID: "ocr", Build: buildOcrTool},
 	{Name: toolMemo, ModuleID: "memo", Build: buildMemoTool},
+	{Name: toolMemoStats, ModuleID: "memo", Build: buildMemoStatsTool},
 	{Name: toolSysInfo, ModuleID: "sysinfo", Build: buildSysInfoTool},
 	{Name: toolLogs, ModuleID: accessKeyLogs, Build: buildLogsTool},
 }

@@ -194,8 +194,9 @@ func TestUnauthorizedFailClosed(t *testing.T) {
 	}
 }
 
-// TestAllToolsUnauthorizedMatrix 全工具 fail-closed 矩阵：无授权文件时六件工具
+// TestAllToolsUnauthorizedMatrix 全工具 fail-closed 矩阵：无授权文件时全部工具
 // 逐一调用都必须指引错误且各自后端零触发（撤权=即时生效已由 access 层单测保证）。
+// 便签族两件同键——memo 未授权时检索与统计都必须拦住。
 func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	deps, _, env := newTestServer(t)
 	fs := &fakeSearcher{}
@@ -214,6 +215,7 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 		{toolSearch, map[string]any{"query": "x"}},
 		{toolOCR, map[string]any{"path": `C:\a.png`}},
 		{toolMemo, nil},
+		{toolMemoStats, nil},
 		{toolSysInfo, nil},
 		{toolLogs, nil},
 	} {

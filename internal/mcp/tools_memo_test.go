@@ -278,3 +278,192 @@ func TestMemoDescriptionHonesty(t *testing.T) {
 		}
 	}
 }
+
+// ---------- N16 C 批：时间窗检索与统计工具 ----------
+
+type memoStatsEnvelope struct {
+	TotalCount    int `json:"totalCount"`
+	PinnedCount   int `json:"pinnedCount"`
+	DistinctTags  int `json:"distinctTags"`
+	TagsTruncated bool
+	Tags          []struct {
+		Tag   string `json:"tag"`
+		Count int    `json:"count"`
+	} `json:"tagCloud"`
+	OldestUpdatedAt string `json:"oldestUpdatedAt"`
+	NewestUpdatedAt string `json:"newestUpdatedAt"`
+}
+
+func memoStats(t *testing.T, c *client.Client, args map[string]any) (*memoStatsEnvelope, string) {
+	t.Helper()
+	res, text := callText(t, c, toolMemoStats, args)
+	if res.IsError {
+		t.Fatalf("unexpected memo stats error: %s", text)
+	}
+	var env memoStatsEnvelope
+	if err := json.Unmarshal([]byte(text), &env); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, text)
+	}
+	return &env, text
+}
+
+// TestMemoTimeWindow since/until 按更新时间过滤：RFC3339 字面时刻、
+// 纯日期按本机时区且 until 含全天；非法格式 fail-loud 指引不静默放行。
+func TestMemoTimeWindow(t *testing.T) {
+	// 钉本机时区的确定时刻，避开 UTC/本地解释漂移（date-only 语义的验收点）。
+	day1 := time.Date(2026, 9, 14, 23, 30, 0, 0, time.Local) // "前一天深夜"
+	day2Noon := time.Date(2026, 9, 15, 12, 0, 0, 0, time.Local)
+	day2Late := time.Date(2026, 9, 15, 23, 50, 0, 0, time.Local)
+	day3 := time.Date(2026, 9, 16, 1, 0, 0, 0, time.Local)
+	src := &fakeMemo{items: []memo.MemoItem{
+		mkItem("d1", "前一天深夜", "x", false, nil, day1),
+		mkItem("d2a", "当日中午", "x", false, nil, day2Noon),
+		mkItem("d2b", "当日深夜", "x", false, nil, day2Late),
+		mkItem("d3", "次日凌晨", "x", false, nil, day3),
+	}}
+	c := memoSetup(t, src)
+
+	env, _ := memoSearch(t, c, map[string]any{"since": "2026-09-15", "until": "2026-09-15"})
+	if env.Count != 2 || env.Results[0].ID != "d2b" || env.Results[1].ID != "d2a" {
+		t.Fatalf("date-only until must cover whole local day, desc order: %+v", env.Results)
+	}
+	env, _ = memoSearch(t, c, map[string]any{"since": day2Late.Format(time.RFC3339)})
+	if env.Count != 2 || env.Results[0].ID != "d3" || env.Results[1].ID != "d2b" {
+		t.Fatalf("RFC3339 since must be exact-instant lower bound: %+v", env.Results)
+	}
+	// until 取 d1 自身的 RFC3339 时刻（闭区间含 d1，d2a 之后）：不依赖本机时区偏移
+	env, _ = memoSearch(t, c, map[string]any{"until": day1.Format(time.RFC3339)})
+	if env.Count != 1 || env.Results[0].ID != "d1" {
+		t.Fatalf("RFC3339 until must be inclusive exact-instant upper bound: %+v", env.Results)
+	}
+	// 时间窗与 keyword/tag 条件取交集
+	env, _ = memoSearch(t, c, map[string]any{"since": "2026-09-16", "keyword": "凌晨"})
+	if env.Count != 1 || env.Results[0].ID != "d3" {
+		t.Fatalf("window must intersect with keyword: %+v", env.Results)
+	}
+}
+
+func TestMemoBadTimeParamFailsLoud(t *testing.T) {
+	c := memoSetup(t, &fakeMemo{items: []memo.MemoItem{
+		mkItem("a", "任意", "x", false, nil, time.Now()),
+	}})
+	for _, args := range []map[string]any{
+		{"since": "昨天"},
+		{"until": "2026/09/15"},
+		{"since": "2026-09-15T99:99:00Z"},
+	} {
+		res, text := callText(t, c, toolMemo, args)
+		if !res.IsError || !strings.Contains(text, "格式非法") {
+			t.Errorf("bad time param %v must guide, got: %s", args, text)
+		}
+	}
+	// 统计工具同款校验
+	res, text := callText(t, c, toolMemoStats, map[string]any{"since": "上周"})
+	if !res.IsError || !strings.Contains(text, "格式非法") {
+		t.Errorf("stats must validate same way, got: %s", text)
+	}
+}
+
+// TestMemoStatsAggregates 统计口径：非遮罩计数/置顶/标签云（补 # 归一、计数降序
+// 同数按名升序的确定性输出）/更新时间范围；时间窗参数生效。
+func TestMemoStatsAggregates(t *testing.T) {
+	// 截到秒：窗口边界经 RFC3339 格式化会丢亚秒位，闭区间等值断言需要对齐精度。
+	base := time.Now().Truncate(time.Second)
+	pinned := mkItem("p", "置顶条", "x", false, []string{"#SQL", "todo"}, base)
+	pinned.IsPinned = true
+	created := mkItem("c", "早创建晚更新", "x", false, []string{"sql"}, base) // 无 # 前缀 → 归一为 #sql
+	created.CreatedAt = base.Add(-72 * time.Hour)
+	src := &fakeMemo{items: []memo.MemoItem{
+		pinned,
+		created,
+		mkItem("q", "普通", "x", false, []string{"#todo"}, base.Add(-time.Hour)),
+		mkItem("m", "遮罩", "TOP_SECRET_STATS", true, []string{"#SecretTag"}, base.Add(time.Hour)),
+	}}
+	c := memoSetup(t, src)
+
+	env, raw := memoStats(t, c, map[string]any{})
+	if env.TotalCount != 3 || env.PinnedCount != 1 {
+		t.Fatalf("masked item must be excluded from counts: %+v", env)
+	}
+	if env.OldestUpdatedAt == "" || env.NewestUpdatedAt == "" {
+		t.Fatalf("updated range must be present: %+v", env)
+	}
+	// 标签云：#SQL(1) #todo(2, 含归一 todo) #sql(1)——"SQL" 与 "sql" 大小写敏感
+	// 对齐 GUI GetStats；计数降序：#todo=2 在前。
+	if env.DistinctTags != 3 {
+		t.Fatalf("tag cloud = %+v", env.Tags)
+	}
+	if env.Tags[0].Tag != "#todo" || env.Tags[0].Count != 2 {
+		t.Fatalf("tag cloud must normalize # and sort by count desc: %+v", env.Tags)
+	}
+	// 确定性：同库两次调用字节一致（map 无序漂移回归锚）。
+	_, raw2 := memoStats(t, c, map[string]any{})
+	if raw != raw2 {
+		t.Errorf("stats output must be deterministic: %s vs %s", raw, raw2)
+	}
+	// 时间窗收窄：只要 base 前一小时窗口内的
+	env, _ = memoStats(t, c, map[string]any{
+		"since": base.Add(-time.Hour).Format(time.RFC3339),
+		"until": base.Format(time.RFC3339),
+	})
+	if env.TotalCount != 3 { // pinned/created(=base)/q(base-1h) 都在闭区间内
+		t.Fatalf("window counts wrong: %+v", env)
+	}
+	env, _ = memoStats(t, c, map[string]any{"since": base.Add(time.Minute).Format(time.RFC3339)})
+	if env.TotalCount != 0 { // 只剩遮罩条在窗口内 → 0，且不暴露其存在
+		t.Fatalf("masked-only window must count zero: %+v", env)
+	}
+}
+
+// TestMemoStatsMaskedNeverLeaked 统计面泄露回归：遮罩条目的 id/标题/正文/标签
+// 不得以任何形态出现（含标签云与任何 "masked 计数" 式间接字段——存在性即敏感）。
+func TestMemoStatsMaskedNeverLeaked(t *testing.T) {
+	now := time.Now()
+	src := &fakeMemo{items: []memo.MemoItem{
+		mkItem("memo_secret", "遮罩笔记", "token=TOP_SECRET_VALUE", true, []string{"#SecretTag"}, now),
+	}}
+	c := memoSetup(t, src)
+	env, raw := memoStats(t, c, map[string]any{})
+	for _, banned := range []string{"memo_secret", "遮罩笔记", "TOP_SECRET_VALUE", "SecretTag", "maskedCount"} {
+		if strings.Contains(raw, banned) {
+			t.Errorf("masked item leaked into stats via %q: %s", banned, raw)
+		}
+	}
+	if env.TotalCount != 0 || len(env.Tags) != 0 {
+		t.Fatalf("masked-only library stats must be all-zero: %+v", env)
+	}
+}
+
+// TestMemoStatsGateMatrix memo 一键控全族：未授权/停用两件同拦，后端零触发。
+func TestMemoStatsGateMatrix(t *testing.T) {
+	deps, access, _ := newTestServer(t)
+	deps.Memo = &fakeMemo{items: []memo.MemoItem{mkItem("a", "x", "y", false, nil, time.Now())}}
+	// 无授权文件：两件都 fail-closed
+	c := inProcClient(t, deps)
+	for _, tool := range []string{toolMemo, toolMemoStats} {
+		res, text := callText(t, c, tool, nil)
+		if !res.IsError || !strings.Contains(text, "未获授权") {
+			t.Errorf("%s must deny without grant: %s", tool, text)
+		}
+	}
+	// 已授权但模块停用：两件都给启用指引
+	grant(t, access, map[string]bool{"memo": true})
+	deps.Gate = newFakeGate()
+	c = inProcClient(t, deps)
+	for _, tool := range []string{toolMemo, toolMemoStats} {
+		res, text := callText(t, c, tool, nil)
+		if !res.IsError || !strings.Contains(text, "停用") {
+			t.Errorf("%s must guide on disabled gate: %s", tool, text)
+		}
+	}
+}
+
+// TestMemoStatsDescriptionHonesty 统计工具 description 必须声明遮罩剔除与只读。
+func TestMemoStatsDescriptionHonesty(t *testing.T) {
+	tool, _ := buildMemoStatsTool(Deps{})
+	for _, phrase := range []string{"只读", "整条剔除", "IsMasked"} {
+		if !strings.Contains(tool.Description, phrase) {
+			t.Errorf("description must contain %q: %s", phrase, tool.Description)
+		}
+	}
+}
