@@ -196,9 +196,11 @@ func (s *TranslucentTBService) DownloadVersion(targetVersion string) (string, er
 		}()
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("translucenttb download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("translucenttb:version-download", p)
-			}
+			s.settleAndBroadcastProgress(targetVersion, p, func(pp version.DownloadProgress) {
+				if app := application.Get(); app != nil && app.Event != nil {
+					app.Event.Emit("translucenttb:version-download", pp)
+				}
+			})
 			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；
 			// 下载分块进度仅进观察面内存投影，不产生 fsync 风暴
 			switch p.Stage {
@@ -244,14 +246,24 @@ func (s *TranslucentTBService) DownloadVersion(targetVersion string) (string, er
 			notify.Error("translucenttb", "版本下载失败", fmt.Sprintf("TranslucentTB %s 事务收口失败: %v", targetVersion, err), "/ext/translucenttb")
 			return
 		}
-		// 未设使用版本时自动把刚下载完的版本设为使用版本：
-		// 首个版本下载完成后无需再手动点一下设置（与 ccswitch 既有行为对齐）。
-		if s.store.GetActive() == "" {
-			_ = s.store.SetActive(targetVersion)
-		}
+		// done 事件发出前已在 settleAndBroadcastProgress 收口"首装自动设使用"
+		// （首个版本下载完成后无需再手动点一下设置，与 ccswitch 既有行为对齐），此处不再重复落账。
 	}()
 
 	return "started", nil
+}
+
+// settleAndBroadcastProgress 下载回执"先落账、后广播"收口：done 成功回执若尚未
+// 设定使用版本，先把刚落位成功的版本记为使用中，再把事件广播给前端——前端共享
+// store 收到 done 即复刷版本区读 GetActiveVersion，事件先行于落账会让瞬时复刷读到
+// 空值（"首个版本下载完不显示使用中"，与 termora/2ac9b3b 同根修）。manager 仅在
+// 原子落位成功后才发 done，据此落账不会把失败版本记成使用中。广播以参数注入，
+// 供单测锁死该时序。
+func (s *TranslucentTBService) settleAndBroadcastProgress(targetVersion string, p version.DownloadProgress, broadcast func(version.DownloadProgress)) {
+	if p.Stage == "done" && s.store.GetActive() == "" {
+		_ = s.store.SetActive(targetVersion)
+	}
+	broadcast(p)
 }
 
 // RemoveVersion 卸载指定版本（正在运行的版本拒绝卸载）。

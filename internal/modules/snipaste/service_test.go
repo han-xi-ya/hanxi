@@ -62,3 +62,37 @@ func TestRemoveActiveVersionRejected(t *testing.T) {
 		t.Fatal("active version removal should fail")
 	}
 }
+
+// 首装自动设使用的落账必须在 done 成功回执广播之前：前端票据流程收到 done 即
+// 复刷本地版本读 GetActiveVersion，事件先行会让瞬时复刷读到空值（与
+// termora/2ac9b3b 同根修）。本测试经注入广播接缝锁死该时序，不触真下载。
+func TestDoneReceiptSettlesActiveBeforeBroadcast(t *testing.T) {
+	svc := &SnipasteService{store: newSnipasteStore(t.TempDir())}
+	var observedAtBroadcast string
+	svc.settleAndBroadcastProgress("2.11.2", version.DownloadProgress{Version: "2.11.2", Stage: "done"},
+		func(version.DownloadProgress) {
+			observedAtBroadcast = svc.store.GetActive()
+		})
+	if observedAtBroadcast != "2.11.2" {
+		t.Fatalf("done 回执广播时刻 active 应已落账，实得 %q", observedAtBroadcast)
+	}
+}
+
+// 回归护栏：已设定使用时后续 done 不抢账；非 done 阶段不落账。
+func TestSettleOnlyOnFirstDone(t *testing.T) {
+	svc := &SnipasteService{store: newSnipasteStore(t.TempDir())}
+	if err := svc.store.SetActive("2.10.8"); err != nil {
+		t.Fatal(err)
+	}
+	svc.settleAndBroadcastProgress("2.11.2", version.DownloadProgress{Version: "2.11.2", Stage: "done"},
+		func(version.DownloadProgress) {})
+	if got := svc.store.GetActive(); got != "2.10.8" {
+		t.Fatalf("已设定使用时 done 不应改写 active，实得 %q", got)
+	}
+	svc2 := &SnipasteService{store: newSnipasteStore(t.TempDir())}
+	svc2.settleAndBroadcastProgress("2.11.2", version.DownloadProgress{Version: "2.11.2", Stage: "install"},
+		func(version.DownloadProgress) {})
+	if got := svc2.store.GetActive(); got != "" {
+		t.Fatalf("非 done 阶段不应落账，实得 %q", got)
+	}
+}

@@ -187,9 +187,7 @@ func (s *RAMMapService) DownloadVersion(targetVersion string) (string, error) {
 			txn.Close()
 		}()
 		emit := func(p version.DownloadProgress) {
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("rammap:version-download", p)
-			}
+			s.settleAndBroadcastProgress(targetVersion, p, s.emitDownloadProgress)
 			switch p.Stage {
 			case "downloading":
 				if stepIdx < 0 {
@@ -228,9 +226,7 @@ func (s *RAMMapService) DownloadVersion(targetVersion string) (string, error) {
 			}
 			return
 		}
-		if s.store.GetActive() == "" {
-			_ = s.store.SetActive(targetVersion)
-		}
+		// done 事件发出前已在 settleAndBroadcastProgress 收口"首装自动设使用"，此处不再重复落账。
 		if err := txn.Done(); err != nil {
 			s.emitDownloadProgress(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("rammap", "版本下载失败", fmt.Sprintf("RAMMap 事务收口失败: %v", err), "/ext/rammap")
@@ -238,6 +234,19 @@ func (s *RAMMapService) DownloadVersion(targetVersion string) (string, error) {
 		}
 	}()
 	return "started", nil
+}
+
+// settleAndBroadcastProgress 下载回执"先落账、后广播"收口：done 成功回执若尚未
+// 设定使用版本，先把刚落位成功的版本记为使用中，再把事件广播给前端——前端共享
+// store 收到 done 即复刷版本区读 GetActiveVersion，事件先行于落账会让瞬时复刷读到
+// 空值（"首个版本下载完不显示使用中"，与 termora/2ac9b3b 同根修）。manager 仅在
+// 原子落位成功后才发 done，据此落账不会把失败版本记成使用中。广播以参数注入，
+// 供单测锁死该时序。
+func (s *RAMMapService) settleAndBroadcastProgress(targetVersion string, p version.DownloadProgress, broadcast func(version.DownloadProgress)) {
+	if p.Stage == "done" && s.store.GetActive() == "" {
+		_ = s.store.SetActive(targetVersion)
+	}
+	broadcast(p)
 }
 
 func (s *RAMMapService) emitDownloadProgress(p version.DownloadProgress) {

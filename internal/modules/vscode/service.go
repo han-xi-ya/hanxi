@@ -249,9 +249,11 @@ func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confi
 		}()
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("vscode download progress", "version", p.Version, "form", p.Form, "stage", p.Stage, "done", p.Done)
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("vscode:version-download", p)
-			}
+			s.settleAndBroadcastProgress(targetVersion, p, func(pp version.DownloadProgress) {
+				if app := application.Get(); app != nil && app.Event != nil {
+					app.Event.Emit("vscode:version-download", pp)
+				}
+			})
 			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；
 			// 下载分块进度仅进观察面内存投影，不产生 fsync 风暴；
 			// verify 由内核折进 download 步、不单独映射，error/done 收口时统一落账
@@ -298,14 +300,24 @@ func (s *VSCodeService) DownloadVersion(targetVersion string, form string, confi
 			notify.Error("vscode", "VS Code 安装失败", fmt.Sprintf("VS Code %s（%s）事务收口失败: %v", targetVersion, labelForm(string(f)), err), "/ext/vscode")
 			return
 		}
-		// 便携版：未设定使用版本时自动把刚下载完的版本设为使用版本
-		if f == version.FormPortable && s.store.GetActive() == "" {
-			_ = s.store.SetActive(targetVersion)
-		}
+		// done 事件发出前已在 settleAndBroadcastProgress 收口"便携版首装自动设使用"，此处不再重复落账。
 	}()
 
 	return ControlOutcome{Action: "started",
 		Message: fmt.Sprintf("已开始下载 VS Code %s（%s）", targetVersion, labelForm(string(f)))}, nil
+}
+
+// settleAndBroadcastProgress 下载回执"先落账、后广播"收口：便携版 done 成功回执
+// 若尚未设定使用版本，先把刚落位成功的版本记为使用中，再把事件广播给前端——
+// 前端 onProgress 收到 done 即复刷版本区读 GetActiveVersion，事件先行于落账会让
+// 瞬时复刷读到空值（"首个便携版下载完不显示使用中"，与 termora/2ac9b3b 同根修）。
+// manager 仅在原子落位成功后才发 done，据此落账不会把失败版本记成使用中；
+// 安装版形态无"设定使用版本"概念，回执直传不记账。广播以参数注入，供单测锁死该时序。
+func (s *VSCodeService) settleAndBroadcastProgress(targetVersion string, p version.DownloadProgress, broadcast func(version.DownloadProgress)) {
+	if p.Stage == "done" && p.Form == string(version.FormPortable) && s.store.GetActive() == "" {
+		_ = s.store.SetActive(targetVersion)
+	}
+	broadcast(p)
 }
 
 // RemoveVersion 卸载指定便携版（正在运行的版本拒绝卸载）。
