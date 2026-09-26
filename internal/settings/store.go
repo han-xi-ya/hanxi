@@ -7,6 +7,7 @@ package settings
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -60,7 +61,8 @@ const (
 	TrayItemGroup   = "group"   // 分组：轮盘二级扇区/托盘子菜单容器，本身无动作，Children 仅允许叶子条目
 )
 
-// TrayMenuItem 托盘右键菜单自定义条目（配置切片顺序即菜单显示顺序）。
+// TrayMenuItem 菜单自定义条目（托盘账 TrayMenu 与轮盘账 WheelMenu 共用同一类型，
+// 配置切片顺序即菜单/盘面显示顺序）。
 type TrayMenuItem struct {
 	Type     string         `json:"type"`               // "command" | "route" | "exe" | "group"
 	Ref      string         `json:"ref"`                // command: "moduleId/commandId"；route: 前端路由；其余留空
@@ -92,17 +94,23 @@ type QuickMenuSkinConfig struct {
 
 // AppSettings 应用全局配置模型
 type AppSettings struct {
-	Theme            string            `json:"theme"`            // 明暗轴 "light" | "dark" | "system"
-	Accent           string            `json:"accent"`           // 色板轴 "teal" | "sky" | "iris" | "jade" | "onyx"
-	Font             string            `json:"font"`             // 界面字体档 "kai" | "plain" | "mono"（N40，缺省文楷）
-	Language         string            `json:"language"`         // "zh-CN" | "en-US"
-	AutoStart        bool              `json:"autoStart"`        // 开机自启
-	MinimizeToTray   bool              `json:"minimizeToTray"`   // 关闭时最小化到托盘
-	LogRetainDays    int               `json:"logRetainDays"`    // 日志保留天数（默认 7）
-	Modules          map[string]bool   `json:"modules"`          // 各模块启用状态 map[moduleId]enabled
-	LanRemarks       map[string]string `json:"lanRemarks"`       // 局域网 IP/MAC 备注 map[identifier]remark
-	TrayMenu         []TrayMenuItem    `json:"trayMenu"`         // 托盘右键菜单自定义条目（有序）
-	QuickMenuTwoTier bool              `json:"quickMenuTwoTier"` // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
+	Theme          string            `json:"theme"`          // 明暗轴 "light" | "dark" | "system"
+	Accent         string            `json:"accent"`         // 色板轴 "teal" | "sky" | "iris" | "jade" | "onyx"
+	Font           string            `json:"font"`           // 界面字体档 "kai" | "plain" | "mono"（N40，缺省文楷）
+	Language       string            `json:"language"`       // "zh-CN" | "en-US"
+	AutoStart      bool              `json:"autoStart"`      // 开机自启
+	MinimizeToTray bool              `json:"minimizeToTray"` // 关闭时最小化到托盘
+	LogRetainDays  int               `json:"logRetainDays"`  // 日志保留天数（默认 7）
+	Modules        map[string]bool   `json:"modules"`        // 各模块启用状态 map[moduleId]enabled
+	LanRemarks     map[string]string `json:"lanRemarks"`     // 局域网 IP/MAC 备注 map[identifier]remark
+	TrayMenu       []TrayMenuItem    `json:"trayMenu"`       // 托盘右键菜单自定义条目（有序，仅喂原生托盘）
+	// WheelMenu 右键轮盘独立账本（机主拍板 2026-09-26"托盘与轮盘配置相互独立"，
+	// 废止 N41"不存在第二份轮盘账本"口径）：条目类型/校验语义与 TrayMenu 完全
+	// 同构（复用 TrayMenuItem），但两份账各改各的、互不连带。首次 load 缺键时
+	// 由 TrayMenu 深拷贝派生并持久化一次（见 load 迁移块），保证升级前后轮盘
+	// 弹出内容不变。
+	WheelMenu        []TrayMenuItem `json:"wheelMenu"`
+	QuickMenuTwoTier bool           `json:"quickMenuTwoTier"` // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
 	// N5-C2 触发参数外化：0 = 出厂默认（450ms / 16px）。有效值钳制在消费方
 	// quickmenu 服务执行（盘上值按不可信输入对待，坏值不武装鼠标钩子）。
 	QuickMenuHoldMs    int                 `json:"quickMenuHoldMs"`
@@ -128,8 +136,9 @@ func DefaultSettings() AppSettings {
 		Modules:            make(map[string]bool),
 		LanRemarks:         make(map[string]string),
 		TrayMenu:           make([]TrayMenuItem, 0),
-		QuickMenuTwoTier:   true, // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
-		HistoryOcrFullText: true, // OCR 全文入历史默认开启（同 QuickMenuTwoTier 缺字段回落机制）
+		WheelMenu:          make([]TrayMenuItem, 0), // 轮盘独立账出厂为空；真实派生只发生在 load 迁移块（见 WheelMenu 字段注释）
+		QuickMenuTwoTier:   true,                    // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
+		HistoryOcrFullText: true,                    // OCR 全文入历史默认开启（同 QuickMenuTwoTier 缺字段回落机制）
 		// 轮盘皮肤出厂 = frost 素瓷实底盘（与前端 DEFAULT_WHEEL_SKIN 同值）：旧配置
 		// 缺 quickMenuSkin 键即整体落此默认；半缺子字段（如只有 preset）也逐字段回落。
 		QuickMenuSkin: QuickMenuSkinConfig{Preset: "frost", FaceAlpha: 100, Stroke: 55, FollowModuleColor: false},
@@ -207,6 +216,24 @@ func (s *Store) load() error {
 	if data.TrayMenu == nil {
 		data.TrayMenu = make([]TrayMenuItem, 0)
 	}
+	if data.WheelMenu == nil { // 显式 null 解码为 nil，兜底重建（与上列集合字段同纪律）
+		data.WheelMenu = make([]TrayMenuItem, 0)
+	}
+
+	// 轮盘独立账本首次派生（机主拍板 2026-09-26，废止 N41"不存在第二份轮盘
+	// 账本"口径）：解码进默认副本后"缺键"与"出厂空切片"不可区分，故对原始 JSON
+	// 用指针字段做缺键探测——wheelMenu 键缺失或显式 null → 深拷贝当前 TrayMenu
+	// 作为轮盘初始账并持久化一次（升级前后轮盘弹出内容不变）；显式数组（含 []）
+	// 是用户落过的独立意图，不派生。cloneTrayItems 逐层断开 Children 引用，两份
+	// 账自此各写各的互不连带；派生落盘后键恒非 nil，重复 load 不再触发（幂等）。
+	var wheelProbe struct {
+		WheelMenu *[]TrayMenuItem `json:"wheelMenu"`
+	}
+	wheelDerived := false
+	if err := json.Unmarshal(bytes, &wheelProbe); err == nil && wheelProbe.WheelMenu == nil {
+		data.WheelMenu = cloneTrayItems(data.TrayMenu)
+		wheelDerived = true
+	}
 
 	// 平滑迁移：若旧版单账号存在有效凭据且多账号列表为空，自动迁移为多账号中的第一项
 	if data.Wechat.BotToken != "" && len(data.WechatAccounts) == 0 {
@@ -233,6 +260,14 @@ func (s *Store) load() error {
 	}
 
 	s.data = data
+	if wheelDerived {
+		slog.Info("轮盘独立账本首次派生", "items", len(s.data.WheelMenu))
+		if err := s.saveLocked(); err != nil {
+			// 落盘失败不阻断启动：内存态已是派生结果，本轮行为已正确；
+			// 盘上仍缺键，下次 load 重新派生——幂等重试自收敛，TrayMenu 原账未动。
+			slog.Warn("轮盘独立账本派生后落盘失败，下次启动重试", "err", err)
+		}
+	}
 	return nil
 }
 
@@ -245,7 +280,7 @@ func (s *Store) Get() AppSettings {
 
 // cloneAppSettings 深拷贝全部集合字段，保证调用方按下标/键写入不会污染 Store 内存态。
 // WechatAccounts 曾因漏拷共享底层数组，调用方改 cfg.WechatAccounts[i] 直接篡改 Store——新增字段必须同步进本函数。
-// TrayMenu 自二级分组起元素内含可变 Children 切片，一层拷贝不完备，走 cloneTrayItems。
+// TrayMenu/WheelMenu 自二级分组起元素内含可变 Children 切片，一层拷贝不完备，走 cloneTrayItems。
 func cloneAppSettings(src AppSettings) AppSettings {
 	cp := src
 	cp.Modules = make(map[string]bool, len(src.Modules))
@@ -257,6 +292,7 @@ func cloneAppSettings(src AppSettings) AppSettings {
 		cp.LanRemarks[k] = v
 	}
 	cp.TrayMenu = cloneTrayItems(src.TrayMenu)
+	cp.WheelMenu = cloneTrayItems(src.WheelMenu)
 	cp.WechatAccounts = append(make([]WechatAccount, 0, len(src.WechatAccounts)), src.WechatAccounts...)
 	cp.WebAppEntries = append(make([]WebAppEntry, 0, len(src.WebAppEntries)), src.WebAppEntries...)
 	return cp
@@ -491,7 +527,10 @@ func (s *Store) DeleteWebAppEntry(id string) error {
 			}
 		}
 		c.WebAppEntries = filtered
+		// 双账各清各的：托盘与轮盘条目独立后，死引用剔除必须同时覆盖两份账，
+		// 漏一处即在轮盘（或托盘）里残留"点击必报错"的死条目。
 		c.TrayMenu = pruneTrayRefs(c.TrayMenu, ref)
+		c.WheelMenu = pruneTrayRefs(c.WheelMenu, ref)
 	})
 }
 
@@ -518,6 +557,22 @@ func (s *Store) GetTrayMenu() []TrayMenuItem {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return cloneTrayItems(s.data.TrayMenu)
+}
+
+// GetWheelMenu 获取右键轮盘条目配置副本（与 GetTrayMenu 同形：保存顺序 +
+// group 子条目深拷贝）。轮盘独立账本，存储只见事实，不校验不修值。
+func (s *Store) GetWheelMenu() []TrayMenuItem {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return cloneTrayItems(s.data.WheelMenu)
+}
+
+// SetWheelMenu 保存右键轮盘条目配置并原子落盘（入库前深拷贝，杜绝与调用方
+// 共享 Children）；与 SetTrayMenu 各写各账，互不连带。
+func (s *Store) SetWheelMenu(items []TrayMenuItem) error {
+	return s.Update(func(cfg *AppSettings) {
+		cfg.WheelMenu = cloneTrayItems(items)
+	})
 }
 
 // GetQuickMenuTwoTier 快捷菜单轮盘是否启用二级展开（默认开启）。
@@ -566,7 +621,8 @@ func (s *Store) SetQuickMenuSkin(skin QuickMenuSkinConfig) error {
 	})
 }
 
-// SetTrayMenu 保存托盘右键菜单条目配置并原子落盘（入库前深拷贝，杜绝与调用方共享 Children）
+// SetTrayMenu 保存托盘右键菜单条目配置并原子落盘（入库前深拷贝，杜绝与调用方
+// 共享 Children）；只写托盘账，不连带轮盘账 WheelMenu。
 func (s *Store) SetTrayMenu(items []TrayMenuItem) error {
 	return s.Update(func(cfg *AppSettings) {
 		cfg.TrayMenu = cloneTrayItems(items)

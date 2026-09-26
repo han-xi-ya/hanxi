@@ -134,37 +134,11 @@ func cleanTrayLeaf(it settings.TrayMenuItem) (settings.TrayMenuItem, error) {
 }
 
 // SetTrayMenu 校验并持久化托盘菜单配置，保存成功后立即重建右键菜单热生效。
-// group 条目：必须有名字与至少一个子条目，子条目经同一叶子校验规整。
+// 校验走 cleanTrayMenuItems（与轮盘账本同一套规则），落托盘账 + trayRebuild 重建原生菜单。
 func (s *AppService) SetTrayMenu(items []settings.TrayMenuItem) error {
-	cleaned := make([]settings.TrayMenuItem, 0, len(items))
-	for _, it := range items {
-		it.Type = strings.TrimSpace(it.Type)
-		if it.Type == settings.TrayItemGroup {
-			it.Label = strings.TrimSpace(it.Label)
-			if it.Label == "" {
-				return fmt.Errorf("分组条目缺少名称")
-			}
-			if len(it.Children) == 0 {
-				return fmt.Errorf("分组「%s」没有任何子条目", it.Label)
-			}
-			it.Ref, it.Path, it.Args = "", "", ""
-			kids := make([]settings.TrayMenuItem, 0, len(it.Children))
-			for _, ch := range it.Children {
-				kid, err := cleanTrayLeaf(ch)
-				if err != nil {
-					return fmt.Errorf("分组「%s」：%w", it.Label, err)
-				}
-				kids = append(kids, kid)
-			}
-			it.Children = kids
-		} else {
-			leaf, err := cleanTrayLeaf(it)
-			if err != nil {
-				return err
-			}
-			it = leaf
-		}
-		cleaned = append(cleaned, it)
+	cleaned, err := cleanTrayMenuItems(items)
+	if err != nil {
+		return err
 	}
 	if s.store == nil {
 		return fmt.Errorf("配置存储不可用")
@@ -176,6 +150,73 @@ func (s *AppService) SetTrayMenu(items []settings.TrayMenuItem) error {
 		s.trayRebuild()
 	}
 	return nil
+}
+
+// cleanTrayMenuItems 校验并规整一批菜单条目（托盘账与轮盘账共用同一套规则，
+// 单一实现杜绝两套校验漂移）：group 必须有名字与至少一个子条目，子条目经
+// cleanTrayLeaf 同一叶子校验规整；嵌套深度锁死两层。
+func cleanTrayMenuItems(items []settings.TrayMenuItem) ([]settings.TrayMenuItem, error) {
+	cleaned := make([]settings.TrayMenuItem, 0, len(items))
+	for _, it := range items {
+		it.Type = strings.TrimSpace(it.Type)
+		if it.Type == settings.TrayItemGroup {
+			it.Label = strings.TrimSpace(it.Label)
+			if it.Label == "" {
+				return nil, fmt.Errorf("分组条目缺少名称")
+			}
+			if len(it.Children) == 0 {
+				return nil, fmt.Errorf("分组「%s」没有任何子条目", it.Label)
+			}
+			it.Ref, it.Path, it.Args = "", "", ""
+			kids := make([]settings.TrayMenuItem, 0, len(it.Children))
+			for _, ch := range it.Children {
+				kid, err := cleanTrayLeaf(ch)
+				if err != nil {
+					return nil, fmt.Errorf("分组「%s」：%w", it.Label, err)
+				}
+				kids = append(kids, kid)
+			}
+			it.Children = kids
+		} else {
+			leaf, err := cleanTrayLeaf(it)
+			if err != nil {
+				return nil, err
+			}
+			it = leaf
+		}
+		cleaned = append(cleaned, it)
+	}
+	return cleaned, nil
+}
+
+// GetWheelMenu 返回当前右键轮盘配置条目（按保存顺序）。与 GetTrayMenu 分账：
+// 原生托盘条目改动不回灌轮盘，反之亦然。
+func (s *AppService) GetWheelMenu() []settings.TrayMenuItem {
+	if s.store == nil {
+		return []settings.TrayMenuItem{}
+	}
+	return s.store.GetWheelMenu()
+}
+
+// SetWheelMenu 校验并持久化右键轮盘配置（条目校验与 SetTrayMenu 同一套
+// cleanTrayMenuItems，两账规则永不漂移）。
+//
+// 热更通道语义（互不干扰是本任务灵魂）：
+//   - 轮盘侧无需任何事件广播——quickmenu 每次弹出都经
+//     launcher.Dispatcher.EnabledItems() → store 实时取账（ListItems/Launch 现读），
+//     本方法落盘即等价于"下次弹出吃到新配置"，弹窗存续期间改账亦不会吃到半截配置。
+//     （不存在也无需新增 tray:changed 类全局事件：前端条目编辑器实测每次保存后
+//     自刷新预览，跨页事件属后续批次决策。）
+//   - 原生托盘**不**因 WheelMenu 变更重建：不调 trayRebuild()，托盘账未动。
+func (s *AppService) SetWheelMenu(items []settings.TrayMenuItem) error {
+	cleaned, err := cleanTrayMenuItems(items)
+	if err != nil {
+		return err
+	}
+	if s.store == nil {
+		return fmt.Errorf("配置存储不可用")
+	}
+	return s.store.SetWheelMenu(cleaned)
 }
 
 // PickExeFile 弹出系统文件选择框选取外部程序，返回绝对路径（用户取消时为空串）。

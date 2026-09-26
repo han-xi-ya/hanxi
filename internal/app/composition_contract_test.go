@@ -187,10 +187,14 @@ func extractMatches(source string, re *regexp.Regexp) []string {
 
 func extractEmittedEvents(t *testing.T, root string) []string {
 	t.Helper()
-	literalEmit := regexp.MustCompile(`(?:\.Emit|emit|emitEvent)\(\s*"([a-z][a-z0-9-]*:[^"]+)"`)
+	literalEmit := regexp.MustCompile(`(?:\.Emit|emit|emitEvent|\.publish)\(\s*"([a-z][a-z0-9-]*:[^"]+)"`)
 	constEvent := regexp.MustCompile(`(?m)const\s+(?:\([^)]*\)|[A-Za-z][A-Za-z0-9_]*\s*=\s*"[^"]+")`)
 	constAssignment := regexp.MustCompile(`([A-Za-z][A-Za-z0-9_]*)\s*=\s*"([a-z][a-z0-9-]*:[^"]+)"`)
-	constEmit := regexp.MustCompile(`(?:\.Emit|emit|emitEvent)\(\s*([A-Za-z][A-Za-z0-9_]*)\b`)
+	// publish 缝：模块把事件投递抽象为函数字段以便无头单测替换计数
+	//（msgboard a839ced：emitChanged → s.publish(eventChanged)，生产接线
+	// emitViaWails → Event.Emit），守卫按 emit 同谱识别——经缝传的包级 const
+	// 事件名仍是真实广播点。
+	constEmit := regexp.MustCompile(`(?:\.Emit|emit|emitEvent|\.publish)\(\s*([A-Za-z][A-Za-z0-9_]*)\b`)
 
 	emitted := map[string]bool{}
 	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, entry os.DirEntry, err error) error {
