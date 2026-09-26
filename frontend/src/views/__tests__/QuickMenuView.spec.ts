@@ -1,6 +1,10 @@
 // 快捷菜单模块页特征测试：状态 chip、条目预览、空态与"前往设置"导航事件契约。
 // N5-C1 后页面内嵌共享编辑面 TrayItemsEditor（走 AppService 托盘 RPC），按测试 seam
 // 约定补 app 绑定打桩——仅基础设施，断言零改动。
+// 重设计批次：语义断言（RPC 链/两段式/导航事件）零改动；两处纯结构选择器按新 DOM
+// 更新——①阈值参数由 .subtitle 长句改为页头 .qm-params chip 行；②"前往设置页配置"
+// 大钮降为编辑面板页脚链接 .qm-settings-link（navigate 契约与断言语义不变）。
+// 另补双栏主区与状态区渲染两条新结构断言。
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -60,8 +64,30 @@ describe('QuickMenuView', () => {
     expect(w.findAll('.wp-sector').length).toBe(2)
     expect(w.find('.chip').classes()).toContain('chip-positive')
     expect(w.find('.chip').text()).toBe('监听在位')
-    expect(w.find('.subtitle').text()).toContain('450')
-    expect(w.find('.subtitle').text()).toContain('16')
+    // 重设计：触发时长/位移容差 chip 化进页头状态区，数值仍如实回显
+    const params = w.find('.qm-params')
+    expect(params.text()).toContain('450')
+    expect(params.text()).toContain('16')
+    expect(params.findAll('.qm-param').length).toBe(4)
+    w.unmount()
+  })
+
+  it('重设计状态区：页头渲染参数一览，双栏主区左编辑右预览', async () => {
+    const w = await mountReady()
+    // 状态区骨架：.qm-state 内先 h1+状态 chip 再参数 chip 行
+    const state = w.find('.qm-state')
+    expect(state.exists()).toBe(true)
+    expect(state.find('h1').text()).toBe('快捷菜单')
+    expect(state.find('.qm-params').exists()).toBe(true)
+    // 双栏主区：左=条目编辑主场（挂 TrayItemsEditor），右=轮盘预览 sticky 栏
+    const main = w.find('.qm-main')
+    expect(main.exists()).toBe(true)
+    expect(main.find('.qm-edit-col').exists()).toBe(true)
+    expect(main.find('.qm-side-col').exists()).toBe(true)
+    expect(main.find('.qm-edit-col .tray-editor').exists()).toBe(true)
+    expect(main.find('.qm-side-col .wp').exists()).toBe(true)
+    // 行为设置与使用说明降为次级折叠区
+    expect(w.findAll('.qm-secondary details').length).toBe(2)
     w.unmount()
   })
 
@@ -85,7 +111,8 @@ describe('QuickMenuView', () => {
   it('空条目走占位引导，"前往设置页配置"直达设置·托盘菜单分区', async () => {
     const w = await mountReady(status, [])
     expect(w.find('.empty-state').text()).toContain('尚未配置任何条目')
-    await w.find('.panel-foot .btn-primary').trigger('click')
+    // 重设计：跳设置由大钮降为编辑面板页脚链接，navigate 事件契约不变
+    await w.find('.qm-settings-link').trigger('click')
     // Host 包裹渲染下 emit 挂在子组件 wrapper 上
     expect(w.findComponent(QuickMenuView).emitted('navigate')?.[0]).toEqual(['/settings/tray'])
     w.unmount()
