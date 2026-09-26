@@ -17,11 +17,12 @@
 
 /**
  * AccessTools 授权九开关（PLAN §6 固定键名 + N32/N34 扩充批 + AI 接入批扫描族
- * portscan/lan + 端口查杀批 portkill；与 Go 侧 mcpwizard.AccessTools 手工同步，
- * 勿待再生成——沿 b9f7fec/8511992 前例，bindings 再生窗口未到）。
- * portkill 是破坏族键：AiSection 面板刻意不为其呈现开关行（基建既定决策，
- * 开启=机主手动 access.json+destructive.json 两文件），字段在册仅供总览
- * 如实回显与写侧 round-trip 不吞键。
+ * portscan/lan + 端口查杀批 portkill）。扫描键授权的是"有界主动网络探测"（见
+ * internal/mcp/tools_scan.go 的收口口径），与纯查询工具分键、默认关。
+ * Portkill 是破坏族授权键（MCP 四道闸之 A1）：**「设置 → AI 接入」面板刻意不
+ * 为它呈现开关行**（基建既定决策——破坏性键不进逐键 UI 防误操作，开启=机主
+ * 手动 access.json+destructive.json 两文件），但字段在册：总览呈现要如实反映
+ * 读者采信结果，且整档回写的 round-trip 依赖它不吞键。
  * @typedef {Object} AccessTools
  * @property {boolean} envcheck
  * @property {boolean} everything

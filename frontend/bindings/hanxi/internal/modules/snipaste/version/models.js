@@ -28,6 +28,7 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
  * @property {string} officialHash
  * @property {string} hashAlgorithm
  * @property {boolean} stale
+ * @property {hostfeed$0.AssetNote[] | null} [assets] - Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
  * @property {hostfeed$0.Form} [form] - Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒 portable——官网 archives 下 Snipaste-X.Y.Z-x64.zip 即"免安装版"（解压 即用）；资产名无便携字样，机械判名 Classify 保守降为 archive，形态以 官网事实与托管安装链（解包直用）自证为准。
  */
 

@@ -12,6 +12,7 @@
  * @property {string} url
  * @property {string} icon
  * @property {string} createdAt
+ * @property {string} [defaultOpen]
  * @property {boolean} windowOpen
  * @property {boolean} windowHidden
  */

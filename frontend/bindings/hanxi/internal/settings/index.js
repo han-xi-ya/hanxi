@@ -5,6 +5,7 @@
 import * as $models from "./models.js";
 
 /**
- * TrayMenuItem 托盘右键菜单自定义条目（配置切片顺序即菜单显示顺序）。
+ * TrayMenuItem 菜单自定义条目（托盘账 TrayMenu 与轮盘账 WheelMenu 共用同一类型，
+ * 配置切片顺序即菜单/盘面显示顺序）。
  * @typedef {$models.TrayMenuItem} TrayMenuItem
  */

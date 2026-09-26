@@ -50,7 +50,11 @@ import * as $models from "./models.js";
  */
 
 /**
- * PurgeResult 可用内存变化快照；delta 不是精确待机页释放量，只是前后观测差。
+ * PurgeResult 内存回收动作回执。Before/After/AvailableDelta 三个旧字段语义不变
+ * （可用内存前后快照与观测差，不是精确释放量）；新字段是"先量后清再对账"的
+ * 逐项链账——Total 来自 GlobalMemoryStatusEx（必得），Standby/Modified 来自
+ * NtQuerySystemInformation 类 80 页列表查询，拿不到实测时 PagesMeasured=false
+ * 且对应字节数为 0（前端如实降级，禁编数）。Processes* 仅清空工作集动作填充。
  * @typedef {$models.PurgeResult} PurgeResult
  */
 

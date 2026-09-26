@@ -87,3 +87,16 @@ export function OpenExternal(entryID) {
 export function SaveEntry(entryID, name, rawURL, icon) {
     return $Call.ByID(1540803478, entryID, name, rawURL, icon);
 }
+
+/**
+ * SetEntryDefaultOpen 设置条目默认打开形态（"window"=独立网页窗 |
+ * "browser"=系统默认浏览器 | ""=重置回默认 window）。轮盘/托盘直达点击
+ * 按此设定分派；GUI 行内两颗显式钮（Open/OpenExternal）不受本设定约束。
+ * 非法值拒绝；条目不存在报错；与现值相同时幂等不落盘。
+ * @param {string} entryID
+ * @param {string} mode
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetEntryDefaultOpen(entryID, mode) {
+    return $Call.ByID(1874831248, entryID, mode);
+}

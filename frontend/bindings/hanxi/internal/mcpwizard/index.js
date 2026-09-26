@@ -11,13 +11,19 @@ import * as $models from "./models.js";
 
 /**
  * AccessInfo access.json 的读方视角呈现：Tools 恒等于 MCP 读者此刻的采信结果
- * （缺文件/损坏/超纲都呈现为四 false——读者 fail-closed 语义），不呈现读者不认的
+ * （缺文件/损坏/超纲都呈现为九 false——读者 fail-closed 语义），不呈现读者不认的
  * "字面值"。写入口在本分区（SetToolAccess/ResetAccess，R6）。
  * @typedef {$models.AccessInfo} AccessInfo
  */
 
 /**
- * AccessTools 授权六开关（PLAN §6 固定键名 + N32/N34 扩充批）。
+ * AccessTools 授权九开关（PLAN §6 固定键名 + N32/N34 扩充批 + AI 接入批扫描族
+ * portscan/lan + 端口查杀批 portkill）。扫描键授权的是"有界主动网络探测"（见
+ * internal/mcp/tools_scan.go 的收口口径），与纯查询工具分键、默认关。
+ * Portkill 是破坏族授权键（MCP 四道闸之 A1）：**「设置 → AI 接入」面板刻意不
+ * 为它呈现开关行**（基建既定决策——破坏性键不进逐键 UI 防误操作，开启=机主
+ * 手动 access.json+destructive.json 两文件），但字段在册：总览呈现要如实反映
+ * 读者采信结果，且整档回写的 round-trip 依赖它不吞键。
  * @typedef {$models.AccessTools} AccessTools
  */
 

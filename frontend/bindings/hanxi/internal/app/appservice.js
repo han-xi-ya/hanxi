@@ -175,6 +175,15 @@ export function GetTrayMenu() {
 }
 
 /**
+ * GetWheelMenu 返回当前右键轮盘配置条目（按保存顺序）。与 GetTrayMenu 分账：
+ * 原生托盘条目改动不回灌轮盘，反之亦然。
+ * @returns {$CancellablePromise<settings$0.TrayMenuItem[] | null>}
+ */
+export function GetWheelMenu() {
+    return $Call.ByID(524112179);
+}
+
+/**
  * IsElevated 报告当前进程是否已以管理员提权运行（前端据此决定
  * 「以管理员身份重启」入口的显隐）。
  * @returns {$CancellablePromise<boolean>}
@@ -413,7 +422,7 @@ export function SetTheme(mode) {
 
 /**
  * SetTrayMenu 校验并持久化托盘菜单配置，保存成功后立即重建右键菜单热生效。
- * group 条目：必须有名字与至少一个子条目，子条目经同一叶子校验规整。
+ * 校验走 cleanTrayMenuItems（与轮盘账本同一套规则），落托盘账 + trayRebuild 重建原生菜单。
  * @param {settings$0.TrayMenuItem[] | null} items
  * @returns {$CancellablePromise<void>}
  */
@@ -438,6 +447,24 @@ export function SetTrayRebuilder(fn) {
  */
 export function SetUpdateWatcher(watcher) {
     return $Call.ByID(3432574336, watcher);
+}
+
+/**
+ * SetWheelMenu 校验并持久化右键轮盘配置（条目校验与 SetTrayMenu 同一套
+ * cleanTrayMenuItems，两账规则永不漂移）。
+ * 
+ * 热更通道语义（互不干扰是本任务灵魂）：
+ *   - 轮盘侧无需任何事件广播——quickmenu 每次弹出都经
+ *     launcher.Dispatcher.WheelItems() → store.WheelMenu 实时取账（ListItems/Launch
+ *     现读），本方法落盘即等价于"下次弹出吃到新配置"，弹窗存续期间改账亦不会吃到半截配置。
+ *     （不存在也无需新增 tray:changed 类全局事件：前端条目编辑器实测每次保存后
+ *     自刷新预览，跨页事件属后续批次决策。）
+ *   - 原生托盘**不**因 WheelMenu 变更重建：不调 trayRebuild()，托盘账未动。
+ * @param {settings$0.TrayMenuItem[] | null} items
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetWheelMenu(items) {
+    return $Call.ByID(3640353423, items);
 }
 
 /**
