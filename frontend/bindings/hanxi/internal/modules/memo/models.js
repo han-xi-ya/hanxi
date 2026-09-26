@@ -34,6 +34,15 @@
  * @property {{ [_ in string]?: number } | null} tagCloud - 每个标签对应的便签计数
  */
 
+/**
+ * QuickSheetState 悬浮速记卡的配置与实况（模块页设置区回显）。
+ * Hotkey 为加速器串（""= 停用）；HotkeyActive 以系统注册实况为准——
+ * 开机期抢键失败只降级不报错，页面据此提示改键或改用按钮唤出。
+ * @typedef {Object} QuickSheetState
+ * @property {string} hotkey
+ * @property {boolean} hotkeyActive
+ */
+
 // In interface mode, this file is likely to contain just comments.
 // We add a dummy export statement to ensure it is recognised as an ES module.
 export {};

@@ -5,8 +5,11 @@
 // 一列工具条；列表按 置顶→今天→昨天→7天内→30天内→更早 时间分组，扫读不数日期；
 // 阅读态详情浮层（Markdown 渲染）与编辑态分离，卡片只留摘要与就地微操作；
 // 「一键全删」挂页头 danger 钮，强确认（useConfirm danger tone，明说条数与不可恢复）。
-// 数据契约零改动：List/GetStats/Create/Update/Delete/TogglePin/ToggleMask 语义照旧，
-// 本轮新增面仅 ClearAll（后端返回删除条数）。memo:changed 事件重拉纪律照旧。
+// 数据契约零改动：List/GetStats/Create/Update/Delete/TogglePin/ToggleMask 语义照旧。
+// 入库后新增依赖面：ClearAll（一键全删，返回条数）+ 悬浮速记卡三件
+// （GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet，N16 B 批）——
+// 底部「悬浮速记卡」面板管热键配置与实况，页头钮可不经热键直接唤卡。
+// memo:changed 事件重拉纪律照旧。
 // 敏感遮罩纪律原样：IsMasked 条目卡片/详情/预览三处都不落明文，揭示是显式动作。
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
@@ -48,6 +51,58 @@ const errorMsg = ref('')
 const quickText = ref('')
 const quickTagsInput = ref('')
 const quickSaving = ref(false)
+
+// ---- 悬浮速记卡（N16 B 批：全局热键配置与唤出）----
+// QuickSheetState 本地声明：与后端 models 同构，绑定再生成后可切换 import
+// （本地形态让本轮前端先跑，不依赖未生成的绑定类型）。
+interface QuickSheetState {
+  hotkey: string
+  hotkeyActive: boolean
+}
+const sheetState = ref<QuickSheetState | null>(null)
+const sheetHotkeyDraft = ref('')
+const sheetSaving = ref(false)
+
+async function refreshQuickSheet() {
+  try {
+    const st = await MemoAPI.MemoService.GetQuickSheetState()
+    sheetState.value = st
+    sheetHotkeyDraft.value = st?.hotkey ?? ''
+  } catch {
+    sheetState.value = null // 拉不到实况就收面板，不给假配置可编
+  }
+}
+
+// 速记热键未在位（开机被抢注等）：如实横幅提示改键或走按钮唤出（msgboard 先例语义）。
+const sheetHotkeyMissing = computed(
+  () => !!sheetState.value && sheetState.value.hotkey !== '' && !sheetState.value.hotkeyActive,
+)
+
+async function saveQuickHotkey() {
+  if (sheetSaving.value || !sheetState.value) return
+  sheetSaving.value = true
+  try {
+    // 后端事务自带冲突回滚（旧键全程活着、配置不动），失败原文上浮中文指引
+    await MemoAPI.MemoService.SetQuickSheetHotkey(sheetHotkeyDraft.value.trim())
+    await refreshQuickSheet()
+    showToast('速记热键已更新')
+  } catch (err: unknown) {
+    const msg = getErrorMessage(err)
+    showToast(`热键设置失败: ${msg}`)
+    sheetHotkeyDraft.value = sheetState.value.hotkey // 回滚后草稿对齐生效值
+    await refreshQuickSheet()
+  } finally {
+    sheetSaving.value = false
+  }
+}
+
+async function openQuickSheet() {
+  try {
+    await MemoAPI.MemoService.ShowQuickSheet()
+  } catch (err: unknown) {
+    showToast(`唤出速记卡失败: ${getErrorMessage(err)}`)
+  }
+}
 
 // ---- 完整编辑器（次级入口：长文/代码/Markdown）----
 const showEditor = ref(false)
@@ -401,6 +456,7 @@ useWailsEvent('memo:changed', () => {
 
 onMounted(() => {
   loadMemos()
+  refreshQuickSheet()
   window.addEventListener('keydown', onModalKey)
 })
 
@@ -423,6 +479,9 @@ onUnmounted(() => {
       <template #actions>
         <div class="head-btns">
           <UiButton variant="primary" @click="openCreateModal">＋ 新建便签</UiButton>
+          <UiButton variant="secondary" title="唤出悬浮速记卡（与全局热键同一入口）" @click="openQuickSheet">
+            浮窗速记
+          </UiButton>
           <UiButton
             variant="danger"
             :disabled="stats.totalCount === 0"
@@ -590,6 +649,33 @@ onUnmounted(() => {
             </span>
           </footer>
         </article>
+      </div>
+    </section>
+
+    <!-- ③⁺ 悬浮速记卡配置（低频设置收页尾；实况拉不到即整段收起不给假配置） -->
+    <section v-if="sheetState" class="panel memo-sheet-settings" aria-label="悬浮速记卡">
+      <div class="tool-row">
+        <div class="sheet-setting-text">
+          <span class="sheet-setting-name">悬浮速记卡 · 全局热键</span>
+          <span class="sheet-setting-desc">
+            随处唤出极简速记小窗：回车即存、失焦即收。加速器写法如 <b class="mono">Ctrl+Alt+N</b>；
+            留空 = 停用热键（本页「浮窗速记」按钮不受影响）。改键即时注册，被占用会报错并保旧键。
+          </span>
+        </div>
+        <input
+          v-model="sheetHotkeyDraft"
+          class="text-input memo-hotkey-input mono"
+          type="text"
+          placeholder="Ctrl+Alt+N"
+          aria-label="速记卡全局热键"
+        />
+        <UiButton variant="secondary" :disabled="sheetSaving" @click="saveQuickHotkey">
+          {{ sheetSaving ? '保存中…' : '保存热键' }}
+        </UiButton>
+        <span v-if="sheetState.hotkey === ''" class="chip chip-neutral memo-hotkey-off">热键已停用</span>
+      </div>
+      <div v-if="sheetHotkeyMissing" class="banner banner-warn" role="note">
+        热键「{{ sheetState.hotkey }}」未在位：多半已被其它程序抢占。换个组合保存，或留空停用——期间可用「浮窗速记」按钮唤出。
       </div>
     </section>
 
@@ -810,6 +896,14 @@ onUnmounted(() => {
   padding: 1px 7px; border-radius: var(--radius-micro); font-size: var(--text-xs); cursor: pointer;
 }
 .memo-copy-btn:hover { background: var(--surface-hover); border-color: var(--color-border-strong); }
+
+/* ③⁺ 悬浮速记卡配置条（外观基座全部走共享原子类，本层只排布与私有色差） */
+.memo-sheet-settings { display: flex; flex-direction: column; gap: 10px; }
+.sheet-setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 300px; }
+.sheet-setting-name { font-size: var(--text-sm); font-weight: 600; color: var(--color-text); }
+.sheet-setting-desc { font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.6; }
+.memo-hotkey-input { width: 168px; flex: none; }
+.memo-hotkey-off { flex: none; }
 
 /* ④⑤ 浮层家族（详情/编辑共用壳；书写-预览分段钮互切内容区） */
 .modal-overlay {

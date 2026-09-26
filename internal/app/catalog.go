@@ -222,11 +222,11 @@ var catalogItems = []extapi.ModuleCatalogItem{
 	{
 		ID:            "memo",
 		Name:          "极客随手记",
-		Description:   "极轻量本地持久化备忘录与临时代码片段站，支持 Markdown 便签、速记、标签云、置顶、敏感脱敏与一键全删",
+		Description:   "极轻量本地持久化备忘录与临时代码片段站，支持 Markdown 便签、速记、标签云、置顶、敏感脱敏、一键全删与全局热键悬浮速记卡",
 		Category:      "efficiency",
 		DeliveryKind:  extapi.DeliveryBuiltinLogical,
-		Capabilities:  []string{"mcp-tools"},
-		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch, extapi.EntryMCP},
+		Capabilities:  []string{"background-listener", "dedicated-window", "hotkey-slot", "mcp-tools"},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch, extapi.EntryHotkey, extapi.EntryMCP, extapi.EntryWindow, extapi.EntryBackground},
 		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
 		Permissions:   []extapi.Permission{},
 		Owner:         "hanxi",
@@ -426,7 +426,7 @@ var catalogItems = []extapi.ModuleCatalogItem{
 	{
 		ID:            "softver",
 		Name:          "软件版本",
-		Description:   "日常装机软件版本跟踪（微信首个目标）：本机版本注册表×PE 双口径、官方最新版对照与下载直链、安装/数据目录两代探测与占用扫描",
+		Description:   "日常装机软件版本跟踪（微信首个目标）：本机版本注册表×PE 双口径、官方最新版对照与安装包直连下载（不托管安装）、安装/数据目录两代探测与占用扫描",
 		Category:      "system",
 		DeliveryKind:  extapi.DeliveryBuiltinLogical,
 		Capabilities:  []string{},

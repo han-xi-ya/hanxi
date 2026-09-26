@@ -109,10 +109,13 @@ var deliveryConst = map[extapi.DeliveryKind]string{
 // hotkeyAllowlist 全局热键入口/能力白名单。
 // 证据：internal/app/hotkeys.go 由装配根为 ocr 绑定剪贴板识图热键（槽位
 // ocr/snip-clipboard）；internal/modules/msgboard/hotkey.go 为 msgboard 模块
-// 自绑显隐热键（槽位 msgboard/toggle，随 OnInit/OnDestroy 驱动）。
+// 自绑显隐热键（槽位 msgboard/toggle，随 OnInit/OnDestroy 驱动）；
+// internal/modules/memo/hotkey.go 为 memo 模块自绑悬浮速记卡显隐热键
+// （槽位 memo/quicksheet，N16 B 批，随 OnInit/OnDestroy 驱动）。
 var hotkeyAllowlist = map[string]bool{
 	"ocr":      true,
 	"msgboard": true,
+	"memo":     true,
 }
 
 // mcpAllowlist `hanxi mcp` 无头进程暴露工具的模块白名单。

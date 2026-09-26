@@ -82,6 +82,7 @@
     "markeron:instance-state",
     "markeron:version-download",
     "memo:changed",
+    "memo:quicksheet:opening",
     "msgboard:changed",
     "nanazip:operation-progress",
     "nanazip:package-snapshot",
@@ -133,10 +134,11 @@
     "wsl:readiness"
   ],
   "wiring": {
-    "preactivatedModules": ["wechat", "quickmenu", "msgboard", "wsl"],
+    "preactivatedModules": ["wechat", "quickmenu", "msgboard", "memo", "wsl"],
     "orderedCalls": [
       { "before": "quickMenuModule.SetMainWindow(win)", "after": "registry.EnsureActive(\"quickmenu\")" },
       { "before": "msgboardModule.SetHotkeyRegistry(hk)", "after": "registry.EnsureActive(\"msgboard\")" },
+      { "before": "mMod.SetHotkeyRegistry(hk)", "after": "registry.EnsureActive(\"memo\")" },
       { "before": "setupSnipHotkey(hk, registry, ocrSvc)", "after": "registry.EnsureActive(\"quickmenu\")" }
     ]
   },
@@ -163,6 +165,6 @@
   },
   "counts": {
     "modules": 45,
-    "events": 84
+    "events": 85
   }
 }

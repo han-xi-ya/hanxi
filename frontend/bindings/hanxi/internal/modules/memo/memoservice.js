@@ -58,11 +58,29 @@ export function Delete(id) {
 }
 
 /**
+ * GetQuickSheetState 热键配置与系统实况回显（模块页设置区一次拉全）。
+ * 在位与否问注册器槽位实况（底层即 manager.IsRegistered）而非自记状态——
+ * 开机期抢键失败只降级不报错，页面据此提示改键或走按钮唤出（口径同 msgboard）。
+ * @returns {$CancellablePromise<$models.QuickSheetState>}
+ */
+export function GetQuickSheetState() {
+    return $Call.ByID(1535676210);
+}
+
+/**
  * GetStats 获取便签统计数据与标签云
  * @returns {$CancellablePromise<$models.MemoStats>}
  */
 export function GetStats() {
     return $Call.ByID(3969630222);
+}
+
+/**
+ * HideQuickSheet 收起速记卡（卡内 Esc 出口；幂等，未显示时静默成功）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function HideQuickSheet() {
+    return $Call.ByID(2267210291);
 }
 
 /**
@@ -103,6 +121,16 @@ export function RestoreFile(id, content) {
 }
 
 /**
+ * SetQuickSheetHotkey 改速记热键（RPC 导出版：接统一调用门）。事务语义见
+ * setQuickHotkey：冲突时旧键全程活着、配置不动，中文错误上抛由页面红字呈现。
+ * @param {string} raw
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetQuickSheetHotkey(raw) {
+    return $Call.ByID(43540611, raw);
+}
+
+/**
  * SetWailsApp 设置 Wails App 引用。
  * 装配布线: Go 直调路径,不得依赖运行态(见 ADR-0001 Wave 3 注记)——不接调用门。
  * @param {application$0.App | null} app
@@ -110,6 +138,14 @@ export function RestoreFile(id, content) {
  */
 export function SetWailsApp(app) {
     return $Call.ByID(2496713290, app);
+}
+
+/**
+ * ShowQuickSheet 唤出速记卡（模块页按钮直达；已显示时幂等重摆位抢焦点）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function ShowQuickSheet() {
+    return $Call.ByID(2160505538);
 }
 
 /**
@@ -142,6 +178,14 @@ export function ToggleMask(id) {
  */
 export function TogglePin(id) {
     return $Call.ByID(1231598576, id);
+}
+
+/**
+ * ToggleQuickSheet 速记卡唤出↔收起互切（RPC 导出版：接统一调用门）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function ToggleQuickSheet() {
+    return $Call.ByID(1890625451);
 }
 
 /**

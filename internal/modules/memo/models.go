@@ -30,3 +30,11 @@ type MemoStats struct {
 	PinnedCount int            `json:"pinnedCount"`
 	TagCloud    map[string]int `json:"tagCloud"` // 每个标签对应的便签计数
 }
+
+// QuickSheetState 悬浮速记卡的配置与实况（模块页设置区回显）。
+// Hotkey 为加速器串（""= 停用）；HotkeyActive 以系统注册实况为准——
+// 开机期抢键失败只降级不报错，页面据此提示改键或改用按钮唤出。
+type QuickSheetState struct {
+	Hotkey       string `json:"hotkey"`
+	HotkeyActive bool   `json:"hotkeyActive"`
+}

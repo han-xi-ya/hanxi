@@ -233,6 +233,7 @@ declare module "@wailsio/runtime" {
             "markeron:instance-state": instance$11.Snapshot;
             "markeron:version-download": version$11.DownloadProgress;
             "memo:changed": void;
+            "memo:quicksheet:opening": void;
             "msgboard:changed": void;
             "nanazip:operation-progress": nanazip$0.OperationProgress;
             "nanazip:package-snapshot": nanazip$0.PackageSnapshot;

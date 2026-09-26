@@ -429,17 +429,23 @@
     {
       "id": "memo",
       "name": "极客随手记",
-      "description": "极轻量本地持久化备忘录与临时代码片段站，支持 Markdown 便签、速记、标签云、置顶、敏感脱敏与一键全删",
+      "description": "极轻量本地持久化备忘录与临时代码片段站，支持 Markdown 便签、速记、标签云、置顶、敏感脱敏、一键全删与全局热键悬浮速记卡",
       "category": "efficiency",
       "deliveryKind": "builtin-logical",
       "capabilities": [
+        "background-listener",
+        "dedicated-window",
+        "hotkey-slot",
         "mcp-tools"
       ],
       "entrypoints": [
         "rpc",
         "navigation",
         "search",
-        "mcp"
+        "hotkey",
+        "mcp",
+        "window",
+        "background"
       ],
       "compatibility": {
         "hostRange": "*",
@@ -856,7 +862,7 @@
     {
       "id": "softver",
       "name": "软件版本",
-      "description": "日常装机软件版本跟踪（微信首个目标）：本机版本注册表×PE 双口径、官方最新版对照与下载直链、安装/数据目录两代探测与占用扫描",
+      "description": "日常装机软件版本跟踪（微信首个目标）：本机版本注册表×PE 双口径、官方最新版对照与安装包直连下载（不托管安装）、安装/数据目录两代探测与占用扫描",
       "category": "system",
       "deliveryKind": "builtin-logical",
       "capabilities": [],

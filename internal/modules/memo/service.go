@@ -13,6 +13,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"hanxi/internal/extapi"
+	"hanxi/internal/hotkey"
 	"hanxi/internal/notify"
 	"hanxi/internal/settings"
 )
@@ -31,6 +32,17 @@ type MemoService struct {
 	holder     *extapi.LeaseHolder
 	dataDir    string // 数据根（ClearAll 残片收口用：暂存目录挂在这下面）
 	legacyPath string // 旧库 <StateDir>/memo.json（其 .migrated/.corrupt- 派生残片同源收口）
+
+	// 悬浮速记卡（N16 B 批）：偏好、热键注册器引用与卡窗状态。记账全部走
+	// sheetMu，与便签数据锁 mu 互不相涉；Wails 窗口 API 一律锁外调用防锁反转。
+	prefs        *quickMemoStore  // <stateDir>/memo-prefs.json（nil 容忍，回落默认值）
+	hk           *hotkey.Registry // 全仓通用热键注册器（装配根注入，未注入退化为纯配置读写）
+	sheetMu      sync.Mutex       // 串行化速记卡记账（窗口引用/显隐/空闲计时/started）
+	sheetWin     *application.WebviewWindow
+	sheetClosing func() // WindowClosing 拦截 hook 的注销闭包（真销毁前必摘，#53）
+	sheetShown   bool
+	sheetIdle    *time.Timer // 收起后的空闲销毁计时
+	sheetStarted bool        // OnInit~OnDestroy 窗口期：false 即拒绝一切唤出
 }
 
 // NewMemoService 实例化便签服务：启动清扫/迁移旧库，然后把权威数据全量装载进内存
@@ -54,7 +66,8 @@ func NewMemoService(paths *settings.Paths, holder *extapi.LeaseHolder) (*MemoSer
 	}
 
 	files := NewFileStore(memoDir)
-	s := &MemoService{files: files, holder: holder, dataDir: dataDir, legacyPath: legacyPath}
+	s := &MemoService{files: files, holder: holder, dataDir: dataDir, legacyPath: legacyPath,
+		prefs: newQuickMemoStore(paths.StateDir())}
 
 	hasFiles, herr := memoDirHasFiles(memoDir)
 	if herr != nil {

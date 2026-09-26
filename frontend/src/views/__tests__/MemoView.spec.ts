@@ -5,7 +5,9 @@
 // toast 文案契约逐字不变。新增钉死——速记回车即存（含输入法组字豁免）、
 // 编辑器书写/预览切换（Markdown 渲染进 DOM）、详情浮层、一键全删强确认
 // （danger tone、条数入文案、走 ClearAll）。契约测试更新：前端依赖面从
-// 七方法扩为八方法（新增 ClearAll，RestoreFile 依旧不得出现在前端面）。
+// 七方法扩为八方法（新增 ClearAll，RestoreFile 依旧不得出现在前端面）；
+// N16 B 批悬浮速记卡再扩为十一方法（GetQuickSheetState/SetQuickSheetHotkey/
+// ShowQuickSheet，本 spec 尾部「悬浮速记卡配置」一族钉死）。
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -22,6 +24,9 @@ const svc = vi.hoisted(() => ({
   TogglePin: vi.fn(),
   ToggleMask: vi.fn(),
   ClearAll: vi.fn(),
+  GetQuickSheetState: vi.fn(),
+  SetQuickSheetHotkey: vi.fn(),
+  ShowQuickSheet: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -59,13 +64,23 @@ async function flushMicrotasks(times = 25) {
   for (let i = 0; i < times; i++) await Promise.resolve()
 }
 
-function defaults(items: unknown[] = [memo()], tagCloud: Record<string, number> = { '#SQL': 1 }) {
+function defaults(
+  items: unknown[] = [memo()],
+  tagCloud: Record<string, number> = { '#SQL': 1 },
+  sheet: { hotkey: string; hotkeyActive: boolean } | 'fail' = { hotkey: 'Ctrl+Alt+N', hotkeyActive: true },
+) {
   svc.List.mockResolvedValue(items)
   svc.GetStats.mockResolvedValue({ totalCount: items.length, pinnedCount: 0, tagCloud })
+  if (sheet === 'fail') svc.GetQuickSheetState.mockRejectedValue(new Error('gate refused'))
+  else svc.GetQuickSheetState.mockResolvedValue(sheet)
 }
 
-async function mountView(items?: unknown[], tagCloud?: Record<string, number>) {
-  defaults(items, tagCloud)
+async function mountView(
+  items?: unknown[],
+  tagCloud?: Record<string, number>,
+  sheet?: { hotkey: string; hotkeyActive: boolean } | 'fail',
+) {
+  defaults(items, tagCloud, sheet)
   const w = mount(defineComponent({ render: () => h(MemoView) }), { attachTo: document.body })
   await flushMicrotasks()
   return w
@@ -472,12 +487,14 @@ describe('一键全删', () => {
   })
 })
 
-// F3-b 契约 + 2026-09 全删波更新：后端文件库化承诺的七方法面扩为八（+ClearAll）；
-// RestoreFile 仍属后端热恢复面，不得出现在前端调用清单里。
+// F3-b 契约 + 2026-09 全删波更新 + N16 B 批速记卡扩面：后端文件库化承诺的
+// 七方法面扩为八（+ClearAll）再扩为十一（+GetQuickSheetState/SetQuickSheetHotkey/
+// ShowQuickSheet）；RestoreFile 仍属后端热恢复面，不得出现在前端调用清单里。
 describe('memo 前端契约面', () => {
-  it('MemoView 依赖面为既有八方法（ClearAll 入列，RestoreFile 不越面）', () => {
+  it('MemoView 依赖面为既有十一方法（ClearAll 与速记卡三件入列，RestoreFile 不越面）', () => {
     expect(Object.keys(svc).sort()).toEqual([
-      'ClearAll', 'Create', 'Delete', 'GetStats', 'List', 'ToggleMask', 'TogglePin', 'Update',
+      'ClearAll', 'Create', 'Delete', 'GetQuickSheetState', 'GetStats', 'List',
+      'SetQuickSheetHotkey', 'ShowQuickSheet', 'ToggleMask', 'TogglePin', 'Update',
     ])
   })
 
@@ -494,5 +511,62 @@ describe('memo 前端契约面', () => {
     expect(pinnedCard, '置顶卡未渲染 is-pinned').toBeDefined()
     expect(pinnedCard!.text()).not.toContain('•••') // 置顶卡=非遮罩那条
     w.unmount()
+  })
+})
+
+// N16 B 批：悬浮速记卡配置面（页头唤出钮 + 页尾热键面板）。冲突回滚是后端
+// 事务职责，前端只钉死"成功刷新回显 + 失败草稿对齐生效值 + 未在位如实提示"。
+describe('悬浮速记卡配置', () => {
+  it('页头「浮窗速记」钮直连 ShowQuickSheet（不依赖热键的唤出通道）', async () => {
+    const w = await mountView()
+    await byText(w, '浮窗速记')!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.ShowQuickSheet).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  it('面板回显生效键位；保存走 SetQuickSheetHotkey 并重拉实况', async () => {
+    const w = await mountView()
+    const input = w.get('input[aria-label="速记卡全局热键"]')
+    expect((input.element as HTMLInputElement).value).toBe('Ctrl+Alt+N')
+    svc.SetQuickSheetHotkey.mockResolvedValue(undefined)
+
+    await input.setValue(' Ctrl+Alt+M ')
+    await byText(w, '保存热键')!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.SetQuickSheetHotkey).toHaveBeenCalledWith('Ctrl+Alt+M') // 送后端前 trim
+    expect(svc.GetQuickSheetState.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(useToast().toastMsg.value).toBe('速记热键已更新')
+    w.unmount()
+  })
+
+  it('后端冲突报错：失败 toast 原文上浮，草稿对齐回滚后的生效值', async () => {
+    const w = await mountView()
+    svc.SetQuickSheetHotkey.mockRejectedValue(
+      new Error('热键 "Ctrl+Alt+J" 设置失败（留空表示停用热键）：组合键 Ctrl+Alt+J 已被占用（可能被其他软件抢注），请到设置页改键'),
+    )
+    const input = w.get('input[aria-label="速记卡全局热键"]')
+    await input.setValue('Ctrl+Alt+J')
+    await byText(w, '保存热键')!.trigger('click')
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toContain('热键设置失败')
+    expect(useToast().toastMsg.value).toContain('已被占用')
+    expect((input.element as HTMLInputElement).value).toBe('Ctrl+Alt+N')
+    w.unmount()
+  })
+
+  it('热键未在位给警示横幅；停用态给中性芯片；实况拉不到整段收起', async () => {
+    const w = await mountView([memo()], { '#SQL': 1 }, { hotkey: 'Ctrl+Alt+J', hotkeyActive: false })
+    expect(w.find('.banner-warn').text()).toContain('未在位')
+    w.unmount()
+
+    const w2 = await mountView([memo()], { '#SQL': 1 }, { hotkey: '', hotkeyActive: false })
+    expect(w2.find('.memo-hotkey-off').text()).toContain('热键已停用')
+    expect(w2.find('.banner-warn').exists()).toBe(false)
+    w2.unmount()
+
+    const w3 = await mountView([memo()], { '#SQL': 1 }, 'fail')
+    expect(w3.find('.memo-sheet-settings').exists()).toBe(false)
+    w3.unmount()
   })
 })

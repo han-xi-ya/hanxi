@@ -164,6 +164,9 @@ func RegisterEvents() {
 	application.RegisterEvent[fileshare.TransferEvent]("fileshare:transfer")
 	application.RegisterEvent[fileshare.DropItem]("fileshare:text-dropped")
 	application.RegisterEvent[application.Void]("memo:changed")
+	// memo:quicksheet:opening 是无载荷事件（N16 悬浮速记卡每次唤出广播，
+	// 卡视图据此清空残稿并聚焦输入条），必须用 Void 注册。
+	application.RegisterEvent[application.Void]("memo:quicksheet:opening")
 	// msgboard:changed 是无载荷事件（挂牌/撤牌/改配置推送，模块页与牌体视图各自拉新）。
 	application.RegisterEvent[application.Void]("msgboard:changed")
 	application.RegisterEvent[notify.Notification]("notify:received")
@@ -681,6 +684,17 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	msgboardModule.SetHotkeyRegistry(hk)
 	if err := registry.EnsureActive("msgboard"); err != nil {
 		slog.Error("激活 msgboard 模块失败，留言板热键不可用（不影响启动）", "err", err)
+	}
+
+	// memo（N16 悬浮速记卡）：与 msgboard 同款接线——交接注册表后常驻激活，
+	// 热键随 OnInit 绑定（开机即待命，主窗不开也能唤卡）；模块在设置页停用
+	// 即摘热键并销毁速记卡。memo.New 失败（数据损坏）时 memoModule 为 nil，
+	// 自然跳过——不激活、不绑键。
+	if mMod, ok := memoModule.(*memo.Module); ok && mMod != nil {
+		mMod.SetHotkeyRegistry(hk)
+		if err := registry.EnsureActive("memo"); err != nil {
+			slog.Error("激活 memo 模块失败，速记热键不可用（不影响启动）", "err", err)
+		}
 	}
 
 	// wsl：预激活——USB 开机自动共享（F9）走「账本+重放」范式，重放随模块
