@@ -1200,7 +1200,7 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **避坑防重犯建议**：凡"事件先行于状态变更"类竞态回归测试，先问断言读的是**广播坐标**还是**事后现值**——后者一律假锁；任何时序锁交付前必做一次"故意破坏顺序测试必须红"的负对照，绿着的锁等于没锁。本机无 gcc 跑不了 -race，靠 channel happens-before 设计规避，有 gcc 环境建议补跑。
 
 ### 90. 页内探测正常≠已接入更新雷达：softver 微信"扫不到"实为 UpdateChecker 契约缺席（机主点名排查）
-- **问题现象与错误原因**：机主报"软件版本雷达找不到微信"。断点不在扫描源：实机 `HKLM\SOFTWARE\WOW6432Node\...\Uninstall\Weixin`（DisplayName=微信/4.1.15.9）页内 probeLocal 三读数一致命中、包内真机冒烟测试原样绿。真断点在全局"可用更新"链：装配根 collectUpdateCheckers 靠 `extapi.UpdateChecker` 类型断言收集感知模块，23 家托管全实现、softver 从未实现——雷达轮(state/updates.json)里微信永远缺席是**覆盖面断线**，不是扫描 bug。
+- **问题现象与错误原因**：机主报"软件版本雷达找不到微信"。断点不在扫描源：实机 `HKLM\SOFTWARE\WOW6432Node\...\Uninstall\Weixin`（DisplayName=微信/4.1.15.9）页内 probeLocal 三读数一致命中、包内真机冒烟测试原样绿。真断点在全局"可用更新"链：装配根 collectUpdateCheckers 靠 `extapi.UpdateChecker` 类型断言收集感知模块；实扫（§5 #8 复核）托管面实际达标 16/19，softver 从未实现——雷达轮(state/updates.json)里微信永远缺席是**覆盖面断线**，不是扫描 bug。
 - **排查过程**：先实机 reg 枚举取证确认注册形态→跑包内冒烟证伪"探测坏"→读 updatewatch/collectUpdateCheckers 投影链→对照 bin/hanxidata/state/updates.json 实况（available 五家有 ddnsgo 等、无 softver）钉死断点。
 - **正确做法与标准修复方案**：新增 check_update.go 实现契约：本地与页内 Snapshot 同源 probeLocal（双代共存 bestComparableVersion 取过门槛最高读数）、远程复用官方页 SSR 解析链与 10min TTL 共享 official 缓存（失败同步落 officialErr，页内降级横幅同源可见）；未装/版本不可比返回 false 且**不外呼**，远程失败错误上抛让调度器保持原健康值（失败≠无更新）。类型断言自动收集，装配与前端零改动。
 - **避坑防重犯建议**：新模块接入"可用更新"雷达的唯一姿势=实现 UpdateChecker 契约（不实现=静默缺席，无编译错误提醒）；排查"雷达没显示 X"先分清三层——页内探测/契约接入/调度投影，别一上来就怀疑扫描器。附取证陷阱一条：**Git Bash 下 `reg query /s /f 关键词`（尤其中文词与 /k）会静默失败返回空**，据此会误判"巢里没有"——取证用直接枚举子键名再 grep，勿依赖 /s /f。
