@@ -1,9 +1,11 @@
 // 轮盘实时预览（WheelPreview）特征测试：几何同源扇区数、分组角标、点格 emit
 // pick、activeIndex 高亮、空态。预览与实盘共享 wheelGeometry，测试只锁预览层。
+// 皮肤批：skin prop 缺省兼容（不传 = 默认素瓷）与预设类下发。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import type { MenuItem } from '../../../../bindings/hanxi/internal/modules/quickmenu/models'
 import WheelPreview from '../WheelPreview.vue'
+import { DEFAULT_WHEEL_SKIN } from '../wheelSkin'
 
 const leaf = (index: number, label: string, type: string, children: MenuItem[] | null = null): MenuItem =>
   ({ index, label, type, hint: '', icon: '', children })
@@ -42,6 +44,26 @@ describe('WheelPreview', () => {
     expect(w.findAll('.wp-sector')).toHaveLength(0)
     expect(w.find('.wp-ghost').exists()).toBe(true)
     expect(w.find('.wp-empty').text()).toContain('还没有条目')
+    w.unmount()
+  })
+
+  it('skin 缺省 = 默认素瓷皮肤，根带 skin-frost 类与 --wf-face-a 变量', () => {
+    const w = mount(WheelPreview, { props: { items: three } })
+    expect(w.find('.wp').classes()).toContain('skin-frost')
+    expect(w.find('.wp').attributes('style')).toContain('--wf-face-a: 1')
+    w.unmount()
+  })
+
+  it('传 skin 切预设与强度：根类名换、CSS 变量随 stroke 下发、扇区带类型色类', () => {
+    const w = mount(WheelPreview, {
+      props: { items: three, skin: { ...DEFAULT_WHEEL_SKIN, preset: 'ink', stroke: 0, faceAlpha: 0.5 } },
+    })
+    const root = w.find('.wp')
+    expect(root.classes()).toContain('skin-ink')
+    expect(root.attributes('style')).toContain('--wf-face-a: 0.5')
+    expect(root.attributes('style')).toContain('--wf-edge: 10%')
+    // 类型色轨：exe→t-exe（叶图标解析为 box 属矢量轨，不吃像素预算但仍带类型类）
+    expect(w.findAll('.wp-sector')[0].classes()).toContain('t-exe')
     w.unmount()
   })
 })

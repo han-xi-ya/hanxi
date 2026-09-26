@@ -29,6 +29,13 @@ import {
   WHEEL, VIS, polar, wedgePath, mainSectorAngles, capSpanDeg, capSectorAngles, capAnchorDeg, mainAnchor, slotOf,
 } from '../components/quickmenu/wheelGeometry'
 import { useWheelRingState } from '../composables/useWheelRingState'
+import { isRasterWheelIcon, snapIconCssPx } from '../components/quickmenu/wheelIconBudget'
+import { useWheelDpr } from '../components/quickmenu/useWheelDpr'
+import {
+  readWheelSkin, wheelSkinVars, wheelTintCss, WHEEL_SKIN_STORAGE_KEY, type WheelSkin,
+} from '../components/quickmenu/wheelSkin'
+import { wheelTypeTint } from '../components/quickmenu/wheelSkinColors'
+import { useWheelTints } from '../components/quickmenu/useWheelTints'
 
 // 子环呈现硬上限：帽带角度撑满 180° 时每枚子扇区仍 ≥22°，再密即失能
 const CAP_MAX = 8
@@ -90,6 +97,42 @@ const densityVars = computed(() => ({
   '--d-icon': `${density.value.icon}px`,
   '--d-name': `${density.value.name}px`,
 }))
+const CAP_ICON = 15 // 帽带子扇区图标档（原模板裸值归口，便于像素预算消费）
+
+// —— 皮肤账与图标像素预算（机主反馈 2026-09-26 两条：小图标糊 / 盘面单调）——
+// 皮肤存 localStorage（纯视觉账，与 rail 展开态同族）；设置页保存后本窗经同源
+// storage 事件即时跟皮，窗口隐藏期错过的改动由每次唤出 refresh() 重读兜底。
+const dpr = useWheelDpr()
+const skin = ref<WheelSkin>(readWheelSkin())
+const skinVars = computed(() => wheelSkinVars(skin.value))
+function onSkinStorage(ev: StorageEvent) {
+  if (ev.key === null || ev.key === WHEEL_SKIN_STORAGE_KEY) skin.value = readWheelSkin()
+}
+
+// 模块色取色（"跟随模块色"勾选时启用）：app: 图标主色调喂扇区描边 --tint，
+// 取不到色（灰图标/矢量轨/采样失败）如实回落类型 token。
+const { tints, refresh: refreshTints } = useWheelTints(
+  () => {
+    const names = items.value.map(wheelIconOf)
+    for (const ch of capItems.value) names.push(wheelIconOf(ch))
+    return names
+  },
+  () => skin.value.followModuleColor,
+)
+watch([items, () => skin.value.followModuleColor], refreshTints)
+watch(() => ring.openGroup.value, refreshTints) // 开环后帽带新面孔补采
+
+/** 扇区描边 tint 色（皮肤样式经 inline var 下发；undefined = 不吃模块色） */
+function sectorTint(item: MenuItem): string | undefined {
+  if (!skin.value.followModuleColor) return undefined
+  const dom = tints.value[wheelIconOf(item)]
+  return dom ? wheelTintCss(dom, skin.value.faceAlpha) : undefined
+}
+const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
+/** 图标渲染边长：app: 位图轨吃 DPR 像素预算，i: 矢量轨原档直出（见 wheelIconBudget） */
+function iconPx(item: MenuItem, base: number): number {
+  return isRasterWheelIcon(wheelIconOf(item)) ? snapIconCssPx(base, dpr.value || 1) : base
+}
 const activeItem = computed(() => (active.value == null ? null : items.value[active.value] ?? null))
 const ready = computed(() => !loading.value && !errorMsg.value)
 
@@ -107,6 +150,7 @@ async function refresh() {
   errorMsg.value = ''
   active.value = null
   activeCap.value = null
+  skin.value = readWheelSkin() // 设置页可能在窗口隐藏期间改皮：唤出即重读兜底
   ring.reset() // 每次唤出回主环：双环可预测的前提是"层级不跨会话残留"
   try {
     items.value = (await QuickMenuAPI.QuickMenuService.ListItems()) ?? []
@@ -313,11 +357,13 @@ useWailsEvent('quickmenu:opening', () => {
 
 onMounted(() => {
   window.addEventListener('keydown', onWindowKeydown)
+  window.addEventListener('storage', onSkinStorage)
   refresh()
   rootEl.value?.focus()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWindowKeydown)
+  window.removeEventListener('storage', onSkinStorage)
 })
 
 // —— 渲染派生（主环） —— 绘制一律吃 VIS 观感常量（缝角/收窄环带），命中不动
@@ -404,10 +450,10 @@ function onGroupActivate(i: number) {
   <div
     ref="rootEl"
     class="popup"
-    :class="{ 'is-cancel': ring.cancelArmed.value }"
+    :class="[`skin-${skin.preset}`, { 'is-cancel': ring.cancelArmed.value }]"
     tabindex="0"
     role="menu"
-    :style="densityVars"
+    :style="[densityVars, skinVars]"
     aria-label="快捷启动轮盘"
     :aria-activedescendant="active != null ? `qm-sector-${active}` : (activeCap != null ? `qm-cap-${activeCap}` : undefined)"
     @keydown="onKeydown"
@@ -425,6 +471,12 @@ function onGroupActivate(i: number) {
           <stop offset="0%" class="rim-stop-hi" />
           <stop offset="100%" class="rim-stop-lo" />
         </linearGradient>
+        <!-- 盘底纱面渐变（皮肤批）：偏上光源的径向明纱收进深底，替代一潭死水的平涂；
+             两 stop 吃皮肤预设变量（--wf-hi/--wf-lo），盘面透明度由 --wf-face-a 统管 -->
+        <radialGradient id="qm-face-grad" cx="50%" cy="38%" r="80%">
+          <stop offset="0%" class="face-stop-hi" />
+          <stop offset="100%" class="face-stop-lo" />
+        </radialGradient>
       </defs>
 
       <!-- 盘底：真透明窗口上绘制不透明圆盘，边缘天然抗锯齿；缘环即盘缘 -->
@@ -438,9 +490,9 @@ function onGroupActivate(i: number) {
           v-for="(item, i) in items"
           :key="`${entrySeq}-${item.index}`"
           class="sector"
-          :class="{ 'is-active': active === i, 'is-pinned': ring.pinnedGroup.value === i }"
+          :class="[{ 'is-active': active === i, 'is-pinned': ring.pinnedGroup.value === i }, typeClass(item)]"
           :d="mainWedge(i)"
-          :style="{ animationDelay: `${Math.min(i * 14, 84)}ms`, transform: active === i ? `translate(${radialShift(i).x}px, ${radialShift(i).y}px)` : '' }"
+          :style="[{ animationDelay: `${Math.min(i * 14, 84)}ms`, transform: active === i ? `translate(${radialShift(i).x}px, ${radialShift(i).y}px)` : '' }, sectorTint(item) ? { '--tint': sectorTint(item) } : {}]"
           role="presentation"
           @click="isGroup(item) ? onGroupActivate(i) : activate(item)"
         />
@@ -459,9 +511,9 @@ function onGroupActivate(i: number) {
           v-for="(ch, j) in capItems"
           :key="`cap-${j}-${ch.index}`"
           class="sector cap-sector"
-          :class="{ 'is-active': activeCap === j }"
+          :class="[{ 'is-active': activeCap === j }, typeClass(ch)]"
           :d="capWedge(j)"
-          :style="{ animationDelay: `${Math.min(j * 14, 84)}ms` }"
+          :style="[{ animationDelay: `${Math.min(j * 14, 84)}ms` }, sectorTint(ch) ? { '--tint': sectorTint(ch) } : {}]"
           role="presentation"
           @click="launchCap(j)"
         />
@@ -511,7 +563,7 @@ function onGroupActivate(i: number) {
       @focus="active = i"
       @click="isGroup(item) ? onGroupActivate(i) : activate(item)"
     >
-      <span class="sector-icon"><AppIcon :name="wheelIconOf(item)" :size="density.icon" /></span>
+      <span class="sector-icon"><AppIcon :name="wheelIconOf(item)" :size="iconPx(item, density.icon)" /></span>
       <span class="sector-name">{{ item.label }}</span>
       <!-- 分组计数徽标（N40③④）：▸N 文字角标退役，圆形徽标只报数 -->
       <span v-if="isGroup(item)" class="sector-caret" aria-hidden="true">{{ item.children?.length ?? 0 }}</span>
@@ -533,7 +585,7 @@ function onGroupActivate(i: number) {
         @focus="activeCap = j"
         @click="launchCap(j)"
       >
-        <span class="sector-icon cap-icon"><AppIcon :name="wheelIconOf(ch)" :size="15" /></span>
+        <span class="sector-icon cap-icon"><AppIcon :name="wheelIconOf(ch)" :size="iconPx(ch, CAP_ICON)" /></span>
         <span class="sector-name cap-name">{{ ch.label }}</span>
       </button>
     </template>
@@ -607,6 +659,26 @@ function onGroupActivate(i: number) {
   --petal-pin: color-mix(in srgb, var(--surface-selected) 85%, var(--surface-panel));
   --cap-petal: color-mix(in srgb, var(--surface-panel) 72%, var(--surface-hover));
   --ease-pop: cubic-bezier(0.16, 1, 0.3, 1);
+  /* 皮肤默认配方 = frost 素瓷（frost 类即现状基线）：盘底纱面渐变的明暗两档。
+     veil/ink 预设只覆写这几枚呈现变量，命中几何与 token 消费面零沾染。 */
+  --wf-hi: var(--surface-panel);
+  --wf-lo: color-mix(in srgb, var(--color-text) 6%, var(--surface-panel));
+}
+/* 雾青：盘面/花瓣染主色薄雾——全走 color-mix 派生，随色板轴（teal/sky/…）联动 */
+.popup.skin-veil {
+  --wf-hi: color-mix(in srgb, var(--color-primary) 8%, var(--surface-panel));
+  --wf-lo: color-mix(in srgb, var(--color-primary) 16%, var(--surface-panel));
+  --petal: color-mix(in srgb, var(--color-primary) 10%, var(--surface-panel));
+  --petal-on: color-mix(in srgb, var(--color-primary) 22%, var(--surface-panel));
+  --cap-petal: color-mix(in srgb, var(--color-primary) 7%, var(--surface-hover));
+}
+/* 玄影：墨纱盘——text token 混深，明暗主题皆玄，扇区浮起感由深度差扛起 */
+.popup.skin-ink {
+  --wf-hi: color-mix(in srgb, var(--color-text) 10%, var(--surface-panel));
+  --wf-lo: color-mix(in srgb, var(--color-text) 20%, var(--surface-panel));
+  --petal: color-mix(in srgb, var(--color-text) 14%, var(--surface-panel));
+  --petal-on: color-mix(in srgb, var(--color-primary) 18%, var(--petal));
+  --cap-petal: color-mix(in srgb, var(--surface-panel) 82%, var(--color-text));
 }
 .popup:focus {
   outline: none; /* 方形焦点环与圆窗不兼容；键盘选中态由扇区描边表达 */
@@ -631,19 +703,27 @@ function onGroupActivate(i: number) {
 /* 外甩取消态：越过 rCancel 全盘半透明，收回缓冲带即复原（transition 已在 .disc） */
 .popup.is-cancel .disc { opacity: 0.5; }
 
-.disc-face { fill: var(--surface-panel); }
+.disc-face { fill: url(#qm-face-grad); opacity: var(--wf-face-a, 1); }
+.face-stop-hi { stop-color: var(--wf-hi); }
+.face-stop-lo { stop-color: var(--wf-lo); }
 .disc-edge { fill: none; stroke: var(--color-border-strong); stroke-width: 1.5; }
+/* 外甩取消态描边升级 danger 混色：取消语义从"整盘变淡"升级为"盘缘报警"，
+   滑回盘面即复原（transition 在 .disc-edge 未挂，状态切换瞬时更利落） */
+.popup.is-cancel .disc-edge { stroke: color-mix(in srgb, var(--state-danger) 55%, var(--color-border-strong)); }
 
 /* N40③①⑤ 磨砂花瓣盘：连续玻璃面退役，每枚扇区是独立圆角花瓣——
-   fill 与 stroke 同取一色 + stroke-width 6 + linejoin round + paint-order:stroke
-   的 SVG 膨胀接合技巧做出 ≈3px 圆角（零 path 布尔运算）；大间隙（VIS.padDeg 4.2°）
+   stroke-width 6 + linejoin round + paint-order:stroke 的 SVG 膨胀接合技巧做出
+   ≈3px 圆角（零 path 布尔运算）；皮肤批起描边不再与 fill 同色，而是"模块/类型色轨"
+   （缝内一圈身份色轮廓），膨胀技巧与圆角效果原样保留；大间隙（VIS.padDeg 4.2°）
    即分界语言，刻度线退役。激活 = primary 软底 + 辉光 + 8px 顶出；
    有激活者时其余花瓣 fill/stroke 半透让位（"选中块拿起、全场退后"）。 */
 .sector {
   pointer-events: auto;
   cursor: pointer;
   fill: var(--petal);
-  stroke: var(--petal);
+  /* 描边即"模块色轨"：色源 = 皮肤取色的 --tint > 类型 token --type-c > muted 兜底，
+     按皮肤描边强度 (--wf-edge) 混进瓣色——膨胀描边技巧不变，只是缝内轮廓有了身份 */
+  stroke: color-mix(in srgb, var(--tint, var(--type-c, var(--color-text-muted))) var(--wf-edge, 38%), var(--petal));
   stroke-width: 6;
   stroke-linejoin: round;
   paint-order: stroke;
@@ -660,9 +740,14 @@ function onGroupActivate(i: number) {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+/* 类型轨描边色（"跟随模块色"关/取不到色时的回落身份色，全走既有语义 token） */
+.sector.t-exe { --type-c: var(--color-primary); }
+.sector.t-command { --type-c: var(--state-information); }
+.sector.t-route { --type-c: var(--state-positive); }
+.sector.t-group { --type-c: var(--state-warning); }
 .sector.is-active {
   fill: var(--petal-on);
-  stroke: var(--petal-on);
+  stroke: color-mix(in srgb, var(--color-primary) 35%, var(--petal-on));
   filter: drop-shadow(0 3px 6px var(--color-primary-glow));
 }
 .sector.is-pinned {
@@ -687,8 +772,15 @@ function onGroupActivate(i: number) {
   from { transform: scale(0.94); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
-.cap-sector { fill: var(--cap-petal); stroke: var(--cap-petal); }
-.cap-sector.is-active { fill: var(--petal-on); stroke: var(--petal-on); }
+/* 帽带花瓣：同吃描边色轨（--tint > --type-c > muted），混入基色换 cap-petal */
+.cap-sector {
+  fill: var(--cap-petal);
+  stroke: color-mix(in srgb, var(--tint, var(--type-c, var(--color-text-muted))) var(--wf-edge, 38%), var(--cap-petal));
+}
+.cap-sector.is-active {
+  fill: var(--petal-on);
+  stroke: color-mix(in srgb, var(--color-primary) 35%, var(--petal-on));
+}
 .cap-rim-accent {
   fill: none;
   stroke: var(--color-primary);
@@ -705,8 +797,9 @@ function onGroupActivate(i: number) {
   stroke-linecap: round;
 }
 
-/* 盘缘连续亮环（①）：花瓣外缘与盘缘之间的渐变环带，替头发丝反光 glint */
-.rim-stop-hi { stop-color: var(--surface-selected); }
+/* 盘缘连续亮环（①）：花瓣外缘与盘缘之间的渐变环带，替头发丝反光 glint；
+   皮肤批起顶档染主色三分——盘上第一圈反光是色板色不是灰，盘面不再单调 */
+.rim-stop-hi { stop-color: color-mix(in srgb, var(--color-primary) 30%, var(--surface-selected)); }
 .rim-stop-lo { stop-color: var(--surface-hover); stop-opacity: 0.35; }
 .disc-rim {
   fill: none;

@@ -10,11 +10,20 @@
 // 纯 SVG + 定位浮层，零组件外依赖；scale 缩放整盘（viewBox 天然支持，配置页
 // 用 0.62 缩进侧栏）。点击扇区经 emit('pick', i) 上抛供 C3「点上格定位/互换」，
 // 但预览自身不做任何副作用。
-import { computed } from 'vue'
+//
+// "预览与实盘同皮"是皮肤批起的新契约：盘面配色/描边色轨/图标像素预算与
+// QuickMenuPopup 吃同一套 wheelSkin/wheelIconBudget 口径（父层喂 skin prop），
+// 设置页拨皮肤即时见皮，不再"设置页一个样、挂出另一个样"。
+import { computed, watch } from 'vue'
 import type { MenuItem } from '../../../bindings/hanxi/internal/modules/quickmenu/models'
 import AppIcon from '../ui/AppIcon.vue'
 import { wheelIconOf } from './wheelIcons'
 import { WHEEL, VIS, wedgePath, mainSectorAngles, mainAnchor } from './wheelGeometry'
+import { isRasterWheelIcon, snapIconCssPx } from './wheelIconBudget'
+import { useWheelDpr } from './useWheelDpr'
+import { DEFAULT_WHEEL_SKIN, wheelSkinVars, wheelTintCss, type WheelSkin } from './wheelSkin'
+import { wheelTypeTint } from './wheelSkinColors'
+import { useWheelTints } from './useWheelTints'
 
 const props = withDefaults(defineProps<{
   items: MenuItem[]
@@ -22,7 +31,9 @@ const props = withDefaults(defineProps<{
   activeIndex?: number | null
   scale?: number
   size?: number
-}>(), { activeIndex: null, scale: 1, size: WHEEL.size })
+  /** 皮肤账（缺省 = 默认素瓷，与实盘未配置时同解） */
+  skin?: WheelSkin
+}>(), { activeIndex: null, scale: 1, size: WHEEL.size, skin: () => DEFAULT_WHEEL_SKIN })
 
 const emit = defineEmits<{ pick: [index: number] }>()
 const isGroup = (item: MenuItem): boolean => (item.children?.length ?? 0) > 0
@@ -34,12 +45,38 @@ const wedge = (i: number) => {
   const a = mainSectorAngles(i, n.value, VIS.padDeg)
   return wedgePath(VIS.rSecIn, VIS.rSecOut, a.a0, a.a1)
 }
-const hubVars = computed(() => ({ '--wp-scale': String(props.scale) }))
+const hubVars = computed(() => ({ '--wp-scale': String(props.scale), ...wheelSkinVars(props.skin) }))
+const rootClass = computed(() => `skin-${props.skin.preset}`)
+
+// 图标像素预算 + 模块色描边：与实盘同一套纯函数/取色钩子（同皮契约）
+const dpr = useWheelDpr()
+const PREVIEW_ICON = 16
+function iconPx(item: MenuItem): number {
+  const base = PREVIEW_ICON
+  return isRasterWheelIcon(wheelIconOf(item)) ? snapIconCssPx(base, dpr.value || 1) : base
+}
+const { tints, refresh: refreshTints } = useWheelTints(
+  () => props.items.map(wheelIconOf),
+  () => props.skin.followModuleColor,
+)
+watch([() => props.items, () => props.skin.followModuleColor], refreshTints)
+function sectorTint(item: MenuItem): string | undefined {
+  if (!props.skin.followModuleColor) return undefined
+  const dom = tints.value[wheelIconOf(item)]
+  return dom ? wheelTintCss(dom, props.skin.faceAlpha) : undefined
+}
+const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
 </script>
 
 <template>
-  <div class="wp" :style="hubVars" role="img" aria-label="轮盘预览">
+  <div class="wp" :class="rootClass" :style="hubVars" role="img" aria-label="轮盘预览">
     <svg :viewBox="`0 0 ${size} ${size}`" class="wp-svg">
+      <defs>
+        <radialGradient id="wp-face-grad" cx="50%" cy="38%" r="80%">
+          <stop offset="0%" class="wp-face-hi" />
+          <stop offset="100%" class="wp-face-lo" />
+        </radialGradient>
+      </defs>
       <circle :cx="size / 2" :cy="size / 2" :r="WHEEL.rDisc" class="wp-face" />
       <circle :cx="size / 2" :cy="size / 2" :r="WHEEL.rDisc - 1.25" class="wp-edge" />
       <g v-if="n === 0">
@@ -49,7 +86,8 @@ const hubVars = computed(() => ({ '--wp-scale': String(props.scale) }))
         v-for="(item, i) in items"
         :key="`wp-${i}-${item.index}`"
         class="wp-sector"
-        :class="{ 'is-active': activeIndex === i }"
+        :class="[{ 'is-active': activeIndex === i }, typeClass(item)]"
+        :style="sectorTint(item) ? { '--tint': sectorTint(item) } : {}"
         :d="wedge(i)"
         @click="emit('pick', i)"
       />
@@ -66,7 +104,7 @@ const hubVars = computed(() => ({ '--wp-scale': String(props.scale) }))
       tabindex="-1"
       @click="emit('pick', i)"
     >
-      <span class="wp-ico"><AppIcon :name="wheelIconOf(item)" :size="16" /></span>
+      <span class="wp-ico"><AppIcon :name="wheelIconOf(item)" :size="iconPx(item)" /></span>
       <span class="wp-name">{{ item.label }}</span>
       <span v-if="isGroup(item)" class="wp-caret">▸</span>
     </button>
@@ -76,13 +114,32 @@ const hubVars = computed(() => ({ '--wp-scale': String(props.scale) }))
 
 <style scoped>
 /* 预览皮与真轮盘同族（玻璃底盘 + 发丝辐线 + primary 高亮），尺寸缩略；
-   颜色全 token，明暗自适应。pointer-events 仅扇区/槽位层，盘底不拦。 */
+   颜色全 token，明暗自适应。pointer-events 仅扇区/槽位层，盘底不拦。
+   皮肤批：预设色轨/透明度/描边强度与 QuickMenuPopup 同一批 CSS 变量口径，
+   配置页切皮肤即时反映（同皮契约）。 */
 .wp { position: relative; width: calc(320px * var(--wp-scale, 1)); aspect-ratio: 1; }
+/* 皮肤预设配方（与弹窗 .popup.skin-* 一一对应，只覆写呈现变量） */
+.wp { --wf-hi: var(--surface-panel); --wf-lo: color-mix(in srgb, var(--color-text) 6%, var(--surface-panel)); }
+.wp.skin-veil {
+  --wf-hi: color-mix(in srgb, var(--color-primary) 8%, var(--surface-panel));
+  --wf-lo: color-mix(in srgb, var(--color-primary) 16%, var(--surface-panel));
+}
+.wp.skin-ink {
+  --wf-hi: color-mix(in srgb, var(--color-text) 10%, var(--surface-panel));
+  --wf-lo: color-mix(in srgb, var(--color-text) 20%, var(--surface-panel));
+}
 .wp-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.wp-face { fill: var(--surface-panel); }
+.wp-face { fill: url(#wp-face-grad); opacity: var(--wf-face-a, 1); }
+.wp-face-hi { stop-color: var(--wf-hi); }
+.wp-face-lo { stop-color: var(--wf-lo); }
 .wp-edge { fill: none; stroke: var(--color-border-strong); stroke-width: 1.5; }
 .wp-ghost { fill: none; stroke: var(--color-border-strong); stroke-width: 1.5; stroke-dasharray: 2 7; stroke-linecap: round; }
-.wp-sector { pointer-events: auto; cursor: pointer; fill: transparent; stroke: var(--color-border); stroke-width: 1; transition: fill var(--motion-fast) ease, stroke var(--motion-fast) ease; }
+/* 描边色轨：--tint（模块色）> --type-c（类型 token）> border 兜底，混入比例吃 --wf-edge */
+.wp-sector.t-exe { --type-c: var(--color-primary); }
+.wp-sector.t-command { --type-c: var(--state-information); }
+.wp-sector.t-route { --type-c: var(--state-positive); }
+.wp-sector.t-group { --type-c: var(--state-warning); }
+.wp-sector { pointer-events: auto; cursor: pointer; fill: transparent; stroke: color-mix(in srgb, var(--tint, var(--type-c, var(--color-border))) var(--wf-edge, 38%), var(--color-border)); stroke-width: 1.5; transition: fill var(--motion-fast) ease, stroke var(--motion-fast) ease; }
 .wp-sector:hover { fill: var(--surface-hover); }
 .wp-sector.is-active { fill: var(--color-primary-soft); stroke: var(--color-primary); }
 .wp-hub { fill: var(--surface-panel); stroke: var(--color-border-strong); stroke-width: 1; }

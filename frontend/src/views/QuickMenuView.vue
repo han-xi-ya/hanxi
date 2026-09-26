@@ -13,6 +13,11 @@ import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import WheelPreview from '../components/quickmenu/WheelPreview.vue'
 import TrayItemsEditor from '../components/tray/TrayItemsEditor.vue'
+import {
+  DEFAULT_WHEEL_SKIN, FACE_ALPHA_MIN, readWheelSkin, saveWheelSkin,
+  WHEEL_SKIN_PRESETS, WHEEL_SKIN_PRESET_LABEL,
+  type WheelSkin, type WheelSkinPreset,
+} from '../components/quickmenu/wheelSkin'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -144,6 +149,25 @@ const capacityWarn = computed(() => {
     : ''
 })
 
+// ---- 轮盘皮肤（机主拍板 2026-09-26"轮盘皮肤做"）----
+// 纯视觉账走 localStorage（读写侧封装在 wheelSkin 模块，升后端账本只换模块内部，
+// 契约见交付报告）：拨杆/勾选即时生效——本页预览靠响应式 skin 换皮，挂出的轮盘
+// 经同源 storage 事件 + 每次唤出重读跟皮，故无"保存"按钮（与二级轮盘开关同语义）。
+const skin = ref<WheelSkin>(readWheelSkin())
+/** 透纱滑杆量程（%）：alpha 域 [FACE_ALPHA_MIN,1] 反翻成 0..(1-MIN) 正向"越透越大" */
+const SKIN_VEIL_MAX = Math.round((1 - FACE_ALPHA_MIN) * 100)
+function setSkin(patch: Partial<WheelSkin>) {
+  skin.value = saveWheelSkin(patch, skin.value)
+}
+function setSkinPreset(preset: WheelSkinPreset) {
+  setSkin({ preset })
+}
+function resetSkin() {
+  skin.value = saveWheelSkin(DEFAULT_WHEEL_SKIN)
+}
+const veilPercent = computed(() => Math.round((1 - skin.value.faceAlpha) * 100))
+const strokePercent = computed(() => Math.round(skin.value.stroke * 100))
+
 onMounted(refresh)
 </script>
 
@@ -209,10 +233,76 @@ onMounted(refresh)
           <section class="panel qm-preview-panel">
             <h2 class="sec-title">轮盘预览</h2>
             <div class="qm-preview-box">
-              <WheelPreview :items="items" :active-index="selected" :scale="0.9" @pick="pickSector" />
+              <WheelPreview :items="items" :active-index="selected" :scale="0.9" :skin="skin" @pick="pickSector" />
             </div>
             <p v-if="capacityWarn" class="qm-cap-warn" role="status">{{ capacityWarn }}</p>
-            <p class="qm-preview-hint">与你挂出的轮盘同一几何——点盘格可定位编辑列对应行（再点取消；选中行上出「⇄ 互换」）</p>
+            <p class="qm-preview-hint">与你挂出的轮盘同一几何同一皮肤——点盘格可定位编辑列对应行（再点取消；选中行上出「⇄ 互换」）</p>
+          </section>
+
+          <section class="panel qm-skin-panel">
+            <h2 class="sec-title">轮盘皮肤</h2>
+            <p class="sec-note">
+              纯视觉偏好，拨存即生效：上方预览与挂出的轮盘同步换皮。存于本机，不进条目配置。
+            </p>
+            <div class="qm-skin-row" role="radiogroup" aria-label="盘面色预设">
+              <span class="qm-skin-k">盘面色</span>
+              <span class="qm-skin-presets">
+                <button
+                  v-for="p in WHEEL_SKIN_PRESETS"
+                  :key="p"
+                  type="button"
+                  class="chip qm-skin-chip"
+                  :class="{ 'is-on': skin.preset === p }"
+                  role="radio"
+                  :aria-checked="skin.preset === p"
+                  @click="setSkinPreset(p)"
+                ><span class="qm-skin-dot" :class="`dot-${p}`" aria-hidden="true"></span>{{ WHEEL_SKIN_PRESET_LABEL[p] }}</button>
+              </span>
+            </div>
+            <label class="qm-skin-row">
+              <span class="qm-skin-k">盘面透明</span>
+              <input
+                type="range"
+                class="qm-skin-range"
+                min="0"
+                :max="String(SKIN_VEIL_MAX)"
+                step="5"
+                :value="veilPercent"
+                aria-label="盘面透明度百分比"
+                @input="setSkin({ faceAlpha: 1 - Number(($event.target as HTMLInputElement).value) / 100 })"
+              />
+              <b class="mono qm-param-v qm-skin-v">{{ veilPercent }}%</b>
+            </label>
+            <label class="qm-skin-row">
+              <span class="qm-skin-k">描边强度</span>
+              <input
+                type="range"
+                class="qm-skin-range"
+                min="0"
+                max="100"
+                step="5"
+                :value="strokePercent"
+                aria-label="描边强度百分比"
+                @input="setSkin({ stroke: Number(($event.target as HTMLInputElement).value) / 100 })"
+              />
+              <b class="mono qm-param-v qm-skin-v">{{ strokePercent }}%</b>
+            </label>
+            <label class="setting-row setting-row-tappable qm-skin-row">
+              <span class="setting-main">
+                <span class="setting-name">跟随模块色</span>
+                <span class="setting-desc">扇区描边改用条目真图标的主色调；灰色图标与矢量图标回落类型色。</span>
+              </span>
+              <input
+                type="checkbox"
+                class="switch"
+                :checked="skin.followModuleColor"
+                aria-label="跟随模块色"
+                @change="setSkin({ followModuleColor: ($event.target as HTMLInputElement).checked })"
+              />
+            </label>
+            <div class="qm-skin-foot">
+              <button type="button" class="link-button" @click="resetSkin">恢复默认皮肤</button>
+            </div>
           </section>
 
           <section class="panel qm-items-panel">
@@ -328,6 +418,22 @@ onMounted(refresh)
 }
 .qm-preview-box { display: flex; justify-content: center; min-width: 0; }
 .qm-preview-hint { margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); text-align: center; }
+
+/* 皮肤面板：键左控件右的紧凑行；预设 chip 带色点，行距吃页级 gap 节奏 */
+.qm-skin-panel { display: flex; flex-direction: column; gap: 8px; }
+.qm-skin-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.qm-skin-k { flex: none; font-size: var(--text-xs); color: var(--color-text-muted); min-width: 4em; }
+.qm-skin-presets { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.qm-skin-chip { gap: 5px; cursor: pointer; border: 1px solid transparent; }
+.qm-skin-chip.is-on { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-soft); }
+.qm-skin-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--color-border-strong); flex: none; }
+/* 色点 = 各预设盘面色口径的缩影（与盘面配方同源 color-mix，不引入新裸色） */
+.qm-skin-dot.dot-frost { background: var(--surface-panel); }
+.qm-skin-dot.dot-veil { background: color-mix(in srgb, var(--color-primary) 12%, var(--surface-panel)); }
+.qm-skin-dot.dot-ink { background: color-mix(in srgb, var(--color-text) 15%, var(--surface-panel)); }
+.qm-skin-range { flex: 1; min-width: 90px; accent-color: var(--color-primary); }
+.qm-skin-v { min-width: 3.2em; text-align: right; font-size: var(--text-xs); }
+.qm-skin-foot { display: flex; justify-content: flex-end; }
 /* 条目数远超推荐值时右侧栏不顶破视口：列表区内滚，页面本身不横滚 */
 .qm-items-scroll { max-height: 46vh; overflow-y: auto; overflow-x: hidden; }
 

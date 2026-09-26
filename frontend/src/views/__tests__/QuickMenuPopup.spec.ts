@@ -7,6 +7,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import QuickMenuPopup from '../QuickMenuPopup.vue'
 import type { MenuItem } from '../../../bindings/hanxi/internal/modules/quickmenu/models'
+import { WHEEL_SKIN_STORAGE_KEY } from '../../components/quickmenu/wheelSkin'
 
 const svc = vi.hoisted(() => ({
   ListItems: vi.fn().mockResolvedValue([]),
@@ -369,5 +370,60 @@ describe('外扩子环（扇区级联）', () => {
     await flushMicrotasks()
     expect(w.findAll('.cap-btn')).toHaveLength(0) // 唤出回主环
     w.unmount()
+  })
+})
+
+describe('皮肤与清晰度（机主反馈 2026-09-26）', () => {
+  afterEach(() => localStorage.clear())
+
+  it('缺省皮肤 = frost 素瓷，根挂 skin-frost 类（老配置无此账不炸盘）', async () => {
+    const w = await mountReady()
+    expect(w.find('.popup').classes()).toContain('skin-frost')
+    w.unmount()
+  })
+
+  it('localStorage 皮肤账驱动类名与 CSS 变量，storage 事件即时换皮', async () => {
+    localStorage.setItem(WHEEL_SKIN_STORAGE_KEY, JSON.stringify({ preset: 'veil', stroke: 0.2, faceAlpha: 0.6 }))
+    const w = await mountReady()
+    const popup = w.find('.popup')
+    expect(popup.classes()).toContain('skin-veil')
+    expect(popup.attributes('style')).toContain('--wf-face-a: 0.6')
+    expect(popup.attributes('style')).toContain('--wf-edge: 20%')
+    // 设置页另一窗保存后：本窗收 storage 事件即时跟皮（跨窗无刷新热切换）
+    localStorage.setItem(WHEEL_SKIN_STORAGE_KEY, JSON.stringify({ preset: 'ink', stroke: 1, faceAlpha: 1 }))
+    window.dispatchEvent(new StorageEvent('storage', { key: WHEEL_SKIN_STORAGE_KEY }))
+    await flushMicrotasks()
+    expect(w.find('.popup').classes()).toContain('skin-ink')
+    expect(w.find('.popup').attributes('style')).toContain('--wf-edge: 60%')
+    w.unmount()
+  })
+
+  it('扇区带类型色轨类（t-exe/t-command…），供描边 color-mix 消费', async () => {
+    const w = await mountReady()
+    const sectors = w.findAll('path.sector')
+    expect(sectors[0].classes()).toContain('t-exe')
+    expect(sectors[1].classes()).toContain('t-command')
+    expect(sectors[2].classes()).toContain('t-route')
+    w.unmount()
+  })
+
+  it('DPR=2 时 app: 位图吃像素预算（22→16），矢量轨保持原档（22）', async () => {
+    const original = window.devicePixelRatio
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 })
+    try {
+      const crisp: MenuItem[] = [
+        { ...leaf(0, 'Snipaste', 'exe', 'p'), icon: 'app:snipaste' },
+        { ...leaf(1, '命令', 'command', 'c'), icon: 'i:terminal' },
+      ]
+      const w = await mountReady(crisp)
+      // 两枚都在 ≤6 宽裕档（density.icon=22）：位图轨被钉到源 1:1=16，矢量轨原样
+      const img = w.findAll('.sector-icon')[0].find('img,svg')
+      expect(img.attributes('style')).toContain('width: 16px')
+      const vec = w.findAll('.sector-icon')[1].find('img,svg')
+      expect(vec.attributes('style')).toContain('width: 22px')
+      w.unmount()
+    } finally {
+      Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: original })
+    }
   })
 })

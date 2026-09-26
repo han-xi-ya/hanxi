@@ -34,7 +34,8 @@ export const WHEEL = {
  * N40③ 皮批专用绘制观感常量（StarPie 磨砂花瓣盘）——与 WHEEL 命中语义完全解耦，
  * 只喂渲染调用（mainWedge/capWedge/帽带底环/hub 刻度）实参，不参与任何极坐标归属：
  * 缝隙变大是"绘制缝"，命中始终按名义角域 slotOf（N40① 设计红利，缝多大都无死区）。
- * 花瓣角向缝由 pad 绘制扣出，楔形另有 stroke-width 6 同色膨胀（径向 ±3），
+ * 花瓣角向缝由 pad 绘制扣出，楔形另有 stroke-width 6 膨胀（径向 ±3；皮肤批起描边
+ * 为模块/类型色轨不再与 fill 同色，膨胀宽度与几何归属不变），
  * 故 VIS 环带四周恒内缩于 WHEEL 命中带 ≥3 DIP，牌面缝隙像素仍归属邻扇区。
  */
 export const VIS = {
