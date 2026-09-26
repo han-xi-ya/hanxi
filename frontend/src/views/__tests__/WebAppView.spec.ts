@@ -114,7 +114,7 @@ describe('WebAppView 默认打开方式表单段', () => {
   it('编辑存量浏览器条目：预填选中「系统浏览器」', async () => {
     const wrapper = await mountViewReady([entry('e2', '二号', { defaultOpen: 'browser' })])
     await wrapper.find('button[aria-label="编辑"]').trigger('click')
-    expect(wrapper.find('.webapp-name-input').element.value).toBe('二号')
+    expect((wrapper.find('.webapp-name-input').element as HTMLInputElement).value).toBe('二号')
     expect(segs(wrapper)[1].classes()).toContain('active')
     svc.SaveEntry.mockResolvedValue('e2')
     await wrapper.find('form.webapp-form').trigger('submit')
