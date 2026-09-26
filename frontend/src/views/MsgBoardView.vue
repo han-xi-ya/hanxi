@@ -8,16 +8,19 @@
 // v4 换成"牌桌"骨架——一屏工作台，左右两区，不是卡片堆：
 //   左 60%+ 牌面舞台（.mb-hero）：顶部 40px 工具条收纳状态字/异常 chip/挂撤
 //     主操作/全屏预览；主体是桌面模拟底（tokens 派生灰，color-mix 随主题联动，
-//     零新色值）上的大牌 1:1 预览——缩放由 ResizeObserver 实测"舞台盒宽"与
-//     "卡片实际布局宽"共同决定，封顶 1.0：字少屏宽时就是原大真牌，字号/文案
-//     改动即时落在大牌上；只有牌宽越过舞台才等比收缩（防裁切契约保留，兜底
-//     线仍是字号×13）；底部一条回显栏说"正在挂出的牌面"（已存版本真话）+ 脏态。
+//     零新色值）上的大牌 1:1 预览——缩放渲染收编 B 路共享件 BoardStage
+//     （默认档 cap=1.0 与本路口径逐位一致）：宿主 RO 实测"舞台盒宽/盒高"喂入，
+//     "卡片实际布局宽"由舞台自测，共同决定缩放、封顶 1.0：字少屏宽时就是原大
+//     真牌，字号/文案改动即时落在大牌上；只有牌宽越过舞台才等比收缩（防裁切
+//     契约保留，兜底线仍是字号×13）；底部一条回显栏说"正在挂出的牌面"（已存
+//     版本真话）+ 脏态。
 //   右 ≤40% 窄长操作栏（.mb-rail）：一行一控件的属性面板形制，全走 setting-row
 //     原子——正文（textarea 收 3 行、可展 8 行，正面回应"草稿太大"）、类型速挂
 //     一排微钮、字号滑杆、多屏/目标屏、热键、保存行、契约折叠。
 //   ≤840（容器查询看主区实际宽度）：舞台在上（高度压缩档）、操作栏在下。
-// 老内核/首帧/happy-dom 拿不到实测值时回落 300px 基准盒 + 字号×13 兜底线，
-// 数值与 v3 测试断言口径逐位可推（scale(0.34615…)/scale(0.18461…)）。
+// 老内核/首帧/happy-dom 拿不到实测值时回落 300px 基准盒 + 字号×13 兜底线
+// （常数与换算单一真相在 components/msgboard/boardMetrics），数值与 v3 测试
+// 断言口径逐位可推（scale(0.34615…)/scale(0.18461…)）。
 //
 // 语义金标准零删减：挂/撤主动作与 Toggle 翻转纪律（已挂态双击只热更不盲调
 // Toggle）、类型单击填词/双击挂出、草稿↔大牌同源联动、字号滑杆 24–200 钳位、
@@ -26,7 +29,7 @@
 // 零改动：pullAll 并行拉取、脏判定以服务端回读为准、热键占用失败只回滚热键字段
 // 保留草稿。全页牌面画法仍只有舞台一块 BoardCard（回显是纯文本），全屏浮层
 // 打开前 DOM 里不存在第二块牌。
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as MsgBoardAPI from '../../bindings/hanxi/internal/modules/msgboard'
 import type { Config, ScreenInfo, Status } from '../../bindings/hanxi/internal/modules/msgboard/models'
 import { useWailsEvent } from '../composables/useWailsEvent'
@@ -34,7 +37,9 @@ import { getErrorMessage } from '../utils/errors'
 import PageHeader from '../components/ui/PageHeader.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import UiButton from '../components/ui/UiButton.vue'
-import BoardCard from '../components/msgboard/BoardCard.vue'
+import BoardStage from '../components/msgboard/BoardStage.vue'
+import BoardFullscreen from '../components/msgboard/BoardFullscreen.vue'
+import { PREVIEW_BASE_BOX_W, scalePercent, scaleZoomFactor } from '../components/msgboard/boardMetrics'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -208,97 +213,66 @@ const dirtyNote = computed(() => (shown.value
   ? '草稿有改动未保存：眼前的牌面还是旧版，保存即热更。'
   : '草稿有改动未保存：挂牌认的是已保存版本，要改请先保存。'))
 
-// ---- 舞台缩放（v4 牌桌：上限 1.0 的"能多大多大"）----
-// v3 病灶复盘：缩放基准钉死 0.34、增长系数再封顶 0.8——舞台再宽牌也只是
-// "更大的小样"，1:1 永远缺席。v4 的口径是"能 1:1 就 1:1"：
-//   scale = min(1, (舞台实测宽 − 2×PAD) / 卡片实际布局宽)
-// 卡片实际宽由 ResizeObserver 实测 .mbp-scaled（transform 不影响布局盒，
-// 测得的就是未缩放真实宽）——短文案在宽舞台上直接原大呈现；只有牌宽越过
-// 舞台才等比收缩，防裁切契约从"猜 ×13"升级为"量实测"，兜底仍留 字号×13 线。
-// 超高裁剪沿用 v3 反算注入：--bc-max-h = (舞台高−12)/scale，大牌"只裁不滚"
-// 收在舞台框内（与真牌同纪律），胶带条不再被居中裁切吃掉。
-// happy-dom（测试环境）里 RO 是空实现、真实浏览器首帧前也测不到——双端回落
-// 300px 基准盒 + 字号×13 兜底宽：64px 时 scale=288/832=0.34615…，120px 时
-// scale=288/1560=0.18461…，数值口径可精确断言（v3 同款 0.18461… 逐位一致）。
-const STAGE_FALLBACK = 300
-const STAGE_PAD = 12
-const SCALE_CAP = 1
+// ---- 舞台缩放与全屏浮层（换算数学与渲染已收编 B 路共享件，双真相消除）----
+// v4 口径"能 1:1 就 1:1"：scale = min(1, (舞台实测宽 − 12) / 卡片实际布局宽)，
+// 超高反算 --bc-max-h = (盒高−12)/scale——两条公式与全部常数（12 容纳线、
+// 字号×13 兜底线、48px 高度下限、300 基准盒）的单一真相在 boardMetrics，
+// 舞台渲染与自测由 BoardStage 承担（默认 cap=1.0 与本路口径逐位一致）。
+// 宿主只留两件事：
+//   ①盒外观与盒实测：.mbp-box（背景/边框/高度归宿主面板，BoardStage 职责
+//     边界所定）上的 ResizeObserver 实测盒宽/盒高，经 containerWidth/Height
+//     喂给舞台；卡片自然宽元素已内化进舞台，由舞台同规格自测 RO 量取，
+//     宿主不再重复观测（happy-dom/首帧测不到时双轨都回落 300 基准盒 +
+//     字号×13 兜底线：64px 时 scale=288/832=0.34615…，120px 时 scale=
+//     288/1560=0.18461…，数值口径与 v3/v4 断言逐位一致）。
+//   ②接住舞台 scale 事件（immediate 首发）——回显栏大白话文案与之同源。
+// 机主反馈（2026-09-26）：旧口径「实际挂出约 N 倍大」要人拿倍数心算原图多大，
+// 看不懂。改一句大白话：先报预览缩到百分之几（所见直接可验），再报真牌相对
+// 预览大的倍数，数字直给；真实大小的查看引导交给「全屏预览」。
 const stageEl = ref<HTMLElement | null>(null)
-const cardEl = ref<HTMLElement | null>(null)
-const boxW = ref(STAGE_FALLBACK)
-const boxH = ref(STAGE_FALLBACK)
-const cardW = ref(0)
+const boxW = ref(PREVIEW_BASE_BOX_W)
+const boxH = ref(PREVIEW_BASE_BOX_W)
 let stageRO: ResizeObserver | null = null
 function unhookStageRO() {
   stageRO?.disconnect()
   stageRO = null
 }
-watch([stageEl, cardEl], ([box, card]) => {
+watch(stageEl, (box) => {
   unhookStageRO()
-  if (!box || !card || typeof ResizeObserver === 'undefined') return
+  if (!box || typeof ResizeObserver === 'undefined') return
   stageRO = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const rect = entry.contentRect
       if (!rect || rect.width <= 0 || rect.height <= 0) continue
-      if (entry.target === box) {
-        boxW.value = rect.width
-        boxH.value = rect.height
-      } else if (entry.target === card) {
-        cardW.value = rect.width
-      }
+      boxW.value = rect.width
+      boxH.value = rect.height
     }
   })
   stageRO.observe(box)
-  stageRO.observe(card)
 }, { flush: 'post' })
+onBeforeUnmount(unhookStageRO)
 
 const effFontSize = computed(() =>
   Math.min(FONT_MAX, Math.max(FONT_MIN, form.value.fontSize || 64)),
 )
-const previewScale = computed(() => {
-  const w = boxW.value > 0 ? boxW.value : STAGE_FALLBACK
-  // 未实测到卡片宽（首帧/老内核）时按防裁切兜底线 字号×13 保守收缩
-  const natural = cardW.value > 0 ? cardW.value : effFontSize.value * 13
-  return Math.min(SCALE_CAP, (w - STAGE_PAD) / natural)
+// 舞台实际生效缩放：BoardStage 渲染时经 scale 事件回流（挂载即 immediate
+// 首发），文案数字与牌面 transform 永远同源；首发前空串占位不闪错数。
+const stageScale = ref(0)
+const previewZoomNote = computed(() => {
+  if (!(stageScale.value > 0)) return ''
+  const pct = scalePercent(stageScale.value)
+  const zoom = scaleZoomFactor(stageScale.value)
+  return zoom <= 1
+    ? `预览缩到 ${pct}%，和真牌几乎一样大`
+    : `预览缩到 ${pct}%，真牌大 ${zoom} 倍`
 })
-const previewCardMaxH = computed(() => Math.max(48, Math.floor((boxH.value - STAGE_PAD) / previewScale.value)))
-const previewZoom = computed(() => Math.max(1, Math.round(1 / previewScale.value)))
-// 机主反馈（2026-09-26）：旧口径「实际挂出约 N 倍大」要人拿倍数心算原图多大，看不懂。
-// 改一句大白话：先报预览缩到百分之几（所见直接可验），再报真牌相对预览大的倍数，
-// 数字直给、不叠「等效/约…倍大」连环修饰；真实大小的查看引导交给「全屏预览」。
-const previewPct = computed(() => Math.max(1, Math.round(previewScale.value * 100)))
-const previewZoomNote = computed(() => (
-  previewZoom.value <= 1
-    ? `预览缩到 ${previewPct.value}%，和真牌几乎一样大`
-    : `预览缩到 ${previewPct.value}%，真牌大 ${previewZoom.value} 倍`
-))
 
-// 全屏预览：纯前端 Teleport 浮层，渲染与真牌同一 BoardCard、同一压暗层与
-// --bc-max-h:74vh 标定——"所看即所挂"（主窗最大化且与目标屏同规格时几乎 1:1）。
-// 刻意不走真挂牌链路：Toggle 是翻转语义，牌已挂着时"预览"会把真牌撤掉；瞬时
-// 挂撤还会惊动 KeepAwake 登记与 N29 窗组账——预览这种只读动作不该有副作用。
+// 全屏预览：浮层本体收编 BoardFullscreen——Teleport 落体、与真牌同源的
+// BoardCard 渲染、压暗层与 --bc-max-h:74vh 标定、Esc/点击关闭与 KeepAlive
+// 切页监听摘挂（审查 #20）全部内化；宿主只持开合态（v-if + close 接回）。
+// 纪律照旧：纯前端零后端链路——Toggle 是翻转语义，牌已挂着时"预览"不该能
+// 把真牌撤掉，瞬时挂撤还会惊动 KeepAwake 登记与 N29 窗组账。
 const fullPreview = ref(false)
-function onFullPreviewKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') fullPreview.value = false
-}
-watch(fullPreview, (on) => {
-  if (on) window.addEventListener('keydown', onFullPreviewKey)
-  else window.removeEventListener('keydown', onFullPreviewKey)
-})
-function unhookFullPreviewKey() {
-  window.removeEventListener('keydown', onFullPreviewKey)
-}
-onBeforeUnmount(() => {
-  unhookFullPreviewKey()
-  unhookStageRO()
-})
-// 审查 #20（与 UiHistoryDialog #5 同族）：KeepAlive 切页时浮层可能仍开着，
-// window 级监听在场会让异页按 Esc 幽灵收起隐藏预览——deactivate 摘、
-// activate 按浮层现态补挂。
-onDeactivated(unhookFullPreviewKey)
-onActivated(() => {
-  if (fullPreview.value) window.addEventListener('keydown', onFullPreviewKey)
-})
 
 // 草稿框收展：默认 3 行（属性面板一控件一行），展开 8 行写长草稿——
 // "草稿太大"的正面回应：常态只占一小行，要写再撑开。
@@ -339,11 +313,17 @@ onMounted(refresh)
           </div>
 
           <!-- 桌面模拟底：color-mix 从 --color-text/--surface-page 派生桌面灰，
-               随主题与色板联动，零新色值；大牌居中说"这就是桌面上那张牌" -->
-          <div ref="stageEl" class="mbp-box" :style="{ '--bc-max-h': `${previewCardMaxH}px` }">
-            <div ref="cardEl" class="mbp-scaled" :style="{ transform: `scale(${previewScale})` }">
-              <BoardCard :text="form.text || PREVIEW_EMPTY" :font-size="effFontSize" />
-            </div>
+               随主题与色板联动，零新色值；大牌居中说"这就是桌面上那张牌"。
+               缩放渲染交给 BoardStage：宿主实测盒宽/盒高喂入，牌自然宽由
+               舞台自测，超高反算注入皆在舞台内 -->
+          <div ref="stageEl" class="mbp-box">
+            <BoardStage
+              :text="form.text || PREVIEW_EMPTY"
+              :font-size="effFontSize"
+              :container-width="boxW"
+              :container-height="boxH"
+              @scale="stageScale = $event"
+            />
           </div>
 
           <div class="mb-echo">
@@ -508,23 +488,14 @@ onMounted(refresh)
         </aside>
       </div>
 
-      <!-- 全屏预览浮层（N30）：Teleport 到 body 躲开页面滚动容器与层叠上下文，
-           纯前端渲染同源 BoardCard——不挂牌、不动窗组、不进任何后端链路 -->
-      <Teleport to="body">
-        <div
-          v-if="fullPreview"
-          class="mbp-full"
-          role="dialog"
-          aria-label="牌面全屏预览"
-          @click="fullPreview = false"
-        >
-          <span class="mbp-full-badge" aria-hidden="true">预览浮层 · 非真实挂牌</span>
-          <BoardCard class="mbp-full-card" :text="form.text || PREVIEW_EMPTY" :font-size="effFontSize" />
-          <div class="mbp-full-hint" aria-hidden="true">
-            这是全屏预览，不改变挂牌状态 · 点击任意处或按 <kbd class="mbp-full-kbd">Esc</kbd> 返回
-          </div>
-        </div>
-      </Teleport>
+      <!-- 全屏预览浮层（N30）：BoardFullscreen 收编——Teleport/Esc/点击关闭
+           与监听生命周期皆内化，宿主只持开合态；纯前端，不挂牌不动窗组 -->
+      <BoardFullscreen
+        v-if="fullPreview"
+        :text="form.text || PREVIEW_EMPTY"
+        :font-size="effFontSize"
+        @close="fullPreview = false"
+      />
     </template>
   </div>
 </template>
@@ -560,7 +531,8 @@ onMounted(refresh)
 .hero-dot.on { background: var(--state-positive); }
 .hero-cta { min-height: 36px; padding: 6px 16px; font-size: var(--text-md); font-weight: 600; }
 
-/* 桌面模拟底：两档 color-mix 灰随主题联动；牌超高只裁不滚（--bc-max-h 注入反算） */
+/* 桌面模拟底：两档 color-mix 灰随主题联动；牌超高只裁不滚（--bc-max-h 反算
+   注入已内化在 BoardStage，盒外观/高度按职责边界留在宿主） */
 .mbp-box {
   height: clamp(200px, 40vh, 520px); overflow: hidden;
   display: grid; place-items: center;
@@ -574,8 +546,6 @@ onMounted(refresh)
   /* 宽窗：舞台吃满"页头+工具条+回显栏之外的视口余量"，零滚动优先 */
   .mbp-box { height: clamp(300px, calc(100vh - 330px), 900px); }
 }
-.mbp-scaled { transform-origin: center; width: max-content; }
-
 /* 回显栏：已存牌面真话 + 脏态 + 缩放大白话，一行流式排布 */
 .mb-echo {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
@@ -641,63 +611,5 @@ kbd { font-family: var(--font-mono); font-size: var(--text-xs); border: 1px soli
 .sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-}
-</style>
-
-<style scoped>
-/* 全屏预览浮层：与 MsgBoardPopup 真牌同源观感——同值压暗层、同 74vh 牌高
-   标定、同 150ms 入场淡入。差别只有两处：预览角标常驻（操作者要随时知道
-   自己在预览），底部提示不做限时淡出（真牌淡出是给旁观者，这里没旁观者）。
-   层级：高于通知抽屉(10002)，低于命令面板(100000)与 Toast(999999)——
-   预览不该劫持全局快捷键 UI。独立成块：不与牌桌骨架混排，Teleport
-   落体后也不在 .mb-desk 树内。 */
-.mbp-full {
-  position: fixed;
-  inset: 0;
-  z-index: 99998;
-  display: grid;
-  place-items: center;
-  background: rgba(6, 10, 14, 0.38);
-  cursor: pointer;
-  user-select: none;
-  animation: mbp-full-in 150ms ease-out;
-}
-.mbp-full-card { --bc-max-h: 74vh; }
-@keyframes mbp-full-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-.mbp-full-badge {
-  position: absolute;
-  top: 14px;
-  left: 16px;
-  padding: 2px 10px;
-  border: 1px solid rgba(238, 246, 247, 0.25);
-  border-radius: 999px;
-  background: rgba(6, 10, 14, 0.55);
-  color: rgba(238, 246, 247, 0.8);
-  font-size: var(--text-sm);
-}
-.mbp-full-hint {
-  position: absolute;
-  bottom: 26px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-size: var(--text-md);
-  color: rgba(238, 246, 247, 0.62);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-  pointer-events: none;
-}
-.mbp-full-kbd {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  border: 1px solid rgba(238, 246, 247, 0.4);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 0 6px;
-}
-@media (prefers-reduced-motion: reduce) {
-  .mbp-full { animation: none; }
 }
 </style>
