@@ -36,6 +36,10 @@ const runtime = vi.hoisted(() => ({
   unlisten: vi.fn(),
 }))
 
+// sysinfo 档案服务（B1 点名通路）：缺省按"模块被停用（调用门拒）"打桩——
+// 既有用例一律走静默降级路径，AV 点名用例在体内覆写。
+const sysinfo = vi.hoisted(() => ({ GetReport: vi.fn() }))
+
 vi.mock('@wailsio/runtime', () => ({
   Events: {
     On: (name: string, cb: (event: { data: unknown }) => void) => {
@@ -46,6 +50,7 @@ vi.mock('@wailsio/runtime', () => ({
 }))
 
 vi.mock('../../../bindings/hanxi/internal/modules/translucenttb/translucenttbservice', () => svc)
+vi.mock('../../../bindings/hanxi/internal/modules/sysinfo/sysinfoservice', () => sysinfo)
 
 const installed20261 = {
   version: '2026.1',
@@ -110,6 +115,7 @@ beforeEach(() => {
   // 交互面经 useConfirm/usePrompt 单例收编，测试以 settle* 模拟对话框出口
   settleConfirm(false)
   settlePrompt(null)
+  sysinfo.GetReport.mockReset().mockRejectedValue(new Error('模块已停用'))
 })
 
 afterEach(() => {
@@ -401,5 +407,90 @@ describe('TranslucentTBView 事件与轮询契约', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// ---------- 崩溃处置升级（2026-09-26）：B1 主动点名 + C-迷你降级直钮 ----------
+
+const release20261 = { version: '2026.1', published: '2026-02-01T00:00:00Z', isPre: false, size: 2048000 }
+const release20251 = { version: '2025.1', published: '2025-03-01T00:00:00Z', isPre: false, size: 2048000 }
+
+const avFailed = {
+  state: 'failed',
+  version: '2026.2',
+  pid: 0,
+  exitCode: 3221225477, // 0xC0000005（本机账目正的 32 位值）
+  error: 'TranslucentTB 异常退出（退出码 3221225477 / 0xC0000005），访问违例，非许可/依赖问题。排查按序——① 重启电脑后再启动一次',
+  external: false,
+  startedAt: '',
+  stoppedAt: '2026-09-26T10:00:03Z',
+}
+
+describe('TranslucentTBView AV 崩溃处置（B1 点名 + C-迷你降级钮）', () => {
+  it('B1：GetReport 命中 → banner 追加点名句，后端话术逐字保真', async () => {
+    sysinfo.GetReport.mockResolvedValue({
+      gpus: [{ desc: 'ToDesk Virtual Display Adapter' }],
+      displays: [{ name: '\\\\.\\DISPLAY7', width: 0, height: 0, primary: false }],
+    })
+    stubDefaults(avFailed, { installed: [installed20262], releases: [release20262, release20261] })
+    const { wrapper } = await mountInKeepAlive()
+    await flushMicrotasks()
+    const text = wrapper.find('.banner').text()
+    expect(text).toContain('排查按序') // 后端动态话术逐字在前
+    expect(text).toContain('检见虚拟显卡「ToDesk Virtual Display Adapter」')
+    expect(text).toContain('空壳监视器「\\\\.\\DISPLAY7」')
+    expect(text).toContain('建议设备管理器禁用该显示器验证')
+    wrapper.unmount()
+  })
+
+  it('B1：sysinfo 停用（调用门拒）→ 静默降级通用 AV 话术，不打扰不报错', async () => {
+    // beforeEach 缺省即 mockRejectedValue（停用形态）
+    stubDefaults(avFailed, { installed: [installed20262], releases: [release20262] })
+    const { wrapper } = await mountInKeepAlive()
+    await flushMicrotasks()
+    const text = wrapper.find('.banner').text()
+    expect(text).toContain('排查按序')
+    expect(text).not.toContain('检见')
+    wrapper.unmount()
+  })
+
+  it('C-迷你：AV + 本机无旧版 + 远程有更早稳定版 → 「⬇ 装 2026.1 试」钮，点击走既有下载链', async () => {
+    stubDefaults(
+      avFailed,
+      { installed: [installed20262], releases: [release20262, release20261, release20251] },
+    )
+    svc.DownloadVersion.mockResolvedValue('started')
+    const { wrapper } = await mountInKeepAlive()
+    const btns = wrapper.findAll('.control-btns .btn')
+    expect(btns.map((b) => b.text())).toEqual([
+      '🌫️ 启动', '🪄 重设任务栏状态', '🗂 安装目录', '⬇ 装 2026.1 试', '⏻ 退出',
+    ])
+    await btns[3].trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledWith('2026.1')
+    wrapper.unmount()
+  })
+
+  it('C-迷你不出钮：本机已有旧版在场（后端话术直给）；非 AV 崩溃不点名不调档案', async () => {
+    stubDefaults(
+      avFailed,
+      { installed: [installed20261, installed20262], releases: [release20262, release20261] },
+    )
+    let r = await mountInKeepAlive()
+    expect(r.wrapper.findAll('.control-btns .btn').map((b) => b.text())).toEqual([
+      '🌫️ 启动', '🪄 重设任务栏状态', '🗂 安装目录', '⏻ 退出',
+    ])
+    r.wrapper.unmount()
+
+    const callsBefore = sysinfo.GetReport.mock.calls.length
+    stubDefaults(
+      { state: 'failed', version: '2026.2', exitCode: 1, error: 'TranslucentTB 异常退出（退出码 1）' },
+      { installed: [installed20262], releases: [release20262, release20251] },
+    )
+    r = await mountInKeepAlive()
+    expect(r.wrapper.findAll('.control-btns .btn')).toHaveLength(4)
+    await flushMicrotasks()
+    expect(sysinfo.GetReport.mock.calls.length).toBe(callsBefore)
+    r.wrapper.unmount()
   })
 })
