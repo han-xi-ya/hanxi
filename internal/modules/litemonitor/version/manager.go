@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/dirstats"
 )
 
 const (
@@ -118,7 +120,7 @@ func (m *Manager) ListInstalled() ([]LMVersionInfo, error) {
 			}
 		}
 
-		info := LMVersionInfo{Version: version, Dir: v.Dir, ExePath: exe, Size: fi.Size()}
+		info := LMVersionInfo{Version: version, Dir: v.Dir, ExePath: exe, Size: dirSize(v.Dir, fi.Size())}
 		// 新下载链走内核统一账本（artifact.Meta，含 schema）；导入链与迁移前
 		// 的历史账本走模块自写 map 形态，installedAt 原样展示、isImport/source
 		// 仅导入账携带。
@@ -460,7 +462,7 @@ func (m *Manager) ImportLocal(srcDir string) (LMVersionInfo, error) {
 		Version:     "v" + version,
 		ExePath:     filepath.Join(finalDir, exeName),
 		Dir:         finalDir,
-		Size:        fi.Size(),
+		Size:        dirSize(finalDir, fi.Size()),
 		InstalledAt: installedAt,
 		IsImport:    true,
 		Source:      root,
@@ -568,4 +570,17 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// dirSize 版本目录整树字节和：主程序文件只是入口，多文件载荷才是体量的
+// 主体，单报主 exe 尺寸与真实安装体量级失真。dirstats 度量恒跳过符号链接/
+// 重解析点防环；2s 挂钟预算超限或度量失败回退旧口径（主程序文件大小）并
+// Debug 报账，不谎报全量。
+func dirSize(dir string, fallback int64) int64 {
+	st := dirstats.MeasureBudgeted(dir, 2*time.Second)
+	if st.Err != nil || st.Partial || st.Bytes <= 0 {
+		slog.Debug("litemonitor 版本目录大小度量降级，回退主程序文件大小", "dir", dir, "partial", st.Partial, "err", st.Err)
+		return fallback
+	}
+	return st.Bytes
 }

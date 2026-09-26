@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,7 @@ import (
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/dirstats"
 )
 
 const (
@@ -111,7 +113,7 @@ func (m *Manager) ListInstalled() ([]DdnsVersionInfo, error) {
 			Version: version,
 			ExePath: exe,
 			Dir:     v.Dir,
-			Size:    fi.Size(),
+			Size:    dirSize(v.Dir, fi.Size()),
 		}
 		if v.Meta.Schema != 0 {
 			info.IsImport = v.Meta.Source == artifact.SourceImported
@@ -379,7 +381,7 @@ func (m *Manager) ImportLocal(srcDir string) (DdnsVersionInfo, error) {
 		Version:     "v" + version,
 		ExePath:     filepath.Join(dir, exeName),
 		Dir:         dir,
-		Size:        fi.Size(),
+		Size:        dirSize(dir, fi.Size()),
 		InstalledAt: time.Now().Format("2006-01-02 15:04:05"),
 		IsImport:    true,
 		Source:      srcDir,
@@ -485,4 +487,17 @@ func copyFileTo(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// dirSize 版本目录整树字节和：主程序文件只是入口，多文件载荷才是体量的
+// 主体，单报主 exe 尺寸与真实安装体量级失真。dirstats 度量恒跳过符号链接/
+// 重解析点防环；2s 挂钟预算超限或度量失败回退旧口径（主程序文件大小）并
+// Debug 报账，不谎报全量。
+func dirSize(dir string, fallback int64) int64 {
+	st := dirstats.MeasureBudgeted(dir, 2*time.Second)
+	if st.Err != nil || st.Partial || st.Bytes <= 0 {
+		slog.Debug("ddnsgo 版本目录大小度量降级，回退主程序文件大小", "dir", dir, "partial", st.Partial, "err", st.Err)
+		return fallback
+	}
+	return st.Bytes
 }

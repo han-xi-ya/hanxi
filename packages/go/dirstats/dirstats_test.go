@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 // mkTree 构造：<root>/a/x.txt(10B) a/y.txt(20B)、b/z.txt(30B)、top.txt(5B)、空目录 c/
@@ -213,5 +214,23 @@ func TestMeasureChildrenMissingRoot(t *testing.T) {
 	}
 	if _, err := MeasureChildren(mkTree(t), Options{}); err != nil {
 		t.Fatalf("正常根不应报错: %v", err)
+	}
+}
+
+// MeasureBudgeted：托管版本目录度量专用入口（budget<=0 不限时）。
+// 小树下应给出精确全量（与 Measure 同账），非法根如实带 Err——调用方
+// （各托管模块 dirSize 回退口径）依赖这两个基本保证。
+func TestMeasureBudgeted(t *testing.T) {
+	root := mkTree(t)
+	want := Measure(root, Options{})
+	got := MeasureBudgeted(root, 0)
+	if got.Err != nil || got.Partial || got.Bytes != want.Bytes || got.Files != want.Files {
+		t.Fatalf("budget=0 应与 Measure 同账: got %+v want %+v", got, want)
+	}
+	if got := MeasureBudgeted(root, time.Second); got.Err != nil || got.Partial || got.Bytes != want.Bytes {
+		t.Fatalf("宽裕预算不应截断小树: %+v", got)
+	}
+	if got := MeasureBudgeted(filepath.Join(root, "nope"), time.Second); got.Err == nil {
+		t.Fatalf("缺失根应报 Err: %+v", got)
 	}
 }

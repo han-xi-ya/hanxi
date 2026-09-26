@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/dirstats"
 
 	"hanxi/packages/go/netx"
 )
@@ -115,7 +117,7 @@ func (m *Manager) ListInstalled() ([]VersionInfo, error) {
 			Version: e.Version,
 			ExePath: exe,
 			Dir:     dir,
-			Size:    fi.Size(),
+			Size:    dirSize(dir, fi.Size()),
 		}
 		if e.Meta.Schema != 0 {
 			// 新下载链：安装时刻由内核统一账本承载（RFC3339 落盘、展示层归一）
@@ -266,7 +268,7 @@ func (m *Manager) ImportLocal(srcDir string) (VersionInfo, error) {
 		Version:     version,
 		ExePath:     filepath.Join(targetDir, exeName),
 		Dir:         targetDir,
-		Size:        fi.Size(),
+		Size:        dirSize(targetDir, fi.Size()),
 		InstalledAt: time.Now().Format("2006-01-02 15:04:05"),
 		IsImport:    true,
 		Source:      srcDir,
@@ -603,4 +605,17 @@ func writeJSON(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// dirSize 版本目录整树字节和：主程序文件只是入口，多文件载荷才是体量的
+// 主体，单报主 exe 尺寸与真实安装体量级失真。dirstats 度量恒跳过符号链接/
+// 重解析点防环；2s 挂钟预算超限或度量失败回退旧口径（主程序文件大小）并
+// Debug 报账，不谎报全量。
+func dirSize(dir string, fallback int64) int64 {
+	st := dirstats.MeasureBudgeted(dir, 2*time.Second)
+	if st.Err != nil || st.Partial || st.Bytes <= 0 {
+		slog.Debug("vscode 版本目录大小度量降级，回退主程序文件大小", "dir", dir, "partial", st.Partial, "err", st.Err)
+		return fallback
+	}
+	return st.Bytes
 }

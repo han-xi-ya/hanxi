@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/dirstats"
 )
 
 const (
@@ -108,7 +110,7 @@ func (m *Manager) ListInstalled() ([]EverythingVersionInfo, error) {
 			Version: version,
 			ExePath: exe,
 			Dir:     v.Dir,
-			Size:    fi.Size(),
+			Size:    dirSize(v.Dir, fi.Size()),
 		}
 		// 账本双形态：新下载链走内核统一账本（artifact.Meta，含 schema），来源
 		// 展示按官方资产名重建；导入链与迁移前的历史账本走模块自写 map 形态
@@ -491,7 +493,7 @@ func (m *Manager) ImportLocal(srcDir string) (EverythingVersionInfo, error) {
 		Version:     version,
 		ExePath:     filepath.Join(targetDir, filepath.Base(srcExe)),
 		Dir:         targetDir,
-		Size:        fi.Size(),
+		Size:        dirSize(targetDir, fi.Size()),
 		InstalledAt: time.Now().Format("2006-01-02 15:04:05"),
 		IsImport:    true,
 		Source:      srcDir,
@@ -582,4 +584,17 @@ func fileSHA256(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// dirSize 版本目录整树字节和：主程序文件只是入口，多文件载荷才是体量的
+// 主体，单报主 exe 尺寸与真实安装体量级失真。dirstats 度量恒跳过符号链接/
+// 重解析点防环；2s 挂钟预算超限或度量失败回退旧口径（主程序文件大小）并
+// Debug 报账，不谎报全量。
+func dirSize(dir string, fallback int64) int64 {
+	st := dirstats.MeasureBudgeted(dir, 2*time.Second)
+	if st.Err != nil || st.Partial || st.Bytes <= 0 {
+		slog.Debug("everything 版本目录大小度量降级，回退主程序文件大小", "dir", dir, "partial", st.Partial, "err", st.Err)
+		return fallback
+	}
+	return st.Bytes
 }

@@ -84,6 +84,17 @@ func MeasureWith(ctx context.Context, root string, opt Options) Stats {
 	return measure(ctx, root, opt)
 }
 
+// MeasureBudgeted 带挂钟预算的单目录度量：预算耗尽即截断并置 Partial
+// （Bytes 为下限估算，由调用方决定呈现语义）。budget <= 0 等同不限时。
+func MeasureBudgeted(root string, budget time.Duration) Stats {
+	if budget <= 0 {
+		return measure(context.Background(), root, Options{})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	return measure(ctx, root, Options{})
+}
+
 // measure 带 ctx 的内部实现（MeasureChildren 的共享截止时间经 ctx 下发）。
 func measure(ctx context.Context, root string, opt Options) Stats {
 	var s Stats

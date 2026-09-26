@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,6 +33,7 @@ import (
 
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/dirstats"
 
 	"hanxi/packages/go/netx"
 )
@@ -105,7 +107,7 @@ func (m *Manager) ListInstalled() ([]WindTermVersionInfo, error) {
 			Version: normalizeVersion(v.Version),
 			ExePath: exe,
 			Dir:     v.Dir,
-			Size:    fi.Size(),
+			Size:    dirSize(v.Dir, fi.Size()),
 			SHA256:  v.Meta.AssetSHA256,
 			Source:  v.Meta.Source,
 		}
@@ -330,7 +332,7 @@ func (m *Manager) ImportLocal(srcDir string) (WindTermVersionInfo, error) {
 		Version:     normalizeVersion(token),
 		ExePath:     filepath.Join(targetDir, filepath.Dir(dstRelInStaging), exeName),
 		Dir:         targetDir,
-		Size:        fi.Size(),
+		Size:        dirSize(targetDir, fi.Size()),
 		SHA256:      meta.AssetSHA256,
 		InstalledAt: time.Now().Format("2006-01-02 15:04:05"),
 		IsImport:    true,
@@ -527,4 +529,17 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// dirSize 版本目录整树字节和：主程序文件只是入口，多文件载荷才是体量的
+// 主体，单报主 exe 尺寸与真实安装体量级失真。dirstats 度量恒跳过符号链接/
+// 重解析点防环；2s 挂钟预算超限或度量失败回退旧口径（主程序文件大小）并
+// Debug 报账，不谎报全量。
+func dirSize(dir string, fallback int64) int64 {
+	st := dirstats.MeasureBudgeted(dir, 2*time.Second)
+	if st.Err != nil || st.Partial || st.Bytes <= 0 {
+		slog.Debug("windterm 版本目录大小度量降级，回退主程序文件大小", "dir", dir, "partial", st.Partial, "err", st.Err)
+		return fallback
+	}
+	return st.Bytes
 }

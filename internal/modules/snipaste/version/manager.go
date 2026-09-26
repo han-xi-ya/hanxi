@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/dirstats"
 
 	"hanxi/packages/go/netx"
 )
@@ -90,7 +92,7 @@ func (m *Manager) ListInstalled() ([]SnipasteVersionInfo, error) {
 		if actual, err := m.fileVersion(exe); err != nil || normalizeVersion(actual) != normalizeVersion(version) {
 			continue
 		}
-		info := SnipasteVersionInfo{Version: version, ExePath: exe, Dir: dir, Size: fi.Size()}
+		info := SnipasteVersionInfo{Version: version, ExePath: exe, Dir: dir, Size: dirSize(dir, fi.Size())}
 		readMeta(filepath.Join(dir, "meta.json"), &info)
 		if info.InstalledAt == "" {
 			info.InstalledAt = fi.ModTime().Format("2006-01-02 15:04:05")
@@ -304,7 +306,7 @@ func (m *Manager) ImportLocal(srcDir string) (SnipasteVersionInfo, error) {
 	}
 	return SnipasteVersionInfo{
 		Version: version, ExePath: filepath.Join(finalDir, exeName), Dir: finalDir,
-		Size: copiedInfo.Size(), InstalledAt: installedAt, IsImport: true, Source: srcDir,
+		Size: dirSize(finalDir, copiedInfo.Size()), InstalledAt: installedAt, IsImport: true, Source: srcDir,
 		PackageSHA256: packageSHA256, VerificationMode: "local-import+layout",
 	}, nil
 }
@@ -448,4 +450,17 @@ func writeJSON(path string, value any) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// dirSize 版本目录整树字节和：主程序文件只是入口，多文件载荷（Snipaste 免
+// 安装版含配置与图像资源）才是体量的主体，单报主 exe 尺寸与真实安装体量级
+// 失真。dirstats 度量恒跳过符号链接/重解析点防环；2s 挂钟预算超限或度量
+// 失败回退旧口径（主程序文件大小）并 Debug 报账，不谎报全量。
+func dirSize(dir string, fallback int64) int64 {
+	st := dirstats.MeasureBudgeted(dir, 2*time.Second)
+	if st.Err != nil || st.Partial || st.Bytes <= 0 {
+		slog.Debug("snipaste 版本目录大小度量降级，回退主程序文件大小", "dir", dir, "partial", st.Partial, "err", st.Err)
+		return fallback
+	}
+	return st.Bytes
 }

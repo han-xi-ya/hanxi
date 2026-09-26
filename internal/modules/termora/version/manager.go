@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,6 +31,7 @@ import (
 
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/dirstats"
 )
 
 const (
@@ -43,6 +45,11 @@ const (
 
 	// moduleMetaFileName 模块侧账本（导入来源明细，内核 meta.json 不收）
 	moduleMetaFileName = "meta.module.json"
+
+	// dirSizeBudget 版本目录整树度量的挂钟预算：托管版本目录常规数百 MB/数千
+	// 文件，正常毫秒级完成；超限视为异常现场（巨日志/磁盘卡死），截断即回退
+	// 主程序文件大小旧口径并 Debug 报账，不拖慢 ListInstalled 同步链路。
+	dirSizeBudget = 2 * time.Second
 )
 
 // Manager Termora 版本管理引擎。
@@ -102,7 +109,7 @@ func (m *Manager) ListInstalled() ([]TermoraVersionInfo, error) {
 			Version: normalizeVersion(v.Version),
 			ExePath: exe,
 			Dir:     v.Dir,
-			Size:    fi.Size(),
+			Size:    dirSize(v.Dir, fi.Size()),
 			SHA256:  v.Meta.AssetSHA256,
 			Source:  v.Meta.Source,
 		}
@@ -300,11 +307,12 @@ func (m *Manager) ImportLocal(srcDir string) (TermoraVersionInfo, error) {
 		return TermoraVersionInfo{}, err
 	}
 
+	installedDir := filepath.Join(m.versionsDir, treeEntryName+"_"+token)
 	return TermoraVersionInfo{
 		Version:     normalizeVersion(token),
-		ExePath:     filepath.Join(filepath.Join(m.versionsDir, treeEntryName+"_"+token), relFromStaging(staging, dstExe)),
-		Dir:         filepath.Join(m.versionsDir, treeEntryName+"_"+token),
-		Size:        fi.Size(),
+		ExePath:     filepath.Join(installedDir, relFromStaging(staging, dstExe)),
+		Dir:         installedDir,
+		Size:        dirSize(installedDir, fi.Size()),
 		SHA256:      meta.AssetSHA256,
 		InstalledAt: time.Now().Format("2006-01-02 15:04:05"),
 		IsImport:    true,
@@ -346,6 +354,19 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 }
 
 // ---------- 领域工具 ----------
+
+// dirSize 版本目录整树字节和（jpackage 布局下主 exe 只是启动器，app/ 与
+// runtime/ 才是体积主体——单报 exe 尺寸与真实包体量级失真）。dirstats 度量
+// 天然跳过符号链接/重解析点防环；预算超限或度量失败回退主程序文件大小旧
+// 口径并 Debug 报账，不谎报。
+func dirSize(dir string, fallback int64) int64 {
+	st := dirstats.MeasureBudgeted(dir, dirSizeBudget)
+	if st.Err != nil || st.Partial || st.Bytes <= 0 {
+		slog.Debug("termora 版本目录大小度量降级，回退主程序文件大小", "dir", dir, "partial", st.Partial, "err", st.Err)
+		return fallback
+	}
+	return st.Bytes
+}
 
 // normalizeVersion 版本展示归一：补 v 前缀；imported-*/裸段原样。
 func normalizeVersion(v string) string {
