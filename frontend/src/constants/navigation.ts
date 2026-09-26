@@ -237,7 +237,9 @@ export function groupOfModule(id: string): NavGroup | undefined {
  * 终结"三份并行清单"（App.vue 两张表已并入 ROUTES）。后端注册表仍是
  * "模块存在/启用"的真相，本表只供首页卡片渲染；缺省模块走 fallbackIcon。
  * icon 统一 `i:` 前缀引用 constants/icons 注册表（与后端 Nav().Icon 同名），
- * 消费端（HomeView）经 AppIcon 渲染 SVG；无前缀值按文本回退。
+ * 消费端（HomeView）经 AppIcon 渲染 SVG；无前缀值按文本回退。红线三枚
+ * （rammap/recordly/vscode）走 `rt:<id>|<fallback>` 运行期本机提取轨，
+ * 与后端 Nav().Icon 保持同名，提取不可用时按声明的 fallback 矢量出货。
  */
 export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }> = {
   frpc: { icon: 'app:frpc', route: '/frpc' },
@@ -259,7 +261,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   mangodisk: { icon: 'app:mangodisk', route: '/ext/mangodisk' },
   bcu: { icon: 'app:bcu', route: '/ext/bcu' },
   flclash: { icon: 'app:flclash', route: '/ext/flclash' },
-  recordly: { icon: 'i:video', route: '/ext/recordly' },
+  recordly: { icon: 'rt:recordly|i:video', route: '/ext/recordly' },
   papertodo: { icon: 'app:papertodo', route: '/ext/papertodo' },
   piclite: { icon: 'app:piclite', route: '/ext/piclite' },
   keyviz: { icon: 'app:keyviz', route: '/ext/keyviz' },
@@ -271,13 +273,13 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   rustdesk: { icon: 'app:rustdesk', route: '/ext/rustdesk' },
   rufus: { icon: 'app:rufus', route: '/ext/rufus' },
   bili23: { icon: 'app:bili23', route: '/ext/bili23' },
-  vscode: { icon: 'i:code', route: '/ext/vscode' },
+  vscode: { icon: 'rt:vscode|i:code', route: '/ext/vscode' },
   translucenttb: { icon: 'app:translucenttb', route: '/ext/translucenttb' },
   paseo: { icon: 'app:paseo', route: '/ext/paseo' },
   windterm: { icon: 'app:windterm', route: '/ext/windterm' },
   termora: { icon: 'app:termora', route: '/ext/termora' },
   sysinfo: { icon: 'i:cpu', route: '/ext/sysinfo' },
-  rammap: { icon: 'i:gauge', route: '/ext/rammap' },
+  rammap: { icon: 'rt:rammap|i:gauge', route: '/ext/rammap' },
   douzy: { icon: 'app:douzy', route: '/ext/douzy' },
   wsl: { icon: 'i:terminal', route: '/ext/wsl' },
   quickmenu: { icon: 'i:mouse-pointer', route: '/ext/quickmenu' },

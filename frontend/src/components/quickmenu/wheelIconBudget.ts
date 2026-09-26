@@ -15,6 +15,7 @@
 //  3. 降采样区间向源的干净二分档（64/32/16…）吸附（差 ≤ SNAP_TOL_PX 物理 px 时），
 //     整数比降采样是 1:1 之下最锐利的档位。
 // 返回值仍是 CSS px（物理边长 / dpr），直接喂 <AppIcon :size>。
+import { runtimeIconReady } from '../../constants/runtimeIcons'
 
 /** assets/apps 展示档默认分辨率（升切批出货主档；改提取脚本 -Px 须同步此值与台账）。 */
 export const APP_ICON_SRC_PX = 64
@@ -35,9 +36,25 @@ export const ICON_SRC_LEDGER: Record<string, number> = {
   frpc: 48,
 }
 
-/** app: 图标名的源档查询——预算封顶按枚给，不再用统一常数（未知名=文件不在位，
- *  AppIcon 回落 32px 自绘 generic，保守取 32 防把通用徽图当 64 源放大）。 */
+/** rt: 轨（N27 红线运行期本机提取）真实源档台账——RAMMap64.exe 经
+ *  packages/go/peicon 真件实测最大画幅 32²（Sysinternals 经典图标组）；
+ *  recordly/vscode 为 Electron/Chromium 壳，官方出货含 256² PNG 帧——台账
+ *  宁标足额：srcPx 只封上限绝不放大，标多只可能少吸附半档，零糊图风险。
+ *  未登记 rt id 保守取 32（同 app: 未知轨口径）。 */
+export const RUNTIME_ICON_SRC_LEDGER: Record<string, number> = {
+  rammap: 32,
+  recordly: 256,
+  vscode: 256,
+}
+
+/** 图标名的源档查询——预算封顶按枚给，不再用统一常数（app: 未知名=文件不在位，
+ *  AppIcon 回落 32px 自绘 generic，保守取 32 防把通用徽图当 64 源放大；
+ *  rt: 查运行期台账，同 32 保守缺省）。 */
 export function srcPxForWheelIcon(icon: string): number {
+  if (icon.startsWith('rt:')) {
+    const id = icon.slice(3).split('|')[0]
+    return RUNTIME_ICON_SRC_LEDGER[id] ?? 32
+  }
   const id = icon.startsWith('app:') ? icon.slice(4) : ''
   return ICON_SRC_LEDGER[id] ?? 32
 }
@@ -48,9 +65,13 @@ const SNAP_TOL_PX = 2
 /** 图标最小物理边长：再小不可辨，也不参与二分档吸附。 */
 const MIN_PHYS_PX = 12
 
-/** app: 真图标（位图轨）判定——i: 矢量轨无需预算。 */
+/** 位图轨（app:/已提取的 rt:）判定——i: 矢量轨与未提取成功的 rt:（画回落
+ *  矢量）无需预算。rt: 轨以提取通道实况为准：坐实前按矢量轨着色（保留
+ *  色调、不吃位图预算），坐实后原位翻位图轨，与 AppIcon 渲染态严格同步。 */
 export function isRasterWheelIcon(icon: string): boolean {
-  return icon.startsWith('app:')
+  if (icon.startsWith('app:')) return true
+  if (icon.startsWith('rt:')) return runtimeIconReady(icon.slice(3).split('|')[0])
+  return false
 }
 
 /**

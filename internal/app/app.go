@@ -556,6 +556,10 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		// MCP 安装向导（「AI 接入」分区后端，F4b）：平台级服务直挂同 snapSvc 先例；
 		// 无后台协程无常驻状态，只在设置分区打开时按需读盘分析。
 		application.NewService(mcpwizard.NewService(paths)),
+		// 红线图标运行期本机提取（N27 尾巴）：平台级服务直挂同 snapSvc 先例，
+		// 一枚 IconPNG RPC 打通 rammap/recordly/vscode（许可红线永不入仓，
+		// 只在机主本机就地提取，见 runtimeicon_service.go 头注释）。
+		application.NewService(NewRuntimeIconService(registry)),
 	}
 	services = append(services, registry.AllServices()...)
 

@@ -104,8 +104,16 @@ export type IconName = keyof typeof ICON_PATHS
  */
 export type AppIconName = `app:${string}`
 
-/** 凡可交 AppIcon 渲染的名（矢量注册名或 `app:` 真图标名）——消费面统一签名。 */
-export type RenderableIcon = IconName | AppIconName
+/**
+ * 真图标第三来源（N27 红线运行期提取）：`rt:<moduleId>|<fallback>` 形态名。
+ * rammap/recordly/vscode 因品牌许可红线永不入仓，改由后端运行期从机主本机
+ * 已装官方 exe 就地提取（constants/runtimeIcons.ts 通道）；提取成功前/失败后
+ * AppIcon 自动回落 `|` 后的 `<fallback>` 声明（通常即现 `i:` 矢量），观感零损。
+ */
+export type RuntimeIconName = `rt:${string}`
+
+/** 凡可交 AppIcon 渲染的名（矢量注册名、`app:` 或 `rt:` 真图标名）——消费面统一签名。 */
+export type RenderableIcon = IconName | AppIconName | RuntimeIconName
 
 /** AppIcon 的 name prop 校验用集合（模板中 `i:` 前缀约定剥离后可查）。 */
 export const ICON_NAMES = Object.keys(ICON_PATHS) as IconName[]

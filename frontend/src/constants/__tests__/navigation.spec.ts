@@ -7,7 +7,7 @@ import {
   SETTINGS_SECTIONS, settingsSectionOf, CORE_ROUTES, isCoreRoute,
 } from '../navigation'
 import { ICON_NAMES } from '../icons'
-import { resolveIcon } from '../appIcons'
+import { resolveIcon, parseRuntimeIcon } from '../appIcons'
 import compositionContract from '../../../../scripts/fixture/composition_contract.json'
 
 const contractModules = compositionContract.modules
@@ -107,12 +107,26 @@ describe('constants/navigation', () => {
     expect(Object.keys(MODULE_PRESENTATION).sort()).toEqual(fixtureIds)
   })
 
-  it('MODULE_PRESENTATION 图标全为可解析形态：登记 i: 名或 N27 真图标 app: 名，回退 i:box', () => {
+  it('MODULE_PRESENTATION 图标全为可解析形态：登记 i: 名、N27 真图标 app: 名或红线运行期提取 rt: 名，回退 i:box', () => {
     expect(FALLBACK_MODULE_ICON).toBe('i:box')
     for (const p of Object.values(MODULE_PRESENTATION)) {
-      // 三轨解析单点必须判为可渲染（svg 或 app），杜绝未登记前缀混入数据源
-      expect(['svg', 'app'], p.icon).toContain(resolveIcon(p.icon).kind)
+      // 四轨解析单点必须判为可渲染（svg / app / rt），杜绝未登记前缀混入数据源
+      expect(['svg', 'app', 'rt'], p.icon).toContain(resolveIcon(p.icon).kind)
       if (p.icon.startsWith('i:')) expect(ICON_NAMES).toContain(p.icon.slice(2))
+    }
+    // 红线三枚（许可永不入仓，N27 尾巴运行期本机提取轨）：rt 串必须自带
+    // 登记在案的 i: 回落（提取失败观感=通道上线前原样），并与后端 Nav 同名。
+    const rtExpect: Record<string, string> = {
+      rammap: 'rt:rammap|i:gauge',
+      recordly: 'rt:recordly|i:video',
+      vscode: 'rt:vscode|i:code',
+    }
+    for (const [id, icon] of Object.entries(rtExpect)) {
+      expect(MODULE_PRESENTATION[id]?.icon, id).toBe(icon)
+      const ref = parseRuntimeIcon(icon)
+      expect(ref, id).not.toBeNull()
+      expect(ref!.id, id).toBe(id)
+      expect(ICON_NAMES as readonly string[], id).toContain(ref!.fallbackName)
     }
     // 真图标入库件（批 A 五枚 + 批 B-2 扩量十二枚 + N27 尾巴放行二枚 + 开源上游仓库取材四枚 + 尾巡补录三枚）：数据源确已切到 app: 形态
     for (const id of [

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   APP_ICON_SRC_PX,
   ICON_SRC_LEDGER,
+  RUNTIME_ICON_SRC_LEDGER,
   isRasterWheelIcon,
   snapIconCssPx,
   srcPxForWheelIcon,
@@ -88,10 +89,24 @@ describe('srcPxForWheelIcon：逐枚源尺寸台账', () => {
   })
 })
 
-describe('isRasterWheelIcon', () => {
+describe('isRasterWheelIcon：app: 与矢量轨口径（存量回归锁）', () => {
   it('仅 app: 位图轨吃预算，i: 矢量与裸注册名不吃', () => {
     expect(isRasterWheelIcon('app:snipaste')).toBe(true)
     expect(isRasterWheelIcon('box')).toBe(false)
     expect(isRasterWheelIcon('terminal')).toBe(false)
+  })
+})
+
+describe('isRasterWheelIcon / srcPxForWheelIcon：rt 运行期轨', () => {
+  it('rt: 未提取成功时不吃位图预算（画回落矢量），源档按运行期台账给（宁标足额不放大）', () => {
+    // 本测试环境无 wails 桥，runtimeIcons 恒未就绪 → isRaster=false（回落矢量轨）
+    expect(isRasterWheelIcon('rt:rammap|i:gauge')).toBe(false)
+    expect(srcPxForWheelIcon('rt:rammap|i:gauge')).toBe(32) // RAMMap64.exe 实测最大 32²
+    expect(srcPxForWheelIcon('rt:vscode|i:code')).toBe(256)
+    expect(srcPxForWheelIcon('rt:recordly|i:video')).toBe(256)
+    expect(srcPxForWheelIcon('rt:nope|i:box')).toBe(32) // 未登记 rt id 保守档
+  })
+  it('运行期台账键集与红线三枚一致', () => {
+    expect(Object.keys(RUNTIME_ICON_SRC_LEDGER).sort()).toEqual(['rammap', 'recordly', 'vscode'])
   })
 })

@@ -55,9 +55,15 @@ func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "recordly-manager", Title: "Recordly 录屏", Route: "/ext/recordly", Icon: "i:video", Section: extapi.SectionExt, Order: 78, Group: extapi.GroupMedia},
+		// rt: 运行期本机提取厂商图标（AGPL 品牌许可红线永不入仓），提取不可用
+		// 时自动回落 `|` 后的 i:video 矢量，观感与旧值零差。
+		{ID: "recordly-manager", Title: "Recordly 录屏", Route: "/ext/recordly", Icon: "rt:recordly|i:video", Section: extapi.SectionExt, Order: 78, Group: extapi.GroupMedia},
 	}
 }
+
+// IconSourceExe 实现 extapi.IconSourceProvider 可选契约（N27 红线图标运行期
+// 提取通道）：回托管安装 Recordly.exe 路径，供集中服务就地提取厂商图标。
+func (e *Module) IconSourceExe() (string, error) { return e.svc.resolveInstalledExeAny() }
 
 // 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。
 func (e *Module) Services() []extapi.Service {

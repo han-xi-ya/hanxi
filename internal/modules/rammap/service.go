@@ -612,3 +612,11 @@ func (s *RAMMapService) resolveActiveVersion() (string, string, error) {
 	})
 	return installed[0].Version, installed[0].ExePath, nil
 }
+
+// iconSourceExe 供集中式 RuntimeIconService 取本机图标提取源（extapi.
+// IconSourceProvider 契约的 service 侧实现，Module 层转发）：与冷启动同源
+// 的活动载荷路径，只读无副作用；未安装如实上抛，由服务落负缓存。
+func (s *RAMMapService) iconSourceExe() (string, error) {
+	_, exe, err := s.resolveActiveVersion()
+	return exe, err
+}

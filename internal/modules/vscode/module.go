@@ -53,9 +53,15 @@ func (e *Module) Info() extapi.ModuleInfo {
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "vscode-manager", Title: "VS Code", Route: "/ext/vscode", Icon: "i:code", Section: extapi.SectionExt, Order: 90, Group: extapi.GroupDeveloper},
+		// rt: 运行期本机提取厂商图标（微软品牌许可红线永不入仓），提取不可用
+		// 时自动回落 `|` 后的 i:code 矢量，观感与旧值零差。
+		{ID: "vscode-manager", Title: "VS Code", Route: "/ext/vscode", Icon: "rt:vscode|i:code", Section: extapi.SectionExt, Order: 90, Group: extapi.GroupDeveloper},
 	}
 }
+
+// IconSourceExe 实现 extapi.IconSourceProvider 可选契约（N27 红线图标运行期
+// 提取通道）：回本机 Code.exe 路径，供集中服务就地提取厂商图标。
+func (e *Module) IconSourceExe() (string, error) { return e.svc.iconSourceExe() }
 
 // 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。
 func (e *Module) Services() []extapi.Service {

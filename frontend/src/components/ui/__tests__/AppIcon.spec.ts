@@ -1,9 +1,22 @@
 // AppIcon 特征测试（§8 图标纪律基建，阶段1）：注册表完整性与无障碍语义。
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AppIcon from '../AppIcon.vue'
 import { ICON_NAMES, ICON_PATHS, type IconName } from '../../../constants/icons'
 import { APP_ICON_GENERIC_URL, APP_ICON_IDS, appIconUrl } from '../../../constants/appIcons'
+
+// 运行期提取通道替身：直接驱动"已提取/未提取"两态，不起真实 wails 桥。
+const runtimeStore = vi.hoisted(() => ({ urls: {} as Record<string, string>, ensured: [] as string[] }))
+vi.mock('../../../constants/runtimeIcons', () => ({
+  runtimeIconUrl: (id: string) => runtimeStore.urls[id],
+  runtimeIconReady: (id: string) => runtimeStore.urls[id] !== undefined,
+  runtimeIconFailed: (id: string) => false,
+  ensureRuntimeIcon: (id: string) => {
+    runtimeStore.ensured.push(id)
+    return Promise.resolve()
+  },
+  __resetRuntimeIconsForTest: () => {},
+}))
 
 describe('AppIcon 注册表', () => {
   it('每个图标名均有非空 path 列表，d 以合法命令字母开头', () => {
@@ -84,5 +97,47 @@ describe('AppIcon 真图标第二来源（N27 批 A）', () => {
     const w = mount(AppIcon, { props: { name: 'bell' as IconName } })
     expect(w.find('img').exists()).toBe(false)
     expect(w.find('svg').exists()).toBe(true)
+  })
+})
+
+describe('AppIcon 真图标第三来源：rt 运行期提取（N27 红线尾巴）', () => {
+  beforeEach(() => {
+    runtimeStore.urls = {}
+    runtimeStore.ensured = []
+  })
+
+  it('提取未就绪：同步渲染 `|` 后声明的回落矢量，与旧 i:gauge 特征全等（观感零损）', () => {
+    const w = mount(AppIcon, { props: { name: 'rt:rammap|i:gauge' } })
+    expect(w.find('img').exists()).toBe(false)
+    const svg = w.find('svg')
+    expect(svg.exists()).toBe(true)
+    expect(svg.findAll('path')).toHaveLength(ICON_PATHS.gauge.length)
+    expect(svg.findAll('path')[0].attributes('d')).toBe(ICON_PATHS.gauge[0])
+    // 挂载即幂等发起提取，且只解析出 moduleId（不带 fallback 段）
+    expect(runtimeStore.ensured).toEqual(['rammap'])
+  })
+
+  it('提取成功：渲染 <img> 位图，src 为通道 data URL', () => {
+    runtimeStore.urls.rammap = 'data:image/png;base64,AAAA'
+    const w = mount(AppIcon, { props: { name: 'rt:rammap|i:gauge' } })
+    const img = w.find('img')
+    expect(img.exists()).toBe(true)
+    expect(img.attributes('src')).toBe('data:image/png;base64,AAAA')
+    expect(w.find('svg').exists()).toBe(false)
+  })
+
+  it('fallback 缺失/未登记名：回落 box 矢量，绝不空白断链', () => {
+    const bare = mount(AppIcon, { props: { name: 'rt:recordly' } })
+    expect(bare.findAll('path')).toHaveLength(ICON_PATHS.box.length)
+    const bogus = mount(AppIcon, { props: { name: 'rt:vscode|i:not-registered' } })
+    expect(bogus.findAll('path')).toHaveLength(ICON_PATHS.box.length)
+  })
+
+  it('同串换组件互不干扰：app: 轨与 i: 轨行为零漂移', () => {
+    const app = mount(AppIcon, { props: { name: 'app:ccswitch' } })
+    expect(app.find('img').attributes('src')).toBe(appIconUrl('ccswitch'))
+    const vec = mount(AppIcon, { props: { name: 'bell' as IconName } })
+    expect(vec.findAll('path')).toHaveLength(ICON_PATHS.bell.length)
+    expect(runtimeStore.ensured).toEqual([]) // 非 rt 名绝不打提取通道
   })
 })

@@ -596,6 +596,21 @@ func (s *VSCodeService) resolveStartTarget(isInstaller bool) (string, string, er
 	return installed[0].Version, installed[0].ExePath, nil
 }
 
+// iconSourceExe 供集中式 RuntimeIconService 取本机图标提取源（extapi.
+// IconSourceProvider 契约的 service 侧实现，Module 层转发）：便携版在用
+// 载荷优先，未装便携版回落注册表探测的系统安装版 Code.exe；两者皆无如实
+// 上抛，由服务落负缓存。只读无副作用。
+func (s *VSCodeService) iconSourceExe() (string, error) {
+	if exe, err := s.resolveExeAny(false); err == nil {
+		return exe, nil
+	}
+	info := version.DetectInstalled()
+	if info.Installed {
+		return info.ExePath, nil
+	}
+	return "", fmt.Errorf("本机既无托管便携版 VS Code，也没有系统安装版，无图标提取源")
+}
+
 // resolveExeAny external 态信使 exe（信使归属实例组由 user-data 决定，与具体版本号无关）。
 func (s *VSCodeService) resolveExeAny(isInstaller bool) (string, error) {
 	if isInstaller {

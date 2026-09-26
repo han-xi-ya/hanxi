@@ -235,18 +235,50 @@ ddnsgo/frpc favicon 源天花板 48 保持 48）。逐枚出货边长单一来�
 | frpc.png | frp (fatedier/frp) | Apache-2.0（见上节） | 识别性使用；来源=上游仓库 github.com/fatedier/frp `web/frpc/public/favicon.ico`（官方 frpc 控制面板图标；升切：出货 48px，单画幅 48 即源天花板，不放大凑 64；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
 | eartrumpet.png | EarTrumpet | MIT + Excluded Entities 前言（见上节） | 识别性使用；来源=上游仓库 github.com/File-New-Project/EarTrumpet `EarTrumpet.Package/Assets/Square44x44Logo.altform-unplated_targetsize-256.png`（升切：改取官方 256px 无底版原生画幅等比缩 64 出货，替代原 32px targetsize 小件）；Excluded Entities 条款仅点名排除三家商事主体，Hanxi 非排除对象，MIT 授权照常成立 |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
-| ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不落 generic 之外的展示面：保持矢量 `i:gauge`（rammap 系位图一律同判） |
+| ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不随发布物分发：默认矢量 `i:gauge`，装有机主本机官方 RAMMap64.exe 时走「红线图标运行期本机提取」节通道 |
 
 未入库（如实登记）：**Recordly**——AGPL 附加条款明文禁将 Recordly 名称/品牌
-图标套用于 Hanxi 自有 UI 展示（上节"刻意不做品牌融合"），用了即违约，
-保持矢量 `i:video`，将来装了也不入库；**vscode**——微软商标条款对品牌资产同样收紧，
-与 Sysinternals 同判不入库，保持矢量 `i:code`；**softver/msgboard/quickmenu/sysinfo/envcheck/wechat/wifi 等
+图标套用于 Hanxi 自有 UI 展示（上节"刻意不做品牌融合"），入库分发即违约，
+默认矢量 `i:video`，永不入库；**vscode**——微软商标条款对品牌资产同样收紧，
+与 Sysinternals 同判不入库，默认矢量 `i:code`。三者的"装了就画自己的脸"
+诉求由下节运行期本机提取通道满足——不改变本节任何"不入库"结论；**softver/msgboard/quickmenu/sysinfo/envcheck/wechat/wifi 等
 Hanxi 自研功能模块**（wechat/wifi 为桥接/诊断入口，非托管载荷）永不入库。
 （2026-09-26 尾巡改判注：**ddnsgo/frpc** 原以"控制台程序无 GUI 头件"落通用徽标，
 后经官方仓库实证存在现成品牌位图（favicon），按开源取材通道补录入库（见上表）；
 同轮补录 **eartrumpet**（官方包原生 32px 件）。三枚自入库起同时供托盘子菜单消费。）
 若随 Hanxi 安装包再分发构成任何权利方异议，
 按"摘除位图 → 回落 generic"处理，不动摇功能。
+
+## 红线图标运行期本机提取（N27 尾巴：rammap / recordly / vscode）
+
+上述三枚品牌图标因许可红线**永不入库、不随发布物分发**（上一节口径原样成立）。
+hanxi 另开一条纯运行期通道：当机主本机装有官方载荷（托管版本目录内的
+RAMMap64.exe / Recordly.exe / Code.exe，或系统安装版 VS Code）时，
+由 `packages/go/peicon` 就地解析该 exe 的 PE 图标资源取最大真实画幅帧，
+PNG 字节仅进 hanxi 进程内存与本机页面渲染（不落盘、不进构建产物、不出机器），
+用于在 hanxi 界面中标识被托管软件本身（识别性展示）。
+
+要点与边界：
+
+- **不分发**：任何位图字节都不写入 hanxi 仓库、发布安装包或托管元数据；
+  卸载 hanxi 或移除上游软件即无任何残留资产。这是"提取仅发生在机主自己的
+  机器、仅供机主自己看"的自用边界，与 Sysinternals"禁再分发二进制资产"
+  、Recordly AGPL 品牌条款、微软商标条款均不冲突（若权利方对"本机就地
+  显示"口径提出异议，删除 `internal/app/runtimeicon_service.go` 一家即可
+  整批回落矢量徽标，功能无损）。
+- **宁缺毋滥**：载荷不在位（未安装）、模块停用、解析失败一律如实回错误，
+  前端按 `rt:<id>|<fallback>` 串自带的矢量回落（i:gauge / i:video / i:code），
+  观感与提取通道上线前零差，绝不伪造或猜测图标。
+- **画幅实测**（2026-09-26，`peicon_test.go` 真件集成用例锁底）：
+  RAMMap64.exe 最大真实画幅 32×32（DIB 组，32² 帧不入 RT_GROUP_ICON 组目录，
+  全量 RT_ICON 择优口径下可得）；Recordly / VS Code 本机暂不在位，
+  其官方出货 exe 含 256² PNG 帧为厂商公开事实，前端台账
+  （`wheelIconBudget.ts` RUNTIME_ICON_SRC_LEDGER）按 256 封上限——
+  台账只封顶不放大，实际画幅更小只会更保守，无糊图风险。
+- **实现**：提取源路径由各模块经 `extapi.IconSourceProvider` 供出（各一行
+  转发既有版本解析）；集中服务门语义=「已装+未停用」即放行、绝不因取图标
+  唤醒模块 OnInit；结果进程内按源文件 size+mtime 指纹缓存（重装/换版本
+  自动失效），失败同键记负缓存防每次渲染撞解析。
 
 ## 前端内嵌字体（N36）
 

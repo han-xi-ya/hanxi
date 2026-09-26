@@ -32,22 +32,26 @@ export function appIconUrl(id: string): string {
   return files[key(id)] || APP_ICON_GENERIC_URL
 }
 
-/** 归一后的图标解析结果：交 AppIcon 渲染（svg/app）或文本回退。 */
+/** 归一后的图标解析结果：交 AppIcon 渲染（svg/app/rt）或文本回退。 */
 export type ResolvedIcon =
   | { kind: 'svg'; name: string } // icons.ts 注册表名（无 i: 前缀）
   | { kind: 'app'; name: string } // app:<id>（原样喂 AppIcon，缺图自动 generic）
+  | { kind: 'rt'; name: string } // rt:<id>|<fallback>（原样喂 AppIcon，提取不可用回落 fallback）
   | { kind: 'text'; text: string } // 裸 emoji/字符回退
   | { kind: 'blank' } // i: 未登记 / 空：占位不渲染
 
 /**
- * 解析导航/卡片图标的三形态（各消费面共用，杜绝 `startsWith('i:')` 逻辑散落漂移）：
- * `app:<id>` 恒可渲染（缺图回落由 appIconUrl 保证）；`i:<name>` 须已在 ICON_PATHS
- * 登记否则 blank；其余按裸文本回退（阶段3 退役中）。入参允许已剥前缀的裸 svg 名
- * （轮盘扇区即此形态），故对无 `i:`/`app:` 前缀的已知注册名也认 svg。
+ * 解析导航/卡片图标的四形态（各消费面共用，杜绝 `startsWith('i:')` 逻辑散落漂移）：
+ * `app:<id>` 恒可渲染（缺图回落由 appIconUrl 保证）；`rt:<id>|<fallback>` 恒可
+ * 渲染（提取成败由 AppIcon 运行期通道感知，未就绪即画 fallback，本层零 IO）；
+ * `i:<name>` 须已在 ICON_PATHS 登记否则 blank；其余按裸文本回退（阶段3 退役中）。
+ * 入参允许已剥前缀的裸 svg 名（轮盘扇区即此形态），故对无 `i:`/`app:`/`rt:`
+ * 前缀的已知注册名也认 svg。
  */
 export function resolveIcon(icon: string | undefined | null): ResolvedIcon {
   if (!icon) return { kind: 'blank' }
   if (icon.startsWith('app:')) return { kind: 'app', name: icon }
+  if (icon.startsWith('rt:')) return parseRuntimeIcon(icon) ? { kind: 'rt', name: icon } : { kind: 'blank' }
   if (icon.startsWith('i:')) {
     const name = icon.slice(2)
     return (ICON_NAMES as readonly string[]).includes(name) ? { kind: 'svg', name } : { kind: 'blank' }
@@ -56,13 +60,36 @@ export function resolveIcon(icon: string | undefined | null): ResolvedIcon {
   return { kind: 'text', text: icon }
 }
 
+/** `rt:<moduleId>|<fallback>` 的解析结果：提取源模块 ID + 未就绪/失败时的回落名。 */
+export interface RuntimeIconRef {
+  id: string
+  /** 已归一的回落渲染名（裸 svg 名或 `app:` 名）；fallback 缺失/未登记回 box。 */
+  fallbackName: RenderableIcon
+}
+
 /**
- * 消费面主入口：图标串 → 可交 `<AppIcon :name>` 的名（svg 剥前缀、app 原样），
+ * 解析 `rt:` 三型图标串（AppIcon 渲染层与轮盘预算层共用的唯一解析点）。
+ * 形态非法（空 moduleId）返回 null——由调用面按 blank/文本轨处理。
+ */
+export function parseRuntimeIcon(icon: string | undefined | null): RuntimeIconRef | null {
+  if (!icon || !icon.startsWith('rt:')) return null
+  const body = icon.slice(3)
+  const bar = body.indexOf('|')
+  const id = bar < 0 ? body : body.slice(0, bar)
+  if (!id) return null
+  const fallbackRaw = bar < 0 ? '' : body.slice(bar + 1)
+  const fallback = fallbackRaw ? appIconName(fallbackRaw) : undefined
+  return { id, fallbackName: fallback ?? 'box' }
+}
+
+/**
+ * 消费面主入口：图标串 → 可交 `<AppIcon :name>` 的名（svg 剥前缀、app/rt 原样），
  * 不可渲染（裸文本/未登记 i:）回 undefined 由调用面走各自文本回退轨。
  */
 export function appIconName(icon: string | undefined | null): RenderableIcon | undefined {
   const r = resolveIcon(icon)
   if (r.kind === 'svg') return r.name as RenderableIcon
   if (r.kind === 'app') return r.name as RenderableIcon
+  if (r.kind === 'rt') return r.name as RenderableIcon
   return undefined
 }

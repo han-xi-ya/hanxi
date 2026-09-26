@@ -53,7 +53,9 @@ func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 // Nav 侧边栏入口（系统组，排序接 litemonitor 之后）。
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "rammap-manager", Title: "RAMMap 内存", Route: "/ext/rammap", Icon: "i:gauge", Section: extapi.SectionExt, Order: 85, Group: extapi.GroupSystem},
+		// rt: 运行期本机提取三型图标（Sysinternals 许可红线永不入仓）：提取
+		// 成功前/失败后自动回落 `|` 后的 i:gauge 矢量，观感与旧值零差。
+		{ID: "rammap-manager", Title: "RAMMap 内存", Route: "/ext/rammap", Icon: "rt:rammap|i:gauge", Section: extapi.SectionExt, Order: 85, Group: extapi.GroupSystem},
 	}
 }
 
@@ -63,6 +65,10 @@ func (m *Module) Services() []extapi.Service {
 }
 
 func (m *Module) OnInit(context.Context) error { return nil }
+
+// IconSourceExe 实现 extapi.IconSourceProvider 可选契约（N27 红线图标运行期
+// 提取通道）：回托管目录内活动版本载荷路径，供集中服务就地提取厂商图标。
+func (m *Module) IconSourceExe() (string, error) { return m.svc.iconSourceExe() }
 
 // OnDestroy 应用退出/模块停用收口：仅联动开启时终止自有实例。
 func (m *Module) OnDestroy() error {
