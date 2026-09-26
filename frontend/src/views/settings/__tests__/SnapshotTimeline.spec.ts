@@ -2,6 +2,8 @@
 // 事件行词表/按钮位次（对比=button[0]、恢复=button[1]，父级恢复链靠此契约）、
 // D 行「恢复被删内容」文案、统一式行 diff（删红加绿 token 类）、hunk 折叠可展开、
 // 截断态如实标注、D/A 侧说明、config 顶层键变化标注、全等空态。
+// 批 C 新增：沿链口径整句、恢复生效常驻徽标、窄屏折行的结构近似断言
+// （jsdom 不跑媒体查询，≤640px 视觉溢出归批 D 真机清单核）。
 // 本件不发 RPC（数据全走 props），无需 mock bindings。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
@@ -77,6 +79,44 @@ describe('SnapshotTimeline 事件行', () => {
     })) as FileRevision[]
     const w = mountTimeline({ history: long })
     expect(w.text()).toContain('仅展示最近 50 版')
+  })
+
+  it('头部给沿链口径整句「共 M 条版本事件（跨改名沿用）」，空历史不出整句', () => {
+    const w = mountTimeline()
+    expect(w.find('.fa-detail-head').text()).toContain('共 2 条版本事件（跨改名沿用）')
+    const w0 = mountTimeline({ history: [] })
+    expect(w0.text()).not.toContain('条版本事件')
+  })
+
+  it('恢复生效徽标常驻每个事件行的动作带：便签=即时生效', () => {
+    const w = mountTimeline()
+    const rows = w.findAll('.fa-ev-row')
+    for (const row of rows) {
+      expect(row.find('.row-actions .fa-scope').text()).toBe('即时生效')
+    }
+    // config 文件 → 重启生效（chip-warning 色 + 文案，色非唯一通道）
+    const wc = mountTimeline({
+      file: { path: 'config.json', display: 'config.json', group: 'config', revisions: 1, lastChange: '', alive: true } as TrackedFile,
+      history: [{ revisionId: 'r1', time: '2026-09-16T09:00:00+08:00', status: 'M', summary: '' }] as FileRevision[],
+    })
+    expect(wc.find('.fa-scope').text()).toBe('重启生效')
+    expect(wc.find('.fa-scope').classes()).toContain('chip-warning')
+  })
+
+  it('窄屏折行前提的结构断言：徽标与对比/恢复钮同挂 .row-actions 带（按钮位次契约不变）', async () => {
+    // jsdom 不评估媒体查询：≤640px 的 .fa-sum 折行让位是纯 CSS（order/flex-basis），
+    // 结构上只需保证「徽标+两钮同带、随带整体折行」——恢复入口一步可达的前提。
+    const w = mountTimeline()
+    const actions = w.findAll('.fa-ev-row .row-actions')
+    expect(actions).toHaveLength(2)
+    for (const band of actions) {
+      expect(band.find('.fa-scope').exists()).toBe(true)
+      const btns = band.findAll('button')
+      expect(btns).toHaveLength(2)
+    }
+    // 徽标是 span 不挤占 button 位次（父级恢复链靠 button[0]=对比/button[1]=恢复契约）
+    await w.findAll('.fa-ev-row')[1].findAll('button')[1].trigger('click')
+    expect(w.emitted('restore')?.[0][0]).toMatchObject({ revisionId: 'aaaa111122223333' })
   })
 })
 

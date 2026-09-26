@@ -4,8 +4,19 @@
 // 嵌套对象/数组一律计数化（"网络配置 (3 项)"），不做逐项字段级名（P5-A 裁决）。
 // 诚实边界：查不到的键/文件一律原样回落显示，绝不瞎猜兜一个相近中文名。
 // memo 文件走后端已注入的标题 resolver（Display），不在此表。
+// 批 C 追加：观察窗/份数口径常量为全前端唯一数字源（散落裸数字一律经此插值），
+// 计数整句与恢复生效语义徽标也单源在此（清单行与时间线行共用同一判组口径）。
 
 import type { TrackedFile } from '../../bindings/hanxi/internal/snapshot/models'
+
+/**
+ * git 版本观察窗上限：与后端 `internal/snapshot` 的 maxListRevisions 同值镜像
+ * （ListRevisions/FileHistory 截断、前端拉取 limit、超窗文案插值共用此一处）。
+ */
+export const REVISION_WINDOW = 50
+
+/** 备份模式滚动保留份数：与后端 backupKeepCount 同值镜像（chip 与说明文案插值用）。 */
+export const BACKUP_KEEP = 30
 
 /** 受保清单三分组的展示名（与后端 TrackedFile.Group 词表对齐）。 */
 export const groupLabels: Record<string, string> = {
@@ -20,6 +31,53 @@ export const statusLabels: Record<string, string> = {
   A: '新增',
   D: '删除',
   R: '改名',
+}
+
+// ---------- 恢复生效语义（N33 §0.3-C，批 C 常驻徽标单源） ----------
+
+/** 恢复生效组：热=写回即换装内存，冷=进 pending 链下次启动生效。 */
+export type RestoreScope = 'hot' | 'cold'
+
+/**
+ * 白名单相对路径 → 恢复生效组（与后端 RestoreFile 分流判据同口径：
+ * memo/ 热恢复，config/state 经 StagePendingRestore 重启生效）。
+ * 白名单外路径返回 null，调用侧不出徽标（不硬兜一个猜测语义）。
+ */
+export function restoreScopeFor(path: string): RestoreScope | null {
+  if (path.startsWith('memo/')) return 'hot'
+  if (path === 'config.json' || path.startsWith('state/')) return 'cold'
+  return null
+}
+
+/** 生效组 → 徽标文案与全局 chip 色类（色不是唯一通道：文案本就写着生效方式）。 */
+export const restoreScopeLabels: Record<RestoreScope, { text: string; chip: string }> = {
+  hot: { text: '即时生效', chip: 'chip-positive' },
+  cold: { text: '重启生效', chip: 'chip-warning' },
+}
+
+// ---------- 计数整句（批 C §5：两口径不硬统一数字，各自说人话） ----------
+
+/**
+ * 清单行版本数整句——窗内摊平口径（ListFiles 按观察窗逐版累计，改名文件
+ * 与时间线的沿链计数可差 1，故只承诺"窗内变化次数"，不称"全部历史"）。
+ */
+export function fileCountNote(n: number): string {
+  return n > 0 ? `最近 ${n} 次变化` : '窗内暂无变化'
+}
+
+/** 清单行计数口径的悬停说明（数字进句、口径进 tooltip，各司其职）。 */
+export function fileCountTitle(): string {
+  return `统计口径：最近 ${REVISION_WINDOW} 版观察窗内该文件出现变化的次数（改名文件与时间线沿链计数可差 1）`
+}
+
+/** 时间线头版本事件数整句——沿链口径（FileHistory --follow 跨改名沿用）。 */
+export function historyCountNote(m: number): string {
+  return `共 ${m} 条版本事件（跨改名沿用）`
+}
+
+/** 观察窗裸数字句式的单源出口（超窗提示/上限 chip 共用，措辞一致）。 */
+export function windowCapNote(): string {
+  return `仅展示最近 ${REVISION_WINDOW} 版`
 }
 
 /**

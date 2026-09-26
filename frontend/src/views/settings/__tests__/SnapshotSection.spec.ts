@@ -118,6 +118,8 @@ describe('历史版本分区', () => {
     expect(rows).toHaveLength(3)
     expect(rows[0].text()).toContain('被删的便签')
 
+    // 批 C：观察窗口径整句——清单卡头挂"最近 50 版观察窗"（数字单源常量渲染）
+    expect(w.text()).toContain('3 个受保文件 · 最近 50 版观察窗')
     await rows[0].trigger('click')
     await flushPromises()
     expect(snapSvc.FileHistory).toHaveBeenCalledWith('memo/memo_9.md', 50)
@@ -126,6 +128,12 @@ describe('历史版本分区', () => {
     expect(evRows[0].text()).toContain('删除')
     expect(evRows[0].text()).toContain('恢复被删内容')
     expect(evRows[1].text()).toContain('恢复')
+    // 批 C：双语义常驻——便签行"即时生效"徽标在组合视图中同样成立，
+    // 时间线头沿链口径整句与清单窗内整句各说各话（不硬统一数字）
+    expect(evRows[0].text()).toContain('即时生效')
+    expect(w.find('.fa-detail-head').text()).toContain('共 2 条版本事件（跨改名沿用）')
+    expect(rows[0].find('.fa-count').text()).toBe('最近 2 次变化')
+    expect(rows[1].find('.fa-scope').text()).toBe('重启生效') // config.json 行
   })
 
   it('时间线 D 行恢复=解算最后存在版本（病灶 A 热修复回归）', async () => {

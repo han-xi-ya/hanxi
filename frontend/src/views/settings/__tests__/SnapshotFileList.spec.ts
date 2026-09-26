@@ -1,6 +1,9 @@
-// 左栏受保文件清单组件级测试（N33 批 B 拆分自 SnapshotSection 断言平移 + 中文名表新增）：
+// 左栏受保文件清单组件级测试（N33 批 B 拆分自 SnapshotSection 断言平移 + 中文名表新增；
+// 批 C 补恢复生效常驻徽标、"最近 N 次变化"整句与窄屏 chip 条结构断言）：
 // 分组词表、中文名映射优先级（前端表 > 后端 Display > 文件名回落）、
 // 已删除徽标、选中态与 select 事件。纯呈现件，无 bindings 依赖。
+// 窄屏限制说明：jsdom 不评估媒体查询，≤640px chip 条只能以 DOM 结构近似断言
+// （组标签与行按钮平铺同层 = 纯 CSS 可折横排的前提），像素级溢出归批 D 真机清单。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import SnapshotFileList from '../SnapshotFileList.vue'
@@ -35,12 +38,39 @@ describe('SnapshotFileList', () => {
     expect(rows[3].text()).not.toContain('未知模块')
   })
 
-  it('已删除徽标只给 alive=false 行；版本号原样带出', () => {
+  it('已删除徽标只给 alive=false 行；计数给"最近 N 次变化"窗内口径整句', () => {
     const w = mount(SnapshotFileList, { props: { files, selectedPath: '' } })
     const rows = w.findAll('.fa-file')
     expect(rows[0].find('.fa-dead').exists()).toBe(true)
     expect(rows[1].find('.fa-dead').exists()).toBe(false)
-    expect(rows[0].find('.fa-count').text()).toBe('2')
+    expect(rows[0].find('.fa-count').text()).toBe('最近 2 次变化')
+    // 零版本文件不空着：如实给窗内无变化（不谎称"无历史"）
+    expect(rows[3].find('.fa-count').text()).toBe('最近 1 次变化')
+    const w0 = mount(SnapshotFileList, { props: { files: [tf('state/x.json', 'x.json', 'state', true, 0)], selectedPath: '' } })
+    expect(w0.find('.fa-count').text()).toBe('窗内暂无变化')
+    // 口径解释进 tooltip（改名文件与时间线沿链计数可差 1，行内只说窗内事实）
+    expect(rows[0].find('.fa-count').attributes('title')).toContain('50 版观察窗')
+  })
+
+  it('恢复生效徽标常驻行上：memo 行即时生效，config/state 行重启生效', () => {
+    const w = mount(SnapshotFileList, { props: { files, selectedPath: '' } })
+    const rows = w.findAll('.fa-file')
+    expect(rows[0].find('.fa-scope').text()).toBe('即时生效')
+    expect(rows[0].find('.fa-scope').classes()).toContain('chip-positive')
+    expect(rows[1].find('.fa-scope').text()).toBe('重启生效')
+    expect(rows[1].find('.fa-scope').classes()).toContain('chip-warning')
+    expect(rows[2].find('.fa-scope').text()).toBe('重启生效')
+  })
+
+  it('窄屏 chip 条前提的结构断言：组标签与行按钮平铺于 .fa-list 同层（无包裹盒）', () => {
+    // jsdom 不跑媒体查询：≤640px 横向 chip 条是纯 CSS 重排，DOM 结构只需保证
+    // 「可重排」——所有 .fa-file 直接挂 .fa-list，不困在分组列盒里。
+    const w = mount(SnapshotFileList, { props: { files, selectedPath: '' } })
+    const list = w.find('.fa-list')
+    for (const row of w.findAll('.fa-file')) {
+      expect(row.element.parentElement).toBe(list.element)
+    }
+    expect(list.findAll('.fa-group')).toHaveLength(3)
   })
 
   it('点选行抛 select(path)，selectedPath 决定 active', async () => {

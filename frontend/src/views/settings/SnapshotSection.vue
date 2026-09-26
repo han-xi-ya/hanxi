@@ -7,13 +7,15 @@
 // 恢复走 useConfirm（danger + 明细）；非便签文件写盘后提示重启生效，便签热生效。
 // 被删文件（status D）恢复的是"最后存在版本"（时间线上第一条非 D 事件）——
 // N33 §0 病灶 A 热修复；备份模式自批 A 起与 git 模式同面可浏览可恢复（P4 解禁）。
+// 批 C：观察窗 50 / 备份 30 两个口径数字全部收进 snapshotLabels 常量单源；
+// 热/重启生效双语义常驻到清单行与时间线行徽标（确认框文案保留但不再独自教学）。
 import { ref, computed, onMounted } from 'vue'
 import * as SnapshotAPI from '../../../bindings/hanxi/internal/snapshot'
 import type { StatusInfo, Revision, RevisionFile, FilePreview, TrackedFile, FileRevision, FileDiff } from '../../../bindings/hanxi/internal/snapshot/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
-import { fmtTime, statusLabels } from '../../constants/snapshotLabels'
+import { BACKUP_KEEP, REVISION_WINDOW, fmtTime, statusLabels } from '../../constants/snapshotLabels'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 import SnapshotFileList from './SnapshotFileList.vue'
@@ -51,13 +53,14 @@ const previewLoading = ref(false)
 
 const backupMode = computed(() => !!status.value && status.value.mode === 'backup')
 
-// §6 两模式同口径 chip：一句话说清"当前是什么引擎 + 容量口径"（P8-A：大白话为主）
+// §6 两模式同口径 chip：一句话说清"当前是什么引擎 + 容量口径"（P8-A：大白话为主）。
+// 批 C：50/30 裸数字全部走 snapshotLabels 常量单源，措辞不变。
 const modeChip = computed(() => {
   if (!status.value) return '正在读取快照状态…'
   if (!status.value.enabled) return '已停用 · 不再自动留版本'
   return status.value.mode === 'git'
-    ? '版本历史（Git · 可浏览最近 50 版）'
-    : '版本历史（备份 · 保留最近 30 份）'
+    ? `版本历史（Git · 可浏览最近 ${REVISION_WINDOW} 版）`
+    : `版本历史（备份 · 保留最近 ${BACKUP_KEEP} 份）`
 })
 
 const modeChipClass = computed(() => {
@@ -196,7 +199,7 @@ async function selectFile(path: string) {
   history.value = []
   historyLoading.value = true
   try {
-    history.value = (await SnapshotAPI.CheckpointService.FileHistory(path, 50)) ?? []
+    history.value = (await SnapshotAPI.CheckpointService.FileHistory(path, REVISION_WINDOW)) ?? []
   } catch (e: unknown) {
     showToast(`读取文件历史失败: ${getErrorMessage(e)}`)
   } finally {
@@ -230,7 +233,7 @@ async function restoreRevision(row: FileRevision) {
   if (row.status === 'D') {
     const t = resolveRestoreTarget(history.value)
     if (!t) {
-      showToast('该文件的最后存在版本已超出观察窗（仅保留最近 50 版），无法自动恢复')
+      showToast(`该文件的最后存在版本已超出观察窗（仅保留最近 ${REVISION_WINDOW} 版），无法自动恢复`)
       return
     }
     target = t
@@ -280,14 +283,14 @@ async function restoreOne(file: RevisionFile) {
   if (file.status === 'D') {
     let hist: FileRevision[]
     try {
-      hist = (await SnapshotAPI.CheckpointService.FileHistory(file.path, 50)) ?? []
+      hist = (await SnapshotAPI.CheckpointService.FileHistory(file.path, REVISION_WINDOW)) ?? []
     } catch (e: unknown) {
       showToast(`读取文件历史失败: ${getErrorMessage(e)}`)
       return
     }
     const t = resolveRestoreTarget(hist)
     if (!t) {
-      showToast('该文件的最后存在版本已超出观察窗（仅保留最近 50 版），无法自动恢复')
+      showToast(`该文件的最后存在版本已超出观察窗（仅保留最近 ${REVISION_WINDOW} 版），无法自动恢复`)
       return
     }
     const accepted = await restoreConfirm(file.path, t, 'D', true)
@@ -382,7 +385,7 @@ onMounted(refresh)
       <span class="backup-icon"><AppIcon name="hard-drive" :size="18" /></span>
       <div>
         <div class="backup-title">当前为本机备份模式</div>
-        <div class="backup-desc">未检测到可用的 Git（或被商店存根占位），历史版本以时间戳备份目录形式滚动保留最近 30 份；浏览与单文件恢复照常可用（改名会如实呈现为独立的新增/删除）。</div>
+        <div class="backup-desc">未检测到可用的 Git（或被商店存根占位），历史版本以时间戳备份目录形式滚动保留最近 {{ BACKUP_KEEP }} 份；浏览与单文件恢复照常可用（改名会如实呈现为独立的新增/删除）。</div>
       </div>
     </div>
 
@@ -390,7 +393,7 @@ onMounted(refresh)
     <div class="card">
       <div class="card-head">
         <span class="card-title">按文件浏览</span>
-        <span class="card-meta">{{ trackedFiles.length ? `${trackedFiles.length} 个受保文件 · 最近 50 版观察窗` : '' }}</span>
+        <span class="card-meta">{{ trackedFiles.length ? `${trackedFiles.length} 个受保文件 · 最近 ${REVISION_WINDOW} 版观察窗` : '' }}</span>
       </div>
       <div v-if="filesLoading" class="hist-empty">正在读取受保文件清单…</div>
       <div v-else-if="!trackedFiles.length" class="hist-empty">暂无受保文件。留下历史版本后，这里会按文件列出可回滚的时间线。</div>
@@ -412,7 +415,7 @@ onMounted(refresh)
     <div class="card">
       <div class="card-head">
         <span class="card-title">版本列表</span>
-        <span class="card-meta">{{ revisions.length ? `共 ${revisions.length} 个版本（最多展示 50）` : '' }}</span>
+        <span class="card-meta">{{ revisions.length ? `共 ${revisions.length} 个版本（最多展示 ${REVISION_WINDOW}）` : '' }}</span>
       </div>
       <div v-if="loading" class="hist-empty">正在读取历史版本…</div>
       <div v-else-if="!revisions.length" class="hist-empty">

@@ -5,10 +5,16 @@
 // 连续未变段折叠为「… 省略 K 行 · 展开」（纯呈现层，不吞增删行），
 // 超 2000 行只渲染前段 + 展开完整对比；截断态如实标注"仅对比现有部分"。
 // 数据与恢复动作全在父级（SnapshotSection 编排），本件只管呈现与抛事件。
+// 批 C：行上常驻恢复生效徽标（memo=即时 / config·state=重启，与清单行同源判组）；
+// 头部给"共 M 条版本事件（跨改名沿用）"沿链口径整句（与清单窗内口径不硬统一）；
+// ≤640px 事件行折行、说明行整行——动作钮与徽标同带，恢复入口一步可达。
 import { computed, ref, watch } from 'vue'
 import type { FileDiff, FileRevision, TrackedFile } from '../../../bindings/hanxi/internal/snapshot/models'
 import { capRender, diffLines, diffStats, foldContext, type DiffSegment } from '../../utils/textdiff'
-import { changedConfigKeys, fileDisplay, fmtTime, statusLabels } from '../../constants/snapshotLabels'
+import {
+  REVISION_WINDOW, changedConfigKeys, fileDisplay, fmtTime, historyCountNote,
+  restoreScopeFor, restoreScopeLabels, statusLabels, windowCapNote,
+} from '../../constants/snapshotLabels'
 
 const props = defineProps<{
   file: TrackedFile | null
@@ -24,8 +30,15 @@ const emit = defineEmits<{
   (e: 'restore', row: FileRevision): void
 }>()
 
-// 观察窗如实标注：时间线满 50 条即可能被 maxListRevisions 截断
-const historyCapped = computed(() => props.history.length >= 50)
+// 观察窗如实标注：时间线满窗即可能被后端 maxListRevisions 截断（数字单源 REVISION_WINDOW）
+const historyCapped = computed(() => props.history.length >= REVISION_WINDOW)
+
+/** 所选文件的恢复生效徽标（行级常驻；白名单外文件 null → 不出，不猜语义）。 */
+const scopeBadge = computed(() => {
+  if (!props.file) return null
+  const scope = restoreScopeFor(props.file.path)
+  return scope ? restoreScopeLabels[scope] : null
+})
 
 // ---------- 行级 diff（呈现层状态，换 diffData 即复位） ----------
 
@@ -76,7 +89,8 @@ function expandFold(idx: number) {
       <div class="fa-detail-head">
         <span class="fa-title">{{ fileDisplay(file) }}</span>
         <code class="fa-path" :title="file.path">{{ file.path }}</code>
-        <span v-if="historyCapped" class="chip chip-neutral">仅展示最近 50 版</span>
+        <span v-if="history.length" class="fa-evcount">{{ historyCountNote(history.length) }}</span>
+        <span v-if="historyCapped" class="chip chip-neutral">{{ windowCapNote() }}</span>
       </div>
       <div v-if="!history.length" class="hist-empty">该文件在观察窗内还没有历史版本。</div>
       <div v-for="row in history" :key="row.revisionId + row.status" class="fa-ev">
@@ -85,6 +99,8 @@ function expandFold(idx: number) {
           <span class="mono fa-time">{{ fmtTime(row.time) }}</span>
           <span class="fa-sum" :title="row.summary">{{ row.summary }}</span>
           <span class="row-actions">
+            <!-- 生效语义常驻在恢复钮旁（批 C）：点了才在确认框里读到，晚了 -->
+            <span v-if="scopeBadge" class="chip fa-scope" :class="scopeBadge.chip">{{ scopeBadge.text }}</span>
             <button class="btn btn-ghost btn-small" @click="emit('toggleDiff', row)">{{ diffOpen === row.revisionId ? '收起对比' : '对比' }}</button>
             <button class="btn btn-secondary btn-small" @click="emit('restore', row)">{{ row.status === 'D' ? '恢复被删内容' : '恢复' }}</button>
           </span>
@@ -135,8 +151,11 @@ function expandFold(idx: number) {
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
 }
-.fa-ev-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; }
+.fa-evcount { flex: none; font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; }
+.fa-ev-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; min-width: 0; }
 .fa-time { flex: none; }
+/* 恢复生效常驻徽标：micro chip，与清单行同款语系，色走全局 chip token */
+.fa-scope { flex: none; font-size: var(--text-xs); padding: 0 5px; }
 .fa-sum {
   flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--color-text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -182,4 +201,15 @@ function expandFold(idx: number) {
   font-size: var(--text-xs); font-family: inherit;
 }
 .dl-fold:hover { background: var(--surface-chrome-hover); color: var(--color-text); }
+
+/* 批 C 窄屏档（≤640px，依托父级 .fa-body 720px 起的纵排）：头部与事件行折行，
+   说明行让位整行、生效徽标与恢复钮同带留在首行——恢复入口一步可达；
+   diff 长行由 .dl-text pre-wrap+break-all 消化，内容盒 min-width:0 链保持，
+   390px 不撑爆页面；本档不加 transition，动效归零走 base.css 全局 reduced-motion 块 */
+@media (max-width: 640px) {
+  .fa-detail-head { flex-wrap: wrap; }
+  .fa-ev-row { flex-wrap: wrap; }
+  .fa-sum { flex-basis: 100%; order: 3; }
+  .diff-meta { flex-wrap: wrap; }
+}
 </style>
