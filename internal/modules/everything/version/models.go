@@ -3,6 +3,8 @@
 // 落位"主流程委托共享内核 packages/go/artifact，另含本地整套导入链（离线通道）。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // EverythingRelease 远程可用版本槽位（官网仅暴露各通道当前最新版，
 // 详见 https://www.voidtools.com/downloads/ 的「稳定版 / 1.5 Beta」区块）。
 type EverythingRelease struct {
@@ -13,6 +15,8 @@ type EverythingRelease struct {
 	SHA256    string `json:"sha256"`    // 官方 sha256 清单中该 zip 的哈希（清单不可得时为空；下载链视为无校验安装一律拒装）
 	Size      int64  `json:"size"`      // HEAD Content-Length（探测失败为 0，跳过字节级校验）
 	Stale     bool   `json:"stale"`     // 来自旧缓存或内置快照，非实时数据
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // EverythingVersionInfo 本地已安装的 Everything 版本信息

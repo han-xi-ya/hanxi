@@ -12,6 +12,7 @@ import (
 
 	"hanxi/internal/product"
 
+	"hanxi/packages/go/hostfeed"
 	"hanxi/packages/go/netx"
 )
 
@@ -36,6 +37,9 @@ var (
 	sectionTitleRe = regexp.MustCompile(`<h2[^>]*id="dl[^"]*"[^>]*>Download Everything ([^<]+)</h2>`)
 	plainVersionRe = regexp.MustCompile(`^[0-9][0-9a-zA-Z.]+$`)
 	shaEntryRe     = regexp.MustCompile(`(?m)^([0-9a-f]{64})\s+\*?([^\s]+)\s*$`)
+	// assetHrefRe 抓取下载页全部 Everything 主体产品资产直链（href="/Everything-<版本>…"，
+	// 数字起头断言天然排除 Everything-SDK.zip；ES/Server/HTTP.Server 等其他产品名不带连字符）。
+	assetHrefRe = regexp.MustCompile(`href="/(Everything-[0-9][^"]*)"`)
 )
 
 // 内置快照兜底：官网不可达且无缓存时的最后防线（Stale=true 提示用户数据非实时）。
@@ -130,9 +134,53 @@ func parseReleases(html string) []EverythingRelease {
 			Version:  version,
 			Channel:  channel,
 			AssetURL: fmt.Sprintf(assetURLFormat, version),
+			Assets:   notesOf(html, version, assetName),
 		})
 	}
 	return list
+}
+
+// notesOf 该版本全资产平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+// 判据两处偏离共享 hostfeed.Classify，皆为本产品实证：
+//   - 平台整族直判 Windows——Everything 仅存世于 Windows，资产名走 arch 后缀
+//     约定（.x64/.x86/.ARM/.ARM64），无 win 字样，按文件名推断会整族降级 other；
+//   - 形态按官方页自述词表——zip 即页面按钮原文 "Download Portable ZIP" 的
+//     便携形态（en-US/Lite 仅语言与产品变体，不改形态），Setup.exe 即
+//     "Download Installer"，msi 为系统包。词表外新形态宁降级不入矩阵，不猜标。
+func notesOf(html, version, chosen string) []hostfeed.AssetNote {
+	prefix := "Everything-" + version
+	var out []hostfeed.AssetNote
+	seen := map[string]bool{}
+	for _, m := range assetHrefRe.FindAllStringSubmatch(html, -1) {
+		name := m[1]
+		if seen[name] || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if rest := name[len(prefix):]; !strings.HasPrefix(rest, ".") && !strings.HasPrefix(rest, "-") {
+			continue // 前缀相同但边界不符（更长版本号的资产不串槽位）
+		}
+		seen[name] = true
+		lower := strings.ToLower(name)
+		if hostfeed.IsMetadata(name) || strings.HasSuffix(lower, ".sha256") {
+			continue // 版本级校验清单是附属件，非发布物
+		}
+		var form hostfeed.Form
+		switch {
+		case strings.HasSuffix(lower, ".zip"):
+			form = hostfeed.FormPortable
+		case strings.HasSuffix(lower, ".msi"):
+			form = hostfeed.FormPackage
+		case strings.HasSuffix(lower, ".exe"):
+			form = hostfeed.FormInstaller
+		default:
+			continue
+		}
+		out = append(out, hostfeed.AssetNote{
+			Platform: hostfeed.PlatformWindows, Form: form, Label: name,
+			Managed: strings.EqualFold(name, chosen),
+		})
+	}
+	return out
 }
 
 // probeAssets 逐资产 HEAD 探测补充 Size/Published，并拉取官方 sha256 清单。

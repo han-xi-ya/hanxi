@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"hanxi/packages/go/artifact"
+	"hanxi/packages/go/hostfeed"
 )
 
 // fakeStableJSON 与真实发布接口同构的样例（3.2.7 实测响应裁剪）：
@@ -53,18 +54,54 @@ func TestParseChannelBodyRejects(t *testing.T) {
 
 // TestFindPortableZipEnglishFallback 上游本地化名漂移时按 zip 后缀兜底命中。
 func TestFindPortableZipEnglishFallback(t *testing.T) {
-	files := []struct {
-		Name string `json:"name"`
-		URL  string `json:"url"`
-		Size int64  `json:"size"`
-		MD5  string `json:"md5"`
-	}{
+	files := []apiFile{
 		{Name: "GuoheView_Portable.zip", URL: "u2", Size: 2},
 		{Name: "GuoheView-Setup.exe", URL: "u1", Size: 1},
 	}
 	got, ok := findPortableZip(files)
 	if !ok || got.Name != "GuoheView_Portable.zip" {
 		t.Fatalf("兜底筛选失败: %+v ok=%v", got, ok)
+	}
+}
+
+// TestReleaseAssetsMatrix N13 形态矩阵：官方 files 数组三条发布物如实全投影——
+// 仅 Windows 产品平台整族直判；「便携版」zip 与 7z 都是便携形态（7z 仅解压依赖
+// 差异，不改发布形态），「安装包」exe 是安装器；托管所选 zip 置 Managed 高亮位。
+func TestReleaseAssetsMatrix(t *testing.T) {
+	rel, err := parseChannelBody(fakeStableJSON(realZipMD5))
+	if err != nil {
+		t.Fatalf("parseChannelBody: %v", err)
+	}
+	if len(rel.Assets) != 3 {
+		t.Fatalf("期望 3 条资产注记，实际 %d: %+v", len(rel.Assets), rel.Assets)
+	}
+	want := map[string]struct {
+		form    hostfeed.Form
+		managed bool
+	}{
+		"GuoheView_v3.2.7.98-安装包.exe": {hostfeed.FormInstaller, false},
+		"GuoheView_v3.2.7.98-便携版.7z":  {hostfeed.FormPortable, false},
+		"GuoheView_v3.2.7.98-便携版.zip": {hostfeed.FormPortable, true},
+	}
+	managed := 0
+	for _, n := range rel.Assets {
+		w, ok := want[n.Label]
+		if !ok {
+			t.Errorf("意外资产: %s", n.Label)
+			continue
+		}
+		if n.Platform != hostfeed.PlatformWindows {
+			t.Errorf("资产 %s 平台应为 windows（果核看图仅 Windows）: %+v", n.Label, n)
+		}
+		if n.Form != w.form || n.Managed != w.managed {
+			t.Errorf("资产 %s 注记错误: %+v", n.Label, n)
+		}
+		if n.Managed {
+			managed++
+		}
+	}
+	if managed != 1 {
+		t.Errorf("Managed 高亮位应恰 1 条，实际 %d", managed)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 
 	"hanxi/internal/product"
 
+	"hanxi/packages/go/hostfeed"
 	"hanxi/packages/go/netx"
 )
 
@@ -44,16 +45,19 @@ var fourSegVersion = regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+$`)
 type apiEnvelope struct {
 	Code int `json:"code"`
 	Data struct {
-		Channel     string `json:"channel"`
-		Version     string `json:"version"`
-		VersionCode int    `json:"version_code"`
-		Files       []struct {
-			Name string `json:"name"`
-			URL  string `json:"url"`
-			Size int64  `json:"size"`
-			MD5  string `json:"md5"`
-		} `json:"files"`
+		Channel     string    `json:"channel"`
+		Version     string    `json:"version"`
+		VersionCode int       `json:"version_code"`
+		Files       []apiFile `json:"files"`
 	} `json:"data"`
+}
+
+// apiFile 官方接口 files 数组的一条发布物（资产名 + 直链 + 官方摘要三元组）。
+type apiFile struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	Size int64  `json:"size"`
+	MD5  string `json:"md5"`
 }
 
 func apiClient() *http.Client {
@@ -126,36 +130,55 @@ func parseChannelBody(body []byte) (ViewRelease, error) {
 		AssetURL:  arch.URL,
 		Size:      arch.Size,
 		MD5:       md5,
+		Assets:    notesOf(d.Files, arch.Name),
 	}, nil
 }
 
-type apiFile struct {
-	Name string
-	URL  string
-	Size int64
-	MD5  string
+// notesOf files 数组逐条投影平台/形态矩阵（N13 展示层）。判据一处偏离共享
+// hostfeed.Classify，为本产品实证：果核看图仅存世于 Windows（接口从未暴露
+// 非 Windows 发布物），平台按产品级事实直判，不靠文件名推断——资产名走中文
+// 「便携版/安装包」字面量约定，Classify 按 zip/7z 分支会把便携族降级
+// other/archive。形态词表：「便携」/portable → 便携，「安装包」/setup →
+// 安装器，其余交 Classify 兜底（宁降级不猜标）。
+func notesOf(files []apiFile, chosen string) []hostfeed.AssetNote {
+	out := make([]hostfeed.AssetNote, 0, len(files))
+	for _, f := range files {
+		if hostfeed.IsMetadata(f.Name) {
+			continue
+		}
+		lower := strings.ToLower(f.Name)
+		var form hostfeed.Form
+		switch {
+		case strings.Contains(lower, "便携") || strings.Contains(lower, "portable"):
+			form = hostfeed.FormPortable
+		case strings.Contains(lower, "安装包"):
+			form = hostfeed.FormInstaller
+		default:
+			_, form = hostfeed.Classify(f.Name)
+		}
+		out = append(out, hostfeed.AssetNote{
+			Platform: hostfeed.PlatformWindows, Form: form, Label: f.Name,
+			Managed: strings.EqualFold(f.Name, chosen),
+		})
+	}
+	return out
 }
 
 // findPortableZip 从资产数组挑便携 zip。
 // 资产名带中文字面量「便携版」（实测上游命名），大小写与括号变体容错；
 // 排除安装包 exe / 7z（解压需外部依赖）/ 测试版名混入 stable 的防御交给通道字段。
-func findPortableZip(files []struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
-	Size int64  `json:"size"`
-	MD5  string `json:"md5"`
-}) (apiFile, bool) {
+func findPortableZip(files []apiFile) (apiFile, bool) {
 	for _, f := range files {
 		lower := strings.ToLower(f.Name)
 		if strings.HasSuffix(lower, ".zip") && strings.Contains(f.Name, "便携版") {
-			return apiFile{Name: f.Name, URL: f.URL, Size: f.Size, MD5: f.MD5}, true
+			return f, true
 		}
 	}
 	// 上游若未来本地化名漂移（英文 Portable 等），按 zip 后缀 + 非安装包兜底
 	for _, f := range files {
 		lower := strings.ToLower(f.Name)
 		if strings.HasSuffix(lower, ".zip") && !strings.Contains(lower, "setup") && !strings.Contains(lower, "安装包") {
-			return apiFile{Name: f.Name, URL: f.URL, Size: f.Size, MD5: f.MD5}, true
+			return f, true
 		}
 	}
 	return apiFile{}, false

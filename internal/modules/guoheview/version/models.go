@@ -15,6 +15,8 @@
 //   - 版本号是四段式 3.2.7.98（version + version_code），非纯语义三段式。
 package version
 
+import "hanxi/packages/go/hostfeed"
+
 // ViewRelease 官方发布接口的一个可用版本（stable 或 beta 通道）。
 // MD5/Size 来自接口 files 数组（官方计算，完整性校验第一依据）。
 // 托管统一使用便携 zip 资产：根目录即 portable.ini 全便携布局，配置随目录走；
@@ -27,6 +29,8 @@ type ViewRelease struct {
 	AssetURL  string `json:"assetUrl"`  // 官方直链（无镜像）
 	Size      int64  `json:"size"`      // 资产字节数
 	MD5       string `json:"md5"`       // 官方 MD5（hex 小写）
+	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
 }
 
 // ViewVersionInfo 本地已安装的果核看图版本信息。

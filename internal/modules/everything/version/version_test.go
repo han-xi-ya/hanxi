@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"hanxi/packages/go/hostfeed"
 )
 
 // 与真实下载页同构的 HTML 片段：两个发布区块 + 各自资产变体 + 文件清单表
@@ -48,6 +51,57 @@ func TestParseReleases(t *testing.T) {
 func TestParseReleasesEmpty(t *testing.T) {
 	if list := parseReleases("<html>无版本区块的页面</html>"); len(list) != 0 {
 		t.Fatalf("期望空列表，实际 %+v", list)
+	}
+}
+
+// TestReleaseAssetsMatrix N13 形态矩阵：beta 槽位如实投影全部 3 资产（含变体），
+// 平台整族 Windows（仅 Windows 产品不装全平台），zip 即官方页自述的便携形态，
+// Setup.exe 安装器，托管所选 x64 zip 置 Managed 高亮位；版本号边界不串槽位。
+func TestReleaseAssetsMatrix(t *testing.T) {
+	list := parseReleases(fakeDownloadsPage)
+	if len(list) != 2 {
+		t.Fatalf("期望 2 槽位，实际 %d", len(list))
+	}
+	notes := list[1].Assets // 1.5.0.1422b：x64-Setup.exe + x64.zip（钮链/表行重复项须去重）+ ARM64.zip
+	if len(notes) != 3 {
+		t.Fatalf("期望 3 资产注记，实际 %d: %+v", len(notes), notes)
+	}
+	byName := map[string]bool{}
+	managed := 0
+	for _, n := range notes {
+		if n.Platform != hostfeed.PlatformWindows {
+			t.Errorf("资产 %s 平台应为 windows（Everything 仅 Windows 产品）: %+v", n.Label, n)
+		}
+		switch n.Label {
+		case "Everything-1.5.0.1422b.x64.zip":
+			if n.Form != hostfeed.FormPortable || !n.Managed {
+				t.Errorf("托管便携 zip 注记错误: %+v", n)
+			}
+		case "Everything-1.5.0.1422b.x64-Setup.exe":
+			if n.Form != hostfeed.FormInstaller || n.Managed {
+				t.Errorf("Setup.exe 注记错误: %+v", n)
+			}
+		case "Everything-1.5.0.1422b.ARM64.zip":
+			if n.Form != hostfeed.FormPortable || n.Managed {
+				t.Errorf("ARM64 便携注记错误: %+v", n)
+			}
+		default:
+			t.Errorf("意外资产（去重/边界失效？）: %s", n.Label)
+		}
+		if byName[n.Label] {
+			t.Errorf("资产重复（去重失效）: %s", n.Label)
+		}
+		byName[n.Label] = true
+		if n.Managed {
+			managed++
+		}
+	}
+	if managed != 1 {
+		t.Errorf("Managed 高亮位应恰 1 条，实际 %d", managed)
+	}
+	// stable 槽位（.sha256 不在本夹具；x86/x64/Lite/en-US 共 4 条）不受 beta 行污染
+	if len(list[0].Assets) != 4 {
+		t.Errorf("stable 槽位注记数错误: %+v", list[0].Assets)
 	}
 }
 
@@ -123,8 +177,39 @@ func TestPortableLayoutAnchor(t *testing.T) {
 	}
 }
 
+// importTagGuardDir 为秒级导入兜底 tag 预铺查重碰撞目录：从首导出反解的
+// 兜底秒起，向后覆盖 5 分钟（前向余量容忍调度抢占，后沿余量容忍时钟微步）。
+const importTagGuardBack, importTagGuardFwd = 5, 300
+
+// preseedImportedTags 把 [base-back, base+fwd] 各秒的兜底目标目录
+// （everything_vimported-<秒>）预先造出来。ImportLocal 的查重分支只认
+// os.Stat(targetDir) 存在与否，空目录即可命中，不污染本用例后续断言
+// （兜底目录沿历史口径不参与 ListInstalled，且本用例不再调用 ListInstalled）。
+func preseedImportedTags(t *testing.T, versionsDir string, base time.Time) {
+	t.Helper()
+	for d := -importTagGuardBack; d <= importTagGuardFwd; d++ {
+		tag := "imported-" + base.Add(time.Duration(d)*time.Second).Format("20060102-150405")
+		if err := os.MkdirAll(filepath.Join(versionsDir, dirPrefix+tag), 0755); err != nil {
+			t.Fatalf("预铺兜底目录 %s: %v", tag, err)
+		}
+	}
+}
+
+// parseImportedStamp 反解导入兜底版本号（"imported-20060102-150405"，
+// importVersionTag 的 time.Now 秒级形态）中的时间戳；真实 FileVersion
+// 形态（数字版本）返回 ok=false——那种 tag 天然稳定，无需预铺。
+func parseImportedStamp(version string) (time.Time, bool) {
+	stamp, found := strings.CutPrefix(version, "imported-")
+	if !found {
+		return time.Time{}, false
+	}
+	parsed, err := time.ParseInLocation("20060102-150405", stamp, time.Local)
+	return parsed, err == nil
+}
+
 func TestImportLocal(t *testing.T) {
-	m := NewManager(t.TempDir())
+	versionsDir := t.TempDir()
+	m := NewManager(versionsDir)
 
 	// 构造本地便携安装目录：exe + 全套数据 + 需跳过的临时文件
 	src := t.TempDir()
@@ -164,7 +249,14 @@ func TestImportLocal(t *testing.T) {
 		t.Errorf("meta.json 未落盘: %v", err)
 	}
 
-	// 重复导入同一版本应被拒绝
+	// 重复导入同一版本应被拒绝。假 PE 读不到 FileVersion，兜底 tag 取
+	// time.Now 秒级时间戳：旧写法直接二次调用，只赌"两次调用恰在同一秒"，
+	// 跨秒即生成新 tag 合法落位、断言假红（-count=20 必现级 flake）。改为
+	// 从首导出 tag 反解秒并预铺其后各秒兜底目录，让第二次调用必然命中产品
+	// 真实的"目标目录已存在 → 拒绝"查重分支，确定性不赌时钟。
+	if base, ok := parseImportedStamp(info.Version); ok {
+		preseedImportedTags(t, versionsDir, base)
+	}
 	if _, err := m.ImportLocal(src); err == nil {
 		t.Error("重复导入应报错")
 	}
