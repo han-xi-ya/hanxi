@@ -16,10 +16,31 @@ const report = ref<Report | null>(null)
 const loading = ref(false)
 const loadError = ref('')
 const collectedAt = ref('')
+// purgeBusy 两清理动作共享：UI 层单飞（后端 purgeMu 同锁互斥，同一时刻至多一种在飞）
 const purgeBusy = ref(false)
-const purgeResult = ref<PurgeResult | null>(null)
+const purgeResult = ref<PurgeLedgerResult | null>(null)
+const purgeKind = ref<'standby' | 'workingsets' | ''>('')
 const { showToast } = useToast()
 const { confirm } = useConfirm()
+
+// Go 侧 PurgeResult 本轮新增的逐项链账字段 + EmptyWorkingSets 新 RPC。bindings
+// 目录由主会话统一再生，再生前生成物不含二者，故视图侧以超集类型 + 显式桥接
+// 过渡（再生后可原地收敛删除这两处过渡代码）。
+type PurgeLedgerResult = PurgeResult &
+  Partial<{
+    beforeTotalBytes: number
+    pagesMeasured: boolean
+    beforeStandbyBytes: number
+    afterStandbyBytes: number
+    beforeModifiedBytes: number
+    afterModifiedBytes: number
+    processesEmptied: number
+    processesSkipped: number
+  }>
+
+const SysInfoExtAPI = SysInfoAPI as unknown as {
+  EmptyWorkingSets(): Promise<PurgeLedgerResult>
+}
 
 async function refresh() {
   loading.value = true
@@ -37,22 +58,16 @@ async function refresh() {
   }
 }
 
-async function purgeStandby() {
+async function runPurge(kind: 'standby' | 'workingsets') {
   if (purgeBusy.value) return
-  const accepted = await confirm({
-    title: '清理可回收内存？',
-    description: '只清理 Windows 的待机/文件缓存，不关闭程序、不删除文件，也不碰进程私有内存。清理后热数据可能需要重新从磁盘加载；可用内存变化只作前后快照参考。',
-    confirmLabel: '清理可回收内存',
-    tone: 'warning',
-  })
-  if (!accepted) return
   purgeBusy.value = true
   purgeResult.value = null
+  purgeKind.value = kind
   try {
-    const result = await SysInfoAPI.PurgeStandby()
+    const result = kind === 'standby' ? ((await SysInfoAPI.PurgeStandby()) as PurgeLedgerResult) : await SysInfoExtAPI.EmptyWorkingSets()
     purgeResult.value = result
     if (result.success) {
-      showToast(`清理动作完成，可用内存变化 ${fmtSize(result.availableDeltaBytes)}`)
+      showToast(purgeReceiptText(result))
       await refresh()
     } else {
       showToast(result.message || '清理未完成')
@@ -62,6 +77,59 @@ async function purgeStandby() {
   } finally {
     purgeBusy.value = false
   }
+}
+
+async function purgeStandby() {
+  const accepted = await confirm({
+    title: '清理可回收内存？',
+    description: '只清理 Windows 的待机/文件缓存，不关闭程序、不删除文件，也不碰进程私有内存与压缩存储。清理后热数据可能需要重新从磁盘加载；完成后给出逐项链账。',
+    confirmLabel: '清理可回收内存',
+    tone: 'warning',
+  })
+  if (accepted) await runPurge('standby')
+}
+
+async function emptyWorkingSets() {
+  const accepted = await confirm({
+    title: '清空全部进程工作集？',
+    description: '会把所有程序占用的内存强行压回最小，接下来几秒普遍变卡（程序要用时重新取页）。这些页是被"挤回待机列表"而非释放；Windows 本身会自动管理——只想立刻看数字大跌时按。',
+    confirmLabel: '清空工作集（会变卡）',
+    tone: 'danger',
+  })
+  if (accepted) await runPurge('workingsets')
+}
+
+// fmtBytes：账目专用。fmtSize 把 0 显示为 '—'（档案缺项语义），但实测 0 是
+// 结论不是缺项（如清理后待机归零），必须如实显示 "0 B"。
+function fmtBytes(v?: number): string {
+  return v && v > 0 ? fmtSize(v) : '0 B'
+}
+
+function purgeReceiptText(r: PurgeLedgerResult): string {
+  if (purgeKind.value === 'workingsets') {
+    return `已收 ${r.processesEmptied ?? 0} 个进程工作集（跳过 ${r.processesSkipped ?? 0} 个打不开/受保护），可用内存 +${fmtBytes(r.availableDeltaBytes)}`
+  }
+  return `清理完成：${purgeLedgerText(r)}`
+}
+
+// purgeLedgerText 逐项链账：把"这按钮管哪一格"讲透——待机前后、可用增量；
+// 页列表拿不到实测时如实降级（后端禁编数，前端禁装懂）。
+function purgeLedgerText(r: PurgeLedgerResult): string {
+  const parts: string[] = []
+  if (r.pagesMeasured) {
+    parts.push(`清理前待机 ${fmtBytes(r.beforeStandbyBytes)} → 后 ${fmtBytes(r.afterStandbyBytes)}`)
+    parts.push(`修改页 ${fmtBytes(r.beforeModifiedBytes)} → ${fmtBytes(r.afterModifiedBytes)}`)
+  } else {
+    parts.push('待机/修改页大小本按钮拿不到实测（需提权页列表读数）')
+  }
+  parts.push(`可用 +${fmtBytes(r.availableDeltaBytes)}`)
+  return parts.join('，')
+}
+
+function purgeScopeNote(): string {
+  return purgeKind.value === 'workingsets'
+    ? '本按钮把各进程在用页强行压回待机列表（不是释放）；压缩存储与文件缓存不在其内，Windows 会自动回补。'
+    : '本按钮只管 Windows 待机页列表——压缩存储（内存压缩）本按钮不触碰、未实测；各进程工作集请用旁边"清空工作集"。'
 }
 onMounted(refresh)
 
@@ -122,18 +190,27 @@ const VOL_TYPES: Record<string, string> = {
       <div class="sys-card">
         <div class="sys-card-head">
           <h3 class="sys-card-title">内存</h3>
-          <button class="btn btn-secondary btn-small" :disabled="purgeBusy" @click="purgeStandby">
-            {{ purgeBusy ? '清理中…' : '清理可回收内存' }}
-          </button>
+          <div class="sys-card-actions">
+            <button class="btn btn-secondary btn-small" :disabled="purgeBusy" title="只清 Windows 待机页列表，不关程序、不碰工作集与压缩存储" @click="purgeStandby">
+              {{ purgeBusy && purgeKind === 'standby' ? '清理中…' : '清理可回收内存' }}
+            </button>
+            <button class="btn btn-secondary btn-small" :disabled="purgeBusy" title="RAMMap 同款谨慎动作：强行压回各进程工作集，随后几秒普遍变卡" @click="emptyWorkingSets">
+              {{ purgeBusy && purgeKind === 'workingsets' ? '收集中…' : '清空工作集' }}
+            </button>
+          </div>
         </div>
         <div class="sys-kv"><span class="k">物理总量</span><span class="v">{{ fmtSize(report.memory.totalBytes) }}</span></div>
         <div class="sys-kv"><span class="k">可用</span><span class="v">{{ fmtSize(report.memory.availableBytes) }}</span></div>
+        <template v-if="purgeResult && purgeResult.success">
+          <div class="sys-kv"><span class="k">清理账目</span><span class="v">{{ purgeLedgerText(purgeResult) }}</span></div>
+          <div v-if="purgeKind === 'workingsets'" class="sys-kv"><span class="k">回执</span><span class="v">已收 {{ purgeResult.processesEmptied ?? 0 }} 个进程工作集，跳过 {{ purgeResult.processesSkipped ?? 0 }} 个（打不开/受保护）</span></div>
+        </template>
         <div class="sys-bar-wrap" role="progressbar" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="report.memory.loadPercent" aria-label="内存占用">
           <div class="sys-bar-inner" :class="{ warn: report.memory.loadPercent > 80 }" :style="{ width: `${report.memory.loadPercent}%` }"></div>
         </div>
         <div class="sys-kv"><span class="k">占用</span><span class="v">{{ report.memory.loadPercent }}%</span></div>
         <div class="sys-kv"><span class="k">提交</span><span class="v mono">{{ fmtSize(report.memory.commitTotal) }} / {{ fmtSize(report.memory.commitLimit) }}</span></div>
-        <p class="sys-action-note">只清理可回收缓存，不关程序、不删文件；清理后数据可能重新从磁盘预热。</p>
+        <p class="sys-action-note">{{ purgeResult && purgeResult.success ? purgeScopeNote() : '两按钮各管一格：待机页列表可回收清理 / 全进程工作集强压。均不关程序、不删文件；清理后热数据可能重新从磁盘预热。' }}</p>
         <p v-if="purgeResult && !purgeResult.success" class="sys-action-error" role="alert">{{ purgeResult.message }}</p>
       </div>
 
@@ -221,6 +298,7 @@ const VOL_TYPES: Record<string, string> = {
 .sys-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-card, 10px); padding: 14px 16px; }
 .sys-card-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); margin: 0 0 10px; }
 .sys-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sys-card-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .sys-card-head .sys-card-title { margin-bottom: 10px; }
 .sys-action-note { margin: 8px 0 0; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.5; }
 .sys-action-error { margin: 6px 0 0; font-size: var(--text-xs); color: var(--state-danger); }
