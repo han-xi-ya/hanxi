@@ -10,6 +10,14 @@
 //   - 便携版仅支持 Windows 11 且依赖系统已装 WinUI 2.8 / VCLibs 框架包（上游 README 与
 //     dynamicdependency.cpp 双重实证），引导文案如实预告；
 //   - 上游自带 hideTray 配置但托盘飞控是其唯一常规 UI——不代开隐藏开关，防用户失去入口。
+//
+// MSIX 打包形态系统生命周期线（与便携托管线并存的第二条形态线）：
+//   - GetMsixState/InstallMsix/LaunchMsix/UninstallMsix/RemoveMsixCache 五出口管
+//     官方 bundle.msixbundle 的下载、用户级注册、shell:AppsFolder 激活与清理，
+//     包身份常量三源实证见 models.go，PowerShell appx 通道复用 platform apppackage；
+//   - 共存语义只陈述不干预：两形态共用上游单实例互斥体（后启动者信使化自退），
+//     托管启停线只管便携进程，打包版进程引擎按"外部实例"如实感知，包操作
+//     在两形态各自方法的注释里划清界限，互不越权。
 package translucenttb
 
 import (

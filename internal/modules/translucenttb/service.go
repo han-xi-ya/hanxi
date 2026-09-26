@@ -2,6 +2,7 @@ package translucenttb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -18,6 +19,7 @@ import (
 	"hanxi/internal/notify"
 	"hanxi/internal/ops"
 	"hanxi/internal/platform"
+	"hanxi/internal/platform/apppackage"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
@@ -26,6 +28,12 @@ import (
 const (
 	readyTimeout  = 20 * time.Second // 冷启动就绪上限（单实例互斥体出现）
 	watchInterval = 5 * time.Second  // 外部实例感知轮询间隔
+
+	msixQueryTimeout     = 20 * time.Second // Get-AppxPackage 查询兜底（PowerShell 冷启动，nanaZip 同值）
+	msixPrepareTimeout   = 15 * time.Minute // msixbundle 下载/复核（版本线内部 fetchBudget 再收一层）
+	msixDeployTimeout    = 10 * time.Minute // Add-AppxPackage 部署
+	msixUninstallTimeout = 10 * time.Minute // Remove-AppxPackage 卸载
+	msixLaunchTimeout    = 30 * time.Second // 激活派发（explorer shell:AppsFolder，nanaZip Launch 同值）
 )
 
 // TranslucentTBService 向前端暴露 TranslucentTB 版本管理与托管启停能力。
@@ -36,11 +44,13 @@ const (
 // 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）：
 // 未安装/停用/阻止模块的任何方法调用被拒，且调用在途期间停用会等待 drain。
 type TranslucentTBService struct {
-	plat    platform.Platform
-	manager *version.Manager
-	store   *translucenttbStore
-	engine  *instance.Engine
-	holder  *extapi.LeaseHolder
+	plat     platform.Platform
+	manager  *version.Manager
+	packages apppackage.API // MSIX 打包形态系统生命周期通道（platform 既有 PowerShell appx 通道）
+	msix     msixPackageManager
+	store    *translucenttbStore
+	engine   *instance.Engine
+	holder   *extapi.LeaseHolder
 
 	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
@@ -61,11 +71,15 @@ const avCrashCode = 0xC0000005
 func NewTranslucentTBService(plat platform.Platform, holder *extapi.LeaseHolder) *TranslucentTBService {
 	paths := settings.GetPaths()
 	svc := &TranslucentTBService{
-		plat:    plat,
-		manager: version.NewManager(paths.VersionsDir()),
-		store:   newTranslucentTBStore(paths.StateDir()),
-		holder:  holder,
+		plat:     plat,
+		manager:  version.NewManager(paths.VersionsDir()),
+		packages: plat.AppPackage(),
+		store:    newTranslucentTBStore(paths.StateDir()),
+		holder:   holder,
 	}
+	// 便携线与 MSIX 线同居一个 version.Manager（msix.go 是其打包形态方法面），
+	// seam 指针指向同一实例——共享 versionsDir 与远程列表缓存，不重建第二台。
+	svc.msix = svc.manager
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewTBProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
 	})
@@ -647,4 +661,273 @@ func (s *TranslucentTBService) OpenRepository() error {
 	}
 	defer release()
 	return s.plat.OpenURL(version.RepoURL())
+}
+
+// ---------- MSIX 打包形态系统生命周期（与便携托管线共存，互不干预） ----------
+
+// msixIdentity 打包形态固定身份（常量与三源实证见 models.go；装配风格对齐
+// nanaZip packageIdentity，一次成型不再变化）。
+var msixIdentity = apppackage.Identity{Name: MsixPackageName, Family: MsixPackageFamily, Publisher: MsixPublisher, AppID: MsixMainAppID}
+
+// msixPackageManager 版本线 MSIX 缓存/下载能力的解耦缝（真实实现 *version.Manager，
+// 便携线与其同一实例；单测注入替身）。契约按冻结口径取用：PreparePackage 交回
+// 自家缓存目录（versions/translucenttb/packages/<ver>/bundle.msixbundle）终路径，
+// 本服务面不消费全量发布列表（HasMsixRelease 判定已足够，ListMsixReleases 不预声明）。
+type msixPackageManager interface {
+	HasMsixRelease(version string) bool
+	PreparePackage(ctx context.Context, version string, progress func(percent float64, stage string)) (string, error)
+	PackageCachePaths() []version.PackageCached
+	RemovePackageCache(version string) error
+}
+
+// GetMsixState 实时查询当前用户 TranslucentTB 打包版注册状态 + 本地容器缓存清单。
+// 注册态无服务端缓存（每次经 platform PowerShell appx 通道 Get-AppxPackage 实查，
+// 20s 超时兜底冷启动），因此便携线引擎状态缓存与此无同步义务，也不存在"安装
+// 成功后刷新缓存"的动作——下一次 GetMsixState 即最新事实。
+func (s *TranslucentTBService) GetMsixState() (MsixState, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return MsixState{}, gateErr
+	}
+	defer release()
+	ctx, cancel := context.WithTimeout(context.Background(), msixQueryTimeout)
+	defer cancel()
+	return s.queryMsixState(ctx)
+}
+
+// queryMsixState GetMsixState 的未接门内部版：供 RemoveMsixCache 等门后路径复用，
+// 避免同 goroutine 对 holder.Enter 的嵌套取租（调用方必须已在门内）。
+func (s *TranslucentTBService) queryMsixState(ctx context.Context) (MsixState, error) {
+	pkg, err := s.packages.Query(ctx, msixIdentity)
+	if err != nil {
+		return MsixState{}, describeMsixFailure("注册状态查询", err)
+	}
+	state := MsixState{PackageFamily: MsixPackageFamily, Cache: s.msix.PackageCachePaths()}
+	if pkg != nil {
+		state.Installed = true
+		state.Version = normalizeMsixVersion(pkg.Version)
+	}
+	return state, nil
+}
+
+// InstallMsix 下载并安装指定版本的官方 bundle.msixbundle（用户级注册，免提权）。
+//
+// 全程：HasMsixRelease 前置判定（"有 msix 资产但无官方摘要"的版本不入版本线
+// 列表，与降级钮判定同一口径，无需在本面二次甄别）→ PreparePackage（摘要必检
+// 的缓存落位，终路径只来自自家缓存目录）→ apppackage.Install → Add-AppxPackage
+// （platform 既有 PowerShell 通道，子进程非提权态：正常路径不可能出现 UAC，
+// 若系统仍回报需要提升的错误码，Detail/HResult 原样上抛不吞）→ 回查注册版本
+// 与目标一致才算成功。
+//
+// AllowDowngrade 恒真：调用方是明确点选版本的用户（崩溃对照降级钮是本线主场景，
+// nanaZip 需二次确认的降级在这里就是功能本身），强制走 -ForceUpdateFromAnyVersion。
+//
+// 共存语义（只陈述、不干预，与便携托管线既有行为对齐）：
+//   - 便携版与打包版共用上游单实例协议（Local 互斥体 344635E9-…，
+//     instance/probe_windows.go 与上游 main.cpp 同源实证）：后启动者信使化自退，
+//     同一时刻任务栏特效只有一个进程持有；
+//   - 托管启停线只管 Hanxi 拉起的便携进程——InstallMsix/UninstallMsix/LaunchMsix
+//     都不触碰任何在跑实例：不杀便携去装包，也不杀包去留便携；打包版经
+//     LaunchMsix/开始菜单启动后游离于 JobObject 之外，引擎按"外部实例"如实感知；
+//   - 打包版本身正在运行时卸载/升级由部署器裁决：脚本通道带
+//     -DeferRegistrationWhenPackagesAreInUse，冲突时报 APP_PACKAGE_IN_USE
+//     （可重试）归因，同样不静默强杀。
+func (s *TranslucentTBService) InstallMsix(version string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	version = strings.TrimSpace(version)
+	if !s.msix.HasMsixRelease(version) {
+		return fmt.Errorf("TranslucentTB %s 上游无可用打包形态（仅收录带 bundle.msixbundle 资产且有官方摘要的版本）", version)
+	}
+
+	prepareCtx, prepareCancel := context.WithTimeout(context.Background(), msixPrepareTimeout)
+	defer prepareCancel()
+	path, err := s.msix.PreparePackage(prepareCtx, version, logMsixPrepareProgress)
+	if err != nil {
+		return fmt.Errorf("TranslucentTB %s 安装包准备失败: %w", version, err)
+	}
+
+	deployCtx, deployCancel := context.WithTimeout(context.Background(), msixDeployTimeout)
+	defer deployCancel()
+	// ExpectedVersion 交脚本侧精确核对：上游发布 tag 恒映射四段 "<tag>.0.0"
+	// （update-version.ps1 release 路径：tag + commits_since_tag(=0) + ".0"，
+	// 2026.1/2026.2 真实 bundle Identity 实证），Go 侧回查再做一次归一化比对。
+	if _, err := s.packages.Install(deployCtx, apppackage.InstallOptions{
+		PackagePath:     path,
+		Expected:        msixIdentity,
+		ExpectedVersion: version + ".0.0",
+		AllowDowngrade:  true,
+	}); err != nil {
+		return describeMsixFailure("安装", err)
+	}
+
+	pkg, err := s.packages.Query(deployCtx, msixIdentity)
+	if err != nil {
+		return describeMsixFailure("安装后回查", err)
+	}
+	if pkg == nil || normalizeMsixVersion(pkg.Version) != version {
+		return fmt.Errorf("TranslucentTB 安装完成后系统注册版本不是 %s（实际 %s）", version, msixVersionOrEmpty(pkg))
+	}
+	// 成功路径末尾无需刷新任何包状态缓存：GetMsixState 本就是实查（无缓存可刷）。
+	return nil
+}
+
+// UninstallMsix 卸载当前用户的 TranslucentTB 打包版注册（Remove-AppxPackage 按
+// 实查到的包完整名称执行）。不碰任何缓存文件——容器缓存清理是 RemoveMsixCache
+// 的独立语义；便携托管线实例不受触碰（共存口径同 InstallMsix）。
+func (s *TranslucentTBService) UninstallMsix() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	ctx, cancel := context.WithTimeout(context.Background(), msixUninstallTimeout)
+	defer cancel()
+	pkg, err := s.packages.Query(ctx, msixIdentity)
+	if err != nil {
+		return describeMsixFailure("卸载前查询", err)
+	}
+	if pkg == nil {
+		return fmt.Errorf("TranslucentTB 打包版尚未安装（卸载本就不动缓存文件，缓存请用清理缓存入口）")
+	}
+	if err := s.packages.Uninstall(ctx, msixIdentity, pkg.PackageFullName); err != nil {
+		return describeMsixFailure("卸载", err)
+	}
+	after, err := s.packages.Query(ctx, msixIdentity)
+	if err != nil {
+		return describeMsixFailure("卸载后回查", err)
+	}
+	if after != nil {
+		return fmt.Errorf("卸载后 Windows 回查仍显示 TranslucentTB 打包版已安装")
+	}
+	return nil
+}
+
+// RemoveMsixCache 删除指定版本的 msixbundle 容器缓存文件（不注销系统包——卸载
+// 是 UninstallMsix 的独立语义）。版本线层不判注册态，拦截在本面：目标版本当前
+// 正注册在系统（其注册版本可能仍在从缓存目录被 servicing 引用）时拒绝，须先
+// UninstallMsix。判定即 GetMsixState 的内容（复用未接门内部查询，语义同
+// "调 GetMsixState 判"，只取实查的 Installed/Version 两事实）。
+func (s *TranslucentTBService) RemoveMsixCache(version string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	version = strings.TrimSpace(version)
+	ctx, cancel := context.WithTimeout(context.Background(), msixQueryTimeout)
+	defer cancel()
+	state, err := s.queryMsixState(ctx)
+	if err != nil {
+		return fmt.Errorf("清理缓存前检查打包版状态失败: %w", err)
+	}
+	if state.Installed && state.Version == version {
+		return fmt.Errorf("TranslucentTB %s 打包版正在系统中注册，请先卸载再清理该版本缓存", version)
+	}
+	return s.msix.RemovePackageCache(version)
+}
+
+// LaunchMsix 激活已注册的 TranslucentTB 打包版主应用（对齐 nanaZip 启动通路
+// 实证：apppackage.Activate 经 explorer.exe shell:AppsFolder\<Family>!<AppID> 派发，
+// 等价点击开始菜单磁贴；进程归系统生命周期，不入 JobObject）。未安装明确报错。
+func (s *TranslucentTBService) LaunchMsix() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	ctx, cancel := context.WithTimeout(context.Background(), msixLaunchTimeout)
+	defer cancel()
+	pkg, err := s.packages.Query(ctx, msixIdentity)
+	if err != nil {
+		return describeMsixFailure("启动前查询", err)
+	}
+	if pkg == nil {
+		return fmt.Errorf("TranslucentTB 打包版尚未安装，无法启动")
+	}
+	if err := s.packages.Activate(ctx, msixIdentity); err != nil {
+		return describeMsixFailure("启动", err)
+	}
+	return nil
+}
+
+// logMsixPrepareProgress 版本线下载进度回调的服务侧落点：Debug 日志
+// （同步调用面，前端进度契约不在本轮冻结范围，不造幻影事件）。
+func logMsixPrepareProgress(percent float64, stage string) {
+	slog.Debug("translucenttb msix prepare", "percent", percent, "stage", stage)
+}
+
+// normalizeMsixVersion 把系统注册四段版本 "<发布号>.0.0" 归一回发布号两段
+// （2026.2.0.0 → 2026.2）：与版本线列表行、activeVersion 同一比较口径。
+// 后缀非 0.0 的形态（CI 构建号漂移等）原样返回——宁如实不猜。
+func normalizeMsixVersion(v string) string {
+	parts := strings.Split(v, ".")
+	if len(parts) == 4 && parts[2] == "0" && parts[3] == "0" {
+		return parts[0] + "." + parts[1]
+	}
+	return v
+}
+
+// msixVersionOrEmpty 回查失败话术里对 nil 包的安全取值。
+func msixVersionOrEmpty(pkg *apppackage.Package) string {
+	if pkg == nil {
+		return "未注册"
+	}
+	return pkg.Version
+}
+
+// msixFailureError 中文归因包装：话术文本自带，Unwrap 保住原 apppackage.Error，
+// errors.As/Is 分支错误码不丢。
+type msixFailureError struct {
+	message string
+	cause   error
+}
+
+func (e *msixFailureError) Error() string { return e.message }
+func (e *msixFailureError) Unwrap() error { return e.cause }
+
+// describeMsixFailure 把 apppackage 通道错误包一层 TranslucentTB 语境的中文归因：
+// 通道自带中文 Message，此处拼接输出尾部明细（Detail 最后一行截断）与 HResult，
+// 对依赖缺失/签名无效两类高频部署失败补针对性指引；原文经 Unwrap 保留，
+// 调用方仍可分支错误码。
+func describeMsixFailure(op string, err error) error {
+	var perr *apppackage.Error
+	if !errors.As(err, &perr) {
+		return fmt.Errorf("TranslucentTB 打包版%s失败: %w", op, err)
+	}
+	cause := perr.Message
+	if tail := lastLine(perr.Detail); tail != "" {
+		cause = fmt.Sprintf("%s: %s", cause, tail)
+	}
+	if perr.HResult != "" {
+		cause = fmt.Sprintf("%s（%s）", cause, perr.HResult)
+	}
+	hint := ""
+	switch perr.Code {
+	case apppackage.CodeDependency:
+		hint = "；系统缺少框架包（VCLibs / WinUI 2.8），可改用上游 TranslucentTB.appinstaller 安装（自带依赖解析）"
+	case apppackage.CodeSignature:
+		hint = "；bundle 签名证书链未获系统信任，多为上游换签名主体所致，请核对官方发布渠道"
+	}
+	return &msixFailureError{message: fmt.Sprintf("TranslucentTB 打包版%s失败: %s%s", op, cause, hint), cause: err}
+}
+
+// lastLine 明细取最后一行非空文本并按 rune 截尾（"按输出尾部归因"的取值纪律，
+// 中文话术不吞原始事实也不刷屏；rune 口径防中英混排截出乱码）：上限 200 rune。
+func lastLine(detail string) string {
+	lines := strings.Split(strings.TrimSpace(detail), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if r := []rune(line); len(r) > 200 {
+			return "…" + string(r[len(r)-200:])
+		}
+		return line
+	}
+	return ""
 }
