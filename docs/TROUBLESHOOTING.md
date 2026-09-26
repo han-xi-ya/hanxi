@@ -1217,3 +1217,9 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：给真件加全帧枚举诊断（逐类型层目录打印画幅），对照 `frameFromPayload` 输出发现 loose 集有 32² 而组集无。
 - **正确做法与标准修复方案**：候选集=全量 RT_ICON 散帧枚举后面积择优（与 PS 脚本同谱语义），RT_GROUP_ICON 完全不参与圈定；行为用"组只登记小帧、孤儿大帧仍胜出"的表驱动用例钉死，真件用例断言 ≥16 并 Logf 实测画幅（32×32）供台账（wheelIconBudget RUNTIME_ICON_SRC_LEDGER）取值对账。
 - **避坑防重犯建议**：图标/资源类"官方语义"（组目录=文件主图标）与"最大可得"是两个目标——凡取真画幅/取资源全集的场景，先全量枚举再按事实择优，别让语义洁癖砍数据；上游 exe 的资源段常见手工劣化，任何"应该都在组里"的假设都要真件仲裁。
+
+### 93. 幽灵状态"运行中·有可用更新"：卸载/版本删除后健康账三处不联动（ddnsgo 实证，21 家共性）
+- **问题现象与错误原因**：模块中心 ddns-go 显示"运行中，有更新 → v6.17.7"，但 `bin/hanxidata/versions/` 下 ddnsgo 目录已物理消失。实证：tasklist 无 ddns-go.exe、`sc query UpdateService` 1060、9876 无监听——**真进程不存在，纯属账没清**。判定链三处断环：①`Registry.Uninstall` 只收凭据与启停，**健康维度 override（update-available+上游版本）随卸载残留**，同会话卸载再安装（机主 17:05:43/47 实测正是这个序列）幽灵信号原样复活；②`updatewatch.Restore` 盲回灌 state/updates.json 全量条目，**不对账安装事实**，重启把旧账复活到不存在的安装上；③感知轮在飞期间卸载，sweep 写 SetHealth 与 cache.merge **均不复查 installed**，收口反而把旧账重新写上盘。另核实一个非缺陷：模块卡"运行中"= wrapper 激活（懒加载后恒 active），与托管进程存在与否无关，属契约既有语义，非本轮引入。
+- **排查过程**：日志时间线（16:56 感知轮点亮 → 17:05:20 RemoveVersion 清 activeVersion → 17:05:43 逻辑卸载 → 17:05:47 重装补凭据）对照 receipts 目录/modules-ledger/updates.json 文件 mtime 逐环钉死；再顺 ListModules→ListStates→deriveSummary 投影链确认 running-update 的四个输入维度各自来源。
+- **正确做法与标准修复方案**：家族级收口在 updatewatch/Registry 层，不在单模块打补丁——①`Uninstall` 成功移除 receipt 后 `SetHealth(id,"","")` 清零健康账；②投影 `projectState` 加**账目门**：delivery=absent 时健康覆盖一律按 current 出投影（挡掉竞态与直接改 receipts 的迁移旧账）；③`Restore` 回灌前按 `Registry.List().Installed` 逐条对账，卸载/不在册条目主动剔账并回写盘（CheckedAt 不伪造）；④sweep 写账前逐模块复查 `IsInstalled`，merge 落盘前对快照**全量复查**installed 谓词——盖住"判定后、落盘前"竞态窗口。三态回归：感知在飞时卸载、缓存旧账启动自愈、残留资产诚实呈现（not-installed 且不谎报 update-available）。
+- **避坑防重犯建议**：凡"跨模块账本 + 缓存回灌"结构（健康维度、图标缓存、外部感知等），卸载事务必须逐一清点该模块在所有账本面（内存 override/磁盘缓存/投影）的残留，缺一环就是幽灵；缓存回灌路径**禁止盲 apply**，必须带事实复查；竞态写账的复查坐标要放在**落盘前最后一刻**，判定位的复查盖不住收尾窗口。残留的已知可接受窗口：仅删版本目录不卸载模块时，"有更新"角标停留到下一轮感知（启动 60s 延迟首检或手动刷新即自愈），属缓存时效语义、非账目不联动。

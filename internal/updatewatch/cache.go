@@ -99,7 +99,12 @@ func (s snapshot) AvailableSet() map[string]string {
 
 // merge 用本轮成功判定（moduleID → verdict）覆盖快照对应条目后原子落盘；
 // 本轮未覆盖到的模块（失败/超时跳过）保留其历史事实——失败不清信号。
-func (c *cache) merge(result map[string]verdict) {
+//
+// installed 谓词（可 nil = 不裁决）是收口写账前的**全量复查**：一轮在飞期间
+// 卸载随时可能发生，单靠逐模块判定位的复查盖不住"判定后、落盘前"的窗口，
+// 落盘前对快照里所有条目再问一次安装事实，未安装的旧账当场剔掉（幽灵状态
+// 根治点：缓存账不随卸载失效）。
+func (c *cache) merge(result map[string]verdict, installed func(string) bool) {
 	if c.path == "" {
 		return
 	}
@@ -112,17 +117,35 @@ func (c *cache) merge(result map[string]verdict) {
 			delete(avail, id)
 		}
 	}
-	// 落盘定序：map 迭代随机序不配进文件 diff，按 key 排序重建后再写。
-	ids := make([]string, 0, len(avail))
-	for id := range avail {
+	if installed != nil {
+		for id := range avail {
+			if !installed(id) {
+				delete(avail, id)
+				slog.Info("updatewatch: 感知缓存剔账——模块已卸载，旧条目不再有效", "module", id)
+			}
+		}
+	}
+	snap.Available = avail
+	snap.CheckedAt = time.Now().Format(time.RFC3339)
+	c.persist(snap)
+}
+
+// persist 快照原子落盘；落盘定序：map 迭代随机序不配进文件 diff，按 key
+// 排序重建后再写。写失败仅告警（缓存是加速路径，绝不阻断感知链内存态）。
+func (c *cache) persist(snap snapshot) {
+	if c.path == "" {
+		return
+	}
+	ids := make([]string, 0, len(snap.Available))
+	for id := range snap.Available {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	snap.Available = make(map[string]string, len(ids))
+	ordered := make(map[string]string, len(ids))
 	for _, id := range ids {
-		snap.Available[id] = avail[id]
+		ordered[id] = snap.Available[id]
 	}
-	snap.CheckedAt = time.Now().Format(time.RFC3339)
+	snap.Available = ordered
 	if err := jsonstore.Save(c.path, &snap); err != nil {
 		slog.Warn("updatewatch: 更新感知缓存落盘失败（不影响内存态）", "err", err)
 	}

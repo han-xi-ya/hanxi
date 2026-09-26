@@ -585,6 +585,12 @@ func (r *Registry) Uninstall(moduleID string) error {
 	if err := receipts.MarkAbsent(moduleID); err != nil {
 		return fmt.Errorf("registry: uninstall module %q: %w", moduleID, err)
 	}
+	// 幽灵状态收口：健康维度（update-available 及其展示的上游新版本）是锚定
+	// "本机持有某个版本"的账，receipt 移除后该事实不复存在，必须随卸载清零。
+	// 否则同会话内卸载再安装会原样复活"有可用更新"幽灵信号（投影 override 并
+	// 不随卸载消失）；state/updates.json 侧的旧账由 updatewatch 自愈链在
+	// 启动回灌/轮次收口两个位点剔账（见 internal/updatewatch）。
+	r.SetHealth(moduleID, "", "")
 	slog.Info("registry: 模块已逻辑卸载（宿主内建代码仍存在，未释放主程序体积）", "module", moduleID)
 	return nil
 }
@@ -722,6 +728,14 @@ func (r *Registry) projectState(moduleID string, enabled bool, runtime RuntimeSt
 	delivery := DeliveryInstalled
 	if receipts != nil && !receipts.IsInstalled(moduleID) {
 		delivery = DeliveryAbsent
+	}
+	// 账目门（幽灵状态护栏）：absent 模块没有"本机版本"可供更新，健康覆盖
+	// （含 update-available 与上游新版本展示）一律不得进入投影——即便感知链
+	// 留有未收口的旧账（卸载竞态、直接改 receipts 的迁移路径等），投影也只
+	// 会按 current 呈现，summary 恒为 not-installed。override 本体保留，
+	// 重新安装后由下一轮感知重新裁决。
+	if delivery == DeliveryAbsent {
+		health = HealthCurrent
 	}
 	out := StateInput{
 		ModuleID: moduleID,

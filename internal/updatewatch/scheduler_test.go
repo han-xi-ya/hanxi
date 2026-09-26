@@ -335,6 +335,201 @@ func TestCacheLegacyFormatMigration(t *testing.T) {
 	}
 }
 
+// ---------- 幽灵状态（卸载后三账联动）回归 ----------
+
+// fakeReceipts 内存版 ReceiptStorage：驱动 Registry 安装事实裁决，测试可
+// 在感知轮次在飞期间翻转凭据，复现"卸载发生在判定与收口之间"的真实竞态。
+type fakeReceipts struct {
+	mu        sync.Mutex
+	installed map[string]bool
+}
+
+func newFakeReceipts(ids ...string) *fakeReceipts {
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return &fakeReceipts{installed: set}
+}
+
+func (f *fakeReceipts) IsInstalled(moduleID string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.installed[moduleID]
+}
+
+func (f *fakeReceipts) MarkInstalled(moduleID string, _ extapi.ReceiptKind) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.installed[moduleID] = true
+	return nil
+}
+
+func (f *fakeReceipts) MarkAbsent(moduleID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.installed, moduleID)
+	return nil
+}
+
+func (f *fakeReceipts) Installed() map[string]bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make(map[string]bool, len(f.installed))
+	for id, ok := range f.installed {
+		out[id] = ok
+	}
+	return out
+}
+
+// summaryOfState 取指定模块投影的摘要键。
+func summaryOfState(t *testing.T, registry *extapi.Registry, id string) extapi.SummaryKey {
+	t.Helper()
+	for _, st := range registry.ListStates() {
+		if st.ModuleID == id {
+			return st.Summary
+		}
+	}
+	t.Fatalf("模块 %q 不在状态投影中", id)
+	return ""
+}
+
+// loadSnapshotFor 读取 state/updates.json 落盘形状（断言剔账结果）。
+func loadSnapshotFor(t *testing.T, path string) snapshot {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读缓存: %v", err)
+	}
+	var snap snapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatalf("解析缓存: %v", err)
+	}
+	return snap
+}
+
+// TestUninstallDuringRoundInvalidatesEntry 感知在飞时卸载（三态之一）：
+// 检查器已产出"有更新"结论后才发生卸载——收口写账前复查安装事实，该模块
+// 不写健康覆盖、不计 checked，磁盘旧账（上轮真实点亮过）被 merge 全量复查
+// 剔除；仍在册在装模块正常成账。
+func TestUninstallDuringRoundInvalidatesEntry(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "updates.json")
+	if err := os.WriteFile(path, []byte(`{"checkedAt":"2026-01-01T00:00:00+08:00","available":{"gone":"2.0"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan struct{})
+	flip := make(chan struct{})
+	gone := &fakeModule{id: "gone", fn: func(context.Context) (string, string, bool, error) {
+		close(started)
+		<-flip // 等测试翻转 receipt（卸载发生在判定与写账之间）后再交回结论
+		return "1.0", "2.0", true, nil
+	}}
+	keep := &fakeModule{id: "keep", fn: staticResult("1.0", "2.0", true, nil)}
+
+	sched, registry, _ := newSched(t, dir, gone, keep)
+	receipts := newFakeReceipts("gone", "keep")
+	registry.SetReceiptStorage(receipts)
+
+	round := make(chan int, 1)
+	go func() {
+		n, err := sched.CheckNow(context.Background())
+		if err != nil {
+			t.Errorf("CheckNow: %v", err)
+		}
+		round <- n
+	}()
+	<-started
+	if err := receipts.MarkAbsent("gone"); err != nil {
+		t.Fatal(err)
+	}
+	close(flip)
+	if n := <-round; n != 1 {
+		t.Errorf("checked = %d, want 1（在飞期间卸载的模块不计入）", n)
+	}
+
+	if got := healthOf(t, registry, "gone"); got != extapi.HealthCurrent {
+		t.Errorf("卸载竞态后 gone health = %q, want current（幽灵账不写健康覆盖）", got)
+	}
+	if got := remoteVersionOf(t, registry, "gone"); got != "" {
+		t.Errorf("gone remoteVersion = %q, want 空", got)
+	}
+	if got := summaryOfState(t, registry, "gone"); got != extapi.SummaryNotInstalled {
+		t.Errorf("gone summary = %q, want not-installed（卸载后的诚实呈现，不谎报 running/update）", got)
+	}
+	if got := healthOf(t, registry, "keep"); got != extapi.HealthUpdateAvailable {
+		t.Errorf("keep health = %q, want update-available（在册模块不受波及）", got)
+	}
+	if want := map[string]string{"keep": "2.0"}; !reflect.DeepEqual(loadSnapshotFor(t, path).Available, want) {
+		t.Errorf("磁盘旧账未剔净: Available = %v, want %v", loadSnapshotFor(t, path).Available, want)
+	}
+}
+
+// TestRestorePrunesStaleEntries 缓存旧账启动自愈（三态之二）：updates.json
+// 存在条目但模块已卸载 / ID 根本不在册 → 回灌时主动剔账并回写磁盘，
+// CheckedAt 保持原值（剔账不是感知，不伪造"刚查过"）；在册在装条目照常回灌。
+func TestRestorePrunesStaleEntries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "updates.json")
+	const checkedAt = "2026-01-01T00:00:00+08:00"
+	pre := `{"checkedAt":"` + checkedAt + `","available":{"live":"2.0","absent-mod":"3.0","ghost-mod":""}}`
+	if err := os.WriteFile(path, []byte(pre), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	live := &fakeModule{id: "live", fn: staticResult("1.0", "2.0", true, nil)}
+	absent := &fakeModule{id: "absent-mod", fn: staticResult("1.0", "3.0", true, nil)}
+	sched, registry, _ := newSched(t, dir, live, absent)
+	registry.SetReceiptStorage(newFakeReceipts("live")) // absent-mod 已卸载；ghost-mod 不在册
+
+	if applied := sched.Restore(); applied != 1 {
+		t.Fatalf("Restore applied = %d, want 1（旧账两条应被剔除）", applied)
+	}
+	if got := healthOf(t, registry, "live"); got != extapi.HealthUpdateAvailable {
+		t.Errorf("live health = %q, want update-available", got)
+	}
+	if got := healthOf(t, registry, "absent-mod"); got != extapi.HealthCurrent {
+		t.Errorf("absent-mod health = %q, want current（不得回灌幽灵账）", got)
+	}
+	snap := loadSnapshotFor(t, path)
+	if want := map[string]string{"live": "2.0"}; !reflect.DeepEqual(snap.Available, want) {
+		t.Errorf("剔账后磁盘 Available = %v, want %v", snap.Available, want)
+	}
+	if snap.CheckedAt != checkedAt {
+		t.Errorf("剔账回写不得伪造 CheckedAt: got %q, want %q", snap.CheckedAt, checkedAt)
+	}
+}
+
+// TestResidualAssetsNeverLightPhantom 卸载后残留资产/外部进程真在跑的诚实
+// 呈现（三态之三）：模块无 receipt，但其版本目录与进程客观存在，检查器如实
+// 报"有更新"——感知链仍不为其写健康账（本机安装事实不存在，更新无从谈起），
+// 投影恒 not-installed：既不谎报 running，也不谎报 update-available。
+func TestResidualAssetsNeverLightPhantom(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "updates.json")
+
+	res := &fakeModule{id: "res", fn: staticResult("1.0", "2.0", true, nil)} // 残留资产可被扫到
+	norm := &fakeModule{id: "norm", fn: staticResult("1.0", "2.0", true, nil)}
+	sched, registry, _ := newSched(t, dir, res, norm)
+	registry.SetReceiptStorage(newFakeReceipts("norm")) // res 已卸载（版本目录/进程残留）
+
+	checked, err := sched.CheckNow(context.Background())
+	if err != nil || checked != 1 {
+		t.Fatalf("CheckNow = (%d, %v), want (1, nil)", checked, err)
+	}
+	if got := healthOf(t, registry, "res"); got != extapi.HealthCurrent {
+		t.Errorf("残留模块 health = %q, want current（不写幽灵账）", got)
+	}
+	if got := summaryOfState(t, registry, "res"); got != extapi.SummaryNotInstalled {
+		t.Errorf("残留模块 summary = %q, want not-installed", got)
+	}
+	snap := loadSnapshotFor(t, path)
+	if want := map[string]string{"norm": "2.0"}; !reflect.DeepEqual(snap.Available, want) {
+		t.Errorf("残留模块不得进盘账: Available = %v, want %v", snap.Available, want)
+	}
+}
+
 // TestStopCancelsStartupRound Start 的延迟首检在 Stop 后不再执行。
 func TestStopCancelsStartupRound(t *testing.T) {
 	fake := &fakeModule{id: "x", fn: staticResult("", "", false, nil)}

@@ -591,6 +591,71 @@ func TestMandatoryCoreGuards(t *testing.T) {
 	}
 }
 
+// TestUninstallClearsHealth 幽灵状态回归（ddnsgo 事故实证链）：卸载事务必须
+// 随 receipt 一并清零健康维度——update-available 覆盖与展示的上游版本是锚定
+// "本机持有版本"的账，卸载后不清零，同会话内再安装就会复活"有可用更新"幽灵。
+func TestUninstallClearsHealth(t *testing.T) {
+	reg := NewRegistry(nil)
+	demo := newRegistryTestModule("demo")
+	if err := reg.Register(demo); err != nil {
+		t.Fatal(err)
+	}
+	reg.SetReceiptStorage(newTestReceipts("demo"))
+
+	reg.SetHealth("demo", HealthUpdateAvailable, "2.0.0")
+	s := stateFor(t, reg, "demo")
+	eq(t, "demo.health(卸载前)", s.Health, HealthUpdateAvailable)
+	eq(t, "demo.remoteVersion(卸载前)", s.RemoteVersion, "2.0.0")
+
+	if err := reg.Uninstall("demo"); err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	s = stateFor(t, reg, "demo")
+	eq(t, "demo.delivery(卸载后)", s.Delivery, DeliveryAbsent)
+	eq(t, "demo.health(卸载后)", s.Health, HealthCurrent)
+	eq(t, "demo.remoteVersion(卸载后)", s.RemoteVersion, "")
+	eq(t, "demo.summary(卸载后)", s.Summary, SummaryNotInstalled)
+	eq(t, "demo.action(卸载后)", s.PrimaryAction, ActionInstall)
+
+	// 再安装走事务通道：健康账必须以"重装后重新感知"为准，不得原样复活。
+	if err := reg.Install("demo", ReceiptBuiltinLogical); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	s = stateFor(t, reg, "demo")
+	eq(t, "demo.health(重装后)", s.Health, HealthCurrent)
+	eq(t, "demo.summary(重装后)", s.Summary, SummaryIdleEnabled)
+}
+
+// TestProjectStateMasksHealthWhenAbsent 投影账目门（防线兜底，非展示滤镜）：
+// 无 receipt 模块即便留有健康覆盖（绕开 Uninstall 直接改凭据存储、感知竞态
+// 等旧账形态），投影也必须按 current 呈现且不带上游版本，summary 恒
+// not-installed；override 本体保留（Delivery 恢复后由下轮感知重新裁决）。
+func TestProjectStateMasksHealthWhenAbsent(t *testing.T) {
+	reg := NewRegistry(nil)
+	demo := newRegistryTestModule("demo")
+	if err := reg.Register(demo); err != nil {
+		t.Fatal(err)
+	}
+	receipts := newTestReceipts() // demo 无凭据
+	reg.SetReceiptStorage(receipts)
+
+	reg.SetHealth("demo", HealthUpdateAvailable, "9.9.9")
+	s := stateFor(t, reg, "demo")
+	eq(t, "demo.delivery", s.Delivery, DeliveryAbsent)
+	eq(t, "demo.health(absent 必须挡账)", s.Health, HealthCurrent)
+	eq(t, "demo.remoteVersion(absent 必须挡账)", s.RemoteVersion, "")
+	eq(t, "demo.summary", s.Summary, SummaryNotInstalled)
+
+	// 直接补凭据（模拟 EnsureSeen 迁移等非事务通道）：override 恢复出账，
+	// 是否继续点亮由下一轮感知的真实裁决负责。
+	if err := receipts.MarkInstalled("demo", ReceiptBuiltinLogical); err != nil {
+		t.Fatal(err)
+	}
+	s = stateFor(t, reg, "demo")
+	eq(t, "demo.health(在册后 override 恢复)", s.Health, HealthUpdateAvailable)
+	eq(t, "demo.remoteVersion(在册后)", s.RemoteVersion, "9.9.9")
+}
+
 // TestSetHealthRemoteVersion 覆盖健康维度覆盖写入的版本账目：update-available
 // 记录上游新版本并盖进投影（纯展示附加，不进状态机）；current/其他健康值
 // 一律清空；投影仅在 health=update-available 时携带 RemoteVersion。

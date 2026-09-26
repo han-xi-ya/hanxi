@@ -23,6 +23,7 @@ import (
 	"context"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,14 +83,35 @@ func New(registry *extapi.Registry, checkers map[string]extapi.UpdateChecker, st
 }
 
 // Restore 应用启动时（装配根、wails 运行前）把上次缓存的 update-available
-// 回灌 registry，供前端首帧投影即时点亮；无任何其他副作用。返回回灌条数。
+// 回灌 registry，供前端首帧投影即时点亮。回灌前逐条对账安装凭据（按
+// Registry.List 的 Installed 字段，含"已注册"与"持有 receipt"两重事实）：
+// 模块已卸载或账本 ID 不存在 → 主动剔账并回写磁盘，绝不让旧账把"有可用
+// 更新"幽灵复活到不存在的安装上（幽灵状态自愈位点一；位点二在 sweep 收口
+// 的 merge 全量复查）。返回回灌条数（不含被剔除条目）。
 func (s *Scheduler) Restore() int {
-	applied := 0
-	for id, remote := range s.cache.load().AvailableSet() {
+	installed := make(map[string]bool)
+	for _, info := range s.registry.List() {
+		installed[info.ID] = info.Installed
+	}
+	snap := s.cache.load()
+	applied, dropped := 0, make([]string, 0)
+	for id, remote := range snap.Available {
+		ok, known := installed[id]
+		if !known || !ok {
+			delete(snap.Available, id)
+			dropped = append(dropped, id)
+			continue
+		}
 		// 缓存里带的版本号一并回灌（旧格式迁移或检查时未拿到版本时为空串，
 		// 仅点亮 update-available，不谎报版本）。
 		s.registry.SetHealth(id, extapi.HealthUpdateAvailable, remote)
 		applied++
+	}
+	if len(dropped) > 0 {
+		sort.Strings(dropped)
+		slog.Info("updatewatch: 启动回灌剔账——模块已卸载或不在册，旧感知条目失效", "modules", strings.Join(dropped, ","))
+		// 回写保持 CheckedAt 原值：剔账不是感知，伪造"刚查过"会误导排障。
+		s.cache.persist(snap)
 	}
 	if applied > 0 {
 		slog.Info("updatewatch: 已按缓存回灌可用更新标记", "modules", applied)
@@ -180,6 +202,18 @@ func (s *Scheduler) sweep(r *round) int {
 				return
 			}
 			local, remote, hasUpdate, err := s.checkOne(ctx, id, checker)
+			// 写账前复查安装事实（幽灵状态并发门）：一轮在飞期间模块可能
+			// 被卸载——本模块账目即刻失效，不写健康覆盖、不计 checked，并
+			// 以"无更新"结论显式指令 merge 清掉磁盘旧条目（残留进程与否
+			// 无关：感知链不掌握进程事实，卸载后的诚实呈现由投影的
+			// delivery=absent → not-installed 裁决，不谎报 running）。
+			if !s.registry.IsInstalled(id) {
+				mu.Lock()
+				result[id] = verdict{hasUpdate: false}
+				mu.Unlock()
+				slog.Info("updatewatch: 轮次在飞期间模块已卸载，本轮不为其写账", "module", id)
+				return
+			}
 			if err != nil {
 				// 失败静默：保持原健康值（既有 update-available 不被清除，
 				// 网络不可达绝不降级成"无更新"谎报）。
@@ -204,7 +238,9 @@ func (s *Scheduler) sweep(r *round) int {
 	}
 	wg.Wait()
 
-	s.cache.merge(result)
+	// 收口写账前全量复查安装事实：逐模块判定位的盖不住"判定后、落盘前"的
+	// 卸载窗口，merge 内对快照现存条目再裁决一次（幽灵状态自愈位点二）。
+	s.cache.merge(result, func(id string) bool { return s.registry.IsInstalled(id) })
 	if app := application.Get(); app != nil && app.Event != nil {
 		app.Event.Emit(EventChecked)
 	}

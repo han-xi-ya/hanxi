@@ -30,9 +30,10 @@ func (s *AppService) RefreshUpdates() (int, error) {
 }
 
 // collectUpdateCheckers 从待注册模块集合中收集实现 extapi.UpdateChecker 的
-// 模块（键 = 模块 ID）。托管模块的版本引擎 shim 不依赖模块激活，未启用/
-// 未安装模块同样参与感知（健康信号对停用模块仍是真实事实，呈现口径由
-// 前端按四维投影自行裁决）。
+// 模块（键 = 模块 ID）。托管模块的版本引擎 shim 不依赖模块激活，未启用模块
+// 同样参与感知与写账（健康信号对停用但已安装的模块仍是真实事实）；未安装
+// （缺 receipt）模块比较照跑，但调度器收口复查安装事实后不为其写健康覆盖、
+// 不进磁盘缓存（无"本机版本"可谈更新，幽灵状态根治见 internal/updatewatch）。
 func collectUpdateCheckers(mods []extapi.Module) map[string]extapi.UpdateChecker {
 	out := map[string]extapi.UpdateChecker{}
 	for _, m := range mods {
