@@ -2,9 +2,11 @@
 // 任意界面右键长按（默认 450ms、松手前即弹）→ 光标处弹出无边框快捷菜单 → 点击条目即时启动。
 //
 // 设计取舍（验证期）：
-//   - 条目与托盘右键菜单完全共用 settings.TrayMenu 配置与 internal/launcher 分发，
-//     不新增第二份配置面；图标与二级分组（group 条目：轮盘子盘展开、托盘原生
-//     子菜单，展开开关 QuickMenuTwoTier 关闭时拍平）已内置，条件菜单仍在观察；
+//   - 条目读轮盘独立账本 settings.WheelMenu（机主拍板 2026-09-26 与托盘账
+//     TrayMenu 互不干扰；首开由 TrayMenu 深拷贝派生一次），显示名解析与动作
+//     分发与托盘菜单同源复用 internal/launcher；图标与二级分组（group 条目：
+//     轮盘子盘展开、托盘原生子菜单，展开开关 QuickMenuTwoTier 关闭时拍平）
+//     已内置，条件菜单仍在观察；
 //   - 全局钩子为进程内低级钩子（WH_MOUSE_LL，非注入），随模块停用/进程退出由
 //     系统自动摘除，零残渣；识别采用"吞按下、短按 SendInput 回放"策略保证普通
 //     右键零损失（为何不能"吞抬起放按下"，见 TROUBLESHOOTING #29）；
@@ -47,7 +49,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "快捷菜单",
 		Version:     "0.2.0",
-		Description: "任意处右键长按唤出圆形快捷轮盘（条目与托盘配置共用，支持分组二级子盘）",
+		Description: "任意处右键长按唤出圆形快捷轮盘（独立轮盘账本条目，支持分组二级子盘）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

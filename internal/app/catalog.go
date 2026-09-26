@@ -378,7 +378,7 @@ var catalogItems = []extapi.ModuleCatalogItem{
 	{
 		ID:            "quickmenu",
 		Name:          "快捷菜单",
-		Description:   "任意处右键长按唤出圆形快捷轮盘（条目与托盘配置共用，支持分组二级子盘）",
+		Description:   "任意处右键长按唤出圆形快捷轮盘（独立轮盘账本条目，支持分组二级子盘）",
 		Category:      "desktop",
 		DeliveryKind:  extapi.DeliveryBuiltinLogical,
 		Capabilities:  []string{"background-listener", "dedicated-window"},

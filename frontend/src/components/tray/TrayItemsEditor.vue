@@ -68,7 +68,8 @@ const scopeWord = computed(() => (isWheel.value ? '轮盘' : '托盘'))
 const menuName = computed(() => `${scopeWord.value}菜单`)
 
 function fetchMenu(): Promise<TrayMenuItem[]> {
-  return isWheel.value ? svc.GetWheelMenu() : svc.GetTrayMenu()
+  // 绑定返回可空（Go nil slice 过 JSON 为 null），?? [] 收口空账，调用方恒得数组
+  return (isWheel.value ? svc.GetWheelMenu() : svc.GetTrayMenu()).then((m) => m ?? [])
 }
 function pushMenu(items: TrayMenuItem[]): Promise<void> {
   return isWheel.value ? svc.SetWheelMenu(items) : svc.SetTrayMenu(items)

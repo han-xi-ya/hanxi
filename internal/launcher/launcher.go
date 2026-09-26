@@ -1,6 +1,7 @@
 // Package launcher 统一执行 TrayMenuItem 配置条目：托盘右键菜单与鼠标唤出快捷菜单
-// （quickmenu）共享同一份条目语义（显示名解析 + command/route/exe 三类动作分发），
-// 避免两套菜单各写一份分发逻辑而漂移。
+// （quickmenu）共享同一套条目语义（显示名解析 + command/route/exe 三类动作分发、
+// 停用模块可见性收口），避免两套菜单各写一份分发逻辑而漂移；但两家的账本各读各的
+// （EnabledItems→TrayMenu / WheelItems→WheelMenu，机主拍板 2026-09-26 互不干扰）。
 package launcher
 
 import (
@@ -29,18 +30,90 @@ func New(registry *extapi.Registry, store *settings.Store, navigate func(route s
 	return &Dispatcher{registry: registry, store: store, navigate: navigate}
 }
 
-// EnabledItems 返回已启用条目的副本（配置保存顺序即展示顺序）。
+// EnabledItems 返回托盘账（TrayMenu）已启用条目的副本（配置保存顺序即展示顺序）。
+// 轮盘弹出清单不走本方法——见 WheelItems。
 func (d *Dispatcher) EnabledItems() []settings.TrayMenuItem {
-	var out []settings.TrayMenuItem
 	if d.store == nil {
-		return out
+		return nil
 	}
-	for _, item := range d.store.GetTrayMenu() {
+	return enabledItems(d.store.GetTrayMenu())
+}
+
+// WheelItems 返回轮盘独立账（WheelMenu）已启用条目的副本（保存顺序即盘面扇区序）。
+// 与 EnabledItems 同语义不同账源：托盘账怎么改都不影响本方法读数，反之亦然。
+func (d *Dispatcher) WheelItems() []settings.TrayMenuItem {
+	if d.store == nil {
+		return nil
+	}
+	return enabledItems(d.store.GetWheelMenu())
+}
+
+// enabledItems 过滤顶层启用条目（两账共用一套过滤语义）。group 子条目的
+// Enabled 过滤留给消费方（托盘 build 展子菜单、轮盘 wheelView 拍平/子盘），与历史行为一致。
+func enabledItems(items []settings.TrayMenuItem) []settings.TrayMenuItem {
+	var out []settings.TrayMenuItem
+	for _, item := range items {
 		if item.Enabled {
 			out = append(out, item)
 		}
 	}
 	return out
+}
+
+// ItemModuleID 解析条目引用的模块 ID：command 取 Ref 的 key 前缀
+// （"moduleId/commandId"），route 取 "/ext/<id>" 前缀下的首段；exe、核心
+// 路由（如 /settings）与其他非模块引用返回空串。
+func ItemModuleID(item settings.TrayMenuItem) string {
+	switch item.Type {
+	case settings.TrayItemCommand:
+		if i := strings.IndexByte(item.Ref, '/'); i > 0 {
+			return item.Ref[:i]
+		}
+	case settings.TrayItemRoute:
+		const prefix = "/ext/"
+		if rest := strings.TrimPrefix(item.Ref, prefix); rest != item.Ref {
+			if i := strings.IndexByte(rest, '/'); i >= 0 {
+				rest = rest[:i]
+			}
+			return rest
+		}
+	}
+	return ""
+}
+
+// FilterDisabledModuleItems 滤除引用了停用模块的条目（含 group 子条目，递归）。
+// 仅当 moduleId 存在于 state（注册表已知）且为 false 时剔除；未知 ID（历史残留
+// 配置、非模块体系条目）原样保留，与 launcher 的"配置为准"语义一致。
+// 纯函数形态（启停表显式传入）便于表测；托盘与轮盘两径共用本实现（Wave 1 可见性收口）。
+func FilterDisabledModuleItems(items []settings.TrayMenuItem, state map[string]bool) []settings.TrayMenuItem {
+	if len(items) == 0 {
+		return items
+	}
+	out := make([]settings.TrayMenuItem, 0, len(items))
+	for _, item := range items {
+		if id := ItemModuleID(item); id != "" {
+			if enabled, known := state[id]; known && !enabled {
+				continue
+			}
+		}
+		if item.Type == settings.TrayItemGroup {
+			item.Children = FilterDisabledModuleItems(item.Children, state)
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+// FilterDisabledModules 按注册表当前模块启停表现过滤条目（registry 为 nil 或
+// 查不到模块时不过滤，语义同上）。调用方现读现滤，无需自行快照启停表。
+func (d *Dispatcher) FilterDisabledModules(items []settings.TrayMenuItem) []settings.TrayMenuItem {
+	state := make(map[string]bool)
+	if d.registry != nil {
+		for _, info := range d.registry.List() {
+			state[info.ID] = info.Enabled
+		}
+	}
+	return FilterDisabledModuleItems(items, state)
 }
 
 // Label 优先取用户自定义名，缺省回退到命令默认标签 / 导航标题 / 程序文件名。

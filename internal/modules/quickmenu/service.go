@@ -130,10 +130,11 @@ const (
 )
 
 // QuickMenuService 鼠标快捷菜单：全局右键长按 → 光标处弹出圆盘 → 点击扇区派发条目。
-// 条目配置与分发与托盘右键菜单完全共享（settings.TrayMenu + internal/launcher）；
-// group 分组条目在二级轮盘开启时悬停在外扩子环（StarPie 式级联外扩，见前端
-// QuickMenuPopup.vue 与 wheelGeometry.ts），关闭时子条目拍平进主盘，
-// 展示与派发共用 wheelView 保证索引一致。
+// 条目读轮盘独立账本 settings.WheelMenu（机主拍板 2026-09-26 与托盘账 TrayMenu
+// 互不干扰），显示名解析、动作分发与停用模块可见性收口与托盘右键菜单同源复用
+// internal/launcher；group 分组条目在二级轮盘开启时悬停在外扩子环（StarPie 式
+// 级联外扩，见前端 QuickMenuPopup.vue 与 wheelGeometry.ts），关闭时子条目拍平进
+// 主盘，展示与派发共用 wheelView 保证索引一致。
 type QuickMenuService struct {
 	store    *settings.Store
 	registry *extapi.Registry
@@ -442,7 +443,7 @@ func (s *QuickMenuService) showAt(trg mousetrap.Trigger) {
 	if err := windows.SetForegroundForce(uintptr(popup.NativeWindow())); err != nil {
 		slog.Debug("quickmenu: 强制置前失败（依赖点击外部兜底收起）", "err", err)
 	}
-	// 通知弹窗视图重拉条目（托盘配置可能已在设置页改过，弹窗常驻不重启）
+	// 通知弹窗视图重拉条目（轮盘账配置可能已在设置页改过，弹窗常驻不重启）
 	a.Event.Emit("quickmenu:opening")
 }
 
@@ -643,12 +644,14 @@ type wheelNode struct {
 	kids []settings.TrayMenuItem
 }
 
-// wheelView 计算轮盘当前展示结构：过滤启用条目，二级开关开启时保留 group 树形
-// （空组不占位），关闭时把组内启用子条目直接拍平为主盘扇区。ListItems 与 Launch
-// 共用本视图，Index 即展示序下标，天然一致。
+// wheelView 计算轮盘当前展示结构：取轮盘账启用条目（WheelItems，与托盘账互不
+// 连带），按注册表现状滤除引用停用模块的条目（可见性收口与托盘径同源复用
+// launcher 实现），二级开关开启时保留 group 树形（空组不占位），关闭时把组内
+// 启用子条目直接拍平为主盘扇区。ListItems 与 Launch 共用本视图，Index 即展示序
+// 下标，天然一致。
 func (s *QuickMenuService) wheelView() []wheelNode {
 	var out []wheelNode
-	for _, item := range s.disp.EnabledItems() {
+	for _, item := range s.disp.FilterDisabledModules(s.disp.WheelItems()) {
 		if item.Type == settings.TrayItemGroup {
 			kids := enabledLeaves(item.Children)
 			if !s.twoTierOn() {
@@ -679,7 +682,7 @@ func enabledLeaves(items []settings.TrayMenuItem) []settings.TrayMenuItem {
 	return out
 }
 
-// ListItems 返回弹窗菜单条目树（复用托盘配置中启用的条目，展示序即索引序；
+// ListItems 返回弹窗菜单条目树（轮盘独立账中启用的条目，展示序即索引序；
 // 二级轮盘关闭时 group 已被拍平，树只有一层）。
 func (s *QuickMenuService) ListItems() ([]MenuItem, error) {
 	release, gateErr := s.holder.Enter()
@@ -803,7 +806,7 @@ func (s *QuickMenuService) Launch(path []int) error {
 	return nil
 }
 
-// OpenSettings 引导至设置页托盘菜单配置区（弹窗空态的"去配置"动作），并收起弹窗。
+// OpenSettings 引导至设置页轮盘条目配置区（弹窗空态的"去配置"动作），并收起弹窗。
 func (s *QuickMenuService) OpenSettings() error {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {

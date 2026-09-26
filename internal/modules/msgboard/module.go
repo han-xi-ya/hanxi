@@ -2,9 +2,10 @@
 // 全屏挂出"马上回来/会议中/请勿动我电脑"式告示牌。
 //
 // 设计边界（BACKLOG F8 卡片裁定，MVP 克制版）：
-//   - 三通道唤起：托盘命令 + 轮盘条目（同一份 settings.TrayMenu 配置、同一个
-//     extapi.TrayCommandsProvider 注册点，经 internal/launcher 现成派发）+
-//     全局热键（收编入 internal/hotkey 通用注册器槽位，见 hotkey.go）；
+//   - 三通道唤起：托盘命令 + 轮盘条目（各自的账本 settings.TrayMenu/
+//     WheelMenu、同一个 extapi.TrayCommandsProvider 候选注册点，经
+//     internal/launcher 现成派发）+ 全局热键（收编入 internal/hotkey
+//     通用注册器槽位，见 hotkey.go）；
 //   - 内容 = 内置预设模板若干条 + 自定义文字与字号（jsonstore 原子写落
 //     state/msgboard.json）；副屏支持=可选显示器挂单屏牌，默认跟随主屏；
 //   - 挂牌期间通过平台层 KeepAwake 引用计数聚合器阻止系统/显示器休眠

@@ -100,7 +100,7 @@ func TestSetWheelMenuPersistsWithoutTrayRebuild(t *testing.T) {
 }
 
 // TestWheelHotChannelIsLiveStoreRead 热更通道实证：quickmenu 每次弹出经
-// launcher.Dispatcher.EnabledItems() → store 现读取账，故 SetWheelMenu 落盘后
+// launcher.Dispatcher.WheelItems() → store 现读取账，故 SetWheelMenu 落盘后
 // "下次弹出吃到新配置"无需任何事件——新进程（重开 store）现读即得新账。
 func TestWheelHotChannelIsLiveStoreRead(t *testing.T) {
 	env := newWheelTestEnv(t)

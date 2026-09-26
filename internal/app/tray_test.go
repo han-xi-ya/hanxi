@@ -3,8 +3,12 @@ package app
 import (
 	"testing"
 
+	"hanxi/internal/launcher"
 	"hanxi/internal/settings"
 )
+
+// 可见性收口实现（ItemModuleID/FilterDisabledModuleItems）已上收
+// internal/launcher 与轮盘径同源复用，本文件锁死托盘径吃到的那份语义不变。
 
 // TestItemModuleID 条目→模块 ID 解析：command 取 key 前缀、route 取 "/ext/"
 // 首段，exe/核心路由/非模块引用返回空串（保持可见）。
@@ -24,8 +28,8 @@ func TestItemModuleID(t *testing.T) {
 		{"exe 条目与模块体系正交", settings.TrayMenuItem{Type: settings.TrayItemExe, Ref: "", Path: `C:\Tools\x.exe`}, ""},
 	}
 	for _, c := range cases {
-		if got := itemModuleID(c.item); got != c.want {
-			t.Errorf("%s: itemModuleID(%+v)=%q, want %q", c.name, c.item, got, c.want)
+		if got := launcher.ItemModuleID(c.item); got != c.want {
+			t.Errorf("%s: ItemModuleID(%+v)=%q, want %q", c.name, c.item, got, c.want)
 		}
 	}
 }
@@ -52,7 +56,7 @@ func TestFilterDisabledModuleItems(t *testing.T) {
 		}},
 	}
 
-	got := filterDisabledModuleItems(items, state)
+	got := launcher.FilterDisabledModuleItems(items, state)
 
 	var keptRouteOCR, keptCmdOCR bool
 	for _, it := range got {
@@ -86,10 +90,10 @@ func TestFilterDisabledModuleItemsEdge(t *testing.T) {
 		{Type: settings.TrayItemRoute, Ref: "/ext/ocr", Enabled: true},
 		{Type: settings.TrayItemCommand, Ref: "ocr/snip-clipboard", Enabled: true},
 	}
-	if got := filterDisabledModuleItems(items, nil); len(got) != 2 {
+	if got := launcher.FilterDisabledModuleItems(items, nil); len(got) != 2 {
 		t.Errorf("空启停表不应过滤任何条目, got %+v", got)
 	}
-	if got := filterDisabledModuleItems(nil, map[string]bool{"ocr": false}); got != nil {
+	if got := launcher.FilterDisabledModuleItems(nil, map[string]bool{"ocr": false}); got != nil {
 		t.Errorf("空输入应原样返回, got %+v", got)
 	}
 }
