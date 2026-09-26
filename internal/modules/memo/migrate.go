@@ -32,6 +32,10 @@ const migratedSuffix = ".migrated"
 // stagingPrefix 暂存目录前缀（数据根下、白名单外；启动清扫孤儿暂存）。
 const stagingPrefix = ".memo-migrating-"
 
+// corruptInfix 旧库损坏隔离副本 infix（<legacyPath>.corrupt-<时间戳>，取证用；
+// ClearAll 全删时连同销毁——副本里就是旧便签正文）。
+const corruptInfix = ".corrupt-"
+
 // memoNeedsMigration 迁移判据（纯函数，供单测直接喂路径）。
 func memoNeedsMigration(legacyPath, memoDir string) (bool, error) {
 	if _, err := os.Stat(legacyPath); err != nil {

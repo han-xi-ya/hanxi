@@ -21,14 +21,16 @@ import (
 // 存储后端二态：默认文件库（memo/<id>.md，写盘点单条化）；仅当旧库 memo.json
 // 仍在位且迁移未成功（损坏/暂存失败）时回落旧整库 Store，保证"迁移不成也不丢数据"。
 type MemoService struct {
-	files     *FileStore
-	store     *Store // 旧库回落态才非 nil；文件库模式恒 nil
-	useFiles  bool
-	mu        sync.RWMutex
-	items     []MemoItem
-	wailsApp  *application.App
-	onChanged func() // 测试/内部观察钩子；仅在提交成功后调用
-	holder    *extapi.LeaseHolder
+	files      *FileStore
+	store      *Store // 旧库回落态才非 nil；文件库模式恒 nil
+	useFiles   bool
+	mu         sync.RWMutex
+	items      []MemoItem
+	wailsApp   *application.App
+	onChanged  func() // 测试/内部观察钩子；仅在提交成功后调用
+	holder     *extapi.LeaseHolder
+	dataDir    string // 数据根（ClearAll 残片收口用：暂存目录挂在这下面）
+	legacyPath string // 旧库 <StateDir>/memo.json（其 .migrated/.corrupt- 派生残片同源收口）
 }
 
 // NewMemoService 实例化便签服务：启动清扫/迁移旧库，然后把权威数据全量装载进内存
@@ -52,7 +54,7 @@ func NewMemoService(paths *settings.Paths, holder *extapi.LeaseHolder) (*MemoSer
 	}
 
 	files := NewFileStore(memoDir)
-	s := &MemoService{files: files, holder: holder}
+	s := &MemoService{files: files, holder: holder, dataDir: dataDir, legacyPath: legacyPath}
 
 	hasFiles, herr := memoDirHasFiles(memoDir)
 	if herr != nil {
@@ -82,7 +84,7 @@ func NewMemoService(paths *settings.Paths, holder *extapi.LeaseHolder) (*MemoSer
 		}
 		items, err := store.Load()
 		if err != nil {
-			quarantine := fmt.Sprintf("%s.corrupt-%s", legacyPath, time.Now().Format("20060102-150405"))
+			quarantine := legacyPath + corruptInfix + time.Now().Format("20060102-150405")
 			if rerr := os.Rename(legacyPath, quarantine); rerr != nil {
 				return nil, fmt.Errorf("读取便签库失败且隔离改名失败（拒绝以空库覆盖可疑数据）: %v / %w", rerr, err)
 			}
@@ -418,6 +420,152 @@ func (s *MemoService) Delete(id string) error {
 
 	s.emitChanged()
 	return nil
+}
+
+// ClearAll 一键全删：清空全部便签（含敏感遮罩条目与隔离取证副本），返回本次删除的
+// 便签条数。"不留残片"纪律：文件库模式清空 memo/ 目录下全部文件（正式 .md 与
+// .bad-/.tmp. 孤儿一并销毁）；回落模式把旧库写回空表（旧库是读写权威，销毁它反而
+// 会在下次启动复活空库文件，故原位清空）。随后清扫与便签同源的数据派生物：
+// 旧库 memo.json 本体（文件库模式下只可能是回滚/异常残留）、其 .migrated 备份与
+// .corrupt- 取证副本、半程暂存目录——迁移留底里带着全量旧便签正文，不清即漏。
+// 部分失败不假装成功：确认删除的条目先从内存移除（内存与盘不分叉），错误如实
+// 聚合上浮，前端重拉即见真实剩余；memo:changed 照常广播，多端联动同步收口。
+func (s *MemoService) ClearAll() (int, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return 0, gateErr
+	}
+	defer release()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var errs []error
+	deleted := make(map[string]bool, len(s.items))
+
+	if s.useFiles {
+		entries, rerr := os.ReadDir(s.files.dir)
+		if rerr != nil && !os.IsNotExist(rerr) {
+			return 0, fmt.Errorf("便签文件库目录不可读，全删中止: %w", rerr)
+		}
+		for _, e := range entries {
+			name := e.Name()
+			// RemoveAll：memo/ 目录本模块独占（快照白名单口径），异常子目录一并销毁才算收口
+			if remErr := os.RemoveAll(filepath.Join(s.files.dir, name)); remErr != nil {
+				if !os.IsNotExist(remErr) {
+					errs = append(errs, fmt.Errorf("%s: %w", name, remErr))
+					continue
+				}
+			}
+			// 孤儿残骸（坏条隔离副本/崩溃半程 tmp）可能不对应任何在装条目，只映射回本尊 ID
+			if id, ok := memoIDFromFile(name); ok {
+				deleted[id] = true
+			}
+		}
+		// 幽灵条目（内存有、盘上早已被外部删净）同样以盘为准清掉，全删后不留差集
+		for _, it := range s.items {
+			if deleted[it.ID] {
+				continue
+			}
+			if _, serr := os.Stat(filepath.Join(s.files.dir, it.ID+".md")); os.IsNotExist(serr) {
+				deleted[it.ID] = true
+			}
+		}
+	} else {
+		if err := s.store.Save([]MemoItem{}); err != nil {
+			return 0, err
+		}
+		for _, it := range s.items {
+			deleted[it.ID] = true
+		}
+	}
+
+	// 回落模式下旧库刚写回空表、仍是权威，本体保留；文件库模式下连本体一起清
+	errs = append(errs, sweepMemoArtifacts(s.dataDir, s.legacyPath, !s.useFiles)...)
+
+	kept := make([]MemoItem, 0, len(s.items))
+	for _, it := range s.items {
+		if !deleted[it.ID] {
+			kept = append(kept, it)
+		}
+	}
+	removed := len(s.items) - len(kept)
+	if len(s.items) > 0 {
+		s.items = kept
+		s.emitChanged()
+	}
+	if len(errs) > 0 {
+		return removed, fmt.Errorf("全删收口不完全（%d 处失败，可重试）: %s", len(errs), joinErrs(errs))
+	}
+	return removed, nil
+}
+
+// memoIDFromFile 把 memo/ 目录内文件名映射回便签 ID：
+// `<id>.md`（正式条）、`<id>.md.bad-*`（坏条隔离副本）、
+// `<id>.md.tmp.<pid>`（原子写崩溃半程）都归本尊 ID；其余（理论不该存在）不归。
+func memoIDFromFile(name string) (string, bool) {
+	switch {
+	case strings.HasSuffix(name, ".md"):
+		return strings.TrimSuffix(name, ".md"), true
+	case strings.Contains(name, ".md.bad-"):
+		return name[:strings.Index(name, ".md.bad-")], true
+	case strings.Contains(name, ".md.tmp."):
+		return strings.TrimSuffix(name[:strings.Index(name, ".md.tmp.")], ".md"), true
+	}
+	return "", false
+}
+
+// sweepMemoArtifacts 销毁与便签同源的数据派生残片：旧库 memo.json 本体（keepLegacy=
+// false 时）、其 .migrated 备份（含带时间戳变体）、.corrupt- 取证副本、数据根下的
+// 半程暂存目录 <stagingPrefix>*/。返回逐个失败的错误清单（不 panic 不中断清扫）。
+// 空路径（测试手工组装的服务未接 settings）各分支自然跳过。
+func sweepMemoArtifacts(dataDir, legacyPath string, keepLegacy bool) []error {
+	var errs []error
+	if legacyPath != "" {
+		if !keepLegacy {
+			if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
+				errs = append(errs, err)
+			}
+		}
+		for _, pattern := range []string{legacyPath + migratedSuffix + "*", legacyPath + corruptInfix + "*"} {
+			matches, gerr := filepath.Glob(pattern)
+			if gerr != nil {
+				errs = append(errs, gerr)
+				continue
+			}
+			for _, m := range matches {
+				if err := os.RemoveAll(m); err != nil && !os.IsNotExist(err) {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+	if dataDir != "" {
+		entries, err := os.ReadDir(dataDir)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				errs = append(errs, err)
+			}
+			return errs
+		}
+		for _, e := range entries {
+			if e.IsDir() && strings.HasPrefix(e.Name(), stagingPrefix) {
+				if rerr := os.RemoveAll(filepath.Join(dataDir, e.Name())); rerr != nil {
+					errs = append(errs, rerr)
+				}
+			}
+		}
+	}
+	return errs
+}
+
+// joinErrs 错误清单拼一行（joinErrors 的"装载异常"话术不适用于全删语境）。
+func joinErrs(errs []error) string {
+	parts := make([]string, 0, len(errs))
+	for _, e := range errs {
+		parts = append(parts, e.Error())
+	}
+	return strings.Join(parts, "; ")
 }
 
 // RestoreFile 单条热恢复（供 internal/snapshot「历史版本」恢复 memo/<id>.md 时经

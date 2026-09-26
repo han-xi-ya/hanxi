@@ -46,8 +46,8 @@ func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
 		Name:        "极客随手记",
-		Version:     "0.1.0",
-		Description: "极轻量本地持久化备忘录与临时代码片段站，支持标签云、置顶与敏感脱敏",
+		Version:     "0.2.0",
+		Description: "极轻量本地持久化备忘录与临时代码片段站，支持 Markdown 便签、速记、标签云、置顶、敏感脱敏与一键全删",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

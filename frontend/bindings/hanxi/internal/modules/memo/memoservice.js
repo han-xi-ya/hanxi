@@ -22,6 +22,21 @@ import * as application$0 from "../../../../github.com/wailsapp/wails/v3/pkg/app
 import * as $models from "./models.js";
 
 /**
+ * ClearAll 一键全删：清空全部便签（含敏感遮罩条目与隔离取证副本），返回本次删除的
+ * 便签条数。"不留残片"纪律：文件库模式清空 memo/ 目录下全部文件（正式 .md 与
+ * .bad-/.tmp. 孤儿一并销毁）；回落模式把旧库写回空表（旧库是读写权威，销毁它反而
+ * 会在下次启动复活空库文件，故原位清空）。随后清扫与便签同源的数据派生物：
+ * 旧库 memo.json 本体（文件库模式下只可能是回滚/异常残留）、其 .migrated 备份与
+ * .corrupt- 取证副本、半程暂存目录——迁移留底里带着全量旧便签正文，不清即漏。
+ * 部分失败不假装成功：确认删除的条目先从内存移除（内存与盘不分叉），错误如实
+ * 聚合上浮，前端重拉即见真实剩余；memo:changed 照常广播，多端联动同步收口。
+ * @returns {$CancellablePromise<number>}
+ */
+export function ClearAll() {
+    return $Call.ByID(802866517);
+}
+
+/**
  * Create 创建新便签
  * @param {string} title
  * @param {string} content
