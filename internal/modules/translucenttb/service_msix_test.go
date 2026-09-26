@@ -1,8 +1,10 @@
 package translucenttb
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -231,6 +233,111 @@ func TestInstallMsixDeployFailureAttribution(t *testing.T) {
 	var perr *apppackage.Error
 	if !errors.As(err, &perr) || perr.Code != apppackage.CodeDependency {
 		t.Errorf("错误码分支丢失: %v", err)
+	}
+	// 0x80073CF3 属包注册基础设施族：话术须同时给出依赖与开发者模式两条出路
+	for _, want := range []string{"包注册基础设施", "开发者模式", "便携版即正解"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("基础设施指路话术缺 %q: %s", want, msg)
+		}
+	}
+}
+
+// TestInstallMsixThinSystemInfraFailure 机主瘦系统实跑事故的回归钉：
+// Add-AppxPackage 报 0x80073CF6（注册包失败）+ 内部 0x80073D05（商店缺席/
+// AppModelUnlock 侧载授权缺失/部署通道不存在的瘦系统指纹），归因必须指路
+// 开发者模式并如实判"打包线不可用，便携版即正解"。
+func TestInstallMsixThinSystemInfraFailure(t *testing.T) {
+	packages := &fakeMsixPackages{installErr: &apppackage.Error{
+		Code:    apppackage.CodeDeployment,
+		Message: "Windows 包操作失败",
+		Detail:  "注册包失败，HRESULT 0x80073cf6；内部错误 0x80073D05",
+		HResult: "0x80073CF6",
+	}}
+	msix := &fakeMsixSource{hasRelease: true, preparePath: `C:\cache\bundle.msixbundle`}
+	svc := newMsixTestService(packages, msix)
+
+	err := svc.InstallMsix("2026.2")
+	if err == nil {
+		t.Fatal("瘦系统注册失败必须报错")
+	}
+	msg := err.Error()
+	for _, want := range []string{"0x80073CF6", "包注册基础设施", "设置→系统→对于开发人员", "开发者模式", "便携版即正解"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("基础设施归因缺 %q: %s", want, msg)
+		}
+	}
+	var perr *apppackage.Error
+	if !errors.As(err, &perr) || perr.Code != apppackage.CodeDeployment {
+		t.Errorf("错误码分支丢失: %v", err)
+	}
+}
+
+// TestInstallMsixFailureLoggedAsWarn 可观测性纪律回归：装失败必落 slog.Warn
+// 一行摘要含 HRESULT（toast 一闪而没时代的取证靠日志）。
+func TestInstallMsixFailureLoggedAsWarn(t *testing.T) {
+	var buf bytes.Buffer
+	restore := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer slog.SetDefault(restore)
+
+	packages := &fakeMsixPackages{installErr: &apppackage.Error{
+		Code: apppackage.CodeDeployment, Message: "Windows 包操作失败", HResult: "0x80073CF6",
+	}}
+	svc := newMsixTestService(packages, &fakeMsixSource{hasRelease: true, preparePath: `C:\cache\bundle.msixbundle`})
+	if err := svc.InstallMsix("2026.2"); err == nil {
+		t.Fatal("应失败")
+	}
+	logged := buf.String()
+	for _, want := range []string{"translucenttb 打包版操作失败", "op=安装", "hresult=0x80073CF6", "0x80073CF6"} {
+		if !strings.Contains(logged, want) {
+			t.Errorf("WARN 留痕缺 %q: %s", want, logged)
+		}
+	}
+	if strings.Contains(logged, "\n\n") {
+		t.Errorf("WARN 摘要应压成一行: %q", logged)
+	}
+}
+
+// TestUninstallMsixFailureLoggedAsWarn 卸失败同样必落 WARN。
+func TestUninstallMsixFailureLoggedAsWarn(t *testing.T) {
+	var buf bytes.Buffer
+	restore := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer slog.SetDefault(restore)
+
+	packages := &fakeMsixPackages{
+		queryScript:  []fakeMsixQuery{{pkg: &apppackage.Package{Version: "2026.2.0.0", PackageFullName: "full-name-x"}}},
+		uninstallErr: &apppackage.Error{Code: apppackage.CodeInUse, Message: "目标应用或相关资源正在使用中", HResult: "0x80073D02", Retryable: true},
+	}
+	svc := newMsixTestService(packages, &fakeMsixSource{})
+	if err := svc.UninstallMsix(); err == nil {
+		t.Fatal("应失败")
+	}
+	logged := buf.String()
+	for _, want := range []string{"op=卸载", "code=APP_PACKAGE_IN_USE", "hresult=0x80073D02"} {
+		if !strings.Contains(logged, want) {
+			t.Errorf("卸载 WARN 留痕缺 %q: %s", want, logged)
+		}
+	}
+}
+
+// TestPrepareFailureLoggedAsWarn 准备失败（版本线错误，非通道错误码）也要留痕，
+// 话术不套双重前缀。
+func TestPrepareFailureLoggedAsWarn(t *testing.T) {
+	var buf bytes.Buffer
+	restore := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	defer slog.SetDefault(restore)
+
+	svc := newMsixTestService(&fakeMsixPackages{}, &fakeMsixSource{
+		hasRelease: true, prepareErr: errors.New("下载 msixbundle 失败: 网络断"),
+	})
+	err := svc.InstallMsix("2026.2")
+	if err == nil || strings.Count(err.Error(), "安装包准备失败") != 1 {
+		t.Fatalf("准备失败话术应单前缀: %v", err)
+	}
+	if !strings.Contains(buf.String(), "op=安装包准备") || !strings.Contains(buf.String(), "网络断") {
+		t.Errorf("准备失败 WARN 留痕缺失: %s", buf.String())
 	}
 }
 

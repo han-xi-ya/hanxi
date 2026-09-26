@@ -747,7 +747,7 @@ func (s *TranslucentTBService) InstallMsix(version string) error {
 	defer prepareCancel()
 	path, err := s.msix.PreparePackage(prepareCtx, version, logMsixPrepareProgress)
 	if err != nil {
-		return fmt.Errorf("TranslucentTB %s 安装包准备失败: %w", version, err)
+		return failMsix("安装包准备", fmt.Errorf("TranslucentTB %s 安装包准备失败: %w", version, err))
 	}
 
 	deployCtx, deployCancel := context.WithTimeout(context.Background(), msixDeployTimeout)
@@ -761,15 +761,15 @@ func (s *TranslucentTBService) InstallMsix(version string) error {
 		ExpectedVersion: version + ".0.0",
 		AllowDowngrade:  true,
 	}); err != nil {
-		return describeMsixFailure("安装", err)
+		return failMsix("安装", err)
 	}
 
 	pkg, err := s.packages.Query(deployCtx, msixIdentity)
 	if err != nil {
-		return describeMsixFailure("安装后回查", err)
+		return failMsix("安装后回查", err)
 	}
 	if pkg == nil || normalizeMsixVersion(pkg.Version) != version {
-		return fmt.Errorf("TranslucentTB 安装完成后系统注册版本不是 %s（实际 %s）", version, msixVersionOrEmpty(pkg))
+		return failMsix("安装后核对", fmt.Errorf("TranslucentTB 安装完成后系统注册版本不是 %s（实际 %s）", version, msixVersionOrEmpty(pkg)))
 	}
 	// 成功路径末尾无需刷新任何包状态缓存：GetMsixState 本就是实查（无缓存可刷）。
 	return nil
@@ -788,20 +788,20 @@ func (s *TranslucentTBService) UninstallMsix() error {
 	defer cancel()
 	pkg, err := s.packages.Query(ctx, msixIdentity)
 	if err != nil {
-		return describeMsixFailure("卸载前查询", err)
+		return failMsix("卸载前查询", err)
 	}
 	if pkg == nil {
 		return fmt.Errorf("TranslucentTB 打包版尚未安装（卸载本就不动缓存文件，缓存请用清理缓存入口）")
 	}
 	if err := s.packages.Uninstall(ctx, msixIdentity, pkg.PackageFullName); err != nil {
-		return describeMsixFailure("卸载", err)
+		return failMsix("卸载", err)
 	}
 	after, err := s.packages.Query(ctx, msixIdentity)
 	if err != nil {
-		return describeMsixFailure("卸载后回查", err)
+		return failMsix("卸载后回查", err)
 	}
 	if after != nil {
-		return fmt.Errorf("卸载后 Windows 回查仍显示 TranslucentTB 打包版已安装")
+		return failMsix("卸载后核对", fmt.Errorf("卸载后 Windows 回查仍显示 TranslucentTB 打包版已安装"))
 	}
 	return nil
 }
@@ -889,10 +889,25 @@ type msixFailureError struct {
 func (e *msixFailureError) Error() string { return e.message }
 func (e *msixFailureError) Unwrap() error { return e.cause }
 
+// msixInfraGuide 包注册基础设施缺失族（0x80073CF6 注册失败 / 0x80073D05 内部错 /
+// 0x80073CF3 部署失败）的统一指路话术。实证来路：机主瘦系统实跑 InstallMsix 捕获
+// 0x80073CF6+内部 0x80073D05——该机微软商店缺席、AppModelUnlock 侧载/开发者模式键
+// 从未存在、部署事件日志通道都不存在，注册不了任何新 appx；话术先给唯一可试的
+// 系统级开关（开发者模式），开不动就如实判死刑并指回便携版（本就是正解）。
+const msixInfraGuide = "本系统缺少包注册基础设施（微软商店/侧载授权缺失），可在 设置→系统→对于开发人员 开启开发者模式后重试；仍失败则本机打包线不可用，便携版即正解"
+
+// msixInfraFailure 识别基础设施族指纹：CF6/D05 出现在 HResult 或原始 Detail
+// （Detail 全文判定，不受话术尾部截断影响）。CF3 由脚本通道归入
+// CodeDependency，在归因表里并入依赖缺失话术并附带本指引。
+func msixInfraFailure(perr *apppackage.Error) bool {
+	fingerprint := strings.ToUpper(perr.HResult + " " + perr.Detail)
+	return strings.Contains(fingerprint, "0X80073CF6") || strings.Contains(fingerprint, "0X80073D05")
+}
+
 // describeMsixFailure 把 apppackage 通道错误包一层 TranslucentTB 语境的中文归因：
 // 通道自带中文 Message，此处拼接输出尾部明细（Detail 最后一行截断）与 HResult，
-// 对依赖缺失/签名无效两类高频部署失败补针对性指引；原文经 Unwrap 保留，
-// 调用方仍可分支错误码。
+// 对包注册基础设施缺失/依赖缺失/签名无效三类高频部署失败补针对性指引；
+// 原文经 Unwrap 保留，调用方仍可分支错误码。
 func describeMsixFailure(op string, err error) error {
 	var perr *apppackage.Error
 	if !errors.As(err, &perr) {
@@ -906,13 +921,34 @@ func describeMsixFailure(op string, err error) error {
 		cause = fmt.Sprintf("%s（%s）", cause, perr.HResult)
 	}
 	hint := ""
-	switch perr.Code {
-	case apppackage.CodeDependency:
-		hint = "；系统缺少框架包（VCLibs / WinUI 2.8），可改用上游 TranslucentTB.appinstaller 安装（自带依赖解析）"
-	case apppackage.CodeSignature:
+	switch {
+	case msixInfraFailure(perr):
+		hint = "；" + msixInfraGuide
+	case perr.Code == apppackage.CodeDependency:
+		hint = "；系统缺少框架包（VCLibs / WinUI 2.8），可改用上游 TranslucentTB.appinstaller 安装（自带依赖解析）；也可能是" + msixInfraGuide
+	case perr.Code == apppackage.CodeSignature:
 		hint = "；bundle 签名证书链未获系统信任，多为上游换签名主体所致，请核对官方发布渠道"
 	}
 	return &msixFailureError{message: fmt.Sprintf("TranslucentTB 打包版%s失败: %s%s", op, cause, hint), cause: err}
+}
+
+// failMsix 装/卸面失败收口（可观测性纪律）：apppackage 通道错误先经中文归因，
+// 随即 slog.Warn 落一行完整摘要——toast 一闪而没时，事后台账只认日志
+// （0x80073CF6 事故的直接教训：现场零留痕）。WARN 字段含操作名、稳定错误码、
+// HRESULT 与归因后一行话术；预构话术（准备失败/回查不符等）原样透传不再套壳。
+// GetMsixState/LaunchMsix 不在此列：状态查询会被前端周期轮询，失败留痕若入
+// WARN 会刷屏，其失败已有返回值路径。
+func failMsix(op string, err error) error {
+	attributed := err
+	code, hresult := "", ""
+	var perr *apppackage.Error
+	if errors.As(err, &perr) {
+		attributed = describeMsixFailure(op, err)
+		code, hresult = perr.Code, perr.HResult
+	}
+	slog.Warn("translucenttb 打包版操作失败", "op", op, "code", code, "hresult", hresult,
+		"summary", strings.Join(strings.Fields(attributed.Error()), " "))
+	return attributed
 }
 
 // lastLine 明细取最后一行非空文本并按 rune 截尾（"按输出尾部归因"的取值纪律，
