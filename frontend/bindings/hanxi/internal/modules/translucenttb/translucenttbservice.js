@@ -58,6 +58,17 @@ export function GetFollowOnExit() {
 }
 
 /**
+ * GetMsixState 实时查询当前用户 TranslucentTB 打包版注册状态 + 本地容器缓存清单。
+ * 注册态无服务端缓存（每次经 platform PowerShell appx 通道 Get-AppxPackage 实查，
+ * 20s 超时兜底冷启动），因此便携线引擎状态缓存与此无同步义务，也不存在"安装
+ * 成功后刷新缓存"的动作——下一次 GetMsixState 即最新事实。
+ * @returns {$CancellablePromise<$models.MsixState>}
+ */
+export function GetMsixState() {
+    return $Call.ByID(2263066119);
+}
+
+/**
  * GetStatus 返回引擎当前状态快照（先做一次静止态外部校正，弥补 5s 轮询间隙的即时性）。
  * @returns {$CancellablePromise<instance$0.Snapshot>}
  */
@@ -74,6 +85,46 @@ export function GetStatus() {
  */
 export function ImportLocal(srcDir) {
     return $Call.ByID(3202045675, srcDir);
+}
+
+/**
+ * InstallMsix 下载并安装指定版本的官方 bundle.msixbundle（用户级注册，免提权）。
+ * 
+ * 全程：HasMsixRelease 前置判定（"有 msix 资产但无官方摘要"的版本不入版本线
+ * 列表，与降级钮判定同一口径，无需在本面二次甄别）→ PreparePackage（摘要必检
+ * 的缓存落位，终路径只来自自家缓存目录）→ apppackage.Install → Add-AppxPackage
+ * （platform 既有 PowerShell 通道，子进程非提权态：正常路径不可能出现 UAC，
+ * 若系统仍回报需要提升的错误码，Detail/HResult 原样上抛不吞）→ 回查注册版本
+ * 与目标一致才算成功。
+ * 
+ * AllowDowngrade 恒真：调用方是明确点选版本的用户（崩溃对照降级钮是本线主场景，
+ * nanaZip 需二次确认的降级在这里就是功能本身），强制走 -ForceUpdateFromAnyVersion。
+ * 
+ * 共存语义（只陈述、不干预，与便携托管线既有行为对齐）：
+ *   - 便携版与打包版共用上游单实例协议（Local 互斥体 344635E9-…，
+ *     instance/probe_windows.go 与上游 main.cpp 同源实证）：后启动者信使化自退，
+ *     同一时刻任务栏特效只有一个进程持有；
+ *   - 托管启停线只管 Hanxi 拉起的便携进程——InstallMsix/UninstallMsix/LaunchMsix
+ *     都不触碰任何在跑实例：不杀便携去装包，也不杀包去留便携；打包版经
+ *     LaunchMsix/开始菜单启动后游离于 JobObject 之外，引擎按"外部实例"如实感知；
+ *   - 打包版本身正在运行时卸载/升级由部署器裁决：脚本通道带
+ *     -DeferRegistrationWhenPackagesAreInUse，冲突时报 APP_PACKAGE_IN_USE
+ *     （可重试）归因，同样不静默强杀。
+ * @param {string} version
+ * @returns {$CancellablePromise<void>}
+ */
+export function InstallMsix(version) {
+    return $Call.ByID(3024788777, version);
+}
+
+/**
+ * LaunchMsix 激活已注册的 TranslucentTB 打包版主应用（对齐 nanaZip 启动通路
+ * 实证：apppackage.Activate 经 explorer.exe shell:AppsFolder\<Family>!<AppID> 派发，
+ * 等价点击开始菜单磁贴；进程归系统生命周期，不入 JobObject）。未安装明确报错。
+ * @returns {$CancellablePromise<void>}
+ */
+export function LaunchMsix() {
+    return $Call.ByID(1977273267);
 }
 
 /**
@@ -118,6 +169,19 @@ export function OpenRepository() {
  */
 export function Quit() {
     return $Call.ByID(573089530);
+}
+
+/**
+ * RemoveMsixCache 删除指定版本的 msixbundle 容器缓存文件（不注销系统包——卸载
+ * 是 UninstallMsix 的独立语义）。版本线层不判注册态，拦截在本面：目标版本当前
+ * 正注册在系统（其注册版本可能仍在从缓存目录被 servicing 引用）时拒绝，须先
+ * UninstallMsix。判定即 GetMsixState 的内容（复用未接门内部查询，语义同
+ * "调 GetMsixState 判"，只取实查的 Installed/Version 两事实）。
+ * @param {string} version
+ * @returns {$CancellablePromise<void>}
+ */
+export function RemoveMsixCache(version) {
+    return $Call.ByID(1683227046, version);
 }
 
 /**
@@ -190,4 +254,14 @@ export function Shutdown() {
  */
 export function Start() {
     return $Call.ByID(1250635371);
+}
+
+/**
+ * UninstallMsix 卸载当前用户的 TranslucentTB 打包版注册（Remove-AppxPackage 按
+ * 实查到的包完整名称执行）。不碰任何缓存文件——容器缓存清理是 RemoveMsixCache
+ * 的独立语义；便携托管线实例不受触碰（共存口径同 InstallMsix）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function UninstallMsix() {
+    return $Call.ByID(250549856);
 }

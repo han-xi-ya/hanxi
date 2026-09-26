@@ -10,6 +10,11 @@ import * as $models from "./models.js";
  */
 
 /**
+ * PackageCached 本地一条已落位 msixbundle 容器缓存。
+ * @typedef {$models.PackageCached} PackageCached
+ */
+
+/**
  * TBRelease 远程 GitHub Release 中可用的 TranslucentTB Windows x64 便携版。
  * SHA256 来自 GitHub API 资产 digest（官方计算，完整性校验第一依据）。
  * 版本号形如 2026.2（年份.序号，上游惯例，无 v 前缀）。

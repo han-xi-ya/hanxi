@@ -15,6 +15,14 @@ import * as $models from "./models.js";
  */
 
 /**
+ * MsixState 打包形态"当前用户注册状态 + 本地容器缓存清单"的合并快照
+ * （GetMsixState 返回值；注册状态实时查询无缓存，缓存清单来自版本线磁盘枚举）。
+ * Version 归一化为发布号两段形态（2026.2.0.0 → 2026.2，实证规则见
+ * normalizeMsixVersion 注释），与版本线列表行同一比较口径。
+ * @typedef {$models.MsixState} MsixState
+ */
+
+/**
  * QuitOutcome 退出执行结果。
  * @typedef {$models.QuitOutcome} QuitOutcome
  */
