@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import GeneralSection from '../GeneralSection.vue'
 import ThemeSection from '../ThemeSection.vue'
 import TraySection from '../TraySection.vue'
+import TrayItemsEditor from '../../../components/tray/TrayItemsEditor.vue'
 import StorageSection from '../StorageSection.vue'
 import SystemSection from '../SystemSection.vue'
 import WorkbenchSection from '../WorkbenchSection.vue'
@@ -176,34 +177,42 @@ describe('外观主题分区', () => {
 })
 
 describe('托盘菜单分区', () => {
-  it('加载后渲染现有条目与候选目录，保存上抛完整清单', async () => {
+  it('加载后渲染现有条目与候选目录，勾选候选即实时落盘并上抛 saved（保存钮已退役）', async () => {
     stubs()
     const w = await mountView(TraySection)
     expect(w.text()).toContain('托盘右键菜单')
     expect(w.findAll('.tray-row')).toHaveLength(1)
     expect((w.find('.tray-name').element as HTMLInputElement).value).toBe('日志')
     expect(w.findAll('.option-item')).toHaveLength(1)
-    // 勾选候选（新增一条）→ 脏标记放行保存钮
+    // 保存钮整退：页脚只剩自动保存状态条
+    expect(w.find('.tray-footer .btn-primary').exists()).toBe(false)
+    // 勾选候选（新增一条）→ 即时 SetTrayMenu 全清单，无需点保存
     await w.findAll('.option-item input')[0].setValue(true)
-    expect(w.findAll('.tray-row')).toHaveLength(2)
-    await w.find('.tray-footer .btn-primary').trigger('click')
     await flushPromises()
+    expect(w.findAll('.tray-row')).toHaveLength(2)
     expect(appSvc.SetTrayMenu).toHaveBeenCalledTimes(1)
     const saved = appSvc.SetTrayMenu.mock.calls[0][0]
     expect(saved).toHaveLength(2)
-    expect(useToast().toastMsg.value).toBe('托盘右键菜单已保存并即时生效')
+    expect(saved[1]).toMatchObject({ type: 'command', ref: 'frpc/start' })
+    // 宿主 TraySection 转发编辑面的 saved 上抛；成功静默不 toast（每次改动鸣笛是噪音）
+    expect(w.findComponent(TrayItemsEditor).emitted('saved')).toHaveLength(1)
+    expect(useToast().toastMsg.value).toBeFalsy()
   })
 
-  it('分组条目：新建分组 → 展开子条目面板 → 从候选添加子条目并入保存清单', async () => {
+  it('分组条目：新建分组暂缓落盘（草稿门）→ 补名加子条目即时成账', async () => {
     stubs()
     appSvc.GetTrayMenu.mockResolvedValue([])
     const w = await mountView(TraySection)
     // 新建分组（轮盘二级扇区）：自动展开子条目编辑面板
     const toolsBtn = w.find('.tray-tools button')
     await toolsBtn.trigger('click')
+    await flushPromises()
     expect(w.findAll('.tray-row-group')).toHaveLength(1)
     expect(w.find('.tray-children').exists()).toBe(true)
-    expect(w.find('.tray-child-empty').text()).toContain('保存会被拒绝')
+    expect(w.find('.tray-child-empty').text()).toContain('分组还没有子条目（补全前自动保存暂缓，空分组直接保存也会被拒绝）：从下方添加。')
+    // 草稿门：空分组（无名无子条目）是后端 Set 硬拒项，本地体检拦下这笔不发，页脚如实说明
+    expect(appSvc.SetTrayMenu).not.toHaveBeenCalled()
+    expect(w.find('.tray-footer .autosave-state').text()).toContain('自动保存等待补全')
     // 收起再展开切换（openGroup 复位语义）
     const toggleBtn = w.findAll('.tray-row-group button')[0]
     expect(toggleBtn.text()).toContain('收起子条目')
@@ -211,16 +220,22 @@ describe('托盘菜单分区', () => {
     expect(w.find('.tray-children').exists()).toBe(false)
     await toggleBtn.trigger('click')
     expect(w.find('.tray-children').exists()).toBe(true)
-    // 从候选添加子条目（select 变更 → 钮解禁 → 追加）
+    // 补分组名：blur 即时 saveNow 仍被草稿门暂缓（零子条目），不落盘
+    const nameInput = w.find('.tray-row-group .tray-name')
+    await nameInput.setValue('网络工具')
+    await nameInput.trigger('blur')
+    await flushPromises()
+    expect(appSvc.SetTrayMenu).not.toHaveBeenCalled()
+    // 从候选添加子条目（select 变更 → 钮解禁 → 追加即落盘，无需点保存）
     await w.find('.tray-child-select').setValue('command|frpc/start')
     const addBtn = w.findAll('.tray-child-add .btn')[0]
     await addBtn.trigger('click')
-    expect(w.findAll('.tray-child-row')).toHaveLength(1)
-    // 保存：清单含 group 及其 children
-    await w.find('.tray-footer .btn-primary').trigger('click')
     await flushPromises()
+    expect(w.findAll('.tray-child-row')).toHaveLength(1)
+    expect(appSvc.SetTrayMenu).toHaveBeenCalledTimes(1)
     const saved = appSvc.SetTrayMenu.mock.calls[0][0]
     expect(saved[0].type).toBe('group')
+    expect(saved[0].label).toBe('网络工具')
     expect(saved[0].children).toHaveLength(1)
     expect(saved[0].children[0].ref).toBe('frpc/start')
   })

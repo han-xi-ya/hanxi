@@ -11,7 +11,7 @@
 // 再点解除；指针越过 rCancel=244 进入半透明外甩取消态。子环呈现上限 8 项，
 // 超出截断并在 hub 提示（数据层不限——托盘原生子菜单无数量压力）。
 // 拍平开关（twoTier=off）由后端裁决：前端只见到单层数据，子环代码路径整体休眠。
-// 条目与托盘右键菜单共用一份配置（后端 launcher 分发），每次唤出事件重拉。
+// 条目取轮盘专属账（后端 launcher 分发，轮盘独立批后与托盘右键菜单各记各账），每次唤出事件重拉。
 //
 // 几何单一来源在 components/quickmenu/wheelGeometry.ts（纯函数 + 常量），角度
 // 约定 0°=12 点、顺时针；三层结构不变：SVG 画扇区视觉面（楔形绘制留 pad 缝），
@@ -349,7 +349,7 @@ function onWindowKeydown(ev: KeyboardEvent) {
   else dismiss()
 }
 
-// 每次后端唤出弹窗：重拉条目（设置页可能刚改过共用配置）、重放弹出动画、归还键盘焦点。
+// 每次后端唤出弹窗：重拉条目（快捷菜单页可能刚自动保存过轮盘账）、重放弹出动画、归还键盘焦点。
 useWailsEvent('quickmenu:opening', () => {
   entrySeq.value += 1
   active.value = null
@@ -635,7 +635,7 @@ function onGroupActivate(i: number) {
       </template>
       <template v-else>
         <span class="hub-label">暂无条目</span>
-        <span class="hub-meta">与托盘菜单共用配置</span>
+        <span class="hub-meta">轮盘专属配置·与托盘菜单互不影响</span>
         <button type="button" class="hub-action" @click="openSettings">配置条目</button>
       </template>
     </div>

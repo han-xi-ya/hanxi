@@ -1,6 +1,7 @@
 // 快捷菜单模块页特征测试：状态 chip、条目编辑面可见性、空态与"前往设置"导航事件契约。
-// N5-C1 后页面内嵌共享编辑面 TrayItemsEditor（走 AppService 托盘 RPC），按测试 seam
-// 约定补 app 绑定打桩——仅基础设施，断言零改动。
+// N5-C1 后页面内嵌共享编辑面 TrayItemsEditor（走 AppService RPC），按测试 seam 约定补
+// app 绑定打桩；轮盘独立批后本页宿主传 scope='wheel'，条目账改打 Get/SetWheelMenu，
+// 并钉住"不碰托盘账"与"落盘上抛 saved → 预览重拉"两条新语义。
 // 重设计批次：语义断言（RPC 链/两段式/导航事件）零改动；两处纯结构选择器按新 DOM
 // 更新——①阈值参数由 .subtitle 长句改为页头 .qm-params chip 行；②"前往设置页配置"
 // 大钮降为编辑面板页脚链接 .qm-settings-link（navigate 契约与断言语义不变）。
@@ -13,6 +14,7 @@ import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import QuickMenuView from '../QuickMenuView.vue'
+import TrayItemsEditor from '../../components/tray/TrayItemsEditor.vue'
 import { WHEEL_SKIN_STORAGE_KEY } from '../../components/quickmenu/wheelSkin'
 
 const svc = vi.hoisted(() => ({
@@ -25,10 +27,14 @@ const svc = vi.hoisted(() => ({
   SetSkin: vi.fn().mockRejectedValue(new Error('测试打桩：后端皮肤通道未开')),
 }))
 
+// 编辑面双账打桩（轮盘独立批）：本页宿主传 scope='wheel' 走 Get/SetWheelMenu，
+// tray 面同步在册以便断言"零调用"（不串账是本轮核心语义）。
 const traySvc = vi.hoisted(() => ({
   ListTrayMenuOptions: vi.fn().mockResolvedValue([]),
   GetTrayMenu: vi.fn().mockResolvedValue([]),
   SetTrayMenu: vi.fn().mockResolvedValue(undefined),
+  GetWheelMenu: vi.fn().mockResolvedValue([]),
+  SetWheelMenu: vi.fn().mockResolvedValue(undefined),
   PickExeFile: vi.fn().mockResolvedValue(''),
 }))
 
@@ -67,6 +73,7 @@ afterEach(() => {
   svc.SetSkin.mockRejectedValue(new Error('测试打桩：后端皮肤通道未开'))
   traySvc.ListTrayMenuOptions.mockResolvedValue([])
   traySvc.GetTrayMenu.mockResolvedValue([])
+  traySvc.GetWheelMenu.mockResolvedValue([])
   localStorage.clear()
 })
 
@@ -98,6 +105,9 @@ describe('QuickMenuView', () => {
     expect(main.find('.qm-edit-col').exists()).toBe(true)
     expect(main.find('.qm-side-col').exists()).toBe(true)
     expect(main.find('.qm-edit-col .tray-editor').exists()).toBe(true)
+    // 轮盘独立批：宿主以 scope='wheel' 挂编辑面（打轮盘专属账，不与托盘账互扰）
+    expect(w.findComponent(TrayItemsEditor).props('scope')).toBe('wheel')
+    expect(traySvc.GetTrayMenu).not.toHaveBeenCalled()
     expect(main.find('.qm-side-col .wp').exists()).toBe(true)
     // 行为设置与使用说明降为次级折叠区
     expect(w.findAll('.qm-secondary details').length).toBe(2)
@@ -128,10 +138,10 @@ describe('QuickMenuView', () => {
   })
 
   // v3 布局批：「当前条目」只读镜像面板删除，"条目名+机器值+类型可见"改由左列
-  // 编辑面（同源共享组件 TrayItemsEditor，账目就是那份 TrayMenu）承担——选择器
-  // 与文案随宿主迁移，断言语义不变。
+  // 编辑面（同源共享组件 TrayItemsEditor）承担——选择器与文案随宿主迁移，断言语义
+  // 不变；轮盘独立批后这份账是轮盘专属（GetWheelMenu），不再复用托盘账。
   it('条目可见性在编辑面：名称、机器值与类型标记', async () => {
-    traySvc.GetTrayMenu.mockResolvedValue([
+    traySvc.GetWheelMenu.mockResolvedValue([
       { type: 'exe', ref: '', path: 'D:\\tools\\Snipaste.exe', args: '', label: 'Snipaste', enabled: true },
       { type: 'command', ref: 'everything/launch', path: '', args: '', label: '', enabled: true },
     ])
@@ -149,11 +159,25 @@ describe('QuickMenuView', () => {
     const w = await mountReady(status, [])
     // v3：空态引导两处自然在位——轮盘舱空盘示意 + 编辑面自带引导（镜像面板已删）
     expect(w.find('.wp-empty').text()).toContain('还没有条目')
-    expect(w.find('.qm-edit-col .tray-editor > .state-box').text()).toContain('尚未配置托盘条目')
+    expect(w.find('.qm-edit-col .tray-editor > .state-box').text()).toContain('尚未配置轮盘条目')
     // 重设计：跳设置由大钮降为编辑面板页脚链接，navigate 事件契约不变
     await w.find('.qm-settings-link').trigger('click')
     // Host 包裹渲染下 emit 挂在子组件 wrapper 上
     expect(w.findComponent(QuickMenuView).emitted('navigate')?.[0]).toEqual(['/settings/tray'])
+    w.unmount()
+  })
+
+  // 轮盘独立批的机主语义之二：改了自动保存不用按保存钮——编辑面每笔落盘上抛 saved，
+  // 宿主借此重拉预览条目（@saved → reloadAfterSave → ListItems 链不动）。
+  it('实时保存：勾选候选即落 SetWheelMenu，上抛 saved 后预览重拉', async () => {
+    traySvc.ListTrayMenuOptions.mockResolvedValue([{ type: 'command', ref: 'frpc/start', label: '启动 frpc', moduleName: 'frpc' }])
+    const w = await mountReady()
+    const before = svc.ListItems.mock.calls.length
+    await w.find('.qm-edit-col .option-item input').setValue(true)
+    await flushMicrotasks()
+    expect(traySvc.SetWheelMenu).toHaveBeenCalledTimes(1)
+    expect(traySvc.SetTrayMenu).not.toHaveBeenCalled() // 不改托盘账
+    expect(svc.ListItems.mock.calls.length).toBeGreaterThan(before)
     w.unmount()
   })
 

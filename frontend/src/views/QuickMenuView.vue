@@ -2,12 +2,13 @@
 // 快捷菜单模块页：全局右键长按唤出能力的状态、条目预览与就地编辑。
 // v3 布局批（机主授权整页重排，功能零增删）：主角是「条目编辑 ⟷ 轮盘舱」闭环——
 //   页头一行状态条（chip 全绑确认值 refs）→ 双栏主区（左=TrayItemsEditor 编辑主场，
-//   保存钮 sticky 沉底；右=轮盘舱 sticky：预览 + 皮肤，「当前条目」镜像面板已删）
+//   自动保存状态条 sticky 沉底；右=轮盘舱 sticky：预览 + 皮肤，「当前条目」镜像面板已删）
 //   → 行为设置与使用说明沉底并排折叠原位。
 //   断点一律容器查询（页容器实测宽：宽档 C/D 双栏，<840 单列编辑在前+舱紧凑横条，
 //   机主 628 截图批复），页面容器升 wide 1440 档。
-// N5-C1：条目编辑面与托盘右键菜单同挂共享组件 TrayItemsEditor（数据本就是同一份
-// settings.TrayMenu 账），配置改一处两面生效，不再来回跳页。
+// N5-C1：条目编辑面与托盘右键菜单同挂共享组件 TrayItemsEditor；轮盘独立批后本页
+// 传 scope="wheel" 打轮盘专属账（settings.WheelMenu ⇄ Get/SetWheelMenu），与设置页
+// 托盘账各改各的、互不影响，改动实时自动保存无需按钮。
 import { computed, ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
 import type { MenuItem } from '../../bindings/hanxi/internal/modules/quickmenu/models'
@@ -110,7 +111,7 @@ async function toggleTwoTier(on: boolean) {
 
 // N6-C2/C3：只读页也挂同源预览盘（条目一变盘即变）；C1 内嵌编辑面后补写侧闭环
 // ——点击盘格经身份（type+hint/组 label）定位编辑列行并选中，行上出「⇄ 互换」；
-// 选中仅前端高亮，互换落盘仍走既有 SetTrayMenu 保存链（不新增后端写 RPC）。
+// 选中仅前端高亮，互换落盘仍走编辑面既有实时保存链（scope=wheel 时即 SetWheelMenu）。
 const selected = ref<number | null>(null)
 const editorRef = ref<InstanceType<typeof TrayItemsEditor> | null>(null)
 function pickSector(i: number) {
@@ -123,7 +124,7 @@ function pickSector(i: number) {
   const m = items.value[i]
   if (!m || !editorRef.value?.locate({ type: m.type, hint: m.hint ?? '', label: m.label ?? '' })) {
     // 编辑列可能未加载/该扇区刚被删除或未保存——如实提示不静默
-    showToast('已选中扇区，但编辑列表暂未能定位对应行（若条目刚改动请先保存或重试刷新）')
+    showToast('已选中扇区，但编辑列表暂未能定位对应行（若条目刚改动请稍候自动保存完成或重试刷新）')
   }
 }
 // 盘重新拉取后扇区身份可能移位：清扇区选中与行选中，防错指。
@@ -271,22 +272,22 @@ onMounted(async () => {
     </div>
 
     <template v-else>
-      <!-- ② 双栏主区：左=条目编辑主场（保存钮 sticky 沉底），右=轮盘舱（预览+皮肤，宽栏 sticky 常驻） -->
+      <!-- ② 双栏主区：左=条目编辑主场（自动保存状态条 sticky 沉底），右=轮盘舱（预览+皮肤，宽栏 sticky 常驻） -->
       <div class="qm-main">
         <section class="panel qm-edit-col">
           <h2 class="sec-title">条目编辑</h2>
           <p class="sec-note">
-            与「设置→托盘右键菜单」是同一份配置：此处勾选、排序、分组，保存后托盘菜单与轮盘舱预览同时生效。
+            轮盘专属配置，与「设置→托盘右键菜单」各记各账、互不影响：此处勾选、排序、分组只改轮盘。改动实时自动保存，无需按保存钮；分组未补全（无名或零子条目）时该笔暂缓落盘，补全或移除后自动续存。
           </p>
-          <!-- N5-C1：与设置页同挂共享编辑面（同一份 settings.TrayMenu 账），保存后托盘与轮盘同时生效 -->
-          <TrayItemsEditor ref="editorRef" @saved="reloadAfterSave" />
+          <!-- 轮盘独立批：同挂共享编辑面但 scope='wheel' 打轮盘专属账（Get/SetWheelMenu），每次落盘上抛 saved 刷预览 -->
+          <TrayItemsEditor ref="editorRef" scope="wheel" @saved="reloadAfterSave" />
           <div class="qm-edit-foot">
             <!-- 重设计：编辑已内嵌后"前往设置页配置"大钮属冗余入口，降为页脚等效链接（navigate 契约保留） -->
             <button
               type="button"
               class="link-button qm-settings-link"
               @click="emit('navigate', '/settings/tray')"
-            >同一份配置也可在「设置 → 托盘右键菜单」分区里改</button>
+            >任务栏托盘入口请在「设置 → 托盘右键菜单」分区里单独配置</button>
           </div>
         </section>
 
@@ -419,6 +420,7 @@ onMounted(async () => {
               <li>点击条目即刻启动；<kbd>Esc</kbd> 或点击菜单外部（失焦）收起，鼠标离开即停不影响后续操作。</li>
               <li>按住时长与位移容差在上方「轮盘行为与触发参数」里可调：调短更跟手、普通右键易误触，调大反之。</li>
               <li>把条目组织进"分组"后，主盘对应扇区悬停即在盘外圈展开子环（点击扇区可钉住）；子环展开时 <kbd>Esc</kbd> 先收子环，再按收起整个轮盘。</li>
+              <li>条目改动实时自动保存，无需按保存钮；唯一例外是<b>不完整的分组</b>（没起名或还没有子条目）——这类草稿暂缓落盘，补全或把分组移除后自动续存，页脚状态条会如实说明。</li>
               <li>不想选任何条目时，向外甩出盘缘即进入半透明取消态，滑回盘面恢复或 <kbd>Esc</kbd> 收起；点击中心 hub 亦可收起。</li>
               <li>条目"命令"类会先懒初始化对应托管模块；"页面"类会唤出主窗口并导航。</li>
               <li>不需要此能力时，在设置页模块管理中将"快捷菜单"停用即可（全局钩子随停用即时摘除）。</li>
@@ -470,7 +472,7 @@ onMounted(async () => {
 .qm-edit-col, .qm-state { display: flex; flex-direction: column; gap: 8px; }
 .qm-preview-panel { display: flex; flex-direction: column; gap: 6px; }
 
-/* v3 保存钮跟手：编辑列长流时保存条吸底常驻（宿主 scoped :deep 覆层，
+/* v3 状态条跟手：编辑列长流时自动保存状态条吸底常驻（宿主 scoped :deep 覆层，
    TrayItemsEditor 本体零改动；设置页宿主不受波及） */
 .qm-edit-col :deep(.tray-footer) {
   position: sticky;
