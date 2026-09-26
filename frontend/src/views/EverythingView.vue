@@ -16,6 +16,7 @@ import { useAsyncAction } from '../composables/useAsyncAction'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { useEverythingSearch } from '../composables/useEverythingSearch'
+import { sameSnapshot } from '../components/managed/adapter'
 import { getErrorMessage } from '../utils/errors'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
@@ -123,7 +124,8 @@ async function refreshStatus() {
   const generation = ++statusSeq
   try {
     const s = await EverythingAPI.GetStatus()
-    if (generation === statusSeq) snap.value = s
+    // 空转归零（perf，同共享 store 口径）：内容无差异的回包不换快照引用，免每 2.5s 整帧重渲染
+    if (generation === statusSeq && !sameSnapshot(snap.value, s)) snap.value = s
   } catch (e) {
     // 轮询静默失败：保留上次快照即可（自定义视图现状口径；stale 呈现收口于
     // 共享 store 通路，本视图迁移在 P3 打磨批次一并评估）

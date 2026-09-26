@@ -38,7 +38,7 @@ import type {
   ManagedVersionRecord,
   NormalizedProgress,
 } from './adapter'
-import { sameVersionOf } from './adapter'
+import { sameSnapshot, sameVersionOf } from './adapter'
 import { loadManagedVersions } from '../../composables/loadManagedVersions'
 import { usePolling } from '../../composables/usePolling'
 import { useToast } from '../../composables/useToast'
@@ -253,7 +253,10 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
 
   async function refresh(): Promise<void> {
     try {
-      snap.value = (await adapter.getStatus()) ?? snap.value
+      const next = (await adapter.getStatus()) ?? snap.value
+      // 空转归零（perf）：内容级无差异的轮询回包不替换快照引用——21+ 托管视图
+      // 由此在"一切如旧"时整轮零渲染批；有差异（含 RPC 交回 null 后的清空）照常替换。
+      if (!sameSnapshot(snap.value, next)) snap.value = next
       statusError.value = false
       lastStatusAt.value = Date.now()
     } catch (e) {

@@ -331,6 +331,26 @@ export function sameVersionOf<V extends ManagedVersionDialect>(
 }
 
 /**
+ * 快照内容级比对（perf · 轮询空转归零口径）：状态轮询/事件流每轮交回的是
+ * 全新反序列化对象，直接换引用会把快照的全部派生 computed 打脏——即便
+ * 「一切如旧」，托管视图也每 2.5s 整帧重渲染一次。内容相同即视为无新事实，
+ * 跳过引用替换；有任何字段差异（含嵌套方言，如 markeron 的 drawing）照常替换，
+ * 渲染语义与逐字替换完全等价。快照是 Go 结构体序列化的纯 JSON 数据
+ * （标量 + 少量嵌套标量对象/数组），递归逐键比较成本微于一次渲染。
+ */
+export function sameSnapshot(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  const ao = a as Record<string, unknown>
+  const bo = b as Record<string, unknown>
+  const keys = new Set([...Object.keys(ao), ...Object.keys(bo)])
+  for (const k of keys) {
+    if (!sameSnapshot(ao[k], bo[k])) return false
+  }
+  return true
+}
+
+/**
  * 「卸载最后一个版本」如实预告词（机主反馈四 · WindTerm 卸载死锁连动）：
  * 后端 guard 已放行"唯一已装版本即使用中版本"的卸载并在成功后清空 active
  * ——卸载确认后模块回到未安装态。弹卸载二次确认前，adapter 先行探测已装数，

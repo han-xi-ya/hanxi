@@ -14,6 +14,7 @@ import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
+import { sameSnapshot } from '../components/managed/adapter'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
 import { toolStateMeta } from '../constants/status'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -106,7 +107,9 @@ async function loadVersions() {
 
 async function refreshStatus() {
   try {
-    snap.value = await RustDeskAPI.GetStatus()
+    const s = await RustDeskAPI.GetStatus()
+    // 空转归零（perf，同共享 store 口径）：内容无差异的回包不换快照引用，免每 2.5s 整帧重渲染
+    if (!sameSnapshot(snap.value, s)) snap.value = s
   } catch (e) {
     // 轮询静默失败：保留上次快照即可
     console.warn('rustdesk GetStatus failed:', getErrorMessage(e))

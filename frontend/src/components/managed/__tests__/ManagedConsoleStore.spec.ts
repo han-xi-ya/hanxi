@@ -2,6 +2,7 @@ import { defineComponent, h } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ManagedModuleAdapter, ManagedReleaseRecord, ManagedSnapshot, NormalizedProgress } from '../adapter'
+import { sameSnapshot } from '../adapter'
 import { useManagedConsole } from '../store'
 
 const stoppedSnap: ManagedSnapshot = {
@@ -322,5 +323,54 @@ describe('N43 未安装呈现', () => {
     await flushPromises()
     expect(probe.store.notInstalled).toBe(false)
     probe.wrapper.unmount()
+  })
+})
+
+// ---------- perf：轮询空转归零（内容级比对跳过快照引用替换） ----------
+
+describe('ManagedConsoleStore 轮询空转归零', () => {
+  it('内容未变的轮询回包不替换 snap 引用：消费组件整轮零重渲染；变化照常穿透', async () => {
+    vi.useFakeTimers()
+    const { adapter } = fakeAdapter() // getStatus 每轮返回字段全同的新对象（现状即如此）
+    const renders = vi.fn()
+    let store!: ReturnType<typeof useManagedConsole>
+    const Probe = defineComponent({
+      setup() {
+        store = useManagedConsole(adapter)
+        return () => {
+          renders()
+          return h('span', store.snap?.state ?? '')
+        }
+      },
+    })
+    const wrapper = mount(Probe)
+    await flushPromises()
+    expect(store.snap?.state).toBe('stopped') // 首帧装载写入不受门控影响
+
+    const baseline = renders.mock.calls.length
+    await vi.advanceTimersByTimeAsync(2500 * 4 + 1000 * 4)
+    expect(adapter.getStatus).toHaveBeenCalledTimes(6) // 首帧 1 + 14s 窗口内 5 轮周期：RPC 频次零变化
+    expect(renders).toHaveBeenCalledTimes(baseline) // 但内容全同 → 快照引用不换代 → 消费面零渲染批
+
+    ;(adapter.getStatus as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ...stoppedSnap,
+      state: 'running',
+      pid: 4321,
+      startedAt: new Date().toISOString(),
+    })
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(renders).toHaveBeenCalledTimes(baseline + 1) // 真变化照常穿透
+    expect(store.snap?.state).toBe('running')
+    wrapper.unmount()
+  })
+
+  it('sameSnapshot 单测：嵌套方言字段逐层判等、缺字段/标量差异/null 语义如实', () => {
+    expect(sameSnapshot({ state: 'running', drawing: { pen: 'a' } }, { state: 'running', drawing: { pen: 'a' } })).toBe(true)
+    expect(sameSnapshot({ state: 'running', drawing: { pen: 'a' } }, { state: 'running', drawing: { pen: 'b' } })).toBe(false)
+    expect(sameSnapshot({ state: 'running' }, { state: 'running', listenAddr: '' })).toBe(false)
+    expect(sameSnapshot({ tags: ['a', 'b'] }, { tags: ['a'] })).toBe(false)
+    expect(sameSnapshot(null, null)).toBe(true)
+    expect(sameSnapshot({ state: 'running' }, null)).toBe(false)
+    expect(sameSnapshot(null, { state: 'running' })).toBe(false)
   })
 })
