@@ -4,6 +4,7 @@
 // 截断态如实标注、D/A 侧说明、config 顶层键变化标注、全等空态。
 // 批 C 新增：沿链口径整句、恢复生效常驻徽标、窄屏折行的结构近似断言
 // （jsdom 不跑媒体查询，≤640px 视觉溢出归批 D 真机清单核）。
+// 批 D 新增：事件行旧摘要回改呈现（命中标题账换名/推不出原样/tooltip 留原文）。
 // 本件不发 RPC（数据全走 props），无需 mock bindings。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
@@ -27,6 +28,8 @@ interface TimelineProps {
   diffOpen?: string
   diffData?: FileDiff | null
   diffLoading?: boolean
+  files?: TrackedFile[]
+  backupMode?: boolean
 }
 
 function mountTimeline(props: TimelineProps = {}) {
@@ -101,6 +104,20 @@ describe('SnapshotTimeline 事件行', () => {
     })
     expect(wc.find('.fa-scope').text()).toBe('重启生效')
     expect(wc.find('.fa-scope').classes()).toContain('chip-warning')
+  })
+
+  it('批 D 事件行摘要呈现：命中标题账换名、原文常驻 tooltip；备份模式给整拷贝限定语', () => {
+    const w = mountTimeline({ files: [file] })
+    const sums = w.findAll('.fa-sum')
+    expect(sums[0].text()).toBe('被删的便签') // 旧账 memo/memo_9.md → 受保清单标题账
+    expect(sums[0].attributes('title')).toBe('memo/memo_9.md') // 账本原文永远可查
+    // 不喂清单（无账可推）时一字不动——本文件既有用例全依赖此缺省前提
+    expect(mountTimeline().findAll('.fa-sum')[0].text()).toBe('memo/memo_9.md')
+    const wb = mountTimeline({
+      history: [{ revisionId: 'r1', time: '', status: 'M', summary: '30 个文件' }] as FileRevision[],
+      backupMode: true,
+    })
+    expect(wb.find('.fa-sum').text()).toBe('整份拷贝 · 30 个文件')
   })
 
   it('窄屏折行前提的结构断言：徽标与对比/恢复钮同挂 .row-actions 带（按钮位次契约不变）', async () => {

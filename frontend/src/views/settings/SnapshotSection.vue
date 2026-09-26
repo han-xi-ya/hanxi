@@ -10,13 +10,19 @@
 // N33 §0 病灶 A 热修复；备份模式自批 A 起与 git 模式同面可浏览可恢复（P4 解禁）。
 // 批 C：观察窗 50 / 备份 30 两个口径数字全部收进 snapshotLabels 常量单源；
 // 热/重启生效双语义常驻到清单行与时间线行徽标（确认框文案保留但不再独自教学）。
+// 批 D（代码可做部分）：旧摘要回改=呈现层 decorateLegacySummary/backupSummaryNote
+// （账本原文进 tooltip，不伪造变化语义）；P8-A 收口=Git 退出 chip/卡片正文进悬停；
+// 两模式版本容量在列表卡头分别如实（revisionCapNote）。
 import { ref, computed, onMounted } from 'vue'
 import * as SnapshotAPI from '../../../bindings/hanxi/internal/snapshot'
 import type { StatusInfo, Revision, RevisionFile, FilePreview, TrackedFile, FileRevision, FileDiff } from '../../../bindings/hanxi/internal/snapshot/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
-import { BACKUP_KEEP, REVISION_WINDOW, fmtTime, statusLabels } from '../../constants/snapshotLabels'
+import {
+  BACKUP_KEEP, REVISION_WINDOW, backupSummaryNote, decorateLegacySummary, fmtTime,
+  restoreScopeFor, revisionCapNote, statusLabels,
+} from '../../constants/snapshotLabels'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 import SnapshotFileList from './SnapshotFileList.vue'
@@ -56,13 +62,31 @@ const backupMode = computed(() => !!status.value && status.value.mode === 'backu
 
 // §6 两模式同口径 chip：一句话说清"当前是什么引擎 + 容量口径"（P8-A：大白话为主）。
 // 批 C：50/30 裸数字全部走 snapshotLabels 常量单源，措辞不变。
+// 批 D（P8-A 收口）："Git" 等技术名退出 chip 正文进悬停 tooltip；备份侧正文
+// 直书"整份拷贝"这一与 git 模式的本质差异（读时差集后浏览/对比两模式已同面）。
 const modeChip = computed(() => {
   if (!status.value) return '正在读取快照状态…'
   if (!status.value.enabled) return '已停用 · 不再自动留版本'
   return status.value.mode === 'git'
-    ? `版本历史（Git · 可浏览最近 ${REVISION_WINDOW} 版）`
-    : `版本历史（备份 · 保留最近 ${BACKUP_KEEP} 份）`
+    ? `版本历史（可浏览最近 ${REVISION_WINDOW} 版）`
+    : `版本历史（整份拷贝 · 保留最近 ${BACKUP_KEEP} 份）`
 })
+
+/** chip 悬停技术细节（P8-A：大白话为主，引擎名与切回条件收在这里）。 */
+const modeChipTip = computed(() => {
+  if (!status.value || !status.value.enabled) return ''
+  return status.value.mode === 'git'
+    ? '版本存放在本机 Git 仓库：逐文件对比、改名可追溯'
+    : '未检测到可用的 Git：按时间戳目录整份备份，装回 Git 后下次启动自动切回'
+})
+
+/**
+ * 版本/事件行摘要呈现（批 D 旧摘要回改）：git 旧账文件名串按现有账推中文名
+ * （推不出原样，账本原文走 tooltip）；备份"N 个文件"补整拷贝限定语。
+ */
+function summaryText(raw: string): string {
+  return backupMode.value ? backupSummaryNote(raw) : decorateLegacySummary(raw, trackedFiles.value)
+}
 
 const modeChipClass = computed(() => {
   if (!status.value) return 'chip-neutral'
@@ -181,6 +205,11 @@ async function showFileContent(file: RevisionFile) {
   }
 }
 
+/** 热/冷恢复判据单源 restoreScopeFor（批 D：与常驻徽标同一口径，不再各自 startsWith）。 */
+function isHotRestore(path: string): boolean {
+  return restoreScopeFor(path) === 'hot'
+}
+
 /** 时间线（新→旧）里第一条非 D 事件 = 该文件的最后存在版本（§0.3-A 恢复目标）。 */
 function resolveRestoreTarget(events: FileRevision[]): FileRevision | null {
   for (const e of events) {
@@ -249,7 +278,7 @@ async function restoreConfirm(path: string, target: FileRevision, shownStatus: s
   return confirm({
     title: `恢复「${path}」到历史版本？`,
     description: (deletedNote ? '该版本已删除此文件，将回退到它删除前的最后存在版本。' : '')
-      + (path.startsWith('memo/')
+      + (isHotRestore(path)
         ? '该便签将即时生效（无需重启）。当前内容会被该版本覆盖。'
         : '文件将写回数据盘，重启 Hanxi 后生效。当前内容会被该版本覆盖。'),
     confirmLabel: '恢复',
@@ -265,7 +294,7 @@ async function restoreConfirm(path: string, target: FileRevision, shownStatus: s
 async function runRestore(path: string, target: FileRevision) {
   try {
     await SnapshotAPI.CheckpointService.RestoreFile(target.revisionId, path)
-    showToast(path.startsWith('memo/') ? '便签已热恢复' : '已写回磁盘，重启 Hanxi 后生效')
+    showToast(isHotRestore(path) ? '便签已热恢复' : '已写回磁盘，重启 Hanxi 后生效')
     await refresh()
     if (selectedPath.value) await selectFile(selectedPath.value)
   } catch (e: unknown) {
@@ -302,7 +331,7 @@ async function restoreOne(file: RevisionFile) {
 
   const accepted = await confirm({
     title: `恢复「${file.path}」到该历史版本？`,
-    description: file.path.startsWith('memo/')
+    description: isHotRestore(file.path)
       ? '该便签将即时生效（无需重启）。当前内容会被该版本覆盖。'
       : '文件将写回数据盘，重启 Hanxi 后生效。当前内容会被该版本覆盖。',
     confirmLabel: '恢复',
@@ -316,7 +345,7 @@ async function restoreOne(file: RevisionFile) {
   if (!accepted) return
   try {
     await SnapshotAPI.CheckpointService.RestoreFile(rev.id, file.path)
-    showToast(file.path.startsWith('memo/') ? '便签已热恢复' : '已写回磁盘，重启 Hanxi 后生效')
+    showToast(isHotRestore(file.path) ? '便签已热恢复' : '已写回磁盘，重启 Hanxi 后生效')
     await refresh()
   } catch (e: unknown) {
     showToast(`恢复失败: ${getErrorMessage(e)}`)
@@ -330,7 +359,7 @@ onMounted(refresh)
   <section class="page">
     <PageHeader title="数据与存储" subtitle="备份与历史版本：配置与便签每次落定自动留一个可回滚的版本，全程本机静默，永不上传。">
       <template #actions>
-        <span class="chip" :class="modeChipClass">{{ modeChip }}</span>
+        <span class="chip" :class="modeChipClass" :title="modeChipTip">{{ modeChip }}</span>
       </template>
     </PageHeader>
 
@@ -338,7 +367,7 @@ onMounted(refresh)
       <label class="setting-row setting-row-tappable">
         <span class="setting-main">
           <span class="setting-name">自动保留历史版本</span>
-          <span class="setting-desc">窗口失焦、空闲或退出时静默快照 config.json、模块状态与便签；关闭后立即停止</span>
+          <span class="setting-desc">窗口失焦、空闲或退出时静默快照工作台设置、模块状态与便签；关闭后立即停止</span>
         </span>
         <input v-model="enabled" type="checkbox" class="switch" :disabled="savingPrefs" @change="savePrefs" />
       </label>
@@ -385,8 +414,10 @@ onMounted(refresh)
     <div v-if="backupMode" class="card backup-note">
       <span class="backup-icon"><AppIcon name="hard-drive" :size="18" /></span>
       <div>
-        <div class="backup-title">当前为本机备份模式</div>
-        <div class="backup-desc">未检测到可用的 Git（或被商店存根占位），历史版本以时间戳备份目录形式滚动保留最近 {{ BACKUP_KEEP }} 份；浏览与单文件恢复照常可用（改名会如实呈现为独立的新增/删除）。</div>
+        <!-- P8-A/§6：降级原因（未检测到 Git）退出正文进悬停；§6"打开文件夹找"翻正为
+             有面子的第二通道——文案指向偏好卡常驻的「打开目录」，不另设重复按钮 -->
+        <div class="backup-title" :title="modeChipTip">当前为本机备份模式</div>
+        <div class="backup-desc">每次留整份拷贝，按日期命名滚动保留最近 {{ BACKUP_KEEP }} 份；版本浏览、行级对比与单文件恢复照常可用（没有改名跟踪，改名会如实呈现为独立的新增/删除）。想手工翻文件，点上方「打开目录」即可进入备份文件夹。</div>
       </div>
     </div>
 
@@ -407,6 +438,8 @@ onMounted(refresh)
           :diff-open="diffOpen"
           :diff-data="diffData"
           :diff-loading="diffLoading"
+          :files="trackedFiles"
+          :backup-mode="backupMode"
           @toggle-diff="toggleDiff"
           @restore="restoreRevision"
         />
@@ -416,7 +449,7 @@ onMounted(refresh)
     <div class="card">
       <div class="card-head">
         <span class="card-title">版本列表</span>
-        <span class="card-meta">{{ revisions.length ? `共 ${revisions.length} 个版本（最多展示 ${REVISION_WINDOW}）` : '' }}</span>
+        <span class="card-meta">{{ revisions.length ? `共 ${revisions.length} 个版本（${revisionCapNote(backupMode)}）` : '' }}</span>
       </div>
       <div v-if="loading" class="hist-empty">正在读取历史版本…</div>
       <div v-else-if="!revisions.length" class="hist-empty">
@@ -433,7 +466,8 @@ onMounted(refresh)
         <tbody>
           <tr v-for="rev in revisions" :key="rev.id">
             <td class="mono">{{ fmtTime(rev.time) }}</td>
-            <td class="summary-cell" :title="rev.summary">{{ rev.summary }}</td>
+            <!-- 批 D 旧摘要回改：正文能推则推（中文名/标题），tooltip 永留账本原文 -->
+            <td class="summary-cell" :title="rev.summary">{{ summaryText(rev.summary) }}</td>
             <td>
               <button class="btn btn-ghost btn-small" @click="openPreview(rev)">预览</button>
             </td>
@@ -463,7 +497,7 @@ onMounted(refresh)
                   <button class="btn btn-secondary btn-small" @click="restoreOne(f)">{{ f.status === 'D' ? '恢复被删内容' : '恢复' }}</button>
                 </span>
               </div>
-              <div v-if="!previewFiles.length" class="hist-empty">该版本没有可展示的白名单文件。</div>
+              <div v-if="!previewFiles.length" class="hist-empty">该版本没有可展示的受保文件。</div>
             </div>
             <div v-if="previewDetail" class="preview-pane">
               <div class="preview-head">

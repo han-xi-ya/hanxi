@@ -2,9 +2,13 @@
 // 按文件浏览（N33 批 A 立链、批 B 拆分后行为零回退：清单分组/时间线切换/行级对比/
 // 恢复解算链——断言穿过 SnapshotFileList/SnapshotTimeline 两子件的组合渲染）、
 // 预览弹窗文件清单与恢复确认链（mock 打桩范式照 SettingsSections.spec）。
+// 批 D 追加：旧摘要呈现回改（版本号串→能推则推+tooltip 留原文）、备份摘要
+// 整拷贝限定语、两模式版本容量整句、P8-A chip 正文去 Git 化（技术名进悬停）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SnapshotSection from '../SnapshotSection.vue'
+import { decorateLegacySummary } from '../../../constants/snapshotLabels'
+import type { TrackedFile } from '../../../../bindings/hanxi/internal/snapshot/models'
 import { useToast } from '../../../composables/useToast'
 import { useConfirm } from '../../../composables/useConfirm'
 
@@ -71,11 +75,33 @@ describe('历史版本分区', () => {
     expect(w.text()).toContain('数据与存储') // 分区名机主拍板：备份/历史类归数据侧
     const switches = w.findAll('.switch')
     expect((switches[0].element as HTMLInputElement).checked).toBe(true)
-    expect(w.text()).toContain('版本历史（Git') // §6 批 B 新 chip 口径（模式+容量一句话说清）
+    expect(w.text()).toContain('版本历史（可浏览最近 50 版）') // §6 口径 + 批 D P8-A：正文去 Git 化
+    expect(w.find('.chip').attributes('title')).toContain('Git') // 技术名收进悬停 tooltip
     expect(w.text()).toContain('D:\\hx\\.snapshots')
     const rows = w.findAll('tbody tr')
     expect(rows).toHaveLength(2)
-    expect(rows[0].text()).toContain('config.json, memo/a.md')
+    // 批 D 旧摘要回改：config.json 命中静态名表推为"工作台设置"；memo/a.md
+    // 无账可推（本例未喂 ListFiles）原样保留；账本原文永远留在 tooltip
+    expect(rows[0].findAll('td')[1].text()).toBe('工作台设置、memo/a.md')
+    expect(rows[0].findAll('td')[1].attributes('title')).toBe('config.json, memo/a.md')
+    expect(w.text()).toContain('最多展示最近 50 版') // 版本列表卡头容量整句（git 档）
+  })
+
+  it('旧摘要回改纯函数：命中换名、推不出原样、非文件名形态不动（P7-A 不装新不伪造）', () => {
+    const files = [
+      { path: 'memo/memo_9.md', display: '购物清单', group: 'memo', revisions: 1, lastChange: '', alive: true },
+      { path: 'state/ocr.json', display: 'ocr.json', group: 'state', revisions: 1, lastChange: '', alive: true },
+    ] as TrackedFile[]
+    // 三类来源各命中一位；"等 N 个文件"后缀原样保留
+    expect(decorateLegacySummary('config.json, ocr.json, memo_9.md 等 8 个文件', files))
+      .toBe('工作台设置、文字识别、购物清单 等 8 个文件')
+    // 全推不出：连分隔符都不动（不制造"看起来换过脸"的假象）
+    expect(decorateLegacySummary('live.json, memo_1.md', files)).toBe('live.json, memo_1.md')
+    // 备份计数句/未来新式整句/空串：不命中文件名形态，一律原样
+    expect(decorateLegacySummary('30 个文件', files)).toBe('30 个文件')
+    expect(decorateLegacySummary('删除了便签《购物清单》；修改了 文字识别', files))
+      .toBe('删除了便签《购物清单》；修改了 文字识别')
+    expect(decorateLegacySummary('', files)).toBe('')
   })
 
   it('无版本时空态给出引导文案', async () => {
@@ -92,14 +118,27 @@ describe('历史版本分区', () => {
     snapSvc.ListFiles.mockResolvedValue(tracked)
     const w = await mountView()
     expect(w.text()).toContain('本机备份模式')
-    expect(w.text()).toContain('版本历史（备份 · 保留最近 30 份）') // §6 备份 chip 口径
+    expect(w.text()).toContain('版本历史（整份拷贝 · 保留最近 30 份）') // §6 备份 chip 口径（批 D 直书整拷贝）
+    expect(w.find('.chip').attributes('title')).toContain('Git') // P8-A：降级原因收进悬停
     expect(w.text()).toContain('最近 30 份')
+    expect(w.text()).toContain('最多展示最近 30 份') // 版本列表卡头容量整句（备份档如实）
     expect(snapSvc.ListRevisions).toHaveBeenCalled()
     expect(snapSvc.ListFiles).toHaveBeenCalled()
     expect(w.findAll('tbody tr')).toHaveLength(2)
     expect(w.findAll('.fa-file')).toHaveLength(3)
     await w.findAll('.btn-small').find((b) => b.text().includes('打开目录'))!.trigger('click')
     expect(snapSvc.OpenHistoryDir).toHaveBeenCalled()
+  })
+
+  it('备份模式摘要如实（批 D）："N 个文件"是总文件数，补整拷贝限定语、原文留 tooltip', async () => {
+    stubGitStatus({ mode: 'backup', gitAvailable: false })
+    snapSvc.ListRevisions.mockResolvedValue([
+      { id: '20260917-143000', time: '2026-09-17T14:30:00+08:00', summary: '30 个文件' },
+    ])
+    const w = await mountView()
+    const cell = w.findAll('tbody tr')[0].findAll('td')[1]
+    expect(cell.text()).toBe('整份拷贝 · 30 个文件')
+    expect(cell.attributes('title')).toBe('30 个文件')
   })
 
   // ---------- N33 批 A：按文件浏览 ----------
@@ -132,6 +171,9 @@ describe('历史版本分区', () => {
     // 批 C：双语义常驻——便签行"即时生效"徽标在组合视图中同样成立，
     // 时间线头沿链口径整句与清单窗内整句各说各话（不硬统一数字）
     expect(evRows[0].text()).toContain('即时生效')
+    // 批 D 旧摘要回改上到时间线行：memo 尾段命中受保清单标题账，原文留 tooltip
+    expect(evRows[1].find('.fa-sum').text()).toBe('被删的便签')
+    expect(evRows[1].find('.fa-sum').attributes('title')).toBe('memo/memo_9.md')
     expect(w.find('.fa-detail-head').text()).toContain('共 2 条版本事件（跨改名沿用）')
     expect(rows[0].find('.fa-count').text()).toBe('最近 2 次变化')
     expect(rows[1].find('.fa-scope').text()).toBe('重启生效') // config.json 行

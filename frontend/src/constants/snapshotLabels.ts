@@ -6,6 +6,8 @@
 // memo 文件走后端已注入的标题 resolver（Display），不在此表。
 // 批 C 追加：观察窗/份数口径常量为全前端唯一数字源（散落裸数字一律经此插值），
 // 计数整句与恢复生效语义徽标也单源在此（清单行与时间线行共用同一判组口径）。
+// 批 D 追加：旧摘要显示回改（decorateLegacySummary/backupSummaryNote）与
+// 两模式版本容量整句（revisionCapNote）——只动呈现、不动账本原文。
 
 import type { TrackedFile } from '../../bindings/hanxi/internal/snapshot/models'
 
@@ -78,6 +80,65 @@ export function historyCountNote(m: number): string {
 /** 观察窗裸数字句式的单源出口（超窗提示/上限 chip 共用，措辞一致）。 */
 export function windowCapNote(): string {
   return `仅展示最近 ${REVISION_WINDOW} 版`
+}
+
+/** 版本列表卡头容量整句（批 D：两模式容量本就不同，git 观察窗 / 备份滚动份数）。 */
+export function revisionCapNote(backup: boolean): string {
+  return backup ? `最多展示最近 ${BACKUP_KEEP} 份` : `最多展示最近 ${REVISION_WINDOW} 版`
+}
+
+// ---------- 旧摘要回改（N33 批 D，P7-A：如实回落、能推则推、推不出不伪造） ----------
+
+/** 旧式摘要 token 字符集：文件名/相对路径形态；句子常见的空格、；《》+− 等一概不认。 */
+const legacySummaryTokenRe = /^[\p{L}\p{N}_.\-/]+$/u
+
+/**
+ * 旧式「文件名串」摘要的显示回改（只动呈现，不篡改账本——悬停 tooltip 永远给原文）：
+ * git 模式历史提交摘要写死为 `a.json, b.md 等 N 个文件`（整句化只惠及新 commit，
+ * 旧账不换脸是 §5/P7-A 既定口径），渲染期按**现有账**能推则推——config/state 查
+ * 中文名表、memo/其余按受保清单尾段命中后端标题；推不出的 token 原样保留。
+ * 绝不伪造"删除了/修改了"等变化语义与行数计数（旧账里没有那一位）。
+ * 非文件名形态（新式整句、备份 `N 个文件` 计数句）不命中模式，原样返回。
+ */
+export function decorateLegacySummary(raw: string, files: TrackedFile[]): string {
+  if (!raw) return raw
+  let body = raw
+  let suffix = ''
+  const sm = / 等 \d+ 个文件$/.exec(raw)
+  if (sm) {
+    body = raw.slice(0, raw.length - sm[0].length)
+    suffix = sm[0]
+  }
+  const tokens = body.split(', ')
+  if (!tokens.length || !tokens.every((t) => legacySummaryTokenRe.test(t))) return raw
+  // 至少要有一个带扩展名的文件名才是旧账形态；"30 个文件"这类计数句不是
+  if (!tokens.some((t) => /\.(json|md)$/.test(t))) return raw
+  const displayByPath = new Map<string, string>()
+  for (const f of files) {
+    const name = fileDisplay(f)
+    displayByPath.set(f.path, name)
+    displayByPath.set(f.path.split('/').pop() ?? f.path, name)
+  }
+  const mapped = tokens.map((t) => {
+    const known = displayByPath.get(t) ?? displayByPath.get(t.split('/').pop() ?? t)
+    if (known) return known
+    if (t.includes('/')) return t // 带目录且不在受保清单：无账可推，原样
+    if (t === 'config.json') return labelForPath(t) ?? t
+    if (t.endsWith('.json')) return stateLabel(t) ?? t
+    return t // memo_<id>.md 出窗：标题是后端账，前端无从伪造，如实留文件名
+  })
+  if (!mapped.some((v, i) => v !== tokens[i])) return raw // 一个都没推进：不动原文
+  return mapped.join('、') + suffix
+}
+
+/**
+ * 备份模式版本摘要限定语："N 个文件"是该份**总文件数**不是变更数（逐版
+ * 新增/修改/删除计数要等后端读时差集摘要落地），先行如实声明整拷贝语义。
+ * 非该形态（"备份目录"清单兜底、未来整句化结果）不动。
+ */
+export function backupSummaryNote(raw: string): string {
+  if (!/^\d+ 个文件$/.test(raw)) return raw
+  return `整份拷贝 · ${raw}`
 }
 
 /**

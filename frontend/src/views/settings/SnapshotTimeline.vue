@@ -7,23 +7,38 @@
 // 数据与恢复动作全在父级（SnapshotSection 编排），本件只管呈现与抛事件。
 // 批 C：行上常驻恢复生效徽标（memo=即时 / config·state=重启，与清单行同源判组）；
 // 头部给"共 M 条版本事件（跨改名沿用）"沿链口径整句（与清单窗内口径不硬统一）；
+// 批 D：事件行旧式文件名串摘要按现有账回改显示（父级喂受保清单与模式标志），
+// 账本原文常驻 tooltip，推不出一律原样，不伪造变化语义。
 // ≤640px 事件行折行、说明行整行——动作钮与徽标同带，恢复入口一步可达。
 import { computed, ref, watch } from 'vue'
 import type { FileDiff, FileRevision, TrackedFile } from '../../../bindings/hanxi/internal/snapshot/models'
 import { capRender, diffLines, diffStats, foldContext, type DiffSegment } from '../../utils/textdiff'
 import {
-  REVISION_WINDOW, changedConfigKeys, fileDisplay, fmtTime, historyCountNote,
-  restoreScopeFor, restoreScopeLabels, statusLabels, windowCapNote,
+  REVISION_WINDOW, backupSummaryNote, changedConfigKeys, decorateLegacySummary,
+  fileDisplay, fmtTime, historyCountNote, restoreScopeFor, restoreScopeLabels,
+  statusLabels, windowCapNote,
 } from '../../constants/snapshotLabels'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   file: TrackedFile | null
   history: FileRevision[]
   loading: boolean
   diffOpen: string
   diffData: FileDiff | null
   diffLoading: boolean
-}>()
+  /** 受保清单（批 D 旧摘要回改的 memo 标题账来源；缺省空表=只走静态名表） */
+  files?: TrackedFile[]
+  /** 备份模式：摘要"N 个文件"补整拷贝限定语而非按文件名串回改 */
+  backupMode?: boolean
+}>(), {
+  files: () => [],
+  backupMode: false,
+})
+
+/** 事件行摘要呈现（批 D 旧摘要回改）：能按现有账推则推，推不出原样；tooltip 留原文。 */
+function rowSummary(raw: string): string {
+  return props.backupMode ? backupSummaryNote(raw) : decorateLegacySummary(raw, props.files)
+}
 
 const emit = defineEmits<{
   (e: 'toggleDiff', row: FileRevision): void
@@ -97,7 +112,7 @@ function expandFold(idx: number) {
         <div class="fa-ev-row">
           <span class="file-st" :class="`st-${row.status}`">{{ statusLabels[row.status] ?? row.status }}</span>
           <span class="mono fa-time">{{ fmtTime(row.time) }}</span>
-          <span class="fa-sum" :title="row.summary">{{ row.summary }}</span>
+          <span class="fa-sum" :title="row.summary">{{ rowSummary(row.summary) }}</span>
           <span class="row-actions">
             <!-- 生效语义常驻在恢复钮旁（批 C）：点了才在确认框里读到，晚了 -->
             <span v-if="scopeBadge" class="chip fa-scope" :class="scopeBadge.chip">{{ scopeBadge.text }}</span>
