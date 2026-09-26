@@ -177,36 +177,6 @@ func TestPortableLayoutAnchor(t *testing.T) {
 	}
 }
 
-// importTagGuardDir 为秒级导入兜底 tag 预铺查重碰撞目录：从首导出反解的
-// 兜底秒起，向后覆盖 5 分钟（前向余量容忍调度抢占，后沿余量容忍时钟微步）。
-const importTagGuardBack, importTagGuardFwd = 5, 300
-
-// preseedImportedTags 把 [base-back, base+fwd] 各秒的兜底目标目录
-// （everything_vimported-<秒>）预先造出来。ImportLocal 的查重分支只认
-// os.Stat(targetDir) 存在与否，空目录即可命中，不污染本用例后续断言
-// （兜底目录沿历史口径不参与 ListInstalled，且本用例不再调用 ListInstalled）。
-func preseedImportedTags(t *testing.T, versionsDir string, base time.Time) {
-	t.Helper()
-	for d := -importTagGuardBack; d <= importTagGuardFwd; d++ {
-		tag := "imported-" + base.Add(time.Duration(d)*time.Second).Format("20060102-150405")
-		if err := os.MkdirAll(filepath.Join(versionsDir, dirPrefix+tag), 0755); err != nil {
-			t.Fatalf("预铺兜底目录 %s: %v", tag, err)
-		}
-	}
-}
-
-// parseImportedStamp 反解导入兜底版本号（"imported-20060102-150405"，
-// importVersionTag 的 time.Now 秒级形态）中的时间戳；真实 FileVersion
-// 形态（数字版本）返回 ok=false——那种 tag 天然稳定，无需预铺。
-func parseImportedStamp(version string) (time.Time, bool) {
-	stamp, found := strings.CutPrefix(version, "imported-")
-	if !found {
-		return time.Time{}, false
-	}
-	parsed, err := time.ParseInLocation("20060102-150405", stamp, time.Local)
-	return parsed, err == nil
-}
-
 func TestImportLocal(t *testing.T) {
 	versionsDir := t.TempDir()
 	m := NewManager(versionsDir)
@@ -249,16 +219,28 @@ func TestImportLocal(t *testing.T) {
 		t.Errorf("meta.json 未落盘: %v", err)
 	}
 
-	// 重复导入同一版本应被拒绝。假 PE 读不到 FileVersion，兜底 tag 取
-	// time.Now 秒级时间戳：旧写法直接二次调用，只赌"两次调用恰在同一秒"，
-	// 跨秒即生成新 tag 合法落位、断言假红（-count=20 必现级 flake）。改为
-	// 从首导出 tag 反解秒并预铺其后各秒兜底目录，让第二次调用必然命中产品
-	// 真实的"目标目录已存在 → 拒绝"查重分支，确定性不赌时钟。
-	if base, ok := parseImportedStamp(info.Version); ok {
-		preseedImportedTags(t, versionsDir, base)
-	}
+	// 重复导入同一源应被拒绝——确定性语义：假 PE 读不到 FileVersion，兜底
+	// tag 为源指纹（绝对路径+尺寸+修改时刻哈希），两次调用 tag 必相同，
+	// 第二次天然撞进"目标目录已存在 → 拒绝"查重分支。旧秒级时间戳形态靠
+	// 预铺目录窗口模拟查重（跨秒即假红的 flake 源头），随产品语义修正一并
+	// 作废，本断言不再赌时钟也不需预铺。
 	if _, err := m.ImportLocal(src); err == nil {
 		t.Error("重复导入应报错")
+	} else if !strings.Contains(err.Error(), src) && !strings.Contains(err.Error(), info.Dir) {
+		// 兜底目录不进版本面板，报错必须自带目录路径给用户自助清理的抓手
+		t.Errorf("兜底查重报错应指明残留目录: %v", err)
+	}
+
+	// 源内容真变化（exe 修改时刻漂移）→ 指纹更新 → 合法另立新目录
+	if err := os.Chtimes(filepath.Join(src, "Everything.exe"), time.Now(), time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	info2, err := m.ImportLocal(src)
+	if err != nil {
+		t.Fatalf("源变化后重复导入被误拦: %v", err)
+	}
+	if info2.Version == info.Version {
+		t.Errorf("源内容变化后 tag 应更新，两次相同: %s", info2.Version)
 	}
 
 	// 源目录不含 exe → 报错

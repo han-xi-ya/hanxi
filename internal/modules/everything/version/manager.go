@@ -80,7 +80,7 @@ func (m *Manager) ListRemote() ([]EverythingRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描）。
 // 目录命名 everything_vX.Y.Z（token 含 v 前缀，与历史布局一致）；
-// token 剥 v 后仅接受 x.y.z 数字起头形状（imported-时间戳 等导入兜底目录
+// token 剥 v 后仅接受 x.y.z 数字起头形状（imported-指纹 等导入兜底目录
 // 沿历史口径不列入）；exe 缺失/为空视为损坏安装跳过（配置与索引库若损坏属
 // Everything 运行期问题，不在此拦截）。
 // 排序收口在本层：Tree 按目录令牌（v 前缀）做数值分段比较会退化字典序
@@ -338,7 +338,7 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 // （v1.5.0.1422b → 1.5.0.1422b，与原目录名剥离 everything_v 前缀的口径一致）。
 // 刻意要求 v 前缀（原 dirNameRe `^everything_v[0-9]...` 同款严格）：
 // everything_1.2.3 之类无前缀外来目录不列入（列了也无法按裸版本 Remove）；
-// everything_vimported-<时间戳> 之类导入兜底目录沿历史口径不列入。
+// everything_vimported-<指纹> 之类导入兜底目录沿历史口径不列入。
 func versionFromToken(token string) (string, bool) {
 	rest, hadV := strings.CutPrefix(strings.TrimSpace(token), "v")
 	if hadV && plainVersionRe.MatchString(rest) {
@@ -443,9 +443,14 @@ func (m *Manager) ImportLocal(srcDir string) (EverythingVersionInfo, error) {
 		return EverythingVersionInfo{}, err
 	}
 
-	version := importVersionTag(srcExe)
+	version := importVersionTag(srcExe, fi)
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {
+		if strings.HasPrefix(version, importedTagPrefix) {
+			// 兜底目录沿历史口径不进版本面板——查重报错必须自带目录路径，
+			// 否则用户面对"先卸载"指引无处下手（面板里没有这一行）。
+			return EverythingVersionInfo{}, fmt.Errorf("该源已导入过（兜底版本 %s），先手动删除目录再重试：%s", version, targetDir)
+		}
 		return EverythingVersionInfo{}, fmt.Errorf("版本 %s 已安装，请先卸载再导入", version)
 	}
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
@@ -482,8 +487,11 @@ func (m *Manager) ImportLocal(srcDir string) (EverythingVersionInfo, error) {
 		}
 	}
 
+	// 一次取值双用：账本落盘与返回结构共享同一时间戳，杜绝跨秒分裂
+	// （面板刷新前读 meta、刷新后读列表，两处 installedAt 显示不一致）。
+	installedAt := time.Now().Format("2006-01-02 15:04:05")
 	_ = writeJSON(filepath.Join(targetDir, "meta.json"), map[string]any{
-		"installedAt": time.Now().Format("2006-01-02 15:04:05"),
+		"installedAt": installedAt,
 		"isImport":    true,
 		"source":      srcDir,
 		"copied":      strings.Join(copied, ", "),
@@ -494,7 +502,7 @@ func (m *Manager) ImportLocal(srcDir string) (EverythingVersionInfo, error) {
 		ExePath:     filepath.Join(targetDir, filepath.Base(srcExe)),
 		Dir:         targetDir,
 		Size:        dirSize(targetDir, fi.Size()),
-		InstalledAt: time.Now().Format("2006-01-02 15:04:05"),
+		InstalledAt: installedAt,
 		IsImport:    true,
 		Source:      srcDir,
 	}, nil
@@ -512,14 +520,29 @@ func isTempLike(name string) bool {
 	return false
 }
 
+// importedTagPrefix 导入兜底版本 tag 前缀（真实 FileVersion 不可得时用）。
+const importedTagPrefix = "imported-"
+
 // importVersionTag 读取导入源的版本标签：FileVersion 探测失败（非 Windows
-// 平台或资源缺失）时时间戳兜底，与 frpc ImportLocal 同构。
-func importVersionTag(srcExe string) string {
+// 平台或资源缺失）时以**源指纹**兜底——绝对路径 + exe 字节数 + 修改时刻做
+// SHA-256 截 8 hex（目录命名判重指纹，非安全摘要，截断够用）。
+// 旧形态 "imported-<秒级时间戳>" 已废：同一源跨秒重复导入 tag 各不相同，
+// 查重永不命中，everything_vimported-* 孤儿目录互积残留（ListInstalled 沿
+// 历史口径不列入、Remove 按裸版本也清不掉）。确定性 tag 让"重复导入同一源"
+// 天然撞进 ImportLocal 的目录查重分支被拒；源真换了内容（尺寸/时刻变化）
+// 则指纹自然更新、不误拦。
+func importVersionTag(srcExe string, fi os.FileInfo) string {
 	version, vErr := versioninfo.FileVersion(srcExe)
-	if vErr != nil || !plainVersionRe.MatchString(version) {
-		return "imported-" + time.Now().Format("20060102-150405")
+	if vErr == nil && plainVersionRe.MatchString(version) {
+		return version
 	}
-	return version
+	abs, aErr := filepath.Abs(srcExe)
+	if aErr != nil {
+		abs = filepath.Clean(srcExe)
+	}
+	h := sha256.New()
+	fmt.Fprintf(h, "%s|%d|%d", abs, fi.Size(), fi.ModTime().UnixNano())
+	return importedTagPrefix + hex.EncodeToString(h.Sum(nil))[:8]
 }
 
 func copyFileTo(src, dst string) error {
