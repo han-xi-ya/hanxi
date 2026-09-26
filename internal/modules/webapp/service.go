@@ -3,7 +3,8 @@
 // WebviewWindow 打开外部 URL（ddnsgo 控制台窗形态）；X 关闭即真销毁，
 // "收起"隐藏驻留 + 空闲 TTL 真销毁（quickmenu 踩坑 #53 范式），登录 cookie
 // 落共享 WebView2 user data folder，销毁不丢登录。
-// 每条网址动态映射为一个 TrayCommand，经既有托盘/轮盘条目配置直达。
+// 每条网址动态映射为一个 TrayCommand，经既有托盘/轮盘条目配置直达；
+// 直达点击按条目 DefaultOpen（独立窗/浏览器，空=独立窗）分派。
 package webapp
 
 import (
@@ -31,6 +32,14 @@ const (
 	minWindowHeight     = 520
 	collapseIdleTTL     = 5 * time.Minute
 	windowNamePrefix    = "webapp-"
+)
+
+// 条目默认打开形态（WebAppEntry.DefaultOpen 取值域）：空串等价 window——
+// 存量 JSON 缺键零迁移即保持现行为。写侧闸门严格（SetEntryDefaultOpen 拒非法值），
+// 读侧分派宽松（盘上出现手改坏值一律回落 window，不炸点击链）。
+const (
+	DefaultOpenWindow  = "window"
+	DefaultOpenBrowser = "browser"
 )
 
 // winHandle 单条目存活窗登记：显隐状态机字段 shown 供锁内判定，
@@ -80,11 +89,12 @@ func (s *WebAppService) ListEntries() ([]WebAppEntryView, error) {
 	views := make([]WebAppEntryView, 0, len(entries))
 	for _, e := range entries {
 		v := WebAppEntryView{
-			ID:        e.ID,
-			Name:      e.Name,
-			URL:       e.URL,
-			Icon:      e.Icon,
-			CreatedAt: e.CreatedAt,
+			ID:          e.ID,
+			Name:        e.Name,
+			URL:         e.URL,
+			Icon:        e.Icon,
+			CreatedAt:   e.CreatedAt,
+			DefaultOpen: e.DefaultOpen,
 		}
 		if h, ok := s.wins[e.ID]; ok {
 			v.WindowOpen = h.shown
@@ -188,6 +198,52 @@ func (s *WebAppService) OpenExternal(entryID string) error {
 		return fmt.Errorf("条目不存在或已被删除")
 	}
 	return s.openURL(entry.URL)
+}
+
+// SetEntryDefaultOpen 设置条目默认打开形态（"window"=独立网页窗 |
+// "browser"=系统默认浏览器 | ""=重置回默认 window）。轮盘/托盘直达点击
+// 按此设定分派；GUI 行内两颗显式钮（Open/OpenExternal）不受本设定约束。
+// 非法值拒绝；条目不存在报错；与现值相同时幂等不落盘。
+func (s *WebAppService) SetEntryDefaultOpen(entryID string, mode string) error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+
+	entryID = strings.TrimSpace(entryID)
+	if entryID == "" {
+		return fmt.Errorf("条目 ID 不能为空")
+	}
+	switch mode = strings.TrimSpace(mode); mode {
+	case DefaultOpenWindow, DefaultOpenBrowser, "":
+	default:
+		return fmt.Errorf("非法打开形态 %q（仅支持 window/browser）", mode)
+	}
+	entry, ok := s.store.GetWebAppEntryByID(entryID)
+	if !ok {
+		return fmt.Errorf("条目不存在或已被删除")
+	}
+	if entry.DefaultOpen == mode {
+		return nil
+	}
+	entry.DefaultOpen = mode
+	return s.store.UpsertWebAppEntry(entry)
+}
+
+// openByDefault 按条目 DefaultOpen 分派打开方式——轮盘/托盘命令的唯一动作面：
+// browser→OpenExternal（系统默认浏览器），其余（window/空/盘上坏值）→Open
+// （独立网页窗，现行为）。点击时现读 Store，改默认设定即时生效，不依赖
+// 候选目录重建时机；两通道导出版各自入账，与 registry 派发链的租约计数器兼容。
+func (s *WebAppService) openByDefault(entryID string) error {
+	entry, ok := s.store.GetWebAppEntryByID(entryID)
+	if !ok {
+		return fmt.Errorf("条目不存在或已被删除")
+	}
+	if entry.DefaultOpen == DefaultOpenBrowser {
+		return s.OpenExternal(entryID)
+	}
+	return s.Open(entryID)
 }
 
 // ---------- 窗体核心 ----------

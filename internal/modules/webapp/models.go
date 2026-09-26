@@ -9,6 +9,7 @@ type WebAppEntryView struct {
 	URL          string `json:"url"`
 	Icon         string `json:"icon"`
 	CreatedAt    string `json:"createdAt"`
+	DefaultOpen  string `json:"defaultOpen,omitempty"`
 	WindowOpen   bool   `json:"windowOpen"`
 	WindowHidden bool   `json:"windowHidden"`
 }

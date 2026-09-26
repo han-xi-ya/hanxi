@@ -51,6 +51,10 @@ type WebAppEntry struct {
 	X         int    `json:"x"`         // 记忆窗口坐标 X（X/Y 同为非 0 才生效；负值=副屏合法）
 	Y         int    `json:"y"`         // 记忆窗口坐标 Y
 	CreatedAt string `json:"createdAt"` // 创建时刻（预置条目为空）
+	// DefaultOpen 轮盘/托盘直达点击的默认打开形态："window"=独立网页窗，
+	// "browser"=系统默认浏览器；空=window（存量 JSON 缺键零迁移，行为不变）。
+	// 合法域闸门在 webapp 服务写侧（SetEntryDefaultOpen），读侧分派宽松回落 window。
+	DefaultOpen string `json:"defaultOpen,omitempty"`
 }
 
 // 托盘菜单项类型常量。

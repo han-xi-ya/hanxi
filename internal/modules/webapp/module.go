@@ -74,8 +74,11 @@ func (m *Module) OnDestroy() error {
 // IsInitialized 无失败路径，注册表懒初始化后恒为已就绪。
 func (m *Module) IsInitialized() bool { return true }
 
-// TrayCommands 把每条网址动态暴露为"打开网页窗"命令（托盘右键/轮盘候选目录，
+// TrayCommands 把每条网址动态暴露为"打开网页应用"命令（托盘右键/轮盘候选目录，
 // 用户自选挂载；命令 key 形如 webapp/open:<entryID>）。
+// 点击形态按条目 DefaultOpen 分派（window=独立网页窗 / browser=系统默认浏览器，
+// 空=window）：两账（托盘/轮盘）共用同一命令供给侧，自动跟随默认设定，Label
+// 保持中性不带形态词。
 // 纪律（registry.ListTrayCommands 持 wrapper 锁现调聚合）：只读条目配置，
 // 绝不回调 registry（同锁重入死锁），且不依赖 OnInit——该聚合路径不 EnsureActive。
 func (m *Module) TrayCommands() []extapi.TrayCommand {
@@ -87,8 +90,9 @@ func (m *Module) TrayCommands() []extapi.TrayCommand {
 			ID:    "open:" + entryID,
 			Label: e.Name,
 			// Run 由 registry 在 Unlock 后执行（其内先 EnsureActive），可放心开窗；
+			// 形态在执行时按盘上 DefaultOpen 现读分派，改设定即时生效；window 支
 			// 已开条目再点=Show+Focus 置顶，Open 天然幂等。
-			Run: func(context.Context) error { return m.svc.Open(entryID) },
+			Run: func(context.Context) error { return m.svc.openByDefault(entryID) },
 		})
 	}
 	return cmds

@@ -20,6 +20,19 @@ import { useConfirm } from './useConfirm'
 /** 名称长度闸门前端镜像（与后端 SaveEntry 的 40 字上限同值；仅省一次往返，权威仍在服务端）。 */
 export const NAME_MAX = 40
 
+// —— W1 冻结契约（defaultOpen）的前端桥接 ——
+// 条目 JSON 字段 defaultOpen ∈ '' | 'window' | 'browser'，''（含存量缺字段）
+// 语义即「独立窗口」。bindings 再生前本文件内的类型桥接（as unknown as）属
+// 预期过渡态：W1 落盘、绑定重生成后可移除，不改调用形状。
+/** 默认打开方式（表单可选值；'' 仅出现在存量数据，UI 归一化为 'window'）。 */
+export type WebAppOpenMode = 'window' | 'browser'
+
+/** 归一化条目 defaultOpen：'browser' 以外（含 undefined/''/未知值）一律按 'window' 呈现。 */
+export function entryDefaultOpen(entry: WebAppEntryView): WebAppOpenMode {
+  const raw = (entry as unknown as { defaultOpen?: string }).defaultOpen
+  return raw === 'browser' ? 'browser' : 'window'
+}
+
 /** 行级忙态动作：同一行任一异步操作进行中即锁整行钮组，防连发并发的窗口编排。 */
 export type RowAction = 'open' | 'collapse' | 'external' | 'delete'
 
@@ -115,6 +128,8 @@ export function useWebApp() {
   const formName = ref('')
   const formUrl = ref('')
   const formIcon = ref('')
+  // 默认打开方式：新建缺省「独立窗口」；编辑预填存量归一化值（未设值显示为独立窗口）。
+  const formDefaultOpen = ref<WebAppOpenMode>('window')
   const editingId = ref('')
   const saving = ref(false)
   const isEditing = computed(() => editingId.value !== '')
@@ -123,6 +138,7 @@ export function useWebApp() {
     formName.value = ''
     formUrl.value = ''
     formIcon.value = ''
+    formDefaultOpen.value = 'window'
     editingId.value = ''
   }
 
@@ -132,6 +148,7 @@ export function useWebApp() {
     formName.value = entry.name
     formUrl.value = entry.url
     formIcon.value = entry.icon
+    formDefaultOpen.value = entryDefaultOpen(entry)
   }
 
   // 提交保存；成功返回 true（视图据此收起面板）。名称/网址空值前端先闸，
@@ -152,7 +169,18 @@ export function useWebApp() {
     saving.value = true
     try {
       // 返回值即服务端定稿 ID（新建时由后端生成）；当前列表随后由 refresh 带回，无需本地接线。
-      await WebAppAPI.WebAppService.SaveEntry(editingId.value, name, url, formIcon.value.trim())
+      // defaultOpen 双兼容写法（W1 定稿前两侧都接得住，落盘后删桥接不改行为）：
+      // ① 全量快照路线——SaveEntry 若扩第 5 参 defaultOpen，此处直传；现行 4 参绑定
+      //    生成的 JS 函数按形参截取，多余实参自然丢弃，无副作用。
+      // ② 独立导出路线——W1 若以 SetEntryDefaultOpen(entryID, mode) 定稿，绑定再生后
+      //    该函数存在，随后补写一次（新建取 SaveEntry 返回的定稿 ID）。
+      const savedID = await (WebAppAPI.WebAppService.SaveEntry as unknown as (
+        entryID: string, name: string, rawURL: string, icon: string, defaultOpen: string,
+      ) => Promise<string>)(editingId.value, name, url, formIcon.value.trim(), formDefaultOpen.value)
+      const setDefaultOpen = (WebAppAPI.WebAppService as unknown as {
+        SetEntryDefaultOpen?: (entryID: string, mode: WebAppOpenMode) => Promise<void>
+      }).SetEntryDefaultOpen
+      if (setDefaultOpen) await setDefaultOpen(savedID || editingId.value, formDefaultOpen.value)
       resetForm()
       await refresh()
       showToast(wasEditing ? `「${name}」已保存` : `已添加「${name}」`)
@@ -205,6 +233,7 @@ export function useWebApp() {
     formName,
     formUrl,
     formIcon,
+    formDefaultOpen,
     editingId,
     saving,
     isEditing,

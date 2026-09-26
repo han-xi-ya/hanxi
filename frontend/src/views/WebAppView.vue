@@ -7,7 +7,7 @@
 // 徽标不靠颜色单传：色 + 文字 + 形状（圆点）三通道齐备。
 import { ref, computed } from 'vue'
 import type { WebAppEntryView } from '../../bindings/hanxi/internal/modules/webapp/models'
-import { NAME_MAX, useWebApp } from '../composables/useWebApp'
+import { NAME_MAX, entryDefaultOpen, useWebApp } from '../composables/useWebApp'
 import PageHeader from '../components/ui/PageHeader.vue'
 import AppIcon from '../components/ui/AppIcon.vue'
 
@@ -27,6 +27,7 @@ const {
   formName,
   formUrl,
   formIcon,
+  formDefaultOpen,
   saving,
   isEditing,
   resetForm,
@@ -74,8 +75,17 @@ function windowState(entry: WebAppEntryView): WindowStateView {
   return { text: '无窗', chip: 'chip-neutral', live: false, dot: false }
 }
 
+// 「默认：窗口/浏览器」小字标文案（存量未设值经 entryDefaultOpen 归一化为窗口）。
+function defaultOpenText(entry: WebAppEntryView): string {
+  return entryDefaultOpen(entry) === 'browser' ? '默认：浏览器' : '默认：窗口'
+}
+
 // 每行一次派生，避免模板内多处重复调用 windowState。
-const rows = computed(() => entries.value.map(e => ({ entry: e, state: windowState(e) })))
+const rows = computed(() => entries.value.map(e => ({
+  entry: e,
+  state: windowState(e),
+  defaultText: defaultOpenText(e),
+})))
 </script>
 
 <template>
@@ -129,6 +139,19 @@ const rows = computed(() => entries.value.map(e => ({ entry: e, state: windowSta
             <span class="webapp-field-label">图标（emoji，可选）</span>
             <input v-model="formIcon" class="webapp-input webapp-icon-input" maxlength="8" placeholder="🌐" />
           </label>
+          <div class="webapp-field">
+            <span class="webapp-field-label">默认打开方式</span>
+            <div class="webapp-seg" role="radiogroup" aria-label="默认打开方式">
+              <button
+                type="button" class="webapp-seg-btn" :class="{ active: formDefaultOpen === 'window' }"
+                role="radio" :aria-checked="formDefaultOpen === 'window'" @click="formDefaultOpen = 'window'"
+              >独立窗口</button>
+              <button
+                type="button" class="webapp-seg-btn" :class="{ active: formDefaultOpen === 'browser' }"
+                role="radio" :aria-checked="formDefaultOpen === 'browser'" @click="formDefaultOpen = 'browser'"
+              >系统浏览器</button>
+            </div>
+          </div>
           <button type="submit" class="btn btn-primary" :disabled="saving">
             {{ saving ? '保存中…' : isEditing ? '保存修改' : '添加网址' }}
           </button>
@@ -164,6 +187,9 @@ const rows = computed(() => entries.value.map(e => ({ entry: e, state: windowSta
           <span class="chip webapp-state" :class="row.state.chip">
             <i v-if="row.state.dot" class="webapp-dot" :class="{ 'webapp-dot-live': row.state.live }" />
             {{ row.state.text }}
+          </span>
+          <span class="chip chip-neutral webapp-default" title="轮盘/托盘里点击该应用时，按此默认执行">
+            {{ row.defaultText }}
           </span>
           <div class="setting-actions">
             <button
@@ -206,6 +232,7 @@ const rows = computed(() => entries.value.map(e => ({ entry: e, state: windowSta
 
       <p v-if="!loading && !loadError && entries.length > 0" class="webapp-note">
         网页窗共享统一的浏览器数据目录：窗口收起或闲置销毁后再打开，网站登录态不丢。
+        轮盘/托盘里点击该应用时，按此默认执行；列表中「打开」「默认浏览器打开」两颗钮为显式选择，即时生效、优先于默认。
       </p>
     </div>
   </section>
@@ -234,6 +261,17 @@ const rows = computed(() => entries.value.map(e => ({ entry: e, state: windowSta
 .webapp-icon-input { width: 90px; }
 .webapp-hint { font-size: var(--text-sm); color: var(--color-text-muted); }
 
+/* 默认打开方式微段控件：复刻设置页 .theme-seg 形制（同一组语义 token，零新色），
+   表单行内紧凑一档（text-sm / 小 padding），选中态同为面板底 + 主色字。 */
+.webapp-seg { display: flex; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 3px; gap: 2px; }
+.webapp-seg-btn {
+  display: inline-flex; align-items: center; border: none; background: transparent;
+  padding: 4px 12px; border-radius: 6px; font-size: var(--text-sm); color: var(--color-text-muted);
+  cursor: pointer; transition: background var(--motion-base) ease, color var(--motion-base) ease;
+}
+.webapp-seg-btn:hover { color: var(--color-text); }
+.webapp-seg-btn.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-small); }
+
 /* —— 条目列表：资源行语法（主内容 + 状态徽标 + 行级动作），窄屏自然回折成两段 —— */
 .webapp-list { display: flex; flex-direction: column; gap: 8px; }
 .webapp-row {
@@ -257,6 +295,7 @@ const rows = computed(() => entries.value.map(e => ({ entry: e, state: windowSta
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .webapp-state { flex: none; }
+.webapp-default { flex: none; }
 .webapp-dot { width: 6px; height: 6px; border-radius: var(--radius-pill); background: currentColor; flex: none; }
 /* 脉冲仅限真实活态（窗口可见中）；减弱动效由 base.css 全局块统一熄火 */
 .webapp-dot-live { animation: webapp-pulse 1.8s ease-in-out infinite; }

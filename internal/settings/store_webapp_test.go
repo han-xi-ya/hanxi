@@ -155,6 +155,53 @@ func TestWebAppUpsertDeleteLifecycle(t *testing.T) {
 	}
 }
 
+// TestWebAppEntryDefaultOpenPersistence DefaultOpen 持久化往返与 omitempty
+// 零迁移语义：browser 落盘重启原样带出；空值（=window 默认）不写键，
+// 存量无键 JSON 解码即空串。
+func TestWebAppEntryDefaultOpenPersistence(t *testing.T) {
+	store, cfgFile := newWebAppStore(t)
+	if err := store.UpsertWebAppEntry(settings.WebAppEntry{ID: "w1", Name: "浏览器站", URL: "https://b.example.com", DefaultOpen: "browser"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertWebAppEntry(settings.WebAppEntry{ID: "w2", Name: "默认站", URL: "https://w.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(cfgFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 配置文件为 MarshalIndent 落盘，键值判定走解码后的原始 map 而非字符串包含
+	var probe struct {
+		WebAppEntries []map[string]any `json:"webAppEntries"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range probe.WebAppEntries {
+		if e["id"] == "w1" && e["defaultOpen"] != "browser" {
+			t.Errorf("browser 形态未落盘: %v", e)
+		}
+		// w2（DefaultOpen 空）所在条目对象里不得出现 defaultOpen 键
+		if e["id"] == "w2" {
+			if _, exists := e["defaultOpen"]; exists {
+				t.Error("空 DefaultOpen 不得写键（omitempty，保持存量 JSON 形态）")
+			}
+		}
+	}
+
+	reopened, err := settings.NewStore(cfgFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := reopened.GetWebAppEntryByID("w1"); !ok || got.DefaultOpen != "browser" {
+		t.Errorf("重启后 browser 形态丢失: %+v ok=%v", got, ok)
+	}
+	if got, ok := reopened.GetWebAppEntryByID("w2"); !ok || got.DefaultOpen != "" {
+		t.Errorf("无键条目应回落空串（=window），实际 %+v ok=%v", got, ok)
+	}
+}
+
 // TestDeleteWebAppEntryPrunesTrayRefs 删除条目必须同步剔除托盘/轮盘配置中
 // 本条目的命令引用（顶层与 group 子层都要清），其余条目原样保留。
 func TestDeleteWebAppEntryPrunesTrayRefs(t *testing.T) {
