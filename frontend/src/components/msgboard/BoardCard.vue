@@ -10,7 +10,12 @@
 // （×0.42）；表情就是正文首字符，无表情即纯文字便利贴——旧配置零迁移。
 // 溢出策略沿用"牌是看的不是读的"：超高只裁不滚（max-height 由宿主经
 // --bc-max-h 注入：全屏牌给视口比例，预览盒给固定高度）。
+//
+// v4 收编：定标系数（×13 卡宽 / ×0.42 副行）与主题/副行拆分抽进
+// boardMetrics.ts 纯函数模块——宿主预览缩放与本组件共用同一口径，
+// 系数不再两处各写一份；对外 props（text/fontSize）与渲染输出零变化。
 import { computed } from 'vue'
+import { boardSubOf, boardTitleOf, cardMaxWidthPx, subFontSizePx } from './boardMetrics'
 
 const props = defineProps<{
   text: string
@@ -21,30 +26,23 @@ const props = defineProps<{
 // 小屏）——标题/副行/内边距全部吃这条 em 链，缩放行为一致。
 const cardStyle = computed(() => ({
   fontSize: `${props.fontSize}px`,
-  maxWidth: `min(${Math.round(props.fontSize * 13)}px, 88vw)`,
+  maxWidth: `min(${cardMaxWidthPx(props.fontSize)}px, 88vw)`,
 }))
 
 // 副行字号＝主题字号 ×0.42（显式像素换算，防 em 基准漂移的假联动）
 const subStyle = computed(() => ({
-  fontSize: `${Math.max(12, Math.round(props.fontSize * 0.42))}px`,
+  fontSize: `${subFontSizePx(props.fontSize)}px`,
 }))
 
-// 主题行/副行拆分（trailing 空行不产生空气副行）
-function titleOf(text: string): string {
-  return text.split('\n', 1)[0] ?? ''
-}
-function subOf(text: string): string {
-  const rest = text.split('\n').slice(1)
-  while (rest.length && rest[rest.length - 1].trim() === '') rest.pop()
-  return rest.join('\n').trim()
-}
+const title = computed(() => boardTitleOf(props.text))
+const sub = computed(() => boardSubOf(props.text))
 </script>
 
 <template>
   <div class="bc-card" role="presentation" :style="cardStyle">
     <span class="bc-tape" aria-hidden="true"></span>
-    <div class="bc-title">{{ titleOf(text) }}</div>
-    <div v-if="subOf(text)" class="bc-sub" :style="subStyle">{{ subOf(text) }}</div>
+    <div class="bc-title">{{ title }}</div>
+    <div v-if="sub" class="bc-sub" :style="subStyle">{{ sub }}</div>
   </div>
 </template>
 
