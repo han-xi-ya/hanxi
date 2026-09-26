@@ -42,6 +42,9 @@ import (
 	"hanxi/internal/modules/frpc"
 	"hanxi/internal/modules/frpc/instance"
 	"hanxi/internal/modules/frpc/version"
+	"hanxi/internal/modules/dbx"
+	dbxinstance "hanxi/internal/modules/dbx/instance"
+	dbxversion "hanxi/internal/modules/dbx/version"
 	"hanxi/internal/modules/gonavi"
 	gonaviinstance "hanxi/internal/modules/gonavi/instance"
 	gonaviversion "hanxi/internal/modules/gonavi/version"
@@ -165,6 +168,8 @@ func RegisterEvents() {
 	application.RegisterEvent[instance.LogEntry]("frpc:instance-log")
 	application.RegisterEvent[gonaviversion.DownloadProgress]("gonavi:version-download")
 	application.RegisterEvent[gonaviinstance.Snapshot]("gonavi:instance-state")
+	application.RegisterEvent[dbxversion.DownloadProgress]("dbx:version-download")
+	application.RegisterEvent[dbxinstance.Snapshot]("dbx:instance-state")
 	application.RegisterEvent[fileshare.ServerStatus]("fileshare:status")
 	application.RegisterEvent[fileshare.TransferEvent]("fileshare:transfer")
 	application.RegisterEvent[fileshare.DropItem]("fileshare:text-dropped")
@@ -370,6 +375,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		quicklook.ID:     quicklookversion.OpenTree(paths.VersionsDir()),
 		bili23.ID:        bili23version.OpenTree(paths.VersionsDir()),
 		gonavi.ID:        gonaviversion.OpenTree(paths.VersionsDir()),
+		dbx.ID:         dbxversion.OpenTree(paths.VersionsDir()),
 	}
 	var opHub *operation.Hub
 	if opStore != nil {
@@ -477,6 +483,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		quicklook.New(plat),
 		litemonitor.New(plat),
 		gonavi.New(plat),
+		dbx.New(plat),
 		guoheview.New(plat),
 		sysinfo.New(),
 		ddnsgo.New(plat),

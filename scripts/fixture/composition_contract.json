@@ -36,6 +36,11 @@
       "group": "system"
     },
     {
+      "id": "dbx",
+      "route": "/ext/dbx",
+      "group": "developer"
+    },
+    {
       "id": "everything",
       "route": "/ext/everything",
       "group": "efficiency"
@@ -238,6 +243,8 @@
     "bili23:version-download",
     "ccswitch:instance-state",
     "ccswitch:version-download",
+    "dbx:instance-state",
+    "dbx:version-download",
     "ddnsgo:instance-log",
     "ddnsgo:instance-state",
     "ddnsgo:version-download",
@@ -404,7 +411,7 @@
     ]
   },
   "counts": {
-    "modules": 46,
-    "events": 87
+    "modules": 47,
+    "events": 89
   }
 }

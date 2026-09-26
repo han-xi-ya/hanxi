@@ -78,6 +78,32 @@
       "owner": "hanxi"
     },
     {
+      "id": "dbx",
+      "name": "DBX",
+      "description": "托管 Tauri 数据库客户端 DBX：版本管理、JobObject 启停与信使唤窗（数据改道 Hanxi 数据根，删版本不丢数据）",
+      "category": "developer",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "hosted-versions",
+        "managed-process",
+        "tray-commands"
+      ],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search",
+        "tray"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
       "id": "ddnsgo",
       "name": "ddns-go",
       "description": "托管动态域名解析工具 ddns-go：版本管理、JobObject 启停与内嵌 Web 控制台",

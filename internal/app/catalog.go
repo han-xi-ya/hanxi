@@ -52,6 +52,18 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
+		ID:            "dbx",
+		Name:          "DBX",
+		Description:   "托管 Tauri 数据库客户端 DBX：版本管理、JobObject 启停与信使唤窗（数据改道 Hanxi 数据根，删版本不丢数据）",
+		Category:      "developer",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{"hosted-versions", "managed-process", "tray-commands"},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch, extapi.EntryTray},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "ddnsgo",
 		Name:          "ddns-go",
 		Description:   "托管动态域名解析工具 ddns-go：版本管理、JobObject 启停与内嵌 Web 控制台",
