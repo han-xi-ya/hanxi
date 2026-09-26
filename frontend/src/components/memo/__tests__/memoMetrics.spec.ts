@@ -6,6 +6,7 @@ import {
   cardPreview,
   dayBucket,
   firstMeaningfulLine,
+  flattenPastedLines,
   fmtAgo,
   groupMemoItems,
   memoColorHex,
@@ -138,6 +139,21 @@ describe('parseTagTokens 速记标签解析', () => {
 
   it('空输入得空数组', () => {
     expect(parseTagTokens('   ')).toEqual([])
+  })
+})
+
+describe('flattenPastedLines 多行粘贴并条（速记卡 M3 语义，收口轮两面共用）', () => {
+  it('单行与全空行返回 null——消费方零干预放行原生插入', () => {
+    expect(flattenPastedLines('本就一行')).toBeNull()
+    expect(flattenPastedLines('')).toBeNull()
+    expect(flattenPastedLines('\n  \n')).toBeNull()
+  })
+
+  it('CRLF/LF 混排逐行 trim、剔空行、空格并条，行数如实', () => {
+    expect(flattenPastedLines('行一\r\n行二\n \n行三')).toEqual({
+      flat: '行一 行二 行三',
+      lineCount: 3,
+    })
   })
 })
 

@@ -12,6 +12,8 @@
 //   - 连续速记：保存成功不关窗，清行保焦点，接着敲下一条；
 //   - 粘贴含换行的多行文本：就地并为一条（行间以空格相连，已有草稿前置保留）
 //     并轻提示行数；单行粘贴零干预走原生路径。速记卡是一行面，不做拆条；
+//     接线收口轮（2026-09-26）本条与标签分词、Ctrl+Enter 保存语义同迁主窗速记行
+//     （memoMetrics 单源共享），M3 遗留的两面漂移就此封死；
 //   - 动效三件皆为 transform/opacity 微动效（≤10px、≤180ms，N37 纪律零 glow）：
 //     opening 重播入场（is-enter 类钩子，窗口隐藏期挂载不白烧动画）、保存成功
 //     原句化作 .sheet-ghost 飞走残影、提示行常驻占位防跳动；
@@ -24,6 +26,7 @@ import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
 import { getErrorMessage } from '../utils/errors'
 import { looksLikeMarkdown } from '../utils/markdown'
 import { useWailsEvent } from '../composables/useWailsEvent'
+import { flattenPastedLines, parseTagTokens } from '../components/memo/memoMetrics'
 
 const text = ref('')
 const tagsInput = ref('')
@@ -66,14 +69,9 @@ function replayEnter() {
   })
 }
 
-// 标签解析与主窗速记条同口径：空白/逗号顿号分词，自动补 #（后端 cleanTags
-// 还有一道归一，这里是所见即所得的第一道）。
-function parseTags(): string[] {
-  const raw = tagsInput.value.split(/[\s,，、;；]+/).filter(Boolean)
-  const set = new Set<string>()
-  for (const t of raw) set.add(t.startsWith('#') ? t : `#${t}`)
-  return [...set]
-}
+// 标签解析走 memoMetrics.parseTagTokens 单源（接线收口轮删去与主窗速记行的
+// 逐字重复第二份）：空白/逗号顿号分词，自动补 #（后端 cleanTags 还有一道归一，
+// 这里是所见即所得的第一道）。
 
 async function dismiss() {
   try {
@@ -92,7 +90,7 @@ async function commit(closeAfter = false) {
   if (saving.value) return
   saving.value = true
   try {
-    await MemoAPI.MemoService.Create('', v, parseTags(), 'blue')
+    await MemoAPI.MemoService.Create('', v, parseTagTokens(tagsInput.value), 'blue')
     text.value = ''
     tagsInput.value = ''
     if (closeAfter) {
@@ -120,15 +118,14 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') void dismiss()
 }
 
+// 多行粘贴并条的判定与拼接走 memoMetrics.flattenPastedLines 单源（接线收口轮
+// 主窗速记行对齐此语义，两面从此不分叉）；卡内反馈仍走轻提示槽位。
 function onPaste(e: ClipboardEvent) {
-  const raw = e.clipboardData?.getData('text/plain') ?? ''
-  if (!/[\r\n]/.test(raw)) return // 单行：零干预，走原生插入
+  const merged = flattenPastedLines(e.clipboardData?.getData('text/plain') ?? '')
+  if (!merged) return // 单行：零干预，走原生插入
   e.preventDefault()
-  const lines = raw.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean)
-  if (lines.length === 0) return
-  const flat = lines.join(' ')
-  text.value = text.value.trim() ? `${text.value.trim()} ${flat}` : flat
-  showTip(`已粘贴 ${lines.length} 行并并为一条速记，回车即存`, 'ok')
+  text.value = text.value.trim() ? `${text.value.trim()} ${merged.flat}` : merged.flat
+  showTip(`已粘贴 ${merged.lineCount} 行并并为一条速记，回车即存`, 'ok')
 }
 
 useWailsEvent<void>('memo:quicksheet:opening', () => {

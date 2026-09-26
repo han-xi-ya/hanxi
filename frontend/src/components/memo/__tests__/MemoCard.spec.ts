@@ -132,6 +132,12 @@ describe('MemoCard MD 徽标与 looksLikeMarkdown 单源联动', () => {
     expect(card({ text: 'SELECT * FROM users WHERE id=1' }).find('.mc-md').exists()).toBe(false)
     expect(card({ text: '' }).find('.mc-md').exists()).toBe(false)
   })
+
+  // 接线收口（M2 v2「徽标退役防回潮」）：宿主可整块熄徽，呈现档差异不逼组件分叉。
+  it('mdFlag=false 熄徽（主视图行式索引接线档：块级 MD 也不出徽）', () => {
+    expect(card({ text: '## 标题\n正文', mdFlag: false }).find('.mc-md').exists()).toBe(false)
+    expect(card({ text: '## 标题\n正文' }).find('.mc-md').exists()).toBe(true) // 默认仍亮
+  })
 })
 
 describe('MemoCard 交互 emits', () => {

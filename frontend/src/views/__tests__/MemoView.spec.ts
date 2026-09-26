@@ -9,6 +9,11 @@
 // 契约测试维持十一方法面（RestoreFile 不得出现在前端面）。
 // 结构迁移注：旧「卡头 MD 徽标」断言改为「页面板自动分流渲染」+徽标退役防回潮锁；
 // 旧卡面四钮位次（遮罩/置顶/编辑/删除）拆为行内双钮（遮罩/置顶）+页脚动作（其余）。
+// M4 接线收口注（2026-09-26）：行式索引 = MemoCard(list) 组件（.memo-row 钩子类保留，
+// 行内件换 .mc-title/.mc-preview/.mc-btn/.mc-tag；masked 严口径含标题不渲染，哨兵
+// 反证新增）；顶栏 = MemoToolbar（.mt-search-input/.mt-more-btn/.mt-menu，点外收合
+// 由旧 mousedown 口径统一为其 document click capture 纪律——③号差异按组件侧收口）。
+// 金标准 36 例语义逐条在案、断言语义未动，仅选择器随接线迁移；新增 3 例为收口补锁。
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -95,20 +100,21 @@ async function mountView(
   return w
 }
 
-// 行内微操作钮的固定位次：0=遮罩 1=置顶（编辑/删除/复制/导出迁页脚，MD chip 已退役）
+// 行内微操作钮的固定位次（MemoCard 契约工具区）：0=遮罩 1=置顶
+// （编辑/删除/复制/导出迁页脚，MD 徽标退役由 :md-flag=false 守住）
 function rowBtns(w: ReturnType<typeof mount>, nth: number) {
-  return w.findAll('.memo-row .memo-row-actions .memo-icon-btn')[nth]
+  return w.findAll('.memo-row .mc-btn')[nth]
 }
 
 // 点第一行标题 = 翻开该条进阅读页（旧"点内容开详情浮层"的等价入口）
 async function openRow(w: ReturnType<typeof mount>, nth = 0) {
-  await w.findAll('.memo-row .memo-title')[nth].trigger('click')
+  await w.findAll('.memo-row .mc-title')[nth].trigger('click')
   await flushMicrotasks()
 }
 
-// 工具条右端溢出菜单：低频动作（浮窗速记/导出全库/一键全删）的唯一入口
+// 工具条右端溢出菜单（MemoToolbar #more）：低频动作（浮窗速记/导出全库/一键全删）的唯一入口
 async function openMenu(w: ReturnType<typeof mount>) {
-  await w.find('.memo-more-btn').trigger('click')
+  await w.find('.mt-more-btn').trigger('click')
   await nextTick()
 }
 
@@ -137,7 +143,7 @@ describe('MemoView 列表与过滤', () => {
       keyword: '', tag: '', pinned: null, sortBy: 'updated', sortDesc: true,
     })
     expect(w.text()).toContain('生产库连接串')
-    expect(w.find('.memo-tag').text()).toBe('#SQL')
+    expect(w.find('.memo-row .mc-tag').text()).toBe('#SQL')
     const chips = w.findAll('.tag-chip').map((c) => c.text())
     expect(chips).toContain('全部 (1)')
     expect(chips.find((t) => t.includes('#SQL'))).toContain('(1)')
@@ -168,7 +174,7 @@ describe('MemoView 列表与过滤', () => {
     const w = await mountView([], {})
     expect(w.text()).toContain('还没有一条便签')
     expect(byText(w, '清除过滤')).toBeUndefined()
-    await w.find('.search-input').setValue('redis')
+    await w.find('.mt-search-input').setValue('redis')
     await flushMicrotasks()
     // 防抖未到窗口，先按"有过滤条件"渲染（清除过滤入口在工具条与空态两处备好）
     expect(byText(w, '清除过滤')).toBeDefined()
@@ -180,7 +186,7 @@ describe('MemoView 列表与过滤', () => {
     try {
       const w = await mountView()
       const before = svc.List.mock.calls.length
-      await w.find('.search-input').setValue('redis')
+      await w.find('.mt-search-input').setValue('redis')
       await vi.advanceTimersByTimeAsync(300)
       expect(svc.List.mock.calls.length).toBe(before) // 防抖窗口内不触发
       await vi.advanceTimersByTimeAsync(100)
@@ -249,12 +255,38 @@ describe('MemoView 列表与过滤', () => {
 
   it('脱敏遮罩：masked 行渲染圆点且可揭示', async () => {
     const w = await mountView([memo({ isMasked: true })])
-    expect(w.find('.memo-excerpt').classes()).toContain('masked')
-    expect(w.find('.memo-excerpt').text()).toContain('•••')
+    expect(w.find('.mc-preview').classes()).toContain('masked')
+    expect(w.find('.mc-preview').text()).toContain('•••')
     svc.ToggleMask.mockResolvedValue(false)
     await rowBtns(w, 0).trigger('click') // 第 0 枚即遮罩钮
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toBe('已揭示明文')
+    w.unmount()
+  })
+
+  // 接线收口裁决（2026-09-26）哨兵反证：masked 严口径统一后，行（MemoCard 硬
+  // 纪律）与页面板（本视图改吃严口径）两面都不落标题明文，属性位同扫。
+  it('masked 严口径哨兵反证：行与页面板整棵子树不落标题明文', async () => {
+    const w = await mountView([
+      memo({ isMasked: true, title: 'SENTINEL-密题', content: 'pw=SENTINEL-密文' }),
+    ])
+    const row = w.find('.memo-row')
+    expect(row.text()).toContain('敏感便签') // 标题位换固定文案
+    expect(row.text()).toContain('•••') // 正文位圆点照旧
+    const rowHtml = row.html()
+    expect(rowHtml).not.toContain('SENTINEL-密题')
+    expect(rowHtml).not.toContain('SENTINEL-密文')
+    for (const node of [row, ...row.findAll('*')]) {
+      for (const v of Object.values(node.attributes())) {
+        expect(String(v)).not.toContain('SENTINEL')
+      }
+    }
+    await openRow(w)
+    const pane = w.find('.pane-read')
+    expect(pane.find('.pane-title').text()).toBe('敏感便签')
+    expect(pane.text()).not.toContain('SENTINEL-密题')
+    expect(pane.text()).not.toContain('SENTINEL-密文')
+    expect(pane.text()).toContain('•••')
     w.unmount()
   })
 
@@ -354,6 +386,45 @@ describe('速记入口（一行克制输入，回车即存语义原样）', () =
     expect(svc.Create).not.toHaveBeenCalled()
     w.unmount()
   })
+
+  // M3 遗留防漂移（接线收口轮）：速记卡「⏎ 存并留场 · Ctrl+⏎ 存并收 · 多行粘贴
+  // 并条」三语义在主窗速记行对齐——主窗「收」的等价落点为"存下但不翻页抢阅读位"。
+  it('速记行裸回车存并翻到该条；Ctrl+Enter 存而不翻页（对齐速记卡存并收口径）', async () => {
+    const w = await mountView([memo({ id: 'm1' })])
+    svc.Create.mockResolvedValue(memo({ id: 'm1' }))
+    await w.find('.quick-input').setValue('裸回车一条')
+    await w.find('.quick-input').trigger('keydown.enter')
+    await flushMicrotasks()
+    expect(w.find('.pane-read').exists()).toBe(true) // 原语义：新条翻给右页看
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await nextTick()
+    expect(w.find('.pane-read').exists()).toBe(false)
+    await w.find('.quick-input').setValue('存完就走')
+    await w.find('.quick-input').trigger('keydown.enter.ctrl')
+    await flushMicrotasks()
+    expect(svc.Create).toHaveBeenCalledTimes(2)
+    expect(useToast().toastMsg.value).toBe('已记下')
+    expect(w.find('.pane-read').exists()).toBe(false) // 存而不抢翻页 = 主窗「收」
+    w.unmount()
+  })
+
+  it('速记行粘贴多行并成一条并如实报数（与速记卡共用 flattenPastedLines）；单行零干预', async () => {
+    const w = await mountView()
+    await w.find('.quick-input').trigger('paste', {
+      clipboardData: { getData: (fmt: string) => (fmt === 'text/plain' ? '甲\n乙\n \n丙' : '') },
+    })
+    await nextTick()
+    expect((w.find('.quick-input').element as HTMLInputElement).value).toBe('甲 乙 丙')
+    expect(useToast().toastMsg.value).toContain('已粘贴 3 行并并为一条速记')
+    useToast().clearToast()
+    await w.find('.quick-input').trigger('paste', {
+      clipboardData: { getData: () => '本就一行' },
+    })
+    await nextTick()
+    expect(useToast().toastMsg.value).toBe('') // 单行零干预：不吭声
+    expect((w.find('.quick-input').element as HTMLInputElement).value).toBe('甲 乙 丙') // 也不改写草稿
+    w.unmount()
+  })
 })
 
 describe('页面板书写态（详情/编辑合并后的唯一书写页）', () => {
@@ -443,7 +514,7 @@ describe('页面板阅读态（旧详情浮层的所得全数迁入）', () => {
     const w = await mountView([
       memo({ id: 'md1', title: '周报模板', content: '## 本周\n- 完成 [链接](https://a.cn)' }),
     ])
-    expect(w.findAll('.md-flag')).toHaveLength(0) // 徽标退役防回潮（渲染分流移入页面板）
+    expect(w.findAll('.md-flag, .mc-md')).toHaveLength(0) // 徽标退役防回潮（行换 MemoCard 仍由 :md-flag=false 熄徽）
     await openRow(w)
     expect(w.find('.pane-read').exists()).toBe(true)
     const html = w.find('.md-preview').element.innerHTML
@@ -453,7 +524,7 @@ describe('页面板阅读态（旧详情浮层的所得全数迁入）', () => {
     w.unmount()
 
     const w2 = await mountView([memo({ id: 'code1', content: 'SELECT * FROM t WHERE a*b>1' })])
-    expect(w2.findAll('.md-flag')).toHaveLength(0)
+    expect(w2.findAll('.md-flag, .mc-md')).toHaveLength(0)
     await openRow(w2)
     expect(w2.find('.md-preview').exists()).toBe(false)
     expect(w2.find('.memo-plain').text()).toContain('a*b>1')
@@ -523,17 +594,18 @@ describe('溢出菜单与一键全删', () => {
 
   it('菜单开合纪律：点外收合，选中项即收（低频件不常驻台面）', async () => {
     const w = await mountView()
-    expect(w.find('.memo-menu').exists()).toBe(false)
+    expect(w.find('.mt-menu').exists()).toBe(false)
     await openMenu(w)
-    expect(w.find('.memo-menu').exists()).toBe(true)
-    // 模拟点外：mousedown 落在菜单与触发钮之外
-    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    expect(w.find('.mt-menu').exists()).toBe(true)
+    // 模拟点外：click 落在工具条容器之外（M2 的 mousedown 口径已按
+    // MemoToolbar 纪律统一收口为 document click capture）
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flushMicrotasks()
-    expect(w.find('.memo-menu').exists()).toBe(false)
+    expect(w.find('.mt-menu').exists()).toBe(false)
     await openMenu(w)
     await byText(w, '浮窗速记')!.trigger('click') // 选中即收 + 直连 ShowQuickSheet（不依赖热键的唤出通道）
     await flushMicrotasks()
-    expect(w.find('.memo-menu').exists()).toBe(false)
+    expect(w.find('.mt-menu').exists()).toBe(false)
     expect(svc.ShowQuickSheet).toHaveBeenCalledTimes(1)
     w.unmount()
   })
@@ -706,7 +778,7 @@ describe('导出（单条 .md 与全库汇总）', () => {
 
   it('视图正带过滤时导出仍拉全集；确认取消则一个字都不落', async () => {
     const w = await mountView([memo({ id: 'k1', content: 'a' }), memo({ id: 'k2', content: 'b', isMasked: true })], { '#SQL': 2 })
-    await w.find('.search-input').setValue('a')
+    await w.find('.mt-search-input').setValue('a')
     exportUtil.downloadTextFile.mockReturnValue(true)
     await openMenu(w)
     await byText(w, '导出全库')!.trigger('click')

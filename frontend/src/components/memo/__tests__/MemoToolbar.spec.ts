@@ -114,6 +114,21 @@ describe('MemoToolbar 「更多」溢出菜单开合', () => {
     expect(w.find('.mt-menu').exists()).toBe(true)
   })
 
+  it('moreChange 如实外播开合（含菜单项点击触发的自收），只在翻转时播不重播', async () => {
+    const w = withMore()
+    await w.find('.mt-more-btn').trigger('click')
+    await w.find('.t-item').trigger('click') // 菜单内点击由容器收尾自动收
+    expect(w.emitted('moreChange')).toEqual([[true], [false]])
+    await w.find('.mt-more-btn').trigger('click')
+    expect(w.emitted('moreChange')).toEqual([[true], [false], [true]])
+    document.dispatchEvent(new MouseEvent('click')) // 点外收合同样外播
+    await nextTick()
+    expect(w.emitted('moreChange')?.at(-1)).toEqual([false])
+    document.dispatchEvent(new MouseEvent('click')) // 已收着再点外：不重播
+    await nextTick()
+    expect(w.emitted('moreChange')).toHaveLength(4)
+  })
+
   it('菜单开着卸载：监听摘净不留孤儿（后续全局事件不炸）', async () => {
     const w = withMore()
     await w.find('.mt-more-btn').trigger('click')

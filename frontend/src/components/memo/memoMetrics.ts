@@ -7,8 +7,10 @@
 //   - groupMemoItems/dayBucket/fmtAgo/cardPreview：MemoCard 呈现件与 M2 主视图
 //     分组标题两处消费，且日期边界（7/30 天切点、跨午夜、非法 ISO 串）有独立
 //     测试价值；
-//   - parseTagTokens：现 MemoView.parseQuickTags 与 QuickMemoSheet.parseTags
-//     已存在逐字重复的两份实现（本轮禁碰两视图，先落单源供接线时删重）；
+//   - parseTagTokens：MemoView.parseQuickTags 与 QuickMemoSheet.parseTags 曾
+//     逐字重复两份，接线收口轮（2026-09-26）两视图已删重切此单源；
+//   - flattenPastedLines：多行粘贴并条曾是速记卡独有语义（M3 牌面重做批），
+//     收口轮按「M3 遗留防漂移」主窗速记行对齐补齐，纯逻辑上收本模块两面共用；
 //   - memoColorHex：MemoCard 左封边取色需要，色板与视图 COLOR_OPTIONS 逐字
 //     同源——色彩标识是用户数据值（colorTag 持久化进后端），非主题表面，
 //     五个十六进制色沿用视图治理注记的豁免口径，不算新色值。
@@ -134,4 +136,19 @@ export function parseTagTokens(raw: string): string[] {
   const set = new Set<string>()
   for (const t of tokens) set.add(t.startsWith('#') ? t : `#${t}`)
   return [...set]
+}
+
+/**
+ * 多行粘贴并条（速记卡 M3 语义，收口轮主窗速记行对齐共用）：粘贴文本含换行
+ * 时逐行 trim、剔空行、以空格并成一行，并如实报行数供轻提示；单行/无有效行
+ * 返回 null——消费方据此零干预放行原生插入路径。DOM 侧的 preventDefault 与
+ * 提示落点（卡内 tip / 主窗 toast）归各视图，这里保持纯函数。
+ */
+export function flattenPastedLines(
+  raw: string,
+): { flat: string; lineCount: number } | null {
+  if (!/[\r\n]/.test(raw)) return null
+  const lines = raw.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean)
+  if (lines.length === 0) return null
+  return { flat: lines.join(' '), lineCount: lines.length }
 }

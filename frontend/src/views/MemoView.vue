@@ -23,12 +23,17 @@
 // 速记卡三件（GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet）共十一方法面照旧；
 // memo:changed 重拉、搜索 350ms 防抖 + 序号守卫、卸载作废在飞请求等纪律逐字保留；
 // 一键全删/导出全库（919c526 能力）原样，入口退工具条右端溢出菜单，danger 强确认链一字不动。
-// 敏感遮罩纪律零回退：masked 条目索引行/页面板/预览三处不落明文（与旧版同口径：标题仍示人，
-// "标题也是明文面"的从严收编属 MemoCard 线，接线时一并裁决）；masked 无复制/导出钮；
-// 全库导出默认剔除敏感条目且确认框明说排除条数。
-// 组件库 M4（components/memo/MemoCard·MemoToolbar·memoMetrics，f61060c）已奠基：本视图行式索引
-// 与轻工具条即按该契约的观感先行，接线收口（删本文件内 dayBucket/groupedMemos 等重复纯函数）
-// 另路执行，本轮不 import 在途重排中的组件件。
+// 敏感遮罩纪律（接线收口裁决 2026-09-26，从严定稿）：masked 条目不落【标题】与正文任何明文面——
+// 行式索引吃 MemoCard 严口径（标题位固定「敏感便签」），页面板 masked 分支同谱改吃此严口径
+// （原"标题仍示人"放宽就此收编），与 MCP 线「masked 整条不下发」同谱；HTML title 属性同列
+// 泄漏面；masked 无复制/导出钮；全库导出默认剔除敏感条目且确认框明说排除条数。
+// 组件库 M4（components/memo/MemoCard·MemoToolbar·memoMetrics，f61060c）接线收口已完成：
+// 行式索引 = MemoCard(list variant, :md-flag="false" 守徽标退役防回潮)，顶栏 = MemoToolbar
+// （点外收合统一为其 document click capture 纪律，本文件不再自挂 mousedown 监听），
+// dayBucket/fmtAgo/摘要/parseTagTokens/五色 hex 全切 memoMetrics 单源，本文件零内联副本。
+// 速记行语义与悬浮速记卡（M3）对齐防漂移：标签解析共用 parseTagTokens 单源，
+// 多行粘贴并条共用 flattenPastedLines 单源，Ctrl+Enter = "存并收"（主窗等价语义：
+// 存下但不翻页抢阅读位；裸回车保持"存并翻到该条"）。
 // 命名口径：本视图一律自称「随手记」。
 import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
@@ -55,6 +60,14 @@ import { useConfirm } from '../composables/useConfirm'
 import UiClipboardField from '../components/ui/UiClipboardField.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
+import MemoCard from '../components/memo/MemoCard.vue'
+import MemoToolbar from '../components/memo/MemoToolbar.vue'
+import {
+  MEMO_COLOR_HEX,
+  flattenPastedLines,
+  groupMemoItems,
+  parseTagTokens,
+} from '../components/memo/memoMetrics'
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
@@ -63,7 +76,6 @@ const { confirm } = useConfirm()
 // ---- 页内私有矢量图标（描边件与 AppIcon 注册表同血统；注册表缺 pin/eye/search/copy 等名，
 // 全局层本轮禁碰，私有件先行——M4/图标线收编后可整块替换为注册表件）----
 const GLYPH_PATHS: Record<string, readonly string[]> = {
-  search: ['M10.5 3.5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'M20 20l-4.7-4.7'],
   pin: ['M8 2.5h8', 'M9.5 2.5v5L6 12.5h12L14.5 7.5v-5', 'M12 12.5v6'],
   eye: ['M2.5 12s3.7-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.7 6.5-9.5 6.5S2.5 12 2.5 12z', 'M12 9.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z'],
   'eye-off': ['M4 4l16 16', 'M9.9 5.8a9.8 9.8 0 0 1 2.1-.3c5.8 0 9.5 6.5 9.5 6.5a19 19 0 0 1-3 3.7', 'M6.4 7.6A19 19 0 0 0 2.5 12s3.7 6.5 9.5 6.5c1.2 0 2.3-.2 3.3-.6', 'M9.8 9.9a2.4 2.4 0 0 0 3.4 3.4'],
@@ -71,8 +83,6 @@ const GLYPH_PATHS: Record<string, readonly string[]> = {
   download: ['M12 3.5v11', 'M7 10l5 5 5-5', 'M4 20.5h16'],
   trash: ['M3.5 6h17', 'M8.5 6V3.5h7V6', 'M5.5 6l1.2 14h10.6L18.5 6', 'M10 10v6.5', 'M14 10v6.5'],
   pen: ['M16.5 3.5a2.6 2.6 0 0 1 3.7 3.7L7.5 19.9 2.8 21.2l1.3-4.7z'],
-  more: ['M6 12h.01', 'M12 12h.01', 'M18 12h.01'],
-  close: ['M6 6l12 12', 'M18 6L6 18'],
   sheet: ['M3.5 5.5h13v10h-13z', 'M8.5 19.5h12v-10h-4'],
   chevron: ['M6.5 9.5l5.5 5.5 5.5-5.5'],
 }
@@ -177,26 +187,24 @@ const currentItem = computed<MemoItem | null>(
   () => memos.value.find((m) => m.id === currentId.value) ?? null,
 )
 
-const COLOR_OPTIONS = [
-  { name: '蓝色', val: 'blue', hex: '#3b82f6' },
-  { name: '翡翠绿', val: 'emerald', hex: '#10b981' },
-  { name: '琥珀橙', val: 'amber', hex: '#f59e0b' },
-  { name: '玫瑰红', val: 'rose', hex: '#f43f5e' },
-  { name: '紫罗兰', val: 'purple', hex: '#8b5cf6' },
-]
+// 色板名册留本视图（选色器需要中文名），十六进制一律吃 memoMetrics 用户色板单源
+// （色彩标识是用户数据值，非主题表面——接线收口轮消灭了 hex 的第二份逐字副本）。
+const COLOR_OPTIONS = (
+  [
+    { name: '蓝色', val: 'blue' },
+    { name: '翡翠绿', val: 'emerald' },
+    { name: '琥珀橙', val: 'amber' },
+    { name: '玫瑰红', val: 'rose' },
+    { name: '紫罗兰', val: 'purple' },
+  ] as const
+).map((c) => ({ ...c, hex: MEMO_COLOR_HEX[c.val] }))
 
-// 溢出菜单：导出全库/一键全删/浮窗速记退居次级入口（破坏性动作离主动线远一格，
-// 确认链与禁用律一字不动）。开合纪律同 MemoToolbar 契约：点外/按 Esc/选中项即收。
-const menuOpen = ref(false)
-const overflowEl = ref<HTMLElement | null>(null)
-function onDocMouseDown(e: MouseEvent) {
-  if (!menuOpen.value) return
-  if (overflowEl.value && !overflowEl.value.contains(e.target as Node)) menuOpen.value = false
-}
-watch(menuOpen, (open) => {
-  if (open) document.addEventListener('mousedown', onDocMouseDown)
-  else document.removeEventListener('mousedown', onDocMouseDown)
-})
+// 溢出菜单（导出全库/一键全删/浮窗速记退居次级入口，破坏性动作离主动线远一格，
+// 确认链与禁用律一字不动）开合归 MemoToolbar：点外（document click capture）/
+// 按 Esc/选中项即收，本视图不再自挂 mousedown 监听（M2 注明的收合口径差异按
+// MemoToolbar 纪律统一收口）。这里只跟读 moreChange 供全局 Esc 阶梯判级——
+// 菜单在场时 Esc 只收菜单，不得连降书写态/当前页两级。
+const toolbarMoreOpen = ref(false)
 
 // 搜索/过滤拉取带序号守卫（模式同 useEverythingSearch 的 searchSeq）：
 // 新查询发起即失效旧请求，List+GetStats 的慢响应不得覆盖新状态（loading 亦只由最新请求收口）。
@@ -236,8 +244,10 @@ async function loadMemos() {
   }
 }
 
-// 搜索框输入：350ms 防抖；输入瞬间即失效在飞查询，仅最后一次停顿后的请求允许写回。
-function onSearchInput() {
+// 搜索框输入（MemoToolbar 即时透传值，组件零防抖）：350ms 防抖留在视图侧；
+// 输入瞬间即失效在飞查询，仅最后一次停顿后的请求允许写回。
+function onSearchInput(value: string) {
+  searchKw.value = value
   ++loadSeq
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
@@ -262,52 +272,12 @@ const hasFilter = computed(
   () => searchKw.value !== '' || selectedTag.value !== '' || filterPinned.value !== null,
 )
 
-// ---- 时间分组（置顶由后端排序保证在前，这里按 updatedAt 再切自然日档；
-// 六档口径逐字保留，接线时换 memoMetrics.groupMemoItems 单源）----
-interface MemoGroup { key: string; label: string; items: MemoItem[] }
-
-function dayBucket(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '更早'
-  const now = new Date()
-  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
-  const days = Math.round((midnight(now) - midnight(d)) / 86400000)
-  if (days <= 0) return '今天'
-  if (days === 1) return '昨天'
-  if (days <= 7) return '7 天内'
-  if (days <= 30) return '30 天内'
-  return '更早'
-}
-
-const groupedMemos = computed<MemoGroup[]>(() => {
-  const order = ['置顶', '今天', '昨天', '7 天内', '30 天内', '更早']
-  const map = new Map<string, MemoItem[]>()
-  for (const m of memos.value) {
-    const key = m.isPinned ? '置顶' : dayBucket(m.updatedAt)
-    if (!map.has(key)) map.set(key, [])
-    map.get(key)!.push(m)
-  }
-  return order
-    .filter((k) => map.has(k))
-    .map((k) => ({ key: k, label: k, items: map.get(k)! }))
-})
-
-function fmtAgo(iso: string): string {
-  const t = new Date(iso).getTime()
-  if (Number.isNaN(t)) return '—'
-  const min = Math.floor((Date.now() - t) / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
-  if (min < 24 * 60) return `${Math.floor(min / 60)} 小时前`
-  return fmtDate(iso)
-}
-
-// 索引行摘要：首个非空行一行收（贴线密度优先；全文排版在右侧页面板看）。
-// MD 徽标随之退役——能否渲染由页面板自动分流，不再用徽标向每一行剧透。
-function rowExcerpt(content: string): string {
-  const line = content.split('\n').find((l) => l.trim() !== '')
-  return line?.trim() ?? ''
-}
+// ---- 时间分组（置顶由后端排序保证在前，这里按 updatedAt 再切自然日档）----
+// 接线收口（M4 清单）：六档口径/dayBucket/fmtAgo/行摘要的逐字副本全部删除，
+// 切 memoMetrics 单源——groupMemoItems 一次遍历共用同一 now，杜绝旧内联版
+// 每条各取 new Date() 可能跨午夜分裂的隐患；行摘要（首非空行）由 MemoCard
+// list 形态内部吃 firstMeaningfulLine，视图不再自切。
+const groupedMemos = computed(() => groupMemoItems(memos.value))
 
 // ---- 索引选择 ----
 function selectRow(item: MemoItem) {
@@ -315,22 +285,35 @@ function selectRow(item: MemoItem) {
   showEditor.value = false // 换看下一条时，书写草稿按旧模态关窗口径丢弃（Esc 同权）
 }
 
-// ---- 速记 ----
+// ---- 速记（与悬浮速记卡 M3 语义对齐防漂移：分词/并条全走 memoMetrics 单源）----
 function parseQuickTags(): string[] {
-  const raw = quickTagsInput.value.split(/[\s,，、;；]+/).filter(Boolean)
-  const set = new Set<string>()
-  for (const t of raw) set.add(t.startsWith('#') ? t : `#${t}`)
-  if (selectedTag.value) set.add(selectedTag.value)
-  return [...set]
+  const tags = parseTagTokens(quickTagsInput.value)
+  // 当前过滤标签自动带入是主窗独有组合（速记卡无过滤态），去重保序语义与
+  // 收编前的双份逐字实现一致：已手敲过的不挪位、未敲的补在尾部。
+  if (selectedTag.value && !tags.includes(selectedTag.value)) tags.push(selectedTag.value)
+  return tags
 }
 
 function onQuickEnter(e: KeyboardEvent) {
-  // 中文输入法组字中的回车只结束Candidates，不该触发保存
+  // 中文输入法组字中的回车只结束Candidates，不该触发保存（速记卡同款豁免）
   if (e.isComposing) return
-  void commitQuick()
+  // Ctrl/Cmd+Enter = 速记卡「存并收」的主窗等价语义：存下即完，不翻页抢占
+  // 当前阅读位；裸回车保持「存并翻到该条」原语义。
+  void commitQuick(!e.ctrlKey && !e.metaKey)
 }
 
-async function commitQuick() {
+// 多行粘贴就地并条（速记卡同谱，判定与并条吃 flattenPastedLines 单源）：
+// 速记行是一行面，不做拆条；单行粘贴零干预走原生插入路径。
+function onQuickPaste(e: ClipboardEvent) {
+  const merged = flattenPastedLines(e.clipboardData?.getData('text/plain') ?? '')
+  if (!merged) return
+  e.preventDefault()
+  const draft = quickText.value.trim()
+  quickText.value = draft ? `${draft} ${merged.flat}` : merged.flat
+  showToast(`已粘贴 ${merged.lineCount} 行并并为一条速记，回车即存`)
+}
+
+async function commitQuick(openPage = true) {
   const text = quickText.value.trim()
   if (!text || quickSaving.value) return
   quickSaving.value = true
@@ -340,8 +323,10 @@ async function commitQuick() {
     quickTagsInput.value = ''
     showToast('已记下')
     await loadMemos()
-    // 新条翻给右页看（当前视图过滤不含它则不抢闲页）
-    if (created?.id && memos.value.some((m) => m.id === created.id)) currentId.value = created.id
+    // 新条翻给右页看（当前视图过滤不含它、或 Ctrl+Enter「存并收」则不抢闲页）
+    if (openPage && created?.id && memos.value.some((m) => m.id === created.id)) {
+      currentId.value = created.id
+    }
   } catch (err: unknown) {
     showToast(`记录失败: ${getErrorMessage(err)}`)
   } finally {
@@ -578,10 +563,11 @@ async function copyMemoContent(content: string) {
   await copyWithToast(content, '已复制便签内容到剪贴板')
 }
 
-// Esc 出口纪律（旧"编辑浮层→详情浮层"链的等价降维）：溢出菜单 → 书写态回阅读页 → 收起当前页
+// Esc 出口纪律（旧"编辑浮层→详情浮层"链的等价降维）：溢出菜单 → 书写态回阅读页 → 收起当前页。
+// 菜单档由 MemoToolbar 自收（其 window keydown 与本函数同拍触发），本视图只判级让位。
 function onGlobalKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
-  if (menuOpen.value) menuOpen.value = false
+  if (toolbarMoreOpen.value) return // 菜单在场只收菜单，不连降页面级
   else if (showEditor.value) showEditor.value = false
   else if (currentId.value) currentId.value = ''
 }
@@ -599,7 +585,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onGlobalKey)
-  document.removeEventListener('mousedown', onDocMouseDown)
   ++loadSeq // 作废在飞请求，卸载后不得回写状态
   if (searchTimer) {
     clearTimeout(searchTimer)
@@ -626,81 +611,64 @@ watch(currentId, async () => {
       <button type="button" class="btn btn-small btn-secondary retry-btn" @click="loadMemos">重试</button>
     </section>
 
-    <!-- 顶栏：一行轻工具条（检索/标签/置顶；导出与全删退右端溢出菜单。无卡片容器、无统计字） -->
-    <div class="memo-tools">
-      <div class="search-box">
-        <span class="search-icon"><MemoGlyph name="search" /></span>
-        <input
-          v-model="searchKw"
-          type="text"
-          class="text-input search-input"
-          placeholder="搜标题、正文、代码或标签…"
-          aria-label="搜索便签"
-          @input="onSearchInput"
-        />
-        <button v-if="searchKw" class="memo-clear-btn" title="清空搜索" aria-label="清空搜索" @click="searchKw = ''; loadMemos()">
-          <MemoGlyph name="close" :size="13" />
-        </button>
-      </div>
-      <div class="memo-chips" aria-label="标签与置顶过滤">
-        <button class="tag-chip" :class="{ active: selectedTag === '' }" @click="handleSelectTag('')">
-          全部 ({{ stats.totalCount }})
-        </button>
-        <button
-          v-for="(count, tag) in stats.tagCloud"
-          :key="tag"
-          class="tag-chip"
-          :class="{ active: selectedTag === tag }"
-          @click="handleSelectTag(String(tag))"
-        >
-          {{ tag }} <span class="tag-count">({{ count }})</span>
-        </button>
-        <button
-          class="tag-chip chip-pin"
-          :class="{ active: filterPinned === true }"
-          title="只看置顶便签"
-          @click="filterPinned = filterPinned === true ? null : true; loadMemos()"
-        >
-          <MemoGlyph name="pin" :size="12" /> 只看置顶
-        </button>
-      </div>
-      <button v-if="hasFilter" class="btn btn-ghost btn-small clear-filter-btn" @click="clearFilters">清除过滤</button>
-      <div ref="overflowEl" class="memo-overflow">
-        <button
-          class="memo-more-btn"
-          aria-label="更多操作"
-          :aria-haspopup="true"
-          :aria-expanded="menuOpen"
-          title="更多操作（浮窗速记/导出全库/一键全删）"
-          @click="menuOpen = !menuOpen"
-        >
-          <MemoGlyph name="more" :size="17" />
-        </button>
-        <div v-if="menuOpen" class="memo-menu" role="menu">
-          <button class="menu-item" role="menuitem" title="唤出悬浮速记卡（与全局热键同一入口）" @click="menuOpen = false; openQuickSheet()">
-            <MemoGlyph name="sheet" /> 浮窗速记
+    <!-- 顶栏：MemoToolbar（检索即时透传——350ms 防抖与序号守卫留在本视图；导出与
+         全删退 #more 溢出菜单，点外/Esc/选中项收合纪律由组件收口。无卡片容器、无统计字） -->
+    <MemoToolbar
+      :search="searchKw"
+      placeholder="搜标题、正文、代码或标签…"
+      label="搜索便签"
+      @update:search="onSearchInput"
+      @more-change="toolbarMoreOpen = $event"
+    >
+      <template #filters>
+        <div class="memo-chips" aria-label="标签与置顶过滤">
+          <button class="tag-chip" :class="{ active: selectedTag === '' }" @click="handleSelectTag('')">
+            全部 ({{ stats.totalCount }})
           </button>
           <button
-            class="menu-item"
-            role="menuitem"
-            :disabled="stats.totalCount === 0 || exporting"
-            :title="`导出全库为单个 Markdown 汇总文件（敏感遮罩条目默认排除），需确认`"
-            @click="menuOpen = false; handleExportLibrary()"
+            v-for="(count, tag) in stats.tagCloud"
+            :key="tag"
+            class="tag-chip"
+            :class="{ active: selectedTag === tag }"
+            @click="handleSelectTag(String(tag))"
           >
-            <MemoGlyph name="download" /> {{ exporting ? '导出中…' : '导出全库' }}
+            {{ tag }} <span class="tag-count">({{ count }})</span>
           </button>
           <button
-            class="menu-item menu-danger"
-            role="menuitem"
-            :disabled="stats.totalCount === 0"
-            title="一次删光全部便签（含敏感遮罩条目），需强确认"
-            @click="menuOpen = false; handleClearAll()"
+            class="tag-chip chip-pin"
+            :class="{ active: filterPinned === true }"
+            title="只看置顶便签"
+            @click="filterPinned = filterPinned === true ? null : true; loadMemos()"
           >
-            <MemoGlyph name="trash" /> 一键全删{{ stats.totalCount ? ` (${stats.totalCount})` : '' }}
+            <MemoGlyph name="pin" :size="12" /> 只看置顶
           </button>
         </div>
-      </div>
-    </div>
+        <button v-if="hasFilter" class="btn btn-ghost btn-small clear-filter-btn" @click="clearFilters">清除过滤</button>
+      </template>
+      <template #more>
+        <button class="menu-item" role="menuitem" title="唤出悬浮速记卡（与全局热键同一入口）" @click="openQuickSheet()">
+          <MemoGlyph name="sheet" /> 浮窗速记
+        </button>
+        <button
+          class="menu-item"
+          role="menuitem"
+          :disabled="stats.totalCount === 0 || exporting"
+          :title="`导出全库为单个 Markdown 汇总文件（敏感遮罩条目默认排除），需确认`"
+          @click="handleExportLibrary()"
+        >
+          <MemoGlyph name="download" /> {{ exporting ? '导出中…' : '导出全库' }}
+        </button>
+        <button
+          class="menu-item menu-danger"
+          role="menuitem"
+          :disabled="stats.totalCount === 0"
+          title="一次删光全部便签（含敏感遮罩条目），需强确认"
+          @click="handleClearAll()"
+        >
+          <MemoGlyph name="trash" /> 一键全删{{ stats.totalCount ? ` (${stats.totalCount})` : '' }}
+        </button>
+      </template>
+    </MemoToolbar>
 
     <!-- 摊开的两页：左索引栏 + 右页面板（≤760 容器查询叠放，页面板在上——先落笔再翻账） -->
     <div class="memo-desk">
@@ -722,57 +690,30 @@ watch(currentId, async () => {
             {{ g.label }}
             <span class="group-count mono">{{ g.items.length }}</span>
           </h2>
-          <article
+          <!-- 行式索引 = MemoCard list 形态（M4 契约接线）：色彩封边吃 memoColorHex
+               内联单源；masked 严口径由组件硬编码（标题位固定「敏感便签」，title
+               属性同熄——2026-09-26 收口裁决，与 MCP 整条不下发同谱）；
+               :md-flag="false" 守 v2「徽标退役防回潮」——渲染分流归页面板。
+               memo-row/is-current 为宿主贴挂钩子（选中行底色与换选滚动定位共用）。 -->
+          <MemoCard
             v-for="item in g.items"
             :key="item.id"
             class="memo-row"
-            :class="[`spine-${item.colorTag || 'blue'}`, { 'is-pinned': item.isPinned, 'is-current': item.id === currentId }]"
-          >
-            <div class="memo-row-body">
-              <span class="memo-row-top">
-                <span
-                  class="memo-title"
-                  :class="{ 'title-void': !item.title.trim() }"
-                  role="button"
-                  tabindex="0"
-                  :title="item.title || '无标题便签'"
-                  @click="selectRow(item)"
-                  @keydown.enter.prevent="selectRow(item)"
-                  @keydown.space.prevent="selectRow(item)"
-                ><MemoGlyph v-if="item.isPinned" name="pin" :size="12" class="title-pin" />{{ item.title || '无标题便签' }}</span>
-                <time class="memo-time" :title="new Date(item.updatedAt).toLocaleString()">{{ fmtAgo(item.updatedAt) }}</time>
-              </span>
-              <span
-                class="memo-excerpt mono"
-                :class="{ masked: item.isMasked }"
-                :aria-label="item.isMasked ? '敏感信息已遮罩' : '便签首行摘要'"
-                @click="selectRow(item)"
-              ><template v-if="item.isMasked">••••••••••••••••••••••••••••••</template><template v-else>{{ rowExcerpt(item.content) || '（空便签）' }}</template></span>
-              <span v-if="item.tags && item.tags.length" class="memo-row-tags">
-                <span
-                  v-for="t in item.tags"
-                  :key="t"
-                  class="tag-pill tag-pill-clickable memo-tag"
-                  :class="{ 'memo-tag-active': selectedTag === t }"
-                  role="button"
-                  tabindex="0"
-                  @click="handleSelectTag(t)"
-                  @keydown.enter.prevent="handleSelectTag(t)"
-                  @keydown.space.prevent="handleSelectTag(t)"
-                >
-                  {{ t }}
-                </span>
-              </span>
-            </div>
-            <span class="memo-row-actions">
-              <button class="memo-icon-btn" :title="item.isMasked ? '揭示敏感信息' : '脱敏遮罩保护'" :aria-label="item.isMasked ? '揭示敏感信息' : '脱敏遮罩保护'" @click="handleToggleMask(item)">
-                <MemoGlyph :name="item.isMasked ? 'eye' : 'eye-off'" />
-              </button>
-              <button class="memo-icon-btn" :title="item.isPinned ? '取消置顶' : '固定置顶'" :aria-label="item.isPinned ? '取消置顶' : '固定置顶'" @click="handleTogglePin(item)">
-                <MemoGlyph name="pin" />
-              </button>
-            </span>
-          </article>
+            :class="{ 'is-current': item.id === currentId }"
+            variant="list"
+            :title="item.title"
+            :text="item.content"
+            :tags="item.tags"
+            :color="item.colorTag"
+            :pinned="item.isPinned"
+            :masked="item.isMasked"
+            :updated-at="item.updatedAt"
+            :md-flag="false"
+            @select="selectRow(item)"
+            @toggle-pin="handleTogglePin(item)"
+            @toggle-mask="handleToggleMask(item)"
+            @tag-select="handleSelectTag"
+          />
         </section>
 
         <!-- 悬浮速记卡热键配置（低频件收栏底折叠；实况拉不到整段收起不给假配置） -->
@@ -815,7 +756,9 @@ watch(currentId, async () => {
             type="text"
             placeholder="想到什么敲一行，回车即存…"
             aria-label="速记内容"
+            title="⏎ 存并翻到该条 · Ctrl+⏎ 存后不翻页（同悬浮速记卡「存并收」）· 多行粘贴自动并成一条"
             @keydown.enter="onQuickEnter"
+            @paste="onQuickPaste"
           />
           <input
             v-model="quickTagsInput"
@@ -823,7 +766,7 @@ watch(currentId, async () => {
             type="text"
             placeholder="#标签"
             aria-label="速记标签"
-            title="速记标签：空格/逗号分隔，自动补 #；速记不带标题，正文即全貌"
+            title="速记标签：空格/逗号分隔，自动补 #（与悬浮速记卡同一分词单源）；速记不带标题，正文即全貌"
             @keydown.enter="onQuickEnter"
           />
           <span
@@ -831,7 +774,7 @@ watch(currentId, async () => {
             class="tag-pill memo-tag memo-tag-autofill"
             :title="`当前正按 ${selectedTag} 过滤，速记会自动带上该标签`"
           >{{ selectedTag }}</span>
-          <UiButton variant="primary" small :disabled="!quickText.trim() || quickSaving" @click="commitQuick">
+          <UiButton variant="primary" small :disabled="!quickText.trim() || quickSaving" @click="commitQuick(true)">
             {{ quickSaving ? '记录中…' : '记录' }}
           </UiButton>
           <button class="memo-pen-btn" title="写长便签：标题、多行代码、Markdown、标签、色彩标识" @click="openCreateModal">
@@ -910,8 +853,14 @@ watch(currentId, async () => {
         <!-- 阅读态（旧详情浮层所得全数搬进本页；MD 自动渲染/等宽原文/遮罩圆点三分支照旧） -->
         <div v-else-if="currentItem" class="pane-read">
           <header class="pane-head">
-            <h3 class="pane-title" :class="{ 'title-void': !currentItem.title.trim() }">
-              {{ currentItem.title || '无标题便签' }}
+            <!-- 接线收口裁决（2026-09-26）：页面板 masked 分支改吃 MemoCard 严口径——
+                 标题也是明文面，不落渲染（固定「敏感便签」），与行式索引、MCP
+                 「masked 整条不下发」同谱；原 v2"标题仍示人"放宽就此收编 -->
+            <h3
+              class="pane-title"
+              :class="{ 'title-void': !currentItem.isMasked && !currentItem.title.trim() }"
+            >
+              {{ currentItem.isMasked ? '敏感便签' : currentItem.title || '无标题便签' }}
             </h3>
           </header>
           <div class="pane-meta">
@@ -990,17 +939,8 @@ watch(currentId, async () => {
 .memo-page { display: flex; flex-direction: column; gap: 12px; container: memo / inline-size; }
 .retry-btn { margin-left: 8px; }
 
-/* ---------- 顶栏工具条：一行轻件，零卡片容器 ---------- */
-.memo-tools { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.search-box { position: relative; flex: 0 1 250px; min-width: 140px; display: flex; align-items: center; }
-.search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--color-text-subtle); display: inline-flex; pointer-events: none; }
-.search-input { width: 100%; padding-left: 30px; padding-right: 26px; min-height: var(--control-h-md); }
-.memo-clear-btn {
-  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  background: none; border: none; color: var(--color-text-subtle); cursor: pointer;
-  display: inline-flex; padding: 2px; border-radius: var(--radius-micro);
-}
-.memo-clear-btn:hover { background: var(--surface-hover); color: var(--color-text); }
+/* ---------- 顶栏过滤件（MemoToolbar #filters 插槽内容，父作用域样式照常命中）----
+   检索框/清空钮/溢出菜单皮肤全部归 MemoToolbar 自带，本层不再复刻 ---------- */
 .memo-chips { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: thin; padding: 2px 0; }
 .tag-chip {
   flex: none; display: inline-flex; align-items: center; gap: 4px;
@@ -1012,20 +952,7 @@ watch(currentId, async () => {
 .tag-chip.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
 .tag-count { opacity: 0.8; font-size: var(--text-xs); }
 .clear-filter-btn { flex: none; }
-.memo-overflow { position: relative; flex: none; }
-.memo-more-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: var(--control-h-md); height: var(--control-h-md);
-  background: none; border: 1px solid var(--btn-outline-edge); border-radius: var(--radius-control);
-  color: var(--color-text-muted); cursor: pointer;
-  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
-}
-.memo-more-btn:hover { background: var(--surface-hover); color: var(--color-text); }
-.memo-menu {
-  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 172px;
-  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
-  box-shadow: var(--shadow-small); padding: 4px; display: flex; flex-direction: column; gap: 2px;
-}
+/* 溢出菜单条目皮肤随 #more 插槽留在本视图（菜单容器与开合归 MemoToolbar） */
 .menu-item {
   display: flex; align-items: center; gap: 8px; text-align: left;
   background: none; border: none; border-radius: var(--radius-micro); cursor: pointer;
@@ -1042,7 +969,9 @@ watch(currentId, async () => {
   align-items: stretch; min-width: 0;
 }
 
-/* 左索引栏：贴线行（笔记本侧页速记标），非卡片群岛 */
+/* 左索引栏：贴线行（笔记本侧页速记标），非卡片群岛。行本体皮肤归 MemoCard
+   list 形态（封边/悬染/置顶描边/两行密度全在组件内），本层只剩分组档头与
+   「当前页对应行」这一条宿主差分——组件契约未含选中态，钩子类由宿主贴挂。 */
 .memo-index {
   display: flex; flex-direction: column; gap: 2px; min-width: 0;
   max-height: calc(100dvh - 196px); min-height: 300px; overflow-y: auto;
@@ -1057,49 +986,13 @@ watch(currentId, async () => {
 }
 .group-count { font-size: var(--text-micro); color: var(--color-text-subtle); background: var(--surface-hover); border-radius: var(--radius-pill); padding: 0 6px; }
 
-.memo-row {
-  display: flex; align-items: stretch; gap: 2px; min-width: 0;
-  border-left: 3px solid transparent; border-radius: var(--radius-micro);
-  transition: background var(--motion-fast) ease;
-}
-.memo-row:hover { background: var(--surface-hover); }
-.memo-row.is-pinned { background: var(--surface-soft); }
-.memo-row.is-pinned:hover { background: var(--surface-hover); }
-.memo-row.is-current { background: var(--surface-selected); }
-/* 色彩标识是用户数据值（colorTag 持久化进后端），非主题表面——封边保留原始色板（与 memoMetrics 五色同源） */
-.spine-blue { border-left-color: #3b82f6; }
-.spine-emerald { border-left-color: #10b981; }
-.spine-amber { border-left-color: #f59e0b; }
-.spine-rose { border-left-color: #f43f5e; }
-.spine-purple { border-left-color: #8b5cf6; }
+/* MemoCard 根节点透传宿主类：当前页对应行染色（换选滚动定位同吃此钩子）。
+   选择器加 .memo-index 层抬高特异性，稳过组件内 .mc-list 的透明底与悬染档。 */
+.memo-index .memo-row.is-current { background: var(--surface-selected); }
 
-.memo-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 5px 4px 5px 8px; }
-.memo-row-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.memo-title {
-  margin: 0; font-size: var(--text-base); font-weight: 600; color: var(--color-text);
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
-}
-.memo-title:hover { color: var(--color-primary); }
-.title-pin { margin-right: 4px; vertical-align: -2px; color: var(--color-primary); }
 .title-void { color: var(--color-text-subtle); font-weight: 400; font-style: italic; }
-.memo-time { margin-left: auto; flex: none; font-size: var(--text-micro); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
-.memo-excerpt {
-  display: block; font-size: var(--text-xs); line-height: 1.5; color: var(--color-text-muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; min-width: 0;
-}
-.memo-excerpt.masked { color: var(--color-text-subtle); user-select: none; letter-spacing: 1.5px; }
-.memo-row-tags { display: flex; flex-wrap: nowrap; gap: 3px; padding-top: 1px; overflow: hidden; }
-/* 标签丸外观基座归全局 .tag-pill 原子；可点档走 .tag-pill-clickable；本层只剩选中态私有色差。 */
+/* 页面板标签丸选中态私有色差（行内丸归 MemoCard 契约、无此差分——宁少勿滥裁决） */
 .memo-tag-active { background: var(--color-primary-soft); color: var(--color-primary); }
-
-.memo-row-actions { display: flex; flex-direction: column; justify-content: center; gap: 2px; flex: none; padding-right: 2px; opacity: 0.55; transition: opacity var(--motion-fast) ease; }
-.memo-row:hover .memo-row-actions, .memo-row:focus-within .memo-row-actions, .memo-row.is-current .memo-row-actions { opacity: 1; }
-.memo-icon-btn {
-  background: none; border: none; cursor: pointer; color: var(--color-text-muted);
-  padding: 3px; border-radius: var(--radius-micro); display: inline-flex;
-  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
-}
-.memo-icon-btn:hover { background: var(--surface-hover); color: var(--color-text); }
 
 /* 栏底：悬浮速记卡折叠配置（低频件，收起态一行字即够；未在位警示恒外露） */
 .memo-sheet-settings { margin-top: 8px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 6px; }

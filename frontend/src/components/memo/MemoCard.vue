@@ -8,8 +8,9 @@
 //
 // 敏感遮罩纪律【硬编码进组件，消费方无从旁路】：masked 态下
 //   ① title/text 两个明文面一律不渲染（title 换成固定文案「敏感便签」、正文
-//      换成圆点占位）——比现视图（masked 仍显示标题）更严，是对契约
-//      「遮罩态永不渲染明文」的从严落实，接线方删旧卡时注意此观感差异；
+//      换成圆点占位）——比 M2 之前的视图（masked 仍显示标题）更严。接线收口
+//      裁决（2026-09-26）：此从严口径定稿为全链统一——主视图行/页面板 masked
+//      分支改吃本口径（标题也不渲染），与 MCP 线「masked 整条不下发」同谱；
 //   ② HTML title 属性也是泄漏面：masked 态不给任何元素挂含明文的 title 提示
 //      （hover 弹提示同样是"渲染"）；
 //   ③ MD 徽标随之熄灭——暴露"正文含 Markdown 结构"本身就是结构泄漏。
@@ -45,8 +46,13 @@ const props = withDefaults(
     updatedAt: string
     /** 形态：grid=卡片（多行摘要）/ list=单行摊列 */
     variant: 'list' | 'grid'
+    /**
+     * MD 徽标开关（默认亮，维持 M4 契约）：M2 v2 主视图已裁决「徽标退役防回潮」
+     * ——能否渲染由页面板自动分流，不再向每一行剧透，行式索引接线方传 false。
+     */
+    mdFlag?: boolean
   }>(),
-  { tags: () => [], color: '' },
+  { tags: () => [], color: '', mdFlag: true },
 )
 
 const emit = defineEmits<{
@@ -70,7 +76,9 @@ const shownTitle = computed(() => {
 const titleVoid = computed(() => !props.masked && !props.title.trim())
 // masked 永不进 title 属性——悬浮提示与渲染文本同纪律
 const titleTip = computed(() => (props.masked ? undefined : shownTitle.value))
-const showMdFlag = computed(() => !props.masked && looksLikeMarkdown(props.text))
+const showMdFlag = computed(
+  () => props.mdFlag && !props.masked && looksLikeMarkdown(props.text),
+)
 const previewText = computed(() => {
   if (props.masked) return MASK_DOTS
   const raw = isList.value ? firstMeaningfulLine(props.text) : cardPreview(props.text)
@@ -141,6 +149,7 @@ const tagList = computed(() => props.tags ?? [])
         type="button"
         class="mc-btn"
         :title="masked ? '揭示敏感信息' : '脱敏遮罩保护'"
+        :aria-label="masked ? '揭示敏感信息' : '脱敏遮罩保护'"
         @click="emit('toggleMask')"
       >
         {{ masked ? '👁️' : '🕶️' }}
@@ -150,6 +159,7 @@ const tagList = computed(() => props.tags ?? [])
         class="mc-btn"
         :class="{ 'mc-on': pinned }"
         :title="pinned ? '取消置顶' : '固定置顶'"
+        :aria-label="pinned ? '取消置顶' : '固定置顶'"
         @click="emit('togglePin')"
       >
         📌

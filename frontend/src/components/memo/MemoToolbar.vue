@@ -17,6 +17,8 @@
 //     宿主填按钮）。组件只管菜单开合（触发钮 aria-expanded、点外关闭、Esc
 //     关闭、菜单内点击冒泡收尾自动关闭，并透传 close() 供宿主显式收口）；
 //     危险确认对话框与其全部业务后果留在视图，本件对"点了什么"零感知。
+//     开合状态经 moreChange 事件如实外播（只报"开没开"不报内容）——宿主的
+//     全局 Esc 阶梯需要知道"菜单优先于页面自身收合"，否则一次 Esc 连降两级。
 import { onBeforeUnmount, ref } from 'vue'
 
 const props = withDefaults(
@@ -34,13 +36,17 @@ const props = withDefaults(
 const emit = defineEmits<{
   /** 即时透传输入值（无节流无防抖——防抖策略外置归宿主） */
   (e: 'update:search', value: string): void
+  /** 溢出菜单开合外播（true/false 都发，含点击项/卸载触发的自动收合） */
+  (e: 'moreChange', open: boolean): void
 }>()
 
 const rootEl = ref<HTMLElement | null>(null)
 const moreOpen = ref(false)
 
 function openMore(on: boolean) {
+  const changed = moreOpen.value !== on
   moreOpen.value = on
+  if (changed) emit('moreChange', on)
   if (on) {
     // 点外即收：捕获后的 document click 只挂开合期，卸载/关闭必摘（防泄露监听）
     document.addEventListener('click', onDocClick, true)
