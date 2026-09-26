@@ -104,6 +104,34 @@
 }
 
 /* ============================================================
+ * N40 界面字体档位：documentElement[data-font] 三档覆写（单源仍在本文件）。
+ * useTheme 按后端持久化值挂 data-font（kai | plain | mono）。档位只需重定义
+ * --font-ui——--font-text/--font-display 在 :root 即 var(--font-ui) 委托，
+ * 自定义属性在使用元素处按级联后计算值解析，主栈换装自动跟变，档位内严禁
+ * 重定义此二者（fonts.spec 锁）。选择器特异度 (0,1,1) > :root (0,1,0)，覆写稳。
+ * kai 档与 :root 默认等价，仍逐字写全保三档对称可 grep（fonts.spec 锁两处一致防漂移）。
+ * ============================================================ */
+
+/* ---------- ① 默认·文楷：与 :root 默认栈逐字一致 ---------- */
+html[data-font="kai"] {
+  --font-ui: "LXGW WenKai GB Screen", "Noto Sans SC", "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+}
+
+/* ---------- ② 系统朴素：整体去随仓 Web 字体，回落原系统字链（N36 前旧观感）；
+ *      --font-mono 一并覆为系统等宽链，防随仓字体从代码/数字面回漏 ---------- */
+html[data-font="plain"] {
+  --font-ui: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", monospace;
+}
+
+/* ---------- ③ 等宽极客：JetBrains Mono 主理拉丁/数字，JBM 无汉字字形，
+ *      CJK 按字符回落文楷（浏览器原生逐字回退，与 --font-mono 中文尾同一气质）；
+ *      --font-mono 本就以 JBM 居首，不覆 ---------- */
+html[data-font="mono"] {
+  --font-ui: "JetBrains Mono", "LXGW WenKai GB Screen", "Noto Sans SC", "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
+}
+
+/* ============================================================
  * 接线说明（集成补丁清单，主会话在配色战线收口后套用）：
  *   ① main.ts：在 `import './styles/tokens.css'` 之后加
  *      `import './styles/fonts.css'`（顺序敏感：本文件 :root 必须

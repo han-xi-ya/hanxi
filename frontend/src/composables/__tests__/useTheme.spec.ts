@@ -11,6 +11,8 @@ const rpc = {
   SetTheme: vi.fn().mockResolvedValue(undefined),
   GetAccent: vi.fn().mockResolvedValue('teal'),
   SetAccent: vi.fn().mockResolvedValue(undefined),
+  GetFont: vi.fn().mockResolvedValue('kai'),
+  SetFont: vi.fn().mockResolvedValue(undefined),
   SetWindowDarkMode: vi.fn().mockResolvedValue(undefined),
 }
 
@@ -32,6 +34,8 @@ async function loadFresh() {
   rpc.SetTheme.mockClear()
   rpc.GetAccent.mockResolvedValue('teal')
   rpc.SetAccent.mockClear()
+  rpc.GetFont.mockResolvedValue('kai')
+  rpc.SetFont.mockClear()
   localStorage.clear()
   const mod = await import('../useTheme')
   await mod.initTheme()
@@ -69,7 +73,7 @@ describe('useTheme 跨窗广播（N39）', () => {
     setThemeMode('dark')
     await nextTick()
     expect(document.documentElement.dataset.theme).toBe('dark')
-    expect(emitSpy).toHaveBeenCalledWith('theme:changed', { mode: 'dark', accent: 'teal' })
+    expect(emitSpy).toHaveBeenCalledWith('theme:changed', { mode: 'dark', accent: 'teal', font: 'kai' })
     expect(rpc.SetTheme).toHaveBeenCalledWith('dark')
   })
 
@@ -117,7 +121,79 @@ describe('useTheme 跨窗广播（N39）', () => {
     setAccent('jade')
     await nextTick()
     expect(document.documentElement.dataset.accent).toBe('jade')
-    expect(emitSpy).toHaveBeenCalledWith('theme:changed', { mode: 'light', accent: 'jade' })
+    expect(emitSpy).toHaveBeenCalledWith('theme:changed', { mode: 'light', accent: 'jade', font: 'kai' })
     expect(rpc.SetAccent).toHaveBeenCalledWith('jade')
+  })
+})
+
+// N40 界面字体档：与明暗/色板同通道（缓存 + 后端真相 + theme:changed 广播搭车），
+// 但 watch 不触 DWM——字体纯内容层，原生窗框无感。
+describe('useTheme 界面字体档（N40）', () => {
+  beforeEach(() => {
+    handlers.clear()
+  })
+
+  it('首帧缺省回落 kai：缓存无值 + 后端 kai → data-font="kai"', async () => {
+    const mod = await loadFresh()
+    const { font } = mod.useTheme()
+    await nextTick()
+    expect(font.value).toBe('kai')
+    expect(document.documentElement.dataset.font).toBe('kai')
+  })
+
+  it('启动后端校正：GetFont 返回 plain 与缓存分歧 → 应用不广播', async () => {
+    localStorage.clear()
+    vi.resetModules()
+    emitSpy.mockClear()
+    rpc.GetFont.mockResolvedValueOnce('plain')
+    const mod = await import('../useTheme')
+    await mod.initTheme()
+    await nextTick()
+    expect(document.documentElement.dataset.font).toBe('plain')
+    expect(localStorage.getItem('hanxi.font')).toBe('plain')
+    expect(emitSpy).not.toHaveBeenCalled()
+    rpc.GetFont.mockResolvedValue('kai')
+  })
+
+  it('切换字体：DOM 落值 + 缓存镜像 + SetFont 持久化 + 三轴快照广播', async () => {
+    const mod = await loadFresh()
+    const { setFontMode } = mod.useTheme()
+    emitSpy.mockClear()
+    setFontMode('mono')
+    await nextTick()
+    expect(document.documentElement.dataset.font).toBe('mono')
+    expect(localStorage.getItem('hanxi.font')).toBe('mono')
+    expect(rpc.SetFont).toHaveBeenCalledWith('mono')
+    expect(emitSpy).toHaveBeenCalledWith('theme:changed', { mode: 'light', accent: 'teal', font: 'mono' })
+  })
+
+  it('收端回写字体档：应用快照、不再广播、不重复持久化', async () => {
+    const mod = await loadFresh()
+    emitSpy.mockClear()
+    rpc.SetFont.mockClear()
+    fire('theme:changed', { mode: 'light', accent: 'teal', font: 'plain' })
+    await nextTick()
+    expect(mod.useTheme().font.value).toBe('plain')
+    expect(document.documentElement.dataset.font).toBe('plain')
+    expect(emitSpy).not.toHaveBeenCalled()
+    expect(rpc.SetFont).not.toHaveBeenCalled()
+  })
+
+  it('非法值双闸门：垃圾档位拒设、后端垃圾值回落缓存/默认', async () => {
+    const mod = await loadFresh()
+    const { font, setFontMode } = mod.useTheme()
+    setFontMode('comic' as never)
+    fire('theme:changed', { mode: 'light', accent: 'teal', font: 'hotpink' })
+    await nextTick()
+    expect(font.value).toBe('kai')
+    expect(rpc.SetFont).not.toHaveBeenCalled()
+    // 后端返回垃圾值：initTheme 校正分支拒收，沿用默认
+    vi.resetModules()
+    rpc.GetFont.mockResolvedValueOnce('serif' as never)
+    const mod2 = await import('../useTheme')
+    await mod2.initTheme()
+    await nextTick()
+    expect(mod2.useTheme().font.value).toBe('kai')
+    rpc.GetFont.mockResolvedValue('kai')
   })
 })

@@ -57,6 +57,35 @@ func (s *AppService) SetTrayRebuilder(fn func()) { s.trayRebuild = fn }
 // SetWindowDarkApplier 注入主窗口标题栏深色/色板应用回调，仅由装配根（app.New）在窗口创建后调用。
 func (s *AppService) SetWindowDarkApplier(fn func(dark bool, accent string) error) { s.windowDark = fn }
 
+// GetFont 返回持久化的界面字体档："kai" | "plain" | "mono"（异常/未设置回退默认文楷）。
+// 合法域与 DOM data-font 属性、fonts.css N40 档位覆写块三处字面一致（useTheme.spec / fonts.spec 锁）。
+func (s *AppService) GetFont() string {
+	if s.store == nil {
+		return "kai"
+	}
+	switch f := s.store.Get().Font; f {
+	case "kai", "plain", "mono":
+		return f
+	default:
+		return "kai"
+	}
+}
+
+// SetFont 持久化界面字体档。DOM 的 data-font 实际应用由前端 useTheme 完成，后端不感知。
+func (s *AppService) SetFont(font string) error {
+	switch font {
+	case "kai", "plain", "mono":
+	default:
+		return fmt.Errorf("非法界面字体档: %s", font)
+	}
+	if s.store == nil {
+		return nil
+	}
+	return s.store.Update(func(cfg *settings.AppSettings) {
+		cfg.Font = font
+	})
+}
+
 // GetTheme 返回持久化的主题模式："light" | "dark" | "system"（异常/未设置回退浅色）。
 func (s *AppService) GetTheme() string {
 	if s.store == nil {

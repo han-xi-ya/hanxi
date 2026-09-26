@@ -94,6 +94,7 @@ type QuickMenuSkinConfig struct {
 type AppSettings struct {
 	Theme            string            `json:"theme"`            // 明暗轴 "light" | "dark" | "system"
 	Accent           string            `json:"accent"`           // 色板轴 "teal" | "sky" | "iris" | "jade" | "onyx"
+	Font             string            `json:"font"`             // 界面字体档 "kai" | "plain" | "mono"（N40，缺省文楷）
 	Language         string            `json:"language"`         // "zh-CN" | "en-US"
 	AutoStart        bool              `json:"autoStart"`        // 开机自启
 	MinimizeToTray   bool              `json:"minimizeToTray"`   // 关闭时最小化到托盘
@@ -119,6 +120,7 @@ func DefaultSettings() AppSettings {
 	return AppSettings{
 		Theme:              "light",
 		Accent:             "teal",
+		Font:               "kai", // 界面字体出厂 = 默认·文楷（与 fonts.css N40 档位 kai、前端 DEFAULT_FONT 同值）
 		Language:           "zh-CN",
 		AutoStart:          false,
 		MinimizeToTray:     true,

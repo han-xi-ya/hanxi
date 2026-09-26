@@ -1,13 +1,13 @@
 <script setup lang="ts">
-// 设置分区·外观主题：明暗三分段（跟随系统 / 浅色 / 深色）+ 色板五分段（双轴，§7.2）。
-// 拆分自原 SettingsView 单页：主题持久化走 useTheme 单例（后端 SetTheme/SetAccent +
-// DOM data-theme/data-accent + 原生标题栏联动），本视图只做选择器，不碰持久化细节。
+// 设置分区·外观主题：明暗三分段（跟随系统 / 浅色 / 深色）+ 色板五分段 + 界面字体三分段（N40，§7.2）。
+// 拆分自原 SettingsView 单页：主题持久化走 useTheme 单例（后端 SetTheme/SetAccent/SetFont +
+// DOM data-theme/data-accent/data-font + 原生标题栏联动），本视图只做选择器，不碰持久化细节。
 import { computed } from 'vue'
-import { useTheme, type AccentMode } from '../../composables/useTheme'
+import { useTheme, type AccentMode, type FontMode } from '../../composables/useTheme'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 
-const { themeMode, setThemeMode, accent, setAccent } = useTheme()
+const { themeMode, setThemeMode, accent, setAccent, font, setFontMode } = useTheme()
 
 // 跟随系统时展示实际生效态，消解「选了 system 但界面是深色」的观感歧义
 const hint = computed(() => {
@@ -25,11 +25,21 @@ const ACCENTS: ReadonlyArray<{ key: AccentMode; label: string; dot: string }> = 
   { key: 'jade', label: '青瓷', dot: '#006869' },
   { key: 'onyx', label: '曜石', dot: '#0649b8' },
 ]
+
+// 界面字体三档（N40）：栈字面只在 fonts.css 档位覆写块单源定义，本表只管键与文案。
+const FONTS: ReadonlyArray<{ key: FontMode; label: string; desc: string }> = [
+  { key: 'kai', label: '默认·文楷', desc: '霞鹜文楷 GB 屏幕版正文 + 思源缺字回落（当前标定）' },
+  { key: 'plain', label: '系统朴素', desc: '整体回落系统字链，无随仓字体加载，N36 前旧观感' },
+  { key: 'mono', label: '等宽极客', desc: 'JetBrains Mono 主理拉丁/数字，汉字仍回落文楷' },
+]
+
+// 字体档简介随行展示（与明暗行 hint 同一交互语义：描述始终说的是当前生效档）
+const fontHint = computed(() => FONTS.find((f) => f.key === font.value)?.desc ?? '')
 </script>
 
 <template>
   <section class="page">
-    <PageHeader title="外观主题" subtitle="明暗与色板双轴持久化在后端设置中，随数据目录整体迁移；「跟随系统」将随 Windows 亮暗设置自动切换。" />
+    <PageHeader title="外观主题" subtitle="明暗、色板与界面字体三轴持久化在后端设置中，随数据目录整体迁移；「跟随系统」将随 Windows 亮暗设置自动切换。" />
 
     <div class="card pref-list">
       <div class="setting-row">
@@ -75,6 +85,22 @@ const ACCENTS: ReadonlyArray<{ key: AccentMode; label: string; dot: string }> = 
           >
             <span class="accent-dot" :style="{ background: a.dot }" aria-hidden="true" />
             <span>{{ a.label }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <span class="setting-main">
+          <span class="setting-name">界面字体</span>
+          <span class="setting-desc">{{ fontHint }}</span>
+        </span>
+        <div class="theme-seg seg-font" role="radiogroup" aria-label="界面字体">
+          <button
+            v-for="f in FONTS" :key="f.key"
+            type="button" class="theme-seg-btn" :class="{ active: font === f.key }"
+            role="radio" :aria-checked="font === f.key" @click="setFontMode(f.key)"
+          >
+            <span>{{ f.label }}</span>
           </button>
         </div>
       </div>

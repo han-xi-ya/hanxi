@@ -102,6 +102,40 @@ describe('fonts.css（N36 字体层）', () => {
     }
   })
 
+  it('N40 字体档位覆写块：三档齐全、kai 与 :root 逐字一致、桥接令牌不复定义', () => {
+    // 抽取全部 html[data-font="x"] 覆写块
+    const gears = new Map<string, string>()
+    for (const m of css.matchAll(/html\[data-font="(\w+)"\]\s*\{([^}]*)\}/g)) {
+      gears.set(m[1], m[2])
+    }
+    expect([...gears.keys()].sort()).toEqual(['kai', 'mono', 'plain'])
+
+    const gearToken = (gear: string, name: string) =>
+      new RegExp(`--${name}:\\s*([^;]+);`).exec(gears.get(gear) ?? '')?.[1]?.trim() ?? null
+
+    // ① kai 档与 :root 默认栈逐字一致（档位对称可 grep vs 防双处漂移）
+    expect(gearToken('kai', 'font-ui')).toBe(tokenValue('font-ui'))
+
+    // ② plain 档整体去随仓 Web 字体（UI 与 mono 双令牌），回落系统字链
+    expect(gearToken('plain', 'font-ui')).toMatch(/^"Segoe UI Variable Text"/)
+    expect(gearToken('plain', 'font-mono')).toMatch(/^ui-monospace/)
+    for (const bundled of ['LXGW', 'Noto Sans SC', 'JetBrains']) {
+      expect(gearToken('plain', 'font-ui'), 'plain-ui').not.toContain(bundled)
+      expect(gearToken('plain', 'font-mono'), 'plain-mono').not.toContain(bundled)
+    }
+
+    // ③ mono 档 JBM 居首且带文楷 CJK 回落；--font-mono 本栈已 JBM 居首故不覆
+    expect(gearToken('mono', 'font-ui')).toMatch(/^"JetBrains Mono",\s*"LXGW WenKai GB Screen"/)
+    expect(gearToken('mono', 'font-mono')).toBeNull()
+
+    // 档位只动 --font-ui(/--font-mono)：桥接委托令牌严禁在档位块内复定义，
+    // 否则 --font-text/--font-display 换装跟变链断裂（:root 委托是唯一通路）
+    for (const gear of ['kai', 'plain', 'mono']) {
+      expect(gearToken(gear, 'font-text'), gear).toBeNull()
+      expect(gearToken(gear, 'font-display'), gear).toBeNull()
+    }
+  })
+
   it('许可文本分发面双保险接线在位（N36 尾账）', () => {
     // 路一：vite 构建尾部把 licenses/ 显式拷入 dist（fonts.css 未引用它们，vite 不会自动带上）
     const viteConfig = readFileSync(join(process.cwd(), 'vite.config.ts'), 'utf8')
