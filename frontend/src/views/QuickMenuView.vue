@@ -1,14 +1,16 @@
 <script setup lang="ts">
 // 快捷菜单模块页：全局右键长按唤出能力的状态、条目预览与就地编辑。
-// 重设计批次（机主授权整页重排，功能零增删）：
-//   页头状态区（钩子 chip + 关键参数 chip 化一览）→ 左右双栏主区
-//   （左=条目编辑 TrayItemsEditor 主场，右=轮盘预览+当前条目常驻 sticky）
-//   → 行为设置与使用说明降为底部并排次级折叠。
+// v3 布局批（机主授权整页重排，功能零增删）：主角是「条目编辑 ⟷ 轮盘舱」闭环——
+//   页头一行状态条（chip 全绑确认值 refs）→ 双栏主区（左=TrayItemsEditor 编辑主场，
+//   保存钮 sticky 沉底；右=轮盘舱 sticky：预览 + 皮肤，「当前条目」镜像面板已删）
+//   → 行为设置与使用说明沉底并排折叠原位。
+//   断点一律容器查询（页容器实测宽：宽档 C/D 双栏，<840 单列编辑在前+舱紧凑横条，
+//   机主 628 截图批复），页面容器升 wide 1440 档。
 // N5-C1：条目编辑面与托盘右键菜单同挂共享组件 TrayItemsEditor（数据本就是同一份
 // settings.TrayMenu 账），配置改一处两面生效，不再来回跳页。
-import { computed, ref, shallowRef, onMounted } from 'vue'
+import { computed, ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
-import type { MenuItem, Status } from '../../bindings/hanxi/internal/modules/quickmenu/models'
+import type { MenuItem } from '../../bindings/hanxi/internal/modules/quickmenu/models'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import WheelPreview from '../components/quickmenu/WheelPreview.vue'
@@ -25,7 +27,10 @@ const emit = defineEmits<{
 
 const { showToast } = useToast()
 
-const status = shallowRef<Status | null>(null)
+// 页头 chip 一律绑"确认值 refs"（holdMs/movePx/twoTier/items/trapActive），不再直读
+// 状态快照：快照只在 loadState 刷新，saveTrigger 钳后回写不进快照——曾致"应用后
+// 页头参数章不回显"的说谎 bug（v3 T1 收口，status.* 退出模板）。
+const trapActive = ref<boolean | null>(null) // null=首刷未回，状态章不猜
 const items = shallowRef<MenuItem[]>([])
 const loading = ref(true)
 const errorMsg = ref('')
@@ -33,14 +38,6 @@ const errorMsg = ref('')
 // 预览——开/关的树形态不同（分组展开 vs 拍平）。
 const twoTier = ref(true)
 const savingTier = ref(false)
-
-const TYPE_LABEL: Record<string, string> = {
-  exe: '程序',
-  command: '命令',
-  route: '页面',
-  group: '分组',
-}
-const typeLabel = (t: string) => TYPE_LABEL[t] ?? '条目'
 
 async function refresh() {
   loading.value = true
@@ -58,7 +55,7 @@ async function refresh() {
 // loadState 读取状态并同步开关回显；返回 list 由调用方自行接（组合 Promise）。
 async function loadState() {
   const st = await QuickMenuAPI.QuickMenuService.GetStatus()
-  status.value = st
+  trapActive.value = st.trapActive
   twoTier.value = st.twoTier
   holdMs.value = st.holdMs
   movePx.value = st.moveTol
@@ -140,6 +137,40 @@ async function reloadAfterSave() {
   }
 }
 
+// v3 轮盘放量分档（与 CSS @container 换形同一实测源，禁各自为政）：页容器宽
+// <840 窄档=紧凑横条——盘面 trim 满格窗 + scale 0.56（盒 179px ≤180 上限）；
+// ≥1360（D 档）升 1.25；其余 0.9。驱动走容器实测（ResizeObserver）而非
+// useMediaQuery——断点按页容器宽切，scale 若跟视口走，1440 上限先于视口收窄
+// 的宽窗里会"舱按 C 档、盘按 D 档"错配。回落口径=窄档（qmWidth 0：happy-dom
+// RO 空实现与真实首帧未测得时，与窄端降级形态同向，宁紧勿滥）。
+const CABIN_STRIP_BREAK = 840
+const WHEEL_SCALE_STRIP = 0.56
+const WHEEL_SCALE_BASE = 0.9
+const WHEEL_SCALE_WIDE = 1.25
+const WHEEL_SCALE_BREAK = 1360
+const pageEl = ref<HTMLElement | null>(null)
+const qmWidth = ref(0)
+const cabinStrip = computed(() => qmWidth.value < CABIN_STRIP_BREAK)
+const wheelScale = computed(() =>
+  cabinStrip.value ? WHEEL_SCALE_STRIP : qmWidth.value >= WHEEL_SCALE_BREAK ? WHEEL_SCALE_WIDE : WHEEL_SCALE_BASE,
+)
+let pageScaleRO: ResizeObserver | null = null
+onMounted(() => {
+  // 老内核（@container 缺失）探测：CSS 侧换不了紧凑横条形，script 侧也别缩盘——
+  // 强制宽档口径（trim 关、scale 0.9），布局自然落基架单列大卡，不出现"轨大盘小"。
+  if (typeof CSS !== 'undefined' && !CSS.supports?.('container-type', 'inline-size')) {
+    qmWidth.value = CABIN_STRIP_BREAK + 1
+    return
+  }
+  if (!pageEl.value || typeof ResizeObserver === 'undefined') return
+  pageScaleRO = new ResizeObserver((entries) => {
+    const w = entries[entries.length - 1]?.contentRect.width ?? 0
+    if (w > 0) qmWidth.value = w
+  })
+  pageScaleRO.observe(pageEl.value)
+})
+onUnmounted(() => { pageScaleRO?.disconnect(); pageScaleRO = null })
+
 // N5-C4 容量软警示：主盘推荐 ≤8（不禁止，扇区数=条目数自适应，越多越窄）。
 const C4_RECOMMEND_MAX = 8
 const capacityWarn = computed(() => {
@@ -205,35 +236,32 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="page qm-page">
-    <!-- ① 页头状态区：钩子是否在位 + 关键参数 chip 化一览（数值不再散进长句） -->
+  <div ref="pageEl" class="page-wide qm-page">
+    <!-- ① 页头一行状态条：标题、钩子章与参数 chip 同轨（chip 绑确认值 refs，应用即回显） -->
     <header class="panel qm-state">
       <div class="header-row">
         <h1>快捷菜单</h1>
         <span
-          v-if="status"
+          v-if="trapActive !== null"
           class="chip"
-          :class="status.trapActive ? 'chip-positive' : 'chip-warning'"
-        >{{ status.trapActive ? '监听在位' : '钩子未启用' }}</span>
+          :class="trapActive ? 'chip-positive' : 'chip-warning'"
+        >{{ trapActive ? '监听在位' : '钩子未启用' }}</span>
+        <div class="qm-params" aria-label="关键参数一览">
+          <span class="chip chip-neutral qm-param">
+            <span class="qm-param-k">触发时长</span><b class="mono qm-param-v">{{ holdMs }}ms</b>
+          </span>
+          <span class="chip chip-neutral qm-param">
+            <span class="qm-param-k">位移容差</span><b class="mono qm-param-v">{{ movePx }}px</b>
+          </span>
+          <span class="chip chip-neutral qm-param">
+            <span class="qm-param-k">二级轮盘</span><b class="qm-param-v">{{ twoTier ? '开' : '关' }}</b>
+          </span>
+          <span class="chip chip-neutral qm-param">
+            <span class="qm-param-k">条目</span><b class="mono qm-param-v">{{ items.length }}</b>
+          </span>
+        </div>
       </div>
-      <p class="subtitle">
-        在任意界面按住鼠标右键即刻在光标处弹出圆形快捷启动轮盘（无需松手）；提前松手的
-        普通右键完全不受影响，任务栏与托盘区亦自动让位。
-      </p>
-      <div v-if="status" class="qm-params" aria-label="关键参数一览">
-        <span class="chip chip-neutral qm-param">
-          <span class="qm-param-k">触发时长</span><b class="mono qm-param-v">{{ status.holdMs }}ms</b>
-        </span>
-        <span class="chip chip-neutral qm-param">
-          <span class="qm-param-k">位移容差</span><b class="mono qm-param-v">{{ status.moveTol }}px</b>
-        </span>
-        <span class="chip chip-neutral qm-param">
-          <span class="qm-param-k">二级轮盘</span><b class="qm-param-v">{{ twoTier ? '开' : '关' }}</b>
-        </span>
-        <span class="chip chip-neutral qm-param">
-          <span class="qm-param-k">条目</span><b class="mono qm-param-v">{{ items.length }}</b>
-        </span>
-      </div>
+      <p class="subtitle">按住右键即在光标处弹出快捷轮盘，提前松手的普通右键不受影响；任务栏与托盘区自动让位。</p>
     </header>
 
     <div v-if="loading" class="state-box">正在读取快捷菜单状态…</div>
@@ -243,12 +271,12 @@ onMounted(async () => {
     </div>
 
     <template v-else>
-      <!-- ② 双栏主区：左=条目编辑主场，右=轮盘预览+当前条目（宽屏 sticky 常驻） -->
+      <!-- ② 双栏主区：左=条目编辑主场（保存钮 sticky 沉底），右=轮盘舱（预览+皮肤，宽栏 sticky 常驻） -->
       <div class="qm-main">
         <section class="panel qm-edit-col">
           <h2 class="sec-title">条目编辑</h2>
           <p class="sec-note">
-            与「设置→托盘右键菜单」是同一份配置：此处勾选、排序、分组，保存后托盘菜单与右侧轮盘预览同时生效。
+            与「设置→托盘右键菜单」是同一份配置：此处勾选、排序、分组，保存后托盘菜单与轮盘舱预览同时生效。
           </p>
           <!-- N5-C1：与设置页同挂共享编辑面（同一份 settings.TrayMenu 账），保存后托盘与轮盘同时生效 -->
           <TrayItemsEditor ref="editorRef" @saved="reloadAfterSave" />
@@ -265,8 +293,8 @@ onMounted(async () => {
         <aside class="qm-side-col">
           <section class="panel qm-preview-panel">
             <h2 class="sec-title">轮盘预览</h2>
-            <div class="qm-preview-box">
-              <WheelPreview :items="items" :active-index="selected" :scale="0.9" :skin="skin" @pick="pickSector" />
+            <div class="qm-preview-box" title="与你挂出的轮盘同一几何同一皮肤——点盘格可定位编辑列对应行（再点取消；选中行上出「⇄ 互换」）">
+              <WheelPreview :items="items" :active-index="selected" :scale="wheelScale" :trim="cabinStrip" :skin="skin" @pick="pickSector" />
             </div>
             <p v-if="capacityWarn" class="qm-cap-warn" role="status">{{ capacityWarn }}</p>
             <p class="qm-preview-hint">与你挂出的轮盘同一几何同一皮肤——点盘格可定位编辑列对应行（再点取消；选中行上出「⇄ 互换」）</p>
@@ -341,38 +369,6 @@ onMounted(async () => {
               <button type="button" class="link-button" :disabled="savingSkin" @click="resetSkin">恢复默认皮肤</button>
             </div>
           </section>
-
-          <section class="panel qm-items-panel">
-            <h2 class="sec-title">当前条目</h2>
-            <p class="sec-note">
-              主盘 <b class="mono">{{ items.length }}</b> 个扇区{{ twoTier ? '（分组可展开子环）' : '（分组已拍平）' }}。
-            </p>
-            <div class="qm-items-scroll">
-              <div v-if="items.length === 0" class="empty-state">
-                <p>尚未配置任何条目。可在「条目编辑」中添加要快速启动的程序、托管命令或分组。</p>
-              </div>
-              <ul v-else class="item-list">
-                <li v-for="(item, i) in items" :key="item.index" class="item-block" :class="{ 'is-picked': selected === i }">
-                  <div class="item-row">
-                    <span class="item-main">
-                      <span class="item-label">{{ item.label }}</span>
-                      <span v-if="item.hint" class="item-hint mono">{{ item.hint }}</span>
-                    </span>
-                    <span class="item-kind">{{ typeLabel(item.type) }}</span>
-                  </div>
-                  <ul v-if="item.children?.length" class="item-sub">
-                    <li v-for="kid in item.children" :key="kid.index" class="item-row item-row-sub">
-                      <span class="item-main">
-                        <span class="item-label">{{ kid.label }}</span>
-                        <span v-if="kid.hint" class="item-hint mono">{{ kid.hint }}</span>
-                      </span>
-                      <span class="item-kind">{{ typeLabel(kid.type) }}</span>
-                    </li>
-                  </ul>
-                </li>
-              </ul>
-            </div>
-          </section>
         </aside>
       </div>
 
@@ -436,25 +432,56 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* 页级纵堆节奏：状态区 → 双栏主区 → 次级折叠区 */
-.qm-page { display: flex; flex-direction: column; gap: 12px; }
+/* 页级纵堆节奏：状态条 → 双栏主区 → 次级折叠区。
+   v3 换形枢纽：本元素即容器查询的容器（查询名 qm，容器回调 scale 也测它），
+   断点全部按页容器实测宽走，与 wide 1440 上限自洽；老内核 @container 失效时
+   自动落回下方单列基架，即窄端降级形态。 */
+.qm-page {
+  display: flex; flex-direction: column; gap: 12px;
+  container: qm / inline-size;
+  min-width: 0;
+}
 
-/* ① 状态区参数 chip 行：键 muted、机器值 mono，全部可换行不撑横滚 */
-.qm-params { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+/* ① 页头一行状态条：参数 chip 与标题、钩子章同轨右推；键 muted、机器值 mono */
+.qm-state .header-row { align-items: center; }
+.qm-state h1 { margin: 0; }
+.qm-params { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 0 auto; justify-content: flex-end; }
 .qm-param { gap: 4px; }
 .qm-param-k { color: var(--color-text-muted); }
 .qm-param-v { font-size: var(--text-xs); color: var(--color-text); }
 
-/* ② 双栏主区：左编辑主场吃满剩余宽，右侧栏 sticky 常驻；390px 门禁靠 minmax(0,…) */
-.qm-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+/* ② 主区基架=窄档（<840 及老内核 @container 失效降级）：单列，DOM 序编辑主场
+   在前、轮盘舱在后——机主 628 批复：工作台首屏主角是编辑列表，舱不再置顶。
+   窄档的紧凑横条换形与 C/D 双栏见文末容器组；390px 门禁靠 minmax(0,…)。 */
+.qm-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
 .qm-edit-col { min-width: 0; }
-.qm-side-col {
-  position: sticky; top: 12px;
-  display: flex; flex-direction: column; gap: 12px;
-  min-width: 0; max-width: min(340px, 100%);
-}
+.qm-side-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .qm-preview-box { display: flex; justify-content: center; min-width: 0; }
+/* 盘体宽由 scale 定死（calc 320×scale），窄档 trim 已把 512 窗死边收零、盘面
+   满格；轨仍窄于盘时按轨收方（slot 锚点为百分比，随盒收缩不失真）兜极窄窗 */
+.qm-preview-box :deep(.wp) { max-width: 100%; }
 .qm-preview-hint { margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); text-align: center; }
+
+/* 分区标题/副注标准形（与 Softver/MsgBoard 同款 scoped 副本）：本页此前未定义，
+   h2 吃 UA 1.5em——"大标题大留白"的业余感根子之一，一并收进 --text-md 档 */
+.sec-title { font-size: var(--text-md); font-weight: 600; margin: 0; color: var(--color-text); }
+.sec-note { font-size: var(--text-sm); color: var(--color-text-muted); margin: 0; line-height: 1.6; }
+/* 卡内纵堆节奏收口：标题/副注/内容与 6–8px 微距对齐既有档位（此前无节奏全靠块流） */
+.qm-edit-col, .qm-state { display: flex; flex-direction: column; gap: 8px; }
+.qm-preview-panel { display: flex; flex-direction: column; gap: 6px; }
+
+/* v3 保存钮跟手：编辑列长流时保存条吸底常驻（宿主 scoped :deep 覆层，
+   TrayItemsEditor 本体零改动；设置页宿主不受波及） */
+.qm-edit-col :deep(.tray-footer) {
+  position: sticky;
+  bottom: 10px;
+  z-index: 2;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-small);
+}
 
 /* 皮肤面板：键左控件右的紧凑行；预设 chip 带色点，行距吃页级 gap 节奏 */
 .qm-skin-panel { display: flex; flex-direction: column; gap: 8px; }
@@ -471,76 +498,6 @@ onMounted(async () => {
 .qm-skin-range { flex: 1; min-width: 90px; accent-color: var(--color-primary); }
 .qm-skin-v { min-width: 3.2em; text-align: right; font-size: var(--text-xs); }
 .qm-skin-foot { display: flex; justify-content: flex-end; }
-/* 条目数远超推荐值时右侧栏不顶破视口：列表区内滚，页面本身不横滚 */
-.qm-items-scroll { max-height: 46vh; overflow-y: auto; overflow-x: hidden; }
-
-/* 条目预览：与弹窗同构的"名称 + 类型标记"行语法，hint 用 mono 呈现机器值 */
-.item-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.item-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: var(--surface-soft);
-}
-.item-block.is-picked { outline: 2px solid var(--color-primary); outline-offset: 1px; border-radius: var(--radius-control); }
-/* 分组块：主行 + 缩进子行同框，视觉上与"分组→子盘"的层级对应 */
-.item-block {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.item-sub {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.item-row-sub {
-  border-style: dashed;
-  background: transparent;
-}
-.item-main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 2px;
-}
-.item-label {
-  font-size: var(--text-base);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.item-hint {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.item-kind {
-  font-size: var(--text-micro);
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-pill);
-  padding: 1px 7px;
-  white-space: nowrap;
-}
-
 /* N5-C1 后编辑面已内嵌，设置页跳钮降为编辑面板页脚等效链接 */
 .qm-edit-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
 
@@ -577,12 +534,6 @@ onMounted(async () => {
   color: var(--color-text-muted);
   line-height: 1.65;
 }
-/* 窄屏单列纵堆：状态→预览(含当前条目)→编辑→次级设置；sticky 与内滚随之解除 */
-@media (max-width: 760px) {
-  .qm-main { grid-template-columns: minmax(0, 1fr); }
-  .qm-side-col { position: static; max-width: 100%; order: -1; }
-  .qm-items-scroll { max-height: none; }
-}
 
 kbd {
   font-family: var(--font-mono);
@@ -595,10 +546,37 @@ kbd {
   color: var(--color-text);
 }
 
-/* ≤760px：单列纵堆，DOM 序（编辑在前）经 order 调整为 状态→预览(含条目列表)→编辑→设置折叠 */
-@media (max-width: 760px) {
-  .qm-main { grid-template-columns: minmax(0, 1fr); }
-  .qm-side-col { position: static; order: -1; max-width: none; align-items: stretch; }
-  .qm-preview-box { justify-content: center; }
+/* ---------- v3 换形容器组（查询名 qm = .qm-page 实测宽） ----------
+   窄档 <840：舱降级为一条紧凑横条——条身自披卡面（padding/border/底一律用
+   既有档位值），两块 section 卸卡面只留内容；盘居左一格（180px 格吃 scale
+   0.56 的 179px trim 满格盘，机主"≤180 居左"批复），皮肤控件挤右侧纵列收进
+   ~6 行；一切长说明退流（同文案挂 .qm-preview-box 与盘格 title 悬浮可达，宽档
+   全量在场）。编辑主场按 DOM 序稳在条前，首屏主角=条目列表。 */
+@container qm (max-width: 839.98px) {
+  .qm-side-col {
+    flex-direction: row; align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-element);
+    background: var(--surface-panel);
+    box-shadow: var(--shadow-small);
+  }
+  .qm-side-col > .panel { padding: 0; border: none; background: transparent; box-shadow: none; }
+  .qm-preview-panel { flex: 0 0 180px; min-width: 0; }
+  .qm-skin-panel { flex: 1; min-width: 0; gap: 4px; }
+  .qm-side-col .sec-note, .qm-side-col .qm-preview-hint, .qm-side-col .setting-desc { display: none; }
+}
+
+/* C 档 840–1359：双栏——编辑主场 min 460 吃剩余，舱固定 340 右列 sticky 常驻，
+   恢复双卡全量形态（盘 0.9 窗 288 落 340−32 轨内） */
+@container qm (min-width: 840px) {
+  .qm-main { grid-template-columns: minmax(460px, 1fr) 340px; }
+  .qm-side-col { position: sticky; top: 12px; }
+}
+
+/* D 档 ≥1360：舱随页宽 30% 放粗（380–440 封顶），盘 scale 1.25 由 script 侧
+   容器回调同线升档（同一实测宽、同一分档线，换形与放量必同步） */
+@container qm (min-width: 1360px) {
+  .qm-main { grid-template-columns: minmax(0, 1fr) clamp(380px, 30%, 440px); }
 }
 </style>

@@ -1,10 +1,14 @@
-// 快捷菜单模块页特征测试：状态 chip、条目预览、空态与"前往设置"导航事件契约。
+// 快捷菜单模块页特征测试：状态 chip、条目编辑面可见性、空态与"前往设置"导航事件契约。
 // N5-C1 后页面内嵌共享编辑面 TrayItemsEditor（走 AppService 托盘 RPC），按测试 seam
 // 约定补 app 绑定打桩——仅基础设施，断言零改动。
 // 重设计批次：语义断言（RPC 链/两段式/导航事件）零改动；两处纯结构选择器按新 DOM
 // 更新——①阈值参数由 .subtitle 长句改为页头 .qm-params chip 行；②"前往设置页配置"
 // 大钮降为编辑面板页脚链接 .qm-settings-link（navigate 契约与断言语义不变）。
 // 另补双栏主区与状态区渲染两条新结构断言。
+// v3 布局批：「当前条目」镜像面板整块删除，条目可见性/空态两条用例的选择器与文案
+// 迁到编辑面与轮盘舱宿主（语义"条目名+机器值+类型可见"与"空态引导+navigate 契约"
+// 不动）；页头 chip 改绑确认值 refs，触发参数用例顺带钉住"应用后页头回显"回归。
+// GetTriggerConfig 陈旧桩删除（页面从不调用，回显走 GetStatus）。
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,7 +18,6 @@ import { WHEEL_SKIN_STORAGE_KEY } from '../../components/quickmenu/wheelSkin'
 const svc = vi.hoisted(() => ({
   GetStatus: vi.fn(),
   ListItems: vi.fn().mockResolvedValue([]),
-  GetTriggerConfig: vi.fn().mockResolvedValue([450, 16]),
   SetTriggerConfig: vi.fn().mockResolvedValue([450, 16]),
   // 皮肤双源打桩：默认"后端不可达"（reject）→ 存量用例全走 localStorage 镜像降级；
   // 真相链路（fetch 覆写 / commit 上账）由皮肤专测 Once 开闸。
@@ -101,6 +104,22 @@ describe('QuickMenuView', () => {
     w.unmount()
   })
 
+  // v3 窄档换形回归（机主 628×940 截图批复）：happy-dom 回落口径=容器宽 0（RO 空
+  // 实现、CSS.supports 恒真）→ 窄档。断言结构序与紧凑舱形态；CSS 侧 @container
+  // 换形 happy-dom 不排版，按回落逻辑以 DOM 序+盘形态为准。
+  it('窄档结构序：编辑主场在预览舱之前，盘面走 trim 满格小档', async () => {
+    const w = await mountReady()
+    const kids = w.find('.qm-main').element.children
+    expect(kids[0].classList.contains('qm-edit-col')).toBe(true)
+    expect(kids[1].classList.contains('qm-side-col')).toBe(true)
+    const wp = w.find('.wp')
+    expect(wp.classes()).toContain('wp-trim')
+    expect(wp.attributes('style')).toContain('--wp-scale: 0.56') // 盒 179px ≤180 上限
+    // viewBox 收进 [82,430]：盘面含描边+安全边满格，512 全窗死边归零，杜绝切边/打架
+    expect(w.find('.wp-svg').attributes('viewBox')).toBe('82 82 348 348')
+    w.unmount()
+  })
+
   it('钩子未启用显示警示 chip（文字状态不靠颜色单传）', async () => {
     const w = await mountReady({ ...status, trapActive: false })
     expect(w.find('.chip').classes()).toContain('chip-warning')
@@ -108,19 +127,29 @@ describe('QuickMenuView', () => {
     w.unmount()
   })
 
-  it('条目预览含名称、mono 提示与类型标记', async () => {
+  // v3 布局批：「当前条目」只读镜像面板删除，"条目名+机器值+类型可见"改由左列
+  // 编辑面（同源共享组件 TrayItemsEditor，账目就是那份 TrayMenu）承担——选择器
+  // 与文案随宿主迁移，断言语义不变。
+  it('条目可见性在编辑面：名称、机器值与类型标记', async () => {
+    traySvc.GetTrayMenu.mockResolvedValue([
+      { type: 'exe', ref: '', path: 'D:\\tools\\Snipaste.exe', args: '', label: 'Snipaste', enabled: true },
+      { type: 'command', ref: 'everything/launch', path: '', args: '', label: '', enabled: true },
+    ])
     const w = await mountReady()
-    const rows = w.findAll('.item-row')
+    const rows = w.findAll('.tray-row')
     expect(rows).toHaveLength(2)
-    expect(rows[0].find('.item-label').text()).toBe('Snipaste')
-    expect(rows[0].find('.item-hint').text()).toBe('D:\\tools\\Snipaste.exe')
-    expect(rows[1].find('.item-kind').text()).toBe('命令')
+    expect((rows[0].find('.tray-name').element as HTMLInputElement).value).toBe('Snipaste')
+    expect(rows[0].find('.tray-ref').text()).toBe('D:\\tools\\Snipaste.exe')
+    expect(rows[1].find('.tray-tag').text()).toBe('工具命令')
+    expect(rows[1].find('.tray-ref').text()).toBe('everything/launch')
     w.unmount()
   })
 
   it('空条目走占位引导，"前往设置页配置"直达设置·托盘菜单分区', async () => {
     const w = await mountReady(status, [])
-    expect(w.find('.empty-state').text()).toContain('尚未配置任何条目')
+    // v3：空态引导两处自然在位——轮盘舱空盘示意 + 编辑面自带引导（镜像面板已删）
+    expect(w.find('.wp-empty').text()).toContain('还没有条目')
+    expect(w.find('.qm-edit-col .tray-editor > .state-box').text()).toContain('尚未配置托盘条目')
     // 重设计：跳设置由大钮降为编辑面板页脚链接，navigate 事件契约不变
     await w.find('.qm-settings-link').trigger('click')
     // Host 包裹渲染下 emit 挂在子组件 wrapper 上
@@ -161,6 +190,8 @@ describe('触发参数（N5-C2）', () => {
     await flushMicrotasks()
     expect(svc.SetTriggerConfig).toHaveBeenCalledWith(300, 16)
     expect((w.find('input[aria-label=\"长按时长毫秒\"]').element as HTMLInputElement).value).toBe('300')
+    // v3 T1 回归钉：应用后页头参数章同步回显钳后值（chip 曾直读状态快照不回写，说谎）
+    expect(w.find('.qm-params').text()).toContain('300ms')
 
     svc.SetTriggerConfig.mockRejectedValueOnce(new Error('配置存储不可用'))
     await w.find('input[aria-label="长按时长毫秒"]').setValue('80')

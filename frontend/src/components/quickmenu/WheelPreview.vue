@@ -33,7 +33,27 @@ const props = withDefaults(defineProps<{
   size?: number
   /** 皮肤账（缺省 = 默认素瓷，与实盘未配置时同解） */
   skin?: WheelSkin
-}>(), { activeIndex: null, scale: 1, size: WHEEL.size, skin: () => DEFAULT_WHEEL_SKIN })
+  /** v3 紧凑档裁切窗（缺省 false=全尺寸窗，既有消费位零扰动）：viewBox 收进
+   * 盘面（含描边墨迹）+ 安全边，整盘满格落盒；槽位锚点随窗折算。 */
+  trim?: boolean
+}>(), { activeIndex: null, scale: 1, size: WHEEL.size, skin: () => DEFAULT_WHEEL_SKIN, trim: false })
+
+// 裁切窗边距：盘面最外墨迹 = rDisc(170)−1.25 圆 + 1.5/2 描边外半 = 169.5，
+// 圆心 256 → 墨迹半经取 174（留 ≥4 DIP 安全边），窗 = [82, 430]。
+const TRIM_PAD = 82
+const viewBox = computed(() =>
+  props.trim
+    ? `${TRIM_PAD} ${TRIM_PAD} ${props.size - TRIM_PAD * 2} ${props.size - TRIM_PAD * 2}`
+    : `0 0 ${props.size} ${props.size}`,
+)
+/** 槽位锚点：几何仍走 mainAnchor 同源纯函数，trim 窗只换映射基准（全窗 % → 窗内 %） */
+function slotStyle(i: number, n: number): { left: string; top: string } {
+  const a = mainAnchor(i, n)
+  if (!props.trim) return a
+  const toWindow = (s: string) =>
+    `${(((parseFloat(s) / 100) * props.size - TRIM_PAD) / (props.size - TRIM_PAD * 2)) * 100}%`
+  return { left: toWindow(a.left), top: toWindow(a.top) }
+}
 
 const emit = defineEmits<{ pick: [index: number] }>()
 const isGroup = (item: MenuItem): boolean => (item.children?.length ?? 0) > 0
@@ -69,8 +89,8 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
 </script>
 
 <template>
-  <div class="wp" :class="rootClass" :style="hubVars" role="img" aria-label="轮盘预览">
-    <svg :viewBox="`0 0 ${size} ${size}`" class="wp-svg">
+  <div class="wp" :class="[rootClass, { 'wp-trim': trim }]" :style="hubVars" role="img" aria-label="轮盘预览">
+    <svg :viewBox="viewBox" class="wp-svg">
       <defs>
         <radialGradient id="wp-face-grad" cx="50%" cy="38%" r="80%">
           <stop offset="0%" class="wp-face-hi" />
@@ -99,7 +119,8 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
       type="button"
       class="wp-slot"
       :class="{ 'is-active': activeIndex === i }"
-      :style="mainAnchor(i, n)"
+      :style="slotStyle(i, n)"
+      :title="item.label"
       :aria-label="`扇区 ${i + 1}：${item.label}`"
       tabindex="-1"
       @click="emit('pick', i)"
@@ -159,6 +180,9 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
 }
 .wp-slot.is-active .wp-name { color: var(--color-primary); }
 .wp-caret { position: absolute; top: -3px; right: 2px; font-size: 8px; color: var(--color-primary); }
+/* v3 trim 紧凑档：满格小盘下 9px×scale 的名字缩成噪点（机主 628 截图点名"盘面
+   文字与卡缘打架"），标签退到 title/aria，盘面只留图标点选。 */
+.wp-trim .wp-name, .wp-trim .wp-caret { display: none; }
 .wp-empty {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: var(--text-sm); color: var(--color-text-subtle); pointer-events: none;
