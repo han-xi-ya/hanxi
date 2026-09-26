@@ -23,7 +23,14 @@
   --color-primary-hover: #0b7577;
   --color-primary-soft: rgba(13, 130, 132, 0.1);
   --color-on-primary: #ffffff;
-  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  /* N37 on-accent 契约（彩底借值 15 处的 token 正源）。拍板点 2 终裁定案"不拆"维持——
+     契约真相档仅 on-primary + on-accent 两枚，全部状态/渐变实底共用 on-accent 单档，
+     逐板逐模式显式字面，消费面不得借 on-primary/text-inverse 或写兜底；曾设的
+     danger/positive/warning 同值兼容档已依 2026-09-26 终裁整删（存在即"顺手挂上"的诱惑面）。
+     浅色铁律=白，AA 实算在册：danger 5.97 / positive 5.19 / warning 5.41 / info 5.17 / 渐变中点 ≥5.07，
+     hover 派生底只深不浅，同前景恒更高（6.32–7.84）；onyx 板自定状态色逐对核过
+     danger 6.54 / positive 6.56 / warning 6.45 / info 5.89（AA 达标，AAA 口径留拍板点 4）。 */
+  --color-on-accent: #ffffff;
 
   /* 外壳层（Fluent 式）：DWM 标题栏 + 双栏导航共用底色，与内容区分离；
    * 原生窗框配色在 internal/platform/windows/darkmode.go 表内同步（改此处必改彼处） */
@@ -50,7 +57,10 @@
    *  - solid-edge 两档：实心钮（primary/danger）描边比填充深，令主按钮有界更"实"；
    *  - outline-edge 两档：次级/描边钮边框从 --color-border（白底上仅 1.27:1，肉眼近乎
    *    不可见）提深到 ~2.5:1 / hover ~3.3:1，细边框先立层级、不加阴影；
-   *  - danger-outline hover/active：软底逐档加深，危险钮 hover 一眼可辨。 */
+   *  - danger-outline hover/active：软底逐档加深，危险钮 hover 一眼可辨。
+ * N37②（深色实底+1px 提亮描边拍板）：本家族五枚朝 black 压在 :root[data-theme="dark"] 反转为
+ * 向 white 的提亮镜像（同参 78/62/78/90/88%），浅档维持；outline 两档因引用 --surface-panel
+ * 自反相不在此列。派生纪律不变——仍不入色板覆写集，色板块不得搬运为裸色。 */
   --btn-solid-edge: color-mix(in srgb, var(--color-primary) 78%, black);
   --btn-solid-edge-strong: color-mix(in srgb, var(--color-primary) 62%, black);
   --btn-danger-edge: color-mix(in srgb, var(--state-danger) 78%, black);
@@ -84,6 +94,11 @@
   --state-warning-soft: #fbf1de;
   --state-danger: #b33736;
   --state-danger-soft: #fdf0ee;
+  /* glow 伴生值——N37 语义收窄：此后只许「进行中」脉冲使用（.snip-pulse / starting 灯族
+   * 的彩色投影，唯一合法去处）。机主主诉的常态发光三族——A 类 18 处常亮 halo、
+   * C 类 5 处焦点环借值、D 类 13 处 banner 软描边借值——消费面由并行线替换
+   * （halo→实底+1px 提亮描边、焦点环→--focus-ring、软描边→另日 --*-border 正名），
+   * 本组 token 保留但不得再有新增常态/非脉冲引用。 */
   --state-positive-glow: rgba(6, 125, 77, 0.15);
   --state-information-glow: rgba(37, 99, 235, 0.15);
   --state-warning-glow: rgba(149, 94, 0, 0.15);
@@ -183,7 +198,10 @@
   --color-primary-hover: #59c8c5;
   --color-primary-soft: rgba(66, 183, 180, 0.13);
   --color-on-primary: #052326;
-  --color-on-accent: #052326; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  /* N37 on-accent 深色侧铁律：彩底前景必须本板深值（白字于五板深底 1.83–2.55 全爆，
+     PLAN_N37 §2a 结论 1）——danger 6.46 / positive 7.73 / warning 8.39 / info 6.70；
+     hover 档经本块 N37② 提亮镜像后升至 6.80–8.47，全档无 <4.5。 */
+  --color-on-accent: #052326;
 
   --surface-chrome: #0b181d;
   --surface-chrome-hover: #202c30;
@@ -209,6 +227,7 @@
   --state-warning-soft: #33260f;
   --state-danger: #ff7974;
   --state-danger-soft: #3a1a1a;
+  /* glow 伴生值：同浅色侧 N37 口径——仅「进行中」脉冲专用，深色主诉的常态彩色 halo 降级由消费面并行线处理 */
   --state-positive-glow: rgba(71, 199, 146, 0.16);
   --state-information-glow: rgba(114, 165, 255, 0.16);
   --state-warning-glow: rgba(240, 172, 69, 0.16);
@@ -217,6 +236,25 @@
 
   --overlay-mask: rgba(2, 8, 11, 0.62);
   --focus-ring: rgba(66, 183, 180, 0.65); /* N38：深底焦点环提可见度（旧 0.28 合成后 1.71:1） */
+
+  /* N37②（机主拍板：深色=实底+1px 提亮描边、彩色投影只留脉冲）+ 主会话追加裁定：
+   * --btn-* 家族五枚朝 black 压档在深色侧反转为向 white 的同参提亮镜像（78/62/78/90/88%）。
+   * 仍为 color-mix 派生档不入色板覆写集，五板深块经 var() 引用本块自动随本板主色/状态色联动，
+   * 故只在此主题块定义一次。描边对比取"轮廓可辨且不刺眼"档：edge/fill 1.14–1.41（浅色侧
+   * 同参镜像 1.41–1.48 对称略柔，轮廓对页面底另有 ≥6:1 剪影），无 glow 式外溢。逐板实算在案：
+   *   solid-edge  teal #6cc7c4 / sky #75ccf9 / iris #cabcfb / jade #81dbda / onyx #96c7ff（对底 1.14–1.22）
+   *   solid-edge-strong(active 加深档同反提亮) #8ad2d0 / #91d6fa / #d5cafc / #9be2e1 / #acd2ff（对底 1.25–1.41）
+   *   danger-edge #ff9693（onyx 自定底 #ffada8）（对底 1.18–1.22）
+   *   danger-fill-hover #ff8682 / onyx #ffa09b：对前景 6.80–8.24（旧朝黑档 5.11–6.24，反转后全档抬升，
+   *     原全矩阵最紧的 sky-dark danger-hover 5.11 → 6.80）
+   *   positive-fill-hover #5dce9f / onyx #6fdd9c：对前景 8.17–9.57
+   * outline 两档（--btn-danger-outline-hover/active、--btn-outline-edge*）引用 --surface-panel/--color-text
+   * 本就随明暗自反相，不在反转之列。 */
+  --btn-solid-edge: color-mix(in srgb, var(--color-primary) 78%, white);
+  --btn-solid-edge-strong: color-mix(in srgb, var(--color-primary) 62%, white);
+  --btn-danger-edge: color-mix(in srgb, var(--state-danger) 78%, white);
+  --btn-danger-fill-hover: color-mix(in srgb, var(--state-danger) 90%, white);
+  --btn-positive-fill-hover: color-mix(in srgb, var(--state-positive) 88%, white);
 
   --shadow-small: 0 5px 18px rgba(0, 0, 0, 0.18);
   --shadow-panel: 0 22px 50px rgba(0, 0, 0, 0.23);
@@ -236,7 +274,7 @@
   --color-primary-hover: #005093;
   --color-primary-soft: rgba(0, 100, 181, 0.1);
   --color-on-primary: #ffffff;
-  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  --color-on-accent: #ffffff; /* N37: 通用彩底前景单档定案（浅底白字铁律，拍板点 2 终裁"不拆"） */
 
   --surface-chrome: #e8f1f8;
   --surface-chrome-hover: #d8e1e8;
@@ -267,7 +305,7 @@
   --color-primary-hover: #74ccfe;
   --color-primary-soft: rgba(78, 189, 247, 0.15);
   --color-on-primary: #00243e;
-  --color-on-accent: #00243e; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  --color-on-accent: #00243e; /* N37: 通用彩底前景单档定案（深色铁律=本板深值，拍板点 2 终裁"不拆"） */
 
   --surface-chrome: #1a2026;
   --surface-chrome-hover: #2d3338;
@@ -299,7 +337,7 @@
   --color-primary-hover: #542dae;
   --color-primary-soft: rgba(103, 65, 202, 0.1);
   --color-on-primary: #ffffff;
-  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  --color-on-accent: #ffffff; /* N37: 通用彩底前景单档定案（浅底白字铁律，拍板点 2 终裁"不拆"） */
 
   --surface-chrome: #ece7f9;
   --surface-chrome-hover: #ddd8e9;
@@ -329,7 +367,7 @@
   --color-primary-hover: #c7b8ff;
   --color-primary-soft: rgba(187, 169, 250, 0.15);
   --color-on-primary: #27124b;
-  --color-on-accent: #27124b; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  --color-on-accent: #27124b; /* N37: 通用彩底前景单档定案（深色铁律=本板深值，拍板点 2 终裁"不拆"） */
 
   --surface-chrome: #201c27;
   --surface-chrome-hover: #332f39;
@@ -360,7 +398,7 @@
   --color-primary-hover: #005657;
   --color-primary-soft: rgba(0, 104, 105, 0.1);
   --color-on-primary: #ffffff;
-  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  --color-on-accent: #ffffff; /* N37: 通用彩底前景单档定案（浅底白字铁律，拍板点 2 终裁"不拆"） */
 
   --surface-chrome: #e8f1f2;
   --surface-chrome-hover: #d8e1e2;
@@ -390,7 +428,7 @@
   --color-primary-hover: #81dfdc;
   --color-primary-soft: rgba(93, 209, 207, 0.15);
   --color-on-primary: #002525;
-  --color-on-accent: #002525; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  --color-on-accent: #002525; /* N37: 通用彩底前景单档定案（深色铁律=本板深值，拍板点 2 终裁"不拆"） */
 
   --surface-chrome: #142121;
   --surface-chrome-hover: #283434;
@@ -421,7 +459,7 @@
   --color-primary-hover: #003999;
   --color-primary-soft: rgba(6, 73, 184, 0.12);
   --color-on-primary: #ffffff;
-  --color-on-accent: #ffffff; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  --color-on-accent: #ffffff; /* N37: 通用彩底前景单档定案（浅底白字铁律，拍板点 2 终裁"不拆"） */
 
   --surface-chrome: #dce6f5;
   --surface-chrome-hover: #ccd6e4;
@@ -460,7 +498,7 @@
   --color-primary-hover: #9bc9ff;
   --color-primary-soft: rgba(121, 183, 255, 0.16);
   --color-on-primary: #04223f;
-  --color-on-accent: #04223f; /* N37: danger/positive 实底前景（借用转正，值对照 PLAN_N37_ONCOLOR §4） */
+  --color-on-accent: #04223f; /* N37: 通用彩底前景单档定案（拍板点 2 终裁"不拆"；onyx 自定状态色逐对核账 danger 7.67 / positive 8.93 / warning 10.26） */
 
   --surface-chrome: #090c11;
   --surface-chrome-hover: #1e2125;
@@ -493,8 +531,17 @@
 
 /* 主题扩展位：
  *  - 新明暗模式 = 新增 [data-theme='xxx'] 变量块；新色板 = 新增 [data-theme=…][data-accent='yyy'] 覆写块，组件零改动。
- *  - 覆写集契约：主色 4 + 表面 5 + 文字 4 + 边框 2 + 主色光晕 + 焦点环（浅模式另加小/面板阴影；
- *    状态色/遮罩/终端跨色板恒定，唯 onyx 按无障碍职能覆写状态色）。
- *    表面禁用档 --surface-disabled 为 color-mix 派生值（同 --terminal- 系列纪律，随主题变量自动联动，
- *    不入覆写集）；布局结构值（--text- 、--control-h- 、--container- 各族）恒只进 :root。
+ *  - 覆写集契约：主色 4 + on-accent 1（N37 彩底前景契约档——PLAN_N37 拍板点 2 终裁"不拆"维持，
+ *    契约真相档仅 on-primary + on-accent 两枚，全状态/渐变实底共用 on-accent 单档；
+ *    逐板逐模式显式字面：浅色一律 #ffffff、深色一律本板 on-primary 同族深值，方向性铁律见
+ *    深色默认块；消费面禁止借 on-primary/text-inverse 或写兜底值）+ 表面 5 + 文字 4 + 边框 2 +
+ *    主色光晕 + 焦点环（浅模式另加小/面板阴影；状态色/遮罩/终端跨色板恒定，唯 onyx 按无障碍
+ *    职能覆写状态色，on-accent 含 onyx 板自定状态色在内已双模式逐对实算达标 5.17–10.26）。
+ *    曾设 --color-on-danger/on-positive/on-warning 同值兼容档，经 2026-09-26 终裁整删
+ *    （双头真相即诱惑面，原子层收口后终态恒挂 on-accent 单档，勿再重开拆分）。
+ *    glow 族语义已收窄为「进行中」脉冲专用（N37②，消费面 A/C/D 类替换由并行线执行）。
+ *    表面禁用档 --surface-disabled 与 --btn-* 派生族为 color-mix 派生值（同 --terminal- 系列纪律，
+ *    随主题变量自动联动，不入覆写集；色板块不得搬运为裸色）；--btn-* 五枚朝黑档在深色主题块
+ *    有向 white 的提亮镜像覆写（N37②，主题块非色板块，不违此纪律）；
+ *    布局结构值（--text- 、--control-h- 、--container- 各族）恒只进 :root。
  *  - 选中行使用纪律（精修复审固化）：强染色 selected 行内禁放 muted/subtle 小字，状态语义必须走 chip 软底。 */
