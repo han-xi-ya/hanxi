@@ -189,6 +189,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
   font-size: var(--text-sm); color: var(--color-text-muted);
 }
+/* 等待识别脉冲：N37② 彩色投影唯一合法去处（tokens.css glow 语义收窄条款，
+   PLAN_N37_ONCOLOR §3 B 类正牌保留件），非脉冲常态不得援引此写法再加光。 */
 .snip-pulse {
   width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-glow);

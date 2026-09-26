@@ -594,7 +594,10 @@ function iconText(icon: string | undefined): string {
   text-overflow: ellipsis;
 }
 
-/* 行内运行绿点（状态嗅探接线前一般不出现） */
+/* 行内运行绿点（状态嗅探接线前一般不出现）。
+   N37②：原 `0 0 0 2.5px --surface-selected` 光环环系常态彩色 halo 同族（借
+   surface token 兼职 halo 色，躲过 glow 关键词清查），按纪律废除——与
+   .status-dot.online 同款收敛为实底 + inset 1px 提亮描边，两枚绿点口径归一。 */
 .mod-run {
   margin-left: auto;
   flex: none;
@@ -602,7 +605,7 @@ function iconText(icon: string | undefined): string {
   height: 7px;
   border-radius: 50%;
   background: var(--state-positive);
-  box-shadow: 0 0 0 2.5px var(--surface-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white);
   align-self: center;
 }
 
