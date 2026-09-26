@@ -1,4 +1,14 @@
 <script setup lang="ts">
+// [perf 观察票处置 2026-09-26] 与 frpc 日志抽屉（3b58e5e 已根治）的同病观察票在此判"不值当改，保留观察"，
+// 未移植 frpc 的 LogRow 预处理 + rAF 帧批量模板。渲染证据（spec「log 事件流 burst」逐言锚定形态）：
+// ① 行内零解析：无 stripAnsi/正则/格式化，日志面是 NpmToolActions 单个 <pre> 的 logLines.join('\n')
+//   一次文本节点 patch——无 v-for、无 :index key，frpc 的满仓裁头整表换键重补丁病灶在此不存在；
+// ② 反应面实测：push 只失效数组 length/索引，本视图模板仅读 npmLogs[toolId] 键引用（不迭代数组），
+//   每条事件不重渲染父视图（复刻验证：50 连推父级 effect 重跑 0 次），只有该卡的子组件重渲一轮；
+// ③ 成本封顶：满仓 200 行（~20KB）join ≈ 23µs/次、原位 splice 裁头 ≈ 0.1µs/次；在途窗口只有装/卸
+//   进行时（全局锁 ≤1 操作、数秒级）。可批未批的真实成本仅剩子组件 watch 每事件一次 nextTick→
+//   scrollHeight 强制布局，被 200 顶与短窗口双重有界。复议触发线：封顶调高（>1000 行）或行内开始
+//   加着色/解析（届时按 LogRow 形制入表前一次性预处理 + 行号 key + 帧批量，照 frpc 抄）。
 import { computed, onMounted, reactive, ref } from 'vue'
 import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/envcheckservice'
 import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
@@ -281,6 +291,7 @@ function handleNpmOperation(progress: OperationProgress) {
   }
 }
 
+// 每条事件 O(1) 原位入表（push + 满仓 splice 裁头）；渲染形态"不值当帧批量"的判定依据见文件头注记。
 function handleNpmLog(entry: OperationLog) {
   const lines = npmLogs[entry.toolId] ?? (npmLogs[entry.toolId] = [])
   lines.push(entry.line)

@@ -362,6 +362,26 @@ describe('EnvCheckView npm 工具操作流', () => {
     w.unmount()
   })
 
+  // perf 观察票（2026-09-26，判"不改、保留观察"）的形态锚：若日后把 .op-log 改成逐行
+  // v-for + 行内解析，或调高 200 封顶，本用例的 childNodes/批次数断言会先到期，提醒重估。
+  it('log 事件流 burst：250 连推封顶 200 行、单 pre 文本节点形态', async () => {
+    stubHappy()
+    const w = await mountView()
+    await flush()
+    const logHandler = runtime.handlers['envcheck:npm-tool-log']
+    for (let i = 1; i <= 250; i++) logHandler({ data: { toolId: 'claude', line: `line-${i}` } })
+    await nextTick()
+    await openVersions(w)
+    const log = managedCard(w, 'Claude Code')!.find('.op-log')
+    // 单文本节点渲染面：一次 join patch，非逐行 vnode 列表（frpc 式帧批量在此无收益的根据）
+    expect(log.element.childNodes).toHaveLength(1)
+    const rendered = log.text().split('\n')
+    expect(rendered).toHaveLength(200) // 封顶生效：250 进 200 留
+    expect(rendered[0]).toBe('line-51') // 裁头保最新
+    expect(rendered[199]).toBe('line-250')
+    w.unmount()
+  })
+
   it('npm overview 拉取失败：错误文案 + 分区重试按钮恢复', async () => {
     stubHappy()
     env.GetNpmToolsOverview.mockRejectedValue(new Error('registry 超时'))
