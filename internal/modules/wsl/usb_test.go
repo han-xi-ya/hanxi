@@ -808,3 +808,124 @@ func (s *WslService) usbPatchAppend(e ...USBShareEntry) (OperationOutcome, error
 	led.Entries = append(led.Entries, e...)
 	return OperationOutcome{}, s.usbSave(led)
 }
+
+// ---- N31 方案 B：winget 代装 InstallUsbipdViaWinget ----
+
+// become 模拟"安装落地后可执行文件已可达"：清探测失败态并给出版本号。
+func (f *fakeUSB) become(version string) {
+	f.mu.Lock()
+	f.versionErr = nil
+	f.version = version
+	f.mu.Unlock()
+}
+
+// notInstalledErr fakeUSB 探测替身的"未安装"态（服务层按哨兵放行代装）。
+func notInstalledErr() error {
+	return fmt.Errorf("%w: fake", usbipd.ErrNotInstalled)
+}
+
+func TestInstallUsbipdAlreadyInstalledShortCircuits(t *testing.T) {
+	svc, _ := newUSBFakeService(t, &fakeUSB{version: "5.3.0"}, wslNames(nil, nil))
+	invoked := false
+	svc.usbInstall = func(context.Context) (usbipd.InstallResult, error) {
+		invoked = true
+		return usbipd.InstallResult{State: usbipd.InstallDone}, nil
+	}
+	out, err := svc.InstallUsbipdViaWinget()
+	if err != nil || !out.Success || !strings.Contains(out.Message, "已经安装") {
+		t.Fatalf("已装必须直回不触碰 winget: %+v %v", out, err)
+	}
+	if invoked {
+		t.Error("前置探测命中后不得发起安装")
+	}
+}
+
+func TestInstallUsbipdProbeFaultBlocksInstall(t *testing.T) {
+	svc, _ := newUSBFakeService(t, &fakeUSB{versionErr: errors.New("usbipd 服务未运行")}, wslNames(nil, nil))
+	invoked := false
+	svc.usbInstall = func(context.Context) (usbipd.InstallResult, error) {
+		invoked = true
+		return usbipd.InstallResult{}, nil
+	}
+	_, err := svc.InstallUsbipdViaWinget()
+	if err == nil || !strings.Contains(err.Error(), "探测异常") {
+		t.Fatalf("非未安装类探测故障必须拦下安装: %v", err)
+	}
+	if invoked {
+		t.Error("探测被拦时不得发起安装")
+	}
+}
+
+func TestInstallUsbipdMissingWingetGuides(t *testing.T) {
+	svc, _ := newUSBFakeService(t, &fakeUSB{versionErr: notInstalledErr()}, wslNames(nil, nil))
+	svc.usbInstall = func(context.Context) (usbipd.InstallResult, error) {
+		return usbipd.InstallResult{}, fmt.Errorf("%w: fake", usbipd.ErrWingetMissing)
+	}
+	_, err := svc.InstallUsbipdViaWinget()
+	if err == nil || !strings.Contains(err.Error(), "App Installer") {
+		t.Fatalf("winget 缺席要明确指路而非笼统失败: %v", err)
+	}
+}
+
+func TestInstallUsbipdCancelledIsNotSuccess(t *testing.T) {
+	svc, _ := newUSBFakeService(t, &fakeUSB{versionErr: notInstalledErr()}, wslNames(nil, nil))
+	svc.usbInstall = func(context.Context) (usbipd.InstallResult, error) {
+		return usbipd.InstallResult{State: usbipd.InstallCancelled}, nil
+	}
+	out, err := svc.InstallUsbipdViaWinget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Success || !strings.Contains(out.Message, "已取消 UAC") {
+		t.Fatalf("UAC 取消绝不谎报成功: %+v", out)
+	}
+}
+
+func TestInstallUsbipdDoneReprobesVersion(t *testing.T) {
+	cli := &fakeUSB{versionErr: notInstalledErr()}
+	svc, _ := newUSBFakeService(t, cli, wslNames(nil, nil))
+	svc.usbInstall = func(context.Context) (usbipd.InstallResult, error) {
+		cli.become("5.3.0") // 模拟安装完成、Runner 自救后命令可达
+		return usbipd.InstallResult{State: usbipd.InstallDone}, nil
+	}
+	out, err := svc.InstallUsbipdViaWinget()
+	if err != nil || !out.Success || !strings.Contains(out.Message, "5.3.0") {
+		t.Fatalf("安装成功须复验版本并带入回执: %+v %v", out, err)
+	}
+}
+
+func TestInstallUsbipdAlreadyButUnreachableHonest(t *testing.T) {
+	svc, _ := newUSBFakeService(t, &fakeUSB{versionErr: notInstalledErr()}, wslNames(nil, nil))
+	svc.usbInstall = func(context.Context) (usbipd.InstallResult, error) {
+		return usbipd.InstallResult{State: usbipd.InstallAlready}, nil
+	}
+	out, err := svc.InstallUsbipdViaWinget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Success || !strings.Contains(out.Message, "暂未探通") {
+		t.Fatalf("winget 报已装但命令未通须如实降级回执: %+v", out)
+	}
+}
+
+func TestInstallUsbipdFailedKeepsAttribution(t *testing.T) {
+	svc, _ := newUSBFakeService(t, &fakeUSB{versionErr: notInstalledErr()}, wslNames(nil, nil))
+	svc.usbInstall = func(context.Context) (usbipd.InstallResult, error) {
+		return usbipd.InstallResult{State: usbipd.InstallFailed, Detail: "winget 连不上软件源——需要联网"}, nil
+	}
+	out, err := svc.InstallUsbipdViaWinget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Success || !strings.Contains(out.Message, "连不上软件源") {
+		t.Fatalf("失败归因必须原样送达: %+v", out)
+	}
+}
+
+func TestInstallUsbipdSingleFlight(t *testing.T) {
+	svc, _ := newUSBFakeService(t, &fakeUSB{versionErr: notInstalledErr()}, wslNames(nil, nil))
+	svc.usbInstallBusy = true
+	if _, err := svc.InstallUsbipdViaWinget(); err == nil || !strings.Contains(err.Error(), "单飞") {
+		t.Fatalf("在飞安装必须被单飞闸快拒: %v", err)
+	}
+}

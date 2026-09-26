@@ -17,8 +17,10 @@ package wsl
 //   - 不做 GUI 级驱动安装、不做远程主机 usbip（卡片边界）。
 //
 // usbipd-win 未安装时：GetUsbOverview 回 installed=false（非错误），前端渲染
-// 引导卡（打开官方 releases 页 + winget 安装命令复制）；不代装（托管深度按
-// 卡片裁定止步于引导）。
+// 引导卡；N31 方案 B（机主 2026-09-26 拍板）起引导卡给出两条出路——
+// 真·一键 InstallUsbipdViaWinget（系统 winget 代装，命令全后端字面量）与
+// 手动路径（官方 releases 页 + winget 命令复制）。代装只做"winget 跑上游
+// MSI"，服务/驱动落位语义全归上游安装器，hanxi 不越俎代庖。
 
 import (
 	"context"
@@ -756,6 +758,91 @@ func (s *WslService) OpenUsbipdReleases() error {
 	defer release()
 
 	return s.opener.OpenURL(usbipdReleasesURL)
+}
+
+// usbWingetInstallBudget winget 代装全程预算：源协商 + 下载安装包 + UAC 停留 +
+// MSI（服务 + ViPciBus 内核驱动）落位，慢网下数分钟量级，10 分钟封顶。
+const usbWingetInstallBudget = 10 * time.Minute
+
+// InstallUsbipdViaWinget N31 方案 B：真·一键——经系统 winget 安装 usbipd-win。
+// 零入参、命令面全部出自 usbipd 包的固定字面量（包 ID 钉死 dorssel.usbipd-win），
+// 前端无拼接面；winget 机器级安装自带 UAC，本通道不再套 PowerShell RunAs
+// （双重提权只会把"谁取消了授权"搅浑）。闸门次序：
+//  1. 模块自身安装态通道（usbipd --version，含 Runner 的 MSI 固定落位自救）
+//     已在位 → 直接回"已安装"，绝不重复执行安装；
+//  2. winget 本体缺席 → 明确报错指路 App Installer，不当安装失败；
+//     10 分钟预算超时 → 如实报终止；
+//  3. UAC/安装授权被取消 → 如实回执"未安装"，绝不谎报成功（#37 红线同族）；
+//  4. winget 报成功/已装后仍复验一把 usbipd 可执行——退出码不等于可用，
+//     复验不过就点名"装好了但命令未通"并给出现态出路。
+//
+// 本模块 installed 态无持久缓存（GetUsbOverview 现探即真相），故"刷新缓存"=
+// 前端完成回调里重取 overview；winget 刚改写的机器级 PATH 对运行中的 hanxi
+// 不可见，由 Runner 的固定落位兜底看穿（TROUBLESHOOTING #88）。
+func (s *WslService) InstallUsbipdViaWinget() (OperationOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return OperationOutcome{}, gateErr
+	}
+	defer release()
+
+	s.mu.Lock()
+	if s.usbInstallBusy {
+		s.mu.Unlock()
+		return OperationOutcome{}, errors.New("usbipd-win 安装任务已在进行中（单飞），请等待当前一轮结束")
+	}
+	s.usbInstallBusy = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.usbInstallBusy = false
+		s.mu.Unlock()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), usbWingetInstallBudget)
+	defer cancel()
+
+	if ver, err := s.usbRun.Version(ctx); err == nil {
+		return OperationOutcome{Success: true, Message: fmt.Sprintf("usbipd-win v%s 已经安装，无需重复执行", ver)}, nil
+	} else if !errors.Is(err, usbipd.ErrNotInstalled) {
+		return OperationOutcome{}, fmt.Errorf("usbipd 探测异常，安装未发起: %s", usbipdErrText(err))
+	}
+
+	res, err := s.usbInstall(ctx)
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return OperationOutcome{}, errors.New("winget 安装 10 分钟未完成已终止——检查是否有悬着的 UAC/安装器窗口（可能被超时静默拒绝），再重试")
+	}
+	if err != nil {
+		if errors.Is(err, usbipd.ErrWingetMissing) {
+			return OperationOutcome{}, fmt.Errorf("系统里找不到 winget（App Installer）——请到 Microsoft Store 安装/更新「应用安装程序」后重试，或按引导卡手动路径从官方发布页装 MSI: %w", err)
+		}
+		return OperationOutcome{}, fmt.Errorf("winget 安装通道异常: %w", err)
+	}
+
+	switch res.State {
+	case usbipd.InstallDone, usbipd.InstallAlready:
+		verb := "已通过 winget 安装"
+		if res.State == usbipd.InstallAlready {
+			verb = "此前已经安装（本次未重复执行）"
+		}
+		vctx, vcancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer vcancel()
+		ver, verr := s.usbRun.Version(vctx)
+		if verr == nil {
+			return OperationOutcome{Success: true, Message: fmt.Sprintf("usbipd-win %s v%s，本页刷新后即可对设备「⚡ 一键直通」", verb, ver)}, nil
+		}
+		return OperationOutcome{Success: false, Message: fmt.Sprintf(
+			"winget 报告 usbipd-win %s，但本机 usbipd 命令暂未探通（%s）——稍候点「↻ 重新探测」；仍未通时注销重登一次（系统 PATH 刷新）",
+			verb, usbipdErrText(verr))}, nil
+	case usbipd.InstallCancelled:
+		return OperationOutcome{Success: false, Message: "已取消 UAC 授权，usbipd-win 未安装——需要时再点「一键安装」，或走手动路径"}, nil
+	default: // InstallFailed 及未知状态：一律按失败如实回执
+		detail := res.Detail
+		if detail == "" {
+			detail = "winget 未给出可识别的失败说明"
+		}
+		return OperationOutcome{Success: false, Message: fmt.Sprintf("winget 安装失败：%s", detail)}, nil
+	}
 }
 
 // BindUsbDevice 共享设备（bind，提权；--force 留作真机验证后的进阶口，UI 暂不放）。

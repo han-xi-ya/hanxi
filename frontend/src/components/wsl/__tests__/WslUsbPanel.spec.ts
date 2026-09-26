@@ -15,6 +15,7 @@ const api = vi.hoisted(() => ({
   RemoveUsbShare: vi.fn(),
   ReplayUsbNow: vi.fn(),
   OpenUsbipdReleases: vi.fn(),
+  InstallUsbipdViaWinget: vi.fn(),
 }))
 
 // confirm/toast 提升为受控替身：一键直通三岔（UAC 同意/取消、失败归因文案）逐条断言。
@@ -247,5 +248,94 @@ describe('WslUsbPanel 一键直通（N31 方案 A）', () => {
     localStorage.setItem('hanxi.wsl.usb.advanced', '1')
     const w = await mountPanel(overview([device('shared')]), [instance('Ubuntu')])
     expect(byText(w, '✂ 取消共享')).toBeDefined()
+  })
+})
+
+describe('WslUsbPanel winget 一键安装（N31 方案 B）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    confirmMock.mockResolvedValue(true)
+    localStorage.clear()
+    document.body.innerHTML = ''
+  })
+
+  // 未装态引导卡挂载（方案 B 主操作所在语境）。
+  async function mountGuide() {
+    return await mountPanel(overview([], { installed: false, version: '' }))
+  }
+  const toastText = () => showToast.mock.calls.map(c => String(c[0])).join('\n')
+
+  it('未装引导卡：「📦 一键安装（winget）」是主操作钮，手动路径保留', async () => {
+    const w = await mountGuide()
+    const btn = byText(w, '一键安装（winget）')
+    expect(btn).toBeDefined()
+    expect(btn!.classes()).toContain('btn-primary')
+    expect(byText(w, '📋 复制命令')).toBeDefined()
+    expect(byText(w, '打开官方发布页')).toBeDefined()
+  })
+
+  it('确认 → 调安装 → 成功回执，随后必然后验复采', async () => {
+    api.InstallUsbipdViaWinget.mockResolvedValue({ success: true, message: 'usbipd-win 已通过 winget 安装 v5.3.0' })
+    const w = await mountGuide()
+    const probesBefore = api.GetUsbOverview.mock.calls.length
+    await byText(w, '一键安装（winget）')!.trigger('click')
+    await flushPromises()
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    const dialog = JSON.stringify(confirmMock.mock.calls[0])
+    expect(dialog).toContain('UAC')
+    expect(dialog).toContain('联网')
+    expect(dialog).toContain('数分钟')
+    expect(api.InstallUsbipdViaWinget).toHaveBeenCalledTimes(1)
+    expect(toastText()).toContain('已通过 winget 安装')
+    expect(api.GetUsbOverview.mock.calls.length).toBeGreaterThan(probesBefore)
+  })
+
+  it('确认对话框被拒：安装调用一次不发', async () => {
+    confirmMock.mockResolvedValue(false)
+    const w = await mountGuide()
+    await byText(w, '一键安装（winget）')!.trigger('click')
+    await flushPromises()
+    expect(api.InstallUsbipdViaWinget).not.toHaveBeenCalled()
+  })
+
+  it('UAC 取消回执（success=false）：如实播报，不掺成功语义', async () => {
+    api.InstallUsbipdViaWinget.mockResolvedValue({ success: false, message: '已取消 UAC 授权，usbipd-win 未安装——需要时再点「一键安装」，或走手动路径' })
+    const w = await mountGuide()
+    await byText(w, '一键安装（winget）')!.trigger('click')
+    await flushPromises()
+    expect(toastText()).toContain('已取消 UAC 授权')
+    expect(toastText()).not.toContain('✅')
+  })
+
+  it('已装回执（success=true"无需重复执行"）原样送达', async () => {
+    api.InstallUsbipdViaWinget.mockResolvedValue({ success: true, message: 'usbipd-win v5.3.0 已经安装，无需重复执行' })
+    const w = await mountGuide()
+    await byText(w, '一键安装（winget）')!.trigger('click')
+    await flushPromises()
+    expect(toastText()).toContain('无需重复执行')
+  })
+
+  it('winget 缺席（后端前提报错 reject）：失败文案进 toast', async () => {
+    api.InstallUsbipdViaWinget.mockRejectedValue(new Error('系统里找不到 winget（App Installer）'))
+    const w = await mountGuide()
+    await byText(w, '一键安装（winget）')!.trigger('click')
+    await flushPromises()
+    expect(toastText()).toContain('操作失败')
+    expect(toastText()).toContain('App Installer')
+  })
+
+  it('安装进行中：钮变忙并禁用，防连点双发安装', async () => {
+    let settle: ((v: { success: boolean; message: string }) => void) | null = null
+    api.InstallUsbipdViaWinget.mockReturnValue(new Promise(resolve => { settle = resolve }))
+    const w = await mountGuide()
+    await byText(w, '一键安装（winget）')!.trigger('click')
+    await flushPromises()
+    const busy = byText(w, '正在安装')
+    expect(busy).toBeDefined()
+    expect(busy!.attributes('disabled')).toBeDefined()
+    settle!({ success: true, message: 'usbipd-win 安装完成' })
+    await flushPromises()
+    expect(byText(w, '一键安装（winget）')).toBeDefined()
+    expect(toastText()).toContain('安装完成')
   })
 })

@@ -13,7 +13,8 @@
 //     attach 的发行版参数语法是 `--wsl <DISTRO>`（可选值），没有 `-d`。
 //
 // 边界：本包不执行提权（bind/unbind 参数在此构造，由 wsl 模块的白名单提权通道
-// 下发）；不做远程主机的 usbip；不做驱动安装（Windows PnP 的事）。
+// 下发）；不做远程主机的 usbip；不自行动驱动——usbipd-win 本体的安装/补装经
+// winget 代装通道（winget.go，N31 方案 B）同样交给上游 MSI 完成。
 package usbipd
 
 import (

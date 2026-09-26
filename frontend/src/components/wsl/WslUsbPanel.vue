@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// WSL「🔌 USB 直通」页签（F9：usbipd-win 集成；N31 方案 A：零门槛一键直通）。
+// WSL「🔌 USB 直通」页签（F9：usbipd-win 集成；N31 方案 A：零门槛一键直通，
+// N31 方案 B：未装引导卡加「📦 一键安装（winget）」代装主操作——机主 2026-09-26 拍板）。
 // 列集对齐 wsl-dashboard 实测（总线号/VID:PID/描述/序列号/状态/客户端 IP）。
 // 主路径（A 方案）：设备行「⚡ 一键直通」一次点击自动完成 目标发行版解析 →
 // 未共享时 bind（提权 UAC，事前明示）→ attach；默认/唯一发行版直接附加，
@@ -325,11 +326,42 @@ async function openReleases() {
 async function copyWinget() {
   try {
     await navigator.clipboard.writeText(WINGET_CMD)
-    showToast('安装命令已复制——粘贴到终端执行（装完点「↻ 刷新」重新探测）')
+    showToast('安装命令已复制——粘贴到终端执行（装完点「↻ 重新探测」）')
   } catch {
     showToast('复制失败，请手动输入命令')
   }
 }
+
+// ---- N31 方案 B：真·一键 winget 代装 ----
+// 命令面全出自后端固定字面量（包 ID 钉死 dorssel.usbipd-win），本侧零入参零拼接；
+// winget 机器级安装自带 UAC（后端不套 PowerShell RunAs），10 分钟预算封顶在后端。
+// 回执分流：成功/已装（success=true）、取消/失败（success=false）、
+// winget 缺席等前提问题（reject，withOp 兜底进失败 toast）。
+const WINGET_BTN_TITLE = '调用系统 winget 从微软官方源下载安装 usbipd-win：需要联网、可能耗时数分钟，'
+  + '期间可能弹系统 UAC 授权窗；取消授权则什么都不发生'
+const wingetBusy = ref(false)
+const installViaWinget = () => withOp(async () => {
+  const ok = await confirm({
+    title: '用系统 winget 安装 usbipd-win？',
+    description: '将调用系统 winget 从微软官方源安装 usbipd-win（开源，dorssel 维护）：需要联网、'
+      + '耗时可能数分钟，期间可能弹出系统 UAC 授权窗口——落位的 usbipd 服务与 ViPciBus 内核驱动'
+      + '都由上游官方安装器完成，hanxi 只负责发起与复核。取消授权则什么都不发生；'
+      + '不想代装可走卡片下方的手动路径。',
+    tone: 'warning',
+  })
+  if (!ok) return
+  wingetBusy.value = true
+  try {
+    const out = await WSLAPI.InstallUsbipdViaWinget()
+    if (out?.success) {
+      showToast(`✅ ${out.message || 'usbipd-win 安装完成，本页已自动刷新'}`, { duration: 6000 })
+    } else {
+      showToast(out?.message || '安装未完成（原因未知）——可重试或走下方手动路径', { duration: 10000 })
+    }
+  } finally {
+    wingetBusy.value = false
+  }
+})
 
 type USBShareIdentity = USBShareEntry & Partial<Pick<Device, 'instanceId' | 'serial' | 'guid'>>
 
@@ -367,7 +399,7 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
 </script>
 
 <template>
-  <!-- usbipd-win 未装：引导卡（打开官方发布页 + winget 命令复制；不代装） -->
+  <!-- usbipd-win 未装：引导卡（N31 方案 B：winget 一键代装为主操作，手动路径兜底） -->
   <div v-if="view && !installed" class="guide-card">
     <h3 class="guide-title">需要 usbipd-win：本机 USB 直通到 WSL2 的桥梁</h3>
     <p class="guide-text">
@@ -375,23 +407,32 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
       底层由开源工具 <b>usbipd-win</b> 承担。安装一次即可长期使用；绑定（bind）需管理员，
       附加/卸下无需。装好后本页每台设备一行一个「⚡ 一键直通」，一次点击完成共享+附加。
     </p>
+    <UiBanner v-if="wingetBusy" tone="info" class="slim">
+      winget 正在下载/安装 usbipd-win（可能要几分钟）——若弹出 UAC 授权窗请点「是」，
+      完成后本卡自动刷新为设备表。
+    </UiBanner>
+    <div class="btn-group">
+      <button class="btn btn-primary btn-small" :disabled="opBusy" :title="WINGET_BTN_TITLE" @click="installViaWinget">
+        {{ wingetBusy ? '⏳ 正在安装（留意 UAC 窗）…' : '📦 一键安装（winget）' }}
+      </button>
+      <button class="btn btn-secondary btn-small" :disabled="loading || opBusy" @click="load()">{{ loading ? '探测中…' : '↻ 重新探测' }}</button>
+    </div>
     <p class="guide-text hint-dim">
-      为什么不代装：usbipd-win 要落系统服务 + ViPciBus 内核驱动 + 证书，属系统级安装，
-      交给上游正规安装器（MSI/winget）完成最稳妥，hanxi 不越俎代庖。
+      代装=让系统 winget 从微软官方源跑上游 MSI（包 ID 后端钉死 dorssel.usbipd-win，
+      服务与内核驱动由官方安装器落位）；不想代装就走下面的手动路径，殊途同归。
     </p>
     <ol class="guide-steps">
-      <li>官方发布页下载 MSI 安装（或复制下方 winget 命令）：
+      <li>手动路径：官方发布页下载 MSI（或复制下方命令到自己的终端执行）：
         <div class="cmd-row">
           <code class="mono cmd">{{ WINGET_CMD }}</code>
           <button class="btn btn-secondary btn-small" @click="copyWinget">📋 复制命令</button>
         </div>
       </li>
-      <li>安装后新开终端执行一次 <code class="mono">usbipd</code> 确认在 PATH 中；</li>
-      <li>回到这里点「↻ 重新探测」。装的是别的机器？本表只管理本机直通。</li>
+      <li>装完回到本页点「↻ 重新探测」——hanxi 按固定落位现场识别，通常无需重启 hanxi。</li>
+      <li>装的是别的机器？本表只管理本机直通。</li>
     </ol>
     <div class="btn-group">
-      <button class="btn btn-primary btn-small" @click="openReleases">🌐 打开官方发布页</button>
-      <button class="btn btn-secondary btn-small" :disabled="loading" @click="load()">{{ loading ? '探测中…' : '↻ 重新探测' }}</button>
+      <button class="btn btn-secondary btn-small" @click="openReleases">🌐 打开官方发布页</button>
     </div>
   </div>
 

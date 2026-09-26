@@ -71,8 +71,12 @@ type WslService struct {
 	ppPending bool // 规则有增删改但尚未点「应用」挂到系统
 	// USB 直通（usbipd-win，F9）：账本持久化（<StateDir>/wsl-usbipd.json）、
 	// CLI 注入面（单测替身）与重放单飞/取消（均以 mu 守护）。
+	// usbInstall 为 winget 代装通道注入面（N31 方案 B，返回 usbipd.InstallResult），
+	// usbInstallBusy 是代装单飞闸（mu 守护）——同机并发 winget 会互相抢 MSI 锁。
 	usbRun           usbCLI
 	usbPath          string
+	usbInstall       func(context.Context) (usbipd.InstallResult, error)
+	usbInstallBusy   bool
 	usbReplayBusy    bool
 	usbReplayMsg     string
 	usbReplayCancel  context.CancelFunc
@@ -109,6 +113,7 @@ func NewWslService(opener urlOpener, paths *settings.Paths, holder *extapi.Lease
 		installPref = filepath.Join(paths.StateDir(), "wsl-install-pref.json")
 		usbLedger = filepath.Join(paths.StateDir(), "wsl-usbipd.json")
 	}
+	wingetInstaller := usbipd.NewWingetInstaller()
 	return &WslService{
 		holder:          holder,
 		opener:          opener,
@@ -116,6 +121,7 @@ func NewWslService(opener urlOpener, paths *settings.Paths, holder *extapi.Lease
 		installPrefPath: installPref,
 		usbPath:         usbLedger,
 		usbRun:          usbipd.NewRunner(),
+		usbInstall:      wingetInstaller.Install,
 		probe:           readiness.Probe,
 		netProbe:        readiness.ProbeNetwork,
 		wslVersion:      readiness.Version,

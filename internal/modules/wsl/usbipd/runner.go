@@ -5,9 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf16"
 
 	platformwin "hanxi/internal/platform/windows"
@@ -24,18 +27,89 @@ type RunFunc func(ctx context.Context, args ...string) (stdout string, stderr st
 // Runner usbipd.exe 的 CLI 胶水（非提权通道；bind/unbind 提权执行在 wsl 模块侧）。
 type Runner struct {
 	run RunFunc
+	// exe usbipd 可执行解析目标，默认按名字 "usbipd" 走 PATH。
+	// 机器级安装（winget/MSI）只改写注册表里的系统 PATH——已在运行的进程
+	// 看不到（环境块启动时定格，TROUBLESHOOTING #88），首跳 ErrNotFound 时
+	// 回查 MSI 固定落位并改挂绝对路径；命中后粘住不再回退。
+	mu  sync.Mutex
+	exe string
 }
 
 // NewRunner 以真实 exec 通道构造 Runner。
-func NewRunner() *Runner { return &Runner{run: runUSBIPD} }
+func NewRunner() *Runner {
+	r := &Runner{exe: "usbipd"}
+	r.run = r.runLive
+	return r
+}
 
 // NewRunnerWith 注入自定义调用通道（单测/替身用）。
-func NewRunnerWith(run RunFunc) *Runner { return &Runner{run: run} }
+func NewRunnerWith(run RunFunc) *Runner { return &Runner{run: run, exe: "usbipd"} }
 
-// runUSBIPD 用户态隐藏控制台执行 usbipd（.NET 系 CLI，重定向下输出 UTF-8，
+func (r *Runner) currentExe() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.exe == "" {
+		return "usbipd"
+	}
+	return r.exe
+}
+
+// runLive 先按当前解析目标执行；"程序不存在"且目标还是 PATH 名字时，
+// 用 MSI 固定落位再试一次（装完即用的关键一跳，见 TROUBLESHOOTING #88）。
+// 未命中不回粘——用户在 hanxi 运行期间外部装机后，下一次探测即可见。
+func (r *Runner) runLive(ctx context.Context, args ...string) (string, string, error) {
+	exe := r.currentExe()
+	stdout, stderr, err := execUSBIPD(ctx, exe, args...)
+	if err == nil || !notInstalled(err) || exe != "usbipd" {
+		return stdout, stderr, err
+	}
+	if p := findKnownExe(); p != "" {
+		r.mu.Lock()
+		r.exe = p
+		r.mu.Unlock()
+		return execUSBIPD(ctx, p, args...)
+	}
+	return stdout, stderr, err
+}
+
+// usbipdKnownExes usbipd-win MSI（winget 机器级安装同款落位）的固定候选路径。
+// ProgramFiles/ProgramW6432 双键防 32 位视角错位（本程序 64 位时两键同值）。
+func usbipdKnownExes() []string {
+	var out []string
+	for _, key := range []string{"ProgramFiles", "ProgramW6432"} {
+		root := os.Getenv(key)
+		if root == "" {
+			continue
+		}
+		p := filepath.Join(root, "usbipd-win", "usbipd.exe")
+		dup := false
+		for _, q := range out {
+			if strings.EqualFold(q, p) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// findKnownExe PATH 失效场景的定位兜底；包级变量供单测替换。
+var findKnownExe = func() string {
+	for _, p := range usbipdKnownExes() {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
+// execUSBIPD 用户态隐藏控制台执行 usbipd（.NET 系 CLI，重定向下输出 UTF-8，
 // 与 wsl.exe 的 UTF-16 坑无关；BOM 由解析端兜掉）。
-func runUSBIPD(ctx context.Context, args ...string) (string, string, error) {
-	cmd := exec.CommandContext(ctx, "usbipd", args...)
+func execUSBIPD(ctx context.Context, exe string, args ...string) (string, string, error) {
+	cmd := exec.CommandContext(ctx, exe, args...)
 	platformwin.HideConsole(cmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

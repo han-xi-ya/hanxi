@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -127,4 +129,68 @@ func TestExecErrorNoPanicOnUnknown(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(ee), "退出码") {
 		t.Errorf("兜底文案缺失: %v", ee)
 	}
+}
+
+// ---- PATH 失效回退（winget/MSI 机器级安装后运行中进程看不到新 PATH） ----
+
+// whereExe 找一个必然存在、跑得快且必然非零退出的系统工具，充当
+// "MSI 固定落位命中"的替身目标（真实执行路径要过 exec，替身命令必须可用）。
+func whereExe(t *testing.T) string {
+	t.Helper()
+	root := os.Getenv("SystemRoot")
+	if root == "" {
+		t.Skip("SystemRoot 不可得，无法构造回退目标")
+	}
+	p := filepath.Join(root, "System32", "where.exe")
+	if _, err := os.Stat(p); err != nil {
+		t.Skipf("where.exe 不可用: %v", err)
+	}
+	return p
+}
+
+func TestRunnerPathStaleFallback(t *testing.T) {
+	if _, err := exec.LookPath("usbipd"); err == nil {
+		t.Skip("本机已安装 usbipd（PATH 命中），测不了「PATH 失效」分支")
+	}
+	old := findKnownExe
+	t.Cleanup(func() { findKnownExe = old })
+
+	t.Run("命中固定落位改挂绝对路径并粘住", func(t *testing.T) {
+		target := whereExe(t)
+		probes := 0
+		findKnownExe = func() string { probes++; return target }
+		r := NewRunner()
+		_, err := r.Version(context.Background())
+		var ee *ExecError
+		if !errors.As(err, &ee) {
+			t.Fatalf("回退命中后应暴露目标命令自己的失败（而非未安装哨兵）: %v", err)
+		}
+		if r.currentExe() != target {
+			t.Errorf("命中后应粘住绝对路径: %q", r.currentExe())
+		}
+		if _, err := r.Version(context.Background()); err == nil {
+			t.Fatal("where.exe 对 --version 应非零退出")
+		}
+		if probes != 1 {
+			t.Errorf("粘住后不得反复回查固定落位: probes=%d", probes)
+		}
+	})
+
+	t.Run("未命中如实回未安装且每轮可再查", func(t *testing.T) {
+		probes := 0
+		findKnownExe = func() string { probes++; return "" }
+		r := NewRunner()
+		if _, err := r.Version(context.Background()); !errors.Is(err, ErrNotInstalled) {
+			t.Fatalf("双通道都没命中必须是 ErrNotInstalled: %v", err)
+		}
+		if _, err := r.Version(context.Background()); !errors.Is(err, ErrNotInstalled) {
+			t.Fatal(err)
+		}
+		if probes != 2 {
+			t.Errorf("未命中不落粘滞锁——运行期间外部装好后下一轮探测要能自救: probes=%d", probes)
+		}
+		if r.currentExe() != "usbipd" {
+			t.Errorf("未命中不得改写解析目标: %q", r.currentExe())
+		}
+	})
 }

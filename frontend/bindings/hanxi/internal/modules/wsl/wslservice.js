@@ -314,6 +314,28 @@ export function InstallDistroTo(id, location) {
 }
 
 /**
+ * InstallUsbipdViaWinget N31 方案 B：真·一键——经系统 winget 安装 usbipd-win。
+ * 零入参、命令面全部出自 usbipd 包的固定字面量（包 ID 钉死 dorssel.usbipd-win），
+ * 前端无拼接面；winget 机器级安装自带 UAC，本通道不再套 PowerShell RunAs
+ * （双重提权只会把"谁取消了授权"搅浑）。闸门次序：
+ *  1. 模块自身安装态通道（usbipd --version，含 Runner 的 MSI 固定落位自救）
+ *     已在位 → 直接回"已安装"，绝不重复执行安装；
+ *  2. winget 本体缺席 → 明确报错指路 App Installer，不当安装失败；
+ *     10 分钟预算超时 → 如实报终止；
+ *  3. UAC/安装授权被取消 → 如实回执"未安装"，绝不谎报成功（#37 红线同族）；
+ *  4. winget 报成功/已装后仍复验一把 usbipd 可执行——退出码不等于可用，
+ *     复验不过就点名"装好了但命令未通"并给出现态出路。
+ * 
+ * 本模块 installed 态无持久缓存（GetUsbOverview 现探即真相），故"刷新缓存"=
+ * 前端完成回调里重取 overview；winget 刚改写的机器级 PATH 对运行中的 hanxi
+ * 不可见，由 Runner 的固定落位兜底看穿（TROUBLESHOOTING #88）。
+ * @returns {$CancellablePromise<$models.OperationOutcome>}
+ */
+export function InstallUsbipdViaWinget() {
+    return $Call.ByID(692400417);
+}
+
+/**
  * InstallWsl 一键开启：只装 WSL 本体与虚拟机平台，绝不自动装发行版
  * （--install 捆绑模式会把默认 Ubuntu 一起塞进来，与"用户手动挑系统"的
  * 产品语义冲突，故本模块操作面固定走 --no-distribution）。
