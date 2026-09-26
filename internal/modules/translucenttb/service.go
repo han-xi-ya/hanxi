@@ -46,7 +46,16 @@ type TranslucentTBService struct {
 	watchMu    sync.Mutex
 	watching   bool
 	watchStop  chan struct{}
+
+	// AV 崩溃落账（A 档）：avMu 护 lastAVAt 幂等位——同一次崩溃的终态广播
+	// 理论上一笔（transition 只在状态变更时 emit），按 StoppedAt 防重兜底。
+	avMu     sync.Mutex
+	lastAVAt time.Time
 }
+
+// avCrashCode TranslucentTB 原生访问违例退出码：AV 档话术与崩溃落账共用判据
+// （Windows 退出码在本机账目为正的 32 位值，反解码统一走 uint32 比较）。
+const avCrashCode = 0xC0000005
 
 // NewTranslucentTBService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
 func NewTranslucentTBService(plat platform.Platform, holder *extapi.LeaseHolder) *TranslucentTBService {
@@ -60,6 +69,9 @@ func NewTranslucentTBService(plat platform.Platform, holder *extapi.LeaseHolder)
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewTBProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
 	})
+	// AV 档话术接本机事实（构造期布线，先于任何 Start/快照路径）：
+	// 已装旧版点名 + 跨重启 AV 记账数。
+	svc.engine.SetAVFacts(svc.avCrashFacts)
 	return svc
 }
 
@@ -68,12 +80,58 @@ func NewTranslucentTBService(plat platform.Platform, holder *extapi.LeaseHolder)
 // emitInstanceState 引擎状态迁移 → 事件 translucenttb:instance-state。
 func (s *TranslucentTBService) emitInstanceState(snap instance.Snapshot) {
 	slog.Debug("translucenttb instance state", "state", snap.State, "pid", snap.PID, "external", snap.External)
+	if snap.State == instance.StateFailed && uint32(snap.ExitCode) == avCrashCode {
+		// AV 崩溃落账（"可反解码"事实：ExitCode 仅在引擎解出内核退出码时非零入账）
+		s.accountAVCrash(snap)
+	}
 	if app := application.Get(); app != nil && app.Event != nil {
 		app.Event.Emit("translucenttb:instance-state", snap)
 	}
 	if snap.State == instance.StateFailed && snap.Error != "" {
 		notify.Error("translucenttb", "TranslucentTB 实例异常", snap.Error, "/ext/translucenttb")
 	}
+}
+
+// accountAVCrash AV 崩溃落账：记 {code, version, at} 并跨重启累计计数
+// （store 原子写）。记账失败仅降级话术引用，绝不断事件广播/通知主链。
+func (s *TranslucentTBService) accountAVCrash(snap instance.Snapshot) {
+	at := snap.StoppedAt
+	if at.IsZero() {
+		at = time.Now()
+	}
+	s.avMu.Lock()
+	defer s.avMu.Unlock()
+	if !s.lastAVAt.IsZero() && at.Equal(s.lastAVAt) {
+		return // 同一笔崩溃的重复广播：不重账
+	}
+	s.lastAVAt = at
+	if err := s.store.RecordAVCrash(snap.ExitCode, snap.Version, at); err != nil {
+		slog.Warn("translucenttb AV 崩溃记账失败", "error", err)
+	}
+}
+
+// avCrashFacts 引擎 AV 档话术的本机事实（instance.SetAVFacts 注入，在引擎
+// 快照锁内执行）：早于崩溃版本的已装旧版（新者在前）+ 跨重启记账数。
+// 保持轻量——小目录扫描 + 内存计数；ListInstalled 失败话术照常出通用档。
+func (s *TranslucentTBService) avCrashFacts(crashVersion string) instance.AVCrashFacts {
+	facts := instance.AVCrashFacts{CrashCount: s.store.AVCrashCount()}
+	if crashVersion == "" {
+		return facts
+	}
+	installed, err := s.manager.ListInstalled()
+	if err != nil {
+		return facts
+	}
+	for _, v := range installed {
+		// 严格早于崩溃版本才算"旧版在场"（imported- 兜底版本退化字典序不入列，宁缺毋滥）
+		if versionCompare(v.Version, crashVersion) < 0 {
+			facts.OlderVersions = append(facts.OlderVersions, v.Version)
+		}
+	}
+	sort.Slice(facts.OlderVersions, func(i, j int) bool {
+		return versionCompare(facts.OlderVersions[i], facts.OlderVersions[j]) > 0
+	})
+	return facts
 }
 
 // activate 启动后台外部实例感知：5s 轮询互斥体校正 external/stopped。

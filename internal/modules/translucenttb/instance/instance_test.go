@@ -196,32 +196,71 @@ func TestExitCodeAndMessageMapping(t *testing.T) {
 }
 
 // TestAbnormalExitWordingAV 0xC0000005 分档话术（2026-09-22 真机教训，
-// TROUBLESHOOTING #85）：明说访问违例 + "重启→降级→鉴别归因"动作序列；
+// TROUBLESHOOTING #85；2026-09-26 升级"短句+动作序列"+本机事实引用）：
+// 明说访问违例 + "重启→降级→环境鉴别"编号动作序列（两档动作锚点不许丢）；
 // AV 分支不再给单一归罪断言（机主证词"同版本此前正常"推翻了初版"上游回归"
 // 定性），也绝不复提"欢迎窗/框架包"误导。
 func TestAbnormalExitWordingAV(t *testing.T) {
 	const av = 3221225477 // 0xC0000005（Windows 退出码在本机账目为正的 32 位值）
 
-	got2262 := abnormalExitWording(av, "2026.2")
-	if !strings.Contains(got2262, "访问违例") || !strings.Contains(got2262, "2026.1") ||
-		!strings.Contains(got2262, "重启") {
-		t.Errorf("2026.2 AV 文案应给重启+降级鉴别动作: %s", got2262)
+	facts := AVCrashFacts{OlderVersions: []string{"2026.1", "2025.1"}, CrashCount: 3}
+
+	got2262 := abnormalExitWording(av, "2026.2", facts)
+	// 动作锚点：重启 + 降级鉴别；事实引用：点名已装旧版 + 跨重启记账数。
+	if !strings.Contains(got2262, "访问违例") || !strings.Contains(got2262, "重启") ||
+		!strings.Contains(got2262, "降级") || !strings.Contains(got2262, "你已装 2026.1、2025.1") ||
+		!strings.Contains(got2262, "本机已 3 次因此码退出") {
+		t.Errorf("2026.2 AV 文案应给重启+降级动作并引用本机事实: %s", got2262)
 	}
 	if strings.Contains(got2262, "上游已知") || strings.Contains(got2262, "已知崩溃回归") {
 		t.Errorf("不得回归单一归罪断言（机主此前同版本正常）: %s", got2262)
 	}
 
-	gotOther := abnormalExitWording(av, "2025.1")
+	gotOther := abnormalExitWording(av, "2025.1", facts)
 	// 明说违例 + 否定式纠偏（排除欢迎窗/框架包误导）+ 同一动作序列。
 	if !strings.Contains(gotOther, "访问违例") ||
 		!strings.Contains(gotOther, "不是关闭欢迎窗") ||
+		!strings.Contains(gotOther, "重启") || !strings.Contains(gotOther, "降级") ||
 		strings.Contains(gotOther, "属上游正常退出路径，重新启动") {
 		t.Errorf("一般 AV 文案应明说违例并排除误导: %s", gotOther)
 	}
 
-	generic := abnormalExitWording(1, "2026.1")
-	if !strings.Contains(generic, "欢迎授权窗口") || !strings.Contains(generic, "VCLibs") {
-		t.Errorf("非 AV 码保留既有两成因逐字预告: %s", generic)
+	// 无事实注入（未接线/无旧版在场/头一次崩）：动作序列照出，但不硬造版本号、
+	// 不引用记账数、不谎称已装。
+	bare := abnormalExitWording(av, "2026.2", AVCrashFacts{})
+	if !strings.Contains(bare, "重启") || !strings.Contains(bare, "降级") {
+		t.Errorf("零事实下重启+降级动作锚点不许丢: %s", bare)
+	}
+	if strings.Contains(bare, "你已装") || strings.Contains(bare, "次因此码退出") ||
+		strings.Contains(bare, "2026.1") {
+		t.Errorf("无事实不得虚构点名/计数: %s", bare)
+	}
+	// 计数阈值：仅 1 笔账（本次之前的孤例）不报，≥2 才引用。
+	once := abnormalExitWording(av, "2026.2", AVCrashFacts{CrashCount: 1})
+	if strings.Contains(once, "次因此码退出") {
+		t.Errorf("CrashCount=1 不应触发计数引用: %s", once)
+	}
+}
+
+// TestEngineAVFactsInjection 引擎级接线：SetAVFacts 注入的事实必须进
+// failed 快照话术（service 侧账目经此交付，未注入回退通用档）。
+func TestEngineAVFactsInjection(t *testing.T) {
+	rec := &eventRecorder{}
+	e := NewEngine(&fakeJobAPI{}, &fakeProbe{}, rec.cb())
+	e.SetAVFacts(func(version string) AVCrashFacts {
+		if version != "2026.2" {
+			t.Errorf("事实提供者应收到崩溃版本: %q", version)
+		}
+		return AVCrashFacts{OlderVersions: []string{"2025.1"}, CrashCount: 5}
+	})
+	e.onSupState(sup.Snapshot{State: sup.StateFailed, Version: "2026.2",
+		Error: "托管进程异常退出（退出码 3221225477）"})
+	snap := rec.last()
+	if snap.ExitCode != 3221225477 {
+		t.Fatalf("AV 退出码未入账: %+v", snap)
+	}
+	if !strings.Contains(snap.Error, "你已装 2025.1") || !strings.Contains(snap.Error, "本机已 5 次因此码退出") {
+		t.Errorf("快照话术未引用注入事实: %s", snap.Error)
 	}
 }
 

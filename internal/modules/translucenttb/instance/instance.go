@@ -78,6 +78,10 @@ type Engine struct {
 
 	spawnMessenger func(exe string) error // 状态信使拉起接缝（默认真实 spawn，测试注入）
 
+	// avFacts AV(0xC0000005) 档话术的本机事实提供者（SetAVFacts 注入，构造期
+	// 布线后运行期只读）；nil = 话术降级为纯动作序列通用档。
+	avFacts func(version string) AVCrashFacts
+
 	// specArgs 真机冒烟专用注入缝：生产 TranslucentTB 恒无参拉起（nil），
 	// 测试注入让替身进程（cmd.exe）在精简 stdin 环境下也能稳定存活。
 	specArgs []string
@@ -129,6 +133,20 @@ func (e *Engine) Start(opts StartOptions) error {
 		Args:          e.specArgs,    // 生产恒 nil；仅真机冒烟注入
 		DetachFromJob: opts.Detached, // "不随 Hanxi 关闭"开关 → SetAllowKillOnClose(false)
 	})
+}
+
+// AVCrashFacts AV(0xC0000005) 档话术引用的本机事实：由 service 层经 SetAVFacts
+// 注入（记账与磁盘 IO 留在 service 侧，本包只定义形状与消费——零框架依赖承诺）。
+type AVCrashFacts struct {
+	OlderVersions []string // 已装且早于崩溃版本的旧版（新者在前；空 = 本机无旧版在场）
+	CrashCount    int      // 本机 0xC0000005 崩溃记账累计（jsonstore 持久化，跨重启）
+}
+
+// SetAVFacts 接线 AV 话术事实提供者（重复调用以最后一次为准；nil 撤线）。
+// 纪律：回调在引擎快照锁内执行（abnormalExitWording 取词时）——实现方只做
+// 轻量读账（内存计数 + 小目录扫描），绝不得回调本引擎（非重入锁，必死锁）。
+func (e *Engine) SetAVFacts(fn func(version string) AVCrashFacts) {
+	e.avFacts = fn
 }
 
 // ResetState 经单实例协议重设运行实例的任务栏动态状态：拉起同路径"信使"进程，
@@ -235,7 +253,7 @@ func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
 		State:     mapState(s.State),
 		PID:       s.PID,
 		ExitCode:  e.exitCode,
-		Error:     mapErrorMessage(s),
+		Error:     e.mapErrorMessage(s),
 		External:  s.State == sup.StateExternal,
 		StartedAt: s.Since,
 		StoppedAt: e.stoppedAt,
@@ -288,10 +306,16 @@ func exitCodeFromKernelMessage(msg string) (int, bool) {
 //   - 内核异常退出消息改回本引擎既有话术（按退出码分档，见 abnormalExitWording）；
 //   - 内核手动停止的"已手动停止"折回本引擎既有的空文案（stopped 态不带话术）；
 //   - 其余（启动失败等）透传。
-func mapErrorMessage(s sup.Snapshot) string {
+//
+// 前置条件：与 snapshotLocked 同——已持 e.mu（AV 档经 avFacts 回调取本机事实）。
+func (e *Engine) mapErrorMessage(s sup.Snapshot) string {
 	if s.State == sup.StateFailed {
 		if code, ok := exitCodeFromKernelMessage(s.Error); ok {
-			return abnormalExitWording(code, s.Version)
+			var facts AVCrashFacts
+			if e.avFacts != nil {
+				facts = e.avFacts(s.Version)
+			}
+			return abnormalExitWording(code, s.Version, facts)
 		}
 	}
 	if s.State == sup.StateStopped && s.Error == manualStopWording {
@@ -305,21 +329,45 @@ func mapErrorMessage(s sup.Snapshot) string {
 // 2026-09-22 真机教训：旧话术对一切退出码统一预告"欢迎窗/框架包"两成因，
 // 而实测 0xC0000005（访问违例）两者皆非——拒绝许可走退码 0，缺框架包另弹
 // 「缺少依赖」——统一话术把机主引向错误排查方向。现按码分档：
-//   - 0xC0000005：明说访问违例并给"重启→降级"两步鉴别法（首起断言过
-//     "2026.2 上游回归"，机主证词"同版本此前正常"削弱之——同字节、同机器、
-//     态变了，explorer 里旧注入 DLL 与重装落盘的新 DLL 混态亦可致此，
-//     故话术给可判别的动作序列而非归罪单一成因）；
-//   - 其他码：保留既有"欢迎窗/框架包"预告（两者仍是真高发起因）。
-func abnormalExitWording(code int, version string) string {
+//   - 0xC0000005：明说访问违例 + "重启→降级→环境鉴别"编号动作序列（首起
+//     断言过"2026.2 上游回归"，机主证词"同版本此前正常"削弱之——同字节、
+//     同机器、态变了，explorer 里旧注入 DLL 与重装落盘的新 DLL 混态亦可致此，
+//     故话术给可判别的动作序列而非归罪单一成因）。2026-09-26 升级：旧版整段
+//     背诵改短句分步，并引用 service 注入的本机事实（已装旧版点名、跨重启
+//     AV 记账数）——话术从"通用说明书"变为"对着这台机器说话"；
+//   - 其他码：保留既有"欢迎窗/框架包"预告（两者仍是真高发起因，逐字铁律
+//     由 instance_test 锁死）。
+func abnormalExitWording(code int, version string, facts AVCrashFacts) string {
 	const avCode = 0xC0000005
 	if uint32(code) == avCode {
-		guide := "先重启一次电脑再启动（排除资源管理器里旧组件残留）；仍崩则到版本列表安装 2026.1 或 2025.1 并设为使用版本鉴别：旧版能跑=本版本构建问题（等上游修，留好 %LOCALAPPDATA%\\CrashDumps 转储可报 issue）；多版全崩而商店版正常=本机环境与未打包路径冲突——首查虚拟显示器（ToDesk/向日葵/GameViewer 等远程工具注入的虚拟显卡会产生\"默认监视器\"空壳，实测崩在此处，见踩坑 #85），次查近期新装的任务栏/外壳类软件"
-		if strings.HasPrefix(version, "2026.2") {
-			return fmt.Sprintf("TranslucentTB 异常退出（退出码 %d / 0x%08X），访问违例，非许可/依赖问题。%s", uint32(code), uint32(code), guide)
+		lead := fmt.Sprintf("TranslucentTB 异常退出（退出码 %d / 0x%08X），访问违例，非许可/依赖问题。", uint32(code), uint32(code))
+		if !strings.HasPrefix(version, "2026.2") {
+			lead = fmt.Sprintf("TranslucentTB 异常退出（退出码 %d / 0x%08X），原生访问违例——不是关闭欢迎窗的退出路径（那属退码 0 正常退出），缺框架包也会另弹明确提示。", uint32(code), uint32(code))
 		}
-		return fmt.Sprintf("TranslucentTB 异常退出（退出码 %d / 0x%08X），原生访问违例——不是关闭欢迎窗的退出路径（那属退码 0 正常退出），缺框架包也会另弹明确提示。%s", uint32(code), uint32(code), guide)
+		return lead + avCrashNote(facts) + avActionSequence(facts)
 	}
 	return fmt.Sprintf("TranslucentTB 异常退出（退出码 %d）。若刚关闭了首次启动的欢迎授权窗口，属上游正常退出路径（未同意许可），重新启动即可再次进入欢迎流程；否则便携版要求 Windows 11 且依赖系统已装的 WinUI 2.8 / VCLibs 框架包——弹过「缺少依赖」提示时请先补装框架包或改用 Store 版", code)
+}
+
+// avCrashNote 引用 AV 崩溃跨重启记账（≥2 才报——头一次崩不絮叨，
+// 复发才是"这台机器反复栽在同一条码上"的归因信号）。
+func avCrashNote(facts AVCrashFacts) string {
+	if facts.CrashCount >= 2 {
+		return fmt.Sprintf("本机已 %d 次因此码退出。", facts.CrashCount)
+	}
+	return ""
+}
+
+// avActionSequence "短句+动作序列"排查指引：① 重启洗组件残留 → ② 降级鉴别
+// （已装旧版在场点名直给，缺席只指路版本列表——不硬造版本号）→ ③ 环境冲突
+// 归因（虚拟显示器首选，踩坑 #85 实测）。
+func avActionSequence(facts AVCrashFacts) string {
+	downgrade := "到「版本管理」装一个更早的稳定版并设为使用"
+	if len(facts.OlderVersions) > 0 {
+		downgrade = fmt.Sprintf("你已装 %s，到「版本管理」设为使用即可直接试", strings.Join(facts.OlderVersions, "、"))
+	}
+	return "排查按序——① 重启电脑后再启动一次（排除资源管理器里旧注入组件残留）；② 仍崩则降级鉴别：" + downgrade +
+		"，旧版能跑=本版本构建问题（等上游修，留好 %LOCALAPPDATA%\\CrashDumps 转储可报 issue）；③ 多版全崩而商店版正常=本机环境与未打包路径冲突——首查虚拟显示器（ToDesk/向日葵/GameViewer 等远程工具注入的虚拟显卡会留下\"默认监视器\"空壳，实测崩在此处，见踩坑 #85），次查近期新装的任务栏/外壳类软件"
 }
 
 // emit 状态广播（回调在锁外执行，防止回调内重入本引擎造成死锁）。
