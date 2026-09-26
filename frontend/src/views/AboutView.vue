@@ -136,7 +136,7 @@ onMounted(async () => {
   flex: 0 0 52px;
   border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
   border-radius: 14px;
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--surface-panel));
+  background: var(--color-primary-soft);
   color: var(--color-primary);
   font-size: var(--text-lg);
   font-weight: 750;
@@ -300,7 +300,7 @@ h1 {
 
 .status-badge.enabled {
   color: var(--state-positive);
-  background: color-mix(in srgb, var(--state-positive) 8%, transparent);
+  background: var(--state-positive-soft);
 }
 
 .status-badge.disabled {

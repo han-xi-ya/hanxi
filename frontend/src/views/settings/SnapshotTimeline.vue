@@ -179,8 +179,8 @@ function expandFold(idx: number) {
 .hist-empty { padding: 18px 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 .mono { font-family: var(--font-mono); font-size: var(--text-xs); }
 .file-st { flex: none; width: 40px; font-size: var(--text-xs); color: var(--color-text-muted); }
-.file-st.st-A { color: var(--state-positive, var(--color-primary)); }
-.file-st.st-D { color: var(--state-danger, var(--color-text)); }
+.file-st.st-A { color: var(--state-positive); }
+.file-st.st-D { color: var(--state-danger); }
 
 .fa-diff { padding: 2px 4px 10px; }
 .diff-panel {
