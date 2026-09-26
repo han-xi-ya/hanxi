@@ -12,6 +12,7 @@ import (
 	"hanxi/internal/modules/envcheck/detect"
 	"hanxi/internal/modules/envcheck/diskusage"
 	"hanxi/internal/modules/envcheck/dotnetversion"
+	"hanxi/internal/modules/envcheck/gitconfig"
 	"hanxi/internal/modules/envcheck/gitversion"
 	"hanxi/internal/modules/envcheck/goversion"
 	"hanxi/internal/modules/envcheck/javaversion"
@@ -30,34 +31,36 @@ type urlOpener interface {
 // 官网版本查询，以及目录内 npm 全局 CLI 工具（Claude Code、Codex 等）的一键安装/升级/卸载。
 // 全部业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
 type EnvCheckService struct {
-	holder         *extapi.LeaseHolder
-	opener         urlOpener
-	detectOne      func(context.Context, string) (detect.ToolInfo, error)
-	recentReleases func() ([]gitversion.Release, error)
-	goChannels     func() ([]remoteversion.Channel, bool, time.Time, error)
-	nodeChannels   func() ([]remoteversion.Channel, bool, time.Time, error)
-	javaChannels   func() ([]remoteversion.Channel, bool, time.Time, error)
-	pythonChannels pythonversion.MinorChannel
-	dotnetChannels func() ([]remoteversion.Channel, bool, time.Time, error)
-	npmOverview    func(context.Context) (npmtool.Overview, error)
-	collectUsage   func(context.Context, []detect.ToolInfo) []diskusage.ToolUsage
+	holder          *extapi.LeaseHolder
+	opener          urlOpener
+	detectOne       func(context.Context, string) (detect.ToolInfo, error)
+	gitGlobalConfig func(context.Context) gitconfig.Overview
+	recentReleases  func() ([]gitversion.Release, error)
+	goChannels      func() ([]remoteversion.Channel, bool, time.Time, error)
+	nodeChannels    func() ([]remoteversion.Channel, bool, time.Time, error)
+	javaChannels    func() ([]remoteversion.Channel, bool, time.Time, error)
+	pythonChannels  pythonversion.MinorChannel
+	dotnetChannels  func() ([]remoteversion.Channel, bool, time.Time, error)
+	npmOverview     func(context.Context) (npmtool.Overview, error)
+	collectUsage    func(context.Context, []detect.ToolInfo) []diskusage.ToolUsage
 }
 
 // NewEnvCheckService 装配探测与各官网版本源。字段全部为函数值注入（而非直连包函数），
 // 单测可逐个替换为假数据源；各版本源内部自带 TTL 缓存，这里不重复缓存。
 func NewEnvCheckService(opener urlOpener, holder *extapi.LeaseHolder) *EnvCheckService {
 	return &EnvCheckService{
-		holder:         holder,
-		opener:         opener,
-		detectOne:      detect.RunOne,
-		recentReleases: gitversion.RecentReleases,
-		goChannels:     goversion.Channels,
-		nodeChannels:   nodeversion.Channels,
-		javaChannels:   javaversion.Channels,
-		pythonChannels: pythonversion.ChannelsForLocal,
-		dotnetChannels: dotnetversion.Channels,
-		npmOverview:    npmtool.BuildOverview,
-		collectUsage:   diskusage.Collect,
+		holder:          holder,
+		opener:          opener,
+		detectOne:       detect.RunOne,
+		gitGlobalConfig: gitconfig.GlobalOverview,
+		recentReleases:  gitversion.RecentReleases,
+		goChannels:      goversion.Channels,
+		nodeChannels:    nodeversion.Channels,
+		javaChannels:    javaversion.Channels,
+		pythonChannels:  pythonversion.ChannelsForLocal,
+		dotnetChannels:  dotnetversion.Channels,
+		npmOverview:     npmtool.BuildOverview,
+		collectUsage:    diskusage.Collect,
 	}
 }
 
@@ -124,6 +127,18 @@ func (s *EnvCheckService) GetGitForWindowsOverview() (gitversion.Overview, error
 		)
 	}
 	return overview, nil
+}
+
+// GitGlobalConfig 读取 git 全局配置（git config --global --list，纯本机只读）：
+// 未安装/未配置/读取失败/成功四态在 DTO state 中如实区分，条目键值均已经后端
+// 脱敏词表就地打码——前端与复制件拿到的就是脱敏件，原值不出服务。
+func (s *EnvCheckService) GitGlobalConfig() (gitconfig.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gitconfig.Overview{}, gateErr
+	}
+	defer release()
+	return s.gitGlobalConfig(context.Background()), nil
 }
 
 // OpenGitForWindowsDownloadPage 使用系统默认浏览器打开固定官方下载页。

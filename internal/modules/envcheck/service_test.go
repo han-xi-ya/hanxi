@@ -9,6 +9,7 @@ import (
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/modules/envcheck/detect"
+	"hanxi/internal/modules/envcheck/gitconfig"
 	"hanxi/internal/modules/envcheck/gitversion"
 	"hanxi/internal/modules/envcheck/npmtool"
 	"hanxi/internal/modules/envcheck/remoteversion"
@@ -58,6 +59,33 @@ func TestGetGitForWindowsOverview(t *testing.T) {
 			}
 			if overview.IsStale != tt.releases[0].Stale {
 				t.Fatalf("isStale = %v", overview.IsStale)
+			}
+		})
+	}
+}
+
+// TestGitGlobalConfigSeam service 缝线测试：注入假 reader（不真跑 git），
+// 锁定四态 DTO 原样透传与调用门通道——state 语义由 gitconfig 包测试保证。
+func TestGitGlobalConfigSeam(t *testing.T) {
+	tests := []struct {
+		name     string
+		overview gitconfig.Overview
+	}{
+		{"configured", gitconfig.Overview{State: gitconfig.StateConfigured, Items: []gitconfig.Entry{{Key: "user.name", Value: "hanxi"}, {Key: "http.proxy", Value: gitconfig.MaskedValue}}}},
+		{"unconfigured", gitconfig.Overview{State: gitconfig.StateUnconfigured}},
+		{"not-installed", gitconfig.Overview{State: gitconfig.StateMissing, Detail: "未在 PATH 中找到 git"}},
+		{"error", gitconfig.Overview{State: gitconfig.StateError, Detail: "读取 git 全局配置失败: exit status 128"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewEnvCheckService(nil, extapi.NewLeaseHolder(ID))
+			svc.gitGlobalConfig = func(context.Context) gitconfig.Overview { return tt.overview }
+			got, err := svc.GitGlobalConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.State != tt.overview.State || len(got.Items) != len(tt.overview.Items) || got.Detail != tt.overview.Detail {
+				t.Fatalf("overview passthrough broken: got %+v, want %+v", got, tt.overview)
 			}
 		})
 	}

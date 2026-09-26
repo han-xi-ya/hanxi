@@ -36,8 +36,8 @@ func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
 		Name:        "开发环境检测",
-		Version:     "0.5.0",
-		Description: "检测本机开发工具链，查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载",
+		Version:     "0.6.0",
+		Description: "检测本机开发工具链（含 git 全局配置脱敏查看），查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
