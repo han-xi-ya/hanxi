@@ -116,21 +116,21 @@ export function GetAccent() {
 }
 
 /**
- * GetFont 返回持久化的界面字体档："kai" | "plain" | "mono"（异常/未设置回退默认文楷）。
- * 合法域与 DOM data-font 属性、fonts.css N40 档位覆写块三处字面一致（useTheme.spec / fonts.spec 锁）。
- * @returns {$CancellablePromise<string>}
- */
-export function GetFont() {
-    return $Call.ByID(1971788496);
-}
-
-/**
  * GetAppInfo 返回产品标识、运行模式与全套数据目录路径，供前端关于页/首页展示。
  * 依赖 InitPaths 已执行（GetPaths 内部兜底懒初始化）。
  * @returns {$CancellablePromise<$models.AppInfo>}
  */
 export function GetAppInfo() {
     return $Call.ByID(2225764144);
+}
+
+/**
+ * GetFont 返回持久化的界面字体档："kai" | "plain" | "mono"（异常/未设置回退默认文楷）。
+ * 合法域与 DOM data-font 属性、fonts.css N40 档位覆写块三处字面一致（useTheme.spec / fonts.spec 锁）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetFont() {
+    return $Call.ByID(1971788496);
 }
 
 /**

@@ -18,6 +18,7 @@ import * as hostfeed$0 from "../../../../packages/go/hostfeed/models.js";
  * @property {number} size - HEAD Content-Length（探测失败为 0，跳过字节级校验）
  * @property {boolean} stale - 来自旧缓存或内置快照，非实时数据
  * @property {hostfeed$0.AssetNote[] | null} [assets] - Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
+ * @property {hostfeed$0.Form} [form] - Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒 portable——官网下载页 x64 资产即按钮原文 "Download Portable ZIP" 的 便携 zip（解压直用，notesOf 形态词表已按此实证）；托管安装链 （下载 → 解包 → 平铺布局自检）自证同一事实。
  */
 
 /**
