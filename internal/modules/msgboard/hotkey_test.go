@@ -2,6 +2,7 @@ package msgboard
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -210,4 +211,134 @@ func statusOf(t *testing.T, s *MsgBoardService) Status {
 		t.Fatalf("GetStatus: %v", err)
 	}
 	return st
+}
+
+// 一致性审查 A1 回归：改键冲突回滚路径不得吞掉 msgboard:changed 广播——
+// 同一次保存里非热键字段（正文/字号）已如实落盘，牌面窗只认事件拉新，
+// 漏播一次它就永远顶着旧文案示人（模块页尚有出错回读兜底，牌面没有）。
+func TestSetConfigHotkeyConflictStillEmitsChanged(t *testing.T) {
+	s, st := newWiredService(t)
+	var events []string
+	s.publish = func(name string) { events = append(events, name) }
+	if err := s.start(); err != nil {
+		t.Fatal(err)
+	}
+	st.regErr = func(accel string) error {
+		if accel == "Ctrl+Alt+J" {
+			return errors.New(`the shortcut "Ctrl+Alt+J" is already registered (possibly by another application)`)
+		}
+		return nil
+	}
+	old := s.store.Get()
+	err := s.SetConfig(Config{Text: "改稿后的新文案", FontSize: old.FontSize, Screen: old.Screen, Hotkey: "Ctrl+Alt+J"})
+	if err == nil {
+		t.Fatal("改键冲突应报错回前端")
+	}
+	if got := s.store.Get().Hotkey; got != defaultHotkey {
+		t.Fatalf("热键应回滚旧值，实为 %q", got)
+	}
+	if c, _ := s.GetBoardContent(); c.Text != "改稿后的新文案" {
+		t.Fatalf("非热键字段应照常生效，实为 %q", c.Text)
+	}
+	n := 0
+	for _, e := range events {
+		if e == eventChanged {
+			n++
+		}
+	}
+	if n == 0 {
+		t.Fatalf("冲突路径也必须广播拉新（牌面窗唯一刷新源），events=%v", events)
+	}
+}
+
+// uniqueHotkeyBackend 模拟 GlobalShortcutManager 的进程内规范键独占语义
+// （canonical 小写判重、重复注册 "error and preserve"）——跨槽位共存实测用，
+// 区别于上方 stubHotkeyBackend 的单槽位视角。
+type uniqueHotkeyBackend struct {
+	bindings map[string]func()
+	calls    []string
+}
+
+func (u *uniqueHotkeyBackend) Register(accel string, cb func()) error {
+	key := strings.ToLower(accel)
+	if _, ok := u.bindings[key]; ok {
+		return fmt.Errorf("global shortcut %q is already registered", accel)
+	}
+	u.bindings[key] = cb
+	u.calls = append(u.calls, "register:"+accel)
+	return nil
+}
+
+func (u *uniqueHotkeyBackend) Unregister(accel string) error {
+	key := strings.ToLower(accel)
+	if u.bindings[key] == nil {
+		return fmt.Errorf("global shortcut %q is not registered", accel)
+	}
+	delete(u.bindings, key)
+	u.calls = append(u.calls, "unregister:"+accel)
+	return nil
+}
+
+func (u *uniqueHotkeyBackend) IsRegistered(accel string) bool {
+	return u.bindings[strings.ToLower(accel)] != nil
+}
+
+// 跨槽位共存实证（65aa380 memo 速记新热键 Ctrl+Alt+N 与 msgboard/toggle 同接
+// 一张 Registry）：两槽位记账互相独立——异槽抢键只伤抢的一方（中文报错、自己的
+// 旧绑定原样活着），绝不注销他槽键位；回调各归各槽；本模块改键撞他槽在位键时
+// 配置回滚、双方系统绑定均无损。
+func TestHotkeyCrossSlotCoexistence(t *testing.T) {
+	s := newTestService(t)
+	ub := &uniqueHotkeyBackend{bindings: map[string]func(){}}
+	r := hotkey.NewRegistry(ub)
+	s.setHotkeyRegistry(r)
+	if err := s.start(); err != nil {
+		t.Fatal(err)
+	}
+	memoFired := false
+	if err := r.Bind("memo/quicksheet", "Ctrl+Alt+N", true, func() { memoFired = true }); err != nil {
+		t.Fatalf("memo 槽位独立绑定应成功：%v", err)
+	}
+	if !ub.IsRegistered(defaultHotkey) || !ub.IsRegistered("Ctrl+Alt+N") {
+		t.Fatalf("两槽位应同时在位：%v", ub.calls)
+	}
+	if cb := ub.bindings[strings.ToLower("Ctrl+Alt+B")]; cb == nil {
+		t.Fatal("msgboard 键位回调缺失")
+	}
+	cbMsg := ub.bindings[strings.ToLower(defaultHotkey)]
+	cbMsg() // 触发 msgboard 回调（无头 toggle 只报"需应用运行"，不伤他槽）
+	if memoFired {
+		t.Fatal("msgboard 槽位回调不得串门触发 memo 卡片")
+	}
+
+	// 异槽抢键：memo 试图改挂 msgboard 在位的 Ctrl+Alt+B——只许 memo 失败保旧。
+	if err := r.Bind("memo/quicksheet", defaultHotkey, true, func() { memoFired = true }); err == nil {
+		t.Fatal("抢他槽在位键应报错")
+	}
+	if !ub.IsRegistered("Ctrl+Alt+N") || ub.bindings[strings.ToLower("Ctrl+Alt+N")] == nil {
+		t.Fatal("memo 抢键失败后旧绑定必须原样活着")
+	}
+	for _, c := range ub.calls {
+		if c == "unregister:"+defaultHotkey || c == "unregister:Ctrl+Alt+N" {
+			t.Fatalf("抢键失败路径绝不允许注销任何在位键：%v", ub.calls)
+		}
+	}
+
+	// 反向：msgboard 经 SetConfig 改键撞 memo 在位的 Ctrl+Alt+N——配置回滚、
+	// 旧键仍活、memo 分毫未动、状态如实。
+	if err := s.SetConfig(Config{Text: "x", FontSize: 64, Screen: "", Hotkey: "Ctrl+Alt+N"}); err == nil {
+		t.Fatal("改键撞他槽在位键应报错")
+	}
+	if got := s.store.Get().Hotkey; got != defaultHotkey {
+		t.Fatalf("msgboard 热键应回滚旧值，实为 %q", got)
+	}
+	if !ub.IsRegistered(defaultHotkey) || !r.Registered(hotkeySlot) {
+		t.Fatalf("msgboard 旧键必须无损（系统+槽账双层在位）：%v", ub.calls)
+	}
+	if !ub.IsRegistered("Ctrl+Alt+N") {
+		t.Fatal("msgboard 改键失败不得波及 memo 槽位绑定")
+	}
+	if got := statusOf(t, s); !got.HotkeyActive {
+		t.Fatal("旧键在位，状态不得谎报 inactive")
+	}
 }

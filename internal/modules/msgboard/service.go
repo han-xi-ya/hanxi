@@ -58,6 +58,9 @@ type MsgBoardService struct {
 	hk          *hotkey.Registry // 全仓通用热键注册器（装配根注入，槽位记账归注册器）
 	keepAwakeOn bool             // 防休眠诉求是否在账（状态页如实回显）
 	holder      *extapi.LeaseHolder
+	// publish 事件广播投递缝：生产默认 Wails 全局事件（所有窗含牌面窗共同拉新）；
+	// 构造期定死，测试装配替换用于断言"每条改账路径都广播"。替换须在并发使用前。
+	publish func(event string)
 }
 
 // boardWin 挂牌窗组的单员：窗口句柄 + Closing hook 注销闭包 + 所在屏设备名
@@ -82,6 +85,7 @@ func newMsgBoardService(plat platform.Platform, store *msgBoardStore) *MsgBoardS
 	// 自带放行 holder（gate 未注入即 no-op）：测试构造与装配构造（New 覆写）同走门代码。
 	s := &MsgBoardService{plat: plat, store: store, holder: extapi.NewLeaseHolder(ID)}
 	s.cond = sync.NewCond(&s.mu)
+	s.publish = emitViaWails
 	return s
 }
 
@@ -599,6 +603,10 @@ func (s *MsgBoardService) SetConfig(cfg Config) error {
 			if _, rerr := s.store.Set(rollback); rerr != nil {
 				slog.Warn("msgboard: 热键回滚落盘失败", "err", rerr)
 			}
+			// 冲突路径同样必须广播：本次保存的非热键字段（正文/字号/屏偏好）已
+			// 随回滚如实落盘，模块页会自行回读兜底，但已挂出的牌面窗只认
+			// msgboard:changed——漏发一次它就永远顶着旧文案示人（审查一致性 A1）。
+			s.emitChanged()
 			return fmt.Errorf("热键 %q 注册失败（可能已被其它程序占用；留空表示停用热键）：%v", next.Hotkey, herr)
 		}
 	}
@@ -684,8 +692,17 @@ func (s *MsgBoardService) GetBoardContent() (BoardContent, error) {
 
 // ---------- 内部小件 ----------
 
+// emitChanged 向所有窗（主窗 + 牌面窗组）广播 msgboard:changed 拉新信号，
+// 投递走 publish 缝（生产即 emitViaWails；无头单测替换后计数断言各改账路径
+// 是否漏播——牌面窗只认事件拉新，漏一次广播牌面就停在旧文案上）。
 func (s *MsgBoardService) emitChanged() {
+	s.publish(eventChanged)
+}
+
+// emitViaWails 生产投递：Wails 无载荷 Void 事件全局广播（注册见 app.go
+// RegisterEvents）。应用未运行时静默跳过——事件面只在有窗可收时才有意义。
+func emitViaWails(event string) {
 	if a := application.Get(); a != nil && a.Event != nil {
-		a.Event.Emit(eventChanged) // 无载荷 Void 事件（注册见 app.go RegisterEvents）
+		a.Event.Emit(event)
 	}
 }
