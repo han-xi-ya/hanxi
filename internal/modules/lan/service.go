@@ -3,6 +3,7 @@ package lan
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"sort"
@@ -17,6 +18,10 @@ import (
 	"hanxi/internal/platform"
 	"hanxi/internal/settings"
 )
+
+// ErrScanInProgress 单飞闸忙错误（导出供 MCP 侧 errors.Is 映射中文指引；
+// 文案与既往 fmt.Errorf 定式逐字一致，GUI 呈现零变化）。
+var ErrScanInProgress = errors.New("scan already in progress")
 
 // DeviceInfo 局域网活跃设备信息
 type DeviceInfo struct {
@@ -226,6 +231,17 @@ func parseTargets(targetInput string) ([]string, error) {
 	return targets, nil
 }
 
+// CountTargets 返回 targetRange 解析后的待扫 IP 数量（不执行扫描，仅解析计数）。
+// 供 MCP 侧对"单轮地址数上限"做有界预检：复用与 Scan 完全同源的解析口径，
+// 避免无头侧另写一套网段数学造成语义漂移。CIDR 硬限（/20、4096 上限）原样生效。
+func CountTargets(targetRange string) (int, error) {
+	targets, err := parseTargets(targetRange)
+	if err != nil {
+		return 0, err
+	}
+	return len(targets), nil
+}
+
 // Scan 执行并发网段/IP范围扫描
 func (s *LanService) Scan(targetRange string) ([]DeviceInfo, error) {
 	release, gateErr := s.holder.Enter()
@@ -235,7 +251,7 @@ func (s *LanService) Scan(targetRange string) ([]DeviceInfo, error) {
 	defer release()
 
 	if s.scanning.Swap(true) {
-		return nil, fmt.Errorf("scan already in progress")
+		return nil, ErrScanInProgress
 	}
 	defer s.scanning.Store(false)
 

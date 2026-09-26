@@ -18,9 +18,12 @@ const maxPayloadBytes = 1 << 20
 
 // 工具英文名（决策 7：英文名 + 中文 description，PLAN §8-7 示例形态 hanxi_xxx）。
 // 契约扩充批（N32/N34 2026-09-24）加至六件；N16 C 批（2026-09-26）便签族加
-// hanxi_memo_stats 至七件——access.json 六键契约冻结（写方恰六键、读方未知键
-// 整体拒读），新工具挂既有 memo 键：授权粒度=模块，memo 开关同时放行检索与统计，
-// 撤权同样一并生效（fail-closed 语义不因工具族扩充而稀释）。
+// hanxi_memo_stats 至七件——新工具挂既有 memo 键：授权粒度=模块，memo 开关
+// 同时放行检索与统计，撤权同样一并生效（fail-closed 语义不因工具族扩充而稀释）。
+// AI 接入批（2026-09-26）加扫描族两件（hanxi_portscan_scan / hanxi_lan_scan）至
+// 九件：扫描是主动网络探测而非纯查询，**必须各立授权键**（不挂既有键），
+// access.json 六键契约扩至八键（portscan/lan 两键默认 false=不放开触发扫描，
+// 机主要逐项授权才可用；读写对拍+GUI 呈现+白名单三处联动同步）。
 const (
 	toolEnvCheck  = "hanxi_envcheck_detect"
 	toolSearch    = "hanxi_file_search"
@@ -29,6 +32,8 @@ const (
 	toolMemoStats = "hanxi_memo_stats"
 	toolSysInfo   = "hanxi_sysinfo_report"
 	toolLogs      = "hanxi_log_read"
+	toolPortScan  = "hanxi_portscan_scan"
+	toolLanScan   = "hanxi_lan_scan"
 )
 
 // accessKeyLogs 是 logs 工具的授权键（无同名业务模块，registryGate 据此放行空门）。
@@ -45,6 +50,8 @@ type Deps struct {
 	Memo     MemoSource   // 便签族后端（零落盘直读，memo_search 与 memo_stats 共用）
 	SysInfo  ReportSource // hanxi_sysinfo_report 后端（N32，与 GUI 同一 service）
 	Logs     LogTailer    // hanxi_log_read 后端（N34，只读 tail 按天日志）
+	PortScan PortProber   // hanxi_portscan_scan 后端（有界主动探测，MCP 面单飞）
+	Lan      LanProber    // hanxi_lan_scan 后端（有界主动探测，与 GUI 同一 service）
 }
 
 // NewMCPServer 按工具面全量组表并挂授权/门禁中间件。
@@ -56,8 +63,9 @@ func NewMCPServer(deps Deps) *server.MCPServer {
 	s := server.NewMCPServer(
 		"hanxi",
 		product.Version,
-		server.WithInstructions("hanxi 工具箱的只读 MCP 接入：所有工具均严格只读，"+
-			"调用前需在 hanxi「设置 → AI 接入」中逐项授权（access.json）。"+
+		server.WithInstructions("hanxi 工具箱的 MCP 接入：查询类工具（环境体检/文件搜索/便签/系统档案/运行日志/OCR）严格只读；"+
+			"扫描类工具（端口扫描/局域网扫描）仅对网络做可达性探测，不修改本机或任何设备状态，但属于主动出网动作且结果含网络信息。"+
+			"所有工具调用前需在 hanxi「设置 → AI 接入」中逐项授权（access.json，八键，默认全关）。"+
 			"未授权/被停用的工具调用会返回指引错误，不会执行。"),
 		server.WithToolCapabilities(false),
 		server.WithRecovery(),
@@ -80,6 +88,8 @@ type toolDef struct {
 // knownModuleIDs 授权文件允许出现的工具键集合（出现集合外键 = access.json 非法 = 全拒绝）。
 // 六键契约扩充批（N32/N34）与写方 mcpwizard/access_write.go 的 accessToolKeys 同步演进，
 // 一致性由 access_readmatch_test.go 对拍矩阵把关。
+// AI 接入批（2026-09-26）加 portscan/lan 两键至八键——扫描类是主动出网动作，
+// 必须与纯查询工具分键授权（机主可只放行扫描而不放行文件搜索等，反之亦然）。
 var knownModuleIDs = map[string]bool{
 	"envcheck":   true,
 	"everything": true,
@@ -87,10 +97,14 @@ var knownModuleIDs = map[string]bool{
 	"memo":       true,
 	"sysinfo":    true,
 	"logs":       true,
+	"portscan":   true,
+	"lan":        true,
 }
 
 // toolDefs 全量工具面（首版四件 PLAN_MCP C1-C5 收口；扩充批 +sysinfo/logs 至六件；
-// N16 C 批便签族 +memo_stats 至七件）。授权键仍六枚（memo 键下两件只读工具）。
+// N16 C 批便签族 +memo_stats 至七件；AI 接入批 +portscan/lan 扫描族至九件）。
+// 授权键八枚：memo 键下两件只读工具；portscan/lan 各立一键（主动探测与纯查询
+// 分键授权，见 knownModuleIDs 注记）。
 // 注册顺序即 tools/list 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"
 // 红线审（包注释纪律 1），并同步 knownModuleIDs 与 guards_test.go 的名称白名单。
 var toolDefs = []toolDef{
@@ -101,6 +115,8 @@ var toolDefs = []toolDef{
 	{Name: toolMemoStats, ModuleID: "memo", Build: buildMemoStatsTool},
 	{Name: toolSysInfo, ModuleID: "sysinfo", Build: buildSysInfoTool},
 	{Name: toolLogs, ModuleID: accessKeyLogs, Build: buildLogsTool},
+	{Name: toolPortScan, ModuleID: "portscan", Build: buildPortScanTool},
+	{Name: toolLanScan, ModuleID: "lan", Build: buildLanScanTool},
 }
 
 // gateMiddleware 是所有工具调用的统一闸门：授权（每次重读 access.json）→ 模块启用 →

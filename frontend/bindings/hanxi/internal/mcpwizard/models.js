@@ -4,7 +4,7 @@
 
 /**
  * AccessInfo access.json 的读方视角呈现：Tools 恒等于 MCP 读者此刻的采信结果
- * （缺文件/损坏/超纲都呈现为四 false——读者 fail-closed 语义），不呈现读者不认的
+ * （缺文件/损坏/超纲都呈现为八 false——读者 fail-closed 语义），不呈现读者不认的
  * "字面值"。写入口在本分区（SetToolAccess/ResetAccess，R6）。
  * @typedef {Object} AccessInfo
  * @property {string} path
@@ -16,7 +16,8 @@
  */
 
 /**
- * AccessTools 授权六开关（PLAN §6 固定键名 + N32/N34 扩充批）。
+ * AccessTools 授权八开关（PLAN §6 固定键名 + N32/N34 扩充批 + AI 接入批扫描族
+ * portscan/lan；与 Go 侧 mcpwizard.AccessTools 手工同步，勿待再生成）。
  * @typedef {Object} AccessTools
  * @property {boolean} envcheck
  * @property {boolean} everything
@@ -24,6 +25,8 @@
  * @property {boolean} memo
  * @property {boolean} sysinfo
  * @property {boolean} logs
+ * @property {boolean} portscan
+ * @property {boolean} lan
  */
 
 /**

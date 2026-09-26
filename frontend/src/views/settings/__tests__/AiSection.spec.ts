@@ -1,6 +1,6 @@
 // AI 接入分区（F4b MCP 安装向导 + R6 授权开关）特征测试：三客户端四态渲染、
 // 预览→确认写链（令牌回传）、fail-closed 拒动呈现手动片段、
-// access.json 六开关写链（建档/即时生效文案/拒写指引/损坏态修复确认流）与"打开所在目录"、
+// access.json 八开关写链（建档/即时生效文案/拒写指引/损坏态修复确认流）与"打开所在目录"、
 // 幂等 ZeroDiff 文案、安装前自检行（R2：通过/失败警示不阻断/重检走 refresh/不该 spawn 时不 spawn）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -40,14 +40,14 @@ function stubStatus(clients: unknown[], access: Record<string, unknown> = {}) {
     clients,
     access: {
       path: 'D:\\hx\\hanxidata\\mcp\\access.json', exists: true, readable: true, version: 1,
-      tools: { envcheck: true, everything: false, ocr: false, memo: false, sysinfo: false, logs: false }, note: '',
+      tools: { envcheck: true, everything: false, ocr: false, memo: false, sysinfo: false, logs: false, portscan: false, lan: false }, note: '',
       ...access,
     },
   })
   // 自检默认通过态（R2）；单个用例覆写失败/异常分支
   wizardSvc.SelfCheck.mockResolvedValue({
-    state: 'ok', toolCount: 7, tools: ['hanxi_envcheck_detect', 'hanxi_file_search', 'hanxi_ocr_recognize', 'hanxi_memo_search', 'hanxi_memo_stats', 'hanxi_sysinfo_report', 'hanxi_log_read'],
-    message: 'hanxi mcp 握手成功，7 件工具就位', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
+    state: 'ok', toolCount: 9, tools: ['hanxi_envcheck_detect', 'hanxi_file_search', 'hanxi_ocr_recognize', 'hanxi_memo_search', 'hanxi_memo_stats', 'hanxi_sysinfo_report', 'hanxi_log_read', 'hanxi_portscan_scan', 'hanxi_lan_scan'],
+    message: 'hanxi mcp 握手成功，9 件工具就位', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
   })
 }
 
@@ -120,7 +120,7 @@ describe('AI 接入分区', () => {
     expect(wizardSvc.SelfCheck).toHaveBeenCalledWith(false)
     const row = w.find('.check-row')
     expect(row.exists()).toBe(true)
-    expect(row.text()).toContain('通过（7 工具）')
+    expect(row.text()).toContain('通过（9 工具）')
     expect(row.text()).toContain('握手成功')
   })
 
@@ -241,13 +241,13 @@ describe('AI 接入分区', () => {
     expect(w.text()).toContain('已回滚')
   })
 
-  it('access 卡片：六开关行呈现读方视角状态与即时生效文案，打开所在目录传目录父路径', async () => {
+  it('access 卡片：八开关行呈现读方视角状态与即时生效文案，打开所在目录传目录父路径', async () => {
     stubStatus([client('claude', 'Claude Code')])
     const w = await mountView()
     expect(w.text()).toContain('状态正常')
     expect(w.text()).toContain('拨动开关立即生效，不用重启任何软件')
     const rows = w.findAll('.tool-row')
-    expect(rows).toHaveLength(6)
+    expect(rows).toHaveLength(8)
     const switches = w.findAll('.switch')
     expect((switches[0].element as HTMLInputElement).checked).toBe(true) // envcheck
     expect((switches[1].element as HTMLInputElement).checked).toBe(false) // everything
@@ -257,6 +257,14 @@ describe('AI 接入分区', () => {
     // memo 键一键控全族（d87654c 起两件工具）：行文案必须覆盖检索+统计全族名
     expect(rows[3].text()).toContain('便签检索与统计')
     expect(rows[3].text()).toContain('hanxi_memo_search · hanxi_memo_stats')
+    // 扫描族两行（AI 接入批）：与纯查询分键授权、默认关；风险行必须直书"主动探测网络"
+    // 与"暴露局域网拓扑"（诚实口径回归锚，措辞退让即红）
+    expect(rows[6].text()).toContain('端口扫描')
+    expect(rows[6].text()).toContain('hanxi_portscan_scan')
+    expect(rows[6].text()).toContain('主动探测网络')
+    expect(rows[7].text()).toContain('局域网扫描')
+    expect(rows[7].text()).toContain('hanxi_lan_scan')
+    expect(rows[7].text()).toContain('暴露局域网拓扑')
     expect(switches[0].attributes('disabled')).toBeUndefined() // 正常态可拨
     await w.findAll('.access-foot button')[0].trigger('click')
     expect(appSvc.OpenPath).toHaveBeenCalledWith('D:\\hx\\hanxidata\\mcp')

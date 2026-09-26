@@ -60,8 +60,9 @@ const accessCorrupt = computed(() => {
   return !!a && a.exists && !a.readable
 })
 
-// 六行工具开关（键名=access.json 契约六键，N32/N34 扩充批）：主文案说人话——
-// AI 将看到什么、敏感级直书；MCP 工具名退入行内「技术细节」。
+// 八行工具开关（键名=access.json 契约八键，N32/N34 扩充批 + AI 接入批扫描族）：
+// 主文案说人话——AI 将看到什么、敏感级直书；MCP 工具名退入行内「技术细节」。
+// 扫描两行是诚实口径：它们是主动网络探测而非查询，风险直书"主动出网/暴露拓扑"。
 const accessTools = computed(() => {
   const t = status.value?.access.tools
   return [
@@ -94,6 +95,16 @@ const accessTools = computed(() => {
       key: 'logs', name: '运行日志', tool: 'hanxi_log_read', on: !!t?.logs,
       desc: 'AI 可回看 hanxi 自身运行日志帮你排查问题——每行先自动打码（IP/邮箱/密钥类）再给 AI。',
       risk: { text: '已逐行脱敏', chip: 'chip-warning' },
+    },
+    {
+      key: 'portscan', name: '端口扫描', tool: 'hanxi_portscan_scan', on: !!t?.portscan,
+      desc: 'AI 可对单个地址/域名做一次有界端口探测（一次最多 256 端口，不改动任何状态）——它会真实发起网络连接，结果（开放端口/服务/横幅）会进入 AI 对话。',
+      risk: { text: '主动探测网络', chip: 'chip-warning' },
+    },
+    {
+      key: 'lan', name: '局域网扫描', tool: 'hanxi_lan_scan', on: !!t?.lan,
+      desc: 'AI 可对指定网段做一次在线设备探测（最多 1024 个地址，不改动任何状态）——发现设备的 IP/MAC 与备注会进入 AI 对话，会暴露你的局域网拓扑。',
+      risk: { text: '暴露局域网拓扑', chip: 'chip-danger' },
     },
   ]
 })
@@ -261,7 +272,7 @@ onMounted(refresh)
   <section class="page">
     <PageHeader title="AI 接入" subtitle="让 Claude Code / Codex / Cursor 里的 AI 助手直接使用 hanxi 的本机能力。只需两步：先在下方点「接入」，再打开愿意让 AI 查询的内容开关。每一步都先预览、你确认了才动文件；随时可关、可断开。">
       <template #actions>
-        <span class="chip chip-information">只读能力 · hanxi 不替 AI 改任何东西</span>
+        <span class="chip chip-information">查询只读 · 扫描仅探测不改状态 · hanxi 不替 AI 改任何东西</span>
       </template>
     </PageHeader>
 
@@ -302,7 +313,7 @@ onMounted(refresh)
       </div>
     </div>
 
-    <!-- ② 开放内容（access.json · 本分区即写入口，R6）：六开关保存即生效；损坏档锁死并给修复链 -->
+    <!-- ② 开放内容（access.json · 本分区即写入口，R6）：八开关保存即生效；损坏档锁死并给修复链 -->
     <div class="card">
       <div class="card-head">
         <span class="card-title"><span class="step-no">②</span> 允许 AI 查询哪些内容</span>
@@ -476,7 +487,7 @@ onMounted(refresh)
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px;
 }
 .client-detail { font-size: var(--text-sm); color: var(--color-text-muted); }
-.client-detail.detail-warn { color: var(--state-warning, var(--color-text)); }
+.client-detail.detail-warn { color: var(--state-warning); }
 .client-time { font-size: var(--text-xs); color: var(--color-text-subtle); }
 .client-actions { display: flex; gap: 6px; flex: none; }
 
@@ -499,7 +510,7 @@ onMounted(refresh)
 .switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
 .switch:disabled { cursor: not-allowed; }
 .access-note { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: 8px; }
-.access-note.note-danger { color: var(--state-danger, var(--color-text)); }
+.access-note.note-danger { color: var(--state-danger); }
 .access-repair { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .access-hint { font-size: var(--text-xs); color: var(--color-text-subtle); margin-top: 6px; }
 .access-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
@@ -542,11 +553,11 @@ onMounted(refresh)
 .check-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .check-label { font-size: var(--text-sm); color: var(--color-text-muted); flex: none; }
 .check-msg { font-size: var(--text-sm); color: var(--color-text-muted); min-width: 0; }
-.check-msg.detail-warn { color: var(--state-danger, var(--color-text)); }
+.check-msg.detail-warn { color: var(--state-danger); }
 .check-hint {
   flex-basis: 100%; font-size: var(--text-xs); line-height: 1.6;
   color: var(--color-text-muted);
-  background: var(--surface-chrome); border-left: 2px solid var(--state-warning, var(--color-border));
+  background: var(--surface-chrome); border-left: 2px solid var(--state-warning);
   padding: 6px 10px; border-radius: 0 var(--radius-element) var(--radius-element) 0;
 }
 
@@ -559,11 +570,11 @@ onMounted(refresh)
   color: var(--color-text-muted);
 }
 .diff-g { display: inline-block; width: 12px; user-select: none; }
-.diff-line.d-add { color: var(--state-positive, var(--color-text)); background: var(--state-positive-soft, transparent); }
-.diff-line.d-del { color: var(--state-danger, var(--color-text)); background: var(--state-danger-soft, transparent); }
+.diff-line.d-add { color: var(--state-positive); background: var(--state-positive-soft); }
+.diff-line.d-del { color: var(--state-danger); background: var(--state-danger-soft); }
 
 .refuse-block { display: flex; flex-direction: column; gap: 8px; }
-.refuse-title { font-size: var(--text-base); font-weight: 600; color: var(--state-warning, var(--color-text)); }
+.refuse-title { font-size: var(--text-base); font-weight: 600; color: var(--state-warning); }
 .refuse-reason { font-size: var(--text-sm); color: var(--color-text); }
 .snippet {
   margin: 0; padding: 10px 12px; overflow: auto;

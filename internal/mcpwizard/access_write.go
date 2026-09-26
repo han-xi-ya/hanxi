@@ -1,18 +1,20 @@
 package mcpwizard
 
 // access_write.go 是 access.json 的写引擎（R6：「设置 → AI 接入」分区从只读
-// 呈现升级为真正的工具开关；N32/N34 契约扩充批四键扩至六键）。读方契约权威是
+// 呈现升级为真正的工具开关；N32/N34 契约扩充批四键扩至六键；AI 接入批扫描族
+// portscan/lan 两键扩至八键——扫描是主动出网探测，与纯查询工具分键授权，
+// 默认全关=不放开触发扫描，机主逐项开启才可用）。读方契约权威是
 // internal/mcp/access.go（F4a，领地只读）——本文件镜像同一套严格判定
-// （DisallowedUnknownFields、version==1、六键之外拒读、尾随垃圾、16 KiB 上限），
+// （DisallowedUnknownFields、version==1、八键之外拒读、尾随垃圾、16 KiB 上限），
 // 用来裁定"能不能安全改、读者此刻看到什么"，但生产代码不 import internal/mcp
 // （包注释的编译期零耦合边界维持不变）；写出的每个字节由对拍测试
 // access_readmatch_test.go 喂给真读方逐键验收，不许 mock。
 //
 // 落盘契约（PLAN_MCP §6 拍板文本 + 扩充批注记，"恰好"二字的执行）：
 //
-//	{"version":1,"tools":{"envcheck":bool,"everything":bool,"ocr":bool,"memo":bool,"sysinfo":bool,"logs":bool}}
+//	{"version":1,"tools":{"envcheck":bool,"everything":bool,"ocr":bool,"memo":bool,"sysinfo":bool,"logs":bool,"portscan":bool,"lan":bool}}
 //
-// 形态纪律：固定六键齐全（json.MarshalIndent 2 空格缩进、键序恒定）、无 BOM、
+// 形态纪律：固定八键齐全（json.MarshalIndent 2 空格缩进、键序恒定）、无 BOM、
 // 目录不存在时由写方创建（读方永不建目录是 F4a 的零落盘承诺，写方补位）、
 // tmp+rename 原子替换（本包 atomicWrite）。缺文件是合法态（视同全关），首次
 // 开关即凭空建档；损坏/超纲文件拒绝盲写，覆盖修复必须走显式 ResetAccess。
@@ -33,10 +35,10 @@ const (
 	maxAccessFileSize = 16 << 10 // 与读方 mcp/access.go 同额：超限视为异常，拒读也拒写
 )
 
-// accessToolKeys 授权六键的规范集合（键序=PLAN §6 文本序+扩充批=工具面展示序）。
+// accessToolKeys 授权八键的规范集合（键序=PLAN §6 文本序+扩充批=工具面展示序）。
 // 集合外键 reader 整体拒读，写侧同样既不产出也不盲改；与读方 knownModuleIDs
 // 的同步性由 access_readmatch_test.go 对拍把关。
-var accessToolKeys = []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs"}
+var accessToolKeys = []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan"}
 
 func knownAccessTool(key string) bool {
 	for _, k := range accessToolKeys {
@@ -51,7 +53,7 @@ func knownAccessTool(key string) bool {
 // （missing 也 legal——合法的全关默认态）。reason 为中文诊断，直接进前端呈现。
 type accessStrict struct {
 	legal   bool
-	missing bool // 文件不存在：合法态，六键视同 false
+	missing bool // 文件不存在：合法态，八键视同 false
 	exists  bool // 文件在位（无论可否采信）
 	tools   map[string]bool
 	reason  string
@@ -116,7 +118,7 @@ func strictLoadAccess(path string) accessStrict {
 	return st
 }
 
-// accessDocForWrite 落盘专用结构：固定六键 + 固定键序，杜绝 map 序列化漂移。
+// accessDocForWrite 落盘专用结构：固定八键 + 固定键序，杜绝 map 序列化漂移。
 type accessDocForWrite struct {
 	Version int            `json:"version"`
 	Tools   accessToolsDoc `json:"tools"`
@@ -129,6 +131,8 @@ type accessToolsDoc struct {
 	Memo       bool `json:"memo"`
 	Sysinfo    bool `json:"sysinfo"`
 	Logs       bool `json:"logs"`
+	Portscan   bool `json:"portscan"`
+	Lan        bool `json:"lan"`
 }
 
 func accessDocOf(tools map[string]bool) accessDocForWrite {
@@ -141,6 +145,8 @@ func accessDocOf(tools map[string]bool) accessDocForWrite {
 			Memo:       tools["memo"],
 			Sysinfo:    tools["sysinfo"],
 			Logs:       tools["logs"],
+			Portscan:   tools["portscan"],
+			Lan:        tools["lan"],
 		},
 	}
 }
@@ -150,7 +156,7 @@ func accessDocOf(tools map[string]bool) accessDocForWrite {
 var accessWriteMu sync.Mutex
 
 // writeAccessCanonical 整档原子落盘 + 回读复验（按读方同款严格规则重解析，
-// 确认盘上字节的六键语义与写入意图逐键一致才算成功）。目录缺失由本方创建——
+// 确认盘上字节的八键语义与写入意图逐键一致才算成功）。目录缺失由本方创建——
 // 这是写方职责（读方永不建，F4a 零落盘承诺）。
 func (s *McpWizardService) writeAccessCanonical(tools map[string]bool) error {
 	data, err := json.MarshalIndent(accessDocOf(tools), "", "  ")
@@ -181,13 +187,13 @@ func accessCorruptErr(reason string) error {
 		"请先用「修复（覆盖重置）」确认重写标准全关档后，再逐项重新授权", reason)
 }
 
-// SetToolAccess 开关单个工具的授权：读现档 → 改一键 → 整档原子回写（恰好六键）。
+// SetToolAccess 开关单个工具的授权：读现档 → 改一键 → 整档原子回写（恰好八键）。
 // 文件缺失是合法起点（凭空建档）；文件存在但读方不采信（损坏/超纲/未知键/版本≠1）
 // 时拒绝盲写并报中文指引——覆盖修复归 ResetAccess 显式确认，不提供静默台阶。
 // 成功返回写后呈现；保存即生效（读方每次调用重读盘，无需重启 hanxi mcp）。
 func (s *McpWizardService) SetToolAccess(tool string, enabled bool) (AccessInfo, error) {
 	if !knownAccessTool(tool) {
-		return s.accessInfo(), fmt.Errorf("未知授权键 %q——合法键为 envcheck / everything / ocr / memo / sysinfo / logs 六者之一", tool)
+		return s.accessInfo(), fmt.Errorf("未知授权键 %q——合法键为 envcheck / everything / ocr / memo / sysinfo / logs / portscan / lan 八者之一", tool)
 	}
 	accessWriteMu.Lock()
 	defer accessWriteMu.Unlock()
@@ -197,7 +203,7 @@ func (s *McpWizardService) SetToolAccess(tool string, enabled bool) (AccessInfo,
 	}
 	tools := make(map[string]bool, len(accessToolKeys))
 	for _, key := range accessToolKeys {
-		tools[key] = st.tools[key] // 缺键按 false（读方同款），回写时归一为六键齐全
+		tools[key] = st.tools[key] // 缺键按 false（读方同款），回写时归一为八键齐全
 	}
 	tools[tool] = enabled
 	if err := s.writeAccessCanonical(tools); err != nil {

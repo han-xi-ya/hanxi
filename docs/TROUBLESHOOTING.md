@@ -1223,3 +1223,15 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：日志时间线（16:56 感知轮点亮 → 17:05:20 RemoveVersion 清 activeVersion → 17:05:43 逻辑卸载 → 17:05:47 重装补凭据）对照 receipts 目录/modules-ledger/updates.json 文件 mtime 逐环钉死；再顺 ListModules→ListStates→deriveSummary 投影链确认 running-update 的四个输入维度各自来源。
 - **正确做法与标准修复方案**：家族级收口在 updatewatch/Registry 层，不在单模块打补丁——①`Uninstall` 成功移除 receipt 后 `SetHealth(id,"","")` 清零健康账；②投影 `projectState` 加**账目门**：delivery=absent 时健康覆盖一律按 current 出投影（挡掉竞态与直接改 receipts 的迁移旧账）；③`Restore` 回灌前按 `Registry.List().Installed` 逐条对账，卸载/不在册条目主动剔账并回写盘（CheckedAt 不伪造）；④sweep 写账前逐模块复查 `IsInstalled`，merge 落盘前对快照**全量复查**installed 谓词——盖住"判定后、落盘前"竞态窗口。三态回归：感知在飞时卸载、缓存旧账启动自愈、残留资产诚实呈现（not-installed 且不谎报 update-available）。
 - **避坑防重犯建议**：凡"跨模块账本 + 缓存回灌"结构（健康维度、图标缓存、外部感知等），卸载事务必须逐一清点该模块在所有账本面（内存 override/磁盘缓存/投影）的残留，缺一环就是幽灵；缓存回灌路径**禁止盲 apply**，必须带事实复查；竞态写账的复查坐标要放在**落盘前最后一刻**，判定位的复查盖不住收尾窗口。残留的已知可接受窗口：仅删版本目录不卸载模块时，"有更新"角标停留到下一轮感知（启动 60s 延迟首检或手动刷新即自愈），属缓存时效语义、非账目不联动。
+
+### 94. MCP 扫描工具接入：mcp-go NewTool 的默认注解就是 openWorldHint=true，"查询类不许标 openWorld"式守卫必炸（AI 接入批 portscan/lan）
+- **问题现象与错误原因**：给 hanxi_portscan_scan/hanxi_lan_scan 加"openWorld 注解诚实性"守卫测试（查询类工具不得声称 openWorld=true）后，envcheck/file_search 等七个**既有工具全部报红**。实证：mcp-go v0.41.1 `NewTool` 构造默认 `Annotations.OpenWorldHint = ToBoolPtr(true)`，既有工具只显式设了 readOnly/destructive/idempotent 三项，openWorld 吃的是库默认值——默认值≠工具主动声明，守卫把它当声明审了。
+- **排查过程**：读 GOMODCACHE 里 mcp-go tools.go 的 NewTool 初始化块坐实默认四元组（readOnly=false/destructive=true/idempotent=false/openWorld=true）；确认既有工具面从未显式传 WithOpenWorldHintAnnotation。
+- **正确做法与标准修复方案**：注解守卫只审**自己拥有的语义**：扫描族必须显式 openWorldHint=true + idempotentHint=false（主动探测的诚实标注）；查询族不反推 openWorld（不越权给既有工具加戏，显式改标是另一批次的事）。扫描工具语义红线另收口三处：server instructions 不再说"所有工具均严格只读"（改"查询类严格只读；扫描类仅探测可达性、不修改状态"）、包注释 ADR 决策 1 同步修订、access.json 契约六键扩八键（扫描与纯查询分键授权、默认关=不放开触发扫描）。
+- **避坑防重犯建议**：依赖库给结构体设"非零默认值"时，测试里区分"缺省"与"声明"——审注解/标志位先查构造函数默认，再决定守卫断言方向；否则新增守卫会把历史沉默全炸成红，逼人在守卫上造假。后续 E 路（端口查杀等破坏性工具）加注解守卫前务必读这条：若要按 openWorld 分族裁决，须先给全部查询工具显式 WithOpenWorldHintAnnotation(false) 把缺省变声明。
+
+### 95. Redact 家族的赋值词形是封闭集合，`pwd=` 不脱敏：测试敏感串要按真实口径取样，勿虚构脱敏能力（MCP 出机通道回归锚）
+- **问题现象与错误原因**：lan 备注出机脱敏用例以 `pwd=hunter2` 取样断言"hunter2 不出机"，实际照漏。logging.Redact 的 reAssignment 词形只认 `token|secret|password|passwd|sk|auth|authorization`，`pwd` 不在其列——RedactPII 叠的是 IPv4/邮箱/前缀密钥三类，不扩赋值词形。
+- **排查过程**：按用例失败反查 logger.go 正则族确认口径边界；同载荷里 email/IPv4 均正常打码，唯 pwd= 逃逸，坐实是词形缺口而非调用漏挂。
+- **正确做法与标准修复方案**：用例改用词形内的 `password=`（与 portscan banner 用例同款口径）；**不**为此扩 Redact——磁盘日志取证力优先，扩词形须另开批次统一裁决（影响面是所有落盘日志行）。工具描述里"打码"承诺只描述既有口径能力，不暗示全覆盖。
+- **避坑防重犯建议**：写"敏感信息已脱敏"类断言前，先读脱敏正则的完整词形清单，测试样本必须落在能力边界内——拿能力外的样本当回归锚，等于给脱敏层挂了个永远兑现不了的承诺，真漏洞反而被这条假绿掩盖。

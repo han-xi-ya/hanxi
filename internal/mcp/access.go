@@ -18,9 +18,11 @@ const (
 	accessSchemaVer   = 1        // 当前唯一合法 version（升级须双读过渡，MCP 侧读到不认识的版本=全拒绝）
 )
 
-// accessFile 是 access.json 的落盘结构（§6 拍板文本逐字段实现）：
+// accessFile 是 access.json 的落盘结构（§6 拍板文本逐字段实现；契约扩充批至
+// 六键 N32/N34、AI 接入批加 portscan/lan 至八键——未知键整体拒读的 fail-closed
+// 裁决只认 knownModuleIDs 集合，键集演进必须与写方 mcpwizard 同步）：
 //
-//	{"version":1,"tools":{"envcheck":true,"everything":false,"ocr":false,"memo":false}}
+//	{"version":1,"tools":{"envcheck":true,"everything":false,"ocr":false,"memo":false,"sysinfo":false,"logs":false,"portscan":false,"lan":false}}
 type accessFile struct {
 	Version int             `json:"version"`
 	Tools   map[string]bool `json:"tools"`

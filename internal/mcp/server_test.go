@@ -79,7 +79,7 @@ func newTestServer(t *testing.T) (Deps, *Access, *fakeEnvChecker) {
 	access := NewAccess(t.TempDir() + "/access.json") // 初始不存在：fail-closed 全拒绝
 	deps := Deps{
 		Access:   access,
-		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo", "sysinfo", "logs"), // 门禁默认全开，授权层单独测
+		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan"), // 门禁默认全开，授权层单独测
 		EnvCheck: env,
 	}
 	return deps, access, env
@@ -173,6 +173,18 @@ func TestToolSurfaceReadOnly(t *testing.T) {
 		if tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint {
 			t.Errorf("tool %q must carry destructiveHint=false", tool.Name)
 		}
+		// 扫描族注解必须诚实表达"主动出网探测"：openWorldHint=true +
+		// idempotentHint=false（同一请求两次结果可能不同）。查询族维持既有注解
+		// 纪律（readOnly/destructive 已由上方断言；openWorld 缺省为库默认值，
+		// 既有工具零改动红线内不动它）。
+		if strings.HasSuffix(tool.Name, "_scan") {
+			if tool.Annotations.OpenWorldHint == nil || !*tool.Annotations.OpenWorldHint {
+				t.Errorf("scan tool %q must carry openWorldHint=true（主动探测必须诚实标注）", tool.Name)
+			}
+			if tool.Annotations.IdempotentHint == nil || *tool.Annotations.IdempotentHint {
+				t.Errorf("scan tool %q must carry idempotentHint=false", tool.Name)
+			}
+		}
 	}
 }
 
@@ -204,7 +216,10 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	fm := &fakeMemo{}
 	fi := &fakeReportSource{}
 	fl := &fakeLogTailer{}
+	fp := &fakePortProber{}
+	fl2 := &fakeLanProber{}
 	deps.Search, deps.OCR, deps.Memo, deps.SysInfo, deps.Logs = fs, fr, fm, fi, fl
+	deps.PortScan, deps.Lan = fp, fl2
 	c := inProcClient(t, deps)
 
 	for _, tc := range []struct {
@@ -218,14 +233,18 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 		{toolMemoStats, nil},
 		{toolSysInfo, nil},
 		{toolLogs, nil},
+		{toolPortScan, map[string]any{"target": "192.168.1.1", "ports": "22,80"}},
+		{toolLanScan, map[string]any{"target": "192.168.1.0/24"}},
 	} {
 		res, text := callText(t, c, tc.tool, tc.args)
 		if !res.IsError || !strings.Contains(text, "未获授权") {
 			t.Errorf("%s: must deny without grant: %s", tc.tool, text)
 		}
 	}
+	// 扫描族被拒时后端（含 CountTargets 预检）必须零触发——"默认不放开触发扫描"
+	// 的回归锚：未授权连"解析目标规模"都不发生，更不碰网络。
 	if env.calls != 0 || fs.lastQ != "" || fr.calls != 0 || len(fm.items) != 0 ||
-		fi.calls != 0 || fl.calls != 0 {
+		fi.calls != 0 || fl.calls != 0 || fp.calls != 0 || fl2.countCalls != 0 || fl2.scanCalls != 0 {
 		t.Errorf("denied tools must not touch backends")
 	}
 }

@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// accessBytes 读回 svc 授权文件原始字节（断言"恰好六键/无 BOM"等字面契约用）。
+// accessBytes 读回 svc 授权文件原始字节（断言"恰好八键/无 BOM"等字面契约用）。
 func accessBytes(t *testing.T, svc *McpWizardService) []byte {
 	t.Helper()
 	data, err := os.ReadFile(svc.accessPath)
@@ -34,7 +34,7 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 		t.Fatalf("建档后呈现异常: %+v", info)
 	}
 
-	// 常规链：六键归一、改一键不动其余、撤权回 false（扩充批后 sysinfo/logs 同台）。
+	// 常规链：八键归一、改一键不动其余、撤权回 false（扩充批后 sysinfo/logs/portscan/lan 同台）。
 	info, err = svc.SetToolAccess("envcheck", true)
 	if err != nil || !info.Tools.Envcheck {
 		t.Fatalf("开启 envcheck 失败: %+v %v", info, err)
@@ -55,7 +55,8 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 	if info.Tools.Envcheck || !info.Tools.Memo || !info.Tools.Sysinfo || !info.Tools.Logs || !info.Readable {
 		t.Errorf("改一键不应波及其余键: %+v", info.Tools)
 	}
-	// 落盘字面契约：恰好六键、version=1、无 BOM（首字节即 '{'）。
+	// 落盘字面契约：恰好八键（键数=accessToolKeys 契约数，契约扩充批四→六→八键
+	// 的历史硬编码 6 已改随键集自适应，"恰好"语义不变）、version=1、无 BOM（首字节即 '{'）。
 	data := accessBytes(t, svc)
 	if data[0] != '{' {
 		t.Errorf("不得带 BOM/前导垃圾，首字节 %q", data[0])
@@ -67,8 +68,8 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("落盘非合法 JSON: %v", err)
 	}
-	if raw.Version != 1 || len(raw.Tools) != 6 {
-		t.Fatalf("应为 version=1 + 恰好六键: %s", data)
+	if raw.Version != 1 || len(raw.Tools) != len(accessToolKeys) {
+		t.Fatalf("应为 version=1 + 恰好八键（len(accessToolKeys)）: %s", data)
 	}
 	for _, key := range accessToolKeys {
 		if _, ok := raw.Tools[key]; !ok {
@@ -186,7 +187,7 @@ func TestAccessOverviewReaderViewPresentation(t *testing.T) {
 	}
 
 	// 合法但非标准形态（缺键——含"契约扩充批之前的四键老档"升级场景）：读方采信，
-	// 呈现按缺键=false，写侧回写时归一六键。
+	// 呈现按缺键=false，写侧回写时归一八键。
 	writeFile(t, svc.accessPath, `{"version":1,"tools":{"envcheck":true}}`)
 	info, _ = svc.GetAccessOverview()
 	if !info.Readable || !info.Tools.Envcheck || info.Tools.Memo || info.Tools.Sysinfo || info.Tools.Logs {
