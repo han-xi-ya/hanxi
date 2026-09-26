@@ -4,7 +4,7 @@
 // 与导出记录抽屉归本组件；busy 分级登记（activeOps）、发行版列表复采（loadInstances）、
 // 安装基目录（installDir）留视图——克隆/瘦身进度（cloneProg/compProg）经 v-model 上抛，
 // 供跨页签进度横幅文案与页签 label「·运行中」互锁使用。行为逐字迁出，调用序列未动。
-import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue'
+import { computed, nextTick, onMounted, ref, watch, onBeforeUnmount } from 'vue'
 import * as WSLAPI from '../../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { Report } from '../../../bindings/hanxi/internal/modules/wsl/readiness/models'
 import type {
@@ -472,30 +472,116 @@ useWailsEvent<CompactProgress>('wsl:compact', (p) => {
   }
 })
 
-// ---------- 行级「⋯ 更多」下拉（自研：relative 容器 + v-if 面板；外点/Esc 关闭） ----------
-// 同时只开一行；触发内联表单展开后自动收合面板。Esc 走全局 keydown，外点走 document
-// pointerdown（命中 .row-menu 内部则忽略），两者仅在面板打开期间挂载、卸载时摘除。
+// ---------- 行级「⋯ 更多」下拉（Teleport 到 body + fixed 坐标；外点/Esc/滚动/复采关闭） ----------
+// 遮挡根因（机主实跑反馈）：旧面板 absolute 挂在行内 .row-menu 下，被两层祖先裁剪——
+// .table-container（overflow-x:auto，CSS 规范下 overflow-y 同步失效为 auto，纵向照样裁）
+// 与应用主内容区 .content-area（overflow-y:auto）。表格下半屏的行点开菜单即被切掉。
+// 修法：面板 Teleport 出 DOM 链直挂 body，以触发钮视口 rect 算 fixed 坐标；下方空间
+// 不够且上方放得下则向上翻转；左右向视口内钳制；打开期间任何滚动/缩放、列表复采
+// （行位移动、旧坐标失效）都直接收合。零依赖，不引 popper。
+// 同时只开一行；菜单项动作经 rowMenuAction 先收面板再执行。Esc 走全局 keydown，
+// 外点走 document pointerdown（命中 .row-menu 触发链或 .row-menu-panel 面板本体则忽略
+// ——面板已不在 .row-menu DOM 子树内，须单独认账，否则面板内点击在 pointerdown 阶段
+// 就被收掉、click 永远到不了菜单项）。监听仅在面板打开期间挂载，卸载时摘除。
 const rowMenuName = ref('')
-function toggleRowMenu(name: string) {
-  rowMenuName.value = rowMenuName.value === name ? '' : name
+const rowMenuUp = ref(false)
+const rowMenuStyle = ref<Record<string, string>>({})
+const rowMenuPanelEl = ref<HTMLElement | null>(null)
+const MENU_GAP = 4
+const MENU_EDGE = 8
+
+const rowMenuDistro = computed(() => props.instances.find(i => i.name === rowMenuName.value) ?? null)
+
+// 面板项单一来源：模板 v-for 消费，行为与原八个手写钮逐字一致。
+const rowMenuItems = computed(() => {
+  const d = rowMenuDistro.value
+  if (!d) return []
+  return [
+    { key: 'folder', label: '📂 文件', disabled: false, active: false,
+      title: '资源管理器打开 \\\\wsl$\\<发行版> 浏览文件系统（停止时会被顺手拉起；只读入口免确认）',
+      run: () => openFolder(d) },
+    { key: 'default', label: '⭐ 设默认', disabled: props.rowBusy(d.name) || d.default, active: false,
+      title: d.default ? '已是默认发行版' : 'wsl --set-default：不带 -d 的 wsl 命令与控制台默认进入它',
+      run: () => setDefaultDistro(d) },
+    { key: 'export', label: '📤 导出', disabled: props.rowBusy(d.name) || (!!exportingName.value && exportingName.value !== d.name), active: false,
+      title: 'wsl --export：选择格式（tar.gz 压缩 / tar 未压缩）导出到「下载」文件夹，可 long-running',
+      run: () => startExport(d) },
+    { key: 'move', label: '🧭 迁移', disabled: props.rowBusy(d.name) || (!!movingName.value && movingName.value !== d.name), active: false,
+      title: 'wsl --manage --move：迁移数据盘到其他盘（UAC 提权，会先停机全部 WSL）',
+      run: () => startMove(d) },
+    { key: 'clone', label: '🧬 克隆', disabled: props.rowBusy(d.name) || (!!cloneSrc.value && cloneSrc.value !== d.name), active: false,
+      title: '克隆：关机源发行版 → 整盘复制数据盘 → 副本就地挂为新发行版（原实例不动；需 WSL 2.7.3+，免 UAC）',
+      run: () => startClone(d) },
+    { key: 'compact', label: '🗜 瘦身', disabled: props.rowBusy(d.name) || (!!compSrc.value && compSrc.value !== d.name), active: false,
+      title: '数据盘瘦身：备份→fstrim→Optimize-VHD 压缩→不足则从备份注销重建（会换落位目录）',
+      run: () => openCompact(d) },
+    { key: 'forensics', label: '📋 详情', disabled: false, active: forensicsName.value === d.name,
+      title: '只读详情：VHDX 逻辑/实占与稀疏、根盘用量、IPv4、网络模式（停止时不进 guest，以免顺手启动它）',
+      run: () => toggleForensics(d) },
+    { key: 'conf', label: '⚙ wsl.conf', disabled: props.rowBusy(d.name) || (!!confName.value && confName.value !== d.name), active: confName.value === d.name,
+      title: '编辑 /etc/wsl.conf（systemd/automount/默认用户等）：读时会启动发行版；写回有语法闸门 + 引用校验 + 写前备份',
+      run: () => openConf(d) },
+  ]
+})
+
+async function toggleRowMenu(name: string, e: MouseEvent) {
+  if (rowMenuName.value === name) {
+    closeRowMenu()
+    return
+  }
+  const trigger = e.currentTarget as HTMLElement
+  if (!rowMenuName.value) {
+    rowMenuUp.value = false
+    // 先离屏隐藏挂载：量得真实尺寸前不闪错位（nextTick 是微任务，浏览器尚未绘制）
+    rowMenuStyle.value = { left: '-9999px', top: '0px', visibility: 'hidden' }
+  }
+  rowMenuName.value = name
+  await nextTick()
+  placeRowMenu(trigger)
 }
+
+function placeRowMenu(trigger: HTMLElement) {
+  const panel = rowMenuPanelEl.value
+  if (!panel || !rowMenuName.value) return
+  const rect = trigger.getBoundingClientRect()
+  const ph = panel.offsetHeight
+  const pw = panel.offsetWidth
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const up = vh - rect.bottom < ph + MENU_GAP && rect.top > ph + MENU_GAP
+  const left = Math.max(MENU_EDGE, Math.min(rect.right - pw, vw - pw - MENU_EDGE))
+  rowMenuUp.value = up
+  rowMenuStyle.value = up
+    ? { left: `${left}px`, bottom: `${vh - rect.top + MENU_GAP}px`, visibility: 'visible' }
+    : { left: `${left}px`, top: `${rect.bottom + MENU_GAP}px`, visibility: 'visible' }
+}
+
 function closeRowMenu() { rowMenuName.value = '' }
 function rowMenuAction(fn: () => void) { closeRowMenu(); fn() }
 function onRowMenuDocDown(e: Event) {
-  if (rowMenuName.value && !(e.target as HTMLElement | null)?.closest?.('.row-menu')) closeRowMenu()
+  const t = e.target as HTMLElement | null
+  if (rowMenuName.value && !t?.closest?.('.row-menu') && !t?.closest?.('.row-menu-panel')) closeRowMenu()
 }
 function onRowMenuDocKey(e: KeyboardEvent) {
   if (e.key === 'Escape') closeRowMenu()
 }
+// 锚点失效即收：滚动（capture 收全部祖先容器）与缩放后 fixed 坐标不再对准触发钮。
+function onRowMenuAnchorLost() { closeRowMenu() }
 watch(rowMenuName, (open) => {
   if (open) {
     document.addEventListener('pointerdown', onRowMenuDocDown)
     document.addEventListener('keydown', onRowMenuDocKey)
+    window.addEventListener('scroll', onRowMenuAnchorLost, true)
+    window.addEventListener('resize', onRowMenuAnchorLost)
   } else {
     document.removeEventListener('pointerdown', onRowMenuDocDown)
     document.removeEventListener('keydown', onRowMenuDocKey)
+    window.removeEventListener('scroll', onRowMenuAnchorLost, true)
+    window.removeEventListener('resize', onRowMenuAnchorLost)
   }
 })
+// 列表复采后行可能位移/增删，旧坐标不再可信：收。
+watch(() => props.instances, closeRowMenu)
 
 onMounted(() => {
   loadExportRecords()
@@ -504,6 +590,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onRowMenuDocDown)
   document.removeEventListener('keydown', onRowMenuDocKey)
+  window.removeEventListener('scroll', onRowMenuAnchorLost, true)
+  window.removeEventListener('resize', onRowMenuAnchorLost)
 })
 </script>
 
@@ -569,34 +657,7 @@ onBeforeUnmount(() => {
                   <div class="row-menu">
                     <button class="btn btn-secondary btn-small" :aria-expanded="rowMenuName === d.name ? 'true' : 'false'" aria-haspopup="true"
                       title="文件 / 设默认 / 导出 / 迁移 / 克隆 / 瘦身 / 详情 / wsl.conf"
-                      @click="toggleRowMenu(d.name)">⋯ 更多</button>
-                    <div v-if="rowMenuName === d.name" class="row-menu-panel" role="menu" @keydown.esc.stop="closeRowMenu">
-                      <button class="row-menu-item" role="menuitem"
-                        title="资源管理器打开 \\wsl$\<发行版> 浏览文件系统（停止时会被顺手拉起；只读入口免确认）"
-                        @click="rowMenuAction(() => openFolder(d))">📂 文件</button>
-                      <button class="row-menu-item" role="menuitem" :disabled="rowBusy(d.name) || d.default"
-                        :title="d.default ? '已是默认发行版' : 'wsl --set-default：不带 -d 的 wsl 命令与控制台默认进入它'"
-                        @click="rowMenuAction(() => setDefaultDistro(d))">⭐ 设默认</button>
-                      <button class="row-menu-item" role="menuitem" :disabled="rowBusy(d.name) || (!!exportingName && exportingName !== d.name)"
-                        title="wsl --export：选择格式（tar.gz 压缩 / tar 未压缩）导出到「下载」文件夹，可 long-running"
-                        @click="rowMenuAction(() => startExport(d))">📤 导出</button>
-                      <button class="row-menu-item" role="menuitem" :disabled="rowBusy(d.name) || (!!movingName && movingName !== d.name)"
-                        title="wsl --manage --move：迁移数据盘到其他盘（UAC 提权，会先停机全部 WSL）"
-                        @click="rowMenuAction(() => startMove(d))">🧭 迁移</button>
-                      <button class="row-menu-item" role="menuitem" :disabled="rowBusy(d.name) || (!!cloneSrc && cloneSrc !== d.name)"
-                        title="克隆：关机源发行版 → 整盘复制数据盘 → 副本就地挂为新发行版（原实例不动；需 WSL 2.7.3+，免 UAC）"
-                        @click="rowMenuAction(() => startClone(d))">🧬 克隆</button>
-                      <button class="row-menu-item" role="menuitem" :disabled="rowBusy(d.name) || (!!compSrc && compSrc !== d.name)"
-                        title="数据盘瘦身：备份→fstrim→Optimize-VHD 压缩→不足则从备份注销重建（会换落位目录）"
-                        @click="rowMenuAction(() => openCompact(d))">🗜 瘦身</button>
-                      <button class="row-menu-item" role="menuitem" :class="{ active: forensicsName === d.name }"
-                        title="只读详情：VHDX 逻辑/实占与稀疏、根盘用量、IPv4、网络模式（停止时不进 guest，以免顺手启动它）"
-                        @click="rowMenuAction(() => toggleForensics(d))">📋 详情</button>
-                      <button class="row-menu-item" role="menuitem" :disabled="rowBusy(d.name) || (!!confName && confName !== d.name)"
-                        :class="{ active: confName === d.name }"
-                        title="编辑 /etc/wsl.conf（systemd/automount/默认用户等）：读时会启动发行版；写回有语法闸门 + 引用校验 + 写前备份"
-                        @click="rowMenuAction(() => openConf(d))">⚙ wsl.conf</button>
-                    </div>
+                      @click="toggleRowMenu(d.name, $event)">⋯ 更多</button>
                   </div>
                 </div>
               </td>
@@ -812,6 +873,17 @@ onBeforeUnmount(() => {
         </li>
       </ul>
     </details>
+
+    <!-- 「⋯ 更多」面板：单实例 Teleport 直挂 body，fixed 坐标由触发钮 rect 算得
+         （遮挡根因与翻转/钳制策略见 script 注释；面板内容单一来源 rowMenuItems） -->
+    <Teleport to="body">
+      <div v-if="rowMenuItems.length" ref="rowMenuPanelEl" class="row-menu-panel" role="menu"
+        :class="{ up: rowMenuUp }" :style="rowMenuStyle" @keydown.esc.stop="closeRowMenu">
+        <button v-for="item in rowMenuItems" :key="item.key" class="row-menu-item" role="menuitem"
+          :disabled="item.disabled" :class="{ active: item.active }" :title="item.title"
+          @click="rowMenuAction(item.run)">{{ item.label }}</button>
+      </div>
+    </Teleport>
   </template>
   <div v-else-if="report" class="empty-state">
     <p>本机尚未安装 WSL 本体——先到「🐧 就绪检测」页执行「🚀 一键开启」（「虚拟机平台」启用后需重启一次），装好发行版后实例会列在这里。</p>
@@ -840,11 +912,19 @@ onBeforeUnmount(() => {
 .distro-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .distro-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .distro-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+/* 实锤②（窄屏挤行）：操作区常驻 5 钮 + 4 数据列，视口窄时列被压到换行错乱。
+   给表体设 760px 地板：不足即由 .table-container 的 overflow-x:auto 横向滚动承接
+   （旧形 width:100% 无地板，窄屏只会把发行版名/操作列碾碎）。 */
+.tbl { min-width: 760px; }
 
-/* 行级「⋯ 更多」下拉：自研 relative 容器 + v-if 面板（Esc/外点关闭，见 script） */
-.row-menu { position: relative; display: inline-flex; }
+/* 行级「⋯ 更多」下拉：面板 Teleport 到 body + fixed 坐标（挂载/翻转/收合策略见 script），
+   .row-menu 只做触发钮的布局盒，不再充当 absolute 定位上下文。 */
+.row-menu { display: inline-flex; }
 .row-menu-panel {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 150px;
+  /* fixed + 直挂 body：逃离 .table-container(overflow-x:auto) 与 .content-area(overflow-y:auto)
+     两层裁剪；left/top|bottom 由 placeRowMenu 写进内联样式。z 低于弹层家族（≥950/1000）
+     与 Toast(999999)，压过一切内容层与粘性头。视口极矮时面板自身可滚，不再要求翻转位。 */
+  position: fixed; z-index: 900; min-width: 150px; max-height: calc(100vh - 16px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 2px; padding: 4px;
   background: var(--surface-panel); border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-control); box-shadow: var(--shadow-panel);

@@ -215,21 +215,27 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  // Teleport 面板挂 body（wrapper 外）：用例间清场，防残留菜单被后案 querySelector 误命中。
+  document.body.innerHTML = ''
 })
 
 // 行内常驻钮顺序（W8 收纳后）：0 终端 1 重启 2 关机 3 删除 4 ⋯更多；
 // 「⋯ 更多」面板钮：文件 / 设默认 / 导出 / 迁移 / 克隆 / 瘦身 / 详情 / wsl.conf。
+// N40 遮挡整改后面板 Teleport 直挂 body（行内 absolute 被表格滚动容器裁剪），
+// 面板断言一律 document.body 直查、点击走原生 click（同 WslUsbPanel.spec 语系）。
 const rowBtns = (w: Awaited<ReturnType<typeof setup>>, row: number) =>
   w.findAll('tbody tr')[row].findAll('button')
 async function openMore(w: Awaited<ReturnType<typeof setup>>, row: number) {
   await rowBtns(w, row)[4].trigger('click')
   await flushPromises()
-  return w.find('.row-menu-panel')
+  return document.body.querySelector<HTMLElement>('.row-menu-panel')
 }
 async function menuClick(w: Awaited<ReturnType<typeof setup>>, row: number, text: string) {
   const panel = await openMore(w, row)
-  const btn = panel.findAll('button').find(b => b.text().includes(text))!
-  await btn.trigger('click')
+  expect(panel).not.toBeNull()
+  const btn = Array.from(panel!.querySelectorAll<HTMLButtonElement>('button'))
+    .find(b => b.textContent?.includes(text))!
+  btn.click()
   await flushPromises()
 }
 
