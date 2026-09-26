@@ -164,7 +164,9 @@ export function Quit() {
 }
 
 /**
- * RemoveVersion 删除本地版本；本会话运行中或为当前使用版本时拒绝。
+ * RemoveVersion 删除本地版本；本会话运行中时拒绝（优先级最高）。
+ * "当前使用版本"通常不可卸载（先切走再卸），但它是唯一已装版本时放行——
+ * 否则用户被 guard 死锁，卸载成功后清空 active 回到"未指定"。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<void>}
  */

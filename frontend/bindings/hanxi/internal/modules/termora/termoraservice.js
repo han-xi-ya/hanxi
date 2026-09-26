@@ -136,8 +136,10 @@ export function Quit(confirm) {
 }
 
 /**
- * RemoveVersion 删除本地版本；本会话正在运行该版本、或该版本为"当前使用
- * 版本"时拒绝。
+ * RemoveVersion 删除本地版本；本会话正在运行该版本时拒绝（优先级最高）。
+ * "当前使用版本"通常不可卸载（请先切走再卸），但它是唯一已装版本时放行——
+ * 否则用户被 guard 死锁（卸掉即清空、不卸又不同意），卸载成功后清空 active
+ * 回到"未指定"（与 bcu 家族"卸载清空、冷启动回退最新已装"语义对齐）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<void>}
  */

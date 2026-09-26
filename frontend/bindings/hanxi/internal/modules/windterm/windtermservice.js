@@ -135,8 +135,10 @@ export function Quit(confirm) {
 }
 
 /**
- * RemoveVersion 删除本地版本；本会话正在运行该版本、或该版本为"当前使用
- * 版本"时拒绝。外部实例不占用托管账目（其目录如恰为托管版本，由运行态检查兜住）。
+ * RemoveVersion 删除本地版本；本会话正在运行该版本时拒绝（优先级最高）。
+ * "当前使用版本"通常不可卸载（先切走再卸），但它是唯一已装版本时放行——
+ * 否则用户被 guard 死锁，卸载成功后清空 active 回到"未指定"。
+ * 外部实例不占用托管账目（其目录如恰为托管版本，由运行态检查兜住）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<void>}
  */
