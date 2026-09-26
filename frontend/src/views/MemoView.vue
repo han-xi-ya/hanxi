@@ -1,24 +1,42 @@
 <script setup lang="ts">
-// 随手记（2026-09 整页重设计，参考 MooTool/Geek 系随手记的信息密度）：
-// 「记」是本模块的绝对主角——顶部速记条把"想到即存"压到一次回车；完整编辑器
-// （Markdown 预览）降级为次级入口；检索/标签过滤是读回旧条目的动作，参数化收进
-// 一列工具条；列表按 置顶→今天→昨天→7天内→30天内→更早 时间分组，扫读不数日期；
-// 阅读态详情浮层（Markdown 渲染）与编辑态分离，卡片只留摘要与就地微操作；
-// 「一键全删」挂页头 danger 钮，强确认（useConfirm danger tone，明说条数与不可恢复）。
-// 数据契约零改动：List/GetStats/Create/Update/Delete/TogglePin/ToggleMask 语义照旧。
-// 入库后新增依赖面：ClearAll（一键全删，返回条数）+ 悬浮速记卡三件
-// （GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet，N16 B 批）——
-// 底部「悬浮速记卡」面板管热键配置与实况，页头钮可不经热键直接唤卡。
-// memo:changed 事件重拉纪律照旧。
-// 敏感遮罩纪律原样：IsMasked 条目卡片/详情/预览三处都不落明文，揭示是显式动作；
-// N16 C 批导出面同守此纪——masked 条目无导出钮，全库导出默认剔除敏感条目且
-// 确认框明说排除条数（导出件脱离应用即无遮罩，纸面必须交代清楚）。
-import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+// 随手记 v2「摊开的笔记本」（2026-09-26 推倒重做，替换同日午间的"速记条+分组卡片群岛+双浮层"版）。
+//
+// 病根复盘（旧版定量诊断）：1200×780 窗内内容区实得约 834×701，旧骨架的页头副标题(~105px)
+// +速记条面板(~110px)+过滤条面板(~100px)+三道 14px 间距合计 357px——首屏 51% 还没见到一条便签；
+// 网格卡每行两张、卡高约 220px（其中摘要文本至多 93px，56% 是卡框装饰），一屏只容 4 条；
+// 六档时间分组把 20 条的短库切成 5 段、光段头吃 150px；书写面有三个（速记条/编辑模态/悬浮卡）
+// 加阅读浮层一个，"到底在哪写字"自成谜题。留言板 v4 同款病：页面长得像表单合集。
+//
+// v2 概念——一本摊开的笔记本，列表即主体：
+//   顶栏一行轻工具条（搜索/标签/置顶/溢出菜单；无 panel 容器、无统计字、无页头四连钮）；
+//   左索引栏＝笔记本侧边速记标：贴线行式条目（色彩封边 + 标题 + 首行摘要 + 时间/标签丸），
+//     时间分组语义六档原样保留，形态从"切段卡片群岛"降为吸顶小字档；栏底折叠收纳
+//     「悬浮速记卡」热键配置（低频件不再占独立大面板）；
+//   右页面板＝正在书写/阅读的那一页：顶部一行克制的速记入口（"想到即存一次回车"语义原样），
+//     阅读态（MD 自动渲染/纯代码等宽原文/遮罩圆点三分支照旧）与书写态（书写/预览分段照旧）
+//     合并为同一页的两面——详情浮层退役，消灭"点开→再点编辑→再弹窗"的三级跳转与双壳复读；
+//   左右分栏选型论证：内联展开会推挤后续条目、把编辑器塞进 ≤410px 的列宽，长代码/MD 预览
+//     需要稳定版心；分栏让"列表+正在编辑的一条"在 834px 内容宽里各占全高、互不打断；
+//     2560 下整页夹 --container-workbench 档、正文版心再封顶 72ch，笔记本不被拉散。
+//
+// 数据契约零改动：List/GetStats/Create/Update/Delete/TogglePin/ToggleMask/ClearAll +
+// 速记卡三件（GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet）共十一方法面照旧；
+// memo:changed 重拉、搜索 350ms 防抖 + 序号守卫、卸载作废在飞请求等纪律逐字保留；
+// 一键全删/导出全库（919c526 能力）原样，入口退工具条右端溢出菜单，danger 强确认链一字不动。
+// 敏感遮罩纪律零回退：masked 条目索引行/页面板/预览三处不落明文（与旧版同口径：标题仍示人，
+// "标题也是明文面"的从严收编属 MemoCard 线，接线时一并裁决）；masked 无复制/导出钮；
+// 全库导出默认剔除敏感条目且确认框明说排除条数。
+// 组件库 M4（components/memo/MemoCard·MemoToolbar·memoMetrics，f61060c）已奠基：本视图行式索引
+// 与轻工具条即按该契约的观感先行，接线收口（删本文件内 dayBucket/groupedMemos 等重复纯函数）
+// 另路执行，本轮不 import 在途重排中的组件件。
+// 命名口径：本视图一律自称「随手记」。
+import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
 import type {
   MemoItem,
   MemoFilter,
   MemoStats,
+  QuickSheetState,
 } from '../../bindings/hanxi/internal/modules/memo/models'
 import { getErrorMessage } from '../utils/errors'
 import { fmtDate } from '../utils/format'
@@ -42,13 +60,43 @@ const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
 
-// 状态定义
-const memos = shallowRef<MemoItem[]>([])
-const stats = ref<MemoStats>({
-  totalCount: 0,
-  pinnedCount: 0,
-  tagCloud: {},
+// ---- 页内私有矢量图标（描边件与 AppIcon 注册表同血统；注册表缺 pin/eye/search/copy 等名，
+// 全局层本轮禁碰，私有件先行——M4/图标线收编后可整块替换为注册表件）----
+const GLYPH_PATHS: Record<string, readonly string[]> = {
+  search: ['M10.5 3.5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'M20 20l-4.7-4.7'],
+  pin: ['M8 2.5h8', 'M9.5 2.5v5L6 12.5h12L14.5 7.5v-5', 'M12 12.5v6'],
+  eye: ['M2.5 12s3.7-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.7 6.5-9.5 6.5S2.5 12 2.5 12z', 'M12 9.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z'],
+  'eye-off': ['M4 4l16 16', 'M9.9 5.8a9.8 9.8 0 0 1 2.1-.3c5.8 0 9.5 6.5 9.5 6.5a19 19 0 0 1-3 3.7', 'M6.4 7.6A19 19 0 0 0 2.5 12s3.7 6.5 9.5 6.5c1.2 0 2.3-.2 3.3-.6', 'M9.8 9.9a2.4 2.4 0 0 0 3.4 3.4'],
+  copy: ['M11 9h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'],
+  download: ['M12 3.5v11', 'M7 10l5 5 5-5', 'M4 20.5h16'],
+  trash: ['M3.5 6h17', 'M8.5 6V3.5h7V6', 'M5.5 6l1.2 14h10.6L18.5 6', 'M10 10v6.5', 'M14 10v6.5'],
+  pen: ['M16.5 3.5a2.6 2.6 0 0 1 3.7 3.7L7.5 19.9 2.8 21.2l1.3-4.7z'],
+  more: ['M6 12h.01', 'M12 12h.01', 'M18 12h.01'],
+  close: ['M6 6l12 12', 'M18 6L6 18'],
+  sheet: ['M3.5 5.5h13v10h-13z', 'M8.5 19.5h12v-10h-4'],
+  chevron: ['M6.5 9.5l5.5 5.5 5.5-5.5'],
+}
+const MemoGlyph = defineComponent({
+  name: 'MemoGlyph',
+  props: { name: { type: String, required: true }, size: { type: [Number, String], default: 15 } },
+  setup(props) {
+    return () =>
+      h(
+        'svg',
+        {
+          class: 'memo-glyph',
+          viewBox: '0 0 24 24',
+          style: { width: `${props.size}px`, height: `${props.size}px` },
+          'aria-hidden': 'true',
+        },
+        (GLYPH_PATHS[props.name] ?? []).map((d) => h('path', { d })),
+      )
+  },
 })
+
+// ---- 数据与过滤状态 ----
+const memos = shallowRef<MemoItem[]>([])
+const stats = ref<MemoStats>({ totalCount: 0, pinnedCount: 0, tagCloud: {} })
 
 const searchKw = ref('')
 const selectedTag = ref('')
@@ -56,21 +104,17 @@ const filterPinned = ref<boolean | null>(null)
 const loading = ref(false)
 const errorMsg = ref('')
 
-// ---- 速记条（主角动作：想到即存）----
+// ---- 速记入口（页面板顶部一行：想到即存的原语义原样保留）----
 const quickText = ref('')
 const quickTagsInput = ref('')
 const quickSaving = ref(false)
 
-// ---- 悬浮速记卡（N16 B 批：全局热键配置与唤出）----
-// QuickSheetState 本地声明：与后端 models 同构，绑定再生成后可切换 import
-// （本地形态让本轮前端先跑，不依赖未生成的绑定类型）。
-interface QuickSheetState {
-  hotkey: string
-  hotkeyActive: boolean
-}
+// ---- 悬浮速记卡（N16 B 批：全局热键配置与唤出；配置收索引栏底折叠区）----
+// QuickSheetState 用绑定官方型别（生成件已含该 typedef，旧版本地同构声明退役）。
 const sheetState = ref<QuickSheetState | null>(null)
 const sheetHotkeyDraft = ref('')
 const sheetSaving = ref(false)
+const sheetOpen = ref(false)
 
 async function refreshQuickSheet() {
   try {
@@ -78,11 +122,11 @@ async function refreshQuickSheet() {
     sheetState.value = st
     sheetHotkeyDraft.value = st?.hotkey ?? ''
   } catch {
-    sheetState.value = null // 拉不到实况就收面板，不给假配置可编
+    sheetState.value = null // 拉不到实况就收整段，不给假配置可编
   }
 }
 
-// 速记热键未在位（开机被抢注等）：如实横幅提示改键或走按钮唤出（msgboard 先例语义）。
+// 速记热键未在位（开机被抢注等）：如实横幅提示改键或走菜单唤出（msgboard 先例语义）。
 const sheetHotkeyMissing = computed(
   () => !!sheetState.value && sheetState.value.hotkey !== '' && !sheetState.value.hotkeyActive,
 )
@@ -113,7 +157,8 @@ async function openQuickSheet() {
   }
 }
 
-// ---- 完整编辑器（次级入口：长文/代码/Markdown）----
+// ---- 页面板：阅读/书写同页合并（旧"详情浮层+编辑模态"双壳就此归一）----
+const currentId = ref('') // 正在看/写的一条（空=闲页/新建）
 const showEditor = ref(false)
 const isEditing = ref(false)
 const editMode = ref<'write' | 'preview'>('write')
@@ -126,8 +171,11 @@ const editForm = ref({
   colorTag: 'blue',
 })
 
-// ---- 阅读态详情浮层 ----
-const detailItem = shallowRef<MemoItem | null>(null)
+// 页面板内容声明式跟随列表账本：条目被别端改/删，computed 自动换身或收空，
+// 不留陈旧明文（与旧版 loadMemos 里 imperative 同步 detailItem 同语义）。
+const currentItem = computed<MemoItem | null>(
+  () => memos.value.find((m) => m.id === currentId.value) ?? null,
+)
 
 const COLOR_OPTIONS = [
   { name: '蓝色', val: 'blue', hex: '#3b82f6' },
@@ -136,6 +184,19 @@ const COLOR_OPTIONS = [
   { name: '玫瑰红', val: 'rose', hex: '#f43f5e' },
   { name: '紫罗兰', val: 'purple', hex: '#8b5cf6' },
 ]
+
+// 溢出菜单：导出全库/一键全删/浮窗速记退居次级入口（破坏性动作离主动线远一格，
+// 确认链与禁用律一字不动）。开合纪律同 MemoToolbar 契约：点外/按 Esc/选中项即收。
+const menuOpen = ref(false)
+const overflowEl = ref<HTMLElement | null>(null)
+function onDocMouseDown(e: MouseEvent) {
+  if (!menuOpen.value) return
+  if (overflowEl.value && !overflowEl.value.contains(e.target as Node)) menuOpen.value = false
+}
+watch(menuOpen, (open) => {
+  if (open) document.addEventListener('mousedown', onDocMouseDown)
+  else document.removeEventListener('mousedown', onDocMouseDown)
+})
 
 // 搜索/过滤拉取带序号守卫（模式同 useEverythingSearch 的 searchSeq）：
 // 新查询发起即失效旧请求，List+GetStats 的慢响应不得覆盖新状态（loading 亦只由最新请求收口）。
@@ -167,12 +228,6 @@ async function loadMemos() {
     if (seq !== loadSeq) return
     memos.value = items ?? []
     stats.value = curStats
-    // 详情浮层跟着最新账走：条目被别端改/删就换身或收起，不留陈旧明文
-    if (detailItem.value) {
-      const fresh = (items ?? []).find((m) => m.id === detailItem.value?.id)
-      if (!fresh) detailItem.value = null
-      else detailItem.value = fresh
-    }
   } catch (err: unknown) {
     if (seq !== loadSeq) return
     errorMsg.value = `加载备忘录失败: ${getErrorMessage(err)}`
@@ -207,7 +262,8 @@ const hasFilter = computed(
   () => searchKw.value !== '' || selectedTag.value !== '' || filterPinned.value !== null,
 )
 
-// ---- 时间分组（置顶由后端排序保证在前，这里按 updatedAt 再切自然日档）----
+// ---- 时间分组（置顶由后端排序保证在前，这里按 updatedAt 再切自然日档；
+// 六档口径逐字保留，接线时换 memoMetrics.groupMemoItems 单源）----
 interface MemoGroup { key: string; label: string; items: MemoItem[] }
 
 function dayBucket(iso: string): string {
@@ -246,11 +302,17 @@ function fmtAgo(iso: string): string {
   return fmtDate(iso)
 }
 
-// 卡片摘要：等宽纯文本前几行（代码/SQL 便签保排版；Markdown 全文渲染在详情浮层）
-function cardPreview(content: string): string {
-  const lines = content.split('\n').filter((l) => l.trim() !== '')
-  if (lines.length === 0) return ''
-  return lines.slice(0, 5).join('\n') + (lines.length > 5 ? '\n…' : '')
+// 索引行摘要：首个非空行一行收（贴线密度优先；全文排版在右侧页面板看）。
+// MD 徽标随之退役——能否渲染由页面板自动分流，不再用徽标向每一行剧透。
+function rowExcerpt(content: string): string {
+  const line = content.split('\n').find((l) => l.trim() !== '')
+  return line?.trim() ?? ''
+}
+
+// ---- 索引选择 ----
+function selectRow(item: MemoItem) {
+  currentId.value = item.id
+  showEditor.value = false // 换看下一条时，书写草稿按旧模态关窗口径丢弃（Esc 同权）
 }
 
 // ---- 速记 ----
@@ -273,11 +335,13 @@ async function commitQuick() {
   if (!text || quickSaving.value) return
   quickSaving.value = true
   try {
-    await MemoAPI.MemoService.Create('', text, parseQuickTags(), 'blue')
+    const created = await MemoAPI.MemoService.Create('', text, parseQuickTags(), 'blue')
     quickText.value = ''
     quickTagsInput.value = ''
     showToast('已记下')
     await loadMemos()
+    // 新条翻给右页看（当前视图过滤不含它则不抢闲页）
+    if (created?.id && memos.value.some((m) => m.id === created.id)) currentId.value = created.id
   } catch (err: unknown) {
     showToast(`记录失败: ${getErrorMessage(err)}`)
   } finally {
@@ -285,10 +349,11 @@ async function commitQuick() {
   }
 }
 
-// ---- 编辑器 ----
+// ---- 页面板书写态 ----
 function openCreateModal() {
   isEditing.value = false
   editMode.value = 'write'
+  currentId.value = ''
   editForm.value = {
     id: '',
     title: '',
@@ -303,6 +368,7 @@ function openCreateModal() {
 function openEditModal(item: MemoItem) {
   isEditing.value = true
   editMode.value = 'write'
+  currentId.value = item.id
   editForm.value = {
     id: item.id,
     title: item.title,
@@ -312,6 +378,10 @@ function openEditModal(item: MemoItem) {
     colorTag: item.colorTag || 'blue',
   }
   showEditor.value = true
+}
+
+function cancelEdit() {
+  showEditor.value = false
 }
 
 function addTagFromInput() {
@@ -345,53 +415,46 @@ async function handleSaveMemo() {
         editForm.value.colorTag,
       )
       showToast('备忘录已更新')
+      showEditor.value = false
     } else {
-      await MemoAPI.MemoService.Create(
+      const created = await MemoAPI.MemoService.Create(
         editForm.value.title,
         editForm.value.content,
         editForm.value.tags,
         editForm.value.colorTag,
       )
       showToast('已新建备忘录')
+      showEditor.value = false
+      if (created?.id) currentId.value = created.id
     }
-    showEditor.value = false
     await loadMemos()
   } catch (err: unknown) {
     showToast(`保存失败: ${getErrorMessage(err)}`)
   }
 }
 
-// 编辑器预览态：所见即详情浮层所得（同一渲染器同源）
+// 书写态预览：所见即阅读态所得（同一渲染器同源）
 const editorPreviewHtml = computed(() => renderMarkdown(editForm.value.content))
 
-// ---- 详情浮层 ----
-function openDetail(item: MemoItem) {
-  detailItem.value = item
+// ---- 页面板阅读态 ----
+function maskFromPane() {
+  if (currentItem.value) void handleToggleMask(currentItem.value)
 }
-function closeDetail() {
-  detailItem.value = null
-}
-// 详情浮层动作的 null 收窄在脚本侧完成（模板内联多语句表达式不做类型收窄）
-function maskFromDetail() {
-  if (detailItem.value) void handleToggleMask(detailItem.value)
-}
-function editFromDetail() {
-  const cur = detailItem.value
+function editFromPane() {
+  const cur = currentItem.value
   if (!cur) return
-  detailItem.value = null
   openEditModal(cur)
 }
-const detailHtml = computed(() =>
-  detailItem.value && !detailItem.value.isMasked && looksLikeMarkdown(detailItem.value.content)
-    ? renderMarkdown(detailItem.value.content)
+const paneHtml = computed(() =>
+  currentItem.value && !currentItem.value.isMasked && looksLikeMarkdown(currentItem.value.content)
+    ? renderMarkdown(currentItem.value.content)
     : '',
 )
 
-// ---- 导出（N16 C 批：单条 .md + 全库汇总 .md，纯前端零新后端）----
-// 单条：与 <数据根>/memo/<id>.md 同格式的 frontmatter 文档（可回灌）；通道为
-// 浏览器原生下载，不可用时降级"复制原文到剪贴板"（同一份文档，不另做取舍）。
-function exportFromDetail() {
-  const cur = detailItem.value
+// ---- 单条导出（N16 C 批：与文件库同格式的 frontmatter 文档，可回灌）----
+// 通道为浏览器原生下载，不可用时降级"复制原文到剪贴板"（同一份文档，不另做取舍）。
+function exportFromPane() {
+  const cur = currentItem.value
   if (!cur || cur.isMasked) return // 遮罩语义：明文不落导出文件，同"复制全文"纪律
   const doc = buildMemoFile(cur)
   const fileName = safeExportFileName(cur)
@@ -451,7 +514,7 @@ async function handleExportLibrary() {
   }
 }
 
-// ---- 卡片微操作 ----
+// ---- 行/页微操作 ----
 async function handleTogglePin(item: MemoItem) {
   try {
     const pinned = await MemoAPI.MemoService.TogglePin(item.id)
@@ -482,7 +545,7 @@ async function handleDeleteMemo(id: string) {
   if (!accepted) return
   try {
     await MemoAPI.MemoService.Delete(id)
-    if (detailItem.value?.id === id) detailItem.value = null
+    if (currentId.value === id) currentId.value = ''
     showToast('已删除便签')
     await loadMemos()
   } catch (err: unknown) {
@@ -502,7 +565,7 @@ async function handleClearAll() {
   if (!accepted) return
   try {
     const deleted = await MemoAPI.MemoService.ClearAll()
-    closeDetail()
+    currentId.value = ''
     showToast(`已全删 ${deleted} 条便签`)
     await loadMemos()
   } catch (err: unknown) {
@@ -515,11 +578,12 @@ async function copyMemoContent(content: string) {
   await copyWithToast(content, '已复制便签内容到剪贴板')
 }
 
-// 浮层 Esc 出口（编辑/详情共用）
-function onModalKey(e: KeyboardEvent) {
+// Esc 出口纪律（旧"编辑浮层→详情浮层"链的等价降维）：溢出菜单 → 书写态回阅读页 → 收起当前页
+function onGlobalKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
-  if (showEditor.value) showEditor.value = false
-  else if (detailItem.value) detailItem.value = null
+  if (menuOpen.value) menuOpen.value = false
+  else if (showEditor.value) showEditor.value = false
+  else if (currentId.value) currentId.value = ''
 }
 
 // memo:changed 由局域网投递/多端联动触发：setup 期订阅防丢早期事件，卸载自动注销
@@ -530,50 +594,31 @@ useWailsEvent('memo:changed', () => {
 onMounted(() => {
   loadMemos()
   refreshQuickSheet()
-  window.addEventListener('keydown', onModalKey)
+  window.addEventListener('keydown', onGlobalKey)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onModalKey)
+  window.removeEventListener('keydown', onGlobalKey)
+  document.removeEventListener('mousedown', onDocMouseDown)
   ++loadSeq // 作废在飞请求，卸载后不得回写状态
   if (searchTimer) {
     clearTimeout(searchTimer)
     searchTimer = null
   }
 })
+
+// 选中即确保该行在栏内可见（键盘 Tab 流与事件驱动换选都吃这条）
+watch(currentId, async () => {
+  if (!currentId.value) return
+  await nextTick()
+  const row = document.querySelector('.memo-row.is-current')
+  if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' })
+})
 </script>
 
 <template>
-  <div class="page memo-page">
-    <PageHeader
-      title="随手记"
-      subtitle="想到什么敲什么：速记一次回车即存；长文、代码与 Markdown 走「新建便签」。本地文件库持久化，随数据目录迁移不丢失，支持手机局域网投递。"
-    >
-      <template #actions>
-        <div class="head-btns">
-          <UiButton variant="primary" @click="openCreateModal">＋ 新建便签</UiButton>
-          <UiButton variant="secondary" title="唤出悬浮速记卡（与全局热键同一入口）" @click="openQuickSheet">
-            浮窗速记
-          </UiButton>
-          <UiButton
-            variant="secondary"
-            :disabled="stats.totalCount === 0 || exporting"
-            :title="`导出全库为单个 Markdown 汇总文件（敏感遮罩条目默认排除），需确认`"
-            @click="handleExportLibrary"
-          >
-            {{ exporting ? '导出中…' : '导出全库' }}
-          </UiButton>
-          <UiButton
-            variant="danger"
-            :disabled="stats.totalCount === 0"
-            title="一次删光全部便签（含敏感遮罩条目），需强确认"
-            @click="handleClearAll"
-          >
-            一键全删{{ stats.totalCount ? ` (${stats.totalCount})` : '' }}
-          </UiButton>
-        </div>
-      </template>
-    </PageHeader>
+  <div class="page-workbench memo-page">
+    <PageHeader title="随手记" subtitle="本地便签库：敲一行回车即存，长文代码翻右页；支持手机局域网投递，随数据目录迁移不丢失。" />
 
     <!-- 动作失败/加载失败整页可见（带重试出口） -->
     <section v-if="errorMsg" class="banner banner-error" role="alert">
@@ -581,65 +626,23 @@ onUnmounted(() => {
       <button type="button" class="btn btn-small btn-secondary retry-btn" @click="loadMemos">重试</button>
     </section>
 
-    <!-- ① 主角：速记条 -->
-    <section class="panel memo-hero" aria-label="速记">
-      <div class="hero-row">
+    <!-- 顶栏：一行轻工具条（检索/标签/置顶；导出与全删退右端溢出菜单。无卡片容器、无统计字） -->
+    <div class="memo-tools">
+      <div class="search-box">
+        <span class="search-icon"><MemoGlyph name="search" /></span>
         <input
-          v-model="quickText"
-          class="text-input hero-input"
+          v-model="searchKw"
           type="text"
-          placeholder="敲一行就记一条，回车即存…"
-          aria-label="速记内容"
-          @keydown.enter="onQuickEnter"
+          class="text-input search-input"
+          placeholder="搜标题、正文、代码或标签…"
+          aria-label="搜索便签"
+          @input="onSearchInput"
         />
-        <input
-          v-model="quickTagsInput"
-          class="text-input hero-tags"
-          type="text"
-          placeholder="#标签 空格分隔"
-          aria-label="速记标签"
-          @keydown.enter="onQuickEnter"
-        />
-        <UiButton
-          variant="primary"
-          :disabled="!quickText.trim() || quickSaving"
-          @click="commitQuick"
-        >
-          {{ quickSaving ? '记录中…' : '记录' }}
-        </UiButton>
-      </div>
-      <p class="hero-hint">
-        速记不带标题，正文即全貌；输入法组字中的回车只结束选词。
-        <template v-if="selectedTag">当前正按 <b class="mono">{{ selectedTag }}</b> 过滤，速记会自动带上该标签。</template>
-      </p>
-    </section>
-
-    <!-- ② 读回旧条目：检索与过滤参数条 -->
-    <section class="panel memo-toolbar" aria-label="检索与过滤">
-      <div class="tool-row">
-        <div class="search-box">
-          <input
-            v-model="searchKw"
-            type="text"
-            class="text-input search-input"
-            placeholder="搜索标题、正文、代码片段或标签…"
-            aria-label="搜索便签"
-            @input="onSearchInput"
-          />
-          <button v-if="searchKw" class="memo-clear-btn" title="清空搜索" @click="searchKw = ''; loadMemos()">✕</button>
-        </div>
-        <button
-          class="tag-chip"
-          :class="{ active: filterPinned === true }"
-          title="只看置顶便签"
-          @click="filterPinned = filterPinned === true ? null : true; loadMemos()"
-        >
-          📌 只看置顶
+        <button v-if="searchKw" class="memo-clear-btn" title="清空搜索" aria-label="清空搜索" @click="searchKw = ''; loadMemos()">
+          <MemoGlyph name="close" :size="13" />
         </button>
-        <button v-if="hasFilter" class="btn btn-ghost btn-small clear-filter-btn" @click="clearFilters">清除过滤</button>
-        <span class="tool-count mono">{{ stats.pinnedCount }} 置顶 / {{ stats.totalCount }} 全库</span>
       </div>
-      <div class="tags-list">
+      <div class="memo-chips" aria-label="标签与置顶过滤">
         <button class="tag-chip" :class="{ active: selectedTag === '' }" @click="handleSelectTag('')">
           全部 ({{ stats.totalCount }})
         </button>
@@ -652,402 +655,564 @@ onUnmounted(() => {
         >
           {{ tag }} <span class="tag-count">({{ count }})</span>
         </button>
-      </div>
-    </section>
-
-    <!-- ③ 列表：时间分组 + 便签卡 -->
-    <div v-if="loading && memos.length === 0" class="state-box">正在读取本地便签库…</div>
-
-    <div v-else-if="memos.length === 0" class="state-box">
-      <template v-if="hasFilter">
-        没有符合当前过滤条件的便签。
-        <button type="button" class="state-action" @click="clearFilters">清除过滤</button>
-      </template>
-      <template v-else>
-        还没有一条便签——在上面的速记条里敲一行、按回车就有了。
-      </template>
-    </div>
-
-    <section v-for="g in groupedMemos" :key="g.key" class="memo-group" :aria-label="g.label">
-      <h2 class="group-head">
-        {{ g.label }}
-        <span class="group-count mono">{{ g.items.length }}</span>
-      </h2>
-      <div class="memo-grid">
-        <article
-          v-for="item in g.items"
-          :key="item.id"
-          class="card memo-card"
-          :class="[`border-tag-${item.colorTag || 'blue'}`, { 'is-pinned': item.isPinned }]"
+        <button
+          class="tag-chip chip-pin"
+          :class="{ active: filterPinned === true }"
+          title="只看置顶便签"
+          @click="filterPinned = filterPinned === true ? null : true; loadMemos()"
         >
-          <header class="memo-card-head">
-            <h3
-              class="memo-title"
-              :class="{ 'title-void': !item.title.trim() }"
-              :title="item.title || '无标题便签'"
-              @click="openDetail(item)"
-            >
-              {{ item.title || '无标题便签' }}
-            </h3>
-            <span class="memo-actions">
-              <span v-if="!item.isMasked && looksLikeMarkdown(item.content)" class="chip chip-information md-flag" title="含 Markdown 结构，点开渲染">MD</span>
-              <button class="memo-icon-btn" :title="item.isMasked ? '揭示敏感信息' : '脱敏遮罩保护'" @click="handleToggleMask(item)">
-                {{ item.isMasked ? '👁️' : '🕶️' }}
-              </button>
-              <button class="memo-icon-btn" :title="item.isPinned ? '取消置顶' : '固定置顶'" @click="handleTogglePin(item)">
-                📌
-              </button>
-              <button class="memo-icon-btn" title="编辑" @click="openEditModal(item)">✏️</button>
-              <button class="memo-icon-btn text-danger" title="删除" @click="handleDeleteMemo(item.id)">🗑️</button>
-            </span>
-          </header>
-
-          <div
-            class="memo-content-box"
-            :class="{ masked: item.isMasked, mono: true }"
-            :aria-label="item.isMasked ? '敏感信息已遮罩' : '便签内容摘要'"
-            @click="openDetail(item)"
+          <MemoGlyph name="pin" :size="12" /> 只看置顶
+        </button>
+      </div>
+      <button v-if="hasFilter" class="btn btn-ghost btn-small clear-filter-btn" @click="clearFilters">清除过滤</button>
+      <div ref="overflowEl" class="memo-overflow">
+        <button
+          class="memo-more-btn"
+          aria-label="更多操作"
+          :aria-haspopup="true"
+          :aria-expanded="menuOpen"
+          title="更多操作（浮窗速记/导出全库/一键全删）"
+          @click="menuOpen = !menuOpen"
+        >
+          <MemoGlyph name="more" :size="17" />
+        </button>
+        <div v-if="menuOpen" class="memo-menu" role="menu">
+          <button class="menu-item" role="menuitem" title="唤出悬浮速记卡（与全局热键同一入口）" @click="menuOpen = false; openQuickSheet()">
+            <MemoGlyph name="sheet" /> 浮窗速记
+          </button>
+          <button
+            class="menu-item"
+            role="menuitem"
+            :disabled="stats.totalCount === 0 || exporting"
+            :title="`导出全库为单个 Markdown 汇总文件（敏感遮罩条目默认排除），需确认`"
+            @click="menuOpen = false; handleExportLibrary()"
           >
-            <template v-if="item.isMasked">••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••</template>
-            <template v-else>{{ cardPreview(item.content) || '（空便签）' }}</template>
-          </div>
-
-          <footer class="memo-card-foot">
-            <span class="memo-tags">
-              <span
-                v-for="t in item.tags"
-                :key="t"
-                class="tag-pill tag-pill-clickable memo-tag"
-                :class="{ 'memo-tag-active': selectedTag === t }"
-                role="button"
-                tabindex="0"
-                @click="handleSelectTag(t)"
-                @keydown.enter.prevent="handleSelectTag(t)"
-                @keydown.space.prevent="handleSelectTag(t)"
-              >
-                {{ t }}
-              </span>
-            </span>
-            <span class="foot-right">
-              <time class="memo-time" :title="new Date(item.updatedAt).toLocaleString()">{{ fmtAgo(item.updatedAt) }}</time>
-              <button v-if="!item.isMasked" class="memo-copy-btn" title="复制全文" @click="copyMemoContent(item.content)">📋</button>
-            </span>
-          </footer>
-        </article>
-      </div>
-    </section>
-
-    <!-- ③⁺ 悬浮速记卡配置（低频设置收页尾；实况拉不到即整段收起不给假配置） -->
-    <section v-if="sheetState" class="panel memo-sheet-settings" aria-label="悬浮速记卡">
-      <div class="tool-row">
-        <div class="sheet-setting-text">
-          <span class="sheet-setting-name">悬浮速记卡 · 全局热键</span>
-          <span class="sheet-setting-desc">
-            随处唤出极简速记小窗：回车即存、失焦即收。加速器写法如 <b class="mono">Ctrl+Alt+N</b>；
-            留空 = 停用热键（本页「浮窗速记」按钮不受影响）。改键即时注册，被占用会报错并保旧键。
-          </span>
+            <MemoGlyph name="download" /> {{ exporting ? '导出中…' : '导出全库' }}
+          </button>
+          <button
+            class="menu-item menu-danger"
+            role="menuitem"
+            :disabled="stats.totalCount === 0"
+            title="一次删光全部便签（含敏感遮罩条目），需强确认"
+            @click="menuOpen = false; handleClearAll()"
+          >
+            <MemoGlyph name="trash" /> 一键全删{{ stats.totalCount ? ` (${stats.totalCount})` : '' }}
+          </button>
         </div>
-        <input
-          v-model="sheetHotkeyDraft"
-          class="text-input memo-hotkey-input mono"
-          type="text"
-          placeholder="Ctrl+Alt+N"
-          aria-label="速记卡全局热键"
-        />
-        <UiButton variant="secondary" :disabled="sheetSaving" @click="saveQuickHotkey">
-          {{ sheetSaving ? '保存中…' : '保存热键' }}
-        </UiButton>
-        <span v-if="sheetState.hotkey === ''" class="chip chip-neutral memo-hotkey-off">热键已停用</span>
-      </div>
-      <div v-if="sheetHotkeyMissing" class="banner banner-warn" role="note">
-        热键「{{ sheetState.hotkey }}」未在位：多半已被其它程序抢占。换个组合保存，或留空停用——期间可用「浮窗速记」按钮唤出。
-      </div>
-    </section>
-
-    <!-- ④ 阅读态详情浮层（Markdown 渲染） -->
-    <div v-if="detailItem" class="modal-overlay" @click.self="closeDetail">
-      <div class="modal-dialog detail-dialog" role="dialog" aria-label="便签详情">
-        <header class="dlg-head">
-          <h3 class="dlg-title" :class="{ 'title-void': !detailItem.title.trim() }">
-            {{ detailItem.title || '无标题便签' }}
-          </h3>
-          <button class="memo-x-btn" title="关闭" @click="closeDetail">✕</button>
-        </header>
-        <div class="dlg-meta">
-          <span class="chip" :class="`chip-tag-${detailItem.colorTag || 'blue'}`" aria-hidden="true">■</span>
-          <span v-if="detailItem.isPinned" class="chip chip-neutral">📌 已置顶</span>
-          <span v-if="detailItem.isMasked" class="chip chip-danger">敏感遮罩中</span>
-          <span class="mono meta-time">建 {{ fmtDate(detailItem.createdAt) }} · 改 {{ fmtDate(detailItem.updatedAt) }}</span>
-        </div>
-        <div class="dlg-body">
-          <div v-if="detailItem.isMasked" class="memo-content-box masked mono">
-            ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
-          </div>
-          <!-- v-html 安全前提：renderMarkdown 先整体转义再结构替换，链接 http/https 白名单，
-               spec 锁 XSS 用例；masked 条目永不进渲染分支 -->
-          <div v-else-if="detailHtml" class="md-preview" v-html="detailHtml" />
-          <pre v-else class="memo-plain">{{ detailItem.content || '（空便签）' }}</pre>
-        </div>
-        <footer v-if="detailItem.tags && detailItem.tags.length" class="dlg-tags">
-          <span
-            v-for="t in detailItem.tags"
-            :key="t"
-            class="tag-pill tag-pill-clickable memo-tag"
-            role="button"
-            tabindex="0"
-            @click="handleSelectTag(t); closeDetail()"
-            @keydown.enter.prevent="handleSelectTag(t); closeDetail()"
-            @keydown.space.prevent="handleSelectTag(t); closeDetail()"
-          >{{ t }}</span>
-        </footer>
-        <footer class="dlg-foot">
-          <!-- 遮罩条目不给复制全文/导出：遮罩语义是"明文不落眼、不落他人剪贴板也不落成文件" -->
-          <UiButton v-if="!detailItem.isMasked" variant="secondary" small @click="copyMemoContent(detailItem.content)">📋 复制全文</UiButton>
-          <UiButton v-if="!detailItem.isMasked" variant="secondary" small title="导出为与文件库同格式的 .md（含 frontmatter，可回灌）" @click="exportFromDetail">⬇ 导出 .md</UiButton>
-          <UiButton variant="secondary" small @click="maskFromDetail">
-            {{ detailItem.isMasked ? '👁️ 揭示明文' : '🕶️ 脱敏遮罩' }}
-          </UiButton>
-          <UiButton variant="primary" small @click="editFromDetail">✏️ 编辑</UiButton>
-        </footer>
       </div>
     </div>
 
-    <!-- ⑤ 编辑态浮层（书写 / Markdown 预览切换） -->
-    <div v-if="showEditor" class="modal-overlay" @click.self="showEditor = false">
-      <div class="modal-dialog editor-dialog" role="dialog" :aria-label="isEditing ? '编辑便签' : '新建便签'">
-        <header class="dlg-head">
-          <h3 class="dlg-title">{{ isEditing ? '编辑便签' : '新建便签' }}</h3>
-          <div class="seg" role="group" aria-label="编辑/预览切换">
-            <button class="seg-btn" :class="{ active: editMode === 'write' }" @click="editMode = 'write'">书写</button>
-            <button class="seg-btn" :class="{ active: editMode === 'preview' }" @click="editMode = 'preview'">预览</button>
-          </div>
-          <button class="memo-x-btn" title="关闭" @click="showEditor = false">✕</button>
-        </header>
+    <!-- 摊开的两页：左索引栏 + 右页面板（≤760 容器查询叠放，页面板在上——先落笔再翻账） -->
+    <div class="memo-desk">
+      <nav class="memo-index" aria-label="便签索引">
+        <div v-if="loading && memos.length === 0" class="state-box">正在读取本地便签库…</div>
 
-        <div v-show="editMode === 'write'" class="modal-body">
-          <label class="field-label">便签标题（可选，留空则以正文首行示人）</label>
-          <input
-            v-model="editForm.title"
-            type="text"
-            class="text-input"
-            placeholder="例如：生产数据库连接串 / 正则表达式模板"
-            aria-label="便签标题"
-          />
+        <div v-else-if="memos.length === 0" class="state-box">
+          <template v-if="hasFilter">
+            没有符合当前过滤条件的便签。
+            <button type="button" class="state-action" @click="clearFilters">清除过滤</button>
+          </template>
+          <template v-else>
+            还没有一条便签——在右边速记入口敲一行、按回车就有了。
+          </template>
+        </div>
 
-          <label class="field-label">正文（支持 Markdown 子集：标题/粗斜体/代码块/列表/链接/引用）</label>
-          <UiClipboardField
-            v-model="editForm.content"
-            mono
-            :rows="10"
-            placeholder="在此粘贴文本、命令行、cURL、SQL 或 JWT…"
-          />
-
-          <label class="field-label">色彩标识</label>
-          <div class="color-row">
-            <div
-              v-for="c in COLOR_OPTIONS"
-              :key="c.val"
-              class="color-circle"
-              :style="{ background: c.hex }"
-              :class="{ selected: editForm.colorTag === c.val }"
-              :title="c.name"
-              @click="editForm.colorTag = c.val"
-            ></div>
-          </div>
-
-          <label class="field-label">分类标签（输入后回车添加，自动补 #）</label>
-          <div class="tags-input-box">
-            <span v-for="t in editForm.tags" :key="t" class="tag-pill memo-tag memo-tag-removable">
-              {{ t }} <span class="memo-tag-x" title="移除标签" @click="removeTag(t)">✕</span>
+        <section v-for="g in groupedMemos" :key="g.key" class="memo-group" :aria-label="g.label">
+          <h2 class="group-head">
+            {{ g.label }}
+            <span class="group-count mono">{{ g.items.length }}</span>
+          </h2>
+          <article
+            v-for="item in g.items"
+            :key="item.id"
+            class="memo-row"
+            :class="[`spine-${item.colorTag || 'blue'}`, { 'is-pinned': item.isPinned, 'is-current': item.id === currentId }]"
+          >
+            <div class="memo-row-body">
+              <span class="memo-row-top">
+                <span
+                  class="memo-title"
+                  :class="{ 'title-void': !item.title.trim() }"
+                  role="button"
+                  tabindex="0"
+                  :title="item.title || '无标题便签'"
+                  @click="selectRow(item)"
+                  @keydown.enter.prevent="selectRow(item)"
+                  @keydown.space.prevent="selectRow(item)"
+                ><MemoGlyph v-if="item.isPinned" name="pin" :size="12" class="title-pin" />{{ item.title || '无标题便签' }}</span>
+                <time class="memo-time" :title="new Date(item.updatedAt).toLocaleString()">{{ fmtAgo(item.updatedAt) }}</time>
+              </span>
+              <span
+                class="memo-excerpt mono"
+                :class="{ masked: item.isMasked }"
+                :aria-label="item.isMasked ? '敏感信息已遮罩' : '便签首行摘要'"
+                @click="selectRow(item)"
+              ><template v-if="item.isMasked">••••••••••••••••••••••••••••••</template><template v-else>{{ rowExcerpt(item.content) || '（空便签）' }}</template></span>
+              <span v-if="item.tags && item.tags.length" class="memo-row-tags">
+                <span
+                  v-for="t in item.tags"
+                  :key="t"
+                  class="tag-pill tag-pill-clickable memo-tag"
+                  :class="{ 'memo-tag-active': selectedTag === t }"
+                  role="button"
+                  tabindex="0"
+                  @click="handleSelectTag(t)"
+                  @keydown.enter.prevent="handleSelectTag(t)"
+                  @keydown.space.prevent="handleSelectTag(t)"
+                >
+                  {{ t }}
+                </span>
+              </span>
+            </div>
+            <span class="memo-row-actions">
+              <button class="memo-icon-btn" :title="item.isMasked ? '揭示敏感信息' : '脱敏遮罩保护'" :aria-label="item.isMasked ? '揭示敏感信息' : '脱敏遮罩保护'" @click="handleToggleMask(item)">
+                <MemoGlyph :name="item.isMasked ? 'eye' : 'eye-off'" />
+              </button>
+              <button class="memo-icon-btn" :title="item.isPinned ? '取消置顶' : '固定置顶'" :aria-label="item.isPinned ? '取消置顶' : '固定置顶'" @click="handleTogglePin(item)">
+                <MemoGlyph name="pin" />
+              </button>
             </span>
-            <input
-              v-model="editForm.tagInput"
-              type="text"
-              class="text-input tag-entry"
-              placeholder="例如 SQL, Token, 常用"
-              aria-label="添加标签"
-              @keydown.enter.prevent="addTagFromInput"
-            />
+          </article>
+        </section>
+
+        <!-- 悬浮速记卡热键配置（低频件收栏底折叠；实况拉不到整段收起不给假配置） -->
+        <section v-if="sheetState" class="memo-sheet-settings" aria-label="悬浮速记卡">
+          <button class="sheet-disclosure" :aria-expanded="sheetOpen" @click="sheetOpen = !sheetOpen">
+            <span class="sheet-disc-name">悬浮速记卡 · 全局热键</span>
+            <span class="sheet-disc-now mono">{{ sheetState.hotkey || '—' }}</span>
+            <span v-if="sheetState.hotkey === ''" class="chip chip-neutral memo-hotkey-off">热键已停用</span>
+            <MemoGlyph name="chevron" :size="13" class="sheet-disc-chevron" />
+          </button>
+          <div v-show="sheetOpen" class="sheet-body">
+            <p class="sheet-desc">
+              随处唤出极简速记小窗：回车即存、失焦即收。留空 = 停用（菜单「浮窗速记」不受影响）；改键即时注册，被占用会报错并保旧键。
+            </p>
+            <div class="sheet-row">
+              <input
+                v-model="sheetHotkeyDraft"
+                class="text-input memo-hotkey-input mono"
+                type="text"
+                placeholder="Ctrl+Alt+N"
+                aria-label="速记卡全局热键"
+              />
+              <UiButton variant="secondary" small :disabled="sheetSaving" @click="saveQuickHotkey">
+                {{ sheetSaving ? '保存中…' : '保存热键' }}
+              </UiButton>
+            </div>
           </div>
-        </div>
+          <div v-if="sheetHotkeyMissing" class="banner banner-warn" role="note">
+            热键「{{ sheetState.hotkey }}」未在位：多半已被其它程序抢占。换个组合保存，或留空停用——期间可用菜单「浮窗速记」唤出。
+          </div>
+        </section>
+      </nav>
 
-        <div v-show="editMode === 'preview'" class="modal-body">
-          <div v-if="editForm.content.trim()" class="md-preview" v-html="editorPreviewHtml" />
-          <p v-else class="state-box preview-void">正文还是空的——先回「书写」写点东西。</p>
-        </div>
-
-        <footer class="dlg-foot">
-          <UiButton variant="secondary" @click="showEditor = false">取消</UiButton>
-          <UiButton variant="primary" @click="handleSaveMemo">
-            {{ isEditing ? '保存修改' : '立即创建' }}
+      <section class="memo-pane" aria-label="当前页">
+        <!-- 速记入口：一行克制输入（不是大卡片；回车即存/组字豁免/自动带过滤标签语义原样） -->
+        <div class="memo-quick">
+          <input
+            v-model="quickText"
+            class="text-input quick-input"
+            type="text"
+            placeholder="想到什么敲一行，回车即存…"
+            aria-label="速记内容"
+            @keydown.enter="onQuickEnter"
+          />
+          <input
+            v-model="quickTagsInput"
+            class="text-input quick-tags"
+            type="text"
+            placeholder="#标签"
+            aria-label="速记标签"
+            title="速记标签：空格/逗号分隔，自动补 #；速记不带标题，正文即全貌"
+            @keydown.enter="onQuickEnter"
+          />
+          <span
+            v-if="selectedTag"
+            class="tag-pill memo-tag memo-tag-autofill"
+            :title="`当前正按 ${selectedTag} 过滤，速记会自动带上该标签`"
+          >{{ selectedTag }}</span>
+          <UiButton variant="primary" small :disabled="!quickText.trim() || quickSaving" @click="commitQuick">
+            {{ quickSaving ? '记录中…' : '记录' }}
           </UiButton>
-        </footer>
-      </div>
+          <button class="memo-pen-btn" title="写长便签：标题、多行代码、Markdown、标签、色彩标识" @click="openCreateModal">
+            <MemoGlyph name="pen" :size="14" /> 长便签
+          </button>
+        </div>
+
+        <!-- 书写态（编辑/新建同页展开；阅读态即其背页，双浮层退役） -->
+        <div v-if="showEditor" class="pane-write" @keydown.ctrl.enter.prevent="handleSaveMemo">
+          <div class="pane-head">
+            <span class="pane-kind">{{ isEditing ? '编辑便签' : '新建便签' }}</span>
+            <div class="seg" role="group" aria-label="编辑/预览切换">
+              <button class="seg-btn" :class="{ active: editMode === 'write' }" @click="editMode = 'write'">书写</button>
+              <button class="seg-btn" :class="{ active: editMode === 'preview' }" @click="editMode = 'preview'">预览</button>
+            </div>
+          </div>
+
+          <div v-show="editMode === 'write'" class="write-body">
+            <input
+              v-model="editForm.title"
+              type="text"
+              class="text-input pane-title-input"
+              placeholder="标题（可留空，正文首行示人）"
+              aria-label="便签标题"
+            />
+            <UiClipboardField
+              v-model="editForm.content"
+              mono
+              :rows="10"
+              placeholder="在此粘贴文本、命令行、cURL、SQL 或 JWT…（支持 Markdown 子集：标题/粗斜体/代码块/列表/链接/引用）"
+            />
+            <div class="pane-color-tags">
+              <span class="pane-block-label">色彩</span>
+              <div class="color-row">
+                <div
+                  v-for="c in COLOR_OPTIONS"
+                  :key="c.val"
+                  class="color-circle"
+                  :style="{ background: c.hex }"
+                  :class="{ selected: editForm.colorTag === c.val }"
+                  :title="c.name"
+                  @click="editForm.colorTag = c.val"
+                ></div>
+              </div>
+              <span class="pane-block-label">标签</span>
+              <div class="tags-input-box">
+                <span v-for="t in editForm.tags" :key="t" class="tag-pill memo-tag memo-tag-removable">
+                  {{ t }} <span class="memo-tag-x" title="移除标签" @click="removeTag(t)">✕</span>
+                </span>
+                <input
+                  v-model="editForm.tagInput"
+                  type="text"
+                  class="text-input tag-entry"
+                  placeholder="例如 SQL, Token, 常用（回车添加，自动补 #）"
+                  aria-label="添加标签"
+                  @keydown.enter.prevent="addTagFromInput"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div v-show="editMode === 'preview'" class="write-body">
+            <div v-if="editForm.content.trim()" class="md-preview" v-html="editorPreviewHtml" />
+            <p v-else class="state-box preview-void">正文还是空的——先回「书写」写点东西。</p>
+          </div>
+
+          <footer class="pane-foot">
+            <span class="foot-hint">Ctrl+Enter 保存 · Esc 放弃草稿</span>
+            <UiButton variant="secondary" small @click="cancelEdit">取消</UiButton>
+            <UiButton variant="primary" small @click="handleSaveMemo">
+              {{ isEditing ? '保存修改' : '立即创建' }}
+            </UiButton>
+          </footer>
+        </div>
+
+        <!-- 阅读态（旧详情浮层所得全数搬进本页；MD 自动渲染/等宽原文/遮罩圆点三分支照旧） -->
+        <div v-else-if="currentItem" class="pane-read">
+          <header class="pane-head">
+            <h3 class="pane-title" :class="{ 'title-void': !currentItem.title.trim() }">
+              {{ currentItem.title || '无标题便签' }}
+            </h3>
+          </header>
+          <div class="pane-meta">
+            <span class="chip" :class="`chip-tag-${currentItem.colorTag || 'blue'}`" aria-hidden="true">■</span>
+            <span v-if="currentItem.isPinned" class="chip chip-neutral">已置顶</span>
+            <span v-if="currentItem.isMasked" class="chip chip-danger">敏感遮罩中</span>
+            <span class="mono meta-time">建 {{ fmtDate(currentItem.createdAt) }} · 改 {{ fmtDate(currentItem.updatedAt) }}</span>
+          </div>
+          <div class="pane-body">
+            <div v-if="currentItem.isMasked" class="memo-content-box masked mono" aria-label="敏感信息已遮罩">
+              ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+            </div>
+            <!-- v-html 安全前提：renderMarkdown 先整体转义再结构替换，链接 http/https 白名单，
+                 spec 锁 XSS 用例；masked 条目永不进渲染分支 -->
+            <div v-else-if="paneHtml" class="md-preview" v-html="paneHtml" />
+            <pre v-else class="memo-plain">{{ currentItem.content || '（空便签）' }}</pre>
+          </div>
+          <div v-if="currentItem.tags && currentItem.tags.length" class="pane-tags">
+            <span
+              v-for="t in currentItem.tags"
+              :key="t"
+              class="tag-pill tag-pill-clickable memo-tag"
+              :class="{ 'memo-tag-active': selectedTag === t }"
+              role="button"
+              tabindex="0"
+              @click="handleSelectTag(t)"
+              @keydown.enter.prevent="handleSelectTag(t)"
+              @keydown.space.prevent="handleSelectTag(t)"
+            >{{ t }}</span>
+          </div>
+          <footer class="pane-foot">
+            <!-- 遮罩条目不给复制全文/导出：遮罩语义是"明文不落眼、不落他人剪贴板也不落成文件" -->
+            <UiButton v-if="!currentItem.isMasked" variant="secondary" small class="memo-copy-btn" @click="copyMemoContent(currentItem.content)">
+              <MemoGlyph name="copy" :size="13" /> 复制全文
+            </UiButton>
+            <UiButton v-if="!currentItem.isMasked" variant="secondary" small title="导出为与文件库同格式的 .md（含 frontmatter，可回灌）" @click="exportFromPane">
+              <MemoGlyph name="download" :size="13" /> 导出 .md
+            </UiButton>
+            <UiButton variant="secondary" small @click="maskFromPane">
+              <MemoGlyph :name="currentItem.isMasked ? 'eye' : 'eye-off'" :size="13" /> {{ currentItem.isMasked ? '揭示明文' : '脱敏遮罩' }}
+            </UiButton>
+            <UiButton variant="secondary" small @click="handleTogglePin(currentItem)">
+              <MemoGlyph name="pin" :size="13" /> {{ currentItem.isPinned ? '取消置顶' : '固定置顶' }}
+            </UiButton>
+            <span class="foot-spacer" aria-hidden="true"></span>
+            <button class="btn btn-ghost btn-small text-danger memo-del-btn" @click="handleDeleteMemo(currentItem.id)">
+              <MemoGlyph name="trash" :size="13" /> 删除
+            </button>
+            <UiButton variant="primary" small @click="editFromPane">
+              <MemoGlyph name="pen" :size="13" /> 编辑
+            </UiButton>
+          </footer>
+        </div>
+
+        <!-- 闲页：未选中任何一条时的安静版心（书写起点二选一：速记行回车 / 这里开长便签） -->
+        <div v-else class="pane-idle">
+          <p class="idle-note">
+            左边是账，这里翻到正在看（写）的那一页。
+            点任意一条即读，读完就地改；一行闪念走上面的速记入口。
+          </p>
+          <UiButton variant="secondary" small @click="openCreateModal">写一条长便签</UiButton>
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 治理说明（机主配色裁决 2026-09-26）：本视图 scoped 层【禁止】重写共享原子类
+/* 治理说明（机主配色裁决 2026-09-26 沿用）：本视图 scoped 层【禁止】重写共享原子类
    （components.css :where 家族：btn 全族、text-input、tag-pill、chip、state-box、
    banner、mono、text-muted/text-danger 等）与全局 token 变量——跨页面观感一律
-   以共享件为准。页面私有需求全部走 memo- 前缀私有类，与共享类同挂叠加组合
-   （如 tag-pill + tag-pill-clickable：外观基座与可点交互档归全局；
-     tag-pill + memo-tag-active：选中态色差等页面私有色差仍归私有）。 */
-.memo-page { display: flex; flex-direction: column; gap: 14px; }
+   以共享件为准。页面私有需求全部走 memo-/pane-/quick-/sheet-/menu- 私有类，
+   与共享类同挂叠加组合（如 tag-pill + tag-pill-clickable：外观基座与可点交互档归全局；
+   tag-pill + memo-tag-active：选中态色差等页面私有色差仍归私有，MemoCard 亦未内置此差）。 */
 
-.head-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.memo-page { display: flex; flex-direction: column; gap: 12px; container: memo / inline-size; }
 .retry-btn { margin-left: 8px; }
 
-/* ① 速记条：页面第一主角，输入框升半档高度 */
-.memo-hero { display: flex; flex-direction: column; gap: 8px; }
-.hero-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
-.hero-input { flex: 1 1 260px; min-width: 0; min-height: var(--control-h-lg); font-size: var(--text-md); }
-.hero-tags { flex: 0 1 168px; min-width: 120px; min-height: var(--control-h-lg); }
-.hero-hint { margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.6; }
-
-/* ② 参数条 */
-.memo-toolbar { display: flex; flex-direction: column; gap: 10px; }
-.tool-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.search-box { position: relative; flex: 1 1 260px; min-width: 0; }
-.search-input { width: 100%; padding-right: 30px; min-height: var(--control-h-md); }
+/* ---------- 顶栏工具条：一行轻件，零卡片容器 ---------- */
+.memo-tools { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.search-box { position: relative; flex: 0 1 250px; min-width: 140px; display: flex; align-items: center; }
+.search-icon { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--color-text-subtle); display: inline-flex; pointer-events: none; }
+.search-input { width: 100%; padding-left: 30px; padding-right: 26px; min-height: var(--control-h-md); }
 .memo-clear-btn {
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  background: none; border: none; color: var(--color-text-subtle); cursor: pointer; font-size: var(--text-sm);
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: var(--color-text-subtle); cursor: pointer;
+  display: inline-flex; padding: 2px; border-radius: var(--radius-micro);
 }
-.clear-filter-btn { flex: none; }
-.tool-count { margin-left: auto; font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; }
-.tags-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.memo-clear-btn:hover { background: var(--surface-hover); color: var(--color-text); }
+.memo-chips { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: thin; padding: 2px 0; }
 .tag-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
   background: var(--surface-soft); border: 1px solid var(--color-border); color: var(--color-text-muted);
-  padding: 3px 10px; border-radius: var(--radius-pill); font-size: var(--text-sm); cursor: pointer;
+  padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--text-sm); cursor: pointer;
   transition: background var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease;
 }
 .tag-chip:hover { background: var(--surface-hover); color: var(--color-text); }
 .tag-chip.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
 .tag-count { opacity: 0.8; font-size: var(--text-xs); }
+.clear-filter-btn { flex: none; }
+.memo-overflow { position: relative; flex: none; }
+.memo-more-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--control-h-md); height: var(--control-h-md);
+  background: none; border: 1px solid var(--btn-outline-edge); border-radius: var(--radius-control);
+  color: var(--color-text-muted); cursor: pointer;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.memo-more-btn:hover { background: var(--surface-hover); color: var(--color-text); }
+.memo-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 172px;
+  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  box-shadow: var(--shadow-small); padding: 4px; display: flex; flex-direction: column; gap: 2px;
+}
+.menu-item {
+  display: flex; align-items: center; gap: 8px; text-align: left;
+  background: none; border: none; border-radius: var(--radius-micro); cursor: pointer;
+  padding: 7px 10px; font-size: var(--text-sm); color: var(--color-text); white-space: nowrap;
+}
+.menu-item:hover:not(:disabled) { background: var(--surface-hover); }
+.menu-item:disabled { opacity: 0.55; cursor: not-allowed; }
+.menu-danger { color: var(--state-danger); }
+.menu-danger:hover:not(:disabled) { background: var(--btn-danger-outline-hover); }
 
-/* ③ 分组列表 */
-.memo-group { display: flex; flex-direction: column; gap: 10px; }
+/* ---------- 摊开的两页 ---------- */
+.memo-desk {
+  display: grid; grid-template-columns: minmax(280px, 336px) minmax(0, 1fr); gap: 16px;
+  align-items: stretch; min-width: 0;
+}
+
+/* 左索引栏：贴线行（笔记本侧页速记标），非卡片群岛 */
+.memo-index {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  max-height: calc(100dvh - 196px); min-height: 300px; overflow-y: auto;
+  padding-right: 2px; scrollbar-width: thin;
+}
+.memo-group { display: flex; flex-direction: column; }
 .group-head {
-  display: flex; align-items: center; gap: 8px; margin: 0;
-  font-size: var(--text-sm); font-weight: 600; color: var(--color-text-subtle);
-  text-transform: none; letter-spacing: 0.4px;
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 6px; margin: 0; padding: 5px 0 4px 8px;
+  background: var(--surface-page);
+  font-size: var(--text-xs); font-weight: 600; color: var(--color-text-subtle); letter-spacing: 0.4px;
 }
-.group-count { font-size: var(--text-xs); color: var(--color-text-subtle); background: var(--surface-hover); border-radius: var(--radius-pill); padding: 0 7px; }
-.memo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.group-count { font-size: var(--text-micro); color: var(--color-text-subtle); background: var(--surface-hover); border-radius: var(--radius-pill); padding: 0 6px; }
 
-.memo-card {
-  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px;
-  border-radius: var(--radius-control); transition: box-shadow var(--motion-fast) ease, transform var(--motion-fast) ease;
+.memo-row {
+  display: flex; align-items: stretch; gap: 2px; min-width: 0;
+  border-left: 3px solid transparent; border-radius: var(--radius-micro);
+  transition: background var(--motion-fast) ease;
 }
-.memo-card:hover { box-shadow: var(--shadow-panel); transform: translateY(-1px); }
-.memo-card.is-pinned { border-color: var(--color-primary); }
+.memo-row:hover { background: var(--surface-hover); }
+.memo-row.is-pinned { background: var(--surface-soft); }
+.memo-row.is-pinned:hover { background: var(--surface-hover); }
+.memo-row.is-current { background: var(--surface-selected); }
+/* 色彩标识是用户数据值（colorTag 持久化进后端），非主题表面——封边保留原始色板（与 memoMetrics 五色同源） */
+.spine-blue { border-left-color: #3b82f6; }
+.spine-emerald { border-left-color: #10b981; }
+.spine-amber { border-left-color: #f59e0b; }
+.spine-rose { border-left-color: #f43f5e; }
+.spine-purple { border-left-color: #8b5cf6; }
 
-/* 色彩标记是用户数据值（colorTag 持久化进后端），非主题表面——palette 保留原始色板 */
-.border-tag-blue { border-left: 4px solid #3b82f6; }
-.border-tag-emerald { border-left: 4px solid #10b981; }
-.border-tag-amber { border-left: 4px solid #f59e0b; }
-.border-tag-rose { border-left: 4px solid #f43f5e; }
-.border-tag-purple { border-left: 4px solid #8b5cf6; }
-
-.memo-card-head { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.memo-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; padding: 5px 4px 5px 8px; }
+.memo-row-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .memo-title {
-  margin: 0; font-size: var(--text-md); font-weight: 600; color: var(--color-text);
+  margin: 0; font-size: var(--text-base); font-weight: 600; color: var(--color-text);
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
 }
 .memo-title:hover { color: var(--color-primary); }
+.title-pin { margin-right: 4px; vertical-align: -2px; color: var(--color-primary); }
 .title-void { color: var(--color-text-subtle); font-weight: 400; font-style: italic; }
-.memo-actions { display: flex; align-items: center; gap: 2px; flex: none; }
-.memo-icon-btn {
-  background: none; border: none; cursor: pointer; font-size: var(--text-base);
-  padding: 2px 4px; border-radius: var(--radius-micro); transition: background var(--motion-fast) ease;
+.memo-time { margin-left: auto; flex: none; font-size: var(--text-micro); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
+.memo-excerpt {
+  display: block; font-size: var(--text-xs); line-height: 1.5; color: var(--color-text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; min-width: 0;
 }
-.memo-icon-btn:hover { background: var(--surface-hover); }
-.md-flag { font-size: var(--text-micro); padding: 1px 6px; }
+.memo-excerpt.masked { color: var(--color-text-subtle); user-select: none; letter-spacing: 1.5px; }
+.memo-row-tags { display: flex; flex-wrap: nowrap; gap: 3px; padding-top: 1px; overflow: hidden; }
+/* 标签丸外观基座归全局 .tag-pill 原子；可点档走 .tag-pill-clickable；本层只剩选中态私有色差。 */
+.memo-tag-active { background: var(--color-primary-soft); color: var(--color-primary); }
 
+.memo-row-actions { display: flex; flex-direction: column; justify-content: center; gap: 2px; flex: none; padding-right: 2px; opacity: 0.55; transition: opacity var(--motion-fast) ease; }
+.memo-row:hover .memo-row-actions, .memo-row:focus-within .memo-row-actions, .memo-row.is-current .memo-row-actions { opacity: 1; }
+.memo-icon-btn {
+  background: none; border: none; cursor: pointer; color: var(--color-text-muted);
+  padding: 3px; border-radius: var(--radius-micro); display: inline-flex;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.memo-icon-btn:hover { background: var(--surface-hover); color: var(--color-text); }
+
+/* 栏底：悬浮速记卡折叠配置（低频件，收起态一行字即够；未在位警示恒外露） */
+.memo-sheet-settings { margin-top: 8px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 6px; }
+.sheet-disclosure {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: none; border: none; cursor: pointer; padding: 8px 2px 6px;
+  font-size: var(--text-xs); color: var(--color-text-muted);
+}
+.sheet-disclosure:hover { color: var(--color-text); }
+.sheet-disc-name { font-weight: 600; }
+.sheet-disc-now { margin-left: auto; }
+.sheet-disc-chevron { transition: transform var(--motion-fast) ease; }
+.sheet-disclosure[aria-expanded="true"] .sheet-disc-chevron { transform: rotate(180deg); }
+.sheet-body { display: flex; flex-direction: column; gap: 6px; padding: 0 2px 4px; }
+.sheet-desc { margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.6; }
+.sheet-row { display: flex; align-items: center; gap: 8px; }
+.memo-hotkey-input { width: 150px; flex: none; }
+.memo-hotkey-off { flex: none; }
+.memo-sheet-settings .banner-warn { padding: 8px 10px; font-size: var(--text-xs); }
+
+/* ---------- 右页面板 ---------- */
+.memo-pane {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  max-height: calc(100dvh - 196px); min-height: 300px;
+}
+
+/* 速记入口：一行克制输入 */
+.memo-quick { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: none; }
+.quick-input { flex: 1 1 180px; min-width: 120px; min-height: var(--control-h-md); }
+.quick-tags { flex: 0 1 84px; min-width: 64px; min-height: var(--control-h-md); }
+.memo-tag-autofill { color: var(--color-primary); background: var(--color-primary-soft); flex: none; }
+.memo-pen-btn {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  background: none; border: none; cursor: pointer;
+  color: var(--color-text-muted); font-size: var(--text-sm); padding: 4px 6px; border-radius: var(--radius-micro);
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.memo-pen-btn:hover { background: var(--surface-hover); color: var(--color-primary); }
+
+/* 页面板头尾（书写/阅读共用骨架） */
+.pane-head { display: flex; align-items: center; gap: 10px; min-width: 0; flex: none; }
+.pane-kind { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); flex: none; }
+.pane-title {
+  margin: 0; font-size: var(--text-md); font-weight: 700; color: var(--color-text);
+  flex: 1; min-width: 0; overflow-wrap: anywhere;
+}
+.pane-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none; }
+.meta-time { font-size: var(--text-xs); color: var(--color-text-subtle); }
+.pane-body { overflow-y: auto; min-height: 0; flex: 1; max-width: 72ch; }
+.pane-tags { display: flex; flex-wrap: wrap; gap: 6px; flex: none; }
+.pane-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; flex: none; }
+.foot-spacer { flex: 1; }
+.foot-hint { margin-right: auto; font-size: var(--text-xs); color: var(--color-text-subtle); }
+
+/* 书写态 */
+.pane-write { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
+.write-body { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; max-width: 72ch; flex: 1; }
+.pane-title-input { min-height: var(--control-h-md); font-size: var(--text-md); font-weight: 600; }
+.pane-color-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; margin-top: 4px; }
+.pane-block-label { font-size: var(--text-xs); color: var(--color-text-muted); flex: none; }
+.color-row { display: flex; gap: 10px; padding: 2px 0; flex: none; }
+.color-circle { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; transition: transform var(--motion-fast) ease; }
+.color-circle:hover { transform: scale(1.15); }
+.color-circle.selected { outline: 2px solid var(--color-text); outline-offset: 2px; }
+.tags-input-box {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; flex: 1 1 220px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 5px 8px; background: var(--surface-soft);
+}
+.tag-entry { flex: 1 1 120px; min-width: 0; border: none; background: transparent; padding: 3px 2px; outline: none; color: var(--color-text); font-size: var(--text-base); }
+.memo-tag-removable { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-hover); }
+.memo-tag-x { cursor: pointer; font-size: var(--text-micro); color: var(--color-text-subtle); }
+.memo-tag-x:hover { color: var(--state-danger); }
+.preview-void { background: transparent; border-style: dashed; }
+
+/* 阅读态正文（遮罩圆点/纯文本兜底两分支与旧详情浮层所得逐字同语义） */
 .memo-content-box {
   font-size: var(--text-sm); line-height: 1.55; color: var(--color-text);
-  background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-micro);
-  padding: 8px 10px; max-height: 150px; overflow: hidden; white-space: pre-wrap; word-break: break-word;
-  cursor: pointer;
+  background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  padding: 8px 10px; white-space: pre-wrap; word-break: break-word;
 }
 .memo-content-box.masked { color: var(--color-text-subtle); user-select: none; letter-spacing: 2px; }
-
-.memo-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.memo-tags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
-/* 标签丸外观基座归全局 .tag-pill 原子；"可点过滤丸"的 cursor/hover/焦点三差已收编
-   全局 :where(.tag-pill-clickable)（模板同挂落回），本层只剩选中态私有色差。
-   编辑浮层的可移除丸（memo-tag-removable）丸体无点击动作（移除由 ✕ 承担），
-   不挂交互档；其原 hover 加深与自身底色同为 --surface-hover 本就无差，删净零变化。 */
-.memo-tag-active { background: var(--color-primary-soft); color: var(--color-primary); }
-.foot-right { display: flex; align-items: center; gap: 6px; flex: none; }
-.memo-time { font-size: var(--text-xs); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
-.memo-copy-btn {
-  background: var(--surface-panel); border: 1px solid var(--color-border); color: var(--color-text-muted);
-  padding: 1px 7px; border-radius: var(--radius-micro); font-size: var(--text-xs); cursor: pointer;
+.memo-plain {
+  margin: 0; font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word; color: var(--color-text);
+  background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  padding: 10px 12px;
 }
-.memo-copy-btn:hover { background: var(--surface-hover); border-color: var(--color-border-strong); }
 
-/* ③⁺ 悬浮速记卡配置条（外观基座全部走共享原子类，本层只排布与私有色差） */
-.memo-sheet-settings { display: flex; flex-direction: column; gap: 10px; }
-.sheet-setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 300px; }
-.sheet-setting-name { font-size: var(--text-sm); font-weight: 600; color: var(--color-text); }
-.sheet-setting-desc { font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.6; }
-.memo-hotkey-input { width: 168px; flex: none; }
-.memo-hotkey-off { flex: none; }
-
-/* ④⑤ 浮层家族（详情/编辑共用壳；书写-预览分段钮互切内容区） */
-.modal-overlay {
-  position: fixed; inset: 0; background: var(--overlay-mask); backdrop-filter: blur(2px);
-  display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
-}
-.modal-dialog {
-  background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
-  box-shadow: var(--shadow-panel); width: 100%; max-width: 640px; max-height: min(86vh, 860px);
-  display: flex; flex-direction: column; gap: 12px; padding: 18px 20px;
-}
-.detail-dialog { max-width: 720px; }
-.editor-dialog { max-width: 760px; }
-.dlg-head { display: flex; align-items: center; gap: 12px; }
-.dlg-title { margin: 0; font-size: var(--text-lg); font-weight: 700; color: var(--color-text); flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.memo-x-btn { background: none; border: none; color: var(--color-text-subtle); cursor: pointer; font-size: var(--text-md); padding: 2px 6px; border-radius: var(--radius-micro); }
-.memo-x-btn:hover { background: var(--surface-hover); color: var(--color-text); }
-.dlg-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.meta-time { font-size: var(--text-xs); color: var(--color-text-subtle); }
+/* 色彩 chip 与封边同理：用户数据值（同 memoMetrics 五色豁免口径），非主题表面 */
 .chip-tag-blue { background: #3b82f6; color: #fff; }
 .chip-tag-emerald { background: #10b981; color: #fff; }
 .chip-tag-amber { background: #f59e0b; color: #fff; }
 .chip-tag-rose { background: #f43f5e; color: #fff; }
 .chip-tag-purple { background: #8b5cf6; color: #fff; }
-.dlg-body { overflow-y: auto; min-height: 0; }
-.dlg-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.dlg-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
-.seg { display: flex; border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; flex: none; }
+/* 闲页 */
+.pane-idle {
+  flex: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 12px;
+  border: 1px dashed var(--color-border); border-radius: var(--radius-element); padding: 24px; min-height: 200px;
+}
+.idle-note { margin: 0; max-width: 46ch; font-size: var(--text-sm); color: var(--color-text-subtle); line-height: 1.8; }
+
+/* 页内矢量图标基座（私有件；描边随 currentColor，明暗与色板零特判） */
+.memo-glyph { display: inline-block; vertical-align: -0.125em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+.seg { display: flex; border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; flex: none; margin-left: auto; }
 .seg-btn {
   background: var(--surface-soft); border: none; color: var(--color-text-muted);
-  padding: 4px 14px; font-size: var(--text-sm); cursor: pointer; transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+  padding: 3px 12px; font-size: var(--text-sm); cursor: pointer;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 .seg-btn:hover { background: var(--surface-hover); color: var(--color-text); }
 .seg-btn.active { background: var(--color-primary); color: var(--color-on-primary); }
-
-.modal-body { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; }
-.field-label { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: 8px; }
-.field-label:first-child { margin-top: 0; }
-.color-row { display: flex; gap: 12px; padding: 2px 0 4px; }
-.color-circle { width: 24px; height: 24px; border-radius: 50%; cursor: pointer; transition: transform var(--motion-fast) ease; }
-.color-circle:hover { transform: scale(1.15); }
-.color-circle.selected { outline: 2px solid var(--color-text); outline-offset: 2px; }
-.tags-input-box {
-  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-  border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 8px; background: var(--surface-soft);
-}
-.tag-entry { flex: 1 1 140px; min-width: 0; border: none; background: transparent; padding: 4px 2px; outline: none; color: var(--color-text); font-size: var(--text-base); }
-.memo-tag-removable { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-hover); }
-.memo-tag-x { cursor: pointer; font-size: var(--text-micro); color: var(--color-text-subtle); }
-.memo-tag-x:hover { color: var(--state-danger); }
-.preview-void { background: transparent; border-style: dashed; }
 
 /* Markdown 阅读/预览皮肤：全走 token，随主题联动 */
 .md-preview { font-size: var(--text-base); line-height: 1.65; color: var(--color-text); overflow-wrap: anywhere; }
@@ -1080,16 +1245,11 @@ onUnmounted(() => {
 .md-preview :deep(table) { border-collapse: collapse; }
 .md-preview :deep(del) { color: var(--color-text-subtle); }
 
-.memo-plain {
-  margin: 0; font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.6;
-  white-space: pre-wrap; word-break: break-word; color: var(--color-text);
-  background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control);
-  padding: 10px 12px;
-}
-
-@media (max-width: 720px) {
-  .memo-grid { grid-template-columns: minmax(0, 1fr); }
-  .tool-count { display: none; }
-  .hero-tags { flex: 1 1 100%; }
+/* 叠放档（容器查询看主区实际宽度）：页面板在上、索引在下——"先落笔，再翻账" */
+@container memo (max-width: 760px) {
+  .memo-desk { grid-template-columns: minmax(0, 1fr); }
+  .memo-pane { order: -1; max-height: none; }
+  .memo-index { max-height: 40dvh; }
+  .pane-body, .write-body { max-width: none; }
 }
 </style>
