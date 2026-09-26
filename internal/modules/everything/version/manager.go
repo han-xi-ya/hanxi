@@ -73,9 +73,22 @@ func OpenTree(versionsDir string) *artifact.Tree {
 	return artifact.OpenTree(versionsDir, treeEntryName)
 }
 
-// ListRemote 获取远程可用版本槽位（10 分钟缓存，失败降级快照）
+// ListRemote 获取远程可用版本槽位（10 分钟缓存，失败降级快照）。
+// N13 形态标注：逐行回填 Form=hostedForm——与 snipaste（get 交回克隆切片、
+// 回填就地安全）不同，本模块缓存命中/快照路径交回的是共享底层切片
+// （releaseCache.data 与内置 snapshotReleases），回填前先 copy 再动，
+// 杜绝污染缓存源与快照。
 func (m *Manager) ListRemote() ([]EverythingRelease, error) {
-	return remoteCache.get()
+	list, err := remoteCache.get()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]EverythingRelease, len(list))
+	copy(out, list)
+	for i := range out {
+		out[i].Form = hostedForm
+	}
+	return out, nil
 }
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描）。

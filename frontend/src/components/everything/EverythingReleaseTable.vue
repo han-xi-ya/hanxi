@@ -4,10 +4,16 @@
 // 下载安装动作回视图执行（DownloadVersion + 事件驱动的 downloading map 由视图编排）。
 import type { EverythingRelease, EverythingVersionInfo } from '../../../bindings/hanxi/internal/modules/everything/version/models'
 import type { DownloadTicket } from '../../../bindings/hanxi/internal/modules/everything/models'
+import { releaseFormWord } from '../managed/adapter'
 import { fmtSize, fmtDate } from '../../utils/format'
 
+// bindings 尚未随 Go 侧新增的 Form 字段统一再生（总闸收口后由主会话重跑
+// generate），本行型先以可选 form 局部交截对齐 Snipaste 画法；再生完成后可
+// 删此别名回落绑定型。
+type ReleaseRow = EverythingRelease & { form?: string }
+
 const props = defineProps<{
-  releases: EverythingRelease[]
+  releases: ReleaseRow[]
   installed: EverythingVersionInfo[]
   downloading: Record<string, DownloadTicket>
   loading: boolean
@@ -58,9 +64,13 @@ function channelLabel(channel: string): string {
               {{ channelLabel(rel.channel) }}
             </span>
           </td>
-          <td>
+          <td class="ver-cell">
             <strong class="ver-name">{{ rel.version }}</strong>
-            <span v-if="rel.stale" class="badge badge-pre">快照</span>
+            <span v-if="rel.stale" class="badge badge-pre">快照</span><!-- N13 统一形态 chip：本托管资产形态事实（后端 ListRemote 回填，纯展示），画法对齐 SnipasteReleaseTable --><span
+              v-if="rel.form"
+              class="chip chip-neutral form-chip"
+              :title="`本托管形态（安装链事实）：${releaseFormWord(rel.form)}`"
+            >{{ releaseFormWord(rel.form) }}</span>
           </td>
           <td>
             <span v-if="statusOf(rel) === 'installed'" class="ver-status installed">已安装</span>
@@ -112,13 +122,21 @@ function channelLabel(channel: string): string {
 /* ---------- 远程表格 ---------- */
 .table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 8px; overflow-x: auto; }
 .ver-name { font-family: var(--font-mono); }
+/* 版本列改弹性排布：与 Snipaste .release-version 同构（gap 供给间距，徽标/chip 换行不溢出） */
+.ver-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* N13 形态 chip 密度对齐 ManagedVersionPanel.form-chip；行内容器已带 gap，不再加 margin */
+.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
 
 .channel-badge { font-size: var(--text-xs); font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); }
 .ch-stable { background: var(--state-positive-soft); color: var(--state-positive); }
 .ch-beta { background: var(--state-warning-soft); color: var(--state-warning); }
 
-/* .badge 基形已上收 components.css（§9.6-2），以下仅本表格快照档位 */
-.badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
+/* .badge 基形已上收 components.css（§9.6-2），以下仅本表格快照档位；
+   版本列弹性化后间距由 gap 单源，剥去旧 margin-left 防双重补偿 */
+.badge-pre { background: var(--state-warning-soft); color: var(--state-warning); }
+
+/* N13 形态 chip 密度对齐 SnipasteReleaseTable.form-chip；行内容器已带 gap，不再加 margin */
+.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
 
 .ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }

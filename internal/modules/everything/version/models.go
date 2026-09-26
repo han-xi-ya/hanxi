@@ -17,7 +17,15 @@ type EverythingRelease struct {
 	Stale     bool   `json:"stale"`     // 来自旧缓存或内置快照，非实时数据
 	// Assets 上游全发布物平台/形态矩阵（N13 展示层，下载/校验路径不消费）。
 	Assets []hostfeed.AssetNote `json:"assets,omitempty"`
+	// Form 本托管资产形态（N13 形态标注，纯展示，ListRemote 回填）：恒
+	// portable——官网下载页 x64 资产即按钮原文 "Download Portable ZIP" 的
+	// 便携 zip（解压直用，notesOf 形态词表已按此实证）；托管安装链
+	// （下载 → 解包 → 平铺布局自检）自证同一事实。
+	Form hostfeed.Form `json:"form,omitempty"`
 }
+
+// hostedForm 本模块托管形态事实（全家族经 manager.ListRemote 回填进 Release.Form）。
+const hostedForm = hostfeed.FormPortable
 
 // EverythingVersionInfo 本地已安装的 Everything 版本信息
 type EverythingVersionInfo struct {
