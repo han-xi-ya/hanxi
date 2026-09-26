@@ -3,8 +3,10 @@
 //
 // 取材纪律（侦查收口 PLAN_N27_ICON.md）：
 //   - 静态入库优于运行时提取——一次性 `scripts/extract_app_icons.ps1` 从已装
-//     托管 exe 提主图标、归一 32px PNG 落 `assets/apps/<moduleId>.png`；
-//     运行期零依赖（版本目录可能未装，也不给前端开取图通道）。
+//     托管 exe 的 PE 资源取**最大真实画幅**、等比降采样到 64px 封顶（源不足则
+//     保留真实尺寸、绝不放大凑数）落 `assets/apps/<moduleId>.png`（逐枚出货边长
+//     见 internal/app/appicons/sources.go 台账）；运行期零依赖（版本目录可能未装，
+//     也不给前端开取图通道）。
 //   - 取不到的（无 GUI 头件 ddnsgo/frpc、许可受限 Sysinternals）一律回落
 //     `generic.png` 通用徽标——宁缺毋滥，绝不伪造"像"的图标。
 //   - 每个入库 logo 的许可状态逐个过 docs/THIRD_PARTY_NOTICES.md，未过审不入库。

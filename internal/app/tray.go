@@ -82,8 +82,8 @@ func (b *trayMenuBuilder) build() *application.Menu {
 				sub := menu.AddSubmenu(b.disp.Label(item))
 				for _, ch := range kids {
 					ki := sub.Add(b.disp.Label(ch))
-					if png := appicons.For(itemModuleID(ch)); png != nil {
-						ki.SetBitmap(png) // N27 批 C：内嵌真图标（未内嵌恒 nil，回落文字）
+					if png := appicons.ForMenu(itemModuleID(ch)); png != nil {
+						ki.SetBitmap(png) // N27 批 C：16px 菜单变体（SetBitmap 原生尺寸透传，展示档会撑行高；无变体恒 nil 回落文字）
 					}
 					ki.OnClick(func(ctx *application.Context) {
 						b.dispatch(ch)
@@ -92,7 +92,7 @@ func (b *trayMenuBuilder) build() *application.Menu {
 				continue
 			}
 			mi := menu.Add(b.disp.Label(item))
-			if png := appicons.For(itemModuleID(item)); png != nil {
+			if png := appicons.ForMenu(itemModuleID(item)); png != nil {
 				mi.SetBitmap(png)
 			}
 			mi.OnClick(func(ctx *application.Context) {
