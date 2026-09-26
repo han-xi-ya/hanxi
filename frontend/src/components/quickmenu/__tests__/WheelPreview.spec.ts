@@ -54,6 +54,28 @@ describe('WheelPreview', () => {
     w.unmount()
   })
 
+  it('v3 观感零变化锁：缺省 viewBox "0 0 512 512"；trim viewBox "82 82 348 348"', () => {
+    const full = mount(WheelPreview, { props: { items: three } })
+    expect(full.find('.wp-svg').attributes('viewBox')).toBe('0 0 512 512')
+    full.unmount()
+    const trim = mount(WheelPreview, { props: { items: three, trim: true } })
+    expect(trim.find('.wp-svg').attributes('viewBox')).toBe('82 82 348 348')
+    trim.unmount()
+  })
+
+  it('trim 槽位锚点 = 全窗锚点按 [82,430]→[0,100]% 折算（v3 手量算式互证）', () => {
+    const four: MenuItem[] = [leaf(0, 'A', 'exe'), leaf(1, 'B', 'exe'), leaf(2, 'C', 'exe'), leaf(3, 'D', 'exe')]
+    const w = mount(WheelPreview, { props: { items: four, trim: true } })
+    // 第 0 枚（45°方向，扇区带中线半径 118）：全窗 x = 256 + 118/√2
+    const toWindow = (px: number) => ((px - 82) / (512 - 82 * 2)) * 100
+    const x = 256 + 118 / Math.SQRT2
+    const y = 256 - 118 / Math.SQRT2
+    const style = w.findAll('.wp-slot')[0].attributes('style') ?? ''
+    expect(parseFloat(/left:\s*([\d.]+)%/.exec(style)![1])).toBeCloseTo(toWindow(x), 4)
+    expect(parseFloat(/top:\s*([\d.]+)%/.exec(style)![1])).toBeCloseTo(toWindow(y), 4)
+    w.unmount()
+  })
+
   it('传 skin 切预设与强度：根类名换、CSS 变量随 stroke 下发、扇区带类型色类', () => {
     const w = mount(WheelPreview, {
       props: { items: three, skin: { ...DEFAULT_WHEEL_SKIN, preset: 'ink', stroke: 0, faceAlpha: 0.5 } },

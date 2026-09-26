@@ -1,8 +1,9 @@
 // 快捷菜单轮盘 · 扇区级联外扩子环——几何纯函数模块（设计定稿）。
 //
-// 窗口 512×512 DIP，圆心 C=256。主盘完全沿用 QuickMenuPopup 现状口径：
-// 盘缘 rDisc=170、扇区带 rSecIn=74 → rSecOut=162、hub rHub=62
-// （弹窗现为 376 窗口，本模块是 512 窗口下的规范口径：半径相同、圆心不同）。
+// 窗口 512×512 DIP，圆心 C=256（与后端 internal/modules/quickmenu/service.go 的
+// popupWidth/popupHeight 同值——跨语言对账由 __tests__/wheelGeometry.contract.spec.ts
+// 读 Go 源文本锁死，任何一侧改动漏改另一侧即红）。盘缘 rDisc=170、
+// 扇区带 rSecIn=74 → rSecOut=162、hub rHub=62。
 //
 // 新增「子环帽带」：主环分组扇区展开时，其子条目不再换层级展开二级盘，
 // 而以同心帽带渲染在主盘外侧，半径 rCapIn=174 → rCapOut=236（174 在 162 扇区
@@ -49,6 +50,85 @@ export const VIS = {
   rTickIn: 50, // hub 槽位刻度内端
   rTickOut: 57, // hub 槽位刻度外端
 } as const
+
+/**
+ * 弹窗四周透明边距（DIP）——后端 internal/modules/quickmenu/service.go 编译常量
+ * popupMargin 的前端镜像。本数不参与前端渲染与命中，只承载跨语言"常量对"：
+ * 后端"点外收起判定半径 = 半窗 − 边距×scale（物理像素）"落到 DIP 口径恰为
+ * rCapOut=236（见 R_DISMISS），对账测试锁 popupWidth/POPUP_MARGIN_DIP/rCapOut 三方关系。
+ */
+export const POPUP_MARGIN_DIP = 20
+
+/**
+ * 后端点外收起判定圆的 DIP 口径半径（半窗 − 透明边距）。前端自身的外甩取消视觉
+ * 阈值是 rCancel=244（帽带外 8 DIP 缓冲），两者物理含义不同、不合并：
+ * R_DISMISS 是"点了就收窗"的窗体判定，rCancel 是"整盘半透报警"的视觉态。
+ */
+export const R_DISMISS = WHEEL.size / 2 - POPUP_MARGIN_DIP
+
+// —— trim 裁切窗推导（WheelPreview v3 紧凑档）————————————————————————————
+// 窄档满格小盘把 viewBox 收进盘缘墨迹 + 安全边。窗位 [82, 430] 原为 v3 手量常量，
+// 现由 WHEEL.rDisc 与盘缘描边推导——数值与手量逐位相等（contract spec 锁），零观感变化。
+
+/** 盘缘墨迹外半径：(rDisc − 1.25) 圆 + 1.5 描边的外半 = 169.5 */
+export const DISC_INK_R = WHEEL.rDisc - 1.25 + 1.5 / 2
+
+/** trim 窗相对盘缘墨迹的安全边（DIP）：≥4 防描边 AA 混色贴窗缘 */
+export const TRIM_SAFE = 4
+
+/** trim 窗采用的墨迹半经（取整上界 + 安全边）：ceil(169.5) + 4 = 174 */
+export const TRIM_INK_HALF = Math.ceil(DISC_INK_R) + TRIM_SAFE
+
+/** trim 窗边缩进 = 半边长 − 墨迹半经（512 窗 → 82，即 v3 手量窗 [82, 430]） */
+export function trimPad(size: number = WHEEL.size): number {
+  return size / 2 - TRIM_INK_HALF
+}
+
+/** 全尺寸窗 viewBox（viewBox 基准 = WHEEL.size，弹窗与预览非 trim 档共用） */
+export function fullViewBox(size: number = WHEEL.size): string {
+  return `0 0 ${size} ${size}`
+}
+
+/** trim 窗 viewBox：[pad, size−pad] 正方形 */
+export function trimViewBox(size: number = WHEEL.size): string {
+  const pad = trimPad(size)
+  return `${pad} ${pad} ${size - pad * 2} ${size - pad * 2}`
+}
+
+/** 全窗百分比锚点 → trim 窗百分比锚点（mainAnchor 输出的换算基准迁移） */
+export function toTrimWindowPercent(fullWindowPercent: string, size: number = WHEEL.size): string {
+  const px = (parseFloat(fullWindowPercent) / 100) * size
+  const pad = trimPad(size)
+  return `${((px - pad) / (size - pad * 2)) * 100}%`
+}
+
+// —— 密度档与图标尺寸预算基数（实盘 + 预览共用一处）———————————————————————
+// QuickMenuPopup 按条目数取档喂 CSS 变量与 AppIcon 尺寸（位图轨再经
+// wheelIconBudget.snapIconCssPx 吃 DPR 像素预算）；帽带/预览的固定档同落此处，
+// 图标尺寸魔法数不再散在组件里。
+
+/** 主环密度档参数：btnW=按钮列宽，well=图标座，icon=图标基准，name=名称字号，pop=激活径向外顶 */
+export interface WheelDensity {
+  btnW: number
+  well: number
+  icon: number
+  name: number
+  pop: number
+}
+
+/** 密度分档：≤6 宽裕 / 7-9 标准 / 10-12 紧凑 / >12 极限（超密本就应分组收纳） */
+export function densityFor(n: number): WheelDensity {
+  if (n <= 6) return { btnW: 64, well: 36, icon: 22, name: 12, pop: 8 }
+  if (n <= 9) return { btnW: 58, well: 32, icon: 18, name: 12, pop: 8 }
+  if (n <= 12) return { btnW: 52, well: 28, icon: 16, name: 11, pop: 5 }
+  return { btnW: 48, well: 26, icon: 15, name: 11, pop: 5 }
+}
+
+/** 帽带子扇区图标基准（QuickMenuPopup，原模板裸值归口） */
+export const CAP_ICON = 15
+
+/** 预览固定档图标基准（WheelPreview 无密度分档） */
+export const PREVIEW_ICON = 16
 
 /** 极坐标 → 直角坐标：0° 取 12 点方向，顺时针增长（与 QuickMenuPopup.polar 同约定） */
 export function polar(r: number, deg: number): { x: number; y: number } {

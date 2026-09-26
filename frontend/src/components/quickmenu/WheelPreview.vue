@@ -18,7 +18,10 @@ import { computed, watch } from 'vue'
 import type { MenuItem } from '../../../bindings/hanxi/internal/modules/quickmenu/models'
 import AppIcon from '../ui/AppIcon.vue'
 import { wheelIconOf } from './wheelIcons'
-import { WHEEL, VIS, wedgePath, mainSectorAngles, mainAnchor } from './wheelGeometry'
+import {
+  WHEEL, VIS, wedgePath, mainSectorAngles, mainAnchor,
+  fullViewBox, trimViewBox, toTrimWindowPercent, PREVIEW_ICON,
+} from './wheelGeometry'
 import { isRasterWheelIcon, snapIconCssPx } from './wheelIconBudget'
 import { useWheelDpr } from './useWheelDpr'
 import { DEFAULT_WHEEL_SKIN, wheelSkinVars, wheelTintCss, type WheelSkin } from './wheelSkin'
@@ -38,21 +41,14 @@ const props = withDefaults(defineProps<{
   trim?: boolean
 }>(), { activeIndex: null, scale: 1, size: WHEEL.size, skin: () => DEFAULT_WHEEL_SKIN, trim: false })
 
-// 裁切窗边距：盘面最外墨迹 = rDisc(170)−1.25 圆 + 1.5/2 描边外半 = 169.5，
-// 圆心 256 → 墨迹半经取 174（留 ≥4 DIP 安全边），窗 = [82, 430]。
-const TRIM_PAD = 82
-const viewBox = computed(() =>
-  props.trim
-    ? `${TRIM_PAD} ${TRIM_PAD} ${props.size - TRIM_PAD * 2} ${props.size - TRIM_PAD * 2}`
-    : `0 0 ${props.size} ${props.size}`,
-)
+// trim 窗数学全部由 wheelGeometry 共享件推导（墨迹半经 + 安全边 → 窗位），
+// 与 v3 手量常量 [82, 430] 逐位相等，contract spec 锁死零观感漂移。
+const viewBox = computed(() => (props.trim ? trimViewBox(props.size) : fullViewBox(props.size)))
 /** 槽位锚点：几何仍走 mainAnchor 同源纯函数，trim 窗只换映射基准（全窗 % → 窗内 %） */
 function slotStyle(i: number, n: number): { left: string; top: string } {
   const a = mainAnchor(i, n)
   if (!props.trim) return a
-  const toWindow = (s: string) =>
-    `${(((parseFloat(s) / 100) * props.size - TRIM_PAD) / (props.size - TRIM_PAD * 2)) * 100}%`
-  return { left: toWindow(a.left), top: toWindow(a.top) }
+  return { left: toTrimWindowPercent(a.left, props.size), top: toTrimWindowPercent(a.top, props.size) }
 }
 
 const emit = defineEmits<{ pick: [index: number] }>()
@@ -70,7 +66,6 @@ const rootClass = computed(() => `skin-${props.skin.preset}`)
 
 // 图标像素预算 + 模块色描边：与实盘同一套纯函数/取色钩子（同皮契约）
 const dpr = useWheelDpr()
-const PREVIEW_ICON = 16
 function iconPx(item: MenuItem): number {
   const base = PREVIEW_ICON
   return isRasterWheelIcon(wheelIconOf(item)) ? snapIconCssPx(base, dpr.value || 1) : base
@@ -138,6 +133,8 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
    颜色全 token，明暗自适应。pointer-events 仅扇区/槽位层，盘底不拦。
    皮肤批：预设色轨/透明度/描边强度与 QuickMenuPopup 同一批 CSS 变量口径，
    配置页切皮肤即时反映（同皮契约）。 */
+/* 320 是预览在设置页的显示宽（CSS px），与弹窗 512 DIP 窗宽无关——viewBox
+   已按 WHEEL.size 定基准，这里只是把那张 512 基准的画布缩进侧栏，非同源量勿对账。 */
 .wp { position: relative; width: calc(320px * var(--wp-scale, 1)); aspect-ratio: 1; }
 /* 皮肤预设配方（与弹窗 .popup.skin-* 一一对应，只覆写呈现变量） */
 .wp { --wf-hi: var(--surface-panel); --wf-lo: color-mix(in srgb, var(--color-text) 6%, var(--surface-panel)); }

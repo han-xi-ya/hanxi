@@ -27,6 +27,7 @@ import { getErrorMessage } from '../utils/errors'
 import { wheelIconOf } from '../components/quickmenu/wheelIcons'
 import {
   WHEEL, VIS, polar, wedgePath, mainSectorAngles, capSpanDeg, capSectorAngles, capAnchorDeg, mainAnchor, slotOf,
+  fullViewBox, densityFor, CAP_ICON,
 } from '../components/quickmenu/wheelGeometry'
 import { useWheelRingState } from '../composables/useWheelRingState'
 import { isRasterWheelIcon, snapIconCssPx, srcPxForWheelIcon } from '../components/quickmenu/wheelIconBudget'
@@ -83,21 +84,14 @@ const typeLabel = (t: string) => TYPE_LABEL[t] ?? '条目'
 // N6 F1 可读性 → N40③ 花瓣盘：图标常显，座径四档各 +2px；名称改单行省略，
 // 全称读数完全交 hub 仪表核（F1"hub 干活"路线执行到底）。档位令牌经 CSS 变量
 // 下发给样式层（pop 为径向外顶位移，密盘档位降回 5px 防与邻缝打架）。
-// 密度分档：≤6 宽裕 / 7-9 标准 / 10-12 紧凑 / >12 极限（超密本就应分组收纳）。
-const density = computed(() => {
-  const n = items.value.length
-  if (n <= 6) return { btnW: 64, well: 36, icon: 22, name: 12, pop: 8 }
-  if (n <= 9) return { btnW: 58, well: 32, icon: 18, name: 12, pop: 8 }
-  if (n <= 12) return { btnW: 52, well: 28, icon: 16, name: 11, pop: 5 }
-  return { btnW: 48, well: 26, icon: 15, name: 11, pop: 5 }
-})
+// 密度分档表已归口 wheelGeometry.densityFor（档值逐字锁定见 contract spec）。
+const density = computed(() => densityFor(items.value.length))
 const densityVars = computed(() => ({
   '--d-btn-w': `${density.value.btnW}px`,
   '--d-well': `${density.value.well}px`,
   '--d-icon': `${density.value.icon}px`,
   '--d-name': `${density.value.name}px`,
 }))
-const CAP_ICON = 15 // 帽带子扇区图标档（原模板裸值归口，便于像素预算消费）
 
 // —— 皮肤账与图标像素预算（机主反馈 2026-09-26 两条：小图标糊 / 盘面单调）——
 // 真相在后端（GetSkin），localStorage 副本仅作跨窗镜像：本窗首帧用镜像抢即时
@@ -471,7 +465,7 @@ function onGroupActivate(i: number) {
   >
     <svg
       class="disc"
-      :viewBox="`0 0 ${SIZE} ${SIZE}`"
+      :viewBox="fullViewBox(SIZE)"
     >
       <defs>
         <!-- 盘缘亮环渐变（①）：顶部最亮收到底部微光，接替退役的 .disc-glint -->
