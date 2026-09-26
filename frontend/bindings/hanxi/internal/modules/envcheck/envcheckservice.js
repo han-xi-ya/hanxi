@@ -24,6 +24,9 @@ import * as diskusage$0 from "./diskusage/models.js";
 import * as dotnetversion$0 from "./dotnetversion/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as gitconfig$0 from "./gitconfig/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as gitversion$0 from "./gitversion/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -125,6 +128,16 @@ export function GetNpmToolsOverview() {
  */
 export function GetPythonOverview() {
     return $Call.ByID(520715768);
+}
+
+/**
+ * GitGlobalConfig 读取 git 全局配置（git config --global --list，纯本机只读）：
+ * 未安装/未配置/读取失败/成功四态在 DTO state 中如实区分，条目键值均已经后端
+ * 脱敏词表就地打码——前端与复制件拿到的就是脱敏件，原值不出服务。
+ * @returns {$CancellablePromise<gitconfig$0.Overview>}
+ */
+export function GitGlobalConfig() {
+    return $Call.ByID(1689627284);
 }
 
 /**

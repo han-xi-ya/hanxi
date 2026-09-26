@@ -5,6 +5,7 @@ import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
 import type { ToolInfo } from '../../bindings/hanxi/internal/modules/envcheck/detect/models'
 import type { ToolUsage } from '../../bindings/hanxi/internal/modules/envcheck/diskusage/models'
 import type { Overview as DotNetOverview } from '../../bindings/hanxi/internal/modules/envcheck/dotnetversion/models'
+import type { Overview as GitConfigOverview } from '../../bindings/hanxi/internal/modules/envcheck/gitconfig/models'
 import type { Overview as GitOverview } from '../../bindings/hanxi/internal/modules/envcheck/gitversion/models'
 import type { Overview as GoOverview } from '../../bindings/hanxi/internal/modules/envcheck/goversion/models'
 import type { Overview as JavaOverview } from '../../bindings/hanxi/internal/modules/envcheck/javaversion/models'
@@ -92,6 +93,47 @@ async function loadDiskUsage() {
   }
 }
 
+// ---------- Git 全局配置（git config --global --list，只读 + 后端脱敏）----------
+// 键值自后端出服务前已过脱敏词表——前端与复制件见到的就是脱敏件，原值从不出网。
+const gitConfig = ref<GitConfigOverview | null>(null)
+const gitConfigLoading = ref(false)
+const gitConfigError = ref('')
+
+// 状态词表：未安装/未配置/读取成功/读取失败各态文案独立，绝不退化成空列表糊弄。
+const GIT_CFG_META: Record<string, { text: string; tone: string }> = {
+  configured: { text: '已读取', tone: 'positive' },
+  unconfigured: { text: '未配置', tone: 'neutral' },
+  'not-installed': { text: '未安装', tone: 'neutral' },
+  error: { text: '读取失败', tone: 'danger' },
+}
+function gitCfgMeta(state?: string) {
+  return GIT_CFG_META[state ?? ''] ?? { text: '待读取', tone: 'neutral' }
+}
+const gitConfigItems = computed(() => gitConfig.value?.items ?? [])
+
+async function refreshGitConfig() {
+  if (gitConfigLoading.value) return
+  gitConfigLoading.value = true
+  gitConfigError.value = ''
+  try {
+    gitConfig.value = await EnvCheckAPI.GitGlobalConfig()
+  } catch (error) {
+    gitConfig.value = null
+    gitConfigError.value = `Git 全局配置读取失败: ${getErrorMessage(error)}`
+  } finally {
+    gitConfigLoading.value = false
+  }
+}
+
+function copyGitConfig() {
+  if (!gitConfigItems.value.length) {
+    showToast('暂无可复制的配置条目')
+    return
+  }
+  const body = gitConfigItems.value.map((item) => `${item.key}=${item.value}`).join('\n')
+  void copyWithToast(body, 'Git 全局配置已复制（敏感值为脱敏件）')
+}
+
 const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
   git: { overview: null, loading: false, error: '' },
   go: { overview: null, loading: false, error: '' },
@@ -144,7 +186,7 @@ const TOOL_LABELS: Record<OfficialTool | 'npm' | 'pnpm', string> = {
   pnpm: 'pnpm',
 }
 
-const loading = computed(() => localLoading.value || npmLoading.value || Object.values(remoteStates).some(state => state.loading))
+const loading = computed(() => localLoading.value || gitConfigLoading.value || npmLoading.value || Object.values(remoteStates).some(state => state.loading))
 const okCount = computed(() => tools.value.filter(tool => tool.status === 'installed').length)
 const totalCount = computed(() => tools.value.length)
 
@@ -154,6 +196,7 @@ async function refresh() {
   loadError.value = ''
   const remotePromises = (['git', 'go', 'node', 'java', 'python', 'dotnet'] as OfficialTool[]).map(tool => refreshOfficial(tool))
   remotePromises.push(refreshNpm())
+  remotePromises.push(refreshGitConfig()) // 纯本机读取，跟随页面复采钮，不另起轮询
   try {
     tools.value = (await EnvCheckAPI.DetectAll()) ?? []
     everLoaded.value = true
@@ -459,6 +502,36 @@ onMounted(() => {
         <p>未返回可识别的开发工具，请重新检测。</p>
       </div>
 
+      <!-- Git 全局配置：只读 + 脱敏件（原值不出后端，复制件与界面所见一致） -->
+      <section class="usage-panel gitcfg-panel" aria-label="Git 全局配置">
+        <header class="usage-head">
+          <span class="usage-title">Git 全局配置 <span class="chip usage-verdict" :class="`chip-${gitCfgMeta(gitConfig?.state).tone}`">{{ gitCfgMeta(gitConfig?.state).text }}</span></span>
+          <span class="usage-sub" aria-live="polite">
+            <template v-if="gitConfigLoading">正在读取 git config --global --list…</template>
+            <template v-else-if="gitConfigError">{{ gitConfigError }}</template>
+            <template v-else-if="gitConfig?.state === 'configured'">共 {{ gitConfigItems.length }} 条，敏感条目已就地打码</template>
+            <template v-else-if="gitConfig?.state === 'unconfigured'">git 可用，但尚无全局配置（~/.gitconfig 不存在或无条目）</template>
+            <template v-else-if="gitConfig?.state === 'not-installed'">{{ gitConfig?.detail }}</template>
+            <template v-else>{{ gitConfig?.detail || '尚未读取，可点击右侧按钮或随页面「重新检测」获取。' }}</template>
+          </span>
+          <button class="btn btn-secondary btn-small" :disabled="gitConfigLoading" @click="refreshGitConfig">
+            ↻ {{ gitConfig ? '重新读取' : '读取全局配置' }}
+          </button>
+          <button v-if="gitConfigItems.length" class="btn btn-secondary btn-small" title="复制内容与界面一致（值已是后端脱敏件）" @click="copyGitConfig">复制全部</button>
+        </header>
+        <p v-if="!gitConfigLoading && gitConfig?.state === 'not-installed'" class="usage-sub">
+          指引：从
+          <button class="link-button" @click="openDownloadPage('git')">Git for Windows 下载页</button>
+          安装，并确保 git.exe 所在目录加入系统 PATH 后重新检测。
+        </p>
+        <div v-if="gitConfigItems.length" class="gitcfg-list">
+          <div v-for="(item, idx) in gitConfigItems" :key="`${item.key}#${idx}`" class="usage-line gitcfg-line">
+            <code class="mono gitcfg-key" :title="item.key">{{ item.key }}</code>
+            <code class="mono gitcfg-value" :title="item.value">{{ item.value || '(空值)' }}</code>
+          </div>
+        </div>
+      </section>
+
       <!-- 空间家底（N14）：本体目录 + 依赖/缓存占用总览 -->
       <section class="usage-panel" aria-label="空间家底">
         <header class="usage-head">
@@ -618,6 +691,10 @@ onMounted(() => {
 .compact-grid { grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); }
 .tool-card, .management-card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .usage-panel { margin-top: 12px; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+/* Git 全局配置区：形制复用 .usage-panel/.usage-head/.usage-line 家族，仅加键值两列收缩 */
+.gitcfg-list { display: flex; flex-direction: column; gap: 4px; }
+.gitcfg-line .gitcfg-key { flex: 0 1 auto; max-width: 46%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-text-subtle); }
+.gitcfg-line .gitcfg-value { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-text); }
 .usage-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .usage-head .btn { margin-left: auto; }
 .usage-title { font-weight: 700; }

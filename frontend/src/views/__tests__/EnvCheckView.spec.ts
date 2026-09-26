@@ -16,6 +16,7 @@ const env = vi.hoisted(() => ({
   UpgradeNpmTool: vi.fn(),
   UninstallNpmTool: vi.fn(),
   GetGitForWindowsOverview: vi.fn(),
+  GitGlobalConfig: vi.fn(),
   GetGoOverview: vi.fn(),
   GetNodeOverview: vi.fn(),
   GetJavaOverview: vi.fn(),
@@ -90,9 +91,23 @@ async function flush(times = 30) {
   for (let i = 0; i < times; i++) await Promise.resolve()
 }
 
+function gitConfigPayload(over: Record<string, unknown> = {}) {
+  return {
+    state: 'configured',
+    items: [
+      { key: 'user.name', value: 'hanxi' },
+      { key: 'user.email', value: 'hanxi@example.com' },
+      { key: 'http.proxy', value: '[已脱敏]' }, // 服务端出的就是脱敏件，前端无原值
+    ],
+    detail: '',
+    ...over,
+  }
+}
+
 function stubHappy() {
   env.DetectAll.mockResolvedValue(BASE_TOOLS as never)
   env.GetNpmToolsOverview.mockResolvedValue(npmOverview() as never)
+  env.GitGlobalConfig.mockResolvedValue(gitConfigPayload() as never)
   for (const fn of [env.GetGitForWindowsOverview, env.GetGoOverview, env.GetNodeOverview, env.GetJavaOverview, env.GetPythonOverview, env.GetDotNetOverview]) {
     fn.mockResolvedValue({ channels: [{ key: 'stable', label: 'Stable', detail: '', relation: 'update-available', releases: [{ version: '1.2.3', published: '2026-08-01T00:00:00Z' }], relationDetail: '' }], isStale: false, fetchedAt: '2026-09-05 10:00' } as never)
   }
@@ -360,6 +375,95 @@ describe('EnvCheckView npm 工具操作流', () => {
     await flush()
     expect(managedCard(w, 'Claude Code')!.find('.npm-panel').exists()).toBe(true)
     w.unmount()
+  })
+})
+
+describe('EnvCheckView Git 全局配置区块', () => {
+  function gitCfgSection(w: VueWrapper) {
+    return w.find('.gitcfg-panel')
+  }
+
+  it('随页面复采钮自动读取；configured 态渲染键值行、条目数与脱敏值原样透出', async () => {
+    stubHappy()
+    const w = await mountView()
+    await flush()
+    expect(env.GitGlobalConfig).toHaveBeenCalled()
+    const section = gitCfgSection(w)
+    expect(section.text()).toContain('已读取')
+    expect(section.text()).toContain('共 3 条，敏感条目已就地打码')
+    const lines = section.findAll('.gitcfg-line')
+    expect(lines).toHaveLength(3)
+    expect(lines[2].findAll('code')[0].text()).toBe('http.proxy')
+    expect(lines[2].findAll('code')[1].text()).toBe('[已脱敏]')
+    expect(lines[2].findAll('code')[1].attributes('title')).toBe('[已脱敏]')
+    w.unmount()
+  })
+
+  it('复制全部：复制件即界面脱敏件（逐行 key=value，无原值）', async () => {
+    stubHappy()
+    const originalClipboard = navigator.clipboard
+    const originalSecure = window.isSecureContext
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })
+    try {
+      const w = await mountView()
+      await flush()
+      const copy = gitCfgSection(w).findAll('button').find(b => b.text() === '复制全部')!
+      await copy.trigger('click')
+      await flush()
+      expect(writeText).toHaveBeenCalledWith('user.name=hanxi\nuser.email=hanxi@example.com\nhttp.proxy=[已脱敏]')
+      expect(useToast().toastMsg.value).toContain('Git 全局配置已复制')
+      w.unmount()
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', { value: originalClipboard, configurable: true })
+      Object.defineProperty(window, 'isSecureContext', { value: originalSecure, configurable: true })
+    }
+  })
+
+  it('unconfigured 态：明示"尚无全局配置"而非空列表糊弄', async () => {
+    stubHappy()
+    env.GitGlobalConfig.mockResolvedValue(gitConfigPayload({ state: 'unconfigured', items: undefined }) as never)
+    const w = await mountView()
+    await flush()
+    expect(gitCfgSection(w).text()).toContain('未配置')
+    expect(gitCfgSection(w).text()).toContain('~/.gitconfig 不存在或无条目')
+    expect(gitCfgSection(w).findAll('.gitcfg-line')).toHaveLength(0)
+    w.unmount()
+  })
+
+  it('not-installed 态显形为指引：安装文案 + 打开 Git 下载页按钮', async () => {
+    stubHappy()
+    env.GitGlobalConfig.mockResolvedValue(gitConfigPayload({
+      state: 'not-installed', items: undefined, detail: '未在 PATH 中找到 git，无法读取全局配置',
+    }) as never)
+    const w = await mountView()
+    await flush()
+    const section = gitCfgSection(w)
+    expect(section.text()).toContain('未在 PATH 中找到 git')
+    expect(section.text()).toContain('Git for Windows 下载页')
+    await section.findAll('.link-button')[0].trigger('click')
+    expect(env.OpenGitForWindowsDownloadPage).toHaveBeenCalled()
+    expect(section.text()).not.toContain('共 ')
+    w.unmount()
+  })
+
+  it('error 态透出 detail；调用失败走错误文案且区块不消失', async () => {
+    stubHappy()
+    env.GitGlobalConfig.mockResolvedValue(gitConfigPayload({ state: 'error', items: undefined, detail: '读取 git 全局配置失败: exit status 128' }) as never)
+    const w = await mountView()
+    await flush()
+    expect(gitCfgSection(w).text()).toContain('读取失败')
+    expect(gitCfgSection(w).text()).toContain('exit status 128')
+    w.unmount()
+
+    stubHappy()
+    env.GitGlobalConfig.mockRejectedValue(new Error('模块正被停用'))
+    const w2 = await mountView()
+    await flush()
+    expect(gitCfgSection(w2).exists()).toBe(true)
+    expect(gitCfgSection(w2).text()).toContain('Git 全局配置读取失败: 模块正被停用')
+    w2.unmount()
   })
 })
 
