@@ -1,50 +1,235 @@
 {
   "modules": [
-    { "id": "bcu", "route": "/ext/bcu", "group": "system" },
-    { "id": "bili23", "route": "/ext/bili23", "group": "media" },
-    { "id": "ccswitch", "route": "/ext/ccswitch", "group": "developer" },
-    { "id": "ddnsgo", "route": "/ext/ddnsgo", "group": "network" },
-    { "id": "douzy", "route": "/ext/douzy", "group": "media" },
-    { "id": "eartrumpet", "route": "/ext/eartrumpet", "group": "desktop" },
-    { "id": "envcheck", "route": "/ext/envcheck", "group": "system" },
-    { "id": "everything", "route": "/ext/everything", "group": "efficiency" },
-    { "id": "fileshare", "route": "/ext/fileshare", "group": "network" },
-    { "id": "flclash", "route": "/ext/flclash", "group": "network" },
-    { "id": "frpc", "route": "/frpc", "group": "network" },
-    { "id": "guoheview", "route": "/ext/guoheview", "group": "desktop" },
-    { "id": "keyviz", "route": "/ext/keyviz", "group": "desktop" },
-    { "id": "lan", "route": "/ext/lan", "group": "network" },
-    { "id": "litemonitor", "route": "/ext/litemonitor", "group": "system" },
-    { "id": "mangodisk", "route": "/ext/mangodisk", "group": "desktop" },
-    { "id": "markeron", "route": "/ext/markeron", "group": "desktop" },
-    { "id": "memo", "route": "/ext/memo", "group": "efficiency" },
-    { "id": "msgboard", "route": "/ext/msgboard", "group": "desktop" },
-    { "id": "nanazip", "route": "/ext/nanazip", "group": "desktop" },
-    { "id": "ocr", "route": "/ext/ocr", "group": "efficiency" },
-    { "id": "papertodo", "route": "/ext/papertodo", "group": "efficiency" },
-    { "id": "paseo", "route": "/ext/paseo", "group": "developer" },
-    { "id": "piclite", "route": "/ext/piclite", "group": "media" },
-    { "id": "portkill", "route": "/ext/portkill", "group": "system" },
-    { "id": "portscan", "route": "/ext/portscan", "group": "network" },
-    { "id": "publicip", "route": "/ext/publicip", "group": "network" },
-    { "id": "quicklook", "route": "/ext/quicklook", "group": "desktop" },
-    { "id": "quickmenu", "route": "/ext/quickmenu", "group": "desktop" },
-    { "id": "rammap", "route": "/ext/rammap", "group": "system" },
-    { "id": "recordly", "route": "/ext/recordly", "group": "media" },
-    { "id": "rufus", "route": "/ext/rufus", "group": "system" },
-    { "id": "rustdesk", "route": "/ext/rustdesk", "group": "network" },
-    { "id": "snipaste", "route": "/ext/snipaste", "group": "efficiency" },
-    { "id": "softver", "route": "/ext/softver", "group": "system" },
-    { "id": "subnetdesk", "route": "/ext/subnetdesk", "group": "network" },
-    { "id": "sysinfo", "route": "/ext/sysinfo", "group": "system" },
-    { "id": "termora", "route": "/ext/termora", "group": "developer" },
-    { "id": "translucenttb", "route": "/ext/translucenttb", "group": "desktop" },
-    { "id": "vscode", "route": "/ext/vscode", "group": "developer" },
-    { "id": "webapp", "route": "/ext/webapp", "group": "efficiency" },
-    { "id": "wechat", "route": "/ext/wechat", "group": "efficiency" },
-    { "id": "wifi", "route": "/ext/wifi", "group": "network" },
-    { "id": "windterm", "route": "/ext/windterm", "group": "developer" },
-    { "id": "wsl", "route": "/ext/wsl", "group": "developer" }
+    {
+      "id": "bcu",
+      "route": "/ext/bcu",
+      "group": "system"
+    },
+    {
+      "id": "bili23",
+      "route": "/ext/bili23",
+      "group": "media"
+    },
+    {
+      "id": "ccswitch",
+      "route": "/ext/ccswitch",
+      "group": "developer"
+    },
+    {
+      "id": "ddnsgo",
+      "route": "/ext/ddnsgo",
+      "group": "network"
+    },
+    {
+      "id": "douzy",
+      "route": "/ext/douzy",
+      "group": "media"
+    },
+    {
+      "id": "eartrumpet",
+      "route": "/ext/eartrumpet",
+      "group": "desktop"
+    },
+    {
+      "id": "envcheck",
+      "route": "/ext/envcheck",
+      "group": "system"
+    },
+    {
+      "id": "everything",
+      "route": "/ext/everything",
+      "group": "efficiency"
+    },
+    {
+      "id": "fileshare",
+      "route": "/ext/fileshare",
+      "group": "network"
+    },
+    {
+      "id": "flclash",
+      "route": "/ext/flclash",
+      "group": "network"
+    },
+    {
+      "id": "frpc",
+      "route": "/frpc",
+      "group": "network"
+    },
+    {
+      "id": "guoheview",
+      "route": "/ext/guoheview",
+      "group": "desktop"
+    },
+    {
+      "id": "keyviz",
+      "route": "/ext/keyviz",
+      "group": "desktop"
+    },
+    {
+      "id": "lan",
+      "route": "/ext/lan",
+      "group": "network"
+    },
+    {
+      "id": "litemonitor",
+      "route": "/ext/litemonitor",
+      "group": "system"
+    },
+    {
+      "id": "gonavi",
+      "route": "/ext/gonavi",
+      "group": "developer"
+    },
+    {
+      "id": "mangodisk",
+      "route": "/ext/mangodisk",
+      "group": "desktop"
+    },
+    {
+      "id": "markeron",
+      "route": "/ext/markeron",
+      "group": "desktop"
+    },
+    {
+      "id": "memo",
+      "route": "/ext/memo",
+      "group": "efficiency"
+    },
+    {
+      "id": "msgboard",
+      "route": "/ext/msgboard",
+      "group": "desktop"
+    },
+    {
+      "id": "nanazip",
+      "route": "/ext/nanazip",
+      "group": "desktop"
+    },
+    {
+      "id": "ocr",
+      "route": "/ext/ocr",
+      "group": "efficiency"
+    },
+    {
+      "id": "papertodo",
+      "route": "/ext/papertodo",
+      "group": "efficiency"
+    },
+    {
+      "id": "paseo",
+      "route": "/ext/paseo",
+      "group": "developer"
+    },
+    {
+      "id": "piclite",
+      "route": "/ext/piclite",
+      "group": "media"
+    },
+    {
+      "id": "portkill",
+      "route": "/ext/portkill",
+      "group": "system"
+    },
+    {
+      "id": "portscan",
+      "route": "/ext/portscan",
+      "group": "network"
+    },
+    {
+      "id": "publicip",
+      "route": "/ext/publicip",
+      "group": "network"
+    },
+    {
+      "id": "quicklook",
+      "route": "/ext/quicklook",
+      "group": "desktop"
+    },
+    {
+      "id": "quickmenu",
+      "route": "/ext/quickmenu",
+      "group": "desktop"
+    },
+    {
+      "id": "rammap",
+      "route": "/ext/rammap",
+      "group": "system"
+    },
+    {
+      "id": "recordly",
+      "route": "/ext/recordly",
+      "group": "media"
+    },
+    {
+      "id": "rufus",
+      "route": "/ext/rufus",
+      "group": "system"
+    },
+    {
+      "id": "rustdesk",
+      "route": "/ext/rustdesk",
+      "group": "network"
+    },
+    {
+      "id": "snipaste",
+      "route": "/ext/snipaste",
+      "group": "efficiency"
+    },
+    {
+      "id": "softver",
+      "route": "/ext/softver",
+      "group": "system"
+    },
+    {
+      "id": "subnetdesk",
+      "route": "/ext/subnetdesk",
+      "group": "network"
+    },
+    {
+      "id": "sysinfo",
+      "route": "/ext/sysinfo",
+      "group": "system"
+    },
+    {
+      "id": "termora",
+      "route": "/ext/termora",
+      "group": "developer"
+    },
+    {
+      "id": "translucenttb",
+      "route": "/ext/translucenttb",
+      "group": "desktop"
+    },
+    {
+      "id": "vscode",
+      "route": "/ext/vscode",
+      "group": "developer"
+    },
+    {
+      "id": "webapp",
+      "route": "/ext/webapp",
+      "group": "efficiency"
+    },
+    {
+      "id": "wechat",
+      "route": "/ext/wechat",
+      "group": "efficiency"
+    },
+    {
+      "id": "wifi",
+      "route": "/ext/wifi",
+      "group": "network"
+    },
+    {
+      "id": "windterm",
+      "route": "/ext/windterm",
+      "group": "developer"
+    },
+    {
+      "id": "wsl",
+      "route": "/ext/wsl",
+      "group": "developer"
+    }
   ],
   "events": [
     "bcu:instance-state",
@@ -70,6 +255,8 @@
     "frpc:instance-log",
     "frpc:instance-state",
     "frpc:version-download",
+    "gonavi:instance-state",
+    "gonavi:version-download",
     "guoheview:instance-state",
     "guoheview:version-download",
     "keyviz:instance-state",
@@ -134,37 +321,90 @@
     "wsl:readiness"
   ],
   "wiring": {
-    "preactivatedModules": ["wechat", "quickmenu", "msgboard", "memo", "wsl"],
+    "preactivatedModules": [
+      "wechat",
+      "quickmenu",
+      "msgboard",
+      "memo",
+      "wsl"
+    ],
     "orderedCalls": [
-      { "before": "quickMenuModule.SetMainWindow(win)", "after": "registry.EnsureActive(\"quickmenu\")" },
-      { "before": "msgboardModule.SetHotkeyRegistry(hk)", "after": "registry.EnsureActive(\"msgboard\")" },
-      { "before": "mMod.SetHotkeyRegistry(hk)", "after": "registry.EnsureActive(\"memo\")" },
-      { "before": "setupSnipHotkey(hk, registry, ocrSvc)", "after": "registry.EnsureActive(\"quickmenu\")" }
+      {
+        "before": "quickMenuModule.SetMainWindow(win)",
+        "after": "registry.EnsureActive(\"quickmenu\")"
+      },
+      {
+        "before": "msgboardModule.SetHotkeyRegistry(hk)",
+        "after": "registry.EnsureActive(\"msgboard\")"
+      },
+      {
+        "before": "mMod.SetHotkeyRegistry(hk)",
+        "after": "registry.EnsureActive(\"memo\")"
+      },
+      {
+        "before": "setupSnipHotkey(hk, registry, ocrSvc)",
+        "after": "registry.EnsureActive(\"quickmenu\")"
+      }
     ]
   },
   "bindings": {
     "app/appservice.js": [
-      "EnsureModuleActive", "GetNavs", "ListModules", "SetModuleEnabled", "RestartElevated",
-      "GetTrayMenu", "SetTrayMenu", "SetWindowDarkMode",
-      "ListCatalog", "ListModuleStates", "SetModuleInstalled",
-      "ListOperations", "DismissResumable", "RefreshUpdates"
+      "EnsureModuleActive",
+      "GetNavs",
+      "ListModules",
+      "SetModuleEnabled",
+      "RestartElevated",
+      "GetTrayMenu",
+      "SetTrayMenu",
+      "SetWindowDarkMode",
+      "ListCatalog",
+      "ListModuleStates",
+      "SetModuleInstalled",
+      "ListOperations",
+      "DismissResumable",
+      "RefreshUpdates"
     ],
     "modules/ocr/ocrservice.js": [
-      "GetEngines", "GetSnipHotkey", "GetSnipResult", "HandleNativeDrop", "RecognizeClipboardImage",
-      "SetActiveEngine", "SetSnipHotkey", "SetSnipHotkeyEnabled", "SnipAndRecognize", "SnipCardDismiss", "SnipCopyText"
+      "GetEngines",
+      "GetSnipHotkey",
+      "GetSnipResult",
+      "HandleNativeDrop",
+      "RecognizeClipboardImage",
+      "SetActiveEngine",
+      "SetSnipHotkey",
+      "SetSnipHotkeyEnabled",
+      "SnipAndRecognize",
+      "SnipCardDismiss",
+      "SnipCopyText"
     ],
     "modules/quickmenu/quickmenuservice.js": [
-      "Dismiss", "GetStatus", "GetTwoTier", "Launch", "ListItems", "OpenSettings", "SetTwoTier"
+      "Dismiss",
+      "GetStatus",
+      "GetTwoTier",
+      "Launch",
+      "ListItems",
+      "OpenSettings",
+      "SetTwoTier"
     ],
     "modules/msgboard/msgboardservice.js": [
-      "Dismiss", "GetConfig", "GetStatus", "SetConfig", "Show", "Toggle"
+      "Dismiss",
+      "GetConfig",
+      "GetStatus",
+      "SetConfig",
+      "Show",
+      "Toggle"
     ],
     "modules/wsl/wslservice.js": [
-      "GetUsbOverview", "ReplayUsbNow", "SetUsbAutoAttach", "SetUsbShare", "SetUsbShareEnabled", "StartReadiness"
+      "GetUsbOverview",
+      "ReplayUsbNow",
+      "SetUsbAutoAttach",
+      "SetUsbShare",
+      "SetUsbShareEnabled",
+      "StartReadiness"
     ]
   },
   "counts": {
-    "modules": 45,
-    "events": 85
+    "modules": 46,
+    "events": 87
   }
 }

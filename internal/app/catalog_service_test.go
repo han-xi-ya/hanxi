@@ -132,8 +132,8 @@ func TestSetModuleEnabledRespectsInstalledGate(t *testing.T) {
 
 func TestListCatalogShape(t *testing.T) {
 	items := CatalogItems()
-	if len(items) != 45 {
-		t.Fatalf("内建目录应 45 项, got %d", len(items))
+	if len(items) != 46 {
+		t.Fatalf("内建目录应 46 项, got %d", len(items))
 	}
 	for _, it := range items {
 		if it.DeliveryKind != extapi.DeliveryBuiltinLogical || it.Owner == "" || it.Name == "" {

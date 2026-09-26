@@ -155,7 +155,7 @@
     {
       "id": "envcheck",
       "name": "开发环境检测",
-      "description": "检测本机开发工具链，查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载",
+      "description": "检测本机开发工具链（含 git 全局配置脱敏查看），查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载",
       "category": "system",
       "deliveryKind": "builtin-logical",
       "capabilities": [
@@ -267,6 +267,32 @@
         "rpc",
         "navigation",
         "search"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
+      "id": "gonavi",
+      "name": "GoNavi",
+      "description": "托管轻量数据库管理工具 GoNavi：版本管理、JobObject 启停与窗口唤起（MySQL/PostgreSQL 等图形客户端；数据在 ~/.gonavi 不随版本隔离）",
+      "category": "developer",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "hosted-versions",
+        "managed-process",
+        "tray-commands"
+      ],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search",
+        "tray"
       ],
       "compatibility": {
         "hostRange": "*",
