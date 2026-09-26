@@ -68,6 +68,7 @@ describe('历史版本分区', () => {
     snapSvc.ListRevisions.mockResolvedValue(revisions)
     const w = await mountView()
     expect(snapSvc.GetStatus).toHaveBeenCalled()
+    expect(w.text()).toContain('数据与存储') // 分区名机主拍板：备份/历史类归数据侧
     const switches = w.findAll('.switch')
     expect((switches[0].element as HTMLInputElement).checked).toBe(true)
     expect(w.text()).toContain('版本历史（Git') // §6 批 B 新 chip 口径（模式+容量一句话说清）

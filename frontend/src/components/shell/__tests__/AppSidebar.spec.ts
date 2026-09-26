@@ -170,7 +170,8 @@ describe('设置分区菜单（第二栏设置态）', () => {
     expect(w.findAll('.mod').map((b) => b.find('.mod-name').text())).toEqual(['随手记'])
     await w.setProps({ activeRoute: '/settings/storage' })
     expect(w.find('.panel-title').text()).toBe('设置')
-    expect(w.findAll('.mod')[3].classes()).toContain('active') // 分区序：general/theme/tray/storage
+    // 分区序（搬家批）：general/theme/tray/system/storage——存储目录紧随系统管理
+    expect(w.findAll('.mod')[4].classes()).toContain('active')
   })
 
   it('设置分区不写入最近使用（recentRoutes 只记模块路由）', async () => {

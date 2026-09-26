@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// 设置分区·历史版本（数据自动快照，PLAN_SNAPSHOT §3.5 / N33 批 B）：
+// 设置分区·数据与存储（分区名机主拍板：备份/快照/历史类归数据侧；页面主体
+// 即历史版本，PLAN_SNAPSHOT §3.5 / N33 批 B）：
 // 状态行 → 偏好行 → 按文件浏览（左 SnapshotFileList · 右 SnapshotTimeline）
 // → 全部版本列表 → 预览弹窗（文件清单+内容预览+单文件恢复）。
 // 本件退居编排：RPC 拉取、选中态/加载态、恢复确认链全在这里，两栏只管呈现；
@@ -327,7 +328,7 @@ onMounted(refresh)
 
 <template>
   <section class="page">
-    <PageHeader title="历史版本" subtitle="配置与便签每次落定自动留一个可回滚的版本；全程本机静默，永不上传。">
+    <PageHeader title="数据与存储" subtitle="备份与历史版本：配置与便签每次落定自动留一个可回滚的版本，全程本机静默，永不上传。">
       <template #actions>
         <span class="chip" :class="modeChipClass">{{ modeChip }}</span>
       </template>

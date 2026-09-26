@@ -1,6 +1,6 @@
 // 特征测试：设置页拆分后的六个分区视图主链路。
 // 承接原 SettingsView.spec.ts 的断言语义（常规读写回环、外观分段联动后端、
-// 托盘加载渲染、工作台入口上抛 navigate），并补存储/系统直达的骨架锁。
+// 托盘加载渲染、工作台入口上抛 navigate），并补存储/系统管理分区的骨架锁。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import GeneralSection from '../GeneralSection.vue'
@@ -252,6 +252,41 @@ describe('存储目录分区', () => {
     expect(appSvc.OpenPath).toHaveBeenCalledWith('D:\\hx\\logs')
   })
 
+  // 机主反馈二：每个目录除大小外还要写用途——数据根/技术目录/占用行/versions
+  // 子行全部带简介行；词表按一级目录名映射，未收录目录回落通用文案。
+  it('目录用途简介（反馈二）：根行与技术目录行常驻，占用行按词表映射、未知目录回落', async () => {
+    stubs()
+    appSvc.DataRootUsage.mockResolvedValue([
+      { name: 'logs', isDir: true, bytes: 4096, files: 4, partial: false, errorCount: 0 },
+      { name: 'mystery', isDir: true, bytes: 2048, files: 5, partial: false, errorCount: 0 },
+    ])
+    const w = await mountView(StorageSection)
+    await flushPromises()
+    const intents = w.findAll('.dir-intent').map((n) => n.text())
+    expect(intents[0]).toContain('Hanxi 之家') // 数据根行
+    expect(intents.some((t) => t.includes('app-YYYY-MM-DD.log'))) // 日志目录行
+      .toBe(true)
+    expect(intents.some((t) => t.includes('需要时自动重建'))) // 运行时临时目录行
+      .toBe(true)
+    const usageRows = w.findAll('.usage-row')
+    expect(usageRows[0].text()).toContain('脱敏运行日志') // 词表命中 logs
+    expect(usageRows[1].text()).toContain('用途未收录词表') // 未知目录回落通用句
+  })
+
+  it('versions 展开子行带用途简介（反馈二）', async () => {
+    stubs()
+    appSvc.DataRootUsage.mockResolvedValue([
+      { name: 'versions', isDir: true, bytes: 75240857, files: 900, partial: false, errorCount: 0 },
+    ])
+    appSvc.DataRootSubUsage.mockResolvedValue([
+      { name: 'termora', bytes: 75240857, files: 400, partial: false, errorCount: 0, entries: ['termora_v2.16.1'] },
+    ])
+    const w = await mountView(StorageSection)
+    await w.find('.usage-detail-btn').trigger('click')
+    await flushPromises()
+    expect(w.find('.usage-subrow .dir-intent').text()).toContain('该软件的托管版本')
+  })
+
   it('绑定来源：解锁"回到同级"，解绑走全局确认后落 UnbindDataDir', async () => {
     stubs()
     appSvc.GetAppInfo.mockResolvedValue(appInfoStub({ mode: 'bound', baseDir: 'E:\\HanxiData' }))
@@ -346,12 +381,13 @@ describe('存储目录分区', () => {
   })
 })
 
-describe('系统直达分区', () => {
-  it('七路系统组件行存在，点击按 id 走对应后端入口', async () => {
+describe('系统管理分区（原名"系统直达"，机主反馈一归一命名）', () => {
+  it('七路系统组件行存在，点击按 id 走对应后端入口，页头为「系统管理」', async () => {
     stubs()
     appSvc.OpenHostsFile.mockResolvedValue(undefined)
     appSvc.OpenSystemTool.mockResolvedValue(undefined)
     const w = await mountView(SystemSection)
+    expect(w.text()).toContain('系统管理')
     const rows = w.findAll('.tool-list')[0].findAll('.setting-row')
     expect(rows).toHaveLength(7)
     await rows[0].find('button').trigger('click') // hosts

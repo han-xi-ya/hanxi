@@ -183,7 +183,7 @@ const shownNavs = computed<NavEntryWithGroup[]>(() =>
 // 面板头：设置态取"设置"；分类态取 GROUP_META（other 兜底组自配文案）；首页态取"工作台"
 const panelMeta = computed(() => {
   if (settingsPanel.value) {
-    return { title: '设置', desc: '偏好 · 托盘 · 系统直达', icon: 'gear' as IconName }
+    return { title: '设置', desc: '偏好 · 系统管理 · 数据与存储', icon: 'gear' as IconName }
   }
   if (shownGroup.value === '') {
     return { title: '工作台', desc: '常用与最近使用的模块', icon: 'home' as IconName }

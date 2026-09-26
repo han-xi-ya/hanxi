@@ -124,14 +124,21 @@ export interface SettingsSection {
   route: string
 }
 
+/**
+ * 分区序（机主反馈一 + 消歧批）：偏好簇（常规/外观/托盘）→ 系统管理簇
+ * （系统管理 + 存储目录：目录/空间治理归此语境）→ 数据与存储（备份/快照/
+ * 历史类留守数据侧，分区名按机主拍板）→ 工作台/AI。图标消歧（机主截图批）：
+ * 目录空间类走文件夹系（folder），系统性能类走仪表系（gauge），不再与
+ * rail「系统管理」分组（cpu）/旧 hard-drive 机箱形撞脸。
+ */
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'general', title: '常规偏好', desc: '启动 · 窗口 · 日志保留', icon: 'sliders', route: '/settings/general' },
   { id: 'theme', title: '外观主题', desc: '浅色 · 深色 · 跟随系统', icon: 'palette', route: '/settings/theme' },
   { id: 'tray', title: '托盘菜单', desc: '右键快捷入口自定义', icon: 'inbox', route: '/settings/tray' },
-  { id: 'storage', title: '存储目录', desc: '配置 · 日志 · 版本仓', icon: 'hard-drive', route: '/settings/storage' },
-  { id: 'system', title: '系统直达', desc: 'hosts · 组件 · 通知诊断', icon: 'wrench', route: '/settings/system' },
+  { id: 'system', title: '系统管理', desc: 'hosts · 组件 · 通知诊断', icon: 'gauge', route: '/settings/system' },
+  { id: 'storage', title: '存储目录', desc: '数据根 · 空间占用 · 目录治理', icon: 'folder', route: '/settings/storage' },
+  { id: 'snapshot', title: '数据与存储', desc: '备份 · 自动快照 · 单文件回滚', icon: 'clock', route: '/settings/snapshot' },
   { id: 'workbench', title: '工作台入口', desc: '运行日志 · 关于', icon: 'file-text', route: '/settings/workbench' },
-  { id: 'snapshot', title: '历史版本', desc: '自动快照 · 单文件回滚', icon: 'clock', route: '/settings/snapshot' },
   { id: 'ai', title: 'AI 接入', desc: 'MCP 客户端 · 安装向导', icon: 'bot', route: '/settings/ai' },
 ]
 

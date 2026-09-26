@@ -22,12 +22,50 @@ const busy = ref(false)
 // mode 为 F6 内部来源标记（sibling/bound），仅用于呈现"家从哪来"，不再是运行模式
 const bound = computed(() => appInfo.value?.mode === 'bound')
 
-// 技术子目录行（数据根之外的派生目录；配置随根走，根行单列于顶部）
+// 技术子目录行（数据根之外的派生目录；配置随根走，根行单列于顶部）。
+// intent 为机主反馈二要求的用途简介，逐条对照后端代码实证（paths.go / 各模块写盘点）。
 const dirs = computed(() => [
-  { name: '日志存储目录', badge: '脱敏运行日志', path: appInfo.value?.logsDir },
-  { name: '免安装包版本目录', badge: '托管工具可执行文件隔离仓', path: appInfo.value?.versionsDir },
-  { name: '运行时临时目录', badge: '动态 TOML & PID', path: appInfo.value?.runtimeDir },
+  {
+    name: '日志存储目录', badge: '脱敏运行日志', path: appInfo.value?.logsDir,
+    intent: '按日期滚动（app-YYYY-MM-DD.log），过期份数随「常规偏好 · 日志保留天数」自动清理',
+  },
+  {
+    name: '免安装包版本目录', badge: '托管工具可执行文件隔离仓', path: appInfo.value?.versionsDir,
+    intent: '托管工具的可执行程序，每个 <模块>_<版本> 一目录；腾容量请到各托管页按版本卸载',
+  },
+  {
+    name: '运行时临时目录', badge: '动态 TOML & PID', path: appInfo.value?.runtimeDir,
+    intent: '运行期瞬态件（frpc 动态配置/PID、OCR 图片暂存等），可安全删除，需要时自动重建',
+  },
 ])
+
+// 数据根一级目录用途词表（前端静态，机主反馈二）：文案逐条对过生成代码——
+// logs=脱敏滚动日志；state=history/各模块状态 JSON 与模块台账（paths.go
+// StateDir，updatewatch/bcu/everything 等 NewStore(StateDir)）；versions=托管
+// 版本仓（<模块>_<版本> 目录，DataRootSubUsage 聚合源）；runtime=动态 TOML/PID
+// 与 OCR 暂存（frpc runDir、ocr tmpDir）；installers=安装包装件归档移存
+// （ocr hosted.go archiveInstaller、rustdesk manager）；modules=receipts 安装
+// 凭据 + journals 操作日志（app.go OpenStore/ReceiptStore）；memo=便签文件库
+// （memo service NewFileStore(<data根>/memo)）；.snapshots=自动快照库
+// （internal/snapshot snapshotsDirName）；mcp=接入凭据与授权档位（mcpwizard）。
+const DIR_INTENTS: Record<string, string> = {
+  logs: '脱敏运行日志，按保留天数滚动清理',
+  state: '模块运行状态与历史（识别历史、模块台账等 JSON），删了配置与记录会丢',
+  versions: '托管工具的可执行程序与按版本隔离的私有数据',
+  runtime: '运行期瞬态件（动态配置、PID、图片暂存），可安全删除',
+  installers: '安装包装件归档（zip/安装包原件），供重装与追溯参考',
+  modules: '模块安装凭据（receipts）与操作日志（journals）',
+  memo: '极客随手记文件库：全部笔记数据都在这里',
+  '.snapshots': '数据自动快照库：「数据与存储」分区单文件回滚的来源',
+  mcp: 'AI 接入凭据与授权开关（install/access 声明）',
+}
+// 未列名词表（模块私有派生目录、手工放入的数据等）的通用回落句。
+const DIR_INTENT_FALLBACK = '派生目录：用途未收录词表（可能是模块私有数据或手工放入），拿不准别删'
+function dirIntent(name?: string): string {
+  return (name && DIR_INTENTS[name]) || DIR_INTENT_FALLBACK
+}
+// versions 展开的每软件子行统一用途说明（软件各异，给一句总括性介绍）。
+const VERSIONS_ROW_INTENT = '该软件的托管版本：可执行程序与随版本隔离保存的设置/插件'
 
 async function refresh() {
   try {
@@ -197,6 +235,7 @@ onMounted(() => {
       <div class="setting-row">
         <span class="setting-main">
           <span class="setting-name">当前数据根 <span class="chip chip-neutral dir-badge">配置 & 状态 & 托管</span></span>
+          <span class="dir-intent">Hanxi 之家：配置、状态与全部派生目录都随这根走；搬家只改声明不搬数据</span>
           <code class="setting-desc dir-path" :title="appInfo?.baseDir">{{ appInfo?.baseDir || '—' }}</code>
         </span>
         <span class="root-actions">
@@ -213,6 +252,7 @@ onMounted(() => {
       <div v-for="dir in dirs" :key="dir.name" class="setting-row">
         <span class="setting-main">
           <span class="setting-name">{{ dir.name }} <span class="chip chip-neutral dir-badge">{{ dir.badge }}</span></span>
+          <span class="dir-intent">{{ dir.intent }}</span>
           <code class="setting-desc dir-path" :title="dir.path">{{ dir.path || '—' }}</code>
         </span>
         <button class="btn btn-secondary btn-small" :disabled="!dir.path" @click="openFolder(dir.path)">
@@ -254,6 +294,7 @@ onMounted(() => {
               <span v-else-if="item.errorCount" class="chip chip-neutral dir-badge" :title="`${item.errorCount} 个条目读取失败已跳过`">{{ item.errorCount }} 项跳过</span>
               <span v-if="rootVerdict(item.name).word" class="chip dir-badge" :class="rootVerdict(item.name).tone" :title="rootVerdict(item.name).tip">{{ rootVerdict(item.name).word }}</span>
             </span>
+            <span class="dir-intent">{{ dirIntent(item.name) }}</span>
             <code v-if="item.isDir && item.files" class="setting-desc dir-path">{{ item.files.toLocaleString() }} 个文件</code>
           </span>
           <button v-if="item.name === 'versions'" class="btn btn-secondary btn-small usage-detail-btn" :disabled="subLoading" @click="toggleVersions">
@@ -279,6 +320,7 @@ onMounted(() => {
                 <span v-if="g.entries && g.entries.length > 1" class="chip chip-neutral dir-badge" :title="`版本目录: ${g.entries.join('、')}`">{{ g.entries.length }} 个版本</span>
                 <span v-if="g.partial" class="chip chip-warning dir-badge" title="测量超时被截断，此值为下限估算">≥ 下限</span>
               </span>
+              <span class="dir-intent">{{ VERSIONS_ROW_INTENT }}</span>
               <code v-if="g.files" class="setting-desc dir-path">{{ g.files.toLocaleString() }} 个文件</code>
             </span>
             <span class="usage-size" :class="{ 'usage-partial': g.partial }" :title="`${g.bytes.toLocaleString()} 字节${g.partial ? '（下限）' : ''} · 删了=卸掉该软件，用时要重新下载安装`">
@@ -337,6 +379,8 @@ onMounted(() => {
 @keyframes storage-spin { to { transform: rotate(360deg); } }
 
 .dir-badge { margin-left: 6px; vertical-align: 1px; }
+/* 用途简介行（机主反馈二）：名字与路径之间的次级说明，静态词表前端渲染 */
+.dir-intent { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.5; }
 .dir-path {
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

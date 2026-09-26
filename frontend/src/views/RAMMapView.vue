@@ -17,6 +17,9 @@ const adapter = createRAMMapAdapter()
     console-tab-label="🧮 控制台"
     :banner-slim="false"
   >
+    <!-- A/B 双路提权选择条（机主反馈：两钮不得脱离状态卡孤悬）：紧贴状态头
+         区渲染（#console-extra 首位），左缘归属条视觉从属于上方卡簇，不再是页面
+         底部的独立大卡。三重契约之③预告文案与 A/B 语义逐字保留。 -->
     <template #console-extra="{ state, busy }">
       <div v-if="adapter.needsElevationChoice.value && (state === 'stopped' || state === 'failed')" class="elev-choice">
         <p class="elev-choice-note">RAMMap 本体要求管理员权限：一次性看数据选「仅提权启动」（外部实例，Hanxi 不负责自动关闭）；当常用工具则重启 Hanxi 继续托管。</p>
@@ -40,10 +43,15 @@ const adapter = createRAMMapAdapter()
 <style scoped>
 .inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
-/* A/B 双路选择条（N22）：软底嵌套面，主钮与重启入口并列、说明居上 */
+/* A/B 双路选择条（N22；机主钮位反馈收编）：软底嵌套面 + 左缘 2px primary 混色
+   归属条——与存储目录展开子行同一视觉语言（--attribution-line token），
+   紧贴状态头下方呈现"附属于状态卡"的从属感，不再是被读作页面底部的孤悬独立卡。 */
 .elev-choice {
+  --attribution-line: color-mix(in srgb, var(--color-primary) 30%, transparent);
   display: flex; flex-direction: column; gap: 8px;
-  padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-control);
+  margin-top: -4px; padding: 10px 12px;
+  border: 1px solid var(--color-border); border-left: 2px solid var(--attribution-line);
+  border-radius: var(--radius-control);
   background: var(--surface-soft);
 }
 .elev-choice-note { margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.55; }

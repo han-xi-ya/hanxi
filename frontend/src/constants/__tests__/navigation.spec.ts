@@ -149,6 +149,23 @@ describe('设置分区注册表', () => {
     }
   })
 
+  // 机主反馈一 + 图标消歧批：存储目录挪入系统管理语境（紧邻其后），备份/历史
+  // 留守数据侧并定名「数据与存储」；目录用 folder、系统性能用 gauge，
+  // 灰色机箱形（hard-drive）退役，不再与 rail「系统管理」分组图标撞脸。
+  it('分区搬家后的命名、序与图标消歧锁定', () => {
+    expect(SETTINGS_SECTIONS.map((s) => s.id)).toEqual([
+      'general', 'theme', 'tray', 'system', 'storage', 'snapshot', 'workbench', 'ai',
+    ])
+    const byId = Object.fromEntries(SETTINGS_SECTIONS.map((s) => [s.id, s]))
+    expect(byId.system.title).toBe('系统管理')
+    expect(byId.system.icon).toBe('gauge')
+    expect(byId.storage.title).toBe('存储目录')
+    expect(byId.storage.icon).toBe('folder')
+    expect(byId.snapshot.title).toBe('数据与存储')
+    expect(SETTINGS_SECTIONS.map((s) => s.icon)).not.toContain('hard-drive')
+    expect(SETTINGS_SECTIONS.map((s) => s.icon)).not.toContain('wrench')
+  })
+
   it('settingsSectionOf：主入口与未知子段回落 general，识别分区，非设置路由返回 null', () => {
     expect(settingsSectionOf('/settings')).toBe('general')
     expect(settingsSectionOf('/settings/theme')).toBe('theme')
