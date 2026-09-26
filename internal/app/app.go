@@ -24,6 +24,9 @@ import (
 	"hanxi/internal/modules/ccswitch"
 	ccswitchinstance "hanxi/internal/modules/ccswitch/instance"
 	ccswitchversion "hanxi/internal/modules/ccswitch/version"
+	"hanxi/internal/modules/dbx"
+	dbxinstance "hanxi/internal/modules/dbx/instance"
+	dbxversion "hanxi/internal/modules/dbx/version"
 	"hanxi/internal/modules/ddnsgo"
 	ddnsgoinstance "hanxi/internal/modules/ddnsgo/instance"
 	ddnsgoversion "hanxi/internal/modules/ddnsgo/version"
@@ -42,9 +45,6 @@ import (
 	"hanxi/internal/modules/frpc"
 	"hanxi/internal/modules/frpc/instance"
 	"hanxi/internal/modules/frpc/version"
-	"hanxi/internal/modules/dbx"
-	dbxinstance "hanxi/internal/modules/dbx/instance"
-	dbxversion "hanxi/internal/modules/dbx/version"
 	"hanxi/internal/modules/gonavi"
 	gonaviinstance "hanxi/internal/modules/gonavi/instance"
 	gonaviversion "hanxi/internal/modules/gonavi/version"
@@ -375,7 +375,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		quicklook.ID:     quicklookversion.OpenTree(paths.VersionsDir()),
 		bili23.ID:        bili23version.OpenTree(paths.VersionsDir()),
 		gonavi.ID:        gonaviversion.OpenTree(paths.VersionsDir()),
-		dbx.ID:         dbxversion.OpenTree(paths.VersionsDir()),
+		dbx.ID:           dbxversion.OpenTree(paths.VersionsDir()),
 	}
 	var opHub *operation.Hub
 	if opStore != nil {
