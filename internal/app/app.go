@@ -42,6 +42,9 @@ import (
 	"hanxi/internal/modules/frpc"
 	"hanxi/internal/modules/frpc/instance"
 	"hanxi/internal/modules/frpc/version"
+	"hanxi/internal/modules/gonavi"
+	gonaviinstance "hanxi/internal/modules/gonavi/instance"
+	gonaviversion "hanxi/internal/modules/gonavi/version"
 	"hanxi/internal/modules/guoheview"
 	guoheviewinstance "hanxi/internal/modules/guoheview/instance"
 	guoheviewversion "hanxi/internal/modules/guoheview/version"
@@ -160,6 +163,8 @@ func RegisterEvents() {
 	application.RegisterEvent[version.DownloadProgress]("frpc:version-download")
 	application.RegisterEvent[instance.Snapshot]("frpc:instance-state")
 	application.RegisterEvent[instance.LogEntry]("frpc:instance-log")
+	application.RegisterEvent[gonaviversion.DownloadProgress]("gonavi:version-download")
+	application.RegisterEvent[gonaviinstance.Snapshot]("gonavi:instance-state")
 	application.RegisterEvent[fileshare.ServerStatus]("fileshare:status")
 	application.RegisterEvent[fileshare.TransferEvent]("fileshare:transfer")
 	application.RegisterEvent[fileshare.DropItem]("fileshare:text-dropped")
@@ -364,6 +369,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		guoheview.ID:     guoheviewversion.OpenTree(paths.VersionsDir()),
 		quicklook.ID:     quicklookversion.OpenTree(paths.VersionsDir()),
 		bili23.ID:        bili23version.OpenTree(paths.VersionsDir()),
+		gonavi.ID:        gonaviversion.OpenTree(paths.VersionsDir()),
 	}
 	var opHub *operation.Hub
 	if opStore != nil {
@@ -470,6 +476,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		keyviz.New(plat),
 		quicklook.New(plat),
 		litemonitor.New(plat),
+		gonavi.New(plat),
 		guoheview.New(plat),
 		sysinfo.New(),
 		ddnsgo.New(plat),
