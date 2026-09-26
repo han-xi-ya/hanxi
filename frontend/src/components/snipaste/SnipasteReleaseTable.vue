@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SnipasteRelease } from '../../../bindings/hanxi/internal/modules/snipaste/version/models'
 import type { SnipasteDownloadTicket } from '../../composables/useSnipasteDownloadTickets'
+import { releaseFormWord } from '../managed/adapter'
 
 type ReleaseStatus = 'installed' | 'downloading' | 'error' | 'idle'
 
@@ -27,7 +28,11 @@ const emit = defineEmits<{
       <thead><tr><th>版本</th><th>状态</th><th>大小</th><th>发布时间</th><th>校验</th><th class="action-col">操作</th></tr></thead>
       <tbody>
         <tr v-for="release in props.releases" :key="release.version">
-          <td><div class="release-version"><strong>{{ release.version }}</strong><span v-if="release.isPre" class="chip chip-warning">预发布</span><span v-if="release.stale" class="chip chip-warning">缓存</span></div></td>
+          <td><div class="release-version"><strong>{{ release.version }}</strong><span v-if="release.isPre" class="chip chip-warning">预发布</span><span v-if="release.stale" class="chip chip-warning">缓存</span><!-- N13 统一形态 chip：本托管资产形态事实（后端 ListRemote 回填，纯展示），画法对齐 ManagedVersionPanel --><span
+            v-if="release.form"
+            class="chip chip-neutral form-chip"
+            :title="`本托管形态（安装链事实）：${releaseFormWord(release.form)}`"
+          >{{ releaseFormWord(release.form) }}</span></div></td>
           <td>
             <span v-if="props.statusOf(release) === 'installed'" class="snipaste-ver-status installed">已安装</span>
             <span v-else-if="props.statusOf(release) === 'error'" class="snipaste-ver-status error">失败</span>
@@ -65,6 +70,8 @@ const emit = defineEmits<{
 .table-container .tbl { min-width: 830px; }
 .action-col { width: 170px; }
 .release-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* N13 形态 chip 密度对齐 ManagedVersionPanel.form-chip；行内容器已带 gap，不再加 margin */
+.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
 .mono-meta { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .snipaste-ver-status { display: inline-flex; align-items: center; width: fit-content; padding: 3px 7px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
 .snipaste-ver-status.installed { color: var(--state-positive); background: color-mix(in srgb, var(--state-positive) 10%, transparent); }

@@ -224,6 +224,17 @@ describe('QuickLookView', () => {
     wrapper.unmount()
   })
 
+  it('N13 方言远程行形态 chip：form 回填出「便携」词值（取词与共享面板同源），未回填行 chip 缺席', async () => {
+    const withForm = { version: '0.4.1', size: 4194304, published: '2024-06-01T00:00:00Z', form: 'portable' }
+    stubDefaults({ state: 'stopped' }, [], [withForm, release1])
+    const { wrapper } = await mountView()
+    const rows = wrapper.findAll('.table-container tbody tr')
+    expect(rows[0].find('.form-chip').text()).toBe('便携')
+    expect(rows[0].find('.form-chip').attributes('title')).toContain('本托管形态（安装链事实）')
+    expect(rows[1].find('.form-chip').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('轮询：激活期 2.5s 刷新；KeepAlive 停用后停止不泄漏', async () => {
     vi.useFakeTimers()
     try {

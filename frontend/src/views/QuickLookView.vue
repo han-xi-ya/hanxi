@@ -13,7 +13,7 @@
 import { ref } from 'vue'
 import { createQuickLookAdapter } from '../adapters/quicklook'
 import { useManagedConsole } from '../components/managed/store'
-import type { ManagedReleaseRecord, ManagedVersionRecord, NormalizedProgress } from '../components/managed/adapter'
+import { releaseFormWord, type ManagedReleaseRecord, type ManagedVersionRecord, type NormalizedProgress } from '../components/managed/adapter'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
@@ -184,6 +184,13 @@ async function runReload(): Promise<void> {
               <td>
                 <strong class="ver-name">{{ rel.version }}</strong>
                 <UiStatusChip v-if="rel.isPre" tone="warning">预发布</UiStatusChip>
+                <!-- N13 统一形态 chip：本托管资产形态事实（后端 ListRemote 回填，
+                     经共享 store 原样透传，纯展示），画法对齐 ManagedVersionPanel -->
+                <span
+                  v-if="rel.form"
+                  class="chip chip-neutral form-chip"
+                  :title="`本托管形态（安装链事实）：${releaseFormWord(rel.form)}`"
+                >{{ releaseFormWord(rel.form) }}</span>
               </td>
               <td>
                 <span v-if="statusOf(rel) === 'installed'" class="ql-ver-status installed">已安装</span>
@@ -249,6 +256,8 @@ async function runReload(): Promise<void> {
 
 /* ---------- 远程表格（table-container/ver-name 由全局原子接管） ---------- */
 .ver-name + .chip { margin-left: 4px; }
+/* N13 形态 chip：密度与排位对齐 ManagedVersionPanel.form-chip */
+.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; margin-left: 4px; vertical-align: middle; }
 
 .ql-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .ql-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }

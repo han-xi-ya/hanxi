@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Release } from '../../../bindings/hanxi/internal/modules/vscode/version/models'
-import type { NormalizedProgress } from '../managed/adapter'
+import { releaseFormWord, type NormalizedProgress } from '../managed/adapter'
 import type { VSCodeForm } from '../../adapters/vscode'
 import { fmtSize } from '../../utils/format'
 import { vscodeProgressKey } from '../../adapters/vscode'
@@ -54,6 +54,13 @@ function stepOf(progress: NormalizedProgress): number {
           <td>
             <strong class="ver-name">{{ release.version }}</strong>
             <span v-if="form === 'portable' && release.version === releases[0]?.version && release.sha256" class="badge badge-hash">官方哈希</span>
+            <!-- N13 统一形态 chip：逐行形态事实（后端 ListRemote 按查询形态回填，
+                 portable/installer 与 hostfeed.Form 词表逐字同名），画法对齐 ManagedVersionPanel -->
+            <span
+              v-if="release.form"
+              class="chip chip-neutral form-chip"
+              :title="`本托管形态（安装链事实）：${releaseFormWord(release.form)}`"
+            >{{ releaseFormWord(release.form) }}</span>
           </td>
           <td>
             <span v-if="statusOf(release) === 'installed'" class="vc-ver-status installed">已安装</span>
@@ -96,6 +103,8 @@ function stepOf(progress: NormalizedProgress): number {
 
 <style scoped>
 .badge-hash { margin-left: 6px; background: var(--state-positive-soft); color: var(--state-positive); }
+/* N13 形态 chip：密度与排位对齐 ManagedVersionPanel.form-chip */
+.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; margin-left: 4px; vertical-align: middle; }
 .vc-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .vc-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .vc-ver-status.installed::before { background: var(--state-positive); }

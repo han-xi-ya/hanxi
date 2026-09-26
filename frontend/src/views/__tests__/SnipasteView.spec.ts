@@ -557,6 +557,19 @@ describe('SnipasteView 表方言与 extras 缺席形态', () => {
     wrapper.unmount()
   })
 
+  it('N13 官网行形态 chip：form=portable 出「便携」词值（取词与共享面板同源），未回填行 chip 缺席', async () => {
+    stubDefaults({ state: 'stopped' }, [], [
+      { ...release223b, form: 'portable' },
+      release223b,
+    ], '')
+    const { wrapper } = await mountInKeepAlive()
+    const rows = wrapper.findAll('.tbl tbody tr')
+    expect(rows[0].find('.form-chip').text()).toBe('便携')
+    expect(rows[0].find('.form-chip').attributes('title')).toContain('本托管形态（安装链事实）')
+    expect(rows[1].find('.form-chip').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('extras 缺席形态：Snipaste 无 FollowOnExit/Shutdown/桌面快捷/仓库行——勾选框与「随 Hanxi」字样绝不出现', async () => {
     expect((svc as Record<string, unknown>).GetFollowOnExit).toBeUndefined() // 桩刻意省略：误触即 TypeError
     expect((svc as Record<string, unknown>).SetFollowOnExit).toBeUndefined()

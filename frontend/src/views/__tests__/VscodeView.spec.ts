@@ -78,13 +78,14 @@ const v1350 = {
   dir: 'D:\\vscode\\versions\\vscode_1.135.0',
   size: 2097152, installedAt: '2026-07-01 10:00:00', isImport: true, source: 'E:\\old\\VSCode', verified: false,
 }
+// form 为后端 ListRemote 按查询形态回填的 N13 形态标注（方言行行各异）
 const relP = (over: Record<string, unknown> = {}) => ({
   version: '1.136.1', commit: 'c'.repeat(40), downloadUrl: '', assetName: 'VSCode-win32-x64-1.136.1.zip',
-  size: 2097152, sha256: 'a'.repeat(64), ...over,
+  size: 2097152, sha256: 'a'.repeat(64), form: 'portable', ...over,
 })
 const relI = (over: Record<string, unknown> = {}) => ({
   version: '1.136.1', commit: 'd'.repeat(40), downloadUrl: '', assetName: 'VSCodeUserSetup-x64-1.136.1.exe',
-  size: 1048576, sha256: '', ...over,
+  size: 1048576, sha256: '', form: 'installer', ...over,
 })
 
 function stubDefaults(
@@ -462,12 +463,26 @@ describe('VSCodeView 版本表双列方言', () => {
     expect(rows[0].findAll('td')[2].text()).toBe('2.0 MB') // fmtSize 标准形
     expect(rows[0].find('td button').text()).toBe('下载安装')
     expect(rows[0].text()).toContain('可下载')
+    // N13 形态 chip：便携表逐行钉词值（取词与共享面板同源 releaseFormWord；
+    // 断言须在切表前——v-for 复用 DOM 节点，切换会改写旧 wrapper 所指行）
+    expect(rows[0].find('.form-chip').text()).toBe('便携')
+    expect(rows[0].find('.form-chip').attributes('title')).toContain('本托管形态（安装链事实）')
     await wrapper.findAll('.vc-form-switch button')[1].trigger('click')
     await nextTick()
     const irow = wrapper.findAll('.tbl tbody tr')[0]
     expect(irow.text()).toContain('可安装')
     expect(irow.find('td button').text()).toBe('安装/升级')
     expect(irow.find('.badge-hash').exists()).toBe(false) // 安装版同版本无 sha256：徽标按便携首行判定
+    expect(irow.find('.form-chip').text()).toBe('安装器')
+    wrapper.unmount()
+  })
+
+  it('形态 chip 缺席：后端未回填 form 的行不渲染 chip', async () => {
+    stubDefaults(statusOfForms(snap('stopped'), snap('stopped')), {
+      releasesP: [relP({ form: undefined })],
+    })
+    const { wrapper } = await mountView()
+    expect(wrapper.findAll('.tbl tbody tr')[0].find('.form-chip').exists()).toBe(false)
     wrapper.unmount()
   })
 })
