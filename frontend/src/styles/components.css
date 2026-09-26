@@ -56,7 +56,11 @@
   line-height: 1.6;
 }
 
-/* ---------- 按钮家族（高度三档 --control-h-lg/md/sm）---------- */
+/* ---------- 按钮家族（高度三档 --control-h-lg/md/sm）----------
+ * N38 按钮配色治理（2026-09-26）：层级定档——primary 实底加深色描边（"主"）、
+ * secondary/accent-outline 用 --btn-outline-edge 立细边（次级可辨）、danger 描边/
+ * 实心双档一眼危险、disabled 全族去饱和（灰掉但不消失）、:active 全族下沉 1px 反馈。
+ * 色值单一真相在 tokens.css 派生档，本文件只挂语义引用。 */
 :where(.btn) {
   display: inline-flex;
   align-items: center;
@@ -69,30 +73,57 @@
   font-size: var(--text-base);
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
+  transition: background var(--motion-base) ease, border-color var(--motion-base) ease,
+    color var(--motion-base) ease, filter var(--motion-base) ease, transform var(--motion-fast) ease;
 }
-/* 禁用态统一口径（2026-09 焦点/禁用 token 收口裁决）：控件级禁用定档 opacity 方案，
- * 不换成 --surface-disabled 实底——.btn 家族六种变体底各不相同（primary 实底/描边/ghost），
- * 实底禁用需逐变体覆写且引入色板联动负担；opacity 对任意底色与色板等效、天然压住
- * 各 :hover:not(:disabled) 规则。--surface-disabled 只承担大面积禁用底（见下方输入档）。 */
+/* 禁用态统一口径（N38 修案，替代 2026-09"纯 opacity"裁决）：旧方案单靠 opacity .5
+ * 会把实底钮的文字与底色按同一比例洗向页面底色，白字/teal 底对比度实测跌到 2.04:1，
+ * 且各变体灰度趋同——即机主截图"灰压成一片"的根因。新口径 = grayscale(1) 去饱和
+ * 优先（实底变灰但钮内文字/底色对比度保留 ≈5.6:1）+ opacity .75 轻压一档表"不可点"。
+ * filter 写在基座上，对任意底色/色板等效，视图 scoped 变体副本（如三处 .btn-danger
+ * 只覆写 background/color）同样被整体去饱和，无漏网；hover/active 均带 :not(:disabled)
+ * 天然不吃。--surface-disabled 仍只承担大面积禁用底（见下方输入档）。 */
 :where(.btn:disabled) {
-  opacity: 0.5;
+  opacity: 0.75;
+  filter: grayscale(1);
   cursor: not-allowed;
+}
+/* 全族按压反馈：1px 下沉（减动效由 base.css 全局块兜） */
+:where(.btn:active:not(:disabled)) {
+  transform: translateY(1px);
 }
 :where(.btn-primary) {
   background: var(--color-primary);
   color: var(--color-on-primary);
+  border-color: var(--btn-solid-edge);
+  font-weight: 600; /* 主操作加一档字重，与次级拉开"主/次"分量 */
 }
 :where(.btn-primary:hover:not(:disabled)) {
   background: var(--color-primary-hover);
 }
+:where(.btn-primary:active:not(:disabled)) {
+  border-color: var(--btn-solid-edge-strong);
+}
 :where(.btn-secondary) {
   background: var(--surface-panel);
-  border-color: var(--color-border);
+  border-color: var(--btn-outline-edge); /* 旧 --color-border 白底上仅 1.27:1，边界近乎不可见 */
   color: var(--color-text);
 }
 :where(.btn-secondary:hover:not(:disabled)) {
   background: var(--surface-hover);
+  border-color: var(--btn-outline-edge-strong);
+}
+/* 实心危险（停止/强制中断类）：描边形见 .btn-danger-outline。本档收编为全局标准形，
+ * 消掉"类名在用、形制只活在 3 份视图 scoped 副本"的孤儿态（scoped 副本特异性更高，
+ * 在途视图视觉零变化，落回时自动接标准形）。 */
+:where(.btn-danger) {
+  background: var(--state-danger);
+  color: var(--color-on-accent);
+  border-color: var(--btn-danger-edge);
+  font-weight: 600;
+}
+:where(.btn-danger:hover:not(:disabled)) {
+  background: var(--btn-danger-fill-hover);
 }
 :where(.btn-danger-outline) {
   background: var(--surface-panel);
@@ -100,12 +131,17 @@
   color: var(--state-danger);
 }
 :where(.btn-danger-outline:hover:not(:disabled)) {
-  background: var(--state-danger-soft);
+  /* 旧 --state-danger-soft 与常态面板底几乎无差（ΔL<0.01），hover 无"变危险"感；
+   * 换 --btn-danger-outline-hover（danger 15% 深底）红味可辨且文字对比仍 ≈4.7:1 */
+  background: var(--btn-danger-outline-hover);
+}
+:where(.btn-danger-outline:active:not(:disabled)) {
+  background: var(--btn-danger-outline-active);
 }
 :where(.btn-accent-outline) {
   background: transparent;
   color: var(--color-primary);
-  border-color: var(--color-border);
+  border-color: var(--btn-outline-edge);
 }
 :where(.btn-accent-outline:hover:not(:disabled)) {
   border-color: var(--color-primary);
@@ -431,7 +467,7 @@
 }
 :where(.btn-quick) {
   background: var(--surface-panel);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--btn-outline-edge); /* N38：与次级钮边框同档，浅底可见 */
   border-radius: 6px;
   padding: 2px 8px;
   font-size: var(--text-xs);
@@ -604,8 +640,9 @@
   gap: 3px;
   transition: all 0.15s ease;
 }
-:where(.btn-bind-account:hover) {
-  background: var(--state-positive);
+/* N38：旧 hover 与常态同色系死规则（无任何反馈），改深一档；补 :not(:disabled) */
+:where(.btn-bind-account:hover:not(:disabled)) {
+  background: var(--btn-positive-fill-hover);
 }
 :where(.btn-bind-account.large) {
   padding: 8px 18px;

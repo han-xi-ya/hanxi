@@ -43,6 +43,24 @@
    * 本档只承担「大面积禁用底」（只读输入组、禁用工作区背景）。 */
   --surface-disabled: color-mix(in srgb, var(--color-text) 10%, var(--surface-panel));
 
+  /* 按钮家族派生档（N38 按钮配色治理 2026-09-26）：全为 color-mix 结构派生值
+   *（同 --surface-disabled / --terminal-* 纪律：引用主题变量自动随主题/色板联动，
+   * 不入色板覆写集，覆写块不得搬运这些名为裸色）。
+   * 实算依据见 components.css 按钮块注释与治理报告：
+   *  - solid-edge 两档：实心钮（primary/danger）描边比填充深，令主按钮有界更"实"；
+   *  - outline-edge 两档：次级/描边钮边框从 --color-border（白底上仅 1.27:1，肉眼近乎
+   *    不可见）提深到 ~2.5:1 / hover ~3.3:1，细边框先立层级、不加阴影；
+   *  - danger-outline hover/active：软底逐档加深，危险钮 hover 一眼可辨。 */
+  --btn-solid-edge: color-mix(in srgb, var(--color-primary) 78%, black);
+  --btn-solid-edge-strong: color-mix(in srgb, var(--color-primary) 62%, black);
+  --btn-danger-edge: color-mix(in srgb, var(--state-danger) 78%, black);
+  --btn-danger-fill-hover: color-mix(in srgb, var(--state-danger) 90%, black);
+  --btn-danger-outline-hover: color-mix(in srgb, var(--state-danger) 15%, var(--surface-panel));
+  --btn-danger-outline-active: color-mix(in srgb, var(--state-danger) 24%, var(--surface-panel));
+  --btn-outline-edge: color-mix(in srgb, var(--color-text) 38%, var(--surface-panel));
+  --btn-outline-edge-strong: color-mix(in srgb, var(--color-text) 55%, var(--surface-panel));
+  --btn-positive-fill-hover: color-mix(in srgb, var(--state-positive) 88%, black);
+
   /* 文字 */
   --color-text: #14252c;
   --color-text-muted: #667980;
@@ -72,9 +90,11 @@
   --state-danger-glow: rgba(179, 55, 54, 0.15);
   --color-primary-glow: rgba(13, 130, 132, 0.18);
 
-  /* 遮罩 */
+  /* 遮罩 / 焦点环。N38 治理：焦点环透明度整体提档——旧值白底合成后仅 1.38:1、
+   * 深底 1.71:1，键盘焦点环肉眼难辨（WCAG 非文本对比要求 ≥3:1）；本档各色板
+   * 浅底提至 0.75–0.8、深底 0.65、onyx（无障碍职能档）0.85–0.9，合成后 ≥3:1。 */
   --overlay-mask: rgba(10, 24, 29, 0.46);
-  --focus-ring: rgba(13, 130, 132, 0.24);
+  --focus-ring: rgba(13, 130, 132, 0.8);
 
   /* 字体栈（写实含中文回退；public/style.css 自带其旧名 --font-family 定义，不依赖本文件） */
   --font-text: "Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", sans-serif;
@@ -197,7 +217,7 @@
   --color-primary-glow: rgba(66, 183, 180, 0.2);
 
   --overlay-mask: rgba(2, 8, 11, 0.62);
-  --focus-ring: rgba(66, 183, 180, 0.28);
+  --focus-ring: rgba(66, 183, 180, 0.65); /* N38：深底焦点环提可见度（旧 0.28 合成后 1.71:1） */
 
   --shadow-small: 0 5px 18px rgba(0, 0, 0, 0.18);
   --shadow-panel: 0 22px 50px rgba(0, 0, 0, 0.23);
@@ -237,7 +257,7 @@
   --color-border-strong: #b8c2ce;
 
   --color-primary-glow: rgba(0, 100, 181, 0.18);
-  --focus-ring: rgba(0, 100, 181, 0.28);
+  --focus-ring: rgba(0, 100, 181, 0.75); /* N38：焦点环合成后 ≥3:1 */
 
   --shadow-small: 0 4px 14px rgba(24, 32, 41, 0.05);
   --shadow-panel: 0 18px 45px rgba(24, 32, 41, 0.08);
@@ -267,7 +287,7 @@
   --color-border-strong: #525f6f;
 
   --color-primary-glow: rgba(78, 189, 247, 0.22);
-  --focus-ring: rgba(78, 189, 247, 0.3);
+  --focus-ring: rgba(78, 189, 247, 0.65); /* N38 */
   /* 深色阴影/遮罩跨色板恒定（石墨底上黑投影最自然，见 preview.html 主题模式层决策），不覆写 */
 }
 
@@ -299,7 +319,7 @@
   --color-border-strong: #c0bace;
 
   --color-primary-glow: rgba(103, 65, 202, 0.18);
-  --focus-ring: rgba(103, 65, 202, 0.28);
+  --focus-ring: rgba(103, 65, 202, 0.75); /* N38 */
 
   --shadow-small: 0 4px 14px rgba(33, 29, 41, 0.05);
   --shadow-panel: 0 18px 45px rgba(33, 29, 41, 0.08);
@@ -329,7 +349,7 @@
   --color-border-strong: #5f5770;
 
   --color-primary-glow: rgba(187, 169, 250, 0.22);
-  --focus-ring: rgba(187, 169, 250, 0.3);
+  --focus-ring: rgba(187, 169, 250, 0.65); /* N38 */
 }
 
 /* ---------- 色板轴 · jade 青瓷（现状青绿的品牌进化：瓷面 + 墨青釉/松石夜釉） ----------
@@ -360,7 +380,7 @@
   --color-border-strong: #b1c4c3;
 
   --color-primary-glow: rgba(0, 104, 105, 0.18);
-  --focus-ring: rgba(0, 104, 105, 0.28);
+  --focus-ring: rgba(0, 104, 105, 0.75); /* N38 */
 
   --shadow-small: 0 4px 14px rgba(20, 34, 34, 0.05);
   --shadow-panel: 0 18px 45px rgba(20, 34, 34, 0.08);
@@ -390,7 +410,7 @@
   --color-border-strong: #476261;
 
   --color-primary-glow: rgba(93, 209, 207, 0.22);
-  --focus-ring: rgba(93, 209, 207, 0.3);
+  --focus-ring: rgba(93, 209, 207, 0.65); /* N38 */
 }
 
 /* ---------- 色板轴 · onyx 曜石（无障碍高对比·工程蓝画质感，AAA 口径） ----------
@@ -430,7 +450,7 @@
   --state-danger-soft: #f9e9e6;
 
   --color-primary-glow: rgba(6, 73, 184, 0.2);
-  --focus-ring: rgba(6, 73, 184, 0.36);
+  --focus-ring: rgba(6, 73, 184, 0.9); /* N38：onyx 无障碍职能档，焦点环比其余色板更重 */
 
   --shadow-small: 0 4px 14px rgba(10, 15, 20, 0.08);
   --shadow-panel: 0 18px 45px rgba(10, 15, 20, 0.13);
@@ -469,7 +489,7 @@
   --state-danger-soft: #3a1210;
 
   --color-primary-glow: rgba(121, 183, 255, 0.24);
-  --focus-ring: rgba(121, 183, 255, 0.45);
+  --focus-ring: rgba(121, 183, 255, 0.85); /* N38 */
 }
 
 /* 主题扩展位：
