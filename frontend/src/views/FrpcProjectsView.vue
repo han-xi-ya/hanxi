@@ -45,14 +45,26 @@ const importType = ref<'link' | 'toml'>('link')
 const importContent = ref('')
 const importError = ref('')
 
-// 日志抽屉
+// 日志抽屉（perf 改造：接收期预处理 + 按帧批量入表，见 flushLogPending 注记）
 const drawerOpen = ref(false)
 const drawerProjectId = ref('')
-const logLines = ref<string[]>([])
 const logLoading = ref(false)
 const logError = ref('')
 const logAutoScroll = ref(true)
 const logBodyRef = ref<HTMLElement | null>(null)
+
+/** 抽屉日志行（接收期即完成 ANSI 剥离与 warn 着色判定，渲染路径零解析）。 */
+interface LogRow { id: number; text: string; warn: boolean }
+const LOG_MAX_LINES = 2000
+const LOG_WARN_RE = /\[W\]|WARN|error|fail/i
+/** 行号单调递增：v-for 稳定 key，溢出裁剪只动头尾节点，不整表换键重补丁。 */
+let logRowSeq = 0
+const logRows = shallowRef<LogRow[]>([])
+/** 帧间到达的事件行暂存缓冲——一次 rAF 合并刷入，渲染批次数从「每行一批」降到「每帧至多一批」。 */
+let logPending: LogRow[] = []
+let logFlushScheduled = false
+/** 历史拉取在途：冻结帧刷新，回包后与 initial 一并合并（保持原 baseline 合并语义）。 */
+let logPulling = false
 
 // 运行时长每秒刷新
 const nowTick = ref(Date.now())
@@ -66,8 +78,10 @@ function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[\d;]*m/g, '')
 }
 
-// cleanLines 剥离色码后的日志（保留原行做样式判断）
-const displayLines = computed(() => logLines.value.map(l => stripAnsi(l)))
+function toLogRow(line: string): LogRow {
+  const text = stripAnsi(line)
+  return { id: ++logRowSeq, text, warn: LOG_WARN_RE.test(text) }
+}
 
 function stateOf(p: Project): Snapshot | undefined {
   return instances.value[p.id]
@@ -388,23 +402,53 @@ function copyEndpoint(ep: ProxyEndpoint) {
 }
 
 // ---------- 日志抽屉 ----------
+// 旧实现的三处逐行浪费（perf 改造动机，留档防回退）：①每条事件触发
+// displayLines computed 对全缓冲重跑 stripAnsi（O(N)/行）；②模板每行每次渲染
+// 重算 warn 正则；③:index key 使满仓裁剪整表换键重补丁 + 每行 nextTick 读
+// scrollHeight 强制同步布局。现在：行入表前一次性解析成 LogRow，事件回调
+// O(1) 进 pending，requestAnimationFrame 每帧至多一次批量入表 + 一次滚动。
 
-// 事件行缓冲基线：拉取返回前可能已收到事件行，用基线合并避免丢行
-let logPullBaseline = 0
+/** 把 pending 缓冲合并进渲染表（含溢出裁头）；返回是否真的有新增。 */
+function flushLogPending(): boolean {
+  if (logPending.length === 0) return false
+  const next = logRows.value.concat(logPending)
+  if (next.length > LOG_MAX_LINES) next.splice(0, next.length - LOG_MAX_LINES)
+  logRows.value = next
+  logPending = []
+  return true
+}
+
+function scheduleLogFlush() {
+  if (logFlushScheduled || logPulling) return // 拉取在途由 openLogs 统一合并，避免双写交错
+  logFlushScheduled = true
+  requestAnimationFrame(() => {
+    logFlushScheduled = false
+    if (logPulling) return
+    if (flushLogPending() && logAutoScroll.value) void scrollToBottom()
+  })
+}
 
 async function openLogs(p: Project) {
   drawerProjectId.value = p.id
-  logPullBaseline = logLines.value.length // 记录拉取前已缓冲的事件行
+  logPending = [] // 丢弃上一项目未刷入的在途行（原实现逐行即时入表无此残留窗口）
   logError.value = ''
   logLoading.value = true
   drawerOpen.value = true
+  // 冻结帧刷新：拉取期间到达的事件行暂存 pending，回包后按
+  // 「历史快照在前、新行紧随」合并——对齐原 baseline 合并语义（旧表内容整组置换）。
+  logPulling = true
   try {
     const initial = (await FrpcAPI.GetProjectLogs(p.id, 500)) ?? []
-    // 先到的事件行（baseline 之后）追加在初始快照之后
-    logLines.value = [...initial, ...logLines.value.slice(logPullBaseline)]
+    const merged = initial.map(toLogRow).concat(logPending)
+    if (merged.length > LOG_MAX_LINES) merged.splice(0, merged.length - LOG_MAX_LINES)
+    logRows.value = merged
+    logPending = []
   } catch (err: unknown) {
     logError.value = `拉取日志失败: ${getErrorMessage(err)}`
+    // 拉取失败不吞在途事件行（原实现它们已直接可见）：照常入表
+    if (flushLogPending() && logAutoScroll.value) void scrollToBottom()
   } finally {
+    logPulling = false
     logLoading.value = false
     await scrollToBottom()
   }
@@ -422,15 +466,21 @@ async function scrollToBottom() {
 }
 
 function clearLogs() {
-  logLines.value = []
+  logRows.value = []
+  logPending = []
 }
 
 // 复制抽屉当前日志（ANSI 已剥离的纯文本行），对齐 LogsView 的输出复制惯例
 function copyDrawerLogs() {
-  void copyWithToast(displayLines.value.join('\n'), `已复制 ${displayLines.value.length} 行日志`)
+  const text = logRows.value.map((r) => r.text).join('\n')
+  void copyWithToast(text, `已复制 ${logRows.value.length} 行日志`)
 }
 
+/** nowTick 唯一消费者是 running 卡的时长文案：无运行实例时不换 ref，空闲页每秒一帧的整页重渲染自此归零。 */
+const hasRunningInstance = computed(() => Object.values(instances.value).some((s) => s.state === 'running'))
+
 function nowTickRefresh() {
+  if (!hasRunningInstance.value) return
   nowTick.value = Date.now()
 }
 
@@ -438,15 +488,16 @@ function nowTickRefresh() {
 useWailsEvent<Snapshot>('frpc:instance-state', (snap) => {
   if (!snap?.projectId) return
   instances.value = { ...instances.value, [snap.projectId]: snap }
+  // 转入 running 即校准时钟：秒表恢复走帧（hasRunningInstance 已转真）前，
+  // 首帧时长文案用事件时刻而非可能陈旧的上一拍。
+  if (snap.state === 'running') nowTick.value = Date.now()
 })
 
 useWailsEvent<{ projectId: string; line: string }>('frpc:instance-log', (entry) => {
   if (!entry?.projectId || entry.projectId !== drawerProjectId.value) return
-  logLines.value.push(entry.line)
-  if (logLines.value.length > 2000) {
-    logLines.value.splice(0, logLines.value.length - 2000)
-  }
-  void scrollToBottom()
+  // 事件回调路径 O(1)：解析成行对象入 pending，渲染合并交给帧调度
+  logPending.push(toLogRow(entry.line))
+  scheduleLogFlush()
 })
 
 // 运行时长秒表（usePolling 内置 KeepAlive 激活/停用/卸载契约）
@@ -616,7 +667,7 @@ onMounted(async () => {
         <div class="log-drawer-tools">
           <label class="auto-scroll"><input v-model="logAutoScroll" type="checkbox" />自动滚动</label>
           <!-- 输出区复制补齐（PLAN_CLIPBOARD §3.2C）：LogsView 有、frpc 抽屉此前没有 -->
-          <button class="btn btn-secondary btn-small" :disabled="displayLines.length === 0" @click="copyDrawerLogs">复制</button>
+          <button class="btn btn-secondary btn-small" :disabled="logRows.length === 0" @click="copyDrawerLogs">复制</button>
           <button class="btn btn-secondary btn-small" @click="clearLogs">清屏</button>
           <button class="btn btn-secondary btn-small" @click="openLogs(projects.find(x => x.id === drawerProjectId) as any)">刷新</button>
           <button class="btn btn-secondary btn-small" @click="closeLogs">✕ 收起</button>
@@ -624,8 +675,8 @@ onMounted(async () => {
       </div>
       <div v-if="logError" class="log-error">{{ logError }}</div>
       <div ref="logBodyRef" class="log-body" @scroll.passive="logAutoScroll = ($event.target as HTMLElement).scrollTop + ($event.target as HTMLElement).clientHeight >= ($event.target as HTMLElement).scrollHeight - 40">
-        <template v-if="displayLines.length">
-          <div v-for="(line, i) in displayLines" :key="i" class="log-line" :class="{ 'log-warn': /\[W\]|WARN|error|fail/i.test(line) }">{{ line }}</div>
+        <template v-if="logRows.length">
+          <div v-for="row in logRows" :key="row.id" class="log-line" :class="{ 'log-warn': row.warn }">{{ row.text }}</div>
         </template>
         <div v-else class="log-empty">{{ logLoading ? '加载中…' : '暂无日志输出' }}</div>
       </div>

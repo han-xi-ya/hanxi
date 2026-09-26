@@ -241,14 +241,108 @@ describe('FrpcProjectsView 日志抽屉', () => {
     await flushMicrotasks()
     runtime.handlers['frpc:instance-log']({ data: { projectId: 'other', line: '别家日志' } })
     runtime.handlers['frpc:instance-log']({ data: { projectId: 'p1', line: '本家日志' } })
-    await nextTick()
+    await nextFrame() // perf 改造后事件行经 rAF 批量入表（每帧至多一批）
     expect(wrapper.text()).not.toContain('别家日志')
     expect(wrapper.find('.log-line').text()).toBe('本家日志')
     await wrapper.findAll('.log-drawer-tools button').find((b) => b.text() === '清屏')!.trigger('click')
     expect(wrapper.find('.log-empty').text()).toContain('暂无日志输出')
     wrapper.unmount()
   })
+
+  // ---------- perf 改造回归锁：接收期预处理 + 按帧批量渲染 ----------
+
+  it('突发合帧：一帧内多条事件行只随下一次帧刷新整批入表一次', async () => {
+    stubBase([snapOf()])
+    svc.GetProjectLogs.mockResolvedValue([])
+    const { wrapper } = mountInKeepAlive()
+    await flushMicrotasks()
+    await wrapper.findAll('.proj-actions button').find((b) => b.text() === '日志')!.trigger('click')
+    await flushMicrotasks()
+    for (let i = 0; i < 5; i++) {
+      runtime.handlers['frpc:instance-log']({ data: { projectId: 'p1', line: `行${i}` } })
+    }
+    // 帧未到：pending 缓冲尚未触发任何渲染（旧实现每条事件各自即时打脏渲染）
+    await nextTick()
+    expect(wrapper.findAll('.log-line')).toHaveLength(0)
+    await nextFrame()
+    const lines = wrapper.findAll('.log-line')
+    expect(lines).toHaveLength(5)
+    expect(lines.map((l) => l.text())).toEqual(['行0', '行1', '行2', '行3', '行4'])
+    wrapper.unmount()
+  })
+
+  it('入表行已剥 ANSI 且 warn 着色随行落定（渲染路径零正则）', async () => {
+    stubBase([snapOf()])
+    svc.GetProjectLogs.mockResolvedValue([])
+    const { wrapper } = mountInKeepAlive()
+    await flushMicrotasks()
+    await wrapper.findAll('.proj-actions button').find((b) => b.text() === '日志')!.trigger('click')
+    await flushMicrotasks()
+    runtime.handlers['frpc:instance-log']({ data: { projectId: 'p1', line: '\x1b[31m[E] connection error\x1b[0m' } })
+    await nextFrame()
+    const line = wrapper.find('.log-line')
+    expect(line.text()).toBe('[E] connection error')
+    expect(line.classes()).toContain('log-warn')
+    // 复制走缓存好的纯文本行：与渲染内容一致、无转义残留
+    await wrapper.findAll('.log-drawer-tools button').find((b) => b.text() === '复制')!.trigger('click')
+    expect(writeText).toHaveBeenCalledWith('[E] connection error')
+    wrapper.unmount()
+  })
+
+  it('满仓裁头：超过 2000 行后仅保留最近 2000 行（稳定 id 不随裁剪漂移）', async () => {
+    stubBase([snapOf()])
+    svc.GetProjectLogs.mockResolvedValue([])
+    const { wrapper } = mountInKeepAlive()
+    await flushMicrotasks()
+    await wrapper.findAll('.proj-actions button').find((b) => b.text() === '日志')!.trigger('click')
+    await flushMicrotasks()
+    for (let i = 0; i < 2010; i++) {
+      runtime.handlers['frpc:instance-log']({ data: { projectId: 'p1', line: `L${i}` } })
+    }
+    await nextFrame()
+    const lines = wrapper.findAll('.log-line')
+    expect(lines).toHaveLength(2000)
+    expect(lines[0].text()).toBe('L10')
+    expect(lines[1999].text()).toBe('L2009')
+    wrapper.unmount()
+  })
 })
+
+describe('FrpcProjectsView 运行时长秒表门控', () => {
+  it('有运行实例：秒随时间走，时长文案更新', async () => {
+    vi.useFakeTimers()
+    try {
+      stubBase([snapOf()]) // running，startedAt=装载前 65s
+      const { wrapper } = mountInKeepAlive()
+      await vi.advanceTimersByTimeAsync(0) // 走完装载期微任务
+      await vi.advanceTimersByTimeAsync(3_000)
+      expect(wrapper.find('.proj-status').text()).toContain('1m 8s')
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('无运行实例：1s 轮空转归零（时钟推进期间零 Date.now 消费）', async () => {
+    vi.useFakeTimers()
+    try {
+      stubBase([]) // 无任何实例快照
+      const { wrapper } = mountInKeepAlive()
+      await vi.advanceTimersByTimeAsync(0)
+      const nowSpy = vi.spyOn(Date, 'now')
+      await vi.advanceTimersByTimeAsync(5_000) // 5 个 1s tick：门控下应一触不发
+      expect(nowSpy).not.toHaveBeenCalled()
+      nowSpy.mockRestore()
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()))
+}
 
 describe('FrpcProjectsView 分享与端点复制', () => {
   it('分享链接：frp:// + base64 写入剪贴板（现状 navigator 直用）', async () => {
