@@ -44,12 +44,15 @@ function mountCard(e: ModuleEntry, busy = false) {
 }
 
 describe('ModuleCard', () => {
-  it('primaryAction=open：主按钮"打开"（primary 变体），点击上抛 primary', async () => {
+  it('primaryAction=open：主按钮"打开"（精致化：.btn-micro 档 + 实心 primary 降次级描边），点击上抛 primary', async () => {
     const e = entry()
     const w = mountCard(e)
     const btn = w.find('button.primary-btn')
     expect(btn.text()).toBe(PRIMARY_ACTION_META.open.label)
-    expect(btn.classes()).toContain('btn-primary')
+    // 形态钉住：微操作档 + 次级色系，色块不再压过状态徽标（词表语义/文案不变，只降呈现档）
+    expect(btn.classes()).toContain('btn-micro')
+    expect(btn.classes()).toContain('btn-secondary')
+    expect(btn.classes()).not.toContain('btn-primary')
     await btn.trigger('click')
     expect(w.emitted('primary')?.[0]).toEqual([e])
   })

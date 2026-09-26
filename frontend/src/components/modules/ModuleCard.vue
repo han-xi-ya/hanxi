@@ -19,6 +19,7 @@ import {
   type PrimaryActionMeta,
   type StateTone,
   type SummaryKeyValue,
+  type UiButtonVariant,
 } from '../../constants/status'
 import { GROUP_META, MODULE_PRESENTATION, FALLBACK_MODULE_ICON } from '../../constants/navigation'
 import { appIconName } from '../../constants/appIcons'
@@ -88,6 +89,14 @@ const primaryTitle = computed(() => {
 // busy 并入：在途 Operation 期间同样禁用全部动作钮（呈现复用，真相仍是 operation 投影）
 const locked = computed(() => props.busy || !!props.operation)
 const primaryDisabled = computed(() => actionMeta.value.disabled || locked.value)
+
+// 精致化收口（机主反馈"蓝色长条太大"）：卡片墙内实心 primary 一律降档为
+// 次级描边 + .btn-micro（全站密集场景既定档，同 PortScan/FileShare 行内钮）。
+// 主操作分量改由位置（动作行首位）与词表文字承载，不再以色块压过状态徽标。
+// 仅呈现层降档：PRIMARY_ACTION_META 词表 variant 语义不动，首页/详情面板不受牵连。
+const displayVariant = computed<UiButtonVariant>(() =>
+  actionMeta.value.variant === 'primary' ? 'secondary' : actionMeta.value.variant,
+)
 
 // —— 状态区：摘要短语 + 次要徽标（runtime/health/瞬时 delivery），全部文字承载 ——
 const summaryKey = computed(() => String(state.value?.summary ?? ''))
@@ -198,25 +207,24 @@ const categoryLabel = computed(() =>
 
     <div class="card-actions">
       <UiButton
-        class="primary-btn"
-        small
-        :variant="actionMeta.variant"
+        class="primary-btn btn-micro"
+        :variant="displayVariant"
         :disabled="primaryDisabled"
         :title="primaryTitle"
         @click="emit('primary', entry)"
       >{{ primaryLabel }}</UiButton>
       <div class="secondary-row">
-        <UiButton small variant="ghost" :disabled="locked" @click="emit('detail', entry)">详情</UiButton>
+        <UiButton class="btn-micro" variant="ghost" :disabled="locked" @click="emit('detail', entry)">详情</UiButton>
         <UiButton
           v-if="showToggle"
-          small
-          variant="secondary"
+          class="btn-micro"
+          variant="ghost"
           :disabled="locked"
           @click="emit('setEnabled', entry, toggleTo === true)"
         >{{ toggleTo === true ? '启用' : '停用' }}</UiButton>
         <UiButton
           v-if="showUninstall"
-          small
+          class="btn-micro"
           variant="danger"
           :disabled="locked"
           @click="emit('uninstall', entry)"
@@ -277,9 +285,12 @@ const categoryLabel = computed(() =>
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 
+/* 动作行：单行紧凑布局（column 拉伸是"蓝色长条"的根源），主操作首位左置、
+   次操作右靠，全部走 .btn-micro 档；分隔线保留卡片底栈对齐。 */
 .card-actions {
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex; align-items: center; gap: 6px;
   margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border);
 }
-.secondary-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.card-actions > .primary-btn { flex: none; }
+.secondary-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
 </style>

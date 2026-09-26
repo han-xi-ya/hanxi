@@ -256,7 +256,13 @@ describe('ModuleCenterView', () => {
     appSvc.ListModuleStates.mockResolvedValue([st('memo')])
     const w = mount(view, { attachTo: document.body })
     await flushPromises()
-    await primaryBtnOf(w, 'memo')!.trigger('click')
+    const btn = primaryBtnOf(w, 'memo')!
+    // 精致化形态钉住：主操作走 .btn-micro + 次级色系（不再是实心 primary 长条），
+    // 文案与点击通道不变（词不变、形变）
+    expect(btn.text()).toBe('打开')
+    expect(btn.classes()).toContain('btn-micro')
+    expect(btn.classes()).not.toContain('btn-primary')
+    await btn.trigger('click')
     expect(w.emitted('navigate')?.[0]).toEqual(['/ext/memo'])
     w.unmount()
   })

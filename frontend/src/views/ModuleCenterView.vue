@@ -409,7 +409,8 @@ function resetFilters() {
   background: var(--surface-hover); flex: none;
 }
 .sk-bar { display: block; height: 12px; border-radius: var(--radius-pill); background: var(--surface-hover); }
-.sk-btn { height: 28px; width: 96px; margin-top: 6px; border-radius: var(--radius-control); }
+/* 骨架动作条对齐真实卡片底行（.btn-micro 档：24px 高/6px 圆角），不再暗示大块按钮形态 */
+.sk-btn { height: var(--control-h-sm); width: 64px; margin-top: 6px; border-radius: 6px; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
