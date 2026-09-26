@@ -1,7 +1,9 @@
-// 桌面留言板模块页（MsgBoardView，N6 重设计）特征测试：加载回显、类型速挂
-// （单击填词/双击保存+挂出）、保存走 SetConfig 全量快照、保存失败回读不私留
+// 桌面留言板模块页（MsgBoardView，N6 重设计 + 重设计 v2 骨架）特征测试：加载回显、
+// 类型速挂（单击填词/双击保存+挂出）、保存走 SetConfig 全量快照、保存失败回读不私留
 // 假状态、挂/撤与状态事件、异常 chip 只在异常时出现、预览与表单同源联动；
 // N30 追加全屏预览（纯前端浮层，不触后端）与小预览按字号防裁切缩放。
+// 重设计 v2（挂牌动作主角化）：语义断言零删减，动作钮选择器随新 DOM 更新——
+// 挂/撤大钮迁入 .mb-hero 主操作区，保存钮迁入 .mb-work 草稿卡的 .work-actions。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MsgBoardView from '../MsgBoardView.vue'
@@ -141,7 +143,7 @@ describe('MsgBoardView', () => {
   it('保存把全量快照交给 SetConfig；成功落"已保存"', async () => {
     const wrapper = await mountView()
     await wrapper.find('#mb-text').setValue('🍜 干饭去了\n一小时后回')
-    await wrapper.find('.action-row .btn-secondary').trigger('click')
+    await wrapper.find('.work-actions .btn-secondary').trigger('click')
     await flushPromises()
     expect(api.SetConfig).toHaveBeenCalledTimes(1)
     expect(api.SetConfig.mock.calls[0][0]).toEqual({
@@ -157,7 +159,7 @@ describe('MsgBoardView', () => {
     const wrapper = await mountView()
 
     await wrapper.find('.mb-hotkey').setValue('Ctrl+Alt+J')
-    await wrapper.find('.action-row .btn-secondary').trigger('click')
+    await wrapper.find('.work-actions .btn-secondary').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('注册失败')
     expect((wrapper.find('.mb-hotkey').element as HTMLInputElement).value).toBe('Ctrl+Alt+B')
@@ -166,7 +168,7 @@ describe('MsgBoardView', () => {
 
   it('挂/撤按钮调 Toggle；msgboard:changed 事件刷新状态徽标', async () => {
     const wrapper = await mountView(status({ shown: false }))
-    await wrapper.find('.action-row .btn-primary').trigger('click')
+    await wrapper.find('.mb-hero .btn-primary').trigger('click')
     expect(api.Toggle).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('立即挂牌')
 
@@ -191,10 +193,39 @@ describe('MsgBoardView', () => {
   it('正文超上限：保存按钮本地拦截并报错，不往返后端', async () => {
     const wrapper = await mountView()
     await wrapper.find('#mb-text').setValue('长'.repeat(401))
-    await wrapper.find('.action-row .btn-secondary').trigger('click')
+    await wrapper.find('.work-actions .btn-secondary').trigger('click')
     await flushPromises()
     expect(api.SetConfig).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('超出上限')
+    wrapper.unmount()
+  })
+})
+
+describe('重设计 v2 骨架（挂牌动作主角化）', () => {
+  it('主操作区存在：状态字、挂撤大钮与已存牌面回显聚在同一张 hero 卡', async () => {
+    const wrapper = await mountView(
+      status({ shown: true, keepAwake: true }),
+      config({ text: '🤝 开会中\n请勿打扰' }),
+    )
+    const hero = wrapper.find('.mb-hero')
+    expect(hero.exists()).toBe(true)
+    expect(hero.find('.status-word').text()).toBe('已挂牌')
+    expect(hero.find('.hero-cta').classes()).toContain('btn-danger-outline')
+    expect(hero.find('.hero-cta').text()).toContain('撤下留言牌')
+    // 回显只报已存牌面的真话（首行主题 + 副行）
+    expect(hero.find('.hero-echo-main').text()).toBe('🤝 开会中')
+    expect(hero.find('.hero-echo-sub').text()).toBe('请勿打扰')
+    wrapper.unmount()
+  })
+
+  it('预览位归属草稿卡：编辑框与预览同卡联动，页内只此一块牌面画法', async () => {
+    const wrapper = await mountView()
+    const work = wrapper.find('.mb-work')
+    expect(work.exists()).toBe(true)
+    expect(work.find('#mb-text').exists()).toBe(true)
+    expect(work.find('.mbp-scaled .bc-title').text()).toBe('马上回来')
+    // hero 回显是纯文本非第二块 BoardCard——全页牌面画法唯一（防"两处预览各画各的"回潮）
+    expect(wrapper.findAll('.bc-card')).toHaveLength(1)
     wrapper.unmount()
   })
 })
