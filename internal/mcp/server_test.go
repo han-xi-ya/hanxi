@@ -78,8 +78,10 @@ func newTestServer(t *testing.T) (Deps, *Access, *fakeEnvChecker) {
 	}}
 	access := NewAccess(t.TempDir() + "/access.json") // 初始不存在：fail-closed 全拒绝
 	deps := Deps{
-		Access:   access,
-		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan"), // 门禁默认全开，授权层单独测
+		Access: access,
+		// 门禁默认全开，授权层单独测；portkill 在册=破坏族已过模块启用门（A1 之 A2
+		// 侧另由 destructive.json 把关，与本表无关）。
+		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", portkillAccessKey),
 		EnvCheck: env,
 	}
 	return deps, access, env
@@ -135,8 +137,23 @@ func callText(t *testing.T, c *client.Client, tool string, args map[string]any) 
 	return res, text
 }
 
-// TestToolSurfaceReadOnly 工具面全量列举与只读注解：名称白名单、描述中文、
-// readOnlyHint=true、destructiveHint=false，且绝不出现任何写动词（红线静态断言）。
+// TestToolSurfaceReadOnly 工具面全量列举与注解审计。
+//
+// 只读红线（包注释决策 1 升版前形态）：名称白名单、描述非空中文且含"只读"、
+// readOnlyHint=true、destructiveHint=false，且绝不出现任何写动词。
+//
+// 破坏性族显式升版条款（guarded.go 四道闸设计为唯一依据）：豁免**只认
+// destructiveFamilies 族登记表**——不在表上、靠散落的字符串匹配放宽一律视为
+// 红线漂移。表内成员（每族恰好 prepare+execute 两件）免于上述"正向只读断言 +
+// 写动词禁令"（族名自带 kill 语义，正是要如实申报而非藏名字），换得反向强制：
+//   - execute 侧：readOnlyHint 必须 false（不得伪装只读）、destructiveHint 必须
+//     true（如实申报杀伤面）、描述绝不得含"只读"字样；
+//   - prepare 侧：本体确实只读，仍受正向断言（readOnlyHint=true、destructiveHint=false、
+//     描述含"只读"）；
+//   - 族成对断言：登记表上每族两件都必须在 tools/list 出现，且工具面上不得出现
+//     族表之外的破坏性名称（双向钉死，豁免面不可扩大）。
+//
+// 扫描族既有注解守卫（openWorldHint=true/idempotentHint=false）不回归。
 func TestToolSurfaceReadOnly(t *testing.T) {
 	deps, _, _ := newTestServer(t)
 	c := inProcClient(t, deps)
@@ -152,11 +169,46 @@ func TestToolSurfaceReadOnly(t *testing.T) {
 	for _, def := range toolDefs {
 		wantNames[def.Name] = true
 	}
+	// 族成对断言（正向）：登记的每族两件必须都已在册——半族注册=二段式被拆，红线。
+	for _, f := range destructiveFamilies {
+		if !wantNames[f.Prepare] || !wantNames[f.Execute] {
+			t.Errorf("破坏族 %v 必须成对注册进 toolDefs", f)
+		}
+	}
 	forbidden := []string{"install", "delete", "remove", "kill", "open", "start",
 		"stop", "set", "write", "launch", "quit", "shutdown", "create", "update", "run"}
 	for _, tool := range list.Tools {
 		if !wantNames[tool.Name] {
 			t.Errorf("unexpected tool %q (白名单漂移)", tool.Name)
+		}
+		if tool.Description == "" {
+			t.Errorf("tool %q description must be non-empty 中文", tool.Name)
+		}
+		if isDestructiveToolName(tool.Name) {
+			// 破坏族成员：豁免只来自族登记表；表外出现即上面 wantNames 已红。
+			if isDestructiveExecuteName(tool.Name) {
+				if tool.Annotations.ReadOnlyHint == nil || *tool.Annotations.ReadOnlyHint {
+					t.Errorf("execute tool %q must carry readOnlyHint=false（不得伪装只读）", tool.Name)
+				}
+				if tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint {
+					t.Errorf("execute tool %q must carry destructiveHint=true（如实申报杀伤面）", tool.Name)
+				}
+				if strings.Contains(tool.Description, "只读") {
+					t.Errorf("execute tool %q description must NOT claim 只读: %q", tool.Name, tool.Description)
+				}
+			} else {
+				// prepare：无杀伤力，正向只读断言照常。
+				if !strings.Contains(tool.Description, "只读") {
+					t.Errorf("prepare tool %q description must mention 只读: %q", tool.Name, tool.Description)
+				}
+				if tool.Annotations.ReadOnlyHint == nil || !*tool.Annotations.ReadOnlyHint {
+					t.Errorf("prepare tool %q must carry readOnlyHint=true", tool.Name)
+				}
+				if tool.Annotations.DestructiveHint == nil || *tool.Annotations.DestructiveHint {
+					t.Errorf("prepare tool %q must carry destructiveHint=false", tool.Name)
+				}
+			}
+			continue
 		}
 		lower := strings.ToLower(tool.Name)
 		for _, verb := range forbidden {
@@ -164,8 +216,8 @@ func TestToolSurfaceReadOnly(t *testing.T) {
 				t.Errorf("tool %q contains forbidden write-verb %q", tool.Name, verb)
 			}
 		}
-		if tool.Description == "" || !strings.Contains(tool.Description, "只读") {
-			t.Errorf("tool %q description must be non-empty 中文 and mention 只读: %q", tool.Name, tool.Description)
+		if !strings.Contains(tool.Description, "只读") {
+			t.Errorf("tool %q description must be 中文 and mention 只读: %q", tool.Name, tool.Description)
 		}
 		if tool.Annotations.ReadOnlyHint == nil || !*tool.Annotations.ReadOnlyHint {
 			t.Errorf("tool %q must carry readOnlyHint=true", tool.Name)
@@ -184,6 +236,13 @@ func TestToolSurfaceReadOnly(t *testing.T) {
 			if tool.Annotations.IdempotentHint == nil || *tool.Annotations.IdempotentHint {
 				t.Errorf("scan tool %q must carry idempotentHint=false", tool.Name)
 			}
+		}
+	}
+	// 族成对断言（反向）：未登记的成员绝不得混进豁免逻辑（防豁免面扩大，与
+	// guarded_test 的族不变量自检互补）。
+	for _, name := range []string{"hanxi_portscan_start", "hanxi_portkill_run", toolEnvCheck} {
+		if isDestructiveToolName(name) {
+			t.Errorf("%q 不得被认作破坏族成员（族登记表是唯一豁免来源）", name)
 		}
 	}
 }
@@ -208,7 +267,9 @@ func TestUnauthorizedFailClosed(t *testing.T) {
 
 // TestAllToolsUnauthorizedMatrix 全工具 fail-closed 矩阵：无授权文件时全部工具
 // 逐一调用都必须指引错误且各自后端零触发（撤权=即时生效已由 access 层单测保证）。
-// 便签族两件同键——memo 未授权时检索与统计都必须拦住。
+// 便签族两件同键——memo 未授权时检索与统计都必须拦住；portkill 族两件同键——
+// A1 未放行时连 handler 都不进（审计零落=handler 未执行的物证），且指引文案必须
+// 如实指向两文件手动开启路径（刻意不提"面板开关"——portkill 键不进面板是既定决策）。
 func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	deps, _, env := newTestServer(t)
 	fs := &fakeSearcher{}
@@ -220,6 +281,8 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	fl2 := &fakeLanProber{}
 	deps.Search, deps.OCR, deps.Memo, deps.SysInfo, deps.Logs = fs, fr, fm, fi, fl
 	deps.PortScan, deps.Lan = fp, fl2
+	SetPortkillWiring(nil) // 显式未接线态：若有任何路径溜进 handler，审计会留下 unwired 物证
+	h := installAuditCapture(t)
 	c := inProcClient(t, deps)
 
 	for _, tc := range []struct {
@@ -235,10 +298,20 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 		{toolLogs, nil},
 		{toolPortScan, map[string]any{"target": "192.168.1.1", "ports": "22,80"}},
 		{toolLanScan, map[string]any{"target": "192.168.1.0/24"}},
+		{toolPortkillPrepare, map[string]any{"port": float64(8080)}},
+		{toolPortkillExecute, map[string]any{"token": "irrelevant-without-grant"}},
 	} {
 		res, text := callText(t, c, tc.tool, tc.args)
 		if !res.IsError || !strings.Contains(text, "未获授权") {
 			t.Errorf("%s: must deny without grant: %s", tc.tool, text)
+		}
+		if isDestructiveToolName(tc.tool) {
+			if !strings.Contains(text, "destructive.json") || !strings.Contains(text, "access.json") {
+				t.Errorf("%s: 破坏族 A1 拒绝必须指向两文件手动路径: %s", tc.tool, text)
+			}
+			if strings.Contains(text, "「设置 → AI 接入」中开启") {
+				t.Errorf("%s: 破坏族指引不得误导向无该开关的面板: %s", tc.tool, text)
+			}
 		}
 	}
 	// 扫描族被拒时后端（含 CountTargets 预检）必须零触发——"默认不放开触发扫描"
@@ -246,6 +319,11 @@ func TestAllToolsUnauthorizedMatrix(t *testing.T) {
 	if env.calls != 0 || fs.lastQ != "" || fr.calls != 0 || len(fm.items) != 0 ||
 		fi.calls != 0 || fl.calls != 0 || fp.calls != 0 || fl2.countCalls != 0 || fl2.scanCalls != 0 {
 		t.Errorf("denied tools must not touch backends")
+	}
+	// 破坏族被 A1 拒时 handler 一步不进：审计零落（连 unwired 都不该有）——
+	// "默认关闸零杀伤"的最硬物证。
+	if got := h.auditOutcomes(""); len(got) != 0 {
+		t.Errorf("未授权 portkill 调用不得进入 handler（审计应零落），got=%v", got)
 	}
 }
 

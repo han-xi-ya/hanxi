@@ -24,6 +24,12 @@ const maxPayloadBytes = 1 << 20
 // 九件：扫描是主动网络探测而非纯查询，**必须各立授权键**（不挂既有键），
 // access.json 六键契约扩至八键（portscan/lan 两键默认 false=不放开触发扫描，
 // 机主要逐项授权才可用；读写对拍+GUI 呈现+白名单三处联动同步）。
+// 端口查杀批（2026-09-26，红线升版执行层见 guarded.go）加破坏性族两件
+// （hanxi_portkill_prepare / hanxi_portkill_execute）至十一件：族共用 portkill
+// 一键（授权粒度=模块，照 memo 键先例），access.json 扩至九键——但 portkill 键
+// 刻意不进「设置 → AI 接入」面板（破坏性键不给误操作台阶，机主手动双文件开启），
+// 且工具生效还需 destructive.json 机主总闸 + 一次性令牌二段确认（四道闸全说见
+// guarded.go 文件头）；白名单/knownModuleIDs/写侧 accessToolKeys 三处同批扩键。
 const (
 	toolEnvCheck  = "hanxi_envcheck_detect"
 	toolSearch    = "hanxi_file_search"
@@ -63,9 +69,12 @@ func NewMCPServer(deps Deps) *server.MCPServer {
 	s := server.NewMCPServer(
 		"hanxi",
 		product.Version,
-		server.WithInstructions("hanxi 工具箱的 MCP 接入：查询类工具（环境体检/文件搜索/便签/系统档案/运行日志/OCR）严格只读；"+
-			"扫描类工具（端口扫描/局域网扫描）仅对网络做可达性探测，不修改本机或任何设备状态，但属于主动出网动作且结果含网络信息。"+
-			"所有工具调用前需在 hanxi「设置 → AI 接入」中逐项授权（access.json，八键，默认全关）。"+
+		server.WithInstructions("hanxi 工具箱的 MCP 接入：查询类严格只读（环境体检/文件搜索/便签/系统档案/运行日志/OCR）；"+
+			"扫描类（端口扫描/局域网扫描）仅对网络做可达性探测，不修改本机或任何设备状态，但属于主动出网动作且结果含网络信息；"+
+			"破坏性工具族（端口查杀 prepare/execute）双授权默认关、二段确认方生效——access.json 的 portkill 键与"+
+			" mcp/destructive.json 机主总闸齐开才放行，prepare 只发放一次性令牌（120 秒），execute 复核进程指纹后才结束进程，"+
+			"系统关键进程与 hanxi 自身永久拒杀。"+
+			"所有工具调用前需授权（access.json，九键，默认全关；portkill 键刻意不进「设置 → AI 接入」面板，机主手动两文件开启）。"+
 			"未授权/被停用的工具调用会返回指引错误，不会执行。"),
 		server.WithToolCapabilities(false),
 		server.WithRecovery(),
@@ -90,21 +99,30 @@ type toolDef struct {
 // 一致性由 access_readmatch_test.go 对拍矩阵把关。
 // AI 接入批（2026-09-26）加 portscan/lan 两键至八键——扫描类是主动出网动作，
 // 必须与纯查询工具分键授权（机主可只放行扫描而不放行文件搜索等，反之亦然）。
+// 端口查杀批加 portkill 键至九键：**读方（本表）/写方（accessToolKeys）/名称白名单
+// （guards_test.go）三处必须同批**——漏一处，含 portkill 键的整档 access.json 会被
+// fail-closed 拒读、连坐封死全部工具。键名取自 portkillAccessKey（=portkill.ID），
+// 杜绝两处手打字符串漂移；destructive.json 侧的同名 op 键由 isKnownDestructiveOp
+// 独立把关（两文件两契约，见 guarded.go A2）。
 var knownModuleIDs = map[string]bool{
-	"envcheck":   true,
-	"everything": true,
-	"ocr":        true,
-	"memo":       true,
-	"sysinfo":    true,
-	"logs":       true,
-	"portscan":   true,
-	"lan":        true,
+	"envcheck":        true,
+	"everything":      true,
+	"ocr":             true,
+	"memo":            true,
+	"sysinfo":         true,
+	"logs":            true,
+	"portscan":        true,
+	"lan":             true,
+	portkillAccessKey: true,
 }
 
 // toolDefs 全量工具面（首版四件 PLAN_MCP C1-C5 收口；扩充批 +sysinfo/logs 至六件；
-// N16 C 批便签族 +memo_stats 至七件；AI 接入批 +portscan/lan 扫描族至九件）。
-// 授权键八枚：memo 键下两件只读工具；portscan/lan 各立一键（主动探测与纯查询
-// 分键授权，见 knownModuleIDs 注记）。
+// N16 C 批便签族 +memo_stats 至七件；AI 接入批 +portscan/lan 扫描族至九件；
+// 端口查杀批 +portkill 破坏族两件至十一件，置于列表末——只读面在前、破坏面垫后，
+// tools/list 展示顺序即风险次序）。
+// 授权键九枚：memo 键下两件只读工具；portscan/lan 各立一键（主动探测与纯查询
+// 分键授权，见 knownModuleIDs 注记）；portkill 一键下挂 prepare/execute 族两件
+// （二段式共键授权，生效另需 destructive.json 总闸，见 guarded.go A1/A2）。
 // 注册顺序即 tools/list 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"
 // 红线审（包注释纪律 1），并同步 knownModuleIDs 与 guards_test.go 的名称白名单。
 var toolDefs = []toolDef{
@@ -117,6 +135,19 @@ var toolDefs = []toolDef{
 	{Name: toolLogs, ModuleID: accessKeyLogs, Build: buildLogsTool},
 	{Name: toolPortScan, ModuleID: "portscan", Build: buildPortScanTool},
 	{Name: toolLanScan, ModuleID: "lan", Build: buildLanScanTool},
+	{Name: toolPortkillPrepare, ModuleID: portkillAccessKey, Build: buildPortkillPrepareTool},
+	{Name: toolPortkillExecute, ModuleID: portkillAccessKey, Build: buildPortkillExecuteTool},
+}
+
+// isDestructiveAccessKey 报告模块键是否属已登记破坏族（豁免/文案裁决唯一来源是
+// destructiveFamilies 族登记表，散落字面量即红线漂移——同 guarded.go 族登记纪律）。
+func isDestructiveAccessKey(key string) bool {
+	for _, f := range destructiveFamilies {
+		if f.AccessKey == key {
+			return true
+		}
+	}
+	return false
 }
 
 // gateMiddleware 是所有工具调用的统一闸门：授权（每次重读 access.json）→ 模块启用 →
@@ -134,6 +165,16 @@ func gateMiddleware(deps Deps) server.ToolHandlerMiddleware {
 				return mcp.NewToolResultError(fmt.Sprintf("未知工具 %q", req.Params.Name)), nil
 			}
 			if deps.Access == nil || !deps.Access.Allowed(moduleID) {
+				if isDestructiveAccessKey(moduleID) {
+					// 破坏族（A1 门）刻意不给"面板开启"指引——portkill 键不进「AI 接入」
+					// 面板是基建既定决策（guarded.go A2：防逐键 UI 误操作顺带放行写工具），
+					// 指引必须如实指向两文件的机主手动开启路径。
+					return mcp.NewToolResultError(
+						fmt.Sprintf("工具 %s 未获授权（破坏性工具族 %s，四道闸之 A1）。该键刻意不在「设置 → AI 接入」面板呈现，"+
+							"需机主手动改 hanxi 数据目录 mcp/ 下两文件：access.json 置 \"%s\": true，并新建 %s "+
+							"写入 {\"version\":1,\"enabled\":{\"%s\":true}}（缺一律拒，另见工具描述）；授权即时生效，无需重启本服务。",
+							req.Params.Name, moduleID, moduleID, DestructiveFileName, moduleID)), nil
+				}
 				return mcp.NewToolResultError(
 					fmt.Sprintf("工具 %s 未获授权（授权模块 %s）。请用户在 hanxi 主窗口「设置 → AI 接入」中开启后重试；"+
 						"授权即时生效，无需重启本服务。", req.Params.Name, moduleID)), nil

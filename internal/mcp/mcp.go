@@ -2,12 +2,20 @@
 //
 // 本包是 ADR，三条核心决策（与 GUI 主程序的行为差异全部收口在这里）：
 //
-//  1. 只暴露"不改状态"的工具：纯查询族（envcheck/everything/ocr/memo/sysinfo/logs）
-//     严格只读；扫描族（portscan/lan）是**主动网络探测**——不修改本机或任何设备
-//     状态，但会出网、结果含网络拓扑，因此各立授权键（access.json 八键，默认全关），
-//     参数面收口为有界小扫描（见 tools_scan.go 包注），与纯查询工具同等门禁。
-//     提权/写操作（portkill 杀进程、frpc、配置写入、OpenTarget 执行链等）永不注册
-//     为工具，这是编译期事实而非运行期约束——tools/list 里没有的东西，客户端永远调不到。
+//  1. 查询类严格只读；扫描类仅可达性探测；破坏性工具族（端口查杀）双授权默认
+//     关、二段确认方生效——这是红线从"只暴露不改状态的工具"显式升版后的定稿口径
+//     （升版论证见 guarded.go 文件头）：纯查询族（envcheck/everything/ocr/memo/
+//     sysinfo/logs）严格只读；扫描族（portscan/lan）是**主动网络探测**——不修改
+//     本机或任何设备状态，但会出网、结果含网络拓扑，因此各立授权键，参数面收口为
+//     有界小扫描（见 tools_scan.go 包注），与纯查询工具同等门禁；破坏族（portkill
+//     的 prepare/execute 两件，族共用 access.json 第九键）唯一地走四道独立闸门
+//     （A1 access.json ∩ 模块启用门、A2 destructive.json 机主总闸默认不存在=全关、
+//     A3 一次性令牌二段确认+进程指纹复核、A4 永久黑名单+强制审计，见 guarded.go /
+//     tools_portkill.go）——portkill 键刻意不进「AI 接入」面板，开启=机主手动两文件。
+//     access.json 九键默认全关，读写白名单三处同键集（knownModuleIDs / mcpwizard
+//     accessToolKeys / guards_test 白名单），未知键整档拒读连坐全关。
+//     其余提权/写操作（frpc、配置写入、OpenTarget 执行链等）仍永不注册为工具，
+//     这是编译期事实而非运行期约束——tools/list 里没有的东西，客户端永远调不到。
 //     一切工具输出按"会原样进入云端模型上下文"审视：敏感串过 logging.Redact 家族，
 //     memo 遮罩条目（IsMasked）整条不下发，载荷上限 1MB（截断显式置 truncated 标志）。
 //
@@ -39,6 +47,7 @@ import (
 	"hanxi/internal/modules/lan"
 	"hanxi/internal/modules/memo"
 	"hanxi/internal/modules/ocr"
+	"hanxi/internal/modules/portkill"
 	"hanxi/internal/modules/portscan"
 	"hanxi/internal/modules/sysinfo"
 	"hanxi/internal/platform"
@@ -145,7 +154,12 @@ func Run() error {
 	// 后端直构 Scanner（规避 StartScan 的 GUI last-wins 顶任务语义，见 tools_scan.go）。
 	lanModule := lan.New(plat, store)
 	portscanModule := portscan.New()
-	if err := registry.Register(append(mcpModules(plat), ocrModule, sysModule, lanModule, portscanModule)...); err != nil {
+	// 端口查杀批（破坏族）：portkill 模块构造同样零落盘（plat+holder 纯注入，
+	// OnInit 无副作用；history 未接线时静默不记、notify 经 application.Get 空守卫），
+	// 进无头 registry 取与 GUI 同谱的启用门禁与 lease drain 收口；service 实例被
+	// MCP 后端 adapter 复用（GUI 与 MCP 同一 service 契约，见 tools_portkill.go）。
+	portkillModule := portkill.New(plat)
+	if err := registry.Register(append(mcpModules(plat), ocrModule, sysModule, lanModule, portscanModule, portkillModule)...); err != nil {
 		return fmt.Errorf("注册无头模块失败: %w", err)
 	}
 	defer registry.ShutdownAll()
@@ -185,6 +199,19 @@ func Run() error {
 		// GetReport 内 holder.Enter 走统一调用门：门禁已由 registryGate.Acquire
 		// 在中间件层完成（懒激活+租约），此处只是接上同一实例。
 		deps.SysInfo = sysMod.Service()
+	}
+
+	// 破坏族接线（端口查杀批，guarded.go 的包级 hook 通道）：真 adapter（与 GUI
+	// 同谱的 portkill service + 平台进程 API）、destructive.json 机主总闸（缺档=
+	// 合法全关，每次判定实时重读盘）、生产 TTL 一次性令牌库。未走 Deps 字段是
+	// 基建既定的领地纪律（交付批不触碰 server.go，合流批按 hook 语义接线即可，
+	// 两形态等价；杀伤面收口不依赖此处形态）。
+	if pkMod, ok := portkillModule.(*portkill.Module); ok && pkMod != nil {
+		SetPortkillWiring(NewPortkillWiring(
+			NewPortkillAdapter(pkMod.Service(), plat),
+			NewDestructiveFilePolicy(DestructivePolicyPath(paths.DataDir())),
+			NewDefaultKillTokenStore(),
+		))
 	}
 
 	srv := NewMCPServer(deps)

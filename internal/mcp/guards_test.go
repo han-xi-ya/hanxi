@@ -78,17 +78,21 @@ func TestMCPGoVersionPinned(t *testing.T) {
 
 // TestToolNamesStable 工具英文名是对外契约（客户端配置/授权键/文档引用），改名即断链：
 // 白名单钉死，新增工具须同步进本表与 knownModuleIDs。
+// 端口查杀批：portkill 族两件入册（同名共键，照 memo 先例）；族名含 "kill" 动词
+// 属红线升版后的显式豁免（server_test.go 族登记表裁决），白名单本身零豁免。
 func TestToolNamesStable(t *testing.T) {
 	want := map[string]string{
-		"hanxi_envcheck_detect": "envcheck",
-		"hanxi_file_search":     "everything",
-		"hanxi_ocr_recognize":   "ocr",
-		"hanxi_memo_search":     "memo",
-		"hanxi_memo_stats":      "memo",
-		"hanxi_sysinfo_report":  "sysinfo",
-		"hanxi_log_read":        "logs",
-		"hanxi_portscan_scan":   "portscan",
-		"hanxi_lan_scan":        "lan",
+		"hanxi_envcheck_detect":  "envcheck",
+		"hanxi_file_search":      "everything",
+		"hanxi_ocr_recognize":    "ocr",
+		"hanxi_memo_search":      "memo",
+		"hanxi_memo_stats":       "memo",
+		"hanxi_sysinfo_report":   "sysinfo",
+		"hanxi_log_read":         "logs",
+		"hanxi_portscan_scan":    "portscan",
+		"hanxi_lan_scan":         "lan",
+		"hanxi_portkill_prepare": portkillAccessKey,
+		"hanxi_portkill_execute": portkillAccessKey,
 	}
 	if len(toolDefs) > len(want) {
 		t.Fatalf("工具面只能从白名单扩张到 %d 件，当前 %d 件", len(want), len(toolDefs))
