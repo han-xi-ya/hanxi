@@ -10,12 +10,14 @@ import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import { useClipboard } from '../composables/useClipboard'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
+const { copyWithToast } = useClipboard()
 const activeTab = ref<'install' | 'versions'>('install')
 const tabs = [
   { key: 'install', label: '安装管理' },
@@ -30,6 +32,7 @@ const localError = ref('')
 const remoteError = ref('')
 const progress = ref<OperationProgress | null>(null)
 const rowErrors = ref<Record<string, string>>({})
+const repoUrl = ref('')
 
 const installed = computed(() => snapshot.value?.installed ?? false)
 const operationBusy = computed(() => !!progress.value && !progress.value.terminal)
@@ -78,7 +81,17 @@ async function refreshRemote() {
   catch (error) { remoteError.value = `获取 NanaZip stable Releases 失败：${getErrorMessage(error)}` }
   finally { remoteLoading.value = false }
 }
-async function loadPage() { await Promise.allSettled([refreshLocal(), refreshRemote()]) }
+async function loadPage() { await Promise.allSettled([refreshLocal(), refreshRemote(), refreshRepo()]) }
+
+async function refreshRepo() {
+  try { repoUrl.value = (await NanaZipAPI.RepoURL()) ?? '' }
+  catch { repoUrl.value = '' } // 装饰性信息，读取失败静默（模块停用/门拒绝不打扰）
+}
+async function copyRepo() { await copyWithToast(repoUrl.value, '仓库地址已复制') }
+async function openRepo() {
+  try { await NanaZipAPI.OpenRepo() }
+  catch (error) { showToast(`打开仓库失败：${getErrorMessage(error)}`) }
+}
 
 // 危险/降级确认全部经全局 useConfirm 单例发出（原视图自挂的三态 ConfirmDialog 已收编）；
 // 确认后动作直接发起，失败以 toast/行内错误回执，可重新点击再次走确认流。
@@ -171,6 +184,15 @@ useWailsEvent<PackageSnapshot>('nanazip:package-snapshot', (data) => data && han
         </template>
       </MsixOverview>
 
+      <div v-if="repoUrl" class="extras-card nanazip-repo">
+        <div class="repo-row">
+          <span class="k">GitHub 官方仓库</span>
+          <code class="mono repo-addr">{{ repoUrl }}</code>
+          <button class="link-button" @click="copyRepo">复制</button>
+          <button class="link-button" @click="openRepo">浏览器打开</button>
+        </div>
+      </div>
+
       <section v-if="progress" class="nanazip-panel nanazip-progress" aria-live="polite">
         <div><strong>{{ stageLabel(progress.stage) }}</strong><span>{{ progress.message || `目标版本 ${progress.targetVersion}` }}</span></div>
         <span v-if="progressPercent !== null" class="nanazip-progress-value">{{ progressPercent }}%</span>
@@ -220,6 +242,7 @@ useWailsEvent<PackageSnapshot>('nanazip:package-snapshot', (data) => data && han
 .nanazip-page{max-width:1120px;margin:0 auto;padding-bottom:28px;color:var(--color-text)}
 .nanazip-stale-banner{margin-bottom:10px}
 .nanazip-panel{margin-bottom:14px;padding:18px;border:1px solid var(--color-border);border-radius:var(--radius-element);background:var(--surface-panel);box-shadow:var(--shadow-small)}
+.nanazip-repo{margin-bottom:14px}
 .nanazip-progress{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}.nanazip-progress strong,.nanazip-progress span{display:block}.nanazip-progress>div>span{margin-top:3px;color:var(--color-text-muted);font-size:var(--text-sm)}.nanazip-progress-value{font:700 var(--text-base) var(--font-mono)}.nanazip-progress-track{grid-column:1/-1;height:7px;overflow:hidden;border-radius:var(--radius-pill);background:var(--surface-soft)}.nanazip-progress-track i{display:block;height:100%;border-radius:inherit;background:var(--color-primary);transition:width var(--motion-fast) linear}.nanazip-progress-track i.indeterminate{width:34%;animation:nz-indeterminate 1.25s infinite ease-in-out}.nanazip-progress-track i.failed{background:var(--state-danger)}.nanazip-inline-error{margin:7px 0 0!important;color:var(--state-danger)!important;font-size:var(--text-sm)!important}
 .nanazip-integrations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.nanazip-integrations article{display:flex;gap:11px;padding:15px;border:1px solid var(--color-border);border-radius:var(--radius-element);background:var(--surface-panel)}.nanazip-integrations article>span{color:var(--color-primary);font:700 var(--text-xs) var(--font-mono)}.nanazip-integrations h3{margin:0 0 6px;font-size:var(--text-base)}.nanazip-integrations p{margin:0;color:var(--color-text-muted);font-size:var(--text-sm);line-height:1.6}
 .nanazip-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:13px}.nanazip-section-head h2{margin:0;font-size:var(--text-md)}.nanazip-section-head p{margin:4px 0 0;color:var(--color-text-muted);font-size:var(--text-sm)}.nanazip-resource-panel{padding:16px}.nanazip-resource-list{display:grid;gap:8px}.nanazip-resource-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;padding:12px;border:1px solid var(--color-border);border-radius:var(--radius-element);background:var(--surface-soft)}.nanazip-resource-main{display:flex;align-items:center;gap:11px;min-width:0}.nanazip-version-icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--radius-control);background:color-mix(in srgb,var(--color-primary) 10%,var(--surface-panel));color:var(--color-primary);font-weight:800}.nanazip-version-icon.cached{color:var(--state-positive)}.nanazip-resource-main h3{margin:0;font-size:var(--text-base)}.nanazip-resource-main h3 span{margin-left:6px;color:var(--state-positive);font-size:var(--text-micro)}.nanazip-resource-main p{margin:4px 0 0;overflow-wrap:anywhere;color:var(--color-text-muted);font:var(--text-xs)/1.5 var(--font-mono)}.nanazip-row-actions{display:flex;align-items:center;gap:8px}

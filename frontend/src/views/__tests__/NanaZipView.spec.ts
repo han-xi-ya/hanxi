@@ -15,6 +15,8 @@ const svc = vi.hoisted(() => ({
   Launch: vi.fn(),
   Uninstall: vi.fn(),
   RemoveCachedPackage: vi.fn(),
+  RepoURL: vi.fn(),
+  OpenRepo: vi.fn(),
 }))
 const runtime = vi.hoisted(() => ({
   handlers: {} as Record<string, (event: { data: unknown }) => void>,
@@ -49,6 +51,8 @@ function stubDefaults(snap: Record<string, unknown>, releases: unknown[] = [], c
   svc.GetPackageSnapshot.mockResolvedValue(snap)
   svc.ListCachedPackages.mockResolvedValue(cached)
   svc.ListReleases.mockResolvedValue(releases)
+  svc.RepoURL.mockResolvedValue('https://github.com/M2Team/NanaZip')
+  svc.OpenRepo.mockResolvedValue(undefined)
 }
 
 async function mountView() {
@@ -96,6 +100,39 @@ describe('NanaZipView 包状态呈现', () => {
     const labels = wrapper.findAll('.msix-actions button').map(b => b.text())
     expect(labels).toEqual(expect.arrayContaining(['打开 NanaZip', '刷新状态', '卸载']))
     expect(wrapper.text()).toContain('x64')
+    wrapper.unmount()
+  })
+
+  it('官方仓库行：展示 RepoURL 并可复制/浏览器打开（后端既有导出，页面此前漏接线）', async () => {
+    stubDefaults(snapshot())
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+    const originalSecure = window.isSecureContext
+    Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })
+    const { wrapper } = await mountView()
+    try {
+      const row = wrapper.find('.nanazip-repo .repo-row')
+      expect(row.exists()).toBe(true)
+      expect(row.find('.repo-addr').text()).toBe('https://github.com/M2Team/NanaZip')
+      const btns = row.findAll('.link-button')
+      await btns[1].trigger('click') // 浏览器打开
+      await flushMicrotasks()
+      expect(svc.OpenRepo).toHaveBeenCalledTimes(1)
+      await btns[0].trigger('click') // 复制
+      await flushMicrotasks()
+      expect(writeText).toHaveBeenCalledWith('https://github.com/M2Team/NanaZip')
+    } finally {
+      Object.defineProperty(window, 'isSecureContext', { value: originalSecure, configurable: true })
+    }
+    wrapper.unmount()
+  })
+
+  it('RepoURL 读取失败：仓库行静默缺席，不报错不打扰', async () => {
+    stubDefaults(snapshot())
+    svc.RepoURL.mockRejectedValue(new Error('模块已停用'))
+    const { wrapper } = await mountView()
+    expect(wrapper.find('.nanazip-repo').exists()).toBe(false)
+    expect(wrapper.find('.nanazip-state-box.error').exists()).toBe(false)
     wrapper.unmount()
   })
 
