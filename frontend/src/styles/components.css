@@ -664,6 +664,15 @@
   color: var(--color-text);
 }
 :where(.tag-blue) { background: var(--state-information-soft); color: var(--state-information); }
+/* 可点标签丸交互档（2026-09 收编，纯增量）：叠在 :where(.tag-pill) 外观基座之上的
+ * cursor / hover 加深 / 键盘焦点三差，基座外观不动。hover 底 --surface-hover 比基座
+ * --surface-soft 深一档；焦点环与 base.css 全局 :focus-visible 契约同源（--focus-ring），
+ * 供页面自挂 role/tabindex 使 span 丸键盘可达后兑现。消费面：MemoView 卡脚/详情浮层
+ * 过滤丸（原 .memo-tag 私有 cursor/hover 差已删净落回）；FileShare 系 tag-pill 均为
+ * 资讯徽标无点击诉求，不挂本档。 */
+:where(.tag-pill-clickable) { cursor: pointer; }
+:where(.tag-pill-clickable:hover) { background: var(--surface-hover); }
+:where(.tag-pill-clickable:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 /* ---------- Everything 小工具（§9.6-2：hint-dim/badge 多组件逐字同形副本上收；
    .empty-hint 全库 20+ 份存在 padding/border 不同形变体，暂留局部，见 §9.6 报告） ---------- */
