@@ -33,6 +33,70 @@ func effectiveTrigger(rawHoldMs, rawMovePx int) (time.Duration, int) {
 	return time.Duration(hold) * time.Millisecond, move
 }
 
+// 轮盘皮肤合法域（前端 wheelSkin.ts normalizeWheelSkin 同源口径：坏值归正不报错；
+// 0 视同缺省回落出厂，与触发参数"0=出厂"一致。预设白名单外一律回落 frost）。
+const (
+	factorySkinPreset = "frost"
+	factorySkinAlpha  = 100
+	factorySkinStroke = 55
+	minSkinAlpha      = 35
+	maxSkinAlpha      = 100
+	maxSkinStroke     = 100
+)
+
+// skinPresets 出厂预设白名单（新增预设须与前端 WHEEL_SKIN_PRESETS 同步）。
+var skinPresets = map[string]bool{
+	"frost": true, "veil": true, "ink": true,
+}
+
+// normalizeSkin 把任意（可能来自盘上/前端/旧账的）皮肤归一为合法值。纯函数便于表测。
+func normalizeSkin(in Skin) Skin {
+	out := in
+	if !skinPresets[out.Preset] {
+		out.Preset = factorySkinPreset
+	}
+	// FaceAlpha：0/越界钳回 [35,100]，为负视同缺省。0 特判为出厂实底。
+	switch {
+	case in.FaceAlpha <= 0:
+		out.FaceAlpha = factorySkinAlpha
+	case in.FaceAlpha < minSkinAlpha:
+		out.FaceAlpha = minSkinAlpha
+	case in.FaceAlpha > maxSkinAlpha:
+		out.FaceAlpha = maxSkinAlpha
+	default:
+		out.FaceAlpha = in.FaceAlpha
+	}
+	// Stroke：0 是合法用户值（滑杆最低档"描边并入瓣色"），不归出厂——缺键回落走的是
+	// "解码进 DefaultSettings 副本"机制（store 层），此处只钳域：负→0，超 100→100。
+	switch {
+	case in.Stroke < 0:
+		out.Stroke = 0
+	case in.Stroke > maxSkinStroke:
+		out.Stroke = maxSkinStroke
+	default:
+		out.Stroke = in.Stroke
+	}
+	return out
+}
+
+func skinFromStore(c settings.QuickMenuSkinConfig) Skin {
+	return Skin{
+		Preset:            c.Preset,
+		FaceAlpha:         c.FaceAlpha,
+		Stroke:            c.Stroke,
+		FollowModuleColor: c.FollowModuleColor,
+	}
+}
+
+func storeFromSkin(s Skin) settings.QuickMenuSkinConfig {
+	return settings.QuickMenuSkinConfig{
+		Preset:            s.Preset,
+		FaceAlpha:         s.FaceAlpha,
+		Stroke:            s.Stroke,
+		FollowModuleColor: s.FollowModuleColor,
+	}
+}
+
 func clampInt(v, def, lo, hi int) int {
 	if v <= 0 {
 		return def
@@ -469,6 +533,41 @@ func (s *QuickMenuService) SetTwoTier(on bool) error {
 // twoTierOn 读取二级轮盘开关（store 缺失时保守按关闭处理）。
 func (s *QuickMenuService) twoTierOn() bool {
 	return s.store != nil && s.store.GetQuickMenuTwoTier()
+}
+
+// GetSkin 返回当前生效轮盘皮肤（归一后，设置页表单初值与弹窗唤出读数）。
+// store 缺失按出厂素瓷盘降级——读侧永不因皮肤断链（弹窗与预览同受此保证）。
+func (s *QuickMenuService) GetSkin() (Skin, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Skin{}, gateErr
+	}
+	defer release()
+
+	if s.store == nil {
+		return normalizeSkin(Skin{}), nil
+	}
+	return normalizeSkin(skinFromStore(s.store.GetQuickMenuSkin())), nil
+}
+
+// SetSkin 归一皮肤后落盘并回显生效值（越界/坏值只归正不报错——表单防呆口径，
+// 与 SetTriggerConfig 同款；仅 store 不可用如实拒）。热生效：弹窗每次唤出
+// 重读 + 同源 storage 镜像即时跟皮，无需重启。
+func (s *QuickMenuService) SetSkin(skin Skin) (Skin, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Skin{}, gateErr
+	}
+	defer release()
+
+	if s.store == nil {
+		return Skin{}, fmt.Errorf("配置存储不可用")
+	}
+	eff := normalizeSkin(skin)
+	if err := s.store.SetQuickMenuSkin(storeFromSkin(eff)); err != nil {
+		return Skin{}, err
+	}
+	return eff, nil
 }
 
 // GetTriggerConfig 返回当前生效触发参数（钳制后，模块页表单初值）。

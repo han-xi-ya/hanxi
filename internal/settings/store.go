@@ -79,6 +79,17 @@ type SnapshotConfig struct {
 	IntervalMinutes int  `json:"intervalMinutes"` // 两次提交的最小间隔，防编辑期连环保存灌碎历史（默认 5）
 }
 
+// QuickMenuSkinConfig 轮盘皮肤（机主拍板 2026-09-26"轮盘皮肤做"）持久形态，字段与
+// quickmenu.Skin 一一对应。合法域校验/归一归消费方 quickmenu 服务（盘上值按不可信
+// 输入对待，本层只见事实）——与触发参数同纪律。Preset ∈ frost|veil|ink；
+// FaceAlpha/Stroke 为整数百分比。
+type QuickMenuSkinConfig struct {
+	Preset            string `json:"preset"`            // 盘面预设（默认 frost 素瓷）
+	FaceAlpha         int    `json:"faceAlpha"`         // 盘纱不透明度 %（合法域 35–100，默认 100 实底）
+	Stroke            int    `json:"stroke"`            // 扇区描边强度 %（0–100，默认 55）
+	FollowModuleColor bool   `json:"followModuleColor"` // 描边是否跟随条目真图标主色（默认关=类型色轨）
+}
+
 // AppSettings 应用全局配置模型
 type AppSettings struct {
 	Theme            string            `json:"theme"`            // 明暗轴 "light" | "dark" | "system"
@@ -93,13 +104,14 @@ type AppSettings struct {
 	QuickMenuTwoTier bool              `json:"quickMenuTwoTier"` // 快捷菜单轮盘是否启用二级展开（默认开；关=分组子条目拍平进主盘）
 	// N5-C2 触发参数外化：0 = 出厂默认（450ms / 16px）。有效值钳制在消费方
 	// quickmenu 服务执行（盘上值按不可信输入对待，坏值不武装鼠标钩子）。
-	QuickMenuHoldMs    int             `json:"quickMenuHoldMs"`
-	QuickMenuMovePx    int             `json:"quickMenuMovePx"`
-	HistoryOcrFullText bool            `json:"historyOcrFullText"` // 历史记录是否收录 OCR 识别全文（默认开；关=只记图片路径与摘要，不存识别文本）
-	Wechat             WechatConfig    `json:"wechat"`             // 微信机器人遗留配置（向下兼容）
-	WechatAccounts     []WechatAccount `json:"wechatAccounts"`     // 微信多账号列表
-	WebAppEntries      []WebAppEntry   `json:"webAppEntries"`      // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
-	Snapshot           SnapshotConfig  `json:"snapshot"`           // 数据历史版本偏好（internal/snapshot）
+	QuickMenuHoldMs    int                 `json:"quickMenuHoldMs"`
+	QuickMenuMovePx    int                 `json:"quickMenuMovePx"`
+	QuickMenuSkin      QuickMenuSkinConfig `json:"quickMenuSkin"`      // 轮盘皮肤账（纯视觉偏好；缺键=出厂素瓷实底盘，解码进 DefaultSettings 副本自动回落）
+	HistoryOcrFullText bool                `json:"historyOcrFullText"` // 历史记录是否收录 OCR 识别全文（默认开；关=只记图片路径与摘要，不存识别文本）
+	Wechat             WechatConfig        `json:"wechat"`             // 微信机器人遗留配置（向下兼容）
+	WechatAccounts     []WechatAccount     `json:"wechatAccounts"`     // 微信多账号列表
+	WebAppEntries      []WebAppEntry       `json:"webAppEntries"`      // 网页应用窗口网址条目（有序，配置顺序即列表显示顺序）
+	Snapshot           SnapshotConfig      `json:"snapshot"`           // 数据历史版本偏好（internal/snapshot）
 }
 
 // DefaultSettings 返回出厂默认配置：浅色主题、青壳色板、中文、关闭时最小化到托盘、日志保留 7 天。
@@ -116,6 +128,9 @@ func DefaultSettings() AppSettings {
 		TrayMenu:           make([]TrayMenuItem, 0),
 		QuickMenuTwoTier:   true, // 二级轮盘默认开启：load 解码进默认副本，旧配置文件缺字段自动落 true
 		HistoryOcrFullText: true, // OCR 全文入历史默认开启（同 QuickMenuTwoTier 缺字段回落机制）
+		// 轮盘皮肤出厂 = frost 素瓷实底盘（与前端 DEFAULT_WHEEL_SKIN 同值）：旧配置
+		// 缺 quickMenuSkin 键即整体落此默认；半缺子字段（如只有 preset）也逐字段回落。
+		QuickMenuSkin: QuickMenuSkinConfig{Preset: "frost", FaceAlpha: 100, Stroke: 55, FollowModuleColor: false},
 		// wechat 业务默认端点不属设置存储职责：出厂留空，
 		// 缺省回退由 wechat 模块读取侧兜底（defaultBaseURL）。
 		Wechat:         WechatConfig{},
@@ -531,6 +546,21 @@ func (s *Store) SetQuickMenuTrigger(holdMs, movePx int) error {
 	return s.Update(func(cfg *AppSettings) {
 		cfg.QuickMenuHoldMs = holdMs
 		cfg.QuickMenuMovePx = movePx
+	})
+}
+
+// GetQuickMenuSkin 返回轮盘皮肤**原始盘值**（合法域归一归消费方 quickmenu 服务，
+// 本 getter 不修值——存储层只见事实，与触发参数同纪律）。
+func (s *Store) GetQuickMenuSkin() QuickMenuSkinConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data.QuickMenuSkin
+}
+
+// SetQuickMenuSkin 保存轮盘皮肤并原子落盘（合法域校验/钳制在调用方完成）。
+func (s *Store) SetQuickMenuSkin(skin QuickMenuSkinConfig) error {
+	return s.Update(func(cfg *AppSettings) {
+		cfg.QuickMenuSkin = skin
 	})
 }
 
