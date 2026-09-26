@@ -450,4 +450,11 @@ onBeforeUnmount(() => {
 /* 常驻进度条高度锚定：换文案不抖页 */
 .busy-banner { min-height: 34px; }
 /* .slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
+/* 窄屏档（机主 2026-09-26"一屏容不下两屏高"）：页签体内卡片间隙 10→6，
+   与 WslDistroTable/WslReadinessPanel 各自的纵向收紧同向叠加；宽屏零回退。 */
+@media (max-width: 640px) {
+  .wsl-view { gap: 6px; }
+  .tab-body { gap: 6px; }
+  .busy-banner { min-height: 30px; }
+}
 </style>

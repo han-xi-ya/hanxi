@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // WSL 本机发行版管理控制台（「💻 本机发行版」页签主体，Phase 6 式自 WSLView 拆分）。
-// 状态归一列表 + 行内操作 + 「⋯ 更多」下拉 + 迁移/导出/克隆/瘦身/wsl.conf/详情六种行内编辑器
+// 状态归一列表 + 行内操作 + 「⋯ 更多」下拉（机主 2026-09-26 起面板常驻：点操作项执行但不收）
+// + 复选列与批量启停条（启停可多选串行执行，聚合如实回执）
+// + 迁移/导出/克隆/瘦身/wsl.conf/详情六种行内编辑器
 // 与导出记录抽屉归本组件；busy 分级登记（activeOps）、发行版列表复采（loadInstances）、
 // 安装基目录（installDir）留视图——克隆/瘦身进度（cloneProg/compProg）经 v-model 上抛，
 // 供跨页签进度横幅文案与页签 label「·运行中」互锁使用。行为逐字迁出，调用序列未动。
@@ -170,6 +172,87 @@ const unregisterDistro = (d: DistroInstance) => runDistroOp({
     + '（仅当启动器被其它发行版共用、或卸载失败时，回执会点名让你到「设置→应用」手动处理）。',
   invoke: () => WSLAPI.UnregisterDistro(d.name),
 })
+// ---------- 复选批量启停（机主 2026-09-26："启动和停止可以复选，这样批量操作体验会好很多"） ----------
+// 零新增后端导出：串行循环复用单行的 TerminateDistro / RestartDistro 调用，逐行以同款
+// `stop:<名>` / `restart:<名>` 名目登记 busy（常驻进度横幅与行级闸门天然生效）。
+// 启动语义如实取「重启钮对停止实例的拉起验证」路径（wsl 无显式 start 命令，RestartDistro
+// 对已停止实例即"拉起并验证可启动"，空闲后自动回落停止是平台常态，与单行钮口径一致）。
+// 聚合回执不谎报：成功/失败分桶点名，勾选中状态不符的项先经确认框预告再如实归入跳过数。
+const selected = ref<Set<string>>(new Set())
+const batchBusy = ref(false)
+function toggleSelect(name: string, on: boolean) {
+  const next = new Set(selected.value)
+  if (on) next.add(name)
+  else next.delete(name)
+  selected.value = next
+}
+const allSelected = computed(() =>
+  props.instances.length > 0 && props.instances.every(i => selected.value.has(i.name)))
+const someSelected = computed(() => selected.value.size > 0 && !allSelected.value)
+const selRunning = computed(() => props.instances.filter(i => selected.value.has(i.name) && i.running))
+const selStopped = computed(() => props.instances.filter(i => selected.value.has(i.name) && !i.running))
+function toggleSelectAll() {
+  selected.value = allSelected.value ? new Set() : new Set(props.instances.map(i => i.name))
+}
+function clearSelection() { selected.value = new Set() }
+// 复采后消失的发行版同步出账：选择集不得留幽灵名虚增"已选 N"。
+watch(() => props.instances, (list) => {
+  if (!selected.value.size) return
+  const names = new Set(list.map(i => i.name))
+  selected.value = new Set([...selected.value].filter(n => names.has(n)))
+})
+async function runBatch(kind: 'start' | 'stop') {
+  if (batchBusy.value || props.globalBusy) return
+  const picked = kind === 'stop' ? selRunning.value : selStopped.value
+  // 本行已有其他写操作在飞（导出/克隆/编辑等）的不进队列：后端单飞闸会拒，前端先行避让并点名。
+  const targets = picked.filter(d => !props.busyDistro(d.name))
+  const inflight = picked.filter(d => props.busyDistro(d.name))
+  const skipped = (kind === 'stop' ? selStopped.value : selRunning.value).concat(inflight)
+  if (!targets.length) return
+  const word = kind === 'stop' ? '停止' : '启动'
+  const accepted = await confirm({
+    title: `批量${word} ${targets.length} 个发行版？`,
+    tone: kind === 'stop' ? 'warning' : 'default',
+    description: kind === 'stop'
+      ? `逐个执行 wsl --terminate——等同挨个拔掉这些发行版的虚拟机电源（数据盘无损，下次访问自动再开机）；串行执行，失败项点名。`
+      : `逐个执行「拉起验证」（同单行「🔄 重启」对停止实例的路径）：拉起后无前台会话时稍后自动回落「已停止」，本工具不做后台保活；串行执行，失败项点名。`
+      + '\n\n该操作以普通权限执行，不会弹出 UAC。',
+    details: [
+      { label: `批量${word}`, value: targets.map(d => d.name).join('、') },
+      ...(skipped.length ? [{ label: '自动跳过', value: skipped.map(d => d.name).join('、') }] : []),
+    ],
+  })
+  if (!accepted) return
+  batchBusy.value = true
+  const okNames: string[] = []
+  const fails: string[] = []
+  try {
+    for (const d of targets) {
+      const op = `${kind === 'stop' ? 'stop' : 'restart'}:${d.name}`
+      props.startOp(op)
+      try {
+        const out = await (kind === 'stop' ? WSLAPI.TerminateDistro(d.name) : WSLAPI.RestartDistro(d.name))
+        if (out && out.success === false) fails.push(`${d.name}：${out.message || '后端未报成功'}`)
+        else okNames.push(d.name)
+      } catch (e) {
+        fails.push(`${d.name}：${getErrorMessage(e)}`)
+      } finally {
+        props.finishOp(op)
+      }
+    }
+  } finally {
+    batchBusy.value = false
+    selected.value = new Set() // 成败都以复采为真相：选择集清空防误按
+    await props.loadInstances()
+  }
+  const tail = skipped.length ? `，跳过 ${skipped.length}（状态不符或在飞）：${skipped.map(d => d.name).join('、')}` : ''
+  if (fails.length) {
+    showToast(`批量${word}完成：成功 ${okNames.length}，失败 ${fails.length}${tail} —— ${fails.join('；')}`, { duration: 10000 })
+  } else {
+    showToast(`批量${word}完成：${okNames.length} 个全部成功${tail}`)
+  }
+}
+
 // 导出两段式：点击展开内联格式选择，「开始导出」才进确认链（对齐迁移的表单先行范式）。
 function startExport(d: DistroInstance) {
   exportingName.value = d.name
@@ -479,7 +562,10 @@ useWailsEvent<CompactProgress>('wsl:compact', (p) => {
 // 修法：面板 Teleport 出 DOM 链直挂 body，以触发钮视口 rect 算 fixed 坐标；下方空间
 // 不够且上方放得下则向上翻转；左右向视口内钳制；打开期间任何滚动/缩放、列表复采
 // （行位移动、旧坐标失效）都直接收合。零依赖，不引 popper。
-// 同时只开一行；菜单项动作经 rowMenuAction 先收面板再执行。Esc 走全局 keydown，
+// 同时只开一行；菜单项动作**执行但面板常驻**（机主 2026-09-26："点击后它不关闭，
+// 因为我有可能需要点多次操作"）——收面板只发生在：外点 / 再点触发钮 / Esc /
+// 滚动缩放 / 列表复采（行位移旧坐标失信）五个既有通道；经这些动作间接打开确认框后
+// 复采或点空白，面板亦随上述通道自然收合，无专门"动作后自杀"逻辑。Esc 走全局 keydown，
 // 外点走 document pointerdown（命中 .row-menu 触发链或 .row-menu-panel 面板本体则忽略
 // ——面板已不在 .row-menu DOM 子树内，须单独认账，否则面板内点击在 pointerdown 阶段
 // 就被收掉、click 永远到不了菜单项）。监听仅在面板打开期间挂载，卸载时摘除。
@@ -557,7 +643,10 @@ function placeRowMenu(trigger: HTMLElement) {
 }
 
 function closeRowMenu() { rowMenuName.value = '' }
-function rowMenuAction(fn: () => void) { closeRowMenu(); fn() }
+// 菜单项点击：执行动作但**不关面板**（常驻语义见上方注释块）。会复采列表的动作
+// （文件/设默认，及后续走完的导出等）经 instances watch 自然收——"数据复采才关"；
+// 展开表单类动作（导出/迁移/克隆/瘦身/详情/wsl.conf）面板继续挂着，供连点多项。
+function rowMenuAction(fn: () => void) { fn() }
 function onRowMenuDocDown(e: Event) {
   const t = e.target as HTMLElement | null
   if (rowMenuName.value && !t?.closest?.('.row-menu') && !t?.closest?.('.row-menu-panel')) closeRowMenu()
@@ -605,6 +694,18 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
+    <!-- 批量启停条：有勾选才浮现（常态零占位）；启动/停止各自只作用于勾选集中状态相符的子集，
+         在飞（batchBusy/globalBusy）一律禁按防重入 -->
+    <div v-if="selected.size" class="batch-bar" role="group" aria-label="批量操作">
+      <span class="batch-count">已选 <b>{{ selected.size }}</b> 项：</span>
+      <button class="btn btn-secondary btn-small" :disabled="batchBusy || globalBusy || !selStopped.length"
+        :title="`对勾选中已停止的 ${selStopped.length} 个逐个拉起并验证可启动（同单行「🔄 重启」路径；串行执行，失败点名）`"
+        @click="runBatch('start')">▶ 批量启动（{{ selStopped.length }}）</button>
+      <button class="btn btn-secondary btn-small" :disabled="batchBusy || globalBusy || !selRunning.length"
+        :title="`对勾选中运行中的 ${selRunning.length} 个逐个 wsl --terminate（数据盘无损，下次访问自动再开机；停全部请到就绪检测页）`"
+        @click="runBatch('stop')">⏹ 批量停止（{{ selRunning.length }}）</button>
+      <button class="link-button" :disabled="batchBusy" @click="clearSelection">清除选择</button>
+    </div>
     <div v-if="instError" class="error-box">{{ instError }}
       <button class="btn btn-secondary btn-small retry-inline" @click="loadInstances">↻ 重试</button>
     </div>
@@ -616,16 +717,26 @@ onBeforeUnmount(() => {
       <table class="tbl">
         <thead>
           <tr>
-            <th style="width: 18%;">发行版</th>
+            <!-- 复选列：表头全选钮带半态（indeterminate），仅参与批量启停，不承载其他写操作 -->
+            <th class="check-th" style="width: 36px;">
+              <input type="checkbox" :checked="allSelected" :indeterminate="someSelected"
+                :disabled="batchBusy" aria-label="全选发行版" @change="toggleSelectAll" />
+            </th>
+            <th style="width: 16%;">发行版</th>
             <th style="width: 10%;">状态</th>
-            <th style="width: 8%;">WSL 版本</th>
+            <th class="col-ver" style="width: 8%;">WSL 版本</th>
             <th style="width: 10%;">磁盘占用</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <template v-for="d in instances" :key="d.name">
-            <tr>
+            <tr :class="{ 'row-selected': selected.has(d.name) }">
+              <td class="check-cell">
+                <input type="checkbox" :checked="selected.has(d.name)" :disabled="batchBusy"
+                  :aria-label="`选择发行版 ${d.name}`"
+                  @change="toggleSelect(d.name, ($event.target as HTMLInputElement).checked)" />
+              </td>
               <td>
                 <code class="mono">{{ d.name }}</code>
                 <UiStatusChip v-if="d.default" tone="information">★ 默认</UiStatusChip>
@@ -636,7 +747,7 @@ onBeforeUnmount(() => {
                   {{ d.running ? '运行中' : '已停止' }}
                 </UiStatusChip>
               </td>
-              <td class="mono">{{ d.version }}</td>
+              <td class="mono col-ver">{{ d.version }}</td>
               <td class="mono dim" :title="d.vhdxPath || d.basePath || undefined">{{ d.sizeBytes ? fmtSize(d.sizeBytes) : '—' }}</td>
               <td>
                 <!-- 行内常驻 4 钮（终端/重启/关机/删除），次要操作收「⋯ 更多」；
@@ -663,7 +774,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="movingName === d.name" class="move-row-editor">
-              <td colspan="5">
+              <td colspan="6">
                 <div class="move-editor">
                   <UiBanner tone="warn" class="slim">
                     迁移会先执行 <code class="mono">wsl --shutdown</code> 打停整个 WSL 子系统<template v-if="moveRunningOthers.length">——当前运行中的
@@ -685,7 +796,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="exportingName === d.name" class="export-row-editor">
-              <td colspan="5">
+              <td colspan="6">
                 <div class="move-editor">
                   <div class="move-input-row">
                     <label class="move-label">导出格式</label>
@@ -701,7 +812,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="cloneSrc === d.name" class="clone-row-editor">
-              <td colspan="5">
+              <td colspan="6">
                 <div class="move-editor">
                   <template v-if="cloneProg && cloneProg.source === d.name">
                     <div class="move-input-row">
@@ -746,7 +857,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="compSrc === d.name" class="compact-row-editor">
-              <td colspan="5">
+              <td colspan="6">
                 <div class="move-editor">
                   <template v-if="compProg">
                     <div class="move-input-row">
@@ -787,7 +898,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="confName === d.name" class="conf-row-editor">
-              <td colspan="5">
+              <td colspan="6">
                 <div class="move-editor">
                   <div v-if="confLoading && !confDoc" class="hint-line">正在读取 /etc/wsl.conf…（发行版未运行时会先被启动，这是读配置的预期动作）</div>
                   <div v-else-if="confError && !confDoc" class="error-box">{{ confError }}
@@ -820,7 +931,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="forensicsName === d.name" class="forensics-row">
-              <td colspan="5">
+              <td colspan="6">
                 <div class="forensics-panel">
                   <div v-if="!forensicsOf || (forensicsOf.loading && !forensicsOf.data)" class="hint-line">详情采集中：注册表巡查 + 磁盘双口径 + guest 只读探测…</div>
                   <div v-else-if="forensicsOf.error && !forensicsOf.data" class="error-box">{{ forensicsOf.error }}
@@ -914,8 +1025,45 @@ onBeforeUnmount(() => {
 .distro-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 /* 实锤②（窄屏挤行）：操作区常驻 5 钮 + 4 数据列，视口窄时列被压到换行错乱。
    给表体设 760px 地板：不足即由 .table-container 的 overflow-x:auto 横向滚动承接
-   （旧形 width:100% 无地板，窄屏只会把发行版名/操作列碾碎）。 */
+   （旧形 width:100% 无地板，窄屏只会把发行版名/操作列碾碎）。复选列加入后地板维持 760：
+   新增 36px 由发行版列（18%→16%）让渡，滚动兜底机制口径不变。 */
 .tbl { min-width: 760px; }
+
+/* 批量复选：表头/行内勾选钮与选中行底色（--surface-selected 四主题皆有定义） */
+.check-th, .check-cell { text-align: center; }
+.check-th input[type='checkbox'], .check-cell input[type='checkbox'] {
+  width: 15px; height: 15px; margin: 0; accent-color: var(--color-primary); cursor: pointer; vertical-align: middle;
+}
+.check-th input:disabled, .check-cell input:disabled { cursor: not-allowed; opacity: 0.6; }
+.check-th input:focus-visible, .check-cell input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.tbl tbody tr.row-selected > td { background: var(--surface-selected); }
+/* 批量条：勾选非空才出现的浮出工具条，与 .control-bar 同族表面语言，纵向压扁（一行流） */
+.batch-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 10px;
+  background: var(--surface-panel); border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control); font-size: var(--text-sm);
+}
+.batch-count b { font-variant-numeric: tabular-nums; }
+.batch-bar .link-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 窄屏档（机主 2026-09-26 截图反馈"一屏容不下两屏高"）：≤640px 收紧**纵向**节奏——
+   单元格竖内距 8→5、行钮组缝隙 6→4、批量条/编辑器内距压扁、导出记录卡展开后限高内滚
+   （摘要行语义保留：summary 恒一行，展开不再是无限长卷宗）。横向仍以 .tbl 760px 地板 +
+   容器滚动兜底（设计系统口径：宽表格在自身容器内滚，不把每列碾到换行）。
+   390px 再降一档：隐去 WSL 版本列（本机几乎恒为 2，全量版本在「详情」抽屉可查），
+   缩短横向滚动行程。宽屏（>640px）一切观感零回退——媒体查询外无一字改动。 */
+@media (max-width: 640px) {
+  .tbl :is(th, td) { padding: 5px 8px; }
+  .distro-actions { gap: 4px; }
+  .batch-bar { gap: 6px; padding: 4px 8px; }
+  .move-editor { gap: 6px; }
+  .forensics-panel { gap: 4px; }
+  .export-log-list { max-height: 32vh; overflow-y: auto; }
+  .export-log-list li { padding: 2px 10px; }
+}
+@media (max-width: 390px) {
+  .col-ver { display: none; }
+}
 
 /* 行级「⋯ 更多」下拉：面板 Teleport 到 body + fixed 坐标（挂载/翻转/收合策略见 script），
    .row-menu 只做触发钮的布局盒，不再充当 absolute 定位上下文。 */

@@ -194,9 +194,15 @@ async function setup(opts: { installPref?: InstallPref | 'throw' } = {}) {
   }
   api.SetDistroInstallDir.mockResolvedValue(undefined)
   const wrapper = mount(WSLView)
+  mounted.push(wrapper)
   await flushPromises()
   return wrapper
 }
+
+// 菜单常驻（2026-09-26）后，用例收尾时「⋯ 更多」面板常处于打开态：Teleport 面板挂在
+// body 上、组件仍在打补丁——只清 body 不卸壳，残挂载的下一轮 patch 会打在已被移除的
+// 锚点上炸掉调度队列（踩坑 #86/#87 镜像形态）。清场固定两步：先逐一 unmount，再清 body。
+const mounted: ReturnType<typeof mount>[] = []
 
 async function completeCheck(wrapper: ReturnType<typeof mount>) {
   emitReadiness({ stage: 'wsl', items: [REPORT.checks[9]] })
@@ -216,6 +222,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   // Teleport 面板挂 body（wrapper 外）：用例间清场，防残留菜单被后案 querySelector 误命中。
+  // 两步定式（见上方 mounted 注释）：先卸壳断更新源，再清 body 残影。
+  while (mounted.length) mounted.pop()!.unmount()
   document.body.innerHTML = ''
 })
 
@@ -236,6 +244,12 @@ async function menuClick(w: Awaited<ReturnType<typeof setup>>, row: number, text
   const btn = Array.from(panel!.querySelectorAll<HTMLButtonElement>('button'))
     .find(b => b.textContent?.includes(text))!
   btn.click()
+  await flushPromises()
+}
+// 机主 2026-09-26 起菜单项「执行但面板常驻」：需要再开一轮菜单的用例先按 Esc 收面
+// （收面通道与真机一致），否则同行触发钮会被 toggle 成语义正确的"关"而误判打不开。
+async function closeMore() {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
   await flushPromises()
 }
 
@@ -920,7 +934,8 @@ describe('WSLView 发行版实例管理', () => {
     expect(panel2.text()).toContain('未运行')
     expect(panel2.find('.ui-progress').exists()).toBe(false)
     expect(panel2.text()).not.toContain('172.25')
-    await menuClick(w, 0, '详情') // 再点收起
+    await closeMore() // 面板常驻语义：先收面再重开
+    await menuClick(w, 0, '详情') // 再点收起详情行（菜单本身不收）
     expect(w.find('.forensics-panel').exists()).toBe(false)
   })
 
@@ -971,6 +986,7 @@ describe('WSLView 发行版实例管理', () => {
     expect((w.find('#wsl-clone-target').element as HTMLInputElement).value).toBe('E:\\Pool\\deep')
     await w.find('.clone-row-editor').findAll('button').find(b => b.text().includes('取消'))!.trigger('click')
     await flushPromises()
+    await closeMore() // 面板常驻语义：取消克隆不收面，开迁移菜单前先收
     await menuClick(w, 0, '迁移')
     expect((w.find('#wsl-move-target').element as HTMLInputElement).value).toBe('D:\\wsl\\Ubuntu')
   })

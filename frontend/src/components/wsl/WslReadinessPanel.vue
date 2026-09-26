@@ -374,4 +374,19 @@ async function doShutdown(alreadyConfirmed = false) {
    标准形一并落回（段间距 +2px，登记目视项）。 */
 .inline-link { color: var(--color-primary); text-decoration: none; }
 .inline-link:hover { text-decoration: underline; }
+
+/* 窄屏档（机主 2026-09-26"一屏容不下两屏高"，与发行版控制台/视图层同向）：
+   就绪体检 = 系统 WSL 安装形态与逐项结论的纵向大户（10 行清单 + 9 钮操作条 + 结论条）。
+   ≤640px 收紧纵向节奏：操作钮走全局 .btn-micro 同款三档（2px 8px / --text-xs，
+   密集场景既有标准形，不造私有小钮形），体检行竖内距 8→5、说明行字号降一档。
+   信息一项不藏（不做 line-clamp 截尾），只压行距与字级；宽屏零回退。 */
+@media (max-width: 640px) {
+  .control-btns { gap: 5px; }
+  .control-btns .btn { min-height: var(--control-h-sm); padding: 2px 8px; font-size: var(--text-xs); border-radius: 6px; }
+  .check-row { padding: 5px 8px; }
+  .check-detail { font-size: var(--text-xs); line-height: 1.5; }
+  .check-label { font-size: var(--text-sm); }
+  .verdict-detail { font-size: var(--text-xs); }
+  .import-panel { padding: 8px 10px; gap: 6px; }
+}
 </style>
