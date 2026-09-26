@@ -18,11 +18,9 @@ import (
 // backupEngine：git 不可用（未安装 / Microsoft Store 假存根 / 仓库连炸）时的
 // 降级影子拷贝（PLAN §3.3）。同一白名单逐个 copy 进
 // `.snapshots/backup/<YYYYmmdd-HHMMSS>/`，白名单式拷贝天然规避
-// "目标为源子集" 的自嵌套坑（.snapshots 不在白名单）；滚动保留最近 30 份。
+// "目标为源子集" 的自嵌套坑（.snapshots 不在白名单）；滚动保留最近
+// backupKeepCount 份（容量常量收口在 capacity.go）。
 // 与 gitEngine 实现同一 engine 接口，服务层两模式无感。
-
-// backupKeepCount 降级链滚动份数（Q3 拍板）。
-const backupKeepCount = 30
 
 // manifestName 每份备份的内容指纹清单文件名（不进 revisions/revisionFiles 视野）。
 const manifestName = "manifest.json"

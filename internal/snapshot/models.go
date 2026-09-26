@@ -12,7 +12,6 @@ const (
 	tickInterval       = 5 * time.Second
 	shutdownFlushBound = 3 * time.Second // 退出前最后一发的同步闸门：卡死不拖退出
 	commandTimeout     = 15 * time.Second
-	maxListRevisions   = 50
 	repoRebuildFails   = 3 // git 连续失败 N 次→重 init 仓库（旧仓库改名保留），不烧 tick
 )
 

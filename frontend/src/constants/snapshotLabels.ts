@@ -12,12 +12,14 @@
 import type { TrackedFile } from '../../bindings/hanxi/internal/snapshot/models'
 
 /**
- * git 版本观察窗上限：与后端 `internal/snapshot` 的 maxListRevisions 同值镜像
- * （ListRevisions/FileHistory 截断、前端拉取 limit、超窗文案插值共用此一处）。
+ * git 版本观察窗上限：后端 `internal/snapshot/capacity.go` 的 maxListRevisions
+ * 的前端镜像（ListRevisions/FileHistory 截断、前端拉取 limit、超窗文案插值共用
+ * 此一处）。绑定现面（GetStatus→StatusInfo）无容量出口且裁决不为其新开 Wails
+ * 导出，双写漂移由 __tests__/snapshotCapacity.contract.spec.ts 源文本对账焊死。
  */
 export const REVISION_WINDOW = 50
 
-/** 备份模式滚动保留份数：与后端 backupKeepCount 同值镜像（chip 与说明文案插值用）。 */
+/** 备份模式滚动保留份数：后端 capacity.go 的 backupKeepCount 镜像（chip、说明文案与 revisionCapNote 插值用）。 */
 export const BACKUP_KEEP = 30
 
 /** 受保清单三分组的展示名（与后端 TrackedFile.Group 词表对齐）。 */
