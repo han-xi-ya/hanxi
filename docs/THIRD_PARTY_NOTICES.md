@@ -194,10 +194,15 @@ Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下�
 
 ## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行 + 开源上游仓库取材入库件）
 
-Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**（32px，
-早期件一次性从官方发行 exe 用 shell32!ExtractIconEx 提取，见
-scripts/extract_app_icons.ps1；开源仓库取材件来自上游仓库现成位图资产
-或官方 MSIX 原生小尺寸图，ICO 取最大画幅等比缩 32、原生 ≤64px 小件零改作直用），
+Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**。
+**2026-09-26 升切（不改许可口径）**：全册按"源资产真实尺寸、64px 封顶"重切——
+早期 32px 件多为源 256px 画幅白白降采样，本轮从官方发行 exe 的 PE
+`RT_GROUP_ICON/RT_ICON` 最大真实画幅（多为 256，quicklook 512、keyviz 128、
+rufus 恰 64）等比重取到 64px，绝不上采样凑数；开源仓库取材件按源最大真实尺寸取
+（bili23 icns 1024→64、eartrumpet 包资产 256→64、rustdesk/termora/nanazip 原生 64、
+ddnsgo/frpc favicon 源天花板 48 保持 48）。逐枚出货边长单一来源见
+`internal/app/appicons/sources.go`（由 `sources_test.go` 逐枚解码锁死，防漂移）。
+许可口径不变，来源不变（下表"来源软件/上游许可"照旧，仅注尺寸见各件备注与本段）。
 用途仅为在 hanxi 界面中标识该被托管软件本身（识别性展示），不暗示任何隶属或
 背书关系。逐个许可登记：
 
@@ -222,13 +227,13 @@ scripts/extract_app_icons.ps1；开源仓库取材件来自上游仓库现成位
 | windterm.png | WindTerm | 仓库根无 LICENSE 文件，README 自述完全免费商用/非商用（开源部分 Apache-2.0） | 识别性使用；许可口径以自述为据，随批登记留痕 |
 | litemonitor.png | LiteMonitor | 上游仓库未声明 LICENSE（见上节，默认"保留所有权利"） | 机主拍板放行（2026-09-25，按 Snipaste 同口径）；识别性使用，权利方异议即摘 |
 | guoheview.png | 果核看图 GuoheView | 闭源 freeware，官方声明无再分发授权（见上节） | 机主拍板放行（2026-09-25，按 Snipaste 同口径）；识别性使用，权利方异议即摘 |
-| rustdesk.png | RustDesk | AGPL-3.0（见 AGPL 族节） | 识别性使用；来源=上游仓库 github.com/rustdesk/rustdesk `res/icon.ico`（256px 最大画幅等比缩 32） |
-| bili23.png | Bili23-Downloader | GPL-3.0（见 GPL 族节） | 识别性使用；来源=上游仓库 github.com/ScottSloan/Bili23-Downloader `assets/app.icns`（实为 1024px PNG，等比缩 32；仓库内无 ICO/PNG 现成件与更优位图通道） |
-| termora.png | Termora | 仓库根无 LICENSE 文件，README 自述 AGPL-3.0/专有双许可 | 识别性使用；来源=上游仓库 github.com/TermoraDev/termora `src/main/resources/icons/termora_32x32.png`（官方原生 32px 件零改作直用）；许可口径以 README 自述为据，随批登记留痕 |
-| nanazip.png | NanaZip | 代码 MIT；应用图标资产 CC BY-ND 4.0（见上节） | 识别性使用；来源=官方 MSIXBundle 6.5.1800.0 x64 载荷 `Assets/Square44x44Logo.targetsize-32_altform-unplated.png`（官方原生 32px 小尺寸件零改作直用，规避 ND 禁改作条款——不缩放/不裁剪/不合成） |
-| ddnsgo.png | ddns-go | MIT（见上节） | 识别性使用；来源=上游仓库 github.com/jeessy2/ddns-go 根目录 `favicon.ico`（官方 Web 管理面板图标，取最大画幅 48px 等比缩 32；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
-| frpc.png | frp (fatedier/frp) | Apache-2.0（见上节） | 识别性使用；来源=上游仓库 github.com/fatedier/frp `web/frpc/public/favicon.ico`（官方 frpc 控制面板图标，48px 单画幅等比缩 32；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
-| eartrumpet.png | EarTrumpet | MIT + Excluded Entities 前言（见上节） | 识别性使用；来源=上游仓库 github.com/File-New-Project/EarTrumpet `EarTrumpet.Package/Assets/Square44x44Logo.altform-unplated_targetsize-32.png`（官方原生 32px 小尺寸件零改作直用）；Excluded Entities 条款仅点名排除三家商事主体，Hanxi 非排除对象，MIT 授权照常成立 |
+| rustdesk.png | RustDesk | AGPL-3.0（见 AGPL 族节） | 识别性使用；来源=上游仓库 github.com/rustdesk/rustdesk `res/icon.ico`（升切：出货 64px，取该 ico 内原生 64×64 BMP 画幅零重采样直解——源含 16/32/48/64/128 全画幅） |
+| bili23.png | Bili23-Downloader | GPL-3.0（见 GPL 族节） | 识别性使用；来源=上游仓库 github.com/ScottSloan/Bili23-Downloader `assets/app.icns`（实为 1024px PNG；升切：出货 64px，等比缩 64，仓库内无更大现成件与更优位图通道） |
+| termora.png | Termora | 仓库根无 LICENSE 文件，README 自述 AGPL-3.0/专有双许可 | 识别性使用；来源=上游仓库 github.com/TermoraDev/termora `src/main/resources/icons/termora_64x64.png`（升切：改取官方原生 64px 件零改作直用，源天花板 64；仓库无 128+ 位图通道）；许可口径以 README 自述为据，随批登记留痕 |
+| nanazip.png | NanaZip | 代码 MIT；应用图标资产 CC BY-ND 4.0（见上节） | 识别性使用；来源=上游仓库 github.com/M2Team/NanaZip `Assets/PackageAssets/Square44x44Logo.targetsize-64_altform-unplated.png`（升切：官方原生 64px 小尺寸件零改作直用，规避 ND 禁改作条款——不缩放/不裁剪/不合成；源天花板 64） |
+| ddnsgo.png | ddns-go | MIT（见上节） | 识别性使用；来源=上游仓库 github.com/jeessy2/ddns-go 根目录 `favicon.ico`（官方 Web 管理面板图标；升切：出货 48px，该 ico 最大画幅即 48——源天花板 48，不为凑 64 放大；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
+| frpc.png | frp (fatedier/frp) | Apache-2.0（见上节） | 识别性使用；来源=上游仓库 github.com/fatedier/frp `web/frpc/public/favicon.ico`（官方 frpc 控制面板图标；升切：出货 48px，单画幅 48 即源天花板，不放大凑 64；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
+| eartrumpet.png | EarTrumpet | MIT + Excluded Entities 前言（见上节） | 识别性使用；来源=上游仓库 github.com/File-New-Project/EarTrumpet `EarTrumpet.Package/Assets/Square44x44Logo.altform-unplated_targetsize-256.png`（升切：改取官方 256px 无底版原生画幅等比缩 64 出货，替代原 32px targetsize 小件）；Excluded Entities 条款仅点名排除三家商事主体，Hanxi 非排除对象，MIT 授权照常成立 |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
 | ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不落 generic 之外的展示面：保持矢量 `i:gauge`（rammap 系位图一律同判） |
 
