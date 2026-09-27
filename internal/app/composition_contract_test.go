@@ -151,10 +151,14 @@ func extractRegisteredModuleConstructors(t *testing.T, source string) []string {
 	}
 	block := source[start : start+end]
 	constructors := extractMatches(block, regexp.MustCompile(`(?m)^\s*([a-z][a-z0-9]*)\.New\(`))
-	// 四个被装配根持有引用的模块以变量入表，不以 package.New(...) 直接出现。
+	// 被装配根持有引用的模块以变量入表，不以 package.New(...) 直接出现
+	//（memo/clipboard 构造可失败走条件 append，其余直取变量，数量随行就市）。
 	constructors = append(constructors, "ocr", "portkill", "fileshare", "quickmenu", "msgboard")
 	if strings.Contains(source, "modulesToRegister = append(modulesToRegister, memoModule)") {
 		constructors = append(constructors, "memo")
+	}
+	if strings.Contains(source, "modulesToRegister = append(modulesToRegister, clipboardModule)") {
+		constructors = append(constructors, "clipboard")
 	}
 	return constructors
 }

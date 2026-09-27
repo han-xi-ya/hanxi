@@ -25,6 +25,9 @@ import type * as instance$2 from "../../../../../hanxi/internal/modules/ccswitch
 import type * as version$2 from "../../../../../hanxi/internal/modules/ccswitch/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as clipboard$0 from "../../../../../hanxi/internal/modules/clipboard/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as instance$3 from "../../../../../hanxi/internal/modules/dbx/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -222,6 +225,10 @@ declare module "@wailsio/runtime" {
             "bili23:version-download": version$1.DownloadProgress;
             "ccswitch:instance-state": instance$2.Snapshot;
             "ccswitch:version-download": version$2.DownloadProgress;
+            "clipboard:overlay:opening": void;
+            "clipboard:paused": clipboard$0.PausedPayload;
+            "clipboard:removed": clipboard$0.RemovedPayload;
+            "clipboard:updated": clipboard$0.Entry;
             "dbx:instance-state": instance$3.Snapshot;
             "dbx:version-download": version$3.DownloadProgress;
             "ddnsgo:instance-log": instance$4.LogEntry;

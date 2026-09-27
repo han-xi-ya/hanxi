@@ -78,6 +78,36 @@
       "owner": "hanxi"
     },
     {
+      "id": "clipboard",
+      "name": "剪贴板历史",
+      "description": "系统剪贴板全量历史：文本/图片/文件三类捕获、DPAPI 加密落盘、去重置顶与容量自钳制，全局热键浮层随处选取（首版仅文本回填系统剪贴板）",
+      "category": "efficiency",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "background-listener",
+        "dedicated-window",
+        "hotkey-slot",
+        "tray-commands"
+      ],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search",
+        "tray",
+        "hotkey",
+        "window",
+        "background"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
       "id": "dbx",
       "name": "DBX",
       "description": "托管 Tauri 数据库客户端 DBX：版本管理、JobObject 启停与信使唤窗（数据改道 Hanxi 数据根，删版本不丢数据）",
@@ -660,6 +690,30 @@
         "navigation",
         "search",
         "tray"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
+      "id": "piik",
+      "name": "Piik 屏幕分享",
+      "description": "托管 headless 屏幕分享服务器 Piik：版本管理、JobObject 启停与端口试绑分配，界面即系统浏览器打开的本机 HTTP 页面（服务型骨架：无窗口无托盘无提权，钉版本手动追更不挂更新红点）",
+      "category": "network",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "hosted-versions",
+        "managed-process"
+      ],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search"
       ],
       "compatibility": {
         "hostRange": "*",

@@ -24,6 +24,7 @@ import (
 	"hanxi/internal/modules/ccswitch"
 	ccswitchinstance "hanxi/internal/modules/ccswitch/instance"
 	ccswitchversion "hanxi/internal/modules/ccswitch/version"
+	"hanxi/internal/modules/clipboard"
 	"hanxi/internal/modules/dbx"
 	dbxinstance "hanxi/internal/modules/dbx/instance"
 	dbxversion "hanxi/internal/modules/dbx/version"
@@ -77,6 +78,9 @@ import (
 	"hanxi/internal/modules/piclite"
 	picliteinstance "hanxi/internal/modules/piclite/instance"
 	picliteversion "hanxi/internal/modules/piclite/version"
+	"hanxi/internal/modules/piik"
+	piikinstance "hanxi/internal/modules/piik/instance"
+	piikversion "hanxi/internal/modules/piik/version"
 	"hanxi/internal/modules/portkill"
 	"hanxi/internal/modules/portscan"
 	"hanxi/internal/modules/publicip"
@@ -179,6 +183,13 @@ func RegisterEvents() {
 	application.RegisterEvent[application.Void]("memo:quicksheet:opening")
 	// msgboard:changed 是无载荷事件（挂牌/撤牌/改配置推送，模块页与牌体视图各自拉新）。
 	application.RegisterEvent[application.Void]("msgboard:changed")
+	// clipboard（N45 剪贴板历史）四事件按契约 §5/§6 冻结名接线：updated 携完整
+	// 条目载荷（新增与去重顶置同事件）；removed/paused 各携冻结载荷结构体
+	// （已导出，Wails 精确类型闸）；overlay:opening 无载荷必须 Void 注册。
+	application.RegisterEvent[clipboard.Entry]("clipboard:updated")
+	application.RegisterEvent[clipboard.RemovedPayload]("clipboard:removed")
+	application.RegisterEvent[clipboard.PausedPayload]("clipboard:paused")
+	application.RegisterEvent[application.Void]("clipboard:overlay:opening")
 	application.RegisterEvent[notify.Notification]("notify:received")
 	application.RegisterEvent[markeronversion.DownloadProgress]("markeron:version-download")
 	application.RegisterEvent[markeroninstance.Snapshot]("markeron:instance-state")
@@ -232,6 +243,10 @@ func RegisterEvents() {
 	application.RegisterEvent[paseoversion.DownloadProgress]("paseo:version-download")
 	application.RegisterEvent[paseoinstance.Snapshot]("paseo:instance-state")
 	application.RegisterEvent[douzyversion.DownloadProgress]("douzy:version-download")
+	// piik 托管两事件按装配线冻结命名接线（值类型 piikversion.DownloadProgress /
+	// piikinstance.Snapshot）；A 线若改名，以此两行与 fixture 为准收口。
+	application.RegisterEvent[piikversion.DownloadProgress]("piik:version-download")
+	application.RegisterEvent[piikinstance.Snapshot]("piik:instance-state")
 	application.RegisterEvent[nanazip.OperationProgress]("nanazip:operation-progress")
 	application.RegisterEvent[nanazip.PackageSnapshot]("nanazip:package-snapshot")
 	application.RegisterEvent[npmtool.OperationProgress]("envcheck:npm-tool-operation")
@@ -376,6 +391,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		bili23.ID:        bili23version.OpenTree(paths.VersionsDir()),
 		gonavi.ID:        gonaviversion.OpenTree(paths.VersionsDir()),
 		dbx.ID:           dbxversion.OpenTree(paths.VersionsDir()),
+		piik.ID:          piikversion.OpenTree(paths.VersionsDir()),
 	}
 	var opHub *operation.Hub
 	if opStore != nil {
@@ -456,6 +472,12 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	if err != nil {
 		slog.Error("failed to init memo module", "err", err)
 	}
+	// clipboard 构造期装载历史（坏库在 store 内隔离取证副本后空库启动），
+	// 装配期可失败模块：数据目录不可建即失败→nil→注册表跳过，不拖累其余装配。
+	clipboardModule, err := clipboard.New(paths)
+	if err != nil {
+		slog.Error("failed to init clipboard module", "err", err)
+	}
 
 	// 建立从 fileshare 自动将投递文本写入 memo 的联动管道
 	if mMod, ok := memoModule.(*memo.Module); ok && mMod != nil {
@@ -498,6 +520,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		termora.New(plat),
 		rammap.New(plat),
 		douzy.New(plat),
+		piik.New(plat),
 		ocrModule,
 		lan.New(plat, store),
 		portkillModule,
@@ -515,6 +538,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	}
 	if memoModule != nil {
 		modulesToRegister = append(modulesToRegister, memoModule)
+	}
+	if clipboardModule != nil {
+		modulesToRegister = append(modulesToRegister, clipboardModule)
 	}
 
 	if err := registry.Register(modulesToRegister...); err != nil {
@@ -630,6 +656,9 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		// 便签标题（N33 §2），映射不到由快照侧回落文件名。
 		snapSvc.SetMemoTitleResolver(mMod.GetService().TitleForWhitelistPath)
 	}
+	if cMod, ok := clipboardModule.(*clipboard.Module); ok && cMod != nil {
+		cMod.GetService().SetWailsApp(a)
+	}
 
 	// 交接路由以 hash 形态挂进初始 URL（前端无 URL 路由，hash 仅回航提示用；
 	// main.ts 的 #quickmenu 分流不受 "/#/xxx" 影响）。
@@ -712,6 +741,17 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		mMod.SetHotkeyRegistry(hk)
 		if err := registry.EnsureActive("memo"); err != nil {
 			slog.Error("激活 memo 模块失败，速记热键不可用（不影响启动）", "err", err)
+		}
+	}
+
+	// clipboard（N45 剪贴板历史）：与 memo 同款接线——交接注册表后常驻激活，
+	// 浮层热键（槽 clipboard/overlay，默认 Ctrl+Alt+V）与监听消息泵随
+	// OnInit/OnDestroy 驱动，开机即待命、主窗不开也能唤层。clipboard.New
+	// 失败时 clipboardModule 为 nil，自然跳过——不激活、不绑键、不监听。
+	if cMod, ok := clipboardModule.(*clipboard.Module); ok && cMod != nil {
+		cMod.SetHotkeyRegistry(hk)
+		if err := registry.EnsureActive("clipboard"); err != nil {
+			slog.Error("激活 clipboard 模块失败，剪贴板历史与浮层热键不可用（不影响启动）", "err", err)
 		}
 	}
 

@@ -111,11 +111,14 @@ var deliveryConst = map[extapi.DeliveryKind]string{
 // ocr/snip-clipboard）；internal/modules/msgboard/hotkey.go 为 msgboard 模块
 // 自绑显隐热键（槽位 msgboard/toggle，随 OnInit/OnDestroy 驱动）；
 // internal/modules/memo/hotkey.go 为 memo 模块自绑悬浮速记卡显隐热键
-// （槽位 memo/quicksheet，N16 B 批，随 OnInit/OnDestroy 驱动）。
+// （槽位 memo/quicksheet，N16 B 批，随 OnInit/OnDestroy 驱动）；
+// internal/modules/clipboard/hotkey.go 为 clipboard 模块自绑浮层唤出热键
+// （槽位 clipboard/overlay，N45，默认 Ctrl+Alt+V，随 OnInit/OnDestroy 驱动）。
 var hotkeyAllowlist = map[string]bool{
-	"ocr":      true,
-	"msgboard": true,
-	"memo":     true,
+	"ocr":       true,
+	"msgboard":  true,
+	"memo":      true,
+	"clipboard": true,
 }
 
 // mcpAllowlist `hanxi mcp` 无头进程暴露工具的模块白名单。

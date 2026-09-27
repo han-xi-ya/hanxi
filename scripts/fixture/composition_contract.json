@@ -16,6 +16,11 @@
       "group": "developer"
     },
     {
+      "id": "clipboard",
+      "route": "/ext/clipboard",
+      "group": "efficiency"
+    },
+    {
       "id": "ddnsgo",
       "route": "/ext/ddnsgo",
       "group": "network"
@@ -131,6 +136,11 @@
       "group": "media"
     },
     {
+      "id": "piik",
+      "route": "/ext/piik",
+      "group": "network"
+    },
+    {
       "id": "portkill",
       "route": "/ext/portkill",
       "group": "system"
@@ -243,6 +253,10 @@
     "bili23:version-download",
     "ccswitch:instance-state",
     "ccswitch:version-download",
+    "clipboard:overlay:opening",
+    "clipboard:paused",
+    "clipboard:removed",
+    "clipboard:updated",
     "dbx:instance-state",
     "dbx:version-download",
     "ddnsgo:instance-log",
@@ -291,6 +305,8 @@
     "paseo:version-download",
     "piclite:instance-state",
     "piclite:version-download",
+    "piik:instance-state",
+    "piik:version-download",
     "portscan:progress",
     "quicklook:instance-state",
     "quicklook:version-download",
@@ -333,6 +349,7 @@
       "quickmenu",
       "msgboard",
       "memo",
+      "clipboard",
       "wsl"
     ],
     "orderedCalls": [
@@ -347,6 +364,10 @@
       {
         "before": "mMod.SetHotkeyRegistry(hk)",
         "after": "registry.EnsureActive(\"memo\")"
+      },
+      {
+        "before": "cMod.SetHotkeyRegistry(hk)",
+        "after": "registry.EnsureActive(\"clipboard\")"
       },
       {
         "before": "setupSnipHotkey(hk, registry, ocrSvc)",
@@ -411,7 +432,7 @@
     ]
   },
   "counts": {
-    "modules": 47,
-    "events": 89
+    "modules": 49,
+    "events": 95
   }
 }

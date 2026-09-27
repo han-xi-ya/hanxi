@@ -20,9 +20,9 @@ const frontendModules = () => Object.entries(ROUTES)
   .sort()
 
 describe('constants/navigation', () => {
-  it('登记了全部 60 条路由（含设置页 8 个分区子路由与模块中心）', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(60)
-    for (const route of ['/', '/modules', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard']) {
+  it('登记了全部 62 条路由（含设置页 8 个分区子路由与模块中心）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(62)
+    for (const route of ['/', '/modules', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard', '/ext/piik', '/ext/clipboard']) {
       expect(ROUTES[route]).toBeDefined()
     }
     for (const s of SETTINGS_SECTIONS) {

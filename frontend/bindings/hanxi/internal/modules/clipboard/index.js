@@ -19,6 +19,17 @@ import * as $models from "./models.js";
  */
 
 /**
+ * @typedef {$models.PausedPayload} PausedPayload
+ */
+
+/**
+ * RemovedPayload/PausedPayload clipboard:removed 与 clipboard:paused 的载荷形态。
+ * 导出是装配闸要求：Wails beta.10 对 RegisterEvent[T] 做精确类型匹配，装配根
+ * 按本类型注册事件，未导出则无法引用（收口清单 W1 事件类型闸）。
+ * @typedef {$models.RemovedPayload} RemovedPayload
+ */
+
+/**
  * Status 服务运行态（GetStatus 返回面，前端状态区/浮层页脚用）。
  * @typedef {$models.Status} Status
  */
