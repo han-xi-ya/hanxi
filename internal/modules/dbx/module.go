@@ -49,13 +49,13 @@ func (e *Module) Info() extapi.ModuleInfo {
 func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
-// Icon 用矢量 i:server——图标池无 dbx 真图（assets/apps/ 无此键、提取红线
-// 候选另议），且刻意与 gonavi（i:database，同为数据库工具）错开免混淆；
+// Icon 用真图标 app:dbx（N27 第三十六枚，开源仓库取材：上游 t8y2/dbx
+// src-tauri/icons/icon.png 512px 源等比缩 64，许可与来源见 THIRD_PARTY_NOTICES）；
 // Order 74 为全模块扫描后的 developer 组空位（70=ccswitch，73=gonavi 并行
 // 线在途，74 相邻同簇；DB 工具簇最终排序以主会话 navigation 终调为准）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "dbx-manager", Title: "DBX", Route: "/ext/dbx", Icon: "i:server", Section: extapi.SectionExt, Order: 74, Group: extapi.GroupDeveloper},
+		{ID: "dbx-manager", Title: "DBX", Route: "/ext/dbx", Icon: "app:dbx", Section: extapi.SectionExt, Order: 74, Group: extapi.GroupDeveloper},
 	}
 }
 

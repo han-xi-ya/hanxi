@@ -48,11 +48,12 @@ func (e *Module) Info() extapi.ModuleInfo {
 func (e *Module) SetGate(g extapi.Gate) { e.svc.holder.SetGate(g) }
 
 // Nav 声明侧边栏入口（Order/Group 决定组内排序）。
-// Icon 用矢量 i:database——图标池无 gonavi 真图（红线提取候选另议），如实降级；
+// Icon 用真图标 app:gonavi（N27 第三十七枚，开源仓库取材：上游 Syngnat/GoNavi
+// build/appicon.png 1024px 源等比缩 64，许可与来源见 THIRD_PARTY_NOTICES）；
 // Order 73 为全模块扫描后的 developer 组空位（70=ccswitch，90 起为编辑器/终端簇）。
 func (e *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{
-		{ID: "gonavi-manager", Title: "GoNavi", Route: "/ext/gonavi", Icon: "i:database", Section: extapi.SectionExt, Order: 73, Group: extapi.GroupDeveloper},
+		{ID: "gonavi-manager", Title: "GoNavi", Route: "/ext/gonavi", Icon: "app:gonavi", Section: extapi.SectionExt, Order: 73, Group: extapi.GroupDeveloper},
 	}
 }
 

@@ -20,14 +20,14 @@ import { runtimeIconReady } from '../../constants/runtimeIcons'
 /** assets/apps 展示档默认分辨率（升切批出货主档；改提取脚本 -Px 须同步此值与台账）。 */
 export const APP_ICON_SRC_PX = 64
 
-/** 逐枚源尺寸台账（对齐 internal/app/appicons/sources.go 的 26 键；升切批出货实况：
- *  24 枚 64 封顶、ddnsgo/frpc 源天花板 48；generic 自绘 32 不入册，托盘菜单变体不
+/** 逐枚源尺寸台账（对齐 internal/app/appicons/sources.go 的 28 键；升切批出货实况：
+ *  26 枚 64 封顶、ddnsgo/frpc 源天花板 48；generic 自绘 32 不入册，托盘菜单变体不
  *  走本预算。新件入库须同批登记，未登记名保守按 32 档防放大凑数）。导出供测试对账。 */
 export const ICON_SRC_LEDGER: Record<string, number> = {
   ...Object.fromEntries(
     [
-      'bcu', 'bili23', 'ccswitch', 'douzy', 'eartrumpet', 'everything', 'flclash',
-      'guoheview', 'keyviz', 'litemonitor', 'mangodisk', 'markeron', 'nanazip',
+      'bcu', 'bili23', 'ccswitch', 'dbx', 'douzy', 'eartrumpet', 'everything', 'flclash',
+      'gonavi', 'guoheview', 'keyviz', 'litemonitor', 'mangodisk', 'markeron', 'nanazip',
       'papertodo', 'paseo', 'piclite', 'quicklook', 'rufus', 'rustdesk', 'snipaste',
       'subnetdesk', 'termora', 'translucenttb', 'windterm',
     ].map((id) => [id, APP_ICON_SRC_PX] as const),

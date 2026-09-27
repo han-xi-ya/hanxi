@@ -192,14 +192,15 @@ Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下�
 
 当前 Hanxi 仓库和安装包不包含 Douzy 任何二进制。若未来改为预装或随 Hanxi 再分发，发布流程须随附 MIT 许可证文本与版权声明，并另行评估内测产品的分发责任。
 
-## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行 + 开源上游仓库取材入库件）
+## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行 + 开源上游仓库取材入库件 + 托管新模块补录二枚）
 
 Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**。
 **2026-09-26 升切（不改许可口径）**：全册按"源资产真实尺寸、64px 封顶"重切——
 早期 32px 件多为源 256px 画幅白白降采样，本轮从官方发行 exe 的 PE
 `RT_GROUP_ICON/RT_ICON` 最大真实画幅（多为 256，quicklook 512、keyviz 128、
 rufus 恰 64）等比重取到 64px，绝不上采样凑数；开源仓库取材件按源最大真实尺寸取
-（bili23 icns 1024→64、eartrumpet 包资产 256→64、rustdesk/termora/nanazip 原生 64、
+（bili23 icns 1024→64、eartrumpet 包资产 256→64、dbx Tauri 主图 512→64、
+gonavi Wails 主图 1024→64、rustdesk/termora/nanazip 原生 64、
 ddnsgo/frpc favicon 源天花板 48 保持 48）。逐枚出货边长单一来源见
 `internal/app/appicons/sources.go`（由 `sources_test.go` 逐枚解码锁死，防漂移）。
 许可口径不变，来源不变（下表"来源软件/上游许可"照旧，仅注尺寸见各件备注与本段）。
@@ -234,6 +235,8 @@ ddnsgo/frpc favicon 源天花板 48 保持 48）。逐枚出货边长单一来�
 | ddnsgo.png | ddns-go | MIT（见上节） | 识别性使用；来源=上游仓库 github.com/jeessy2/ddns-go 根目录 `favicon.ico`（官方 Web 管理面板图标；升切：出货 48px，该 ico 最大画幅即 48——源天花板 48，不为凑 64 放大；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
 | frpc.png | frp (fatedier/frp) | Apache-2.0（见上节） | 识别性使用；来源=上游仓库 github.com/fatedier/frp `web/frpc/public/favicon.ico`（官方 frpc 控制面板图标；升切：出货 48px，单画幅 48 即源天花板，不放大凑 64；控制台程序无 GUI 头件，仓库现成位图即官方脸面） |
 | eartrumpet.png | EarTrumpet | MIT + Excluded Entities 前言（见上节） | 识别性使用；来源=上游仓库 github.com/File-New-Project/EarTrumpet `EarTrumpet.Package/Assets/Square44x44Logo.altform-unplated_targetsize-256.png`（升切：改取官方 256px 无底版原生画幅等比缩 64 出货，替代原 32px targetsize 小件）；Excluded Entities 条款仅点名排除三家商事主体，Hanxi 非排除对象，MIT 授权照常成立 |
+| dbx.png | DBX (t8y2/dbx) | Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证） | 识别性使用；来源=上游仓库 github.com/t8y2/dbx `src-tauri/icons/icon.png`（Tauri 桌面工程官方主图 512×512 RGBA，等比缩 64 出货不上采样；同目录 icon.ico 含 16–256 同源画幅佐证，icns 未取），图标资产随上游同许可；权利方异议即摘回落 generic（2026-09-27 托管新模块补录批） |
+| gonavi.png | GoNavi (Syngnat/GoNavi) | Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证；**非**排期稿所称 MIT，以实查为据） | 识别性使用；来源=上游仓库 github.com/Syngnat/GoNavi `build/appicon.png`（Wails 工程官方主图 1024×1024 RGBA，等比缩 64 出货不上采样；build/windows/icon.ico 含 16–256 同源画幅佐证），图标资产随上游同许可；权利方异议即摘回落 generic（2026-09-27 托管新模块补录批） |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
 | ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不随发布物分发：默认矢量 `i:gauge`，装有机主本机官方 RAMMap64.exe 时走「红线图标运行期本机提取」节通道 |
 

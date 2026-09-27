@@ -128,7 +128,7 @@ describe('constants/navigation', () => {
       expect(ref!.id, id).toBe(id)
       expect(ICON_NAMES as readonly string[], id).toContain(ref!.fallbackName)
     }
-    // 真图标入库件（批 A 五枚 + 批 B-2 扩量十二枚 + N27 尾巴放行二枚 + 开源上游仓库取材四枚 + 尾巡补录三枚）：数据源确已切到 app: 形态
+    // 真图标入库件（批 A 五枚 + 批 B-2 扩量十二枚 + N27 尾巴放行二枚 + 开源上游仓库取材四枚 + 尾巡补录三枚 + 托管新模块补录二枚）：数据源确已切到 app: 形态
     for (const id of [
       'ccswitch', 'keyviz', 'everything', 'snipaste', 'markeron',
       'bcu', 'douzy', 'flclash', 'mangodisk', 'papertodo', 'paseo',
@@ -136,6 +136,7 @@ describe('constants/navigation', () => {
       'litemonitor', 'guoheview',
       'rustdesk', 'bili23', 'termora', 'nanazip',
       'ddnsgo', 'frpc', 'eartrumpet',
+      'dbx', 'gonavi',
     ]) {
       expect(MODULE_PRESENTATION[id]?.icon).toBe(`app:${id}`)
     }

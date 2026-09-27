@@ -8,8 +8,9 @@ package appicons
 //   - exe 提取件（bcu…windterm 19 枚）：从本机已装托管 exe 的 PE 资源
 //     RT_GROUP_ICON/RT_ICON 取**最大真实画幅**（多数源为 256px，quicklook 512、
 //     keyviz 128、rufus 恰 64）再等比缩到 64，绝不上采样；
-//   - 开源仓库件：按源最大真实尺寸取——bili23(icns 1024)/eartrumpet(包资产 256)
-//     缩至 64；rustdesk(icon.ico 原生 64 BMP 画幅)/termora(icons/termora_64x64.png)
+//   - 开源仓库件：按源最大真实尺寸取——bili23(icns 1024)/eartrumpet(包资产 256)/
+//     dbx(src-tauri icon.png 512)/gonavi(build/appicon.png 1024) 缩至 64；
+//     rustdesk(icon.ico 原生 64 BMP 画幅)/termora(icons/termora_64x64.png)
 //     /nanazip(PackageAssets targetsize-64，CC BY-ND 零改作)直用；
 //   - ddnsgo/frpc 官方 favicon.ico 最大画幅即 48px——**源天花板 48**，
 //     不为凑 64 放大；
@@ -21,12 +22,14 @@ var sourcePx = map[string]int{
 	"bcu":           64,
 	"bili23":        64,
 	"ccswitch":      64,
+	"dbx":           64,
 	"ddnsgo":        48, // 源天花板：官方 favicon.ico 最大画幅 48
 	"douzy":         64,
 	"eartrumpet":    64,
 	"everything":    64,
 	"flclash":       64,
 	"frpc":          48, // 源天花板：官方 favicon.ico 最大画幅 48
+	"gonavi":        64,
 	"guoheview":     64,
 	"keyviz":        64,
 	"litemonitor":   64,
