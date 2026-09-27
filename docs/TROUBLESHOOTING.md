@@ -1272,3 +1272,14 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **正确做法与标准修复方案**：涉及系统二进制（cmd/wsl.exe）的测试在本机须走 cmd 原生壳执行；DIB 交叉验证改用测试内手写参考解码器做三方比对（黄金像素×参考解码器×被测函数），强度不低于 stdlib 对拍。
 - **避坑防重犯建议**：全量套件见红先分流"代码回归 vs 环境缺失"——看错因串是否指向 PATH/exec 查找；依赖系统程序的测试其失败信息应自带"检查 PATH"指引，避免后人拿着红就改码。`image/bmp` 不可用为仓库级事实，新图形测试直接走手写对拍。
 
+### 102. MCP 一次性令牌库"过期未消费"永不清扫：prepare-不-execute 长会话单调耗尽 64 槽位，破坏性通道永久拒发
+- **问题现象与错误原因**：`internal/mcp/guarded.go` 的 TokenStore 中 `sweepLocked` 只删 `used && 超 2×TTL` 条目，"已过期但从未消费"的 token 只有在被 Consume 摸到时才销毁；而 `Issue` 用 `len(byID) >= max(64)` 判满。AI 长会话反复 prepare 不 execute 是常态 → 槽位单调耗尽 → portkill 等破坏性通道永久拒发，且拒发文案"旧令牌请等待过期后重试"是假承诺（等了也不会被清，唯一解锁方式是重启进程）。
+- **排查过程**：审 Issue→sweepLocked→Consume 三方的时钟条款对拍——Issue 侧清扫判据缺 `!used` 分支；同时确认既有容量测试用 1h TTL+静止假钟恰好绕开了这条路径，缺陷无测试覆盖。
+- **正确做法与标准修复方案**：sweepLocked 补第二条回收条款 `!used && 签发超 TTL 即删`（已消费条目的 2×TTL 审计窗保持不变）。归因保护是关键配套：Consume 改为**先读目标条目引用、后清扫**，过期未消费 token 首次 Consume 仍如实归因 `expired`（模型能拿到"请重新 prepare"的可行动指引），清扫只静默回收槽位；重复消费才退化为 `unknown`（与修复前"过期即销毁"的第二态一致）。新增 `TestGuardedTokenStoreExpiredSweepFreesSlots` 钉住回收与审计窗双语义。
+- **避坑防重犯建议**：容量闸门 + TTL 清扫组合的库，必须让"回收"覆盖**全部死态**（过期未用/出窗已用），且"拒发后等待即解锁"的文案要与清扫实现互证——写承诺文案时同步配"推进时钟后发放成功"的回归测试。容量测试别用超长 TTL 配静止假钟"绕开"清扫路径，那只会把死区留在盲区里。
+
+### 103. message-only 窗口建窗 1408：HWND_MESSAGE 被误写成 -1（那是 HWND_BROADCAST）
+- **问题现象与错误原因**：剪贴板模块上线后历史恒空，日志只有 `clipboard: 剪贴板监听启动失败…创建剪贴板监听窗口失败: Invalid window handle`。根因：listener 把 message-only 父句柄常量写成 `^uintptr(0)`（0xFFFF…FD 才对——`HWND_MESSAGE=(HWND)-3`），`-1` 实为 `HWND_BROADCAST`；拿广播伪句柄当爹去 `CreateWindowEx` 必返 `ERROR_INVALID_WINDOW_HANDLE(1408)`。注释里还自我论证了一遍"(-1) 的低 64 位形态"，是典型的想当然错误。
+- **排查过程**：数据目录已建、模块已预激活、exe 为最新——排除了装配与版本因素 → 日志锁定建窗失败 → 读常量定义与 Win32 伪句柄表对拍：-1/-2/-3 分别是 BROADCAST/TOPMOST/MESSAGE，一词之差。
+- **正确做法与标准修复方案**：`hwndMessage = ^uintptr(2)`（即 -3），并在常量旁钉死历史教训注释；`sync.Once` 类注册与泵线程 `LockOSThread` 均无恙，无需改动。
+- **避坑防重犯建议**：Win32 负数伪句柄常量必须用 `^uintptr(k)` 形式并在注释里写出目标宏名与数值推导，或直接用 `0 - 3` 常量表达式让编译器帮忙；此类"启动静默降级、功能面恒空"的监听型模块，验收剧本第一步必须是"复制一条→看日志有无 WARN→看 index.json 有条目"三连，而不是只看界面不报错。

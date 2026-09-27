@@ -1,8 +1,8 @@
 // Package clipboard 内置模块：系统剪贴板历史（借鉴 Ditto/Win+V 的本地自用形态）。
 // 数据面以整库 index.json（<数据根>/clipboard/，version:1，新→旧排序，jsonstore
-// 原子写）为权威，图片内容另存内容寻址 blobs/；Entry.text 落盘恒为
-// base64(DPAPI(UTF-8))（internal/platform/windows/dpapi.go，与随手记遮罩同谱的
-// 用户级透明加密），内存态持明文，读出即解密。
+// 原子写）为权威，图片内容另存内容寻址 blobs/；Entry.text 落盘为明文
+// （机主裁决 2026-09-27，契约 §12 v1.6：取消 DPAPI；seal/open 缝保留，敏感面
+// 由来源排除表 + sensitive 标记 + MCP 整条剔除兜底）。
 //
 // 采集面（listener.go）：message-only 窗口 + AddClipboardFormatListener 订阅
 // WM_CLIPBOARDUPDATE，读序 CF_UNICODETEXT → CF_DIB → CF_HDROP；本进程自写

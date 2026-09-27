@@ -12,15 +12,13 @@ import (
 	"sync"
 	"time"
 
-	hw "hanxi/internal/platform/windows"
-
 	"hanxi/internal/jsonstore"
 	"hanxi/internal/notify"
 )
 
 // 整库 index.json 权威存储（契约 §2）：加载/原子写、去重顶置、容量钳制与 LRU
-// 淘汰、text 落盘 DPAPI 加解密、坏库隔离。内存态持明文（读出即解密，写盘前统一
-// 加密），entries 恒为新→旧排序。
+// 淘汰、text 加解密缝（默认恒等明文，v1.6 裁决）、坏库隔离。内存态与落盘同为
+// 明文，entries 恒为新→旧排序。
 //
 // 锁纪律：store 自带 mu 串行化全部读改写；服务层不再对 entries 加锁，事件在
 // store 锁外由服务补发（store 只返回淘汰清单，不碰 Wails）。
@@ -51,11 +49,11 @@ type blobIO interface {
 	TotalBytes() (int64, error)
 }
 
-// sealFunc/openFunc text 加解密缝（默认 DPAPI；测试注入可逆假件验证调用链）。
+// sealFunc/openFunc text 加解密缝（默认恒等=明文，v1.6；测试注入可逆假件验证调用链）。
 type sealFunc func([]byte) (string, error)
 type openFunc func(string) ([]byte, error)
 
-// diskIndex index.json 落盘形态（text 字段为 base64(DPAPI) 密文）。
+// diskIndex index.json 落盘形态（text 字段为明文，v1.6；历史曾 base64(DPAPI) 密文）。
 type diskIndex struct {
 	Version int     `json:"version"`
 	Entries []Entry `json:"entries"`
@@ -84,7 +82,7 @@ type Store struct {
 
 // NewStore 建库并装载：目录缺失即创建；index.json 不存在按空库初始化；
 // 信封级不可解析改名隔离取证副本后空库启动（memo 旧库同谱），单条坏形态
-// 逐条跳过+保真隔离（契约 §12 v1.2.3）。seal/open 传 nil 用 DPAPI 默认实现。
+// 逐条跳过+保真隔离（契约 §12 v1.2.3）。seal/open 传 nil 用恒等默认（明文，v1.6）。
 //
 // 无头表禁令钉注（契约 §12 v1.2.4，安全级）：**本构造函数有落盘副作用**
 // （建目录 + 空库基线回写），系 GUI 侧刻意为之；因此本模块**禁止进入无头
@@ -92,15 +90,17 @@ type Store struct {
 // 照 memo 先例走 config.json 直读 enabled+receipt，由主控收口执行，此处只把
 // 事实钉进注释。
 //
-// 同步红线（同族纪律，blobs.go 头注释有全量阐述）：text 明文落盘=DPAPI 密文、
-// blobs 二进制=用户级加密**永不能跨机还原**，整个 clipboard 数据目录**必须
-// 排除出 NAS/网盘同步**。
+// 同步红线（同族纪律，blobs.go 头注释有全量阐述）：text 明文落盘（机主裁决
+// 2026-09-27 取消 DPAPI，契约 §12 v1.6；敏感面由来源排除表 + sensitive 标记
+// + MCP 整条剔除三件套兜底），blobs 二进制同为明文——整个 clipboard 数据目录
+// 仍建议排除出 NAS/网盘同步（同步排除本身按 v1.5.3 挂起，复议须回看本注）。
 func NewStore(dir string, blobs blobIO, seal sealFunc, open openFunc) (*Store, error) {
+	// seal/open 缝保留（测试假件与未来复议通道）；默认恒等=明文落盘（v1.6）。
 	if seal == nil {
-		seal = hw.DPAPIEncrypt
+		seal = func(b []byte) (string, error) { return string(b), nil }
 	}
 	if open == nil {
-		open = hw.DPAPIDecrypt
+		open = func(s string) ([]byte, error) { return []byte(s), nil }
 	}
 	st := &Store{
 		dir:      dir,
@@ -162,11 +162,11 @@ func (st *Store) load() error {
 			dropped++
 			continue
 		}
-		// text 非空即密文（图片条目 text 恒为空串不加密，契约 §2，自然跳过）
+		// text 非空经 open 缝回读（图片条目 text 恒为空串，契约 §2，自然跳过）
 		if e.Text != "" {
 			plain, derr := st.open(e.Text)
 			if derr != nil {
-				// 解密失败（换机器/换用户导致 DPAPI 域不符，或手工改库）：
+				// 回读失败（历史密文/自定假件拒绝等）：
 				// 正文已不可还原，跳过+保真隔离（v1.2.3 同通道），保留会反复卡读写
 				st.quarantineRawEntry(raw, i, fmt.Errorf("解密失败（正文不可还原）: %w", derr))
 				dropped++

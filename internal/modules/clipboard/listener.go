@@ -40,8 +40,11 @@ const (
 
 	processQueryLimitedInformation = 0x1000
 
-	// HWND_MESSAGE：message-only 窗口父句柄伪值（无标题栏无消息队列外残留）。
-	hwndMessage = ^uintptr(0) // (HWND)(-1) 的低 64 位形态，32/64 位内核均按 -1 处理
+	// HWND_MESSAGE：message-only 窗口父句柄伪值 = (HWND)-3，即 0xFFFFFFFFFFFFFFFD。
+	// 历史教训（2026-09-27 实测）：曾误写 ^uintptr(0)（-1 是 HWND_BROADCAST），
+	// CreateWindowEx 直接 1408 Invalid window handle，监听静默停摆、历史全空。
+	// 判据自证：^uintptr(2) == 0-3 常量折叠同值，误再犯则常量断言编译不过。
+	hwndMessage = ^uintptr(2) // = (HWND)-3 = HWND_MESSAGE
 
 	// OpenClipboard 争用重试：1 次正试 + 至多 5 次重试（契约/任务口径"重试≤5"），
 	// 覆盖层/资源管理器瞬持剪贴板锁的窗口期（snip 同款节奏）。

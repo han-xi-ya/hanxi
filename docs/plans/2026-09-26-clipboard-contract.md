@@ -230,6 +230,20 @@ func DecodeDIB(dib []byte) (image.Image, error)
 4. 遗留收口小项:BlobStore.Delete 无锁、与 Save 竞态可复活同字节文件
    (孤儿 blob,账目仍对)——收口时评估一行改法(Delete 纳入 b.mu)。
 
+**v1.6(2026-09-27,机主双裁决:监听修复 + 取消 DPAPI)**
+
+1. **监听窗根因修复**:listener.go 曾把 `HWND_MESSAGE` 误写为 `^uintptr(0)`
+   (=HWND_BROADCAST -1),CreateWindowEx 报 1408 Invalid window handle,
+   监听静默停摆、历史恒空——已改 `^uintptr(2)`(-3)并注释钉死。真机日志
+   判据:`clipboard: 剪贴板监听启动失败` WARN。沉淀 TROUBLESHOOTING #103。
+2. **取消 DPAPI 加密(机主明示"不需要")**:§2 加密条款作废——text 与 blobs
+   一律**本机明文落盘**;seal/open 缝保留(默认恒等,测试假件与未来复议通道),
+   MCP reader 解密面同步恒等。敏感兜底收敛为三件套:来源排除表 + sensitive
+   标记(MCP 整条不下发)+ 面板默认关。**风险改口如实登记**:数据目录明文,
+   一旦入 NAS/网盘同步即明文扩散——同步排除(v1.5.3 挂起)复议时必须回看本条。
+3. 在库空态无迁移负担(裁决时 index.json entries 恒空);若未来出现历史密文条,
+   open 缝回读失败按"坏条目保真隔离"既有通道处理,不静默吞。
+
 **v1.4(2026-09-26,A8 对抗审查裁决:H1/M1-M4/L1-L4 全采纳,定向回炉)**
 
 1. **H1 收窗机制重造**:§4 冻结面九法→**十法**,新增 `CollapseOverlay() error`

@@ -157,27 +157,29 @@ func TestClipStoreInitAndPersistence(t *testing.T) {
 	}
 }
 
-// TestClipStoreDPAPIRoundTrip 默认真实 DPAPI 链：写入→重开→明文还原，且盘上
-// 无明文。DPAPI 不可用环境（理论不存在于本仓 Windows-only 前提）如实 skip。
-func TestClipStoreDPAPIRoundTrip(t *testing.T) {
+// TestClipStorePlaintextRoundTrip 默认恒等缝（契约 §12 v1.6 机主裁决取消 DPAPI）：
+// 写入→盘上明文→重开还原。加解密链路的可逆性由 fakeSeal/fakeOpen 注入用例
+// （TestClipStoreSealChain 谱系）钉住；本用例钉的是"默认形态=明文"这一事实——
+// 将来若复议恢复加密，本用例红即为契约变更信号。
+func TestClipStorePlaintextRoundTrip(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "clipboard")
 	st, err := NewStore(dir, newFakeBlobs(), nil, nil)
 	if err != nil {
-		t.Fatalf("NewStore(DPAPI 默认): %v", err)
+		t.Fatalf("NewStore(恒等默认): %v", err)
 	}
 	const plain = "中文口令与符号 ✓ 往返"
 	e := entryText("id-d", plain)
-	e.Preview = "口令摘要" // Preview 明文本就不该与 Text 同文；断言盘上无正文明文
+	e.Preview = "口令摘要"
 	if _, _, err := st.Add(e, time.Now()); err != nil {
-		t.Skipf("本机 DPAPI 加密不可用（%v），跳过真机往返", err)
+		t.Fatalf("Add: %v", err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "index.json"))
-	if strings.Contains(string(raw), plain) {
-		t.Fatal("DPAPI 未生效，明文正文落盘")
+	if !strings.Contains(string(raw), plain) {
+		t.Fatal("v1.6 明文裁决失守：盘上找不到正文（默认缝被擅自加了密？）")
 	}
 	reopened, err := NewStore(dir, newFakeBlobs(), nil, nil)
 	if err != nil {
-		t.Fatalf("DPAPI 重开: %v", err)
+		t.Fatalf("恒等重开: %v", err)
 	}
 	got, ok := reopened.Get("id-d")
 	if !ok || got.Text != plain {

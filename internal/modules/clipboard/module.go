@@ -53,7 +53,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "剪贴板历史",
 		Version:     "0.1.0",
-		Description: "系统剪贴板全量历史：文本/图片/文件三类捕获、DPAPI 加密落盘、去重置顶与容量自钳制，全局热键浮层随处选取（首版仅文本回填系统剪贴板）",
+		Description: "系统剪贴板全量历史：文本/图片/文件三类捕获、本机明文落盘（v1.6 裁决）+ 敏感来源排除、去重置顶与容量自钳制，全局热键浮层随处选取（首版仅文本回填系统剪贴板）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

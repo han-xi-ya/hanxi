@@ -49,7 +49,6 @@ import (
 
 	"hanxi/internal/logging"
 	"hanxi/internal/modules/clipboard"
-	"hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -105,7 +104,8 @@ type clipboardIndexFile struct {
 // clipboardDiskEntry 是剪贴板条目的**磁盘投影**——与 internal/modules/clipboard
 // 的 Entry（契约 §3）逐字段对齐，JSON tag 即对齐面；刻意不 import 该包（A2 并行
 // 开发中，两路互不绊住），改契约必须同步本表（memoFileNameRe 同款钉法）。
-// 落盘态的 Text 是 base64(DPAPI(UTF-8))，经 reader 解密后才是明文。
+// 落盘态的 Text 为明文（机主裁决 2026-09-27，契约 §12 v1.6 取消 DPAPI）；
+// decrypt 缝保留（真件恒等），历史密文形态不再产生。
 //
 // 同步状态：2026-09-26 已与 clipboard/models.go 的 Entry 逐 tag 对拍一致（含
 // Kind 取值为 text/image/file 三点）。收口阶段若把本投影换成直接 import clipboard.Entry，
@@ -138,7 +138,7 @@ type clipboardDiskEntry struct {
 	TextOverBudget bool `json:"-"`
 }
 
-// textDecryptor 是正文解密面：base64(DPAPI) → 明文字节。
+// textDecryptor 是正文回读缝：落盘文本 → 明文字节（v1.6 后真件恒等）。
 type textDecryptor func(cipherBase64 string) ([]byte, error)
 
 // ClipboardSource 是 hanxi_clipboard_search 的后端取数面（真 = clipboardDiskReader；
@@ -151,9 +151,9 @@ type ClipboardSource interface {
 // clipboardDiskReader 零落盘直读通道（包注释决策 3 的剪贴板落点）。
 type clipboardDiskReader struct {
 	path string
-	// decrypt 抽成字段而非直调 windows.DPAPIDecrypt，为的是让夹具能落"可解的假密文"：
-	// DPAPI 与本机用户账户绑定，真密文既进不了版本库、异机 CI 也解不开——
-	// "真件走磁盘、单测注假件"的仓库既有谱系。真装配见 newClipboardDiskReader。
+	// decrypt 抽成字段：真件为恒等（明文落盘，v1.6 裁决）；单测仍注入假件演练
+	// 回读失败/预算耗尽等错误通道——历史加密形态的回归面保留为故障注入测试。
+	// "真件走磁盘、单测注假件"的仓库既有谱系不变。
 	decrypt textDecryptor
 
 	// 两级预算可在构造时收紧（0=默认值，见 indexMaxBytes/loadPlainMax）：抽成字段
@@ -187,7 +187,7 @@ func clipboardIndexPath(dataDir string) string {
 func newClipboardDiskReader() *clipboardDiskReader {
 	return &clipboardDiskReader{
 		path:    clipboardIndexPath(settings.GetPaths().DataDir()),
-		decrypt: windows.DPAPIDecrypt,
+		decrypt: func(s string) ([]byte, error) { return []byte(s), nil }, // 恒等（v1.6 明文落盘）
 	}
 }
 

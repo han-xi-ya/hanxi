@@ -12,7 +12,7 @@ import (
 
 // 数据模型与入库判定纯函数。结构与 JSON tag 逐字冻结于
 // docs/plans/2026-09-26-clipboard-contract.md §3（wire 与落盘共用同一套 tag，
-// 仅 text 字段落盘时替换为 base64(DPAPI) 密文），改动即前后端断链，禁止擅改。
+// text 落盘为明文——契约 §12 v1.6 机主裁决取消 DPAPI），改动即前后端断链，禁止擅改。
 
 // Kind 条目内容类型。
 type Kind string
@@ -28,7 +28,7 @@ type Entry struct {
 	ID         string   `json:"id"` // 16 hex 随机
 	Hash       string   `json:"hash"`
 	Kind       Kind     `json:"kind"`
-	Text       string   `json:"text,omitempty"`  // wire 上=明文；落盘=base64(DPAPI)
+	Text       string   `json:"text,omitempty"`  // wire 与落盘同为明文（v1.6）
 	Preview    string   `json:"preview"`         // ≤120 rune 首行摘要，列表页用
 	Files      []string `json:"files,omitempty"` // CF_HDROP
 	Blob       string   `json:"blob,omitempty"`  // "blobs/<sha>.png"
