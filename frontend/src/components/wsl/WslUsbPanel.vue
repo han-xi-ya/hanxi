@@ -19,6 +19,7 @@ import type { DistroInstance } from '../../../bindings/hanxi/internal/modules/ws
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
 import { usePolling } from '../../composables/usePolling'
+import { useClipboard } from '../../composables/useClipboard'
 import { getErrorMessage } from '../../utils/errors'
 import UiBanner from '../ui/UiBanner.vue'
 import UiStatusChip from '../ui/UiStatusChip.vue'
@@ -29,6 +30,7 @@ const props = defineProps<{
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
+const { copy } = useClipboard()
 
 const view = ref<UsbView | null>(null)
 const loading = ref(false)
@@ -324,12 +326,10 @@ async function openReleases() {
 }
 
 async function copyWinget() {
-  try {
-    await navigator.clipboard.writeText(WINGET_CMD)
-    showToast('安装命令已复制——粘贴到终端执行（装完点「↻ 重新探测」）')
-  } catch {
-    showToast('复制失败，请手动输入命令')
-  }
+  // 正源 useClipboard.copy：主路 navigator.clipboard（安全上下文），失败落隐藏 textarea
+  // + execCommand 回退；两路皆败返回 false。回执话术沿用本面板原字面，不改文案。
+  const ok = await copy(WINGET_CMD)
+  showToast(ok ? '安装命令已复制——粘贴到终端执行（装完点「↻ 重新探测」）' : '复制失败，请手动输入命令')
 }
 
 // ---- N31 方案 B：真·一键 winget 代装 ----
@@ -615,9 +615,13 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
 <style scoped>
 /* 全局原子落 components.css（.tbl/.control-panel/.empty-state/.error-box/.btn 等）；
    此处只留本 tab 独有或有意补差（对齐端口转发页的注释纪律）。 */
-.error-box { white-space: pre-line; }
-.hint-line { line-height: 1.7; white-space: pre-line; font-size: var(--text-sm); color: var(--color-text-muted); }
-.hint-dim { font-size: var(--text-sm); color: var(--color-text-muted); }
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+   components.css :where(.wsl-view) 原子区，六面板共用，本 tab 不再自持副本。
+   保留的只是本 tab 的字色方言：注记字色比其余五面板深一档（muted 而非全局 subtle），
+   系六份副本里的唯一散差，按"逐字不变"留在局部（待裁决：认可六面板统一取 subtle
+   则删下面两行即自动落回）。 */
+.hint-line { color: var(--color-text-muted); }
+.hint-dim { color: var(--color-text-muted); }
 .retry-inline { margin-left: 10px; }
 .control-panel { gap: 10px; flex-wrap: wrap; }
 .meta-info { min-width: 0; }

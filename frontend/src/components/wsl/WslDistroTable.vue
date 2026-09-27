@@ -1006,12 +1006,8 @@ onBeforeUnmount(() => {
 /* 全局原子（.btn 家族/.tbl/.chip/.error-box/.empty-state/.mono/.link-button/.hint-dim/.banner*）
    落 components.css；以下为本控制台独有或有意补差（注释注明）。 */
 
-/* 多行诊断文案（换行符保留）——对全局 .error-box 的补差白名单行，非同名副本 */
-.error-box { white-space: pre-line; }
-/* 基形（字号/颜色/左内距）落回全局 .hint-line；此处仅留 WSL 档补差两行 */
-.hint-line { line-height: 1.7; white-space: pre-line; }
-/* 全局 .hint-dim 只定义颜色，WSL 注记统一配 --text-sm 小字——补差，非副本 */
-.hint-dim { font-size: var(--text-sm); }
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+   components.css :where(.wsl-view) 原子区，六面板共用，本控制台不再自持副本。 */
 /* .banner.slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
 /* .dim 非全局原子名，本控制台独有 */
 .dim { color: var(--color-text-muted); font-size: var(--text-sm); }

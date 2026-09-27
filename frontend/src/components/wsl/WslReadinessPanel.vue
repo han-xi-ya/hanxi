@@ -305,15 +305,11 @@ async function doShutdown(alreadyConfirmed = false) {
 /* 全局原子（.btn 家族/.chip/.banner/.error-box/.mono/.hint-dim/.link-button/.empty-state）
    落 components.css；以下仅本面板独有或有意补差（注释注明）。 */
 
-/* 多行诊断文案（换行符保留）——对全局 .error-box 的补差，非同名副本 */
-.error-box { white-space: pre-line; }
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+   components.css :where(.wsl-view) 原子区，六面板共用，本面板不再自持副本。 */
 /* 全局 .banner 内距已是 10px 14px，原 .verdict-banner 重复声明已删；结论条恢复默认内距 */
 .verdict-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .verdict-detail { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: 2px; }
-/* 基形（字号/颜色/左内距）落回全局 .hint-line；此处仅留 WSL 档补差两行 */
-.hint-line { line-height: 1.7; white-space: pre-line; }
-/* 全局 .hint-dim 只定义颜色，WSL 注记统一配 --text-sm 小字——补差，非副本 */
-.hint-dim { font-size: var(--text-sm); }
 /* .banner.slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
 /* .dim 非全局原子名，本控制台独有 */
 .dim { color: var(--color-text-muted); font-size: var(--text-sm); }
@@ -371,9 +367,9 @@ async function doShutdown(alreadyConfirmed = false) {
 
 /* 知识卡：info-details/info-summary 全家族（含 ::after/marker/[open] 两条）与 .info-body p
    均与全局原子逐字等值，副本删净落回；.info-body 同规则散差（gap 4 vs 全局 6）按裁决定档
-   标准形一并落回（段间距 +2px，登记目视项）。 */
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
+   标准形一并落回（段间距 +2px，登记目视项）。
+   .inline-link 两条副本与全局原子（components.css 波 0 上收的 21 份同形标准形）逐字等值，
+   同样删净落回。 */
 
 /* 窄屏档（机主 2026-09-26"一屏容不下两屏高"，与发行版控制台/视图层同向）：
    就绪体检 = 系统 WSL 安装形态与逐项结论的纵向大户（10 行清单 + 9 钮操作条 + 结论条）。

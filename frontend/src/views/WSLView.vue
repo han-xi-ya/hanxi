@@ -310,16 +310,12 @@ const installDir = ref('')
 // 只有真正的用户改动经防抖才 SetDistroInstallDir。
 let installDirSynced: string | null = null
 let installDirTimer: ReturnType<typeof setTimeout> | null = null
-// TODO(接线): 后端绑定 GetDistroInstallDir/SetDistroInstallDir 生成后，去掉此处 (WSLAPI as any)
-// 收敛改为直调 WSLAPI；当前以可选调用兜住"绑定尚未生成"（缺失即静默降级，不拦操作）。
-const getDistroInstallDir = async (): Promise<{ set: boolean; dir: string }> =>
-  (await (WSLAPI as any).GetDistroInstallDir?.()) ?? { set: false, dir: '' }
-const setDistroInstallDir = (dir: string): Promise<void> =>
-  Promise.resolve((WSLAPI as any).SetDistroInstallDir?.(dir))
+// 落位偏好 RPC 已正式接线（波 1d 验证，bindings 6dd61ed 大再生时生成）：直调 WSLAPI，
+// 早期 (WSLAPI as any)?.() 的"绑定未生成"过渡兜底已随生成落地拆除。
 async function loadInstallDir() {
   let next = DEFAULT_INSTALL_DIR
   try {
-    const pref = await getDistroInstallDir()
+    const pref = await WSLAPI.GetDistroInstallDir()
     if (pref.set && pref.dir.trim() === '') next = '' // 显式选择系统默认位置
     else if (pref.set) next = pref.dir
   } catch (e) {
@@ -334,7 +330,7 @@ watch(installDir, (v) => {
   if (dir === installDirSynced) return // 回显或改回原值：不打扰后端
   installDirTimer = setTimeout(() => {
     installDirSynced = dir
-    setDistroInstallDir(dir).catch((e) => {
+    WSLAPI.SetDistroInstallDir(dir).catch((e) => {
       console.warn('[wsl] 安装基目录写回失败（仅失去跨会话记忆，不拦操作）:', getErrorMessage(e))
     })
   }, 500)
