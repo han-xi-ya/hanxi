@@ -283,7 +283,11 @@ func (s *PortKillService) KillProcessElevated(pid uint32) (result KillResult, er
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		outStr := strings.TrimSpace(string(out))
-		if strings.Contains(outStr, "canceled by the user") || strings.Contains(outStr, "1223") {
+		// UAC 取消判定委托同包导出的严格版 IsUACCancelled（审查 #7 教训：
+		// 曾在此用裸 Contains("1223") 宽松式，helper 退出码、尺寸等普通失败
+		// 文本一旦含"1223"字样就被吞成语义完全错误的"用户取消"，无从排查）；
+		// 其余失败保持原上下文包装与 helper 退出码归因。
+		if windows.IsUACCancelled(outStr) {
 			return KillResult{Success: false, ErrorMessage: "用户取消了 UAC 授权"}, nil
 		}
 		switch helperExitCode(err) {

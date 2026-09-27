@@ -27,6 +27,17 @@ const (
 	DefaultEgressTimeout   = 3000 * time.Millisecond
 	MaxPortNumber          = 65535
 	MinPortNumber          = 1
+
+	// progressEmitInterval 纯进度心跳的最小发射间隔。心跳事件可安全合批/丢弃——
+	// 前端只是覆盖刷新进度数字，终态 summary 兜底最终值，丢发无数据损失。
+	progressEmitInterval = 100 * time.Millisecond
+
+	// openMergeWindow 开放端口事件的合并派发窗口。
+	// 定为心跳窗的一半（50ms）：单端口发现的推送延迟肉眼无感（<0.1s），突发时
+	// 事件量封顶 20 条/秒（叠加心跳 10 条/秒 = 30 条/秒），与前端"每事件追加一个
+	// 端口、按端口号去重"的上屏模型对齐；超出窗口的命中合批（FoundOpen 计数恒准），
+	// 未逐个上屏的端口由终态 summary 全量补齐。
+	openMergeWindow = 50 * time.Millisecond
 )
 
 // ContextDialer 抽象接口，统一标准 net.Dialer 和 proxy.ContextDialer
@@ -366,7 +377,61 @@ func (s *Scanner) ExecuteScan(
 	total := len(ports)
 	var scannedCount int64
 	var foundOpenCount int64
-	var lastEmitTime int64
+	var lastEmitTime int64 // 心跳闸门：只限流"纯进度刷新"，开放事件不走此闸
+
+	// 开放端口事件与进度心跳彻底分闸（缺陷留痕：旧实现两类事件共用单一 CAS(lastEmitTime)
+	// 闸门，worker 竞争失败时"新发现开放端口"被静默丢发；前端只靠 latestPort 增量上屏，
+	// 丢发=扫描进行中该端口不显示，终态 summary 才回补——"新发现"与"心跳进度"混用
+	// 一条节流道的典型事故）。
+	// 新通道语义：开放端口是必达事件——worker 命中后只写入 pendingOpen 槽位（与心跳闸
+	// 无竞争，不存在丢发路径），由单派发协程按 openMergeWindow 节拍独立发射；
+	// 突发（如整段 1-1024 全开）下槽位"保最新即合批"，事件量封顶 20 条/秒且
+	// FoundOpen 计数恒准，被合掉的端口不丢——它们同批已进 openPorts 汇总集，
+	// 终态 summary 全量兜底送达（不丢端口、可合批）。
+	var pendingOpen atomic.Pointer[PortResult]
+
+	// emitOpenProgress 构造并发射一条携带开放端口增量的事件，
+	// 进度字段取发射瞬间的原子快照（与心跳事件同源同形，前端无需区分）。
+	emitOpenProgress := func(res *PortResult) {
+		cur := atomic.LoadInt64(&scannedCount)
+		progressCallback(ScanProgress{
+			TaskID:     taskID,
+			Target:     target,
+			Scanned:    int(cur),
+			Total:      total,
+			Percent:    float64(cur) / float64(total) * 100,
+			FoundOpen:  int(atomic.LoadInt64(&foundOpenCount)),
+			LatestPort: res,
+			IsFinished: false,
+		})
+	}
+
+	stopDispatch := make(chan struct{})
+	dispatchDone := make(chan struct{})
+	if progressCallback != nil {
+		go func() {
+			defer close(dispatchDone)
+			ticker := time.NewTicker(openMergeWindow)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-stopDispatch:
+					// 扫描收尾前末次补发：让最新一个未播报的开放端口赶在终态事件
+					// 之前进入事件流（派发 join 先于 finished 事件，序关系固定）
+					if res := pendingOpen.Swap(nil); res != nil && ctx.Err() == nil {
+						emitOpenProgress(res)
+					}
+					return
+				case <-ticker.C:
+					if res := pendingOpen.Swap(nil); res != nil && ctx.Err() == nil {
+						emitOpenProgress(res)
+					}
+				}
+			}
+		}()
+	}
 
 	var (
 		mu        sync.Mutex
@@ -411,19 +476,25 @@ func (s *Scanner) ExecuteScan(
 					res := s.probePort(ctx, dialer, httpClient, target, p, timeout, deepDetect)
 					curScanned := atomic.AddInt64(&scannedCount, 1)
 
-					var latestOpen *PortResult
 					if res.Status == PortOpen {
 						atomic.AddInt64(&foundOpenCount, 1)
 						mu.Lock()
 						openPorts = append(openPorts, res)
 						mu.Unlock()
-						latestOpen = &res
+						if progressCallback != nil {
+							// 必达投递：写独立槽位（保最新=合批），与心跳闸门零竞争；
+							// 每轮 worker 持独立 res 副本，逃逸分配上界=开放端口数(≤65535)
+							open := res
+							pendingOpen.Store(&open)
+						}
 					}
 
+					// 纯进度心跳：只走自己的限流闸，竞争失败仅意味着"少刷一次数字"，
+					// 不携带也不消耗任何开放端口数据。
 					if progressCallback != nil && ctx.Err() == nil {
 						now := time.Now().UnixNano()
 						last := atomic.LoadInt64(&lastEmitTime)
-						shouldEmit := (latestOpen != nil) || (now-last >= int64(100*time.Millisecond)) || (curScanned == int64(total))
+						shouldEmit := (now-last >= int64(progressEmitInterval)) || (curScanned == int64(total))
 
 						if shouldEmit && atomic.CompareAndSwapInt64(&lastEmitTime, last, now) {
 							pct := float64(curScanned) / float64(total) * 100
@@ -434,7 +505,6 @@ func (s *Scanner) ExecuteScan(
 								Total:      total,
 								Percent:    pct,
 								FoundOpen:  int(atomic.LoadInt64(&foundOpenCount)),
-								LatestPort: latestOpen,
 								IsFinished: false,
 							})
 						}
@@ -445,6 +515,14 @@ func (s *Scanner) ExecuteScan(
 	}
 
 	wg.Wait()
+
+	// 先收开放事件派发协程（join 于终态事件之前）：杜绝扫描结束后再窜出迟到的
+	// latestPort 事件打乱前端"进度已 100%"的收尾语义；无回调的无头路径（MCP）
+	// 未起派发协程，无需收。
+	if progressCallback != nil {
+		close(stopDispatch)
+		<-dispatchDone
+	}
 
 	// 排序开放端口结果
 	mu.Lock()

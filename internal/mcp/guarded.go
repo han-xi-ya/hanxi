@@ -155,8 +155,12 @@ func (p *destructiveFilePolicy) load() (map[string]bool, error) {
 // 泄出的 token 在下一轮对话前必然失效；GUI 侧确认框等价物的"当场点头"语义。
 const portkillTokenTTL = 120 * time.Second
 
-// portkillMaxTokens 是在途 token 硬上限：防备好的会话堆积（超限时先清扫过期，
-// 仍满则拒绝新发——宁可让模型重新 prepare，不静默挤掉旧 token）。
+// portkillMaxTokens 是在途 token 硬上限：防备好却不 execute 的会话堆积。
+// Issue 超限时先跑 sweepLocked 回收——过期未消费条目与出审计窗的已消费条目
+// 一并删除，容量压力只落在"活着"的令牌（TTL 内待消费）上；清扫后仍满才拒发
+// （宁可让模型重新 prepare，不静默挤掉旧 token）。修复前 sweep 不清过期未消费
+// 条目，64 槽位会被 prepare-不-execute 的长会话单调耗尽、通道永久拒发，
+// 且拒发文案"等待过期后重试"是假承诺——现在这句真的成立。
 const portkillMaxTokens = 64
 
 // killToken 一枚一次性查杀授权：绑定完整进程指纹（pid+exe+start time），
@@ -173,6 +177,9 @@ type killToken struct {
 }
 
 // consumeOutcome 是一次消费裁决的四态结果（区分 unknown/used/expired 供审计归因）。
+// 归因口径说明：过期未消费条目虽被 sweepLocked 回收槽位，但 Consume 先读目标
+// 后清扫，首次消费仍归因 expired；清扫发生后对同一枚的再次消费退化为 unknown
+// （与修复前"过期即销毁、二次归因不存在"同一行为），审计完整性与用户文案不受影响。
 type consumeOutcome struct {
 	Token *killToken
 	Valid bool   // true 时 Token 可进入复核阶段
@@ -204,7 +211,10 @@ func (s *TokenStore) Issue(port int, pid uint32, exePath string, startedAt time.
 	defer s.mu.Unlock()
 	s.sweepLocked()
 	if len(s.byID) >= s.max {
-		return "", "", fmt.Errorf("在途确认令牌已满（%d 枚上限），旧令牌请等待过期后重试", s.max)
+		// 走到这里说明清扫后仍满：全部是在 TTL 内的待消费令牌或审计窗内的
+		// 已使用令牌。"等待旧令牌过期后重试"此刻是真实承诺——过期条目会在
+		// 下一次 Issue 的清扫中被回收腾出槽位。
+		return "", "", fmt.Errorf("在途确认令牌已满（%d 枚上限，过期令牌已自动清扫仍满），请等待旧令牌过期（有效期 %d 秒）后重新 prepare 重试", s.max, int(s.ttl.Seconds()))
 	}
 	buf := make([]byte, s.seqLen)
 	if _, err := rand.Read(buf); err != nil {
@@ -230,8 +240,12 @@ func (s *TokenStore) Issue(port int, pid uint32, exePath string, startedAt time.
 func (s *TokenStore) Consume(id string) consumeOutcome {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sweepLocked()
+	// 先取目标引用再清扫：sweep 会回收过期未消费条目，但本次 Consume 必须
+	// 保住四态归因（"过期"而非退化为"不存在"）——引用已在手，条目被清不影响
+	// 判定。对同一枚过期的重复 Consume 才退化为"不存在"，与修复前"过期即销毁、
+	// 二次调用归因不存在"的行为一致。
 	t, ok := s.byID[id]
+	s.sweepLocked()
 	if !ok {
 		return consumeOutcome{Why: "令牌不存在或已随会话结束作废"}
 	}
@@ -239,7 +253,8 @@ func (s *TokenStore) Consume(id string) consumeOutcome {
 		return consumeOutcome{Why: "令牌已被使用（一次性令牌不可复用，请重新 prepare 获取新令牌）"}
 	}
 	if s.now().Sub(t.issuedAt) > s.ttl {
-		// 过期即销毁：不给"猜时间差复用"留窗口。
+		// 过期即销毁：不给"猜时间差复用"留窗口。同刻的 sweepLocked 通常已回收
+		// 本条，这里的 delete 是幂等兜底（防时钟实现变更时留下僵尸条目）。
 		delete(s.byID, id)
 		return consumeOutcome{Why: fmt.Sprintf("令牌已过期（有效期 %d 秒），请重新 prepare 获取新令牌", int(s.ttl.Seconds()))}
 	}
@@ -247,12 +262,27 @@ func (s *TokenStore) Consume(id string) consumeOutcome {
 	return consumeOutcome{Token: t, Valid: true}
 }
 
-// sweepLocked 清掉"过期且已消费"的条目；仅过期未消费的保留到 Consume 归因后
-// 删除（保留 unknown/expired/used 三态可辨的审计价值），但受 max 约束先扫这里。
+// sweepLocked 回收两类失效条目：
+//  1. 过期且从未消费——签发超 TTL 即删。旧实现只删已消费条目，prepare 后不
+//     execute 的长会话（常态）会让槽位单调耗尽，Issue 的 max 判定永久拒发，
+//     破坏性通道整体卡死；这是本轮修复的缺陷本体。
+//  2. 已消费且出审计窗——延后到 2×TTL 才删，审计窗语义保持不变（窗内对
+//     used 条目的再次 Consume 仍可归因"已被使用"）。
+//
+// 归因保障：Consume 在清扫前读取目标条目引用，"先归因后回收"——被清扫的
+// 过期未消费令牌首次消费依旧得到 expired（而非退化为 unknown）；Issue 侧
+// 则纯为槽位回收，无归因诉求。
 func (s *TokenStore) sweepLocked() {
-	deadline := s.now().Add(-2 * s.ttl)
+	expireDeadline := s.now().Add(-s.ttl)
+	auditDeadline := s.now().Add(-2 * s.ttl)
 	for id, t := range s.byID {
-		if t.used && t.issuedAt.Before(deadline) {
+		if t.used {
+			if t.issuedAt.Before(auditDeadline) {
+				delete(s.byID, id)
+			}
+			continue
+		}
+		if t.issuedAt.Before(expireDeadline) {
 			delete(s.byID, id)
 		}
 	}

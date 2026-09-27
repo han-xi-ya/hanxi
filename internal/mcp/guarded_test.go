@@ -226,7 +226,9 @@ func TestGuardedTokenStoreSingleUseExpiryAndCap(t *testing.T) {
 		t.Fatalf("expired token must be destroyed, got %+v", con)
 	}
 
-	// 在途上限：塞满 max 枚未消费 token 后拒发。
+	// 在途上限：塞满 max 枚未消费 token 后拒发。注意时钟全程不推进——1h TTL
+	// 配静止假钟=全部"活令牌"，sweep 的过期回收条款不触发；过期后槽位回收
+	// 见 TestGuardedTokenStoreExpiredSweepFreesSlots。
 	s2 := NewKillTokenStore(time.Hour, clk.Time)
 	for i := 0; i < portkillMaxTokens; i++ {
 		if _, _, err := s2.Issue(1, uint32(i+10), "x", clk.Time()); err != nil {
@@ -238,6 +240,69 @@ func TestGuardedTokenStoreSingleUseExpiryAndCap(t *testing.T) {
 	}
 	if got := s2.Pending(); got != portkillMaxTokens {
 		t.Fatalf("pending = %d, want %d", got, portkillMaxTokens)
+	}
+}
+
+// TestGuardedTokenStoreExpiredSweepFreesSlots 钉死槽位耗尽缺陷的修复语义：
+// 旧实现 sweepLocked 只删"已消费且出审计窗"条目，prepare 后从不 execute 的
+// 长会话（常态）会单调耗尽 max 槽位——破坏性通道永久拒发，且拒发文案
+// "旧令牌请等待过期后重试"是假承诺（等了也不会被清）。现在过期未消费条目
+// 随下一次 Issue 的清扫被回收，该承诺如实成立。
+func TestGuardedTokenStoreExpiredSweepFreesSlots(t *testing.T) {
+	clk := &testClock{t: time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)}
+	s := NewKillTokenStore(portkillTokenTTL, clk.Time)
+
+	ids := make([]string, portkillMaxTokens)
+	for i := range ids {
+		id, _, err := s.Issue(1, uint32(i+10), "x", clk.Time())
+		if err != nil {
+			t.Fatalf("issue %d must fit: %v", i, err)
+		}
+		ids[i] = id
+	}
+	// 时钟未推进=全部令牌仍存活：容量闸门照旧拒发（清扫不误伤 TTL 内条目）。
+	if _, _, err := s.Issue(1, 99999, "x", clk.Time()); err == nil {
+		t.Fatal("cap must hold while all tokens are still fresh")
+	}
+
+	// 推进过 TTL：全部过期且从未消费，Issue 先清扫后发放应成功且旧槽位全回收。
+	clk.Advance(portkillTokenTTL + time.Second)
+	if _, _, err := s.Issue(2, 7, "y", clk.Time()); err != nil {
+		t.Fatalf("expired-unconsumed tokens must be swept at Issue, got: %v", err)
+	}
+	if got := s.Pending(); got != 1 {
+		t.Fatalf("pending = %d, want 1（过期条目已被清扫）", got)
+	}
+	// 被清扫的过期 token 再消费归因"不存在"（决策留痕：清扫后只剩这一态；
+	// 首次 Consume 若发生在清扫前仍得"过期"，由 TestGuardedTokenStoreSingleUseExpiryAndCap 钉住）。
+	if con := s.Consume(ids[0]); con.Valid || !strings.Contains(con.Why, "不存在") {
+		t.Fatalf("swept expired token must attribute unknown, got %+v", con)
+	}
+
+	// used 审计窗不变：已消费条目在 TTL~2×TTL 之间不得被"过期未消费"条款
+	// 误删——窗内再消费仍归因"已被使用"。
+	clk2 := &testClock{t: time.Date(2026, 9, 26, 18, 0, 0, 0, time.UTC)}
+	s2 := NewKillTokenStore(portkillTokenTTL, clk2.Time)
+	usedID, _, err := s2.Issue(3, 42, "z", clk2.Time())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if con := s2.Consume(usedID); !con.Valid {
+		t.Fatalf("fresh token must consume: %+v", con)
+	}
+	clk2.Advance(portkillTokenTTL + time.Second) // 龄= TTL+1s，落在审计窗内
+	if con := s2.Consume(usedID); con.Valid || !strings.Contains(con.Why, "已被使用") {
+		t.Fatalf("used token within audit window must attribute used, got %+v", con)
+	}
+	// 超 2×TTL 审计窗：条目出窗被清扫，槽位随 Issue 回收；此时再消费因
+	// "先归因后清扫"仍如实报"已被使用"而非"不存在"（较修复前的轻微语义
+	// 增强，留痕：更贴事实且不给模型"没发过这张票"的误导）。
+	clk2.Advance(portkillTokenTTL + time.Second) // 总龄= 2×TTL+2s
+	if con := s2.Consume(usedID); con.Valid || !strings.Contains(con.Why, "已被使用") {
+		t.Fatalf("out-of-window used token must still attribute used, got %+v", con)
+	}
+	if _, _, err := s2.Issue(4, 43, "w", clk2.Time()); err != nil {
+		t.Fatalf("out-of-window used token must free its slot for Issue: %v", err)
 	}
 }
 
