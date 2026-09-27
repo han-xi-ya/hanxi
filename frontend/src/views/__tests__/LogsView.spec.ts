@@ -80,7 +80,7 @@ describe('LogsView', () => {
       const base = appSvc.ReadLogContent.mock.calls.length
       await vi.advanceTimersByTimeAsync(5000)
       expect(appSvc.ReadLogContent.mock.calls.length).toBeGreaterThanOrEqual(base + 2)
-      const checkbox = wrapper.find('.auto-refresh-label input') as any
+      const checkbox = wrapper.find<HTMLInputElement>('.auto-refresh-label input')
       checkbox.element.checked = false
       checkbox.trigger('change')
       await nextTick()

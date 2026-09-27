@@ -10,7 +10,7 @@ const runtimeStore = vi.hoisted(() => ({ urls: {} as Record<string, string>, ens
 vi.mock('../../../constants/runtimeIcons', () => ({
   runtimeIconUrl: (id: string) => runtimeStore.urls[id],
   runtimeIconReady: (id: string) => runtimeStore.urls[id] !== undefined,
-  runtimeIconFailed: (id: string) => false,
+  runtimeIconFailed: (_id: string) => false,
   ensureRuntimeIcon: (id: string) => {
     runtimeStore.ensured.push(id)
     return Promise.resolve()

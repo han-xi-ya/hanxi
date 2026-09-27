@@ -137,8 +137,8 @@ describe('downloadTextFile（浏览器原生下载通道）', () => {
     const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake/1')
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     let captured: HTMLAnchorElement | null = null
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-      captured = this
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {
+      captured = click.mock.instances.at(-1) as HTMLAnchorElement
     })
     expect(downloadTextFile('a.md', '正文')).toBe(true)
     expect(create).toHaveBeenCalledTimes(1)

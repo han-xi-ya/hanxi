@@ -21,7 +21,7 @@
 //     全局 Esc 阶梯需要知道"菜单优先于页面自身收合"，否则一次 Esc 连降两级。
 import { onBeforeUnmount, ref } from 'vue'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     /** 当前搜索词（受控：组件只回显，防抖与拉取归宿主） */
     search?: string
