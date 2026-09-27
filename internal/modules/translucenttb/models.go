@@ -63,9 +63,9 @@ type ControlOutcome struct {
 	Message  string `json:"message"` // 面向用户的执行说明
 }
 
-// QuitOutcome 退出执行结果。
+// QuitOutcome 退出/强制结束执行结果（Quit 与 ForceQuitExternal 两 RPC 共用形状）。
 type QuitOutcome struct {
-	Stopped  bool   `json:"stopped"`  // 是否真正终止了自有实例
-	External bool   `json:"external"` // true = 当前为外部实例，未越权终止
+	Stopped  bool   `json:"stopped"`  // 是否真正终止了实例（自有/打包收编/外部强制结束皆然）
+	External bool   `json:"external"` // true = 本次动作对象是外部判定实例（指引态或结束落定态）
 	Message  string `json:"message"`  // 面向用户的执行说明
 }

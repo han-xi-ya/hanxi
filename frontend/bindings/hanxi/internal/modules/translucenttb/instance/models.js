@@ -47,7 +47,7 @@ export const State = {
     StateFailed: "failed",
 
     /**
-     * 外部用户自启的 TranslucentTB 主实例（非本引擎托管）
+     * 外部用户自启的 TranslucentTB 主实例（非本引擎托管；打包形态经归属判定显示托管，不再落此态，见 adoption.go）
      */
     StateExternal: "external",
 };

@@ -20,10 +20,19 @@
 // 远程行经共享面板 #release-actions 槽挂「可装打包版」chip 与「装打包版」次级
 // 钮（词表走 releaseFormWord 共享件，无 assets 数据静默缺席）；崩溃鉴别直钮双
 // 语义取位（pickAVProbe）：打包对照优先、便携降级回退，二者永不并排。
-// 2026-09-27 机主实证三件套（本区块追加）：msix-progress 事件驱动的进度行
-// （busy 期显形）、打包安装失败孤儿档横幅+「🧹 清理后重试」钮（双闸判据在
-// adapter）、external banner 打包版在册时分形态话术（adapter.banner 内合成）。
-import { computed, onMounted } from 'vue'
+// 2026-09-27 机主实证三件套：msix-progress 事件驱动的进度行（busy 期显形）、
+// 打包安装失败孤儿档横幅+「🧹 清理后重试」钮（双闸判据在 adapter）、external
+// banner 打包版在册时分形态话术（adapter.banner 内合成）。
+// 2026-09-27 批次二（托管控制台缺陷收口，见 adapter 头注记）：
+//  - 「⛔ 强制结束」钮（external 态条件出现，机主裁决件）；
+//  - P1-10 三态闸：预读"未知"（在途未归）灰化安装引导钮——行「装打包版」disabled
+//    + 指路 title，对照区出 disabled 占位防"降级钮先闪现、对照钮后顶替"抖动；
+//    已装/读失败两态逐字走既有回退链（2026-09-26 冻结契约零变化）；
+//  - P1-5：打包钮的在途禁用改读共享 store.busy（adapter.dangerBusy 已把 msix.busy
+//    并入契约⑦），不再各钮手抄 `store.busy || msixBusy` 双读；msixBusy 只留
+//    进度行显隐一用；
+//  - P0-3：KeepAlive 回访 onActivated 重取 MSIX 状态与发布表（首挂载连发档跳过）。
+import { computed, onActivated, onMounted } from 'vue'
 import { createTBAdapter, hasMsixBundleAsset, isAVCrash, pickAVProbe } from '../adapters/translucenttb'
 import type { TBMsixSurface } from '../adapters/translucenttb'
 import type { ManagedActionResult } from '../components/managed/adapter'
@@ -48,6 +57,7 @@ const msixBusy = msix.busy
 const msixProgress = msix.progress
 const msixInstallFailure = msix.installFailure
 const msixOrphanRetry = msix.orphanRetry
+const msixProbe = msix.probe
 
 // 进度行百分比只对 downloading 段成立（后端词表里唯一有真值的段）；
 // preparing/verify-sha256/deploying 等归不确定态（indeterminate 动画 +
@@ -59,6 +69,19 @@ const msixProgressPercent = computed(() => {
 
 onMounted(() => {
   void msix.refresh()
+})
+
+// P0-3：KeepAlive 回访重取 MSIX 状态与发布表（防陈旧快照冒充实时——打包版可能
+// 在他页/系统设置里被装卸、发布表隔夜更新）。首挂载时 onActivated 紧跟 onMounted
+// 连发一次，跳过该次防双拉（EarTrumpetView 同款守卫）。
+let activatedOnce = false
+onActivated(() => {
+  if (!activatedOnce) {
+    activatedOnce = true
+    return
+  }
+  void msix.refresh()
+  void store.load()
 })
 
 /** 打包动词统一执行器：成功回执弹 message，失败裸后端错误串如实透传（缓存拦截文案口径）。 */
@@ -97,6 +120,17 @@ const avProbe = computed(() => {
   })
 })
 
+// P1-10 对照钮区三态闸：预读"未知"（首读在途未归、且未落不可读降级态）且崩溃
+// 版本远程行确有 .msixbundle 资产 → 出 disabled 占位钮（防降级钮先行闪现的
+// 抖动，也防对未定事实盲点安装引导）；已装/读失败两态逐字走既有回退链。
+const avProbePendingGate = computed(() => {
+  if (msixUnavailable.value || msixState.value) return false
+  const s = store.snap
+  if (!s || !isAVCrash(s) || !s.version) return false
+  const rel = store.releases.find((r) => r.version === s.version)
+  return !!rel && hasMsixBundleAsset(rel)
+})
+
 async function runAVProbe(): Promise<void> {
   const p = avProbe.value
   if (!p) return
@@ -118,8 +152,8 @@ async function runAVProbe(): Promise<void> {
     console-tab-label="🌫️ 控制台"
   >
     <!-- 重设与安装目录两钮经壳转发的 #primary-action 位注入主钮与退出钮之间
-         （钮序：启动 → 重设 → 安装目录 → [AV 降级直钮] → 退出；前三位与现状
-         逐字同位，降级直钮仅 failed+AV 有候选时条件出现）；重设钮走
+         （钮序：启动 → 重设 → 安装目录 → [AV 对照/降级/占位直钮] → [external 态
+         ⛔ 强制结束] → 退出；前三位与现状逐字同位，后二位条件出现）；重设钮走
          store.runReset() 正主编排（缺省档=成败两分支均不刷快照、失败裸错误串，
          与本视图原手抄接线器逐字同形制） -->
     <template #primary-action>
@@ -136,13 +170,20 @@ async function runAVProbe(): Promise<void> {
         @click="openDirTarget && store.runOpenDir(openDirTarget)"
       >🗂 安装目录</button>
       <!-- 崩溃鉴别直钮（双语义一位，永不并排）：打包线可用且崩溃版本有
-           msixbundle 资产 → 对照钮；否则原降级钮词与行为逐字不变 -->
+           msixbundle 资产 → 对照钮；预读未定（P1-10 unknown）→ disabled 占位；
+           否则原降级钮词与行为逐字不变 -->
       <button
         v-if="avProbe && avProbe.mode === 'msix'"
         class="btn btn-secondary btn-small"
-        :disabled="store.busy || msixBusy"
+        :disabled="store.busy"
         title="对照鉴别（踩坑 #85）：安装同版本打包版，观察崩溃是否便携形态专属——不动便携文件、不关闭运行中便携实例"
         @click="runAVProbe"
+      >⬇ 装打包版对照（#85 鉴别）</button>
+      <button
+        v-else-if="avProbePendingGate"
+        class="btn btn-secondary btn-small"
+        disabled
+        title="打包版状态未读取（预读在途）——读回后自动启用；可稍候或到下方区块「↻ 刷新」重试"
       >⬇ 装打包版对照（#85 鉴别）</button>
       <button
         v-else-if="avProbe && avProbe.target"
@@ -151,6 +192,16 @@ async function runAVProbe(): Promise<void> {
         :title="`降级鉴别：安装比当前崩溃版本更旧的最近稳定版 ${avProbe.version}，完成后到「版本管理」设为使用，再点启动观察`"
         @click="runAVProbe"
       >⬇ 装 {{ avProbe.version }} 试</button>
+      <!-- external 态强制结束（机主裁决 2026-09-27"即使判 external 也要允许强制
+           结束"）：danger 确认在 adapter 内，被系统拒绝时错误裸串上抛 toast 不粉饰；
+           打包实例经 P1-8 归属收编显示 running，不会走到本钮 -->
+      <button
+        v-if="store.state === 'external'"
+        class="btn btn-danger-outline btn-small"
+        :disabled="store.busy"
+        title="直接结束外部判定实例（按 PID+镜像路径+启动时刻身份复核后终止；不保存其未落盘设置；成败由系统权限决定）"
+        @click="runMsix(() => adapter.forceQuitExternal())"
+      >⛔ 强制结束</button>
     </template>
 
     <!-- 控制台 Tab 主体（壳默认具位）：打包版（Windows 包/MSIX）系统管理区块
@@ -159,7 +210,7 @@ async function runAVProbe(): Promise<void> {
     <section class="extras-card tb-msix">
       <div class="tb-msix-head">
         <span class="tb-msix-title">📦 打包版（系统管理）</span>
-        <button class="btn btn-ghost btn-small" :disabled="msixBusy" title="重读 Windows 包状态" @click="msix.refresh()">↻ 刷新</button>
+        <button class="btn btn-ghost btn-small" :disabled="store.busy" title="重读 Windows 包状态" @click="msix.refresh()">↻ 刷新</button>
       </div>
       <!-- 打包安装进度行（2026-09-27 机主撞账补线）：busy 期间随事件滚动，
            downloading 显百分比，preparing/verify-sha256/deploying 显后端文案+
@@ -180,7 +231,7 @@ async function runAVProbe(): Promise<void> {
           <span class="tb-msix-orphan-text" :title="msixInstallFailure.message">{{ msixInstallFailure.message }}</span>
           <button
             class="btn btn-secondary btn-small"
-            :disabled="store.busy || msixBusy"
+            :disabled="store.busy"
             title="把已核实无注册的孤儿应用数据整体改名隔离（备份 *.orphan-日期，不删内容、可手动删除），随后回「版本管理」再点装打包版"
             @click="runMsix(msix.cleanOrphan)"
           >🧹 清理后重试</button>
@@ -189,8 +240,8 @@ async function runAVProbe(): Promise<void> {
           <span class="tb-msix-state installed">已装 v{{ msixState.version }}</span>
           <code class="mono tb-msix-family" :title="msixState.packageFamily">{{ msixState.packageFamily }}</code>
           <div class="btn-group tb-msix-actions">
-            <button class="btn btn-secondary btn-small" :disabled="store.busy || msixBusy" title="启动 Windows 打包版（经 AppsFolder 激活，幂等：已在运行时再点=重新唤起聚焦，无副作用；独立于便携托管实例，JobObject 不管控）" @click="runMsix(msix.launch)">▶ 启动</button>
-            <button class="btn btn-danger-outline btn-small" :disabled="store.busy || msixBusy" @click="runMsix(msix.uninstall)">卸载</button>
+            <button class="btn btn-secondary btn-small" :disabled="store.busy" title="启动 Windows 打包版（经 AppsFolder 激活，幂等：已在运行时再点=重新唤起聚焦，无副作用；独立于便携托管实例，JobObject 不管控）" @click="runMsix(msix.launch)">▶ 启动</button>
+            <button class="btn btn-danger-outline btn-small" :disabled="store.busy" @click="runMsix(msix.uninstall)">卸载</button>
           </div>
         </div>
         <p v-else class="tb-msix-status">未安装 <span class="hint-dim">——「版本管理」中带「可装打包版」标注的行可装 Windows 包形态，与便携版互不干扰</span></p>
@@ -201,7 +252,7 @@ async function runAVProbe(): Promise<void> {
               <span class="ver-tag tb-msix-cache-ver">{{ c.version }}</span>
               <span class="tb-msix-cache-size">{{ fmtSize(c.size) }}</span>
               <code class="mono tb-msix-cache-path" :title="c.path">{{ c.path }}</code>
-              <button class="btn btn-danger-outline btn-small" :disabled="store.busy || msixBusy" title="删除该版本留存的安装包（不影响已装打包版）；运行中包版本会被系统拦截" @click="runMsix(() => msix.removeCache(c.version))">移除</button>
+              <button class="btn btn-danger-outline btn-small" :disabled="store.busy" title="删除该版本留存的安装包（不影响已装打包版）；运行中包版本会被系统拦截" @click="runMsix(() => msix.removeCache(c.version))">移除</button>
             </div>
           </template>
           <p v-else class="hint-dim">暂无留存的 msixbundle 安装包缓存</p>
@@ -220,7 +271,8 @@ async function runAVProbe(): Promise<void> {
 
     <!-- 版本 Tab 整体替换位：默认体仅共享面板一件（本模块无 channel 块），
          照抄重挂以承载 #release-actions 槽按 N13 资产矩阵标注打包形态可用性
-         （词表走共享件，无 form/assets 数据静默缺席 = 既有行零变化） -->
+         （词表走共享件，无 form/assets 数据静默缺席 = 既有行零变化）；
+         「装打包版」钮受 P1-10 三态闸：预读未知（在途/不可读）灰化并给指路 title -->
     <template #versions-body>
       <ManagedVersionPanel :adapter="adapter" :store="store">
         <template #release-actions="{ release }">
@@ -231,8 +283,10 @@ async function runAVProbe(): Promise<void> {
             >可装打包版</span>
             <button
               class="btn btn-secondary btn-small"
-              :disabled="store.busy || msixBusy"
-              title="以 Windows 包（MSIX）形态安装该版本——不触碰便携托管线"
+              :disabled="store.busy || msixProbe === 'unknown'"
+              :title="msixProbe === 'unknown'
+                ? '打包版状态未确认（预读在途或不可读）——到「📦 打包版（系统管理）」区块「↻ 刷新」读回后启用'
+                : '以 Windows 包（MSIX）形态安装该版本——不触碰便携托管线' + (msixProbe === 'installed' ? `（当前已装 v${msixState?.version}，本次为替换/降级部署）` : '')"
               @click="runMsix(() => msix.installFromRelease(release.version))"
             >装打包版</button>
           </template>

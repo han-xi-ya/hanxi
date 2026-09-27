@@ -18,10 +18,6 @@ var (
 )
 
 const (
-	// exeName 上游主程序文件名（属主校验用；与 version 子包 exeName 同值，
-	// instance 不 import version——保持两子包零依赖分层）。
-	exeName = "TranslucentTB.exe"
-
 	// classTray/nameTray 上游托盘消息窗口（MainAppWindow）：类名 "TrayWindow"
 	// （constants.hpp TRAY_WINDOW）+ 标题 APP_NAME（release 构建 = "TranslucentTB"）。
 	// 二者均已在 2026.2 便携 exe 二进制字符串实证。

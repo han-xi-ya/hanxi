@@ -7,6 +7,9 @@
 //   - 状态词表映射：内核 stopped/starting/running/external/failed/stopping →
 //     本包既有 stopped/starting/running/external/failed（stopping 折并入 running，
 //     终止窗口对前端保持运行语义，终态由后续广播给出）；
+//   - 打包实例归属收编与外部强制结束（adoption.go）：镜像落 WindowsApps 包部署位
+//     的 external 快照收编显示托管并走三段退出链；真外部保留 external，
+//     ForceQuitExternal 通道按进程身份复核强制结束（系统权限决定成败）；
 //   - Snapshot 形状映射：内核快照 + 本包推算的 ExitCode/StoppedAt 拼回既有事件
 //     契约（前端与 wails 事件载荷零漂移），异常退出/手动停止文案按本模块
 //     旧词表逐字还原；
@@ -24,7 +27,15 @@
 // 本包零框架依赖，便于单元测试。
 package instance
 
-import "time"
+import (
+	"time"
+
+	"hanxi/internal/platform"
+)
+
+// exeName 上游主程序文件名（external 属主校验与归属判定共用；与 version 子包
+// exeName 同值，instance 不 import version——保持两子包零依赖分层）。
+const exeName = "TranslucentTB.exe"
 
 // TBProbe 实例存活探测（免框架依赖；service 层注入 Windows 实现）。
 type TBProbe interface {
@@ -32,4 +43,9 @@ type TBProbe interface {
 	IsRunning() bool
 	// WaitForReady 轮询等待互斥体出现（实例就绪），超时返回 false。
 	WaitForReady(timeout time.Duration) bool
+	// FindInstances 枚举全部在跑的 TranslucentTB 映像实例（按启动时刻升序，
+	// 最早的主实例在前；短命信使可能在列尾，消费方按归属判据取用）。
+	// 返回项携带 PID/完整镜像路径/启动时刻——external 快照充实与强制退出
+	// 身份复核共用此事实源；枚举失败回空切片（探测语义宁缺毋滥，不报错）。
+	FindInstances() []platform.ProcInfo
 }

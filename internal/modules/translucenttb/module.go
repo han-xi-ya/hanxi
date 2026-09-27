@@ -18,12 +18,17 @@
 //   - CleanMsixOrphan（第六出口，2026-09-27 机主事故改判件）：上次安装残留的
 //     孤儿应用数据改名隔离（非删除，备份 .orphan-日期 可手动清），唯一路径=
 //     包族名常量拼接，三道闸+指纹留档见 msix_orphan.go；
+//   - ForceQuitExternal（控制线新出口，同批机主裁决件）：真外部判定实例的
+//     强制结束（身份复核 OpenProcess+TerminateProcess，系统权限拒绝如实报错），
+//     执行面与归属收编判据同见 instance/adoption.go；
 //   - InstallMsix 全程经事件 translucenttb:msix-progress 推送阶段进度
 //     （载荷 MsixProgress，preparing/downloading/verify-sha256/deploying/
 //     done/error；同步 RPC 语义不变，事件只喂 UI——机主撞账补线）；
-//   - 共存语义只陈述不干预：两形态共用上游单实例互斥体（后启动者信使化自退），
-//     托管启停线只管便携进程，打包版进程引擎按"外部实例"如实感知，包操作
-//     在两形态各自方法的注释里划清界限，互不越权。
+//   - 共存语义（2026-09-27 P1-8 归属判定修正后口径）：两形态共用上游单实例
+//     互斥体（后启动者信使化自退），包操作仍在两形态方法注释里划清界限、
+//     互不越权；呈现面上打包实例镜像落 WindowsApps 包部署位判为 hanxi 打包线
+//     资产，收编显示托管并归「退出」三段链（优雅+宽限+强杀兜底），真外部
+//     保留 external 且经「⛔ 强制结束」可结束（便携双击自启同享此通道）。
 package translucenttb
 
 import (

@@ -87,7 +87,24 @@ func NewTranslucentTBService(plat platform.Platform, holder *extapi.LeaseHolder)
 	// AV 档话术接本机事实（构造期布线，先于任何 Start/快照路径）：
 	// 已装旧版点名 + 跨重启 AV 记账数。
 	svc.engine.SetAVFacts(svc.avCrashFacts)
+	// P1-8 归属收编三接线（构造期布线，先于任何探测路径）：系统进程通道
+	//（收编实例强杀兜底/外部强制结束的身份复核）、打包路径判据（镜像落
+	// WindowsApps 包部署位即 hanxi 打包线资产，外部态收编显示托管）、
+	// 打包信使改走再激活通道（WindowsApps 镜像不可被非打包进程直接 spawn）。
+	svc.engine.SetProcessAPI(plat.Process())
+	svc.engine.SetPackagedPackagePrefix(MsixPackageName + "_")
+	svc.engine.SetPackagedMessenger(svc.activatePackaged)
 	return svc
+}
+
+// activatePackaged 打包实例的"信使"通道：经 apppackage.Activate 再激活
+// （shell:AppsFolder 派发，进程归系统生命周期）——上游单实例协议下新进程
+// 检出互斥体被持有即转发 ResetState 信号并自退，语义等价便携形态的二次拉起
+// （见 instance/adoption.go 的 SetPackagedMessenger 注记）。
+func (s *TranslucentTBService) activatePackaged(string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), msixLaunchTimeout)
+	defer cancel()
+	return s.packages.Activate(ctx, msixIdentity)
 }
 
 // ---------- 实例事件与后台感知 ----------
@@ -440,6 +457,12 @@ func (s *TranslucentTBService) Start() (ControlOutcome, error) {
 			Message: "检测到外部自行启动的 TranslucentTB 实例，已在运行，无需重复启动"}, nil
 
 	case instance.StateRunning:
+		// 打包收编实例（P1-8）没有便携版本号可报（active 版本是便携线的账），
+		// 如实给打包语境指引，不输出"（Hanxi 托管）+ 空版本"的畸形串。
+		if s.engine.Adopted() {
+			return ControlOutcome{Action: "already-running",
+				Message: "打包版 TranslucentTB 已在运行（Hanxi 部署并唤起，点「退出」可结束）"}, nil
+		}
 		return ControlOutcome{Action: "already-running",
 			Message: fmt.Sprintf("TranslucentTB %s 已在运行（Hanxi 托管）", snap.Version)}, nil
 
@@ -508,22 +531,71 @@ func (s *TranslucentTBService) ResetState() (ControlOutcome, error) {
 	}
 }
 
-// Quit 退出引擎托管的 TranslucentTB（WM_CLOSE 优雅：保存 settings.json 后退出）。
-// external 状态不越权强杀（互斥体探测拿不到 PID）：仅返回人性化指引。
+// Quit 退出 TranslucentTB 实例：
+//   - 自有实例：WM_CLOSE 优雅（保存 settings.json 后退出），内核 JobObject 兜底；
+//   - 打包收编实例（P1-8 显示 running，引擎侧 adoptedInstance 分诊）：
+//     引擎三段退出链——WM_CLOSE 优雅 → 宽限 → 身份复核强杀兜底；
+//   - 真 external：本方法仍不越权强杀（优雅链依赖自有句柄/联动钩子），
+//     人性化指引之外点名的「⛔ 强制结束」经 ForceQuitExternal 通道承载
+//     （机主裁决 2026-09-27：即使判 external 也要允许强制退出）。
 func (s *TranslucentTBService) Quit() (QuitOutcome, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
 		return QuitOutcome{}, gateErr
 	}
 	defer release()
+	// 先做一次静止态外部校正再分诊：Quit 与 Start/GetStatus 同口径吃新鲜事实
+	// （探针单飞闩保证不叠加），避免 5s 轮询间隙内对着陈旧快照指引。
+	s.engine.RefreshExternal()
 	if snap := s.engine.Snapshot(); snap.State == instance.StateExternal {
 		return QuitOutcome{Stopped: false, External: true,
-			Message: "当前是外部自行启动的实例，请在 TranslucentTB 托盘菜单中退出"}, nil
+			Message: "当前是外部自行启动的实例（非 Hanxi 拉起）。可在其 TranslucentTB 托盘菜单优雅退出，或点「⛔ 强制结束」直接终止（不保存其未落盘设置，结束成败由系统权限决定）"}, nil
 	}
 	if err := s.engine.Quit(); err != nil {
 		return QuitOutcome{}, err
 	}
 	return QuitOutcome{Stopped: true, Message: "TranslucentTB 已退出，任务栏已还原默认外观"}, nil
+}
+
+// ForceQuitExternal 对"外部判定"实例的强制结束 RPC（机主裁决 2026-09-27：
+// "即使判 external 也要允许强制退出"——便携双击自启同样受益）。执行面在
+// 引擎层：按探针枚举的进程身份（PID+镜像路径+启动时刻）逐个 KillVerified，
+// PID 复用/系统红线进程拒杀；打包收编实例不走本面（归「退出」三段链管辖）。
+// UIPI/系统权限拒绝如实报错不吞：话术点明"该实例非 hanxi 拉起、结束由系统
+// 权限决定"，指引手动优雅退出的替代路径。
+func (s *TranslucentTBService) ForceQuitExternal() (QuitOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return QuitOutcome{}, gateErr
+	}
+	defer release()
+	s.engine.RefreshExternal()
+	switch snap := s.engine.Snapshot(); snap.State {
+	case instance.StateExternal: // 目标态，往下执行
+	case instance.StateRunning, instance.StateStarting:
+		return QuitOutcome{Stopped: false, Message: "当前实例按托管口径归「退出」管辖（优雅+宽限+强杀兜底），无需强制结束"}, nil
+	default:
+		return QuitOutcome{Stopped: false, Message: "当前没有在运行的 TranslucentTB 实例，无需强制结束"}, nil
+	}
+	rep, err := s.engine.ForceQuitExternal()
+	if err != nil {
+		if rep.Killed > 0 || rep.Denied > 0 {
+			return QuitOutcome{}, fmt.Errorf("强制结束部分收场（已结束 %d、被拒 %d）: %w", rep.Killed, rep.Denied, err)
+		}
+		return QuitOutcome{}, fmt.Errorf("强制结束外部实例失败: %w", err)
+	}
+	switch {
+	case rep.Killed == 0 && rep.Denied > 0:
+		return QuitOutcome{}, fmt.Errorf("%d 个外部 TranslucentTB 实例的结束被系统权限拒绝（access denied）：该实例非 hanxi 拉起、结束由系统权限决定——可在其托盘菜单手动优雅退出，或以更高权限重试", rep.Denied)
+	case rep.Killed == 0:
+		return QuitOutcome{Stopped: false, External: true, Message: "未发现可结束的外部实例（可能刚退出，状态稍后自动校正）"}, nil
+	case rep.Denied > 0:
+		return QuitOutcome{Stopped: true, External: true,
+			Message: fmt.Sprintf("已强制结束 %d 个外部实例；另有 %d 个被系统权限拒绝（非 hanxi 拉起，结束由系统权限决定）", rep.Killed, rep.Denied)}, nil
+	default:
+		return QuitOutcome{Stopped: true, External: true,
+			Message: fmt.Sprintf("已强制结束 %d 个外部 TranslucentTB 实例，任务栏已还原默认外观（强制结束不保存其未落盘设置）", rep.Killed)}, nil
+	}
 }
 
 // Shutdown RPC：经调用门取 operation lease 后执行收尾（与内部版 shutdown 同语义）。
@@ -735,7 +807,10 @@ func (s *TranslucentTBService) queryMsixState(ctx context.Context) (MsixState, e
 //     同一时刻任务栏特效只有一个进程持有；
 //   - 托管启停线只管 Hanxi 拉起的便携进程——InstallMsix/UninstallMsix/LaunchMsix
 //     都不触碰任何在跑实例：不杀便携去装包，也不杀包去留便携；打包版经
-//     LaunchMsix/开始菜单启动后游离于 JobObject 之外，引擎按"外部实例"如实感知；
+//     LaunchMsix/开始菜单启动后游离于 JobObject 之外是事实，但呈现不再一律"外部
+//     实例"（P1-8 归属判定修正，见 instance/adoption.go）：镜像落 WindowsApps 包
+//     部署位判为 hanxi 打包线资产、显示托管并归「退出」三段链；判据失配才落
+//     external，且 external 态经 ForceQuitExternal 可强制结束；
 //   - 打包版本身正在运行时卸载/升级由部署器裁决：脚本通道带
 //     -DeferRegistrationWhenPackagesAreInUse，冲突时报 APP_PACKAGE_IN_USE
 //     （可重试）归因，同样不静默强杀。

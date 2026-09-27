@@ -35,6 +35,6 @@ import * as $models from "./models.js";
  */
 
 /**
- * QuitOutcome 退出执行结果。
+ * QuitOutcome 退出/强制结束执行结果（Quit 与 ForceQuitExternal 两 RPC 共用形状）。
  * @typedef {$models.QuitOutcome} QuitOutcome
  */

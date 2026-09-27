@@ -21,7 +21,7 @@ const (
 	StateStarting State = "starting" // 自有进程创建中（极短窗口）
 	StateRunning  State = "running"  // 自有 Job 托管主实例运行中
 	StateFailed   State = "failed"   // 启动失败 / 异常退出
-	StateExternal State = "external" // 外部用户自启的 TranslucentTB 主实例（非本引擎托管）
+	StateExternal State = "external" // 外部用户自启的 TranslucentTB 主实例（非本引擎托管；打包形态经归属判定显示托管，不再落此态，见 adoption.go）
 )
 
 // closeGracePeriod Quit 的 WM_CLOSE 优雅退出宽限：超时则 JobObject 强杀兜底。
@@ -77,6 +77,17 @@ type Engine struct {
 	cb    Callbacks
 
 	spawnMessenger func(exe string) error // 状态信使拉起接缝（默认真实 spawn，测试注入）
+
+	// procAPI / packagedPrefix / packagedMessenger 归属收编与强制退出三接线
+	// （service 构造期布线，adoption.go 消费；全部 nil/空 = 行为退回收编前旧口径）。
+	procAPI           platform.ProcessAPI    // 系统进程通道：打包收编实例强杀兜底与外部强制退出的身份复核执行者
+	packagedPrefix    string                 // 打包实例路径判据的包全名前缀（WindowsApps\<前缀>_*）
+	packagedMessenger func(exe string) error // 打包实例的"信使"通道（再激活，spawn 直拉被包 ACL 拒）
+
+	// refreshing 外部感知探针的单飞闩（非 nil = 探针在途，P1-9）：watcher tick 与
+	// GetStatus/Start/ResetState/ForceQuit 并发时后来者等待在途探针落定，不叠加探测。
+	refreshMu  sync.Mutex
+	refreshing chan struct{}
 
 	// avFacts AV(0xC0000005) 档话术的本机事实提供者（SetAVFacts 注入，构造期
 	// 布线后运行期只读）；nil = 话术降级为纯动作序列通用档。
@@ -155,19 +166,34 @@ func (e *Engine) SetAVFacts(fn func(version string) AVCrashFacts) {
 // state" 的对外 IPC 等价物（TranslucentTB 无设置窗口可唤，别按 ccswitch 的
 // OpenWindow 语义理解本方法——二次拉起不产生"窗口"，只重放任务栏配置）。
 // 信使生命周期刻意脱离进程治理（不经 supervisor.Engine，见 messenger.go）。
+// 打包收编实例取径不同：WindowsApps 镜像受包 ACL 限制，非打包进程直接
+// spawn 必被拒——改经注入的再激活通道（shell:AppsFolder 派发等价"二次拉起
+// 信使化"，见 SetPackagedMessenger 与 service.activatePackaged）。
 func (e *Engine) ResetState(exe string) error {
-	if err := e.spawnMessenger(exe); err != nil {
+	spawn := e.spawnMessenger
+	if e.packagedMessenger != nil && e.isPackagedImage(exe) {
+		spawn = e.packagedMessenger
+	}
+	if err := spawn(exe); err != nil {
 		return err
 	}
 	e.emit(e.Snapshot())
 	return nil
 }
 
-// Quit 优雅退出自有实例（委托内核 Stop 的 grace 语义）：QuitHook 投递 WM_CLOSE
-// → 宽限 closeGracePeriod 内等进程自然收口（上游 Exit() 保存 settings.json 后
-// PostQuitMessage，主循环收尾自退）→ 超时 JobObject 强杀兜底（首启欢迎窗挂起等
-// 边缘态）。幂等；external 态按既有契约映射为无操作成功。
+// Quit 优雅退出实例：
+//   - 打包收编实例（P1-8 归属判定命中，机主裁决"含打包版走既有退出链"）：
+//     无 JobObject/自有句柄，内核通道只会 ErrExternal→nil 空转，改走
+//     adoption.go 三段链——WM_CLOSE 优雅 → 宽限观察互斥体落位 → 强杀兜底；
+//   - 自有实例：委托内核 Stop 的 grace 语义（QuitHook 投递 WM_CLOSE → 宽限
+//     closeGracePeriod 内等进程自然收口 → 超时 JobObject 强杀兜底）。
+//
+// 幂等；真 external 态按既有契约映射为无操作成功（强制结束走 service 层
+// ForceQuitExternal 通道，不经本方法）。
 func (e *Engine) Quit() error {
+	if info, ok := e.adoptedInstance(); ok {
+		return e.quitAdopted(info)
+	}
 	return e.stopWithGrace(closeGracePeriod)
 }
 
@@ -189,8 +215,28 @@ func (e *Engine) stopWithGrace(grace time.Duration) error {
 
 // RefreshExternal 探测命名互斥体校正 external/stopped 状态（委托内核）。
 // 仅对静止态生效：running/starting/stopping 时探测到的正是自己，会误导状态机。
+//
+// P1-9 单飞闩：本方法有 5 路并发入口（watcher 每 5s tick、GetStatus、Start、
+// ResetState、ForceQuitExternal），探针又含互斥体查询与进程快照枚举——并发叠加
+// 既浪费系统调用面又可能交错广播。在途探针未落定时后来者等待其完成即返回
+// （观察到的就是这一轮的最新事实），不重复探测。
 func (e *Engine) RefreshExternal() {
+	e.refreshMu.Lock()
+	if done := e.refreshing; done != nil {
+		e.refreshMu.Unlock()
+		<-done
+		return
+	}
+	done := make(chan struct{})
+	e.refreshing = done
+	e.refreshMu.Unlock()
+
 	e.sup.RefreshExternal()
+
+	e.refreshMu.Lock()
+	e.refreshing = nil
+	e.refreshMu.Unlock()
+	close(done)
 }
 
 // Snapshot 返回当前状态快照。
@@ -201,13 +247,20 @@ func (e *Engine) Snapshot() Snapshot {
 	return e.snapshotLocked(outer)
 }
 
-// Exe 返回当前自有实例的可执行路径（非 running/starting 时为空串）。
+// Exe 返回当前实例的可执行路径：running/starting 回自有路径；external 态仅当
+// 打包收编判据命中（P1-8，路径可信为托管资产）时回探针报出的 WindowsApps
+// 镜像路径——service 的 ResetState 信使取径依赖它；真外部实例仍回空串。
 func (e *Engine) Exe() string {
 	s := e.sup.Snapshot()
-	if s.State != sup.StateRunning && s.State != sup.StateStarting {
-		return ""
+	switch s.State {
+	case sup.StateRunning, sup.StateStarting:
+		return s.Exe
+	case sup.StateExternal:
+		if e.isPackagedImage(s.Exe) {
+			return s.Exe
+		}
 	}
-	return s.Exe
+	return ""
 }
 
 // WaitReady 阻塞等待 TranslucentTB 实例就绪（单实例互斥体出现），超时返回 false。
@@ -248,13 +301,24 @@ func (e *Engine) snapshotLocked(s sup.Snapshot) Snapshot {
 			e.exitCode = code
 		}
 	}
+	external := s.State == sup.StateExternal
+	state := mapState(s.State)
+	if external && e.isPackagedImage(s.Exe) {
+		// P1-8 归属收编（机主裁决）：打包实例镜像落在 Hanxi 打包线部署位
+		// （WindowsApps\<包名前缀>_…）——经激活通道拉起、内核无句柄是真，但
+		// "外部用户自启"的语义不成立，呈现为托管 running（PID 携探针事实，
+		// Quit 走 quitAdopted 三段退出链）。判据失配（路径读不到等）保守回
+		// external，强制结束通道兜底。
+		external = false
+		state = StateRunning
+	}
 	return Snapshot{
 		Version:   s.Version,
-		State:     mapState(s.State),
+		State:     state,
 		PID:       s.PID,
 		ExitCode:  e.exitCode,
 		Error:     e.mapErrorMessage(s),
-		External:  s.State == sup.StateExternal,
+		External:  external,
 		StartedAt: s.Since,
 		StoppedAt: e.stoppedAt,
 	}
@@ -377,11 +441,20 @@ func (e *Engine) emit(snap Snapshot) {
 	}
 }
 
-// supProbe 把 TBProbe（命名互斥体存在性）适配为内核统一探针契约。
-// 互斥体探测为瞬时系统调用、天然不可取消（任何失败按"不存在"处理，永不报错），
-// 因此不产出 ProcInfo（外部实例归属只认 running 事实，PID 无从取得，沿用原口径）。
+// supProbe 把 TBProbe（命名互斥体存在性 + 进程实例枚举）适配为内核统一探针契约。
+// 互斥体探测为瞬时系统调用、天然不可取消（任何失败按"不存在"处理，永不报错）。
+// P1-8 起充实身份事实：存活时附带最早启动实例的 ProcInfo（PID/镜像路径/启动时刻），
+// 内核 external 快照自此可信——打包收编判据与外部强制退出（KillVerified 身份复核）
+// 都消费这份事实；枚举失败仍回 (true, nil)，退回"只报存活"旧口径，不阻断主链。
 type supProbe struct{ p TBProbe }
 
 func (s supProbe) Inspect(_ context.Context) (bool, *platform.ProcInfo, error) {
-	return s.p.IsRunning(), nil, nil
+	if !s.p.IsRunning() {
+		return false, nil, nil
+	}
+	if infos := s.p.FindInstances(); len(infos) > 0 {
+		info := infos[0]
+		return true, &info, nil
+	}
+	return true, nil, nil
 }

@@ -34,7 +34,16 @@
 //    MSIX_ORPHAN_MARKER）× 服务端 orphans 探测双闸 → 打包区块追加
 //    「🧹 清理后重试」钮（danger 确认点名精确路径，后端动作=改名隔离非删除）；
 //    ③external banner 分形态——打包版在册时不再喊"外部实例（非托管）"，
-//    改发"已由 Hanxi 唤起、生命周期归 Windows"ok 档（预读缺席保守回原文案）。
+//    改发"已由 Hanxi 唤起、生命周期归 Windows"ok 档（预读缺席保守回原文案）；
+//  - 2026-09-27 批次二（机主裁决"即使判 external 也要允许强制结束"+ 托管控制台
+//    缺陷收口）：①后端 P1-8 归属收编——打包实例（WindowsApps 部署位镜像）快照
+//    改呈托管 running，external 语义收窄为真外部，本件 warn 文案同步改口并点名
+//    「⛔ 强制结束」（forceQuitExternal 新 RPC，bindings 待再生引用为预期红）；
+//    ②P1-5 dangerBusy——打包动词与强制结束共用的危险动作在途闩经契约 dangerBusy
+//    位并入共享 busy（msix.busy 与之为同一 ref，进度行/打包钮读法不变）；
+//    ③P1-10 三态闸——msixProbeOf 把预读分成 未知/检出/未见，「未知」灰化安装
+//    引导钮（远程行装打包版 + 对照钮出 disabled 占位防闪现），检出/预读失败两态
+//    的对照区逐字回退便携降级链语义不变（2026-09-26 冻结契约）。
 // ============================================================================
 
 import { computed, ref } from 'vue'
@@ -190,6 +199,19 @@ export function isMsixOrphanAttribution(message: string): boolean {
   return message.includes(MSIX_ORPHAN_MARKER)
 }
 
+/**
+ * 打包线预读三态（P1-10 三态闸的判据面）：unknown=未读回（首读在途/刷新未归），
+ * installed=检出已注册，absent=未见（预读成功且未装）。GetMsixState 失败降级态
+ * （unavailable ref）不在三态之内——那是"确认读不了"的既成事实，走 2026-09-26
+ * 冻结的保守回退链（对照区逐字回便携降级），与"事实未定"的 unknown 分流。
+ */
+export type TBMsixProbe = 'unknown' | 'installed' | 'absent'
+
+export function msixProbeOf(state: TBMsixState | null): TBMsixProbe {
+  if (!state) return 'unknown'
+  return state.installed ? 'installed' : 'absent'
+}
+
 /** 打包线表面：视图直读 refs 渲染区块，动词回 ManagedActionResult 由视图统一弹收。 */
 export interface TBMsixSurface {
   /** 预读成功交回的事实（null=未读回或已降级）。 */
@@ -210,6 +232,8 @@ export interface TBMsixSurface {
   readonly orphanRetry: ComputedRef<boolean>
   /** AV 对照钮前置门：预读成功且打包版未装（预读未回/失败恒 false=便携线零变化）。 */
   readonly probeReady: ComputedRef<boolean>
+  /** 预读三态投影（P1-10 三态闸取词源；读失败降级半边仍由 unavailable ref 单独表达）。 */
+  readonly probe: ComputedRef<TBMsixProbe>
   /** 预读/重读区块事实；任何失败静默落 unavailable，不抛不 toast。 */
   refresh(): Promise<void>
   /** 远程行「装打包版」：确认框说明与便携互不干扰 → InstallMsix → 完成后重读。 */
@@ -229,8 +253,15 @@ export interface TBMsixSurface {
   cleanOrphan(): Promise<ManagedActionResult>
 }
 
-/** 托管 adapter + 模块私有打包线槽（共享契约装不下的双形态方言，视图直消费）。 */
-export type TBAdapter = ManagedModuleAdapter<Snapshot> & { msix: TBMsixSurface }
+/**
+ * 托管 adapter + 模块私有槽（共享契约装不下的双形态方言，视图直消费）：
+ * msix 打包线表面 + forceQuitExternal（机主裁决件：真 external 的强制结束通道）。
+ */
+export type TBAdapter = ManagedModuleAdapter<Snapshot> & {
+  msix: TBMsixSurface
+  /** external 态强制结束（danger 确认在内）：后端按探针身份复核逐个 TerminateProcess。 */
+  forceQuitExternal(): Promise<ManagedActionResult>
+}
 
 /** 远程行有可装打包资产：N13 矩阵 label 以 .msixbundle 收尾（hostfeed 机械判名恒 windows/package；无 assets 数据回 false 静默缺席）。 */
 export function hasMsixBundleAsset(rel?: Pick<ManagedReleaseRecord, 'assets'> | null): boolean {
@@ -299,8 +330,11 @@ export function createTBAdapter(): TBAdapter {
   // toast（缓存运行中拦截等后端文案如实透传，不加词表）。
   const msixState = ref<TBMsixState | null>(null)
   const msixUnavailable = ref(false)
+  // busy 与 adapter 根 dangerBusy 是同一 ref（P1-5）：危险动作在途经契约⑦并入
+  // 共享 store.busy，常规控制动词在打包危险操作/强制结束期间一并禁用。
   const msixBusy = ref(false)
   const msixProbeReady = computed(() => !!msixState.value && !msixState.value.installed)
+  const msixProbe = computed(() => msixProbeOf(msixState.value))
 
   // 打包安装进度通道（机主撞账"全程无反馈"补线）：事件仅喂 UI，动词同步
   // 语义与单飞闩不变；createTBAdapter 恒在视图 setup 同步期执行，
@@ -361,6 +395,28 @@ export function createTBAdapter(): TBAdapter {
       }
       msixInstallFailure.value = null
       return { message: okMessage }
+    })
+  }
+
+  /**
+   * external 态强制结束（机主裁决 2026-09-27"即使判 external 也要允许强制结束"）：
+   * danger 确认如实预告"非 Hanxi 拉起、不保存其未落盘设置、成败由系统权限决定"；
+   * RPC 走 msixExclusive（dangerBusy 在途闩）——被系统拒绝时后端错误原样上抛，
+   * 由视图裸串 toast，不粉饰成成功回执。bindings 待再生前本调用即抛（同路如实报错）。
+   */
+  async function forceQuitExternal(): Promise<ManagedActionResult> {
+    const accepted = await confirm({
+      title: '强制结束外部 TranslucentTB 实例？',
+      description:
+        '该实例非 Hanxi 拉起（外部自启/便携双击），Hanxi 按进程身份（PID+镜像路径+启动时刻）复核后直接终止其进程：\n' +
+        '不会保存其未落盘设置；若目标以更高权限运行（服务态/UAC 提升），系统将拒绝结束并如实报错。',
+      tone: 'danger',
+      confirmLabel: '强制结束',
+    })
+    if (!accepted) return {}
+    return msixExclusive(async () => {
+      const out = await TBAPI.ForceQuitExternal()
+      return { message: out.message }
     })
   }
 
@@ -475,6 +531,12 @@ export function createTBAdapter(): TBAdapter {
       },
     },
 
+    // P1-5 dangerBusy（契约⑦位）：打包动词与强制结束共用的危险动作在途闩并入
+    // 共享 busy——危险操作期间启停/重设/下载/卸载便携等常规动词一并禁用；
+    // msix.busy 与它是同一 ref（进度行/打包钮读法零变化）。
+    dangerBusy: msixBusy,
+    forceQuitExternal,
+
     // 条件提示条（三个变体互斥；文案逐字保留）。external 档内再分形态
     // （2026-09-27 机主实拍改判）：打包版在册时检到的 external 极可能就是
     // 本页刚唤起的打包实例——"外部/非托管"话术是便携实例语义，照抄会误导
@@ -484,9 +546,9 @@ export function createTBAdapter(): TBAdapter {
     banner: (s) => {
       if (s.state === 'external') {
         if (msixState.value?.installed) {
-          return { tone: 'ok', text: '打包版 TranslucentTB 正在运行（已由 Hanxi 唤起）：打包版生命周期归 Windows，Hanxi 不代管其退出——需要停止可在其托盘菜单退出，或回本页「打包版（系统管理）」区卸载。' }
+          return { tone: 'ok', text: '打包版 TranslucentTB 正在运行（已由 Hanxi 唤起）：打包版生命周期归 Windows——需要停止可点「⛔ 强制结束」，或在其托盘菜单优雅退出。' }
         }
-        return { tone: 'warn', text: '检测到外部 TranslucentTB 实例（非 Hanxi 托管）。可重设任务栏状态；如需彻底退出请在 TranslucentTB 托盘菜单操作。' }
+        return { tone: 'warn', text: '检测到外部 TranslucentTB 实例（非 Hanxi 拉起）。可重设任务栏状态；如需彻底退出可用「⛔ 强制结束」直接终止（不保存其未落盘设置，成败由系统权限决定），或在其 TranslucentTB 托盘菜单优雅退出。' }
       }
       if (s.state === 'failed') {
         const base = s.error || 'TranslucentTB 异常退出'
@@ -553,6 +615,7 @@ export function createTBAdapter(): TBAdapter {
       state: msixState,
       unavailable: msixUnavailable,
       busy: msixBusy,
+      probe: msixProbe,
       progress: msixProgress,
       installFailure: msixInstallFailure,
       orphanRetry: msixOrphanRetry,

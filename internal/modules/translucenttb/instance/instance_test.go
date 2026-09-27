@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,12 +28,68 @@ import (
 // ---------- 测试用 fake（探针与 Job 注入） ----------
 
 type fakeProbe struct {
-	running bool // IsRunning 返回值
-	ready   bool // WaitForReady 立即返回值
+	running   bool // IsRunning 返回值
+	ready     bool // WaitForReady 立即返回值
+	instances []platform.ProcInfo
+	block     chan struct{} // 非 nil：每次 IsRunning 先等该通道放行（单飞闩测试）
+	calls     atomic.Int32  // IsRunning 累计调用次数
 }
 
-func (p *fakeProbe) IsRunning() bool                 { return p.running }
+func (p *fakeProbe) IsRunning() bool {
+	p.calls.Add(1)
+	if p.block != nil {
+		<-p.block
+	}
+	return p.running
+}
 func (p *fakeProbe) WaitForReady(time.Duration) bool { return p.ready }
+func (p *fakeProbe) FindInstances() []platform.ProcInfo {
+	if !p.running {
+		return nil
+	}
+	return p.instances
+}
+
+// fakeProcAPI platform.ProcessAPI 替身：KillVerified 按 PID 编排结果并可经
+// onKill 副作用联动探针（模拟"强杀后实例落位"）；Query 恒回最小身份。
+type fakeProcAPI struct {
+	mu     sync.Mutex
+	killed []platform.VerifyToken
+	errOf  map[uint32]error
+	onKill func(pid uint32)
+}
+
+func (f *fakeProcAPI) Query(pid uint32) (platform.ProcInfo, error) {
+	return platform.ProcInfo{PID: pid, Name: exeName}, nil
+}
+
+func (f *fakeProcAPI) KillVerified(_ context.Context, token platform.VerifyToken, _ bool) error {
+	f.mu.Lock()
+	f.killed = append(f.killed, token)
+	errOf := f.errOf
+	onKill := f.onKill
+	f.mu.Unlock()
+	var err error
+	if errOf != nil {
+		err = errOf[token.PID]
+	}
+	if err == nil && onKill != nil {
+		onKill(token.PID)
+	}
+	return err
+}
+
+func (f *fakeProcAPI) IsProtected(uint32, platform.ProcInfo) bool { return false }
+
+func (f *fakeProcAPI) killedPIDs() []uint32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	pids := make([]uint32, 0, len(f.killed))
+	for _, t := range f.killed {
+		pids = append(pids, t.PID)
+	}
+	return pids
+}
 
 type fakeJob struct{ assignErr error }
 
@@ -522,5 +579,316 @@ func TestProbePassthrough(t *testing.T) {
 	e2 := NewEngine(&fakeJobAPI{}, &fakeProbe{ready: false}, Callbacks{})
 	if e2.WaitReady(time.Second) {
 		t.Fatal("fake 探针 ready=false 应透传为超时")
+	}
+}
+
+// ---------- P1-8 归属收编 / 三段退出链 / P1-9 探针单飞闩 ----------
+//
+// 回归锁测三件套（机主实撞："经 hanxi 启动的打包版被判外部实例、无法退出"）：
+// 打包版 WindowsApps 路径判托管、真外部进程名相同判 external、强杀成功/被拒两分支。
+
+const (
+	testPackagedPrefix = "28017CharlesMilette.TranslucentTB_"
+	testPackagedExe    = `C:\Program Files\WindowsApps\28017CharlesMilette.TranslucentTB_2026.2.0.0_x64__v826wp6bftszj\TranslucentTB.exe`
+	testPortableExe    = `D:\tools\TranslucentTB\TranslucentTB.exe` // 真外部：同名不同目录，必须出局
+)
+
+// withAdoptedPackaged 造"打包实例在场且判据接线"的引擎（已 RefreshExternal 入账）。
+func withAdoptedPackaged(t *testing.T, pid uint32, started time.Time, procAPI platform.ProcessAPI,
+	rec *eventRecorder) *Engine {
+	t.Helper()
+	probe := &fakeProbe{running: true, instances: []platform.ProcInfo{
+		{PID: pid, Name: exeName, ExePath: testPackagedExe, StartedAt: started},
+	}}
+	e := NewEngine(&fakeJobAPI{}, probe, rec.cb())
+	e.SetPackagedPackagePrefix(testPackagedPrefix)
+	if procAPI != nil {
+		e.SetProcessAPI(procAPI)
+	}
+	e.RefreshExternal()
+	return e
+}
+
+func TestIsPackagedInstanceImage(t *testing.T) {
+	cases := []struct {
+		name, exePath, prefix string
+		want                  bool
+	}{
+		{"实证部署位命中", testPackagedExe, testPackagedPrefix, true},
+		{"大小写混合仍命中", `c:\program files\windowsapps\28017CHARLESMILETTE.TRANSLUCENTTB_2026.2.0.0_x64__v826wp6bftszj\translucenttb.exe`, testPackagedPrefix, true},
+		{"便携目录同名出局", testPortableExe, testPackagedPrefix, false},
+		{"WindowsApps 下别家包出局", `C:\Program Files\WindowsApps\NanaZip_2.0.0_x64__p7zb574qlxtx4\NanaZipX.exe`, testPackagedPrefix, false},
+		{"基名不是 TranslucentTB.exe 出局", `C:\Program Files\WindowsApps\28017CharlesMilette.TranslucentTB_2026.2.0.0_x64__v826wp6bftszj\Restart.bat`, testPackagedPrefix, false},
+		{"前缀未接线恒假（保守回 external）", testPackagedExe, "", false},
+		{"空路径假", "", testPackagedPrefix, false},
+	}
+	for _, c := range cases {
+		if got := isPackagedInstanceImage(c.exePath, c.prefix); got != c.want {
+			t.Errorf("%s: isPackagedInstanceImage = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestAdoptedPackagedExternalDisplaysManaged 锁测①：打包实例（WindowsApps 路径）
+// 被内核判 external 后，快照收编显示托管 running，PID/启动时刻携探针事实，
+// Exe() 交回镜像路径（信使取径依赖），Adopted() 为真。
+func TestAdoptedPackagedExternalDisplaysManaged(t *testing.T) {
+	rec := &eventRecorder{}
+	started := time.Now().Add(-time.Hour)
+	e := withAdoptedPackaged(t, 4242, started, nil, rec)
+
+	snap := e.Snapshot()
+	if snap.State != StateRunning || snap.External {
+		t.Fatalf("打包实例应收编显示托管: %+v", snap)
+	}
+	if snap.PID != 4242 || !snap.StartedAt.Equal(started) {
+		t.Errorf("快照未携探针身份事实: %+v", snap)
+	}
+	if !e.Adopted() {
+		t.Error("Adopted() 应为真")
+	}
+	if got := e.Exe(); got != testPackagedExe {
+		t.Errorf("Exe() = %q, want 收编实例镜像路径", got)
+	}
+	if got := rec.last().State; got != StateRunning {
+		t.Errorf("事件广播应同为托管: %s", got)
+	}
+
+	// 判据未接线的基线（保守回旧口径）
+	probe := &fakeProbe{running: true, instances: []platform.ProcInfo{{PID: 1, ExePath: testPackagedExe}}}
+	e2 := NewEngine(&fakeJobAPI{}, probe, Callbacks{})
+	e2.RefreshExternal()
+	if s := e2.Snapshot(); s.State != StateExternal || !s.External {
+		t.Errorf("未接线判据必须仍判 external: %+v", s)
+	}
+}
+
+// TestSameNamePortableExternalStaysExternal 锁测②：真外部实例进程名与互斥体
+// 与托管完全相同（同 exeName 同单实例锁），仅镜像路径不在包部署位——必须
+// 判 external，且快照如实带 PID（旧口径 PID 恒 0 是强制结束无从下手的病根）。
+func TestSameNamePortableExternalStaysExternal(t *testing.T) {
+	rec := &eventRecorder{}
+	started := time.Now().Add(-30 * time.Minute)
+	probe := &fakeProbe{running: true, instances: []platform.ProcInfo{
+		{PID: 5, Name: exeName, ExePath: testPortableExe, StartedAt: started},
+	}}
+	e := NewEngine(&fakeJobAPI{}, probe, rec.cb())
+	e.SetPackagedPackagePrefix(testPackagedPrefix)
+	e.RefreshExternal()
+
+	snap := e.Snapshot()
+	if snap.State != StateExternal || !snap.External {
+		t.Fatalf("同名便携外部实例不得被收编: %+v", snap)
+	}
+	if snap.PID != 5 {
+		t.Errorf("external 快照应如实带探针 PID: %+v", snap)
+	}
+	if e.Adopted() {
+		t.Error("真外部不得报 Adopted")
+	}
+	if got := e.Exe(); got != "" {
+		t.Errorf("真外部 Exe() 应为空: %q", got)
+	}
+}
+
+// TestQuitAdoptedThreeStage 收编实例三段退出链：宽限内自然落位零强杀；
+// 超时走 KillVerified 身份复核（token 三要素逐项钉）；被系统拒绝报错不吞、
+// 收编显示保持到状态校正（如实反映"它还活着"）。
+func TestQuitAdoptedThreeStage(t *testing.T) {
+	oldGrace, oldPoll := closeGracePeriod, adoptedPollInterval
+	closeGracePeriod, adoptedPollInterval = 150*time.Millisecond, 10*time.Millisecond
+	defer func() { closeGracePeriod, adoptedPollInterval = oldGrace, oldPoll }()
+
+	started := time.Now().Add(-time.Hour)
+
+	t.Run("宽限内优雅落位：不碰强杀通道", func(t *testing.T) {
+		rec := &eventRecorder{}
+		proc := &fakeProcAPI{}
+		e := withAdoptedPackaged(t, 4242, started, proc, rec)
+		e.probe.(*fakeProbe).running = false // WM_CLOSE 生效：互斥体先落
+		if err := e.Quit(); err != nil {
+			t.Fatalf("优雅收口应成功: %v", err)
+		}
+		if len(proc.killedPIDs()) != 0 {
+			t.Errorf("优雅路径不得强杀: %v", proc.killedPIDs())
+		}
+		if s := e.Snapshot(); s.State != StateStopped {
+			t.Errorf("应校正为 stopped: %+v", s)
+		}
+	})
+
+	t.Run("宽限超时：强杀兜底且身份复核", func(t *testing.T) {
+		rec := &eventRecorder{}
+		proc := &fakeProcAPI{}
+		e := withAdoptedPackaged(t, 4242, started, proc, rec)
+		proc.onKill = func(uint32) { e.probe.(*fakeProbe).running = false } // 强杀后互斥体释放
+		if err := e.Quit(); err != nil {
+			t.Fatalf("强杀兜底应成功: %v", err)
+		}
+		if got := proc.killedPIDs(); len(got) != 1 || got[0] != 4242 {
+			t.Fatalf("应恰强杀收编实例一次: %v", got)
+		}
+		tok := proc.killed[0]
+		if !strings.EqualFold(tok.ExePath, testPackagedExe) || !tok.StartedAt.Equal(started) {
+			t.Errorf("复核令牌三要素失真: %+v", tok)
+		}
+		if s := e.Snapshot(); s.State != StateStopped {
+			t.Errorf("强杀收口后应校正为 stopped: %+v", s)
+		}
+	})
+
+	t.Run("被系统拒绝：如实报错不吞，显示保持收编", func(t *testing.T) {
+		rec := &eventRecorder{}
+		proc := &fakeProcAPI{errOf: map[uint32]error{4242: platform.ErrAccessDenied}}
+		e := withAdoptedPackaged(t, 4242, started, proc, rec)
+		err := e.Quit()
+		if err == nil || !strings.Contains(err.Error(), "被系统拒绝") || !strings.Contains(err.Error(), "系统权限") {
+			t.Fatalf("access denied 必须中文如实上抛: %v", err)
+		}
+		if s := e.Snapshot(); s.State != StateRunning {
+			t.Errorf("实例仍在场，收编显示不得假报已停: %+v", s)
+		}
+	})
+}
+
+// TestRefreshExternalSingleFlight P1-9：探针在途时并发调用者等待其落定、
+// 不叠加探测；落定后闩复位（后续调用照常探测）。
+func TestRefreshExternalSingleFlight(t *testing.T) {
+	gate := make(chan struct{})
+	probe := &fakeProbe{running: false, block: gate}
+	e := NewEngine(&fakeJobAPI{}, probe, Callbacks{})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); e.RefreshExternal() }()
+	}
+	for probe.calls.Load() == 0 { // 等在途探针真正进入 IsRunning
+		time.Sleep(2 * time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond) // 给迟到者撞闩的机会
+	close(gate)
+	wg.Wait()
+	if got := probe.calls.Load(); got != 1 {
+		t.Fatalf("并发三轮应只探测一次: calls=%d", got)
+	}
+
+	e.RefreshExternal()
+	if got := probe.calls.Load(); got != 2 {
+		t.Errorf("闩应随探针落定复位: calls=%d", got)
+	}
+}
+
+// TestForceQuitExternalSkipAndBranches 强制结束执行面：打包收编实例跳过（归
+// 退出链）、真外部逐个身份复核结束、access denied 如实计数、自有 Job 托管进程
+// 绝不出枪、通道未接线报错。
+func TestForceQuitExternalSkipAndBranches(t *testing.T) {
+	oldGrace, oldPoll := closeGracePeriod, adoptedPollInterval
+	closeGracePeriod, adoptedPollInterval = 150*time.Millisecond, 10*time.Millisecond
+	defer func() { closeGracePeriod, adoptedPollInterval = oldGrace, oldPoll }()
+
+	started := time.Now().Add(-time.Hour)
+	mk := func(proc *fakeProcAPI) *Engine {
+		probe := &fakeProbe{running: true, instances: []platform.ProcInfo{
+			{PID: 4242, Name: exeName, ExePath: testPackagedExe, StartedAt: started.Add(-time.Minute)},
+			{PID: 5, Name: exeName, ExePath: testPortableExe, StartedAt: started},
+		}}
+		e := NewEngine(&fakeJobAPI{}, probe, Callbacks{})
+		e.SetPackagedPackagePrefix(testPackagedPrefix)
+		if proc != nil {
+			e.SetProcessAPI(proc)
+		}
+		return e
+	}
+
+	t.Run("只终结真外部", func(t *testing.T) {
+		proc := &fakeProcAPI{}
+		e := mk(proc)
+		rep, err := e.ForceQuitExternal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Killed != 1 || rep.Denied != 0 {
+			t.Fatalf("计数失真: %+v", rep)
+		}
+		if got := proc.killedPIDs(); len(got) != 1 || got[0] != 5 {
+			t.Errorf("打包实例应被跳过、外部实例被结束: %v", got)
+		}
+		if tok := proc.killed[0]; !strings.EqualFold(tok.ExePath, testPortableExe) || !tok.StartedAt.Equal(started) {
+			t.Errorf("复核令牌身份失真: %+v", tok)
+		}
+	})
+
+	t.Run("被拒如实计数不吞", func(t *testing.T) {
+		proc := &fakeProcAPI{errOf: map[uint32]error{5: platform.ErrAccessDenied}}
+		e := mk(proc)
+		rep, err := e.ForceQuitExternal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Killed != 0 || rep.Denied != 1 {
+			t.Fatalf("被拒应入 Denied 计数: %+v", rep)
+		}
+	})
+
+	t.Run("自有 Job 托管进程绝不出枪", func(t *testing.T) {
+		proc := &fakeProcAPI{}
+		probe := &fakeProbe{running: true}
+		e := NewEngine(newWindowsJobAPI(), probe, Callbacks{})
+		e.SetPackagedPackagePrefix(testPackagedPrefix)
+		e.SetProcessAPI(proc)
+		e.specArgs = []string{"/c", `for /l %i in (1,1,1500000) do @set x=%i`}
+		ownExe := mustCmdExe(t)
+		if err := e.Start(StartOptions{Version: "2026.2", Exe: ownExe}); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		defer func() { _ = e.Stop() }()
+		waitState(t, e, StateRunning)
+		own := e.Snapshot().PID
+		probe.instances = []platform.ProcInfo{
+			{PID: own, Name: "cmd.exe", ExePath: ownExe, StartedAt: started},
+			{PID: 7777, Name: exeName, ExePath: testPortableExe, StartedAt: started},
+		}
+		rep, err := e.ForceQuitExternal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rep.Killed != 1 {
+			t.Fatalf("应只终结 7777: %+v", rep)
+		}
+		if got := proc.killedPIDs(); len(got) != 1 || got[0] != 7777 {
+			t.Errorf("自有托管 PID 被误杀: %v（own=%d）", got, own)
+		}
+	})
+
+	t.Run("通道未接线报错", func(t *testing.T) {
+		e := mk(nil)
+		if _, err := e.ForceQuitExternal(); err == nil || !strings.Contains(err.Error(), "未接线") {
+			t.Fatalf("应中文报通道缺席: %v", err)
+		}
+	})
+}
+
+// TestResetStatePackagedMessengerRouting 信使取径分流：打包镜像走再激活通道
+// （spawn 直拉必被包 ACL 拒），便携镜像走原直接 spawn。
+func TestResetStatePackagedMessengerRouting(t *testing.T) {
+	rec := &eventRecorder{}
+	e := NewEngine(&fakeJobAPI{}, &fakeProbe{}, rec.cb())
+	e.SetPackagedPackagePrefix(testPackagedPrefix)
+	var spawned, activated []string
+	e.spawnMessenger = func(exe string) error { spawned = append(spawned, exe); return nil }
+	e.SetPackagedMessenger(func(exe string) error { activated = append(activated, exe); return nil })
+
+	if err := e.ResetState(testPackagedExe); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.ResetState(testPortableExe); err != nil {
+		t.Fatal(err)
+	}
+	if len(activated) != 1 || activated[0] != testPackagedExe {
+		t.Errorf("打包镜像应走再激活通道: %v", activated)
+	}
+	if len(spawned) != 1 || spawned[0] != testPortableExe {
+		t.Errorf("便携镜像应走原 spawn: %v", spawned)
 	}
 }

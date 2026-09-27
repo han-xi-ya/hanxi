@@ -9,7 +9,11 @@
 // AV 鉴别钮双语义（打包对照置顶 / 打包线不可用时降级钮零变化）；
 // 2026-09-27 机主实证批次：msix-progress 进度行（百分比/不确定态/落定收行）、
 // 孤儿数据档失败横幅+「🧹 清理后重试」钮出现与消失全链、external banner
-// 分形态渲染（打包版在册=ok 档新话术）。
+// 分形态渲染（打包版在册=ok 档新话术）；
+// 2026-09-27 批次二：external 态「⛔ 强制结束」钮与确认链（P1-2）、InstallMsix
+// 在途 dangerBusy 联动禁常规控制钮（P1-5）、预读未知态灰化安装引导钮+对照区
+// disabled 占位防闪现（P1-10）、KeepAlive 回访 onActivated 重取 MSIX 状态与
+// 发布表且首挂载不双拉（P0-3）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -42,6 +46,8 @@ const svc = vi.hoisted(() => ({
   RemoveMsixCache: vi.fn(),
   LaunchMsix: vi.fn(),
   CleanMsixOrphan: vi.fn(),
+  // 批次二新 RPC（bindings 待再生，spec 全 mock 顶替）
+  ForceQuitExternal: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -231,7 +237,8 @@ describe('TranslucentTBView 钮区（声明式主钮 + 走槽钮）', () => {
   it('退出钮：stopped 禁用；external 可点且 title 指引托盘退出', async () => {
     stubDefaults({ state: 'stopped' })
     let r = await mountInKeepAlive()
-    const quit = () => r.wrapper.findAll('.control-btns .btn')[3]
+    // external 态钮区多一枚「⛔ 强制结束」，退出钮按文本定位不锁下标
+    const quit = () => r.wrapper.findAll('.control-btns .btn').find((b) => b.text() === '⏻ 退出')!
     expect(quit().attributes('disabled')).toBeDefined()
     r.wrapper.unmount()
 
@@ -642,6 +649,10 @@ describe('TranslucentTBView 打包版区块（状态/缓存/降级/动词）', (
     expect(wrapper.findAll('.tb-msix-actions .btn')[1].attributes('disabled')).toBeDefined()
     expect(wrapper.find('.tb-msix-head .btn').attributes('disabled')).toBeDefined()
     expect(rowBtn.attributes('disabled')).toBeDefined()
+    // P1-5 dangerBusy（契约⑦）：打包危险动作在途并入共享 busy——常规启停/重设
+    // 控制钮同刻一并禁用（旧形只闩打包钮，便携线动词裸奔与打包部署竞态）
+    expect(wrapper.findAll('.control-btns .btn')[0].attributes('disabled')).toBeDefined()
+    expect(wrapper.findAll('.control-btns .btn')[1].attributes('disabled')).toBeDefined()
     settleInstall!(undefined)
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toBe('打包版 2026.2 已安装（便携版未受影响）')
@@ -900,6 +911,112 @@ describe('TranslucentTBView external banner 分形态（打包版在册改判）
     expect(banner.text()).toContain('打包版 TranslucentTB 正在运行（已由 Hanxi 唤起）')
     expect(banner.text()).toContain('生命周期归 Windows')
     expect(banner.text()).not.toContain('非 Hanxi 托管')
+    wrapper.unmount()
+  })
+})
+
+// ---------- 2026-09-27 批次二：强制结束钮 / P1-10 三态闸 / P0-3 回访重取 ----------
+
+describe('TranslucentTBView external 强制结束钮（机主裁决件）', () => {
+  it('external 态钮序含「⛔ 强制结束」（退出前位）；danger 确认→RPC→成功 toast；取消零 RPC；非 external 态无此钮', async () => {
+    stubDefaults({ state: 'external' })
+    let r = await mountInKeepAlive()
+    const btns = () => r.wrapper.findAll('.control-btns .btn')
+    expect(btns().map((b) => b.text())).toEqual([
+      '🌫️ 启动', '🪄 重设任务栏状态', '🗂 安装目录', '⛔ 强制结束', '⏻ 退出',
+    ])
+
+    await btns()[3].trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.tone).toBe('danger')
+    expect(confirmState.options.title).toBe('强制结束外部 TranslucentTB 实例？')
+    settleConfirm(false)
+    await flushMicrotasks()
+    expect(svc.ForceQuitExternal).not.toHaveBeenCalled()
+
+    svc.ForceQuitExternal.mockResolvedValue({
+      stopped: true,
+      external: true,
+      message: '已强制结束 1 个外部 TranslucentTB 实例，任务栏已还原默认外观',
+    })
+    await btns()[3].trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(svc.ForceQuitExternal).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toContain('已强制结束')
+    r.wrapper.unmount()
+
+    stubDefaults({ state: 'stopped' })
+    r = await mountInKeepAlive()
+    expect(r.wrapper.findAll('.control-btns .btn').map((b) => b.text())).not.toContain('⛔ 强制结束')
+    r.wrapper.unmount()
+  })
+
+  it('被系统权限拒绝：后端错误裸串 toast（不粉饰成功）', async () => {
+    stubDefaults({ state: 'external' })
+    svc.ForceQuitExternal.mockRejectedValue(new Error('1 个外部 TranslucentTB 实例的结束被系统权限拒绝（access denied）：该实例非 hanxi 拉起、结束由系统权限决定'))
+    const { wrapper } = await mountInKeepAlive()
+    const force = wrapper.findAll('.control-btns .btn')[3]
+    await force.trigger('click')
+    await flushMicrotasks()
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toContain('系统权限拒绝')
+    wrapper.unmount()
+  })
+})
+
+describe('TranslucentTBView P1-10 预读三态闸（安装引导钮灰化与对照区占位）', () => {
+  it('预读在途（unknown）：对照区出 disabled 占位钮、降级钮不闪现；行「装打包版」灰化带指路 title', async () => {
+    stubDefaults(avFailed, { installed: [installed20262], releases: [release20262Msix, release20261] })
+    svc.GetMsixState.mockReturnValue(new Promise(() => {})) // 永挂在途 = 事实未定
+    const { wrapper } = await mountInKeepAlive()
+    const btns = wrapper.findAll('.control-btns .btn')
+    expect(btns.map((b) => b.text())).toEqual([
+      '🌫️ 启动', '🪄 重设任务栏状态', '🗂 安装目录', '⬇ 装打包版对照（#85 鉴别）', '⏻ 退出',
+    ])
+    expect(btns[3].attributes('disabled')).toBeDefined() // 占位档（非可用对照钮）
+    expect(btns[3].attributes('title')).toContain('未读取')
+    const rowBtn = wrapper.findAll('.tbl button').find((b) => b.text() === '装打包版')!
+    expect(rowBtn.attributes('disabled')).toBeDefined()
+    expect(rowBtn.attributes('title')).toContain('未确认')
+    wrapper.unmount()
+  })
+
+  it('已装档（installed）title 决策：行「装打包版」仍可点（替换/降级部署）并点名已装版本', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix], msix: msixInstalledState })
+    const { wrapper } = await mountInKeepAlive()
+    await flushMicrotasks()
+    const rowBtn = wrapper.findAll('.tbl button').find((b) => b.text() === '装打包版')!
+    expect(rowBtn.attributes('disabled')).toBeUndefined()
+    expect(rowBtn.attributes('title')).toContain('当前已装 v2026.2')
+    wrapper.unmount()
+  })
+})
+
+describe('TranslucentTBView P0-3 KeepAlive 回访重取（onActivated 防陈旧快照）', () => {
+  it('首挂载只读一次打包状态；切走再回访客 onActivated 重取 MSIX 状态与发布表', async () => {
+    stubDefaults({ state: 'stopped' })
+    // 本文件 mock 跨用例累计——一律相对计数
+    const readsBefore = svc.GetMsixState.mock.calls.length
+    const releasesBefore = svc.ListReleases.mock.calls.length
+    const show = ref(true)
+    const Host = defineComponent({
+      render: () => h(KeepAlive, null, { default: () => (show.value ? h(TranslucentTBView) : h('span', 'other')) }),
+    })
+    const wrapper = mount(Host, { attachTo: document.body })
+    await flushMicrotasks()
+    // onMounted 恰一次；KeepAlive 首挂载紧随的 onActivated 走跳过档（不双拉）
+    expect(svc.GetMsixState.mock.calls.length).toBe(readsBefore + 1)
+
+    show.value = false
+    await nextTick()
+    show.value = true
+    await flushMicrotasks()
+    expect(svc.GetMsixState.mock.calls.length).toBe(readsBefore + 2) // 回访重取
+    expect(svc.ListReleases.mock.calls.length).toBeGreaterThan(releasesBefore) // 发布表同重取
     wrapper.unmount()
   })
 })

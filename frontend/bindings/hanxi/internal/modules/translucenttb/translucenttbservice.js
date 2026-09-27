@@ -54,6 +54,19 @@ export function DownloadVersion(targetVersion) {
 }
 
 /**
+ * ForceQuitExternal 对"外部判定"实例的强制结束 RPC（机主裁决 2026-09-27：
+ * "即使判 external 也要允许强制退出"——便携双击自启同样受益）。执行面在
+ * 引擎层：按探针枚举的进程身份（PID+镜像路径+启动时刻）逐个 KillVerified，
+ * PID 复用/系统红线进程拒杀；打包收编实例不走本面（归「退出」三段链管辖）。
+ * UIPI/系统权限拒绝如实报错不吞：话术点明"该实例非 hanxi 拉起、结束由系统
+ * 权限决定"，指引手动优雅退出的替代路径。
+ * @returns {$CancellablePromise<$models.QuitOutcome>}
+ */
+export function ForceQuitExternal() {
+    return $Call.ByID(2190523788);
+}
+
+/**
  * GetActiveVersion 返回当前设定版本（空字符串 = 未指定，冷启动自动用最新已装）。
  * @returns {$CancellablePromise<string>}
  */
@@ -120,7 +133,10 @@ export function ImportLocal(srcDir) {
  *     同一时刻任务栏特效只有一个进程持有；
  *   - 托管启停线只管 Hanxi 拉起的便携进程——InstallMsix/UninstallMsix/LaunchMsix
  *     都不触碰任何在跑实例：不杀便携去装包，也不杀包去留便携；打包版经
- *     LaunchMsix/开始菜单启动后游离于 JobObject 之外，引擎按"外部实例"如实感知；
+ *     LaunchMsix/开始菜单启动后游离于 JobObject 之外是事实，但呈现不再一律"外部
+ *     实例"（P1-8 归属判定修正，见 instance/adoption.go）：镜像落 WindowsApps 包
+ *     部署位判为 hanxi 打包线资产、显示托管并归「退出」三段链；判据失配才落
+ *     external，且 external 态经 ForceQuitExternal 可强制结束；
  *   - 打包版本身正在运行时卸载/升级由部署器裁决：脚本通道带
  *     -DeferRegistrationWhenPackagesAreInUse，冲突时报 APP_PACKAGE_IN_USE
  *     （可重试）归因，同样不静默强杀。
@@ -177,8 +193,13 @@ export function OpenRepository() {
 }
 
 /**
- * Quit 退出引擎托管的 TranslucentTB（WM_CLOSE 优雅：保存 settings.json 后退出）。
- * external 状态不越权强杀（互斥体探测拿不到 PID）：仅返回人性化指引。
+ * Quit 退出 TranslucentTB 实例：
+ *   - 自有实例：WM_CLOSE 优雅（保存 settings.json 后退出），内核 JobObject 兜底；
+ *   - 打包收编实例（P1-8 显示 running，引擎侧 adoptedInstance 分诊）：
+ *     引擎三段退出链——WM_CLOSE 优雅 → 宽限 → 身份复核强杀兜底；
+ *   - 真 external：本方法仍不越权强杀（优雅链依赖自有句柄/联动钩子），
+ *     人性化指引之外点名的「⛔ 强制结束」经 ForceQuitExternal 通道承载
+ *     （机主裁决 2026-09-27：即使判 external 也要允许强制退出）。
  * @returns {$CancellablePromise<$models.QuitOutcome>}
  */
 export function Quit() {
