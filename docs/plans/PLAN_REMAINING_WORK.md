@@ -169,7 +169,8 @@
 - **只读审计在途**（af39 线）：双形态页十项缺陷矩阵（busy 死锁面/状态轮询/双闸互踩/并发组合），报告按归属并批。
 - **DBX/GoNavi 真图标**（ae51 线）：N27 正路取官方仓库位图 64px 双副本+sources.go 台账 26→28；无位图证据则切 rt: 运行期通道（机主机器 DBX 已装可实测）。
 - **Paseo external 态唤窗开二窗**（a98 线在途）：机主实证横幅承诺"全局仅一个桌面主实例"与行为矛盾——先现场取证几进程定上游锁真相（多进程 vs 同进程多窗），修案分external 仅聚焦绝不 Start/文案改诚实两路；复验剧本含"重启 hanxi 后连点三下打开窗口零新窗"。
-- 机主侧待办不变：换 17:46 版 exe 体验全家桶；F-c（release 传版本号+CI 补前端闸）动 CI/CD 配置需一字授权；Inter-Medium.ttf 308KB 死重删否。
+- **2026-09-27 夜批总闸收账（19:0x）**：上列四条战线当日全部入库并双推 origin+gitee（69346d2..fcae408 共 11 笔）——TTB 三连修复 `9d2cd17`（孤儿闸/进度事件装配 events 95→96/CleanMsixOrphan，bindings 同批再生 vue-tsc 清零）；提权脚本单件化 `3b27dcb`；catalog 再生欠账 `32268f3`；DBX/GoNavi 真图标 `899ae4d`（sources.go 28 键）；Paseo external 仅聚焦 `beb78b8`（#105）；托管壳版本点 `a5666eb`；WSL 前端面板 `0296bae`；治理波0基座 `b86f8d1` + 消费侧收编 `9c28c34`（70 件净减 562 行）；MCP 端口族 `afc0cd7`；后端治理 `fcae408`（日志换档/OCR 锁序/快照短路）。审计 B/C 批余项与机主新撞「打包版显示外部实例、要求允许强制退出」并线在施（TTB 二波）；WSL 后端 usb 重放竞态红包另线修。**构建事故如实录**：worktree remove --force 跟随 node_modules junction 连坐删空主仓工具链，npm ci 恢复+vitest 全量复验绿；新 exe 已产出 `bin/hanxi-new-1902.exe`（19:02 版含全部 11 笔，原 hanxi-new.exe 被运行中实例持锁未覆盖）。
+- 机主侧待办：把 19:02 版换入体验全家桶（关净 hanxi.exe/hanxi-new.exe 全部实例后替换）；F-c（release 传版本号+CI 补前端闸）动 CI/CD 配置需一字授权；Inter-Medium.ttf 308KB 死重删否。
 
 ## 路线参考(未排期)
 
