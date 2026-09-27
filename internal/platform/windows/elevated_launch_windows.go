@@ -27,9 +27,30 @@ func RunElevatedDetached(exe, workingDir string, args []string) (ElevatedRunResu
 	if err := validateElevatedTarget(exe); err != nil {
 		return ElevatedRunResult{}, err
 	}
-	// 审查 P0#2：空 args 必须**整段省略** -ArgumentList——PowerShell 对
-	// `-ArgumentList  -Verb` 形态报 Missing an argument（实测 UAC 根本不弹，
-	// RAMMap A 路必挂）；参数段与工作目录段同法条件拼接。
+	// Start-Process 自身同步等待 UAC 决策；不加 -Wait，目标启动后立即返回。
+	// 脚本构造收敛到 elevatedStartScript 单件（RestartElevated 复用本函数后
+	// 全仓提权启动只有这一种脚本形态）。
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		elevatedStartScript(exe, workingDir, args))
+	HideConsole(cmd)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return ElevatedRunResult{Started: true}, nil
+	}
+	if IsUACCancelled(string(out)) {
+		return ElevatedRunResult{Cancelled: true}, nil
+	}
+	return ElevatedRunResult{}, fmt.Errorf("提权启动失败: %w %s", err, strings.TrimSpace(string(out)))
+}
+
+// elevatedStartScript 构造 Start-Process 提权脚本（包内唯一脚本件，纯函数供测试断言拼接）。
+//
+// 审查 P0#2：空 args 必须**整段省略** -ArgumentList——PowerShell 对
+// `-ArgumentList  -Verb` 形态报 Missing an argument（实测 UAC 根本不弹，
+// RAMMap A 路必挂）；参数段与工作目录段同法条件拼接。
+// 全部字面量过 PsQuote 单引号形态：双引号会让 PowerShell 插值含 $ /反引号的
+// 路径（旧 RestartElevated 自建脚本手拼引号踩过的教训，勿再回退）。
+func elevatedStartScript(exe, workingDir string, args []string) string {
 	argPart := ""
 	if len(args) > 0 {
 		quoted := make([]string, 0, len(args))
@@ -42,18 +63,7 @@ func RunElevatedDetached(exe, workingDir string, args []string) (ElevatedRunResu
 	if workingDir != "" {
 		work = " -WorkingDirectory " + PsQuote(workingDir)
 	}
-	// Start-Process 自身同步等待 UAC 决策；不加 -Wait，目标启动后立即返回。
-	script := fmt.Sprintf("Start-Process -FilePath %s%s -Verb RunAs%s", PsQuote(exe), argPart, work)
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script)
-	HideConsole(cmd)
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		return ElevatedRunResult{Started: true}, nil
-	}
-	if isUACCancelled(string(out)) {
-		return ElevatedRunResult{Cancelled: true}, nil
-	}
-	return ElevatedRunResult{}, fmt.Errorf("提权启动失败: %w %s", err, strings.TrimSpace(string(out)))
+	return fmt.Sprintf("Start-Process -FilePath %s%s -Verb RunAs%s", PsQuote(exe), argPart, work)
 }
 
 func validateElevatedTarget(exe string) error {
@@ -70,9 +80,11 @@ func validateElevatedTarget(exe string) error {
 	return nil
 }
 
-// isUACCancelled 只锚定强特征（审查 #7 收紧）：裸 "1223"/泛 "已取消" 会把
-// 任何含该字样的普通失败（尺寸、PID、超时提示）误判成用户取消并吞掉错误。
-func isUACCancelled(out string) bool {
+// IsUACCancelled 判定提权 PowerShell 命令的输出是否为"用户在 UAC 上点了否"。
+// 全仓唯一取消判定实现（审查 #7 后导出，portkill 等业务包一律委托，不得再
+// 自建宽松式匹配）：只锚定强特征——裸 "1223"/泛 "已取消" 会把任何含该字样的
+// 普通失败（尺寸、PID、超时提示）误判成用户取消并吞掉错误。
+func IsUACCancelled(out string) bool {
 	lower := strings.ToLower(out)
 	return strings.Contains(lower, "canceled by the user") ||
 		strings.Contains(lower, "user cancelled") ||

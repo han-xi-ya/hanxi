@@ -57,7 +57,7 @@ func RunPurgeHelper(exe, runtimeDir, requestID, mode string) (PurgeResultFile, e
 		if ctx.Err() == context.DeadlineExceeded {
 			return PurgeResultFile{}, fmt.Errorf("purge helper 超时（%s，含 UAC 等待），已终止", purgeHelperTimeout)
 		}
-		if isUACCancelled(string(out)) {
+		if IsUACCancelled(string(out)) {
 			return PurgeResultFile{State: "cancelled", Message: "已取消 UAC 授权，清理未执行"}, nil
 		}
 		// 审查 P1#5：helper 失败只有 exit 1（denied 走结果文件），曾据的

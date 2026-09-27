@@ -6,9 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -18,7 +15,8 @@ import (
 // （BCU/Rufus/LiteMonitor，TROUBLESHOOTING #17）：未提权的 Hanxi 用
 // CreateProcess 拉起它们必遭 740 直拒且系统不代弹 UAC，唯一保住托管契约的
 // 出路是让 Hanxi 自身升级为管理员——通道复用 portkill 已验证的
-// powershell Start-Process -Verb RunAs 先例，不新造 ShellExecuteEx FFI。
+// powershell Start-Process -Verb RunAs 先例，不新造 ShellExecuteEx FFI；
+// 脚本构造与取消判定再收敛到同包 RunElevatedDetached/IsUACCancelled 单件。
 
 // IsElevated 报告当前进程令牌是否已提权（管理员完整性）。
 // 查询失败按未提权处理：调用方只据此显示"以管理员身份重启"按钮，
@@ -38,34 +36,26 @@ func IsElevated() bool {
 // UAC 对话框上做出决定为止——返回 nil 即代表新实例已成功创建（旧实例可以
 // 放心走退出流程）；用户点"否"则返回取消错误，旧实例原地不动。
 // powershell 进程用完即焚（不带 -Wait，不等新实例退出）。
+//
+// 实现收敛到同包 RunElevatedDetached（提权启动唯一脚本件）：旧版自建
+// Start-Process 脚本破了本包两条规矩——①参数手拼双引号未过 PsQuote，
+// 安装路径含 $ 或反引号时会被 PowerShell 插值/转义破坏；②只设 HideWindow
+// 未叠加 CREATE_NO_WINDOW（不走 HideConsole），提权重启必闪 PowerShell
+// 黑框，与"原生提权无感"定位冲突。委托后一并修复；空 args 不再渲染
+// -ArgumentList（同审查 P0#2 教训），普通失败经 IsUACCancelled 严格判定
+// 后如实带原始输出上抛（错误文案为"提权启动失败: …"）。
 func RestartElevated(args []string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("无法定位宿主程序路径: %w", err)
 	}
-
-	quoted := make([]string, len(args))
-	for i, a := range args {
-		quoted[i] = `"` + a + `"`
-	}
-	ps := fmt.Sprintf(`Start-Process -FilePath "%s" -ArgumentList %s -Verb RunAs`,
-		exe, strings.Join(quoted, ", "))
-
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-
-	out, err := cmd.CombinedOutput()
+	// 工作目录传空串省略 -WorkingDirectory，新实例沿用系统默认，与旧行为一致。
+	res, err := RunElevatedDetached(exe, "", args)
 	if err != nil {
-		outStr := strings.TrimSpace(string(out))
-		// UAC 点"否"时 powershell 抛 ERROR_CANCELLED(1223/0x800704C7)；
-		// 报错文案随系统语言本地化，多形态匹配兜底（沿用 portkill 经验）。
-		lower := strings.ToLower(outStr)
-		if strings.Contains(lower, "canceled by the user") ||
-			strings.Contains(outStr, "已被用户取消") ||
-			strings.Contains(lower, "0x800704c7") || strings.Contains(outStr, "1223") {
-			return errors.New("已在 UAC 提示中取消，未执行提权重启")
-		}
-		return fmt.Errorf("提权重启失败: %w %s", err, outStr)
+		return err
+	}
+	if res.Cancelled {
+		return errors.New("已在 UAC 提示中取消，未执行提权重启")
 	}
 	return nil
 }
