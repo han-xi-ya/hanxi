@@ -8,10 +8,11 @@
  * @property {string} id - 16 hex 随机
  * @property {string} hash
  * @property {Kind} kind
- * @property {string} [text] - wire 上=明文；落盘=base64(DPAPI)
+ * @property {string} [text] - wire 与落盘同为明文（v1.6）
  * @property {string} preview - ≤120 rune 首行摘要，列表页用
  * @property {string[] | null} [files] - CF_HDROP
  * @property {string} [blob] - "blobs/<sha>.png"
+ * @property {string} [thumb] - R-G2：64px 等比 JPEG(q60 起) dataURL，内嵌 index，List 天然带图
  * @property {number} [width]
  * @property {number} [height]
  * @property {number} byteSize

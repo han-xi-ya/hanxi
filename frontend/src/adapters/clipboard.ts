@@ -23,6 +23,8 @@ export interface ClipboardTransport {
   GetStatus(): Promise<ClipStatus>
   /** 契约 §12 v1.4 H1:浮层显式收窗 RPC(blur 唤不动顶层窗 HWND,收窗必走此路)。 */
   CollapseOverlay(): Promise<void>
+  /** 契约 §12 v1.7 R-G1:回填剪贴板 + 焦点还给唤出浮层时的原窗 + 模拟 Ctrl+V(仅 text;失败降级为已回填)。 */
+  Paste(id: string): Promise<void>
 }
 
 /** Wails 事件名常量（契约 §5/§6，前后端逐字对位）。 */
@@ -57,3 +59,4 @@ export const clipboardClearAll = () => need().ClearAll()
 export const clipboardSetPaused = (paused: boolean) => need().SetPaused(paused)
 export const clipboardGetStatus = () => need().GetStatus()
 export const clipboardCollapseOverlay = () => need().CollapseOverlay()
+export const clipboardPaste = (id: string) => need().Paste(id)

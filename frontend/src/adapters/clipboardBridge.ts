@@ -55,6 +55,7 @@ const transport: ClipboardTransport = {
   SetPaused: (paused) => CLIPAPI.SetPaused(paused),
   GetStatus: async () => wireStatus(await CLIPAPI.GetStatus()),
   CollapseOverlay: () => CLIPAPI.CollapseOverlay(),
+  Paste: (id) => CLIPAPI.Paste(id),
 }
 
 let installed = false

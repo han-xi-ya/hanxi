@@ -4,15 +4,42 @@
 //   ② kind chips 五档受控点亮，点击只发档位值不产生任何过滤行为；
 //   ③ 暂停开关：文字双通道表意（记录中/已暂停/切换中…）、aria-pressed、
 //      pausing 禁用；
-//   ④ 新片段/清空只发意图事件；清空禁用位受控；
+//   ④ 新片段直发意图；清空收「更多」溢出菜单（危险动作离主动线一格）——
+//      菜单开合纪律照 MemoToolbar 同谱：aria-expanded、点外收、Esc 收、
+//      菜单内点击冒泡自动收；开合经 moreChange 如实外播（含卸载收合）；
+//      clearDisabled 受控禁用菜单项，prompt/danger 确认链不归组件；
 //   ⑤ 结构锁：本体不挂 .panel/.card（"条"不是"卡"，MemoToolbar 同谱）。
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
+import { afterEach, describe, expect, it } from 'vitest'
 import ClipToolbar from '../ClipToolbar.vue'
 
-const bar = (props: Record<string, unknown> = {}) => mount(ClipToolbar, { props })
+// 每案收摊卸载：溢出菜单的开合期会在 document/window 挂捕获监听，
+// 不卸净则跨案串线（onBeforeUnmount 自摘是组件纪律，卸载即反证泄露防线）
+const mounted: ReturnType<typeof mount>[] = []
+const bar = (props: Record<string, unknown> = {}) => {
+  const w = mount(ClipToolbar, { props })
+  mounted.push(w)
+  return w
+}
+afterEach(() => {
+  // 容错双卸：某案已手工 unmount（验证卸载收合路径），再卸仅 Vue 侧告警不炸
+  while (mounted.length) {
+    const w = mounted.pop()
+    try {
+      w!.unmount()
+    } catch {
+      /* 已卸载 */
+    }
+  }
+})
 const chipByText = (w: ReturnType<typeof bar>, text: string) =>
   w.findAll('.ct-chip').find((c) => c.text().includes(text))
+const clearItem = (w: ReturnType<typeof bar>) => w.find('.ct-menu-danger')
+
+async function openMenu(w: ReturnType<typeof bar>) {
+  await w.find('.ct-more-btn').trigger('click')
+}
 
 describe('搜索框（防抖外置）', () => {
   it('input 即时透传原值：连续两次输入立刻得到两个 update:search', async () => {
@@ -86,17 +113,70 @@ describe('暂停开关', () => {
   })
 })
 
-describe('新片段 / 清空与结构锁', () => {
-  it('两钮各发意图事件；clearDisabled 受控禁用', async () => {
-    const w = bar({ clearDisabled: true })
+describe('新片段', () => {
+  it('直发 create-snippet 意图（prompt 链归视图）', async () => {
+    const w = bar()
     await w.find('.ct-create').trigger('click')
     expect(w.emitted('create-snippet')).toHaveLength(1)
-    expect((w.find('.ct-clear-all').element as HTMLButtonElement).disabled).toBe(true)
-    const w2 = bar({ clearDisabled: false })
-    await w2.find('.ct-clear-all').trigger('click')
-    expect(w2.emitted('clear-all')).toHaveLength(1)
+  })
+})
+
+describe('「更多」溢出菜单与清空', () => {
+  it('菜单起手收起；触发钮开合并播 moreChange(true)，aria-expanded 随动', async () => {
+    const w = bar({ clearDisabled: false })
+    expect(w.find('.ct-menu').exists()).toBe(false)
+    expect(w.find('.ct-more-btn').attributes('aria-expanded')).toBe('false')
+    await openMenu(w)
+    expect(w.find('.ct-menu').exists()).toBe(true)
+    expect(w.find('.ct-more-btn').attributes('aria-expanded')).toBe('true')
+    expect(w.emitted('moreChange')).toEqual([[true]])
   })
 
+  it('清空钮只在场于菜单内：点项发 clear-all 意图并冒泡自动收合（moreChange 收到开与收）', async () => {
+    const w = bar({ clearDisabled: false })
+    expect(w.text()).not.toContain('清空全部历史') // 未开菜单时危险动作不上屏
+    await openMenu(w)
+    await clearItem(w).trigger('click')
+    expect(w.emitted('clear-all')).toHaveLength(1)
+    expect(w.find('.ct-menu').exists()).toBe(false)
+    expect(w.emitted('moreChange')).toEqual([[true], [false]])
+  })
+
+  it('clearDisabled 受控禁用菜单项（库空不给按）', async () => {
+    const w = bar({ clearDisabled: true })
+    await openMenu(w)
+    expect((clearItem(w).element as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('点外收：document click（捕获期）落条外即收合', async () => {
+    const w = bar({ clearDisabled: false })
+    await openMenu(w)
+    document.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(w.find('.ct-menu').exists()).toBe(false)
+    expect(w.emitted('moreChange')).toEqual([[true], [false]])
+  })
+
+  it('Esc 收菜单（自持），收合状态外播', async () => {
+    const w = bar({ clearDisabled: false })
+    await openMenu(w)
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await nextTick()
+    expect(w.find('.ct-menu').exists()).toBe(false)
+    expect(w.emitted('moreChange')).toEqual([[true], [false]])
+  })
+
+  it('卸载即收合并播 moreChange(false)（监听不泄露）', async () => {
+    const w = bar({ clearDisabled: false })
+    await openMenu(w)
+    expect(w.emitted('moreChange')).toEqual([[true]])
+    w.unmount()
+    // VTU 记录在卸载后只余当拍事件：开合两拍各自为证
+    expect(w.emitted('moreChange')).toEqual([[false]])
+  })
+})
+
+describe('结构锁', () => {
   it('本体不挂 .panel/.card——"条"不是"卡"', () => {
     expect(bar().classes()).not.toContain('panel')
     expect(bar().classes()).not.toContain('card')

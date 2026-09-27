@@ -32,6 +32,7 @@ type Entry struct {
 	Preview    string   `json:"preview"`         // ≤120 rune 首行摘要，列表页用
 	Files      []string `json:"files,omitempty"` // CF_HDROP
 	Blob       string   `json:"blob,omitempty"`  // "blobs/<sha>.png"
+	Thumb      string   `json:"thumb,omitempty"` // R-G2：64px 等比 JPEG(q60 起) dataURL，内嵌 index，List 天然带图
 	Width      int      `json:"width,omitempty"`
 	Height     int      `json:"height,omitempty"`
 	ByteSize   int64    `json:"byteSize"`

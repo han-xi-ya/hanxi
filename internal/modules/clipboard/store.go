@@ -78,6 +78,10 @@ type Store struct {
 
 	mu      sync.Mutex
 	entries []Entry // 新→旧，明文权威
+
+	// thumbPending 装载时发现有无 thumb 的历史图片条目（R-G2 lazy 回填）：
+	// 首轮 List 在锁外认领并起后台 goroutine，一次性补齐，不阻塞列表返回。
+	thumbPending bool
 }
 
 // NewStore 建库并装载：目录缺失即创建；index.json 不存在按空库初始化；
@@ -178,6 +182,15 @@ func (st *Store) load() error {
 		loaded = append(loaded, e)
 	}
 	st.entries = loaded
+	for _, e := range loaded {
+		// R-G2 lazy 回填侦测：thumb 字段晚于存量库出现，历史图片条目天然缺图；
+		// 大源图（Add 侧同款 8MiB 闸）永远补不出，不计入待办，省得每次启动
+		// 空转后台轮。
+		if e.Kind == KindImage && e.Thumb == "" && e.Blob != "" && e.ByteSize <= thumbSourceMaxLen {
+			st.thumbPending = true
+			break
+		}
+	}
 	if dropped > 0 {
 		// 把剔除结果固化回盘，坏条目不反复触发解码/解密失败
 		return st.saveLocked()
@@ -241,7 +254,6 @@ func (st *Store) saveLocked() error {
 // 出口剥 Text/BlobData（列表页不需要正文）。
 func (st *Store) List(q, kind string, limit int) []Entry {
 	st.mu.Lock()
-	defer st.mu.Unlock()
 
 	if limit <= 0 || limit > maxEntries {
 		limit = maxEntries
@@ -263,6 +275,18 @@ func (st *Store) List(q, kind string, limit int) []Entry {
 		if len(out) >= limit {
 			break
 		}
+	}
+	// R-G2 lazy 回填：装载发现的缺图条目在**首轮 List** 锁外认领、锁外补齐
+	// （契约 §12 v1.7 "后台生成，不阻塞"）。本调用当轮返回的是认领前的快照，
+	// 天然不带回填结果；补齐经 clipboard 无事件面（thumb 只增不改语义，前端
+	// 下一轮 List/updated 自然吃到），一次性——无论成败都不再重标。
+	claimBackfill := st.thumbPending
+	if claimBackfill {
+		st.thumbPending = false
+	}
+	st.mu.Unlock()
+	if claimBackfill {
+		go st.backfillThumbs()
 	}
 	return out
 }
@@ -336,6 +360,13 @@ func (st *Store) Touch(id string, at time.Time) (Entry, error) {
 // （pinned 保留、其余字段维持原条目），不新增；新条目插顶后执行计数与 blob
 // 预算淘汰。返回最终条目与被淘汰条目清单（调用方逐个发 clipboard:removed）。
 func (st *Store) Add(e Entry, at time.Time) (Entry, []Entry, error) {
+	// R-G2 入库生成：图片条目在**锁外**完成 blob 回读与缩略图编码（锁纪律：
+	// 重活不进 st.mu，与 Get 的 blob 锁外回读同理）。thumb 是装饰项，任何失败
+	// 只留空继续入库；命中去重的分支用不到新值（顶置维持原条目字段），多算
+	// 一张 64px 图的代价可接受。已有 thumb（幂等重放/测试注入）不重算。
+	if e.Kind == KindImage && e.Thumb == "" && e.Blob != "" {
+		e.Thumb = st.generateThumb(e)
+	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
@@ -441,6 +472,100 @@ func (st *Store) releaseBlob(e Entry) {
 		slog.Warn("clipboard: 淘汰条目的 blob 删除失败（留孤儿，全删时收口）",
 			"blob", e.Blob, "err", err)
 	}
+}
+
+// ---------- R-G2 缩略图（生成与 lazy 回填） ----------
+
+// generateThumb 锁外回读原图 PNG 并生成 thumb；一切失败留空 + warn（如实申报，
+// 不阻塞入库）。尺寸双闸：ByteSize 先行（大图为记账值，0=未知照试），回读后
+// 再以真实字节数复核——超限原图跳过生成，与钳制同谱（契约 R-G2）。
+func (st *Store) generateThumb(e Entry) string {
+	if e.ByteSize > thumbSourceMaxLen {
+		slog.Debug("clipboard: 原图超过 8MiB，跳过缩略图生成", "id", e.ID, "bytes", e.ByteSize)
+		return ""
+	}
+	data, err := st.blobs.Load(blobRelOf(e))
+	if err != nil {
+		slog.Warn("clipboard: 缩略图生成回读原图失败（条目照常入库，thumb 留空）", "id", e.ID, "err", err)
+		return ""
+	}
+	if int64(len(data)) > thumbSourceMaxLen {
+		slog.Debug("clipboard: 原图实际字节超过 8MiB，跳过缩略图生成", "id", e.ID, "bytes", len(data))
+		return ""
+	}
+	url, _, err := makeThumb(data)
+	if err != nil {
+		slog.Warn("clipboard: 缩略图生成失败（条目照常入库，thumb 留空）", "id", e.ID, "err", err)
+		return ""
+	}
+	return url
+}
+
+// backfillThumbs 一次性补齐历史无 thumb 的图片条目（契约 §12 v1.7 R-G2：
+// 装载发现 → 首轮 List 后台触发，不阻塞）。流程照 store 锁纪律：候选集锁内
+// 快照 → blob 回读与编码全程锁外 → 写回再取锁，一次 commitLocked 整库落盘。
+// 幂等：只填回填期间仍为空的条目（ID 复核），已算过/已被淘汰/已被覆写的不动；
+// 坏图（解码失败/blob 缺失）跳过不 panic，本次运行内不再重试（下次装载
+// 重新侦测，thumb 补齐后自然收敛）。返回实际回填条数（0=无事发生，不落盘）。
+func (st *Store) backfillThumbs() int {
+	st.mu.Lock()
+	type thumbCand struct{ id, rel string }
+	var todo []thumbCand
+	for _, e := range st.entries {
+		if e.Kind == KindImage && e.Thumb == "" && e.Blob != "" && e.ByteSize <= thumbSourceMaxLen {
+			todo = append(todo, thumbCand{e.ID, blobRelOf(e)})
+		}
+	}
+	st.mu.Unlock()
+
+	updates := make(map[string]string, len(todo))
+	for _, c := range todo {
+		data, err := st.blobs.Load(c.rel)
+		if err != nil {
+			slog.Warn("clipboard: thumb 回填回读原图失败（该条跳过，下次启动再试）", "id", c.id, "err", err)
+			continue
+		}
+		if int64(len(data)) > thumbSourceMaxLen {
+			continue // ByteSize 记账失真，真实超限同样跳过
+		}
+		url, _, err := makeThumb(data)
+		if err != nil {
+			slog.Warn("clipboard: thumb 回填解码/编码失败（坏图跳过，不 panic）", "id", c.id, "err", err)
+			continue
+		}
+		updates[c.id] = url
+	}
+	if len(updates) == 0 {
+		return 0
+	}
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	applied := 0
+	for _, e := range st.entries {
+		url, ok := updates[e.ID]
+		if ok && e.Kind == KindImage && e.Thumb == "" && url != "" {
+			applied++
+		}
+	}
+	if applied == 0 {
+		return 0 // 候选全被淘汰/覆写，无事发生不落盘
+	}
+	if err := st.commitLocked(func() {
+		for i := range st.entries {
+			e := st.entries[i]
+			url, ok := updates[e.ID]
+			if !ok || e.Kind != KindImage || e.Thumb != "" {
+				continue
+			}
+			e.Thumb = url
+			st.entries[i] = e
+		}
+	}); err != nil {
+		slog.Warn("clipboard: thumb 回填写回失败（内存已回滚，下次启动重试）", "err", err)
+		return 0
+	}
+	return applied
 }
 
 // TogglePin 翻转钉选，候选先落盘再换装。

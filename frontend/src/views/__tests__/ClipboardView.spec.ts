@@ -1,19 +1,24 @@
-// ClipboardView 行为规格（A4 主界面线，契约 docs/plans/2026-09-26-clipboard-contract.md）。
+// ClipboardView 行为规格（A4 主界面线起家 · R-F2 翻新轮同步改线，契约
+// docs/plans/2026-09-26-clipboard-contract.md）。
 //
-// 后端接缝纪律的反证场：kernel 冻结面九方法全部经 setClipboardTransport(fake)
-// 注入（afterEach 置 null 摘回），事件用 vi.mock 的 useWailsEvent 捕获 handler
-// 手工投喂——本文件零 bindings/ 引用（未生成，静态 import 会炸解析）。
+// 后端接缝纪律的反证场：kernel 十一法面中主界面消费的九方法经
+// setClipboardTransport(fake) 注入（afterEach 置 null 摘回；Paste 与
+// CollapseOverlay 是浮层专属上下文，主界面调用面出现即算越权——本文件的
+// fake 里根本没有这两法，误调直接炸 TypeError，反证更硬）；事件用 vi.mock
+// 的 useWailsEvent 捕获 handler 手工投喂——本文件零 bindings/ 引用（未生成，
+// 静态 import 会炸解析）。
 //
 // 钉死的契约行为：
 //   ① 渲染三态：列表 / 空态两分支 / 错误横幅（adapter 未接线的中文错必须上屏，
-//      不许白屏）+ 重试收口；
+//      不许白屏）+ 重试收口；索引按日分档段头（今天/昨天/本周内/更早）；
 //   ② 检索 350ms 防抖 + 回车立查 + 序号守卫语义；kind chips 驱动 List 参数，
 //      「片段」合成档 = 后端拉 all + 前端 manual 过滤；
-//   ③ 事件增量：updated 无过滤态就地顶置（去重先摘后插）不重拉 List；removed
-//      摘行并连带收详情；paused 回灌状态灯（托盘翻牌同步）；
+//   ③ 事件增量：updated 无过滤态就地顶置（去重先摘后插）不重拉 List（thumb
+//      随行上屏）；removed 摘行并连带收详情；paused 回灌状态灯（托盘翻牌同步）；
 //   ④ 详情 Get 记一次使用：回值就地回填行内 useCount，绝不补发全量 List；
 //      三分支（text/image/file）与失败重试；
-//   ⑤ 危险闸：单条删除与清空都过 useConfirm（清空话术含 blob 与条数）；
+//   ⑤ 危险闸：单条删除过 useConfirm；清空收「更多」溢出菜单后再过强确认
+//      （话术含 blob 与条数）；Esc 阶梯——菜单在场只收菜单，不连降详情；
 //   ⑥ 九方法面对位 + sensitive「不进 AI 通道」徽标 + 状态一行。
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -356,15 +361,19 @@ describe('行内快操作', () => {
   })
 })
 
-describe('清空强确认', () => {
-  it('空库禁用；确认话术含条数与 blob 全清；确认后清场并重取状态', async () => {
+describe('清空：溢出菜单位 + 强确认', () => {
+  it('空库菜单项禁用；入口在「更多」菜单内而非工具条直排；确认话术含条数与 blob 全清；确认后清场并重取状态', async () => {
     const w0 = await mountView([])
-    expect((w0.find('.ct-clear-all').element as HTMLButtonElement).disabled).toBe(true)
+    await w0.find('.ct-more-btn').trigger('click')
+    expect((w0.find('.ct-menu-danger').element as HTMLButtonElement).disabled).toBe(true)
     w0.unmount()
 
     const w = await mountView([clip({ id: 'a' }), clip({ id: 'b' }), clip({ id: 'c' })])
     fake.GetStatus.mockResolvedValue(status({ entryCount: 3 }))
-    await byText(w, '清空')!.trigger('click')
+    // 危险动作离主动线一格：不开菜单，清空钮根本不在场上
+    expect(byText(w, '清空全部历史')).toBeUndefined()
+    await w.find('.ct-more-btn').trigger('click')
+    await w.find('.ct-menu-danger').trigger('click')
     await flush()
     const opts = useConfirm().confirmState.options
     expect(opts.tone).toBe('danger')
@@ -375,14 +384,61 @@ describe('清空强确认', () => {
     await flush()
     expect(fake.ClearAll).not.toHaveBeenCalled()
 
-    fake.ClearAll.mockResolvedValue(undefined)
-    await byText(w, '清空')!.trigger('click')
+    await w.find('.ct-more-btn').trigger('click')
+    await w.find('.ct-menu-danger').trigger('click')
     await flush()
     useConfirm().settleConfirm(true)
     await flush()
     expect(fake.ClearAll).toHaveBeenCalledTimes(1)
     expect(w.findAll('.clip-row')).toHaveLength(0)
     expect(useToast().toastMsg.value).toBe('已清空 3 条剪贴板历史')
+    w.unmount()
+  })
+
+  it('Esc 阶梯两档：菜单在场只收菜单不连降详情；再按才收详情页', async () => {
+    const w = await mountView()
+    fake.Get.mockResolvedValue(clip({ text: '正文' }))
+    await w.find('.cr-preview').trigger('click')
+    await flush()
+    expect(w.find('.cd').exists()).toBe(true)
+    await w.find('.ct-more-btn').trigger('click')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flush()
+    expect(w.find('.ct-menu').exists()).toBe(false) // 菜单收
+    expect(w.find('.cd').exists()).toBe(true) // 详情不让位
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flush()
+    expect(w.find('.cd').exists()).toBe(false) // 第二档才收页
+    w.unmount()
+  })
+})
+
+describe('R-F2 观感线（分档与缩略图）', () => {
+  it('索引按日分档段头：今天/更早跨档各立一段，段头带计数，零条目档不产段', async () => {
+    const w = await mountView([
+      clip({ id: 't1' }), // 5 分钟前 → 今天
+      clip({ id: 'o1', preview: '陈年旧账', createdAt: NOW - 10 * 24 * 3_600_000 }), // 10 天前 → 更早
+      clip({ id: 't2', preview: '今天第二条' }),
+    ])
+    const heads = w.findAll('.group-head').map((h) => h.text())
+    expect(heads).toHaveLength(2) // 昨天/本周内空档不产段
+    expect(heads[0]).toContain('今天')
+    expect(heads[0]).toContain('2')
+    expect(heads[1]).toContain('更早')
+    expect(heads[1]).toContain('1')
+    const olderRows = w.findAll('.clip-group')[1].findAll('.clip-row')
+    expect(olderRows).toHaveLength(1)
+    expect(olderRows[0].find('.cr-preview').text()).toBe('陈年旧账')
+    w.unmount()
+  })
+
+  it('image 条目 List 直供 thumb 上屏为 <img>；updated 事件顶置的新图条目同样带图', async () => {
+    const thumb = 'data:image/jpeg;base64,/9j/4AAQ'
+    const w = await mountView([clip({ id: 'i1', kind: 'image', preview: '', thumb })])
+    expect(w.find('.cr-thumb').attributes('src')).toBe(thumb)
+    events.handlers[CLIP_EV.updated](clip({ id: 'i2', kind: 'image', preview: '', thumb: thumb + '2' }))
+    await flush()
+    expect(w.findAll('.cr-thumb').map((t) => t.attributes('src'))).toEqual([thumb + '2', thumb])
     w.unmount()
   })
 })
@@ -493,7 +549,7 @@ describe('详情：Get 计数回填三分支与失败面', () => {
 })
 
 describe('门面九方法面对位与清理', () => {
-  it('假件恰为契约冻结九方法（多一少一都算越面）', () => {
+  it('主界面消费面恰为 kernel 十一法中的九法（Paste/CollapseOverlay 归浮层，越面即红）', () => {
     expect(Object.keys(fake).sort()).toEqual([
       'ClearAll', 'CreateText', 'Delete', 'Get', 'GetStatus', 'List', 'Set', 'SetPaused', 'TogglePin',
     ])

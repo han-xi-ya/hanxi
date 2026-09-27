@@ -96,6 +96,90 @@ export function blobDataUrl(base64?: string | null): string {
   return base64 ? `data:image/png;base64,${base64}` : ''
 }
 
+/**
+ * 行缩略图安全闸（契约 v1.7 R-G2：image 条目 List 起内联 64px JPEG dataURL）：
+ * 唯一渲染入口——非 `data:image/` 前缀一律视为无图给 ''（呈现层回落图标），
+ * 脏值不得直通 <img src>。空串/缺省同为 ''。
+ */
+export function clipThumbSrc(thumb?: string | null): string {
+  return typeof thumb === 'string' && thumb.startsWith('data:image/') ? thumb : ''
+}
+
+/** 路径基名：CF_HDROP 路径取尾段（\ 与 / 分隔符都认；目录形尾斜杠给空串）。 */
+export function filePathName(path: string): string {
+  const norm = (path ?? '').replace(/\//g, '\\')
+  const i = norm.lastIndexOf('\\')
+  return i >= 0 ? norm.slice(i + 1) : norm
+}
+
+/** 路径父目录（去尾分隔符）；裸文件名给 ''（呈现层省略该行）；盘根父补全
+ *  尾斜杠（"C:\a.txt" 的父目录显式 "C:\"，裸 "C:" 不成形）。 */
+export function filePathDir(path: string): string {
+  const norm = (path ?? '').replace(/\//g, '\\')
+  const i = norm.lastIndexOf('\\')
+  if (i <= 0) return ''
+  const dir = norm.slice(0, i)
+  return dir.endsWith(':') ? `${dir}\\` : dir
+}
+
+/** 索引日期档分组（吸顶小字档，语言照随手记 v2 段头；剪贴板账本只按日分档）。 */
+export interface ClipDayGroup {
+  key: 'today' | 'yesterday' | 'week' | 'older'
+  label: string
+  items: ClipEntry[]
+}
+
+const CLIP_GROUP_LABELS: Record<ClipDayGroup['key'], string> = {
+  today: '今天',
+  yesterday: '昨天',
+  week: '本周内',
+  older: '更早',
+}
+
+const GROUP_ORDER: readonly ClipDayGroup['key'][] = ['today', 'yesterday', 'week', 'older']
+
+function localDayStart(ms: number): number {
+  const d = new Date(ms)
+  if (Number.isNaN(d.getTime())) return NaN
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+/**
+ * 按 createdAt 的自然日档切组：今天 / 昨天 / 本周内（<7 天）/ 更早。
+ * 入参顺序即账本顺序（后端新→旧），组内保序；未来戳并入「今天」（与
+ * fmtClipAgo「刚刚」消化时钟偏移同谱）；脏时间戳（非法/缺失）归「更早」
+ * 不蒸发；零条目档不产段（不给空段头）。now 可注入测试。
+ */
+export function groupClipEntries(
+  entries: readonly ClipEntry[],
+  now: Date = new Date(),
+): ClipDayGroup[] {
+  const buckets: Record<ClipDayGroup['key'], ClipEntry[]> = {
+    today: [],
+    yesterday: [],
+    week: [],
+    older: [],
+  }
+  const base = localDayStart(now.getTime())
+  for (const e of entries) {
+    const created = localDayStart(e.createdAt)
+    const days =
+      Number.isNaN(created) || Number.isNaN(base)
+        ? Infinity
+        : Math.round((base - created) / 86_400_000)
+    if (days <= 0) buckets.today.push(e)
+    else if (days === 1) buckets.yesterday.push(e)
+    else if (days < 7) buckets.week.push(e)
+    else buckets.older.push(e)
+  }
+  return GROUP_ORDER.filter((k) => buckets[k].length > 0).map((k) => ({
+    key: k,
+    label: CLIP_GROUP_LABELS[k],
+    items: buckets[k],
+  }))
+}
+
 /** 状态条一行文案：条目数与图片 blob 用量（决策相关数字，消费方挂 mono）。 */
 export function clipStatusLine(
   s: Pick<ClipStatus, 'entryCount' | 'maxEntries' | 'blobBytes' | 'maxBlobBytes'>,

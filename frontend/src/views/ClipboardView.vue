@@ -1,15 +1,25 @@
 <script setup lang="ts">
-// 剪贴板内置 · 主界面（A4 线，契约 docs/plans/2026-09-26-clipboard-contract.md）。
+// 剪贴板内置 · 主界面（A4 线起家，R-F2 体验改造轮整体翻新，契约
+// docs/plans/2026-09-26-clipboard-contract.md §12 R-F2）。
 //
-// 空间语言承接随手记 v2「摊开的笔记本」：顶栏一行轻工具条（无 panel 容器）→
-// 状态一行（条目/图片用量机器值，mono）→ 左右分栏——左历史索引贴线行，
+// 空间语言承接随手记 v2「摊开的笔记本」：顶栏一行轻工具条（无 panel 容器，
+// 清空等低频毁灭动作收「更多」溢出菜单，离主动线一格）→ 状态一行（条目/
+// 图片用量机器值，mono）→ 左右分栏——左历史索引贴线行按日分档（今天/昨天/
+// 本周内/更早，吸顶小字档：500 条封顶的长账要有日期锚点才谈得上"读旧账"），
 // 右页面板"正在读的那一页"。分栏选型同 memo 论证：详情要容纳等宽长文本与
 // 图片预览，塞进 ≤410px 的列宽会推挤账目；2560 下整页夹 --container-workbench、
 // 正文版心再封顶 72ch。≤860 容器档叠放：索引在上、详情在下（先看账再翻页，
 // 与 memo"先落笔"相反——剪贴板的主动作是读旧账不是写新页）。
 //
-// 后端访问纪律（契约 §7 kernel）：只经 @/adapters/clipboard 门面九方法与
-// CLIP_EV 事件常量，类型只 import ../types/clipboard——本文件零 bindings/ 引用。
+// 列表缩略图（R-G2 管线的前端消费面）：image 条目 List 起自带 64px 内联
+// thumb，ClipRow 直接铺进 44px 井位，零额外请求；行数据整形（toRowShape）
+// 剥明文与 blob、thumb 随行——图条目上屏与事件顶置同谱。
+//
+// 后端访问纪律（契约 §7 kernel）：只经 @/adapters/clipboard 门面与 CLIP_EV
+// 事件常量，类型只 import ../types/clipboard——本文件零 bindings/ 引用。
+// kernel 十一法面中主界面消费九法：Paste（粘回原窗）与 CollapseOverlay 是
+// 浮层专属上下文（"原窗"由浮层打开瞬间记录），主界面不设 Paste 入口，
+// 行内/详情复制一律 Set 回填不抢焦点。
 // 事件实时性：clipboard:updated 无过滤态就地顶置（去重同 id 先摘后插，不重拉
 // 全量）；带过滤态重拉一次保查询语义；removed 摘行；paused 回灌状态灯——
 // 托盘/热键侧的翻牌这里同步亮。
@@ -21,7 +31,9 @@
 // 危险动作两闸：单条删除过 useConfirm danger 闸（图片连带删 blob，不可恢复）；
 // 清空走强确认，话术明写"含图片 blob 全清"与条数。复制钮（Set）是回填系统
 // 剪贴板不是浏览器复制——toast 按"可 Ctrl+V"语义播报。
-import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+// Esc 阶梯两档：溢出菜单在场只收菜单（ClipToolbar 自收，本视图判级让位，
+// 与随手记 v2 同谱）；否则收起当前详情页。
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import type { ClipEntry, ClipPaused, ClipRemoved, ClipStatus } from '../types/clipboard'
 import {
   CLIP_EV,
@@ -44,7 +56,7 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import ClipToolbar from '../components/clipboard/ClipToolbar.vue'
 import ClipRow from '../components/clipboard/ClipRow.vue'
 import ClipDetail from '../components/clipboard/ClipDetail.vue'
-import { clipStatusLine, type ClipFilter } from '../components/clipboard/clipboardFormat'
+import { clipStatusLine, groupClipEntries, type ClipFilter } from '../components/clipboard/clipboardFormat'
 
 const { showToast, showErrorToast } = useToast()
 const { confirm } = useConfirm()
@@ -72,8 +84,14 @@ const hasFilter = computed(() => searchKw.value.trim() !== '' || kindSel.value !
 const clearDisabled = computed(() => (stats.value?.entryCount ?? entries.value.length) === 0)
 // 状态文案 computed 一次成型（模板零函数调用纪律——统计行只随 stats 变化重算）
 const statusLine = computed(() => (stats.value ? clipStatusLine(stats.value) : ''))
+// 索引按日分档（R-F2 观感翻新件）：declarative 跟随账本，
+// 事件顶置/摘行后档头计数自动重算，零 imperative 修补
+const dayGroups = computed(() => groupClipEntries(entries.value))
+// 溢出菜单在场标记：只跟读供全局 Esc 判级让位（开合纪律归 ClipToolbar 自收）
+const toolbarMoreOpen = ref(false)
 
-/** 列表行只留列表形态字段：明文正文与 blob 不进账本（内存纪律，行组件不消费） */
+/** 列表行只留列表形态字段：明文正文与 blob 不进账本（内存纪律，行组件不消费）；
+ *  thumb（R-G2 内联缩略图 dataURL）是列表形态字段，随行保留 */
 function toRowShape(e: ClipEntry): ClipEntry {
   const copy: ClipEntry = { ...e }
   delete copy.text
@@ -180,7 +198,7 @@ async function togglePaused() {
 async function createSnippet() {
   const text = await prompt({
     title: '新建固定片段',
-    description: '片段作为常驻条目入库（不被容量淘汰），只存本机（DPAPI 加密）。',
+    description: '片段作为常驻条目入库（不被容量淘汰），只存本机。',
     placeholder: '输入或粘贴要常备的文本…',
     confirmLabel: '存入片段',
   })
@@ -317,10 +335,21 @@ useWailsEvent<ClipPaused>(CLIP_EV.paused, (p) => {
   paused.value = !!p?.paused
 })
 
-// Esc 出口：收起当前详情页（工具条/列表无浮层，一级阶梯即完）
+// Esc 出口阶梯两档：溢出菜单在场只收菜单（ClipToolbar 自收，本视图让位，
+// 不得一次 Esc 连降菜单+页面两级）；否则收起当前详情页。
 function onGlobalKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && detailId.value) closeDetail()
+  if (e.key !== 'Escape') return
+  if (toolbarMoreOpen.value) return
+  if (detailId.value) closeDetail()
 }
+
+// 换选即确保该行在栏内可见（键盘 Tab 流与事件驱动换选都吃这条，随手记同谱）
+watch(detailId, async (id) => {
+  if (!id) return
+  await nextTick()
+  const row = document.querySelector('.clip-row.is-active')
+  if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' })
+})
 
 onMounted(() => {
   void loadList()
@@ -343,7 +372,7 @@ onUnmounted(() => {
   <div class="page-workbench clip-page">
     <PageHeader
       title="剪贴板"
-      subtitle="本机剪贴板历史：文本、截图与文件列表全量留痕，明文只存本机（DPAPI 加密）；密码管理器不入库，敏感条目不进 AI 检索通道。"
+      subtitle="本机剪贴板历史：文本、截图与文件列表全量留痕，明文只存本机；密码管理器不入库，敏感条目不进 AI 检索通道。"
     />
 
     <!-- 动作失败/加载失败整页可见（带重试出口，不白屏） -->
@@ -364,6 +393,7 @@ onUnmounted(() => {
       @toggle-paused="togglePaused"
       @create-snippet="createSnippet"
       @clear-all="clearAll"
+      @more-change="toolbarMoreOpen = $event"
     />
 
     <div v-if="stats" class="clip-stats">
@@ -391,17 +421,23 @@ onUnmounted(() => {
           </template>
         </div>
 
-        <ClipRow
-          v-for="e in entries"
-          :key="e.id"
-          class="clip-row"
-          :entry="e"
-          :active="e.id === detailId"
-          @select="openDetail(e.id)"
-          @copy="copyEntry(e.id)"
-          @toggle-pin="togglePin(e.id)"
-          @delete="deleteEntry(e.id)"
-        />
+        <section v-for="g in dayGroups" :key="g.key" class="clip-group" :aria-label="g.label">
+          <h2 class="group-head">
+            {{ g.label }}
+            <span class="group-count mono">{{ g.items.length }}</span>
+          </h2>
+          <ClipRow
+            v-for="e in g.items"
+            :key="e.id"
+            class="clip-row"
+            :entry="e"
+            :active="e.id === detailId"
+            @select="openDetail(e.id)"
+            @copy="copyEntry(e.id)"
+            @toggle-pin="togglePin(e.id)"
+            @delete="deleteEntry(e.id)"
+          />
+        </section>
       </nav>
 
       <section class="clip-pane" aria-label="条目详情">
@@ -451,6 +487,16 @@ onUnmounted(() => {
   max-height: calc(100dvh - 236px); min-height: 300px;
   overflow-y: auto; padding-right: 2px; scrollbar-width: thin;
 }
+/* 日档段头：吸顶小字档（随手记 v2 group-head 同谱——分组语义降为贴线小字，
+   不立卡片、不切群岛） */
+.clip-group { display: flex; flex-direction: column; gap: 3px; }
+.group-head {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 6px; margin: 0; padding: 5px 0 4px 10px;
+  background: var(--surface-page);
+  font-size: var(--text-xs); font-weight: 600; color: var(--color-text-subtle); letter-spacing: 0.4px;
+}
+.group-count { font-size: var(--text-micro); color: var(--color-text-subtle); background: var(--surface-hover); border-radius: var(--radius-pill); padding: 0 6px; }
 .clip-pane { display: flex; min-width: 0; max-height: calc(100dvh - 236px); min-height: 300px; }
 
 /* 闲页（未选中任何一条的安静版心） */

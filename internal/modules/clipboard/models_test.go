@@ -1,6 +1,8 @@
 package clipboard
 
 import (
+	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -170,6 +172,41 @@ func TestClipNewEntryID(t *testing.T) {
 	}
 }
 
+// TestClipEntryThumbField 契约 §12 v1.7 R-G2 形制钉死：Thumb 紧随 Blob、tag
+// `thumb,omitempty`（wire 与落盘共用 tag，前端 kernel 已按此对位）；空值省略、
+// 非空原样透传。字段被移动/改名/换 tag 都会在这里红。
+func TestClipEntryThumbField(t *testing.T) {
+	ty := reflect.TypeOf(Entry{})
+	blob, ok := ty.FieldByName("Blob")
+	if !ok {
+		t.Fatal("Entry 缺失 Blob 字段（契约 §3 结构被动过？）")
+	}
+	thumb, ok := ty.FieldByName("Thumb")
+	if !ok {
+		t.Fatal("Entry 缺失 Thumb 字段（契约 §12 v1.7 R-G2）")
+	}
+	if thumb.Index[0] != blob.Index[0]+1 {
+		t.Fatalf("Thumb 必须紧随 Blob：blob=%d thumb=%d", blob.Index[0], thumb.Index[0])
+	}
+	if thumb.Type.Kind() != reflect.String {
+		t.Fatalf("Thumb 应为 string，得 %v", thumb.Type)
+	}
+	if got := thumb.Tag.Get("json"); got != "thumb,omitempty" {
+		t.Fatalf(`Thumb tag 应为 "thumb,omitempty"，得 %q`, got)
+	}
+	b, err := json.Marshal(Entry{ID: "x", Thumb: "data:image/jpeg;base64,AA=="})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"thumb":"data:image/jpeg;base64,AA=="`) {
+		t.Fatalf("Thumb 未随 wire 透传: %s", b)
+	}
+	b, _ = json.Marshal(Entry{ID: "x"})
+	if strings.Contains(string(b), "thumb") {
+		t.Fatalf("空 Thumb 应省略（omitempty）: %s", b)
+	}
+}
+
 // TestClipCloneEntryWireStrip 事件出口拷贝：Text/BlobData 剥离、Preview 截 200、
 // 切片深拷贝不共享底层。
 func TestClipCloneEntryWireStrip(t *testing.T) {
@@ -179,10 +216,16 @@ func TestClipCloneEntryWireStrip(t *testing.T) {
 		Preview:  strings.Repeat("字", 250),
 		Files:    []string{"a", "b"},
 		AutoTags: []string{"cjk"},
+		Thumb:    "data:image/jpeg;base64,AA==",
 	}
 	w := cloneEntry(src, true)
 	if w.Text != "" || w.BlobData != nil {
 		t.Fatal("事件拷贝应剥 Text/BlobData")
+	}
+	// R-G2：thumb 属事件/List 载荷保留面（契约 §5 只剥 Text/BlobData），
+	// 前端 updated 事件行内缩略图直接吃它。
+	if w.Thumb != src.Thumb {
+		t.Fatalf("事件拷贝不得剥 Thumb: %q", w.Thumb)
 	}
 	if len([]rune(w.Preview)) != wirePreviewMax {
 		t.Fatalf("事件 Preview 应截 %d rune，得 %d", wirePreviewMax, len([]rune(w.Preview)))

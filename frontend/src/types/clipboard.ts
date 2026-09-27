@@ -22,6 +22,8 @@ export interface ClipEntry {
   files?: string[]
   /** 图片 blob 相对路径（"blobs/<sha>.png" 语义，展示走 Get）。 */
   blob?: string
+  /** image 条目的 64px 内联缩略图 dataURL（v1.7 契约 §12 R-G2；List 即带，前端零额外请求）。 */
+  thumb?: string
   width?: number
   height?: number
   byteSize: number

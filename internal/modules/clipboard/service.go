@@ -13,6 +13,7 @@ import (
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/hotkey"
+	hw "hanxi/internal/platform/windows"
 	"hanxi/internal/settings"
 )
 
@@ -48,6 +49,13 @@ type ClipboardService struct {
 	writeText func(string) error
 	decodeDIB func([]byte) (image.Image, error)
 
+	// R-G1 粘贴执行缝（paste.go，Paste 十一法）：抢焦点/模拟键/前台落位等待，
+	// 默认走真 Win32（SetForegroundForce/SendInput/轮询），测试注入假件——
+	// 与 writeText 同谱，单测永不真发键。
+	focusWin       func(uintptr) error
+	sendKeys       func() error
+	waitForeground func(uintptr) bool
+
 	// 浮层（overlay.go）与热键（hotkey.go）簿记：全部走 ovMu（memo sheetMu 同谱），
 	// 与数据锁 store.mu、运行态锁 s.mu 互不相涉；Wails 窗口 API 一律锁外调用。
 	ovMu      sync.Mutex
@@ -55,7 +63,11 @@ type ClipboardService struct {
 	ovClosing func()
 	ovShown   bool
 	ovIdle    *time.Timer
-	hk        *hotkey.Registry // 全仓通用热键注册器（装配根注入，未注入只降级不报错）
+	// R-G1 粘贴目标：浮层打开瞬间（Show/Focus 前）的前台窗句柄，即用户即将
+	// 粘贴进去的窗口。簿记随 ovMu；生命周期随浮层显隐——recordPasteTarget
+	// 在 showOverlay 记录时置位，收起后由 ovShown=false 判资格作废（paste.go）。
+	pasteTarget uintptr
+	hk          *hotkey.Registry // 全仓通用热键注册器（装配根注入，未注入只降级不报错）
 }
 
 // 事件名常量（契约 §5/§6，前端 adapters/clipboard.ts CLIP_EV 逐字对位）。
@@ -94,11 +106,14 @@ func NewClipboardService(paths *settings.Paths, holder *extapi.LeaseHolder) (*Cl
 		return nil, err
 	}
 	return &ClipboardService{
-		store:     store,
-		holder:    holder,
-		writeText: setSystemText,
-		decodeDIB: DecodeDIB,
-		excluded:  DefaultExcludedExes(),
+		store:          store,
+		holder:         holder,
+		writeText:      setSystemText,
+		decodeDIB:      DecodeDIB,
+		focusWin:       hw.SetForegroundForce,
+		sendKeys:       sendCtrlV,
+		waitForeground: waitForegroundWindow,
+		excluded:       DefaultExcludedExes(),
 	}, nil
 }
 

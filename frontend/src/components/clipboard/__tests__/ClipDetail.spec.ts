@@ -1,8 +1,10 @@
-// ClipDetail 独立契约测试（页面板件、零后端桩）：三分支呈现与四态齐活——
-//   text → 等宽正文原样（不猜 Markdown 结构）；image → blobData data URL 预览
-//   + 尺寸/体积机器值（blob 未回填如实占位不放空 <img>）；file → 路径逐行可
-//   逐条复制（浏览器剪贴板走 useClipboard 统一回执）；loading/error/close/
-//   retry/copy/togglePin/delete 全部只发意图或自持浏览器侧动作。
+// ClipDetail 独立契约测试（页面板件、零后端桩）：R-F2 三分支呈现与四态齐活——
+//   text → 等宽正文原样（不猜 Markdown 结构，阅读框正文档字号）；image →
+//   blobData data URL 井位预览（图只受 max-* 约束不拉伸不溢出）+ 尺寸/体积
+//   机器值（blob 未回填如实占位不放空 <img>）；file → 结构化两行制清单
+//   （基名 + 父目录 + 序号），逐条复制走浏览器剪贴板统一回执（useClipboard），
+//   不碰宿主 Set；loading/error/close/retry/copy/togglePin/delete 全部只发
+//   意图或自持浏览器侧动作。页脚三档：主钮 Set 回填、次钮置顶、危险删除远端。
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ClipDetail from '../ClipDetail.vue'
@@ -50,7 +52,7 @@ describe('四态分流', () => {
 })
 
 describe('文本分支', () => {
-  it('等宽正文原样换行呈现；头标「文本」；页脚动作发意图', () => {
+  it('等宽正文原样换行呈现；头标「文本」；页脚三钮（主/次/危险）', () => {
     const w = detail({ entry: entry() })
     expect(w.find('.cd-plain').classes()).toContain('mono')
     expect(w.find('.cd-plain').text()).toContain('第二行')
@@ -58,6 +60,14 @@ describe('文本分支', () => {
     expect(w.find('.cd-image').exists()).toBe(false)
     expect(w.find('.cd-files').exists()).toBe(false)
     expect(w.findAll('.cd-foot button').length).toBe(3) // 复制/置顶/删除三钮（spacer 非钮）
+  })
+
+  it('身份徽标 chip 化：manual 亮「固定片段」、pinned 亮「已置顶」，都不在时零徽标', () => {
+    expect(detail({ entry: entry() }).findAll('.cd-id')).toHaveLength(0)
+    const w = detail({ entry: entry({ manual: true, pinned: true }) })
+    const ids = w.findAll('.cd-id').map((c) => c.text())
+    expect(ids).toEqual(['固定片段', '已置顶'])
+    expect(w.findAll('.cd-id')[1].classes()).toContain('cd-id-pin')
   })
 
   it('页脚三动作：复制=Set 意图 / 置顶随态翻面 / 删除意图；关闭钮收头行', async () => {
@@ -71,64 +81,70 @@ describe('文本分支', () => {
     expect(w.emitted('delete')).toHaveLength(1)
     await w.find('.cd-close').trigger('click')
     expect(w.emitted('close')).toHaveLength(1)
-    expect(w.find('.cd-kind').text()).toContain('已置顶')
   })
 
-  it('空正文给占位；使用计数与来源/体积机器值上脚注', () => {
+  it('空正文给占位；使用计数与来源/体积机器值上脚注（值走 mono）', () => {
     const w = detail({ entry: entry({ text: '', useCount: 4, sourceApp: 'Terminal' }) })
     expect(w.find('.cd-plain').text()).toBe('（空文本）')
-    expect(w.find('.cd-meta').text()).toContain('已使用 4 次')
-    expect(w.find('.cd-meta').text()).toContain('Terminal')
+    const meta = w.find('.cd-meta')
+    expect(meta.text()).toContain('已使用 4 次')
+    expect(meta.text()).toContain('Terminal')
+    expect(meta.findAll('.mono').length).toBeGreaterThanOrEqual(2) // 时间 + 体积
     const bare = detail({ entry: entry() })
     expect(bare.find('.cd-meta').text()).toContain('来源 未知窗口')
     expect(bare.find('.cd-meta').text()).not.toContain('已使用')
   })
-
-  it('manual 片段在头行亮身份', () => {
-    expect(detail({ entry: entry({ manual: true }) }).find('.cd-kind').text()).toContain('固定片段')
-  })
 })
 
 describe('图片分支', () => {
-  it('blobData → PNG data URL 预览 + 尺寸/体积机器值', () => {
+  it('blobData → PNG data URL 井位预览（img 挂井托底）+ 尺寸/体积机器值', () => {
     const w = detail({
       entry: entry({ kind: 'image', blobData: 'iVBORw0KG', width: 800, height: 600, byteSize: 20480 }),
     })
     const img = w.find('.cd-img')
     expect(img.attributes('src')).toBe('data:image/png;base64,iVBORw0KG')
     expect(img.attributes('alt')).toContain('800×600')
+    expect(w.find('.cd-imgbox').exists()).toBe(true) // 井位容器在场
     expect(w.find('.cd-img-meta').text()).toBe('800×600 px · 20 KB')
     expect(w.find('.cd-plain').exists()).toBe(false)
   })
 
-  it('blob 未回填：如实占位，不放 src 为空的 <img>', () => {
+  it('blob 未回填：如实占位，不放 src 为空的 <img>、不摆空井', () => {
     const w = detail({ entry: entry({ kind: 'image', width: 10, height: 10 }) })
     expect(w.find('.cd-img').exists()).toBe(false)
+    expect(w.find('.cd-imgbox').exists()).toBe(false)
     expect(w.find('.state-box').text()).toContain('图片数据未回填')
   })
 })
 
-describe('文件分支', () => {
-  it('路径逐行列出；逐条复制走浏览器剪贴板统一回执；不碰宿主 Set', async () => {
+describe('文件分支（结构化清单）', () => {
+  it('两行制：序号 + 基名 + 父目录；无目录段（裸名）省略目录行；逐条复制走浏览器剪贴板统一回执，不碰宿主 Set', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('isSecureContext', true)
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
     const w = detail({
-      entry: entry({ kind: 'file', files: ['C:\\tmp\\甲.txt', 'D:\\乙.pdf'], text: undefined }),
+      entry: entry({ kind: 'file', files: ['C:\\tmp\\甲.txt', 'readme.md', 'D:\\乙.pdf'], text: undefined }),
     })
+    expect(w.find('.cd-files-head').text()).toContain('共 3 个文件')
     const rows = w.findAll('.cd-file')
-    expect(rows).toHaveLength(2)
-    expect(rows[0].find('.cd-path').text()).toBe('C:\\tmp\\甲.txt')
-    await rows[1].find('.cd-file-copy').trigger('click')
+    expect(rows).toHaveLength(3)
+    expect(rows[0].find('.cd-file-idx').text()).toBe('1')
+    expect(rows[0].find('.cd-file-name').text()).toBe('甲.txt')
+    expect(rows[0].find('.cd-file-name').attributes('title')).toBe('C:\\tmp\\甲.txt') // 全路径恒在 title
+    expect(rows[0].find('.cd-file-dir').text()).toBe('C:\\tmp')
+    expect(rows[1].find('.cd-file-dir').exists()).toBe(false) // 裸名无目录段
+    expect(rows[1].find('.cd-file-name').text()).toBe('readme.md')
+    await rows[2].find('.cd-file-copy').trigger('click')
     expect(writeText).toHaveBeenCalledWith('D:\\乙.pdf')
     expect(useToast().toastMsg.value).toBe('路径已复制到剪贴板')
     expect(w.emitted('copy')).toBeUndefined() // 单行复制不发整表回填意图
     expect(w.find('.cd-plain').exists()).toBe(false)
   })
 
-  it('空清单给占位行', () => {
+  it('空清单给占位行且不出表头', () => {
     const w = detail({ entry: entry({ kind: 'file', files: [] }) })
     expect(w.find('.cd-file').exists()).toBe(false)
+    expect(w.find('.cd-files-head').exists()).toBe(false)
     expect(w.find('.state-box').text()).toContain('文件列表为空')
   })
 })

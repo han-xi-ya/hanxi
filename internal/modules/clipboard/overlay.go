@@ -63,6 +63,7 @@ func (s *ClipboardService) showOverlay() error {
 		}
 	}
 
+	s.recordPasteTarget() // R-G1: Show/Focus 之前前台还是用户的粘贴目标窗，此刻记句柄
 	s.placeOverlay(a, win)
 	win.Show()
 	win.Focus()

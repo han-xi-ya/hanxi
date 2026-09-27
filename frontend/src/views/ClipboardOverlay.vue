@@ -1,31 +1,44 @@
 <script setup lang="ts">
-// 剪贴板浮层（剪贴板内置 A5 线）：后端 ClipboardService 按全局热键（Ctrl+Alt+V）
-// 唤出的独立 frameless 真透明置顶小窗内容（main.ts 按 #clipboardoverlay hash 分流
-// 挂载并打 .popup-shell——接线归收口阶段，卡体由本页自绘，透明窗纪律 #50：窗口
-// 本体不允许有任何实底露出，投影外的边距全部透明）。
+// 剪贴板浮层（剪贴板内置 A5 线 · R-F1 体验改造轮）：后端 ClipboardService 按全局
+// 热键（Ctrl+Alt+V）唤出的独立 frameless 真透明置顶小窗内容（main.ts 按
+// #clipboardoverlay hash 分流挂载并打 .popup-shell——接线归收口阶段，卡体由本页
+// 自绘，透明窗纪律 #50：窗口本体不允许有任何实底露出，投影外的边距全部透明）。
 //
-// 契约锚点 docs/plans/2026-09-26-clipboard-contract.md §4/§6/§7：后端只经
-// @/adapters/clipboard 门面访问（未接线时抛中文可读错误 → 浮层内错误条，不白屏），
-// 事件用 useWailsEvent + CLIP_EV 常量订阅。
+// 契约锚点 docs/plans/2026-09-26-clipboard-contract.md §4/§6/§7 与 §12 v1.7：
+// 后端只经 @/adapters/clipboard 门面访问（未接线时抛中文可读错误 → 浮层内错误条，
+// 不白屏），事件用 useWailsEvent + CLIP_EV 常量订阅。
 //
-// 交互契约（紧凑浮层、键盘优先，QuickMemoSheet 同谱）：
+// ── R-F1 对机主四条差评的逐条回应（本轮核心翻转，旧注释口径以本节为准）──
+//   1. 真缩略图（R-G2）：image 行直接渲染 entry.thumb（64px JPEG dataURL，
+//      List 即带、前端零额外请求），48px 图框展示；thumb 缺失（历史存量未回填、
+//      原图超 8MiB 跳过生成或 dataURL 解码失败）才回落「图」字形位 + 尺寸元数据行。
+//      旧版"刻意不调 Get、浮层不显图"的决策由 R-G2 的 List 内嵌 thumb 打破，作废。
+//   2. 键盘 3 步闭环（R-G1）：唤起（热键）→ ↑↓ 环游/输入即搜定位 → ⏎/1-9 选取，
+//      选取即 clipboardPaste(id)：回填 + 焦点还给唤出浮层时的原窗 + 自动 Ctrl+V，
+//      不再只是 Set。目标纯键盘全程 ≤3 步；↑↓ 从旧版"首尾夹紧"改为环绕环游。
+//   3. 信息密度：行形制从 26px 单行重排为两行（13px preview+徽标 / 11px 来源·
+//      尺寸·标签·时间），来源窗口标题与 autoTags 从 tooltip 升到可见面；
+//      640×520 窗几何（Go 侧冻结）内一屏约 9-10 行，不挤不空。
+//   4. image/file 首版边界（R-G1 裁决"维持首版回填边界"）：前端**不按 kind 分叉**、
+//      一律调 Paste，后端对非 text 返回可读边界说明 → 浮层 err 提示上台、保窗。
+//      后端未来放开图片粘贴时前端零改动即点亮；旧版按 kind 走 Set 的路由一并废除。
+//
+// 其余交互契约（沿用既有正确行为，不回退）：
 //   - 顶栏一行 = 搜索框（打开即聚焦；opening 事件清稿重聚焦重拉）+ 暂停角标 + 计数；
 //   - 列表 = 置顶组（pinned 与 manual 同组，行有徽标）在前、近期在后（服务端序已
-//     新→旧，filter 稳定保序），一屏 8-10 行，行 = 序号徽标 + kind 图标 + preview
-//     单行截断 + 元数据 + 相对时间；
+//     新→旧，filter 稳定保序）；
 //   - 数字键取舍：1-9 直选与搜索框聚焦天然打架——搜索词为空时裸数字键拦截为直选
 //     （preventDefault 不落字），有词时数字让位给搜索词；Alt+1-9 任何时候直选；
-//   - ↑↓ 移动选中环、Enter = 直选当前环、Esc 收窗；组字豁免走三重盾
-//     （isComposing || compositionstart/end 本地旗标 || key==='Process'，CommandPalette 形制）；
-//   - 收窗：Set 成功或 Esc 后先 input.blur 摘光标、必调 CollapseOverlay 显式 RPC 请 Go
-//     藏窗（QuickMemoSheet 走 HideQuickSheet 显式 RPC 同先例；A8 对抗审查 H1 钉死：
-//     顶层独立窗里 window.blur() 按 WHATWG 是 no-op，唤不动 Go 的 WindowLostFocus，
-//     "失焦即收"在生产态收不掉窗）。RPC 失败静默——藏窗竞态/未接线时 Go 侧热键与
-//     TTL 两道闸兜底。绝不用 window.close 越权；Set 失败保窗给轻提示（不吞反馈）；
-//   - 行 hover 出快操作：置顶切换（就地回排）/ 复制不关窗（连取场景）；
-//   - 刻意不调 Get 拉正文/缩略图：List 面不带 Text/BlobData，image 行只显
-//     宽×高·字节数、file 行只显文件数元数据——唤出即用的冷启动零 Get 成本是契约
-//     §4 刻意的性能决策，blob 本体留给主窗历史页（A4）；
+//   - Enter = 直选环上项、Esc 收窗；组字豁免走三重盾（isComposing ||
+//     compositionstart/end 本地旗标 || key==='Process'，CommandPalette 形制）；
+//   - 收窗：Paste 成功或 Esc 后先 input.blur 摘光标、必调 CollapseOverlay 显式 RPC
+//     请 Go 藏窗（QuickMemoSheet 走 HideQuickSheet 显式 RPC 同先例；A8 对抗审查 H1
+//     钉死：顶层独立窗里 window.blur() 按 WHATWG 是 no-op，唤不动 Go 的
+//     WindowLostFocus，"失焦即收"在生产态收不掉窗）。RPC 失败静默——藏窗竞态/未接线
+//     时 Go 侧热键与 TTL 两道闸兜底。绝不用 window.close 越权；Paste 失败保窗给轻
+//     提示（不吞反馈，换一条还能重试）；
+//   - 行 hover/环上出快操作：置顶切换（就地回排）/ 复制不关窗（连取，语义=Set 只
+//     回填不抢焦点，与主界面行复制钮同款口径 R-G1）；
 //   - clipboard:updated 空搜索时乐观顶置（去重语义与服务端一致），带词时静默重拉；
 //     removed 本地摘行；paused 事件直接喂角标，不等 GetStatus。
 // 独立窗没有工作台 toast 宿主（族规同 QuickMemoSheet/SnipCardView）：动作反馈走
@@ -36,6 +49,7 @@ import {
   clipboardCollapseOverlay,
   clipboardGetStatus,
   clipboardList,
+  clipboardPaste,
   clipboardSet,
   clipboardTogglePin,
 } from '../adapters/clipboard'
@@ -44,7 +58,7 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
 
-/** 取数上限：浮层一屏 8-10 行，滚动到 100 条即免翻找的甜点位（契约 §4 limit≤500 内）。 */
+/** 取数上限：浮层两行制一屏 9-10 行，滚动到 100 条即免翻找的甜点位（契约 §4 limit≤500 内）。 */
 const LIST_LIMIT = 100
 const FLY_MS = 200 // 入场动画 160ms + 收尾余量（同速记卡钩子定时器口径）
 
@@ -61,10 +75,14 @@ const composing = ref(false) // IME 组字旗标（CommandPalette 同谱三重�
 const searchEl = ref<HTMLInputElement | null>(null)
 const listEl = ref<HTMLElement | null>(null)
 
+// dataURL 解码失败（截断/损坏的存量 thumb）按 id 拉黑回落字形位：thumb 内容寻址
+// 恒不变，标记跨重拉保留、随浮层窗 TTL 销毁自然过期，无需清理路径。
+const brokenThumbs = ref<ReadonlySet<string>>(new Set())
+
 // 竞态收口序号：连打搜索词时乱序返回的旧响应整体丢弃，列表恒跟最新一次请求走。
 let reqSeq = 0
 let enterTimer: number | undefined
-let settling = false // Set 提交单发闸：连点/回车撞键不双写系统剪贴板
+let settling = false // Paste 提交单发闸：连点/回车撞键不双发粘贴链
 
 const isTop = (e: ClipEntry): boolean => !!(e.pinned || e.manual)
 // 置顶组在前（pinned 与手建 manual 都是不淘汰项，同组顶置；manual 行另挂「定」徽标）
@@ -83,6 +101,17 @@ function kindGlyph(e: ClipEntry): string {
 }
 function kindTitle(e: ClipEntry): string {
   return KIND_TITLE[e.kind] ?? `未知类型(${e.kind})`
+}
+
+/** 可渲缩略图：仅 image 且带 thumb 且未解码失败过；其余回落「图」字形位（R-G2）。 */
+function showThumb(e: ClipEntry): string | null {
+  return e.kind === 'image' && e.thumb && !brokenThumbs.value.has(e.id) ? e.thumb : null
+}
+
+function onThumbFail(id: string) {
+  const next = new Set(brokenThumbs.value)
+  next.add(id)
+  brokenThumbs.value = next
 }
 
 /**
@@ -112,7 +141,7 @@ function rowPreview(e: ClipEntry): string {
   return '(空内容)'
 }
 
-/** 行内元数据列：image 给尺寸·大小、file 给件数（见头注：刻意不拉 blob 本体）。 */
+/** 行内元数据列（第二行）：image 给尺寸·大小、file 给件数；thumb 缺位时这是识图主线索。 */
 function rowMeta(e: ClipEntry): string {
   if (e.kind === 'image') {
     const dim = e.width && e.height ? `${e.width}×${e.height}` : ''
@@ -199,20 +228,25 @@ async function hideOverlay() {
   }
 }
 
+/**
+ * 选取即粘贴（R-F1/R-G1）：Paste = 回填 + 焦点还给唤出浮层时的原窗 + 自动 Ctrl+V。
+ * 不按 kind 前端分叉：image/file 后端回可读边界说明（首版仅 text 支持自动粘贴），
+ * 原样上提示、保窗——错误话术由后端单源，未来放开图片粘贴前端零改动即点亮。
+ */
 async function pick(e: ClipEntry) {
   if (settling) return
   settling = true
   try {
-    await clipboardSet(e.id)
+    await clipboardPaste(e.id)
     collapseSelf()
   } catch (err: unknown) {
-    showTip(`回填失败: ${getErrorMessage(err)}`, 'err') // 保窗：换一条还能重试
+    showTip(`粘贴失败: ${getErrorMessage(err)}`, 'err') // 保窗：换一条还能重试
   } finally {
     settling = false
   }
 }
 
-/** 复制不关窗（连取）：只回填，不让焦点；自写回环 Go 监听侧已跳过不入新条。 */
+/** 复制不关窗（连取）：只 Set 回填，不抢焦点不发消息键（R-G1 与主界面行复制钮同款语义；自写回环 Go 监听侧已跳过不入新条）。 */
 async function copyOnly(e: ClipEntry) {
   try {
     await clipboardSet(e.id)
@@ -252,10 +286,12 @@ function onKey(e: KeyboardEvent) {
     return
   }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    if (!rows.value.length) return
+    const n = rows.value.length
+    if (!n) return
     e.preventDefault()
+    // 环绕环游（R-F1 手感重设计）：底部再下回顶、顶部再上到底，长列表不用倒手划
     const d = e.key === 'ArrowDown' ? 1 : -1
-    selected.value = Math.min(Math.max(selected.value + d, 0), rows.value.length - 1)
+    selected.value = (Math.min(selected.value, n - 1) + d + n) % n
     scrollActive()
     return
   }
@@ -371,14 +407,26 @@ onBeforeUnmount(() => {
           @click="pick(e)"
         >
           <span class="clip-idx mono" aria-hidden="true">{{ i < 9 ? i + 1 : '' }}</span>
-          <span class="clip-kind mono" aria-hidden="true" :title="kindTitle(e)">{{ kindGlyph(e) }}</span>
-          <span class="clip-preview">{{ rowPreview(e) }}</span>
-          <span v-if="e.sensitive" class="chip chip-danger clip-badge" title="疑似密钥/令牌，MCP 通道整条不外发">敏</span>
-          <span v-if="e.manual" class="chip chip-information clip-badge" title="手建固定片段，不参与容量淘汰">定</span>
-          <span v-else-if="e.pinned" class="chip chip-neutral clip-badge" title="已置顶">顶</span>
-          <span v-if="rowMeta(e)" class="clip-meta mono">{{ rowMeta(e) }}</span>
-          <span class="clip-time mono">{{ fmtAgoMs(entryTime(e)) }}</span>
-          <!-- 快操作钮刻意不进 Tab 序且 mousedown 不夺焦：浮层键盘域恒为搜索框+选中环 -->
+          <!-- 真缩略图（R-G2）：64px dataURL 在 48px 图框等比展示；缺位/解码失败回落字形位 -->
+          <span v-if="showThumb(e)" class="clip-thumb" aria-hidden="true">
+            <img class="clip-thumb-img" :src="showThumb(e)!" alt="" @error="onThumbFail(e.id)" />
+          </span>
+          <span v-else class="clip-kind mono" aria-hidden="true" :title="kindTitle(e)">{{ kindGlyph(e) }}</span>
+          <div class="clip-main">
+            <div class="clip-line1">
+              <span class="clip-preview">{{ rowPreview(e) }}</span>
+              <span v-if="e.sensitive" class="chip chip-danger clip-badge" title="疑似密钥/令牌，MCP 通道整条不外发">敏</span>
+              <span v-if="e.manual" class="chip chip-information clip-badge" title="手建固定片段，不参与容量淘汰">定</span>
+              <span v-else-if="e.pinned" class="chip chip-neutral clip-badge" title="已置顶">顶</span>
+            </div>
+            <!-- 第二行可见面（R-F1 信息密度）：来源窗口 · 尺寸/件数 · 嗅探标签 · 相对时间 -->
+            <div class="clip-sub">
+              <span v-if="e.sourceApp || e.sourceExe" class="clip-src">{{ e.sourceApp || e.sourceExe }}</span>
+              <span v-if="rowMeta(e)" class="clip-meta mono">{{ rowMeta(e) }}</span>
+              <span v-if="e.autoTags?.length" class="clip-tags mono">{{ e.autoTags.join(' · ') }}</span>
+              <span class="clip-time mono">{{ fmtAgoMs(entryTime(e)) }}</span>
+            </div>
+          </div>
           <span class="clip-acts">
             <button
               type="button"
@@ -392,7 +440,7 @@ onBeforeUnmount(() => {
               type="button"
               class="clip-act"
               tabindex="-1"
-              title="复制到剪贴板（浮层不关）"
+              title="复制到剪贴板（只回填不关窗，粘贴请选中条目本身）"
               @mousedown.prevent
               @click.stop="copyOnly(e)"
             >复</button>
@@ -403,7 +451,7 @@ onBeforeUnmount(() => {
         {{ query.trim() ? '没有匹配的条目' : '剪贴板历史还是空的' }}
       </p>
       <div class="clip-foot">
-        <span class="clip-hint mono">↑↓ 选 · ⏎ 或 1-9 回填即收 · Alt+1-9 搜索中直选 · Esc 收</span>
+        <span class="clip-hint mono">↑↓ 环选 · ⏎ 或 1-9 粘贴并收 · Alt+1-9 搜索中直选 · Esc 收</span>
         <!-- 提示行常驻占位（速记卡族规）：出现/消失不顶动版面，错误恒小字 -->
         <p class="clip-tip" :class="tip ? (tipKind === 'err' ? 'tip-err' : 'tip-ok') : ''" role="status">{{ tip }}</p>
       </div>
@@ -413,7 +461,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* 透明窗纪律 #50：.clip 恒透明（14px 边距专门容纳卡体投影，窗口外圈零实底），
-   卡体外观本页自绘，配色一律走全局 token；窗口几何/摆位/TTL 归 Go 侧 A2。 */
+   卡体外观本页自绘，配色一律走全局 token；窗口几何 640×520 DIP/摆位/TTL 归 Go 侧。 */
 .clip {
   position: fixed;
   inset: 0;
@@ -427,12 +475,12 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-element);
   box-shadow: var(--shadow-panel);
-  padding: 10px 10px 6px;
+  padding: 10px 12px 6px;
   transition: border-color var(--motion-base) ease;
 }
 /* 卡内任一处聚焦：描边向 primary 混 30%（design-system 强调描边配方，N37 零 glow） */
@@ -457,9 +505,9 @@ onBeforeUnmount(() => {
 .clip-search {
   flex: 1 1 auto;
   min-width: 0;
-  height: var(--control-h-sm);
-  padding: 2px 8px;
-  font-size: var(--text-sm);
+  height: var(--control-h-md);
+  padding: 2px 10px;
+  font-size: var(--text-base);
   user-select: text;
 }
 .clip-paused {
@@ -493,28 +541,31 @@ onBeforeUnmount(() => {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
+/* 两行制行形（R-F1 密度重排）：一行 preview 主角、二行来源/尺寸/标签/时间副角。
+   文本行 ~48px、图片行 ~58px（48 图框），640 宽下"一眼三件"：内容、来路、时效 */
 .clip-row {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: 26px;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-size: var(--text-sm);
+  gap: 9px;
+  padding: 5px 8px;
+  border-radius: var(--radius-control);
   color: var(--color-text);
   cursor: pointer;
 }
+/* 选中环 = hover 底升一档 + primary 混 30% 内描边（实底+描边表达状态，N37 零 glow；
+   环色不单独承担语义——行序号同步转 primary，非色彩通道冗余） */
 .clip-row.is-active {
   background: var(--surface-hover);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
 }
 .clip-idx {
   flex: none;
-  width: 14px;
+  width: 16px;
   text-align: right;
   font-size: var(--text-micro);
   color: var(--color-text-subtle);
@@ -525,18 +576,51 @@ onBeforeUnmount(() => {
 }
 .clip-kind {
   flex: none;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
   text-align: center;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   font-size: var(--text-micro);
   background: var(--surface-soft);
   color: var(--color-text-muted);
 }
+/* 图框：64px dataURL 等比降到 48px 展示（降采样不糊），描边框住 letterbox 面 */
+.clip-thumb {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-micro);
+  background: var(--surface-soft);
+}
+.clip-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.clip-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.clip-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.4;
+}
 .clip-preview {
   flex: 1 1 auto;
   min-width: 0;
+  font-size: var(--text-base);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -544,23 +628,43 @@ onBeforeUnmount(() => {
 .clip-badge {
   flex: none;
   font-size: var(--text-micro);
-  padding: 0 6px;
+  padding: 0 5px;
+}
+.clip-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  color: var(--color-text-subtle);
+}
+.clip-src {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .clip-meta {
+  flex: none;
+  white-space: nowrap;
+  font-size: var(--text-micro);
+}
+.clip-tags {
   flex: none;
   max-width: 140px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: var(--text-micro);
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 .clip-time {
   flex: none;
-  width: 64px;
-  text-align: right;
+  margin-left: auto;
+  white-space: nowrap;
   font-size: var(--text-micro);
-  color: var(--color-text-subtle);
 }
 .clip-acts {
   flex: none;
@@ -576,7 +680,7 @@ onBeforeUnmount(() => {
 .clip-act {
   border: none;
   background: transparent;
-  padding: 2px 4px;
+  padding: 3px 5px;
   font-size: var(--text-micro);
   line-height: 1;
   color: var(--color-text-muted);
@@ -591,7 +695,7 @@ onBeforeUnmount(() => {
 .clip-empty {
   flex: none;
   margin: 0;
-  padding: 14px 8px;
+  padding: 18px 8px;
   text-align: center;
   font-size: var(--text-xs);
   color: var(--color-text-subtle);

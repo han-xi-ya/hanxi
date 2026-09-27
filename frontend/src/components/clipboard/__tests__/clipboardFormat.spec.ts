@@ -3,13 +3,18 @@
 // 非法值 '—'、时钟回拨（未来戳）消化、摘要兜底的类别三分支、data URL 拼接、
 // 状态行文案。now 全部显式注入，不吃挂钟。
 import { describe, expect, it } from 'vitest'
+import type { ClipEntry } from '../../../types/clipboard'
 import {
   CLIP_FILTER_LABELS,
   blobDataUrl,
   clipStatusLine,
+  clipThumbSrc,
+  filePathDir,
+  filePathName,
   fmtClipAgo,
   fmtClipDate,
   fmtClipDateTime,
+  groupClipEntries,
   kindLabel,
   previewFallback,
   rowGlyph,
@@ -119,5 +124,72 @@ describe('blobDataUrl 与状态行', () => {
     expect(
       clipStatusLine({ entryCount: 0, maxEntries: 500, blobBytes: 0, maxBlobBytes: 104857600 }),
     ).toBe('条目 0/500 · 图片占 —/100.0 MB')
+  })
+})
+
+describe('clipThumbSrc 缩略图安全闸（R-G2 内联 dataURL 唯一渲染入口）', () => {
+  it('data:image/ 前缀原样放行', () => {
+    expect(clipThumbSrc('data:image/jpeg;base64,/9j/AAA')).toBe('data:image/jpeg;base64,/9j/AAA')
+    expect(clipThumbSrc('data:image/png;base64,iVBOR')).toBe('data:image/png;base64,iVBOR')
+  })
+  it('非图 dataURL、远端 URL、javascript: 脏值与空值一律给空串（呈现层回落图标）', () => {
+    expect(clipThumbSrc('javascript:alert(1)')).toBe('')
+    expect(clipThumbSrc('https://example.com/a.png')).toBe('')
+    expect(clipThumbSrc('data:application/html,x')).toBe('')
+    expect(clipThumbSrc(undefined)).toBe('')
+    expect(clipThumbSrc(null)).toBe('')
+    expect(clipThumbSrc('')).toBe('')
+  })
+})
+
+describe('文件路径拆分（详情清单结构化）', () => {
+  it('基名：反斜杠/正斜杠都认，取尾段；裸名原样', () => {
+    expect(filePathName('C:\\tmp\\甲.txt')).toBe('甲.txt')
+    expect(filePathName('D:/b.pdf')).toBe('b.pdf')
+    expect(filePathName('readme.md')).toBe('readme.md')
+    expect(filePathName('')).toBe('')
+  })
+  it('父目录：去尾分隔符；盘根父补全尾斜杠；裸名给空串（呈现层省略该行）', () => {
+    expect(filePathDir('C:\\tmp\\甲.txt')).toBe('C:\\tmp')
+    expect(filePathDir('D:/b.pdf')).toBe('D:\\')
+    expect(filePathDir('readme.md')).toBe('')
+    expect(filePathDir('C:\\a.txt')).toBe('C:\\')
+  })
+})
+
+describe('groupClipEntries 日档分组', () => {
+  const mk = (over: Partial<ClipEntry> = {}): ClipEntry =>
+    ({ id: 'x', hash: 'h', kind: 'text', preview: 'p', byteSize: 1, createdAt: NOW.getTime(), ...over }) as ClipEntry
+
+  it('今天/昨天/本周内/更早四档归位，组内保持入参序，零条目档不产段', () => {
+    const groups = groupClipEntries(
+      [
+        mk({ id: 'a', createdAt: NOW.getTime() - 5 * MIN }), // 正午前 5 分钟 → 今天
+        mk({ id: 'b', createdAt: NOW.getTime() - 26 * 60 * MIN }), // 昨天凌晨
+        mk({ id: 'c', createdAt: NOW.getTime() - 3 * 24 * 60 * MIN }), // 3 天前
+        mk({ id: 'd', createdAt: NOW.getTime() - 30 * 24 * 60 * MIN }), // 30 天前
+        mk({ id: 'e', createdAt: NOW.getTime() - 6 * 24 * 60 * MIN - 1 * MIN }), // 6 天余（仍 <7 天档）
+      ],
+      NOW,
+    )
+    expect(groups.map((g) => [g.key, g.label, g.items.map((i) => i.id)])).toEqual([
+      ['today', '今天', ['a']],
+      ['yesterday', '昨天', ['b']],
+      ['week', '本周内', ['c', 'e']],
+      ['older', '更早', ['d']],
+    ])
+  })
+
+  it('未来戳并入「今天」（与 fmtClipAgo 时钟偏移消化同谱）；脏时间戳归「更早」不蒸发', () => {
+    const groups = groupClipEntries(
+      [mk({ id: 'f', createdAt: NOW.getTime() + 3 * 24 * 60 * MIN }), mk({ id: 'n', createdAt: NaN })],
+      NOW,
+    )
+    expect(groups.map((g) => g.key)).toEqual(['today', 'older'])
+    expect(groups[1].items.map((i) => i.id)).toEqual(['n'])
+  })
+
+  it('空账本零段', () => {
+    expect(groupClipEntries([], NOW)).toEqual([])
   })
 })

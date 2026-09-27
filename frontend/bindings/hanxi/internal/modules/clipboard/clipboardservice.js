@@ -99,6 +99,27 @@ export function List(q, kind, limit) {
 }
 
 /**
+ * Paste 粘回原窗口（契约 §12 v1.7 R-G1，§4 十一法之一）：取条目 → 仅 text
+ * 支持（其余返回可读"暂不支持自动粘贴，已可手动回填"错误）→ 复用 Set 的
+ * 回填通路（store.Get + writeText 缝）→ 焦点还给浮层打开瞬间记录的
+ * pasteTarget → 等前台落位（≤150ms）→ SendInput Ctrl+V。
+ * 
+ * 降级矩阵（回填已成，错误只描述自动线缺口，话术统一"请手动 Ctrl+V"）：
+ *   - 无目标/浮层已收起 → 不抢焦点不发消息键；
+ *   - SetForegroundForce 失败（句柄失效/前台锁）→ 上抛原因；
+ *   - 前台未落位目标窗 → 绝不盲发（防误 inject 第三窗口）；
+ *   - SendInput 不足数 → 上抛。
+ * 
+ * 无头/应用未运行：调用门（holder.Enter）拒则如实上抛；即便放行，浮层从未
+ * 打开则无 pasteTarget，走"无目标"降级——全程不 panic。
+ * @param {string} id
+ * @returns {$CancellablePromise<void>}
+ */
+export function Paste(id) {
+    return $Call.ByID(2262547572, id);
+}
+
+/**
  * Set 回填系统剪贴板。首版仅支持 text（OpenClipboard 重试 ≤5 内含于写手）；
  * image/file 返回可读的"暂不支持"错误——如实告知，不装成功。回填不记使用
  * （使用口径只算 Get，契约 §4）。
