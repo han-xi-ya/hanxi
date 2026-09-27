@@ -266,8 +266,12 @@ func (s *WslService) distroAllowed(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("无法获取本机发行版清单，操作中止: %w", err)
 	}
-	if slices.Contains(names, name) {
-		return nil
+	// 大小写不敏感：`wsl -l -q` 返回的是原名（如 Ubuntu），小写传入被误拒与
+	// 全模块 EqualFold/小写键口径相悖（waitForRegistration 复验即同纪律）。
+	for _, n := range names {
+		if strings.EqualFold(n, name) {
+			return nil
+		}
 	}
 	return fmt.Errorf("发行版 %q 不在本机已安装清单中，已拒绝执行", name)
 }

@@ -143,6 +143,9 @@ func newUSBFakeService(t *testing.T, cli usbCLI, runWsl func(context.Context, ..
 		exportRecords: map[string]ExportRecord{},
 		cloneOps:      map[string]longOpHandle{},
 	}
+	// 测试内开的 watcher/补打重放都是后台 goroutine，账本锁 usbLedgerMu 又是
+	// 包级共享——不收尾就会带着已删 TempDir 的 service 渗漏进后续测试抢锁。
+	t.Cleanup(svc.cancelUsbAutomation)
 	return svc, ev
 }
 
@@ -726,6 +729,18 @@ func TestWatcherReplaysDebouncedAbsentToPresentEdge(t *testing.T) {
 	if got := cli.attaches(); len(got) != 1 {
 		t.Fatalf("持续 present 不得反复重放: %v", got)
 	}
+	// 收工前把在飞重放排干：attach 之后尾部还有 commit 短锁窗口，带着它进
+	// 下一个测试会撞包级 usbLedgerMu 的 TryLock 快速失败（跨测试渗漏）。
+	drain := time.Now().Add(2 * time.Second)
+	for time.Now().Before(drain) {
+		svc.mu.Lock()
+		idle := !svc.usbReplayBusy
+		svc.mu.Unlock()
+		if idle {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestDisableCancelsWaitingAutomaticReplayButManualStillWorks(t *testing.T) {
@@ -762,17 +777,27 @@ func TestSetUsbAutoAttachTurnsOnAndReplays(t *testing.T) {
 	if !led.AutoEnabled {
 		t.Fatal("总开关未落账")
 	}
-	// "打开即补打一发"是后台调度：轮询等在飞重放落账（2s 预算，正常毫秒级）。
+	// "打开即补打一发"是后台调度。attach 只是补发链路的中段信号，其后还有
+	// 尾部 commitUsbReplayStatus 写盘与 busy 复位；只等 attach 会与落账抢跑
+	// （读到本轮状态尚未持久化的空账）。收窄持锁面后 attach 在锁外执行、
+	// busy 复位是整轮最后一步，故"有 attach 且 busy 空闲"才等价于账本已落账。
+	// 2s 预算，正常毫秒级。
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(cli.attachLog) > 0 {
+		svc.mu.Lock()
+		idle := !svc.usbReplayBusy
+		svc.mu.Unlock()
+		if len(cli.attaches()) > 0 && idle {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	if got := cli.attaches(); len(got) != 1 || got[0] != "Ubuntu|1-1" {
+		svc.mu.Lock()
+		msg := svc.usbReplayMsg
+		svc.mu.Unlock()
 		led, _ := svc.usbLoad()
-		t.Fatalf("打开总开关未触发补打一发: %v ledger=%+v msg=%q", got, led, svc.usbReplayMsg)
+		t.Fatalf("打开总开关未触发补打一发: %v ledger=%+v msg=%q", got, led, msg)
 	}
 	led, _ = svc.usbLoad()
 	if !strings.Contains(led.Entries[0].LastStatus, "已附加到 Ubuntu") {

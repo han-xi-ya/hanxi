@@ -28,6 +28,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // PortRule 一条端口转发规则（Hanxi 账本内的期望态）。
@@ -193,8 +194,13 @@ func (s *WslService) validateRule(ctx context.Context, r PortRule) (PortRule, er
 	if err := s.distroAllowed(ctx, r.Distro); err != nil {
 		return r, err
 	}
+	// 备注截断按字节回退到 rune 边界：直接 [:120] 会把三字节汉字切成残码，乱码入库。
 	if len(r.Note) > 120 {
-		r.Note = r.Note[:120]
+		cut := 120
+		for cut > 0 && !utf8.RuneStart(r.Note[cut]) {
+			cut--
+		}
+		r.Note = r.Note[:cut]
 	}
 	return r, nil
 }
@@ -429,19 +435,30 @@ func (s *WslService) ApplyPortRules() (OperationOutcome, error) {
 	var (
 		wants   []target
 		skipped []string
+		keep    []PortRule // 本轮跳过的规则：其现有转发豁免差集摘除（下方删除循环用）
 	)
-	runningSet, _ := s.quietSet(ctx, "--running")
+	// 运行名单三态必接：quietSet 失败（`wsl -l -q` 抖动）时若丢弃 ok，全部发行版
+	// 会被误判"未运行"→ wants 清空 → 差集删除循环把账本内所有已生效转发拼进
+	// netsh delete 整体摘除，回执还显得正常。读不到名单就失败中止：不拼任何
+	// delete、不动 pending（姊妹口径取 usb.go 重放链 runningOK 三态传递的严档，
+	// 不套用 distro.go 的 stateLooksRunning 回退——这里误删代价是对系统的实变更）。
+	runningSet, runningOK := s.quietSet(ctx, "--running")
+	if !runningOK {
+		return OperationOutcome{}, errors.New("无法获取运行中发行版清单（wsl -l -q --running 读取失败），应用中止——运行态未知时绝不按差集摘除现有转发")
+	}
 	for _, r := range rules {
 		if !r.Enabled {
 			continue
 		}
 		if !runningSet[strings.ToLower(r.Distro)] {
 			skipped = append(skipped, fmt.Sprintf("%s:%d(%s 未运行)", r.Listen, r.Port, r.Distro))
+			keep = append(keep, r)
 			continue
 		}
 		ip, err := s.guestIPv4(ctx, r.Distro)
 		if err != nil {
 			skipped = append(skipped, fmt.Sprintf("%s:%d(%s 未取到 IP)", r.Listen, r.Port, r.Distro))
+			keep = append(keep, r)
 			continue
 		}
 		wants = append(wants, target{r, ip})
@@ -482,6 +499,11 @@ func (s *WslService) ApplyPortRules() (OperationOutcome, error) {
 			return strings.EqualFold(t.rule.Listen, e.ListenAddr) && t.rule.Port == e.ListenPort
 		}) {
 			continue
+		}
+		if slices.ContainsFunc(keep, func(r PortRule) bool {
+			return strings.EqualFold(r.Listen, e.ListenAddr) && r.Port == e.ListenPort
+		}) {
+			continue // 本轮跳过的规则：账本仍在册，现有转发豁免摘除——"这次没应用成"不等于"该拆掉"
 		}
 		cmds = append(cmds, fmt.Sprintf("netsh interface portproxy delete v4tov4 listenaddress=%s listenport=%d", e.ListenAddr, e.ListenPort))
 		removed = append(removed, fmt.Sprintf("%s:%d", e.ListenAddr, e.ListenPort))

@@ -90,7 +90,13 @@ type usbCLI interface {
 	Detach(ctx context.Context, busID string) error
 }
 
-// usbLedgerMu 账本"读 → 改 → 写"全程串行锁（ppLedgerMu 同款纪律）。
+// usbLedgerMu 账本文件"读 → 改 → 写"的串行锁，只允许覆盖文件 IO 的毫秒级窗口。
+// 与 ppLedgerMu 的关键差异：端口转发的"应用"是用户同步触发的动作，账本锁全程持有
+// 是有意设计（注释自证）；而 USB 重放多为后台触发（enabled/watcher/startup/distro），
+// 若在 UAC/attach 期间（真机可停留分钟级）继续持有本锁，账本编辑面连"关总开关"
+// 都会被 errUsbLedgerBusy 整体拒绝，且 startUsbWatcherIfNeeded 的阻塞 Lock 会被
+// 挂住分钟级拖死 UI 调用链。重放轮次改为首尾两段短锁（快照读 + 重载合并落账），
+// 中途的外部命令并发由 usbReplayBusy 单飞闸兜底。
 // 锁序：usbLedgerMu → s.mu，反向持锁禁止。
 var usbLedgerMu sync.Mutex
 
@@ -335,6 +341,9 @@ func deviceSharedAtBusID(devices []usbipd.Device, busID string) bool {
 // runUsbReplay 执行一轮重放；distroFilter 空=全账本，非空=只重放该发行版的条目。
 // 单飞闸：同一时刻至多一轮（后台/手动撞车时后来者快速失败，不排队挂死）。
 // 任何失败都收进回执与账本状态，绝不让调用链炸掉。
+// 持锁面：usbLedgerMu 只圈头部快照读与尾部落盘两处文件 IO；bind/attach/UAC 等
+// 外部命令一律放锁执行，本轮状态先记本地 stamped、尾部经 commitUsbReplayStatus
+// 重读现态合并——轮间互斥由 usbReplayBusy 单飞闸兜底，编辑撞车由短锁窗口兜底。
 func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger string) (OperationOutcome, error) {
 	s.mu.Lock()
 	if s.usbReplayBusy {
@@ -349,10 +358,11 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 		s.mu.Unlock()
 	}()
 
+	// 头部快照短锁：只读账本即放锁，UAC/attach 全程不持 usbLedgerMu（持锁面红线
+	// 见 usbLedgerMu 声明处注释）。
 	usbLedgerMu.Lock()
-	defer usbLedgerMu.Unlock()
-
 	led, err := s.usbLoad()
+	usbLedgerMu.Unlock()
 	if err != nil {
 		return OperationOutcome{}, err
 	}
@@ -376,6 +386,13 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 		})
 	}
 
+	// 本轮状态先落本地盖章表（不外呼持锁），尾部统一重读现态合并写盘：
+	// 重放在飞期间用户增删条目，既不整本覆盖也不复活已删条目。
+	stamped := make(map[string]usbStatusStamp, len(steps))
+	stamp := func(id, status string) {
+		stamped[id] = usbStatusStamp{status: status, at: time.Now().Format("2006-01-02 15:04:05")}
+	}
+
 	var (
 		binds         []usbPlanStep
 		attaches      = make(map[string]usbPlanStep) // 条目 ID → 步骤（bind 成功后进入 attach 队列）
@@ -386,7 +403,7 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 		switch st.Kind {
 		case usbStepSkip:
 			skipped++
-			s.usbSetEntryStatus(&led, st.Entry.ID, "跳过："+st.Reason)
+			stamp(st.Entry.ID, "跳过："+st.Reason)
 			continue
 		case usbStepBind:
 			binds = append(binds, st)
@@ -403,7 +420,7 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 		for _, b := range binds {
 			id, err := usbipd.CheckBusID(b.BusID)
 			if err != nil {
-				s.usbSetEntryStatus(&led, b.Entry.ID, "绑定参数不合法："+err.Error())
+				stamp(b.Entry.ID, "绑定参数不合法："+err.Error())
 				lines = append(lines, fmt.Sprintf("%s 绑定参数不合法：%s", b.BusID, err))
 				continue
 			}
@@ -446,13 +463,13 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 					attaches[b.Entry.ID] = b
 				case ok:
 					text := fmt.Sprintf("usbipd bind 退出码 %d", receipt.ExitCode)
-					s.usbSetEntryStatus(&led, b.Entry.ID, "绑定失败："+text)
+					stamp(b.Entry.ID, "绑定失败："+text)
 					lines = append(lines, fmt.Sprintf("%s 绑定失败：%s", b.BusID, text))
 				case deviceSharedAtBusID(reconciled, b.BusID):
 					attaches[b.Entry.ID] = b
 					lines = append(lines, fmt.Sprintf("%s 回执缺失，重读现态确认已共享", b.BusID))
 				default:
-					s.usbSetEntryStatus(&led, b.Entry.ID, "绑定未确认："+fallbackText)
+					stamp(b.Entry.ID, "绑定未确认："+fallbackText)
 					lines = append(lines, fmt.Sprintf("%s 绑定未确认：%s", b.BusID, fallbackText))
 				}
 			}
@@ -470,7 +487,7 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 		}
 		if err := s.usbRun.Attach(ctx, step.Distro, step.BusID); err != nil {
 			text := usbipdErrText(err)
-			s.usbSetEntryStatus(&led, step.Entry.ID, "附加失败："+text)
+			stamp(step.Entry.ID, "附加失败："+text)
 			lines = append(lines, fmt.Sprintf("%s→%s 失败：%s", step.BusID, step.Distro, text))
 			continue
 		}
@@ -479,10 +496,10 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 		if step.Reason != "" {
 			status += step.Reason
 		}
-		s.usbSetEntryStatus(&led, step.Entry.ID, status)
+		stamp(step.Entry.ID, status)
 	}
 
-	if err := s.usbSave(led); err != nil {
+	if err := s.commitUsbReplayStatus(stamped); err != nil {
 		return OperationOutcome{}, err
 	}
 	summary := fmt.Sprintf("重放完成：附加 %d 台，跳过 %d 台", done, skipped)
@@ -493,15 +510,33 @@ func (s *WslService) runUsbReplay(ctx context.Context, distroFilter, trigger str
 	return OperationOutcome{Success: true, Message: summary}, nil
 }
 
-// usbSetEntryStatus 账本内单条状态落位（调用方持 usbLedgerMu）。
-func (s *WslService) usbSetEntryStatus(led *usbLedger, id, status string) {
-	for i := range led.Entries {
-		if led.Entries[i].ID == id {
-			led.Entries[i].LastStatus = status
-			led.Entries[i].LastAt = time.Now().Format("2006-01-02 15:04:05")
-			return
+// usbStatusStamp 一轮重放对单条账本的归因落位暂存（尾部合并落账前只活在内存）。
+type usbStatusStamp struct {
+	status string
+	at     string
+}
+
+// commitUsbReplayStatus 尾部落账短锁：重读现态账本，把本轮 stamped 按条目 ID
+// 逐条套用到**仍在册**的条目上后写盘。为何不直接写头部快照的副本：
+//
+//   - 结构以盘为准——重放在飞期间用户新增/改绑的条目不得被本轮快照覆盖丢失；
+//   - 中途被删的条目不复活（stamped 命中不到即自然作废）；
+//   - 本轮没碰到的条目（如 distroFilter 之外的发行版）保留盘上既有状态。
+//     这是重放轮的第二个 usbLedgerMu 短锁，持锁面仅这一次文件 IO。
+func (s *WslService) commitUsbReplayStatus(stamped map[string]usbStatusStamp) error {
+	usbLedgerMu.Lock()
+	defer usbLedgerMu.Unlock()
+	fresh, err := s.usbLoad()
+	if err != nil {
+		return err
+	}
+	for i := range fresh.Entries {
+		if st, ok := stamped[fresh.Entries[i].ID]; ok {
+			fresh.Entries[i].LastStatus = st.status
+			fresh.Entries[i].LastAt = st.at
 		}
 	}
+	return s.usbSave(fresh)
 }
 
 func (s *WslService) noteUsbReplay(msg string) {
@@ -902,9 +937,8 @@ func (s *WslService) elevateUsb(ctx context.Context, args ...string) (OperationO
 	if err != nil {
 		return OperationOutcome{}, err
 	}
-	if !out.Success {
-		return out, nil // UAC 取消等：如实回执不报错
-	}
+	// UAC 取消/执行失败均如实透传回执（out.Success=false 已在其中）不另报错；
+	// 原 !out.Success 提前返回与兜底返回同值，属死分支，移除不改变任何语义。
 	return out, nil
 }
 

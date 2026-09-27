@@ -91,6 +91,27 @@ func TestDistroAllowedPipedRoster(t *testing.T) {
 	}
 }
 
+// 白名单校验大小写不敏感：`wsl -l -q` 返回原名（Ubuntu），小写传入被精确匹配
+// 误拒与本模块 EqualFold/小写键口径相悖（名单外名字仍须拒绝）。
+func TestDistroAllowedCaseInsensitive(t *testing.T) {
+	svc, _, _ := newTestService()
+	svc.runWsl = func(_ context.Context, args ...string) (string, error) {
+		if joined(args) == "-l -q" {
+			return "Ubuntu\x00", nil
+		}
+		return "", fmt.Errorf("意外的 wsl 调用: %v", args)
+	}
+	ctx := context.Background()
+	for _, n := range []string{"ubuntu", "UBUNTU", "Ubuntu"} {
+		if err := svc.distroAllowed(ctx, n); err != nil {
+			t.Fatalf("%q 应放行（大小写不敏感白名单）: %v", n, err)
+		}
+	}
+	if err := svc.distroAllowed(ctx, "evil"); err == nil {
+		t.Fatal("名单外发行版必须仍被拒绝")
+	}
+}
+
 func TestStateLooksRunning(t *testing.T) {
 	for _, s := range []string{"Running", "正在运行"} {
 		if !stateLooksRunning(s) {

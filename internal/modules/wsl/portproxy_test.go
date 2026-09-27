@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestParsePortproxyShow(t *testing.T) {
@@ -120,7 +121,8 @@ func TestApplyPortRulesPlanAndScript(t *testing.T) {
 	svc, _ := ppFixture(t)
 	// A：0.0.0.0:8080→Ubuntu（防火墙开）；现态指旧 IP → 漂移需重指。
 	// B：0.0.0.0:9000→Ubuntu 已禁用；现态仍在 → 摘除。
-	// C：127.0.0.1:7000→Debian 启用但发行版未运行 → 跳过。
+	// C：127.0.0.1:7000→Debian 启用但发行版未运行 → 跳过；且现态里它有旧转发
+	// → 跳过必须豁免差集摘除（"这次没应用成"≠"该拆掉"），不得拼 delete。
 	// 另有一条外部 3389 转发 → 绝不触碰。
 	rA, err := svc.AddPortRule("Ubuntu", 8080, 0, "0.0.0.0", true, "")
 	if err != nil {
@@ -137,6 +139,7 @@ Address         Port        Address         Port
 --------------- ----------  --------------- ----------
 0.0.0.0         8080        172.25.4.136    8080
 0.0.0.0         9000        172.25.4.136    9000
+127.0.0.1       7000        172.25.4.50     7000
 0.0.0.0         3389        172.25.4.200    3389
 `)
 	var script string
@@ -165,7 +168,7 @@ Address         Port        Address         Port
 		t.Fatalf("外部转发绝不触碰: %s", script)
 	}
 	if strings.Contains(script, "7000") {
-		t.Fatalf("未运行发行版不应产生 netsh 动作: %s", script)
+		t.Fatalf("未运行发行版不应产生 netsh 动作，其现有转发更不得因跳过被摘除: %s", script)
 	}
 	if !strings.Contains(script, `if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`) {
 		t.Fatalf("逐条退出码传播红线缺失: %s", script)
@@ -181,6 +184,62 @@ Address         Port        Address         Port
 	svc.mu.Unlock()
 	if pending {
 		t.Fatal("应用成功后待应用标记必须清除")
+	}
+}
+
+// 运行名单读取失败（`wsl -l -q --running` 抖动）必须失败中止：丢弃 ok 三态会把
+// 全部发行版误判"未运行"，差集删除循环随之把账本内所有已生效转发整体摘除，
+// 且空 cmds 分支还会误清 pending——回执看着正常，系统却被搬空。
+func TestApplyPortRulesAbortsOnRunningSetFailure(t *testing.T) {
+	svc, stub := ppFixture(t)
+	stub.resp = func(args []string) (string, error) {
+		switch joined(args) {
+		case "-l -q":
+			return "Ubuntu\x00", nil
+		case "-l -q --running":
+			return "", fmt.Errorf("wsl 抖动")
+		}
+		return "", fmt.Errorf("意外的 wsl 调用: %v", args)
+	}
+	if _, err := svc.AddPortRule("Ubuntu", 8080, 0, "0.0.0.0", false, ""); err != nil {
+		t.Fatal(err)
+	}
+	// 现态里 8080 已生效且指向旧 IP：若误判未运行，差集删除会把它摘掉。
+	stubPPShow(t, `
+Address         Port        Address         Port
+--------------- ----------  --------------- ----------
+0.0.0.0         8080        172.25.4.136    8080
+`)
+	svc.elevProc = func(_ context.Context, _ string, _ ...string) (OperationOutcome, error) {
+		t.Fatal("运行名单读不到时不得进入提权批次")
+		return OperationOutcome{}, nil
+	}
+	if _, err := svc.ApplyPortRules(); err == nil {
+		t.Fatal("quietSet 失败必须报错中止，而非按'全未运行'继续差集摘除")
+	}
+	svc.mu.Lock()
+	pending := svc.ppPending
+	svc.mu.Unlock()
+	if !pending {
+		t.Fatal("中止路径不得清待应用标记")
+	}
+}
+
+// 备注截断必须落在 rune 边界：字节口径直切 [:120] 会把三字节汉字切成残码乱码。
+func TestAddPortRuleNoteRuneSafeTruncate(t *testing.T) {
+	svc, _ := ppFixture(t)
+	// 1 个 ASCII + 50 个三字节汉字：第 121 字节恰落在第 40 个汉字中间。
+	note := "a" + strings.Repeat("汉", 50)
+	r, err := svc.AddPortRule("Ubuntu", 8080, 0, "0.0.0.0", false, note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "a" + strings.Repeat("汉", 39) // 回退到最近的完整汉字边界（118 字节）
+	if r.Note != want {
+		t.Fatalf("备注未按 rune 边界截断: got %q (%d 字节, valid=%v)", r.Note, len(r.Note), utf8.ValidString(r.Note))
+	}
+	if !utf8.ValidString(r.Note) || len(r.Note) > 120 {
+		t.Fatalf("截断结果必须 ≤120 字节且为合法 UTF-8: %d 字节", len(r.Note))
 	}
 }
 
