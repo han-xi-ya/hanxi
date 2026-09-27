@@ -1190,3 +1190,121 @@ func TestHostedDirOfExe(t *testing.T) {
 		t.Fatalf("未接线根应为空: %q", got)
 	}
 }
+
+// ---------- 锁窗口测：安装链长 IO 全程不持 hm.mu（2026-09-27 修"安装期整模块假死"） ----------
+
+// TestHostedInstallKeepsTreeLockAvailable 以解压慢桩钉住"锁外准备段"（模拟
+// 引擎包数百 MB 的全量解压正在进行），断言三条读路径——hm.mu 上的 list /
+// resolveLatest，以及曾在 s.mu 临界区内嵌套取树锁的 service.buildState——
+// 全能在短超时内拿锁返回。改造前 installZip 全程抱着 hm.mu 写锁，这里三条
+// 都会挂死到超时（watcher 的 refresh 还抱着 s.mu 陪葬，即"整模块假死"本体）。
+func TestHostedInstallKeepsTreeLockAvailable(t *testing.T) {
+	s, hm := newTestHostedService(t)
+	zipPath := makeValidHostedZip(t, t.TempDir(), "wechat", "5.0.0")
+	writeHostedSidecar(t, zipPath)
+
+	inIO := make(chan struct{})
+	release := make(chan struct{})
+	origExtract := hookExtractZip
+	hookExtractZip = func(p, out string) error {
+		close(inIO) // 慢桩进场：此后安装停在无锁 IO 段，直到测试放行
+		<-release
+		return origExtract(p, out)
+	}
+	t.Cleanup(func() { hookExtractZip = origExtract })
+
+	installDone := make(chan error, 1)
+	go func() {
+		_, err := hm.installZip(zipPath)
+		installDone <- err
+	}()
+	<-inIO
+
+	probe := func(name string, read func()) {
+		t.Helper()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			read()
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("安装期间读路径 %s 仍被长 IO 阻塞（锁口径回退）", name)
+		}
+	}
+	probe("hosted.list", func() { hm.list() })
+	probe("hosted.resolveLatest", func() { _, _, _ = hm.resolveLatest(EngineWechat) })
+	probe("service.buildState", func() { _ = s.buildState(s.engine.Snapshot()) })
+
+	close(release)
+	select {
+	case err := <-installDone:
+		if err != nil {
+			t.Fatalf("安装失败: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("放行慢桩后安装未完成")
+	}
+	if list := hm.list(); len(list) != 1 || list[0].Version != "5.0.0" || list[0].State != hostedStateReady {
+		t.Fatalf("安装后版本树异常: %+v", list)
+	}
+}
+
+// assertHostedTreeClean 版本树根内既无 .tmp- 中转残留、也无任何合规版本目录
+// （安装失败必须"零半态"：未验内容既不能进树，也不能留在树根任人扫到）。
+func assertHostedTreeClean(t *testing.T, hm *hostedManager) {
+	t.Helper()
+	entries, err := os.ReadDir(hm.versionsRoot)
+	if err != nil {
+		t.Fatalf("读取版本树失败: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), hostedTmpPrefix) || strings.Contains(e.Name(), ".old-") {
+			t.Fatalf("失败安装留下中转残留: %s", e.Name())
+		}
+		if hostedVersionRe.FindStringSubmatch(e.Name()) != nil {
+			t.Fatalf("失败安装不得在版本树留半态: %s", e.Name())
+		}
+	}
+	if len(hm.list()) != 0 {
+		t.Fatal("失败安装后版本树应为空")
+	}
+}
+
+// TestHostedInstallFailureCleansTmpAndTree 安装失败路径的 tmp 清理与零半态：
+// 逐文件复核不符（manifest.files 摘要被篡改）与解压层越限两条失败通道，都要
+// tmp 全清、版本目录不落位、安装包与旁挂件留原位供用户排查。
+func TestHostedInstallFailureCleansTmpAndTree(t *testing.T) {
+	// 通道一：解压成功但逐文件复核拒收（校验仍在落位前收口）
+	hm := newTestHostedManager(t)
+	p := makeFilesZip(t, t.TempDir(), "tamper")
+	writeHostedSidecar(t, p)
+	if _, err := hm.installZip(p); err == nil || !strings.Contains(err.Error(), "逐文件校验失败") {
+		t.Fatalf("篡改文件摘要应拦下: %v", err)
+	}
+	assertHostedTreeClean(t, hm)
+	if !isRegularFile(p) || !isRegularFile(p+".sha256") {
+		t.Fatal("拒收安装包与旁挂件应留原位")
+	}
+
+	// 通道二：解压层越限中断（预算压至 4 字节，模拟半途失败）
+	origFile := maxHostedFileBytes
+	maxHostedFileBytes = 4
+	defer func() { maxHostedFileBytes = origFile }()
+	hm2 := newTestHostedManager(t)
+	p2 := makeValidHostedZip(t, t.TempDir(), "paddle", "9.9.9")
+	writeHostedSidecar(t, p2)
+	if _, err := hm2.installZip(p2); err == nil {
+		t.Fatal("解压越限应失败")
+	}
+	assertHostedTreeClean(t, hm2)
+	if _, err := os.Stat(filepath.Join(hm2.versionsRoot, "paddle-9.9.9")); !os.IsNotExist(err) {
+		t.Fatal("目标版本目录不得存在")
+	}
+	// 失败不影响后续正常安装链（tmp 命名不冲突、树可复用）
+	maxHostedFileBytes = origFile
+	if _, err := hm2.installZip(p2); err != nil {
+		t.Fatalf("恢复预算后应安装成功: %v", err)
+	}
+}

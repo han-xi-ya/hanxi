@@ -66,22 +66,30 @@ func (s *OcrService) InstallHostedZip(srcPath string) (DropResult, error) {
 		return s.dropResultFail("import", err.Error()), nil
 	}
 
-	// 托管树写锁覆盖落位与登记，避免并发安装/卸载让 store 指向已被另一操作移除的版本。
-	s.hosted.mu.Lock()
-	hv, err := s.hosted.installZipLocked(abs)
+	// 安装链为"无锁重 IO + 短写锁收口"（锁口径见 hosted.go）：登记回调折进
+	// installZipWithRegister，落位与 store 指向在同一树写锁临界区内原子完成，
+	// 并发安装/卸载无法让 store 指向已被另一操作移除的版本；全量哈希/解压期间
+	// 树锁与 s.mu 都保持可用（修"安装期整模块假死"）。defer 收口在树管理器
+	// 内部，服务层不再手搬 Lock/Unlock——旧五路早退各配 Unlock 是漏一支即
+	// 锁死版本树的隐患点。
+	var registerFailed bool
+	hv, err := s.hosted.installZipWithRegister(abs, func(hv HostedVersion) error {
+		if err := s.store.SetEnginePath(hv.Engine, hv.ExePath); err != nil {
+			registerFailed = true
+			return err
+		}
+		if err := s.store.SetEngineVersion(hv.Engine, hv.Version); err != nil {
+			registerFailed = true
+			return err
+		}
+		return nil
+	})
 	if err != nil {
-		s.hosted.mu.Unlock()
+		if registerFailed {
+			return DropResult{}, err // 版本已落位、登记折戟：走 error 通道（口径与改造前一致）
+		}
 		return s.dropResultFail("import", err.Error()), nil
 	}
-	if err := s.store.SetEnginePath(hv.Engine, hv.ExePath); err != nil {
-		s.hosted.mu.Unlock()
-		return DropResult{}, err
-	}
-	if err := s.store.SetEngineVersion(hv.Engine, hv.Version); err != nil {
-		s.hosted.mu.Unlock()
-		return DropResult{}, err
-	}
-	s.hosted.mu.Unlock()
 
 	msg := fmt.Sprintf("已安装托管引擎 %s v%s（%s）", engineLabel(hv.Engine), hv.Version, fmtMB(hv.Size))
 	activated := s.store.GetActiveEngine() == hv.Engine
@@ -163,27 +171,42 @@ func (s *OcrService) UninstallHostedVersion(engine, version string) (ControlOutc
 		return ControlOutcome{}, err
 	}
 
-	s.hosted.mu.Lock()
-	target := filepath.Join(s.hosted.versionsRoot, hostedVersionDirName(id, v))
-	if s.hostedInUseLocked(target) {
-		s.hosted.mu.Unlock()
+	// 树写锁临界区收口为"闭包 + defer"：在用拒卸、删目录、悬空复位三步全程
+	// 独占同一把锁，任何新增早退分支都不会漏 Unlock（旧四处手搬 Unlock 是
+	// 漏一支即锁死版本树的隐患点）。hostedInUseLocked 依赖"调用方已持锁"
+	// 约定（内部走 resolveActiveExeLocked 锁内变体），本闭包是唯一持锁处，
+	// 不存在重入。
+	var (
+		refused bool
+		dir     string
+		opErr   error
+	)
+	func() {
+		s.hosted.mu.Lock()
+		defer s.hosted.mu.Unlock()
+		target := filepath.Join(s.hosted.versionsRoot, hostedVersionDirName(id, v))
+		if s.hostedInUseLocked(target) {
+			refused = true
+			return
+		}
+		if dir, opErr = s.hosted.removeLocked(id, v); opErr != nil {
+			return
+		}
+		// 登记悬空复位：指向被删目录的登记件改回自动发现（树内还有别的版本则解析自愈）
+		if stored := s.store.GetEnginePath(id); samePathFold(hostedDirOfExe(s.hosted.versionsRoot, stored), dir) {
+			if opErr = s.store.SetEnginePath(id, ""); opErr != nil {
+				return
+			}
+		}
+	}()
+	if refused {
 		return ControlOutcome{Action: "refused-in-use", Message: fmt.Sprintf(
 			"%s v%s 正在被识别服务使用，无法卸载；请先停止服务（或切换到其他引擎）再卸载",
 			engineLabel(id), v)}, nil
 	}
-	dir, err := s.hosted.removeLocked(id, v)
-	if err != nil {
-		s.hosted.mu.Unlock()
-		return ControlOutcome{}, err
+	if opErr != nil {
+		return ControlOutcome{}, opErr
 	}
-	// 登记悬空复位：指向被删目录的登记件改回自动发现（树内还有别的版本则解析自愈）
-	if stored := s.store.GetEnginePath(id); samePathFold(hostedDirOfExe(s.hosted.versionsRoot, stored), dir) {
-		if err := s.store.SetEnginePath(id, ""); err != nil {
-			s.hosted.mu.Unlock()
-			return ControlOutcome{}, err
-		}
-	}
-	s.hosted.mu.Unlock()
 	s.refresh()
 	return ControlOutcome{Action: "uninstalled",
 		Message: fmt.Sprintf("已卸载 %s v%s", engineLabel(id), v)}, nil

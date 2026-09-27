@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -573,10 +574,9 @@ func (b *backupEngine) prune() error {
 			errs = append(errs, err)
 		}
 	}
-	if len(errs) > 0 {
-		return errs[0]
-	}
-	return nil
+	// 波 1 修复 2：errors.Join 聚合全部修剪失败（此前只回 errs[0]，其余静默
+	// 丢弃），口径对齐 ops/residue.go 同款多目标清理。
+	return errors.Join(errs...)
 }
 
 // parseBackupDirTime 时间戳目录名 → 本地时刻（非法形态回落零值由调用方容错）。

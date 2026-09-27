@@ -150,7 +150,8 @@ func readPendingRestore(dir string) (pendingRestoreManifest, []byte, error) {
 }
 
 func writePendingTarget(dataDir, rel string, data []byte) error {
-	if err := validateRestoreTarget(dataDir, rel); err != nil {
+	// 恢复链盘边校验走合并后的统一安全闸（波 1 修复 4：与快照观察链共用一份实现）
+	if err := validatePathLinks(dataDir, rel, pendingTargetGuard); err != nil {
 		return err
 	}
 	target := filepath.Join(dataDir, filepath.FromSlash(rel))
@@ -184,28 +185,7 @@ func writePendingTarget(dataDir, rel string, data []byte) error {
 	return syncDirectory(filepath.Dir(target))
 }
 
-func validateRestoreTarget(dataDir, rel string) error {
-	current := dataDir
-	segments := strings.Split(filepath.ToSlash(rel), "/")
-	for i, segment := range segments {
-		current = filepath.Join(current, segment)
-		info, err := os.Lstat(current)
-		if os.IsNotExist(err) {
-			if i == len(segments)-1 {
-				return nil
-			}
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		unsafe, err := unsafeLinkLike(current, info)
-		if err != nil {
-			return err
-		}
-		if unsafe {
-			return fmt.Errorf("恢复目标拒绝符号链接或 reparse point: %s", current)
-		}
-	}
-	return nil
-}
+// validateRestoreTarget 已并入 walk.go 的 validatePathLinks 统一安全闸
+// （波 1 修复 4，2026-09-27）：恢复链与快照观察链曾各持一份"逐段 Lstat+拒
+// reparse"实现，双漂移面合并后差异全集由 linkGuard 参数表承载，恢复链口径见
+// pendingTargetGuard。

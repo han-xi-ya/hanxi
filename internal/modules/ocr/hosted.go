@@ -298,6 +298,12 @@ type hostedManager struct {
 	versionsRoot   string // <数据根>/versions/hanxi-ocr
 	installersRoot string // <数据根>/installers/hanxi-ocr
 	mu             *sync.RWMutex
+	// installMu 安装链单飞行闸（2026-09-27 锁序口径确立，修"安装期整模块假死"）：
+	// 同一时刻只放行一条"锁外准备 + 锁内收口"安装，并发安装在此排队——而不是在
+	// hm.mu 上排队被长 IO 阻塞。锁序：installMu → hm.mu → ocrStore；
+	// 两个闸的临界区内一律不得取 s.mu 或其他模块锁（"临界区内不取外部锁"口径，
+	// 调用方如需 hm 读取结果，须在进入自己的锁之前取完再拷成值）。
+	installMu sync.Mutex
 }
 
 var hostedTreeLocks sync.Map // map[clean versionsRoot]*sync.RWMutex
@@ -454,21 +460,54 @@ func verifyHostedZipSHA(zipPath string) (string, error) {
 }
 
 // ---------- 安装 ----------
+//
+// 锁口径（2026-09-27 确立，修"安装期整模块假死"缺陷）：旧实现在 hm.mu 写锁内
+// 完成三遍全量磁盘 IO（zip 全文件哈希 → 全量解压 → 逐文件再哈希），把 list /
+// resolveLatest 的读锁与整棵版本树一起锁死；更糟的是 service.buildState 在持有
+// s.mu 期间嵌套取 hm.mu 读锁，5s watcher 的 refresh 卡在树锁上却抱着 s.mu，
+// 装包期间全部状态面/广播面 RPC 排队。现拆为"无锁准备 → 短写锁收口"：
+//   - installMu：安装链单飞行闸，整条安装（含全部慢 IO）串行于此；
+//   - 无锁段：旁挂核对（全文件哈希）、静态校验、.tmp- 私有目录全量解压、
+//     逐文件复核——tmp 目录仅此一次安装可见，锁外校验不削弱任何安全语义；
+//   - hm.mu 写锁段：只做目标态权威判定、原子 rename 落位、meta 写入与
+//     树内登记回调（落位与 store 登记同锁段，并发卸载无法插进中间态）；
+//   - 归档移存（可能异卷整包复制）也在树锁外。
+// "半途失败不谎报"一字不丢：校验必在落位前完成，任一步失败 tmp 全清，
+// 未验内容绝不进版本树；ZipSlip/zip 炸弹双闸仍收口在 extractHostedZip /
+// verifyHostedFiles 内部，语义不动。
 
-// installZip 完整安装链：sha256 旁挂核对 → 静态校验 → tmp 解压 → 原子落位
-// versions/hanxi-ocr/<engine>-<version>/ → zip 与旁挂件移存 installers/。
-// 同版本同哈希幂等返回；同版本不同哈希拒绝覆盖，防止版本号内容漂移。
+// 安装链 IO 步骤间接层（默认即真实实现，生产路径恒定不改）：包内单测注入
+// 慢桩/失败桩，用于断言"长 IO 全程不持 hm.mu、安装期树锁与 s.mu 可被短读"
+// （见 hosted_test TestHostedInstallKeepsTreeLockAvailable）。
+var (
+	hookVerifyZipSHA = verifyHostedZipSHA
+	hookExtractZip   = extractHostedZip
+	hookVerifyFiles  = verifyHostedFiles
+)
+
+// installZip 完整安装链（仅测试入口：生产一律走服务层 InstallHostedZip →
+// installZipWithRegister 带树内登记回调；hosted_test 12 处调用点依赖此签名）。
 func (hm *hostedManager) installZip(zipPath string) (HostedVersion, error) {
-	hm.mu.Lock()
-	defer hm.mu.Unlock()
-	return hm.installZipLocked(zipPath)
+	hv, err := hm.installZipWithRegister(zipPath, nil)
+	return hv, err
 }
 
-func (hm *hostedManager) installZipLocked(zipPath string) (HostedVersion, error) {
+// installZipWithRegister 完整安装链：sha256 旁挂核对 → 静态校验 → tmp 解压 →
+// 逐文件复核（以上锁外）→ 短写锁内原子落位 versions/hanxi-ocr/<engine>-<version>/
+// 并同锁段调用 register 登记回调 → zip 与旁挂件移存 installers/（锁外）。
+// 同版本同哈希幂等返回（跳过解压、不移动安装包）；同版本不同哈希拒绝覆盖，
+// 防止版本号内容漂移。register 折入的错原样透传——版本已落位不回滚（与改造前
+// store 写失败时保留落位目录的口径一致）；fresh 段完成后照常归档。
+func (hm *hostedManager) installZipWithRegister(zipPath string, register func(HostedVersion) error) (HostedVersion, error) {
+	// 单飞行闸：并发安装排在这里而非排在 hm.mu 上——安装全程树锁只被落位
+	// 短段占用，list / resolveLatest 读者不再被数百 MB IO 阻塞。
+	hm.installMu.Lock()
+	defer hm.installMu.Unlock()
+
 	var empty HostedVersion
 	zipPath = filepath.Clean(strings.TrimSpace(zipPath))
 
-	zipSHA, err := verifyHostedZipSHA(zipPath)
+	zipSHA, err := hookVerifyZipSHA(zipPath) // 全文件哈希（锁外慢段）
 	if err != nil {
 		return empty, err
 	}
@@ -481,40 +520,89 @@ func (hm *hostedManager) installZipLocked(zipPath string) (HostedVersion, error)
 		return empty, fmt.Errorf("创建托管目录失败: %w", err)
 	}
 	target := filepath.Join(hm.versionsRoot, hostedVersionDirName(m.Engine, m.Version))
+
+	// 不可变版本契约快判（锁外只读 meta，尽力而为）：读得到且同哈希 → 免跑
+	// 全量解压，直接进写锁段权威复核；不同哈希 → 直接拒收（省一次大包白读）。
+	// meta 缺失/瞬时读不全一律不在此段下"拒绝"结论，避免把并发窗口的过渡态
+	// （另一安装刚 rename 未写 meta 等）误杀——权威判定收口写锁段。
 	if installedSHA, ok := readHostedSHA(filepath.Join(target, "meta.json")); ok {
-		if strings.EqualFold(installedSHA, zipSHA) {
-			return hm.hostedVersionLocked(target, m), nil
+		if !strings.EqualFold(installedSHA, zipSHA) {
+			return empty, errHostedImmutableRefusal(m)
 		}
-		return empty, fmt.Errorf("%s v%s 已安装，但现有包与本次安装包 SHA256 不同；为防止同版本内容漂移，拒绝覆盖，请发布并使用新版本号",
-			engineLabel(m.Engine), m.Version)
+		hv, _, err := hm.commitHostedInstall("", zipPath, target, m, zipSHA, register)
+		return hv, err
 	}
-	if st, statErr := os.Lstat(target); statErr == nil {
-		if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
-			return empty, fmt.Errorf("托管版本目标不是普通目录，拒绝覆盖：%s", target)
-		}
-		return empty, fmt.Errorf("%s v%s 已安装但缺少可信 SHA256 元信息；拒绝覆盖，请卸载后重装或发布新版本号",
-			engineLabel(m.Engine), m.Version)
-	} else if !os.IsNotExist(statErr) {
-		return empty, fmt.Errorf("检查现有托管版本失败: %w", statErr)
-	}
+
 	tmp, err := os.MkdirTemp(hm.versionsRoot, hostedTmpPrefix+m.Engine+"-")
 	if err != nil {
 		return empty, fmt.Errorf("创建临时解压目录失败: %w", err)
 	}
-	if err := extractHostedZip(zipPath, tmp); err != nil {
-		_ = os.RemoveAll(tmp)
+	// tmp 兜底清理收口在这里：任何失败路径（含写锁段拒收/罕见的幂等命中带 tmp）
+	// 都不留半成品；成功落位时 rename 已让 tmp 路径消失，二次 RemoveAll 为空操作。
+	defer func() { _ = os.RemoveAll(tmp) }()
+
+	if err := hookExtractZip(zipPath, tmp); err != nil { // 全量解压（锁外慢段）
 		return empty, err
 	}
-	// 解压后逐文件自校验（manifest.files 为包内完整性自证，缺失则跳过——兼容旧包）
-	if err := verifyHostedFiles(tmp, m.Files); err != nil {
-		_ = os.RemoveAll(tmp)
+	// 解压后逐文件自校验（manifest.files 为包内完整性自证，缺失则跳过——兼容旧包）。
+	// 仍在落位前对 tmp 验完：未验内容绝不进版本树，校验语义与锁前形态等价。
+	if err := hookVerifyFiles(tmp, m.Files); err != nil {
 		return empty, err
 	}
 
-	// 目标不存在才原子落位；同 engine+version 已在前面按包哈希判定幂等或拒绝。
+	hv, fresh, err := hm.commitHostedInstall(tmp, zipPath, target, m, zipSHA, register)
+	if fresh {
+		// zip 原件移存 installers/（树锁外：异卷移动是整包大 IO，不能抱着树锁做；
+		// 移存失败不判安装失败：组件已落位，仅归档降级为警告）
+		if aerr := hm.archiveInstaller(zipPath); aerr != nil {
+			slog.Warn("ocr 托管安装：安装包归档 installers/ 失败（不影响已安装版本）", "zip", zipPath, "err", aerr)
+		}
+	}
+	return hv, err
+}
+
+// commitHostedInstall 写锁收口段（取 hm.mu 独占；调用方已持 installMu）：
+// 目标态权威判定 → rename 原子落位 → meta 写入 → 登记回调，全程只做目录级
+// 快操作，不含任何全量磁盘 IO。tmp 为空串表示无锁段已快判幂等命中（无新解压
+// 件）；此时目标若已不可信（极窄的并发卸载窗口）如实报错请重试，绝不抱着
+// 树锁回头解压。register 与落位同锁段执行，保证"版本落位"与"store 指向它"
+// 对并发卸载是原子的；register 失败不回滚已落位目录（口径与改造前一致）。
+// fresh 标记本次是否发生落位（调用方据此决定是否归档安装包）。
+func (hm *hostedManager) commitHostedInstall(tmp, zipPath, target string, m hostedManifest, zipSHA string,
+	register func(HostedVersion) error) (HostedVersion, bool, error) {
+	var empty HostedVersion
+	hm.mu.Lock()
+	defer hm.mu.Unlock()
+
+	if installedSHA, ok := readHostedSHA(filepath.Join(target, "meta.json")); ok {
+		if strings.EqualFold(installedSHA, zipSHA) {
+			hv := hm.hostedVersionLocked(target, m)
+			if register != nil {
+				if err := register(hv); err != nil {
+					return empty, false, err
+				}
+			}
+			return hv, false, nil
+		}
+		return empty, false, errHostedImmutableRefusal(m)
+	}
+	if tmp == "" {
+		return empty, false, fmt.Errorf("%s v%s 的托管版本目录在预检后发生变化（并发卸载？），请重新发起安装",
+			engineLabel(m.Engine), m.Version)
+	}
+	if st, statErr := os.Lstat(target); statErr == nil {
+		if !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+			return empty, false, fmt.Errorf("托管版本目标不是普通目录，拒绝覆盖：%s", target)
+		}
+		return empty, false, fmt.Errorf("%s v%s 已安装但缺少可信 SHA256 元信息；拒绝覆盖，请卸载后重装或发布新版本号",
+			engineLabel(m.Engine), m.Version)
+	} else if !os.IsNotExist(statErr) {
+		return empty, false, fmt.Errorf("检查现有托管版本失败: %w", statErr)
+	}
+
+	// 目标不存在才原子落位；同 engine+version 已在上面按包哈希判定幂等或拒绝。
 	if err := os.Rename(tmp, target); err != nil {
-		_ = os.RemoveAll(tmp)
-		return empty, fmt.Errorf("版本目录落位失败: %w", err)
+		return empty, false, fmt.Errorf("版本目录落位失败: %w", err)
 	}
 
 	// 元信息（安装时间/包哈希/来源）与托管族 meta.json 口径一致
@@ -527,22 +615,18 @@ func (hm *hostedManager) installZipLocked(zipPath string) (HostedVersion, error)
 		"engine":      m.Engine,
 		"version":     m.Version,
 	}); err != nil {
+		// 元信息写不进=版本不可信，整目录回滚；此时不判 fresh，
+		// 安装包照常留在原位（与改造前"落位失败不归档"口径一致）。
 		_ = os.RemoveAll(target)
-		return empty, fmt.Errorf("写入托管版本元信息失败: %w", err)
-	}
-
-	// zip 原件移存 installers/（移存失败不判安装失败：组件已落位，仅归档降级为警告）
-	if err := hm.archiveInstaller(zipPath); err != nil {
-		slog.Warn("ocr 托管安装：安装包归档 installers/ 失败（不影响已安装版本）", "zip", zipPath, "err", err)
+		return empty, false, fmt.Errorf("写入托管版本元信息失败: %w", err)
 	}
 
 	exe := filepath.Join(target, serviceExeName)
-	st, err := os.Stat(exe)
 	size := int64(0)
-	if err == nil {
+	if st, err := os.Stat(exe); err == nil {
 		size = st.Size()
 	}
-	return HostedVersion{
+	hv := HostedVersion{
 		Engine:      m.Engine,
 		Version:     m.Version,
 		Dir:         target,
@@ -551,7 +635,20 @@ func (hm *hostedManager) installZipLocked(zipPath string) (HostedVersion, error)
 		InstalledAt: installedAt,
 		Note:        m.Note,
 		State:       hostedStateReady,
-	}, nil
+	}
+	if register != nil {
+		if err := register(hv); err != nil {
+			return empty, true, err
+		}
+	}
+	return hv, true, nil
+}
+
+// errHostedImmutableRefusal 不可变版本契约的拒绝覆盖报错（无锁快判段与写锁
+// 权威段共用同一措辞，防两处漂移）。
+func errHostedImmutableRefusal(m hostedManifest) error {
+	return fmt.Errorf("%s v%s 已安装，但现有包与本次安装包 SHA256 不同；为防止同版本内容漂移，拒绝覆盖，请发布并使用新版本号",
+		engineLabel(m.Engine), m.Version)
 }
 
 func readHostedSHA(metaPath string) (string, bool) {
@@ -575,6 +672,8 @@ func readHostedSHA(metaPath string) (string, bool) {
 	return sha, true
 }
 
+// hostedVersionLocked 组装已安装版本的回执（调用方持 hm.mu 读锁或写锁）：
+// 只读入口形态与 meta 安装时间，纯元数据级 IO，锁内可承受。
 func (hm *hostedManager) hostedVersionLocked(target string, m hostedManifest) HostedVersion {
 	exe := filepath.Join(target, serviceExeName)
 	state := hostedStateReady

@@ -169,13 +169,30 @@ func (s *OcrService) resolveActiveExe() (path string, fromStore bool, err error)
 }
 
 // buildState 引擎快照 + 探测缓存合并为前端状态模型。
+//
+// 锁序口径（2026-09-27 确立，"临界区内不取外部锁"）：ExePath/ExeAuto 的解析
+// 要取托管树读锁 hm.mu，必须赶在进入 s.mu 之前锁外取完、拷成值再进锁——旧
+// 实现在持 s.mu 期间嵌套 hm.mu（buildStateLocked 内调 resolveEngineExe），
+// 托管装包期间 5s watcher 的 refresh 卡在树锁上却抱着 s.mu，
+// GetStatus/probeStatus/emitStateIfChanged 与一切取 s.mu 的 OCR RPC 全线排队。
+// 反向约定见 hosted.go：hm.mu/installMu 临界区内也不取 s.mu。
 func (s *OcrService) buildState(snap instance.Snapshot) ServiceState {
+	active := s.store.GetActiveEngine()
+	// ExePath/ExeAuto 恒描述活跃引擎（未安装时 ExePath 留空，原因由 GetEngines 给）
+	exe := ""
+	if p, _, err := s.resolveEngineExe(active); err == nil {
+		exe = p
+	}
+	auto := strings.TrimSpace(s.store.GetEnginePath(active)) == ""
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.buildStateLocked(snap)
+	return s.buildStateLocked(snap, active, exe, auto)
 }
 
-func (s *OcrService) buildStateLocked(snap instance.Snapshot) ServiceState {
+// buildStateLocked 调用方持 s.mu；active/exe/auto 为调用方在 s.mu 外取齐的
+// 外部状态值切片（hm.mu/store 读已在锁外完成，此处不得新增任何外部锁取用）。
+func (s *OcrService) buildStateLocked(snap instance.Snapshot, active, exe string, auto bool) ServiceState {
 	managed := snap.State == instance.StateRunning
 	fresh := time.Since(s.probe.checkedAt) <= cacheFreshWindow
 	online := managed || (fresh && s.probe.online)
@@ -189,7 +206,7 @@ func (s *OcrService) buildStateLocked(snap instance.Snapshot) ServiceState {
 		Version:    s.probe.version,
 		Engine:     s.probe.engine,
 		EngineMode: s.probe.engineMode,
-		EngineID:   s.store.GetActiveEngine(),
+		EngineID:   active,
 		Error:      snap.Error,
 	}
 	if managed && snap.ListenAddr != "" {
@@ -203,25 +220,19 @@ func (s *OcrService) buildStateLocked(snap instance.Snapshot) ServiceState {
 			st.CheckedAt = s.probe.checkedAt.Format("2006-01-02 15:04:05")
 		}
 	}
-	// ExePath/ExeAuto 恒描述活跃引擎（未安装时 ExePath 留空，原因由 GetEngines 给）
-	active := s.store.GetActiveEngine()
-	if exe, _, err := s.resolveEngineExe(active); err == nil {
-		st.ExePath = exe
-	}
-	st.ExeAuto = strings.TrimSpace(s.store.GetEnginePath(active)) == ""
+	st.ExePath = exe
+	st.ExeAuto = auto
 	return st
 }
 
 // emitInstanceState 引擎状态迁移 → 事件 ocr:service-state；failed 附带桌面通知。
+// 引擎实例锁外回调（instance.emit 口径），buildState 的锁外解析链可安全走到。
 func (s *OcrService) emitInstanceState(snap instance.Snapshot) {
 	slog.Debug("ocr instance state", "state", snap.State, "pid", snap.PID, "external", snap.External)
 	if snap.State == instance.StateFailed && snap.Error != "" {
 		notify.Error("ocr", "hanxi-ocr 服务异常", snap.Error, "/ext/ocr")
 	}
-	s.mu.Lock()
-	st := s.buildStateLocked(snap)
-	s.mu.Unlock()
-	s.emitStateIfChanged(st)
+	s.emitStateIfChanged(s.buildState(snap))
 }
 
 func (s *OcrService) emitStateIfChanged(st ServiceState) {

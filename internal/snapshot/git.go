@@ -178,7 +178,9 @@ func (g *gitEngine) changes(ctx context.Context) ([]string, error) {
 			continue
 		}
 		allowMissing := e.Status[0] == 'D' || e.Status[1] == 'D' || (e.Orig != "" && path == e.Orig)
-		if err := validateWhitelistPathOnDisk(g.workTree, path, allowMissing); err != nil {
+		guard := whitelistDiskGuard
+		guard.allowMissing = allowMissing // 删除记录：目标已不在盘上，叶子可缺但祖先仍须安全
+		if err := validatePathLinks(g.workTree, path, guard); err != nil {
 			return nil, err
 		}
 		seen[path] = true
@@ -278,6 +280,12 @@ func parseNameStatus(out string) []RevisionFile {
 			continue
 		}
 		status := fields[0]
+		if status == "" {
+			// 畸形行（首字段为空、无状态词可比）：逐条丢弃，防 status[0] 越界
+			// panic 打死整个 tick 协程（runCheckpoint 无 recover）。口径对齐
+			// 同文件 parseFileLog 的空 token 短路。
+			continue
+		}
 		path := fields[len(fields)-1] // R/C: old \t new → 取新路径
 		st := string(status[0])
 		if Whitelisted(path) {

@@ -223,6 +223,13 @@ func (s *CheckpointService) FlushOnExit() {
 // tick 5s 巡检：白名单 mtime 脏判定 + 三源触发 + 间隔闸门。
 func (s *CheckpointService) tick() {
 	cfg := s.config()
+	// 总开关关闭先行短路返回（波 1 修复 1a，2026-09-27）：修复前 scanMtime 在
+	// Enabled 判定之前无条件执行，关闭"历史版本"后每 5s 仍全树遍历 state/+memo/
+	// 并逐条目发属性探测。Enabled 仍进 tickInput 由 decideTick 首闸消化，此处
+	// 只是把 IO 挡在判定之前，纯函数判定面不变、双保险。
+	if !cfg.Enabled {
+		return
+	}
 	maxMT, found := s.scanMtime()
 
 	s.mu.Lock()
@@ -485,7 +492,7 @@ func (s *CheckpointService) PreviewRevision(path string, revision string) (FileP
 			return FilePreview{}, errors.New("历史版本服务尚未启动")
 		}
 		// 磁盘边界自检（链接/reparse 拒绝），再读
-		if err := validateWhitelistPathOnDisk(s.paths.DataDir(), rel, false); err != nil {
+		if err := validatePathLinks(s.paths.DataDir(), rel, whitelistDiskGuard); err != nil {
 			return FilePreview{}, err
 		}
 		data, err = os.ReadFile(filepath.Join(s.paths.DataDir(), filepath.FromSlash(rel)))

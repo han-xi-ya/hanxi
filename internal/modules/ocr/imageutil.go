@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 var imgExtOK = map[string]bool{
@@ -89,8 +90,10 @@ func sanitizeImageName(name string) string {
 		return r
 	}, name)
 	name = strings.TrimSuffix(name, filepath.Ext(name))
-	if len(name) > 48 {
-		name = name[:48]
+	// 48 字上限须按 rune 计：旧实现按字节 name[:48]，中文名（3 字节/字）会被拦腰
+	// 截出乱码半字，与本函数"中文名保留"的口径自相矛盾。
+	if utf8.RuneCountInString(name) > 48 {
+		name = string([]rune(name)[:48])
 	}
 	return strings.TrimSpace(name)
 }

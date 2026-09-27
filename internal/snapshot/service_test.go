@@ -8,7 +8,56 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hanxi/internal/settings"
 )
+
+// TestTickDisabledSkipsScan 波 1 修复 1a：总开关关闭的 tick 必须零白名单扫描。
+// 修复前 scanMtime 在 Enabled 判定之前无条件执行——"历史版本"关掉后每 5s 仍
+// 全树遍历 state/+memo/。scanMtimeFn 是既有注入缝（本用例即其可观测面）；
+// manual 直通标记一并点亮，证明禁用早退在最前、不受任何触发源穿透。
+func TestTickDisabledSkipsScan(t *testing.T) {
+	store, err := settings.NewStore(filepath.Join(t.TempDir(), "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Update(func(cfg *settings.AppSettings) {
+		cfg.Snapshot.Enabled = false
+	}); err != nil {
+		t.Fatal(err)
+	}
+	scans := 0
+	svc := &CheckpointService{
+		store: store,
+		eng:   &fakeEngine{changedFiles: []string{rootConfig}},
+		scanMtimeFn: func() (time.Time, bool) {
+			scans++
+			return time.Now(), true // 脏水位：若真走到 decideTick 也会被 Enabled 首闸拦下
+		},
+	}
+	svc.manual.Store(true)
+	svc.tick()
+	if scans != 0 {
+		t.Fatalf("禁用态 scanMtime 调用数 = %d, want 0", scans)
+	}
+	if !svc.manual.Load() {
+		t.Error("禁用态不应消费 manual 标记（与修复前 decideTick 首闸语义一致）")
+	}
+}
+
+// TestTickEnabledStillScans 对照组：开启态 tick 照常走 scanMtime 脏判定缝
+// （found=false → skipQuiet，不起检查点协程，只数扫描次数）。
+func TestTickEnabledStillScans(t *testing.T) {
+	scans := 0
+	svc := &CheckpointService{scanMtimeFn: func() (time.Time, bool) {
+		scans++
+		return time.Time{}, false
+	}}
+	svc.tick()
+	if scans != 1 {
+		t.Fatalf("开启态 scanMtime 调用数 = %d, want 1", scans)
+	}
+}
 
 func TestRunCheckpointKeepsCommitWindowWriteDirty(t *testing.T) {
 	dataDir := t.TempDir()
@@ -451,6 +500,32 @@ func TestParseNameStatus(t *testing.T) {
 	}
 	if files[3] != (RevisionFile{Path: "memo/new.md", Status: "R"}) {
 		t.Errorf("rename row = %+v", files[3])
+	}
+}
+
+// TestParseNameStatusMalformedLines 波 1 修复 3：畸形行必须逐条丢弃而非 panic
+// ——parseNameStatus 一旦被 status[0] 越界打死，整个 tick/runCheckpoint 协程
+// 陪葬（无 recover）。如实注记：现行行级 TrimSpace 已把行首 tab 剥掉，空状态
+// 词经此路径实际不可达 len≥2 分支，守卫属纵深防御（防未来摘除 TrimSpace 或
+// 上游输出形态变化）；本用例锁死"任何畸形形态只丢行、不 panic、不混入结果"。
+func TestParseNameStatusMalformedLines(t *testing.T) {
+	out := "\tconfig.json\n" + // 行首 tab：无状态词
+		"  \tstate/x.json\n" + // 空白+tab：TrimSpace 后同上，仍无状态词可比
+		"M\t\tstate/y.json\n" + // 双分隔符：状态词在场，取末段路径
+		"D\t\n" + // 悬空状态词：字段不足自然弃（若未先 TrimSpace 则曾可达空路径形态）
+		"M\tmemo/ok.md\n"
+	files := parseNameStatus(out)
+	want := []RevisionFile{
+		{Path: "state/y.json", Status: "M"},
+		{Path: "memo/ok.md", Status: "M"},
+	}
+	if len(files) != len(want) {
+		t.Fatalf("files = %+v, want %+v", files, want)
+	}
+	for i := range want {
+		if files[i] != want[i] {
+			t.Errorf("files[%d] = %+v, want %+v", i, files[i], want[i])
+		}
 	}
 }
 

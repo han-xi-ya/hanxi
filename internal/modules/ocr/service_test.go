@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/history"
@@ -172,6 +173,18 @@ func TestImageHelpers(t *testing.T) {
 	if got := sanitizeImageName(`C:\evil\..\img:name*.png`); got == "" ||
 		strings.ContainsAny(got, `:*"<>|/`) {
 		t.Fatalf("sanitize 失败: %q", got)
+	}
+	// 48 字上限按 rune 计（2026-09-27 修"按字节截中文图片名"）：
+	// 旧实现 name[:48] 是 48 字节，中文名尾部必被拦腰截出乱码半字。
+	long := strings.Repeat("测", 60)
+	got := sanitizeImageName(long)
+	if utf8.RuneCountInString(got) != 48 || !utf8.ValidString(got) || strings.TrimRight(got, "测") != "" {
+		t.Fatalf("超长中文名应按完整字符截到 48 字: %q", got)
+	}
+	// 48 rune（=144 字节）的中文名必须一字不动——旧字节切片只会剩 16 字
+	name48 := strings.Repeat("中文图片", 12)
+	if got := sanitizeImageName(name48 + ".png"); got != name48 {
+		t.Fatalf("48 rune 内的中文名必须完整保留: %q", got)
 	}
 }
 
