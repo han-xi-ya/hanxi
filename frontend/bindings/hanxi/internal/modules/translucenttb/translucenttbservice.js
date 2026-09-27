@@ -29,6 +29,18 @@ import * as version$0 from "./version/models.js";
 import * as $models from "./models.js";
 
 /**
+ * CleanMsixOrphan 打包版孤儿应用数据的受控清理 RPC（经调用门；命名沿用
+ * 任务书冻结的动词语面，实际策略为改名隔离——见文件头与 cleanMsixOrphanData）。
+ * 唯一可动路径由包族名常量拼接（零入参），三道闸缺一不动；失败/无事可
+ * 做/仍受阻都回中文如实话，成功时隔离落点已随 WARN 审计入账（话术里
+ * 前端按「.orphan-日期 备份」口径如实转述）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function CleanMsixOrphan() {
+    return $Call.ByID(381705869);
+}
+
+/**
  * DownloadVersion 后台下载指定版本：立即返回，全程经事件 translucenttb:version-download
  * 推送进度；同时开一笔 journal 托管事务（install 首装 / update 向已托管工具链
  * 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
@@ -58,10 +70,12 @@ export function GetFollowOnExit() {
 }
 
 /**
- * GetMsixState 实时查询当前用户 TranslucentTB 打包版注册状态 + 本地容器缓存清单。
- * 注册态无服务端缓存（每次经 platform PowerShell appx 通道 Get-AppxPackage 实查，
- * 20s 超时兜底冷启动），因此便携线引擎状态缓存与此无同步义务，也不存在"安装
- * 成功后刷新缓存"的动作——下一次 GetMsixState 即最新事实。
+ * GetMsixState 实时查询当前用户 TranslucentTB 打包版注册状态 + 本地容器缓存
+ * 清单 + 孤儿应用数据探测（orphans/orphanPath，判据与口径见
+ * probeMsixOrphanData：目录在场且全用户查无注册才坐实；.orphan-* 隔离备份
+ * 恒不算孤儿）。注册态无服务端缓存（每次经 platform PowerShell appx 通道
+ * Get-AppxPackage 实查，20s 超时兜底冷启动），因此便携线引擎状态缓存与此无
+ * 同步义务，也不存在"安装成功后刷新缓存"的动作——下一次 GetMsixState 即最新事实。
  * @returns {$CancellablePromise<$models.MsixState>}
  */
 export function GetMsixState() {

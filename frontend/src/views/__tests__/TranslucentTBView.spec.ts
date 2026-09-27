@@ -6,7 +6,10 @@
 // 确认与导入文案逐字、事件改写与 KeepAlive 轮询契约；
 // 双形态 Wave 追加：打包版区块三态（已装/未装/预读失败降级）、busy 单飞、
 // 缓存拦截文案裸串透传、远程行 #release-actions 标注与确认文案、
-// AV 鉴别钮双语义（打包对照置顶 / 打包线不可用时降级钮零变化）。
+// AV 鉴别钮双语义（打包对照置顶 / 打包线不可用时降级钮零变化）；
+// 2026-09-27 机主实证批次：msix-progress 进度行（百分比/不确定态/落定收行）、
+// 孤儿数据档失败横幅+「🧹 清理后重试」钮出现与消失全链、external banner
+// 分形态渲染（打包版在册=ok 档新话术）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -32,12 +35,13 @@ const svc = vi.hoisted(() => ({
   SetFollowOnExit: vi.fn(),
   RepositoryURL: vi.fn(),
   OpenRepository: vi.fn(),
-  // 打包线冻结契约五动词（bindings 待再生，spec 全 mock 顶替）
+  // 打包线冻结契约五动词（bindings 待再生，spec 全 mock 顶替）+ 孤儿隔离新出口
   GetMsixState: vi.fn(),
   InstallMsix: vi.fn(),
   UninstallMsix: vi.fn(),
   RemoveMsixCache: vi.fn(),
   LaunchMsix: vi.fn(),
+  CleanMsixOrphan: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -392,16 +396,18 @@ describe('TranslucentTBView 版本管理 Tab（共享 ManagedVersionPanel 全量
 })
 
 describe('TranslucentTBView 事件与轮询契约', () => {
-  it('instance-state 事件即时改写界面；卸载注销双订阅', async () => {
+  it('instance-state 事件即时改写界面；卸载注销三订阅（含 2026-09-27 起的打包进度）', async () => {
     stubDefaults({ state: 'stopped' })
     const { wrapper } = await mountInKeepAlive()
     runtime.handlers['translucenttb:instance-state']({ data: { state: 'running', version: '2026.1', pid: 88 } })
     await nextTick()
     expect(wrapper.find('.status-word').text()).toBe('运行中')
     expect(wrapper.find('.pid-tag').text()).toContain('88')
+    // 打包进度订阅在 adapter 工厂期注册（setup 同步期），随作用域一并注销
+    expect(runtime.handlers['translucenttb:msix-progress']).toBeTruthy()
     wrapper.unmount()
     await nextTick()
-    expect(runtime.unlisten).toHaveBeenCalledTimes(2)
+    expect(runtime.unlisten).toHaveBeenCalledTimes(3)
   })
 
   it('激活轮询 2.5s 刷状态；KeepAlive 停用后不泄漏', async () => {
@@ -750,6 +756,150 @@ describe('TranslucentTBView AV 打包对照联动（优先语义，降级钮共�
     const { wrapper } = await mountInKeepAlive()
     await flushMicrotasks()
     expect(wrapper.findAll('.control-btns .btn')[3].text()).toBe('⬇ 装 2026.1 试')
+    wrapper.unmount()
+  })
+})
+
+// ---------- 2026-09-27 机主实证批次：进度行 / 孤儿数据横幅 / external 分形态 ----------
+
+const ORPHAN_DIR = 'C:\\Users\\Administrator\\AppData\\Local\\Packages\\28017CharlesMilette.TranslucentTB_v826wp6bftszj'
+const msixOrphanState = { installed: false, version: '', packageFamily: '28017CharlesMilette.TranslucentTB_v826wp6bftszj', cache: [], orphans: true, orphanPath: ORPHAN_DIR }
+const msixCleanState = { installed: false, version: '', packageFamily: '28017CharlesMilette.TranslucentTB_v826wp6bftszj', cache: [] }
+
+/** 后端 msixOrphanGuide 孤儿档全句样本（前端同文钉短语 + 钮指引）。 */
+const ORPHAN_FAIL_MESSAGE =
+  'TranslucentTB 打包版安装失败: Windows 包操作失败: 部署失败（0x80073CF6）；' +
+  '检测到上次安装的孤儿数据阻碍注册：包族已不在册，但 %LOCALAPPDATA%\\Packages 下残留的旧应用数据挡住了' +
+  '部署链的删旧数据步骤（缺组件删不动）；点「🧹 清理后重试」把孤儿数据改名隔离（备份 .orphan-日期，不删内容、可手动删除）后重装'
+/** 改判后基础设施档（无冤枉路无孤儿短语）：即便机器上真有孤儿也不得放清理钮。 */
+const INFRA_FAIL_MESSAGE =
+  'TranslucentTB 打包版安装失败: Windows 包操作失败（0x80073CF6）；本系统缺少包注册基础设施（微软商店/侧载部署栈残缺），本机打包线不可用，便携版即正解'
+
+async function clickInstallPackaged(wrapper: Awaited<ReturnType<typeof mountInKeepAlive>>['wrapper']): Promise<void> {
+  const rowBtn = wrapper.findAll('.tbl button').find((b) => b.text() === '装打包版')!
+  await rowBtn.trigger('click')
+  await flushMicrotasks()
+  settleConfirm(true) // 装打包版确认框（互不干扰话术）放行
+  await flushMicrotasks()
+}
+
+describe('TranslucentTBView 打包安装进度行（msix-progress 事件驱动）', () => {
+  it('downloading 显百分比，deploying 显不确定动画，动词落定即收行', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix] })
+    let settle: ((v: undefined) => void) | null = null
+    svc.InstallMsix.mockImplementation(() => new Promise<void>((res) => { settle = res }))
+    const { wrapper } = await mountInKeepAlive()
+    await clickInstallPackaged(wrapper)
+    expect(svc.InstallMsix).toHaveBeenCalledWith('2026.2')
+
+    runtime.handlers['translucenttb:msix-progress']({ data: { stage: 'downloading', percent: 42, message: '下载安装包…' } })
+    await nextTick()
+    const line = wrapper.find('.tb-msix-progress')
+    expect(line.exists()).toBe(true)
+    expect(line.text()).toContain('下载安装包…')
+    expect(line.find('.tb-msix-progress-value').text()).toBe('42%')
+    expect(line.find('.tb-msix-progress-track i').classes()).not.toContain('indeterminate')
+
+    runtime.handlers['translucenttb:msix-progress']({ data: { stage: 'deploying', percent: 0, message: 'Windows 正在部署包（注册中，此段无百分比反馈）…' } })
+    await nextTick()
+    expect(wrapper.find('.tb-msix-progress').text()).toContain('Windows 正在部署包')
+    expect(wrapper.find('.tb-msix-progress-value').exists()).toBe(false)
+    expect(wrapper.find('.tb-msix-progress-track i').classes()).toContain('indeterminate')
+
+    settle!(undefined)
+    await flushMicrotasks()
+    expect(wrapper.find('.tb-msix-progress').exists()).toBe(false) // busy 落定收行
+    wrapper.unmount()
+  })
+
+  it('非 busy 段迟到事件不显行（闩已落，防幻影进度）', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix] })
+    const { wrapper } = await mountInKeepAlive()
+    runtime.handlers['translucenttb:msix-progress']({ data: { stage: 'downloading', percent: 7, message: '下载安装包…' } })
+    await nextTick()
+    expect(wrapper.find('.tb-msix-progress').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('TranslucentTBView 孤儿数据档横幅（🧹 清理后重试 全链）', () => {
+  it('失败=孤儿档 且 orphans 探测在场 → 横幅+钮；danger 确认点名精确路径 → CleanMsixOrphan → 成功 toast → 钮消失', async () => {
+    let cleaned = false
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix], msix: msixOrphanState })
+    svc.GetMsixState.mockImplementation(() => Promise.resolve(cleaned ? msixCleanState : msixOrphanState))
+    svc.InstallMsix.mockRejectedValue(new Error(ORPHAN_FAIL_MESSAGE))
+    const { wrapper } = await mountInKeepAlive()
+
+    await clickInstallPackaged(wrapper)
+    expect(useToast().toastMsg.value).toBe(ORPHAN_FAIL_MESSAGE) // 裸串 toast 原样照旧
+    const orphan = wrapper.find('.tb-msix-orphan')
+    expect(orphan.exists()).toBe(true)
+    expect(orphan.text()).toContain('检测到上次安装的孤儿数据阻碍注册')
+    const cleanBtn = orphan.findAll('button').find((b) => b.text() === '🧹 清理后重试')!
+    expect(cleanBtn.attributes('disabled')).toBeUndefined()
+
+    await cleanBtn.trigger('click')
+    await flushMicrotasks()
+    expect(confirmState.open).toBe(true)
+    expect(confirmState.options.tone).toBe('danger')
+    expect(confirmState.options.description).toContain(ORPHAN_DIR) // 服务端实值精确路径点名
+    expect(confirmState.options.description).toContain('已核实')
+    expect(confirmState.options.description).toContain('改名隔离')
+    svc.CleanMsixOrphan.mockImplementation(async () => {
+      cleaned = true
+    })
+    settleConfirm(true)
+    await flushMicrotasks()
+    expect(svc.CleanMsixOrphan).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toContain('清理完成')
+    expect(useToast().toastMsg.value).toContain('请再点安装')
+    expect(wrapper.find('.tb-msix-orphan').exists()).toBe(false) // 双闸收口：探测翻假+销账
+    wrapper.unmount()
+  })
+
+  it('取消确认不动 RPC，横幅按双闸留存', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix], msix: msixOrphanState })
+    svc.InstallMsix.mockRejectedValue(new Error(ORPHAN_FAIL_MESSAGE))
+    const { wrapper } = await mountInKeepAlive()
+    await clickInstallPackaged(wrapper)
+    const cleanBtn = wrapper.find('.tb-msix-orphan').findAll('button').find((b) => b.text() === '🧹 清理后重试')!
+    await cleanBtn.trigger('click')
+    await flushMicrotasks()
+    settleConfirm(false)
+    await flushMicrotasks()
+    expect(svc.CleanMsixOrphan).not.toHaveBeenCalled()
+    expect(wrapper.find('.tb-msix-orphan').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('双闸缺一不出钮：orphans 探测假（话术像孤儿）/ 基础设施档失败（孤儿在场）', async () => {
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix], msix: msixCleanState })
+    svc.InstallMsix.mockRejectedValue(new Error(ORPHAN_FAIL_MESSAGE))
+    let r = await mountInKeepAlive()
+    await clickInstallPackaged(r.wrapper)
+    expect(r.wrapper.find('.tb-msix-orphan').exists()).toBe(false) // 探测说没有：不放危险钮
+    expect(svc.CleanMsixOrphan).not.toHaveBeenCalled()
+    r.wrapper.unmount()
+
+    stubDefaults({ state: 'stopped' }, { releases: [release20262Msix], msix: msixOrphanState })
+    svc.InstallMsix.mockRejectedValue(new Error(INFRA_FAIL_MESSAGE))
+    r = await mountInKeepAlive()
+    await clickInstallPackaged(r.wrapper)
+    expect(r.wrapper.find('.tb-msix-orphan').exists()).toBe(false) // 归因非孤儿档：不出钮（toast 照常实话）
+    r.wrapper.unmount()
+  })
+})
+
+describe('TranslucentTBView external banner 分形态（打包版在册改判）', () => {
+  it('external + 打包版已注册 → banner-ok「已由 Hanxi 唤起」，不再"外部实例（非 Hanxi 托管）"', async () => {
+    stubDefaults({ state: 'external' }, { msix: { installed: true, version: '2026.2', packageFamily: '28017CharlesMilette.TranslucentTB_v826wp6bftszj', cache: [] } })
+    const { wrapper } = await mountInKeepAlive()
+    await flushMicrotasks()
+    const banner = wrapper.find('.banner')
+    expect(banner.classes()).toContain('banner-ok')
+    expect(banner.text()).toContain('打包版 TranslucentTB 正在运行（已由 Hanxi 唤起）')
+    expect(banner.text()).toContain('生命周期归 Windows')
+    expect(banner.text()).not.toContain('非 Hanxi 托管')
     wrapper.unmount()
   })
 })

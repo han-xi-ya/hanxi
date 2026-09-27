@@ -190,6 +190,9 @@ import type * as instance$25 from "../../../../../hanxi/internal/modules/termora
 import type * as version$25 from "../../../../../hanxi/internal/modules/termora/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as translucenttb$0 from "../../../../../hanxi/internal/modules/translucenttb/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as instance$26 from "../../../../../hanxi/internal/modules/translucenttb/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -300,6 +303,7 @@ declare module "@wailsio/runtime" {
             "termora:instance-state": instance$25.Snapshot;
             "termora:version-download": version$25.DownloadProgress;
             "translucenttb:instance-state": instance$26.Snapshot;
+            "translucenttb:msix-progress": translucenttb$0.MsixProgress;
             "translucenttb:version-download": version$26.DownloadProgress;
             "tray:navigate": string;
             "updates:checked": void;

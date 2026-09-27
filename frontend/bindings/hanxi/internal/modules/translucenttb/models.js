@@ -15,8 +15,23 @@ import * as version$0 from "./version/models.js";
  */
 
 /**
- * MsixState 打包形态"当前用户注册状态 + 本地容器缓存清单"的合并快照
- * （GetMsixState 返回值；注册状态实时查询无缓存，缓存清单来自版本线磁盘枚举）。
+ * MsixProgress 打包版安装进度事件 translucenttb:msix-progress 的载荷
+ * （2026-09-27 机主撞账"装打包版全程无反馈"补通道；同步 RPC 语义不变，
+ * 事件只喂 UI）。Stage 词表 preparing | downloading | verify-sha256 |
+ * deploying | done | error（与版本线 Prepare 阶段词同源，deploying/error
+ * 由服务面补档）；Percent 仅下载段有真值，不确定态（deploying 等）为 0，
+ * error 档 Message 自带归因后完整话术（孤儿档短语即在此通道出货）。
+ * @typedef {Object} MsixProgress
+ * @property {string} stage
+ * @property {number} percent
+ * @property {string} message
+ */
+
+/**
+ * MsixState 打包形态"当前用户注册状态 + 本地容器缓存清单 + 孤儿应用数据
+ * 探测"的合并快照（GetMsixState 返回值；注册状态实时查询无缓存，缓存清单
+ * 来自版本线磁盘枚举，孤儿探测见 probeMsixOrphanData——只读三道闸口径，
+ * <族名>.orphan-* 隔离备份不算孤儿）。
  * Version 归一化为发布号两段形态（2026.2.0.0 → 2026.2，实证规则见
  * normalizeMsixVersion 注释），与版本线列表行同一比较口径。
  * @typedef {Object} MsixState
@@ -24,6 +39,8 @@ import * as version$0 from "./version/models.js";
  * @property {string} version
  * @property {string} packageFamily
  * @property {version$0.PackageCached[] | null} cache
+ * @property {boolean} orphans - OrphanData 上次安装/卸载残留的孤儿应用数据在场且全用户查无注册—— 前端打包安装失败回执为孤儿档时据此出「🧹 清理后重试」钮（无孤儿钮不出现）。
+ * @property {string} [orphanPath] - OrphanPath OrphanData 为真时给出精确目录路径（供确认框点名）；其余为空。
  */
 
 /**

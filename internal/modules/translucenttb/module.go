@@ -15,6 +15,12 @@
 //   - GetMsixState/InstallMsix/LaunchMsix/UninstallMsix/RemoveMsixCache 五出口管
 //     官方 bundle.msixbundle 的下载、用户级注册、shell:AppsFolder 激活与清理，
 //     包身份常量三源实证见 models.go，PowerShell appx 通道复用 platform apppackage；
+//   - CleanMsixOrphan（第六出口，2026-09-27 机主事故改判件）：上次安装残留的
+//     孤儿应用数据改名隔离（非删除，备份 .orphan-日期 可手动清），唯一路径=
+//     包族名常量拼接，三道闸+指纹留档见 msix_orphan.go；
+//   - InstallMsix 全程经事件 translucenttb:msix-progress 推送阶段进度
+//     （载荷 MsixProgress，preparing/downloading/verify-sha256/deploying/
+//     done/error；同步 RPC 语义不变，事件只喂 UI——机主撞账补线）；
 //   - 共存语义只陈述不干预：两形态共用上游单实例互斥体（后启动者信使化自退），
 //     托管启停线只管便携进程，打包版进程引擎按"外部实例"如实感知，包操作
 //     在两形态各自方法的注释里划清界限，互不越权。

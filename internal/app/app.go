@@ -234,6 +234,7 @@ func RegisterEvents() {
 	application.RegisterEvent[vscodeinstance.Snapshot]("vscode:instance-state")
 	application.RegisterEvent[ttbversion.DownloadProgress]("translucenttb:version-download")
 	application.RegisterEvent[ttbinstance.Snapshot]("translucenttb:instance-state")
+	application.RegisterEvent[translucenttb.MsixProgress]("translucenttb:msix-progress")
 	application.RegisterEvent[termoraversion.DownloadProgress]("termora:version-download")
 	application.RegisterEvent[rammapversion.DownloadProgress]("rammap:version-download")
 	application.RegisterEvent[rammapinstance.Snapshot]("rammap:instance-state")

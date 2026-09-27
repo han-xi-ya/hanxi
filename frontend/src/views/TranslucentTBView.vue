@@ -1,14 +1,18 @@
 <script setup lang="ts">
-// TranslucentTB 控制台（Wave 5 · 批 1 收敛件，模式照抄 CCSwitchView）：共享面全部
-// 进托管控制台家族——adapter（src/adapters/translucenttb）承载业务投影（RPC/事件/
-// 文案/确认输入），useManagedConsole 单源状态轮询/uptime/进度 map/busy 闩，
+// TranslucentTB 控制台（Wave 5 · 批 1 收敛件，模式照抄 CCSwitchView；波 2D 迁壳件）：
+// 共享面全部进托管控制台家族——adapter（src/adapters/translucenttb）承载业务投影
+// （RPC/事件/文案/确认输入），useManagedConsole 单源状态轮询/uptime/进度 map/busy 闩，
 // ManagedControlBar 管状态头与启停钮，ManagedExtrasCard 管随关与仓库联动卡，
 // 版本 Tab 与共享 ManagedVersionPanel 逐字同形、全量接管（本模块为四件中最完整
 // 的共享面板消费样本，原方言表格徽标样式随之下线）。
+// 波 2D 迁壳：页头+页签+error-box+tab-body 手抄壳骨退役——打包线动作与崩溃鉴别
+// 都要 setup 期 store 句柄，走「视图自建 useManagedConsole → 传壳 :store」注入通道；
+// 版本 Tab 的 #release-actions 槽需求经壳的 #versions-body 整体替换位承接（契约内
+// 逃生门，默认体仅面板一件照抄重挂）。
 // 方言位（见 adapter 头注记）：「🪄 重设任务栏状态」动词走契约 reset 槽、钮体经
-// #primary-action 位留在控制条钮区（原 DOM 位逐字等价；其现状语义成功/失败均
-// 不刷快照，与 store.runControl 的恒刷不同，故执行器在视图自持并共用 store.busy
-// 闩）；「🗂 安装目录」按 running > active > 任一已装解析目标，点击走
+// #primary-action 位留在控制条钮区（原 DOM 位逐字等价；其成败两分支均不刷快照的
+// 现状语义即 store.runReset 缺省档 refreshSnapshot=false，视图本地接线器退役）；
+// 「🗂 安装目录」按 running > active > 任一已装解析目标，点击走
 // store.runOpenDir；「🌫️ 启动」为声明式 control.primary（含无已装版本的禁用与
 // title 分支，adapter 以 hasInstalled ref 表达）。
 // 双形态 Wave（打包版/MSIX）：控制台 Tab 挂「打包版（系统管理）」区块（状态行 +
@@ -16,20 +20,20 @@
 // 远程行经共享面板 #release-actions 槽挂「可装打包版」chip 与「装打包版」次级
 // 钮（词表走 releaseFormWord 共享件，无 assets 数据静默缺席）；崩溃鉴别直钮双
 // 语义取位（pickAVProbe）：打包对照优先、便携降级回退，二者永不并排。
-import { computed, onMounted, ref } from 'vue'
+// 2026-09-27 机主实证三件套（本区块追加）：msix-progress 事件驱动的进度行
+// （busy 期显形）、打包安装失败孤儿档横幅+「🧹 清理后重试」钮（双闸判据在
+// adapter）、external banner 打包版在册时分形态话术（adapter.banner 内合成）。
+import { computed, onMounted } from 'vue'
 import { createTBAdapter, hasMsixBundleAsset, isAVCrash, pickAVProbe } from '../adapters/translucenttb'
 import type { TBMsixSurface } from '../adapters/translucenttb'
 import type { ManagedActionResult } from '../components/managed/adapter'
 import { releaseFormWord } from '../components/managed/adapter'
 import { useManagedConsole } from '../components/managed/store'
-import ManagedControlBar from '../components/managed/ManagedControlBar.vue'
+import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import ManagedVersionPanel from '../components/managed/ManagedVersionPanel.vue'
-import ManagedExtrasCard from '../components/managed/ManagedExtrasCard.vue'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
-import PageHeader from '../components/ui/PageHeader.vue'
-import MainTabNav from '../components/ui/MainTabNav.vue'
 
 const adapter = createTBAdapter()
 const store = useManagedConsole(adapter)
@@ -41,6 +45,17 @@ const msix: TBMsixSurface = adapter.msix
 const msixState = msix.state
 const msixUnavailable = msix.unavailable
 const msixBusy = msix.busy
+const msixProgress = msix.progress
+const msixInstallFailure = msix.installFailure
+const msixOrphanRetry = msix.orphanRetry
+
+// 进度行百分比只对 downloading 段成立（后端词表里唯一有真值的段）；
+// preparing/verify-sha256/deploying 等归不确定态（indeterminate 动画 +
+// 后端 message 文案，"Windows 正在部署…"由事件载荷原样呈现）。
+const msixProgressPercent = computed(() => {
+  const p = msixProgress.value
+  return p && p.stage === 'downloading' ? Math.round(p.percent) : null
+})
 
 onMounted(() => {
   void msix.refresh()
@@ -55,13 +70,6 @@ async function runMsix(run: () => Promise<ManagedActionResult>): Promise<void> {
     showToast(getErrorMessage(e))
   }
 }
-
-// 顶层主选项卡：console = 控制台，versions = 版本管理（与 ccswitch/everything 同构）
-const activeMainTab = ref<'console' | 'versions'>('console')
-const mainTabs = [
-  { key: 'console', label: '🌫️ 控制台' },
-  { key: 'versions', label: '📦 版本管理' },
-]
 
 const canReset = computed(() => store.state === 'running' || store.state === 'external')
 
@@ -98,122 +106,122 @@ async function runAVProbe(): Promise<void> {
     await store.runDownload(p.target)
   }
 }
-
-// reset 槽动词的走槽执行器：与原视图 resetState 逐字同构——busy 闩共用 store、
-// 成功弹后端 message、失败裸错误串、两分支均不刷快照（runControl 恒刷不适用）
-async function runReset() {
-  const reset = adapter.reset
-  if (!reset) return
-  await store.runExclusive(async () => {
-    try {
-      const res = await reset.run()
-      if (res.message !== undefined) showToast(res.message)
-    } catch (e) {
-      showToast(getErrorMessage(e))
-    }
-  })
-}
 </script>
 
 <template>
-  <section class="page ttb-view">
-    <PageHeader title="TranslucentTB" subtitle="托管任务栏透明工具：版本管理、JobObject 启停与任务栏状态重设。">
-      <template #actions>
-        <MainTabNav v-model="activeMainTab" :tabs="mainTabs" />
-      </template>
-    </PageHeader>
-
-    <div v-if="store.listError" class="error-box">{{ store.listError }}</div>
-
-    <!-- 控制台 Tab：状态头/提示条/引导行/启停钮区由 ManagedControlBar 按 adapter
-         投影渲染；重设与安装目录两钮经 #primary-action 位注入主钮与退出钮之间
+  <ManagedConsoleShell
+    class="ttb-view"
+    :adapter="adapter"
+    :store="store"
+    title="TranslucentTB"
+    subtitle="托管任务栏透明工具：版本管理、JobObject 启停与任务栏状态重设。"
+    console-tab-label="🌫️ 控制台"
+  >
+    <!-- 重设与安装目录两钮经壳转发的 #primary-action 位注入主钮与退出钮之间
          （钮序：启动 → 重设 → 安装目录 → [AV 降级直钮] → 退出；前三位与现状
-         逐字同位，降级直钮仅 failed+AV 有候选时条件出现） -->
-    <div v-show="activeMainTab === 'console'" class="tab-body">
-      <ManagedControlBar :adapter="adapter" :store="store">
-        <template #primary-action>
+         逐字同位，降级直钮仅 failed+AV 有候选时条件出现）；重设钮走
+         store.runReset() 正主编排（缺省档=成败两分支均不刷快照、失败裸错误串，
+         与本视图原手抄接线器逐字同形制） -->
+    <template #primary-action>
+      <button
+        class="btn btn-secondary btn-small"
+        :disabled="store.busy || !canReset"
+        :title="canReset ? '任务栏外观异常时重放配置（等价托盘菜单 Reset dynamic state）' : '实例未在运行'"
+        @click="store.runReset()"
+      >🪄 重设任务栏状态</button>
+      <button
+        class="btn btn-secondary btn-small"
+        :disabled="store.busy || !openDirTarget"
+        title="打开版本安装目录（透明样式配置 settings.json 就在这里，可用编辑器直接修改）"
+        @click="openDirTarget && store.runOpenDir(openDirTarget)"
+      >🗂 安装目录</button>
+      <!-- 崩溃鉴别直钮（双语义一位，永不并排）：打包线可用且崩溃版本有
+           msixbundle 资产 → 对照钮；否则原降级钮词与行为逐字不变 -->
+      <button
+        v-if="avProbe && avProbe.mode === 'msix'"
+        class="btn btn-secondary btn-small"
+        :disabled="store.busy || msixBusy"
+        title="对照鉴别（踩坑 #85）：安装同版本打包版，观察崩溃是否便携形态专属——不动便携文件、不关闭运行中便携实例"
+        @click="runAVProbe"
+      >⬇ 装打包版对照（#85 鉴别）</button>
+      <button
+        v-else-if="avProbe && avProbe.target"
+        class="btn btn-secondary btn-small"
+        :disabled="store.busy"
+        :title="`降级鉴别：安装比当前崩溃版本更旧的最近稳定版 ${avProbe.version}，完成后到「版本管理」设为使用，再点启动观察`"
+        @click="runAVProbe"
+      >⬇ 装 {{ avProbe.version }} 试</button>
+    </template>
+
+    <!-- 控制台 Tab 主体（壳默认具位）：打包版（Windows 包/MSIX）系统管理区块
+         （状态行 + 可信安装包缓存列表；GetMsixState 失败（含绑定再生缺席）
+         整块降级为单行提示，不空白不报错）+ 说明卡（可折叠） -->
+    <section class="extras-card tb-msix">
+      <div class="tb-msix-head">
+        <span class="tb-msix-title">📦 打包版（系统管理）</span>
+        <button class="btn btn-ghost btn-small" :disabled="msixBusy" title="重读 Windows 包状态" @click="msix.refresh()">↻ 刷新</button>
+      </div>
+      <!-- 打包安装进度行（2026-09-27 机主撞账补线）：busy 期间随事件滚动，
+           downloading 显百分比，preparing/verify-sha256/deploying 显后端文案+
+           不确定动画；动词落定（成败皆然）即收 -->
+      <div v-if="msixBusy && msixProgress" class="tb-msix-progress" aria-live="polite">
+        <span class="tb-msix-progress-msg">{{ msixProgress.message || msixProgress.stage }}</span>
+        <span v-if="msixProgressPercent !== null" class="tb-msix-progress-value">{{ msixProgressPercent }}%</span>
+        <div class="tb-msix-progress-track" role="progressbar" :aria-valuenow="msixProgressPercent ?? undefined">
+          <i :class="{ indeterminate: msixProgressPercent === null }" :style="msixProgressPercent !== null ? { width: `${msixProgressPercent}%` } : undefined"></i>
+        </div>
+      </div>
+      <p v-if="msixUnavailable" class="tb-msix-degraded hint-dim">打包版状态暂不可读取（系统包状态查询失败）——便携版管理不受影响，可稍后点「↻ 刷新」重试。</p>
+      <template v-else-if="msixState">
+        <!-- 孤儿数据档失败回执横幅（双闸：归因档话术 × 服务端 orphans 探测，
+             判据在 adapter.msix.orphanRetry）：点名后端精确话术+清理钮；
+             清理成功/重装成功/探测翻假即自动消失 -->
+        <div v-if="msixOrphanRetry && msixInstallFailure" class="tb-msix-orphan banner banner-error">
+          <span class="tb-msix-orphan-text" :title="msixInstallFailure.message">{{ msixInstallFailure.message }}</span>
           <button
-            class="btn btn-secondary btn-small"
-            :disabled="store.busy || !canReset"
-            :title="canReset ? '任务栏外观异常时重放配置（等价托盘菜单 Reset dynamic state）' : '实例未在运行'"
-            @click="runReset"
-          >🪄 重设任务栏状态</button>
-          <button
-            class="btn btn-secondary btn-small"
-            :disabled="store.busy || !openDirTarget"
-            title="打开版本安装目录（透明样式配置 settings.json 就在这里，可用编辑器直接修改）"
-            @click="openDirTarget && store.runOpenDir(openDirTarget)"
-          >🗂 安装目录</button>
-          <!-- 崩溃鉴别直钮（双语义一位，永不并排）：打包线可用且崩溃版本有
-               msixbundle 资产 → 对照钮；否则原降级钮词与行为逐字不变 -->
-          <button
-            v-if="avProbe && avProbe.mode === 'msix'"
             class="btn btn-secondary btn-small"
             :disabled="store.busy || msixBusy"
-            title="对照鉴别（踩坑 #85）：安装同版本打包版，观察崩溃是否便携形态专属——不动便携文件、不关闭运行中便携实例"
-            @click="runAVProbe"
-          >⬇ 装打包版对照（#85 鉴别）</button>
-          <button
-            v-else-if="avProbe && avProbe.target"
-            class="btn btn-secondary btn-small"
-            :disabled="store.busy"
-            :title="`降级鉴别：安装比当前崩溃版本更旧的最近稳定版 ${avProbe.version}，完成后到「版本管理」设为使用，再点启动观察`"
-            @click="runAVProbe"
-          >⬇ 装 {{ avProbe.version }} 试</button>
-        </template>
-      </ManagedControlBar>
-
-      <!-- 打包版（Windows 包/MSIX）系统管理区块：状态行 + 可信安装包缓存列表；
-           GetMsixState 失败（含绑定再生缺席）整块降级为单行提示，不空白不报错 -->
-      <section class="extras-card tb-msix">
-        <div class="tb-msix-head">
-          <span class="tb-msix-title">📦 打包版（系统管理）</span>
-          <button class="btn btn-ghost btn-small" :disabled="msixBusy" title="重读 Windows 包状态" @click="msix.refresh()">↻ 刷新</button>
+            title="把已核实无注册的孤儿应用数据整体改名隔离（备份 *.orphan-日期，不删内容、可手动删除），随后回「版本管理」再点装打包版"
+            @click="runMsix(msix.cleanOrphan)"
+          >🧹 清理后重试</button>
         </div>
-        <p v-if="msixUnavailable" class="tb-msix-degraded hint-dim">打包版状态暂不可读取（系统包状态查询失败）——便携版管理不受影响，可稍后点「↻ 刷新」重试。</p>
-        <template v-else-if="msixState">
-          <div v-if="msixState.installed" class="tb-msix-status">
-            <span class="tb-msix-state installed">已装 v{{ msixState.version }}</span>
-            <code class="mono tb-msix-family" :title="msixState.packageFamily">{{ msixState.packageFamily }}</code>
-            <div class="btn-group tb-msix-actions">
-              <button class="btn btn-secondary btn-small" :disabled="store.busy || msixBusy" title="启动 Windows 打包版（独立于便携托管实例，JobObject 不管控）" @click="runMsix(msix.launch)">▶ 启动</button>
-              <button class="btn btn-danger-outline btn-small" :disabled="store.busy || msixBusy" @click="runMsix(msix.uninstall)">卸载</button>
+        <div v-if="msixState.installed" class="tb-msix-status">
+          <span class="tb-msix-state installed">已装 v{{ msixState.version }}</span>
+          <code class="mono tb-msix-family" :title="msixState.packageFamily">{{ msixState.packageFamily }}</code>
+          <div class="btn-group tb-msix-actions">
+            <button class="btn btn-secondary btn-small" :disabled="store.busy || msixBusy" title="启动 Windows 打包版（经 AppsFolder 激活，幂等：已在运行时再点=重新唤起聚焦，无副作用；独立于便携托管实例，JobObject 不管控）" @click="runMsix(msix.launch)">▶ 启动</button>
+            <button class="btn btn-danger-outline btn-small" :disabled="store.busy || msixBusy" @click="runMsix(msix.uninstall)">卸载</button>
+          </div>
+        </div>
+        <p v-else class="tb-msix-status">未安装 <span class="hint-dim">——「版本管理」中带「可装打包版」标注的行可装 Windows 包形态，与便携版互不干扰</span></p>
+        <div class="tb-msix-cache">
+          <span class="tb-msix-sub">安装包缓存（{{ msixState.cache?.length ?? 0 }}）</span>
+          <template v-if="msixState.cache?.length">
+            <div v-for="c in msixState.cache" :key="c.version" class="tb-msix-cache-row">
+              <span class="ver-tag tb-msix-cache-ver">{{ c.version }}</span>
+              <span class="tb-msix-cache-size">{{ fmtSize(c.size) }}</span>
+              <code class="mono tb-msix-cache-path" :title="c.path">{{ c.path }}</code>
+              <button class="btn btn-danger-outline btn-small" :disabled="store.busy || msixBusy" title="删除该版本留存的安装包（不影响已装打包版）；运行中包版本会被系统拦截" @click="runMsix(() => msix.removeCache(c.version))">移除</button>
             </div>
-          </div>
-          <p v-else class="tb-msix-status">未安装 <span class="hint-dim">——「版本管理」中带「可装打包版」标注的行可装 Windows 包形态，与便携版互不干扰</span></p>
-          <div class="tb-msix-cache">
-            <span class="tb-msix-sub">安装包缓存（{{ msixState.cache?.length ?? 0 }}）</span>
-            <template v-if="msixState.cache?.length">
-              <div v-for="c in msixState.cache" :key="c.version" class="tb-msix-cache-row">
-                <span class="ver-tag tb-msix-cache-ver">{{ c.version }}</span>
-                <span class="tb-msix-cache-size">{{ fmtSize(c.size) }}</span>
-                <code class="mono tb-msix-cache-path" :title="c.path">{{ c.path }}</code>
-                <button class="btn btn-danger-outline btn-small" :disabled="store.busy || msixBusy" title="删除该版本留存的安装包（不影响已装打包版）；运行中包版本会被系统拦截" @click="runMsix(() => msix.removeCache(c.version))">移除</button>
-              </div>
-            </template>
-            <p v-else class="hint-dim">暂无留存的 msixbundle 安装包缓存</p>
-          </div>
-        </template>
-        <p v-else class="tb-msix-degraded hint-dim">正在读取 Windows 包状态…</p>
-      </section>
-
-      <!-- 说明卡（可折叠） -->
-      <details class="info-details">
-        <summary class="info-summary">什么是 TranslucentTB</summary>
-        <div class="info-body">
-          <p>Windows 任务栏透明/模糊/亚克力效果工具（<a class="inline-link" href="https://github.com/TranslucentTB/TranslucentTB" target="_blank" rel="noopener">TranslucentTB/TranslucentTB</a>，GPL-3.0）。它通过向资源管理器注入组件实时改写任务栏外观，全部样式设置都在系统托盘图标菜单（XAML 飞控）中完成——上游没有独立设置窗口。</p>
-          <p class="hint-dim">版本下载自官方 GitHub Releases（portable-x64，sha256 四层校验），启停受 JobObject 管控。「🪄 重设任务栏状态」等价上游托盘菜单的 Reset dynamic state：任务栏被 explorer 重启、换肤工具改动弄花时点一下即可重放配置。退出进程后任务栏自动还原默认外观。</p>
+          </template>
+          <p v-else class="hint-dim">暂无留存的 msixbundle 安装包缓存</p>
         </div>
-      </details>
-    </div>
+      </template>
+      <p v-else class="tb-msix-degraded hint-dim">正在读取 Windows 包状态…</p>
+    </section>
 
-    <!-- 联动与辅助设置卡（随关 + GitHub 仓库行，条目文案在 adapter） -->
-    <ManagedExtrasCard :adapter="adapter" />
+    <details class="info-details">
+      <summary class="info-summary">什么是 TranslucentTB</summary>
+      <div class="info-body">
+        <p>Windows 任务栏透明/模糊/亚克力效果工具（<a class="inline-link" href="https://github.com/TranslucentTB/TranslucentTB" target="_blank" rel="noopener">TranslucentTB/TranslucentTB</a>，GPL-3.0）。它通过向资源管理器注入组件实时改写任务栏外观，全部样式设置都在系统托盘图标菜单（XAML 飞控）中完成——上游没有独立设置窗口。</p>
+        <p class="hint-dim">版本下载自官方 GitHub Releases（portable-x64，sha256 四层校验），启停受 JobObject 管控。「🪄 重设任务栏状态」等价上游托盘菜单的 Reset dynamic state：任务栏被 explorer 重启、换肤工具改动弄花时点一下即可重放配置。退出进程后任务栏自动还原默认外观。</p>
+      </div>
+    </details>
 
-    <!-- 版本管理 Tab：与共享 ManagedVersionPanel 逐字同形，全量接管；
-         #release-actions 槽按 N13 资产矩阵标注打包形态可用性（词表走共享件，
-         无 form/assets 数据静默缺席 = 既有行零变化） -->
-    <div v-show="activeMainTab === 'versions'" class="tab-body">
+    <!-- 版本 Tab 整体替换位：默认体仅共享面板一件（本模块无 channel 块），
+         照抄重挂以承载 #release-actions 槽按 N13 资产矩阵标注打包形态可用性
+         （词表走共享件，无 form/assets 数据静默缺席 = 既有行零变化） -->
+    <template #versions-body>
       <ManagedVersionPanel :adapter="adapter" :store="store">
         <template #release-actions="{ release }">
           <template v-if="hasMsixBundleAsset(release)">
@@ -230,22 +238,17 @@ async function runReset() {
           </template>
         </template>
       </ManagedVersionPanel>
-    </div>
-  </section>
+    </template>
+  </ManagedConsoleShell>
 </template>
 
 <style scoped>
-/* 页头/状态头/提示条/版本区/联动卡由 managed 组件 + components.css 全局原子接管；
-   原 .tb-status-light/.tb-ver-status/.badge-* 复制体已由 .status-light 标准形与
-   ManagedVersionPanel 的 scoped 徽标替代，本页仅余页级骨架、说明卡内联链接与
-   打包版区块（tb- 前缀）私有形——面板壳走全局 .extras-card，此处只补行排布与截断。 */
-.ttb-view { display: flex; flex-direction: column; gap: 10px; }
-.tab-body { display: flex; flex-direction: column; gap: 10px; }
-
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
-
-/* ---- 打包版（系统管理）区块（双形态 Wave 私有形） ---- */
+/* 页头/状态头/提示条/版本区/联动卡与 flex 骨架由托管控制台壳 + managed 组件 +
+   components.css 全局原子接管（波 2D 迁壳后手抄壳骨与 .ttb-view/.tab-body flex
+   副本退役；原 .tb-status-light/.tb-ver-status/.badge-* 复制体已由 .status-light
+   标准形与 ManagedVersionPanel 的 scoped 徽标替代）；
+   本页仅余打包版区块（tb- 前缀）私有形——面板壳走全局 .extras-card，
+   此处只补行排布与截断。 */
 .tb-msix { gap: 8px; }
 .tb-msix-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .tb-msix-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); letter-spacing: 0.5px; }
@@ -262,4 +265,14 @@ async function runReset() {
 .tb-msix-cache-size { color: var(--color-text-muted); white-space: nowrap; font-size: var(--text-sm); }
 .tb-msix-cache-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-subtle); font-size: var(--text-xs); }
 .tb-msix-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; margin-right: 6px; vertical-align: middle; }
+/* 打包安装进度行（形制对齐 NanaZip 的 Msix 进度件：数值列 + 轨道，
+   downloading 真值宽，其余 indeterminate 扫动）与孤儿数据档失败横幅 */
+.tb-msix-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; font-size: var(--text-sm); color: var(--color-text-muted); }
+.tb-msix-progress-value { font: 700 var(--text-sm) var(--font-mono); color: var(--color-text); }
+.tb-msix-progress-track { grid-column: 1 / -1; height: 7px; overflow: hidden; border-radius: var(--radius-pill); background: var(--surface-soft); }
+.tb-msix-progress-track i { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); transition: width var(--motion-fast) linear; }
+.tb-msix-progress-track i.indeterminate { width: 34%; animation: tb-msix-indeterminate 1.25s infinite ease-in-out; }
+@keyframes tb-msix-indeterminate { 0% { transform: translateX(-110%); } 100% { transform: translateX(300%); } }
+.tb-msix-orphan { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--text-sm); }
+.tb-msix-orphan-text { min-width: 0; overflow-wrap: anywhere; }
 </style>

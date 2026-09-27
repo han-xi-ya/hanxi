@@ -52,7 +52,8 @@ type TranslucentTBService struct {
 	engine   *instance.Engine
 	holder   *extapi.LeaseHolder
 
-	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
+	orphan     orphanHooks // 孤儿数据能力的 fs/时钟缝（零值=真实现，见 msix_orphan.go resolve；单测注入）
+	downloadMu sync.Mutex  // 防止同一时间并发触发多个下载
 	watchMu    sync.Mutex
 	watching   bool
 	watchStop  chan struct{}
@@ -680,10 +681,12 @@ type msixPackageManager interface {
 	RemovePackageCache(version string) error
 }
 
-// GetMsixState 实时查询当前用户 TranslucentTB 打包版注册状态 + 本地容器缓存清单。
-// 注册态无服务端缓存（每次经 platform PowerShell appx 通道 Get-AppxPackage 实查，
-// 20s 超时兜底冷启动），因此便携线引擎状态缓存与此无同步义务，也不存在"安装
-// 成功后刷新缓存"的动作——下一次 GetMsixState 即最新事实。
+// GetMsixState 实时查询当前用户 TranslucentTB 打包版注册状态 + 本地容器缓存
+// 清单 + 孤儿应用数据探测（orphans/orphanPath，判据与口径见
+// probeMsixOrphanData：目录在场且全用户查无注册才坐实；.orphan-* 隔离备份
+// 恒不算孤儿）。注册态无服务端缓存（每次经 platform PowerShell appx 通道
+// Get-AppxPackage 实查，20s 超时兜底冷启动），因此便携线引擎状态缓存与此无
+// 同步义务，也不存在"安装成功后刷新缓存"的动作——下一次 GetMsixState 即最新事实。
 func (s *TranslucentTBService) GetMsixState() (MsixState, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -706,6 +709,10 @@ func (s *TranslucentTBService) queryMsixState(ctx context.Context) (MsixState, e
 	if pkg != nil {
 		state.Installed = true
 		state.Version = normalizeMsixVersion(pkg.Version)
+	} else {
+		// 当前用户查无注册才进孤儿探测（在册包的数据是活数据，与孤儿语义互斥；
+		// 探测本体成本递增序见 probeMsixOrphanData）。
+		state.OrphanData, state.OrphanPath = s.probeMsixOrphanData(ctx)
 	}
 	return state, nil
 }
@@ -743,13 +750,18 @@ func (s *TranslucentTBService) InstallMsix(version string) error {
 		return fmt.Errorf("TranslucentTB %s 上游无可用打包形态（仅收录带 bundle.msixbundle 资产且有官方摘要的版本）", version)
 	}
 
+	// 进度通道（2026-09-27 机主撞账"点装打包版后全程无反馈"补线；同步 RPC
+	// 语义原样不动，事件只喂 UI）：错误路径经 failMsixInstall 收口 error 档，
+	// error 载荷自带归因后完整话术——前端失败横幅/孤儿钮与此事件同屏不冲突。
+	emitMsixProgress(MsixProgress{Stage: "preparing", Message: "准备安装包（查缓存/下载校验）…"})
 	prepareCtx, prepareCancel := context.WithTimeout(context.Background(), msixPrepareTimeout)
 	defer prepareCancel()
-	path, err := s.msix.PreparePackage(prepareCtx, version, logMsixPrepareProgress)
+	path, err := s.msix.PreparePackage(prepareCtx, version, relayMsixPrepareProgress)
 	if err != nil {
-		return failMsix("安装包准备", fmt.Errorf("TranslucentTB %s 安装包准备失败: %w", version, err))
+		return failMsixInstall("安装包准备", fmt.Errorf("TranslucentTB %s 安装包准备失败: %w", version, err))
 	}
 
+	emitMsixProgress(MsixProgress{Stage: "deploying", Message: "Windows 正在部署包（注册中，此段无百分比反馈）…"})
 	deployCtx, deployCancel := context.WithTimeout(context.Background(), msixDeployTimeout)
 	defer deployCancel()
 	// ExpectedVersion 交脚本侧精确核对：上游发布 tag 恒映射四段 "<tag>.0.0"
@@ -761,17 +773,18 @@ func (s *TranslucentTBService) InstallMsix(version string) error {
 		ExpectedVersion: version + ".0.0",
 		AllowDowngrade:  true,
 	}); err != nil {
-		return failMsix("安装", err)
+		return failMsixInstall("安装", err)
 	}
 
 	pkg, err := s.packages.Query(deployCtx, msixIdentity)
 	if err != nil {
-		return failMsix("安装后回查", err)
+		return failMsixInstall("安装后回查", err)
 	}
 	if pkg == nil || normalizeMsixVersion(pkg.Version) != version {
-		return failMsix("安装后核对", fmt.Errorf("TranslucentTB 安装完成后系统注册版本不是 %s（实际 %s）", version, msixVersionOrEmpty(pkg)))
+		return failMsixInstall("安装后核对", fmt.Errorf("TranslucentTB 安装完成后系统注册版本不是 %s（实际 %s）", version, msixVersionOrEmpty(pkg)))
 	}
 	// 成功路径末尾无需刷新任何包状态缓存：GetMsixState 本就是实查（无缓存可刷）。
+	emitMsixProgress(MsixProgress{Stage: "done", Percent: 100, Message: "打包版已安装"})
 	return nil
 }
 
@@ -854,10 +867,45 @@ func (s *TranslucentTBService) LaunchMsix() error {
 	return nil
 }
 
-// logMsixPrepareProgress 版本线下载进度回调的服务侧落点：Debug 日志
-// （同步调用面，前端进度契约不在本轮冻结范围，不造幻影事件）。
-func logMsixPrepareProgress(percent float64, stage string) {
-	slog.Debug("translucenttb msix prepare", "percent", percent, "stage", stage)
+// msixProgressEmit 事件广播缝（package 级便于单测捕获时序；生产形经 Wails
+// application 广播 translucenttb:msix-progress，app 未装配/无事件面静默跳过，
+// 与 emitInstanceState 同一 nil-guard 纪律）。
+var msixProgressEmit = func(p MsixProgress) {
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("translucenttb:msix-progress", p)
+	}
+}
+
+// emitMsixProgress Debug 落账与事件广播同行——toast 之外的取证口径不变。
+func emitMsixProgress(p MsixProgress) {
+	slog.Debug("translucenttb msix progress", "stage", p.Stage, "percent", p.Percent, "message", p.Message)
+	msixProgressEmit(p)
+}
+
+// relayMsixPrepareProgress 版本线 PreparePackage 进度回调的服务侧转投：
+// downloading/verify-sha256 原样上行（percent 有真值）；版本线终笔 "done"
+// 是"准备完成"不是"安装完成"，吞掉不发——紧随其后的 deploying 档接管语义，
+// 防 UI 把中间态读成收口。未知阶段词如实透传（宁多不漏，前端按 stage 分流）。
+func relayMsixPrepareProgress(percent float64, stage string) {
+	message := ""
+	switch stage {
+	case "downloading":
+		message = "下载安装包…"
+	case "verify-sha256":
+		message = "校验官方摘要…"
+	case "done":
+		return
+	}
+	emitMsixProgress(MsixProgress{Stage: stage, Percent: percent, Message: message})
+}
+
+// failMsixInstall 仅 InstallMsix 的失败收口：先走 failMsix（中文归因 + WARN
+// 留痕，口径逐字不变），再把归因后完整话术以 error 档进度事件补发给 UI
+// ——失败文案与孤儿档「🧹 清理后重试」联动同源于这一段文本，不另造词表。
+func failMsixInstall(op string, err error) error {
+	attributed := failMsix(op, err)
+	emitMsixProgress(MsixProgress{Stage: "error", Message: attributed.Error()})
+	return attributed
 }
 
 // normalizeMsixVersion 把系统注册四段版本 "<发布号>.0.0" 归一回发布号两段
@@ -889,14 +937,21 @@ type msixFailureError struct {
 func (e *msixFailureError) Error() string { return e.message }
 func (e *msixFailureError) Unwrap() error { return e.cause }
 
-// msixInfraGuide 包注册基础设施缺失族（0x80073CF6 注册失败 / 0x80073D05 内部错 /
-// 0x80073CF3 部署失败）的统一指路话术。实证来路：机主瘦系统实跑 InstallMsix 捕获
-// 0x80073CF6+内部 0x80073D05——该机微软商店缺席、AppModelUnlock 侧载/开发者模式键
-// 从未存在、部署事件日志通道都不存在，注册不了任何新 appx；话术先给唯一可试的
-// 系统级开关（开发者模式），开不动就如实判死刑并指回便携版（本就是正解）。
-const msixInfraGuide = "本系统缺少包注册基础设施（微软商店/侧载授权缺失），可在 设置→系统→对于开发人员 开启开发者模式后重试；仍失败则本机打包线不可用，便携版即正解"
+// msixInfraGuide 包注册基础设施缺失档（0x80073CF6 注册失败 / 0x80073D05 内部错
+// 且**无孤儿数据伴生指纹**）的指路话术。2026-09-27 机主真机复验改判：原话术
+// "开启开发者模式后重试"系实锤冤枉路——同机孤儿数据改名隔离后未开开发者模式
+// 直接 INSTALL-OK，本档不再指路开发者模式，只陈述事实判定并兜底回便携版
+// （本就是正解）；有孤儿伴生指纹的场景走 msixOrphanGuide 档，不在此列。
+const msixInfraGuide = "本系统缺少包注册基础设施（微软商店/侧载部署栈残缺），本机打包线不可用，便携版即正解"
 
-// msixInfraFailure 识别基础设施族指纹：CF6/D05 出现在 HResult 或原始 Detail
+// msixOrphanGuide 上次安装孤儿数据阻碍注册档话术（2026-09-27 现网事故真因，
+// 判据见 msixOrphanFailure）。稳定标记短语「检测到上次安装的孤儿数据阻碍注册」
+// 同时是前端判档放钮暗号（frontend/src/adapters/translucenttb.ts
+// MSIX_ORPHAN_MARKER 同文钉死，改词必须两侧同步 + 两线 spec 回归）——
+// 前端据此在失败回执上追加「🧹 清理后重试」钮（清理=改名隔离，见 msix_orphan.go）。
+const msixOrphanGuide = "检测到上次安装的孤儿数据阻碍注册：包族已不在册，但 %LOCALAPPDATA%\\Packages 下残留的旧应用数据挡住了部署链的'删旧数据'步骤（缺组件删不动）；点「🧹 清理后重试」把孤儿数据改名隔离（备份 .orphan-日期，不删内容、可手动删除）后重装"
+
+// msixInfraFailure 基础设施族指纹：CF6/D05 出现在 HResult 或原始 Detail
 // （Detail 全文判定，不受话术尾部截断影响）。CF3 由脚本通道归入
 // CodeDependency，在归因表里并入依赖缺失话术并附带本指引。
 func msixInfraFailure(perr *apppackage.Error) bool {
@@ -904,10 +959,39 @@ func msixInfraFailure(perr *apppackage.Error) bool {
 	return strings.Contains(fingerprint, "0X80073CF6") || strings.Contains(fingerprint, "0X80073D05")
 }
 
+// msixOrphanFailure 孤儿数据档判据（收紧分流的落点）：基础设施码 CF6/D05
+// **伴生**部署链"删旧应用数据"步骤的现场指纹才算——
+//
+//	① 0x800703FA（该步骤缺组件首发码，机主真机实证链首环）；
+//	② 「删除…应用程序数据」字样（zh-CN 系统该步骤失败话术，两锚点同文即中，
+//	   真机原文"删除程序包先前已有的应用程序数据时出错"）；
+//	③ 「注册 windows.stateExtension」字样（孤儿态注册该扩展失败标记，
+//	   中英"注册/Register"锚任选与 stateExtension 同文）。
+//
+// 仅 CF6/D05 无伴生 → 维持基础设施档（两档分流由 describeMsixFailure 的
+// case 序保证，孤儿档在前）。Detail 全文匹配口径（不吃 200-rune 话术截尾）。
+func msixOrphanFailure(perr *apppackage.Error) bool {
+	if !msixInfraFailure(perr) {
+		return false
+	}
+	fingerprint := strings.ToUpper(perr.HResult + " " + perr.Detail)
+	switch {
+	case strings.Contains(fingerprint, "0X800703FA"):
+		return true
+	case strings.Contains(fingerprint, "删除") && strings.Contains(fingerprint, "应用程序数据"):
+		return true
+	case strings.Contains(fingerprint, "WINDOWS.STATEEXTENSION") &&
+		(strings.Contains(fingerprint, "注册") || strings.Contains(fingerprint, "REGISTER")):
+		return true
+	}
+	return false
+}
+
 // describeMsixFailure 把 apppackage 通道错误包一层 TranslucentTB 语境的中文归因：
 // 通道自带中文 Message，此处拼接输出尾部明细（Detail 最后一行截断）与 HResult，
-// 对包注册基础设施缺失/依赖缺失/签名无效三类高频部署失败补针对性指引；
-// 原文经 Unwrap 保留，调用方仍可分支错误码。
+// 对上次安装孤儿数据阻碍/包注册基础设施缺失/依赖缺失/签名无效四类高频部署失败
+// 补针对性指引；原文经 Unwrap 保留，调用方仍可分支错误码。
+// case 序即分流序：孤儿档（CF6/D05 伴生删数据指纹）必须先于基础设施档命中。
 func describeMsixFailure(op string, err error) error {
 	var perr *apppackage.Error
 	if !errors.As(err, &perr) {
@@ -922,6 +1006,8 @@ func describeMsixFailure(op string, err error) error {
 	}
 	hint := ""
 	switch {
+	case msixOrphanFailure(perr):
+		hint = "；" + msixOrphanGuide
 	case msixInfraFailure(perr):
 		hint = "；" + msixInfraGuide
 	case perr.Code == apppackage.CodeDependency:

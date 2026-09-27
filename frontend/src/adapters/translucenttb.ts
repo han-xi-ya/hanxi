@@ -27,7 +27,14 @@
 //    bindings 待主会话统一再生——调用失败（含再生缺席）一律静默落 unavailable，
 //    区块降级单行、便携线零感知。AV 鉴别钮升级为双语义（pickAVProbe）：打包线
 //    预读可用且崩溃版本有 .msixbundle 资产 → 优先「⬇ 装打包版对照（#85 鉴别）」，
-//    否则逐字回退原「⬇ 装 X 试」降级候选，两语义共存一位。
+//    否则逐字回退原「⬇ 装 X 试」降级候选，两语义共存一位；
+//  - 2026-09-27 机主实证三件套（本批追加）：①安装进度事件
+//    translucenttb:msix-progress（{stage,percent,message}，仅喂 UI，同步 RPC
+//    语义与 busy 单飞闩不变）；②打包安装失败回执孤儿档（归因短语同文钉
+//    MSIX_ORPHAN_MARKER）× 服务端 orphans 探测双闸 → 打包区块追加
+//    「🧹 清理后重试」钮（danger 确认点名精确路径，后端动作=改名隔离非删除）；
+//    ③external banner 分形态——打包版在册时不再喊"外部实例（非托管）"，
+//    改发"已由 Hanxi 唤起、生命周期归 Windows"ok 档（预读缺席保守回原文案）。
 // ============================================================================
 
 import { computed, ref } from 'vue'
@@ -39,6 +46,8 @@ import * as SysInfoAPI from '../../bindings/hanxi/internal/modules/sysinfo/sysin
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
+import { getErrorMessage } from '../utils/errors'
+import { compareStrict } from '../utils/version'
 import type {
   ManagedActionResult,
   ManagedModuleAdapter,
@@ -97,17 +106,15 @@ export function virtualArtifactWording(arts: TBVirtualArtifacts): string {
   return `。另检见${parts.join('与')}（在场事实）——与本机崩溃特征高度吻合（踩坑 #85），建议设备管理器禁用该显示器验证`
 }
 
-/** YYYY.N 数值分段比较（与后端 versioncmp 同域）；任一侧非纯数字段版本回 null=不可比。 */
+/**
+ * YYYY.N 数值分段比较（与后端 versioncmp 同域）；任一侧非纯数字段版本回 null=不可比。
+ * 版本比较器统一波收编为 utils/version compareStrict 薄包装：本件语义本就同形
+ * （全长补零 + 非规范 null），null 纪律自此升格为全局标准；归一化新增的 trim 与
+ * `^v(?=\d)/i` 剥离对 TB 目录名（恒裸数字起头、无预发布 v 形态）是恒等变换。
+ * pickDowngradeTarget 的 null 消费（`?? 0` / `?? -1` 两向兜底）逐字不动。
+ */
 export function cmpTBVersion(a: string, b: string): number | null {
-  if (!/^\d+(\.\d+)*$/.test(a) || !/^\d+(\.\d+)*$/.test(b)) return null
-  const pa = a.split('.').map(Number)
-  const pb = b.split('.').map(Number)
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] ?? 0
-    const y = pb[i] ?? 0
-    if (x !== y) return x > y ? 1 : -1
-  }
-  return 0
+  return compareStrict(a, b)
 }
 
 /**
@@ -152,6 +159,35 @@ export interface TBMsixState {
   version: string
   packageFamily: string
   cache: TBMsixCacheEntry[] | null
+  /** 上次安装孤儿数据在场且全用户查无注册（服务端只读三道闸探测口径）。 */
+  orphans?: boolean
+  /** 孤儿精确目录路径（orphans=true 时给出，确认框点名用）。 */
+  orphanPath?: string
+}
+
+/** 打包安装进度事件 translucenttb:msix-progress 载荷（与后端 MsixProgress 同构）。 */
+export interface TBMsixProgress {
+  stage: 'preparing' | 'downloading' | 'verify-sha256' | 'deploying' | 'done' | 'error' | string
+  percent: number
+  message: string
+}
+
+/** 打包安装最近一次失败回执（orphan=归因表孤儿档；驱动「🧹 清理后重试」钮出现）。 */
+export interface TBMsixInstallFailure {
+  message: string
+  orphan: boolean
+}
+
+/**
+ * 后端孤儿数据档归因的稳定标记短语——与 internal/modules/translucenttb
+ * service.go msixOrphanGuide 同文钉：改词必须两侧同步 + 两线 spec 回归。
+ * 失败回执（toast 裸串与 msix-progress error 档同源文本）含此短语即孤儿档。
+ */
+export const MSIX_ORPHAN_MARKER = '检测到上次安装的孤儿数据阻碍注册'
+
+/** 打包安装失败回执是否孤儿数据档（视图据此决定是否进双闸判据）。 */
+export function isMsixOrphanAttribution(message: string): boolean {
+  return message.includes(MSIX_ORPHAN_MARKER)
 }
 
 /** 打包线表面：视图直读 refs 渲染区块，动词回 ManagedActionResult 由视图统一弹收。 */
@@ -162,6 +198,16 @@ export interface TBMsixSurface {
   readonly unavailable: Ref<boolean>
   /** 在途单飞闩（InstallMsix 含下载校验可数十秒；与 store.busy 并列禁点）。 */
   readonly busy: Ref<boolean>
+  /** 最近一笔 translucenttb:msix-progress（busy 期间驱动进度行；动词落定即清）。 */
+  readonly progress: Ref<TBMsixProgress | null>
+  /** 打包安装最近一次失败回执（null=最近一笔成功或还没装过）。 */
+  readonly installFailure: Ref<TBMsixInstallFailure | null>
+  /**
+   * 孤儿清理钮双闸判据（两闸缺一不出现）：最近失败归因=孤儿数据档 且
+   * 服务端只读探测坐实孤儿在场（state.orphans）——防"话术像孤儿但机器上
+   * 其实没有/已在册"时给出危险的误导钮。
+   */
+  readonly orphanRetry: ComputedRef<boolean>
   /** AV 对照钮前置门：预读成功且打包版未装（预读未回/失败恒 false=便携线零变化）。 */
   readonly probeReady: ComputedRef<boolean>
   /** 预读/重读区块事实；任何失败静默落 unavailable，不抛不 toast。 */
@@ -175,6 +221,12 @@ export interface TBMsixSurface {
   uninstall(): Promise<ManagedActionResult>
   /** 移除指定版本安装包缓存；运行中被后端拦截时错误原样上抛（视图裸串 toast）。 */
   removeCache(version: string): Promise<ManagedActionResult>
+  /**
+   * 孤儿数据清理（2026-09-27 机主事故改判件）：danger 确认点名服务端给的
+   * 精确路径 → CleanMsixOrphan（后端实际动作=改名隔离非删除）→ 成功回执
+   * 指引再点安装；后端三道闸拒动时错误原样上抛。
+   */
+  cleanOrphan(): Promise<ManagedActionResult>
 }
 
 /** 托管 adapter + 模块私有打包线槽（共享契约装不下的双形态方言，视图直消费）。 */
@@ -250,6 +302,23 @@ export function createTBAdapter(): TBAdapter {
   const msixBusy = ref(false)
   const msixProbeReady = computed(() => !!msixState.value && !msixState.value.installed)
 
+  // 打包安装进度通道（机主撞账"全程无反馈"补线）：事件仅喂 UI，动词同步
+  // 语义与单飞闩不变；createTBAdapter 恒在视图 setup 同步期执行，
+  // useWailsEvent 随作用域自动注销（绑定再生缺席时事件本就不来，静默无感）。
+  const msixProgress = ref<TBMsixProgress | null>(null)
+  useWailsEvent<TBMsixProgress>('translucenttb:msix-progress', (p) => {
+    if (!p || typeof p.stage !== 'string') return
+    msixProgress.value = p
+  })
+
+  // 孤儿清理钮双闸：失败归因档（话术侧）× 服务端在场探测（事实侧）同时为真
+  // 才出现；成功安装/成功清理即撤走（installFailure 清空），orphans 由
+  // 失败/清理后的 finally 重读自动翻假。
+  const msixInstallFailure = ref<TBMsixInstallFailure | null>(null)
+  const msixOrphanRetry = computed(
+    () => msixInstallFailure.value?.orphan === true && msixState.value?.orphans === true,
+  )
+
   async function msixRefresh(): Promise<void> {
     try {
       const s = (await TBAPI.GetMsixState()) as TBMsixState | null
@@ -261,25 +330,36 @@ export function createTBAdapter(): TBAdapter {
     }
   }
 
-  /** 打包动词单飞闩：busy 复入回空回执（钮已禁用，此为最后防线）；回执交调用方弹收。 */
+  /** 打包动词单飞闩：busy 复入回空回执（钮已禁用，此为最后防线）；回执交调用方弹收；落定清进度行。 */
   async function msixExclusive(run: () => PromiseLike<ManagedActionResult>): Promise<ManagedActionResult> {
     if (msixBusy.value) return {}
     msixBusy.value = true
+    msixProgress.value = null // 起量先清账：防迟到旧事件在钮刚按下时闪现成"新进度"
     try {
       return await run()
     } finally {
       msixBusy.value = false
+      msixProgress.value = null
     }
   }
 
-  /** InstallMsix 共同链路（确认与文案差异在调用位）：成败均重读区块——失败笔也可能留下已校验缓存。 */
+  /**
+   * InstallMsix 共同链路（确认与文案差异在调用位）：成败均重读区块——失败笔
+   * 也可能留下已校验缓存，孤儿在场与否也要以重读后的 orphans 为事实源；
+   * 失败回执（含后端归因全句）入账供孤儿钮双闸判据，成功即销账。
+   */
   function msixInstall(version: string, okMessage: string): Promise<ManagedActionResult> {
     return msixExclusive(async () => {
       try {
         await TBAPI.InstallMsix(version)
+      } catch (e) {
+        const message = getErrorMessage(e)
+        msixInstallFailure.value = { message, orphan: isMsixOrphanAttribution(message) }
+        throw e
       } finally {
         await msixRefresh()
       }
+      msixInstallFailure.value = null
       return { message: okMessage }
     })
   }
@@ -395,9 +475,17 @@ export function createTBAdapter(): TBAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥；文案逐字保留）
+    // 条件提示条（三个变体互斥；文案逐字保留）。external 档内再分形态
+    // （2026-09-27 机主实拍改判）：打包版在册时检到的 external 极可能就是
+    // 本页刚唤起的打包实例——"外部/非托管"话术是便携实例语义，照抄会误导
+    // 用户去找不存在的"退出托管"义务；合成判据只用已有事实（msix 预读的
+    // installed × 引擎快照 state），服务端零改动；预读未回/失败回原话术
+    // （保守：不臆断来源）。
     banner: (s) => {
       if (s.state === 'external') {
+        if (msixState.value?.installed) {
+          return { tone: 'ok', text: '打包版 TranslucentTB 正在运行（已由 Hanxi 唤起）：打包版生命周期归 Windows，Hanxi 不代管其退出——需要停止可在其托盘菜单退出，或回本页「打包版（系统管理）」区卸载。' }
+        }
         return { tone: 'warn', text: '检测到外部 TranslucentTB 实例（非 Hanxi 托管）。可重设任务栏状态；如需彻底退出请在 TranslucentTB 托盘菜单操作。' }
       }
       if (s.state === 'failed') {
@@ -465,6 +553,9 @@ export function createTBAdapter(): TBAdapter {
       state: msixState,
       unavailable: msixUnavailable,
       busy: msixBusy,
+      progress: msixProgress,
+      installFailure: msixInstallFailure,
+      orphanRetry: msixOrphanRetry,
       probeReady: msixProbeReady,
       refresh: msixRefresh,
       async installFromRelease(version) {
@@ -515,6 +606,30 @@ export function createTBAdapter(): TBAdapter {
             await msixRefresh()
           }
           return { message: `已移除打包版安装包缓存 ${version}` }
+        })
+      },
+      async cleanOrphan() {
+        // 路径点名取服务端只读探测的实值（不前端拼路径——机器事实单一源）；
+        // 后端三道闸（无注册+在场+指纹留档）在 RPC 内再走一遍全量，话术
+        // 如实陈述"改名隔离、不删内容、可手动删备份"。
+        const orphanPath = msixState.value?.orphanPath ?? ''
+        const accepted = await confirm({
+          title: '清理打包版孤儿数据？',
+          description:
+            `即将处理上次安装失败点名的孤儿应用数据目录：\n${orphanPath}\n` +
+            '这是上次卸载的孤儿残留——已核实该包族按全用户口径无任何注册。处理方式是整体改名隔离（备份为 *.orphan-日期 目录，不删除任何内容、可逆；确认无误后可手动删除备份），完成后即可重装。便携版文件与安装包缓存均不受影响；若包实际仍在册或探测受阻，后端会拒绝隔离并如实报因。',
+          tone: 'danger',
+          confirmLabel: '隔离清理',
+        })
+        if (!accepted) return {}
+        return msixExclusive(async () => {
+          try {
+            await TBAPI.CleanMsixOrphan()
+          } finally {
+            await msixRefresh()
+          }
+          msixInstallFailure.value = null
+          return { message: '清理完成——已隔离旧数据（备份 *.orphan-日期，可手动删除），请再点安装' }
         })
       },
     },

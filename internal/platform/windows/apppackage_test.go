@@ -72,6 +72,47 @@ func TestAppPackageQueryUsesJSONProtocol(t *testing.T) {
 	}
 }
 
+// TestAppPackageQueryAllUsersPresence 全用户探测通道：请求走 queryallusers
+// 操作；在册与否完全由脚本回包 package 字段有无决定（存在性口径），查询失败
+// 原样回错误——调用方（translucenttb 孤儿闸）必须按"无法证明"保守处理。
+func TestAppPackageQueryAllUsersPresence(t *testing.T) {
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "powershell.exe")
+	if err := os.WriteFile(exe, []byte("stub"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	identity := apppackage.Identity{Name: "pkg", Family: "pkg_family", Publisher: "CN=test", AppID: "App"}
+
+	fake := &fakeAppPackageExecutor{response: func(req appPackageRequest) appPackageResponse {
+		return appPackageResponse{ProtocolVersion: appPackageProtocolVersion, RequestID: req.RequestID, OK: true,
+			Result: appPackageResult{Package: &apppackage.Package{Name: "pkg"}}}
+	}}
+	api := &windowsAppPackageAPI{executable: exe, executor: fake}
+	registered, err := api.IsRegisteredAllUsers(context.Background(), identity)
+	if err != nil || !registered {
+		t.Fatalf("有包应判在册: %v %v", registered, err)
+	}
+	var req appPackageRequest
+	if err := json.Unmarshal(fake.gotInput, &req); err != nil || req.Operation != "queryallusers" {
+		t.Fatalf("操作名未走全用户通道: %+v err=%v", req, err)
+	}
+
+	fake.response = func(req appPackageRequest) appPackageResponse {
+		return appPackageResponse{ProtocolVersion: appPackageProtocolVersion, RequestID: req.RequestID, OK: true}
+	}
+	if registered, err = api.IsRegisteredAllUsers(context.Background(), identity); err != nil || registered {
+		t.Fatalf("无包应判不在册: %v %v", registered, err)
+	}
+
+	fake.response = func(req appPackageRequest) appPackageResponse {
+		return appPackageResponse{ProtocolVersion: appPackageProtocolVersion, RequestID: req.RequestID, OK: false,
+			Error: &appPackageScriptError{Code: apppackage.CodeDeployment, Message: "全用户枚举被拒"}}
+	}
+	if _, err = api.IsRegisteredAllUsers(context.Background(), identity); err == nil {
+		t.Fatal("探测失败必须回错误，不得静默当无册")
+	}
+}
+
 func TestAppPackageRejectsInvalidPath(t *testing.T) {
 	api := &windowsAppPackageAPI{}
 	_, err := api.Install(context.Background(), apppackage.InstallOptions{

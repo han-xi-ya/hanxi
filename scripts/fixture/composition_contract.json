@@ -328,6 +328,7 @@
     "termora:instance-state",
     "termora:version-download",
     "translucenttb:instance-state",
+    "translucenttb:msix-progress",
     "translucenttb:version-download",
     "tray:navigate",
     "updates:checked",
@@ -433,6 +434,6 @@
   },
   "counts": {
     "modules": 49,
-    "events": 95
+    "events": 96
   }
 }

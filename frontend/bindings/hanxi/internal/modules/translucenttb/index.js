@@ -15,8 +15,20 @@ import * as $models from "./models.js";
  */
 
 /**
- * MsixState 打包形态"当前用户注册状态 + 本地容器缓存清单"的合并快照
- * （GetMsixState 返回值；注册状态实时查询无缓存，缓存清单来自版本线磁盘枚举）。
+ * MsixProgress 打包版安装进度事件 translucenttb:msix-progress 的载荷
+ * （2026-09-27 机主撞账"装打包版全程无反馈"补通道；同步 RPC 语义不变，
+ * 事件只喂 UI）。Stage 词表 preparing | downloading | verify-sha256 |
+ * deploying | done | error（与版本线 Prepare 阶段词同源，deploying/error
+ * 由服务面补档）；Percent 仅下载段有真值，不确定态（deploying 等）为 0，
+ * error 档 Message 自带归因后完整话术（孤儿档短语即在此通道出货）。
+ * @typedef {$models.MsixProgress} MsixProgress
+ */
+
+/**
+ * MsixState 打包形态"当前用户注册状态 + 本地容器缓存清单 + 孤儿应用数据
+ * 探测"的合并快照（GetMsixState 返回值；注册状态实时查询无缓存，缓存清单
+ * 来自版本线磁盘枚举，孤儿探测见 probeMsixOrphanData——只读三道闸口径，
+ * <族名>.orphan-* 隔离备份不算孤儿）。
  * Version 归一化为发布号两段形态（2026.2.0.0 → 2026.2，实证规则见
  * normalizeMsixVersion 注释），与版本线列表行同一比较口径。
  * @typedef {$models.MsixState} MsixState

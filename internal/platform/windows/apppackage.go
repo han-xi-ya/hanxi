@@ -120,6 +120,24 @@ func (a *windowsAppPackageAPI) Install(ctx context.Context, options apppackage.I
 	return resp.Result.Package, nil
 }
 
+// IsRegisteredAllUsers 按"整机任意用户"口径探测包族在册事实（脚本通道
+// queryallusers 操作，Get-AppxPackage -AllUsers）：供 translucenttb 打包版
+// 孤儿数据闸使用——"当前用户查无"不等于"整机无主"，删/挪残留前必须按
+// 全用户口径核实。本方法是 apppackage.API 之外的可选能力（消费侧接缝接口
+// 声明在模块层，不扩必选面——nanaZip/earTrumpet 等既有实现与替身零改动）；
+// 查询失败（PowerShell 缺席、非管理员下 -AllUsers 受限、多用户枚举出错等）
+// 回错误，调用方必须按"无法证明无注册"保守处理（拒动），不得静默当无册。
+func (a *windowsAppPackageAPI) IsRegisteredAllUsers(ctx context.Context, identity apppackage.Identity) (bool, error) {
+	if err := validateIdentity(identity); err != nil {
+		return false, err
+	}
+	resp, err := a.run(ctx, appPackageRequest{Operation: "queryallusers", Identity: identity})
+	if err != nil {
+		return false, err
+	}
+	return resp.Result.Package != nil, nil
+}
+
 // Uninstall 按包完整名称卸载。packageFullName 来自 Query 结果，此处仅做通配符/换行注入防护，
 // 不重复校验其与 identity 的一致性（以脚本侧 Remove-AppxPackage 匹配为准）。
 func (a *windowsAppPackageAPI) Uninstall(ctx context.Context, identity apppackage.Identity, packageFullName string) error {

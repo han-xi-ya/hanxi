@@ -57,6 +57,23 @@ function Find-ExactPackage($identity) {
     return $matches[0]
 }
 
+# 全用户在册探测（queryallusers）：孤儿应用数据判定必须覆盖"当前用户没注册
+# 但别的用户/系统仍在册"形态，故按 Get-AppxPackage -AllUsers 口径存在性探测。
+# 与 Find-ExactPackage 的差异：多用户同持注册是合法形态，取任一即"在册"，
+# 不做 count>1 歧义抛错；-EA Stop 让任何枚举失败显性上抛（调用方按
+# "无法证明无注册"保守拒删，绝不把静默漏报当在册探测成功）。
+function Find-ExactPackageAllUsers($identity) {
+    $matches = @(Get-AppxPackage -AllUsers -ErrorAction Stop | Where-Object {
+        $_.Name -ceq [string]$identity.name -and
+        $_.PackageFamilyName -ceq [string]$identity.family -and
+        $_.Publisher -ceq [string]$identity.publisher -and
+        -not $_.IsFramework -and
+        -not $_.IsResourcePackage
+    })
+    if ($matches.Count -eq 0) { return $null }
+    return $matches[0]
+}
+
 function New-ScriptError($record) {
     $exception = $record.Exception
     $hresult = ''
