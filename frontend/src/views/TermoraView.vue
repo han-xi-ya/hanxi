@@ -29,10 +29,3 @@ const adapter = createTermoraAdapter()
     </details>
   </ManagedConsoleShell>
 </template>
-
-<style scoped>
-/* 页头/控制条/版本区/联动卡/页签与 flex 骨架全部由 managed 组件 + components.css 全局原子接管；
-   本页仅余说明卡内联链接这一私有形 */
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
-</style>

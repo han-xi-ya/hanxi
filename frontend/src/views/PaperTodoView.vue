@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// PaperTodo 便签托管工作台（Wave 5 · 批 0 · variant 槽实战）：
+// PaperTodo 便签托管工作台（Wave 5 · 批 0 · variant 槽实战；波 2D 迁壳件）：
 // 业务投影（RPC/事件/文案/确认输入/变体偏好/运行时探测）全部收进
-// src/adapters/papertodo，本视图仅剩壳骨装配 + variant 槽 UI。
-// 未整体套 ManagedConsoleShell：批 0 壳在版本页签无插槽，而「下载变体」
-// 选择卡（variant 槽）必须落在版本面板之前——故按壳的槽位契约手工装配
-// 同形骨架（PageHeader + MainTabNav + error-box + tab-body），
-// ManagedControlBar / ManagedVersionPanel / ManagedExtrasCard 三件共享
-// 一份 useManagedConsole store（无重复轮询/订阅）。
+// src/adapters/papertodo，本视图仅剩 variant 槽 UI 与少量胶水。
+// 波 2D 迁壳：批 0 壳在版本页签无前置插槽、变体卡只能落壳外手抄壳骨的历史
+// 缺口已由 #versions-prepend 补齐——页头+页签+error-box+tab-body 手抄骨架
+// 退役，视图自建 useManagedConsole（变体切换/换装要 setup 期句柄）传壳 :store；
+// 收拢纸片改走 store.runReset 正主编排，busy 闩从视图本地 hideBusy 归一到
+// store.busy（已批准的闩归一点：钮 disabled 源同步换，单飞真相与启停/下载共栈）。
 // 变体折算（详见 adapter 头注）：listInstalled 退化 0/1、双变体表收敛为
 // 「当前变体单列下载 + 变体卡换装入口」；GetRuntimeStatus 经快照扩展字段
 // 回流本视图做可用性注记；收拢纸片（adapter.reset，dismiss 族动词）经
@@ -15,26 +15,14 @@ import { computed, onMounted, ref } from 'vue'
 import * as PaperAPI from '../../bindings/hanxi/internal/modules/papertodo/papertodoservice'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
-import PageHeader from '../components/ui/PageHeader.vue'
-import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiButton from '../components/ui/UiButton.vue'
-import ManagedControlBar from '../components/managed/ManagedControlBar.vue'
-import ManagedVersionPanel from '../components/managed/ManagedVersionPanel.vue'
-import ManagedExtrasCard from '../components/managed/ManagedExtrasCard.vue'
+import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import { useManagedConsole } from '../components/managed/store'
 import { createPaperTodoAdapter, variantName, type PaperSnapshot, type PaperVariant } from '../adapters/papertodo'
 
 const adapter = createPaperTodoAdapter()
 const store = useManagedConsole(adapter)
 const { showToast } = useToast()
-
-// 顶层主选项卡：console = 控制台，versions = 版本管理（与 ccswitch/markeron 同构）
-const activeMainTab = ref<'console' | 'versions'>('console')
-
-const MAIN_TABS = [
-  { key: 'console', label: '📄 控制台' },
-  { key: 'versions', label: '📦 版本管理' },
-]
 
 // ---------- variant 槽视图态：adapter.variant 为唯一事实源，本地 ref 只做投影 ----------
 const variant = ref<PaperVariant>('self-contained')
@@ -85,20 +73,12 @@ function splitOptLabel(label: string): [string, string] {
   return i < 0 ? [label, ''] : [label.slice(0, i), label.slice(i)]
 }
 
-// ---------- 收拢纸片（dismiss 族动词收在 adapter.reset，此处置钮+回执） ----------
-// busy 闩为视图本地（共享 store.busy 只包 primary/quit/import 等声明动词）
-const hideBusy = ref(false)
-async function hidePapers() {
-  if (hideBusy.value) return
-  hideBusy.value = true
-  try {
-    const res = await adapter.reset.run()
-    if (res.message !== undefined) showToast(res.message)
-  } catch (e) {
-    showToast(getErrorMessage(e)) // 裸错误串（无前缀，迁移前口径）
-  } finally {
-    hideBusy.value = false
-  }
+// ---------- 收拢纸片（dismiss 族动词收在 adapter.reset）----------
+// 走 store.runReset 正主编排（波 2A 契约）：缺省档成败两分支均不刷快照、
+// 失败裸错误串（无前缀，迁移前口径逐字）、单飞共用 store.busy 闩——
+// 视图本地 hideBusy 接线器退役。
+function hidePapers() {
+  void store.runReset()
 }
 
 // ---------- Releases 页直达：契约 repo 槽只有 open，上游页直连为视图胶水 ----------
@@ -112,52 +92,43 @@ async function openReleases() {
 </script>
 
 <template>
-  <section class="page papertodo-view">
-    <PageHeader
-      title="PaperTodo 便签"
-      subtitle="托管极简桌面便签 PaperTodo：官方绿色单文件双变体下载、单目录覆盖升级（便签数据永不迁移）、JobObject 启停；唤窗/收拢/退出走上游官方命令通道。"
-    >
-      <template #actions>
-        <MainTabNav v-model="activeMainTab" :tabs="MAIN_TABS" />
-      </template>
-    </PageHeader>
+  <ManagedConsoleShell
+    class="papertodo-view"
+    :adapter="adapter"
+    :store="store"
+    title="PaperTodo 便签"
+    subtitle="托管极简桌面便签 PaperTodo：官方绿色单文件双变体下载、单目录覆盖升级（便签数据永不迁移）、JobObject 启停；唤窗/收拢/退出走上游官方命令通道。"
+    console-tab-label="📄 控制台"
+  >
+    <!-- #primary-action 既有控制位（壳转发）：唤回(primary)与退出(quit)之间插
+         「收拢纸片」；disabled 的闩源 = store.busy（波 2D 闩归一） -->
+    <template #primary-action>
+      <UiButton
+        variant="secondary"
+        small
+        :disabled="store.busy || (store.state !== 'running' && !store.isExternal)"
+        title="收拢全部纸片（hide 命令，托盘与双击召回不受影响）"
+        @click="hidePapers"
+      >🗜 收拢纸片</UiButton>
+    </template>
 
-    <div v-if="store.listError" class="error-box">{{ store.listError }}</div>
+    <!-- 控制台 Tab 主体（壳默认具位）：说明卡（可折叠） -->
+    <details class="info-details">
+      <summary class="info-summary">什么是 PaperTodo</summary>
+      <div class="info-body">
+        <p>极简 Windows 桌面便签（<a class="inline-link" href="https://github.com/snownico0722/PaperTodo" target="_blank" rel="noopener">snownico0722/PaperTodo</a>，PolyForm Noncommercial 个人可用）：待办纸 + 笔记纸，每张纸独立悬浮窗口，内容自动保存，边缘胶囊收纳。WPF/.NET 原生，无账号无联网。</p>
+        <p class="hint-dim">许可证禁止组织统一分发——Hanxi 仅托管"你这台机器直接从官方 Releases 下载原版"的流程，不内嵌、不再分发任何二进制。</p>
+      </div>
+    </details>
 
-    <!-- 控制台 Tab：状态灯/五态词/banner/hint/启停钮全部由共享控制条按 adapter 投影渲染 -->
-    <div v-show="activeMainTab === 'console'" class="tab-body">
-      <ManagedControlBar :adapter="adapter" :store="store" banner-slim>
-        <!-- #primary-action 既有控制位：唤回(primary)与退出(quit)之间插「收拢纸片」 -->
-        <template #primary-action>
-          <UiButton
-            variant="secondary"
-            small
-            :disabled="hideBusy || (store.state !== 'running' && !store.isExternal)"
-            title="收拢全部纸片（hide 命令，托盘与双击召回不受影响）"
-            @click="hidePapers"
-          >🗜 收拢纸片</UiButton>
-        </template>
-      </ManagedControlBar>
+    <!-- 联动与辅助设置卡（壳默认共享件；Releases 页直连经 #extras-action 槽转发注入） -->
+    <template #extras-action>
+      <button class="link-button" @click="openReleases">Releases 页</button>
+    </template>
 
-      <details class="info-details">
-        <summary class="info-summary">什么是 PaperTodo</summary>
-        <div class="info-body">
-          <p>极简 Windows 桌面便签（<a class="inline-link" href="https://github.com/snownico0722/PaperTodo" target="_blank" rel="noopener">snownico0722/PaperTodo</a>，PolyForm Noncommercial 个人可用）：待办纸 + 笔记纸，每张纸独立悬浮窗口，内容自动保存，边缘胶囊收纳。WPF/.NET 原生，无账号无联网。</p>
-          <p class="hint-dim">许可证禁止组织统一分发——Hanxi 仅托管"你这台机器直接从官方 Releases 下载原版"的流程，不内嵌、不再分发任何二进制。</p>
-        </div>
-      </details>
-    </div>
-
-    <!-- 联动与辅助设置卡（共享件；Releases 页直连经 #extras-action 槽注入） -->
-    <ManagedExtrasCard :adapter="adapter">
-      <template #extras-action>
-        <button class="link-button" @click="openReleases">Releases 页</button>
-      </template>
-    </ManagedExtrasCard>
-
-    <!-- 版本管理 Tab：variant 槽选择卡 + 共享版本面板（listInstalled 退化 0/1，
-         成色经 adapter.copy 投影对齐现状） -->
-    <div v-show="activeMainTab === 'versions'" class="tab-body">
+    <!-- 版本 Tab 默认体前置位：variant 槽选择卡落在共享面板之前（listInstalled
+         退化 0/1，成色经 adapter.copy 投影对齐现状） -->
+    <template #versions-prepend>
       <div class="variant-card">
         <span class="k">下载变体</span>
         <label v-for="opt in adapter.variant.options" :key="opt.value" class="variant-opt">
@@ -178,22 +149,17 @@ async function openReleases() {
         >换装</UiButton>
         <span v-if="variantNote" class="variant-note" :class="{ warn: variant === 'no-runtime' && runtime && !runtime.hasDesktop10 }">{{ variantNote }}</span>
       </div>
-      <ManagedVersionPanel :adapter="adapter" :store="store" />
-    </div>
-  </section>
+    </template>
+  </ManagedConsoleShell>
 </template>
 
 <style scoped>
-/* 仅保留本视图独有样式；页头/控制条/版本区/联动卡/空态/进度格与徽标家族
-   全部由 managed 组件 + components.css 全局原子接管。 */
-.papertodo-view { display: flex; flex-direction: column; gap: 10px; }
-.tab-body { display: flex; flex-direction: column; gap: 10px; }
+/* 页头/控制条/版本区/联动卡/空态/进度格与徽标家族及 flex 骨架全部由托管控制台壳
+   + managed 组件 + components.css 全局原子接管（波 2D 迁壳后手抄壳骨与
+   .papertodo-view/.tab-body flex 副本退役；hint-line/info-details/extras-card/
+   repo-row 与内联链接等由全局原子与共享件皮承担）。 */
 
-/* hint-line/info-details/extras-card/repo-row 等由全局原子与共享件皮承担 */
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
-
-/* ---------- 变体选择卡（variant 槽的模块私有 UI，共享契约无此位） ---------- */
+/* ---------- 变体选择卡（variant 槽的模块私有 UI，经 #versions-prepend 落位） ---------- */
 .variant-card { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 8px 14px; font-size: var(--text-base); }
 .variant-card .k { color: var(--color-text-subtle); flex-shrink: 0; }
 .variant-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--color-text); font-size: var(--text-sm); }

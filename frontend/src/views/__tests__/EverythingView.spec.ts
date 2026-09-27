@@ -565,24 +565,40 @@ describe('EverythingView 版本区补锁', () => {
     w.unmount()
   })
 
+  // 波 2F 面板化注记：首下走 store.runDownload——在途票据（预挂 resolve）封死
+  // 双击窗口，同挂载内连点不再二发 RPC；三分支回执自此各起一次挂载断言
+  // （意图不变：started 静默 / 失败前缀现词 / already-installed 现词）。
   it('首用引导：stable 在前列面「下载 稳定版 X」；started 回执静默、失败带「下载失败: 」、already-installed 现词', async () => {
-    stubDefaults({ state: 'stopped' }, [], [
-      { version: '1.4.1', channel: 'stable', size: 1, published: '' },
-      { version: '1.5.0.1', channel: 'beta', size: 1, published: '' },
-    ])
+    const firstUseRelease = () => {
+      stubDefaults({ state: 'stopped' }, [], [
+        { version: '1.4.1', channel: 'stable', size: 1, published: '' },
+        { version: '1.5.0.1', channel: 'beta', size: 1, published: '' },
+      ])
+    }
+    firstUseRelease()
     svc.DownloadVersion.mockResolvedValue('started')
-    const w = await mountView()
-    const btn = w.find('.empty-state .btn-primary')
+    let w = await mountView()
+    let btn = w.find('.empty-state .btn-primary')
     expect(btn.text()).toContain('下载 稳定版 1.4.1') // releases[0].channel 决定词面
     await btn.trigger('click')
     await flushMicrotasks()
     expect(svc.DownloadVersion).toHaveBeenCalledWith('1.4.1')
     expect(useToast().toastMsg.value).toBe('') // started 静默（进度全走事件，现状）
+    w.unmount()
+
+    firstUseRelease()
     svc.DownloadVersion.mockRejectedValue(new Error('官网断了'))
+    w = await mountView()
+    btn = w.find('.empty-state .btn-primary')
     await btn.trigger('click')
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toBe('下载失败: 官网断了')
+    w.unmount()
+
+    firstUseRelease()
     svc.DownloadVersion.mockResolvedValue('already-installed')
+    w = await mountView()
+    btn = w.find('.empty-state .btn-primary')
     await btn.trigger('click')
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toBe('版本 1.4.1 已安装')
@@ -603,21 +619,25 @@ describe('EverythingView 版本区补锁', () => {
     w.unmount()
   })
 
-  it('通道列六列方言：未知通道原样透出、非 stable 一律测试档、stale 快照徽标、fmtSize/fmtDate 标准形「—」', async () => {
+  // 波 2F 面板化注记：远程表换装 ManagedVersionPanel 标准形（供体回迁），通道列
+  // 经 #release-extra-col 方言槽居「上游发布」与「操作」之间——列序随之为标准形，
+  // 意图不变：通道徽标词面/档位配色、stale 快照徽标、fmtSize/fmtDate 标准形照锁。
+  it('通道列经面板方言槽：未知通道原样透出、非 stable 一律测试档、stale 快照徽标、fmtSize/fmtDate 标准形「—」', async () => {
     stubDefaults({ state: 'stopped' }, [], [
       { version: '1.4.1', channel: 'stable', size: 0, published: '', stale: true },
       { version: '1.4.0', channel: 'legacy', size: 2097152, published: '2026-08-01T00:00:00Z' },
     ])
     const w = await mountView()
-    expect(w.findAll('.tbl thead th').map((th) => th.text())).toEqual(['通道', '版本', '状态', '大小', '发布时间', '操作'])
+    expect(w.findAll('.tbl thead th').map((th) => th.text())).toEqual(['版本', '状态', '大小', '发布时间', '上游发布', '通道', '操作'])
     const rows = w.findAll('.tbl tbody tr')
     expect(rows[0].find('.channel-badge').classes()).toContain('ch-stable')
-    expect(rows[0].find('.badge-pre').text()).toBe('快照') // stale 降级标记
-    expect(rows[0].findAll('td')[3].text()).toBe('—') // utils/format 标准形（vs Snipaste 本地「未知」方言）
-    expect(rows[0].findAll('td')[4].text()).toBe('—')
+    expect(rows[0].find('.badge-pre').text()).toBe('快照') // stale 降级标记（随通道列槽位承接）
+    expect(rows[0].findAll('td')[2].text()).toBe('—') // utils/format 标准形（vs Snipaste 本地「未知」方言）
+    expect(rows[0].findAll('td')[3].text()).toBe('—')
+    expect(rows[0].findAll('td')[4].text()).toBe('—') // 上游发布矩阵未回填如实空
     expect(rows[1].find('.channel-badge').text()).toBe('legacy') // 未知通道原样
     expect(rows[1].find('.channel-badge').classes()).toContain('ch-beta') // 非 stable 全归测试档配色
-    expect(rows[1].findAll('td')[4].text()).toBe('2026-08-01') // fmtDate ISO 前 10 位
+    expect(rows[1].findAll('td')[3].text()).toBe('2026-08-01') // fmtDate ISO 前 10 位
     w.unmount()
   })
 })
@@ -639,7 +659,9 @@ describe('EverythingView 请求代次', () => {
         })
       })
       const w = await mountView()
-      await vi.advanceTimersByTimeAsync(2600) // 轮询 call2 → 后台运行中
+      // 波 2F 形制：call1=store 轮询 immediate 首跑（吊慢），call2=挂载显式首拉
+      // （迁移前即此双路形制）；inFlight 闸让 2.6s 处不再补发，代次判定全看两发。
+      await vi.advanceTimersByTimeAsync(2600) // call2 已回 → 后台运行中
       expect(w.find('.status-word').text()).toBe('后台运行中')
       releaseSlow({ state: 'stopped' }) // 首拉旧响应晚到
       await vi.advanceTimersByTimeAsync(50)

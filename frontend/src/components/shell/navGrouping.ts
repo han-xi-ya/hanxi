@@ -1,10 +1,10 @@
 // 双栏外壳的分组归属与常用/最近共享逻辑（AppNavRail / AppSidebar / HomeView 消费）。
 //
-// 契约来源（并行 agent 落地中，本文件只消费不实现）：
-//   · bindings NavEntry 将新增 `group?: string`，取值 NavGroup 六键；
-//     落地前以本地交叉类型 NavEntryWithGroup 声明消费点，签名保持与 NavEntry 兼容。
-//   · constants/navigation.ts 将导出 GROUP_META / NavGroup / MODULE_GROUP / groupOfModule，
-//     本文件按契约直接 import（落地前 typecheck 报缺导出属预期）。
+// 契约来源（已随 bindings 大再生 6dd61ed 落地，本文件只消费不实现）：
+//   · bindings NavEntry 已带 `group?: NavGroup`（取值 NavGroup 六键），本地过渡
+//     交叉类型已于波 1d 拆除，NavEntryWithGroup 降为 bindings 类型的直连别名。
+//   · constants/navigation.ts 导出 GROUP_META / NavGroup / MODULE_GROUP / groupOfModule，
+//     本文件直接 import。
 //
 // 归属解析规则（优先级从高到低）：
 //   1. nav.group（后端注册表显式声明）——仅当其为 GROUP_META 已知键时采信；
@@ -15,8 +15,9 @@
 import type { NavEntry } from '../../../bindings/hanxi/internal/extapi/models'
 import { GROUP_META, MODULE_PRESENTATION, groupOfModule, type NavGroup } from '../../constants/navigation'
 
-/** bindings 重生成前的本地过渡类型：NavEntry + 契约字段 group（可选，向后兼容）。 */
-export type NavEntryWithGroup = NavEntry & { group?: string }
+/** 消费点统一别名（波 1d 起直连 bindings：group 字段已生成，本地交叉过渡类型拆除；
+ *  保留别名名是为了不惊动 AppNavRail/AppSidebar/HomeView 等既有 import 面）。 */
+export type NavEntryWithGroup = NavEntry
 
 /** 未知分组的兜底组键：不进 rail，仅出现在二级面板。 */
 export const OTHER_GROUP = 'other'

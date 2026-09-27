@@ -41,8 +41,6 @@ const adapter = createRAMMapAdapter()
 </template>
 
 <style scoped>
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
 /* A/B 双路选择条（N22；机主钮位反馈收编）：软底嵌套面 + 左缘 2px primary 混色
    归属条——与存储目录展开子行同一视觉语言（--attribution-line token），
    紧贴状态头下方呈现"附属于状态卡"的从属感，不再是被读作页面底部的孤悬独立卡。 */

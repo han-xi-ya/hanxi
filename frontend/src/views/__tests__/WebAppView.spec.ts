@@ -1,9 +1,8 @@
 // 「网页应用」管理页特征测试：defaultOpen（默认打开方式）前端层回归锁。
-// 覆盖：表单默认段渲染/切换、保存链双兼容 payload（SaveEntry 第 5 参 + SetEntryDefaultOpen）、
+// 覆盖：表单默认段渲染/切换、保存链定稿路线（SaveEntry 4 参 + SetEntryDefaultOpen 补写）、
 // 行级「默认：窗口/浏览器」小字标（含存量未设值归一化）、说明卡显式>默认文案、
 // 既有「打开/默认浏览器打开」双钮原样保留。
-// W1（后端）未落盘前 bindings 无 defaultOpen/SetEntryDefaultOpen 符号，此处全 mock；
-// vue-tsc 对桥接符号的缺省属预期中间态，绑定再生后 mock 面即为契约面。
+// W1 已定稿入库（bindings 含 defaultOpen/SetEntryDefaultOpen），mock 面即契约面。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WebAppView from '../WebAppView.vue'
@@ -91,9 +90,8 @@ describe('WebAppView 默认打开方式表单段', () => {
     svc.SaveEntry.mockResolvedValue('new-1')
     await openCreateForm(wrapper)
     await fillAndSubmit(wrapper, 'GitHub', 'https://github.com')
-    // 全量快照路线：第 5 参 defaultOpen
-    expect(svc.SaveEntry).toHaveBeenCalledWith('', 'GitHub', 'https://github.com', '', 'window')
-    // 独立导出路线：绑定存在即补写，ID 取 SaveEntry 定稿返回值
+    expect(svc.SaveEntry).toHaveBeenCalledWith('', 'GitHub', 'https://github.com', '')
+    // 定稿路线：形态经独立导出补写，ID 取 SaveEntry 返回值
     expect(svc.SetEntryDefaultOpen).toHaveBeenCalledWith('new-1', 'window')
     wrapper.unmount()
   })
@@ -106,7 +104,7 @@ describe('WebAppView 默认打开方式表单段', () => {
     expect(segs(wrapper)[1].classes()).toContain('active')
     expect(segs(wrapper)[0].classes()).not.toContain('active')
     await fillAndSubmit(wrapper, 'Docs', 'https://docs.example.com')
-    expect(svc.SaveEntry).toHaveBeenCalledWith('', 'Docs', 'https://docs.example.com', '', 'browser')
+    expect(svc.SaveEntry).toHaveBeenCalledWith('', 'Docs', 'https://docs.example.com', '')
     expect(svc.SetEntryDefaultOpen).toHaveBeenCalledWith('new-2', 'browser')
     wrapper.unmount()
   })
@@ -119,7 +117,7 @@ describe('WebAppView 默认打开方式表单段', () => {
     svc.SaveEntry.mockResolvedValue('e2')
     await wrapper.find('form.webapp-form').trigger('submit')
     await flushPromises()
-    expect(svc.SaveEntry).toHaveBeenCalledWith('e2', '二号', 'https://e2.example.com', '', 'browser')
+    expect(svc.SaveEntry).toHaveBeenCalledWith('e2', '二号', 'https://e2.example.com', '')
     expect(svc.SetEntryDefaultOpen).toHaveBeenCalledWith('e2', 'browser')
     wrapper.unmount()
   })

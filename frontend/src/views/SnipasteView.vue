@@ -7,11 +7,17 @@ import { useSnipasteDownloadTickets, type SnipasteDownloadTicket } from '../comp
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
-import type { ManagedConsoleStore } from '../components/managed/store'
+import { useManagedConsole } from '../components/managed/store'
 import SnipasteControlPanel from '../components/snipaste/SnipasteControlPanel.vue'
 import SnipasteVersionsPanel from '../components/snipaste/SnipasteVersionsPanel.vue'
 
 const { showToast } = useToast()
+// 波 2F 注记（真相源收口止步点）：installed/releases/activeVersion 仍为视图侧
+// 平行数据面——snipaste 的 custom 票据流（useSnipasteDownloadTickets）要求
+// 本地/远程**分通道刷新与分通道报错**（refreshLocal 回布尔供 done 票核验、
+// 「读取本地版本失败：」「获取 Snipaste 官网版本失败：」全角方言词、各自重试钮），
+// 共享 store.load() 只有合并单通道与标准词，替换即静默改词面与核验语义。
+// 消解须待 store 侧补分通道加载位（波 2F 缺口清单第 1 条），本轮不动数据面。
 const installed = ref<SnipasteVersionInfo[]>([])
 const releases = ref<SnipasteRelease[]>([])
 const activeVersion = ref('')
@@ -24,22 +30,21 @@ const actionBusy = ref(false)
 const controlResult = ref<{ tone: 'info' | 'warning' | 'error'; text: string } | null>(null)
 
 const tickets = useSnipasteDownloadTickets()
-let storeRef: ManagedConsoleStore | null = null
 const adapter = createSnipasteAdapter((progress) => {
   void tickets.handleProgress(progress, refreshLocal, isInstalled)
 })
+// 波 2F（壳反模式消解）：store 句柄走「视图自建 useManagedConsole → 传壳
+// :store」的波 2A 注入通道（Recordly/Paseo 同型）——原 :ref="() => bindStore(store)"
+// 槽域回抽与 storeRef 全局句柄退役；壳/控制条/面板与视图共享同一句柄，无双轮询。
+const store = useManagedConsole(adapter)
 
 const selected = computed(() => installed.value.find((item) => item.version === activeVersion.value) ?? installed.value[0] ?? null)
 const stale = computed(() => releases.value.some((item) => item.stale))
 
 type ReleaseStatus = 'installed' | 'downloading' | 'error' | 'idle'
 
-function bindStore(store: ManagedConsoleStore): void {
-  storeRef = store
-}
-
 function snapshot(): Snapshot | null {
-  return storeRef?.snap as Snapshot | null ?? null
+  return store.snap as Snapshot | null ?? null
 }
 
 function instanceState(): string {
@@ -91,7 +96,7 @@ async function loadSiteURL(): Promise<void> {
   }
 }
 
-async function launch(store: ManagedConsoleStore): Promise<void> {
+async function launch(): Promise<void> {
   if (actionBusy.value || !selected.value || ['starting', 'running', 'quitting'].includes(instanceState())) return
   actionBusy.value = true
   controlResult.value = null
@@ -109,7 +114,7 @@ async function launch(store: ManagedConsoleStore): Promise<void> {
   }
 }
 
-async function quitProcess(store: ManagedConsoleStore): Promise<void> {
+async function quitProcess(): Promise<void> {
   // external 态同样可退出（N3 分档：外部实例先优雅请求、无响应按低损档强制结束）。
   if (actionBusy.value || !['starting', 'running', 'quitting', 'external'].includes(instanceState()) || instanceState() === 'quitting') return
   actionBusy.value = true
@@ -236,7 +241,7 @@ async function showImages(): Promise<void> {
       controlResult.value = { tone: 'info', text }
       showToast(text)
     }
-    await storeRef?.refresh()
+    await store.refresh()
   } catch (error) {
     controlResult.value = { tone: 'error', text: `唤起贴图失败：${getErrorMessage(error)}` }
   } finally {
@@ -280,7 +285,7 @@ onMounted(() => {
 
 onActivated(() => {
   void refreshLocal()
-  void storeRef?.refresh()
+  void store.refresh()
 })
 </script>
 
@@ -288,6 +293,7 @@ onActivated(() => {
   <ManagedConsoleShell
     class="snipaste-view"
     :adapter="adapter"
+    :store="store"
     title="Snipaste"
     subtitle="管理并启动官方 Windows x64 免安装版；原生截图、贴图、托盘和快捷键保持不变。"
     console-tab-label="控制台"
@@ -299,15 +305,14 @@ onActivated(() => {
       <span class="snipaste-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.4 7.7 5.8 4.1a2.6 2.6 0 1 0-1.7 4.5c.7 0 1.3-.3 1.8-.7l2.2 2.2m6.5-2.4 3.6-3.6a2.6 2.6 0 1 1 1.7 4.5c-.7 0-1.3-.3-1.8-.7L8.7 17.3a2.6 2.6 0 1 1-1.8-1.8L17 5.4M10 14l4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
     </template>
 
-    <template #control-bar="{ store, selectTab }">
+    <template #control-bar="{ selectTab }">
       <SnipasteControlPanel
-        :ref="() => bindStore(store)"
         :store="store"
         :selected="selected"
         :busy="actionBusy || store.busy"
         :control-result="controlResult"
-        @launch="launch(store)"
-        @quit="quitProcess(store)"
+        @launch="launch()"
+        @quit="quitProcess()"
         @show-images="showImages()"
         @select-versions="selectTab('versions')"
       />
@@ -324,9 +329,8 @@ onActivated(() => {
       <button class="link-button" @click="openSite">打开 Snipaste 官网<span v-if="siteURL"> · {{ siteURL }}</span></button>
     </article>
 
-    <template #versions-body="{ store }">
+    <template #versions-body>
       <SnipasteVersionsPanel
-        :ref="() => bindStore(store)"
         :installed="installed"
         :releases="releases"
         :active-version="activeVersion"

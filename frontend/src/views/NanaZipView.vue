@@ -14,6 +14,7 @@ import { useClipboard } from '../composables/useClipboard'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
+import { compareStrict } from '../utils/version'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
@@ -45,20 +46,19 @@ const progressPercent = computed(() => {
   return item.total > 0 ? Math.min(100, Math.round(item.done * 100 / item.total)) : null
 })
 
-function compareVersion(a: string, b: string): number {
-  const aa = a.split('.').map(Number), bb = b.split('.').map(Number)
-  for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
-    if ((aa[i] ?? 0) !== (bb[i] ?? 0)) return (aa[i] ?? 0) > (bb[i] ?? 0) ? 1 : -1
-  }
-  return 0
-}
-function relation(release: Release): 'installed' | 'upgrade' | 'downgrade' | 'install' {
+// 比较器上收 utils/version 单源（版本比较器统一波）：旧本地 compareVersion 全长
+// 补零但 NaN 段静默判旧（非数输入自反比较也恒 -1，反对称性被破坏——缺陷）。
+// 换 compareStrict 后非规范输入回 null：NanaZip 后端对远程与包内版本强校验严格
+// 四段纯数才收纳，null 分支现网路径不可达，属防御性显式出口而非在途场景。
+function relation(release: Release): 'installed' | 'upgrade' | 'downgrade' | 'install' | 'unknown' {
   if (!installed.value || !snapshot.value?.version) return 'install'
-  const result = compareVersion(release.version, snapshot.value.version)
+  const result = compareStrict(release.version, snapshot.value.version)
+  if (result === null) return 'unknown' // 不可比：既不判升级也不判降级（不渲染动作）
   return result === 0 ? 'installed' : result > 0 ? 'upgrade' : 'downgrade'
 }
 function actionLabel(release: Release): string {
-  return ({ installed: '已安装', upgrade: '升级', downgrade: '降级', install: '安装' } as const)[relation(release)]
+  // unknown 位恒不被渲染消费（模板 v-if 已隐藏钮），补键仅维持映射全函数
+  return ({ installed: '已安装', upgrade: '升级', downgrade: '降级', install: '安装', unknown: '' } as const)[relation(release)]
 }
 function stageLabel(stage: string): string {
   return ({ preflight:'检查状态', downloading:'下载安装包', 'verify-size':'校验大小', 'verify-sha256':'校验官方摘要', 'verify-bundle':'检查 MSIX 身份', 'cache-commit':'可信缓存已就绪', installing:'Windows 正在安装', uninstalling:'Windows 正在卸载', done:'操作完成', error:'操作失败' } as Record<string,string>)[stage] ?? (stage || '处理中')

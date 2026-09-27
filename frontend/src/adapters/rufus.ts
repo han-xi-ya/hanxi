@@ -7,8 +7,9 @@
 // extras 仅提供随关与仓库两条目，桌面快捷方式等缺项由 ManagedExtrasCard
 // 自动缺席；「打开位置」钮依赖已装版本清单（running > active > 任一），
 // 属状态相关钮，留在视图 extras 卡的 #extras-action 位经 store.runOpenDir 走。
-// 阶段词表含 install 不含 extract（单文件落位而非解压），远程表的
-// 「校验落位…」阶段文案与通道徽标为方言，表格留在视图方言区。
+// 波 2E：版本区全量回迁 ManagedVersionPanel——单文件版阶段词表含 install 不含
+// extract（「校验落位…」非面板缺省「校验解压安装…」），词面差异全部落本件
+// copy.stageWord 覆写位，视图手抄表退役。
 // ============================================================================
 
 import * as RufusAPI from '../../bindings/hanxi/internal/modules/rufus/rufusservice'
@@ -134,6 +135,21 @@ export function createRufusAdapter(): ManagedModuleAdapter {
         return '正在拉起 Rufus…'
       }
       return null
+    },
+
+    // 波 2E：版本区回迁面板——单文件版方言词表逐字入本表；阶段词含 install 不含
+    // extract（单文件落位而非解压），「校验落位…」覆盖 resolve/verify/install 三档，
+    // 其余进行态回空串走面板 message 透出（与原方言表兜底分支逐字同形）。
+    copy: {
+      importLabel: '⇥ 导入本地 exe',
+      metaHints: [
+        '便携单文件下载自 GitHub Releases（rufus-X.Yp.exe，官方 digest 校验）；或「导入本地」把你机器上已有的便携 exe 收纳进来（随行 rufus.ini 一并迁入）',
+      ],
+      firstUseEmpty: '尚未安装 Rufus —— 下载官方便携单文件，或「导入本地 exe」把现有便携文件收纳进来',
+      remoteUnavailable: '无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试',
+      stageWord: (stage) => (['resolve', 'verify', 'install'].includes(stage) ? '校验落位…' : ''),
+      uninstallRunningHint: '请先退出 Rufus',
+      installedChipTone: 'positive',
     },
 
     extras: {

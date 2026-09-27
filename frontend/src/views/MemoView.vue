@@ -57,6 +57,7 @@ import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
+import { useAsyncAction } from '../composables/useAsyncAction'
 import UiClipboardField from '../components/ui/UiClipboardField.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -500,24 +501,32 @@ async function handleExportLibrary() {
 }
 
 // ---- 行/页微操作 ----
+// 单 API + toast 四函数走 useAsyncAction run 通道（波 2B）：只取错误双通道返回，
+// busy 不接模板（行级钮跨条目共享一个 run 实例会误伤邻行，Toggle 均为本地毫秒级写）；
+// 播报词面、currentId 复位与 loadMemos 收尾顺序逐字保留。
+const { run: runTogglePin } = useAsyncAction()
+const { run: runToggleMask } = useAsyncAction()
+const { run: runDelete } = useAsyncAction()
+const { run: runClearAll } = useAsyncAction()
+
 async function handleTogglePin(item: MemoItem) {
-  try {
-    const pinned = await MemoAPI.MemoService.TogglePin(item.id)
-    showToast(pinned ? '已置顶便签' : '已取消置顶')
-    await loadMemos()
-  } catch (err: unknown) {
-    showToast(`操作失败: ${getErrorMessage(err)}`)
+  const res = await runTogglePin(() => MemoAPI.MemoService.TogglePin(item.id))
+  if (!res.ok) {
+    showToast(`操作失败: ${getErrorMessage(res.error)}`)
+    return
   }
+  showToast(res.data ? '已置顶便签' : '已取消置顶')
+  await loadMemos()
 }
 
 async function handleToggleMask(item: MemoItem) {
-  try {
-    const masked = await MemoAPI.MemoService.ToggleMask(item.id)
-    showToast(masked ? '已开启脱敏遮罩' : '已揭示明文')
-    await loadMemos()
-  } catch (err: unknown) {
-    showToast(`操作失败: ${getErrorMessage(err)}`)
+  const res = await runToggleMask(() => MemoAPI.MemoService.ToggleMask(item.id))
+  if (!res.ok) {
+    showToast(`操作失败: ${getErrorMessage(res.error)}`)
+    return
   }
+  showToast(res.data ? '已开启脱敏遮罩' : '已揭示明文')
+  await loadMemos()
 }
 
 async function handleDeleteMemo(id: string) {
@@ -528,14 +537,14 @@ async function handleDeleteMemo(id: string) {
     tone: 'danger',
   })
   if (!accepted) return
-  try {
-    await MemoAPI.MemoService.Delete(id)
-    if (currentId.value === id) currentId.value = ''
-    showToast('已删除便签')
-    await loadMemos()
-  } catch (err: unknown) {
-    showToast(`删除失败: ${getErrorMessage(err)}`)
+  const res = await runDelete(() => MemoAPI.MemoService.Delete(id))
+  if (!res.ok) {
+    showToast(`删除失败: ${getErrorMessage(res.error)}`)
+    return
   }
+  if (currentId.value === id) currentId.value = ''
+  showToast('已删除便签')
+  await loadMemos()
 }
 
 // ---- 一键全删 ----
@@ -548,14 +557,14 @@ async function handleClearAll() {
     tone: 'danger',
   })
   if (!accepted) return
-  try {
-    const deleted = await MemoAPI.MemoService.ClearAll()
-    currentId.value = ''
-    showToast(`已全删 ${deleted} 条便签`)
-    await loadMemos()
-  } catch (err: unknown) {
-    showToast(`全删失败: ${getErrorMessage(err)}`)
+  const res = await runClearAll(() => MemoAPI.MemoService.ClearAll())
+  if (!res.ok) {
+    showToast(`全删失败: ${getErrorMessage(res.error)}`)
+    return
   }
+  currentId.value = ''
+  showToast(`已全删 ${res.data} 条便签`)
+  await loadMemos()
 }
 
 // 剪贴板两级策略已收编进 useClipboard（toast 文案与原实现逐字一致）

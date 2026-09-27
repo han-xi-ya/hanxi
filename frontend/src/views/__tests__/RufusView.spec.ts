@@ -1,8 +1,10 @@
-// 特征测试（Wave 5 · 批 1 收敛件）：RufusView——共享契约（ManagedControlBar /
-// ManagedExtrasCard + store）与方言版本 Tab（单文件版「校验落位…」、清单驱动
+// 特征测试（Wave 5 · 批 1 收敛件，波 2E 版本区回迁收口）：RufusView——共享契约
+// （ManagedControlBar / ManagedVersionPanel / ManagedExtrasCard + store）与版本区
+// 词面（单文件版「校验落位…」经 adapter.copy.stageWord 覆写、清单驱动
 // #extras-action「打开位置」钮、740 提权重启）的迁移后行为基线。
 // 锁定：banner 三分支互斥、启停钮声明（含提权 title）、下载事件流与重试链、
-// 确认/输入文案逐字、事件改写与 KeepAlive 轮询契约。
+// 确认/输入文案逐字、事件改写与 KeepAlive 轮询契约；波 2E 后方言表锚点
+// .ver-status 退役，选择器迁 ManagedVersionDot 渲染形 .ver-status。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -250,7 +252,7 @@ describe('RufusView 联动卡与「打开位置」具名位', () => {
   })
 })
 
-describe('RufusView 方言版本 Tab（store 单源 + 「校验落位」词表）', () => {
+describe('RufusView 版本区（ManagedVersionPanel + 「校验落位」词表覆写）', () => {
   it('下载安装：DownloadVersion 按版本；downloading 事件驱动百分比；verify 阶段「校验落位…」', async () => {
     stubDefaults({ state: 'stopped' })
     svc.DownloadVersion.mockResolvedValue('started')
@@ -260,7 +262,7 @@ describe('RufusView 方言版本 Tab（store 单源 + 「校验落位」词表�
     expect(svc.DownloadVersion).toHaveBeenCalledWith('v4.16')
     runtime.handlers['rufus:version-download']({ data: { version: 'v4.16', stage: 'downloading', done: 50, total: 100 } })
     await nextTick()
-    expect(wrapper.find('.rf-ver-status').classes()).toContain('downloading')
+    expect(wrapper.find('.ver-status').classes()).toContain('downloading')
     expect(wrapper.find('.dl-percent').text()).toBe('50%')
     runtime.handlers['rufus:version-download']({ data: { version: 'v4.16', stage: 'verify', done: 100, total: 100 } })
     await nextTick()
@@ -274,7 +276,7 @@ describe('RufusView 方言版本 Tab（store 单源 + 「校验落位」词表�
     const { wrapper } = await mountInKeepAlive()
     runtime.handlers['rufus:version-download']({ data: { version: 'v4.16', stage: 'error', done: 0, total: 0, message: 'MZ 魔数不符' } })
     await nextTick()
-    expect(wrapper.find('.rf-ver-status').classes()).toContain('error')
+    expect(wrapper.find('.ver-status').classes()).toContain('error')
     expect(wrapper.find('.dl-error').attributes('title')).toBe('MZ 魔数不符')
     await wrapper.find('.retry-link').trigger('click')
     expect(svc.DownloadVersion).toHaveBeenCalledTimes(1)
@@ -303,10 +305,10 @@ describe('RufusView 方言版本 Tab（store 单源 + 「校验落位」词表�
       svc.DownloadVersion.mockResolvedValue('started')
       runtime.handlers['rufus:version-download']({ data: { version: 'v4.16', stage: 'downloading', done: 1, total: 2 } })
       await vi.advanceTimersByTimeAsync(0)
-      expect(wrapper.find('.rf-ver-status.downloading').exists()).toBe(true)
+      expect(wrapper.find('.ver-status.downloading').exists()).toBe(true)
       runtime.handlers['rufus:version-download']({ data: { version: 'v4.16', stage: 'done', done: 2, total: 2 } })
       await vi.advanceTimersByTimeAsync(900)
-      expect(wrapper.find('.rf-ver-status.downloading').exists()).toBe(false)
+      expect(wrapper.find('.ver-status.downloading').exists()).toBe(false)
       wrapper.unmount()
     } finally {
       vi.useRealTimers()

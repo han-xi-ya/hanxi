@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useNotification, type ToastItem } from '../composables/useNotification'
+import { levelTone } from '../constants/status'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -7,20 +8,8 @@ const emit = defineEmits<{
 
 const { activeToasts, removeToast, markAsRead } = useNotification()
 
-// 严重度指示灯：emoji 已退役（AppIcon 纪律）——色点仅作冗余强调，
-// 语义由模块标签/标题文本承载，色板走 state token。
-function levelTone(level: string) {
-  switch (level) {
-    case 'success':
-      return 'sev-success'
-    case 'warning':
-      return 'sev-warning'
-    case 'error':
-      return 'sev-error'
-    default:
-      return 'sev-info'
-  }
-}
+// 严重度指示灯：emoji 已退役（AppIcon 纪律）——色点仅作冗余强调，语义由模块标签/标题
+// 文本承载。档位映射取 constants/status.ts levelTone 单源，.sev-* 色板在 components.css。
 
 function handleToastClick(toast: ToastItem) {
   markAsRead(toast.id)
@@ -122,10 +111,8 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
   align-items: flex-start;
   margin-top: 5px;
 }
-.sev-dot { width: 9px; height: 9px; border-radius: var(--radius-pill); background: var(--state-information); }
-.sev-success { background: var(--state-positive); }
-.sev-warning { background: var(--state-warning); }
-.sev-error { background: var(--state-danger); }
+/* .sev-dot / .sev-{success,warning,error} 四条与 NotificationDrawer 逐字同形，
+   已上收 components.css 全局原子区（本组件与 Drawer 两份 scoped 副本同步删净）。 */
 
 .toast-body {
   flex: 1;

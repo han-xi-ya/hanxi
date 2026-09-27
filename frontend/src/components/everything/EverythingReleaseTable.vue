@@ -1,10 +1,13 @@
 <script setup lang="ts">
 // Everything 远程可用版本表：通道徽标 + 安装态（含下载进度/校验/失败详情）+ 操作列，
-// 自 EverythingView 随 DOM 逐字迁出。statusOf/stepOf/channelLabel 为表格私有的纯派生函数；
-// 下载安装动作回视图执行（DownloadVersion + 事件驱动的 downloading map 由视图编排）。
+// 自 EverythingView 随 DOM 逐字迁出。statusOf/channelLabel 为表格私有的纯派生函数
+// （stepOf 已归 managedProgress 单源）；下载安装动作回视图执行（DownloadVersion +
+// 事件驱动的 downloading map 由视图编排）。
 import type { EverythingRelease, EverythingVersionInfo } from '../../../bindings/hanxi/internal/modules/everything/version/models'
 import type { DownloadTicket } from '../../../bindings/hanxi/internal/modules/everything/models'
 import { releaseFormWord } from '../managed/adapter'
+import { stepOf, type ManagedRowState } from '../managed/managedProgress'
+import ManagedVersionDot from '../managed/ManagedVersionDot.vue'
 import { fmtSize, fmtDate } from '../../utils/format'
 
 // bindings 尚未随 Go 侧新增的 Form 字段统一再生（总闸收口后由主会话重跑
@@ -23,11 +26,14 @@ const emit = defineEmits<{
   'download': [rel: EverythingRelease]
 }>()
 
-function stepOf(p: DownloadTicket): number {
-  if (p.stage === 'done') return 100
-  if (p.stage !== 'downloading') return 0
-  if (!p.total) return 0
-  return Math.min(99, Math.round((p.done / p.total) * 100))
+// stepOf 取 managedProgress 单源（本表原逐字副本已删）。
+// 状态点四档词面——逐字迁自原 .ver-status 四分支，交 ManagedVersionDot 渲标准圆点，
+// 本表只供档位与词面（组件不做词面推断）。
+const STATUS_WORDS: Record<ManagedRowState, string> = {
+  installed: '已安装',
+  downloading: '下载中',
+  error: '失败',
+  idle: '可安装',
 }
 
 function statusOf(rel: EverythingRelease): 'installed' | 'downloading' | 'error' | 'idle' {
@@ -73,10 +79,7 @@ function channelLabel(channel: string): string {
             >{{ releaseFormWord(rel.form) }}</span>
           </td>
           <td>
-            <span v-if="statusOf(rel) === 'installed'" class="ver-status installed">已安装</span>
-            <span v-else-if="statusOf(rel) === 'downloading'" class="ver-status downloading">下载中</span>
-            <span v-else-if="statusOf(rel) === 'error'" class="ver-status error">失败</span>
-            <span v-else class="ver-status idle">可安装</span>
+            <ManagedVersionDot :status="statusOf(rel)" :text="STATUS_WORDS[statusOf(rel)]" />
           </td>
           <td>{{ fmtSize(rel.size) }}</td>
           <td>{{ fmtDate(rel.published) }}</td>
@@ -120,8 +123,8 @@ function channelLabel(channel: string): string {
 
 <style scoped>
 /* ---------- 远程表格 ---------- */
+/* .table-container 留局系真差（radius 8px vs 全局 --radius-control）；.ver-name 副本波 2C 删净落回（见下方下载行注记） */
 .table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 8px; overflow-x: auto; }
-.ver-name { font-family: var(--font-mono); }
 /* 版本列改弹性排布：与 Snipaste .release-version 同构（gap 供给间距，徽标/chip 换行不溢出） */
 .ver-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* N13 形态 chip 密度对齐 ManagedVersionPanel.form-chip；行内容器已带 gap，不再加 margin */
@@ -138,12 +141,8 @@ function channelLabel(channel: string): string {
 /* N13 形态 chip 密度对齐 SnipasteReleaseTable.form-chip；行内容器已带 gap，不再加 margin */
 .form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
 
-.ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
-.ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.ver-status.installed::before { background: var(--state-positive); }
-.ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
-.ver-status.error::before { background: var(--state-danger); }
-.ver-status.idle::before { background: var(--color-text-subtle); }
+/* 裸 .ver-status 圆点家族（六条）与本表原四分支一并删净：形制归 managed/ManagedVersionDot.vue
+   （其 scoped 副本逐字抄 ManagedVersionPanel 标准形），本表只供档位 + 词面。 */
 
 /* 「已安装」表内标记：区别于全局 .btn-ghost（悬停幽灵按钮）的静态标签态 */
 .installed-tag {
@@ -152,12 +151,13 @@ function channelLabel(channel: string): string {
   background: var(--surface-hover); color: var(--color-text-muted);
 }
 
-.download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
+/* 冗余治理波 2C「删即落回」（对拍逐条证实与全局 :where 原子同形后方删，渲染零变化）：
+   .download-cell/.dl-percent/.dl-meta-text/.dl-error 连同本表 .ver-name 共五条 scoped
+   副本删净落回 components.css 托管家族块标准形。
+   dl-bar 覆写档留局（真差：radius 3px vs 全局 --radius-pill、motion-fast linear vs
+   motion-base ease），维持"待主线裁决"口径不动。 */
 .dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
 .dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-fast) linear; }
-.dl-percent { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: var(--text-sm); color: var(--color-primary); }
-.dl-error { color: var(--state-danger); font-size: var(--text-xs); }
 /* 批 3·4.6：重试由无 href 的 <a> 改为 button——键盘可达；外观维持链接形 */
 .retry-link { appearance: none; background: none; border: none; padding: 0; font: inherit; color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; text-align: left; }
 .retry-link:hover { text-decoration: underline; }

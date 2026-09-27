@@ -6,9 +6,11 @@
 // 方言注记：
 //  - 多实例上游的 OpenWindow「聚焦/唤回/另开」三分支由后端裁决，UI 恒为一钮，
 //    钮面 title 按 state 投影指引（control.primary.titleFor），视图零分支；
-//  - 官方发布接口无发布时间、带 stable/beta 通道列，ManagedVersionPanel 的
-//    通用表（发布时间列）会丢失通道信息，远程表留在视图方言区；
-//    ViewRelease 缺 published 字段，按契约以空串占位补齐（方言表不消费该列）。
+//  - 波 2E 版本区回迁面板：stable/beta「通道列」经面板 #release-extra-col(+head)
+//    槽承接（词面逐字），「↻ 刷新发布接口」钮词走面板 refreshLabel 位，
+//    其余方言词面（官方便携/安装中/MD5 校验…/解压安装…/导入本地目录等）
+//    全部入本件 copy 表；ViewRelease 缺 published 字段，按契约以空串占位补齐
+//    （面板发布时间列如实呈现「—」，与上游发布矩阵列「—」同为标准形收敛项）。
 // ============================================================================
 
 import * as GuoheViewAPI from '../../bindings/hanxi/internal/modules/guoheview/guoheviewservice'
@@ -153,8 +155,26 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
 
     // ⑥：本模块下载失败现词「安装失败: 」（官方接口安装语义）经前缀覆写回
     // store 词源表——视图不再直调 adapter.versions.download 绕行保词表。
+    // 波 2E：版本区回迁面板，原方言表词面逐字入本表（缺省值即标准词，只落差异）。
     copy: {
       errorPrefix: { download: '安装失败: ' },
+      remoteSummary: (n) => `官方当前发布 ${n} 个`,
+      remoteSectionTitle: '官方当前发布',
+      metaHints: [
+        '安装源为果核官方发布接口的 Windows x64 便携 zip（官方 MD5 + 字节数 + CRC + 布局四层校验），解压进隔离目录，不触碰系统',
+        '上游只发布当前版本、无历史列表；「导入本地」可把你机器上已有的便携目录（含设置）收纳进托管',
+      ],
+      importLabel: '⇥ 导入本地目录',
+      firstUseEmpty: '尚未安装果核看图 —— 下载官方当前版本，或「导入本地目录」把现有便携目录收纳进来',
+      firstUseDownloadLabel: (rel) => `安装最新版 ${rel.version}`,
+      remoteUnavailable: '官方发布接口暂不可达——可稍后点击「↻ 刷新发布接口」重试，或「导入本地目录」安装你已有的便携版',
+      downloadingWord: '安装中',
+      // 官方接口链阶段词：verify=MD5 校验、extract=保布局解压；其余进行态回空串
+      // 走面板 message 透出（与原方言表兜底分支逐字同形）
+      stageWord: (stage) => (stage === 'verify' ? 'MD5 校验…' : stage === 'extract' ? '解压安装…' : ''),
+      officialBadge: '官方便携',
+      uninstallRunningHint: '请先退出托管实例',
+      installedChipTone: 'positive',
     },
 
     extras: {

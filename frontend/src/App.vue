@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Events } from '@wailsio/runtime'
+import { ref, computed, onMounted } from 'vue'
 import * as AppAPI from '../bindings/hanxi/internal/app'
 import { EnsureModuleActive } from '../bindings/hanxi/internal/app/appservice.js'
 import type { NavEntry } from '../bindings/hanxi/internal/extapi/models'
@@ -17,6 +16,7 @@ import { useConfirm } from './composables/useConfirm'
 import { usePrompt } from './composables/usePrompt'
 import type { Notification } from '../bindings/hanxi/internal/notify/models'
 import { useToast } from './composables/useToast'
+import { useWailsEvent } from './composables/useWailsEvent'
 import { getErrorMessage } from './utils/errors'
 
 const { toastMsg, showToast } = useToast()
@@ -25,15 +25,12 @@ const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
 // 路由→组件与模块门禁清单已外移至 constants/navigation.ts（单一来源 + 视图异步化）。
-// 侧栏展示层（导航分组/高亮/通知徽标/主题钮/状态条）已组件化至 components/shell/AppSidebar.vue，
-// 本文件只保留路由与门禁编排。
+// 侧栏展示层（导航分组/高亮/通知徽标/状态条）已组件化至 components/shell/AppSidebar.vue，
+// 本文件只保留路由与门禁编排。（原侧栏主题钮已下线，主题切换唯一入口在设置页「外观主题」。）
 
 const navs = ref<NavEntry[]>([])
 const activeRoute = ref('/')
 const backendReady = ref(false)
-let unlistenExtChanged: (() => void) | null = null
-let unlistenNotify: (() => void) | null = null
-let unlistenTrayNav: (() => void) | null = null
 let navigationRequestID = 0
 
 async function refreshNavs() {
@@ -82,6 +79,29 @@ const currentView = computed(() => {
 
 const currentExt = computed(() => navs.value.find(n => n.route === activeRoute.value))
 
+// 顶层事件订阅（useWailsEvent：setup 同步期注册、组件作用域卸载自动注销；
+// 载荷已由 composable 统一拆 {data} 包装，handler 直收后端 emit 载荷本体。
+// 相比旧「onMounted 内注册」，早期事件不再因挂载竞态丢失——handler 只触 ref/API，
+// ext:changed 早到对 GetNavs 幂等无害，不加新闩保持现语义面）。
+// 后端模块开关与导航热更新事件
+useWailsEvent('ext:changed', () => {
+  void refreshNavs()
+})
+
+// 全局统一通知事件（唯一顶层监听，承接全模块通知；空载荷防护保留）
+useWailsEvent<Notification>('notify:received', (d) => {
+  if (d) {
+    pushToast(d)
+  }
+})
+
+// 托盘右键菜单的页面直达请求（载荷为前端路由，非空字符串防护保留）
+useWailsEvent<string>('tray:navigate', (d) => {
+  if (typeof d === 'string' && d) {
+    void navigateTo(d)
+  }
+})
+
 onMounted(async () => {
   try {
     await refreshNavs()
@@ -95,41 +115,6 @@ onMounted(async () => {
   const handoff = window.location.hash.replace(/^#/, '')
   if (handoff && handoff !== '/' && navs.value.some(n => n.route === handoff)) {
     await navigateTo(handoff)
-  }
-
-  // 监听后端模块开关与导航热更新事件
-  unlistenExtChanged = Events.On('ext:changed', () => {
-    refreshNavs()
-  })
-
-  // 监听全局统一通知事件（唯一顶层监听，承接全模块通知）
-  // Wails runtime 回调恒为 { name, data } 包装，data 即后端 emit 载荷
-  unlistenNotify = Events.On('notify:received', (event: { data?: Notification }) => {
-    if (event?.data) {
-      pushToast(event.data)
-    }
-  })
-
-  // 监听托盘右键菜单的页面直达请求（载荷为前端路由）
-  unlistenTrayNav = Events.On('tray:navigate', (event: { data?: string }) => {
-    if (typeof event?.data === 'string' && event.data) {
-      navigateTo(event.data)
-    }
-  })
-})
-
-onUnmounted(() => {
-  if (unlistenExtChanged) {
-    unlistenExtChanged()
-    unlistenExtChanged = null
-  }
-  if (unlistenNotify) {
-    unlistenNotify()
-    unlistenNotify = null
-  }
-  if (unlistenTrayNav) {
-    unlistenTrayNav()
-    unlistenTrayNav = null
   }
 })
 </script>

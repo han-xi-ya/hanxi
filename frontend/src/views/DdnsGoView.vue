@@ -102,23 +102,12 @@ async function applyPort() {
 }
 
 // ---------- 第三钮「打开控制台」（#primary-action 槽注入） ----------
-// P0 批 3·4.5：单飞从视图自建 busy 收编进共享 store.runExclusive——
-// 本钮在途时启停/退出钮一并禁用，反之亦然，杜绝「多份 busy 真相」交叉并发；
-// 成功后状态刷新由 instance-state 事件与轮询兜底。
-async function openConsole(store: ManagedConsoleStore) {
-  const r = await store.runExclusive(async () => {
-    try {
-      return { ok: true as const, data: await adapter.openConsole.run() }
-    } catch (e) {
-      return { ok: false as const, error: e as unknown }
-    }
-  })
-  if (!r) return // 共享互斥闩占用中：重复点击直接丢弃
-  if (r.ok) {
-    if (r.data?.message !== undefined) showToast(r.data.message)
-  } else {
-    showToast(getErrorMessage(r.error))
-  }
+// P0 批 3·4.5 单飞收编 + 波 2D 归一：runExclusive→settle→toast 整链交
+// store.runSlotVerb——参数位逐字锚定本视图现形制（对账表实据）：失败裸错误串
+// （errorPrefix:''），成败两分支均不刷快照（refreshAfter:'never'），成功后的
+// 状态回写由 instance-state 事件与 2.5s 轮询兜底；回执 message 经 settle 弹串。
+function openConsole(store: ManagedConsoleStore) {
+  void store.runSlotVerb(adapter.openConsole, { errorPrefix: '', refreshAfter: 'never' })
 }
 
 onMounted(async () => {
@@ -213,9 +202,6 @@ onMounted(async () => {
 .dd-addr-line { display: flex; align-items: center; gap: 8px; }
 .addr-tag { font-size: var(--text-xs); color: var(--color-text-subtle); }
 
-/* 说明卡内联链接 */
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
 
 /* ---------- 进程输出日志面板（终端态：固定深底不随主题反相，tokens.css 设计决策；
    色阶由 --terminal-* 与 --ansi-* 派生，不再散落裸色。

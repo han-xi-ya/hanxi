@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { ref } from 'vue'
+import { DIALOG_Z, useDialogA11y } from '../composables/useDialogA11y'
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -17,7 +18,6 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ confirm: []; cancel: []; 'update:open': [value: boolean] }>()
 const dialog = ref<HTMLElement | null>(null)
 const cancelButton = ref<HTMLButtonElement | null>(null)
-let previousFocus: HTMLElement | null = null
 
 function cancel() {
   if (props.busy) return
@@ -25,31 +25,16 @@ function cancel() {
   emit('update:open', false)
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') { event.preventDefault(); cancel(); return }
-  if (event.key !== 'Tab' || !dialog.value) return
-  const focusable = Array.from(dialog.value.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'))
-  if (!focusable.length) return
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
-  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-}
-
-watch(() => props.open, async (open) => {
-  if (open) {
-    previousFocus = document.activeElement as HTMLElement | null
-    await nextTick()
-    cancelButton.value?.focus()
-    document.addEventListener('keydown', onKeydown)
-  } else {
-    document.removeEventListener('keydown', onKeydown)
-    previousFocus?.focus()
-    previousFocus = null
-  }
+// 焦点/Tab 环/Esc 契约走 useDialogA11y 单源，本件为全仓标杆语义（波 2C 接线，逐字等价）：
+// z 顶档（App 单例，无需让位）、watch 非 immediate（spec 钉死：翻真后才挂监听）、
+// 开窗焦点落取消按钮、Esc 消费且 preventDefault。
+useDialogA11y({
+  open: () => props.open,
+  dialog,
+  z: DIALOG_Z.top,
+  close: cancel,
+  focusOnOpen: () => cancelButton.value?.focus(),
 })
-
-onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>

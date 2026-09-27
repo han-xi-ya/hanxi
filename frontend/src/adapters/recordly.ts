@@ -21,6 +21,7 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { fmtSize } from '../utils/format'
+import { compareCore, upgradeAvailableCore } from '../utils/version'
 import type {
   ManagedActionResult,
   ManagedModuleAdapter,
@@ -28,37 +29,23 @@ import type {
   ManagedVersionRecord,
 } from '../components/managed/adapter'
 
-// 核心版本号（去预发布后缀）：NSIS 单目录语义下 beta 的 PE 版本与 tag 互认依据
-function coreOf(v: string): string {
-  return v.trim().replace(/^v(?=\d)/i, '').replace(/-.*$/, '')
-}
-
 /**
- * 核心版本比较（a>b 返回 1；不可解析退化为字典序）——recordly 全模块唯一一份
- * 比较器：面板互认钩子（sameVersion）与视图升级检测横幅共用，杜绝双实现漂移。
+ * 核心互认同一性：精确 tag 命中或数值核心一致（PE 版本抹掉 -beta 后缀的互认场）。
+ * 比较器上收 utils/version 单源（版本比较器统一波），a===b 短路逐字保留。
+ * 本模块三段真实数据（v1.3.5 / 1.2.0-beta.N 型）上新旧口径逐格等值；两处有意
+ * 修正仅在册防御面：≥4 段不再被旧 3 段截断抹平成互认（漏报消除），imported-*
+ * 由旧字典序伪判「永新」改判不可比（互认结论同为 false，词面不再出于巧合）。
  */
-function coreCompare(a: string, b: string): number {
-  const pa = coreOf(a).split('.').map(Number)
-  const pb = coreOf(b).split('.').map(Number)
-  for (let i = 0; i < 3; i++) {
-    const na = pa[i], nb = pb[i]
-    if (Number.isNaN(na) || Number.isNaN(nb)) return coreOf(a) < coreOf(b) ? -1 : coreOf(a) > coreOf(b) ? 1 : 0
-    if (na !== nb) return na > nb ? 1 : -1
-  }
-  return 0
-}
-
-/** 核心互认同一性：精确 tag 命中或数值核心一致（PE 版本抹掉 -beta 后缀的互认场）。 */
 function sameVersion(a: string, b: string): boolean {
-  return a === b || coreCompare(a, b) === 0
+  return a === b || compareCore(a, b) === 0
 }
 
 /**
  * 升级判定（视图升级警告条的唯一谓词）：已装核心 < 当前通道最新核心。
- * 比较器不出模块边界，视图只消费布尔结论，避免 coreCompare 二次拷贝。
+ * 比较器不出模块边界，视图只消费布尔结论——实现即 utils 谓词的透传。
  */
 export function recordlyUpgradeAvailable(installedVersion: string, latestVersion: string): boolean {
-  return coreCompare(installedVersion, latestVersion) < 0
+  return upgradeAvailableCore(installedVersion, latestVersion)
 }
 
 

@@ -1,0 +1,19 @@
+/* RTT 值色档 · publicip 诊断家族就近共享（冗余治理波 2C）：
+   PingPanel / TraceroutePanel 两份逐字同形的 scoped 副本删净归此，两面板各以
+   <style scoped src="./diagRtt.css"> 吃入（源层单份；构建期各自编译 data-v 作用域，
+   作用面不外溢）。基形（mono/600/sm）已由 components.css :where(.rtt-tag) 全局
+   定档，本件只补色档。
+   不上收 components.css 的理由（撞名查重结论）：LanScannerView 对同名
+   .rtt-tag.fast/.slow 持有另一档语义（色块底 + .slow=muted + 自有 .normal 档，
+   阈值 20/500 亦不同），系 §9.6-10 已裁决的合法局部补差；上收会把 Ping/Traceroute
+   的档位语义种进全局兜底，构成"同名不同义"形态（components.css 托管家族块注记中
+   dz-/md- 前缀复制体同款被拒形态），故留家族内共享。 */
+.rtt-tag.fast {
+  color: var(--state-positive);
+}
+.rtt-tag.medium {
+  color: var(--state-warning);
+}
+.rtt-tag.slow {
+  color: var(--state-danger);
+}

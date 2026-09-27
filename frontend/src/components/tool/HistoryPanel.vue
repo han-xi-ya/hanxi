@@ -3,7 +3,7 @@
 // 宿主视图只管挂载与接 apply 事件。契约与口径见 docs/plans/PLAN_HISTORY.md §2.3：
 // 行内数据直用（Q6，应用/复制不回查）、清空仅作用当前桶（Q5）、删除走 ID。
 // 搜索 350ms 防抖 + seq 过期丢弃（useEverythingSearch 同款），历史损坏时给只读降级提示。
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as HistoryAPI from '../../../bindings/hanxi/internal/history/historyservice'
 import type { Record as HistoryRecord } from '../../../bindings/hanxi/internal/history/models'
 import { useToast } from '../../composables/useToast'
@@ -11,6 +11,7 @@ import { useClipboard } from '../../composables/useClipboard'
 import { useConfirm } from '../../composables/useConfirm'
 import { getErrorMessage } from '../../utils/errors'
 import { fmtDateTimeSmart } from '../../utils/format'
+import { debounce } from '../../utils/debounce'
 
 // —— N20b 标记列中文化 ——
 // extra 是各模块记录点写入的机器 token（竖线连拼，见 ocr/portkill/npmtool
@@ -92,12 +93,11 @@ async function load() {
   }
 }
 
-// keyword 350ms 防抖（useEverythingSearch 同款节奏）
-let debounceTimer: ReturnType<typeof setTimeout> | undefined
-watch(keyword, () => {
-  clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(load, 350)
-})
+// keyword 350ms 防抖（useEverythingSearch 同款节奏）：改用 utils/debounce 正源，
+// trailing 语义与手写版逐字一致；卸载时 cancel 未触发的待执行，防止面板已拆仍补发一次 List。
+const debouncedLoad = debounce(load, 350)
+watch(keyword, () => debouncedLoad())
+onBeforeUnmount(debouncedLoad.cancel)
 
 async function removeRow(rec: HistoryRecord) {
   try {

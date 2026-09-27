@@ -3,14 +3,11 @@ import { computed, onMounted } from 'vue'
 import { createVSCodeAdapter, type VSCodeForm } from '../adapters/vscode'
 import type { Release, VersionInfo } from '../../bindings/hanxi/internal/modules/vscode/version/models'
 import type { ManagedConsoleStore } from '../components/managed/store'
-import { useToast } from '../composables/useToast'
-import { getErrorMessage } from '../utils/errors'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import VSCodeControlBar from '../components/vscode/VSCodeControlBar.vue'
 import VSCodeVersionsPanel from '../components/vscode/VSCodeVersionsPanel.vue'
 
 const { adapter, runtime } = createVSCodeAdapter()
-const { showToast } = useToast()
 
 const openDirVersion = computed(() => {
   const preferred = runtime.portable?.state === 'running' && runtime.portable.version
@@ -19,77 +16,57 @@ const openDirVersion = computed(() => {
   return runtime.installed.find((info) => info.version === preferred) ?? runtime.installed[0] ?? null
 })
 
+// 波 2F：七个手抄「runExclusive→settle→toast」包装收编 store.runSlotVerb
+// （波 2A 编排位）。前缀词面对账（逐字沿用现词，与 store ACTION_ERROR_PREFIX
+// 表值同词者即为「回表」：quitForm 退出失败: / setActive 设置失败: /
+// removeVersion 卸载失败: / importLocal 导入失败: / openDir 打开目录失败: ）；
+// download 的「操作失败: 」为本视图方言（家族 runDownload 标准词为「下载失败: 」，
+// 双表 custom 编排不走 store 票路，不并入表词）。
+// toast 守卫微差留痕：openWindow/quitForm 原为**无条件**弹 outcome.message，
+// runSlotVerb 经 settle 只弹 message!==undefined 者——两动词的 runtime
+// （VSCodeAPI.OpenWindow/Quit 的 ControlOutcome/QuitOutcome）恒回 message，
+// 两口径等价（波 2F 裁决，非静默吞词）。
+// 刷新档对位：openWindow/quitForm「成败两分支均刷」= refreshAfter:'always'
+// （toast 先行、刷新随后，原序保持）；download/setActive/openDir/remove/import
+// 原形制不刷快照 = 'never' 缺省；download/remove/import 的 reloadVersions
+// 重拉通道经 reloadVersionsVia 钉回 runtime.loadVersions（custom 编排的自有
+// 版本面，store.load() 不承载双表数据、绝不得旁路写入）。
+
 async function openWindow(store: ManagedConsoleStore, form: VSCodeForm) {
-  await store.runExclusive(async () => {
-    try {
-      const outcome = await runtime.openWindow(form)
-      showToast(outcome.message)
-      await store.refresh()
-    } catch (error) {
-      showToast(getErrorMessage(error))
-      await store.refresh()
-    }
-  })
+  await store.runSlotVerb(() => runtime.openWindow(form), { refreshAfter: 'always' })
 }
 
 async function quitForm(store: ManagedConsoleStore, form: VSCodeForm) {
-  await store.runExclusive(async () => {
-    try {
-      const outcome = await runtime.quit(form)
-      showToast(outcome.message)
-      await store.refresh()
-    } catch (error) {
-      showToast(`退出失败: ${getErrorMessage(error)}`)
-      await store.refresh()
-    }
-  })
+  await store.runSlotVerb(() => runtime.quit(form), { errorPrefix: '退出失败: ', refreshAfter: 'always' })
 }
 
 async function download(store: ManagedConsoleStore, form: VSCodeForm, release: Release) {
-  try {
-    const result = await store.runExclusive(() => runtime.download(form, release))
-    if (result?.message !== undefined) showToast(result.message)
-    if (result?.reloadVersions) await runtime.loadVersions()
-  } catch (error) {
-    showToast(`操作失败: ${getErrorMessage(error)}`)
-  }
+  await store.runSlotVerb(() => runtime.download(form, release), {
+    errorPrefix: '操作失败: ',
+    reloadVersionsVia: () => runtime.loadVersions(),
+  })
 }
 
 async function setActive(store: ManagedConsoleStore, info: VersionInfo) {
-  try {
-    const result = await store.runExclusive(() => runtime.setActive(info))
-    if (result?.message !== undefined) showToast(result.message)
-  } catch (error) {
-    showToast(`设置失败: ${getErrorMessage(error)}`)
-  }
+  await store.runSlotVerb(() => runtime.setActive(info), { errorPrefix: '设置失败: ' })
 }
 
 async function openDir(store: ManagedConsoleStore, path: string) {
-  try {
-    await store.runExclusive(() => runtime.openDir(path))
-  } catch (error) {
-    showToast(`打开目录失败: ${getErrorMessage(error)}`)
-  }
+  await store.runSlotVerb(() => runtime.openDir(path), { errorPrefix: '打开目录失败: ' })
 }
 
 async function removeVersion(store: ManagedConsoleStore, info: VersionInfo) {
-  try {
-    const result = await store.runExclusive(() => runtime.remove(info))
-    if (result?.message !== undefined) showToast(result.message)
-    if (result?.reloadVersions) await runtime.loadVersions()
-  } catch (error) {
-    showToast(`卸载失败: ${getErrorMessage(error)}`)
-  }
+  await store.runSlotVerb(() => runtime.remove(info), {
+    errorPrefix: '卸载失败: ',
+    reloadVersionsVia: () => runtime.loadVersions(),
+  })
 }
 
 async function importLocal(store: ManagedConsoleStore) {
-  try {
-    const result = await store.runExclusive(() => runtime.importLocal())
-    if (result?.message !== undefined) showToast(result.message)
-    if (result?.reloadVersions) await runtime.loadVersions()
-  } catch (error) {
-    showToast(`导入失败: ${getErrorMessage(error)}`)
-  }
+  await store.runSlotVerb(() => runtime.importLocal(), {
+    errorPrefix: '导入失败: ',
+    reloadVersionsVia: () => runtime.loadVersions(),
+  })
 }
 
 onMounted(() => {
@@ -170,6 +147,4 @@ onMounted(() => {
 
 <style scoped>
 .vscode-controls { display: flex; flex-direction: column; gap: 10px; }
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
 </style>

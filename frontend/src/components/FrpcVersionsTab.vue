@@ -7,6 +7,8 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { fmtSize, fmtDate } from '../utils/format'
 import { getErrorMessage } from '../utils/errors'
+import { normalizeVersion } from '../utils/version'
+import { stepOf } from './managed/managedProgress'
 
 const emit = defineEmits<{ (e: 'version-changed'): void }>()
 
@@ -51,17 +53,13 @@ async function refreshRemote() {
   }
 }
 
-function stepOf(p: DownloadProgress): number {
-  if (p.stage === 'done') return 100
-  if (p.stage !== 'downloading') return 0
-  if (!p.total) return 0
-  return Math.min(99, Math.round((p.done / p.total) * 100))
-}
-
+// stepOf 取 managedProgress 单源（本 tab 原逐字副本已删）；statusOf 的"去 v 前缀
+// 精确互等"口径属本模块合法分叉（frpc 不做数值段比较），仍留本地——但剥离动作
+// 自统一波起吃 normalizeVersion 单源（installed=0.61.1 对 release=v0.61.1 互等不变）。
 function statusOf(rel: FrpRelease): 'installed' | 'downloading' | 'error' | 'idle' {
   const p = downloading.value[rel.version]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
-  const hit = installed.value.find(v => v.version.replace(/^v/, '') === rel.version.replace(/^v/, ''))
+  const hit = installed.value.find(v => normalizeVersion(v.version) === normalizeVersion(rel.version))
   return hit ? 'installed' : 'idle'
 }
 
@@ -109,7 +107,8 @@ async function openConfigDir() {
 }
 
 async function removeVersion(v: FrpVersionInfo) {
-  const versionShort = v.version.replace(/^v/, '')
+  // 展示剥离上收 normalizeVersion 单源（与 statusOf 同表；`V0.61.1` 大写形态现也剥，微差登记）
+  const versionShort = normalizeVersion(v.version)
   // 卸载确认收编至全局 useConfirm（文案逐字拆 title/description）
   const accepted = await confirm({
     title: `确定卸载 frpc ${versionShort}？`,
@@ -260,18 +259,15 @@ onMounted(() => {
 
 <style scoped>
 .versions-tab-content { display: flex; flex-direction: column; gap: 14px; }
-/* .header-row/.subtitle/.btn 家族/.tbl/.mono/.error-box 由 components.css 全局原子接管 */
+/* .header-row/.subtitle/.btn 家族/.tbl/.mono/.error-box 由 components.css 全局原子接管。
+   冗余治理波 2C「删即落回」（对拍逐条证实与全局 :where 原子同形后方删，渲染零变化）：
+   .control-panel/.btn-group/.inst-card-top/.ver-tag/.inst-badges/.inst-meta/.meta-line/
+   .inst-actions/.ver-name/.download-cell/.dl-percent/.dl-meta-text/.dl-error 十三条删净；
+   登记待裁决三条（.meta-line .k/.meta-info strong/.section-title h3）于版本比较器统一波
+   复拍裁决：与 components.css :where 原子声明块逐字同形，删净落回。 */
 
-.control-panel {
-  display: flex; align-items: center; justify-content: space-between;
-  background: var(--surface-panel); border: 1px solid var(--color-border);
-  padding: 10px 14px; border-radius: var(--radius-control);
-}
+/* 真散差留局部（波 2C 对拍证实与全局标准形有差，不可落回）： */
 .meta-info { font-size: var(--text-base); color: var(--color-text-muted); }
-.meta-info strong { color: var(--color-text); }
-.btn-group { display: flex; gap: 8px; }
-
-.section-title h3 { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
 
 /* 已安装卡片 */
 .installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
@@ -279,25 +275,16 @@ onMounted(() => {
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
   padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
 }
-.inst-card-top { display: flex; justify-content: space-between; align-items: center; }
-.ver-tag { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
-.inst-badges { display: flex; gap: 6px; }
 /* .badge 基形与 components.css 全局原子逐字同义，scoped 副本已删除；以下仅本组件配色变体 */
 .badge-import { background: var(--state-positive-soft); color: var(--state-positive); }
 .badge-official { background: var(--state-information-soft); color: var(--state-information); }
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
-.inst-meta { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); }
-.meta-line { display: flex; gap: 8px; color: var(--color-text-muted); align-items: baseline; }
-.meta-line .k { color: var(--color-text-subtle); width: 44px; flex-shrink: 0; }
 /* 旧 scoped 同名原子 .mono{font-size:11px} 压缩副本已删除，落回全局 .mono（--text-sm）标准形 */
 .mono.short { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.inst-actions { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
-
-/* 表格（.tbl 全局原子接管） */
+/* 表格（.tbl 全局原子接管；.table-container 留局部系 overflow 口径真差） */
 .table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; }
-.ver-name { font-family: var(--font-mono); }
 
 .frpc-version-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .frpc-version-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 7px; }
@@ -306,11 +293,6 @@ onMounted(() => {
 .frpc-version-status.error::before { background: var(--state-danger); }
 .frpc-version-status.idle::before { background: var(--color-text-subtle); }
 
-.download-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
-.dl-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }
-.dl-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
-.dl-percent { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
-.dl-meta-text { font-size: var(--text-sm); color: var(--color-primary); }
-.dl-error { color: var(--state-danger); font-size: var(--text-xs); }
+/* .dl-bar-wrap/.dl-bar-inner 与 components.css 全局原子逐字同形，副本删净落回。 */
 .muted-text { color: var(--color-text-subtle); }
 </style>

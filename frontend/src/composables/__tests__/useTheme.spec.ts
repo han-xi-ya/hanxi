@@ -197,3 +197,46 @@ describe('useTheme 界面字体档（N40）', () => {
     rpc.GetFont.mockResolvedValue('kai')
   })
 })
+
+// 波 1d 参数化收敛锁：theme/accent/font 三轴的 readAxisCache/writeAxisCache 走同一份实现，
+// 逐轴行为与收敛前逐字一致——合法值回填、脏值丢弃回落默认、setter 经 watch 回写各自键。
+describe('useTheme 三轴 localStorage 缓存（同构读写）', () => {
+  beforeEach(() => {
+    handlers.clear()
+  })
+
+  async function importWithCache(seed: Record<string, string>) {
+    vi.resetModules()
+    localStorage.clear()
+    for (const [key, value] of Object.entries(seed)) localStorage.setItem(key, value)
+    return await import('../useTheme')
+  }
+
+  it('缓存读取：三轴合法值首帧回填（模块 import 期生效，不依赖 initTheme）', async () => {
+    const mod = await importWithCache({ 'hanxi.theme': 'dark', 'hanxi.accent': 'sky', 'hanxi.font': 'plain' })
+    const { themeMode, accent, font } = mod.useTheme()
+    expect(themeMode.value).toBe('dark')
+    expect(accent.value).toBe('sky')
+    expect(font.value).toBe('plain')
+  })
+
+  it('缓存读取：三轴脏值逐轴拒收，各自回落默认 light/teal/kai', async () => {
+    const mod = await importWithCache({ 'hanxi.theme': 'hotpink', 'hanxi.accent': 'gold', 'hanxi.font': 'serif' })
+    const { themeMode, accent, font } = mod.useTheme()
+    expect(themeMode.value).toBe('light')
+    expect(accent.value).toBe('teal')
+    expect(font.value).toBe('kai')
+  })
+
+  it('缓存写入：三轴 setter 经 watch 回写各自键（读写轴间零串扰）', async () => {
+    const mod = await loadFresh()
+    const { setThemeMode, setAccent, setFontMode } = mod.useTheme()
+    setThemeMode('system')
+    setAccent('onyx')
+    setFontMode('mono')
+    await nextTick()
+    expect(localStorage.getItem('hanxi.theme')).toBe('system')
+    expect(localStorage.getItem('hanxi.accent')).toBe('onyx')
+    expect(localStorage.getItem('hanxi.font')).toBe('mono')
+  })
+})

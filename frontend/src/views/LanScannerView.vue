@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, nextTick } from 'vue'
+import { ref, shallowRef, onMounted, nextTick, computed } from 'vue'
 import * as LanAPI from '../../bindings/hanxi/internal/modules/lan'
 import type { SubnetInfo, DeviceInfo, LanProgress } from '../../bindings/hanxi/internal/modules/lan/models'
 import { getErrorMessage } from '../utils/errors'
@@ -7,6 +7,10 @@ import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
 import PageHeader from '../components/ui/PageHeader.vue'
+import UiProgressBar from '../components/ui/UiProgressBar.vue'
+
+// /24 网段默认主机总数（254 个可用主机位）：进度初值/复位值与推流缺 total 时的兜底分母
+const SCAN_TOTAL_DEFAULT = 254
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
@@ -14,9 +18,12 @@ const { copyWithToast } = useClipboard()
 const subnets = shallowRef<SubnetInfo[]>([])
 const selectedCidr = ref('')
 const scanning = ref(false)
-const progress = ref<LanProgress>({ scanned: 0, total: 254, found: 0 })
+const progress = ref<LanProgress>({ scanned: 0, total: SCAN_TOTAL_DEFAULT, found: 0 })
 const devices = shallowRef<DeviceInfo[]>([])
 const errorMsg = ref('')
+
+// 进度条百分比：推流 total 为 0/缺位时回退默认总主机数（越界与非法值由 UiProgressBar 归一钳位）
+const scanPercent = computed(() => (progress.value.scanned / (progress.value.total || SCAN_TOTAL_DEFAULT)) * 100)
 
 // 行内编辑备注状态
 const editingKey = ref<string | null>(null)
@@ -49,7 +56,7 @@ async function startScan() {
   scanning.value = true
   errorMsg.value = ''
   devices.value = []
-  progress.value = { scanned: 0, total: 254, found: 0 }
+  progress.value = { scanned: 0, total: SCAN_TOTAL_DEFAULT, found: 0 }
 
   try {
     const res = await LanAPI.LanService.Scan(range)
@@ -182,12 +189,7 @@ onMounted(() => {
         <span>扫描进度: {{ progress.scanned }} / {{ progress.total }}</span>
         <span class="found-badge">发现 {{ devices.length || progress.found }} 台设备</span>
       </div>
-      <div class="progress-bar-wrap">
-        <div
-          class="progress-bar-inner"
-          :style="{ width: `${(progress.scanned / (progress.total || 254)) * 100}%` }"
-        ></div>
-      </div>
+      <UiProgressBar :percent="scanPercent" />
     </div>
 
     <div v-if="errorMsg" class="error-box">{{ errorMsg }}</div>
@@ -382,18 +384,7 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
-.progress-bar-wrap {
-  height: 6px;
-  background: var(--surface-hover);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progress-bar-inner {
-  height: 100%;
-  background: var(--color-primary);
-  transition: width var(--motion-base) ease;
-}
+/* 进度条轨/填充两行 scoped 副本已删净（波 1a），落回公共件 UiProgressBar 标准形 */
 
 /* 表格展示：.tbl 基样式与 th/td 内距、表头底色全部落回 components.css 全局标准形
    （原 10px 14px 宽内距与 page 色表头为 ±2px 内差异，已删）；

@@ -8,8 +8,9 @@
 // 另有第三个钮「↻ 重载配置」（Reload 命名管道动词）——契约的 control 只有
 // primary/quit 两个声明位，reload 走扩展槽 adapter.reset（批 0 预留形状），
 // 视图把钮体经 ManagedControlBar 的 #primary-action 槽自绘并接线（三钮序不变）。
-// 版本 Tab 为方言表（安装源=便携 zip 解压、进度词「安装中/哈希校验…/解压安装…」等
-// 文案位超出 ManagedVersionPanel 通用形），由视图自留表格承接，数据与动作走共享 store。
+// 波 2E：版本区全量回迁 ManagedVersionPanel——zip 解压词形（「官方 zip」「安装中」
+// 「哈希校验…/解压安装…」等）逐字声明于本件 copy 词表（下表即原方言表词源），
+// 视图侧手抄表与「超出通用形」旧注记一并退役。
 // ============================================================================
 
 import * as QuickLookAPI from '../../bindings/hanxi/internal/modules/quicklook/quicklookservice'
@@ -141,6 +142,26 @@ export function createQuickLookAdapter(): ManagedModuleAdapter {
         return '正在拉起 QuickLook（约 1~3 秒）…'
       }
       return null
+    },
+
+    // 波 2E：版本区回迁面板——原方言表全部词面逐字入本表（缺省值即标准词，
+    // 只落差异：导入钮/首用引导与一键下载词/官方徽标词/进行词/阶段词族…）
+    copy: {
+      importLabel: '⇥ 导入本地便携目录',
+      metaHints: [
+        '安装源为官方 GitHub Releases 的便携 zip（官方 digest sha256 四层校验），保布局解压落进隔离目录，不触碰系统',
+        '「导入本地」可把你机器上手动解压的 QuickLook 便携目录整套收纳进托管',
+      ],
+      firstUseEmpty: '尚未安装 QuickLook —— 下载官方便携 zip 解压安装，或「导入本地便携目录」把现有解压目录收纳进来',
+      firstUseDownloadLabel: (rel) => `安装最新版 ${rel.version}`,
+      remoteUnavailable: '无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试',
+      downloadingWord: '安装中',
+      // zip 解压链阶段词：verify=sha256 哈希校验、extract=保布局解压；其余进行态
+      // 回空串走面板 message 透出（与原方言表兜底分支逐字同形）
+      stageWord: (stage) => (stage === 'verify' ? '哈希校验…' : stage === 'extract' ? '解压安装…' : ''),
+      officialBadge: '官方 zip',
+      uninstallRunningHint: '请先退出 QuickLook',
+      installedChipTone: 'positive',
     },
 
     extras: {

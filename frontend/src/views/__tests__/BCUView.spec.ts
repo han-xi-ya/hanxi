@@ -1,7 +1,9 @@
-// 特征测试（Phase 4 组 E）：BCUView 迁移前行为基线。
+// 特征测试（Phase 4 组 E，波 2E 版本区回迁收口）：BCUView 行为基线。
 // 锁定：六态文案/推荐变体/双变体下载键/确认与导入文案/事件改写/KeepAlive 轮询契约。
 // 迁移到共享层后，除 window.confirm/prompt 的"交互机制"断言换为 useConfirm/usePrompt
-// 单例外，其余断言必须原样保持全绿。
+// 单例外，其余断言必须原样保持全绿；波 2E 起面板三段（meta/已装卡/首用空态）走
+// ManagedVersionPanel 默认体，双变体表经 #remote-table 槽留视图，方言表锚点
+// .bcu-ver-status 退役、选择器迁 ManagedVersionDot 渲染形 .ver-status。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -219,7 +221,7 @@ describe('BCUView 操作流', () => {
     await nextTick()
     expect(wrapper.find('.variant-progress .dl-percent').text()).toBe('50%')
     // portable 未受影响：状态列整体为下载中
-    expect(wrapper.find('.bcu-ver-status').classes()).toContain('downloading')
+    expect(wrapper.find('.ver-status').classes()).toContain('downloading')
     wrapper.unmount()
   })
 

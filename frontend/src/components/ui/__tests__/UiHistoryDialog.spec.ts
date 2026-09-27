@@ -51,6 +51,30 @@ describe('UiHistoryDialog', () => {
     expect(w.emitted('close')).toHaveLength(1)
   })
 
+  it('Tab 环困窗：选择器补 input（面板有搜索框），末位 Tab 回首、首位 Shift+Tab 回末（useDialogA11y 单源锁）', async () => {
+    const w = mount(UiHistoryDialog, {
+      props: { open: false, title: '查杀历史' },
+      slots: { default: '<input class="probe-input" /><button class="probe-btn">确定</button>' },
+      global: { stubs: { teleport: true } },
+      attachTo: document.body,
+    })
+    await w.setProps({ open: true })
+    await flushPromises(); await nextTick()
+    // 窗内可聚焦序（DOM 序）：头部关闭钮 → 插槽 input → 插槽 button
+    const first = w.find('.hist-head .btn').element as HTMLElement
+    const last = w.find('.probe-btn').element as HTMLElement
+    last.focus()
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true })
+    document.dispatchEvent(tab)
+    expect(tab.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(first)
+    const shiftTab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true })
+    document.dispatchEvent(shiftTab)
+    expect(shiftTab.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(last)
+    w.unmount()
+  })
+
   it('遮罩空白点击与关闭钮均上抛 close', async () => {
     const w = factory(false)
     await w.setProps({ open: true })

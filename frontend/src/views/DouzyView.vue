@@ -2,7 +2,7 @@
 // 「Douzy 全能下载器」（多平台：抖音/TikTok/YouTube/Telegram/X）：仅版本管理与安装包下载——列远程版本、下载官方
 // Windows 安装包（sha256+字节数+PE 魔数校验）、拉起上游安装向导、管理已下载包。
 // 刻意无控制台 Tab / 状态灯 / 启停：本模块不托管进程（上游内测 + 壳闭源）。
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import * as DouzyAPI from '../../bindings/hanxi/internal/modules/douzy/douzyservice'
 import type { DouzyRelease, DouzyVersionInfo } from '../../bindings/hanxi/internal/modules/douzy/version/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/douzy/version/models'
@@ -13,6 +13,8 @@ import { loadManagedVersions } from '../composables/loadManagedVersions'
 import { useConfirm } from '../composables/useConfirm'
 import { useClipboard } from '../composables/useClipboard'
 import { fmtSize, fmtDate } from '../utils/format'
+import ManagedVersionDot from '../components/managed/ManagedVersionDot.vue'
+import { stepOf, versionRowState } from '../components/managed/managedProgress'
 import PageHeader from '../components/ui/PageHeader.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 
@@ -46,17 +48,10 @@ async function loadVersions() {
   })
 }
 
-function stepOf(p: DownloadProgress): number {
-  if (p.stage === 'done') return 100
-  if (p.stage !== 'downloading') return 0
-  if (!p.total) return 0
-  return Math.min(99, Math.round((p.done / p.total) * 100))
-}
-
+// stepOf/四态内核已收编 managedProgress 单一来源（波 1a）；本视图原 some 写法
+// 在公共 find 内核下同真值，判定逐字等价。
 function statusOf(rel: DouzyRelease): 'installed' | 'downloading' | 'error' | 'idle' {
-  const p = downloading.value[rel.version]
-  if (p) return p.stage === 'error' ? 'error' : 'downloading'
-  return installed.value.some(v => v.version === rel.version) ? 'installed' : 'idle'
+  return versionRowState(downloading.value[rel.version], installed.value, rel.version)
 }
 
 // ---------- 下载 / 安装 / 目录操作 ----------
@@ -123,15 +118,23 @@ async function openRepo() {
 }
 
 // ---------- 事件与生命周期 ----------
+// done 票据表内驻留时长（命名与取值对齐 store.ts DONE_TICK_RETIRE_MS 先例）
+const DONE_TICK_RETIRE_MS = 800
+// 清票定时器登记表：卸载统一清理，防迟到的清票写回已销毁组件；
+// 本波只做最小治理（登记+清理），手抄编排整体迁壳留波 2
+const retireTimers = ref(new Set<ReturnType<typeof setTimeout>>())
+
 useWailsEvent<DownloadProgress>('douzy:version-download', (t) => {
   if (!t || !t.version) return
   downloading.value = { ...downloading.value, [t.version]: t }
   if (t.stage === 'done') {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      retireTimers.value.delete(timer)
       const next = { ...downloading.value }
       delete next[t.version]
       downloading.value = next
-    }, 800)
+    }, DONE_TICK_RETIRE_MS)
+    retireTimers.value.add(timer)
     loadVersions()
   }
 })
@@ -143,6 +146,12 @@ onMounted(async () => {
   } catch (e) {
     console.warn('douzy RepositoryURL failed:', getErrorMessage(e))
   }
+})
+
+// 卸载清尽未达期的 done 清票定时器（驻留观感系在途体验，组件销毁后无需兑现）
+onUnmounted(() => {
+  retireTimers.value.forEach(clearTimeout)
+  retireTimers.value.clear()
 })
 </script>
 
@@ -218,11 +227,12 @@ onMounted(async () => {
               <span v-if="rel.isPre" class="dz-badge pre">预发布</span>
             </td>
             <td>
-              <!-- 类名带 dz- 前缀：全局原子有 .status-dot（7px），防碰撞压扁（markeron 事故教训） -->
-              <span v-if="statusOf(rel) === 'installed'" class="dz-status installed">已下载</span>
-              <span v-else-if="statusOf(rel) === 'downloading'" class="dz-status downloading">下载中</span>
-              <span v-else-if="statusOf(rel) === 'error'" class="dz-status error">失败</span>
-              <span v-else class="dz-status idle">可下载</span>
+              <!-- dz-status 锚点类保留：既有 spec 以此选择器断言；圆点形制由 ManagedVersionDot
+                   自带 scoped 标准形承担，本模块词面「已下载/可下载」逐字直传 -->
+              <ManagedVersionDot v-if="statusOf(rel) === 'installed'" class="dz-status" status="installed" text="已下载" />
+              <ManagedVersionDot v-else-if="statusOf(rel) === 'downloading'" class="dz-status" status="downloading" text="下载中" />
+              <ManagedVersionDot v-else-if="statusOf(rel) === 'error'" class="dz-status" status="error" text="失败" />
+              <ManagedVersionDot v-else class="dz-status" status="idle" text="可下载" />
             </td>
             <td>{{ fmtSize(rel.size) }}</td>
             <td>{{ fmtDate(rel.published) }}</td>
@@ -300,12 +310,8 @@ onMounted(async () => {
 .dz-table-wrap { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
 .dz-ver-name { font-family: var(--font-mono); }
 
-.dz-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
-.dz-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.dz-status.installed::before { background: var(--state-positive); }
-.dz-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
-.dz-status.error::before { background: var(--state-danger); }
-.dz-status.idle::before { background: var(--color-text-subtle); }
+/* 状态圆点形制已由 ManagedVersionDot 自带 scoped 标准形接管（.dz-status 复制体删净，
+   类名仅存模板锚点位）；dz- 岛其余（进度条/徽标/词表）本波不动，整体迁壳留波 2 */
 
 .dz-dl-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
 .dz-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }

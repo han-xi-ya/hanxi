@@ -55,6 +55,24 @@ describe('UiPromptDialog', () => {
     w2.unmount()
   })
 
+  it('Tab 环困窗：末位 Tab 回输入框、首位 Shift+Tab 回末位（选择器含 input，useDialogA11y 单源锁）', async () => {
+    const w = factory({ open: false })
+    await w.setProps({ open: true })
+    await new Promise((r) => setTimeout(r))
+    const first = w.find('input').element as HTMLElement
+    const last = w.find('.hx-prompt-btn.primary').element as HTMLElement
+    last.focus()
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true })
+    document.dispatchEvent(tab)
+    expect(tab.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(first)
+    const shiftTab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true })
+    document.dispatchEvent(shiftTab)
+    expect(shiftTab.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(last)
+    w.unmount()
+  })
+
   it('点击遮罩空白取消；点击面板内部不取消', async () => {
     const w = factory()
     await w.find('.hx-prompt').trigger('mousedown')

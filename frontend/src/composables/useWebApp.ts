@@ -7,8 +7,8 @@
 // （1 订阅 / 1 注销配对，onScopeDispose 自动清理）。视图常驻 App.vue 的 KeepAlive，
 // 注销仅发生在卸载/驱逐时——停用期窗口态事件照常触发重拉，列表缓存保持温热。
 //
-// 注意：bindings/hanxi/internal/modules/webapp 目录要等 Go 侧服务定稿后生成绑定，
-// 本文件的 import 在生成前属预期中间态红（由主会话绑定落地后统一 typecheck）。
+// 绑定已再生（bindings/hanxi/internal/modules/webapp）：defaultOpen 字段与
+// SetEntryDefaultOpen 导出均为正式生成符号，本文件直用生成类型，无手写桥接。
 import { ref, computed, onMounted } from 'vue'
 import * as WebAppAPI from '../../bindings/hanxi/internal/modules/webapp'
 import type { WebAppEntryView } from '../../bindings/hanxi/internal/modules/webapp/models'
@@ -20,17 +20,16 @@ import { useConfirm } from './useConfirm'
 /** 名称长度闸门前端镜像（与后端 SaveEntry 的 40 字上限同值；仅省一次往返，权威仍在服务端）。 */
 export const NAME_MAX = 40
 
-// —— W1 冻结契约（defaultOpen）的前端桥接 ——
+// —— W1 冻结契约（defaultOpen）——
 // 条目 JSON 字段 defaultOpen ∈ '' | 'window' | 'browser'，''（含存量缺字段）
-// 语义即「独立窗口」。bindings 再生前本文件内的类型桥接（as unknown as）属
-// 预期过渡态：W1 落盘、绑定重生成后可移除，不改调用形状。
+// 语义即「独立窗口」。读取走绑定正式字段（可选 string）；写入定稿为独立导出
+// SetEntryDefaultOpen 路线——SaveEntry 保持 4 参不携形态字段。
 /** 默认打开方式（表单可选值；'' 仅出现在存量数据，UI 归一化为 'window'）。 */
 export type WebAppOpenMode = 'window' | 'browser'
 
 /** 归一化条目 defaultOpen：'browser' 以外（含 undefined/''/未知值）一律按 'window' 呈现。 */
 export function entryDefaultOpen(entry: WebAppEntryView): WebAppOpenMode {
-  const raw = (entry as unknown as { defaultOpen?: string }).defaultOpen
-  return raw === 'browser' ? 'browser' : 'window'
+  return entry.defaultOpen === 'browser' ? 'browser' : 'window'
 }
 
 /** 行级忙态动作：同一行任一异步操作进行中即锁整行钮组，防连发并发的窗口编排。 */
@@ -169,18 +168,13 @@ export function useWebApp() {
     saving.value = true
     try {
       // 返回值即服务端定稿 ID（新建时由后端生成）；当前列表随后由 refresh 带回，无需本地接线。
-      // defaultOpen 双兼容写法（W1 定稿前两侧都接得住，落盘后删桥接不改行为）：
-      // ① 全量快照路线——SaveEntry 若扩第 5 参 defaultOpen，此处直传；现行 4 参绑定
-      //    生成的 JS 函数按形参截取，多余实参自然丢弃，无副作用。
-      // ② 独立导出路线——W1 若以 SetEntryDefaultOpen(entryID, mode) 定稿，绑定再生后
-      //    该函数存在，随后补写一次（新建取 SaveEntry 返回的定稿 ID）。
-      const savedID = await (WebAppAPI.WebAppService.SaveEntry as unknown as (
-        entryID: string, name: string, rawURL: string, icon: string, defaultOpen: string,
-      ) => Promise<string>)(editingId.value, name, url, formIcon.value.trim(), formDefaultOpen.value)
-      const setDefaultOpen = (WebAppAPI.WebAppService as unknown as {
-        SetEntryDefaultOpen?: (entryID: string, mode: WebAppOpenMode) => Promise<void>
-      }).SetEntryDefaultOpen
-      if (setDefaultOpen) await setDefaultOpen(savedID || editingId.value, formDefaultOpen.value)
+      // defaultOpen 经独立导出 SetEntryDefaultOpen(entryID, mode) 补写一次（W1 定稿路线，
+      // 新建取 SaveEntry 返回的定稿 ID）。两步非原子：补写失败时条目已存但形态未新，
+      // 统一走下方 catch 报错，随后的 refresh 缺省不执行、界面保持服务端真实态。
+      const savedID = await WebAppAPI.WebAppService.SaveEntry(
+        editingId.value, name, url, formIcon.value.trim(),
+      )
+      await WebAppAPI.WebAppService.SetEntryDefaultOpen(savedID || editingId.value, formDefaultOpen.value)
       resetForm()
       await refresh()
       showToast(wasEditing ? `「${name}」已保存` : `已添加「${name}」`)

@@ -15,6 +15,7 @@ import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import { sameSnapshot } from '../components/managed/adapter'
+import { stepOf } from '../components/managed/managedProgress'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
 import { toolStateMeta } from '../constants/status'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -116,13 +117,8 @@ async function refreshStatus() {
   }
 }
 
-function stepOf(p: DownloadProgress): number {
-  if (p.stage === 'done') return 100
-  if (p.stage !== 'downloading') return 0
-  if (!p.total) return 0
-  return Math.min(99, Math.round((p.done / p.total) * 100))
-}
-
+// stepOf 已收编 managedProgress 单一来源（波 1a）；statusOf/installStatusOf 系双通道
+// 分叉（form 精确匹配 + 第五档 unavailable），不并入公共四态内核，保留本地。
 function statusOf(rel: RDRelease): 'installed' | 'downloading' | 'error' | 'idle' {
   const p = downloading.value[rel.version]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
@@ -645,9 +641,8 @@ onMounted(async () => {
 .form-pill { font-size: var(--text-xs); padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-weight: 600; }
 .form-pill-portable { background: var(--surface-hover); color: var(--color-text-muted); }
 
-/* ---------- 提示行与说明卡（hint-line/info-details/info-summary/info-body p 等由全局原子接管） ---------- */
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
+/* ---------- 提示行与说明卡（hint-line/info-details/info-summary/info-body p 等由全局原子接管；
+   .inline-link 两行 scoped 副本已删净，落回 components.css :where 全局原子） ---------- */
 
 /* ---------- 版本区（control-panel/meta-info/btn-group、section-title h3/empty-hint 由全局原子接管） ---------- */
 /* .hint-dim 同名同义 scoped 副本已删除，落回 components.css 全局原子 */

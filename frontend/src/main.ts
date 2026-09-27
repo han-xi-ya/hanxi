@@ -1,5 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+// 浮窗视图刻意静态 import（60+ 工作台视图走懒加载，唯独这里不吃拆包）：全局热键唤出对
+// 首帧延迟敏感，改懒加载等于给唤出路径加一次网络/解析等待——勿改，除非实测唤出延迟可接受。
 import QuickMenuPopup from './views/QuickMenuPopup.vue'
 import SnipCardView from './views/SnipCardView.vue'
 import MsgBoardPopup from './views/MsgBoardPopup.vue'

@@ -12,20 +12,18 @@
 import { computed, onMounted, ref } from 'vue'
 import { createMangoDiskAdapter } from '../adapters/mangodisk'
 import { useManagedConsole } from '../components/managed/store'
-import type { NormalizedProgress } from '../components/managed/adapter'
+import { stepOf } from '../components/managed/managedProgress'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import UiEmptyState from '../components/ui/UiEmptyState.vue'
-import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
 
 const adapter = createMangoDiskAdapter()
 const store = useManagedConsole(adapter)
 
-const { showToast } = useToast()
 const follow = adapter.extras!.followOnExit!
 const shortcut = adapter.extras!.shortcut!
 const repo = adapter.extras!.repo!
@@ -53,40 +51,29 @@ function integrityLabel(value: string): string {
   return ({ verified: '官方校验', 'local-baseline': '本地基线', drifted: '文件已漂移', invalid: '安装无效' } as Record<string, string>)[value] || '未知'
 }
 function shortHash(value?: string): string { return value ? `${value.slice(0, 10)}…${value.slice(-6)}` : '—' }
-function progressOf(item: NormalizedProgress): number {
-  if (item.stage === 'done') return 100
-  if (item.stage !== 'downloading' || !item.total) return 0
-  return Math.min(99, Math.round((item.done / item.total) * 100))
-}
+// 原 progressOf 系 stepOf 的分支并写等义体（全输入域同值，波 1a 逐条比对后并入单一来源）
 
+// 波 2D：三动作改经 store.runSlotVerb 派生——单飞闩/message 回执/失败前缀
+// 归一共享编排；参数位逐字锚定本视图现形制：成败两分支均不刷快照
+// （refreshAfter:'never'），失败前缀沿用现词（openRepository 为裸错误串）。
 async function toggleFollow() {
   const next = !followOnExit.value
-  try {
-    const res = await follow.set(next)
-    followOnExit.value = next // 成功后才翻转（本视图开关现状，非乐观回滚形）
-    if (res?.message !== undefined) showToast(res.message)
-  } catch (error) {
-    showToast(`设置失败: ${getErrorMessage(error)}`)
-  }
+  await store.runSlotVerb(
+    async () => {
+      const res = await follow.set(next)
+      followOnExit.value = next // 成功后才翻转（本视图开关现状，非乐观回滚形）
+      return res
+    },
+    { errorPrefix: '设置失败: ', refreshAfter: 'never' },
+  )
 }
 
 async function createShortcut() {
-  await store.runExclusive(async () => {
-    try {
-      const res = await shortcut.create()
-      if (res?.message !== undefined) showToast(res.message)
-    } catch (error) {
-      showToast(`创建快捷方式失败: ${getErrorMessage(error)}`)
-    }
-  })
+  await store.runSlotVerb(() => shortcut.create(), { errorPrefix: '创建快捷方式失败: ', refreshAfter: 'never' })
 }
 
-async function openRepository() {
-  try {
-    await repo.open()
-  } catch (error) {
-    showToast(getErrorMessage(error))
-  }
+function openRepository() {
+  void store.runSlotVerb(() => repo.open(), { errorPrefix: '', refreshAfter: 'never' })
 }
 
 // 联动开关初值读取（原随版本加载并发，迁后独立拉取、失败静默不挡版本区）
@@ -180,7 +167,7 @@ onMounted(() => {
         <div v-else class="md-table-wrap">
           <table class="tbl">
             <thead><tr><th>版本</th><th>发布时间</th><th>大小</th><th>完整性</th><th>操作</th></tr></thead>
-            <tbody><tr v-for="rel in store.releases" :key="rel.version"><td class="md-mono"><strong>{{ rel.version }}</strong><span v-if="rel.isPre" class="md-pill">预发布</span></td><td>{{ fmtDate(rel.published) }}</td><td>{{ fmtSize(rel.size) }}</td><td><span class="md-pill md-pill-ok">GitHub SHA-256</span></td><td><template v-if="store.downloading[rel.version]"><div class="md-progress" :aria-label="`${rel.version} 下载进度`" role="progressbar" :aria-valuenow="progressOf(store.downloading[rel.version])" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: `${progressOf(store.downloading[rel.version])}%` }"></span></div><small>{{ store.downloading[rel.version].stage }} {{ progressOf(store.downloading[rel.version]) || '' }}</small></template><span v-else-if="rows.some(item => item.version === rel.version)" class="md-installed">已安装</span><UiButton v-else variant="primary" small @click="store.runDownload(rel)">下载</UiButton></td></tr></tbody>
+            <tbody><tr v-for="rel in store.releases" :key="rel.version"><td class="md-mono"><strong>{{ rel.version }}</strong><span v-if="rel.isPre" class="md-pill">预发布</span></td><td>{{ fmtDate(rel.published) }}</td><td>{{ fmtSize(rel.size) }}</td><td><span class="md-pill md-pill-ok">GitHub SHA-256</span></td><td><template v-if="store.downloading[rel.version]"><div class="md-progress" :aria-label="`${rel.version} 下载进度`" role="progressbar" :aria-valuenow="stepOf(store.downloading[rel.version])" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: `${stepOf(store.downloading[rel.version])}%` }"></span></div><small>{{ store.downloading[rel.version].stage }} {{ stepOf(store.downloading[rel.version]) || '' }}</small></template><span v-else-if="rows.some(item => item.version === rel.version)" class="md-installed">已安装</span><UiButton v-else variant="primary" small @click="store.runDownload(rel)">下载</UiButton></td></tr></tbody>
           </table>
         </div>
       </section>

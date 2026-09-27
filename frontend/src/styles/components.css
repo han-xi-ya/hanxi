@@ -548,7 +548,10 @@
   color: var(--state-positive);
 }
 /* RTT 值标签基形（2026-09 治理裁决，§9.6-10 冻结件就此解除：三方基形已收拢一致；
-   LanScanner 的 padding/radius 档与 Ping/Traceroute 的 fast/medium/slow 色档为合法补差，留局部） */
+   LanScanner 的 padding/radius 档与 Ping/Traceroute 的 fast/medium/slow 色档为合法补差，留局部。
+   波 2C 注记：Ping/Traceroute 的色档副本已归家族共享件 components/publicip/diagRtt.css
+   （两面板 scoped src 吃入）；不上收本文件——LanScannerView 对同名 .rtt-tag.fast/.slow
+   持另一档语义（色块底/slow=muted/自有 .normal），同名不同义不进全局兜底，消费面锁 publicip 两面板。 */
 :where(.rtt-tag) { font-family: var(--font-mono); font-weight: 600; font-size: var(--text-sm); }
 
 /* ---------- 语义色文本原子（publicip ×2、fileshare LogsTab、HomeView 逐字同形副本上收；
@@ -560,6 +563,14 @@
 :where(.text-muted) { color: var(--color-text-muted); }
 :where(.text-subtle) { color: var(--color-text-subtle); }
 :where(.text-danger) { color: var(--state-danger); }
+
+/* ---------- 内联链接原子（前端冗余治理 · 波 0 上收：全库 21 份 scoped 逐字同形副本——
+   20 个托管/工具视图（CCSwitch/Bili23/BCU/DdnsGo/FlClash/PicLite/Paseo/PaperTodo/
+   LiteMonitor/Keyviz/SubnetDesk/Recordly/RAMMap/QuickLook/RustDesk/Rufus/WindTerm/
+   VSCode/TranslucentTB/Termora）+ components/wsl/WslReadinessPanel，两条规则体
+   21/21 全同；:where 零特异性且 scoped 副本词面相同，逐视图删副本前渲染零变化） ---------- */
+:where(.inline-link) { color: var(--color-primary); text-decoration: none; }
+:where(.inline-link:hover) { text-decoration: underline; }
 
 /* ---------- 微信机器人模态壳（§9.6-8：Bind ⇄ Rename 双模态 11 条逐字副本上收） ---------- */
 :where(.custom-modal-backdrop) {
@@ -695,3 +706,31 @@
    .empty-hint 全库 20+ 份存在 padding/border 不同形变体，暂留局部，见 §9.6 报告） ---------- */
 :where(.hint-dim) { color: var(--color-text-subtle); }
 :where(.badge) { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+
+/* ---------- WSL 六件套补差（前端冗余治理 · 波 1c：六面板 scoped 三条副本上收）
+   三条规则体在 WslReadinessPanel/WslDistroTable/WslAddInstancePanel/WslVersionsPanel/
+   WslPortProxyPanel 五份副本里逐字一致（前言注释亦同形）；第六份 WslUsbPanel 同含这三条
+   但另带字色方言，见下方"例外"。
+   锚定口径：六面板均为多根 fragment，无统一根类可挂 `.wsl-panel`（补挂会撞 Vue 碎片根
+   的 attr 继承限制且需动 DOM），故按既有锚定惯例（参上方 .diag-card 块）锚到视图容器
+   `.wsl-view`（views/WSLView.vue:369 现有类，视图零改动）。外溢核查：`.wsl-view` 子树内
+   这三名的消费面仅六面板自身——WSLView 自身不用、UiBanner/UiStatusChip/UiProgressBar/
+   UiClipboardField/PageHeader/MainTabNav 均不含这三名、两处 Teleport 子树（DistroTable
+   行菜单 / UsbPanel 直通选择框）亦不含 → 零外溢。
+   例外：WslUsbPanel 的 .hint-line/.hint-dim 比其余五面板深一档字色（muted 而非全局
+   subtle），属有意方言，该色差留在其 scoped 块内，本块只收六份逐字相同的三条。
+   位置注记：必须晚于 :where(.hint-line)/:where(.error-box)/:where(.hint-dim) 基础原子
+   （源码序 = 同特异性裁决序），故置于文件末尾。 ---------- */
+:where(.wsl-view .error-box) { white-space: pre-line; }
+:where(.wsl-view .hint-line) { line-height: 1.7; white-space: pre-line; }
+:where(.wsl-view .hint-dim) { font-size: var(--text-sm); }
+
+/* ---------- 通知严重度指示灯（波 1c：NotificationToast ⇄ NotificationDrawer 两份 scoped
+   逐字同形副本上收；档位名由 constants/status.ts levelTone 单源产出，样式归本层）
+   全 src 查重：.sev-dot/.sev-success/.sev-warning/.sev-error 四名除这两组件与 status.ts
+   （及其 spec 的字面断言）外零消费，无撞名。`.sev-info` 无规则是两组件既有现状——
+   info 档底色由 .sev-dot 基色 --state-information 兜住，收编后口径不变，不补新规则。 ---------- */
+:where(.sev-dot) { width: 9px; height: 9px; border-radius: var(--radius-pill); background: var(--state-information); }
+:where(.sev-success) { background: var(--state-positive); }
+:where(.sev-warning) { background: var(--state-warning); }
+:where(.sev-error) { background: var(--state-danger); }

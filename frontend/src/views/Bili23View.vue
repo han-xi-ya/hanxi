@@ -69,8 +69,6 @@ async function runDanger(store: ManagedConsoleStore): Promise<void> {
 
 <style scoped>
 /* 页头/控制条/版本区/联动卡/页签与 flex 骨架全部由 managed 组件 + components.css
-   全局原子接管；本页仅余说明卡内联链接与危险位说明行两条私有形 */
-.inline-link { color: var(--color-primary); text-decoration: none; }
-.inline-link:hover { text-decoration: underline; }
+   全局原子接管；本页仅余危险位说明行这一处私有形（内联链接落回全局原子）*/
 .b23-danger-extra .hint-line { flex: 1; min-width: 220px; }
 </style>

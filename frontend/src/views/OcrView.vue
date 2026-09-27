@@ -49,7 +49,6 @@ const hotkey = ref<SnipHotkeyState | null>(null) // 剪贴板识图热键配置�
 const image = ref<ImageRef | null>(null)
 const outcome = ref<OcrOutcome | null>(null)
 const dragOver = ref(false)
-const readingFile = ref(false)
 
 const { busy: recBusy, run: runRec } = useAsyncAction()
 const { busy: ctrlBusy, run: runCtrl } = useAsyncAction()
@@ -57,6 +56,10 @@ const { busy: snipBusy, run: runSnip } = useAsyncAction()
 const { busy: clipBusy, run: runClip } = useAsyncAction()
 const { busy: switchBusy, run: runSwitch } = useAsyncAction()
 const { busy: manageBusy, run: runManage } = useAsyncAction()
+const { busy: readingFile, run: runRead } = useAsyncAction()
+const { busy: portBusy, run: runPort } = useAsyncAction()
+const { busy: followBusy, run: runFollow } = useAsyncAction()
+const { busy: autoCopyBusy, run: runAutoCopy } = useAsyncAction()
 const switchingId = ref('') // 切换进行中的目标引擎（行内按钮态）
 const uninstallingKey = ref('') // 卸载进行中的版本（engine-version 行内按钮态）
 
@@ -388,12 +391,12 @@ async function snipClipboard() {
 
 async function toggleAutoCopy(v: boolean) {
   autoCopy.value = v
-  try {
-    await OcrAPI.SetAutoCopy(v)
+  const res = await runAutoCopy(() => OcrAPI.SetAutoCopy(v))
+  if (res.ok) {
     showToast(v ? '截屏识别后将自动复制文字' : '不再自动复制，可在卡片内手动选取')
-  } catch (e) {
+  } else {
     autoCopy.value = !v
-    showToast(getErrorMessage(e))
+    showToast(getErrorMessage(res.error))
   }
 }
 
@@ -403,23 +406,23 @@ async function applyPort() {
     showToast('端口需为整数')
     return
   }
-  try {
-    const res = await OcrAPI.SetListenPort(port)
-    showToast(res === 'pending' ? '端口已保存，下次启动服务生效' : '端口已应用')
+  const res = await runPort(() => OcrAPI.SetListenPort(port))
+  if (res.ok) {
+    showToast(res.data === 'pending' ? '端口已保存，下次启动服务生效' : '端口已应用')
     await refreshStatus()
-  } catch (e) {
-    showToast(getErrorMessage(e))
+  } else {
+    showToast(getErrorMessage(res.error))
   }
 }
 
 async function toggleFollow(v: boolean) {
   followOnExit.value = v
-  try {
-    await OcrAPI.SetFollowOnExit(v)
+  const res = await runFollow(() => OcrAPI.SetFollowOnExit(v))
+  if (res.ok) {
     showToast(v ? 'Hanxi 退出时将一起关闭服务' : '服务独立驻留，不随 Hanxi 退出')
-  } catch (e) {
+  } else {
     followOnExit.value = !v
-    showToast(getErrorMessage(e))
+    showToast(getErrorMessage(res.error))
   }
 }
 
@@ -438,16 +441,13 @@ async function acceptFile(file: File) {
     showToast('只支持图片文件（PNG / JPG / WEBP / BMP / GIF / TIFF）')
     return
   }
-  readingFile.value = true
-  try {
-    const ref = await OcrAPI.SavePastedImage(file.name || '粘贴图片', await dataURLof(file))
-    image.value = ref
-    outcome.value = null
-  } catch (e) {
-    showToast(getErrorMessage(e))
-  } finally {
-    readingFile.value = false
+  const res = await runRead(async () => OcrAPI.SavePastedImage(file.name || '粘贴图片', await dataURLof(file)))
+  if (!res.ok) {
+    showToast(getErrorMessage(res.error))
+    return
   }
+  image.value = res.data
+  outcome.value = null
 }
 
 // Wails/WebView2 环境下文件拖放走原生通道（带真实磁盘路径，由后端回报
@@ -676,16 +676,16 @@ onMounted(() => {
       <div class="ocr-set-row">
         <span class="ocr-set-k">端口</span>
         <input v-model="portInput" class="ocr-set-port" inputmode="numeric" aria-label="服务端口" />
-        <button class="btn btn-secondary btn-small" @click="applyPort">应用</button>
+        <button class="btn btn-secondary btn-small" :disabled="portBusy" @click="applyPort">应用</button>
         <label class="ocr-set-follow">
-          <input type="checkbox" :checked="followOnExit" @change="toggleFollow(($event.target as HTMLInputElement).checked)" />
+          <input type="checkbox" :checked="followOnExit" :disabled="followBusy" @change="toggleFollow(($event.target as HTMLInputElement).checked)" />
           随 Hanxi 退出一起关闭
         </label>
       </div>
       <div class="ocr-set-row">
         <span class="ocr-set-k">截屏识别</span>
         <label class="ocr-set-follow">
-          <input type="checkbox" :checked="autoCopy" @change="toggleAutoCopy(($event.target as HTMLInputElement).checked)" />
+          <input type="checkbox" :checked="autoCopy" :disabled="autoCopyBusy" @change="toggleAutoCopy(($event.target as HTMLInputElement).checked)" />
           识别后自动把文字复制到剪贴板（关闭后可在结果卡内手动选字）
         </label>
       </div>

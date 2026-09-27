@@ -1,5 +1,8 @@
-// 特征测试（组 C）：GuoheViewView——迁移前锁定现状基线。
-// 特殊性（必须原样保留）：多实例上游 banner 文案、官网（非仓库）复制与打开、官方发布接口刷新。
+// 特征测试（组 C，波 2E 版本区回迁收口）：GuoheViewView——行为基线。
+// 特殊性（必须原样保留）：多实例上游 banner 文案、官网（非仓库）复制与打开、
+// 官方发布接口刷新（「↻ 刷新发布接口」钮词走面板 refreshLabel 位；stable/beta
+// 通道列走 #release-extra-col 槽）；波 2E 后方言表锚点 .gv-ver-status 退役、
+// 选择器迁 ManagedVersionDot 渲染形 .ver-status。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -207,6 +210,24 @@ describe('GuoheViewView 操作流', () => {
     wrapper.unmount()
   })
 
+  it('波 2E 面板承接：「通道」列 th/td 词面逐字（beta/stable），刷新钮词走 refreshLabel 位', async () => {
+    stubDefaults({ state: 'stopped' }, [installedV], [
+      { version: '1.9.5', size: 100, isPre: true },
+      { version: '1.9.4', size: 90, isPre: false },
+    ])
+    const { wrapper } = await mountInKeepAlive()
+    const ths = wrapper.findAll('.tbl thead th')
+    expect(ths.map((t) => t.text())).toContain('通道')
+    const rows = wrapper.findAll('.tbl tbody tr')
+    expect(rows[0].findAll('td')[5].text()).toBe('beta')
+    expect(rows[1].findAll('td')[5].text()).toBe('stable')
+    // 控制条与 meta 行族词面：官方当前发布计数句 + 刷新发布接口钮词
+    expect(wrapper.find('.meta-info').text()).toContain('官方当前发布 2 个')
+    const btnGroup = wrapper.findAll('.btn-group button')
+    expect(btnGroup.map((b) => b.text())).toEqual(['⇥ 导入本地目录', '↻ 刷新发布接口'])
+    wrapper.unmount()
+  })
+
   it('下载完成事件：刷新列表并清除票条', async () => {
     vi.useFakeTimers()
     try {
@@ -214,7 +235,7 @@ describe('GuoheViewView 操作流', () => {
       const { wrapper } = await mountInKeepAlive()
       runtime.handlers['guoheview:version-download']({ data: { version: '1.9.5', stage: 'done', done: 100, total: 100 } })
       await vi.advanceTimersByTimeAsync(800)
-      expect(wrapper.find('.gv-ver-status.downloading').exists()).toBe(false)
+      expect(wrapper.find('.ver-status.downloading').exists()).toBe(false)
       wrapper.unmount()
     } finally {
       vi.useRealTimers()

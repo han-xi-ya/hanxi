@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import type { TracerouteSummary } from '../../../bindings/hanxi/internal/modules/publicip/models'
+import { DIAG_QUICK_TARGETS, rttTier, useDiagFormModel } from './useDiagFormModel'
 
 // 路由追踪面板：目标/最大跳数表单 + 常用目标 + 跳跃节点汇总表与明细表（纯展示）。
 // 目标与跳数经 v-model 上抛由视图持有；根节点为多根 fragment（表单条/错误框/结果卡），
 // 渲染后仍是 .network-page 的直接子节点，DOM 与拆分前一致。
+// 表单骨架（v-model 样板/快捷目标动作/禁用式）与 Ping 面板共吃 useDiagFormModel 单源。
 const props = defineProps<{
   target: string
   maxHops: number
@@ -19,21 +20,22 @@ const emit = defineEmits<{
   run: []
 }>()
 
-const targetModel = computed({
-  get: () => props.target,
-  set: (value: string) => emit('update:target', value),
+// count 位在本文档语境即「最大跳数」，档位选项与词面留本面板
+const { targetModel, countModel: maxHopsModel, runDisabled, quickTarget } = useDiagFormModel({
+  target: () => props.target,
+  count: () => props.maxHops,
+  loading: () => props.loading,
+  updateTarget: (value) => emit('update:target', value),
+  updateCount: (value) => emit('update:maxHops', value),
+  run: () => emit('run'),
 })
 
-const maxHopsModel = computed({
-  get: () => props.maxHops,
-  set: (value: number) => emit('update:maxHops', value),
-})
-
-// 常用目标：先回填再发起。emit 同步送达视图，故 run 读到的已是新值，与拆分前同一执行序。
-function quickTarget(value: string) {
-  emit('update:target', value)
-  emit('run')
-}
+// 本面板快捷目标列表：成员取选自 DIAG_QUICK_TARGETS 词面单源（不取腾讯 DNS——Ping 独有档）
+const quickTargets: readonly { label: string; value: string }[] = [
+  DIAG_QUICK_TARGETS.aliDns,
+  DIAG_QUICK_TARGETS.cloudflare,
+  DIAG_QUICK_TARGETS.google,
+]
 </script>
 
 <template>
@@ -56,17 +58,15 @@ function quickTarget(value: string) {
           <option :value="30">30 跳</option>
         </select>
       </div>
-      <button class="btn btn-primary" :disabled="loading || !target.trim()" @click="emit('run')">
+      <button class="btn btn-primary" :disabled="runDisabled" @click="emit('run')">
         {{ loading ? '正在追踪路由节点…' : '开始追踪' }}
       </button>
     </div>
 
-    <!-- 快捷常用目标 -->
+    <!-- 快捷常用目标（词面单源 DIAG_QUICK_TARGETS；Ping 独家的腾讯 DNS 不入本表） -->
     <div class="quick-targets">
       <span class="quick-label">常用目标:</span>
-      <button class="btn-quick" @click="quickTarget('223.5.5.5')">阿里 DNS (223.5.5.5)</button>
-      <button class="btn-quick" @click="quickTarget('1.1.1.1')">Cloudflare (1.1.1.1)</button>
-      <button class="btn-quick" @click="quickTarget('8.8.8.8')">Google (8.8.8.8)</button>
+      <button v-for="t in quickTargets" :key="t.value" class="btn-quick" @click="quickTarget(t.value)">{{ t.label }} ({{ t.value }})</button>
     </div>
   </div>
 
@@ -109,13 +109,14 @@ function quickTarget(value: string) {
               <span v-else class="text-subtle">* * * (节点不响应 ICMP)</span>
             </td>
             <td>
-              <span v-if="h.success" class="rtt-tag" :class="h.rttMs < 50 ? 'fast' : h.rttMs < 150 ? 'medium' : 'slow'">
+              <span v-if="h.success" class="rtt-tag" :class="rttTier(h.rttMs)">
                 {{ h.rttMs.toFixed(1) }} ms
               </span>
               <span v-else class="text-subtle">—</span>
             </td>
             <td>
-              <span v-if="h.ip === result.ip" class="status-badge target">🎯 最终目标</span>
+              <!-- emoji 退役（AppIcon 纪律，同 NotificationToast 先例）：语义由词面+info 色档承载 -->
+              <span v-if="h.ip === result.ip" class="status-badge target">最终目标</span>
               <span v-else-if="h.success" class="status-badge ok">路由正常</span>
               <span v-else class="status-badge timeout">请求超时</span>
             </td>
@@ -126,24 +127,16 @@ function quickTarget(value: string) {
   </div>
 </template>
 
+<style scoped src="./diagRtt.css"></style>
+
 <style scoped>
 /* Phase 6 后续治理（§9.6-1）：诊断工具皮家族（.tool-panel/.diag-card/.table-container/
    .status-badge 等）已上收 components.css 共享原子，本层只留本面板真差异。
    .rtt-tag 基形与 .text-subtle 已按 §9.6-10 裁决全局定档，等值副本删净落回；
+   fast/medium/slow 色档副本已归家族共享件 diagRtt.css（波 2C）；
    .text-warn 全局不设（该原子名仅本面板消费），留局部。 */
 .text-warn {
   color: var(--state-warning);
-}
-
-/* fast/medium/slow 色档为合法局部补差（全局仅收基形） */
-.rtt-tag.fast {
-  color: var(--state-positive);
-}
-.rtt-tag.medium {
-  color: var(--state-warning);
-}
-.rtt-tag.slow {
-  color: var(--state-danger);
 }
 
 .node-ip {

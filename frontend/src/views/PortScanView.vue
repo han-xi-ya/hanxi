@@ -8,6 +8,7 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
 import PageHeader from '../components/ui/PageHeader.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
+import UiProgressBar from '../components/ui/UiProgressBar.vue'
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
@@ -321,9 +322,7 @@ onUnmounted(() => {
         <span>已发现开放端口：<strong class="highlight-open">{{ openPorts.length }}</strong></span>
         <span v-if="durationMs > 0" class="duration-tag">耗时: {{ durationMs }}ms</span>
       </div>
-      <div class="progress-bar-bg">
-        <div class="progress-bar-fill" :style="{ width: `${progressPercent}%` }"></div>
-      </div>
+      <UiProgressBar :percent="progressPercent" />
     </div>
 
     <!-- 扫描结果列表卡片 -->
@@ -479,8 +478,7 @@ onUnmounted(() => {
 .progress-info { display: flex; justify-content: space-between; font-size: var(--text-sm); color: var(--color-text-muted); }
 .highlight-open { color: var(--state-positive); font-size: var(--text-base); }
 .duration-tag { color: var(--color-text-subtle); }
-.progress-bar-bg { width: 100%; height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; }
-.progress-bar-fill { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
+/* 进度条轨/填充两行 scoped 副本已删净（波 1a），落回公共件 UiProgressBar 标准形 */
 
 /* 结果表格（.tbl 基样式与 th 内距落回全局；此处仅真差异：表头 sticky + page 色底。
    原 .tbl td 的 color 覆盖系冗余——body 已 --color-text，删落回） */

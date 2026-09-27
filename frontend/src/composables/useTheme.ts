@@ -36,54 +36,23 @@ const FONT_CACHE_KEY = 'hanxi.font'
 const VALID_FONTS: FontMode[] = ['kai', 'plain', 'mono']
 const DEFAULT_FONT: FontMode = 'kai'
 
-function readCache(): ThemeMode | null {
+// 三轴（theme/accent/font）首帧缓存同构：键与合法域参数化，读写只差入参。
+// 读校验合法值（脏值/缺失一律视为未缓存，回落各轴默认）；写静默降级
+// （localStorage 不可用不影响任何功能——缓存只是防闪优化，不是真相）。
+function readAxisCache<T extends string>(key: string, valid: readonly T[]): T | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    return VALID_MODES.includes(raw as ThemeMode) ? (raw as ThemeMode) : null
+    const raw = localStorage.getItem(key)
+    return valid.includes(raw as T) ? (raw as T) : null
   } catch {
     return null
   }
 }
 
-function writeCache(mode: ThemeMode) {
+function writeAxisCache(key: string, value: string) {
   try {
-    localStorage.setItem(CACHE_KEY, mode)
+    localStorage.setItem(key, value)
   } catch {
     /* 存储不可用时静默降级：缓存只是防闪优化，不是真相 */
-  }
-}
-
-function readAccentCache(): AccentMode | null {
-  try {
-    const raw = localStorage.getItem(ACCENT_CACHE_KEY)
-    return VALID_ACCENTS.includes(raw as AccentMode) ? (raw as AccentMode) : null
-  } catch {
-    return null
-  }
-}
-
-function writeAccentCache(accent: AccentMode) {
-  try {
-    localStorage.setItem(ACCENT_CACHE_KEY, accent)
-  } catch {
-    /* 存储不可用时静默降级：与 theme 同理，缓存只是防闪优化 */
-  }
-}
-
-function readFontCache(): FontMode | null {
-  try {
-    const raw = localStorage.getItem(FONT_CACHE_KEY)
-    return VALID_FONTS.includes(raw as FontMode) ? (raw as FontMode) : null
-  } catch {
-    return null
-  }
-}
-
-function writeFontCache(font: FontMode) {
-  try {
-    localStorage.setItem(FONT_CACHE_KEY, font)
-  } catch {
-    /* 存储不可用时静默降级：与 theme/accent 同理，缓存只是防闪优化 */
   }
 }
 
@@ -117,9 +86,9 @@ function broadcastTheme() {
 }
 
 // 模块级单例状态（与 useToast/useNotification 同一模式）
-const themeMode = ref<ThemeMode>(readCache() ?? 'light')
-const accent = ref<AccentMode>(readAccentCache() ?? DEFAULT_ACCENT)
-const font = ref<FontMode>(readFontCache() ?? DEFAULT_FONT)
+const themeMode = ref<ThemeMode>(readAxisCache(CACHE_KEY, VALID_MODES) ?? 'light')
+const accent = ref<AccentMode>(readAxisCache(ACCENT_CACHE_KEY, VALID_ACCENTS) ?? DEFAULT_ACCENT)
+const font = ref<FontMode>(readAxisCache(FONT_CACHE_KEY, VALID_FONTS) ?? DEFAULT_FONT)
 const systemDark = useMediaQuery('(prefers-color-scheme: dark)')
 const resolvedTheme = computed<'light' | 'dark'>(() =>
   themeMode.value === 'system' ? (systemDark.value ? 'dark' : 'light') : themeMode.value,
@@ -128,12 +97,12 @@ const resolvedTheme = computed<'light' | 'dark'>(() =>
 let initialized = false
 
 watch([themeMode, systemDark], () => {
-  writeCache(themeMode.value)
+  writeAxisCache(CACHE_KEY, themeMode.value)
   applyToDom(themeMode.value, systemDark.value)
 })
 
 watch(accent, (value) => {
-  writeAccentCache(value)
+  writeAxisCache(ACCENT_CACHE_KEY, value)
   applyAccentToDom(value)
   // 标题栏外壳配色随色板联动（壳底 --surface-chrome 各色板不同）
   syncWindowChrome(resolvedTheme.value)
@@ -141,7 +110,7 @@ watch(accent, (value) => {
 
 // 字体档与窗框/配色无涉（DWM 只管颜色），watch 只做缓存 + DOM 覆写两件事
 watch(font, (value) => {
-  writeFontCache(value)
+  writeAxisCache(FONT_CACHE_KEY, value)
   applyFontToDom(value)
 })
 
@@ -173,7 +142,7 @@ export async function initTheme(): Promise<void> {
     const backend = await AppAPI.AppService.GetTheme()
     if (VALID_MODES.includes(backend as ThemeMode) && backend !== themeMode.value) {
       themeMode.value = backend as ThemeMode // 触发 watch 完成应用与回写缓存
-      writeCache(themeMode.value)
+      writeAxisCache(CACHE_KEY, themeMode.value)
     }
   } catch (err) {
     console.warn('[theme] 读取后端主题失败，沿用本地缓存:', err)
@@ -182,7 +151,7 @@ export async function initTheme(): Promise<void> {
     const backend = await AppAPI.AppService.GetAccent()
     if (VALID_ACCENTS.includes(backend as AccentMode) && backend !== accent.value) {
       accent.value = backend as AccentMode // 触发 watch 完成应用与回写缓存
-      writeAccentCache(accent.value)
+      writeAxisCache(ACCENT_CACHE_KEY, accent.value)
     }
   } catch (err) {
     console.warn('[theme] 读取后端色板失败，沿用本地缓存:', err)
@@ -191,7 +160,7 @@ export async function initTheme(): Promise<void> {
     const backend = await AppAPI.AppService.GetFont()
     if (VALID_FONTS.includes(backend as FontMode) && backend !== font.value) {
       font.value = backend as FontMode // 触发 watch 完成应用与回写缓存
-      writeFontCache(font.value)
+      writeAxisCache(FONT_CACHE_KEY, font.value)
     }
   } catch (err) {
     console.warn('[theme] 读取后端字体档失败，沿用本地缓存:', err)
@@ -207,13 +176,6 @@ export function useTheme() {
     AppAPI.AppService.SetTheme(mode).catch((err: unknown) => {
       console.warn('[theme] 主题持久化失败:', err)
     })
-  }
-
-  /** 侧栏快捷钮用：system → light → dark 循环。 */
-  function cycleThemeMode() {
-    const next: ThemeMode =
-      themeMode.value === 'system' ? 'light' : themeMode.value === 'light' ? 'dark' : 'system'
-    setThemeMode(next)
   }
 
   /** 切换色板轴并持久化到后端（失败仅告警：DOM 预览已生效，下次启动以后端为准）。 */
@@ -236,5 +198,8 @@ export function useTheme() {
     })
   }
 
-  return { themeMode, resolvedTheme, systemDark, accent, font, setThemeMode, cycleThemeMode, setAccent, setFontMode }
+  // 出口面纪律（波 1d 收窄）：cycleThemeMode 已删（侧栏主题钮下线后无消费方）；
+  // systemDark 降为内部（消费统一走 resolvedTheme）。resolvedTheme 保留导出——
+  // SettingsSections.spec 仍在断言「system 档实际生效态」，去导出需先动该 spec（非本波文件面）。
+  return { themeMode, resolvedTheme, accent, font, setThemeMode, setAccent, setFontMode }
 }

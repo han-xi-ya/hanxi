@@ -8,6 +8,7 @@ import UiBanner from '../components/ui/UiBanner.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import { useAsyncAction } from '../composables/useAsyncAction'
 import { getErrorMessage } from '../utils/errors'
 
 const { showToast } = useToast()
@@ -16,7 +17,14 @@ const snapshot = ref<PackageSnapshot | null>(null)
 const remoteVersion = ref('')
 const loading = ref(false)
 const error = ref('')
-const busy = ref<'' | 'launch' | 'exit' | 'install' | 'repo' | 'uninstall'>('')
+// 波 2B：原单令牌 busy（''|'launch'|…+finally 复位）拆为逐动作 useAsyncAction 实例——
+// 整页互斥门禁由 anyBusy 聚合承载，行内标签态吃各自 busy，防重入仍靠模板 disabled。
+const { busy: launchBusy, run: runLaunch } = useAsyncAction()
+const { busy: exitBusy, run: runExit } = useAsyncAction()
+const { busy: installBusy, run: runInstall } = useAsyncAction()
+const { busy: repoBusy, run: runRepo } = useAsyncAction()
+const { busy: uninstallBusy, run: runUninstall } = useAsyncAction()
+const anyBusy = computed(() => launchBusy.value || exitBusy.value || installBusy.value || repoBusy.value || uninstallBusy.value)
 
 const installed = computed(() => snapshot.value?.installed ?? false)
 const running = computed(() => snapshot.value?.running ?? false)
@@ -57,46 +65,37 @@ async function refreshRemote() {
 }
 
 async function launch() {
-  busy.value = 'launch'
-  try {
-    await EarTrumpetAPI.Launch()
-    showToast('已提交 EarTrumpet 启动请求')
-    window.setTimeout(() => { void refresh() }, 1500)
-  } catch (err) {
-    showToast(`启动失败：${getErrorMessage(err)}`)
-  } finally {
-    busy.value = ''
+  const res = await runLaunch(() => EarTrumpetAPI.Launch())
+  if (!res.ok) {
+    showToast(`启动失败：${getErrorMessage(res.error)}`)
+    return
   }
+  showToast('已提交 EarTrumpet 启动请求')
+  window.setTimeout(() => { void refresh() }, 1500)
 }
 
 async function exit() {
-  busy.value = 'exit'
-  try {
-    await EarTrumpetAPI.Exit()
-    showToast('已终止 EarTrumpet（下次登录仍会自启）')
-    await refresh()
-  } catch (err) {
-    showToast(`退出失败：${getErrorMessage(err)}`)
-  } finally {
-    busy.value = ''
+  const res = await runExit(() => EarTrumpetAPI.Exit())
+  if (!res.ok) {
+    showToast(`退出失败：${getErrorMessage(res.error)}`)
+    return
   }
+  showToast('已终止 EarTrumpet（下次登录仍会自启）')
+  await refresh()
 }
 
 async function install() {
-  busy.value = 'install'
-  try {
-    const version = await EarTrumpetAPI.Install()
-    showToast(`官方直装版 ${version} 已就绪`)
-    await refresh()
-  } catch (err) {
-    showToast(`安装失败：${getErrorMessage(err)}`)
-  } finally {
-    busy.value = ''
+  const res = await runInstall(() => EarTrumpetAPI.Install())
+  if (!res.ok) {
+    showToast(`安装失败：${getErrorMessage(res.error)}`)
+    return
   }
+  showToast(`官方直装版 ${res.data} 已就绪`)
+  await refresh()
 }
 
 // 卸载：危险确认经全局 useConfirm 单例（原视图自挂 ConfirmDialog 已收编）；
-// 确认后动作期由 busy='uninstall' 门禁全页按钮，成败均以 toast 回执。
+// 确认后动作期由 uninstallBusy 门禁全页按钮（anyBusy），成败均以 toast 回执。
 async function requestUninstall() {
   const accepted = await confirm({
     title: '卸载 EarTrumpet 直装版',
@@ -106,26 +105,19 @@ async function requestUninstall() {
     details: [{ label: '当前版本', value: snapshot.value?.version || '—' }],
   })
   if (!accepted) return
-  busy.value = 'uninstall'
-  try {
-    await EarTrumpetAPI.Uninstall()
-    showToast('已卸载（当前用户）')
-    await refresh()
-  } catch (err) {
-    showToast(`卸载失败：${getErrorMessage(err)}`)
-  } finally {
-    busy.value = ''
+  const res = await runUninstall(() => EarTrumpetAPI.Uninstall())
+  if (!res.ok) {
+    showToast(`卸载失败：${getErrorMessage(res.error)}`)
+    return
   }
+  showToast('已卸载（当前用户）')
+  await refresh()
 }
 
 async function openRepo() {
-  busy.value = 'repo'
-  try {
-    await EarTrumpetAPI.OpenRepo()
-  } catch (err) {
-    showToast(`打开失败：${getErrorMessage(err)}`)
-  } finally {
-    busy.value = ''
+  const res = await runRepo(() => EarTrumpetAPI.OpenRepo())
+  if (!res.ok) {
+    showToast(`打开失败：${getErrorMessage(res.error)}`)
   }
 }
 
@@ -163,12 +155,12 @@ onActivated(() => {
       ]"
     >
       <template #actions>
-        <UiButton v-if="canInstall" variant="primary" :disabled="busy !== ''" @click="install">{{ busy === 'install' ? '安装中…' : installed ? `更新到 ${remoteVersion}` : '安装官方直装版' }}</UiButton>
-        <UiButton :disabled="!installed || busy !== ''" @click="launch">启动</UiButton>
-        <UiButton :disabled="!running || busy !== ''" @click="exit">退出</UiButton>
+        <UiButton v-if="canInstall" variant="primary" :disabled="anyBusy" @click="install">{{ installBusy ? '安装中…' : installed ? `更新到 ${remoteVersion}` : '安装官方直装版' }}</UiButton>
+        <UiButton :disabled="!installed || anyBusy" @click="launch">启动</UiButton>
+        <UiButton :disabled="!running || anyBusy" @click="exit">退出</UiButton>
         <UiButton :disabled="loading" @click="refresh">{{ loading ? '读取中…' : '刷新状态' }}</UiButton>
-        <UiButton :disabled="busy !== ''" @click="openRepo">{{ busy === 'repo' ? '正在打开…' : '项目主页' }}</UiButton>
-        <UiButton v-if="installed" variant="danger" :disabled="busy !== ''" @click="requestUninstall">{{ busy === 'uninstall' ? '卸载中…' : '卸载' }}</UiButton>
+        <UiButton :disabled="anyBusy" @click="openRepo">{{ repoBusy ? '正在打开…' : '项目主页' }}</UiButton>
+        <UiButton v-if="installed" variant="danger" :disabled="anyBusy" @click="requestUninstall">{{ uninstallBusy ? '卸载中…' : '卸载' }}</UiButton>
       </template>
     </MsixOverview>
   </section>

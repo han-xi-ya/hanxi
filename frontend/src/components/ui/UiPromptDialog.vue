@@ -1,7 +1,9 @@
 <script setup lang="ts">
-// 输入型对话框：ConfirmDialog 的 prompt 姊妹件（结构/焦点/键盘契约一致）。
+// 输入型对话框：ConfirmDialog 的 prompt 姊妹件（结构/焦点/键盘契约一致——两件的
+// 焦点/Tab 环/Esc 机制已收敛至 composables/useDialogA11y 单源，本件差异见接线注释）。
 // 打开后焦点落输入框；Enter 提交、Esc 取消；提交值经 submit 事件上抛。
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { ref } from 'vue'
+import { DIALOG_Z, useDialogA11y } from '../../composables/useDialogA11y'
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -22,7 +24,6 @@ const emit = defineEmits<{ submit: [value: string]; cancel: []; 'update:open': [
 const dialog = ref<HTMLElement | null>(null)
 const input = ref<HTMLInputElement | null>(null)
 const draft = ref('')
-let previousFocus: HTMLElement | null = null
 
 function cancel() {
   emit('cancel')
@@ -39,35 +40,19 @@ function onInputKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter') { event.preventDefault(); submit() }
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') { event.preventDefault(); cancel(); return }
-  if (event.key !== 'Tab' || !dialog.value) return
-  const focusable = Array.from(dialog.value.querySelectorAll<HTMLElement>('button:not([disabled]), input, [href], [tabindex]:not([tabindex="-1"])'))
-  if (!focusable.length) return
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
-  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-}
-
-// 有意做成 immediate（与 ConfirmDialog 的 watch 语义差异见 TROUBLESHOOTING §25.4）：
-// 允许宿主/单例以 open:true 直接挂载即完成焦点与初值初始化；false 分支在挂载期是安全空操作。
-watch(() => props.open, async (open) => {
-  if (open) {
-    previousFocus = document.activeElement as HTMLElement | null
-    draft.value = props.initialValue ?? ''
-    await nextTick()
-    input.value?.focus()
-    input.value?.select()
-    document.addEventListener('keydown', onKeydown)
-  } else {
-    document.removeEventListener('keydown', onKeydown)
-    previousFocus?.focus()
-    previousFocus = null
-  }
-}, { immediate: true })
-
-onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown))
+// 焦点/Tab 环/Esc 契约走 useDialogA11y 单源，本件差异参数（与姊妹件 ConfirmDialog 的
+// 既有分叉逐字保住）：z 顶档、watch 有意 immediate（与 ConfirmDialog 的 watch 语义
+// 差异见 TROUBLESHOOTING §25.4——允许宿主/单例以 open:true 直接挂载即完成焦点与初值
+// 初始化）、开窗回填 draft 后焦点落输入框并全选、Esc 消费且 preventDefault。
+useDialogA11y({
+  open: () => props.open,
+  dialog,
+  z: DIALOG_Z.top,
+  close: cancel,
+  beforeOpen: () => { draft.value = props.initialValue ?? '' },
+  focusOnOpen: () => { input.value?.focus(); input.value?.select() },
+  immediate: true,
+})
 </script>
 
 <template>

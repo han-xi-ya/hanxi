@@ -19,6 +19,7 @@ import type { StatusInfo, Revision, RevisionFile, FilePreview, TrackedFile, File
 import { getErrorMessage } from '../../utils/errors'
 import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
+import { useAsyncAction } from '../../composables/useAsyncAction'
 import {
   BACKUP_KEEP, REVISION_WINDOW, backupSummaryNote, decorateLegacySummary, fmtTime,
   restoreScopeFor, revisionCapNote, statusLabels,
@@ -34,7 +35,10 @@ const { confirm } = useConfirm()
 const status = ref<StatusInfo | null>(null)
 const revisions = ref<Revision[]>([])
 const loading = ref(false)
-const busy = ref(false)
+// 波 2B：立即快照与偏好保存两件迁 useAsyncAction（busy 名位保留，模板零改动）；
+// 刷新/清单/时间线/对比/预览等 load 类仍手写。
+const { busy, run: runNow } = useAsyncAction()
+const { busy: savingPrefs, run: runPrefs } = useAsyncAction()
 
 // 文件为轴（N33 批 A/B）：ListFiles 左清单 + FileHistory 右时间线 + DiffFile 内联对比
 const trackedFiles = ref<TrackedFile[]>([])
@@ -50,7 +54,6 @@ const diffLoading = ref(false)
 const enabled = ref(true)
 const idleSeconds = ref(300)
 const intervalMinutes = ref(5)
-const savingPrefs = ref(false)
 
 // 预览弹窗态
 const previewRev = ref<Revision | null>(null)
@@ -124,8 +127,7 @@ async function loadFiles() {
 }
 
 async function savePrefs() {
-  savingPrefs.value = true
-  try {
+  const res = await runPrefs(async () => {
     await SnapshotAPI.CheckpointService.SetPreferences({
       enabled: enabled.value,
       idleSeconds: Number(idleSeconds.value) || 300,
@@ -133,17 +135,15 @@ async function savePrefs() {
     })
     showToast('历史版本偏好已更新')
     status.value = await SnapshotAPI.CheckpointService.GetStatus()
-  } catch (e: unknown) {
-    showToast(`保存失败: ${getErrorMessage(e)}`)
+  })
+  if (!res.ok) {
+    showToast(`保存失败: ${getErrorMessage(res.error)}`)
     await refresh()
-  } finally {
-    savingPrefs.value = false
   }
 }
 
 async function snapshotNow() {
-  busy.value = true
-  try {
+  const res = await runNow(async () => {
     await SnapshotAPI.CheckpointService.CheckpointNow()
     showToast('已触发立即快照，正在写入…')
     // 提交是异步单飞闸：短轮询到列表变化或超时为止
@@ -157,10 +157,9 @@ async function snapshotNow() {
     }
     await loadFiles()
     if (selectedPath.value) await selectFile(selectedPath.value)
-  } catch (e: unknown) {
-    showToast(`快照失败: ${getErrorMessage(e)}`)
-  } finally {
-    busy.value = false
+  })
+  if (!res.ok) {
+    showToast(`快照失败: ${getErrorMessage(res.error)}`)
   }
 }
 

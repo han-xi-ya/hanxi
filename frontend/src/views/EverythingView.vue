@@ -1,40 +1,43 @@
 <script setup lang="ts">
 // 编排层：托管状态 / 版本数据与操作 / 事件订阅与轮询生命周期（骨架基于重构共享层）。
 // 内嵌搜索与 ES 组件就绪收编 useEverythingSearch、结果表列宽记忆收编 useEverythingColumns，
-// 控制台整合条 / 结果区 / 版本卡片 / 远程表格拆至 components/everything/* 子组件；
+// 控制台整合条 / 结果区拆至 components/everything/* 子组件；
 // DOM 结构、文案与 bindings 调用契约逐字保持，业务动作仍由本视图编排接线。
-import { ref, computed, onMounted, onDeactivated } from 'vue'
+//
+// 波 2F 供体回迁：版本管理 Tab（概览 + 已装卡 + 远程表）换装 components/managed/
+// ManagedVersionPanel——本视图正是共享面板当年「以 components/everything/
+// {VersionCard,ReleaseTable} 的拆分语义为供体」的原主，方言件退役回共享件：
+//   - 通道徽标 + 快照降级标记 → #release-extra-col 方言列槽（波 2A 通道列承接位）；
+//   - 随关联动开关 → #meta-extra 槽（波 2E meta 行族尾部承接位）；
+//   - meta 概览/双空态/导入刷新钮 → copy 词面钩子逐字覆写（remoteSummary/metaHints/
+//     firstUseEmpty/firstUseDownloadLabel/remoteUnavailable/uninstallRunningHint）；
+//   - 版本区数据面与写动作编排归共享 store（useManagedConsole），状态轮询/双事件
+//     订阅/请求代次/下载票据随之单源化；
+//   - 控制台整合条（EverythingConsoleBar）与内嵌搜索、结果区方言一律不动，
+//     其控制动词仍走视图 useAsyncAction——与搜索防抖共享单飞闩（P0 批 3·4.5
+//     契约，store.busy 不横跨控制台钮面）。
+// 适配器暂驻视图文件：托管共享契约要求 adapter 注入，而 adapters/everything.ts
+// 的建档不在本轮可改面（波 2F 编辑白名单）；待主线平移进 adapters/ 即成标准形。
+import { ref, computed, onMounted } from 'vue'
 import * as EverythingAPI from '../../bindings/hanxi/internal/modules/everything/everythingservice'
-import type { EverythingRelease, EverythingVersionInfo } from '../../bindings/hanxi/internal/modules/everything/version/models'
+import type { EverythingRelease } from '../../bindings/hanxi/internal/modules/everything/version/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/everything/instance/models'
 import type { DownloadTicket } from '../../bindings/hanxi/internal/modules/everything/models'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
-import { usePolling } from '../composables/usePolling'
-import { loadManagedVersions } from '../composables/loadManagedVersions'
 import { useAsyncAction } from '../composables/useAsyncAction'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { useEverythingSearch } from '../composables/useEverythingSearch'
-import { sameSnapshot } from '../components/managed/adapter'
+import type { ManagedModuleAdapter, ManagedReleaseRecord } from '../components/managed/adapter'
+import { useManagedConsole } from '../components/managed/store'
 import { getErrorMessage } from '../utils/errors'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
-import UiEmptyState from '../components/ui/UiEmptyState.vue'
+import ManagedVersionPanel from '../components/managed/ManagedVersionPanel.vue'
 import EverythingConsoleBar from '../components/everything/EverythingConsoleBar.vue'
 import EverythingResultsPanel from '../components/everything/EverythingResultsPanel.vue'
-import EverythingVersionCard from '../components/everything/EverythingVersionCard.vue'
-import EverythingReleaseTable from '../components/everything/EverythingReleaseTable.vue'
-
-// ---------- 状态 ----------
-const snap = ref<Snapshot | null>(null)
-const releases = ref<EverythingRelease[]>([])
-const installed = ref<EverythingVersionInfo[]>([])
-const activeVersion = ref('')
-const loading = ref(false)
-const listError = ref('')
-const uptimeSec = ref(0)
 
 const { busy, run } = useAsyncAction()
 const { showToast } = useToast()
@@ -49,8 +52,114 @@ const {
   openResult, revealResult, copyResult, handleEsTicket,
 } = useEverythingSearch(busy)
 
-// 下载进度 map（component=app 按版本索引；es 组件走 useEverythingSearch 的 esProgress）
-const downloading = ref<Record<string, DownloadTicket>>({})
+// ---------- 托管共享契约（波 2F） ----------
+/**
+ * 状态快照代次（P0 批 3·4.4 原视图口径保真）：store.refresh 不自带请求代次，
+ * 闸口前移到 adapter.getStatus——旧响应晚到交回上一份新鲜快照，store 的
+ * sameSnapshot 内容判等随即弃写，「慢回的旧状态不倒灌新状态」逐字等价。
+ */
+let statusSeq = 0
+let lastSnap: Snapshot | null = null
+
+/** 面板 #release-extra-col 行回投方言型：listReleases 原样直交（无字段映射），
+ *  store.releases 的成员运行时即 EverythingRelease，断言只补类型视角。 */
+const releaseRow = (rel: ManagedReleaseRecord) => rel as EverythingRelease
+
+/** 通道徽标词（逐字沿自原方言表）。 */
+function channelLabel(channel: string): string {
+  if (channel === 'stable') return '稳定'
+  if (channel === 'beta') return '1.5 测试'
+  return channel || '其他'
+}
+
+const adapter: ManagedModuleAdapter<Snapshot> = {
+  async getStatus() {
+    const generation = ++statusSeq
+    const s = await EverythingAPI.GetStatus()
+    if (generation !== statusSeq) return lastSnap
+    lastSnap = s
+    return s
+  },
+
+  subscribeInstanceState(cb) {
+    useWailsEvent<Snapshot>('everything:instance-state', (s) => {
+      if (s) cb(s)
+    })
+  },
+
+  // 单订阅双分发（铁律③）：es 组件票据交 useEverythingSearch 独立成态、
+  // 不进版本 map；app 版本票据归一后交共享 downloading；缺 component/空票据守卫逐字保留。
+  subscribeProgress(cb) {
+    useWailsEvent<DownloadTicket>('everything:download', (t) => {
+      if (!t || !t.component) return
+      if (t.component === 'es') {
+        handleEsTicket(t)
+        return
+      }
+      cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
+    })
+  },
+
+  versions: {
+    listInstalled: EverythingAPI.ListInstalledVersions,
+    listReleases: EverythingAPI.ListReleases,
+    getActive: EverythingAPI.GetActiveVersion,
+    async setActive(version) {
+      const active = await EverythingAPI.SetActiveVersion(version)
+      return { activeVersion: active, message: `已将 ${active} 设为使用版本` }
+    },
+    async download(rel) {
+      const result = await EverythingAPI.DownloadVersion(rel.version)
+      if (result === 'already-installed') {
+        return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
+      }
+      return {}
+    },
+    async remove(info) {
+      const ok = await confirm({
+        title: `卸载 Everything ${info.version}`,
+        description: '该版本隔离目录及其配置与索引库将被删除，不可恢复。',
+        tone: 'danger',
+        confirmLabel: '卸载',
+      })
+      if (!ok) return {}
+      await EverythingAPI.RemoveVersion(info.version)
+      return { message: `已卸载 ${info.version}`, reloadVersions: true }
+    },
+    async importLocal() {
+      const path = await prompt({
+        title: '导入本地安装',
+        label: 'Everything 安装目录完整路径',
+        description: '将整套迁移 exe/配置/语言包/索引库',
+      })
+      if (!path) return {}
+      const info = await EverythingAPI.ImportLocal(path.trim())
+      return { message: `已导入 Everything ${info.version}（含配置与索引库，无需重建索引）`, reloadVersions: true }
+    },
+    async openDir(info) {
+      // 打开安装目录必须传「目录」路径——explorer.exe 收文件参数会执行文件
+      // （markeron 教训），本模块目录语义统一走 OpenTarget（= 资源管理器打开目录）。
+      await EverythingAPI.OpenTarget(info.dir)
+      return {}
+    },
+  },
+
+  copy: {
+    remoteSummary: (releaseCount) => `远程槽位 ${releaseCount} 个（稳定 + 1.5 测试）`,
+    metaHints: [
+      '便携包下载自官网 voidtools（官方 sha256 校验）；或导入本机已有安装连配置与索引库一起收纳',
+      '托管启动会自动隐藏 Everything 托盘图标；注意：手动直接运行版本目录里的 exe 将没有托盘，退出需用任务管理器',
+    ],
+    firstUseEmpty: '尚未安装 Everything —— 下载官方便携版，或「导入本地安装」把现有配置与索引库整套搬进来（免重建索引）',
+    firstUseDownloadLabel: (rel) => `下载 ${releaseRow(rel).channel === 'stable' ? '稳定版' : '最新版'} ${rel.version}`,
+    remoteUnavailable: '无法加载远程版本列表（官网不可达），已尝试内置快照——可稍后点击「↻ 刷新远程列表」重试',
+    uninstallRunningHint: '请先退出 Everything',
+  },
+}
+
+// 版本区写动作全部走 store 编排（runDownload/runSetActive/runRemove/runImport/runOpenDir）：
+// 面板动作彼此单飞互斥（store.busy 闩）；控制台三钮与搜索仍共享视图 busy 闩（见文件头）。
+const store = useManagedConsole(adapter)
 
 // 顶层主选项卡：console = 控制台，versions = 版本管理（与 frpc/markeron 同构）
 const activeMainTab = ref('console')
@@ -59,11 +168,14 @@ const mainTabs = [
   { key: 'versions', label: '📦 版本管理' },
 ]
 
-// ---------- 派生状态 ----------
-const state = computed(() => snap.value?.state ?? '')
+// ---------- 控制台方言投影（真相取共享 store，词面与判定逐字沿自波 2F 前现状） ----------
+const snap = computed(() => store.snap as Snapshot | null)
+const state = computed(() => store.state)
+const runningVersion = computed(() => store.runningVersion)
 
 // §9.5-5 文案评审结论：通用五态接单一来源（running=「运行中」）；
 // Everything 的 running 按托管模式细分「后台/窗口运行中」，属业务扩展话术，保留局部覆写。
+// 不取 store.stateText：N43 未安装降档词（「未安装」）不入本视图控制台方言现状口径。
 const stateText = computed(() => {
   switch (state.value) {
     case 'running':
@@ -74,8 +186,6 @@ const stateText = computed(() => {
     default: return '未运行'
   }
 })
-
-const runningVersion = computed(() => snap.value?.version ?? '')
 
 // 条件提示条（三个变体互斥）
 const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(() => {
@@ -99,131 +209,26 @@ const banner = computed<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(
   return null
 })
 
-// ---------- 数据加载 ----------
-// 请求代次（P0 批 3·4.4，口径对齐共享 store）：同类请求后发者拥有写权——轮询、
-// 控制动作后刷新与下载事件重拉并发时，旧响应不得覆盖新状态/清新 loading。
-// 状态刷新与版本加载独立计数（二者常态并发，共享会把 loading 卡死）。
-let loadSeq = 0
-let statusSeq = 0
-
-async function loadVersions() {
-  const generation = ++loadSeq
-  await loadManagedVersions({
-    remote: EverythingAPI.ListReleases,
-    local: EverythingAPI.ListInstalledVersions,
-    active: EverythingAPI.GetActiveVersion,
-    setRemote: value => { if (generation === loadSeq) releases.value = value },
-    setLocal: value => { if (generation === loadSeq) installed.value = value },
-    setActive: value => { if (generation === loadSeq) activeVersion.value = value },
-    setLoading: value => { if (generation === loadSeq) loading.value = value },
-    setError: value => { if (generation === loadSeq) listError.value = value },
-  })
-}
-
-async function refreshStatus() {
-  const generation = ++statusSeq
-  try {
-    const s = await EverythingAPI.GetStatus()
-    // 空转归零（perf，同共享 store 口径）：内容无差异的回包不换快照引用，免每 2.5s 整帧重渲染
-    if (generation === statusSeq && !sameSnapshot(snap.value, s)) snap.value = s
-  } catch (e) {
-    // 轮询静默失败：保留上次快照即可（自定义视图现状口径；stale 呈现收口于
-    // 共享 store 通路，本视图迁移在 P3 打磨批次一并评估）
-    console.warn('everything GetStatus failed:', getErrorMessage(e))
-  }
-}
-
-// ---------- 控制操作 ----------
+// ---------- 控制操作（视图 busy 闩：与搜索防抖单飞互斥，P0 批 3·4.5） ----------
 async function startBackground() {
   if (busy.value) return
   const r = await run(() => EverythingAPI.StartBackground())
   showToast(r.ok ? r.data.message : getErrorMessage(r.error))
-  await refreshStatus()
+  await store.refresh()
 }
 
 async function openWindow() {
   if (busy.value) return
   const r = await run(() => EverythingAPI.OpenWindow())
   showToast(r.ok ? r.data.message : getErrorMessage(r.error))
-  await refreshStatus()
+  await store.refresh()
 }
 
 async function quitEverything() {
   if (busy.value) return
   const r = await run(() => EverythingAPI.Quit())
   showToast(r.ok ? r.data.message : `退出失败: ${getErrorMessage(r.error)}`)
-  await refreshStatus()
-}
-
-// ---------- 版本管理操作 ----------
-// 全部写动作统一经 run()/busy 单飞互斥（P0 批 3·4.5）：下载中可点退出、
-// 设版中可点卸载的并发窗口自此封死。openDir 为只读导航不占闩。
-async function download(rel: EverythingRelease) {
-  if (busy.value) return
-  const r = await run(() => EverythingAPI.DownloadVersion(rel.version))
-  if (!r.ok) {
-    showToast(`下载失败: ${getErrorMessage(r.error)}`)
-    return
-  }
-  if (r.data === 'already-installed') {
-    showToast(`版本 ${rel.version} 已安装`)
-    await loadVersions()
-  }
-}
-
-async function setActive(v: EverythingVersionInfo) {
-  if (busy.value) return
-  const r = await run(() => EverythingAPI.SetActiveVersion(v.version))
-  if (r.ok) {
-    activeVersion.value = r.data
-    showToast(`已将 ${r.data} 设为使用版本`)
-  } else {
-    showToast(`设置失败: ${getErrorMessage(r.error)}`)
-  }
-}
-
-// 打开安装目录：必须传「目录」路径——explorer.exe 收文件参数会执行文件（markeron 教训），
-// 此处统一走本模块 OpenTarget（目录语义 = 资源管理器打开目录）
-async function openDir(path: string) {
-  try {
-    await EverythingAPI.OpenTarget(path)
-  } catch (e) {
-    showToast(`打开目录失败: ${getErrorMessage(e)}`)
-  }
-}
-
-async function removeVersion(v: EverythingVersionInfo) {
-  const ok = await confirm({
-    title: `卸载 Everything ${v.version}`,
-    description: '该版本隔离目录及其配置与索引库将被删除，不可恢复。',
-    tone: 'danger',
-    confirmLabel: '卸载',
-  })
-  if (!ok) return
-  if (busy.value) return
-  const r = await run(() => EverythingAPI.RemoveVersion(v.version))
-  if (r.ok) {
-    showToast(`已卸载 ${v.version}`)
-    await loadVersions()
-  } else {
-    showToast(`卸载失败: ${getErrorMessage(r.error)}`)
-  }
-}
-
-async function importLocal() {
-  const path = await prompt({
-    title: '导入本地安装',
-    label: 'Everything 安装目录完整路径',
-    description: '将整套迁移 exe/配置/语言包/索引库',
-  })
-  if (!path) return
-  const r = await run(() => EverythingAPI.ImportLocal(path.trim()))
-  if (r.ok) {
-    showToast(`已导入 Everything ${r.data.version}（含配置与索引库，无需重建索引）`)
-    await loadVersions()
-  } else {
-    showToast(`导入失败: ${getErrorMessage(r.error)}`)
-  }
+  await store.refresh()
 }
 
 // ---------- 联动开关 ----------
@@ -249,49 +254,12 @@ async function onFollowToggle() {
   }
 }
 
-// ---------- 时长 ticker 与轮询（usePolling 内置 KeepAlive 激活/停用契约） ----------
-usePolling(refreshStatus, 2500) // 状态兜底轮询（事件推送之外）
-usePolling(() => {
-  if (snap.value?.state === 'running' && snap.value.startedAt) {
-    const started = new Date(snap.value.startedAt).getTime()
-    if (!Number.isNaN(started)) {
-      uptimeSec.value = Math.max(0, Math.floor((Date.now() - started) / 1000))
-    }
-  }
-}, 1000)
-
-// 停用即清零运行时长（对齐迁移前 stopTimers 语义）
-onDeactivated(() => {
-  uptimeSec.value = 0
-})
-
-// ---------- 事件订阅（自动注销）与装载 ----------
-// 单订阅双分发：es 组件进度交 useEverythingSearch（handleEsTicket），app 版本进度进 downloading map
-useWailsEvent<DownloadTicket>('everything:download', (t) => {
-  if (!t || !t.component) return
-  if (t.component === 'es') {
-    handleEsTicket(t)
-    return
-  }
-  downloading.value = { ...downloading.value, [t.version]: t }
-  if (t.stage === 'done') {
-    setTimeout(() => {
-      const next = { ...downloading.value }
-      delete next[t.version]
-      downloading.value = next
-    }, 800)
-    loadVersions()
-  }
-})
-
-useWailsEvent<Snapshot>('everything:instance-state', (s) => {
-  if (!s) return
-  snap.value = s
-  if (s.state !== 'running') uptimeSec.value = 0
-})
-
 onMounted(async () => {
-  await Promise.all([refreshStatus(), loadVersions(), loadExtras(), ensureTool()])
+  // 版本三源加载已归 store（onMounted 自动 load）；状态首拉沿用迁移前双路形制
+  // （轮询 immediate 首跑之外，挂载显式再拉一次——P0 批 3·4.4 请求代次口径的
+  // 前提就是挂载期两发并发）。联动开关读取与 ES 搜索组件预就绪留在视图。
+  void store.refresh()
+  await Promise.all([loadExtras(), ensureTool()])
 })
 </script>
 
@@ -306,7 +274,7 @@ onMounted(async () => {
       </template>
     </PageHeader>
 
-    <div v-if="listError" class="error-box">{{ listError }}</div>
+    <div v-if="store.listError" class="error-box">{{ store.listError }}</div>
 
     <!-- 控制台 Tab -->
     <div v-show="activeMainTab === 'console'" class="tab-body">
@@ -317,7 +285,7 @@ onMounted(async () => {
         :busy="busy"
         :running-version="runningVersion"
         :pid="snap?.pid"
-        :uptime-sec="uptimeSec"
+        :uptime-sec="store.uptimeSec"
         :searching="searching"
         :es-ready="esReady"
         :es-busy="esBusy"
@@ -356,83 +324,50 @@ onMounted(async () => {
       />
     </div>
 
-    <!-- 版本管理 Tab -->
+    <!-- 版本管理 Tab（波 2F：共享面板直挂，方言经具名槽承接） -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
-      <div class="control-panel">
-        <div class="meta-info">
-          <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程槽位 {{ releases.length }} 个（稳定 + 1.5 测试）</span>
-          <span class="hint-dim">便携包下载自官网 voidtools（官方 sha256 校验）；或导入本机已有安装连配置与索引库一起收纳</span>
-          <span class="hint-dim">托管启动会自动隐藏 Everything 托盘图标；注意：手动直接运行版本目录里的 exe 将没有托盘，退出需用任务管理器</span>
+      <ManagedVersionPanel :adapter="adapter" :store="store">
+        <!-- 随关联动开关（原 meta-info 位形制不变，波 2E #meta-extra 承接位） -->
+        <template #meta-extra>
           <label class="toggle-label">
             <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
             <span>随 Hanxi 一起关闭 <span class="hint-dim">（默认关闭：Hanxi 退出不影响该工具；开启后退出时经 -quit 优雅收尾并落盘索引库）</span></span>
           </label>
-        </div>
-        <div class="btn-group">
-          <button class="btn btn-secondary btn-small" @click="importLocal" :disabled="busy">⇥ 导入本地安装</button>
-          <button class="btn btn-secondary btn-small" :disabled="loading" @click="loadVersions">
-            {{ loading ? '刷新中…' : '↻ 刷新远程列表' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- 已安装版本 -->
-      <div class="section-title"><h3>已安装版本 ({{ installed.length }})</h3></div>
-
-      <UiEmptyState v-if="installed.length === 0">
-        <p>尚未安装 Everything —— 下载官方便携版，或「导入本地安装」把现有配置与索引库整套搬进来（免重建索引）</p>
-        <button v-if="releases.length" class="btn btn-primary" @click="download(releases[0])">
-          下载 {{ releases[0].channel === 'stable' ? '稳定版' : '最新版' }} {{ releases[0].version }}
-        </button>
-        <button v-else-if="!loading" class="btn btn-secondary" @click="loadVersions">↻ 刷新远程列表</button>
-      </UiEmptyState>
-
-      <div class="installed-grid">
-        <EverythingVersionCard
-          v-for="v in installed"
-          :key="v.version"
-          :info="v"
-          :is-active="activeVersion === v.version"
-          :is-running="state === 'running' && runningVersion === v.version"
-          @set-active="setActive"
-          @open-dir="openDir($event.dir)"
-          @remove="removeVersion"
-        />
-      </div>
-
-      <!-- 远程可用槽位 -->
-      <div class="section-title"><h3>远程可用版本</h3></div>
-      <EverythingReleaseTable
-        :releases="releases"
-        :installed="installed"
-        :downloading="downloading"
-        :loading="loading"
-        @download="download"
-      />
+        </template>
+        <!-- 通道列（波 2A 方言列槽）：通道徽标 + 快照降级标记，画法逐字沿自原方言表 -->
+        <template #release-extra-col-head>通道</template>
+        <template #release-extra-col="{ release }">
+          <div class="channel-cell">
+            <span class="channel-badge" :class="{ 'ch-stable': releaseRow(release).channel === 'stable', 'ch-beta': releaseRow(release).channel !== 'stable' }">
+              {{ channelLabel(releaseRow(release).channel) }}
+            </span>
+            <span v-if="releaseRow(release).stale" class="badge badge-pre">快照</span>
+          </div>
+        </template>
+      </ManagedVersionPanel>
     </div>
   </section>
 </template>
 
 <style scoped>
 /* 共享层已接管：.page/.header-row/.subtitle/.error-box/.btn 家族/.tbl/.mono/.link-button/
-   .empty-state/.banner(UiBanner)/.main-tab-nav(MainTabNav)；搜索控制台/结果表/版本卡片/
-   远程表格的业务样式随 DOM 迁入 components/everything/* 子组件 scoped——此处只留编排层骨架样式。 */
+   .empty-state/.banner(UiBanner)/.main-tab-nav(MainTabNav)；搜索控制台/结果表的业务样式
+   随 DOM 迁入 components/everything/* 子组件 scoped；版本区样式随波 2F 面板化一并出清——
+   .control-panel/.meta-info/.btn-group/.section-title/.installed-grid 留回全局原子家族，
+   .toggle-label 本视图方言行仍消费。 */
 .everything-view { display: flex; flex-direction: column; gap: 14px; }
 .tab-body { display: flex; flex-direction: column; gap: 16px; }
 .hint-line { font-size: var(--text-sm); color: var(--color-text-subtle); padding-left: 2px; }
 .error-box.slim { padding: 8px 12px; font-size: var(--text-sm); }
 
-/* ---------- 版本区（业务壳） ---------- */
-.control-panel {
-  display: flex; align-items: center; justify-content: space-between;
-  background: var(--surface-panel); border: 1px solid var(--color-border); padding: 10px 14px; border-radius: 8px;
-}
-.meta-info { font-size: var(--text-base); color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
-.meta-info strong { color: var(--color-text); }
-.btn-group { display: flex; gap: 8px; }
-/* .hint-dim 与全局原子逐字同义（§9.6-2 已上收），scoped 副本删净落回 */
 .toggle-label { display: flex; align-items: center; gap: 8px; font-size: var(--text-base); color: var(--color-text); cursor: pointer; margin-top: 4px; }
 .toggle-label input { width: 15px; height: 15px; cursor: pointer; }
-.section-title h3 { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
-.installed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+
+/* ---------- #release-extra-col 通道列（逐字沿自 EverythingReleaseTable，随槽位移居本视图） ---------- */
+.channel-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.channel-badge { font-size: var(--text-xs); font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); }
+.ch-stable { background: var(--state-positive-soft); color: var(--state-positive); }
+.ch-beta { background: var(--state-warning-soft); color: var(--state-warning); }
+/* .badge 基形由 components.css 全局原子接管，此处仅快照档位色（原方言表同词同色） */
+.badge-pre { background: var(--state-warning-soft); color: var(--state-warning); }
 </style>

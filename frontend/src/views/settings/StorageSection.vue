@@ -6,9 +6,11 @@ import { ref, computed, onMounted } from 'vue'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
 import type { AppInfo, StorageUsageItem, StorageSubUsageItem } from '../../../bindings/hanxi/internal/app/models'
 import { getErrorMessage } from '../../utils/errors'
+import { fmtSizeIec } from '../../utils/format'
 import { useToast } from '../../composables/useToast'
 import { usePrompt } from '../../composables/usePrompt'
 import { useConfirm } from '../../composables/useConfirm'
+import { useAsyncAction } from '../../composables/useAsyncAction'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 
@@ -17,7 +19,10 @@ const { prompt } = usePrompt()
 const { confirm } = useConfirm()
 
 const appInfo = ref<AppInfo | null>(null)
-const busy = ref(false)
+// 波 2B：换绑/解绑单飞件迁 run 通道（busy 名位保留，模板零改动；原实现两钮共享
+// 同一 busy 互斥，故合用同一个实例——在飞时另一钮由 disabled 挡住，run 的
+// 「操作进行中」重入分支不可达）。
+const { busy, run: runBindDir } = useAsyncAction()
 
 // mode 为 F6 内部来源标记（sibling/bound），仅用于呈现"家从哪来"，不再是运行模式
 const bound = computed(() => appInfo.value?.mode === 'bound')
@@ -94,14 +99,11 @@ async function rebind() {
   })
   // 取消为 null；空串视同取消（空路径绑定必失败，不留无意义报错）
   if (!target) return
-  busy.value = true
-  try {
-    await AppAPI.AppService.BindDataDir(target)
+  const res = await runBindDir(() => AppAPI.AppService.BindDataDir(target))
+  if (res.ok) {
     showToast('绑定声明已写入，重启 Hanxi 后生效')
-  } catch (e: unknown) {
-    showToast(`绑定失败: ${getErrorMessage(e)}`)
-  } finally {
-    busy.value = false
+  } else {
+    showToast(`绑定失败: ${getErrorMessage(res.error)}`)
   }
 }
 
@@ -113,14 +115,11 @@ async function unbind() {
     tone: 'warning',
   })
   if (!accepted) return
-  busy.value = true
-  try {
-    await AppAPI.AppService.UnbindDataDir()
+  const res = await runBindDir(() => AppAPI.AppService.UnbindDataDir())
+  if (res.ok) {
     showToast('已解除绑定，重启 Hanxi 后回到应用同级')
-  } catch (e: unknown) {
-    showToast(`解绑失败: ${getErrorMessage(e)}`)
-  } finally {
-    busy.value = false
+  } else {
+    showToast(`解绑失败: ${getErrorMessage(res.error)}`)
   }
 }
 
@@ -130,14 +129,6 @@ async function unbind() {
 const usage = ref<StorageUsageItem[]>([])
 const usageLoading = ref(false)
 const usageAt = ref('')
-
-function fmtSize(bytes: number): string {
-  if (!bytes) return '0 B'
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`
-  return `${bytes} B`
-}
 
 async function loadUsage(force = false) {
   if (usageLoading.value) return
@@ -163,7 +154,7 @@ const usageMeasuredCount = computed(() => usage.value.length)
 // 预算截断，Partial 与下限徽标仍是唯一真相；零目录明确显示空态。
 const usageSummary = computed(() => [
   { label: '已测目录', value: usageMeasuredCount.value.toLocaleString(), suffix: ' 个' },
-  { label: '已测占用', value: fmtSize(usageTotal.value), suffix: usageAnyPartial.value ? '（含下限）' : '' },
+  { label: '已测占用', value: fmtSizeIec(usageTotal.value), suffix: usageAnyPartial.value ? '（含下限）' : '' },
   { label: '已测文件', value: usageKnownFiles.value.toLocaleString(), suffix: ' 个' },
 ])
 
@@ -301,7 +292,7 @@ onMounted(() => {
             {{ versionsOpen ? '收起软件明细' : '展开到每软件' }}
           </button>
           <span class="usage-size" :class="{ 'usage-partial': item.partial }" :title="`${item.bytes.toLocaleString()} 字节${item.partial ? '（下限）' : ''}`">
-            {{ item.partial ? '≥ ' : '' }}{{ fmtSize(item.bytes) }}
+            {{ item.partial ? '≥ ' : '' }}{{ fmtSizeIec(item.bytes) }}
           </span>
         </div>
         <!-- versions 展开：每个软件一行（悬停看版本清单） -->
@@ -324,7 +315,7 @@ onMounted(() => {
               <code v-if="g.files" class="setting-desc dir-path">{{ g.files.toLocaleString() }} 个文件</code>
             </span>
             <span class="usage-size" :class="{ 'usage-partial': g.partial }" :title="`${g.bytes.toLocaleString()} 字节${g.partial ? '（下限）' : ''} · 删了=卸掉该软件，用时要重新下载安装`">
-              {{ g.partial ? '≥ ' : '' }}{{ fmtSize(g.bytes) }}
+              {{ g.partial ? '≥ ' : '' }}{{ fmtSizeIec(g.bytes) }}
             </span>
           </div>
         </template>

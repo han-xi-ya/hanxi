@@ -10,7 +10,7 @@
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import type { ManagedSnapshot } from '../components/managed/adapter'
 import type { ManagedConsoleStore } from '../components/managed/store'
-import { annotateToggleView, createMarkerOnAdapter } from '../adapters/markeron'
+import { annotateToggleView, createMarkerOnAdapter, type AnnotateToggleView } from '../adapters/markeron'
 
 const adapter = createMarkerOnAdapter()
 
@@ -19,9 +19,14 @@ function drawingOf(snap: ManagedSnapshot | null): boolean {
   return !!(snap as { drawing?: boolean } | null)?.drawing
 }
 
+/** 六态矩阵单帧投影：钮体各绑定位与点击判定共用这一次计算结果。 */
+function toggleViewOf(scope: { state: string; busy: boolean; installedCount: number; snap: ManagedSnapshot | null }): AnnotateToggleView {
+  return annotateToggleView({ state: scope.state, drawing: drawingOf(scope.snap), busy: scope.busy, installedCount: scope.installedCount })
+}
+
 /** 标注开关点击：禁用前置判定后交 store.runToggle（编排与 toast 词源单源在 store）。 */
-function onToggle(store: ManagedConsoleStore, input: { state: string; drawing: boolean; busy: boolean; installedCount: number }) {
-  if (annotateToggleView(input).disabled) return
+function onToggle(store: ManagedConsoleStore, view: AnnotateToggleView) {
+  if (view.disabled) return
   void store.runToggle()
 }
 </script>
@@ -37,14 +42,18 @@ function onToggle(store: ManagedConsoleStore, input: { state: string; drawing: b
   >
     <!-- 六态标注开关钮（#primary-action 槽注入位；矩阵算法在 adapters/markeron，
          动词编排经槽内 store.runToggle 走共享单源） -->
-    <template #primary-action="{ state, busy, installedCount, snap, store }">
+    <template #primary-action="scope">
+      <!-- 单帧一次投影：v-for 单元别名是 Vue 模板局部变量惯用法，
+           原 annotateToggleView 同帧 5 次重复调用自此归一（纯函数无副作用，结果逐字同） -->
       <button
+        v-for="view in [toggleViewOf(scope)]"
+        :key="0"
         class="btn btn-small annotate-toggle"
-        :class="annotateToggleView({ state, drawing: drawingOf(snap), busy, installedCount }).variant"
-        :disabled="annotateToggleView({ state, drawing: drawingOf(snap), busy, installedCount }).disabled"
-        :title="annotateToggleView({ state, drawing: drawingOf(snap), busy, installedCount }).title"
-        @click="onToggle(store, { state, drawing: drawingOf(snap), busy, installedCount })"
-      >✎ {{ annotateToggleView({ state, drawing: drawingOf(snap), busy, installedCount }).label }}</button>
+        :class="view.variant"
+        :disabled="view.disabled"
+        :title="view.title"
+        @click="onToggle(scope.store, view)"
+      >✎ {{ view.label }}</button>
     </template>
 
     <!-- 控制台 Tab 主体：状态说明六行（含与 banner 并存的原形态）+ 快捷键说明卡 -->

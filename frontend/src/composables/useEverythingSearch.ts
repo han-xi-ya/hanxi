@@ -10,6 +10,7 @@ import type { Result } from '../../bindings/hanxi/internal/modules/everything/se
 import { useToast } from './useToast'
 import { useClipboard } from './useClipboard'
 import { getErrorMessage } from '../utils/errors'
+import { debounce } from '../utils/debounce'
 
 // 结果完整路径拼接：目录 path 自带尾部分隔符则直接相接，否则补 '\'
 export function resultFullPath(r: Result): string {
@@ -33,7 +34,8 @@ export function useEverythingSearch(busy: Ref<boolean>) {
   const { showToast } = useToast()
   const { copy } = useClipboard()
 
-  let debounceTimer: number | null = null
+  // 手写 setTimeout 收编至 utils/debounce（trailing+cancel，与 HistoryPanel 同源节奏）
+  const debouncedSearch = debounce(() => { void doSearch() }, 350)
   let searchSeq = 0 // 输入变化立即失效；仅最新查询允许写回
   let disposed = false
   let ensureInFlight: Promise<boolean> | null = null
@@ -63,7 +65,7 @@ export function useEverythingSearch(busy: Ref<boolean>) {
   // 实时搜索：输入停顿 350ms 自动触发；中文输入法组合期间不触发（composition 守卫）
   function onKeywordInput() {
     ++searchSeq
-    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+    debouncedSearch.cancel() // 每次输入重排：旧待触发一律作废
     if (composing.value || disposed) return
     const q = keyword.value.trim()
     if (!q) {
@@ -74,11 +76,11 @@ export function useEverythingSearch(busy: Ref<boolean>) {
       searching.value = false
       return
     }
-    debounceTimer = window.setTimeout(() => { void doSearch() }, 350)
+    debouncedSearch()
   }
 
   function onKeywordEnter() {
-    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+    debouncedSearch.cancel() // 回车即时查，取消未触发的防抖
     void doSearch()
   }
 
@@ -150,7 +152,7 @@ export function useEverythingSearch(busy: Ref<boolean>) {
   onUnmounted(() => {
     disposed = true
     ++searchSeq
-    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null }
+    debouncedSearch.cancel() // 卸载清待触发（与原 clearTimeout 路径等价，防卸载后搜索复活）
   })
 
   return {

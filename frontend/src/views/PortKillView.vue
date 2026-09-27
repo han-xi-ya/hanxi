@@ -7,6 +7,7 @@ import { getErrorMessage } from '../utils/errors'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
+import { useAsyncAction } from '../composables/useAsyncAction'
 import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import HistoryPanel from '../components/tool/HistoryPanel.vue'
 import UiHistoryDialog from '../components/ui/UiHistoryDialog.vue'
@@ -25,8 +26,10 @@ const errorMsg = ref('')
 // 快捷端口预设
 const QUICK_PORTS = [80, 443, 3000, 5173, 8080, 8000, 3306, 6379, 27017]
 
-// 查杀串行门禁：一次查杀（含 UAC 提权等待）未完成前不再受理新的释放
-const killing = ref(false)
+// 查杀串行门禁：一次查杀（含 UAC 提权等待）未完成前不再受理新的释放。
+// 波 2B：门禁态迁 useAsyncAction（busy 名位保留，:disabled="killing" 零改动）；
+// requestKill 的静默预检与 doKill 的提权编排体逐字保留，重入分支由预检+禁用不可达。
+const { busy: killing, run: runKill } = useAsyncAction()
 
 function sortReleasableFirst(list: PortOccupant[]) {
   return [...list].sort((a, b) => Number(a.isProtected) - Number(b.isProtected))
@@ -89,36 +92,37 @@ async function requestKill(occ: PortOccupant) {
 }
 
 async function doKill(occ: PortOccupant) {
-  killing.value = true
-  try {
+  const res = await runKill(async () => {
     let startedUnix = 0
     if (occ.startedAt) {
       startedUnix = Math.floor(new Date(occ.startedAt).getTime() / 1000)
     }
 
     // 1. 先尝试普通权限查杀
-    let res: KillResult = await PortKillAPI.PortKillService.KillProcess(occ.pid, occ.exePath, startedUnix)
+    let killRes: KillResult = await PortKillAPI.PortKillService.KillProcess(occ.pid, occ.exePath, startedUnix)
 
     // 2. 如果返回需要提权
-    if (!res.success && res.needElevate) {
+    if (!killRes.success && killRes.needElevate) {
       showToast('普通权限不足，正在调起 Windows UAC 提权终止…')
-      res = await PortKillAPI.PortKillService.KillProcessElevated(occ.pid)
+      killRes = await PortKillAPI.PortKillService.KillProcessElevated(occ.pid)
     }
 
-    if (res.success) {
-      showToast(`已成功终止进程 PID ${occ.pid} (${occ.processName || '未知'})`)
-      // 重新刷新列表或查询
-      if (inputPort.value) {
-        searchPort()
-      }
-      loadListeningPorts()
-    } else {
-      showToast(`查杀失败: ${res.errorMessage}`)
+    return killRes
+  })
+  if (!res.ok) {
+    showToast(`操作异常: ${getErrorMessage(res.error)}`)
+    return
+  }
+  const killRes = res.data
+  if (killRes.success) {
+    showToast(`已成功终止进程 PID ${occ.pid} (${occ.processName || '未知'})`)
+    // 重新刷新列表或查询
+    if (inputPort.value) {
+      searchPort()
     }
-  } catch (e: unknown) {
-    showToast(`操作异常: ${getErrorMessage(e)}`)
-  } finally {
-    killing.value = false
+    loadListeningPorts()
+  } else {
+    showToast(`查杀失败: ${killRes.errorMessage}`)
   }
 }
 
@@ -259,7 +263,7 @@ onMounted(() => {
                 </template>
                 <template v-else>—</template>
               </td>
-              <td>{{ formatTime(occ.startedAt as any) }}</td>
+              <td>{{ formatTime(occ.startedAt) }}</td>
               <td>
                 <button
                   v-if="!occ.isProtected"

@@ -34,6 +34,7 @@ import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
+import { fmtSizeIec } from '../utils/format'
 import { envStatusMeta } from '../constants/status'
 
 type OfficialTool = 'git' | 'go' | 'node' | 'java' | 'python' | 'dotnet'
@@ -77,14 +78,6 @@ const VERDICTS: Record<string, { word: string; tone: string; tip: string }> = {
 const NO_VERDICT = { word: '', tone: 'chip-neutral', tip: '' }
 function verdictOf(code?: string) {
   return (code ? VERDICTS[code] : undefined) ?? NO_VERDICT
-}
-
-function fmtSize(bytes: number): string {
-  if (!bytes) return '0 B'
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`
-  return `${bytes} B`
 }
 
 async function loadDiskUsage() {
@@ -185,6 +178,18 @@ const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: stri
   dotnet: { heading: '.NET 官方支持线', downloadLabel: '打开 .NET 官网下载页' },
 }
 
+// 官网版本对照派发表（波 1b 表驱动）：refreshOfficial 与 openDownloadPage 原有的
+// 两条同序同对象六分支 if/else 链合一——每行自带「查询 + 打开下载页」动词对，
+// 调用词面逐字不变，错误处理仍留各调用方。
+const OFFICIAL_REMOTE: Record<OfficialTool, { fetch: () => Promise<PanelOverview>; open: () => Promise<unknown> }> = {
+  git: { fetch: async () => adaptGitOverview(await EnvCheckAPI.GetGitForWindowsOverview()), open: () => EnvCheckAPI.OpenGitForWindowsDownloadPage() },
+  go: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetGoOverview()), open: () => EnvCheckAPI.OpenGoDownloadPage() },
+  node: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetNodeOverview()), open: () => EnvCheckAPI.OpenNodeDownloadPage() },
+  java: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetJavaOverview()), open: () => EnvCheckAPI.OpenJavaDownloadPage() },
+  python: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetPythonOverview()), open: () => EnvCheckAPI.OpenPythonDownloadPage() },
+  dotnet: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetDotNetOverview()), open: () => EnvCheckAPI.OpenDotNetDownloadPage() },
+}
+
 const TOOL_LABELS: Record<OfficialTool | 'npm' | 'pnpm', string> = {
   git: 'Git',
   go: 'Go',
@@ -204,7 +209,7 @@ async function refresh() {
   if (loading.value) return
   localLoading.value = true
   loadError.value = ''
-  const remotePromises = (['git', 'go', 'node', 'java', 'python', 'dotnet'] as OfficialTool[]).map(tool => refreshOfficial(tool))
+  const remotePromises = OFFICIAL_TOOLS.map(tool => refreshOfficial(tool))
   remotePromises.push(refreshNpm())
   remotePromises.push(refreshGitConfig()) // 纯本机读取，跟随页面复采钮，不另起轮询
   try {
@@ -304,19 +309,7 @@ async function refreshOfficial(tool: OfficialTool) {
   state.loading = true
   state.error = ''
   try {
-    if (tool === 'git') {
-      state.overview = adaptGitOverview(await EnvCheckAPI.GetGitForWindowsOverview())
-    } else if (tool === 'go') {
-      state.overview = adaptChannelOverview(await EnvCheckAPI.GetGoOverview())
-    } else if (tool === 'node') {
-      state.overview = adaptChannelOverview(await EnvCheckAPI.GetNodeOverview())
-    } else if (tool === 'java') {
-      state.overview = adaptChannelOverview(await EnvCheckAPI.GetJavaOverview())
-    } else if (tool === 'python') {
-      state.overview = adaptChannelOverview(await EnvCheckAPI.GetPythonOverview())
-    } else {
-      state.overview = adaptChannelOverview(await EnvCheckAPI.GetDotNetOverview())
-    }
+    state.overview = await OFFICIAL_REMOTE[tool].fetch()
   } catch (error) {
     state.error = `官网版本查询失败: ${getErrorMessage(error)}`
   } finally {
@@ -359,12 +352,7 @@ async function revealPath(tool: ToolInfo) {
 
 async function openDownloadPage(tool: OfficialTool) {
   try {
-    if (tool === 'git') await EnvCheckAPI.OpenGitForWindowsDownloadPage()
-    else if (tool === 'go') await EnvCheckAPI.OpenGoDownloadPage()
-    else if (tool === 'node') await EnvCheckAPI.OpenNodeDownloadPage()
-    else if (tool === 'java') await EnvCheckAPI.OpenJavaDownloadPage()
-    else if (tool === 'python') await EnvCheckAPI.OpenPythonDownloadPage()
-    else await EnvCheckAPI.OpenDotNetDownloadPage()
+    await OFFICIAL_REMOTE[tool].open()
   } catch (error) {
     showToast(getErrorMessage(error))
   }
@@ -566,7 +554,7 @@ onMounted(() => {
             <code class="mono usage-path" :title="d.path">{{ d.path || '未能推导' }}</code>
             <span v-if="!d.exists" class="usage-muted">未落地</span>
             <span v-else class="mono usage-size" :class="{ 'usage-partial': d.partial }" :title="`${d.bytes.toLocaleString()} 字节${d.partial ? '（下限）' : ''}`">
-              {{ d.partial ? '≥ ' : '' }}{{ fmtSize(d.bytes) }}
+              {{ d.partial ? '≥ ' : '' }}{{ fmtSizeIec(d.bytes) }}
             </span>
           </div>
         </div>

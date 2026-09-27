@@ -94,6 +94,37 @@ describe('ConfirmDialog', () => {
     w.unmount()
   })
 
+  it('Tab 环困窗：末位 Tab 回窗首、首位 Shift+Tab 回窗末，且吞掉默认行为（useDialogA11y 单源锁）', async () => {
+    const w = factory({ open: false })
+    await w.setProps({ open: true })
+    await new Promise((r) => setTimeout(r))
+    const first = w.find('.workbench-confirm-btn.secondary').element as HTMLElement
+    const last = w.find('.workbench-confirm-btn.primary').element as HTMLElement
+    last.focus()
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true })
+    document.dispatchEvent(tab)
+    expect(tab.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(first)
+    const shiftTab = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true })
+    document.dispatchEvent(shiftTab)
+    expect(shiftTab.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(last)
+    w.unmount()
+  })
+
+  it('关窗回焦触发点（previousFocus 归还契约）', async () => {
+    const trigger = document.createElement('button')
+    document.body.appendChild(trigger)
+    trigger.focus()
+    const w = factory({ open: false })
+    await w.setProps({ open: true })
+    await new Promise((r) => setTimeout(r))
+    await w.setProps({ open: false })
+    expect(document.activeElement).toBe(trigger)
+    w.unmount()
+    trigger.remove()
+  })
+
   it('tone=danger 挂上 is-danger 样式钩子', () => {
     const w = factory({ tone: 'danger' })
     expect(w.find('section').classes()).toContain('is-danger')

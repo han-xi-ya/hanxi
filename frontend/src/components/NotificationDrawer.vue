@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useNotification } from '../composables/useNotification'
 import type { Notification } from '../../bindings/hanxi/internal/notify/models'
+import { levelTone } from '../constants/status'
 import AppIcon from './ui/AppIcon.vue'
 
 const emit = defineEmits<{
@@ -24,19 +25,8 @@ function formatTime(ts: number) {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-// 严重度指示灯：emoji 已退役（AppIcon 纪律），色点仅冗余强调，色板走 state token。
-function levelTone(level: string) {
-  switch (level) {
-    case 'success':
-      return 'sev-success'
-    case 'warning':
-      return 'sev-warning'
-    case 'error':
-      return 'sev-error'
-    default:
-      return 'sev-info'
-  }
-}
+// 严重度指示灯：emoji 已退役（AppIcon 纪律），色点仅冗余强调。档位映射取
+// constants/status.ts levelTone 单源（与 NotificationToast 同源），色板在 components.css。
 
 function handleItemClick(item: Notification) {
   markAsRead(item.id)
@@ -267,11 +257,9 @@ function handleItemClick(item: Notification) {
   min-width: 0;
 }
 
+/* .sev-dot / .sev-{success,warning,error} 四条上收 components.css（与 NotificationToast
+   的逐字同形副本一并删净）；.level-icon 为抽屉列表行独有的收缩补差，留本组件。 */
 .level-icon { flex: none; }
-.sev-dot { width: 9px; height: 9px; border-radius: var(--radius-pill); background: var(--state-information); }
-.sev-success { background: var(--state-positive); }
-.sev-warning { background: var(--state-warning); }
-.sev-error { background: var(--state-danger); }
 
 .mod-tag {
   font-size: var(--text-xs);

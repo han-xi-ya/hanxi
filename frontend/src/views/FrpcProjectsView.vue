@@ -428,8 +428,11 @@ function scheduleLogFlush() {
   })
 }
 
-async function openLogs(p: Project) {
-  drawerProjectId.value = p.id
+// 签名收 projectId 字符串（波 1d 过渡桥拆除）：抽屉「刷新」钮此前为凑类型
+// 现场 `projects.find(...) as any` 反查 Project 再取回 id，属纯二跳浪费——
+// openLogs 实际只消费 id 一个字段。
+async function openLogs(projectId: string) {
+  drawerProjectId.value = projectId
   logPending = [] // 丢弃上一项目未刷入的在途行（原实现逐行即时入表无此残留窗口）
   logError.value = ''
   logLoading.value = true
@@ -438,7 +441,7 @@ async function openLogs(p: Project) {
   // 「历史快照在前、新行紧随」合并——对齐原 baseline 合并语义（旧表内容整组置换）。
   logPulling = true
   try {
-    const initial = (await FrpcAPI.GetProjectLogs(p.id, 500)) ?? []
+    const initial = (await FrpcAPI.GetProjectLogs(projectId, 500)) ?? []
     const merged = initial.map(toLogRow).concat(logPending)
     if (merged.length > LOG_MAX_LINES) merged.splice(0, merged.length - LOG_MAX_LINES)
     logRows.value = merged
@@ -616,7 +619,7 @@ onMounted(async () => {
                   @click="toggleStart(p)"
                 >{{ starting.has(p.id) || stateOf(p)?.state === 'starting' ? '启动中…' : '▶ 启动' }}</button>
               </template>
-              <button class="btn btn-secondary btn-small" @click="openLogs(p)">日志</button>
+              <button class="btn btn-secondary btn-small" @click="openLogs(p.id)">日志</button>
               <button class="btn btn-secondary btn-small" :disabled="isActive(p)" @click="openEdit(p)">编辑</button>
               <button class="btn btn-secondary btn-small" title="生成并复制 frp:// 分享链接" @click="exportProjectShareLink(p)">⚡ 分享</button>
               <button class="btn btn-secondary btn-small" @click="copyProject(p)">复制</button>
@@ -669,7 +672,7 @@ onMounted(async () => {
           <!-- 输出区复制补齐（PLAN_CLIPBOARD §3.2C）：LogsView 有、frpc 抽屉此前没有 -->
           <button class="btn btn-secondary btn-small" :disabled="logRows.length === 0" @click="copyDrawerLogs">复制</button>
           <button class="btn btn-secondary btn-small" @click="clearLogs">清屏</button>
-          <button class="btn btn-secondary btn-small" @click="openLogs(projects.find(x => x.id === drawerProjectId) as any)">刷新</button>
+          <button class="btn btn-secondary btn-small" @click="openLogs(drawerProjectId)">刷新</button>
           <button class="btn btn-secondary btn-small" @click="closeLogs">✕ 收起</button>
         </div>
       </div>

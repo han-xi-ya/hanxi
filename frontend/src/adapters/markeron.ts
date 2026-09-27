@@ -30,6 +30,7 @@ import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/mar
 import type { ToggleOutcome, StopOutcome } from '../../bindings/hanxi/internal/modules/markeron/models'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
+import { normalizeVersion } from '../utils/version'
 import type { ManagedActionResult, ManagedModuleAdapter } from '../components/managed/adapter'
 
 /**
@@ -178,8 +179,10 @@ export function createMarkerOnAdapter(): ManagedModuleAdapter<Snapshot> {
       },
 
       async remove(v): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
-        const versionShort = v.version.replace(/^v/, '')
+        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留。
+        // 展示剥离上收 normalizeVersion 单源（v2.9.4/2.9.4 双形态归一）：相对旧
+        // `^v` 大小写敏感口径，`V2.9.4` 现也剥成 `2.9.4`（现网 tag 恒小写，微差登记）。
+        const versionShort = normalizeVersion(v.version)
         const accepted = await confirm({
           title: `确定卸载 MarkerOn ${versionShort}？`,
           description: '该版本隔离目录及其便携数据将被删除，不可恢复。',

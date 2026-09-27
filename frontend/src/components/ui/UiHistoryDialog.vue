@@ -4,15 +4,18 @@
 // App 单例 ConfirmDialog 倒挂、零焦点管理），修一次就要追两遍；收编为单件后
 // 契约只有一份。类名沿用 hist-*（两视图特征测试锁定的选择器零断言成本迁移）。
 //
-// 交互契约（对齐全仓 ConfirmDialog 标杆语义，勿"好心"简化）：
-//  1) Esc 在 confirmState.open 时让位——面板内「清空本桶」确认盖在本弹窗上，
-//     一次 Esc 只关最上层（document 级监听同场竞走是历史事故根源）；
-//  2) z-index 950 低于 ConfirmDialog 的 1000——宿主视图经 KeepAlive 懒挂载，
-//     Teleport 锚点 DOM 序天然晚于 App 单例，同层拼位置必输；
-//  3) 开窗焦点入 dialog（tabindex=-1）、Tab 环困在窗内（选择器镜像 ConfirmDialog
-//     并补 input/select/textarea——面板有搜索框）、关窗焦点回位触发点。
-import { nextTick, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
+// 交互契约（对齐全仓 ConfirmDialog 标杆语义，勿"好心"简化——机制本体在
+// composables/useDialogA11y 单源，波 2C 接线；本件差异参数逐条对应下列契约）：
+//  1) Esc 在 confirmState.open 时让位（escapeYield 参数）——面板内「清空本桶」确认
+//     盖在本弹窗上，一次 Esc 只关最上层（document 级监听同场竞走是历史事故根源）；
+//  2) z-index 950（z: DIALOG_Z.underTop，互锁进类型面）低于 App 单例的 1000——
+//     宿主视图经 KeepAlive 懒挂载，Teleport 锚点 DOM 序天然晚于 App 单例，同层拼位置必输；
+//  3) 开窗焦点入 dialog（tabindex=-1，focusOnOpen 缺省档）、Tab 环困在窗内
+//     （选择器镜像 ConfirmDialog 并补 input/select/textarea——面板有搜索框，
+//     即 useDialogA11y 的 DEFAULT_FOCUSABLE 最宽档）、关窗焦点回位触发点。
+import { ref } from 'vue'
 import { useConfirm } from '../../composables/useConfirm'
+import { DIALOG_Z, useDialogA11y } from '../../composables/useDialogA11y'
 
 const props = defineProps<{
   open: boolean
@@ -26,67 +29,28 @@ const emit = defineEmits<{ close: [] }>()
 
 const { confirmState } = useConfirm()
 const dialogEl = ref<HTMLElement | null>(null)
-let prevFocus: HTMLElement | null = null
 
-function onTabTrap(e: KeyboardEvent) {
-  if (e.key !== 'Tab' || !dialogEl.value) return
-  const focusable = Array.from(dialogEl.value.querySelectorAll<HTMLElement>(
-    'button:not([disabled]), input, select, textarea, [href], [tabindex]:not([tabindex="-1"])',
-  ))
-  if (!focusable.length) return
-  const first = focusable[0]
-  const last = focusable[focusable.length - 1]
-  if (e.shiftKey && document.activeElement === first) {
-    e.preventDefault()
-    last.focus()
-  } else if (!e.shiftKey && document.activeElement === last) {
-    e.preventDefault()
-    first.focus()
-  }
-}
-
-function onEsc(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || confirmState.open) return // 确认框在场时 Esc 归它
-  emit('close')
-}
-
-watch(
-  () => props.open,
-  async (v) => {
-    if (v) {
-      prevFocus = document.activeElement as HTMLElement | null
-      document.addEventListener('keydown', onEsc)
-      await nextTick()
-      dialogEl.value?.focus()
-    } else {
-      document.removeEventListener('keydown', onEsc)
-      prevFocus?.focus()
-      prevFocus = null
-    }
-  },
-  // immediate：宿主以 open=true 首挂（如未来持久化弹窗态）也要注册监听/进焦点；
-  // false 起步时走 else 分支完全幂等（removeEventListener 无害、prevFocus 为空）
-  { immediate: true },
-)
-
-// document 级监命的生命周期兜底（审查 P1）：宿主页 KeepAlive LRU 逐出/切页时
-// 弹窗可能仍开着——旧两壳各有 onBeforeUnmount 摘除，共享件缺一行就是
-// "每逐出一次叠一份 keydown 监听"的真泄漏；deactivate（切页未卸载）摘、
-// activate（回访仍开着）补挂，杜绝异页按 Esc 幽灵关闭隐藏弹窗。
-function unhook() {
-  document.removeEventListener('keydown', onEsc)
-}
-onBeforeUnmount(unhook)
-onDeactivated(unhook)
-onActivated(() => {
-  if (props.open) document.addEventListener('keydown', onEsc)
+// document 级监命的生命周期兜底（审查 P1）由 keepAliveRebind 承接：宿主页
+// KeepAlive LRU 逐出/切页时弹窗可能仍开着——deactivate（切页未卸载）摘、
+// activate（回访仍开着）补挂，杜绝异页按 Esc 幽灵关闭隐藏弹窗；卸载兜底恒在。
+// immediate：宿主以 open=true 首挂（如未来持久化弹窗态）也要注册监听/进焦点；
+// false 起步时走 else 分支完全幂等（removeEventListener 无害、previousFocus 为空）。
+useDialogA11y({
+  open: () => props.open,
+  dialog: dialogEl,
+  z: DIALOG_Z.underTop,
+  close: () => emit('close'),
+  escapeYield: () => confirmState.open, // 确认框在场时 Esc 归它
+  escapePreventsDefault: false,
+  immediate: true,
+  keepAliveRebind: true,
 })
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="open" class="hist-backdrop" @click.self="emit('close')">
-      <div ref="dialogEl" class="hist-dialog" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1" @keydown="onTabTrap">
+      <div ref="dialogEl" class="hist-dialog" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1">
         <div class="hist-head">
           <div class="hist-head-text">
             <h2>{{ title }}</h2>
