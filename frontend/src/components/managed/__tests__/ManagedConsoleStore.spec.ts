@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ManagedModuleAdapter, ManagedReleaseRecord, ManagedSnapshot, NormalizedProgress } from '../adapter'
 import { sameSnapshot } from '../adapter'
 import { useManagedConsole } from '../store'
+import { useToast } from '../../../composables/useToast'
 
 const stoppedSnap: ManagedSnapshot = {
   state: 'stopped',
@@ -73,6 +74,7 @@ function deferred<T>() {
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
+  useToast().clearToast()
 })
 
 describe('ManagedConsoleStore 版本编排归属', () => {
@@ -372,5 +374,168 @@ describe('ManagedConsoleStore 轮询空转归零', () => {
     expect(sameSnapshot(null, null)).toBe(true)
     expect(sameSnapshot({ state: 'running' }, null)).toBe(false)
     expect(sameSnapshot(null, { state: 'running' })).toBe(false)
+  })
+})
+
+// ---------- 波 2A：runReset / runSlotVerb 编排（视图手抄接线器的公共层对位） ----------
+describe('ManagedConsoleStore 波 2A runReset 编排', () => {
+  it('成功弹后端 message；两分支均不刷快照不重拉版本（TTB/QL/PaperTodo 逐字现形制）', async () => {
+    const { adapter } = fakeAdapter()
+    const run = vi.fn(async () => ({ message: '任务栏状态已重设' }))
+    adapter.reset = { run }
+    const probe = mountStore(adapter)
+    await flushPromises()
+    const statusCalls = (adapter.getStatus as ReturnType<typeof vi.fn>).mock.calls.length
+    const installCalls = (adapter.versions.listInstalled as ReturnType<typeof vi.fn>).mock.calls.length
+
+    await probe.store.runReset()
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toBe('任务栏状态已重设')
+    expect(adapter.getStatus).toHaveBeenCalledTimes(statusCalls) // runControl「恒刷」不适用
+    expect(adapter.versions.listInstalled).toHaveBeenCalledTimes(installCalls)
+
+    // 失败分支：裸错误串（TTB/PaperTodo 现词），同样不刷
+    run.mockRejectedValueOnce(new Error('RPC 断了'))
+    await probe.store.runReset()
+    expect(useToast().toastMsg.value).toBe('RPC 断了')
+    expect(adapter.getStatus).toHaveBeenCalledTimes(statusCalls)
+    probe.wrapper.unmount()
+  })
+
+  it('前缀参数位：opts.errorPrefix 显式（QuickLook「重载失败: 」对位）与 copy.errorPrefix.reset 覆写位', async () => {
+    const { adapter } = fakeAdapter()
+    adapter.reset = { run: vi.fn(async () => { throw new Error('管道无响应') }) }
+    const probe = mountStore(adapter)
+    await flushPromises()
+
+    await probe.store.runReset({ errorPrefix: '重载失败: ' })
+    expect(useToast().toastMsg.value).toBe('重载失败: 管道无响应')
+
+    adapter.copy = { errorPrefix: { reset: '收拢失败: ' } }
+    await probe.store.runReset()
+    expect(useToast().toastMsg.value).toBe('收拢失败: 管道无响应')
+
+    // 显式参数优先于覆写位
+    await probe.store.runReset({ errorPrefix: '重载失败: ' })
+    expect(useToast().toastMsg.value).toBe('重载失败: 管道无响应')
+    probe.wrapper.unmount()
+  })
+
+  it('refreshSnapshot:true 参数位：成功/失败两分支均刷一次快照', async () => {
+    const { adapter } = fakeAdapter()
+    adapter.reset = { run: vi.fn(async () => ({ message: '已复位' })) }
+    const probe = mountStore(adapter)
+    await flushPromises()
+    const baseline = (adapter.getStatus as ReturnType<typeof vi.fn>).mock.calls.length
+
+    await probe.store.runReset({ refreshSnapshot: true })
+    expect(adapter.getStatus).toHaveBeenCalledTimes(baseline + 1)
+
+    ;(adapter.reset.run as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('炸'))
+    await probe.store.runReset({ refreshSnapshot: true })
+    expect(adapter.getStatus).toHaveBeenCalledTimes(baseline + 2)
+    probe.wrapper.unmount()
+  })
+
+  it('单飞闩：在途中二次调用丢弃；无 reset 槽静默无操作', async () => {
+    const { adapter } = fakeAdapter()
+    const gate = deferred<{ message?: string }>()
+    const run = vi.fn(() => gate.promise)
+    adapter.reset = { run }
+    const probe = mountStore(adapter)
+    await flushPromises()
+
+    const first = probe.store.runReset()
+    expect(probe.store.busy).toBe(true)
+    const second = probe.store.runReset()
+    await second // 闩占用即弃，不排队
+    expect(run).toHaveBeenCalledTimes(1)
+    gate.resolve({ message: '已重设' })
+    await first
+
+    adapter.reset = undefined
+    await probe.store.runReset() // 不抛错、无 toast
+    expect(useToast().toastMsg.value).toBe('已重设')
+    probe.wrapper.unmount()
+  })
+})
+
+describe('ManagedConsoleStore 波 2A runSlotVerb 编排', () => {
+  it('settle 链缺省形：message 弹串 + reloadVersions 真值走 store.load 重拉版本区', async () => {
+    const { adapter } = fakeAdapter()
+    const probe = mountStore(adapter)
+    await flushPromises()
+    const installCalls = (adapter.versions.listInstalled as ReturnType<typeof vi.fn>).mock.calls.length
+
+    await probe.store.runSlotVerb(async () => ({ message: '快捷方式已创建', reloadVersions: true }))
+    expect(useToast().toastMsg.value).toBe('快捷方式已创建')
+    expect(adapter.versions.listInstalled).toHaveBeenCalledTimes(installCalls + 1)
+    probe.wrapper.unmount()
+  })
+
+  it('reloadVersionsVia 参数位：custom 编排注入自有重拉通道，store.load 不触发（vscode 对位）', async () => {
+    const { adapter } = fakeAdapter()
+    const probe = mountStore(adapter)
+    await flushPromises()
+    const installCalls = (adapter.versions.listInstalled as ReturnType<typeof vi.fn>).mock.calls.length
+    const runtimeLoad = vi.fn(async () => {})
+
+    await probe.store.runSlotVerb(async () => ({ message: '已入列', reloadVersions: true }), {
+      reloadVersionsVia: runtimeLoad,
+    })
+    expect(runtimeLoad).toHaveBeenCalledTimes(1)
+    expect(adapter.versions.listInstalled).toHaveBeenCalledTimes(installCalls)
+    probe.wrapper.unmount()
+  })
+
+  it('refreshAfter 三档：缺省不刷 / ok 仅成功刷 / always 两分支均刷；errorPrefix 失败字面（vscode download「操作失败: 」对位）', async () => {
+    const { adapter } = fakeAdapter()
+    const probe = mountStore(adapter)
+    await flushPromises()
+    let baseline = (adapter.getStatus as ReturnType<typeof vi.fn>).mock.calls.length
+
+    // 缺省 never：成败均不刷
+    await probe.store.runSlotVerb(async () => ({ message: '静默世界' }))
+    expect(adapter.getStatus).toHaveBeenCalledTimes(baseline)
+    await probe.store.runSlotVerb(async () => { throw new Error('boom') })
+    expect(useToast().toastMsg.value).toBe('boom') // 裸串（ddnsgo openConsole 现词）
+    expect(adapter.getStatus).toHaveBeenCalledTimes(baseline)
+
+    // ok：成功刷、失败不刷
+    await probe.store.runSlotVerb(async () => ({}), { refreshAfter: 'ok' })
+    expect(adapter.getStatus).toHaveBeenCalledTimes(baseline + 1)
+    await probe.store.runSlotVerb(async () => { throw new Error('again') })
+    expect(adapter.getStatus).toHaveBeenCalledTimes(baseline + 1)
+
+    // always + errorPrefix：失败先弹带前缀 toast 再刷（vscode quitForm 时序对位）
+    baseline = (adapter.getStatus as ReturnType<typeof vi.fn>).mock.calls.length
+    await probe.store.runSlotVerb(async () => { throw new Error('操作炸了') }, {
+      errorPrefix: '操作失败: ',
+      refreshAfter: 'always',
+    })
+    expect(useToast().toastMsg.value).toBe('操作失败: 操作炸了')
+    expect(adapter.getStatus).toHaveBeenCalledTimes(baseline + 1)
+    probe.wrapper.unmount()
+  })
+
+  it('{ run } 槽形状与闭包形状等价；闩占用中丢弃返回 undefined', async () => {
+    const { adapter } = fakeAdapter()
+    const probe = mountStore(adapter)
+    await flushPromises()
+
+    const gate = deferred<void>()
+    const specRun = vi.fn(() => gate.promise)
+    const first = probe.store.runSlotVerb({ run: specRun })
+    const skipped = await probe.store.runSlotVerb(async () => ({ message: '不该出现' }))
+    expect(skipped).toBeUndefined()
+    expect(useToast().toastMsg.value).not.toBe('不该出现')
+    gate.resolve()
+    await first
+
+    const closure = vi.fn(async () => ({ message: '闭包回执' }))
+    await probe.store.runSlotVerb(closure)
+    expect(closure).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toBe('闭包回执')
+    probe.wrapper.unmount()
   })
 })

@@ -18,6 +18,19 @@
   双形态 Wave 落点：#release-actions 具名槽（作用域 {release}，渲染于远程行操作位
   尾部）——模块方言的远程行第二动词（如 TranslucentTB「装打包版」）自此免抄表；
   缺省不填 = 全部既有消费模块零变化。
+  波 2A 列级扩展：#release-extra-col（作用域 {release}，渲染于「上游发布」与
+  「操作」列之间）+ #release-extra-col-head（表头单元格）——方言列自此经槽
+  承接，整表免重画；缺省不填 = 六列标准形逐字不变。
+  波 2E 地基三件（方言视图回迁时的实证缺口，全部默认缺席 = 既有消费零变化）：
+   - refreshLabel 钮词位：guohe「↻ 刷新发布接口」类刷新钮方言词，覆写控制条
+     与首用降级两处；缺省 = 标准词「↻ 刷新远程列表」；
+   - #meta-extra 具名槽：meta-info 行族尾部的模块动态诊断行（bcu .NET 环境
+     徽标——metaHints 是静态词表，承载不了运行期变化的诊断串）；
+   - #remote-table 整表替换槽（作用域 {store}）：bcu 双变体表每行两把下载钮、
+     version|variant 复合进度键、按变体独立票行与变体前缀阶段词——本件
+     progressKey/statusOf 均为「行→单键」判定（statusOf 只在看不到票据时被调、
+     且签名不携 downloading map），行级双票聚合确超单键能力，不硬套，表体
+     经槽交还视图；填充后标准六列表体不渲染（区节标题/空态/已装卡照常）。
 -->
 <script setup lang="ts" generic="V extends object = ManagedVersionDialect">
 import { computed } from 'vue'
@@ -33,6 +46,8 @@ import type {
 import { sameVersionOf, RELEASE_FORM_WORD, releaseFormWord } from './adapter'
 import type { ManagedConsoleStore } from './store'
 import { useManagedConsole } from './store'
+import ManagedVersionDot from './ManagedVersionDot.vue'
+import { stepOf } from './managedProgress'
 import { fmtSize, fmtDate } from '../../utils/format'
 
 // N13「上游发布」列词表：平台短词×形态短词，托管形态高亮。纯展示——
@@ -53,19 +68,19 @@ const props = withDefaults(
   defineProps<{
     adapter: ManagedModuleAdapter<ManagedSnapshot, V>
     store?: ManagedConsoleStore<V>
+    /** 波 2E 钮词位：两处刷新钮的完整词面（含图标）；缺省 = 标准词。 */
+    refreshLabel?: string
   }>(),
-  { store: undefined },
+  { store: undefined, refreshLabel: undefined },
 )
 
 const store = props.store ?? useManagedConsole(props.adapter)
 const copy = computed(() => props.adapter.copy)
 
-function stepOf(p: { stage: string; done: number; total: number }): number {
-  if (p.stage === 'done') return 100
-  if (p.stage !== 'downloading') return 0
-  if (!p.total) return 0
-  return Math.min(99, Math.round((p.done / p.total) * 100))
-}
+/** 刷新钮词（波 2E）：控制条与首用降级两把钮同源，缺省标准词逐字不变。 */
+const refreshWord = computed(() => props.refreshLabel ?? '↻ 刷新远程列表')
+
+// stepOf 已收编 managedProgress 单一来源（波 1a，本件即其逐字源）
 
 /** 进度键归一（adapter 铁律②）：行→键，缺省版本串。 */
 function ticketOf(rel: ManagedReleaseRecord) {
@@ -148,6 +163,8 @@ const installedChipClass = computed(() =>
         {{ adapter.copy?.remoteSummary ? adapter.copy.remoteSummary(store.releases.length) : `远程版本 ${store.releases.length} 个` }}
       </span>
       <span v-for="(hintLine, i) in adapter.copy?.metaHints ?? []" :key="i" class="hint-dim">{{ hintLine }}</span>
+      <!-- 波 2E：模块动态诊断行（如 bcu .NET 环境徽标）；缺省不填零 DOM -->
+      <slot name="meta-extra" />
     </div>
     <div class="btn-group">
       <button
@@ -157,7 +174,7 @@ const installedChipClass = computed(() =>
         @click="store.runImport()"
       >{{ copy?.importLabel ?? '⇥ 导入本地安装' }}</button>
       <button class="btn btn-secondary btn-small" :disabled="store.loading" @click="store.load()">
-        {{ store.loading ? '刷新中…' : '↻ 刷新远程列表' }}
+        {{ store.loading ? '刷新中…' : refreshWord }}
       </button>
     </div>
   </div>
@@ -182,7 +199,7 @@ const installedChipClass = computed(() =>
     >
       {{ copy?.firstUseDownloadLabel ? copy.firstUseDownloadLabel(store.releases[0]) : `下载最新版 ${store.releases[0].version}` }}
     </button>
-    <button v-else-if="!store.loading" class="btn btn-secondary" @click="store.load()">↻ 刷新远程列表</button>
+    <button v-else-if="!store.loading" class="btn btn-secondary" @click="store.load()">{{ refreshWord }}</button>
   </div>
 
   <div class="installed-grid">
@@ -230,7 +247,9 @@ const installedChipClass = computed(() =>
   <!-- 远程可用版本 -->
   <div class="section-title"><h3>{{ copy?.remoteSectionTitle ?? '远程可用版本' }}</h3></div>
   <div class="table-container">
-    <table class="tbl">
+    <!-- 波 2E：整表替换槽填充时标准六列表体让位（bcu 双变体方言表承接位） -->
+    <slot v-if="$slots['remote-table']" name="remote-table" :store="store" />
+    <table v-else class="tbl">
       <thead>
         <tr>
           <th style="width: 140px;">版本</th>
@@ -238,6 +257,8 @@ const installedChipClass = computed(() =>
           <th style="width: 90px;">大小</th>
           <th style="width: 110px;">发布时间</th>
           <th style="width: 210px;">上游发布</th>
+          <!-- 波 2A：列级扩展表头（#release-extra-col 填充时随行出现） -->
+          <th v-if="$slots['release-extra-col']"><slot name="release-extra-col-head" /></th>
           <th>操作</th>
         </tr>
       </thead>
@@ -255,10 +276,11 @@ const installedChipClass = computed(() =>
             >{{ releaseFormWord(rel.form) }}</span>
           </td>
           <td>
-            <span v-if="statusOf(rel) === 'installed'" class="ver-status installed">已安装</span>
-            <span v-else-if="statusOf(rel) === 'downloading'" class="ver-status downloading">{{ copy?.downloadingWord ?? '下载中' }}</span>
-            <span v-else-if="statusOf(rel) === 'error'" class="ver-status error">失败</span>
-            <span v-else class="ver-status idle">可安装</span>
+            <!-- 圆点挂公共件（波 1a）：本件原 scoped 标准形副本删净，形制由 ManagedVersionDot 自带 -->
+            <ManagedVersionDot v-if="statusOf(rel) === 'installed'" status="installed" text="已安装" />
+            <ManagedVersionDot v-else-if="statusOf(rel) === 'downloading'" status="downloading" :text="copy?.downloadingWord ?? '下载中'" />
+            <ManagedVersionDot v-else-if="statusOf(rel) === 'error'" status="error" text="失败" />
+            <ManagedVersionDot v-else status="idle" text="可安装" />
           </td>
           <td>{{ fmtSize(rel.size) }}</td>
           <td>{{ fmtDate(rel.published) }}</td>
@@ -278,6 +300,10 @@ const installedChipClass = computed(() =>
               >+{{ rel.assets.length - ASSET_CAP }}</span>
             </template>
             <span v-else class="hint-dim">—</span>
+          </td>
+          <!-- 波 2A：方言列单元（作用域 release；guohe 通道/bcu 变体经此承接） -->
+          <td v-if="$slots['release-extra-col']">
+            <slot name="release-extra-col" :release="rel" />
           </td>
           <td>
             <div v-if="statusOf(rel) === 'downloading' && ticketOf(rel)!.stage === 'downloading'" class="download-cell">
@@ -321,7 +347,8 @@ const installedChipClass = computed(() =>
           </td>
         </tr>
         <tr v-if="store.releases.length === 0 && !store.loading">
-          <td colspan="6" class="empty-hint">{{ adapter.copy?.remoteUnavailable ?? '无法加载远程版本列表——可稍后点击「↻ 刷新远程列表」重试' }}</td>
+          <!-- 波 2A：方言列在场时空行跨列随动（6→7），词面不变 -->
+          <td :colspan="$slots['release-extra-col'] ? 7 : 6" class="empty-hint">{{ adapter.copy?.remoteUnavailable ?? '无法加载远程版本列表——可稍后点击「↻ 刷新远程列表」重试' }}</td>
         </tr>
       </tbody>
     </table>
@@ -329,14 +356,8 @@ const installedChipClass = computed(() =>
 </template>
 
 <style scoped>
-/* 版本行状态徽标标准形（收编各视图 {前缀}-ver-status 复制体；
-   全局原子 .ver-status 不存在，App.vue 的 .status-dot 由 scoped 属性隔离） */
-.ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
-.ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-.ver-status.installed::before { background: var(--state-positive); }
-.ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
-.ver-status.error::before { background: var(--state-danger); }
-.ver-status.idle::before { background: var(--color-text-subtle); }
+/* 版本行状态徽标标准形已迁 ManagedVersionDot（波 1a：原 .ver-status 六行复制体出清，
+   本件远程表直挂公共件，渲染逐字同形） */
 
 /* 卡片/表内徽标档位色（基形 .badge 与其余家族由 components.css 全局原子接管） */
 .badge-active { background: var(--state-positive-soft); color: var(--state-positive); }

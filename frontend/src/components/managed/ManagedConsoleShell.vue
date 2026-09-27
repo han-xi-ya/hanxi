@@ -19,10 +19,17 @@
 //   #versions-body（作用域 {snap,state,busy,store}，⑦）=版本 Tab 整体替换位
 //     （vscode 双表 / everything 方言表等面板装不下的形态；缺省=共享 channel
 //     块 + ManagedVersionPanel）；
+//   #versions-prepend（作用域 {snap,state,busy,store}，波 2A）=版本 Tab 默认体
+//     前置位（变体卡等须落在 channel 块/版本面板之前的模块自此免绕壳抄骨）；
 //   versionsTabCount（⑦）=版本页签计数后缀（mangodisk「版本管理 N」形制）；
 //   MainTabNav 的钮位经 PageHeader #actions 已由本壳固定，无需视图干预。
+//
+// 波 2A 地基：store 可外部注入（视图 setup 期 useManagedConsole 自建后经 prop
+// 传入，壳侧不再二次创建——Recordly/Paseo 型"视图需要 store 句柄"自此免绕壳）；
+// showConsoleTab=false 单页签形态（douzy 型"仅版本管理"，控制台 Tab 整段缺席）。
 import { computed, ref } from 'vue'
 import type { ManagedModuleAdapter } from './adapter'
+import type { ManagedConsoleStore } from './store'
 import { useManagedConsole } from './store'
 import PageHeader from '../ui/PageHeader.vue'
 import MainTabNav from '../ui/MainTabNav.vue'
@@ -48,6 +55,10 @@ const props = withDefaults(
     tabIdPrefix?: string
     /** tablist 可访问名称。 */
     tabLabel?: string
+    /** 波 2A：外部注入的共享 store（缺省壳自建；注入时视图与壳同一句柄，杜绝双轮询）。 */
+    store?: ManagedConsoleStore
+    /** 波 2A：控制台页签显隐开关（false=douzy 型仅版本管理，控制台 Tab 整段缺席）。 */
+    showConsoleTab?: boolean
   }>(),
   {
     subtitle: undefined,
@@ -58,25 +69,31 @@ const props = withDefaults(
     bannerSlim: true,
     tabIdPrefix: undefined,
     tabLabel: undefined,
+    store: undefined,
+    showConsoleTab: true,
   },
 )
 
-const store = useManagedConsole(props.adapter)
+// setup 期分支固定（有外部 store 绝不再建），条件式创建安全（同 ControlBar/面板口径）
+const store = props.store ?? useManagedConsole(props.adapter)
 
-const activeMainTab = ref(props.consoleTabKey)
+const activeMainTab = ref(props.showConsoleTab ? props.consoleTabKey : 'versions')
 function selectTab(key: string) {
   activeMainTab.value = key
 }
 // N43②：未安装态「启动」直落版本管理页——store 单源判定，此处只供接线。
 store.goVersions = () => selectTab('versions')
 
-const tabs = computed(() => [
-  { key: props.consoleTabKey, label: props.consoleTabLabel },
-  {
-    key: 'versions',
-    label: props.versionsTabCount === undefined ? props.versionsTabLabel : `${props.versionsTabLabel} ${props.versionsTabCount}`,
-  },
-])
+/** 版本页签词（含⑦计数后缀），单页签/双页签两形态共用。 */
+const versionsTabText = computed(() =>
+  props.versionsTabCount === undefined ? props.versionsTabLabel : `${props.versionsTabLabel} ${props.versionsTabCount}`,
+)
+const tabs = computed(() => {
+  const versions = { key: 'versions', label: versionsTabText.value }
+  // 波 2A：仅版本管理形态（showConsoleTab=false）单页签——控制台 Tab 与切换钮一并缺席
+  if (!props.showConsoleTab) return [versions]
+  return [{ key: props.consoleTabKey, label: props.consoleTabLabel }, versions]
+})
 </script>
 
 <template>
@@ -89,7 +106,9 @@ const tabs = computed(() => [
         <!-- ⑦：页头徽标透传位（display:contents 不破坏 header-row 的 flex 排布） -->
         <div class="shell-header-actions">
           <slot name="header-badge" :snap="store.snap" :state="store.state" :busy="store.busy" />
+          <!-- 波 2A：单页签形态（douzy 型）页签钮整隐——其视图现状即无 MainTabNav/无 ARIA 页签身份 -->
           <MainTabNav
+            v-if="showConsoleTab"
             v-model="activeMainTab"
             :tabs="tabs"
             :id-prefix="tabIdPrefix"
@@ -101,8 +120,9 @@ const tabs = computed(() => [
 
     <div v-if="store.listError" class="error-box">{{ store.listError }}</div>
 
-    <!-- 控制台 Tab -->
+    <!-- 控制台 Tab（波 2A：仅版本管理形态整段缺席） -->
     <div
+      v-if="showConsoleTab"
       v-show="activeMainTab === consoleTabKey"
       class="tab-body"
       :id="tabIdPrefix ? `${tabIdPrefix}-${consoleTabKey}-panel` : undefined"
@@ -142,15 +162,17 @@ const tabs = computed(() => [
     <!-- ⑦：危险动作位补作用域（bili23 强杀钮现态/busy 闩回归共享件） -->
     <slot name="danger-extra" :snap="store.snap" :state="store.state" :busy="store.busy" :store="store" />
 
-    <!-- 版本管理 Tab -->
+    <!-- 版本管理 Tab（波 2A：单页签形态无 tablist，tabpanel ARIA 身份一并摘除、常显） -->
     <div
-      v-show="activeMainTab === 'versions'"
+      v-show="!showConsoleTab || activeMainTab === 'versions'"
       class="tab-body"
-      :id="tabIdPrefix ? `${tabIdPrefix}-versions-panel` : undefined"
-      role="tabpanel"
-      :aria-labelledby="tabIdPrefix ? `${tabIdPrefix}-versions-tab` : undefined"
+      :id="showConsoleTab && tabIdPrefix ? `${tabIdPrefix}-versions-panel` : undefined"
+      :role="showConsoleTab ? 'tabpanel' : undefined"
+      :aria-labelledby="showConsoleTab && tabIdPrefix ? `${tabIdPrefix}-versions-tab` : undefined"
     >
       <slot name="versions-body" :snap="store.snap" :state="store.state" :busy="store.busy" :store="store">
+        <!-- 波 2A：默认体前置位（papertodo 型变体卡——须落在 channel 块/面板之前） -->
+        <slot name="versions-prepend" :snap="store.snap" :state="store.state" :busy="store.busy" :store="store" />
         <!-- ⑧：channel 声明即自动渲染面板上方共享块 -->
         <ManagedChannelRow v-if="adapter.channel" :adapter="adapter" :store="store" />
         <ManagedVersionPanel :adapter="adapter" :store="store" />

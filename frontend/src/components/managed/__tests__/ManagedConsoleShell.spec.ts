@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import ManagedConsoleShell from '../ManagedConsoleShell.vue'
 import type { ManagedModuleAdapter, ManagedSnapshot } from '../adapter'
 import type { ManagedConsoleStore } from '../store'
+import { useManagedConsole } from '../store'
 
 const runningSnap: ManagedSnapshot = {
   state: 'running',
@@ -245,6 +246,123 @@ describe('ManagedConsoleShell 增强槽位契约', () => {
 
     expect(wrapper.find('.channel-row-stub').exists()).toBe(true)
     expect(wrapper.find('.version-panel-stub').exists()).toBe(true)
+    wrapper.unmount()
+  })
+})
+
+// ---------- 波 2A 地基：store 注入 / versions-prepend / 单页签形态 ----------
+describe('ManagedConsoleShell 波 2A 地基', () => {
+  it('外部注入 store 时壳不自建：共享件同一句柄、订阅与轮询不双份', async () => {
+    const adapter = fakeAdapter()
+    let external!: ManagedConsoleStore
+    let scopeStore: ManagedConsoleStore | undefined
+    const Probe = defineComponent({
+      setup() {
+        // 视图 setup 期自建（Recordly/Paseo 迁移形的公共层替身）
+        external = useManagedConsole(adapter)
+        return () =>
+          h(ManagedConsoleShell, { adapter, title: '示例工具', store: external }, {
+            'control-bar': (scope: ShellNavigationSlotScope) => {
+              scopeStore = scope.store
+              return h('span', { class: 'injected-probe' })
+            }
+          })
+      }
+    })
+    const wrapper = mount(Probe, { global: { stubs: childStubs } })
+    await flushPromises()
+
+    // 双建防线：一次外部 store 的接线 = 各订阅恰一次调用（壳再建即 ×2）
+    expect(adapter.subscribeInstanceState).toHaveBeenCalledTimes(1)
+    expect(adapter.subscribeProgress).toHaveBeenCalledTimes(1)
+    // 作用域槽与注入句柄同源（壳内不再另立真相）
+    expect(scopeStore).toBe(external)
+    // 未安装态直落版本页的接线钩子写在注入实例上
+    expect(external.goVersions).toBeTypeOf('function')
+    external.goVersions?.()
+    await wrapper.vm.$nextTick()
+    const panels = wrapper.findAll('.tab-body')
+    expect(panels[1].attributes('style') ?? '').not.toContain('display: none')
+    wrapper.unmount()
+  })
+
+  it('#versions-prepend 渲染于 channel 块与版本面板之前（papertodo 变体卡位）', async () => {
+    let prependScope: ShellSlotScope | undefined
+    const adapter = fakeAdapter({
+      channel: {
+        options: [{ value: 'stable', label: '稳定版' }],
+        get: vi.fn(async () => 'stable'),
+        set: vi.fn(async () => ({}))
+      }
+    })
+    const wrapper = mount(ManagedConsoleShell, {
+      props: { adapter, title: '示例工具' },
+      slots: {
+        'versions-prepend': (scope: ShellSlotScope) => {
+          prependScope = scope
+          return h('div', { class: 'versions-prepend-probe' }, '变体卡')
+        }
+      },
+      global: { stubs: childStubs }
+    })
+    await flushPromises()
+
+    expect(prependScope?.snap?.version).toBe('v3.2.1')
+    expect(prependScope?.state).toBe('running')
+    expect(prependScope?.store).toBeDefined()
+
+    const versionsBody = wrapper.findAll('.tab-body')[1]
+    const childClasses = Array.from(versionsBody.element.children).map((el) => el.className)
+    expect(childClasses).toEqual([
+      'versions-prepend-probe',
+      'channel-row-stub',
+      'version-panel-stub'
+    ])
+    wrapper.unmount()
+  })
+
+  it('showConsoleTab=false 单页签形态：页签钮与控制台体整段缺席，版本体常显且摘 tabpanel 身份', async () => {
+    const wrapper = mount(ManagedConsoleShell, {
+      props: { adapter: fakeAdapter(), title: '示例工具', showConsoleTab: false, tabIdPrefix: 'dz' },
+      slots: {
+        'header-badge': () => h('span', { class: 'single-tab-badge-probe' }, '徽标'),
+        default: () => h('span', { class: 'console-body-probe' }, '控制台主体')
+      },
+      global: { stubs: childStubs }
+    })
+    await flushPromises()
+
+    // douzy 现状形制：无 MainTabNav、无任何 role=tab 钮
+    expect(wrapper.find('.main-tab-nav').exists()).toBe(false)
+    expect(wrapper.findAll('[role="tab"]')).toHaveLength(0)
+    // 徽标透传位照常（display:contents 容器仅剩徽标）
+    expect(wrapper.find('.single-tab-badge-probe').exists()).toBe(true)
+    // 控制台 tab-body 整段 v-if 缺席：仅剩版本体，且常显、无 tabpanel ARIA 身份
+    const panels = wrapper.findAll('.tab-body')
+    expect(panels).toHaveLength(1)
+    expect(panels[0].attributes('style') ?? '').not.toContain('display: none')
+    expect(panels[0].attributes('role')).toBeUndefined()
+    expect(panels[0].attributes('aria-labelledby')).toBeUndefined()
+    expect(panels[0].attributes('id')).toBeUndefined()
+    // 控制台体槽位（默认槽/#control-bar 域）不实例化
+    expect(wrapper.find('.console-body-probe').exists()).toBe(false)
+    expect(wrapper.find('.control-bar-stub').exists()).toBe(false)
+    // 版本默认体照常可注入（列槽/面板承接位不受单页签影响）
+    expect(wrapper.find('.version-panel-stub').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('showConsoleTab 缺省 true：双页签形制逐字不变（回归护栏）', async () => {
+    const wrapper = mount(ManagedConsoleShell, {
+      props: { adapter: fakeAdapter(), title: '示例工具' },
+      global: { stubs: childStubs }
+    })
+    await flushPromises()
+
+    expect(wrapper.findAll('.main-tab-btn').map((b) => b.text())).toEqual(['🔀 控制台', '📦 版本管理'])
+    const panels = wrapper.findAll('.tab-body')
+    expect(panels).toHaveLength(2)
+    expect(panels[1].attributes('role')).toBe('tabpanel')
     wrapper.unmount()
   })
 })

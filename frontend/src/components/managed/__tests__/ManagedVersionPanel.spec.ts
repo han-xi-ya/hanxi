@@ -487,3 +487,124 @@ describe('ManagedVersionPanel 形态 chip', () => {
     w.unmount()
   })
 })
+
+// ---------- 波 2A：#release-extra-col 列级扩展槽（th/td/colspan 三联动） ----------
+describe('ManagedVersionPanel 波 2A 列级扩展槽', () => {
+  it('缺省不填：六列标准形逐字不变（表头六 th、行六 td、空行跨列 6）', async () => {
+    const { adapter } = fakeAdapter({ releases: [rel('v1'), rel('v2')] })
+    const w = await mountPanel(adapter)
+    expect(w.findAll('thead th')).toHaveLength(6)
+    for (const row of w.findAll('tbody tr')) expect(row.findAll('td')).toHaveLength(6)
+    w.unmount()
+
+    const { adapter: empty } = fakeAdapter({ releases: [] })
+    const w2 = await mountPanel(empty)
+    expect(w2.find('tbody .empty-hint').attributes('colspan')).toBe('6')
+    w2.unmount()
+  })
+
+  it('填充列槽：表头随行出现且位序锁「上游发布」与「操作」之间；单元作用域 release 逐行投影', async () => {
+    const { adapter } = fakeAdapter({ releases: [rel('v2.0.0'), rel('v1.0.0')] })
+    const w = mount(ManagedVersionPanel, {
+      props: { adapter },
+      slots: {
+        'release-extra-col-head': () => h('span', { class: 'extra-head-probe' }, '通道'),
+        'release-extra-col': ({ release }: { release: ManagedReleaseRecord }) =>
+          h('span', { class: 'extra-cell-probe' }, release.version === 'v2.0.0' ? 'beta' : 'stable'),
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const ths = w.findAll('thead th')
+    expect(ths).toHaveLength(7)
+    expect(ths[5].text()).toBe('通道') // 上游发布之后
+    expect(ths[6].text()).toBe('操作') // 操作列恒居末
+    const rows = w.findAll('tbody tr')
+    expect(rows[0].findAll('td')).toHaveLength(7)
+    expect(rows[0].findAll('td')[5].text()).toBe('beta')
+    expect(rows[1].findAll('td')[5].text()).toBe('stable')
+    w.unmount()
+  })
+
+  it('列槽在场时空行跨列随动为 7（远端不可达词面不变）', async () => {
+    const { adapter } = fakeAdapter({ releases: [], copy: { remoteUnavailable: '官方发布接口暂不可达' } })
+    const w = mount(ManagedVersionPanel, {
+      props: { adapter },
+      slots: {
+        'release-extra-col': ({ release }: { release: ManagedReleaseRecord }) => h('span', release.version),
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+    const emptyCell = w.find('tbody .empty-hint')
+    expect(emptyCell.attributes('colspan')).toBe('7')
+    expect(emptyCell.text()).toBe('官方发布接口暂不可达')
+    w.unmount()
+  })
+})
+
+// ---------- 波 2E：refreshLabel 钮词位 + #meta-extra/#remote-table 槽（护栏三件） ----------
+describe('ManagedVersionPanel 波 2E 地基扩展', () => {
+  it('refreshLabel 缺省：控制条与首用降级两处刷新钮保持「↻ 刷新远程列表」标准词', async () => {
+    const { adapter } = fakeAdapter({ releases: [] })
+    const w = await mountPanel(adapter)
+    expect(w.findAll('.btn-group button').map((b) => b.text())).toEqual(['↻ 刷新远程列表'])
+    expect(w.find('.empty-state button').text()).toBe('↻ 刷新远程列表')
+    w.unmount()
+  })
+
+  it('refreshLabel 覆写：两钮同步换词（guohe「↻ 刷新发布接口」方言词位）', async () => {
+    const { adapter } = fakeAdapter({ releases: [] })
+    const w = mount(ManagedVersionPanel, { props: { adapter, refreshLabel: '↻ 刷新发布接口' } })
+    await flushPromises()
+    await flushPromises()
+    expect(w.findAll('.btn-group button').map((b) => b.text())).toEqual(['↻ 刷新发布接口'])
+    expect(w.find('.empty-state button').text()).toBe('↻ 刷新发布接口')
+    w.unmount()
+  })
+
+  it('#meta-extra 缺省不添 DOM；填充落进 meta-info 行族尾部', async () => {
+    const { adapter } = fakeAdapter({ releases: [rel('v1')], copy: { metaHints: ['提示行'] } })
+    const plain = await mountPanel(adapter)
+    // 标准行族：计数行 + hint 行共 2 个子节点，槽缺席不留空位
+    expect(plain.findAll('.meta-info > *')).toHaveLength(2)
+    plain.unmount()
+
+    const w = mount(ManagedVersionPanel, {
+      props: { adapter },
+      slots: { 'meta-extra': () => h('span', { class: 'env-probe' }, '环境徽标') },
+    })
+    await flushPromises()
+    await flushPromises()
+    expect(w.findAll('.meta-info > *')).toHaveLength(3)
+    expect(w.find('.meta-info .env-probe').text()).toBe('环境徽标')
+    w.unmount()
+  })
+
+  it('#remote-table 缺省=六列标准形逐字不变；填充时表体交视图、标准表不残留', async () => {
+    const { adapter } = fakeAdapter({ releases: [rel('v1')] })
+    const w = await mountPanel(adapter)
+    expect(w.findAll('thead th')).toHaveLength(6)
+    expect(w.find('.asset-cell').exists()).toBe(true)
+    expect(w.find('.ver-status').exists()).toBe(true)
+    w.unmount()
+
+    const w2 = mount(ManagedVersionPanel, {
+      props: { adapter },
+      slots: {
+        'remote-table': () => h('table', { class: 'tbl dialect-tbl' }, h('tbody', h('tr', h('td', '方言表体')))),
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+    expect(w2.find('.table-container .dialect-tbl').exists()).toBe(true)
+    expect(w2.text()).toContain('方言表体')
+    // 标准表体元素一律不渲染（区节标题照常在位，表头随标准表整体缺席）
+    expect(w2.find('.asset-cell').exists()).toBe(false)
+    expect(w2.find('.ver-status').exists()).toBe(false)
+    expect(w2.findAll('thead th')).toHaveLength(0)
+    expect(w2.findAll('.section-title h3').map((x) => x.text())).toEqual(['已安装版本 (0)', '远程可用版本'])
+    w2.unmount()
+  })
+})

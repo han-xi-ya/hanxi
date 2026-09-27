@@ -19,6 +19,14 @@
 //  - statusTone 色档覆写（⑧）；
 //  - 轮询停止（KeepAlive 停用/卸载）→ uptime 归零（⑨，recordly 现案收编）。
 //
+// 波 2A 新增编排（全部向后兼容，视图侧接线器收编前置件）：
+//  - runSlotVerb：扩展槽动词通用「runExclusive→settle→toast」链（VSCode 七包装、
+//    ddnsgo openConsole、mangodisk createShortcut 手抄形的单源化承接位）——
+//    前缀/快照刷新档/版本区重拉通道全经 ManagedSlotVerbOptions 参数位逐字对位；
+//  - runReset：adapter.reset 槽正主编排（TTB/QuickLook/PaperTodo 三份视图侧
+//    接线器自此退役）——缺省成败两分支均不刷快照（三手抄版逐字现形制，
+//    TTBView 头注「两分支均不刷快照」为据），refreshSnapshot:true 显式开启。
+//
 // 纪律：
 //  - 本文件只编排，不解读业务：状态词/按钮声明/文案全部来自 adapter 投影。
 //  - 失败 toast 前缀是跨模块逐字同形词（自 ccswitch/markeron 等视图原样收编），
@@ -33,6 +41,8 @@ import type {
   ManagedControlVerb,
   ManagedModuleAdapter,
   ManagedReleaseRecord,
+  ManagedSlotVerb,
+  ManagedSlotVerbOptions,
   ManagedSnapshot,
   ManagedVersionDialect,
   ManagedVersionRecord,
@@ -55,6 +65,9 @@ const ACTION_ERROR_PREFIX = {
   openDir: '打开目录失败: ',
   channel: '切换通道失败: ',
   variant: '设置失败: ',
+  // 波 2A：reset 族（dismiss/重设/收拢）三手抄版现词均为裸错误串（TTB/PaperTodo），
+  // 「重载失败: 」（QuickLook 现词）不入表——非跨模块同形词，经 opts/覆写位逐模块给。
+  reset: '',
 } as const
 
 /** 状态轮询间隔（全托管视图现状统一 2500ms；uptime 每秒从 startedAt 重算）。 */
@@ -130,6 +143,25 @@ export interface ManagedConsoleStore<V = ManagedVersionDialect> {
   runRemove(info: ManagedVersionRecord<V>): Promise<void>
   runImport(): Promise<void>
   runOpenDir(info: ManagedVersionRecord<V>): Promise<void>
+  /**
+   * 扩展槽动词通用编排（波 2A）：runExclusive 单飞 → settle（message 弹串/
+   * activeVersion 迁移/reloadVersions 重拉）→ 失败前缀 toast。参数位逐字对位
+   * 各视图手抄接线器现形制（详见 ManagedSlotVerbOptions 注记）；返回值同
+   * runExclusive——闩占用中被丢弃时为 undefined。
+   */
+  runSlotVerb(
+    spec: ManagedSlotVerb | (() => PromiseLike<ManagedActionResult | void>),
+    opts?: ManagedSlotVerbOptions,
+  ): Promise<ManagedActionResult | void | undefined>
+  /**
+   * adapter.reset 槽动词正主编排（波 2A；TTB/QuickLook/PaperTodo 三份视图侧
+   * 接线器退役位）：缺省成败两分支均不刷快照（三手抄版逐字现形制，TTBView
+   * 注释「两分支均不刷快照（runControl 恒刷不适用）」为据）；
+   * refreshSnapshot:true 两分支恒刷（runControl 形制）；errorPrefix 覆走
+   * copy.errorPrefix.reset 词表位，缺省裸错误串（「重载失败: 」类方言词由
+   * 调用方显式传入）。
+   */
+  runReset(opts?: { errorPrefix?: string; refreshSnapshot?: boolean }): Promise<void>
 }
 
 /** 启停钮面词解析（label 联合词形；ControlBar 与自定义视图同源取词）。 */
@@ -461,6 +493,46 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     }
   }
 
+  /**
+   * 扩展槽动词通用编排（波 2A）：收编 VSCode 七包装/ddnsgo openConsole/
+   * mangodisk createShortcut 等「runExclusive→settle→toast」手抄链。
+   * 单飞走 runExclusive（共享 busy 闩——视图自持 busy 的分叉自此归一，
+   * ddnsgo P0 批 3·4.5 收编先例同口径）；reloadVersions 通道可注入
+   * （custom 编排模块自有重拉函数，缺省 store.load）。
+   */
+  async function runSlotVerb(
+    spec: ManagedSlotVerb | (() => PromiseLike<ManagedActionResult | void>),
+    opts?: ManagedSlotVerbOptions,
+  ): Promise<ManagedActionResult | void | undefined> {
+    const invoke = typeof spec === 'function' ? spec : () => spec.run()
+    return runExclusive(async () => {
+      try {
+        const res = await invoke()
+        if (settle(res)) {
+          if (opts?.reloadVersionsVia) await opts.reloadVersionsVia()
+          else await load()
+        }
+        // settle 语义注记：三手抄版均不消费 reloadVersions——现契约内 reset/
+        // 快捷方式族回执无此真值，消费属安全超集（声明即生效，未声明零变化）。
+        if (opts?.refreshAfter && opts.refreshAfter !== 'never') await refresh()
+        return res
+      } catch (e) {
+        showToast(`${opts?.errorPrefix ?? ''}${getErrorMessage(e)}`)
+        if (opts?.refreshAfter === 'always') await refresh()
+      }
+    })
+  }
+
+  /** adapter.reset 槽动词正主编排（波 2A，缺省逐字保 TTB/QL/PaperTodo 不刷快照现形制）。 */
+  async function runReset(opts?: { errorPrefix?: string; refreshSnapshot?: boolean }): Promise<void> {
+    const reset = adapter.reset
+    if (!reset) return
+    await runSlotVerb(reset, {
+      errorPrefix: opts?.errorPrefix ?? errorPrefix('reset'),
+      refreshAfter: opts?.refreshSnapshot ? 'always' : 'never',
+    })
+  }
+
   function progressKeyOf(rel: ManagedReleaseRecord): string {
     return adapter.versions.progressKey ? adapter.versions.progressKey(rel) : rel.version
   }
@@ -557,5 +629,7 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     runRemove,
     runImport,
     runOpenDir,
+    runSlotVerb,
+    runReset,
   }) as unknown as ManagedConsoleStore<V>
 }

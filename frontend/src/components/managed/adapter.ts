@@ -453,8 +453,35 @@ export interface ManagedHostDirRowSpec {
 
 /** 动作失败 toast 前缀覆写位（增强批⑥；键与 store ACTION_ERROR_PREFIX 对齐）。 */
 export type ManagedErrorPrefixSpec = Partial<
-  Record<'quit' | 'download' | 'setActive' | 'remove' | 'import' | 'openDir' | 'channel' | 'variant', string>
+  Record<'quit' | 'download' | 'setActive' | 'remove' | 'import' | 'openDir' | 'channel' | 'variant' | 'reset', string>
 >
+
+/**
+ * 槽位动词最小形状（波 2A）：adapter.reset/toggle 一类 `{ run() }` 扩展槽的
+ * 结构并集，也是闭包形态（vscode runtime 包装一类）的替代——store.runSlotVerb
+ * 的第一参收形状联合，视图免自写 runExclusive→settle→toast 链。
+ */
+export interface ManagedSlotVerb {
+  run(): PromiseLike<ManagedActionResult | void>
+}
+
+/**
+ * runSlotVerb 编排参数位（波 2A）——每一位的缺省值都锚定某现存手抄版逐字口径：
+ *  - errorPrefix：失败 toast 前缀字面（缺省裸错误串——ddnsgo openConsole、
+ *    vscode openWindow 现词；撞 ACTION_ERROR_PREFIX 表值者由调用方传逐字同词，
+ *    如 vscode quitForm 的「退出失败: 」）；
+ *  - refreshAfter：状态快照刷新档（'never'=缺省，ddnsgo「由事件与轮询兜底」/
+ *    vscode setActive 等无刷现形制；'ok'=成功分支后刷；'always'=成败两分支
+ *    均刷，vscode openWindow/quitForm「失败也刷」现形制，toast 先行刷新随后）；
+ *  - reloadVersionsVia：回执 reloadVersions=true 时的版本区重拉通道——缺省走
+ *    store.load()（shared 编排），custom 编排模块注入自有通道（vscode 七包装
+ *    现词 runtime.loadVersions）。
+ */
+export interface ManagedSlotVerbOptions {
+  errorPrefix?: string
+  refreshAfter?: 'never' | 'ok' | 'always'
+  reloadVersionsVia?: () => PromiseLike<unknown>
+}
 
 /** 版本区/表格里跨模块无法归并的业务文案位（逐字沿用各视图现词）。 */
 export interface ManagedCopySpec {
@@ -606,7 +633,11 @@ export interface ManagedModuleAdapter<S extends ManagedSnapshot = ManagedSnapsho
     get(): PromiseLike<number>
     set(port: number): PromiseLike<ManagedActionResult>
   }
-  /** 清态/复位动词（dismiss/reset 族；UI 走 #danger-extra 位）。 */
+  /**
+   * 清态/复位动词（dismiss/reset 族；UI 走 #danger-extra 位）。
+   * 波 2A 起编排归 store.runReset（缺省成败均不刷快照——TTB 手抄版注释
+   * 「两分支均不刷快照」逐字口径为缺省参数位），视图侧接线器退役。
+   */
   reset?: {
     run(): PromiseLike<ManagedActionResult>
   }
