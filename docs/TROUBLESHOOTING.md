@@ -1253,3 +1253,22 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：读 supervisor 三件套（supervisor.go/engine.go/proc.go）确认句柄接口边界；对照 frpc 蓝本（自带泵/环形日志/JobObject 的独立引擎）确认服务型口径有既有先例可循。
 - **正确做法与标准修复方案**：本模块按 frpc 形制自带治理主流程，其余纪律（startMu/mu 分离、单一 Wait 所有者、收口前拒启动、external 只甄别、wait 四分类顺序、锁外广播）与内核逐条对齐并在包注释申明差异与原因；跨线架构变更（内核加 Spec.Stdin + Engine 取用口 + 全族测试 fake 补件）留 owner 裁决，届时本包可平移收敛。
 - **避坑防重犯建议**：新托管模块选型先核"优雅退出通道形态"是否在内核既有四类之内——stdin/自定义 IO 通道类信令（上游 Go CLI 工具常见"收任意字节退出"）当前必须走自带引擎或先补内核；集成 skill 落地时把这一条列入选型检查表，别等 instance.go 写到一半才发现句柄拿不到。
+
+### 99. 无头 MCP registry：构造即写盘的模块进表会毁掉零落盘承诺（clipboard 禁入懒激活）
+- **问题现象与错误原因**：`hanxi mcp` 无头进程对 `hanxidata` 有"零落盘"包级承诺（不迁移、不隔离、不创建）；clipboard 的 `NewStore` 构造即 `MkdirAll` + 缺库回写空 index.json，若照常规把模块加进 `mcpModules` 表，任何一次 `registryGate.Acquire` 懒激活都会无头写盘——承诺失守且用户不知情。
+- **排查过程**：wiring-checklist §3.3 实扫 `clipboard/store.go` 构造链实证副作用；对照 memo 先例（迁移写盘副作用同源问题）确认包内已有"特例门禁"成熟形制。
+- **正确做法与标准修复方案**：新模块工具化时若构造带写盘副作用：**不进 mcpModules、不走 Acquire**，在 registryGate 照 memo 形制开模块特例（直读 config.json enabled 位 + receipt，未安装同样拒绝），后端接零写盘直读通道（disk reader）。clipboard 已按此落地。
+- **避坑防重犯建议**：新模块进无头表前，先审 `New*` 构造函数有无 MkdirAll/回写/迁移副作用；判据可在 `internal/modules/<id>` 内 grep 构造链。无头零落盘是红线级契约，违反不会被任何测试抓到，除非测试专门钉它。
+
+### 100. 出机预算：脱敏替换净膨胀会冲破名义页预算；"起步价"只能拦残段不能拦整条
+- **问题现象与错误原因**：MCP 载荷有 512KiB 页预算与 1MB 硬上限。①按**脱敏前**字节记账时，`RedactPII` 的赋值替换（`k=v`→`k="******"`）与 JSON 转义膨胀可让出机实字节近 2× 冲破预算，触发对半砍条目的最坏态"整页空壳只剩 truncated"；②预算起步价若按 `room-base` 粗估直接拒整条，会把一条本可完整下发的正文（实测 6700 字节）误判为塞不进，白给 truncated 残段。
+- **排查过程**：A3 回炉批构造 15000 个引号与凭据赋值夹具对拍，定位两处账法错误；行为口径以"放得下就给最大正文+truncated、连残段都放不下才降级身份行"钉死。
+- **正确做法与标准修复方案**：页预算一律按**脱敏并 json.Marshal 序列化后的实际字节**记账（元数据、files 同入账）；降级阶梯末档保留纯身份行；description 如实申报预算与打码失真口径。
+- **避坑防重犯建议**：一切"出机预算"代码必须配**反向锚测试**（"整条够小必须无标志原样放行"）——只测截断不测放行的预算实现全部不可信。
+
+### 101. 沙箱 Bash 缺 System32 PATH → instance 族测试假红"cmd.exe unavailable"；Go 1.26 已物理移除 image/bmp
+- **问题现象与错误原因**：全量 `go test ./...` 时 `*/instance` 两包整片红：`exec: "cmd": executable file not found in %PATH%`、`cmd.exe 不可用`。根因是工具会话派生的 Git Bash 继承裁剪过的 PATH（无 `C:\Windows\System32`），被测 Go 进程 LookPath 找不到 cmd.exe——**环境缺失而非代码回归**。另：dib 测试计划用 stdlib `image/bmp` 交叉对拍，Go 1.26 已按 1.24 弃用预告物理移除该包。
+- **排查过程**：单包 verbose 看错因串 → 补 `export PATH` 无效（POSIX 形制未转原生）→ 改 `cmd //c "set PATH=C:\Windows\System32;C:\Windows;<go\bin>;<gopath\bin>&& go test ..."` 原生壳复跑两包全绿；wsl 包一片红中单发的 `TestSetUsbAutoAttachTurnsOnAndReplays` 单跑 PASS，定性为全量并发下瞬态 flake。
+- **正确做法与标准修复方案**：涉及系统二进制（cmd/wsl.exe）的测试在本机须走 cmd 原生壳执行；DIB 交叉验证改用测试内手写参考解码器做三方比对（黄金像素×参考解码器×被测函数），强度不低于 stdlib 对拍。
+- **避坑防重犯建议**：全量套件见红先分流"代码回归 vs 环境缺失"——看错因串是否指向 PATH/exec 查找；依赖系统程序的测试其失败信息应自带"检查 PATH"指引，避免后人拿着红就改码。`image/bmp` 不可用为仓库级事实，新图形测试直接走手写对拍。
+
