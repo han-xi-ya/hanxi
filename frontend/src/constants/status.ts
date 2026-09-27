@@ -293,3 +293,23 @@ export const ENTRYPOINT_META = {
   window: { label: '独立窗口' },
   background: { label: '后台常驻' },
 } satisfies Record<EntrypointValue, { label: string }>
+
+// ---------------------------------------------------------------------------
+// 通知严重度指示灯档位（前端冗余治理 · 波 0 下沉）：NotificationToast.vue:12-23 与
+// NotificationDrawer.vue:27-38 两份逐字同体本地函数的单一来源；sev-* 色板样式仍归
+// 两组件各自 scoped 块，本波不动消费点。
+// ---------------------------------------------------------------------------
+
+/** 通知级别 → 指示灯档位类；未知/空一律落 info。 */
+export function levelTone(level: string) {
+  switch (level) {
+    case 'success':
+      return 'sev-success'
+    case 'warning':
+      return 'sev-warning'
+    case 'error':
+      return 'sev-error'
+    default:
+      return 'sev-info'
+  }
+}

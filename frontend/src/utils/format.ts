@@ -1,5 +1,6 @@
 // 托管家族与工具视图共用的标准格式化（重构蓝图 §4：utils/format）。
-// Phase 4/5 迁移时替换各视图内联副本（现状 fmtSize×17、fmtDate×15、fmtDuration×15）。
+// Phase 4/5 迁移时替换各视图内联副本
+// （采纳率实况 2026-09-27 grep：fmtSize×25、fmtDate×13、fmtDuration×7、fmtDateTimeSmart×1 处 import）。
 // 各分支行为与 MarkerOnView 现实现严格逐字一致，保证迁移当天可见输出零变化。
 
 /** 字节大小格式化：0/空值 → '—'；>1MB → 一位小数 MB；否则整数 KB（四舍五入）。 */
@@ -12,6 +13,21 @@ export function fmtSize(bytes?: number | null): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
   if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${(bytes / 1024).toFixed(0)} KB`
+}
+
+/**
+ * 字节大小 IEC 二进制档：0/空值 → '0 B'；≥1GiB 两位小数 GiB；≥1MiB/≥1KiB 一位小数
+ * MiB/KiB；其余裸 B（无 TiB 档，封顶 GiB）。与上方 fmtSize 刻意分叉——本档服务磁盘
+ * 占用/存储统计类展示，'0 B' 实词比占位符 '—' 更如实。逐字抄自 EnvCheckView.vue:82-88
+ * 与 views/settings/StorageSection.vue:134-140 的两份逐字符全同内联副本（波 0 上收，
+ * 消费点替换由后续波次执行）。
+ */
+export function fmtSizeIec(bytes: number): string {
+  if (!bytes) return '0 B'
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GiB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  return `${bytes} B`
 }
 
 /** 日期格式化：空值 → '—'；否则取 ISO 串前 10 位（yyyy-MM-dd）。 */

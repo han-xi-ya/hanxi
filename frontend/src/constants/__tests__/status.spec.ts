@@ -19,6 +19,7 @@ import {
   deliveryMeta,
   envStatusMeta,
   healthMeta,
+  levelTone,
   operationKindMeta,
   operationPhaseText,
   operationStatusMeta,
@@ -264,5 +265,21 @@ describe('PHASE_META', () => {
     expect(operationPhaseText('download')).toBe('下载')
     expect(operationPhaseText('unpack')).toBe('解压')
     expect(operationPhaseText('self-heal')).toBe('self-heal')
+  })
+})
+
+// ── 波 0 下沉：通知严重度指示灯档位（NotificationToast/Drawer 逐字副本的单一来源） ──
+
+describe('levelTone', () => {
+  it('三档已知级别映射 sev-* 类，与两组件原实现逐字一致', () => {
+    expect(levelTone('success')).toBe('sev-success')
+    expect(levelTone('warning')).toBe('sev-warning')
+    expect(levelTone('error')).toBe('sev-error')
+  })
+
+  it('info/未知/空一律兜底 sev-info', () => {
+    expect(levelTone('info')).toBe('sev-info')
+    expect(levelTone('nope')).toBe('sev-info')
+    expect(levelTone('')).toBe('sev-info')
   })
 })

@@ -1,7 +1,7 @@
 // 特征测试：三个格式化函数的分支行为逐字锁定 MarkerOnView 现实现，
 // Phase 4/5 迁移以此为回归底线（含刻意保留的口径怪癖）。
 import { describe, expect, it } from 'vitest'
-import { fmtDate, fmtDateTimeSmart, fmtDuration, fmtSize } from '../format'
+import { fmtDate, fmtDateTimeSmart, fmtDuration, fmtSize, fmtSizeIec } from '../format'
 
 describe('fmtSize', () => {
   it('0/空值统一显示占位符', () => {
@@ -34,6 +34,33 @@ describe('fmtSize', () => {
     expect(fmtSize(1024 ** 3 - 1)).toBe('1024.0 MB')
     expect(fmtSize(1024 ** 4)).toBe('1.0 TB')
     expect(fmtSize(2560 * 1024 ** 3)).toBe('2.5 TB')
+  })
+})
+
+// 波 0 上收：EnvCheckView 与 settings/StorageSection 两份逐字符全同的内联副本口径。
+describe('fmtSizeIec', () => {
+  it('0 显示实词 "0 B"（与 fmtSize 的占位符口径刻意分叉）', () => {
+    expect(fmtSizeIec(0)).toBe('0 B')
+  })
+
+  it('<1KiB 裸 B（整数无小数），[1KiB,1MiB) 一位小数 KiB', () => {
+    expect(fmtSizeIec(1)).toBe('1 B')
+    expect(fmtSizeIec(1023)).toBe('1023 B')
+    expect(fmtSizeIec(1024)).toBe('1.0 KiB')
+    expect(fmtSizeIec(1536)).toBe('1.5 KiB')
+  })
+
+  it('判档含等号：恰好 1MiB/1GiB 即换档；MiB 一位小数、GiB 两位小数', () => {
+    expect(fmtSizeIec(1024 ** 2)).toBe('1.0 MiB')
+    expect(fmtSizeIec(1024 ** 2 * 3 + 1024 ** 2 / 2)).toBe('3.5 MiB')
+    expect(fmtSizeIec(1024 ** 2 - 1)).toBe('1024.0 KiB')
+    expect(fmtSizeIec(1024 ** 3)).toBe('1.00 GiB')
+    expect(fmtSizeIec(1024 ** 3 * 2 + 1024 ** 3 / 2)).toBe('2.50 GiB')
+    expect(fmtSizeIec(1024 ** 3 - 1)).toBe('1024.0 MiB')
+  })
+
+  it('无 TiB 档，GiB 封顶（现状锁定，扩档须连同两份消费视图一起裁决）', () => {
+    expect(fmtSizeIec(1024 ** 4)).toBe('1024.00 GiB')
   })
 })
 
