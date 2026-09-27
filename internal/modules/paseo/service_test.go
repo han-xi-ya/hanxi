@@ -2,11 +2,16 @@ package paseo
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"hanxi/internal/extapi"
+	"hanxi/internal/modules/paseo/instance"
 	"hanxi/internal/modules/paseo/version"
+	"hanxi/internal/platform"
 )
 
 // TestDownloadDoneSettlesActiveBeforeBroadcast 锁死 termora 2ac9b3b 同构竞态：
@@ -66,6 +71,109 @@ func TestDownloadDoneSettlesActiveBeforeBroadcast(t *testing.T) {
 		}
 		if got := receive(t, activeAtDone); got != "0.1.19" {
 			t.Fatalf("done 送达时 active 应保持用户手选的 0.1.19，实得 %q", got)
+		}
+	})
+}
+
+// ---------- OpenWindow external 态治理锁测 ----------
+
+// externalStubProbe PaseoProbe 桩：running=true 让静止态校正把引擎判为
+// external；focus 控制直唤成败，focusCalls 记录直唤尝试次数。
+type externalStubProbe struct {
+	running    bool
+	focus      bool
+	focusCalls int
+	waitReady  bool
+}
+
+func (p *externalStubProbe) IsRunning() bool                 { return p.running }
+func (p *externalStubProbe) WaitForReady(time.Duration) bool { return p.waitReady }
+func (p *externalStubProbe) IsWindowOpen() bool              { return p.focus }
+func (p *externalStubProbe) FocusWindow() bool {
+	p.focusCalls++
+	return p.focus
+}
+
+// externalStubJobAPI Job Object 桩：external 态绝不允许触达 Create——
+// 任何"再拉进程"退化路径（Start）都会先在这里炸出显式错误。
+type externalStubJobAPI struct{}
+
+func (externalStubJobAPI) Create() (platform.Job, error) {
+	return nil, errors.New("external 态不应创建 Job Object（禁止再拉进程）")
+}
+
+// newExternalOpenWindowSvc 组装"外部实例在场"的 service：fake probe 判
+// external；versionsDir 里放一个可列装但必然执行失败的假版本目录（垃圾字节
+// exe）——若代码退回报废的"external→信使开新窗"路径，exec.Command 拉起假
+// exe 会以系统错误收口成 OpenWindow 报错，被本测试的 err==nil 断言当场抓获；
+// Job 桩再把退到 Start 的路径堵死。
+func newExternalOpenWindowSvc(t *testing.T, focus bool) (*PaseoService, *externalStubProbe) {
+	t.Helper()
+	versionsDir := t.TempDir()
+	stateDir := t.TempDir()
+	vdir := filepath.Join(versionsDir, "paseo_9.9.9")
+	if err := os.MkdirAll(filepath.Join(vdir, "resources"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vdir, "Paseo.exe"), []byte("not-a-real-exe"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(vdir, "resources", "app.asar"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	probe := &externalStubProbe{running: true, focus: focus}
+	svc := &PaseoService{
+		manager:   version.NewManager(versionsDir),
+		store:     newPaseoStore(stateDir),
+		holder:    extapi.NewLeaseHolder(ID),
+		downloads: map[string]struct{}{},
+	}
+	svc.engine = instance.NewEngine(externalStubJobAPI{}, probe, instance.Callbacks{})
+	return svc, probe
+}
+
+// TestOpenWindowExternalFocusOnly 机主实证缺陷的收口锁测（横幅"可唤起其窗口"
+// 与"点一次开一扇新窗"行为矛盾）：external 态 OpenWindow 只允许 Win32 直唤，
+// 零拉起进程——
+//  1. 直唤成功 → external-focused；
+//  2. 直唤失败（外部实例无可聚焦窗）→ external-unreachable 如实指引，
+//     不得报"请求窗口失败"错（那意味着走了信使），绝不再 Start/OpenMessenger。
+//
+// 归属收敛纪律同测钉死：唤起成功不改变归属，状态保持 external——hanxi 只
+// 托管自己拉起的进程，绝不"接管"用户自启实例。
+func TestOpenWindowExternalFocusOnly(t *testing.T) {
+	t.Run("直唤成功仅聚焦且不转移归属", func(t *testing.T) {
+		svc, probe := newExternalOpenWindowSvc(t, true)
+		out, err := svc.OpenWindow()
+		if err != nil {
+			t.Fatalf("external 直唤成功不应报错（报错=走了信使/Start 退化路）: %v", err)
+		}
+		if out.Action != "external-focused" || !out.External {
+			t.Fatalf("action = %s external = %v, want external-focused/true", out.Action, out.External)
+		}
+		if probe.focusCalls != 1 {
+			t.Fatalf("直唤应恰好尝试一次，focusCalls = %d", probe.focusCalls)
+		}
+		if snap := svc.engine.Snapshot(); snap.State != instance.StateExternal {
+			t.Fatalf("唤起成功后归属必须保持 external（不接管），state = %s", snap.State)
+		}
+	})
+
+	t.Run("无可聚焦窗如实报unreachable零拉起", func(t *testing.T) {
+		svc, probe := newExternalOpenWindowSvc(t, false)
+		out, err := svc.OpenWindow()
+		if err != nil {
+			t.Fatalf("external 唤不到窗必须回如实指引而非报错/信使退化: %v", err)
+		}
+		if out.Action != "external-unreachable" || !out.External {
+			t.Fatalf("action = %s external = %v, want external-unreachable/true", out.Action, out.External)
+		}
+		if probe.focusCalls != 1 {
+			t.Fatalf("直唤应恰好尝试一次，focusCalls = %d", probe.focusCalls)
+		}
+		if snap := svc.engine.Snapshot(); snap.State != instance.StateExternal {
+			t.Fatalf("唤不动不得改变状态机归属，state = %s", snap.State)
 		}
 	})
 }

@@ -10,9 +10,10 @@
 //     终止窗口对前端保持运行语义，终态由后续广播给出）；
 //   - Snapshot 形状映射：内核快照 + 本包推算的 ExitCode/StoppedAt 拼回既有事件
 //     契约（前端与 wails 事件载荷零漂移），"已手动停止"折回本引擎的空文案；
-//   - 唤窗双通道（优先 Win32 直唤 FocusWindow，信使 OpenMessenger 仅兜底——
-//     上游 second-instance 语义是 openAdditional 新开非聚焦，决策见 service
-//     .OpenWindow 注释）与 WM_CLOSE 优雅退出钩子（内核 Stop grace 窗口内投递）
+//   - 唤窗双通道（优先 Win32 直唤 FocusWindow；信使 OpenMessenger 仅自有
+//     running 态无窗兜底——上游 second-instance 语义是 openAdditional 新开非
+//     聚焦，external 态禁用信使，决策与实证见 service.OpenWindow 注释）与
+//     WM_CLOSE 优雅退出钩子（内核 Stop grace 窗口内投递）
 //     ：不属进程治理，不经内核 Engine；
 //   - externalSettle 树级静默期：进程名探测覆盖整棵进程树，wait 退出分类探针
 //     前静默 500ms 防"自己刚退"误判（仅受管在途探针，静止态校正保持即时）。
@@ -23,11 +24,13 @@
 // 主进程、其内置 daemon（ELECTRON_RUN_AS_NODE 子进程，同为 Paseo.exe 镜像）
 // 以及 daemon 拉起的 agent/PTY 子进程树——整树终止归 Job，杜绝孤儿驻留。
 //
-// 上游契约（packages/desktop/src/main.ts 源码实证）：
+// 上游契约（打包源码 app.asar/dist/main.js 于 0.9.2 现场复核；仓库面
+// packages/desktop/src/main.ts 同源）：
 //   - app.requestSingleInstanceLock() 按 **user-data 目录** 分实例组；Paseo 无
 //     便携数据激活器，Electron 数据恒在 %APPDATA%\Paseo（集成拍板：托管实例与
-//     用户自装实例共享数据、同锁互斥），故全局至多一个桌面主实例——
-//     自有与外部天然互斥，wait 退出分类的外部接管判定因此可靠；
+//     用户自装实例共享数据、同锁互斥），故全局至多一个桌面主**进程**（锁为
+//     进程粒度；同一主进程允许多窗，second-instance = openAdditional 开新窗）
+//     ——自有与外部天然互斥，wait 退出分类的外部接管判定因此可靠；
 //   - Windows 下无托盘常驻：window-all-closed → app.quit()（main.ts 实证），
 //     before-quit 走 daemon 清理生命周期——Quit 以 WM_CLOSE 尽力优雅，
 //     宽限期取 recordly 的 3s 之上（daemon/PTY 收敛更重），超时 JobObject 强杀兜底。

@@ -141,17 +141,21 @@ func (e *Engine) Start(opts StartOptions) error {
 }
 
 // FocusWindow 唤起已运行实例的可见窗口（Win32 直唤，自有或外部均可——共享数据
-// 下全局至多一个桌面主实例，无归属歧义）。返回 false = 进程在但无可见窗，
-// 调用方才可退到 OpenMessenger 请求开新窗（上游 second-instance 语义是
-// openAdditional 新开窗口而非聚焦，唤窗优先直唤、信使仅兜底——两条通道
-// 都属 Paseo 领域策略，留在本包不经内核）。
+// 下全局至多一个桌面主进程（锁组按 user-data 派生），无归属歧义；同一主进程
+// 可持多扇窗口）。返回 false = 进程在但无可聚焦窗。external 态下调用方必须
+// 如实报"唤不动"绝不退到 OpenMessenger（信使=上游开新窗，与"唤起其窗口"承诺
+// 相悖，且死锁复活场会新拉第二主实例，见 service.OpenWindow 注释）；仅自有
+// running 态允许退到 OpenMessenger 请求开新窗（上游 second-instance 语义是
+// openAdditional 新开窗口而非聚焦——两条通道都属 Paseo 领域策略，留在本包
+// 不经内核）。
 func (e *Engine) FocusWindow() bool {
 	return e.probe.FocusWindow()
 }
 
 // OpenMessenger 拉起"信使"二次进程请求开新窗（见 messenger.go 的拉起纪律）：
-// 仅在无可见窗口时作为兜底通道使用（有窗时唤窗一律走 FocusWindow，避免
-// "点一次开一扇新窗"的直觉反差）。
+// 仅供自有 running 态无可见窗口时兜底使用（有窗时唤窗一律走 FocusWindow，
+// 避免"点一次开一扇新窗"的直觉反差）；external 态禁用——机主实证该路会把
+// 横幅承诺变成每点一次多一扇窗。
 func (e *Engine) OpenMessenger(exe string) error {
 	if err := e.spawnMessenger(exe); err != nil {
 		return err

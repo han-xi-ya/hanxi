@@ -18,8 +18,9 @@
 //     用户于 Paseo 界面内点击时发生，zip 形态下会装出 %LOCALAPPDATA% 平行副本
 //     ——前端提示条如实预告"升级请走 Hanxi 版本管理"，不做静默兜底；
 //   - 唤窗不走信使优先（与 recordly 分家）：上游 second-instance 语义是
-//     openAdditional 新开窗口而非聚焦（main.ts 实证），优先 Win32 直唤已有
-//     可见窗口（litemonitor 家族），无窗时才二次拉起请求开新窗；
+//     openAdditional 新开窗口而非聚焦（打包源码 dist/main.js 实证），优先
+//     Win32 直唤已有可见窗口（litemonitor 家族）；信使兜底仅自有 running
+//     态无窗可用，external 态绝不拉起（机主实证缺陷收口，见 service.OpenWindow）；
 //   - 禁用空闲自动退出：Paseo 是 daemon 宿主，无窗运行≠空闲，其上 agent
 //     会话可能正在进行（rustdesk 先例：服务型常驻）。
 package paseo

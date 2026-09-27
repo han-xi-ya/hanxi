@@ -264,13 +264,17 @@ describe('PaseoView 升级判定与提示条', () => {
     wrapper.unmount()
   })
 
-  it('外部实例：banner-warn 现词（共享数据锁组指引）；退出钮可点且 title 指引窗口内退出', async () => {
+  it('外部实例：banner-warn 现词（锁组真相=主进程唯一、多窗允许；唤窗仅聚焦不代开新窗）；退出钮可点且 title 指引窗口内退出', async () => {
     stubDefaults({ state: 'external' })
     const { wrapper } = await mountView()
     const banner = wrapper.find('.banner')
     expect(banner.classes()).toContain('banner-warn')
-    expect(banner.text()).toContain('共享数据模式下同一实例锁组')
-    const quit = wrapper.findAll('.control-btns button').find((b) => b.text().includes('退出'))!
+    expect(banner.text()).toContain('共享数据下同一锁组全局仅一个主进程')
+    expect(banner.text()).toContain('不会新拉实例或代开新窗')
+    const btns = wrapper.findAll('.control-btns button')
+    const primary = btns.find((b) => b.text().includes('打开窗口'))!
+    expect(primary.attributes('title')).toBe('唤起外部实例窗口（仅聚焦既有窗口，不会新拉实例或开新窗）')
+    const quit = btns.find((b) => b.text().includes('退出'))!
     expect(quit.attributes('disabled')).toBeUndefined()
     expect(quit.attributes('title')).toBe('外部实例请在 Paseo 窗口内退出')
     wrapper.unmount()

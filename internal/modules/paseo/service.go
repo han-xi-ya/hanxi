@@ -467,10 +467,25 @@ func (s *PaseoService) GetStatus() (instance.Snapshot, error) {
 }
 
 // OpenWindow 窗口唤起编排中枢。Paseo 上游 second-instance 语义是
-// "再开一个新窗口"而非聚焦（main.ts 实证），故唤窗优先 Win32 直唤已有窗口，
-// 仅无窗可用时才以二次拉起请求开新窗（与 recordly 信使唤窗族不同，决策见包注释）。
-//   - external：共享数据同锁组下外部实例即全局唯一主实例，可直唤；
-//   - running：自有实例直唤；
+// "再开一个新窗口"而非聚焦（打包源码 dist/main.js 实证，注释原文 "opens a
+// new window rather than focusing the existing one"），故唤窗优先 Win32 直唤
+// 已有窗口；信使二次拉起仅作为**自有 running 态**无窗时的兜底开新窗通道
+// （与 recordly 信使唤窗族不同，决策见包注释）。
+//
+// external 态绝对禁止再拉进程（机主实证缺陷收口，与 rammap/windterm 家族
+// external-unreachable 口径一致）：旧实现在直唤失败后退到信使开新窗，但信使
+// 的下游语义就是 openAdditional——每次点击多开一扇新窗，与横幅"可唤起其窗口"
+// 的承诺正面相撞（现场 Paseo main.log 三条 second-instance 记录的 commandLine
+// 均为 hanxidata 托管 exe，即 hanxi 亲手所放）；更糟的是外部主实例已死、仅
+// daemon 残树在场时，信使会借空出的单实例锁复活成新主实例，把"全局仅一个
+// 桌面主实例"变成 hanxi 放走的第二进程。现 external 只聚焦既有窗口，唤不到
+// 窗回 external-unreachable 如实指引，绝不静默开新窗。
+//
+// 归属纪律（家族 external 治理口径钉死，见 service_test 锁测）：external 态
+// 唤起成功不改变归属、状态保持 external——hanxi 只托管自己拉起的进程，绝不
+// "接管"用户自启实例（无 Job 句柄即无生命周期管辖权）。
+//   - external：仅 Win32 直唤外部实例既有窗口；无可聚焦窗 → external-unreachable；
+//   - running：自有实例直唤，无窗时信使请求其开新窗；
 //   - stopped/failed：解析使用版本直接无参冷启动。
 func (s *PaseoService) OpenWindow() (ControlOutcome, error) {
 	release, gateErr := s.holder.Enter()
@@ -491,15 +506,9 @@ func (s *PaseoService) OpenWindow() (ControlOutcome, error) {
 			return ControlOutcome{Action: "external-focused", External: true,
 				Message: "Paseo 实例正在运行（非 Hanxi 托管，共享数据），已唤起其窗口"}, nil
 		}
-		exe, err := s.resolveAnyInstalledExe()
-		if err != nil {
-			return ControlOutcome{}, err
-		}
-		if err := s.engine.OpenMessenger(exe); err != nil {
-			return ControlOutcome{}, fmt.Errorf("请求窗口失败: %w", err)
-		}
-		return ControlOutcome{Action: "external-messenger", External: true,
-			Message: "运行中的 Paseo 实例无可见窗口（可能仅 daemon 在场），已请求其打开新窗口"}, nil
+		return ControlOutcome{Action: "external-unreachable", External: true,
+			Message: "检测到外部 Paseo 实例但无可聚焦窗口（其窗口可能已全部关闭或隐藏）；" +
+				"Hanxi 不会代为新拉实例或新窗，请从桌面图标/任务栏唤起该实例，或待其完全退出后再托管启动"}, nil
 
 	case instance.StateRunning:
 		if s.engine.FocusWindow() {
@@ -602,20 +611,6 @@ func (s *PaseoService) resolveStartTarget() (string, string, error) {
 	sortInstalled(installed)
 	_ = s.store.SetActive(installed[0].Version) // 首次冷启动将实际采用的版本回写
 	return installed[0].Version, installed[0].ExePath, nil
-}
-
-// resolveAnyInstalledExe 外部态信使 exe（信使归属实例组由共享 user-data 决定，
-// 与具体版本号无关——取最新已装即可）。
-func (s *PaseoService) resolveAnyInstalledExe() (string, error) {
-	installed, err := s.manager.ListInstalled()
-	if err != nil {
-		return "", err
-	}
-	if len(installed) == 0 {
-		return "", fmt.Errorf("尚未安装任何 Paseo 托管版本，无法代为唤起外部实例窗口")
-	}
-	sortInstalled(installed)
-	return installed[0].ExePath, nil
 }
 
 // sortInstalled 版本新→旧原地排序：规范 semver 优先（预发布规则），

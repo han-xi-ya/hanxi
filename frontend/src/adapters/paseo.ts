@@ -25,6 +25,7 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { fmtSize } from '../utils/format'
+import { upgradeAvailableCore } from '../utils/version'
 import type {
   ManagedActionResult,
   ManagedModuleAdapter,
@@ -36,30 +37,25 @@ import type {
 /** 已装记录方言字段包（③）：共享面板/视图经 store.installed 直读 verifiedHash，零 cast。 */
 export type PaseoVersionDialect = Pick<PaseoVersionInfo, 'verifiedHash'>
 
-/** 规范版本目录名（后端已新→旧排序；imported- 等非常规目录不参与隐式判定）。 */
+/**
+ * 规范版本目录名（后端已新→旧排序；imported- 等非常规目录不参与隐式判定）。
+ * 前缀三段正则逐字保留、不并入 utils/version 的 isCanonical——两者语义不同族：
+ * 本判据要容纳 `0.8.0-beta.N` 目录（前缀命中即候选）且排除两段年式，isCanonical
+ * 是归一后全串纯数值；且冻结视图 PaseoView 的 latestInstalled 以此正则逐字复刻，
+ * 改动即漂移。核心比较（数值大小）才是 utils/version 的地盘。
+ */
 function canonicalVersion(v: string): boolean {
   return /^\d+\.\d+\.\d+/.test(v)
 }
 
-// 核心版本号（去预发布后缀）：升级判定用数值核心对比，不可解析退化字典序
-function coreOf(v: string): string {
-  return v.replace(/-.*$/, '')
-}
-
-function coreCompare(a: string, b: string): number {
-  const pa = coreOf(a).split('.').map(Number)
-  const pb = coreOf(b).split('.').map(Number)
-  for (let i = 0; i < 3; i++) {
-    const na = pa[i], nb = pb[i]
-    if (Number.isNaN(na) || Number.isNaN(nb)) return coreOf(a) < coreOf(b) ? -1 : coreOf(a) > coreOf(b) ? 1 : 0
-    if (na !== nb) return na > nb ? 1 : -1
-  }
-  return 0
-}
-
-/** 升级谓词（视图升级警告条唯一入口）：最新已装核心 < 当前通道最新核心。 */
+/**
+ * 升级谓词（视图升级警告条唯一入口）：最新已装核心 < 当前通道最新核心。
+ * 比较器上收 utils/version 单源（版本比较器统一波）：本模块三段真实数据
+ * （0.8.0 / 0.8.0-beta.N 型，恒不带 v 前缀）上新旧口径逐格等值；旧实现的
+ * 「不剥 v」漂移与「字典序退化」伪序（imported-* 永新）在册修正，见 utils 头注。
+ */
 export function paseoUpgradeAvailable(installedVersion: string, latestVersion: string): boolean {
-  return coreCompare(installedVersion, latestVersion) < 0
+  return upgradeAvailableCore(installedVersion, latestVersion)
 }
 
 /**
@@ -153,7 +149,7 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
         label: '🗔 打开窗口',
         cssClass: 'btn-secondary',
         disabledFor: (state) => state === 'starting',
-        titleFor: (state) => (state === 'running' ? '唤起已运行窗口' : state === 'starting' ? '启动中…' : '启动 Paseo 并打开窗口'),
+        titleFor: (state) => (state === 'running' ? '唤起已运行窗口' : state === 'external' ? '唤起外部实例窗口（仅聚焦既有窗口，不会新拉实例或开新窗）' : state === 'starting' ? '启动中…' : '启动 Paseo 并打开窗口'),
       },
       quit: {
         async run(): Promise<ManagedActionResult> {
@@ -169,7 +165,7 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
     // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
     banner: (s) => {
       if (s.state === 'external') {
-        return { tone: 'warn', text: '检测到非 Hanxi 启动的 Paseo 实例（共享数据模式下同一实例锁组，全局仅一个桌面主实例）。可唤起其窗口；如需退出请在 Paseo 窗口内关闭。' }
+        return { tone: 'warn', text: '检测到非 Hanxi 启动的 Paseo 实例（共享数据下同一锁组全局仅一个主进程，同一主进程可开多窗）。「打开窗口」仅聚焦唤起其既有窗口，不会新拉实例或代开新窗；如需退出请在 Paseo 窗口内关闭。' }
       }
       if (s.state === 'failed') {
         return { tone: 'error', text: s.error || 'Paseo 异常退出' }

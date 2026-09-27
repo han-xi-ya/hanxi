@@ -1,10 +1,12 @@
 package paseo
 
 // ControlOutcome 打开窗口操作的执行结果说明。
-// Paseo 唤窗分三档：直唤已有窗（focused）、无窗时二次拉起请求开新窗
-// （messenger，上游 second-instance = openAdditional 语义）、冷启动（started）。
+// Paseo 唤窗分档：直唤已有窗（focused / external-focused）、自有实例无窗时
+// 二次拉起请求开新窗（messenger，上游 second-instance = openAdditional 语义）、
+// 外部实例无可聚焦窗（external-unreachable，如实指引，绝不代拉进程/新窗）、
+// 冷启动（started）。
 type ControlOutcome struct {
-	Action   string `json:"action"` // started / focused / messenger / external-*（前缀 external- 表示命中的是外部自启实例）
+	Action   string `json:"action"` // started / focused / messenger / external-focused / external-unreachable（前缀 external- 表示命中的是外部自启实例）
 	External bool   `json:"external"`
 	Message  string `json:"message"` // 面向用户的执行说明
 }

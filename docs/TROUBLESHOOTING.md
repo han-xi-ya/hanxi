@@ -1289,3 +1289,9 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：thumb 透明底合成测试红 → 对拍收敛表达式值域，发现 `+rounding` 后可能越过 8bit 上界，移位结果并未钳在 [0,255]。
 - **正确做法与标准修复方案**：钳位必须放在**移位之后**（`min(255, (v+128)>>8)`），或改用不越界的收敛式；对"rounding+shift"这类位技巧，值域测试必须显式打 0/127..128/254..255/满量程边界点。
 - **避坑防重犯建议**：凡手写像素/色彩收敛，单测至少覆盖全黑、全白、全不透明、全透明四个极值；`uint8(x)` 强转不回绕报错，是静默截断，边界不测必漏。
+
+### 105. Paseo external 态"唤窗失败→信使兜底"= 每点一次开一扇新窗，横幅单实例承诺被自家代码击穿
+- **问题现象与错误原因**：机主实证——hanxi 重启后横幅如实显示 external（"共享数据模式下同一实例锁组，全局仅一个桌面主实例。可唤起其窗口"），但点「打开窗口」却每点每多一扇新窗。根因：`service.OpenWindow` 的 external 分支在 `FocusWindow()` 返回 false 时退到 `OpenMessenger` 二次拉起，而上游 second-instance 语义是 **openAdditional 新开窗口而非聚焦**（打包源码 dist/main.js 注释原文 "opens a new window rather than focusing the existing one"）——"兜底"在 external 态根本不是唤回，是造新窗；外部主实例已死、仅 daemon 残树在场时更会把信使放养成第二个主进程，"全局仅一个桌面主实例"从承诺退化为反讽。
+- **排查过程**：现场取证 tasklist+CommandLine 全树——全机仅一个 Electron 主进程（父系 explorer，双击自启），6 扇带题可见窗**全部同属该主进程** → 锁在进程粒度真实存在，被违反的是"窗口唯一"的暗示而非锁本身；Paseo 自带 main.log 三条 `[open-project] second-instance commandLine` 记录的 argv[0] 均为 `hanxidata\versions\paseo_0.9.2\Paseo.exe`（托管目录路径），实锤新窗系 hanxi 信使所放。另证：工具会话派生的沙箱进程看不见交互桌面窗口（EnumWindows 恒 0），"external 无窗"式复现必须在交互桌面做。
+- **正确做法与标准修复方案**：external 态只做 Win32 直唤，唤不到窗回 `external-unreachable` 如实指引（"检测到外部 Paseo 实例但无可聚焦窗口……Hanxi 不会代为新拉实例或新窗"），与 rammap/windterm 家族口径对齐；信使通道收缩为**自有 running 态专属**兜底。横幅文案改诚实：锁组保证的是"全局仅一个主进程"，同一主进程允许多窗，「打开窗口」仅聚焦既有窗口。归属纪律钉死：external 唤起成功不转移归属（无 Job 句柄即无管辖权），`TestOpenWindowExternalFocusOnly` 双分支锁"零拉起/仅聚焦"（假 exe 目录 + Job 桩双陷阱防退化）。
+- **避坑防重犯建议**：凡"直唤优先、二次拉起兜底"的唤窗族，兜底通道的前置问题必须是"上游 second-instance 到底做什么"——聚焦型兜底可复用，openAdditional 型兜底在 external 态一律禁用（那是别人的实例，开新窗≠唤起）；文案里"全局仅一个实例"这类量词要写明作用粒度（进程/锁组/窗口），否则行为正确也构成过度声明。排查此类问题的黄金证据在上游自家日志（electron-log 落在 %APPDATA%\<App>\logs\main.log），比任何复现都硬。
