@@ -11,7 +11,7 @@ import * as $models from "./models.js";
 
 /**
  * AccessInfo access.json 的读方视角呈现：Tools 恒等于 MCP 读者此刻的采信结果
- * （缺文件/损坏/超纲都呈现为九 false——读者 fail-closed 语义），不呈现读者不认的
+ * （缺文件/损坏/超纲都呈现为十 false——读者 fail-closed 语义），不呈现读者不认的
  * "字面值"。写入口在本分区（SetToolAccess/ResetAccess，R6）。
  * @typedef {$models.AccessInfo} AccessInfo
  */

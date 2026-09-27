@@ -60,7 +60,8 @@ const accessCorrupt = computed(() => {
   return !!a && a.exists && !a.readable
 })
 
-// 八行工具开关（键名=access.json 契约八键，N32/N34 扩充批 + AI 接入批扫描族）：
+// 九行工具开关（键名=access.json 契约十键之九：portkill 破坏键刻意不呈现，
+// 开启=机主手动两文件；N32/N34 扩充批 + AI 接入批扫描族 + 剪贴板检索批）：
 // 主文案说人话——AI 将看到什么、敏感级直书；MCP 工具名退入行内「技术细节」。
 // 扫描两行是诚实口径：它们是主动网络探测而非查询，风险直书"主动出网/暴露拓扑"。
 const accessTools = computed(() => {
@@ -105,6 +106,12 @@ const accessTools = computed(() => {
       key: 'lan', name: '局域网扫描', tool: 'hanxi_lan_scan', on: !!t?.lan,
       desc: 'AI 可对指定网段做一次在线设备探测（最多 1024 个地址，不改动任何状态）——发现设备的 IP/MAC 与备注会进入 AI 对话，会暴露你的局域网拓扑。',
       risk: { text: '暴露局域网拓扑', chip: 'chip-danger' },
+    },
+    {
+      // 位序随写侧 accessToolKeys（clipboard 插 lan 后、portkill 前；portkill 刻意不呈现）。
+      key: 'clipboard', name: '剪贴板检索', tool: 'hanxi_clipboard_search', on: !!t?.clipboard,
+      desc: 'AI 可搜索你复制过的历史文本——正文与摘要先经启发式打码（会改形，不保证逐字还原），命中密钥启发式的条目与图片内容不经本通道。',
+      risk: { text: '含个人剪贴板 · 建议关', chip: 'chip-danger' },
     },
   ]
 })

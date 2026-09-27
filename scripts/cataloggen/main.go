@@ -124,12 +124,15 @@ var hotkeyAllowlist = map[string]bool{
 // mcpAllowlist `hanxi mcp` 无头进程暴露工具的模块白名单。
 // 证据：internal/mcp/mcp.go —— mcpModules() 挂载 envcheck、everything；
 // Run 额外注册 ocr（ocrModule := ocr.New 并注入识图后端）；memo 为特例通道
-// （构造带迁移写盘副作用不进 registry，registryGate 直读 config.json enabled 位）。
+// （构造带迁移写盘副作用不进 registry，registryGate 直读 config.json enabled 位）；
+// clipboard 与 memo 同谱（NewStore 构造即建目录/空库回写，无头表禁令契约
+// §12 v1.2.4，registryGate 特例 + tools_clipboard.go 零落盘直读 hanxi_clipboard_search）。
 var mcpAllowlist = map[string]bool{
 	"envcheck":   true,
 	"everything": true,
 	"ocr":        true,
 	"memo":       true,
+	"clipboard":  true,
 }
 
 // ---------------------------------------------------------------------------

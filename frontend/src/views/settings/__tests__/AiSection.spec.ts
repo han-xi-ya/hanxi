@@ -1,6 +1,6 @@
 // AI 接入分区（F4b MCP 安装向导 + R6 授权开关）特征测试：三客户端四态渲染、
 // 预览→确认写链（令牌回传）、fail-closed 拒动呈现手动片段、
-// access.json 八开关写链（建档/即时生效文案/拒写指引/损坏态修复确认流）与"打开所在目录"、
+// access.json 九开关写链（portkill 十键之九呈现口径；建档/即时生效文案/拒写指引/损坏态修复确认流）与"打开所在目录"、
 // 幂等 ZeroDiff 文案、安装前自检行（R2：通过/失败警示不阻断/重检走 refresh/不该 spawn 时不 spawn）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -241,13 +241,13 @@ describe('AI 接入分区', () => {
     expect(w.text()).toContain('已回滚')
   })
 
-  it('access 卡片：八开关行呈现读方视角状态与即时生效文案，打开所在目录传目录父路径', async () => {
+  it('access 卡片：九开关行呈现读方视角状态与即时生效文案，打开所在目录传目录父路径', async () => {
     stubStatus([client('claude', 'Claude Code')])
     const w = await mountView()
     expect(w.text()).toContain('状态正常')
     expect(w.text()).toContain('拨动开关立即生效，不用重启任何软件')
     const rows = w.findAll('.tool-row')
-    expect(rows).toHaveLength(8)
+    expect(rows).toHaveLength(9)
     const switches = w.findAll('.switch')
     expect((switches[0].element as HTMLInputElement).checked).toBe(true) // envcheck
     expect((switches[1].element as HTMLInputElement).checked).toBe(false) // everything
@@ -265,6 +265,11 @@ describe('AI 接入分区', () => {
     expect(rows[7].text()).toContain('局域网扫描')
     expect(rows[7].text()).toContain('hanxi_lan_scan')
     expect(rows[7].text()).toContain('暴露局域网拓扑')
+    // 剪贴板检索行（clipboard 批，第十键入册；写侧键序 lan 后、portkill 前）
+    expect(rows[8].text()).toContain('剪贴板检索')
+    expect(rows[8].text()).toContain('hanxi_clipboard_search')
+    expect(rows[8].text()).toContain('含个人剪贴板 · 建议关')
+    expect(rows[8].text()).toContain('不保证逐字还原')
     expect(switches[0].attributes('disabled')).toBeUndefined() // 正常态可拨
     await w.findAll('.access-foot button')[0].trigger('click')
     expect(appSvc.OpenPath).toHaveBeenCalledWith('D:\\hx\\hanxidata\\mcp')

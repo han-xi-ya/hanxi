@@ -93,6 +93,7 @@ func TestToolNamesStable(t *testing.T) {
 		"hanxi_lan_scan":         "lan",
 		"hanxi_portkill_prepare": portkillAccessKey,
 		"hanxi_portkill_execute": portkillAccessKey,
+		"hanxi_clipboard_search": clipboardAccessKey,
 	}
 	if len(toolDefs) > len(want) {
 		t.Fatalf("工具面只能从白名单扩张到 %d 件，当前 %d 件", len(want), len(toolDefs))

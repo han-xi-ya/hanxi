@@ -100,11 +100,12 @@ type AccessTools struct {
 	Logs       bool `json:"logs"`
 	Portscan   bool `json:"portscan"`
 	Lan        bool `json:"lan"`
+	Clipboard  bool `json:"clipboard"`
 	Portkill   bool `json:"portkill"`
 }
 
 // AccessInfo access.json 的读方视角呈现：Tools 恒等于 MCP 读者此刻的采信结果
-// （缺文件/损坏/超纲都呈现为九 false——读者 fail-closed 语义），不呈现读者不认的
+// （缺文件/损坏/超纲都呈现为十 false——读者 fail-closed 语义），不呈现读者不认的
 // "字面值"。写入口在本分区（SetToolAccess/ResetAccess，R6）。
 type AccessInfo struct {
 	Path     string      `json:"path"`
@@ -521,6 +522,7 @@ func (s *McpWizardService) accessInfo() AccessInfo {
 			Logs:       st.tools["logs"],
 			Portscan:   st.tools["portscan"],
 			Lan:        st.tools["lan"],
+			Clipboard:  st.tools["clipboard"],
 			Portkill:   st.tools["portkill"],
 		}
 	}

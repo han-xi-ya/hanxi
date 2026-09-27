@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "clip_1000000000000001",
+      "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "text",
+      "text": "ZmFrZS1kcGFwaTpnaXQgcHVzaCBvcmlnaW4gZGV2",
+      "preview": "git push origin dev",
+      "byteSize": 19,
+      "sourceApp": "Git Bash",
+      "sourceExe": "bash.exe",
+      "autoTags": [
+        "code"
+      ],
+      "pinned": true,
+      "createdAt": 1790000005000,
+      "lastUsedAt": 1790000009000,
+      "useCount": 3
+    },
+    {
+      "id": "clip_1000000000000002",
+      "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "kind": "text",
+      "text": "ZmFrZS1kcGFwaTrnlJ/kuqflupPov57mjqXkuLIgcG9zdGdyZXM6Ly9wb3N0Z3Jlc0AxOTIuMTY4LjEwLjc6NTQzMi9hcHAgcGFzc3dvcmQ9UzNjcjN0RHVtcE1l",
+      "preview": "生产库连接串 postgres://postgres@192.168.10.7:5432/app password=S3cr3tD…Me",
+      "byteSize": 74,
+      "sourceApp": "Terminal",
+      "sourceExe": "WindowsTerminal.exe",
+      "createdAt": 1790000004000
+    },
+    {
+      "id": "clip_1000000000000003",
+      "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "kind": "image",
+      "preview": "截图 1280x720（snipaste）",
+      "blob": "blobs/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.png",
+      "width": 1280,
+      "height": 720,
+      "byteSize": 307200,
+      "sourceApp": "Snipaste",
+      "sourceExe": "snipaste.exe",
+      "createdAt": 1790000003000
+    },
+    {
+      "id": "clip_1000000000000004",
+      "hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "kind": "file",
+      "preview": "2 个文件：PLAN_REMAINING_WORK.md 等",
+      "files": [
+        "E:\\System\\桌面\\工具\\hanxi\\docs\\plans\\PLAN_REMAINING_WORK.md",
+        "E:\\System\\桌面\\工具\\hanxi\\go.mod"
+      ],
+      "byteSize": 48211,
+      "sourceApp": "资源管理器",
+      "sourceExe": "explorer.exe",
+      "createdAt": 1790000002000
+    },
+    {
+      "id": "clip_1000000000000005",
+      "hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "kind": "text",
+      "text": "ZmFrZS1kcGFwaTpodHRwczovL2V4YW1wbGUuY29tL3Bvc3RzL2NsaXBib2FyZC1kZXNpZ24=",
+      "preview": "https://example.com/posts/clipboard-design",
+      "byteSize": 44,
+      "sourceApp": "浏览器",
+      "sourceExe": "chrome.exe",
+      "autoTags": [
+        "url"
+      ],
+      "createdAt": 1790000001000
+    },
+    {
+      "id": "clip_1000000000000006",
+      "hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "kind": "text",
+      "text": "ZmFrZS1kcGFwaTrlj5Hnu5kgc29tZW9uZUBleGFtcGxlLmNvbSDnmoTmlLbku7blnLDlnYA=",
+      "preview": "发给 someone@example.com 的收件地址",
+      "byteSize": 32,
+      "sourceApp": "邮件",
+      "sourceExe": "outlook.exe",
+      "autoTags": [
+        "email"
+      ],
+      "manual": true,
+      "createdAt": 1790000001000
+    },
+    {
+      "id": "clip_1000000000000007",
+      "hash": "9999999999999999999999999999999999999999999999999999999999999999",
+      "kind": "text",
+      "text": "ZmFrZS1kcGFwaTpzay1NVVNUTk9UQVBQRUFSMDEyMzQ1Njc4OWFiY2RlZg==",
+      "preview": "API Key（命中密钥启发式入库）",
+      "byteSize": 40,
+      "sourceApp": "浏览器",
+      "sourceExe": "chrome.exe",
+      "sensitive": true,
+      "createdAt": 1790000006000
+    },
+    {
+      "id": "clip_badfield",
+      "kind": [
+        "text 字段类型写坏：逐条解码失败必须只跳过本条"
+      ],
+      "preview": "坏条目（不连坐）",
+      "createdAt": 1790000007000
+    },
+    {
+      "kind": "text",
+      "preview": "无 id 条目（模型无从引用，跳过）",
+      "createdAt": 1790000008000
+    },
+    {
+      "id": "clip_foreign_cipher",
+      "kind": "text",
+      "text": "@@not-protected-by-this-machine@@",
+      "preview": "异机库条目（DPAPI 解不开）",
+      "byteSize": 20,
+      "createdAt": 1790000009000
+    },
+    {
+      "id": "clip_future_kind",
+      "hash": "8888888888888888888888888888888888888888888888888888888888888888",
+      "kind": "sticky",
+      "preview": "未来类型条目（现网降级为仅元数据）",
+      "byteSize": 12,
+      "createdAt": 1790000010000
+    }
+  ]
+}

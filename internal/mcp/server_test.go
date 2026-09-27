@@ -81,7 +81,7 @@ func newTestServer(t *testing.T) (Deps, *Access, *fakeEnvChecker) {
 		Access: access,
 		// 门禁默认全开，授权层单独测；portkill 在册=破坏族已过模块启用门（A1 之 A2
 		// 侧另由 destructive.json 把关，与本表无关）。
-		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", portkillAccessKey),
+		Gate:     newFakeGate("envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", portkillAccessKey, clipboardAccessKey),
 		EnvCheck: env,
 	}
 	return deps, access, env

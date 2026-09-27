@@ -26,7 +26,8 @@ const maxPayloadBytes = 1 << 20
 // 机主要逐项授权才可用；读写对拍+GUI 呈现+白名单三处联动同步）。
 // 端口查杀批（2026-09-26，红线升版执行层见 guarded.go）加破坏性族两件
 // （hanxi_portkill_prepare / hanxi_portkill_execute）至十一件：族共用 portkill
-// 一键（授权粒度=模块，照 memo 键先例），access.json 扩至九键——但 portkill 键
+// 一键（授权粒度=模块，照 memo 键先例），access.json 扩至九键；剪贴板检索批
+// （2026-09-27，clipboardAccessKey=clipboard.ID）再扩至十键——但 portkill 键
 // 刻意不进「设置 → AI 接入」面板（破坏性键不给误操作台阶，机主手动双文件开启），
 // 且工具生效还需 destructive.json 机主总闸 + 一次性令牌二段确认（四道闸全说见
 // guarded.go 文件头）；白名单/knownModuleIDs/写侧 accessToolKeys 三处同批扩键。
@@ -74,7 +75,7 @@ func NewMCPServer(deps Deps) *server.MCPServer {
 			"破坏性工具族（端口查杀 prepare/execute）双授权默认关、二段确认方生效——access.json 的 portkill 键与"+
 			" mcp/destructive.json 机主总闸齐开才放行，prepare 只发放一次性令牌（120 秒），execute 复核进程指纹后才结束进程，"+
 			"系统关键进程与 hanxi 自身永久拒杀。"+
-			"所有工具调用前需授权（access.json，九键，默认全关；portkill 键刻意不进「设置 → AI 接入」面板，机主手动两文件开启）。"+
+			"所有工具调用前需授权（access.json，十键，默认全关；portkill 键刻意不进「设置 → AI 接入」面板，机主手动两文件开启）。"+
 			"未授权/被停用的工具调用会返回指引错误，不会执行。"),
 		server.WithToolCapabilities(false),
 		server.WithRecovery(),
@@ -99,21 +100,23 @@ type toolDef struct {
 // 一致性由 access_readmatch_test.go 对拍矩阵把关。
 // AI 接入批（2026-09-26）加 portscan/lan 两键至八键——扫描类是主动出网动作，
 // 必须与纯查询工具分键授权（机主可只放行扫描而不放行文件搜索等，反之亦然）。
-// 端口查杀批加 portkill 键至九键：**读方（本表）/写方（accessToolKeys）/名称白名单
+// 端口查杀批加 portkill 键至九键、剪贴板批加 clipboard 键至十键：
+// **读方（本表）/写方（accessToolKeys）/名称白名单
 // （guards_test.go）三处必须同批**——漏一处，含 portkill 键的整档 access.json 会被
 // fail-closed 拒读、连坐封死全部工具。键名取自 portkillAccessKey（=portkill.ID），
 // 杜绝两处手打字符串漂移；destructive.json 侧的同名 op 键由 isKnownDestructiveOp
 // 独立把关（两文件两契约，见 guarded.go A2）。
 var knownModuleIDs = map[string]bool{
-	"envcheck":        true,
-	"everything":      true,
-	"ocr":             true,
-	"memo":            true,
-	"sysinfo":         true,
-	"logs":            true,
-	"portscan":        true,
-	"lan":             true,
-	portkillAccessKey: true,
+	"envcheck":         true,
+	"everything":       true,
+	"ocr":              true,
+	"memo":             true,
+	"sysinfo":          true,
+	"logs":             true,
+	"portscan":         true,
+	"lan":              true,
+	portkillAccessKey:  true,
+	clipboardAccessKey: true,
 }
 
 // toolDefs 全量工具面（首版四件 PLAN_MCP C1-C5 收口；扩充批 +sysinfo/logs 至六件；
@@ -133,6 +136,7 @@ var toolDefs = []toolDef{
 	{Name: toolMemoStats, ModuleID: "memo", Build: buildMemoStatsTool},
 	{Name: toolSysInfo, ModuleID: "sysinfo", Build: buildSysInfoTool},
 	{Name: toolLogs, ModuleID: accessKeyLogs, Build: buildLogsTool},
+	{Name: toolClipboard, ModuleID: clipboardAccessKey, Build: buildClipboardSearchTool},
 	{Name: toolPortScan, ModuleID: "portscan", Build: buildPortScanTool},
 	{Name: toolLanScan, ModuleID: "lan", Build: buildLanScanTool},
 	{Name: toolPortkillPrepare, ModuleID: portkillAccessKey, Build: buildPortkillPrepareTool},

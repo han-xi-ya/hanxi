@@ -87,6 +87,7 @@
         "background-listener",
         "dedicated-window",
         "hotkey-slot",
+        "mcp-tools",
         "tray-commands"
       ],
       "entrypoints": [
@@ -95,6 +96,7 @@
         "search",
         "tray",
         "hotkey",
+        "mcp",
         "window",
         "background"
       ],

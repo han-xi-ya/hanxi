@@ -12,8 +12,9 @@
 //     （A1 access.json ∩ 模块启用门、A2 destructive.json 机主总闸默认不存在=全关、
 //     A3 一次性令牌二段确认+进程指纹复核、A4 永久黑名单+强制审计，见 guarded.go /
 //     tools_portkill.go）——portkill 键刻意不进「AI 接入」面板，开启=机主手动两文件。
-//     access.json 九键默认全关，读写白名单三处同键集（knownModuleIDs / mcpwizard
-//     accessToolKeys / guards_test 白名单），未知键整档拒读连坐全关。
+//     access.json 十键默认全关（剪贴板批 clipboard 键入册），读写白名单三处同键集
+//     （knownModuleIDs / mcpwizard accessToolKeys / guards_test 白名单），
+//     未知键整档拒读连坐全关。
 //     其余提权/写操作（frpc、配置写入、OpenTarget 执行链等）仍永不注册为工具，
 //     这是编译期事实而非运行期约束——tools/list 里没有的东西，客户端永远调不到。
 //     一切工具输出按"会原样进入云端模型上下文"审视：敏感串过 logging.Redact 家族，
@@ -27,7 +28,9 @@
 //     不进单实例锁（mcp 分支在 application.New 之前短路）；与主程序共读同一数据根，
 //     状态文件写盘均为原子 rename，读侧永远看到完整旧版或完整新版。MCP 进程自身
 //     零落盘承诺：不迁移、不隔离、不创建任何数据文件（因此 memo 模块不进无头
-//     registry——其构造携带旧库迁移写盘副作用，改走零写盘直读通道，门禁口径不变）。
+//     registry——其构造携带旧库迁移写盘副作用，改走零写盘直读通道，门禁口径不变；
+//     clipboard 同理，NewStore 构造即建目录+空库回写，registryGate 照 memo 特例，
+//     契约 §12 v1.2.4 无头表禁令）。
 package mcp
 
 import (
@@ -42,6 +45,7 @@ import (
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/logging"
+	"hanxi/internal/modules/clipboard"
 	"hanxi/internal/modules/envcheck"
 	"hanxi/internal/modules/everything"
 	"hanxi/internal/modules/lan"
@@ -91,6 +95,18 @@ func (g *registryGate) Check(moduleID string) (func(), error) {
 		}
 		if g.receipts != nil && !g.receipts.IsInstalled(moduleID) {
 			return noop, fmt.Errorf("「随手记」模块尚未安装，请先在 hanxi 模块中心安装该模块")
+		}
+		return noop, nil
+	}
+	// clipboard 模块构造带建目录/空库回写副作用，与无头"零落盘"承诺冲突（同 memo 谱，
+	// 契约 §12 v1.2.4 无头表禁令）：不进 registry、不走 Acquire，门禁直读
+	// config.json 的 enabled 位 + receipt（未安装同样拒绝，无租约可占用）。
+	if moduleID == clipboard.ID {
+		if !g.store.IsModuleEnabled(moduleID, true) {
+			return noop, fmt.Errorf("「剪贴板历史」模块已在 hanxi 中停用，请先在设置中启用该模块")
+		}
+		if g.receipts != nil && !g.receipts.IsInstalled(moduleID) {
+			return noop, fmt.Errorf("「剪贴板历史」模块尚未安装，请先在 hanxi 模块中心安装该模块")
 		}
 		return noop, nil
 	}
@@ -213,6 +229,11 @@ func Run() error {
 			NewDefaultKillTokenStore(),
 		))
 	}
+
+	// 剪贴板检索 hook 通道（A3 交付形）：零落盘直读 reader（DataDir/clipboard/
+	// index.json + windows.DPAPIDecrypt），与 Memo 的 newMemoDiskReader 同谱；
+	// handler 每次调用重读 hook，装配时序无硬约束。
+	SetClipboardSource(newClipboardDiskReader())
 
 	srv := NewMCPServer(deps)
 	// 协议错误日志显式钉死 stderr（stdout 是 JSON-RPC 通道，包注释纪律 2）。

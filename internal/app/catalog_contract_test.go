@@ -248,6 +248,12 @@ func mcpGroundedModules(t *testing.T, root string) []string {
 		t.Fatal("internal/mcp/mcp.go 不再含 memo.ID 特例通道证据")
 	}
 	out = append(out, "memo")
+	// clipboard 与 memo 同谱特例通道（NewStore 构造即建目录/空库回写，无头表禁令
+	// 契约 §12 v1.2.4）：以 registryGate 的 clipboard.ID 分支为装配证据。
+	if !regexp.MustCompile(`clipboard\.ID`).MatchString(source) {
+		t.Fatal("internal/mcp/mcp.go 不再含 clipboard.ID 特例通道证据")
+	}
+	out = append(out, "clipboard")
 	sort.Strings(out)
 	return out
 }

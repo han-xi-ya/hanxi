@@ -21,10 +21,10 @@ func writeAccess(t *testing.T, content string) *Access {
 // TestAccessFailClosedMatrix 穷举 PLAN_MCP §6 的 fail-closed 判定口径：
 // 除"合法且显式 true"外，一切形态（缺失/损坏/类型错/版本错/未知字段/超限/尾随）都必须全拒绝。
 func TestAccessFailClosedMatrix(t *testing.T) {
-	// 九键全集（AI 接入批：portscan/lan 扫描族两键默认关——未授权连"触发扫描"
+	// 十键全集（AI 接入批：portscan/lan 扫描族两键默认关——未授权连"触发扫描"
 	// 都不可能发生；端口查杀批：portkill 键入册但仍默认关，且 destructive.json
-	// 总闸另判——access 侧放行只是 A1 门之一；未知键仍整体拒读）
-	allModules := []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", portkillAccessKey}
+	// 总闸另判——access 侧放行只是 A1 门之一；剪贴板批 clipboard 键入册；未知键仍整体拒读）
+	allModules := []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", portkillAccessKey, clipboardAccessKey}
 
 	cases := []struct {
 		name    string
@@ -32,8 +32,8 @@ func TestAccessFailClosedMatrix(t *testing.T) {
 		want    map[string]bool
 	}{
 		{name: "文件缺失-默认全关", content: nil, want: map[string]bool{}},
-		{name: "全开", content: strPtr(`{"version":1,"tools":{"envcheck":true,"everything":true,"ocr":true,"memo":true,"sysinfo":true,"logs":true,"portscan":true,"lan":true,"portkill":true}}`),
-			want: map[string]bool{"envcheck": true, "everything": true, "ocr": true, "memo": true, "sysinfo": true, "logs": true, "portscan": true, "lan": true, portkillAccessKey: true}},
+		{name: "全开", content: strPtr(`{"version":1,"tools":{"envcheck":true,"everything":true,"ocr":true,"memo":true,"sysinfo":true,"logs":true,"portscan":true,"lan":true,"portkill":true,"clipboard":true}}`),
+			want: map[string]bool{"envcheck": true, "everything": true, "ocr": true, "memo": true, "sysinfo": true, "logs": true, "portscan": true, "lan": true, portkillAccessKey: true, clipboardAccessKey: true}},
 		{name: "仅扫描族开", content: strPtr(`{"version":1,"tools":{"portscan":true,"lan":true}}`),
 			want: map[string]bool{"portscan": true, "lan": true}},
 		{name: "仅查杀键开-A1单门放行不代表可杀", content: strPtr(`{"version":1,"tools":{"portkill":true}}`),

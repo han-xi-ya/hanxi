@@ -38,11 +38,12 @@ const (
 	maxAccessFileSize = 16 << 10 // 与读方 mcp/access.go 同额：超限视为异常，拒读也拒写
 )
 
-// accessToolKeys 授权九键的规范集合（键序=PLAN §6 文本序+扩充批=工具面展示序；
-// portkill 追加在尾——破坏族键置后与工具面风险次序一致）。
+// accessToolKeys 授权十键的规范集合（键序=PLAN §6 文本序+扩充批=工具面展示序；
+// clipboard 随只读面插在 lan 后（与 toolDefs 插位一致），portkill 追加在尾——
+// 破坏族键置后与工具面风险次序一致）。
 // 集合外键 reader 整体拒读，写侧同样既不产出也不盲改；与读方 knownModuleIDs
 // 的同步性由 access_readmatch_test.go 对拍把关。
-var accessToolKeys = []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", "portkill"}
+var accessToolKeys = []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", "clipboard", "portkill"}
 
 func knownAccessTool(key string) bool {
 	for _, k := range accessToolKeys {
@@ -139,6 +140,7 @@ type accessToolsDoc struct {
 	Logs       bool `json:"logs"`
 	Portscan   bool `json:"portscan"`
 	Lan        bool `json:"lan"`
+	Clipboard  bool `json:"clipboard"`
 	Portkill   bool `json:"portkill"`
 }
 
@@ -154,6 +156,7 @@ func accessDocOf(tools map[string]bool) accessDocForWrite {
 			Logs:       tools["logs"],
 			Portscan:   tools["portscan"],
 			Lan:        tools["lan"],
+			Clipboard:  tools["clipboard"],
 			Portkill:   tools["portkill"],
 		},
 	}
