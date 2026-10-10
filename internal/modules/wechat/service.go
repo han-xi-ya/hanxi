@@ -24,6 +24,12 @@ const (
 	sendFileTimeout     = 120 * time.Second // 发送文件（含上传 CDN）
 )
 
+// openFileHandler 是"用系统关联程序打开本地文件"的可注入接缝：生产恒指向
+// openAttachmentFile（rundll32 文件语义，见 open_windows.go）；测试注入替身，
+// 避免用例真的拉起查看器窗口。仅 OpenInboundFile 经该接缝——它需要验证
+// "打开失败但文件已落盘"的回执语义。
+var openFileHandler = openAttachmentFile
+
 // WechatService 暴露给 Wails 前端的服务（支持多微信账号并发管理与收发路由）
 type WechatService struct {
 	defaultClient *Client
@@ -629,7 +635,11 @@ func (s *WechatService) SaveInboundFile(attachmentID string) (AttachmentActionRe
 	return AttachmentActionResult{Path: target}, nil
 }
 
-// OpenInboundFile 下载微信入站文件到临时目录，并用系统默认程序打开。
+// OpenInboundFile 下载微信入站文件到受管临时目录，并用系统默认程序打开。
+// 明文副本收口进 attachmentStore 单一受管目录并与注册项同生命周期（TTL 过期、
+// 条数/副本数淘汰、deleteAccount、Destroy 均回收），修复历史版本"每次调用散建
+// 一个 MkdirTemp 且成功路径永不回收，每点一次打开就在 %TEMP% 留一份聊天明文"
+// 的泄露。同一附件重复打开幂等复用已落盘副本，不再重复下载。
 func (s *WechatService) OpenInboundFile(attachmentID string) (AttachmentActionResult, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -637,9 +647,18 @@ func (s *WechatService) OpenInboundFile(attachmentID string) (AttachmentActionRe
 	}
 	defer release()
 
+	attachmentID = strings.TrimSpace(attachmentID)
 	attachment, ok := s.attachments.get(attachmentID)
 	if !ok {
 		return AttachmentActionResult{}, fmt.Errorf("附件不存在或已过期")
+	}
+
+	// 幂等复用：受管副本仍在盘 → 直接再次打开；已被外部清理则回落到下载路径补齐。
+	if path, ok := s.attachments.openedPath(attachmentID); ok {
+		if err := openFileHandler(path); err != nil {
+			return AttachmentActionResult{Path: path}, fmt.Errorf("文件已下载到 %s，但打开失败: %w", path, err)
+		}
+		return AttachmentActionResult{Path: path}, nil
 	}
 
 	ctx, cancel := attachmentTimeout()
@@ -649,16 +668,13 @@ func (s *WechatService) OpenInboundFile(attachmentID string) (AttachmentActionRe
 		return AttachmentActionResult{}, err
 	}
 
-	dir, err := os.MkdirTemp("", "hanxi-wechat-")
+	target, err := s.attachments.stageOpenedFile(attachmentID, attachment.FileName, data)
 	if err != nil {
-		return AttachmentActionResult{}, fmt.Errorf("创建临时目录失败: %w", err)
-	}
-	target := filepath.Join(dir, attachment.FileName)
-	if err := writeFileAtomically(target, data); err != nil {
-		os.RemoveAll(dir)
 		return AttachmentActionResult{}, err
 	}
-	if err := openAttachmentFile(target); err != nil {
+	if err := openFileHandler(target); err != nil {
+		// 回执语义如实：此刻 target 确实在盘（留待用户按路径自取），
+		// 且已登记受管——最终随注册项淘汰或服务销毁回收，不是又一处散 Temp。
 		return AttachmentActionResult{Path: target}, fmt.Errorf("文件已下载到 %s，但打开失败: %w", target, err)
 	}
 	return AttachmentActionResult{Path: target}, nil

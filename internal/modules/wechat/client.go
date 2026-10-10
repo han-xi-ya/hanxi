@@ -23,6 +23,38 @@ const (
 	defaultChanVer  = "2.4.6"
 )
 
+// API JSON 响应体的读取与报错口径：
+//   - maxAPIResponseBytes（8MB）：baseURL 是用户可自定义的网关，本模块按信任处理该
+//     地址，但其响应体量不受信——异常/恶意网关回超大数据即可经无界 io.ReadAll 打爆
+//     内存。正常 iLink 响应（含长轮询整包消息）远小于此，超限一律视为协议异常拒绝，
+//     与 CDN 下载侧 maxInboundAttachmentSize 同口径设硬上限。
+//   - maxErrorBodyBytes（512B）：状态码异常与反序列化失败两处错误文本都引用响应原文
+//     做诊断，响应会整份进 error 与 toast，必须截断到可读长度。
+const (
+	maxAPIResponseBytes = 8 << 20
+	maxErrorBodyBytes   = 512
+)
+
+// readAPIBody 封顶读取 API 响应体：多读 1 字节用于判别"恰好达到上限"与"确已超限"。
+func readAPIBody(body io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, maxAPIResponseBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxAPIResponseBytes {
+		return nil, fmt.Errorf("api response exceeds %d MB cap", maxAPIResponseBytes>>20)
+	}
+	return data, nil
+}
+
+// truncateForError 把响应体压进可进错误文本/提示的长度，超限部分以如实标记替代。
+func truncateForError(data []byte) string {
+	if len(data) <= maxErrorBodyBytes {
+		return string(data)
+	}
+	return fmt.Sprintf("%s... [truncated, %d bytes total]", data[:maxErrorBodyBytes], len(data))
+}
+
 // BaseInfo 微信 iLink 基础载荷
 type BaseInfo struct {
 	ChannelVersion string `json:"channel_version"`
@@ -120,18 +152,18 @@ func (c *Client) post(ctx context.Context, endpoint string, botToken string, bod
 	}
 	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, err := readAPIBody(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read response from %s failed: %w", endpoint, err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("http post %s returned status %d: %s", endpoint, resp.StatusCode, string(respBytes))
+		return fmt.Errorf("http post %s returned status %d: %s", endpoint, resp.StatusCode, truncateForError(respBytes))
 	}
 
 	if respOut != nil && len(respBytes) > 0 {
 		if err := json.Unmarshal(respBytes, respOut); err != nil {
-			return fmt.Errorf("unmarshal response from %s failed: %w, raw: %s", endpoint, err, string(respBytes))
+			return fmt.Errorf("unmarshal response from %s failed: %w, raw: %s", endpoint, err, truncateForError(respBytes))
 		}
 	}
 
@@ -158,18 +190,18 @@ func (c *Client) get(ctx context.Context, endpoint string, botToken string, resp
 	}
 	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, err := readAPIBody(resp.Body)
 	if err != nil {
 		return fmt.Errorf("read response from %s failed: %w", endpoint, err)
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("http get %s returned status %d: %s", endpoint, resp.StatusCode, string(respBytes))
+		return fmt.Errorf("http get %s returned status %d: %s", endpoint, resp.StatusCode, truncateForError(respBytes))
 	}
 
 	if respOut != nil && len(respBytes) > 0 {
 		if err := json.Unmarshal(respBytes, respOut); err != nil {
-			return fmt.Errorf("unmarshal response from %s failed: %w, raw: %s", endpoint, err, string(respBytes))
+			return fmt.Errorf("unmarshal response from %s failed: %w, raw: %s", endpoint, err, truncateForError(respBytes))
 		}
 	}
 

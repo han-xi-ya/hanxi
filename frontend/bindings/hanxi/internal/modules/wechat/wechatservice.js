@@ -103,7 +103,11 @@ export function ListAccounts() {
 }
 
 /**
- * OpenInboundFile 下载微信入站文件到临时目录，并用系统默认程序打开。
+ * OpenInboundFile 下载微信入站文件到受管临时目录，并用系统默认程序打开。
+ * 明文副本收口进 attachmentStore 单一受管目录并与注册项同生命周期（TTL 过期、
+ * 条数/副本数淘汰、deleteAccount、Destroy 均回收），修复历史版本"每次调用散建
+ * 一个 MkdirTemp 且成功路径永不回收，每点一次打开就在 %TEMP% 留一份聊天明文"
+ * 的泄露。同一附件重复打开幂等复用已落盘副本，不再重复下载。
  * @param {string} attachmentID
  * @returns {$CancellablePromise<$models.AttachmentActionResult>}
  */
