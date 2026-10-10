@@ -11,8 +11,10 @@ import * as $models from "./models.js";
 
 /**
  * ControlOutcome 打开窗口操作的执行结果说明。
- * Paseo 唤窗分三档：直唤已有窗（focused）、无窗时二次拉起请求开新窗
- * （messenger，上游 second-instance = openAdditional 语义）、冷启动（started）。
+ * Paseo 唤窗分档：直唤已有窗（focused / external-focused）、自有实例无窗时
+ * 二次拉起请求开新窗（messenger，上游 second-instance = openAdditional 语义）、
+ * 外部实例无可聚焦窗（external-unreachable，如实指引，绝不代拉进程/新窗）、
+ * 冷启动（started）。
  * @typedef {$models.ControlOutcome} ControlOutcome
  */
 
