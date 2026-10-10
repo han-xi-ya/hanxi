@@ -2,8 +2,10 @@ package publicip
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os/exec"
@@ -33,7 +35,9 @@ type NetworkOverview struct {
 
 // PublicIPService 公网/局域网信息聚合服务。
 // 对上游查询源做进程内 TTL 缓存（RWMutex 读写锁）：TTL 内的重复请求直接回吐 cachedData，
-// 前端轮询不放大外部请求量；缓存含部分失败结果（某源挂掉不会立即重查）。
+// 前端轮询不放大外部请求量；缓存含部分失败结果（某源挂掉不会立即重查），
+// 但 IPv4/IPv6 两族全源皆败的"空结果"不写缓存——失败不配被钉死 2 分钟，
+// 下一次调用照常重试（2026-09-27 缺陷修复：此前吞错并缓存空结果，前端持续空显）。
 // 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
 type PublicIPService struct {
 	plat   platform.Platform
@@ -83,7 +87,18 @@ var (
 	ipRegex = regexp.MustCompile(`(?:[0-9]{1,3}\.){3}[0-9]{1,3}`)
 )
 
-// GetNetworkOverview 获取完整的出口公网 IP、局域网 IP、网关与 DNS 列表（2分钟内直接命中缓存）
+// GetNetworkOverview 获取完整的出口公网 IP、局域网 IP、网关与 DNS 列表（2分钟内直接命中缓存）。
+//
+// 全源失败如实上报口径（2026-09-27 缺陷修复）：此前 IPv4 六源 + IPv6 四源全部失败时
+// 吞掉各源错误、不打日志、返回零值"成功"并把空结果写进缓存——前端空显且 2 分钟内
+// 重进仍读空缓存。现改为：
+//   - 每个源的最后一次错误都保留并以 slog.Warn 落日志（errors.Join 聚合，可定位"哪个源怎么挂的"）；
+//   - 两族全挂 → 返回错误（前端既有 catch 路径如实显示"获取网络配置信息失败"），且**不写缓存**，
+//     下一次调用正常重试；
+//   - 任一族成功即视为正常结果并缓存（家宽普遍无 IPv6，v6 全挂属常态而非故障——该情形只按
+//     Info 级留痕；反之 v4 全挂仅 v6 命中按 Warn 留痕）。NetworkOverview 字段与 JSON 形态不变，
+//     前端沿用"publicIpv6 为空即未获得"的既有表达，不新增协议字段。
+//   - 网卡枚举失败不升级为整体错误（本地详情与出网探测正交），单独 slog.Warn 留痕。
 func (s *PublicIPService) GetNetworkOverview(forceRefresh bool) (NetworkOverview, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -108,50 +123,94 @@ func (s *PublicIPService) GetNetworkOverview(forceRefresh bool) (NetworkOverview
 	var wg sync.WaitGroup
 	wg.Add(3)
 
+	// 三个 goroutine 各写独立的字段与独立的错误变量，互不重叠，wg.Wait 建立可见性
+	var v4Err, v6Err, adaptersErr error
+
 	// 1. 探测公网 IPv4
 	go func() {
 		defer wg.Done()
-		for _, url := range ipv4Providers {
-			ip, err := s.fetchIP(url, 4)
-			if err == nil && ip != "" {
-				overview.PublicIPv4 = ip
-				overview.SourceV4 = url
-				break
-			}
+		ip, source, err := s.fetchFamily(ipv4Providers, 4)
+		if err != nil {
+			v4Err = err
+			return
 		}
+		overview.PublicIPv4 = ip
+		overview.SourceV4 = source
 	}()
 
 	// 2. 探测公网 IPv6
 	go func() {
 		defer wg.Done()
-		for _, url := range ipv6Providers {
-			ip, err := s.fetchIP(url, 6)
-			if err == nil && ip != "" {
-				overview.PublicIPv6 = ip
-				overview.SourceV6 = url
-				break
-			}
+		ip, source, err := s.fetchFamily(ipv6Providers, 6)
+		if err != nil {
+			v6Err = err
+			return
 		}
+		overview.PublicIPv6 = ip
+		overview.SourceV6 = source
 	}()
 
 	// 3. 读取底层全部网卡、网关、DNS、临时 IPv6 详细信息
 	go func() {
 		defer wg.Done()
 		adapters, err := s.plat.Network().Adapters()
-		if err == nil {
-			overview.Adapters = adapters
+		if err != nil {
+			adaptersErr = err
+			return
 		}
+		overview.Adapters = adapters
 	}()
 
 	wg.Wait()
 
-	// 写入缓存
+	if adaptersErr != nil {
+		slog.Warn("publicip: 网卡枚举失败（本次本机详情缺省）", "err", adaptersErr)
+	}
+
+	// 2. 两族全挂：如实上报错误，不写缓存（失败结果入缓存会把空展示钉死 2 分钟）
+	if v4Err != nil && v6Err != nil {
+		allErr := errors.Join(v4Err, v6Err)
+		slog.Warn("publicip: 公网 IP 探测全源失败（IPv4+IPv6），已如实上报且不写入缓存", "err", allErr)
+		return NetworkOverview{}, fmt.Errorf("公网 IP 探测全部失败: %w", allErr)
+	}
+
+	// 单族失败只留痕不报错：v6 无属常态（Info），v4 无属值得警惕（Warn）
+	switch {
+	case v6Err != nil:
+		slog.Info("publicip: IPv6 全源探测失败（未开通/被拦截属常态，前端按空值表达未获得）", "err", v6Err)
+	case v4Err != nil:
+		slog.Warn("publicip: IPv4 全源探测失败（仅 IPv6 命中的降级成功）", "err", v4Err)
+	}
+
+	// 3. 写入缓存（成功或单族成功的降级结果）
 	s.cacheMu.Lock()
 	s.cachedData = overview
 	s.cachedTime = time.Now()
 	s.cacheMu.Unlock()
 
 	return overview, nil
+}
+
+// fetchFamily 顺序轮询同族全部查询源，首个成功即返回其 IP 与来源 URL；
+// 全源皆败时把每个源的错误（含源 URL）以 errors.Join 聚合返回——绝不静默吞错。
+func (s *PublicIPService) fetchFamily(providers []string, family int) (ip, source string, err error) {
+	var errs []error
+	for _, url := range providers {
+		got, err := s.fetchIP(url, family)
+		if err == nil && got != "" {
+			return got, url, nil
+		}
+		if err == nil {
+			err = errors.New("返回空结果")
+		}
+		errs = append(errs, fmt.Errorf("%s: %w", url, err))
+	}
+	joined := errors.Join(errs...)
+	if joined == nil {
+		// 防御：源列表为空同样按失败上报，绝不回 nil 错误+空 IP 的"假成功"
+		joined = errors.New("该族未配置任何查询源")
+	}
+	return "", "", joined
 }
 
 func (s *PublicIPService) fetchIP(targetURL string, expectFamily int) (string, error) {
@@ -203,12 +262,16 @@ func (s *PublicIPService) fetchIP(targetURL string, expectFamily int) (string, e
 
 // PingResult 单次 Ping 的返回结果
 type PingResult struct {
-	Seq      int     `json:"seq"`
-	IP       string  `json:"ip"`
-	RTTMs    float64 `json:"rttMs"`
-	Success  bool    `json:"success"`
-	TTL      int     `json:"ttl"`
-	ErrorMsg string  `json:"errorMsg"`
+	Seq     int     `json:"seq"`
+	IP      string  `json:"ip"`
+	RTTMs   float64 `json:"rttMs"`
+	Success bool    `json:"success"`
+	// TTL 生存时间：platform 层 Ping 契约只回 RTT 不回 TTL，如实置零；
+	// 配 omitempty 使零值不出现在 JSON——前端 TTL 列成功行留白而非显示编造的
+	// "64" 或误导性的 "0"（2026-09-27 修复：删除此前硬编码 res.TTL = 64）。
+	// 升级路径见 PingTarget 内 TODO(波2)。
+	TTL      int    `json:"ttl,omitempty"`
+	ErrorMsg string `json:"errorMsg"`
 }
 
 // PingSummary Ping 统计概要
@@ -287,7 +350,9 @@ func (s *PublicIPService) PingTarget(target string, count int) (PingSummary, err
 		} else if ok {
 			res.Success = true
 			res.RTTMs = float64(rtt.Microseconds()) / 1000.0
-			res.TTL = 64
+			// TTL 不编数：此前硬编码 res.TTL = 64，platform Ping 根本不回 TTL，
+			// UI 呈现"实测 TTL 64"违反"不猜不编"口径（2026-09-27 修复，如实置零）。
+			// TODO(波2): platform.NetworkAPI.Ping 扩为返回实测 TTL 后，在此回填真值。
 			summary.Received++
 			totalRTT += res.RTTMs
 

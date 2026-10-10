@@ -34,7 +34,7 @@ import * as platform$0 from "../../platform/models.js";
  * @property {string} ip
  * @property {number} rttMs
  * @property {boolean} success
- * @property {number} ttl
+ * @property {number} [ttl] - TTL 生存时间：platform 层 Ping 契约只回 RTT 不回 TTL，如实置零； 配 omitempty 使零值不出现在 JSON——前端 TTL 列成功行留白而非显示编造的 "64" 或误导性的 "0"（2026-09-27 修复：删除此前硬编码 res.TTL = 64）。 升级路径见 PingTarget 内 TODO(波2)。
  * @property {string} errorMsg
  */
 

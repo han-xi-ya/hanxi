@@ -5,7 +5,9 @@
 /**
  * PublicIPService 公网/局域网信息聚合服务。
  * 对上游查询源做进程内 TTL 缓存（RWMutex 读写锁）：TTL 内的重复请求直接回吐 cachedData，
- * 前端轮询不放大外部请求量；缓存含部分失败结果（某源挂掉不会立即重查）。
+ * 前端轮询不放大外部请求量；缓存含部分失败结果（某源挂掉不会立即重查），
+ * 但 IPv4/IPv6 两族全源皆败的"空结果"不写缓存——失败不配被钉死 2 分钟，
+ * 下一次调用照常重试（2026-09-27 缺陷修复：此前吞错并缓存空结果，前端持续空显）。
  * 所有业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
  * @module
  */
@@ -19,7 +21,18 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * GetNetworkOverview 获取完整的出口公网 IP、局域网 IP、网关与 DNS 列表（2分钟内直接命中缓存）
+ * GetNetworkOverview 获取完整的出口公网 IP、局域网 IP、网关与 DNS 列表（2分钟内直接命中缓存）。
+ * 
+ * 全源失败如实上报口径（2026-09-27 缺陷修复）：此前 IPv4 六源 + IPv6 四源全部失败时
+ * 吞掉各源错误、不打日志、返回零值"成功"并把空结果写进缓存——前端空显且 2 分钟内
+ * 重进仍读空缓存。现改为：
+ *   - 每个源的最后一次错误都保留并以 slog.Warn 落日志（errors.Join 聚合，可定位"哪个源怎么挂的"）；
+ *   - 两族全挂 → 返回错误（前端既有 catch 路径如实显示"获取网络配置信息失败"），且**不写缓存**，
+ *     下一次调用正常重试；
+ *   - 任一族成功即视为正常结果并缓存（家宽普遍无 IPv6，v6 全挂属常态而非故障——该情形只按
+ *     Info 级留痕；反之 v4 全挂仅 v6 命中按 Warn 留痕）。NetworkOverview 字段与 JSON 形态不变，
+ *     前端沿用"publicIpv6 为空即未获得"的既有表达，不新增协议字段。
+ *   - 网卡枚举失败不升级为整体错误（本地详情与出网探测正交），单独 slog.Warn 留痕。
  * @param {boolean} forceRefresh
  * @returns {$CancellablePromise<$models.NetworkOverview>}
  */
