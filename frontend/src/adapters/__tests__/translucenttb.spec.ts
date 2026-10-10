@@ -12,7 +12,10 @@
 //  - 2026-09-27 机主实证三件套：孤儿数据档归因判据（isMsixOrphanAttribution）
 //    与清理钮双闸（失败归因 × orphans 探测）、cleanOrphan 确认/回执/拒动透传、
 //    msix-progress 事件入 ref 且动词落定即清、banner external 分形态
-//    （打包版在册=「已由 Hanxi 唤起」ok 档；未装/预读缺席保守回原文案）。
+//    （打包版在册=「已由 Hanxi 唤起」ok 档；未装/预读缺席保守回原文案）；
+//  - 2026-09-27 批次二：msixProbeOf 预读三态判据（P1-10）与 dangerBusy 同 ref
+//    联动（P1-5），forceQuitExternal 确认/成败/被拒三分支（机主裁决件），
+//    banner external warn 文案改口点名「⛔ 强制结束」。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createTBAdapter,
@@ -20,6 +23,7 @@ import {
   isAVCrash,
   isMsixOrphanAttribution,
   detectVirtualArtifacts,
+  msixProbeOf,
   pickAVProbe,
   virtualArtifactWording,
   cmpTBVersion,
@@ -53,6 +57,8 @@ const svc = vi.hoisted(() => ({
   RemoveMsixCache: vi.fn(),
   LaunchMsix: vi.fn(),
   CleanMsixOrphan: vi.fn(),
+  // 批次二新 RPC（bindings 待再生，spec 全 mock 顶替）
+  ForceQuitExternal: vi.fn(),
 }))
 
 const sysinfo = vi.hoisted(() => ({ GetReport: vi.fn() }))
@@ -570,21 +576,94 @@ describe('banner external 分形态（2026-09-27 机主实拍改判）', () => {
     expect(b?.text).not.toContain('非 Hanxi 托管')
   })
 
-  it('external + 打包版未装 → 原外部便携实例 warn 话术逐字', async () => {
+  it('external + 打包版未装 → warn 话术点名「⛔ 强制结束」（批次二改口）', async () => {
     svc.GetMsixState.mockResolvedValue({ installed: false, version: '', packageFamily: 'f', cache: [] })
     const a = createTBAdapter()
     await a.msix.refresh()
     const b = a.banner!(extSnap, emptyCtx)
     expect(b?.tone).toBe('warn')
-    expect(b?.text).toBe('检测到外部 TranslucentTB 实例（非 Hanxi 托管）。可重设任务栏状态；如需彻底退出请在 TranslucentTB 托盘菜单操作。')
+    expect(b?.text).toBe(
+      '检测到外部 TranslucentTB 实例（非 Hanxi 拉起）。可重设任务栏状态；如需彻底退出可用「⛔ 强制结束」直接终止（不保存其未落盘设置，成败由系统权限决定），或在其 TranslucentTB 托盘菜单优雅退出。',
+    )
   })
 
-  it('external + 预读未回/失败（state=null）→ 保守回原文案（不臆断来源）', async () => {
+  it('external + 预读未回/失败（state=null）→ 保守回 warn 文案（不臆断来源）', async () => {
     svc.GetMsixState.mockRejectedValue(new Error('Appx 包状态查询失败'))
     const a = createTBAdapter()
     await a.msix.refresh()
     const b = a.banner!(extSnap, emptyCtx)
     expect(b?.tone).toBe('warn')
-    expect(b?.text).toContain('非 Hanxi 托管')
+    expect(b?.text).toContain('非 Hanxi 拉起')
+  })
+})
+
+describe('msixProbeOf 与 msix.probe（P1-10 预读三态判据）', () => {
+  it('null=unknown、installed=检出、未装=absent（纯函数）', () => {
+    expect(msixProbeOf(null)).toBe('unknown')
+    expect(msixProbeOf({ installed: true, version: '2026.2', packageFamily: 'f', cache: [] })).toBe('installed')
+    expect(msixProbeOf({ installed: false, version: '', packageFamily: 'f', cache: [] })).toBe('absent')
+  })
+  it('probe 随 refresh 翻转；读失败落 unknown 且 unavailable 单独置真（两事实分流）', async () => {
+    svc.GetMsixState.mockResolvedValue({ installed: false, version: '', packageFamily: 'f', cache: [] })
+    const a = createTBAdapter()
+    expect(a.msix.probe.value).toBe('unknown') // 未读回
+    await a.msix.refresh()
+    expect(a.msix.probe.value).toBe('absent')
+    svc.GetMsixState.mockRejectedValue(new Error('Appx 包状态查询失败'))
+    await a.msix.refresh()
+    expect(a.msix.probe.value).toBe('unknown')
+    expect(a.msix.unavailable.value).toBe(true)
+  })
+})
+
+describe('dangerBusy 联动（P1-5）与 forceQuitExternal（机主裁决件）', () => {
+  it('adapter.dangerBusy 与 msix.busy 是同一 ref；动词在途真、落定假', async () => {
+    svc.GetMsixState.mockResolvedValue({ installed: false, version: '', packageFamily: 'f', cache: [] })
+    let settle: (v: undefined) => void = () => {}
+    svc.InstallMsix.mockImplementation(() => new Promise<void>((res) => { settle = res }))
+    const a = createTBAdapter()
+    expect(a.dangerBusy).toBe(a.msix.busy) // 同一 ref，不是影子布尔
+    expect(a.dangerBusy!.value).toBe(false)
+    const inflight = a.msix.probeInstall('2026.2')
+    expect(a.dangerBusy!.value).toBe(true)
+    settle(undefined)
+    await inflight
+    expect(a.dangerBusy!.value).toBe(false)
+  })
+
+  it('forceQuitExternal：danger 确认如实预告（不保存设置/系统权限决定），取消零 RPC；确认→message 透传', async () => {
+    svc.ForceQuitExternal.mockResolvedValue({ stopped: true, external: true, message: '已强制结束 1 个外部 TranslucentTB 实例，任务栏已还原默认外观' })
+    const a = createTBAdapter()
+
+    ui.confirm.mockResolvedValue(false)
+    expect(await a.forceQuitExternal()).toEqual({})
+    expect(svc.ForceQuitExternal).not.toHaveBeenCalled()
+
+    ui.confirm.mockResolvedValue(true)
+    const res = await a.forceQuitExternal()
+    const opts = ui.confirm.mock.calls[ui.confirm.mock.calls.length - 1][0]
+    expect(opts.title).toBe('强制结束外部 TranslucentTB 实例？')
+    expect(opts.tone).toBe('danger')
+    expect(opts.confirmLabel).toBe('强制结束')
+    expect(opts.description).toContain('非 Hanxi 拉起')
+    expect(opts.description).toContain('不会保存其未落盘设置')
+    expect(opts.description).toContain('系统')
+    expect(svc.ForceQuitExternal).toHaveBeenCalledTimes(1)
+    expect(res.message).toBe('已强制结束 1 个外部 TranslucentTB 实例，任务栏已还原默认外观')
+  })
+
+  it('forceQuitExternal 被系统拒绝：错误原样上抛交视图裸串 toast；在途 dangerBusy 闩住', async () => {
+    let reject: (e: Error) => void = () => {}
+    svc.ForceQuitExternal.mockImplementation(
+      () => new Promise<never>((_, rej) => { reject = rej }),
+    )
+    const a = createTBAdapter()
+    ui.confirm.mockResolvedValue(true)
+    const inflight = a.forceQuitExternal()
+    await flush() // 放行 confirm 微任务链，进入 RPC 在途段
+    expect(a.dangerBusy!.value).toBe(true)
+    reject(new Error('1 个外部 TranslucentTB 实例的结束被系统权限拒绝（access denied）：该实例非 hanxi 拉起、结束由系统权限决定——可在其托盘菜单手动优雅退出，或以更高权限重试'))
+    await expect(inflight).rejects.toThrow('系统权限')
+    expect(a.dangerBusy!.value).toBe(false)
   })
 })
