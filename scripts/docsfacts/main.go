@@ -277,10 +277,16 @@ func CheckMarkdownStructure(root string, docs []string) []string {
 		for _, raw := range linkRe.FindAllStringSubmatch(text, -1) {
 			target := strings.Fields(raw[1])[0] // Markdown URL 遇空格即止（N27 断链病根）
 			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") ||
-				strings.HasPrefix(target, "#") || !strings.HasSuffix(target, ".md") {
+				strings.HasPrefix(target, "mailto:") || strings.HasPrefix(target, "#") {
 				continue
 			}
 			target = strings.SplitN(target, "#", 2)[0]
+			// 2026-10-12 从"仅 .md"放宽为"任意带扩展名的相对目标"：本轮修掉的
+			// themes/README-v1.md → gen-palettes.mjs 断链正属同类，只管 .md 会漏整族。
+			// 无扩展名者（纯锚、目录、运行时路径）一律跳过，避免误报。
+			if !hasFileExt(target) {
+				continue
+			}
 			// 必须锚到 root：`go test` 的 cwd 是包目录而非仓库根，若按 cwd 解析相对
 			// 路径，`../MOTIVATION.md` 这类本来正确的链接会被误判成断链。
 			if !isAbsExist(filepath.Join(root, base, filepath.FromSlash(target))) {
@@ -418,6 +424,24 @@ func isDir(p string) bool {
 func isAbsExist(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// hasFileExt 判断链接目标是否"看起来指向一个文件"（末段带 1–5 位字母/数字扩展名）。
+// 刻意不用"含点即文件"：`../build` 之类目录、`v1.0` 式版本引用、以及无扩展名的
+// 锚点都会被误判，闸门宁可漏报也不误报——误报一多，人就会开始无视它。
+func hasFileExt(s string) bool {
+	ext := filepath.Ext(s)
+	if len(ext) < 2 || len(ext) > 6 {
+		return false
+	}
+	for _, r := range ext[1:] {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func containsAny(line string, subs []string) bool {
