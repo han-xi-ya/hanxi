@@ -1,7 +1,8 @@
 # Hanxi 开发里程碑与执行现状
 
-> **版本**：v1.5  
-> **更新日期**：2026-09-17  
+> **版本**：v1.6  
+> **更新日期**：2026-09-17（2026-10-12 对账订正轮：M5/M9/§2 的 Gonmap 假声明两处、托管 25→31 并补名单六款、模块注册 41→49 双口径、九件套旧快照加订正帽、653 测试数归位为当时值）  
+> **本档边界如实声明**：里程碑表止于 **M11**，其后的 Wave 0–5 契约批、N 系复进日新增（N1–N45）、九件套之后的全部动作**没有 M12+ 条目**——标题"执行现状"对这段时期名不副实，现行进度账请看 `docs/plans/PLAN_REMAINING_WORK.md`（唯一复入口）与 `docs/BACKLOG.md`，本档只作 M0–M11 的里程碑史账。  
 > **目标平台**：Windows 10 (22H2+) / Windows 11 x64  
 
 ---
@@ -15,11 +16,11 @@
 | **M2: 网络诊断与局域网** | 出口 IP/IPv6 查询、网卡拓扑透视、ICMP Ping、Traceroute、LAN 设备发现 | 🟢 已达成 | `internal/modules/publicip`、`internal/modules/lan` |
 | **M3: 端口查杀与安全提权** | IP Helper 端口占有表、进程指纹防误杀复核、Windows 原生 UAC 提权 | 🟢 已达成 | `internal/modules/portkill`、UAC 提权模式 |
 | **M4: frpc 多实例工具** | 多实例并发、TOML生成、版本管理与重试、DPAPI 凭据加密、连接状态嗅探 | 🟢 已达成 | `internal/modules/frpc` |
-| **M5: 扩展生态与工具套件** | 微信机器人助手、Gonmap 端口服务指纹扫描、内置日志查看器 | 🟢 已达成 | `modules/wechat`、`modules/portscan`、日志查看器 |
+| **M5: 扩展生态与工具套件** | 微信机器人助手、端口服务指纹扫描（**自研 banner 级**，2026-10-12 订正：原记"Gonmap"与实现不符，仓内无该引擎、`go.mod` 无 nmap 依赖）、内置日志查看器 | 🟢 已达成 | `modules/wechat`、`modules/portscan`、日志查看器 |
 | **M6: 极致优化与便携交付** | 按需懒加载零开销架构、关闭最小化托盘常驻、单二进制构建 | 🟢 已达成 | `bin/hanxi.exe`、零内存泄漏保证 |
 | **M7: 桌面协同与局域网套件** | WiFi 密码查看、局域网文件快传、随手记（快传联动）、全局通知中心、品牌断代迁移 | 🟢 已达成 | `modules/wifi`、`modules/fileshare`、`modules/memo`、`internal/notify`、`internal/product` |
 | **M8: 开发环境检测增强** | Git/Go/Node/Java/Python/.NET 工具链盘点、官网最新版本通道（按本机版本线置顶）、包管理器升级提示、资源管理器定位安装路径、.NET 并排安装与官方支持线 | 🟢 已达成 | `modules/envcheck`（模块版本 0.5.0）、前端环境页 |
-| **M9: 开源工具托管生态** | 托管模式框架化（`version/`+`instance/` 三件套）并规模化至 25 款桌面工具（含 `douzy` 仅版本+下载的特例形态）；安装布局矩阵（zip/MSI 管理提取/NSIS 静默/MSIX/AppInstaller/单文件下载即安装/MSI 安装版双形态）；唤窗与退出治理矩阵（含多实例上游进程名探测契约、退出三态如实上报无强杀兜底形态）；第三方许可合规登记 | 🟢 已达成 | `modules/{markeron,everything,ccswitch,snipaste,nanazip,eartrumpet,mangodisk,bcu,flclash,recordly,papertodo,piclite,keyviz,quicklook,litemonitor,guoheview,ddnsgo,rustdesk,subnetdesk,rufus,bili23,vscode,translucenttb,paseo,douzy}`、`platform/apppackage` |
+| **M9: 开源工具托管生态** | 托管模式框架化（`version/`+`instance/` 三件套）并规模化至 31 款桌面工具（2026-10-12 对账：原记 25 系 windterm/termora/rammap/piik/dbx/gonavi 六款入库前的时点值；特例形态由一条补全为四条——`douzy` 仅版本+下载、`nanazip` MSIX 安装管理型、`eartrumpet` 只纳管官方直装渠道且不属 hosted-versions 计数、`piik` headless 服务型骨架）；安装布局矩阵（zip/MSI 管理提取/NSIS 静默/MSIX/AppInstaller/单文件下载即安装/MSI 安装版双形态）；唤窗与退出治理矩阵（含多实例上游进程名探测契约、退出三态如实上报无强杀兜底形态）；第三方许可合规登记 | 🟢 已达成 | `modules/{markeron,everything,ccswitch,snipaste,nanazip,eartrumpet,mangodisk,bcu,flclash,recordly,papertodo,piclite,keyviz,quicklook,litemonitor,guoheview,ddnsgo,rustdesk,subnetdesk,rufus,bili23,vscode,translucenttb,paseo,douzy,windterm,termora,rammap,piik,dbx,gonavi}`（末六款为 2026-10-12 对账补列，此前名单漏记而模块早已入库）、`platform/apppackage` |
 | **M10: 系统就绪与桌面效率** | WSL2 十项流式只读体检与三态结论（根因诊断"硬件不满足 vs API 被拦"、双源降级）、安装形态取证与正规卸载、白名单固定参数提权通道；Quicker 式右键长按快捷菜单（低级鼠标钩子吞/放策略、frameless 弹窗 DIP 钳位）；全托管模块"随 Hanxi 关闭"默认翻转为关（Detached 独立运行） | 🟢 已达成 | `modules/wsl`（`netx`+`readiness`+`releases` 子包）、`modules/quickmenu`（`mousetrap` 子包） |
 | **M11: WSL 发行版运维工作台** | 发行版六操作之上补齐：只读取证抽屉（VHDX 双口径/稀疏/df/IPv4，停止不误启动）、克隆快路径（拷 VHDX+`--import --vhd` 进度事件）、tar 导入面、/etc/wsl.conf 图形编辑（语法闸门+引用校验+写前备份+复验）、VHDX 三级瘦身工作流（强制备份/Tier1 Optimize-VHD/Tier2 重导入）、NAT 端口转发账本（netsh 批量单 UAC、IP 漂移重同步、外部转发不触碰）；收敛半成品（摘除 GetReadiness 死绑定、导出格式选择与多工件登记） | 🟢 已达成 | `modules/wsl`（`distro.go`/`forensics.go`/`clone.go`/`wslconf.go`/`compact.go`/`portproxy.go`） |
 
@@ -39,7 +40,7 @@
 
 ### 2.2 系统与网络工具 (M2, M3, M5)
 - [x] 微信机器人助手（二维码扫码登录、AES 加密通信、长轮询、图文/文件推送、多账号）
-- [x] 端口扫描与服务指纹探测（高并发探测、Gonmap 协议与 Nginx/Redis/MySQL 指纹识别）
+- [x] 端口扫描与服务指纹探测（高并发探测、自研 banner 级协议与 Nginx/Redis/MySQL 指纹识别——原写「Gonmap 协议」经仓内核实无该引擎（portscan 仅 6 文件、go.mod 无 nmap 依赖），2026-10-12 订正；同源表述仍在 `module.go` Description→catalog→前端 Info，代码侧另行批次）
 - [x] 端口占用快速定位与三级安全释放（原生 UAC 提权支持）
 - [x] 局域网活跃设备扫描（CIDR 探测、MAC 匹配、OUI 厂商识别、设备备注）
 - [x] 公网 IPv4/IPv6 探测、网卡拓扑透视、ICMP Ping 统计、Traceroute 路由追踪
@@ -51,7 +52,7 @@
 - [x] 关闭主窗口自动最小化到托盘配置
 - [x] Windows 注册表开机自启动管理
 - [x] 数据根策略：同级默认 + 绑定（F6）——默认落 exe 同级 `hanxidata/`（无则自动创建），可经 exe 同级 `hanxi.bind` 显式绑定其他位置；不可用时 fail loud 引导绑定，`%APPDATA%` 兜底与旧 `data/` 兼容均已退役（定稿见 `docs/plans/PLAN_PATHS.md`）
-- [x] `extapi` 按需懒加载架构（未启用模块 0 内存与 0 协程占用，41 模块统一注册：40 常驻 + memo 条件项，2026-09-18 九件套后按 app.go 实数核）
+- [x] `extapi` 按需懒加载架构（未启用模块 0 内存与 0 协程占用，**49 模块统一注册**：47 常驻 + `memo`/`clipboard` 两条件项——2026-10-12 按 `internal/app/app.go` `modulesToRegister` 与 `catalog.go` 双口径复核；本行原记「41 模块：40 常驻 + memo 条件项，2026-09-18 九件套后按 app.go 实数核」是当时时点值，此后 clipboard/piik/dbx/gonavi 陆续入册，旧数已列入史链不再当现状读）
 - [x] 全局分级通知中心（事件汇聚、历史查询、已读管理）
 - [x] 局域网零客户端文件快传（扫码投递、文本联动随手记）
 
@@ -94,7 +95,7 @@
 - [x] 半成品收敛：`GetReadiness` 死绑定摘除（同步通道从未接线）、`WSLView.spec` stale mock 清理
 - [x] 优化批次：克隆目标卷空间预检；MSI 下载/克隆全程可取消、瘦身备份/停机段可取消（动盘段拒绝并说明中间态风险）；wsl.conf 读写以开机探针+`test -f` 退出码断存在性（消灭跨语言文案猜测，堵住"停止实例跳过备份直接 tee"的丢数据路径）；瘦身备份目录可指空闲卷；端口转发默认 127.0.0.1+曝光警示、IP 并行探测、应用/清理挂重操作闸、账本损坏逃生口；wsl.conf 保存后一键终止生效引导
 - [x] 网络模式三件套：`~/.wslconfig` networkingMode 检测（取证/转发页徽标，mirrored 明示 localhost 直通）；.wslconfig 全文编辑器（语法闸门 + networkingMode 白名单 + 备份 + 原子写复核）；`ShutdownWsl` 全停通道（重操作闸）与保存后生效引导
-- [x] 测试面：Go 新增 45+ 用例（命令面形态锁、白名单矩阵、三级流程事件序、备份失败零销毁断言），`WSLView.spec` 21→29 例；全仓 653 前端测试通过
+- [x] 测试面：Go 新增 45+ 用例（命令面形态锁、白名单矩阵、三级流程事件序、备份失败零销毁断言），`WSLView.spec` 21→29 例；当时全仓 653 前端测试通过（2026-10-12 现值：**167 spec 文件 / 2111 用例**，`vitest run` 实跑复核）
 
 ---
 
@@ -134,5 +135,7 @@
 ## 4. 待实现功能（跟踪账本已迁出）
 
 > 自 2026-09-17 起，待实现功能/修项的**执行跟踪唯一账本**为 **`docs/BACKLOG.md`**——已排期九件套（F6 数据目录同级化改造[建议首批] / F1 统一历史 / F2 剪贴板 / F3 快照 / F4 MCP / F5 软件版本检测 / F7 hanxi-ocr 托管化双引擎 zip 分发[后厨+主仓两端] / F8 桌面留言板 / F9 WSL USB 共享管理，均 2026-09-17 登记拍板）、随批修项核销与未排期候选池（devkit 批次、本体自更新等）均在其中，避免与本节双写漂移。
-> **九件套实际进度（2026-09-17 wave 三，详账见 `docs/PROGRESS.md`）**：已入库五件——F1 统一历史 / F2 剪贴板惯例 / F3 数据自动快照（含 memo 文件库化）/ F4 MCP 接入（F4a 无头 server + F4b 安装向导 + 「AI 接入」设置分区；剩 C9 三客户端真机红队闸门）/ F8 桌面留言板；随批修 S0-S2 与 R1 已清、R3（go.mod 离线绕行 replace 复核撤除）已随 #62 补记收口、R4（PLAN_MCP 落地回写）随 C10 交付，R2（安装前自检接线）进行中。开发中四件：F5 软件版本检测 / F6 数据目录同级化 / F7 hanxi-ocr 托管化 / F9 WSL USB 共享。
+> **九件套实际进度（2026-09-17 wave 三，详账见 `docs/PROGRESS.md`）**：
+>
+> ⚠ **本段系"当时快照"，2026-10-12 订正：九件套 9/9 已全部入库**——F5 `d79f235`、F6 `8ba24bd`（解析链 `e3e703b`→`31504bf` 六笔，`hanxi.bind` 现行模型即其产物）、F7 `aee1119`（`4aaa56c`→`e4be184` 六子步）、F9 `91f5ce3`、R2 `eee224a`+`a468341`+`2bf043f`；BACKLOG 对应条目均已 🟢，与 `docs/PROGRESS.md`「9/9 全部入库」一致。**本段下方「开发中四件 F5/F6/F7/F9」「R2 进行中」是被后续提交推翻的旧态，保留仅为史链，勿当现状读**。已入库五件——F1 统一历史 / F2 剪贴板惯例 / F3 数据自动快照（含 memo 文件库化）/ F4 MCP 接入（F4a 无头 server + F4b 安装向导 + 「AI 接入」设置分区；剩 C9 三客户端真机红队闸门）/ F8 桌面留言板；随批修 S0-S2 与 R1 已清、R3（go.mod 离线绕行 replace 复核撤除）已随 #62 补记收口、R4（PLAN_MCP 落地回写）随 C10 交付，R2（安装前自检接线）进行中。开发中四件：F5 软件版本检测 / F6 数据目录同级化 / F7 hanxi-ocr 托管化 / F9 WSL USB 共享。
 > 本文档只保留里程碑视角：已完成清单见 §1-§2，存量质量债见 §3；各功能方案与拍板裁定见 `docs/plans/PLAN_*.md` 末尾"决策回写"。

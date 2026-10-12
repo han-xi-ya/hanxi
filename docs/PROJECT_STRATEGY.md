@@ -3,7 +3,7 @@
 > **文档状态**：战略基线  
 > **战略周期**：2026-09 至 2027-09  
 > **复审周期**：每季度，或重大架构决策后  
-> **当前代码基线**：45 个业务模块（自建/托管拆分详见 PRD §2，名单尚未同步复审不预记数）（2026-09-25 对表：`internal/app/app.go` `modulesToRegister` 44 项 + memo 条件注册 = 45；前记 37（12 自建 + 25 托管，2026-09-16 对表：与 `internal/modules/` 目录及 PRD §2.1/§2.2 一致）未跟进 ocr / msgboard / webapp / softver / sysinfo / windterm / termora / rammap 入册；再往前 35/12/23 为 Paseo/抖音下载器集成前基线，27/10/17 为 WSL 重整前基线）  
+> **当前代码基线**：**49 个业务模块**（自建/托管拆分详见 PRD §2.1/§2.2；2026-10-12 对表：`internal/app/app.go` `modulesToRegister` 47 常驻 + `memo`/`clipboard` 两条件项 = 49，与 `internal/app/catalog.go` 生成物、`scripts/fixture/module_catalog.json` 冻结基线三向互证，托管侧 `hosted-versions` 能力计 **31 款**。前记 45（2026-09-25 对表：`modulesToRegister` 44 项 + memo 条件注册）未跟进 clipboard / piik / dbx / gonavi 入册；再前 37（12 自建 + 25 托管，2026-09-16 对表：与 `internal/modules/` 目录及 PRD §2.1/§2.2 一致）未跟进 ocr / msgboard / webapp / softver / sysinfo / windterm / termora / rammap 入册；再往前 35/12/23 为 Paseo/抖音下载器集成前基线，27/10/17 为 WSL 重整前基线）  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64
 
 本文档定义 Hanxi 后续发展的产品边界、目标架构、技术优先级和决策标准。它不是现有文档的重复版本：
@@ -29,7 +29,7 @@ Hanxi 已经完成“验证多种 Windows 工具可以被统一接入”的阶�
 2. 架构文档中的“零开销、权限白名单、外部插件”部分领先于真实实现；
 3. 安全与发布基线存在明确缺口，继续扩量会放大维护和供应链风险；
 4. 用户能进入每个模块，但缺少全局运行、更新、异常和最近任务视角；
-5. 前端仍以静态视图表和扁平侧边栏组织模块，接近可维护性上限。
+5. 前端组织方式已**部分收束**（2026-10-12 订正，原句「仍以静态视图表和扁平侧边栏组织模块，接近可维护性上限」滞后于本档 :91 自己的注记，属同文自我矛盾）：三份路由清单已收编为 `constants/navigation.ts` 单一来源、视图异步化、侧栏由后端注册表投影动态驱动（Wave 0–5S 另立模块中心一级入口 + 按需懒加载），内核亦已下沉 `packages/go` **八件**（artifact / dirstats / externalquit / hostfeed / netx / operation / peicon / supervisor，2026-10-12 实目录核得——初稿曾据旧账写"五件"，属订正过程新引入的错误，已按实况改正）；**真残余**是消费侧委托面未齐——ManagedConsoleShell 壳收编、UiModal、可访问性散点仍在账上，故"接近上限"的判断已不适用，应改述为"结构性收编已过大半，剩专属动作与组件面长尾"。
 
 因此，下一阶段应从**工具扩量**转为**平台收束**。
 
@@ -73,10 +73,10 @@ Hanxi 的差异化不在于“内置多少按钮”，而在于以下五项控�
 - `internal/modules/<tool>` 采用纵向模块切片，复杂托管工具基本形成 `module + version + instance` 结构；
 - `internal/platform/windows` 已沉淀 JobObject、DPAPI、进程指纹、端口/网卡、快捷方式和 Appx 等原语；
 - Wails 类型化绑定将 Vue 视图与 Go Service 连接起来；
-- 后端测试资产较丰富，当前有 163 个 Go 测试文件（2026-09-16 对表），覆盖版本、实例、存储、平台和网络边界；
+- 后端测试资产较丰富，**386 个 Go 测试文件**（`internal/` 下，2026-10-12 实测 `git ls-files`；全仓含 `packages/cmd/scripts` 为 403），前端 **167 个 spec / 2111 用例**全绿——原记「163 个（2026-09-16 对表）」是时点值，两个多月内翻了 2.4 倍；覆盖版本、实例、存储、平台和网络边界；
 - CI、Release、便携包和 SHA256 清单已有基本骨架。
 
-其中，**进程治理、版本隔离、Windows 原生能力和便携模式**是最值得继续强化的资产。
+其中，**进程治理、版本隔离、Windows 原生能力和可携带数据根**是最值得继续强化的资产（2026-10-12 措辞订正：原列"便携模式"——F6 已裁定「绿色免安装 / Portable 不再是一种模式」，同级即唯一存在方式，故改述为"可携带数据根（exe 同级默认 + `hanxi.bind` 显式绑定）"，见 `internal/settings/paths.go` 与 `docs/BACKLOG.md` F6 条）。
 
 ### 2.2 当前不是“开放插件系统”
 
