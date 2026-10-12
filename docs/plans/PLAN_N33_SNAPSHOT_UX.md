@@ -89,7 +89,7 @@
 |---|---|---|
 | `memo/<id>.md` → 便签标题 | frontmatter 现成 `title:` 行（`filestore.go:35` EncodeMemo / `:90` Decode 认该 key），**盘上与历史 blob 里都自带**，零新账本。快照侧新增 `SetMemoTitleResolver(func(relPath) (title string, ok bool))` 装配根注入（与 `SetMemoRestorer` 完全同款 DI 先例，app.go:606），避免 snapshot→memo 包引用 | ✅ 可行。已删便签的标题：blob 还在 git 里，diff RPC 返回的旧文本人话解析即可，无需落任何新账 |
 | `config.json` → "工作台设置" | 静态单行 | ✅ 可行 |
-| `state/<name>.json` → 模块中文名 | 各模块 `module.go` 的 `ModuleInfo.ID/Name`（如 memo=「极客随手记」、frpc=「frpc 联调」、quickmenu=「快捷菜单」）——装配根经 `registry.List()` 可得，注入快照侧或前端映射表。**例外清单（实扫 state/ 文件名 33 个 json 标签所得，不可纯约定推导）**：`projects.json`→frpc（frpc store 落盘名不是模块 ID）；`wsl-portproxy/wsl-install-pref/wsl-usbipd.json` 三文件→一个 WSL2 模块；`history.json`→统一历史（公共件非模块）；`memo.json`→旧库回落脚本（正常不存在，出现时兜底显示"便签旧库"） | ✅ 可行，代价 = 一张 ~5 行的例外表。其余 27 个 `<id>.json` 按约定命中 |
+| `state/<name>.json` → 模块中文名 | 各模块 `module.go` 的 `ModuleInfo.ID/Name`（如 memo=「随手记」，2026-10-12 订正：原称「极客随手记」已随 `c0da60d` 全链更名，此处照旧名会指向一个已不存在的模块名、frpc=「frpc 联调」、quickmenu=「快捷菜单」）——装配根经 `registry.List()` 可得，注入快照侧或前端映射表。**例外清单（实扫 state/ 文件名 33 个 json 标签所得，不可纯约定推导）**：`projects.json`→frpc（frpc store 落盘名不是模块 ID）；`wsl-portproxy/wsl-install-pref/wsl-usbipd.json` 三文件→一个 WSL2 模块；`history.json`→统一历史（公共件非模块）；`memo.json`→旧库回落脚本（正常不存在，出现时兜底显示"便签旧库"） | ✅ 可行，代价 = 一张 ~5 行的例外表。其余 27 个 `<id>.json` 按约定命中 |
 | `config.json` 内部 key → 中文 | **无现成通路**：全部设置项中文名以模板文案散在各设置分区 .vue 里，无机器可读注册表 | ❌ 不可行（零改动前提下）。需要新账本件：一份**前端 top-level key → 中文名映射表**（AppSettings 顶层实读约 17 个键：theme/accent/language/autoStart/minimizeToTray/logRetainDays/modules/lanRemarks/trayMenu/quickMenuTwoTier/historyOcrFullText/wechat/wechatAccounts/webAppEntries/snapshot 等）。嵌套数组（trayMenu 条目、webAppEntries 等）**不做逐项名**，摘要计数化（§5）；此表放前端（贴近文案源、随设置分区演进顺手改），Go 端不复制 |
 
 ## 3. 新增 RPC 面（增量、不破坏既有契约）

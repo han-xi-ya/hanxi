@@ -40,7 +40,7 @@
 
 ### 2.2 系统与网络工具 (M2, M3, M5)
 - [x] 微信机器人助手（二维码扫码登录、AES 加密通信、长轮询、图文/文件推送、多账号）
-- [x] 端口扫描与服务指纹探测（高并发探测、自研 banner 级协议与 Nginx/Redis/MySQL 指纹识别——原写「Gonmap 协议」经仓内核实无该引擎（portscan 仅 6 文件、go.mod 无 nmap 依赖），2026-10-12 订正；同源表述仍在 `module.go` Description→catalog→前端 Info，代码侧另行批次）
+- [x] 端口扫描与服务指纹探测（高并发探测、自研 banner 级协议与 Nginx/Redis/MySQL 指纹识别——原写「Gonmap 协议」经仓内核实无该引擎（portscan 仅 6 文件、go.mod 无 nmap 依赖），2026-10-12 订正；同源表述仍在 `module.go` Description→catalog→前端 Info，代码侧已随 `ee7fd0d` 订正（Description + cataloggen 再生））
 - [x] 端口占用快速定位与三级安全释放（原生 UAC 提权支持）
 - [x] 局域网活跃设备扫描（CIDR 探测、MAC 匹配、OUI 厂商识别、设备备注）
 - [x] 公网 IPv4/IPv6 探测、网卡拓扑透视、ICMP Ping 统计、Traceroute 路由追踪

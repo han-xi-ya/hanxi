@@ -213,14 +213,14 @@
 
 **防复发**：`scripts/docsfacts` + `scripts/fixture/doc_facts.json` + `docs/FACTS.md` 单一事实源（`b033c21`）。代码现推 ↔ 冻结基线 ↔ 活文档三向锁，含禁词表、正向断言、断链与表格列数检查；测试在 `./scripts/docsfacts` 包内，故既有 CI 的 `go test ./...` 一步自然覆盖，另于 `Taskfile.yml` 加 `verify:docs` 并入聚合。**反向验证已做**：把 README 的 31 改回旧值 28，禁词与断言双路同时报警，恢复后复绿——不是空转闸门。上电首跑即抓到本档 8 行表格畸形（另含 1 处自身误报：表格检查原先不认标准转义 `\|`，已修；以及一处只有 `go test` 才暴露的真 bug：链接检查按 cwd 相对路径 stat，会把 `../MOTIVATION.md` 误判断链，现锚定仓库根）。
 
-**本批刻意未做（如实留账）**：
-- **portscan 假声明的源头仍在代码里**——`internal/modules/portscan/module.go` 的 `Description` 仍写"集成 Nmap 深度服务指纹识别"，经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板。订正它需同改 module.go + 跑 `go run ./scripts/cataloggen` 再生两份产物，属代码改动，**不混入文档提交**，故列为复进第 2 步。
-- `docs/plans/PLAN_N33_SNAPSHOT_UX.md` 正文一处仍用 memo 旧称「极客随手记」（`c0da60d` 已全链更名为「随手记」），本轮未逐字核改，留作待办。
-- `docs/design/themes/README-v1.md` 链向 `gen-palettes.mjs`（实为 `-v1/-v2` 两名），属非 `.md` 链接，闸门当前不覆盖，留作待办。
+**同批追加完成（同日第二幕，代码一笔 + 文档回收）**：对账轮登记时留的三条尾巴已全部收掉——
+- ✅ **portscan 假声明源头已连根订正**（`ee7fd0d`，本登记唯一含代码改动的一笔）：`module.go` 的 `Description` 由「集成 Nmap 深度服务指纹识别」改为「自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）」，包注释补一段诚实边界（记历史口径、点名失真链 `module.go→cataloggen→catalog→前端 Info`、写"勿再回写旧口径"），并跑 `go run ./scripts/cataloggen` 再生 `catalog.go` + `module_catalog.json` 两份产物。之所以先文档后代码而非一把揉：文档笔与代码笔的验证面不同（代码要跑契约测试），分开可各自回退。README/PRD/DEVPLAN 里"代码侧另行批次"三句已同步回收，`docs/FACTS.md` §三 由"在册欠账"改为"已订正留档"。
+- ✅ `PLAN_N33_SNAPSHOT_UX.md` 一处 memo 旧称「极客随手记」已改为现名并注更名号 `c0da60d`。
+- ✅ `themes/README-v1.md` 断链已修（`gen-palettes.mjs` → 实际存在的 `-v1/-v2`），并把闸门的链接检查从"仅 `.md`"放宽为任意带扩展名的相对目标，这类病从此自动受检（全仓普查确认当前仅此一处，扩展不会造成一片红）。
 
 ## 复进顺序（2026-10-12 现行，取代上方「复进建议顺序」）
 
 1. 跑 [REAL_DEVICE_ACCEPTANCE_2026-09-25](REAL_DEVICE_ACCEPTANCE_2026-09-25.md) 真机验收族——最便宜的债，且卡着 N1/N2/N3/N18/N33 等一片"待复验"；
-2. 清 portscan Nmap 源头（`module.go` Description + `cataloggen` 再生 + 前端 Info 口径），文档已先行勘误，代码别再拖着；
+2. ~~清 portscan Nmap 源头~~ ✅ 已于同日完成（`ee7fd0d`：Description 改述 + cataloggen 再生 + Info 口径同步，README/PRD/DEVPLAN 的"代码侧另行批次"三句已回收）——于是第 1 条真机验收就是当前第一优先；
 3. 机主拍板族一次性过一轮（`Inter-Medium.ttf`、N37 三处、F7 三件、CI `-race` 授权、19:02 产物换机）；
 4. 工程欠账族按"可自主推进"顺序挑（雷达缺席四家、N22 宣传推广、N13 W6 五源注记、N16 纯模糊匹配 + `memo:changed` 游标、chip 五份副本 / 浅底输入 / 模态焦点陷阱、N33 AtPath 改名）。

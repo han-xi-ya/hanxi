@@ -39,7 +39,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | :--- | :--- | :--- | :--- |
 | **frpc 穿透管理** | `frpc` | 多实例并发、全协议与 Visitor 支持、配置可视化 ⇋ TOML 双向同步、`frp://` 链接一键分享、批量端口映射导入、官方/镜像版本下载与本地导入、日志实时嗅探 | DPAPI 凭据加密、JobObject 绑定、临时 TOML 自动清理 |
 | **微信机器人** | `wechat` | iLink 协议扫码登录、多账号会话保持、长轮询事件监听、图文/文件/Markdown 多模态加密推送、入站文件落盘 | AES 密钥加密传输、启动预激活常驻监听 |
-| **端口扫描** | `portscan` | 高并发 TCP 探测、**自研 banner 级服务指纹识别**（抓取服务横幅后按内置特征表判协议类型、组件版本 Nginx/MySQL/Redis 等与 Web 状态）、SOCKS5/HTTP 代理扫描、常用端口预设、结果流式渲染、按任务取消。**2026-10-12 勘误**：本行原写「Gonmap 深度协议指纹识别」，经仓内核实**不存在该引擎**（`internal/modules/portscan/` 仅 6 文件、`go.mod` 无 nmap 类依赖），属"文案超前于实现"（`docs/FEATURES_OVERVIEW.md` 早已点名）；其源头是 `internal/modules/portscan/module.go` 的模块 Description，经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板——代码侧订正另行批次，本批只正文档 | 并发限流与超时熔断控制；扫描属主动出网动作，结果含网络拓扑信息 |
+| **端口扫描** | `portscan` | 高并发 TCP 探测、**自研 banner 级服务指纹识别**（抓取服务横幅后按内置特征表判协议类型、组件版本 Nginx/MySQL/Redis 等与 Web 状态）、SOCKS5/HTTP 代理扫描、常用端口预设、结果流式渲染、按任务取消。**2026-10-12 勘误**：本行原写「Gonmap 深度协议指纹识别」，经仓内核实**不存在该引擎**（`internal/modules/portscan/` 仅 6 文件、`go.mod` 无 nmap 类依赖），属"文案超前于实现"（`docs/FEATURES_OVERVIEW.md` 早已点名）；其源头是 `internal/modules/portscan/module.go` 的模块 Description，经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板——代码侧已随 `ee7fd0d` 订正（Description + cataloggen 再生 + Info 口径同步），本批只正文档 | 并发限流与超时熔断控制；扫描属主动出网动作，结果含网络拓扑信息 |
 | **端口查杀** | `portkill` | IP Helper 快速查占用、进程身份三重复核（PID+启动时间+路径）、一键释放 | Windows `ShellExecuteEx(runas)` 原生 UAC 按需提权 |
 | **局域网扫描** | `lan` | IPv4 `/24` 自动探测、ICMP Echo 存活扫描、ARP/邻居表读取、MAC 厂商 OUI 识别、设备备注 | 只读网络枚举、取消上下文感知 |
 | **网络诊断** | `publicip` | 双栈公网 IP 查询、网卡拓扑透视、ICMP Ping 稳定性统计、Traceroute 路由追踪 | 原生 API、无黑窗口静默调用 |

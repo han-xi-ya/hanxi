@@ -32,16 +32,17 @@
 2. **图标数 ≠ 托管款数**：28 枚是"图标资产入库"口径（含 `frpc`/`ddnsgo` 等 48px 封顶件，不含 `recordly`/`vscode`/`rammap` 等许可受限不入库件）。
 3. **版本号的三处硬编码**：权威是 `internal/product/identity.go`；`build/config.yml`、`build/windows/info.json`、`build/windows/msix/app_manifest.xml` 需人工同步；`frontend/package.json` 的 `0.0.0` 是 npm 占位，**不是**版本源。git tag 目前只到 `v0.2.0`——这是发布节奏事实，**不是**文档错误，任何文档笔都不得把 0.3.0 改掉。
 
-## 三、已知不诚实项（挂账，未随文档笔混改）
+## 三、已订正的不诚实项（留档，防回写）
 
-- **portscan 服务指纹**：`internal/modules/portscan/module.go:37` 的 `Description` 仍写「集成 Nmap 深度服务指纹识别」，经 `cataloggen` 流入 `internal/app/catalog.go:369`、`scripts/fixture/module_catalog.json:753` 与前端 Info 面板。仓内**无** Nmap/gonmap 引擎、`go.mod` 无相关依赖，实为自研 banner 级探测。文档侧（README/PRD/DEVPLAN）已于 2026-10-12 勘误并明写"代码侧另行批次"；**这条是本表唯一"代码与事实不符"的在册欠账**，订正它需要同改 module.go + `go run ./scripts/cataloggen` 再生，属代码改动，不混入文档提交。
+- **portscan 服务指纹（2026-10-12 已连根订正，`ee7fd0d`）**：`internal/modules/portscan/module.go` 的 `Description` 曾写「集成 Nmap 深度服务指纹识别」、包注释曾写「可选 Nmap 深度指纹」，而仓内**无** Nmap/gonmap 引擎、`go.mod` 无相关依赖——真实实现是 `scanner.go` 的 `lightweightProbe`（主动握手 + 被动 Banner 抓取覆盖 SSH/FTP/SMTP/MySQL/Redis，另作 HTTP 头部识别）。该句经 `cataloggen` 流入 `internal/app/catalog.go`、`scripts/fixture/module_catalog.json` 与前端 Info 面板，**光改 README/PRD/DEVPLAN 挡不住对外失真**，故本轮先正文档、随即补正代码源头并再生两份产物。
+- 现口径：「自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）」。**若有人照旧文档把它改回"集成 Nmap"，包注释里的诚实边界段与 `docs/FEATURES_OVERVIEW.md` 的原始点名即是反证**；本表不再有任何"代码与事实不符"的在册欠账。
 
 ## 四、闸门能力边界（如实说明，不夸大）
 
 `go test ./scripts/docsfacts`（已并入 `go test ./...`，CI 零新步骤）能抓：
 
 - ✅ 上述计数在**活文档**里被写成旧值（禁词表命中即红，附现值与出处）；
-- ✅ 活文档相对链接指向不存在的 `.md`（断链）；
+- ✅ 活文档里指向不存在文件的相对链接（断链）——2026-10-12 起从仅 `.md` **放宽为任意带扩展名的相对目标**（`gen-palettes.mjs` 那类脚本/图片链接同受检；无扩展名的锚与目录一律跳过，宁可漏报也不误报，否则人一多就开始无视它）；
 - ✅ Markdown 表格行列数与表头不一致（畸形表格）；
 - ✅ 代码事实变了但 `scripts/fixture/doc_facts.json` 未再生（现推 ↔ 冻结基线双向锁）。
 

@@ -41,7 +41,7 @@
 
 #### 3. 🔎 端口扫描与服务指纹识别 (PortScan)
 - **高并发端口探测**：支持单端口、连续区间（`8000-8080`）、离散列表与常用预设（Web开发/数据库/TOP 100/系统保留端口）。
-- **服务指纹与 Banner 识别**：自研 banner 级探测——抓取服务横幅后按内置特征表识别协议类型、组件版本（Nginx/OpenSSH/MySQL/Redis 等）与 Web 状态，支持 SOCKS5/HTTP 代理扫描与按任务取消。**2026-10-12 勘误**：本行原写"集成纯 Go Nmap 探针引擎（`gonmap`）"，与实现不符——仓内无该引擎、`go.mod` 无相关依赖（该失真由 `docs/FEATURES_OVERVIEW.md` 点名"文案超前于实现"；其源头是 `internal/modules/portscan/module.go` 的模块 Description 经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板，代码侧订正另行批次处理，本批只正文档）。
+- **服务指纹与 Banner 识别**：自研 banner 级探测——抓取服务横幅后按内置特征表识别协议类型、组件版本（Nginx/OpenSSH/MySQL/Redis 等）与 Web 状态，支持 SOCKS5/HTTP 代理扫描与按任务取消。**2026-10-12 勘误**：本行原写"集成纯 Go Nmap 探针引擎（`gonmap`）"，与实现不符——仓内无该引擎、`go.mod` 无相关依赖（该失真由 `docs/FEATURES_OVERVIEW.md` 点名"文案超前于实现"；其源头是 `internal/modules/portscan/module.go` 的模块 Description 经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板，代码侧已随 `ee7fd0d` 同步订正：`module.go` 的 Description 改述为「自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）」并跑 `go run ./scripts/cataloggen` 再生 catalog 与 fixture，前端 Info 面板自此同步）。
 - **快捷联动操作**：Web 端口浏览器一键直达，支持全量开放端口一键复制与结果流式实时渲染。
 
 #### 4. 🎯 端口占用精准排查与一键释放 (PortKill)

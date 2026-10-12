@@ -59,7 +59,7 @@
 | ink | 浅 14.6 · 深 9.1 | 浅 14.6 · 深 9.2 | 16.4 · 14.8 | 5.1 · 7.3 | 3.3 · 4.7 |
 | onyx | 浅 6.1 · 深 5.0 | 浅 6.1 · 深 5.7 | 21.0 · 19.6 | 9.5 · 12.1 | 6.7 · 9.1 |
 
-数值生成器：[`gen-palettes.mjs`](gen-palettes.mjs)（`node gen-palettes.mjs`，改色相/饱和度乘数即可再生成全套并复验）。
+数值生成器：[`gen-palettes-v1.mjs`](gen-palettes-v1.mjs)（`node gen-palettes-v1.mjs`，改色相/饱和度乘数即可再生成全套并复验）。2026-10-12 修断链：此处原链 `gen-palettes.mjs`，该文件名不存在——脚本按版本分作 `gen-palettes-v1.mjs`（本 v1 档对应）与 `gen-palettes-v2.mjs`（现行 OKLCH 生成器，见 [`README.md`](README.md)）。
 
 ## 4. 落地方案建议（确认色板后再实施）
 
