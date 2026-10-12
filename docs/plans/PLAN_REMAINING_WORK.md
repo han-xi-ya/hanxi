@@ -198,3 +198,29 @@
 4. P1-2/3 真机与黄金路径验收;
 5. P2 文档漂移随各批提交顺带收口;P3 视意愿插空恢复。
 6. P4 复进日新增项按上方"P4 执行波次排序"W1→W7 执行,真机类(W2/F10)并段验收。
+
+---
+
+## 2026-10-12 对账轮登记（文档全面订正，代码零改动）
+
+静置 13 天后复进，第一件事不是写码而是**把文档拉回与代码一致**（本轮 11 笔，全部 `docs`/`chore`）：
+
+**实测基准**（本批逐项实跑核对，不沿用旧账；权威源与复核命令见 `docs/FACTS.md`）：catalog **49** 模块 = `modulesToRegister` 47 常驻 + `memo`/`clipboard` 两条件项；托管 `hosted-versions` **31** 款 / `managed-process` 30 项；委托面 `import artifact` **26** 家、`import supervisor` **23** 家（bespoke 名单实扫补 `piik`，原名单漏列）；MCP **12 工具 / 10 授权键**（不是"四个只读工具"）；前端 **167 spec / 2111 用例**；Go 测试文件 `internal/` **386**（全仓 403）；`gofmt -l internal/` 零输出、ESLint 0 error·9 warnings、`vue-tsc --noEmit` 0、`go test ./...` 全绿；`product.Version=0.3.0` 而 tag 仅 `v0.2.0`——**这是发布节奏事实，不是文档错误，任何文档笔都不得把 0.3.0 改掉**。
+
+**硬错误（描述不存在的东西／与代码相反）四处**：① README/PRD/DEVPLAN 宣称"集成纯 Go Nmap 探针引擎（gonmap）"，仓内无该引擎、`go.mod` 无 nmap 依赖，实为自研 banner 级探测（`bd189a4`→`9efeb5b`/`ea6cdb3`/`3509ff6` 勘误）；② `ARCHITECTURE.md` 数据根段与 `paths.go` 逐点相反，整段重写（`d4c598b`）；③ `FRONTEND.md` 声称机检基线是"41 项"，而 `contract-enum.spec.ts:114` 实际断言 49——文档落后于校验它的测试（`7a75bc0`）；④ `THIRD_PARTY_NOTICES` 缺 piik/dbx/gonavi/windterm/termora/rammap 六节，其中 piik 一笔被 `PLAN_PIIK_HOSTING` §13 明令写入并注"实际写入留总闸"，总闸入库却漏执行（`bd189a4` 偿清）。
+
+**状态与口径**：本档五处过期状态头销账 + N4 双 cell 与 N27 断链根除（`04ecf7a`/`7c02b3d`）；PROGRESS 与本文的双复入口冲突按机主裁决定分工，PROGRESS 退回九件套过程账（`e4e53c5`）；八份已执行完毕却仍写"待拍板/待排期"的专项计划补终态帽，防止下次把活重做一遍（`d5c8acc`）。
+
+**防复发**：`scripts/docsfacts` + `scripts/fixture/doc_facts.json` + `docs/FACTS.md` 单一事实源（`b033c21`）。代码现推 ↔ 冻结基线 ↔ 活文档三向锁，含禁词表、正向断言、断链与表格列数检查；测试在 `./scripts/docsfacts` 包内，故既有 CI 的 `go test ./...` 一步自然覆盖，另于 `Taskfile.yml` 加 `verify:docs` 并入聚合。**反向验证已做**：把 README 的 31 改回旧值 28，禁词与断言双路同时报警，恢复后复绿——不是空转闸门。上电首跑即抓到本档 8 行表格畸形（另含 1 处自身误报：表格检查原先不认标准转义 `\|`，已修；以及一处只有 `go test` 才暴露的真 bug：链接检查按 cwd 相对路径 stat，会把 `../MOTIVATION.md` 误判断链，现锚定仓库根）。
+
+**本批刻意未做（如实留账）**：
+- **portscan 假声明的源头仍在代码里**——`internal/modules/portscan/module.go` 的 `Description` 仍写"集成 Nmap 深度服务指纹识别"，经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板。订正它需同改 module.go + 跑 `go run ./scripts/cataloggen` 再生两份产物，属代码改动，**不混入文档提交**，故列为复进第 2 步。
+- `docs/plans/PLAN_N33_SNAPSHOT_UX.md` 正文一处仍用 memo 旧称「极客随手记」（`c0da60d` 已全链更名为「随手记」），本轮未逐字核改，留作待办。
+- `docs/design/themes/README-v1.md` 链向 `gen-palettes.mjs`（实为 `-v1/-v2` 两名），属非 `.md` 链接，闸门当前不覆盖，留作待办。
+
+## 复进顺序（2026-10-12 现行，取代上方「复进建议顺序」）
+
+1. 跑 [REAL_DEVICE_ACCEPTANCE_2026-09-25](REAL_DEVICE_ACCEPTANCE_2026-09-25.md) 真机验收族——最便宜的债，且卡着 N1/N2/N3/N18/N33 等一片"待复验"；
+2. 清 portscan Nmap 源头（`module.go` Description + `cataloggen` 再生 + 前端 Info 口径），文档已先行勘误，代码别再拖着；
+3. 机主拍板族一次性过一轮（`Inter-Medium.ttf`、N37 三处、F7 三件、CI `-race` 授权、19:02 产物换机）；
+4. 工程欠账族按"可自主推进"顺序挑（雷达缺席四家、N22 宣传推广、N13 W6 五源注记、N16 纯模糊匹配 + `memo:changed` 游标、chip 五份副本 / 浅底输入 / 模态焦点陷阱、N33 AtPath 改名）。
