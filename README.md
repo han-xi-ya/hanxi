@@ -1,9 +1,9 @@
 # Hanxi
 
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
-> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、抖音下载器等 28 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
+> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、剪贴板历史、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、Piik 屏幕分享、DBX/GoNavi 数据库客户端、抖音下载器等 31 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
-> **v0.3.0 品牌断代**：产品标识、进程名和数据之家已切换为 Hanxi，不读取旧版数据、自启项或单实例标识（数据根现行模型见「绿色便携」节：exe 同级 `hanxidata/` 默认 + `hanxi.bind` 显式绑定）。
+> **v0.3.0 品牌断代**：产品标识、进程名和数据之家已切换为 Hanxi，不读取旧版数据、自启项或单实例标识（数据根现行模型：exe 同级 `hanxidata/` 默认 + `hanxi.bind` 显式绑定，**"便携/标准"双模式判定已整体退役**，权威语义见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 持久化一节与 [docs/PRD.md](docs/PRD.md)）。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-%E2%89%A51.26-00ADD8?logo=go)](https://go.dev/)
@@ -41,7 +41,7 @@
 
 #### 3. 🔎 端口扫描与服务指纹识别 (PortScan)
 - **高并发端口探测**：支持单端口、连续区间（`8000-8080`）、离散列表与常用预设（Web开发/数据库/TOP 100/系统保留端口）。
-- **Nmap 深度指纹识别**：集成纯 Go Nmap 探针引擎（`gonmap`），自动识别协议类型、组件版本（Nginx/OpenSSH/MySQL/Redis 等）与 Web 状态。
+- **服务指纹与 Banner 识别**：自研 banner 级探测——抓取服务横幅后按内置特征表识别协议类型、组件版本（Nginx/OpenSSH/MySQL/Redis 等）与 Web 状态，支持 SOCKS5/HTTP 代理扫描与按任务取消。**2026-10-12 勘误**：本行原写"集成纯 Go Nmap 探针引擎（`gonmap`）"，与实现不符——仓内无该引擎、`go.mod` 无相关依赖（该失真由 `docs/FEATURES_OVERVIEW.md` 点名"文案超前于实现"；其源头是 `internal/modules/portscan/module.go` 的模块 Description 经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板，代码侧订正另行批次处理，本批只正文档）。
 - **快捷联动操作**：Web 端口浏览器一键直达，支持全量开放端口一键复制与结果流式实时渲染。
 
 #### 4. 🎯 端口占用精准排查与一键释放 (PortKill)
@@ -93,9 +93,18 @@
 - **普通右键零损失识别**：进程内 `WH_MOUSE_LL` 低级钩子（非注入）采用"吞按下、短按 SendInput 回放"策略，拖拽让位、任务栏矩形旁路；钩子随模块停用/进程退出由系统自动摘除，零残渣。
 - **条目复用托盘配置**：与托盘右键菜单完全共用同一份配置与启动器分发，不新增第二份配置面；弹窗为常驻隐藏单例 frameless 窗口，失焦收起 + 全局点击观察兜底，多显示器/屏幕边缘经物理↔DIP 换算与工作区钳位。
 
+#### 12. 📋 剪贴板历史 (Clipboard)
+
+- **三类全量捕获**：文本 / 图片 / 文件持续监听系统剪贴板入历史，支持关键词与类型/标签检索、去重、置顶。
+- **本机明文落盘（v1.6 机主裁决）**：按裁决**不引 DPAPI 绑定**，明文存储于本机数据根，同时对敏感来源做排除——故本模块如实**不作"加密"承诺**（口径以 `internal/app/catalog.go` 描述为准，曾计划走 DPAPI 的旧表述已随裁决作废）。
+- **容量自钳制**：条目数与体积上限自动淘汰最旧，常驻内存有界，不因高频刷屏无界增长。
+- **全局热键浮层随处选取**：热键唤起独立浮层窗口，在当前应用前直接选取；支持"粘回原窗"，首版回填能力限**文本**（图片/文件条目供检索查看，不回填系统剪贴板——边界如实登记）。
+- **缩略图与工作台观感**：图片条目内联缩略预览，浮层与主界面均按自研工作台标准重做。
+- **AI 接入（MCP 只读检索）**：经 `hanxi_clipboard_search` 提供检索，安全口径为硬约束——命中密钥启发式的条目**整条不下发**且不计入命中数，图片条目只给元数据（不走本通道传内容），所有文本面（摘要/正文/来源/路径）统一行级脱敏（IPv4、邮箱、`password=`/`token=` 赋值与 `sk-`/`ghp_` 类密钥掩码）。
+
 ### 二、第三方桌面工具托管（托管模式）
 
-Hanxi 将 28 款常用开源/免费桌面工具纳入统一管理。除 frpc 等特例外，托管模块共享同一套标准骨架：
+Hanxi 将 31 款常用开源/免费桌面工具纳入统一管理（"款"的口径 = catalog `hosted-versions` 能力计数，判据为模块存在 `version/` 子包，详见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) 头部说明；EarTrumpet 属纳管特例不计入）。除 frpc 等特例外，托管模块共享同一套标准骨架：
 
 - **版本管理**：上游 Releases / 官网清单侦查 → 多层完整性校验（GitHub digest / SHA256SUMS / 官方哈希清单 / 字节数 + PE 版本核对）→ 下载、本地导入与版本删除；
 - **进程托管**：Windows JobObject 绑定的启停引擎、进程枚举/互斥体探测运行态、Win32 唤窗 / 官方单实例命令通道唤起窗口、"跟随 Hanxi 退出"开关（**默认关闭**：Hanxi 退出不影响已托管工具独立运行）、桌面快捷方式创建；
@@ -131,6 +140,9 @@ Hanxi 将 28 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 | **Termora 终端** | TermoraDev/termora | AGPL-3.0/商业双许可 | jpackage 自带 JRE 便携 zip 托管；命名互斥体信使唤窗；全资产 digest 主校验链；2.x 全为 prerelease 如实呈现 |
 | **RAMMap 内存观察** | Microsoft Sysinternals（官方直链，非 GitHub） | 免费试用件（无再分发条款） | 单文件绿色 exe 借用托管骨架：Last-Modified 日期作版本令牌（同址覆盖式发布的唯一诚实语义）、降级三层校验、载荷 manifest 强制管理员走提权三重契约；另提供 hanxi 自研一键清理待机内存（N23，不依赖本工具） |
 | **抖音下载器 Douzy** | jiji262/douyin-downloader | MIT | **仅版本+下载托管的特例**：上游内测期、Electron 壳源码未公开、Windows 仅 NSIS 安装版无便携 zip，故止步于版本列表侦查 → `Douzy-Setup-*.exe` 官方 sha256 + 字节数 + PE 魔数三重校验下载 → 一键拉起上游安装向导，**不接管进程运行**（决策记录见 TROUBLESHOOTING #47） |
+| **Piik 屏幕分享** | TNTcraftHIM/Piik | MIT | **服务型骨架特例**：headless（无窗口、无托盘、无提权），界面即系统浏览器打开的本机 HTTP 页面；JobObject 启停 + 端口试绑分配（8787 被占则 +1，候选上限 8796）；钉版本手动追更，**刻意不挂更新雷达**（上游日更级风暴发布，挂了等于"可用更新"红点天天重亮） |
+| **DBX 数据库客户端** | t8y2/dbx | Apache-2.0 | Tauri 便携 zip 纯托管：注入 `DBX_DATA_DIR` 把数据改道 Hanxi 数据根（跨版本共享、删版本不丢数据），信使无参二次拉起唤窗；完整性只认 GitHub API digest，上游 minisign `.sig` **不消费**（宁拒不猜） |
+| **GoNavi 数据库管理** | Syngnat/GoNavi | Apache-2.0 | Wails 便携 zip 纯托管：数据恒在 `~/.gonavi`，**不**改道、**不**随版本目录隔离（与 DBX 方案相反，各自遵上游形态）；便携态无单实例互斥体，二次拉起即多开，故按进程名 + EnumWindows 直唤，信使路线不存在；摘要双源俱缺的 release 宁拒不猜不入列表 |
 
 ### 三、桌面系统体验与通用设置
 
@@ -139,7 +151,7 @@ Hanxi 将 28 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 - **全局通知中心**：模块下载/实例状态/扫描进度等事件汇聚为分级通知（信息/成功/警告/错误），抽屉式查看与已读管理。
 - **内置运行日志查看器**：提供应用全局运行日志文件列表检索、多行日志实时分页查看与历史日志一键清理（凭据自动脱敏）。
 - **系统快捷直达 (Quick Launch)**：一键打开系统 `hosts` 文件、环境变量配置、网络适配器（`ncpa.cpl`）等。
-- **按需懒加载模块架构**：全部 45 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
+- **按需懒加载模块架构**：全部 49 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
 
 ---
 
@@ -154,7 +166,7 @@ Hanxi 将 28 款常用开源/免费桌面工具纳入统一管理。除 frpc 等
 | **连接感知** | **日志特征词嗅探（毫秒级细粒度状态）** | 仅根据进程存活判定 | 仅根据进程存活判定 |
 | **多实例支持** | **原生支持多项目独立并行运行** | 仅单配置单运行 | 仅单配置运行 |
 | **配置分享** | **`frp://` 链接一键分享 + 批量端口导入** | 部分支持 | 不支持 |
-| **第三方生态** | **28 款桌面工具统一托管**（版本管理+完整性校验+进程监管；抖音下载器为仅版本+下载托管的特例） | 不支持 | 不支持 |
+| **第三方生态** | **31 款桌面工具统一托管**（版本管理+完整性校验+进程监管；特例如实标注——抖音下载器仅版本+下载不接管进程、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型骨架） | 不支持 | 不支持 |
 | **系统集成** | **系统托盘常驻 + 开机自启 + UAC 提权** | 占用大/启动慢 | 功能单一 |
 | **开发者套件** | **环境检测 + 端口扫描 + 局域网快传 + 随手记** | 仅单一功能 | 仅单一功能 |
 
@@ -202,21 +214,29 @@ hanxi/
 ├─ cmd/
 │  └─ hanxi/                    # 应用入口（Main 装配与 UAC 提权模式分流）
 ├─ internal/
-│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、45 模块统一注册)
+│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、49 模块统一注册)
 │  ├─ product/                  # 品牌身份常量（名称/标识/版本/数据目录单一真相源）
 │  ├─ domain/                   # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                   # 模块插件化抽象（Module 契约 / 懒加载注册中心 / 导航与启用状态）
 │  ├─ notify/                   # 全局通知中心（分级通知 Hub 与前端事件推送）
-│  ├─ modules/                  # 45 个功能模块
+│  ├─ modules/                  # 49 个功能模块（自建能力 18 + 工具托管 31，按 catalog 权威计数对账）
 │  │  ├─ 自建能力               # frpc / wechat / portscan / portkill / lan / publicip
 │  │  │                         # / wifi / envcheck / wsl / fileshare / memo / quickmenu
-│  │  │                         # / sysinfo / ocr / softver / webapp / msgboard
+│  │  │                         # / sysinfo / ocr / softver / webapp / msgboard / clipboard
 │  │  └─ 工具托管               # snipaste / everything / quicklook / keyviz / litemonitor
 │  │                            # / ccswitch / markeron / flclash / nanazip / eartrumpet
 │  │                            # / bcu / mangodisk / recordly / papertodo / piclite / guoheview
 │  │                            # / ddnsgo / translucenttb / vscode / rustdesk / subnetdesk
 │  │                            # / rufus / bili23 / paseo / douzy / windterm / termora / rammap
-│  │                            # （托管模块标准形态：version/ 版本管理子包 + instance/ 实例引擎子包）
+│  │                            # / piik / dbx / gonavi
+│  │                            # （托管模块标准形态：version/ 版本管理子包 + instance/ 实例引擎子包；
+│  │                            #   特例如实登记——douzy/nanazip 无 instance（仅版本+安装或 MSIX 纳管）、
+│  │                            #   eartrumpet 无 version（只纳管官方直装渠道）、piik 为 headless 服务型、
+│  │                            #   windterm/termora/rammap 仅转链不打包二进制。
+│  │                            #   ⚠ 本列"31 行"与上文"31 款"是两个不同集合恰好同数：前者按叙述归类
+│  │                            #   （含 eartrumpet、frpc 归自建列），后者按 catalog hosted-versions 能力
+│  │                            #   计数（含 frpc、不含 eartrumpet）。核对时以
+│  │                            #   `go run ./scripts/cataloggen` 的产物为准，勿拿两把尺互证。）
 │  ├─ platform/                 # 平台底层（Windows JobObject / DPAPI / 注册表自启 / IP Helper / Appx 包管理 / Shell 提权）
 │  ├─ logging/                  # slog 结构化日志与凭据自动脱敏
 │  └─ settings/                 # 便携化路径解析与通用设置持久化
