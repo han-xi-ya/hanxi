@@ -1,6 +1,12 @@
 # 第三方软件告知
 
-> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部 25 款托管桌面工具。Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
+> 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部托管桌面工具。
+>
+> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **31 款**（`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 31。
+>
+> 注意别把两把尺混用：下方「托管工具真图标」一节的 **28 枚**是**图标资产**口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件），与本段托管款数无对应关系。
+>
+> Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
 
 ## MangoDisk
 
@@ -191,6 +197,72 @@ Hanxi 纯托管：官方便携 zip 解压进多版本目录（versions/paseo_X.Y
 Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下载，不做进程托管**：上游桌面版尚处内测期、Electron 壳源码未公开、Windows 仅有 NSIS 安装版，三者在"托管启停/探测/唤窗"上都是硬伤，故 Hanxi 只做到 Releases 版本列表侦查 → 官方 sha256 + 字节数 + PE 魔数三重校验下载 → 一键拉起上游 NSIS 安装向导交还用户（集成决策与踩坑详见 docs/TROUBLESHOOTING.md #47）；安装后的运行行为、更新策略与数据目录均由上游本体决定，Hanxi 不修改、不静态链接、不内嵌其源码或二进制。
 
 当前 Hanxi 仓库和安装包不包含 Douzy 任何二进制。若未来改为预装或随 Hanxi 再分发，发布流程须随附 MIT 许可证文本与版权声明，并另行评估内测产品的分发责任。
+
+## Piik（headless 屏幕分享服务器）
+
+- 项目：Piik
+- 上游仓库：https://github.com/TNTcraftHIM/Piik
+- 许可证：MIT（上游仓库 LICENSE；其发布包内另自带 `THIRD-PARTY-NOTICES`）
+- 发行方式：官方 GitHub Releases 按需下载，Hanxi 不搬运、不打包进自身发布物。
+
+Hanxi 采用**服务型骨架**纯托管：headless 形态（无窗口、无托盘、无提权），JobObject 生命周期 + 端口试绑分配（8787 起被占则 +1，候选上限 8796），界面即用户系统浏览器打开的本机 HTTP 页面；钉版本手动追更，**刻意不挂更新雷达**——上游是日更级风暴发布节奏（22 版/14 天实登账），挂上等于「可用更新」红点每天重亮，与本模块「追不追由机主在版本管理页逐条手点」的设计自相矛盾（该负裁决在 `internal/modules/piik/module.go` 包注释显式记账，后人勿当遗漏顺手补 `CheckUpdate`）。其包内自带的 `THIRD-PARTY-NOTICES` 随版本目录原样保留，卸载即随版本目录一并消失，不产生额外处置义务（参照 DBX/CC Switch 口径）。
+
+当前 Hanxi 仓库和安装包不包含 Piik 二进制。若未来改为预装或随 Hanxi 再分发，须随附 MIT 许可证文本与版权声明，并保留其自带的第三方告知文件。
+
+## DBX（Tauri 数据库客户端）
+
+- 项目：DBX
+- 上游仓库：https://github.com/t8y2/dbx
+- 许可证：Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证）
+- 发行方式：官方 GitHub Releases 按需下载 Windows x64 便携 zip，保布局解压隔离安装；Hanxi 不修改、不静态链接、不内嵌其源码或二进制。
+
+完整性信任根为 GitHub API digest 的官方 sha256——上游另发的 minisign `.sig` **不消费**（宁拒不猜）。Hanxi 纯托管不移植代码：JobObject 托管启停，托管启动时注入 `DBX_DATA_DIR` 将数据改道 Hanxi 数据根（跨版本共享、删版本不丢数据），目录内保留上游 `portable.dbx` 标记作数据模式双保险；唤窗走 `tauri-plugin-single-instance` 协议的无参二次拉起（信使通道，与 CC Switch 同族形制）；数据库连接与 SQL 操作全部在 DBX 自有窗口内完成（纯托管决策：其界面即产品价值，且直连用户数据库，由原版实现最稳妥）。
+
+若未来改为预装或随 Hanxi 安装包分发，须随附 Apache-2.0 许可证文本、NOTICE 及上游第三方组件清单。
+
+## GoNavi（Wails 数据库管理工具）
+
+- 项目：GoNavi
+- 上游仓库：https://github.com/Syngnat/GoNavi
+- 许可证：Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证；**非**排期稿所称 MIT，以实查为据）
+- 发行方式：官方 GitHub Releases 按需下载 Windows x64 便携 zip；摘要双源俱缺的 release 宁拒不猜、不入版本列表。
+
+Hanxi 纯托管不移植代码：JobObject 托管启停；唤窗按进程名 + `EnumWindows` 直操作（上游便携态无单实例互斥体，二次拉起即多开，故信使路线不存在）；数据恒在 `~/.gonavi`，托管**不**动用户数据、**不**随版本目录隔离（与 DBX 的改道方案相反，各自遵上游形态）；数据库连接与 SQL 操作全在 GoNavi 自有窗口内完成。
+
+若未来改为预装或随 Hanxi 安装包分发，须随附 Apache-2.0 许可证文本与 NOTICE。
+
+## WindTerm（SSH/Sftp/Shell/Telnet/Serial 终端）
+
+- 项目：WindTerm
+- 上游仓库：https://github.com/kingToolbox/WindTerm
+- 许可证：**仓库根无 LICENSE 文件**，GitHub API license 字段为 `null`；README 自述完全免费（商用/非商用皆可），开源部分（`thirdparty` 除外）称 Apache-2.0——本条许可口径以上游自述为据，按此留痕，不替其补一个未被其仓库佐证的 SPDX 结论。
+- 发行方式：Hanxi 仅转链官方 GitHub Releases 供用户按需自行下载，不搬运、不打包二进制；Windows 资产均为 `*_Windows_Portable_*.zip`（历史上仅 2020 年 v1.1 带过 7z，勿按「7z 绿色包」想当然）。
+
+Hanxi 纯托管：多实例 Qt 应用（二进制无单实例机制痕迹、无 CLI 信使），故唤窗按 PID `EnumWindows`；主程序 `asInvoker`（无提权契约）；上游 releases **全量无官方摘要**，完整性走 VSCode 同款降级三层（字节数 + zip CRC 闸门 + 解压布局自检），UI 如实标注「未经官方哈希校验」；外部实例退出按 N3 终裁列 `confirm_force` 档（会话类中断有实际损失，强杀须 UI 明示并确认）。
+
+⚠️ 许可备忘（如实留档，不隐晦）：①官方自述 Apache-2.0 但仓库根缺 LICENSE 文件，未来若改为捆绑/预装分发，须先取得权利方对再分发口径的明确确认，不得仅凭 README 自述处置；②`windterm.cn` 系第三方网盘站而非官方域名，自动化取版一律只走 GitHub Releases。
+
+## Termora（SSH/Sftp 终端，自带 JRE）
+
+- 项目：Termora
+- 上游仓库：https://github.com/TermoraDev/termora
+- 许可证：**AGPL-3.0 或商业许可**双许可模型（上游 README 实证）
+- 发行方式：官方 GitHub Releases 按需下载 Windows x64 便携 app-image（jpackage 形态自带 JRE，零系统 Java 依赖）；Hanxi 仅转链供用户自行安装，不搬运、不打包二进制。
+
+Hanxi 纯托管：全资产带 GitHub digest（官方摘要主链，非 WindTerm 式降级链）；单实例互斥体 `termora` + 二次拉起即激活信使（源码 `ApplicationSingleton.kt` 实证）；官方 portable 开关语义为 exe 同级 `data\` 目录（`getBaseDataDir` 实证）；2.x 线全量带 prerelease 标记——beta 即事实主干，版本列表如实全列不藏；主启动器 `asInvoker`；外部实例退出按 N3 终裁列 `confirm_force` 档（终裁点名 Termora）。
+
+AGPL-3.0 的强义务在再分发或以其构成网络服务时触发；Hanxi 现状（用户侧按需下载、不捆绑、不修改、不转译）不触发额外义务。若未来改为预装或随 Hanxi 分发，须随附 AGPL-3.0 全文与对应源码提供承诺，或改走上游商业许可路径——开工前须与权利方确认。
+
+## RAMMap（微软 Sysinternals 内存观察工具）
+
+- 项目：RAMMap（Sysinternals Suite 单工具）
+- 上游直链：https://download.sysinternals.com/files/RAMMap.zip（**非 GitHub**，微软官方直链；借用托管模式但下载源不同族）
+- 许可证：微软 Sysinternals 软件许可条款——按免费试用件分发，**无再分发授权**；官方不为单工具发布摘要
+- 发行方式：Hanxi 代下载官方直链最新版进本机托管目录，**二进制不入库、不打包进发布物**（与 GitHub 托管家族同口径，代下载自用边界内）。
+
+Hanxi 托管本体（N4 机主 2026-09-23 拍板路线 A）：上游分发形态为「同址覆盖式最新版」（无版本目录、无历史资产），故版本模型取 zip 的 `Last-Modified` 日期作版本令牌——这是唯一诚实语义，不伪造版本号；完整性走 WindTerm 同款降级三层并在 UI 如实标注「未经官方哈希校验」；载荷 manifest 为 `requireAdministrator` → 提权三重契约（740 指引文案含「管理员」关键词喂 ElevateRestart 一键通道、UIPI 边界如实降级、stopped 引导行预告），与 rufus/litemonitor/bcu 同族；一次性「清空待机列表」语义、非常驻 GUI。其品牌位图按 Sysinternals 条款**不落仓库、不随发布物分发**：界面默认矢量 `i:gauge`，装有机主本机官方 RAMMap64.exe 时走「红线图标运行期本机提取」通道。
+
+若未来改为预装或随 Hanxi 安装包分发，须先与微软权利方确认再分发授权；当前「代下载、不入库、不随包」形态不触发该问题。
 
 ## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行 + 开源上游仓库取材入库件 + 托管新模块补录二枚）
 
