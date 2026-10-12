@@ -1,6 +1,6 @@
 # Hanxi 单体零开销懒加载架构改造方案
 
-> **状态注记（2026-09-18）**：本文为早期（6 个内置模块时代）的改造设计方案，**已落地并继续演进**。当前源码共有 41 个静态注册的内建模块；现行 `Module` 契约为 `Info()/Nav()/Services()` + `OnInit()/OnDestroy()/IsInitialized()`，不包含下文初稿中的 `ID()/Title()/Route()/Icon()/Level()`，也不包含曾预留但现已移除的 `Permissions()/Protocol()`。`Permission` 类型与 `LevelExternal` 枚举目前仅作未来能力预留，Hanxi 当前不是开放插件平台。**现行架构事实以 `docs/ARCHITECTURE.md` 为准，插件化时机与演进判断见 `docs/PLUGINIZATION_AND_PRODUCT_EVOLUTION.md`；本文以下内容仅作历史决策留档，不再随代码更新。**
+> **状态注记（2026-09-18）**：本文为早期（6 个内置模块时代）的改造设计方案，**已落地并继续演进**。截至本注记时点（2026-09-18）源码共有 41 个静态注册的内建模块——**此为历史值，现值 49**；本文既已声明"仅作历史决策留档，不再随代码更新"，就不再把旧数改成就今值（那会毁掉注记时点的证据），取数一律回 `docs/FACTS.md` 与 catalog；现行 `Module` 契约为 `Info()/Nav()/Services()` + `OnInit()/OnDestroy()/IsInitialized()`，不包含下文初稿中的 `ID()/Title()/Route()/Icon()/Level()`，也不包含曾预留但现已移除的 `Permissions()/Protocol()`。`Permission` 类型与 `LevelExternal` 枚举目前仅作未来能力预留，Hanxi 当前不是开放插件平台。**现行架构事实以 `docs/ARCHITECTURE.md` 为准，插件化时机与演进判断见 `docs/PLUGINIZATION_AND_PRODUCT_EVOLUTION.md`；本文以下内容仅作历史决策留档，不再随代码更新。**
 
 ## 一、 方案概述与目标
 
