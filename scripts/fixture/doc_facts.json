@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "_comment": [
+    "文档事实冻结基线，由 scripts/docsfacts 消费。facts 段来自代码现推（改代码后跑",
+    "`go run ./scripts/docsfacts -emit` 人工合并）；forbidden/assertions/activeDocs 三段",
+    "是人工规则，改文档句式时须一并复核。",
+    "禁词表只作用于 activeDocs（活文档）：带日期的历史账本（FEATURES_OVERVIEW/PROGRESS/",
+    "BACKLOG/PLAN_HISTORY 与各已结案批次计划）刻意不入白名单，改它们的史实数字等于造假证。",
+    "allowIfContains 是免责上下文——本轮订正刻意在活文档里保留「原写 41」「Gonmap 假声明」",
+    "这类带帽史述，闸门必须放行「如实记录历史」，否则会把勘误本身报成漂移。"
+  ],
+  "facts": {
+    "moduleTotal": 49,
+    "selfBuiltModules": 18,
+    "hostedVersions": 31,
+    "managedProcess": 30,
+    "artifactDelegators": 26,
+    "supervisorDelegators": 23,
+    "mcpTools": 12,
+    "mcpAccessKeys": 10,
+    "appIcons": 28
+  },
+  "activeDocs": [
+    "README.md",
+    "docs/FACTS.md",
+    "docs/PRD.md",
+    "docs/ARCHITECTURE.md",
+    "docs/FRONTEND.md",
+    "docs/DEVPLAN.md",
+    "docs/PROJECT_STRATEGY.md",
+    "docs/THIRD_PARTY_NOTICES.md",
+    "docs/plans/PLAN_REMAINING_WORK.md",
+    "docs/plans/PLAN_WORKBENCH_MODULE_ROADMAP.md"
+  ],
+  "forbidden": [
+    {
+      "pattern": "(3[5-9]|4[0-8]) 个(功能|业务)模块",
+      "expectedFact": "moduleTotal",
+      "why": "模块总数旧值入文（活文档只允许现值或带帽史述）",
+      "allowIfContains": ["原写", "原记", "前记", "当时", "时点值", "旧统计", "订正", "基线", "快照", "未跟进", "史账", "旧账", "→", "现值", "已过期"]
+    },
+    {
+      "pattern": "4[0-8] 模块统一注册",
+      "expectedFact": "moduleTotal",
+      "why": "统一注册数旧值入文",
+      "allowIfContains": ["原记", "现 49", "订正", "旧数", "已列入史链"]
+    },
+    {
+      "pattern": "(2[0-9]|3[02-9]) 款",
+      "expectedFact": "hostedVersions",
+      "why": "托管款数旧值入文（25/28 等；31 为现值故不在禁列）",
+      "allowIfContains": ["原写", "原记", "前记", "系", "时点值", "订正", "此前", "长期写", "旧统计", "未跟", "史", "入库前", "已偿", "→", "计数待"]
+    },
+    {
+      "pattern": "四个只读 MCP 工具",
+      "expectedFact": "mcpTools",
+      "why": "MCP 工具面严重低估的旧表述",
+      "allowIfContains": ["原文", "原写", "已废", "订正", "严重低估"]
+    },
+    {
+      "pattern": "(集成|内置).{0,12}(Nmap|gonmap)|Gonmap",
+      "expectedFact": "",
+      "why": "宣称了并不存在的 Nmap 引擎（仓内无 gonmap、go.mod 无 nmap 依赖）；如实勘误句须带「勘误/不存在/原写/未做」等帽",
+      "allowIfContains": ["勘误", "不存在", "原写", "仍写", "假声明", "未做", "无该引擎", "文案超前", "不诚实", "无此", "与实现不符"]
+    },
+    {
+      "pattern": "Standard 标准模式|Portable 便携模式|默认便携版",
+      "expectedFact": "",
+      "why": "便携/标准双模式判定已由 F6 整体退役，活文档不得再作为现行模型陈述",
+      "allowIfContains": ["原「", "原文", "原写", "退役", "订正", "已死", "不再"]
+    },
+    {
+      "pattern": "(1[0-2][0-9]|9[0-9]) 测试文件",
+      "expectedFact": "",
+      "why": "前端 spec 文件数旧值（现值见 docs/FACTS.md，volatile 不入 facts 锁）",
+      "allowIfContains": ["原记", "当时", "时点值", "订正", "→", "旧值", "写作时", "基线", "快照"]
+    },
+    {
+      "pattern": "1261 项",
+      "expectedFact": "",
+      "why": "前端用例数旧值",
+      "allowIfContains": ["原记", "当时", "时点值", "订正", "→", "基线", "旧值"]
+    },
+    {
+      "pattern": "1[0-6][0-9] 个 Go 测试文件",
+      "expectedFact": "",
+      "why": "Go 测试文件数旧值（现值 386）",
+      "allowIfContains": ["原记", "当时", "对表", "→", "订正"]
+    }
+  ],
+  "assertions": [
+    {
+      "file": "README.md",
+      "pattern": "全部 (\\d+) 个功能模块",
+      "fact": "moduleTotal",
+      "note": "README 懒加载架构句"
+    },
+    {
+      "file": "README.md",
+      "pattern": "将 (\\d+) 款常用开源",
+      "fact": "hostedVersions",
+      "note": "README 托管节首句"
+    },
+    {
+      "file": "README.md",
+      "pattern": "自建能力 (\\d+) \\+ 工具托管",
+      "fact": "selfBuiltModules",
+      "note": "README 目录树分账"
+    },
+    {
+      "file": "docs/ARCHITECTURE.md",
+      "pattern": "托管: (\\d+) 款桌面",
+      "fact": "hostedVersions",
+      "note": "ASCII 框图（改数须保持框宽等宽）"
+    },
+    {
+      "file": "docs/ARCHITECTURE.md",
+      "pattern": "共 \\*\\*(\\d+) 件\\*\\*工具",
+      "fact": "mcpTools",
+      "note": "MCP 三档风险段"
+    },
+    {
+      "file": "docs/PRD.md",
+      "pattern": "2\\.1 自建功能模块（(\\d+)）",
+      "fact": "selfBuiltModules",
+      "note": "PRD §2.1 标题"
+    },
+    {
+      "file": "docs/PRD.md",
+      "pattern": "2\\.2 第三方工具托管模块（(\\d+)）",
+      "fact": "hostedVersions",
+      "note": "PRD §2.2 标题"
+    },
+    {
+      "file": "docs/THIRD_PARTY_NOTICES.md",
+      "pattern": "能力计数为准 = \\*\\*(\\d+) 款",
+      "fact": "hostedVersions",
+      "note": "notices 头部口径句"
+    },
+    {
+      "file": "docs/FRONTEND.md",
+      "pattern": "ROUTES（(\\d+) 模块路由",
+      "fact": "moduleTotal",
+      "note": "FRONTEND 目录树"
+    }
+  ]
+}

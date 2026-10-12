@@ -53,6 +53,11 @@ tasks:
       - task: common:generate:bindings
       - git diff --exit-code -- frontend/bindings
 
+  verify:docs:
+    summary: Verifies documented facts (module/hosted/MCP counts, links, table shape) match code
+    cmds:
+      - go test ./scripts/docsfacts
+
   frontend:lint:
     summary: Runs frontend ESLint (Phase 0 基线：只报告，不阻断)
     cmds:
@@ -82,4 +87,5 @@ tasks:
       - task: frontend:test
       - task: verify:tidy
       - task: verify:bindings
+      - task: verify:docs
 
