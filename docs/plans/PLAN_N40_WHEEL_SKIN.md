@@ -1,5 +1,7 @@
 # N40 ③ 轮盘对标 StarPie 美化 · 提案与拍板件（待机主选向）
 
+> **⚠ 终态（2026-10-12 对账）**：「待机主选向」已过期——机主批「全 B」，皮肤三预设 × 透明度 × 描边 × 跟随模块色全链已落地（`71f3052` 基础盘 → `cdfdc57` 双源 → `b944f40` 后端账），几何单点路由 ①② 更早于 2026-09-24 入库。真余仅两枚 drop-shadow 与 onyx AAA 观感待看，登记于 `PLAN_REMAINING_WORK.md` N40/N37 行。
+
 > 排期出处 [PLAN_REMAINING_WORK](PLAN_REMAINING_WORK.md)「`| N40`」行的 ③——①②（几何
 > 单点路由 `resolveHover`/`slotOf` 全扇面命中 + 圆心静区去闪烁）已于 2026-09-24 落地，
 > 本件只管**皮**。StarPie 参照论证与牌面 F1-F4 见 [PLAN_N5_QUICKMENU](PLAN_N5_QUICKMENU.md) §0/§1。

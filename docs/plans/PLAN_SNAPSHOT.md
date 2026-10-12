@@ -1,5 +1,7 @@
 # 数据自动版本快照：可行性分析与开发计划
 
+> **⚠ 终态（2026-10-12 对账）**：本计划 v1.0（2026-09-17 定稿）**已落地为线上功能**——快照模块在册、设置分区可管，且其 UX 重做正由 N33 接管（批 A–D 已入库），memo 文件库化亦随 N16 路线 A 兑现。本文转**历史决策留档**，不再更新；现行快照口径看代码与 `docs/plans/PLAN_N33_SNAPSHOT_UX.md`。
+
 > **版本**：v1.0（2026-09-17 定稿调研，本文档为开发计划）
 > **决策依据**：`docs/MOOTOOL_ANALYSIS.md:25-29,55` 借鉴点 #3（P1，"memo 文件库化 + 配置目录快照，git 不存在降级普通备份"）；
 > 参考实现 MooTool `vaultGitService.ts` / `vaultGitCheckpointScheduler.ts` / `backupService.ts`（外部 git + 5s tick 调度 + 白名单时间戳导出）。
