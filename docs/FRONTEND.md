@@ -2,8 +2,8 @@
 
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
-> **更新日期**：2026-09-19
-> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移）。**AppIcon 阶段2/3 经用户决策暂停（2026-09-05）**，注册表与 `i:` 约定已就位随时可续。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。**§9.7 字号/按钮体系化治理波 ✅**（2026-09-16/17：九档字号+三档控件高 token、~1000 处裸 px 视图层清零、家族 ~895 条副本删净落回、WSLView 2209→441 拆分、§9.6-10 六项裁决全清）。**Wave 0–5S 契约批 ✅**（2026-09-18/19，ADR-0001/0002/0003）：四维状态投影消费 + 模块中心 `/modules` 一级入口 + 首页工作台化 + Operation 观察面（恢复条/在途条）+ 可用更新徽标（updatewatch 真实来源）+ `status.ts` 七族与操作三表 + contract-enum Go↔TS 契约门禁，详见 §12；当前测试规模 **101 spec 文件 / 1052 用例全绿**（含 build/lint/typecheck/verify 全绿）。当前待办＝§9.7-下轮候选（ManagedConsoleShell 壳收编、UiModal、可访问性散点）、AppIcon 阶段2/3（挂起）、真机目视（§9.7 目视项清单①–⑩）；蓝图 Phase 0–6 主体与 Wave 0–5S 契约批全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
+> **更新日期**：2026-09-19（2026-10-12 对账订正轮：模块 41→49 三处、fixture 基线 41→49 项（原文与 `contract-enum.spec.ts` 断言矛盾）、测试规模补现值 167/2111、AppIcon 阶段 2/3 销"挂起"改记 N27 落地链）
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移）。**AppIcon 阶段2/3 已随 N27 全部落地（2026-10-12 订正：原「经用户决策暂停（2026-09-05）」口径过期）**——批 A `5c36949`（`app:` 第二来源）、批 B `1beb706`（三轨解析收口）、批 C `9d3fca4`（托盘 `SetBitmap`，即原"阶段 3"本体）、补录尾巴至 `899ae4d`；现 `internal/app/appicons/` 在册 **28 枚**上游真图标 + `sources.go` 逐枚出货台账（由 `sources_test.go` 解码锁死防漂移），许可与"不入库"件见 `docs/THIRD_PARTY_NOTICES.md` 图标节。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。**§9.7 字号/按钮体系化治理波 ✅**（2026-09-16/17：九档字号+三档控件高 token、~1000 处裸 px 视图层清零、家族 ~895 条副本删净落回、WSLView 2209→441 拆分、§9.6-10 六项裁决全清）。**Wave 0–5S 契约批 ✅**（2026-09-18/19，ADR-0001/0002/0003）：四维状态投影消费 + 模块中心 `/modules` 一级入口 + 首页工作台化 + Operation 观察面（恢复条/在途条）+ 可用更新徽标（updatewatch 真实来源）+ `status.ts` 七族与操作三表 + contract-enum Go↔TS 契约门禁，详见 §12；测试规模：本档写作时（2026-09-19 实测）**101 spec 文件 / 1052 用例**，现值 **167 spec 文件 / 2111 用例全绿**（2026-10-12 实测复核，同批另测得 ESLint 0 error / 9 warnings、`vue-tsc --noEmit` 0、`gofmt -l internal/` 无输出、`go test ./...` 全绿）。当前待办＝§9.7-下轮候选（ManagedConsoleShell 壳收编、UiModal、可访问性散点）、真机目视（§9.7 目视项清单①–⑩）；蓝图 Phase 0–6 主体与 Wave 0–5S 契约批全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
 
@@ -21,7 +21,7 @@
 ```
 main.ts ── createApp(App) + 三份 styles/ 全局样式      # 无 router、无 store
 App.vue  ── 应用外壳（薄编排：路由/门禁/事件桥/弹窗壳，展示层已组件化）
-  ├─ constants/navigation.ts 单一来源：ROUTES（41 模块路由 + 核心页 +
+  ├─ constants/navigation.ts 单一来源：ROUTES（49 模块路由 + 核心页 +
   │    设置八分区，defineAsyncComponent 全异步）+ CORE_ROUTES 豁免清单
   │    （含 /modules，模块中心自身不受"模块停用弹回"拦截）
   ├─ EnsureModuleActive 门禁 + navigationRequestID 防乱序
@@ -35,7 +35,7 @@ App.vue  ── 应用外壳（薄编排：路由/门禁/事件桥/弹窗壳，�
   │    navGrouping.ts（六组聚合、FAV_MODULE_IDS、最近使用路由）
   └─ 主题 token 住 styles/tokens.css（浅/深双主题 + 色板双轴）      # 不再内联于 App.vue
 
-views/*.vue                    # 41 个后端模块各一视图 + 模块中心/日志/关于/占位
+views/*.vue                    # 49 个后端模块各一视图 + 模块中心/日志/关于/占位
                                # + 三个弹窗壳（QuickMenu/MsgBoard/SnipCard），
                                # 最大 HomeView 956 行；settings/ 为设置页八分区
                                # （General/Theme/Tray/Storage/System/Workbench/Snapshot/AI）
@@ -306,5 +306,5 @@ src/
 ### 12.4 状态词表与 Go↔TS 契约门禁
 
 - `constants/status.ts` 是前端展示词汇唯一落点：**四维 `DELIVERY/POLICY/RUNTIME/HEALTH_META` + `PRIMARY_ACTION/SUMMARY/ENTRYPOINT_META` 七族**与**操作三表 `OPERATION_KIND/OPERATION_STATUS/PHASE_META`**，逐值 `satisfies Record<枚举值联合, Meta>` 穷举守卫——后端增删枚举值即 TS 编译失败；tone 词表与 components.css `.chip-{tone}/.banner-{tone}` 严格对齐；`TOOL_STATE_META`/`ENV_STATUS_META` 为历史视图表（头注登记 Wave 3 收口事项）。
-- `constants/__tests__/contract-enum.spec.ts`（Wave 0 DoD 门禁）三层锁定：bindings 生成 JS enum 值集 == `status.ts` 词表键集 == `internal/extapi/catalog.go` const 值集 == `scripts/fixture/module_catalog.json` 基线（schema==1、41 项）+ `composition_contract.json` 关键导出可见性；`$zero` 生成器占位剔除比对。纪律：bindings 为生成物，发现问题改 Go 源或重跑生成，绝不在 spec 迁就产物。
+- `constants/__tests__/contract-enum.spec.ts`（Wave 0 DoD 门禁）三层锁定：bindings 生成 JS enum 值集 == `status.ts` 词表键集 == `internal/extapi/catalog.go` const 值集 == `scripts/fixture/module_catalog.json` 基线（schema==1、**49 项**；2026-10-12 订正——原文写 41 项，与 `contract-enum.spec.ts:114` 实际断言的 49 直接矛盾，属"文档声称的机检基线"落后于机检本身）+ `composition_contract.json` 关键导出可见性；`$zero` 生成器占位剔除比对。纪律：bindings 为生成物，发现问题改 Go 源或重跑生成，绝不在 spec 迁就产物。
 - 测试规模（2026-09-19 实测）：**101 个 spec 文件 / 1052 用例全绿**（`vitest run`），含契约门禁与各家族特征测试。
