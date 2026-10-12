@@ -52,6 +52,19 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}
 }
 
+// TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向宿主托盘暴露启动命令，
+// 复用与模块页面「启动」按钮完全一致的 service 入口（单实例协议二次拉起唤窗，
+// CC Switch 同族形制）。BCU 上游 manifest 要求管理员——非提权态点击按既有提权
+// 三重契约如实报错，不作静默降级，与页面按钮同语义；宿主触发前已完成懒初始化。
+func (e *Module) TrayCommands() []extapi.TrayCommand {
+	return []extapi.TrayCommand{
+		{ID: "launch", Label: "启动 BCU 卸载器", Run: func(context.Context) error {
+			_, err := e.svc.OpenWindow()
+			return err
+		}},
+	}
+}
+
 // 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。
 func (e *Module) Services() []extapi.Service {
 	return []extapi.Service{

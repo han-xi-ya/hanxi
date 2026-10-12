@@ -57,6 +57,19 @@ func (m *Module) Nav() []extapi.NavEntry {
 	}
 }
 
+// TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向宿主托盘暴露启动命令，
+// 复用与模块页面「启动」按钮完全一致的 service 入口。WindTerm 是多实例 Qt 应用
+// （二进制无单实例机制痕迹、无 CLI 信使），OpenWindow 语义为「拉起自有实例或按
+// PID 唤起既有窗口」，与 litemonitor 同族；宿主在触发前已完成模块懒初始化。
+func (m *Module) TrayCommands() []extapi.TrayCommand {
+	return []extapi.TrayCommand{
+		{ID: "launch", Label: "启动 WindTerm", Run: func(context.Context) error {
+			_, err := m.svc.OpenWindow()
+			return err
+		}},
+	}
+}
+
 // Services 暴露 RPC 面。
 func (m *Module) Services() []extapi.Service {
 	return []extapi.Service{application.NewService(m.svc)}

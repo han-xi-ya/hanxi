@@ -59,6 +59,19 @@ func (m *Module) Nav() []extapi.NavEntry {
 	}
 }
 
+// TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向宿主托盘暴露启动命令，
+// 复用与模块页面"启动"按钮完全一致的 service 入口（OpenWindow 走命名互斥体 +
+// 二次拉起激活信使，源码 ApplicationSingleton.kt 实证，与 ccswitch 同族形制）；
+// 宿主在触发前已完成模块懒初始化。
+func (m *Module) TrayCommands() []extapi.TrayCommand {
+	return []extapi.TrayCommand{
+		{ID: "launch", Label: "启动 Termora", Run: func(context.Context) error {
+			_, err := m.svc.OpenWindow()
+			return err
+		}},
+	}
+}
+
 // Services 暴露 RPC 面。
 func (m *Module) Services() []extapi.Service {
 	return []extapi.Service{application.NewService(m.svc)}

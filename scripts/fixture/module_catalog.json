@@ -9,12 +9,14 @@
       "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
-        "managed-process"
+        "managed-process",
+        "tray-commands"
       ],
       "entrypoints": [
         "rpc",
         "navigation",
-        "search"
+        "search",
+        "tray"
       ],
       "compatibility": {
         "hostRange": "*",
@@ -1043,12 +1045,14 @@
       "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
-        "managed-process"
+        "managed-process",
+        "tray-commands"
       ],
       "entrypoints": [
         "rpc",
         "navigation",
-        "search"
+        "search",
+        "tray"
       ],
       "compatibility": {
         "hostRange": "*",
@@ -1190,12 +1194,14 @@
       "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
-        "managed-process"
+        "managed-process",
+        "tray-commands"
       ],
       "entrypoints": [
         "rpc",
         "navigation",
-        "search"
+        "search",
+        "tray"
       ],
       "compatibility": {
         "hostRange": "*",
