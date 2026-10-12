@@ -366,7 +366,7 @@ var catalogItems = []extapi.ModuleCatalogItem{
 	{
 		ID:            "portscan",
 		Name:          "端口扫描与指纹",
-		Description:   "高并发多端口快速扫描，集成 Nmap 深度服务指纹识别",
+		Description:   "高并发多端口快速扫描，自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）",
 		Category:      "network",
 		DeliveryKind:  extapi.DeliveryBuiltinLogical,
 		Capabilities:  []string{},

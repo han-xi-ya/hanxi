@@ -1,5 +1,13 @@
-// Package portscan 提供内置端口扫描模块：原生 TCP 并发 connect 探测 + 可选 Nmap 深度指纹，
-// 并附带经代理/直连的出网 IP 检测。无外部托管进程，仅依赖标准库与 wails 事件推送。
+// Package portscan 提供内置端口扫描模块：原生 TCP 并发 connect 探测 + 自研轻量
+// 服务指纹（scanner.go 的 lightweightProbe：主动握手与被动 Banner 抓取覆盖
+// SSH/FTP/SMTP/MySQL/Redis，另作 HTTP 头部识别），并附带经代理/直连的出网 IP 检测。
+// 无外部托管进程，仅依赖标准库与 wails 事件推送。
+//
+// 诚实边界（2026-10-12 订正）：本模块**不含也不调用 Nmap**——历史上包注释与本模块
+// Description 曾写「可选 Nmap 深度指纹」「集成 Nmap 深度服务指纹识别」，仓内无该引擎、
+// go.mod 无相关依赖，属文案超前于实现（docs/FEATURES_OVERVIEW.md 早已点名）。Description
+// 经 scripts/cataloggen 流入 internal/app/catalog.go、scripts/fixture/module_catalog.json
+// 与前端 Info 面板，故一处失真会同时污染对外展示；今日按实能力改述，勿再回写旧口径。
 package portscan
 
 import (
@@ -34,7 +42,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "端口扫描与指纹",
 		Version:     "0.1.0",
-		Description: "高并发多端口快速扫描，集成 Nmap 深度服务指纹识别",
+		Description: "高并发多端口快速扫描，自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
