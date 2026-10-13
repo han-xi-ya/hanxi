@@ -216,16 +216,54 @@ describe('c) tokens.css on-color 契约族——十块核心两件必存 + 拆�
 const SOLID_BG_TOKEN = /--(?:color-primary|state-danger|state-positive|state-warning|state-information)(?!-soft|-glow|-hover|-edge)/
 const ON_COLOR_FG = /(?:^|[^-\w])color\s*:\s*var\(--color-on-(?:primary|accent|danger|positive|warning)\b/
 
-describe('e) 彩底必显式前景——封死"忘写 color 即吃 --color-text"的结构缺口', () => {
-  it('components.css 中背景取彩色 token 的按钮规则，同块必须声明 on-color 族前景', () => {
-    const offenders: string[] = []
-    for (const r of iterRules(componentsCss)) {
-      if (!isButtonRule(r.selector)) continue
-      const bg = r.body.match(/(?:^|[;\s])background(?:-color)?\s*:\s*([^;]+)/)
-      if (!bg || !SOLID_BG_TOKEN.test(bg[1])) continue
-      if (ON_COLOR_FG.test(r.body)) continue
-      offenders.push(`${r.selector.replace(/\s+/g, ' ').slice(0, 72)} { background: ${bg[1].trim().slice(0, 60)} }`)
+/** 视图内自造按钮族的类名形态：`.x-btn` / `.btn-x` / `.x-button`（全局族之外的野路子基座）。 */
+function isButtonish(selector: string): boolean {
+  return isButtonRule(selector) || /-btn\b|-btn[ .,:[]|\.btn-|-button\b/.test(selector)
+}
+
+/**
+ * 按钮规则取景范围 = 全局 components.css + 各 .vue 的 scoped 样式块。
+ * 2026-10-13 扩到 scoped：首版只扫 components.css，而 workbench-confirm-btn /
+ * hx-prompt-btn / toolbar-btn / snip-fs-btn / seg-btn / ct-chip 这些视图自造按钮族
+ * 一条都不在覆盖内——机主报"部分按钮没变"的机制根因正在此处：全局族被 N37 六路
+ * 收编过，scoped 自造族从未进入任何契约视野。
+ */
+function buttonRules(): Array<{ where: string; selector: string; body: string }> {
+  const out: Array<{ where: string; selector: string; body: string }> = []
+  for (const r of iterRules(componentsCss)) {
+    if (isButtonish(r.selector)) out.push({ where: 'styles/components.css', selector: r.selector, body: r.body })
+  }
+  for (const dir of ['views', 'components']) {
+    for (const file of listVue(join(srcDir, dir))) {
+      for (const style of scopedStyles(file)) {
+        for (const r of iterRules(style)) {
+          if (isButtonish(r.selector)) out.push({ where: file.replace(`${process.cwd()}/`, ''), selector: r.selector, body: r.body })
+        }
+      }
     }
-    expect(offenders, `彩色实底未配显式前景（静默退化已实测十组全爆，正档 §1d 要求"在契约上封死"）：\n${offenders.join('\n')}`).toEqual([])
+  }
+  return out
+}
+
+describe('e) 彩底必显式前景——全局 + 视图 scoped 全覆盖', () => {
+  it('背景取彩色 token 的按钮规则，同块必须声明 on-color 族前景', () => {
+    const offenders = buttonRules()
+      .filter(({ selector, body }) => {
+        // 排除①：伪元素装饰件（状态灯点、选中指示条、进度内芯）——非文本底，按 3:1
+        // 图形口径衡量，本就不该有文字前景 token（首版把它们算成了违规）。
+        if (/::(?:before|after)/.test(selector)) return false
+        const bg = body.match(/(?:^|[;\s])background(?:-color)?\s*:\s*([^;]+)/)
+        if (!bg || !SOLID_BG_TOKEN.test(bg[1])) return false
+        // 排除②：color-mix 混色声明——现盘此类是低透铺底（如 sector-icon 的 primary 16%），
+        // 非实心彩底。代价如实记：若将来有人用 color-mix 配高比例实心底，本约会漏检，
+        // 届时按"显式登记豁免+理由"升级，不悄悄放宽。
+        if (/color-mix\s*\(/.test(bg[1])) return false
+        return !ON_COLOR_FG.test(body)
+      })
+      .map(({ where, selector, body }) => {
+        const bg = body.match(/(?:^|[;\s])background(?:-color)?\s*:\s*([^;]+)/)![1].trim()
+        return `${where}: ${selector.replace(/\s+/g, ' ').slice(0, 62)} → background: ${bg.slice(0, 46)}`
+      })
+    expect(offenders, `彩色实底未配显式前景（该退化实测浅色 2.43–3.98:1、深色 1.61–2.13:1 全爆；正档 §1d 要求"在契约上封死"）：\n${offenders.join('\n')}`).toEqual([])
   })
 })
