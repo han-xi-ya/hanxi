@@ -84,6 +84,11 @@
   font-size: var(--text-base);
   font-weight: 500;
   cursor: pointer;
+  /* 按钮文字禁止逐字折行：中文钮在窄容器里（对话框 footer 的 flex 分摊、移动端
+   * 工具栏换行、图标+文字挤在一行）会被压成「确/认」两行，观感即"按钮变竖着的"。
+   * 按钮宁可让布局让步或溢出，也绝不可折自己的字——这是基座职责，不该由各视图
+   * 逐处补 white-space。 */
+  white-space: nowrap;
   transition: background var(--motion-base) ease, border-color var(--motion-base) ease,
     color var(--motion-base) ease, filter var(--motion-base) ease, transform var(--motion-fast) ease;
 }
@@ -138,6 +143,9 @@
   color: var(--color-on-accent);
   border-color: transparent;
   font-weight: 600;
+  /* 与 .btn 基座同规则：本档刻意支持"不挂 .btn 单独使用"（微型内联钮怕被注入
+   * 标准 min-height），故折字防护必须自带一份，不能假定调用方挂了基座。 */
+  white-space: nowrap;
 }
 :where(.btn-positive:hover:not(:disabled)) {
   background: var(--btn-positive-fill-hover);
