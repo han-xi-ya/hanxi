@@ -218,6 +218,16 @@
 - ✅ `PLAN_N33_SNAPSHOT_UX.md` 一处 memo 旧称「极客随手记」已改为现名并注更名号 `c0da60d`。
 - ✅ `themes/README-v1.md` 断链已修（`gen-palettes.mjs` → 实际存在的 `-v1/-v2`），并把闸门的链接检查从"仅 `.md`"放宽为任意带扩展名的相对目标，这类病从此自动受检（全仓普查确认当前仅此一处，扩展不会造成一片红）。
 
+## 2026-10-13 托盘覆盖面收口 + 出包（含一个已定位待批的缺陷）
+
+**托盘候选覆盖面已结清**（机主两轮拍板）：`termora`/`windterm`/`bcu`（`096e88e`）与 `markeron`/`rufus`（`6a72ae0`）补齐接线，`rammap` 终裁**不接**并把裁决写进包注释与对外 Description。托盘入口 **26 → 31**；账面实算：31 款托管工具 **26 供候选 + 5 有理由不接**（piik headless 服务型 / douzy 仅版本+下载 / nanazip MSIX 无主窗 / frpc 多实例无单命令语义 / rammap 一次性观察工具），31 个入口 = 26 托管 + 5 非托管。机制根因（集成清单缺"接托盘"这一步，且可选契约缺席**全链路零报错**）已沉淀为 `TROUBLESHOOTING #107` + `SKILL.md` 阶段 3 必做项 + 对照速查表一行。markeron 特意采**切换型**语义（`toggle`「开启/停止屏幕标注」，照 msgboard 先例），没套 `launch`。
+
+**已出包**：`task build APP_NAME=hanxi-new PACKAGE_MANAGER=pnpm` → `bin/hanxi-new.exe`（33,279,488 字节）。两个变量都不可省：`PACKAGE_MANAGER=pnpm` 是因为本机 `npm run` 坏（Taskfile 默认 npm 会撞坏 shim）；`APP_NAME=hanxi-new` 是因为 `bin/hanxi.exe` 常被运行中的实例占用，Windows 覆盖不了正在执行的 exe。副作用：`frontend/pnpm-lock.yaml` 已删（CI 认 npm + `frontend/package-lock.json`，留两份锁等于两套依赖真相），`node_modules` 被 pnpm 接管为软链布局——实测 167 spec / 2111 项与构建全绿，无须回滚。**换用新包需先彻底退出旧实例**（单实例锁 `io.hanxi.desktop` 会拒第二个 GUI）；旧产物是 9-27 11:07 构建的，不含这几天全部修复。**未验项**：产物属性页版本号是否显示 0.3.0（本机 PowerShell 对新旧产物取 VersionInfo 一律空值，非本次构建造成，需在交互桌面目视一次）。
+
+**新定位、待批的缺陷（机主报「改了托盘设置，重启没生效」）**：后端存取生效链**静态无缺陷**（载入绝不回写盘、`app.go:799-801` 启动确实 Rebuild、bindings 齐全、`cleanTrayMenuItems` 不拿候选表当白名单）。真因在 `011a60a`「保存钮退场改实时保存」留下的三个落盘空洞，按吻合度排序：① **草稿门整批暂缓**——只要列表里存在任一个空名或零子条目分组，`TrayItemsEditor.saveNow` 就**整份快照一个字节都不发**（含与分组无关的勾选/排序/改名），而草稿只活在组件内存、无持久层，离开页面或重启即弃；提示仅页脚一行小字，于是"看着存了其实一笔没存"。② 文本 800ms 防抖在卸载/托盘退出时无强制 flush，丢最后一笔。③ `saveLocked` 的 `os.Rename` 被杀软/快照瞬时占句柄失败时，代码**整页回滚**成服务端旧真相，用户错过 toast 就以为已保存。**建议修法**：门挂起时降级为"剔除不完整分组、其余照常落盘 + 页脚如实『已存 N 笔，1 组待补全』"；卸载与退出前强制 flush；区分错误类型（校验被拒才回滚，IO 瞬败保留本地改动短重试）。**明确不推荐**把草稿存 localStorage——那会造出"内存草稿 vs 盘上账本"两套真相，且用户已丢弃的改动会越权复活。涉及前端交互语义，待机主点头再动码。
+
+**顺带撞见的在册病灶复现**：机主环境 `wheelMenu` 里 `paseo/launch` **连续重复两项**——正是 N5 行挂账的 `isOptionAdded` 判重病灶（顶层判重 vs 组内判重口径未定案）实锤存在于真实数据中，可作为该批次修复的验收样本。
+
 ## 复进顺序（2026-10-12 现行，取代上方「复进建议顺序」）
 
 1. 跑 [REAL_DEVICE_ACCEPTANCE_2026-09-25](REAL_DEVICE_ACCEPTANCE_2026-09-25.md) 真机验收族——最便宜的债，且卡着 N1/N2/N3/N18/N33 等一片"待复验"；

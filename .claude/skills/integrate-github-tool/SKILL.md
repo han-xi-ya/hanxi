@@ -104,6 +104,7 @@ internal/modules/<mod>/
 | 被控/服务型常驻——禁用空闲退出、退出即断会话的诚实文案 | rustdesk / subnetdesk | service.go 包注释 + OpenWindow/Quit 编排 |
 | requireAdministrator 清单 740 三重预告（elevateHint 特判 + 前端一键提权重启 ElevateRestart 组件） | rufus / litemonitor / bcu | instance/close_windows.go + close_other.go 桩；通道在 platform/windows/elevate_windows.go（TROUBLESHOOTING #17） |
 | 外部安装器（NSIS/Inno/MSI）静默安装与退出码分族翻译 | recordly（NSIS）/ vscode（Inno）/ rustdesk（MSI） | version/nsis_windows.go / inno_windows.go decodeInstallerExit / manager.go installExitError |
+| **该不该挂托盘/轮盘候选**（2026-10-13 覆盖面收口定案，别再靠记忆判断） | 常驻可唤窗型挂 `launch`（ccswitch/dbx/gonavi 模板）；高频开关型挂 `toggle`（markeron「开启/停止屏幕标注」、msgboard「挂出/撤下留言牌」）；**5 款有终裁不接**：piik（headless 服务型）、douzy（仅版本+下载不接管进程）、nanazip（MSIX 无主窗）、frpc（多实例无单命令语义）、rammap（一次性观察工具） | 各 `module.go` 的 `TrayCommands()`；现 31 入口 = 26 托管 + 5 非托管（clipboard/eartrumpet/msgboard/ocr/webapp），31 款托管 26 供候选 + 5 负裁，账见 TROUBLESHOOTING #107。**不接的必须在包注释留显式负裁决**，否则会被下一个人当遗漏补一遍 |
 
 ## 红线提醒
 
