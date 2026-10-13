@@ -76,8 +76,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px; /* 图标 + 中文之间 6px 显挤（"新增网址"那类带钮件的间距投诉点之一） */
   min-height: var(--control-h-lg);
+  line-height: 1; /* 中文文字与 14px 图标共线的最稳对齐：不依赖基线，按钮内外不跳 */
   padding: 6px 14px;
   border-radius: var(--radius-control);
   border: 1px solid transparent;
@@ -108,17 +109,21 @@
 :where(.btn:active:not(:disabled)) {
   transform: translateY(1px);
 }
+/* 主操作钮走专属墨色档（--btn-primary-*，见 tokens.css 同名注释）：
+ * ① 白字对比 13.63:1（旧青底 4.62），② 与页面底差 12.64:1 故**去描边**——旧
+ * --btn-solid-edge 那圈深边在实底上只会让它显得笨重发脏，③ 字重回到 500：主/次
+ * 之分改由"实底 vs 描边底"承担，不靠加粗。:active 一并不再改边框（无边框可改），
+ * 按压反馈由基座 `transform: translateY(1px)` 统一提供。
+ * 该档刻意不随四块 accent 色板联动（色板表达留在链接/选中态/软底强调），
+ * 是 2026-10-13 的成文决定，不是漏接色板的欠账。 */
 :where(.btn-primary) {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-  border-color: var(--btn-solid-edge);
-  font-weight: 600; /* 主操作加一档字重，与次级拉开"主/次"分量 */
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  border-color: transparent;
+  font-weight: 500;
 }
 :where(.btn-primary:hover:not(:disabled)) {
-  background: var(--color-primary-hover);
-}
-:where(.btn-primary:active:not(:disabled)) {
-  border-color: var(--btn-solid-edge-strong);
+  background: var(--btn-primary-bg-hover);
 }
 :where(.btn-secondary) {
   background: var(--surface-panel);

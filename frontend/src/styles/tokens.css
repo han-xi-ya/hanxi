@@ -23,6 +23,15 @@
   --color-primary-hover: #0b7577;
   --color-primary-soft: rgba(13, 130, 132, 0.1);
   --color-on-primary: #ffffff;
+  /* 主操作钮专属档（2026-10-13 机主反馈：青底白字闷、像禁用，且与界面里到处
+     可见的青色软底/描边同色系，主钮跳不出来）。刻意**不动 --color-primary**——
+     它还服务链接/选中态/软底强调等几十处消费面，换它等于引发第二次"哪里又变了"；
+     这里只给主钮一条独立墨色：白字实测 13.63:1（旧青底 4.62）、hover 11.23:1、
+     钮与页面底对比 12.64:1 故主钮不再需要描边建立边界。青绿退回小面积强调，
+     反而更醒目。 */
+  --btn-primary-bg: #17313c;
+  --btn-primary-bg-hover: #1e3f4c;
+  --btn-primary-fg: #ffffff;
   /* N37 on-accent 契约（彩底借值 15 处的 token 正源）。拍板点 2 终裁定案"不拆"维持——
      契约真相档仅 on-primary + on-accent 两枚，全部状态/渐变实底共用 on-accent 单档，
      逐板逐模式显式字面，消费面不得借 on-primary/text-inverse 或写兜底；曾设的
@@ -198,6 +207,12 @@
   --color-primary-hover: #59c8c5;
   --color-primary-soft: rgba(66, 183, 180, 0.13);
   --color-on-primary: #052326;
+  /* 深色模式主钮不是浅色的反转：深墨底在深页面上几乎不可见，亮青底又刺眼发闷
+     （旧 #42b7b4 深字 6.80）。取近白实底 + 本板深字：16.52:1、hover 纯白 18.83:1，
+     与页面底差 16.52 故同样免描边。design-system "明暗各自校准、禁止机械反转"落点。 */
+  --btn-primary-bg: #e8f2f3;
+  --btn-primary-bg-hover: #ffffff;
+  --btn-primary-fg: #071318;
   /* N37 on-accent 深色侧铁律：彩底前景必须本板深值（白字于五板深底 1.83–2.55 全爆，
      PLAN_N37 §2a 结论 1）——danger 6.46 / positive 7.73 / warning 8.39 / info 6.70；
      hover 档经本块 N37② 提亮镜像后升至 6.80–8.47，全档无 <4.5。 */
