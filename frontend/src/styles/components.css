@@ -78,7 +78,11 @@
   justify-content: center;
   gap: 7px; /* 图标 + 中文之间 6px 显挤（"新增网址"那类带钮件的间距投诉点之一） */
   min-height: var(--control-h-lg);
-  line-height: 1; /* 中文文字与 14px 图标共线的最稳对齐：不依赖基线，按钮内外不跳 */
+  /* 刻意不用 line-height:1：中文字形常超出 em box，行高 1 会裁掉上下笔画，机主反馈
+   * "按钮颜色看不清楚"实为字被切。此处给 1.2 保住 CJK 完整字形；钮内垂直居中由基座
+   * 的 align-items:center 负责，不靠压行高（上一轮我用 line-height:1 求解图标共线，
+   * 是判断不全，已回退）。 */
+  line-height: 1.2;
   padding: 6px 14px;
   border-radius: var(--radius-control);
   border: 1px solid transparent;

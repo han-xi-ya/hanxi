@@ -96,8 +96,10 @@ const rows = computed(() => entries.value.map(e => ({
     >
       <template #actions>
         <div class="setting-actions">
+          <!-- 与右侧主钮同档：上一笔只升了"新增网址"、把这颗留在 small，同行不同高
+               直接造成错位（只改一半的疏忽）。两钮同 36px，主次由实底 vs 描边底区分。 -->
           <button
-            class="btn btn-secondary btn-small"
+            class="btn btn-secondary"
             :disabled="!anyWindowShown || collapsingAll"
             title="隐藏全部网页窗（短暂保留可秒开恢复，闲置 5 分钟后自动销毁）"
             @click="collapseAll"
