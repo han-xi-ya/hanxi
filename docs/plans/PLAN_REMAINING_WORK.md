@@ -228,6 +228,21 @@
 
 **顺带撞见的在册病灶复现**：机主环境 `wheelMenu` 里 `paseo/launch` **连续重复两项**——正是 N5 行挂账的 `isOptionAdded` 判重病灶（顶层判重 vs 组内判重口径未定案）实锤存在于真实数据中，可作为该批次修复的验收样本。
 
+## 2026-10-13 第二幕：按钮族收编（守卫扩到 scoped 后揪出的真病）
+
+机主报"部分按钮还是没变"。根因不是色板，是**全局 `.btn` 族一直没有绿色实心档**，于是视图各自手抄一份实底钮，每抄一份就漏一次标准（hover / 按压下沉 / 统一禁用 / on-color 契约）。把守卫第 e 则从 `components.css` 扩到 `.vue` scoped 后一次性现形：
+
+- **新增 `:where(.btn-positive)` 全局档**（底/前景/hover 齐全；hover 复用 tokens.css 里当初为 positive 预留、却因无档而从未被用的 `--btn-positive-fill-hover`）。
+- **五枚微信绿钮收编**（`.btn-save-inline` / `.btn-submit` / `.btn-empty-bind` / `.btn-send-message` / `.attachment-send`）：配色交全局档。其中三枚曾借 `--color-text-inverse` 当彩底前景——`design-system` 的 on-color 契约明令禁止，"**即使比值碰巧过**"也禁，因为一借就绕开了逐板×逐模式核账。
+- **两套对话框族收编**（`ConfirmDialog` / `UiPromptDialog`）：primary/secondary 与全局档等价、原本各是一份手抄副本，收编后白拿 hover、`:active` 按压与统一禁用。**有意的观感变化**：secondary 底由 `surface-soft` 落回标准 `surface-panel`，并取 `--btn-outline-edge` 可见描边（旧 `--color-border` 在白底上仅 1.27:1，边界近乎不可见）。
+- **四处禁用态落回 N38 口径**（`grayscale(1)` + `opacity .75`）：`ConfirmDialog`、`SnipCardView`、`.attachment-send`、`.btn-send-message`——旧写法是三套互不相同的发明（纯 `opacity:.55` / `.4` / 自换灰底配 subtle 字），正是"禁用即灰糊"的来源。
+- **清掉一处 scoped 里的废弃色兜底**：`WechatBotChatInput` 焦点环写 `var(--color-primary, #0f8b8d)`，该 hex 正是 N37 案 A 判定不达标而**已废弃**的旧 teal；它藏在 scoped 的兜底里，躲过了只管全局 CSS 的裸色守卫 a)。
+- **微型钮刻意只挂 `.btn-positive`、不挂 `.btn` 基座**：它们 padding 2–5px、radius 4–6px，挂基座会被注入标准 `min-height` 撑破行高；同时必须自留 `border`（`.btn-positive` 只给 `border-color` 不给边框样式，删净会露出浏览器默认边框）——两条都写进了代码注释，防止下一个人"顺手统一"。
+- **守卫 e 则加两条排除**（伪元素装饰件、`color-mix` 低透铺底）：首跑报 5 处，逐条人工定性为 **3 真 2 假**（真=微信三枚契约违规，假=指示条与低透铺底），误报已排除而非凑数放行；漏检代价如实写进注释（高比例 color-mix 实心底），将来按显式豁免登记升级，不悄悄放宽判据。
+- 仍未处理、待判的两件：`MainTabNav .main-tab-btn`（标签导航非动作钮，可能本就不该有禁用态）；`selected` 主色字四处仍需"生成器定档 + 样张人眼"（见 `PLAN_N37_ONCOLOR` §7d）。
+
+验证：守卫 9 例、前端全量 167 文件 / 2112 项、`vue-tsc` 0、后端 `go test ./...` 无失败；`bin/hanxi-new.exe` 按新码重出。
+
 ## 复进顺序（2026-10-12 现行，取代上方「复进建议顺序」）
 
 1. 跑 [REAL_DEVICE_ACCEPTANCE_2026-09-25](REAL_DEVICE_ACCEPTANCE_2026-09-25.md) 真机验收族——最便宜的债，且卡着 N1/N2/N3/N18/N33 等一片"待复验"；
