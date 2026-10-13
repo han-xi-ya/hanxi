@@ -206,3 +206,26 @@ describe('c) tokens.css on-color 契约族——十块核心两件必存 + 拆�
     // 注：本锁锁的是拍板决定（压暗一档），不是永久配色——将来再拍板换值时，同 PR 更新本锁与 PLAN_N37 §4。
   })
 })
+
+/**
+ * 彩色实底背景 token（实心档；排除 -soft 低透明铺底、-glow 非背景、-hover 派生档）。
+ * 命中的规则必须同块显式声明 on-color 族前景——否则按 base.css 的 `button{color:inherit}`
+ * + body{color:var(--color-text)} 机制，前景会静默吃到正文色：PLAN_N37_ONCOLOR §1d/§2a
+ * 实测该退化在浅色十组合为 2.43–3.98:1、深色为 1.61–2.13:1，**全爆无一到线**。
+ */
+const SOLID_BG_TOKEN = /--(?:color-primary|state-danger|state-positive|state-warning|state-information)(?!-soft|-glow|-hover|-edge)/
+const ON_COLOR_FG = /(?:^|[^-\w])color\s*:\s*var\(--color-on-(?:primary|accent|danger|positive|warning)\b/
+
+describe('e) 彩底必显式前景——封死"忘写 color 即吃 --color-text"的结构缺口', () => {
+  it('components.css 中背景取彩色 token 的按钮规则，同块必须声明 on-color 族前景', () => {
+    const offenders: string[] = []
+    for (const r of iterRules(componentsCss)) {
+      if (!isButtonRule(r.selector)) continue
+      const bg = r.body.match(/(?:^|[;\s])background(?:-color)?\s*:\s*([^;]+)/)
+      if (!bg || !SOLID_BG_TOKEN.test(bg[1])) continue
+      if (ON_COLOR_FG.test(r.body)) continue
+      offenders.push(`${r.selector.replace(/\s+/g, ' ').slice(0, 72)} { background: ${bg[1].trim().slice(0, 60)} }`)
+    }
+    expect(offenders, `彩色实底未配显式前景（静默退化已实测十组全爆，正档 §1d 要求"在契约上封死"）：\n${offenders.join('\n')}`).toEqual([])
+  })
+})
