@@ -102,7 +102,8 @@ const rows = computed(() => entries.value.map(e => ({
             title="隐藏全部网页窗（短暂保留可秒开恢复，闲置 5 分钟后自动销毁）"
             @click="collapseAll"
           >{{ collapsingAll ? '收起中…' : '收起全部' }}</button>
-          <button class="btn btn-primary btn-small" @click="toggleCreate">
+          <!-- 模块主操作，刻意不降 btn-small：主钮与旁边次级钮同高才不显小气 -->
+          <button class="btn btn-primary" @click="toggleCreate">
             <AppIcon name="plus" :size="14" /> {{ showForm && !isEditing ? '关闭表单' : '新增网址' }}
           </button>
         </div>
