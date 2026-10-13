@@ -77,7 +77,10 @@ const targetUserModel = computed({
               placeholder="输入目标微信 User ID"
               @keydown.enter="emit('save-target')"
             />
-            <button class="btn-save-inline" @click="emit('save-target')">保存</button>
+            <!-- 只挂 .btn-positive 取标准配色与 hover，刻意**不挂 .btn 基座**：本钮是
+                 header 内的微型内联件（padding 2px 7px），挂基座会被注入标准控件
+                 min-height 而撑破行高。尺寸差异是刻意的，不是漏收编。 -->
+            <button class="btn-positive btn-save-inline" @click="emit('save-target')">保存</button>
             <button class="btn-cancel-inline" @click="emit('cancel-edit')">取消</button>
           </template>
         </div>
@@ -232,11 +235,11 @@ const targetUserModel = computed({
   border-color: var(--color-primary);
 }
 
+/* 形制收编至全局 .btn-positive（底/前景/hover/按压/禁用一律走标准档）；本块只留
+ * 尺寸与排版差异。历史教训：这里曾自写 `color: var(--color-text-inverse)`，
+ * 借"页面底色反色"兼职彩底前景，被 design-system 的 on-color 契约明令禁止
+ * （即使比值碰巧过也禁，因为绕开了逐板×逐模式核账）。 */
 .btn-save-inline {
-  background: var(--state-positive);
-  /* 彩底前景走 on-color 族：借 text-inverse 被 design-system 明令禁止（"即使比值碰巧
-   * 过"也禁）——text-inverse 本职是页面底色反色（浮层用），借来即绕过逐板×逐模式核账。 */
-  color: var(--color-on-accent);
   border: none;
   padding: 2px 7px;
   border-radius: 4px;

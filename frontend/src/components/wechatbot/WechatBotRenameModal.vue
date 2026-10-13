@@ -48,7 +48,9 @@ const nameModel = computed({
         </div>
         <div class="cmodal-actions-bar">
           <button class="btn-cancel" @click="emit('close')">取消</button>
-          <button class="btn-submit" @click="emit('save')">确定</button>
+          <!-- 只挂 .btn-positive 取标准配色，刻意不挂 .btn 基座（本钮 padding 4px 14px
+               比标准控件矮，挂基座会被注入 min-height 撑高）。 -->
+          <button class="btn-positive btn-submit" @click="emit('save')">确定</button>
         </div>
       </div>
     </div>
@@ -79,11 +81,10 @@ const nameModel = computed({
   cursor: pointer;
 }
 
+/* 形制收编至全局 .btn-positive：底/前景/hover/按压/禁用一律走标准档，本块只留尺寸差异
+ * （曾自写 background+借 text-inverse 作前景，属 on-color 契约禁令，见 PLAN_N37 §1b）。 */
 .btn-submit {
-  background: var(--state-positive);
-  /* 同 .btn-save-inline：彩底前景必须吃 on-color 族，不得借 text-inverse（契约禁令）。 */
-  color: var(--color-on-accent);
-  border: none;
+  border: none; /* 必须自留：未挂 .btn 基座，.btn-positive 只给 border-color 不给边框样式 */
   padding: 4px 14px;
   border-radius: 6px;
   font-size: var(--text-sm);

@@ -57,7 +57,7 @@ const emit = defineEmits<{
       <div v-if="accounts.length === 0" class="empty-accounts">
         <div class="empty-icon">📱</div>
         <div v-if="!collapsed" class="empty-text">暂无绑定的微信账号</div>
-        <button class="btn-empty-bind" @click="emit('bind')" :title="'立即扫码绑定'">
+        <button class="btn-positive btn-empty-bind" @click="emit('bind')" :title="'立即扫码绑定'">
           {{ collapsed ? '+' : '立即扫码绑定' }}
         </button>
       </div>
@@ -214,11 +214,9 @@ const emit = defineEmits<{
   margin-bottom: 12px;
 }
 
+/* 同族收编至全局 .btn-positive（含 border 交回标准档的 1px 透明边，避免宽度差 2px）。 */
 .btn-empty-bind {
-  background: var(--state-positive);
-  /* 同族收编：彩底前景走 on-color 族，禁借 text-inverse（design-system N37 on-color 契约）。 */
-  color: var(--color-on-accent);
-  border: none;
+  border: none; /* 必须自留：未挂 .btn 基座，而 .btn-positive 只给 border-color 不给边框样式 */
   padding: 5px 14px;
   border-radius: 6px;
   font-size: var(--text-sm);
