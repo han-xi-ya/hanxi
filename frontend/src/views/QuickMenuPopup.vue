@@ -750,7 +750,10 @@ function onGroupActivate(i: number) {
 .sector.is-active {
   fill: var(--petal-on);
   stroke: color-mix(in srgb, var(--color-primary) 35%, var(--petal-on));
-  filter: drop-shadow(0 3px 6px var(--color-primary-glow));
+  /* N37 glow 纪律收尾（N27 波次的挂账两枚之一）：彩色发光此后只许"进行中"脉冲使用，
+   * 而 .is-active 是稳态（命中/选中）——降为中性投影，立体提示保留、彩色光去掉。
+   * 用 --color-text 混合而非写死黑/白，故明暗两模式各自取得正确深浅。 */
+  filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-text) 18%, transparent));
 }
 .sector.is-pinned {
   fill: var(--petal-pin);
@@ -893,7 +896,10 @@ function onGroupActivate(i: number) {
 .sector-btn.is-active .sector-icon {
   background: color-mix(in srgb, var(--color-primary) 16%, transparent);
   border-color: var(--color-primary);
-  filter: drop-shadow(0 3px 6px var(--color-primary-glow));
+  /* N37 glow 纪律收尾（N27 波次的挂账两枚之一）：彩色发光此后只许"进行中"脉冲使用，
+   * 而 .is-active 是稳态（命中/选中）——降为中性投影，立体提示保留、彩色光去掉。
+   * 用 --color-text 混合而非写死黑/白，故明暗两模式各自取得正确深浅。 */
+  filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-text) 18%, transparent));
 }
 .sector-name {
   max-width: 100%;
