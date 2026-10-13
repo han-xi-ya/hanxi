@@ -56,6 +56,19 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}
 }
 
+// TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向宿主托盘暴露启动命令，
+// 复用与页面「启动」按钮完全一致的 service 入口。Rufus 上游 manifest 强制管理员
+// ——非提权态点击按既有提权三重契约如实报错（与页面按钮同语义，不作静默降级），
+// 便携单文件 + 预置 rufus.ini 关上游更新检查的语义不变；宿主触发前已完成懒初始化。
+func (e *Module) TrayCommands() []extapi.TrayCommand {
+	return []extapi.TrayCommand{
+		{ID: "launch", Label: "启动 Rufus", Run: func(context.Context) error {
+			_, err := e.svc.OpenWindow()
+			return err
+		}},
+	}
+}
+
 // 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。
 func (e *Module) Services() []extapi.Service {
 	return []extapi.Service{

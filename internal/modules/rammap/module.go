@@ -11,6 +11,13 @@
 //     stopped 引导行预告），与 rufus/litemonitor/bcu 同族；
 //   - 许可：Sysinternals 工具按免费试用件分发、无再分发条款——hanxi 代下载
 //     自用边界内，二进制不入库、不打包进发布物（与 GitHub 家族同口径）。
+//
+// 负裁决（2026-10-13 机主终裁）：**本模块刻意不实现 extapi.TrayCommandsProvider**。
+// RAMMap 是"看一眼 + 清一下待机列表"的一次性观察工具，关窗即退、不常驻，挂常驻
+// 托盘/轮盘项没有使用价值；且 requireAdministrator 形态下非提权态点击必然报错，
+// 与页面「启动」按钮语义重复。**这不是遗漏**——可选契约的缺席全链路零报错
+// （见 docs/TROUBLESHOOTING.md #107：termora/windterm 就是这样静默漏掉的），
+// 故把裁决显式记在这里，后人勿当欠账顺手补上。
 package rammap
 
 import (
@@ -41,7 +48,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "RAMMap",
 		Version:     "0.1.0",
-		Description: "托管微软 Sysinternals RAMMap 内存观察工具：官方直链版本管理与 JobObject 启停（需管理员运行）",
+		Description: "托管微软 Sysinternals RAMMap 内存观察工具：官方直链版本管理与 JobObject 启停（需管理员运行；一次性观察工具，刻意不挂托盘项）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

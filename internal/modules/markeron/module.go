@@ -49,6 +49,19 @@ func (e *Module) Nav() []extapi.NavEntry {
 	}
 }
 
+// TrayCommands 实现 extapi.TrayCommandsProvider 可选契约：向托盘/轮盘命令候选
+// 暴露标注开关。语义刻意取"切换"而非"启动"——MarkerOn 的高频动作就是开/停批注
+// （单实例二次拉起即开关），与 msgboard「挂出/撤下留言牌」同属切换型动作先例；
+// 复用页面同一个 ToggleAnnotate 入口，不在闭包里另起第二套编排。
+func (e *Module) TrayCommands() []extapi.TrayCommand {
+	return []extapi.TrayCommand{
+		{ID: "toggle", Label: "开启/停止屏幕标注", Run: func(context.Context) error {
+			_, err := e.svc.ToggleAnnotate()
+			return err
+		}},
+	}
+}
+
 // 以下方法实现 extapi.Module 契约，逐项语义见 internal/extapi 接口文档。
 func (e *Module) Services() []extapi.Service {
 	return []extapi.Service{

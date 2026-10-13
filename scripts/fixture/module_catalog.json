@@ -496,12 +496,14 @@
       "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
-        "managed-process"
+        "managed-process",
+        "tray-commands"
       ],
       "entrypoints": [
         "rpc",
         "navigation",
-        "search"
+        "search",
+        "tray"
       ],
       "compatibility": {
         "hostRange": "*",
@@ -846,7 +848,7 @@
     {
       "id": "rammap",
       "name": "RAMMap",
-      "description": "托管微软 Sysinternals RAMMap 内存观察工具：官方直链版本管理与 JobObject 启停（需管理员运行）",
+      "description": "托管微软 Sysinternals RAMMap 内存观察工具：官方直链版本管理与 JobObject 启停（需管理员运行；一次性观察工具，刻意不挂托盘项）",
       "category": "system",
       "deliveryKind": "builtin-logical",
       "capabilities": [
@@ -901,12 +903,14 @@
       "deliveryKind": "builtin-logical",
       "capabilities": [
         "hosted-versions",
-        "managed-process"
+        "managed-process",
+        "tray-commands"
       ],
       "entrypoints": [
         "rpc",
         "navigation",
-        "search"
+        "search",
+        "tray"
       ],
       "compatibility": {
         "hostRange": "*",
