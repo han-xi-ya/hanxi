@@ -81,7 +81,8 @@ const nameModel = computed({
 
 .btn-submit {
   background: var(--state-positive);
-  color: var(--color-text-inverse);
+  /* 同 .btn-save-inline：彩底前景必须吃 on-color 族，不得借 text-inverse（契约禁令）。 */
+  color: var(--color-on-accent);
   border: none;
   padding: 4px 14px;
   border-radius: 6px;

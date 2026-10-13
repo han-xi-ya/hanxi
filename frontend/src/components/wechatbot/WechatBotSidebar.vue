@@ -216,7 +216,8 @@ const emit = defineEmits<{
 
 .btn-empty-bind {
   background: var(--state-positive);
-  color: var(--color-text-inverse);
+  /* 同族收编：彩底前景走 on-color 族，禁借 text-inverse（design-system N37 on-color 契约）。 */
+  color: var(--color-on-accent);
   border: none;
   padding: 5px 14px;
   border-radius: 6px;

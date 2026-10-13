@@ -234,7 +234,9 @@ const targetUserModel = computed({
 
 .btn-save-inline {
   background: var(--state-positive);
-  color: var(--color-text-inverse);
+  /* 彩底前景走 on-color 族：借 text-inverse 被 design-system 明令禁止（"即使比值碰巧
+   * 过"也禁）——text-inverse 本职是页面底色反色（浮层用），借来即绕过逐板×逐模式核账。 */
+  color: var(--color-on-accent);
   border: none;
   padding: 2px 7px;
   border-radius: 4px;
