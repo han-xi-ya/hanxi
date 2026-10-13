@@ -68,8 +68,8 @@ useDialogA11y({
           <input ref="input" v-model="draft" type="text" :placeholder="placeholder" @keydown="onInputKeydown" />
         </label>
         <footer>
-          <button type="button" class="hx-prompt-btn secondary" @click="cancel">{{ cancelLabel }}</button>
-          <button type="button" class="hx-prompt-btn primary" @click="submit">{{ confirmLabel }}</button>
+          <button type="button" class="btn btn-secondary hx-prompt-btn secondary" @click="cancel">{{ cancelLabel }}</button>
+          <button type="button" class="btn btn-primary hx-prompt-btn primary" @click="submit">{{ confirmLabel }}</button>
         </footer>
       </section>
     </div>
@@ -87,9 +87,10 @@ useDialogA11y({
 .hx-prompt-field input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .hx-prompt-btn { min-height: var(--control-h-lg); padding: 0 16px; border: 1px solid var(--color-border); border-radius: var(--radius-control); font-weight: 650; cursor: pointer; transition: background var(--motion-base) ease; }
-.hx-prompt-btn.secondary { background: var(--surface-soft); color: var(--color-text); }
-.hx-prompt-btn.secondary:hover { background: var(--surface-hover); }
-.hx-prompt-btn.primary { border-color: transparent; background: var(--color-primary); color: var(--color-on-primary); }
-.hx-prompt-btn.primary:hover { background: var(--color-primary-hover); }
+/* secondary/primary 两档整体交给全局 .btn-secondary / .btn-primary（原先是一份手抄
+ * 副本，且缺 :active 按压下沉与统一禁用口径）；本件只保留上方尺寸差异。
+ * 有意的轻微变化：secondary 底由 surface-soft 落回标准的 surface-panel，并取
+ * --btn-outline-edge 可见描边（全局注释记录旧 --color-border 在白底上仅 1.27:1、
+ * 边界近乎不可见）。 */
 @media (max-width: 460px) { .hx-prompt-backdrop { align-items: end; padding: 12px } .hx-prompt { padding: 16px } .hx-prompt footer { flex-direction: column-reverse } .hx-prompt-btn { min-height: 44px; width: 100% } }
 </style>

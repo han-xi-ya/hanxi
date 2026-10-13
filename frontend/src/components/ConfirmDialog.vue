@@ -49,8 +49,8 @@ useDialogA11y({
           <div v-for="item in details" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div>
         </dl>
         <footer>
-          <button ref="cancelButton" class="workbench-confirm-btn secondary" :disabled="busy" @click="cancel">{{ cancelLabel }}</button>
-          <button class="workbench-confirm-btn primary" :disabled="busy" @click="emit('confirm')">{{ busy ? '处理中…' : confirmLabel }}</button>
+          <button ref="cancelButton" class="btn btn-secondary workbench-confirm-btn secondary" :disabled="busy" @click="cancel">{{ cancelLabel }}</button>
+          <button class="btn btn-primary workbench-confirm-btn primary" :disabled="busy" @click="emit('confirm')">{{ busy ? '处理中…' : confirmLabel }}</button>
         </footer>
       </section>
     </div>
@@ -71,8 +71,11 @@ dt { color:var(--color-text-muted); font-size:var(--text-sm); } dd { margin:0; o
 footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
 .workbench-confirm-btn { min-height:var(--control-h-lg); padding:0 16px; border:1px solid var(--color-border); border-radius:var(--radius-control); font-weight:650; cursor:pointer; }
 .workbench-confirm-btn.secondary { background:var(--surface-soft); color:var(--color-text); }
-.workbench-confirm-btn.primary { border-color:transparent; background:var(--color-primary); color:var(--color-on-primary); }
+/* primary 档底色/前景/hover/按压全部交全局 .btn-primary（本钮与之完全等价，原先是
+ * 一份手抄副本）；此处只保留危险态覆写与尺寸差异。危险态补 hover——原实现全无
+ * hover 态，悬停无反馈。 */
 .is-danger .workbench-confirm-btn.primary { background:var(--state-danger); color:var(--color-on-accent); }
+.is-danger .workbench-confirm-btn.primary:hover:not(:disabled) { background:var(--btn-danger-fill-hover); }
 /* 禁用口径落回 N38 裁决（components.css :where(.btn:disabled) 同源）：旧写法单靠
  * opacity:.55 会把文字与底色按同一比例一起洗向页面底色（白字/teal 底实测跌到
  * 2.04:1，即"灰压成一片"的病根）；改为 grayscale 先去饱和、opacity .75 轻压一档表意。 */
