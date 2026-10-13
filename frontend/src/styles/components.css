@@ -127,6 +127,21 @@
 /* 实心危险（停止/强制中断类）：描边形见 .btn-danger-outline。本档收编为全局标准形，
  * 消掉"类名在用、形制只活在 3 份视图 scoped 副本"的孤儿态（scoped 副本特异性更高，
  * 在途视图视觉零变化，落回时自动接标准形）。 */
+/* 绿色实心档（确认/发送/绑定类动作）。全局族一直没有这一档，后果是视图各自造轮子：
+ * btn-save-inline / btn-submit / btn-empty-bind / btn-send-message / attachment-send
+ * 五处各写一遍实底，各自漏掉 hover、按压下沉与统一禁用口径——2026-10-13 把守卫
+ * 第 e 则扩到 .vue scoped 后一次性现形（首版只扫 components.css 全都看不见）。
+ * hover 复用 tokens.css 既有的 --btn-positive-fill-hover（当初就为 positive 预留了
+ * 派生档，却一直没有对应的 .btn-* 形制可用）。 */
+:where(.btn-positive) {
+  background: var(--state-positive);
+  color: var(--color-on-accent);
+  border-color: transparent;
+  font-weight: 600;
+}
+:where(.btn-positive:hover:not(:disabled)) {
+  background: var(--btn-positive-fill-hover);
+}
 :where(.btn-danger) {
   background: var(--state-danger);
   color: var(--color-on-accent);
