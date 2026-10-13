@@ -184,7 +184,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
 }
 .snip-fs-btn:hover:not(:disabled) { color: var(--color-text); background: var(--surface-hover); }
-.snip-fs-btn:disabled { opacity: 0.4; cursor: default; }
+/* 同 N38 禁用口径：纯 opacity 会把图标与底色一同洗灰（旧 0.4 尤重），改 grayscale + .75；
+ * cursor 保留 default——字号步进到边界属"到顶"而非"禁止操作"，与 not-allowed 语义有别。 */
+.snip-fs-btn:disabled { opacity: .75; filter: grayscale(1); cursor: default; }
 .snip-state {
   flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
   font-size: var(--text-sm); color: var(--color-text-muted);

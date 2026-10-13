@@ -223,3 +223,37 @@ hover 底（`--color-primary-hover`）补充行（同样 20/30 违规）：
 
 > 边界重申（分析件产出时）：本件与样张仅新增两文件，未触 tokens/components/视图，未 commit。
 > 收口补记（2026-09-26，六路终结位）：本轮仅动本文档、样张与新增守卫 spec（`buttonColorContract.spec.ts`）三处；tokens/components/视图的执行 diff 全部归六路各线自有提交，不在本件账内。
+
+---
+
+## 7. 2026-10-13 复核补记（§5-7 次级缺口：机主再次报"按钮配色不舒服"）
+
+机主主诉复现（"说过很多次，深浅模式下按钮配色不舒服"），本次按现盘 tokens.css 重算并推进，**三件事有结论、一件事否决、一件事仍需人眼**。
+
+### 7a. §2c 重算：挂账"三处"实为四处，teal 浅那处并未随案 A 自解
+
+十组「主色字 on `--surface-selected`」实测（WCAG 相对亮度公式，往返自检：`#0d8284` 反解 OKLCH 再正解回 `#0d8284`）：
+
+- 不达 4.5:1 四处：**light/teal 3.98**、**light/sky 4.30**、**dark/sky 3.51**，另 light/iris 4.60 与 dark/iris 4.58、dark/jade 4.59 三处虽过线但**余量不足 0.1**（对照 iris-report/jade-report 自订的"≥.1 余量"标准即不达标）。
+- 达标六处：light/jade 4.77、light/onyx 5.88、dark/teal 4.83、dark/onyx 4.88、light/iris 4.60、dark/jade 4.59。
+- **更正 §5-7 的推定**：案 A 压暗把 teal 浅 selected 从 3.55 推到 **3.98**，仍未到线——原文只声明"on panel 自动跟到 4.62 ✓"（该项确已达标），selected 账**没有被案 A 覆盖**。§0 与 §2c 的"三处"口径据此改为四处。
+
+### 7b. 否决方案：压深 selected 底（本次实测后放弃，勿再走）
+
+- light/teal 与 light/sky：同色相在 OKLCH 轴上**全域 600 档扫描无解**——要压到让深字达标，底就得比文字本身还暗，对比度先升后降，不存在"既是选中底又够深"的取值。
+- dark/sky：存在解（最亮达标档约 `#3d454f`），但**代价不可接受**——该底与 `--surface-hover` 的亮度差从 **0.0430 塌到 0.0095**，等于选中行与悬停行几乎无法区分，为救 1.1 的对比毁掉整表层次。
+- 附带自我更正：本次会话中途曾据单点二分给出"sky 深 selected 压深为 `#27456b`"的建议，**该建议随 7b 结论一并作废**（二分法在"对比度非单调"域上不可信，改用全域扫描后结论翻转）。
+
+### 7c. 已落地两件事
+
+1. **挂账的两枚稳态 glow 已降级**（`de715ea`）：`QuickMenuPopup.vue:753/.sector.is-active` 与 `:896/.sector-btn.is-active .sector-icon` 的 `drop-shadow(0 3px 6px var(--color-primary-glow))` → 中性投影 `color-mix(in srgb, var(--color-text) 18%, transparent)`。取 text 混合而非写死黑白，明暗两模式各自获得正确深浅；§5-2 "glow 只许进行中"至此在轮盘面真正闭环。
+2. **守卫新增第 e 则**（`224149f`）：§1d 那个"尚无实例的机制隐患"此前四则契约**无一覆盖**（基座 `:where(.btn)` 不定义 color + `button{color:inherit}` → 忘写前景即吃 `--color-text`，按 §2a 实测浅 2.43–3.98、深 1.61–2.13 全爆）。新增约：背景取 `--color-primary`/`--state-*` 的按钮规则，同块必须声明 `--color-on-*` 前景。**有效性做了反向验证**（遵本 spec 文件头"提取空集即红"纪律）：注入两条探针，无前景的 `.btn-probe-fake` 被抓、配了 on-primary 的 `.btn-probe-ok` 放行，复原后工作区零残留。现盘 components.css **零违规**——与 §1d"属机制隐患非既成事实"一致，此锁价值在于让未来某次新增必红。
+
+### 7d. 仍需人眼，且已确定不可用纯数学收口
+
+修 §7a 那四处有两条路：**改底**已被 7b 否决；只剩**引入 `--color-primary-text` 文字档**。但两条障碍使其不能由算数定稿：
+
+1. **接线面是 107 处**（全库 `color: var(--color-primary)` 前景用点实测计数），且它们所在底各不相同（panel / selected / `primary-soft` 合成底 / 透明）——`on panel` 现已达标 4.62，逐处改既有 107 点风险面过大，只改落在 selected/soft 上的子集则需要逐处判定环境底，属人工审。
+2. **同色相凑值会毁色相**：light/sky 从 4.30 凑到 4.65 的最短路径是 `#0064b5 → #4a5f77`，因 OKLCH 在低 L 段色域收缩把饱和度挤掉，**品牌蓝退成脏灰蓝**；反向提亮则失去"选中更深"的层次语义。为 0.35 的对比度牺牲色相纯度，不值。
+
+**建议路径**（与本仓既有手法一致，N36 字体亦如此收口）：把 `--color-primary-text` 十档并入 `docs/design/themes/gen-palettes-v2.mjs` 的统一定档流程（在 OKLCH 里给"文字档"单独一条明度曲线，而非逐点凑数），扩展 `specimens/n37-oncolor-matrix.html` 增列"主色字 on selected"区块，由机主 App 内亲测后终选。**本文 §5-7 由 ⏳ 未并案 转为 ⏳ 已定方向待定档，不销账。**

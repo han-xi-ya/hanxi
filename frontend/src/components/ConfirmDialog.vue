@@ -73,7 +73,10 @@ footer { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
 .workbench-confirm-btn.secondary { background:var(--surface-soft); color:var(--color-text); }
 .workbench-confirm-btn.primary { border-color:transparent; background:var(--color-primary); color:var(--color-on-primary); }
 .is-danger .workbench-confirm-btn.primary { background:var(--state-danger); color:var(--color-on-accent); }
-.workbench-confirm-btn:disabled { opacity:.55; cursor:not-allowed; }
+/* 禁用口径落回 N38 裁决（components.css :where(.btn:disabled) 同源）：旧写法单靠
+ * opacity:.55 会把文字与底色按同一比例一起洗向页面底色（白字/teal 底实测跌到
+ * 2.04:1，即"灰压成一片"的病根）；改为 grayscale 先去饱和、opacity .75 轻压一档表意。 */
+.workbench-confirm-btn:disabled { opacity:.75; filter:grayscale(1); cursor:not-allowed; }
 .workbench-confirm-btn:focus-visible { outline:3px solid var(--focus-ring); outline-offset:2px; }
 @media (max-width:460px) { .workbench-confirm-backdrop{align-items:end;padding:12px}.workbench-confirm{padding:16px}.workbench-confirm footer{flex-direction:column-reverse}.workbench-confirm-btn{min-height:44px;width:100%}.workbench-confirm-details div{grid-template-columns:1fr}.workbench-confirm-details dt{margin-bottom:2px} }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important} }
