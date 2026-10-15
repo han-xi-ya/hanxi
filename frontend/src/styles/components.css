@@ -130,8 +130,12 @@
   background: var(--btn-primary-bg-hover);
 }
 :where(.btn-secondary) {
-  background: var(--surface-panel);
-  border-color: var(--btn-outline-edge); /* 旧 --color-border 白底上仅 1.27:1，边界近乎不可见 */
+  /* a 案（2026-10-15 机主定）：底由 surface-panel 改 surface-soft——原先白钮放在白
+   * 面板上只剩一层淡边，机主点名的日志工具栏（复制/清屏/刷新/收起）与"刷新网卡"
+   * 就是这个状态，近乎看不见按钮实体。改浅灰一档后钮身可辨，描边继续用
+   * --btn-outline-edge（旧 --color-border 在白底上仅 1.27:1 的教训不变）。 */
+  background: var(--surface-soft);
+  border-color: var(--btn-outline-edge);
   color: var(--color-text);
 }
 :where(.btn-secondary:hover:not(:disabled)) {
