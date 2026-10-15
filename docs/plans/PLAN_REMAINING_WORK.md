@@ -241,6 +241,14 @@
 - **守卫 e 则加两条排除**（伪元素装饰件、`color-mix` 低透铺底）：首跑报 5 处，逐条人工定性为 **3 真 2 假**（真=微信三枚契约违规，假=指示条与低透铺底），误报已排除而非凑数放行；漏检代价如实写进注释（高比例 color-mix 实心底），将来按显式豁免登记升级，不悄悄放宽判据。
 - 仍未处理、待判的两件：`MainTabNav .main-tab-btn`（标签导航非动作钮，可能本就不该有禁用态）；`selected` 主色字四处仍需"生成器定档 + 样张人眼"（见 `PLAN_N37_ONCOLOR` §7d）。
 
+**主钮配色二次返工（2026-10-15 同日）**：机主否掉墨色并点名**蓝色系** → 浅 `#0f6fd8` 白字 4.90:1、深 `#5ec2ff` 配深字 8.47:1（`7720d5f`；候选"更亮青 3.08:1"不达 AA 已否决）。次级档按机主选 a 案底改 `surface-soft`（`bbb6b1b`）——日志工具栏 4 颗与"刷新网卡"原为白底白面板+淡边，近乎不可见。方案链（青 4.62 嫌闷 → 墨 13.63 嫌不对 → 蓝）与"不动 --color-primary、蓝钮青强调双色相并存"的代价均留档 tokens 注释。
+
+**按钮溢出真身（同日定位）**：机主报「刷新网卡被挤出窗口」。根因是**我上一轮加的 `white-space:nowrap`**（治竖排的代价是钮变宽）撞上 `:where(.btn-group)` 只有 `display:flex` **没有 `flex-wrap`** → 溢出的结果就是把第三颗顶出去。旁证：Snipaste 视图早有 scoped 补丁 `align-items:center; flex-wrap:wrap`，同一坑被就地绕过、全局档一直缺。已补全局。
+
+**同类容器待批量补齐（静态扫得 12 处，逐处加 `flex-wrap: wrap` 即可）**：EverythingResultsPanel `.row-actions`、EverythingVersionCard `.inst-actions`、FrpcProjectEditor `.header-actions`/`.footer-actions`、OperationBanner `.op-actions`（带 `flex:none` 需连带评估）、ErrorBoundary `.eb-actions`、WechatBotChatInput `.input-toolbar-row`、EnvCheckView `.status-toolbar`、FrpcProjectsView `.control-actions`/`.empty-actions`、MangoDiskView `.md-actions,.md-row-actions`。**建议加一条 CSS 契约**：凡 `display:flex` 的按钮容器类必带 `flex-wrap`——与 #107"可选契约 + 缺席静默须配穷举锁"同理，否则每新增一个 actions 容器就重演一次。
+
+**审计方法论教训（本轮回写，防再犯）**：手搓正则/grep 三次给出错误的"没问题"结论（缩进猜父级、猜编译产物里 `class:` 前缀、CSS 解析漏 `:root` 基座）。最终有效手段是**用官方 `@vue/compiler-dom` 解析 template 建真 AST**（155 个 .vue / 587 颗 button）。据此重判的两个结论：①同排档位不一致实际仅 4 处，其中 3 处是"动作钮 + 文字链接钮"的正常并存，非 bug；②`link-button`/`state-action`/`retry-link`/`cmodal-close` **都有全局定义**（标准第四档文字链接钮），先前"28 种自造动作钮"是误分类，真无全局定义的只有 `inline-action`/`hub-action`/`clip-act` 三种。
+
 验证：守卫 9 例、前端全量 167 文件 / 2112 项、`vue-tsc` 0、后端 `go test ./...` 无失败；`bin/hanxi-new.exe` 按新码重出。
 
 ## 复进顺序（2026-10-12 现行，取代上方「复进建议顺序」）

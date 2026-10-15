@@ -305,7 +305,12 @@
 }
 :where(.meta-info) { font-size: var(--text-base); color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
 :where(.meta-info strong) { color: var(--color-text); }
-:where(.btn-group) { display: flex; gap: 8px; }
+/* flex-wrap 必备：本容器横排按钮，机主实测窄窗下「刷新网卡」被整颗顶出窗口。
+ * 直接诱因是基座新增的 white-space:nowrap（治"字竖排"的代价是钮变宽），而
+ * .btn-group 原本 display:flex 不换行 → 溢出的只能是被挤出去的那颗。Snipaste
+ * 视图早有 scoped 补丁（align-items:center; flex-wrap:wrap）正是同一坑的局部
+ * 绕过，全局档一直缺，故在此补齐并统一。 */
+:where(.btn-group) { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 :where(.section-title h3) { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
 :where(.empty-hint) { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: var(--text-base); background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
 :where(.extras-card) { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
