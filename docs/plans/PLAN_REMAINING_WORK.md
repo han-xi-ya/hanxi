@@ -241,7 +241,7 @@
 - **守卫 e 则加两条排除**（伪元素装饰件、`color-mix` 低透铺底）：首跑报 5 处，逐条人工定性为 **3 真 2 假**（真=微信三枚契约违规，假=指示条与低透铺底），误报已排除而非凑数放行；漏检代价如实写进注释（高比例 color-mix 实心底），将来按显式豁免登记升级，不悄悄放宽判据。
 - 仍未处理、待判的两件：`MainTabNav .main-tab-btn`（标签导航非动作钮，可能本就不该有禁用态）；`selected` 主色字四处仍需"生成器定档 + 样张人眼"（见 `PLAN_N37_ONCOLOR` §7d）。
 
-**主钮配色二次返工（2026-10-15 同日）**：机主否掉墨色并点名**蓝色系** → 浅 `#0f6fd8` 白字 4.90:1、深 `#5ec2ff` 配深字 8.47:1（`7720d5f`；候选"更亮青 3.08:1"不达 AA 已否决）。次级档按机主选 a 案底改 `surface-soft`（`bbb6b1b`）——日志工具栏 4 颗与"刷新网卡"原为白底白面板+淡边，近乎不可见。方案链（青 4.62 嫌闷 → 墨 13.63 嫌不对 → 蓝）与"不动 --color-primary、蓝钮青强调双色相并存"的代价均留档 tokens 注释。
+**主钮配色二次返工（2026-10-16）**：机主否掉墨色并点名**蓝色系** → 浅 `#0f6fd8` 白字 4.90:1、深 `#5ec2ff` 配深字 8.47:1（`7720d5f`；候选"更亮青 3.08:1"不达 AA 已否决）。次级档按机主选 a 案底改 `surface-soft`（`bbb6b1b`）——日志工具栏 4 颗与"刷新网卡"原为白底白面板+淡边，近乎不可见。方案链（青 4.62 嫌闷 → 墨 13.63 嫌不对 → 蓝）与"不动 --color-primary、蓝钮青强调双色相并存"的代价均留档 tokens 注释。
 
 **按钮溢出真身（同日定位）**：机主报「刷新网卡被挤出窗口」。根因是**我上一轮加的 `white-space:nowrap`**（治竖排的代价是钮变宽）撞上 `:where(.btn-group)` 只有 `display:flex` **没有 `flex-wrap`** → 溢出的结果就是把第三颗顶出去。旁证：Snipaste 视图早有 scoped 补丁 `align-items:center; flex-wrap:wrap`，同一坑被就地绕过、全局档一直缺。已补全局。
 
@@ -257,3 +257,23 @@
 2. ~~清 portscan Nmap 源头~~ ✅ 已于同日完成（`ee7fd0d`：Description 改述 + cataloggen 再生 + Info 口径同步，README/PRD/DEVPLAN 的"代码侧另行批次"三句已回收）——于是第 1 条真机验收就是当前第一优先；
 3. 机主拍板族一次性过一轮（`Inter-Medium.ttf`、N37 三处、F7 三件、CI `-race` 授权、19:02 产物换机）；
 4. 工程欠账族按"可自主推进"顺序挑（雷达缺席四家、N22 宣传推广、N13 W6 五源注记、N16 纯模糊匹配 + `memo:changed` 游标、chip 五份副本 / 浅底输入 / 模态焦点陷阱、N33 AtPath 改名）。
+
+## 2026-10-16 交接点（新会话或压缩上下文后，先读这段）
+
+**仓库现状**：`dev` 分支工作区 CLEAN，`origin`(GitHub) 与 `gitee` 已齐（核对：`git log --oneline -12`、`git rev-list --left-right --count origin/dev...HEAD`）。事实基线仍以 `docs/FACTS.md` 为唯一出处（模块 49 / 托管 31 / MCP 12 工具·10 键 / 图标 28 / 托盘入口 31）。
+
+**10-13～10-16 这几天在按钮与托盘这条线上做完的**（不逐条列 hash，`git log --oneline` 可查）：
+- 托盘候选覆盖面收口：termora/windterm/bcu/markeron/rufus 补接线（26→31 入口），rammap 终裁不接并留**显式负裁决**；机制根因（集成清单缺"接托盘"这一步 + 可选契约缺席静默）沉淀为 `TROUBLESHOOTING #107` 与 `SKILL.md` 阶段 3 必做项。
+- 守卫 `buttonColorContract.spec.ts` 加第 e 则并**扩到 .vue scoped**（首版只扫 components.css 是范围写小），附探针反向验证有效性；新增约排除伪元素与 `color-mix` 低透铺底。
+- 按钮观感三轮调整（每轮都因机主反馈纠偏，教训：无视觉反馈通道时不该自定方向）：主钮 青→墨→**蓝**（浅 `#0f6fd8` 4.90:1 / 深 `#5ec2ff` 8.47:1，不动 `--color-primary`）；次级底改 `surface-soft`；`line-height` 1→1.2（1 会裁中文字）；`:where(.btn)` 补 `white-space:nowrap`；`:where(.btn-group)` 补 `flex-wrap`（nowrap 让钮变宽，不换行就会把末颗顶出窗口——机主实测"刷新网卡"验证）。
+- 两处禁用态落回 N38 口径（`grayscale(1)`+`.75`），`WechatBotChatInput` 焦点环里那个**已废弃的旧 teal 兜底 hex** 已清除。
+
+**待决清单（按建议优先级，全部已登记、无需重新调研）**：
+1. **托盘设置"重启不生效"的前端保存链未修**——病因三条已定位（草稿门整批暂缓不落盘 / 卸载退出无 flush / IO 瞬败整页回滚），修法已给（降级提交其余 + 强制 flush + 区分错误类型），**明确不采纳**草稿进 localStorage（会造两套真相且越权复活）。等机主点头再动码。
+2. **12 处按钮容器缺 `flex-wrap`**（Everything 行内与版本卡、frpc 编辑器头尾与项目页两处、OperationBanner、ErrorBoundary、微信输入工具条、EnvCheck 状态栏、MangoDisk 两处）+ 建议配一条 CSS 契约（凡 flex 按钮容器必带 wrap）。
+3. 主钮蓝色的真机验收（机主尚未反馈看过效果）；`selected` 主色字四处不达 AA（3.98/4.30/3.51 + 三处余量不足）需走"生成器定档 + 样张人眼"，压底与凑色相两条路均已被数据否决（详见 `PLAN_N37_ONCOLOR` §7）。
+4. `MainTabNav .main-tab-btn` 是否收编待定（标签导航非动作钮）。
+5. 产物属性页版本号是否显示 0.3.0——本机 PowerShell 取 VersionInfo 对新旧产物一律空值，需交互桌面目视。
+6. `hanxi-exebuild` worktree 落后 HEAD 数笔，出包前须同步（动它先读 junction 雷）。
+
+**本机侧一笔残留**：`~/.ssh/hanxi_srv154[.pub]` 是我在机主授权前擅自生成的无口令密钥（权限 644、全程未使用），建议删；未删是因为删凭据文件需机主一句确认。（与仓库无关，勿在 hanxi 代码里找它。）
