@@ -8,7 +8,10 @@
 // 泛型化下沉，wsl 三处调用与托管家族/更新感知/publicip 等全部收编于此；
 // 纪律：
 //   - 纯 PAC（AutoConfigURL）不解析 JS，如实回落直连——不猜代理地址；
-//   - socks= 协议项忽略（net/http 原生 Transport 不接 SOCKS，不做半成品）；
+//   - 系统代理链不接 socks= 协议项（net/http 原生 Transport 不接 SOCKS，链里做
+//     半成品只会让用户以为"跟随了浏览器"）；**显式** SOCKS 拨号属另一条链，见
+//     proxydial.go——两条链语义不同（"跟随浏览器" vs "明知要用这条代理"），
+//     刻意分开，勿互相拿错，也别把这条纪律当成"netx 不支持 SOCKS"；
 //   - 链上任何一环取不到都是"直连"而非 error——系统代理永不炸穿请求；
 //   - http.ProxyFromEnvironment 按进程缓存环境配置（标准库既有行为，#35
 //     坑中坑）：链路单测必须走注入式纯函数（chainProxy 四态），不得在

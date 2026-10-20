@@ -4,11 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -17,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/net/proxy"
+	"hanxi/packages/go/netx"
 )
 
 const (
@@ -40,10 +38,10 @@ const (
 	openMergeWindow = 50 * time.Millisecond
 )
 
-// ContextDialer 抽象接口，统一标准 net.Dialer 和 proxy.ContextDialer
-type ContextDialer interface {
-	DialContext(ctx context.Context, network, address string) (net.Conn, error)
-}
+// ContextDialer 统一标准 net.Dialer 与 SOCKS 拨号器的最小接口。
+// 代理拨号内核已上收至 netx（portscan 与 proxycheck 共用一份实现），此处只留
+// 类型别名维持包内既有签名不变——勿改回本地定义，那会把实现重新劈成两份。
+type ContextDialer = netx.ContextDialer
 
 // ParsePortRange 解析诸如 "80,443,8000-8005" 的端口字符串，返回去重有序的端口切片
 func ParsePortRange(raw string) ([]int, error) {
@@ -125,174 +123,29 @@ func (s *Scanner) QueryEgressIP(ctx context.Context, proxyURL string, timeout ti
 		return "", err
 	}
 
-	// 高可用 IP 查询接口列表 (返回纯文本 IP)
-	ipProviders := []string{
-		"https://api.ipify.org",
-		"https://ifconfig.me/ip",
-		"https://icanhazip.com",
-		"https://ip.3322.net",
-		"https://ddns.oray.com/checkip",
-	}
-
-	var lastErr error
-	for _, u := range ipProviders {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		req.Header.Set("User-Agent", "curl/8.0.0")
-
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		body, err := bufio.NewReader(resp.Body).ReadString('\n')
-		resp.Body.Close()
-		if err != nil && len(body) == 0 {
-			lastErr = err
-			continue
-		}
-
-		ipStr := strings.TrimSpace(body)
-		if ip := net.ParseIP(ipStr); ip != nil {
-			return ip.String(), nil
-		}
-		// 备用正则匹配
-		matches := ipv4Regex.FindString(body)
-		if matches != "" && net.ParseIP(matches) != nil {
-			return matches, nil
-		}
-	}
-
-	if lastErr != nil {
-		return "", fmt.Errorf("探测出网IP失败: %w", lastErr)
-	}
-	return "", fmt.Errorf("未能获取到有效的公网IP")
+	// 多源降级列表、响应体上限与"不跟跳转"的护栏都归 netx.QueryEgress；
+	// 本层只保留"返回单个 IP 字符串"的既有对外形态（前端出网 IP 条依赖它）。
+	ip, _, err := netx.QueryEgress(ctx, httpClient, netx.EgressProvidersV4)
+	return ip, err
 }
 
-// createDialerAndHTTPClient 创建支持直接直连或 SOCKS5 / HTTP 代理的探测器
+// createDialerAndHTTPClient 建出直连或过 SOCKS5 / HTTP(S) 代理的探测器。
+//
+// 实现已上收 netx.ParseProxy + netx.DialProxy（portscan 与 proxycheck 共用同一份
+// 代理拨号内核，N25「消灭孤例」口径），本层只补两条**模块专属**口径：
+//   - TLSInsecureSkipVerify 恒 true：扫描只问"靶活着没"，证书链不参与存活判定。
+//     proxycheck 要答的是"证书有没有被中间网关替换"，那是它自己的问题，勿在这里
+//     "顺手统一"成验证书——那会让 portscan 的 HTTPS 靶大面积误报为不可达。
+//   - 返回的 dialer 对 HTTP(S) 代理**仍是直连拨号器**：标准库的 CONNECT 隧道只作用
+//     于经该 http.Client 发出的请求，而 probePort 的裸 TCP 探测走 dialer。这是在册
+//     既有行为（详见 netx.DialProxy 函数注释），用户配 HTTP 代理时端口探测探的就是
+//     直达靶，PRD 里"SOCKS5/HTTP 代理扫描"那行的含义随它定，勿改。
 func (s *Scanner) createDialerAndHTTPClient(proxyStr string, timeout time.Duration) (ContextDialer, *http.Client, error) {
-	baseDialer := &net.Dialer{
-		Timeout: timeout,
+	p, err := netx.ParseProxy(proxyStr)
+	if err != nil {
+		return nil, nil, err
 	}
-
-	var dialer ContextDialer = baseDialer
-	proxyStr = strings.TrimSpace(proxyStr)
-
-	var transport *http.Transport
-
-	if proxyStr != "" {
-		// 容错：如果用户只输入了 127.0.0.1:7890，默认当作 socks5 处理
-		if !strings.Contains(proxyStr, "://") {
-			proxyStr = "socks5://" + proxyStr
-		}
-
-		u, err := url.Parse(proxyStr)
-		if err != nil {
-			return nil, nil, fmt.Errorf("代理地址格式无效: %w", err)
-		}
-
-		switch strings.ToLower(u.Scheme) {
-		case "socks5", "socks5h":
-			var auth *proxy.Auth
-			if u.User != nil {
-				auth = &proxy.Auth{
-					User: u.User.Username(),
-				}
-				if pwd, ok := u.User.Password(); ok {
-					auth.Password = pwd
-				}
-			}
-			socksDialer, err := proxy.SOCKS5("tcp", u.Host, auth, baseDialer)
-			if err != nil {
-				return nil, nil, fmt.Errorf("创建 SOCKS5 代理失败: %w", err)
-			}
-			if cd, ok := socksDialer.(ContextDialer); ok {
-				dialer = cd
-			} else {
-				dialer = &socks5ContextAdapter{dialer: socksDialer}
-			}
-
-			transport = &http.Transport{
-				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-				DisableKeepAlives:     true,
-				MaxIdleConns:          0,
-				ResponseHeaderTimeout: timeout,
-				DialContext:           dialer.DialContext,
-			}
-
-		case "http", "https":
-			transport = &http.Transport{
-				Proxy:                 http.ProxyURL(u),
-				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-				DisableKeepAlives:     true,
-				MaxIdleConns:          0,
-				ResponseHeaderTimeout: timeout,
-				DialContext:           baseDialer.DialContext,
-			}
-			// HTTP 代理直接使用 transport 的 DialContext（注意：常规 HTTP CONNECT 代理主要用于 HTTP 探测）
-			dialer = baseDialer
-
-		default:
-			return nil, nil, fmt.Errorf("不支持的代理协议: %s (仅支持 socks5 / http)", u.Scheme)
-		}
-	} else {
-		// 扫描器 HTTP 探测恒定直连（N25 豁免登记）：LAN 端口/HTTP 探测的语义是
-		// "从本机直达目标"，套用户系统代理既无意义（代理看不见 10.x/192.168.x
-		// 内网靶）还会伪造存活结论；用户显式配置的 socks5/http 代理走上分支，
-		// 属主动功能而非系统链。此排除为永久口径，后续公共件改造勿误伤。
-		transport = &http.Transport{
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-			DisableKeepAlives:     true,
-			MaxIdleConns:          0,
-			ResponseHeaderTimeout: timeout,
-			DialContext:           baseDialer.DialContext,
-		}
-	}
-
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   timeout * 2,
-	}
-
-	return dialer, httpClient, nil
-}
-
-// socks5ContextAdapter 给不支持 context 的 socks5 proxy.Dialer 补上 DialContext 语义。
-type socks5ContextAdapter struct {
-	dialer proxy.Dialer
-}
-
-// DialContext 在独立 goroutine 中执行阻塞式 socks5 拨号并 select 等待：
-// ctx 取消时不能直接丢弃 goroutine（否则连接建成即成孤儿 socket），
-// 因此后台接收建连结果并立即 Close，确保取消路径也不泄露连接。
-func (a *socks5ContextAdapter) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	type result struct {
-		conn net.Conn
-		err  error
-	}
-	ch := make(chan result, 1)
-	go func() {
-		conn, err := a.dialer.Dial(network, address)
-		ch <- result{conn: conn, err: err}
-	}()
-
-	select {
-	case <-ctx.Done():
-		// 若 context 取消或超时，启动后台接收 Goroutine，在连接建立成功后立即关闭，防止 socket 孤立泄露
-		go func() {
-			res := <-ch
-			if res.conn != nil {
-				_ = res.conn.Close()
-			}
-		}()
-		return nil, ctx.Err()
-	case res := <-ch:
-		return res.conn, res.err
-	}
+	return netx.DialProxy(p, netx.DialOpts{Timeout: timeout, TLSInsecureSkipVerify: true})
 }
 
 // KnownPortServices 常用端口默认服务推断表
@@ -334,10 +187,8 @@ var KnownPortServices = map[int]string{
 
 var (
 	titleRegex = regexp.MustCompile(`(?i)<title>(.*?)</title>`)
-	// ipv4Regex 出网 IP 兜底匹配（供应商返回带杂质的文本时从中抠出 IPv4）。
-	// 提为包级：正则编译昂贵，不可在轮询循环内反复 MustCompile。
-	ipv4Regex = regexp.MustCompile(`(?:[0-9]{1,3}\.){3}[0-9]{1,3}`)
-	bufPool   = sync.Pool{
+	// 出网 IP 的兜底抠取随内核一起上收 netx（egressIPv4Re），此处不留第二份。
+	bufPool = sync.Pool{
 		New: func() any {
 			b := make([]byte, 512)
 			return &b
