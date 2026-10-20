@@ -8,10 +8,16 @@ export {
 };
 
 export {
-    PortStatus
+    PortStatus,
+    SSHAuthVerdict
 } from "./models.js";
 
 import * as $models from "./models.js";
+
+/**
+ * EgressProbe 单个出口源的查询结果。
+ * @typedef {$models.EgressProbe} EgressProbe
+ */
 
 /**
  * PortResult 单端口探测结果
@@ -21,6 +27,48 @@ import * as $models from "./models.js";
 /**
  * PresetGroup 常用预设端口分组
  * @typedef {$models.PresetGroup} PresetGroup
+ */
+
+/**
+ * ProxyKindHTTP 等取值与 netx.ProxyKind 对齐；这里不收枚举校验，交给 ParseProxy 一处判。
+ * ProxyCheckRequest 一次测试的入参（结构化字段，不由前端拼 URL）。
+ * @typedef {$models.ProxyCheckRequest} ProxyCheckRequest
+ */
+
+/**
+ * ProxyCheckResult 单条代理的结果。
+ * 
+ * Addr 恒为 netx 的剥凭据规范形（由类型层保证，不靠调用方记得剥）——所以结果要
+ * 进前端、被复制、进日志都不漏口令；凭据只活在 ParsedProxy 的非导出字段里，
+ * 供 DialProxy 拨号时取用。
+ * @typedef {$models.ProxyCheckResult} ProxyCheckResult
+ */
+
+/**
+ * SSHAuthRequest 凭据测试入参。
+ * @typedef {$models.SSHAuthRequest} SSHAuthRequest
+ */
+
+/**
+ * SSHAuthResult 凭据测试结果。
+ * 
+ * **没有 password 字段**，错误文本一律过 redactSecret——结果要进前端、要被复制。
+ * 
+ * 这里**不报服务端版本横幅**：x/crypto/ssh 的 HostKeyCallback 是
+ * `(hostname, remote, key) error` 这个签名，拿不到 ConnMetadata，也就拿不到版本。
+ * 想读横幅用同页的「连接测试」（它专做那一件事）；不为此再补一次连接，把两个来源
+ * 混进同一个字段。
+ * @typedef {$models.SSHAuthResult} SSHAuthResult
+ */
+
+/**
+ * SSHCheckRequest 一次 SSH 连接测试的入参。不含任何凭据——这一层用不上，也就不会泄露。
+ * @typedef {$models.SSHCheckRequest} SSHCheckRequest
+ */
+
+/**
+ * SSHCheckResult SSH 连接测试结果。
+ * @typedef {$models.SSHCheckResult} SSHCheckResult
  */
 
 /**

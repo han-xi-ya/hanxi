@@ -1,0 +1,62 @@
+/* portscan 家族共享皮（形制同 components/publicip/diagRtt.css）：
+   PortScanView 与 ProxyCheckPanel 各以 `<style scoped src>` 引入同一份，
+   避免"同一家族的卡片壳在两个文件里各写一遍"。
+   刻意**不动 components.css**——并行会话此刻正在改它，等那轮入库后再议上收。
+   只收本家族真共享的部分；全局 :where 原子（.btn、.tbl、.state-box、.chip 系、.input
+   等）一律不在此复制，等值副本是 §9.6-10 明令删净的东西。 */
+
+/* —— 卡片壳家族（逐字取自 PortScanView 原 scoped 定义，未改数值）—— */
+.section-card {
+  background: var(--surface-panel); border: 1px solid var(--color-border);
+  border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
+}
+.card-header { display: flex; justify-content: space-between; align-items: center; }
+.card-header h2 { font-size: var(--text-md); font-weight: 600; margin: 0; }
+.header-left { display: flex; align-items: center; gap: 8px; }
+.badge-tag { font-size: var(--text-xs); background: var(--surface-hover); padding: 2px 8px; border-radius: 4px; color: var(--color-text-subtle); }
+.param-item { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--color-text-muted); }
+.checkbox-label { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; color: var(--color-text); }
+.unit { font-size: var(--text-xs); }
+
+/* 标签页容器：外层 .portscan-page 的 gap 只作用在 section 的直接子元素上，
+   面板内部还有多张卡片，需要自己保持同一档间距（14px 与页面级一致）。 */
+.tab-panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* —— 代理连通性测试面板自有 —— */
+
+/* 主路径一行：协议 + 地址:端口 + 测试按钮。窄容器下整行换行而不挤压输入框 */
+.check-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.proxy-kind { flex: none; }
+/* 地址与端口用一条视觉上连起来的输入组：它俩本来就是同一个值 host:port */
+.proxy-addr-group { display: flex; align-items: center; gap: 0; flex: 1 1 240px; min-width: 180px; }
+.proxy-addr-group .check-host {
+  border-top-right-radius: 0; border-bottom-right-radius: 0; width: 100%; min-width: 0;
+}
+.proxy-addr-group .check-port {
+  border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; width: 84px; flex: none;
+  text-align: center; font-family: var(--font-mono);
+}
+.check-colon { color: var(--color-text-subtle); padding: 0 2px; background: var(--surface-page);
+  border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border);
+  height: var(--control-h-md); display: flex; align-items: center; }
+
+/* 主行与次级行：两个检查面板共用（输入主行、低频项展开行） */
+.check-advanced { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.check-subrow { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
+
+/* 单条结论：左边判定，右边地址/耗时/出口，窄窗换行 */
+.check-verdict { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; padding: 10px 12px;
+  background: var(--surface-soft); border-radius: var(--radius-control); }
+.check-verdict-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.check-meta { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--color-text-muted); }
+.proxy-egress { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: var(--text-sm); }
+.proxy-egress-ip { font-family: var(--font-mono); color: var(--color-text); }
+.check-reason { font-size: var(--text-sm); color: var(--color-text-muted); overflow-wrap: anywhere; }
+.check-num { width: 70px; text-align: center; }
+
+/* 结论区的对端版本行（SSH 面板用）：原始横幅，长度不可控，必须就地折而不撑破卡片 */
+.check-server { font-size: var(--text-sm); color: var(--color-text); overflow-wrap: anywhere; }
+
+/* 凭据展开块：整块带一句副作用提示，提示与输入同属一个视觉单元，不拆散 */
+.check-cred { display: flex; flex-direction: column; gap: 8px; }
+.check-cred-input { width: 170px; }

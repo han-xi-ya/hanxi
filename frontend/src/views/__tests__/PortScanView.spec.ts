@@ -1,6 +1,7 @@
 // 特征测试（组 G2 迁移护航）：PortScanView 表单校验/模式参数联动/流式增量去重排序/
-// 代理防抖/终止链路。迁移注记：视图 .btn-primary 原硬编码 GitHub 蓝已由全局原子归一青绿，
-// 类名选择器不受影响；error-banner 手搓横幅 → UiBanner(.banner.banner-error)。
+// 代理防抖/终止链路/代理连通性测试面板（单条 CheckProxy）。迁移注记：视图
+// .btn-primary 原硬编码 GitHub 蓝已由全局原子归一青绿，类名选择器不受影响；
+// error-banner 手搓横幅 → UiBanner(.banner.banner-error)。
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -12,6 +13,8 @@ const svc = vi.hoisted(() => ({
   CheckEgressIP: vi.fn(),
   StartScan: vi.fn(),
   StopScan: vi.fn(),
+  // 代理连通性测试(同步批量)：断言见下方「PortScanView 代理连通性测试」describe
+  CheckProxy: vi.fn(),
 }))
 
 const runtime = vi.hoisted(() => ({
@@ -234,5 +237,38 @@ describe('PortScanView 胶水：复制与防抖', () => {
     w.unmount()
     await nextTick()
     expect(runtime.unlisten).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('PortScanView 标签页编排', () => {
+  it('三个标签：默认停在扫描页，面板靠 v-show 切换（切走不丢输入与结果）', async () => {
+    stubDefaults()
+    const w = mountView()
+    await flushMicrotasks()
+    const tabs = w.findAll('.main-tab-btn')
+    expect(tabs.map(t => t.text())).toEqual(['端口扫描', '代理连通性测试', 'SSH 连接测试'])
+    expect(tabs[0].attributes('aria-selected')).toBe('true')
+    expect(tabs[1].attributes('aria-selected')).toBe('false')
+    expect(tabs[2].attributes('aria-selected')).toBe('false')
+
+    const scan = w.find('#portscan-scan-panel')
+    expect(scan.attributes('aria-labelledby')).toBe('portscan-scan-tab')
+    expect(scan.attributes('style') ?? '').not.toContain('display: none')
+
+    await tabs[1].trigger('click')
+    await flushMicrotasks()
+    expect(w.find('#portscan-scan-panel').attributes('style') ?? '').toContain('display: none')
+    const proxy = w.find('#portscan-proxy-panel')
+    expect(proxy.attributes('aria-labelledby')).toBe('portscan-proxy-tab')
+    // 代理面板确实挂进来了（其内部行为由 components/portscan/__tests__/ProxyCheckPanel.spec 覆盖）
+    expect(proxy.find('.check-row').exists()).toBe(true)
+    // 第三个面板此时仍收起
+    expect(w.find('#portscan-ssh-panel').attributes('style') ?? '').toContain('display: none')
+
+    await tabs[2].trigger('click')
+    await flushMicrotasks()
+    expect(w.find('#portscan-ssh-panel').find('.check-row').exists()).toBe(true)
+    expect(w.find('#portscan-proxy-panel').attributes('style') ?? '').toContain('display: none')
+    w.unmount()
   })
 })

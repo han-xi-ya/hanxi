@@ -39,10 +39,14 @@ func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 // Info 返回模块元信息。
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
-		ID:          ID,
-		Name:        "端口扫描与指纹",
+		ID: ID,
+		// 名称与描述随能力扩展更新：这一页现在管三件事（端口扫描 / 代理连通性 /
+		// SSH 连接测试），"端口扫描"已经盖不住。**catalog.go 与 module_catalog.json
+		// 两份产物刻意未 regen**——它们正被另一会话在途修改，此处只改源头，
+		// 等那轮入库后一笔补齐（Info().Name / Nav().Title 经 cataloggen 流入产物）。
+		Name:        "网络测试",
 		Version:     "0.1.0",
-		Description: "高并发多端口快速扫描，自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）",
+		Description: "高并发多端口扫描与自研轻量 Banner / HTTP 服务指纹（不含 Nmap），另含代理连通性与 SSH 连接测试",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
@@ -52,7 +56,7 @@ func (m *Module) Info() extapi.ModuleInfo {
 func (m *Module) Nav() []extapi.NavEntry {
 	return []extapi.NavEntry{{
 		ID:      ID,
-		Title:   "端口扫描",
+		Title:   "网络测试",
 		Route:   "/ext/portscan",
 		Icon:    "i:search",
 		Section: extapi.SectionExt,

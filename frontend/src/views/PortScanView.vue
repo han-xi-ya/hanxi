@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
+import { ref, shallowRef, computed, onMounted, onUnmounted, watch } from 'vue'
 import * as PortScanAPI from '../../bindings/hanxi/internal/modules/portscan'
 import type { PresetGroup, PortResult, ScanProgress } from '../../bindings/hanxi/internal/modules/portscan/models'
 import { getErrorMessage } from '../utils/errors'
@@ -7,8 +7,11 @@ import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
 import PageHeader from '../components/ui/PageHeader.vue'
+import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiProgressBar from '../components/ui/UiProgressBar.vue'
+import ProxyCheckPanel from '../components/portscan/ProxyCheckPanel.vue'
+import SSHCheckPanel from '../components/portscan/SSHCheckPanel.vue'
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
@@ -146,6 +149,20 @@ function openInBrowser(port: number) {
   window.open(`${proto}://${host}:${port}`, '_blank')
 }
 
+/* ---------- 标签页编排 ----------
+ * 「端口扫描」（任务制、流式事件）与「代理连通性测试」（同步单条）是两个互不相干的
+ * 面，同页堆叠会把扫描的主流挤断。代理面的状态与 DOM 都在 components/portscan/
+ * ProxyCheckPanel + useProxyCheck 里，本视图只管切换。
+ * 切页用 v-show 不用 v-if：代理面板填的输入和上一次结果，不该因为切去看眼扫描就丢。 */
+const PORTSCAN_TABS = [
+  { key: 'scan', label: '端口扫描' },
+  { key: 'proxy', label: '代理连通性测试' },
+  { key: 'ssh', label: 'SSH 连接测试' },
+]
+// 类型取 string 而非窄联合：MainTabNav 的 v-model 契约是 string，窄类型会在
+// 组件回写时报不兼容（模板里的 === 'scan' 比较照常成立）。
+const activeTab = ref('scan')
+
 // 监听代理输入变化，防抖自动重新探测出网 IP
 watch(proxyUrl, () => {
   if (debounceTimer) clearTimeout(debounceTimer)
@@ -190,209 +207,232 @@ onUnmounted(() => {
 
 <template>
   <section class="page portscan-page">
-    <PageHeader title="端口扫描与服务识别" subtitle="高并发 TCP 探测，集成轻量服务指纹识别，支持中继代理与出网源 IP 实时核验。" />
+    <PageHeader title="网络测试" subtitle="端口扫描与服务指纹、代理连通性测试、SSH 连接测试三件事；扫描流量还支持经 SOCKS5 / HTTP 代理中继。">
+      <template #actions>
+        <MainTabNav v-model="activeTab" :tabs="PORTSCAN_TABS" id-prefix="portscan" label="端口扫描页面视图切换" />
+      </template>
+    </PageHeader>
 
-    <!-- 控制面板卡片 -->
-    <div class="section-card control-card">
-      <div class="input-grid">
-        <div class="form-group">
-          <label>目标主机 / IP</label>
-          <div class="target-input-row">
-            <input
-              v-model="target"
-              type="text"
-              class="input target-input"
-              placeholder="如 127.0.0.1, 192.168.1.1, baidu.com"
-              :disabled="scanning"
-            />
-            <button class="btn btn-secondary btn-small" :disabled="scanning" @click="target = '127.0.0.1'">本机</button>
+    <!-- 标签页 1：端口扫描（任务制 + 流式事件）。用 v-show 不用 v-if：
+         扫描在途时切去看代理页再回来，进度与已有结果不该丢。 -->
+    <div v-show="activeTab === 'scan'" id="portscan-scan-panel" class="tab-panel"
+         role="tabpanel" aria-labelledby="portscan-scan-tab">
+      <!-- 控制面板卡片 -->
+      <div class="section-card control-card">
+        <div class="input-grid">
+          <div class="form-group">
+            <label>目标主机 / IP</label>
+            <div class="target-input-row">
+              <input
+                v-model="target"
+                type="text"
+                class="input target-input"
+                placeholder="如 127.0.0.1, 192.168.1.1, baidu.com"
+                :disabled="scanning"
+              />
+              <button class="btn btn-secondary btn-small" :disabled="scanning" @click="target = '127.0.0.1'">本机</button>
+            </div>
           </div>
-        </div>
 
-        <div class="form-group span-2">
-          <label>端口范围 (支持逗号隔开与连字符区间)</label>
-          <input
-            v-model="portRange"
-            type="text"
-            class="input"
-            placeholder="如 80,443,3000-3010,8080"
-            :disabled="scanning"
-          />
-        </div>
-      </div>
-
-      <!-- 常用预设胶囊标签 -->
-      <div class="presets-row">
-        <span class="preset-label">快捷预设:</span>
-        <div class="preset-badges">
-          <button
-            v-for="p in presets"
-            :key="p.key"
-            class="preset-chip"
-            :title="p.description"
-            :disabled="scanning"
-            @click="applyPreset(p)"
-          >
-            {{ p.name }}
-          </button>
-        </div>
-      </div>
-
-      <!-- 代理与出网 IP 状态条 -->
-      <div class="egress-bar">
-        <div class="egress-left">
-          <div class="param-item proxy-item" title="通过 SOCKS5 代理中继扫描流量，隐藏本机真实 IP（例如 socks5://127.0.0.1:7890）">
-            <span class="param-title">🛡️ 代理中继:</span>
+          <div class="form-group span-2">
+            <label>端口范围 (支持逗号隔开与连字符区间)</label>
             <input
-              v-model="proxyUrl"
+              v-model="portRange"
               type="text"
-              class="input proxy-input"
-              placeholder="留空直连 / socks5://127.0.0.1:7890"
+              class="input"
+              placeholder="如 80,443,3000-3010,8080"
               :disabled="scanning"
             />
           </div>
+        </div>
 
-          <!-- 实时出网 IP 提示卡片 -->
-          <div class="egress-indicator" :class="{ 'is-proxy': !!proxyUrl.trim() }">
-            <span class="indicator-label">本次出网探测 IP:</span>
-            <span class="indicator-ip" v-if="!detectingIP">
-              <strong>{{ currentEgressIP || '探测中...' }}</strong>
-              <span v-if="proxyUrl.trim()" class="proxy-badge">已代理</span>
-              <span v-else class="direct-badge">直连</span>
-            </span>
-            <span class="indicator-loading" v-else>🔄 正在核验出网 IP...</span>
-            <button class="btn-refresh" title="重新测试出网 IP" :disabled="detectingIP || scanning" @click="checkEgressIP">↻</button>
+        <!-- 常用预设胶囊标签 -->
+        <div class="presets-row">
+          <span class="preset-label">快捷预设:</span>
+          <div class="preset-badges">
+            <button
+              v-for="p in presets"
+              :key="p.key"
+              class="preset-chip"
+              :title="p.description"
+              :disabled="scanning"
+              @click="applyPreset(p)"
+            >
+              {{ p.name }}
+            </button>
+          </div>
+        </div>
+
+        <!-- 代理与出网 IP 状态条 -->
+        <div class="egress-bar">
+          <div class="egress-left">
+            <div class="param-item proxy-item" title="通过 SOCKS5 代理中继扫描流量，隐藏本机真实 IP（例如 socks5://127.0.0.1:7890）">
+              <span class="param-title">🛡️ 代理中继:</span>
+              <input
+                v-model="proxyUrl"
+                type="text"
+                class="input proxy-input"
+                placeholder="留空直连 / socks5://127.0.0.1:7890"
+                :disabled="scanning"
+              />
+            </div>
+
+            <!-- 实时出网 IP 提示卡片 -->
+            <div class="egress-indicator" :class="{ 'is-proxy': !!proxyUrl.trim() }">
+              <span class="indicator-label">本次出网探测 IP:</span>
+              <span class="indicator-ip" v-if="!detectingIP">
+                <strong>{{ currentEgressIP || '探测中...' }}</strong>
+                <span v-if="proxyUrl.trim()" class="proxy-badge">已代理</span>
+                <span v-else class="direct-badge">直连</span>
+              </span>
+              <span class="indicator-loading" v-else>🔄 正在核验出网 IP...</span>
+              <button class="btn-refresh" title="重新测试出网 IP" :disabled="detectingIP || scanning" @click="checkEgressIP">↻</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 高级设置与操作条 -->
+        <div class="action-bar">
+          <div class="options-group">
+            <!-- 扫描模式切换 -->
+            <div class="mode-selector">
+              <span class="param-title">模式:</span>
+              <select v-model="scanMode" class="select-input" :disabled="scanning" @change="onModeChange">
+                <option value="safe">🍃 温和防封 (公网/云服务器推荐)</option>
+                <option value="normal">⚡ 平衡模式 (局域网/开发联调)</option>
+                <option value="fast">🚀 极速并发 (内网/全端口)</option>
+              </select>
+            </div>
+
+            <label class="checkbox-label" title="自动探测 Web 标题、SSH、Redis、MySQL 等服务特征">
+              <input type="checkbox" v-model="deepDetect" :disabled="scanning" />
+              <span>✨ 指纹识别</span>
+            </label>
+
+            <div class="param-item">
+              <span class="param-title">超时:</span>
+              <input v-model.number="timeoutMs" type="number" step="100" min="100" max="5000" class="input num-input" :disabled="scanning" />
+              <span class="unit">ms</span>
+            </div>
+
+            <div class="param-item">
+              <span class="param-title">并发:</span>
+              <input v-model.number="concurrency" type="number" step="10" min="5" max="2000" class="input num-input" :disabled="scanning" />
+            </div>
+
+            <div class="param-item" v-if="rateLimitMs > 0">
+              <span class="param-title">微延:</span>
+              <input v-model.number="rateLimitMs" type="number" step="5" min="0" max="500" class="input num-input" :disabled="scanning" />
+              <span class="unit">ms</span>
+            </div>
+          </div>
+
+          <div class="btn-group">
+            <button v-if="!scanning" class="btn btn-primary" @click="startScan">
+              🚀 开始扫描
+            </button>
+            <button v-else class="btn btn-danger" @click="stopScan">
+              ⏹ 终止扫描
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- 高级设置与操作条 -->
-      <div class="action-bar">
-        <div class="options-group">
-          <!-- 扫描模式切换 -->
-          <div class="mode-selector">
-            <span class="param-title">模式:</span>
-            <select v-model="scanMode" class="select-input" :disabled="scanning" @change="onModeChange">
-              <option value="safe">🍃 温和防封 (公网/云服务器推荐)</option>
-              <option value="normal">⚡ 平衡模式 (局域网/开发联调)</option>
-              <option value="fast">🚀 极速并发 (内网/全端口)</option>
-            </select>
+      <!-- 进度与错误提示 -->
+      <UiBanner v-if="errorMessage" tone="error">⚠️ {{ errorMessage }}</UiBanner>
+
+      <div v-if="scanning || progressTotal > 0" class="progress-card">
+        <div class="progress-info">
+          <span>扫描进度：<strong>{{ progressScanned }}</strong> / {{ progressTotal }} ({{ progressPercent }}%)</span>
+          <span>已发现开放端口：<strong class="highlight-open">{{ openPorts.length }}</strong></span>
+          <span v-if="durationMs > 0" class="duration-tag">耗时: {{ durationMs }}ms</span>
+        </div>
+        <UiProgressBar :percent="progressPercent" />
+      </div>
+
+      <!-- 扫描结果列表卡片 -->
+      <div class="section-card result-card">
+        <div class="card-header">
+          <div class="header-left">
+            <h2>开放端口列表 ({{ openPorts.length }})</h2>
+            <span v-if="openPorts.length > 0" class="badge-tag">Target: {{ target }}</span>
+            <span v-if="openPorts.length > 0 && currentEgressIP" class="badge-tag source-tag">Source IP: {{ currentEgressIP }}</span>
           </div>
-
-          <label class="checkbox-label" title="自动探测 Web 标题、SSH、Redis、MySQL 等服务特征">
-            <input type="checkbox" v-model="deepDetect" :disabled="scanning" />
-            <span>✨ 指纹识别</span>
-          </label>
-
-          <div class="param-item">
-            <span class="param-title">超时:</span>
-            <input v-model.number="timeoutMs" type="number" step="100" min="100" max="5000" class="input num-input" :disabled="scanning" />
-            <span class="unit">ms</span>
-          </div>
-
-          <div class="param-item">
-            <span class="param-title">并发:</span>
-            <input v-model.number="concurrency" type="number" step="10" min="5" max="2000" class="input num-input" :disabled="scanning" />
-          </div>
-
-          <div class="param-item" v-if="rateLimitMs > 0">
-            <span class="param-title">微延:</span>
-            <input v-model.number="rateLimitMs" type="number" step="5" min="0" max="500" class="input num-input" :disabled="scanning" />
-            <span class="unit">ms</span>
+          <div class="header-actions" v-if="openPorts.length > 0">
+            <button class="btn btn-secondary btn-small" @click="copyOpenPorts">📋 复制全部端口</button>
           </div>
         </div>
 
-        <div class="btn-group">
-          <button v-if="!scanning" class="btn btn-primary" @click="startScan">
-            🚀 开始扫描
-          </button>
-          <button v-else class="btn btn-danger" @click="stopScan">
-            ⏹ 终止扫描
-          </button>
+        <div class="table-container">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="width: 100px;">端口</th>
+                <th style="width: 110px;">状态</th>
+                <th style="width: 140px;">推测服务</th>
+                <th>Banner / 版本详情 / 指纹</th>
+                <th style="width: 100px;">响应延迟</th>
+                <th style="width: 110px; text-align: right;">快捷操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in openPorts" :key="item.port">
+                <td>
+                  <strong class="port-num">{{ item.port }}</strong>
+                </td>
+                <td>
+                  <span class="status-tag ok">● OPEN</span>
+                </td>
+                <td>
+                  <span class="service-tag">{{ item.service || 'unknown' }}</span>
+                </td>
+                <td>
+                  <div class="banner-cell">
+                    <span v-if="item.banner" class="banner-text" :title="item.banner">{{ item.banner }}</span>
+                    <span v-else class="text-muted">—</span>
+                    <span v-if="item.fingerprint" class="fp-badge" :title="item.fingerprint">{{ item.fingerprint }}</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="latency-tag">{{ item.latencyMs }}ms</span>
+                </td>
+                <td style="text-align: right;">
+                  <button
+                    v-if="item.service?.includes('http') || item.port === 80 || item.port === 443 || item.port === 3000 || item.port === 5173 || item.port === 8080"
+                    class="btn btn-secondary btn-micro"
+                    title="在浏览器中打开"
+                    @click="openInBrowser(item.port)"
+                  >
+                    🌐 打开
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="openPorts.length === 0">
+                <td colspan="6" class="empty-cell">
+                  <div class="empty-state">
+                    <span class="empty-icon">{{ scanning ? '⏳' : '🔍' }}</span>
+                    <p>{{ scanning ? '正在高速扫描中，请稍候...' : '暂无扫描结果，在上方输入目标并点击「开始扫描」' }}</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
+
     </div>
 
-    <!-- 进度与错误提示 -->
-    <UiBanner v-if="errorMessage" tone="error">⚠️ {{ errorMessage }}</UiBanner>
-
-    <div v-if="scanning || progressTotal > 0" class="progress-card">
-      <div class="progress-info">
-        <span>扫描进度：<strong>{{ progressScanned }}</strong> / {{ progressTotal }} ({{ progressPercent }}%)</span>
-        <span>已发现开放端口：<strong class="highlight-open">{{ openPorts.length }}</strong></span>
-        <span v-if="durationMs > 0" class="duration-tag">耗时: {{ durationMs }}ms</span>
-      </div>
-      <UiProgressBar :percent="progressPercent" />
+    <!-- 标签页 2：代理连通性测试（同步单条）。状态与 DOM 都在 components/portscan/
+         ProxyCheckPanel + useProxyCheck，本视图只管切换——再加一个 tab 也照此挂进来。 -->
+    <div v-show="activeTab === 'proxy'" id="portscan-proxy-panel" class="tab-panel"
+         role="tabpanel" aria-labelledby="portscan-proxy-tab">
+      <ProxyCheckPanel />
     </div>
 
-    <!-- 扫描结果列表卡片 -->
-    <div class="section-card result-card">
-      <div class="card-header">
-        <div class="header-left">
-          <h2>开放端口列表 ({{ openPorts.length }})</h2>
-          <span v-if="openPorts.length > 0" class="badge-tag">Target: {{ target }}</span>
-          <span v-if="openPorts.length > 0 && currentEgressIP" class="badge-tag source-tag">Source IP: {{ currentEgressIP }}</span>
-        </div>
-        <div class="header-actions" v-if="openPorts.length > 0">
-          <button class="btn btn-secondary btn-small" @click="copyOpenPorts">📋 复制全部端口</button>
-        </div>
-      </div>
-
-      <div class="table-container">
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th style="width: 100px;">端口</th>
-              <th style="width: 110px;">状态</th>
-              <th style="width: 140px;">推测服务</th>
-              <th>Banner / 版本详情 / 指纹</th>
-              <th style="width: 100px;">响应延迟</th>
-              <th style="width: 110px; text-align: right;">快捷操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in openPorts" :key="item.port">
-              <td>
-                <strong class="port-num">{{ item.port }}</strong>
-              </td>
-              <td>
-                <span class="status-tag ok">● OPEN</span>
-              </td>
-              <td>
-                <span class="service-tag">{{ item.service || 'unknown' }}</span>
-              </td>
-              <td>
-                <div class="banner-cell">
-                  <span v-if="item.banner" class="banner-text" :title="item.banner">{{ item.banner }}</span>
-                  <span v-else class="text-muted">—</span>
-                  <span v-if="item.fingerprint" class="fp-badge" :title="item.fingerprint">{{ item.fingerprint }}</span>
-                </div>
-              </td>
-              <td>
-                <span class="latency-tag">{{ item.latencyMs }}ms</span>
-              </td>
-              <td style="text-align: right;">
-                <button
-                  v-if="item.service?.includes('http') || item.port === 80 || item.port === 443 || item.port === 3000 || item.port === 5173 || item.port === 8080"
-                  class="btn btn-secondary btn-micro"
-                  title="在浏览器中打开"
-                  @click="openInBrowser(item.port)"
-                >
-                  🌐 打开
-                </button>
-              </td>
-            </tr>
-            <tr v-if="openPorts.length === 0">
-              <td colspan="6" class="empty-cell">
-                <div class="empty-state">
-                  <span class="empty-icon">{{ scanning ? '⏳' : '🔍' }}</span>
-                  <p>{{ scanning ? '正在高速扫描中，请稍候...' : '暂无扫描结果，在上方输入目标并点击「开始扫描」' }}</p>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <!-- 标签页 3：SSH 连接测试（只测版本交换，不碰凭据） -->
+    <div v-show="activeTab === 'ssh'" id="portscan-ssh-panel" class="tab-panel"
+         role="tabpanel" aria-labelledby="portscan-ssh-tab">
+      <SSHCheckPanel />
     </div>
   </section>
 </template>
@@ -403,10 +443,8 @@ onUnmounted(() => {
    （原 .toast 死代码已删——模板从未引用） */
 .portscan-page { display: flex; flex-direction: column; gap: 14px; height: 100%; }
 
-.section-card {
-  background: var(--surface-panel); border: 1px solid var(--color-border);
-  border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
-}
+/* .section-card/.card-header/.header-left/.badge-tag/.param-item/.checkbox-label/.unit
+   已上收家族共享件 portscanPanels.css（本文件末尾以 scoped src 引入），此处不留第二份 */
 
 .input-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
@@ -460,9 +498,6 @@ onUnmounted(() => {
 .options-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .mode-selector { display: flex; align-items: center; gap: 6px; }
 .proxy-item { display: flex; align-items: center; gap: 6px; }
-.checkbox-label { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; color: var(--color-text); }
-.param-item { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--color-text-muted); }
-.unit { font-size: var(--text-xs); }
 
 /* display 落回全局 .btn-group；仅 gap 散差（10 vs 全局 8）暂留——定档候选，见收编报告 */
 .btn-group { gap: 10px; }
@@ -483,10 +518,7 @@ onUnmounted(() => {
 /* 结果表格（.tbl 基样式与 th 内距落回全局；此处仅真差异：表头 sticky + page 色底。
    原 .tbl td 的 color 覆盖系冗余——body 已 --color-text，删落回） */
 .result-card { flex: 1; min-height: 280px; }
-.card-header { display: flex; justify-content: space-between; align-items: center; }
-.card-header h2 { font-size: var(--text-md); font-weight: 600; margin: 0; }
-.header-left { display: flex; align-items: center; gap: 8px; }
-.badge-tag { font-size: var(--text-xs); background: var(--surface-hover); padding: 2px 8px; border-radius: 4px; color: var(--color-text-subtle); }
+
 .source-tag { color: var(--color-primary); border: 1px solid var(--color-primary); font-family: var(--font-mono); }
 
 .table-container { border: 1px solid var(--color-border); border-radius: 6px; overflow: auto; max-height: 480px; }
@@ -508,4 +540,7 @@ onUnmounted(() => {
 .empty-icon { font-size: var(--text-2xl); }
 
 /* 行内微操作钮收编全局 .btn-micro（padding/字号逐字同形），原私有 .btn-xs 副本删除 */
+
 </style>
+
+<style scoped src="../components/portscan/portscanPanels.css"></style>
