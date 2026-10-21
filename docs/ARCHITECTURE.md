@@ -2,7 +2,7 @@
 
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
-> **更新日期**：2026-09-19
+> **更新日期**：2026-10-21（netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）
 > **技术基线**：Go ≥1.26 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration) + 共享托管内核 (packages/go) + 统一状态契约与调用门 (ADR-0001/0002/0003)
 
@@ -23,12 +23,12 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │  internal/app/  Composition Root (应用唯一装配点)       │
 │  - 生命周期管理、系统托盘 (Systray)、关闭拦截、优雅退出│
 │  - AppService (设置/目录与状态投影/操作观察面/关于)    │
-│  - 49 模块注册与调用门注入、receipt 补建、journal 恢复 │
+│  - 50 模块注册与调用门注入、receipt 补建、journal 恢复 │
 └──────┬────────────────────┬────────────────────┬───────┘
        │                    │                    │
 ┌──────▼───────────┐ ┌──────▼───────────┐ ┌──────▼───────┐
 │ internal/modules │ │ internal/extapi  │ │ internal/    │
-│ 49 个业务模块    │ │ 模块契约：生命周 │ │ settings     │
+│ 50 个业务模块    │ │ 模块契约：生命周 │ │ settings     │
 │ 自建: frpc 网络  │ │ 期 + 四维状态目  │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ 录/安装凭据/调用 │ │ 与配置持久化 │
 │ 快传 随手记等    │ │ 门/更新感知契约  │ │ ReceiptStore │
@@ -47,6 +47,8 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │  - artifact: 下载→官方 SHA-256 必检→安全解包→版本树落位│
 │  - supervisor: JobObject 进程治理引擎（Probe/Engine）   │
 │  - operation: journal 账本 + 崩溃恢复 + 在途操作观察面  │
+│  - netx: 系统代理链 HTTP 客户端 + 显式代理/SOCKS 拨号  │
+│  - 后续批沉入 hostfeed/dirstats/externalquit/peicon   │
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
@@ -88,10 +90,10 @@ type Module interface {
 
 可选契约族（实现即接入，保持向后兼容）：`TrayCommandsProvider`（托盘命令）、`GateAware`（调用门注入，`gate.go`）、`UpdateChecker`（更新感知，`update.go`）。
 
-- **模块级别现状**：`LevelBuiltin` 为编译进主程序的内建模块；`LevelExternal` 仅是未来外部子进程扩展的枚举预留。当前 49 个模块全部为 `LevelBuiltin`，没有动态安装或加载第三方 Hanxi 插件的运行时；模块中心的"安装/卸载"是 **逻辑安装态**（见下），不涉及第三方插件的物理装卸。
+- **模块级别现状**：`LevelBuiltin` 为编译进主程序的内建模块；`LevelExternal` 仅是未来外部子进程扩展的枚举预留。当前 50 个模块全部为 `LevelBuiltin`，没有动态安装或加载第三方 Hanxi 插件的运行时；模块中心的"安装/卸载"是 **逻辑安装态**（见下），不涉及第三方插件的物理装卸。
 - **权限现状**：`Permission` 类型及 `kill-process` / `lan-scan` / `network` 常量仍保留供未来外部扩展能力握手复用，但 `Permissions()` 已从 `Module` 接口移除，当前内建模块没有统一的 Permission Gateway。模块启停、各业务服务的安全校验，以及 MCP 接入面的 `access.json` 授权是不同层次，不能表述为通用插件权限隔离。**MCP 现状（2026-10-12 按 `internal/mcp/` 实数核，原文"四个只读工具"严重低估已废）**：`toolDefs` 共 **12 件**工具、授权键共 **10 枚**（`knownModuleIDs`；memo 键下 2 工具、portkill 键下 prepare/execute 2 工具），按风险分三档——①查询只读族 8 件（envcheck/file_search/ocr/memo×2/sysinfo/log_read/clipboard_search）；②主动出网探测族 2 件（portscan/lan：只对网络做可达性探测、不改任何设备状态，但属出网动作且结果含网络拓扑）；③破坏族 2 件（portkill prepare/execute：需 `access.json` 的 portkill 键**与** `mcp/destructive.json` 机主总闸**双闸齐开**才放行，prepare 仅发放 120 秒一次性令牌、execute 复核 pid+可执行路径+启动时间三指纹后动手，系统关键进程与 hanxi 自身永久拒杀）。portkill 键刻意不进「设置 → AI 接入」面板，须机主手动改两文件开启。
 - **状态契约（Wave 0 冻结，`catalog.go` + `receipt.go`）**：`ModuleContractSchema = 1` 随投影下发，破坏性变更必须递增 schema 并在 `docs/adr/` 立案（ADR-0001）。
-  - `ModuleCatalogItem`：静态身份与能力目录（交付形态字段为 **`deliveryKind`**——2026-09-19 修订自 `delivery`，与 `ModuleState.delivery` 生命周期维度语义正交、永久异名，ADR-0001 修订记录；含 `Entrypoint` 八值入口、`capabilities`、`owner`），由 `scripts/cataloggen` 从源码证据与 composition 契约推导生成物表 `internal/app/catalog.go`（49 项，与 `scripts/fixture/module_catalog.json`、前端 `contract-enum.spec.ts` 三层同锁），基线冻结于 `scripts/fixture/module_catalog.json`，漂移由契约测试守护；
+  - `ModuleCatalogItem`：静态身份与能力目录（交付形态字段为 **`deliveryKind`**——2026-09-19 修订自 `delivery`，与 `ModuleState.delivery` 生命周期维度语义正交、永久异名，ADR-0001 修订记录；含 `Entrypoint` 八值入口、`capabilities`、`owner`），由 `scripts/cataloggen` 从源码证据与 composition 契约推导生成物表 `internal/app/catalog.go`（50 项，与 `scripts/fixture/module_catalog.json`、前端 `contract-enum.spec.ts` 三层同锁），基线冻结于 `scripts/fixture/module_catalog.json`，漂移由契约测试守护；
   - `ModuleState`：四维事实投影——Delivery(7 值) / Policy(5 值) / Runtime(7 值) / Health(9 值)，`StateInput.Project()` 按冻结优先级计算 `primaryAction` / `reason` / `summary`（八个 SummaryKey 族），页面禁止自行堆叠 if/else 推断；纯展示附加字段 `remoteVersion`（health=update-available 时的上游新版本号，由更新感知链写入、其余健康值下清空 omitempty，**不参与状态机裁决**）；`Visible()` = installed ∧ (enabled ∨ mandatory)；`CanDeliveryTransition` / `CanPolicyTransition` / `CanRuntimeTransition` 提供转换合法性门（非法转换为 0 的 DoD 守卫）；
   - `Operation`：统一表达安装、启停、更新、回滚、修复、卸载与业务调用租约（kind 8 值、queued/running/succeeded/failed/cancelled 状态机、`TxnID` 关联 journal 事务、结构化 `OperationError{code,message,recoverable}`）；
   - `receipt.go` 定义 `ReceiptStorage` 抽象与 `Receipt` 落盘 schema（字段变更须递增 Schema 并立案 ADR）。
@@ -99,7 +101,7 @@ type Module interface {
 - **逻辑安装态（Wave 1，ADR-0001 §1.5）**：`settings.ReceiptStore` 落 `<数据根>/modules/receipts/<id>.json`（tmp+rename 原子写、损坏按未安装处理并告警、同 ID 异 kind 漂移拒写）；`Registry.Install` = 登记凭据 + 默认启用（幂等、保留首次 InstalledAt），`Registry.Uninstall` = 先 SetEnabled(false) 完成 drain/析构收口、再移除凭据，用户数据默认保留。**builtin-logical 的卸载只移除逻辑凭据与入口，不释放宿主（hanxi.exe）体积——UI 文案与文档必须如实表达**。装配根在每次启动 `Register` 成功后调用 `ReceiptStore.EnsureSeen`（`known-modules.json` 已见名单账本）：**首次运行**对全部注册模块一次性补建凭据（老用户 Enabled=true→installed+enabled、false→installed+disabled，入口与数据零丢失）；**名单内模块永不补建**——用户卸载过的模块重启不复活，卸载是永久的；此后版本升级新增的模块（名单外）才自动安装（失败仅告警不阻断启动，缺凭据模块按未安装呈现、可在模块中心一键找回）。
 - **生命周期状态现状**：Registry 以 `ModuleWrapper` 的 `initialized/initializing/stopping/inFlight/failed` 标志经 `runtimeStateLocked()` 折算 Runtime 维度投影（enabled=false→inactive；init 失败滞留 failed 直到重试/收口）；`IsInitialized()` 仍是接口成员，但 Registry 当前不读取它。
 - **懒激活链路**：前端进入模块路由 → `AppService.EnsureModuleActive(id)` → `Registry.EnsureActive`（**前置 receipt 门**，未安装拒绝激活）→ 首次触发 `OnInit()`。启动预激活例外（常驻/唤出语义所需）：`wechat`（入站消息监听）、`quickmenu` / `msgboard`（全局弹窗入口）、`wsl`（USB 自动共享账本重放）。
-- **统一调用门（Wave 3）**：`Registry.Acquire(moduleID)` 是全部入口共用的唯一裁决实现，检查顺序冻结为 **blocked → receipt 已安装 → 懒激活（并发初始化一次）→ enabled/非 stopping → operation lease 入账**（安全裁决优先于安装呈现，与 `Project()` 状态机同序）；release 幂等（`defer` 即可），停用与退出的有界 drain 以租约归零为门——`SetEnabled(false)` 预算 30s、`ShutdownAll` 预算 60s，超时强制收口并 `slog.Error` 显式告警绝不静默（在途调用由模块内部锁兜底，JobObject 保证进程侧无孤儿）。模块侧注入模式（`gate.go`）：`Module` 实现可选契约 `GateAware`（`Register` 时在 Registry 锁外注入 `Gate`），service 内嵌 `LeaseHolder`，业务方法入口一行 `holder.Enter()` 接门——带 error 的方法拒则回传、纯 void 方法拒即早退、单值无 error 的方法必须先扩为 `(T, error)`，禁止"拒则回空值"的静默消化。**49 模块 RPC 全接门由 AST 穷举门守护**：`internal/app/rpc_gate_matrix_test.go` 逐模块校验 GateAware 实现、New 构造持有 LeaseHolder、持户结构体每个导出方法（= Wails 绑定面）调用 `Enter()`；豁免表只收"装配布线 setter"（`SetWailsApp`/`SetHistory`/`SetMemoHook`/`SetMainWindow`/`SetHotkeyRegistry`/`SetSnipHotkeyBinding`——Go 直调时序先于 gate 注入）。
+- **统一调用门（Wave 3）**：`Registry.Acquire(moduleID)` 是全部入口共用的唯一裁决实现，检查顺序冻结为 **blocked → receipt 已安装 → 懒激活（并发初始化一次）→ enabled/非 stopping → operation lease 入账**（安全裁决优先于安装呈现，与 `Project()` 状态机同序）；release 幂等（`defer` 即可），停用与退出的有界 drain 以租约归零为门——`SetEnabled(false)` 预算 30s、`ShutdownAll` 预算 60s，超时强制收口并 `slog.Error` 显式告警绝不静默（在途调用由模块内部锁兜底，JobObject 保证进程侧无孤儿）。模块侧注入模式（`gate.go`）：`Module` 实现可选契约 `GateAware`（`Register` 时在 Registry 锁外注入 `Gate`），service 内嵌 `LeaseHolder`，业务方法入口一行 `holder.Enter()` 接门——带 error 的方法拒则回传、纯 void 方法拒即早退、单值无 error 的方法必须先扩为 `(T, error)`，禁止"拒则回空值"的静默消化。**50 模块 RPC 全接门由 AST 穷举门守护**：`internal/app/rpc_gate_matrix_test.go` 逐模块校验 GateAware 实现、New 构造持有 LeaseHolder、持户结构体每个导出方法（= Wails 绑定面）调用 `Enter()`；豁免表只收"装配布线 setter"（`SetWailsApp`/`SetHistory`/`SetMemoHook`/`SetMainWindow`/`SetHotkeyRegistry`/`SetSnipHotkeyBinding`——Go 直调时序先于 gate 注入）。
 - **入口按投影收口（Wave 3，与 `Visible()` 同一裁决）**：导航 `Registry.GetEnabledNavs` 仅输出 installed∧enabled 模块的条目；托盘命令候选 `ListTrayCommands` 同口径过滤、执行 `RunTrayCommand` 经 `Acquire` 取租约，菜单中引用停用/卸载模块的条目随启停热重建（`AppService.SetModuleInstalled`/`SetModuleEnabled` → `broadcastModuleChange`：广播无载荷事件 `ext:changed` + `SetTrayRebuilder` 注入的托盘重建回调）；全局热键期望绑定态 = 模块启用 × 用户开关（`snipHotkeyGate` 挂 `Registry.OnLifecycle`，停用即注销 OS 键位不留按键黑洞；回调复用 `RunTrayCommand` 命令派发链，同过调用门）；MCP 无头模式 `registryGate.Check` 为取租约式（`headlessReceipts` 与 GUI 同账，无头在途调用纳入 drain 门；memo 因构造带迁移写盘不进无头 registry，特例直读 config enabled 位 + receipt 保持同语义拒绝）；独立窗口与后台预激活走 `EnsureActive`（自带 receipt 门）。**未安装或停用模块不得从任一入口旁路执行。**
 - **更新感知（Wave 4+，健康维度真实来源）**：`extapi.UpdateChecker` 可选契约——`CheckUpdate(ctx) (local, remote, hasUpdate, err)` 必须廉价（只读本地安装账目 + 带 10 分钟 TTL 缓存的远程列表）、可并发重入、不得触发懒激活或写盘；判定失败必须保持原健康值（"无可比事实"≠"有更新"，不谎报）。`internal/updatewatch.Scheduler` 由装配根从注册模块类型断言收集实现并调度：启动后一次性延迟 60s 首检（**无常驻 ticker**，让路启动风暴、避免 GitHub 匿名限流配额成本）+ `AppService.RefreshUpdates` 手动一轮（`updates_service.go`）；单轮并发 ≤3、全局预算 5 分钟、单模块预算 60 秒、同轮 in-flight 合并（single-flight）；裁决写 `registry.SetHealth(moduleID, health, remoteVersion)`（update-available 时随记上游新版本号、current 清空），结果缓存 `state/updates.json`（`checkedAt` + `available: moduleID→remoteVersion`，仅存"有更新"一侧）且启动时 `Restore` 回灌供前端首帧即时点亮；每轮收口广播 `updates:checked` 事件提示前端重拉投影。前端零新 RPC——状态与 `remoteVersion` 均随 `ListModuleStates` 既有投影携带。
 - **动态回收**：设置页停用模块时先阻止新命令并有界 drain，再调用 `OnDestroy()` 清空对象，随后在 goroutine 中触发 `runtime.GC()` 与 `debug.FreeOSMemory()` 将内存彻底归还操作系统；启用状态经 `Registry` 持久化（Store）。
@@ -131,30 +133,32 @@ internal/modules/<tool>/
 
 **版本管理子包（`version/`）**
 
-- **共享内核委托（Wave 4/5S）**：下载→校验→安全解包→版本树落位主流程已收口 `packages/go/artifact`（详见 §2.4）——版本面委托共 **26 个模块**（2026-10-12 实扫 `import hanxi/packages/go/artifact` 得 26——31 家具备 `version/` 能力者中 `frpc`/`nanazip`/`rustdesk`/`subnetdesk`/`douzy` 五家版本段 bespoke 未委托），其中 **23 个**连 instance 进程治理一并委托 supervisor（见下），`quicklook`/`bili23` 仅版本段委托、instance 留 bespoke（ADR-0003 §4）；26 家之中 `snipaste`（官网仅 SHA-1）/`guoheview`（官方仅 MD5）/`vscode`（历史版无官方摘要）为**薄适配器**——"下载+官方哈希校验"段留模块 bespoke（弱摘要/缺摘要上游不放宽 `Fetch` 的 SHA-256 唯一信任根，ADR-0002 §5 内核边界裁定；vscode 降级理由登记于迁移分类账"信任根缺位第 3 家"），解包落位仍走 `UnpackZip`/`Tree` 闸门；`recordly` 为 NSIS 覆盖式单目录、无 Tree 可登记（版本面偏离 zip 模板）；
+- **共享内核委托（Wave 4/5S）**：下载→校验→安全解包→版本树落位主流程已收口 `packages/go/artifact`（详见 §2.4）——版本面委托共 **27 个模块**（2026-10-21 实扫 `import hanxi/packages/go/artifact` 得 27——32 家具备 `version/` 能力者中 `frpc`/`nanazip`/`rustdesk`/`subnetdesk`/`douzy` 五家版本段 bespoke 未委托），其中 **24 个**连 instance 进程治理一并委托 supervisor（见下），`quicklook`/`bili23` 仅版本段委托、instance 留 bespoke（ADR-0003 §4）；27 家之中 `snipaste`（官网仅 SHA-1）/`guoheview`（官方仅 MD5）/`vscode`（历史版无官方摘要）为**薄适配器**——"下载+官方哈希校验"段留模块 bespoke（弱摘要/缺摘要上游不放宽 `Fetch` 的 SHA-256 唯一信任根，ADR-0002 §5 内核边界裁定；vscode 降级理由登记于迁移分类账"信任根缺位第 3 家"），解包落位仍走 `UnpackZip`/`Tree` 闸门；`recordly` 为 NSIS 覆盖式单目录、无 Tree 可登记（版本面偏离 zip 模板）；`heukms` 是"下载校验+落位走内核、解包自筑"的唯一形态——上游只发 RAR5，内核 `UnpackZip` 只建在标准库 zip 上，共享包不为单一消费者背第三方归档依赖，模块自有 `version/unpack_rar.go` 通道（踩坑 #108）；
 - **完整性四层兜底链**（按上游能力择优组合，为各家取证来源）：GitHub API 资产 `digest` → 官方 `SHA256SUMS.txt` 双源比对 → 官方站哈希清单（如 Snipaste sha-1、voidtools sha256、果核看图官方接口 MD5）→ 字节数 + MZ/PE `versioninfo` 版本核对 + sha256 下载指纹存档；委托 `artifact.Fetch` 的模块以官方 SHA-256 必检为硬线（缺摘要一律拒装，镜像只是搬运工）；
 - **安装布局适配**（免提权优先）：便携 zip 直解 / 顶层包装目录收割（zip 内 exe 深一层，如果核看图 `GuoheViewPortable/`）/ `msiexec /a` 管理提取（MSI 无 zip 形态，如 PicLite、Keyviz）/ NSIS `/S /D=` 静默安装（Recordly）/ 当前用户 MSIX（`platform/apppackage`，NanaZip）/ AppInstaller 官方直装清单交叉校验（EarTrumpet）/ 单文件 exe 下载即安装（含 rust-portable packer 内层自解压形态，Rufus、RustDesk/SubnetDesk）/ MSI 安装版双形态纳管（Hanxi 取包校验+发起上游向导+注册表探测安装位，RustDesk/SubnetDesk 与 VS Code User Installer）；
 - 统一支持本地导入、版本删除与 `*:version-download` 进度事件。
 
 **实例引擎子包（`instance/`）**
 
-- **共享内核委托（Wave 4/5S）**：进程治理主流程（spawn → JobObject 绑定 → 就绪探测/分类入账 → 退出分类收口）收口 `packages/go/supervisor`，**23 个模块**（2026-10-12 实扫 `import hanxi/packages/go/supervisor` 得 23；30 家具备 `instance/` 子包者中余 7 家 bespoke）把探针族/优雅退出通道/状态词表映射以 `Probe`/`QuitHook`/`Callbacks` 注入委托；**留 bespoke 全量名单**（豁免即终点，防假抽象第二样本）：`frpc`（多实例 map + 连接嗅探 + DPAPI 脱敏日志）、`rustdesk`/`subnetdesk`（packer 外层早退的进程树监督，击穿"自有句柄=生命周期"公理）、`quicklook`（Quit+Reload 双令命令通道，单家需求不扩内核）、`bili23`（退出不强杀 + 三态如实上报，与固定 killSequence 冲突）、`ocr`（私有 hanxi-ocr 资产契约与双探针）、`piik`（headless 服务型骨架：自带 Engine 状态快照 emit 与端口试绑分配链，无 GUI 生命周期语义可套——**2026-10-12 补列，原名单漏此家**）；均见 ADR-0002 §3 / ADR-0003 §4；
+- **共享内核委托（Wave 4/5S）**：进程治理主流程（spawn → JobObject 绑定 → 就绪探测/分类入账 → 退出分类收口）收口 `packages/go/supervisor`，**24 个模块**（2026-10-21 实扫 `import hanxi/packages/go/supervisor` 得 24，`heukms` 双委托入列；31 家具备 `instance/` 子包者中余 7 家 bespoke）把探针族/优雅退出通道/状态词表映射以 `Probe`/`QuitHook`/`Callbacks` 注入委托；**留 bespoke 全量名单**（豁免即终点，防假抽象第二样本）：`frpc`（多实例 map + 连接嗅探 + DPAPI 脱敏日志）、`rustdesk`/`subnetdesk`（packer 外层早退的进程树监督，击穿"自有句柄=生命周期"公理）、`quicklook`（Quit+Reload 双令命令通道，单家需求不扩内核）、`bili23`（退出不强杀 + 三态如实上报，与固定 killSequence 冲突）、`ocr`（私有 hanxi-ocr 资产契约与双探针）、`piik`（headless 服务型骨架：自带 Engine 状态快照 emit 与端口试绑分配链，无 GUI 生命周期语义可套——**2026-10-12 补列，原名单漏此家**）；均见 ADR-0002 §3 / ADR-0003 §4；
 - **运行态探测**：进程枚举、命名互斥体探测（Keyviz/PicLite/FlClash 等；RustDesk 系按安装形态分治——便携版进程镜像路径探针、安装版命名互斥体）、.NET 单实例通道（BCU/PaperTodo）、商店/DSD 注册态（EarTrumpet）；**多实例上游无锁可探**（果核看图二次拉起即新开窗）→ 进程名快照 + EnumWindows 按自有 PID 过滤；委托内核的模块以上述探针实现 `supervisor.Probe.Inspect` 单一事实源；
 - **唤窗通道**：官方命令信使（show/hide/exit）、`EnumWindows` 置前台、AUMID 激活、Win32 `ShowWindow/SetForegroundWindow` 直操作，全部先做进程指纹复核（PID+启动时间+路径）防误杀；
 - **进程模型**：JobObject 全程托管绑定（默认解除 kill-on-close，工具不随 Hanxi 退出；开启"跟随 Hanxi 退出"才启用内核连带强杀）；闭源工具脱管（Snipaste）；MSIX/Appx 型不绑 JobObject（NanaZip/EarTrumpet）；
 - **退出治理**：命名管道优雅退出（QuickLook Quit/Reload）→ 命令通道 → 指纹复核强杀（上游事务性写入保证安全）三级策略；委托内核的模块经 `SetQuitHook` 注入优雅通道、末级强杀由 Engine 承担（Quit 多态归因决策留模块 instance 层，不为塞内核造第二返回值，ADR-0002 §5）；**例外分治**——上游关窗行为用户可配且强杀有中断在途任务代价的下载器型（Bili23 Downloader）不做静默强杀兜底，Quit 三态（exited/hidden/windowUp）如实上报，强杀仅留给用户显式点击；外部自行启动的实例 supervisor 只甄别、只指引（`ErrExternal`），绝不由引擎强杀；支持"跟随 Hanxi 退出"开关（`SetFollowOnExit`，**默认关闭**：开启 Detached 解除 Job 退出联动，Hanxi 退出/崩溃均不影响工具）与桌面快捷方式（`platform/windows/shortcut.go`）。
 
-**启动恢复与残骸清理（journal 背书法）**：装配根在一切模块构造前执行 `operation.Recover`（`internal/app/app.go` versionTrees 登记 18 棵托管版本树）——补偿只动**有账本背书**事务在各树内的 `.tmp-<txnID>` staging 与 `.removing-<txnID>` 隔离目录，收口后 `Complete(compensated)` 落账、由观察面以 `resumable` 呈现待用户处置；未登记模块的事务不猜测、不自动执行；无背书的事务前缀残骸只上报不动盘（删除决策永远保留给有账本背书的收口路径）；`artifact.CleanStaleParts` 另对 `%TEMP%\hanxi-*`、`installers/`、`versions/` 三根各扫一轮超龄 `.part-<hex>` 下载残件（形状+超龄+普通文件三闸俱备才删）。
+**启动恢复与残骸清理（journal 背书法）**：装配根在一切模块构造前执行 `operation.Recover`（`internal/app/app.go` versionTrees 登记 25 棵托管版本树，2026-10-21 按代码实数）——补偿只动**有账本背书**事务在各树内的 `.tmp-<txnID>` staging 与 `.removing-<txnID>` 隔离目录，收口后 `Complete(compensated)` 落账、由观察面以 `resumable` 呈现待用户处置；未登记模块的事务不猜测、不自动执行；无背书的事务前缀残骸只上报不动盘（删除决策永远保留给有账本背书的收口路径）；`artifact.CleanStaleParts` 另对 `%TEMP%\hanxi-*`、`installers/`、`versions/` 三根各扫一轮超龄 `.part-<hex>` 下载残件（形状+超龄+普通文件三闸俱备才删）。
 
 **事件契约**：托管模块统一推送 `*:version-download`（下载进度）与 `*:instance-state`（实例状态）两类事件，汇入 `notify` 通知中心；托管安装事务另经统一 Operation 观察面（`operation:changed` 广播 + `AppService.ListOperations` / `DismissResumable` RPC），供模块中心恢复条/在途条与首页最近任务消费。
 
 ### 2.4 共享托管内核 (`packages/go/`)
 
-Wave 4 从 25 份 version 下载链、24 份 instance 进程治理主流程中收口出三个零框架依赖的共享包（升版规则、稳定门判定与逃生钩子白名单由 `docs/adr/ADR-0002` 冻结：zip 族 + 单 exe 族两差异样本全程走内核、失败注入矩阵通过、≥3 家需求才入内核）：
+Wave 4 从 25 份 version 下载链、24 份 instance 进程治理主流程中收口出三个零框架依赖的共享包（升版规则、稳定门判定与逃生钩子白名单由 `docs/adr/ADR-0002` 冻结：zip 族 + 单 exe 族两差异样本全程走内核、失败注入矩阵通过、≥3 家需求才入内核）。后续批次又同址沉入五件——`netx`（代理出网与显式拨号，N25 自 wsl 孤例泛型化下沉、`469e3e1` 将 portscan 拨号内核上收）、`hostfeed`、`dirstats`、`externalquit`、`peicon`，`packages/go/` 现共 8 包；其中 artifact/supervisor/operation 三包公开面仍按 ADR-0002 冻结表执行，后五件不在该表内、纪律由各包注释钉守：
 
 - **`artifact`（交付链）**：`Fetch` 受控下载——官方 SHA-256 必检（缺失即拒，"托管下载不允许无校验安装"）、Content-Length 与实收双核、流式大小断言、落盘后全量重读复核；HTTPS-only（http 仅限回环且强制绕过代理）、重定向不跨 scheme、错误/进度不回显带 query 的 URL。`UnpackZip` 安全解包闸门——ZipSlip（反斜杠归一 + 组件级清洗 + Clean 前后双查）、炸弹预算 `Limits`（条目数/单文件/总解压量/压缩比）、`allowFiles` 清单白名单逐文件摘要复核、大小写占位冲突检测、反斜杠结尾目录条目（不带 ModeDir 位）修复；`Tree` 版本树——`OpenTree(root, entryName)` 的 `<entryName>_<version>/` 布局、`StageDir` 独占 `.tmp-<txnID>` 中转（不覆盖、不执行任何内容）、`Commit` 原子落位（同摘要幂等复用 / 异摘要**防同版本内容漂移拒覆** / 无账本目录拒覆盖 / rename 优先、meta.json 写失败搬回回退）、`Remove` 先 rename 隔离到 `.removing-*` 再删（文件被占用时留下可恢复状态）、`Versions/Resolve/CleanupAbandoned/InstallZip`；`CleanStaleParts` 超龄 `.part-*` 残件受控清理；版本令牌白名单（`ValidateVersionToken`）防目录名注入。
 - **`supervisor`（进程治理）**：`Probe.Inspect` 单一事实源（外部性 + `ProcInfo`，取代各蓝本 IsRunning/PortOpen/WaitForReady 碎片接口）；`Spec` 受控字段（Exe/Args 原样 argv 无 shell、`DetachFromJob`、`ReadyTimeout`、`HideWindow`（Windows 经 CREATE_NO_WINDOW 注入、其他平台 no-op）、`Env` 键值白名单注入）；`Engine` 生命周期（Start/Stop/Snapshot，状态锁与操作锁分离、`cmd.Wait` 单所有者、上一代未收口拒新启）；`SetQuitHook` 优雅退出通道（管道命令/WM_CLOSE/HTTP shutdown）；`ErrExternal`（外部实例只甄别指引）/`ErrBusy`；`Callbacks.OnState/OnLog`（OnLog 逐行透传 stdout/stderr，脱敏/缓冲策略留模块层）；PID 复用防护（VerifyToken 身份 + KillVerified 复核）；停止三段：QuitHook grace → Job Terminate → 指纹复核强杀。
 - **`operation`（事务账本与观察面）**：`Journal` 落盘 schema v1 固定 **15 字段**（schema/transactionId/operation/deliveryKind/moduleId/fromVersion/toVersion/phase/state/createdAt/updatedAt/activeBefore/dataPolicy/steps/error），绝不记录 Secret、用户文件内容或敏感完整命令行；`Store` 记账面 Begin/Advance/Complete/Get/Pending/AbandonedDirs——**journal 先落盘并 fsync 再执行副作用**，更新走 tmp+rename，每个 moduleId 同时只允许一笔未收口写事务（`ErrTxnActive`）；`Recover` 背书法崩溃恢复（Report 四桶：resumed/rolledBack/orphaned/quarantined，损坏文件改名隔离取证），恢复收口前不开放业务调用；`Hub` 在途操作观察面输出 `extapi.Operation`（journal 词汇 uninstall↔remove 映射收敛在 hub.go），未收口事务回灌为 `failed + error.code="resumable" + recoverable=true`（合成记录 ID `"resumed-"+txnID`，收口通道一律消费 `TxnID` 裸字段），`ForgetResumable` 支持宿主代收口摘除。`internal/ops` 为装配根与模块间接线层：`SetKernel` 注入（未注入时 BeginTxn 全方法安全退化为 no-op，无账模式不阻断业务）、`operation:changed` 事件广播、残骸清理工具面（`CleanTxnResidue`/`ListUnbackedTxnDirs`/`CleanStaleDownloadParts`）。
+- **`netx`（代理出网与拨号内核）**：两条语义不同的链刻意分治、勿互相拿错——① **系统代理链**（`client.go`，"跟随浏览器"）：`Transport`/`NewClient` 按「环境变量优先 → WinINET 系统代理兜底 → 直连」链接，全仓出网 HTTP 与用户浏览器同路（坑 #35 的根治面；2026-10-21 实扫 39 个模块引用，内核 `artifact.Fetch` 亦经此），纯 PAC 不解析 JS、如实回落直连，链上任一环取不到都是直连而非 error，系统链不接 `socks=` 项（net/http Transport 不认 SOCKS）；回环/LAN 探测必须显式走 `DirectClient`/`LoopbackAwareProxyFunc`，禁止裸 client 碰本机服务。② **显式代理拨号链**（`proxydial.go`，"明知要用这条代理"）：`ParseProxy` 解析 HTTP/SOCKS5 方言、`DialProxy` 同时产出 `ContextDialer` 与 `http.Client`（`ContextDialer` 原 portscan 类型定义上收、portscan 侧改类型别名），供 portscan 代理中继扫描与代理连通性体检复用；SOCKS 分支的 forward dialer 包一层 `deadlineDialer`，在交付 conn 前设死线，封顶 x/net SOCKS5 greeting 同步读不听 ctx 的永久悬挂（坑 #110）；`QueryEgress` 出口核验多源降级同受死线约束（响应体封顶、重定向关闭）。
+- **后续批公共件（不在 ADR-0002 冻结表内）**：`hostfeed`——发布物平台/形态机械分类器，只服务展示、绝不反向指挥各家 remote.go 选包；`dirstats`——目录占用只读统计（时间预算截断如实标"下限估算"、junction/符号链接恒不计数）；`externalquit`——外部实例退出分档执行器（低损档直接强杀、打扰档强杀前必经用户确认，强杀原语复用 `platform.KillVerified` 复核链）；`peicon`——纯标准库解析 PE 内嵌图标、运行期从本机已装 exe 就地提取（许可受限三枚图标不入库的对位通道）。
 - **范围裁剪（ADR-0003）**：官方 Catalog 签名链/密钥基建/撤回演练不实施——供应链完整性的实际承担者为 HTTPS + 上游官方摘要必检（`artifact.Fetch` 全线强制）；Wave 6 物理拆包缓行无排期；DPAPI 凭据保持本机绑定（搬家语义由数据根整体同步覆盖）。
 
 ### 2.5 平台底层实现 (`internal/platform`)
