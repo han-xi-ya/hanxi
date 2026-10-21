@@ -270,7 +270,8 @@ Hanxi 托管本体（N4 机主 2026-09-23 拍板路线 A）：上游分发形态
 - 上游：<https://github.com/zbezj/HEU_KMS_Activator>（43k+ star，最新 64.0.0 / 2026-07-06；**master 分支只剩两份 PDF 与 19 字节 README，上游后期已闭源**，GitHub API `license` 字段实测为 `null`）
 - 许可证：**无 LICENSE 文件**。作者在其发布包内 `更新日志.txt` 尾部自述「此软件仅作学习交流使用，支持购买正版软件！」并附《计算机软件保护条例》第十七条的免商业使用声明段（该文件为 GBK/CP936 编码）；作者署名与版权串取 PE VERSION 资源实证——`LegalCopyright`/`CompanyName` = 知彼而知己，`FileDescription` = `HEU KMS Activator™`（带商标），`Comments` = `KMS/数字权利/KMS38/OEM激活`。
 - 发行方式：Hanxi **代下载官方 release 的 rar 到用户本机托管目录**（GitHub `digest` 整包校验 → `nwaples/rardecode` 纯 Go 解 RAR5 → 落位前再核 PE 身份与版本号），符合本文档既定基线「用户侧按需下载、不捆绑、不再分发、不修改上游二进制」；主程序**不入仓库、不打进 Hanxi 发布物**。同版双发的 `.iso` 是 UDF 光盘镜像，Hanxi 不解析（纯 Go 与系统 bsdtar 都读不到 UDF 侧），需要它请去发布页自取；上游未发布官方摘要的旧版本（62.0.0 及更早）不代下载，由用户「导入本地」收纳自己取得的 exe。
-- 解包依赖：`github.com/nwaples/rardecode` v1.1.3（BSD-2-Clause；纯 Go、零传递依赖）——**本仓首个第三方归档解析依赖**，此前全部解包走标准库 `archive/zip`。它是 Hanxi 自身的构建依赖，与被托管工具的上游许可无关。
+- 解包依赖：`github.com/nwaples/rardecode` v1.1.3（BSD-2-Clause；纯 Go、零传递依赖）——**本仓首个第三方归档解析依赖**，此前全部解包走标准库 `archive/zip`。它是 Hanxi 自身的构建依赖，与被托管工具的上游许可无关。上游与许可原文：<https://github.com/nwaples/rardecode>（仓库根 LICENSE 即 BSD-2-Clause 全文）。
+- 解包依赖的合规边界（与托管件不同基线，如实登记）：托管件是"用户侧按需下载、不入库不随包"，rardecode 则**静态链接进 Hanxi 可执行文件、随发布物分发**，BSD-2-Clause 的两项条件（在再分发中保留版权告示、复述许可证条件全文）自分发之日起即生效，不是"未来若捆绑才触发"的或然义务。现状：Hanxi 尚无 Go 构建依赖许可证统一随附机制（被链接的不止 rardecode——wails、x/crypto、x/net 等同样随二进制分发），统一依赖 NOTICE 的收口方案挂账待定，本节先把义务说清、不静默略过。
 - 商标与图标：主程序名带 ™，且无开源许可证可供过审，故**品牌图标不落仓库**（`frontend/src/assets/apps/heukms.png` 刻意不存在，界面按取材纪律回落 `generic.png` 通用徽标——宁缺毋滥）。
 - 风险如实告知（写进 UI 而非藏进文档）：主程序 `Get-AuthenticodeSignature` 实测 **NotSigned**，且属激活工具，Windows Defender 一类实时保护大概率拦截删除——「已装版本突然消失」是该模块最常见的真实故障，异常退出文案与首用提示条都直接说明这一点。Hanxi 不代为修改任何安全软件设置。
 - 若未来改为预装或随 Hanxi 安装包分发：**必须先取得作者（微信公众号 heu168）明确授权**并补记于此；当前「本机按需代下载到托管目录、不入库不随包」形态不触发该问题。
@@ -327,7 +328,7 @@ ddnsgo/frpc favicon 源天花板 48 保持 48）。逐枚出货边长单一来�
 图标套用于 Hanxi 自有 UI 展示（上节"刻意不做品牌融合"），入库分发即违约，
 默认矢量 `i:video`，永不入库；**vscode**——微软商标条款对品牌资产同样收紧，
 与 Sysinternals 同判不入库，默认矢量 `i:code`。三者的"装了就画自己的脸"
-诉求由下节运行期本机提取通道满足——不改变本节任何"不入库"结论；**softver/msgboard/quickmenu/sysinfo/envcheck/wechat/wifi 等
+诉求由下节运行期本机提取通道满足——不改变本节任何"不入库"结论；**heukms（HEU KMS 激活工具）**——同样不入库，且**不进**下节运行期提取通道（该通道仅覆盖 rammap/recordly/vscode 三件红线件）：无开源许可证可供过审、主程序名带 ™（见其节"商标与图标"条），按宁缺毋滥口径界面永久回落 `generic.png`；**softver/msgboard/quickmenu/sysinfo/envcheck/wechat/wifi 等
 Hanxi 自研功能模块**（wechat/wifi 为桥接/诊断入口，非托管载荷）永不入库。
 （2026-09-26 尾巡改判注：**ddnsgo/frpc** 原以"控制台程序无 GUI 头件"落通用徽标，
 后经官方仓库实证存在现成品牌位图（favicon），按开源取材通道补录入库（见上表）；
