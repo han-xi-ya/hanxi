@@ -23,15 +23,26 @@
   --color-primary-hover: #0b7577;
   --color-primary-soft: rgba(13, 130, 132, 0.1);
   --color-on-primary: #ffffff;
-  /* 主操作钮专属档。方案演进要留痕：2026-10-13 机主否青底（"闷、像禁用、与界面
-     一片青混在一起跳不出来"）→ 我改深墨 13.63:1；2026-10-15 机主再否墨色并
-     **点名转蓝色系** → 现浅底 #0f6fd8 白字实测 4.90:1，hover #0c5fc0 更深故对比再升。
-     刻意**不动 --color-primary**——它还服务链接/选中态/软底强调等几十处消费面，
-     换它等于引发第二次"哪里又变了"。已知代价：**蓝主钮 × 青强调**双色相并存；
-     若要整套转蓝（含链接/选中态）需另次拍板，已登记在 PRW 按钮段。 */
-  --btn-primary-bg: #0f6fd8;
-  --btn-primary-bg-hover: #0c5fc0;
-  --btn-primary-fg: #ffffff;
+  /* 主操作钮专属档。**四轮返工后的终态（2026-10-20）**：
+       轮 1  2026-10-13 机主否青底（"闷、像禁用、与界面一片青混在一起跳不出来"）→ 我改深墨 13.63
+       轮 2  2026-10-15 机主否墨色并点名转蓝 → 浅 #0f6fd8 白字 4.90
+       轮 3  2026-10-19 机主连报 Douzy/Rufus/HEU_KMS 三模块 → 我当时定性为"饱和实心块只在密集
+             位置才是噪声"，另立 --btn-primary-tint-* 子档只收托管面板三处——**定性随即被推翻**
+       轮 4  2026-10-20 机主报 PortScan「开始扫描」：整页唯一一颗、非逐行位置，照样不行
+     ⇒ 反感对象自始至终是**饱和实心块本身**，与位置、与色相都无关。故本档形制就地重定为蓝洗：
+     色相仍是机主点名的蓝（--btn-primary-hue 作唯一色源），底 = 蓝 14% 混本板面板、字 = 中蓝
+     #0c5fc0、边 = 蓝 30%。轮 3 那四枚 tint token 与本档同形，整删不留重复档。
+     逐板实算在册（五板×明暗取最差值，非估算）：浅底恒 #ddebfa（五块浅板面板皆 #ffffff）
+     字比 5.08:1、hover #cfe2f7 4.65:1；深字 #7fd1ff 于五板洗底最差 6.31:1（sky·dark）、
+     hover 最差 5.45:1。底对自身面板 1.21（浅）/1.41–1.46（深）——"看得见按钮实体"不靠描边
+     独撑，那是 bbb6b1b（白底白钮近乎隐形）留下的账。
+     刻意**不动 --color-primary**（它还服务链接/选中态/软底强调几十处消费面）；蓝主钮 × 青强调
+     双色相并存的代价仍在册。本档也**不随四块 accent 色板换色相**，只随面板底合成明度。 */
+  --btn-primary-hue: #0f6fd8;
+  --btn-primary-bg: color-mix(in srgb, var(--btn-primary-hue) 14%, var(--surface-panel));
+  --btn-primary-bg-hover: color-mix(in srgb, var(--btn-primary-hue) 20%, var(--surface-panel));
+  --btn-primary-fg: #0c5fc0;
+  --btn-primary-edge: color-mix(in srgb, var(--btn-primary-hue) 30%, var(--surface-panel));
   /* N37 on-accent 契约（彩底借值 15 处的 token 正源）。拍板点 2 终裁定案"不拆"维持——
      契约真相档仅 on-primary + on-accent 两枚，全部状态/渐变实底共用 on-accent 单档，
      逐板逐模式显式字面，消费面不得借 on-primary/text-inverse 或写兜底；曾设的
@@ -208,12 +219,16 @@
   --color-primary-soft: rgba(66, 183, 180, 0.13);
   --color-on-primary: #052326;
   /* 深色模式主钮同样不是浅色的机械反转。旧方案链留档：亮青 #42b7b4 深字 6.80
-     （嫌刺眼发闷）→ 近白 #e8f2f3 深字 16.52（机主否）→ 现亮蓝 #5ec2ff 配本板深字
-     #06202f 实测 8.47:1，hover #7fd1ff 更亮故对比再升。仍是"明暗各自校准"：浅模式
-     用中蓝白字、深模式用亮蓝深字，同一色相两种明度档，不共用一张色值表。 */
-  --btn-primary-bg: #5ec2ff;
-  --btn-primary-bg-hover: #7fd1ff;
-  --btn-primary-fg: #06202f;
+     （嫌刺眼发闷）→ 近白 #e8f2f3 深字 16.52（机主否）→ 亮蓝 #5ec2ff 配本板深字 #06202f
+     8.47:1（实心档，2026-10-20 与浅侧一并重定为蓝洗，见上方轮 1–4 全程留档）。
+     深侧洗底必须比浅侧更浓才看得见实体，故比例走 18/24/38 而非浅侧的 14/20/30。
+     前景取亮蓝 #7fd1ff：五板逐板实算最差 6.31:1（sky·dark）、hover 最差 5.45:1、
+     底对自身面板 1.41–1.46，全档无一 <4.5。 */
+  --btn-primary-hue: #5ec2ff;
+  --btn-primary-bg: color-mix(in srgb, var(--btn-primary-hue) 18%, var(--surface-panel));
+  --btn-primary-bg-hover: color-mix(in srgb, var(--btn-primary-hue) 24%, var(--surface-panel));
+  --btn-primary-fg: #7fd1ff;
+  --btn-primary-edge: color-mix(in srgb, var(--btn-primary-hue) 38%, var(--surface-panel));
   /* N37 on-accent 深色侧铁律：彩底前景必须本板深值（白字于五板深底 1.83–2.55 全爆，
      PLAN_N37 §2a 结论 1）——danger 6.46 / positive 7.73 / warning 8.39 / info 6.70；
      hover 档经本块 N37② 提亮镜像后升至 6.80–8.47，全档无 <4.5。 */

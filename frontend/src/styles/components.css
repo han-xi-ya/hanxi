@@ -113,17 +113,18 @@
 :where(.btn:active:not(:disabled)) {
   transform: translateY(1px);
 }
-/* 主操作钮走专属墨色档（--btn-primary-*，见 tokens.css 同名注释）：
- * ① 白字对比 13.63:1（旧青底 4.62），② 与页面底差 12.64:1 故**去描边**——旧
- * --btn-solid-edge 那圈深边在实底上只会让它显得笨重发脏，③ 字重回到 500：主/次
- * 之分改由"实底 vs 描边底"承担，不靠加粗。:active 一并不再改边框（无边框可改），
- * 按压反馈由基座 `transform: translateY(1px)` 统一提供。
- * 该档刻意不随四块 accent 色板联动（色板表达留在链接/选中态/软底强调），
- * 是 2026-10-13 的成文决定，不是漏接色板的欠账。 */
+/* 主操作钮档——形制为"蓝洗"（底=蓝洗、字=中蓝/亮蓝、边=蓝细），四轮返工的完整
+ * 演进与逐板对比度实算全在 tokens.css `--btn-primary-hue` 上方注释在册，此处不复述。
+ * 三条要点留在此地：① **全站唯一主钮档**，密集行内与整页唯一 CTA 同形，不再分实心/
+ * 淡洗两档（2026-10-20 撤销上一轮的 .btn-primary-tint 子档，同形重复档一律不留）；
+ * ② 主/次之分由"蓝味底 + 蓝字"承担，字重 500 不加粗；③ hover/active 只换底，前景
+ * 恒随 --btn-primary-fg，各态禁止单独覆写 color（N37 on-color 契约的同一族规）。
+ * 该档刻意不随四块 accent 色板换色相（色板表达留在链接/选中态/软底强调），只随
+ * --surface-panel 合成明度——这是 2026-10-13 起沿用的成文决定，不是漏接色板的欠账。 */
 :where(.btn-primary) {
   background: var(--btn-primary-bg);
   color: var(--btn-primary-fg);
-  border-color: transparent;
+  border-color: var(--btn-primary-edge);
   font-weight: 500;
 }
 :where(.btn-primary:hover:not(:disabled)) {
