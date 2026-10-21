@@ -578,9 +578,8 @@ describe('EverythingView 版本区补锁', () => {
     firstUseRelease()
     svc.DownloadVersion.mockResolvedValue('started')
     let w = await mountView()
-    // 首用空态那颗自 2026-10-19 起与行内下载同吃淡洗档 btn-primary-tint（机主点名「下载
-    // 最新版」背景色，规则见 docs/FRONTEND.md 按钮变体语义条）；本组三处选择器一律按
-    // 元素 + 家族原子取，档位再变也不回头改测试。
+    // 本组三处选择器一律按元素 + 家族原子取（button.btn），不锁变体类名：主操作档自
+    // 2026-10-20 起全站重定为蓝洗一档（a37ac52），改名/换形制都不该回头改测试。
     let btn = w.find('.empty-state button.btn')
     expect(btn.text()).toContain('下载 稳定版 1.4.1') // releases[0].channel 决定词面
     await btn.trigger('click')
