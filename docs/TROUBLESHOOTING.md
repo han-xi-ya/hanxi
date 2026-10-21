@@ -6,24 +6,21 @@
 
 ## 目录
 
-### 0. 产品更名：品牌断代必须同步源码、数据目录与安装身份
-- **问题现象与错误原因**：仅替换界面名称会遗留旧的 Go module、Wails bindings、进程名、单实例 ID、Windows 版本资源、NSIS/MSIX 模板和数据目录，导致安装包名称错乱、版本分裂或新旧实例共享状态。
-- **排查过程**：分别扫描源码 import、构建脚本、Windows manifest、安装器模板、发布 workflow、前端 bindings 与 `%APPDATA%` 路径，确认产品身份并非单一字符串。
-- **正确做法与标准修复方案**：品牌断代版本必须统一迁移源码命名空间、`cmd` 入口、bindings、exe/资产名、单实例 ID、自启项和标准数据目录，并集中维护名称、版本、描述与标识符。Hanxi v0.3.0 明确不读取或迁移旧产品数据。
-- **避坑防重犯建议**：发布前执行旧品牌残留扫描，并对运行时版本、PE 资源、NSIS/MSIX 和 Release tag 做一致性校验；真实第三方语义（如 `frpc.exe`、`frp://`）不得机械替换。
+> **编号与索引说明（2026-10-21 结构整理）**：本日志只追加不改写正文，编号因此存在三种合法形态；以下按正文出现顺序补全**全量索引**（共 126 条）。
+> 1. **重号**：托管系列与平台系列在 8–17 段各自编号，同号不同条目；正文、代码注释与提交历史大量以「#35」「#40」「#79」「#110」这类编号互相引用，**禁止重编号**，新条目一律从最大编号之后续编（现至 111）。
+> 2. **连续性核查结论**：主序列 1–111 无缺号；另有小数编号（0.1、58.1）与两条无编号条目（「iOS Safari 大文件上传」「前后端默认上传上限」，物理位置在第 6、7 条之间），索引如实按正文顺序收录。
+> 3. **乱序**：25 号条目物理上排在 27 之后（追加时未插位），保留原位不移动，以免搅动相邻锚点。
+> 4. **锚点口径**：以下索引按 GitHub slug 规则由正文标题现推（转小写、剥标点、空格转连字符、连字符保留原序列——如 `var(--shadow-panel)` → `var--shadow-panel`）；早期目录里「UPX 标 6 实 7」「WiFi 标 7 实 8 且尾词旧措辞」等悬空锚已全部纠掉。个别渲染器对全角括号折叠规则或有 ±1 连字符差异，以 GitHub 口径为准。
+>
+> **重复条目处置**：BOM/不可见字符族坑曾三处重复立目（65、66、68），本轮按「保留信息并集」合并入 65，66/68 原位留指针；其余历史坑一条未删，已被现实取代的条目以「（已过时，保留备考）」标注。
 
-1. [前端：Wails v3 事件总线与插件启停热同步](#1-前端wails-v3-事件总线与插件启停热同步)
-2. [前端：大流量日志流内存与 DOM 性能问题](#2-前端大流量日志流内存与-dom-性能问题)
-3. [后端：Windows 孤儿进程与 JobObject 作业隔离](#3-后端windows-孤儿进程与-jobobject-作业隔离)
-4. [后端：DPAPI 凭据加密与临时配置文件生命周期](#4-后端dpapi-凭据加密与临时配置文件生命周期)
-5. [Git：规范化中文原子提交](#5-git规范化中文原子提交)
-6. [构建：UPX 压缩 Go 程序导致运行时内存暴涨](#6-构建upx-压缩-go-程序导致运行时内存暴涨)
-7. [WiFi 密码：netsh 解析三连坑（GBK 编码 / $ 行锚 / 提权输出通道）](#7-wifi-密码netsh-解析三连坑gbk-编码--行锚--提权输出通道)
-8. [托管 Tauri 应用：单实例互斥体契约 / GitHub digest 校验 / 关窗退出语义](#8-托管-tauri-应用单实例互斥体契约--github-digest-校验--关窗退出语义)
-9. [Windows 开机自启参数必须与入口解析及窗口状态保持一致](#14-windows-开机自启参数必须与入口解析及窗口状态保持一致)
-
-> **补录说明（2026-09-16）**：以上 1–9 为早期编制，编号与锚点已随正文演进发生漂移（如正文中 UPX 实为 7、WiFi 实为 8，托管系列 8–17 与平台系列重号）；本日志只追加不改写正文，以下按正文标题补全缺失条目的完整索引，链接以实际锚点为准。
-
+- [0. 产品更名：品牌断代必须同步源码、数据目录与安装身份](#0-产品更名品牌断代必须同步源码数据目录与安装身份)
+- [0.1 Windows 安装包验证依赖未进入 PATH](#01-windows-安装包验证依赖未进入-path)
+- [1. 前端：Wails v3 事件总线与插件启停热同步](#1-前端wails-v3-事件总线与插件启停热同步)
+- [2. 前端：大流量日志流内存与 DOM 性能问题](#2-前端大流量日志流内存与-dom-性能问题)
+- [3. 后端：Windows 孤儿进程与 JobObject 作业隔离](#3-后端windows-孤儿进程与-jobobject-作业隔离)
+- [4. 后端：DPAPI 凭据加密与临时配置文件生命周期](#4-后端dpapi-凭据加密与临时配置文件生命周期)
+- [5. Git：规范化中文原子提交](#5-git规范化中文原子提交)
 - [6. 后端：Windows 网卡与网络配置枚举性能陷阱 (GetAdaptersAddresses vs PowerShell/WMI)](#6-后端windows-网卡与网络配置枚举性能陷阱-getadaptersaddresses-vs-powershellwmi)
 - [iOS Safari 大文件上传：单次二进制流优先于连续分片请求](#ios-safari-大文件上传单次二进制流优先于连续分片请求)
 - [前后端默认上传上限不一致导致超大文件被误拒绝](#前后端默认上传上限不一致导致超大文件被误拒绝)
@@ -34,11 +31,13 @@
 - [11. explorer.exe 参数语义：传文件路径 = 执行该文件；定位文件必须用 /select,](#11-explorerexe-参数语义传文件路径--执行该文件定位文件必须用-select)
 - [12. ES.exe 命令行契约三连坑（-utf8 不存在 / 控制台 OEM 编码 / 无配置时单列输出布局）](#12-esexe-命令行契约三连坑-utf8-不存在--控制台-oem-编码--无配置时单列输出布局)
 - [13. 编排互斥锁不可重入：嵌套调用自带锁的入口方法会永久死锁](#13-编排互斥锁不可重入嵌套调用自带锁的入口方法会永久死锁)
+- [14. Windows 开机自启参数必须与入口解析及窗口状态保持一致](#14-windows-开机自启参数必须与入口解析及窗口状态保持一致)
 - [15. GitHub Releases 列表响应体会被资产元数据放大](#15-github-releases-列表响应体会被资产元数据放大)
 - [16. Go 与 Node.js 官网版本通道不能靠字符串或历史规律猜测](#16-go-与-nodejs-官网版本通道不能靠字符串或历史规律猜测)
 - [17. Java 与 Python 的“最新版”必须先限定发行版和版本线](#17-java-与-python-的最新版必须先限定发行版和版本线)
 - [18. npm 与 pnpm 升级命令取决于安装来源](#18-npm-与-pnpm-升级命令取决于安装来源)
 - [19. .NET 是双编号体系：卡片显示 SDK、版本关系却只能按 runtime 比较](#19-net-是双编号体系卡片显示-sdk版本关系却只能按-runtime-比较)
+- [8. 托管 Tauri 应用：单实例互斥体契约 / GitHub digest 校验 / 关窗退出语义](#8-托管-tauri-应用单实例互斥体契约--github-digest-校验--关窗退出语义)
 - [9. 托管 .NET WinForms 应用：tag/资产版本不同形 + Global 互斥体 + EnumWindows 退出](#9-托管-net-winforms-应用tag资产版本不同形--global-互斥体--enumwindows-退出)
 - [10. 应用退出钩子未接线：托管的工具进程不随 Hanxi 退出而关闭](#10-应用退出钩子未接线托管的工具进程不随-hanxi-退出而关闭)
 - [11. 上游发行侦查：只查 GitHub Releases 会漏掉自托管官方渠道（EarTrumpet）](#11-上游发行侦查只查-github-releases-会漏掉自托管官方渠道eartrumpet)
@@ -79,12 +78,76 @@
 - [48. WSL「默认 D:\wsl 却还是装到 C」：落位三坑同源——偏好粘滞、装完即迁无归因、能力无闸门](#48-wsl默认-dwsl-却还是装到-c落位三坑同源偏好粘滞装完即迁无归因能力无闸门)
 - [49. 全库确认框「\n\n 分段」被 HTML 折叠成文字墙：设计防线在渲染层一秒归零](#49-全库确认框nn-分段被-html-折叠成文字墙设计防线在渲染层一秒归零)
 - [50. 快捷菜单轮盘连环白边：旧注释谎称"Wails 无透明能力"，GDI 区域硬裁与近白 canvas 双重露底](#50-快捷菜单轮盘连环白边旧注释谎称wails-无透明能力gdi-区域硬裁与近白-canvas-双重露底)
-- [51. 阴影 token 当颜色用：`box-shadow: 0 8px 32px var(--shadow-panel)` 七处整条声明被解析器静默丢弃](#51-阴影-token-当颜色用box-shadow-0-8px-32px-varshadow-panel-七处整条声明被解析器静默丢弃)
+- [51. 阴影 token 当颜色用：`box-shadow: 0 8px 32px var(--shadow-panel)` 七处整条声明被解析器静默丢弃](#51-阴影-token-当颜色用box-shadow-0-8px-32px-var--shadow-panel-七处整条声明被解析器静默丢弃)
 - [52. GUI 子系统双击启动"日志恒空"：`io.MultiWriter(os.Stderr, f)` 被无效 stderr 句柄中断，落盘跟着拖垮](#52-gui-子系统双击启动日志恒空iomultiwriterosstderr-f-被无效-stderr-句柄中断落盘跟着拖垮)
 - [53. Wails v3 beta.10 无公开 Destroy() ≠ 无法销毁窗口：摘掉 WindowClosing 拦截 hook 再 Close 即走内部真销毁](#53-wails-v3-beta10-无公开-destroy--无法销毁窗口摘掉-windowclosing-拦截-hook-再-close-即走内部真销毁)
 - [54. Go 直调 COM 式 vtable：uintptr 跨函数转发违反 unsafe 规则，栈增长后 C++ 回写旧副本必崩（ORT 三坑）](#54-go-直调-com-式-vtableuintptr-跨函数转发违反-unsafe-规则栈增长后-c-回写旧副本必崩ort-三坑)
+- [55. frpc 运行时明文 TOML"停机即擦"只覆盖手动路径：停用/退出/崩溃全残留 token（S0）](#55-frpc-运行时明文-toml停机即擦只覆盖手动路径停用退出崩溃全残留-tokens0)
+- [56. 子窗"关闭即真销毁"被过虑的退出恐惧拦住：beta.10 退出判据是 windowMap 存活总数（Hide 不除名），不挂 Cancel hook 即默认走销毁路径](#56-子窗关闭即真销毁被过虑的退出恐惧拦住beta10-退出判据是-windowmap-存活总数hide-不除名不挂-cancel-hook-即默认走销毁路径)
+- [57. 统一历史接入时撞出两坑：存量 bindings 注释漂移混提交、worktree 裸跑 `go build ./...`/`generate bindings` 缺 dist](#57-统一历史接入时撞出两坑存量-bindings-注释漂移混提交worktree-裸跑-go-build-generate-bindings-缺-dist)
+- [58. Vue Boolean prop  casting 吞掉"三态开关"：UiClipboardField 首版整排按钮不渲染；Git Bash 里 wails3/instance 测试的 PATH 假失败](#58-vue-boolean-prop--casting-吞掉三态开关uiclipboardfield-首版整排按钮不渲染git-bash-里-wails3instance-测试的-path-假失败)
+- [58.1 Vue computed 的依赖按实际执行路径收集：非响应式探针置于短路左侧，会把首评空态永久缓存](#581-vue-computed-的依赖按实际执行路径收集非响应式探针置于短路左侧会把首评空态永久缓存)
+- [59. `wails3 generate bindings` 报 "go not found"：原生工具看不见 bash profile 注入的 PATH](#59-wails3-generate-bindings-报-go-not-found原生工具看不见-bash-profile-注入的-path)
+- [60. git 白名单圈定勿用命令级 pathspec：目录"整体消失"后增删再也拍不进去（快照工程）](#60-git-白名单圈定勿用命令级-pathspec目录整体消失后增删再也拍不进去快照工程)
+- [61. JSON 外科合并的两副暗面：RawMessage 子树被压成单行、回滚守卫把"写坏"误判为"被改"](#61-json-外科合并的两副暗面rawmessage-子树被压成单行回滚守卫把写坏误判为被改)
+- [62. 离线构建 mcp-go：本地 GOMODCACHE 缺传递依赖 zip，go mod tidy/go get 连环失败（F4 无头 server）](#62-离线构建-mcp-go本地-gomodcache-缺传递依赖-zipgo-mod-tidygo-get-连环失败f4-无头-server)
+- [63. `-H=windowsgui` 下 stdio MCP 管道实测可用；帧级测试必须自己关写端（否则 io.Pipe 死锁挂 120s）](#63--hwindowsgui-下-stdio-mcp-管道实测可用帧级测试必须自己关写端否则-iopipe-死锁挂-120s)
+- [64. 真子进程「超时强杀」单测勿用 cmd.exe：横幅输出会赢下 deadline 竞态，把超时支验成 EOF 支（R2 安装前自检）](#64-真子进程超时强杀单测勿用-cmdexe横幅输出会赢下-deadline-竞态把超时支验成-eof-支r2-安装前自检)
+- [65. Go 源码里写字面 BOM 即编译失败；GNU sed 替换又会把 \u 当大小写指令吞字（F6 绑定指针解析）](#65-go-源码里写字面-bom-即编译失败gnu-sed-替换又会把-u-当大小写指令吞字f6-绑定指针解析)
+- [66. AI 工具写 Go 源码混入裸 U+FEFF 字符：编译器报 illegal byte order mark，sed/perl 修补又踩 \u 大写陷阱（F7 托管安装）](#66-ai-工具写-go-源码混入裸-ufeff-字符编译器报-illegal-byte-order-marksedperl-修补又踩-u-大写陷阱f7-托管安装)
+- [67. 内部调度函数导出即进绑定面：一个 time.Duration 参数让 wails3 生成出 dev 不存在的 `frontend/bindings/time/`（F9 USB 直通）](#67-内部调度函数导出即进绑定面一个-timeduration-参数让-wails3-生成出-dev-不存在的-frontendbindingstimef9-usb-直通)
+- [68. Go 源码字符串字面量里的"裸 BOM 字符"直接编译失败：`illegal byte order mark`（F9 USB 直通）](#68-go-源码字符串字面量里的裸-bom-字符直接编译失败illegal-byte-order-markf9-usb-直通)
+- [69. Git Bash 里 `python` 是 WindowsApps 存根：静默失败（exit 49 零输出），脚本化改文件会"没做成但没报错"（R6 授权写入口）](#69-git-bash-里-python-是-windowsapps-存根静默失败exit-49-零输出脚本化改文件会没做成但没报错r6-授权写入口)
+- [70. 自动快照的“提交后再扫 mtime”会吞掉提交窗口内的新写入](#70-自动快照的提交后再扫-mtime会吞掉提交窗口内的新写入)
+- [71. 路径白名单不等于文件对象安全：symlink/junction 可把目录外秘密带进历史版本](#71-路径白名单不等于文件对象安全symlinkjunction-可把目录外秘密带进历史版本)
+- [72. 运行中 store 的历史恢复不能直接覆盖正式文件：旧内存会再写回](#72-运行中-store-的历史恢复不能直接覆盖正式文件旧内存会再写回)
+- [73. 系统资源与配置双写必须有补偿事务，不能把两边各当一次成功](#73-系统资源与配置双写必须有补偿事务不能把两边各当一次成功)
+- [74. CommandContext 只会发取消，不保证调用方按预算返回：cmd.Wait 必须单一所有者且有界](#74-commandcontext-只会发取消不保证调用方按预算返回cmdwait-必须单一所有者且有界)
+- [75. USB BusID 是拓扑位置不是物理身份，自动重放必须核指纹](#75-usb-busid-是拓扑位置不是物理身份自动重放必须核指纹)
+- [76. JSON payload 不能在 marshal 后硬截，截断必须发生在字段层](#76-json-payload-不能在-marshal-后硬截截断必须发生在字段层)
+- [77. 发布工件必须 staging→复验→原子替换，直接写最终名会留下残包与旧摘要](#77-发布工件必须-staging复验原子替换直接写最终名会留下残包与旧摘要)
+- [78. CSS 注释里的 `*/` 序列会提前终结注释，只在生产构建 minify 时炸](#78-css-注释里的--序列会提前终结注释只在生产构建-minify-时炸)
+- [79. Git Bash 会话的 PATH 是 POSIX 形态，Windows 原生 Go 测试进程 exec.LookPath 整片假红](#79-git-bash-会话的-path-是-posix-形态windows-原生-go-测试进程-execlookpath-整片假红)
+- [80. resumable 回灌记录的 `Operation.id` 带 `resumed-` 前缀，直接喂给 DismissResumable 必失败（Wave 4 前端接线）](#80-resumable-回灌记录的-operationid-带-resumed--前缀直接喂给-dismissresumable-必失败wave-4-前端接线)
+- [81. 实例冒烟的"裸 cmd.exe 挂起等输入"假设在受限 shell 会话不成立：stdin=NUL 秒退 + cmd 检索 ping 时灵时不灵（piclite 迁移实跑）](#81-实例冒烟的裸-cmdexe-挂起等输入假设在受限-shell-会话不成立stdinnul-秒退--cmd-检索-ping-时灵时不灵piclite-迁移实跑)
+- [82. Git Bash 直调 `wails3 generate bindings` 报 "go executable not found"：Windows 子进程的 PATH 交接坑（#79 同族）](#82-git-bash-直调-wails3-generate-bindings-报-go-executable-not-foundwindows-子进程的-path-交接坑79-同族)
+- [83. Linux 云环境装 wails3 CLI 与交叉编译的两道依赖门：pkg-config/webkitgtk-6.0 与 `frontend/dist` 占位](#83-linux-云环境装-wails3-cli-与交叉编译的两道依赖门pkg-configwebkitgtk-60-与-frontenddist-占位)
+- [84. 22.04 宿主机跑不了本仓 Linux 侧 Go 测试：wails pkg/application 需 GTK ≥ 4.10，容器绕行还要过 VCS 戳记门](#84-2204-宿主机跑不了本仓-linux-侧-go-测试wails-pkgapplication-需-gtk--410容器绕行还要过-vcs-戳记门)
+- [85. TranslucentTB 2026.2 便携版秒崩 0xC0000005：通用异常退出的"高发起因预告"文案成了误导源——按码分档 + 托管外复现才是归因正道](#85-translucenttb-20262-便携版秒崩-0xc0000005通用异常退出的高发起因预告文案成了误导源按码分档--托管外复现才是归因正道)
+- [86. VTU `stubs: { teleport: true }` 把弹窗变成死 DOM：插槽内 reactive 依赖无人追踪，handler 全触发但视图永不更新（N31 一键直通选择框）](#86-vtu-stubs--teleport-true--把弹窗变成死-dom插槽内-reactive-依赖无人追踪handler-全触发但视图永不更新n31-一键直通选择框)
+- [87. 表格行内 absolute 下拉被祖先 overflow 容器整片裁剪：菜单要逃 DOM 链（Teleport + fixed 坐标），测这类组件还要先卸壳再清 body（N40 机主实跑反馈）](#87-表格行内-absolute-下拉被祖先-overflow-容器整片裁剪菜单要逃-dom-链teleport--fixed-坐标测这类组件还要先卸壳再清-bodyn40-机主实跑反馈)
+- [88. winget 代装成功后 hanxi 却仍显示"未安装"：运行中进程看不到机器级安装改写的 PATH（环境块定格），取消语义还有 HRESULT 有/无符号两副面孔（N31 方案 B）](#88-winget-代装成功后-hanxi-却仍显示未安装运行中进程看不到机器级安装改写的-path环境块定格取消语义还有-hresult-有无符号两副面孔n31-方案-b)
+- [89. 时序竞态修复的测试"假锁"：收到 done 事件后再读状态，回归换序照样绿——必须在广播位同步快照](#89-时序竞态修复的测试假锁收到-done-事件后再读状态回归换序照样绿必须在广播位同步快照)
+- [90. 页内探测正常≠已接入更新雷达：softver 微信"扫不到"实为 UpdateChecker 契约缺席（机主点名排查）](#90-页内探测正常已接入更新雷达softver-微信扫不到实为-updatechecker-契约缺席机主点名排查)
+- [91. 自造 PE 解析器"夹具全绿、真件全红"：资源目录数组偏移把 #2 当 #1（差 8 字节拿到导入表）](#91-自造-pe-解析器夹具全绿真件全红资源目录数组偏移把-2-当-1差-8-字节拿到导入表)
+- [92. PE 图标"按组目录取最大画幅"给 RAMMap 砍半：32² 帧根本不在 RT_GROUP_ICON 成员里](#92-pe-图标按组目录取最大画幅给-rammap-砍半32²-帧根本不在-rt_group_icon-成员里)
+- [93. 幽灵状态"运行中·有可用更新"：卸载/版本删除后健康账三处不联动（ddnsgo 实证，21 家共性）](#93-幽灵状态运行中有可用更新卸载版本删除后健康账三处不联动ddnsgo-实证21-家共性)
+- [94. MCP 扫描工具接入：mcp-go NewTool 的默认注解就是 openWorldHint=true，"查询类不许标 openWorld"式守卫必炸（AI 接入批 portscan/lan）](#94-mcp-扫描工具接入mcp-go-newtool-的默认注解就是-openworldhinttrue查询类不许标-openworld式守卫必炸ai-接入批-portscanlan)
+- [95. Redact 家族的赋值词形是封闭集合，`pwd=` 不脱敏：测试敏感串要按真实口径取样，勿虚构脱敏能力（MCP 出机通道回归锚）](#95-redact-家族的赋值词形是封闭集合pwd-不脱敏测试敏感串要按真实口径取样勿虚构脱敏能力mcp-出机通道回归锚)
+- [96. vi.mock 挡不住"未落盘绑定"的编译期失败：三线并行前端线必须先补 vitest 解析缝（piik C 线实证）](#96-vimock-挡不住未落盘绑定的编译期失败三线并行前端线必须先补-vitest-解析缝piik-c-线实证)
+- [97. 机读字段解析的"零值≠未命中"踩踏：一行口令打点抹掉先前 Local access 入账（piik A 线实证）](#97-机读字段解析的零值未命中踩踏一行口令打点抹掉先前-local-access-入账piik-a-线实证)
+- [98. 托管引擎选型：supervisor 内核 processHandle 无 stdin 通道，stdin 信令停机型工具暂留 frpc 自带治理形制（piik A 线架构决策）](#98-托管引擎选型supervisor-内核-processhandle-无-stdin-通道stdin-信令停机型工具暂留-frpc-自带治理形制piik-a-线架构决策)
+- [99. 无头 MCP registry：构造即写盘的模块进表会毁掉零落盘承诺（clipboard 禁入懒激活）](#99-无头-mcp-registry构造即写盘的模块进表会毁掉零落盘承诺clipboard-禁入懒激活)
+- [100. 出机预算：脱敏替换净膨胀会冲破名义页预算；"起步价"只能拦残段不能拦整条](#100-出机预算脱敏替换净膨胀会冲破名义页预算起步价只能拦残段不能拦整条)
+- [101. 沙箱 Bash 缺 System32 PATH → instance 族测试假红"cmd.exe unavailable"；Go 1.26 已物理移除 image/bmp](#101-沙箱-bash-缺-system32-path--instance-族测试假红cmdexe-unavailablego-126-已物理移除-imagebmp)
+- [102. MCP 一次性令牌库"过期未消费"永不清扫：prepare-不-execute 长会话单调耗尽 64 槽位，破坏性通道永久拒发](#102-mcp-一次性令牌库过期未消费永不清扫prepare-不-execute-长会话单调耗尽-64-槽位破坏性通道永久拒发)
+- [103. message-only 窗口建窗 1408：HWND_MESSAGE 被误写成 -1（那是 HWND_BROADCAST）](#103-message-only-窗口建窗-1408hwnd_message-被误写成--1那是-hwnd_broadcast)
+- [104. 16→8bit 像素缩放四舍五入 `(v+128)>>8` 在满值处回绕：纯白截图缩出纯黑](#104-168bit-像素缩放四舍五入-v1288-在满值处回绕纯白截图缩出纯黑)
+- [105. Paseo external 态"唤窗失败→信使兜底"= 每点一次开一扇新窗，横幅单实例承诺被自家代码击穿](#105-paseo-external-态唤窗失败信使兜底-每点一次开一扇新窗横幅单实例承诺被自家代码击穿)
+- [106. MSIX 打包版被误判"外部实例"且无从终结：托管身份不能只认进程句柄，跨激活通道的实例需要独立归属判据（TranslucentTB P1-8 收口）](#106-msix-打包版被误判外部实例且无从终结托管身份不能只认进程句柄跨激活通道的实例需要独立归属判据translucenttb-p1-8-收口)
+- [107. 新托管模块入库漏接托盘候选：契约是"可选"的，缺席全链路零报错（Termora/WindTerm 事故）](#107-新托管模块入库漏接托盘候选契约是可选的缺席全链路零报错termorawindterm-事故)
+- [108. 上游只发 UDF 镜像与 RAR5：解包通道两轮误判（HEU 集成），以及"共享件 download 位不是万能入口"](#108-上游只发-udf-镜像与-rar5解包通道两轮误判heu-集成以及共享件-download-位不是万能入口)
+- [109. `sync.WaitGroup.Go` 与手写 `wg.Add` 双计数 → 批量用例永久挂死；而一次 `-run` 漏匹配把挂死掩盖成"通过"](#109-syncwaitgroupgo-与手写-wgadd-双计数--批量用例永久挂死而一次--run-漏匹配把挂死掩盖成通过)
+- [110. x/net 的 SOCKS5 拨号器建连后同步读 greeting 且不看 ctx → 对端不是代理时连接永久悬挂，`http.Client.Timeout` 与 ctx 都管不住它](#110-xnet-的-socks5-拨号器建连后同步读-greeting-且不看-ctx--对端不是代理时连接永久悬挂httpclienttimeout-与-ctx-都管不住它)
+- [111. 凭记忆写 x/crypto/ssh 四处 API 全错，其中两处直接决定"这能力能做到什么程度"](#111-凭记忆写-xcryptossh-四处-api-全错其中两处直接决定这能力能做到什么程度)
 
 ---
+
+### 0. 产品更名：品牌断代必须同步源码、数据目录与安装身份
+- **问题现象与错误原因**：仅替换界面名称会遗留旧的 Go module、Wails bindings、进程名、单实例 ID、Windows 版本资源、NSIS/MSIX 模板和数据目录，导致安装包名称错乱、版本分裂或新旧实例共享状态。
+- **排查过程**：分别扫描源码 import、构建脚本、Windows manifest、安装器模板、发布 workflow、前端 bindings 与 `%APPDATA%` 路径，确认产品身份并非单一字符串。
+- **正确做法与标准修复方案**：品牌断代版本必须统一迁移源码命名空间、`cmd` 入口、bindings、exe/资产名、单实例 ID、自启项和标准数据目录，并集中维护名称、版本、描述与标识符。Hanxi v0.3.0 明确不读取或迁移旧产品数据。
+- **避坑防重犯建议**：发布前执行旧品牌残留扫描，并对运行时版本、PE 资源、NSIS/MSIX 和 Release tag 做一致性校验；真实第三方语义（如 `frpc.exe`、`frp://`）不得机械替换。
 
 ### 0.1 Windows 安装包验证依赖未进入 PATH
 - **问题现象与错误原因**：`task package INSTALL_SCOPE=user` 完成应用构建后，在调用 `makensis` 时报告 `executable file not found in $PATH`。项目打包任务依赖 NSIS，但本机未安装 NSIS 或安装目录未加入 PATH。
@@ -778,6 +841,8 @@ TranslucentTB（任务栏透明工具，C++/WinRT + 注入 explorer 的 TAP/Hook
 
 ### 35. Hanxi 内 Go 网络请求"浏览器能上、程序 403"：系统代理不进环境变量，api.github.com 对云出口 IP 区域性拦截
 
+> **演进注记（2026-10-21 结构整理）**：本条的修复通道后续已升级——`wsl/netx` 叶子包经 N25 泛型化下沉为全仓共享包 `packages/go/netx`（系统代理链），portscan 的显式代理拨号链亦经 `469e3e1` 上收同包（两条链语义分治，见 `docs/ARCHITECTURE.md` §2.4）；坑本身的经验与纪律照旧有效。
+
 WSL 模块用户报障：开着代理、浏览器逛 GitHub 一切正常，但版本列表与通道探测始终 HTTP 403。两层成因叠加：
 
 - **问题现象与错误原因**：
@@ -873,6 +938,8 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **避坑防重犯建议**：① 托管 Electron 工具的"退出"语义验收，必须在真机上做"Hanxi 托盘退出 → 托管进程树残留扫描"，互斥体可达（§42 的 WM_CLOSE 路径）不代表**退出清理**可达；② Git Bash 里调 robocopy 等斜杠参数 Windows 原生工具，必须前缀 `MSYS_NO_PATHCONV=1`——否则 `/E` `/COPY:DAT` 被 MSYS 改写成 `E:/` 之类路径报 `Invalid Parameter`；③ Wails/WebView2 在 `%APPDATA%\Roaming\` 下生成字面名 `hanxi.exe` 的缓存目录（内含 EBWebView 浏览器缓存）——目录名酷似可执行文件，易被误判为恶意残留，属低优先观感问题，宜显式指定 user-data-dir 归入自家数据目录。
 
 ### 45. 便携标记目录更名 hanxidata：泛化名歧义、旧包兼容与 Compress-Archive 丢空目录
+
+> **（部分已过时，保留备考，2026-10-21 标注）**：本条的 `data/`→`hanxidata/` 更名与 `Compress-Archive` 丢空目录教训仍有效；但其中「便携/标准双模式开关」与「旧 `data/` 携数据根特征即识别」两点，已被 F6 数据根定稿整体取代——现口径为两级解析链（`hanxi.bind` 绑定指针 → 同级 `hanxidata/`，无则自动创建），无 `%APPDATA%` 静默兜底、旧泛化名零识别零迁移，详见 `docs/ARCHITECTURE.md` §3。原始记录不删，供复现历史版本行为时查证。
 
 - **问题现象与错误原因**：便携模式此前以 exe 同级**任意存在的 `data/` 目录**为开关，泛化名有两重歧义：任何同名第三方目录会误撞，且路过误建一个空 `data` 即静默把标准模式切成便携（用户以为数据"丢了"，实为读写了那个空目录）。同时排查发现发布链的隐患：`release.yml` 以 `New-Item` 建**空** `data` 目录后用 `Compress-Archive` 打便携 zip，而 Compress-Archive 会**静默丢弃空目录**——zip 解压后若无标记目录，"便携版"首启直接回落 `%APPDATA%` 标准模式，便携语义名存实亡（依赖被丢弃的目录存在做模式开关，是打包器行为与运行时探测的契约断裂）。
 - **正确做法与标准修复方案**：① 标记目录更名为 `hanxidata/`（自带产品归属，空目录即生效——显式创建本身就是用户意图）；② 旧包兼容：同名 `data/` **仅当已含数据根特征**（`config.json` 或 `versions/`）时才识别，空 `data` 不触发，升级已发布便携包不丢数据、新用户不误撞；探测逻辑提取为 `detectPortableBaseDir(exeDir)` 纯函数配表驱动单测（`os.Executable` 不可注入,可测边界就设在参数上），标准/便携两套 `Paths` 字面量收敛为共用 `buildPaths(mode, base)`；③ CI 便携目录内落 `portable.txt` 占位说明（目录非空，zip 必保留，兼作用户向文档），同步改写 Release 文案。
@@ -1022,12 +1089,16 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **排查过程**：`sed -n 165p | od -c` 直读字节确认真凶是 `357 273 277`（EF BB BF）三字节字面 BOM；确认 Go 对源码内 BOM 的非法判定后，改走转义路线；转义落盘用 perl（`s/"\x{ef}\x{bb}\x{bf}"/"\\uFEFF"/`）替代 sed 并回读 od 验证。
 - **正确做法与标准修复方案**：① 源码中一律用 `"\uFEFF"` 转义写 BOM（零宽字符同理用 `\u200B` 等），永不嵌字面不可见字符；② 批量替换含反斜杠语义的文本用 perl -pe 或编辑器精确替换，不用 GNU sed 的 `\u`-敏感替换串；③ 改完立刻过 `gofmt -l` + `go vet` 门禁（本坑正是 vet 抓出来的）。
 - **避坑防重犯建议**：① 凡代码/测试涉及 BOM、NBSP、零宽空格一类不可见字符，成文即转义，评审时 `od -c` 抽查可疑行；② 处理"用户可能用记事本手工编辑的配置文件"（如 hanxi.bind）时，BOM 容忍必须进解析层并有测试用例钉死；③ Windows 路径有效性判定统一 `filepath.IsAbs`——注意其 Windows 口径**要求带卷名**（`\HanxiData` 判相对），跨平台单测构造绝对路径要用 `t.TempDir()` 而非手拼 `\` 前缀。
+- **合并记账（2026-10-21 结构整理）**：同族坑此后又立目两次——#66（F7 托管安装）与 #68（F9 USB 直通），症状、根因与修法与本条同构，按「保留信息并集」并入本条；两条原文的独有价值点收录如下，#66/#68 原位留指针（标题与锚点未动，防 #N 断引用）。
+  - **#66（F7）新增形态**：给 ocr 包写 sha256 旁挂件时，AI 编辑工具把「字符串与注释里的 BOM」都以**裸 U+FEFF** 写入（模型输出经 JSON unicode 解析后就是裸字符，写转义意图无效，重写同段会反复回灌同一字符）；该字符在编辑器/diff 里不可见，错误行号指向整行也看不出端倪。修补两连环：GNU sed 替换段的 `\u` 被 shell/转义链吃掉成裸文本 `Feff`；perl 替换段的 `\u` 是「下一字母大写」指令、同样产出 `"Feff"`——两次都把源码改成语义错误的坏常量还**照常通过 grep**。取证：`grep -n $'\xef\xbb\xbf' file.go | cat -v`（显示 `M-oM-;M-?`）。修复：`printf '%s\n'` 单引号拼线 + `head/tail` 整行替换 + `cat -A` 验字节后 go build 坐实；测试数据干脆绕开源码转义——`string(rune(0xFEFF))` 或 printf 生成 fixture；评审 `grep -P "\x{FEFF}" *.go` 一查到底。
+  - **#68（F9）新增形态**：usbipd 剥 BOM 写成 `strings.TrimPrefix(s, "<字面量>")`，报 `runner.go:201:87: illegal byte order mark`；多轮修补又把替换目标打成 `"Feff"` 文本、perl 还报 `Wide character in print`（缺省按字节流写宽字符）——非 ASCII 字面在 shell 引号层的往返比问题本身更费时间。修复形态：纯 ASCII 十六进制转义 `"\xEF\xBB\xBF"`（与 `"\uFEFF"` 同为合法 ASCII 写法）；对「看着一样却报 same」的两行做 hexdump 才坐实转义又被解释成真字符；**文本修补连环失败两轮即止损**，整段重写比第三次 sed 便宜。
+  - **#69 顺带（R6，第四次踩中）**：污染源升级为 agent 编辑工具把 `"\uFEFF"` 转义在往返中归一化成真字符——当反斜杠转义写法都救不了时，改用 `string([]byte{0xEF, 0xBF, 0xBF})` 纯 ASCII 字节切片，任何往返都改不坏。
+  - **族级纪律**：① 不可见字符（BOM/NUL/NBSP/零宽）在源码与注释里只允许转义/hex/字节切片形态，验收判据 `cat -A` 只见可打印 ASCII；② GNU sed 替换段 `\u` 与 perl `\u\U\l\E` 是大小写指令方言，非 ASCII 时不报错、安静产错内容；③ 改后验收必须是 `go build`/`gofmt -l`/`go vet` + `grep -c $'\xef\xbb\xbf'` 双查——grep 看到目标串 ≠ 修复成功；④ AI 生成含不可见字符的源码，一律 hexdump 复核关键文件；一旦 Edit 结果与预期字节不符，立刻换 shell 层 printf/`cat -A` 的字节级操作路径；⑤ 处理「用户可能用记事本手工编辑的配置文件」（如 hanxi.bind）时，BOM 容忍必须进解析层并有测试用例钉死（本条 F6 原点）。
+
 ### 66. AI 工具写 Go 源码混入裸 U+FEFF 字符：编译器报 illegal byte order mark，sed/perl 修补又踩 \u 大写陷阱（F7 托管安装）
 
-- **问题现象与错误原因**：给 ocr 包写 sha256 旁挂件 BOM 容忍逻辑时，AI 编辑工具把「字符串字面量里的 BOM」以**裸 U+FEFF 字符**写入源码（`strings.TrimPrefix(s, "<BOM>")` 与注释里各一处）。Go 源码规范规定 BOM 只允许出现在文件起始处一次，任何位置（含字符串与注释）的裸 U+FEFF 都报 `illegal byte order mark`——且该字符在编辑器/diff 里**不可见**，错误行号指向整行也看不出端倪。后续修补再踩两连环：GNU sed 替换段里写 `\u` 被 shell/转义链吃掉变成裸文本 `Feff`；perl 替换段的 `\u` 是「下一字母大写」指令而非字面反斜杠-u，同样产出 `"Feff"`，两次都把源码改成了语义错误的坏常量还照常通过 grep。
-- **排查过程**：`grep -n $'\xef\xbb\xbf' file.go | cat -v` 用字节级视图定位裸 BOM（输出 `M-oM-;M-?`）；确认 Edit 类工具重写该段时反复回灌同一字符（模型输出经 JSON unicode 解析后就是裸字符，写转义意图无效）。
-- **正确做法与标准修复方案**：① Go 源码里要表达 BOM 一律写 **ASCII 转义** `"\ufeff"`，绝不打裸字符（注释同理，写「U+FEFF/BOM」字样）；② 修文件用可控拼线：`printf '%s\n' '..."\ufeff"...' > /tmp/line` 单引号防解释，再 `head -n N + cat + tail` 整行替换，`cat -A` 验字节后 go build 坐实；③ 测试数据构造干脆绕开源码转义——`string(rune(0xFEFF))` 或直接 printf 生成 fixture。
-- **避坑防重犯建议**：① 凡「不可见 Unicode 字符」的测试/常量（BOM、ZWSP、NBSP…），源码里只允许 escape 形态，评审时 `grep -P "\x{FEFF}" *.go` 一查到底；② 用 sed/perl 批量改 Go 时警惕替换语言的转义方言（perl 替换段 `\u\U\l\E`、GNU sed 的 `\u`），改完必须 `go build` 而非 grep 验收——本坑里 grep 看到的 `Feff` 曾被误当成修复成功；③ AI 工具链修不可见字符问题不可靠第二次：一旦 Edit 结果与预期字节不符，立刻换 shell 层 printf/cat -A 的字节级操作路径。
+- **（已并入 #65，保留备考）**：本条为同一坑（Go 源码裸 U+FEFF 编译失败 + sed/perl `\u` 大小写指令二次损坏）的第二次记录，原始时点 F7 托管安装批（AI 编辑工具混入裸字符、grep 假验收等细节全数收录于 #65「合并记账」段）。标题与锚点按结构整理纪律原位保留，不重编号。
+
 ### 67. 内部调度函数导出即进绑定面：一个 time.Duration 参数让 wails3 生成出 dev 不存在的 `frontend/bindings/time/`（F9 USB 直通）
 
 - **问题现象与错误原因**：wsl 模块新增的后台重放调度助手按 Go 惯例导出了（`ScheduleUsbReplay(trigger string, delay time.Duration, ...)`），本意只是给 module.go/distro.go 接线用。`wails3 generate bindings` 对 **service 上的全部导出方法**无差别建绑定：time.Duration 被当成枚举外溢，产出仓库里从未有过的 `frontend/bindings/time/` 目录（`git ls-tree dev` 查证不存在），绑定 diff 混进与前端契约无关的杂项，verify:bindings 语义被污染。
@@ -1037,12 +1108,7 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 
 ### 68. Go 源码字符串字面量里的"裸 BOM 字符"直接编译失败：`illegal byte order mark`（F9 USB 直通）
 
-- **另见**：#65（F6 字面 BOM 与 GNU sed 替换吞字）、#66（F7 AI 工具混入 U+FEFF）、#69 顺带（R6 第四次踩中——这回污染源是 agent 编辑工具把 u+FEFF 转义在往返中归一化成真字符；当反斜杠转义写法都救不了时，改用 `string([]byte{0xEF, 0xBF, 0xBF})` 纯 ASCII 字节切片，任何往返都改不坏）——同族坑反复踩，AI 生成含不可见字符的源码请一律 hexdump 复核关键文件。
-
-- **问题现象与错误原因**：usbipd 输出要剥 UTF-8 BOM，代码顺手写成 `strings.TrimPrefix(s, "<U+FEFF字面量>")`——把 BOM **字符本身**粘进了源码字符串。`go vet/build` 报 `runner.go:201:87: illegal byte order mark`：Go 词法器只容忍文件开头的 BOM，源码任何位置（含字符串字面量内）出现裸 U+FEFF 一律拒收。多轮 sed/perl 修补时又把替换目标打成 `"Feff"` 文本、还一度让 perl 报 `Wide character in print`——非 ASCII 字面在 shell 引号层里的往返比问题本身更费时间。
-- **排查过程**：`cat -A` 看字节确认 `M-oM-;M-?`（EF BB BF）确在字面量内；`grep -c $'\xef\xbb\xbf'` 定位污染行；对 Edit 工具"看着一样却报 same"的两行做 hexdump 才坐实转义又被解释成了真字符。
-- **正确做法与标准修复方案**：Go 源里写纯 ASCII 的十六进制转义 `"\xEF\xBB\xBF"`（或 `"\uFEFF"` 转义形态）表达 BOM，绝不粘裸字符；被污染的行用 `head -N + printf '%s\n' + tail` 的纯 ASCII 拼接法重写（避开 sed `\u` 大小写标记与 perl 双字节输出的坑）。
-- **避坑防重犯建议**：① 源码里需要不可见字符（BOM/NUL/零宽空格）时**永远用转义**，判据是 `cat -A` 只见可打印 ASCII；② Windows Git Bash 里改 Go 文件慎用 sed/perl 的 `-i` 打非 ASCII——GNU sed 替换段的 `\u` 是大小写标记、perl 缺省按字节流写宽字符，两者都安静地产出错内容而非报错；改完必 `go build` + `grep -c $'\xef\xbb\xbf'` 双查；③ 文本修补连环失败两轮即止损：整段重写（Write/编辑器落盘）比第三次 sed 便宜。
+- **（已并入 #65，保留备考）**：本条为同坑第三次记录，原始时点 F9 USB 直通批；其「另见」线索（#65/#66/#69 四连踩、`string([]byte{0xEF, 0xBF, 0xBF})` 字节切片终解、失败两轮即止损）已并入 #65「合并记账」段。标题与锚点原位保留。
 
 ### 69. Git Bash 里 `python` 是 WindowsApps 存根：静默失败（exit 49 零输出），脚本化改文件会"没做成但没报错"（R6 授权写入口）
 
