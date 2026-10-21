@@ -377,8 +377,8 @@ var catalogItems = []extapi.ModuleCatalogItem{
 	},
 	{
 		ID:            "portscan",
-		Name:          "端口扫描与指纹",
-		Description:   "高并发多端口快速扫描，自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）",
+		Name:          "网络测试",
+		Description:   "高并发多端口扫描与自研轻量 Banner / HTTP 服务指纹（不含 Nmap），另含代理连通性与 SSH 连接测试",
 		Category:      "network",
 		DeliveryKind:  extapi.DeliveryBuiltinLogical,
 		Capabilities:  []string{},
