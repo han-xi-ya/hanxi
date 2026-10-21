@@ -1,8 +1,8 @@
 # Hanxi 需求与产品设计规范（PRD）
 
 > **产品名称**：Hanxi
-> **文档版本**：v1.3  
-> **更新日期**：2026-10-12（对账订正轮：自建模块 17→18 补剪贴板历史、托管 28→31 补 Piik/DBX/GoNavi、portscan 指纹口径勘误、骨架例外清单由一条补全为四条并申明两把尺、发布形态去"便携模式"宣讲）  
+> **文档版本**：v1.4  
+> **更新日期**：2026-10-21（随 heukms 入库与「网络测试」改名的口径同步：托管 31→32、§2.1 portscan 行更名并补代理连通性/SSH 检查描述、骨架例外清单四条补列第五条 heukms 解包器特例；上轮 v1.3 为 2026-10-12 对账订正轮：自建模块 17→18 补剪贴板历史、托管 28→31 补 Piik/DBX/GoNavi、portscan 指纹口径勘误、骨架例外清单由一条补全为四条并申明两把尺、发布形态去"便携模式"宣讲）  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64（纯 Windows 原生调用）  
 > **发布形态**：**单二进制免安装**。数据家默认为 exe 同级 `hanxidata/`（无则自动创建），可经 exe 同级 `hanxi.bind` 指针（首行写数据目录绝对路径）显式绑定他处；解析链**只有「绑定指针 → 应用同级」两级**——无 `%APPDATA%` 等用户目录静默兜底，旧 `data/` 兼容已正式废弃（零识别零迁移，仅在检测到旧特征时告警指路）。**「便携 / 标准」双模式判定自 F6 起整体退役**：同级即唯一存在方式，不再作为一种模式宣讲（权威实现 `internal/settings/paths.go`，`%APPDATA%\Hanxi` 现仅作一次性搬迁来源）。  
 > **技术栈**：Go 1.26+ / Wails v3.0-beta / Vue 3 + TypeScript + Vite  
@@ -14,7 +14,7 @@
 Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装、管理与运行常用开源软件。产品由两条主线构成：
 
 1. **自建功能模块**：frpc 内网穿透、微信机器人、网络测试（端口扫描/代理/SSH）/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、软件版本跟踪、系统信息、WSL2 就绪体检、局域网文件快传、文字识别（OCR）、随手记、**剪贴板历史**、网页应用、右键快捷菜单、桌面留言板等 18 项（另 EarTrumpet 纳管特例按 catalog 能力口径落在本侧），能力原生内置于单二进制；
-2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、WindTerm、Termora、RAMMap、**Piik 屏幕分享、DBX、GoNavi 数据库客户端**、抖音下载器（Douzy）、HEU KMS 激活工具等 32 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；骨架例外四条如实见 §2.2 前言——Douzy 仅"版本 + 下载"、NanaZip 为 MSIX 安装管理型、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型）。
+2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、WindTerm、Termora、RAMMap、**Piik 屏幕分享、DBX、GoNavi 数据库客户端**、抖音下载器（Douzy）、HEU KMS 激活工具等 32 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；骨架例外五条如实见 §2.2 前言——Douzy 仅"版本 + 下载"、NanaZip 为 MSIX 安装管理型、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型、HEU KMS 解包器特例（RAR5 而非 zip，可安装集更窄））。
 
 所有能力以平等模块身份注册到统一入口，按需懒加载启停。
 
@@ -60,7 +60,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 
 统一骨架：`version/` 版本管理子包（ListReleases / DownloadVersion / RemoveVersion / 本地导入）+ `instance/` 实例引擎子包（JobObject 启停、状态探测、唤窗、跟随退出）+ 前端托管控制台视图。
 
-**骨架例外（2026-10-12 按仓内子包实扫订正，原只列 douzy 一条、漏两条）**：①`douzy` 上游尚处内测期且 Windows 仅 NSIS 安装版，止步于 `version/` 版本管理与安装包下载拉起，不做进程托管（**无 `instance/`**）；②`nanazip` 属 MSIX 安装管理型，交 Windows 为当前用户安装/卸载、不绑 JobObject（**无 `instance/`**）；③`eartrumpet` 只纳管官方直装渠道（AUMID 激活 + AppInstaller 清单校验），**既无 `version/` 亦无 `instance/`**，因此它出现在本表却**不计入** catalog `hosted-versions` 能力计数；④`frpc` 反向——它在 §2.1 自建叙述列，但具备 `version/` 能力，故计入 `hosted-versions` 32；⑤`heukms` 骨架齐备（`version/` + `instance/`）但**解包器不同**：上游当前双发 UDF 镜像 iso 与 rar，iso 侧真实内容在 UDF（纯 Go 与系统 bsdtar 都读不到）故不解析，改由 `nwaples/rardecode` 解 RAR5；可安装集也更窄——只有"有 rar 资产且 GitHub 挂官方 digest"的版本入列（内核 Fetch 强制摘要校验），62.0.0 及更早走「导入本地」兜底。
+**骨架例外（2026-10-12 按仓内子包实扫订正，原只列 douzy 一条、漏两条；2026-10-21 随 heukms 入库补列第五条，其骨架齐备、特例在解包器与可安装集）**：①`douzy` 上游尚处内测期且 Windows 仅 NSIS 安装版，止步于 `version/` 版本管理与安装包下载拉起，不做进程托管（**无 `instance/`**）；②`nanazip` 属 MSIX 安装管理型，交 Windows 为当前用户安装/卸载、不绑 JobObject（**无 `instance/`**）；③`eartrumpet` 只纳管官方直装渠道（AUMID 激活 + AppInstaller 清单校验），**既无 `version/` 亦无 `instance/`**，因此它出现在本表却**不计入** catalog `hosted-versions` 能力计数；④`frpc` 反向——它在 §2.1 自建叙述列，但具备 `version/` 能力，故计入 `hosted-versions` 32；⑤`heukms` 骨架齐备（`version/` + `instance/`）但**解包器不同**：上游当前双发 UDF 镜像 iso 与 rar，iso 侧真实内容在 UDF（纯 Go 与系统 bsdtar 都读不到）故不解析，改由 `nwaples/rardecode` 解 RAR5；可安装集也更窄——只有"有 rar 资产且 GitHub 挂官方 digest"的版本入列（内核 Fetch 强制摘要校验），62.0.0 及更早走「导入本地」兜底。
 
 ⚠ 两把尺勿互证：本表 **32 行**按叙述归类（含 eartrumpet、frpc 归 §2.1），catalog `hosted-versions` **32 款**按能力计数（含 frpc、不含 eartrumpet）——同数不同集合，权威口径由 `go run ./scripts/cataloggen` 产物锁定。
 
