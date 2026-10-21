@@ -1,5 +1,7 @@
 # PLAN_MCP —— MCP / Skill AI 接入可行性分析与开发计划
 
+> 状态：已完成（主线——首批四工具+安装向导合入 `021ce5e`+`aa48a73`，工具面后扩至 12 件/10 授权键，现值见 docs/FACTS.md。两尾账如实：C6 CLI 双身份 `--list/--call` 从未落地且无排期（`cmd/hanxi/main.go` 仅 `mcp` 子命令，仓内实测无 --list/--call），C9 三客户端真机红队未跑（归真机验收单页）——C6 建议机主裁废弃或移 BACKLOG 后再归档）
+
 > 日期：2026-09-17 · 状态：已落地（F4a `021ce5e` + F4b `aa48a73` 合入 dev；C10 已回写"实际落地"注记，
 > 正文与注记冲突处**以注记为准**；剩余真机闸门与未落地项见 §4/§6/§8 注记）
 > 需求：给 hanxi 增加 `hanxi mcp` headless 子命令（stdio MCP server），首批只暴露只读工具

@@ -1,5 +1,7 @@
 # Hanxi 工作台界面与官方模块化联合总排期
 
+> 状态：已完成（Wave 0–5 已落地——`a414e52` 把 ARCHITECTURE 刷新为「Wave 0-5S 已实现事实」、`d0144a2` 校准 Wave 5 收口口径；Wave 6 与 manifest/签名系 N/A 条件路径，未触发不构成欠项（ADR-0003）。文内版本面 20/instance 面 18 已被 docs/FACTS.md 现值 27/24 取代；复进唯一入口是 PLAN_REMAINING_WORK.md，本档转联合总排期史账，勿再作排期输入）
+
 > 状态：执行路线；2026-09-18 依据 [项目缘起](../MOTIVATION.md) 完成受众校准（v2）。校准只动优先级与启动条件，Wave 0–3 已冻结契约与在建内容不回头。
 >
 > **2026-09-19 执行进度与范围裁剪（[ADR-0003](../adr/ADR-0003-scope-cuts-for-personal-nas-first-tool.md)，以此为准）**：Wave 0–4 已落地并提交。Wave 5 当前主线是**托管去重复、更新感知、页面收敛**：后端委托面已覆盖版本面 20 家、instance 面 18 家（quicklook/bili23 仅版本面迁入；其 instance 与 frpc/rustdesk/subnetdesk 按 ADR-0002 §3/ADR-0003 §4 保留 bespoke）；前端托管控制台 20/20 已完成迁移、全量门禁并按批入库——批 1.5 共享契约增强、VS Code 双形态与 Snipaste 本会话收敛均已提交，Everything 按机主裁决保持现形态并通过非回归。声明式 manifest、签名 Catalog、撤回与 key 轮换不再是默认路线，统一记为 **N/A 条件路径**；Wave 6 物理拆包与多产物发布同样仅在触发条件满足时重开。

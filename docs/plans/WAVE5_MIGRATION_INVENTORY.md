@@ -1,5 +1,7 @@
 # Wave 5 托管模块迁移分类账(supervisor 接线决策输入)
 
+> 状态：已完成（Wave 5 迁移收口——委托面现值版本侧 27/instance 侧 24 以 docs/FACTS.md 为准，文内「18 已迁/版本面 20」系 09-19 时点账；②③ bespoke 名单即 ADR-0002 §3/§5+ADR-0003 §4 终裁，谱系对照有留参价值。一笔存疑：文末「安装器执行族是否入 artifact 策略族」在 PRW/ADR 查无裁决记录（全仓 `installPolicy` 零命中），归档前请机主确认是否视同随签名批次一并裁为不做）
+
 > 生成日期:2026-09-18,基于 Wave 4 共享内核(artifact/supervisor/operation)落地后的只读盘点。
 > 口径基准:各模块 `internal/modules/<pkg>/{version,instance}/` 实测 + `packages/go/supervisor/` 包注释「与蓝本的刻意差异」(进程树监督、日志环形缓冲/脱敏、连接状态嗅探三类明确不进内核)。
 > 本文档是规划输入,不是已实现事实;每族迁移完成前以契约测试与黄金样本为准。

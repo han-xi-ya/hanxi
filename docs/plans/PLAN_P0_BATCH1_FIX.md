@@ -1,6 +1,8 @@
 # P0 批 1 正式修复计划（开工前范围确认，依 P0 纪律）
 
-> 依据 [CODE_QUALITY_REVIEW_PROGRESS_2026-09-19](../CODE_QUALITY_REVIEW_PROGRESS_2026-09-19.md) §3.1/§3.3 已核实证据（本会话已对代码本体复核成立）。批 1 只含两项；§3.2 租约、§3.4 journal、§3.5 Commit 属批 2，§4 前端属批 3，本计划不触碰。
+> 状态：已完成（合入 `f63d9b2` Registry 指针逃逸 + `c679764` receipts 账本 fail-closed，销账 `5a69720`；收口账以 PRW 批 1 行与 `e511555`「批 1/2/3 代码线闭环」为准。修复计划已被实施完全取代，建议归档）
+
+> 依据 `CODE_QUALITY_REVIEW_PROGRESS_2026-09-19.md`（2026-10-21 经机主授权删除,§5 孤本存底见 [KEY-NUGGETS §三](../archive/KEY-NUGGETS.md)）§3.1/§3.3 已核实证据（本会话已对代码本体复核成立）。批 1 只含两项；§3.2 租约、§3.4 journal、§3.5 Commit 属批 2，§4 前端属批 3，本计划不触碰。
 
 ## 项一：Registry 覆盖态数据竞态（`internal/extapi/registry.go`）
 

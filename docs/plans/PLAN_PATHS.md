@@ -1,5 +1,7 @@
 # PLAN_PATHS · F6 数据目录策略改造定稿
 
+> 状态：已完成（F6 合入 `8ba24bd`，解析链六笔 `e3e703b`→`31504bf`；权威实现 `internal/settings/paths.go`。保留作定稿档案——文内 Portable/Standard 字样均属改造前语义，勿当现行模型引用，下方终态帽已重申）
+
 > **⚠ 终态（2026-10-12 对账）**：本定稿**已实施入库**（F6 合入 `8ba24bd`，解析链 `e3e703b`→`31504bf` 六笔），现行模型即：绑定指针 `hanxi.bind` → exe 同级 `hanxidata/` 两级，**无 %APPDATA% 兜底、旧 `data/` 零识别已废弃、「便携/标准」双模式整体退役**。权威实现 `internal/settings/paths.go`；本文保留作 F6 裁定与迁移细节的定稿档案。文中若仍见 Portable/Standard 字样，均属**改造前**语义，勿当现行模型引用——`docs/ARCHITECTURE.md` 数据根段此前就犯过这个错，已于本轮按代码重写。
 
 > 对应 `docs/BACKLOG.md` F6 卡片（2026-09-17 四条裁定）。卡片要求动工前补本文件，

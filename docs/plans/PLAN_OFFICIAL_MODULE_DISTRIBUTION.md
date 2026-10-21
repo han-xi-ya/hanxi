@@ -1,5 +1,7 @@
 # Hanxi 官方功能模块按需安装/卸载与 Monorepo 多产物改造计划
 
+> 状态：已完成（Phase 0–3 与 Phase 5 托管去重已落地；声明式 manifest／签名 Catalog／撤回轮换与 Phase 6 多产物发布依 ADR-0003 降为 N/A 条件路径——文内自留「若建立真实发布渠道时重开」设计储备，建议保留归档、不删，不再作排期输入）
+
 > **文档状态**：已批准方向的执行计划
 > **2026-09-19 范围裁剪（[ADR-0003](../adr/ADR-0003-scope-cuts-for-personal-nas-first-tool.md)）**：Phase 1–3 与 Phase 5 的托管模块去重复已落地（版本面 20 家委托 artifact，其中 18 家的 instance 面同时委托 supervisor）；**签名 Catalog、声明式 manifest、key 轮换/撤回与 Phase 6 多产物发布的 DoD 对当前受众整体 N/A/缓行**（自用 + NAS 同步定位，供应链完整性由 HTTPS + 上游官方摘要必检承担）。相关章节保留为"若建立真实发布渠道时重开"的设计储备。
 > **适用范围**：Hanxi 官方维护、官方审核、官方发布的功能模块与托管模块  

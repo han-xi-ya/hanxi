@@ -1,6 +1,8 @@
 # P0 批 2 正式修复计划（2a 已落地 / 2b 待机主选机制）
 
-> 依据 [CODE_QUALITY_REVIEW_PROGRESS_2026-09-19](../CODE_QUALITY_REVIEW_PROGRESS_2026-09-19.md) §3.2/§3.4/§3.5。本批按机主指示拆两步：**2a（journal fail-closed + artifact 原子边界）已完成**；**2b（租约生命周期=审查 §3.2 与 §3.4"中断在途副作用"的共同机制）待选案**。
+> 状态：已完成（2a `4725e52`+`5881c8e`；2b 机主 2026-09-22 选案 B，租约+ctx 贯通 19 模块 `667006f`、集成测试 `338dac5`、收工登记 `f3f63fe`；`-race` 本机补跑因无 MinGW 维持 CI/容器覆盖（PRW 批 2 行），属环境例外非欠账。建议归档）
+
+> 依据 `CODE_QUALITY_REVIEW_PROGRESS_2026-09-19.md`（2026-10-21 经机主授权删除,§5 孤本存底见 [KEY-NUGGETS §三](../archive/KEY-NUGGETS.md)）§3.2/§3.4/§3.5。本批按机主指示拆两步：**2a（journal fail-closed + artifact 原子边界）已完成**；**2b（租约生命周期=审查 §3.2 与 §3.4"中断在途副作用"的共同机制）待选案**。
 
 ## 2a ✅ 已完成（2026-09-21，本次提交）
 
