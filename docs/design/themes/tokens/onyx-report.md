@@ -1,5 +1,7 @@
 # onyx · 曜石 —— 单套深化审查报告（v2.1）
 
+> **档案状态（2026-10-21 对账）**：本稿终值已并入 `frontend/src/styles/tokens.css` `[data-accent="onyx"]` 两块（`tokens.css` 块头注释反向引用本档为「全量理由与实算」出处，故**保留不删**）；但后续治理不回写本报告——N37 增补了 `--color-on-accent` 契约档（浅白/深 `#04223f`，含本板自定状态色逐对核账）并把 `--state-*-glow` 收窄为「进行中」脉冲专用，N38 把焦点环提至 0.85–0.9（本报告 §7-3 申报的 glow 未覆写风险已由 N37② 消费面治理接管），运行现值一律以 `tokens.css` 为准。
+
 > 对象：[`onyx.css`](onyx.css)（起点为 `preview.html` 的 `[data-accent="onyx"]` 两块）。
 > 全部数值为 sRGB WCAG 2.x 相对亮度实算（与 `gen-palettes-v2.mjs` 同一算法），
 > 感知台阶为 OKLab L 值；微型自检预览见 [`onyx-check.html`](onyx-check.html)（浏览器打开即实时复算下表配对）。

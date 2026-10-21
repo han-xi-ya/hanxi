@@ -2,8 +2,8 @@
 
 > **文档定位**：前端（`frontend/`）的架构现状、设计语言约定、结构问题与**渐进式重构蓝图**的唯一权威规范。代码改动以本文为准；本文与 `.claude/skills/hanxi-workbench-ui` 冲突时，以设计技能的 `references/design-system.md`（视觉 token）为准。
 > **技术基线**：Vue 3 + TypeScript + Vite · Wails v3 绑定 · **无 vue-router / 无 Pinia / 无第三方 UI 框架 / 无 CSS 框架**（VueUse 已引入作胶水层）
-> **更新日期**：2026-09-19（2026-10-12 对账订正轮：模块 41→49 三处、fixture 基线 41→49 项（原文与 `contract-enum.spec.ts` 断言矛盾）、测试规模补现值 167/2111、AppIcon 阶段 2/3 销"挂起"改记 N27 落地链）
-> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移）。**AppIcon 阶段2/3 已随 N27 全部落地（2026-10-12 订正：原「经用户决策暂停（2026-09-05）」口径过期）**——批 A `5c36949`（`app:` 第二来源）、批 B `1beb706`（三轨解析收口）、批 C `9d3fca4`（托盘 `SetBitmap`，即原"阶段 3"本体）、补录尾巴至 `899ae4d`；现 `internal/app/appicons/` 在册 **28 枚**上游真图标 + `sources.go` 逐枚出货台账（由 `sources_test.go` 解码锁死防漂移），许可与"不入库"件见 `docs/THIRD_PARTY_NOTICES.md` 图标节。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。**§9.7 字号/按钮体系化治理波 ✅**（2026-09-16/17：九档字号+三档控件高 token、~1000 处裸 px 视图层清零、家族 ~895 条副本删净落回、WSLView 2209→441 拆分、§9.6-10 六项裁决全清）。**Wave 0–5S 契约批 ✅**（2026-09-18/19，ADR-0001/0002/0003）：四维状态投影消费 + 模块中心 `/modules` 一级入口 + 首页工作台化 + Operation 观察面（恢复条/在途条）+ 可用更新徽标（updatewatch 真实来源）+ `status.ts` 七族与操作三表 + contract-enum Go↔TS 契约门禁，详见 §12；测试规模：本档写作时（2026-09-19 实测）**101 spec 文件 / 1052 用例**，现值 **167 spec 文件 / 2111 用例全绿**（2026-10-12 实测复核，同批另测得 ESLint 0 error / 9 warnings、`vue-tsc --noEmit` 0、`gofmt -l internal/` 无输出、`go test ./...` 全绿）。当前待办＝§9.7-下轮候选（ManagedConsoleShell 壳收编、UiModal、可访问性散点）、真机目视（§9.7 目视项清单①–⑩）；蓝图 Phase 0–6 主体与 Wave 0–5S 契约批全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
+> **更新日期**：2026-09-19（2026-10-12 对账订正轮：模块 41→49 三处、fixture 基线 41→49 项（原文与 `contract-enum.spec.ts` 断言矛盾）、测试规模补现值 167/2111、AppIcon 阶段 2/3 销"挂起"改记 N27 落地链；2026-10-21 T4 文档对账轮：五板全部落地销"iris/jade/onyx 待搬运"账、styles/ 三改四（fonts.css 字族层入册并升三轴机制）、模块与 fixture 计数 49→50、teal 浅侧主色现值 `#0d8284`（N37 案 A）入册、`frontend/README.md` 重写为入口纲要）
+> **进度快照**：Phase 0 ✅｜Phase 1 ✅｜Phase 2 ✅（共享层 + 视图异步化 + 崩溃兜底）｜Phase 3+4 ✅（托管家族 19/19，组 A–F 六提交 `e44621e`…`4e1da21`）｜**Phase 5 ✅**（工具视图与系统页：主线四页 `754ea2a`、G1 `82daa70`、G2 `121581a`、G3 `2bebbde`+tokens 修复 `741693a`、G4 `4afc126`、G5 `320fd8b`；三份路由清单收编为 navigation 单一来源）。**§9.5 跟进批 ✅ 全部收官**（家族级 bug①②、Snipaste 收编③、终端 token④、running 文案裁决+MSIX 孪生壳⑤、VersionsView 死码删除）；**AppIcon 阶段1 ✅**（图标注册表+壳组件+壳/严重度图标迁移）。**AppIcon 阶段2/3 已随 N27 全部落地（2026-10-12 订正：原「经用户决策暂停（2026-09-05）」口径过期）**——批 A `5c36949`（`app:` 第二来源）、批 B `1beb706`（三轨解析收口）、批 C `9d3fca4`（托盘 `SetBitmap`，即原"阶段 3"本体）、补录尾巴至 `899ae4d`；现 `internal/app/appicons/` 在册 **28 枚**上游真图标 + `sources.go` 逐枚出货台账（由 `sources_test.go` 解码锁死防漂移），许可与"不入库"件见 `docs/THIRD_PARTY_NOTICES.md` 图标节。**Phase 6 拆分全部 ✅**（四组：Everything 834→397 / PublicIp 1010→175 / FileShare 1630→173 / WechatBot 2176→235，原特征测试断言零改动，发现登记 §9.6）；**别名层整删 ✅（§7.1"最终清空"兑现，`4bfaf90`）**；**Phase 6 收尾治理 ✅**（App.vue 侧栏组件化 `03357ac` 带字节级 DOM 基线、FileShare 死样式删除 `32ded55`、§9.6 四族 38 副本原子上收 `311f09d` 净 -222 行）。**§9.7 字号/按钮体系化治理波 ✅**（2026-09-16/17：九档字号+三档控件高 token、~1000 处裸 px 视图层清零、家族 ~895 条副本删净落回、WSLView 2209→441 拆分、§9.6-10 六项裁决全清）。**Wave 0–5S 契约批 ✅**（2026-09-18/19，ADR-0001/0002/0003）：四维状态投影消费 + 模块中心 `/modules` 一级入口 + 首页工作台化 + Operation 观察面（恢复条/在途条）+ 可用更新徽标（updatewatch 真实来源）+ `status.ts` 七族与操作三表 + contract-enum Go↔TS 契约门禁，详见 §12；测试规模：本档写作时（2026-09-19 实测）**101 spec 文件 / 1052 用例**，2026-10-12 实测复核 **167 / 2111**，对账时点现值 **168 spec / 2120 用例全绿**（2026-10-21，权威出处 `docs/FACTS.md`；10-12 同批另测得 ESLint 0 error / 9 warnings、`vue-tsc --noEmit` 0、`gofmt -l internal/` 无输出、`go test ./...` 全绿）。当前待办＝§9.7-下轮候选（ManagedConsoleShell 壳收编、UiModal、可访问性散点）、真机目视（§9.7 目视项清单①–⑩）；蓝图 Phase 0–6 主体与 Wave 0–5S 契约批全部交付。全应用深色主题已实质可用，残余浅底仅限个别视图局部。
 
 ---
 
@@ -19,7 +19,7 @@
 ## 2. 现状架构（如实描述）
 
 ```
-main.ts ── createApp(App) + 三份 styles/ 全局样式      # 无 router、无 store
+main.ts ── createApp(App) + 四份 styles/ 全局样式（tokens/fonts/base/components）  # 无 router、无 store
 App.vue  ── 应用外壳（薄编排：路由/门禁/事件桥/弹窗壳，展示层已组件化）
   ├─ constants/navigation.ts 单一来源：ROUTES（50 模块路由 + 核心页 +
   │    设置八分区，defineAsyncComponent 全异步）+ CORE_ROUTES 豁免清单
@@ -27,28 +27,35 @@ App.vue  ── 应用外壳（薄编排：路由/门禁/事件桥/弹窗壳，�
   ├─ EnsureModuleActive 门禁 + navigationRequestID 防乱序
   ├─ <component :is> + <KeepAlive :max=10> + <ErrorBoundary>   # 动态视图 + 缓存 + 崩溃兜底
   ├─ Events 顶层桥：ext:changed / notify:received / tray:navigate
-  │    （updates:checked / operation:changed 由单例投影 composable 各自订阅，§12.1）
+  │    （updates:checked / operation:changed 由单例投影 composable 各自订阅，§12.1；
+  │    theme:changed 由 useTheme 自订——多窗主题同步，不进 App.vue 顶层桥）
   ├─ components/shell/ 双栏外壳：AppNavRail（左栏一级入口：首页/模块中心/
   │    六组目录（计数+运行点）/底部通知与设置；日志、关于、主题已收进设置页）
   │    + AppSidebar（第二栏：模块导航或 SETTINGS_SECTIONS 分区菜单，
   │    含通知徽标/主题钮/状态条）+ CommandPalette +
   │    navGrouping.ts（六组聚合、FAV_MODULE_IDS、最近使用路由）
-  └─ 主题 token 住 styles/tokens.css（浅/深双主题 + 色板双轴）      # 不再内联于 App.vue
+  └─ 主题 token 住 styles/tokens.css（浅/深双主题 × 色板覆写块），
+     字族栈与字体档位（N36/N40）住 styles/fonts.css      # 不再内联于 App.vue
 
-views/*.vue                    # 49 个后端模块各一视图 + 模块中心/日志/关于/占位
+views/*.vue                    # 50 个后端模块各一视图 + 模块中心/日志/关于/占位
                                # + 三个弹窗壳（QuickMenu/MsgBoard/SnipCard），
-                               # 最大 HomeView 956 行；settings/ 为设置页八分区
+                               # 最大 HomeView 976 行；settings/ 为设置页八分区
                                # （General/Theme/Tray/Storage/System/Workbench/Snapshot/AI）
 components/ui/                 # 无业务原子件（+ PageContainer 三档容器 token，§7.3）
 components/tool/               # HistoryPanel + MsixToolHeader/MsixOverview 孪生壳
 components/modules/            # ModuleCard / ModuleDetailPanel / OperationBanner
-components/{envcheck,everything,fileshare,publicip,quickmenu,wechatbot,wsl}/
-                               # 巨型视图拆分后的族目录
+components/*.vue 根级共享件     # ConfirmDialog / NotificationToast / NotificationDrawer ·
+                               # FrpcProjectEditor / FrpcVersionsTab / ElevateRestart
+components/{envcheck,everything,fileshare,publicip,quickmenu,wechatbot,wsl,
+             clipboard,managed,memo,msgboard,portscan,snipaste,tray,vscode}/
+                               # 巨型视图拆分与后续模块沉淀的族目录（2026-10-21 对账）
 composables/  useToast · useNotification · useTheme · useWailsEvent · usePolling ·
-              useConfirm · usePrompt · useAsyncAction · useClipboard ·
+              useConfirm · usePrompt · useAsyncAction · useClipboard · useDialogA11y ·
               useModuleCatalog · useOperations（模块级单例投影家族，§12.1）·
               视图级 composable（useWechatBot / usePublicIpDiagnostics / …）
-utils/        errors.ts: getErrorMessage · format.ts: fmtSize/fmtDate/fmtDuration · paste.ts: parsePaste/pasteImage 粘贴分流
+utils/        errors.ts: getErrorMessage · format.ts: fmtSize/fmtDate/fmtDuration ·
+              paste.ts: parsePaste/pasteImage 粘贴分流 · 视图族用工具
+              （debounce/markdown/netaddrs/textdiff/version/memoexport，2026-10-21 对账）
 ```
 
 **已做对、应保留**：`useToast`/`useNotification`/`useTheme` 与 Wave 批新增的 `useModuleCatalog`/`useOperations` 同风格模块级单例（只缓存投影、事件到达只重拉、失败保留旧投影标注 stale，§12.1）；`getErrorMessage` 统一异常；`ConfirmDialog`（Teleport+焦点陷阱+`tone/busy/details`+`v-model:open`）是可访问性标杆；事件订阅均有 unlisten 清理、`onActivated/onDeactivated` 管轮询的生命周期纪律。
@@ -95,7 +102,7 @@ src/
 
 **依赖策略**：新增 `@vueuse/core`（定时器/监听/媒体查询/存储/剪贴板的自动清理与少写胶水）；版本锁定，遵 `.npmrc` 供应链策略。
 
-**落地差异（蓝图兑现对账，只登记不改写规划原文）**：`components/tool/` 实际落点为 `HistoryPanel` + MSIX 孪生壳（`MsixToolHeader`/`MsixOverview`），`ManagedConsoleShell`/`VersionGrid`/`StatusHeader` 与 `useManagedTool` 未立（§9.7-下轮候选）；`UiModal` 同理（§9.6-8）；`constants/` 实际三文件（status/navigation/icons）；Wave 0–5S 增补 `components/modules/` 与单例投影 composable 家族（§12）。
+**落地差异（蓝图兑现对账，只登记不改写规划原文）**：`components/tool/` 实际落点为 `HistoryPanel` + MSIX 孪生壳（`MsixToolHeader`/`MsixOverview`），`ManagedConsoleShell`/`VersionGrid`/`StatusHeader` 与 `useManagedTool` 未立（§9.7-下轮候选）；`UiModal` 同理（§9.6-8）；`constants/` 现六文件（navigation/status/icons/appIcons/runtimeIcons/snapshotLabels，2026-10-21 对账；登记此点时为三）；`styles/` 实际**四件**——蓝图三件之外，N36/N40 追加 `fonts.css`（随仓字族与字体三档，见 §7.2/§7.3）；Wave 0–5S 增补 `components/modules/` 与单例投影 composable 家族（§12）。
 
 ---
 
@@ -142,36 +149,36 @@ src/
 
 | 层级 | 内容 | 定义位置 | 示例 |
 |---|---|---|---|
-| 原始色板 | 品牌色/中性色/状态色的完整色阶 | 仅 `tokens.css`，组件不可见 | `--teal-600: #0f8b8d` |
-| 语义 token | 业务含义：主色、表面、文字、状态、边框、阴影、半径、动效、字族 | 仅 `tokens.css`，浅/深主题各定义一次 | `--color-primary`、`--surface-1..4`、`--text-1`、`--state-danger` |
+| 原始色板 | 品牌色/中性色/状态色的完整色阶 | 仅 `tokens.css`，组件不可见 | 蓝图概念名（实存对账 2026-10-21：**未落独立色阶 token**，裸值直内联于语义变量定义，「裸 hex 只进 tokens.css」硬约束等价承担本层职责） |
+| 语义 token | 业务含义：主色、表面、文字、状态、边框、阴影、半径、动效、字族 | 仅 `tokens.css`，浅/深主题各定义一次（字族栈例外：住 `fonts.css`，§7.3） | `--color-primary`、`--surface-page/panel/soft/hover`、`--color-text`、`--state-danger` |
 | 组件局部变量 | 组件私有微调（尺寸、间距等） | 组件 `<style scoped>` 内，引用处给 `var()` 回退 | `--chip-dot-size: 8px` |
 
-- **语义命名归一**（消歧 17 个未定义变量）：`--text-main/--text-primary` → `--color-text-primary`；`--bg-app/--bg-main/--bg-sidebar/--surface*` → `--surface-1..4` 家族；`--accent` → `--color-primary`；`--warning` → `--state-warning`。旧名曾以**过渡期别名块**桥接，Phase 4/5/6 迁移到哪族删到哪族，**已于 Phase 6 收官整删（`4bfaf90`）**——旧名再出现即视为违规，直接改语义 token。
+- **语义命名归一**（消歧 17 个未定义变量）：`--text-main/--text-primary` → `--color-text-primary`；`--bg-app/--bg-main/--bg-sidebar/--surface*` → `--surface-page/panel/soft/hover` 家族（本文早期写作 `--surface-1..4`，为四层族简称非实存 token 名）；`--accent` → `--color-primary`；`--warning` → `--state-warning`。旧名曾以**过渡期别名块**桥接，Phase 4/5/6 迁移到哪族删到哪族，**已于 Phase 6 收官整删（`4bfaf90`）**——旧名再出现即视为违规，直接改语义 token。
 - **硬约束**：视图/组件样式**只允许 `var()` 引用语义 token，禁止硬编码颜色、禁止在组件内重新定义主题变量**；裸 hex 只允许出现在 `tokens.css`。
 
 ### 7.2 主题切换机制
 
-- 主题为**双轴**：`<html data-theme="light|dark">` 定明暗、`<html data-accent="teal|sky|iris|jade|onyx">` 定色板，`:root[data-theme='dark']` 覆盖语义 token，`:root[data-theme=…][data-accent='…']` 双属性选择器再叠加色板覆写块（只覆写主色/表面/文字/边框/光晕焦点环与浅色阴影等随色板联动项）；根上声明 `color-scheme: light dark`。缺省（无 `data-accent`）与 `teal` 同值——`:root` 现值即青壳默认回退。首套落地色板 sky（碧空）已并入，iris/jade/onyx 待 `docs/design/themes/tokens/*.css` 搬运（并入前选择它们回落青壳）。
-- **持久化以后端为唯一真相**：`internal/settings` 的 `AppSettings.Theme`（`light|dark|system`）与 `AppSettings.Accent`（`teal|sky|iris|jade|onyx`）经 AppService（`Get/SetTheme`、`Get/SetAccent`）绑定读写——设置统一存后端，且便携版随 `hanxidata/` 目录整体迁移不丢主题。localStorage 仅作**首帧缓存**（`hanxi.theme`/`hanxi.accent` 两 key，mount 前同步读、先定 `data-theme`/`data-accent` 防闪白；启动后异步以后端为准校正）。
+- 主题主结构为**双轴 + 一字体属性轴**：`<html data-theme="light|dark">` 定明暗、`<html data-accent="teal|sky|iris|jade|onyx">` 定色板、`<html data-font="kai|plain|mono">` 定界面字体档（N40）。`:root[data-theme='dark']` 覆盖语义 token，`:root[data-theme=…][data-accent='…']` 双属性选择器再叠加色板覆写块（只覆写主色/表面/文字/边框/光晕焦点环与浅色阴影等随色板联动项）；字体档位块住 `fonts.css` 的 `[data-font=…]`，只重定义 `--font-ui`，`--font-text/--font-display` 经 `:root` 委托自动换装（fonts.spec 锁定，档位内严禁重定义此二者）。根上声明 `color-scheme: light dark`。缺省（无 `data-accent`）与 `teal` 同值——`:root` 现值即青壳默认回退。**五套色板已全部并入 `tokens.css`**（teal 默认 + sky/iris/jade/onyx v2.1 深化稿；2026-10-21 对账：原"sky 首套已并入、iris/jade/onyx 待搬运"口径过期），设计档案与逐值实算见 `docs/design/themes/`。
+- **持久化以后端为唯一真相**：`internal/settings` 的 `AppSettings.Theme`（`light|dark|system`）、`AppSettings.Accent`（`teal|sky|iris|jade|onyx`）与 `AppSettings.Font`（`kai|plain|mono`，N40，缺省文楷）经 AppService（`Get/SetTheme`、`Get/SetAccent`、`Get/SetFont`）绑定读写——设置统一存后端，且便携版随 `hanxidata/` 目录整体迁移不丢主题（字体档合法域与 `internal/settings/store.go` `AppSettings.Font`、`fonts.css` 档位块三处字面一致为 N40 纪律——注：`useTheme.ts` 头注写作「后端 settings_persist.go」，该文件名不存在（实际为 `store.go`），属代码注释旧名，待源码线顺手更正）。localStorage 仅作**首帧缓存**（`hanxi.theme`/`hanxi.accent`/`hanxi.font` 三 key，同构读写，mount 前同步读、先定 `data-theme`/`data-accent`/`data-font` 防闪白；启动后异步以后端为准校正）。
 - **原生标题栏随主题**：深色内容需 DWM `ImmersiveDarkMode` 同步 Windows 原生窗框（否则"深窗口顶白标题栏"割裂），需在窗口层加少量 Win32 调用——这是迁移铁律第 8 条"不碰后端"的**唯一受控例外**，Phase 1 单独 commit。Win11 再叠加 `DWMWA_CAPTION_COLOR/TEXT_COLOR` 精确配色：标题栏底色对齐 `--surface-chrome` **外壳层**（与双栏导航共色，Fluent 式壳/内容分层），按明暗 + 色板双轴取色，映射表在 `internal/platform/windows/darkmode.go`（与 tokens.css 逐值同步的登记纪律）。
-- `composables/useTheme.ts`（VueUse `useMediaQuery` + 后端 Settings 读写）是主题**唯一读写入口**，模块级单例，三态：跟随系统 / 固定浅色 / 固定深色，系统切换自动跟随。
+- `composables/useTheme.ts`（VueUse `useMediaQuery` + 后端 Settings 读写）是主题**唯一读写入口**，模块级单例，统管三轴（明暗三态：跟随系统/固定浅色/固定深色 + 色板 + 字体档，各自带 setter），系统切换自动跟随。
 - 切换 UI：侧栏底部 + 设置页各一处，共用同一 composable，不各写各的。
 - **深色不是简单反色**：表面四层与 `positive/information/warning/danger` 均有独立双值，按 `design-system.md` 逐 token 设计。
-- 扩展位：加明暗模式 = 新增 `[data-theme='xxx']` 变量块；加色板 = 新增 `[data-theme=…][data-accent='yyy']` 覆写块 + 后端 `Accent` 合法值 + `useTheme` 的 `VALID_ACCENTS` 与设置页选项，均零组件改动。色板数值唯一真相在 `docs/design/themes/preview.html`，原样搬运。
+- 扩展位：加明暗模式 = 新增 `[data-theme='xxx']` 变量块；加色板 = 新增 `[data-theme=…][data-accent='yyy']` 覆写块 + 后端 `Accent` 合法值 + `useTheme` 的 `VALID_ACCENTS` 与设置页选项；加字体档 = `fonts.css` 新增 `[data-font='zzz']` 块（只可重定义 `--font-ui`）+ 后端 `Font` 合法值 + `VALID_FONTS` 与设置页选项，均零组件改动。**色板与字族数值的唯一真相 = `frontend/src/styles/tokens.css` 与 `fonts.css`**；`docs/design/themes/preview.html` 是 v2.1 评审稿存档——落地后的治理（N37 彩底契约与青壳主色压暗、N38 焦点环提档、N40 字体轴）不回写它，两者有差一律以 CSS 现值为准。
 
 ### 7.3 关键 token 值（摘要）
 
-- **主色**：`primary #0f8b8d`（浅）/ `#42b7b4`（深）；`positive/information/warning/danger` 双值。
+- **主色**：teal 默认 `#0d8284`（浅，N37 案 A 白字 4.12 不达 AA 后压暗一档，旧值 `#0f8b8d`）/ `#42b7b4`（深）；`positive/information/warning/danger` 双值（浅三枚 2026-09 全族复审 R1 深一档：绿 `#067d4d`/黄 `#955e00`/红 `#b33736`）。其余四板覆写值见 §7.2 与 `themes/README.md`。
 - **表面四层公式**：`page → surface → surface-soft → surface-hover`，边框先于阴影。
-- **字族**：`--font-text / --font-display / --font-mono`；仅机器值（路径/端口/版本/速率/日志）用 mono + `tabular-nums`。
+- **字族**：主栈 `--font-ui`，`--font-text / --font-display` 为其 `:root` 委托，mono 档 `--font-mono`；仅机器值（路径/端口/版本/速率/日志）用 mono + `tabular-nums`。
 - **字号阶梯（2026-09 体系化治理落地，全库唯一合法字号源）**：`--text-micro/xs/sm/base/md/lg/xl/2xl/3xl` = **10/11/12/13/14/16/18/22/28px**，基准 13px（紧凑工作台裁决）；角色映射：micro 角标注记 / xs 元数据 caption chip / sm 表格正文控件标签小按钮 / base 正文主按钮 / md 分区标题 / lg 区块标题 / xl 页面标题 / 2xl·3xl 大数字与 KPI。视图/组件**禁止裸 px 字号**，一律 var() 就近取档（历史散值映射：9/9.5/10/10.5→micro、11/11.5→xs、12/12.5→sm、14/15→md、16/17→lg、18/19/20→xl、21/22/24→2xl、其余→3xl 封顶）。**豁免区**：`.popup-shell` 独立悬浮窗（轮盘/SnipCard，字号与窗口尺寸后端互锁）与终端 ANSI 日志区（`--terminal-*` 行距体系）。
 - **按钮与控件三档（同上治理）**：`--control-h-lg/md/sm` = **36/30/24px** 对应 `.btn`/`.btn-small`/`.btn-micro`；行内微操作一律收 `.btn .btn-small/.btn-micro` 或 `.link-button` 标准家族，禁私有钮形；粗指针 44px 兜底在 base.css。
 - **按钮变体语义（2026-10-20 重定，取代 10-19 那版）**：档位色值真相全在 tokens.css，本条只定**什么时候准用哪一档**。`.btn-primary` 是**全站唯一主钮档，形制为"蓝洗"**（底 = 蓝 14%/深 18% 混本板面板、字 = 中蓝/亮蓝、边 = 蓝 30%/38%）——密集行内与整页唯一 CTA **同形，不分两档**。为什么只有一档：四轮返工（青 4.62 → 墨 13.63 → 蓝 4.90 实心 → 蓝洗）证明机主的反感对象是**饱和实心块本身**，与色相、与"每屏几颗"都无关；10-19 那版"实心只给每屏唯一主操作、行内另立淡洗子档"的定性，被 10-20 机主报 PortScan「开始扫描」（整页唯一一颗、非逐行位置）直接推翻，`.btn-primary-tint` 子档已整删——**同形重复档一律不留**。弱一档的需求走 `.btn-secondary` / `.btn-accent-outline` / `.btn-ghost` / `.link-button`，禁再造主钮变体。逐板对比度实算与四轮全程留档在 tokens.css `--btn-primary-hue` 上方注释。**分叉在册待裁**：`DouzyView` 两处行内钮仍是 10-19 那轮降的 `.btn-accent-outline`（青描边透明底），与全站蓝洗不同形；机主当时明确"Douzy 已经改好了"故本轮未动。
 - **页面容器三档**：宽度真相 = tokens.css `--container-standard/workbench/wide` = **1000/1200/1440px**，映射 components.css `.page/.page-workbench/.page-wide` 骨架原子；`page-fluid` 为终端/日志类满宽例外档。`components/ui/PageContainer.vue` 是组件化入口（`variant` 三档 + `fluid` 例外，Wave 批新页采用；既有视图仍直接使用全局原子类，宽度真相同一处）。页面容器不叠加页面级 padding（视口安全边距归外壳内容区，禁双重 padding）。
 - **半径/阴影/动效**：control 8 / element 12 / panel 16 / pill 999；动效 100–180ms、≤6px；**必须含 `prefers-reduced-motion` 全局块**。
 - **无障碍**：`:focus-visible` 清晰环；`pointer:coarse ≥44px`、桌面按钮 ≥36–38px、资源行 ≥52–56px；状态不只靠颜色；网格文本子项 `min-width:0`。
-- **字体栈写实**：`--font-text` 含中文回退（如 `"Segoe UI", "Microsoft YaHei UI", system-ui`），`--font-mono` 用 `Consolas, "Cascadia Mono", monospace`；组件视图不得再自带 `font-family` 声明。
-- **日志终端色板**：frpc 日志抽屉 / 运行日志查看器是 ANSI 彩色终端风格——`--ansi-0..15` 在 `tokens.css` 单独成组（浅/深各一套，或固定深底永不反相，Phase 1 目测定夺），防止为黑底终端设计的色板浮在双主题界面上。
+- **字体栈（N36/N40 改账）**：字面栈**唯一定义处 = `styles/fonts.css`**——随仓 Web 字体三件（LXGW 文楷 GB Screen 主栈、Noto Sans SC 按字缺字回落、JetBrains Mono 等宽），许可文本随仓 `src/assets/fonts/licenses/`；`tokens.css` 只留指针、不得回写桥字面。N40 字体三档：`kai` 默认文楷 / `plain` 系统朴素（回落到 `"Segoe UI Variable Text"/Microsoft YaHei` 系统链）/ `mono` 等宽极客（JBM 主理拉丁数字、CJK 逐字回落文楷），档位只重定义 `--font-ui`。组件视图不得再自带 `font-family` 声明。
+- **日志终端色板**：frpc 日志抽屉 / 运行日志查看器是 ANSI 彩色终端风格——`--ansi-0..15` 在 `tokens.css` 单独成组，**已定夺：固定深底、永不随主题/色板反相**（跨色板恒定，覆写块不得搬运）；`--terminal-*` 八枚细分派生 token 见 §9.5-4，视图内禁再写 color-mix 就近派生。防止为黑底终端设计的色板浮在双主题界面上。
 
 > 完整 token 表、组件组合模式、完工检查单：见 `.claude/skills/hanxi-workbench-ui/references/`。
 
@@ -182,7 +189,7 @@ src/
 - **测试 seam**：Vitest（happy-dom）没有 Wails 原生层，直接 import `frontend/bindings` 与 `Events` 会挂——Phase 0 先定对绑定服务/事件的 `vi.mock` 打桩约定，之后才有可写的托管视图特征测试。
 - **scoped 特异性陷阱**：scoped 样式带属性选择器，压过全局原子类；迁移时旧 scoped 副本不删净会"改了全局没生效"。对策：`components.css` 原子类用 `:where()` 包装（零特异性），且"迁移即删该视图本地副本"。
 - **Prettier 一次性**：全仓格式化独立成一个 `style:` 提交（`git blame --ignore-rev` 记录该 SHA 保护 blame），此后每 Phase 只格式化 touched 文件，不顺手全仓。
-- **AppIcon 图标集**（§8 清单已落定，阶段1 ✅）：注册表 `constants/icons.ts`（24 viewBox 纯 path、`currentColor` 描边 1.8、禁散写 `<svg>`）+ 渲染器 `components/ui/AppIcon.vue`（缺省 aria-hidden 装饰，传 label 升格 role=img；特征测试 6 例）。导航双轨前缀约定：`i:name` 走 SVG、裸值文本回退。分批：阶段1 壳与状态（home/file-text/gear/info/bell/inbox/sun/moon/monitor + 通知严重度改 CSS 色点）✅；**阶段2**（navigation.ts 模块图标 26 枚，含侧栏渲染层以前端表覆盖后端 GetNavs emoji 的单一来源方案，调研已毕）与**阶段3**（MAIN_TABS 前缀与控制按钮 emoji ≈50 处，含 SettingsView 🔔）**均经用户决策暂停（2026-09-05）**，恢复时按本清单续做。全部自绘无第三方图标库，THIRD_PARTY_NOTICES 不涉。
+- **AppIcon 图标集**（§8 清单已落定，阶段1 ✅）：注册表 `constants/icons.ts`（24 viewBox 纯 path、`currentColor` 描边 1.8、禁散写 `<svg>`）+ 渲染器 `components/ui/AppIcon.vue`（缺省 aria-hidden 装饰，传 label 升格 role=img；特征测试 6 例）。导航双轨前缀约定：`i:name` 走 SVG、裸值文本回退。分批：阶段1 壳与状态（home/file-text/gear/info/bell/inbox/sun/moon/monitor + 通知严重度改 CSS 色点）✅；**阶段2**（navigation.ts 模块图标，侧栏渲染层以前端表覆盖后端 GetNavs emoji 的单一来源方案）与**阶段3**（MAIN_TABS 前缀与控制按钮 emoji 收口）**均已随 N27 落地**（2026-10-21 对账：原「经用户决策暂停（2026-09-05）」口径过期，账同顶部进度快照——批 A `5c36949` `app:` 第二来源、批 B `1beb706` 三轨解析收口（navigation 现载 `i:`/`app:`/`rt:` 三轨）、批 C `9d3fca4` 托盘 `SetBitmap`，尾巴补录至 `899ae4d`）。自绘件无第三方图标库；上游真图标 28 枚与"不入库"件见 `docs/THIRD_PARTY_NOTICES.md` 图标节。
 - **依赖兼容矩阵**：Vitest 大版本必须实测支持 Vite 8；ESLint flat config + `eslint-plugin-vue` + `@typescript-eslint`；全部锁进 devDeps（`.npmrc` 供应链策略下）。
 - **生成物必须排除在 lint/format/test 之外**：`frontend/bindings/**` 进 ESLint ignores、`.prettierignore`、vitest include 白名单之外——生成物一旦被格式化，`verify:bindings`（git diff 校验）当场爆红。
 - **WebView2 能力假设**：`:where()`、`color-mix()`、`100dvh` 等依赖较新 Chromium——WebView2 为 Evergreen 自动更新，Win10 22H2+ 基线基本无忧；若目标机器存在固定版本 Runtime 需先用后写。
@@ -246,7 +253,7 @@ src/
 - **家族收编**：托管家族控制台皮 ~40 条原子（控制条/状态字组/下载行/已装卡/联动卡/知识折叠卡/table-container/ver-name/empty-hint/banner.slim/rtt-tag/btn-accent-outline/语义文本三色）上收 components.css「托管家族控制台皮」块，**~895 条 scoped 副本删净落回**；散差按多数派定档（installed-grid minmax320、control-bar gap8、dl-bar-inner base ease、retry-link ml8、hint-line 无行距、**info-body gap 4px——模板视图 MarkerOn 值系少数派，定档时已纠正**）。净账 92 受管文件 +1434/−4282，含 wsl 新族共净 −644 行。
 - **确定性缺陷修复**：`box-shadow: 0 Xpx Ypx var(--shadow-*)` 拼接无效七处改正（TROUBLESHOOTING #51，修复后投影开始真实渲染=目视项）；FileShare 三页签死祖先选择器删除；死类 `py-8/.first-use` 等清绝。
 - **真机目视项清单**（全为 token 定档/落回的设计归一，±1–2px 与个别形制）：① VSCode/FrpcVersionsTab/Douzy `.mono` 11→12px；② FrpcProjects 大空态图标 40→28px；③ MangoDisk/Snipaste 页头 21/20→18px；④ SnipCard 外 9 视图 `.ver-pill` 4px→胶囊、`.empty-hint` 6→8px、control-bar 圆角 10→12px；⑤ Wifi/Lan/PortKill/IpOverview/FileShare×3 `.empty-hint` 裸文字→虚线卡标准形；⑥ Memo 页头/模态钮 36px 高中枢（原 8px 内距无形钮）、页标题 22→18px；⑦ PackageManagerUpgradeHint `.copy-button` 收 btn-micro 28→24px；⑧ 阴影修复七处投影开始渲染；⑨ WSL 表壳获得 table-container 边框壳（裸用新染，预期收编）；⑩ FileShareInbox/Endpoints `.empty-state` gen1 基形落回全局。
-- **下轮候选（登记未做）**：① `components/tool/ManagedConsoleShell/VersionGrid/StatusHeader`（§4 预留位）——前缀状态灯 `{pfx}-status-light`、`{pfx}-ver-status` 四态灯、dz-/md- 前缀家族、badge 色词→chip 映射、`.summary-text` 更名合流；② `.control-panel` gap/wrap、`.k` 36 vs 44、`ver-pill` 方片形制、retry-link `<a>` 无 href 不可键盘聚焦（可访问性）→ 收编波；③ UiModal 抽象收双模态壳+Frpc 手搓 modal（§9.6-8）；④ OcrView `--primary-soft` 未定义回退、FrpcProjectEditor 无效阴影已修但 hover 意图待裁决、Memo 死 utility（font-mono/mb-*/truncate）复活或删除；⑤ AppIcon 阶段2/3（挂起中）。
+- **下轮候选（登记未做）**：① `components/tool/ManagedConsoleShell/VersionGrid/StatusHeader`（§4 预留位）——前缀状态灯 `{pfx}-status-light`、`{pfx}-ver-status` 四态灯、dz-/md- 前缀家族、badge 色词→chip 映射、`.summary-text` 更名合流；② `.control-panel` gap/wrap、`.k` 36 vs 44、`ver-pill` 方片形制、retry-link `<a>` 无 href 不可键盘聚焦（可访问性）→ 收编波；③ UiModal 抽象收双模态壳+Frpc 手搓 modal（§9.6-8）；④ OcrView `--primary-soft` 未定义回退、FrpcProjectEditor 无效阴影已修但 hover 意图待裁决、Memo 死 utility（font-mono/mb-*/truncate）复活或删除；⑤ ~~AppIcon 阶段2/3（挂起中）~~（2026-10-21 对账：已随 N27 全部落地，见 §8 与顶部快照，销账）。
 
 ## 10. 提交拆分（示例）
 
@@ -307,5 +314,5 @@ src/
 ### 12.4 状态词表与 Go↔TS 契约门禁
 
 - `constants/status.ts` 是前端展示词汇唯一落点：**四维 `DELIVERY/POLICY/RUNTIME/HEALTH_META` + `PRIMARY_ACTION/SUMMARY/ENTRYPOINT_META` 七族**与**操作三表 `OPERATION_KIND/OPERATION_STATUS/PHASE_META`**，逐值 `satisfies Record<枚举值联合, Meta>` 穷举守卫——后端增删枚举值即 TS 编译失败；tone 词表与 components.css `.chip-{tone}/.banner-{tone}` 严格对齐；`TOOL_STATE_META`/`ENV_STATUS_META` 为历史视图表（头注登记 Wave 3 收口事项）。
-- `constants/__tests__/contract-enum.spec.ts`（Wave 0 DoD 门禁）三层锁定：bindings 生成 JS enum 值集 == `status.ts` 词表键集 == `internal/extapi/catalog.go` const 值集 == `scripts/fixture/module_catalog.json` 基线（schema==1、**49 项**；2026-10-12 订正——原文写 41 项，与 `contract-enum.spec.ts:114` 实际断言的 49 直接矛盾，属"文档声称的机检基线"落后于机检本身）+ `composition_contract.json` 关键导出可见性；`$zero` 生成器占位剔除比对。纪律：bindings 为生成物，发现问题改 Go 源或重跑生成，绝不在 spec 迁就产物。
+- `constants/__tests__/contract-enum.spec.ts`（Wave 0 DoD 门禁）三层锁定：bindings 生成 JS enum 值集 == `status.ts` 词表键集 == `internal/extapi/catalog.go` const 值集 == `scripts/fixture/module_catalog.json` 基线（schema==1、**50 项**；订正链——原文写 41 项，2026-10-12 对账时与 `contract-enum.spec.ts:114` 实际断言的 49 直接矛盾（属"文档声称的机检基线"落后于机检本身）改 49，2026-10-21 对账：heukms 入库后基线与断言现为 50）+ `composition_contract.json` 关键导出可见性；`$zero` 生成器占位剔除比对。纪律：bindings 为生成物，发现问题改 Go 源或重跑生成，绝不在 spec 迁就产物。
 - 测试规模（2026-09-19 实测）：**101 个 spec 文件 / 1052 用例全绿**（`vitest run`），含契约门禁与各家族特征测试。

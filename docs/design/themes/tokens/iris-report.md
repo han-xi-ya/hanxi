@@ -1,5 +1,7 @@
 # iris 鸢尾·晨紫 —— 单套色板深化报告
 
+> **档案状态（2026-10-21 对账）**：本稿终值已并入 `frontend/src/styles/tokens.css` `[data-accent="iris"]` 两块（`tokens.css` 块头注释反向引用本档为「全量理由与实算」出处，故**保留不删**）。两处后续变化以 `tokens.css` 为准——§5-R1 浅模式状态字共债**已全族立项修复**（2026-09-17 绿/黄/红深一档，见 `themes/README.md` §5，iris 块无需再动）；§1 焦点环/派生 alpha 之后经 N37（`--color-on-accent` 契约档）与 N38（焦点环提档 0.75/0.65）再治理，正文数值系并入时点快照。
+
 > 对象：`docs/design/themes/tokens/iris.css`（深化自 `preview.html` 的 `[data-accent="iris"]` 两块）。
 > 方法：OKLCH 感知色阶反推 + WCAG 相对亮度实算，生成器复刻自 `gen-palettes-v2.mjs`（同一 oklch/ratio 实现）；
 > 算式脚本在仓库外临时目录（analyze / candidates / final / verify 四段），本文只沉淀结论与全量数值。

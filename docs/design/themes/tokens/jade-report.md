@@ -1,5 +1,7 @@
 # jade · 青瓷 单套深化报告（v2.1）
 
+> **档案状态（2026-10-21 对账）**：本稿终值已并入 `frontend/src/styles/tokens.css` `[data-accent="jade"]` 两块（`tokens.css` 块头注释反向引用本档为「全量理由与实算」出处，故**保留不删**）。§7-1 申报的浅模式常量层状态字共债**已按本稿备选值全族落地**（绿 `#067d4d`/黄 `#955e00`/红 `#b33736`+危险软底提亮，2026-09-17，见 `themes/README.md` §5 与 `tokens.css` 状态色注释——本稿 §2 表内三枚 ✗ 自此转 ✓）；§7-5 的 sky soft 缺口亦随并入以 `.979` 档修复（`themes/README.md` §1）。焦点环/派生 alpha 后续经 N37/N38 再治理，正文数值系并入时点快照，运行现值以 `tokens.css` 为准。
+
 > 对象：`docs/design/themes/preview.html` 中 `[data-accent="jade"]` 两块（即 `gen-palettes-v2.mjs` 参数化产出，已逐值验证二者一致）。
 > 产出：[`jade.css`](jade.css)（浅色 19 枚 / 深色 17 枚覆写，变量名集合与 sky 块完全对齐）+ 本报告 + 微型自检页 [`jade-check.html`](jade-check.html)。
 > 口径：node 实算（`lib.mjs` 与 gen-palettes-v2.mjs 同一套 `oklchToLin`/gamma/sRGB 裁切，另实现反向 hex→OKLCH），对比度为 WCAG 相对亮度比。
