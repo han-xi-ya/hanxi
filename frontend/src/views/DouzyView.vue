@@ -200,7 +200,12 @@ onUnmounted(() => {
           <div class="dz-line"><span class="k">大小</span><span>{{ fmtSize(v.size) }} · 下载于 {{ v.installedAt }}</span></div>
         </div>
         <div class="dz-card-actions">
-          <button class="btn btn-primary btn-small" :disabled="busy" title="拉起上游 NSIS 安装向导；UAC 与向导步骤由你完成" @click="launchInstaller(v)">▶ 运行安装程序</button>
+          <!-- 2026-10-19 机主嫌这两颗蓝底钮突兀，降为 accent-outline 描边档（形制对齐
+               envcheck OfficialVersionsPanel 行内下载先例）。注意本档**不是**全站规则：
+               10-20 起 .btn-primary 已整体重定为蓝洗一档，"行内不挂主操作档"的旧理由随之
+               消失；此处保留青描边只因机主当时明确"Douzy 已经改好了"。与全族的形制分叉
+               连同回退方案登记在 docs/plans/PLAN_REMAINING_WORK.md 待决清单 ⚑1。 -->
+          <button class="btn btn-accent-outline btn-small" :disabled="busy" title="拉起上游 NSIS 安装向导；UAC 与向导步骤由你完成" @click="launchInstaller(v)">▶ 运行安装程序</button>
           <button class="btn btn-secondary btn-small" @click="openDir(v.dir)">📂 打开位置</button>
           <button class="btn btn-danger-outline btn-small" @click="removeInstaller(v)">删除安装包</button>
         </div>
@@ -249,7 +254,8 @@ onUnmounted(() => {
               <div v-else-if="statusOf(rel) === 'error'" class="dz-dl-meta">
                 <span class="dz-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
               </div>
-              <button v-if="statusOf(rel) === 'idle'" class="btn btn-primary btn-small" @click="download(rel)">下载安装包</button>
+              <!-- 同行内降档理由见上方卡片动作行注释 -->
+              <button v-if="statusOf(rel) === 'idle'" class="btn btn-accent-outline btn-small" @click="download(rel)">下载安装包</button>
               <span v-if="statusOf(rel) === 'installed'" class="btn btn-ghost btn-small">已下载</span>
               <a v-if="statusOf(rel) === 'error'" class="dz-retry" @click="download(rel)">重试</a>
             </td>
