@@ -1,7 +1,7 @@
 # Hanxi
 
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
-> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、剪贴板历史、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、Piik 屏幕分享、DBX/GoNavi 数据库客户端、抖音下载器等 31 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
+> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、剪贴板历史、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、Piik 屏幕分享、DBX/GoNavi 数据库客户端、抖音下载器、HEU KMS 激活工具等 32 款），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
 > **v0.3.0 品牌断代**：产品标识、进程名和数据之家已切换为 Hanxi，不读取旧版数据、自启项或单实例标识（数据根现行模型：exe 同级 `hanxidata/` 默认 + `hanxi.bind` 显式绑定，**"便携/标准"双模式判定已整体退役**，权威语义见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 持久化一节与 [docs/PRD.md](docs/PRD.md)）。
 
@@ -39,10 +39,12 @@
 - **多模态消息推送**：支持文本、图文卡片、Markdown 与多格式文件推送。
 - **图片消息体验**：入站图片自动注册附件，聊天气泡内嵌缩略预览并支持打开/另存；出站图片显示本地预览，支持「打开图片」与「打开目录」直达系统查看器/资源管理器。
 
-#### 3. 🔎 端口扫描与服务指纹识别 (PortScan)
+#### 3. 🔎 网络测试 (portscan：端口扫描 · 代理连通性 · SSH 连接)
 - **高并发端口探测**：支持单端口、连续区间（`8000-8080`）、离散列表与常用预设（Web开发/数据库/TOP 100/系统保留端口）。
 - **服务指纹与 Banner 识别**：自研 banner 级探测——抓取服务横幅后按内置特征表识别协议类型、组件版本（Nginx/OpenSSH/MySQL/Redis 等）与 Web 状态，支持 SOCKS5/HTTP 代理扫描与按任务取消。**2026-10-12 勘误**：本行原写"集成纯 Go Nmap 探针引擎（`gonmap`）"，与实现不符——仓内无该引擎、`go.mod` 无相关依赖（该失真由 `docs/FEATURES_OVERVIEW.md` 点名"文案超前于实现"；其源头是 `internal/modules/portscan/module.go` 的模块 Description 经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板，代码侧已随 `ee7fd0d` 同步订正：`module.go` 的 Description 改述为「自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）」并跑 `go run ./scripts/cataloggen` 再生 catalog 与 fixture，前端 Info 面板自此同步）。
 - **快捷联动操作**：Web 端口浏览器一键直达，支持全量开放端口一键复制与结果流式实时渲染。
+- **代理连通性测试**：填协议 / 地址 / 端口（可选账号密码，主机栏支持 IPv4、IPv6 与域名）。判定口径是**能经该代理拿到公网出口 IP 才算通**——光 TCP 连上代理端口不算，那会给出大量假阳性；五个出口源各查各的、IP 分别显示，结论取**多数一致值**并报「n/m 源一致」（同一台代理的多出口轮转是真机实况，不拿 IP 变化当通断判据）。
+- **SSH 连接测试**：两个动作刻意分开——「连接测试」只做协议版本横幅交换（零第三方依赖，报告可达性、是否 SSH 服务、协议与实现版本）；「试登录」才发起**真实密码认证**（走 `x/crypto/ssh` 完整握手，报告可登录/被拒/主机密钥指纹）。后者会在对端 `sshd` 日志留下记录、可能触发 fail2ban，因此是独立按钮、凭据区默认收起，密码不保存也不进结果。
 
 #### 4. 🎯 端口占用精准排查与一键释放 (PortKill)
 - 快速查询指定本地端口（TCP/UDP）占用情况与全量监听端口表。
@@ -104,7 +106,7 @@
 
 ### 二、第三方桌面工具托管（托管模式）
 
-Hanxi 将 31 款常用开源/免费桌面工具纳入统一管理（"款"的口径 = catalog `hosted-versions` 能力计数，判据为模块存在 `version/` 子包，详见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) 头部说明；EarTrumpet 属纳管特例不计入）。除 frpc 等特例外，托管模块共享同一套标准骨架：
+Hanxi 将 32 款常用开源/免费桌面工具纳入统一管理（"款"的口径 = catalog `hosted-versions` 能力计数，判据为模块存在 `version/` 子包，详见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) 头部说明；EarTrumpet 属纳管特例不计入）。除 frpc 等特例外，托管模块共享同一套标准骨架：
 
 - **版本管理**：上游 Releases / 官网清单侦查 → 多层完整性校验（GitHub digest / SHA256SUMS / 官方哈希清单 / 字节数 + PE 版本核对）→ 下载、本地导入与版本删除；
 - **进程托管**：Windows JobObject 绑定的启停引擎、进程枚举/互斥体探测运行态、Win32 唤窗 / 官方单实例命令通道唤起窗口、"跟随 Hanxi 退出"开关（**默认关闭**：Hanxi 退出不影响已托管工具独立运行）、桌面快捷方式创建；
@@ -151,7 +153,7 @@ Hanxi 将 31 款常用开源/免费桌面工具纳入统一管理（"款"的口�
 - **全局通知中心**：模块下载/实例状态/扫描进度等事件汇聚为分级通知（信息/成功/警告/错误），抽屉式查看与已读管理。
 - **内置运行日志查看器**：提供应用全局运行日志文件列表检索、多行日志实时分页查看与历史日志一键清理（凭据自动脱敏）。
 - **系统快捷直达 (Quick Launch)**：一键打开系统 `hosts` 文件、环境变量配置、网络适配器（`ncpa.cpl`）等。
-- **按需懒加载模块架构**：全部 49 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
+- **按需懒加载模块架构**：全部 50 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
 
 ---
 
@@ -166,7 +168,7 @@ Hanxi 将 31 款常用开源/免费桌面工具纳入统一管理（"款"的口�
 | **连接感知** | **日志特征词嗅探（毫秒级细粒度状态）** | 仅根据进程存活判定 | 仅根据进程存活判定 |
 | **多实例支持** | **原生支持多项目独立并行运行** | 仅单配置单运行 | 仅单配置运行 |
 | **配置分享** | **`frp://` 链接一键分享 + 批量端口导入** | 部分支持 | 不支持 |
-| **第三方生态** | **31 款桌面工具统一托管**（版本管理+完整性校验+进程监管；特例如实标注——抖音下载器仅版本+下载不接管进程、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型骨架） | 不支持 | 不支持 |
+| **第三方生态** | **32 款桌面工具统一托管**（版本管理+完整性校验+进程监管；特例如实标注——抖音下载器仅版本+下载不接管进程、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型骨架、HEU 激活工具解 RAR5 而非 zip 且仅"有 rar+官方摘要"的版本可自动安装） | 不支持 | 不支持 |
 | **系统集成** | **系统托盘常驻 + 开机自启 + UAC 提权** | 占用大/启动慢 | 功能单一 |
 | **开发者套件** | **环境检测 + 端口扫描 + 局域网快传 + 随手记** | 仅单一功能 | 仅单一功能 |
 
@@ -219,7 +221,7 @@ hanxi/
 │  ├─ domain/                   # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                   # 模块插件化抽象（Module 契约 / 懒加载注册中心 / 导航与启用状态）
 │  ├─ notify/                   # 全局通知中心（分级通知 Hub 与前端事件推送）
-│  ├─ modules/                  # 49 个功能模块（自建能力 18 + 工具托管 31，按 catalog 权威计数对账）
+│  ├─ modules/                  # 50 个功能模块（自建能力 18 + 工具托管 32，按 catalog 权威计数对账）
 │  │  ├─ 自建能力               # frpc / wechat / portscan / portkill / lan / publicip
 │  │  │                         # / wifi / envcheck / wsl / fileshare / memo / quickmenu
 │  │  │                         # / sysinfo / ocr / softver / webapp / msgboard / clipboard
@@ -228,12 +230,12 @@ hanxi/
 │  │                            # / bcu / mangodisk / recordly / papertodo / piclite / guoheview
 │  │                            # / ddnsgo / translucenttb / vscode / rustdesk / subnetdesk
 │  │                            # / rufus / bili23 / paseo / douzy / windterm / termora / rammap
-│  │                            # / piik / dbx / gonavi
+│  │                            # / piik / dbx / gonavi / heukms
 │  │                            # （托管模块标准形态：version/ 版本管理子包 + instance/ 实例引擎子包；
 │  │                            #   特例如实登记——douzy/nanazip 无 instance（仅版本+安装或 MSIX 纳管）、
 │  │                            #   eartrumpet 无 version（只纳管官方直装渠道）、piik 为 headless 服务型、
-│  │                            #   windterm/termora/rammap 仅转链不打包二进制。
-│  │                            #   ⚠ 本列"31 行"与上文"31 款"是两个不同集合恰好同数：前者按叙述归类
+│  │                            #   windterm/termora/rammap 仅转链不打包二进制、heukms 解 RAR5 而非 zip（iso 侧真实内容在 UDF，纯 Go 读不到）。
+│  │                            #   ⚠ 本列"32 行"与上文"32 款"是两个不同集合恰好同数：前者按叙述归类
 │  │                            #   （含 eartrumpet、frpc 归自建列），后者按 catalog hosted-versions 能力
 │  │                            #   计数（含 frpc、不含 eartrumpet）。核对时以
 │  │                            #   `go run ./scripts/cataloggen` 的产物为准，勿拿两把尺互证。）

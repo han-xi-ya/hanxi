@@ -10,12 +10,12 @@
     "这类带帽史述，闸门必须放行「如实记录历史」，否则会把勘误本身报成漂移。"
   ],
   "facts": {
-    "moduleTotal": 49,
+    "moduleTotal": 50,
     "selfBuiltModules": 18,
-    "hostedVersions": 31,
-    "managedProcess": 30,
-    "artifactDelegators": 26,
-    "supervisorDelegators": 23,
+    "hostedVersions": 32,
+    "managedProcess": 31,
+    "artifactDelegators": 27,
+    "supervisorDelegators": 24,
     "mcpTools": 12,
     "mcpAccessKeys": 10,
     "appIcons": 28
@@ -43,12 +43,12 @@
       "pattern": "4[0-8] 模块统一注册",
       "expectedFact": "moduleTotal",
       "why": "统一注册数旧值入文",
-      "allowIfContains": ["原记", "现 49", "订正", "旧数", "已列入史链"]
+      "allowIfContains": ["原记", "现 50", "现 49", "订正", "旧数", "已列入史链"]
     },
     {
-      "pattern": "(2[0-9]|3[02-9]) 款",
+      "pattern": "(2[0-9]|3[01]|3[3-9]) 款",
       "expectedFact": "hostedVersions",
-      "why": "托管款数旧值入文（25/28 等；31 为现值故不在禁列）",
+      "why": "托管款数旧值入文（25/28/31 等；32 为现值故不在禁列）",
       "allowIfContains": ["原写", "原记", "前记", "系", "时点值", "订正", "此前", "长期写", "旧统计", "未跟", "史", "入库前", "已偿", "→", "计数待"]
     },
     {

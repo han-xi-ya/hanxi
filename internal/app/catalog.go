@@ -196,6 +196,18 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
+		ID:            "heukms",
+		Name:          "HEU KMS Activator",
+		Description:   "托管 HEU KMS 激活工具：从 GitHub Releases 下载 RAR5（官方摘要校验 + 纯 Go 解包）、JobObject 启停与窗口唤起，另有本地导入兜底（iso 镜像不解析；程序 manifest 强制管理员权限）",
+		Category:      "system",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{"hosted-versions", "managed-process"},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "keyviz",
 		Name:          "Keyviz",
 		Description:   "开源按键/鼠标可视化工具 Keyviz：MSI 托管安装、JobObject 启停与运行状态探测",

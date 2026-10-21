@@ -32,7 +32,7 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │ 自建: frpc 网络  │ │ 期 + 四维状态目  │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ 录/安装凭据/调用 │ │ 与配置持久化 │
 │ 快传 随手记等    │ │ 门/更新感知契约  │ │ ReceiptStore │
-│ 托管: 31 款桌面  ├──────────────────┤ │ 安装凭据存储 │
+│ 托管: 32 款桌面  ├──────────────────┤ │ 安装凭据存储 │
 │ 工具 version+    │ │ internal/product │ ├──────────────┤
 │ instance 子包    │ │ 品牌身份常量     │ │ internal/    │
 │ （资产与进程主流 │ ├──────────────────┤ │ notify 通知  │
@@ -119,7 +119,7 @@ type Module interface {
 
 ### 2.3 外部工具托管架构（Managed Integration）
 
-31 款第三方桌面工具按同一标准骨架纳管（"款"= catalog `hosted-versions` 能力计数，判据为存在 `version/` 子包，2026-10-12 按 `internal/modules/*/version` 实扫核得；原写 25 系 piik/dbx/gonavi/windterm/termora/rammap 六款入库前的时点值），每模块三件套（例外：`douzy` 上游尚处内测期、无便携形态，刻意止步于 `version/` 版本管理 + 安装包下载，不做进程托管、无 `instance/` 子包；`nanazip` 为 MSIX Bundle 形态，同样止步 `version/` 验签拆包，无 instance 面；`eartrumpet` 反之——无 `version/` 亦无 `instance/`，只经 AUMID 纳管官方直装渠道，故不入本计数但仍在托管叙述列）：
+32 款第三方桌面工具按同一标准骨架纳管（原写 31，2026-10-16 `heukms` 入库后按同一判据现推 32）（"款"= catalog `hosted-versions` 能力计数，判据为存在 `version/` 子包，2026-10-12 按 `internal/modules/*/version` 实扫核得；原写 25 系 piik/dbx/gonavi/windterm/termora/rammap 六款入库前的时点值），每模块三件套（例外：`douzy` 上游尚处内测期、无便携形态，刻意止步于 `version/` 版本管理 + 安装包下载，不做进程托管、无 `instance/` 子包；`nanazip` 为 MSIX Bundle 形态，同样止步 `version/` 验签拆包，无 instance 面；`eartrumpet` 反之——无 `version/` 亦无 `instance/`，只经 AUMID 纳管官方直装渠道，故不入本计数但仍在托管叙述列）：
 
 ```text
 internal/modules/<tool>/

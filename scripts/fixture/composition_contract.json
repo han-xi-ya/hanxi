@@ -71,6 +71,11 @@
       "group": "desktop"
     },
     {
+      "id": "heukms",
+      "route": "/ext/heukms",
+      "group": "system"
+    },
+    {
       "id": "keyviz",
       "route": "/ext/keyviz",
       "group": "desktop"
@@ -280,6 +285,8 @@
     "gonavi:version-download",
     "guoheview:instance-state",
     "guoheview:version-download",
+    "heukms:instance-state",
+    "heukms:version-download",
     "keyviz:instance-state",
     "keyviz:version-download",
     "lan:progress",
@@ -433,7 +440,7 @@
     ]
   },
   "counts": {
-    "modules": 49,
-    "events": 96
+    "modules": 50,
+    "events": 98
   }
 }

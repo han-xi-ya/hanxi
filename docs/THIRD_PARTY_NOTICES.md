@@ -2,7 +2,7 @@
 
 > 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部托管桌面工具。
 >
-> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **31 款**（`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 31。
+> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **32 款**（`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 32。
 >
 > 注意别把两把尺混用：下方「托管工具真图标」一节的 **28 枚**是**图标资产**口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件），与本段托管款数无对应关系。
 >
@@ -263,6 +263,17 @@ AGPL-3.0 的强义务在再分发或以其构成网络服务时触发；Hanxi �
 Hanxi 托管本体（N4 机主 2026-09-23 拍板路线 A）：上游分发形态为「同址覆盖式最新版」（无版本目录、无历史资产），故版本模型取 zip 的 `Last-Modified` 日期作版本令牌——这是唯一诚实语义，不伪造版本号；完整性走 WindTerm 同款降级三层并在 UI 如实标注「未经官方哈希校验」；载荷 manifest 为 `requireAdministrator` → 提权三重契约（740 指引文案含「管理员」关键词喂 ElevateRestart 一键通道、UIPI 边界如实降级、stopped 引导行预告），与 rufus/litemonitor/bcu 同族；一次性「清空待机列表」语义、非常驻 GUI。其品牌位图按 Sysinternals 条款**不落仓库、不随发布物分发**：界面默认矢量 `i:gauge`，装有机主本机官方 RAMMap64.exe 时走「红线图标运行期本机提取」通道。
 
 若未来改为预装或随 Hanxi 安装包分发，须先与微软权利方确认再分发授权；当前「代下载、不入库、不随包」形态不触发该问题。
+
+## HEU KMS Activator（Windows / Office 激活工具）
+
+- 项目：HEU KMS Activator
+- 上游：<https://github.com/zbezj/HEU_KMS_Activator>（43k+ star，最新 64.0.0 / 2026-07-06；**master 分支只剩两份 PDF 与 19 字节 README，上游后期已闭源**，GitHub API `license` 字段实测为 `null`）
+- 许可证：**无 LICENSE 文件**。作者在其发布包内 `更新日志.txt` 尾部自述「此软件仅作学习交流使用，支持购买正版软件！」并附《计算机软件保护条例》第十七条的免商业使用声明段（该文件为 GBK/CP936 编码）；作者署名与版权串取 PE VERSION 资源实证——`LegalCopyright`/`CompanyName` = 知彼而知己，`FileDescription` = `HEU KMS Activator™`（带商标），`Comments` = `KMS/数字权利/KMS38/OEM激活`。
+- 发行方式：Hanxi **代下载官方 release 的 rar 到用户本机托管目录**（GitHub `digest` 整包校验 → `nwaples/rardecode` 纯 Go 解 RAR5 → 落位前再核 PE 身份与版本号），符合本文档既定基线「用户侧按需下载、不捆绑、不再分发、不修改上游二进制」；主程序**不入仓库、不打进 Hanxi 发布物**。同版双发的 `.iso` 是 UDF 光盘镜像，Hanxi 不解析（纯 Go 与系统 bsdtar 都读不到 UDF 侧），需要它请去发布页自取；上游未发布官方摘要的旧版本（62.0.0 及更早）不代下载，由用户「导入本地」收纳自己取得的 exe。
+- 解包依赖：`github.com/nwaples/rardecode` v1.1.3（BSD-2-Clause；纯 Go、零传递依赖）——**本仓首个第三方归档解析依赖**，此前全部解包走标准库 `archive/zip`。它是 Hanxi 自身的构建依赖，与被托管工具的上游许可无关。
+- 商标与图标：主程序名带 ™，且无开源许可证可供过审，故**品牌图标不落仓库**（`frontend/src/assets/apps/heukms.png` 刻意不存在，界面按取材纪律回落 `generic.png` 通用徽标——宁缺毋滥）。
+- 风险如实告知（写进 UI 而非藏进文档）：主程序 `Get-AuthenticodeSignature` 实测 **NotSigned**，且属激活工具，Windows Defender 一类实时保护大概率拦截删除——「已装版本突然消失」是该模块最常见的真实故障，异常退出文案与首用提示条都直接说明这一点。Hanxi 不代为修改任何安全软件设置。
+- 若未来改为预装或随 Hanxi 安装包分发：**必须先取得作者（微信公众号 heu168）明确授权**并补记于此；当前「本机按需代下载到托管目录、不入库不随包」形态不触发该问题。
 
 ## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行 + 开源上游仓库取材入库件 + 托管新模块补录二枚）
 

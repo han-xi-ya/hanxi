@@ -4,7 +4,7 @@
 >
 > **为什么要有它**：2026-10-12 全项目文档对账发现，同一事实在不同文档里存着 3~4 套值（模块数 37/38/41/45、托管款数 25/28、MCP「四件/六件/八键」、前端门禁 94/101/112/653/1261），且架构文档里存在**描述了并不存在的东西**（"集成纯 Go Nmap 探针引擎 gonmap"，仓内无此引擎）。根因是数字散落在十余个文档里各处手写、无任何机器校验。本表 + `go test ./scripts/docsfacts` 把它变成结构性不可能。
 >
-> **纪律**：改了代码导致事实变化 → 跑 `go run ./scripts/docsfacts -regen` 重写 `scripts/fixture/doc_facts.json`，并同批改文档数字与本文。**禁止**为了让测试变绿而反向修改本文数值；本文只陈述代码现推结果。
+> **纪律**：改了代码导致事实变化 → 跑 `go run ./scripts/docsfacts -emit` 取现推事实（该命令**刻意只打印到 stdout、不写盘**），人工合并进 `scripts/fixture/doc_facts.json` 的 facts 段，并同批改文档数字与本文。**禁止**为了让测试变绿而反向修改本文数值；本文只陈述代码现推结果。
 
 ---
 
@@ -12,23 +12,23 @@
 
 | 事实 | 现值 | 权威来源 | 复核命令（仓库根执行） |
 |---|:---:|---|---|
-| 业务模块总数 | **49** | `internal/app/catalog.go` 生成物 | `grep -c 'ID:' internal/app/catalog.go` |
+| 业务模块总数 | **50** | `internal/app/catalog.go` 生成物 | `grep -c 'ID:' internal/app/catalog.go` |
 | 自建侧模块数 | **18** | `moduleTotal − hostedVersions`（叙述列与能力口径在此互换对齐，见 §二） | `go run ./scripts/docsfacts -emit` 的 `selfBuiltModules` |
-| 注册构成 | **47 常驻 + 2 条件**（`memo` / `clipboard`） | `internal/app/app.go` `modulesToRegister` | 读 `app.go` 装配段 |
-| 托管款数 | **31** | catalog `hosted-versions` 能力 = 模块存在 `version/` 子包 | `for d in internal/modules/*/; do [ -d "$d/version" ] && basename $d; done \| wc -l` |
-| 进程托管数 | **30** | catalog `managed-process` 能力 = 存在 `instance/` 子包 | 同上换 `instance` |
-| 版本面内核委托 | **26** | `import hanxi/packages/go/artifact` 的模块数 | `grep -rl 'hanxi/packages/go/artifact' internal/modules/ \| sed 's\|internal/modules/\|\|\;s\|/.*\|\|\' \| sort -u \| wc -l` |
-| 实例面内核委托 | **23** | `import hanxi/packages/go/supervisor` 的模块数 | 同上换 `supervisor` |
+| 注册构成 | **48 常驻 + 2 条件**（`memo` / `clipboard`） | `internal/app/app.go` `modulesToRegister` | 读 `app.go` 装配段 |
+| 托管款数 | **32** | catalog `hosted-versions` 能力 = 模块存在 `version/` 子包 | `for d in internal/modules/*/; do [ -d "$d/version" ] && basename $d; done \| wc -l` |
+| 进程托管数 | **31** | catalog `managed-process` 能力 = 存在 `instance/` 子包 | 同上换 `instance` |
+| 版本面内核委托 | **27** | `import hanxi/packages/go/artifact` 的模块数 | `grep -rl 'hanxi/packages/go/artifact' internal/modules/ \| sed 's\|internal/modules/\|\|\;s\|/.*\|\|\' \| sort -u \| wc -l` |
+| 实例面内核委托 | **24** | `import hanxi/packages/go/supervisor` 的模块数 | 同上换 `supervisor` |
 | MCP 工具数 | **12** | `internal/mcp/` 的 `mcp.NewTool(` 调用 | `grep -rho 'mcp\.NewTool(' internal/mcp/*.go \| wc -l` |
 | MCP 授权键数 | **10** | `internal/mcp/server.go` `knownModuleIDs` | 读该 map（`envcheck/everything/ocr/memo/sysinfo/logs/portscan/lan/portkill/clipboard`） |
 | 上游真图标数 | **28** | `internal/app/appicons/*.png`（台账 `sources.go`，`sources_test.go` 逐枚解码锁死） | `ls internal/app/appicons/*.png \| wc -l` |
-| Go 测试文件数 | **386**（`internal/`）/ 403（全仓） | `git ls-files` | `git ls-files 'internal/**/*_test.go' \| wc -l` |
-| 前端测试规模 | **167 spec / 2111 用例** | `vitest run` 实跑 | `cd frontend && node node_modules/vitest/vitest.mjs run` |
+| Go 测试文件数 | **386**（`internal/`）/ 403（全仓）——注：`git ls-files` 只数已跟踪文件，`heukms` 本轮新增 2 份（`version/version_test.go`、`instance/instance_test.go`）在入库后自当 +2 | `git ls-files` | `git ls-files 'internal/**/*_test.go' \| wc -l` |
+| 前端测试规模 | **168 spec / 2120 用例** | `vitest run` 实跑 | `cd frontend && node node_modules/vitest/vitest.mjs run` |
 | 应用版本 | **0.3.0** | `internal/product/identity.go` `var Version`（**唯一运行时权威**） | `grep -n 'var Version' internal/product/identity.go` |
 
 ## 二、口径边界（写文档必须先知道的三件易混事）
 
-1. **两把尺，勿互证**：托管叙述列（README/PRD 的表）与 catalog `hosted-versions` 计数**恰好同为 31，但集合不同**——前者含 `eartrumpet`、`frpc` 归自建列；后者含 `frpc`、不含 `eartrumpet`（它 `version/`、`instance/` 皆无）。任何一处改动都可能让两个 31 不再相等，**不要把它们当同一个数**来引用。
+1. **两把尺，勿互证**：托管叙述列（README/PRD 的表）与 catalog `hosted-versions` 计数**恰好同为 32，但集合不同**——前者含 `eartrumpet`、`frpc` 归自建列；后者含 `frpc`、不含 `eartrumpet`（它 `version/`、`instance/` 皆无）。任何一处改动都可能让两个 32 不再相等，**不要把它们当同一个数**来引用。（2026-10-12 两把尺同为 31；`heukms` 入库后同为 32——巧合延续，仍不可互证。）
 2. **图标数 ≠ 托管款数**：28 枚是"图标资产入库"口径（含 `frpc`/`ddnsgo` 等 48px 封顶件，不含 `recordly`/`vscode`/`rammap` 等许可受限不入库件）。
 3. **版本号的三处硬编码**：权威是 `internal/product/identity.go`；`build/config.yml`、`build/windows/info.json`、`build/windows/msix/app_manifest.xml` 需人工同步；`frontend/package.json` 的 `0.0.0` 是 npm 占位，**不是**版本源。git tag 目前只到 `v0.2.0`——这是发布节奏事实，**不是**文档错误，任何文档笔都不得把 0.3.0 改掉。
 
@@ -36,6 +36,7 @@
 
 - **portscan 服务指纹（2026-10-12 已连根订正，`ee7fd0d`）**：`internal/modules/portscan/module.go` 的 `Description` 曾写「集成 Nmap 深度服务指纹识别」、包注释曾写「可选 Nmap 深度指纹」，而仓内**无** Nmap/gonmap 引擎、`go.mod` 无相关依赖——真实实现是 `scanner.go` 的 `lightweightProbe`（主动握手 + 被动 Banner 抓取覆盖 SSH/FTP/SMTP/MySQL/Redis，另作 HTTP 头部识别）。该句经 `cataloggen` 流入 `internal/app/catalog.go`、`scripts/fixture/module_catalog.json` 与前端 Info 面板，**光改 README/PRD/DEVPLAN 挡不住对外失真**，故本轮先正文档、随即补正代码源头并再生两份产物。
 - 现口径：「自研轻量 Banner 与 HTTP 服务指纹探测（不含 Nmap）」。**若有人照旧文档把它改回"集成 Nmap"，包注释里的诚实边界段与 `docs/FEATURES_OVERVIEW.md` 的原始点名即是反证**；本表不再有任何"代码与事实不符"的在册欠账。
+- **docsfacts 再生命令（2026-10-19 订正）**：本文纪律段曾写「跑 `go run ./scripts/docsfacts -regen` 重写 `doc_facts.json`」，而 **`-regen` 标志不存在**——`scripts/docsfacts/main.go:321` 只定义了 `-emit`（全仓 `*.go` 内 `regen` 零命中），且 `-emit` **刻意只打印到 stdout、不写盘**（包注释 `main.go:18` 与失败文案 `:354` 都要求人工合并基线）。上条那句"不再有任何在册欠账"的宣告并不完备：同属"描述了并不存在的东西"，这一项就一直躺在**讲防失真的那份文档自己的纪律段**里。闸门也抓不住它——断链检查只查带扩展名的相对目标，命令行不是链接（能力边界见 §四）。
 
 ## 四、闸门能力边界（如实说明，不夸大）
 
@@ -50,4 +51,4 @@
 
 - ❌ **状态头语义**——"施工中 / 在途 / 待拍板"这类自然语言是否与实况相符（无锚可校，2026-10-12 那五处过期状态头是人工销的）；
 - ❌ **带日期的历史文档内旧值**（`FEATURES_OVERVIEW` 的 38、`PROGRESS` 的 94/939 等属史实，被 `forbidden.allowIfContains` 与豁免表有意放行）；
-- ❌ 前端用例数（`167/2111` 随每次加测变动，不入禁词表，靠文档"当时值/现值"措辞规范）。
+- ❌ 前端用例数（`168/2120` 随每次加测变动，不入禁词表，靠文档"当时值/现值"措辞规范）。

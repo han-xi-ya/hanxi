@@ -1305,5 +1305,91 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 
 - **问题现象与错误原因**：机主在「托盘设置」里找不到刚集成不久的 Termora 终端，第一反应是"被过滤了"或"我改了没生效"。真因是 `internal/modules/termora/module.go` **从未实现 `extapi.TrayCommandsProvider`**。托盘候选的 command 族唯一来源是 `registry.ListTrayCommands()`（`internal/extapi/registry.go:460-502`）的逐模块类型断言，未实现即结构性缺席。该契约是**可选**的（实现即接入、保持向后兼容），Go 不会因为缺实现而编译失败，`internal/app/catalog.go` 的 `tray-commands` 能力又只是 `cataloggen` 扫源码反向推导的**镜像**、不参与运行期供选——于是整条链**一声不响**，症状仅仅是设置界面少一项，构建、单测、`task check` 全都不会红。同期入库的 `dbx`（`module.go:89`）/`gonavi`（`:87`）逐字套了模板，`termora`/`windterm` 则漏了，且全仓找不出任何一句"termora 刻意不挂托盘"的负裁决。
 - **排查过程**：先按三条常见病因逐一排除，防止顺着直觉乱改——①**被停用**？`registry.go:120` 是 `IsModuleEnabled(id, true)`，缺位即默认启用（实测 `<数据根>/config.json` 的 `modules` 表只有 38 键、11 个新模块未登记，但这不构成过滤）；②**未安装**？`modules/receipts/termora.json` 在，`IsInstalled` 为真；③**保存时被白名单裁掉**？`cleanTrayMenuItems`（`internal/app/elevate_tray.go:158-190`）只校验类型与必填，从不拿候选表当白名单。三条排除后沿候选链上溯到 `TrayCommands()` 本体，才见接口缺席。再查流程资产，发现 `.claude/skills/integrate-github-tool/SKILL.md` 的阶段 3 清单里**根本没有这一步**（其第 7 项"托盘"讲的是上游工具自己藏不藏托盘，与 hanxi 宿主候选无关）——凡照清单施工的新模块都可能同样漏掉，这不是 Termora 一个的偶然。
-- **正确做法与标准修复方案**：`module.go` 加七行 `TrayCommands()`，照 `ccswitch/module.go:79-88` 模板，`Run` **复用页面「启动」按钮同一个 `OpenWindow()` 入口**（勿新造 RPC，更勿在闭包里另起第二套控制编排，否则两轨语义必然漂移）；随后 `go run ./scripts/cataloggen` 再生 `internal/app/catalog.go` + `scripts/fixture/module_catalog.json`，由 `TestCatalogEntrypointsGrounded` 守住"实现↔catalog 互为充要"（漏再生必红）。前端与 bindings **零改动**——候选网格走既有 `ListTrayMenuOptions` 自动渲染。刻意不供的要在证据里留下负裁决：`piik`（headless 服务型，catalog/PRD/notices 三处写明"无窗口无托盘"）、`douzy`（仅版本+下载，不接管进程）、`nanazip`（MSIX 安装管理型无主窗）、`frpc`（多实例，单条"启动 frpc"无从指代哪个实例）。本次已补 termora/windterm/bcu（26→29），机主 2026-10-13 终裁后再补 markeron（语义定为**切换型**「开启/停止屏幕标注」，照 msgboard「挂出/撤下留言牌」先例，而非套 `launch`）与 rufus（非提权态点击必报错，但与页面「启动」按钮同语义——同语义即一致，不构成托盘新增缺陷），托盘入口 → **31**；`rammap` **终裁不接**，裁决已写进包注释（"这不是遗漏，后人勿当欠账顺手补上"）与对外 Description（随 cataloggen 进 catalog 与 Info 面板）。至此本条要求的"缺席必须有显式负裁决"全数落实：**31 款托管工具中 26 款供候选、5 款有理由**——`piik`（headless 服务型）、`douzy`（仅版本+下载不接管进程）、`nanazip`（MSIX 安装管理型无主窗）、`frpc`（多实例，单条"启动 frpc"无从指代）、`rammap`（一次性观察工具）；托盘 31 个入口 = 26 托管 + 5 非托管（clipboard / eartrumpet / msgboard / ocr / webapp）。
+- **正确做法与标准修复方案**：`module.go` 加七行 `TrayCommands()`，照 `ccswitch/module.go:79-88` 模板，`Run` **复用页面「启动」按钮同一个 `OpenWindow()` 入口**（勿新造 RPC，更勿在闭包里另起第二套控制编排，否则两轨语义必然漂移）；随后 `go run ./scripts/cataloggen` 再生 `internal/app/catalog.go` + `scripts/fixture/module_catalog.json`，由 `TestCatalogEntrypointsGrounded` 守住"实现↔catalog 互为充要"（漏再生必红）。前端与 bindings **零改动**——候选网格走既有 `ListTrayMenuOptions` 自动渲染。刻意不供的要在证据里留下负裁决：`piik`（headless 服务型，catalog/PRD/notices 三处写明"无窗口无托盘"）、`douzy`（仅版本+下载，不接管进程）、`nanazip`（MSIX 安装管理型无主窗）、`frpc`（多实例，单条"启动 frpc"无从指代哪个实例）。本次已补 termora/windterm/bcu（26→29），机主 2026-10-13 终裁后再补 markeron（语义定为**切换型**「开启/停止屏幕标注」，照 msgboard「挂出/撤下留言牌」先例，而非套 `launch`）与 rufus（非提权态点击必报错，但与页面「启动」按钮同语义——同语义即一致，不构成托盘新增缺陷），托盘入口 → **31**；`rammap` **终裁不接**，裁决已写进包注释（"这不是遗漏，后人勿当欠账顺手补上"）与对外 Description（随 cataloggen 进 catalog 与 Info 面板）。至此本条要求的"缺席必须有显式负裁决"全数落实：**31 款托管工具中 26 款供候选、5 款有理由**（本段系 2026-10-13 时点值；2026-10-16 `heukms` 入库并同法留负裁后，现值为托管 **32** 款 = **26** 供候选 + **6** 有理由不接，见下方 #108）——`piik`（headless 服务型）、`douzy`（仅版本+下载不接管进程）、`nanazip`（MSIX 安装管理型无主窗）、`frpc`（多实例，单条"启动 frpc"无从指代）、`rammap`（一次性观察工具）；托盘 31 个入口 = 26 托管 + 5 非托管（clipboard / eartrumpet / msgboard / ocr / webapp）。
 - **避坑防重犯建议**：凡是「**可选契约 + 缺席静默**」的组合，都必须配一道**穷举锁**才谈得上防漏——本仓同类先例是 `internal/app/rpc_gate_matrix_test.go` 用 AST 穷举全部模块的调用门接线，把"忘了实现"从静默变成必红。托盘候选可同法：按 `managed-process` 能力名单生成"该有 `TrayCommands` 的模块集合"，与实际实现比对，差集必须逐条落在显式豁免表（附负裁出处）内，否则测试红。集成新工具时，把 `SKILL.md` 阶段 3 新增的「托盘候选必须显式接线」当作与 `Nav()`/`Services()` 同级的必做项，别依赖记忆；排查"某个开关/候选里找不到 X"这类问题，先分清**结构性缺席**（没实现，永不出错）与**被过滤**（有实现，条件不满足），前者的症状永远不是"报错"而是"少东西"。
+### 108. 上游只发 UDF 镜像与 RAR5：解包通道两轮误判（HEU 集成），以及"共享件 download 位不是万能入口"
+
+- **问题现象与错误原因**：照 `integrate-github-tool` 模板接入 zbezj/HEU_KMS_Activator 时，标准骨架第一环（远程列表 → `artifact.Fetch` → `artifact.UnpackZip` → `Tree.Commit`）无枝可依：54 个 release 的资产形态分三个代际——zip 24 版（24.1.0~40.0.0，2021-07~2023-10）、rar 19 版（26.2.0~61.0.0）、**iso+rar 11 版（61.1.0~最新 64.0.0）**，"当前可用版本"一个 zip 都没有；而仓内解包能力全建在标准库 `archive/zip` 上（此前零第三方归档依赖）。
+  在此前提下我下了**两个错判**，并已经把错判当事实写进了代码注释、`docs/PRD.md`、`docs/THIRD_PARTY_NOTICES.md` 和本条初稿：
+  1. 「纯 Go 生态无可靠 RAR5 实现」——**错**：`github.com/nwaples/rardecode` v1.1.3 明确支持 RAR 5.0，BSD-2-Clause、纯 Go、零传递依赖；
+  2. 「那个 rar 是加密包（密码 HEU168）」——**错**：`HEU168` 只是上游包内 `更新日志.txt` "软件信息"栏的一行文字，64.0.0 的 rar **未加密**，空密码即可完整解出。
+  错因链条值得留档：我第一次手写 RAR5 块头解析时，把变长整数按**小端**移位读（RAR5 实为高位在前的 7bit 累加），块边界立刻跑飞成 `type=235909` 这类值、看不到任何明文条目名；这个"自己的解析器读不通"的挫败被当成了"没人能读通"的证据，又顺势采信了更新日志那句"解压密码"——**全程没有做一次真正的解压实测**。恰好是本条避坑建议第 2 条要禁止的行为。
+- **排查过程**（两轮，含纠错轮；取证细节均可复现）：
+  1. **权威布局向 OS 要**：`Mount-DiskImage` + `Get-ChildItem -Recurse` 实测 ISO 根目录 5 条目——`HEU_KMS_Activator_v64.0.0.exe` 4,707,840B、两枚中文 `.cmd`（作者自备的 WD 白名单脚本）、`更新地址：微信公众号.jpg`、`更新日志.txt`；`Get-AuthenticodeSignature` 报 **NotSigned**。
+  2. **ISO9660 侧为何是空的**：先按记忆取 PVD 字段偏移（根记录 136、块大小 104）读出 `rootRecLen=0`、`blockSize=0` 的鬼值；改为在扇区里搜双端序常量定位，才确认真实布局（`Volume Space Size@80`=2952 块、**根目录记录@156**、其标识符为单个 `0x00` 字节）。读对之后根目录仍只有 3 条记录（`.`/`..`/`README.TXT` 135B），而那 135 字节正文自述：`This disc contains a "UDF" file system…`；扇区 256 前两字节 `02 00` 即 UDF AnchorVDP 的 `tagIdentifier=2`。→ **真实文件全在 UDF 侧，ISO9660 只是桥接占位**。
+  3. **库路线否决**：`go-diskfs@v1.9.4` 的 filesystem 子包只有 `ext4/fat12/fat16/fat32/iso9660/squashfs`——**没有 udf**，且 `GetFilesystem(0)` 把逻辑块误判成 512B 导致 `ReadDir` invalid argument；系统 `C:\Windows\System32\tar.exe`（bsdtar 3.6.2/libarchive）同样只列得动 ISO9660 那 2 条。（git bash 的 `tar` 是 GNU tar 1.35，压根不认 ISO——用命令名取证前先确认是哪一家。）
+  4. **闭源上游只能静态取证**：`git/trees/master?recursive=1` 全仓仅 3 条目（两份 PDF + 19 字节 README），HEU 后期闭源、无 `app.manifest` 可 grep。改手写 PE 资源树解析（`LoadLibraryExW(LOAD_LIBRARY_AS_DATAFILE)` 实测 err=87 走不通）拿到 `MANIFEST/1/2052`（**只有简体中文语言位，没有 1033**）→ `level="requireAdministrator" uiAccess="false"`，即 740 三重契约家族；同轮实证 `machine=0x14c` 32 位原生、CLR 数据目录为 0（**不是 .NET**，别抄 litemonitor 的"缺 .NET 8 桌面运行时"文案）、UPX 三节、`ProductVersion/FileVersion=64.0.0` 与 tag 同形，而 release 显示名却是 `v64.04.0`（**显示名与 tag 错位**），文件名还随版本漂移。
+  5. **想跑一次取证被拦**：`Start-Process` 执行外部下载的 exe 被权限分类器拒绝（需机主对"运行该外部程序"明确授权）。这一拦当时被我记成"设计必须能在上游行为未实证下成立"——这条判断本身是对的并保留至今（见下），但它**不该**被延伸成"所以解包通道也不用实测了"。
+  6. **纠错轮（机主指出 rardecode 后）**：临时模块 `go get github.com/nwaples/rardecode` → 空密码遍历 64.0.0 的 rar，5 条目全解出，主程序 SHA256 `6ad72af4…813e8a5c` **与上游在 `更新日志.txt` 里逐版公布的 exe 哈希逐字节一致**（该文件同时是"每版内部 exe"的哈希来源，比 GitHub 整包 digest 更贴落盘实况）。再篡改包内一个字节重跑 → `rardecode: bad file checksum`，且错误在**读满 4,707,840 字节之后**才结算——这条决定了实现必须"先写 `.partial`、读满无错才 rename"。
+- **正确做法与标准修复方案**：
+  - **通道定案**：rar 自动下载解包为主 + 「导入本地」兜底（含挂载 iso 后手取 exe，以及上游未发布摘要的旧版本）；iso 解析**不做**（UDF 无纯 Go 通道，且机主明确不走挂载路线）。
+  - **可安装集**：内核 `artifact.Fetch` 强制官方 SHA256（"托管下载不允许无校验安装"），而上游只有 63.1.0 起的 release 挂了 GitHub `digest`。故 `parseReleasesBody` 四道入选闸：非 draft、tag 为纯三段数字（丢 `24.4.1RP`/`24.4.1Beta`）、**存在 rar 资产**、**摘要为 64 位 hex**——不可安装的版本根本不进远程表，避免前端出现"看得见点不动"的行（共享面板的 `downloadBlock` 只接 state，无法按行禁用，硬塞只会造出错误 UI）。
+  - **模块自有解包件** `version/unpack_rar.go`（刻意不进 `packages/go/artifact`：共享包不该为单一消费者背上第三方归档依赖）：两遍遍历，pass1 审阅条目名并读满全部条目（坏包在本遍即由 CRC 暴露）、pass2 只解目标；三道闸＝条目名平铺白名单（含 `/`、`\`、`..`、盘符、保留设备名一律拒收整包）＋单条目/总量上限（压缩炸弹）＋**`.partial` → rename** 收口（错数据绝不留在 staging 被 Commit 搬进版本目录）。
+  - **落位前三重闸**：MZ 魔数 → `FileDescription` 身份（实测 `HEU KMS Activator™`，防上游包结构变化或误传无关 exe）→ `FileVersion` 归一后与目录令牌一致；双摘要入账（`Meta.ZipSHA256`=整包官方 digest 作幂等/防漂移锚，`Meta.AssetSHA256`=主程序摘要供"文件被安全软件动过"对账）。
+  - **真实夹具测试不入库上游二进制**：`unpack_rar_real_test.go` 用环境变量 `HANXI_HEU_RAR` 指向上游 rar，缺省 `t.Skip`；机主本机跑一次即可同时锁"解包产物哈希 == 上游公布值"和"篡改包零残留"。CI 侧由 `planRarUnpack`/`sanitizeRarName` 纯函数用例覆盖安全判据（本仓没有纯 Go 的 RAR **写**入库，造不出包夹具，这一点在测试注释里写明，不假装覆盖）。
+  - **对上游行为不敏感的控制面**（这条保留初稿的判断，它是对的）：进程名**前缀** `HEU_KMS_Activator*` 探测 + `EnumWindows` 按 PID 直操作唤窗，**不赌互斥体、不走二次拉起信使**；Quit 为 WM_CLOSE 尽力优雅 + 宽限 + JobObject 强杀兜底，文案不宣称"关窗即退进程"（无法取证就不写进话术）。
+  - **风险面如实前置**：`elevateHint` 含「管理员」喂 ElevateRestart，事件快照与 RPC 错误**两条通道共用一份判据**（`instance.ElevateHint` 导出别名）；异常退出文案指向"主程序可能被安全软件拦截或删除"；真图标不落仓库（无 LICENSE 且名带 ™）回落 `generic.png`；`THIRD_PARTY_NOTICES` 专节记可证事实并登记 rardecode 依赖。
+  - **前端契约恢复标准形态**：`adapter.versions.download` 真调 `DownloadVersion`、`subscribeProgress` 订阅 `heukms:version-download`（键=version）、不声明 `downloadBlock`、不覆写 `downloadLabel` 词族；远程表行只**追加**一个「↗ 发布页」备援入口（`OpenReleasePage`）。
+  - **保留的通用教训（初稿里唯一经实测仍成立的那条）**：共享件 `store.runDownload` 在调用 adapter.download 前先挂 `{stage:'resolve'}` 票据，而**收票只有两条路——进度事件覆盖，或重拉后命中"该版本已安装"**。缺事件通道的模块若把 download"复用"成打开发布页之类的别的事，票据会永久挂在"下载中"，行状态从此不对。任何"借用抽象位"的改造，先读消费方对生命周期的假设，再决定借不借。
+  - **账目链一并走完**：`composition_contract.json`（modules 条目 + `counts.modules` 49→50、`counts.events` 96→**98**）→ `cataloggen` 再生 `catalog.go`/`module_catalog.json` → `catalog_contract_test.go`/`catalog_service_test.go`/`contract-enum.spec.ts` 硬计数 → `navigation.spec.ts` 路由锁 62→63 → `doc_facts.json` 五处现值 + README/PRD/ARCHITECTURE/FRONTEND/FACTS 句子。**禁词表本身要随现值改**：托管款数规则 `(2[0-9]|3[02-9]) 款` 是按现值 31 写的，新现值 32 恰被圈进禁列，不订正规则就永远改不过去。
+- **避坑防重犯建议**：
+  1. **否决一条技术通道，必须做过"成功路径实测"**，不能拿"我的解析器跑不通"当"此路不通"的证据。判"库能不能做 X"的第一动作是查库自己的 README/支持矩阵（rardecode 白纸黑字写了 RAR 3 + 5.0），第二动作是三十行代码跑一遍真样本——两步都做，本例的两处错判根本不会成立。
+  2. **上游自述文案是弱证据**（"解压密码 HEU168"属软件信息栏装饰性文字），与实测冲突时以实测为准；把自述当事实前，先问一句"这条能不能被一次执行证伪"。
+  3. **未取得证据的结论一旦写成"事实"就会自我加固**：本例错判被同时写进代码注释、PRD、notices 和踩坑文档，格式整齐、语气肯定，反而让后来者更难质疑——写进仓的每句"实证"都要能指到一次具体执行或一条具体字节证据。
+  4. **订正错误要连产物一起改**：`Description:` 会经 `cataloggen` 流入 `internal/app/catalog.go` 与前端 Info 面板，只改文档不改源头等于对外继续失真（与 #105 的 Nmap 假声明同一课）。
+  5. 判定镜像/归档介质用三步：看**签名字节**（`Rar!\x1a\x07\x01\x00` = RAR5、`CD001` PVD、`02 00` UDF Anchor）→ 向 **OS 要权威布局**（挂载/资源管理器，它读到什么才是真有什么）→ 查**库能力清单**。手写格式解析只在"OS 已给答案且需脱离子进程"时做，且用双端序常量定位字段而不是背偏移。
+  6. 上游闭源 + 加壳（UPX）时把"无法取证"当**设计约束**：选对上游内部行为不敏感的实现路径（前缀探测、按 PID 直唤、宽限+强杀兜底），并从文案里删掉一切没证据的断言。想跑一次取证要先取得机主授权，别把猜测写成实现前提。
+  7. **版本锚点取 PE VERSION 资源**，别取会漂移的文件名、也别取 release 显示名（tag `64.0.0` / 显示 `v64.04.0` 错位）；资源语言位可能只有非英语（`2052`），按 `1033` 写死会查无此人。
+  8. 收录"无 LICENSE + 无签名 + 杀软高报"三件套的灰色工具前，先把风险写进 UI 与 notices 再开工：这类模块的产品化重点不是功能，而是**失败态的可解释性**。
+
+### 109. `sync.WaitGroup.Go` 与手写 `wg.Add` 双计数 → 批量用例永久挂死；而一次 `-run` 漏匹配把挂死掩盖成"通过"
+
+- **问题现象与错误原因**：portscan 新增的代理连通性测试要用 worker 池并发跑一批代理。写成 `wg.Add(workers)` 再循环 `wg.Go(f)`。Go 1.25 起 `WaitGroup.Go` **自带 Delta(1)** 且函数返回时自动 Done，两处都写使计数恒为期望的两倍，`wg.Wait()` 永远等不到归零——表现为整批用例挂到 `-timeout` 才 panic。（形态变更注：批量测一批代理这条能力后来被机主裁撤——「不需要批量测试，把单个测试搞好就行」——现在只剩 `probeAllEgress` 逐出口源并发；本条教训与那条 `-run` 假绿一样照旧有效，别因找不到"批量入口"就当作没发生过。）
+- **排查过程**：
+  1. 首轮 `go test -timeout 90s ./packages/go/netx/ ./internal/modules/portscan/` 超时，我只 `tail` 了 dump **尾部**（那里只剩 httptest 的 accept goroutine），没看"正在跑的是哪条用例"，于是把嫌疑错放到"Windows 端口回收行为""x/net 握手悬挂"上（后者碰巧也是真问题，见 #110，但它不是这条挂死的原因）。
+  2. 改跑 `go test -run 'Proxy|ParseProxyBatch'` → **2.0s 通过**。这几乎让我收工。真相是这个正则**匹配不到 `CheckProxies`**（`Proxies` 里不含字面 `Proxy`），所有走批量入口的用例一条都没跑；而真正挂死的 `TestResultCarriesNoCredentials` 名字里也没有 `Proxy`，同样被跳过。**过滤后全绿 ≠ 全量全绿。**
+  3. 去掉 `-run` 全量跑并 `grep -A22 'running tests'`，一次拿到两条决定性证据：`running tests: TestResultCarriesNoCredentials (1m0s)`，且主测试 goroutine 停在 `sync.WaitGroup.Wait`、**dump 里已经没有任何 worker goroutine 存活**。被等待的活体都没了却还在等 → 只可能是计数没归零，不可能是 I/O 悬挂。
+- **正确做法与标准修复方案**：删掉 `wg.Add(workers)`，只用 `wg.Go`。两者是**互斥的两种用法**——`Go` 自己管计数，`Add`+`Done` 才由调用方管，混用必挂。
+- **避坑防重犯建议**：
+  1. 用新近加入标准库的 API 前，先读它自己的文档句（`WaitGroup.Go` 的注释第一句就是"It is not necessary to call Add"），别按旧姿势"顺手补一句 Add"。
+  2. 超时 panic 的 dump 要从 `running tests:` 那段读起（它直接点名用例与已耗时），而不是从 goroutine 尾巴猜。
+  3. 定位挂死先看**等待者栈 + 被等待的 goroutine 是否还活着**这一对，它能一步分开"计数错"与"I/O 悬挂"两类完全不同的病因。
+  4. `-run` 收敛过的绿灯不能作为收工依据；新增并发/网络用例后至少跑一次**全包** `go test ./internal/modules/portscan/`。
+
+### 110. x/net 的 SOCKS5 拨号器建连后同步读 greeting 且不看 ctx → 对端不是代理时连接永久悬挂，`http.Client.Timeout` 与 ctx 都管不住它
+
+- **问题现象与错误原因**：把 `socks5://` 指向一个 accept 连接但不回 SOCKS 响应的服务（真实高发场景：端口开着、背后其实是个 HTTP 服务／透明转发盒／captive portal），连接与 goroutine 无限悬挂。测试里的显形方式是 `httptest.Server.Close()` 等不回来。根因在 `golang.org/x/net/internal/socks`：`DialContext` 用 `ProxyDial` 拿到 conn 之后，`io.ReadFull(conn, b[:2])` **同步读 greeting，既不检查 ctx 也不给 conn 设 deadline**。http.Transport 那边 ctx 到期只是**放弃这次 dial 结果**，不会去关仍在握手的 conn——于是请求按预算返回错误，conn 与 goroutine 留在原地，直到对端主动关闭为止。
+- **正确做法与标准修复方案**：`packages/go/netx/proxydial.go` 的 SOCKS 分支把传给 `proxy.SOCKS5` 的 forward dialer 包一层 `deadlineDialer`，在**交付 conn 之前** `SetDeadline(now+budget)`——这是唯一能封顶的位置，因为 `proxy.SOCKS5` 握的正是我们交出去的那条 conn。三条要点都是踩出来的：
+  - 存**时长**而非时刻：同一个 client 会被出口核验的多源降级反复使用，若在此刻固定死时间，第二次重试就会拿到一条已过期的 conn；
+  - 死线取 `2×Timeout`（与 client.Timeout 同量级）而非 `1×`：握手成功后**同一条 conn 还要当隧道跑真实请求**，设得更短会误杀慢代理，把可用结论测成不可用；
+  - `SetDeadline` 失败就地关连接并返回错误，绝不交出一条"可能永久悬挂"的 conn。
+- **顺带清掉一处死代码**：原 `portscan/scanner.go` 的 `socks5ContextAdapter`（给"不支持 context 的 socks dialer"补 DialContext）在 x/net v0.58 下**永不生效**——`*internal/socks.Dialer` 本身就实现 `DialContext`（socks.go:151），那个类型断言恒成立。内核上收时删除未搬；将来依赖若真退化成不支持 context，走上面的显式报错路径，不退回"不可取消的拨号"。
+- **避坑防重犯建议**：
+  1. 判断第三方拨号库"可取消"，要验到**握手每一段**，不能只看它有没有 `DialContext` 签名——有 ctx 参数不等于每个阻塞读都在听它。
+  2. 测代理连通性的第一个必测形态就是"端口开着但不是代理"。只测"端口关着"会漏掉整类悬挂故障，而这类故障在真实网络里比 refused 更常见。
+  3. 测试里的 `httptest.Server.Close()` 会等活动连接；用它当假代理靶时，先确认自己那条连接一定会被某一方关掉。
+  4. 出口 IP 这类"看起来只是取个字符串"的请求，走的是**待测的不可信对端**：响应体必须封顶（`io.LimitReader`，与 publicip 同口径 512B），重定向必须关（`http.ErrUseLastResponse`，否则代理能把我们 302 到一个自报家门的假 checkip 页）。
+
+### 111. 凭记忆写 x/crypto/ssh 四处 API 全错，其中两处直接决定"这能力能做到什么程度"
+
+- **问题现象与错误原因**：给 portscan 加 SSH 凭据测试时，我按"上次用某个 SSH 库的印象"直接写代码，四个地方全不存在或用错：
+  - `ssh.NewPrivateKey(priv)` → 实为 **`ssh.NewSignerFromKey`** / `NewSignerFromSigner`；
+  - `client.Auth([]AuthMethod{...})` → **`*ssh.Client` 没有 Auth 方法**：认证做在 `ssh.NewClientConn` 内部，凭据要放进 `ClientConfig.Auth`；
+  - `*ssh.AuthError`（想拿"服务端支持哪些认证方式"）→ **包里根本没有这个导出类型**；
+  - `HostKeyCallback` 写成 `func(ConnMetadata, PublicKey) (*Permissions, error)` → 实际是旧签名 `func(hostname string, remote net.Addr, key PublicKey) error`，**因此拿不到 ConnMetadata，也就拿不到服务端版本横幅**。
+  前两个是编译期就红的；后两个不是——它们是"信息取不到"，只会在写完实现、准备写文案时才暴露。
+- **排查过程**：`go doc golang.org/x/crypto/ssh` 列导出符号 + `go doc … ClientConfig`/`AlgorithmNegotiationError` 看真实签名与接收者（顺带确认 `AlgorithmNegotiationError` 是指针接收者，`errors.As` 要按指针接）。查到"没有 AuthError"之后再回去看 `client_auth.go` 的失败文本（`ssh: unable to authenticate, attempted methods %v…`），确认这条路上**只有文本可用**。
+- **正确做法与标准修复方案**：
+  - **砍掉做不到的结论，而不是猜一个**：客户端侧分不出"密码不对"与"这台机器压根不接受密码登录（只允许密钥）"，于是把 `no-password-auth` 这个 verdict 与 `AuthMethods` 字段一起删掉，改为在 `Reason` 里把两种可能都讲出来。
+  - **拿不到的数据不进结构体**：`SSHAuthResult` 里没有 `ServerVersion` 字段（版本归同页「连接测试」那个 RPC 管），不为了"结果看起来完整"再偷偷连一次把两个来源混进一个字段。
+  - 认证失败仍保留主机密钥指纹：`HostKeyCallback` 在 KEX 阶段已被调用过，`NewClientConn` 返回错误时闭包里照样有值——"这台机器是不是它"与"密码对不对"是两个问题。
+  - 算法协商失败有独立类型，单独认出来（`*ssh.AlgorithmNegotiationError`）：它意味着"对方是 SSH 但没有共同算法"，混进"凭据被拒"就是骗人。
+- **顺带一条：假夹具必须验证它声称模拟的场景**。第一版测试用 x/crypto 服务端侧起假 SSH，`allowPassword=false` 时什么都不设——结果它**直接掐断连接**（客户端读到 `wsarecv … forcibly closed`），测出来的是 `unreachable`；而真实 OpenSSH 在这种配置下回的是 `USERAUTH_FAILURE` + 方法列表 `[publickey]`，客户端得到的是"认证被拒"。补上 `PublicKeyCallback`（拒绝一切 key）之后才复现真场景，那条用例随之从红转绿。**错的不是被测代码，是夹具不像它自称的那个世界。**
+- **另有一条依赖教训**：`go get golang.org/x/crypto@latest` 顺手把 `x/net` 从 v0.58.0 抬到 v0.60.0、`x/sys` 一起升。而 #110 的 SOCKS 结论与 `deadlineDialer` 的必要性，都是在 v0.58.0 上实证得来的——**依赖被顺带升级会让已写下的实证结论失效**。改法：查目标库那版 `.mod` 的真实要求（`x/crypto v0.55.0` 只要求 `x/net v0.57.0`），于是 `go get golang.org/x/crypto@v0.55.0 golang.org/x/net@v0.58.0 golang.org/x/sys@v0.47.0`，最终 `go.mod` 净增 2 行（crypto 转正 + term），net/sys 一行未动。
+- **避坑防重犯建议**：
+  1. 用不熟的第三方库，第一动作是 `go doc <pkg>` 看导出符号清单、`go doc <pkg> <Symbol>` 看签名，而不是凭"以前用过类似的库"写。版本差异和包差异都会让记忆失效。
+  2. 编译期反馈只覆盖"写错了"，不覆盖"这个信息根本取不到"。动手前先问一句：**我打算从哪个类型拿这个结论？它存在吗？** 不存在就现在砍需求，别等写完文案才发现。
+  3. 取不到的字段不要留在结构体里占位。今天留个空 `ServerVersion`，明天就有人为了把它填上而多做一次连接、或者填个猜的值。
+  4. 自己写的假服务端/假代理，要有一条用例断言"它确实走到了所声称的分支"（本例靠一条真红发现 fixture 失真——真红比假绿有用，别为了让它绿去改期望）。
+  5. 会改外部世界状态的探测（发起登录尝试）必须独立按钮 + 界面写明副作用（sshd 日志、fail2ban 封禁），不能并进"看看端口通不通"这种无害动作里。
+  6. 加依赖时优先用"能编译的最低版本"而不是 `@latest`；`@latest` 会连带抬走同族依赖，把实证过的结论冲掉。

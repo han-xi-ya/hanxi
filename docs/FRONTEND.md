@@ -21,7 +21,7 @@
 ```
 main.ts ── createApp(App) + 三份 styles/ 全局样式      # 无 router、无 store
 App.vue  ── 应用外壳（薄编排：路由/门禁/事件桥/弹窗壳，展示层已组件化）
-  ├─ constants/navigation.ts 单一来源：ROUTES（49 模块路由 + 核心页 +
+  ├─ constants/navigation.ts 单一来源：ROUTES（50 模块路由 + 核心页 +
   │    设置八分区，defineAsyncComponent 全异步）+ CORE_ROUTES 豁免清单
   │    （含 /modules，模块中心自身不受"模块停用弹回"拦截）
   ├─ EnsureModuleActive 门禁 + navigationRequestID 防乱序

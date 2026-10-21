@@ -13,8 +13,8 @@
 
 Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装、管理与运行常用开源软件。产品由两条主线构成：
 
-1. **自建功能模块**：frpc 内网穿透、微信机器人、端口扫描/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、软件版本跟踪、系统信息、WSL2 就绪体检、局域网文件快传、文字识别（OCR）、随手记、**剪贴板历史**、网页应用、右键快捷菜单、桌面留言板等 18 项（另 EarTrumpet 纳管特例按 catalog 能力口径落在本侧），能力原生内置于单二进制；
-2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、WindTerm、Termora、RAMMap、**Piik 屏幕分享、DBX、GoNavi 数据库客户端**、抖音下载器（Douzy）等 31 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；骨架例外四条如实见 §2.2 前言——Douzy 仅"版本 + 下载"、NanaZip 为 MSIX 安装管理型、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型）。
+1. **自建功能模块**：frpc 内网穿透、微信机器人、网络测试（端口扫描/代理/SSH）/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、软件版本跟踪、系统信息、WSL2 就绪体检、局域网文件快传、文字识别（OCR）、随手记、**剪贴板历史**、网页应用、右键快捷菜单、桌面留言板等 18 项（另 EarTrumpet 纳管特例按 catalog 能力口径落在本侧），能力原生内置于单二进制；
+2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、WindTerm、Termora、RAMMap、**Piik 屏幕分享、DBX、GoNavi 数据库客户端**、抖音下载器（Douzy）、HEU KMS 激活工具等 32 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；骨架例外四条如实见 §2.2 前言——Douzy 仅"版本 + 下载"、NanaZip 为 MSIX 安装管理型、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型）。
 
 所有能力以平等模块身份注册到统一入口，按需懒加载启停。
 
@@ -39,7 +39,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | :--- | :--- | :--- | :--- |
 | **frpc 穿透管理** | `frpc` | 多实例并发、全协议与 Visitor 支持、配置可视化 ⇋ TOML 双向同步、`frp://` 链接一键分享、批量端口映射导入、官方/镜像版本下载与本地导入、日志实时嗅探 | DPAPI 凭据加密、JobObject 绑定、临时 TOML 自动清理 |
 | **微信机器人** | `wechat` | iLink 协议扫码登录、多账号会话保持、长轮询事件监听、图文/文件/Markdown 多模态加密推送、入站文件落盘 | AES 密钥加密传输、启动预激活常驻监听 |
-| **端口扫描** | `portscan` | 高并发 TCP 探测、**自研 banner 级服务指纹识别**（抓取服务横幅后按内置特征表判协议类型、组件版本 Nginx/MySQL/Redis 等与 Web 状态）、SOCKS5/HTTP 代理扫描、常用端口预设、结果流式渲染、按任务取消。**2026-10-12 勘误**：本行原写「Gonmap 深度协议指纹识别」，经仓内核实**不存在该引擎**（`internal/modules/portscan/` 仅 6 文件、`go.mod` 无 nmap 类依赖），属"文案超前于实现"（`docs/FEATURES_OVERVIEW.md` 早已点名）；其源头是 `internal/modules/portscan/module.go` 的模块 Description，经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板——代码侧已随 `ee7fd0d` 订正（Description + cataloggen 再生 + Info 口径同步），本批只正文档 | 并发限流与超时熔断控制；扫描属主动出网动作，结果含网络拓扑信息 |
+| **网络测试** | `portscan` | 高并发 TCP 探测、**自研 banner 级服务指纹识别**（抓取服务横幅后按内置特征表判协议类型、组件版本 Nginx/MySQL/Redis 等与 Web 状态）、SOCKS5/HTTP 代理扫描、常用端口预设、结果流式渲染、按任务取消。另含**代理连通性测试**（判定=能经代理取到公网出口 IP；五个出口源各查各的并排显示，结论取多数一致并报 n/m 源一致）与 **SSH 检查**（版本横幅交换零依赖；密码认证为独立动作，走 x/crypto/ssh 完整握手）。**2026-10-12 勘误**：本行原写「Gonmap 深度协议指纹识别」，经仓内核实**不存在该引擎**（`internal/modules/portscan/` 仅 6 文件、`go.mod` 无 nmap 类依赖），属"文案超前于实现"（`docs/FEATURES_OVERVIEW.md` 早已点名）；其源头是 `internal/modules/portscan/module.go` 的模块 Description，经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板——代码侧已随 `ee7fd0d` 订正（Description + cataloggen 再生 + Info 口径同步），本批只正文档 | 并发限流与超时熔断控制；扫描属主动出网动作，结果含网络拓扑信息 |
 | **端口查杀** | `portkill` | IP Helper 快速查占用、进程身份三重复核（PID+启动时间+路径）、一键释放 | Windows `ShellExecuteEx(runas)` 原生 UAC 按需提权 |
 | **局域网扫描** | `lan` | IPv4 `/24` 自动探测、ICMP Echo 存活扫描、ARP/邻居表读取、MAC 厂商 OUI 识别、设备备注 | 只读网络枚举、取消上下文感知 |
 | **网络诊断** | `publicip` | 双栈公网 IP 查询、网卡拓扑透视、ICMP Ping 稳定性统计、Traceroute 路由追踪 | 原生 API、无黑窗口静默调用 |
@@ -56,13 +56,13 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **桌面留言板** | `msgboard` | 离开工位一键全屏挂出离岗告示牌（内置预设模板 + 自定义文案字号、可选副屏单屏挂牌），托盘/轮盘/全局热键三通道唤出 | frameless 真透明置顶窗按需创建、撤牌即真销毁；挂牌期间经 KeepAwake 引用计数聚合器阻止系统/显示器休眠，撤牌即释放 |
 | **剪贴板历史** | `clipboard` | 系统剪贴板全量历史：文本/图片/文件三类持续捕获入档、关键词与类型/标签检索、去重置顶、条目与体积上限自动淘汰（容量自钳制，常驻内存有界）、全局热键唤起独立浮层随处选取并支持"粘回原窗"（首版回填能力限**文本**，图片/文件条目供检索查看）、缩略图内联预览、MCP 只读检索接入 | 本机明文落盘——按 v1.6 机主裁决**不引 DPAPI 绑定、不作"加密"承诺**（旧 DPAPI 口径已随裁决作废），同时对敏感来源做排除；MCP 出机面为硬约束口径：命中密钥启发式的条目整条不下发且不计入命中数、图片条目只给元数据不经通道传内容、所有文本面统一行级脱敏（IPv4/邮箱/`token=`/`sk-` 类密钥掩码） |
 
-### 2.2 第三方工具托管模块（31）
+### 2.2 第三方工具托管模块（32）
 
 统一骨架：`version/` 版本管理子包（ListReleases / DownloadVersion / RemoveVersion / 本地导入）+ `instance/` 实例引擎子包（JobObject 启停、状态探测、唤窗、跟随退出）+ 前端托管控制台视图。
 
-**骨架例外（2026-10-12 按仓内子包实扫订正，原只列 douzy 一条、漏两条）**：①`douzy` 上游尚处内测期且 Windows 仅 NSIS 安装版，止步于 `version/` 版本管理与安装包下载拉起，不做进程托管（**无 `instance/`**）；②`nanazip` 属 MSIX 安装管理型，交 Windows 为当前用户安装/卸载、不绑 JobObject（**无 `instance/`**）；③`eartrumpet` 只纳管官方直装渠道（AUMID 激活 + AppInstaller 清单校验），**既无 `version/` 亦无 `instance/`**，因此它出现在本表却**不计入** catalog `hosted-versions` 能力计数；④`frpc` 反向——它在 §2.1 自建叙述列，但具备 `version/` 能力，故计入 `hosted-versions` 31。
+**骨架例外（2026-10-12 按仓内子包实扫订正，原只列 douzy 一条、漏两条）**：①`douzy` 上游尚处内测期且 Windows 仅 NSIS 安装版，止步于 `version/` 版本管理与安装包下载拉起，不做进程托管（**无 `instance/`**）；②`nanazip` 属 MSIX 安装管理型，交 Windows 为当前用户安装/卸载、不绑 JobObject（**无 `instance/`**）；③`eartrumpet` 只纳管官方直装渠道（AUMID 激活 + AppInstaller 清单校验），**既无 `version/` 亦无 `instance/`**，因此它出现在本表却**不计入** catalog `hosted-versions` 能力计数；④`frpc` 反向——它在 §2.1 自建叙述列，但具备 `version/` 能力，故计入 `hosted-versions` 32；⑤`heukms` 骨架齐备（`version/` + `instance/`）但**解包器不同**：上游当前双发 UDF 镜像 iso 与 rar，iso 侧真实内容在 UDF（纯 Go 与系统 bsdtar 都读不到）故不解析，改由 `nwaples/rardecode` 解 RAR5；可安装集也更窄——只有"有 rar 资产且 GitHub 挂官方 digest"的版本入列（内核 Fetch 强制摘要校验），62.0.0 及更早走「导入本地」兜底。
 
-⚠ 两把尺勿互证：本表 **31 行**按叙述归类（含 eartrumpet、frpc 归 §2.1），catalog `hosted-versions` **31 款**按能力计数（含 frpc、不含 eartrumpet）——同数不同集合，权威口径由 `go run ./scripts/cataloggen` 产物锁定。
+⚠ 两把尺勿互证：本表 **32 行**按叙述归类（含 eartrumpet、frpc 归 §2.1），catalog `hosted-versions` **32 款**按能力计数（含 frpc、不含 eartrumpet）——同数不同集合，权威口径由 `go run ./scripts/cataloggen` 产物锁定。
 
 | 模块名称 | 模块标识 | 上游项目 | 许可证 | 托管形态与差异点 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -97,6 +97,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **Piik 屏幕分享** | `piik` | TNTcraftHIM/Piik | MIT（且发布包内自带 THIRD-PARTY-NOTICES，随版保留、卸载即随目录消失） | **headless 服务型骨架特例**：无窗口/无托盘/无提权，界面即系统浏览器打开的本机 HTTP 页面；JobObject 启停 + 端口试绑分配（8787 被占则 +1，候选上限 8796）、数据改道恒注入；**刻意不实现 `extapi.UpdateChecker`**（上游日更级风暴发布 22 版/14 天，挂雷达等于"可用更新"红点天天重亮，且与"钉版本手动追"设计自相矛盾）——仓内首例主动不挂而非契约欠账，缺席理由记于 `module.go` 包注释，后人勿当遗漏顺手补 `CheckUpdate` |
 | **DBX 数据库客户端** | `dbx` | t8y2/dbx | Apache-2.0（仓库根 LICENSE 实证） | Tauri 便携 zip 纯托管（version + instance 双骨架齐备）：注入 `DBX_DATA_DIR` 把数据改道 Hanxi 数据根（跨版本共享、删版本不丢数据），保布局解压并保留上游 `portable.dbx` 标记作双保险；唤窗走 single-instance 协议无参二次拉起（信使）；完整性唯一信任根为 GitHub API digest，上游 minisign `.sig` **不消费**（宁拒不猜）；SQL 与连接全在 DBX 自有窗口完成（纯托管决策：直连用户数据库，由原版实现最稳妥） |
 | **GoNavi 数据库管理** | `gonavi` | Syngnat/GoNavi | Apache-2.0（spdx 实证；**非**排期稿所称 MIT） | Wails 便携 zip 纯托管：数据恒在 `~/.gonavi`，**不改道、不随版本目录隔离**（与 DBX 方案相反，各自遵上游形态，托管不动用户数据）；便携态无单实例互斥体、二次拉起即多开，故按进程名 + `EnumWindows` 直操作唤窗，信使路线不存在；摘要双源俱缺的 release 宁拒不猜、不入版本列表 |
+| **HEU KMS 激活工具** | `heukms` | zbezj/HEU_KMS_Activator | **仓库无 LICENSE 文件**（GitHub API `license: null` 实证）；上游后期闭源，包内更新日志自述"仅供学习交流" | **解包器特例（RAR5 而非 zip）**：上游当前双发 UDF 镜像 `.iso` 与 `.rar`，iso 真实内容在 UDF 侧（go-diskfs 无 udf、bsdtar 亦读不到）故不解析，改走 `nwaples/rardecode` 纯 Go 解 rar（实测产物 SHA256 与上游逐版公布值一致）；可安装集更窄——只列"有 rar 且 GitHub 挂官方 digest"的版本（内核 Fetch 强制摘要，62.0.0 及更早不入列），「导入本地」作兜底；主 exe 文件名随版本漂移 → 布局自检取"包内/目录内唯一 exe"，进程探测按 `HEU_KMS_Activator*` 前缀；manifest `requireAdministrator` → 提权三重契约；主程序无代码签名，UI 如实提示安全软件拦截风险 |
 
 ### 2.3 宿主服务
 

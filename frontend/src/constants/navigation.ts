@@ -72,6 +72,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/quicklook': { component: defineAsyncComponent(() => import('@/views/QuickLookView.vue')), moduleId: 'quicklook' },
   '/ext/litemonitor': { component: defineAsyncComponent(() => import('@/views/LiteMonitorView.vue')), moduleId: 'litemonitor' },
   '/ext/guoheview': { component: defineAsyncComponent(() => import('@/views/GuoheViewView.vue')), moduleId: 'guoheview' },
+  '/ext/heukms': { component: defineAsyncComponent(() => import('@/views/HeuKmsView.vue')), moduleId: 'heukms' },
   '/ext/ddnsgo': { component: defineAsyncComponent(() => import('@/views/DdnsGoView.vue')), moduleId: 'ddnsgo' },
   '/ext/subnetdesk': { component: defineAsyncComponent(() => import('@/views/SubnetDeskView.vue')), moduleId: 'subnetdesk' },
   '/ext/rustdesk': { component: defineAsyncComponent(() => import('@/views/RustDeskView.vue')), moduleId: 'rustdesk' },
@@ -198,6 +199,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   portkill: 'system',
   bcu: 'system',
   litemonitor: 'system',
+  heukms: 'system',
   rufus: 'system',
   envcheck: 'system',
   softver: 'system',
@@ -279,6 +281,10 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   keyviz: { icon: 'app:keyviz', route: '/ext/keyviz' },
   quicklook: { icon: 'app:quicklook', route: '/ext/quicklook' },
   litemonitor: { icon: 'app:litemonitor', route: '/ext/litemonitor' },
+  // app:heukms 刻意不入库真图标：上游无 LICENSE 且主程序名带商标（FileDescription
+  // 实测 "HEU KMS Activator™"），THIRD_PARTY_NOTICES 过审未做——按取材纪律回落
+  // generic 徽标（宁缺毋滥，绝不伪造"像"的图标）。
+  heukms: { icon: 'app:heukms', route: '/ext/heukms' },
   guoheview: { icon: 'app:guoheview', route: '/ext/guoheview' },
   ddnsgo: { icon: 'app:ddnsgo', route: '/ext/ddnsgo' },
   subnetdesk: { icon: 'app:subnetdesk', route: '/ext/subnetdesk' },

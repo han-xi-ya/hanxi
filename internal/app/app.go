@@ -52,6 +52,9 @@ import (
 	"hanxi/internal/modules/guoheview"
 	guoheviewinstance "hanxi/internal/modules/guoheview/instance"
 	guoheviewversion "hanxi/internal/modules/guoheview/version"
+	"hanxi/internal/modules/heukms"
+	heukmsinstance "hanxi/internal/modules/heukms/instance"
+	heukmsversion "hanxi/internal/modules/heukms/version"
 	"hanxi/internal/modules/keyviz"
 	keyvizinstance "hanxi/internal/modules/keyviz/instance"
 	keyvizversion "hanxi/internal/modules/keyviz/version"
@@ -219,6 +222,8 @@ func RegisterEvents() {
 	application.RegisterEvent[litemonitorinstance.Snapshot]("litemonitor:instance-state")
 	application.RegisterEvent[guoheviewversion.DownloadProgress]("guoheview:version-download")
 	application.RegisterEvent[guoheviewinstance.Snapshot]("guoheview:instance-state")
+	application.RegisterEvent[heukmsversion.DownloadProgress]("heukms:version-download")
+	application.RegisterEvent[heukmsinstance.Snapshot]("heukms:instance-state")
 	application.RegisterEvent[ddnsgoversion.DownloadProgress]("ddnsgo:version-download")
 	application.RegisterEvent[ddnsgoinstance.Snapshot]("ddnsgo:instance-state")
 	application.RegisterEvent[ddnsgoinstance.LogEntry]("ddnsgo:instance-log")
@@ -386,6 +391,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		papertodo.ID:     papertodoversion.OpenTree(paths.VersionsDir()),
 		everything.ID:    evversion.OpenTree(paths.VersionsDir()),
 		litemonitor.ID:   litemonitorversion.OpenTree(paths.VersionsDir()),
+		heukms.ID:        heukmsversion.OpenTree(paths.VersionsDir()),
 		vscode.ID:        vscodeversion.OpenTree(paths.VersionsDir()),
 		guoheview.ID:     guoheviewversion.OpenTree(paths.VersionsDir()),
 		quicklook.ID:     quicklookversion.OpenTree(paths.VersionsDir()),
@@ -505,6 +511,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		keyviz.New(plat),
 		quicklook.New(plat),
 		litemonitor.New(plat),
+		heukms.New(plat),
 		gonavi.New(plat),
 		dbx.New(plat),
 		guoheview.New(plat),
