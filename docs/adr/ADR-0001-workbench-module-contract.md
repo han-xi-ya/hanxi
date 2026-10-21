@@ -1,8 +1,8 @@
 # ADR-0001:工作台 × 官方模块化共同契约冻结(Wave 0)
 
-- 状态:已接受
+- 状态:已接受(2026-10-21 状态核查确认仍生效,未被取代;后续部分实况见 §4)
 - 日期:2026-09-18
-- 关联:`docs/plans/PLAN_WORKBENCH_MODULE_ROADMAP.md` §5(Wave 0)、`PLAN_UI_THEME_REFINEMENT.md`、`PLAN_OFFICIAL_MODULE_DISTRIBUTION.md`
+- 关联:`docs/plans/PLAN_WORKBENCH_MODULE_ROADMAP.md` §5(Wave 0)、`PLAN_UI_THEME_REFINEMENT.md`、`PLAN_OFFICIAL_MODULE_DISTRIBUTION.md`、`ADR-0002`(Wave 4 内核稳定门,本 ADR 的后置波次)、`ADR-0003`(Wave 5 声明化/签名路线裁剪,影响 §1.4 登记风险清偿路径与 §2 后置项走向)
 - 权威源:`internal/extapi/catalog.go`、`internal/extapi/receipt.go`、`scripts/fixture/module_catalog.json`、`frontend/src/constants/status.ts`
 
 ## 1. 决议
@@ -62,3 +62,12 @@
 
 ## 3. 回滚
 契约测试全绿为合入门禁;回滚 = revert 契约文件 + fixture + 投影消费方,注册表旧路径(SetEnabled/RunTrayCommand 语义)保持兼容,无数据不可逆变更(receipt 缺失自动回落"未安装",Enabled 语义未变)。
+
+## 4. 后续实况(2026-10-21 增补,只登记事实,不改历史决议正文)
+
+- **Wave 0–4 已落地**:roadmap 2026-09-19 执行进度行(`docs/plans/PLAN_WORKBENCH_MODULE_ROADMAP.md` 第 5 行)确认 Wave 0–4 已入库。§2 后置项对应实况:Operation journal 持久化已接装配根(`internal/app/app.go:361-378` `operation.OpenStore(paths.ModulesJournalsDir())`,账本不可信时托管写事务保持拒绝);`crashed` 枚举与状态机位已冻结在案(`internal/extapi/catalog.go:97-98,301,379-381` `RuntimeCrashed`)。`pending-consent`/`blocked` 原计划"随 Wave 5 签名目录启用",签名目录已按 ADR-0003 裁为 N/A 条件路径,此二态的启用前提自此悬空(登记,不覆写原文)。
+- **注册模块数漂移(41→50)**:§1.5/§1.6 的"41 个注册模块"为冻结时点基数(基线佐证:`8b1eb3c` 时点 fixture 计数 = 41);现 fixture 与 `internal/app/catalog.go` 均为 50,最近一笔新增为 `3bc27ec`(2026-10-21,heukms 托管模块,含契约与文档计数)。此为数据层增长,`ModuleContractSchema` 保持 1,与 §1.1"新增属兼容演进"口径一致;跨文档取数以 `docs/FACTS.md`"业务模块总数 50"为准。
+- **§1.4 登记风险的清偿路径被移除**:原文登记"装配布线 setter(SetWailsApp/SetHistory/SetMemoHook/SetMainWindow 等)……Wave 5 声明化时随接口私有化清偿"。Wave 5 声明化已被 ADR-0003 裁掉(roadmap 第 41、489 行:声明式 manifest 降为 N/A 条件路径),装配 setter 至今仍为 Go 直调且未接门(`internal/app/app.go:492,576,656,730` 等)。**该"不静默"登记的风险自此没有承载波次,处置需另行裁决**(存疑项,不在本增补中私自改判)。
+- **模块名/描述属数据层演进,不动 schema**:`f40385b`(2026-10-20)portscan 显示名"端口扫描与指纹"→"网络测试"(源头 `internal/modules/portscan/module.go` Info().Name/Nav().Title 经 cataloggen 流入产物;fixture 779-781 行 `id` 仍为 `portscan`、`name` 为"网络测试",入口、绑定名不变),`ee7fd0d`(2026-10-12)删描述中不存在的 Nmap 引擎宣称。与 §1.2 `ModuleCatalogItem` 管静态身份的分层一致——id 稳定、name/description 演改属兼容变更。
+- **§1.3 穷举守护仍有效**:`internal/extapi/catalog_test.go:259,517-518` 锚定 7×5×7×9=2205 全笛卡尔积穷举,无未定义输出。
+- **§1.7 视觉基线抽查有效**:`PageContainer.vue` 存在(现位于 `frontend/src/components/ui/PageContainer.vue`);`hanxi.railExpanded` 偏好键在用(`frontend/src/components/shell/AppNavRail.vue:98`);Jade 浅色仍在 `frontend/src/composables/useTheme.ts`/`frontend/src/styles/tokens.css` 且未反转为默认,与"推迟到 Wave 5 门禁后评估"的裁量现状一致(其前提 Wave 5 同上已裁剪)。

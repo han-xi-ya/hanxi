@@ -1,8 +1,8 @@
 # ADR-0003:面向"自用 + NAS 同步搬家"定位的范围裁剪(签名/物理拆包/加密搬家化)
 
-- 状态:已接受
+- 状态:已接受(2026-10-21 状态核查确认仍生效,未被取代;裁剪执行实况见"后续实况")
 - 日期:2026-09-19
-- 关联:`docs/MOTIVATION.md`(项目缘起)、`ADR-0002`(内核稳定门)、两份专项计划的 Wave 5/6 段
+- 关联:`docs/MOTIVATION.md`(项目缘起)、`ADR-0002`(内核稳定门;其 §3 阈值在本 ADR §4 重申,其 §4 校验口径被本 ADR 决议 1 收编)、`ADR-0001`(工作台契约;其 §1.4 登记的"装配 setter 待 Wave 5 声明化清偿"路径因本 ADR 裁剪而失去承载波次,其 §2 `pending-consent`/`blocked` 的签名启用前提同受本裁剪影响)、两份专项计划的 Wave 5/6 段
 
 ## 背景
 
@@ -27,3 +27,11 @@
 - Wave 5 的实质完成定义收缩为:托管模块去重复(本 ADR 前已完成)+ 更新感知(health=update-available 由真实上游对比驱动,`internal/updatewatch`)。**声明式 manifest 引擎与签名 Catalog 不再列入路线图。**
 - Wave 6 从"计划波次"降级为"条件触发项";roadmap 的发布节奏与渠道纪律(dev/beta/stable、签名演练)对单用户自用场景整体标记 N/A。
 - 若未来出现真实发布渠道(给他人分发),重开本 ADR 取代为 v2,签名链回到台面。
+
+## 后续实况(2026-10-21 增补,只登记事实,不改历史决议正文)
+
+- **裁剪执行核对(与决议一致)**:①声明化/签名降级已入 roadmap——"声明式 manifest、签名 Catalog、撤回与 key 轮换不再是默认路线,统一记为 N/A 条件路径;Wave 6 物理拆包与多产物发布同样仅在触发条件满足时重开"(`docs/plans/PLAN_WORKBENCH_MODULE_ROADMAP.md` 2026-09-19 进度行,另见第 41、489 行);②更新感知已入库(`internal/updatewatch` 首笔 `87e8a2a`,2026-09-19);③决议 4 的 quicklook/bili23 "仅版本面迁入、instance 留 bespoke"由 roadmap 进度行复核在案。
+- **决议 1 的"签名产物不生成"坐实**:`schemas/` 目录从未出现在 git 历史(`git log --diff-filter=A -- schemas/` 为空),无 key 轮换产物入库。
+- **决议 2 缓行至今未触发**:`.hxmanaged/.hxmodule` 包格式无实现,该扩展名仅存在于 `docs/plans/PLAN_OFFICIAL_MODULE_DISTRIBUTION.md` 350-354 行的文本图例;ocr/fileshare 仍内建在册。"production exe ≈ 22MB"为 2026-09-19 快照口径,仓内无权威新值(`docs/FACTS.md` 未登记体积),触发条件继续等实测,不因无新数而视为失效。
+- **决议 3 搬家语义持续兑现,配套提示存疑**:后续新增托管模块(最近一笔 `3bc27ec`,2026-10-21,heukms)均沿用数据根随行,未出现"可迁移加密"改造;`internal/platform/windows/dpapi.go` 仍为本机账户绑定。但"疑似更换了电脑,请重新填写"级人话提示未能证实已落实——该字样全仓零命中,近旁证据仅有剪贴板库解密失败的降级剔除(`internal/modules/clipboard/store.go:175`)与 MCP 侧"多为其它机器/账户的库"说明(`internal/mcp/tools_clipboard.go:314`),是否以其它文案落实需专查(存疑项)。
+- **决议 4 口径出现反例案例**:`469e3e1`(2026-10-20)将显式代理拨号内核自 portscan 上收为 `packages/go/netx` 公共件,上收时唯一消费面即 portscan 一家,与本决议"单家需求不扩内核"的执行口径存在张力;账目与裁量归属登记于 ADR-0002 §6"后续实况",两处同案。

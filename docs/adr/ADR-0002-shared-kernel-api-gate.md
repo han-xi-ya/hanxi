@@ -1,8 +1,8 @@
 # ADR-0002:共享托管内核 API 稳定门与逃生钩子审查规则(Wave 4)
 
-- 状态:已接受
+- 状态:已接受(2026-10-21 状态核查确认仍生效,未被取代;内核面后续扩展见 §6)
 - 日期:2026-09-18
-- 关联:`PLAN_WORKBENCH_MODULE_ROADMAP.md` §9、`PLAN_OFFICIAL_MODULE_DISTRIBUTION.md` §4.2/§10、`WAVE5_MIGRATION_INVENTORY.md`
+- 关联:`PLAN_WORKBENCH_MODULE_ROADMAP.md` §9、`PLAN_OFFICIAL_MODULE_DISTRIBUTION.md` §4.2/§10、`WAVE5_MIGRATION_INVENTORY.md`、`ADR-0001`(Wave 0 契约门,本 ADR 的前置波次)、`ADR-0003`(其 §4 重申本 ADR §3 阈值,并把 §4 校验强度口径收编为供应链实况承担者)
 
 ## 1. 内核边界(冻结面)
 
@@ -47,3 +47,11 @@
 - **MSI 提取**:piclite/keyviz 用 `msiexec /a` 管理提取(GitHub 资产有 SHA-256,下载校验段可委托 Fetch,提取搬运留模块)。**裁定**:MSI 提取策略不进 artifact(策略族是 Wave 5 签名 manifest 批次的事,现在造=预支且无签名背书)。keyviz agent 被要求审 msiexec `TARGETDIR=` 的路径注入防护。
 - **版本目录命名变体**:核实 artifact.Tree `dirName=EntryName_"_"+version` **能**表达 `<entry>_v<version>`(markeron 传 `v2.10.1`、snipaste 传 `v13.0` 同构)——snipaste agent 报告"多一枚下划线表达不了"是误判(其 bespoke 结论因 Meta 字段/SHA-1 两条真理由仍成立,不受影响)。留 bespoke 的**有效**内核边界是:各模块 VersionInfo 的前端契约字段(verificationMode/officialHash/hashAlgorithm/isImport 等)是模块业务态,`artifact.Meta` 依"共享包不抽模块业务"纪律不收,故需要这些字段的模块自持 meta 落位。
 - **Quit 分层归因**:snipaste 确认 `sup.Stop(grace)` 对"宽限内自然退出"与"强制终止成功"都返回 nil,四态归因在内核返回值坍缩——正解是归因决策留模块 instance 层(verifyToken+settle 通道观察),内核只承担末级强杀。此为通用范式:凡 Quit 需多态归因的(snipaste 类)照此,不为塞进内核而造第二返回值(假抽象)。
+
+## 6. 后续实况(2026-10-21 增补,只登记事实,不改历史决议正文)
+
+- **§1 冻结面表已非共享内核全貌——出现第四个公共包 `packages/go/netx`**:`572c0a0`(2026-09-25)将代理链公共件下沉为 netx(回环闸、代理感知/直连客户端:`client.go` `Transport/NewClient/DirectClient/ProxyFunc/LoopbackAwareProxyFunc`);`469e3e1`(2026-10-20)再将显式代理拨号内核自 portscan 上收(`proxydial.go` `ParseProxy/DialProxy/QueryEgress` + 出口源常量,commit message 自述"行为零变化")。netx 现消费面 39 个模块(`grep -rl hanxi/packages/go/netx internal/modules`,主要吃传输面)。**netx 未按本 ADR §1–§3 口径另立冻结面表/升版规则/逃生钩子审查**,其治理缺口在此登记(存疑项)。
+- **§3 "≥3 家需求才入内核"出现反例案例**:netx 传输面自"孤例泛型化"起步、扩至多家消费,不与阈值冲突;但 `469e3e1` 上收 `DialProxy/QueryEgress` 时唯一消费面是 portscan 模块自身(portscan/scanner.go 与 proxyprobe 两面,现仍仅此一家),与 §3"单家需求留模块适配"及 ADR-0003 §4 重申的执行口径存在张力,且该上收未走"上报架构评审"留账。是否追认(上收搬运 ≠ 开关堆叠)待裁。
+- **§4 已知遗留与内核符号抽查全部有效**:`artifact.CleanStaleParts`(`packages/go/artifact/fetch.go:333`)与装配接线 `ops.CleanStaleDownloadParts`(`internal/ops/residue.go:94`,启动恢复调用于 `internal/app/app.go:452`)在案;三包冻结符号 Fetch/UnpackZip/Tree/Meta/DefaultLimits(`fetch.go:73`、`unpack.go:75`、`tree.go:45,117`)、QuitHook/ErrExternal/ErrBusy(`packages/go/supervisor/engine.go:93,122,208`)、Journal/Store/Recover/Hub(`packages/go/operation/journal.go:148`、`store.go:65`、`recover.go:60`、`hub.go:39`)均仍在原位置。
+- **§2.3/§5 S 批与薄适配器裁决落地核对**:roadmap 2026-09-19 进度行确认托管控制台 20/20 完成迁移、Everything 按机主裁决保持现形态;snipaste/guoheview 弱摘要留 bespoke、piclite/keyviz MSI 提取不进 artifact 的 §5 裁定未被后续提交推翻。quicklook/bili23 的 instance bespoke 由 ADR-0003 §4 定案,frpc/rustdesk/subnetdesk 豁免维持(模块均在 `internal/modules/` 原位于册)。
+- **§4 校验强度升级口径已被 ADR-0003 §1.1 收编**:"官方 SHA-256 必检、无摘要拒装"自此同时是供应链完整性的实际承担者(HTTPS + 上游摘要),两文一致,非取代关系。
