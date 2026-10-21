@@ -3,7 +3,8 @@
 > **文档状态**：战略基线  
 > **战略周期**：2026-09 至 2027-09  
 > **复审周期**：每季度，或重大架构决策后  
-> **当前代码基线**：**49 个业务模块**（自建/托管拆分详见 PRD §2.1/§2.2；2026-10-12 对表：`internal/app/app.go` `modulesToRegister` 47 常驻 + `memo`/`clipboard` 两条件项 = 49，与 `internal/app/catalog.go` 生成物、`scripts/fixture/module_catalog.json` 冻结基线三向互证，托管侧 `hosted-versions` 能力计 **31 款**。前记 45（2026-09-25 对表：`modulesToRegister` 44 项 + memo 条件注册）未跟进 clipboard / piik / dbx / gonavi 入册；再前 37（12 自建 + 25 托管，2026-09-16 对表：与 `internal/modules/` 目录及 PRD §2.1/§2.2 一致）未跟进 ocr / msgboard / webapp / softver / sysinfo / windterm / termora / rammap 入册；再往前 35/12/23 为 Paseo/抖音下载器集成前基线，27/10/17 为 WSL 重整前基线）  
+> **当前代码基线（现值，2026-10-21 对表；数字唯一权威出处为 `docs/FACTS.md`）**：**50 个业务模块**（48 常驻 + `memo`/`clipboard` 两条件项），托管侧 `hosted-versions` 能力 **32 款**（`version/` 子包 32、`instance/` 子包 31；增量为 `heukms` 入库 `3bc27ec`）。注意两处口径陷阱：托管叙述列（README/PRD）与 `hosted-versions` 能力列是**两把尺**，现值同为 32 属巧合，不得互证（`docs/FACTS.md` §二）；`internal/modules/` 目录数为 **51 ≠ 模块数 50**，差额是公共件 `modpath`（无注册、无 version/、无 instance/），写"模块数"勿拿目录数顶。  
+> **历史基线链（时点账，不代表现状）**：49（2026-10-12 对表：`modulesToRegister` 47 常驻 + 两条件项，与 `internal/app/catalog.go` 生成物、`scripts/fixture/module_catalog.json` 冻结基线三向互证；托管当时计 31 款）未跟进 heukms 入册；前记 45（2026-09-25 对表：44 项 + memo 条件注册）未跟进 clipboard / piik / dbx / gonavi 入册；再前 37（12 自建 + 25 托管，2026-09-16 对表：与 `internal/modules/` 目录及 PRD §2.1/§2.2 一致）未跟进 ocr / msgboard / webapp / softver / sysinfo / windterm / termora / rammap 入册；再往前 35/12/23 为 Paseo/抖音下载器集成前基线，27/10/17 为 WSL 重整前基线。（链上各行的托管/模块数均为时点账，取数一律以 `docs/FACTS.md` 现值为准，本链只记史不充现值引用。）  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64
 
 本文档定义 Hanxi 后续发展的产品边界、目标架构、技术优先级和决策标准。它不是现有文档的重复版本：
@@ -87,9 +88,9 @@ Hanxi 当前准确的架构定义是：
 `LevelExternal`、`Protocol()`、manifest 和 JSON-RPC 仍属于未来预留，不构成可对外承诺的插件运行时。当前存在以下事实：
 
 - 所有模块对象与 Wails Service 在启动时构造和静态注册；
-- 模块停用主要隐藏导航并调用 `OnDestroy()`，RPC 路由仍存在；
+- 模块停用主要隐藏导航并调用 `OnDestroy()`，RPC 路由仍存在（**2026-10-21 订正：本句已过时**——统一调用门 `a00427b` 全量 RPC 面 + 无头 MCP 同走 `registry.Acquire`，`rpc_gate_matrix_test.go` AST 逐模块穷举闸，blocked 为第一闸先于懒激活；"停用后旧页面直调业务 Service"的路径已被门禁封死，仅 RPC 路由本身仍静态存在）；
 - 前端 Vue View 已经导航注册表异步按需加载（2026-09-14 对表更正；原记「App.vue 静态导入」作废，见 REVIEW §3.2）；
-- 权限是声明信息，尚未形成调用路径上的强制能力边界；
+- 权限是声明信息，尚未形成调用路径上的强制能力边界（**2026-10-21 半订正**："模块存在/启用/激活"维度已强制成门（同上），但逐调用的权限声明仍未进强制判定集，本句后半仍真）；
 - 未知外部模块没有动态 UI、签名、安装、升级或崩溃隔离机制。
 
 短期不应为了“插件化”标签过早引入跨进程协议。应先把内部模块契约做实。
@@ -394,9 +395,9 @@ failed
 
 ### 6.7 前端结构
 
-前端重点不是立即追求运行时插件 UI，而是消除重复接线：
+前端重点不是立即追求运行时插件 UI，而是消除重复接线（2026-10-21 注：本节多数目标已由 Wave 0–5S 与批 3 兑现——路由清单单一来源 `constants/navigation.ts`、视图异步化、共享托管控制台与 stale/generation/busy 治理；**"路由层"落地形态是导航注册表，既定裁决不引入 vue-router/Pinia**，§9-P2 交付项中「Vue Router」字样不得再按字面执行）：
 
-- 引入明确的路由层和异步 View 加载；
+- 引入明确的路由层和异步 View 加载（已落地，见上注）；
 - 建立单一模块前端 Catalog，避免 `CORE_VIEWS`、`ROUTE_MODULE_MAP`、首页元数据多处重复；
 - 后端负责导航和模块状态，前端负责显式组件 loader；
 - 托管工具复用统一控制台、版本管理、状态、错误和确认组件；
@@ -429,15 +430,15 @@ failed
 
 ### 7.3 当前 P0 安全问题
 
-以下问题应进入修复队列，而不是继续停留在文档提示：
+以下问题应进入修复队列，而不是继续停留在文档提示（**2026-10-21 逐条对账注**——本节为 2026-09 时点账，勾状态如下，孤本细节见 `docs/archive/KEY-NUGGETS.md` §一）：
 
-1. FileShare `AuthToken` 尚未形成服务端认证，且监听面、CORS、上传和路径边界需要安全收敛；
-2. 微信 Token/ContextToken 尚未统一进入 DPAPI Secret Store，且不应完整返回前端；
-3. frpc 需覆盖 SecretKey、加密失败 fail-closed、临时 TOML 全生命周期清理和权限收紧；
-4. UAC 端口查杀 helper 应携带并重新验证完整进程指纹，而不是只接收 PID；
-5. 权限声明尚未形成宿主强制调用门；
-6. 日志脱敏需同时按属性 key、嵌套结构和事件载荷处理；
-7. 缺少官方强校验的工具，不应把“自哈希、大小或 CRC”表述成真实性验证。
+1. FileShare `AuthToken` 尚未形成服务端认证，且监听面、CORS、上传和路径边界需要安全收敛；——**大部分已修**（2026-09-14 `authGate` 恒时比较 + 会话 Cookie + 移除通配 CORS；os.Root 全链沙箱；残留：仍绑 `0.0.0.0`，`server.go:95`，多网卡可达属产品形态待裁决）；
+2. 微信 Token/ContextToken 尚未统一进入 DPAPI Secret Store，且不应完整返回前端；——**仍未修**（`internal/settings` 现码无 DPAPI 痕迹，凭据仍随普通配置明文落盘；与 §6.5/FUTURE §3.3 同题，是本清单唯一整条开口）；
+3. frpc 需覆盖 SecretKey、加密失败 fail-closed、临时 TOML 全生命周期清理和权限收紧；——**基本已闭**（DPAPI 加密失败拒绝明文落盘、解密失败密文驻留直通（`store.go:58-91`）；运行 TOML 停机即擦 + 停用/退出尽力清扫（TROUBLESHOOTING #55 已偿）；文件 ACL 收紧未见独立落账）；
+4. UAC 端口查杀 helper 应携带并重新验证完整进程指纹，而不是只接收 PID；——**已修**（提权前捕获镜像路径+创建时间交 helper 复核，`portkill/service.go:230,265`）；
+5. 权限声明尚未形成宿主强制调用门；——**已闭**（统一调用门 `a00427b` + `rpc_gate_matrix_test.go` AST 穷举，见 §2.2 订正注）；
+6. 日志脱敏需同时按属性 key、嵌套结构和事件载荷处理；——**主体已落**（logging Redact 家族 + MCP 出机脱敏锚 TROUBLESHOOTING #95/#100），事件载荷逐属性覆盖未单独复验；
+7. 缺少官方强校验的工具，不应把"自哈希、大小或 CRC"表述成真实性验证。——**政策已落**（内核"缺官方 SHA-256 拒绝无校验安装"如 ccswitch；digest 缺失走降级链仅限 papertodo/guoheview 族且注释明示；portscan "Nmap 假声明"已于 `ee7fd0d` 连根订正，见 `docs/FACTS.md` §三）。
 
 ---
 
@@ -446,9 +447,9 @@ failed
 ### 8.1 当前最高优先级
 
 - ~~`go.mod` 使用 Go 1.26，而 CI/Release 使用 Go 1.24，必须统一~~（2026-09-14 对表：已统一，`go.mod` 1.26.0，CI/Release 均 `1.26.x`）；
-- Wails Go 库固定 beta.10，但 CLI 与前端 Runtime 存在 `latest` 浮动，应固定完整工具链；
-- CI 已挂 `pull_request` + `push: main` 门禁（2026-09-14 对表更正；原记「仅手动触发」过期），但 `dev` 分支直推仍不触发 CI，分支保护未落地；
-- Release 未先运行完整测试，手工发布 tag 选择逻辑存在发布错误风险；
+- ~~Wails Go 库固定 beta.10，但 CLI 与前端 Runtime 存在 `latest` 浮动，应固定完整工具链~~（2026-10-21 对表：三处均已钉死——`go.mod:11` `v3.0.0-beta.10`、`frontend/package.json:24` `@wailsio/runtime` `3.0.0-beta.10`、CI `go install ...cmd/wails3@v3.0.0-beta.10`（`ci.yml:39`）；本机 wails3 CLI 仍是外装项不随仓钉，属已知例外）；
+- CI 已挂 `pull_request` + `push: main` 门禁（2026-09-14 对表更正；原记「仅手动触发」过期），但 `dev` 分支直推仍不触发 CI，分支保护未落地（2026-10-21 复核：仍真，`ci.yml` 触发器未变）；
+- Release 未先运行完整测试，手工发布 tag 选择逻辑存在发布错误风险（2026-10-21 复核：仍真，即 F-c 尾账——`release.yml` 仍裸跑 `task build` 不传 `APP_VERSION`、Verify Source 无 Vitest/ESLint；修法与红线理由见 `docs/plans/PLAN_REMAINING_WORK.md` :152/:175）；
 - 版本号散落在产品常量、构建配置、PE、NSIS、MSIX 和 workflow，应建立单一版本源并校验；
 - Release 仅发布同渠道 SHA256，缺少 Authenticode、SBOM 和 provenance；
 - ~~构建流程会执行 `go mod tidy` 并重写 bindings，应改为独立 drift check，生产构建不修改源码树~~（2026-09-16 对表：已落地——`task build` 不再 tidy/重写 bindings，漂移由 `Taskfile.yml` 的 `verify:tidy` / `verify:bindings`（生成后 `git diff --exit-code`）与 CI 独立步骤守护）；
@@ -505,6 +506,8 @@ failed
 - 模块停用后无所属后台任务、连接和句柄；
 - 文档中的权限、懒加载和验证能力与实际实现一致。
 
+**2026-10-21 对账**：本节主体已随 Wave 0–4S 与质量批 1/2/3 兑现——FileShare 认证与 os.Root 沙箱、UAC helper 指纹复核、唯一生命周期状态源 + 统一调用门（AST 穷举闸）、下载 fail-closed 与验证等级、journal 降级拒新与租约买断。**未清项**：统一 Secret Store（§6.5，微信凭据仍明文 → 退出条件"明文敏感凭据落盘为 0"未达）、"文档与实现一致"由 `scripts/docsfacts` 闸门结构性根治（2026-10-12）但事件载荷脱敏逐属性复验未闭。
+
 ### P1：托管工具平台化（6–16 周）
 
 **目标**：从“每接一个工具复制一套实现”转为“共享内核 + 工具适配器”。
@@ -526,6 +529,8 @@ failed
 - 安装中断不会破坏现有可运行版本；
 - 所有托管工具通过同一套生命周期和供应链契约测试；
 - 上游特殊性只存在于明确适配器中。
+
+**2026-10-21 对账**：共享内核八件已落位 `packages/go/`（artifact/dirstats/externalquit/hostfeed/netx/operation/peicon/supervisor），委托款数（版本面 27 / 实例面 24，现值以 `docs/FACTS.md` 为准）见其口径表；退出条件中"≥70% 共享代码占比"**从未做过定量验收**，历史上未再复提——引用本节时不得把该比例当已达成事实。
 
 ### P2：完整工作台体验（16–28 周）
 
@@ -708,6 +713,8 @@ failed
 ---
 
 ## 12. 近期开发清单
+
+> **2026-10-21 去重注（T8）**：本节与 §8.1/§9 大面积重叠，属同一账的第三次誊写，历来是漂移温床——自本注起**其逐条状态权威 = §7.3 对账注、§8.1、§9 对账段与 `docs/plans/PLAN_REMAINING_WORK.md`，本节只留意图不再双写勾**，更新排期请改 PLAN 而非本节。口径直按本节旧文字执行的会话应先读上述四处的 2026-10-21 注。摘要：第 2/5/6/7/8/10 项已落地；第 3 项半落地（dev 不触发 + Release 尾账 = F-c）；第 4 项仅覆盖 frpc/FileShare，微信凭据仍开口；第 1 项"停止新增同质化托管工具"此后被 windterm/termora/piik/heukms 等托管入库实际突破，如实记——现行裁决口径以 §1.4 与 `docs/MOTIVATION.md` 为准（托管仍在进，但门槛按准入证据包走）。
 
 ### 立即处理
 
