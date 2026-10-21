@@ -488,7 +488,7 @@ describe('EverythingView DownloadTicket 双分发补锁', () => {
     await vi.advanceTimersByTimeAsync(900)
     expect(svc.ListReleases.mock.calls.length).toBeGreaterThan(relBefore) // done 触发 loadVersions
     expect(w.find('.dl-percent').exists()).toBe(false)
-    expect(w.find('.tbl tbody tr .btn-primary').exists()).toBe(true)
+    expect(w.find('.tbl tbody tr button.btn').exists()).toBe(true) // 不锁变体类名，见 583 行注
     vi.useRealTimers()
     w.unmount()
   })
@@ -578,7 +578,10 @@ describe('EverythingView 版本区补锁', () => {
     firstUseRelease()
     svc.DownloadVersion.mockResolvedValue('started')
     let w = await mountView()
-    let btn = w.find('.empty-state .btn-primary')
+    // 首用空态那颗自 2026-10-19 起与行内下载同吃淡洗档 btn-primary-tint（机主点名「下载
+    // 最新版」背景色，规则见 docs/FRONTEND.md 按钮变体语义条）；本组三处选择器一律按
+    // 元素 + 家族原子取，档位再变也不回头改测试。
+    let btn = w.find('.empty-state button.btn')
     expect(btn.text()).toContain('下载 稳定版 1.4.1') // releases[0].channel 决定词面
     await btn.trigger('click')
     await flushMicrotasks()
@@ -589,7 +592,7 @@ describe('EverythingView 版本区补锁', () => {
     firstUseRelease()
     svc.DownloadVersion.mockRejectedValue(new Error('官网断了'))
     w = await mountView()
-    btn = w.find('.empty-state .btn-primary')
+    btn = w.find('.empty-state button.btn')
     await btn.trigger('click')
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toBe('下载失败: 官网断了')
@@ -598,7 +601,7 @@ describe('EverythingView 版本区补锁', () => {
     firstUseRelease()
     svc.DownloadVersion.mockResolvedValue('already-installed')
     w = await mountView()
-    btn = w.find('.empty-state .btn-primary')
+    btn = w.find('.empty-state button.btn')
     await btn.trigger('click')
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toBe('版本 1.4.1 已安装')

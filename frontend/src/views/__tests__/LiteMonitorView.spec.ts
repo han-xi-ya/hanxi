@@ -172,7 +172,8 @@ describe('LiteMonitorView', () => {
     stubDefaults({ state: 'stopped' }, [], [release1])
     svc.DownloadVersion.mockRejectedValue(new Error('GitHub 限流'))
     const { wrapper } = await mountView()
-    await wrapper.find('.tbl tbody .btn-primary').trigger('click')
+    // 行内那颗自 2026-10-19 起吃淡洗档，选择器按元素 + 家族原子选，不锁变体类名。
+    await wrapper.find('.tbl tbody button.btn').trigger('click')
     await flushMicrotasks()
     expect(useToast().toastMsg.value).toBe('下载失败: GitHub 限流')
     wrapper.unmount()

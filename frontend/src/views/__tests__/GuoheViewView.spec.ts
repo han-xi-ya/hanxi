@@ -204,7 +204,9 @@ describe('GuoheViewView 操作流', () => {
     svc.DownloadVersion.mockRejectedValue(new Error('网络断'))
     const { wrapper } = await mountInKeepAlive()
     await wrapper.findAll('.main-tab-btn')[1].trigger('click')
-    await wrapper.find('.tbl .btn-primary').trigger('click')
+    // 选择器去形制耦合（2026-10-19 主操作钮改吃淡洗档 btn-primary-tint）：本约只关心
+    // "点行内那颗下载钮"，故按元素 + 家族原子选取，不再锁变体类名。
+    await wrapper.find('.tbl tbody button.btn').trigger('click')
     await vi.waitFor(() => expect(useToast().toastMsg.value).toBe('安装失败: 网络断'))
     expect(useToast().toastMsg.value).not.toContain('下载失败')
     wrapper.unmount()
