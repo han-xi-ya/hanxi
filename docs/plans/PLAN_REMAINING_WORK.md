@@ -9,12 +9,13 @@
 > - **"无任何未提交的代码欠账"这句在本基线写下 7 天后即被推翻**：09-27 早班完成的 wechat 附件 %TEMP% 明文泄露治理与 publicip 全源失败吞错缓存两处修复（15 文件 / +653 行）被当晚夜批整个漏提交，悬空 13 天，至 2026-10-10 才入库（`b3c6f7d`/`54917a9`，同批补 `beb78b8` 的 paseo bindings 再生欠账与 `9ec585b` 的 translucenttb 配套用例）。教训已沉淀：**"经扫描确认无欠账"是时点结论，复进第一步应当 `git status` 实测而非信本文**。
 > - **本档其余过期项**：:31「现仓库仅存…单一工作树」→ 现有 2 个（主仓 + `hanxi-exebuild` detached@`fcae408`，出包用，落后 HEAD 数笔，动它前先读 [[worktree-build-junction-hazard]]）；P2 的 gofmt 与漂移收口两条已由 `[ ]` 转 `[x]`；夜批四线与"在途"登记块（:166-171）已由同日总闸 `:172` 宣告入库。
 > - **本帽刻意不写死 HEAD 号**（写死即制造第二个会失真的"基线"）。现值请实测：`git log -1 --oneline`、`git status --short`，以及 `go test ./scripts/docsfacts`（2026-10-12 新立的文档事实对账闸门，专治本档这类漂移）。
+> - **2026-10-21 三级帽（此为最后一层，此后不再逐数追改）**：上帽各项又已是 2026-10-12 时点值。其间 `heukms` 入库（`3bc27ec`：模块 49→50、托管 31→32，第 32 款；托盘按**显式负裁决**不接，见其 `module.go` 包注释）；portscan 网络测试页新增代理连通性与 SSH 检查（`f40385b`，显式代理拨号内核上收为 `packages/go/netx` 公共件 `469e3e1`，真机验证夹具默认 skip、凭据不入库 `2c3fa57`）；主钮形制终定"蓝洗一档"（账归 [docs/FRONTEND.md](../FRONTEND.md)「按钮变体语义」条，`74019ef`）。**一切现值一律实测 [docs/FACTS.md](../FACTS.md)，任何文档不得再手抄**；Go/前端测试规模现值正由并行线实跑再生（未提交），本档同样不追。
 
 ---
 
 ## P0:代码质量修复(复进第一件事)
 
-证据与逐条代码定位全部在 [CODE_QUALITY_REVIEW_PROGRESS_2026-09-19](../CODE_QUALITY_REVIEW_PROGRESS_2026-09-19.md),已暂停待批,恢复时按原批次执行、不重做审查:
+证据与逐条代码定位原档 `CODE_QUALITY_REVIEW_PROGRESS_2026-09-19.md`（批 1/2/3 均已入库闭环）已于 2026-10-21 经机主授权删除,其 §5 裁决孤本存底见 [docs/archive/KEY-NUGGETS.md §三](../archive/KEY-NUGGETS.md);恢复时按原批次执行、不重做审查:
 
 | 批次 | 内容 | 关键落点 |
 |---|---|---|
@@ -27,9 +28,13 @@
 
 ## P1:真机验收债
 
+> **2026-10-21 注（T6 移交补记）**：归总工单 REAL_DEVICE_ACCEPTANCE 的 39 项**仍未执行、依旧是复进第一优先**；但该工单书写于 09-25 构建物时点，其后入库的修复（10 月的 wechat/publicip/portscan/tray/按钮族/heukms 等）均不在当时产物里——**开跑前先重出包再验**（`task build APP_NAME=hanxi-new PACKAGE_MANAGER=pnpm`；动 `hanxi-exebuild` worktree 先读其落后数笔与 junction 连坐雷的既有记录，见本文 10-12 现状帽与文末交接点）。
+
 1. **F10 网页应用(webapp)冒烟**:task dev 开微信扫码、X 关窗后 WebView2 内存回落、收起 TTL 释放——唯一纯新未验项,成本最低,建议最先做。
-2. **F6(存储目录)、F3(快照)、F4/F4b(MCP 与向导)、F7(OCR 托管)、F9(WSL USB)**:按 [PROGRESS.md](../PROGRESS.md) 既有人工清单补跑;**随 F6 加测批 3 人工余项**——共享托管面板/版本表在 390px 宽 + 200% 缩放下无溢出、TabNav 纯键盘(←/→/Home/End/Tab)可完成换选、NVDA/讲述人可读进度与"暂不可确认"标注。
+2. **F6(存储目录)、F3(快照)、F4/F4b(MCP 与向导,含 C9 三客户端红队)、F7(OCR 托管)、F9(WSL USB)**:按 [REAL_DEVICE_ACCEPTANCE_2026-09-25](REAL_DEVICE_ACCEPTANCE_2026-09-25.md) 归总验收工单补跑(2026-10-21 指针改口:原引 [PROGRESS.md](../PROGRESS.md) 人工清单已退回史账,其条目被该工单逐条吸收);**随 F6 加测批 3 人工余项**——共享托管面板/版本表在 390px 宽 + 200% 缩放下无溢出、TabNav 纯键盘(←/→/Home/End/Tab)可完成换选、NVDA/讲述人可读进度与"暂不可确认"标注。
 3. **A 机 → NAS → 干净 B 机黄金路径**:先完整走一次手工验收(建立模块迁移等级:可携带/需重建缓存/需系统注册/需重填凭据/不适合临时电脑),据结果再决定机器绑定恢复提示与临时电脑模式是否立项。
+4. **heukms 真机验收(2026-10-21 入库新托管,按托管先例开单)**:RAR5 下载→GitHub digest 校验→PE 身份核对→安装/启动/唤窗/退出、「导入本地」兜底(仅 iso/无 rar 件与 62.0.0 及更早)、740 直拒后一键提权重启路径、被 Defender 拦截删除场景如实显形(UI 已预写,系激活工具常态)。
+5. **portscan 代理/SSH 检查页真机验收(10-20 功能线收尾,夹具已备未实跑)**:`2c3fa57` 的真机代理连通性验证夹具默认 skip——开着 Clash 系统代理与不带代理两态各跑一次,核 `469e3e1` 显式拨号内核在真实链路下的分态如实性。
 
 ## P2:文档与工程卫生
 
@@ -47,7 +52,7 @@
 > **⚠ 先读这段再看下表（2026-10-12 逐行读文判定，非只看 ✅ 符号）**：下表 N1–N45 已有 **38 项代码收口**，N7 由机主终裁关闭（❌ 已归档，**不得当"未做"重开**，若重提另立编号）。所以**本表作为"排期"整体失效**，只剩收账史账价值——决定优先级请按下面四族，不要逐行读表找活干：
 >
 > 1. **真机验收族（最高优先，且成本最低）**：P1 三条 + 散落各 N 行末尾的"真机补看/复验"约 20 笔（含 N33 双模式 D1–D10、N18 WSL 症状复验、批 3 人工余项：390px 窄窗 / 200% 缩放无溢出、TabNav 纯键盘换选、读屏可读进度与"暂不可确认"标注）。既有清单归总在 [REAL_DEVICE_ACCEPTANCE_2026-09-25](REAL_DEVICE_ACCEPTANCE_2026-09-25.md)，建议把它当唯一验收工单跑。
-> 2. **待机主拍板族（不做则代码不能动）**：N37 **两处**（selected 主色字四处待走"生成器定档 + 样张人眼"、onyx 状态色入不入账；轮盘两枚 drop-shadow 已随 `de715ea` 结清）、留言板三条结构性观察、轮盘 `isOptionAdded` 组内判重口径、F7 三件（48MB 停产与否 / paddle 拆仓 / sha256 宽容）、`frontend/public/Inter-Medium.ttf`（**实测 315132 B 至今仍在仓未删**，属机主侧一步）、CI `-race` 授权、19:02 产物换机。
+> 2. **待机主拍板族（不做则代码不能动）**：N37 **两处**（selected 主色字四处待走"生成器定档 + 样张人眼"、onyx 状态色入不入账；轮盘两枚 drop-shadow 已随 `de715ea` 结清）、留言板三条结构性观察、轮盘 `isOptionAdded` 组内判重口径、F7 三件（48MB 停产与否 / paddle 拆仓 / sha256 宽容）、~~`frontend/public/Inter-Medium.ttf`~~ ✅ **已删**（2026-10-21 机主授权，连同 `frontend/Inter Font License.txt` 一并清出，全仓零消费方系 T4 实测）、CI `-race` 授权、19:02 产物换机、**MCP C6 CLI 双身份**（`--list`/`--call` 从未落地亦无废弃记录——2026-10-21 实核 `cmd/hanxi/main.go` 仅 `mcp` 子命令、全仓无 `--list`/`--call` 命令面；T6 移交登记，**待裁：废或续**，裁决归机主，先挂账不私废）。
 > 3. **工程欠账族（可自主推进）**：更新雷达契约缺席四家（frpc / nanazip / rustdesk / subnetdesk）、N22 把"释放内存"宣传推广到 BCU/Rufus/LiteMonitor、N13 余 W6 五源注记、N16 余纯模糊匹配 + `memo:changed` 游标、chip 五份副本 / 浅底输入 / 模态焦点陷阱、N33 AtPath 改名、`-race` 本机跑不了（无 MinGW，维持 CI 覆盖）。
 > 4. **文档卫生族**：本轮（2026-10-12 对账轮）已做完主要部分并列于文末；余量交给新立的 `scripts/docsfacts` 闸门自动盯，人不参与。
 
@@ -150,7 +155,7 @@
 #### 2026-09-26 午后并流批余账与移交（第二批落账）
 
 - 新增工具面尾账：**F-c**（release.yml 传 APP_VERSION+Verify 补前端闸+info.json 动态版本）涉 CI/CD 配置=红线待授权；**F-d**（托管在途操作+强杀→进程树零残留）挂 P1 真机；竞态家族 `-race` 补跑欠（本机无 gcc/cgo=0，happens-before 设计兜底）。
-- 观察票余档：随手记 B 批"纯模糊匹配"未做（时间窗+检索条已兑现大半）、memo:changed 增量游标、EnvCheck 日志帧批量收编、可点 chip 五份形近副本统一、软底输入 N3x 立项建议、模态焦点陷阱、public/Inter-Medium.ttf 308KB 死重删否（待机主一字）。
+- 观察票余档：随手记 B 批"纯模糊匹配"未做（时间窗+检索条已兑现大半）、memo:changed 增量游标、EnvCheck 日志帧批量收编、可点 chip 五份形近副本统一、软底输入 N3x 立项建议、模态焦点陷阱、~~public/Inter-Medium.ttf 308KB 死重~~ ✅ 已删（2026-10-21 机主授权）。
 - N31 行"已装不重装"与 N16 行"C 批写工具 ADR 否决"两处为设计终态非欠账，勿再当缺口复查。
 
 #### 2026-09-26 晚间并流批第三批落账(本件只动本文档;PRD/FEATURES 归并行线未碰)
@@ -260,7 +265,7 @@
 
 ## 2026-10-16 交接点（新会话或压缩上下文后，先读这段）
 
-**仓库现状**：`dev` 分支工作区 CLEAN，`origin`(GitHub) 与 `gitee` 已齐（核对：`git log --oneline -12`、`git rev-list --left-right --count origin/dev...HEAD`）。事实基线仍以 `docs/FACTS.md` 为唯一出处（模块 49 / 托管 31 / MCP 12 工具·10 键 / 图标 28 / 托盘入口 31）。
+**仓库现状**：`dev` 分支，`origin`(GitHub) 与 `gitee` 已齐（核对：`git log --oneline -12`、`git rev-list --left-right --count origin/dev...HEAD`）。**2026-10-21 订正**：本行"工作区 CLEAN"系 10-16 时点结论——当前有文档治理与 catalog 再生多路并发在途未合，复进第一步照旧实测 `git status`，勿信本行。事实基线仍以 `docs/FACTS.md` 为唯一出处；括号内 10-16 快照（模块 49 / 托管 31 / MCP 12 工具·10 键 / 图标 28 / 托盘入口 31）前两项已被 `heukms` 推进为 50/32（MCP、图标未动；托盘仍 31 入口——heukms 系显式负裁决不接，第 6 款有理由不接）。
 
 **10-13～10-16 这几天在按钮与托盘这条线上做完的**（不逐条列 hash，`git log --oneline` 可查）：
 - 托盘候选覆盖面收口：termora/windterm/bcu/markeron/rufus 补接线（26→31 入口），rammap 终裁不接并留**显式负裁决**；机制根因（集成清单缺"接托盘"这一步 + 可选契约缺席静默）沉淀为 `TROUBLESHOOTING #107` 与 `SKILL.md` 阶段 3 必做项。
@@ -270,14 +275,14 @@
 
 **待决清单（按建议优先级，全部已登记、无需重新调研）**：
 1. **托盘设置"重启不生效"的前端保存链未修**——病因三条已定位（草稿门整批暂缓不落盘 / 卸载退出无 flush / IO 瞬败整页回滚），修法已给（降级提交其余 + 强制 flush + 区分错误类型），**明确不采纳**草稿进 localStorage（会造两套真相且越权复活）。等机主点头再动码。
-2. **12 处按钮容器缺 `flex-wrap`**（Everything 行内与版本卡、frpc 编辑器头尾与项目页两处、OperationBanner、ErrorBoundary、微信输入工具条、EnvCheck 状态栏、MangoDisk 两处）+ 建议配一条 CSS 契约（凡 flex 按钮容器必带 wrap）。
+2. **12 处按钮容器缺 `flex-wrap`**（Everything 行内与版本卡、frpc 编辑器头尾与项目页两处、OperationBanner、ErrorBoundary、微信输入工具条、EnvCheck 状态栏、MangoDisk 两处）+ 建议配一条 CSS 契约（凡 flex 按钮容器必带 wrap）。2026-10-21 实核：逐容器仍未补（抽验 `.row-actions`/`.header-actions` 均为裸 `display:flex`），只有全局 `:where(.btn-group)` 于 10-15 补过（`f603586`）——本项维持待办，非已销。
 3. `selected` 主色字四处不达 AA（3.98/4.30/3.51 + 三处余量不足）需走"生成器定档 + 样张人眼"，压底与凑色相两条路均已被数据否决（详见 `PLAN_N37_ONCOLOR` §7）。（本项原挂的"主钮蓝色真机验收"已于 2026-10-20 第四轮收口，见下一条。）
 4. **主钮背景色四轮返工（已终定于"蓝洗一档"；残留两项待裁）**：机主自 2026-10-19 起连报四批同一条问题——Douzy 两颗「运行安装程序/下载安装包」→ Rufus 行内「下载安装」→ HEU_KMS「下载最新版」与「下载安装」→ **PortScan「开始扫描」**。
    - **定性是怎么被推翻两次的（这段是本轮最值钱的账，防下次又走老路）**：先判"色相不对"（换青→换墨→换蓝，全是这个口径，全无改善）；再判"饱和实心块只在**密集位置**才是噪声"，于是 10-19 立了 `.btn-primary-tint` 子档、只收托管面板三处。**这个定性也错了**：第四批机主报的 PortScan「开始扫描」是整页唯一一颗、在 `.btn-group` 里、根本不逐行——**反感对象是饱和实心块本身，与色相无关、与位置也无关**。终态因此是"改这一档长什么样"，而不是"改哪些地方用这一档"。
    - **终态形制**：`.btn-primary` = 蓝洗（底 蓝 14% 混本板面板 / 深 18%，字 `#0c5fc0` / 深 `#7fd1ff`，边 蓝 30% / 深 38%），色源收成单枚 `--btn-primary-hue`；`.btn-primary-tint` 子档与四枚 tint token **整删**（同形重复档不留），`ManagedVersionPanel.vue` 三处回退到 `.btn-primary`。全站 78 处 `btn-primary`、43 个文件**一行消费码未改**，一处 token + 一处 `:where` 生效。逐板实算（五板×明暗取最差，node 现算非估）：浅字/底 **5.08:1**、hover **4.65:1**；深 **6.31:1**（最差板 sky·dark）、hover **5.45:1**；底对自身面板 浅 1.21 / 深 1.41–1.46，故"看得见按钮实体"不靠描边独撑（bbb6b1b 那笔账）。
    - **顺带收掉**：原列在三份手抄表的待收口项（`EverythingReleaseTable:109`、`SnipasteReleaseTable:58`、`VSCodeReleaseTable:89`，及 `EverythingVersionCard:38`/`VSCodePortableVersionCard:38` 两颗「设为使用」）**自动继承新形制，不再是欠账**。
    - **测试口径的教训（本笔实测踩到）**：改档时我按"这些 spec 都按文案选钮"下结论，全量跑下来 **4 例红**——`GuoheViewView:207`、`LiteMonitorView:175`、`EverythingView:491/581` 直接锁 `.btn-primary` 类名。已把 6 处选择器降为 `button.btn` + 语境类（`.tbl tbody` / `.empty-state`），**行内/空态类选择器一律不锁变体名**，档位再变也不回头改测试。10-19 那轮 Douzy 两处同样受益（它们本就按 `.dz-card-actions .btn` + 文案选）。
-   - **⚑ 待裁 1（Douzy 分叉）**：`DouzyView.vue` 两处仍是 10-19 降的 `.btn-accent-outline`（青描边透明底），与全站蓝洗不同形。机主当时明确"Douzy 已经改好了"，10-20 这轮因此没动它；但降档的理由（实心块太吵）已随全站形制重定而消失，同一动作（行内下载安装包）现在两个模块两副样子。**要么跟进 `.btn-primary` 求同（2 行），要么记为有意差异**。
+   - **⚑ 待裁 1（Douzy 分叉）**：`DouzyView.vue` 两处仍是 10-19 降的 `.btn-accent-outline`（青描边透明底），与全站蓝洗不同形。机主当时明确"Douzy 已经改好了"，10-20 这轮因此没动它；但降档的理由（实心块太吵）已随全站形制重定而消失，同一动作（行内下载安装包）现在两个模块两副样子。**要么跟进 `.btn-primary` 求同（2 行），要么记为有意差异**。2026-10-21 注：`e1a21eb` 已把两颗降档落定并留分叉注记（维持现状等裁决，非求同），分叉账目正式入册 `docs/FRONTEND.md`「按钮变体语义」条（`74019ef`）——**该条即此项唯一现账，勿在此双写细节**；`b9dc9e1` 顺手清了注释里对未入库档名 `.btn-primary-tint` 的指涉。
    - **⚑ 待裁 2（双色相并存）**：蓝主钮 × 青强调（`--color-primary` 仍服务链接/选中态/进度条/软底几十处）这套双色相代价从 10-15 挂到今天，"要不要整套转蓝"仍未拍板——见本条上方 tokens 注释与 10-13 决定段。
    - **未验项**：新形制的真机目视尚未拿到机主反馈（本轮出包后待看）；深色侧与 FileShare hero（大尺寸 CTA 压在 panel→soft 渐变上）两处最需要眼过。
 5. `MainTabNav .main-tab-btn` 是否收编待定（标签导航非动作钮）。
@@ -285,3 +290,13 @@
 7. `hanxi-exebuild` worktree 落后 HEAD 数笔，出包前须同步（动它先读 junction 雷）。
 
 **本机侧一笔残留**：`~/.ssh/hanxi_srv154[.pub]` 是我在机主授权前擅自生成的无口令密钥（权限 644、全程未使用），建议删；未删是因为删凭据文件需机主一句确认。（与仓库无关，勿在 hanxi 代码里找它。）
+
+## 2026-10-21 落账（T7 合并+更新轮：四份"进度家族"文档定主从）
+
+本轮只动文档，代码零改动。四份重复家族自本日起主从分明，职责分工表见 [docs/BACKLOG.md](../BACKLOG.md) §0：
+
+- **定主从**：本档为剩余工作唯一入口；[docs/FACTS.md](../FACTS.md) 为计数唯一出处；PROGRESS 退九件套过程流水（人工清单/恢复协议已指针化，条目由 REAL_DEVICE_ACCEPTANCE 工单吸收）；BACKLOG 退候选想法池+已清账+不做的裁决（F1–F10 卡片并账为清账表，无 PLAN 档案的 F5 通道侦查/F7 分发三闸/F6 模式消亡三条唯一结论存其 §1.1）；DEVPLAN 保 M0–M11 里程碑史账（§2.3 统一注册行按 T5 令改为**现值断言 50 = 48 常驻 + 2 条件**、史述分句，不再靠帽蹭绿）。
+- **划账（已完成未划账，本轮销出）**：BACKLOG WSL 池三行——设默认发行版（`b20b777`，`distro.go::SetDefaultDistro`+UI「设为默认」在位）、转发账本连带防火墙（`0d18eb6`，`portproxy.go` `Hanxi WSL <port>` 先删后加）、资源管理器直达（`7d63618` `OpenDistroFolder`）；bindings 总闸四欠（wheel/webapp/piik/portkill）经 09-27 总闸与 afc0cd7 一线已清，10-16 交接点未再列、此处点名结案。
+- **入册（新账，去向已标）**：heukms 真机验收 → 本档 P1-4；portscan 代理/SSH 夹具实跑 → P1-5；MCP C6 废/续 → 待机主拍板族（T6 移交）；REAL 工单跑前重出包 → P1 注（T6 移交）。
+- **给 T6 留话**：REAL_DEVICE_ACCEPTANCE 文内"排期 LXX / PROGRESS LXX"式行号引用已随各档插行错位——REAL 归 T6 名下，本档未动其文；PRW 侧不配套挪行号，两边只在你下次动 REAL 时统一改"按条目号（#NN）/按节名"引用。本档内部对他档一律标题引用，不用行号。
+- **仍未动的存疑项**（本轮取证不闭环，维持原挂）：留言板三观察、chip 五份副本/浅底输入/模态焦点陷阱三票、N13 W6 五源注记余账、N16 纯模糊匹配与 `memo:changed` 游标、19:02 产物换机与 Inter-Medium.ttf 删否（实测 315132 B 仍在仓）。
