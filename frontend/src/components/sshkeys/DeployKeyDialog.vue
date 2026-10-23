@@ -11,7 +11,7 @@
 //    reason 文本**——auth-rejected 的"两个可能"（密码不对 / 对方不接受密码登录）
 //    由界面按 verdict 固定补一句，后端 reason 在场与否、怎么写都不影响这句。
 //
-// 禁走 usePrompt/UiPromptDialog（实盘 type="text"，见 PLAN_SSH_HOSTS_UX §6.3）。
+// 禁走 usePrompt/UiPromptDialog（实盘 type="text"，见 PLAN_SSH_KEYS_UX §6.3）。
 import { computed, ref, watch } from 'vue'
 import UiBanner from '../ui/UiBanner.vue'
 import UiStatusChip from '../ui/UiStatusChip.vue'
@@ -71,7 +71,7 @@ async function submit() {
 
   const addr = `${host.value.trim()}:${Number(port.value) || 0}`
   // 确认步：这是"真实登录尝试 + 改远端文件"的入口，只留一个显式按钮不够，
-  // 还要一屏让人看清目标与公钥（PLAN_SSH_HOSTS_UX §6.4 的裁断，落地在钥匙环侧
+  // 还要一屏让人看清目标与公钥（PLAN_SSH_KEYS_UX §6.4 的裁断，落地在钥匙环侧
   // 同样成立）。取消/遮罩/Esc 都算否决，不发请求、口令留在原字段供改主意。
   const accepted = await confirm({
     title: `向 ${addr} 部署公钥？`,
@@ -134,7 +134,7 @@ const isRefused = computed(() => result.value?.verdict === 'refused')
 const isDeployed = computed(() => result.value?.verdict === 'appended' || result.value?.verdict === 'already-present')
 
 // 「再试一次」：保留表单其余字段，口令必须重新输入——失败路径上口令早已被
-// 销毁，这里没有任何"缓存在途口令"可回填（PLAN_SSH_HOSTS_UX §6.5 尾注）。
+// 销毁，这里没有任何"缓存在途口令"可回填（PLAN_SSH_KEYS_UX §6.5 尾注）。
 function resetForRetry() {
   result.value = null
   error.value = ''
