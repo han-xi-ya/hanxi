@@ -7,15 +7,15 @@
 // 「同步给 ssh」触发（useHosts 头注的同一条后端纪律）。
 //
 // 全部列/按钮/表单壳走全局原子（.card/.tbl/.table-container/.empty-state/.empty-hint/
-// .error-box/.hint-line/.mono/.chip/.btn-group/.btn-*/.link-button/.toggle-label/
-// .form-item-block/.form-label）；scoped 只补布局，不自造任何彩色按钮档——
-// buttonColorContract 在扫这里。所有按钮容器挂 .btn-group（全局档含 flex-wrap），
-// 窄窗整颗换行而不是溢出（"刷新网卡被挤出窗口"的实测事故条款）。
+// .error-box/.hint-line/.state-warning/.mono/.chip/.btn-group/.btn-*/.link-button/
+// .toggle-label/.form-item-block/.form-label/.select-input）；scoped 只补布局，
+// 不自造任何彩色按钮档——buttonColorContract 在扫这里。所有按钮容器挂 .btn-group
+// （全局档含 flex-wrap），窄窗整颗换行而不是溢出（"刷新网卡被挤出窗口"的实测事故条款）。
 import { computed, onMounted, ref } from 'vue'
 import UiBanner from '../ui/UiBanner.vue'
 import UiStatusChip from '../ui/UiStatusChip.vue'
 import { aliasIssue, baseOfKeyPath, useHosts } from './useHosts'
-import type { HostEntry } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
+import type { HostEntry, KeyEntry } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
 import { useConfirm } from '../../composables/useConfirm'
 import { useClipboard } from '../../composables/useClipboard'
 
@@ -25,6 +25,7 @@ const { copyWithToast } = useClipboard()
 const {
   hosts, summary, listError, exportError, exportNote, checkedAt,
   keyMissing,
+  ledgerKeys, ledgerReadFailed, refreshKeyOptions,
   listBusy, exportBusy,
   refreshAll, saveHost, toggleEnabled, removeHost, syncToSSH, undoExport,
 } = useHosts()
@@ -37,8 +38,11 @@ function addrText(h: HostEntry): string {
   return `${h.host}:${h.port || 22}`
 }
 
-// 密钥列只上屏基名（id_ed25519_1panel 这种天天见的可读音），完整路径退到 title；
-// "这把钥匙在本机台账里有没有"就地用钥匙环同一数据源（ListKeys）交叉出一个弱信号标。
+// 密钥列只上屏基名（id_ed25519_1panel 这种天天见的可读音），完整路径退到 title。
+// "这把钥匙在本机找不到"的帽子**只**由后端对账逐条 stat 的名单（missingKeyAliases）
+// 来戴——本面板下方表单虽然也调 ListKeys，但那只做下拉**选项来源**，两路用途严禁
+// 合并（旧事故：拿台账基名猜在不在，把放别处的真钥匙标成"找不到"，帽子正压在
+// 删除决策上；判"缺不缺"永远不消费台账名单，见 useHosts.refreshKeyOptions 头注）。
 function keyName(h: HostEntry): string {
   return baseOfKeyPath(h.keyPath)
 }
@@ -91,6 +95,50 @@ const aliasShown = computed(() => (aliasTouched.value || attempted.value) ? alia
 const hostShown = computed(() => (hostTouched.value || attempted.value) ? hostProblem.value : '')
 const portShown = computed(() => (portTouched.value || attempted.value) ? portProblem.value : '')
 
+// —— 「私钥路径」下拉：台账当选项来源 ——
+// 只列「有私钥、且后端给了 suggestPath」的行（孤儿 .pub 不是私钥路径的合法答案；
+// suggestPath 为空的有私钥行按后端契约不存在，真出现宁可不列，不拿别的字段顶）。
+// **值一律用 suggestPath（`~/<名字>`），不取 privatePath、前端也不自己拼**：
+// `~/名字` 形态跨机器稳定（换用户名不漂），而台账只扫 ~/.ssh——凡是列出来的私钥
+// 必然写得成 `~/` 形态，这个判断的依据在扫描侧才完整（models KeyEntry.SuggestPath
+// 契约）；前端拼路径就是第二次猜测，清单里已经因"拿台账猜"误标过一次，不再猜第二处。
+const keySelectOptions = computed(() => ledgerKeys.value.filter(k => k.hasPrivate && !!k.suggestPath))
+
+// select 与输入框共用一个值（draft.keyPath），两个方向都同步：
+// 选下拉→写入输入框；手输任意路径→select 落到这颗禁用的「自定义」哨兵上
+// （disabled 只拦用户点击、仍可被程序选中回显），把"只能选不能输"的死路堵死——
+// 存在先登记机器、回头才生成钥匙的顺序，输入框任何时候都必须能纯手输保存。
+const CUSTOM_KEYPATH = '__custom_keypath__'
+const keySelectValue = computed(() => {
+  const v = draft.value.keyPath
+  if (!v) return ''
+  return keySelectOptions.value.some(k => k.suggestPath === v) ? v : CUSTOM_KEYPATH
+})
+
+// label 用人能读的：`名字（算法 · 指纹前 8 位）`。完整路径不进 label——选中后
+// 路径就在输入框里，label 再挂一遍长路径只会把选项挤得没法读。
+// 指纹剥掉 `SHA256:` 前缀再取前 8 位：前缀是格式名不是身份，整串照搬等于没截。
+function keyOptionLabel(k: KeyEntry): string {
+  const tags = [k.type, (k.fingerprint ?? '').replace(/^SHA256:/, '').slice(0, 8)].filter(Boolean)
+  return tags.length ? `${k.name}（${tags.join(' · ')}）` : k.name
+}
+
+function onKeyPathSelect(ev: Event) {
+  const v = (ev.target as HTMLSelectElement).value
+  // 禁用项（读取失败/空台账/自定义哨兵）不可能被用户选中，到这里的只有
+  // ''（第一项：清空为"不指定"）或某条 suggestPath。
+  if (v === CUSTOM_KEYPATH) return
+  draft.value.keyPath = v
+}
+
+// 联动提示（本下拉的主要价值之一）：选中的这把 hasPublic=false，「部署公钥」对它
+// 必然不可用——当场就地说明，不等人跑去部署时撞墙才发现。只陈述台账事实，
+// 不推断钥匙在不在（"缺不缺钥匙"的帽子仍只由后端名单戴，见 keyName 头注）。
+const selectedKeyLacksPub = computed(() => {
+  const k = keySelectOptions.value.find(o => o.suggestPath === draft.value.keyPath)
+  return !!k && !k.hasPublic
+})
+
 function openAdd() {
   draft.value = blankDraft()
   editingAlias.value = ''
@@ -98,6 +146,9 @@ function openAdd() {
   attempted.value = false
   formError.value = ''
   formOpen.value = true
+  // 每次开表单重拉一次台账：刚在「密钥台账」生成的钥匙要当场选得到，
+  // 不该逼人重开面板（挂载时另有 refreshAll 拉第一遍）。失败静默降级。
+  void refreshKeyOptions()
 }
 
 function openEdit(h: HostEntry) {
@@ -110,6 +161,7 @@ function openEdit(h: HostEntry) {
   attempted.value = false
   formError.value = ''
   formOpen.value = true
+  void refreshKeyOptions()
 }
 
 function closeForm() {
@@ -337,13 +389,41 @@ function rowToggleAria(h: HostEntry): string {
         </div>
 
         <div class="form-item-block field-wide">
-          <label class="form-label" for="hosts-keypath">私钥路径</label>
-          <input
-            id="hosts-keypath" v-model="draft.keyPath" class="input input-mono"
-            placeholder="C:\Users\你\.ssh\id_ed25519" autocomplete="off" spellcheck="false"
-          />
+          <label class="form-label" for="hosts-keypath-select">私钥路径</label>
+          <div class="keypath-row">
+            <!-- 下拉值=suggestPath（`~/名字`，跨机器稳定；依据在后端扫描侧，勿改取
+                 privatePath 或前端拼），输入框始终可纯手输——见脚本区用途注释。 -->
+            <select
+              id="hosts-keypath-select" class="select-input" :value="keySelectValue"
+              @change="onKeyPathSelect($event)"
+            >
+              <option value="">（未指定——留空，走 agent/默认身份）</option>
+              <option
+                v-for="k in keySelectOptions" :key="k.name" :value="k.suggestPath"
+              >{{ keyOptionLabel(k) }}</option>
+              <option
+                v-if="!keySelectOptions.length && ledgerReadFailed" disabled value="__read_failed__"
+              >（本机密钥列表读取失败，可直接输入路径）</option>
+              <option
+                v-else-if="!keySelectOptions.length" disabled value="__no_keys__"
+              >本机还没有密钥，可先去台账生成（也可直接输入路径）</option>
+              <option :value="CUSTOM_KEYPATH" disabled>自定义（手动输入的路径，不在台账选项中）</option>
+            </select>
+            <input
+              id="hosts-keypath" v-model="draft.keyPath" class="input input-mono"
+              aria-label="私钥路径（可直接输入任意路径）"
+              placeholder="C:\Users\你\.ssh\id_ed25519 或 ~/id_ed25519"
+              autocomplete="off" spellcheck="false"
+            />
+          </div>
           <p class="field-msg">
+            从下拉挑就是本机台账里的钥匙（`~/名字` 写法换机不漂）；也可以直接输入任意路径。
             只存路径，不读内容；留空表示这台不指定密钥。路径里的空格会让配置行只认首个 token，后端会拒。
+          </p>
+          <!-- 联动提示走既有原子 .hint-line + .state-warning 字色，不新造样式；
+               只陈述台账事实 hasPublic=false，不是"钥匙缺失"判据（那是后端名单的事）。 -->
+          <p v-if="selectedKeyLacksPub" id="hosts-keypath-hint" class="hint-line state-warning" role="status">
+            ⚠ 这把还没有配套公钥，「部署公钥」对它不可用——请先去「密钥台账」点「补出公钥」。
           </p>
         </div>
 
@@ -548,6 +628,25 @@ function rowToggleAria(h: HostEntry): string {
 
 .field-msg { margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.6; }
 .field-error { color: var(--state-danger); }
+
+/* 「私钥路径」行：下拉+输入框同行，窄窗各自行内换行不挤压（minmax 0 防长路径撑破，
+   与 .form-fields 同一手法）。只补布局与字档对齐——色彩档仍在全局 .select-input 与
+   本页 .input 里，warning 字色走全局 .state-warning 原子，此处零彩色底。 */
+.keypath-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.keypath-row .input { flex: 1 1 220px; }
+/* 全局 select 档未管到字号/字色/圆角，这里对齐本页 .input 的最小等档（同用中性 token）。 */
+.keypath-row .select-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  font-family: inherit;
+  background: var(--surface-page);
+}
+.keypath-row .select-input:focus { border-color: var(--color-primary); }
+.keypath-row .select-input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
 
 .cell-alias { font-weight: 600; }
 .cell-note {

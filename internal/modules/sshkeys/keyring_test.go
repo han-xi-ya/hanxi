@@ -214,6 +214,44 @@ func TestListKeysAnnotatesUsedBy(t *testing.T) {
 	if len(free.UsedBy) != 0 {
 		t.Errorf("id_free 不该有引用，实得 %+v", free.UsedBy)
 	}
+	// 下拉填什么形态由后端定：台账只扫 ~/.ssh，所以列出来的私钥必然写得成 `~/名字`。
+	// 用真身绝对路径会让清单跟着用户名漂；让前端自己拼又等于制造第二次猜测。
+	if used.SuggestPath != "~/id_used" || free.SuggestPath != "~/id_free" {
+		t.Errorf("SuggestPath 应为 ~/<名字>，实得 %q / %q", used.SuggestPath, free.SuggestPath)
+	}
+	orphan2, ok2 := find(got, "id_used")
+	if !ok2 || !orphan2.HasPublic {
+		t.Fatal("夹具应与配套公钥同现，用于验证 SuggestPath 只认私钥半边")
+	}
+}
+
+// TestSuggestPathOnlyForPrivate 仅公钥的行没有可填的私钥路径，必须留空——
+// 留空正是前端下拉把它排除出去的依据（清单要的是 IdentityFile 指向的私钥）。
+func TestSuggestPathOnlyForPrivate(t *testing.T) {
+	home := t.TempDir()
+	keyDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(keyDir, 0o700); err != nil {
+		t.Fatalf("建目录失败: %v", err)
+	}
+	prev := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = prev })
+
+	writeKeyPair(t, keyDir, "id_pub_only", "", true)
+	if err := os.Remove(filepath.Join(keyDir, "id_pub_only")); err != nil {
+		t.Fatalf("制造孤儿公钥失败: %v", err)
+	}
+	got, err := scanKeyDir(keyDir)
+	if err != nil {
+		t.Fatalf("扫描失败: %v", err)
+	}
+	e, ok := find(got, "id_pub_only")
+	if !ok || e.HasPrivate || !e.HasPublic {
+		t.Fatalf("应是仅公钥的一行：%+v", got)
+	}
+	if e.SuggestPath != "" {
+		t.Errorf("仅公钥的行 SuggestPath 必须留空，实得 %q", e.SuggestPath)
+	}
 }
 
 func TestScanKeyDirMissingDirIsNotError(t *testing.T) {

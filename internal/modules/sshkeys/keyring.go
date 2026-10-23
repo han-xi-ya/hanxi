@@ -43,6 +43,15 @@ type KeyEntry struct {
 
 	MtimeUnix int64 `json:"mtimeUnix"`
 
+	// SuggestPath 给主机清单的下拉当值：**有私钥时是 `~/<名字>`，仅公钥时为空**。
+	//
+	// 为什么由后端给而不是前端拼：本台账只扫 `~/.ssh`（见 scanKeyDir），所以凡是列出来的
+	// 私钥必然在这台机器的 `~/.ssh` 下，`~/` 形态一定成立；换成真身绝对路径会让清单跟着
+	// 用户名漂（换机/换账户即失效），而 `~` 是 ssh 与后端 expandHome 都认的稳定写法。
+	// 这个判断的依据在扫描侧才完整，放前端就成了第二次猜测——清单里已经因为"拿台账猜
+	// 钥匙在不在"误标过一次，不再制造第二处。
+	SuggestPath string `json:"suggestPath"`
+
 	// UsedBy 是主机清单里引用这把钥匙的别名。**这条存在的理由是防误删**：
 	// 私钥文件被删而清单还指着它，后果是"那条永远连不上而人看不出为什么"。
 	UsedBy []string `json:"usedBy"`
@@ -212,6 +221,9 @@ func scanKeyDir(dir string) ([]KeyEntry, error) {
 	for _, base := range order {
 		e := *byName[base]
 		e.UsedBy = []string{}
+		if e.HasPrivate {
+			e.SuggestPath = "~/" + e.Name
+		}
 		out = append(out, e)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

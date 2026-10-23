@@ -73,6 +73,7 @@ const PRIV = {
   type: 'ssh-ed25519', fingerprint: 'SHA256:AAAAbbbbCCCCddddEEEEffffGGGGhhhh',
   comment: 'laptop', bits: 256, guarded: false, guardKnown: true,
   mtimeUnix: 1730000000, usedBy: [], usedByKnown: true,
+  suggestPath: '~/id_plain',
 }
 // 有口令 + 被两条清单主机引用（删除对话框要能看到别名清单的那把）。
 const GUARDED = {
@@ -80,6 +81,7 @@ const GUARDED = {
   privatePath: '/home/u/.ssh/id_guard', publicPath: '/home/u/.ssh/id_guard.pub',
   guarded: true, fingerprint: 'SHA256:GUAR GUAR GUAR GUAR GUAR GUAR GUAR',
   comment: 'nas', usedBy: ['nas01', 'work'], usedByKnown: true,
+  suggestPath: '~/id_guard',
 }
 // 孤儿 .pub：只有公钥侧。
 const PUB = {
@@ -88,6 +90,8 @@ const PUB = {
   guarded: false, fingerprint: 'SHA256:PUBPUBPUBPUBPUBPUBPUBPUBPUBPUBPUBPUB',
   // 仅公钥的行：后端没有私钥路径可比对 → usedByKnown=false（**未判**，不是"没人用"）。
   comment: 'old-server', usedBy: [], usedByKnown: false,
+  // 仅公钥的行没有可填的私钥路径，必须留空（清单下拉正是靠它把这类行排除）。
+  suggestPath: '',
 }
 // 只有私钥、缺配套 .pub 且**带口令**：从服务器直接下回来的私钥的典型形态。
 // 「补出公钥」的入口条件必须对它成立（前端不看 guarded——公钥段在明文外层）。
@@ -95,12 +99,14 @@ const NOPUBG = {
   ...PRIV, name: 'id_srvkey', hasPrivate: true, hasPublic: false,
   privatePath: '/home/u/.ssh/id_srvkey', publicPath: undefined,
   guarded: true, fingerprint: '', comment: '',
+  suggestPath: '~/id_srvkey',
 }
 // 同形状但无口令、台账读得到原注释：注释应沿用进输入框。
 const NOPUBFREE = {
   ...NOPUBG, name: 'id_downloaded',
   privatePath: '/home/u/.ssh/id_downloaded',
   guarded: false, comment: 'downloaded',
+  suggestPath: '~/id_downloaded',
 }
 const LEDGER = [PRIV, GUARDED, PUB]
 

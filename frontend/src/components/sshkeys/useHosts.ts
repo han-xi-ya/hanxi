@@ -10,7 +10,7 @@
 // 其余字段前端只做轻拦（地址、端口格式），最终以后端原文为准，不造第二判据。
 import { computed, ref, shallowRef } from 'vue'
 import * as SshKeysAPI from '../../../bindings/hanxi/internal/modules/sshkeys'
-import type { ExportSummary, HostEntry } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
+import type { ExportSummary, HostEntry, KeyEntry } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useAsyncAction } from '../../composables/useAsyncAction'
 
@@ -72,15 +72,46 @@ export function useHosts() {
   const exportNote = ref('')    // 上一次显式导出动作的回执原文（后端 message）
   const checkedAt = ref('')     // 上次对账时刻，仅界面自证"这不是陈旧截图"
 
-  // 缺钥匙的别名集合：直接来自对账结果，**不另开一次 ListKeys 请求**（少一路状态、
-  // 少一套会过期的旁证）。summary 为 null（还没对账过）时不标任何行——宁缺勿错。
+  // 缺钥匙的别名集合：直接来自对账结果。summary 为 null（还没对账过）时不标任何行——
+  // 宁缺勿错。注意：下方台账下拉那一路**也**调 ListKeys，但它只当「私钥路径」的选项
+  // 来源，本名单不消费它——两套用途的边界见 refreshKeyOptions 的头注，勿合并。
   const missingKeys = computed<Set<string>>(() => new Set(summary.value?.missingKeyAliases ?? []))
 
-  // 两把单飞锁分道：账本读写（ListHosts/增删改）与导出对账（Status/Conf/Remove）互不
-  // 阻塞——挂载时并发；若共用一把锁，useAsyncAction 的重入守卫会把正当的并发报成
-  // 「操作进行中」那种要人猜的假错误。
+  // 三把单飞锁分道：账本读写（ListHosts/增删改）、导出对账（Status/Conf/Remove）与
+  // 台账选项（ListKeys）互不阻塞——挂载时并发；若共用一把锁，useAsyncAction 的重入
+  // 守卫会把正当的并发报成「操作进行中」那种要人猜的假错误。
   const { busy: listBusy, run: runList } = useAsyncAction()
   const { busy: exportBusy, run: runExport } = useAsyncAction()
+  const { busy: ledgerBusy, run: runLedger } = useAsyncAction()
+
+  // —— 台账选项源（表单「私钥路径」下拉）——
+  // 用途边界，防与已废弃的旧用法混淆（这条历史很容易被人看成像重复劳动而删掉）：
+  // 本面板**以前**也调 ListKeys，那次是拿台账基名**猜**「这条清单的钥匙在不在」——
+  // 台账只扫 ~/.ssh，放在别处（D:\keys\id_rsa 这类）的真钥匙会被误标成「找不到」，
+  // 而这顶帽子正压在删除决策现场，那次已整体废弃，hasLedgerKey 那种猜法不得复活。
+  // 现在加回来只做一件事：给下拉当**选项来源**；「缺不缺」仍只由后端
+  // ExportSummary.missingKeyAliases 逐条 stat 决定。两套用途别合并。
+  // 读失败**静默降级**：不报错、不阻断——存在「先登记机器、回头再生成钥匙」的顺序，
+  // 台账读不到时输入框照常手输，保存清单不能被台账劫持。
+  const ledgerKeys = shallowRef<KeyEntry[]>([])
+  const ledgerReadFailed = ref(false)
+
+  async function refreshKeyOptions(): Promise<void> {
+    // 重入静默跳过（挂载与开表单可能并发）：正在拉就不双发；更不能让
+    // useAsyncAction 的重入假错误（「操作进行中」）被当成读取失败把好选项清掉。
+    if (ledgerBusy.value) return
+    const res = await runLedger(() => SshKeysAPI.SshKeysService.ListKeys())
+    if (res.ok) {
+      // 空数组是正常空态（新机还没有 ~/.ssh），不是错误——与钥匙环同口径。
+      ledgerKeys.value = res.data ?? []
+      ledgerReadFailed.value = false
+    } else {
+      // 失败连同旧选项一起清空：下拉只认「当前读到的台账」，留一份会过期却看着
+      // 像新鲜的候选（躺一把已删的钥匙）比没有候选更容易选错。
+      ledgerKeys.value = []
+      ledgerReadFailed.value = true
+    }
+  }
 
   async function refreshHosts() {
     listError.value = ''
@@ -116,8 +147,11 @@ export function useHosts() {
     return missingKeys.value.has(alias)
   }
 
+  // refreshAll 三路并发：账本、对账、台账选项。台账选项挂载时拉一次，
+  // 之后每次打开表单/开始编辑还会单独再拉（HostsPanel 的 openAdd/openEdit）——
+  // 刚在「密钥台账」里生成的钥匙要当场选得到，不该逼人重开面板。
   function refreshAll() {
-    return Promise.all([refreshHosts(), refreshStatus()])
+    return Promise.all([refreshHosts(), refreshStatus(), refreshKeyOptions()])
   }
 
   // saveHost 新增/整条覆盖。返回 ok/error 给表单就地显示（后端拒绝的原文要落
@@ -190,6 +224,7 @@ export function useHosts() {
   return {
     hosts, summary, listError, exportError, exportNote, checkedAt,
     missingKeys, keyMissing,
+    ledgerKeys, ledgerReadFailed, refreshKeyOptions,
     listBusy, exportBusy,
     refreshAll, refreshHosts, refreshStatus,
     saveHost, toggleEnabled, removeHost, syncToSSH, undoExport,

@@ -6,8 +6,12 @@
 // ③ 别名是主键：编辑态锁死、机制文案讲"为什么"、重名保存前拦；
 //    aliasIssue 与后端 sshconf TestValidateAlias 样本表逐条镜像核对（规则不变，表要对齐）；
 // ④ 删除确认点名"不会删除磁盘上的私钥"；启停失败必须把 checkbox 拨回真实值；
-// ⑤ 可读性三锁：密钥列只上屏基名（完整路径进 title）+ 台账交叉的中性"找不到"标、
-//    启用列说明"= 是否导出给 ssh"（含 title/aria 与停用×drift 的行内呼应）。
+// ⑤ 可读性三锁：密钥列只上屏基名（完整路径进 title）+ 钥匙"找不到"帽只由后端逐条
+//    stat 名单驱动、启用列说明"= 是否导出给 ssh"（含 title/aria 与停用×drift 的行内呼应）；
+// ⑥ 表单「私钥路径」下拉：台账只当**选项来源**（值=suggestPath 而非 privatePath、只有
+//    hasPrivate 的行进下拉、选中缺公钥的给联动提示、纯手输必须始终可保存、读失败/空台账
+//    落禁用占位项静默降级、开表单重拉一次）。挂载/开表单的 ListKeys 只服务这一个用途——
+//    "缺不缺钥匙"仍只看 ⑤ 的后端名单，两套用途不许合并（旧误标事故见 useHosts 注）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -60,8 +64,33 @@ const NEVER_EXPORTED = {
   ...CONSISTENT, drift: true, message: '还没导出过：ssh 目前读不到 hanxi 的清单。',
 }
 
+// —— 台账夹具（ListKeys 返回的 KeyEntry，形状照 bindings models 逐字段造）——
+// privatePath 与 suggestPath **刻意不同形**：下拉的选项值必须是后端给的 suggestPath
+// （`~/名字` 跨机器稳定），实现一旦改拿 privatePath 或前端自拼，这一族用例全红。
+const KEY_FULL = {
+  name: 'id_ed25519', hasPrivate: true, hasPublic: true,
+  privatePath: 'C:\\Users\\u\\.ssh\\id_ed25519', publicPath: 'C:\\Users\\u\\.ssh\\id_ed25519.pub',
+  type: 'ed25519', fingerprint: 'SHA256:1111222233334444abcdefgh', comment: 'laptop', bits: 256,
+  guarded: false, guardKnown: true, mtimeUnix: 1750000000,
+  suggestPath: '~/id_ed25519', usedBy: ['nas01'], usedByKnown: true,
+}
+const KEY_NOPUB = {
+  ...KEY_FULL, name: 'id_rsa_work', hasPublic: false,
+  privatePath: 'C:\\Users\\u\\.ssh\\id_rsa_work', publicPath: '',
+  type: 'rsa', fingerprint: 'SHA256:aaaabbbbccccdddd0000', bits: 3072,
+  suggestPath: '~/id_rsa_work', usedBy: [], usedByKnown: true,
+}
+// 孤儿 .pub：hasPrivate=false 且 suggestPath 为空——两条判据都该把它挡在下拉外。
+const KEY_PUBONLY = {
+  ...KEY_FULL, name: 'orphan_pub', hasPrivate: false, hasPublic: true,
+  privatePath: '', publicPath: 'C:\\Users\\u\\.ssh\\orphan_pub.pub',
+  fingerprint: 'SHA256:eeeeffff0000', guarded: false, guardKnown: false,
+  suggestPath: '', usedBy: [], usedByKnown: false,
+}
+
 function mockDefaults() {
   svc.ListHosts.mockResolvedValue([NAS, OFF])
+  svc.ListKeys.mockResolvedValue([KEY_FULL, KEY_NOPUB, KEY_PUBONLY])
   svc.AddHost.mockResolvedValue([NAS, OFF])
   svc.UpdateHost.mockResolvedValue([NAS, OFF])
   svc.RemoveHost.mockResolvedValue([NAS, OFF])
@@ -162,11 +191,14 @@ describe('useHosts.aliasIssue × sshconf TestValidateAlias：镜像样本表逐�
 })
 
 describe('HostsPanel 清单渲染', () => {
-  it('进面板只读两路：账本 + 导出对账（不再自取台账做旁证）；端口 0 显式记成 :22，停用行给「已停用」标', async () => {
+  it('进面板读三路：账本 + 导出对账 + 台账（ListKeys 只为下拉供选项，绝不再当缺钥匙的旁证）；端口 0 显式记成 :22，停用行给「已停用」标', async () => {
     const w = await mountPanel()
     expect(svc.ListHosts).toHaveBeenCalledTimes(1)
     expect(svc.ExportStatus).toHaveBeenCalledTimes(1)
-    expect(svc.ListKeys).not.toHaveBeenCalled() // 判据已交后端名单，旁证请求整个取消
+    // 2026-10-23 恢复挂载时拉台账：用途只有"表单下拉的选项来源"。旧用途（拿台账
+    // 基名猜"钥匙在不在"）造成的误标帽子仍由下面密钥列一族用例钉死——行级"找不到"
+    // 只看后端 missingKeyAliases 名单，台账名单不参与判断，hasLedgerKey 不许复活。
+    expect(svc.ListKeys).toHaveBeenCalledTimes(1)
     const rows = w.findAll('tbody tr')
     expect(rows).toHaveLength(2)
     expect(rows[0].text()).toContain('nas01')
@@ -544,5 +576,156 @@ describe('HostsPanel 新增/编辑表单', () => {
     expect(w.find('.hosts-form .error-box').text()).toContain('HostName 只填 IP 或域名')
     // 表单没关：草稿留在原地改，而不是让人从头再填一遍
     expect((w.find('#hosts-alias').element as HTMLInputElement).value).toBe('nas01-ok')
+  })
+})
+
+describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath、可手输、缺公钥提示、静默降级）', () => {
+  // 打开新增表单并取下拉。表单是 v-show 常驻 DOM，但一律走真实路径先开窗再断言。
+  async function openAddGetSelect(w: Awaited<ReturnType<typeof mountPanel>>) {
+    await topBtns(w)[0].trigger('click')
+    await flushPromises()
+    return w.find('#hosts-keypath-select')
+  }
+
+  it('选项值取 suggestPath 而非 privatePath；label 是「名字（算法 · 指纹前 8）」且不放完整路径', async () => {
+    const w = await mountPanel()
+    const sel = await openAddGetSelect(w)
+    const opt = sel.findAll('option').find(o => o.text().includes('id_ed25519'))
+    expect(opt).toBeDefined()
+    expect(opt!.attributes('value')).toBe('~/id_ed25519')
+    expect(opt!.text()).toContain('ed25519')
+    expect(opt!.text()).toContain('11112222') // 指纹剥掉 SHA256: 前缀后取前 8 位
+    expect(opt!.text()).not.toContain('C:\\Users') // 完整路径不进 label
+    // 夹具的 privatePath 与 suggestPath 刻意不同形：任何选项的值都不许是绝对路径——
+    // 拿 suggestPath（换用户名不漂）当值是后端契约，前端不许改拿 privatePath 或自拼。
+    expect(sel.findAll('option').some(o => o.attributes('value') === 'C:\\Users\\u\\.ssh\\id_ed25519')).toBe(false)
+  })
+
+  it('只有 hasPrivate 且 suggestPath 非空的行进下拉；孤儿 .pub 不出现', async () => {
+    const w = await mountPanel()
+    const sel = await openAddGetSelect(w)
+    const pathValues = sel.findAll('option')
+      .map(o => o.attributes('value'))
+      .filter(v => v?.startsWith('~/'))
+      .sort()
+    expect(pathValues).toEqual(['~/id_ed25519', '~/id_rsa_work'])
+    expect(sel.text()).not.toContain('orphan_pub')
+  })
+
+  it('选中项同步输入框；缺公钥的当场联动提示（hint-line + warning 字色档），有公钥的安静；首项可清空；保存发出 ~/ 形态', async () => {
+    const w = await mountPanel()
+    const sel = await openAddGetSelect(w)
+    await sel.setValue('~/id_rsa_work')
+    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('~/id_rsa_work')
+    const hint = w.find('#hosts-keypath-hint')
+    expect(hint.exists()).toBe(true)
+    expect(hint.classes()).toContain('hint-line')
+    expect(hint.classes()).toContain('state-warning') // 既有全局原子档，不新造样式
+    expect(hint.text()).toContain('还没有配套公钥')
+    expect(hint.text()).toContain('部署公钥')
+    expect(hint.text()).toContain('补出公钥')
+    // 有配套公钥的不搅局
+    await sel.setValue('~/id_ed25519')
+    expect(w.find('#hosts-keypath-hint').exists()).toBe(false)
+    // 「清空选择」的出口：第一项未指定把输入框抹平
+    await sel.setValue('')
+    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('')
+    // 再选回并保存：发出的 keyPath 就是 suggestPath
+    await sel.setValue('~/id_ed25519')
+    await w.find('#hosts-alias').setValue('work01')
+    await w.find('#hosts-host').setValue('10.9.9.9')
+    await w.find('.hosts-form .btn-primary').trigger('click')
+    await flushPromises()
+    expect(svc.AddHost).toHaveBeenCalledWith({
+      alias: 'work01', host: '10.9.9.9', port: 0, user: '', keyPath: '~/id_ed25519', note: '', enabled: true,
+    })
+  })
+
+  it('仍可纯手输任意路径并成功保存：下拉落到禁用的「自定义」哨兵，不据此猜出假提示', async () => {
+    const w = await mountPanel()
+    const sel = await openAddGetSelect(w)
+    await w.find('#hosts-keypath').setValue('D:\\keys\\id_rsa')
+    expect((sel.element as HTMLSelectElement).value).toBe('__custom_keypath__')
+    const shown = sel.findAll('option').find(o => (o.element as HTMLOptionElement).selected)
+    expect(shown!.text()).toContain('自定义')
+    expect(shown!.attributes('disabled')).toBeDefined() // 哨兵只回显状态，用户选不走
+    // 手输的路径台账里没有：不猜它有没有公钥，联动提示不许冒出来
+    expect(w.find('#hosts-keypath-hint').exists()).toBe(false)
+    await w.find('#hosts-alias').setValue('lab')
+    await w.find('#hosts-host').setValue('10.1.1.2')
+    await w.find('.hosts-form .btn-primary').trigger('click')
+    await flushPromises()
+    expect(svc.AddHost).toHaveBeenCalledWith({
+      alias: 'lab', host: '10.1.1.2', port: 0, user: '', keyPath: 'D:\\keys\\id_rsa', note: '', enabled: true,
+    })
+  })
+
+  it('读台账失败静默降级：下拉里说清楚，输入框照常手输保存，不弹错不阻断', async () => {
+    mockDefaults()
+    svc.ListKeys.mockRejectedValue(new Error('台账目录读取失败'))
+    const w = mount(HostsPanel)
+    await flushPromises()
+    await topBtns(w)[0].trigger('click') // 打开表单还会重拉一次——依旧失败，依旧静默
+    await flushPromises()
+    const sel = w.find('#hosts-keypath-select')
+    expect(sel.text()).toContain('本机密钥列表读取失败，可直接输入路径')
+    expect(sel.findAll('option').filter(o => o.attributes('value')?.startsWith('~/'))).toHaveLength(0)
+    // 静默 = 不把错误文案/错误框抬到面板上：读不到台账绝不能劫持清单保存
+    expect(w.text()).not.toContain('台账目录读取失败')
+    expect(w.findAll('.error-box')).toHaveLength(0)
+    await w.find('#hosts-alias').setValue('lab4')
+    await w.find('#hosts-host').setValue('10.4.4.4')
+    await w.find('#hosts-keypath').setValue('D:\\k\\id_ed')
+    await w.find('.hosts-form .btn-primary').trigger('click')
+    await flushPromises()
+    expect(svc.AddHost).toHaveBeenCalledWith({
+      alias: 'lab4', host: '10.4.4.4', port: 0, user: '', keyPath: 'D:\\k\\id_ed', note: '', enabled: true,
+    })
+  })
+
+  it('台账为空给禁用的「本机还没有密钥，可先去台账生成」项，不留空下拉；输入框照常可用', async () => {
+    mockDefaults()
+    svc.ListKeys.mockResolvedValue([])
+    const w = mount(HostsPanel)
+    await flushPromises()
+    await topBtns(w)[0].trigger('click')
+    await flushPromises()
+    const sel = w.find('#hosts-keypath-select')
+    const ph = sel.findAll('option').find(o => o.text().includes('本机还没有密钥'))
+    expect(ph).toBeDefined()
+    expect(ph!.attributes('disabled')).toBeDefined()
+    // 空台账与读取失败是两种情况，文案不许混
+    expect(sel.text()).not.toContain('读取失败')
+    await w.find('#hosts-keypath').setValue('~/self_written')
+    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('~/self_written')
+  })
+
+  it('打开表单/开始编辑都重拉一次台账：刚在台账生成的钥匙当场选得到', async () => {
+    mockDefaults()
+    svc.ListKeys.mockResolvedValueOnce([]).mockResolvedValue([KEY_FULL, KEY_NOPUB, KEY_PUBONLY])
+    const w = mount(HostsPanel)
+    await flushPromises()
+    expect(svc.ListKeys).toHaveBeenCalledTimes(1) // 挂载随 refreshAll 拉第一遍
+    await topBtns(w)[0].trigger('click')
+    await flushPromises()
+    expect(svc.ListKeys).toHaveBeenCalledTimes(2) // 开表单重拉
+    const values = w.findAll('#hosts-keypath-select option').map(o => o.attributes('value'))
+    expect(values).toContain('~/id_ed25519') // 第二遍才出现的钥匙直接进下拉，不必重开面板
+    await w.findAll('tbody tr')[0].findAll('.btn-micro')[0].trigger('click')
+    await flushPromises()
+    expect(svc.ListKeys).toHaveBeenCalledTimes(3) // 编辑同样重拉
+  })
+
+  it('编辑既有主机的绝对路径显示「自定义」且不改写存值——下拉只回显，不擅动已有的账', async () => {
+    const w = await mountPanel()
+    await w.findAll('tbody tr')[0].findAll('.btn-micro')[0].trigger('click')
+    await flushPromises()
+    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('C:\\Users\\u\\.ssh\\id_ed25519')
+    // NAS 的 keyPath 恰好等于 KEY_FULL.privatePath：若下拉错把 privatePath 当匹配值，
+    // 这里会选中那把钥匙而不是落到自定义哨兵——此断言钉死"只认 suggestPath"。
+    expect((w.find('#hosts-keypath-select').element as HTMLSelectElement).value).toBe('__custom_keypath__')
+    await w.find('.hosts-form .btn-primary').trigger('click')
+    await flushPromises()
+    expect(svc.UpdateHost).toHaveBeenCalledWith(NAS)
   })
 })
