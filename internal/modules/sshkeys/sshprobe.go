@@ -1,10 +1,18 @@
-package portscan
+package sshkeys
 
 // SSH 连接测试：拨过去，看它认不认自己是 SSH，并拿到对端版本横幅。
 //
-// 刻意只做版本交换（协议里的第一回合），不做密钥交换与认证——那需要
-// golang.org/x/crypto/ssh，本仓当前不依赖它（go.mod 里连 x/crypto 都没有）。
-// 因此这里的结论边界很明确：**能不能连、是不是 SSH、对端是什么实现**；
+// 本能力 2026-10-22 自 portscan 搬入（扫描引擎与 SSH 主动检查各自归位），搬时
+// 顺手改掉这里一处**陈旧表述**：旧注释写"那需要 x/crypto，本仓当前不依赖它
+// （go.mod 里连 x/crypto 都没有）"——那是 sshauth.go 入库前的实情，如今 go.mod
+// 已直接依赖 x/crypto、同包 sshauth.go 就在用它。
+//
+// 但**分层不变，理由换了**：这一层仍刻意只做版本交换（协议第一回合），不做密钥
+// 交换与认证。不是因为做不到，而是两件事的代价不同——读横幅不碰凭据、不在对端
+// sshd 日志留下登录尝试记录，可以放心"看一眼"；发起认证尝试则是另一回事，必须
+// 是显式动作（见 sshauth.go 头注）。
+//
+// 因此结论边界仍很明确：**能不能连、是不是 SSH、对端是什么实现**；
 // "这个用户名密码对不对"不在此列，别把 OK 读成"能登录"。
 //
 // 之所以值得做：光 TCP 端口开着说明不了什么（端口撞车太常见），而一次 banner
@@ -59,7 +67,7 @@ type SSHCheckResult struct {
 
 // CheckSSH 测一条 SSH 端点。error 通道只装"没能开测"（参数非法），
 // 连不上/不是 SSH 都是正常结论（OK=false + Error 文本）。
-func (s *Scanner) CheckSSH(ctx context.Context, req SSHCheckRequest) (*SSHCheckResult, error) {
+func (p *prober) CheckSSH(ctx context.Context, req SSHCheckRequest) (*SSHCheckResult, error) {
 	addr, err := sshTargetAddr(req.Host, req.Port)
 	if err != nil {
 		return nil, err

@@ -1,0 +1,72 @@
+/* 密钥操作四个对话框的共享布局表（经各件 <style scoped src> 引用——先例：
+ * portscanPanels.css 一份表喂多个面板）。
+ *
+ * 纪律：这里**只有布局**（gap/方向/换行/overflow），颜色一律取自既有 token；
+ * 底、边框、按钮档、警告条全部走 components.css 全局原子。按钮家族配色契约
+ * （buttonColorContract.spec.ts）扫的就是 scoped 里自写彩底——本表零彩底。 */
+
+/* 对话框正文的纵向流：警告条、字段、回执从上到下一次排开。 */
+.kops-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 口令字段与它的「显示」勾选靠在一起，读起来是一组而不是两个控件。 */
+.kops-secret-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 动作条挂 .btn-group 家族语义（flex-wrap 由全局 .btn-group 提供），
+   这里只把它推到右侧；窄窗下整颗换行而不是溢出窗口。 */
+.kops-actions {
+  justify-content: flex-end;
+}
+
+/* 目标回显行：文件名 + 当前状态徽标语，一行摆不下就换行。 */
+.kops-target {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+/* 回执表：dt/dd 两列，值域可能很长（路径/指纹），必须 anywhere 折行。 */
+.kops-receipt {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-element);
+  background: var(--surface-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kops-receipt > div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.kops-receipt dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+.kops-receipt dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+/* 后端 Message 的整段回执：白 space pre-line 照排，长指纹/路径折得开。 */
+.kops-message {
+  margin: 0;
+  line-height: 1.7;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-size: var(--text-base);
+  color: var(--color-text);
+}

@@ -1,4 +1,4 @@
-package portscan
+package sshkeys
 
 // SSH 凭据测试：完成密钥交换，再用给定用户名/密码试一次密码认证。
 //
@@ -69,7 +69,7 @@ type SSHAuthResult struct {
 }
 
 // CheckSSHAuth 用给定凭据试一次 SSH 密码认证。error 通道只装"没能开测"（参数非法）。
-func (s *Scanner) CheckSSHAuth(ctx context.Context, req SSHAuthRequest) (*SSHAuthResult, error) {
+func (p *prober) CheckSSHAuth(ctx context.Context, req SSHAuthRequest) (*SSHAuthResult, error) {
 	addr, err := sshTargetAddr(req.Host, req.Port)
 	if err != nil {
 		return nil, err

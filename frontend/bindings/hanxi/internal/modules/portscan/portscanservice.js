@@ -45,33 +45,6 @@ export function CheckProxy(req) {
 }
 
 /**
- * CheckSSH 测一条 SSH 端点的连通性与版本横幅。
- * 
- * **能力边界**（别读成"能登录"）：只做协议第一回合的版本交换，不做密钥交换与认证
- * ——后者需要 golang.org/x/crypto/ssh，本仓不依赖。所以 OK 的含义是"连上了，且对方
- * 确实是 SSH 服务、拿到了它的版本"，与凭据无关（这个 RPC 压根不收凭据）。
- * @param {$models.SSHCheckRequest} req
- * @returns {$CancellablePromise<$models.SSHCheckResult | null>}
- */
-export function CheckSSH(req) {
-    return $Call.ByID(184878843, req);
-}
-
-/**
- * CheckSSHAuth 用给定凭据试一次 SSH 密码认证。
- * 
- * 与 CheckSSH（只读版本横幅）刻意分成两个 RPC 与两个按钮：**这一步会真的向服务端发起
- * 一次登录尝试**，会在对端 sshd 日志里留下记录，也可能触发 fail2ban 之类的封禁。
- * 它只能是用户显式按下的动作，不能藏在"看看端口通不通"后面顺手做掉。
- * 密码只在本次调用内存里活着：不进结果、不进错误文本、不落盘。
- * @param {$models.SSHAuthRequest} req
- * @returns {$CancellablePromise<$models.SSHAuthResult | null>}
- */
-export function CheckSSHAuth(req) {
-    return $Call.ByID(2753174821, req);
-}
-
-/**
  * GetPresets 返回常见预设端口组合。
  * Wave 3 口径：单值绑定签名扩为 ([]PresetGroup, error)，门拒绝如实上抛，禁止回空表。
  * @returns {$CancellablePromise<$models.PresetGroup[] | null>}

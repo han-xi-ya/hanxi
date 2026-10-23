@@ -105,53 +105,6 @@ func (s *PortScanService) CheckProxy(req ProxyCheckRequest) (*ProxyCheckResult, 
 	return s.scanner.CheckProxy(ctx, req)
 }
 
-// CheckSSH 测一条 SSH 端点的连通性与版本横幅。
-//
-// **能力边界**（别读成"能登录"）：只做协议第一回合的版本交换，不做密钥交换与认证
-// ——后者需要 golang.org/x/crypto/ssh，本仓不依赖。所以 OK 的含义是"连上了，且对方
-// 确实是 SSH 服务、拿到了它的版本"，与凭据无关（这个 RPC 压根不收凭据）。
-func (s *PortScanService) CheckSSH(req SSHCheckRequest) (*SSHCheckResult, error) {
-	release, gateErr := s.holder.Enter()
-	if gateErr != nil {
-		return nil, gateErr
-	}
-	defer release()
-
-	per := time.Duration(req.TimeoutMs) * time.Millisecond
-	if per <= 0 {
-		per = SSHCheckDefaultTimeoutMs * time.Millisecond
-	}
-	// 外层只当保险丝：连接与读横幅各自受 conn deadline 约束。
-	ctx, cancel := context.WithTimeout(context.Background(), per*2)
-	defer cancel()
-
-	return s.scanner.CheckSSH(ctx, req)
-}
-
-// CheckSSHAuth 用给定凭据试一次 SSH 密码认证。
-//
-// 与 CheckSSH（只读版本横幅）刻意分成两个 RPC 与两个按钮：**这一步会真的向服务端发起
-// 一次登录尝试**，会在对端 sshd 日志里留下记录，也可能触发 fail2ban 之类的封禁。
-// 它只能是用户显式按下的动作，不能藏在"看看端口通不通"后面顺手做掉。
-// 密码只在本次调用内存里活着：不进结果、不进错误文本、不落盘。
-func (s *PortScanService) CheckSSHAuth(req SSHAuthRequest) (*SSHAuthResult, error) {
-	release, gateErr := s.holder.Enter()
-	if gateErr != nil {
-		return nil, gateErr
-	}
-	defer release()
-
-	per := time.Duration(req.TimeoutMs) * time.Millisecond
-	if per <= 0 {
-		per = SSHCheckDefaultTimeoutMs * time.Millisecond
-	}
-	// KEX 与认证两段共用一条 conn deadline，这里的外层 ctx 只当保险丝。
-	ctx, cancel := context.WithTimeout(context.Background(), per*2)
-	defer cancel()
-
-	return s.scanner.CheckSSHAuth(ctx, req)
-}
-
 // StartScan 启动端口扫描任务（异步），通过 Wails 事件 "portscan:progress" 实时推送进度。
 // operation lease 覆盖整个扫描过程：扫描在途时停用需等待 drain（或由 drain 超时强制收口）。
 func (s *PortScanService) StartScan(req ScanRequest) (*ScanSummary, error) {

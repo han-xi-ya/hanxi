@@ -241,15 +241,14 @@ describe('PortScanView 胶水：复制与防抖', () => {
 })
 
 describe('PortScanView 标签页编排', () => {
-  it('三个标签：默认停在扫描页，面板靠 v-show 切换（切走不丢输入与结果）', async () => {
+  it('两个标签：默认停在扫描页，面板靠 v-show 切换（切走不丢输入与结果）', async () => {
     stubDefaults()
     const w = mountView()
     await flushMicrotasks()
     const tabs = w.findAll('.main-tab-btn')
-    expect(tabs.map(t => t.text())).toEqual(['端口扫描', '代理连通性测试', 'SSH 连接测试'])
+    expect(tabs.map(t => t.text())).toEqual(['端口扫描', '代理连通性测试'])
     expect(tabs[0].attributes('aria-selected')).toBe('true')
     expect(tabs[1].attributes('aria-selected')).toBe('false')
-    expect(tabs[2].attributes('aria-selected')).toBe('false')
 
     const scan = w.find('#portscan-scan-panel')
     expect(scan.attributes('aria-labelledby')).toBe('portscan-scan-tab')
@@ -262,13 +261,11 @@ describe('PortScanView 标签页编排', () => {
     expect(proxy.attributes('aria-labelledby')).toBe('portscan-proxy-tab')
     // 代理面板确实挂进来了（其内部行为由 components/portscan/__tests__/ProxyCheckPanel.spec 覆盖）
     expect(proxy.find('.check-row').exists()).toBe(true)
-    // 第三个面板此时仍收起
-    expect(w.find('#portscan-ssh-panel').attributes('style') ?? '').toContain('display: none')
-
-    await tabs[2].trigger('click')
-    await flushMicrotasks()
-    expect(w.find('#portscan-ssh-panel').find('.check-row').exists()).toBe(true)
-    expect(w.find('#portscan-proxy-panel').attributes('style') ?? '').toContain('display: none')
+    // SSH 面板已于 2026-10-22 分家到 sshkeys 模块。这里断言它**根本不存在**，
+    // 而不是"存在但收起"——防止日后有人把第三个标签页顺手加回来：那会把"真的发起
+    // 登录尝试、在对端 sshd 留 Failed password、可能触发 fail2ban"的带凭据动作，
+    // 重新混进本页"无凭据并发探测"的语义里（搬家动机的全部理由）。
+    expect(w.find('#portscan-ssh-panel').exists()).toBe(false)
     w.unmount()
   })
 })

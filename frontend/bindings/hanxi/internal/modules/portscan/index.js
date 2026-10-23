@@ -8,8 +8,7 @@ export {
 };
 
 export {
-    PortStatus,
-    SSHAuthVerdict
+    PortStatus
 } from "./models.js";
 
 import * as $models from "./models.js";
@@ -42,33 +41,6 @@ import * as $models from "./models.js";
  * 进前端、被复制、进日志都不漏口令；凭据只活在 ParsedProxy 的非导出字段里，
  * 供 DialProxy 拨号时取用。
  * @typedef {$models.ProxyCheckResult} ProxyCheckResult
- */
-
-/**
- * SSHAuthRequest 凭据测试入参。
- * @typedef {$models.SSHAuthRequest} SSHAuthRequest
- */
-
-/**
- * SSHAuthResult 凭据测试结果。
- * 
- * **没有 password 字段**，错误文本一律过 redactSecret——结果要进前端、要被复制。
- * 
- * 这里**不报服务端版本横幅**：x/crypto/ssh 的 HostKeyCallback 是
- * `(hostname, remote, key) error` 这个签名，拿不到 ConnMetadata，也就拿不到版本。
- * 想读横幅用同页的「连接测试」（它专做那一件事）；不为此再补一次连接，把两个来源
- * 混进同一个字段。
- * @typedef {$models.SSHAuthResult} SSHAuthResult
- */
-
-/**
- * SSHCheckRequest 一次 SSH 连接测试的入参。不含任何凭据——这一层用不上，也就不会泄露。
- * @typedef {$models.SSHCheckRequest} SSHCheckRequest
- */
-
-/**
- * SSHCheckResult SSH 连接测试结果。
- * @typedef {$models.SSHCheckResult} SSHCheckResult
  */
 
 /**

@@ -1,0 +1,561 @@
+<script setup lang="ts">
+// SSH 主机清单面板（账本 + 导出对账带）。
+//
+// 这个面板的灵魂是对账带，不是表格：清单只是账本，ssh 真正读的是导出的
+// ~/.ssh/hanxi.conf——两者关系（一致 / 已改动 / 还没导出过 / 缺 Include 接线 /
+// 缺钥匙）必须常驻摊开，"改了没同步"不允许静默。写用户主目录只能由人显式按下
+// 「同步给 ssh」触发（useHosts 头注的同一条后端纪律）。
+//
+// 全部列/按钮/表单壳走全局原子（.card/.tbl/.table-container/.empty-state/.empty-hint/
+// .error-box/.hint-line/.mono/.chip/.btn-group/.btn-*/.link-button/.toggle-label/
+// .form-item-block/.form-label）；scoped 只补布局，不自造任何彩色按钮档——
+// buttonColorContract 在扫这里。所有按钮容器挂 .btn-group（全局档含 flex-wrap），
+// 窄窗整颗换行而不是溢出（"刷新网卡被挤出窗口"的实测事故条款）。
+import { computed, onMounted, ref } from 'vue'
+import UiBanner from '../ui/UiBanner.vue'
+import UiStatusChip from '../ui/UiStatusChip.vue'
+import { aliasIssue, baseOfKeyPath, useHosts } from './useHosts'
+import type { HostEntry } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
+import { useConfirm } from '../../composables/useConfirm'
+import { useClipboard } from '../../composables/useClipboard'
+
+const { confirm } = useConfirm()
+const { copyWithToast } = useClipboard()
+
+const {
+  hosts, summary, listError, exportError, exportNote, checkedAt,
+  keyMissing,
+  listBusy, exportBusy,
+  refreshAll, saveHost, toggleEnabled, removeHost, syncToSSH, undoExport,
+} = useHosts()
+
+onMounted(refreshAll)
+
+// —— 清单展示辅助 ——
+// 端口 0 在后端按 22 处理；对账要账目清楚，缺省值也显式写出来，不留"没填？"的歧义。
+function addrText(h: HostEntry): string {
+  return `${h.host}:${h.port || 22}`
+}
+
+// 密钥列只上屏基名（id_ed25519_1panel 这种天天见的可读音），完整路径退到 title；
+// "这把钥匙在本机台账里有没有"就地用钥匙环同一数据源（ListKeys）交叉出一个弱信号标。
+function keyName(h: HostEntry): string {
+  return baseOfKeyPath(h.keyPath)
+}
+
+// —— 新增/编辑表单 ——
+// 表单草稿存这里（composable 之上、面板之内）：SshKeysView 用 v-show 切页，
+// 组件不销毁，填了一半的内容不会因切页蒸发。
+type Draft = { alias: string; host: string; port: string; user: string; keyPath: string; note: string; enabled: boolean }
+const blankDraft = (): Draft => ({ alias: '', host: '', port: '', user: '', keyPath: '', note: '', enabled: true })
+
+const formOpen = ref(false)
+const draft = ref<Draft>(blankDraft())
+// 编辑态锁别名：后端 Update 只按别名整条覆盖（改了就是另一把钥匙的账，见
+// ledger.go）。界面上**如实反映**这一点——输入框禁用但内容可见，并给出
+// "要改名就新增一条、删旧的"的出路，而不是把主键藏起来。
+const editingAlias = ref('')
+const aliasTouched = ref(false)
+const hostTouched = ref(false)
+const portTouched = ref(false)
+const attempted = ref(false)
+const formError = ref('')
+
+const aliasProblem = computed(() => {
+  const base = aliasIssue(draft.value.alias)
+  if (base) return base
+  // 重名在前端先拦（保存前拦，非仅后端拒）：别名是账本主键，也是导出配置的
+  // 匹配名，重名会让渲染层的段数自证被破坏。
+  if (!editingAlias.value && draft.value.alias && hosts.value.some(h => h.alias === draft.value.alias)) {
+    return `账本里已有一台「${draft.value.alias}」：别名是唯一键，重名时后写的会撞掉先写的——要改这台就用列表里的「编辑」。`
+  }
+  return ''
+})
+const hostProblem = computed(() => {
+  // 只轻拦"没填"；IP/域名的成套判据在后端（sshconf/sshprobe），UI 不造第二判据。
+  return draft.value.host.trim() ? '' : '地址必填：填 IP 或域名；协议前缀、端口、user@ 都不写在这里（各有栏位）。'
+})
+const portProblem = computed(() => {
+  const v = draft.value.port
+  if (v === '') return ''
+  const n = Number(v)
+  if (!Number.isInteger(n) || n < 0 || n > 65535) {
+    return `端口需要是 0–65535 的整数（当前「${v}」）；留空或 0 都按 22 记。`
+  }
+  return ''
+})
+
+// 反馈时机：即时但不出声——字段 blur 过或按过一次保存之后，错误才着色显示；
+// pristine 字段不提前报红。保存钮**不因校验红而禁用**：点了要能看见为什么存不了。
+const aliasShown = computed(() => (aliasTouched.value || attempted.value) ? aliasProblem.value : '')
+const hostShown = computed(() => (hostTouched.value || attempted.value) ? hostProblem.value : '')
+const portShown = computed(() => (portTouched.value || attempted.value) ? portProblem.value : '')
+
+function openAdd() {
+  draft.value = blankDraft()
+  editingAlias.value = ''
+  aliasTouched.value = hostTouched.value = portTouched.value = false
+  attempted.value = false
+  formError.value = ''
+  formOpen.value = true
+}
+
+function openEdit(h: HostEntry) {
+  draft.value = {
+    alias: h.alias, host: h.host, port: h.port ? String(h.port) : '',
+    user: h.user, keyPath: h.keyPath, note: h.note, enabled: h.enabled,
+  }
+  editingAlias.value = h.alias
+  aliasTouched.value = hostTouched.value = portTouched.value = false
+  attempted.value = false
+  formError.value = ''
+  formOpen.value = true
+}
+
+function closeForm() {
+  formOpen.value = false
+  formError.value = ''
+}
+
+async function onSave() {
+  attempted.value = true
+  if (aliasProblem.value || hostProblem.value || portProblem.value) return
+  const entry: HostEntry = {
+    alias: draft.value.alias.trim(),
+    host: draft.value.host.trim(),
+    port: Number(draft.value.port) || 0,
+    user: draft.value.user.trim(),
+    keyPath: draft.value.keyPath.trim(),
+    note: draft.value.note.trim(),
+    enabled: draft.value.enabled,
+  }
+  const res = await saveHost(entry, !editingAlias.value)
+  if (res.ok) {
+    closeForm()
+  } else {
+    // 后端拒绝的原文（sshconf 的字段级中文）落回表单现场，草稿保留——
+    // "改对了才能走"不该以丢掉输入为代价。
+    formError.value = res.error
+  }
+}
+
+// 启停走原生 checkbox（全仓没有 switch 原子，不私造）。失败时把 DOM 的 checked
+// 拨回账本真实值：vdom 里的 h.enabled 没变过，patch 不会重写这个属性，必须手动复位。
+async function onRowToggle(h: HostEntry, ev: Event) {
+  const el = ev.target as HTMLInputElement
+  const ok = await toggleEnabled(h, el.checked)
+  if (!ok) el.checked = h.enabled
+}
+
+async function onRemove(h: HostEntry) {
+  const ok = await confirm({
+    title: `从清单移除 ${h.alias}？`,
+    description: '从清单移除不会删除磁盘上的私钥，也不会自动改动已经导出的产物——ssh 那边这台机器还在，直到你下一次点「同步给 ssh」。',
+    details: [
+      { label: '地址', value: addrText(h) },
+      { label: '用户', value: h.user || '（未填，走 ssh 默认）' },
+      { label: '密钥路径', value: h.keyPath || '（未设）' },
+    ],
+    confirmLabel: '移除',
+    tone: 'danger',
+  })
+  if (!ok) return
+  await removeHost(h.alias)
+}
+
+async function onUndoExport() {
+  const ok = await confirm({
+    title: '撤销导出？',
+    description: '删除产物、摘掉顶层 config 里自己那段 Include；你自己的 config 不删。清单账本原样保留，再点「同步给 ssh」随时可重建产物。',
+    confirmLabel: '撤销',
+    details: summary.value?.confPath ? [{ label: '将删除', value: summary.value.confPath }] : [],
+  })
+  if (!ok) return
+  await undoExport()
+}
+
+// —— 对账带呈现（操作面板语法：左一句状态，右一组动作）——
+// 状态一句（产物与账本一致 / 账本已改动 / 还没导出过…）直接用后端 ExportStatus
+// 的 message 原文，前端不重推一套话；色彩档只看 drift/included 布尔位，
+// 不解析文本决定行为——"产物是新的但线没接上"也不绿给假安心。
+const bandTone = computed<'positive' | 'warning' | 'neutral'>(() => {
+  if (!summary.value) return 'neutral'
+  return summary.value.drift || !summary.value.included ? 'warning' : 'positive'
+})
+const bandLabel = computed(() => {
+  if (!summary.value) return exportBusy.value ? '正在核对账本与 ssh 产物…' : '对账状态未取到（见下方错误）'
+  return summary.value.message
+})
+// 待落盘：账本走在了产物前面（漂移或从未导出），等人点「同步给 ssh」。
+// 只看布尔位；导出写失败时不满足此位，界面不会把失败塌成"还没导出过"。
+const exportPending = computed(() => {
+  const s = summary.value
+  return !!s && s.drift && !s.written
+})
+
+// —— 行内「启用」的语义讲全（它是导出开关，不是模块开关）——
+const ROW_TOGGLE_TITLE =
+  '「启用」= 是否导出给 ssh。关掉：账本保留、这行还在，只是导出的产物里不再写这一段，' +
+  '点「同步给 ssh」后这个别名就不再认得。这不是模块开关——模块开关在 设置→模块管理。'
+function rowToggleAria(h: HostEntry): string {
+  return h.enabled
+    ? `主机 ${h.alias}：现在导出给 ssh（关掉不删账本，只是不再导出）`
+    : `主机 ${h.alias}：现在不导出给 ssh（账本保留；下次「同步给 ssh」后 ssh 不再认得这个别名）`
+}
+</script>
+
+<template>
+  <section class="card">
+    <div class="card-top">
+      <div>
+        <h2>主机清单</h2>
+        <p class="hint-line">
+          登记的每台机器 = 以后 <code>ssh 别名</code> 用的名字。清单只是账本；
+          要让本机的 ssh 真正认得它们，需要显式点下方「同步给 ssh」。
+        </p>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-secondary" :disabled="listBusy" @click="openAdd">新增主机</button>
+        <button class="btn btn-secondary" :disabled="listBusy" @click="refreshAll">
+          {{ listBusy ? '读取中…' : '刷新' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 导出对账带：账本 ↔ ssh 实际读到的那份文件的关系，常驻摊开。
+         操作面板语法：头行左一句状态、右一组动作（同步=主、撤销=次，同档同高），
+         细节（接线/缺钥匙/产物路径/回执/失败）在次级摊开。
+         清单为空时不显示（避免与列表空态双空态；没有账本就没有可对的账）。 -->
+    <div v-if="hosts.length" class="export-band">
+      <div class="band-head">
+        <div class="band-status">
+          <UiStatusChip :tone="bandTone">{{ bandLabel }}</UiStatusChip>
+          <span v-if="checkedAt" class="hint-line">上次对账 {{ checkedAt }}</span>
+        </div>
+        <div class="btn-group">
+          <!-- 主操作与旁边次级钮同档同高（都是 .btn 基座 36px），不留"只升一颗"的高低差。 -->
+          <button class="btn btn-primary" :disabled="exportBusy" @click="syncToSSH">
+            {{ exportBusy ? '进行中…' : '同步给 ssh' }}
+          </button>
+          <button class="btn btn-secondary" :disabled="exportBusy" @click="onUndoExport">撤销导出</button>
+        </div>
+      </div>
+
+      <UiBanner v-if="summary && !summary.included" tone="warn">
+        顶层 config 还缺 Include 行——ssh 现在不会去读 <span class="mono">{{ summary.confPath }}</span>。
+        点「同步给 ssh」时会补上这一段接线（只加自己那段，不碰别的内容）。
+      </UiBanner>
+
+      <UiBanner v-if="summary && summary.keyMissing > 0" tone="warn">
+        ⚠ 有 {{ summary.keyMissing }} 条的私钥文件在本机不存在。
+        这很正常，不是账本坏了：账本随 hanxi 数据根同步搬家，私钥文件**不在数据根里**——
+        换机后清单必然先"找不到钥匙"。把私钥文件放回原路径后，重新对账本数字自动归零。
+      </UiBanner>
+
+      <!-- 产物与备份路径成功后常驻可见：这是"写到我的用户目录了"的凭据，可复制。 -->
+      <div v-if="summary" class="hint-line">
+        产物：<span class="mono">{{ summary.confPath }}</span>
+        <button class="link-button" @click="copyWithToast(summary.confPath, '已复制产物路径')">复制</button>
+        <span v-if="summary.rendered">· 导出 {{ summary.rendered }} 段</span>
+      </div>
+      <div v-if="summary?.backupPath" class="hint-line">
+        上次覆盖前的备份：<span class="mono">{{ summary.backupPath }}</span>
+        <button class="link-button" @click="copyWithToast(summary.backupPath, '已复制备份路径')">复制</button>
+      </div>
+      <div v-if="exportNote" class="hint-line" role="status">{{ exportNote }}</div>
+
+      <UiBanner v-if="exportError" tone="error">⚠ {{ exportError }}</UiBanner>
+
+      <!-- 待落盘 = 空态语法的下一步（不写"暂无数据"，也不塌成新状态）；
+           只看 written/drift 布尔位，不解析 message 文本。 -->
+      <div v-if="exportPending" class="hint-line">
+        下一步：点右上「同步给 ssh」——ssh 现在读到的还不是这份账本。
+      </div>
+      <div class="hint-line">
+        账本的增删改不会自己碰你的用户主目录——只有点「同步给 ssh」才会写文件；
+        改了账本还没同步时，上面会一直亮着「产物还是旧的」等你处理。
+      </div>
+    </div>
+
+    <!-- 新增/编辑表单：面板内展开（与连接测试面板的展开块同形制），
+         后端拒绝的原文落回这里，草稿不丢。 -->
+    <div v-show="formOpen" class="hosts-form">
+      <div class="card-top">
+        <h3>{{ editingAlias ? `编辑主机 ${editingAlias}` : '新增主机' }}</h3>
+        <button type="button" class="btn btn-ghost btn-small" @click="closeForm">收起</button>
+      </div>
+
+      <div class="form-fields">
+        <div class="form-item-block">
+          <label class="form-label" for="hosts-alias">别名</label>
+          <input
+            id="hosts-alias" v-model="draft.alias" class="input input-mono"
+            :disabled="!!editingAlias" placeholder="nas01" autocomplete="off" spellcheck="false"
+            :aria-invalid="aliasShown ? 'true' : 'false'" aria-describedby="hosts-alias-msg"
+            @blur="aliasTouched = true"
+          />
+          <p id="hosts-alias-msg" class="field-msg" :class="{ 'field-error': !!aliasShown }">
+            {{ aliasShown || '小写字母、数字、_、-，最长 32；这就是 ssh 命令里敲的名字' }}
+          </p>
+        </div>
+
+        <div class="form-item-block">
+          <label class="form-label" for="hosts-host">地址</label>
+          <input
+            id="hosts-host" v-model="draft.host" class="input input-mono"
+            placeholder="192.168.1.10 或 nas.example.com" autocomplete="off" spellcheck="false"
+            :aria-invalid="hostShown ? 'true' : 'false'" aria-describedby="hosts-host-msg"
+            @blur="hostTouched = true"
+          />
+          <p id="hosts-host-msg" class="field-msg" :class="{ 'field-error': !!hostShown }">
+            {{ hostShown || 'IP 或域名；更细的合法性由后端把关，存不进的话原话退回给你' }}
+          </p>
+        </div>
+
+        <div class="form-item-block field-narrow">
+          <label class="form-label" for="hosts-port">端口</label>
+          <input
+            id="hosts-port" v-model="draft.port" class="input input-mono"
+            type="number" min="1" max="65535" placeholder="22"
+            :aria-invalid="portShown ? 'true' : 'false'" aria-describedby="hosts-port-msg"
+            @blur="portTouched = true"
+          />
+          <p id="hosts-port-msg" class="field-msg" :class="{ 'field-error': !!portShown }">
+            {{ portShown || '留空按 22 记' }}
+          </p>
+        </div>
+
+        <div class="form-item-block field-narrow">
+          <label class="form-label" for="hosts-user">用户</label>
+          <input
+            id="hosts-user" v-model="draft.user" class="input input-mono"
+            placeholder="deploy" autocomplete="off" spellcheck="false"
+          />
+          <p class="field-msg">
+            留空将以<strong>本机</strong>用户名登录远端；账本随同步搬家后别的电脑本机名不同，建议显式填。
+          </p>
+        </div>
+
+        <div class="form-item-block field-wide">
+          <label class="form-label" for="hosts-keypath">私钥路径</label>
+          <input
+            id="hosts-keypath" v-model="draft.keyPath" class="input input-mono"
+            placeholder="C:\Users\你\.ssh\id_ed25519" autocomplete="off" spellcheck="false"
+          />
+          <p class="field-msg">
+            只存路径，不读内容；留空表示这台不指定密钥。路径里的空格会让配置行只认首个 token，后端会拒。
+          </p>
+        </div>
+
+        <div class="form-item-block field-wide">
+          <label class="form-label" for="hosts-note">备注</label>
+          <input
+            id="hosts-note" v-model="draft.note" class="input"
+            placeholder="NAS 上的黑群晖" autocomplete="off"
+          />
+          <p class="field-msg">备注会渲染成导出配置里的注释行；换行不允许（那就是往配置里塞新行）。</p>
+        </div>
+
+        <label class="toggle-label">
+          <input id="hosts-enabled" v-model="draft.enabled" type="checkbox" />
+          启用（关掉即不导出给 ssh，账本保留）
+        </label>
+      </div>
+
+      <p v-if="editingAlias" class="hint-line">
+        别名是账本主键：后端的更新按别名整条覆盖，改别名等于换一把钥匙的账——所以编辑态这里锁死；
+        要换名字，请新增一条再删掉旧的，两步都看得见。
+      </p>
+
+      <div v-if="formError" class="error-box">⚠ {{ formError }}</div>
+
+      <div class="btn-group">
+        <button class="btn btn-primary" :disabled="listBusy" @click="onSave">
+          {{ listBusy ? '保存中…' : (editingAlias ? '保存' : '加入清单') }}
+        </button>
+        <button class="btn btn-secondary" @click="closeForm">取消</button>
+      </div>
+      <div class="hint-line">保存只改账本；要让 ssh 用上它，请再点上方「同步给 ssh」。</div>
+    </div>
+
+    <!-- 清单表格区 -->
+    <div v-if="listError" class="error-box">{{ listError }}</div>
+
+    <div v-else-if="listBusy && !hosts.length" class="empty-hint">正在读取主机清单…</div>
+
+    <div v-else-if="!hosts.length" class="empty-state">
+      <p>账本还是空的。</p>
+      <p class="hint-line">
+        在这里登记 SSH 机器：别名就是你以后 <code>ssh nas01</code> 用的名字。
+        登记后还要显式导出（点「同步给 ssh」），才会写进本机的 <code>~/.ssh/hanxi.conf</code> 让 ssh 认得它们。
+      </p>
+      <p class="hint-line">
+        清单存在 hanxi 数据根里、随同步搬家；私钥文件不跟着走——到新机器后，
+        对账带会数出有几台"钥匙不在本机"，那是常态，跟着提示放好文件即可。
+      </p>
+      <button class="btn btn-primary" @click="openAdd">新增第一台</button>
+    </div>
+
+    <div v-else class="table-container">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th scope="col">
+              启用
+              <div class="th-sub">= 是否导出给 ssh</div>
+            </th>
+            <th scope="col">别名</th>
+            <th scope="col">地址:端口</th>
+            <th scope="col">用户</th>
+            <th scope="col">密钥</th>
+            <th scope="col">备注</th>
+            <th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="h in hosts" :key="h.alias">
+            <td>
+              <!-- 原生 checkbox：全仓没有 switch 原子，不私造。
+                   title/aria-label 把"启用"说成它真正管的事（导出与否），不是模块开关。 -->
+              <label class="toggle-label">
+                <input
+                  type="checkbox" class="row-toggle" :checked="h.enabled" :disabled="listBusy"
+                  :title="ROW_TOGGLE_TITLE" :aria-label="rowToggleAria(h)" @change="onRowToggle(h, $event)"
+                />
+              </label>
+              <!-- 停用行与对账带呼应：drift 亮着说明旧产物里这台还没被摘掉（复用 summary.drift，
+                   不另造第二套状态判断）。 -->
+              <div v-if="!h.enabled && summary && summary.drift" class="hint-dim cell-sub">
+                还没重新导出：旧产物里这台仍在，ssh 暂时还认得它
+              </div>
+            </td>
+            <td>
+              <span class="mono cell-alias">{{ h.alias }}</span>
+              <UiStatusChip v-if="!h.enabled" tone="neutral">已停用</UiStatusChip>
+            </td>
+            <td><span class="mono">{{ addrText(h) }}</span></td>
+            <td>
+              <span class="mono">{{ h.user || '—' }}</span>
+              <div v-if="!h.user" class="hint-dim">留空 = ssh 用本机用户名</div>
+            </td>
+            <td>
+              <template v-if="h.keyPath">
+                <!-- 只显示基名：路径整列上屏占宽又读不出信息；完整路径进 title。 -->
+                <span class="mono cell-keyname" :title="h.keyPath">{{ keyName(h) }}</span>
+                <!-- 判据是后端逐条 stat 出来的名单（ExportSummary.missingKeyAliases），
+                     不再由前端拿台账基名去猜——猜会把放在别处的真钥匙标成"找不到"，
+                     而这顶帽子正挂在"能不能删这把"的判断现场。未对账过一律不标。
+                     tone 走 warning 不走 danger：换机后钥匙不跟账本走是常态，不是故障。 -->
+                <div v-if="keyMissing(h.alias)" class="cell-keyflag">
+                  <UiStatusChip tone="warning">本机找不到这把钥匙</UiStatusChip>
+                </div>
+              </template>
+              <span v-else class="hint-dim">未设</span>
+            </td>
+            <td><span class="cell-note" :title="h.note || undefined">{{ h.note || '—' }}</span></td>
+            <td>
+              <div class="btn-group">
+                <button class="btn btn-secondary btn-micro" @click="openEdit(h)">编辑</button>
+                <button class="btn btn-secondary btn-micro" @click="onRemove(h)">删除</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="hint-line">
+        共 {{ hosts.length }} 条 · 「启用」只管导出与否：「已停用」保留在账本里，但不会进入导出的 ssh 产物。
+      </p>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+/* 只补布局，一切色彩/形制走全局原子。
+   .card-top 与 KeyringPanel 的 scoped 副本同形——components.css 的收编不归本轮
+   （并行会话在改），这里按现状各留一份，不做跨组件私有样式引用。 */
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.card-top h2, .card-top h3 { font-size: var(--text-md); font-weight: 600; margin: 0; }
+
+/* 对账带：整块与表格区分层；中文长句行高放宽，不裁 CJK 笔画 */
+.export-band {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+}
+.export-band .hint-line, .hosts-form .hint-line { line-height: 1.7; }
+
+/* 操作面板头行：左一句状态、右一组动作同层排；窄窗（<760）转竖排，不挤列。 */
+.band-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.band-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+
+/* 表头小注与行内呼应只降字重/字号——色彩仍走全局原子，不在此造档。 */
+.th-sub { font-weight: 400; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.5; }
+.cell-sub { font-size: var(--text-xs); line-height: 1.6; max-width: 160px; }
+.cell-keyflag { margin-top: 2px; }
+
+@media (max-width: 760px) {
+  .band-head { flex-direction: column; align-items: stretch; }
+  .band-head .btn-group { justify-content: flex-start; }
+}
+
+/* 表单：面板内展开块；栅格列 minmax(0,1fr) 防长路径撑破 */
+.hosts-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-control);
+}
+.form-fields { display: flex; flex-wrap: wrap; gap: 10px 14px; }
+.form-fields .form-item-block { flex: 1 1 200px; min-width: 0; }
+.form-fields .field-narrow { flex-grow: 0; flex-basis: 110px; }
+.form-fields .field-wide { flex-basis: 100%; }
+
+/* 输入档取仓内既有形状（WSL 面板家族同源值）；仓里没有全局 .input 原子，
+   刻意不复制 portscan 家族的跨目录私有表，本地补一份最小等档。 */
+.input {
+  width: 100%;
+  min-width: 0;
+  background: var(--surface-page);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  font-family: inherit;
+}
+.input:focus { border-color: var(--color-primary); }
+.input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.input:disabled { background: var(--surface-hover); color: var(--color-text-subtle); cursor: not-allowed; }
+.input-mono { font-family: var(--font-mono); }
+
+.field-msg { margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.6; }
+.field-error { color: var(--state-danger); }
+
+.cell-alias { font-weight: 600; }
+.cell-note {
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+</style>

@@ -201,6 +201,11 @@
       "group": "system"
     },
     {
+      "id": "sshkeys",
+      "route": "/ext/sshkeys",
+      "group": "network"
+    },
+    {
       "id": "subnetdesk",
       "route": "/ext/subnetdesk",
       "group": "network"
@@ -440,7 +445,7 @@
     ]
   },
   "counts": {
-    "modules": 50,
+    "modules": 51,
     "events": 98
   }
 }

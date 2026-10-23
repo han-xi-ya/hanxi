@@ -107,6 +107,7 @@ import (
 	snipasteinstance "hanxi/internal/modules/snipaste/instance"
 	snipasteversion "hanxi/internal/modules/snipaste/version"
 	"hanxi/internal/modules/softver"
+	"hanxi/internal/modules/sshkeys"
 	"hanxi/internal/modules/subnetdesk"
 	subnetdeskinstance "hanxi/internal/modules/subnetdesk/instance"
 	subnetdeskversion "hanxi/internal/modules/subnetdesk/version"
@@ -534,6 +535,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		portkillModule,
 		portscan.New(),
 		publicip.New(plat),
+		sshkeys.New(),
 		wifi.New(),
 		envcheck.New(plat),
 		softver.New(plat),

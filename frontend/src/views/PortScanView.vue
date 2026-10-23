@@ -11,7 +11,6 @@ import MainTabNav from '../components/ui/MainTabNav.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import UiProgressBar from '../components/ui/UiProgressBar.vue'
 import ProxyCheckPanel from '../components/portscan/ProxyCheckPanel.vue'
-import SSHCheckPanel from '../components/portscan/SSHCheckPanel.vue'
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
@@ -157,7 +156,6 @@ function openInBrowser(port: number) {
 const PORTSCAN_TABS = [
   { key: 'scan', label: '端口扫描' },
   { key: 'proxy', label: '代理连通性测试' },
-  { key: 'ssh', label: 'SSH 连接测试' },
 ]
 // 类型取 string 而非窄联合：MainTabNav 的 v-model 契约是 string，窄类型会在
 // 组件回写时报不兼容（模板里的 === 'scan' 比较照常成立）。
@@ -207,7 +205,7 @@ onUnmounted(() => {
 
 <template>
   <section class="page portscan-page">
-    <PageHeader title="网络测试" subtitle="端口扫描与服务指纹、代理连通性测试、SSH 连接测试三件事；扫描流量还支持经 SOCKS5 / HTTP 代理中继。">
+    <PageHeader title="网络测试" subtitle="端口扫描与服务指纹、代理连通性测试两件事；扫描流量还支持经 SOCKS5 / HTTP 代理中继。SSH 主动连接测试已分家到「SSH 密钥管理」模块（它会真的发起登录尝试，与无凭据探测不是一回事）。">
       <template #actions>
         <MainTabNav v-model="activeTab" :tabs="PORTSCAN_TABS" id-prefix="portscan" label="端口扫描页面视图切换" />
       </template>
@@ -429,11 +427,6 @@ onUnmounted(() => {
       <ProxyCheckPanel />
     </div>
 
-    <!-- 标签页 3：SSH 连接测试（只测版本交换，不碰凭据） -->
-    <div v-show="activeTab === 'ssh'" id="portscan-ssh-panel" class="tab-panel"
-         role="tabpanel" aria-labelledby="portscan-ssh-tab">
-      <SSHCheckPanel />
-    </div>
   </section>
 </template>
 

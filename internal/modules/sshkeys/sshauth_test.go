@@ -1,4 +1,4 @@
-package portscan
+package sshkeys
 
 import (
 	"context"
@@ -116,7 +116,7 @@ func TestCheckSSHAuthLoginOK(t *testing.T) {
 	}, true)
 	host, port := sshTarget(t, addr)
 
-	res, err := NewScanner().CheckSSHAuth(context.Background(), SSHAuthRequest{
+	res, err := newProber().CheckSSHAuth(context.Background(), SSHAuthRequest{
 		Host: host, Port: port, User: testSSHUser, Pass: testSSHPass, TimeoutMs: 4000,
 	})
 	if err != nil {
@@ -144,7 +144,7 @@ func TestCheckSSHAuthWrongPasswordKeepsFingerprint(t *testing.T) {
 	}, true)
 	host, port := sshTarget(t, addr)
 
-	res, err := NewScanner().CheckSSHAuth(context.Background(), SSHAuthRequest{
+	res, err := newProber().CheckSSHAuth(context.Background(), SSHAuthRequest{
 		Host: host, Port: port, User: testSSHUser, Pass: testSSHWrong, TimeoutMs: 4000,
 	})
 	if err != nil {
@@ -168,7 +168,7 @@ func TestCheckSSHAuthPasswordNotAllowed(t *testing.T) {
 	addr, _ := sshServerFixture(t, nil, false)
 	host, port := sshTarget(t, addr)
 
-	res, err := NewScanner().CheckSSHAuth(context.Background(), SSHAuthRequest{
+	res, err := newProber().CheckSSHAuth(context.Background(), SSHAuthRequest{
 		Host: host, Port: port, User: testSSHUser, Pass: testSSHPass, TimeoutMs: 4000,
 	})
 	if err != nil {
@@ -192,7 +192,7 @@ func TestCheckSSHAuthNotSSHPort(t *testing.T) {
 	defer srv.Close()
 	host, port := sshTarget(t, strings.TrimPrefix(srv.URL, "http://"))
 
-	res, err := NewScanner().CheckSSHAuth(context.Background(), SSHAuthRequest{
+	res, err := newProber().CheckSSHAuth(context.Background(), SSHAuthRequest{
 		Host: host, Port: port, User: testSSHUser, Pass: testSSHPass, TimeoutMs: 2000,
 	})
 	if err != nil {
@@ -220,7 +220,7 @@ func TestCheckSSHAuthRejectsBadForm(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := NewScanner().CheckSSHAuth(context.Background(), c.req)
+			res, err := newProber().CheckSSHAuth(context.Background(), c.req)
 			if err == nil {
 				t.Fatalf("应拒绝，实得 %+v", res)
 			}
@@ -237,7 +237,7 @@ func TestCheckSSHAuthNeverLeaksPassword(t *testing.T) {
 	addr, _ := sshServerFixture(t, func(u, p string) bool { return false }, true)
 	host, port := sshTarget(t, addr)
 
-	res, err := NewScanner().CheckSSHAuth(context.Background(), SSHAuthRequest{
+	res, err := newProber().CheckSSHAuth(context.Background(), SSHAuthRequest{
 		Host: host, Port: port, User: testSSHUser, Pass: testSSHPass, TimeoutMs: 4000,
 	})
 	if err != nil {
@@ -268,7 +268,7 @@ func TestCheckSSHAuthSupportsIPv6(t *testing.T) {
 	}
 
 	for _, h := range []string{"::1", "[::1]"} {
-		res, aErr := NewScanner().CheckSSHAuth(context.Background(), SSHAuthRequest{
+		res, aErr := newProber().CheckSSHAuth(context.Background(), SSHAuthRequest{
 			Host: h, Port: port, User: testSSHUser, Pass: testSSHPass, TimeoutMs: 4000,
 		})
 		if aErr != nil {
@@ -283,7 +283,7 @@ func TestCheckSSHAuthSupportsIPv6(t *testing.T) {
 	}
 
 	// 真带端口的形态仍然拦住（两种测试共用同一条判据，不许一处松一处紧）
-	if _, err := NewScanner().CheckSSHAuth(context.Background(), SSHAuthRequest{
+	if _, err := newProber().CheckSSHAuth(context.Background(), SSHAuthRequest{
 		Host: "[::1]:22", Port: 22, User: testSSHUser, Pass: testSSHPass,
 	}); err == nil {
 		t.Error("[::1]:22 不该通过主机栏校验")

@@ -1,8 +1,8 @@
 # Hanxi 需求与产品设计规范（PRD）
 
 > **产品名称**：Hanxi
-> **文档版本**：v1.4  
-> **更新日期**：2026-10-21（随 heukms 入库与「网络测试」改名的口径同步：托管 31→32、§2.1 portscan 行更名并补代理连通性/SSH 检查描述、骨架例外清单四条补列第五条 heukms 解包器特例；上轮 v1.3 为 2026-10-12 对账订正轮：自建模块 17→18 补剪贴板历史、托管 28→31 补 Piik/DBX/GoNavi、portscan 指纹口径勘误、骨架例外清单由一条补全为四条并申明两把尺、发布形态去"便携模式"宣讲）  
+> **文档版本**：v1.5  
+> **更新日期**：2026-10-22（sshkeys 自 portscan 拆出独立入库：自建 18→19，§1 名单与 §2.1 表 SSH 口径从 portscan 行分离并新增 sshkeys 行；上轮 v1.4 为 2026-10-21 随 heukms 入库与「网络测试」改名的口径同步：托管 31→32、§2.1 portscan 行更名并补代理连通性/SSH 检查描述、骨架例外清单四条补列第五条 heukms 解包器特例；再上轮 v1.3 为 2026-10-12 对账订正轮：自建模块 17→18 补剪贴板历史、托管 28→31 补 Piik/DBX/GoNavi、portscan 指纹口径勘误、骨架例外清单由一条补全为四条并申明两把尺、发布形态去"便携模式"宣讲）  
 > **目标平台**：Windows 10 22H2+ / Windows 11 x64（纯 Windows 原生调用）  
 > **发布形态**：**单二进制免安装**。数据家默认为 exe 同级 `hanxidata/`（无则自动创建），可经 exe 同级 `hanxi.bind` 指针（首行写数据目录绝对路径）显式绑定他处；解析链**只有「绑定指针 → 应用同级」两级**——无 `%APPDATA%` 等用户目录静默兜底，旧 `data/` 兼容已正式废弃（零识别零迁移，仅在检测到旧特征时告警指路）。**「便携 / 标准」双模式判定自 F6 起整体退役**：同级即唯一存在方式，不再作为一种模式宣讲（权威实现 `internal/settings/paths.go`，`%APPDATA%\Hanxi` 现仅作一次性搬迁来源）。  
 > **技术栈**：Go 1.26+ / Wails v3.0-beta / Vue 3 + TypeScript + Vite  
@@ -13,7 +13,7 @@
 
 Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装、管理与运行常用开源软件。产品由两条主线构成：
 
-1. **自建功能模块**：frpc 内网穿透、微信机器人、网络测试（端口扫描/代理/SSH）/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、软件版本跟踪、系统信息、WSL2 就绪体检、局域网文件快传、文字识别（OCR）、随手记、**剪贴板历史**、网页应用、右键快捷菜单、桌面留言板等 18 项（另 EarTrumpet 纳管特例按 catalog 能力口径落在本侧），能力原生内置于单二进制；
+1. **自建功能模块**：frpc 内网穿透、微信机器人、网络测试（端口扫描/代理）/SSH 密钥管理/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、软件版本跟踪、系统信息、WSL2 就绪体检、局域网文件快传、文字识别（OCR）、随手记、**剪贴板历史**、网页应用、右键快捷菜单、桌面留言板等 19 项（另 EarTrumpet 纳管特例按 catalog 能力口径落在本侧），能力原生内置于单二进制；
 2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、WindTerm、Termora、RAMMap、**Piik 屏幕分享、DBX、GoNavi 数据库客户端**、抖音下载器（Douzy）、HEU KMS 激活工具等 32 款工具，以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；骨架例外五条如实见 §2.2 前言——Douzy 仅"版本 + 下载"、NanaZip 为 MSIX 安装管理型、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型、HEU KMS 解包器特例（RAR5 而非 zip，可安装集更窄））。
 
 所有能力以平等模块身份注册到统一入口，按需懒加载启停。
@@ -33,13 +33,14 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 
 ## 2. 模块能力矩阵
 
-### 2.1 自建功能模块（18）
+### 2.1 自建功能模块（19）
 
 | 模块名称 | 模块标识 | 核心能力说明 | 安全与特权机制 |
 | :--- | :--- | :--- | :--- |
 | **frpc 穿透管理** | `frpc` | 多实例并发、全协议与 Visitor 支持、配置可视化 ⇋ TOML 双向同步、`frp://` 链接一键分享、批量端口映射导入、官方/镜像版本下载与本地导入、日志实时嗅探 | DPAPI 凭据加密、JobObject 绑定、临时 TOML 自动清理 |
 | **微信机器人** | `wechat` | iLink 协议扫码登录、多账号会话保持、长轮询事件监听、图文/文件/Markdown 多模态加密推送、入站文件落盘 | AES 密钥加密传输、启动预激活常驻监听 |
-| **网络测试** | `portscan` | 高并发 TCP 探测、**自研 banner 级服务指纹识别**（抓取服务横幅后按内置特征表判协议类型、组件版本 Nginx/MySQL/Redis 等与 Web 状态）、SOCKS5/HTTP 代理扫描、常用端口预设、结果流式渲染、按任务取消。另含**代理连通性测试**（判定=能经代理取到公网出口 IP；五个出口源各查各的并排显示，结论取多数一致并报 n/m 源一致）与 **SSH 检查**（版本横幅交换零依赖；密码认证为独立动作，走 x/crypto/ssh 完整握手）。**2026-10-12 勘误**：本行原写「Gonmap 深度协议指纹识别」，经仓内核实**不存在该引擎**（`internal/modules/portscan/` 仅 6 文件、`go.mod` 无 nmap 类依赖），属"文案超前于实现"（`docs/FEATURES_OVERVIEW.md` 早已点名）；其源头是 `internal/modules/portscan/module.go` 的模块 Description，经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板——代码侧已随 `ee7fd0d` 订正（Description + cataloggen 再生 + Info 口径同步），本批只正文档 | 并发限流与超时熔断控制；扫描属主动出网动作，结果含网络拓扑信息 |
+| **网络测试** | `portscan` | 高并发 TCP 探测、**自研 banner 级服务指纹识别**（抓取服务横幅后按内置特征表判协议类型、组件版本 Nginx/MySQL/Redis 等与 Web 状态）、SOCKS5/HTTP 代理扫描、常用端口预设、结果流式渲染、按任务取消。另含**代理连通性测试**（判定=能经代理取到公网出口 IP；五个出口源各查各的并排显示，结论取多数一致并报 n/m 源一致）。原并列的 **SSH 检查**（版本横幅交换零依赖；密码认证为独立动作，走 x/crypto/ssh 完整握手）已于 2026-10-22 搬出为独立模块 `sshkeys`（见下行）。**2026-10-12 勘误**：本行原写「Gonmap 深度协议指纹识别」，经仓内核实**不存在该引擎**（`internal/modules/portscan/` 仅 6 文件、`go.mod` 无 nmap 类依赖），属"文案超前于实现"（`docs/FEATURES_OVERVIEW.md` 早已点名）；其源头是 `internal/modules/portscan/module.go` 的模块 Description，经 `cataloggen` 流入 `catalog.go` 与前端 Info 面板——代码侧已随 `ee7fd0d` 订正（Description + cataloggen 再生 + Info 口径同步），本批只正文档 | 并发限流与超时熔断控制；扫描属主动出网动作，结果含网络拓扑信息 |
+| **SSH 密钥管理** | `sshkeys` | 本机密钥台账（只读列文件/算法/公钥指纹/口令三态，**不读取私钥内容**，认不出形态时报"判不出来"而非猜）与 SSH 端点主动检查两动作：协议第一回合**版本横幅探测**（零第三方依赖，报告可达性、是否 SSH 服务、协议与实现版本，不碰凭据、不在对端留登录记录）与**一次性密码认证测试**（走 `x/crypto/ssh` 完整握手，报告可登录/被拒/主机密钥指纹）；2026-10-22 自 `portscan` 整体搬出入库——无凭据并发探测与真的发起登录尝试语义不同，不再同页混堆（扫描流程内 22 端口 `SSH-` Banner 服务识别属服务指纹，仍留 `portscan`） | 凭据只在本次调用内存中存活，不落盘、不回显；「试登录」会在对端 sshd 日志留记录、可能触发 fail2ban，故为刻意分开的显式动作；MCP 面刻意不注册任何工具（显式负裁决，见 `module.go` 包注释） |
 | **端口查杀** | `portkill` | IP Helper 快速查占用、进程身份三重复核（PID+启动时间+路径）、一键释放 | Windows `ShellExecuteEx(runas)` 原生 UAC 按需提权 |
 | **局域网扫描** | `lan` | IPv4 `/24` 自动探测、ICMP Echo 存活扫描、ARP/邻居表读取、MAC 厂商 OUI 识别、设备备注 | 只读网络枚举、取消上下文感知 |
 | **网络诊断** | `publicip` | 双栈公网 IP 查询、网卡拓扑透视、ICMP Ping 稳定性统计、Traceroute 路由追踪 | 原生 API、无黑窗口静默调用 |

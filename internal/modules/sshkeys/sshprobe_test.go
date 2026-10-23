@@ -1,4 +1,4 @@
-package portscan
+package sshkeys
 
 import (
 	"context"
@@ -72,7 +72,7 @@ func TestCheckSSHUsable(t *testing.T) {
 	fx := startSSHFixture(t, "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu1\r\n")
 	host, port := splitHostPort(t, fx.addr)
 
-	res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 3000})
+	res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 3000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestCheckSSHIgnoresDashPrefix(t *testing.T) {
 	)
 	host, port := splitHostPort(t, fx.addr)
 
-	res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 3000})
+	res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 3000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestCheckSSHPortOpenButNotSSH(t *testing.T) {
 	fx := startSSHFixture(t, "HTTP/1.1 400 Bad Request\r\n\r\n")
 	host, port := splitHostPort(t, fx.addr)
 
-	res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 2000})
+	res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 2000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestCheckSSHSSilentPort(t *testing.T) {
 
 	host, port := splitHostPort(t, ln.Addr().String())
 	start := time.Now()
-	res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 700})
+	res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 700})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestCheckSSHEarlyClose(t *testing.T) {
 	defer ln.Close()
 
 	host, port := splitHostPort(t, ln.Addr().String())
-	res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 1500})
+	res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 1500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestCheckSSHUnreachable(t *testing.T) {
 	host, port := splitHostPort(t, ln.Addr().String())
 	_ = ln.Close() // 占位即释放，确保 refused
 
-	res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 1500})
+	res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 1500})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestCheckSSHRejectsBadForm(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := NewScanner().CheckSSH(context.Background(), c.req)
+			res, err := newProber().CheckSSH(context.Background(), c.req)
 			if err == nil {
 				t.Fatalf("应拒绝，实得 %+v", res)
 			}
@@ -304,7 +304,7 @@ func TestReadSSHBannerCapped(t *testing.T) {
 	defer ln.Close()
 
 	host, port := splitHostPort(t, ln.Addr().String())
-	res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 3000})
+	res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 3000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +323,7 @@ func TestReadSSHBannerCapped(t *testing.T) {
 func TestSSHResultHasNoCredentialPath(t *testing.T) {
 	fx := startSSHFixture(t, "SSH-2.0-OpenSSH_9.6\r\n")
 	host, port := splitHostPort(t, fx.addr)
-	res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 2000})
+	res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 2000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestSSHResultHasNoCredentialPath(t *testing.T) {
 func TestSSHClientIdentTerminated(t *testing.T) {
 	fx := startSSHFixture(t, "SSH-2.0-OpenSSH_9.6\r\n")
 	host, port := splitHostPort(t, fx.addr)
-	if _, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 2000}); err != nil {
+	if _, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: host, Port: port, TimeoutMs: 2000}); err != nil {
 		t.Fatal(err)
 	}
 	got := <-fx.received
@@ -385,7 +385,7 @@ func TestCheckSSHSupportsIPv6(t *testing.T) {
 	port, _ := strconv.Atoi(portStr)
 
 	for _, h := range []string{"::1", "[::1]"} {
-		res, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: h, Port: port, TimeoutMs: 3000})
+		res, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: h, Port: port, TimeoutMs: 3000})
 		if err != nil {
 			t.Fatalf("%q 应通过主机栏校验，实得 err=%v", h, err)
 		}
@@ -400,7 +400,7 @@ func TestCheckSSHSupportsIPv6(t *testing.T) {
 
 	// 反面：真塞了端口的两种形态仍必须拦住
 	for _, h := range []string{"[::1]:22", "1.1.1.1:22"} {
-		if _, err := NewScanner().CheckSSH(context.Background(), SSHCheckRequest{Host: h, Port: 22}); err == nil {
+		if _, err := newProber().CheckSSH(context.Background(), SSHCheckRequest{Host: h, Port: 22}); err == nil {
 			t.Errorf("%q 带端口却过了校验，右侧端口栏就白设了", h)
 		}
 	}

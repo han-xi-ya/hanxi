@@ -40,13 +40,19 @@ func (m *Module) SetGate(g extapi.Gate) { m.svc.holder.SetGate(g) }
 func (m *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID: ID,
-		// 名称与描述随能力扩展更新：这一页现在管三件事（端口扫描 / 代理连通性 /
-		// SSH 连接测试），"端口扫描"已经盖不住。**catalog.go 与 module_catalog.json
-		// 两份产物刻意未 regen**——它们正被另一会话在途修改，此处只改源头，
-		// 等那轮入库后一笔补齐（Info().Name / Nav().Title 经 cataloggen 流入产物）。
+		// 名称与描述随能力增减更新：这一页管两件事（端口扫描 / 代理连通性测试）。
+		// SSH 主动连接测试（版本横幅探测 + 一次性凭据测试）已于 2026-10-22 搬出到
+		// sshkeys 模块——它带"真的发起登录尝试"的语义，与本页"无凭据并发探测"不是
+		// 一回事，当初混堆在这里只是就近堆放。扫描流程内部对 22 端口的服务识别
+		// （scanner.go 认 `SSH-` 前缀）**留在本模块未动**，那属于服务指纹本行。
+		//
+		// 顺手删掉此处一条旧交代：原注释写"catalog.go 与 module_catalog.json 刻意未
+		// regen，等另一会话入库后补齐"——那笔已入库（两份产物实测都含「网络测试」），
+		// 留着就是一条永远为假的说明，正是要防的"完成却写着待办"。**改此处必须 regen
+		// 两份产物**（Info().Name / Nav().Title 经 cataloggen 流入 catalog 与 fixture）。
 		Name:        "网络测试",
 		Version:     "0.1.0",
-		Description: "高并发多端口扫描与自研轻量 Banner / HTTP 服务指纹（不含 Nmap），另含代理连通性与 SSH 连接测试",
+		Description: "高并发多端口扫描与自研轻量 Banner / HTTP 服务指纹（不含 Nmap），另含代理连通性测试",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

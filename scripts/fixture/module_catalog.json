@@ -778,7 +778,7 @@
     {
       "id": "portscan",
       "name": "网络测试",
-      "description": "高并发多端口扫描与自研轻量 Banner / HTTP 服务指纹（不含 Nmap），另含代理连通性与 SSH 连接测试",
+      "description": "高并发多端口扫描与自研轻量 Banner / HTTP 服务指纹（不含 Nmap），另含代理连通性测试",
       "category": "network",
       "deliveryKind": "builtin-logical",
       "capabilities": [],
@@ -1002,6 +1002,27 @@
       "name": "软件版本",
       "description": "日常装机软件版本跟踪（微信首个目标）：本机版本注册表×PE 双口径、官方最新版对照与安装包直连下载（不托管安装）、安装/数据目录两代探测与占用扫描",
       "category": "system",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
+      "id": "sshkeys",
+      "name": "SSH 密钥管理",
+      "description": "本机 SSH 密钥台账与写操作（生成、加/换/去口令、成对删除；不读取私钥内容）、公钥一键部署（带 host key 钉定）、主机清单与导出对账，以及端点连接测试（版本横幅探测 / 一次性密码认证）",
+      "category": "network",
       "deliveryKind": "builtin-logical",
       "capabilities": [],
       "entrypoints": [
