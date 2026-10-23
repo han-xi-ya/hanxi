@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hanxi/internal/extapi"
 )
 
 func goodHost(alias string) HostEntry {
@@ -415,5 +417,71 @@ func TestExportSummaryNamesMissingKeysExactly(t *testing.T) {
 	}
 	if len(sum.MissingKeyAliases) != 1 || sum.MissingKeyAliases[0] != "gone" {
 		t.Errorf("名单应只含 gone，实得 %v", sum.MissingKeyAliases)
+	}
+}
+
+// TestLedgerAutoAlias 锁"别名留空即由地址派生"，以及重名去重后仍是合法别名。
+func TestLedgerAutoAlias(t *testing.T) {
+	l := newLedger(t.TempDir())
+
+	blank := goodHost("")
+	blank.Alias = ""
+	if err := l.add(blank); err != nil {
+		t.Fatalf("空别名应自动派生: %v", err)
+	}
+	got, _ := l.list()
+	if len(got) != 1 || got[0].Alias != "10-0-0-8" {
+		t.Fatalf("派生别名不对：%+v", got)
+	}
+
+	again := goodHost("")
+	again.Alias = ""
+	if err := l.add(again); err != nil {
+		t.Fatalf("同地址第二台应派生出去重名: %v", err)
+	}
+	got, _ = l.list()
+	if len(got) != 2 || got[1].Alias != "10-0-0-8-2" {
+		t.Fatalf("去重结果不对：%+v", got)
+	}
+
+	// 派生不出合法值时要求显式命名，且不许留下半条记录。
+	bad := goodHost("")
+	bad.Alias, bad.Host = "", "服务器"
+	if err := l.add(bad); err == nil {
+		t.Fatal("纯中文地址应要求显式命名")
+	}
+	got, _ = l.list()
+	if len(got) != 2 {
+		t.Errorf("失败的新增不该进账，实有 %+v", got)
+	}
+
+	// 显式给了别名就照给的走，重名仍然拒——两条路径共用同一份规则。
+	if err := l.add(goodHost("10-0-0-8")); err == nil {
+		t.Error("显式别名重名必须被拒")
+	}
+}
+
+// TestSuggestAliasRPCMatchesLedger 锁"预览与落账同源"：预览说什么，保存后就该是什么
+// （含冲突时的 -2 后缀由账本决定，所以只断言无冲突那一档）。
+func TestSuggestAliasRPCMatchesLedger(t *testing.T) {
+	svc := &SshKeysService{prober: newProber(), holder: extapi.NewLeaseHolder(ID), ledger: newLedger(t.TempDir())}
+	pre, err := svc.SuggestAlias("10.0.0.8")
+	if err != nil {
+		t.Fatalf("预览失败: %v", err)
+	}
+	if pre != "10-0-0-8" {
+		t.Fatalf("预览值不对: %q", pre)
+	}
+	h := goodHost("")
+	h.Alias = ""
+	if _, err := svc.AddHost(h); err != nil {
+		t.Fatalf("新增失败: %v", err)
+	}
+	list, err := svc.ListHosts()
+	if err != nil || len(list) != 1 || list[0].Alias != pre {
+		t.Fatalf("落账别名与预览不一致：%+v err=%v", list, err)
+	}
+	if _, err := svc.SuggestAlias("服务器"); err == nil {
+		t.Error("派生不出时应报错要求显式命名，前端据此提示")
 	}
 }

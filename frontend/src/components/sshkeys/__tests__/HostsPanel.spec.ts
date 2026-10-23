@@ -12,6 +12,13 @@
 //    hasPrivate 的行进下拉、选中缺公钥的给联动提示、纯手输必须始终可保存、读失败/空台账
 //    落禁用占位项静默降级、开表单重拉一次）。挂载/开表单的 ListKeys 只服务这一个用途——
 //    "缺不缺钥匙"仍只看 ⑤ 的后端名单，两套用途不许合并（旧误标事故见 useHosts 注）。
+// ⑦ 新增态别名：默认由后端派生——框只读、预览调 SuggestAlias RPC（前端零派生算法，
+//    规则复制=第二套真相）、勾「我想自己起别名」才可手写（aliasIssue 那套即时校验
+//    原样在）、派生失败自动弹开手写框并给就地提示、自动模式保存发**空别名**交给后端
+//    派生+去重，落账以返回整表为准；编辑态仍锁死。
+// ⑧ 密钥路径裸文件名（无 / 与 \、不以 ~ 开头）且台账确有同名私钥：warning 常驻提示
+//    +一键改成 `~/名字`（修复值取后端 suggestPath，是确定性纠正不是猜路径）；
+//    不硬拦保存；带目录分隔符/~ 开头/台账无同名都不提示。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -31,6 +38,7 @@ const svc = vi.hoisted(() => ({
   ExportStatus: vi.fn(),
   ExportConf: vi.fn(),
   RemoveExport: vi.fn(),
+  SuggestAlias: vi.fn(),
 }))
 // 确认对话框宿主挂在 App 顶层，单测里不走真对话框：mock 掉 useConfirm 的裁决，
 // 断言"问过什么"与"裁决怎么分流"。
@@ -97,7 +105,17 @@ function mockDefaults() {
   svc.ExportStatus.mockResolvedValue({ ...CONSISTENT })
   svc.ExportConf.mockResolvedValue({ ...CONSISTENT })
   svc.RemoveExport.mockResolvedValue({ ...CONSISTENT })
+  // 别名预览默认给一个像样的派生值；派生失败的分支由对应用例自己 mockRejectedValue。
+  svc.SuggestAlias.mockResolvedValue('preview-alias')
   confirmMock.mockResolvedValue(true)
+}
+
+/**
+ * 新增态别名默认交给后端自动派生（只读框），用例要手写别名就必须先勾
+ * 「我想自己起别名」。这只补交互步骤，不改任何断言的严格度。
+ */
+async function useCustomAlias(w: Awaited<ReturnType<typeof mountPanel>>) {
+  await w.find('#hosts-alias-custom').setValue(true)
 }
 
 async function mountPanel() {
@@ -515,6 +533,7 @@ describe('HostsPanel 新增/编辑表单', () => {
   it('别名机制文案即时挂出：大写/空格/通配符/前导连字符各说各的为什么', async () => {
     const w = await mountPanel()
     await topBtns(w)[0].trigger('click') // 新增主机
+    await useCustomAlias(w) // 别名默认自动派生；勾「我想自己起别名」后才谈得上手写校验
     const alias = w.find('#hosts-alias')
     await alias.setValue('Nas01')
     await alias.trigger('blur')
@@ -531,6 +550,7 @@ describe('HostsPanel 新增/编辑表单', () => {
   it('重名在保存前拦：账本已有 nas01 时新增同名，AddHost 不被调用', async () => {
     const w = await mountPanel()
     await topBtns(w)[0].trigger('click')
+    await useCustomAlias(w) // 自动派生模式撞名不是错（后端自动加序号）；手填才前端拦重
     await w.find('#hosts-alias').setValue('nas01')
     await w.find('#hosts-alias').trigger('blur')
     expect(w.find('#hosts-alias-msg').text()).toContain('已有一台')
@@ -544,6 +564,7 @@ describe('HostsPanel 新增/编辑表单', () => {
     const added = [NAS, OFF, { alias: 'lab', host: '10.1.1.2', port: 0, user: 'ubuntu', keyPath: '', note: '实验室机', enabled: true }]
     svc.AddHost.mockResolvedValue(added)
     await topBtns(w)[0].trigger('click')
+    await useCustomAlias(w)
     await w.find('#hosts-alias').setValue('lab')
     await w.find('#hosts-host').setValue('10.1.1.2')
     await w.find('#hosts-user').setValue('ubuntu')
@@ -562,6 +583,7 @@ describe('HostsPanel 新增/编辑表单', () => {
   it('校验红时保存钮仍可点；后端拒绝的原文落回表单现场，草稿不丢', async () => {
     const w = await mountPanel()
     await topBtns(w)[0].trigger('click')
+    await useCustomAlias(w)
     await w.find('#hosts-alias').setValue('nas01-ok')
     await w.find('#hosts-host').setValue('10.0.0.9')
     await w.find('.hosts-form .btn-primary').trigger('click')
@@ -576,6 +598,98 @@ describe('HostsPanel 新增/编辑表单', () => {
     expect(w.find('.hosts-form .error-box').text()).toContain('HostName 只填 IP 或域名')
     // 表单没关：草稿留在原地改，而不是让人从头再填一遍
     expect((w.find('#hosts-alias').element as HTMLInputElement).value).toBe('nas01-ok')
+  })
+})
+
+// —— 新增态别名：默认交给后端派生（⑦）——
+// 派生/去重的权威在 sshconf + ledger.add；前端只做预览显示，**一行派生算法都不写**。
+// 自动模式保存时发的是空别名，落账以后端返回的整表为准——预览没过去重，不许当正式值。
+describe('HostsPanel 新增态别名：只读预览、勾选才可手写、派生失败就地弹开', () => {
+  it('别名框默认只读、未取到时显示「将由地址自动生成」；勾上「我想自己起别名」才变可输入', async () => {
+    const w = await mountPanel()
+    await topBtns(w)[0].trigger('click')
+    const alias = w.find('#hosts-alias')
+    expect((alias.element as HTMLInputElement).readOnly).toBe(true)
+    expect((alias.element as HTMLInputElement).disabled).toBe(false) // 只读≠禁用：预览值要看得见
+    expect(alias.attributes('placeholder')).toContain('将由地址自动生成')
+    // 原生 checkbox（全仓无 switch 原子，不私造）
+    expect(w.find('#hosts-alias-custom').attributes('type')).toBe('checkbox')
+    await w.find('#hosts-alias-custom').setValue(true)
+    expect((w.find('#hosts-alias').element as HTMLInputElement).readOnly).toBe(false)
+  })
+
+  it('地址失焦调 SuggestAlias 预览一次；同一地址不重发；自动模式保存发**空别名**——预览不当正式值，落账以整表为准', async () => {
+    const w = await mountPanel()
+    svc.SuggestAlias.mockResolvedValue('8-155-34-133') // 覆盖 mockDefaults 的通用预览值
+    await topBtns(w)[0].trigger('click')
+    await w.find('#hosts-host').setValue('8.155.34.133')
+    await w.find('#hosts-host').trigger('blur')
+    await flushPromises()
+    expect(svc.SuggestAlias).toHaveBeenCalledTimes(1)
+    expect(svc.SuggestAlias).toHaveBeenCalledWith('8.155.34.133')
+    expect((w.find('#hosts-alias').element as HTMLInputElement).value).toBe('8-155-34-133')
+    // 同一地址再失焦不重发 RPC（预览值与地址对得上就是新鲜的）
+    await w.find('#hosts-host').trigger('blur')
+    await flushPromises()
+    expect(svc.SuggestAlias).toHaveBeenCalledTimes(1)
+    // 只读框被程序硬塞值也不进模型：保存仍是空别名——前端不吃任何"绕过只读"的输入
+    const el = w.find('#hosts-alias').element as HTMLInputElement
+    el.value = 'hax'
+    el.dispatchEvent(new Event('input'))
+    await w.find('.hosts-form .btn-primary').trigger('click')
+    await flushPromises()
+    expect(svc.AddHost).toHaveBeenCalledTimes(1)
+    expect(svc.AddHost.mock.calls[0][0]).toMatchObject({ alias: '', host: '8.155.34.133' })
+  })
+
+  it('改地址后旧预览作废回占位、再失焦按新地址重算；换回原地址直接复用已有预览不重发', async () => {
+    const w = await mountPanel()
+    svc.SuggestAlias.mockResolvedValue('a-b-c')
+    await topBtns(w)[0].trigger('click')
+    await w.find('#hosts-host').setValue('a.b.c')
+    await w.find('#hosts-host').trigger('blur')
+    await flushPromises()
+    expect((w.find('#hosts-alias').element as HTMLInputElement).value).toBe('a-b-c')
+    await w.find('#hosts-host').setValue('x.y.z')
+    expect((w.find('#hosts-alias').element as HTMLInputElement).value).toBe('') // 陈旧预览不再冒充
+    await w.find('#hosts-host').setValue('a.b.c')
+    expect((w.find('#hosts-alias').element as HTMLInputElement).value).toBe('a-b-c') // 对上号即回显
+    await w.find('#hosts-host').trigger('blur')
+    await flushPromises()
+    expect(svc.SuggestAlias).toHaveBeenCalledTimes(1)
+  })
+
+  it('SuggestAlias 报错：自动展开自定义输入框 + 一句人话（带后端原文），表单不卡在看不见原因处', async () => {
+    const w = await mountPanel()
+    svc.SuggestAlias.mockRejectedValue(new Error('地址 "我的机器" 派生不出合法别名（只含符号或非 ASCII），请手工指定一个'))
+    await topBtns(w)[0].trigger('click')
+    await w.find('#hosts-host').setValue('我的机器')
+    await w.find('#hosts-host').trigger('blur')
+    await flushPromises()
+    const hint = w.find('#hosts-alias-preview-fail')
+    expect(hint.exists()).toBe(true)
+    expect(hint.classes()).toContain('hint-line')
+    expect(hint.classes()).toContain('state-warning') // 既有 warning 档原子，不新造样式
+    expect(hint.text()).toContain('这台机器的地址派生不出合法别名，请手工起一个')
+    expect(hint.text()).toContain('我的机器') // 后端原话一并挂出，不吞错误
+    // 「自动展开」= 勾选框已亮 + 框已可输入
+    expect((w.find('#hosts-alias-custom').element as HTMLInputElement).checked).toBe(true)
+    expect((w.find('#hosts-alias').element as HTMLInputElement).readOnly).toBe(false)
+    // 这时不勾直接点是存不进去的——手写校验仍按 aliasIssue 那套把关（没改松）
+    await w.find('.hosts-form .btn-primary').trigger('click')
+    await flushPromises()
+    expect(svc.AddHost).not.toHaveBeenCalled()
+    expect(w.find('#hosts-alias-msg').text()).toContain('别名必填')
+  })
+
+  it('编辑态仍走锁定别名（后端 Update 按别名整条覆盖）：不出现「自己起」勾选，发原别名', async () => {
+    const w = await mountPanel()
+    await w.findAll('tbody tr')[0].findAll('.btn-micro')[0].trigger('click')
+    expect(w.find('#hosts-alias-custom').exists()).toBe(false)
+    expect((w.find('#hosts-alias').element as HTMLInputElement).disabled).toBe(true)
+    await w.find('.hosts-form .btn-primary').trigger('click')
+    await flushPromises()
+    expect(svc.UpdateHost).toHaveBeenCalledWith(NAS)
   })
 })
 
@@ -632,6 +746,7 @@ describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath�
     expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('')
     // 再选回并保存：发出的 keyPath 就是 suggestPath
     await sel.setValue('~/id_ed25519')
+    await useCustomAlias(w)
     await w.find('#hosts-alias').setValue('work01')
     await w.find('#hosts-host').setValue('10.9.9.9')
     await w.find('.hosts-form .btn-primary').trigger('click')
@@ -651,6 +766,7 @@ describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath�
     expect(shown!.attributes('disabled')).toBeDefined() // 哨兵只回显状态，用户选不走
     // 手输的路径台账里没有：不猜它有没有公钥，联动提示不许冒出来
     expect(w.find('#hosts-keypath-hint').exists()).toBe(false)
+    await useCustomAlias(w)
     await w.find('#hosts-alias').setValue('lab')
     await w.find('#hosts-host').setValue('10.1.1.2')
     await w.find('.hosts-form .btn-primary').trigger('click')
@@ -673,6 +789,7 @@ describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath�
     // 静默 = 不把错误文案/错误框抬到面板上：读不到台账绝不能劫持清单保存
     expect(w.text()).not.toContain('台账目录读取失败')
     expect(w.findAll('.error-box')).toHaveLength(0)
+    await useCustomAlias(w)
     await w.find('#hosts-alias').setValue('lab4')
     await w.find('#hosts-host').setValue('10.4.4.4')
     await w.find('#hosts-keypath').setValue('D:\\k\\id_ed')
@@ -727,5 +844,59 @@ describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath�
     await w.find('.hosts-form .btn-primary').trigger('click')
     await flushPromises()
     expect(svc.UpdateHost).toHaveBeenCalledWith(NAS)
+  })
+})
+
+// —— 裸文件名纠正（⑧）——
+// 机主踩坑实录：密钥路径只写了文件名（如 8.155.34.133）。后端 expandHome 对这种值
+// 原样 stat 必然找不到，ExportSummary 点名"本机找不到这把钥匙"是**事实不是误报**
+// （ssh 也按相对路径解析不到）。这里要防的是再发生：提示常驻 + 一键改成 `~/名字`。
+// 确定性纠正与猜路径的分界：只有台账里真有同名私钥时才提示，修复值直接取该行
+// 后端给的 suggestPath——不猜任何不确定的东西，也不硬拦保存。
+describe('HostsPanel 表单裸文件名：同名私钥才提示、一键改成 ~/ 形态、不硬拦保存', () => {
+  it('值不含目录分隔符、不以 ~ 开头且台账确有同名私钥：warning 常驻；一键改成 suggestPath 后警告消失、下拉同步选中', async () => {
+    const w = await mountPanel()
+    await topBtns(w)[0].trigger('click')
+    await w.find('#hosts-keypath').setValue('id_ed25519')
+    const warn = w.find('#hosts-keypath-bare-warn')
+    expect(warn.exists()).toBe(true)
+    expect(warn.classes()).toContain('hint-line')
+    expect(warn.classes()).toContain('state-warning') // 既有 warning 档原子
+    expect(warn.text()).toContain('只写了文件名')
+    expect(warn.text()).toContain('按当前目录解析')
+    expect(warn.text()).toContain('找不到这把钥匙')
+    // 一键纠正：改的就是台账那行的 suggestPath（后端给的 `~/<名字>`，前端不拼）
+    await w.find('#hosts-keypath-bare-fix').trigger('click')
+    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('~/id_ed25519')
+    expect(w.find('#hosts-keypath-bare-warn').exists()).toBe(false)
+    // 纠正后值就是下拉选项本身——哨兵回显逻辑未被破坏
+    expect((w.find('#hosts-keypath-select').element as HTMLSelectElement).value).toBe('~/id_ed25519')
+  })
+
+  it('带目录分隔符、以 ~ 开头、或台账没有同名私钥：都不提示——只对确定的事开口', async () => {
+    const w = await mountPanel()
+    await topBtns(w)[0].trigger('click')
+    for (const v of [
+      'C:\\Users\\u\\.ssh\\id_ed25519', // 反斜杠目录
+      'D:/keys/id_ed25519',             // 正斜杠目录
+      '~/id_ed25519',                   // 规范形态
+      'id_ed25519-2',                   // 裸名但台账没有这把（孤儿 .pub 的 name 也不算私钥）
+      'orphan_pub',                     // 台账有同名但 hasPrivate=false：不是"同名私钥"
+    ]) {
+      await w.find('#hosts-keypath').setValue(v)
+      expect(w.find('#hosts-keypath-bare-warn').exists()).toBe(false)
+    }
+  })
+
+  it('提示不硬拦保存：裸名原样发出（相对路径可能有意为之），警告只是常驻在旁边', async () => {
+    const w = await mountPanel()
+    await topBtns(w)[0].trigger('click')
+    await w.find('#hosts-host').setValue('10.1.1.2')
+    await w.find('#hosts-keypath').setValue('id_ed25519')
+    expect(w.find('#hosts-keypath-bare-warn').exists()).toBe(true)
+    await w.find('.hosts-form .btn-primary').trigger('click')
+    await flushPromises()
+    expect(svc.AddHost).toHaveBeenCalledTimes(1)
+    expect(svc.AddHost.mock.calls[0][0]).toMatchObject({ keyPath: 'id_ed25519' })
   })
 })

@@ -22,7 +22,7 @@
 // 页内切走时若要清口令，须视图侧配合（已随本轮改动上报，非本文件权限）。
 import { ref, shallowRef, getCurrentInstance, getCurrentScope, onScopeDispose, onDeactivated } from 'vue'
 import * as SshKeysAPI from '../../../bindings/hanxi/internal/modules/sshkeys'
-import type { SSHAuthResult, SSHCheckResult } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
+import type { HostEntry, SSHAuthResult, SSHCheckResult } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
 import { getErrorMessage } from '../../utils/errors'
 import { useAsyncAction } from '../../composables/useAsyncAction'
 import { useClipboard } from '../../composables/useClipboard'
@@ -52,6 +52,32 @@ export const SSH_AUTH_LABEL: Record<string, string> = {
 }
 
 export function useSSHCheck() {
+  // —— 主机清单预填源（「从主机清单选择」下拉）——
+  // 面板定位是**自由探测仪**：测一个还没登记的地址是它的本职，清单只是省事入口，
+  // 不能变成唯一门。所以这份数据只做三件事：挂一次 ListHosts、给下拉当选项、
+  // 选中时预填 主机/端口/用户；两个测试动作永远发的是输入框现值，与本数据无关。
+  // 挂载拉一次即可（清单是账本不是活体，每次测试再拉并无收益，也不许把测试
+  // 动作吊在它的延迟后面）。读失败**静默降级**：不报错、不阻断手输——与
+  // useHosts.refreshKeyOptions 同一口径。也不走 run 单飞锁：挂载取数与用户
+  // 立刻点测试可能并发，抢锁会把正当动作报成「操作进行中」。
+  const ledgerHosts = shallowRef<HostEntry[]>([])
+  const hostsLoaded = ref(false)
+  const hostsLoadFailed = ref(false)
+
+  async function loadLedgerHosts() {
+    try {
+      const list = await SshKeysAPI.SshKeysService.ListHosts()
+      ledgerHosts.value = list ?? []
+      hostsLoadFailed.value = false
+    } catch {
+      // 静默：失败只让下拉多说一行占位，不冒任何错误横幅。
+      ledgerHosts.value = []
+      hostsLoadFailed.value = true
+    } finally {
+      hostsLoaded.value = true
+    }
+  }
+
   const form = ref({ host: '127.0.0.1', port: 22 })
   // cred.pass 的清空一律**原地改属性**（不是替换整个对象）——spec 拿着引用
   // 断言"出口之后这个对象上的口令没了"，替换写法会让断言对着过期旧对象空转。
@@ -166,6 +192,7 @@ export function useSSHCheck() {
   return {
     form, cred, showPass, optsOpen, timeoutMs,
     result, auth, connectError, authError, checking, busyKind,
+    ledgerHosts, hostsLoaded, hostsLoadFailed, loadLedgerHosts,
     test, testAuth, copyResult, clearPass,
   }
 }

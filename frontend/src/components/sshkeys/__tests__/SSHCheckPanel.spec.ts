@@ -10,7 +10,11 @@
 //    在跨机器凭据场景不成立已废，理由见组件内注释）；成功/失败/清除/切页/
 //    关窗任一出口清空——清空走 finally、显式按钮与生命周期钩子，测试直接
 //    持 cred 引用断言出口后的状态，证明不是成功回调里的补救；
-// ④ 口令不进复制全文、localStorage、console。
+// ④ 口令不进复制全文、localStorage、console；
+// ⑤ 「从主机清单选择」只是省事入口：挂载拉一次 ListHosts，选中预填 主机/端口/用户
+//    （label 备注优先、空备注退别名、密钥路径不进 label）；下拉一次性动作不留
+//    选中态，手改地址后测试发的就是输入框现值；空清单/读失败都静默降级成禁用
+//    占位项，两个测试动作永不受它影响（面板本职是自由探测仪）。
 import { KeepAlive, defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -20,6 +24,9 @@ import { useToast } from '../../../composables/useToast'
 const svc = vi.hoisted(() => ({
   CheckSSH: vi.fn(),
   CheckSSHAuth: vi.fn(),
+  // 面板挂载时为「从主机清单选择」下拉拉一次 ListHosts（读失败/空都静默降级，
+  // 不占用例里其他断言）；用它的用例自己 mockResolvedValue / mockRejectedValue。
+  ListHosts: vi.fn(),
 }))
 
 // 复制出口换成记录器：口令"不进复制全文"这条只能这样断言（clipboard 在
@@ -438,6 +445,112 @@ describe('SSHCheckPanel', () => {
       }
       w.unmount()
       vi.restoreAllMocks()
+    })
+  })
+
+  // —— 「从主机清单选择」= 省事入口，不是唯一门 ——
+  // 面板定位是自由探测仪：测一个还没登记的地址是它的本职。清单只负责挂一次
+  // ListHosts、给下拉当选项、选中时预填三字段；读失败/空清单都静默降级成
+  // 一行禁用占位，两个测试动作永不受它影响。放在文件最后：afterEach 用
+  // clearAllMocks（不清实现），这里的 ListHosts.mockRejectedValue 不许泄漏给别的用例。
+  describe('从主机清单选择（预填三字段；空/失败静默降级；不劫持手输）', () => {
+    const LEDGER_ROW = {
+      alias: '8-155-34-133', host: '8.155.34.133', port: 0, user: 'ubuntu',
+      keyPath: 'C:\\hidden\\id_ed25519', note: '开发机', enabled: true,
+    }
+    const LEDGER_ROW2 = {
+      alias: 'nas01', host: '192.168.1.10', port: 2222, user: '',
+      keyPath: '', note: '', enabled: true,
+    }
+
+    it('挂载拉一次清单；label 备注优先（开发机（8-155-34-133））、空备注退回别名、密钥路径不进 label', async () => {
+      svc.ListHosts.mockResolvedValue([LEDGER_ROW, LEDGER_ROW2])
+      const w = mount(SSHCheckPanel)
+      await flushMicrotasks()
+      expect(svc.ListHosts).toHaveBeenCalledTimes(1)
+      const sel = w.find('#ssh-host-pick')
+      expect(sel.text()).toContain('开发机（8-155-34-133）')
+      const nasOpt = sel.findAll('option').find(o => (o.element as HTMLOptionElement).value === 'nas01')
+      expect(nasOpt).toBeDefined()
+      expect(nasOpt!.text()).toBe('nas01')
+      expect(sel.text()).not.toContain('C:\\hidden') // 这是选择器，不是详情表
+      w.unmount()
+    })
+
+    it('选中即预填 主机/端口/用户（端口 0 显式写成 22）；选本身不发任何测试动作；下拉即刻回落占位不留选中态', async () => {
+      svc.ListHosts.mockResolvedValue([LEDGER_ROW, LEDGER_ROW2])
+      const w = mount(SSHCheckPanel)
+      await flushMicrotasks()
+      const sel = w.find('#ssh-host-pick')
+      await sel.setValue('8-155-34-133')
+      await flushMicrotasks()
+      expect((w.find('.ssh-connect-block .check-host').element as HTMLInputElement).value).toBe('8.155.34.133')
+      expect((w.find('.ssh-connect-block .check-port').element as HTMLInputElement).value).toBe('22')
+      expect((w.findAll('.ssh-auth-block .check-cred-input')[0].element as HTMLInputElement).value).toBe('ubuntu')
+      // 选中只是预填，不是发射：两个动作都不许被顺带点着
+      expect(svc.CheckSSH).not.toHaveBeenCalled()
+      expect(svc.CheckSSHAuth).not.toHaveBeenCalled()
+      // 不留"选中项"残留状态——下拉与输入框从此各管各的
+      expect((sel.element as HTMLSelectElement).value).toBe('')
+      w.unmount()
+    })
+
+    it('选过清单行之后再手改地址：输入框现值照常生效，不被残留状态劫持；清单仍只在挂载拉过一次', async () => {
+      svc.ListHosts.mockResolvedValue([LEDGER_ROW])
+      svc.CheckSSH.mockResolvedValue(checkResult)
+      const w = mount(SSHCheckPanel)
+      await flushMicrotasks()
+      await w.find('#ssh-host-pick').setValue('8-155-34-133')
+      await w.find('.ssh-connect-block .check-host').setValue('manual.example')
+      await w.find('.ssh-connect-block .btn-secondary').trigger('click')
+      await flushMicrotasks()
+      expect(svc.CheckSSH).toHaveBeenCalledWith({ host: 'manual.example', port: 22, timeoutMs: 5000 })
+      expect(svc.ListHosts).toHaveBeenCalledTimes(1)
+      w.unmount()
+    })
+
+    it('清单为空：禁用占位项「主机清单还没有记录，可直接输入地址」，不是空下拉；手输测试照常', async () => {
+      svc.ListHosts.mockResolvedValue([])
+      svc.CheckSSH.mockResolvedValue(checkResult)
+      const w = mount(SSHCheckPanel)
+      await flushMicrotasks()
+      const sel = w.find('#ssh-host-pick')
+      const ph = sel.findAll('option').find(o => o.text().includes('主机清单还没有记录'))
+      expect(ph).toBeDefined()
+      expect(ph!.attributes('disabled')).toBeDefined()
+      await w.find('.ssh-connect-block .check-host').setValue('9.9.9.9')
+      await w.find('.ssh-connect-block .btn-secondary').trigger('click')
+      await flushMicrotasks()
+      expect(svc.CheckSSH).toHaveBeenCalledWith({ host: '9.9.9.9', port: 22, timeoutMs: 5000 })
+      w.unmount()
+    })
+
+    it('清单读取失败：静默降级成一行禁用占位（错误原文不上屏），两个测试动作照常可用', async () => {
+      svc.ListHosts.mockRejectedValue(new Error('清单文件已损坏，拒绝以空账本覆盖'))
+      svc.CheckSSH.mockResolvedValue(checkResult)
+      svc.CheckSSHAuth.mockResolvedValue(authOK)
+      const w = mount(SSHCheckPanel)
+      await flushMicrotasks()
+      const sel = w.find('#ssh-host-pick')
+      const ph = sel.findAll('option').find(o => o.text().includes('清单读取失败'))
+      expect(ph).toBeDefined()
+      expect(ph!.attributes('disabled')).toBeDefined()
+      // 静默 = 不把错误原文抬上屏、不冒横幅——读清单失败不许惊动探测仪本体
+      expect(w.text()).not.toContain('清单文件已损坏')
+      expect(w.findAll('.banner-error')).toHaveLength(0)
+      await w.find('.ssh-connect-block .check-host').setValue('8.8.8.8')
+      await w.find('.ssh-connect-block .btn-secondary').trigger('click')
+      await flushMicrotasks()
+      expect(svc.CheckSSH).toHaveBeenCalledWith({ host: '8.8.8.8', port: 22, timeoutMs: 5000 })
+      const inputs = w.findAll('.ssh-auth-block .check-cred-input')
+      await inputs[0].setValue('u')
+      await inputs[1].setValue('p')
+      await w.find('.ssh-auth-block .btn-secondary').trigger('click')
+      await flushMicrotasks()
+      expect(svc.CheckSSHAuth).toHaveBeenCalledWith({
+        host: '8.8.8.8', port: 22, user: 'u', pass: 'p', timeoutMs: 5000,
+      })
+      w.unmount()
     })
   })
 })

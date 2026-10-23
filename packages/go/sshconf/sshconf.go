@@ -369,3 +369,66 @@ func ContainsAlias(content, alias string) bool {
 	}
 	return false
 }
+
+// AliasFromHost 由地址派生一个合法别名。清单默认走这条路：**人不该为标识符做决策**，
+// 别名是机器值，写备注才是给人读的名字（机主 2026-10-23 明确要求的取舍）。
+//
+// 规则：转小写 → 非 [a-z0-9] 一律折成单个 '-' → 去首尾 '-' → 截到 maxAliasLen。
+// 例：`154.217.234.231` → `154-217-234-231`，`8.155.34.133` → `8-155-34-133`。
+//
+// 派生不出合法别名时（纯中文、全是符号）返回错误，**要求显式命名，不静默造一个
+// h-1 之类的无意义名**——那种别名日后没人认得是哪台。唯一性不在本函数职责内，
+// 由 UniqueAlias 负责。
+func AliasFromHost(host string) (string, error) {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(host)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if len(out) > maxAliasLen {
+		out = strings.TrimRight(out[:maxAliasLen], "-")
+	}
+	if out == "" {
+		return "", fmt.Errorf("地址 %q 派生不出合法别名（只含符号或非 ASCII），请手工指定一个", host)
+	}
+	if err := ValidateAlias(out); err != nil {
+		return "", fmt.Errorf("地址 %q 派生的别名不合规则: %w", host, err)
+	}
+	return out, nil
+}
+
+// UniqueAlias 在同名冲突时追加 -2/-3… 并保证仍在长度上限内。
+// 截短基名时同样去尾部悬空连字符，免得产出 `xxx-` 这种被 ValidateAlias 拒的形状。
+func UniqueAlias(base string, taken func(string) bool) (string, error) {
+	if err := ValidateAlias(base); err != nil {
+		return "", err
+	}
+	if !taken(base) {
+		return base, nil
+	}
+	for n := 2; n < 10000; n++ {
+		suffix := "-" + strconv.Itoa(n)
+		cand := base + suffix
+		if len(cand) > maxAliasLen {
+			cand = strings.TrimRight(base[:maxAliasLen-len(suffix)], "-") + suffix
+		}
+		if taken(cand) {
+			continue
+		}
+		if err := ValidateAlias(cand); err != nil {
+			return "", fmt.Errorf("去重后的别名 %q 反而不合规则: %w", cand, err)
+		}
+		return cand, nil
+	}
+	return "", fmt.Errorf("别名 %q 的去重候选已满，请手工指定", base)
+}

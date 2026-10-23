@@ -442,3 +442,67 @@ func TestValidateHostNameIPv6Forms(t *testing.T) {
 		}
 	}
 }
+
+// TestAliasFromHost 锁派生规则：清单默认不让人为标识符做决策，派生必须稳定且合规。
+func TestAliasFromHost(t *testing.T) {
+	ok := []struct{ host, want string }{
+		{"154.217.234.231", "154-217-234-231"},
+		{"8.155.34.133", "8-155-34-133"},
+		{"NAS.Home.ARPA", "nas-home-arpa"},
+		{"2408:8207::1", "2408-8207-1"}, // IPv6：冒号折叠、连续符号只留一个
+		{"  spaced.example.com  ", "spaced-example-com"},
+		{"dev--01", "dev-01"},
+		{"10.0.0.8:4090", "10-0-0-8-4090"}, // 地址里带端口也不炸（端口该走 Port 字段）
+	}
+	for _, c := range ok {
+		got, err := AliasFromHost(c.host)
+		if err != nil {
+			t.Errorf("host %q 不该报错: %v", c.host, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("host %q 派生为 %q，期望 %q", c.host, got, c.want)
+		}
+		if vErr := ValidateAlias(got); vErr != nil {
+			t.Errorf("派生值 %q 竟不合法: %v", got, vErr)
+		}
+	}
+	long := strings.Repeat("a", 40)
+	got, err := AliasFromHost(long)
+	if err != nil {
+		t.Fatalf("长地址应截断而非报错: %v", err)
+	}
+	if len(got) > maxAliasLen || strings.HasSuffix(got, "-") {
+		t.Errorf("截断后形状不对: %q (len=%d)", got, len(got))
+	}
+	// 派生不出合法值时必须报错要求显式命名，不能造 `h-1` 这类没人认得的无意义名。
+	for _, bad := range []string{"服务器", "...", "-", "", "   "} {
+		if g, err := AliasFromHost(bad); err == nil {
+			t.Errorf("host %q 应要求显式命名，实得 %q", bad, g)
+		}
+	}
+}
+
+func TestUniqueAlias(t *testing.T) {
+	taken := map[string]bool{"nas01": true, "nas01-2": true, "nas01-3": true}
+	got, err := UniqueAlias("nas01", func(s string) bool { return taken[s] })
+	if err != nil || got != "nas01-4" {
+		t.Fatalf("去重应得 nas01-4，实得 %q err=%v", got, err)
+	}
+	if g, err := UniqueAlias("fresh", func(string) bool { return false }); err != nil || g != "fresh" {
+		t.Errorf("无冲突不该加后缀，实得 %q err=%v", g, err)
+	}
+	// 基名已经顶到上限时，加后缀必须靠截短基名保住长度，且不能留下悬空连字符。
+	base := strings.Repeat("b", maxAliasLen)
+	longTaken := map[string]bool{base: true}
+	g, err := UniqueAlias(base, func(s string) bool { return longTaken[s] })
+	if err != nil {
+		t.Fatalf("长基名去重失败: %v", err)
+	}
+	if len(g) > maxAliasLen || ValidateAlias(g) != nil {
+		t.Errorf("长基名去重结果不合规: %q (len=%d)", g, len(g))
+	}
+	if _, err := UniqueAlias("bad name", func(string) bool { return false }); err == nil {
+		t.Error("非法基名必须报错")
+	}
+}

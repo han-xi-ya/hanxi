@@ -8,6 +8,10 @@
 // 校验规则」）。aliasIssue 是唯一的例外镜像，只镜像**别名**这一个字段：它是
 // 最现实的配置注入面，规则必须在输入现场讲透机制，让用户被拦时学到规则的形状；
 // 其余字段前端只做轻拦（地址、端口格式），最终以后端原文为准，不造第二判据。
+//
+// 别名**派生**规则（地址→别名、重名加序号）同归后端，且这里连镜像都不做：
+// previewAlias 只是把权威派生函数的结果借来**预览**（见其注释），落账一律留空
+// 交给后端。规则复制=第二套真相，本仓已经为别名规则单独写过镜像注释，不再增处。
 import { computed, ref, shallowRef } from 'vue'
 import * as SshKeysAPI from '../../../bindings/hanxi/internal/modules/sshkeys'
 import type { ExportSummary, HostEntry, KeyEntry } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
@@ -110,6 +114,22 @@ export function useHosts() {
       // 像新鲜的候选（躺一把已删的钥匙）比没有候选更容易选错。
       ledgerKeys.value = []
       ledgerReadFailed.value = true
+    }
+  }
+
+  // previewAlias：别名预览的**唯一**取数口——调后端 SuggestAlias（内部就是权威
+  // 派生函数 sshconf.AliasFromHost）。这里绝不实现任何派生逻辑：规则复制=第二套
+  // 真相，本仓为别名规则已单独写过镜像注释（aliasIssue），不再增处。预览值只拿来
+  // 显示；真正落账的别名以保存时后端返回的整表为准——去重（重名加 -2）只在 ledger
+  // 里发生，预览没过去重，所以自动模式下前端发的是**空别名**，不是预览值。
+  // 不走任何单飞锁：预览是输入途中的旁路小动作，抢账本读写/台账那几把锁会把正当
+  // 预览报成「操作进行中」那种要人猜的假错误；过期响应由调用方按地址比对丢弃。
+  async function previewAlias(host: string): Promise<{ ok: boolean; alias: string; error: string }> {
+    try {
+      const alias = await SshKeysAPI.SshKeysService.SuggestAlias(host)
+      return { ok: true, alias: alias ?? '', error: '' }
+    } catch (err) {
+      return { ok: false, alias: '', error: getErrorMessage(err) }
     }
   }
 
@@ -225,6 +245,7 @@ export function useHosts() {
     hosts, summary, listError, exportError, exportNote, checkedAt,
     missingKeys, keyMissing,
     ledgerKeys, ledgerReadFailed, refreshKeyOptions,
+    previewAlias,
     listBusy, exportBusy,
     refreshAll, refreshHosts, refreshStatus,
     saveHost, toggleEnabled, removeHost, syncToSSH, undoExport,

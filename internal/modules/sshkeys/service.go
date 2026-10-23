@@ -8,6 +8,7 @@ import (
 
 	"hanxi/internal/extapi"
 	"hanxi/internal/settings"
+	"hanxi/packages/go/sshconf"
 )
 
 // SshKeysService 暴露给前端的 SSH 主机服务。
@@ -39,6 +40,21 @@ func NewSshKeysService(holder *extapi.LeaseHolder) *SshKeysService {
 }
 
 // ---- 主机清单（账本）----
+
+// SuggestAlias 给前端做"别名将由地址自动派生成什么"的**预览**。
+//
+// 为什么要一个 RPC 而不是前端自己算：派生规则（小写、符号折叠成单个 '-'、去首尾
+// '-'、截到 32、派生不出就要求显式命名）的权威在 packages/go/sshconf。前端复刻一份
+// 就是第二套真相——本仓已经为"别名规则镜像"单独写过注释与对齐用例，不再增加一处。
+// 真正的别名仍以保存后后端返回的整表为准（去重在这里发生，也只在ledger里发生）。
+func (s *SshKeysService) SuggestAlias(host string) (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return sshconf.AliasFromHost(host)
+}
 
 // ListHosts 返回按别名升序的清单副本。
 func (s *SshKeysService) ListHosts() ([]HostEntry, error) {

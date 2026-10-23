@@ -14,15 +14,46 @@
 // 口令纪律：默认掩码（本框历史上刻意明文，理由"测试场景要能看见"在跨机器凭据
 // 场景已废，见模板内注释）；成功/失败/清除/切页/关窗任一出口即清空；不进复制
 // 全文、结果对象、localStorage、console。行为锁在 __tests__/SSHCheckPanel.spec.ts。
+//
+// 「从主机清单选择」只是省事入口：选中预填 主机/端口/用户，下拉本身不留选中态
+// （一次性动作，见 onPickHost）；清单空/读失败都静默降级成占位项，手输与两个
+// 测试动作与清单数据无关——这面板的定位是自由探测仪。
+import { onMounted } from 'vue'
 import UiBanner from '../ui/UiBanner.vue'
 import UiStatusChip from '../ui/UiStatusChip.vue'
 import { SSH_AUTH_LABEL, SSH_AUTH_TONE, SSH_PORT_PRESETS, useSSHCheck } from './useSSHCheck'
+import type { HostEntry } from '../../../bindings/hanxi/internal/modules/sshkeys/models'
 
 const {
   form, cred, showPass, optsOpen, timeoutMs,
   result, auth, connectError, authError, checking, busyKind,
+  ledgerHosts, hostsLoaded, hostsLoadFailed, loadLedgerHosts,
   test, testAuth, copyResult, clearPass,
 } = useSSHCheck()
+
+// 清单为预填下拉供数：挂载拉一次（见 useSSHCheck 的用途与静默降级注释）。
+onMounted(loadLedgerHosts)
+
+// 下拉 label 以备注为主（机主要的是"开发机"这种叫法），备注空着的行退回别名；
+// 密钥路径不进 label——这是选择器不是详情表。
+function hostOptionLabel(h: HostEntry): string {
+  return h.note ? `${h.note}（${h.alias}）` : h.alias
+}
+
+// 一次性动作：预填 主机/端口/用户 之后下拉立刻回到占位——不保留"选中项"状态，
+// 免得它与之后的手输值打架（测试发出的永远是输入框现值，与这里预填过谁无关）。
+// 端口 0 在后端按 22 处理，预填时显式写成 22，不留"没填？"的歧义。
+function onPickHost(ev: Event) {
+  const el = ev.target as HTMLSelectElement
+  const alias = el.value
+  el.value = ''
+  if (!alias) return
+  const h = ledgerHosts.value.find(x => x.alias === alias)
+  if (!h) return
+  form.value.host = h.host
+  form.value.port = h.port || 22
+  cred.value.user = h.user
+}
 
 // 暴露给宿主视图：切走本页签时清口令。
 // 为什么必须外部补这一刀：页签切换用 v-show（刻意保状态），**不触发生命周期**；
@@ -44,6 +75,27 @@ defineExpose({ clearPass })
       </div>
 
       <p class="hint-line">只做协议版本交换，不碰凭据，也不在对端 sshd 日志留记录。</p>
+
+      <!-- 省事入口，不是唯一门：已登记的机器点一下就预填，未登记的照样直接输入
+           （测一个新地址本就是这面板的本职）。空清单/读取失败都落一行禁用占位，
+           手输与两个测试动作永不受它影响。 -->
+      <div class="host-pick-row">
+        <label class="param-item" for="ssh-host-pick">从主机清单选择</label>
+        <select
+          id="ssh-host-pick" class="select-input host-pick-select" :disabled="checking"
+          @change="onPickHost($event)"
+        >
+          <option value="">（不选——直接输入地址）</option>
+          <option v-if="hostsLoadFailed" value="__hosts_failed__" disabled>（清单读取失败，可直接输入）</option>
+          <option
+            v-else-if="hostsLoaded && !ledgerHosts.length" value="__hosts_empty__" disabled
+          >主机清单还没有记录，可直接输入地址</option>
+          <option
+            v-for="h in ledgerHosts" :key="h.alias" :value="h.alias"
+          >{{ hostOptionLabel(h) }}</option>
+        </select>
+      </div>
+      <p class="hint-line">选中只是预填 主机/端口/用户（凭据卡的用户名一并带上），之后手改输入框照常生效。</p>
 
       <div class="check-row btn-group">
         <input v-model="form.host" type="text" class="input check-host" placeholder="127.0.0.1" aria-label="SSH 主机地址" :disabled="checking" />
@@ -209,4 +261,9 @@ defineExpose({ clearPass })
 
 /* 结论的"边界标注"行：比正文小一档、subtle 色——它不抢结论本体，但必须在场。 */
 .verdict-scope { font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.5; }
+
+/* 清单选择行：只管布局（窄窗换行不溢出）；色彩/字号一律走全局 .select-input
+   与本页既有 param-item/hint-line 档，此处零自写色底。 */
+.host-pick-row { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.host-pick-row .host-pick-select { flex: 1 1 240px; min-width: 0; max-width: 360px; }
 </style>

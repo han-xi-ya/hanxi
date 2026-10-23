@@ -201,6 +201,20 @@ export function SetKeyPassphrase(req) {
 }
 
 /**
+ * SuggestAlias 给前端做"别名将由地址自动派生成什么"的**预览**。
+ * 
+ * 为什么要一个 RPC 而不是前端自己算：派生规则（小写、符号折叠成单个 '-'、去首尾
+ * '-'、截到 32、派生不出就要求显式命名）的权威在 packages/go/sshconf。前端复刻一份
+ * 就是第二套真相——本仓已经为"别名规则镜像"单独写过注释与对齐用例，不再增加一处。
+ * 真正的别名仍以保存后后端返回的整表为准（去重在这里发生，也只在ledger里发生）。
+ * @param {string} host
+ * @returns {$CancellablePromise<string>}
+ */
+export function SuggestAlias(host) {
+    return $Call.ByID(3198693531, host);
+}
+
+/**
  * UpdateHost 整条覆盖已有别名（别名本身不可改，理由见 ledger.go）。
  * @param {$models.HostEntry} h
  * @returns {$CancellablePromise<$models.HostEntry[] | null>}

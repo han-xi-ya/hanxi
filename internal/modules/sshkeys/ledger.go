@@ -109,6 +109,18 @@ func (l *ledger) add(h HostEntry) error {
 	if err := l.ensureLoad(); err != nil {
 		return err
 	}
+	// 别名留空 → 由地址派生并自动去重（清单默认不该让人为标识符做决策；备注才是给人读的）。
+	// 显式给了别名就照他给的走，重名仍拒——两条路径都汇到同一份 ValidateAlias，不另立规则。
+	if strings.TrimSpace(h.Alias) == "" {
+		base, err := sshconf.AliasFromHost(h.Host)
+		if err != nil {
+			return err
+		}
+		h.Alias, err = sshconf.UniqueAlias(base, func(c string) bool { _, ok := l.hosts[c]; return ok })
+		if err != nil {
+			return err
+		}
+	}
 	if err := validateEntry(h); err != nil {
 		return err
 	}

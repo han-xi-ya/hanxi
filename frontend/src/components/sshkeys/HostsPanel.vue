@@ -26,6 +26,7 @@ const {
   hosts, summary, listError, exportError, exportNote, checkedAt,
   keyMissing,
   ledgerKeys, ledgerReadFailed, refreshKeyOptions,
+  previewAlias,
   listBusy, exportBusy,
   refreshAll, saveHost, toggleEnabled, removeHost, syncToSSH, undoExport,
 } = useHosts()
@@ -65,7 +66,72 @@ const portTouched = ref(false)
 const attempted = ref(false)
 const formError = ref('')
 
+// —— 新增态别名：默认由后端从地址派生，前端零算法 ——
+// 派生与去重（重名自动加 -2）的权威都在后端（sshconf + ledger.add：别名留空即走
+// 这条路）。这里**不实现第二套派生**：预览调 SuggestAlias RPC 只为"将生成成什么"
+// 给人一眼；保存时自动模式发**空别名**交给后端落账，界面再以返回的整表为准——
+// 预览没过去重，绝不能拿预览值当正式值发出去（规则复制=第二套真相，本仓为别名
+// 规则已单独写过镜像注释（aliasIssue），不再增处）。
+const customAlias = ref(false)        // 「我想自己起别名」勾选（原生 checkbox，全仓无 switch 原子）
+const suggestedAlias = ref('')        // SuggestAlias 的预览返回值
+const aliasPreviewError = ref('')     // 派生失败的后端原文（''=无失败）
+const previewedHost = ref('')          // 预览值对应的地址；地址没变就不重发 RPC（是 computed 的依赖，必须是响应式的）
+const aliasAuto = computed(() => !editingAlias.value && !customAlias.value)
+
+// 一个输入框两种形态：自动态只读、显示预览（地址变了预览就作废，显示占位文案）；
+// 自填/编辑态显示并编辑草稿值。自动态的 set 是空操作——只读框本就挡真人输入，
+// 这里再挡一道"程序塞值绕过只读"的假路径。
+const aliasField = computed({
+  get: () => (aliasAuto.value
+    ? (previewedHost.value === draft.value.host.trim() ? suggestedAlias.value : '')
+    : draft.value.alias),
+  set: (v: string) => { if (!aliasAuto.value) draft.value.alias = v },
+})
+
+async function refreshAliasPreview() {
+  if (editingAlias.value) return
+  const host = draft.value.host.trim()
+  if (!host) {
+    suggestedAlias.value = ''
+    aliasPreviewError.value = ''
+    previewedHost.value = ''
+    return
+  }
+  // 同一地址已预览成功就不重发；上次是失败的，交还自动时再试一次（结果多半
+  // 还是失败，但勾选框弹回+提示在，用户看得见为什么自动模式给不出东西）。
+  if (host === previewedHost.value && !aliasPreviewError.value) return
+  const res = await previewAlias(host)
+  // 迟到响应丢弃：等待期间地址又改了，旧地址的结果既不作预览也不判失败。
+  if (draft.value.host.trim() !== host) return
+  previewedHost.value = host
+  if (res.ok) {
+    suggestedAlias.value = res.alias
+    aliasPreviewError.value = ''
+  } else {
+    // 派生不出（纯中文/纯符号地址）：把自定义框**就地弹开**并给一句人话——
+    // 表单不卡进看不见原因的地方；不自作主张替用户编一个别名。
+    suggestedAlias.value = ''
+    aliasPreviewError.value = res.error
+    customAlias.value = true
+  }
+}
+
+function onHostBlur() {
+  hostTouched.value = true
+  // 自填/编辑态不重算预览：框里没人看，别拿「弹开自定义」的提示去惊动正在手写的人。
+  if (aliasAuto.value) void refreshAliasPreview()
+}
+
+// 勾上=接管手写（草稿清空，别拿预览值冒充用户起的名字）；取消=交还自动并补齐
+// 当前地址的预览（自动态下用户改过地址又切回来时，不能让框停在陈旧预览上）。
+function onCustomAliasToggle() {
+  if (customAlias.value) draft.value.alias = ''
+  else void refreshAliasPreview()
+}
+
 const aliasProblem = computed(() => {
+  // 自动态不校验别名：框里是后端预览，正式值由后端派生+去重后定，前端挑不了。
+  if (aliasAuto.value) return ''
   const base = aliasIssue(draft.value.alias)
   if (base) return base
   // 重名在前端先拦（保存前拦，非仅后端拒）：别名是账本主键，也是导出配置的
@@ -139,12 +205,31 @@ const selectedKeyLacksPub = computed(() => {
   return !!k && !k.hasPublic
 })
 
+// —— 裸文件名纠正提示（防"本机找不到这把钥匙"那类坑再发生）——
+// 机主踩过的坑：把密钥路径打成光秃秃的文件名（无 ~ 、无目录分隔符）。后端 expandHome
+// 对这种值原样 stat 必然找不到，ExportSummary.missingKeyAliases 点名"本机找不到这把
+// 钥匙"——**那是事实不是误报**（ssh 同样按相对路径解析不到），要防的是它再发生。
+// 判据苛刻：只有「值既不含 / 与 \ 也不以 ~ 开头」且「台账确有同名私钥」时才提示——
+// 修复目标取台账那行的 suggestPath（后端契约给的 `~/<名字>`），所以这一改是**确定性
+// 纠正**而非猜路径：与已废弃的"拿台账基名猜钥匙在不在"性质不同（那才是推断，见
+// useHosts.refreshKeyOptions 头注）。不硬拦保存：相对路径可能是有意为之（别的执行
+// 环境），但提示常驻值旁，不在提交瞬间闪现。
+const bareKeyFix = computed(() => {
+  const v = draft.value.keyPath.trim()
+  if (!v || v.startsWith('~') || v.includes('/') || v.includes('\\')) return ''
+  return keySelectOptions.value.find(o => o.name === v)?.suggestPath ?? ''
+})
+
 function openAdd() {
   draft.value = blankDraft()
   editingAlias.value = ''
   aliasTouched.value = hostTouched.value = portTouched.value = false
   attempted.value = false
   formError.value = ''
+  customAlias.value = false
+  suggestedAlias.value = ''
+  aliasPreviewError.value = ''
+  previewedHost.value = ''
   formOpen.value = true
   // 每次开表单重拉一次台账：刚在「密钥台账」生成的钥匙要当场选得到，
   // 不该逼人重开面板（挂载时另有 refreshAll 拉第一遍）。失败静默降级。
@@ -160,6 +245,10 @@ function openEdit(h: HostEntry) {
   aliasTouched.value = hostTouched.value = portTouched.value = false
   attempted.value = false
   formError.value = ''
+  customAlias.value = false
+  suggestedAlias.value = ''
+  aliasPreviewError.value = ''
+  previewedHost.value = ''
   formOpen.value = true
   void refreshKeyOptions()
 }
@@ -173,7 +262,9 @@ async function onSave() {
   attempted.value = true
   if (aliasProblem.value || hostProblem.value || portProblem.value) return
   const entry: HostEntry = {
-    alias: draft.value.alias.trim(),
+    // 自动态发**空别名**：派生与去重（重名加 -2）由后端在落账时一并做，界面随后
+    // 以返回的整表为准——预览只是预览，不当正式值发出去（见上方别名注释）。
+    alias: aliasAuto.value ? '' : draft.value.alias.trim(),
     host: draft.value.host.trim(),
     port: Number(draft.value.port) || 0,
     user: draft.value.user.trim(),
@@ -341,13 +432,26 @@ function rowToggleAria(h: HostEntry): string {
         <div class="form-item-block">
           <label class="form-label" for="hosts-alias">别名</label>
           <input
-            id="hosts-alias" v-model="draft.alias" class="input input-mono"
-            :disabled="!!editingAlias" placeholder="nas01" autocomplete="off" spellcheck="false"
+            id="hosts-alias" v-model="aliasField" class="input input-mono"
+            :disabled="!!editingAlias" :readonly="aliasAuto"
+            :placeholder="aliasAuto ? '将由地址自动生成' : 'nas01'"
+            autocomplete="off" spellcheck="false"
             :aria-invalid="aliasShown ? 'true' : 'false'" aria-describedby="hosts-alias-msg"
             @blur="aliasTouched = true"
           />
+          <label v-if="!editingAlias" class="toggle-label alias-custom-toggle">
+            <input id="hosts-alias-custom" v-model="customAlias" type="checkbox" @change="onCustomAliasToggle" />
+            我想自己起别名
+          </label>
+          <!-- 派生失败：自动弹开自定义框（上方勾选已亮），原因就地摊开——
+               表单不卡进看不见理由的地方。文案讲机制：后端确实造不出合法名。 -->
+          <p v-if="aliasPreviewError" id="hosts-alias-preview-fail" class="hint-line state-warning" role="status">
+            ⚠ 这台机器的地址派生不出合法别名，请手工起一个。后端原话：{{ aliasPreviewError }}
+          </p>
           <p id="hosts-alias-msg" class="field-msg" :class="{ 'field-error': !!aliasShown }">
-            {{ aliasShown || '小写字母、数字、_、-，最长 32；这就是 ssh 命令里敲的名字' }}
+            {{ aliasShown || (aliasAuto
+              ? '不用填：后端从地址派生并去重（撞名自动加序号）——这就是 ssh 命令里敲的名字。想自己定就勾上「我想自己起别名」'
+              : '小写字母、数字、_、-，最长 32；这就是 ssh 命令里敲的名字') }}
           </p>
         </div>
 
@@ -357,7 +461,7 @@ function rowToggleAria(h: HostEntry): string {
             id="hosts-host" v-model="draft.host" class="input input-mono"
             placeholder="192.168.1.10 或 nas.example.com" autocomplete="off" spellcheck="false"
             :aria-invalid="hostShown ? 'true' : 'false'" aria-describedby="hosts-host-msg"
-            @blur="hostTouched = true"
+            @blur="onHostBlur"
           />
           <p id="hosts-host-msg" class="field-msg" :class="{ 'field-error': !!hostShown }">
             {{ hostShown || 'IP 或域名；更细的合法性由后端把关，存不进的话原话退回给你' }}
@@ -424,6 +528,12 @@ function rowToggleAria(h: HostEntry): string {
                只陈述台账事实 hasPublic=false，不是"钥匙缺失"判据（那是后端名单的事）。 -->
           <p v-if="selectedKeyLacksPub" id="hosts-keypath-hint" class="hint-line state-warning" role="status">
             ⚠ 这把还没有配套公钥，「部署公钥」对它不可用——请先去「密钥台账」点「补出公钥」。
+          </p>
+          <!-- 裸文件名（无 ~、无目录分隔）且台账确有同名私钥：这是确定性纠正，不是猜路径
+               （修复值就是台账那行后端给的 suggestPath）；不硬拦保存，提示随值常驻。 -->
+          <p v-if="bareKeyFix" id="hosts-keypath-bare-warn" class="hint-line state-warning" role="status">
+            ⚠ 只写了文件名，ssh 会按当前目录解析、找不到这把钥匙。
+            <button type="button" id="hosts-keypath-bare-fix" class="link-button" @click="draft.keyPath = bareKeyFix">改成 {{ bareKeyFix }}</button>
           </p>
         </div>
 
