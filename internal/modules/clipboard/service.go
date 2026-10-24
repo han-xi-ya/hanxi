@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -54,6 +55,10 @@ type ClipboardService struct {
 
 	// eventSink 事件出口测试缝：非 nil 时事件只进假件不碰 Wails（单测注入）。
 	eventSink func(name string, payload any)
+
+	// mask 预览遮蔽引擎（mask.go，v1.8）：atomic 热换读侧无锁；未装载/测试
+	// 手装体为 nil=恒等（遮蔽未配置不遮，与三缝假件同谱）。
+	mask atomic.Pointer[maskEngine]
 
 	// 系统写手与 DIB 解码缝（默认 setSystemText/DecodeDIB，测试注入假件；
 	// DecodeDIB/BlobStore 由 A6 线落地，签名冻结见契约 §10）。
@@ -129,7 +134,7 @@ func NewClipboardService(paths *settings.Paths, holder *extapi.LeaseHolder) (*Cl
 	} else if len(evicted) > 0 {
 		slog.Info("clipboard: 启动按偏好容量闸淘汰存量条目", "count", len(evicted))
 	}
-	return &ClipboardService{
+	svc := &ClipboardService{
 		store:          store,
 		holder:         holder,
 		prefs:          prefs,
@@ -139,7 +144,15 @@ func NewClipboardService(paths *settings.Paths, holder *extapi.LeaseHolder) (*Cl
 		sendKeys:       sendCtrlV,
 		waitForeground: waitForegroundWindow,
 		excluded:       mergeExcludedTables(prefs.excludedCustom()),
-	}, nil
+	}
+	// 遮蔽引擎一次性装配（v1.8；装载面已剔除坏正则，此处失败只可能是
+	// 未知形态——warn 留痕按恒等运行，绝不装"以为遮了"的假安全）
+	if eng, err := newMaskEngine(prefs.maskKinds(), prefs.maskCustomPatterns()); err == nil {
+		svc.mask.Store(eng)
+	} else {
+		slog.Warn("clipboard: 遮蔽引擎装配失败，预览按明文渲染（修好偏好后重启生效）", "err", err)
+	}
+	return svc, nil
 }
 
 // excludedSnapshot 排除表活表快照（副本）：GetStatus 回显与设置页初值共用；
@@ -184,7 +197,15 @@ func (s *ClipboardService) List(q, kind string, limit int) ([]Entry, error) {
 		return nil, gateErr
 	}
 	defer release()
-	return s.store.List(q, kind, limit), nil
+	rows := s.store.List(q, kind, limit)
+	// v1.8 预览遮蔽：store 吃明文匹配（搜索原文照样命中），出口统一遮形
+	//（mask.go 头注"一条路遮全"；Get 正文不经此处，永不遮）
+	if eng := s.mask.Load(); eng.enabled() {
+		for i := range rows {
+			rows[i].Preview = eng.apply(rows[i].Preview)
+		}
+	}
+	return rows, nil
 }
 
 // Get 单条全文：含解密 Text 与图片 BlobData（PNG 原始字节），并记一次使用
@@ -371,6 +392,7 @@ func (s *ClipboardService) SetPrefs(in Prefs) (Prefs, error) {
 	s.mu.Lock()
 	s.excluded = mergeExcludedTables(applied.ExcludedCustom)
 	s.mu.Unlock()
+	s.rebuildMask() // v1.8 遮蔽域热换（normalize 已验正则，此处编译失败沿用旧引擎）
 	return s.prefs.wirePrefs(), nil
 }
 
@@ -570,7 +592,12 @@ func (s *ClipboardService) sweepExpired() []Entry {
 // v1.8 队列联动：淘汰/清扫清单同步 prune 挂名条目（容量淘汰、体积淘汰、
 // 按应用清扫三源都汇到这一口）。
 func (s *ClipboardService) emitIngested(final Entry, evicted []Entry) {
-	s.emit(evUpdated, cloneEntry(final, true))
+	payload := cloneEntry(final, true)
+	// v1.8 事件载荷与 List 出口同谱遮形（实时新条目不得裸奔明文 preview）
+	if eng := s.mask.Load(); eng.enabled() {
+		payload.Preview = eng.apply(payload.Preview)
+	}
+	s.emit(evUpdated, payload)
 	ids := make([]string, 0, len(evicted))
 	for _, v := range evicted {
 		s.emit(evRemoved, RemovedPayload{ID: v.ID})

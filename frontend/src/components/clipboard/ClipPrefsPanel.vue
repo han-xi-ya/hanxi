@@ -11,9 +11,9 @@
 // 形，所见即所运行）；坏正则整表拒绝，红字逐字上浮（"以为设了其实没设"
 // 不接受——与后端 fail-loud 同谱）。
 //
-// 域覆盖（提交 1）：容量/粘贴后即删/排除表/按应用保留。遮蔽规则域随提交 3
-// 追加，队列键位随提交 2 追加——草稿里字段先行保完整（整表语义要求全量回发，
-// 未渲染域**原样透传**，不丢别人域的值）。
+// 域覆盖：容量/粘贴后即删/排除表/按应用保留（提交 1）+ 预览遮蔽（提交 3）；
+// 队列键位走独立 SetQueueHotkey 事务域（不进本面板整表写路，见 Prefs 头注）。
+// 草稿字段全量透传（整表语义要求全量回发，未渲染域不丢别人的值）。
 import { computed, onMounted, ref } from 'vue'
 import type { ClipPrefs } from '../../types/clipboard'
 import { clipboardGetPrefs, clipboardSetPrefs } from '../../adapters/clipboard'
@@ -140,6 +140,32 @@ function removeRow(i: number) {
   rows.value.splice(i, 1)
 }
 
+// ---- 预览遮蔽（mask 域，提交 3） ----
+// 内置 kind 固定序渲染；点击翻 included。后端 normalize 会重排为固定序并
+// 剔未知，本地序只影响点击手感不影响语义。
+const MASK_KIND_ORDER = ['phone', 'idcard', 'email', 'secret'] as const
+const MASK_KIND_LABELS: Record<string, string> = { phone: '手机号', idcard: '证件号', email: '邮箱', secret: '密钥令牌' }
+
+function toggleKind(k: string) {
+  if (!draft.value) return
+  const i = draft.value.maskKinds.indexOf(k)
+  if (i >= 0) draft.value.maskKinds.splice(i, 1)
+  else draft.value.maskKinds.push(k)
+}
+
+const newPattern = ref('')
+
+function addPattern() {
+  const v = newPattern.value.trim()
+  if (!v || !draft.value) return
+  if (!draft.value.maskCustomPatterns.includes(v)) draft.value.maskCustomPatterns.push(v)
+  newPattern.value = ''
+}
+
+function removePattern(i: number) {
+  draft.value?.maskCustomPatterns.splice(i, 1)
+}
+
 // draft ↔ rows 同步：装载/回卷后重建行；保存前把行折回 map。
 function syncFromDraft() {
   if (draft.value) rows.value = mapToRows(draft.value.appRetentionDays)
@@ -233,6 +259,38 @@ function revertAll() {
           <button type="button" class="btn btn-secondary btn-small" @click="addRow">添加应用</button>
           <p class="cp-hint">自「最近一次复制或粘贴」起算 N 天后清理（置顶/片段豁免；留空天数=删除该规则）</p>
         </div>
+
+        <!-- 预览遮蔽（提交 3） -->
+        <div class="cp-group">
+          <h3 class="cp-title">预览遮蔽</h3>
+          <div class="cp-kinds" role="group" aria-label="内置遮蔽类别">
+            <button
+              v-for="k in MASK_KIND_ORDER"
+              :key="k"
+              type="button"
+              class="cp-kind"
+              :class="{ active: draft.maskKinds.includes(k) }"
+              :aria-pressed="draft.maskKinds.includes(k) ? 'true' : 'false'"
+              @click="toggleKind(k)"
+            >{{ MASK_KIND_LABELS[k] }}</button>
+          </div>
+          <p class="cp-hint">只遮列表与浮层的摘要行；搜索原文照样命中、详情正文与粘贴不受影响（敏感条目正文另有默认遮罩）</p>
+          <div class="cp-factory">
+            <span v-for="(pat, i) in draft.maskCustomPatterns" :key="pat" class="cp-chip">
+              {{ pat }}
+              <button type="button" class="cp-chip-x" :aria-label="`移除规则 ${pat}`" @click="removePattern(i)">✕</button>
+            </span>
+          </div>
+          <div class="cp-addrow">
+            <input
+              v-model="newPattern" class="text-input mono cp-add-input" type="text"
+              placeholder="自定义正则，如 订单号\d{8}" aria-label="新增自定义遮蔽规则"
+              @keydown.enter.prevent="addPattern"
+            />
+            <button type="button" class="btn btn-secondary btn-small" :disabled="!newPattern.trim()" @click="addPattern">添加</button>
+          </div>
+          <p class="cp-hint">命中整段替换为 ****；保存即校验，坏正则整表拒绝并红字标出</p>
+        </div>
       </div>
 
       <div class="cp-foot">
@@ -288,6 +346,18 @@ function revertAll() {
 
 .cp-addrow { display: flex; gap: 6px; min-width: 0; }
 .cp-add-input { flex: 1 1 120px; min-width: 0; }
+
+/* 遮蔽 kind 开关丸：受控 aria-pressed，点亮=生效（色+文字双通道） */
+.cp-kinds { display: flex; flex-wrap: wrap; gap: 4px; }
+.cp-kind {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  background: var(--surface-panel); border: 1px solid var(--color-border); color: var(--color-text-muted);
+  padding: 2px 10px; border-radius: var(--radius-pill); font-size: var(--text-sm); cursor: pointer;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+.cp-kind:hover { background: var(--surface-hover); color: var(--color-text); }
+.cp-kind.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
+.cp-kind:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 .cp-retention-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .cp-ret-exe { flex: 1 1 0; min-width: 0; }

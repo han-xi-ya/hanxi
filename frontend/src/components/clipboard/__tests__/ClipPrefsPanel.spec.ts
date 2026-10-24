@@ -57,7 +57,7 @@ describe('装载与回显', () => {
     expect((w.find('#cp-max-blob').element as HTMLInputElement).value).toBe('300')
     expect((w.find('.cp-switch').element as HTMLInputElement).checked).toBe(true)
     expect(w.findAll('.cp-chip-locked')).toHaveLength(2)
-    const customChips = w.findAll('.cp-chip').filter((c) => !c.classes().includes('cp-chip-locked'))
+    const customChips = w.findAll('.cp-group')[1].findAll('.cp-chip').filter((c) => !c.classes().includes('cp-chip-locked'))
     expect(customChips).toHaveLength(1)
     expect(customChips[0].text()).toContain('pgadmin.exe')
     // 存量规则展开成行（钉死雷区①）
@@ -137,7 +137,7 @@ describe('整表语义与显式保存', () => {
     await w.find('.cp-add-input').setValue('PGAdmin.exe') // 已在表（大小写异）
     expect((addBtn.element as HTMLButtonElement).disabled).toBe(false)
     await addBtn.trigger('click')
-    const customChips = () => w.findAll('.cp-chip').filter((c) => !c.classes().includes('cp-chip-locked'))
+    const customChips = () => w.findAll('.cp-group')[1].findAll('.cp-chip').filter((c) => !c.classes().includes('cp-chip-locked'))
     expect(customChips()).toHaveLength(1) // 去重（小写比对）
     await w.find('.cp-add-input').setValue('WeChat')
     await addBtn.trigger('click')
@@ -157,5 +157,48 @@ describe('整表语义与显式保存', () => {
     await flush()
     const sent = fake.SetPrefs.mock.calls[0][0] as ClipPrefs
     expect(sent.appRetentionDays).toEqual({ 'slack.exe': 30, 'oldchat': 0 }) // 小写；空天=0=删规则
+  })
+})
+
+describe('预览遮蔽域（提交 3）', () => {
+  it('kind 丸回显服务端选中态；翻一颗后保存整表带新选中集（固定序由后端归一）', async () => {
+    const w = await openPanel() // serverPrefs: maskKinds ['phone','email']
+    const kinds = w.findAll('.cp-kind')
+    expect(kinds).toHaveLength(4)
+    expect(kinds.map((k) => k.classes().includes('active'))).toEqual([true, false, true, false])
+    await kinds[1].trigger('click') // 打开 证件号
+    fake.SetPrefs.mockResolvedValue(serverPrefs({ maskKinds: ['phone', 'idcard', 'email'] }))
+    await w.findAll('.cp-foot-btns .btn').find((b) => b.text().includes('保存'))!.trigger('click')
+    await flush()
+    const sent = fake.SetPrefs.mock.calls[0][0] as ClipPrefs
+    expect(sent.maskKinds).toEqual(['phone', 'email', 'idcard']) // 本地追加序，后端负责固定序回显
+    expect(sent.maskCustomPatterns).toEqual(['\\d{6}']) // 未动域原样透传
+  })
+
+  it('自定义规则：添加去重、移除即剪（独立于排除表输入行，按 aria-label 分域）', async () => {
+    const w = await openPanel()
+    const patInput = w.find('input[aria-label="新增自定义遮蔽规则"]')
+    const exclInput = w.find('input[aria-label="追加排除应用"]')
+    expect(patInput.exists()).toBe(true)
+    expect(exclInput.exists()).toBe(true)
+    const maskGroup = w.findAll('.cp-group')[3]
+    expect(maskGroup.text()).toContain('\\d{6}') // 服务端存量规则上屏
+    await patInput.setValue('  订单号\\d{8}  ')
+    await maskGroup.findAll('.cp-addrow .btn')[0].trigger('click')
+    expect(maskGroup.findAll('.cp-chip')).toHaveLength(2)
+    await patInput.setValue('\\d{6}') // 与存量重复
+    await maskGroup.findAll('.cp-addrow .btn')[0].trigger('click')
+    expect(maskGroup.findAll('.cp-chip')).toHaveLength(2) // 去重不加行
+    await maskGroup.findAll('.cp-chip')[0].find('.cp-chip-x').trigger('click')
+    expect(maskGroup.findAll('.cp-chip')).toHaveLength(1)
+    expect(maskGroup.findAll('.cp-chip')[0].text()).toContain('订单号')
+  })
+
+  it('全关形态（服务端回显空集）：四丸全不亮；dirty 判定含遮蔽域翻动', async () => {
+    const w = await openPanel({ maskKinds: [] })
+    expect(w.findAll('.cp-kind').filter((k) => k.classes().includes('active'))).toHaveLength(0)
+    await w.findAll('.cp-kind')[2].trigger('click') // 开 email
+    const save = w.findAll('.cp-foot-btns .btn').find((b) => b.text().includes('保存设置'))!
+    expect((save.element as HTMLButtonElement).disabled).toBe(false) // 只动遮蔽域也算脏
   })
 })

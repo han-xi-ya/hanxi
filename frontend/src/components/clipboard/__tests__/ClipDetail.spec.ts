@@ -156,3 +156,37 @@ describe('敏感警示', () => {
     expect(detail({ entry: entry() }).find('.cd-sensitive').exists()).toBe(false)
   })
 })
+
+describe('敏感正文默认遮蔽（契约 §12 v1.8 闸③兑现）', () => {
+  it('text+sensitive：正文圆点占位无明文上屏；👁 揭示/复遮双态，警示条恒在', async () => {
+    const w = detail({ entry: entry({ sensitive: true, text: 'sk-secretvalue1234567890' }) })
+    expect(w.find('.cd-sensitive').exists()).toBe(true)
+    expect(w.find('.cd-plain').text()).not.toContain('sk-secret')
+    expect(w.find('.cd-plain').text()).toContain('•')
+    const btn = w.find('.cd-reveal')
+    expect(btn.attributes('aria-label')).toBe('揭示敏感信息')
+    await btn.trigger('click')
+    expect(w.find('.cd-plain').text()).toContain('sk-secretvalue')
+    expect(w.find('.cd-reveal').attributes('aria-label')).toBe('脱敏遮罩保护')
+    await btn.trigger('click')
+    expect(w.find('.cd-plain').text()).not.toContain('sk-secret')
+  })
+
+  it('换条目自动回遮：揭示态不跨条目残留', async () => {
+    const w = detail({ entry: entry({ id: 's1', sensitive: true, text: '机密甲' }) })
+    await w.find('.cd-reveal').trigger('click')
+    expect(w.find('.cd-plain').text()).toContain('机密甲')
+    await w.setProps({ entry: entry({ id: 's2', sensitive: true, text: '机密乙' }) })
+    expect(w.find('.cd-plain').text()).not.toContain('机密乙')
+    expect(w.find('.cd-plain').text()).toContain('•')
+  })
+
+  it('非敏感不摆遮罩件；遮蔽只吃 sensitive text——未知/其余 kind 分支不受扰', () => {
+    const plain = detail({ entry: entry() })
+    expect(plain.find('.cd-sensitive').exists()).toBe(false)
+    expect(plain.find('.cd-plain').text()).toContain('第二行')
+    const img = detail({ entry: entry({ kind: 'image', sensitive: true, width: 10, height: 10 }) })
+    expect(img.find('.cd-image').exists()).toBe(true)
+    expect(img.find('.cd-reveal').exists()).toBe(false) // 图片无正文面，揭示钮无的放矢
+  })
+})

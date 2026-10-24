@@ -19,12 +19,16 @@
 // 主界面没有浮层那次"原窗"上下文，粘回原窗是浮层的主场，此处不设 Paste 入口）；
 // 次钮置顶随态翻面；危险删除经 spacer 推到行尾远端，确认闸在视图。
 //
-// 敏感位（sensitive）在详情顶部恒挂警示条：本机照常可看可贴，但明确告知
-// 此条目不进 AI（MCP 检索）通道——警示是给"要不要转给别人"做决策用的。
+// 敏感位（sensitive）在详情顶部恒挂警示条 + **正文默认遮蔽**（v1.8 兑现决策
+// 档案"三道闸一条退路"闸③：视图侧明文不渲染按 MemoCard masked 纪律延伸）：
+// 遮罩纪律是"不给人看"不是"不给解"——👁️ 撤遮钮常驻，换条目自动回遮；
+// 复制/粘贴动作以 id 为键走后端取原文，展示遮蔽不影响任何动作链。
+//（比 MemoCard 稍宽的面径：页脚元数据保留——窗口标题是来路现场，List 面
+// 本就恒带 SourceApp；正文才是敏感面。口径登记契约 §12 v1.8。）
 //
 // 动作边界：close/retry/copy/togglePin/delete 只发意图；Get/TogglePin/Delete
 // 的后端调用与确认闸全归视图（展示件零 backend import）。
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ClipEntry } from '../../types/clipboard'
 import { useClipboard } from '../../composables/useClipboard'
 import ClipGlyph from './ClipGlyph.vue'
@@ -61,6 +65,13 @@ const dataUrl = computed(() => blobDataUrl(props.entry?.blobData))
 const useCount = computed(() => props.entry?.useCount ?? 0)
 const files = computed(() => props.entry?.files ?? [])
 
+// v1.8 闸③：sensitive 正文默认遮蔽（MemoCard MASK_DOTS 同档 48 点位）；
+// 换条目自动回遮，揭示态不跨条目残留
+const revealed = ref(false)
+watch(() => props.entry?.id, () => { revealed.value = false })
+const isMasked = computed(() => !!props.entry?.sensitive && props.entry?.kind === 'text' && !revealed.value)
+const MASK_DOTS = '•'.repeat(48)
+
 function copyFilePath(path: string) {
   void copyWithToast(path, '路径已复制到剪贴板')
 }
@@ -91,12 +102,22 @@ function copyFilePath(path: string) {
 
     <template v-else-if="entry">
       <div v-if="entry.sensitive" class="banner banner-warn slim cd-sensitive" role="note">
-        疑似含密钥/令牌：此条目不进 AI（MCP 检索）通道，也不会被语义搜索下发。
+        <span>疑似含密钥/令牌：不进 AI（MCP 检索）通道{{ entry.kind === 'text' ? '；正文已默认遮蔽，复制/粘贴不受影响' : '' }}。</span>
+        <!-- 揭示钮只在有正文面时在场（image/file 无明文正文可揭，不摆无的放矢的钮） -->
+        <button
+          v-if="entry.kind === 'text'"
+          type="button"
+          class="cd-btn cd-reveal"
+          :title="isMasked ? '揭示敏感信息（仅本机）' : '脱敏遮罩保护'"
+          :aria-label="isMasked ? '揭示敏感信息' : '脱敏遮罩保护'"
+          :aria-pressed="isMasked ? 'false' : 'true'"
+          @click="revealed = !revealed"
+        >{{ isMasked ? '👁️' : '🕶️' }}</button>
       </div>
 
       <div class="cd-body">
-        <!-- 文本：等宽原样，不猜结构 -->
-        <pre v-if="entry.kind === 'text'" class="cd-plain mono">{{ entry.text || '（空文本）' }}</pre>
+        <!-- 文本：等宽原样，不猜结构；敏感条目默认圆点占位（闸③） -->
+        <pre v-if="entry.kind === 'text'" class="cd-plain mono">{{ isMasked ? MASK_DOTS : (entry.text || '（空文本）') }}</pre>
 
         <!-- 图片：井位托底预览 + 尺寸/体积机器值 -->
         <div v-else-if="entry.kind === 'image'" class="cd-image">
@@ -183,7 +204,8 @@ function copyFilePath(path: string) {
 .cd-close { margin-left: auto; }
 
 .cd-error { padding: 10px 12px; font-size: var(--text-sm); }
-.cd-sensitive { padding: 8px 10px; font-size: var(--text-xs); }
+.cd-sensitive { padding: 8px 10px; font-size: var(--text-xs); display: flex; align-items: center; gap: 8px; }
+.cd-reveal { margin-left: auto; flex: none; font-size: var(--text-sm); line-height: 1; }
 
 .cd-body { flex: 1; min-height: 0; overflow-y: auto; max-width: 72ch; }
 /* 阅读框：正文档字号不缩（skill 底线）、行高放宽、软底细边自滚 */
