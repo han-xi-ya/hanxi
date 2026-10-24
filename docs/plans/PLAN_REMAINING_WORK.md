@@ -102,7 +102,7 @@
 | N42 | **OCR 轮盘识别悬浮结果卡支持缩放**(机主诉求 2026-09-23) → **✅ 代码收口(2026-09-24 自主批,两解全做)**:取证订正登记语境——"轮盘卡 vs snip 卡两副面孔"不实,两者同一张卡(SnipCardView),dce4be3 拖拽把手本就在,①无需做;真缺口补齐:②窗口缩放=frameless 新原语 QueryWindowRect/ResizeWindowTo(物理像素直连 user32)+startCardResize 会话(与拖拽同构三重退出)+收口按 ScaleFactor 换算 DIP 回写记账并 ocr.json 持久化,下次弹出复现+工作区钳位;③字号缩放=A∓ 步进/Ctrl+滚轮(12~32px 钳制,localStorage 记忆,默认档=--text-md 零变化,Number(null)=0 坑测试钉死)。两态正交独立记忆。真机补看:右下角拖大小、跨重启记忆、Acrylic 无白边 | 现状:轮盘框选识别的悬浮结果卡(b99a41c 落地的"系统截屏接图+悬浮结果卡+自动复制")**不可拖拽也不可缩放**——注意它与截图 snip 卡是两副面孔:跟手拖拽把手(dce4be3)只长在 snip 卡上,轮盘卡没接过;尺寸固定,长文本只靠内部滚动,读小字费劲。修法:①**拖拽**——把 dce4be3 的把手移动原语(`GetWindowRect`/`MoveWindowBy`+左键态轮询双通道收口)收编为共享件,两卡同装,别再各写一份;②**缩放**两解一并做:①**卡片窗口缩放**——右下角/边缘 drag resize(FramelessWindow 原语补 WM_NCHITTEST 边界命中或把手同族),尺寸持久化记忆(下次唤起跑上次大小),设最小/最大钳制与出屏回收;②**内容字号缩放**——卡片内 `Ctrl+滚轮`/± 按钮步进字号(结果文本 CSS 变量一处控),两态正交独立记忆;浮窗纪律连带核:缩放后仍守真透明无边框(98f3bce 白边教训)、TTL 空闲释放不因拖拽缩放误触发(1822a39 交互态刷新活跃)。"缩放"具体指哪种待机主一句话钉死,登记按全做(工作量都不大,合计一天内) |
 | N43 | **状态真相补刀:未安装的不得谎报"未运行"**(机主报告 2026-09-23) → **✅ 代码收口(2026-09-23 自主批,真机复验随 P1 并段)**:notInstalled 判定+文案+hint 收在 managed store 契约层单源(词表接 SUMMARY_META['not-installed'] 冻结同源);primary 未装直落版本页(Shell goVersions 接线,独立挂载降级 toast 指路);running/external/quitting/failed 运行事实优先不遮盖(④口径);七视图夹具按病灶语义补已装记录、真未装用例显式传 [] 不受波及;store 层新 spec 钉三态。**2026-09-26 追加**:a9c2265 幽灵健康账四环根治——同主题从"运行态不得谎报"延伸到"健康账不得骑幽灵"(机主实证 ddns-go 卸载后仍挂"运行中·有更新",tasklist/sc/端口三路取证确无残留,纯账目不联动):①Uninstall 成功即 SetHealth 清零(同会话重装不复活);②Restore 回灌前按在册+installed 对账剔账回写(CheckedAt 不伪造);③sweep/merge 落盘前逐条复查 installed 盖住"判定后落盘前"竞态;④projectState 账目门 absent 一律按 current 出投影——updatewatch/Registry 层一处治同构家族病,不在单模块打补丁;踩坑 #93 四段式;残留已知窗口如实:仅删版本目录不卸模块时角标停留到下一轮感知(缓存时效语义非账目病) | 症状:多个托管软件从未下载安装,界面却显示"未运行"——机主被迫逐个点启动才发现根本没人装过;"未运行"与"未安装"是两个事实,前者暗示"可以起"。背景:P0 批 3 已做状态真相三收口(stale/localResolved/版本互认,25d0ce2)+四维状态统一词表(1831ed9)——**词表与契约都在,是消费面渲染短路**:把"无 running 态"直接兜底成"未运行",未先过 installed 维度。修法:①排查全部消费面(首页模块卡/模块中心/托管家族视图状态条/rail/托盘菜单),展示运行态前先过安装态闸:**未安装→"未安装"中性徽标+引导下载安装;已安装未启动才叫"未运行"**;②启动按钮联动:未安装态点击直落版本页,不发起启动 RPC 吃错;③收口在共享契约层(adapters 家族/managed console 契约 statusOf 纯函数)单点判定,禁 25 视图各修;词表若缺"未安装"档则 Go/TS 双端补档(1831ed9 门禁会逼齐);④连带核 N17 嫌疑③同源:运行探测失灵的 external/提权实例不得混入"未运行"桶。半天~1 天,真机验收并段顺路复验 |
 | N44 | **piik 托管集成立项**(机主点名 2026-09-26) → **✅ 全链收口(2026-09-27 总闸:19e8eae module.go 负裁决+0a400de 装配两线同收[hanxi-e0 执笔]+4518923 总闸实修;HEAD worktree 全量 go build/三门/bindings 零漂移复核绿,终版 exe 含 Piik 侧栏入口)** | 上游 `TNTcraftHIM/Piik`(MIT,LAN 协作工具;22 版/14 天日更风暴、裸 zip 资产名 19 连版稳定、GitHub digest 覆盖率 100%)。决策档案 [PLAN_PIIK_HOSTING.md](PLAN_PIIK_HOSTING.md):托管家族首个 **headless 服务型骨架**全量裁决——无窗无信使(OpenWindow 重定=系统浏览器开 8787)、官方 stdin 优雅停+Job 兜底、8787 端口绑定事实互斥(外部占端口者可感知不抢停)、钉版手动追(followLatest 不接)、孙进程 cloudflared/piik-capture 归 Job 闭包、公网隧道 hanxi 不代管、空闲自动退出禁用、asInvoker 无 #17 三重契约、Gitee 官方镜像入回退链首位。合入序 A→B→C→D+总闸批次(THIRD_PARTY_NOTICES"全部 25 款"→26、cataloggen、bindings、路由/枚举计数锁 47→48)列档案 §⑥。**工作区实证(18:33 复核)**:A(version 七件含 check_update——第一天挂雷达契约照 gonavi/dbx 纪律)/B(instance 端口+镜像路径双探测)/C(service/store/PiikView/adapter)/D(app.go 预铺 piik.New+两事件+versionTrees、contract-enum 计数锁 47→48、vitest "缺失绑定解析缝"插件)五面全见而**零入库**;曾现的绑定探测残件 `__probe.spec.ts` 已自清;前端全量现 5 红=piik 在途半件所致(d745e70 如实自报"非本批"),合入序与总闸批次(档案 §⑥)为唯一收口点 |
-| N45 | **剪贴板内置立项**(机主点名 2026-09-26)→ **✅ 主体入库(2026-10-12 销头:原记「在途未提交」已被后续推翻——`0a400de`/`6fc61b6`/`a0ba43f`/`69346d2` 四笔入库,模块本体+catalog 项+前端 bindings+MCP 第十键俱在;DPAPI 裁决翻转见 `a0ba43f`,落盘口径以 catalog「本机明文落盘(v1.6 裁决)」为准。六线:契约+档案+A2~A6 实施;本行登记时点 18:51 实扫=契约/本档案/前端内核在途未提交,后端与视图线未落盘)** | **内置而非托管**(主判据:托管模型 JobObject 组启停语义与"常驻监听型"冲突,且串联面只在进程内——memo/OCR/热键/MCP/DPAPI;许可负裁决:只借概念零代码复制,THIRD_PARTY_NOTICES 不新增条目)。七项目谱系对照(CopyQ 12.3k / Ditto 7.2k / Clipchop 5.9k / tiez-clipboard 2.9k / PasteBar 2.2k / clippi 375 / beetroot 217,GitHub API 2026-09-26 实测,含两处 owner 路径修正:PasteBar→`PasteBar/PasteBarApp`、beetroot→`mnardit/beetroot-releases`)、明确不抄清单、六条风险登记(DPAPI×飞牛同步互斥→剪贴板定性纯本机进同步排除集、密码池三道闸+sensitive MCP 整条不下发、浮层首版仅"选中即回填"不自动键入、Win+V 接管本轮否决)、三路线验收剧本(M1 日常/M2 浮层 Ctrl+Alt+V/M3 MCP 联动)、总闸收口清单十条全见决策档案 [2026-09-26-clipboard-decision](2026-09-26-clipboard-decision.md);接口冻结于契约 [2026-09-26-clipboard-contract](2026-09-26-clipboard-contract.md)(Entry 全字段/DPAPI 落盘/500 条钳制/三事件/服务九法/hanxi_clipboard_search/clipboard-overlay 窗制/A6 冻结签名),契约 §7 前端内核(`frontend/src/types 或 adapters/clipboard.ts`)已在工作区;档案线对契约三处盲区补议交主控(module.go 装配文件缺席、access.json 第十键缺席、"粘贴前编辑"无就地编辑方法);合入序 A6→A2→A3、A4/A5 全程并行 |
+| N45 | **剪贴板内置立项**(机主点名 2026-09-26)→ **✅ 主体入库(2026-10-12 销头:原记「在途未提交」已被后续推翻——`0a400de`/`6fc61b6`/`a0ba43f`/`69346d2` 四笔入库,模块本体+catalog 项+前端 bindings+MCP 第十键俱在;DPAPI 裁决翻转见 `a0ba43f`,落盘口径以 catalog「本机明文落盘(v1.6 裁决)」为准。**2026-10-24 v1.8 借鉴 TieZ 三功能轮**(机主令「去其糟粕取其精华、不引入 DPAPI 加密」,对比分析见会话档案;许可负裁决延续「只借概念零代码复制」):三域落地=设置面基建(容量可调、排除表可编辑、按应用保留天数、粘贴后即删,`53b25a1`)、顺序粘贴队列(默认全局热键 Ctrl+Alt+X 逐条贴到当前前台,`4f501e0`)、预览隐私遮蔽+sensitive 正文默认遮(兑现决策档案闸③,第三笔);§4 十一法→二十法、新落点 `<StateDir>/clipboard-prefs.json`、§5 加第五事件 clipboard:queue:changed;十五项裁决全录契约 §12 v1.8;MCP 面有意不改。六线:契约+档案+A2~A6 实施;本行登记时点 18:51 实扫=契约/本档案/前端内核在途未提交,后端与视图线未落盘)** | **内置而非托管**(主判据:托管模型 JobObject 组启停语义与"常驻监听型"冲突,且串联面只在进程内——memo/OCR/热键/MCP/DPAPI;许可负裁决:只借概念零代码复制,THIRD_PARTY_NOTICES 不新增条目)。七项目谱系对照(CopyQ 12.3k / Ditto 7.2k / Clipchop 5.9k / tiez-clipboard 2.9k / PasteBar 2.2k / clippi 375 / beetroot 217,GitHub API 2026-09-26 实测,含两处 owner 路径修正:PasteBar→`PasteBar/PasteBarApp`、beetroot→`mnardit/beetroot-releases`)、明确不抄清单、六条风险登记(DPAPI×飞牛同步互斥→剪贴板定性纯本机进同步排除集、密码池三道闸+sensitive MCP 整条不下发、浮层首版仅"选中即回填"不自动键入、Win+V 接管本轮否决)、三路线验收剧本(M1 日常/M2 浮层 Ctrl+Alt+V/M3 MCP 联动)、总闸收口清单十条全见决策档案 [2026-09-26-clipboard-decision](2026-09-26-clipboard-decision.md);接口冻结于契约 [2026-09-26-clipboard-contract](2026-09-26-clipboard-contract.md)(Entry 全字段/DPAPI 落盘/500 条钳制/三事件/服务九法/hanxi_clipboard_search/clipboard-overlay 窗制/A6 冻结签名),契约 §7 前端内核(`frontend/src/types 或 adapters/clipboard.ts`)已在工作区;档案线对契约三处盲区补议交主控(module.go 装配文件缺席、access.json 第十键缺席、"粘贴前编辑"无就地编辑方法);合入序 A6→A2→A3、A4/A5 全程并行 |
 
 > N1/N2 与 N3 同为"外部进程也能被 hanxi 退出/唤窗"诉求的具体症状:N1/N2 先真机复现修点,N3 决策收口成面。**2026-09-21 W1 已裁决收口(采纳 C+风险分档),三项调研结论与 W2 实施方法全部见 [PLAN_W1_DECISIONS](PLAN_W1_DECISIONS.md)。**
 
@@ -300,3 +300,41 @@
 - **入册（新账，去向已标）**：heukms 真机验收 → 本档 P1-4；portscan 代理 + sshkeys SSH 夹具实跑 → P1-5（2026-10-22 SSH 已自 portscan 拆出，两处分属不同模块）；MCP C6 废/续 → 待机主拍板族（T6 移交）；REAL 工单跑前重出包 → P1 注（T6 移交）。
 - **给 T6 留话**：REAL_DEVICE_ACCEPTANCE 文内"排期 LXX / PROGRESS LXX"式行号引用已随各档插行错位——REAL 归 T6 名下，本档未动其文；PRW 侧不配套挪行号，两边只在你下次动 REAL 时统一改"按条目号（#NN）/按节名"引用。本档内部对他档一律标题引用，不用行号。
 - **仍未动的存疑项**（本轮取证不闭环，维持原挂）：留言板三观察、chip 五份副本/浅底输入/模态焦点陷阱三票、N13 W6 五源注记余账、N16 纯模糊匹配与 `memo:changed` 游标、19:02 产物换机与 Inter-Medium.ttf 删否（实测 315132 B 仍在仓）。
+
+## 2026-10-24 托管取数侧收口（1 处已炸已修，余下待追）
+
+**已炸并已修**：`dbx` 的 release 列表取数——`per_page=100` 实测响应 13,270,632 字节，而读取
+是 `io.ReadAll(io.LimitReader(resp.Body, 8<<20))`；**LimitReader 被切断时不报错**，半截 JSON 与
+完整响应同形，解析层于是报 `parse releases: unexpected end of JSON input`，把"响应太大"这件
+确定事实伪装成"上游格式变了"。修法三件：① `readCapped` 多读 1 字节区分"正好读完/被切断"；
+② 哨兵 `errResponseTooLarge`，超限响应**绝不交给解析层**；③ 降页 100→30（实测 3.76 MB，
+余量 2.2×）且**只有"过大"才降页重试**——403/断网不许降页，否则真因被伪装成"试了两轮都不行"。
+`maxFeedBytes` 声明为 var 作测试接缝（同 `keyops.writeNewFile` 型做法）。
+
+**同日已追**：ddnsgo / ccswitch / paseo 三家（实测 3.76/3.42/3.35 MB，余量 2.23–2.50×）降页
+60→40 并复制上述识别件，各 5 条测试；三家另多锁一条"两档都超限时 body 必为 nil"。
+
+**一处对我指令的偏离（成立）**：我要求"常量与镜像拼接两处同值"，加降页后结构上不成立——
+同一 URL 需按两档各拼一次。三家照 dbx 删常量改为**单一构造点**，"两处一致"升级为"无漂移可能"。
+
+**一条已知毛刺（低危，故意没在本轮改）**：一轮内若 A 镜像超限、B 镜像返回 403，
+`fetchReleasesPage` 只保留最后一个错误 → 被判为"非体积故障"立即上报、**不再降页**，A 那档
+本可救回。影响是"更早看到错误"，不会给出错误数据，故低危。修法二选一：镜像错误用
+`errors.Join` 聚合（`errors.Is(err, errResponseTooLarge)` 随即成立），或本轮记一个
+`sawOversize` 标志。将来抽公共取数层时一并处理，现在不动是为了避免四份副本同时改。
+
+**外推被实测推翻，留案自警**：我曾据"DBX 单条 release 约 133 KB"推断"其他模块
+`per_page=60` ≈ 8 MB、正卡上限"。27 家逐个 curl 实测结果：**余量 <1.5× 的一个都没有**，
+最紧是 2.23×。单点数据线性推到一族，又犯了 [[本档多处] "结论强度超过证据" 同型错误]。
+
+**未闭环（GitHub 未认证配额 60/h 被本轮实测耗尽，全部 403，非仓库问题）**：douzy、
+wsl 的 releases、envcheck-git 三条未能实测体量；其中 **douzy 特征与 dbx 最像**（高频发版 +
+中文长 changelog），配额恢复后优先补测。
+
+**结构债（不是本轮任务，登记备查）**：同款静默截断读取仍散在约 20 个模块的
+`version/remote.go`（keyviz、bili23、bcu、windterm、termora、quicklook、frpc、subnetdesk、
+flclash、markeron、piclite、litemonitor、papertodo、mangodisk、rufus、recordly、rustdesk、
+heukms、nanazip、gonavi、piik 等）；`packages/go/hostfeed` 只抽象了**消费侧**，取数侧是
+二十份复制。**建议不是现在抽包**（各家镜像表/UA/缓存时长有真实差异，机主另有"重复家族
+保持独立、勿主动抽取"的既定裁决），而是**谁下次动到某家的取数路径，就顺手把 `readCapped`
++ 4 条测试带过去**，逐次收口。另两家 `per_page=100`（gonavi/piik）本轮已在同一批次处理。

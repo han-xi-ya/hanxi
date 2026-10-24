@@ -325,3 +325,73 @@ func DecodeDIB(dib []byte) (image.Image, error)
    (toolDefs/白名单/accessToolKeys 三表同批扩 + composition_contract 第四特例)。
 7. TROUBLESHOOTING 待沉淀两条(收口人落笔,前提届时该文件非他线脏):
    无头 registry 零落盘陷阱;预算"起步价只拦残段不拦整条"实现陷阱。
+
+**v1.8(2026-10-24,借鉴 TieZ 剪贴板管理器三功能落地:容量策略/顺序队列/隐私遮蔽)**
+
+背景:机主令"去其糟粕取其精华"对比 [tiez-clipboard](https://github.com/jimuzhe/tiez-clipboard)
+后拍板三项移植,**明确不引入 DPAPI/加密回潮**(v1.6 明文落盘裁决维持)。三项均不触
+§1"本轮不做"禁区(展示打码≠正则搜索;零网络;非条目编辑)。GPL-3.0 许可负裁决
+延续:只借概念、零代码复制,THIRD_PARTY_NOTICES 不增。
+
+1. **prefs 文件所有权**:新增 `<StateDir>/clipboard-prefs.json`(prefs.go,memo-prefs/
+   ocr 同谱)——独立于 index.json 数据本体(防污染 ClearAll 收口)、不进 config.json
+   (数据根特征签名)。**构造只读不落盘**(缺档/坏档回落默认;NewStore 落盘副作用
+   禁令与无头表禁令均不受影响)。SetPrefs 为**整表替换**语义:漏发域=回落默认,
+   前端本地持全表、改一项发全表;数值越界静默钳制并如实回显(生效值经 GetPrefs
+   读回即规范形),坏正则/超数量闸**拒绝保存**(整表不动,"以为设了其实没设"不接受)。
+2. **§4 方法集 十一→二十**:新增 `GetPrefs/SetPrefs`(A 域)、`QueueAdd/QueueRemove/
+   QueueClear/QueueList/QueueStep` + `GetQueueHotkey/SetQueueHotkey`(B 域),全部经
+   调用门;新增导出结构 `Prefs / QueueChangedPayload / QueueHotkeyState` tag 冻结。
+   **Entry 零新字段**(队列/偏好非条目属性);Status 新增 `queueLen`,且 `maxEntries/
+   maxBlobBytes` 自本笔起为**生效值**(申报即执行,前端状态行分母自动跟随)。
+3. **§5 事件面 +`clipboard:queue:changed`**:载荷 QueueChangedPayload{ids} 全量快照
+   (数组序=贴出序=徽标序;入队/撤除/清队/消费/联动 prune 五源共用一口);装配根
+   RegisterEvent 一行(app.go)。
+4. **容量可调**:常量降级为默认;`maxEntries` 钳 [50,2000](上限 2000 系整库重写+
+   thumb 内嵌形态的取舍点)、`maxBlobMB` 钳 [10,1024];List 钳制与 evict 吃生效值;
+   ApplyLimits **降容即时静默裁**(不逐发 removed,前端保存成功后全量重拉——ClearAll
+   不风暴同谱);升容不复活已裁条目。
+5. **排除表活表接设置面**(v1.3.4"收口阶段设置页可增删"的承诺兑现):活表=出厂 7 项
+   ∪ custom(整表替换;**出厂项结构上删不掉**);exe 键 trim+lower+无点补 .exe;
+   password 子串硬规则钉在 matchExcluded 纯函数层、**与表无关不可删**(单测锚死)。
+6. **按应用保留天数**(借鉴 app_cleanup_policies,**仅覆盖表制**):exe→days map ≤50 项
+   钳 [1,365];未列出的应用不做按日清扫(**无全局默认天数**,保持最小面);触发点
+   =start() 一次+真新增入库顺带(O(n)≤生效容量,不建常驻轮);活跃口径
+   max(CreatedAt,LastUsedAt)("用了就续命",天数按"连续 N 日未动"理解);pinned/manual
+   豁免、blob 连删、落盘成功才清图。
+7. **粘贴后即删**(deleteAfterPaste):仅 Paste/QueueStep **全自动线走通**才销账,
+   四降级分支(无目标/抢焦败/不落位/按键拒)一律不删;pinned/manual 豁免(钉选与
+   片段是显式留存意志,逐次粘贴不磨掉);removed 照发,浮层行随事件消失。
+8. **顺序粘贴队列裁决**:内存 FIFO **不持久**(重启即弃,临时工作集不与 index.json
+   缠账;stop 弃队);仅 text 准入(**入队即拒**给即时反馈)、同 id 幂等、上限 50;
+   入队后被删/淘汰→**贴出时 peek 惰性跳过并摘除**(运行期事件链够不着"将来");
+   writeText 失败**不消费**可重试,sendKeys 失败**照常前进**(回填已成半程,回插会
+   令手动补贴后再按热键双贴;话术"请手动 Ctrl+V,再按热键续");**Paste 不消费队列**
+   (两条线互不折损);Delete/ClearAll/淘汰/清扫四联动经 queuePrune 统一摘除。
+9. **QueueStep ≠ Paste**(§12 v1.7.1 的 Paste 语义不回改):不还焦点、不等前台落位,
+   当前前台即目标直接发键(测试以 focusWin"被调即 Fatal"闭包钉死);自家写入由
+   既有 owner-pid 回环抑制静默跳过,**零新回环机制**;queueBusy 单发闸防连击。
+10. **队列热键**:槽 `clipboard/queue` 默认 **Ctrl+Alt+X**(机主拍板;全仓在用默认
+    V/T/B/N 无冲突);键位归 prefs `queueHotkey`,持久化走**指针语义**(字段缺席=
+    默认键,显式 ""=停用——normalize 域不踩热键,装载面分界在 persisted 指针);
+    SetQueueHotkey **校验即绑定、败不落盘**(ocr SnipHotkeyState 同谱,Registered
+    双字段实况回显);浮层页脚提示**不写死键名**(文案与 prefs 脱钩防失真)。
+11. **预览隐私遮蔽 = 兑现决策档案闸③**:"视图侧明文不渲染按 MemoCard masked 纪律
+    延伸"此前只落了徽标,本笔还账并加 TieZ 式模式打码。口径:内置 phone/idcard/
+    email/secret 四族(对齐 logging.RedactPII 谱系补大陆身份证;RE2 结构性免
+    ReDoS;**遮后幂等**保首尾可辨)+自定义正则(整命中替 ****);遮蔽只在 **service
+    出口**(List+updated 载荷)作用 Preview——store 明文、Get 正文、files[] 不遮,
+    **搜索原文照样命中(特性登记)**;前端 rowPreview/rowTitle 吃后端 preview 单源
+    自对,零二次遮。15 位旧身份证不进内置(纯数字误伤,走自定义)。ClipDetail 对
+    sensitive text 正文默认 ●48+常驻 👁(换条目自动回遮;揭示钮只在有正文面在场;
+    页脚元数据保留=与 MemoCard 稍宽的面径差异,正文才是敏感面)。MCP 面**有意不改**
+    (独立 reader+sensitive 整条剔除+出机 RedactPII 已兜底,GUI 遮蔽不外溢)。
+12. **浮层交互登记**:.clip-acts 三钮簇(钉/复/**队**,队=不关窗连排,非 text 前端预灰
+    与后端入队拒两层闸)、行徽标「队n」、顶栏「队·n」点击清队、**⇧⏎ 环上排队并
+    环进**(IME 三重盾沿用);主界面「更多」菜单三项(记录设置/清空粘贴队列/清空全部,
+    清空队列轻操作无确认)。**kernel 面扩展正名**:adapters/types 头注"实现 agent
+    只读"身份按 v1.4 H1 先例由主控同步扩(本笔二十法+CLIP_EV.queueChanged+ClipPrefs
+    类型),不视为违约。
+13. 容量数字不入 docsfacts(docsfacts facts 键无容量项、契约不在 activeDocs 白名单,
+    已核实);catalog.go/module.go 描述顺句经 cataloggen 重生成(生成物纪律);
+    本笔四原子提交=设置基建/队列/遮蔽/文档登记,PRW N45 行补销账注。
