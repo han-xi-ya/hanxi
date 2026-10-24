@@ -265,6 +265,7 @@
     "ccswitch:version-download",
     "clipboard:overlay:opening",
     "clipboard:paused",
+    "clipboard:queue:changed",
     "clipboard:removed",
     "clipboard:updated",
     "dbx:instance-state",
@@ -446,6 +447,6 @@
   },
   "counts": {
     "modules": 51,
-    "events": 98
+    "events": 99
   }
 }

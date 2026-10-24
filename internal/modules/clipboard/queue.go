@@ -59,12 +59,6 @@ func (s *ClipboardService) queueLen() int {
 	return len(s.queue)
 }
 
-// emitQueueChanged 全量快照广播（调用方须已释放 s.mu——emit 内部取 s.mu 读
-// 出口，嵌套即死锁，SetPaused 同款时序纪律）。
-func (s *ClipboardService) emitQueueChanged() {
-	s.emit(evQueueChanged, QueueChangedPayload{IDs: s.queueSnapshot()})
-}
-
 // queueAddInner 幂等入队：已在队内不重复；容量闸如实拒绝。返回是否变化。
 func (s *ClipboardService) queueAddInner(id string) (bool, error) {
 	s.mu.Lock()

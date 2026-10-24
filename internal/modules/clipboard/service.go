@@ -608,6 +608,13 @@ func (s *ClipboardService) emitIngested(final Entry, evicted []Entry) {
 	}
 }
 
+// emitQueueChanged 队列全量快照广播（queue.go 簿记、本口发射——事件名 const
+// 与 emit 调用同文件是装配根 composition contract 扫描器的识别前提）。
+// 调用方须已释放 s.mu：emit 内部取 s.mu 读出口，嵌套即死锁（SetPaused 同谱）。
+func (s *ClipboardService) emitQueueChanged() {
+	s.emit(evQueueChanged, QueueChangedPayload{IDs: s.queueSnapshot()})
+}
+
 // ---------- 事件出口 ----------
 
 // emit Wails Event.Emit 封装：测试缝优先；应用未运行（无头）静默丢弃并 debug
