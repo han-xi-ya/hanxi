@@ -30,6 +30,11 @@ type ClipboardService struct {
 	store  *Store
 	holder *extapi.LeaseHolder
 
+	// prefs 用户偏好（<StateDir>/clipboard-prefs.json，契约 §12 v1.8）：
+	// 构造期只读装载并应用到 store/活表；测试手装体可为 nil——全部访问器
+	// nil 接收者回落默认，存量测试零改动。
+	prefs *clipPrefsStore
+
 	mu       sync.Mutex
 	started  bool
 	paused   bool
@@ -37,8 +42,8 @@ type ClipboardService struct {
 	wailsApp *application.App
 
 	// excluded 敏感排除表**活表**（小写进程名；v1.3.4 裁决归 service 持有，
-	// 收口阶段设置页可增删；构造缺省=出厂默认表。入库判定与 GetStatus 回显
-	// 同读此表，审计面与执行面不分裂）。
+	// v1.8 SetPrefs 落笔可增删 custom 段（出厂 7 项结构上删不掉）；构造缺省=
+	// 出厂默认表。入库判定与 GetStatus 回显同读此表，审计面与执行面不分裂）。
 	excluded []string
 
 	// eventSink 事件出口测试缝：非 nil 时事件只进假件不碰 Wails（单测注入）。
@@ -105,15 +110,26 @@ func NewClipboardService(paths *settings.Paths, holder *extapi.LeaseHolder) (*Cl
 	if err != nil {
 		return nil, err
 	}
+	// 偏好装载（v1.8，构造只读不落盘）并一次性应用：容量闸走 ApplyLimits
+	// 快路径（存量超限才动盘——上一轮调低的设置重启后不该复活越限条目，
+	// 这条慢路径正好把它裁掉）；排除表活表 = 出厂 ∪ custom（v1.3.4 归
+	// service 持有的承诺由设置面兑现）。
+	prefs := newClipPrefsStore(paths.StateDir())
+	if evicted, err := store.ApplyLimits(prefs.maxEntries(), prefs.maxBlobBytes()); err != nil {
+		slog.Warn("clipboard: 启动应用偏好容量闸失败（按现行值继续，下次入库再触发淘汰）", "err", err)
+	} else if len(evicted) > 0 {
+		slog.Info("clipboard: 启动按偏好容量闸淘汰存量条目", "count", len(evicted))
+	}
 	return &ClipboardService{
 		store:          store,
 		holder:         holder,
+		prefs:          prefs,
 		writeText:      setSystemText,
 		decodeDIB:      DecodeDIB,
 		focusWin:       hw.SetForegroundForce,
 		sendKeys:       sendCtrlV,
 		waitForeground: waitForegroundWindow,
-		excluded:       DefaultExcludedExes(),
+		excluded:       mergeExcludedTables(prefs.excludedCustom()),
 	}, nil
 }
 
@@ -299,6 +315,44 @@ func (s *ClipboardService) SetPaused(paused bool) error {
 	return nil
 }
 
+// GetPrefs 用户偏好回显（契约 §12 v1.8）：返回**生效值**（钳制/规范化后的
+// 实际运行态）而非请求原值——越界值保存后立即读回规范形，面板自然对齐。
+func (s *ClipboardService) GetPrefs() (Prefs, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Prefs{}, gateErr
+	}
+	defer release()
+	return s.prefs.wirePrefs(), nil
+}
+
+// SetPrefs 整表校验并原子落盘，成功后**同一调用内热应用**（v1.8）：
+// 写盘 → ApplyLimits（降容当场裁，静默不逐发 removed，前端保存成功后重拉）
+// → 换排除表活表。失败（坏正则/超数量闸/落盘败）整表不动、错误如实上浮，
+// 运行态保持旧值——"以为设了其实没设"不接受。QueueHotkey 域外：入参忽略、
+// 现值保留（改键只走 SetQueueHotkey，校验即绑定事务在热键域）。
+// mask 域本轮仅校验入库，展示应用随遮蔽提交激活。
+func (s *ClipboardService) SetPrefs(in Prefs) (Prefs, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return Prefs{}, gateErr
+	}
+	defer release()
+
+	in.QueueHotkey = s.prefs.queueHotkey() // 分域保护（见 Prefs 头注）
+	applied, err := s.prefs.Set(in)
+	if err != nil {
+		return Prefs{}, err
+	}
+	if _, err := s.store.ApplyLimits(applied.MaxEntries, int64(applied.MaxBlobMB)<<20); err != nil {
+		slog.Warn("clipboard: 偏好已落盘但容量淘汰执行失败（新限值已生效，下次入库重试）", "err", err)
+	}
+	s.mu.Lock()
+	s.excluded = mergeExcludedTables(applied.ExcludedCustom)
+	s.mu.Unlock()
+	return s.prefs.wirePrefs(), nil
+}
+
 // GetStatus 运行态快照（监听暂停态、库容量实况、钳制上限与排除表回显）。
 func (s *ClipboardService) GetStatus() (Status, error) {
 	release, gateErr := s.holder.Enter()
@@ -315,12 +369,15 @@ func (s *ClipboardService) GetStatus() (Status, error) {
 		// 总量读不成实况归零但如实带错（前端状态区显示 "-"）
 		return Status{}, fmt.Errorf("读取 blobs 总量失败: %w", err)
 	}
+	// 申报值即执行值：回显生效容量闸（v1.8 可调后，前端 clipStatusLine
+	// "条目 x/上限" 的分母自动跟随，无需感知 prefs）。
+	curMaxEntries, curMaxBlobBytes := s.store.CurrentLimits()
 	return Status{
 		Paused:       paused,
 		EntryCount:   s.store.Count(),
 		BlobBytes:    blobBytes,
-		MaxEntries:   maxEntries,
-		MaxBlobBytes: maxBlobBytes,
+		MaxEntries:   curMaxEntries,
+		MaxBlobBytes: curMaxBlobBytes,
 		// 排除表回显**活表实况**（v1.3.4：与入库判定同源，MCP 审计可复验）
 		ExcludedExes: s.excludedSnapshot(),
 	}, nil
@@ -461,7 +518,28 @@ func (s *ClipboardService) addAndBroadcast(e Entry, at time.Time) {
 		slog.Error("clipboard: 条目入库落盘失败", "err", err)
 		return
 	}
+	// v1.8 按应用保留清扫触发点之二（只跟**真正新增**的条目——去重顶置
+	// 不空转；final.ID 与来条目不一致即命中去重）。与容量淘汰并进同一轮
+	// removed 广播。
+	if final.ID == e.ID {
+		evicted = append(evicted, s.sweepExpired()...)
+	}
 	s.emitIngested(final, evicted)
+}
+
+// sweepExpired 按应用保留天数清扫（触发点共用；规则表空即零成本早退）。
+// 失败 warn 不上浮——清扫是维护性动作，入库/启动主链不因它折损。
+func (s *ClipboardService) sweepExpired() []Entry {
+	days := s.prefs.appRetentionDays()
+	if len(days) == 0 {
+		return nil
+	}
+	victims, err := s.store.SweepExpired(time.Now(), days)
+	if err != nil {
+		slog.Warn("clipboard: 按应用保留清扫失败", "err", err)
+		return nil
+	}
+	return victims
 }
 
 // emitIngested 广播 clipboard:updated（新条目与去重顶置同一事件，契约 §5），

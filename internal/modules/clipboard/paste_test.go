@@ -285,3 +285,130 @@ func TestPasteRecordsUsage(t *testing.T) {
 		t.Fatalf("降级路径回填已成，使用账照记: %d→%d", mid.UseCount, after.UseCount)
 	}
 }
+
+// ---------- v1.8 粘贴后即删 ----------
+
+// pasteOKChain 把三缝配成全成功链（回填/焦点/落位/发键皆成）。
+func pasteOKChain(h *svcHarness) {
+	h.svc.focusWin = func(uintptr) error { return nil }
+	h.svc.waitForeground = func(uintptr) bool { return true }
+	h.svc.sendKeys = func() error { return nil }
+	h.svc.ovMu.Lock()
+	h.svc.ovShown, h.svc.pasteTarget = true, 0x99
+	h.svc.ovMu.Unlock()
+}
+
+// TestPasteDeleteAfterPaste 开关开+全线成功才删：条目消失、removed 广播、
+// 使用账先落（Touch 已记）。开关关（nil prefs 即默认关）一切照旧。
+func TestPasteDeleteAfterPaste(t *testing.T) {
+	h := newSvcHarness(t)
+	defer h.stop()
+	pstore := h.attachPrefs(t)
+	if _, err := pstore.Set(Prefs{DeleteAfterPaste: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	h.svc.handleCapture(textCap("一次性内容"))
+	id := mustSingleID(t, h)
+	pasteOKChain(h)
+	if err := h.svc.Paste(id); err != nil {
+		t.Fatalf("成功链: %v", err)
+	}
+	if _, ok := h.svc.store.Get(id); ok {
+		t.Fatal("删后贴开关生效后条目应被销账")
+	}
+	if h.countEvents(evRemoved) != 1 {
+		t.Fatalf("removed 应广播一次: %v", h.eventNames())
+	}
+
+	// 关开关：贴完保留
+	if _, err := pstore.Set(Prefs{DeleteAfterPaste: false}); err != nil {
+		t.Fatal(err)
+	}
+	h.svc.handleCapture(textCap("留在历史"))
+	id2 := mustSingleID(t, h)
+	if err := h.svc.Paste(id2); err != nil {
+		t.Fatalf("成功链 2: %v", err)
+	}
+	if _, ok := h.svc.store.Get(id2); !ok {
+		t.Fatal("开关关闭不应删除")
+	}
+}
+
+// TestPasteDeleteAfterPasteGuards pinned/manual 豁免与降级不删（四降级各
+// 验一格）：粘贴未成的半程不折损内容——删了是丢数据。
+func TestPasteDeleteAfterPasteGuards(t *testing.T) {
+	h := newSvcHarness(t)
+	defer h.stop()
+	pstore := h.attachPrefs(t)
+	if _, err := pstore.Set(Prefs{DeleteAfterPaste: true}); err != nil {
+		t.Fatal(err)
+	}
+	pasteOKChain(h)
+
+	// pinned 豁免
+	h.svc.handleCapture(textCap("钉住的"))
+	pinID := mustSingleID(t, h)
+	if _, err := h.svc.TogglePin(pinID); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.svc.Paste(pinID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := h.svc.store.Get(pinID); !ok {
+		t.Fatal("pinned 条目被粘贴销账（豁免失守）")
+	}
+
+	// manual 片段豁免
+	seg, err := h.svc.CreateText("固定片段内容")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.svc.Paste(seg.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := h.svc.store.Get(seg.ID); !ok {
+		t.Fatal("manual 片段被粘贴销账")
+	}
+
+	// 降级四态不删：无目标 / 抢焦败 / 不落位 / 发键败
+	h.svc.handleCapture(textCap("降级样本"))
+	// 库内已有 pinned/manual 两条，取顶（最新）条作降级样本——mustSingleID
+	// 的"全库恰一条"前提此处不成立。
+	deID := h.svc.store.List("", "all", 0)[0].ID
+	cases := []struct {
+		name string
+		run  func(id string)
+	}{
+		{"无目标", func(id string) {
+			h.svc.ovMu.Lock()
+			h.svc.ovShown = false
+			h.svc.ovMu.Unlock()
+			_ = h.svc.Paste(id)
+			h.svc.ovMu.Lock()
+			h.svc.ovShown, h.svc.pasteTarget = true, 0x99
+			h.svc.ovMu.Unlock()
+		}},
+		{"抢焦败", func(id string) {
+			h.svc.focusWin = func(uintptr) error { return fmt.Errorf("拒绝") }
+			_ = h.svc.Paste(id)
+			pasteOKChain(h)
+		}},
+		{"不落位", func(id string) {
+			h.svc.waitForeground = func(uintptr) bool { return false }
+			_ = h.svc.Paste(id)
+			pasteOKChain(h)
+		}},
+		{"发键败", func(id string) {
+			h.svc.sendKeys = func() error { return fmt.Errorf("SendInput 0/4") }
+			_ = h.svc.Paste(id)
+			pasteOKChain(h)
+		}},
+	}
+	for _, c := range cases {
+		c.run(deID)
+		if _, ok := h.svc.store.Get(deID); !ok {
+			t.Fatalf("%s 降级路径不得删除条目", c.name)
+		}
+	}
+}

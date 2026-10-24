@@ -25,11 +25,11 @@ import (
 
 const indexVersion = 1
 
-// 容量钳制上限（契约 §2；v1.4.2 补 text 单条闸，与图片 16MiB 同谱双保险——
-// MCP 装载侧另有密文预筛，此处是入库第一道）。
+// 单条尺寸闸（契约 §2；v1.4.2 补 text 单条闸，与图片 16MiB 同谱双保险——
+// MCP 装载侧另有密文预筛，此处是入库第一道）。条数与 blobs 总量的**默认值**
+// 已迁至 prefs.go（defaultMaxEntries/defaultMaxBlobMB，契约 §12 v1.8 容量可调），
+// Store 持生效值字段，经 ApplyLimits 热换。
 const (
-	maxEntries    = 500
-	maxBlobBytes  = int64(100) << 20
 	maxImageBytes = int64(16) << 20
 	maxTextBytes  = int64(8) << 20
 )
@@ -79,6 +79,11 @@ type Store struct {
 	mu      sync.Mutex
 	entries []Entry // 新→旧，明文权威
 
+	// 生效容量闸（v1.8 容量可调）：构造取默认值，ApplyLimits 热换；
+	// List 钳制与 evictLocked 都读这两个字段，不再碰常量。
+	maxEntries   int
+	maxBlobBytes int64
+
 	// thumbPending 装载时发现有无 thumb 的历史图片条目（R-G2 lazy 回填）：
 	// 首轮 List 在锁外认领并起后台 goroutine，一次性补齐，不阻塞列表返回。
 	thumbPending bool
@@ -107,13 +112,15 @@ func NewStore(dir string, blobs blobIO, seal sealFunc, open openFunc) (*Store, e
 		open = func(s string) ([]byte, error) { return []byte(s), nil }
 	}
 	st := &Store{
-		dir:      dir,
-		path:     filepath.Join(dir, "index.json"),
-		blobsDir: filepath.Join(dir, "blobs"),
-		blobs:    blobs,
-		seal:     seal,
-		open:     open,
-		entries:  []Entry{},
+		dir:          dir,
+		path:         filepath.Join(dir, "index.json"),
+		blobsDir:     filepath.Join(dir, "blobs"),
+		blobs:        blobs,
+		seal:         seal,
+		open:         open,
+		entries:      []Entry{},
+		maxEntries:   defaultMaxEntries,
+		maxBlobBytes: int64(defaultMaxBlobMB) << 20,
 	}
 	if err := os.MkdirAll(st.blobsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建剪贴板 blobs 目录失败: %w", err)
@@ -250,13 +257,13 @@ func (st *Store) saveLocked() error {
 // ---------- 读改写操作（全部自带锁，返回拷贝） ----------
 
 // List 过滤检索（契约 §4）：q 小写子串匹配 Preview/SourceApp/Files/AutoTags
-// 拼接串；kind 空或 "all" 不过滤；limit 钳到 ≤500（≤0 视为不限量=500）。
+// 拼接串；kind 空或 "all" 不过滤；limit 钳到生效容量（≤0 视为不限量=生效值）。
 // 出口剥 Text/BlobData（列表页不需要正文）。
 func (st *Store) List(q, kind string, limit int) []Entry {
 	st.mu.Lock()
 
-	if limit <= 0 || limit > maxEntries {
-		limit = maxEntries
+	if limit <= 0 || limit > st.maxEntries {
+		limit = st.maxEntries
 	}
 	kw := strings.ToLower(strings.TrimSpace(q))
 	out := make([]Entry, 0, len(st.entries))
@@ -402,13 +409,13 @@ func (st *Store) Add(e Entry, at time.Time) (Entry, []Entry, error) {
 	return cloneEntry(e, false), evicted, nil
 }
 
-// evictLocked 钳制淘汰（调用方持锁）：先条数超 500 按 LRU 从尾裁（pinned/manual
-// 豁免），再 blobs 总量超 100MiB 同序裁图片条目并删其 blob。全库皆
+// evictLocked 钳制淘汰（调用方持锁）：先条数超生效上限按 LRU 从尾裁（pinned/manual
+// 豁免），再 blobs 总量超生效体积同序裁图片条目并删其 blob。全库皆
 // pinned/manual 时允许超限（如实保留，绝不误杀用户钉选）。
 func (st *Store) evictLocked() []Entry {
 	var evicted []Entry
 
-	for len(st.entries) > maxEntries {
+	for len(st.entries) > st.maxEntries {
 		idx := st.pickEvictIndex("")
 		if idx < 0 {
 			break
@@ -424,7 +431,7 @@ func (st *Store) evictLocked() []Entry {
 		slog.Warn("clipboard: blobs 总量读取失败，跳过体积淘汰（条数钳制不受影响）", "err", err)
 		return evicted
 	}
-	for total > maxBlobBytes {
+	for total > st.maxBlobBytes {
 		idx := st.pickEvictIndex(KindImage)
 		if idx < 0 {
 			slog.Warn("clipboard: blobs 总量超限但无可淘汰图片条目（全部钉选/固定），如实保留",
@@ -662,4 +669,79 @@ func (st *Store) Count() int {
 // BlobBytes blobs 总量（GetStatus 用；读取失败如实上浮）。
 func (st *Store) BlobBytes() (int64, error) {
 	return st.blobs.TotalBytes()
+}
+
+// ---------- 生效容量与按应用清扫（契约 §12 v1.8） ----------
+
+// CurrentLimits 生效容量闸回显（GetStatus 用：申报值即执行值，审计面与
+// 执行面同源——排除表活表同一族纪律）。
+func (st *Store) CurrentLimits() (int, int64) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.maxEntries, st.maxBlobBytes
+}
+
+// ApplyLimits 热换生效容量闸并按新闸当场淘汰（v1.8：降容即时生效）。
+// 快路径：条数与体积（可测得时）都已在新闸内，只换字段不落盘——构造期
+// prefs 的零副作用纪律靠这条保住。返回被裁清单（快路径恒空），广播策略
+// 由调用方定（裁决：降容静默裁，不逐发 removed，前端保存成功后全量重拉，
+// ClearAll 不风暴同谱）。体积读不到时跳过该项判定（evictLocked 同谱 warn-skip）。
+func (st *Store) ApplyLimits(maxEntries int, maxBlobBytes int64) ([]Entry, error) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.maxEntries = maxEntries
+	st.maxBlobBytes = maxBlobBytes
+
+	needEvict := len(st.entries) > maxEntries
+	if !needEvict {
+		if total, err := st.blobs.TotalBytes(); err == nil && total > maxBlobBytes {
+			needEvict = true
+		}
+	}
+	if !needEvict {
+		return nil, nil
+	}
+	var evicted []Entry
+	if err := st.commitLocked(func() { evicted = st.evictLocked() }); err != nil {
+		return nil, err
+	}
+	return evicted, nil
+}
+
+// SweepExpired 按应用保留天数清扫（借鉴 TieZ app_cleanup_policies，仅覆盖表制：
+// daysByExe 未出现的进程不动，无全局默认天数）。活跃口径 max(CreatedAt,
+// LastUsedAt)——还在被用的条目不因"首复制日期"过期被杀；pinned/manual 豁免
+// （pickEvictIndex 同谱）。触发点=start() 一次 + 新增条目入库成功后顺带
+// （O(n)≤生效容量，不养常驻轮）。返回被清条目（调用方补发 removed）；
+// 零受害者不落盘。
+func (st *Store) SweepExpired(now time.Time, daysByExe map[string]int) ([]Entry, error) {
+	if len(daysByExe) == 0 {
+		return nil, nil
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+
+	var victims, kept []Entry
+	for _, e := range st.entries {
+		days, hit := daysByExe[strings.ToLower(e.SourceExe)]
+		ref := max(e.CreatedAt, e.LastUsedAt)
+		if hit && !e.Pinned && !e.Manual &&
+			now.Sub(time.UnixMilli(ref)) > time.Duration(days)*24*time.Hour {
+			victims = append(victims, e)
+			continue
+		}
+		kept = append(kept, e)
+	}
+	if len(victims) == 0 {
+		return nil, nil
+	}
+	if err := st.commitLocked(func() { st.entries = kept }); err != nil {
+		return nil, err
+	}
+	// 落盘成功才清 blob：失败留孤儿由体积复测/ClearAll 收口——先删图后换账
+	// 会造出"落败回滚后条目复活却没图"的分叉。
+	for i := range victims {
+		st.releaseBlob(victims[i])
+	}
+	return victims, nil
 }

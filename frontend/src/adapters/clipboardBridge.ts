@@ -15,7 +15,7 @@
 // ============================================================================
 
 import * as CLIPAPI from '../../bindings/hanxi/internal/modules/clipboard/clipboardservice'
-import type { ClipEntry, ClipStatus } from '../types/clipboard'
+import type { ClipEntry, ClipPrefs, ClipStatus } from '../types/clipboard'
 import { setClipboardTransport, type ClipboardTransport } from './clipboard'
 
 /** 绑定线上的 Entry/Status 原始形（JSDoc 生成物，仅按弱类型信封接住再投影）。 */
@@ -41,6 +41,21 @@ function wireStatus(raw: Wire): ClipStatus {
   } as ClipStatus
 }
 
+// wirePrefs 线形归一：Go 侧 nil slice/map 上线为 null。MaskKinds 的 null 折叠
+// 成 [] 有语义风险（[]=显式全关）——但后端回显恒为非 nil（默认全开或显式
+// 保存值，见 prefs.go wirePrefs），null 只可能来自旧服务端形态，折叠可接受。
+function wirePrefs(raw: Wire): ClipPrefs {
+  return {
+    ...raw,
+    excludedFactory: (raw.excludedFactory as string[] | null | undefined) ?? [],
+    excludedCustom: (raw.excludedCustom as string[] | null | undefined) ?? [],
+    appRetentionDays: (raw.appRetentionDays as Record<string, number> | null | undefined) ?? {},
+    queueHotkey: (raw.queueHotkey as string | null | undefined) ?? '',
+    maskKinds: (raw.maskKinds as string[] | null | undefined) ?? [],
+    maskCustomPatterns: (raw.maskCustomPatterns as string[] | null | undefined) ?? [],
+  } as ClipPrefs
+}
+
 const transport: ClipboardTransport = {
   List: async (q, kind, limit) => {
     const rows = (await CLIPAPI.List(q, kind, limit)) as Wire[] | null
@@ -56,6 +71,8 @@ const transport: ClipboardTransport = {
   GetStatus: async () => wireStatus(await CLIPAPI.GetStatus()),
   CollapseOverlay: () => CLIPAPI.CollapseOverlay(),
   Paste: (id) => CLIPAPI.Paste(id),
+  GetPrefs: async () => wirePrefs(await CLIPAPI.GetPrefs()),
+  SetPrefs: async (prefs) => wirePrefs(await CLIPAPI.SetPrefs(prefs)),
 }
 
 let installed = false

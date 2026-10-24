@@ -142,6 +142,21 @@ describe('「更多」溢出菜单与清空', () => {
     expect(w.emitted('moreChange')).toEqual([[true], [false]])
   })
 
+  it('记录设置项（v1.8）：点发 toggle-prefs 并冒泡收合；prefsActive 在场打点', async () => {
+    const w = bar({ clearDisabled: false })
+    await openMenu(w)
+    const prefsItem = () => w.findAll('.ct-menu-item').find((b) => b.text().includes('记录设置'))!
+    expect(prefsItem().attributes('aria-pressed')).toBe('false')
+    expect(w.find('.ct-menu-dot.on').exists()).toBe(false) // 默认态不打点
+    await prefsItem().trigger('click')
+    expect(w.emitted('toggle-prefs')).toHaveLength(1)
+    expect(w.find('.ct-menu').exists()).toBe(false)
+    const w2 = bar({ prefsActive: true })
+    await openMenu(w2)
+    expect(w2.find('.ct-menu-dot.on').exists()).toBe(true)
+    expect(w2.findAll('.ct-menu-item').find((b) => b.text().includes('记录设置'))!.attributes('aria-pressed')).toBe('true')
+  })
+
   it('clearDisabled 受控禁用菜单项（库空不给按）', async () => {
     const w = bar({ clearDisabled: true })
     await openMenu(w)

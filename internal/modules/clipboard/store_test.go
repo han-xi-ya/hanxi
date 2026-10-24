@@ -238,14 +238,14 @@ func TestClipStoreEvictCountAndExemptions(t *testing.T) {
 	}
 
 	var totalEvicted int
-	for i := range maxEntries + 3 { // 再灌 503 条
+	for i := range defaultMaxEntries + 3 { // 再灌 503 条
 		_, evicted, err := st.Add(entryText(fmt.Sprintf("fill-%03d", i), fmt.Sprintf("fill %03d", i)), now)
 		if err != nil {
 			t.Fatal(err)
 		}
 		totalEvicted += len(evicted)
 	}
-	if st.Count() != maxEntries {
+	if st.Count() != defaultMaxEntries {
 		t.Fatalf("条数钳制失败: %d", st.Count())
 	}
 	if _, ok := st.Get("anchor"); !ok {
@@ -264,14 +264,14 @@ func TestClipStoreEvictCountAndExemptions(t *testing.T) {
 
 	// 全库钉选：允许超限不误杀
 	allPinned, _, _ := newTestStore(t)
-	for i := range maxEntries + 2 {
+	for i := range defaultMaxEntries + 2 {
 		e := entryText(fmt.Sprintf("p-%03d", i), fmt.Sprintf("p %03d", i))
 		e.Pinned = true
 		if _, _, err := allPinned.Add(e, now); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if allPinned.Count() != maxEntries+2 {
+	if allPinned.Count() != defaultMaxEntries+2 {
 		t.Fatalf("全钉选应允许超限，得 %d", allPinned.Count())
 	}
 }
@@ -280,7 +280,7 @@ func TestClipStoreEvictCountAndExemptions(t *testing.T) {
 // pinned 图片豁免。
 func TestClipStoreBlobBudget(t *testing.T) {
 	st, fb, _ := newTestStore(t)
-	fb.size = maxBlobBytes / 2 // 每图 50MiB
+	fb.size = defaultMaxBlobBytes / 2 // 每图 50MiB
 	now := time.Now()
 
 	addImg := func(id string) {
@@ -476,7 +476,7 @@ func TestClipStoreListFilter(t *testing.T) {
 	if got := st.List("", "all", 0); len(got) != 3 {
 		t.Fatalf(`kind="all" 应不过滤: %d`, len(got))
 	}
-	if got := st.List("", "", 9999); len(got) > maxEntries {
+	if got := st.List("", "", 9999); len(got) > defaultMaxEntries {
 		t.Fatal("limit 未钳制")
 	}
 	if got := st.List("", "", 2); len(got) != 2 {
@@ -580,4 +580,133 @@ func TestClipStoreCountAndBlobBytes(t *testing.T) {
 	if _, err := st.BlobBytes(); err == nil {
 		t.Fatal("BlobBytes 应透传错误")
 	}
+}
+
+// TestStoreApplyLimits 生效容量闸热换（契约 §12 v1.8）：降容当场裁（LRU 尾
+// 先裁、pinned/manual 豁免同谱），升容不复活；快路径（都在新闸内）零落盘——
+// 以文件 mtime+尺寸不变粗验，构造期"偏好零副作用"纪律靠这条守住。
+func TestStoreApplyLimits(t *testing.T) {
+	st, _, dir := newTestStore(t)
+	now := time.Now()
+	for i := range 5 {
+		if _, _, err := st.Add(entryText(fmt.Sprintf("a-%d", i), fmt.Sprintf("alpha %d", i)), now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pinned := entryText("pin", "钉住")
+	pinned.Pinned = true
+	if _, _, err := st.Add(pinned, now); err != nil {
+		t.Fatal(err)
+	}
+
+	evicted, err := st.ApplyLimits(3, int64(1)<<40)
+	if err != nil {
+		t.Fatalf("ApplyLimits: %v", err)
+	}
+	if len(evicted) != 3 {
+		t.Fatalf("应裁 3 条（a-0/a-1/a-2 LRU 尾），得 %v", evicted)
+	}
+	for _, v := range evicted {
+		if v.ID == "pin" {
+			t.Fatal("pinned 被降容误杀")
+		}
+	}
+	if st.Count() != 3 {
+		t.Fatalf("降容后计数: %d", st.Count())
+	}
+	_, ok := st.Get("a-0")
+	if ok {
+		t.Fatal("LRU 尾部未先裁")
+	}
+
+	// 快路径：限值高于现状只换字段，不动盘。
+	before := mustFileBytes(t, filepath.Join(dir, "index.json"))
+	if ev, err := st.ApplyLimits(9, int64(1)<<40); err != nil || len(ev) != 0 {
+		t.Fatalf("升容不应裁: %v %v", ev, err)
+	}
+	after := mustFileBytes(t, filepath.Join(dir, "index.json"))
+	if before != after {
+		t.Fatal("快路径不应落盘（构造期零副作用纪律的依据）")
+	}
+	if max, blob := st.CurrentLimits(); max != 9 || blob != int64(1)<<40 {
+		t.Fatalf("CurrentLimits 回显失真: %d %d", max, blob)
+	}
+}
+
+// TestStoreSweepExpired 按应用保留天数清扫（v1.8）：仅覆盖表内进程动手；
+// 活跃口径 max(created,used)（"用了就续命"）；pinned/manual 豁免；图片连删
+// blob；无规则/无受害者不落盘。
+func TestStoreSweepExpired(t *testing.T) {
+	st, fb, _ := newTestStore(t)
+	old := time.Now().Add(-10 * 24 * time.Hour).UnixMilli()
+
+	mk := func(id, exe string, created int64) Entry {
+		e := entryText(id, "sweep "+id)
+		e.SourceExe = exe
+		e.CreatedAt = created
+		return e
+	}
+	add := func(e Entry) {
+		t.Helper()
+		if _, _, err := st.Add(e, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(mk("gone", "old.exe", old))       // 覆盖表内且超期 → 清
+	add(mk("alive-used", "old.exe", old)) // 超期但最近用过 → 留
+	add(mk("pinned", "old.exe", old))     // 超期但钉选 → 留
+	add(mk("other", "fresh.exe", old))    // 不在覆盖表 → 留
+	img := mk("img", "old.exe", old)
+	img.Kind, img.Blob, img.Text = KindImage, blobRelPrefix+"fake.png", ""
+	if _, _, err := st.Add(img, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Touch("alive-used", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.TogglePin("pinned"); err != nil {
+		t.Fatal(err)
+	}
+
+	// 空规则零成本早退（不落盘不报错）
+	if v, err := st.SweepExpired(time.Now(), nil); err != nil || len(v) != 0 {
+		t.Fatalf("空规则应零动作为: %v %v", v, err)
+	}
+
+	victims, err := st.SweepExpired(time.Now(), map[string]int{"old.exe": 1})
+	if err != nil {
+		t.Fatalf("SweepExpired: %v", err)
+	}
+	ids := map[string]bool{}
+	for _, v := range victims {
+		ids[v.ID] = true
+	}
+	if !ids["gone"] || !ids["img"] || len(victims) != 2 {
+		t.Fatalf("清单项失真: %+v", victims)
+	}
+	for _, keep := range []string{"alive-used", "pinned", "other"} {
+		if _, ok := st.Get(keep); !ok {
+			t.Fatalf("不该被扫: %s", keep)
+		}
+	}
+	deleted := map[string]bool{}
+	for _, d := range fb.deletes {
+		deleted[d] = true
+	}
+	if !deleted["fake.png"] {
+		t.Fatalf("图片条目应连删 blob，fb.deletes=%v", fb.deletes)
+	}
+	// 再扫一轮：无受害者幂等
+	if v, err := st.SweepExpired(time.Now(), map[string]int{"old.exe": 1}); err != nil || len(v) != 0 {
+		t.Fatalf("清扫应幂等: %v %v", v, err)
+	}
+}
+
+func mustFileBytes(t *testing.T, path string) int64 {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	return info.Size()
 }

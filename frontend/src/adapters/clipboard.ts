@@ -8,7 +8,7 @@
 // 事件订阅不走本文件：直接用既有 useWailsEvent + 下方事件名常量。
 // ============================================================================
 
-import type { ClipEntry, ClipStatus } from '../types/clipboard'
+import type { ClipEntry, ClipPrefs, ClipStatus } from '../types/clipboard'
 
 /** 冻结方法面：与 internal/modules/clipboard ClipboardService 一一对位。 */
 export interface ClipboardTransport {
@@ -25,6 +25,10 @@ export interface ClipboardTransport {
   CollapseOverlay(): Promise<void>
   /** 契约 §12 v1.7 R-G1:回填剪贴板 + 焦点还给唤出浮层时的原窗 + 模拟 Ctrl+V(仅 text;失败降级为已回填)。 */
   Paste(id: string): Promise<void>
+  /** 契约 §12 v1.8:偏好回显（钳制/规范化后的生效值）。 */
+  GetPrefs(): Promise<ClipPrefs>
+  /** 契约 §12 v1.8:整表校验落盘并热应用；返回回显同 GetPrefs（含钳制值）。 */
+  SetPrefs(prefs: ClipPrefs): Promise<ClipPrefs>
 }
 
 /** Wails 事件名常量（契约 §5/§6，前后端逐字对位）。 */
@@ -60,3 +64,5 @@ export const clipboardSetPaused = (paused: boolean) => need().SetPaused(paused)
 export const clipboardGetStatus = () => need().GetStatus()
 export const clipboardCollapseOverlay = () => need().CollapseOverlay()
 export const clipboardPaste = (id: string) => need().Paste(id)
+export const clipboardGetPrefs = () => need().GetPrefs()
+export const clipboardSetPrefs = (prefs: ClipPrefs) => need().SetPrefs(prefs)

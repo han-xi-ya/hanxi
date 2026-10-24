@@ -210,5 +210,23 @@ func (s *ClipboardService) Paste(id string) error {
 	if err := s.sendKeys(); err != nil {
 		return fmt.Errorf("已回填系统剪贴板，模拟粘贴按键失败，请手动 Ctrl+V: %w", err)
 	}
+	// v1.8 粘贴后即删：只在**全自动线走通**的此刻动手——所有降级分支
+	// （无目标/焦点败/未落位/按键被拒）粘贴未成，删了是丢内容。
+	s.applyDeleteAfterPaste(e)
 	return nil
+}
+
+// applyDeleteAfterPaste 粘贴成功后按偏好销账（契约 §12 v1.8）：开关关闭、
+// 或条目 pinned/manual 一律不动（与"绝不误杀钉选"淘汰哲学同谱——钉选/片段
+// 是用户显式留存的意志，逐次粘贴不该磨掉）。removed 事件照发，浮层/列表
+// 行随事件自然消失。删除失败只 warn：粘贴价值已交付，记账失败不拦主链。
+func (s *ClipboardService) applyDeleteAfterPaste(e Entry) {
+	if !s.prefs.deleteAfterPaste() || e.Pinned || e.Manual {
+		return
+	}
+	if _, err := s.store.Delete(e.ID); err != nil {
+		slog.Warn("clipboard: 粘贴后即删失败（内容仍保留在历史）", "id", e.ID, "err", err)
+		return
+	}
+	s.emit(evRemoved, RemovedPayload{ID: e.ID})
 }

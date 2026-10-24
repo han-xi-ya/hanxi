@@ -39,8 +39,10 @@ withDefaults(
     pausing?: boolean
     /** 清空钮禁用（库空或状态未知时不给按） */
     clearDisabled?: boolean
+    /** 记录设置面板在场（菜单项打点回显，开合归宿主） */
+    prefsActive?: boolean
   }>(),
-  { search: '', kind: 'all', paused: false, pausing: false, clearDisabled: true },
+  { search: '', kind: 'all', paused: false, pausing: false, clearDisabled: true, prefsActive: false },
 )
 
 const emit = defineEmits<{
@@ -52,6 +54,8 @@ const emit = defineEmits<{
   (e: 'toggle-paused'): void
   (e: 'create-snippet'): void
   (e: 'clear-all'): void
+  /** 记录设置面板开合意图（v1.8；面板本体与保存链归宿主视图） */
+  (e: 'toggle-prefs'): void
   /** 溢出菜单开合外播（true/false 都发，含点击项/卸载触发的自动收合） */
   (e: 'moreChange', open: boolean): void
 }>()
@@ -170,12 +174,23 @@ onBeforeUnmount(() => openMore(false))
         class="btn btn-ghost btn-small ct-more-btn"
         :aria-expanded="moreOpen ? 'true' : 'false'"
         aria-haspopup="true"
-        title="低频动作：清空全部历史（需强确认）"
+        title="低频动作：记录设置、清空全部历史（需强确认）"
         @click="openMore(!moreOpen)"
       >
         更多 <span class="ct-caret" aria-hidden="true">▾</span>
       </button>
       <div v-if="moreOpen" class="ct-menu" @click="openMore(false)">
+        <button
+          type="button"
+          class="ct-menu-item"
+          role="menuitem"
+          :aria-pressed="prefsActive ? 'true' : 'false'"
+          title="容量上限、排除应用、按应用保留与粘贴行为（本机设置，保存即生效）"
+          @click="emit('toggle-prefs')"
+        >
+          <span class="ct-menu-dot" :class="{ on: prefsActive }" aria-hidden="true"></span>
+          记录设置
+        </button>
         <button
           type="button"
           class="ct-menu-item ct-menu-danger"
@@ -241,7 +256,8 @@ onBeforeUnmount(() => openMore(false))
 .ct-dot-paused { background: var(--state-warning); }
 
 /* 溢出菜单（容器皮肤与开合纪律照 MemoToolbar 同谱；菜单条目留本件——
-   剪贴板面只有这一件低频动作，不借道视图插槽） */
+   低频面只有设置与清空两件，不借道视图插槽。v1.8 起两项：记录设置
+   （toggle 语义，在场态打点）+ 清空（danger）） */
 .ct-more { position: relative; flex: none; }
 .ct-caret { font-size: var(--text-micro); }
 .ct-menu {
@@ -264,4 +280,7 @@ onBeforeUnmount(() => openMore(false))
 .ct-menu-item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .ct-menu-danger { color: var(--state-danger); }
 .ct-menu-danger:hover:not(:disabled) { background: var(--btn-danger-outline-hover); }
+/* 设置项在场点：色点辅证+文字主表意（不用颜色单独表意） */
+.ct-menu-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: transparent; border: 1px solid var(--color-border); }
+.ct-menu-dot.on { background: var(--color-primary); border-color: var(--color-primary); }
 </style>

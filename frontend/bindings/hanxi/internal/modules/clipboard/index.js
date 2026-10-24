@@ -23,6 +23,14 @@ import * as $models from "./models.js";
  */
 
 /**
+ * Prefs 服务绑定面回显/写入形态（契约 §12 v1.8 冻结 tag）。
+ * ExcludedFactory 只读回显（出厂 7 项结构上删不掉）；QueueHotkey 的**写路径
+ * 不在本结构语义内**——SetPrefs 忽略该字段保留旧值，改键只走 SetQueueHotkey
+ * （"校验即绑定、败不落盘"事务在热键域，避免配置存了键没绑上的分叉态）。
+ * @typedef {$models.Prefs} Prefs
+ */
+
+/**
  * RemovedPayload/PausedPayload clipboard:removed 与 clipboard:paused 的载荷形态。
  * 导出是装配闸要求：Wails beta.10 对 RegisterEvent[T] 做精确类型匹配，装配根
  * 按本类型注册事件，未导出则无法引用（收口清单 W1 事件类型闸）。
@@ -31,5 +39,7 @@ import * as $models from "./models.js";
 
 /**
  * Status 服务运行态（GetStatus 返回面，前端状态区/浮层页脚用）。
+ * Max* 两项自 v1.8 起为**生效值**（prefs 可调，默认 500/100MiB）——申报即执行，
+ * 审计面与判定面同源。
  * @typedef {$models.Status} Status
  */

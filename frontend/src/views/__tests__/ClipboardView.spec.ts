@@ -115,12 +115,12 @@ afterEach(() => {
 })
 
 describe('渲染三态与门面纪律', () => {
-  it('挂载即 List("","all",500) 拉满容量 + GetStatus 回灌状态一行与排除提示', async () => {
+  it('挂载即 List("","all",2000) 问满拉取（后端钳到生效容量） + GetStatus 回灌状态一行与排除提示', async () => {
     const w = await mountView([
       clip({ autoTags: ['url', 'cjk'], useCount: 2 }),
     ])
     expect(fake.List).toHaveBeenCalledTimes(1)
-    expect(fake.List).toHaveBeenCalledWith('', 'all', 500)
+    expect(fake.List).toHaveBeenCalledWith('', 'all', 2000)
     expect(fake.GetStatus).toHaveBeenCalled()
     expect(w.findAll('.clip-row')).toHaveLength(1)
     expect(w.find('.cr-preview').text()).toBe('git commit -m 规范')
@@ -156,7 +156,7 @@ describe('渲染三态与门面纪律', () => {
     await w.find('.ct-search-input').setValue('redis')
     await w.find('.ct-search-input').trigger('keydown', { key: 'Enter' })
     await flush()
-    expect(fake.List).toHaveBeenCalledWith('redis', 'all', 500)
+    expect(fake.List).toHaveBeenCalledWith('redis', 'all', 2000)
     expect(w.text()).toContain('没有符合当前检索/过滤')
     await byText(w, '清除过滤')!.trigger('click')
     await flush()
@@ -213,11 +213,11 @@ describe('检索：防抖 + 回车 + kind 档', () => {
     ])
     await chip(w, '图片').trigger('click')
     await flush()
-    expect(fake.List.mock.calls.at(-1)).toEqual(['', 'image', 500])
+    expect(fake.List.mock.calls.at(-1)).toEqual(['', 'image', 2000])
     expect(chip(w, '图片').classes()).toContain('active')
     await chip(w, '片段').trigger('click')
     await flush()
-    expect(fake.List.mock.calls.at(-1)).toEqual(['', 'all', 500])
+    expect(fake.List.mock.calls.at(-1)).toEqual(['', 'all', 2000])
     const rows = w.findAll('.clip-row')
     expect(rows).toHaveLength(1) // 只有 manual 那条留场
     expect(rows[0].text()).toContain('常用命令')

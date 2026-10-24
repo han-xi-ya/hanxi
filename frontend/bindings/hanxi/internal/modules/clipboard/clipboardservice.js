@@ -79,6 +79,15 @@ export function Get(id) {
 }
 
 /**
+ * GetPrefs 用户偏好回显（契约 §12 v1.8）：返回**生效值**（钳制/规范化后的
+ * 实际运行态）而非请求原值——越界值保存后立即读回规范形，面板自然对齐。
+ * @returns {$CancellablePromise<$models.Prefs>}
+ */
+export function GetPrefs() {
+    return $Call.ByID(493317311);
+}
+
+/**
  * GetStatus 运行态快照（监听暂停态、库容量实况、钳制上限与排除表回显）。
  * @returns {$CancellablePromise<$models.Status>}
  */
@@ -137,6 +146,20 @@ export function Set(id) {
  */
 export function SetPaused(paused) {
     return $Call.ByID(2776865329, paused);
+}
+
+/**
+ * SetPrefs 整表校验并原子落盘，成功后**同一调用内热应用**（v1.8）：
+ * 写盘 → ApplyLimits（降容当场裁，静默不逐发 removed，前端保存成功后重拉）
+ * → 换排除表活表。失败（坏正则/超数量闸/落盘败）整表不动、错误如实上浮，
+ * 运行态保持旧值——"以为设了其实没设"不接受。QueueHotkey 域外：入参忽略、
+ * 现值保留（改键只走 SetQueueHotkey，校验即绑定事务在热键域）。
+ * mask 域本轮仅校验入库，展示应用随遮蔽提交激活。
+ * @param {$models.Prefs} $in
+ * @returns {$CancellablePromise<$models.Prefs>}
+ */
+export function SetPrefs($in) {
+    return $Call.ByID(3260213515, $in);
 }
 
 /**

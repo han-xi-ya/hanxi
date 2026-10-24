@@ -85,6 +85,10 @@ const fake = {
   GetStatus: vi.fn(),
   CollapseOverlay: vi.fn(),
   Paste: vi.fn(),
+  // v1.8 设置面：浮层上下文不消费（误调即未配 seed 的 undefined 炸给测试看），
+  // 只为 satisfies 完整性占位
+  GetPrefs: vi.fn(),
+  SetPrefs: vi.fn(),
 } satisfies ClipboardTransport
 
 function seedDefaults(): void {

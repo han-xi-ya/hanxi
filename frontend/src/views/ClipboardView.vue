@@ -56,14 +56,17 @@ import PageHeader from '../components/ui/PageHeader.vue'
 import ClipToolbar from '../components/clipboard/ClipToolbar.vue'
 import ClipRow from '../components/clipboard/ClipRow.vue'
 import ClipDetail from '../components/clipboard/ClipDetail.vue'
+import ClipPrefsPanel from '../components/clipboard/ClipPrefsPanel.vue'
 import { clipStatusLine, groupClipEntries, type ClipFilter } from '../components/clipboard/clipboardFormat'
 
 const { showToast, showErrorToast } = useToast()
 const { confirm } = useConfirm()
 const { prompt } = usePrompt()
 
-/** 契约容量钳制 500 条封顶：一次拉满，列表不上虚拟列表的前提（A4 任务书裁决） */
-const LIST_LIMIT = 500
+/** 一次拉满上限：后端会钳到生效容量（v1.8 可调，硬上限 2000），这里问满
+ *  不许多拿。虚拟列表裁决（A4 任务书）在 ≤2000 轻量行下仍成立——行内容为
+ *  摘要两行制，桌面端整列 DOM 可承受。 */
+const LIST_LIMIT = 2000
 
 const entries = shallowRef<ClipEntry[]>([])
 const stats = ref<ClipStatus | null>(null)
@@ -89,6 +92,14 @@ const statusLine = computed(() => (stats.value ? clipStatusLine(stats.value) : '
 const dayGroups = computed(() => groupClipEntries(entries.value))
 // 溢出菜单在场标记：只跟读供全局 Esc 判级让位（开合纪律归 ClipToolbar 自收）
 const toolbarMoreOpen = ref(false)
+// 记录设置面板（v1.8）：开合归本视图，数据自治归 ClipPrefsPanel；
+// 保存成功后重拉状态与列表——降容/清扫是静默裁（后端不逐发 removed），
+// 只有全量重拉能让账本与新限值对齐。
+const prefsOpen = ref(false)
+function onPrefsSaved() {
+  void refreshStatus()
+  void loadList()
+}
 
 /** 列表行只留列表形态字段：明文正文与 blob 不进账本（内存纪律，行组件不消费）；
  *  thumb（R-G2 内联缩略图 dataURL）是列表形态字段，随行保留 */
@@ -387,12 +398,14 @@ onUnmounted(() => {
       :paused="paused"
       :pausing="pausing"
       :clear-disabled="clearDisabled"
+      :prefs-active="prefsOpen"
       @update:search="onSearchInput"
       @search-enter="onSearchEnter"
       @update:kind="selectKind"
       @toggle-paused="togglePaused"
       @create-snippet="createSnippet"
       @clear-all="clearAll"
+      @toggle-prefs="prefsOpen = !prefsOpen"
       @more-change="toolbarMoreOpen = $event"
     />
 
@@ -403,6 +416,8 @@ onUnmounted(() => {
         :title="`以下应用的复制内容不入库：${stats.excludedExes.join('、') || '（无）'}`"
       >排除应用 {{ stats.excludedExes.length }} 个</span>
     </div>
+
+    <ClipPrefsPanel v-if="prefsOpen" @saved="onPrefsSaved" />
 
     <div class="clip-desk">
       <nav class="clip-index" :aria-busy="loading ? 'true' : 'false'" aria-label="剪贴板历史索引">

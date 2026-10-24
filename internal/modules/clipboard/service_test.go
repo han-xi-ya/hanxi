@@ -490,7 +490,7 @@ func TestClipServiceGetStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.MaxEntries != maxEntries || st.MaxBlobBytes != maxBlobBytes {
+	if st.MaxEntries != defaultMaxEntries || st.MaxBlobBytes != defaultMaxBlobBytes {
 		t.Fatalf("钳制上限回显异常: %+v", st)
 	}
 	if st.EntryCount != 1 || st.BlobBytes != h.blobs.size {

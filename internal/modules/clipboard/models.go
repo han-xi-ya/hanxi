@@ -49,12 +49,14 @@ type Entry struct {
 }
 
 // Status 服务运行态（GetStatus 返回面，前端状态区/浮层页脚用）。
+// Max* 两项自 v1.8 起为**生效值**（prefs 可调，默认 500/100MiB）——申报即执行，
+// 审计面与判定面同源。
 type Status struct {
 	Paused       bool     `json:"paused"`
 	EntryCount   int      `json:"entryCount"`
 	BlobBytes    int64    `json:"blobBytes"`
-	MaxEntries   int      `json:"maxEntries"`   // 500
-	MaxBlobBytes int64    `json:"maxBlobBytes"` // 100<<20
+	MaxEntries   int      `json:"maxEntries"`   // 生效条数闸（默认 500，v1.8 可调）
+	MaxBlobBytes int64    `json:"maxBlobBytes"` // 生效体积闸（默认 100<<20）
 	ExcludedExes []string `json:"excludedExes"`
 }
 

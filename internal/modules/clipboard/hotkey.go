@@ -96,6 +96,12 @@ func (s *ClipboardService) start() error {
 		slog.Debug("clipboard: 应用未运行（无头态），跳过剪贴板监听启动")
 	}
 
+	// v1.8 按应用保留清扫触发点之一：启动按覆盖表清一次（启动期条数有界，
+	// removed 逐个广播不惊扰——浮层/列表本就在装配后才拉全量）。
+	for _, v := range s.sweepExpired() {
+		s.emit(evRemoved, RemovedPayload{ID: v.ID})
+	}
+
 	if err := s.applyOverlayHotkey(defaultOverlayHotkey); err != nil {
 		if errors.Is(err, errNoHotkeyRegistry) {
 			slog.Debug("clipboard: 热键注册器未接线，浮层热键本次不绑定")

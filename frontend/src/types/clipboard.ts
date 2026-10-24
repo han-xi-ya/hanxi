@@ -65,3 +65,26 @@ export interface ClipRemoved {
 export interface ClipPaused {
   paused: boolean
 }
+
+/**
+ * 用户偏好（GetPrefs/SetPrefs 往返面；契约 §12 v1.8）。
+ * 整表替换语义：SetPrefs 必须发全量——漏发域=回落默认，前端本地持全表，
+ * 改一项发全表。maxEntries/maxBlobMB 回显的是**钳制后的生效值**。
+ * queueHotkey 只读回显（写路径在 SetQueueHotkey 域，提交 2 激活）。
+ */
+export interface ClipPrefs {
+  maxEntries: number
+  maxBlobMB: number
+  deleteAfterPaste: boolean
+  /** 出厂排除表（只读，结构上删不掉）。 */
+  excludedFactory: string[]
+  /** 用户追加排除项（小写进程名，后端已补 .exe 去重）。 */
+  excludedCustom: string[]
+  /** 按应用保留天数覆盖表：exe（小写）→ 天数；不在表内的应用不做按日清扫。 */
+  appRetentionDays: Record<string, number>
+  queueHotkey: string
+  /** 预览遮蔽内置类（phone/idcard/email/secret；显式空表=全关）。 */
+  maskKinds: string[]
+  /** 自定义遮蔽正则（RE2；坏正则整表拒绝保存）。 */
+  maskCustomPatterns: string[]
+}
