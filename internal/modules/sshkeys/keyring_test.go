@@ -214,10 +214,25 @@ func TestListKeysAnnotatesUsedBy(t *testing.T) {
 	if len(free.UsedBy) != 0 {
 		t.Errorf("id_free 不该有引用，实得 %+v", free.UsedBy)
 	}
-	// 下拉填什么形态由后端定：台账只扫 ~/.ssh，所以列出来的私钥必然写得成 `~/名字`。
-	// 用真身绝对路径会让清单跟着用户名漂；让前端自己拼又等于制造第二次猜测。
-	if used.SuggestPath != "~/id_used" || free.SuggestPath != "~/id_free" {
-		t.Errorf("SuggestPath 应为 ~/<名字>，实得 %q / %q", used.SuggestPath, free.SuggestPath)
+	// 下拉值必须带 `.ssh` 这一层。曾经写成 `~/id_used`（漏一层）而断言也照着写，
+	// 于是实现和测试一起错、全绿——下面这条不只看字符串，而是**把展开结果去比对
+	// 真实私钥文件**，那类"少一层目录"的错下次会直接被抓住。
+	for _, e := range got {
+		if !e.HasPrivate {
+			if e.SuggestPath != "" {
+				t.Errorf("仅公钥的行 SuggestPath 应留空，实得 %q", e.SuggestPath)
+			}
+			continue
+		}
+		if e.SuggestPath != "~/.ssh/"+e.Name {
+			t.Errorf("SuggestPath 应为 ~/.ssh/%s，实得 %q", e.Name, e.SuggestPath)
+		}
+		got2, err := filepath.EvalSymlinks(filepath.Clean(expandHome(e.SuggestPath)))
+		want, wErr := filepath.EvalSymlinks(filepath.Clean(e.PrivatePath))
+		if err != nil || wErr != nil || got2 != want {
+			t.Errorf("展开 %q 没有落回那把私钥（得 %q err=%v；期望 %q err=%v）",
+				e.SuggestPath, got2, err, want, wErr)
+		}
 	}
 	orphan2, ok2 := find(got, "id_used")
 	if !ok2 || !orphan2.HasPublic {

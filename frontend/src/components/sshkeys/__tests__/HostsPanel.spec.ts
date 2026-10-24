@@ -80,13 +80,13 @@ const KEY_FULL = {
   privatePath: 'C:\\Users\\u\\.ssh\\id_ed25519', publicPath: 'C:\\Users\\u\\.ssh\\id_ed25519.pub',
   type: 'ed25519', fingerprint: 'SHA256:1111222233334444abcdefgh', comment: 'laptop', bits: 256,
   guarded: false, guardKnown: true, mtimeUnix: 1750000000,
-  suggestPath: '~/id_ed25519', usedBy: ['nas01'], usedByKnown: true,
+  suggestPath: '~/.ssh/id_ed25519', usedBy: ['nas01'], usedByKnown: true,
 }
 const KEY_NOPUB = {
   ...KEY_FULL, name: 'id_rsa_work', hasPublic: false,
   privatePath: 'C:\\Users\\u\\.ssh\\id_rsa_work', publicPath: '',
   type: 'rsa', fingerprint: 'SHA256:aaaabbbbccccdddd0000', bits: 3072,
-  suggestPath: '~/id_rsa_work', usedBy: [], usedByKnown: true,
+  suggestPath: '~/.ssh/id_rsa_work', usedBy: [], usedByKnown: true,
 }
 // 孤儿 .pub：hasPrivate=false 且 suggestPath 为空——两条判据都该把它挡在下拉外。
 const KEY_PUBONLY = {
@@ -706,7 +706,7 @@ describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath�
     const sel = await openAddGetSelect(w)
     const opt = sel.findAll('option').find(o => o.text().includes('id_ed25519'))
     expect(opt).toBeDefined()
-    expect(opt!.attributes('value')).toBe('~/id_ed25519')
+    expect(opt!.attributes('value')).toBe('~/.ssh/id_ed25519')
     expect(opt!.text()).toContain('ed25519')
     expect(opt!.text()).toContain('11112222') // 指纹剥掉 SHA256: 前缀后取前 8 位
     expect(opt!.text()).not.toContain('C:\\Users') // 完整路径不进 label
@@ -722,15 +722,15 @@ describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath�
       .map(o => o.attributes('value'))
       .filter(v => v?.startsWith('~/'))
       .sort()
-    expect(pathValues).toEqual(['~/id_ed25519', '~/id_rsa_work'])
+    expect(pathValues).toEqual(['~/.ssh/id_ed25519', '~/.ssh/id_rsa_work'])
     expect(sel.text()).not.toContain('orphan_pub')
   })
 
   it('选中项同步输入框；缺公钥的当场联动提示（hint-line + warning 字色档），有公钥的安静；首项可清空；保存发出 ~/ 形态', async () => {
     const w = await mountPanel()
     const sel = await openAddGetSelect(w)
-    await sel.setValue('~/id_rsa_work')
-    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('~/id_rsa_work')
+    await sel.setValue('~/.ssh/id_rsa_work')
+    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('~/.ssh/id_rsa_work')
     const hint = w.find('#hosts-keypath-hint')
     expect(hint.exists()).toBe(true)
     expect(hint.classes()).toContain('hint-line')
@@ -739,20 +739,20 @@ describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath�
     expect(hint.text()).toContain('部署公钥')
     expect(hint.text()).toContain('补出公钥')
     // 有配套公钥的不搅局
-    await sel.setValue('~/id_ed25519')
+    await sel.setValue('~/.ssh/id_ed25519')
     expect(w.find('#hosts-keypath-hint').exists()).toBe(false)
     // 「清空选择」的出口：第一项未指定把输入框抹平
     await sel.setValue('')
     expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('')
     // 再选回并保存：发出的 keyPath 就是 suggestPath
-    await sel.setValue('~/id_ed25519')
+    await sel.setValue('~/.ssh/id_ed25519')
     await useCustomAlias(w)
     await w.find('#hosts-alias').setValue('work01')
     await w.find('#hosts-host').setValue('10.9.9.9')
     await w.find('.hosts-form .btn-primary').trigger('click')
     await flushPromises()
     expect(svc.AddHost).toHaveBeenCalledWith({
-      alias: 'work01', host: '10.9.9.9', port: 0, user: '', keyPath: '~/id_ed25519', note: '', enabled: true,
+      alias: 'work01', host: '10.9.9.9', port: 0, user: '', keyPath: '~/.ssh/id_ed25519', note: '', enabled: true,
     })
   })
 
@@ -827,7 +827,7 @@ describe('HostsPanel 表单密钥下拉：台账当选项源（值=suggestPath�
     await flushPromises()
     expect(svc.ListKeys).toHaveBeenCalledTimes(2) // 开表单重拉
     const values = w.findAll('#hosts-keypath-select option').map(o => o.attributes('value'))
-    expect(values).toContain('~/id_ed25519') // 第二遍才出现的钥匙直接进下拉，不必重开面板
+    expect(values).toContain('~/.ssh/id_ed25519') // 第二遍才出现的钥匙直接进下拉，不必重开面板
     await w.findAll('tbody tr')[0].findAll('.btn-micro')[0].trigger('click')
     await flushPromises()
     expect(svc.ListKeys).toHaveBeenCalledTimes(3) // 编辑同样重拉
@@ -867,10 +867,10 @@ describe('HostsPanel 表单裸文件名：同名私钥才提示、一键改成 ~
     expect(warn.text()).toContain('找不到这把钥匙')
     // 一键纠正：改的就是台账那行的 suggestPath（后端给的 `~/<名字>`，前端不拼）
     await w.find('#hosts-keypath-bare-fix').trigger('click')
-    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('~/id_ed25519')
+    expect((w.find('#hosts-keypath').element as HTMLInputElement).value).toBe('~/.ssh/id_ed25519')
     expect(w.find('#hosts-keypath-bare-warn').exists()).toBe(false)
     // 纠正后值就是下拉选项本身——哨兵回显逻辑未被破坏
-    expect((w.find('#hosts-keypath-select').element as HTMLSelectElement).value).toBe('~/id_ed25519')
+    expect((w.find('#hosts-keypath-select').element as HTMLSelectElement).value).toBe('~/.ssh/id_ed25519')
   })
 
   it('带目录分隔符、以 ~ 开头、或台账没有同名私钥：都不提示——只对确定的事开口', async () => {
@@ -879,7 +879,7 @@ describe('HostsPanel 表单裸文件名：同名私钥才提示、一键改成 ~
     for (const v of [
       'C:\\Users\\u\\.ssh\\id_ed25519', // 反斜杠目录
       'D:/keys/id_ed25519',             // 正斜杠目录
-      '~/id_ed25519',                   // 规范形态
+      '~/.ssh/id_ed25519',                   // 规范形态
       'id_ed25519-2',                   // 裸名但台账没有这把（孤儿 .pub 的 name 也不算私钥）
       'orphan_pub',                     // 台账有同名但 hasPrivate=false：不是"同名私钥"
     ]) {
