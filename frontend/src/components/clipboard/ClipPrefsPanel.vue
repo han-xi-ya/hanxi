@@ -226,12 +226,12 @@ function revertAll() {
           <h3 class="cp-title">排除的应用（其复制不入库）</h3>
           <div class="cp-factory" aria-label="出厂默认排除表">
             <span v-for="exe in draft.excludedFactory" :key="exe" class="cp-chip cp-chip-locked" :title="`${exe}：出厂项，不可移除`">
-              🔒 {{ exe }}
+              🔒 <span class="cp-chip-txt">{{ exe }}</span>
             </span>
           </div>
           <div class="cp-factory">
             <span v-for="(exe, i) in draft.excludedCustom" :key="exe" class="cp-chip">
-              {{ exe }}
+              <span class="cp-chip-txt" :title="exe">{{ exe }}</span>
               <button type="button" class="cp-chip-x" :aria-label="`移除 ${exe}`" @click="removeExcluded(i)">✕</button>
             </span>
           </div>
@@ -277,7 +277,7 @@ function revertAll() {
           <p class="cp-hint">只遮列表与浮层的摘要行；搜索原文照样命中、详情正文与粘贴不受影响（敏感条目正文另有默认遮罩）</p>
           <div class="cp-factory">
             <span v-for="(pat, i) in draft.maskCustomPatterns" :key="pat" class="cp-chip">
-              {{ pat }}
+              <span class="cp-chip-txt" :title="pat">{{ pat }}</span>
               <button type="button" class="cp-chip-x" :aria-label="`移除规则 ${pat}`" @click="removePattern(i)">✕</button>
             </span>
           </div>
@@ -332,17 +332,20 @@ function revertAll() {
 /* 排除表两列 chip：出厂锁定态（🔒+灰底不可点）与 custom 可删态（✕ 挂钮内） */
 .cp-factory { display: flex; flex-wrap: wrap; gap: 4px; }
 .cp-chip {
-  display: inline-flex; align-items: center; gap: 4px;
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-pill);
   padding: 1px 8px; font-size: var(--text-xs); color: var(--color-text-muted);
   font-family: var(--font-mono);
 }
+/* 长正则/长进程名在窄列里收 ellipsis 不撑爆（title 恒给全文） */
+.cp-chip-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-chip-locked { background: var(--surface-hover); color: var(--color-text-subtle); }
 .cp-chip-x {
   background: none; border: none; cursor: pointer; color: var(--color-text-subtle);
-  font-size: var(--text-micro); padding: 0 2px;
+  font-size: var(--text-micro); padding: 0 2px; flex: none;
 }
 .cp-chip-x:hover { color: var(--state-danger); }
+.cp-chip-x:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: 2px; }
 
 .cp-addrow { display: flex; gap: 6px; min-width: 0; }
 .cp-add-input { flex: 1 1 120px; min-width: 0; }
