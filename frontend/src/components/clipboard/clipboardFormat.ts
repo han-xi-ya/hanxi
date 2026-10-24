@@ -180,9 +180,11 @@ export function groupClipEntries(
   }))
 }
 
-/** 状态条一行文案：条目数与图片 blob 用量（决策相关数字，消费方挂 mono）。 */
+/** 状态条一行文案：条目数与图片 blob 用量（决策相关数字，消费方挂 mono）。
+ *  queueLen>0 才追加「队 n」段（v1.8 队列余数；零余数不打扰常态一行）。 */
 export function clipStatusLine(
-  s: Pick<ClipStatus, 'entryCount' | 'maxEntries' | 'blobBytes' | 'maxBlobBytes'>,
+  s: Pick<ClipStatus, 'entryCount' | 'maxEntries' | 'blobBytes' | 'maxBlobBytes'> & { queueLen?: number },
 ): string {
-  return `条目 ${s.entryCount}/${s.maxEntries} · 图片占 ${fmtSize(s.blobBytes)}/${fmtSize(s.maxBlobBytes)}`
+  const base = `条目 ${s.entryCount}/${s.maxEntries} · 图片占 ${fmtSize(s.blobBytes)}/${fmtSize(s.maxBlobBytes)}`
+  return s.queueLen ? `${base} · 队 ${s.queueLen}` : base
 }

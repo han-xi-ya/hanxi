@@ -41,6 +41,12 @@ type ClipboardService struct {
 	listener *clipboardListener
 	wailsApp *application.App
 
+	// queue 顺序粘贴队列（queue.go，v1.8）：id FIFO，仅 text；内存簿记不
+	// 持久（重启即弃）。簿记归 s.mu 运行态域，事件广播一律锁外（emit 内
+	// 取 s.mu，嵌套死锁纪律与 SetPaused 同款）；queueBusy 单发闸防连击。
+	queue     []string
+	queueBusy bool
+
 	// excluded 敏感排除表**活表**（小写进程名；v1.3.4 裁决归 service 持有，
 	// v1.8 SetPrefs 落笔可增删 custom 段（出厂 7 项结构上删不掉）；构造缺省=
 	// 出厂默认表。入库判定与 GetStatus 回显同读此表，审计面与执行面不分裂）。
@@ -81,6 +87,9 @@ const (
 	evUpdated = "clipboard:updated"
 	evRemoved = "clipboard:removed"
 	evPaused  = "clipboard:paused"
+	// evQueueChanged 顺序粘贴队列全量快照事件（v1.8，载荷 QueueChangedPayload；
+	// 入队/摘除/清队/贴出消费/联动 prune 五源共用，前端徽标与余数恒跟快照）。
+	evQueueChanged = "clipboard:queue:changed"
 	// 浮层清稿事件名 overlayOpeningEv 见 overlay.go（契约 §6）。
 )
 
@@ -284,6 +293,10 @@ func (s *ClipboardService) Delete(id string) error {
 		return err
 	}
 	s.emit(evRemoved, RemovedPayload{ID: id})
+	// v1.8 队列联动：条目没了，队内挂名同步摘除
+	if s.queuePrune([]string{id}) {
+		s.emitQueueChanged()
+	}
 	return nil
 }
 
@@ -297,7 +310,15 @@ func (s *ClipboardService) ClearAll() error {
 		return gateErr
 	}
 	defer release()
-	return s.store.ClearAll()
+	if err := s.store.ClearAll(); err != nil {
+		return err
+	}
+	// v1.8 队列联动：全清账本后队列必然尽成陈旧，直接清队广播（贴出时
+	// peek 惰性跳是兜底，不是省掉显式收口的理由）
+	if s.queueClearInner() {
+		s.emitQueueChanged()
+	}
+	return nil
 }
 
 // SetPaused 暂停/恢复监听入库（历史仍可查；恢复后新复制即刻跟进）。
@@ -380,6 +401,8 @@ func (s *ClipboardService) GetStatus() (Status, error) {
 		MaxBlobBytes: curMaxBlobBytes,
 		// 排除表回显**活表实况**（v1.3.4：与入库判定同源，MCP 审计可复验）
 		ExcludedExes: s.excludedSnapshot(),
+		// v1.8 队列余数（状态行/「更多」菜单"清空队列"enabled 判据）
+		QueueLen: s.queueLen(),
 	}, nil
 }
 
@@ -544,10 +567,17 @@ func (s *ClipboardService) sweepExpired() []Entry {
 
 // emitIngested 广播 clipboard:updated（新条目与去重顶置同一事件，契约 §5），
 // 再逐个补发被淘汰条目的 removed。载荷剥 Text/BlobData、Preview 截 200 rune。
+// v1.8 队列联动：淘汰/清扫清单同步 prune 挂名条目（容量淘汰、体积淘汰、
+// 按应用清扫三源都汇到这一口）。
 func (s *ClipboardService) emitIngested(final Entry, evicted []Entry) {
 	s.emit(evUpdated, cloneEntry(final, true))
+	ids := make([]string, 0, len(evicted))
 	for _, v := range evicted {
 		s.emit(evRemoved, RemovedPayload{ID: v.ID})
+		ids = append(ids, v.ID)
+	}
+	if s.queuePrune(ids) {
+		s.emitQueueChanged()
 	}
 }
 

@@ -19,8 +19,16 @@ const (
 	// overlayHotkeySlot 浮层热键在通用注册器中的槽位名（契约 §6 冻结）。
 	overlayHotkeySlot = "clipboard/overlay"
 	// defaultOverlayHotkey 默认键位 Ctrl+Alt+V（契约 §6 冻结；键位配置面
-	// 首版不做——无 prefs 文件所有权，改键需求登记收口清单）。
+	// 首版不做——无 prefs 文件所有权，改键需求登记收口清单；v1.8 prefs
+	// 落地后浮层键位仍走默认，队列键位已可改）。
 	defaultOverlayHotkey = "Ctrl+Alt+V"
+	// queueHotkeySlot 顺序粘贴队列"逐步贴出"热键槽位（契约 §12 v1.8，
+	// 借鉴 TieZ sequential paste；键位归 clipboard-prefs.json 的
+	// queueHotkey 域，""=停用）。
+	queueHotkeySlot = "clipboard/queue"
+	// defaultQueueHotkey 队列默认键 Ctrl+Alt+X（机主拍板）：全仓在用默认
+	// 为 Ctrl+Alt+V/T/B/N，X 空闲且不与注册表既有先例冲突。
+	defaultQueueHotkey = "Ctrl+Alt+X"
 )
 
 // errNoHotkeyRegistry 热键注册器未接线（应用实例未就绪或装配前调用）。
@@ -65,6 +73,31 @@ func (s *ClipboardService) onOverlayHotkey() {
 	}
 }
 
+// applyQueueHotkey 队列热键落到期望键位（accel ""=停用，幂等解绑；Registry
+// 事务先注新成功才卸旧，冲突保持旧绑定——applyOverlayHotkey 同谱）。
+func (s *ClipboardService) applyQueueHotkey(accel string) error {
+	r := s.hotkeyRegistry()
+	if r == nil {
+		return errNoHotkeyRegistry
+	}
+	if accel == "" {
+		if err := r.Unbind(queueHotkeySlot); err != nil {
+			slog.Warn("clipboard: 注销队列热键失败（继续停用热键）", "err", err)
+		}
+		return nil
+	}
+	return r.Bind(queueHotkeySlot, accel, true, s.onQueueHotkey)
+}
+
+// onQueueHotkey 队列热键回调：走无门内部版 queueStep（同 onOverlayHotkey 纪律
+// ——回调线程不依赖调用门；用户正处在目标应用里按键，门若拒说明模块停用中，
+// 但 started=false 时队列早已由 stop 清空，不会误贴）。
+func (s *ClipboardService) onQueueHotkey() {
+	if err := s.queueStep(); err != nil {
+		slog.Info("clipboard: 队列逐步贴出未执行", "err", err)
+	}
+}
+
 // ---------- 生命周期（module.go 的 OnInit/OnDestroy 驱动） ----------
 
 // start 登记生命周期在场：起剪贴板监听 + 绑定全局浮层热键。两脉皆降级不致命：
@@ -98,8 +131,15 @@ func (s *ClipboardService) start() error {
 
 	// v1.8 按应用保留清扫触发点之一：启动按覆盖表清一次（启动期条数有界，
 	// removed 逐个广播不惊扰——浮层/列表本就在装配后才拉全量）。
-	for _, v := range s.sweepExpired() {
-		s.emit(evRemoved, RemovedPayload{ID: v.ID})
+	if victims := s.sweepExpired(); len(victims) > 0 {
+		ids := make([]string, 0, len(victims))
+		for _, v := range victims {
+			s.emit(evRemoved, RemovedPayload{ID: v.ID})
+			ids = append(ids, v.ID)
+		}
+		if s.queuePrune(ids) {
+			s.emitQueueChanged()
+		}
 	}
 
 	if err := s.applyOverlayHotkey(defaultOverlayHotkey); err != nil {
@@ -107,6 +147,19 @@ func (s *ClipboardService) start() error {
 			slog.Debug("clipboard: 热键注册器未接线，浮层热键本次不绑定")
 		} else {
 			slog.Warn("clipboard: 浮层热键注册失败（已降级为无热键）", "hotkey", defaultOverlayHotkey, "err", err)
+		}
+	}
+
+	// v1.8 队列热键：键位归 prefs（默认 Ctrl+Alt+X，""=停用）。注册失败只
+	// 降级为无热键（浮层内仍可入队；主界面「更多」菜单是停用态的兜底），
+	// warn 留痕不阻塞启用——overlay 热键同款口径。
+	if accel := s.prefs.queueHotkey(); accel != "" {
+		if err := s.applyQueueHotkey(accel); err != nil {
+			if errors.Is(err, errNoHotkeyRegistry) {
+				slog.Debug("clipboard: 热键注册器未接线，队列热键本次不绑定")
+			} else {
+				slog.Warn("clipboard: 队列热键注册失败（已降级为无热键）", "hotkey", accel, "err", err)
+			}
 		}
 	}
 	return nil
@@ -131,7 +184,13 @@ func (s *ClipboardService) stop() error {
 		if err := r.Unbind(overlayHotkeySlot); err != nil {
 			slog.Warn("clipboard: 停用浮层热键失败", "err", err)
 		}
+		if err := r.Unbind(queueHotkeySlot); err != nil {
+			slog.Warn("clipboard: 停用队列热键失败", "err", err)
+		}
 	}
+	// 队列不持久（v1.8 裁决）：停机即弃，与浮层/监听同批收口，不留跨会话
+	// 幽灵条目（下次 start 从空队起步）。
+	s.resetQueue()
 	s.destroyOverlay(false)
 	return nil
 }

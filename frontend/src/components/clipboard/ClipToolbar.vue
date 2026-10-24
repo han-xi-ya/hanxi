@@ -41,8 +41,10 @@ withDefaults(
     clearDisabled?: boolean
     /** 记录设置面板在场（菜单项打点回显，开合归宿主） */
     prefsActive?: boolean
+    /** 粘贴队列余数（>0 才给"清空队列"按，v1.8） */
+    queueLen?: number
   }>(),
-  { search: '', kind: 'all', paused: false, pausing: false, clearDisabled: true, prefsActive: false },
+  { search: '', kind: 'all', paused: false, pausing: false, clearDisabled: true, prefsActive: false, queueLen: 0 },
 )
 
 const emit = defineEmits<{
@@ -56,6 +58,8 @@ const emit = defineEmits<{
   (e: 'clear-all'): void
   /** 记录设置面板开合意图（v1.8；面板本体与保存链归宿主视图） */
   (e: 'toggle-prefs'): void
+  /** 清空粘贴队列意图（v1.8；轻操作不吊确认——条目本体都在历史里） */
+  (e: 'clear-queue'): void
   /** 溢出菜单开合外播（true/false 都发，含点击项/卸载触发的自动收合） */
   (e: 'moreChange', open: boolean): void
 }>()
@@ -190,6 +194,16 @@ onBeforeUnmount(() => openMore(false))
         >
           <span class="ct-menu-dot" :class="{ on: prefsActive }" aria-hidden="true"></span>
           记录设置
+        </button>
+        <button
+          type="button"
+          class="ct-menu-item"
+          role="menuitem"
+          :disabled="!queueLen"
+          :title="queueLen ? `清空粘贴队列（${queueLen} 项待贴）；条目仍留在历史` : '粘贴队列为空'"
+          @click="emit('clear-queue')"
+        >
+          清空粘贴队列<template v-if="queueLen">（{{ queueLen }}）</template>
         </button>
         <button
           type="button"

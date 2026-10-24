@@ -67,6 +67,22 @@ export const Kind = {
  */
 
 /**
+ * QueueChangedPayload clipboard:queue:changed 载荷：全量 id 快照（前端徽标
+ * 序号即数组序；淘汰/删除失同步由快照天然纠，不做增量 diff 协议）。
+ * 导出系 Wails 精确类型闸要求（RemovedPayload 同谱）。
+ * @typedef {Object} QueueChangedPayload
+ * @property {string[] | null} ids
+ */
+
+/**
+ * QueueHotkeyState 队列热键实况回显（ocr SnipHotkeyState 同谱：Registered 读
+ * Registry 实况供设置面显示"在位/冲突降级"，Accel ""=停用）。
+ * @typedef {Object} QueueHotkeyState
+ * @property {string} accel
+ * @property {boolean} registered
+ */
+
+/**
  * RemovedPayload/PausedPayload clipboard:removed 与 clipboard:paused 的载荷形态。
  * 导出是装配闸要求：Wails beta.10 对 RegisterEvent[T] 做精确类型匹配，装配根
  * 按本类型注册事件，未导出则无法引用（收口清单 W1 事件类型闸）。
@@ -85,6 +101,7 @@ export const Kind = {
  * @property {number} maxEntries - 生效条数闸（默认 500，v1.8 可调）
  * @property {number} maxBlobBytes - 生效体积闸（默认 100<<20）
  * @property {string[] | null} excludedExes
+ * @property {number} queueLen - 顺序粘贴队列余数（v1.8）
  */
 
 // In interface mode, this file is likely to contain just comments.

@@ -41,6 +41,16 @@
 //     回填不抢焦点，与主界面行复制钮同款口径 R-G1）；
 //   - clipboard:updated 空搜索时乐观顶置（去重语义与服务端一致），带词时静默重拉；
 //     removed 本地摘行；paused 事件直接喂角标，不等 GetStatus。
+//
+// v1.8 顺序粘贴队列（契约 §12，借鉴 TieZ sequential paste）：
+//   - 「队」钮进三钮簇（钉/复/队）：点击入队**不关窗**（copyOnly 连取同谱），
+//     再点撤出；仅 text 准入（非 text 置灰——后端入队即拒，前端预灰防误点）；
+//   - ⇧⏎ 把环上项排队并环进下一行（连排手感）；数字直选/⏎ 直贴/Esc 语义不动；
+//   - 行徽标「队n」+ 顶栏「队·n」钮（点击清队，余数>0 才在场）——贴出进度恒跟
+//     clipboard:queue:changed 全量快照（数组序=贴出序=徽标序，联动 prune 的
+//     失同步由快照天然纠）；
+//   - 逐步贴出走**全局队列热键**（默认 Ctrl+Alt+X，键位可改）：页脚提示不写死
+//     键名（文案与 prefs 脱钩防失真）。浮层 ⏎=Paste 选取线，不消费队列。
 // 独立窗没有工作台 toast 宿主（族规同 QuickMemoSheet/SnipCardView）：动作反馈走
 // 卡内轻提示槽位（常驻占位防跳动、错误恒小字），列表级失败走浮层内错误条。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -50,10 +60,14 @@ import {
   clipboardGetStatus,
   clipboardList,
   clipboardPaste,
+  clipboardQueueAdd,
+  clipboardQueueClear,
+  clipboardQueueList,
+  clipboardQueueRemove,
   clipboardSet,
   clipboardTogglePin,
 } from '../adapters/clipboard'
-import type { ClipEntry, ClipKind, ClipPaused, ClipRemoved } from '../types/clipboard'
+import type { ClipEntry, ClipKind, ClipPaused, ClipQueueChanged, ClipRemoved } from '../types/clipboard'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
@@ -196,6 +210,48 @@ async function fetchStatus() {
   }
 }
 
+// ---- v1.8 顺序粘贴队列 ----
+// 队列态恒跟 clipboard:queue:changed 全量快照（数组序=贴出序=徽标序）；
+// toggle 成功后的乐观更新只是省一拍闪烁，快照到达即纠偏。
+const queueIds = ref<string[]>([])
+const queuePos = (id: string): number => queueIds.value.indexOf(id)
+
+async function fetchQueue() {
+  try {
+    const ids = await clipboardQueueList()
+    queueIds.value = Array.isArray(ids) ? ids : []
+  } catch {
+    /* 队列是辅助上下文：拉不到保持屏上态，不掀错误条（主链列表/状态另有口径） */
+  }
+}
+
+async function queueToggle(e: ClipEntry) {
+  const pos = queuePos(e.id)
+  try {
+    if (pos >= 0) {
+      await clipboardQueueRemove(e.id)
+      queueIds.value = queueIds.value.filter((q) => q !== e.id)
+      showTip('已移出粘贴队列', 'ok')
+    } else {
+      await clipboardQueueAdd(e.id)
+      queueIds.value = [...queueIds.value, e.id]
+      showTip(`已排入粘贴队列（第 ${queueIds.value.length} 位）`, 'ok')
+    }
+  } catch (err: unknown) {
+    showTip(`队列操作失败: ${getErrorMessage(err)}`, 'err') // 快照事件未到也会经 opening/清队收敛
+  }
+}
+
+async function clearQueue() {
+  try {
+    await clipboardQueueClear()
+    queueIds.value = []
+    showTip('粘贴队列已清空', 'ok')
+  } catch (err: unknown) {
+    showTip(`清空队列失败: ${getErrorMessage(err)}`, 'err')
+  }
+}
+
 // 刻意不叫 reportError：与浏览器全局 API 混名读码有坑
 function reportClipError(msg: string) {
   if (raw.value.length) showTip(`刷新失败: ${msg}`, 'err')
@@ -300,7 +356,16 @@ function onKey(e: KeyboardEvent) {
     if ((e.target as HTMLElement | null)?.closest?.('button')) return
     if (!rows.value.length) return
     e.preventDefault()
-    void pick(rows.value[Math.min(selected.value, rows.value.length - 1)])
+    const cur = rows.value[Math.min(selected.value, rows.value.length - 1)]
+    if (e.shiftKey) {
+      // v1.8 ⇧⏎ 连排：环上项入队不关窗，选环按 ↑↓ 同款环绕公式前进下一行
+      void queueToggle(cur)
+      const n = rows.value.length
+      selected.value = (Math.min(selected.value, n - 1) + 1) % n
+      scrollActive()
+      return
+    }
+    void pick(cur)
     return
   }
   if (/^[1-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey) {
@@ -341,6 +406,11 @@ useWailsEvent<ClipRemoved>(CLIP_EV.removed, (p) => {
 useWailsEvent<ClipPaused>(CLIP_EV.paused, (p) => {
   if (p) paused.value = !!p.paused
 })
+// v1.8 队列全量快照：入队/撤出/清队/热键消费/账本联动 prune 五源共用一口，
+// 徽标与余数恒跟快照走（乐观更新只省一拍闪烁）
+useWailsEvent<ClipQueueChanged>(CLIP_EV.queueChanged, (p) => {
+  queueIds.value = Array.isArray(p?.ids) ? p.ids : []
+})
 useWailsEvent<void>(CLIP_EV.overlayOpening, () => {
   query.value = '' // 清稿：每次唤出都是全量新会话，搜索词与残错都是干扰
   selected.value = 0
@@ -349,6 +419,7 @@ useWailsEvent<void>(CLIP_EV.overlayOpening, () => {
   errorBar.value = ''
   void fetchList()
   void fetchStatus()
+  void fetchQueue()
   replayEnter()
   void nextTick(() => searchEl.value?.focus())
 })
@@ -357,6 +428,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKey)
   void fetchList()
   void fetchStatus()
+  void fetchQueue()
   void nextTick(() => searchEl.value?.focus())
 })
 onBeforeUnmount(() => {
@@ -385,6 +457,14 @@ onBeforeUnmount(() => {
           title="监听记录已暂停，可在主窗口或托盘恢复"
         >记录已暂停</span>
         <span class="clip-count mono" role="status">{{ loading ? '载入中…' : `${rows.length} 条` }}</span>
+        <!-- v1.8 队列余数：>0 才在场，点击清队（轻操作不吊确认——条目本体都在历史里） -->
+        <button
+          v-if="queueIds.length"
+          type="button"
+          class="clip-queue mono"
+          :title="`粘贴队列 ${queueIds.length} 项待逐条贴出（全局队列热键推进）；点击清空队列，条目仍留在历史`"
+          @click="clearQueue"
+        >队·{{ queueIds.length }}</button>
       </div>
       <!-- 列表级失败（含 adapter 未接线）：中文错误渲染成浮层内错误条，卡体照旧不白屏 -->
       <p v-if="errorBar" class="clip-errbar" role="alert">剪贴板服务不可用: {{ errorBar }}</p>
@@ -418,6 +498,7 @@ onBeforeUnmount(() => {
               <span v-if="e.sensitive" class="chip chip-danger clip-badge" title="疑似密钥/令牌，MCP 通道整条不外发">敏</span>
               <span v-if="e.manual" class="chip chip-information clip-badge" title="手建固定片段，不参与容量淘汰">定</span>
               <span v-else-if="e.pinned" class="chip chip-neutral clip-badge" title="已置顶">顶</span>
+              <span v-if="queuePos(e.id) >= 0" class="chip chip-neutral clip-badge" :title="`粘贴队列第 ${queuePos(e.id) + 1} 位，贴出即离队`">队{{ queuePos(e.id) + 1 }}</span>
             </div>
             <!-- 第二行可见面（R-F1 信息密度）：来源窗口 · 尺寸/件数 · 嗅探标签 · 相对时间 -->
             <div class="clip-sub">
@@ -444,6 +525,19 @@ onBeforeUnmount(() => {
               @mousedown.prevent
               @click.stop="copyOnly(e)"
             >复</button>
+            <button
+              type="button"
+              class="clip-act"
+              tabindex="-1"
+              :disabled="e.kind !== 'text'"
+              :title="e.kind !== 'text'
+                ? '仅文本可排入粘贴队列（图片/文件请单条处理）'
+                : queuePos(e.id) >= 0
+                  ? `已在粘贴队列第 ${queuePos(e.id) + 1} 位，点击撤出`
+                  : '排入粘贴队列（不关窗可连续排；全局队列热键逐条贴出）'"
+              @mousedown.prevent
+              @click.stop="queueToggle(e)"
+            >{{ queuePos(e.id) >= 0 ? `队${queuePos(e.id) + 1}` : '队' }}</button>
           </span>
         </li>
       </ul>
@@ -451,7 +545,7 @@ onBeforeUnmount(() => {
         {{ query.trim() ? '没有匹配的条目' : '剪贴板历史还是空的' }}
       </p>
       <div class="clip-foot">
-        <span class="clip-hint mono">↑↓ 环选 · ⏎ 或 1-9 粘贴并收 · Alt+1-9 搜索中直选 · Esc 收</span>
+        <span class="clip-hint mono">↑↓ 环选 · ⏎/1-9 粘贴并收 · ⇧⏎ 排队 · 队列热键逐条贴 · Esc 收</span>
         <!-- 提示行常驻占位（速记卡族规）：出现/消失不顶动版面，错误恒小字 -->
         <p class="clip-tip" :class="tip ? (tipKind === 'err' ? 'tip-err' : 'tip-ok') : ''" role="status">{{ tip }}</p>
       </div>
@@ -690,6 +784,38 @@ onBeforeUnmount(() => {
 .clip-act:hover {
   background: var(--surface-panel);
   color: var(--color-text);
+}
+/* 队列钮置灰态（非 text 前端预灰，与后端"入队即拒"同一口径两层闸） */
+.clip-act:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.clip-act:disabled:hover {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+/* 顶栏队列余数钮：计数旁小胶囊，>0 才在场（点击清队） */
+.clip-queue {
+  flex: none;
+  background: var(--surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 0 8px;
+  min-height: 20px;
+  font-size: var(--text-micro);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.clip-queue:hover {
+  background: var(--surface-hover);
+  color: var(--color-text);
+}
+.clip-queue:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .clip-empty {

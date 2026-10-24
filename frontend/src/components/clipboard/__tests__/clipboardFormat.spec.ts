@@ -125,6 +125,15 @@ describe('blobDataUrl 与状态行', () => {
       clipStatusLine({ entryCount: 0, maxEntries: 500, blobBytes: 0, maxBlobBytes: 104857600 }),
     ).toBe('条目 0/500 · 图片占 —/100.0 MB')
   })
+
+  it('队列余数段（v1.8）：>0 才追加「队 n」，零/缺字段不打扰常态一行', () => {
+    expect(
+      clipStatusLine({ entryCount: 12, maxEntries: 500, blobBytes: 2048, maxBlobBytes: 104857600, queueLen: 3 }),
+    ).toBe('条目 12/500 · 图片占 2 KB/100.0 MB · 队 3')
+    expect(
+      clipStatusLine({ entryCount: 12, maxEntries: 500, blobBytes: 2048, maxBlobBytes: 104857600, queueLen: 0 }),
+    ).toBe('条目 12/500 · 图片占 2 KB/100.0 MB')
+  })
 })
 
 describe('clipThumbSrc 缩略图安全闸（R-G2 内联 dataURL 唯一渲染入口）', () => {

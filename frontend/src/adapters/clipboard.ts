@@ -8,7 +8,7 @@
 // 事件订阅不走本文件：直接用既有 useWailsEvent + 下方事件名常量。
 // ============================================================================
 
-import type { ClipEntry, ClipPrefs, ClipStatus } from '../types/clipboard'
+import type { ClipEntry, ClipPrefs, ClipQueueHotkeyState, ClipStatus } from '../types/clipboard'
 
 /** 冻结方法面：与 internal/modules/clipboard ClipboardService 一一对位。 */
 export interface ClipboardTransport {
@@ -29,6 +29,20 @@ export interface ClipboardTransport {
   GetPrefs(): Promise<ClipPrefs>
   /** 契约 §12 v1.8:整表校验落盘并热应用；返回回显同 GetPrefs（含钳制值）。 */
   SetPrefs(prefs: ClipPrefs): Promise<ClipPrefs>
+  /** v1.8 队列：仅 text 准入、同 id 幂等、上限 50；变化即广播快照。 */
+  QueueAdd(id: string): Promise<void>
+  /** v1.8 队列：按 id 摘除（条目本体不动；不在队内幂等静默）。 */
+  QueueRemove(id: string): Promise<void>
+  /** v1.8 队列：清空（不删账）。 */
+  QueueClear(): Promise<void>
+  /** v1.8 队列：全量 id 快照（数组序=贴出序=徽标序号）。 */
+  QueueList(): Promise<string[]>
+  /** v1.8 队列：贴出队首到当前前台（不还焦点；sendKeys 失败照常前进）。 */
+  QueueStep(): Promise<void>
+  /** v1.8 队列热键实况（accel ""=停用；registered 为 Registry 在位实况）。 */
+  GetQueueHotkey(): Promise<ClipQueueHotkeyState>
+  /** v1.8 改键事务：校验即绑定、败不落盘；空串=停用。 */
+  SetQueueHotkey(accel: string): Promise<ClipQueueHotkeyState>
 }
 
 /** Wails 事件名常量（契约 §5/§6，前后端逐字对位）。 */
@@ -37,6 +51,8 @@ export const CLIP_EV = {
   removed: 'clipboard:removed',
   paused: 'clipboard:paused',
   overlayOpening: 'clipboard:overlay:opening',
+  /** v1.8 队列全量快照事件（载荷 {ids}；入队/摘除/清队/消费/联动 prune 五源共用）。 */
+  queueChanged: 'clipboard:queue:changed',
 } as const
 
 let transport: ClipboardTransport | null = null
@@ -66,3 +82,10 @@ export const clipboardCollapseOverlay = () => need().CollapseOverlay()
 export const clipboardPaste = (id: string) => need().Paste(id)
 export const clipboardGetPrefs = () => need().GetPrefs()
 export const clipboardSetPrefs = (prefs: ClipPrefs) => need().SetPrefs(prefs)
+export const clipboardQueueAdd = (id: string) => need().QueueAdd(id)
+export const clipboardQueueRemove = (id: string) => need().QueueRemove(id)
+export const clipboardQueueClear = () => need().QueueClear()
+export const clipboardQueueList = () => need().QueueList()
+export const clipboardQueueStep = () => need().QueueStep()
+export const clipboardGetQueueHotkey = () => need().GetQueueHotkey()
+export const clipboardSetQueueHotkey = (accel: string) => need().SetQueueHotkey(accel)

@@ -17,9 +17,11 @@
 //
 // 后端访问纪律（契约 §7 kernel）：只经 @/adapters/clipboard 门面与 CLIP_EV
 // 事件常量，类型只 import ../types/clipboard——本文件零 bindings/ 引用。
-// kernel 十一法面中主界面消费九法：Paste（粘回原窗）与 CollapseOverlay 是
-// 浮层专属上下文（"原窗"由浮层打开瞬间记录），主界面不设 Paste 入口，
-// 行内/详情复制一律 Set 回填不抢焦点。
+// kernel 方法面（v1.8 起二十法）中主界面消费面不含 Paste/CollapseOverlay：
+// 两者是浮层专属上下文（"原窗"由浮层打开瞬间记录），主界面不设 Paste 入口，
+// 行内/详情复制一律 Set 回填不抢焦点。v1.8 新增：GetPrefs/SetPrefs（设置面板
+// 自治）、QueueClear + queueChanged 快照（状态行「队 n」与菜单清空项）；
+// 队列的排入/消费交互归浮层（主界面只管账）。
 // 事件实时性：clipboard:updated 无过滤态就地顶置（去重同 id 先摘后插，不重拉
 // 全量）；带过滤态重拉一次保查询语义；removed 摘行；paused 回灌状态灯——
 // 托盘/热键侧的翻牌这里同步亮。
@@ -34,7 +36,7 @@
 // Esc 阶梯两档：溢出菜单在场只收菜单（ClipToolbar 自收，本视图判级让位，
 // 与随手记 v2 同谱）；否则收起当前详情页。
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
-import type { ClipEntry, ClipPaused, ClipRemoved, ClipStatus } from '../types/clipboard'
+import type { ClipEntry, ClipPaused, ClipQueueChanged, ClipRemoved, ClipStatus } from '../types/clipboard'
 import {
   CLIP_EV,
   clipboardClearAll,
@@ -43,6 +45,7 @@ import {
   clipboardGet,
   clipboardGetStatus,
   clipboardList,
+  clipboardQueueClear,
   clipboardSet,
   clipboardSetPaused,
   clipboardTogglePin,
@@ -191,6 +194,18 @@ function patchRow(id: string, patch: Partial<ClipEntry>) {
 }
 
 // ---- 工具条动作 ----
+// v1.8 清空粘贴队列：轻操作（条目本体都在历史里，误点可由浮层重排），
+// 不吊确认；快照事件即时回灌 stats.queueLen，不等下轮 GetStatus。
+async function clearQueue() {
+  try {
+    await clipboardQueueClear()
+    if (stats.value) stats.value = { ...stats.value, queueLen: 0 }
+    showToast('粘贴队列已清空（条目仍留在历史）')
+  } catch (err: unknown) {
+    showErrorToast(`清空队列失败: ${getErrorMessage(err)}`)
+  }
+}
+
 async function togglePaused() {
   if (pausing.value) return
   pausing.value = true
@@ -345,6 +360,11 @@ useWailsEvent<ClipRemoved>(CLIP_EV.removed, ({ id }) => {
 useWailsEvent<ClipPaused>(CLIP_EV.paused, (p) => {
   paused.value = !!p?.paused
 })
+// v1.8 队列全量快照：状态行「队 n」与「更多」菜单余数直喂（浮层侧消费/热键
+// 推进都经同一口），stats 未装载时忽略——首轮 GetStatus 自然带实况
+useWailsEvent<ClipQueueChanged>(CLIP_EV.queueChanged, (p) => {
+  if (stats.value) stats.value = { ...stats.value, queueLen: p?.ids?.length ?? 0 }
+})
 
 // Esc 出口阶梯两档：溢出菜单在场只收菜单（ClipToolbar 自收，本视图让位，
 // 不得一次 Esc 连降菜单+页面两级）；否则收起当前详情页。
@@ -399,12 +419,14 @@ onUnmounted(() => {
       :pausing="pausing"
       :clear-disabled="clearDisabled"
       :prefs-active="prefsOpen"
+      :queue-len="stats?.queueLen ?? 0"
       @update:search="onSearchInput"
       @search-enter="onSearchEnter"
       @update:kind="selectKind"
       @toggle-paused="togglePaused"
       @create-snippet="createSnippet"
       @clear-all="clearAll"
+      @clear-queue="clearQueue"
       @toggle-prefs="prefsOpen = !prefsOpen"
       @more-change="toolbarMoreOpen = $event"
     />

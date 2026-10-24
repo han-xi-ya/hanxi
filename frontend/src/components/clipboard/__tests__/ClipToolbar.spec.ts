@@ -157,6 +157,21 @@ describe('「更多」溢出菜单与清空', () => {
     expect(w2.findAll('.ct-menu-item').find((b) => b.text().includes('记录设置'))!.attributes('aria-pressed')).toBe('true')
   })
 
+  it('清空粘贴队列项（v1.8）：queueLen>0 才可点并带余数，点发 clear-queue 冒泡收合；0 时禁用', async () => {
+    const w = bar({ queueLen: 3 })
+    await openMenu(w)
+    const item = w.findAll('.ct-menu-item').find((b) => b.text().includes('清空粘贴队列'))!
+    expect(item.text()).toContain('（3）')
+    expect((item.element as HTMLButtonElement).disabled).toBe(false)
+    await item.trigger('click')
+    expect(w.emitted('clear-queue')).toHaveLength(1)
+    expect(w.find('.ct-menu').exists()).toBe(false)
+    const w0 = bar()
+    await openMenu(w0)
+    expect((w0.findAll('.ct-menu-item').find((b) => b.text().includes('清空粘贴队列'))!
+      .element as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('clearDisabled 受控禁用菜单项（库空不给按）', async () => {
     const w = bar({ clearDisabled: true })
     await openMenu(w)

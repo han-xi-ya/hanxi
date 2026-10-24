@@ -23,8 +23,10 @@ func TestClipPrefsNilFallback(t *testing.T) {
 	if got := s.maskKinds(); len(got) != len(allMaskKinds) {
 		t.Fatalf("遮蔽默认应全开: %v", got)
 	}
-	if s.queueHotkey() != "" {
-		t.Fatalf("队列热键默认应空（激活随提交 2）: %q", s.queueHotkey())
+	// 提交 2 激活后：默认键 Ctrl+Alt+X（机主拍板；""=显式停用另由
+	// normalizePersisted 指针路径与 setQueueHotkey 表达）
+	if s.queueHotkey() != defaultQueueHotkey {
+		t.Fatalf("队列热键默认应为 %q，得 %q", defaultQueueHotkey, s.queueHotkey())
 	}
 	if _, err := s.Set(Prefs{}); err == nil {
 		t.Fatal("nil 存储的 Set 应如实报错")
@@ -128,7 +130,8 @@ func TestClipPrefsRoundTrip(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
-	if err := s.setQueueHotkey("Ctrl+Alt+X"); err != nil {
+	// 用非默认键做往返（默认也是 X——同值往返是假绿）
+	if err := s.setQueueHotkey("Ctrl+Alt+Q"); err != nil {
 		t.Fatalf("setQueueHotkey: %v", err)
 	}
 
@@ -148,7 +151,7 @@ func TestClipPrefsRoundTrip(t *testing.T) {
 	if kinds := reopened.maskKinds(); len(kinds) != 0 {
 		t.Fatalf("全关遮蔽应显式保持空: %#v", kinds)
 	}
-	if reopened.queueHotkey() != "Ctrl+Alt+X" {
+	if reopened.queueHotkey() != "Ctrl+Alt+Q" {
 		t.Fatalf("热键往返失真: %q", reopened.queueHotkey())
 	}
 	// 快照拷贝隔离：改副本不伤运行态

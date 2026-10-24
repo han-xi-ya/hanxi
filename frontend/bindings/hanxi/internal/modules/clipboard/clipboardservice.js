@@ -88,6 +88,15 @@ export function GetPrefs() {
 }
 
 /**
+ * GetQueueHotkey 队列热键实况（Accel=prefs 现值，Registered=Registry 在位
+ * 实况——"存了但没绑上"的分叉态由双字段如实暴露）。
+ * @returns {$CancellablePromise<$models.QueueHotkeyState>}
+ */
+export function GetQueueHotkey() {
+    return $Call.ByID(2906121380);
+}
+
+/**
  * GetStatus 运行态快照（监听暂停态、库容量实况、钳制上限与排除表回显）。
  * @returns {$CancellablePromise<$models.Status>}
  */
@@ -129,6 +138,48 @@ export function Paste(id) {
 }
 
 /**
+ * QueueAdd 加入队列尾（仅 text 准入，入队即拒并给可读话术；同 id 幂等）。
+ * @param {string} id
+ * @returns {$CancellablePromise<void>}
+ */
+export function QueueAdd(id) {
+    return $Call.ByID(3513801839, id);
+}
+
+/**
+ * QueueClear 清空队列（条目本体都在历史里，清队不删账）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function QueueClear() {
+    return $Call.ByID(3047083977);
+}
+
+/**
+ * QueueList 队列全量 id 快照（浮层徽标序号即数组序）。
+ * @returns {$CancellablePromise<string[] | null>}
+ */
+export function QueueList() {
+    return $Call.ByID(332551292);
+}
+
+/**
+ * QueueRemove 从队列摘除一条（条目本体不动；不在队内幂等静默）。
+ * @param {string} id
+ * @returns {$CancellablePromise<void>}
+ */
+export function QueueRemove(id) {
+    return $Call.ByID(3750440836, id);
+}
+
+/**
+ * QueueStep 贴出队首到当前前台（RPC 面 = 门 + 转调；热键回调走无门内部版）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function QueueStep() {
+    return $Call.ByID(1490976390);
+}
+
+/**
  * Set 回填系统剪贴板。首版仅支持 text（OpenClipboard 重试 ≤5 内含于写手）；
  * image/file 返回可读的"暂不支持"错误——如实告知，不装成功。回填不记使用
  * （使用口径只算 Get，契约 §4）。
@@ -160,6 +211,17 @@ export function SetPaused(paused) {
  */
 export function SetPrefs($in) {
     return $Call.ByID(3260213515, $in);
+}
+
+/**
+ * SetQueueHotkey 改键事务：形态校验 → **先绑定成功才落盘**（抢键失败保持
+ * 旧绑定旧配置，杜绝"设置页显示新键、系统里旧键还在按"的分叉）；空串=停用
+ * （解绑+落盘）。应用未接线注册器时如实报错不落盘。
+ * @param {string} accel
+ * @returns {$CancellablePromise<$models.QueueHotkeyState>}
+ */
+export function SetQueueHotkey(accel) {
+    return $Call.ByID(776676792, accel);
 }
 
 /**

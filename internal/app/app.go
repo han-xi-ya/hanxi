@@ -194,6 +194,8 @@ func RegisterEvents() {
 	application.RegisterEvent[clipboard.RemovedPayload]("clipboard:removed")
 	application.RegisterEvent[clipboard.PausedPayload]("clipboard:paused")
 	application.RegisterEvent[application.Void]("clipboard:overlay:opening")
+	// clipboard:queue:changed 顺序粘贴队列全量快照（v1.8，载荷导出过类型闸）。
+	application.RegisterEvent[clipboard.QueueChangedPayload]("clipboard:queue:changed")
 	application.RegisterEvent[notify.Notification]("notify:received")
 	application.RegisterEvent[markeronversion.DownloadProgress]("markeron:version-download")
 	application.RegisterEvent[markeroninstance.Snapshot]("markeron:instance-state")

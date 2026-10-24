@@ -55,6 +55,7 @@ function status(over: Partial<ClipStatus> = {}): ClipStatus {
     maxEntries: 500,
     maxBlobBytes: 104857600,
     excludedExes: [],
+    queueLen: 0,
     ...over,
   }
 }
@@ -71,6 +72,7 @@ let listErr: Error | null = null
 let setErr: Error | null = null
 let pasteErr: Error | null = null
 let statusErr: Error | null = null
+let queueErr: Error | null = null
 const pinnedSet = new Set<string>() // TogglePin 真翻转语义的假账
 
 const fake = {
@@ -89,7 +91,17 @@ const fake = {
   // 只为 satisfies 完整性占位
   GetPrefs: vi.fn(),
   SetPrefs: vi.fn(),
+  // v1.8 队列面：queueSeed 假账（Add/Remove/Clear 真改动，与后端联动语义对位）
+  QueueAdd: vi.fn(),
+  QueueRemove: vi.fn(),
+  QueueClear: vi.fn(),
+  QueueList: vi.fn(),
+  QueueStep: vi.fn(),
+  GetQueueHotkey: vi.fn(),
+  SetQueueHotkey: vi.fn(),
 } satisfies ClipboardTransport
+
+let queueSeed: string[] = [] // 队列假账（QueueList 读它；toggle/clear 真改它）
 
 function seedDefaults(): void {
   const now = Date.now()
@@ -103,6 +115,8 @@ function seedDefaults(): void {
   setErr = null
   pasteErr = null
   statusErr = null
+  queueErr = null
+  queueSeed = []
   pinnedSet.clear()
 }
 
@@ -152,6 +166,21 @@ beforeEach(() => {
     if (statusErr) throw statusErr
     return status(statusSeed)
   })
+  // v1.8 队列假账：真改动 queueSeed，与后端 FIFO/幂等语义对位
+  fake.QueueList.mockImplementation(async () => [...queueSeed])
+  fake.QueueAdd.mockImplementation(async (id: string) => {
+    if (queueErr) throw queueErr
+    if (!queueSeed.includes(id)) queueSeed.push(id)
+  })
+  fake.QueueRemove.mockImplementation(async (id: string) => {
+    queueSeed = queueSeed.filter((q) => q !== id)
+  })
+  fake.QueueClear.mockImplementation(async () => {
+    queueSeed = []
+  })
+  fake.QueueStep.mockImplementation(async () => undefined)
+  fake.GetQueueHotkey.mockImplementation(async () => ({ accel: 'Ctrl+Alt+X', registered: true }))
+  fake.SetQueueHotkey.mockImplementation(async () => ({ accel: 'Ctrl+Alt+X', registered: true }))
   setClipboardTransport(fake)
 })
 
@@ -455,7 +484,7 @@ describe('ClipboardOverlay 鼠标快操作', () => {
   it('置顶钮：TogglePin 就地回排升组首挂「顶」徽标不关窗（CollapseOverlay 零调用）；再点取消回落原位', async () => {
     const w = mountOverlay()
     await flushMicrotasks()
-    await w.findAll('.clip-act')[4].trigger('click') // 第 2 行 a3 的「钉」
+    await w.findAll('.clip-row')[2].findAll('.clip-act')[0].trigger('click') // 第 2 行 a3 的「钉」（行内锚定，簇宽变化不碎）
     await flushMicrotasks()
     expect(fake.TogglePin).toHaveBeenCalledWith('a3')
     expect(previews(w)).toEqual(['win11 更新说明', 'grep -rn foo', 'https://example.com/x'])
@@ -463,7 +492,7 @@ describe('ClipboardOverlay 鼠标快操作', () => {
     expect(w.find('.clip-tip').text()).toBe('已置顶')
     expect(fake.CollapseOverlay).not.toHaveBeenCalled()
 
-    await w.findAll('.clip-act')[0].trigger('click') // 回到组首的 a3 再点「解」
+    await w.findAll('.clip-row')[0].findAll('.clip-act')[0].trigger('click') // 回到组首的 a3 再点「解」
     await flushMicrotasks()
     expect(w.find('.clip-tip').text()).toBe('已取消置顶')
     expect(previews(w)).toEqual(['grep -rn foo', 'https://example.com/x', 'win11 更新说明'])
@@ -609,5 +638,102 @@ describe('ClipboardOverlay 错误态（不白屏纪律）', () => {
     expect(w2.find('.clip-errbar').exists()).toBe(false)
     expect(w2.find('.clip-tip').text()).toContain('刷新失败: late status dead')
     w2.unmount()
+  })
+})
+
+describe('ClipboardOverlay 顺序粘贴队列（v1.8）', () => {
+  const queueActs = (w: ReturnType<typeof mountOverlay>) =>
+    w.findAll('.clip-row').map((r) => r.findAll('.clip-act').at(-1)!)
+
+  it('「队」钮入队不关窗（copyOnly 连取同谱）：QueueAdd 一发、CollapseOverlay 零发、徽标与顶栏余数点亮', async () => {
+    const w = mountOverlay()
+    await flushMicrotasks()
+    expect(fake.QueueList).toHaveBeenCalled() // 挂载即拉队列实况
+    expect(queueActs(w)[0].text()).toBe('队')
+    await queueActs(w)[0].trigger('click')
+    await flushMicrotasks()
+    expect(fake.QueueAdd).toHaveBeenCalledWith('a1')
+    expect(fake.CollapseOverlay).not.toHaveBeenCalled()
+    expect(w.findAll('.clip-row')[0].text()).toContain('队1') // 行徽标
+    expect(w.find('.clip-queue').text()).toBe('队·1') // 顶栏余数
+    expect(w.find('.clip-tip').text()).toContain('已排入粘贴队列')
+    w.unmount()
+  })
+
+  it('同队再点=撤出：QueueRemove 一发、徽标与余数熄灭', async () => {
+    queueSeed = ['a1']
+    const w = mountOverlay()
+    await flushMicrotasks()
+    expect(queueActs(w)[0].text()).toBe('队1')
+    await queueActs(w)[0].trigger('click')
+    await flushMicrotasks()
+    expect(fake.QueueRemove).toHaveBeenCalledWith('a1')
+    expect(w.find('.clip-queue').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('非 text 行置灰（前端预灰与后端入队即拒两层闸同口径）', async () => {
+    entries = [entry({ id: 'img1', kind: 'image', preview: '图片 800×600' })]
+    const w = mountOverlay()
+    await flushMicrotasks()
+    const act = queueActs(w)[0]
+    expect((act.element as HTMLButtonElement).disabled).toBe(true)
+    expect(act.attributes('title')).toContain('仅文本')
+    await act.trigger('click')
+    expect(fake.QueueAdd).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('⇧⏎ 连排：环上项入队、选环前进下一行、不 Paste 不收窗', async () => {
+    const w = mountOverlay()
+    await flushMicrotasks()
+    press('Enter', { shiftKey: true })
+    await flushMicrotasks()
+    expect(fake.QueueAdd).toHaveBeenCalledWith('a1')
+    expect(fake.Paste).not.toHaveBeenCalled()
+    expect(fake.CollapseOverlay).not.toHaveBeenCalled()
+    expect(w.findAll('.clip-row')[1].classes()).toContain('is-active') // 环进第二行
+    // 组字中豁免：⇧⏎ 同受三重盾保护，不落队列
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true })
+    Object.defineProperty(ev, 'isComposing', { value: true })
+    window.dispatchEvent(ev)
+    await flushMicrotasks()
+    expect(fake.QueueAdd).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  it('顶栏「队·n」点击清队（轻操作无确认），余数当场熄灭', async () => {
+    queueSeed = ['a1', 'a2']
+    const w = mountOverlay()
+    await flushMicrotasks()
+    expect(w.find('.clip-queue').text()).toBe('队·2')
+    await w.find('.clip-queue').trigger('click')
+    await flushMicrotasks()
+    expect(fake.QueueClear).toHaveBeenCalled()
+    expect(w.find('.clip-queue').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('queue:changed 快照恒为权威：徽标序跟 ids 序走（热键消费/联动 prune 后天然纠偏）', async () => {
+    const w = mountOverlay()
+    await flushMicrotasks()
+    runtime.handlers['clipboard:queue:changed']({ data: { ids: ['a2', 'a1'] } })
+    await flushMicrotasks()
+    expect(w.find('.clip-queue').text()).toBe('队·2')
+    const rows = w.findAll('.clip-row')
+    expect(rows[1].text()).toContain('队1') // a2 在服务端列表第二位？序按 ids：a2=队1
+    expect(rows[0].text()).toContain('队2') // a1=队2（徽标=快照序，与行序无关）
+    w.unmount()
+  })
+
+  it('入队失败保窗红字（独立窗无 toast 宿主，轻提示承载错误）', async () => {
+    queueErr = new Error('队列仅支持文本条目')
+    const w = mountOverlay()
+    await flushMicrotasks()
+    await queueActs(w)[0].trigger('click')
+    await flushMicrotasks()
+    expect(w.find('.clip-tip').text()).toContain('队列操作失败')
+    expect(w.find('.clip-queue').exists()).toBe(false) // 失败不乐观置位
+    w.unmount()
   })
 })

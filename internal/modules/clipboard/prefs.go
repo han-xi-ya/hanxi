@@ -96,13 +96,14 @@ type persistedClipPrefs struct {
 }
 
 // defaultClipPrefs 出厂运行态（遮蔽默认全开——隐私默认收紧是自用机正当姿势，
-// 与排除表出厂 7 项不可裁撤同谱）。
+// 与排除表出厂 7 项不可裁撤同谱；队列热键默认 Ctrl+Alt+X，见 hotkey.go）。
 func defaultClipPrefs() clipPrefs {
 	return clipPrefs{
 		MaxEntries:       defaultMaxEntries,
 		MaxBlobMB:        defaultMaxBlobMB,
 		AppRetentionDays: map[string]int{},
 		MaskKinds:        append([]string(nil), defaultMaskKinds...),
+		QueueHotkey:      defaultQueueHotkey,
 	}
 }
 
@@ -110,7 +111,10 @@ func defaultClipPrefs() clipPrefs {
 //   - 数值越界静默钳制，0 视为"未设置"回落默认（GetPrefs 读回即规范值，如实回显）；
 //   - 格式非法（坏正则/超数量闸）报错拒绝，整表不动；
 //   - exe 键统一 trim+lower，无点后缀自动补 .exe（免用户猜）；
-//   - MaskKinds：nil=全开默认，显式空表=全关（前端总发全量，两态可辨）。
+//   - MaskKinds：nil=全开默认，显式空表=全关（前端总发全量，两态可辨）；
+//   - QueueHotkey 原样透传（""=显式停用）——"未设置→默认键"的分界判断在
+//     装载侧（normalizePersisted 指针语义）与 service 侧（SetPrefs 预填现值），
+//     本函数不踩，否则整表替换会把停用态洗回默认。
 func normalizeClipPrefs(in Prefs) (clipPrefs, error) {
 	p := defaultClipPrefs()
 
@@ -312,7 +316,9 @@ func normalizePersisted(pc persistedClipPrefs) clipPrefs {
 		in.AppRetentionDays = *pc.AppRetentionDays
 	}
 	if pc.QueueHotkey != nil {
-		in.QueueHotkey = *pc.QueueHotkey
+		in.QueueHotkey = *pc.QueueHotkey // 显式 ""=用户停用热键，装载不得洗回默认
+	} else {
+		in.QueueHotkey = defaultQueueHotkey // 字段缺席（旧档/首装）=默认键位
 	}
 	if pc.MaskKinds != nil {
 		in.MaskKinds = *pc.MaskKinds

@@ -229,4 +229,9 @@ func (s *ClipboardService) applyDeleteAfterPaste(e Entry) {
 		return
 	}
 	s.emit(evRemoved, RemovedPayload{ID: e.ID})
+	// v1.8 队列联动：删后贴把条目从历史销账，队内挂名同步摘除
+	//（QueueStep 消费线里该 id 已在队首弹出，prune 幂等无副作用）。
+	if s.queuePrune([]string{e.ID}) {
+		s.emitQueueChanged()
+	}
 }

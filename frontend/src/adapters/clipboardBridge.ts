@@ -15,7 +15,7 @@
 // ============================================================================
 
 import * as CLIPAPI from '../../bindings/hanxi/internal/modules/clipboard/clipboardservice'
-import type { ClipEntry, ClipPrefs, ClipStatus } from '../types/clipboard'
+import type { ClipEntry, ClipPrefs, ClipQueueHotkeyState, ClipStatus } from '../types/clipboard'
 import { setClipboardTransport, type ClipboardTransport } from './clipboard'
 
 /** 绑定线上的 Entry/Status 原始形（JSDoc 生成物，仅按弱类型信封接住再投影）。 */
@@ -38,6 +38,7 @@ function wireStatus(raw: Wire): ClipStatus {
   return {
     ...raw,
     excludedExes: (raw.excludedExes as string[] | null | undefined) ?? [],
+    queueLen: (raw.queueLen as number | null | undefined) ?? 0,
   } as ClipStatus
 }
 
@@ -73,6 +74,13 @@ const transport: ClipboardTransport = {
   Paste: (id) => CLIPAPI.Paste(id),
   GetPrefs: async () => wirePrefs(await CLIPAPI.GetPrefs()),
   SetPrefs: async (prefs) => wirePrefs(await CLIPAPI.SetPrefs(prefs)),
+  QueueAdd: (id) => CLIPAPI.QueueAdd(id),
+  QueueRemove: (id) => CLIPAPI.QueueRemove(id),
+  QueueClear: () => CLIPAPI.QueueClear(),
+  QueueList: async () => ((await CLIPAPI.QueueList()) as string[] | null) ?? [],
+  QueueStep: () => CLIPAPI.QueueStep(),
+  GetQueueHotkey: async () => (await CLIPAPI.GetQueueHotkey()) as ClipQueueHotkeyState,
+  SetQueueHotkey: async (accel) => (await CLIPAPI.SetQueueHotkey(accel)) as ClipQueueHotkeyState,
 }
 
 let installed = false

@@ -58,6 +58,7 @@ type Status struct {
 	MaxEntries   int      `json:"maxEntries"`   // 生效条数闸（默认 500，v1.8 可调）
 	MaxBlobBytes int64    `json:"maxBlobBytes"` // 生效体积闸（默认 100<<20）
 	ExcludedExes []string `json:"excludedExes"`
+	QueueLen     int      `json:"queueLen"` // 顺序粘贴队列余数（v1.8）
 }
 
 // ---------- 入库判定（纯函数，可单测） ----------

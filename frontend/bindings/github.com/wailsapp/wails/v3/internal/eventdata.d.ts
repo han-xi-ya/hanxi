@@ -236,6 +236,7 @@ declare module "@wailsio/runtime" {
             "ccswitch:version-download": version$2.DownloadProgress;
             "clipboard:overlay:opening": void;
             "clipboard:paused": clipboard$0.PausedPayload;
+            "clipboard:queue:changed": clipboard$0.QueueChangedPayload;
             "clipboard:removed": clipboard$0.RemovedPayload;
             "clipboard:updated": clipboard$0.Entry;
             "dbx:instance-state": instance$3.Snapshot;

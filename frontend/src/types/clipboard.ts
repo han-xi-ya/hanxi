@@ -54,6 +54,20 @@ export interface ClipStatus {
   maxEntries: number
   maxBlobBytes: number
   excludedExes: string[]
+  /** 顺序粘贴队列余数（v1.8）。 */
+  queueLen: number
+}
+
+/** `clipboard:queue:changed` 载荷：队列 id 全量快照（数组序=贴出序）。 */
+export interface ClipQueueChanged {
+  ids: string[]
+}
+
+/** 队列热键实况（Get/SetQueueHotkey；registered 为 Registry 在位实况，
+ *  accel ""=停用）。 */
+export interface ClipQueueHotkeyState {
+  accel: string
+  registered: boolean
 }
 
 /** `clipboard:removed` 载荷。 */

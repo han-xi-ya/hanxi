@@ -19,7 +19,7 @@
 //      三分支（text/image/file）与失败重试；
 //   ⑤ 危险闸：单条删除过 useConfirm；清空收「更多」溢出菜单后再过强确认
 //      （话术含 blob 与条数）；Esc 阶梯——菜单在场只收菜单，不连降详情；
-//   ⑥ 九方法面对位 + sensitive「不进 AI 通道」徽标 + 状态一行。
+//   ⑥ 消费面对位（九法+QueueClear，v1.8）+ sensitive「不进 AI 通道」徽标 + 状态一行。
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ClipboardView from '../ClipboardView.vue'
@@ -40,7 +40,7 @@ vi.mock('../../composables/useWailsEvent', () => ({
   },
 }))
 
-// ---- 冻结九方法面假件 ----
+// ---- 主界面消费面假件（九法+QueueClear，对位锁见文末 describe）----
 const fake = vi.hoisted(() => ({
   List: vi.fn(),
   Get: vi.fn(),
@@ -51,6 +51,7 @@ const fake = vi.hoisted(() => ({
   ClearAll: vi.fn(),
   SetPaused: vi.fn(),
   GetStatus: vi.fn(),
+  QueueClear: vi.fn(),
 }))
 
 const NOW = Date.now()
@@ -548,22 +549,57 @@ describe('详情：Get 计数回填三分支与失败面', () => {
   })
 })
 
-describe('门面九方法面对位与清理', () => {
-  it('主界面消费面恰为 kernel 十一法中的九法（Paste/CollapseOverlay 归浮层，越面即红）', () => {
+describe('门面消费面对位与清理', () => {
+  it('主界面消费面恰为九法+QueueClear（v1.8；Paste/CollapseOverlay 与队列排入/消费归浮层，设置两法归面板，越面即红）', () => {
     expect(Object.keys(fake).sort()).toEqual([
-      'ClearAll', 'CreateText', 'Delete', 'Get', 'GetStatus', 'List', 'Set', 'SetPaused', 'TogglePin',
+      'ClearAll', 'CreateText', 'Delete', 'Get', 'GetStatus', 'List', 'QueueClear', 'Set', 'SetPaused', 'TogglePin',
     ])
   })
 
-  it('三事件族 setup 期即订阅；卸载后全局 Esc 不再炸已关页面', async () => {
+  it('四事件族 setup 期即订阅（v1.8 含 queue:changed）；卸载后全局 Esc 不再炸已关页面', async () => {
     const w = await mountView()
     expect(Object.keys(events.handlers).sort()).toEqual([
-      'clipboard:paused', 'clipboard:removed', 'clipboard:updated',
+      'clipboard:paused', 'clipboard:queue:changed', 'clipboard:removed', 'clipboard:updated',
     ])
     w.unmount()
     expect(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
       events.handlers[CLIP_EV.updated](clip()) // 孤儿事件不得再改已卸载组件状态
     }).not.toThrow()
+  })
+})
+
+describe('队列余数与清空队列（v1.8）', () => {
+  it('状态行「· 队 n」跟 GetStatus 装载；菜单清空项有数才可点，成功后余数当场归零；快照事件直喂', async () => {
+    defaults([clip()])
+    fake.GetStatus.mockResolvedValue(status({ queueLen: 2 }))
+    fake.QueueClear.mockResolvedValue(undefined)
+    const w = mount(ClipboardView, { attachTo: document.body })
+    await flush()
+    expect(w.find('.clip-stats-line').text()).toContain('· 队 2')
+    await w.find('.ct-more-btn').trigger('click')
+    const item = w.findAll('.ct-menu-item').find((b) => b.text().includes('清空粘贴队列'))!
+    expect((item.element as HTMLButtonElement).disabled).toBe(false)
+    expect(item.text()).toContain('（2）')
+    await item.trigger('click')
+    await flush()
+    expect(fake.QueueClear).toHaveBeenCalledTimes(1)
+    expect(w.find('.clip-stats-line').text()).not.toContain('· 队')
+    // 快照事件直喂状态行（浮层侧排入/热键消费不经本视图 RPC，也要同步）
+    events.handlers[CLIP_EV.queueChanged]({ ids: ['zz'] })
+    await flush()
+    expect(w.find('.clip-stats-line').text()).toContain('· 队 1')
+    w.unmount()
+  })
+
+  it('queueLen=0：清空项禁用（空队不给按）', async () => {
+    defaults([clip()])
+    const w = mount(ClipboardView, { attachTo: document.body })
+    await flush()
+    expect(w.find('.clip-stats-line').text()).not.toContain('· 队')
+    await w.find('.ct-more-btn').trigger('click')
+    const item = w.findAll('.ct-menu-item').find((b) => b.text().includes('清空粘贴队列'))!
+    expect((item.element as HTMLButtonElement).disabled).toBe(true)
+    w.unmount()
   })
 })
