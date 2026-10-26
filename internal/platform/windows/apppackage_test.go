@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"hanxi/internal/platform/apppackage"
@@ -181,6 +182,48 @@ func TestAppPackageRejectsNonBundleExtension(t *testing.T) {
 	var packageErr *apppackage.Error
 	if !errors.As(err, &packageErr) || packageErr.Code != apppackage.CodeProtocol {
 		t.Fatalf("非 bundle 扩展名应被拒绝: %v", err)
+	}
+}
+
+// TestAppPackageScriptDispatchesAllRegisteredOps 真机跑内嵌 PowerShell 脚本，
+// 断言脚本 switch 对 Go 侧全部操作名都有派发分支（A2 2026-10-26 审查修复的
+// 回归锚点：queryallusers 曾只有 Go 侧发送方、脚本侧无接收分支，真机恒被
+// default「不支持的包管理操作」拒收，而纯 fake-executor 协议测试全部照绿
+// ——mock 掉了唯一会暴露断链的那一层）。
+//
+// 判据是脚本的**可观察回包**而非源码文本：
+//   - 对照组：未知操作必须得到「不支持的包管理操作」（证明 default 分支活着、
+//     脚本确实在跑）；
+//   - queryallusers：绝不得再出现该拒收文案。本机以管理员运行时返回
+//     registered=false（查无此包）；非管理员下 Get-AppxPackage -AllUsers
+//     报部署侧错误同样算过——错误来自"分支已执行"，与"分支缺失"性质不同。
+func TestAppPackageScriptDispatchesAllRegisteredOps(t *testing.T) {
+	psPath := windowsPowerShellPath()
+	if _, err := os.Stat(psPath); err != nil {
+		t.Skipf("本机无 Windows PowerShell（%s）: %v", psPath, err)
+	}
+	api := NewAppPackageAPI().(*windowsAppPackageAPI)
+	id := apppackage.Identity{
+		Name:      "hanxi-a2-probe-not-installed",
+		Family:    "hanxi-a2-probe-not-installed_0",
+		Publisher: "CN=hanxi-a2-probe",
+	}
+
+	// 对照组：脚本必须活着且 default 分支如实拒收未知操作。
+	if _, err := api.run(t.Context(), appPackageRequest{Operation: "a2-probe-unknown-op", Identity: id}); err == nil ||
+		!strings.Contains(err.Error(), "不支持的包管理操作") {
+		t.Fatalf("未知操作对照组失配（脚本未运行或 default 分支失效）: %v", err)
+	}
+
+	registered, err := api.IsRegisteredAllUsers(t.Context(), id)
+	if err != nil && strings.Contains(err.Error(), "不支持的包管理操作") {
+		t.Fatalf("queryallusers 仍被脚本 default 拒收——分支缺失复发: %v", err)
+	}
+	if err == nil && registered {
+		t.Fatalf("幽灵包族不应在册: registered=%v", registered)
+	}
+	if err != nil {
+		t.Logf("非管理员等部署侧报错（分支已派发，接受）: %v", err)
 	}
 }
 

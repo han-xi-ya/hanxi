@@ -122,6 +122,14 @@ try {
             $package = Find-ExactPackage $request.identity
             $result = [ordered]@{ package = Convert-Package $package }
         }
+        # 审查修复（A2 2026-10-26）：Go 侧 IsRegisteredAllUsers 发送
+        # queryallusers，但本 switch 从未有过对应分支——请求一律落入
+        # default「不支持的包管理操作」，全用户探测真机恒报错（translucenttb
+        # 孤儿闸据此永远保守拒动）。补分支，语义按上方 Find-ExactPackageAllUsers 注释。
+        'queryallusers' {
+            $package = Find-ExactPackageAllUsers $request.identity
+            $result = [ordered]@{ package = Convert-Package $package }
+        }
         'install' {
             $path = [string]$request.packagePath
             $extension = [IO.Path]::GetExtension($path).ToLowerInvariant()
