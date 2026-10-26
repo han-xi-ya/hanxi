@@ -180,11 +180,29 @@ func (e *Engine) Start(ctx context.Context, spec Spec) error {
 			return e.abortStart(done, fmt.Sprintf("解除退出联动失败: %v", derr), derr)
 		}
 	}
+	// Job 入账过代际闸：进程秒退时 wait 协程的收口可能先于本步执行——收口时
+	// e.job 尚未入账、此后也永远看不到这条句柄。本代已不在世就地 Close，否则
+	// Job 句柄无主泄露，并在下一代 Start 覆盖 e.job 字段后彻底不可达。
 	e.mu.Lock()
-	e.job = job
-	e.mu.Unlock()
+	if e.h == h {
+		e.job = job
+		e.mu.Unlock()
+	} else {
+		e.mu.Unlock()
+		_ = job.Close()
+	}
 
 	if spec.ReadyTimeout <= 0 {
+		// 与就绪分支同源的竞态复核：进程已退出且 wait() 已分类落账
+		// （external/stopped/failed）时，不得再把它覆盖成 running——各模块
+		// 蓝本注释所述"TOCTOU 交给 wait 退出分类兜底"的语义正是靠本闸成立。
+		if settled(done) {
+			final := e.Snapshot()
+			if final.State == StateExternal {
+				return fmt.Errorf("supervisor: 自有进程退出后由外部实例接管: %w", ErrExternal)
+			}
+			return errors.New("supervisor: 进程在启动收口完成前已退出")
+		}
 		e.transition(StateRunning, "")
 		return nil
 	}
@@ -399,11 +417,21 @@ func (e *Engine) awaitReady(ctx context.Context, done chan struct{}, timeout tim
 			}
 			return false, nil, errReadyTimeout
 		}
-		sleep := readyPollInterval
-		if remain < sleep {
-			sleep = remain
+		// 钳制到截止线（min 与原 if 分支逐位等价：此处 remain 恒 >0，
+		// time.Duration 为整数无 NaN 特殊形）：末轮睡眠不得越过 deadline，
+		// 否则超时判定最多漂移一个轮询间隔。
+		sleep := min(readyPollInterval, remain)
+		// 用可选择定时器替代裸 time.Sleep：取消与进程退出即时生效，不再空耗
+		// 整个轮询间隔；醒来后仍回到循环顶部走原有判定次序
+		// （Inspect → settled 末位复探 → ctx → deadline），语义不变。
+		timer := time.NewTimer(sleep)
+		select {
+		case <-timer.C:
+		case <-done:
+			timer.Stop()
+		case <-ctx.Done():
+			timer.Stop()
 		}
-		time.Sleep(sleep)
 	}
 }
 
@@ -534,10 +562,19 @@ func (e *Engine) wait(h processHandle, done chan struct{}) {
 }
 
 // applyExternal 校正/入账外部实例（探针 ProcInfo 可得时充实快照）。
+// 代际守卫：自有进程在世（e.h != nil）时本次 external 读数必为过期读数
+// ——慢探针与 Start 竞态（RefreshExternal 不等 startMu）、或上一代 wait 晚归
+// 的兜底防御——采纳它会覆盖本代受管态并篡改 PID/exe 归属，一律丢弃。
+// wait 收口路径先清 e.h 再入账、Stop/RefreshExternal 入口本就要求 e.h==nil，
+// 本守卫不影响任何合法调用方。
 func (e *Engine) applyExternal(info *platform.ProcInfo) {
 	var snap Snapshot
 	var changed bool
 	e.mu.Lock()
+	if e.h != nil {
+		e.mu.Unlock()
+		return
+	}
 	changed = e.state != StateExternal
 	e.state = StateExternal
 	e.errMsg = ""
