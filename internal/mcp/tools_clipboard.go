@@ -13,7 +13,7 @@ package mcp
 //     memoFileNameRe 的"那里未导出、此处复制并保持同步"钉法。收口期（§12 v1.2.5）
 //     仅放行 clipboard.ID 一个常量引用（授权键单一事实源，portkill 先例），
 //     结构面解耦不变。
-//   - 敏感条目双层剔除：sensitive=true 在 reader 即不进（密文不出 reader），
+//   - 敏感条目双层剔除：sensitive=true 在 reader 即不进（正文不出 reader），
 //     工具层再挡一次（假件或第二实现绕不过）。memo IsMasked 同纪律：整条不下发、
 //     不计入命中数，连"过滤了几条"都不外泄（存在性本身即敏感）。
 //   - 出机前一律 logging.RedactPII：契约 §8 点名的口径（IPv4→[ipv4]、邮箱→[email]、
@@ -22,9 +22,9 @@ package mcp
 //     PII 档（RedactPII 内含 Redact，是 memo 窄档的严格超集），而非 memo 的窄档。
 //     打码是启发式的、会改形（§12.4 v1.4 裁决：安全优先，宁可失真不可泄密），工具描述
 //     如实申报"不保证逐字还原"。
-//   - 两级尺寸预算各管一头（§12 v1.4 M2/M3）：装载侧**先看档大小、再按密文长度预筛、
-//     最后按累计明文预算（4MiB）决定是否解密**——预算在解密之前花，异常巨大的库最多只
-//     把额度内的明文读进内存，超预算条目连密文都不留（只给元数据，置 textOmitted）；
+//   - 两级尺寸预算各管一头（§12 v1.4 M2/M3）：装载侧**先看档大小、再按落盘正文长度
+//     预估、最后按累计明文预算（4MiB）决定是否回读**——预算在回读之前花，异常巨大的库
+//     最多只把额度内的明文读进内存，超预算条目连正文都不留（只给元数据，置 textOmitted）；
 //     出机侧按**脱敏并序列化后的实际字节**记 512KiB 页预算，元数据与文件列表同入账，
 //     单条连元数据都放不下时保底只发纯身份行，绝不产出"整页空壳只剩 truncated"。
 //   - 错误串只报文件名不报绝对路径（§12 v1.4 L1）：本工具的错误会进云端模型上下文，
@@ -133,16 +133,20 @@ type clipboardDiskEntry struct {
 	// BlobData 刻意不投影：契约 §3 注明它仅由 GUI 侧 Get 回填，index.json 里不存在。
 
 	// TextOverBudget 不是落盘字段（reader 装载期置位）：本条正文因累计明文预算耗尽
-	// 而**未经解密**，Text 已被清空（绝不让密文进下游）。工具层据此如实置
+	// 而**未经回读**，Text 已被清空（绝不让正文进下游）。工具层据此如实置
 	// textOmitted，并知晓该条正文不在关键词匹配面内。
 	TextOverBudget bool `json:"-"`
 }
 
-// textDecryptor 是正文回读缝：落盘文本 → 明文字节（v1.6 后真件恒等）。
+// textDecryptor 是正文回读缝：落盘文本 → 明文字节。**真件自 clipboard v1.6
+// （ADR-0004 取消 DPAPI）起为恒等透传，已无任何解密语义、生产路径永不报错**；
+// 返回 error 的分支只为单测假件（演练回读失败/预算耗尽通道）与"未来复议再加密"
+// 保留。历史密文（DPAPI 时代落盘）真件不再识别——按普通明文原样流转，"密文一律
+// 判失效"在本缝并未实现（跨面问题已上报主控，裁决归 clipboard 战线）。
 type textDecryptor func(cipherBase64 string) ([]byte, error)
 
 // ClipboardSource 是 hanxi_clipboard_search 的后端取数面（真 = clipboardDiskReader；
-// 单测注入假件）。返回条目已完成"逐条解码 + 敏感剔除 + text 类明文解密"；
+// 单测注入假件）。返回条目已完成"逐条解码 + 敏感剔除 + text 类正文回读"；
 // 过滤、排序、条数钳制与出机脱敏全在工具层。
 type ClipboardSource interface {
 	Load() ([]clipboardDiskEntry, error)
@@ -187,7 +191,7 @@ func clipboardIndexPath(dataDir string) string {
 func newClipboardDiskReader() *clipboardDiskReader {
 	return &clipboardDiskReader{
 		path:    clipboardIndexPath(settings.GetPaths().DataDir()),
-		decrypt: func(s string) ([]byte, error) { return []byte(s), nil }, // 恒等（v1.6 明文落盘）
+		decrypt: func(s string) ([]byte, error) { return []byte(s), nil }, // 恒等透传（v1.6 明文落盘，无解密语义，见 textDecryptor 注记）
 	}
 }
 
@@ -311,11 +315,12 @@ func (t *clipSkipTally) flush(file string) {
 //   - 文件不存在（含目录不存在）：真空库，返回空集且不创建任何东西；
 //   - 整档过大 / 0 字节 / 解析失败 / version 非 1：fail-loud 指引，修复是 GUI 通道的
 //     职责（无头不修不猜、不隔离改名）；
-//   - 单条解码失败、无 id、正文解密失败（多为别的机器/账户的库）：跳过并计入聚合
-//     告警，不连坐。
+//   - 单条解码失败、无 id、正文回读失败（真件恒等走不到该分支，仅注入假件/复议
+//     再加密后的历史密文库会触发）：跳过并计入聚合告警，不连坐。
 //
-// 解密是**预算制**的（M2）：先按密文长度预筛（base64 明文≈密文 3/4），再按累计明文
-// 预算决定是否真的解密；超预算条目原文清空（密文不留到下游）并置 TextOverBudget，
+// 回读是**预算制**的（M2）：先按落盘正文长度预估（历史 base64 密文形态明文≈其
+// 3/4；现明文落盘该估算偏宽），再按累计明文预算决定是否真的回读；超预算条目原文
+// 清空（正文不留到下游）并置 TextOverBudget，
 // 由工具层如实降级为"仅元数据 + textOmitted"。因此装载峰值内存与库的实际明文规模
 // 解耦——库可能有历史超限条（A2 的入库尺寸闸是本轮新增，旧库不受它保护）。
 //
@@ -349,7 +354,7 @@ func (r *clipboardDiskReader) Load() ([]clipboardDiskEntry, error) {
 			continue
 		}
 		if e.Sensitive {
-			continue // 双层剔除之一：密文不出 reader（工具层再挡一次）。不进 tally 计数
+			continue // 双层剔除之一：正文不出 reader（工具层再挡一次）。不进 tally 计数
 		}
 		if e.Kind == clipKindText && e.Text != "" {
 			if r.decrypt == nil {
@@ -358,7 +363,7 @@ func (r *clipboardDiskReader) Load() ([]clipboardDiskEntry, error) {
 				tally.add("no-decryptor", i, e.ID, nil)
 				continue
 			}
-			// 密文预筛（先记账后解密）：估算明文超剩余额度即整条不解，顺带把密文
+			// 正文预筛（先记账后回读）：估算明文超剩余额度即整条不回读，顺带把正文
 			// 从结构体里摘掉——超大条目不占住内存往下走，元数据照常保留。
 			if len(e.Text)/4*3 > plainRoom {
 				tally.add("over-budget", i, e.ID, nil)
@@ -369,7 +374,8 @@ func (r *clipboardDiskReader) Load() ([]clipboardDiskEntry, error) {
 			}
 			plain, derr := r.decrypt(e.Text)
 			if derr != nil {
-				// DPAPI 与用户账户绑定：异机拷来的库解不开。如实跳过，不修不猜。
+				// 恒等真件永不报错，本分支仅由注入假件演练（模拟 DPAPI 已删前的
+				// 不可解历史密文）。如实跳过，不修不猜。
 				tally.add("decrypt", i, e.ID, derr)
 				continue
 			}
@@ -686,17 +692,14 @@ func clipboardIdentityPayload(e clipboardDiskEntry) resultPayload {
 // truncated/textOmitted 上，包括"装载预算内未解密"（TextOverBudget）那种形态。
 func attachClipboardText(item resultPayload, e clipboardDiskEntry, room int) {
 	if e.TextOverBudget {
-		item["textOmitted"] = true // 正文根本没解密（密文已被 reader 摘除），不是"太长被裁"
+		item["textOmitted"] = true // 正文根本没回读（reader 已把正文摘除），不是"太长被裁"
 		return
 	}
 	base, ok := clipboardItemSize(item)
 	if !ok {
 		return
 	}
-	limit := len(e.Text)
-	if limit > maxClipboardItemText {
-		limit = maxClipboardItemText
-	}
+	limit := min(len(e.Text), maxClipboardItemText)
 	if room-base > 0 && limit > room-base {
 		limit = room - base // 起步估算（键名与转义开销由下面的实测循环收口）
 	}

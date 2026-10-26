@@ -91,7 +91,8 @@ func (f *fakeBlobIO) deleteCalls() []string {
 	return append([]string(nil), f.deletes...)
 }
 
-// fakeSeal/fakeOpen 可逆假件（"enc:"+base64）：验证加解密调用链而不依赖 DPAPI。
+// fakeSeal/fakeOpen 可逆假件（"enc:"+base64）：验证 seal/open 调用链真的被接线
+// （默认恒等透传证明不了缝在用；仓内已无真加密能力，只能靠可逆假件显形）。
 func fakeSeal(b []byte) (string, error) { return "enc:" + base64.StdEncoding.EncodeToString(b), nil }
 
 func fakeOpen(s string) ([]byte, error) {

@@ -17,7 +17,7 @@ import (
 )
 
 // 整库 index.json 权威存储（契约 §2）：加载/原子写、去重顶置、容量钳制与 LRU
-// 淘汰、text 加解密缝（默认恒等明文，v1.6 裁决）、坏库隔离。内存态与落盘同为
+// 淘汰、text seal/open 缝（默认恒等明文，v1.6 裁决）、坏库隔离。内存态与落盘同为
 // 明文，entries 恒为新→旧排序。
 //
 // 锁纪律：store 自带 mu 串行化全部读改写；服务层不再对 entries 加锁，事件在
@@ -26,7 +26,7 @@ import (
 const indexVersion = 1
 
 // 单条尺寸闸（契约 §2；v1.4.2 补 text 单条闸，与图片 16MiB 同谱双保险——
-// MCP 装载侧另有密文预筛，此处是入库第一道）。条数与 blobs 总量的**默认值**
+// MCP 装载侧另有正文预筛，此处是入库第一道）。条数与 blobs 总量的**默认值**
 // 已迁至 prefs.go（defaultMaxEntries/defaultMaxBlobMB，契约 §12 v1.8 容量可调），
 // Store 持生效值字段，经 ApplyLimits 热换。
 const (
@@ -49,7 +49,7 @@ type blobIO interface {
 	TotalBytes() (int64, error)
 }
 
-// sealFunc/openFunc text 加解密缝（默认恒等=明文，v1.6；测试注入可逆假件验证调用链）。
+// sealFunc/openFunc text seal/open 缝（默认恒等=明文，v1.6；测试注入可逆假件验证调用链）。
 type sealFunc func([]byte) (string, error)
 type openFunc func(string) ([]byte, error)
 
@@ -104,7 +104,8 @@ type Store struct {
 // + MCP 整条剔除三件套兜底），blobs 二进制同为明文——整个 clipboard 数据目录
 // 仍建议排除出 NAS/网盘同步（同步排除本身按 v1.5.3 挂起，复议须回看本注）。
 func NewStore(dir string, blobs blobIO, seal sealFunc, open openFunc) (*Store, error) {
-	// seal/open 缝保留（测试假件与未来复议通道）；默认恒等=明文落盘（v1.6）。
+	// seal/open 缝保留（现行实现仅测试假件注入；默认恒等=明文落盘，v1.6）。
+	// 缝的去留系机主待裁项，勿据本注读出"仍有加密"（ADR-0004：不留误判为保护的死缝措辞）。
 	if seal == nil {
 		seal = func(b []byte) (string, error) { return string(b), nil }
 	}
@@ -177,8 +178,9 @@ func (st *Store) load() error {
 		if e.Text != "" {
 			plain, derr := st.open(e.Text)
 			if derr != nil {
-				// 回读失败（历史密文/自定假件拒绝等）：
-				// 正文已不可还原，跳过+保真隔离（v1.2.3 同通道），保留会反复卡读写
+				// 回读失败（仅注入的非恒等缝会拒；默认恒等缝不拒——历史 dpapi: 密文
+				// 原样透传，"判失效剔除"未实现）：正文已不可还原，跳过+保真隔离
+				// （v1.2.3 同通道），保留会反复卡读写
 				st.quarantineRawEntry(raw, i, fmt.Errorf("解密失败（正文不可还原）: %w", derr))
 				dropped++
 				continue
@@ -199,7 +201,7 @@ func (st *Store) load() error {
 		}
 	}
 	if dropped > 0 {
-		// 把剔除结果固化回盘，坏条目不反复触发解码/解密失败
+		// 把剔除结果固化回盘，坏条目不反复触发解码/回读失败
 		return st.saveLocked()
 	}
 	return nil
@@ -232,8 +234,10 @@ func (st *Store) quarantineAndReset(loadErr error) error {
 	return st.saveLocked()
 }
 
-// saveLocked 整库原子写（调用方持 st.mu）：text 逐条加密后 jsonstore.Save。
-// 加密失败即报错不写盘——宁可历史不落盘，绝不把明文写进 index.json。
+// saveLocked 整库原子写（调用方持 st.mu）：text 逐条过 seal 缝后 jsonstore.Save
+// （默认恒等=明文直写，v1.6 裁决——明文落盘是既定形态，不是泄露）。
+// seal 失败即报错不写盘（恒等缝永不失败，该分支仅注入假件可触发）——
+// 宁可历史不落盘，绝不落半库。
 func (st *Store) saveLocked() error {
 	disk := diskIndex{Version: indexVersion, Entries: make([]Entry, 0, len(st.entries))}
 	for _, e := range st.entries {
@@ -322,8 +326,8 @@ func (st *Store) FindHash(hash string) (Entry, bool) {
 	return Entry{}, false
 }
 
-// commitLocked 提交式改账（调用方持锁）：mutate 先改内存，随即整库加密原子
-// 落盘；落盘失败回滚内存并如实上浮错误——"内存与盘不分叉"只此一条通路，
+// commitLocked 提交式改账（调用方持锁）：mutate 先改内存，随即整库过 seal 缝
+// 原子落盘；落盘失败回滚内存并如实上浮错误——"内存与盘不分叉"只此一条通路，
 // 各写操作禁止散手序。prev 浅拷贝即安全：所有变更都是整条值替换，不原地
 // 改 Entry 内共享切片。
 func (st *Store) commitLocked(mutate func()) error {

@@ -2,13 +2,14 @@ package mcp
 
 // tools_clipboard_test.go 钉剪贴板只读工具（hanxi_clipboard_search）的六条硬账：
 // 零落盘直读的三档失败语义（真空库/整档 fail-loud/单条跳过不连坐）、敏感条目
-// 双层不下发、明文解密面（真 = windows.DPAPIDecrypt，单测 = 假件）的失败降级、
+// 双层不下发、正文回读缝的失败降级（真件自 v1.6 恒等永不失败，故障注入靠单测假件）、
 // 过滤组合与条数钳制、出机脱敏与两级截断（单条 64KiB / 整页预算）。
 //
-// 夹具真/假分工：DPAPI 与本机用户账户绑定，真密文进不了版本库、异机 CI 也解不开，
-// 故 testdata/clipboard/index.json 的 Text 存"可解的假密文"（base64("fake-dpapi:"+明文)），
-// 由 fakeDPAPIDecrypt 解；真件只是 newClipboardDiskReader 里把 decrypt 字段接成
-// windows.DPAPIDecrypt（该构造函数不在测试路径上，避免触发 settings 建目录）。
+// 夹具真/假分工：真件 newClipboardDiskReader 的 decrypt 缝是恒等透传（契约 §12
+// v1.6 / ADR-0004 取消 DPAPI，仓内已无加解密能力），且该构造函数不在测试路径上
+// （避免触发 settings 建目录）；故 testdata/clipboard/index.json 的 Text 存历史
+// 加密形态的"可解假密文"（base64("fake-dpapi:"+明文)），由注入的 fakeDPAPIDecrypt
+// 回读，专供演练回读失败/预算耗尽等真件不可达的错误通道。
 
 import (
 	"bytes"
@@ -27,7 +28,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// ---------- 假解密面（模拟 DPAPI 的"绑机绑账户"语义） ----------
+// ---------- 假回读缝（故障注入替身，模拟历史 DPAPI 已删前的"绑机绑账户"不可解语义） ----------
 
 const fakeDPAPIPrefix = "fake-dpapi:"
 
@@ -36,8 +37,9 @@ func fakeDPAPIEncrypt(plain string) string {
 	return base64.StdEncoding.EncodeToString([]byte(fakeDPAPIPrefix + plain))
 }
 
-// fakeDPAPIDecrypt 是真件的假件替身：前缀不符即报"非本机加密"，与异机库解不开的
-// 真态同构（真 DPAPI 报 CryptUnprotectData 失败，这里报前缀不符）。
+// fakeDPAPIDecrypt 是回读缝的假件替身（真件自 v1.6 恒等、永不报错）：前缀相符解出
+// 明文、不符即报"非本机加密"——与历史 DPAPI 时代异机库解不开的真态同构（当时真件报
+// CryptUnprotectData 失败），供演练正常回读与失败两条分支。
 func fakeDPAPIDecrypt(cipherB64 string) ([]byte, error) {
 	raw, err := base64.StdEncoding.DecodeString(cipherB64)
 	if err != nil {

@@ -208,7 +208,7 @@ func (s *ClipboardService) List(q, kind string, limit int) ([]Entry, error) {
 	return rows, nil
 }
 
-// Get 单条全文：含解密 Text 与图片 BlobData（PNG 原始字节），并记一次使用
+// Get 单条全文：含完整正文 Text 与图片 BlobData（PNG 原始字节），并记一次使用
 // （useCount++/lastUsedAt）。blob 回读失败如实上浮（元数据页仍可走 List）。
 func (s *ClipboardService) Get(id string) (Entry, error) {
 	release, gateErr := s.holder.Enter()
