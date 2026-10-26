@@ -8,9 +8,6 @@ package version
 
 import (
 	"context"
-	"strings"
-
-	"hanxi/internal/platform/versioncmp"
 )
 
 // CheckUpdate 比较"远程稳定通道最新条目 vs 本机已装最新条目"得出可用更新结论。
@@ -47,6 +44,11 @@ func (m *Manager) CheckUpdate(ctx context.Context) (local, remote string, hasUpd
 		return "", remote, false, nil // 未安装托管资产：入口是"下载"而非"更新"
 	}
 	local = installed[0].Version
-	trim := func(v string) string { return strings.TrimPrefix(strings.TrimSpace(v), "v") }
-	return local, remote, versioncmp.Compare(trim(remote), trim(local)) > 0, nil
+	// 比较用本包 semver.Compare（含预发布序），不用 platform/versioncmp：
+	// 本模块已装版本经 hanxi-meta tag 权威解析，beta 通道安装即 "v1.3.5-beta.N"
+	// 形态（见 resolveInstalledVersion 注释）；versioncmp 的段式只认"数字+纯字母尾"，
+	// 连字符即整串退化字典序——同核心 stable 追平 beta 会漏报、beta 核心领先
+	// stable 会误报引导降级（2026-10-26 A7 死代码线索复核坐实，check_update_pre_test.go
+	// 双向钉死）。semver.Compare 自行剥 v 前缀，非规范串退化字典序与旧行为同。
+	return local, remote, Compare(remote, local) > 0, nil
 }
