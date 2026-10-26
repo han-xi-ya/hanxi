@@ -20,12 +20,6 @@ type fakeExit struct {
 func (f *fakeExit) Error() string { return f.text }
 func (f *fakeExit) ExitCode() int { return f.code }
 
-func fakeRun(stdout, stderr string, err error) RunFunc {
-	return func(context.Context, ...string) (string, string, error) {
-		return stdout, stderr, err
-	}
-}
-
 // captureRun 记录最近一次参数并回放固定输出。
 func captureRun(stdout string, err error) (RunFunc, *[]string) {
 	var got []string

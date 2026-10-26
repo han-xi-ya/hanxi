@@ -65,12 +65,6 @@ func (z *zipSource) setZip(body []byte, truncate bool) {
 	z.truncate = truncate
 }
 
-func (z *zipSource) count() int {
-	z.mu.Lock()
-	defer z.mu.Unlock()
-	return z.zipHits
-}
-
 // newChainManager 构造指向假源的 Manager（仅镜像 URL 接缝改指回环 http，
 // 下载/校验/解包/落位全链仍走生产实现 artifact.Fetch/UnpackZip/Tree）。
 func newChainManager(t *testing.T, src *zipSource) *Manager {

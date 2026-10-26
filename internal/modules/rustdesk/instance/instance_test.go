@@ -116,17 +116,6 @@ func (r *eventRecorder) cb() Callbacks {
 	}}
 }
 
-func (r *eventRecorder) has(state State) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, s := range r.states {
-		if s.State == state {
-			return true
-		}
-	}
-	return false
-}
-
 // newWindowsJobAPI 使用真实 Windows Job Object（与生产同源）。
 func newWindowsJobAPI() platform.JobAPI {
 	return windows.NewJobAPI()

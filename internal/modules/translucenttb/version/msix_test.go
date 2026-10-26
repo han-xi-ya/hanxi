@@ -142,12 +142,6 @@ func (r *msixProgress) stageSeq() string {
 	return strings.Join(stages, ",")
 }
 
-func (r *msixProgress) count() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.events)
-}
-
 // ---------- 解析与过滤 ----------
 
 // TestParseMsixReleasesBody 过滤规则：仅 2026.2 入列表；无摘要 msix（2025.1）、

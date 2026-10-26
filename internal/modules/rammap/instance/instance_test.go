@@ -88,12 +88,6 @@ func (p *fakeProcessAPI) KillVerified(context.Context, platform.VerifyToken, boo
 
 func (*fakeProcessAPI) IsProtected(uint32, platform.ProcInfo) bool { return false }
 
-func (p *fakeProcessAPI) diverge() {
-	p.mu.Lock()
-	p.mismatch = true
-	p.mu.Unlock()
-}
-
 // fakeProbe 可编程探针：alive 在场判据默认由注入的 info 决定；绑定 proc 后
 // 与进程替身联动（KillVerified 落 gone 即"探针看不见了"），如实回放
 // "强杀成功 → 复探撤销 external → stopped"的收口链。
@@ -557,11 +551,24 @@ func TestStartRejectsWhenActive(t *testing.T) {
 	}
 }
 
-// TestQuitCloseRequestSmoke 真进程冒烟：宽限窗口内自然收口归因 close-request。
+// TestQuitCloseRequestSmoke 真进程冒烟：关闭请求后进程在宽限窗口内收口，
+// 必须归因 close-request。
+//
+// 确定性构造（2026-10-26 收口门禁整改）：关闭替身回报"投递成功"的同时以
+// **退出码 0** 当场终结那个真 cmd 进程（closeSmokeTerminate，见
+// close_smoke_test.go 头注释）——模拟"WM_CLOSE 送达窗口→应用自行退出"的
+// 因果，收口由被测动作触发（毫秒级落 settle），不再赌 ping 的自然退出能否在
+// 全量并行 CPU 饥饿下赶完 3s 宽限（旧构造饥饿即漂 → forced-job 误归因红；
+// 单包复跑永远绿，典型墙钟撞运气测试）。退出形态与旧构造同谱（码 0），终态
+// 快照断言不漂移。归因命题原样保留：settled→close-request，不收口→
+// forced-job 仍由 TestQuitForcedJobSmoke 把守。
 func TestQuitCloseRequestSmoke(t *testing.T) {
 	cmdExe := mustCmdExe(t)
 	engine := NewEngine(newWindowsJobAPI(), aliveCmdProc(cmdExe), &fakeProbe{}, Callbacks{})
-	engine.closeByPID = func(uint32) int { return 1 }
+	engine.closeByPID = func(pid uint32) int {
+		closeSmokeTerminate(pid) // 因果驱动收口：码 0 落终，毫秒级（旧构造系撞 2s/3s 时钟）
+		return 1
+	}
 	origGrace := closeGracePeriod
 	closeGracePeriod = 3 * time.Second
 	defer func() { closeGracePeriod = origGrace }()

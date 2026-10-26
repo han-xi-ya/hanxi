@@ -87,12 +87,6 @@ func (p *fakeProcessAPI) KillVerified(context.Context, platform.VerifyToken, boo
 
 func (*fakeProcessAPI) IsProtected(uint32, platform.ProcInfo) bool { return false }
 
-func (p *fakeProcessAPI) diverge() {
-	p.mu.Lock()
-	p.mismatch = true
-	p.mu.Unlock()
-}
-
 // fakeProbe 可编程探针：alive 在场判据默认由注入的 info 决定；绑定 proc 后
 // 与进程替身联动（KillVerified 落 gone 即"探针看不见了"），如实回放
 // "强杀成功 → 复探撤销 external → stopped"的收口链。

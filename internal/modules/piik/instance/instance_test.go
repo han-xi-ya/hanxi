@@ -158,10 +158,6 @@ func (p *fakeProc) feedStderr(lines ...string) {
 		_, _ = p.errW.Write([]byte(l + "\n"))
 	}
 }
-func (p *fakeProc) closePipes() {
-	_ = p.outW.Close()
-	_ = p.errW.Close()
-}
 
 // ---------- 假 Job ----------
 

@@ -90,12 +90,6 @@ func (f *fakeUSB) stateCount() int {
 	return f.stateCalls
 }
 
-func (f *fakeUSB) detachCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.detachLog)
-}
-
 // wslNames 构造 runWsl 替身：`-l -q[ --running]` 出名单，其余命令默认成功。
 func wslNames(all, running []string) func(context.Context, ...string) (string, error) {
 	return func(_ context.Context, args ...string) (string, error) {

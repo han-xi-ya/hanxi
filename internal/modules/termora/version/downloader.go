@@ -25,15 +25,6 @@ func githubMirrors(tag, assetName string) []string {
 	}
 }
 
-// fileSize 返回文件字节数。
-func fileSize(path string) (int64, error) {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-	return fi.Size(), nil
-}
-
 // fileSHA256 计算文件全量 SHA-256（十六进制小写；失败返回空串——仅诊断
 // 入账用途，下载完整性由内核 Fetch 流式+落盘双核收口）。
 func fileSHA256(path string) string {
