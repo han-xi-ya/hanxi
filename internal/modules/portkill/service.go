@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"sort"
@@ -72,10 +73,18 @@ func (s *PortKillService) QueryPort(port int) (result []PortOccupant, err error)
 	targetPort := uint16(port)
 	var occupants []PortOccupant
 
+	// 系统连接表读取的诚实性口径（审查批次 A6）：四路表源（TCP/UDP × v4/v6）
+	// 全部失败时如实报错——此前错误逐个吞成 continue，iphelper 服务不可用的
+	// 机器上"查无占用"是假话，用户会在正被占用的端口上直接起服务。
+	// 部分失败（如 IPv6 栈禁用）仍尽力返回已获数据，warn 留痕不失真为"全表"。
+	families := []platform.Family{platform.FamilyIPv4, platform.FamilyIPv6}
+	var tableErrs []error
+
 	// 1. 扫描 TCP (IPv4 + IPv6)
-	for _, fam := range []platform.Family{platform.FamilyIPv4, platform.FamilyIPv6} {
+	for _, fam := range families {
 		rows, err := s.plat.Port().TCPTable(fam)
 		if err != nil {
+			tableErrs = append(tableErrs, fmt.Errorf("TCP/%s: %w", fam, err))
 			continue
 		}
 		for _, r := range rows {
@@ -99,9 +108,10 @@ func (s *PortKillService) QueryPort(port int) (result []PortOccupant, err error)
 	}
 
 	// 2. 扫描 UDP (IPv4 + IPv6)
-	for _, fam := range []platform.Family{platform.FamilyIPv4, platform.FamilyIPv6} {
+	for _, fam := range families {
 		rows, err := s.plat.Port().UDPTable(fam)
 		if err != nil {
+			tableErrs = append(tableErrs, fmt.Errorf("UDP/%s: %w", fam, err))
 			continue
 		}
 		for _, r := range rows {
@@ -124,6 +134,13 @@ func (s *PortKillService) QueryPort(port int) (result []PortOccupant, err error)
 		}
 	}
 
+	if len(tableErrs) == 2*len(families) {
+		return nil, fmt.Errorf("系统连接表读取失败: %w", errors.Join(tableErrs...))
+	}
+	if len(tableErrs) > 0 {
+		slog.Warn("portkill: 部分系统连接表读取失败，占用清单为尽力结果", "errs", tableErrs)
+	}
+
 	return occupants, nil
 }
 
@@ -137,10 +154,13 @@ func (s *PortKillService) ListListeningPorts() ([]PortOccupant, error) {
 	var list []PortOccupant
 	seen := make(map[string]bool)
 
-	// 获取 TCP LISTEN 列表
-	for _, fam := range []platform.Family{platform.FamilyIPv4, platform.FamilyIPv6} {
+	// 获取 TCP LISTEN 列表（错误诚实性口径同 QueryPort：全败报错、半败尽力+warn）
+	families := []platform.Family{platform.FamilyIPv4, platform.FamilyIPv6}
+	var tableErrs []error
+	for _, fam := range families {
 		rows, err := s.plat.Port().TCPTable(fam)
 		if err != nil {
+			tableErrs = append(tableErrs, fmt.Errorf("TCP/%s: %w", fam, err))
 			continue
 		}
 		for _, r := range rows {
@@ -178,6 +198,13 @@ func (s *PortKillService) ListListeningPorts() ([]PortOccupant, error) {
 		return list[i].PID < list[j].PID
 	})
 
+	if len(tableErrs) == len(families) && len(list) == 0 {
+		return nil, fmt.Errorf("系统 TCP 连接表读取失败: %w", errors.Join(tableErrs...))
+	}
+	if len(tableErrs) > 0 {
+		slog.Warn("portkill: 部分 TCP 连接表读取失败，LISTEN 清单为尽力结果", "errs", tableErrs)
+	}
+
 	return list, nil
 }
 
@@ -212,7 +239,10 @@ func (s *PortKillService) KillProcess(pid uint32, exePath string, startedAtUnix 
 		return KillResult{Success: true}, nil
 	}
 
-	if err == platform.ErrAccessDenied {
+	if errors.Is(err, platform.ErrAccessDenied) {
+		// 判据用 errors.Is 而非 ==：平台层当前直返哨兵，但任何实现加一层包装
+		// （如带 PID 上下文）都会让 == 静默漏判、把"需要提权"谎报成普通失败
+		// （translucenttb 同场景即 errors.Is 谱系）。
 		return KillResult{
 			Success:      false,
 			NeedElevate:  true,
