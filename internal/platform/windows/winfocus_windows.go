@@ -64,11 +64,16 @@ var wfEnumProc = syscall.NewCallback(func(hwnd, lParam uintptr) uintptr {
 
 // EnumTopWindows 枚举全部顶层窗口（回调返 false 提前停止）。
 // 同步执行：调用期间 ctx 由本帧持有，无逃逸风险。
+//
+// 审查修复（A2 2026-10-26）：ctx 键必须统一为 uintptr——曾以 uint64 存、
+// 以回调入参 uintptr 取，sync.Map 键相等要求类型一致，Load 恒 miss 使
+// wfEnumProc 首窗即 return 0 中止枚举：唤窗/在窗探测全线静默失效（真机
+// 探针实证 visited=0，且旧压测"seen==0 即 skip"恰好掩盖了它）。
 func EnumTopWindows(visit func(hwnd uintptr, pid uint32) bool) {
-	id := wfCtxSeq.Add(1)
+	id := uintptr(wfCtxSeq.Add(1))
 	wfCtxMap.Store(id, &wfEnumCtx{visit: visit})
 	defer wfCtxMap.Delete(id)
-	procWFEnumWindows.Call(wfEnumProc, uintptr(id))
+	procWFEnumWindows.Call(wfEnumProc, id)
 }
 
 // focusableTopWindow 判定"可作为唤窗目标的顶层窗"：可见且标题非空。
