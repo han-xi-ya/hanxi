@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -111,8 +112,12 @@ func (h *RedactHandler) WithGroup(name string) slog.Handler {
 	return &RedactHandler{inner: h.inner.WithGroup(name)}
 }
 
+// logMu 串行化 InitLogger 的换装过程；globalLogger 用 atomic.Pointer 发布——
+// L() 与各模块 goroutine 的读取从不持锁（L 在热路径上，加锁徒增争用），
+// 裸指针字段跨 goroutine 读写是 memory-model 层面的数据竞争（-race 实锤：
+// 启动早期模块 goroutine 调 L() 与装配线程写 globalLogger 并发）。
 var (
-	globalLogger *slog.Logger
+	globalLogger atomic.Pointer[slog.Logger]
 	logMu        sync.Mutex
 )
 
@@ -298,7 +303,7 @@ func initLogger(logDir string, retainDays int, now func() time.Time) (*slog.Logg
 
 	handler := NewRedactHandler(jsonHandler)
 	logger := slog.New(handler)
-	globalLogger = logger
+	globalLogger.Store(logger)
 	slog.SetDefault(logger)
 
 	cleanup := func() {
@@ -310,8 +315,8 @@ func initLogger(logDir string, retainDays int, now func() time.Time) (*slog.Logg
 
 // L 返回全局 logger；InitLogger 未调用时回退到 slog.Default()（仅 stderr、无脱敏），保证任何时机调用都不 panic。
 func L() *slog.Logger {
-	if globalLogger == nil {
-		return slog.Default()
+	if l := globalLogger.Load(); l != nil {
+		return l
 	}
-	return globalLogger
+	return slog.Default()
 }

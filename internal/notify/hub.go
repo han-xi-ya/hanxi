@@ -79,12 +79,21 @@ func (h *Hub) Emit(n *Notification) {
 	}
 }
 
-// GetHistory 获取历史通知列表
+// GetHistory 获取历史通知列表。
+//
+// 审查修复（A2 2026-10-26）：曾返回共享指针切片——调用方（Wails 绑定 JSON
+// 序列化）释放读锁后才逐字段读取，而并发的 MarkAsRead/MarkAllAsRead 持写锁
+// 就地改同一批对象，锁外读取与锁内写入构成数据竞争（-race 可实锤）；调用方
+// 误改返回项还会反向污染 Hub 状态。改为逐项快照拷贝：返回态是读锁窗口内的
+// 一致视图，后续并发改判与调用方误写都不再触及返回数据。
 func (h *Hub) GetHistory() []*Notification {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	res := make([]*Notification, len(h.history))
-	copy(res, h.history)
+	for i, n := range h.history {
+		cp := *n
+		res[i] = &cp
+	}
 	return res
 }
 
