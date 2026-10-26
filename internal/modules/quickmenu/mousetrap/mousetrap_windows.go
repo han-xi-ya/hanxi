@@ -156,9 +156,6 @@ type Trap struct {
 	done   chan struct{}
 }
 
-// Supported 报告当前平台是否支持全局鼠标长按钩子。
-func Supported() bool { return true }
-
 // Start 安装低级鼠标钩子并开始识别。触发与观察事件均从缓冲通道非阻塞投递
 // （消费端未就绪时丢弃，绝不背压——卡死系统输入链远比丢一次触发糟糕）。
 func Start(cfg Config) (*Trap, error) {
