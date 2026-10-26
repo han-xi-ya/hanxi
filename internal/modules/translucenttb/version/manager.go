@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"hanxi/internal/jsonstore"
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
 	"hanxi/packages/go/dirstats"
@@ -49,8 +50,9 @@ var yearVersionRe = regexp.MustCompile(`^\d{4}\.\d+$`)
 // （年份.序号.0.构建sha），取前两段即为与远程 tag 同域的规范版本。
 var fileVersionRe = regexp.MustCompile(`^(\d{4}\.\d+)(?:\.\d+)?(?:\.[0-9a-fA-F.]+)?$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的兜底目录后缀：现行形态为内容哈希
+// （imported-<sha256 前 12 hex>），历史形态为秒级时间戳（存量目录必须继续可用）。
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
 // 流式上限），失败注入测试替换为模拟中断/坏摘要源。
@@ -395,7 +397,10 @@ func (m *Manager) ImportLocal(srcDir string) (TBVersionInfo, error) {
 		return TBVersionInfo{}, fmt.Errorf("源目录缺少必需伴生文件：%s（请选择完整的便携版目录）", strings.Join(missing, "、"))
 	}
 
-	version := normalizeImportedVersion(srcExe)
+	version, vErr := normalizeImportedVersion(srcExe)
+	if vErr != nil {
+		return TBVersionInfo{}, vErr
+	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {
 		return TBVersionInfo{}, fmt.Errorf("版本 %s 已安装，请先卸载再导入", version)
@@ -446,14 +451,24 @@ func (m *Manager) ImportLocal(srcDir string) (TBVersionInfo, error) {
 
 // normalizeImportedVersion 从 PE 版本资源提取规范版本号：
 // 上游 FileVersion 形如 2026.2.0.d4636e4，归一化为与远程 tag 同域的 2026.2；
-// 探测失败或非规范格式退化为时间戳兜底目录（与 frpc/ccswitch ImportLocal 同构）。
-func normalizeImportedVersion(exePath string) string {
+// 探测失败/非规范格式退化为**内容哈希**兜底目录（与 frpc/ccswitch ImportLocal 同构）：
+// 同内容必同版本，重复导入判定与时钟无关——历史秒级时间戳形态只在同秒内互斥，
+// 跨秒会把同一份文件静默装成两份（本批已实测到该缺陷）。导入时刻由 meta.json
+// installedAt 承载，不再进版本串。摘要算不出（源不可读）即拒导入，绝不回退时钟。
+func normalizeImportedVersion(exePath string) (string, error) {
 	if fv, err := versioninfo.FileVersion(exePath); err == nil {
 		if g := fileVersionRe.FindStringSubmatch(strings.TrimSpace(fv)); g != nil {
-			return g[1]
+			return g[1], nil
 		}
 	}
-	return "imported-" + time.Now().Format("20060102-150405")
+	sum, err := fileSHA256(exePath)
+	if err != nil {
+		return "", fmt.Errorf("计算导入主程序摘要失败: %w", err)
+	}
+	if len(sum) < 12 {
+		return "", fmt.Errorf("导入主程序摘要异常，拒绝导入: %s", exePath)
+	}
+	return "imported-" + sum[:12], nil
 }
 
 func copyFileTo(src, dst string) error {
@@ -504,12 +519,11 @@ func copyDirIfAny(srcDir, dstDir string) error {
 	return nil
 }
 
+// writeJSON 写版本账本 meta.json：收口 jsonstore 原子写（tmp+Sync+rename），
+// 与 ocr 托管线同纪律——截断的 meta 会让版本目录落"读不出可信账目"的死角。
+// 盘上格式不变（2 空格缩进、无尾换行、0644）。
 func writeJSON(path string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
+	return jsonstore.Save(path, v)
 }
 
 // fileSHA256 计算文件全量 SHA-256（十六进制小写）。

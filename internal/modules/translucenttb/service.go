@@ -52,11 +52,20 @@ type TranslucentTBService struct {
 	engine   *instance.Engine
 	holder   *extapi.LeaseHolder
 
-	orphan     orphanHooks // 孤儿数据能力的 fs/时钟缝（零值=真实现，见 msix_orphan.go resolve；单测注入）
-	downloadMu sync.Mutex  // 防止同一时间并发触发多个下载
-	watchMu    sync.Mutex
-	watching   bool
-	watchStop  chan struct{}
+	orphan orphanHooks // 孤儿数据能力的 fs/时钟缝（零值=真实现，见 msix_orphan.go resolve；单测注入）
+	// downloadMu 只保护"在飞下载名册"的读判与置位；去重靠 downloads 名册本体
+	// （旧实现只持锁跑完同步段即放锁，goroutine 下载全程在锁外——连点两次
+	// 同版本照样并发开两路下载，"防止并发触发多个下载"名存实亡。piik 名册
+	// 先例同型修法：名册在飞即回 "in-progress"，收口 defer 销账）。
+	// downloadDriver 下载驱动缝（生产恒 nil 走 manager.DownloadContext；单测
+	// 注入阻塞桩锁死去重时序，piik downloadDriver 同法）。
+	downloadMu     sync.Mutex
+	downloads      map[string]struct{}
+	downloadDriver func(ctx context.Context, txnID, targetVersion string, emit func(version.DownloadProgress)) error
+
+	watchMu   sync.Mutex
+	watching  bool
+	watchStop chan struct{}
 
 	// AV 崩溃落账（A 档）：avMu 护 lastAVAt 幂等位——同一次崩溃的终态广播
 	// 理论上一笔（transition 只在状态变更时 emit），按 StoppedAt 防重兜底。
@@ -72,11 +81,12 @@ const avCrashCode = 0xC0000005
 func NewTranslucentTBService(plat platform.Platform, holder *extapi.LeaseHolder) *TranslucentTBService {
 	paths := settings.GetPaths()
 	svc := &TranslucentTBService{
-		plat:     plat,
-		manager:  version.NewManager(paths.VersionsDir()),
-		packages: plat.AppPackage(),
-		store:    newTranslucentTBStore(paths.StateDir()),
-		holder:   holder,
+		plat:      plat,
+		manager:   version.NewManager(paths.VersionsDir()),
+		packages:  plat.AppPackage(),
+		store:     newTranslucentTBStore(paths.StateDir()),
+		downloads: make(map[string]struct{}),
+		holder:    holder,
 	}
 	// 便携线与 MSIX 线同居一个 version.Manager（msix.go 是其打包形态方法面），
 	// seam 指针指向同一实例——共享 versionsDir 与远程列表缓存，不重建第二台。
@@ -232,13 +242,17 @@ func (s *TranslucentTBService) DownloadVersion(targetVersion string) (string, er
 	targetVersion = strings.TrimSpace(targetVersion)
 
 	s.downloadMu.Lock()
-	defer s.downloadMu.Unlock()
+	if _, busy := s.downloads[targetVersion]; busy {
+		s.downloadMu.Unlock()
+		return "in-progress", nil
+	}
 
 	// 已安装则直接返回，避免重复下载
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
 		for _, v := range installed {
 			if strings.EqualFold(v.Version, targetVersion) {
+				s.downloadMu.Unlock()
 				return "already-installed", nil
 			}
 		}
@@ -249,7 +263,18 @@ func (s *TranslucentTBService) DownloadVersion(targetVersion string) (string, er
 	}
 	txnID := uuid.NewString()
 
+	if s.downloads == nil {
+		s.downloads = make(map[string]struct{})
+	}
+	s.downloads[targetVersion] = struct{}{}
+	s.downloadMu.Unlock()
+
 	go func() {
+		defer func() {
+			s.downloadMu.Lock()
+			delete(s.downloads, targetVersion)
+			s.downloadMu.Unlock()
+		}()
 		lease, lerr := s.holder.EnterBackground(context.Background())
 		if lerr != nil {
 			if app := application.Get(); app != nil && app.Event != nil {
@@ -318,7 +343,11 @@ func (s *TranslucentTBService) DownloadVersion(targetVersion string) (string, er
 				notify.Success("translucenttb", "版本下载成功", fmt.Sprintf("TranslucentTB %s 已成功安装", p.Version), "/ext/translucenttb")
 			}
 		}
-		if err := s.manager.DownloadContext(txn.Context(), txnID, targetVersion, emit); err != nil {
+		drive := s.downloadDriver
+		if drive == nil {
+			drive = s.manager.DownloadContext // 装配缺位时退回真实下载内核，绝不静默空跑
+		}
+		if err := drive(txn.Context(), txnID, targetVersion, emit); err != nil {
 			// N26 用户主动取消：按 2b 纪律如实收口，票面话术不露 ctx 原始错误；
 			// 主动动作不发"失败"系统通知（前端票面已呈现「已取消」）。
 			if txn.Err() != nil {

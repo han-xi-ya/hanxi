@@ -270,9 +270,17 @@ func TestNormalizeImportedVersion(t *testing.T) {
 			t.Errorf("FileVersion %q 归一化为 %q，期望 %q", fv, g, want)
 		}
 	}
-	// 假 PE 文件读不出版本 → 时间戳兜底格式
-	if v := normalizeImportedVersion(filepath.Join(t.TempDir(), "nope.exe")); !importedDirRe.MatchString(v) {
-		t.Errorf("探测失败应兜底为 imported-时间戳，实际 %q", v)
+	// 兜底形态改为内容哈希：先验"哈希形态 + 历史时间戳形态"都能被 importedDirRe 收纳
+	// （后者是存量目录向下兼容的判定面，删掉这条兼容分支会有用例红）。
+	if !importedDirRe.MatchString("imported-6e449042eec3") {
+		t.Error("importedDirRe 必须收纳内容哈希兜底形态 imported-<12hex>")
+	}
+	if !importedDirRe.MatchString("imported-20260101-120000") {
+		t.Error("importedDirRe 必须继续收纳历史时间戳形态（存量目录兼容红线）")
+	}
+	// 主程序读不出来（路径不存在）→ 摘要算不出 → 拒导入，绝不回退时钟形态。
+	if v, err := normalizeImportedVersion(filepath.Join(t.TempDir(), "nope.exe")); err == nil {
+		t.Errorf("源不可读时应拒导入，却返回兜底值 %q", v)
 	}
 }
 
