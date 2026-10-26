@@ -68,6 +68,7 @@ func newTestService() (*WslService, *fakeElevated, *fakeOpener) {
 		runWsl:        func(context.Context, ...string) (string, error) { return "", nil },
 		startTerm:     func(context.Context, string) error { return nil },
 		openFolder:    func(context.Context, string) error { return nil },
+		dlPaths:       map[string]string{},
 		distroOps:     map[string]string{},
 		exportRecords: map[string]ExportRecord{},
 		cloneOps:      map[string]longOpHandle{},

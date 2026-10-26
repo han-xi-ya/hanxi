@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	netx "hanxi/packages/go/netx"
 )
 
 // loopProbeProbe 跨平台 TCP 拨测与 OCR 服务契约探测（各平台探测结构体内嵌复用）。
@@ -20,13 +22,11 @@ func (netPortProbe) PortOpen(listenAddr string) bool {
 	return true
 }
 
-// ocrStatusClient 契约探测专用短超时客户端。
-// Proxy 必须显式置 nil：回环请求一旦被系统代理（如 127.0.0.1:7890）接管，
-// 探测与转发会整体失真且极难排查（hanxi 已在 wsl/netx 场景付过学费）。
-var ocrStatusClient = &http.Client{
-	Timeout:   800 * time.Millisecond,
-	Transport: &http.Transport{Proxy: nil},
-}
+// ocrStatusClient 契约探测专用短超时客户端：恒定直连收口 netx.DirectClient
+// 公共件（回环请求被 127.0.0.1:7890 型系统代理接管即探测失真，hanxi 已在
+// wsl/netx 场景付过学费）——不再手抄 Transport{Proxy:nil}，与服务层
+// ocr.loopbackClient 同谱，铁律只在一处演进。
+var ocrStatusClient = netx.DirectClient(800 * time.Millisecond)
 
 // IsOCRService GET http://<addr>/api/status，断言 ok 且 name 为 hanxi-ocr。
 // 容忍未知字段（上游演进只加不减）。

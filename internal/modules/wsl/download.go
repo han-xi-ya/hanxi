@@ -45,29 +45,27 @@ func (s *WslService) DownloadMsi(tag, name string) (OperationOutcome, error) {
 	if err != nil {
 		return OperationOutcome{}, err
 	}
-	s.mu.Lock()
-	if s.dlBusy {
-		s.mu.Unlock()
-		return OperationOutcome{}, fmt.Errorf("已有下载正在进行，请等待完成或先取消浏览器外的其它任务")
-	}
-	s.dlBusy = true
-	s.mu.Unlock()
 
 	key := tag + "/" + name
 	dir := downloadDir()
+	// 单飞闸收口到 registerDownload 一处（其判定+置位同在 s.mu 一个锁段）：
+	// 旧实现 dlBusy/dlOp 两道闸分置两段——goroutine 收尾时 dlBusy 先清、dlOp
+	// 后清，撞上这个窗口的第二次请求会过了 dlBusy 门却被 registerDownload
+	// 拒掉，早退路径既不还原 dlBusy 也不 cancel opCtx——此后所有下载永远被
+	// "已有下载正在进行"拒绝，本会话下载功能就此锁死。
 	opCtx, opCancel := context.WithCancel(context.Background())
 	if !s.registerDownload(opCancel) {
+		opCancel()
 		return OperationOutcome{}, fmt.Errorf("已有下载正在进行，请等待完成或取消")
 	}
 	go func() {
 		defer opCancel()
 		defer s.finishDownload()
-		defer func() {
-			s.mu.Lock()
-			s.dlBusy = false
-			s.mu.Unlock()
-		}()
-		path, derr := s.downloadTo(opCtx, tag, name, dir, rawURL)
+		dl := s.downloadTo
+		if dl == nil {
+			dl = s.downloadAsset // 装配缺位时退回真实下载通道，绝不静默跳过下载
+		}
+		path, derr := dl(opCtx, tag, name, dir, rawURL)
 		if derr != nil {
 			msg := derr.Error()
 			if canceled(derr) {
@@ -77,6 +75,11 @@ func (s *WslService) DownloadMsi(tag, name string) (OperationOutcome, error) {
 			return
 		}
 		s.mu.Lock()
+		if s.dlPaths == nil {
+			// 装配缺位兜底：在 s.mu 临界区内 panic（nil map 赋值）会让 defer
+			// finishDownload 的再锁死锁在持锁展开上——整个闸面僵死，绝不允许。
+			s.dlPaths = map[string]string{}
+		}
 		s.dlPaths[key] = path
 		s.mu.Unlock()
 		s.emit(EventMsiDownload, DownloadProgress{Tag: tag, Platform: assetPlatform(name), Stage: "done", Path: path})
@@ -106,7 +109,9 @@ func (s *WslService) RevealDownload(tag, name string) error {
 	return revealInExplorer(path)
 }
 
-func (s *WslService) downloadTo(parent context.Context, tag, name, dir, rawURL string) (string, error) {
+// downloadTo 生产实现：受护栏流式落盘（.part → uniquePath 改名不覆盖）。
+// 经 service.downloadTo 字段注入，单测替换后即可离线断言单飞闸行为。
+func (s *WslService) downloadAsset(parent context.Context, tag, name, dir, rawURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)
 	defer cancel()
 

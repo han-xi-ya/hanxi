@@ -53,6 +53,14 @@ func DecodeDIBToPNG(dib []byte) ([]byte, error) {
 			b, g, r := dib[pixelOff+i*4], dib[pixelOff+i*4+1], dib[pixelOff+i*4+2]
 			palette[i] = color.RGBA{R: r, G: g, B: b, A: 255}
 		}
+		if want := 1 << bitCount; n < want {
+			// biClrUsed 声明的色数少于位深容量（恶意/畸形 DIB）：以不透明黑补齐。
+			// 像素索引必须恒在调色板界内——剪贴板内容不可信，坏调色板只该让
+			// 颜色难看，不该在热键触发的识别链上 panic 整个进程。
+			for len(palette) < want {
+				palette = append(palette, color.RGBA{A: 255})
+			}
+		}
 		pixelOff += n * 4
 	case 24:
 		if compression != 0 {

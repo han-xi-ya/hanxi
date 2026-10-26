@@ -35,6 +35,7 @@ import (
 	"sync"
 	"time"
 
+	"hanxi/internal/jsonstore"
 	"hanxi/internal/product"
 )
 
@@ -140,10 +141,7 @@ type hostedSemver struct {
 
 func parseHostedSemver(version string) (hostedSemver, bool) {
 	var out hostedSemver
-	v := strings.TrimSpace(version)
-	if strings.HasPrefix(v, "v") {
-		v = v[1:]
-	}
+	v := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if v == "" || strings.ContainsAny(v, " \t\r\n") {
 		return out, false
 	}
@@ -368,13 +366,17 @@ func inspectHostedZip(zipPath string) (hostedManifest, string, error) {
 		slashed := filepath.ToSlash(clean)
 		switch {
 		case slashed == hostedManifestZipName:
-			if manifestRaw == nil {
-				b, e := readZipFileLimited(f, maxHostedManifestBytes)
-				if e != nil {
-					return m, "", fmt.Errorf("读取 zip 内 %s 失败: %w", manifestName, e)
-				}
-				manifestRaw = b
+			// 同名双条目必须拒收：解压按中央目录序逐条覆盖写盘（后写者胜），
+			// 而静态校验只读得到第一份——放过重名包等于让"被校验的 manifest"
+			// 与"落盘的 manifest"可能是两份内容，校验语义整体失效。
+			if manifestRaw != nil {
+				return m, "", fmt.Errorf("zip 内 %s 出现重复条目，校验对象与解压结果无法保证同源，拒收", manifestName)
 			}
+			b, e := readZipFileLimited(f, maxHostedManifestBytes)
+			if e != nil {
+				return m, "", fmt.Errorf("读取 zip 内 %s 失败: %w", manifestName, e)
+			}
+			manifestRaw = b
 		case slashed == serviceExeName:
 			hasEntry = true
 		}
@@ -1042,10 +1044,10 @@ func isRegularNonEmpty(p string) bool {
 	return err == nil && st.Mode().IsRegular() && st.Size() > 0
 }
 
+// writeHostedJSON 写托管 meta.json：收口 jsonstore 原子写（tmp+Sync+rename），
+// 与托管族其余账本文件同一落盘纪律。旧 os.WriteFile 半途断电/崩溃会留下
+// 截断 JSON，readHostedSHA 读不出可信摘要后该版本目录进"缺可信元信息拒覆盖"
+// 死角，只能人工卸载重来。盘上格式不变（2 空格缩进、无尾换行、0644）。
 func writeHostedJSON(path string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
+	return jsonstore.Save(path, v)
 }

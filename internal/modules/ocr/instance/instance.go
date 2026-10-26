@@ -180,14 +180,14 @@ func (e *Engine) Start(opts StartOptions) error {
 	job, jerr := e.jobAPI.Create()
 	if jerr != nil {
 		_ = cmd.Process.Kill()
-		go e.wait()
+		go e.wait(cmd)
 		e.transition(StateFailed, "创建 Job Object 失败: "+jerr.Error())
 		return fmt.Errorf("创建 Job Object 失败: %w", jerr)
 	}
 	if aerr := job.Assign(e.pid); aerr != nil {
 		job.Close()
 		_ = cmd.Process.Kill()
-		go e.wait()
+		go e.wait(cmd)
 		e.transition(StateFailed, "JobObject 绑定失败: "+aerr.Error())
 		return fmt.Errorf("JobObject 绑定失败: %w", aerr)
 	}
@@ -196,7 +196,7 @@ func (e *Engine) Start(opts StartOptions) error {
 		if derr := job.SetAllowKillOnClose(false); derr != nil {
 			job.Close()
 			_ = cmd.Process.Kill()
-			go e.wait()
+			go e.wait(cmd)
 			e.transition(StateFailed, "解除退出联动失败: "+derr.Error())
 			return fmt.Errorf("解除退出联动失败: %w", derr)
 		}
@@ -208,7 +208,7 @@ func (e *Engine) Start(opts StartOptions) error {
 
 	go e.pump(stdout)
 	go e.pump(stderr)
-	go e.wait()
+	go e.wait(cmd)
 
 	if !e.waitReady(opts.ListenAddr, readyTimeout) {
 		// 就绪失败：端口可能被抢绑或引擎文件损坏导致契约永不应答，主动终止收尾。
@@ -422,15 +422,23 @@ func (e *Engine) transition(s State, errMsg string) {
 	e.emit(snap)
 }
 
-// wait 阻塞等待自有进程退出并分类收尾。
-func (e *Engine) wait() {
-	err := e.cmd.Wait()
+// wait 阻塞等待**本代**自有进程退出并分类收尾。cmd 由 Start 显式传入
+// （piik/instance 的 run 代际纪律同型修法）：绝不再从 e.cmd 裸读——
+// 上一代迟到的收尾若撞上新一代 Start 已登记，裸读会替新进程 Wait、
+// 并把新一代的 cmd/job/状态改写成本代的终值（跨代踩踏 + listen 无锁读竞态）。
+// 代际不符时本协程只退场不动账。
+func (e *Engine) wait(cmd *exec.Cmd) {
+	err := cmd.Wait()
 	code := 0
-	if err != nil && e.cmd.ProcessState != nil {
-		code = e.cmd.ProcessState.ExitCode()
+	if err != nil && cmd.ProcessState != nil {
+		code = cmd.ProcessState.ExitCode()
 	}
 
 	e.mu.Lock()
+	if e.cmd != cmd {
+		e.mu.Unlock() // 他代在途（理论上 Start 单飞闸已保序）：纵深防御，不写新一代的账
+		return
+	}
 	e.exitCode = code
 	e.stoppedAt = time.Now()
 	stopped := e.stopping
@@ -459,7 +467,7 @@ func (e *Engine) wait() {
 	default:
 		e.transition(StateFailed, fmt.Sprintf(
 			"hanxi-ocr 异常退出（退出码 %d）。常见原因：端口 %s 启动后被抢绑、引擎文件被杀毒软件删除，详见服务目录日志",
-			code, e.listen))
+			code, listen))
 	}
 }
 

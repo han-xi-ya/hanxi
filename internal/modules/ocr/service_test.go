@@ -4,11 +4,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"unicode/utf8"
 
@@ -206,7 +208,7 @@ func newTestService(t *testing.T, url string) *OcrService {
 	s := &OcrService{
 		holder:  extapi.NewLeaseHolder(ID),
 		store:   newOcrStore(t.TempDir()),
-		client:  &http.Client{Transport: &http.Transport{Proxy: nil}},
+		client:  loopbackClient(), // 与生产构造同谱，防测试面漂离铁律
 		exeDir:  t.TempDir(),
 		dataDir: t.TempDir(),
 		tmpDir:  t.TempDir(),
@@ -227,6 +229,43 @@ func realImagePath(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// TestProbeStatusLoopbackDirectDespiteEnvProxy 服务层转发/探测链的"回环禁代理"
+// 真实验收面：HTTP_PROXY/http_proxy 指向记录型代理口（经代理的连接一律被计数
+// 并掐断），probeStatus 仍须判在线、代理口须零连接。与 instance 包同型测试
+// 各自锁住两条独立构造的客户端（service.client 与 ocrStatusClient 现同谱
+// netx.DirectClient，防的是"将来某处漂回 env 代理"）。
+func TestProbeStatusLoopbackDirectDespiteEnvProxy(t *testing.T) {
+	var proxyHits atomic.Int32
+	proxyLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proxyLn.Close()
+	go func() {
+		for {
+			c, aerr := proxyLn.Accept()
+			if aerr != nil {
+				return
+			}
+			proxyHits.Add(1)
+			_ = c.Close()
+		}
+	}()
+	t.Setenv("HTTP_PROXY", "http://"+proxyLn.Addr().String())
+	t.Setenv("http_proxy", "http://"+proxyLn.Addr().String())
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+
+	srv := statusServer(t, `{"ok":true,"name":"hanxi-ocr","version":"0.4.0"}`)
+	s := newTestService(t, srv.URL)
+	if cache := s.probeStatus(strings.TrimPrefix(srv.URL, "http://")); !cache.online || cache.version != "0.4.0" {
+		t.Fatalf("回环探测在 env 代理在场时必须照常在线: %+v", cache)
+	}
+	if n := proxyHits.Load(); n != 0 {
+		t.Fatalf("回环请求被路由去了代理（代理口连接 %d 次）", n)
+	}
 }
 
 func TestProbeStatusContract(t *testing.T) {

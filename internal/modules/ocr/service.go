@@ -24,6 +24,7 @@ import (
 	"hanxi/internal/notify"
 	"hanxi/internal/platform"
 	"hanxi/internal/settings"
+	netx "hanxi/packages/go/netx"
 )
 
 const (
@@ -55,7 +56,7 @@ type OcrService struct {
 	holder  *extapi.LeaseHolder
 	store   *ocrStore
 	engine  *instance.Engine
-	client  *http.Client   // 回环专用：Proxy 显式置 nil，防系统代理污染（netx 教训）
+	client  *http.Client   // 回环专用：loopbackClient()/netx.DirectClient 恒定直连，防系统代理污染
 	exeDir  string         // Hanxi 主程序目录（同级 ../hanxi-ocr、../hanxi-ocr-paddle 自动发现锚点）
 	dataDir string         // 数据目录（ocr-engines/ PP-OCR 引擎主发现锚点）
 	tmpDir  string         // 粘贴/拖拽图片落盘目录 RuntimeDir()/ocr
@@ -103,13 +104,20 @@ type probeCache struct {
 	checkedAt     time.Time
 }
 
+// loopbackClient OCR 回环专用 HTTP 客户端：恒定直连、绝不查任何代理配置
+// （回环请求被本机 7890 型代理接管即探测/转发整体失真，[[回环禁代理]] 铁律）。
+// 收口 netx.DirectClient 公共件——旧版在此与 instance/probe_port 各手抄一份
+// Transport{Proxy:nil}，同纪律两套实现正是"改一处漏一处"的漂移源头。
+// 超时不在本层：调用方经 per-call ctx 控制（timeout=0 即无客户端级超时）。
+func loopbackClient() *http.Client { return netx.DirectClient(0) }
+
 func NewOcrService(plat platform.Platform, holder *extapi.LeaseHolder) *OcrService {
 	paths := settings.GetPaths()
 	svc := &OcrService{
 		plat:   plat,
 		holder: holder,
 		store:  newOcrStore(paths.StateDir()),
-		client: &http.Client{Transport: &http.Transport{Proxy: nil}}, // 超时走 per-call ctx
+		client: loopbackClient(), // 超时走 per-call ctx
 		exeDir: exeDirOf(),
 		// dataDir 是 ocr-engines/ 引擎组件的发现锚（二进制目录，非状态文件，
 		// 不随 state/ 收纳走），保持指数据根。

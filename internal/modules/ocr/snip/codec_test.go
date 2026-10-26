@@ -109,6 +109,28 @@ func TestDecodeDIB8BitPalette(t *testing.T) {
 	}
 }
 
+// TestDecodeDIBShortPalettePadded：biClrUsed 声明的色数少于位深容量
+// （8bit 只给 1 项、像素却索引 255）——剪贴板 DIB 是不可信输入，旧实现按
+// 声明项数建调色板，越界索引直接 panic，热键识别链会被某个程序的畸形图炸掉
+// 整个进程。修复后以不透明黑补齐：坏调色板只该让颜色难看，界内索引照常命中。
+func TestDecodeDIBShortPalettePadded(t *testing.T) {
+	pal := [][]byte{{255, 0, 0, 0}} // BGRA：索引 0 = 蓝
+	img := mustDecode(t, mkDIB(1, 1, 8, 0, pal, []byte{0xFF, 0, 0, 0}))
+	r, g, b, a := img.At(0, 0).RGBA()
+	if r>>8 != 0 || g>>8 != 0 || b>>8 != 0 || a>>8 != 255 {
+		t.Fatalf("越界索引应落回补位不透明黑，得 %d,%d,%d,%d", r>>8, g>>8, b>>8, a>>8)
+	}
+	img0 := mustDecode(t, mkDIB(1, 1, 8, 0, pal, []byte{0x00, 0, 0, 0}))
+	if _, _, b0, _ := img0.At(0, 0).RGBA(); b0>>8 != 255 {
+		t.Fatalf("界内索引应照常命中蓝色，b=%d", b0>>8)
+	}
+	// 4bit：调色板 1 项，首像素取高半字节 5（越界）同样不得 panic；行按 stride 补零
+	img4 := mustDecode(t, mkDIB(1, 1, 4, 0, pal, []byte{0x5F, 0, 0, 0}))
+	if _, _, _, a4 := img4.At(0, 0).RGBA(); a4>>8 != 255 {
+		t.Fatalf("4bit 越界索引应渲染为补位黑（不透明），a=%d", a4>>8)
+	}
+}
+
 func TestDecodeDIBRejects(t *testing.T) {
 	cases := map[string][]byte{
 		"短头":   {1, 2, 3},

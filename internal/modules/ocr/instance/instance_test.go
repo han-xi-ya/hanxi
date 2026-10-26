@@ -265,7 +265,7 @@ func TestWaitExitCodeZeroClassifiedStopped(t *testing.T) {
 	e.state = StateRunning
 	e.mu.Unlock()
 
-	go e.wait()
+	go e.wait(cmd)
 	waitState(t, e, StateStopped)
 }
 
@@ -284,7 +284,7 @@ func TestWaitExternalTaken(t *testing.T) {
 	e.listen = "127.0.0.1:53120"
 	e.mu.Unlock()
 
-	go e.wait()
+	go e.wait(cmd)
 	waitState(t, e, StateExternal)
 	if snap := e.Snapshot(); !snap.External {
 		t.Fatalf("快照异常: %+v", snap)
@@ -305,7 +305,7 @@ func TestWaitAbnormalExit(t *testing.T) {
 	e.listen = "127.0.0.1:53120"
 	e.mu.Unlock()
 
-	go e.wait()
+	go e.wait(cmd)
 	waitState(t, e, StateFailed)
 	snap := e.Snapshot()
 	if snap.ExitCode != 1 {
@@ -313,6 +313,47 @@ func TestWaitAbnormalExit(t *testing.T) {
 	}
 	if snap.Error == "" {
 		t.Fatal("failed 状态应带错误说明")
+	}
+}
+
+// TestWaitStaleGenerationDoesNotClobberCurrent 上一代进程的 wait 迟到收尾时
+// （settleExited 预算耗尽/极端挂死场景），不得改写已登记的新一代账目：
+// 断言外部事实——无终态广播、快照仍是新一代（state/PID 原位）、e.cmd 仍指
+// 向在跑的当代进程。旧实现从共享字段裸取 cmd，此窗口会把新实例误判成已退出。
+func TestWaitStaleGenerationDoesNotClobberCurrent(t *testing.T) {
+	oldCmd := exec.Command(mustCmdExe(t), "/c", "exit", "0")
+	if err := oldCmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	liveCmd := exec.Command(mustCmdExe(t), "/c", "ping", "-n", "30", "127.0.0.1")
+	if err := liveCmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = liveCmd.Process.Kill() }()
+
+	rec := &eventRecorder{}
+	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, rec.cb())
+	e.mu.Lock()
+	e.cmd = liveCmd // 模拟"新一代已登记"
+	e.pid = uint32(liveCmd.Process.Pid)
+	e.state = StateRunning
+	e.listen = "127.0.0.1:53120"
+	e.mu.Unlock()
+
+	e.wait(oldCmd) // 上一代迟到收尾（同步调用，返回即完成分类判定）
+
+	if n := rec.count(); n != 0 {
+		t.Fatalf("他代 wait 不得广播任何状态（收到 %d 条）", n)
+	}
+	snap := e.Snapshot()
+	if snap.State != StateRunning || snap.PID != uint32(liveCmd.Process.Pid) {
+		t.Fatalf("新一代账目被他代踩脏: %+v", snap)
+	}
+	e.mu.Lock()
+	joined := e.cmd == liveCmd
+	e.mu.Unlock()
+	if !joined {
+		t.Fatal("他代 wait 不得注销新一代 cmd")
 	}
 }
 
@@ -387,7 +428,7 @@ func TestStopKillsAndSettles(t *testing.T) {
 	}
 	e.job = job
 	e.mu.Unlock()
-	go e.wait()
+	go e.wait(ping)
 
 	if err := e.Stop(); err != nil {
 		t.Fatalf("Stop: %v", err)

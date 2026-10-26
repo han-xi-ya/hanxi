@@ -48,6 +48,8 @@ type WslService struct {
 	openFolder func(context.Context, string) error
 	// runWslIn 带 stdin 的 wsl.exe 通道（wsl.conf 写回等经管道改文件场景）。
 	runWslIn func(context.Context, string, ...string) (string, error)
+	// downloadTo MSI 下载落盘通道（缺省 downloadAsset；单测注入替身离线断言单飞闸）。
+	downloadTo func(parent context.Context, tag, name, dir, rawURL string) (string, error)
 
 	// lastProbe 缓存最近一次成功探针：卸载取 MSI ProductCode 免重复查询。
 	mu        sync.Mutex
@@ -57,8 +59,8 @@ type WslService struct {
 	// readinessCancel 终止上一次仍在跑的流式体检（重新体检防串扰）。
 	readinessCancel context.CancelFunc
 	readinessGen    uint64
-	// 下载单飞状态与本会话落盘登记（RevealDownload 只认这里的路径）。
-	dlBusy  bool
+	// 下载单飞由 longops.go 的 registerDownload 把守（dlOp）；
+	// 本会话落盘登记（RevealDownload 只认这里的路径）。
 	dlPaths map[string]string
 	// 发行版管理面：每发行版单飞闸（小写名 → 操作名）、全局重操作计数
 	// （迁移会 --shutdown 打停全部实例，与任何单发行版操作互斥）、
@@ -114,7 +116,7 @@ func NewWslService(opener urlOpener, paths *settings.Paths, holder *extapi.Lease
 		usbLedger = filepath.Join(paths.StateDir(), "wsl-usbipd.json")
 	}
 	wingetInstaller := usbipd.NewWingetInstaller()
-	return &WslService{
+	svc := &WslService{
 		holder:          holder,
 		opener:          opener,
 		ppPath:          rulesPath,
@@ -140,6 +142,8 @@ func NewWslService(opener urlOpener, paths *settings.Paths, holder *extapi.Lease
 		exportRecords:   map[string]ExportRecord{},
 		cloneOps:        map[string]longOpHandle{},
 	}
+	svc.downloadTo = svc.downloadAsset
+	return svc
 }
 
 // emitEvent 经 Wails 事件总线推送；无 app 实例（单测/装配前）静默跳过。

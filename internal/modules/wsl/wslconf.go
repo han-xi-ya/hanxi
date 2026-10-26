@@ -217,7 +217,11 @@ func defaultUserOf(text string) string {
 		line := strings.TrimSpace(raw)
 		switch {
 		case strings.HasPrefix(line, "["):
-			inUser = strings.EqualFold(strings.Trim(line, "[]"), "user")
+			// 节名提取走 iniSectionOf（hostconf.go 同包单点）：旧写法
+			// strings.Trim(line, "[]") 在"[user] # 注释"形态下留下"] # 注释"
+			// 尾巴，节判失配 → default 值查不到 → "默认用户必须存在"引用校验
+			// 被静默旁路（validateWslConf 明确放行带行尾注释的节头）。
+			inUser = iniSectionOf(line) == "user"
 		case inUser:
 			if k, v, ok := strings.Cut(line, "="); ok && strings.EqualFold(strings.TrimSpace(k), "default") {
 				v = strings.TrimSpace(v)

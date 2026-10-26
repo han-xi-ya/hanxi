@@ -36,6 +36,15 @@ func TestDefaultUserOf(t *testing.T) {
 	if got := defaultUserOf("[boot]\nsystemd=true\n"); got != "" {
 		t.Fatalf("无 [user] 节应为空: %q", got)
 	}
+	// 节头带行尾注释（语法闸门放行的合法形态）时不得漏判——旧
+	// strings.Trim(line, "[]") 留下 "] # …" 尾巴，节判失配导致
+	// "default 用户必须存在"引用校验被静默旁路。
+	if got := defaultUserOf("[user] # 图形化编辑留下的注释\ndefault=lars\n"); got != "lars" {
+		t.Fatalf("节头带行尾注释时 default 应仍提取到: %q", got)
+	}
+	if got := defaultUserOf("[USER]\r\ndefault=ada\n"); got != "ada" {
+		t.Fatalf("节名应大小写不敏感: %q", got)
+	}
 }
 
 // wslconfStub：Ubuntu 在册；guest 命令行为由 opts 覆写。

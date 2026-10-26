@@ -79,6 +79,68 @@ func hostedZipEntries(engine, version, extra string) []zipEntry {
 	return hostedZipEntriesWithMin(engine, version, "", extra)
 }
 
+// TestHostedZipRejectsDuplicateManifest zip 内出现两条 manifest.json：解压按
+// 中央目录序逐条覆盖落盘（后写者胜），静态校验却只读得到第一份——放过重名包
+// 等于"被校验的契约"与"落盘的契约"可以不是同一份，schema/engine/entry 四闸
+// 整体失效。校验链须点名拒收（外部事实：installZipWithRegister 不落任何目录）。
+func TestHostedZipRejectsDuplicateManifest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dup-manifest.zip")
+	m1, _ := json.Marshal(hostedManifest{
+		Schema: hostedManifestSchema, Engine: "paddle", Version: "1.0",
+		Entry: serviceExeName, Note: "被校验的那份",
+	})
+	m2, _ := json.Marshal(hostedManifest{
+		Schema: hostedManifestSchema, Engine: "wechat", Version: "9.9",
+		Entry: serviceExeName, Note: "落盘的那份",
+	})
+	makeHostedZip(t, path, []zipEntry{
+		{name: manifestName, body: string(m1)},
+		{name: serviceExeName, body: "MZ-exe"},
+		{name: manifestName, body: string(m2)},
+	})
+	hm := newTestHostedManager(t)
+	writeHostedSidecar(t, path)
+	if _, _, err := inspectHostedZip(path); err == nil || !strings.Contains(err.Error(), "重复") {
+		t.Fatalf("重复 manifest 条目必须点名拒收，实得 %v", err)
+	}
+	if _, err := hm.installZip(path); err == nil || !strings.Contains(err.Error(), "重复") {
+		t.Fatalf("安装链同样必须拒收重复 manifest，实得 %v", err)
+	}
+	if list := hm.list(); len(list) != 0 {
+		t.Fatalf("被拒安装不得留下任何版本目录: %+v", list)
+	}
+}
+
+// TestWriteHostedJSONAtomicRewrite meta.json 重写的外部事实：目录里只有
+// meta.json 一个文件（tmp 即用即清、失败残渣不留在盘）、内容为最后一次完整
+// JSON——断电截断让 readHostedSHA 读不出可信摘要、版本目录进"拒覆盖"死角的
+// 通道就此关闭。
+func TestWriteHostedJSONAtomicRewrite(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "meta.json")
+	if err := writeHostedJSON(p, map[string]any{"sha256": strings.Repeat("a", 64)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeHostedJSON(p, map[string]any{"sha256": strings.Repeat("b", 64), "engine": "paddle"}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "meta.json" {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("原子写后目录只剩 meta.json，实得 %v", names)
+	}
+	if sha, ok := readHostedSHA(p); !ok || sha != strings.Repeat("b", 64) {
+		t.Fatalf("重写后账本须为最后一次完整值: sha=%q ok=%v", sha, ok)
+	}
+}
+
 // writeHostedSidecar 计算并旁挂 sha256（withBOM/尾空白用于宽容性测试）。
 func writeHostedSidecar(t *testing.T, zipPath string) {
 	t.Helper()
