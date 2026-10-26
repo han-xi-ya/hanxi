@@ -569,10 +569,26 @@ func (s *TermoraService) resolveActiveVersion() (string, string, error) {
 	return installed[0].Version, installed[0].ExePath, nil
 }
 
-// normalizeVersion 版本入参归一（补 v 前缀，与 version 包展示口径统一）。
+// normalizeVersion 版本入参归一（补 v 前缀，与 version 包展示口径统一）。大小写 v
+// 一律认：TrimSpace 后剥一层既有前导 v/V 再统一补小写 v。旧形制用 HasPrefix(v, "v")
+// 只认小写，大写 V 入参（如 "V2.16.1"）既不命中该门禁也不命中 imported- 门禁，被归成
+// "vV2.16.1"：已装去重落空并放行一路注定失败的后台下载，SetActive/Remove 又对同一输入
+// 报"未安装"——三入口互异。修复后裸号/v号/V号/带空白同落一个 v 规范形。
+//
+// imported- 兜底令牌在本家名册里就是裸形（version 包 normalizeVersion 明确不给
+// imported-* 补 v，ListInstalled 展示的即 imported-<哈希>），故 imported-、
+// vimported-、Vimported- 三种写法同落裸 imported-：既与 ListInstalled 展示及目录令牌
+// 逐字节一致（已装去重三种形态都命中），也绝不产出 vvimported-。空串保持旧口径原样
+// 返回（下游按非法形状拒），本修复不改此行为。
 func normalizeVersion(v string) string {
 	v = strings.TrimSpace(v)
-	if v == "" || strings.HasPrefix(v, "v") || strings.HasPrefix(v, "imported-") {
+	if v == "" {
+		return v
+	}
+	if head := v[0]; head == 'v' || head == 'V' {
+		v = v[1:]
+	}
+	if strings.HasPrefix(v, "imported-") {
 		return v
 	}
 	return "v" + v

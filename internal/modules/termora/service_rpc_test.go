@@ -151,9 +151,13 @@ func TestTermoraNormalizeVersion(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"2.16.1", "v2.16.1"},
 		{"v2.16.1", "v2.16.1"},
+		{"V2.16.1", "v2.16.1"},    // 大写 V 必须同落 v 规范形（旧门禁只认小写，产出 vV2.16.1）
+		{" V2.16.1\t", "v2.16.1"}, // 带空白 + 大写 V
 		{" 2.16.1 ", "v2.16.1"},
 		{"", ""},
-		{"imported-0123456789ab", "imported-0123456789ab"},
+		{"imported-0123456789ab", "imported-0123456789ab"}, // 导入令牌原样（钉住不被补 v，本家名册口径）
+		{"vimported-0123456789ab", "imported-0123456789ab"},
+		{"Vimported-0123456789ab", "imported-0123456789ab"}, // 绝不产出 vvimported-
 	}
 	for _, c := range cases {
 		if got := normalizeVersion(c.in); got != c.want {

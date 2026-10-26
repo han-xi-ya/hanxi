@@ -214,3 +214,22 @@ func writeTestZip(t *testing.T, files map[string]string) []byte {
 }
 
 func newTxnID() string { return fmt.Sprintf("txn-%d", time.Now().UnixNano()) }
+
+// TestNormalizeVersion 展示归一词表：数字段补 v，兜底令牌保持裸形；大写 V 与前导
+// 空白一律认（旧形制 HasPrefix(v,"v") 只认小写，"V2.16.1" 被双补成 "vV2.16.1"）。
+func TestNormalizeVersion(t *testing.T) {
+	for in, want := range map[string]string{
+		"2.16.1":                    "v2.16.1",
+		"v2.16.1":                   "v2.16.1",
+		"V2.16.1":                   "v2.16.1",
+		" V2.16.1\t":                "v2.16.1",
+		" imported-20260101120000 ": "imported-20260101120000",
+		// 兜底令牌在本包名册里就是裸形：三种写法同落裸 imported-，绝不产出 vvimported-。
+		"vimported-6e449042eec3": "imported-6e449042eec3",
+		"Vimported-6e449042eec3": "imported-6e449042eec3",
+	} {
+		if got := normalizeVersion(in); got != want {
+			t.Errorf("normalizeVersion(%q) = %q, 期望 %q", in, got, want)
+		}
+	}
+}

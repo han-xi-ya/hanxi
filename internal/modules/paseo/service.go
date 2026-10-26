@@ -191,7 +191,7 @@ func (s *PaseoService) DownloadVersion(targetVersion string) (string, error) {
 		return "", gateErr
 	}
 	defer release()
-	targetVersion = strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 
 	s.downloadMu.Lock()
 	if _, ok := s.downloads[targetVersion]; ok {
@@ -203,7 +203,7 @@ func (s *PaseoService) DownloadVersion(targetVersion string) (string, error) {
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
 		for _, v := range installed {
-			if strings.EqualFold(strings.TrimPrefix(v.Version, "v"), targetVersion) {
+			if strings.EqualFold(normalizeVersion(v.Version), targetVersion) {
 				s.downloadMu.Unlock()
 				return "already-installed", nil
 			}
@@ -339,7 +339,7 @@ func (s *PaseoService) RemoveVersion(targetVersion string) error {
 		return gateErr
 	}
 	defer release()
-	targetVersion = strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning && snap.Version == targetVersion {
 		return fmt.Errorf("版本 %s 正在运行，请先退出", targetVersion)
 	}
@@ -359,7 +359,7 @@ func (s *PaseoService) SetActiveVersion(targetVersion string) (string, error) {
 		return "", gateErr
 	}
 	defer release()
-	targetVersion = strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 	if _, err := s.manager.ResolveExe(targetVersion); err != nil {
 		return "", err
 	}
@@ -686,4 +686,20 @@ func (s *PaseoService) OpenRepository() error {
 	}
 	defer release()
 	return s.plat.OpenURL(version.RepoURL())
+}
+
+// normalizeVersion 版本入参归一（Download/Remove/SetActive 三入口共用）：本模块
+// 名册与目录令牌口径是裸号（paseo_0.8.0 / paseo_0.8.0-beta.1 / paseo_imported-兜底），
+// 故先 TrimSpace 再剥一层既有前导 v/V 取裸号。大小写一律认：旧形制用
+// TrimPrefix(TrimSpace(x), "v") 只认小写，"V0.8.0" 原样留下即成形状外令牌——已装去重
+// 落空并放行一路注定失败的后台下载，SetActive/Remove 又在 resolveVersionDir 的
+// tokenVersionRe 形状闸上报"非法版本号"（同一值三入口互异）。修复后裸号/v号/V号/
+// 带空白同落同一个裸号；imported-/vimported-/Vimported- 兜底令牌同落裸 imported-，
+// 与 ListInstalled 展示口径逐字节一致，绝不产出带 v 前缀的名册外形状。
+func normalizeVersion(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 0 && (value[0] == 'v' || value[0] == 'V') {
+		value = value[1:]
+	}
+	return value
 }

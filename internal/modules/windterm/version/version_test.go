@@ -78,7 +78,12 @@ func TestNormalizeVersion(t *testing.T) {
 	for in, want := range map[string]string{
 		"2.7.0":               "v2.7.0",
 		"v2.7.0":              "v2.7.0",
+		"V2.7.0":              "v2.7.0", // 大写 V 同落 v 规范形（旧门禁只认小写，产出 vV2.7.0）
+		" V2.7.0\t":           "v2.7.0",
 		" imported-20260101 ": "imported-20260101",
+		// 兜底令牌在本包名册里就是裸形：三种写法同落裸 imported-，绝不产出 vvimported-。
+		"vimported-20260101": "imported-20260101",
+		"Vimported-20260101": "imported-20260101",
 	} {
 		if got := normalizeVersion(in); got != want {
 			t.Errorf("normalizeVersion(%q) = %q, want %q", in, got, want)

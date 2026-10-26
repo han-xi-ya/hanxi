@@ -74,10 +74,19 @@ func NewQuickLookService(plat platform.Platform, holder *extapi.LeaseHolder) *Qu
 	return svc
 }
 
-// normalizeVersion QuickLook 上游版本 tag 无 v 前缀（如 4.5.0）；
-// 兼容前端/用户误带 v 前缀，统一剥离为裸号后比对与落库。
+// normalizeVersion QuickLook 上游版本 tag 无 v 前缀（如 4.5.0），本模块名册/目录令牌
+// 与落库口径都是裸号；兼容前端/用户误带 v 前缀，统一剥一层既有前导 v/V 后取裸号。
+// 大小写一律认：旧形制用 TrimPrefix(TrimSpace(x), "v") 只认小写，"V4.5.0" 原样留下
+// 即成非法形状——已装去重落空并放行一路注定失败的后台下载，SetActive/Remove 又在
+// resolveVersionDir 的形状闸上报"非法版本号"（同一值三入口互异）。修复后裸号/v号/
+// V号/带空白同落同一个裸号；imported-/vimported-/Vimported- 兜底令牌同落裸
+// imported-（与 ListInstalled 展示口径逐字节一致，绝不产出带 v 前缀的名册外形状）。
 func normalizeVersion(s string) string {
-	return strings.TrimPrefix(strings.TrimSpace(s), "v")
+	s = strings.TrimSpace(s)
+	if len(s) > 0 && (s[0] == 'v' || s[0] == 'V') {
+		s = s[1:]
+	}
+	return s
 }
 
 // ---------- 实例事件与后台感知 ----------

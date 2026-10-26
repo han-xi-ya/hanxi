@@ -393,10 +393,20 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 
 // ---------- 领域工具 ----------
 
-// normalizeVersion 版本展示归一：补 v 前缀（v2.7.0），imported-* 原样。
+// normalizeVersion 版本展示归一：补 v 前缀（v2.7.0），imported-* 原样。大小写 v
+// 一律认——剥一层既有前导 v/V 后统一补小写 v；旧形制用 HasPrefix(v, "v") 只认小写，
+// "V2.7.0" 被归成 "vV2.7.0"（本包按 service 归一后的入参取数，故从未暴露）。
+// 无点段（imported-<哈希>、历史 imported-<时间戳>等兜底令牌）保持裸形原样，与本包
+// 名册展示口径一致，绝不产出 vvimported-。
 func normalizeVersion(v string) string {
 	v = strings.TrimSpace(v)
-	if v == "" || strings.HasPrefix(v, "v") || !strings.Contains(v, ".") {
+	if v == "" {
+		return v
+	}
+	if head := v[0]; head == 'v' || head == 'V' {
+		v = v[1:]
+	}
+	if !strings.Contains(v, ".") {
 		return v
 	}
 	return "v" + v

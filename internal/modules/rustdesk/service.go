@@ -174,7 +174,7 @@ func (s *RustDeskService) DownloadVersion(targetVersion string) (string, error) 
 		return "", gateErr
 	}
 	defer release()
-	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 
 	s.downloadMu.Lock()
 	if _, busy := s.downloads[targetVersion]; busy {
@@ -276,7 +276,7 @@ func (s *RustDeskService) InstallVersion(targetVersion string) (string, error) {
 		return "", gateErr
 	}
 	defer release()
-	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 	rosterKey := installerRosterPrefix + targetVersion
 
 	s.downloadMu.Lock()
@@ -347,7 +347,7 @@ func (s *RustDeskService) RemoveVersion(targetVersion string) error {
 		return gateErr
 	}
 	defer release()
-	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 	if snap := s.engine.Snapshot(); snap.State == instance.StateRunning &&
 		strings.EqualFold(strings.TrimPrefix(snap.Version, "v"), strings.TrimPrefix(targetVersion, "v")) {
 		return fmt.Errorf("版本 %s 正在运行，请先退出", targetVersion)
@@ -370,7 +370,7 @@ func (s *RustDeskService) SetActiveVersion(targetVersion string, form string) (s
 		return "", gateErr
 	}
 	defer release()
-	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 	form = strings.TrimSpace(form)
 	if form == "" {
 		form = version.FormPortable // 兼容旧调用：缺省便携
@@ -711,4 +711,20 @@ func (s *RustDeskService) OpenRepository() error {
 	}
 	defer release()
 	return s.plat.OpenURL(version.RepoURL())
+}
+
+// normalizeVersion 版本入参归一（Download/Install/Remove/SetActive 四入口共用）：
+// 先 TrimSpace，大小写 v 一律认（剥除既有 v/V 前缀后统一补 v）。旧形制用
+// "v" + TrimPrefix(TrimSpace(x), "v") 只认小写 v，大写 V 入参（如 "V1.2.0"）被归成
+// "vV1.2.0"：已装去重落空并放行一路注定失败的后台下载，SetActive 的系统安装版比对
+// 与 Remove 的目录寻径又对同一输入报"非法版本号/未安装"——三入口互异。修复后裸号/
+// v号/V号/带空白同落一个 v 前缀规范形；imported-/vimported- 兜底令牌经"剥既有 v 再补
+// v"恒等透传为 vimported-（绝不产出 vvimported-），与 ListInstalled 展示（"v"+目录后缀）
+// 及 store 记账口径一致。
+func normalizeVersion(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) > 0 && (value[0] == 'v' || value[0] == 'V') {
+		value = value[1:]
+	}
+	return "v" + value
 }

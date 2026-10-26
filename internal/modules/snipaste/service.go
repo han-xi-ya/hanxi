@@ -404,7 +404,17 @@ func (s *SnipasteService) OpenOfficialSite() error {
 	return s.plat.OpenURL(version.OfficialSiteURL())
 }
 
-// normalizeVersion 统一为不带 v 前缀的纯版本号（Snipaste 版本号形态）。
+// normalizeVersion 统一为不带 v 前缀的纯版本号（Snipaste 版本号形态，目录名
+// snipaste_v<x.y.z> 里的 v 由 dirPrefix 承载，入参一律落裸号）。大小写 v 一律认：
+// 剥一层既有前导 v/V 后再去空白。旧形制用 TrimPrefix(TrimSpace(x), "v") 只认小写，
+// "V2.11.3" 原样留下即成非法形状——已装去重落空并放行一路注定失败的后台下载，
+// SetActive/Remove 又在 resolveVersionDir 形状闸上报"非法版本号"（同一值三入口互异）。
+// 修复后裸号/v号/V号/带空白同落同一个裸号（本模块名册无 imported- 兜底形态，
+// 形状外令牌一律由下游形状闸拒，绝不产出 vv<x.y.z> 之类名册外形状）。
 func normalizeVersion(value string) string {
-	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "v"))
+	value = strings.TrimSpace(value)
+	if len(value) > 0 && (value[0] == 'v' || value[0] == 'V') {
+		value = value[1:]
+	}
+	return strings.TrimSpace(value)
 }

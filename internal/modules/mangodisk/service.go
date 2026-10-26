@@ -562,7 +562,15 @@ func (s *MangoDiskService) OpenRepository() error {
 	return s.plat.OpenURL(version.RepoURL())
 }
 
-// normalizeVersion 统一版本号形态为 "vX.Y.Z"（前端可能传带或不带 v 前缀）。
+// normalizeVersion 版本入参归一：先 TrimSpace，大小写 v 一律认（剥除既有 v/V 前缀后统一补 v）。
+// 旧形制只认小写 v，大写 V 入参（如 "V1.0.7"）被归一成 "vV1.0.7"：已装去重落空并放行一路注定
+// 失败的后台下载，SetActive/Remove 又对同一输入报"未安装/非法版本号"——三入口互异。修复后裸号/
+// v号/V号/带空白同落一个 v 前缀规范形；imported-/vimported- 兜底令牌经"剥既有 v 再补 v"恒等透传
+// 为 vimported-（绝不产出 vvimported-），与 ListInstalled 展示及 store 记账口径一致。
 func normalizeVersion(value string) string {
-	return "v" + strings.TrimPrefix(strings.TrimSpace(value), "v")
+	value = strings.TrimSpace(value)
+	if len(value) > 0 && (value[0] == 'v' || value[0] == 'V') {
+		value = value[1:]
+	}
+	return "v" + value
 }

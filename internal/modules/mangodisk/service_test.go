@@ -6,12 +6,25 @@ import (
 	"hanxi/internal/modules/mangodisk/version"
 )
 
+// TestNormalizeVersion 版本入参归一词表：裸号/v号/V号/带空白同落一个 v 规范形；
+// imported-/vimported- 兜底令牌恒透传为 vimported-（绝不产出 vvimported-）。
+// 大写 V 形态是 67f3bd3 批次的病灶本体——旧表只钉裸号与 v 号，故从未暴露。
 func TestNormalizeVersion(t *testing.T) {
-	if got := normalizeVersion("1.0.7"); got != "v1.0.7" {
-		t.Fatalf("got %q", got)
+	cases := []struct{ in, want string }{
+		{"1.0.7", "v1.0.7"},
+		{"v1.0.7", "v1.0.7"},
+		{"V1.0.7", "v1.0.7"},
+		{"  v1.0.7 ", "v1.0.7"},
+		{" V1.0.7\t", "v1.0.7"},
+		{"imported-0123456789ab", "vimported-0123456789ab"},
+		{"vimported-0123456789ab", "vimported-0123456789ab"},
+		{"Vimported-0123456789ab", "vimported-0123456789ab"},
+		{"", "v"}, // 空串旧口径即补成 "v"（下游按非法形状拒），本修复不改此行为
 	}
-	if got := normalizeVersion("v1.0.7"); got != "v1.0.7" {
-		t.Fatalf("got %q", got)
+	for _, c := range cases {
+		if got := normalizeVersion(c.in); got != c.want {
+			t.Errorf("normalizeVersion(%q) = %q, 期望 %q", c.in, got, c.want)
+		}
 	}
 }
 
