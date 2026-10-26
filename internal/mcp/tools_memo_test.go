@@ -152,7 +152,7 @@ type fakeMemo struct{ items []memo.MemoItem }
 
 func (f *fakeMemo) Load() ([]memo.MemoItem, error) { return f.items, nil }
 
-func memoSetup(t *testing.T, src MemoSource, ids ...string) *client.Client {
+func memoSetup(t *testing.T, src MemoSource) *client.Client {
 	t.Helper()
 	deps, access, _ := newTestServer(t)
 	deps.Memo = src

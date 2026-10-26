@@ -207,7 +207,10 @@ func buildPortkillPrepareTool(deps Deps) (mcp.Tool, server.ToolHandlerFunc) {
 	)
 	handler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		w := portkillWiringOf()
-		if w == nil || w.Backend == nil {
+		// Tokens 与 Backend 同权重检查（execute 同款三件）：漏网时
+		// w.Tokens.Issue 在 nil 接收者上取锁直接 panic——WithRecovery 兜住的
+		// 错误文案既不可读也污染审计，fail-closed 应在入口成对齐全。
+		if w == nil || w.Backend == nil || w.Tokens == nil {
 			portkillAudit("prepare", "unwired", "portkill 后端未接线（需 Run() 装配 SetPortkillWiring）", nil)
 			return mcp.NewToolResultError("端口查杀后端未接线：本 hanxi 无头版本未装配该能力"), nil
 		}

@@ -558,3 +558,27 @@ func TestPortkillZeroFingerprintTokenRefused(t *testing.T) {
 		t.Fatal("零指纹拒绝必落审计")
 	}
 }
+
+// ---------- 接线半件防线（Tokens 缺装配不得 panic） ----------
+
+// TestPortkillPrepareNilTokenStoreRefused 接线三件中只缺令牌库时 prepare 的
+// 行为验收：修复前 w.Tokens.Issue 落在 nil 接收者上直接 panic（真实后果=整条
+// 无头 stdio 会话经 WithRecovery 也只剩不可读的崩溃归因，且发生在总闸/黑名单
+// 全查之后的最后一厘米）。外部事实断言：返回可读指引错误、零后端杀伤、
+// 未接线审计照落。
+func TestPortkillPrepareNilTokenStoreRefused(t *testing.T) {
+	h := installAuditCapture(t)
+	be := &fakePortkillBackend{
+		occupants: []portkill.PortOccupant{{Port: 8080, PID: 100, ProcessName: "myapp.exe", ExePath: `C:\a\myapp.exe`}},
+	}
+	SetPortkillWiring(NewPortkillWiring(be, &fakeDestructivePolicy{enabled: true}, nil))
+	t.Cleanup(func() { SetPortkillWiring(nil) })
+
+	res, text := callPrepare(t, map[string]any{"port": float64(8080)})
+	if !res.IsError || !strings.Contains(text, "未接线") {
+		t.Fatalf("令牌库缺装配必须报未接线指引错误（而非 panic）: %s", text)
+	}
+	if h.auditRecord("prepare", "unwired") == nil {
+		t.Error("未接线拒绝必落审计")
+	}
+}
