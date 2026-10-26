@@ -34,26 +34,52 @@ const (
 	storageUsageTTL    = 3 * time.Minute
 )
 
+// 锁分层纪律（A3 审查）：缓存元数据用 usageCacheMu 保护、只护纯内存读写，
+// **绝不跨磁盘扫描持锁**；实际扫描由 usageScanMu 串行化（防惊群，维持原
+// 单一大锁的"并发只扫一轮"语义）。旧实现把最长 15s 的盘扫描关在同一把
+// 锁里，force 刷新会把已过期的读请求一起卡住——缓存新鲜命中必须即时返回。
 var (
-	usageMu      sync.Mutex
+	usageCacheMu sync.Mutex
 	usageCache   []StorageUsageItem
 	usageCacheAt time.Time
 	usageRoot    string
+	usageScanMu  sync.Mutex
 )
+
+// measureChildrenFn 测试缝：生产实现 = dirstats.MeasureChildren（磁盘扫描）。
+// 串行单测可替换以演练"扫描在途"场景；生产代码禁止改写。
+var measureChildrenFn = dirstats.MeasureChildren
+
+// freshUsageCache 在缓存锁内判定新鲜（绝不跨 IO 持锁）。
+func freshUsageCache(force bool, root string) ([]StorageUsageItem, bool) {
+	if force {
+		return nil, false
+	}
+	usageCacheMu.Lock()
+	defer usageCacheMu.Unlock()
+	if usageCache != nil && root == usageRoot && time.Since(usageCacheAt) < storageUsageTTL {
+		return usageCache, true
+	}
+	return nil, false
+}
 
 // DataRootUsage 度量数据根一级子项占用（按 Bytes 降序）。force=false 时
 // 优先回 3 分钟内的缓存（数据根未变）；跨会话换绑自动失效（以根路径为键）。
 // 部分子项超时截断不算错误：Partial 逐行透出，UI 负责"≥ 此值"话术。
 func (s *AppService) DataRootUsage(force bool) ([]StorageUsageItem, error) {
-	usageMu.Lock()
-	defer usageMu.Unlock()
-
 	root := settings.GetPaths().DataDir()
-	if !force && usageCache != nil && root == usageRoot && time.Since(usageCacheAt) < storageUsageTTL {
-		return usageCache, nil
+	if items, ok := freshUsageCache(force, root); ok {
+		return items, nil
 	}
 
-	children, err := dirstats.MeasureChildren(root, dirstats.Options{TimeBudget: storageUsageBudget})
+	usageScanMu.Lock()
+	defer usageScanMu.Unlock()
+	// 双重检查：排队等扫描锁期间他人可能已刷新缓存，直接复用、不重复扫盘。
+	if items, ok := freshUsageCache(force, root); ok {
+		return items, nil
+	}
+
+	children, err := measureChildrenFn(root, dirstats.Options{TimeBudget: storageUsageBudget})
 	if err != nil {
 		return nil, fmt.Errorf("扫描数据根失败（%s）: %w", root, err)
 	}
@@ -64,7 +90,9 @@ func (s *AppService) DataRootUsage(force bool) ([]StorageUsageItem, error) {
 			Partial: c.Partial, ErrorCount: c.ErrorCount,
 		})
 	}
+	usageCacheMu.Lock()
 	usageCache, usageCacheAt, usageRoot = items, time.Now(), root
+	usageCacheMu.Unlock()
 	return items, nil
 }
 
@@ -78,7 +106,8 @@ type StorageSubUsageItem struct {
 	Entries    []string `json:"entries"` // 聚合进来的原始子目录名（versions 下=版本目录清单，前端 title 悬停呈现）
 }
 
-// subCache 子级度量缓存（按子目录名分桶，与 DataRootUsage 同一 TTL 纪律）。
+// subCache 子级度量缓存（按子目录名分桶，与 DataRootUsage 同一 TTL 纪律；
+// 读写一律在 usageCacheMu 内，扫描串行走 usageScanMu）。
 type subCache struct {
 	items []StorageSubUsageItem
 	at    time.Time
@@ -92,9 +121,6 @@ var subUsageCache = map[string]subCache{}
 // 组，如实呈现不硬套模块分类）。sub 仅收安全单段名（拒绝分隔符与遍历，扫描面
 // 锁死在数据根之内）；3 分钟缓存与 force 穿透语义同 DataRootUsage。
 func (s *AppService) DataRootSubUsage(sub string, force bool) ([]StorageSubUsageItem, error) {
-	usageMu.Lock()
-	defer usageMu.Unlock()
-
 	if sub == "" || sub == "." || sub == ".." || strings.ContainsAny(sub, `/\`) {
 		return nil, fmt.Errorf("非法子目录名: %q", sub)
 	}
@@ -103,17 +129,40 @@ func (s *AppService) DataRootSubUsage(sub string, force bool) ([]StorageSubUsage
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return nil, fmt.Errorf("子目录不存在或不是目录（%s）", dir)
 	}
-	if c, ok := subUsageCache[sub]; ok && !force && c.root == root && time.Since(c.at) < storageUsageTTL {
-		return c.items, nil
+
+	// 新鲜命中即时返回（不排队等在途扫描后）；未命中才进扫描串行道。
+	if items, ok := freshSubCache(force, sub, root); ok {
+		return items, nil
 	}
 
-	children, err := dirstats.MeasureChildren(dir, dirstats.Options{TimeBudget: storageUsageBudget})
+	usageScanMu.Lock()
+	defer usageScanMu.Unlock()
+	if items, ok := freshSubCache(force, sub, root); ok {
+		return items, nil
+	}
+
+	children, err := measureChildrenFn(dir, dirstats.Options{TimeBudget: storageUsageBudget})
 	if err != nil {
 		return nil, fmt.Errorf("扫描失败（%s）: %w", dir, err)
 	}
 	items := groupBySoftware(children)
+	usageCacheMu.Lock()
 	subUsageCache[sub] = subCache{items: items, at: time.Now(), root: root}
+	usageCacheMu.Unlock()
 	return items, nil
+}
+
+// freshSubCache 子级缓存新鲜判定（纯内存、短锁）。
+func freshSubCache(force bool, sub, root string) ([]StorageSubUsageItem, bool) {
+	if force {
+		return nil, false
+	}
+	usageCacheMu.Lock()
+	defer usageCacheMu.Unlock()
+	if c, ok := subUsageCache[sub]; ok && c.root == root && time.Since(c.at) < storageUsageTTL {
+		return c.items, true
+	}
+	return nil, false
 }
 
 // groupBySoftware 按目录名首个 "_" 前缀分组聚合，Bytes 降序（同值按名）。

@@ -444,6 +444,10 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 					slog.Warn("托管版本树存在无 journal 背书的事务前缀残骸（不自动清理）", "module", id, "dir", name)
 				}
 			}
+		} else {
+			// 盘点失败不阻断启动，但必须留痕：这轮残骸巡检没跑成，盘上是否
+			// 有无背书前件此刻不可知——静默跳过等于掩盖盲区。
+			slog.Warn("journal 未收口事务盘点失败，本轮无背书前缀残骸巡检跳过", "err", perr)
 		}
 	}
 	// 文件面收尸（ADR-0002 §4）：Fetch 强杀遗留的 `<name>.<rand>.part-<hex>`
