@@ -17,7 +17,10 @@ import (
 // 认可的过渡态（"先实现拒绝新操作和有界 drain，逐模块补取消"）；超时后
 // 强制收口并以 Error 显式告警，绝不静默——在途调用由模块内部锁兜底，
 // JobObject 保证进程侧无孤儿。
-const (
+// 数值本身是 ADR-0001 §1.4 冻结的收口预算（30s/60s，回归测试钉死，
+// 改动须同步 ADR）；声明为 var 仅服务串行单测临时覆盖以验证"超时确实
+// 告警"路径——生产装配禁止改运行时值。
+var (
 	drainBudgetDisable  = 30 * time.Second
 	drainBudgetShutdown = 60 * time.Second
 )
@@ -100,24 +103,38 @@ func (r *Registry) Register(exts ...Module) error {
 	return nil
 }
 
+// registerLocked 批量登记（全有或全无）：先整批校验（空 ID、撞已注册表、批内
+// 自撞），全部通过才开始入账；任一条目失败则整批不落——避免批中途失败留下
+// "半注册"状态（调用方虽 fail-loud 处置，半注册模块仍会进投影与枚举面）。
 func (r *Registry) registerLocked(exts []Module) ([]Module, error) {
-	var gated []Module
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	type entry struct {
+		id        string
+		gateAware bool
+	}
+	entries := make([]entry, 0, len(exts))
+	seen := make(map[string]bool, len(exts))
 	for _, e := range exts {
-		info := e.Info()
-		id := info.ID
+		id := e.Info().ID
 		if id == "" {
 			return nil, fmt.Errorf("registry: extension with empty id")
 		}
-		if _, dup := r.modules[id]; dup {
+		if _, dup := r.modules[id]; dup || seen[id] {
 			return nil, fmt.Errorf("registry: duplicate extension id %q", id)
 		}
+		_, ok := e.(GateAware)
+		entries = append(entries, entry{id: id, gateAware: ok})
+		seen[id] = true
+	}
 
+	gated := make([]Module, 0, len(exts))
+	for i, e := range exts {
 		// 优先从持久化 store 读取状态，默认 true
 		enabled := true
 		if r.store != nil {
-			enabled = r.store.IsModuleEnabled(id, true)
+			enabled = r.store.IsModuleEnabled(entries[i].id, true)
 		}
 
 		wrapper := &ModuleWrapper{
@@ -126,9 +143,9 @@ func (r *Registry) registerLocked(exts []Module) ([]Module, error) {
 			background: make(map[*BackgroundLease]struct{}),
 		}
 		wrapper.cond = sync.NewCond(&wrapper.mu)
-		r.modules[id] = wrapper
+		r.modules[entries[i].id] = wrapper
 
-		if _, ok := e.(GateAware); ok {
+		if entries[i].gateAware {
 			gated = append(gated, e)
 		}
 	}
@@ -206,13 +223,18 @@ func (r *Registry) EnsureActive(moduleID string) error {
 	return ensureActive(wrapper, moduleID)
 }
 
+// receiptStore 取凭据存储指针快照——r.receipts 的唯一读通道。
+// 批量投影经它取一次指针再逐模块判定，避免每模块重复申请 Registry 读锁。
+func (r *Registry) receiptStore() ReceiptStorage {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.receipts
+}
+
 // checkInstalled 裁决 Delivery 维度（Wave 1 口径：未安装 = 不初始化、不进入口、
 // 不允许业务调用）。receipts 未注入时（单测、无头进程）全部按已安装处理。
 func (r *Registry) checkInstalled(moduleID string) error {
-	r.mu.RLock()
-	receipts := r.receipts
-	r.mu.RUnlock()
-	if receipts != nil && !receipts.IsInstalled(moduleID) {
+	if receipts := r.receiptStore(); receipts != nil && !receipts.IsInstalled(moduleID) {
 		return fmt.Errorf("%w %q", ErrModuleNotInstalled, moduleID)
 	}
 	return nil
@@ -273,10 +295,16 @@ func (r *Registry) List() []ModuleInfo {
 	out := make([]ModuleInfo, 0, len(wrappers))
 	for _, wrapper := range wrappers {
 		wrapper.mu.Lock()
-		info := wrapper.Module.Info()
-		info.Enabled = wrapper.Enabled
-		info.Initialized = wrapper.initialized
+		enabled := wrapper.Enabled
+		initialized := wrapper.initialized
 		wrapper.mu.Unlock()
+		// 模块代码回调与凭据读盘一律在 wrapper.mu 外执行（结构体注释纪律：
+		// "模块业务回调一律在锁外"）。wrapper.Module 字段注册后不再改写，
+		// 经 wrappers() 快照取出即可安全无锁读；否则 Info 失格的模块会把
+		// 启停门与全部状态读取一起冻住。
+		info := wrapper.Module.Info()
+		info.Enabled = enabled
+		info.Initialized = initialized
 		info.Installed = r.IsInstalled(info.ID)
 		out = append(out, info)
 	}
@@ -286,9 +314,7 @@ func (r *Registry) List() []ModuleInfo {
 
 // IsInstalled 查询模块是否持有逻辑安装凭据（receipts 未注入时恒为 true）。
 func (r *Registry) IsInstalled(moduleID string) bool {
-	r.mu.RLock()
-	receipts := r.receipts
-	r.mu.RUnlock()
+	receipts := r.receiptStore()
 	return receipts == nil || receipts.IsInstalled(moduleID)
 }
 
@@ -296,19 +322,21 @@ func (r *Registry) IsInstalled(moduleID string) bool {
 // 未安装（缺逻辑 receipt）模块不进导航（Wave 1 可见性口径，ADR-0001 §1.4）。
 func (r *Registry) GetEnabledNavs() []NavEntry {
 	wrappers := r.wrappers()
-	r.mu.RLock()
-	receipts := r.receipts
-	r.mu.RUnlock()
+	receipts := r.receiptStore()
 	var out []NavEntry
 	for _, wrapper := range wrappers {
 		wrapper.mu.Lock()
-		if wrapper.Enabled {
-			id := wrapper.Module.Info().ID
-			if receipts == nil || receipts.IsInstalled(id) {
-				out = append(out, wrapper.Module.Nav()...)
-			}
-		}
+		enabled := wrapper.Enabled
 		wrapper.mu.Unlock()
+		if !enabled {
+			continue
+		}
+		// 凭据判定与 Nav 收集都在 wrapper.mu 外：真实现 IsInstalled 是磁盘读，
+		// Nav/Info 是模块代码，均不得持生命周期锁执行。
+		id := wrapper.Module.Info().ID
+		if receipts == nil || receipts.IsInstalled(id) {
+			out = append(out, wrapper.Module.Nav()...)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Order != out[j].Order {
@@ -457,6 +485,9 @@ type TrayCommandInfo struct {
 }
 
 // ListTrayCommands 聚合所有已启用模块实现的托盘命令（按模块 ID 升序，命令保持声明顺序）。
+// installed ∧ enabled 是同一次枚举里的两个观测维度，判定顺序前移（先凭据后启停）
+// 不改变"两者皆真才收录"的结论，但把凭据磁盘读与模块代码回调挪出 wrapper.mu，
+// 消除 wrapper 锁内 IO 与 wrapper→Registry 读锁的反向嵌套。
 func (r *Registry) ListTrayCommands() []TrayCommandInfo {
 	r.mu.RLock()
 	ids := make([]string, 0, len(r.modules))
@@ -465,29 +496,28 @@ func (r *Registry) ListTrayCommands() []TrayCommandInfo {
 		ids = append(ids, id)
 		wrappers[id] = wrapper
 	}
+	receipts := r.receipts
 	r.mu.RUnlock()
 	sort.Strings(ids)
 
 	var out []TrayCommandInfo
 	for _, id := range ids {
-		wrapper := wrappers[id]
-		wrapper.mu.Lock()
-		if !wrapper.Enabled {
-			wrapper.mu.Unlock()
+		if receipts != nil && !receipts.IsInstalled(id) {
 			continue
 		}
-		if !r.IsInstalled(id) {
-			wrapper.mu.Unlock()
+		wrapper := wrappers[id]
+		wrapper.mu.Lock()
+		enabled := wrapper.Enabled
+		wrapper.mu.Unlock()
+		if !enabled {
 			continue
 		}
 		provider, ok := wrapper.Module.(TrayCommandsProvider)
 		if !ok {
-			wrapper.mu.Unlock()
 			continue
 		}
 		name := wrapper.Module.Info().Name
 		commands := provider.TrayCommands()
-		wrapper.mu.Unlock()
 		for _, cmd := range commands {
 			out = append(out, TrayCommandInfo{
 				Key:        id + "/" + cmd.ID,
@@ -547,9 +577,7 @@ func splitTrayKey(key string) (moduleID, cmdID string, ok bool) {
 // 登记 receipt → 默认启用（安装即可用）；幂等，重复安装保留首次凭据。
 // 内建逻辑模块的"安装"不复制宿主代码，UI 必须如实呈现不释放体积。
 func (r *Registry) Install(moduleID string, kind ReceiptKind) error {
-	r.mu.RLock()
-	receipts := r.receipts
-	r.mu.RUnlock()
+	receipts := r.receiptStore()
 	if receipts == nil {
 		return fmt.Errorf("registry: receipt storage not configured")
 	}
@@ -567,9 +595,7 @@ func (r *Registry) Install(moduleID string, kind ReceiptKind) error {
 // Uninstall 执行逻辑卸载事务：先 SetEnabled(false) 完成 drain/析构收口，
 // 再移除 receipt；用户数据默认保留（数据策略由调用方在 UI 层单独裁决）。幂等。
 func (r *Registry) Uninstall(moduleID string) error {
-	r.mu.RLock()
-	receipts := r.receipts
-	r.mu.RUnlock()
+	receipts := r.receiptStore()
 	if receipts == nil {
 		return fmt.Errorf("registry: receipt storage not configured")
 	}
@@ -692,24 +718,24 @@ func (w *ModuleWrapper) runtimeStateLocked() RuntimeState {
 // Registry 是权威源；任何前端/页面不得据此再推导第二份状态。
 func (r *Registry) ListStates() []ModuleState {
 	wrappers := r.wrappers()
+	// 凭据指针每轮投影取一次（单一事实源仍在存储侧逐模块裁决），不逐模块
+	// 重复申请 Registry 读锁；模块回调（Info）在 wrapper.mu 外执行。
+	receipts := r.receiptStore()
 	out := make([]ModuleState, 0, len(wrappers))
 	for _, wrapper := range wrappers {
 		wrapper.mu.Lock()
-		moduleID := wrapper.Module.Info().ID
 		enabled := wrapper.Enabled
 		runtime := wrapper.runtimeStateLocked()
 		wrapper.mu.Unlock()
-		out = append(out, r.projectState(moduleID, enabled, runtime))
+		out = append(out, r.projectState(wrapper.Module.Info().ID, receipts, enabled, runtime))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ModuleID < out[j].ModuleID })
 	return out
 }
 
 // projectState 合并 wrapper 现场与 overrides，计算一维完整投影。
-func (r *Registry) projectState(moduleID string, enabled bool, runtime RuntimeState) ModuleState {
-	r.mu.RLock()
-	receipts := r.receipts
-	r.mu.RUnlock()
+// receipts 由批量调用方（ListStates）取一次指针传入；nil 表示未注入，按已安装处理。
+func (r *Registry) projectState(moduleID string, receipts ReceiptStorage, enabled bool, runtime RuntimeState) ModuleState {
 	ov, _ := r.overrideSnapshot(moduleID) // 锁内值拷贝：health/remoteVersion 同源一轮
 
 	policy := PolicyDisabled
