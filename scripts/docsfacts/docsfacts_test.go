@@ -5,8 +5,11 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -135,4 +138,71 @@ func joinLines(items []string) string {
 		out += s
 	}
 	return out
+}
+
+// TestAssertionNoCaptureGroupIsProblem 断言正则无捕获组必须进问题清单，而不是
+// groups[1] 越界 panic 打崩闸门进程（修复前形态：CI 拿到的是崩溃栈，不是可修
+// 的"断言正则无捕获组"指引）。用合成根，不依赖活文档内容。
+func TestAssertionNoCaptureGroupIsProblem(t *testing.T) {
+	root := t.TempDir()
+	doc := filepath.Join(root, "README.md")
+	if err := os.WriteFile(doc, []byte("共 12 个模块\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx := fixtureDoc{
+		Schema: 1,
+		Facts:  map[string]int{"moduleTotal": 12},
+		Assertions: []assertion{
+			{File: "README.md", Pattern: `共 \d+ 个模块`, Fact: "moduleTotal"}, // 无捕获组
+		},
+	}
+	problems := CheckDocsAgainstFacts(root, fx)
+	if len(problems) != 1 || !strings.Contains(problems[0], "无捕获组") {
+		t.Fatalf("无捕获组断言须报为可修问题而非静默/崩溃，得 %v", problems)
+	}
+}
+
+// TestAssertionGroupNonNumericAndMismatch 捕获组非数字与计数不符两条判定路径
+// 都必须是问题清单形态（验证上面的守卫没有顺手放宽正常判定）。
+func TestAssertionGroupNonNumericAndMismatch(t *testing.T) {
+	root := t.TempDir()
+	doc := filepath.Join(root, "README.md")
+	if err := os.WriteFile(doc, []byte("共 many 个模块\n以及 7 份\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx := fixtureDoc{
+		Schema: 1,
+		Facts:  map[string]int{"x": 9, "y": 9},
+		Assertions: []assertion{
+			{File: "README.md", Pattern: `共 (\w+) 个模块`, Fact: "x"},
+			{File: "README.md", Pattern: `以及 (\d+) 份`, Fact: "y"},
+		},
+	}
+	problems := CheckDocsAgainstFacts(root, fx)
+	if len(problems) != 2 {
+		t.Fatalf("两条不合规断言都要报，得 %v", problems)
+	}
+	joined := strings.Join(problems, "\n")
+	if !strings.Contains(joined, "非数字") || !strings.Contains(joined, "计数不符") {
+		t.Errorf("归因不对: %s", joined)
+	}
+}
+
+// TestBrokenLinkWithSpaceTargetNoPanic `]( 空格/制表目标` 形态：修复前
+// strings.Fields 结果为空再取 [0] 直接 panic 打崩检查；修复后等价空链接跳过，
+// 同文档的真断链照常抓（守卫不放松判定面）。
+func TestBrokenLinkWithSpaceTargetNoPanic(t *testing.T) {
+	root := t.TempDir()
+	doc := filepath.Join(root, "docs", "a.md")
+	if err := os.MkdirAll(filepath.Dir(doc), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "空白目标 ]( \t) 形态\n真断链 ](missing.md) 形态\n锚点 ](#self) 正常\n"
+	if err := os.WriteFile(doc, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	problems := CheckMarkdownStructure(root, []string{"docs/a.md"})
+	if len(problems) != 1 || !strings.Contains(problems[0], "missing.md") {
+		t.Fatalf("空白目标须静默跳过、真断链必须抓到，得 %v", problems)
+	}
 }

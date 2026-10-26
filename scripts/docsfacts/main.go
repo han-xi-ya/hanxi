@@ -236,6 +236,13 @@ func CheckDocsAgainstFacts(root string, fx fixtureDoc) []string {
 			problems = append(problems, fmt.Sprintf("断言正则不可编译 %q: %v", a.Pattern, err))
 			continue
 		}
+		if re.NumSubexp() < 1 {
+			// 断言契约是"第 1 个捕获组=数字"；无捕获组的 pattern 会让下方
+			// groups[1] 直接越界 panic 打崩整个闸门进程。规则表错误要如实进清单，
+			// 不能以崩溃形态出现（CI 里 panic 与断言红的语义完全不同）。
+			problems = append(problems, fmt.Sprintf("断言正则无捕获组（%q）——契约要求第 1 捕获组为数字", a.Pattern))
+			continue
+		}
 		text, err := readText(root, a.File)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("断言目标不可读 %s: %v", a.File, err))
@@ -275,7 +282,13 @@ func CheckMarkdownStructure(root string, docs []string) []string {
 		}
 		base := filepath.Dir(filepath.FromSlash(doc))
 		for _, raw := range linkRe.FindAllStringSubmatch(text, -1) {
-			target := strings.Fields(raw[1])[0] // Markdown URL 遇空格即止（N27 断链病根）
+			fields := strings.Fields(raw[1])
+			if len(fields) == 0 {
+				// `](  )` 形态：括号内只有空白。Fields[0] 直接取会越界 panic
+				// 打崩闸门——空白目标等价于空链接，如实跳过。
+				continue
+			}
+			target := fields[0] // Markdown URL 遇空格即止（N27 断链病根）
 			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") ||
 				strings.HasPrefix(target, "mailto:") || strings.HasPrefix(target, "#") {
 				continue
