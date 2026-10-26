@@ -109,8 +109,9 @@ func (s *WslService) RevealDownload(tag, name string) error {
 	return revealInExplorer(path)
 }
 
-// downloadTo 生产实现：受护栏流式落盘（.part → uniquePath 改名不覆盖）。
-// 经 service.downloadTo 字段注入，单测替换后即可离线断言单飞闸行为。
+// downloadAsset 是 downloadTo 注入缝的生产实现：受护栏流式落盘
+// （.part → uniquePath 改名不覆盖）。单测替换 service.downloadTo 后即可
+// 离线断言单飞闸行为。
 func (s *WslService) downloadAsset(parent context.Context, tag, name, dir, rawURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(parent, 30*time.Minute)
 	defer cancel()

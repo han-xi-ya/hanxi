@@ -24,8 +24,9 @@ const (
 	exeName    = "TranslucentTB.exe"
 	configName = "settings.json" // 上游便携版配置：恒在 exe 同目录（DetermineConfigPath 实证）
 
-	// treeEntryName 版本树目录前缀（<root>/translucenttb_<version>，与历史布局
-	// translucenttb_2026.2 / translucenttb_imported-<时间戳> 一致）。
+	// treeEntryName 版本树目录前缀（<root>/translucenttb_<version>：正规版
+	// YYYY.N 如 translucenttb_2026.2，导入兜底 imported-<哈希>，存量历史
+	// 时间戳形态同域）。
 	treeEntryName = "translucenttb"
 	// dirPrefix 导入链直造目录时的版本隔离目录前缀（与 Tree 的 entry 命名同源）。
 	dirPrefix = treeEntryName + "_"
@@ -61,7 +62,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // Manager TranslucentTB 版本管理引擎：远程列表（GitHub 元数据）与"下载 → 校验 →
 // 解包 → 落位"主流程委托 Wave 4 共享内核 packages/go/artifact（Fetch +
 // UnpackZip + Tree）；本包只保留 TranslucentTB 领域知识：便携资产筛选、镜像 URL
-// 模板、版本目录形状（YYYY.N / imported-时间戳）、便携锚点（exe + 四 dll +
+// 模板、版本目录形状（YYYY.N / imported-兜底 tag）、便携锚点（exe + 四 dll +
 // resources.pri 全套伴生文件）布局自检、本地导入白名单与既有进度词表映射。
 type Manager struct {
 	versionsDir string
@@ -106,8 +107,9 @@ func (m *Manager) ListRemote() ([]TBRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 translucenttb_2026.2（下载/导入的正规版本）或
-// translucenttb_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；
-// 其余形状的版本令牌不列入；exe 缺失/为空或任一必需伴生文件缺失均视为损坏安装跳过。
+// translucenttb_imported-<兜底 tag>（版本探测失败的导入兜底：现行内容哈希、
+// 历史时间戳形态继续收纳）；其余形状的版本令牌不列入；exe 缺失/为空或
+// 任一必需伴生文件缺失均视为损坏安装跳过。
 func (m *Manager) ListInstalled() ([]TBVersionInfo, error) {
 	vers, err := m.tree.Versions()
 	if err != nil {
@@ -309,7 +311,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（translucenttb_2026.2 或 translucenttb_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（translucenttb_2026.2 或 translucenttb_imported-兜底 tag）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimSpace(version)
@@ -323,7 +325,8 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 }
 
 // versionFromToken 把 Tree 扫出的版本令牌规范化（translucenttb_2026.2 → 2026.2，
-// 与远程 tag 同域、无 v 前缀）。仅接受纯 YYYY.N 或 imported-时间戳形状，
+// 与远程 tag 同域、无 v 前缀）。仅接受纯 YYYY.N 或 imported-兜底 tag 形状
+// （哈希现行 / 时间戳历史，判定面见 importedDirRe 注记），
 // 其余外来目录名不列入（与原 dirNameRe 口径一致）。
 func versionFromToken(token string) (string, bool) {
 	if yearVersionRe.MatchString(token) || importedDirRe.MatchString(token) {

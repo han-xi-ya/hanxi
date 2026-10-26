@@ -212,7 +212,7 @@ func (s *OcrService) UninstallHostedVersion(engine, version string) (ControlOutc
 		Message: fmt.Sprintf("已卸载 %s v%s", engineLabel(id), v)}, nil
 }
 
-// hostedInUse 目标版本目录是否正被在跑的托管实例使用（生效解析入口落在目录内）。
+// hostedInUseLocked 目标版本目录是否正被在跑的托管实例使用（生效解析入口落在目录内）。
 // 纯判定拆出便于单测；external 实例不归本引擎管，其 exe 是否同路径无从探知，
 // 由删目录时的文件锁报错兜底。
 func (s *OcrService) hostedInUseLocked(targetDir string) bool {

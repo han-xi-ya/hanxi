@@ -24,8 +24,8 @@ const (
 	portableMarkName = "portable.lock"          // 官方便携标记：exe 同目录即令配置随 exe 走（SettingHelper.IsPortableVersion）
 	nativeMarkName   = "QuickLook.Native64.dll" // 原生 helper（查询焦点窗口选中项），布局自检哨兵
 
-	// treeEntryName 版本树目录前缀（<root>/quicklook_<version>，与历史布局
-	// quicklook_4.5.0 / quicklook_imported-<时间戳> 一致）。
+	// treeEntryName 版本树目录前缀（<root>/quicklook_<version>：正规版 x.y.z
+	// 如 quicklook_4.5.0，导入兜底 imported-<哈希>，存量历史时间戳形态同域）。
 	treeEntryName = "quicklook"
 	// dirPrefix 导入链直造目录时的版本隔离目录前缀（与 Tree 的 entry 命名同源）。
 	dirPrefix = treeEntryName + "_"
@@ -102,8 +102,9 @@ func (m *Manager) ListRemote() ([]QuickLookRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 quicklook_4.5.0（下载/导入的正规版本，上游 tag 无 v 前缀，展示
-// 裸号与迁移前一致）或 quicklook_imported-YYYYMMDD-HHMMSS（版本探测失败的
-// 导入兜底）；其余形状的版本令牌不列入；exe 缺失/为空或便携标记缺失均视为
+// 裸号与迁移前一致）或 quicklook_imported-<兜底 tag>（版本探测失败的导入
+// 兜底：现行内容哈希、历史时间戳形态继续收纳）；其余形状的版本令牌不列入；
+// exe 缺失/为空或便携标记缺失均视为
 // 损坏安装跳过。
 func (m *Manager) ListInstalled() ([]QuickLookVersionInfo, error) {
 	vers, err := m.tree.Versions()

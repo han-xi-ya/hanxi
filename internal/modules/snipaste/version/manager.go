@@ -37,10 +37,12 @@ var plainVersionRe = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)+(?:-Beta[0-9]*)?$`)
 //     64 位十六进制），而 Snipaste 官网独立校验清单只发布 SHA-1（sha-1.txt）且
 //     zip 内无官方 SHA-256 可比对——委托即等于放弃可信校验或造假，故保留本包
 //     "官网域名锁 + 尺寸核验 + 官方 SHA-1 + 布局/FileVersion 自检"链；
-//   - 落位/扫描/卸载不可委托 artifact.Tree：内核版本树目录名固定为
-//     <entry>_<version>，表达不了既有 snipaste_v<version> 布局（多一枚下划线即
-//     改变盘上目录名）；内核统一账本 artifact.Meta 也承载不了 SnipasteVersionInfo
-//     的 verificationMode/officialHash/hashAlgorithm/isImport 字段（前端契约）。
+//   - 落位/扫描/卸载留本包 bespoke（真正的堵点是账本，不是目录名，裁定账见
+//     ADR-0002 §5）：内核 artifact.Tree 目录名 <entry>_<version> 其实表达得了
+//     snipaste_v<version>（传 v 前缀令牌即可，"多一枚下划线即改变盘上目录名"
+//     系旧报告误判、已被 §5 点名纠正）；拦路的是内核统一账本 artifact.Meta
+//     承载不了 SnipasteVersionInfo 的 verificationMode/officialHash/
+//     hashAlgorithm/isImport 字段（前端契约，共享包不抽模块业务）。
 //     原子落位（staging+rename）与 .removing- 隔离卸载由本包自持，纪律同内核。
 type Manager struct {
 	versionsDir string
@@ -269,7 +271,7 @@ func (m *Manager) Download(targetVersion string, onProgress func(DownloadProgres
 }
 
 // ImportLocal 导入用户自备的 Snipaste 免安装目录：以 exe 的 PE FileVersion 定版本号复制建档
-// （VerificationMode=local-import，无官网包哈希可比对）。
+// （VerificationMode=local-import+layout，无官网包哈希可比对）。
 func (m *Manager) ImportLocal(srcDir string) (SnipasteVersionInfo, error) {
 	srcDir = filepath.Clean(strings.TrimSpace(srcDir))
 	srcExe := filepath.Join(srcDir, exeName)

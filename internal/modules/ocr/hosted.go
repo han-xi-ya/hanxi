@@ -941,7 +941,7 @@ func readHostedInstalledAt(metaPath string) string {
 	return ""
 }
 
-// resolve 解析引擎的托管最新可用版本（manifest + 入口双检），返回 exe 与版本号。
+// resolveLatest 解析引擎的托管最新可用版本（manifest + 入口双检），返回 exe 与版本号。
 func (hm *hostedManager) resolveLatest(engineID string) (exe, version string, ok bool) {
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()

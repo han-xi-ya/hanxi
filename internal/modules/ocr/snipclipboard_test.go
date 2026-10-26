@@ -1,7 +1,7 @@
 package ocr
 
 // 剪贴板识图（ocr/snip-clipboard）：不弹覆盖层直取剪贴板图像的链路分叉，
-// snipper 打桩 + 在线桩引擎覆盖"无图/防重入/无组件/成功+自动复制"四态。
+// Snipper 缝隙打桩（fakeSnip）+ 在线桩引擎覆盖"无图/防重入/无组件/成功+自动复制"四态。
 
 import (
 	"fmt"

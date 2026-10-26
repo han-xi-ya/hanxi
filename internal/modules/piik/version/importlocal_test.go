@@ -42,7 +42,7 @@ func buildImportSource(t *testing.T, extra map[string]string) string {
 	return root
 }
 
-// TestImportLocalFullTree 整套导入：假 exe 无 PE 版本资源 → imported-时间戳
+// TestImportLocalFullTree 整套导入：假 exe 无 PE 版本资源 → imported-内容哈希
 // 兜底目录；主 exe/runtime 双件/许可文本/用户杂项全部随迁；账本 isImport +
 // verifiedHash=false 如实落账；ListInstalled 回读投影零漂移。
 func TestImportLocalFullTree(t *testing.T) {

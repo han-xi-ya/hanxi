@@ -76,7 +76,7 @@ type UsbView struct {
 	ReleasesPage string          `json:"releasesPage"`         // 引导卡固定跳转地址
 }
 
-// usbLedgerFile 账本文件形态。
+// usbLedger 账本文件形态。
 type usbLedger struct {
 	AutoEnabled bool            `json:"autoEnabled"`
 	Entries     []USBShareEntry `json:"entries"`

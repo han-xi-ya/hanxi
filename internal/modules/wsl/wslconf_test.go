@@ -47,7 +47,7 @@ func TestDefaultUserOf(t *testing.T) {
 	}
 }
 
-// wslconfStub：Ubuntu 在册；guest 命令行为由 opts 覆写。
+// wslconfTee：Ubuntu 在册；guest 命令行为由 opts 覆写。
 type wslconfTee struct {
 	stdin string
 	calls []string

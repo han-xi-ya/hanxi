@@ -9,7 +9,7 @@ import (
 	netx "hanxi/packages/go/netx"
 )
 
-// loopProbeProbe 跨平台 TCP 拨测与 OCR 服务契约探测（各平台探测结构体内嵌复用）。
+// netPortProbe 跨平台 TCP 拨测与 OCR 服务契约探测（各平台探测结构体内嵌复用）。
 // 400ms 连接超时：回环地址正常握手在毫秒级，慢仅出现在半开/防火墙丢弃场景。
 type netPortProbe struct{}
 

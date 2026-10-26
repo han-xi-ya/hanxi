@@ -26,7 +26,8 @@ const (
 	revisionFileName = "REVISION"
 
 	// treeEntryName 版本树目录前缀（<root>/piik_<version>，布局 piik_1.2.0 /
-	// piik_imported-<时间戳> 与家族一致：目录名不带 v，展示版本号带 v）。
+	// piik_imported-<兜底 tag>（现行内容哈希，历史时间戳）与家族一致：
+	// 目录名不带 v，展示版本号带 v）。
 	treeEntryName = "piik"
 	// dirPrefix 导入链直造目录时的版本隔离目录前缀（与 Tree 的 entry 命名同源）。
 	dirPrefix = treeEntryName + "_"
@@ -112,8 +113,9 @@ func (m *Manager) ListRemote() ([]PiikRelease, error) {
 }
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
-// 目录命名 piik_1.2.0（下载/导入的正规版本）或 piik_imported-YYYYMMDD-HHMMSS
-// （版本探测失败的导入兜底）；其余形状的版本令牌不列入；布局不变式
+// 目录命名 piik_1.2.0（下载/导入的正规版本）或 piik_imported-<兜底 tag>
+// （版本探测失败的导入兜底：现行内容哈希、历史时间戳形态继续收纳）；
+// 其余形状的版本令牌不列入；布局不变式
 // （主 exe 非空 + runtime 双 exe 在位）不满足视为损坏安装跳过。
 // 账外漂移护栏：对每个版本做 mtime 闸控的摘要复查（仅主 exe 落位后有改动
 // 迹象才复算全量哈希，成本纪律见 driftCheck 注释），漂移如实投影到

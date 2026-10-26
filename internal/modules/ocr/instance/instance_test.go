@@ -444,7 +444,7 @@ func TestStopIdempotent(t *testing.T) {
 	}
 }
 
-// TestStartDetachedUnlinksJob Detached=true 走 SetAllowKillOnClose(false)。
+// TestStartDetachedFlagPlumbing Detached=true 走 SetAllowKillOnClose(false)。
 func TestStartDetachedFlagPlumbing(t *testing.T) {
 	fj := &fakeJob{}
 	api := &fakeJobAPI{job: fj}

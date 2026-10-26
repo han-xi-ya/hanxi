@@ -45,7 +45,11 @@ type QuickLookService struct {
 	// 测试注入假实现以隔离网络驱动 emit 收口时序（eartrumpet 注入接缝同法）。
 	download func(ctx context.Context, txnID, targetVersion string, emit func(version.DownloadProgress)) error
 
-	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
+	// downloadMu 只串行同步段（已装判定、事务开启、goroutine 起跑），不覆盖
+	// goroutine 下载本体——按版本在飞去重未实现：同版本连点仍会开两路下载、
+	// 记两笔 journal（同类缺陷 translucenttb 2026-10-26 已按名册+收口销账修
+	// 复，quicklook 未随批；此处为实况登记，不是能力宣称）。
+	downloadMu sync.Mutex
 	watchMu    sync.Mutex
 	watching   bool
 	watchStop  chan struct{}

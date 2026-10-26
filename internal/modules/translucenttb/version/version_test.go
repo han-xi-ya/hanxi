@@ -161,8 +161,10 @@ func makeTestZip(t *testing.T, entries map[string]string) string {
 	return path
 }
 
-// TestVersionFromToken 版本令牌形状：纯 YYYY.N 与 imported-时间戳收纳（原样返回，
-// 无 v 前缀），v 前缀/非年份域/中文目录名拒绝（与原 dirNameRe 口径一致）。
+// TestVersionFromToken 版本令牌形状：纯 YYYY.N 与 imported-兜底 tag 收纳
+// （原样返回、无 v 前缀；样本取历史时间戳形态，哈希形态的收纳判定见
+// TestNormalizeImportedVersion），v 前缀/非年份域/中文目录名拒绝（与原
+// dirNameRe 口径一致）。
 func TestVersionFromToken(t *testing.T) {
 	tests := []struct {
 		token   string
@@ -250,7 +252,7 @@ func TestPortableAnchorEmptyExe(t *testing.T) {
 }
 
 // TestNormalizeImportedVersion PE 版本资源归一化：上游 FileVersion 带构建 sha 尾段，
-// 须收敛到与远程 tag 同域的 YYYY.N；非规范格式退化时间戳兜底。
+// 须收敛到与远程 tag 同域的 YYYY.N；非规范格式退化内容哈希兜底，摘要算不出即拒导入。
 func TestNormalizeImportedVersion(t *testing.T) {
 	for fv, want := range map[string]string{
 		"2026.2.0.d4636e4": "2026.2", // 真实 2026.2 exe 的 FileVersion（实测资源段）
@@ -362,7 +364,7 @@ func TestImportLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportLocal: %v", err)
 	}
-	// 假 PE 无法读版本信息 → 时间戳兜底（真实 exe 会归一化为 2026.2 同域版本）
+	// 假 PE 无法读版本信息 → 内容哈希兜底（真实 exe 会归一化为 2026.2 同域版本）
 	if !importedDirRe.MatchString(info.Version) {
 		t.Errorf("版本号格式异常: %q", info.Version)
 	}
