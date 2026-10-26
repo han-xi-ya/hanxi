@@ -1,5 +1,8 @@
-// Package lan 内置模块：局域网设备扫描。基于 platform 网卡/邻居表 API 做 ARP 式在线探测，
-// 结合 mDNS/主机名识别设备，设备备注经 settings.Store 持久化。只读扫描，不改动网络配置。
+// Package lan 内置模块：局域网设备扫描。基于 platform 网卡/邻居表 API 做 ARP 式
+// 在线探测（ICMP 可达 + ARP 补 MAC），设备备注经 settings.Store 持久化。只读扫描，
+// 不改动网络配置。**不含 mDNS/主机名识别**——DeviceInfo.Hostname 现行链路恒空
+// （wire 兼容保留位，前端有值才显示），宣称该能力属超前文案（FEATURES_OVERVIEW
+// §5.2 在册项，2026-10-26 按实况订正包注释）。
 package lan
 
 import (

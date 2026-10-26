@@ -69,8 +69,9 @@ func DetectOne(ctx context.Context, d Detector) ToolInfo {
 	return info
 }
 
-// RunAll 并发探测全部工具：每工具独立 goroutine（单工具 5s 超时兜底），
-// WaitGroup 汇总后同步返回完整列表（总耗时 ≈ 最慢工具，上限 5s）。
+// RunAll 并发探测全部工具：每工具独立 goroutine（版本命令执行带 5s 子超时兜底，
+// 见 runner.go probeTimeout），WaitGroup 汇总后同步返回完整列表
+// （总耗时 ≈ 最慢工具，命令等待部分封顶 5s）。
 // 失败落在工具级 status 上，不整体报错。
 func RunAll(ctx context.Context) []ToolInfo {
 	ds := Detectors()

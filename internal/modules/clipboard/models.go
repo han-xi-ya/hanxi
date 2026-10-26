@@ -80,9 +80,9 @@ func DefaultExcludedExes() []string {
 	return append([]string(nil), sensitiveDefaultUsers...)
 }
 
-// matchExcluded 判定复制来源进程名是否命中排除表（纯函数，口径与 A3 的
-// matchExe 三分支对位）：空名不排除；子串含 "password" 排除（契约 §2 尾注）；
-// 否则对活表大小写不敏感精确命中。
+// matchExcluded 判定复制来源进程名是否命中排除表（纯函数，三分支口径与
+// models_test.go TestClipMatchExcluded 逐条对钉）：空名不排除；子串含
+// "password" 排除（契约 §2 尾注）；否则对活表大小写不敏感精确命中。
 func matchExcluded(exe string, table []string) bool {
 	if exe == "" {
 		return false

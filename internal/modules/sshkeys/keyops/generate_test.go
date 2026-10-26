@@ -122,7 +122,7 @@ func TestGenerateCombos(t *testing.T) {
 				}
 			}
 
-			// 未加密的那把，注释也在私钥自己的明文头部里（改口令时靠它带回去）
+			// 未加密的那把，注释在私钥自己的明文段里（改口令时靠它带回去）
 			if c.comment != "" && comment != c.comment {
 				t.Errorf("ParseAuthorizedKey 的 comment 字段应为 %q，实得 %q", c.comment, comment)
 			}

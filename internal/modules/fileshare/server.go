@@ -216,7 +216,8 @@ func (s *Server) IsRunning() bool {
 // connTracker 连接中间件。
 // 曾对全响应下发 Access-Control-Allow-Origin: *：访客页与本服务同源，
 // 本不需要 CORS；通配反而允许任意网页借用户浏览器跨源打局域网端点，
-// 已按 BUG-001 审查结论移除（BUG 编号见 docs/BUG_AUDIT.md）。
+// 已按 BUG-001 审查结论移除（原审计报告 BUG_AUDIT.md 已删档，孤本存底见
+// docs/archive/KEY-NUGGETS.md §一，坑案详见 docs/TROUBLESHOOTING.md §41）。
 func (s *Server) connTracker(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 上传请求统一使用独立连接，避免 Safari/WKWebView 长连接状态异常。

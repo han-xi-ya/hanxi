@@ -13,7 +13,7 @@ type ShareConfig struct {
 	SharePath       string `json:"sharePath"`       // 挂载共享的本地物理绝对路径
 	AllowUpload     bool   `json:"allowUpload"`     // 是否允许访客上传文件
 	AllowTextDrop   bool   `json:"allowTextDrop"`   // 是否允许文本/链接投递
-	AutoSaveToMemo  bool   `json:"autoSaveToMemo"`  // 投递的文本是否自动存入 DevMemo 备忘录
+	AutoSaveToMemo  bool   `json:"autoSaveToMemo"`  // 投递的文本是否自动存入随手记（memo）
 	MaxUploadSizeMB int64  `json:"maxUploadSizeMB"` // 单文件最大上传限制 (MB，0 为不限制)
 	AuthToken       string `json:"authToken"`       // 可选访问口令 (为空表示免密局域网共享)
 }

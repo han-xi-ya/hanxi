@@ -26,7 +26,7 @@ type PortResult struct {
 	Status      PortStatus `json:"status"`
 	Service     string     `json:"service"`     // 识别出的服务名称 (如 http, ssh, mysql, redis)
 	Banner      string     `json:"banner"`      // 抓取到的响应特征或标题 (如 nginx/1.24.0, OpenSSH 8.9)
-	Fingerprint string     `json:"fingerprint"` // 原始指纹或证书等详情
+	Fingerprint string     `json:"fingerprint"` // wire 兼容保留位：现行探测链不填充（恒空）
 	LatencyMs   int64      `json:"latencyMs"`   // 响应延迟 (ms)
 }
 

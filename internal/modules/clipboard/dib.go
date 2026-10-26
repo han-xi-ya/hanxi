@@ -16,13 +16,14 @@ package clipboard
 //	                   alpha 掩码 ∈ {0(不透明), 0xFF000000(按位抽 alpha)};非标准掩码拒
 //	      biHeight<0 top-down / >0 bottom-up 自适配;biPlanes 必须为 1
 //	拒绝(error,不猜不硬解):头长 ∉ {40,112,124}(含 BITMAPCOREHEADER 12)、
-//	      BI_JPEG/BI_PNG(压缩负载归上游监听线的渲染通道,见下)、BI_RLE4/RLE8、
+//	      BI_JPEG/BI_PNG(压缩负载不在解码器职责内,见下)、BI_RLE4/RLE8、
 //	      16bpp(含 BITFIELDS 5-5-5/5-6-5)、BITFIELDS 非 32bpp、planes≠1、
 //	      宽/高非法、声明尺寸×bpp 超出实际字节、biSizeImage 虚报、调色板截断
 //
 // BI_JPEG/BI_PNG 说明:Windows 某些应用(Office 系)会以 DIB 容器装 JPEG/PNG
-// 负载,剪贴板监听线(A2)对这类条目另走渲染/直存通道,DecodeDIB 只做解码器
-// 职责边界内的裸位图,遇到即 fail-loud,绝不上浮猜测。
+// 负载。DecodeDIB 只做解码器职责边界内的裸位图,遇到即 fail-loud,绝不上浮
+// 猜测;监听线对此**没有**另设渲染/直存通道(实况:解码失败仅 warn、该图不
+// 入库),"另走直存"只是设想,未实现。
 //
 // 输出类型:*image.NRGBA(24/32bpp;顶层带真 alpha——BI_BITFIELDS 带 alpha
 // 掩码时为剪贴板源的非预乘值)或 *image.Gray(≤8bpp 调色板降级)。

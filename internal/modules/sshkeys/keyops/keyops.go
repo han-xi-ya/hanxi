@@ -111,7 +111,8 @@ type GenerateParams struct {
 	Type string
 	// RSABits 仅 rsa 生效；0 → defaultRSABits。
 	RSABits int
-	// Comment 公钥注释（写进 .pub 行尾，也写进私钥的明文头部）。见 sanitizeComment。
+	// Comment 公钥注释（写进 .pub 行尾，也写进私钥段——未加密时该段为明文、
+	// 可原样读回，位置口径见文件头互操作事实与 TROUBLESHOOTING #114）。见 sanitizeComment。
 	Comment string
 	// Passphrase 私钥口令。空串 = 不加口令。**只进加密函数，不进任何返回值与错误文本。**
 	Passphrase string

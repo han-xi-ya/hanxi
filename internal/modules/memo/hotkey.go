@@ -11,7 +11,8 @@ import (
 // 全局速记热键（N16 B 批）：接线形态完全复用 msgboard 先例——本模块只持有
 // "键位"配置与回调，系统绑定收口全仓唯一 hotkey.Registry（先注册新键、成功
 // 才注销旧键；冲突保持旧绑定并中文报错；实况以系统为准不信任自家记账）。
-// 槽位名与装配根"槽位名/命令键两头一个名字"约定对齐（internal/app/hotkeys.go）。
+// 槽位名沿用装配根"槽位名/命令键两头一个名字"约定的命名式（模块 ID/功能名，
+// 见 internal/app/hotkeys.go；本模块无托盘命令键，只有槽位这一头）。
 
 // quickHotkeySlot 悬浮速记卡热键在通用注册器中的槽位名。
 const quickHotkeySlot = "memo/quicksheet"

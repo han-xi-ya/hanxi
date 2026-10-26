@@ -35,9 +35,11 @@ func newProber() *prober { return &prober{} }
 // 是真实泄露路径；这边是纵深防御，两者动机不同但算法一致）。
 //
 // 刻意复制、不抽公共层：遵循机主既有裁决「重复家族保持独立、可各自拆走，勿主动
-// 抽取」。代价如实写在这儿——**这是安全函数，两份实现意味着改一处可能忘另一处**；
-// 出现第三处需求时再抽，别再拖。若将来判定它无用要删，须同步 sshauth.go 的两处
-// 调用与 TestCheckSSHAuthNeverLeaksPassword 那条锁。
+// 抽取」。代价如实写在这儿——**这是安全函数，改一处可能忘别处**；现存同形件共
+// 三份（portscan/proxyprobe.go、本文件、本子模块 deploy/deploy.go，后者注释自认
+// "与父包同口径"），"第三处再抽"的触发条件已具备，是否动手归机主裁。若将来判定
+// 它无用要删，须同步 sshauth.go 的两处调用与 TestCheckSSHAuthNeverLeaksPassword
+// 那条锁。
 func redactSecret(msg, secret string) string {
 	if secret == "" {
 		return msg

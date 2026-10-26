@@ -373,7 +373,7 @@ func (s *ClipboardService) GetPrefs() (Prefs, error) {
 // → 换排除表活表。失败（坏正则/超数量闸/落盘败）整表不动、错误如实上浮，
 // 运行态保持旧值——"以为设了其实没设"不接受。QueueHotkey 域外：入参忽略、
 // 现值保留（改键只走 SetQueueHotkey，校验即绑定事务在热键域）。
-// mask 域本轮仅校验入库，展示应用随遮蔽提交激活。
+// mask 域同调用内经 rebuildMask 热换生效（坏正则已在 normalize 拒掉，不入库）。
 func (s *ClipboardService) SetPrefs(in Prefs) (Prefs, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
