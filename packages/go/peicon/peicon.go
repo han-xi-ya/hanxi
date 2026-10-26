@@ -490,9 +490,16 @@ func decodeDIB(data []byte) (image.Image, error) {
 	}
 	xorStride := ((w*bitCount + 31) & ^31) / 8
 	andStride := ((w + 31) & ^31) / 8
-	paletteCount := clrUsed
-	if paletteCount == 0 && bitCount <= 8 {
-		paletteCount = 1 << bitCount
+	// 色表只在位深 ≤8 时存在。16/24/32bpp 的 clrUsed 属历史遗留字段，真实
+	// 打包器常照填色数（如 256）——对无色表位深按它建表会索引根本不存在的
+	// 调色板：轻则越界读 panic 被 recover 兜底（整枚图标误判为坏），
+	// 重则把色面字节当表项吞掉。按位深先问存在性，再谈字段值。
+	paletteCount := 0
+	if bitCount <= 8 {
+		paletteCount = clrUsed
+		if paletteCount == 0 {
+			paletteCount = 1 << bitCount
+		}
 	}
 	paletteOff := hdrSize
 	if bitCount == 32 && compression == 3 {
