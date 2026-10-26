@@ -165,6 +165,7 @@
 
   /* 半径 / 阴影 / 动效 */
   --radius-micro: 4px;   /* 键帽/行内微件小圆角（B/C 组治理诉求，2026-09） */
+  --radius-chip: 6px;    /* 行内紧凑控件（页签/小按钮/分段/输入框）与同档小贴面块（缩略图/条幅/日志码块）——2026-10-26 机主裁决补档，治理全库 47→55 处裸写 */
   --radius-control: 8px;
   --radius-element: 12px;
   --radius-panel: 16px;
@@ -175,6 +176,19 @@
   --motion-fast: 100ms;
   --motion-base: 150ms;
   --motion-slow: 180ms;
+
+  /* 层序登记册（2026-10-26 审查 G-C11 案α）：跨文件单例层只在此登记。
+     JS 侧 DIALOG_Z（useDialogA11y）与 --z-dialog-under/--z-dialog 数值互锁，
+     动任何一档两侧必须同改。组件内部局部小值叠放不入册。 */
+  --z-flyout: 900;              /* 侧栏二级 flyout / 行操作浮出菜单（同 WslDistroTable 档） */
+  --z-dialog-under: 950;        /* 视图级对话框（DIALOG_Z.underTop）：叠在 App 单例对话框之下 */
+  --z-dialog: 1000;             /* App 单例对话框/遮罩族（ConfirmDialog、UiPrompt、modal 背板） */
+  --z-snackbar: 9999;           /* App.vue 全局 toast（右下位）：受通知抽屉压制，为既定关系 */
+  --z-drawer: 10001;            /* 通知抽屉背板 */
+  --z-drawer-panel: 10002;      /* 通知抽屉本体 */
+  --z-board-fullscreen: 99998;  /* 留言板全屏浮层 */
+  --z-palette: 100000;          /* 命令面板：高于抽屉、低于 Toast */
+  --z-toast: 999999;            /* 通知 toast 栈：全库最高层 */
 
   /* 日志终端色板：frpc 抽屉/运行日志等 ANSI 彩色区。
    * 终端块固定深底、永不随主题反相（design-system 决策，Phase 1 目测复核）。 */

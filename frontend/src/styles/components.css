@@ -214,7 +214,7 @@
   min-height: var(--control-h-sm);
   padding: 2px 8px;
   font-size: var(--text-xs);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 :where(.link-button) {
   background: transparent;
@@ -223,6 +223,8 @@
   color: var(--color-primary);
   font-size: var(--text-sm);
   cursor: pointer;
+  /* C9（G 线移交）：行内链接钮禁逐字折行，与 .btn 基座同一族规 */
+  white-space: nowrap;
 }
 :where(.link-button:hover) {
   text-decoration: underline;
@@ -244,6 +246,8 @@
   border-collapse: collapse;
   font-size: var(--text-base);
   text-align: left;
+  /* C7：表格继承本档等宽数字，覆盖各版本表大小/日期裸 td（G 线移交，随原子层收口） */
+  font-variant-numeric: tabular-nums;
 }
 :where(.tbl th) {
   background: var(--surface-soft);
@@ -277,14 +281,14 @@
 :where(.control-status) { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 :where(.control-btns) { display: flex; gap: 8px; flex-wrap: wrap; }
 :where(.status-word) { font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
-:where(.ver-pill) { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 1px 8px; color: var(--color-text); }
+:where(.ver-pill) { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-pill); padding: 1px 8px; color: var(--color-text); font-variant-numeric: tabular-nums; }
 :where(.pid-tag) { font-size: var(--text-xs); color: var(--color-text-subtle); }
-:where(.uptime-tag) { font-size: var(--text-xs); color: var(--color-text-subtle); }
-:where(.ver-tag) { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
+:where(.uptime-tag) { font-size: var(--text-xs); color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
+:where(.ver-tag) { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-text); font-variant-numeric: tabular-nums; }
 :where(.download-cell) { display: flex; align-items: center; gap: 8px; width: 140px; }
 :where(.dl-bar-wrap) { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }
 :where(.dl-bar-inner) { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
-:where(.dl-percent) { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; }
+:where(.dl-percent) { font-size: var(--text-xs); color: var(--color-text-muted); width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
 :where(.dl-meta-text) { font-size: var(--text-sm); color: var(--color-primary); }
 :where(.dl-error) { color: var(--state-danger); font-size: var(--text-xs); }
 :where(.retry-link) { color: var(--color-primary); font-size: var(--text-sm); cursor: pointer; margin-left: 8px; }
@@ -394,6 +398,8 @@
   color: var(--color-primary);
   cursor: pointer;
   font-weight: 600;
+  /* C9（G 线移交）：状态框右侧动作钮文字禁逐字折行，与 .btn 基座同一族规 */
+  white-space: nowrap;
 }
 
 /* ---------- 提示条 ---------- */
@@ -498,14 +504,14 @@
   width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-base);
 }
 :where(.select-input) {
   width: 100%;
   padding: 6px 8px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-base);
   background: var(--surface-panel);
 }
@@ -528,7 +534,7 @@
 :where(.btn-quick) {
   background: var(--surface-panel);
   border: 1px solid var(--btn-outline-edge); /* N38：与次级钮边框同档，浅底可见 */
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   padding: 2px 8px;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
@@ -553,7 +559,7 @@
   gap: 24px;
   background: var(--surface-page);
   padding: 10px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   border: 1px solid var(--color-border);
 }
 :where(.summary-col) {
@@ -572,7 +578,7 @@
 }
 :where(.diag-card .table-container) {
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   overflow: hidden;
 }
 /* 诊断卡表头改用 page 底色（置于 :where(.tbl th) 之后靠源码序覆盖，特异性同为 0） */
@@ -615,7 +621,11 @@
 :where(.inline-link) { color: var(--color-primary); text-decoration: none; }
 :where(.inline-link:hover) { text-decoration: underline; }
 
-/* ---------- 微信机器人模态壳（§9.6-8：Bind ⇄ Rename 双模态 11 条逐字副本上收） ---------- */
+/* ---------- 微信机器人模态壳（§9.6-8：Bind ⇄ Rename 双模态 11 条逐字副本上收） ----------
+   层序 G-C11 β案（2026-10-26）：本皮肤消费方全数核查为视图级弹层——wechatbot Bind/Rename
+   （WechatBotView 内联、无 Teleport）与 sshkeys KeyOpsModal（自带 .keyops-backdrop 本地 950
+   覆盖，:where 零特异性必被压过，皮肤改动前后其取值不变）。皮肤随之降 --z-dialog-under(950)，
+   --z-dialog(1000) 只留 App 单例（ConfirmDialog / UiPromptDialog，Teleport 到 body 恒在上）。 */
 :where(.custom-modal-backdrop) {
   position: fixed;
   top: 0;
@@ -624,7 +634,7 @@
   height: 100vh;
   background: var(--overlay-mask);
   backdrop-filter: blur(2px);
-  z-index: 1000;
+  z-index: var(--z-dialog-under);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -675,16 +685,19 @@
   font-weight: 500;
   color: var(--color-text);
 }
+/* C10 残留处置：删 outline:none——键盘焦点由 base.css 全局 --focus-ring 环接管
+   （G 判定原则"删后必须仍有焦点呈现"成立）；鼠标点按仍只吃下方换边规则。 */
 :where(.form-text-input) {
   padding: 6px 10px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-base);
-  outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--motion-base) ease;
 }
 :where(.form-text-input:focus) {
-  border-color: var(--state-positive);
+  /* 2026-10-26 机主裁决：焦点边随全库主流形制取 --color-primary；
+     原 --state-positive 绿系成功状态色挪用，属副本渗漏，非设计。 */
+  border-color: var(--color-primary);
 }
 @keyframes modalIn {
   from {
@@ -702,14 +715,14 @@
   color: var(--color-on-accent);
   border: none;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  transition: all 0.15s ease;
+  transition: background var(--motion-base) ease;
 }
 /* N38：旧 hover 与常态同色系死规则（无任何反馈），改深一档；补 :not(:disabled) */
 :where(.btn-bind-account:hover:not(:disabled)) {
@@ -749,6 +762,10 @@
    .empty-hint 全库 20+ 份存在 padding/border 不同形变体，暂留局部，见 §9.6 报告） ---------- */
 :where(.hint-dim) { color: var(--color-text-subtle); }
 :where(.badge) { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
+/* A6 形态 chip 四份逐字副本上收（snipaste/vscode/everything 三份核心逐字同形；
+   ManagedVersionPanel 与 VSCodeReleaseTable 的 margin-left:4px 排位差留各自 scoped，
+   EverythingReleaseTable 原同文件双定义就此合一） */
+:where(.form-chip) { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
 
 /* ---------- WSL 六件套补差（前端冗余治理 · 波 1c：六面板 scoped 三条副本上收）
    三条规则体在 WslReadinessPanel/WslDistroTable/WslAddInstancePanel/WslVersionsPanel/
