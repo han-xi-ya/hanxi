@@ -86,11 +86,11 @@ func Fetch(ctx context.Context, src Source, destPath string, prog func(Progress)
 	if want == "" {
 		return fail(errors.New("必须提供官方 SHA-256 摘要（托管下载不允许无校验安装）"))
 	}
-	if len(want) != 64 {
+	// 形状闸复用包级 isSHA256Hex（Commit/清单校验同一判据）：Fetch 此前自写
+	// "长度 + DecodeString"双查，同一契约两份口径正是漂移温床。判定集合
+	// 逐位等价（恰 64 个十六进制字符，大小写均可，两端空白已由 Trim 消化）。
+	if !isSHA256Hex(src.SHA256) {
 		return fail(fmt.Errorf("SHA256 摘要 %q 不是合法的 64 位十六进制", src.SHA256))
-	}
-	if _, err := hex.DecodeString(want); err != nil {
-		return fail(fmt.Errorf("SHA256 摘要 %q 不是合法的十六进制: %w", src.SHA256, err))
 	}
 	maxBytes := src.MaxBytes
 	if maxBytes <= 0 {

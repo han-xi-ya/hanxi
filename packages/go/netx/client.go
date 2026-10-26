@@ -55,19 +55,13 @@ func NewClient(timeout time.Duration, checkRedirect func(*http.Request, []*http.
 
 // DirectClient 构造**恒定直连**客户端：回环本机服务、端口/局域网探测、
 // 集成测试靶等"过任何代理都失真"的场景专用。超时纪律与 NewClient 同规。
+// 传输层以 Transport() 打底再显式摘除 Proxy 钩子——两件同源：字段逐份
+// 手抄正是 #35 式断层的温床（改一处漏一处，直连件迟早漂回"只认 env"或
+// 拨号参数漂移）；Proxy 字段为 nil 即结构上不可能再查任何代理配置。
 func DirectClient(timeout time.Duration) *http.Client {
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			Proxy:                 nil,
-			DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-			ForceAttemptHTTP2:     true,
-			MaxIdleConns:          8,
-			IdleConnTimeout:       30 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-	}
+	tr := Transport()
+	tr.Proxy = nil
+	return &http.Client{Timeout: timeout, Transport: tr}
 }
 
 // ProxyFunc 代理解析链：显式环境变量优先（尊重用户手动配置），
