@@ -126,28 +126,52 @@ type fakeJob struct {
 	terminated   int
 	closed       int
 	detachTo     *bool
+	// 交错钉定钩子（默认 nil，既有形状不变）：
+	onAssign        func()          // Assign 时驻留（构造"进程秒退致 Assign 失败"等确定序）
+	closeKillSettle <-chan struct{} // Close 真实触发成员退场时，驻留至该信号落地才返回
 }
 
 func (j *fakeJob) Assign(pid uint32) error {
 	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.assignErr != nil {
-		return j.assignErr
+	err := j.assignErr
+	if err == nil {
+		j.assigned = append(j.assigned, pid)
 	}
-	j.assigned = append(j.assigned, pid)
-	return nil
+	hook := j.onAssign
+	j.mu.Unlock()
+	if hook != nil {
+		hook() // 在 Assign 步骤驻留，把 wait 收口与 Start 后半段的交错钉成确定序列
+	}
+	return err
 }
 
 func (j *fakeJob) Close() error {
 	j.mu.Lock()
 	j.closed++
-	kill := j.killOnClose
 	h := j.h
+	settle := j.closeKillSettle
+	// KILL_ON_JOB_CLOSE 只作用于"已入 Job 的成员"：Assign 失败后进程并非成员，
+	// 真实 Windows 关闭句柄不会触动它。此处若不分成员一律 exitWith，等于凭空
+	// 制造真实世界不存在的秒退窗口，让引擎句柄 Kill 与 wait 收口抢 e.h 拼时序。
+	kill := j.killOnClose && h != nil && j.memberLocked(h.PID())
 	j.mu.Unlock()
-	if kill && h != nil {
-		h.exitWith(errors.New("exit status 1"), 1) // KILL_ON_JOB_CLOSE 语义模拟
+	if kill {
+		h.exitWith(errors.New("exit status 1"), 1) // KILL_ON_JOB_CLOSE 语义模拟（仅成员退场）
+		if settle != nil {
+			<-settle // 终止效果须经 wait 收口落地后再返回（钉死交错）
+		}
 	}
 	return nil
+}
+
+// memberLocked 判断 pid 是否已成功入账为 Job 成员（前置条件：已持 j.mu）。
+func (j *fakeJob) memberLocked(pid uint32) bool {
+	for _, p := range j.assigned {
+		if p == pid {
+			return true
+		}
+	}
+	return false
 }
 
 func (j *fakeJob) Terminate(uint32) error {
@@ -193,6 +217,9 @@ type fakeJobAPI struct {
 	detachErr    error
 	h            *fakeHandle
 	jobs         []*fakeJob
+	// 交错钉定钩子（透传给每个孵化出的 fakeJob，默认 nil）：
+	onAssign        func()
+	closeKillSettle <-chan struct{}
 }
 
 func (f *fakeJobAPI) Create() (platform.Job, error) {
@@ -202,11 +229,13 @@ func (f *fakeJobAPI) Create() (platform.Job, error) {
 		return nil, f.createErr
 	}
 	j := &fakeJob{
-		killOnClose:  true,
-		h:            f.h,
-		assignErr:    f.assignErr,
-		terminateErr: f.terminateErr,
-		detachErr:    f.detachErr,
+		killOnClose:     true,
+		h:               f.h,
+		assignErr:       f.assignErr,
+		terminateErr:    f.terminateErr,
+		detachErr:       f.detachErr,
+		onAssign:        f.onAssign,
+		closeKillSettle: f.closeKillSettle,
 	}
 	f.jobs = append(f.jobs, j)
 	return j, nil
@@ -521,6 +550,9 @@ func TestStartJobCreateFail(t *testing.T) {
 	waitState(t, hs.e, StateFailed) // 收口竞态终局稳定为 failed，不被 wait 回退
 }
 
+// TestStartAssignFail Assign 失败：进程从未入 Job，faithful 的 fakeJob.Close 不会
+// 替引擎触动它，进程在世直到 killSequence 经句柄 Kill——终止断言为确定结果
+// （曾为拼运气的偶发红，两种交错的钉定版见 engine_abort_order_test.go）。
 func TestStartAssignFail(t *testing.T) {
 	hs := newHarness(t)
 	hs.e.jobs = &fakeJobAPI{assignErr: errors.New("boom"), h: hs.h}
