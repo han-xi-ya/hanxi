@@ -300,6 +300,16 @@ func (t *Tree) scanLocked() ([]Version, error) {
 		out = append(out, v)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
+		// 规范版本号恒优先于非规范形态，再走数值降序。
+		// 为什么必须在这里分档（而不是让各模块自加闸）：本地导入读不出版本时，
+		// 家族统一以 `imported-<sha256 前缀>`（历史形态 `imported-<秒级时间戳>`）
+		// 当兜底目录名，而 versioncmp.Compare 对非规范段退化为整串字典序，
+		// 'i'(0x69) 的码点大于数字 → 兜底目录会被排成"最新版"。凡信任本序再取首个
+		// 的调用方，都会把导入的兜底目录当最新已装（冷启动自动选中它、或误判
+		// "已是最新"而漏报更新）。已实测到 heukms/litemonitor 即此坑。
+		if ri, rj := versionRank(out[i].Version), versionRank(out[j].Version); ri != rj {
+			return ri < rj
+		}
 		return versioncmp.Compare(out[i].Version, out[j].Version) > 0
 	})
 	return out, nil
@@ -421,4 +431,14 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// versionRank 版本令牌档位：0=规范（可逐段数值比较），1=非规范（含导入兜底目录名等
+// 退化字典序形态）。降序排列时档位小者在前，从而保证非规范形态永不冒充"最新版"。
+// 判据复用 versioncmp.IsCanonical，不在本包另写一套形状规则（避免双真相）。
+func versionRank(version string) int {
+	if versioncmp.IsCanonical(version) {
+		return 0
+	}
+	return 1
 }
