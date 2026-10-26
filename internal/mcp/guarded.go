@@ -3,14 +3,14 @@ package mcp
 // guarded.go 是破坏性工具（destructive tool）安全基建——包注释决策 1
 // 「所有工具严格只读、写操作永不注册为工具」红线显式升版的执行层。
 //
-// 升版论证（详见 docs/adr/ADR-0006 提案，机主指令"AI 能力接入增加端口查杀"）：
+// 升版论证（机主指令"AI 能力接入增加端口查杀"，要点即下列 A1-A4）：
 // 只读红线保护的是"云端模型上下文能对本机造成什么"。端口查杀天然是破坏性操作，
 // 开这个口子而不毁掉红线的做法不是撤销红线，而是把 GUI 侧人工确认框的等价物
 // 编译进工具通道，形成四道独立闸门（任何一道失守都不足以造成损害）：
 //
 //	A1 授权门（复用既有）：access.json ∩ 模块启用门，与只读工具同口径、fail-closed；
 //	A2 机主总闸（本文件）：destructive.json 独立文件开关，默认不存在=全关——
-//	   与 access.json 物理分离，防止「AI 接入」六/八键 UI 误操作顺带放行写工具；
+//	   与 access.json 物理分离，防止「AI 接入」逐键开关 UI 误操作顺带放行写工具；
 //	A3 二段式确认（本文件 TokenStore）：prepare 只发一次性短 TTL token，
 //	   execute 校验 token 且复查进程指纹（pid+exe+start time）后才动手——
 //	   AI 无法用"一个调用"完成杀伤，中间必然经过模型把 token 原样带回的往返；
@@ -40,7 +40,7 @@ import (
 
 const (
 	// DestructiveFileName 破坏性授权文件名：<DataDir>/mcp/destructive.json。
-	// 刻意与 access.json 分离建档：AI 接入面板逐键扩表（六键→八键→九键）时，
+	// 刻意与 access.json 分离建档：AI 接入面板逐键扩表时，
 	// 写工具的放行必须是独立、显式、带"这是破坏性操作"心智负担的一次单独授权。
 	DestructiveFileName = "destructive.json"
 	destructiveDirName  = "mcp" // 与 access.json 同目录（读方永不建目录，写方补位纪律同 access）
@@ -301,12 +301,12 @@ func (s *TokenStore) Pending() int {
 	return n
 }
 
-// ---------- A1+A4 的装配载体：破坏性工具接线（不改 server.go 的即插通道） ----------
+// ---------- A1+A4 的装配载体：破坏性工具接线（包级 hook，不经 Deps 注入） ----------
 
 // portkillWiring 是端口查杀工具的后端依赖包（真装配在 Run() 接线行构造）。
 // 之所以走包级 hook 而非 Deps 字段：本组件交付时不触碰 server.go（两路并行
-// 领地纪律），接线行报告里给出把 hook 替换为 Deps 字段的等价改法（更优，
-// 主会话拍板时二选一）。nil hook = 工具报"后端未接线"而非 panic——fail-closed。
+// 领地纪律）；接线合入时维持了 hook 形态，换成 Deps 字段的等价改法未被采纳
+// （若要换属后续重构议题）。nil hook = 工具报"后端未接线"而非 panic——fail-closed。
 type portkillWiring struct {
 	Backend PortkillBackend
 	Policy  DestructivePolicy

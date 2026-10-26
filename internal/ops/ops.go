@@ -2,8 +2,9 @@
 // 在装配根与各托管模块之间的接线层：
 //
 //   - 装配根（internal/app）在模块构造前经 SetKernel 注入账本与观察面对象；
-//     从未注入（单测/无账头less 场景）时 BeginTxn 返回的 Txn 全部方法安全
-//     退化为 no-op，模块主流程不受账本可用性影响；
+//     从未注入（单测/无账 headless 场景）时 BeginTxn 返回的 Txn 各方法安全退化
+//     ——不 panic、无任何外部副作用（落账/观察面/广播全空转，步骤进度仅内存
+//     记录，见 BeginTxn 注记），模块主流程不受账本可用性影响；
 //   - 账本 fail-closed 闸门（P0 批 2a，审查 §3.4）：装配期 OpenStore/Recover
 //     失败经 MarkJournalDegraded 挂"降级"标记，运行期任何一次步进记账失败
 //     同样置位（磁盘已不可信）——此后 BeginTxn 一律拒绝新开资产写事务
@@ -88,8 +89,11 @@ func Kernel() (*operation.Store, *operation.Hub) {
 }
 
 // activeTxns 在途托管事务登记表（N26 用户取消通道）：moduleID → *Txn。
-// 单写纪律（同模块至多一笔未收口 journal 事务）让键即模块；降级无内核事务
-// 同样登记（取消语义=断 ctx + 拒继续副作用，账本侧无差异可言）。
+// 单写纪律（同模块至多一笔未收口 journal 事务）让键即模块。登记覆盖面按
+// beginTxn 分支如实区分：内核已注入（SetKernel 过，含 store/hub 缺失的降级
+// 形态）的事务一律登记；内核从未注入的事务在 beginTxn 提前返回、不登记——
+// 生产装配根恒调 SetKernel（internal/app/app.go），后者只在单测出现。
+// 取消语义=断 ctx + 拒继续副作用，账本侧无差异可言。
 var activeTxns sync.Map
 
 // CancelModuleTxn 按（模块, 事务 ID）取消在途托管事务：只断 ctx——收口仍由
@@ -197,7 +201,8 @@ func beginTxn(ctx context.Context, lease *extapi.BackgroundLease, moduleID strin
 }
 
 // Txn 一笔模块事务。并发纪律：内部 mu 串行记账；Handle 自身幂等闩保证
-// Done/Fail 只生效一次。未注入内核的降级 Txn 全方法 no-op。
+// Done/Fail 只生效一次。未注入内核的降级 Txn 不记账不观察不广播，仅内存
+// 记录步骤进度（BeginTxn 注记同款口径），各方法调用均安全。
 type Txn struct {
 	mu            sync.Mutex
 	txnID         string
@@ -261,7 +266,8 @@ func (t *Txn) Cancel() {
 // 记账失败 fail-closed（P0 批 2a，审查 §3.4）：置全场降级标记（后续新事务
 // 一律被拒）+ 本事务就地按 journal-degraded 收口上报观察面，并返回错误供
 // 调用方提前终止；已在途的副作用由批 2b 的事务生命周期机制负责中断。
-// 既有模块闭包可暂不消费返回值（收口已由本包代发），批 2b 统一接线提前退出。
+// 批 2b 接线后托管模块调用点均已消费本返回值提前退出（本包代发收口仍在，
+// 构成双保险；新调用方不得再选择忽略返回值）。
 func (t *Txn) Step(i int) error {
 	if t == nil {
 		return nil

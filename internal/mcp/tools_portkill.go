@@ -5,10 +5,10 @@ package mcp
 //	hanxi_portkill_prepare(port)   只读侦察 + 发放一次性确认 token（无杀伤力）
 //	hanxi_portkill_execute(token)  消费 token + 复查进程指纹后才真正结束进程
 //
-// 本文件自含 handler 与后端 seam，不注册进 server.go 的 toolDefs——接线行
-// （toolDefs 追加两行、knownModuleIDs 加 "portkill" 键、mcpModules 挂
-// portkill 模块、Run() 调 SetPortkillWiring、static 审扩 destructive 条款）
-// 以报告交付，由主会话拍板合入。红线升版论证见 guarded.go 文件头与报告。
+// 本文件自含 handler 与后端 seam；接线已拍板合入并在案——toolDefs 挂两件、
+// knownModuleIDs 收 portkill 键、mcp.go 注册链追加 portkill 模块、Run() 调
+// SetPortkillWiring、static 审（server_test.go）含 destructive 扩版条款。
+// 红线升版论证见 guarded.go 文件头。
 
 import (
 	"context"
@@ -26,16 +26,17 @@ import (
 	"hanxi/internal/platform"
 )
 
-// 破坏性工具名（对外契约：接线后不可改名，同 TestToolNamesStable 纪律）。
+// 破坏性工具名（对外契约：不可改名，同 TestToolNamesStable 纪律）。
 const (
 	toolPortkillPrepare = "hanxi_portkill_prepare"
 	toolPortkillExecute = "hanxi_portkill_execute"
 )
 
 // portkillAccessKey 是查杀工具族共用的 access.json 授权键（模块粒度，
-// 照 memo 键下挂两件工具的既有先例）。另一路扫描扩键（六键→八键）时本键
-// 追加为第九键；读写两侧（knownModuleIDs / mcpwizard accessToolKeys）必须
-// 同步扩，否则未知键整体拒读会把全部工具连坐封死——协调点在报告列明。
+// 照 memo 键下挂两件工具的既有先例）。读写两侧（knownModuleIDs / mcpwizard
+// accessToolKeys）与名称白名单（guards_test.go）三处已同批在册，键数以这些
+// 集合的现值为唯一事实源、注释不手打计数；再扩键必须三处同批，否则未知键
+// 整体拒读会把全部工具连坐封死。
 const portkillAccessKey = portkill.ID
 
 // destructiveFamilies 登记包内全部破坏性工具族（红线升版后 static 审的
@@ -423,7 +424,7 @@ func unixOrZero(ts time.Time) int64 {
 	return ts.Unix()
 }
 
-// ---------- 接线行报告用导出件（不影响未接线时的行为，全部 fail-closed） ----------
+// ---------- Run() 装配用导出件（接线已合入；未接线时行为不变，全部 fail-closed） ----------
 
 // PortkillAccessKey 供接线方（server.go toolDefs / knownModuleIDs /
 // mcpwizard 写侧）引用同一个键名，杜绝两处手打字符串漂移。

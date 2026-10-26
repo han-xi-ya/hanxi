@@ -580,8 +580,8 @@ func (g *gitEngine) file(ctx context.Context, id, relPath string) ([]byte, error
 	return data, nil
 }
 
-// heal 连续失败自愈：现仓库整体改名保留（尽力不丢历史），重 init 空仓库再战
-// （PLAN §6.2：不再静默烧 tick）。
+// heal 连续失败自愈：有提交仓库整体改名保留（尽力不丢历史），无提交空仓库直接
+// 删除重建（见下"无提交仓库例外"），随后重 init 再战（PLAN §6.2：不再静默烧 tick）。
 //
 // 无提交仓库例外（防垃圾放大）：失败根因若在数据根内容侧（如白名单目录混入
 // symlink 令 changes() 恒报错），重 init 后仍会三连失败再 heal——每次都改名

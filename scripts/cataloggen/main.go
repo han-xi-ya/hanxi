@@ -121,12 +121,15 @@ var hotkeyAllowlist = map[string]bool{
 	"clipboard": true,
 }
 
-// mcpAllowlist `hanxi mcp` 无头进程暴露工具的模块白名单。
+// mcpAllowlist catalog 的 mcp-tools 能力/EntryMCP 入口在册白名单（在册判据以本表
+// 与冻结基线 fixture 为准，扩表须同改 fixture 与 catalog.go，非改注释可覆盖）。
 // 证据：internal/mcp/mcp.go —— mcpModules() 挂载 envcheck、everything；
 // Run 额外注册 ocr（ocrModule := ocr.New 并注入识图后端）；memo 为特例通道
 // （构造带迁移写盘副作用不进 registry，registryGate 直读 config.json enabled 位）；
 // clipboard 与 memo 同谱（NewStore 构造即建目录/空库回写，无头表禁令契约
 // §12 v1.2.4，registryGate 特例 + tools_clipboard.go 零落盘直读 hanxi_clipboard_search）。
+// 已知分歧（勿把本表当工具面全貌）：sysinfo/portscan/lan/portkill 同样持有无头
+// 工具但未入本表——登记在案见 docs/reviews/2026-10-26-backend-code-review.md 遗留项 9。
 var mcpAllowlist = map[string]bool{
 	"envcheck":   true,
 	"everything": true,

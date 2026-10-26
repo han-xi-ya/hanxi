@@ -108,7 +108,8 @@ type clipboardIndexFile struct {
 // decrypt 缝保留（真件恒等），历史密文形态不再产生。
 //
 // 同步状态：2026-09-26 已与 clipboard/models.go 的 Entry 逐 tag 对拍一致（含
-// Kind 取值为 text/image/file 三点）。收口阶段若把本投影换成直接 import clipboard.Entry，
+// Kind 取值为 text/image/file 三点）。收口已裁定维持投影形态（上方 §12 v1.2.5
+// "结构面解耦不变"）；若未来改直接 import clipboard.Entry，
 // 本类型与上方 kind 常量一并删除即可，reader/工具层逻辑不依赖包身份。
 type clipboardDiskEntry struct {
 	ID         string   `json:"id"`
@@ -401,8 +402,9 @@ var (
 // SetClipboardSource 注入剪贴板取数面（Run() 启动时调用一次；传 nil 复位为未装配态）。
 // 未装配时工具一律返回指引错误而非 panic（fail-closed）。
 //
-// 走包级 hook 而非 Deps.Clipboard 字段是领地纪律使然（本批禁碰 server.go）；
-// 收口阶段换成 Deps 字段形态同样成立（builder 改读 deps 即可，两形态等价）。
+// 走包级 hook 而非 Deps.Clipboard 字段是领地纪律使然（交付批禁碰 server.go）；
+// 收口后 hook 形态即既成事实，换成 Deps 字段形态等价可行（builder 改读 deps 即可），
+// 属后续重构议题而非待办承诺。
 func SetClipboardSource(src ClipboardSource) {
 	clipboardHookMu.Lock()
 	defer clipboardHookMu.Unlock()
@@ -416,8 +418,8 @@ func clipboardSourceOf() ClipboardSource {
 	return clipboardHook
 }
 
-// registerClipboardTools 把剪贴板只读检索工具挂进给定 server（契约 §8 冻结名，
-// 收口阶段 server.go 一行接线：`registerClipboardTools(s, deps)`）。
+// registerClipboardTools 把剪贴板只读检索工具挂进给定 server（契约 §8 冻结名；
+// 收口实际走的是下方接法①——toolDefs 已挂本工具，本函数保留直挂形态供接法②与单测）。
 //
 // 两种接法二选一，**不可并用**（同名 AddTool 后者覆盖前者，白挂一次）：
 //

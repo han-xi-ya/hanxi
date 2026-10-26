@@ -7,7 +7,8 @@
 // 编译期符号（对拍测试文件除外——那里必须用真读方验写出的字节，不许 mock）——
 // `hanxi mcp` 在写入链里只是将要写进配置的运行时字符串，安装前
 // 自检（selfcheck.go）也只按线上协议自发帧握手（唯一软耦合是协议版本号字面量）。授权文件
-// `<DataDir>/mcp/access.json`（字段按 PLAN_MCP §6：version + tools 四键）的写入口
+// `<DataDir>/mcp/access.json`（PLAN_MCP §6 起步为 version + tools 四键，其后逐批
+// 扩量，现行键集以 access_write.go 的 accessToolKeys 为准）的写入口
 // 自 R6 起在本包（access_write.go：SetToolAccess/ResetAccess，严格规则镜像读方
 // internal/mcp/access.go）；读方判定权威仍在 F4a——MCP 每次工具调用重读此文件，
 // 保存即生效。所有权回执 `<DataDir>/mcp/install.json`

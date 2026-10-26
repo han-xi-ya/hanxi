@@ -64,8 +64,10 @@ func inWhitelistScope(rel string) bool {
 		strings.HasPrefix(rel, memoPrefix)
 }
 
-// WhitelistRoots 返回数据根下当前存在的白名单顶层条目（git pathspec / 拷贝根用）。
-// 只列存在的条目：pathspec 指向不存在路径会让 git add 直接报错。
+// WhitelistRoots 返回数据根下当前存在的白名单顶层条目。生产链已不消费本函数：
+// git 侧改用 info/exclude 反向白名单（见 git.go writeExclude），拷贝枚举走
+// enumerateWhitelist；现存调用方仅单测，保留作布局口径的独立断言面。
+// 只列存在的条目（历史 pathspec 形态下指向不存在路径会让 git add 直接报错）。
 func WhitelistRoots(dataDir string) []string {
 	roots := make([]string, 0, 3)
 	for _, root := range []string{rootConfig, rootState, rootMemo} {

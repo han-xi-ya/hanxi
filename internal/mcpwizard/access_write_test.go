@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// accessBytes 读回 svc 授权文件原始字节（断言"恰好八键/无 BOM"等字面契约用）。
+// accessBytes 读回 svc 授权文件原始字节（断言"恰好全键/无 BOM"等字面契约用）。
 func accessBytes(t *testing.T, svc *McpWizardService) []byte {
 	t.Helper()
 	data, err := os.ReadFile(svc.accessPath)
@@ -34,7 +34,7 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 		t.Fatalf("建档后呈现异常: %+v", info)
 	}
 
-	// 常规链：九键归一、改一键不动其余、撤权回 false（扩充批后 sysinfo/logs/portscan/lan/portkill 同台）。
+	// 常规链：全键归一、改一键不动其余、撤权回 false（扩充批后 sysinfo/logs/portscan/lan/clipboard/portkill 同台）。
 	info, err = svc.SetToolAccess("envcheck", true)
 	if err != nil || !info.Tools.Envcheck {
 		t.Fatalf("开启 envcheck 失败: %+v %v", info, err)
@@ -55,7 +55,7 @@ func TestSetToolAccessCreatesAndToggles(t *testing.T) {
 	if info.Tools.Envcheck || !info.Tools.Memo || !info.Tools.Sysinfo || !info.Tools.Logs || !info.Readable {
 		t.Errorf("改一键不应波及其余键: %+v", info.Tools)
 	}
-	// 落盘字面契约：恰好九键（键数=accessToolKeys 契约数，契约扩充批四→六→八→九键
+	// 落盘字面契约：恰好全键（键数=accessToolKeys 契约数，契约扩充批四→六→八→九→十键
 	// 的历史硬编码已改随键集自适应，"恰好"语义不变）、version=1、无 BOM（首字节即 '{'）。
 	data := accessBytes(t, svc)
 	if data[0] != '{' {
@@ -115,7 +115,7 @@ func TestSetToolAccessPreservesPortkillRoundTrip(t *testing.T) {
 		t.Errorf("overview 应呈现 portkill=true 现状: %+v", info.Tools)
 	}
 
-	// 重置路径的既定语义：标准全关档九键齐全且 portkill=false（撤破坏权不靠删键，
+	// 重置路径的既定语义：标准全关档全键齐全且 portkill=false（撤破坏权不靠删键，
 	// 靠显式 false——防止"重置=抹键"未来再被当成未知键连坐全档）。
 	res, err := svc.ResetAccess()
 	if err != nil || !res.Success {
@@ -146,7 +146,7 @@ func TestSetToolAccessRejectsUnknownKey(t *testing.T) {
 // 且拒绝路径一个字节不碰目标文件（覆盖修复只认显式 ResetAccess）。
 func TestSetToolAccessRefusesBlindWrite(t *testing.T) {
 	cases := map[string]string{
-		// portkill 已入九键白名单（不再是未知键样本）——未知键样本换 format_disk。
+		// portkill 已入册白名单（不再是未知键样本）——未知键样本换 format_disk。
 		"未知tools键":  `{"version":1,"tools":{"envcheck":true,"format_disk":true}}`,
 		"未知顶层字段":    `{"version":1,"tools":{"envcheck":true},"extra":1}`,
 		"version为2": `{"version":2,"tools":{"envcheck":true}}`,
@@ -242,7 +242,7 @@ func TestAccessOverviewReaderViewPresentation(t *testing.T) {
 	}
 
 	// 合法但非标准形态（缺键——含"契约扩充批之前的四键老档"升级场景）：读方采信，
-	// 呈现按缺键=false，写侧回写时归一八键。
+	// 呈现按缺键=false，写侧回写时归一全键。
 	writeFile(t, svc.accessPath, `{"version":1,"tools":{"envcheck":true}}`)
 	info, _ = svc.GetAccessOverview()
 	if !info.Readable || !info.Tools.Envcheck || info.Tools.Memo || info.Tools.Sysinfo || info.Tools.Logs {

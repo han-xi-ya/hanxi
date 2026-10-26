@@ -121,11 +121,13 @@ var knownModuleIDs = map[string]bool{
 
 // toolDefs 全量工具面（首版四件 PLAN_MCP C1-C5 收口；扩充批 +sysinfo/logs 至六件；
 // N16 C 批便签族 +memo_stats 至七件；AI 接入批 +portscan/lan 扫描族至九件；
-// 端口查杀批 +portkill 破坏族两件至十一件，置于列表末——只读面在前、破坏面垫后，
-// tools/list 展示顺序即风险次序）。
-// 授权键九枚：memo 键下两件只读工具；portscan/lan 各立一键（主动探测与纯查询
-// 分键授权，见 knownModuleIDs 注记）；portkill 一键下挂 prepare/execute 族两件
-// （二段式共键授权，生效另需 destructive.json 总闸，见 guarded.go A1/A2）。
+// 端口查杀批 +portkill 破坏族两件至十一件，置于列表末；剪贴板批
+// +hanxi_clipboard_search 至十二件，插在只读段 logs 之后——只读面在前、破坏面
+// 垫后的风险次序不变，tools/list 展示顺序即风险次序）。
+// 授权键十枚（以 knownModuleIDs 为准）：memo 键下两件只读工具；portscan/lan
+// 各立一键（主动探测与纯查询分键授权，见 knownModuleIDs 注记）；portkill
+// 一键下挂 prepare/execute 族两件（二段式共键授权，生效另需 destructive.json
+// 总闸，见 guarded.go A1/A2）。
 // 注册顺序即 tools/list 展示顺序，保持稳定；任何新增工具必须先过"会进云端模型上下文"
 // 红线审（包注释纪律 1），并同步 knownModuleIDs 与 guards_test.go 的名称白名单。
 var toolDefs = []toolDef{
