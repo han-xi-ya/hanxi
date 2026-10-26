@@ -88,12 +88,13 @@ func mkInstall(t *testing.T, versionsDir, tag string) string {
 // TestDownloadVersionBetaTagCoreDedup 已装 beta 标签版（hanxi-meta tag
 // v1.3.5-beta.2，PE 版本探测无法承载预发布后缀）时，按数值核心请求 v1.3.5
 // 命中 CompareCore 互认直接返回 already-installed——不重复起 NSIS 下载；
-// 判据：返回值 + 托管安装目录文件未被触碰。
+// 判据：返回值 + 托管安装目录文件未被触碰。含大写 V 形态（X2 批归一改为
+// 大小写不敏感后如实纳入，旧只剥小写 v 时该形态去重落空）。
 func TestDownloadVersionBetaTagCoreDedup(t *testing.T) {
 	f := newRecordlyFixture(t, false)
 	dir := mkInstall(t, f.versionsDir, "v1.3.5-beta.2")
 
-	for _, in := range []string{"1.3.5", "v1.3.5", " v1.3.5 "} {
+	for _, in := range []string{"1.3.5", "v1.3.5", "V1.3.5", " v1.3.5 "} {
 		got, err := f.svc.DownloadVersion(in)
 		if err != nil {
 			t.Fatalf("DownloadVersion(%q): %v", in, err)

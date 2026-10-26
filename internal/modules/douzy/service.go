@@ -84,7 +84,7 @@ func (s *DouzyService) DownloadVersion(targetVersion string) (string, error) {
 		return "", gateErr
 	}
 	defer release()
-	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 
 	s.downloadMu.Lock()
 	if _, ok := s.downloads[targetVersion]; ok {
@@ -151,7 +151,7 @@ func (s *DouzyService) LaunchInstaller(targetVersion string) error {
 		return gateErr
 	}
 	defer release()
-	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 	exe, err := s.manager.InstallerPath(targetVersion)
 	if err != nil {
 		return err
@@ -171,7 +171,7 @@ func (s *DouzyService) RemoveVersion(targetVersion string) error {
 		return gateErr
 	}
 	defer release()
-	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	targetVersion = normalizeVersion(targetVersion)
 	return s.manager.Remove(targetVersion)
 }
 
@@ -214,4 +214,17 @@ func (s *DouzyService) OpenRepository() error {
 func versionCompare(a, b string) int {
 	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
 	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
+}
+
+// normalizeVersion 版本入参归一：先 TrimSpace，大小写 v 一律认（剥除既有 v/V 前缀后统一补 v）。
+// 旧形制只认小写 v，大写 V 入参（如 "V1.2.3"）被归一成 "vV1.2.3"：已装去重落空并放行一路注定
+// 失败的后台下载，SetActive/Remove 又对同一输入报"非法版本号"——三入口互异。修复后裸号/
+// v号/V号/带空白同落一个 v 前缀规范形；imported-/vimported- 兜底令牌经"剥既有 v 再补 v"
+// 恒等透传为 vimported-（绝不产出 vvimported-），与 ListInstalled 展示及 store 记账口径一致。
+func normalizeVersion(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) > 0 && (v[0] == 'v' || v[0] == 'V') {
+		v = v[1:]
+	}
+	return "v" + v
 }

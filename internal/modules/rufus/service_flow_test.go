@@ -90,17 +90,16 @@ func mkInstalled(t *testing.T, versionsDir, dir string) string {
 
 // ---------- DownloadVersion ----------
 
-// TestDownloadVersionInstalledDedup 下载闸的输入归一与已装去重：带/不带小写
+// TestDownloadVersionInstalledDedup 下载闸的输入归一与已装去重：带/不带大小写
 // v、首尾空白的同一版本，命中已装目录即返回 already-installed 且不启动任何
 // 后台下载（判据：返回值与已装目录文件均未被下载链改写）。
-// 注：大写 "V4.15" 形态归一后为 "vV4.15"，去重比较首字符 '4'≠'V' 落空——
-// 属真实归一缺口（rufus/recordly 两处同型，vscode 的 normalizeVersion 兼容
-// 大小写），按"不迁就断言"原则不写入用例，已在交付报告登记为待裁缺陷。
+// 注：大写 "V4.15" 形态曾归一为 "vV4.15" 致去重落空（当批登记为待裁缺陷），
+// X2 批已把归一改为大小写不敏感（照 vscode normalizeVersion 样板），现如实纳入。
 func TestDownloadVersionInstalledDedup(t *testing.T) {
 	f := newRufusFixture(t, false)
 	mkInstalled(t, f.versionsDir, "rufus_4.15")
 
-	for _, in := range []string{"4.15", "v4.15", " 4.15 "} {
+	for _, in := range []string{"4.15", "v4.15", "V4.15", " 4.15 "} {
 		got, err := f.svc.DownloadVersion(in)
 		if err != nil {
 			t.Fatalf("DownloadVersion(%q): %v", in, err)
