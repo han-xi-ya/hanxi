@@ -1,4 +1,4 @@
-// BoardCard 独立契约测试（v4 收编）：不依赖任何视图/后端桩，纯画法断言。
+// BoardCard 独立契约测试：不依赖任何视图/后端桩，纯画法断言。
 // 锁定对外契约——props 只有 text/fontSize，版式拆分、内联定标链
 // （fontSize 直用、maxWidth 吃 ×13 系数、副行 ×0.42 托底 12）、胶带条与
 // role=presentation 装饰语义；MsgBoardPopup/MsgBoardView 的特征测试继续
@@ -33,6 +33,19 @@ describe('BoardCard 牌面本体', () => {
   it('单行/全空白副行不产生空气 bc-sub 节点', () => {
     expect(card('马上回来', 64).find('.bc-sub').exists()).toBe(false)
     expect(card('马上回来\n   \n', 64).find('.bc-sub').exists()).toBe(false)
+  })
+
+  it('长词与多行正文原样进 DOM（折行全归 CSS：pre-wrap+break-word，组件层零 JS 截断零并线）', () => {
+    // happy-dom 无排版引擎，量不了"折没折"；能量的是外部事实——文本节点完整
+    // 保真：超长单词不被 JS slice 掐头、副行换行符不被 join 吞平（pre-wrap 的
+    // 换行语义依赖 DOM 里的真实 \n，谁日后加"智能截断"这里即红）
+    const longWord = '超'.repeat(300)
+    const w = card(longWord, 96)
+    expect(w.find('.bc-title').element.textContent).toBe(longWord)
+    expect(w.findAll('.bc-title')).toHaveLength(1)
+    const w2 = card('主题行\n副行甲\n副行乙', 64)
+    expect(w2.find('.bc-title').element.textContent).toBe('主题行')
+    expect(w2.find('.bc-sub').element.textContent).toBe('副行甲\n副行乙')
   })
 
   it('胶带条常驻且纯装饰（aria-hidden），空正文牌体仍完整渲染', () => {

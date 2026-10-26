@@ -1,6 +1,6 @@
 // 特征测试：ElevateRestart——requireAdministrator 模块（BCU/Rufus/LiteMonitor）
 // 被 740 直拒后的一键提权重启入口。锁定三态：已提权隐身、绑定异常隐身
-// （宁缺毋滥）、正常态经确认（全局 useConfirm 单例，收编后不再自挂弹层）后
+// （宁缺毋滥）、正常态经确认（全局 useConfirm 单例，不再自挂弹层）后
 // 携带当前路由调 RestartElevated，且 UAC 取消时 toast 报错可重新发起。
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -52,7 +52,7 @@ describe('ElevateRestart', () => {
     const w = factory()
     await flushPromises()
     expect(w.find('.elevate-restart').exists()).toBe(true)
-    // 收编契约：组件内部不得再渲染 ConfirmDialog（KeepAlive 多视图同挂时无叠窗）
+    // 契约：组件内部不得再渲染 ConfirmDialog（KeepAlive 多视图同挂时无叠窗）
     expect(w.find('.workbench-confirm-backdrop').exists()).toBe(false)
     await w.find('button').trigger('click')
     expect(document.querySelector('.workbench-confirm-backdrop')).toBeNull()

@@ -1,7 +1,7 @@
-// 特征测试（迁移基线）：SubnetDeskView 的托管家族契约锁定。
-// 断言的是"渲染结果 + 后端调用序列"；卸载/导入的确认机制已按迁移铁律从
-// window.confirm/prompt 收编为 useConfirm/usePrompt 单例（App.vue 宿主），
-// 下方两例经单例裁决驱动，可观察行为（是否调后端/toast/文案要素）与迁移前一致。
+// 特征测试：SubnetDeskView 的托管家族契约锁定。
+// 断言"渲染结果 + 后端调用序列"；卸载/导入的确认与输入走 useConfirm/usePrompt 全局单例
+//（宿主在 App.vue），下方两例经单例裁决驱动，可观察行为（是否调后端/toast/文案要素）
+// 与旧 window.confirm/prompt 机制等值锁死。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -131,7 +131,7 @@ describe('SubnetDeskView 状态矩阵', () => {
   }
 
   it('提示条三变体互斥：external=warn / failed=error 且含后端错误 / running=ok 含断会话警示', async () => {
-    // 迁移后由 UiBanner 承载（.banner.banner-{tone}，role=note），语义变体与文案不变
+    // 提示条由 UiBanner 承载（.banner.banner-{tone}，role=note），语义变体与文案照锁
     stubDefaults({ state: 'external' })
     let w = await mountView()
     expect(w.find('.banner').classes()).toContain('banner-warn')
@@ -214,7 +214,7 @@ describe('SubnetDeskView 版本管理', () => {
     const uninstallBtn = w.findAll('.installed-card button').find((b) => b.text() === '卸载')!
     await uninstallBtn.trigger('click')
     await flushMicrotasks()
-    // 迁移后走 useConfirm 全局单例（宿主在 App.vue），文案要素保持锁定
+    // 确认走 useConfirm 全局单例（宿主在 App.vue），文案要素照锁
     expect(confirmState.open).toBe(true)
     expect(confirmState.options.title).toContain('1.2.3')
     expect(confirmState.options.description).toContain('不可恢复')

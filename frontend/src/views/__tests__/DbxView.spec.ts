@@ -1,4 +1,4 @@
-// DbxView 特征测试（三线并行 · 冻结契约口径）：标准壳（ManagedConsoleShell）
+// DbxView 特征测试（冻结契约口径）：标准壳（ManagedConsoleShell）
 // 装配下的账本漂移警示三处同源（warn 横幅 + 状态灯琥珀 + 页头徽标）、
 // metaHints 五条如实披露、末版卸载预告复用（soleVersionUninstallNote）、
 // followOnExit 开关（含「托管备份」注记）。绑定面经 vi.mock 打桩（真实生成物

@@ -1,5 +1,5 @@
-// utils/version 单源比较器 spec（版本比较器统一波）。
-// 矩阵格纪律：每一格注明「收编前哪份实现会给出什么答案」——被统一掉的
+// utils/version 单源比较器 spec。
+// 矩阵格纪律：每一格注明「统一前各旧实现会给出什么答案」——被废除的
 // 3 段截断 / 字典序退化 / NaN 静默判旧 / 双胞胎 v 前缀漂移 四类旧语义在此锁死，
 // 任何回退都会碰掉断言。
 import { describe, expect, it } from 'vitest'
@@ -99,6 +99,24 @@ describe('compareCore — 抹后缀核心比较（NSIS 互认口径）', () => {
   })
   it('三段自家数据与旧口径等价：1.0.0 vs 1.2.0-beta1 → -1（recordly 视图 spec 实格）', () => {
     expect(compareCore('1.0.0', '1.2.0-beta1')).toBe(-1)
+  })
+})
+
+// 归一与补零的输入面边界：`\d+` 允许前导零段（现口径判规范且 Number 洗零），
+// trim 覆盖制表/换行等全角空白（后端 PE FileVersion 与 GitHub tag 均可能带形）。
+describe('normalizeVersion/compareStrict — 输入面边界', () => {
+  it('前导零段判规范并数值化：01.2 ≡ 1.2、1.08.0 < 1.8.1（不被误判非规范 null）', () => {
+    expect(isCanonical('01.2.03')).toBe(true)
+    expect(normalizeVersion('v01.2')).toBe('01.2')
+    expect(compareStrict('01.2', '1.2')).toBe(0)
+    expect(compareStrict('1.08.0', '1.8.1')).toBe(-1)
+    expect(upgradeAvailableCore('01.0.0', '1.0.1')).toBe(true)
+  })
+  it('trim 吃制表/换行空白后剥 v；段内空白不归一（判非规范 null，不硬凑）', () => {
+    expect(normalizeVersion('\t\n v1.2.3 \r\n')).toBe('1.2.3')
+    expect(compareStrict('\tv1.0 \n', '1.0')).toBe(0)
+    expect(normalizeVersion('1. 2.3')).toBe('1. 2.3')
+    expect(compareStrict('1. 2.3', '1.2.3')).toBeNull()
   })
 })
 

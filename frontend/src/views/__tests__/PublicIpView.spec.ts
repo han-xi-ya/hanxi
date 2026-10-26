@@ -1,6 +1,6 @@
-// 特征测试（组 G2 迁移护航）：PublicIpView 三 Tab 状态机——网卡过滤口径、
-// Ping/Traceroute 结果行、快捷联动跳转、复制。迁移注记：diag-tbl→全局 .tbl 原子、
-// badge-*→chip（静态文本）、status-badge 保留（动态错误文本防 chip nowrap 截断）。
+// 特征测试：PublicIpView 三 Tab 状态机——网卡过滤口径、Ping/Traceroute 结果行、
+// 快捷联动跳转、复制。类名口径：diag-tbl 已并为全局 .tbl 原子、静态文本徽章走 chip，
+// status-badge 保留专档（承载动态错误文本，防 chip 的 nowrap 截断）。
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'

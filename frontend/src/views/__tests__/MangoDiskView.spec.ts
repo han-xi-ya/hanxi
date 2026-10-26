@@ -1,8 +1,8 @@
-// 特征测试（批 0 共享契约迁入件）：MangoDiskView 保留自绘版式（页头状态徽标、
+// 特征测试：MangoDiskView 保留自绘版式（页头状态徽标、
 // 动态主钮、完整性优先级横幅、方言完整性表、自绘联动开关），编排面全部换接
 // useManagedConsole + adapter（src/adapters/mangodisk）。断言"做了什么"而非"怎么做"：
 // 启停动词（含成功双复刷/失败仅复刷版本）、卸载/导入确认文案、进度呈现、
-// 联动成功翻转语义、轮询与 KeepAlive 契约逐字保留，用例数不降。
+// 联动成功翻转语义、轮询与 KeepAlive 契约逐字保留。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

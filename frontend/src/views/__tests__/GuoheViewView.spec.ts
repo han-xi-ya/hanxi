@@ -1,8 +1,8 @@
-// 特征测试（组 C，波 2E 版本区回迁收口）：GuoheViewView——行为基线。
+// 特征测试：GuoheViewView——行为基线。
 // 特殊性（必须原样保留）：多实例上游 banner 文案、官网（非仓库）复制与打开、
 // 官方发布接口刷新（「↻ 刷新发布接口」钮词走面板 refreshLabel 位；stable/beta
-// 通道列走 #release-extra-col 槽）；波 2E 后方言表锚点 .gv-ver-status 退役、
-// 选择器迁 ManagedVersionDot 渲染形 .ver-status。
+// 通道列走 #release-extra-col 槽）；方言表锚点 .gv-ver-status 已不存在，
+// 状态选择器即 ManagedVersionDot 渲染形 .ver-status。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -77,8 +77,8 @@ async function mountInKeepAlive() {
   return { wrapper, show }
 }
 
-// 迁移注记：confirm/prompt 已由 useConfirm/usePrompt 单例收编，测试经 settle* 驱动，
-// "危险操作必须二次确认"的断言语义不变。
+// confirm/prompt 经 useConfirm/usePrompt 单例，测试以 settle* 驱动，
+// 断言语义是"危险操作必须二次确认"。
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 

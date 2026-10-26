@@ -1,4 +1,4 @@
-// GoNaviView 特征测试（三线并行 · 冻结契约口径）：标准壳（ManagedConsoleShell）
+// GoNaviView 特征测试（冻结契约口径）：标准壳（ManagedConsoleShell）
 // 装配下的账外漂移警示（banner + 状态灯 warn 档 + 页头徽标三处同源）、
 // metaHints 四条如实披露、末版卸载预告复用（soleVersionUninstallNote）、
 // 运行态下载 confirm 闸。绑定面经 vi.mock 打桩（真实生成物落盘前由

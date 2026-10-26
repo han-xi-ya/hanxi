@@ -1,4 +1,4 @@
-// 共享历史弹窗壳特征测试（N20 收尾）：锁定三条契约——Esc 在确认框在场时让位、
+// 共享历史弹窗壳特征测试：锁定三条契约——Esc 在确认框在场时让位、
 // 遮罩/关闭钮上抛 close、开窗焦点入 dialog 且关窗回位。类名/层阶是迁移关键。
 import { nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'

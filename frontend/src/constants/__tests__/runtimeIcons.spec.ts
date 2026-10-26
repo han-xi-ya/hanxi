@@ -1,4 +1,4 @@
-// runtimeIcons 通道特征测试（N27 红线运行期提取）：成功转 data URL、
+// runtimeIcons 通道特征测试（红线运行期提取）：成功转 data URL、
 // 并发去重、失败负缓存永不重试——渲染面据此"提取失败=现状不变"。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

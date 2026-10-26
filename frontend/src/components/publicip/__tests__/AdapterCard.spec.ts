@@ -1,5 +1,5 @@
-// 拆分护航（Phase 6）：AdapterCard——网卡卡的 props→DOM 结构与快捷动作上抛口径。
-// 类名/文案逐字沿用拆分前的 PublicIpView（特征测试 PublicIpView.spec.ts 为主基线，此处守组件边界）。
+// 组件边界护航：AdapterCard——网卡卡的 props→DOM 结构与快捷动作上抛口径。
+// 类名/文案以 PublicIpView.spec.ts 特征基线为准，此处只守组件边界。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import AdapterCard from '../AdapterCard.vue'

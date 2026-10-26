@@ -1,7 +1,7 @@
 // ============================================================================
 // 果核看图 adapter · N13 形态矩阵透传契约
 //
-// listReleases 是本轮唯一改写行对象形态的投影（published 空串占位注入），
+// listReleases 是本件唯一改写行对象形态的投影（published 空串占位注入），
 // 必须验证后端 ViewRelease.Assets（hostfeed 矩阵）在该改写中逐条存活——
 // 丢一条，面板「上游发布」列就静默降级为空白。
 // ============================================================================
@@ -33,7 +33,7 @@ vi.mock('../../composables/useWailsEvent', () => ({ useWailsEvent: vi.fn() }))
 vi.mock('../../composables/useConfirm', () => ({ useConfirm: () => ({ confirm: vi.fn() }) }))
 vi.mock('../../composables/usePrompt', () => ({ usePrompt: () => ({ prompt: vi.fn() }) }))
 
-/** 官方接口三发布物形态（与真实 files 数组同构，bindings 再生前以方言注记型携带 assets）。 */
+/** 官方接口发布物形态（与真实 files 数组同构，字段对位 bindings version/models 的 AssetNote）。 */
 function fakeRow(version: string, assets: ReleaseAssetNote[]) {
   return {
     version,

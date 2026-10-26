@@ -2,7 +2,7 @@ import { defineComponent, h, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ManagedConsoleShell from '../ManagedConsoleShell.vue'
-import type { ManagedModuleAdapter, ManagedSnapshot } from '../adapter'
+import type { ManagedModuleAdapter, ManagedReleaseRecord, ManagedSnapshot } from '../adapter'
 import type { ManagedConsoleStore } from '../store'
 import { useManagedConsole } from '../store'
 
@@ -363,6 +363,147 @@ describe('ManagedConsoleShell 波 2A 地基', () => {
     const panels = wrapper.findAll('.tab-body')
     expect(panels).toHaveLength(2)
     expect(panels[1].attributes('role')).toBe('tabpanel')
+    wrapper.unmount()
+  })
+})
+
+// ---------- 波 5：#release-actions 壳转发位 / #console-extra 作用域含 store ----------
+
+describe('ManagedConsoleShell release-actions 转发位', () => {
+  /** 只桩控制条/联动卡，面板用真实件——槽转发链路整体过一遍（对照 #primary-action 走 ControlBar 的既有形制）。 */
+  const stubsMinusPanel = {
+    ManagedControlBar: childStubs.ManagedControlBar,
+    ManagedExtrasCard: childStubs.ManagedExtrasCard,
+  }
+
+  const releases = [
+    { version: 'v2.0.0', published: '2026-09-01T00:00:00Z', size: 2048 },
+    { version: 'v1.9.0', published: '2026-08-01T00:00:00Z', size: 1024, isPre: true, form: 'portable' },
+  ]
+
+  function probeAdapter() {
+    return fakeAdapter({
+      versions: {
+        listInstalled: vi.fn(async () => []),
+        listReleases: vi.fn(async () => releases),
+        download: vi.fn(async () => ({})),
+        remove: vi.fn(async () => ({})),
+        openDir: vi.fn(async () => ({})),
+      },
+    })
+  }
+
+  it('作用域逐行携带完整 release 记录，且渲染于该操作位末端（标准钮之后）', async () => {
+    const wrapper = mount(ManagedConsoleShell, {
+      props: { adapter: probeAdapter(), title: '示例工具' },
+      slots: {
+        'release-actions': ({ release }: { release: ManagedReleaseRecord }) =>
+          h(
+            'button',
+            {
+              class: 'release-probe',
+              'data-version': release.version,
+              'data-size': String(release.size),
+              'data-form': release.form ?? '',
+            },
+            `🌐 发布页 ${release.version}`,
+          ),
+      },
+      global: { stubs: stubsMinusPanel },
+    })
+    await flushPromises()
+
+    const probes = wrapper.findAll('.release-probe')
+    expect(probes).toHaveLength(2)
+    // 逐行配对：第一行 v2.0.0，第二行 v1.9.0（预发布行作用域仍拿完整记录）
+    expect(probes[0].attributes('data-version')).toBe('v2.0.0')
+    expect(probes[0].attributes('data-size')).toBe('2048')
+    expect(probes[0].text()).toBe('🌐 发布页 v2.0.0')
+    expect(probes[1].attributes('data-version')).toBe('v1.9.0')
+    expect(probes[1].attributes('data-form')).toBe('portable')
+
+    // 位序契约：转发内容落进远程行「操作」列，且排在标准动作钮（下载安装）之后
+    const rows = wrapper.findAll('.tbl tbody tr')
+    expect(rows).toHaveLength(2)
+    for (const [i, row] of rows.entries()) {
+      const actionCell = row.findAll('td').at(-1)!
+      expect(actionCell.element.children).toHaveLength(2)
+      expect(actionCell.element.children[0].textContent).toContain('下载安装')
+      expect(actionCell.element.lastElementChild).toBe(probes[i].element)
+    }
+    wrapper.unmount()
+  })
+
+  it('#versions-body 在场时默认体整体让位，本转发位不生效（契约不变）', async () => {
+    const wrapper = mount(ManagedConsoleShell, {
+      props: { adapter: probeAdapter(), title: '示例工具' },
+      slots: {
+        'versions-body': () => h('div', { class: 'versions-body-probe' }, '方言版本区'),
+        'release-actions': ({ release }: { release: ManagedReleaseRecord }) =>
+          h('button', { class: 'release-probe' }, `发布页 ${release.version}`),
+      },
+      global: { stubs: stubsMinusPanel },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.versions-body-probe').text()).toBe('方言版本区')
+    expect(wrapper.findAll('.release-probe')).toHaveLength(0)
+    wrapper.unmount()
+  })
+})
+
+describe('ManagedConsoleShell console-extra 位', () => {
+  it('#console-extra 作用域携带 store 句柄：与快照同一真相、busy 随 dangerBusy 联动，且落位状态头之后主体之前', async () => {
+    const dangerBusy = ref(false)
+    const wrapper = mount(ManagedConsoleShell, {
+      props: { adapter: fakeAdapter({ dangerBusy }), title: '示例工具' },
+      slots: {
+        'console-extra': (scope: ShellSlotScope) =>
+          h(
+            'div',
+            {
+              class: 'console-extra-probe',
+              'data-state': scope.state,
+              'data-busy': String(scope.busy),
+              'data-store-snap': String(scope.store?.snap === scope.snap),
+            },
+            '提权选择条',
+          ),
+        default: () => h('div', { class: 'console-body-probe' }),
+      },
+      global: { stubs: childStubs },
+    })
+    await flushPromises()
+
+    const probe = wrapper.find('.console-extra-probe')
+    expect(probe.attributes('data-state')).toBe('running')
+    expect(probe.attributes('data-store-snap')).toBe('true') // 作用域 store 与快照同源
+    expect(probe.attributes('data-busy')).toBe('false')
+
+    // 位序：状态头（control-bar）之后、控制台主体之前
+    const consoleBody = wrapper.findAll('.tab-body')[0]
+    expect(Array.from(consoleBody.element.children).map((el) => el.className)).toEqual([
+      'control-bar-stub',
+      'console-extra-probe',
+      'console-body-probe',
+    ])
+
+    dangerBusy.value = true
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.console-extra-probe').attributes('data-busy')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('单页签形态（showConsoleTab=false）：#console-extra 位不实例化', async () => {
+    const wrapper = mount(ManagedConsoleShell, {
+      props: { adapter: fakeAdapter(), title: '示例工具', showConsoleTab: false },
+      slots: {
+        'console-extra': () => h('div', { class: 'console-extra-probe' }),
+      },
+      global: { stubs: childStubs },
+    })
+    await flushPromises()
+    expect(wrapper.find('.console-extra-probe').exists()).toBe(false)
     wrapper.unmount()
   })
 })

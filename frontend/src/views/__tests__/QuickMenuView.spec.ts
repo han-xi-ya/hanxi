@@ -114,7 +114,7 @@ describe('QuickMenuView', () => {
     w.unmount()
   })
 
-  // v3 窄档换形回归（机主 628×940 截图批复）：happy-dom 回落口径=容器宽 0（RO 空
+  // 窄档换形回归（628×940 视口用例）：happy-dom 回落口径=容器宽 0（RO 空
   // 实现、CSS.supports 恒真）→ 窄档。断言结构序与紧凑舱形态；CSS 侧 @container
   // 换形 happy-dom 不排版，按回落逻辑以 DOM 序+盘形态为准。
   it('窄档结构序：编辑主场在预览舱之前，盘面走 trim 满格小档', async () => {
@@ -167,7 +167,7 @@ describe('QuickMenuView', () => {
     w.unmount()
   })
 
-  // 轮盘独立批的机主语义之二：改了自动保存不用按保存钮——编辑面每笔落盘上抛 saved，
+  // 契约之二：改了自动保存不用按保存钮——编辑面每笔落盘上抛 saved，
   // 宿主借此重拉预览条目（@saved → reloadAfterSave → ListItems 链不动）。
   it('实时保存：勾选候选即落 SetWheelMenu，上抛 saved 后预览重拉', async () => {
     traySvc.ListTrayMenuOptions.mockResolvedValue([{ type: 'command', ref: 'frpc/start', label: '启动 frpc', moduleName: 'frpc' }])

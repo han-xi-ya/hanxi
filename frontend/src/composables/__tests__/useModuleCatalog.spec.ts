@@ -1,7 +1,7 @@
 // useModuleCatalog 特征测试：两源（ListCatalog+ListModuleStates）并发合并、
 // ext:changed 防抖重拉（突发只拉一次）、单飞合流、错误不抛只挂 error 且保留旧投影。
-// 描述文案随 ModuleCatalogItem.description 契约收编，不再借第三源 ListModules。
-// bindings 经 vi.mock 打桩（FRONTEND.md §8 测试 seam），单例状态经 resetModules 逐例隔离。
+// 描述文案单源 ModuleCatalogItem.description，不借第三源 ListModules（双写面）。
+// bindings 经 vi.mock 打桩（docs/FRONTEND.md §8 测试 seam），单例状态经 resetModules 逐例隔离。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const appSvc = vi.hoisted(() => ({

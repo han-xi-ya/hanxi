@@ -1,9 +1,9 @@
 // BoardStage 舞台契约测试（v4 牌桌口径）：给定容器宽/字号（可选实测牌宽）
 // → min(cap, (盒宽−12)/牌面自然宽) 的自适应 scale。重点钉四条——
 // ①cap 默认 1.0：短文案宽舞台必须原大呈现（1:1 是合法终态）；
-// ②牌宽未测到回落 字号×13 兜底线、盒宽未测到回落基准 300——happy-dom
-//   无 ResizeObserver 的口径与 A 路 v4 视图内联式逐位一致（64px/300 盒
-//   ＝scale(0.34615384615384615)）；
+// ②牌宽未测到回落 字号×13 兜底线、盒宽未测到回落基准 300——这正是宿主
+//   首帧/happy-dom 无 ResizeObserver 时的现口径，MsgBoardView.spec 锁同一
+//   字面量（64px/300 盒＝scale(0.34615384615384615)）；
 // ③scale 事件 immediate 首发且随 props 联动——宿主 caption 文案与舞台实际缩放同源；
 // ④盒高在场才反算注入 --bc-max-h。内层类名沿用 .mbp-scaled：视图选择器零迁移。
 import { mount } from '@vue/test-utils'

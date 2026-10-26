@@ -1,4 +1,4 @@
-// 导出面 util 规格（N16 C 批）：钉死三件事——①单条文档与后端 filestore
+// 导出面 util 规格：钉死三件事——①单条文档与后端 filestore
 // EncodeMemo 的格式契约（frontmatter 键序/单行消毒/正文原样，导出的文件必须
 // 能被后端 DecodeMemo 读回）；②全库汇总器的篇头统计与分节结构；③下载通道
 // 的成功/降级两路与 objectURL 延迟释放。文件名消毒盯住 Windows 非法字符与
@@ -97,6 +97,34 @@ describe('buildLibraryDigest（全库汇总稿）', () => {
     const md = buildLibraryDigest([item()], {})
     expect(md).toContain('- 敏感遮罩条目：无')
   })
+
+  it('空库汇总：篇头统计段完整且零分节（0 条也要产出结构完整的文件）', () => {
+    const md = buildLibraryDigest([], { exportedAt: new Date(2026, 8, 26, 14, 5, 0) })
+    expect(md).toContain('# 随手记 · 全库导出')
+    expect(md).toContain('- 导出时间：2026-09-26 14:05')
+    expect(md).toContain('- 便签条数：0')
+    expect(md).toContain('- 敏感遮罩条目：无')
+    // 没有任何条目节；全文件只剩篇头骨架的那一条 --- 分节线（无条目间分节）
+    expect(md).not.toContain('## ')
+    expect(md.split('\n').filter((l) => l === '---')).toHaveLength(1)
+    expect(md.endsWith('\n')).toBe(true)
+  })
+
+  it('时间戳坏值原样上浮（fmtLocal 解析失败不伪造 NaN 时刻）', () => {
+    const md = buildLibraryDigest([item({ createdAt: '不是时间', updatedAt: 'bad-ts' })], {})
+    expect(md).toContain('建 不是时间 · 改 bad-ts')
+    expect(md).not.toContain('NaN')
+  })
+})
+
+describe('buildMemoFile 元数据透传补档', () => {
+  it('masked=true 如实落 frontmatter；colorTag 缺省落空值（后端可解码形态）', () => {
+    const doc = buildMemoFile(item({ isMasked: true, colorTag: undefined as unknown as string }))
+    expect(doc).toContain('masked: true\n')
+    expect(doc).toContain('\ncolor: \n')
+    // pinned 仍如实 false（缺省值不冒充布尔）
+    expect(doc).toContain('pinned: false\n')
+  })
 })
 
 describe('文件名消毒', () => {
@@ -112,6 +140,16 @@ describe('文件名消毒', () => {
     expect(sanitizeFileName('CON')).toBe('·CON')
     expect(sanitizeFileName('com1.log')).toBe('·com1.log')
     expect(sanitizeFileName('CONFIG.md')).toBe('CONFIG.md') // 前缀命中不算保留名
+  })
+
+  it('emoji 不是非法字符照单全收；盘符冒号剔除；全非法名回落无标题便签', () => {
+    // 中文与 emoji 都是机主真实标题常态——误杀任何一个就等于导出改名
+    expect(sanitizeFileName('笔记 🎉 v2')).toBe('笔记-🎉-v2')
+    expect(sanitizeFileName('C:盘 部署')).toBe('C盘-部署') // 冒号属非法字符，剔除而非折算
+    expect(sanitizeFileName('部署 🚀 手册')).toBe('部署-🚀-手册')
+    expect(sanitizeFileName('|::*')).toBe('无标题便签') // 只剩非法符：消毒后为空也要有名可落
+    // 单条导出名整链：中文+emoji 标题、id 尾缀防重，一次成型
+    expect(safeExportFileName(item({ title: '部署 🚀 手册', id: 'm-deadbeefcafe0001' }))).toBe('部署-🚀-手册-cafe0001.md')
   })
 
   it('限长 60 且不劈在点/横杠尾巴上', () => {

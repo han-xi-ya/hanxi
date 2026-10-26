@@ -1,7 +1,8 @@
-// boardMetrics 纯函数契约测试（v4 牌面收编的数值锚点）。
-// 关键使命：与视图两侧现实现逐位对账——stageScale 复现 v3 grow 档历史字面量
-// （scale(0.34)/scale(0.1846…)），stageScaleMeasured 复现 v4 牌桌量测档现字面量
-// （64px/300 盒＝0.34615384615384615）；A 路把内联式换成调用时零断言迁移。
+// boardMetrics 纯函数契约测试（牌面定标与缩放换算的数值锚点）。
+// 关键使命：两套档位数值在此各锁一份字面量——stageScale 锁 v3 grow 档历史
+// 字面量（scale(0.34)/scale(0.1846…)），stageScaleMeasured 锁牌桌量测档现
+// 字面量（64px/300 盒＝0.34615384615384615）；视图与舞台都改为消费本模块后，
+// 这些字面量就是对账锚点。
 import { describe, expect, it } from 'vitest'
 import {
   boardSubOf,
@@ -105,6 +106,23 @@ describe('定标系数与版式拆分（BoardCard 收编口径）', () => {
     expect(boardSubOf('马上回来')).toBe('')
     expect(boardSubOf('T\nA\nB')).toBe('A\nB')
     expect(boardTitleOf('')).toBe('')
+  })
+})
+
+describe('缩放钳位含界（贴界不失真、越界才咬合）', () => {
+  it('cap 界：fit 恰等于 1（(844−12)/832）原样取 1 且无浮点毛刺；越界一分被 cap 咬回 1:1', () => {
+    expect(stageScaleMeasured({ boxWidth: 844, cardWidth: 832, fontSize: 64 })).toBe(1)
+    expect(stageScaleMeasured({ boxWidth: 845, cardWidth: 832, fontSize: 64 })).toBe(1)
+  })
+
+  it('floor 界：略高于地板的值（1/832≈0.0012）原样透传不触底；亚界输入被 MIN_SCALE 咬住不出负缩放', () => {
+    expect(stageScaleMeasured({ boxWidth: 13, cardWidth: 832, fontSize: 64 })).toBe(1 / 832)
+    expect(stageScaleMeasured({ boxWidth: 12.8, cardWidth: 832, fontSize: 64 })).toBe(MIN_SCALE)
+  })
+
+  it('cardMaxHeightPx 恰 48 原样上屏（(60−12)/1），低一分（47）才托底——下限含界不误吞合法值', () => {
+    expect(cardMaxHeightPx(60, 1)).toBe(48)
+    expect(cardMaxHeightPx(59, 1)).toBe(48)
   })
 })
 

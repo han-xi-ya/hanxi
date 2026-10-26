@@ -1,5 +1,5 @@
-// 特征测试：波 0 抽取 stepOf（10 份逐字副本）与 versionRowState
-// （guoheview/quicklook/rufus 三视图 statusOf 同体）——边界与刻意保留的
+// 特征测试：stepOf（多视图逐字副本的抽取）与 versionRowState
+// （guoheview/quicklook/rufus 历史同体内核）——边界与刻意保留的
 // 怪癖逐字锁定：done 档不设边界值直判 100、downloading 档封顶 99、
 // 非 downloading 档恒 0、票据先行压过已装判定。
 import { describe, expect, it } from 'vitest'
@@ -51,5 +51,29 @@ describe('versionRowState', () => {
     expect(versionRowState({ stage: 'downloading' }, installed, '9.9.9')).toBe('downloading')
     expect(versionRowState({ stage: 'verify' }, installed, '1.2.0')).toBe('downloading')
     expect(versionRowState({ stage: 'done' }, installed, '1.2.0')).toBe('downloading')
+  })
+})
+
+// ---------- 后端阶段词全量普查（各 Go 模块 Stage: 字面量清点） ----------
+
+/** 后端现存但既有档位用例未逐一覆盖的阶段词（frpc 校验段 / 托管安装链各环节）。 */
+const EXTRA_STAGES = [
+  'hash', 'backup', 'copying', 'deploying', 'importing', 'installing', 'net', 'optimize',
+  'preflight', 'preparing', 'reimport', 'started', 'system', 'trim', 'uninstalling', 'wsl',
+]
+
+describe('stepOf 后端阶段词补档', () => {
+  it('词表外进行中阶段词恒 0：即便 done/total 齐备也不画进度条（进度条只属 downloading 档）', () => {
+    for (const stage of EXTRA_STAGES) {
+      expect(stepOf({ stage, done: 30, total: 100 }), stage).toBe(0)
+    }
+    // done 档压过一切数值：done+残数也判满格（清票驻留瞬间进度条不闪回）
+    expect(stepOf({ stage: 'done', done: 3, total: 100 })).toBe(100)
+  })
+
+  it('versionRowState 对新阶段词一律票据先行判 downloading，不落入 error 档（只特判 error 一词）', () => {
+    for (const stage of EXTRA_STAGES) {
+      expect(versionRowState({ stage }, [], '9.9.9'), stage).toBe('downloading')
+    }
   })
 })

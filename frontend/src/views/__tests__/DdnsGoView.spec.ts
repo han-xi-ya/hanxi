@@ -1,8 +1,8 @@
-// 特征测试：DdnsGoView（批 0 共享契约收敛件）托管契约 + 本视图特有面
+// 特征测试：DdnsGoView 托管契约 + 本视图特有面
 // （进程日志流 / Web 端口设置 / 面板子窗口动作）。共享面断言经 ManagedConsoleShell
 // 家族 DOM（.status-word/.banner/.installed-card/.dl-percent 等）逐字承接；
 // 事件 mock 与共享件同构改为数组收集（instance-state 有 store 与视图日志重取
-// 两个独立监听），可观察行为（是否调后端/toast/文案要素）与迁移前一致。
+// 两个独立监听），断言取可观察行为（是否调后端/toast/文案要素）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'

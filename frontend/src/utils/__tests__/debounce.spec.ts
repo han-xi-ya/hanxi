@@ -67,4 +67,21 @@ describe('debounce', () => {
     vi.advanceTimersByTime(350)
     expect(fn).toHaveBeenCalledTimes(1)
   })
+
+  // 调用方各自持档（HistoryPanel 与 useEverythingSearch 同时挂载的现实形态）：
+  // 实例间定时器互不牵连，cancel 只清自家待执行。
+  it('多实例互不串扰：cancel 其一不影响另一照常触发', () => {
+    vi.useFakeTimers()
+    const fn1 = vi.fn()
+    const fn2 = vi.fn()
+    const d1 = debounce(fn1, 350)
+    const d2 = debounce(fn2, 350)
+    d1()
+    d2()
+    vi.advanceTimersByTime(100)
+    d1.cancel()
+    vi.advanceTimersByTime(1000)
+    expect(fn1).not.toHaveBeenCalled()
+    expect(fn2).toHaveBeenCalledTimes(1)
+  })
 })

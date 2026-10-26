@@ -1,4 +1,4 @@
-// 回归测试（二波收敛完成版）：SnipasteView 本会话托管正式行为基线。
+// 回归测试：SnipasteView 本会话托管正式行为基线。
 // 特殊性（必须原样保留）：脱管语义（本会话未托管/外部实例不被认领）、官网清单下载、
 // 退出先尽力关闭超时强杀（forced → warning）、票据清理定时器 900ms、本地导入 prompt。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
@@ -300,7 +300,7 @@ describe('SnipasteView 轮询与清理', () => {
   })
 })
 
-// ── 二波收敛正式行为补强 ───────────────────────────────────────────────────
+// ── 行为补强（收敛最易丢的分支）───────────────────────────────────────────
 // 既有用例锁了脱管语义/确认闸/forced 回执等主面；以下补齐收敛最易丢的分支：
 // launch/quit 动词回执全谱（info/warning/error 三态与 toast 不对称）、票据
 // cancelCleanup 重锚、already-installed 即时清票、校验方式三态方言、卸载禁用

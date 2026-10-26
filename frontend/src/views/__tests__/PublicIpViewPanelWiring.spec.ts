@@ -1,5 +1,5 @@
-// 拆分护航（Phase 6）：PublicIpView ⇄ components/publicip/* 的跨组件接线。
-// 特征测试 PublicIpView.spec.ts 是三 Tab 行为主基线；本文件只补拆分新增的接缝：
+// 跨组件接线护航：PublicIpView ⇄ components/publicip/*。
+// 三 Tab 行为主基线在 PublicIpView.spec.ts；本文件只盯接线接缝：
 // v-model 双向写回（含 v-model:max-hops 的 kebab 形）、常用目标先回填后发起、双层事件透传后的复制 toast。
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'

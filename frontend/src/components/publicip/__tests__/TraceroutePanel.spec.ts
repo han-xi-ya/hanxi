@@ -1,4 +1,4 @@
-// 拆分护航（Phase 6）：TraceroutePanel——跳表渲染与 v-model:max-hops 的 number 语义。
+// 组件边界护航：TraceroutePanel——跳表渲染与 v-model:max-hops 的 number 语义。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import TraceroutePanel from '../TraceroutePanel.vue'

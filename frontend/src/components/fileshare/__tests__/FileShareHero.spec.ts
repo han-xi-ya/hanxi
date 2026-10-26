@@ -1,4 +1,4 @@
-// Phase 6 拆分新增：FileShareHero 展示壳冒烟测试。
+// FileShareHero 展示壳冒烟测试（拆分自 FileShareView 的组件）。
 // 纯 props/emit 组件（无 bindings/事件依赖），文案与类名切换契约由
 // views/__tests__/FileShareView.spec.ts 整体锁定，此处只补组件独立接线。
 import { mount } from '@vue/test-utils'
@@ -17,7 +17,7 @@ function statusOf(over: Partial<ServerStatus> = {}): ServerStatus {
 
 describe('FileShareHero', () => {
   it('停止态：启动文案、状态灯无 online 类、兜底端口展示', () => {
-    // port=0（falsy）走原 `status.port || fallbackPort` 兜底分支
+    // port=0（falsy）走模板 `status.port || fallbackPort` 兜底分支
     const wrapper = mount(FileShareHero, {
       props: { status: statusOf({ port: 0 }), fallbackPort: 8080, loading: false },
     })

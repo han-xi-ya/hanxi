@@ -1,4 +1,4 @@
-// 拆分护航（Phase 6）：IpOverviewPanel——IP 查看区块的三态展示与事件透传（含 AdapterCard 二级上抛）。
+// 组件边界护航：IpOverviewPanel——IP 查看区块的三态展示与事件透传（含 AdapterCard 二级上抛）。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import IpOverviewPanel from '../IpOverviewPanel.vue'

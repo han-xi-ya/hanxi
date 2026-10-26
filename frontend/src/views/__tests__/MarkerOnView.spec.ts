@@ -1,4 +1,4 @@
-// 特征测试：MarkerOnView 是托管家族中「六态主钮」的独苗样本——迁移到批 0 共享
+// 特征测试：MarkerOnView 是托管家族中「六态主钮」的独苗样本——迁移到共享
 // 契约（adapters/markeron + ManagedConsoleShell）后，本文件继续锁定迁移前事实：
 // 六态 label/variant/disabled/hint、banner 三变体、停止钮语义、卸载二次确认、
 // 事件与轮询契约全部逐字等价；仅两处受共享契约强制的收敛单独建档（钮常驻禁用

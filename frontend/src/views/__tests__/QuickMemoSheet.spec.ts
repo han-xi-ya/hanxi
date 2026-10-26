@@ -1,8 +1,8 @@
-// 悬浮速记卡（#memosheet 独立窗视图）行为规格（N16 B 批 + 牌面重做批）：
+// 悬浮速记卡（#memosheet 独立窗视图）行为规格：
 // 回车即存走既有 Create 链路（空正文标题、blue 配色、标签自动补 #）、保存成功
 // 清行不关窗（连续速记）、空行回车 = 收起、Esc = 收起、输入法组字中的回车豁免、
 // opening 事件清残稿、失败保稿给卡内轻提示（独立窗无工作台 toast 宿主）。
-// 重做批追加：Ctrl+Enter 存并收起（失败不收）、飞走残影与 is-enter 入场钩子、
+// 另钉：Ctrl+Enter 存并收起（失败不收）、飞走残影与 is-enter 入场钩子、
 // opening 清残影、提示行常驻占位（错误小字不闪大字）、多行粘贴并条计数提示。
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'

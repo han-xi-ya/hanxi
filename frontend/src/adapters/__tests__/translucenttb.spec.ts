@@ -1,4 +1,4 @@
-// TranslucentTB adapter 特征测试（崩溃处置升级 2026-09-26 + 双形态 Wave 打包线）：
+// TranslucentTB adapter 特征测试（崩溃处置 + 双形态打包线）：
 //  - 纯函数判据表：isAVCrash（退出码反解码门）、detectVirtualArtifacts
 //    （虚拟显卡名单/非主屏零尺寸空壳监视器）、virtualArtifactWording（点名
 //    措辞纪律：陈述在场不归罪）、cmpTBVersion、pickDowngradeTarget（C-迷你候选）、
@@ -9,13 +9,13 @@
 //  - msix 契约面：GetMsixState 失败静默降级（不抛不 toast、含绑定缺席同路）、
 //    动词 busy 单飞、确认框语义（远程行装走确认框、AV 对照直钮免确认）、
 //    安装成败均重读、后端拦截错误原样上抛；
-//  - 2026-09-27 机主实证三件套：孤儿数据档归因判据（isMsixOrphanAttribution）
+//  - 打包安装链实证：孤儿数据档归因判据（isMsixOrphanAttribution）
 //    与清理钮双闸（失败归因 × orphans 探测）、cleanOrphan 确认/回执/拒动透传、
 //    msix-progress 事件入 ref 且动词落定即清、banner external 分形态
 //    （打包版在册=「已由 Hanxi 唤起」ok 档；未装/预读缺席保守回原文案）；
-//  - 2026-09-27 批次二：msixProbeOf 预读三态判据（P1-10）与 dangerBusy 同 ref
+//  - 预读三态与强制结束：msixProbeOf 预读三态判据（P1-10）与 dangerBusy 同 ref
 //    联动（P1-5），forceQuitExternal 确认/成败/被拒三分支（机主裁决件），
-//    banner external warn 文案改口点名「⛔ 强制结束」。
+//    banner external warn 文案点名「⛔ 强制结束」。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createTBAdapter,
@@ -50,14 +50,14 @@ const svc = vi.hoisted(() => ({
   SetFollowOnExit: vi.fn(),
   RepositoryURL: vi.fn(),
   OpenRepository: vi.fn(),
-  // 打包线冻结契约五动词（bindings 待再生，spec 全 mock 顶替）+ 孤儿隔离新出口
+  // 打包线冻结契约五动词（spec 全 mock，不真触绑定）+ 孤儿隔离新出口
   GetMsixState: vi.fn(),
   InstallMsix: vi.fn(),
   UninstallMsix: vi.fn(),
   RemoveMsixCache: vi.fn(),
   LaunchMsix: vi.fn(),
   CleanMsixOrphan: vi.fn(),
-  // 批次二新 RPC（bindings 待再生，spec 全 mock 顶替）
+  // 外部强制结束通道 RPC（同款全 mock）
   ForceQuitExternal: vi.fn(),
 }))
 
@@ -339,7 +339,7 @@ describe('msix 契约面（adapter.msix：降级/单飞/确认/重读）', () =>
     await expect(a.msix.refresh()).resolves.toBeUndefined()
     expect(a.msix.unavailable.value).toBe(true)
 
-    // 再生前 bindings 命名空间缺该函数 → 调用即 TypeError，同 catch 吞掉降级
+    // 摘除命名空间函数模拟缺席态 → 调用即 TypeError，同 catch 吞掉降级
     delete (svc as Record<string, unknown>).GetMsixState
     await expect(a.msix.refresh()).resolves.toBeUndefined()
     expect(a.msix.unavailable.value).toBe(true)
@@ -437,7 +437,7 @@ describe('msix 契约面（adapter.msix：降级/单飞/确认/重读）', () =>
   })
 })
 
-// ---------- 2026-09-27 机主实证批次：孤儿档 / 清理链 / 进度事件 / external 分形态 ----------
+// ---------- 机主实证：孤儿档 / 清理链 / 进度事件 / external 分形态 ----------
 
 const ORPHAN_STATE = {
   installed: false,
@@ -454,7 +454,7 @@ const ORPHAN_FAIL =
   '检测到上次安装的孤儿数据阻碍注册：包族已不在册，但 %LOCALAPPDATA%\\Packages 下残留的旧应用数据挡住了' +
   "部署链的'删旧数据'步骤（缺组件删不动）；点「🧹 清理后重试」把孤儿数据改名隔离（备份 .orphan-日期，不删内容、可手动删除）后重装"
 
-/** 2026-09-27 改判后基础设施档（无冤枉路、无孤儿短语）。 */
+/** 基础设施类失败档（无冤枉路、无孤儿短语）。 */
 const INFRA_FAIL =
   'TranslucentTB 打包版安装失败: Windows 包操作失败（0x80073CF6）；本系统缺少包注册基础设施（微软商店/侧载部署栈残缺），本机打包线不可用，便携版即正解'
 

@@ -1,6 +1,6 @@
 // 特征测试：锁定两张状态表的文案/图标/色调与回退语义，
-// 迁移（EnvCheckView 副本删除、托管视图 stateText 收编）后必须全绿。
-// 另覆盖 Wave 0 四维状态统一词表：每维每值三通道齐备、未知值兜底、
+// 旧视图副本删除、stateText 单源化后本册必须全绿。
+// 另覆盖四维状态统一词表：每维每值三通道齐备、未知值兜底、
 // 联合类型与表键穷举一致（satisfies 让 vue-tsc 把编译期穷举也当门禁）。
 import { describe, expect, it } from 'vitest'
 import { ICON_NAMES } from '../icons'
@@ -268,7 +268,7 @@ describe('PHASE_META', () => {
   })
 })
 
-// ── 波 0 下沉：通知严重度指示灯档位（NotificationToast/Drawer 逐字副本的单一来源） ──
+// ── 通知严重度指示灯档位（NotificationToast/Drawer 逐字同形副本的单一来源） ──
 
 describe('levelTone', () => {
   it('三档已知级别映射 sev-* 类，与两组件原实现逐字一致', () => {

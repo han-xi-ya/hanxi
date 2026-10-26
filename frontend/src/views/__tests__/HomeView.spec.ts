@@ -411,7 +411,7 @@ describe('HomeView（工作台首页）', () => {
       expect(w.findAll('.summary-value')[3].text()).toBe('0')
       const before = appSvc.ListModuleStates.mock.calls.length
 
-      // 感知链收口：健康值已在后端 registry 落位，前端只经重拉到达
+      // 感知链完成后：健康值已在后端 registry 落位，前端只经重拉到达
       appSvc.ListModuleStates.mockResolvedValue([
         stateItem('memo', { health: 'update-available', summary: 'running-update' }),
       ])

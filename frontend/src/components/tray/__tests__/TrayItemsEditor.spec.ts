@@ -1,10 +1,10 @@
-// 共享编辑面特征测试（轮盘独立批重写：保存钮/脏标记整退，实时保存 + scope 双账）：
+// 共享编辑面特征测试（实时保存 + scope 双账，无保存钮/脏标记——改动即落盘）：
 // 挂载按 scope 成对拉账（tray↔Get/SetTrayMenu、wheel↔Get/SetWheelMenu，互不串账）；
 // 结构性操作即时落盘全清单并上抛 saved；文本 blur 即时 + 800ms 防抖合流；在途写尾随
 // 合流不丢最后一次；失败 toast 中文错误并回滚重拉（不上抛 saved、本地不假成功）；
 // 分组草稿门（名为空/零子条目不发必拒账，补全后自动落盘）；候选目录收口（route 退出
 // 供选、command/webapp 在列、存量 route 行仍渲染并标"不再供选"）。
-// 分组/外部程序等完整交互矩阵仍由 SettingsSections.spec 经 TraySection 宿主覆盖（第四 lane 接续）。
+// 分组/外部程序等完整交互矩阵仍由 SettingsSections.spec 经 TraySection 宿主覆盖。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import TrayItemsEditor from '../TrayItemsEditor.vue'
@@ -204,8 +204,8 @@ describe('TrayItemsEditor 双账与实时保存', () => {
   })
 })
 
-// N5-C3 点上格互换：宿主经 locate 身份定位选中，其它行出「⇄ 互换」；
-// 实时保存批改造：互换即落盘全清单顺序对调（不再经保存钮中转）。
+// 点上格互换：宿主经 locate 身份定位选中，其它行出「⇄ 互换」；
+// 互换即落盘全清单顺序对调（无保存钮中转）。
 describe('点上格互换（N5-C3）', () => {
   it('locate 命中行高亮；他行现互换钮；互换后即时落盘全清单顺序对调', async () => {
     appSvc.ListTrayMenuOptions.mockResolvedValue([])

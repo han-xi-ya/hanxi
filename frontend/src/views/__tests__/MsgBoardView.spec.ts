@@ -1,26 +1,21 @@
-// 桌面留言板模块页（MsgBoardView，N6 重设计 + v2 主角化 + v3 流体三柱 + v4 所见
-// 即所得牌桌）特征测试：加载回显、类型速挂（单击填词/双击保存+挂出）、保存走
+// 桌面留言板模块页（MsgBoardView，v4「所见即所得牌桌」：左舞台/右操作栏）
+// 特征测试：加载回显、类型速挂（单击填词/双击保存+挂出）、保存走
 // SetConfig 全量快照、保存失败回读不私留假状态、挂/撤与状态事件、异常 chip 只在
-// 异常时出现、预览与表单同源联动；N30 追加全屏预览（纯前端浮层，不触后端）与
+// 异常时出现、预览与表单同源联动；N30 全屏预览（纯前端浮层，不触后端）与
 // 舞台按牌宽防裁切缩放。
-// 重设计 v4（牌桌：左舞台/右操作栏）：语义断言零删减、逐条映射——
-//   .mb-hero 由 v3 左簇控制卡变为**牌面舞台整卡**（.mb-toolbar 40px 工具条收纳
-//     状态字/挂撤大钮/全屏预览，.mb-echo 回显栏收纳已存牌面回显与脏态——
-//     "状态+主操作+回显同区聚合"语义原样，类名 status-word/hero-cta/hero-echo-*
-//     零迁移）；
-//   v3 的 .mb-rail（左簇）语义翻转为**右侧窄操作栏**：#mb-text（正文行）、
-//     类型速挂（.mb-types/.type-btn/.type-grid）、字号滑杆、everyScreen/目标屏/
-//     热键行、保存行（.work-actions）、契约折叠、adv-flag 异常旗标全部聚合其中；
-//   .mb-work/.mb-stage/.mb-draft 聚合层随骨架消亡：同源联动断言改挂
-//     .mb-hero .mbp-scaled（舞台大牌）与 .mb-rail #mb-text，"全页牌面画法唯一"
-//     （.bc-card 计数 1）语义不变；
-//   字号控件 range 档与 24–200 钳位契约原样（挂在操作栏）；舞台缩放上限升为 1.0
-//     （能 1:1 就 1:1，实测卡宽替代猜测），happy-dom 下 ResizeObserver 为空实现、
-//     回落 300 基准盒 + 字号×13 兜底线——64px 时 scale(0.34615…)、120px 时
-//     scale(0.18461538461538463)（与 v3 断言逐位一致）、文案「预览缩到 18%，真牌
-//     大 5 倍」原样；
-//   v3"参数配置"details 折叠取消（一行一控件全展开），异常汇总旗标 .adv-flag
-//     上移到操作栏头部 chip，banner-warn 热键横幅语义原样。
+// 断言口径（牌桌骨架的类名即零迁移锁点，勿改名）：
+//   .mb-hero 牌面舞台整卡：.mb-toolbar 40px 工具条收纳状态字/挂撤大钮/全屏预览
+//     （status-word/hero-cta），.mb-echo 回显栏收纳已存牌面回显与脏态
+//     （hero-echo-*）——"状态+主操作+回显同区聚合"；
+//   .mb-rail 右侧窄操作栏：#mb-text 正文行、类型速挂（.mb-types/.type-btn/
+//     .type-grid）、字号滑杆、everyScreen/目标屏/热键行、保存行（.work-actions）、
+//     契约折叠、.adv-flag 异常旗标（操作栏头部 chip）聚合其中；
+//   同源联动断言挂 .mb-hero .mbp-scaled（舞台大牌）与 .mb-rail #mb-text；
+//     "全页牌面画法唯一" = .bc-card 计数 1；
+//   字号 range 档与 24–200 钳位契约、舞台缩放封顶 1.0（能 1:1 就 1:1，实测卡宽
+//     不猜宽）；happy-dom 下 ResizeObserver 为空实现，回落 300 基准盒 + 字号×13
+//     兜底线——64px 时 scale(0.34615…)、120px 时 scale(0.18461538461538463)，
+//     文案「预览缩到 18%，真牌大 5 倍」。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MsgBoardView from '../MsgBoardView.vue'
@@ -226,8 +221,8 @@ describe('重设计 v4 骨架（所见即所得的牌桌）', () => {
     )
     const rail = wrapper.find('.mb-rail')
     expect(rail.exists()).toBe(true)
-    // 编辑三件套（正文/速挂/字号）+ 低频配置（多屏/热键）全在操作栏——
-    // v3 左簇的"高频控件同一聚合"语义翻转成"右栏一控件一行"
+    // 编辑三件套（正文/速挂/字号）+ 低频配置（多屏/热键）全在右栏，
+    // 一控件一行（牌桌口径：舞台只摆牌不摆控件）
     expect(rail.find('#mb-text').exists()).toBe(true)
     expect(rail.find('.mb-types .type-grid').exists()).toBe(true)
     expect(rail.find('input[aria-label="多屏同时挂牌"]').exists()).toBe(true)
@@ -284,10 +279,10 @@ describe('全屏预览与小预览缩放（N30）', () => {
     // happy-dom 无 RO 实测：回落 300 基准盒 + 字号×13 兜底宽——(300−12)/(64×13)≈0.346
     expect(scaled.attributes('style')).toContain('scale(0.34615384615384615)')
     await wrapper.find('input[aria-label="字号"]').setValue(120)
-    // 兜底卡宽＝字号×13，越过 288px 容纳线后缩放＝288/(120×13)≈0.185（与 v3 逐位一致）
+    // 兜底卡宽＝字号×13，越过 288px 容纳线后缩放＝288/(120×13)≈0.185（字面量由本断言锁死）
     expect(scaled.attributes('style')).toContain('scale(0.18461538461538463)')
-    // 机主反馈 2026-09-26：文案改一句大白话「预览缩到 18%，真牌大 5 倍」——
-    // 百分比按 scale(0.1846…) 取整，倍数仍走 previewZoom 的 round(1/scale)
+    // 大白话口径锁死「预览缩到 18%，真牌大 5 倍」：百分比按 scale(0.1846…)
+    // 取整（scalePercent），倍数走 scaleZoomFactor 的 round(1/scale)
     expect(wrapper.find('.mbp-caption').text()).toContain('预览缩到 18%，真牌大 5 倍')
     wrapper.unmount()
   })

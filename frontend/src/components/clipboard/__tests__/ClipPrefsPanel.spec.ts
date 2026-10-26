@@ -1,5 +1,5 @@
-// ClipPrefsPanel 行为规格（契约 §12 v1.8 设置面，提交 1 域：容量/删后贴/
-// 排除表/按应用保留）。
+// ClipPrefsPanel 行为规格（契约 §12 v1.8 设置面：容量/删后贴/排除表/
+// 按应用保留/预览遮蔽各域；队列键位不属本面板，走 SetQueueHotkey 独立事务）。
 //
 // 钉死的契约行为：
 //   ① 装载回显生效值；存量 appRetentionDays 必须展开成编辑行（漏同步则
@@ -200,5 +200,35 @@ describe('预览遮蔽域（提交 3）', () => {
     await w.findAll('.cp-kind')[2].trigger('click') // 开 email
     const save = w.findAll('.cp-foot-btns .btn').find((b) => b.text().includes('保存设置'))!
     expect((save.element as HTMLButtonElement).disabled).toBe(false) // 只动遮蔽域也算脏
+  })
+})
+
+describe('保留天数钳制（客户端只截整，上下限裁决权全在后端、面板如实回显）', () => {
+  // 只断两桩外部事实：过线的载荷长什么样（wire 面）、回显后行输入框显示什么。
+  // 刻意不碰 dirty 文案断言——dirty 键序误报是已确认在案缺陷（未修），绕开该路径。
+  it('小数天数截整出线；后端钳到上限后回显进编辑行（所见即所运行）', async () => {
+    const w = await openPanel() // 存量 { slack.exe: 30 }
+    await w.find('.cp-ret-days').setValue('2.7')
+    fake.SetPrefs.mockResolvedValue(serverPrefs({ appRetentionDays: { 'slack.exe': 365 } }))
+    await w.findAll('.cp-foot-btns .btn').find((b) => b.text().includes('保存'))!.trigger('click')
+    await flush()
+    const sent = fake.SetPrefs.mock.calls[0][0] as ClipPrefs
+    expect(sent.appRetentionDays).toEqual({ 'slack.exe': 2 }) // rowsToMap 截整：小数不进 Go int
+    expect((w.find('.cp-ret-days').element as HTMLInputElement).value).toBe('365') // 钳后生效值覆写行
+    expect((w.find('.cp-ret-exe').element as HTMLInputElement).value).toBe('slack.exe') // 行折回不错位
+  })
+
+  it('越界/负值不在前端预钳：原样出线交给后端 normalize（两层闸各司其职，前端不抢裁决）', async () => {
+    const w = await openPanel()
+    await w.find('.cp-ret-days').setValue('-5') // 后端「≤0=删该规则」语义，前端不折叠成 0
+    await w.findAll('.cp-group .btn').find((b) => b.text().includes('添加应用'))!.trigger('click')
+    const rows = w.findAll('.cp-retention-row')
+    await rows[1].find('.cp-ret-exe').setValue('big.exe')
+    await rows[1].find('.cp-ret-days').setValue('99999') // min/max 属性只是提示，JS 层不夹
+    fake.SetPrefs.mockImplementation(async (p: ClipPrefs) => p)
+    await w.findAll('.cp-foot-btns .btn').find((b) => b.text().includes('保存'))!.trigger('click')
+    await flush()
+    const sent = fake.SetPrefs.mock.calls[0][0] as ClipPrefs
+    expect(sent.appRetentionDays).toEqual({ 'slack.exe': -5, 'big.exe': 99999 })
   })
 })

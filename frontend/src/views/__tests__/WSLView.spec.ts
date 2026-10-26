@@ -1,7 +1,7 @@
-// 特征测试：WSLView 基线锁定（交互整改 W1–W9 后结构）。
+// 特征测试：WSLView 基线锁定。
 // 断言对象：流式体检（Stale 保活复采）、busy 分级锁与跨页签进度、失败行内保活、
-// 落位持久化后端 RPC 语义（set/dir + 防抖回写）、五页签结构（官方清单并入添加实例·商店源）、
-// 提权确认链与危险级降噪、MSI 直链参数、端口转发规则清单、行级「⋯ 更多」下拉开合。
+// 落位持久化后端 RPC 语义（set/dir + 防抖回写）、六页签结构（官方清单并入添加实例·商店源、
+// F9 追加 USB 直通）、提权确认链与危险级降噪、MSI 直链参数、端口转发规则清单、行级「⋯ 更多」下拉开合。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WSLView from '../WSLView.vue'

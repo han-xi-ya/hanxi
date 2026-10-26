@@ -1,7 +1,6 @@
-// 组 G1 特征测试：PortKillView。
-// 现状契约：确认终止走全局 useConfirm 单例（视图自挂 ConfirmDialog 已收编），
-// 测试经 confirmState/settleConfirm 驱动；明细以 options.details 逐字断言，
-// 查杀期门禁体现在释放按钮 disabled（killing）。
+// 特征测试：PortKillView。
+// 现状契约：确认终止走全局 useConfirm 单例，测试经 confirmState/settleConfirm 驱动；
+// 明细以 options.details 逐字断言，查杀期门禁体现在释放按钮 disabled（killing）。
 import { defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

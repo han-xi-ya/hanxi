@@ -1,24 +1,21 @@
-// N37 按钮配色返工防回潮守卫（六路终结位交付；纯文件文本断言，不渲染组件，
+// 按钮配色防回潮守卫（纯文件文本断言，不渲染组件；
 // 形制循 constants/__tests__/contract-enum.spec.ts 与 quickmenu/__tests__/wheelGeometry.contract.spec.ts
 // 先例：提取空集即红、失效豁免条目即红，防"正则失效假绿"）。
 //
-// 三则契约 + 一枚拍板值锁：
+// 三则契约 + 一枚定案值锁：
 //  a) components.css 按钮家族块：禁裸 hex/rgb() 字面色、禁 glow token 引用/彩色发光回流。
 //     豁免走显式登记清单（selector 片段 + 理由），新增裸色不登记=红，登记了但裸色已没=红（失效即删）。
 //  b) views/components 的 scoped `.btn-danger` 形制整抄（同一规则同时覆写背景+前景）"只降不升"上限锁：
-//     标准形在 components.css :where(.btn-danger)，形制副本禁止再新增。基线写时（2026-09-26）
-//     按现盘实测钉死：历史三份副本（LanScannerView / PortScanView / FileShareHero「运行中变红」档）
-//     已由并行视图线删净落回（各文件留有"scoped 副本删净"注记），现盘=0 份/0 行，上限即地板零容忍。
-//     注：并行收敛若在某时点尚有在途残副本，基线常量应降档登记为当盘实测值直至 0——该常量只许变小，永不变大。
+//     标准形在 components.css :where(.btn-danger)，形制副本禁止再新增。历史三份 scoped 副本
+//    （LanScannerView / PortScanView / FileShareHero）已删净落回，现盘=0 份/0 行，上限即地板零容忍。
+//     基线常量只许变小，永不变大。
 //  c) tokens.css 十块（teal 默认 :root 明/暗 + 四板×明暗覆写块）：on-primary / on-accent 两件必存，
 //     逐块逐名恰一条、显式 hex 字面值（禁 var()/color-mix 兜底——"每板逐对核过"的账必须落在字面上才可复算）；
 //     浅底白字铁律、深底禁白字铁律同批锁。on-danger/on-positive/on-warning 拆档件按"要么全无、要么十块全有"
-//     的完整性锁收（半拆=各板消费面不可靠，红）——拍板点 2 现盘终裁"不拆"（token 线 2026-09-26 注释在案），
-//     若机主终裁改为"拆"，把名目加回 REQUIRED 数组即升级，本锁两口径均不脆断。
-//     ⚠ 口径冲突在账：本路派单原文写"on-primary/on-accent/on-danger/on-positive 四件必存"，与派单后
-//     token 线落库的终裁"不拆"相抵；守卫暂按现盘终裁锁核心两件，冲突由收口报呈机主裁决，勿静默二选一。
-//  d) teal 拍板案 A 压暗值（#0d8284 / hover #0b7577）不回退旧值——如再拍板改值，
-//     须同步 PLAN_N37_ONCOLOR.md 与本锁，不允许静默漂移。
+//     的完整性锁收（半拆=各板消费面不可靠，红）——现盘口径"不拆"（tokens.css 注释在案）；
+//     若将来改为"拆"，把名目加回 REQUIRED 数组即升级，本锁两口径均不脆断。
+//  d) teal 浅底定案压暗值（#0d8284 / hover #0b7577）不回退旧值——如再改值，
+//     须同步 docs/plans/PLAN_N37_ONCOLOR.md 与本锁，不允许静默漂移。
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -100,7 +97,7 @@ function scopedStyles(file: string): string[] {
   return [...readFileSync(file, 'utf8').matchAll(/<style[^>]*\bscoped\b[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1])
 }
 
-// 写时基线（2026-09-26 现盘实测：三份 scoped 副本已由并行线删净，0 份/0 行）。只降不升。
+// 基线：现盘实测 0 份/0 行（历史三份 scoped 副本已删净）。只降不升。
 const BTN_DANGER_COPY_MAX_BLOCKS = 0
 const BTN_DANGER_COPY_MAX_LINES = 0
 
@@ -126,8 +123,8 @@ describe('b) scoped .btn-danger 形制整抄——只降不升零容忍锁', () 
 })
 
 const TOKEN_CONTRACT_REQUIRED = ['color-on-primary', 'color-on-accent'] as const
-/** 拆档件完整性锁：十块全有或全无（半拆=消费面逐板不可靠，红）。现盘终裁"不拆"=全无态通过；
- *  拍板点 2 若终裁改"拆"，将相应名目移入 REQUIRED 升级为本约。 */
+/** 拆档件完整性锁：十块全有或全无（半拆=消费面逐板不可靠，红）。现盘口径"不拆"=全无态通过；
+ *  若将来改为"拆"，将相应名目移入 REQUIRED 升级为本约。 */
 const TOKEN_CONTRACT_OPTIONAL = ['color-on-danger', 'color-on-positive', 'color-on-warning'] as const
 const EXPECTED_BLOCKS = [
   'teal·light', 'teal·dark',
@@ -203,7 +200,7 @@ describe('c) tokens.css on-color 契约族——十块核心两件必存 + 拆�
     expect(body, 'teal·light 块缺失').toBeDefined()
     expect(declarationValues(body!, 'color-primary')[0]?.toLowerCase(), 'teal 浅 primary 已回退案 A 之前的不达标价').toBe('#0d8284')
     expect(declarationValues(body!, 'color-primary-hover')[0]?.toLowerCase()).toBe('#0b7577')
-    // 注：本锁锁的是拍板决定（压暗一档），不是永久配色——将来再拍板换值时，同 PR 更新本锁与 PLAN_N37 §4。
+    // 注：本锁锁的是定案值（压暗一档），不是永久配色——改值时同 PR 更新本锁与 PLAN_N37 §4。
   })
 })
 
@@ -223,10 +220,9 @@ function isButtonish(selector: string): boolean {
 
 /**
  * 按钮规则取景范围 = 全局 components.css + 各 .vue 的 scoped 样式块。
- * 2026-10-13 扩到 scoped：首版只扫 components.css，而 workbench-confirm-btn /
- * hx-prompt-btn / toolbar-btn / snip-fs-btn / seg-btn / ct-chip 这些视图自造按钮族
- * 一条都不在覆盖内——机主报"部分按钮没变"的机制根因正在此处：全局族被 N37 六路
- * 收编过，scoped 自造族从未进入任何契约视野。
+ * scoped 必须同入视野：只扫全局文件会漏掉 workbench-confirm-btn /
+ * hx-prompt-btn / toolbar-btn / snip-fs-btn / seg-btn / ct-chip 这类视图自造
+ * 按钮族——"部分按钮没变"的机制根因即此处。
  */
 function buttonRules(): Array<{ where: string; selector: string; body: string }> {
   const out: Array<{ where: string; selector: string; body: string }> = []

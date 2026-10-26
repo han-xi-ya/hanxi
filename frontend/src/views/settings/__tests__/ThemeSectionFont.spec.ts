@@ -1,6 +1,6 @@
-// N40 界面字体档特征测试：外观分区「界面字体」三分段选择器 → documentElement
+// 界面字体档特征测试：外观分区「界面字体」三分段选择器 → documentElement
 // data-font 落值 → 后端 SetFont 持久化/GetFont 校正回读（含失败回落默认）。
-// 独立成篇不并入 SettingsSections.spec.ts：该文件正被存储/系统分区改造路触碰，避免串路编辑踩踏。
+// 独立成篇不并入 SettingsSections.spec.ts：避免与分区改造路线串路编辑踩踏。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 

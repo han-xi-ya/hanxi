@@ -1,5 +1,5 @@
-// 特征测试：getErrorMessage 是 30+ 视图共用的异常归一入口，
-// 迁移/重构期间其输出行为必须保持逐条一致。
+// 特征测试：getErrorMessage 是全库共用的异常归一入口，
+// 其输出行为必须保持逐条一致（改动先补此册）。
 import { describe, expect, it } from 'vitest'
 import { getErrorMessage } from '../errors'
 
@@ -13,7 +13,7 @@ describe('getErrorMessage', () => {
 
   it('字符串原样返回', () => {
     expect(getErrorMessage('boom')).toBe('boom')
-    // 编排者批复补路：空白字符串与空白 Error.message 同规矩兜底
+    // 空白字符串与空白 Error.message 同规矩兜底
     // （getErrorMessage('') 走 !err 分支归「未知错误」，两路行为一致）
     expect(getErrorMessage('   ')).toBe('未知错误')
   })
@@ -22,8 +22,8 @@ describe('getErrorMessage', () => {
     expect(getErrorMessage(new Error('出错了'))).toBe('出错了')
   })
 
-  // 契约变更（机主裁决 2026-10-26 选 A）：空白 message 不再原样透传，
-  // 一律回落「未知错误」——此前空 Error 会让界面弹出没字的红条。
+  // 契约：空白 message 不原样透传，一律回落「未知错误」——
+  // 空 Error 直接上屏会让界面弹出没字的红条。
   it('Error 实例 message 为空/纯空格回落「未知错误」', () => {
     expect(getErrorMessage(new Error())).toBe('未知错误')
     expect(getErrorMessage(new Error('   '))).toBe('未知错误')

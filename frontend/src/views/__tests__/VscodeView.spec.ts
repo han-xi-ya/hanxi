@@ -1,9 +1,9 @@
-// 回归测试（二波收敛完成版）：VSCodeView 双形态托管控制台正式行为基线。
-// 全部断言按「现行为」逐字锁定（不代表收敛后目标形态）：双形态状态快照与 banner 分叉、
+// 回归测试：VSCodeView 双形态托管控制台正式行为基线。
+// 全部断言按「现行为」逐字锁定（不代表后续形态目标）：双形态状态快照与 banner 分叉、
 // 进度键 form:version 隔离、OpenWindow/Quit 按 form 分派与错误文案不对称（打开失败无前缀 /
 // 退出失败带「退出失败: 」）、安装版 confirm-required 二段闸、DownloadVersion 动作回执分支、
 // 安装版探测单对象语义（视图不消费 GetInstalledApp——桩刻意省略，误触即 TypeError 现形，
-// 对照 Recordly 批 0 同法）、版本表双列方言（Commit 列 / 可下载·可安装词面 / 官方哈希徽标）、
+// 与 Recordly 桩同法）、版本表双列方言（Commit 列 / 可下载·可安装词面 / 官方哈希徽标）、
 // 便携版卡片（使用中/本地导入/三层校验/数据目录）、extras 联动、instance-state 按 form 改写、
 // 双事件注册与 2.5s KeepAlive 轮询、1s 运行时长 ticker。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'

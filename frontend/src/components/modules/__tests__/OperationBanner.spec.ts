@@ -1,8 +1,8 @@
-// OperationBanner 特征测试（Wave 4）：
+// OperationBanner 特征测试：
 // - 空数据（无 resumable / 无 active / 无错误）整件不渲染，不放占位；
 // - resumable：告警条逐条「模块名 + 上次操作失败于 phase + 原因文案」，
 //   [前往重试] 上抛 /ext/<id>，[忽略残留] 经确认框调 DismissResumable（消费契约 txnId）
-//   + toast；"单写约束"文案按 journal 态区分（F-a）：pending/running（含态锚点
+//   + toast；"单写约束"文案按 journal 态区分：pending/running（含态锚点
 //   读不出的保守档）保留占位警告，compensated 改口"不占名额、忽略仅为收口账目"；
 // - active：information 条渲染 UiProgressBar（percent=progress），
 //   cancellable=false 不伪装可取消（无取消钮 + 明说不可取消）；

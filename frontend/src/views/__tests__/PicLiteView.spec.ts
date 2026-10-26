@@ -1,6 +1,6 @@
-// 特征测试（组 B · 批 1 迁移件）：PicLiteView 收敛进托管控制台共享契约
+// 特征测试：PicLiteView 收敛进托管控制台共享契约
 // （src/adapters/piclite + components/managed），行为基线对照迁移前视图逐字保持——
-// 仅共享面板表内标准词按批 0 契约形定档（安装中→下载中、verify/extract 阶段
+// 仅共享面板表内标准词按共享契约定档（安装中→下载中、verify/extract 阶段
 // 合并为「校验解压安装…」、官方 MSI→官方下载、空态 CTA 安装最新版→下载最新版、
 // 下载失败前缀 安装失败:→下载失败: 收编进 ACTION_ERROR_PREFIX 单一词源），
 // 调用序列/toast/确认输入/轮询/事件断言逐字保留。绑定/事件经 vi.mock 打桩。

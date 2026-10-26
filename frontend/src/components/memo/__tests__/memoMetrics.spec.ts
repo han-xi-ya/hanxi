@@ -1,6 +1,6 @@
-// memoMetrics 独立契约测试：零桩零依赖，纯函数逐位钉现 MemoView 内联实现的
-// 行为口径（收编即锁版）——接线时删除视图内联副本后，本 spec 是这批算法的
-// 唯一守卫。日期类断言一律注入固定 now，不吃真实时钟。
+// memoMetrics 独立契约测试：零桩零依赖，纯函数行为口径逐条钉死——视图与组件
+// 均不留内联副本，本 spec 是这批算法的唯一守卫。日期类断言一律注入固定 now，
+// 不吃真实时钟。
 import { describe, expect, it } from 'vitest'
 import {
   cardPreview,

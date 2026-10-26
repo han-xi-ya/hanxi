@@ -2,7 +2,7 @@
 // 安装与卸载接线（builtin-logical 如实确认框）、open/retry 直达
 // （retry≡重新打开：懒激活重跑 OnInit 即真重试）、启停接线、
 // 成功后经 ext:changed 防抖重拉（前端不手工 patch 投影）、
-// 顶部 OperationBanner 与卡片在途徽标（Wave 4 统一操作呈现）。
+// 顶部 OperationBanner 与卡片在途徽标（统一操作呈现）。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import type { Component } from 'vue'
@@ -57,7 +57,7 @@ function fortyOne() {
     if (i < 10) return st(c.id, NOT_INSTALLED)
     if (i < 30) return st(c.id)
     if (i === 30) return st(c.id, { policy: 'blocked', runtime: 'inactive', primaryAction: 'none', reason: '策略阻止', summary: 'blocked' })
-    // update 档滞留卡：走"后续版本开放"如实兜底（retry 已改走 open 通道）
+    // update 档滞留卡：走"后续版本开放"如实兜底（retry 走 open 通道）
     if (i === 31) return st(c.id, { health: 'corrupt', policy: 'disabled', runtime: 'inactive', primaryAction: 'update', summary: 'faulted' })
     return st(c.id, { policy: 'disabled', runtime: 'inactive', health: 'current', primaryAction: 'enable', summary: 'installed-disabled' })
   })
@@ -269,7 +269,7 @@ describe('ModuleCenterView', () => {
 
   it('retry 主操作＝重新打开：与 open 同通道上抛 navigate（懒激活重跑 OnInit 即真重试）', async () => {
     // failed 滞留（runtime=failed/summary=faulted）投影给 retry：点击后必须路由
-    // openModule 通道（F-b），不再落"后续版本开放"死路兜底
+    // openModule 通道，不落"后续版本开放"死路兜底
     appSvc.ListCatalog.mockResolvedValue([cat('memo')])
     appSvc.ListModuleStates.mockResolvedValue([
       st('memo', { runtime: 'failed', health: 'corrupt', summary: 'faulted', primaryAction: 'retry' }),

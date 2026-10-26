@@ -20,8 +20,8 @@ const frontendModules = () => Object.entries(ROUTES)
   .sort()
 
 describe('constants/navigation', () => {
-  it('登记了全部 64 条路由（含设置页 8 个分区子路由与模块中心）', () => {
-    expect(Object.keys(ROUTES)).toHaveLength(64)
+  it('登记了全部 65 条路由（含设置页 8 个分区子路由与模块中心）', () => {
+    expect(Object.keys(ROUTES)).toHaveLength(65)
     for (const route of ['/', '/modules', '/frpc', '/logs', '/settings', '/about', '/ext/markeron', '/ext/envcheck', '/ext/wsl', '/ext/rufus', '/ext/bili23', '/ext/vscode', '/ext/translucenttb', '/ext/paseo', '/ext/quickmenu', '/ext/ocr', '/ext/webapp', '/ext/msgboard', '/ext/piik', '/ext/clipboard', '/ext/heukms']) {
       expect(ROUTES[route]).toBeDefined()
     }
@@ -114,7 +114,7 @@ describe('constants/navigation', () => {
       expect(['svg', 'app', 'rt'], p.icon).toContain(resolveIcon(p.icon).kind)
       if (p.icon.startsWith('i:')) expect(ICON_NAMES).toContain(p.icon.slice(2))
     }
-    // 红线三枚（许可永不入仓，N27 尾巴运行期本机提取轨）：rt 串必须自带
+    // 红线三枚（许可永不入仓，运行期本机提取轨）：rt 串必须自带
     // 登记在案的 i: 回落（提取失败观感=通道上线前原样），并与后端 Nav 同名。
     const rtExpect: Record<string, string> = {
       rammap: 'rt:rammap|i:gauge',
@@ -128,7 +128,7 @@ describe('constants/navigation', () => {
       expect(ref!.id, id).toBe(id)
       expect(ICON_NAMES as readonly string[], id).toContain(ref!.fallbackName)
     }
-    // 真图标入库件（批 A 五枚 + 批 B-2 扩量十二枚 + N27 尾巴放行二枚 + 开源上游仓库取材四枚 + 尾巡补录三枚 + 托管新模块补录二枚）：数据源确已切到 app: 形态
+    // 真图标入库件（清单随建档批次增长，与 assets/apps 台账对齐）：数据源确已切到 app: 形态
     for (const id of [
       'ccswitch', 'keyviz', 'everything', 'snipaste', 'markeron',
       'bcu', 'douzy', 'flclash', 'mangodisk', 'papertodo', 'paseo',
@@ -165,7 +165,7 @@ describe('设置分区注册表', () => {
     }
   })
 
-  // 机主反馈一 + 图标消歧批：存储目录挪入系统管理语境（紧邻其后），备份/历史
+  // 分区契约：存储目录挪入系统管理语境（紧邻其后），备份/历史
   // 留守数据侧并定名「数据与存储」；目录用 folder、系统性能用 gauge，
   // 灰色机箱形（hard-drive）退役，不再与 rail「系统管理」分组图标撞脸。
   it('分区搬家后的命名、序与图标消歧锁定', () => {

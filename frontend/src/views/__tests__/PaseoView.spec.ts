@@ -1,8 +1,8 @@
-// 特征测试（Wave 5 · 批 0 收敛件新增）：PaseoView 行为基线 + 契约消费成色。
+// 特征测试：PaseoView 行为基线 + 契约消费成色。
 // 锁定：stable/beta 双通道、使用版本三态（未设=自动最新回退高亮 / 显式设定 /
 // 设定失败重拉）、「未验证哈希」方言列、多版本卡片逐版本卸载禁用、升级警告条、
 // 常驻自动更新提示条、安装动词词面、双数据目录钮（extras.dataDir + #extras-action）、
-// 事件改写与 KeepAlive 轮询契约；增强批④收编后版本区即共享面板本体（词面/隐式
+// 事件改写与 KeepAlive 轮询契约；契约扩展后版本区即共享面板本体（词面/隐式
 // 自动最新/方言徽标槽全部 adapter 声明），面板成色用例改锁 copy 覆写路径。
 // 绑定/事件经 vi.mock 打桩；KeepAlive 宿主复刻 App.vue 外壳。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'

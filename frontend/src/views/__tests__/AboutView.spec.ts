@@ -1,5 +1,5 @@
 // 特征测试：关于页（信息面板渲染/数据目录/模块清单/加载失败态）。
-// F6 后"运行模式"文案退役，关于页不再呈现 mode 字样。
+// "运行模式"文案已退役，关于页不呈现 mode 字样。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AboutView from '../AboutView.vue'

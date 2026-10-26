@@ -1,4 +1,4 @@
-// 特征测试（组 A 模板之二）：CCSwitchView 与 MarkerOnView 同构但各有专属分支——
+// 特征测试：CCSwitchView 与 MarkerOnView 同构但各有专属分支——
 // 打开窗口/退出双按钮、导入本地（usePrompt 收编 window.prompt）、卸载二次确认。
 // 绑定/事件经 vi.mock 打桩；KeepAlive 宿主复刻 App.vue 外壳。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'

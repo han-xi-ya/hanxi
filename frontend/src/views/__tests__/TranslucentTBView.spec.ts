@@ -1,19 +1,19 @@
-// 特征测试（Wave 5 · 批 1 收敛件 + 双形态 Wave 打包线）：TranslucentTBView——
-// 四件中最完整的共享契约消费样本（版本 Tab 全量 ManagedVersionPanel）。
+// 特征测试：TranslucentTBView——托管控制台 + 双形态打包线（MSIX）消费样本
+// （版本 Tab 全量 ManagedVersionPanel）。
 // 锁定：控制条钮序（启动/重设/安装目录/退出）与各态禁用与 title、reset 槽动词
 // （成功回执不刷快照）、启动钮的「无已装版本」禁用旁路、banner/hint 互斥、
 // 共享面板词表（校验解压安装/已安装 btn-ghost/预发布徽标/远程空态）、
 // 确认与导入文案逐字、事件改写与 KeepAlive 轮询契约；
-// 双形态 Wave 追加：打包版区块三态（已装/未装/预读失败降级）、busy 单飞、
-// 缓存拦截文案裸串透传、远程行 #release-actions 标注与确认文案、
-// AV 鉴别钮双语义（打包对照置顶 / 打包线不可用时降级钮零变化）；
-// 2026-09-27 机主实证批次：msix-progress 进度行（百分比/不确定态/落定收行）、
-// 孤儿数据档失败横幅+「🧹 清理后重试」钮出现与消失全链、external banner
-// 分形态渲染（打包版在册=ok 档新话术）；
-// 2026-09-27 批次二：external 态「⛔ 强制结束」钮与确认链（P1-2）、InstallMsix
-// 在途 dangerBusy 联动禁常规控制钮（P1-5）、预读未知态灰化安装引导钮+对照区
-// disabled 占位防闪现（P1-10）、KeepAlive 回访 onActivated 重取 MSIX 状态与
-// 发布表且首挂载不双拉（P0-3）。
+// 双形态打包线：msix-progress 进度行（百分比/不确定态/落定收行）、打包版区块
+// 三态（已装/未装/预读失败降级）、busy 单飞、缓存拦截文案裸串透传、远程行
+// #release-actions 标注与确认文案、AV 鉴别钮双语义（打包对照置顶 / 打包线
+// 不可用时降级钮零变化）、孤儿数据档失败横幅+「🧹 清理后重试」钮出现与消失
+// 全链、external banner 分形态渲染（打包版在册=ok 档新话术）——后三组为
+// 机主实证补线；
+// 缺陷收口组（P 编号为审查锚点）：external 态「⛔ 强制结束」钮与确认链（P1-2）、
+// InstallMsix 在途 dangerBusy 联动禁常规控制钮（P1-5）、预读未知态灰化安装
+// 引导钮+对照区 disabled 占位防闪现（P1-10）、KeepAlive 回访 onActivated 重取
+// MSIX 状态与发布表且首挂载不双拉（P0-3）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -522,7 +522,7 @@ describe('TranslucentTBView AV 崩溃处置（B1 点名 + C-迷你降级钮）',
   })
 })
 
-// ---------- 双形态 Wave：打包版（系统管理）区块 / 远程行标注 / AV 打包对照联动 ----------
+// ---------- 双形态打包线：打包版（系统管理）区块 / 远程行标注 / AV 打包对照联动 ----------
 
 const release20262Msix = {
   ...release20262,

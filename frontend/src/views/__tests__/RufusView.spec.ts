@@ -1,10 +1,10 @@
-// 特征测试（Wave 5 · 批 1 收敛件，波 2E 版本区回迁收口）：RufusView——共享契约
+// 特征测试：RufusView——共享契约
 // （ManagedControlBar / ManagedVersionPanel / ManagedExtrasCard + store）与版本区
 // 词面（单文件版「校验落位…」经 adapter.copy.stageWord 覆写、清单驱动
-// #extras-action「打开位置」钮、740 提权重启）的迁移后行为基线。
+// #extras-action「打开位置」钮、740 提权重启）的行为基线。
 // 锁定：banner 三分支互斥、启停钮声明（含提权 title）、下载事件流与重试链、
-// 确认/输入文案逐字、事件改写与 KeepAlive 轮询契约；波 2E 后方言表锚点
-// .ver-status 退役，选择器迁 ManagedVersionDot 渲染形 .ver-status。
+// 确认/输入文案、事件改写与 KeepAlive 轮询契约；状态选择器即
+// ManagedVersionDot 渲染形 .ver-status。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -106,7 +106,7 @@ const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
 beforeEach(() => {
-  // 交互面经 useConfirm/usePrompt 单例收编，测试以 settle* 模拟对话框出口
+  // 交互面为 useConfirm/usePrompt 单例，测试以 settle* 模拟对话框出口
   settleConfirm(false)
   settlePrompt(null)
 })

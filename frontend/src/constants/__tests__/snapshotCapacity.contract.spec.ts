@@ -1,7 +1,7 @@
 // 快照容量口径跨语言契约（前后端双写 50/30 的防回潮锁）。
 //
-// 选型史：绑定现面（bindings checkpointservice.js 的 GetStatus→StatusInfo）没有
-// 容量字段，且裁决不为这两个数新开 Wails 导出（避免总闸外再生通道）——前端为展示端，
+// 选型：绑定现面（bindings checkpointservice.js 的 GetStatus→StatusInfo）没有
+// 容量字段，且约定不为这两个数新开 Wails 导出（避免总闸外再生通道）——前端为展示端，
 // snapshotLabels.ts 双常量为全前端唯一数字源，后端 internal/snapshot/capacity.go
 // 为全包唯一落点，同值双写由本 spec 焊死。形制循 wheelGeometry.contract.spec.ts：
 // readFileSync + 正则提取，提取空集即红防假绿。
@@ -12,8 +12,8 @@
 //  2. 对账对象活性锁——service.go/git.go/backup.go 仍消费这两个符号，防"常量
 //     沦为纯契约摆设（真实行为已改用别的数）"这类假绿漂移；
 //  3. 前端单源回潮锁——快照三件套与 labels 的呈现语句里容量数字只许经常量插值，
-//     源码文本不得出现"最近 50 版/保留 30 份"式裸数字文案（N33 批 C/D 收口的
-//     防回退护栏；徽标 modeChip、windowCapNote/revisionCapNote 整句皆覆盖）。
+//     源码文本（含注释）不得出现"最近五十版/保留三十份"式裸数字文案（防回退
+//     护栏；徽标 modeChip、windowCapNote/revisionCapNote 整句皆覆盖）。
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'

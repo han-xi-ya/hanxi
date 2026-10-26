@@ -1,6 +1,6 @@
-// 特征测试（组 G3 / Phase 5）：EnvCheckView 基线锁定。
+// 特征测试：EnvCheckView 基线锁定。
 // 断言对象：检测卡渲染、状态 chip、官方版本面板接线、npm 工具装升卸事件流、
-// 卸载二次确认（已收编为全局 useConfirm 单例，视图不再自挂弹层，测试改经
+// 卸载二次确认（走全局 useConfirm 单例——视图不自挂弹层，测试经
 // confirmState/settleConfirm 驱动，文案/details 断言语义不变）。
 import { nextTick } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
@@ -11,6 +11,7 @@ import { useConfirm } from '../../composables/useConfirm'
 
 const env = vi.hoisted(() => ({
   DetectAll: vi.fn(),
+  GetDiskUsage: vi.fn(),
   GetNpmToolsOverview: vi.fn(),
   InstallNpmTool: vi.fn(),
   UpgradeNpmTool: vi.fn(),
@@ -283,7 +284,7 @@ describe('EnvCheckView npm 工具操作流', () => {
     const card = managedCard(w, 'Claude Code')!
     await card.findAll('button').find(b => b.text() === '卸载')!.trigger('click')
     await flush()
-    // 收编契约：确认请求走全局单例，视图自身不再渲染弹层
+    // 契约：确认请求走全局单例，视图自身不渲染弹层
     expect(w.find('.workbench-confirm').exists()).toBe(false)
     expect(confirmState.open).toBe(true)
     expect(confirmState.options.title).toBe('卸载 Claude Code')
@@ -484,6 +485,95 @@ describe('EnvCheckView Git 全局配置区块', () => {
     expect(gitCfgSection(w2).exists()).toBe(true)
     expect(gitCfgSection(w2).text()).toContain('Git 全局配置读取失败: 模块正被停用')
     w2.unmount()
+  })
+})
+
+describe('EnvCheckView 空间家底区块', () => {
+  // diskusage 区块此前整段零覆盖：按需测量（非挂载自取），故补三态。
+  function usageDir(over: Record<string, unknown> = {}) {
+    return {
+      kind: 'install', label: '本体目录', path: 'C:\\go\\bin', exists: true,
+      bytes: 1073741824, files: 120, partial: false, errorCount: 0, verdict: '', ...over,
+    }
+  }
+
+  function usageSection(w: VueWrapper) {
+    return w.find('section[aria-label="空间家底"]')
+  }
+
+  function usageButton(w: VueWrapper) {
+    return usageSection(w).findAll('button').find((b) => b.text().includes('测量'))!
+  }
+
+  it('verdict 词表四档映射：chip 词面/色档逐字，未知词不显形为生造徽章', async () => {
+    stubHappy()
+    env.GetDiskUsage.mockResolvedValue([
+      { tool: 'go', display: 'Go', dirs: [usageDir({ verdict: 'keep' })] },
+      { tool: 'node', display: 'Node.js', dirs: [usageDir({ kind: 'cache', verdict: 'recommended' })] },
+      { tool: 'npm', display: 'npm', dirs: [usageDir({ kind: 'cache', verdict: 'redownload' })] },
+      { tool: 'pnpm', display: 'pnpm', dirs: [usageDir({ kind: 'cache', verdict: 'caution' })] },
+      { tool: 'java', display: 'Java', dirs: [usageDir({ verdict: 'future-word' })] },
+    ] as never)
+    const w = await mountView()
+    await flush()
+    await usageButton(w).trigger('click')
+    await flush()
+    const chips = usageSection(w).findAll('.usage-verdict')
+    expect(chips.map((c) => c.text())).toEqual(['保留', '推荐删', '可删·会重下', '慎删'])
+    expect(chips.map((c) => c.classes().join(' '))).toEqual([
+      'chip usage-verdict chip-neutral',
+      'chip usage-verdict chip-positive',
+      'chip usage-verdict chip-information',
+      'chip usage-verdict chip-warning',
+    ])
+    chips.forEach((c) => expect(c.attributes('title')).toBeTruthy()) // 悬停释义不缺位
+    // 后端词表未来新增词：宁可不显形，不把未知词渲染成生造徽章
+    const javaTool = usageSection(w).findAll('.usage-tool').find((t) => t.text().includes('Java'))!
+    expect(javaTool.findAll('.usage-verdict')).toHaveLength(0)
+    expect(usageSection(w).text()).toContain('测量于')
+    w.unmount()
+  })
+
+  it('下限估算标「≥」并入页头提示；未落地行灰显占位且不出判定徽章', async () => {
+    stubHappy()
+    env.GetDiskUsage.mockResolvedValue([
+      { tool: 'go', display: 'Go', dirs: [usageDir({ partial: true })] },
+      { tool: 'npm', display: 'npm', dirs: [usageDir({ kind: 'cache', exists: false, verdict: 'keep' })] },
+    ] as never)
+    const w = await mountView()
+    await flush()
+    await usageButton(w).trigger('click')
+    await flush()
+    const section = usageSection(w)
+    const goSize = section.findAll('.usage-tool')[0].find('.usage-size')
+    expect(goSize.text().startsWith('≥ ')).toBe(true) // 超时只数得下限
+    expect(goSize.classes()).toContain('usage-partial')
+    expect(section.find('.usage-sub').text()).toContain('含下限估算项')
+    const npmLine = section.findAll('.usage-tool')[1].find('.usage-line')
+    expect(npmLine.classes()).toContain('usage-offline')
+    expect(npmLine.text()).toContain('未落地')
+    expect(npmLine.findAll('.usage-verdict')).toHaveLength(0) // 目录不在场不评删留
+    expect(npmLine.find('.usage-size').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('测量失败如实报错并清空旧账；空结果走解释性空位而非沉默', async () => {
+    stubHappy()
+    env.GetDiskUsage.mockRejectedValue(new Error('测量预算耗尽'))
+    const w = await mountView()
+    await flush()
+    await usageButton(w).trigger('click')
+    await flush()
+    expect(usageSection(w).text()).toContain('空间家底测量失败: 测量预算耗尽')
+    expect(usageSection(w).findAll('.usage-tool')).toHaveLength(0)
+    expect(usageSection(w).text()).not.toContain('测量于')
+    // 重测转成功：错误文案必须让位，且空清单有专门话术
+    env.GetDiskUsage.mockResolvedValue([] as never)
+    await usageButton(w).trigger('click')
+    await flush()
+    expect(usageSection(w).text()).not.toContain('测量失败')
+    expect(usageSection(w).text()).toContain('未识别到可测量家底的本体/缓存目录')
+    w.unmount()
   })
 })
 

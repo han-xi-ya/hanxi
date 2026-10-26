@@ -1,4 +1,4 @@
-// 特征测试（Wave 5 · 批 0 迁移后基线）：PaperTodoView 已收敛至托管控制台共享契约
+// 特征测试（共享契约迁移后基线）：PaperTodoView 已收敛至托管控制台共享契约
 // （ManagedControlBar/ManagedVersionPanel/ManagedExtrasCard + adapters/papertodo）。
 // 锁定：双变体经 variant 槽声明与切换（失败回滚）、单变体下载/换装/已装语义、
 // 卸载确认文案随数据在册动态变化（保留数据承诺逐字）、重试按当前变体、

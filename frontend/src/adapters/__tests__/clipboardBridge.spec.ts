@@ -1,5 +1,5 @@
-// clipboardBridge 真桥归一化契约测试（收口件、kernel §7"视图永远见不到 null
-// 线形"承诺的反证场——此前整条 wire 投影层零测试）：
+// clipboardBridge 真桥归一化契约测试（kernel §7"视图永远见不到 null
+// 线形"承诺的反证场）：
 //   ① Go 侧 nil slice/map 上线为 null，wireEntry/wireStatus/wirePrefs 折叠成
 //      kernel 契约形（Entry 可选域 undefined、Status/Prefs 空集），逐字段钉死；
 //   ② List/QueueList 顶层 null → 空数组（不是 undefined、不是 throw）；

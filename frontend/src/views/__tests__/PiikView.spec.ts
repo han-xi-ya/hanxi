@@ -1,4 +1,4 @@
-// PiikView 特征测试（五路并行 · piik 前端线 C，对位 service.go 冻结面）：
+// PiikView 特征测试（对位 service.go 冻结面）：
 // 标准壳（ManagedConsoleShell）装配 + 第三钮「打开界面」（#primary-action 槽，
 // stopped 态禁用指路）+ 邀请面板四态渲染（未装 / stopped / running 链接全量 /
 // running 仅本机）、三行链接复制走 clipboard 单源断言、「在浏览器打开」经

@@ -209,6 +209,42 @@ describe('WslUsbPanel 一键直通（N31 方案 A）', () => {
     expect(api.BindUsbDevice).not.toHaveBeenCalled()
   })
 
+  it('选择框遮罩 mousedown=放弃本次直通；弹体自身按下不被 .self 误吞', async () => {
+    const w = await mountPanel(overview([device('shared')]), [instance('Ubuntu'), instance('Debian')])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    const dialog = pickDialog()
+    expect(dialog).not.toBeNull()
+    const backdrop = document.querySelector('.pick-backdrop')!
+    // 弹体内按下冒泡到遮罩：目标≠遮罩，.self 守卫必须放行（点弹体≠放弃）
+    dialog!.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await flushPromises()
+    expect(pickDialog()).not.toBeNull()
+    // 直接按在遮罩上：等价取消，整条直通链不动
+    backdrop.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await flushPromises()
+    expect(pickDialog()).toBeNull()
+    expect(api.AttachUsbDevice).not.toHaveBeenCalled()
+    expect(api.BindUsbDevice).not.toHaveBeenCalled()
+  })
+
+  it('选择框候选过滤只列 WSL2；未选目标时直通钮为禁用态', async () => {
+    api.AttachUsbDevice.mockResolvedValue({ success: true, message: '已附加' })
+    const w = await mountPanel(overview([device('shared')]), [
+      instance('Ubuntu'), instance('Legacy', { version: '1' }), instance('Debian', { running: false }),
+    ])
+    await byText(w, '一键直通')!.trigger('click')
+    await flushPromises()
+    const dialog = pickDialog()!
+    const radios = Array.from(dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
+    expect(radios.map((r) => r.value)).toEqual(['Ubuntu', 'Debian']) // WSL1 不进直通候选池
+    expect(dialog.textContent).not.toContain('Legacy')
+    const goBtn = dialogButton(dialog, '直通')
+    expect(goBtn.disabled).toBe(true) // 空选择起步：无目标不可能误发
+    await chooseDistro('Debian')
+    expect(api.AttachUsbDevice).toHaveBeenCalledWith('2-3', 'Debian')
+  })
+
   it('选择框选定后按行记忆：第二次直通不再弹选', async () => {
     api.AttachUsbDevice.mockResolvedValue({ success: true, message: '已附加' })
     const instances = [instance('Ubuntu'), instance('Debian')]

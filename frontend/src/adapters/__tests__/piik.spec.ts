@@ -1,6 +1,5 @@
-// Piik adapter 特征测试（五路并行 · piik 前端线 C，对位 internal/modules/piik
-// service.go 冻结面）：绑定面经 vi.mock 打桩（真实生成物落盘前由 vitest.config
-// 解析缝兜底）；覆盖 headless 话术单源（running stateText/banner 恒含「界面在
+// Piik adapter 特征测试（对位 internal/modules/piik service.go 冻结面）：
+// 绑定面经 vi.mock 打桩（单测不触真实绑定）；覆盖 headless 话术单源（running stateText/banner 恒含「界面在
 // 浏览器」）、GATE_NO_BROWSER 兜底横幅、stopped hint「机读不自动弹→打开
 // 界面进控制台」双引导、**metaHints 透传后端六条**（MetaHints() RPC，前端零自造，
 // 端口/使用版本变动动词后重取）、Start/OpenWindow/Quit 三面（退出确认必须

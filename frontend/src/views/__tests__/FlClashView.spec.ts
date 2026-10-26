@@ -1,8 +1,8 @@
-// 特征测试（组 C · 批 0 共享契约迁入件）：FlClashView 收敛为 ManagedConsoleShell +
+// 特征测试：FlClashView 收敛为 ManagedConsoleShell +
 // adapter（src/adapters/flclash），编排/渲染全部由 managed 家族承载。
 // 断言"做了什么"而非"怎么做"：启停动词、卸载/导入确认文案、下载进度呈现、
 // 联动失败回滚、轮询与 KeepAlive 契约逐字保留；仅表格徽标类名由视图私有
-// .fl-ver-status 落回共享标准形 .ver-status（选择器随结构更新，用例数不降）。
+// .fl-ver-status 落回共享标准形 .ver-status（选择器随结构更新）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

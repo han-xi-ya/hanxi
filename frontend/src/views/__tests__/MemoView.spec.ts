@@ -1,5 +1,5 @@
-// MemoView 行为规格（2026-09-26 v2「摊开的笔记本」重做同步迁移；金标准语义一条不丢，
-// 断言随结构换形——详情浮层/编辑模态并入右页面板，页头四连钮退入工具条溢出菜单）：
+// MemoView 行为规格（v2「摊开的笔记本」结构：详情浮层/编辑模态并入右页面板，
+// 页头四连钮退入工具条溢出菜单）：
 // 钉死既有纪律——搜索 350ms 防抖 + 序号守卫、标签自动补 #、删除强确认、
 // 遮罩渲染语义（masked 行/页面板不落明文）、memo:changed 重拉与卸载注销、
 // toast 文案契约逐字不变、速记回车即存（含输入法组字豁免）、
@@ -7,13 +7,11 @@
 // （danger tone、条数入文案、走 ClearAll）、导出面（单条 .md + 全库汇总）与
 // 悬浮速记卡配置（GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet）全家。
 // 契约测试维持十一方法面（RestoreFile 不得出现在前端面）。
-// 结构迁移注：旧「卡头 MD 徽标」断言改为「页面板自动分流渲染」+徽标退役防回潮锁；
-// 旧卡面四钮位次（遮罩/置顶/编辑/删除）拆为行内双钮（遮罩/置顶）+页脚动作（其余）。
-// M4 接线收口注（2026-09-26）：行式索引 = MemoCard(list) 组件（.memo-row 钩子类保留，
-// 行内件换 .mc-title/.mc-preview/.mc-btn/.mc-tag；masked 严口径含标题不渲染，哨兵
-// 反证新增）；顶栏 = MemoToolbar（.mt-search-input/.mt-more-btn/.mt-menu，点外收合
-// 由旧 mousedown 口径统一为其 document click capture 纪律——③号差异按组件侧收口）。
-// 金标准 36 例语义逐条在案、断言语义未动，仅选择器随接线迁移；新增 3 例为收口补锁。
+// 结构注：MD 徽标已退役（页面板自动分流渲染，防回潮有锁）；行内双钮（遮罩/置顶）
+// + 页脚动作（编辑/复制/导出/删除）。选择器契约：行式索引 = MemoCard(list)
+// （.memo-row 钩子类 + .mc-title/.mc-preview/.mc-btn/.mc-tag，masked 严口径含
+// 标题不渲染、哨兵反证在册）；顶栏 = MemoToolbar（.mt-search-input/.mt-more-btn/
+// .mt-menu，点外收合为 document click capture 纪律）。
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -106,7 +104,7 @@ function rowBtns(w: ReturnType<typeof mount>, nth: number) {
   return w.findAll('.memo-row .mc-btn')[nth]
 }
 
-// 点第一行标题 = 翻开该条进阅读页（旧"点内容开详情浮层"的等价入口）
+// 点第一行标题 = 翻开该条进阅读页
 async function openRow(w: ReturnType<typeof mount>, nth = 0) {
   await w.findAll('.memo-row .mc-title')[nth].trigger('click')
   await flushMicrotasks()
@@ -264,8 +262,8 @@ describe('MemoView 列表与过滤', () => {
     w.unmount()
   })
 
-  // 接线收口裁决（2026-09-26）哨兵反证：masked 严口径统一后，行（MemoCard 硬
-  // 纪律）与页面板（本视图改吃严口径）两面都不落标题明文，属性位同扫。
+  // 严口径哨兵反证（收口裁决）：行（MemoCard 硬纪律）与页面板两面都不落
+  // 标题明文，属性位同扫。
   it('masked 严口径哨兵反证：行与页面板整棵子树不落标题明文', async () => {
     const w = await mountView([
       memo({ isMasked: true, title: 'SENTINEL-密题', content: 'pw=SENTINEL-密文' }),
@@ -387,7 +385,7 @@ describe('速记入口（一行克制输入，回车即存语义原样）', () =
     w.unmount()
   })
 
-  // M3 遗留防漂移（接线收口轮）：速记卡「⏎ 存并留场 · Ctrl+⏎ 存并收 · 多行粘贴
+  // 速记卡防漂移：「⏎ 存并留场 · Ctrl+⏎ 存并收 · 多行粘贴
   // 并条」三语义在主窗速记行对齐——主窗「收」的等价落点为"存下但不翻页抢阅读位"。
   it('速记行裸回车存并翻到该条；Ctrl+Enter 存而不翻页（对齐速记卡存并收口径）', async () => {
     const w = await mountView([memo({ id: 'm1' })])
@@ -469,7 +467,7 @@ describe('页面板书写态（详情/编辑合并后的唯一书写页）', () 
     w.unmount()
   })
 
-  // 拆分批（2026-10-26）重入守卫：Create 往返期间连点保存只发一笔事务——
+  // 保存事务重入守卫：Create 往返期间连点保存只发一笔事务——
   // 守卫断言外部事实（后端只收到一次写、只播一次成功），不断实现镜像。
   it('保存事务在途重入：连点「立即创建」只发一笔 Create', async () => {
     const w = await mountView([])
@@ -487,6 +485,53 @@ describe('页面板书写态（详情/编辑合并后的唯一书写页）', () 
     expect(svc.Create).toHaveBeenCalledTimes(1)
     expect(useToast().toastMsg.value).toBe('已新建备忘录')
     expect(w.find('.pane-write').exists()).toBe(false)
+    w.unmount()
+  })
+
+  // 失败路与成功路同锁：在飞重入不发第二笔；失败保稿保页、错误上浮，
+  // 且失败绝不把锁拧死——用户改完还能再发（外部事实：笔数、toast、DOM 存续）。
+  it('保存失败同样锁在飞重入；保稿保页可重试不卡死', async () => {
+    const w = await mountView([])
+    await byText(w, '长便签')!.trigger('click')
+    await w.find('.pane-write .pane-title-input').setValue('防连点')
+    let rejectCreate: (e: unknown) => void = () => {}
+    svc.Create.mockImplementationOnce(() => new Promise((_, rej) => { rejectCreate = rej }))
+    const save = w.find('.pane-write .pane-foot .btn-primary')
+    await save.trigger('click')
+    await save.trigger('click') // 在飞第二击：失败路同样吞下
+    expect(svc.Create).toHaveBeenCalledTimes(1)
+    rejectCreate(new Error('磁盘已满'))
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toBe('保存失败: 磁盘已满')
+    expect(w.find('.pane-write').exists()).toBe(true) // 保页：不静默退出书写态
+    expect((w.find('.pane-write .pane-title-input').element as HTMLInputElement).value).toBe('防连点') // 保稿
+    // 失败不卡锁：修好后重试照常发第二笔并走成功收尾
+    svc.Create.mockResolvedValueOnce(memo({ id: 'new9' }))
+    await save.trigger('click')
+    await flushMicrotasks()
+    expect(svc.Create).toHaveBeenCalledTimes(2)
+    expect(svc.Create).toHaveBeenLastCalledWith('防连点', '', [], 'blue')
+    expect(useToast().toastMsg.value).toBe('已新建备忘录')
+    expect(w.find('.pane-write').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('编辑保存后卡面同步：新标签经 Update 落账、随回执清单上行到列表行', async () => {
+    const w = await mountView([memo()]) // tags ['#SQL']
+    await openRow(w)
+    await byText(w, '编辑')!.trigger('click')
+    const tagInput = w.find('.tag-entry')
+    await tagInput.setValue('#新标')
+    await tagInput.trigger('keydown.enter')
+    svc.Update.mockResolvedValue(undefined)
+    svc.List.mockResolvedValueOnce([memo({ tags: ['#SQL', '#新标'] })]) // 保存后重拉：后端已带新标
+    await w.find('.pane-write .pane-foot .btn-primary').trigger('click')
+    await flushMicrotasks()
+    expect(svc.Update).toHaveBeenCalledWith('m1', '生产库连接串', 'host=10.0.0.1;pw=topsecret', ['#SQL', '#新标'], 'blue')
+    expect(useToast().toastMsg.value).toBe('备忘录已更新')
+    // 跨组件外部事实：书写页已收，索引行卡面真的挂上了新标签
+    expect(w.find('.pane-write').exists()).toBe(false)
+    expect(w.findAll('.memo-row .mc-tag').map((t) => t.text())).toContain('#新标')
     w.unmount()
   })
 
@@ -618,8 +663,8 @@ describe('溢出菜单与一键全删', () => {
     expect(w.find('.mt-menu').exists()).toBe(false)
     await openMenu(w)
     expect(w.find('.mt-menu').exists()).toBe(true)
-    // 模拟点外：click 落在工具条容器之外（M2 的 mousedown 口径已按
-    // MemoToolbar 纪律统一收口为 document click capture）
+    // 模拟点外：click 落在工具条容器之外（收口口径 = MemoToolbar 的
+    // document click capture 纪律）
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flushMicrotasks()
     expect(w.find('.mt-menu').exists()).toBe(false)
@@ -632,9 +677,9 @@ describe('溢出菜单与一键全删', () => {
   })
 })
 
-// F3-b 契约 + 2026-09 全删波更新 + N16 B 批速记卡扩面：后端文件库化承诺的
-// 七方法面扩为八（+ClearAll）再扩为十一（+GetQuickSheetState/SetQuickSheetHotkey/
-// ShowQuickSheet）；RestoreFile 仍属后端热恢复面，不得出现在前端调用清单里。
+// memo API 前端面契约：十一方法在册（八基础面 + 速记卡三件
+// GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet）；
+// RestoreFile 属后端热恢复面，不得出现在前端调用清单里。
 describe('memo 前端契约面', () => {
   it('MemoView 依赖面为既有十一方法（ClearAll 与速记卡三件入列，RestoreFile 不越面）', () => {
     expect(Object.keys(svc).sort()).toEqual([
@@ -659,7 +704,7 @@ describe('memo 前端契约面', () => {
   })
 })
 
-// N16 B 批：悬浮速记卡配置面（菜单唤出钮 + 栏底折叠热键区）。冲突回滚是后端
+// 悬浮速记卡配置面（菜单唤出钮 + 栏底折叠热键区）。冲突回滚是后端
 // 事务职责，前端只钉死"成功刷新回显 + 失败草稿对齐生效值 + 未在位如实提示"。
 describe('悬浮速记卡配置', () => {
   it('折叠区回显生效键位；展开后保存走 SetQuickSheetHotkey 并重拉实况', async () => {
@@ -710,7 +755,7 @@ describe('悬浮速记卡配置', () => {
   })
 })
 
-// N16 C 批导出面（单条 .md + 全库汇总 .md，零新后端）：阅读页导出钮与
+// 导出面（单条 .md + 全库汇总 .md，零新后端）：阅读页导出钮与
 // 复制全文同挂遮罩纪律；下载通道不可用降级复制原文（同一份文档）。全库导出
 // 三钉：取数永远无过滤重拉（视图过滤不得缩面）、确认框明说敏感排除条数、
 // masked 明文经真实 builder 产出文本反证不进导出。入口自页头迁溢出菜单，

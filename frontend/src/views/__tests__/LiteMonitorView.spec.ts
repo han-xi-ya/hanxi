@@ -1,4 +1,4 @@
-// 特征测试（组 B · 批 1 迁移件）：LiteMonitorView 收敛进托管控制台共享契约
+// 特征测试：LiteMonitorView 收敛进托管控制台共享契约
 // （src/adapters/litemonitor + components/managed），行为基线对照迁移前视图逐字保持。
 // 特化点断言：① GetRuntimeStatus 第三路数据经 adapter 快照扩展字段并入——
 // 视图生命周期内仅单发（轮询期不重探）、缺运行时警示独立于状态横幅可并存；

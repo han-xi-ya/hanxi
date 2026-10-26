@@ -1,7 +1,7 @@
-// AI 接入分区（F4b MCP 安装向导 + R6 授权开关）特征测试：三客户端四态渲染、
+// AI 接入分区（MCP 安装向导 + 授权开关）特征测试：三客户端四态渲染、
 // 预览→确认写链（令牌回传）、fail-closed 拒动呈现手动片段、
 // access.json 九开关写链（portkill 十键之九呈现口径；建档/即时生效文案/拒写指引/损坏态修复确认流）与"打开所在目录"、
-// 幂等 ZeroDiff 文案、安装前自检行（R2：通过/失败警示不阻断/重检走 refresh/不该 spawn 时不 spawn）。
+// 幂等 ZeroDiff 文案、安装前自检行（通过/失败警示不阻断/重检走 refresh/不该 spawn 时不 spawn）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AiSection from '../AiSection.vue'
@@ -44,7 +44,7 @@ function stubStatus(clients: unknown[], access: Record<string, unknown> = {}) {
       ...access,
     },
   })
-  // 自检默认通过态（R2）；单个用例覆写失败/异常分支
+  // 自检默认通过态；单个用例覆写失败/异常分支
   wizardSvc.SelfCheck.mockResolvedValue({
     state: 'ok', toolCount: 9, tools: ['hanxi_envcheck_detect', 'hanxi_file_search', 'hanxi_ocr_recognize', 'hanxi_memo_search', 'hanxi_memo_stats', 'hanxi_sysinfo_report', 'hanxi_log_read', 'hanxi_portscan_scan', 'hanxi_lan_scan'],
     message: 'hanxi mcp 握手成功，9 件工具就位', checkedAt: '2026-09-17T12:00:00+08:00', fresh: true,
@@ -254,10 +254,10 @@ describe('AI 接入分区', () => {
     expect(rows[0].text()).toContain('已开放')
     expect(rows[1].text()).toContain('未开放')
     expect(rows[0].text()).toContain('hanxi_envcheck_detect')
-    // memo 键一键控全族（d87654c 起两件工具）：行文案必须覆盖检索+统计全族名
+    // memo 键一键控全族（检索+统计两件工具）：行文案必须覆盖全族名
     expect(rows[3].text()).toContain('便签检索与统计')
     expect(rows[3].text()).toContain('hanxi_memo_search · hanxi_memo_stats')
-    // 扫描族两行（AI 接入批）：与纯查询分键授权、默认关；风险行必须直书"主动探测网络"
+    // 扫描族两行：与纯查询分键授权、默认关；风险行必须直书"主动探测网络"
     // 与"暴露局域网拓扑"（诚实口径回归锚，措辞退让即红）
     expect(rows[6].text()).toContain('端口扫描')
     expect(rows[6].text()).toContain('hanxi_portscan_scan')
@@ -265,7 +265,7 @@ describe('AI 接入分区', () => {
     expect(rows[7].text()).toContain('局域网扫描')
     expect(rows[7].text()).toContain('hanxi_lan_scan')
     expect(rows[7].text()).toContain('暴露局域网拓扑')
-    // 剪贴板检索行（clipboard 批，第十键入册；写侧键序 lan 后、portkill 前）
+    // 剪贴板检索行（写侧键序 lan 后、portkill 前）
     expect(rows[8].text()).toContain('剪贴板检索')
     expect(rows[8].text()).toContain('hanxi_clipboard_search')
     expect(rows[8].text()).toContain('含个人剪贴板 · 建议关')
@@ -289,6 +289,53 @@ describe('AI 接入分区', () => {
     expect(w.findAll('.tool-row')[1].text()).toContain('已开放')
     expect(useToast().toastMsg.value).toContain('全盘文件搜索已开放')
     expect(useToast().toastMsg.value).toContain('不用重启')
+  })
+
+  it('九开关键位映射：后端 tools 键名逐行对上（portscan 第 7 行、clipboard 第 9 行），收回播报如实', async () => {
+    // 键↔行位是 access.json 契约面：portscan/lan/clipboard 三键后入族，行位或键名
+    // 错配会把授权拨到别的工具头上——断的是渲染出来的开关态与播报，不是实现镜像。
+    stubStatus([client('claude', 'Claude Code')], {
+      tools: { envcheck: false, everything: false, ocr: false, memo: false, sysinfo: false, logs: false, portscan: true, lan: false, clipboard: true },
+    })
+    const w = await mountView()
+    const checked = w.findAll('.switch').map((s) => (s.element as HTMLInputElement).checked)
+    expect(checked).toEqual([false, false, false, false, false, false, true, false, true])
+    const rows = w.findAll('.tool-row')
+    expect(rows[6].text()).toContain('端口扫描')
+    expect(rows[6].text()).toContain('已开放')
+    expect(rows[8].text()).toContain('剪贴板检索')
+    expect(rows[8].text()).toContain('已开放')
+    for (const i of [0, 1, 2, 3, 4, 5, 7]) expect(rows[i].text()).toContain('未开放')
+    // 收回剪贴板：写盘携带键名与 false，回传呈现即时换脸，播报口径为"已收回"
+    wizardSvc.SetToolAccess.mockResolvedValue({
+      path: 'D:\\hx\\hanxidata\\mcp\\access.json', exists: true, readable: true, version: 2,
+      tools: { envcheck: false, everything: false, ocr: false, memo: false, sysinfo: false, logs: false, portscan: true, lan: false, clipboard: false }, note: '',
+    })
+    await w.findAll('.switch')[8].setValue(false)
+    await flushPromises()
+    expect(wizardSvc.SetToolAccess).toHaveBeenCalledWith('clipboard', false)
+    expect(useToast().toastMsg.value).toContain('剪贴板检索已收回')
+    expect(w.findAll('.tool-row')[8].text()).toContain('未开放')
+  })
+
+  it('开关在飞锁：一笔 SetToolAccess 未回时整排开关禁用且第二拨被吞，回执后解锁', async () => {
+    stubStatus([client('claude', 'Claude Code')])
+    let resolveSet: (v: unknown) => void = () => {}
+    wizardSvc.SetToolAccess.mockImplementationOnce(() => new Promise((r) => { resolveSet = r }))
+    const w = await mountView()
+    await w.findAll('.switch')[1].setValue(true) // everything 拨开：在飞
+    for (const sw of w.findAll('.switch')) expect(sw.attributes('disabled')).toBeDefined() // 锁的可见形态
+    await w.findAll('.switch')[2].setValue(true) // 在飞中第二拨 ocr：必须不起第二笔事务
+    expect(wizardSvc.SetToolAccess).toHaveBeenCalledTimes(1)
+    expect(wizardSvc.SetToolAccess).toHaveBeenCalledWith('everything', true)
+    resolveSet({
+      path: 'D:\\hx\\hanxidata\\mcp\\access.json', exists: true, readable: true, version: 2,
+      tools: { envcheck: true, everything: true, ocr: false, memo: false, sysinfo: false, logs: false, portscan: false, lan: false, clipboard: false }, note: '',
+    })
+    await flushPromises()
+    for (const sw of w.findAll('.switch')) expect(sw.attributes('disabled')).toBeUndefined() // 解锁可续拨
+    expect((w.findAll('.switch')[1].element as HTMLInputElement).checked).toBe(true)
+    expect(useToast().toastMsg.value).toContain('全盘文件搜索已开放')
   })
 
   it('缺文件合法态：文案给"开关即建档"，开关不禁用（首拨凭空建档）', async () => {

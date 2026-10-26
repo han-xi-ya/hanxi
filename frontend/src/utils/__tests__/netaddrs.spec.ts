@@ -1,6 +1,6 @@
-// sortNetAddresses（N21②）：真机机主以太网接口实拍 fixture——1 条 IPv4 + 12 条
-// IPv6（含临时隐私扩展与 fe80）混列，IPv4 必须排到首位（机主报"不显示 IPv4"的
-// 呈现断点收口口径）。
+// sortNetAddresses：真机以太网接口实拍 fixture——1 条 IPv4 + 12 条
+// IPv6（含临时隐私扩展与 fe80）混列，IPv4 必须排到首位
+//（本函数正是为治"IPv4 被十余条 IPv6 淹没"的呈现断点而生）。
 import { describe, expect, it } from 'vitest'
 import { sortNetAddresses } from '../netaddrs'
 
@@ -35,5 +35,23 @@ describe('sortNetAddresses', () => {
     const src = ['fe80::2', '192.168.81.1']
     sortNetAddresses(src)
     expect(src).toEqual(['fe80::2', '192.168.81.1'])
+  })
+
+  it('大写 FE80 链路本地同样识得（rank 判定 lowercase 守卫），串形原样透出不改写', () => {
+    const got = sortNetAddresses(['2408::1', 'FE80::abcd', '10.0.0.1', '169.254.1.1'])
+    expect(got).toEqual(['10.0.0.1', '2408::1', '169.254.1.1', 'FE80::abcd'])
+  })
+
+  it('四档 rank 全矩阵：组间 rank 升序、组内严格保后端原序（稳定排序显式构造）', () => {
+    const addrs = [
+      'fe80::b', '169.254.1.2', '2408::b', '10.0.0.2',
+      'FE80::a', '169.254.1.1', '2408::a', '10.0.0.1',
+    ]
+    expect(sortNetAddresses(addrs)).toEqual([
+      '10.0.0.2', '10.0.0.1', // 活动 v4 组内原序（31 后出现的 1 仍居其后）
+      '2408::b', '2408::a', // 全局 v6
+      '169.254.1.2', '169.254.1.1', // APIPA
+      'fe80::b', 'FE80::a', // 链路本地，大小写混写同档且串形不改
+    ])
   })
 })

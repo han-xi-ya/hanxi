@@ -385,7 +385,7 @@ describe('③ 删除对话框', () => {
     await openFromRow(w, 0, 'del')
     expect(w.text()).toContain('成对删除')
     expect(w.text()).toContain('id_plain.pub')
-    // 本轮新增的必含实话（后端实测边界，藏了等于骗人）
+    // 删除对话框必含实话（后端实测边界，藏了等于骗人）
     expect(w.text()).toContain('只接受密钥登录的服务器')
     expect(w.text()).toContain('删掉后你会失去访问')
     expect(w.text()).toContain('本地无法知道它被装到了哪些机器')

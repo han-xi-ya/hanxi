@@ -1,4 +1,4 @@
-// 组 G1 特征测试：ExtPlaceholderView——最小占位契约（标题回退与建设中提示）。
+// 特征测试：ExtPlaceholderView——最小占位契约（标题回退与建设中提示）。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import ExtPlaceholderView from '../ExtPlaceholderView.vue'

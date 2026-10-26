@@ -1,6 +1,5 @@
-// 特征测试：设置页拆分后的六个分区视图主链路。
-// 承接原 SettingsView.spec.ts 的断言语义（常规读写回环、外观分段联动后端、
-// 托盘加载渲染、工作台入口上抛 navigate），并补存储/系统管理分区的骨架锁。
+// 特征测试：设置页六个分区视图主链路——常规读写回环、外观分段联动后端、
+// 托盘加载渲染、工作台入口上抛 navigate，以及存储/系统管理分区骨架锁。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import GeneralSection from '../GeneralSection.vue'
@@ -51,7 +50,7 @@ vi.mock('../../../../bindings/hanxi/internal/app', () => ({ AppService: appSvc }
 vi.mock('../../../../bindings/hanxi/internal/history/historyservice', () => histSvc)
 vi.mock('@wailsio/runtime', () => ({ Events: { On: vi.fn(() => vi.fn()), Emit: vi.fn() } }))
 
-// F6 后 mode 为数据根来源内部标记（sibling/bound），不再是运行模式
+// mode 为数据根来源内部标记（sibling/bound），非运行模式
 function appInfoStub(over: Record<string, unknown> = {}) {
   return {
     name: 'Hanxi', version: '0.3.0', mode: 'sibling', baseDir: 'D:\\hx',
@@ -259,7 +258,7 @@ describe('存储目录分区', () => {
     expect(w.text()).not.toContain('便携')
     expect(w.text()).not.toContain('标准模式')
     const rows = w.findAll('.setting-row')
-    expect(rows).toHaveLength(5) // 数据根 + 日志/版本仓/运行时 + 占用一览头行（N11）
+    expect(rows).toHaveLength(5) // 数据根 + 日志/版本仓/运行时 + 占用一览头行
     expect(rows[0].text()).toContain('D:\\hx') // 数据根 = baseDir
     const rootBtns = rows[0].findAll('button')
     expect(rootBtns).toHaveLength(2) // 未绑定：打开目录 + 更改位置，无"回到同级"
@@ -267,7 +266,7 @@ describe('存储目录分区', () => {
     expect(appSvc.OpenPath).toHaveBeenCalledWith('D:\\hx\\logs')
   })
 
-  // 机主反馈二：每个目录除大小外还要写用途——数据根/技术目录/占用行/versions
+  // 机主要求：每个目录除大小外还要写用途——数据根/技术目录/占用行/versions
   // 子行全部带简介行；词表按一级目录名映射，未收录目录回落通用文案。
   it('目录用途简介（反馈二）：根行与技术目录行常驻，占用行按词表映射、未知目录回落', async () => {
     stubs()
@@ -339,7 +338,7 @@ describe('存储目录分区', () => {
     expect(appSvc.DataRootUsage).toHaveBeenLastCalledWith(true) // 重新测量穿透缓存
   })
 
-  // 机主反馈三：versions 展开子行与外层难区分——子行必须带归属标记 class
+  // 机主要求：versions 展开子行与外层难区分——子行必须带归属标记 class
   // （左缘 primary 混色条），单版本行铺 mono 版本号 chip，多版本行沿用计数 chip。
   it('展开软件明细（反馈三）：子行带归属标记 class，单版本铺版本号 chip、多版本走计数 chip', async () => {
     stubs()

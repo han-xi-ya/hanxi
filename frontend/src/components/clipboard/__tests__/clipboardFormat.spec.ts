@@ -1,7 +1,8 @@
 // clipboardFormat 纯函数单源的行为锁（时间口径是 epoch 毫秒——契约 §3 注明，
 // 与随手记 ISO 串不同谱，边界必须在这里逐档钉死）：相对时间四档与回落日期、
 // 非法值 '—'、时钟回拨（未来戳）消化、摘要兜底的类别三分支、data URL 拼接、
-// 状态行文案。now 全部显式注入，不吃挂钟。
+// 状态行文案、双时间档同输入对照表（yyyy-MM-dd vs MM-DD 的刻意分叉是契约）。
+// now 全部显式注入，不吃挂钟。
 import { describe, expect, it } from 'vitest'
 import type { ClipEntry } from '../../../types/clipboard'
 import {
@@ -71,6 +72,49 @@ describe('fmtClipAgoCompact 浮层密档（A5 视图内联函数收编单源）'
     expect(fmtClipAgoCompact(undefined, N)).toBe('—')
     expect(fmtClipAgoCompact(Number.NaN, N)).toBe('—')
     expect(fmtClipAgoCompact(N + 10 * MIN, N)).toBe('刚刚')
+  })
+})
+
+describe('fmtClipAgo × fmtClipAgoCompact 同输入对照表（双档「刻意不同形」是产品契约）', () => {
+  // 两档各测各的时，「浮层行宽只容得下 MM-DD」这条分叉理由没有对账面：
+  // 谁被顺手"修"成同形这里即红。前三档逐字同形、同日日期档刻意异形、跨年
+  // 回归同形（密档补年份）——三条关系一次钉全。
+  const N = NOW.getTime()
+  const table: Array<[number, string, string]> = [
+    [30_000, '刚刚', '刚刚'],
+    [MIN, '1 分钟前', '1 分钟前'],
+    [59 * MIN, '59 分钟前', '59 分钟前'],
+    [HOUR, '1 小时前', '1 小时前'],
+    [23 * HOUR + 59 * MIN, '23 小时前', '23 小时前'],
+    [24 * HOUR, '2026-09-25', '09-25'],
+    [36 * HOUR, '2026-09-25', '09-25'], // NOW-36h＝昨日 00:00（本地日历日恰翻面处仍日期档）
+    [48 * HOUR, '2026-09-24', '09-24'],
+    [-10 * MIN, '刚刚', '刚刚'], // 未来戳（负时差）两档同消化
+  ]
+  it('全档对照逐行对账（同输入各表一形）', () => {
+    for (const [delta, longExp, compactExp] of table) {
+      expect(fmtClipAgo(ago(delta), NOW), `长档 @ 时差 ${delta}ms`).toBe(longExp)
+      expect(fmtClipAgoCompact(ago(delta), N), `密档 @ 时差 ${delta}ms`).toBe(compactExp)
+    }
+  })
+
+  it('跨年输入两档回归同形（yyyy-MM-dd——分叉只发生在同年日期档）', () => {
+    const ms = new Date(2025, 11, 31, 12, 0, 0).getTime()
+    expect(fmtClipAgo(ms, NOW)).toBe('2025-12-31')
+    expect(fmtClipAgoCompact(ms, N)).toBe('2025-12-31')
+  })
+
+  it('档分按经过时长不按跨日历日：凌晨半点读「恰好昨日 23:59」仍是分钟前档，昨日同一刻（满 24h）才落日期档', () => {
+    const dawn = new Date(2026, 8, 26, 0, 30, 0)
+    const lateLastNight = new Date(2026, 8, 25, 23, 59, 0).getTime() // 跨了日历日，只过了 31 分钟
+    expect(fmtClipAgo(lateLastNight, dawn)).toBe('31 分钟前')
+    expect(fmtClipAgoCompact(lateLastNight, dawn.getTime())).toBe('31 分钟前')
+    const justBefore24h = new Date(2026, 8, 25, 0, 31, 0).getTime() // 23h59m——差一分钟满 24h
+    expect(fmtClipAgo(justBefore24h, dawn)).toBe('23 小时前')
+    expect(fmtClipAgoCompact(justBefore24h, dawn.getTime())).toBe('23 小时前')
+    const exactly24h = new Date(2026, 8, 25, 0, 30, 0).getTime() // 昨日同一刻，恰好 24h
+    expect(fmtClipAgo(exactly24h, dawn)).toBe('2026-09-25')
+    expect(fmtClipAgoCompact(exactly24h, dawn.getTime())).toBe('09-25')
   })
 })
 

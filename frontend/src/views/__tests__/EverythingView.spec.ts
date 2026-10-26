@@ -565,9 +565,8 @@ describe('EverythingView 版本区补锁', () => {
     w.unmount()
   })
 
-  // 波 2F 面板化注记：首下走 store.runDownload——在途票据（预挂 resolve）封死
-  // 双击窗口，同挂载内连点不再二发 RPC；三分支回执自此各起一次挂载断言
-  // （意图不变：started 静默 / 失败前缀现词 / already-installed 现词）。
+  // 首下走 store.runDownload——在途票据（预挂 resolve）封死双击窗口，同挂载内连点不再
+  // 二发 RPC；三分支回执各起一次挂载断言：started 静默 / 失败前缀现词 / already-installed 现词。
   it('首用引导：stable 在前列面「下载 稳定版 X」；started 回执静默、失败带「下载失败: 」、already-installed 现词', async () => {
     const firstUseRelease = () => {
       stubDefaults({ state: 'stopped' }, [], [
@@ -578,8 +577,8 @@ describe('EverythingView 版本区补锁', () => {
     firstUseRelease()
     svc.DownloadVersion.mockResolvedValue('started')
     let w = await mountView()
-    // 本组三处选择器一律按元素 + 家族原子取（button.btn），不锁变体类名：主操作档自
-    // 2026-10-20 起全站重定为蓝洗一档（a37ac52），改名/换形制都不该回头改测试。
+    // 本组三处选择器一律按元素 + 家族原子取（button.btn），不锁变体类名：主操作档形制
+    // 再变（全站蓝洗一档重定）也不该回头改测试。
     let btn = w.find('.empty-state button.btn')
     expect(btn.text()).toContain('下载 稳定版 1.4.1') // releases[0].channel 决定词面
     await btn.trigger('click')
@@ -621,9 +620,9 @@ describe('EverythingView 版本区补锁', () => {
     w.unmount()
   })
 
-  // 波 2F 面板化注记：远程表换装 ManagedVersionPanel 标准形（供体回迁），通道列
-  // 经 #release-extra-col 方言槽居「上游发布」与「操作」之间——列序随之为标准形，
-  // 意图不变：通道徽标词面/档位配色、stale 快照徽标、fmtSize/fmtDate 标准形照锁。
+  // 远程表是 ManagedVersionPanel 标准形，通道列经 #release-extra-col 方言槽居
+  // 「上游发布」与「操作」之间——本用例照锁：列序、通道徽标词面/档位配色、stale 快照徽标、
+  // fmtSize/fmtDate 标准形。
   it('通道列经面板方言槽：未知通道原样透出、非 stable 一律测试档、stale 快照徽标、fmtSize/fmtDate 标准形「—」', async () => {
     stubDefaults({ state: 'stopped' }, [], [
       { version: '1.4.1', channel: 'stable', size: 0, published: '', stale: true },
@@ -644,7 +643,7 @@ describe('EverythingView 版本区补锁', () => {
   })
 })
 
-// ---------- P0 批 3·4.4：状态刷新代次 ----------
+// ---------- 状态刷新代次 ----------
 describe('EverythingView 请求代次', () => {
   it('旧 GetStatus 响应晚到不覆盖新状态', async () => {
     vi.useFakeTimers()
@@ -661,8 +660,8 @@ describe('EverythingView 请求代次', () => {
         })
       })
       const w = await mountView()
-      // 波 2F 形制：call1=store 轮询 immediate 首跑（吊慢），call2=挂载显式首拉
-      // （迁移前即此双路形制）；inFlight 闸让 2.6s 处不再补发，代次判定全看两发。
+      // call1=store 轮询 immediate 首跑（吊慢），call2=挂载显式首拉——双路并发正是
+      // 代次闸的断言面；inFlight 闸让 2.6s 处不再补发，判定全看这两发。
       await vi.advanceTimersByTimeAsync(2600) // call2 已回 → 后台运行中
       expect(w.find('.status-word').text()).toBe('后台运行中')
       releaseSlow({ state: 'stopped' }) // 首拉旧响应晚到

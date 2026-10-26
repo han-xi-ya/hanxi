@@ -1,4 +1,4 @@
-// 特征测试（批 0 契约迁万件）：Bili23View 与 CCSwitchView 共享骨架，专属差异在
+// 特征测试：Bili23View 与 CCSwitchView 共享骨架，专属差异在
 // 退出三态如实回执（stopped/hidden/asked 的 message 逐字上墙、禁止吞态）与
 // #danger-extra 位的「强制结束」（ForceStop 非共享动词）。绑定/事件经 vi.mock
 // 打桩；KeepAlive 宿主复刻 App.vue 外壳。

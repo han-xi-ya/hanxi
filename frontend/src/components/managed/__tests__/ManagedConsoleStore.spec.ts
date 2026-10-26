@@ -1,7 +1,13 @@
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ManagedModuleAdapter, ManagedReleaseRecord, ManagedSnapshot, NormalizedProgress } from '../adapter'
+import type {
+  ManagedModuleAdapter,
+  ManagedReleaseRecord,
+  ManagedSnapshot,
+  ManagedVersionRecord,
+  NormalizedProgress,
+} from '../adapter'
 import { sameSnapshot } from '../adapter'
 import { useManagedConsole } from '../store'
 import { useToast } from '../../../composables/useToast'
@@ -536,6 +542,146 @@ describe('ManagedConsoleStore 波 2A runSlotVerb 编排', () => {
     await probe.store.runSlotVerb(closure)
     expect(closure).toHaveBeenCalledTimes(1)
     expect(useToast().toastMsg.value).toBe('闭包回执')
+    probe.wrapper.unmount()
+  })
+
+  it('dangerBusy 联动同样闩住 runSlotVerb：强制动作在途时槽钮点击丢弃（不排队、无 toast），解除后放行', async () => {
+    const { adapter } = fakeAdapter()
+    const dangerBusy = ref(false)
+    adapter.dangerBusy = dangerBusy
+    const probe = mountStore(adapter)
+    await flushPromises()
+
+    dangerBusy.value = true
+    const run = vi.fn(async () => ({ message: '不该出现' }))
+    await expect(probe.store.runSlotVerb({ run })).resolves.toBeUndefined()
+    expect(run).not.toHaveBeenCalled()
+    expect(useToast().toastMsg.value).toBe('')
+
+    dangerBusy.value = false
+    await probe.store.runSlotVerb({ run })
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toBe('不该出现')
+    probe.wrapper.unmount()
+  })
+})
+
+// ---------- runControl 失败面（前缀词表 / primary·quit 刷态不对称契约） ----------
+
+function controlAdapter(state: string) {
+  const primaryRun = vi.fn()
+  const quitRun = vi.fn()
+  const { adapter } = fakeAdapter()
+  ;(adapter.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ ...stoppedSnap, state })
+  ;(adapter as unknown as { control: unknown }).control = {
+    primary: { run: primaryRun, label: '启动' },
+    quit: { run: quitRun, label: '退出' },
+  }
+  return { adapter, primaryRun, quitRun }
+}
+
+describe('ManagedConsoleStore runControl 失败面', () => {
+  it('quit 失败：toast 走词表「退出失败: 」、仅刷态不重拉版本区；copy.errorPrefix.quit 覆写换前缀', async () => {
+    const { adapter, quitRun } = controlAdapter('stopped')
+    quitRun.mockRejectedValue(new Error('进程卡死'))
+    const probe = mountStore(adapter)
+    await flushPromises()
+    const statusCalls = (adapter.getStatus as ReturnType<typeof vi.fn>).mock.calls.length
+    const installCalls = (adapter.versions.listInstalled as ReturnType<typeof vi.fn>).mock.calls.length
+
+    await probe.store.runControl('quit')
+    expect(useToast().toastMsg.value).toBe('退出失败: 进程卡死')
+    expect(adapter.getStatus).toHaveBeenCalledTimes(statusCalls + 1)
+    expect(adapter.versions.listInstalled).toHaveBeenCalledTimes(installCalls) // 版本区重拉只属 primary 失败分支
+    expect(probe.store.busy).toBe(false)
+
+    adapter.copy = { errorPrefix: { quit: '关闭失败: ' } }
+    await probe.store.runControl('quit')
+    expect(useToast().toastMsg.value).toBe('关闭失败: 进程卡死')
+    probe.wrapper.unmount()
+  })
+
+  it('primary 失败：裸错误串 toast，但版本区与快照并列重刷（冷启动检查可能修正安装事实）', async () => {
+    const { adapter, primaryRun } = controlAdapter('running')
+    primaryRun.mockRejectedValue(new Error('完整性核验未通过'))
+    const probe = mountStore(adapter)
+    await flushPromises()
+    const statusCalls = (adapter.getStatus as ReturnType<typeof vi.fn>).mock.calls.length
+    const installCalls = (adapter.versions.listInstalled as ReturnType<typeof vi.fn>).mock.calls.length
+
+    await probe.store.runControl('primary')
+    expect(useToast().toastMsg.value).toBe('完整性核验未通过') // 裸串：primary 不入前缀词表
+    expect(adapter.versions.listInstalled).toHaveBeenCalledTimes(installCalls + 1)
+    expect(adapter.getStatus).toHaveBeenCalledTimes(statusCalls + 1)
+    expect(probe.store.busy).toBe(false)
+    probe.wrapper.unmount()
+  })
+})
+
+// ---------- load 请求代次（迟到回包不写回）：视图侧竞态的 store 面对账 ----------
+
+describe('ManagedConsoleStore load 代次竞态', () => {
+  it('旧请求迟到回包整体作废：数据/active 不反向覆盖、远程迟到的失败不污染错误账', async () => {
+    const gateLocal = deferred<ManagedVersionRecord[]>()
+    const gateActive = deferred<string>()
+    let rejectFirstRemote!: (reason?: unknown) => void
+    const firstRemote = new Promise<ManagedReleaseRecord[]>((_res, rej) => {
+      rejectFirstRemote = rej
+    })
+    const installedB: ManagedVersionRecord[] = [
+      { version: 'B', exePath: 'C:\\b\\t.exe', dir: 'C:\\b', size: 1, installedAt: '2026-10-01' },
+    ]
+    const installedA: ManagedVersionRecord[] = [
+      { version: 'A', exePath: 'C:\\a\\t.exe', dir: 'C:\\a', size: 1, installedAt: '2026-09-01' },
+    ]
+    const releasesB: ManagedReleaseRecord[] = [
+      { version: 'rB', published: '2026-10-01T00:00:00Z', size: 1 },
+    ]
+
+    let firstInstalledCall = true
+    let firstActiveCall = true
+    let firstRemoteCall = true
+    const { adapter } = fakeAdapter()
+    ;(adapter.versions.listInstalled as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if (firstInstalledCall) {
+        firstInstalledCall = false
+        return gateLocal.promise
+      }
+      return Promise.resolve(installedB)
+    })
+    ;(adapter.versions as { getActive?: unknown }).getActive = vi.fn(() => {
+      if (firstActiveCall) {
+        firstActiveCall = false
+        return gateActive.promise
+      }
+      return Promise.resolve('v-new')
+    })
+    ;(adapter.versions.listReleases as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      if (firstRemoteCall) {
+        firstRemoteCall = false
+        return firstRemote
+      }
+      return Promise.resolve(releasesB)
+    })
+
+    const probe = mountStore(adapter)
+    // 首拉（gen1）压住不返，二拉（gen2）先行落地——通道切换立即重载类场景
+    await probe.store.load()
+    await flushPromises()
+    expect(probe.store.installed.map((v) => v.version)).toEqual(['B'])
+    expect(probe.store.releases.map((r) => r.version)).toEqual(['rB'])
+    expect(probe.store.activeVersion).toBe('v-new')
+    expect(probe.store.listError).toBe('')
+
+    // gen1 迟到：本地回包与 active 覆盖、远程失败 setError 全部作废
+    gateLocal.resolve(installedA)
+    gateActive.resolve('v-old')
+    rejectFirstRemote(new Error('通道切换中断'))
+    await flushPromises()
+    expect(probe.store.installed.map((v) => v.version)).toEqual(['B'])
+    expect(probe.store.releases.map((r) => r.version)).toEqual(['rB'])
+    expect(probe.store.activeVersion).toBe('v-new')
+    expect(probe.store.listError).toBe('') // 旧代次远程失败不写新账
     probe.wrapper.unmount()
   })
 })

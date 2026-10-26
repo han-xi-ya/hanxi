@@ -1,9 +1,9 @@
-// 历史版本分区特征测试：状态回填、git/备份双模式呈现（P4 解禁后同面）、立即快照、
-// 按文件浏览（N33 批 A 立链、批 B 拆分后行为零回退：清单分组/时间线切换/行级对比/
-// 恢复解算链——断言穿过 SnapshotFileList/SnapshotTimeline 两子件的组合渲染）、
-// 预览弹窗文件清单与恢复确认链（mock 打桩范式照 SettingsSections.spec）。
-// 批 D 追加：旧摘要呈现回改（版本号串→能推则推+tooltip 留原文）、备份摘要
-// 整拷贝限定语、两模式版本容量整句、P8-A chip 正文去 Git 化（技术名进悬停）。
+// 历史版本分区特征测试：状态回填、git/备份双模式呈现（两模式同面）、立即快照、
+// 按文件浏览（清单分组/时间线切换/行级对比/恢复解算链——断言穿过
+// SnapshotFileList/SnapshotTimeline 两子件的组合渲染）、
+// 预览弹窗文件清单与恢复确认链（mock 打桩范式照 SettingsSections.spec）、
+// 旧摘要呈现回改（版本号串→能推则推+tooltip 留原文）、备份摘要整拷贝限定语、
+// 两模式版本容量整句、chip 正文去 Git 化（技术名进悬停）。
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SnapshotSection from '../SnapshotSection.vue'
@@ -75,12 +75,12 @@ describe('历史版本分区', () => {
     expect(w.text()).toContain('数据与存储') // 分区名机主拍板：备份/历史类归数据侧
     const switches = w.findAll('.switch')
     expect((switches[0].element as HTMLInputElement).checked).toBe(true)
-    expect(w.text()).toContain('版本历史（可浏览最近 50 版）') // §6 口径 + 批 D P8-A：正文去 Git 化
+    expect(w.text()).toContain('版本历史（可浏览最近 50 版）') // 两模式同口径 chip：正文去 Git 化
     expect(w.find('.chip').attributes('title')).toContain('Git') // 技术名收进悬停 tooltip
     expect(w.text()).toContain('D:\\hx\\.snapshots')
     const rows = w.findAll('tbody tr')
     expect(rows).toHaveLength(2)
-    // 批 D 旧摘要回改：config.json 命中静态名表推为"工作台设置"；memo/a.md
+    // 旧摘要回改：config.json 命中静态名表推为"工作台设置"；memo/a.md
     // 无账可推（本例未喂 ListFiles）原样保留；账本原文永远留在 tooltip
     expect(rows[0].findAll('td')[1].text()).toBe('工作台设置、memo/a.md')
     expect(rows[0].findAll('td')[1].attributes('title')).toBe('config.json, memo/a.md')
@@ -118,8 +118,8 @@ describe('历史版本分区', () => {
     snapSvc.ListFiles.mockResolvedValue(tracked)
     const w = await mountView()
     expect(w.text()).toContain('本机备份模式')
-    expect(w.text()).toContain('版本历史（整份拷贝 · 保留最近 30 份）') // §6 备份 chip 口径（批 D 直书整拷贝）
-    expect(w.find('.chip').attributes('title')).toContain('Git') // P8-A：降级原因收进悬停
+    expect(w.text()).toContain('版本历史（整份拷贝 · 保留最近 30 份）') // 备份 chip 口径：正文直书整拷贝
+    expect(w.find('.chip').attributes('title')).toContain('Git') // 降级原因收进悬停
     expect(w.text()).toContain('最近 30 份')
     expect(w.text()).toContain('最多展示最近 30 份') // 版本列表卡头容量整句（备份档如实）
     expect(snapSvc.ListRevisions).toHaveBeenCalled()
@@ -141,7 +141,7 @@ describe('历史版本分区', () => {
     expect(cell.attributes('title')).toBe('30 个文件')
   })
 
-  // ---------- N33 批 A：按文件浏览 ----------
+  // ---------- 按文件浏览 ----------
 
   it('清单分组渲染（标题映射与已删除徽标），点选拉时间线', async () => {
     stubGitStatus()
@@ -158,7 +158,7 @@ describe('历史版本分区', () => {
     expect(rows).toHaveLength(3)
     expect(rows[0].text()).toContain('被删的便签')
 
-    // 批 C：观察窗口径整句——清单卡头挂"最近 50 版观察窗"（数字单源常量渲染）
+    // 观察窗口径整句——清单卡头挂"最近 50 版观察窗"（数字单源常量渲染）
     expect(w.text()).toContain('3 个受保文件 · 最近 50 版观察窗')
     await rows[0].trigger('click')
     await flushPromises()
@@ -168,10 +168,10 @@ describe('历史版本分区', () => {
     expect(evRows[0].text()).toContain('删除')
     expect(evRows[0].text()).toContain('恢复被删内容')
     expect(evRows[1].text()).toContain('恢复')
-    // 批 C：双语义常驻——便签行"即时生效"徽标在组合视图中同样成立，
+    // 双语义常驻——便签行"即时生效"徽标在组合视图中同样成立，
     // 时间线头沿链口径整句与清单窗内整句各说各话（不硬统一数字）
     expect(evRows[0].text()).toContain('即时生效')
-    // 批 D 旧摘要回改上到时间线行：memo 尾段命中受保清单标题账，原文留 tooltip
+    // 旧摘要回改上到时间线行：memo 尾段命中受保清单标题账，原文留 tooltip
     expect(evRows[1].find('.fa-sum').text()).toBe('被删的便签')
     expect(evRows[1].find('.fa-sum').attributes('title')).toBe('memo/memo_9.md')
     expect(w.find('.fa-detail-head').text()).toContain('共 2 条版本事件（跨改名沿用）')
@@ -268,6 +268,81 @@ describe('历史版本分区', () => {
     expect(w.findAll('.fa-ev')).toHaveLength(1)
     // 迟到数据的特征文案（memo 时间线 D 行才有的「恢复被删内容」钮）全程不出现
     expect(w.text()).not.toContain('恢复被删内容')
+  })
+
+  it('时间线拉取失败不卡守卫：如实报错收口后，再选别的文件照常出时间线', async () => {
+    stubGitStatus()
+    snapSvc.ListRevisions.mockResolvedValue([])
+    snapSvc.ListFiles.mockResolvedValue(tracked)
+    snapSvc.FileHistory.mockImplementation((path: string) =>
+      path === 'memo/memo_9.md'
+        ? Promise.reject(new Error('history boom'))
+        : Promise.resolve([
+            { revisionId: 'cfg11112222', time: '2026-09-17T14:00:00+08:00', status: 'M', summary: 'config.json' },
+          ]),
+    )
+    const w = await mountView()
+    await w.findAll('.fa-file')[0].trigger('click') // memo：必失败
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('读取文件历史失败')
+    expect(useToast().toastMsg.value).toContain('history boom')
+    expect(w.text()).not.toContain('读取时间线…') // loading 收口，不永远转圈
+    expect(w.findAll('.fa-ev-row')).toHaveLength(0)
+    // 关键续命断言：失败没把序号守卫拧死，换选 config 仍出全量时间线
+    await w.findAll('.fa-file')[1].trigger('click')
+    await flushPromises()
+    expect(w.findAll('.fa-ev-row')).toHaveLength(1)
+    expect(w.find('.fa-detail-head').text()).toContain('工作台设置')
+  })
+
+  it('对比拉取失败即收面板并如实播报，随后再开另一行对比照常可用', async () => {
+    stubGitStatus()
+    snapSvc.ListRevisions.mockResolvedValue([])
+    snapSvc.ListFiles.mockResolvedValue(tracked)
+    snapSvc.FileHistory.mockResolvedValue(goneHistory)
+    snapSvc.DiffFile.mockRejectedValueOnce(new Error('diff boom'))
+    snapSvc.DiffFile.mockResolvedValue({
+      path: 'memo/memo_9.md', status: 'M', old: '重试前旧文', new: '重试后新文',
+      oldTruncated: false, newTruncated: false, summary: '',
+    })
+    const w = await mountView()
+    await w.findAll('.fa-file')[0].trigger('click')
+    await flushPromises()
+    await w.findAll('.fa-ev-row')[0].findAll('button')[0].trigger('click') // D 行对比：失败
+    await flushPromises()
+    expect(useToast().toastMsg.value).toContain('读取对比失败')
+    expect(useToast().toastMsg.value).toContain('diff boom')
+    expect(w.find('.fa-diff').exists()).toBe(false) // 失败不留半开的空面板
+    await w.findAll('.fa-ev-row')[1].findAll('button')[0].trigger('click') // M 行再开
+    await flushPromises()
+    expect(w.text()).toContain('重试后新文')
+    expect(snapSvc.DiffFile).toHaveBeenCalledTimes(2)
+  })
+
+  it('同连点两下对比（在飞收起）：收起即作废慢响应，迟到内容不得让面板自己冒回来', async () => {
+    stubGitStatus()
+    snapSvc.ListRevisions.mockResolvedValue([])
+    snapSvc.ListFiles.mockResolvedValue(tracked)
+    snapSvc.FileHistory.mockResolvedValue(goneHistory)
+    let resolveDiff: (v: unknown) => void = () => {}
+    snapSvc.DiffFile.mockImplementation(() => new Promise((r) => { resolveDiff = r }))
+    const w = await mountView()
+    await w.findAll('.fa-file')[0].trigger('click')
+    await flushPromises()
+    const diffBtn = () => w.findAll('.fa-ev-row')[1].findAll('button')[0]
+    await diffBtn().trigger('click') // 开对比：请求在飞
+    await flushPromises()
+    expect(diffBtn().text()).toContain('收起对比') // 行态已切到展开
+    await diffBtn().trigger('click') // 在飞中再点：收起并作废该请求
+    await flushPromises()
+    resolveDiff({
+      path: 'memo/memo_9.md', status: 'M', old: 'GHOST-OLD', new: 'GHOST-NEW',
+      oldTruncated: false, newTruncated: false, summary: '',
+    })
+    await flushPromises()
+    expect(w.find('.fa-diff').exists()).toBe(false)
+    expect(w.text()).not.toContain('GHOST-OLD')
+    expect(w.text()).not.toContain('GHOST-NEW')
   })
 
   it('对比竞态：先发行迟到的慢响应不得混入后开的对比面板（序号守卫）', async () => {

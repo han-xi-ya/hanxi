@@ -1,4 +1,4 @@
-// useTheme 跨窗广播（N39）：发起窗"改+广播"、收端窗"回写不再广播"（无回环的
+// useTheme 跨窗广播：发起窗"改+广播"、收端窗"回写不再广播"（无回环的
 // 结构保证）、启动校正不广播（防每窗起手一场事件风暴）。模块级单例 + initTheme
 // 一次性守卫，逐用例 resetModules 重装取干净实例。
 import { nextTick } from 'vue'
@@ -126,7 +126,7 @@ describe('useTheme 跨窗广播（N39）', () => {
   })
 })
 
-// N40 界面字体档：与明暗/色板同通道（缓存 + 后端真相 + theme:changed 广播搭车），
+// 界面字体档：与明暗/色板同通道（缓存 + 后端真相 + theme:changed 广播搭车），
 // 但 watch 不触 DWM——字体纯内容层，原生窗框无感。
 describe('useTheme 界面字体档（N40）', () => {
   beforeEach(() => {
@@ -198,7 +198,7 @@ describe('useTheme 界面字体档（N40）', () => {
   })
 })
 
-// 波 1d 参数化收敛锁：theme/accent/font 三轴的 readAxisCache/writeAxisCache 走同一份实现，
+// 三轴参数化契约：theme/accent/font 的 readAxisCache/writeAxisCache 走同一份实现，
 // 逐轴行为与收敛前逐字一致——合法值回填、脏值丢弃回落默认、setter 经 watch 回写各自键。
 describe('useTheme 三轴 localStorage 缓存（同构读写）', () => {
   beforeEach(() => {

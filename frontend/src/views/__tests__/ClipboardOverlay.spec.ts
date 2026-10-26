@@ -1,4 +1,4 @@
-// 剪贴板浮层（#clipboardoverlay 独立窗视图，A5 线 · R-F1 体验改造轮）行为规格：
+// 剪贴板浮层（#clipboardoverlay 独立窗视图，A5 线，R-F1 口径）行为规格：
 // 后端只经 @/adapters/clipboard 门面——本 spec 用 setClipboardTransport 注假件、
 // afterEach 卸回 null（即 kernel 设计的测试 seam 本身，不 import 生成绑定）；
 // 事件走 useWailsEvent（@wailsio/runtime 打桩收 handler，载荷 {data} 包装与真谱一致）。
@@ -7,13 +7,15 @@
 // 优先）、R-G2 真缩略图（thumb 行渲 img、缺位回落字形位、解码失败拉黑回落）、
 // opening 清稿重聚焦重播入场、R-G1 选取线（数字直选/Alt+数字/Enter/行点击一律走
 // Paste，不按 kind 前端分叉）、↑↓ 环绕环游（底部回顶、顶部到底）、有词时裸数字
-// 放行给搜索词、Esc 走 CollapseOverlay 显式 RPC 收窗（H1：blur 唤不动 Go 失焦，
-// blur 断言作废）/ 复制不关窗走 Set / 置顶就地回排、IME 三重盾（isComposing +
+// 放行给搜索词、Esc 走 CollapseOverlay 显式 RPC 收窗（H1：blur 按 WHATWG 是
+// no-op，唤不动 Go 失焦，故收窗必走显式 RPC）/ 复制不关窗走 Set / 置顶就地回排、IME 三重盾（isComposing +
 // compositionstart/end 本地旗标 + Process 键）、未知 kind 兜底 '?' 回显原文、
 // paused 角标双喂（GetStatus + clipboard:paused）、updated 乐观顶置去重与带词静默
 // 重拉、removed 摘行、Paste 失败保窗报错（含 image/file 后端边界话术原样上提示）、
 // 刷新失败不掀已用列表、adapter 未接线中文错误条不白屏且恢复接线后 opening 自愈、
-// 空态两式文案。
+// 空态两式文案、全空格 preview 透传快照（与主界面 ClipRow trim 兜底的口径分叉在案）；
+// 队列面另钉：队首出队位次重算、贴到一半条目被删的降级与快照纠偏、Go 空队列
+// nil 线形、清队失败/挂载拉队失败的各自降级、opening 会话重建重拉队列。
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -303,6 +305,19 @@ describe('ClipboardOverlay 取数与呈现', () => {
     expect(w.find('.clip-empty').text()).toBe('没有匹配的条目')
     w.unmount()
   })
+
+  it('全空格 preview 原样透传（口径分叉在案，呈裁后归一）：rowPreview 只判 truthy 不 trim', async () => {
+    // 现状快照：主界面 ClipRow 走 previewFallback 的 trim 分支，同形输入「   」
+    // 已在其 spec（「摘要空时按类别兜底」条）钉成「（空文本）」；浮层行只判
+    // truthy → 空格直通（观感为空行）。两端分叉是 2026-10-26 审查存疑项，
+    // 归一前先按现状各钉一边，防无意漂移；裁决定后本条与 ClipRow 同改。
+    entries = [entry({ id: 'ws', preview: '   ' }), entry({ id: 'em', preview: '' })]
+    const w = mountOverlay()
+    await flushMicrotasks()
+    expect(w.findAll('.clip-preview')[0].element.textContent).toBe('   ') // 空格不落兜底话术
+    expect(w.findAll('.clip-preview')[1].element.textContent).toBe('(空内容)') // 真空串才走兜底
+    w.unmount()
+  })
 })
 
 describe('ClipboardOverlay 键盘动线（R-F1：唤起→定位→Paste 三步闭环）', () => {
@@ -370,7 +385,7 @@ describe('ClipboardOverlay 键盘动线（R-F1：唤起→定位→Paste 三步�
     await nextTick()
     expect(rows()[1].classes()).toContain('is-active')
     press('ArrowUp')
-    press('ArrowUp') // 顶行再上 = 翻到底（R-F1 环游，旧版夹紧行为作废）
+    press('ArrowUp') // 顶行再上 = 翻到底（R-F1 环绕档，不首尾夹紧）
     await nextTick()
     expect(rows()[2].classes()).toContain('is-active')
     expect(rows()[0].classes()).not.toContain('is-active')
@@ -737,6 +752,102 @@ describe('ClipboardOverlay 顺序粘贴队列（v1.8）', () => {
     await flushMicrotasks()
     expect(w.find('.clip-tip').text()).toContain('队列操作失败')
     expect(w.find('.clip-queue').exists()).toBe(false) // 失败不乐观置位
+    w.unmount()
+  })
+
+  it('队首出队位次重算：快照 a1,a2 → 只剩 a2（热键贴掉队首）后 a2 从队2 重编队1，a1 徽标与钮文案同退，顶栏 队·2→队·1', async () => {
+    queueSeed = ['a1', 'a2']
+    const w = mountOverlay()
+    await flushMicrotasks()
+    expect(queueActs(w)[0].text()).toBe('队1')
+    expect(queueActs(w)[1].text()).toBe('队2')
+    expect(w.find('.clip-queue').text()).toBe('队·2')
+    runtime.handlers['clipboard:queue:changed']({ data: { ids: ['a2'] } })
+    await flushMicrotasks()
+    // 位次是整表重建（Map 由新快照重生成），不是原位减一：a2 顶上来占 1，
+    // a1 的徽标/钮文案/顶栏余数三处出口同拍收敛
+    expect(queueActs(w)[0].text()).toBe('队')
+    expect(w.findAll('.clip-row')[0].findAll('.clip-badge')).toHaveLength(0)
+    expect(queueActs(w)[1].text()).toBe('队1')
+    expect(w.findAll('.clip-row')[1].find('.clip-badge').text()).toBe('队1')
+    expect(w.find('.clip-queue').text()).toBe('队·1')
+    w.unmount()
+  })
+
+  it('贴到一半条目被删：行先离场、队列不自剪（余数跟快照不跟行数），快照到达再纠偏', async () => {
+    queueSeed = ['a1', 'a2']
+    const w = mountOverlay()
+    await flushMicrotasks()
+    runtime.handlers['clipboard:removed']({ data: { id: 'a1' } })
+    await nextTick()
+    expect(previews(w)).toEqual(['https://example.com/x', 'win11 更新说明']) // a1 行已摘
+    // 设计口径：失同步由 queue:changed 全量快照天然纠，前端不瞎裁——被删的队首
+    // 此刻仍在快照里，余数与徽标序照快照说
+    expect(w.find('.clip-queue').text()).toBe('队·2')
+    expect(w.findAll('.clip-row')[0].find('.clip-badge').text()).toBe('队2')
+    runtime.handlers['clipboard:queue:changed']({ data: { ids: ['a2'] } })
+    await flushMicrotasks()
+    expect(w.find('.clip-queue').text()).toBe('队·1')
+    expect(w.findAll('.clip-row')[0].find('.clip-badge').text()).toBe('队1')
+    w.unmount()
+  })
+
+  it('queue:changed 空队线形：Go nil slice（ids:null）与畸形载荷一律当空队收敛，不留幽灵余数', async () => {
+    queueSeed = ['a1']
+    const w = mountOverlay()
+    await flushMicrotasks()
+    expect(w.find('.clip-queue').text()).toBe('队·1')
+    runtime.handlers['clipboard:queue:changed']({ data: { ids: null as unknown as string[] } }) // 后端清队后广播的 wire 实况
+    await nextTick()
+    expect(w.find('.clip-queue').exists()).toBe(false)
+    expect(w.findAll('.clip-row')[0].findAll('.clip-badge')).toHaveLength(0)
+    runtime.handlers['clipboard:queue:changed']({ data: { ids: ['a2'] } })
+    await nextTick()
+    expect(w.find('.clip-queue').text()).toBe('队·1') // 复位可再来
+    runtime.handlers['clipboard:queue:changed']({}) // 无 data 畸形载荷同样收敛为空
+    await nextTick()
+    expect(w.find('.clip-queue').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('清队失败：红字上浮、队列不乐观清空（余数徽标原位可重试）', async () => {
+    queueSeed = ['a1', 'a2']
+    fake.QueueClear.mockRejectedValueOnce(new Error('clear ipc dead'))
+    const w = mountOverlay()
+    await flushMicrotasks()
+    await w.find('.clip-queue').trigger('click')
+    await flushMicrotasks()
+    expect(fake.QueueClear).toHaveBeenCalledTimes(1)
+    expect(w.find('.clip-tip').text()).toContain('清空队列失败: clear ipc dead')
+    expect(w.find('.clip-tip').classes()).toContain('tip-err')
+    expect(w.find('.clip-queue').text()).toBe('队·2') // 失败不空屏——账还在后端，下轮快照也是它
+    expect(queueActs(w)[0].text()).toBe('队1')
+    w.unmount()
+  })
+
+  it('挂载拉队列失败静默：队列是辅助上下文——不掀错误条不打轻提示，列表主链照常', async () => {
+    fake.QueueList.mockRejectedValueOnce(new Error('queue list dead'))
+    const w = mountOverlay()
+    await flushMicrotasks()
+    expect(previews(w)).toHaveLength(3) // 主链 List 不受连坐
+    expect(w.find('.clip-errbar').exists()).toBe(false)
+    expect(w.find('.clip-tip').text()).toBe('') // 与入队/清队失败不同谱：拉不到连小字都不打扰
+    expect(w.find('.clip-queue').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('opening 会话重建：队列快照随每次唤出重拉（藏窗期间队首被热键消费，再唤出即同步）', async () => {
+    queueSeed = ['a1', 'a2']
+    const w = mountOverlay()
+    await flushMicrotasks()
+    expect(fake.QueueList).toHaveBeenCalledTimes(1)
+    queueSeed = ['a2'] // 窗口收着时全局热键贴掉队首：真机消费后余下快照
+    runtime.handlers['clipboard:overlay:opening']({})
+    await flushMicrotasks()
+    expect(fake.QueueList).toHaveBeenCalledTimes(2) // opening 必带队列重建，否则浮层拿着上轮幽灵序
+    expect(w.find('.clip-queue').text()).toBe('队·1')
+    expect(queueActs(w)[0].text()).toBe('队')
+    expect(queueActs(w)[1].text()).toBe('队1')
     w.unmount()
   })
 })

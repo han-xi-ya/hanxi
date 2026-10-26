@@ -87,4 +87,43 @@ describe('useSnipasteDownloadTickets', () => {
     expect(api.isBusy('2.2.3')).toBe(false)
     wrapper.unmount()
   })
+
+  it('error 后重取票（begin）：行内错误清账、票据回 pending、闸门重新合上', () => {
+    // 视图侧 download() 的 catch 走 fail()，用户再点同一版本钮即 begin()——
+    // 该 error→重取 迁移此前无人锁：错误残影若不清，行内红字会盖住新一轮下载。
+    const { api, wrapper } = mountTickets()
+    api.fail('2.2.3', '网络中断')
+    expect(api.isBusy('2.2.3')).toBe(false)
+
+    api.begin('2.2.3')
+    expect(api.ticketOf('2.2.3')?.stage).toBe('pending')
+    expect(api.ticketOf('2.2.3')?.message).toBe('正在创建下载任务')
+    expect(api.rowErrors.value['2.2.3']).toBe('')
+    expect(api.isBusy('2.2.3')).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('done 静默清票窗口内重新 begin：旧 retire 计时器作废，新票不被误吞', async () => {
+    vi.useFakeTimers()
+    const { api, wrapper } = mountTickets()
+    const done = { key: '2.2.3', stage: 'done', done: 100, total: 100, message: '' }
+    await api.handleProgress(done, async () => true, () => true)
+    await vi.advanceTimersByTimeAsync(500) // retire 在途（900ms 未至）
+
+    api.begin('2.2.3') // 立刻再点下载
+    await vi.advanceTimersByTimeAsync(1500) // 旧计时器若未作废，会在新票上清票
+    expect(api.ticketOf('2.2.3')).toBeDefined()
+    expect(api.ticketOf('2.2.3')?.stage).toBe('pending')
+    wrapper.unmount()
+  })
+
+  it('markInProgress：后端回执已在下载时清行错并立“正在进行”票', () => {
+    const { api, wrapper } = mountTickets()
+    api.fail('2.2.3', '上一次失败残留')
+    api.markInProgress('2.2.3')
+    expect(api.rowErrors.value['2.2.3']).toBe('')
+    expect(api.ticketOf('2.2.3')?.message).toBe('已有下载任务正在进行')
+    expect(api.isBusy('2.2.3')).toBe(true) // 合闸防连点二次投递
+    wrapper.unmount()
+  })
 })

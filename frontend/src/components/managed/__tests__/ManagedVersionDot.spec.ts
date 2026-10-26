@@ -1,4 +1,4 @@
-// ManagedVersionDot 契约测试（波 0）：锁定托管家族状态点标准形的 DOM 结构——
+// ManagedVersionDot 契约测试：锁定托管家族状态点标准形的 DOM 结构——
 // span.ver-status 基形 + 状态档位类 + 消费方词面直传（组件不推断各态文案）。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'

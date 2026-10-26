@@ -1,9 +1,9 @@
-// 特征测试（Phase 4 组 E · Wave 5 批 0 收敛续版）：RecordlyView 行为基线。
+// 特征测试：RecordlyView 行为基线。
 // 锁定：升级检测（核心版本互认）、stable/beta 双通道、单目录覆盖安装语义、
 // 确认/导入文案、事件改写与 KeepAlive 轮询契约。
-// 批 0 收敛新增：真实 adapter 的缺省 active 形状（ManagedVersionPanel 消费面）、
+// 契约消费成色：真实 adapter 的缺省 active 形状（ManagedVersionPanel 消费面）、
 // 联动辅助卡（ManagedExtrasCard）对 adapter.extras 的驱动。
-// 增强批收编改锁契约路径：「安装失败/已安装」动词词面经 copy.errorPrefix/downloadLabel
+// 词面/钩子契约路径：「安装失败/已安装」动词词面经 copy.errorPrefix/downloadLabel
 // 等覆写走 store.runDownload 词源；版本区即共享面板（互认经 versions.sameVersion、
 // 封锁经 downloadBlock、引导行经 adapter.hint 投影上下文）。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'

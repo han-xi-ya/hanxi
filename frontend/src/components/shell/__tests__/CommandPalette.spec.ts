@@ -155,3 +155,75 @@ describe('CommandPalette', () => {
     expect(w.findAll('.p-item')).toHaveLength(12)
   })
 })
+
+// 评分函数权重档矩阵（fieldScore：字段权重×10000 + 首命中位置×10 + 字符间距）——
+// 跨档差恒压过档内位置/间距/组序 nav.order，全部经渲染序外部可验。
+describe('CommandPalette 评分权重档与查询边界', () => {
+  it('标题档(×0)压过路由档(×10000)：组序更靠后的标题命中仍排前', async () => {
+    const w = factory({
+      navs: [
+        nav('/ext/zzz', 'po启动器', 'i:x', 9, 'system'), // 标题命中 → 档 0
+        nav('/ext/portscan', '端口扫描', 'i:x', 1, 'network'), // 仅 route 命中 → 档 1
+      ],
+    })
+    await hotkey()
+    await w.find('input').setValue('po')
+    expect(w.findAll('.p-name').map((n) => n.text())).toEqual(['po启动器', '端口扫描'])
+  })
+
+  it('组名档(×20000)垫底：中文查询下标题命中在前、组名命中在后', async () => {
+    const w = factory({
+      navs: [
+        nav('/ext/netdiag', '网络诊断', 'i:x', 9, 'system'), // 标题命中 → 档 0
+        nav('/ext/portkill', '释放端口', 'i:x', 1, 'network'), // 仅组名「网络与传输」命中 → 档 2
+      ],
+    })
+    await hotkey()
+    await w.find('input').setValue('网络')
+    const items = w.findAll('.p-item')
+    expect(items.map((it) => it.find('.p-name').text())).toEqual(['网络诊断', '释放端口'])
+    // 段标题是与条目按钮平级的 .p-sec：组命中只高亮「网络与传输」段，
+    // 「系统管理」段不吃高亮（标题命中不参与组段渲染）。
+    const secs = w.findAll('.p-sec')
+    expect(secs.map((s) => s.text())).toEqual(['系统管理', '网络与传输'])
+    expect(secs[1].find('em').text()).toBe('网络')
+    expect(secs[0].find('em').exists()).toBe(false)
+  })
+
+  it('同档同首位置比间距：连续命中「po」先于隔字符「pxo」，压过 nav.order 次级判据', async () => {
+    const w = factory({
+      navs: [
+        nav('/ext/a', 'port面板', 'i:x', 9, 'system'), // idx[0,1] gap=0
+        nav('/ext/b', 'pxo面板', 'i:x', 1, 'system'), // idx[0,2] gap=1，order 更小仍居后
+      ],
+    })
+    await hotkey()
+    await w.find('input').setValue('po')
+    expect(w.findAll('.p-name').map((n) => n.text())).toEqual(['port面板', 'pxo面板'])
+  })
+
+  it('查询大小写不敏感：「POR」与现册「por」同序同集', async () => {
+    const w = factory()
+    await hotkey()
+    await w.find('input').setValue('POR')
+    expect(w.findAll('.p-name').map((n) => n.text())).toEqual(['释放端口', '端口扫描'])
+  })
+
+  it('纯空白查询 trim 后按空态处理：全量浏览态分段展示不滤空', async () => {
+    const w = factory()
+    await hotkey()
+    await w.find('input').setValue('   ')
+    expect(w.findAll('.p-item')).toHaveLength(4)
+    expect(w.findAll('.p-sec').map((s) => s.text())).toEqual([
+      '网络与传输', '系统管理', '效率办公', '其他',
+    ])
+  })
+
+  it('正则特殊字符按字面 indexOf 处理：不崩不误匹配，全落空显示空态', async () => {
+    const w = factory()
+    await hotkey()
+    await w.find('input').setValue('.*+?()[]{}|^$\\')
+    expect(w.findAll('.p-item')).toHaveLength(0)
+    expect(w.find('.p-empty').exists()).toBe(true)
+  })
+})

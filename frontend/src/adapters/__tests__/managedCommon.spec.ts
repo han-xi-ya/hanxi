@@ -7,7 +7,7 @@
 //  - NormalizedProgress 恰好五字段、key 即面板行匹配位（多带/少带字段都是契约破坏）；
 //  - 回执词面即用户可见 toast 文案（`已将 X 设为使用版本`/`版本 X 已安装`/
 //    `已卸载 X`），reloadVersions/activeVersion 决定共享件是否重拉与高亮。
-// 迁出前 24 个 adapter 内联体与此同源——本 spec 同时是迁移前后逐字节等值的锚点。
+// 本件是 adapter 家族同形接线与回执模板的单源——本 spec 即该单源的词面/键形锚点。
 // ============================================================================
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'

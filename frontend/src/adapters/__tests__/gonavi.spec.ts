@@ -1,5 +1,5 @@
-// gonavi adapter 特征测试（三线并行 · 对齐骨架线实码契约）：
-// 绑定面经 vi.mock 打桩（真实生成物落盘前由 vitest.config 解析缝兜底）；
+// gonavi adapter 特征测试（对齐后端实码契约）：
+// 绑定面经 vi.mock 打桩（单测不触真实绑定）；
 // 覆盖漂移警示投影（banner 压过运行态 + 状态灯色档 + driftNote 明细）、
 // metaHints 四条如实披露（含漂移徽章语义）、下载 confirm 闸（若运行实例在）、
 // 退出前 QuitAdvisory 预告确认流、末版卸载预告复用、事件订阅名与进度归一。

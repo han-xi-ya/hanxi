@@ -31,7 +31,7 @@ describe('createSnipasteAdapter', () => {
     expect(adapter.stateText?.({ state: 'stopped' } as never)).toBe('本会话未托管')
     expect(adapter.stateText?.({ state: 'running' } as never)).toBe('本会话实例运行中')
     expect(adapter.stateText?.({ state: 'quitting' } as never)).toBe('正在退出')
-    // W2/N1：external 升为一级状态（N3 分档接管），不再走"未托管"兜底
+    // external 为一级状态（终裁分档接管），不走"未托管"兜底
     expect(adapter.stateText?.({ state: 'external' } as never)).toBe('外部实例运行中')
     expect(adapter.stateText?.({ state: 'unknown' } as never)).toBe('本会话未托管')
   })

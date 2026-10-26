@@ -1,5 +1,5 @@
-// 特征测试（组 G2 迁移护航）：LanScannerView 扫描流 + 进度事件 + 行内备注编辑 + 复制。
-// 断言基于 DOM 文本/调用序列；卸载确认等交互机制未变（本视图无 confirm）。
+// 特征测试：LanScannerView 扫描流 + 进度事件 + 行内备注编辑 + 复制。
+// 断言基于 DOM 文本/调用序列（本视图无 confirm 交互）。
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -172,6 +172,35 @@ describe('LanScannerView 装载与扫描', () => {
     w.unmount()
   })
 
+  it('停止窗口：收口前在飞进度推流继续入账，取消后的部分结果照常落地', async () => {
+    // 后端 Cancel 只掐 context，worker 收尾期间仍持续推 lan:progress；
+    // 前端在「已点停止、Scan 未收口」窗口内必须继续记账，收口时部分结果照常入账。
+    stubDefaults()
+    let resolveScan: (v: unknown) => void = () => {}
+    svc.Scan.mockReturnValue(new Promise((r) => (resolveScan = r)))
+    const w = mountView()
+    await flushMicrotasks()
+    await w.find('button.btn-primary').trigger('click')
+    await nextTick()
+    runtime.handlers['lan:progress']({ data: { scanned: 120, total: 254, found: 7 } })
+    await nextTick()
+    const stopBtn = w.findAll('button').find((b) => b.text() === '停止扫描')!
+    await stopBtn.trigger('click')
+    await flushMicrotasks()
+    expect(svc.Cancel).toHaveBeenCalled()
+    // 停止已发、收口未至：新进度事件照常入账，旗不提前摘
+    runtime.handlers['lan:progress']({ data: { scanned: 200, total: 254, found: 9 } })
+    await nextTick()
+    expect(w.find('.progress-meta').text()).toContain('200 / 254')
+    expect(w.findAll('button').some((b) => b.text() === '停止扫描')).toBe(true)
+    resolveScan(devices) // ctx 排空：取消轮带部分结果走 finally 唯一收口
+    await flushMicrotasks()
+    expect(w.findAll('.tbl tbody tr')).toHaveLength(3)
+    // 徽标以实际行数优先（devices.length || progress.found）：3 台，而非推流的 9
+    expect(w.find('.found-badge').text()).toContain('发现 3 台设备')
+    w.unmount()
+  })
+
   it('卸载注销进度订阅', async () => {
     stubDefaults()
     const w = mountView()
@@ -219,8 +248,7 @@ describe('LanScannerView 交互：复制与行内备注', () => {
     await w.findAll('.remark-display')[1].trigger('click') // 第二行（本机，remark 空）
     await new Promise((r) => setTimeout(r)) // 等 nextTick 回调完成聚焦
     const input = w.find('.remark-edit-box input')
-    // 组 G2 修复注记：v-for 内模板 ref 为数组、原实现 focus() 必抛（自动聚焦从未生效）；
-    // 现按作者本意恢复——进入编辑即聚焦全选
+    // 断言意图：v-for 内模板 ref 为数组，解包后进入编辑即聚焦全选（原实现直接 focus() 必抛）
     expect(document.activeElement).toBe(input.element)
     await input.setValue('开发机')
     await input.trigger('keydown.enter')

@@ -1,8 +1,8 @@
-// dbx adapter 特征测试（三线并行 · 冻结契约口径）：
-// 绑定面经 vi.mock 打桩（真实生成物落盘前由 vitest.config 解析缝兜底）；
+// dbx adapter 特征测试（冻结契约口径）：
+// 绑定面经 vi.mock 打桩（单测不触真实绑定）；
 // 覆盖账本漂移警示投影（banner 压过运行态 + 状态灯色档 + 事件轮次账目回填）、
 // metaHints 五条如实披露（日更节奏/漂移语义/数据留存/托盘退出/minisign 不验）、
-// 下载无 confirm 闸新口径、末版卸载预告复用（soleVersionUninstallNote）、
+// 下载无 confirm 闸口径、末版卸载预告复用（soleVersionUninstallNote）、
 // followOnExit 回执词与数据目录钮取径。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

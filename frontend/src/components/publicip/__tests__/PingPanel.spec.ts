@@ -1,4 +1,4 @@
-// 拆分护航（Phase 6）：PingPanel——v-model 双向链路与「先回填目标、再发起」的执行序。
+// 组件边界护航：PingPanel——v-model 双向链路与「先回填目标、再发起」的执行序。
 // 该顺序是跨 Tab 快捷联动的命门：宿主在 run 时必须已读到新目标（emit 同步送达）。
 import { defineComponent, h, ref } from 'vue'
 import { mount } from '@vue/test-utils'

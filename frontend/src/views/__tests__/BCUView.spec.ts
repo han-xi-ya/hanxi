@@ -1,9 +1,8 @@
-// 特征测试（Phase 4 组 E，波 2E 版本区回迁收口）：BCUView 行为基线。
+// 特征测试：BCUView 行为基线。
 // 锁定：六态文案/推荐变体/双变体下载键/确认与导入文案/事件改写/KeepAlive 轮询契约。
-// 迁移到共享层后，除 window.confirm/prompt 的"交互机制"断言换为 useConfirm/usePrompt
-// 单例外，其余断言必须原样保持全绿；波 2E 起面板三段（meta/已装卡/首用空态）走
-// ManagedVersionPanel 默认体，双变体表经 #remote-table 槽留视图，方言表锚点
-// .bcu-ver-status 退役、选择器迁 ManagedVersionDot 渲染形 .ver-status。
+// 交互面经 useConfirm/usePrompt 单例（window.confirm/prompt 不再直触）；面板三段
+// （meta/已装卡/首用空态）走 ManagedVersionPanel 默认体，双变体表经 #remote-table
+// 槽留视图，状态圆点选择器即 ManagedVersionDot 渲染形 .ver-status。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -94,7 +93,7 @@ const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
 beforeEach(() => {
-  // 迁移后交互面：window.confirm/prompt 已被 useConfirm/usePrompt 单例收编，
+  // 交互面为 useConfirm/usePrompt 单例，
   // 测试通过 settle* 模拟宿主对话框的确认/取消出口。
   settleConfirm(false)
   settlePrompt(null)
@@ -132,7 +131,7 @@ describe('BCUView 初始装载与状态文案', () => {
   })
 
   it('提示条三分支互斥：external 警告 / failed 带后端错误 / running 成功说明', async () => {
-    // 迁移后提示条为 UiBanner（全局 .banner/.banner-{tone} 原子）
+    // 提示条为 UiBanner（全局 .banner/.banner-{tone} 原子）
     stubDefaults({ state: 'external' })
     let r = await mountView()
     expect(r.wrapper.find('.banner').classes()).toContain('banner-warn')
@@ -232,7 +231,7 @@ describe('BCUView 操作流', () => {
 
     await uninstallBtn.trigger('click')
     await flushMicrotasks()
-    // 迁移后由 useConfirm 全局单例承接，文案逐字保留（含"不可恢复"警示）
+    // 由 useConfirm 全局单例承接，文案一致（含"不可恢复"警示）
     expect(confirmState.open).toBe(true)
     expect(confirmState.options.title).toBe('确定卸载 BCU 6.1.0？')
     expect(confirmState.options.description).toContain('不可恢复')

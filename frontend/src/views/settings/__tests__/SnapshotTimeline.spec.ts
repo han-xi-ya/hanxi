@@ -1,10 +1,10 @@
-// 右栏文件时间线组件级测试（N33 批 B：断言自 SnapshotSection.spec 平移 + 行级 diff 新增）：
+// 右栏文件时间线组件级测试：
 // 事件行词表/按钮位次（对比=button[0]、恢复=button[1]，父级恢复链靠此契约）、
 // D 行「恢复被删内容」文案、统一式行 diff（删红加绿 token 类）、hunk 折叠可展开、
 // 截断态如实标注、D/A 侧说明、config 顶层键变化标注、全等空态。
-// 批 C 新增：沿链口径整句、恢复生效常驻徽标、窄屏折行的结构近似断言
-// （jsdom 不跑媒体查询，≤640px 视觉溢出归批 D 真机清单核）。
-// 批 D 新增：事件行旧摘要回改呈现（命中标题账换名/推不出原样/tooltip 留原文）。
+// 另覆盖：沿链口径整句、恢复生效常驻徽标、窄屏折行的结构近似断言
+// （jsdom 不跑媒体查询，≤640px 视觉溢出归真机核验）、
+// 事件行旧摘要回改呈现（命中标题账换名/推不出原样/tooltip 留原文）。
 // 本件不发 RPC（数据全走 props），无需 mock bindings。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'

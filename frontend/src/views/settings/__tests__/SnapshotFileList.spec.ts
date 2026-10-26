@@ -1,9 +1,8 @@
-// 左栏受保文件清单组件级测试（N33 批 B 拆分自 SnapshotSection 断言平移 + 中文名表新增；
-// 批 C 补恢复生效常驻徽标、"最近 N 次变化"整句与窄屏 chip 条结构断言）：
-// 分组词表、中文名映射优先级（前端表 > 后端 Display > 文件名回落）、
-// 已删除徽标、选中态与 select 事件。纯呈现件，无 bindings 依赖。
+// 左栏受保文件清单组件级测试：分组词表、中文名映射优先级（前端表 > 后端 Display >
+// 文件名回落）、已删除徽标、恢复生效常驻徽标、"最近 N 次变化"整句与窄屏 chip 条
+// 结构断言、选中态与 select 事件。纯呈现件，无 bindings 依赖。
 // 窄屏限制说明：jsdom 不评估媒体查询，≤640px chip 条只能以 DOM 结构近似断言
-// （组标签与行按钮平铺同层 = 纯 CSS 可折横排的前提），像素级溢出归批 D 真机清单。
+// （组标签与行按钮平铺同层 = 纯 CSS 可折横排的前提），像素级溢出归真机核验。
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import SnapshotFileList from '../SnapshotFileList.vue'
@@ -31,7 +30,7 @@ describe('SnapshotFileList', () => {
     expect(rows[0].text()).toContain('被删的便签')
     // config.json 命中前端映射表，盖掉后端文件名回落
     expect(rows[1].text()).toContain('工作台设置')
-    // state 例外表：projects.json → frpc（§2 例外，落盘名不是模块 ID）
+    // state 例外表：projects.json → frpc（例外：落盘名不是模块 ID）
     expect(rows[2].text()).toContain('frpc 项目配置')
     // 映射不到的 state 文件原样回落文件名（诚实边界，不瞎猜）
     expect(rows[3].text()).toContain('live.json')

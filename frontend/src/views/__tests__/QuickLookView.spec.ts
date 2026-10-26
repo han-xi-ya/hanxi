@@ -1,11 +1,9 @@
-// 特征测试（组 B · 批 0 共享契约迁入件，波 2E 版本区回迁收口）：QuickLookView
-// 迁移（ManagedControlBar/ManagedVersionPanel/ManagedExtrasCard + store + adapter）
-// 后的行为基线。
+// 特征测试：QuickLookView 走共享形制（ManagedControlBar/ManagedVersionPanel/
+// ManagedExtrasCard + store + adapter）后的行为基线。
 // 断言"做了什么"而非"怎么做"：启停/重载三钮矩阵、卸载/导入确认文案、面板进度
-// 呈现（「安装中/哈希校验/解压安装」词面经 adapter.copy 覆写逐字保留）、双事件
-// 订阅、轮询与 KeepAlive 契约逐字保留；状态灯类名由视图私有 .ql-status-light
-// 落回共享标准形 .status-light，波 2E 后方言表锚点 .ql-ver-status 退役、
-// 选择器迁 ManagedVersionDot 渲染形 .ver-status，并新增重载动词回执用例锁定
+// 呈现（「安装中/哈希校验/解压安装」词面经 adapter.copy 覆写）、双事件
+// 订阅、轮询与 KeepAlive 契约；状态灯类名即共享标准形 .status-light，
+// 状态选择器即 ManagedVersionDot 渲染形 .ver-status；重载动词回执用例锁定
 // reset 扩展槽接线。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
@@ -66,8 +64,8 @@ async function mountView() {
   return { wrapper, show }
 }
 
-// confirm/prompt 由 useConfirm/usePrompt 全局单例收编（adapter 内消费），
-// 交互面经 settle* 驱动；文案与调用序列断言逐字保持。
+// confirm/prompt 为 useConfirm/usePrompt 全局单例（adapter 内消费），
+// 交互面经 settle* 驱动；文案与调用序列为锁定断言。
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 

@@ -1,12 +1,12 @@
-// ClipboardView 行为规格（A4 主界面线起家 · R-F2 翻新轮同步改线，契约
-// docs/plans/2026-09-26-clipboard-contract.md）。
+// ClipboardView 行为规格（契约 docs/plans/2026-09-26-clipboard-contract.md，
+// R-F2 观感口径同步线）。
 //
-// 后端接缝纪律的反证场：kernel 十一法面中主界面消费的九方法经
-// setClipboardTransport(fake) 注入（afterEach 置 null 摘回；Paste 与
-// CollapseOverlay 是浮层专属上下文，主界面调用面出现即算越权——本文件的
-// fake 里根本没有这两法，误调直接炸 TypeError，反证更硬）；事件用 vi.mock
-// 的 useWailsEvent 捕获 handler 手工投喂——本文件零 bindings/ 引用（未生成，
-// 静态 import 会炸解析）。
+// 后端接缝纪律的反证场：kernel 方法面（v1.8 起二十法）中主界面消费的十方法
+// （九法+QueueClear）经 setClipboardTransport(fake) 注入（afterEach 置 null
+// 摘回；Paste 与 CollapseOverlay 是浮层专属上下文，主界面调用面出现即算越权——
+// 本文件的 fake 里根本没有这两法，误调直接炸 TypeError，反证更硬）；事件用
+// vi.mock 的 useWailsEvent 捕获 handler 手工投喂——本文件零 bindings/ 引用
+// （绑定面唯一 import 点收敛在 adapters/clipboardBridge.ts，视图与测试都不直摸）。
 //
 // 钉死的契约行为：
 //   ① 渲染三态：列表 / 空态两分支 / 错误横幅（adapter 未接线的中文错必须上屏，

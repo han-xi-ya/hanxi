@@ -1,8 +1,9 @@
 // BoardFullscreen 独立契约测试（不依赖 MsgBoardView）：Teleport 落体、
 // 角标/提示常驻、Esc 与点击都只 emit('close')（开合态归宿主 v-if）、
-// 监听生命周期三斩——unmount 摘干净、KeepAlive deactivate 摘、activate
-// 补挂（审查 #20 纪律的组件化形态）。零后端链路：本 spec 不 mock 任何
-// API——组件若敢 import 后端绑定，这里直接红。
+// 监听生命周期经 useWindowKeyListener 四斩挂摘——unmount 摘干净、
+// KeepAlive deactivate 摘、activate 补挂（审查 #20 纪律的组件化形态）。
+// 零后端链路：本 spec 不 mock 任何 API——组件若敢 import 后端绑定，
+// 这里直接红。
 import { flushPromises, mount } from '@vue/test-utils'
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'

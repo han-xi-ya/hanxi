@@ -55,7 +55,7 @@ describe('useToast', () => {
     expect(a.toastMsg.value).toBe('')
   })
 
-  // 失败类 toast 契约（#49 收口升级版）：8000ms 默认时长固化在 showErrorToast 一处。
+  // 失败类 toast 契约（TROUBLESHOOTING #49）：8000ms 默认时长固化在 showErrorToast 一处。
   it('showErrorToast 默认保活 8000ms，普通 showToast 仍是 2500ms', () => {
     const { toastMsg, showToast, showErrorToast } = useToast()
     showErrorToast('克隆失败: exit status 42')

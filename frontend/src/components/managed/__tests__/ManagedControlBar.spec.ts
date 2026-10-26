@@ -1,7 +1,7 @@
-// ManagedControlBar 契约测试（Wave 5 · 批 0）：
+// ManagedControlBar 契约测试：
 // 锁死状态头的 adapter 消费面——五态词表映射与未知态回退、快照扩展字段经
 // stateText 覆写投影、UiBanner/hint-line 互斥条件、#primary-action 槽注入
-// （markeron 六态钮的批 1 通路）与声明式启停钮的成功/失败回执口径。
+// （markeron 六态钮的注入通路）与声明式启停钮的成功/失败回执口径。
 import { KeepAlive, defineComponent, h, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -235,7 +235,7 @@ describe('ManagedControlBar 钮区（声明 + #primary-action 槽）', () => {
   })
 })
 
-// ===== Wave 5 · 共享契约增强批新增消费面 =====
+// ===== 共享契约扩展消费面（编号总纲见 managed/adapter.ts 头注）=====
 describe('ManagedControlBar 增强批契约（①②⑦⑧⑨）', () => {
   it('① label 纯函数词形：钮面随状态翻转（mangodisk 动态主钮）', async () => {
     const { full } = fakeAdapter({

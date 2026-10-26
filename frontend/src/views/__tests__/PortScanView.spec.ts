@@ -1,7 +1,6 @@
-// 特征测试（组 G2 迁移护航）：PortScanView 表单校验/模式参数联动/流式增量去重排序/
-// 代理防抖/终止链路/代理连通性测试面板（单条 CheckProxy）。迁移注记：视图
-// .btn-primary 原硬编码 GitHub 蓝已由全局原子归一青绿，类名选择器不受影响；
-// error-banner 手搓横幅 → UiBanner(.banner.banner-error)。
+// 特征测试：PortScanView 表单校验/模式参数联动/流式增量去重排序/代理防抖/终止链路/
+// 代理连通性测试面板（单条 CheckProxy）。横幅走 UiBanner(.banner.banner-error)；
+// 按钮色档归全局原子——本测试按类名选择器取数，不锁本地色档。
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -183,6 +182,61 @@ describe('PortScanView 扫描链路', () => {
     await flushMicrotasks()
     expect(w.find('.indicator-ip').text()).toContain('9.9.9.9') // 终值未被倒灌
     expect(w.find('.indicator-ip').text()).not.toContain('1.2.3.4')
+    w.unmount()
+  })
+
+  it('detectingIP 摘帽只认最新发：旧发在新发在途时落定，不得提前摘「正在核验」帽', async () => {
+    // 与「乱序回包」用例互补：那条锁终值不倒灌，本条锁 finally 代次守卫——
+    // 旧发先落而新发仍在途时，界面必须停在探测中，帽与值都只认 egressSeq 最新一发。
+    stubDefaults()
+    svc.GetPresets.mockResolvedValue([])
+    vi.useFakeTimers()
+    let settle1: (v: string) => void = () => {}
+    let settle2: (v: string) => void = () => {}
+    svc.CheckEgressIP
+      .mockReturnValueOnce(new Promise<string>((r) => (settle1 = r))) // 挂载首探在途
+      .mockReturnValueOnce(new Promise<string>((r) => (settle2 = r))) // 防抖二探在途
+    const w = mountView()
+    await flushMicrotasks()
+    expect(w.find('.indicator-loading').exists()).toBe(true) // 首探挂帽
+    await w.find('.proxy-input').setValue('socks5://127.0.0.1:7890')
+    await vi.advanceTimersByTimeAsync(600)
+    await flushMicrotasks()
+    expect(svc.CheckEgressIP).toHaveBeenCalledTimes(2)
+    settle1('1.2.3.4') // 旧发抢先落定，新发仍在途
+    await flushMicrotasks()
+    expect(w.find('.indicator-loading').exists()).toBe(true) // 帽不许旧发摘
+    expect(w.find('.indicator-ip').exists()).toBe(false)
+    expect(w.find('.egress-indicator').text()).not.toContain('1.2.3.4')
+    settle2('9.9.9.9') // 最新发落定：才摘帽、才落值
+    await flushMicrotasks()
+    expect(w.find('.indicator-loading').exists()).toBe(false)
+    expect(w.find('.indicator-ip').text()).toContain('9.9.9.9')
+    w.unmount()
+  })
+
+  it('旧发失败迟到且新发在途：不得替新发写「检测失败」也不摘帽', async () => {
+    stubDefaults()
+    svc.GetPresets.mockResolvedValue([])
+    vi.useFakeTimers()
+    let reject1: (e: unknown) => void = () => {}
+    let settle2: (v: string) => void = () => {}
+    svc.CheckEgressIP
+      .mockReturnValueOnce(new Promise<string>((_r, j) => (reject1 = j))) // 挂载首探（慢代理）
+      .mockReturnValueOnce(new Promise<string>((r) => (settle2 = r))) // 防抖二探
+    const w = mountView()
+    await flushMicrotasks()
+    await w.find('.proxy-input').setValue('socks5://127.0.0.1:7890')
+    await vi.advanceTimersByTimeAsync(600)
+    await flushMicrotasks()
+    reject1(new Error('旧代理超时')) // 旧发失败迟到，新发仍在途
+    await flushMicrotasks()
+    expect(w.find('.indicator-loading').exists()).toBe(true) // catch/finally 均被代次门禁拦截
+    expect(w.find('.egress-indicator').text()).not.toContain('检测失败')
+    settle2('8.8.8.8')
+    await flushMicrotasks()
+    expect(w.find('.indicator-ip').text()).toContain('8.8.8.8')
+    expect(w.find('.egress-indicator').text()).not.toContain('检测失败')
     w.unmount()
   })
 

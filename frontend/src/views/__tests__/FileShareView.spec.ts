@@ -1,6 +1,6 @@
-// 特征测试（组 G3 / Phase 5）：FileShareView 迁移前基线锁定。
-// 巨型孤本第三方言视图：本次只机械收编胶水（事件/轮询/剪贴板），
-// 模板骨架与业务调用（FileShareService.*、qrcode、投递箱、审计）契约不变。
+// 特征测试：锁定 FileShareView（巨型孤本方言视图）的行为基线——事件/轮询/剪贴板胶水与
+// 业务调用（FileShareService.*、qrcode、投递箱、审计）、模板骨架与文案均由本测试锁死，
+// 结构拆分/机制迁移必须保持逐字等价。
 import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -185,9 +185,8 @@ describe('FileShareView 服务启停与配置', () => {
 describe('FileShareView 剪贴板与投递箱', () => {
   it('复制访问链接成功/失败文案逐字', async () => {
     stubHappy(statusOf({ isRunning: true, port: 8080 }))
-    // 机制迁移注记：复制改由 useClipboard.copyWithToast 驱动——显式构造"安全上下文 +
-    // clipboard 可用"使其走第①路；成功文案逐字锁定，失败话术按 PLAN_CLIPBOARD 统一为
-    // 「复制失败」（原「复制到剪贴板失败」随收口退役）。
+    // 复制由 useClipboard.copyWithToast 驱动——显式构造"安全上下文 + clipboard 可用"使其走
+    // 第①路；成功文案逐字锁定，失败话术按 PLAN_CLIPBOARD 统一为「复制失败」。
     const write = vi.fn(async () => {})
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: write }, configurable: true })
     Object.defineProperty(window, 'isSecureContext', { value: true, configurable: true })

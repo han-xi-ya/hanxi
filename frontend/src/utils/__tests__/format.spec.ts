@@ -1,5 +1,5 @@
-// 特征测试：三个格式化函数的分支行为逐字锁定 MarkerOnView 现实现，
-// Phase 4/5 迁移以此为回归底线（含刻意保留的口径怪癖）。
+// 特征测试：各格式化函数的分支行为逐字锁定原视图实现，
+// 本册是迁移/改档的回归底线（含刻意保留的口径怪癖）。
 import { describe, expect, it } from 'vitest'
 import { fmtDate, fmtDateTimeSmart, fmtDuration, fmtSize, fmtSizeIec } from '../format'
 
@@ -25,7 +25,7 @@ describe('fmtSize', () => {
     expect(fmtSize(1536 * 1024)).toBe('1.5 MB')
   })
 
-  // N21① 扩档：GB/TB 一位小数；>= 判含等号（恰好 1GB 即 GB 档），
+  // 扩档契约：GB/TB 一位小数；>= 判含等号（恰好 1GB 即 GB 档），
   // MB 档上限口径不变（999.9MB 仍 MB、1023MB 不进位成 GB）。
   it('≥1GB 换 GB、≥1TB 换 TB', () => {
     expect(fmtSize(1024 ** 3)).toBe('1.0 GB')
@@ -35,9 +35,25 @@ describe('fmtSize', () => {
     expect(fmtSize(1024 ** 4)).toBe('1.0 TB')
     expect(fmtSize(2560 * 1024 ** 3)).toBe('2.5 TB')
   })
+
+  // 跨档刚过界的舍入格：换档判据含等号（>=），刚过 1GB/1TB 即进高档并被
+  // toFixed(1) 洗成 1.0——不会滞留低档的千位数（对偶格 -1 见上条 1024.0 MB）。
+  it('跨档下界 +1 即进高档并舍入为 1.0（1024³+1 → GB 档，1025MiB → 1.0 GB）', () => {
+    expect(fmtSize(1024 ** 3 + 1)).toBe('1.0 GB')
+    expect(fmtSize(1025 * 1024 ** 2)).toBe('1.0 GB')
+    expect(fmtSize(1024 ** 4 + 1)).toBe('1.0 TB')
+  })
+
+  // 畸形入参现状锁定：NaN 走 falsy 归空；负数任何高档判据都不成立，
+  // 恒落 KB 整数档（含 '-0' 舍入怪形）。后端不产负值，此格仅为防口径漂移底线。
+  it('NaN 归占位符；负数恒走 KB 档原样带负号（现状锁定，非承诺口径）', () => {
+    expect(fmtSize(Number.NaN)).toBe('—')
+    expect(fmtSize(-500)).toBe('-0 KB')
+    expect(fmtSize(-2 * 1024 * 1024)).toBe('-2048 KB')
+  })
 })
 
-// 波 0 上收：EnvCheckView 与 settings/StorageSection 两份逐字符全同的内联副本口径。
+// 契约：口径承自 EnvCheckView 与 settings/StorageSection 曾有的两份逐字符全同内联副本。
 describe('fmtSizeIec', () => {
   it('0 显示实词 "0 B"（与 fmtSize 的占位符口径刻意分叉）', () => {
     expect(fmtSizeIec(0)).toBe('0 B')

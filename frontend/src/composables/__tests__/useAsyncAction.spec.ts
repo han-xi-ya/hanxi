@@ -49,4 +49,34 @@ describe('useAsyncAction', () => {
     expect(await run(async () => 'a')).toEqual({ ok: true, data: 'a' })
     expect(await run(async () => 'b')).toEqual({ ok: true, data: 'b' })
   })
+
+  // 同步 throw 与 rejected promise 是两条独立路径：fn() 在 await 之前同步抛出，
+  // 若 try 覆盖面稍有挪动即漏网成未捕获异常炸穿视图。
+  it('fn 同步抛（非 reject）同样落入 ok:false 携原 error，busy 复位', async () => {
+    const { busy, run } = useAsyncAction()
+    const boom = new Error('同步炸')
+    const res = await run((): Promise<never> => {
+      throw boom
+    })
+    expect(res).toEqual({ ok: false, error: boom })
+    expect(busy.value).toBe(false)
+  })
+
+  // 外部断言=调用计数：失败释放守卫后下一个 fn 必须真被执行且只一次，
+  // busy 在首击同步翻 true（重入拒绝窗口从赋值那一刻就开始）。
+  it('失败后 finally 释放：重入被拒期间零执行、下一个动作照常单飞执行', async () => {
+    const { busy, run } = useAsyncAction()
+    const d = deferred<string>()
+    const p = run(() => d.promise)
+    expect(busy.value).toBe(true) // 首击同步翻转，不等 await
+    const retry = vi.fn(async () => 'ok')
+    const during = await run(retry)
+    expect(during.ok).toBe(false)
+    expect(retry).not.toHaveBeenCalled()
+    d.reject(new Error('后端失败'))
+    expect((await p).ok).toBe(false)
+    expect(await run(retry)).toEqual({ ok: true, data: 'ok' })
+    expect(retry).toHaveBeenCalledTimes(1) // 被拒的首击不留幽灵执行
+    expect(busy.value).toBe(false)
+  })
 })
