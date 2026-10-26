@@ -4,8 +4,20 @@
 import { createRAMMapAdapter } from '../adapters/rammap'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import ElevateRestart from '../components/ElevateRestart.vue'
+import type { ManagedConsoleStore } from '../components/managed/store'
 
 const adapter = createRAMMapAdapter()
+
+/**
+ * A 路提权启动走共享编排（波 2G，ddnsgo openConsole 同形制）：runExclusive
+ * 单飞闩（确认框在途不再能连点第二发 UAC）、回执经 settle 弹串、RPC 拒绝
+ * 裸错误串上屏——此前视图直调 runElevationChoice() 并**丢弃回执**（「已取消
+ * 启动 RAMMap」/提权结果 message 静默失踪，与主钮引向 A 时的 toast 分叉），
+ * 失败更是无人接管的 unhandled rejection。刷新档保持现状：事件与轮询兜底。
+ */
+function runElevChoice(store: ManagedConsoleStore) {
+  void store.runSlotVerb(() => adapter.runElevationChoice(), { errorPrefix: '', refreshAfter: 'never' })
+}
 </script>
 
 <template>
@@ -20,11 +32,11 @@ const adapter = createRAMMapAdapter()
     <!-- A/B 双路提权选择条（机主反馈：两钮不得脱离状态卡孤悬）：紧贴状态头
          区渲染（#console-extra 首位），左缘归属条视觉从属于上方卡簇，不再是页面
          底部的独立大卡。三重契约之③预告文案与 A/B 语义逐字保留。 -->
-    <template #console-extra="{ state, busy }">
+    <template #console-extra="{ state, busy, store }">
       <div v-if="adapter.needsElevationChoice.value && (state === 'stopped' || state === 'failed')" class="elev-choice">
         <p class="elev-choice-note">RAMMap 本体要求管理员权限：一次性看数据选「仅提权启动」（外部实例，Hanxi 不负责自动关闭）；当常用工具则重启 Hanxi 继续托管。</p>
         <div class="elev-choice-actions">
-          <button class="btn btn-primary btn-small" :disabled="busy" @click="adapter.runElevationChoice()">🔑 仅提权启动 RAMMap</button>
+          <button class="btn btn-primary btn-small" :disabled="busy" @click="runElevChoice(store)">🔑 仅提权启动 RAMMap</button>
           <ElevateRestart route="/ext/rammap" />
         </div>
       </div>

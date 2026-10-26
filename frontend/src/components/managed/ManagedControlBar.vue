@@ -110,7 +110,7 @@ const staleTip = computed(() =>
   padding: 1px 8px; cursor: help;
 }
 .status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
-.status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
+.status-light.starting { background: var(--color-primary); animation: hx-pulse 1.8s ease-in-out infinite; }
 .status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
 .status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
 /* 自定义色档「warn」（⑧）：adapter.statusTone 返回 'warn' 时压过五态——

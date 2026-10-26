@@ -116,7 +116,9 @@ async function launch(): Promise<void> {
 
 async function quitProcess(): Promise<void> {
   // external 态同样可退出（N3 分档：外部实例先优雅请求、无响应按低损档强制结束）。
-  if (actionBusy.value || !['starting', 'running', 'quitting', 'external'].includes(instanceState()) || instanceState() === 'quitting') return
+  // quitting 不在放行集：正在退出时再点门禁（数组此前含 'quitting' 又紧随一条
+  // `|| instanceState() === 'quitting'` 反门禁——同义矛盾式，收编为纯集合判定，真值逐字不变）。
+  if (actionBusy.value || !['starting', 'running', 'external'].includes(instanceState())) return
   actionBusy.value = true
   controlResult.value = null
   try {
@@ -283,7 +285,15 @@ onMounted(() => {
   void Promise.allSettled([refreshLocal(), refreshRemote(), loadSiteURL()])
 })
 
+// KeepAlive 回访重拉本地版本与状态；首挂载 onActivated 紧跟 onMounted 连发，
+// 跳过该次防双拉（TranslucentTB/EarTrumpet 同款守卫——onMounted 已全量首发，
+// 缺守卫时进页瞬间 listInstalled/getActive 各白发一次）。
+let activatedOnce = false
 onActivated(() => {
+  if (!activatedOnce) {
+    activatedOnce = true
+    return
+  }
   void refreshLocal()
   void store.refresh()
 })

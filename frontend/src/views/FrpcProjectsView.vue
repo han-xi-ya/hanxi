@@ -431,7 +431,15 @@ function scheduleLogFlush() {
 // 签名收 projectId 字符串（波 1d 过渡桥拆除）：抽屉「刷新」钮此前为凑类型
 // 现场 `projects.find(...) as any` 反查 Project 再取回 id，属纯二跳浪费——
 // openLogs 实际只消费 id 一个字段。
+/**
+ * 日志拉取请求代次（对齐 store.load 的 loadGeneration 口径）：快速切换项目/
+ * 连点「刷新」会并发多个 GetProjectLogs，后发请求拥有唯一写权——旧请求迟到
+ * 回包不得覆盖新项目抽屉内容，也不得替新请求解除帧刷新冻结。
+ */
+let logsGeneration = 0
+
 async function openLogs(projectId: string) {
+  const generation = ++logsGeneration
   drawerProjectId.value = projectId
   logPending = [] // 丢弃上一项目未刷入的在途行（原实现逐行即时入表无此残留窗口）
   logError.value = ''
@@ -442,18 +450,23 @@ async function openLogs(projectId: string) {
   logPulling = true
   try {
     const initial = (await FrpcAPI.GetProjectLogs(projectId, 500)) ?? []
+    if (generation !== logsGeneration) return // 迟到的旧请求回包：无写权，静默丢弃
     const merged = initial.map(toLogRow).concat(logPending)
     if (merged.length > LOG_MAX_LINES) merged.splice(0, merged.length - LOG_MAX_LINES)
     logRows.value = merged
     logPending = []
   } catch (err: unknown) {
+    if (generation !== logsGeneration) return // 旧请求的失败同样不污染现抽屉与冻结旗
     logError.value = `拉取日志失败: ${getErrorMessage(err)}`
     // 拉取失败不吞在途事件行（原实现它们已直接可见）：照常入表
     if (flushLogPending() && logAutoScroll.value) void scrollToBottom()
   } finally {
-    logPulling = false
-    logLoading.value = false
-    await scrollToBottom()
+    // 代次未过期才收口：过期请求不得替在途新请求解冻 logPulling/收尾 loading
+    if (generation === logsGeneration) {
+      logPulling = false
+      logLoading.value = false
+      await scrollToBottom()
+    }
   }
 }
 

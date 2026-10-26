@@ -382,6 +382,17 @@ export function sameSnapshot(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * 740 提权直拒判据（单一口径）：后端在 ERROR_ELEVATION_REQUIRED 拒绝启动时回带
+ * 的 elevateHint 文案统一含「管理员」关键词，failed 态据此追加一键提权重启入口
+ * （#console-extra 位挂 ElevateRestart）。原 heukms/litemonitor（及区外 bcu/rufus）
+ * 视图逐字复制体自此收编——判据词（「管理员」）属前后端隐式契约，一处改胜过全族。
+ * 入参用快照本体：state 是 snap.state 的投影，failed 蕴含 snap 非空。
+ */
+export function needsElevationRestart(snap: ManagedSnapshot | null | undefined): boolean {
+  return snap?.state === 'failed' && (snap.error || '').includes('管理员')
+}
+
+/**
  * 「卸载最后一个版本」如实预告词（机主反馈四 · WindTerm 卸载死锁连动）：
  * 后端 guard 已放行"唯一已装版本即使用中版本"的卸载并在成功后清空 active
  * ——卸载确认后模块回到未安装态。弹卸载二次确认前，adapter 先行探测已装数，

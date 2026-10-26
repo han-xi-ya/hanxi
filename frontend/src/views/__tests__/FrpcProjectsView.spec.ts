@@ -232,6 +232,35 @@ describe('FrpcProjectsView 日志抽屉', () => {
     wrapper.unmount()
   })
 
+  it('抽屉竞态：旧项目迟到的日志回包不得覆盖新项目抽屉内容', async () => {
+    const p2 = { ...project, id: 'p2', name: 'second' }
+    svc.ListProjects.mockResolvedValue([project, p2])
+    svc.ListInstanceStates.mockResolvedValue([])
+    svc.ListInstalledVersions.mockResolvedValue([])
+    svc.ListReleases.mockResolvedValue([])
+    // p1 慢（手工悬挂）、p2 快（立即回包）：构造 p1 回包晚于 p2 落定的交错
+    let resolveSlow: (lines: string[]) => void = () => {}
+    svc.GetProjectLogs.mockImplementation((id: string) =>
+      id === 'p1' ? new Promise<string[]>((r) => { resolveSlow = r }) : Promise.resolve(['p2行']),
+    )
+    const { wrapper } = mountInKeepAlive()
+    await flushMicrotasks()
+    const cards = wrapper.findAll('.project-card')
+    await cards[0].findAll('.proj-actions button').find((b) => b.text() === '日志')!.trigger('click')
+    await flushMicrotasks()
+    await cards[1].findAll('.proj-actions button').find((b) => b.text() === '日志')!.trigger('click')
+    await flushMicrotasks()
+    expect(wrapper.find('.log-drawer-title').text()).toContain('日志 · second')
+    expect(wrapper.findAll('.log-line')).toHaveLength(1)
+    resolveSlow(['p1陈旧行'])
+    await flushMicrotasks()
+    // 后发请求唯一写权：p1 迟到回包整体丢弃（旧实现会整表置换成 p1 日志）
+    expect(wrapper.findAll('.log-line')).toHaveLength(1)
+    expect(wrapper.find('.log-line').text()).toBe('p2行')
+    expect(wrapper.text()).not.toContain('p1陈旧行')
+    wrapper.unmount()
+  })
+
   it('instance-log 事件：仅当前项目行入抽屉；清屏清空', async () => {
     stubBase([snapOf()])
     svc.GetProjectLogs.mockResolvedValue([])

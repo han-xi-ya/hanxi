@@ -7,8 +7,8 @@
 // 的共享面板消费样本，原方言表格徽标样式随之下线）。
 // 波 2D 迁壳：页头+页签+error-box+tab-body 手抄壳骨退役——打包线动作与崩溃鉴别
 // 都要 setup 期 store 句柄，走「视图自建 useManagedConsole → 传壳 :store」注入通道；
-// 版本 Tab 的 #release-actions 槽需求经壳的 #versions-body 整体替换位承接（契约内
-// 逃生门，默认体仅面板一件照抄重挂）。
+// 远程行 #release-actions 槽走壳的转发位直落共享面板（波 2G 前经 #versions-body
+// 整替位照抄重挂，该抄骨形制自此退役）。
 // 方言位（见 adapter 头注记）：「🪄 重设任务栏状态」动词走契约 reset 槽、钮体经
 // #primary-action 位留在控制条钮区（原 DOM 位逐字等价；其成败两分支均不刷快照的
 // 现状语义即 store.runReset 缺省档 refreshSnapshot=false，视图本地接线器退役）；
@@ -39,7 +39,6 @@ import type { ManagedActionResult } from '../components/managed/adapter'
 import { releaseFormWord } from '../components/managed/adapter'
 import { useManagedConsole } from '../components/managed/store'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
-import ManagedVersionPanel from '../components/managed/ManagedVersionPanel.vue'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
@@ -269,29 +268,26 @@ async function runAVProbe(): Promise<void> {
       </div>
     </details>
 
-    <!-- 版本 Tab 整体替换位：默认体仅共享面板一件（本模块无 channel 块），
-         照抄重挂以承载 #release-actions 槽按 N13 资产矩阵标注打包形态可用性
-         （词表走共享件，无 form/assets 数据静默缺席 = 既有行零变化）；
-         「装打包版」钮受 P1-10 三态闸：预读未知（在途/不可读）灰化并给指路 title -->
-    <template #versions-body>
-      <ManagedVersionPanel :adapter="adapter" :store="store">
-        <template #release-actions="{ release }">
-          <template v-if="hasMsixBundleAsset(release)">
-            <span
-              class="chip chip-information tb-msix-chip"
-              :title="`上游发布矩阵含${releaseFormWord('package')}形态（.msixbundle）资产，可加装 Windows 打包版（与便携版互不干扰）`"
-            >可装打包版</span>
-            <button
-              class="btn btn-secondary btn-small"
-              :disabled="store.busy || msixProbe === 'unknown'"
-              :title="msixProbe === 'unknown'
-                ? '打包版状态未确认（预读在途或不可读）——到「📦 打包版（系统管理）」区块「↻ 刷新」读回后启用'
-                : '以 Windows 包（MSIX）形态安装该版本——不触碰便携托管线' + (msixProbe === 'installed' ? `（当前已装 v${msixState?.version}，本次为替换/降级部署）` : '')"
-              @click="runMsix(() => msix.installFromRelease(release.version))"
-            >装打包版</button>
-          </template>
-        </template>
-      </ManagedVersionPanel>
+    <!-- 远程行动作位经壳转发的 #release-actions 直落共享面板（本模块无 channel
+         块，壳默认版本体即纯 ManagedVersionPanel，波 2G 前须整替位照抄重挂，
+         自此退役）：按 N13 资产矩阵标注打包形态可用性（词表走共享件，无
+         form/assets 数据静默缺席 = 既有行零变化）；「装打包版」钮受 P1-10
+         三态闸：预读未知（在途/不可读）灰化并给指路 title -->
+    <template #release-actions="{ release }">
+      <template v-if="hasMsixBundleAsset(release)">
+        <span
+          class="chip chip-information tb-msix-chip"
+          :title="`上游发布矩阵含${releaseFormWord('package')}形态（.msixbundle）资产，可加装 Windows 打包版（与便携版互不干扰）`"
+        >可装打包版</span>
+        <button
+          class="btn btn-secondary btn-small"
+          :disabled="store.busy || msixProbe === 'unknown'"
+          :title="msixProbe === 'unknown'
+            ? '打包版状态未确认（预读在途或不可读）——到「📦 打包版（系统管理）」区块「↻ 刷新」读回后启用'
+            : '以 Windows 包（MSIX）形态安装该版本——不触碰便携托管线' + (msixProbe === 'installed' ? `（当前已装 v${msixState?.version}，本次为替换/降级部署）` : '')"
+          @click="runMsix(() => msix.installFromRelease(release.version))"
+        >装打包版</button>
+      </template>
     </template>
   </ManagedConsoleShell>
 </template>

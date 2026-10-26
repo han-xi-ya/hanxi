@@ -18,6 +18,7 @@ import ManagedVersionPanel from '../components/managed/ManagedVersionPanel.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import ElevateRestart from '../components/ElevateRestart.vue'
+import { needsElevationRestart } from '../components/managed/adapter'
 
 const adapter = createRufusAdapter()
 const store = useManagedConsole(adapter)
@@ -36,7 +37,8 @@ const openDirVersion = computed(() => {
 })
 
 // 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
-const needsElevate = computed(() => store.state === 'failed' && (store.snap?.error || '').includes('管理员'))
+// 判据走共享件 needsElevationRestart 单源（与 heukms/litemonitor 同款收编）
+const needsElevate = computed(() => needsElevationRestart(store.snap))
 </script>
 
 <template>

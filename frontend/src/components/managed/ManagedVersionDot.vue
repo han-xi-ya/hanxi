@@ -28,7 +28,7 @@ defineProps<{
 .ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .ver-status.installed::before { background: var(--state-positive); }
-.ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
+.ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1.8s ease-in-out infinite; }
 .ver-status.error::before { background: var(--state-danger); }
 .ver-status.idle::before { background: var(--color-text-subtle); }
 </style>

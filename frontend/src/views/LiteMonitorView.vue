@@ -12,17 +12,13 @@ import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 import ElevateRestart from '../components/ElevateRestart.vue'
 import type { ManagedSnapshot } from '../components/managed/adapter'
+import { needsElevationRestart } from '../components/managed/adapter'
 
 const adapter = createLiteMonitorAdapter()
 
 // 环境提示现态（迁移前 runtimeMissing computed 的投影形）：仅在探测明确报缺时警示
 function isRuntimeMissing(snap: ManagedSnapshot | null): boolean {
   return (snap as LmConsoleSnapshot | null)?.hasDesktop8 === false
-}
-
-// 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
-function needsElevate(snap: ManagedSnapshot | null, state: string): boolean {
-  return state === 'failed' && !!snap && (snap.error || '').includes('管理员')
 }
 </script>
 
@@ -35,11 +31,11 @@ function needsElevate(snap: ManagedSnapshot | null, state: string): boolean {
     console-tab-label="⚡ 控制台"
   >
     <!-- 控制台内联大件：缺运行库常驻警示（独立于状态横幅）+ 提权重启入口 -->
-    <template #console-extra="{ snap, state }">
+    <template #console-extra="{ snap }">
       <UiBanner v-if="isRuntimeMissing(snap)" tone="warn" class="slim">
         未检测到 .NET 8 桌面运行时：LiteMonitor 为框架依赖发布，缺少运行库将无法启动。可在「开发环境检测」页查看详情或前往微软官网安装。
       </UiBanner>
-      <ElevateRestart v-if="needsElevate(snap, state)" route="/ext/litemonitor" />
+      <ElevateRestart v-if="needsElevationRestart(snap)" route="/ext/litemonitor" />
     </template>
 
     <!-- 控制台 Tab 主体：说明卡（折叠，文案逐字保留） -->

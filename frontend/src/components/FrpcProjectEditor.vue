@@ -825,7 +825,7 @@ function cancel() { emit('cancel') }
 .mode-btn {
   border: none; background: transparent; padding: 6px 14px; font-size: var(--text-base);
   color: var(--color-text-muted); border-radius: var(--radius-control); cursor: pointer; font-weight: 500;
-  transition: all var(--motion-base) ease;
+  transition: background var(--motion-base) ease, color var(--motion-base) ease;
 }
 .mode-btn.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-small); }
 
@@ -897,9 +897,11 @@ function cancel() { emit('cancel') }
 .toml-editor-layout { width: 100%; }
 .toml-edit-card { display: flex; flex-direction: column; height: 620px; }
 .raw-toml-textarea {
+  /* 样式审计 C10（2026-10-27）：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环
+     （深底终端区内环描在边框外，可辨）。 */
   flex: 1; margin-top: 10px; padding: 14px; background: var(--terminal-bg); color: var(--terminal-fg);
   border-radius: var(--radius-control); font-family: var(--font-mono); font-size: var(--text-base); line-height: 1.6;
-  border: 1px solid var(--color-border); resize: none; outline: none; width: 100%; box-sizing: border-box;
+  border: 1px solid var(--color-border); resize: none; width: 100%; box-sizing: border-box;
 }
 .raw-toml-textarea:focus { border-color: var(--color-primary); }
 

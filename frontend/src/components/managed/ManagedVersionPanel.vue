@@ -374,6 +374,7 @@ const installedChipClass = computed(() =>
 .asset-more { font-size: var(--text-xs); }
 
 /* N13 统一形态 chip（版本行）：与预发布徽标、上游发布列徽标族共排不打架，
-   密度同 asset-chip 档；缺 form 的行不渲染、不留占位 */
-.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; margin-left: 4px; vertical-align: middle; }
+   密度同 asset-chip 档；缺 form 的行不渲染、不留占位。
+   核心形已上收全局 .form-chip 原子（components.css），此处只留 4px 前置间距补差 */
+.form-chip { margin-left: 4px; }
 </style>

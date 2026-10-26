@@ -4,25 +4,23 @@
 // ManagedConsoleShell 管页头与页签骨架。
 //
 // 本模块的两处特化：
-//  1. 版本 Tab 用 #versions-body 自渲染 ManagedVersionPanel，只为给远程表**追加**
-//     一行「↗ 发布页」动作位（后端 OpenReleasePage 走系统浏览器）——主安装路径
-//     是共享面板自带的「下载并安装」（rar 通道），发布页是拿免密 iso、看该版
-//     说明、或取"上游未发布摘要而不可自动安装"旧版的备援入口。
+//  1. 远程表**追加**一行「↗ 发布页」动作位（后端 OpenReleasePage 走系统浏览器）
+//     ——经壳的 #release-actions 槽转发位直落共享面板（波 2G 前需 #versions-body
+//     整替照抄默认体，自此退役）。主安装路径是共享面板自带的「下载并安装」
+//     （rar 通道），发布页是拿免密 iso、看该版说明、或取"上游未发布摘要而
+//     不可自动安装"旧版的备援入口。
 //  2. 740 提权直拒后的一键提权重启入口走 #console-extra 槽（与 litemonitor
 //     同判据：后端 elevateHint 文案统一含"管理员"关键词）。
 import { createHeuKmsAdapter, openHeuReleasePage } from '../adapters/heukms'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
-import ManagedVersionPanel from '../components/managed/ManagedVersionPanel.vue'
 import ElevateRestart from '../components/ElevateRestart.vue'
-import type { ManagedSnapshot } from '../components/managed/adapter'
+import { needsElevationRestart } from '../components/managed/adapter'
 import { getErrorMessage } from '../utils/errors'
 
 const adapter = createHeuKmsAdapter()
 
-// 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
-function needsElevate(snap: ManagedSnapshot | null, state: string): boolean {
-  return state === 'failed' && !!snap && (snap.error || '').includes('管理员')
-}
+// 740 提权直拒判据走共享件 needsElevationRestart（单源，区外 bcu/rufus 同款）→
+// 追加一键提权重启入口。
 
 // 逐版打开上游发布页（备援入口）：浏览器拉不起来属边缘场景，失败只记控制台、
 // 不打一条 toast 挡用户的路（与"下载并安装"的失败回执区分开，后者由共享件统一弹）。
@@ -44,8 +42,8 @@ async function openPage(version: string): Promise<void> {
     console-tab-label="⚡ 控制台"
   >
     <!-- 控制台内联大件：提权直拒后的一键提权重启入口 -->
-    <template #console-extra="{ snap, state }">
-      <ElevateRestart v-if="needsElevate(snap, state)" route="/ext/heukms" />
+    <template #console-extra="{ snap }">
+      <ElevateRestart v-if="needsElevationRestart(snap)" route="/ext/heukms" />
     </template>
 
     <!-- 控制台 Tab 主体：说明卡（折叠） -->
@@ -71,19 +69,16 @@ async function openPage(version: string): Promise<void> {
       </div>
     </details>
 
-    <!-- 版本 Tab 整体自渲染：只为了给远程表加"取包"动作位（其余仍是共享面板） -->
-    <template #versions-body="{ store }">
-      <ManagedVersionPanel :adapter="adapter" :store="store">
-        <template #release-actions="{ release }">
-          <button
-            class="btn btn-secondary btn-small"
-            title="在浏览器打开该版发布页：看更新说明、取免密 iso，或取未发布官方摘要而无法自动安装的旧版"
-            @click="openPage(release.version)"
-          >
-            ↗ 发布页
-          </button>
-        </template>
-      </ManagedVersionPanel>
+    <!-- 远程行「取包」动作位经壳转发的 #release-actions 直落共享面板（无 channel，
+         壳默认版本体即纯 ManagedVersionPanel，无需整替抄骨） -->
+    <template #release-actions="{ release }">
+      <button
+        class="btn btn-secondary btn-small"
+        title="在浏览器打开该版发布页：看更新说明、取免密 iso，或取未发布官方摘要而无法自动安装的旧版"
+        @click="openPage(release.version)"
+      >
+        ↗ 发布页
+      </button>
     </template>
   </ManagedConsoleShell>
 </template>

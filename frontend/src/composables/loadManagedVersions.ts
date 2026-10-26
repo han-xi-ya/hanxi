@@ -12,6 +12,19 @@ type ManagedVersionSources<Remote, Local> = {
 }
 
 /**
+ * 起调数据源并把**同步抛出**（如非 Wails 环境绑定缺席）归一为 Promise 拒绝：
+ * 裸调用在求值位抛出会穿透本函数，loading 永挂 true、两侧错误都不落账。
+ * 非抛出路径经 Promise.resolve 原样透传，链上 hop 数与旧实现逐字相同。
+ */
+function attempt<T>(run: () => PromiseLike<T> | T): Promise<T> {
+  try {
+    return Promise.resolve(run())
+  } catch (error) {
+    return Promise.reject(error)
+  }
+}
+
+/**
  * 托管版本页的本地优先加载：本地资产与远程清单各自完成即写回。
  * 远程请求挂起或失败时不会阻塞已安装版本和当前版本；任一分支失败均保留旧数据。
  */
@@ -19,7 +32,7 @@ export async function loadManagedVersions<Remote, Local>(sources: ManagedVersion
   sources.setLoading(true)
   sources.setError('')
 
-  const localTask = Promise.all([sources.local(), sources.active()])
+  const localTask = attempt(() => Promise.all([sources.local(), sources.active()] as const))
     .then(([local, active]) => {
       sources.setLocal(local ?? [])
       sources.setActive(active ?? '')
@@ -28,7 +41,7 @@ export async function loadManagedVersions<Remote, Local>(sources: ManagedVersion
       sources.setError(`读取本地版本失败: ${getErrorMessage(error)}`)
     })
 
-  void Promise.resolve(sources.remote())
+  void attempt(() => sources.remote())
     .then(remote => sources.setRemote(remote ?? []))
     .catch((error: unknown) => {
       sources.setError(`获取远程版本列表失败: ${getErrorMessage(error)}`)

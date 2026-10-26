@@ -9,8 +9,9 @@
 //     用于 VS Code 双形态、Snipaste 本会话所有权等无法压成单状态头的控制面；
 //   #primary-action（作用域 {snap,state,busy,installedCount}）=默认 ManagedControlBar
 //     内的主操作钮区注入位——markeron 六态 toggle 等经此自绘；
-//   #console-extra（作用域 {snap,state,busy}）=控制台内联大件（进程日志面板、
-//     ddns 端口行等），渲染于状态头之后、主体之前；
+//   #console-extra（作用域 {snap,state,busy,store}，store 为波 2G 补位）=控制台
+//     内联大件（进程日志面板、ddns 端口行、rammap A/B 提权选择条等），渲染于
+//     状态头之后、主体之前——槽内动作可经 store 走共享单飞闩；
 //   #danger-extra（作用域 {snap,state,busy,store}，⑦）=强杀/复位等危险动作位
 //     （渲染于辅助卡之后，恒居控制台尾部）；
 //   #extras-action（作用域 {snap,state,busy,store}，⑦）=联动卡钮位转发；
@@ -19,6 +20,10 @@
 //   #versions-body（作用域 {snap,state,busy,store}，⑦）=版本 Tab 整体替换位
 //     （vscode 双表 / everything 方言表等面板装不下的形态；缺省=共享 channel
 //     块 + ManagedVersionPanel）；
+//   #release-actions（作用域 {release}，波 2G）=共享面板远程行动作槽的壳转发
+//     位——仅需给远程行加次级动词的模块（heukms「发布页」/ttb「装打包版」）
+//     自此免 #versions-body 整替位照抄默认体（同 #primary-action/#extras-action
+//     转发先例）；#versions-body 在场时本位不生效（默认体整体让位，契约不变）；
 //   #versions-prepend（作用域 {snap,state,busy,store}，波 2A）=版本 Tab 默认体
 //     前置位（变体卡等须落在 channel 块/版本面板之前的模块自此免绕壳抄骨）；
 //   versionsTabCount（⑦）=版本页签计数后缀（mangodisk「版本管理 N」形制）；
@@ -144,7 +149,7 @@ const tabs = computed(() => {
         </ManagedControlBar>
       </slot>
 
-      <slot name="console-extra" :snap="store.snap" :state="store.state" :busy="store.busy" />
+      <slot name="console-extra" :snap="store.snap" :state="store.state" :busy="store.busy" :store="store" />
       <slot :snap="store.snap" :state="store.state" :busy="store.busy" :store="store" :select-tab="selectTab" />
     </div>
 
@@ -175,7 +180,12 @@ const tabs = computed(() => {
         <slot name="versions-prepend" :snap="store.snap" :state="store.state" :busy="store.busy" :store="store" />
         <!-- ⑧：channel 声明即自动渲染面板上方共享块 -->
         <ManagedChannelRow v-if="adapter.channel" :adapter="adapter" :store="store" />
-        <ManagedVersionPanel :adapter="adapter" :store="store" />
+        <ManagedVersionPanel :adapter="adapter" :store="store">
+          <!-- 波 2G：面板远程行动作槽壳转发（heukms/ttb 免整替版本 Tab 抄默认体） -->
+          <template v-if="$slots['release-actions']" #release-actions="scope">
+            <slot name="release-actions" v-bind="scope" />
+          </template>
+        </ManagedVersionPanel>
       </slot>
     </div>
   </section>

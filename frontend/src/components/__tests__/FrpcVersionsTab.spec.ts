@@ -69,8 +69,8 @@ describe('FrpcVersionsTab 装载与展示', () => {
     stubLoad()
     const wrapper = mount(FrpcVersionsTab)
     await flushMicrotasks()
-    expect(wrapper.find('.frpc-version-status.installed').exists()).toBe(true)
-    expect(wrapper.find('.frpc-version-status.idle').exists()).toBe(false)
+    expect(wrapper.find('.ver-status.installed').exists()).toBe(true)
+    expect(wrapper.find('.ver-status.idle').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -79,7 +79,7 @@ describe('FrpcVersionsTab 装载与展示', () => {
     svc.ListInstalledVersions.mockResolvedValue([])
     const wrapper = mount(FrpcVersionsTab)
     await flushMicrotasks()
-    expect(wrapper.find('.frpc-version-status.idle').text()).toBe('可安装')
+    expect(wrapper.find('.ver-status.idle').text()).toBe('可安装')
     expect(wrapper.find('button').text()).toContain('刷新远程列表')
     wrapper.unmount()
   })
@@ -100,6 +100,25 @@ describe('FrpcVersionsTab 操作', () => {
     // 迁移注记：局部 toast 升级为全局 useToast 单例（App.vue 统一渲染）
     expect(useToast().toastMsg.value).toContain('版本 v0.62.0 已安装')
     expect(svc.ListInstalledVersions.mock.calls.length).toBeGreaterThanOrEqual(2) // 已重载
+    wrapper.unmount()
+  })
+
+  it('下载双击封闸：RPC 在途窗口内第二击被 resolve 占位票吞掉，DownloadVersion 只发一次', async () => {
+    svc.ListReleases.mockResolvedValue([{ ...release061, version: 'v0.62.0' }])
+    svc.ListInstalledVersions.mockResolvedValue([])
+    let resolveDl: (v: string) => void = () => {}
+    svc.DownloadVersion.mockReturnValue(new Promise<string>((r) => { resolveDl = r }))
+    const wrapper = mount(FrpcVersionsTab)
+    await flushMicrotasks()
+    const dlBtn = wrapper.findAll('.tbl tbody button').find((b) => b.text() === '下载安装')!
+    // 同帧双击（渲染未及换档）：旧实现两击各发一 RPC；现第二击命中在途票据守卫
+    dlBtn.trigger('click')
+    dlBtn.trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledTimes(1)
+    // 在途占位票把行档切到 downloading（双击窗口自此封死）
+    expect(wrapper.find('.ver-status.downloading').exists()).toBe(true)
+    resolveDl('started')
     wrapper.unmount()
   })
 
@@ -168,7 +187,7 @@ describe('FrpcVersionsTab 下载进度事件', () => {
     await flushMicrotasks()
     runtime.handlers['frpc:version-download']({ data: { version: 'v0.62.0', stage: 'downloading', done: 50, total: 100 } })
     await nextTick()
-    expect(wrapper.find('.frpc-version-status.downloading').text()).toBe('下载中')
+    expect(wrapper.find('.ver-status.downloading').text()).toBe('下载中')
     expect(wrapper.find('.dl-percent').text()).toBe('50%')
     wrapper.unmount()
   })
@@ -192,7 +211,7 @@ describe('FrpcVersionsTab 下载进度事件', () => {
     await flushMicrotasks()
     runtime.handlers['frpc:version-download']({ data: { version: 'v0.62.0', stage: 'error', message: 'SHA256 校验不符' } })
     await nextTick()
-    expect(wrapper.find('.frpc-version-status.error').text()).toBe('失败')
+    expect(wrapper.find('.ver-status.error').text()).toBe('失败')
     expect(wrapper.find('.dl-error').text()).toBe('SHA256 校验不符')
     const retry = wrapper.findAll('button').find((b) => b.text() === '重试')!
     await retry.trigger('click')

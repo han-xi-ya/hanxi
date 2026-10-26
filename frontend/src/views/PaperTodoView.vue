@@ -27,9 +27,13 @@ const { showToast } = useToast()
 // ---------- variant 槽视图态：adapter.variant 为唯一事实源，本地 ref 只做投影 ----------
 const variant = ref<PaperVariant>('self-contained')
 onMounted(() => {
-  void adapter.variant.get().then((v) => {
-    variant.value = v === 'no-runtime' ? 'no-runtime' : 'self-contained'
-  })
+  void Promise.resolve(adapter.variant.get())
+    .then((v) => {
+      variant.value = v === 'no-runtime' ? 'no-runtime' : 'self-contained'
+    })
+    // 读偏好失败退回缺省变体（本地 ref 初值即事实口径），仅记控制台不弹串挡页——
+    // 与 channel/quicklook 首读失败面同制；无 catch 时此处是 unhandled rejection。
+    .catch((e: unknown) => console.warn('papertodo GetVariant failed:', getErrorMessage(e)))
 })
 
 // ⑥：变体切换交 store.runVariant——回执 toast、reloadVersions 重拉版本区

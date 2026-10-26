@@ -18,6 +18,7 @@ import ManagedExtrasCard from '../components/managed/ManagedExtrasCard.vue'
 import ManagedVersionPanel from '../components/managed/ManagedVersionPanel.vue'
 import ManagedVersionDot from '../components/managed/ManagedVersionDot.vue'
 import { stepOf } from '../components/managed/managedProgress'
+import { needsElevationRestart } from '../components/managed/adapter'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MainTabNav from '../components/ui/MainTabNav.vue'
 import ElevateRestart from '../components/ElevateRestart.vue'
@@ -38,7 +39,8 @@ const MAIN_TABS = [
 const { dotnetEnv, envLoading, recommendedVariant } = adapter
 
 // 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
-const needsElevate = computed(() => store.state === 'failed' && (store.snap?.error || '').includes('管理员'))
+// 判据走共享件 needsElevationRestart 单源（与 heukms/litemonitor 同款收编）
+const needsElevate = computed(() => needsElevationRestart(store.snap))
 
 // ---------- 方言表格投影（复合进度键 version|variant，防同版本双变体互相覆盖） ----------
 const releases = computed(() => store.releases as BCURelease[])
@@ -231,7 +233,7 @@ onMounted(() => {
 .variant-btns { display: flex; gap: 6px; align-items: center; }
 .variant-progress { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .variant-progress .dl-meta-text { font-size: var(--text-xs); }
-.dotnet-banner { font-size: var(--text-sm); padding: 4px 10px; border-radius: 6px; border: 1px solid transparent; max-width: 680px; }
+.dotnet-banner { font-size: var(--text-sm); padding: 4px 10px; border-radius: var(--radius-chip); border: 1px solid transparent; max-width: 680px; }
 .dotnet-banner.ok { background: var(--state-positive-soft); color: var(--state-positive); border-color: var(--state-positive-glow); }
 .dotnet-banner.warn { background: var(--state-warning-soft); color: var(--state-warning); border-color: var(--state-warning-glow); }
 .dotnet-banner b { font-weight: 700; }

@@ -65,7 +65,7 @@ function warnOf(): string {
 /* channel 家族标准形（自 recordly/paseo 视图逐字同构段收编） */
 .channel-row { display: flex; align-items: center; gap: 10px; background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 8px 14px; font-size: var(--text-base); flex-wrap: wrap; }
 .channel-row .k { color: var(--color-text-subtle); }
-.channel-seg { display: flex; background: var(--surface-hover); border-radius: 6px; padding: 2px; gap: 2px; }
+.channel-seg { display: flex; background: var(--surface-hover); border-radius: var(--radius-chip); padding: 2px; gap: 2px; }
 .channel-seg button { border: none; background: transparent; padding: 4px 12px; font-size: var(--text-sm); border-radius: 5px; color: var(--color-text-muted); cursor: pointer; transition: color var(--motion-base) ease, background var(--motion-base) ease; }
 .channel-seg button.active { background: var(--surface-panel); color: var(--color-primary); font-weight: 600; box-shadow: var(--shadow-small); }
 .beta-warn { font-size: var(--text-sm); color: var(--state-warning); }

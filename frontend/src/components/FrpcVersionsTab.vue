@@ -9,6 +9,7 @@ import { fmtSize, fmtDate } from '../utils/format'
 import { getErrorMessage } from '../utils/errors'
 import { normalizeVersion } from '../utils/version'
 import { stepOf } from './managed/managedProgress'
+import ManagedVersionDot from './managed/ManagedVersionDot.vue'
 
 const emit = defineEmits<{ (e: 'version-changed'): void }>()
 
@@ -63,15 +64,34 @@ function statusOf(rel: FrpRelease): 'installed' | 'downloading' | 'error' | 'idl
   return hit ? 'installed' : 'idle'
 }
 
+/**
+ * 下载双击窗口封闸（对齐 store.runDownload 的 pending 票据口径）：RPC 返还前
+ * 行仍判 idle、钮可连点——先挂 resolve 票据占位，statusOf 随即转 downloading，
+ * 钮位自动让位进度行；error 票放行重试（原 error 后重试路径逐字保留）。
+ */
 async function download(rel: FrpRelease) {
+  const existing = downloading.value[rel.version]
+  if (existing && existing.stage !== 'error') return
+  downloading.value = {
+    ...downloading.value,
+    [rel.version]: { version: rel.version, stage: 'resolve', done: 0, total: 0, message: '正在创建下载任务…' },
+  }
   try {
     const res = await FrpcAPI.DownloadVersion(rel.version)
     if (res === 'already-installed') {
       showToast(`版本 ${rel.version} 已安装`)
       await loadAll()
+      // 同步终态无进度事件，以重拉后的已装事实收票（store 同款收票口）。
+      const next = { ...downloading.value }
+      delete next[rel.version]
+      downloading.value = next
     }
   } catch (e: unknown) {
     showToast(`下载失败: ${getErrorMessage(e)}`)
+    // RPC 拒绝收掉占位票回到点前形态（error 票只留给后端事件面，现状语义）
+    const next = { ...downloading.value }
+    delete next[rel.version]
+    downloading.value = next
   }
 }
 
@@ -213,10 +233,12 @@ onMounted(() => {
               <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
             </td>
             <td>
-              <span v-if="statusOf(rel) === 'installed'" class="frpc-version-status installed">已安装</span>
-              <span v-else-if="statusOf(rel) === 'downloading'" class="frpc-version-status downloading">下载中</span>
-              <span v-else-if="statusOf(rel) === 'error'" class="frpc-version-status error">失败</span>
-              <span v-else class="frpc-version-status idle">可安装</span>
+              <!-- 状态点落回公共件（ManagedVersionDot 即本家族 .ver-status 标准形单源；
+                   原 .frpc-version-status 逐字复制体随收编废止） -->
+              <ManagedVersionDot v-if="statusOf(rel) === 'installed'" status="installed" text="已安装" />
+              <ManagedVersionDot v-else-if="statusOf(rel) === 'downloading'" status="downloading" text="下载中" />
+              <ManagedVersionDot v-else-if="statusOf(rel) === 'error'" status="error" text="失败" />
+              <ManagedVersionDot v-else status="idle" text="可安装" />
             </td>
             <td>{{ fmtSize(rel.size) }}</td>
             <td>{{ fmtDate(rel.published) }}</td>
@@ -286,12 +308,7 @@ onMounted(() => {
 /* 表格（.tbl 全局原子接管；.table-container 留局部系 overflow 口径真差） */
 .table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; }
 
-.frpc-version-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
-.frpc-version-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: 0 0 7px; }
-.frpc-version-status.installed::before { background: var(--state-positive); }
-.frpc-version-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
-.frpc-version-status.error::before { background: var(--state-danger); }
-.frpc-version-status.idle::before { background: var(--color-text-subtle); }
+/* 远程行状态点复制体（.frpc-version-status 六行）已收编 ManagedVersionDot 公共件，随删。 */
 
 /* .dl-bar-wrap/.dl-bar-inner 与 components.css 全局原子逐字同形，副本删净落回。 */
 .muted-text { color: var(--color-text-subtle); }

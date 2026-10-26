@@ -37,6 +37,30 @@ describe('loadManagedVersions', () => {
     expect(state.loading).toBe(false)
   })
 
+  it('数据源同步抛出（非 Promise）也走分支错误：不穿透调用方、loading 收口', async () => {
+    const errors: string[] = []
+    let loading = true
+    await loadManagedVersions({
+      // 形如绑定缺席时直接 throw 的实现：旧写法在求值位抛出，穿透整函数
+      remote: () => {
+        throw new Error('no runtime')
+      },
+      local: () => {
+        throw new Error('no fs')
+      },
+      active: async () => '',
+      setRemote: vi.fn(),
+      setLocal: vi.fn(),
+      setActive: vi.fn(),
+      setLoading: (value) => { loading = value },
+      setError: (value) => { errors.push(value) },
+    })
+    await flush()
+    expect(errors).toContain('读取本地版本失败: no fs')
+    expect(errors).toContain('获取远程版本列表失败: no runtime')
+    expect(loading).toBe(false) // 远程分支同步抛出不得把 loading 永挂 true
+  })
+
   it('远程失败保留旧清单，本地失败保留旧资产', async () => {
     const setRemote = vi.fn()
     const setLocal = vi.fn()

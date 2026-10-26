@@ -15,12 +15,9 @@ import { createPiikAdapter } from '../adapters/piik'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import type { ManagedConsoleStore } from '../components/managed/store'
 import { useClipboard } from '../composables/useClipboard'
-import { useToast } from '../composables/useToast'
-import { getErrorMessage } from '../utils/errors'
 
 const adapter = createPiikAdapter()
 const { copyWithToast } = useClipboard()
-const { showToast } = useToast()
 
 // 快照业务扩展字段经此单一 cast 位收口（共享壳按 ManagedSnapshot 宽型回传）
 function piikOf(snap: unknown): PiikStatus {
@@ -46,22 +43,14 @@ const EMPTY_STATUS: PiikStatus = {
   driftNote: '',
 }
 
-// 「打开界面」单飞走共享 store.runExclusive（P0 批 3·4.5 口径，ddnsgo
-// openConsole 同形制）：在途时启停/退出钮一并闩住，杜绝多份 busy 真相。
-async function openUI(store: ManagedConsoleStore) {
-  const r = await store.runExclusive(async () => {
-    try {
-      return { ok: true as const, data: await adapter.openUI.run() }
-    } catch (e) {
-      return { ok: false as const, error: e as unknown }
-    }
-  })
-  if (!r) return // 共享互斥闩占用中：重复点击直接丢弃
-  if (r.ok) {
-    if (r.data?.message !== undefined) showToast(r.data.message)
-  } else {
-    showToast(getErrorMessage(r.error))
-  }
+// 「打开界面」单飞走共享 store.runSlotVerb（P0 批 3·4.5 口径 + 波 2A 编排位，
+// ddnsgo openConsole 同形制）：runExclusive→settle→toast 整链单源——在途时
+// 启停/退出钮一并闩住，杜绝多份 busy 真相；失败裸错误串（errorPrefix:''）、
+// 成败均不刷快照（refreshAfter:'never'，状态回写由 instance-state 事件与轮询兜底），
+// 与原视图手抄链逐字同形制（原 openUI 回执恒为 {message}、无 reloadVersions/
+// activeVersion，成功仅弹 message，失败弹裸错误串，本收编行为零差）。
+function openUI(store: ManagedConsoleStore) {
+  void store.runSlotVerb(adapter.openUI, { errorPrefix: '', refreshAfter: 'never' })
 }
 </script>
 
