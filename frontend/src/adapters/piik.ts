@@ -34,6 +34,7 @@ import { ref } from 'vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
+import { bindVersionProgress, setActiveResult, uninstalledResult } from './managedCommon'
 import {
   soleVersionUninstallNote,
   type ManagedActionResult,
@@ -185,12 +186,7 @@ export function createPiikAdapter(): PiikAdapter {
       })
     },
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<PiikProgress>('piik:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<PiikProgress>('piik:version-download', cb),
 
     versions: {
       listInstalled: () => PIKAPI.ListInstalledVersions(),
@@ -200,7 +196,7 @@ export function createPiikAdapter(): PiikAdapter {
       async setActive(version): Promise<ManagedActionResult> {
         const ver = await PIKAPI.SetActiveVersion(version)
         refreshMetaHints() // 第 1 条含"当前使用版本由您设定"账
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(ver)
       },
 
       async download(rel): Promise<ManagedActionResult> {
@@ -228,7 +224,7 @@ export function createPiikAdapter(): PiikAdapter {
         if (!accepted) return {}
         await PIKAPI.RemoveVersion(v.version)
         refreshMetaHints() // 使用版本可能被后端清空，第 1 条要跟着改口
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

@@ -28,10 +28,10 @@ import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/markeron/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/markeron/version/models'
 import type { ToggleOutcome, StopOutcome } from '../../bindings/hanxi/internal/modules/markeron/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { normalizeVersion } from '../utils/version'
 import type { ManagedActionResult, ManagedModuleAdapter } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /**
  * 标注切换进行中闩（视图六态钮与 quit.disabledFor 共读；等效原视图 busy 的
@@ -146,19 +146,9 @@ export function createMarkerOnAdapter(): ManagedModuleAdapter<Snapshot> {
   return {
     getStatus: () => MarkerAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('markeron:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('markeron:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('markeron:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('markeron:version-download', cb),
 
     versions: {
       listInstalled: () => MarkerAPI.ListInstalledVersions(),
@@ -166,16 +156,11 @@ export function createMarkerOnAdapter(): ManagedModuleAdapter<Snapshot> {
       getActive: () => MarkerAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await MarkerAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await MarkerAPI.SetActiveVersion(version))
       },
 
       async download(rel): Promise<ManagedActionResult> {
-        const res = await MarkerAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await MarkerAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v): Promise<ManagedActionResult> {
@@ -190,7 +175,7 @@ export function createMarkerOnAdapter(): ManagedModuleAdapter<Snapshot> {
         })
         if (!accepted) return {}
         await MarkerAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${versionShort}`, reloadVersions: true }
+        return uninstalledResult(versionShort)
       },
 
       // 打开安装目录必须传「目录」而非 exe——explorer.exe 收文件参数会执行文件

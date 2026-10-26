@@ -21,11 +21,11 @@ import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
 import type { DotnetEnv } from '../../bindings/hanxi/internal/modules/bcu/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/bcu/instance/models'
 import type { BCURelease, DownloadProgress } from '../../bindings/hanxi/internal/modules/bcu/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import type { ManagedModuleAdapter, ManagedVersionRecord } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /** BCU 下载变体（与后端 DownloadVersion 的 variant 词一致）。 */
 export type BCUVariant = 'portable' | 'fdd'
@@ -84,19 +84,12 @@ export function createBCUAdapter(): BCUAdapter {
   return {
     getStatus: () => BCUAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('bcu:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('bcu:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('bcu:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: `${t.version}|${t.variant || 'portable'}`, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    // 复合键 version|variant（铁律②方言）：事件键形与 versions.progressKey 反查
+    // 必须同源，缺省变体口径两处一致（票据对齐防永挂）
+    subscribeProgress: (cb) =>
+      bindVersionProgress<DownloadProgress>('bcu:version-download', cb, (t) => `${t.version}|${t.variant || 'portable'}`),
 
     versions: {
       listInstalled: () => BCUAPI.ListInstalledVersions(),
@@ -104,19 +97,14 @@ export function createBCUAdapter(): BCUAdapter {
       getActive: () => BCUAPI.GetActiveVersion(),
 
       async setActive(version) {
-        const ver = await BCUAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await BCUAPI.SetActiveVersion(version))
       },
 
       async download(rel) {
         // variant 由方言视图经 variantRelease() 注入；面板首用一键下载无注入位，
         // 缺省回落推荐变体（环境未测毕回自包含便携版——与原方言空态双分支逐字同语义）
         const variant = (rel as BCUReleaseRow).variant ?? recommendedVariant.value ?? 'portable'
-        const res = await BCUAPI.DownloadVersion(rel.version, variant)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await BCUAPI.DownloadVersion(rel.version, variant), rel.version)
       },
 
       async remove(v: ManagedVersionRecord) {
@@ -128,7 +116,7 @@ export function createBCUAdapter(): BCUAdapter {
         })
         if (!ok) return {}
         await BCUAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal() {

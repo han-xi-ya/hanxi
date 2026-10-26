@@ -15,10 +15,10 @@
 import * as RufusAPI from '../../bindings/hanxi/internal/modules/rufus/rufusservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/rufus/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/rufus/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import type { ManagedModuleAdapter, ManagedVersionRecord } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 export function createRufusAdapter(): ManagedModuleAdapter {
   const { confirm } = useConfirm()
@@ -27,19 +27,9 @@ export function createRufusAdapter(): ManagedModuleAdapter {
   return {
     getStatus: () => RufusAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('rufus:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('rufus:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('rufus:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('rufus:version-download', cb),
 
     versions: {
       listInstalled: () => RufusAPI.ListInstalledVersions(),
@@ -47,16 +37,11 @@ export function createRufusAdapter(): ManagedModuleAdapter {
       getActive: () => RufusAPI.GetActiveVersion(),
 
       async setActive(version) {
-        const ver = await RufusAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await RufusAPI.SetActiveVersion(version))
       },
 
       async download(rel) {
-        const res = await RufusAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await RufusAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord) {
@@ -68,7 +53,7 @@ export function createRufusAdapter(): ManagedModuleAdapter {
         })
         if (!ok) return {}
         await RufusAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal() {

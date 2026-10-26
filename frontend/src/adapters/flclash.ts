@@ -10,10 +10,10 @@
 import * as FlClashAPI from '../../bindings/hanxi/internal/modules/flclash/flclashservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/flclash/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/flclash/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import type { ManagedActionResult, ManagedModuleAdapter, ManagedReleaseRecord, ManagedVersionRecord } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 export function createFlClashAdapter(): ManagedModuleAdapter {
   const { confirm } = useConfirm()
@@ -22,19 +22,9 @@ export function createFlClashAdapter(): ManagedModuleAdapter {
   return {
     getStatus: () => FlClashAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('flclash:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('flclash:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('flclash:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('flclash:version-download', cb),
 
     versions: {
       listInstalled: () => FlClashAPI.ListInstalledVersions(),
@@ -42,16 +32,11 @@ export function createFlClashAdapter(): ManagedModuleAdapter {
       getActive: () => FlClashAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await FlClashAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await FlClashAPI.SetActiveVersion(version))
       },
 
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
-        const res = await FlClashAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await FlClashAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
@@ -63,7 +48,7 @@ export function createFlClashAdapter(): ManagedModuleAdapter {
         })
         if (!accepted) return {}
         await FlClashAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

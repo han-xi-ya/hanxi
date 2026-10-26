@@ -14,10 +14,10 @@
 import * as PicLiteAPI from '../../bindings/hanxi/internal/modules/piclite/picliteservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/piclite/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/piclite/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import type { ManagedActionResult, ManagedModuleAdapter, ManagedReleaseRecord, ManagedVersionRecord } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 export function createPicLiteAdapter(): ManagedModuleAdapter {
   const { confirm } = useConfirm()
@@ -26,19 +26,9 @@ export function createPicLiteAdapter(): ManagedModuleAdapter {
   return {
     getStatus: () => PicLiteAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('piclite:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('piclite:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('piclite:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('piclite:version-download', cb),
 
     versions: {
       listInstalled: () => PicLiteAPI.ListInstalledVersions(),
@@ -46,16 +36,11 @@ export function createPicLiteAdapter(): ManagedModuleAdapter {
       getActive: () => PicLiteAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await PicLiteAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await PicLiteAPI.SetActiveVersion(version))
       },
 
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
-        const res = await PicLiteAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await PicLiteAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
@@ -67,7 +52,7 @@ export function createPicLiteAdapter(): ManagedModuleAdapter {
         })
         if (!accepted) return {}
         await PicLiteAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

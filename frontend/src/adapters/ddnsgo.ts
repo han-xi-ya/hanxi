@@ -29,6 +29,7 @@ import type {
   ManagedReleaseRecord,
   ManagedVersionRecord,
 } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /**
  * ddns-go 适配总面：批 0 log/port 两个可选扩展槽在本模块收紧为必选
@@ -54,19 +55,9 @@ export function createDdnsGoAdapter(): DdnsGoAdapter {
   return {
     getStatus: () => DdnsGoAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('ddnsgo:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('ddnsgo:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('ddnsgo:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('ddnsgo:version-download', cb),
 
     // ---------- log 槽（批 0 预留形状的首个实战）----------
     // 事件流经视图 setup 期 subscribe 接入累积面板；pull 供首屏与
@@ -101,16 +92,11 @@ export function createDdnsGoAdapter(): DdnsGoAdapter {
       getActive: () => DdnsGoAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await DdnsGoAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await DdnsGoAPI.SetActiveVersion(version))
       },
 
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
-        const res = await DdnsGoAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await DdnsGoAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
@@ -124,7 +110,7 @@ export function createDdnsGoAdapter(): DdnsGoAdapter {
         })
         if (!accepted) return {}
         await DdnsGoAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

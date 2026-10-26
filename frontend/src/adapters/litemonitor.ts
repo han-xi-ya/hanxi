@@ -24,6 +24,7 @@ import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import type { ManagedActionResult, ManagedModuleAdapter, ManagedReleaseRecord, ManagedVersionRecord } from '../components/managed/adapter'
+import { bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /** 托管快照 + .NET 8 运行时探测业务附加（批 0 契约的 S extends ManagedSnapshot 扩展位）。 */
 export type LmConsoleSnapshot = Snapshot & { hasDesktop8?: boolean }
@@ -75,12 +76,7 @@ export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapsh
       })
     },
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('litemonitor:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('litemonitor:version-download', cb),
 
     versions: {
       async listInstalled() {
@@ -98,15 +94,11 @@ export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapsh
       async setActive(version): Promise<ManagedActionResult> {
         const ver = await LiteMonitorAPI.SetActiveVersion(version)
         activeMirror = ver
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(ver)
       },
 
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
-        const res = await LiteMonitorAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await LiteMonitorAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
@@ -118,7 +110,7 @@ export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapsh
         })
         if (!accepted) return {}
         await LiteMonitorAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

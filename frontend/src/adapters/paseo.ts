@@ -21,7 +21,6 @@
 import * as PaseoAPI from '../../bindings/hanxi/internal/modules/paseo/paseoservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/paseo/instance/models'
 import type { DownloadProgress, PaseoVersionInfo } from '../../bindings/hanxi/internal/modules/paseo/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { fmtSize } from '../utils/format'
@@ -33,6 +32,7 @@ import type {
   ManagedReleaseRecord,
   ManagedVersionRecord,
 } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, uninstalledResult } from './managedCommon'
 
 /** 已装记录方言字段包（③）：共享面板/视图经 store.installed 直读 verifiedHash，零 cast。 */
 export type PaseoVersionDialect = Pick<PaseoVersionInfo, 'verifiedHash'>
@@ -74,19 +74,9 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
   return {
     getStatus: () => PaseoAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('paseo:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('paseo:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('paseo:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('paseo:version-download', cb),
 
     versions: {
       listInstalled: () => PaseoAPI.ListInstalledVersions(),
@@ -118,7 +108,7 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
         })
         if (!accepted) return {}
         await PaseoAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

@@ -37,6 +37,7 @@ import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { useToast } from '../composables/useToast'
 import { getErrorMessage } from '../utils/errors'
+import { bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 import { toolStateMeta } from '../constants/status'
 import type { ManagedActionResult, ManagedModuleAdapter } from '../components/managed/adapter'
 
@@ -114,12 +115,7 @@ export function createBili23Adapter(): Bili23Adapter {
       })
     },
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('bili23:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('bili23:version-download', cb),
 
     versions: {
       listInstalled: () => Bili23API.ListInstalledVersions(),
@@ -127,16 +123,11 @@ export function createBili23Adapter(): Bili23Adapter {
       getActive: () => Bili23API.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await Bili23API.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await Bili23API.SetActiveVersion(version))
       },
 
       async download(rel): Promise<ManagedActionResult> {
-        const res = await Bili23API.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await Bili23API.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v): Promise<ManagedActionResult> {
@@ -148,7 +139,7 @@ export function createBili23Adapter(): Bili23Adapter {
         })
         if (!accepted) return {}
         await Bili23API.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

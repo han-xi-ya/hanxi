@@ -17,7 +17,6 @@
 import * as RecordlyAPI from '../../bindings/hanxi/internal/modules/recordly/recordlyservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/recordly/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/recordly/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import { fmtSize } from '../utils/format'
@@ -28,6 +27,7 @@ import type {
   ManagedReleaseRecord,
   ManagedVersionRecord,
 } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, uninstalledResult } from './managedCommon'
 
 /**
  * 核心互认同一性：精确 tag 命中或数值核心一致（PE 版本抹掉 -beta 后缀的互认场）。
@@ -57,19 +57,9 @@ export function createRecordlyAdapter(): ManagedModuleAdapter {
   return {
     getStatus: () => RecordlyAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('recordly:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('recordly:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('recordly:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('recordly:version-download', cb),
 
     versions: {
       listInstalled: () => RecordlyAPI.ListInstalledVersions(),
@@ -86,11 +76,7 @@ export function createRecordlyAdapter(): ManagedModuleAdapter {
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
         // ⑥收编：不再自捕获——失败直接抛错，'安装失败: ' 前缀经 copy.errorPrefix
         // 回 store 词源表，toast 词面逐字不变、无双弹。
-        const res = await RecordlyAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await RecordlyAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
@@ -102,7 +88,7 @@ export function createRecordlyAdapter(): ManagedModuleAdapter {
         })
         if (!accepted) return {}
         await RecordlyAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

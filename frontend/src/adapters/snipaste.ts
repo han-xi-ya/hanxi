@@ -8,7 +8,6 @@ import type {
 } from '../../bindings/hanxi/internal/modules/snipaste/version/models'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import {
   soleVersionUninstallNote,
   type ManagedActionResult,
@@ -16,6 +15,7 @@ import {
   type ManagedVersionRecord,
   type NormalizedProgress,
 } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress } from './managedCommon'
 
 export type SnipasteVersionDialect = Pick<
   SnipasteVersionInfo,
@@ -98,24 +98,9 @@ export function createSnipasteAdapter(
   return {
     getStatus: () => SnipasteAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('snipaste:instance-state', (snapshot) => {
-        if (snapshot) cb(snapshot)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('snipaste:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('snipaste:version-download', (progress) => {
-        if (!progress?.version) return
-        cb({
-          key: progress.version,
-          stage: progress.stage,
-          done: progress.done,
-          total: progress.total,
-          message: progress.message,
-        })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('snipaste:version-download', cb),
 
     onProgress,
 

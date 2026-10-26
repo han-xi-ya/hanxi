@@ -33,6 +33,7 @@ import type { RuntimeStatus } from '../../bindings/hanxi/internal/modules/papert
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
+import { bindVersionProgress } from './managedCommon'
 import type {
   ManagedActionResult,
   ManagedModuleAdapter,
@@ -127,12 +128,7 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
       })
     },
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('papertodo:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('papertodo:version-download', cb),
 
     versions: {
       async listInstalled(): Promise<ManagedVersionRecord[]> {

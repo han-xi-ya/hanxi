@@ -55,6 +55,7 @@ import * as SysInfoAPI from '../../bindings/hanxi/internal/modules/sysinfo/sysin
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 import { getErrorMessage } from '../utils/errors'
 import { compareStrict } from '../utils/version'
 import type {
@@ -423,19 +424,9 @@ export function createTBAdapter(): TBAdapter {
   return {
     getStatus: () => TBAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('translucenttb:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('translucenttb:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('translucenttb:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('translucenttb:version-download', cb),
 
     versions: {
       listInstalled: async () => {
@@ -447,16 +438,11 @@ export function createTBAdapter(): TBAdapter {
       getActive: () => TBAPI.GetActiveVersion(),
 
       async setActive(version) {
-        const ver = await TBAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await TBAPI.SetActiveVersion(version))
       },
 
       async download(rel) {
-        const res = await TBAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await TBAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord) {
@@ -470,7 +456,7 @@ export function createTBAdapter(): TBAdapter {
         })
         if (!accepted) return {}
         await TBAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal() {

@@ -21,10 +21,10 @@
 import * as MangoDiskAPI from '../../bindings/hanxi/internal/modules/mangodisk/mangodiskservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/mangodisk/instance/models'
 import type { DownloadProgress, MangoDiskVersionInfo } from '../../bindings/hanxi/internal/modules/mangodisk/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import type { ManagedActionResult, ManagedModuleAdapter, ManagedReleaseRecord, ManagedVersionRecord } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /** 已装记录方言字段包（③）：完整性族字段随 store.installed 类型直读。 */
 export type MangoDiskVersionDialect = Pick<
@@ -39,19 +39,9 @@ export function createMangoDiskAdapter(): ManagedModuleAdapter<Snapshot, MangoDi
   return {
     getStatus: () => MangoDiskAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('mangodisk:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('mangodisk:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('mangodisk:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('mangodisk:version-download', cb),
 
     versions: {
       listInstalled: () => MangoDiskAPI.ListInstalledVersions(),
@@ -59,16 +49,12 @@ export function createMangoDiskAdapter(): ManagedModuleAdapter<Snapshot, MangoDi
       getActive: () => MangoDiskAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await MangoDiskAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await MangoDiskAPI.SetActiveVersion(version))
       },
 
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
-        const res = await MangoDiskAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        // 回执词单源 downloadOutcome（2026-10-26 机主裁决：安装回执统一「版本 X 已安装」）
+        return downloadOutcome(await MangoDiskAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord<MangoDiskVersionDialect>): Promise<ManagedActionResult> {
@@ -81,7 +67,7 @@ export function createMangoDiskAdapter(): ManagedModuleAdapter<Snapshot, MangoDi
         })
         if (!accepted) return {}
         await MangoDiskAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

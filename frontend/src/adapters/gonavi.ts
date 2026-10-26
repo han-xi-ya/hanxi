@@ -34,6 +34,7 @@ import {
   type ManagedSnapshot,
   type ManagedVersionRecord,
 } from '../components/managed/adapter'
+import { bindVersionProgress, setActiveResult, uninstalledResult } from './managedCommon'
 
 /**
  * GetStatus 组合快照（gonavi/models.go GoNaviStatus）：instance.Snapshot 经
@@ -104,12 +105,7 @@ export function createGoNaviAdapter(): ManagedModuleAdapter<GoNaviStatus, GoNavi
       })
     },
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<GoNaviProgress>('gonavi:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<GoNaviProgress>('gonavi:version-download', cb),
 
     versions: {
       listInstalled: () => GoNaviAPI.ListInstalledVersions(),
@@ -117,8 +113,7 @@ export function createGoNaviAdapter(): ManagedModuleAdapter<GoNaviStatus, GoNavi
       getActive: () => GoNaviAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await GoNaviAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await GoNaviAPI.SetActiveVersion(version))
       },
 
       async download(rel): Promise<ManagedActionResult> {
@@ -157,7 +152,7 @@ export function createGoNaviAdapter(): ManagedModuleAdapter<GoNaviStatus, GoNavi
         })
         if (!accepted) return {}
         await GoNaviAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

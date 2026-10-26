@@ -37,6 +37,7 @@ import {
   type ManagedSnapshot,
   type ManagedVersionRecord,
 } from '../components/managed/adapter'
+import { bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /**
  * GetStatus 组合快照（冻结契约）：instance.Snapshot 投影面 + 账目四字段。
@@ -92,12 +93,7 @@ export function createDbxAdapter(): ManagedModuleAdapter<DbxStatus> {
       })
     },
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DbxProgress>('dbx:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DbxProgress>('dbx:version-download', cb),
 
     versions: {
       listInstalled: () => DBXAPI.ListInstalledVersions(),
@@ -105,17 +101,12 @@ export function createDbxAdapter(): ManagedModuleAdapter<DbxStatus> {
       getActive: () => DBXAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await DBXAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await DBXAPI.SetActiveVersion(version))
       },
 
       async download(rel): Promise<ManagedActionResult> {
         // 无 confirm 闸（冻结契约新口径）：新版本写独立目录，不碰在用目录。
-        const res = await DBXAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await DBXAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
@@ -130,7 +121,7 @@ export function createDbxAdapter(): ManagedModuleAdapter<DbxStatus> {
         })
         if (!accepted) return {}
         await DBXAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

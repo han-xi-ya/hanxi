@@ -16,7 +16,6 @@ import * as RAMMapAPI from '../../bindings/hanxi/internal/modules/rammap/rammaps
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/rammap/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/rammap/version/models'
 import { computed, ref, type Ref } from 'vue'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import {
@@ -25,6 +24,7 @@ import {
   type ManagedModuleAdapter,
   type ManagedVersionRecord,
 } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 export interface RAMMapAdapter extends ManagedModuleAdapter {
   /** 宿主未提权且目标 manifest=requireAdministrator 时为真：A/B 双路入口据此显形。 */
@@ -72,19 +72,9 @@ export function createRAMMapAdapter(): RAMMapAdapter {
     needsElevationChoice: computed(() => hostElevated.value === false && executionLevel.value === 'requireAdministrator'),
     runElevationChoice,
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('rammap:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('rammap:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('rammap:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('rammap:version-download', cb),
 
     stateText: (snapshot) =>
       ({
@@ -104,16 +94,12 @@ export function createRAMMapAdapter(): RAMMapAdapter {
       getActive: () => RAMMapAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await RAMMapAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await RAMMapAPI.SetActiveVersion(version))
       },
 
       async download(rel): Promise<ManagedActionResult> {
-        const res = await RAMMapAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `RAMMap ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        // 回执词单源 downloadOutcome（2026-10-26 机主裁决：安装回执统一「版本 X 已安装」）
+        return downloadOutcome(await RAMMapAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
@@ -126,7 +112,7 @@ export function createRAMMapAdapter(): RAMMapAdapter {
         })
         if (!accepted) return {}
         await RAMMapAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

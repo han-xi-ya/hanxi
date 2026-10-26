@@ -15,7 +15,6 @@
 import * as TermoraAPI from '../../bindings/hanxi/internal/modules/termora/termoraservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/termora/instance/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/termora/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import {
@@ -24,6 +23,7 @@ import {
   type ManagedModuleAdapter,
   type ManagedVersionRecord,
 } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 export function createTermoraAdapter(): ManagedModuleAdapter {
   const { confirm } = useConfirm()
@@ -46,19 +46,9 @@ export function createTermoraAdapter(): ManagedModuleAdapter {
   return {
     getStatus: () => TermoraAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('termora:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('termora:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('termora:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('termora:version-download', cb),
 
     // 六态词表（引擎原生 quitting：关闭请求已投递、宽限收口前）
     stateText: (snapshot) =>
@@ -79,16 +69,11 @@ export function createTermoraAdapter(): ManagedModuleAdapter {
       getActive: () => TermoraAPI.GetActiveVersion(),
 
       async setActive(version): Promise<ManagedActionResult> {
-        const ver = await TermoraAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await TermoraAPI.SetActiveVersion(version))
       },
 
       async download(rel): Promise<ManagedActionResult> {
-        const res = await TermoraAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await TermoraAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
@@ -101,7 +86,7 @@ export function createTermoraAdapter(): ManagedModuleAdapter {
         })
         if (!accepted) return {}
         await TermoraAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal(): Promise<ManagedActionResult> {

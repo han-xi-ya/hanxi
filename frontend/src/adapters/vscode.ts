@@ -15,6 +15,7 @@ import type {
   ManagedVersionRecord,
   NormalizedProgress,
 } from '../components/managed/adapter'
+import { uninstalledResult } from './managedCommon'
 
 export type VSCodeForm = 'portable' | 'installer'
 export type VSCodeInstalledVersion = ManagedVersionRecord<{ verified: boolean }>
@@ -171,7 +172,7 @@ export function createVSCodeAdapter(): VSCodeAdapterBundle {
     })
     if (!accepted) return {}
     await VSCodeAPI.RemoveVersion(info.version)
-    return { message: `已卸载 ${info.version}`, reloadVersions: true }
+    return uninstalledResult(info.version)
   }
 
   async function importLocal(): Promise<ManagedActionResult> {

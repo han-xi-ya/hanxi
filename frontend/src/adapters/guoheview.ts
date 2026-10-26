@@ -16,10 +16,10 @@
 import * as GuoheViewAPI from '../../bindings/hanxi/internal/modules/guoheview/guoheviewservice'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/guoheview/instance/models'
 import type { DownloadProgress, ViewRelease } from '../../bindings/hanxi/internal/modules/guoheview/version/models'
-import { useWailsEvent } from '../composables/useWailsEvent'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
 import type { ManagedModuleAdapter, ManagedReleaseRecord, ManagedVersionRecord } from '../components/managed/adapter'
+import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /** 方言远程行：ViewRelease + 契约要求的 published 占位（接口无发布时间列，空串）。 */
 export type GuoheReleaseRow = ViewRelease & Pick<ManagedReleaseRecord, 'published'>
@@ -31,19 +31,9 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
   return {
     getStatus: () => GuoheViewAPI.GetStatus(),
 
-    subscribeInstanceState: (cb) => {
-      useWailsEvent<Snapshot>('guoheview:instance-state', (s) => {
-        if (!s) return
-        cb(s)
-      })
-    },
+    subscribeInstanceState: (cb) => bindInstanceState<Snapshot>('guoheview:instance-state', cb),
 
-    subscribeProgress: (cb) => {
-      useWailsEvent<DownloadProgress>('guoheview:version-download', (t) => {
-        if (!t || !t.version) return
-        cb({ key: t.version, stage: t.stage, done: t.done, total: t.total, message: t.message })
-      })
-    },
+    subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('guoheview:version-download', cb),
 
     versions: {
       listInstalled: () => GuoheViewAPI.ListInstalledVersions(),
@@ -54,16 +44,11 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
       getActive: () => GuoheViewAPI.GetActiveVersion(),
 
       async setActive(version) {
-        const ver = await GuoheViewAPI.SetActiveVersion(version)
-        return { message: `已将 ${ver} 设为使用版本`, activeVersion: ver }
+        return setActiveResult(await GuoheViewAPI.SetActiveVersion(version))
       },
 
       async download(rel) {
-        const res = await GuoheViewAPI.DownloadVersion(rel.version)
-        if (res === 'already-installed') {
-          return { message: `版本 ${rel.version} 已安装`, reloadVersions: true }
-        }
-        return {}
+        return downloadOutcome(await GuoheViewAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord) {
@@ -75,7 +60,7 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
         })
         if (!accepted) return {}
         await GuoheViewAPI.RemoveVersion(v.version)
-        return { message: `已卸载 ${v.version}`, reloadVersions: true }
+        return uninstalledResult(v.version)
       },
 
       async importLocal() {
