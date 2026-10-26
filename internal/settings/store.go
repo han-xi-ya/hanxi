@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
-	"path/filepath"
 	"sync"
+
+	"hanxi/internal/jsonstore"
 )
 
 // WechatAccount 微信多账号配置模型
@@ -287,14 +289,12 @@ func (s *Store) Get() AppSettings {
 // TrayMenu/WheelMenu 自二级分组起元素内含可变 Children 切片，一层拷贝不完备，走 cloneTrayItems。
 func cloneAppSettings(src AppSettings) AppSettings {
 	cp := src
+	// maps.Copy 语义核验（A2 审查配合静态检查）：dst 均为就地 make 的新 map，
+	// 与 src 绝无同一对象或 nil 形态，替换前后行为逐键一致。
 	cp.Modules = make(map[string]bool, len(src.Modules))
-	for k, v := range src.Modules {
-		cp.Modules[k] = v
-	}
+	maps.Copy(cp.Modules, src.Modules)
 	cp.LanRemarks = make(map[string]string, len(src.LanRemarks))
-	for k, v := range src.LanRemarks {
-		cp.LanRemarks[k] = v
-	}
+	maps.Copy(cp.LanRemarks, src.LanRemarks)
 	cp.TrayMenu = cloneTrayItems(src.TrayMenu)
 	cp.WheelMenu = cloneTrayItems(src.WheelMenu)
 	cp.WechatAccounts = append(make([]WechatAccount, 0, len(src.WechatAccounts)), src.WechatAccounts...)
@@ -359,9 +359,7 @@ func (s *Store) GetLanRemarks() map[string]string {
 	defer s.mu.RUnlock()
 
 	res := make(map[string]string, len(s.data.LanRemarks))
-	for k, v := range s.data.LanRemarks {
-		res[k] = v
-	}
+	maps.Copy(res, s.data.LanRemarks) // dst 就地新建，非 nil、不与 src 同体
 	return res
 }
 
@@ -633,27 +631,18 @@ func (s *Store) SetTrayMenu(items []TrayMenuItem) error {
 	})
 }
 
-// saveLocked 原子写文件：写入临时文件后 Rename，避免崩溃导致配置损坏
+// saveLocked 原子写配置文件：收口到 jsonstore.Save（tmp 名 "<path>.tmp.<pid>"、
+// 2 空格缩进、0644 与历史逐字节一致，存量配置零迁移）。
+//
+// 审查修复（A2 2026-10-26）：旧实现是 jsonstore.Save 的无 Sync 克隆——本机
+// 已有 jsonstore/Store.saveLocked/writeAtomicFile 三套同族原子写，本套独缺
+// "rename 前 Sync 刷盘"，掉电时 rename 元数据先行、数据页滞留缓存，可留下
+// 0 字节配置（重启即"设置全部归零"）。换用 jsonstore.Save 一并补齐 Sync，
+// 并消除重复逻辑；tmp 命名不变，state_migrate 的 ".json.tmp.<pid>" 残骸
+// 清理模式继续命中。
 func (s *Store) saveLocked() error {
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
+	if err := jsonstore.Save(s.filePath, s.data); err != nil {
+		return fmt.Errorf("save settings failed: %w", err)
 	}
-
-	bytes, err := json.MarshalIndent(s.data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal settings failed: %w", err)
-	}
-
-	tmpFile := fmt.Sprintf("%s.tmp.%d", s.filePath, os.Getpid())
-	if err := os.WriteFile(tmpFile, bytes, 0644); err != nil {
-		return fmt.Errorf("write temp settings failed: %w", err)
-	}
-
-	if err := os.Rename(tmpFile, s.filePath); err != nil {
-		_ = os.Remove(tmpFile)
-		return fmt.Errorf("rename temp settings failed: %w", err)
-	}
-
 	return nil
 }

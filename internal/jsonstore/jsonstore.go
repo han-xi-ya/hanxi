@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // ErrCorrupt 文件存在但内容不是合法 JSON。损坏容忍型 store 应视同"无内容"
@@ -79,9 +80,29 @@ func Save(path string, v any) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameAtomic(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	return nil
+}
+
+// renameAtomic 用 rename 把临时文件原子替换为目标，对 Windows 的
+// "瞬时占用"专错退避重试（审查 A2 2026-10-26 实测）：MoveFileEx 的
+// REPLACE_EXISTING 在目标正被其他句柄打开时直接报 Access is denied——
+// Go 的 os.Open 共享模式不带 FILE_SHARE_DELETE，而同进程外的读方在机主
+// 场景里是常态（杀毒扫描、飞牛 NAS 同步整目录、MCP/编辑器读配置）。
+// 读方持柄是毫秒级形态，退避几轮即可穿过；真持续占用（如目标被换成
+// 目录）重试用尽后如实报错，绝不谎称成功。
+func renameAtomic(tmp, path string) error {
+	var err error
+	for attempt := range 5 {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt*10) * time.Millisecond)
+		}
+		if err = os.Rename(tmp, path); err == nil {
+			return nil
+		}
+	}
+	return err
 }

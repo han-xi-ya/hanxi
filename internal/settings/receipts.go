@@ -8,7 +8,8 @@
 // 以及"账本蹭契约 schema 被无关升版重置"两项成组缺陷。
 // 读取纪律：磁盘缺失 = 未安装；损坏文件按未安装处理但 slog.Warn 留痕——
 // Registry 投影不得被个别坏文件阻断。写入纪律：复用 writeAtomicFile
-// （tmp+rename，对齐 Store.saveLocked），写失败旧凭据原样保留，错误中文可诊断。
+// （tmp+Sync+原子替换，与 Store.saveLocked→jsonstore.Save 同一套落盘强度），
+// 写失败旧凭据原样保留，错误中文可诊断。
 // 安全纪律：moduleId 直接参与文件名拼接，必须先过消毒闸门（仅 [a-z0-9-]），
 // 拒绝路径分隔、上级跳出与空名，防路径注入；账本相关保留名单独拒绝。
 //
