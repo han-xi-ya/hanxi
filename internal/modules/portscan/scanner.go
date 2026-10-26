@@ -536,6 +536,12 @@ func (s *Scanner) lightweightProbe(ctx context.Context, dialer ContextDialer, ht
 					break
 				}
 			}
+			// Scan() 返回 false 有两种成因：正常读完，或**读取出错**（连接被重置、
+			// chunked 传输截断，以及最常见的一条：单行超过 bufio 默认 64KiB 上限
+			// 触发 ErrTooLong——无换行的压缩 HTML 就是这种形态）。不查 Err 就会把
+			// "半截页面"当成"这就是页面全貌"，标题缺失被静默读成"该站点没有标题"。
+			// 与本仓 mcpwizard 假件服务同型病（那边已在审查批内收口），此处一并补上。
+			readErr := scanner.Err()
 			matches := titleRegex.FindSubmatch(bodyBuf.Bytes())
 			title := ""
 			if len(matches) > 1 {
@@ -551,6 +557,21 @@ func (s *Scanner) lightweightProbe(ctx context.Context, dialer ContextDialer, ht
 			}
 			if len(parts) > 0 {
 				res.Banner = strings.Join(parts, " | ")
+			}
+			// 只在"标题没拿到 + 读取确实出错"时标注。两个理由：
+			// ① 标题已拿到即说明关键事实在断流前完整读到了（titleRegex 要求闭合
+			//    </title> 才算匹配，半截标题不会误判成"有标题"），此时再挂"中断"
+			//    只是噪音——实测不少 HTTP/1.0 式关闭即终止的响应会带 RST 错误，
+			//    宽判据会把它们统统误标为可疑（本仓该用例第一轮即如此翻车）。
+			// ② 真正需要分辨的恰是"这站点真没标题"还是"我没读完"，二者都满足
+			//    title=="" && readErr!=nil。
+			if readErr != nil && title == "" {
+				marker := fmt.Sprintf("响应未完整读取: %v", readErr)
+				if res.Banner == "" {
+					res.Banner = marker
+				} else {
+					res.Banner += " | " + marker
+				}
 			}
 		}
 	}
