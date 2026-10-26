@@ -1,7 +1,8 @@
 // Package petest 构造最小合法 PE 图标夹具（供 peicon 及其消费方测试复用）。
 //
-// 存在的意义：peicon 的表驱动测试与 internal/app 的 RuntimeIconService 缓存
-// 测试都需要"真实可被解析器吃下的 PE 字节"，两份各写一遍必漂移，收口此处。
+// 存在的意义：internal/app 的 RuntimeIconService 缓存测试与 peicon 的 A1 审查
+// 批测试都需要"真实可被解析器吃下的 PE 字节"，夹具收口此处一份，新消费方一律
+// 用它——peicon_test.go 的包内本地副本是未合并的历史孪生，改布局口径须同步两处。
 // 布局：四层资源目录树（类型→名字→语言→数据）+ 各数据条目后紧跟其负载
 // （解析器按绝对偏移寻址，对布局零假设），DataEntry.OffsetToData 按标准
 // 模块 RVA 口径；外壳是单节 .rsrc 的最小 PE32/PE32+。

@@ -1,6 +1,7 @@
 // Package platform 定义操作系统能力的抽象接口与跨平台数据模型（网卡、端口表、
 // 进程、Job Object、应用包等），不含任何系统调用实现。具体实现位于
-// platform/windows（Windows 专属）；业务模块只依赖本包接口，便于非 Windows 构建降级。
+// platform/windows（Windows 专属）；聚合能力经本包接口供业务消费，
+// 唤窗/提权等平台专属原语则由模块直接 import platform/windows，不走本层。
 package platform
 
 import (
@@ -76,7 +77,7 @@ type Neighbor struct {
 	IP        string `json:"ip"`
 	MAC       string `json:"mac"`
 	Interface uint32 `json:"interface"`
-	State     string `json:"state"` // Reachable, Stale, etc.
+	State     string `json:"state"` // 实现回报的状态词汇；Windows 透传 NlnsState 枚举的十进制数字串，非 Reachable/Stale 名称
 }
 
 // TCPRow 对应系统 TCP 表行
@@ -114,7 +115,8 @@ type VerifyToken struct {
 
 // Job Windows Job Object 句柄封装接口
 type Job interface {
-	// Assign 把已存在的进程（按 PID，需 PROCESS_QUERY_LIMITED_INFORMATION 打开句柄）纳入本 Job。
+	// Assign 把已存在的进程（按 PID）纳入本 Job；句柄由实现自行打开
+	// （Windows 需 PROCESS_SET_QUOTA|PROCESS_TERMINATE）。
 	Assign(pid uint32) error
 	// Close 关闭 Job 句柄；若 KILL_ON_JOB_CLOSE 生效则连带终止组内所有进程。
 	Close() error
@@ -130,12 +132,14 @@ type Job interface {
 type NetworkAPI interface {
 	// Adapters 枚举全部网卡（含回环与虚拟网卡，由调用方按 IsLoopback/IsPhysical 过滤）。
 	Adapters() ([]Adapter, error)
-	// DefaultAdapter 返回承载默认路由的网卡；无活动出网网卡时返回错误。
+	// DefaultAdapter 启发式返回承载默认路由的网卡：首选 up、非回环且有 IPv4
+	// 的首个网卡；都不满足但枚举非空时回退列表首项，仅枚举为空才报错。
 	DefaultAdapter() (*Adapter, error)
 	// NeighborTable 返回邻居/ARP 缓存，供局域网发现去重与在线判断。
 	NeighborTable() ([]Neighbor, error)
 	// Ping 探测目标可达性并返回往返时延。ok=false 且 err=nil 表示正常超时不可达；
-	// err 非空仅用于系统级失败（权限/构造 ICMP 句柄出错等），ctx 取消也走 err。
+	// err 非空仅用于系统级失败（权限/构造 ICMP 句柄出错等）。注：Windows 实现
+	// 为同步单次 IcmpSendEcho，不监听 ctx——取消/超时只以上面的 timeout 封顶。
 	Ping(ctx context.Context, ip string, timeout time.Duration) (rtt time.Duration, ok bool, err error)
 }
 
@@ -149,12 +153,15 @@ type PortAPI interface {
 
 // ProcessAPI 进程管理与安全查杀抽象
 type ProcessAPI interface {
-	// Query 按 PID 读取进程元信息；进程不存在时返回 ErrProcessNotFound。
+	// Query 按 PID 读取进程元信息；进程打不开（不存在/无权限）时返回底层错误。
+	// 注：Windows 实现不包装 ErrProcessNotFound——调用方按"任意错误=已消失"判定。
 	Query(pid uint32) (ProcInfo, error)
 	// KillVerified 查杀前先复核 PID 对应的可执行路径与启动时间是否与 token 一致，
-	// 不一致判定为 PID 复用，返回 ErrTokenMismatch 拒杀；force=true 跳过温和退出直接强杀。
+	// 不一致判定为 PID 复用，返回 ErrTokenMismatch 拒杀。force 当前无差异行为：
+	// Windows 实现复核通过后一律 TerminateProcess 硬杀，传 false 不指望温和退出。
 	KillVerified(ctx context.Context, token VerifyToken, force bool) error
-	// IsProtected 判断进程是否属于系统红线（csrss/winlogon 等关键进程），命中即禁止查杀。
+	// IsProtected 判断进程是否属于系统红线（PID 0/4 与自身之外，csrss/lsass/
+	// services 等关键进程名白名单），命中即禁止查杀。
 	IsProtected(pid uint32, info ProcInfo) bool
 }
 

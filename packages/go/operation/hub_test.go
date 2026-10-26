@@ -22,7 +22,8 @@ func seedTxn(t *testing.T, s *Store, txn, module string, op TxnOperation) {
 	}
 }
 
-// TestHubReflowPendingAsResumable §2.3 刷新恢复：NewHub 把未收口事务回灌为
+// TestHubReflowPendingAsResumable PLAN_WORKBENCH_MODULE_ROADMAP §2.3 刷新恢复：
+// NewHub 把未收口事务回灌为
 // failed + error.code=resumable + recoverable=true；kind 由 journal operation
 // 派生（uninstall→remove）；不进 Active。
 func TestHubReflowPendingAsResumable(t *testing.T) {

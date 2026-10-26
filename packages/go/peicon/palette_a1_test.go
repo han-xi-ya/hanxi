@@ -55,8 +55,9 @@ func TestExtractDIB32WithGarbageClrUsed(t *testing.T) {
 	}
 }
 
-// TestExtractDIB4BbpHonorsClrUsed 反向锁死：位深 ≤8 时 clrUsed 仍是有效表长
-// 口径（截短到 4 色则表后只读 4 项，越界索引如实报错而非静默读色面）。
+// TestExtractDIB4BbpHonorsClrUsed 反向锁死：位深 ≤8 的色表仍按 clrUsed 声明建表——
+// 4bpp 全表 16 项、像素索引 1 必须取到表项 1 的颜色（A1"高色深不按 clrUsed 建表"
+// 的修复不得波及此常规路径；越界索引行为不在本用例锁定范围）。
 func TestExtractDIB4bppHonorsClrUsed(t *testing.T) {
 	// 手工 4bpp 帧：hdr(40)+16 项色表+2x2 色面。DIB 行按 32 位对齐：
 	// 2px×4bpp=8bit → 每行补到 4 字节；AND 掩码同理 2 行各 4 字节。

@@ -40,8 +40,8 @@ func NewNetworkAPI() platform.NetworkAPI {
 	return &NetworkImpl{}
 }
 
-// Adapters 列举本机可用网卡与完整配置（包含网关、DNS、临时与永久 IPv6）
-// 优化：采用 Windows 原生 Win32 API GetAdaptersAddresses（亚毫秒级直接内存调用），彻底替代起子进程执行 PowerShell/WMI 导致的数秒延迟
+// Adapters 列举本机全部网卡与完整配置（含未启用/回环/虚拟，按 IsUp/IsLoopback 过滤归调用方）。
+// 实现采用 GetAdaptersAddresses 直读内存（亚毫秒级），替代历史 PowerShell/WMI 子进程方案的数秒延迟。
 func (n *NetworkImpl) Adapters() ([]platform.Adapter, error) {
 	var size uint32 = adaptersBufInitSize
 	var buf []byte
@@ -166,7 +166,8 @@ func (n *NetworkImpl) Adapters() ([]platform.Adapter, error) {
 	return result, nil
 }
 
-// DefaultAdapter 获取带有默认路由/主 IP 的网卡
+// DefaultAdapter 启发式首选：up 且非回环且有 IPv4 的首个网卡；全部不满足时
+// 回退枚举首项（可能未启用——调用方自行核验），仅枚举为空才报错。
 func (n *NetworkImpl) DefaultAdapter() (*platform.Adapter, error) {
 	adapters, err := n.Adapters()
 	if err != nil {
@@ -199,7 +200,8 @@ type mibIpNetTable2 struct {
 	Table      [1]mibIpNetRow2
 }
 
-// NeighborTable 读取系统 ARP / 邻居缓存表
+// NeighborTable 经 GetIpNetTable2 读取系统 ARP / 邻居缓存表；
+// State 透传 NlnsState 枚举数字（十进制字符串，非名称），供调用方自行解读。
 func (n *NetworkImpl) NeighborTable() ([]platform.Neighbor, error) {
 	var pTable *mibIpNetTable2
 	r, _, err := procGetIpNetTable2.Call(
@@ -269,7 +271,9 @@ type icmpEchoReply struct {
 	}
 }
 
-// Ping 使用 Windows 内核 IcmpSendEcho 进行高速 ICMP 探测（免 raw socket 管理员权限）
+// Ping 经 Windows 内核 IcmpSendEcho 单发 ICMP 探测（免 raw socket 管理员权限）。
+// 仅支持 IPv4（其余目标返回参数错误）；同步阻塞，ctx 不监听，等待上限即 timeout；
+// 超时/不可达一律 ok=false 且 err=nil。
 func (n *NetworkImpl) Ping(ctx context.Context, ipStr string, timeout time.Duration) (time.Duration, bool, error) {
 	ip := net.ParseIP(ipStr).To4()
 	if ip == nil {

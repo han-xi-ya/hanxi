@@ -196,8 +196,8 @@ func TestBeginConcurrentSameModuleExactlyOne(t *testing.T) {
 
 func txnName(i int) string { return "txn-c" + string(rune('a'+i)) }
 
-// TestAdvanceCrashWindow tmp+rename 窗口的崩溃安全：半途孤儿不伪装成事务、
-// 目标账本要么旧版完好；孤儿可被下一次 Advance 的同名写入吸收。
+// TestAdvanceCrashWindow tmp+rename 窗口的崩溃安全：半途孤儿（假 pid 模拟，与
+// 本进程 tmp 名不同名）不伪装成事务、目标账本旧版完好。
 func TestAdvanceCrashWindow(t *testing.T) {
 	s, dir := newTestStore(t)
 	if err := s.Begin(testJournal("txn-crash", "markeron")); err != nil {

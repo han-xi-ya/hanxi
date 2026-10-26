@@ -31,7 +31,8 @@ func NewProcessAPI() platform.ProcessAPI {
 	return &ProcessImpl{}
 }
 
-// IsProtected 判断是否为系统保护/红线进程 (PID 0, PID 4, Hanxi 本身)
+// IsProtected 判断是否为系统保护/红线进程：PID 0/4、Hanxi 自身，外加
+// csrss/wininit/services/lsass/smss/svchost 关键进程名白名单（依 info.Name）。
 func (p *ProcessImpl) IsProtected(pid uint32, info platform.ProcInfo) bool {
 	if pid == 0 || pid == 4 {
 		return true
@@ -48,7 +49,9 @@ func (p *ProcessImpl) IsProtected(pid uint32, info platform.ProcInfo) bool {
 	return false
 }
 
-// Query 查询进程详细信息
+// Query 读取进程元信息：PID 0/4 直名返回；其余打不开（不存在/无权限）时原样
+// 上抛 OpenProcess 错误——按接口约定不包装 ErrProcessNotFound，调用方以
+// err!=nil 判"已消失"。
 func (p *ProcessImpl) Query(pid uint32) (platform.ProcInfo, error) {
 	info := platform.ProcInfo{PID: pid}
 
@@ -91,7 +94,8 @@ func (p *ProcessImpl) Query(pid uint32) (platform.ProcInfo, error) {
 	return info, nil
 }
 
-// KillVerified 安全复核令牌后终止进程
+// KillVerified 复核令牌后终止进程：红线检查 → 指纹复核 → TerminateProcess。
+// force 在本实现中不区分——复核通过一律硬杀（温和通道从未落地，见接口注释）。
 func (p *ProcessImpl) KillVerified(ctx context.Context, token platform.VerifyToken, force bool) error {
 	// 1. 系统保护红线检查
 	if token.PID == 0 || token.PID == 4 || token.PID == uint32(os.Getpid()) {

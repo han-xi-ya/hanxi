@@ -335,7 +335,7 @@ func TestTreeCommitMetaWrittenInStaging(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(staging, "app.exe")); err != nil {
 		t.Fatal("staging 现场必须原样保留供重试")
 	}
-	// 排障后重试成功（staging 未动，走 NewStaging 重建亦可；此处直接清障重试）。
+	// 排障后重试成功（staging 未动，走 StageDir 重建新中转亦可；此处直接清障重试）。
 	if err := os.Remove(filepath.Join(staging, "meta.json")); err != nil {
 		t.Fatal(err)
 	}

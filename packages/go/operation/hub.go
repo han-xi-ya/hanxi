@@ -31,8 +31,9 @@ var opSeq atomic.Uint64
 // 消费。纯内存实现，零后台 goroutine；锁纪律为 hub.mu → store.mu 单向嵌套
 // （Store 永不回调 Hub）。
 //
-// 刷新恢复（§2.3）：前端不依赖组件内存——NewHub 时把 Store 中的未收口事务
-// （含 compensated）回灌为 failed + error.code="resumable" + recoverable=true
+// 刷新恢复（PLAN_WORKBENCH_MODULE_ROADMAP §2.3，非分发专项的 §2.3）：前端不依赖
+// 组件内存——NewHub 时把 Store 中的未收口事务（含 compensated）回灌为
+// failed + error.code="resumable" + recoverable=true
 // 的合成记录（kind 由 journal operation 派生：install/update/rollback/
 // uninstall→remove/repair）。宿主在 Recover 收口后应重建/刷新 Hub 观察面，
 // 使合成记录让位于真实补偿进度。
@@ -389,7 +390,7 @@ func operationKindOf(o TxnOperation) (extapi.OperationKind, bool) {
 }
 
 // refilledOperation 把一笔未收口事务（含 compensated）投影为刷新恢复合成载荷
-// （§2.3：failed + resumable，不依赖组件内存）。
+// （PLAN_WORKBENCH_MODULE_ROADMAP §2.3：failed + resumable，不依赖组件内存）。
 func refilledOperation(j Journal) (extapi.Operation, bool) {
 	kind, ok := operationKindOf(j.Operation)
 	if !ok {

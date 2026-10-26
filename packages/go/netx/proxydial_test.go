@@ -344,7 +344,8 @@ func TestQueryEgressGuards(t *testing.T) {
 	if _, _, err := QueryEgress(context.Background(), nil, nil); err == nil {
 		t.Error("nil client 应直接报错，不能静默返回空 IP")
 	}
-	// providers 传空则回落内置列表；内置列表全不可达时应报"探测出网IP失败"
+	// 单源不可达即报"探测出网IP失败"（错误文本保持上收前口径；providers 传空
+	// 回落内置列表的分支不在单测真打外网，此处不驱动）
 	srv := httptest.NewServer(statusHandler(http.StatusTeapot, ""))
 	defer srv.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

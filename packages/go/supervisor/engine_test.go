@@ -20,8 +20,8 @@ import (
 
 // ---------- 测试替身：handle / JobAPI / Probe / ProcessAPI ----------
 //
-// 全部治理路径均走注入替身，不依赖真实进程（本仓 Git Bash 环境 cmd.exe 不可
-// 解析，既有 */instance 测试同此约束；真机冒烟单独成例并 LookPath 守卫）。
+// 全部治理路径均走注入替身，不依赖真实进程（本仓 Git Bash 会话 PATH 无 System32，
+// LookPath 常不可得；真机冒烟单独成例，带 LookPath + SystemRoot 双定位守卫）。
 
 type fakeHandle struct {
 	mu       sync.Mutex
@@ -1197,7 +1197,7 @@ func TestRealCmdExeSpawnSmoke(t *testing.T) {
 	if jobs.created() != 1 {
 		t.Fatalf("应创建 1 个 Job，got %d", jobs.created())
 	}
-	// 日志泵真机口径：两路泵协程随进程退出收口（不泄露），ping 回显至少一行
+	// 日志泵真机口径：两路泵协程随进程退出收口（不泄露），echo 回显至少一行
 	if n := e.pumpStarted.Load(); n != 2 {
 		t.Fatalf("应起两路日志泵, started = %d", n)
 	}

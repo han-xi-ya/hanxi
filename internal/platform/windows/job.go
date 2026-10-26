@@ -22,13 +22,11 @@ func NewJobAPI() platform.JobAPI {
 // Create 创建匿名 Job Object 并默认启用 KILL_ON_JOB_CLOSE，
 // 保证 Hanxi 崩溃或被杀时托管子进程不残留。失败时不泄漏已创建句柄。
 func (j *JobImpl) Create() (platform.Job, error) {
-	// 创建无名的 Job Object
 	hJob, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("CreateJobObject failed: %w", err)
 	}
 
-	// 配置限制：主进程或 Job 句柄关闭时，强杀 Job 内的所有关联子进程 (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
 	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{
 		BasicLimitInformation: windows.JOBOBJECT_BASIC_LIMIT_INFORMATION{
 			LimitFlags: windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,

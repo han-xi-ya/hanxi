@@ -153,8 +153,9 @@ func ReadPurgeResult(path, requestID string) (PurgeResultFile, error) {
 	return result, nil
 }
 
-// CleanupStalePurgeResults 删除 runtime 中固定前缀且超龄的普通文件；目录/链接与
-// 非固定命名一律不碰。调用方可在主进程启动时显式调用，helper 结果不会混入下载收尸器。
+// CleanupStalePurgeResults 删除 runtime 中固定前缀+后缀且超龄的条目；目录与非固定
+// 命名不碰，链接命中命名形状时按普通条目删除（只删链接本体，不追随目标）。调用方可在
+// 主进程启动时显式调用，helper 结果不会混入下载收尸器。
 func CleanupStalePurgeResults(dir string, now time.Time) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

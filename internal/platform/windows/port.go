@@ -75,7 +75,8 @@ func getExtendedTable(proc *syscall.LazyProc, name string, af, tableClass uintpt
 	return nil, fmt.Errorf("%s failed after %d retries: connection table keeps growing", name, extendedTableMaxFetch)
 }
 
-// TCPTable 获取系统 TCP 表（IPv4/IPv6 均由 GetExtendedTcpTable 一次调用快照，按远端地址排序）。
+// TCPTable 获取系统 TCP 表：IPv4/IPv6 均由 GetExtendedTcpTable 一次调用快照；
+// bOrder=1 系统按本机地址+本机端口升序回报（netstat 同序实证；并非按远端地址）。
 func (p *PortImpl) TCPTable(family platform.Family) ([]platform.TCPRow, error) {
 	if family != platform.FamilyIPv4 && family != platform.FamilyIPv6 {
 		return nil, platform.ErrNotSupported

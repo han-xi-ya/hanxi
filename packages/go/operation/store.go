@@ -61,7 +61,8 @@ const (
 //
 // 并发模型：单进程内以 mu 串行化全部读写；跨进程一致性依赖"恢复完成后才
 // 开放业务"（§8.8）保证启动期独占。损坏文件（无法解析/校验不过/含未知键）
-// 不伪装成空账：Pending 跳过它们并如实报告，Recover 负责隔离处置。
+// 不伪装成正常账：Pending 如实跳过且不上抛损坏清单，报伤与隔离处置归
+// Recover（Report.Quarantined）。
 type Store struct {
 	dir string
 	mu  sync.Mutex

@@ -262,8 +262,8 @@ func (t *Tree) Commit(staging, version string, meta Meta) error {
 }
 
 // Versions 扫描版本树并按版本号降序返回（最新在前）。
-// 忽略 .tmp-/.removing- 事务目录；账本缺失/损坏的目录仍列出（Meta 零值），
-// 供上层展示"异常安装"。
+// 忽略 .tmp-/.corrupt-/.removing- 事务与隔离目录；账本缺失/损坏的目录仍列出
+// （Meta 零值），供上层展示"异常安装"。
 func (t *Tree) Versions() ([]Version, error) {
 	if t.initErr != nil {
 		return nil, t.initErr

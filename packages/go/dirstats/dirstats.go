@@ -39,7 +39,6 @@ type Options struct {
 	// CheckEvery 预算检查的条目间隔；0 = 缺省 256。
 	CheckEvery int
 	// MaxWorkers MeasureChildren 的并发上限；0 = 缺省 8。
-	// 注：符号链接/重解析点恒不进入（filepath.WalkDir 原生不跟随，无开关）。
 	MaxWorkers int
 }
 

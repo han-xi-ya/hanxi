@@ -2,8 +2,9 @@
 
 // Package versioninfo 读取 Windows PE 文件的字符串版本资源（StringFileInfo 的 FileVersion 字段）。
 //
-// 从 everything 模块提取共享：two 个工具托管模块（everything / ccswitch）的本地导入
-// 均需要从 exe 读真实版本号做版本识别，任何新模块需要同等能力时直接复用本包。
+// 从 everything 模块提取共享：托管模块的本地导入均需要从 exe 读真实版本号做
+// 版本识别（everything / ccswitch 首批接入，现全托管家族十余家复用），新模块
+// 需要同等能力时直接复用本包。
 package versioninfo
 
 import (
