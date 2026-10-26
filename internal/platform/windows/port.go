@@ -22,6 +22,13 @@ var (
 const (
 	tcpTableOwnerPidAll = 5
 	udpTableOwnerPid    = 1
+
+	// errInsufficientBuffer ERROR_INSUFFICIENT_BUFFER（winerror.h 122）：
+	// 二次取表期间连接表膨胀时的唯一回码，API 同步把所需大小写回 size。
+	errInsufficientBuffer = 122
+	// extendedTableMaxFetch 二次取表重试上限：高压 churn 下表可能连续膨胀，
+	// 封顶防活锁（到顶如实报错，不静默降级为空表）。
+	extendedTableMaxFetch = 4
 )
 
 // PortImpl platform.PortAPI 的 Windows 实现：经 iphlpapi 扩展表 API 获取带属主 PID 的连接表。
@@ -32,43 +39,56 @@ func NewPortAPI() platform.PortAPI {
 	return &PortImpl{}
 }
 
+// getExtendedTable 执行 iphlpapi 扩展表"探大小→取全表"两步协议（TCP/UDP、
+// IPv4/IPv6 四路共用，收口此前两份逐字克隆）。
+//
+// 审查修复（A2 2026-10-26）两处：
+//   - 探测调用失败曾被吞没——size==0 且探测返回码非 0 时旧实现报"空表 + 无
+//     错误"，非法参数/接口故障被伪装成"系统无连接"，调用方无从分辨；现在
+//     如实上抛错误码。
+//   - 探测与取表之间表若膨胀，二次调用回 ERROR_INSUFFICIENT_BUFFER 且 API
+//     已把新所需大小写回 size——旧实现直接报错，高频连接抖动下端口扫描偶发
+//     假失败；现在按回报大小有限重试。
+func getExtendedTable(proc *syscall.LazyProc, name string, af, tableClass uintptr) ([]byte, error) {
+	var size uint32
+	probe, _, _ := proc.Call(0, uintptr(unsafe.Pointer(&size)), 1, af, tableClass, 0)
+	if size == 0 {
+		if probe == 0 {
+			return []byte{}, nil // 成功且回报 0 字节：视为确无数据（理论形态，防御保留）
+		}
+		return nil, fmt.Errorf("%s probe failed with code %d", name, probe)
+	}
+	for range extendedTableMaxFetch {
+		buf := make([]byte, size)
+		ret, _, err := proc.Call(
+			uintptr(unsafe.Pointer(&buf[0])),
+			uintptr(unsafe.Pointer(&size)),
+			1, af, tableClass, 0,
+		)
+		if ret == 0 {
+			return buf, nil
+		}
+		if ret != errInsufficientBuffer || size == 0 {
+			return nil, fmt.Errorf("%s failed with code %d: %w", name, ret, err)
+		}
+	}
+	return nil, fmt.Errorf("%s failed after %d retries: connection table keeps growing", name, extendedTableMaxFetch)
+}
+
 // TCPTable 获取系统 TCP 表（IPv4/IPv6 均由 GetExtendedTcpTable 一次调用快照，按远端地址排序）。
 func (p *PortImpl) TCPTable(family platform.Family) ([]platform.TCPRow, error) {
 	if family != platform.FamilyIPv4 && family != platform.FamilyIPv6 {
 		return nil, platform.ErrNotSupported
 	}
 
-	af := uint32(syscall.AF_INET)
+	af := uintptr(syscall.AF_INET)
 	if family == platform.FamilyIPv6 {
-		af = uint32(syscall.AF_INET6)
+		af = syscall.AF_INET6
 	}
 
-	var size uint32
-	// 首次调用获取所需缓冲区大小
-	ret, _, _ := procGetExtendedTcpTable.Call(
-		0,
-		uintptr(unsafe.Pointer(&size)),
-		1, // sorted
-		uintptr(af),
-		uintptr(tcpTableOwnerPidAll),
-		0,
-	)
-
-	if size == 0 {
-		return []platform.TCPRow{}, nil
-	}
-
-	buf := make([]byte, size)
-	ret, _, err := procGetExtendedTcpTable.Call(
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(unsafe.Pointer(&size)),
-		1,
-		uintptr(af),
-		uintptr(tcpTableOwnerPidAll),
-		0,
-	)
-	if ret != 0 {
-		return nil, fmt.Errorf("GetExtendedTcpTable failed with code %d: %w", ret, err)
+	buf, err := getExtendedTable(procGetExtendedTcpTable, "GetExtendedTcpTable", af, tcpTableOwnerPidAll)
+	if err != nil {
+		return nil, err
 	}
 
 	if family == platform.FamilyIPv4 {
@@ -83,36 +103,14 @@ func (p *PortImpl) UDPTable(family platform.Family) ([]platform.UDPRow, error) {
 		return nil, platform.ErrNotSupported
 	}
 
-	af := uint32(syscall.AF_INET)
+	af := uintptr(syscall.AF_INET)
 	if family == platform.FamilyIPv6 {
-		af = uint32(syscall.AF_INET6)
+		af = syscall.AF_INET6
 	}
 
-	var size uint32
-	ret, _, _ := procGetExtendedUdpTable.Call(
-		0,
-		uintptr(unsafe.Pointer(&size)),
-		1,
-		uintptr(af),
-		uintptr(udpTableOwnerPid),
-		0,
-	)
-
-	if size == 0 {
-		return []platform.UDPRow{}, nil
-	}
-
-	buf := make([]byte, size)
-	ret, _, err := procGetExtendedUdpTable.Call(
-		uintptr(unsafe.Pointer(&buf[0])),
-		uintptr(unsafe.Pointer(&size)),
-		1,
-		uintptr(af),
-		uintptr(udpTableOwnerPid),
-		0,
-	)
-	if ret != 0 {
-		return nil, fmt.Errorf("GetExtendedUdpTable failed with code %d: %w", ret, err)
+	buf, err := getExtendedTable(procGetExtendedUdpTable, "GetExtendedUdpTable", af, udpTableOwnerPid)
+	if err != nil {
+		return nil, err
 	}
 
 	if family == platform.FamilyIPv4 {
@@ -132,12 +130,15 @@ type mibTcpRowOwnerPid struct {
 }
 
 func parseMIBTcpTableOwnerPid(buf []byte) ([]platform.TCPRow, error) {
+	if len(buf) < 4 {
+		return nil, nil // 防御：空缓冲无头部可读（getExtendedTable 防御路径）
+	}
 	numEntries := binary.LittleEndian.Uint32(buf[0:4])
 	rows := make([]platform.TCPRow, 0, numEntries)
 	rowSize := unsafe.Sizeof(mibTcpRowOwnerPid{})
 
 	offset := 4
-	for i := uint32(0); i < numEntries; i++ {
+	for range numEntries {
 		if offset+int(rowSize) > len(buf) {
 			break
 		}
@@ -169,12 +170,15 @@ type mibUdpRowOwnerPid struct {
 }
 
 func parseMIBUdpTableOwnerPid(buf []byte) ([]platform.UDPRow, error) {
+	if len(buf) < 4 {
+		return nil, nil // 防御：空缓冲无头部可读（getExtendedTable 防御路径）
+	}
 	numEntries := binary.LittleEndian.Uint32(buf[0:4])
 	rows := make([]platform.UDPRow, 0, numEntries)
 	rowSize := unsafe.Sizeof(mibUdpRowOwnerPid{})
 
 	offset := 4
-	for i := uint32(0); i < numEntries; i++ {
+	for range numEntries {
 		if offset+int(rowSize) > len(buf) {
 			break
 		}
@@ -206,12 +210,15 @@ type mibTcp6RowOwnerPid struct {
 }
 
 func parseMIBTcp6TableOwnerPid(buf []byte) ([]platform.TCPRow, error) {
+	if len(buf) < 4 {
+		return nil, nil // 防御：空缓冲无头部可读（getExtendedTable 防御路径）
+	}
 	numEntries := binary.LittleEndian.Uint32(buf[0:4])
 	rows := make([]platform.TCPRow, 0, numEntries)
 	rowSize := unsafe.Sizeof(mibTcp6RowOwnerPid{})
 
 	offset := 4
-	for i := uint32(0); i < numEntries; i++ {
+	for range numEntries {
 		if offset+int(rowSize) > len(buf) {
 			break
 		}
@@ -243,12 +250,15 @@ type mibUdp6RowOwnerPid struct {
 }
 
 func parseMIBUdp6TableOwnerPid(buf []byte) ([]platform.UDPRow, error) {
+	if len(buf) < 4 {
+		return nil, nil // 防御：空缓冲无头部可读（getExtendedTable 防御路径）
+	}
 	numEntries := binary.LittleEndian.Uint32(buf[0:4])
 	rows := make([]platform.UDPRow, 0, numEntries)
 	rowSize := unsafe.Sizeof(mibUdp6RowOwnerPid{})
 
 	offset := 4
-	for i := uint32(0); i < numEntries; i++ {
+	for range numEntries {
 		if offset+int(rowSize) > len(buf) {
 			break
 		}
