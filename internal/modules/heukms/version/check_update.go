@@ -24,8 +24,10 @@ import (
 //     "无法判定"返回 false——首次安装属交付路径，不谎报为更新；
 //   - err 仅在远程列表取不到/本地版本树读不了时上抛，调度器据此保持原健康值。
 //
-// 预发布通道（IsPre）不参与更新判定。imported- 兜底目录不参与数值比较
-// （versioncmp 对非规范形状退化字典序，'i' > 数字，天然排最后）。
+// 预发布通道（IsPre）不参与更新判定。imported- 兜底目录由 ListInstalled 的
+// importedRank 闸显式沉底（versioncmp 对非规范形状退化字典序，不闸则
+// "imported-…" 反被误判最新），installed[0] 恒为最新数字版本——只剩兜底
+// 目录时 local 即该兜底目录，此时判不出"有更新"属如实语义。
 func (m *Manager) CheckUpdate(ctx context.Context) (local, remote string, hasUpdate bool, err error) {
 	if err := ctx.Err(); err != nil {
 		return "", "", false, err

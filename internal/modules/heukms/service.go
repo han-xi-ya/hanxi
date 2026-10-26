@@ -131,7 +131,8 @@ func (s *HeuKmsService) ListReleases() ([]version.HeuRelease, error) {
 	return s.manager.ListRemote()
 }
 
-// ListInstalledVersions 获取本地已安装版本列表（按版本降序，最新在前）。
+// ListInstalledVersions 获取本地已安装版本列表（按版本降序，最新在前，
+// imported- 兜底目录由 ListInstalled 的 importedRank 闸沉底）。
 func (s *HeuKmsService) ListInstalledVersions() ([]version.HeuVersionInfo, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -474,7 +475,9 @@ func (s *HeuKmsService) shutdown() {
 
 // ---------- 版本解析 ----------
 
-// resolveActiveVersion 解析当前应使用的版本：activeVersion 优先，未设定/已失效回退最新已装。
+// resolveActiveVersion 解析当前应使用的版本：activeVersion 优先，未设定/已失效
+// 回退最新已装（versionCompare 自带 importedRank 沉底闸，兜底目录不当"最新"；
+// ListInstalled 侧同闸双保险）。
 func (s *HeuKmsService) resolveActiveVersion() (string, string, error) {
 	if active := s.store.GetActive(); active != "" {
 		if exe, err := s.manager.ResolveExe(active); err == nil {
@@ -499,9 +502,24 @@ func (s *HeuKmsService) resolveActiveVersion() (string, string, error) {
 
 // versionCompare 比较版本串（a>b 返回 1；相等 0；a<b 返回 -1）。
 // 数值分段比较收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）；
-// imported- 兜底目录属非规范形状，由 versioncmp 退化字典序天然排最后。
+// imported- 兜底目录属非规范形状，versioncmp 对它退化字典序且 'i' > 数字字符
+// （"imported-…" 反被误判比 "9.9.9" 新），故由 importedRank 显式沉底：先比
+// rank，同 rank 内再走数值分段比较。
 func versionCompare(a, b string) int {
-	return versioncmp.Compare(normalizeToken(a), normalizeToken(b))
+	na, nb := normalizeToken(a), normalizeToken(b)
+	if ra, rb := importedRank(na), importedRank(nb); ra != rb {
+		return rb - ra
+	}
+	return versioncmp.Compare(na, nb)
+}
+
+// importedRank 排序权重：正常语义版本 0，imported- 兜底目录 1（沉底）。
+// 与 version.Manager.ListInstalled 内部闸同形（令牌一律 normalizeToken 归一后比较）。
+func importedRank(version string) int {
+	if strings.HasPrefix(version, "imported-") {
+		return 1
+	}
+	return 0
 }
 
 // ---------- 联动开关与上游直达 ----------

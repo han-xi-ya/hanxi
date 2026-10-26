@@ -124,7 +124,8 @@ func (s *LiteMonitorService) ListReleases() ([]version.LMRelease, error) {
 	return s.manager.ListRemote()
 }
 
-// ListInstalledVersions 获取本地已安装版本列表。
+// ListInstalledVersions 获取本地已安装版本列表（按版本降序，最新在前，
+// imported- 兜底目录由 ListInstalled 的 importedRank 闸沉底）。
 func (s *LiteMonitorService) ListInstalledVersions() ([]version.LMVersionInfo, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -463,7 +464,9 @@ func (s *LiteMonitorService) shutdown() {
 
 // ---------- 版本解析 ----------
 
-// resolveActiveVersion 解析当前应使用的版本：activeVersion 优先，未设定/已失效回退最新已装。
+// resolveActiveVersion 解析当前应使用的版本：activeVersion 优先，未设定/已失效
+// 回退最新已装（versionCompare 自带 importedRank 沉底闸，兜底目录不当"最新"；
+// ListInstalled 侧同闸双保险）。
 func (s *LiteMonitorService) resolveActiveVersion() (string, string, error) {
 	if active := s.store.GetActive(); active != "" {
 		if exe, err := s.manager.ResolveExe(active); err == nil {
@@ -488,10 +491,25 @@ func (s *LiteMonitorService) resolveActiveVersion() (string, string, error) {
 
 // versionCompare 比较 vX.Y.Z 版本号（a>b 返回 1；相等 0；a<b 返回 -1）。
 // 目录名的字典序对 1.10.0/1.9.0 这类多位数段有误，必须数值分段比较。
-// imported- 兜底目录恒视为最小（不参与数值比较）。
+// imported- 兜底目录属非规范形状，versioncmp 对它退化字典序且 'i' > 数字字符
+// （"vimported-…" 反被误判比 "v1.9.0" 新），故由 importedRank 显式沉底：先比
+// rank，同 rank 内再走数值分段比较。
 func versionCompare(a, b string) int {
 	// 数值分段比较实现收口至 versioncmp.Compare（先剥 v 前缀归一再逐段委托）。
-	return versioncmp.Compare(strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v"))
+	na, nb := strings.TrimPrefix(a, "v"), strings.TrimPrefix(b, "v")
+	if ra, rb := importedRank(na), importedRank(nb); ra != rb {
+		return rb - ra
+	}
+	return versioncmp.Compare(na, nb)
+}
+
+// importedRank 排序权重：正常语义版本 0，imported- 兜底目录 1（沉底）。
+// 与 version.Manager.ListInstalled 内部闸同形（剥 v 前缀归一后判 imported- 起头）。
+func importedRank(version string) int {
+	if strings.HasPrefix(version, "imported-") {
+		return 1
+	}
+	return 0
 }
 
 // ---------- 环境探测与桌面辅助 ----------

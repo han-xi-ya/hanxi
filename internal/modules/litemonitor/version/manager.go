@@ -11,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
+	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
 	"hanxi/packages/go/dirstats"
@@ -96,7 +98,9 @@ func (m *Manager) ListRemote() ([]LMRelease, error) {
 	return out, nil
 }
 
-// ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
+// ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描；收口后本包重排：数值
+// 分段降序、imported 兜底目录沉底——Tree 对非规范令牌退化字典序会把兜底目录排到
+// 最前，冷启动回退"最新已装"绝不能选中它，沉底闸见 importedRank）。
 // 目录命名 litemonitor_X.Y.Z（下载/导入的正规版本）或
 // litemonitor_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；
 // 其余形状的版本令牌不列入。exe 缺失/为空或语言包锚点缺失均视为损坏安装跳过
@@ -152,7 +156,26 @@ func (m *Manager) ListInstalled() ([]LMVersionInfo, error) {
 		}
 		list = append(list, info)
 	}
+	sort.SliceStable(list, func(i, j int) bool {
+		// imported- 兜底目录恒沉底：versioncmp 对非数字段退化字典序，
+		// "vimported-…" 会被误判为比 "v1.x" 更新——冷启动回退"最新已装"绝不能选中它
+		ri, rj := importedRank(list[i].Version), importedRank(list[j].Version)
+		if ri != rj {
+			return ri < rj
+		}
+		return versioncmp.Compare(
+			strings.TrimPrefix(list[i].Version, "v"),
+			strings.TrimPrefix(list[j].Version, "v")) > 0
+	})
 	return list, nil
+}
+
+// importedRank 排序权重：正常语义版本 0，imported- 兜底目录 1（沉底）。
+func importedRank(version string) int {
+	if strings.HasPrefix(version, "vimported-") {
+		return 1
+	}
+	return 0
 }
 
 // Download 下载便携 zip 并安装到 versions/litemonitor_X.Y.Z/。

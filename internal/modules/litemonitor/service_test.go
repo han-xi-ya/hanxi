@@ -67,7 +67,9 @@ func TestDownloadDoneSettlesActiveBeforeBroadcast(t *testing.T) {
 	})
 }
 
-// TestVersionCompare 数值分段比较：多位数段不被字典序坑（1.10.0 > 1.9.0）。
+// TestVersionCompare 数值分段比较：多位数段不被字典序坑（1.10.0 > 1.9.0）；
+// vimported- 兜底目录由 importedRank 显式沉底（versioncmp 退化字典序下
+// 'i' > 数字字符，不闸则兜底目录反抢"最新"）。
 func TestVersionCompare(t *testing.T) {
 	cases := []struct {
 		a, b string
@@ -77,7 +79,11 @@ func TestVersionCompare(t *testing.T) {
 		{"v1.9.0", "v1.10.0", -1},
 		{"v1.3.6", "v1.3.6", 0},
 		{"v2.0.0", "v1.99.99", 1},
-		{"1.3.6", "v1.3.6", 0}, // 无 v 前缀兼容
+		{"1.3.6", "v1.3.6", 0},                       // 无 v 前缀兼容
+		{"v10.0.0", "vimported-6e449042eec3", 1},     // 兜底目录恒劣后数字版本
+		{"vimported-20260101-120000", "v10.0.0", -1}, // 历史时间戳形态同闸
+		{"imported-6e449042eec3", "v9.9.9", -1},      // 无 v 兜底形态归一后同闸
+		{"v9.9.9", "vimported-6e449042eec3", 1},
 	}
 	for _, c := range cases {
 		if got := versionCompare(c.a, c.b); got != c.want {

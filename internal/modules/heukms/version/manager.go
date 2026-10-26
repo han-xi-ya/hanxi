@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
+	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
 	"hanxi/packages/go/dirstats"
@@ -108,7 +110,9 @@ func (m *Manager) ListRemote() ([]HeuRelease, error) {
 	return remoteCache.get()
 }
 
-// ListInstalled 扫描本地已安装版本（委托 Tree 扫描，按版本号降序）。
+// ListInstalled 扫描本地已安装版本（委托 Tree 扫描；收口后本包重排：数值分段
+// 降序、imported 兜底目录沉底——Tree 对非规范令牌退化字典序会把兜底目录排到最前，
+// 冷启动回退"最新已装"绝不能选中它，沉底闸见 importedRank）。
 //
 // 目录命名 heukms_64.0.0（导入的正规版本）或 heukms_imported-兜底 tag
 // （版本探测失败的导入兜底，现行哈希/历史时间戳）；形状外的目录不列入。
@@ -149,7 +153,25 @@ func (m *Manager) ListInstalled() ([]HeuVersionInfo, error) {
 		}
 		list = append(list, m.infoFrom(v.Dir, v.Version, filepath.Base(exe), v.Meta))
 	}
+	sort.SliceStable(list, func(i, j int) bool {
+		// imported- 兜底目录恒沉底：versioncmp 对非数字段退化字典序，
+		// "imported-…" 会被误判为比 "64.0.0" 更新——冷启动回退"最新已装"绝不能选中它
+		ri, rj := importedRank(list[i].Version), importedRank(list[j].Version)
+		if ri != rj {
+			return ri < rj
+		}
+		return versioncmp.Compare(list[i].Version, list[j].Version) > 0
+	})
 	return list, nil
+}
+
+// importedRank 排序权重：正常语义版本 0，imported- 兜底目录 1（沉底）。
+// 本模块版本令牌为上游 tag 原形（无 v 前缀），兜底目录名以 imported- 起头。
+func importedRank(version string) int {
+	if strings.HasPrefix(version, "imported-") {
+		return 1
+	}
+	return 0
 }
 
 // Download 下载并安装指定版本（阻塞至收口；进度经 onProgress 回流）。
