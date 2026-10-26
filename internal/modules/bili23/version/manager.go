@@ -88,7 +88,7 @@ func (m *Manager) ListRemote() ([]Bili23Release, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 bili23_2.15.0 / bili23_2.00.7（下载/导入的正规版本）或
-// bili23_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；其余形状的
+// bili23_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；其余形状的
 // 版本令牌不列入。布局三锚点（Bili23.exe 非空 + _pystand_static.int +
 // script/main.py）任一缺失均视为损坏安装跳过——本应用是"运行时+源码"
 // 目录形态，缺件即无法启动。

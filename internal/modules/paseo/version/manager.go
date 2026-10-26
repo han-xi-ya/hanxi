@@ -101,7 +101,7 @@ func (m *Manager) ListRemote(includePre bool) ([]PaseoRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描）。
 // 目录命名 paseo_0.8.0 / paseo_0.8.0-beta.1（下载/导入的正规版本）或
-// paseo_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；
+// paseo_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；
 // 其余形状的版本令牌不列入；Paseo.exe 缺失/为空或 resources/app.asar
 // 缺失均视为损坏安装跳过（双锚点自检）。
 func (m *Manager) ListInstalled() ([]PaseoVersionInfo, error) {

@@ -328,7 +328,9 @@ func versionFromDirName(name string) (string, bool) {
 	return "", false
 }
 
-// plainVersionRe 纯版本号（如 0.61.2），用于识别版本隔离目录名
+// plainVersionRe 纯版本号（如 0.61.2），用于识别版本隔离目录名；
+// importedVersionRe 导入兜底令牌形状——现行 imported-<sha256 前 12 hex>，
+// 历史秒级时间戳（imported-YYYYMMDD-HHMMSS）等字母数字/连字符形态一并放行（兼容存量目录）。
 var plainVersionRe = regexp.MustCompile(`^v?\d+\.\d+\.\d+$`)
 var importedVersionRe = regexp.MustCompile(`^imported-[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$`)
 

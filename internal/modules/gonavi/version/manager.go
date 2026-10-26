@@ -100,7 +100,7 @@ func (m *Manager) ListRemote() ([]GoNaviRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 gonavi_X.Y.Z（下载/导入的正规版本）或
-// gonavi_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；其余形状的
+// gonavi_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；其余形状的
 // 版本令牌不列入；exe 缺失或为空视为损坏安装跳过。
 // 账外漂移护栏：对每个版本做 mtime 闸控的摘要复查（仅 exe 落位后有改动
 // 迹象才复算全量哈希，成本纪律见 driftCheck 注释），漂移如实投影到

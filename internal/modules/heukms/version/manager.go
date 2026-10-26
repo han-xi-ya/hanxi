@@ -110,8 +110,8 @@ func (m *Manager) ListRemote() ([]HeuRelease, error) {
 
 // ListInstalled 扫描本地已安装版本（委托 Tree 扫描，按版本号降序）。
 //
-// 目录命名 heukms_64.0.0（导入的正规版本）或 heukms_imported-YYYYMMDD-HHMMSS
-// （版本探测失败的导入兜底）；形状外的目录不列入。
+// 目录命名 heukms_64.0.0（导入的正规版本）或 heukms_imported-兜底 tag
+// （版本探测失败的导入兜底，现行哈希/历史时间戳）；形状外的目录不列入。
 //
 // 三重健康闸（任一不过即跳过该目录，按"未安装"处理，不在列表里放假版本）：
 //  1. 目录内主 exe 可定位且非空（findHostedExe）；

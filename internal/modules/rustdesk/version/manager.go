@@ -247,7 +247,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（rustdesk_X.Y.Z 或 rustdesk_imported-时间戳）
+// resolveVersionDir 定位版本隔离目录（rustdesk_X.Y.Z 或 rustdesk_imported-兜底 tag）
 func (m *Manager) resolveVersionDir(version string) (string, error) {
 	ver := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if !plainVersionRe.MatchString(ver) && !importedDirRe.MatchString(ver) {

@@ -116,7 +116,7 @@ func (m *Manager) ListRemote() ([]PicRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 piclite_X.Y.Z（下载/导入的正规版本）或
-// piclite_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；
+// piclite_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；
 // 其余形状的版本令牌不列入；exe 缺失/为空视为损坏安装跳过。PicLite 配置恒在
 // %APPDATA%\com.piclite.desktop（与 exe 位置无关），目录内除有效载荷外只有账本文件。
 // 账本双形态：新下载链走内核统一账本（artifact.Meta，含 schema），导入链与

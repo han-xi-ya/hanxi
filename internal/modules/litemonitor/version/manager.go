@@ -98,7 +98,7 @@ func (m *Manager) ListRemote() ([]LMRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 litemonitor_X.Y.Z（下载/导入的正规版本）或
-// litemonitor_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；
+// litemonitor_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；
 // 其余形状的版本令牌不列入。exe 缺失/为空或语言包锚点缺失均视为损坏安装跳过
 // （官方 zip 恒含二者）；正规版本目录另须 PE FileVersion 与目录名一致才可信——
 // 不一致 = 目录内容与名不符的损坏安装（imported- 目录名不含版本号，天然豁免）。

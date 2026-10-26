@@ -79,7 +79,7 @@ func (m *Manager) ListRemote() ([]ViewRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 guoheview_X.Y.Z.W（下载/导入的正规版本）或
-// guoheview_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；
+// guoheview_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；
 // 其余形状的版本令牌不列入；exe 缺失/为空视为损坏安装跳过；便携标记缺失
 // 同样跳过（意味着实例会把配置写进 %APPDATA%，破坏托管隔离语义——下载链
 // 已由 ensurePortableMark 保证补写，历史/外来目录缺标记按损坏处理）。

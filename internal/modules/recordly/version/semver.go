@@ -9,7 +9,7 @@ import (
 // 与 ccswitch 的纯数值分段 versionCompare 不同：Recordly 的 beta 通道
 // （v1.3.5-beta.2）与 stable（v1.3.5）混排时必须遵守预发布排序规则
 // （1.3.4-beta.1 < 1.3.4 < 1.3.5-beta.2），字典序与"有横杠"直觉都会排错。
-// 非规范版本（imported 时间戳兜底等）退化为字典序，永不 panic。
+// 非规范版本（本模块的 vunknown 时间戳兜底等）退化为字典序，永不 panic。
 func Compare(a, b string) int {
 	na, pa, okA := splitSemver(a)
 	nb, pb, okB := splitSemver(b)

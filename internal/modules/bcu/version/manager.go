@@ -96,7 +96,7 @@ func (m *Manager) ListRemote() ([]BCURelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 bcu_X.Y.Z(.W)（下载/导入的正规版本）或
-// bcu_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；其余形状的版本
+// bcu_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；其余形状的版本
 // 令牌不列入；外层 exe 缺失/为空视为损坏安装跳过（settings 缺失属首启未
 // 配置，正常）。展示 ExePath 与启动共用同一解析结果：win-x64 真身优先
 // （见 innerExeRel），Size 保持外层启动器口径（迁移前后展示值不变）。

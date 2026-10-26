@@ -8,7 +8,7 @@ import (
 // Compare 按 semver 2.0 规则比较版本号（a>b 返回 1，相等 0，a<b 返回 -1）。
 // Paseo 的 beta 通道（0.8.0-beta.1）与 stable（0.8.0）混排时必须遵守预发布
 // 排序规则（0.7.2-beta.1 < 0.7.2 < 0.8.0-beta.1），字典序与"有横杠"直觉都会
-// 排错（recordly 同款纪律）。非规范版本（imported 时间戳兜底等）退化为字典序，
+// 排错（recordly 同款纪律）。非规范版本（imported 兜底 tag 等）退化为字典序，
 // 永不 panic。
 func Compare(a, b string) int {
 	na, pa, okA := splitSemver(a)
@@ -37,7 +37,7 @@ func Compare(a, b string) int {
 }
 
 // IsCanonical 版本号是否为规范 semver（可被 Compare 数值排序）。
-// 排序方（service 层"自动最新已装"）以此把 imported- 时间戳目录恒排最后——
+// 排序方（service 层"自动最新已装"）以此把 imported- 兜底目录恒排最后——
 // 非规范串退化字典序时 "imported-…" 字典序大于一切数字版本，直接喂给
 // Compare 会把导入目录误判为最新。
 func IsCanonical(v string) bool {

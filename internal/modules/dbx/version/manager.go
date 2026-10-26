@@ -103,8 +103,8 @@ func (m *Manager) ListRemote() ([]DBXRelease, error) {
 }
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
-// 目录命名 dbx_X.Y.Z（下载/导入的正规版本）或 dbx_imported-YYYYMMDD-HHMMSS
-// （版本探测失败的导入兜底）；其余形状的版本令牌不列入；exe 缺失或为空
+// 目录命名 dbx_X.Y.Z（下载/导入的正规版本）或 dbx_imported-兜底 tag
+// （版本探测失败的导入兜底，现行哈希/历史时间戳）；其余形状的版本令牌不列入；exe 缺失或为空
 // 视为损坏安装跳过。便携标记 portable.dbx 与 exe 同目录是便携数据模式的
 // 激活条件：缺失则应用以装机模式启动、数据外溢 %APPDATA%，同样按损坏跳过
 // （与 ccswitch 的 portable.ini 锚点同理）。

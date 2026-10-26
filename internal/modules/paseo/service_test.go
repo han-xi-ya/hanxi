@@ -179,7 +179,7 @@ func TestOpenWindowExternalFocusOnly(t *testing.T) {
 }
 
 // TestSortInstalledOrdering 冷启动"自动最新已装"回退依赖此排序：
-// stable 恒大于同名预发布，beta 间按序号，imported 时间戳退化字典序排最后。
+// stable 恒大于同名预发布，beta 间按序号，imported 兜底（本例用历史时间戳形态）非规范恒排最后。
 func TestSortInstalledOrdering(t *testing.T) {
 	list := []version.PaseoVersionInfo{
 		{Version: "imported-20260915-010203"},

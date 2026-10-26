@@ -78,7 +78,7 @@ func (m *Manager) ListRemote() ([]FlClashRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
 // 目录命名 flclash_X.Y.Z（下载/导入的正规版本）或
-// flclash_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；
+// flclash_imported-兜底 tag（版本探测失败的导入兜底，现行哈希/历史时间戳）；
 // 其余形状的版本令牌不列入；exe 缺失/为空视为损坏安装跳过。
 func (m *Manager) ListInstalled() ([]FlClashVersionInfo, error) {
 	vers, err := m.tree.Versions()

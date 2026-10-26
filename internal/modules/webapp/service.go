@@ -23,8 +23,9 @@ import (
 	"hanxi/internal/settings"
 )
 
-// 网页窗几何与驻留常量：外观对齐 ddnsgo 控制台窗（ddnsgo/service.go:29-35），
-// TTL 对齐 quickmenu 弹窗驻留策略（quickmenu/service.go:29）。
+// 网页窗几何与驻留常量：外观对齐 ddnsgo 控制台窗（ddnsgo/service.go 的
+// consoleWindowWidth 等尺寸常量组），TTL 对齐 quickmenu 弹窗驻留策略
+// （quickmenu/service.go 的 popupIdleTTL）。
 const (
 	defaultWindowWidth  = 1120
 	defaultWindowHeight = 820

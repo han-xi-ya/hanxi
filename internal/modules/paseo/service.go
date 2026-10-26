@@ -614,7 +614,8 @@ func (s *PaseoService) resolveStartTarget() (string, string, error) {
 }
 
 // sortInstalled 版本新→旧原地排序：规范 semver 优先（预发布规则），
-// imported 时间戳目录恒排最后（其字典序大于数字版本，交给 Compare 会误判为最新）。
+// imported 兜底目录（现行哈希/历史时间戳）恒排最后（其字典序大于数字版本，
+// 交给 Compare 会误判为最新）。
 func sortInstalled(list []version.PaseoVersionInfo) {
 	sort.SliceStable(list, func(i, j int) bool {
 		ci, cj := version.IsCanonical(list[i].Version), version.IsCanonical(list[j].Version)
