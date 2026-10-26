@@ -1,27 +1,26 @@
 <!--
-  托管版本管理 Tab 主体（Wave 5 · 批 0，黄金样本形态取自 CCSwitchView；
-  共享契约增强批扩装）：meta 概览 + 导入/刷新 + 已装卡 grid + 远程 releases 表
-  （内嵌下载进度单元格）+ 双空态。以 components/everything/{VersionCard,
-  ReleaseTable} 的拆分语义为供体、ccswitch 内联 DOM 为逐字蓝本提炼通用版。
+  托管版本管理 Tab 主体：meta 概览 + 导入/刷新 + 已装卡 grid + 远程 releases 表
+  （内嵌下载进度单元格）+ 双空态。
 
-  增强批落点（默认全部缺席 = 现 ccswitch 逐字同形）：
-   - 泛型 V（③）：已装记录方言字段包随 adapter 推断；#version-row-extra 具名槽
+  方言扩展位（默认全部缺席 = ccswitch 标准形逐字同形）：
+   - 泛型 V：已装记录方言字段包随 adapter 推断；#version-row-extra 具名槽
      以 { record: ManagedVersionRecord<V> } 作用域渲染进已装卡徽标区（paseo
-     「未验证哈希」类方言徽标自此免 cast）；
-   - 词面覆写全集（④）：区节标题/使用中徽标词/设为使用钮词/导入钮词/官方徽标词/
-     下载钮词族/首用一键下载词/进行态词/阶段进度词映射/已装 chip 色调/常态卸载 title；
-   - 等效钩子（⑤）：versions.statusOf/sameVersion/implicitActive/downloadBlock
-     进面板（recordly 核心互认、paseo 隐式自动最新自此可迁入共享面板渲染）。
+     「未验证哈希」类方言徽标免 cast 走本槽）；
+   - 词面覆写全集（ManagedCopySpec）：区节标题/使用中徽标词/设为使用钮词/导入钮词/
+     官方徽标词/下载钮词族/首用一键下载词/进行态词/阶段进度词映射/已装 chip 色调/
+     常态卸载 title；
+   - 等效钩子：versions.statusOf/sameVersion/implicitActive/downloadBlock
+     进面板（recordly 核心互认、paseo 隐式自动最新即走本渲染）。
   能力自适应：getActive/setActive 缺省的单目录模块（recordly/paseo/papertodo）
   不渲染「使用中」徽标与「设为使用」钮；importLocal 缺省不渲染导入钮。
   store 缺省时自建（独立挂载/测试），组合进壳时由壳注入共享 store。
-  双形态 Wave 落点：#release-actions 具名槽（作用域 {release}，渲染于远程行操作位
-  尾部）——模块方言的远程行第二动词（如 TranslucentTB「装打包版」）自此免抄表；
+  #release-actions 具名槽（作用域 {release}，渲染于远程行操作位尾部）——
+  模块方言的远程行第二动词（如 TranslucentTB「装打包版」）经本槽免抄表；
   缺省不填 = 全部既有消费模块零变化。
-  波 2A 列级扩展：#release-extra-col（作用域 {release}，渲染于「上游发布」与
-  「操作」列之间）+ #release-extra-col-head（表头单元格）——方言列自此经槽
+  列级扩展：#release-extra-col（作用域 {release}，渲染于「上游发布」与
+  「操作」列之间）+ #release-extra-col-head（表头单元格）——方言列经槽
   承接，整表免重画；缺省不填 = 六列标准形逐字不变。
-  波 2E 地基三件（方言视图回迁时的实证缺口，全部默认缺席 = 既有消费零变化）：
+  方言视图回迁三件（全部默认缺席 = 既有消费零变化）：
    - refreshLabel 钮词位：guohe「↻ 刷新发布接口」类刷新钮方言词，覆写控制条
      与首用降级两处；缺省 = 标准词「↻ 刷新远程列表」；
    - #meta-extra 具名槽：meta-info 行族尾部的模块动态诊断行（bcu .NET 环境
@@ -68,7 +67,7 @@ const props = withDefaults(
   defineProps<{
     adapter: ManagedModuleAdapter<ManagedSnapshot, V>
     store?: ManagedConsoleStore<V>
-    /** 波 2E 钮词位：两处刷新钮的完整词面（含图标）；缺省 = 标准词。 */
+    /** 钮词位：两处刷新钮的完整词面（含图标）；缺省 = 标准词。 */
     refreshLabel?: string
   }>(),
   { store: undefined, refreshLabel: undefined },
@@ -77,22 +76,22 @@ const props = withDefaults(
 const store = props.store ?? useManagedConsole(props.adapter)
 const copy = computed(() => props.adapter.copy)
 
-/** 刷新钮词（波 2E）：控制条与首用降级两把钮同源，缺省标准词逐字不变。 */
+/** 刷新钮词：控制条与首用降级两把钮同源，缺省标准词逐字不变。 */
 const refreshWord = computed(() => props.refreshLabel ?? '↻ 刷新远程列表')
 
-// stepOf 已收编 managedProgress 单一来源（波 1a，本件即其逐字源）
+// stepOf 已收编 managedProgress 单一来源（本件原逐字副本出清）
 
 /** 进度键归一（adapter 铁律②）：行→键，缺省版本串。 */
 function ticketOf(rel: ManagedReleaseRecord) {
   return store.downloading[store.progressKeyOf(rel)]
 }
 
-/** 版本同一性（⑤/批 3·4.3）：委托 sameVersionOf 唯一口径，与 store 清票同源。 */
+/** 版本同一性（P0 批 3·4.3）：委托 sameVersionOf 唯一口径，与 store 清票同源。 */
 function versionEq(a: string, b: string): boolean {
   return sameVersionOf(props.adapter.versions, a, b)
 }
 
-/** 隐式使用版本（⑤）：active 为空且模块声明 implicitActive 时回退（paseo 自动最新）。 */
+/** 隐式使用版本：active 为空且模块声明 implicitActive 时回退（paseo 自动最新）。 */
 const implicitActive = computed(() => {
   if (store.activeVersion || !props.adapter.versions.implicitActive) return ''
   return props.adapter.versions.implicitActive(store.installed)
@@ -115,13 +114,13 @@ function isRunning(v: ManagedVersionRecord<V>): boolean {
   return store.state === 'running' && versionEq(store.runningVersion, v.version)
 }
 
-/** 卸载禁用 title：运行中/常态两档均经 adapter.copy 覆写（④）。 */
+/** 卸载禁用 title：运行中/常态两档均经 adapter.copy 覆写。 */
 function removeTitle(v: ManagedVersionRecord<V>): string {
   if (isRunning(v)) return copy.value?.uninstallRunningHint ?? '请先退出该工具'
   return copy.value?.uninstallIdleHint ?? ''
 }
 
-/** meta 首句引导（④，如 paseo「使用版本 …」）；空=不渲染。 */
+/** meta 首句引导（如 paseo「使用版本 …」）；空=不渲染。 */
 const metaLead = computed(() =>
   copy.value?.metaLead
     ? copy.value.metaLead({
@@ -133,17 +132,17 @@ const metaLead = computed(() =>
     : '',
 )
 
-/** 下载钮封锁（⑤）：非空 title 即禁用远程表空闲行下载钮。 */
+/** 下载钮封锁：非空 title 即禁用远程表空闲行下载钮。 */
 const downloadBlockedTitle = computed(() => props.adapter.versions.downloadBlock?.(store.state) ?? null)
 
-/** 下载钮词族（④）：缺省「下载安装」。 */
+/** 下载钮词族：缺省「下载安装」。 */
 function idleDownloadLabel(rel: ManagedReleaseRecord): string {
   return copy.value?.downloadLabel
     ? copy.value.downloadLabel({ release: rel, installedCount: store.installed.length, state: store.state })
     : '下载安装'
 }
 
-/** 阶段进度词映射（④）：缺省 verify/extract→「校验解压安装…」，空串=透出 message。 */
+/** 阶段进度词映射：缺省 verify/extract→「校验解压安装…」，空串=透出 message。 */
 function stageText(p: NormalizedProgress): string {
   if (copy.value?.stageWord) return copy.value.stageWord(p.stage, p)
   return ['verify', 'extract'].includes(p.stage) ? '校验解压安装…' : ''
@@ -163,7 +162,7 @@ const installedChipClass = computed(() =>
         {{ adapter.copy?.remoteSummary ? adapter.copy.remoteSummary(store.releases.length) : `远程版本 ${store.releases.length} 个` }}
       </span>
       <span v-for="(hintLine, i) in adapter.copy?.metaHints ?? []" :key="i" class="hint-dim">{{ hintLine }}</span>
-      <!-- 波 2E：模块动态诊断行（如 bcu .NET 环境徽标）；缺省不填零 DOM -->
+      <!-- 模块动态诊断行（如 bcu .NET 环境徽标）；缺省不填零 DOM -->
       <slot name="meta-extra" />
     </div>
     <div class="btn-group">
@@ -182,7 +181,7 @@ const installedChipClass = computed(() =>
   <!-- 已安装版本 -->
   <div class="section-title"><h3>{{ copy?.installedSectionTitle ?? '已安装版本' }} ({{ store.installed.length }})</h3></div>
 
-  <!-- 批 3·4.2：本地版本区未解析前不判"确无安装"——远程先回时旧口径会闪现
+  <!-- P0 批 3·4.2：本地版本区未解析前不判"确无安装"——远程先回时旧口径会闪现
        首用空态再跳回列表；扫描中呈现明示文案，本地落地后二者必居其一。 -->
   <div v-if="store.installed.length === 0 && !store.localResolved" class="empty-state">
     <p>↻ 正在扫描本机已安装版本…</p>
@@ -216,7 +215,7 @@ const installedChipClass = computed(() =>
           <span v-if="isActive(v)" class="badge badge-active">{{ copy?.activeBadge ?? '使用中' }}</span>
           <span v-if="v.isImport" class="badge badge-import">本地导入</span>
           <span v-else class="badge badge-official">{{ copy?.officialBadge ?? '官方下载' }}</span>
-          <!-- 方言徽标位（③）：作用域 record 随泛型 V 携带方言字段（免视图 cast） -->
+          <!-- 方言徽标位：作用域 record 随泛型 V 携带方言字段（免视图 cast） -->
           <slot name="version-row-extra" :record="v" />
         </div>
       </div>
@@ -247,7 +246,7 @@ const installedChipClass = computed(() =>
   <!-- 远程可用版本 -->
   <div class="section-title"><h3>{{ copy?.remoteSectionTitle ?? '远程可用版本' }}</h3></div>
   <div class="table-container">
-    <!-- 波 2E：整表替换槽填充时标准六列表体让位（bcu 双变体方言表承接位） -->
+    <!-- 整表替换槽填充时标准六列表体让位（bcu 双变体方言表承接位） -->
     <slot v-if="$slots['remote-table']" name="remote-table" :store="store" />
     <table v-else class="tbl">
       <thead>
@@ -257,7 +256,7 @@ const installedChipClass = computed(() =>
           <th style="width: 90px;">大小</th>
           <th style="width: 110px;">发布时间</th>
           <th style="width: 210px;">上游发布</th>
-          <!-- 波 2A：列级扩展表头（#release-extra-col 填充时随行出现） -->
+          <!-- 列级扩展表头（#release-extra-col 填充时随行出现） -->
           <th v-if="$slots['release-extra-col']"><slot name="release-extra-col-head" /></th>
           <th>操作</th>
         </tr>
@@ -276,7 +275,7 @@ const installedChipClass = computed(() =>
             >{{ releaseFormWord(rel.form) }}</span>
           </td>
           <td>
-            <!-- 圆点挂公共件（波 1a）：本件原 scoped 标准形副本删净，形制由 ManagedVersionDot 自带 -->
+            <!-- 圆点挂公共件：本件原 scoped 标准形副本删净，形制由 ManagedVersionDot 自带 -->
             <ManagedVersionDot v-if="statusOf(rel) === 'installed'" status="installed" text="已安装" />
             <ManagedVersionDot v-else-if="statusOf(rel) === 'downloading'" status="downloading" :text="copy?.downloadingWord ?? '下载中'" />
             <ManagedVersionDot v-else-if="statusOf(rel) === 'error'" status="error" text="失败" />
@@ -301,7 +300,7 @@ const installedChipClass = computed(() =>
             </template>
             <span v-else class="hint-dim">—</span>
           </td>
-          <!-- 波 2A：方言列单元（作用域 release；guohe 通道/bcu 变体经此承接） -->
+          <!-- 方言列单元（作用域 release；guohe 通道/bcu 变体经此承接） -->
           <td v-if="$slots['release-extra-col']">
             <slot name="release-extra-col" :release="rel" />
           </td>
@@ -321,7 +320,9 @@ const installedChipClass = computed(() =>
             </div>
             <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
               <span v-if="stageText(ticketOf(rel)!)">{{ stageText(ticketOf(rel)!) }}</span>
-              <span v-else class="dl-error" :title="ticketOf(rel)!.message">{{ ticketOf(rel)!.message }}</span>
+              <!-- 兜底是进行态阶段话术（copying/preparing 等），非错误——中性色，
+                   真错误走下方 statusOf==='error' 独立分支的 dl-error（2026-10-26 审查修复） -->
+              <span v-else :title="ticketOf(rel)!.message">{{ ticketOf(rel)!.message }}</span>
             </div>
             <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
               <span class="dl-error" :title="ticketOf(rel)!.message">{{ ticketOf(rel)!.message }}</span>
@@ -342,12 +343,12 @@ const installedChipClass = computed(() =>
               :title="downloadBlockedTitle ?? undefined"
               @click="!downloadBlockedTitle && store.runDownload(rel)"
             >重试</a>
-            <!-- 模块方言远程行动作槽（双形态 Wave）：作用域 release，缺省不填零变化 -->
+            <!-- 模块方言远程行动作槽：作用域 release，缺省不填零变化 -->
             <slot name="release-actions" :release="rel" />
           </td>
         </tr>
         <tr v-if="store.releases.length === 0 && !store.loading">
-          <!-- 波 2A：方言列在场时空行跨列随动（6→7），词面不变 -->
+          <!-- 方言列在场时空行跨列随动（6→7），词面不变 -->
           <td :colspan="$slots['release-extra-col'] ? 7 : 6" class="empty-hint">{{ adapter.copy?.remoteUnavailable ?? '无法加载远程版本列表——可稍后点击「↻ 刷新远程列表」重试' }}</td>
         </tr>
       </tbody>
@@ -356,7 +357,7 @@ const installedChipClass = computed(() =>
 </template>
 
 <style scoped>
-/* 版本行状态徽标标准形已迁 ManagedVersionDot（波 1a：原 .ver-status 六行复制体出清，
+/* 版本行状态徽标标准形已迁 ManagedVersionDot（原 .ver-status 六行复制体出清，
    本件远程表直挂公共件，渲染逐字同形） */
 
 /* 卡片/表内徽标档位色（基形 .badge 与其余家族由 components.css 全局原子接管） */

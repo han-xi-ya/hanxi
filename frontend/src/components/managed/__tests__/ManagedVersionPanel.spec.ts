@@ -1,4 +1,4 @@
-// ManagedVersionPanel 契约测试（Wave 5 · 批 0）：
+// ManagedVersionPanel 契约测试：
 // 锁死共享版本面板对 adapter 的消费面——有/无 active 双形态、进度键归一
 // （vscode 型复合键）、双空态、下载→事件流（进度驻留/完成重拉/失败重试）
 // 与导入钮能力自适应。面板独立挂载（自建 store），事件经 fake adapter 的
@@ -150,7 +150,9 @@ describe('ManagedVersionPanel 进度键归一', () => {
     expect(w.find('.dl-meta-text').text()).toBe('校验解压安装…')
     events.progress[0]({ key: 'v1', stage: 'resolve', done: 0, total: 0, message: '镜像回退中' })
     await w.vm.$nextTick()
-    expect(w.find('.dl-error').text()).toBe('镜像回退中')
+    // 进行态兜底话术走中性 dl-meta-text，不再误染红色错误形制（2026-10-26 审查修复）
+    expect(w.find('.dl-meta-text').text()).toBe('镜像回退中')
+    expect(w.find('.dl-error').exists()).toBe(false)
     w.unmount()
   })
 })
@@ -258,7 +260,7 @@ describe('ManagedVersionPanel 下载→事件流', () => {
   })
 })
 
-// ===== Wave 5 · 共享契约增强批新增消费面 =====
+// ===== 共享契约扩展消费面（编号总纲见 managed/adapter.ts 头注）=====
 describe('ManagedVersionPanel 增强批等效钩子（⑤）', () => {
   it('sameVersion 互认：精确不命中的核心版本判已安装，运行徽标按同一性点亮', async () => {
     const { adapter, events } = fakeAdapter({

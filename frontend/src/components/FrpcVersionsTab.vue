@@ -54,9 +54,9 @@ async function refreshRemote() {
   }
 }
 
-// stepOf 取 managedProgress 单源（本 tab 原逐字副本已删）；statusOf 的"去 v 前缀
-// 精确互等"口径属本模块合法分叉（frpc 不做数值段比较），仍留本地——但剥离动作
-// 自统一波起吃 normalizeVersion 单源（installed=0.61.1 对 release=v0.61.1 互等不变）。
+// stepOf 取 managedProgress 单源；statusOf 的"去 v 前缀精确互等"口径属本模块
+// 合法分叉（frpc 不做数值段比较），留本地——剥离动作吃 normalizeVersion 单源
+// （installed=0.61.1 对 release=v0.61.1 互等不变）。
 function statusOf(rel: FrpRelease): 'installed' | 'downloading' | 'error' | 'idle' {
   const p = downloading.value[rel.version]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
@@ -127,7 +127,7 @@ async function openConfigDir() {
 }
 
 async function removeVersion(v: FrpVersionInfo) {
-  // 展示剥离上收 normalizeVersion 单源（与 statusOf 同表；`V0.61.1` 大写形态现也剥，微差登记）
+  // 展示剥离吃 normalizeVersion 单源（与 statusOf 同口径；`V0.61.1` 大写形态现也剥）
   const versionShort = normalizeVersion(v.version)
   // 卸载确认收编至全局 useConfirm（文案逐字拆 title/description）
   const accepted = await confirm({
@@ -145,7 +145,7 @@ async function removeVersion(v: FrpVersionInfo) {
   }
 }
 
-// 事件订阅收编 useWailsEvent（setup 期注册、卸载自动注销）；toast 由局部实现升级为全局 useToast
+// 事件订阅走 useWailsEvent（setup 期注册、卸载自动注销）；toast 经全局 useToast 单源
 useWailsEvent<DownloadProgress>('frpc:version-download', (p) => {
   if (!p || !p.version) return
   downloading.value = { ...downloading.value, [p.version]: p }
@@ -170,7 +170,7 @@ onMounted(() => {
       <p class="subtitle">从 GitHub 官方源下载 frp Windows 二进制，SHA256 硬校验后隔离安装；也支持导入本地已有的 frpc.exe。</p>
     </div>
 
-    <!-- 顶部操作栏（toast 提示升级为全局 useToast，不再局部渲染） -->
+    <!-- 顶部操作栏（toast 经全局 useToast，无局部渲染） -->
     <div class="control-panel">
       <div class="meta-info">
         <span>已安装 <strong>{{ installed.length }}</strong> 个版本 · 远程可用 {{ releases.length }} 个版本</span>
@@ -233,8 +233,7 @@ onMounted(() => {
               <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
             </td>
             <td>
-              <!-- 状态点落回公共件（ManagedVersionDot 即本家族 .ver-status 标准形单源；
-                   原 .frpc-version-status 逐字复制体随收编废止） -->
+              <!-- 状态点走公共件 ManagedVersionDot（本家族 .ver-status 标准形单源） -->
               <ManagedVersionDot v-if="statusOf(rel) === 'installed'" status="installed" text="已安装" />
               <ManagedVersionDot v-else-if="statusOf(rel) === 'downloading'" status="downloading" text="下载中" />
               <ManagedVersionDot v-else-if="statusOf(rel) === 'error'" status="error" text="失败" />
@@ -256,7 +255,9 @@ onMounted(() => {
               <div v-else-if="statusOf(rel) === 'downloading'" class="dl-meta-text">
                 <span v-if="downloading[rel.version]!.stage === 'hash'">校验 SHA256…</span>
                 <span v-else-if="downloading[rel.version]!.stage === 'extract'">解压写入…</span>
-                <span v-else class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
+                <!-- 兜底为进行态话术（含 resolve 占位票），中性色；真错误在
+                     statusOf==='error' 独立分支用 dl-error（2026-10-26 审查修复） -->
+                <span v-else :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
               </div>
               <div v-else-if="statusOf(rel) === 'error'" class="dl-meta-text">
                 <span class="dl-error" :title="downloading[rel.version]!.message">{{ downloading[rel.version]!.message }}</span>
@@ -281,14 +282,11 @@ onMounted(() => {
 
 <style scoped>
 .versions-tab-content { display: flex; flex-direction: column; gap: 14px; }
-/* .header-row/.subtitle/.btn 家族/.tbl/.mono/.error-box 由 components.css 全局原子接管。
-   冗余治理波 2C「删即落回」（对拍逐条证实与全局 :where 原子同形后方删，渲染零变化）：
-   .control-panel/.btn-group/.inst-card-top/.ver-tag/.inst-badges/.inst-meta/.meta-line/
-   .inst-actions/.ver-name/.download-cell/.dl-percent/.dl-meta-text/.dl-error 十三条删净；
-   登记待裁决三条（.meta-line .k/.meta-info strong/.section-title h3）于版本比较器统一波
-   复拍裁决：与 components.css :where 原子声明块逐字同形，删净落回。 */
+/* .header-row/.subtitle/.btn 家族/.tbl/.mono/.error-box，连同曾有本地复制体的
+   .control-panel/.btn-group/.inst-*/.ver-tag/.meta-line/.section-title h3 等，
+   均由 components.css 全局 :where 原子承担（对拍证实同形后方删，渲染零变化）。 */
 
-/* 真散差留局部（波 2C 对拍证实与全局标准形有差，不可落回）： */
+/* 真散差留局部（与全局标准形有差，不可落回）： */
 .meta-info { font-size: var(--text-base); color: var(--color-text-muted); }
 
 /* 已安装卡片 */
@@ -302,14 +300,12 @@ onMounted(() => {
 .badge-official { background: var(--state-information-soft); color: var(--state-information); }
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); margin-left: 4px; }
 
-/* 旧 scoped 同名原子 .mono{font-size:11px} 压缩副本已删除，落回全局 .mono（--text-sm）标准形 */
+/* .mono 落回全局标准形，本表仅留截断变体： */
 .mono.short { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 表格（.tbl 全局原子接管；.table-container 留局部系 overflow 口径真差） */
 .table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; }
 
-/* 远程行状态点复制体（.frpc-version-status 六行）已收编 ManagedVersionDot 公共件，随删。 */
-
-/* .dl-bar-wrap/.dl-bar-inner 与 components.css 全局原子逐字同形，副本删净落回。 */
+/* .dl-bar-wrap/.dl-bar-inner 与全局原子逐字同形，副本已删净落回 */
 .muted-text { color: var(--color-text-subtle); }
 </style>

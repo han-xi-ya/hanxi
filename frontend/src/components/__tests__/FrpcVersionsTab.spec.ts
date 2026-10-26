@@ -1,7 +1,7 @@
 // 特征测试（组 G4）：FrpcVersionsTab——frpc 版本管理子页。
 // 基线锁定迁移前行为；迁移（useWailsEvent/useConfirm/useToast 全局化/format 收编）后除机制面外逐字保持。
 import { nextTick } from 'vue'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FrpcVersionsTab from '../../components/FrpcVersionsTab.vue'
 import { useToast } from '../../composables/useToast'
@@ -248,6 +248,101 @@ describe('FrpcVersionsTab 下载进度事件', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// ---------- 下载票据形制补档（resolve 占位档 / RPC 拒绝撤票 / 非已装回执静默 / 重试再武装） ----------
+
+function idleTab() {
+  svc.ListReleases.mockResolvedValue([{ ...release061, version: 'v0.62.0' }])
+  svc.ListInstalledVersions.mockResolvedValue([])
+}
+
+function downloadButton(wrapper: VueWrapper) {
+  return wrapper.findAll('.tbl tbody button').find((b) => b.text() === '下载安装')!
+}
+
+describe('FrpcVersionsTab 下载票据形制', () => {
+  it('resolve 占位票渲染档：RPC 在途行切「下载中」，透出占位词面，无进度条', async () => {
+    idleTab()
+    let resolveDl: (v: string) => void = () => {}
+    svc.DownloadVersion.mockReturnValue(new Promise<string>((r) => { resolveDl = r }))
+    const wrapper = mount(FrpcVersionsTab)
+    await flushMicrotasks()
+
+    await downloadButton(wrapper).trigger('click')
+    await flushMicrotasks()
+    expect(wrapper.find('.ver-status.downloading').text()).toBe('下载中')
+    expect(wrapper.find('.dl-meta-text').text()).toContain('正在创建下载任务…')
+    expect(wrapper.find('.dl-percent').exists()).toBe(false) // 占位档 total=0，不画进度条
+    resolveDl('started')
+    wrapper.unmount()
+  })
+
+  it('RPC 拒绝：toast「下载失败: 」前缀且占位票即时撤回收回可安装（error 票只属后端事件面——本模块现口径）', async () => {
+    idleTab()
+    svc.DownloadVersion.mockRejectedValue(new Error('网络断了'))
+    const wrapper = mount(FrpcVersionsTab)
+    await flushMicrotasks()
+    const initialLoads = svc.ListInstalledVersions.mock.calls.length
+
+    await downloadButton(wrapper).trigger('click')
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toBe('下载失败: 网络断了')
+    expect(wrapper.find('.ver-status.idle').text()).toBe('可安装')
+    expect(wrapper.find('.dl-error').exists()).toBe(false)
+    expect(wrapper.find('.dl-meta-text').exists()).toBe(false)
+    expect(svc.ListInstalledVersions.mock.calls.length).toBe(initialLoads) // 拒绝路径不重拉列表
+    // 撤票后行钮复位，可再次发起（不永挂占位票）
+    await downloadButton(wrapper).trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('非 already-installed 回执静默：不 toast、不重拉，占位票驻留至进度事件覆盖为真实档位', async () => {
+    idleTab()
+    svc.DownloadVersion.mockResolvedValue('started')
+    const wrapper = mount(FrpcVersionsTab)
+    await flushMicrotasks()
+    const initialLoads = svc.ListInstalledVersions.mock.calls.length
+
+    await downloadButton(wrapper).trigger('click')
+    await flushMicrotasks()
+    expect(useToast().toastMsg.value).toBe('')
+    expect(svc.ListInstalledVersions.mock.calls.length).toBe(initialLoads)
+    expect(wrapper.find('.dl-meta-text').text()).toContain('正在创建下载任务…')
+
+    runtime.handlers['frpc:version-download']({
+      data: { version: 'v0.62.0', stage: 'downloading', done: 50, total: 100 },
+    })
+    await flushMicrotasks()
+    expect(wrapper.find('.dl-percent').text()).toBe('50%')
+    wrapper.unmount()
+  })
+
+  it('error 票 →「重试」放行且再武装：点击即以后端词面让位于新占位票，在途窗口再无可连点钮位', async () => {
+    idleTab()
+    let resolveDl: (v: string) => void = () => {}
+    svc.DownloadVersion.mockReturnValue(new Promise<string>((r) => { resolveDl = r }))
+    const wrapper = mount(FrpcVersionsTab)
+    await flushMicrotasks()
+    runtime.handlers['frpc:version-download']({
+      data: { version: 'v0.62.0', stage: 'error', done: 0, total: 0, message: 'SHA256 校验不符' },
+    })
+    await flushMicrotasks()
+    const retry = wrapper.findAll('button').find((b) => b.text() === '重试')!
+
+    await retry.trigger('click')
+    await flushMicrotasks()
+    expect(svc.DownloadVersion).toHaveBeenCalledTimes(1)
+    // error 票已被新占位票替换：失败词面与重试钮位一并让位，行档切回下载中
+    expect(wrapper.text()).not.toContain('SHA256 校验不符')
+    expect(wrapper.findAll('button').some((b) => b.text() === '重试')).toBe(false)
+    expect(wrapper.find('.ver-status.downloading').exists()).toBe(true)
+    expect(wrapper.find('.dl-meta-text').text()).toBe('正在创建下载任务…')
+    resolveDl('started')
+    wrapper.unmount()
   })
 })
 
