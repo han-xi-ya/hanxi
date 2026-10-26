@@ -1,6 +1,7 @@
 package douzy
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -118,7 +119,20 @@ func (s *DouzyService) DownloadVersion(targetVersion string) (string, error) {
 					fmt.Sprintf("Douzy %s 安装包已下载并校验，点「运行安装程序」或到目录双击安装", p.Version), "/ext/douzy")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
+		// 后台租约（ADR-0001 §1.4"在途调用纳入 drain 门"）：上面 RPC 段的 Enter() 随
+		// DownloadVersion 返回就 release 了，若这里不另取后台租约，147MB 下载全程
+		// 无人记账——停用/退出的有界 drain（30s/60s）数不到它，会当成"没有在途操作"
+		// 直接收口。取到租约后把 lease.Context() 贯穿给下载体，模块停用即取消。
+		lease, leaseErr := s.holder.EnterBackground(context.Background())
+		if leaseErr != nil {
+			// 门拒（模块已停用/正在收口）：下载根本不启动，如实回执并销账，
+			// 形态与 ccswitch/guoheview 的后台租约失败分支一致。
+			slog.Info("douzy: 后台下载未启动（调用门拒绝）", "version", targetVersion, "err", leaseErr)
+			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: leaseErr.Error()})
+			return
+		}
+		defer lease.Release()
+		if err := s.manager.DownloadContext(lease.Context(), targetVersion, emit); err != nil {
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("douzy", "安装包下载失败", fmt.Sprintf("Douzy %s 下载失败: %v", targetVersion, err), "/ext/douzy")
 			return

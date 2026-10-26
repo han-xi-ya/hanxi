@@ -26,11 +26,13 @@ const (
 // plainVersionRe 纯版本号（如 1.3.0），用于目录名校验
 var plainVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的兜底目录后缀：现行形态为内容哈希
+// （imported-<sha256 前 12 hex>），历史形态为秒级时间戳（imported-YYYYMMDD-HHMMSS，
+// 存量目录必须继续可用，故两种形状一并收纳）。
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
-// dirNameRe 版本目录名（rustdesk_1.3.0）；imported- 分支收纳探测失败的时间戳兜底
-var dirNameRe = regexp.MustCompile(`^` + dirPrefix + `(?:[0-9][0-9a-zA-Z.]+|imported-\d{8}-\d{6})$`)
+// dirNameRe 版本目录名（rustdesk_1.3.0）；imported- 分支收纳兜底版本（哈希与历史时间戳）
+var dirNameRe = regexp.MustCompile(`^` + dirPrefix + `(?:[0-9][0-9a-zA-Z.]+|imported-(?:[0-9a-f]{12}|\d{8}-\d{6}))$`)
 
 // assetVerRe 官方资产文件名中的版本号段（rustdesk-1.3.0-x86_64.exe → 1.3.0）
 var assetVerRe = regexp.MustCompile(`(?i)^rustdesk-?v?(\d+\.\d+\.\d+)`)
@@ -131,7 +133,20 @@ func (m *Manager) resolveRelease(version string) (*RDRelease, error) {
 //  4. meta.json 记录期望哈希与实际哈希（事后诊断）。
 //
 // onProgress 可选：实时上报各阶段进度。
+// Download 保留旧调用面：供版本包单测与非事务调用使用。
 func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), version, onProgress)
+}
+
+// DownloadContext 下载便携 exe，可由调用方 context 取消（service 侧经
+// holder.EnterBackground 把 lease.Context() 贯穿进来）。
+func (m *Manager) DownloadContext(ctx context.Context, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -155,7 +170,7 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 
 	// 2. 下载 exe（直连 + 镜像逐个回退）
 	emit("downloading", 0, rel.Size, "")
-	if err := downloadTo(m.client, assetMirrors(rel.Tag, rel.AssetName), tmpPath, func(done int64) {
+	if err := downloadTo(ctx, m.client, assetMirrors(rel.Tag, rel.AssetName), tmpPath, func(done int64) {
 		emit("downloading", done, rel.Size, "")
 	}); err != nil {
 		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", err))
@@ -269,11 +284,17 @@ func (m *Manager) ImportLocal(path string) (RDVersionInfo, error) {
 
 	version := versionFromImportName(fi.Name())
 	if version == "" {
-		// 文件名无版本段（用户改名）：读 PE 版本资源；再失败时间戳兜底（与 frpc 同构）
+		// 文件名无版本段（用户改名）：读 PE 版本资源；再失败用**内容哈希**兜底
+		// （同内容必同版本，重复导入判定与时钟无关；历史秒级时间戳只在同秒内互斥，
+		// 跨秒会把同一份文件静默装成两份）。导入时刻由 meta.json installedAt 承载。
 		if fv, vErr := versioninfo.FileVersion(srcExe); vErr == nil && plainVersionRe.MatchString(fv) {
 			version = fv
 		} else {
-			version = "imported-" + time.Now().Format("20060102-150405")
+			sum := fileSHA256(srcExe)
+			if len(sum) < 12 {
+				return RDVersionInfo{}, fmt.Errorf("无法计算导入主程序摘要，拒绝导入: %s", srcExe)
+			}
+			version = "imported-" + sum[:12]
 		}
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
@@ -343,7 +364,19 @@ func (m *Manager) InstallerCached(rel *RDRelease) string {
 // DownloadInstaller 下载指定版本安装版 MSI 至缓存目录。完整性三层：
 // 官方 sha256（GitHub digest）→ 字节数 → MSI 复合文档魔数（勿用 PE MZ 断言）。
 // 缓存已命中则直接返回（不重发进度事件，调用方按 done 语义处理）。
+// DownloadInstaller 保留旧调用面（单测/非事务调用）。
 func (m *Manager) DownloadInstaller(version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadInstallerContext(context.Background(), version, onProgress)
+}
+
+// DownloadInstallerContext 下载安装版 MSI，可由调用方 context 取消。
+func (m *Manager) DownloadInstallerContext(ctx context.Context, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Kind: installerKindValue, Stage: stage, Done: done, Total: total, Message: msg})
@@ -379,7 +412,7 @@ func (m *Manager) DownloadInstaller(version string, onProgress func(p DownloadPr
 	tmpFile.Close()
 
 	emit("downloading", 0, rel.InstallerSize, "")
-	if err := downloadTo(m.client, assetMirrors(rel.Tag, rel.InstallerName), tmpPath, func(done int64) {
+	if err := downloadTo(ctx, m.client, assetMirrors(rel.Tag, rel.InstallerName), tmpPath, func(done int64) {
 		emit("downloading", done, rel.InstallerSize, "")
 	}); err != nil {
 		emit("error", 0, rel.InstallerSize, fmt.Sprintf("下载失败: %v", err))

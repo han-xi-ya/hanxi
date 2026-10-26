@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -61,7 +62,21 @@ func (m *Manager) ListCached() ([]CachedPackage, error) {
 // EnsureCached 保证指定版本的可信包已缓存：命中且校验通过直接复用；否则从 GitHub 下载
 // 并按 verificationMode 全链校验（SHA256/大小/zip CRC/Bundle 身份/AppX 清单/架构），
 // 通过后才落缓存目录。版本号先过 stableVersionRe 白名单，杜绝路径注入。
+// EnsureCached 保留旧调用面（单测与非事务调用；无取消源时等价 Background）。
 func (m *Manager) EnsureCached(version string, onProgress func(DownloadProgress)) (CachedPackage, error) {
+	return m.EnsureCachedContext(context.Background(), version, onProgress)
+}
+
+// EnsureCachedContext 保证指定版本的可信包已缓存，可由调用方 context 取消：
+// service 侧经 holder.EnterBackground 取租约后把 lease.Context() 贯穿进来，
+// 停用/退出 drain 时下载与重试退避都能即时中止（不再干等 1s 退避 + 整轮下载）。
+func (m *Manager) EnsureCachedContext(ctx context.Context, version string, onProgress func(DownloadProgress)) (CachedPackage, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return CachedPackage{}, err
+	}
 	emit := func(stage string, done, total int64, message string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: message})
@@ -101,7 +116,7 @@ func (m *Manager) EnsureCached(version string, onProgress func(DownloadProgress)
 	bundlePath := filepath.Join(staging, target.AssetName)
 
 	emit("downloading", 0, target.Size, "")
-	if err := downloadTo(m.client, assetMirrors(version, target.AssetName), bundlePath, func(done int64) { emit("downloading", done, target.Size, "") }); err != nil {
+	if err := downloadTo(ctx, m.client, assetMirrors(version, target.AssetName), bundlePath, func(done int64) { emit("downloading", done, target.Size, "") }); err != nil {
 		emit("error", 0, target.Size, err.Error())
 		return CachedPackage{}, err
 	}

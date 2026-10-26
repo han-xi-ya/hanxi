@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,7 +28,7 @@ var packageIdentity = apppackage.Identity{Name: PackageName, Family: PackageFami
 type versionManager interface {
 	ListReleases() ([]version.Release, error)
 	ListCached() ([]version.CachedPackage, error)
-	EnsureCached(string, func(version.DownloadProgress)) (version.CachedPackage, error)
+	EnsureCachedContext(context.Context, string, func(version.DownloadProgress)) (version.CachedPackage, error)
 	RemoveCached(string) error
 }
 
@@ -259,13 +260,25 @@ func (s *NanaZipService) runInstall(op *operationState, allowDowngrade bool) {
 		}
 		s.emitProgress(OperationProgress{OperationID: op.id, Kind: op.kind, TargetVersion: op.version, Stage: stage, Done: progress.Done, Total: progress.Total, Message: message})
 	}
-	cached, err := s.manager.EnsureCached(op.version, emitVersion)
+	// 后台租约（ADR-0001 §1.4"在途调用纳入 drain 门"）：派生本流程的 RPC 段 Enter()
+	// 已随该方法返回而 release，若不在此另取后台租约，"下载 + 15min 部署"全程无人记账，
+	// 停用/退出的有界 drain 会当成"没有在途操作"直接收口。取到租约后把 lease.Context()
+	// 作为下面 ctx 的父级——模块停用即取消，下载退避与部署等待一并中断，不再干等。
+	lease, leaseErr := s.holder.EnterBackground(context.Background())
+	if leaseErr != nil {
+		slog.Info("nanazip: 后台安装未启动（调用门拒绝）", "version", op.version, "err", leaseErr)
+		s.failOperation(op, leaseErr)
+		return
+	}
+	defer lease.Release()
+
+	cached, err := s.manager.EnsureCachedContext(lease.Context(), op.version, emitVersion)
 	if err != nil {
 		s.failOperation(op, err)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(lease.Context(), 15*time.Minute)
 	defer cancel()
 	before, err := s.packages.Query(ctx, packageIdentity)
 	if err != nil {
@@ -307,7 +320,16 @@ func (s *NanaZipService) runUninstall(op *operationState, packageFullName string
 		s.finishOperation(op)
 		s.emitSnapshot()
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	// 后台租约：卸载同样在 go 派生的流程里，必须计入 drain 门（理由同 runInstall）。
+	lease, leaseErr := s.holder.EnterBackground(context.Background())
+	if leaseErr != nil {
+		slog.Info("nanazip: 后台卸载未启动（调用门拒绝）", "version", op.version, "err", leaseErr)
+		s.failOperation(op, leaseErr)
+		return
+	}
+	defer lease.Release()
+
+	ctx, cancel := context.WithTimeout(lease.Context(), 10*time.Minute)
 	defer cancel()
 	s.emitProgress(OperationProgress{OperationID: op.id, Kind: op.kind, TargetVersion: op.version, Stage: "uninstalling", Message: "正在卸载当前用户 NanaZip"})
 	if err := s.packages.Uninstall(ctx, packageIdentity, packageFullName); err != nil {

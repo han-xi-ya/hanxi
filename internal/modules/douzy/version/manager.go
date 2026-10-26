@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -138,7 +139,21 @@ func (m *Manager) resolveRelease(version string) (*DouzyRelease, error) {
 //
 // meta.json 记录期望/实际哈希供事后诊断。onProgress 可选：实时上报各阶段进度。
 // 注意：本方法只负责"取包并校验"，安装动作交还用户（见 service.LaunchInstaller）。
+// Download 保留旧调用面：供版本包单测与非事务调用使用（无取消源时等价 Background）。
 func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), version, onProgress)
+}
+
+// DownloadContext 下载并校验安装包，可由调用方 context 取消（与 guoheview 同谱的
+// P0 批 2b 生命周期：service 侧用 holder.EnterBackground 取租约后把 lease.Context()
+// 贯穿进来，停用/退出 drain 时下载可在退避间隙/换源前/读循环内即时中止）。
+func (m *Manager) DownloadContext(ctx context.Context, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -162,7 +177,7 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 
 	// 2. 下载安装包（直连 + 镜像逐个回退；传原始 tag 拼下载 URL）
 	emit("downloading", 0, rel.Size, "")
-	if err := downloadTo(m.client, assetMirrors(rel.Tag, rel.AssetName), tmpPath, func(done int64) {
+	if err := downloadTo(ctx, m.client, assetMirrors(rel.Tag, rel.AssetName), tmpPath, func(done int64) {
 		emit("downloading", done, rel.Size, "")
 	}); err != nil {
 		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", err))

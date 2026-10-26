@@ -1,6 +1,7 @@
 package rustdesk
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -179,7 +180,17 @@ func (s *RustDeskService) DownloadVersion(targetVersion string) (string, error) 
 				notify.Success("rustdesk", "版本下载成功", fmt.Sprintf("RustDesk %s 已成功安装", p.Version), "/ext/rustdesk")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
+		// 后台租约（ADR-0001 §1.4"在途调用纳入 drain 门"）：RPC 段的 Enter() 随本方法
+		// 返回就 release，这里不另取租约的话，下载全程无人记账，停用/退出的有界
+		// drain 数不到它；取到后把 lease.Context() 贯穿给下载体，模块停用即取消。
+		lease, leaseErr := s.holder.EnterBackground(context.Background())
+		if leaseErr != nil {
+			slog.Info("rustdesk: 后台下载未启动（调用门拒绝）", "version", targetVersion, "err", leaseErr)
+			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: leaseErr.Error()})
+			return
+		}
+		defer lease.Release()
+		if err := s.manager.DownloadContext(lease.Context(), targetVersion, emit); err != nil {
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("rustdesk", "版本下载失败", fmt.Sprintf("RustDesk %s 下载失败: %v", targetVersion, err), "/ext/rustdesk")
 			return
@@ -220,7 +231,18 @@ func (s *RustDeskService) InstallVersion(targetVersion string) (string, error) {
 				app.Event.Emit("rustdesk:version-download", p)
 			}
 		}
-		if err := s.manager.DownloadInstaller(targetVersion, func(p version.DownloadProgress) {
+		// 后台租约：本 goroutine 覆盖"下载→弹向导→等安装结果"整段，全程计入 drain 门
+		// （ADR-0001 §1.4）。安装向导由用户操作，可能长于 30s 预算——这正是"先拒绝新
+		// 操作 + 有界 drain + 超时显式告警"的既定取舍，不静默、也不强杀用户正在填的向导
+		// （msiexec 本体由 Windows Installer 自己的会话管理，JobObject 只兜 hanxi 派生的进程）。
+		lease, leaseErr := s.holder.EnterBackground(context.Background())
+		if leaseErr != nil {
+			slog.Info("rustdesk: 后台安装流程未启动（调用门拒绝）", "version", targetVersion, "err", leaseErr)
+			emit("error", leaseErr.Error())
+			return
+		}
+		defer lease.Release()
+		if err := s.manager.DownloadInstallerContext(lease.Context(), targetVersion, func(p version.DownloadProgress) {
 			if app := application.Get(); app != nil && app.Event != nil {
 				app.Event.Emit("rustdesk:version-download", p)
 			}

@@ -46,7 +46,13 @@ func (f *fakeVersions) ListReleases() ([]version.Release, error) {
 func (f *fakeVersions) ListCached() ([]version.CachedPackage, error) {
 	return []version.CachedPackage{f.cached}, nil
 }
-func (f *fakeVersions) EnsureCached(v string, _ func(version.DownloadProgress)) (version.CachedPackage, error) {
+
+// EnsureCachedContext 替身：验收入口 ctx 已取消（与生产 Manager 同先验语义），
+// 未取消才落缓存桩值——这样"停用即取消"在 service 层也有外部面可断言。
+func (f *fakeVersions) EnsureCachedContext(ctx context.Context, v string, _ func(version.DownloadProgress)) (version.CachedPackage, error) {
+	if err := ctx.Err(); err != nil {
+		return version.CachedPackage{}, err
+	}
 	f.cached = version.CachedPackage{Version: v, Path: `C:\cache\NanaZip.msixbundle`}
 	return f.cached, nil
 }
