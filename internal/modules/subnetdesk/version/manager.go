@@ -132,7 +132,20 @@ func (m *Manager) resolveRelease(version string) (*SDRelease, error) {
 //  4. meta.json 记录期望哈希与实际哈希（事后诊断）。
 //
 // onProgress 可选：实时上报各阶段进度。
+// Download 保留旧调用面：供版本包单测与非事务调用使用。
 func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadContext(context.Background(), version, onProgress)
+}
+
+// DownloadContext 下载便携 exe，可由调用方 context 取消（service 侧经
+// holder.EnterBackground 把 lease.Context() 贯穿进来）。
+func (m *Manager) DownloadContext(ctx context.Context, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Stage: stage, Done: done, Total: total, Message: msg})
@@ -156,7 +169,7 @@ func (m *Manager) Download(version string, onProgress func(p DownloadProgress)) 
 
 	// 2. 下载 exe（直连 + 镜像逐个回退）
 	emit("downloading", 0, rel.Size, "")
-	if err := downloadTo(m.client, assetMirrors(version, rel.AssetName), tmpPath, func(done int64) {
+	if err := downloadTo(ctx, m.client, assetMirrors(version, rel.AssetName), tmpPath, func(done int64) {
 		emit("downloading", done, rel.Size, "")
 	}); err != nil {
 		emit("error", 0, rel.Size, fmt.Sprintf("下载失败: %v", err))
@@ -350,7 +363,19 @@ func (m *Manager) InstallerCached(rel *SDRelease) string {
 // DownloadInstaller 下载指定版本安装版 MSI 至缓存目录。完整性三层：
 // 官方 sha256（GitHub digest）→ 字节数 → MSI 复合文档魔数（勿用 PE MZ 断言）。
 // 缓存已命中则直接返回（不重发进度事件，调用方按 done 语义处理）。
+// DownloadInstaller 保留旧调用面（单测/非事务调用）。
 func (m *Manager) DownloadInstaller(version string, onProgress func(p DownloadProgress)) error {
+	return m.DownloadInstallerContext(context.Background(), version, onProgress)
+}
+
+// DownloadInstallerContext 下载安装版 MSI，可由调用方 context 取消。
+func (m *Manager) DownloadInstallerContext(ctx context.Context, version string, onProgress func(p DownloadProgress)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	emit := func(stage string, done, total int64, msg string) {
 		if onProgress != nil {
 			onProgress(DownloadProgress{Version: version, Kind: installerKindValue, Stage: stage, Done: done, Total: total, Message: msg})
@@ -386,7 +411,7 @@ func (m *Manager) DownloadInstaller(version string, onProgress func(p DownloadPr
 	tmpFile.Close()
 
 	emit("downloading", 0, rel.InstallerSize, "")
-	if err := downloadTo(m.client, assetMirrors(rel.Version, rel.InstallerName), tmpPath, func(done int64) {
+	if err := downloadTo(ctx, m.client, assetMirrors(rel.Version, rel.InstallerName), tmpPath, func(done int64) {
 		emit("downloading", done, rel.InstallerSize, "")
 	}); err != nil {
 		emit("error", 0, rel.InstallerSize, fmt.Sprintf("下载失败: %v", err))

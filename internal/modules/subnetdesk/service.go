@@ -1,6 +1,7 @@
 package subnetdesk
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -53,20 +54,37 @@ type SubnetDeskService struct {
 	engine  *instance.Engine
 	holder  *extapi.LeaseHolder
 
-	downloadMu sync.Mutex // 防止同一时间并发触发多个下载
-	watchMu    sync.Mutex
-	watching   bool
-	watchStop  chan struct{}
+	// downloadMu 只保护"在飞下载名册"downloads 的读判与置位；去重靠名册本体
+	// （旧实现只持锁跑完同步段即随 RPC 返回放锁，goroutine 下载全程在锁外——
+	// 同版本连点照样并发开两路下载、两路 rename 同一目标、双 done 双通知。
+	// quicklook ceceabd / translucenttb e65364d 名册先例同型修法：名册在飞即
+	// 回 "in-progress" 不起第二路，goroutine 函数头 defer 销账，拒绝早退不粘闸）。
+	// downloadDriver/installerDriver 下载驱动缝（生产恒 nil 走 manager 真实
+	// Context 形态；单测注入阻塞桩锁死去重与租约记账时序，translucenttb 同法）。
+	downloadMu      sync.Mutex
+	downloads       map[string]struct{}
+	downloadDriver  func(ctx context.Context, targetVersion string, emit func(version.DownloadProgress)) error
+	installerDriver func(ctx context.Context, targetVersion string, emit func(version.DownloadProgress)) error
+
+	watchMu   sync.Mutex
+	watching  bool
+	watchStop chan struct{}
 }
+
+// installerRosterPrefix 安装版通道的在飞名册键前缀：便携/安装两路资产与落位
+// 目标各不相同、互不冲突，按"通道+版本"分键去重即可；Windows Installer 的
+// 系统级单任务互斥仍由 msiexec 退出码 1618 兜底（见 installExitError）。
+const installerRosterPrefix = "installer:"
 
 // NewSubnetDeskService 装配版本管理器、持久化 store 与实例引擎（引擎状态回调指回本 service，二者生命周期一致）；构造无 IO。
 func NewSubnetDeskService(plat platform.Platform, holder *extapi.LeaseHolder) *SubnetDeskService {
 	paths := settings.GetPaths()
 	svc := &SubnetDeskService{
-		plat:    plat,
-		manager: version.NewManager(paths.VersionsDir()),
-		store:   newSubnetDeskStore(paths.StateDir()),
-		holder:  holder,
+		plat:      plat,
+		manager:   version.NewManager(paths.VersionsDir()),
+		store:     newSubnetDeskStore(paths.StateDir()),
+		downloads: make(map[string]struct{}),
+		holder:    holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewSubnetDeskProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -147,6 +165,10 @@ func (s *SubnetDeskService) ListInstalledVersions() ([]version.SDVersionInfo, er
 }
 
 // DownloadVersion 后台下载指定版本：立即返回，全程经事件 subnetdesk:version-download 推送进度。
+// 回执词表：started（已受理）/ already-installed（已装免下）/ in-progress（同版本
+// 名册在飞，连点去重不起第二路；前端视图对未知词静默，与 started 同路）。
+// 后台协程全程持 drain 租约（ADR-0001 §1.4，rustdesk 同族样板），门拒即不启动、
+// 以 error 事件如实回执。
 func (s *SubnetDeskService) DownloadVersion(targetVersion string) (string, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -156,47 +178,100 @@ func (s *SubnetDeskService) DownloadVersion(targetVersion string) (string, error
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
 
 	s.downloadMu.Lock()
-	defer s.downloadMu.Unlock()
+	if _, busy := s.downloads[targetVersion]; busy {
+		s.downloadMu.Unlock()
+		return "in-progress", nil
+	}
 
 	// 已安装则直接返回，避免重复下载
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
 		for _, v := range installed {
 			if strings.EqualFold(strings.TrimPrefix(v.Version, "v"), strings.TrimPrefix(targetVersion, "v")) {
+				s.downloadMu.Unlock()
 				return "already-installed", nil
 			}
 		}
 	}
 
+	// 占名册后放锁：锁只圈"读判+置位"同步段，去重由名册本体跨 goroutine 生效
+	// （nil 防御兜住单测裸构造，quicklook ceceabd 同型）
+	if s.downloads == nil {
+		s.downloads = make(map[string]struct{})
+	}
+	s.downloads[targetVersion] = struct{}{}
+	s.downloadMu.Unlock()
+
 	go func() {
+		// 收口销账：注册/销账配对，goroutine 任一路径（租约拒/失败/成功）退出
+		// 都执行，拒绝早退不粘闸
+		defer func() {
+			s.downloadMu.Lock()
+			delete(s.downloads, targetVersion)
+			s.downloadMu.Unlock()
+		}()
 		emit := func(p version.DownloadProgress) {
 			slog.Debug("subnetdesk download progress", "version", p.Version, "stage", p.Stage, "done", p.Done)
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("subnetdesk:version-download", p)
-			}
+			s.settleAndBroadcastProgress(targetVersion, p, s.emitDownloadProgress)
 			if p.Stage == "done" {
 				notify.Success("subnetdesk", "版本下载成功", fmt.Sprintf("SubnetDesk %s 已成功安装", p.Version), "/ext/subnetdesk")
 			}
 		}
-		if err := s.manager.Download(targetVersion, emit); err != nil {
+		// 后台租约（ADR-0001 §1.4"在途调用纳入 drain 门"）：RPC 段的 Enter() 随本方法
+		// 返回就 release，这里不另取租约的话，下载全程无人记账，停用/退出的有界
+		// drain 数不到它；取到后把 lease.Context() 贯穿给下载体，模块停用即取消
+		// （rustdesk 同族样板，D4 补齐）。
+		lease, leaseErr := s.holder.EnterBackground(context.Background())
+		if leaseErr != nil {
+			slog.Info("subnetdesk: 后台下载未启动（调用门拒绝）", "version", targetVersion, "err", leaseErr)
+			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: leaseErr.Error()})
+			return
+		}
+		defer lease.Release()
+		drive := s.downloadDriver
+		if drive == nil {
+			drive = s.manager.DownloadContext // 装配缺位时退回真实下载内核，绝不静默空跑
+		}
+		if err := drive(lease.Context(), targetVersion, emit); err != nil {
 			emit(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: err.Error()})
 			notify.Error("subnetdesk", "版本下载失败", fmt.Sprintf("SubnetDesk %s 下载失败: %v", targetVersion, err), "/ext/subnetdesk")
 			return
 		}
-		// 未设使用版本时自动把刚下载完的版本设为使用版本：
-		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
-		if v, _ := s.store.GetActive(); v == "" {
-			_ = s.store.SetActive(targetVersion, version.FormPortable)
-		}
+		// 首装自动设使用的落账已在 done 事件发出前经 settleAndBroadcastProgress
+		// 收口（与 termora/2ac9b3b 同根修），此处不再重复落账。
 	}()
 
 	return "started", nil
 }
 
+// settleAndBroadcastProgress 下载回执"先落账、后广播"收口：done 成功回执若尚未
+// 设定使用版本，先把刚落位成功的便携版本记为使用中，再把事件广播给前端——前端
+// 共享 store 收到 done 即复刷版本区读 GetActiveVersion，事件先行于落账会让瞬时
+// 复刷读到空值（"首个版本下载完不显示使用中"，与 termora/2ac9b3b、windterm/rammap
+// 同根修）。manager 仅在原子落位成功后才发 done，据此落账不会把失败版本记成
+// 使用中。广播以参数注入，供单测锁死该时序。
+func (s *SubnetDeskService) settleAndBroadcastProgress(targetVersion string, p version.DownloadProgress, broadcast func(version.DownloadProgress)) {
+	if p.Stage == "done" {
+		if v, _ := s.store.GetActive(); v == "" {
+			_ = s.store.SetActive(targetVersion, version.FormPortable)
+		}
+	}
+	broadcast(p)
+}
+
+// emitDownloadProgress 下载进度事件广播（subnetdesk:version-download）。
+func (s *SubnetDeskService) emitDownloadProgress(p version.DownloadProgress) {
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("subnetdesk:version-download", p)
+	}
+}
+
 // InstallVersion 下载并安装指定版本的安装版（MSI，后台编排）：进度经事件
 // subnetdesk:version-download（kind=installer）推送；安装本体是 Windows Installer
 // 前台向导（含 UAC），全程由用户操作，Hanxi 只等待结果并以注册表探测做事实核验。
-// 与 DownloadVersion 共用下载锁：Windows Installer 同一时刻只允许一个装机任务。
+// 与 DownloadVersion 同用"通道+版本"名册去重（安装版通道独立键）：同版本连点
+// 不起第二路 MSI 下载、不弹第二个向导；后台协程全程持 drain 租约（rustdesk
+// 同族样板）。Windows Installer 的系统级单任务互斥仍由 msiexec 退出码 1618 兜底。
 func (s *SubnetDeskService) InstallVersion(targetVersion string) (string, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -204,26 +279,50 @@ func (s *SubnetDeskService) InstallVersion(targetVersion string) (string, error)
 	}
 	defer release()
 	targetVersion = "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	rosterKey := installerRosterPrefix + targetVersion
 
 	s.downloadMu.Lock()
-	defer s.downloadMu.Unlock()
+	if _, busy := s.downloads[rosterKey]; busy {
+		s.downloadMu.Unlock()
+		return "in-progress", nil
+	}
 
 	if si, ok := s.manager.SystemVersion(); ok && si.Version == targetVersion {
+		s.downloadMu.Unlock()
 		return "already-installed", nil
 	}
 
+	if s.downloads == nil {
+		s.downloads = make(map[string]struct{})
+	}
+	s.downloads[rosterKey] = struct{}{}
+	s.downloadMu.Unlock()
+
 	go func() {
+		defer func() {
+			s.downloadMu.Lock()
+			delete(s.downloads, rosterKey)
+			s.downloadMu.Unlock()
+		}()
 		emit := func(stage, msg string) {
-			p := version.DownloadProgress{Version: targetVersion, Kind: "installer", Stage: stage, Message: msg}
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("subnetdesk:version-download", p)
-			}
+			s.emitDownloadProgress(version.DownloadProgress{Version: targetVersion, Kind: "installer", Stage: stage, Message: msg})
 		}
-		if err := s.manager.DownloadInstaller(targetVersion, func(p version.DownloadProgress) {
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("subnetdesk:version-download", p)
-			}
-		}); err != nil {
+		// 后台租约：本 goroutine 覆盖"下载→弹向导→等安装结果"整段，全程计入 drain 门
+		// （ADR-0001 §1.4，rustdesk 同族样板）。安装向导由用户操作，可能长于 30s
+		// 预算——既定取舍是"先拒绝新操作 + 有界 drain + 超时显式告警"，不强杀用户
+		// 正在填的向导。
+		lease, leaseErr := s.holder.EnterBackground(context.Background())
+		if leaseErr != nil {
+			slog.Info("subnetdesk: 后台安装流程未启动（调用门拒绝）", "version", targetVersion, "err", leaseErr)
+			emit("error", leaseErr.Error())
+			return
+		}
+		defer lease.Release()
+		drive := s.installerDriver
+		if drive == nil {
+			drive = s.manager.DownloadInstallerContext // 装配缺位时退回真实下载内核，绝不静默空跑
+		}
+		if err := drive(lease.Context(), targetVersion, s.emitDownloadProgress); err != nil {
 			emit("error", err.Error())
 			notify.Error("subnetdesk", "安装版下载失败", fmt.Sprintf("SubnetDesk %s 安装包下载失败: %v", targetVersion, err), "/ext/subnetdesk")
 			return

@@ -18,9 +18,11 @@ import (
 // 接管/唤窗/退出指引、导入运行闸与 N24 自动激活、下载同步回执。
 //
 // 生产缺陷提示（批次报告，勿钉死）：
-//  1. resolveActiveVersion 兜底排序对 imported- 令牌同型劫持（'i'>'1'）；
-//  2. DownloadVersion/InstallVersion 的后台协程未申请后台租约
-//     （rustdesk 同文件已按 ADR-0001 §1.4 入账），停用 drain 数不到它。
+//  1. resolveActiveVersion 兜底排序对 imported- 令牌同型劫持（'i'>'1'）。
+//
+// 原第 2 条（DownloadVersion/InstallVersion 后台协程不入 drain 账）已在 X1
+// 修复批按 rustdesk 同族样板补齐（EnterBackground 租约贯穿 + 门拒如实回执），
+// 时序锁见 service_download_test.go。
 
 // ---------- 测试替身 ----------
 

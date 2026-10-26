@@ -155,9 +155,7 @@ func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error)
 		defer s.downloadMu.Unlock()
 		lease, lerr := s.holder.EnterBackground(context.Background())
 		if lerr != nil {
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("mangodisk:version-download", version.DownloadProgress{Version: targetVersion, Stage: "error", Message: lerr.Error()})
-			}
+			s.emitDownloadProgress(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: lerr.Error()})
 			notify.Error("mangodisk", "版本下载失败", fmt.Sprintf("MangoDisk %s 后台租约开启失败: %v", targetVersion, lerr), "/ext/mangodisk")
 			return
 		}
@@ -167,9 +165,7 @@ func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error)
 			lease.Release()
 			// 账本拒绝开启（如未收口事务占位）：下载根本不启动，error 事件
 			// 如实送达前端下载卡片收口（既有事件契约兜底），并提示用户
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("mangodisk:version-download", version.DownloadProgress{Version: targetVersion, Stage: "error", Message: terr.Error()})
-			}
+			s.emitDownloadProgress(version.DownloadProgress{Version: targetVersion, Stage: "error", Message: terr.Error()})
 			notify.Error("mangodisk", "版本下载失败", fmt.Sprintf("MangoDisk %s 事务开启失败: %v", targetVersion, terr), "/ext/mangodisk")
 			return
 		}
@@ -189,9 +185,7 @@ func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error)
 		}()
 		emit := func(progress version.DownloadProgress) {
 			slog.Debug("mangodisk download progress", "version", progress.Version, "stage", progress.Stage, "done", progress.Done)
-			if app := application.Get(); app != nil && app.Event != nil {
-				app.Event.Emit("mangodisk:version-download", progress)
-			}
+			s.settleAndBroadcastProgress(targetVersion, progress, s.emitDownloadProgress)
 			// journal 只在阶段迁移处落盘（§8.2 每步迁移即持久化）；
 			// 下载分块进度仅进观察面内存投影，不产生 fsync 风暴
 			switch progress.Stage {
@@ -246,13 +240,30 @@ func (s *MangoDiskService) DownloadVersion(targetVersion string) (string, error)
 			notify.Error("mangodisk", "版本下载失败", fmt.Sprintf("MangoDisk %s 事务收口失败: %v", targetVersion, err), "/ext/mangodisk")
 			return
 		}
-		// 未设使用版本时自动把刚下载完的版本设为使用版本：
-		// 首个版本下载完成后无需再手动点一下设置（与 snipaste 既有行为对齐）。
-		if s.store.GetActive() == "" {
-			_ = s.store.SetActive(targetVersion)
-		}
+		// 首装自动设使用的落账已在 done 事件发出前经 settleAndBroadcastProgress
+		// 收口（与 termora/2ac9b3b 同根修），此处不再重复落账。
 	}()
 	return "started", nil
+}
+
+// settleAndBroadcastProgress 下载回执"先落账、后广播"收口：done 成功回执若尚未
+// 设定使用版本，先把刚落位成功的版本记为使用中，再把事件广播给前端——前端共享
+// store 收到 done 即复刷版本区读 GetActiveVersion，事件先行于落账会让瞬时复刷读到
+// 空值（"首个版本下载完不显示使用中"，与 termora/2ac9b3b、windterm/rammap 同根
+// 修）。manager 仅在原子落位 Commit 成功后才发 done，据此落账不会把失败版本记成
+// 使用中。广播以参数注入，供单测锁死该时序。
+func (s *MangoDiskService) settleAndBroadcastProgress(targetVersion string, p version.DownloadProgress, broadcast func(version.DownloadProgress)) {
+	if p.Stage == "done" && s.store.GetActive() == "" {
+		_ = s.store.SetActive(targetVersion)
+	}
+	broadcast(p)
+}
+
+// emitDownloadProgress 下载进度事件广播（mangodisk:version-download）。
+func (s *MangoDiskService) emitDownloadProgress(p version.DownloadProgress) {
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit("mangodisk:version-download", p)
+	}
 }
 
 // RemoveVersion 删除本地版本目录；该版本正在托管运行时拒绝，删除后若其为使用版本则清空 active。
