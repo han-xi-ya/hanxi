@@ -100,6 +100,36 @@ func newWindowsJobAPI() platform.JobAPI {
 // 由 Job/句柄负责终止）。个别受限执行环境（如 PATH 精简的沙箱/Git Bash 会话）
 // System32 不在 PATH 中：经 SystemRoot 定位兜底，仍是真实系统 cmd.exe，
 // 不改变冒烟口径。
+// ---------- 长命辅助子进程（生命周期冒烟专用，确定性真进程） ----------
+
+// smokeHelperEnv TestMain 握手变量：值非空时本测试二进制以"长命辅助子进程"形态运行
+// （睡死等 Job/句柄终止，不跑任何用例、无窗口、不读 stdin）。
+// 形态与常量名移植自本仓 bcu/instance 既有样板：不用裸 cmd.exe 的原因是 go test 的
+// stdin 是管道（EOF 即时），无参 cmd.exe 会在数毫秒内退 0，使 running 态断言随调度
+// 抖动机翻红（2026-10-27 mangodisk 实测单包 12/12 恒红即此形态）；辅助子进程是真实
+// PE、走同一 CreateProcess/Job 绑定/终止链路，只多不漏。
+const smokeHelperEnv = "MANGODISK_INSTANCE_SMOKE_HELPER"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(smokeHelperEnv) != "" {
+		time.Sleep(10 * time.Minute) // 睡死等终止（time.Sleep 挂定时器，不触发死锁探测器）
+		return
+	}
+	os.Exit(m.Run())
+}
+
+// mustSmokeHelper 返回"以辅助子进程形态再运行本测试二进制"的路径：环境变量经
+// t.Setenv 注入并由 Start 继承（supervisor Spec.Env 空 = 纯继承当前进程环境）。
+func mustSmokeHelper(t *testing.T) string {
+	t.Helper()
+	t.Setenv(smokeHelperEnv, "1")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("定位测试二进制失败: %v", err)
+	}
+	return exe
+}
+
 func mustCmdExe(t *testing.T) string {
 	t.Helper()
 	if path, err := exec.LookPath("cmd.exe"); err == nil {
@@ -234,7 +264,7 @@ func TestStartEmptyExeRejected(t *testing.T) {
 func TestStartCreateJobFail(t *testing.T) {
 	rec := &eventRecorder{}
 	e := NewEngine(&fakeJobAPI{createErr: errors.New("boom")}, &fakeProbe{}, rec.cb())
-	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)})
+	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustSmokeHelper(t)})
 	if err == nil {
 		t.Fatal("Create 失败应返回错误")
 	}
@@ -247,7 +277,7 @@ func TestStartAssignFail(t *testing.T) {
 	rec := &eventRecorder{}
 	api := &fakeJobAPI{job: &fakeJob{assignErr: errors.New("boom")}}
 	e := NewEngine(api, &fakeProbe{}, rec.cb())
-	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)})
+	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustSmokeHelper(t)})
 	if err == nil {
 		t.Fatal("Assign 失败应返回错误")
 	}
@@ -270,7 +300,7 @@ func TestManagedLifecycleSmoke(t *testing.T) {
 		return nil
 	}
 
-	exe := mustCmdExe(t)
+	exe := mustSmokeHelper(t)
 	if err := e.Start(StartOptions{Version: "v1.0.7", Exe: exe}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -332,7 +362,7 @@ func TestQuitGraceFallback(t *testing.T) {
 	defer func() { closeGracePeriod = old }()
 
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
-	if err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)}); err != nil {
+	if err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustSmokeHelper(t)}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer func() { _ = e.Stop() }()
@@ -404,7 +434,7 @@ func TestRefreshExternalTwoWay(t *testing.T) {
 	}
 
 	// running 时不探测（探测到的是自己）：以真进程冒烟验证内核静止态门控
-	if err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)}); err != nil {
+	if err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustSmokeHelper(t)}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer func() { _ = e.Stop() }()
@@ -429,7 +459,7 @@ func TestOpenWindowMessengerFailurePropagates(t *testing.T) {
 // TestOpenWindowMessenger 信使拉起冒烟：真实 cmd.exe 短命进程，仅验证不阻塞不报错。
 func TestOpenWindowMessenger(t *testing.T) {
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
-	if opened, err := e.OpenWindow(mustCmdExe(t)); err != nil || !opened {
+	if opened, err := e.OpenWindow(mustSmokeHelper(t)); err != nil || !opened {
 		t.Fatalf("OpenWindow = %v, %v; want true, nil", opened, err)
 	}
 }
