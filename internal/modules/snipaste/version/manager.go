@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"hanxi/internal/jsonstore"
 	"hanxi/internal/platform/versioncmp"
 	"hanxi/internal/platform/versioninfo"
 	"hanxi/packages/go/artifact"
@@ -455,12 +456,13 @@ func copyFile(src, dst string, perm os.FileMode) error {
 	return out.Close()
 }
 
+// writeJSON 落版本账本：收口 jsonstore.Save（原子写 + Sync + rename 有界重试），
+// 盘上格式与此前逐字节一致（MarshalIndent 两空格缩进、0644）。
+// 原实现是 os.WriteFile 直写：进程或机器在写中途被打断会留下截断的 meta.json，
+// 而该目录随后会落进"读不出可信 SHA256 → 拒覆盖"的死角（ocr/translucenttb
+// 同型问题已在审查批内收口，此处补齐第三家）。
 func writeJSON(path string, value any) error {
-	data, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0644)
+	return jsonstore.Save(path, value)
 }
 
 // dirSize 版本目录整树字节和：主程序文件只是入口，多文件载荷（Snipaste 免
