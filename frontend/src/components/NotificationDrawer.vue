@@ -70,7 +70,7 @@ function handleItemClick(item: Notification) {
               >
                 清空
               </button>
-              <button class="btn-close" @click="closeDrawer">✕</button>
+              <button class="btn-close" aria-label="关闭通知中心" @click="closeDrawer">✕</button>
             </div>
           </div>
 
@@ -114,7 +114,7 @@ function handleItemClick(item: Notification) {
   inset: 0;
   background: var(--overlay-mask);
   backdrop-filter: blur(1.5px);
-  z-index: 10001;
+  z-index: var(--z-drawer);
 }
 
 .notification-drawer {
@@ -127,7 +127,7 @@ function handleItemClick(item: Notification) {
   background: var(--surface-panel);
   border-left: 1px solid var(--color-border);
   box-shadow: var(--shadow-drawer);
-  z-index: 10002;
+  z-index: var(--z-drawer-panel);
   display: flex;
   flex-direction: column;
 }
@@ -231,7 +231,7 @@ function handleItemClick(item: Notification) {
   padding: 10px 16px;
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--motion-base) ease;
   position: relative;
 }
 
@@ -303,7 +303,7 @@ function handleItemClick(item: Notification) {
 /* 动效 */
 .drawer-slide-enter-active,
 .drawer-slide-leave-active {
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--motion-slow) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .drawer-slide-enter-from,
@@ -313,7 +313,7 @@ function handleItemClick(item: Notification) {
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity var(--motion-slow) ease;
 }
 
 .fade-enter-from,

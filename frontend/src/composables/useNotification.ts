@@ -57,6 +57,16 @@ export function useNotification() {
       }
     }
 
+    // 同 id 重复推送（后端重发/重试）：先撤旧浮卡并清其计时器。不去重会出现
+    // 两张同 key 卡片（Vue 重复键告警），且旧卡到点 removeToast 按 id 命中的是
+    // 新卡——误清新卡、旧卡反而永久滞留无人收。
+    const dupIdx = activeToasts.value.findIndex((t) => t.id === item.id)
+    if (dupIdx >= 0) {
+      const dup = activeToasts.value[dupIdx]
+      if (dup.timer) clearTimeout(dup.timer)
+      activeToasts.value.splice(dupIdx, 1)
+    }
+
     // 构造前台浮动卡片 Toast
     const toast: ToastItem = {
       id: item.id,

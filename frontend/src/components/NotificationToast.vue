@@ -46,7 +46,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
             </div>
             <p class="toast-msg">{{ t.message }}</p>
           </div>
-          <button class="toast-close" @click="handleClose($event, t)" title="关闭">✕</button>
+          <button class="toast-close" aria-label="关闭通知" @click="handleClose($event, t)" title="关闭">✕</button>
         </div>
       </TransitionGroup>
     </div>
@@ -61,7 +61,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 999999;
+  z-index: var(--z-toast);
   pointer-events: none;
   width: 320px;
   max-width: calc(100vw - 40px);
@@ -79,7 +79,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
   padding: 12px 14px;
   gap: 12px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--motion-base) cubic-bezier(0.16, 1, 0.3, 1), box-shadow var(--motion-base) cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
   overflow: hidden;
 }
@@ -173,7 +173,7 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
 /* 动效 */
 .toast-slide-enter-active,
 .toast-slide-leave-active {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity var(--motion-slow) cubic-bezier(0.16, 1, 0.3, 1), transform var(--motion-slow) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .toast-slide-enter-from {

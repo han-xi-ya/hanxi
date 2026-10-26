@@ -40,7 +40,8 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const { paste, copyWithToast } = useClipboard()
 const { showToast, showErrorToast } = useToast()
 
-// 无 SSR 场景下的模块级自增 id（label/aria 关联用）
+// 实例唯一 id（label/aria 关联用）：script setup 顶层随实例执行，seq 每实例恒为 1，
+// 跨实例唯一性实由随机段保证（碰撞概率 1/1e6·每对实例，本件消费面远够不到）。
 let seq = 0
 const fieldId = `ui-clip-field-${++seq}-${Math.floor(Math.random() * 1e6)}`
 
@@ -116,7 +117,7 @@ function onInput(e: Event) {
   resize: vertical; transition: border-color var(--motion-base) ease;
 }
 .ui-clip-textarea:hover { border-color: var(--color-border-strong); }
-.ui-clip-textarea:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.ui-clip-textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .ui-clip-textarea::placeholder { color: var(--color-text-subtle); }
 .ui-clip-textarea[readonly] { background: var(--surface-soft); color: var(--color-text-muted); }
 .ui-clip-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

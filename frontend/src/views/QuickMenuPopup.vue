@@ -44,7 +44,9 @@ const CAP_MAX = 8
 const items = shallowRef<MenuItem[]>([])
 const loading = ref(true)
 const errorMsg = ref('')
-// 主环悬停读数索引（null = 标题态）；子环读数独立一路，两态在 hub 汇流
+// 主环悬停读数索引（null = 标题态）；子环读数独立一路，两态在 hub 汇流。
+// aria-activedescendant 归属以 activeCap 优先：帽带在场时 resolveHover 恒把
+// active 钉在父组（父锚定），若 sector 优先则 cap 分支永不可达、读屏永远报父组。
 const active = ref<number | null>(null)
 const activeCap = ref<number | null>(null)
 // 弹出动画重放键：每次唤出重挂圆盘层（换层时代的层切换已退役）
@@ -261,6 +263,13 @@ function onRootMouseleave() {
   activeCap.value = null
 }
 
+/** 主环按钮获焦：读数归主环并清帽带位（resolveHover 主环节面分支同款清带语义，
+ *  键盘路径此前漏清——Tab 从帽带回扫主环时 activeCap 残留会让 hub/activedescendant 指旧帽带项）。 */
+function focusSector(i: number) {
+  active.value = i
+  activeCap.value = null
+}
+
 // hub 读数：子环读数 > 主环读数 > 开环面包屑 > 标题态
 const hubNode = computed(() => (activeCap.value == null ? null : capItems.value[activeCap.value] ?? null))
 const capLabel = computed(() => (openNode.value ? `${openNode.value.label} · 子环` : ''))
@@ -345,6 +354,10 @@ function onKeydown(ev: KeyboardEvent) {
 
 function onWindowKeydown(ev: KeyboardEvent) {
   if (ev.key !== 'Escape') return
+  // 让行纪律（同 AppSidebar 全局 Esc 口径）：焦点在盘内时同一次按键先过根容器
+  // onKeydown（恒 preventDefault）再冒泡到本兜底——不让行则「收子环」与「关窗」
+  // 一键双杀，分级 Esc 失效。兜底只服务焦点被 WebView2 吞走、根路径没吃到键的场景。
+  if (ev.defaultPrevented) return
   if (ring.openGroup.value != null) ring.collapse() // 与根容器处理器同分级
   else dismiss()
 }
@@ -457,7 +470,7 @@ function onGroupActivate(i: number) {
     role="menu"
     :style="[densityVars, skinVars]"
     aria-label="快捷启动轮盘"
-    :aria-activedescendant="active != null ? `qm-sector-${active}` : (activeCap != null ? `qm-cap-${activeCap}` : undefined)"
+    :aria-activedescendant="activeCap != null ? `qm-cap-${activeCap}` : (active != null ? `qm-sector-${active}` : undefined)"
     @keydown="onKeydown"
     @contextmenu.prevent
     @pointermove="onPointerMove"
@@ -562,7 +575,7 @@ function onGroupActivate(i: number) {
       :aria-expanded="isGroup(item) ? ring.openGroup.value === i : undefined"
       :aria-label="isGroup(item) ? `${item.label}（分组，展开子环）` : `${item.label}（${typeLabel(item.type)}）`"
       :title="item.label"
-      @focus="active = i"
+      @focus="focusSector(i)"
       @click="isGroup(item) ? onGroupActivate(i) : activate(item)"
     >
       <span class="sector-icon"><AppIcon :name="wheelIconOf(item)" :size="iconPx(item, density.icon)" /></span>
@@ -869,7 +882,7 @@ function onGroupActivate(i: number) {
   /* 径向外顶由模板内联 transform 下发（与扇区面同向量）；这里只留微放大基调 */
 }
 .sector-btn:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 /* 图标座（③）：描边井升级为磨砂浮起座——明色 panel≈85% 半透 + 强描边 + 顶光/
@@ -976,7 +989,7 @@ function onGroupActivate(i: number) {
   transition: background var(--motion-fast) ease;
 }
 .hub-action:hover { background: var(--surface-hover); }
-.hub-action:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.hub-action:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 /* 子环收起按钮：图标+文字横排，落在 hub 中央动作位 */
 .hub-back {
   display: inline-flex;

@@ -212,15 +212,24 @@ onMounted(async () => {
   overflow-y: auto;
   padding: 24px 32px;
   background: var(--surface-page);
+  /* 样式审计 C3（2026-10-27）：滚动条常驻槽位——Windows/WebView2 经典滚动条占布局宽，
+     短页↔长页切换时内容整体横抖一格（网格换列、模态瞬时跳位）的根治。 */
+  scrollbar-gutter: stable;
 }
 
 /* 全局轻量 Toast 提示（深底浮层为刻意设计，两种主题下均成立）
-   允许选中复制：错误串常含路径/报错文本，需可拖选；pointer-events:auto 为有意开放交互 */
+   允许选中复制：错误串常含路径/报错文本，需可拖选；pointer-events:auto 为有意开放交互
+   样式审计 C1（2026-10-27）：锚位由右上改右下——右上角是通知浮层栈（NotificationToast
+   .toast-stack，宽 320、贴 top16/right20）的专属领地，两族同角必叠；global-toast 改挂
+   右下（snackbar 位）后与通知栈在任意视口宽垂直分离。z 序与交互语义不动（批复约束：
+   不造层级戏法；useNotification 现行"同 id 顶置重计时"契约不触碰）。
+   登记残留：通知抽屉（遮罩 10001 > 本件 9999）打开时本条仍在遮罩之下——属层阶
+   治理面（审计 §6 案 β），本条不在此解。 */
 .global-toast {
   position: fixed;
-  top: 20px;
+  bottom: 20px;
   right: 24px;
-  max-width: 480px;
+  max-width: min(480px, calc(100vw - 48px));
   background: rgba(31, 35, 40, 0.92);
   backdrop-filter: blur(8px);
   color: #ffffff;
@@ -231,7 +240,7 @@ onMounted(async () => {
   overflow-wrap: anywhere;
   box-shadow: var(--shadow-panel);
   animation: toastFadeIn var(--motion-slow) cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 9999;
+  z-index: var(--z-snackbar);
   pointer-events: auto;
   user-select: text;
 }
@@ -239,7 +248,7 @@ onMounted(async () => {
 @keyframes toastFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-8px) scale(0.96);
+    transform: translateY(8px) scale(0.96);
   }
   to {
     opacity: 1;

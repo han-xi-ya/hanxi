@@ -58,7 +58,7 @@ useDialogA11y({
 </template>
 
 <style scoped>
-.workbench-confirm-backdrop { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:24px; background:var(--overlay-mask); }
+.workbench-confirm-backdrop { position:fixed; inset:0; z-index:var(--z-dialog); display:grid; place-items:center; padding:24px; background:var(--overlay-mask); }
 .workbench-confirm { width:min(460px,100%); max-height:min(72vh,640px); overflow-y:auto; padding:20px; border:1px solid var(--color-border); border-radius:var(--radius-panel); background:var(--surface-panel); box-shadow:var(--shadow-panel); color:var(--color-text); }
 .workbench-confirm header { display:flex; gap:12px; align-items:flex-start; }
 .workbench-confirm h2 { margin:0 0 6px; font-size:var(--text-lg); }

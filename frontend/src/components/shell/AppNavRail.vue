@@ -173,7 +173,7 @@ function toggleExpanded() {
         class="rail-btn panel-toggle"
         title="展开分组面板"
         aria-label="展开分组面板"
-        aria-expanded="true"
+        aria-expanded="false"
         @click="emit('toggle-panel')"
       >
         <AppIcon name="chevrons-right" :size="20" />
@@ -347,7 +347,11 @@ function toggleExpanded() {
   line-height: 12px;
 }
 
-/* 组内运行绿点（左上） */
+/* 组内运行绿点（左上）。
+   样式审计 C6（2026-10-27，N37② 收尾）：原 `2.5px chrome 光环 + 6px positive-glow` 属稳态
+   彩色 halo——AppSidebar 的 .status-dot.online 与 .mod-run 两枚同语义绿点已按纪律收敛为
+   "实底 + inset 1px 提亮描边"，本枚是全库漏网的第三枚（"两枚口径归一"注释所指的同族），
+   现逐字对齐同一形制。 */
 .rail-dot {
   position: absolute;
   left: 4px;
@@ -356,7 +360,7 @@ function toggleExpanded() {
   height: 7px;
   border-radius: 50%;
   background: var(--state-positive);
-  box-shadow: 0 0 0 2.5px var(--surface-chrome), 0 0 6px var(--state-positive-glow);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white);
 }
 
 /* 未读徽标（右上） */
@@ -388,7 +392,7 @@ function toggleExpanded() {
 
 /* 键盘焦点环：rail 仅 64px 且纵向可滚，offset 内收防被轨道边缘裁切 */
 .rail-btn:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--color-primary));
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 

@@ -1,7 +1,7 @@
 // 轮盘侧 devicePixelRatio 响应式读数：图标像素预算（wheelIconBudget）的 DPR 输入源。
 // 轮盘弹窗是常驻复用窗口，跨缩放比拖动显示器 / 改系统缩放时 DPR 会变而窗口不重载，
-// 故用 matchMedia(`(resolution: Xdppx)`) 精确监听（设备像素比变化才触发，resize
-// 兜底）；非浏览器/测试环境全量防御，读数退回 1。
+// 故用 matchMedia(`(resolution: Xdppx)`) 精确监听（每次变化后重绑到当前值，设备
+// 像素比一变即命中，无 resize 兜底通道）；非浏览器/测试环境全量防御，读数退回 1。
 import { onBeforeUnmount, onMounted, readonly, ref } from 'vue'
 
 function currentDpr(): number {

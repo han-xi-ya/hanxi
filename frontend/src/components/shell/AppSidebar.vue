@@ -292,7 +292,7 @@ function iconText(icon: string | undefined): string {
           class="panel-collapse-btn"
           title="收起分组面板"
           aria-label="收起分组面板"
-          aria-expanded="false"
+          aria-expanded="true"
           @click="togglePanel"
         ><AppIcon name="chevrons-left" :size="15" /></button>
       </div>
@@ -697,7 +697,9 @@ function iconText(icon: string | undefined): string {
     top: 0;
     bottom: 0;
     left: 100%;
-    z-index: 1001;
+    /* 样式审计 C2（2026-10-27）：由 1001 降入 900 段（页内操作浮层，与 WSL 行菜单同档）——
+       二级面板浮出不得穿透 App 单例对话框（Confirm/Prompt 的 1000），对话框在场时必须压过一切页内浮层。 */
+    z-index: var(--z-flyout);
     background: var(--surface-panel);
     border: 1px solid var(--color-border);
     border-left: none;
@@ -788,7 +790,7 @@ function iconText(icon: string | undefined): string {
 /* 键盘可达性：抽屉/把手焦点环（覆盖 base.css 全局环为 --focus-ring 语义色；
    抽屉内 rail 钮焦点环在 AppNavRail 自身作用域） */
 .rail-handle:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--color-primary));
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 

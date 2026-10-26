@@ -295,9 +295,9 @@ export const ENTRYPOINT_META = {
 } satisfies Record<EntrypointValue, { label: string }>
 
 // ---------------------------------------------------------------------------
-// 通知严重度指示灯档位（前端冗余治理 · 波 0 下沉）：NotificationToast.vue:12-23 与
-// NotificationDrawer.vue:27-38 两份逐字同体本地函数的单一来源；sev-* 色板样式仍归
-// 两组件各自 scoped 块，本波不动消费点。
+// 通知严重度指示灯档位（前端冗余治理 · 波 0 下沉）：NotificationToast.vue 与
+// NotificationDrawer.vue 两份逐字同体本地函数的单一来源；sev-* 色板样式原归两
+// 组件各自 scoped 块，现已上收 components.css 全局原子区（两份 scoped 副本删净）。
 // ---------------------------------------------------------------------------
 
 /** 通知级别 → 指示灯档位类；未知/空一律落 info。 */

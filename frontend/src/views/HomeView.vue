@@ -448,8 +448,8 @@ onMounted(async () => {
           <li v-for="row in taskRows" :key="row.key" class="task-row">
             <span class="task-icon"><AppIcon :name="row.iconName" :size="15" /></span>
             <span class="task-copy">
-              <span class="task-title">{{ row.title }}</span>
-              <span class="task-meta">{{ row.meta }}</span>
+              <span class="task-title" :title="row.title">{{ row.title }}</span>
+              <span class="task-meta" :title="row.meta">{{ row.meta }}</span>
             </span>
             <time class="task-time mono" :datetime="row.time">{{ fmtTaskTime(row.time) }}</time>
           </li>

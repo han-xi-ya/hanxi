@@ -13,10 +13,25 @@ describe('getErrorMessage', () => {
 
   it('字符串原样返回', () => {
     expect(getErrorMessage('boom')).toBe('boom')
+    // 编排者批复补路：空白字符串与空白 Error.message 同规矩兜底
+    // （getErrorMessage('') 走 !err 分支归「未知错误」，两路行为一致）
+    expect(getErrorMessage('   ')).toBe('未知错误')
   })
 
   it('Error 实例取 message', () => {
     expect(getErrorMessage(new Error('出错了'))).toBe('出错了')
+  })
+
+  // 契约变更（机主裁决 2026-10-26 选 A）：空白 message 不再原样透传，
+  // 一律回落「未知错误」——此前空 Error 会让界面弹出没字的红条。
+  it('Error 实例 message 为空/纯空格回落「未知错误」', () => {
+    expect(getErrorMessage(new Error())).toBe('未知错误')
+    expect(getErrorMessage(new Error('   '))).toBe('未知错误')
+  })
+
+  it('对象 message 为空/纯空格同样回落「未知错误」', () => {
+    expect(getErrorMessage({ message: '' })).toBe('未知错误')
+    expect(getErrorMessage({ message: '  \t ' })).toBe('未知错误')
   })
 
   it('带 message 字段的普通对象优先取 message', () => {

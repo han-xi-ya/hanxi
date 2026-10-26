@@ -22,7 +22,7 @@ import {
   WHEEL, VIS, wedgePath, mainSectorAngles, mainAnchor,
   fullViewBox, trimViewBox, toTrimWindowPercent, PREVIEW_ICON,
 } from './wheelGeometry'
-import { isRasterWheelIcon, snapIconCssPx } from './wheelIconBudget'
+import { isRasterWheelIcon, snapIconCssPx, srcPxForWheelIcon } from './wheelIconBudget'
 import { useWheelDpr } from './useWheelDpr'
 import { DEFAULT_WHEEL_SKIN, wheelSkinVars, wheelTintCss, type WheelSkin } from './wheelSkin'
 import { wheelTypeTint } from './wheelSkinColors'
@@ -68,7 +68,10 @@ const rootClass = computed(() => `skin-${props.skin.preset}`)
 const dpr = useWheelDpr()
 function iconPx(item: MenuItem): number {
   const base = PREVIEW_ICON
-  return isRasterWheelIcon(wheelIconOf(item)) ? snapIconCssPx(base, dpr.value || 1) : base
+  // 与 QuickMenuPopup 严格同口径：喂逐枚源档 srcPx（ddnsgo/frpc 封顶 48），
+  // 否则 64 默认预算会给 48 档真图标放大成糊图，违背"永不放大"与同皮契约。
+  const icon = wheelIconOf(item)
+  return isRasterWheelIcon(icon) ? snapIconCssPx(base, dpr.value || 1, srcPxForWheelIcon(icon)) : base
 }
 const { tints, refresh: refreshTints } = useWheelTints(
   () => props.items.map(wheelIconOf),

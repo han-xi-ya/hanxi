@@ -67,14 +67,14 @@ useDialogA11y({
 <style scoped>
 /* 皮：两份壳原有微差，去重取 Ocr/N20 版（token 阴影/圆角，PortKill 侧观感
    统一为同一档，真机一并目检）；z 950 < ConfirmDialog 1000 */
-.hist-backdrop { position: fixed; inset: 0; z-index: 950; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
+.hist-backdrop { position: fixed; inset: 0; z-index: var(--z-dialog-under); display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
 .hist-dialog {
   width: min(720px, 100%); max-height: min(80vh, 640px); overflow: auto; display: flex; flex-direction: column; gap: 12px;
   padding: 16px 18px; background: var(--surface-panel); border: 1px solid var(--color-border);
   border-radius: var(--radius-element); box-shadow: var(--shadow-small);
 }
 .hist-dialog:focus { outline: none; }
-.hist-dialog:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.hist-dialog:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .hist-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .hist-head-text { min-width: 0; }
 .hist-head h2 { font-size: var(--text-md); font-weight: 600; margin: 0; }

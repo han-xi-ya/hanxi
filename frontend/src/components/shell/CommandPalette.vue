@@ -64,7 +64,7 @@ function subseqIndexes(hay: string, needle: string): number[] | null {
   return idx
 }
 
-/** 单字段评分：字段权重（标题 0 < 路由段 1 < 组名 2）× 千 + 首命中位置 + 字符间距（越小越优）。 */
+/** 单字段评分：字段权重（标题 0 < 路由段 1 < 组名 2）× 万 + 首命中位置×10 + 字符间距（越小越优）。 */
 function fieldScore(idx: number[], needleLen: number, weight: number): number {
   const gap = idx[idx.length - 1] - idx[0] + 1 - needleLen
   return weight * 10000 + idx[0] * 10 + gap
@@ -302,7 +302,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
                     <span v-else>{{ seg.text }}</span>
                   </template>
                 </span>
-                <span class="p-route">
+                <span class="p-route" :title="item.nav.route">
                   <template v-for="(seg, j) in item.routeSegs" :key="j">
                     <em v-if="seg.hit">{{ seg.text }}</em>
                     <span v-else>{{ seg.text }}</span>
@@ -331,7 +331,7 @@ const hasGotoIcon = computed(() => isRegistered('goto'))
 .palette-mask {
   position: fixed;
   inset: 0;
-  z-index: 100000; /* 高于通知抽屉(10002)与浮层(9999)，低于 Toast(999999) */
+  z-index: var(--z-palette); /* 高于通知抽屉(--z-drawer-panel)与浮层(--z-snackbar)，低于 Toast(--z-toast) */
   display: flex;
   justify-content: center;
   align-items: flex-start;

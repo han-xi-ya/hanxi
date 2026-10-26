@@ -341,6 +341,34 @@ describe('外扩子环（扇区级联）', () => {
     w.unmount()
   })
 
+  it('aria-activedescendant 帽带优先：指针落在子扇区时报子环项（父锚定不让 sector 抢占）', async () => {
+    vi.useFakeTimers()
+    const w = await mountReady(itemsWithGroup)
+    await w.find('.popup').trigger('pointermove', mainPoint(1, 3)) // 悬停分组扇区
+    vi.advanceTimersByTime(120) // dwell 到点开环
+    await flushMicrotasks()
+    expect(w.findAll('.cap-btn')).toHaveLength(2)
+    // 帽带第 0 枚角中线（组1 中线 150°、step 120°、span=120° → 子宽 60°，子0 中心 120°）
+    await w.find('.popup').trigger('pointermove', polarPoint(205, 120))
+    await flushMicrotasks()
+    expect(w.find('.popup').attributes('aria-activedescendant')).toBe('qm-cap-0')
+    w.unmount()
+    vi.useRealTimers()
+  })
+
+  it('Esc 分级（焦点在盘内冒泡路径）：根容器收子环后 window 兜底让行，不一键双杀', async () => {
+    const w = await mountReady(itemsWithGroup)
+    await w.findAll('.sector-btn')[1].trigger('click') // 钉住开环
+    await flushMicrotasks()
+    // 真实键盘：事件在扇区按钮触发并冒泡到 window；根 onKeydown 先消费（preventDefault）
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    w.findAll('.sector-btn')[1].element.dispatchEvent(ev)
+    await flushMicrotasks()
+    expect(w.findAll('.cap-btn')).toHaveLength(0) // 子环已收
+    expect(svc.Dismiss).not.toHaveBeenCalled() // window 兜底见 defaultPrevented 应让行，不关窗
+    w.unmount()
+  })
+
   it('外甩取消态：越过 rCancel 加 is-cancel 类，滑回缓冲带内解除', async () => {
     const w = await mountReady(itemsWithGroup)
     await w.find('.popup').trigger('pointermove', polarPoint(250, 0)) // 12 点方向 r=250>244

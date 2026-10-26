@@ -58,9 +58,11 @@ useDialogA11y({
 <template>
   <Teleport to="body">
     <div v-if="open" class="hx-prompt-backdrop" @mousedown.self="cancel">
-      <section ref="dialog" class="hx-prompt" role="dialog" aria-modal="true" :aria-labelledby="title + '-prompt-title'">
+      <!-- 固定合法 id（同 ConfirmDialog 标杆契约）：title 直拼 id 时含 ASCII 空格会把
+           aria-labelledby 的 IDREF 串按空格断成多段，指不到标题元素。 -->
+      <section ref="dialog" class="hx-prompt" role="dialog" aria-modal="true" aria-labelledby="hx-prompt-title">
         <header>
-          <h2 :id="title + '-prompt-title'">{{ title }}</h2>
+          <h2 id="hx-prompt-title">{{ title }}</h2>
           <p v-if="description">{{ description }}</p>
         </header>
         <label class="hx-prompt-field">
@@ -77,14 +79,14 @@ useDialogA11y({
 </template>
 
 <style scoped>
-.hx-prompt-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
+.hx-prompt-backdrop { position: fixed; inset: 0; z-index: var(--z-dialog); display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
 .hx-prompt { width: min(440px, 100%); padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-panel); background: var(--surface-panel); box-shadow: var(--shadow-panel); color: var(--color-text); }
 .hx-prompt h2 { margin: 0 0 6px; font-size: var(--text-lg); }
 .hx-prompt header p { margin: 0 0 4px; color: var(--color-text-muted); font-size: var(--text-base); line-height: 1.65; }
 .hx-prompt-field { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
 .hx-prompt-label { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); }
 .hx-prompt-field input { min-height: var(--control-h-lg); padding: 0 10px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control); background: var(--surface-soft); color: var(--color-text); font-size: var(--text-base); }
-.hx-prompt-field input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.hx-prompt-field input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .hx-prompt-btn { min-height: var(--control-h-lg); padding: 0 16px; border: 1px solid var(--color-border); border-radius: var(--radius-control); font-weight: 650; cursor: pointer; transition: background var(--motion-base) ease; }
 /* secondary/primary 两档整体交给全局 .btn-secondary / .btn-primary（原先是一份手抄
