@@ -45,11 +45,13 @@ type QuickLookService struct {
 	// 测试注入假实现以隔离网络驱动 emit 收口时序（eartrumpet 注入接缝同法）。
 	download func(ctx context.Context, txnID, targetVersion string, emit func(version.DownloadProgress)) error
 
-	// downloadMu 只串行同步段（已装判定、事务开启、goroutine 起跑），不覆盖
-	// goroutine 下载本体——按版本在飞去重未实现：同版本连点仍会开两路下载、
-	// 记两笔 journal（同类缺陷 translucenttb 2026-10-26 已按名册+收口销账修
-	// 复，quicklook 未随批；此处为实况登记，不是能力宣称）。
+	// downloadMu 只保护"在飞下载名册"downloads 的读判与置位；去重靠名册本体：
+	// 同版本在飞期间的重复请求回 "in-progress" 不起第二路，goroutine 收口 defer
+	// 销账（含租约拒/事务拒/失败早退路径）。
+	// （旧实现锁只圈同步段、goroutine 全程锁外——连点两下照样并发开两路下载、
+	// 记两笔 journal；translucenttb e65364d 同型修法，2026-10-26 本包补齐。）
 	downloadMu sync.Mutex
+	downloads  map[string]struct{}
 	watchMu    sync.Mutex
 	watching   bool
 	watchStop  chan struct{}
@@ -59,10 +61,11 @@ type QuickLookService struct {
 func NewQuickLookService(plat platform.Platform, holder *extapi.LeaseHolder) *QuickLookService {
 	paths := settings.GetPaths()
 	svc := &QuickLookService{
-		plat:    plat,
-		manager: version.NewManager(paths.VersionsDir()),
-		store:   newQuicklookStore(paths.StateDir()),
-		holder:  holder,
+		plat:      plat,
+		manager:   version.NewManager(paths.VersionsDir()),
+		store:     newQuicklookStore(paths.StateDir()),
+		downloads: make(map[string]struct{}),
+		holder:    holder,
 	}
 	svc.engine = instance.NewEngine(plat.Job(), instance.NewQuickLookProbe(), instance.Callbacks{
 		OnState: svc.emitInstanceState,
@@ -150,6 +153,8 @@ var quicklookInstallSteps = []string{"download", "unpack", "place"}
 // 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
 // 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
 // （与既有模块事件双通道并行，Wave 4-B 接线，ccswitch/markeron 同构）。
+// 回执词表：started（已受理）/ already-installed（已装免下）/ in-progress（同版本
+// 名册在飞，连点去重不起第二路；前端 downloadOutcome 对未知词静默，与 started 同路）。
 func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error) {
 	release, gateErr := s.holder.Enter()
 	if gateErr != nil {
@@ -159,13 +164,17 @@ func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error)
 	targetVersion = normalizeVersion(targetVersion)
 
 	s.downloadMu.Lock()
-	defer s.downloadMu.Unlock()
+	if _, busy := s.downloads[targetVersion]; busy {
+		s.downloadMu.Unlock()
+		return "in-progress", nil
+	}
 
 	// 已安装则直接返回，避免重复下载（zip 约 117MB，尤其值得去重）
 	installed, err := s.manager.ListInstalled()
 	if err == nil {
 		for _, v := range installed {
 			if strings.EqualFold(normalizeVersion(v.Version), targetVersion) {
+				s.downloadMu.Unlock()
 				return "already-installed", nil
 			}
 		}
@@ -176,7 +185,22 @@ func (s *QuickLookService) DownloadVersion(targetVersion string) (string, error)
 	}
 	txnID := uuid.NewString()
 
+	// 占名册后放锁：锁只圈"读判+置位"同步段，去重由名册本体跨 goroutine 生效
+	// （nil 防御兜住单测裸构造，translucenttb e65364d 同型）
+	if s.downloads == nil {
+		s.downloads = make(map[string]struct{})
+	}
+	s.downloads[targetVersion] = struct{}{}
+	s.downloadMu.Unlock()
+
 	go func() {
+		// 收口销账：注册/销账配对，goroutine 任一路径（租约拒/事务拒/失败/成功）
+		// 退出都执行，拒绝早退不粘闸
+		defer func() {
+			s.downloadMu.Lock()
+			delete(s.downloads, targetVersion)
+			s.downloadMu.Unlock()
+		}()
 		lease, lerr := s.holder.EnterBackground(context.Background())
 		if lerr != nil {
 			if app := application.Get(); app != nil && app.Event != nil {
