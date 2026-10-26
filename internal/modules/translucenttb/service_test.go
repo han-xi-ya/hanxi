@@ -12,7 +12,12 @@ import (
 )
 
 // TestVersionCompare 年份.序号版本数值分段比较：2026.10 必须大于 2026.2
-// （字典序会得出反果，目录名排序依赖本函数），imported- 兜底版本退化为字典序不 panic。
+// （字典序会得出反果，目录名排序依赖本函数）。
+//
+// 2026-10-27 契约订正：本用例旧断言为 {imported-…, "2026.2", want:1}，旁注"只求排序
+// 确定不求语义"。但该序并非无害——service.go 中 `installed[0].ExePath` 会被直接取去
+// 发送状态信号，"兜底目录排第一"等于把信号发给那份连版本都没读出来的导入件。现由
+// versioncmp 统一"非规范形态恒劣后"，期望改为规范版本在前。
 func TestVersionCompare(t *testing.T) {
 	cases := []struct {
 		a, b string
@@ -23,8 +28,11 @@ func TestVersionCompare(t *testing.T) {
 		{"2026.2", "2026.2", 0},
 		{"2026.10", "2026.9", 1},
 		{"2027.1", "2026.99", 1},
-		// imported- 兜底段非数值 → 退化为字典序（与 ccswitch 同构取舍，只求排序确定不求语义）
-		{"imported-20260906-150405", "2026.2", 1},
+		// imported- 兜底段非规范 → 恒劣后于规范版本（订正理由见函数头注释）
+		{"imported-20260906-150405", "2026.2", -1},
+		{"2026.2", "imported-20260906-150405", 1},
+		// 两侧同为非规范：仍给确定序（字典序），不 panic
+		{"imported-20260906-150405", "imported-20260906-150406", -1},
 	}
 	for _, c := range cases {
 		if got := versionCompare(c.a, c.b); got != c.want {
