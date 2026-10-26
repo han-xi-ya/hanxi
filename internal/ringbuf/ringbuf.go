@@ -45,7 +45,7 @@ func (rb *RingBuffer) Write(line string) {
 }
 
 // Last 返回最近 n 行（按时间从旧到新）。
-// n <= 0 或 n >= 容量时返回全部有效记录。
+// n <= 0 或 n 超过当前有效行数时，返回全部有效记录。
 func (rb *RingBuffer) Last(n int) []string {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()

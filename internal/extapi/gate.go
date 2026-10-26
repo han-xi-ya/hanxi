@@ -63,8 +63,12 @@ func (l *BackgroundLease) Release() {
 	})
 }
 
-// BackgroundGate 可选的后台租约扩展。普通 Gate 实现若未实现该接口，
-// LeaseHolder 会退化为只提供可取消 context 的内存 lease（单测/无头模式）。
+// BackgroundGate 可选的后台租约扩展（装配根注入的 gateView 已实现）。
+// EnterBackground 三档行为：未注入门（单测/无头）才退化为只提供可取消
+// context 的纯内存 lease；注入了实现本接口的门时真 Acquire 并入 Registry
+// 后台集合（停用/退出先 cancel 再等 Release）；注入了普通 Gate（未实现
+// 本接口）时同样真 Acquire 并如实上浮错误，只是租约不登记进后台集合、
+// 停用/退出只 drain 等待而不主动取消该 ctx。
 type BackgroundGate interface {
 	Gate
 	AcquireBackground(moduleID string, parent context.Context) (*BackgroundLease, error)

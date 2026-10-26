@@ -61,7 +61,9 @@ type ModuleWrapper struct {
 
 // stateOverride 承载不由 wrapper 现场派生的维度事实：
 // mandatory（Core 控制平面）与 blocked（安全/撤回阻止）由装配根或后续
-// 事务引擎注入；health 预留给 Wave 5+ 的签名目录裁决，内建逻辑模块恒 current。
+// 事务引擎注入；health 已非预留——更新感知链（internal/updatewatch）为托管
+// 模块裁决写入 update-available/current（Wave 4+ 落地），未挂感知链的模块恒
+// current；签名目录裁决线已按 ADR-0003 裁为 N/A 条件路径。
 type stateOverride struct {
 	mandatory     bool
 	blocked       bool
@@ -289,7 +291,7 @@ func ensureActive(wrapper *ModuleWrapper, moduleID string) error {
 	return nil
 }
 
-// List 返回全部扩展元信息（含启用状态与初始化状态）。
+// List 返回全部扩展元信息（含启用、初始化、安装三态）。
 func (r *Registry) List() []ModuleInfo {
 	wrappers := r.wrappers()
 	out := make([]ModuleInfo, 0, len(wrappers))
@@ -387,7 +389,8 @@ func (r *Registry) IsActive(id string) bool {
 }
 
 // SetEnabled 启停扩展。停用先阻止新命令并等待在飞命令/初始化完成，再于锁外
-// 调用 OnDestroy；返回时模块已不可执行且运行时资源已收口。
+// 调用 OnDestroy；返回时模块已不可执行且运行时资源已收口（drain 超时例外：
+// 按文件头纪律强制收口并落 Error 告警，残留由模块内部锁兜底）。
 func (r *Registry) SetEnabled(id string, enabled bool) error {
 	wrapper, ok := r.wrapper(id)
 	if !ok {
@@ -573,7 +576,8 @@ func splitTrayKey(key string) (moduleID, cmdID string, ok bool) {
 // Wave 1：四维状态投影与统一调用门（catalog.go 契约的 Registry 侧实现）
 // ---------------------------------------------------------------------------
 
-// Install 执行逻辑安装事务（Phase 1 最小形态，ADR-0001 §1.5/§8.4 口径）：
+// Install 执行逻辑安装事务（Phase 1 最小形态；口径 = ADR-0001 §1.5 +
+// 模块分发专项 §8.4《逻辑安装事务》）：
 // 登记 receipt → 默认启用（安装即可用）；幂等，重复安装保留首次凭据。
 // 内建逻辑模块的"安装"不复制宿主代码，UI 必须如实呈现不释放体积。
 func (r *Registry) Install(moduleID string, kind ReceiptKind) error {
@@ -653,7 +657,8 @@ func (r *Registry) SetBlocked(moduleID string, blocked bool) {
 	r.editOverride(moduleID, func(o *stateOverride) { o.blocked = blocked })
 }
 
-// SetHealth 写入健康维度覆盖（Wave 5+ 签名目录裁决用）；传空串恢复 current。
+// SetHealth 写入健康维度覆盖（现由更新感知链 internal/updatewatch 落账；
+// 签名目录裁决为 ADR-0003 裁剪后的 N/A 条件路径预留线）；传空串恢复 current。
 // remoteVersion 仅在 health=update-available 时随记录写入（更新感知链给出的上游
 // 新版本号，纯展示输入，不进状态机）；health 为 current 或其他值时一律清空。
 // health 与 remoteVersion 在同一把写锁内成对落账——投影读到的永远是同一轮事实。

@@ -49,8 +49,8 @@ func isTempDebris(name string) bool {
 }
 
 // migrateRootStateFiles 把 baseDir 根部的模块状态文件与原子写残骸搬进 stateDir，
-// 返回迁移与跳过的文件名清单及聚合错误。纯参数化设计（同 detectPortableBaseDir
-// 的可测性先例），不触碰全局 Paths，供单测直接喂 t.TempDir()。
+// 返回迁移与跳过的文件名清单及聚合错误。纯参数化设计（可测性收口：不触碰
+// 全局 Paths，单测直接喂 t.TempDir() 造景）。
 func migrateRootStateFiles(baseDir, stateDir string) (moved, skipped []string, errs error) {
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
 		// ensureDirs 吞错时 state 可能未建，迁移侧兜底；建不出来就整体放弃。

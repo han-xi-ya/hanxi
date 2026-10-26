@@ -1,5 +1,5 @@
 // rpc_gate_matrix_test.go 是 Wave 3"未安装/停用模块无法从任何已知入口旁路执行"
-// 的静态穷举门（AST 级，41 模块逐个校验）：
+// 的静态穷举门（AST 级，composition contract 清单内全部模块逐个校验）：
 //  1. Module 类型实现 extapi.GateAware（SetGate 存在，允许与 Info 分居不同文件）；
 //  2. New 构造中创建 extapi.NewLeaseHolder；
 //  3. 所有持有 *extapi.LeaseHolder 字段的服务结构体，其每个导出方法

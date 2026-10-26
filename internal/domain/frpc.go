@@ -1,5 +1,5 @@
-// Package domain 存放与运行细节无关的纯领域模型。
-// frpc 项目与代理规则既用于 TOML 生成（docgen），也用于实例进程管理（instance）。
+// 本文件是 frpc 的纯领域模型（包注记见 apperr.go）：Project 与代理规则
+// 既用于 TOML 生成（frpc/docgen），也用于实例进程管理（frpc/instance）。
 package domain
 
 // Project 一个 frpc 项目（一份配置 = 一个实例）。

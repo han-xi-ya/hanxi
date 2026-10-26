@@ -2,7 +2,8 @@
 //
 // 此前 25 个模块的 store.go 各自复制同一套样板：os.ReadFile + Unmarshal（缺失/损坏
 // 容忍）、MkdirAll + MarshalIndent + tmp(带 pid 后缀) 写 + rename 原子替换 + 失败清 tmp。
-// 本包只收口最底层的读写两步（Load/Save）；并发锁、JSON 字段语义、默认值与
+// 本包收口最底层的读写两步（Load/Save）与跨模块共用的字段校验（validate.go，
+// 现仅监听端口一项）；并发锁、JSON 字段语义、默认值与
 // 损坏容忍/严格报错的策略选择，全部留在各模块 store 侧。
 //
 // 落盘格式与原样板逐字段一致：2 空格缩进 MarshalIndent、tmp 名 "<path>.tmp.<pid>"、
@@ -88,12 +89,13 @@ func Save(path string, v any) error {
 }
 
 // renameAtomic 用 rename 把临时文件原子替换为目标，对 Windows 的
-// "瞬时占用"专错退避重试（审查 A2 2026-10-26 实测）：MoveFileEx 的
+// "瞬时占用"做有界退避重试（审查 A2 2026-10-26 实测）：MoveFileEx 的
 // REPLACE_EXISTING 在目标正被其他句柄打开时直接报 Access is denied——
 // Go 的 os.Open 共享模式不带 FILE_SHARE_DELETE，而同进程外的读方在机主
 // 场景里是常态（杀毒扫描、飞牛 NAS 同步整目录、MCP/编辑器读配置）。
-// 读方持柄是毫秒级形态，退避几轮即可穿过；真持续占用（如目标被换成
-// 目录）重试用尽后如实报错，绝不谎称成功。
+// 不判别错误类别：任何失败一律重试（至多 5 次、间隔 10ms 递增），读方
+// 持柄是毫秒级形态，退避几轮即可穿过；真持续占用（如目标被换成目录）
+// 重试用尽后如实上抛最后一次错误，绝不谎称成功。
 func renameAtomic(tmp, path string) error {
 	var err error
 	for attempt := range 5 {

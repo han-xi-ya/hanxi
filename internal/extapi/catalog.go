@@ -8,8 +8,9 @@
 //     不承载瞬时进度，由装配根 Catalog 表投影；
 //   - ModuleState：四维事实投影（Delivery/Policy/Runtime/Health），
 //     Registry/生命周期管理器是权威源，主操作与禁止原因由统一状态机计算；
-//   - Operation：长操作与调用租约的载荷契约（引擎实现按 Wave 3/4 落地，
-//     本 Wave 只冻结结构与语义）。
+//   - Operation：长操作与调用租约的载荷契约（Wave 0 只冻结结构与语义；
+//     引擎已按 Wave 3/4 落地——调用门见 gate.go，journal 内核见
+//     packages/go/operation 与 internal/ops）。
 //
 // 契约版本化：ModuleContractSchema 随投影结构体下发，前端与契约测试以其判定兼容性；
 // 破坏性变更必须递增 schema 并在 docs/adr/ 立案，禁止静默改语义。
@@ -24,8 +25,10 @@ const ModuleContractSchema = 1
 // 交付形态（静态：模块如何到达本机）
 // ---------------------------------------------------------------------------
 
-// DeliveryKind 描述模块的交付形态。Phase 1-2 仅 builtin-logical 落地；
-// managed-declarative 与 official-sidecar 分别对应 Wave 5 / Wave 6。
+// DeliveryKind 描述模块的交付形态。当前目录面全部模块仍为 builtin-logical；
+// managed-declarative / official-sidecar 枚举位冻结在案，但其原排期 Wave 5/6
+// 已按 ADR-0003 裁剪为 N/A 条件路径（另：journal 记账复用 managed-declarative
+// 作托管资产事务的形态标签，见 internal/ops 与 packages/go/operation）。
 type DeliveryKind string
 
 const (
@@ -101,7 +104,9 @@ const (
 )
 
 // HealthState 健康与版本维度：本机内容与官方目录的一致性判断。
-// Phase 1-2 内建逻辑模块恒为 current；其余取值服务 Wave 4+ 托管与签名目录。
+// 现况：update-available 由更新感知链（internal/updatewatch）对托管模块
+// 真实裁决（Wave 4+ 已落地）；未挂感知链的纯内建模块恒 current；其余取值
+// （revoked/corrupt 等）服务签名目录裁决，该线已按 ADR-0003 裁为 N/A 条件路径。
 type HealthState string
 
 const (
@@ -215,7 +220,7 @@ type ModuleCatalogItem struct {
 	Capabilities  []string      `json:"capabilities"` // 能力标记（如 managed-versions/tray-commands）
 	Entrypoints   []Entrypoint  `json:"entrypoints"`  // 该模块暴露的全部入口
 	Compatibility Compatibility `json:"compatibility"`
-	Permissions   []Permission  `json:"permissions"` // 需要的受控权限（Wave 0 允许为空）
+	Permissions   []Permission  `json:"permissions"` // 需要的受控权限（目录面当前恒空：权限握手属 LevelExternal 子进程插件预留线，见 module.go Permission 注）
 	Owner         string        `json:"owner"`       // 维护 owner（官方清点口径，发布职责不可无主）
 }
 
@@ -404,7 +409,8 @@ func transitionAllowed[T comparable](table map[T][]T, from, to T) bool {
 }
 
 // ---------------------------------------------------------------------------
-// Operation：长操作与调用租约契约（引擎按 Wave 3/4 落地）
+// Operation：长操作与调用租约契约（引擎已落地：门 extapi/gate.go，
+// journal 内核 packages/go/operation + internal/ops）
 // ---------------------------------------------------------------------------
 
 // OperationKind 操作类型。invoke 表示业务调用租约（Acquire 产物），

@@ -284,7 +284,7 @@ func ensureDirs(p *Paths) error {
 }
 
 // 以下只读访问器返回 InitPaths 时解析好的绝对路径，无副作用。
-// 硬约束（F6）：本组访问器的签名与语义自解析链改造起一字未动，38 个模块无感。
+// 硬约束（F6）：本组访问器的签名与语义自解析链改造起一字未动，全部消费模块无感。
 func (p *Paths) Mode() Mode          { return p.mode }
 func (p *Paths) BaseDir() string     { return p.baseDir }
 func (p *Paths) ConfigDir() string   { return p.configDir }

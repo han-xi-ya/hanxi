@@ -2,10 +2,11 @@
 //
 // Hanxi 是"工具箱"：所有能力（frpc 联调、局域网扫描、释放端口、公网 IP）都是模块，
 // 统一注册、统一启停（enabled 开关）、统一注入导航与服务。
-// 模块分两级：
-//   - LevelBuiltin：编译进主程序，仅可启停（MVP 全部为此级）；
+// 模块分两级（当前仓内全部为 LevelBuiltin）：
+//   - LevelBuiltin：编译进主程序，可启停；Wave 1 起再加逻辑安装/卸载
+//     （receipt 进出 + 入口收放，不释放宿主体积）；
 //   - LevelExternal：未来可拆为独立子进程插件（manifest + JSON-RPC over stdio），
-//     支持独立安装/卸载（P1+，接口已按此形态预留）。
+//     支持物理独立安装/卸载（未排期，接口已按此形态预留）。
 //
 // 当前耦合说明：Service 类型直接复用 wails 的 application.Service
 // （内建模块是 GUI 应用的一部分，此耦合可接受；若未来做子进程插件，
@@ -56,7 +57,8 @@ type NavEntry struct {
 type Level string
 
 const (
-	// LevelBuiltin 编译进主程序的内建模块，可启停但不可卸载。
+	// LevelBuiltin 编译进主程序的内建模块，可启停；卸载仅逻辑层（移除 receipt
+	// 与入口，不释放宿主体积，口径见 catalog.go DeliveryBuiltinLogical）。
 	LevelBuiltin Level = "builtin"
 	// LevelExternal 外部子进程模块（未来），可通过模块管理页独立安装/卸载。
 	LevelExternal Level = "external"
