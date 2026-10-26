@@ -648,16 +648,18 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
 .cmd-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .cmd {
   padding: 3px 8px; background: var(--surface-page); border: 1px solid var(--color-border);
-  border-radius: 6px; user-select: all;
+  border-radius: var(--radius-chip); user-select: all;
 }
 .input {
-  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: var(--radius-chip);
   padding: 4px 8px; font-size: var(--text-sm); color: var(--color-text); font-family: inherit;
 }
-.input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 
-/* 直通目标选择框：与 UiPromptDialog 同族表面语言（遮罩/面板/页脚），选项为纵向单选 */
-.pick-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
+/* 直通目标选择框：与 UiPromptDialog 同族表面语言（遮罩/面板/页脚），选项为纵向单选。
+   层序 G-C11 β案（2026-10-26）：本层 Teleport 到 body 末尾，视图级弹层挂 --z-dialog-under(950)，
+   与 App 单例确认框（1000，同 Teleport）叠放不再拼 DOM 插入序。 */
+.pick-backdrop { position: fixed; inset: 0; z-index: var(--z-dialog-under); display: grid; place-items: center; padding: 24px; background: var(--overlay-mask); }
 .pick {
   width: min(440px, 100%); padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-panel);
   background: var(--surface-panel); box-shadow: var(--shadow-panel); color: var(--color-text);

@@ -6,7 +6,7 @@
 // 注册运行态轮询（onMounted/onActivated/onDeactivated/onUnmounted 与 KeepAlive 耦合的
 // 生命周期契约，docs/FRONTEND.md §6 铁律 3），并在 onMounted 触发首屏 loadData。
 import { computed, onMounted, ref, shallowRef } from 'vue'
-import QRCode from 'qrcode'
+import { makeQrSvg } from '../utils/qr'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import * as FileShareAPI from '../../bindings/hanxi/internal/modules/fileshare'
 import type {
@@ -99,17 +99,8 @@ export function useFileShareServer() {
     const map: Record<string, string> = {}
     for (const ep of endpoints.value) {
       try {
-        map[ep.url] = await QRCode.toString(ep.url, {
-          type: 'svg',
-          margin: 1,
-          width: 140,
-          // 二维码必须保持深墨+纯白硬对比——扫码器不认主题色，这两个 hex 是功能参数而非装饰色，
-          // 刻意不参与 token 化（全文件仅此处允许硬编码色值）。
-          color: {
-            dark: '#1e293b',
-            light: '#ffffff',
-          },
-        })
+        // 深墨+纯白硬对比是功能参数、不 token 化（原裁决随 utils/qr.ts 头注保留）
+        map[ep.url] = await makeQrSvg(ep.url, 140)
       } catch (e) {
         console.warn('QR code generate error:', e)
       }

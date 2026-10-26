@@ -255,7 +255,7 @@ const rows = computed(() => entries.value.map(e => ({
 .webapp-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .webapp-field-label { font-size: var(--text-xs); color: var(--color-text-subtle); }
 .webapp-input {
-  padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 6px;
+  padding: 5px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-chip);
   background: var(--surface-panel); color: var(--color-text); font-size: var(--text-sm);
 }
 .webapp-name-input { width: 170px; }
@@ -269,7 +269,7 @@ const rows = computed(() => entries.value.map(e => ({
 .webapp-seg { display: flex; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 3px; gap: 2px; }
 .webapp-seg-btn {
   display: inline-flex; align-items: center; border: none; background: transparent;
-  padding: 4px 12px; border-radius: 6px; font-size: var(--text-sm); color: var(--color-text-muted);
+  padding: 4px 12px; border-radius: var(--radius-chip); font-size: var(--text-sm); color: var(--color-text-muted);
   cursor: pointer; transition: background var(--motion-base) ease, color var(--motion-base) ease;
 }
 .webapp-seg-btn:hover { color: var(--color-text); }

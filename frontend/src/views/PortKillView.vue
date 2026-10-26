@@ -48,6 +48,11 @@ async function loadListeningPorts() {
   }
 }
 
+// 查询代次（并发乱序覆盖防线）：快捷端口钮不随 searching 禁用，连点两个口时
+// 两次 QueryPort 在途并存——慢回的旧查询不得把旧端口的占用行倒灌进新端口的
+// 结果卡（标题挂 inputPort=新口，行却是旧口进程，杀错 PID 的诱导面）。
+let querySeq = 0
+
 async function searchPort(portVal?: number) {
   const p = portVal !== undefined ? portVal : inputPort.value
   if (!p || typeof p !== 'number' || p <= 0 || p > 65535) {
@@ -56,18 +61,21 @@ async function searchPort(portVal?: number) {
   }
 
   inputPort.value = p
+  const seq = ++querySeq
   searching.value = true
   errorMsg.value = ''
   try {
     const res = await PortKillAPI.PortKillService.QueryPort(p)
+    if (seq !== querySeq) return // 迟到的旧查询：结果已被更新的一次发起取代
     occupants.value = sortReleasableFirst(res ?? [])
     if (occupants.value.length === 0) {
       showToast(`端口 ${p} 当前未被占用`)
     }
   } catch (e: unknown) {
+    if (seq !== querySeq) return
     errorMsg.value = `查询端口失败: ${getErrorMessage(e)}`
   } finally {
-    searching.value = false
+    if (seq === querySeq) searching.value = false
   }
 }
 
@@ -379,7 +387,7 @@ onMounted(() => {
   font-size: var(--text-md);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  outline: none;
+  /* 样式审计 C10（2026-10-27）：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环。 */
   background: var(--surface-soft);
   color: var(--color-text);
 }

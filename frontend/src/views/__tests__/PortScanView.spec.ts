@@ -162,6 +162,71 @@ describe('PortScanView 扫描链路', () => {
     w.unmount()
   })
 
+  it('出网 IP 乱序回包：旧探测晚到不得覆盖新探测结论，也不得替新请求摘「探测中」帽', async () => {
+    // 后端 CheckEgressIP 封顶 3.5s（service.go），慢代理回包与新直连探测可在途并存；
+    // 断言外部事实：界面终值 = 最后一次发起那发的结果，与到达顺序无关。
+    stubDefaults()
+    svc.GetPresets.mockResolvedValue([])
+    vi.useFakeTimers()
+    let resolveSlow: (v: string) => void = () => {}
+    svc.CheckEgressIP
+      .mockReturnValueOnce(new Promise<string>((r) => (resolveSlow = r))) // 挂载首探（慢代理路径）
+      .mockResolvedValueOnce('9.9.9.9') // 防抖后的第二发（直连，快回）
+    const w = mountView()
+    await flushMicrotasks()
+    await w.find('.proxy-input').setValue('socks5://127.0.0.1:7890') // 改动代理输入，触发 600ms 防抖重探
+    await vi.advanceTimersByTimeAsync(600)
+    await flushMicrotasks()
+    expect(svc.CheckEgressIP).toHaveBeenCalledTimes(2)
+    expect(w.find('.indicator-ip').text()).toContain('9.9.9.9')
+    resolveSlow('1.2.3.4') // 旧探测迟到
+    await flushMicrotasks()
+    expect(w.find('.indicator-ip').text()).toContain('9.9.9.9') // 终值未被倒灌
+    expect(w.find('.indicator-ip').text()).not.toContain('1.2.3.4')
+    w.unmount()
+  })
+
+  it('终止后立刻重开：上一轮迟到的 summary 不得倒灌在飞新扫描的结果表与开关', async () => {
+    stubDefaults()
+    svc.StopScan.mockResolvedValue(true)
+    let settleA: (v: unknown) => void = () => {}
+    let settleB: (v: unknown) => void = () => {}
+    svc.StartScan
+      .mockReturnValueOnce(new Promise((r) => (settleA = r))) // 第一轮：终止后仍在途
+      .mockReturnValueOnce(new Promise((r) => (settleB = r))) // 第二轮：B 此刻在飞
+    const w = mountView()
+    await flushMicrotasks()
+    await w.find('.btn-primary').trigger('click') // 开始扫描 A
+    await nextTick()
+    const stopBtn = w.findAll('.action-bar button').find((b) => b.text().includes('终止扫描'))!
+    await stopBtn.trigger('click')
+    await flushMicrotasks()
+    await w.find('.btn-primary').trigger('click') // 立即重开扫描 B
+    await nextTick()
+    // B 在飞：界面停在「终止扫描」档
+    expect(w.findAll('.action-bar button').some((b) => b.text().includes('终止扫描'))).toBe(true)
+    // A 的旧结果此刻才落定：必须整段作废——开关不被误摘、结果表不被写回旧口
+    settleA({
+      openPorts: [{ port: 8080, status: 'open', service: 'http', banner: 'stale-A', fingerprint: '', latencyMs: 9 }],
+      durationMs: 900,
+      totalPorts: 1,
+    })
+    await flushMicrotasks()
+    expect(w.text()).not.toContain('stale-A')
+    expect(w.findAll('.action-bar button').some((b) => b.text().includes('终止扫描'))).toBe(true)
+    settleB({
+      openPorts: [{ port: 3000, status: 'open', service: 'http', banner: 'vite', fingerprint: '', latencyMs: 3 }],
+      durationMs: 55,
+      totalPorts: 3,
+    })
+    await flushMicrotasks()
+    const rows = w.findAll('.tbl tbody tr')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].text()).toContain('3000')
+    expect(w.find('.duration-tag').text()).toContain('55ms')
+    w.unmount()
+  })
+
   it('终止扫描：携带事件回传的 taskId 调 StopScan', async () => {
     stubDefaults()
     svc.StartScan.mockReturnValue(new Promise(() => {}))

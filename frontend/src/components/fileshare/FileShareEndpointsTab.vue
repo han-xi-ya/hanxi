@@ -101,7 +101,7 @@ const emit = defineEmits<{ copy: [url: string] }>()
 .ep-url-box {
   background: var(--surface-soft);
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   border: 1px solid var(--color-border);
   word-break: break-all;
 }

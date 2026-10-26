@@ -216,8 +216,9 @@ onMounted(async () => {
   width: 240px;
 }
 .input-search:focus-visible {
+  /* 样式审计 C10（2026-10-27）：删原 `outline: none`（本规则专打 :focus-visible，把全局环
+     按死在键盘态）；换色边保留为附加强调。 */
   border-color: var(--color-primary);
-  outline: none;
 }
 
 .auto-refresh-label {

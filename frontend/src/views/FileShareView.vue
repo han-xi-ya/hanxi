@@ -72,16 +72,13 @@ const {
 </template>
 
 <style scoped>
-.fileshare-page {
-  padding: 24px 32px;
-  max-width: 1360px;
-  margin: 0 auto;
-}
-
-/* Refined dashboard layout */
+/* 原两块同名 .fileshare-page 声明（24/32+1360 初版与 "Refined dashboard layout"
+   二版）合并为一：级联终值逐字不变——margin:0 auto 为首版独有不参与覆盖，
+   width/padding/max-width/overflow-x 取二版；760px 断点档原样保留。 */
 .fileshare-page {
   width: 100%;
   max-width: 1440px;
+  margin: 0 auto;
   padding: 28px 36px 40px;
   overflow-x: hidden;
 }

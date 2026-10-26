@@ -96,7 +96,7 @@ const emit = defineEmits<{ copy: [content: string]; remove: [id: string]; clear:
 .inbox-content {
   background: var(--surface-panel);
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   border: 1px solid var(--color-border);
   font-size: var(--text-base);
   white-space: pre-wrap;

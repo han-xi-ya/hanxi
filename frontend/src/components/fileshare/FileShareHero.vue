@@ -163,7 +163,7 @@ const emit = defineEmits<{ toggle: [] }>()
   padding: 10px 17px;
   /* N37 降级（主诉本尊）：彩色外发光投影→中性层次影；如需彻底扁平可改 none */
   box-shadow: var(--shadow-small);
-  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: transform var(--motion-base) ease, background var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
 
 .hero-action:hover:not(:disabled) {

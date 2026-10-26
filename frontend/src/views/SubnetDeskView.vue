@@ -2,7 +2,7 @@
 // 状态 / 版本管理 / 下载进度 / 时长 ticker / 生命周期（骨架基于重构共享层：
 // usePolling/useWailsEvent/useAsyncAction/useConfirm/usePrompt/useClipboard + utils/format）
 // 与 RustDeskView 同源孪生（LAN fork），刻意保持独立：文案/端口/配置目录不同，不合并。
-import { ref, computed, onMounted, onDeactivated } from 'vue'
+import { ref, computed, onMounted, onDeactivated, onUnmounted } from 'vue'
 import * as SubnetDeskAPI from '../../bindings/hanxi/internal/modules/subnetdesk/subnetdeskservice'
 import type { SDRelease, SDVersionInfo } from '../../bindings/hanxi/internal/modules/subnetdesk/version/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/subnetdesk/instance/models'
@@ -333,6 +333,13 @@ async function openRepo() {
 }
 
 // ---------- 事件订阅（自动注销）与装载 ----------
+// done 票据表内驻留 800ms 再摘（对齐 DouzyView DONE_TICK_RETIRE_MS 先例）；
+// 驻留定时器统一登记、卸载即清尽（防迟到摘除落进销毁后的组件，Douzy 同族已做），
+// 摘除前再核对当前票据仍是 done（useSnipasteDownloadTickets 的 cancelCleanup 同源
+// 纪律）：「done 后同版本 800ms 内票据被新状态取代」时，上一轮的陈旧定时器不得
+// 误删在飞进度。
+const retireTimers = new Set<ReturnType<typeof setTimeout>>()
+
 useWailsEvent<DownloadProgress>('subnetdesk:version-download', (t) => {
   if (!t || !t.version) return
   const isInstaller = t.kind === 'installer'
@@ -345,11 +352,14 @@ useWailsEvent<DownloadProgress>('subnetdesk:version-download', (t) => {
   cur[t.version] = t
   commit(cur)
   if (t.stage === 'done') {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      retireTimers.delete(timer)
+      if (map()[t.version]?.stage !== 'done') return // 已被新票据取代：本轮驻留作废
       const next = { ...map() }
       delete next[t.version]
       commit(next)
     }, 800)
+    retireTimers.add(timer)
     loadVersions()
   }
 })
@@ -358,6 +368,13 @@ useWailsEvent<Snapshot>('subnetdesk:instance-state', (s) => {
   if (!s) return
   snap.value = s
   if (s.state !== 'running') uptimeSec.value = 0
+})
+
+// 卸载清尽未达期的 done 驻留定时器（对齐 DouzyView 先例；驻留观感系在途体验，
+// 组件销毁后无需兑现，更不许把摘除写回已销毁的 map）
+onUnmounted(() => {
+  retireTimers.forEach(clearTimeout)
+  retireTimers.clear()
 })
 
 onMounted(async () => {
@@ -634,7 +651,7 @@ onMounted(async () => {
 /* 信号灯类名带 sd- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
 .sd-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
 .sd-status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
-.sd-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
+.sd-status-light.starting { background: var(--color-primary); animation: hx-pulse 1.8s ease-in-out infinite; }
 .sd-status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
 .sd-status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
 /* status-word/pid-tag/uptime-tag/control-btns 由全局原子接管 */
@@ -663,7 +680,7 @@ onMounted(async () => {
 .sd-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .sd-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .sd-ver-status.installed::before { background: var(--state-positive); }
-.sd-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
+.sd-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1.8s ease-in-out infinite; }
 .sd-ver-status.error::before { background: var(--state-danger); }
 .sd-ver-status.idle::before { background: var(--color-text-subtle); }
 

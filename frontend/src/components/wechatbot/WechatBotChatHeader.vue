@@ -118,7 +118,7 @@ const targetUserModel = computed({
   padding: 3px 6px;
   cursor: pointer;
   margin-right: 4px;
-  transition: background 0.15s ease;
+  transition: background var(--motion-base) ease;
 }
 
 .btn-expand-header:hover {
@@ -145,7 +145,7 @@ const targetUserModel = computed({
 .header-avatar {
   width: 34px;
   height: 34px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   color: #ffffff; /* 功能例外：数据值头像底上恒白不随主题 */
   display: flex;
   align-items: center;
@@ -228,7 +228,7 @@ const targetUserModel = computed({
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   width: 200px;
-  outline: none;
+  /* 样式审计 C10（2026-10-27）：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环。 */
 }
 
 .target-input-inline:focus {
@@ -267,12 +267,12 @@ const targetUserModel = computed({
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
   padding: 5px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
 }
 
 .btn-hdr-action:hover {

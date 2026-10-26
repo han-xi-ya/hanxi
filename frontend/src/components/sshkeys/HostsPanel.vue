@@ -725,14 +725,14 @@ function rowToggleAria(h: HostEntry): string {
   min-width: 0;
   background: var(--surface-page);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   padding: 6px 10px;
   font-size: var(--text-sm);
   color: var(--color-text);
   font-family: inherit;
 }
 .input:focus { border-color: var(--color-primary); }
-.input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .input:disabled { background: var(--surface-hover); color: var(--color-text-subtle); cursor: not-allowed; }
 .input-mono { font-family: var(--font-mono); }
 
@@ -749,14 +749,14 @@ function rowToggleAria(h: HostEntry): string {
   flex: 1 1 220px;
   min-width: 0;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
   color: var(--color-text);
   font-family: inherit;
   background: var(--surface-page);
 }
 .keypath-row .select-input:focus { border-color: var(--color-primary); }
-.keypath-row .select-input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.keypath-row .select-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 
 .cell-alias { font-weight: 600; }
 .cell-note {

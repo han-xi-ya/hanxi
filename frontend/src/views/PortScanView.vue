@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
 import * as PortScanAPI from '../../bindings/hanxi/internal/modules/portscan'
 import type { PresetGroup, PortResult, ScanProgress } from '../../bindings/hanxi/internal/modules/portscan/models'
 import { getErrorMessage } from '../utils/errors'
@@ -39,6 +39,15 @@ const errorMessage = ref('')
 // 代理输入防抖定时器（非轮询，业务级防抖保留自管 + 卸载清理）
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+// 过期响应丢弃（并发端口扫描乱序覆盖同族雷，见 LanScanner/SearchSeq 先例）：
+// 出网探测后端封顶 3.5s（service.go CheckEgressIP），防抖 600ms 连发或改代理后
+// 手动刷新可让两发在途并存在飞——快回的直连结果会被晚到的旧代理结果倒灌覆盖。
+// 只认最新一发：seq 门禁下旧响应连 detectingIP 都不许替新请求摘帽。
+let egressSeq = 0
+// 扫描任务代次：终止后 StartScan RPC 仍在途（后端 cancel→快速返回），用户即刻
+// 重开新扫描时，上一轮 summary/异常/finally 不得倒灌新轮的开关与结果表。
+let scanSeq = 0
+
 function onModeChange() {
   if (scanMode.value === 'safe') {
     concurrency.value = 20
@@ -65,15 +74,19 @@ async function loadPresets() {
 }
 
 async function checkEgressIP() {
+  const seq = ++egressSeq
   detectingIP.value = true
   try {
     const ip = await PortScanAPI.PortScanService.CheckEgressIP(proxyUrl.value.trim())
+    if (seq !== egressSeq) return
     currentEgressIP.value = ip || '未获取到'
   } catch (err: unknown) {
+    if (seq !== egressSeq) return
     currentEgressIP.value = '检测失败'
     console.warn('Egress IP check failed:', err)
   } finally {
-    detectingIP.value = false
+    // 仅最新一发的结局能摘「正在核验」帽：旧响应晚到时新请求还在途
+    if (seq === egressSeq) detectingIP.value = false
   }
 }
 
@@ -99,6 +112,7 @@ async function startScan() {
   progressPercent.value = 0
   durationMs.value = 0
   scanning.value = true
+  const seq = ++scanSeq
 
   try {
     const summary = await PortScanAPI.PortScanService.StartScan({
@@ -111,7 +125,7 @@ async function startScan() {
       deepDetect: Boolean(deepDetect.value),
     })
 
-    if (summary) {
+    if (summary && seq === scanSeq) {
       openPorts.value = summary.openPorts ?? []
       durationMs.value = summary.durationMs
       progressTotal.value = summary.totalPorts
@@ -119,9 +133,11 @@ async function startScan() {
       progressPercent.value = 100
     }
   } catch (err: unknown) {
-    errorMessage.value = getErrorMessage(err)
+    if (seq === scanSeq) errorMessage.value = getErrorMessage(err)
   } finally {
-    scanning.value = false
+    // 本轮仍是最新一轮才收口：上一轮（被终止/被新扫描顶掉）的迟到结算
+    // 不得把新扫描的开关与结果表倒灌回旧值
+    if (seq === scanSeq) scanning.value = false
   }
 }
 
@@ -445,11 +461,12 @@ onUnmounted(() => {
 .target-input-row { display: flex; gap: 8px; }
 
 .input, .select-input {
-  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: var(--radius-chip);
   padding: 8px 12px; font-size: var(--text-base); color: var(--color-text); font-family: inherit; width: 100%;
 }
 .select-input { width: auto; font-size: var(--text-sm); padding: 6px 10px; cursor: pointer; }
-.input:focus, .select-input:focus { outline: none; border-color: var(--color-primary); }
+/* 样式审计 C10（2026-10-27）：删 `outline: none`，键盘焦点交还全局 :focus-visible 环，换色边保留。 */
+.input:focus, .select-input:focus { border-color: var(--color-primary); }
 .num-input { width: 70px; text-align: center; }
 .proxy-input { width: 230px; font-size: var(--text-sm); padding: 5px 8px; }
 
@@ -458,20 +475,20 @@ onUnmounted(() => {
 .preset-badges { display: flex; gap: 6px; flex-wrap: wrap; }
 .preset-chip {
   background: var(--surface-page); border: 1px solid var(--color-border); border-radius: var(--radius-pill);
-  padding: 3px 10px; font-size: var(--text-xs); color: var(--color-text); cursor: pointer; transition: all var(--motion-base) ease;
+  padding: 3px 10px; font-size: var(--text-xs); color: var(--color-text); cursor: pointer; transition: border-color var(--motion-base) ease, color var(--motion-base) ease, background var(--motion-base) ease;
 }
 .preset-chip:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); background: var(--surface-hover); }
 
 /* 出网 IP 指示条 */
 .egress-bar {
   background: var(--surface-page); border: 1px solid var(--color-border);
-  border-radius: 6px; padding: 8px 12px;
+  border-radius: var(--radius-chip); padding: 8px 12px;
 }
 .egress-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .egress-indicator {
   display: flex; align-items: center; gap: 8px; font-size: var(--text-sm);
   background: var(--surface-panel); border: 1px solid var(--color-border);
-  padding: 4px 10px; border-radius: 6px;
+  padding: 4px 10px; border-radius: var(--radius-chip);
 }
 .indicator-label { color: var(--color-text-muted); }
 .indicator-ip { font-family: var(--font-mono); color: var(--color-primary); display: flex; align-items: center; gap: 6px; }
@@ -514,7 +531,7 @@ onUnmounted(() => {
 
 .source-tag { color: var(--color-primary); border: 1px solid var(--color-primary); font-family: var(--font-mono); }
 
-.table-container { border: 1px solid var(--color-border); border-radius: 6px; overflow: auto; max-height: 480px; }
+.table-container { border: 1px solid var(--color-border); border-radius: var(--radius-chip); overflow: auto; max-height: 480px; }
 .tbl th { background: var(--surface-page); position: sticky; top: 0; z-index: 1; }
 
 .port-num { font-family: var(--font-mono); font-size: var(--text-md); color: var(--color-primary); }

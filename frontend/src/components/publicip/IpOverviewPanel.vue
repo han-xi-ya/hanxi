@@ -220,7 +220,7 @@ function forwardCopyText(text: string, label: string) {
   color: var(--color-text);
   background: var(--surface-hover);
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   word-break: break-all;
 }
 
@@ -244,7 +244,7 @@ function forwardCopyText(text: string, label: string) {
   background: var(--surface-panel);
   cursor: pointer;
   font-size: var(--text-sm);
-  transition: all var(--motion-base) ease;
+  transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
 }
 .btn-copy:hover:not(:disabled) {
   border-color: var(--color-primary);

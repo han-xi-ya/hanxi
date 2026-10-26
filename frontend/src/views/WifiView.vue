@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, shallowRef, onMounted } from 'vue'
-import QRCode from 'qrcode'
+import { makeQrSvg } from '../utils/qr'
 import * as WifiAPI from '../../bindings/hanxi/internal/modules/wifi'
 import type { Profile } from '../../bindings/hanxi/internal/modules/wifi/models'
 import { getErrorMessage } from '../utils/errors'
@@ -59,15 +59,9 @@ async function loadProfiles() {
 async function showQRCode(p: Profile) {
   try {
     const qrText = buildWifiQRString(p.ssid, p.password)
-    const svg = await QRCode.toString(qrText, {
-      type: 'svg',
-      margin: 1,
-      width: 220,
-      color: {
-        dark: '#1f2328',
-        light: '#ffffff',
-      },
-    })
+    // 墨色保本页原值（2026-10-26 审查：与 fileshare 的 #1e293b 系历史漂移，
+    // 归一与否属视觉裁决，见 FRONTEND_QUALITY_REVIEW §4-4；功能参数裁决见 utils/qr 头注）
+    const svg = await makeQrSvg(qrText, 220, '#1f2328')
     qrModal.value = {
       visible: true,
       ssid: p.ssid,
@@ -264,7 +258,9 @@ onMounted(() => {
   color: var(--color-text-subtle);
 }
 
-/* 二维码弹窗（内容型模态，非确认框，保留视图实现） */
+/* 二维码弹窗（内容型模态，非确认框，保留视图实现）。
+   层序 G-C11 β案（2026-10-26）：视图级弹层挂 --z-dialog-under(950)，1000 档只留 App 单例，
+   与确认框/输入框叠放不再拼 DOM 序（本层不 Teleport，视图在 .layout 流内、位置同样靠序）。 */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -272,7 +268,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-dialog-under);
   backdrop-filter: blur(2px);
 }
 

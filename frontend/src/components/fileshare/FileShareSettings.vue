@@ -197,12 +197,13 @@ function setQuickPort(port: number) {
 .input-control {
   background: var(--surface-soft);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   padding: 8px 12px;
   font-size: var(--text-base);
   color: var(--color-text);
-  outline: none;
-  transition: border-color 0.2s;
+  /* 样式审计 C10（2026-10-27）：删原 `outline: none`——scoped 压死 base.css 全局 :focus-visible 环，
+     原 :focus 的 2px soft 影底对比不足当键盘焦点指示；删除后全局环接管，换色边保留。 */
+  transition: border-color var(--motion-slow);
 }
 
 .input-control:focus {
@@ -392,7 +393,7 @@ function setQuickPort(port: number) {
   background: var(--surface-soft);
   border: 1px solid transparent;
   border-radius: 10px;
-  transition: border-color 0.18s, background 0.18s;
+  transition: border-color var(--motion-slow), background var(--motion-slow);
 }
 
 .permission-item:hover {
@@ -434,7 +435,7 @@ function setQuickPort(port: number) {
    disabled 0.45→全局 .btn:disabled 0.5、hover 落回 surface-hover（±档设计收敛）；
    仅私有 chip/输入框保留自绘焦点环 */
 .quick-port-chip {
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: transform var(--motion-base) ease, border-color var(--motion-base) ease, background var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
 
 .quick-port-chip:hover {

@@ -127,8 +127,8 @@ function channelLabel(channel: string): string {
 .table-container { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: 8px; overflow-x: auto; }
 /* 版本列改弹性排布：与 Snipaste .release-version 同构（gap 供给间距，徽标/chip 换行不溢出） */
 .ver-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* N13 形态 chip 密度对齐 ManagedVersionPanel.form-chip；行内容器已带 gap，不再加 margin */
-.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
+/* N13 形态 chip：核心形已上收全局 .form-chip 原子（本表原有同文件双定义就此合一）；
+   行内容器带 gap 无需补差，副本删净 */
 
 .channel-badge { font-size: var(--text-xs); font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); }
 .ch-stable { background: var(--state-positive-soft); color: var(--state-positive); }
@@ -137,9 +137,6 @@ function channelLabel(channel: string): string {
 /* .badge 基形已上收 components.css（§9.6-2），以下仅本表格快照档位；
    版本列弹性化后间距由 gap 单源，剥去旧 margin-left 防双重补偿 */
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); }
-
-/* N13 形态 chip 密度对齐 SnipasteReleaseTable.form-chip；行内容器已带 gap，不再加 margin */
-.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
 
 /* 裸 .ver-status 圆点家族（六条）与本表原四分支一并删净：形制归 managed/ManagedVersionDot.vue
    （其 scoped 副本逐字抄 ManagedVersionPanel 标准形），本表只供档位 + 词面。 */

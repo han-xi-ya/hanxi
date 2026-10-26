@@ -76,7 +76,7 @@ const nameModel = computed({
   color: var(--color-text-muted);
   border: 1px solid var(--color-border);
   padding: 4px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
   cursor: pointer;
 }
@@ -86,7 +86,7 @@ const nameModel = computed({
 .btn-submit {
   border: none; /* 必须自留：未挂 .btn 基座，.btn-positive 只给 border-color 不给边框样式 */
   padding: 4px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;

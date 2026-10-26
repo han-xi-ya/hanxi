@@ -116,7 +116,7 @@ function onInput(e: Event) {
 /* 注意：状态卡信号灯类名带 ev- 前缀，与远程表格徽标/全局样式隔离（markeron 垂直字体事故教训） */
 .ev-status-light { width: 10px; height: 10px; border-radius: 50%; background: var(--color-text-subtle); flex-shrink: 0; }
 .ev-status-light.running { background: var(--state-positive); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-positive) 45%, white); }
-.ev-status-light.starting { background: var(--color-primary); animation: hx-pulse 1s infinite; }
+.ev-status-light.starting { background: var(--color-primary); animation: hx-pulse 1.8s ease-in-out infinite; }
 .ev-status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
 .ev-status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
 .status-word { font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
@@ -134,7 +134,9 @@ function onInput(e: Event) {
 .search-input {
   flex: 1; padding: 8px 12px; border: 1px solid var(--color-border-strong); border-radius: var(--radius-control);
   font-size: var(--text-base); background: var(--surface-soft); color: var(--color-text); outline: none;
-  transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
+  transition: border-color var(--motion-base) ease;
 }
-.search-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--focus-ring); }
+/* 2026-10-26 机主裁决（输入焦点形制归主流）：焦点只换蓝边，摘掉双环派的
+   外圈光晕；键盘可达性由全局 :focus-visible 环承担。 */
+.search-input:focus { border-color: var(--color-primary); }
 </style>

@@ -70,7 +70,7 @@ useDialogA11y({
   /* z 与 DIALOG_Z.underTop 互锁（登记处见 useDialogA11y 头注）：本壳不 Teleport，
      层叠位置在页面流里，同 z 拼不过 App 单例确认框（Teleport 到 body 末尾）；
      950 档是按层阶判出来的视图级对话框档，不是随手写的数。 */
-  z-index: 950;
+  z-index: var(--z-dialog-under);
 }
 .keyops-card {
   width: min(560px, 92vw);

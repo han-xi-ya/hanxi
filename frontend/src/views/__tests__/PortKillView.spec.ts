@@ -98,6 +98,30 @@ describe('PortKillView', () => {
     w.unmount()
   })
 
+  it('连点快捷端口：慢回的旧查询不得倒灌新端口的结果卡', async () => {
+    // 快捷端口钮在查询在飞时不禁用，连点两口会让两次 QueryPort 在途并存；
+    // 断言外部事实：结果卡终值 = 最后一次发起的端口，与到达顺序无关。
+    let settleFirst: (v: unknown) => void = () => {}
+    svc.QueryPort
+      .mockReturnValueOnce(new Promise((r) => (settleFirst = r))) // :8080 慢回（node.exe 占用）
+      .mockResolvedValueOnce([occ({ port: 3000, pid: 3000, processName: 'vite.exe', exePath: 'C:\\vite.exe' })]) // :3000 快回
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('.tag-btn').find((t) => t.text() === ':8080')!.trigger('click')
+    await w.findAll('.tag-btn').find((t) => t.text() === ':3000')!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.QueryPort).toHaveBeenLastCalledWith(3000)
+    expect(w.text()).toContain('端口 :3000 占用详情')
+    settleFirst([occ()]) // 第一发此刻才落定：整段作废
+    await flushMicrotasks()
+    // 只盯「占用详情」结果卡：底部 LISTEN 大表按 mountView 桩常驻 node.exe，不属本断言域
+    expect(w.find('.result-card').text()).not.toContain('node.exe')
+    const rows = w.findAll('.result-card .tbl tbody tr')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].text()).toContain('3000')
+    w.unmount()
+  })
+
   it('查询空闲端口 toast 提示且无结果卡', async () => {
     svc.QueryPort.mockResolvedValue([])
     const w = mountView()

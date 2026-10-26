@@ -123,7 +123,7 @@ const emit = defineEmits<{
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--motion-slow) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-pane.collapsed {
@@ -158,7 +158,7 @@ const emit = defineEmits<{
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--motion-base) ease, color var(--motion-base) ease;
 }
 
 .btn-toggle-sidebar:hover {
@@ -218,7 +218,7 @@ const emit = defineEmits<{
 .btn-empty-bind {
   border: none; /* 必须自留：未挂 .btn 基座，而 .btn-positive 只给 border-color 不给边框样式 */
   padding: 5px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
@@ -231,7 +231,7 @@ const emit = defineEmits<{
   padding: 9px 10px;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background var(--motion-base) ease;
   background: transparent;
   position: relative;
 }
@@ -351,7 +351,7 @@ const emit = defineEmits<{
   border-radius: 4px;
   cursor: pointer;
   color: var(--color-text-muted);
-  transition: all 0.1s;
+  transition: background var(--motion-fast) ease;
 }
 
 .action-icon-btn:hover {

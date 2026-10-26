@@ -221,10 +221,13 @@ defineExpose({ reload: load })
 .history-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
 .hp-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 样式审计 C10（2026-10-27）：删原 `outline: none`——scoped 声明压死了 base.css 全局
+   :focus-visible 环，键盘焦点只剩 1px 换色边（N38 要防的退化残留）；删除后全局环接管，
+   下方 border 换色保留给鼠标态。 */
 .hp-search {
   flex: 1; min-width: 160px; padding: 6px 10px; font-size: var(--text-sm);
   border: 1px solid var(--color-border); border-radius: var(--radius-control);
-  background: var(--surface-soft); color: var(--color-text); outline: none;
+  background: var(--surface-soft); color: var(--color-text);
 }
 .hp-search:focus { border-color: var(--color-primary); }
 
@@ -232,6 +235,9 @@ defineExpose({ reload: load })
 .hp-list table { margin: 0; }
 .hp-row-active { background: var(--surface-selected); }
 .hp-list tr { cursor: pointer; }
+/* 样式审计 C5（2026-10-27）：.hp-list 是 overflow:auto 滚动壳，行盒横跨表宽=容器内容宽，
+   base.css 全局环（offset 2px）左右两弧必被裁——键盘环内收，同 ClipToolbar/AppNavRail 口径。 */
+.hp-list tr:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .hp-sum { max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-sm); }
 .hp-time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-xs); color: var(--color-text-muted); white-space: nowrap; }
 .hp-extra { font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

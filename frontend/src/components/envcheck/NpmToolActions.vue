@@ -126,7 +126,7 @@ watch(() => props.logLines.length, async () => {
 @keyframes npm-spin { to { transform: rotate(360deg); } }
 .npm-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 /* 页内软底日志块（非 --terminal-* 固定深底体系），不豁免：字号上阶梯 */
-.op-log { margin: 0; max-height: 140px; overflow-y: auto; padding: 8px; border-radius: 6px; background: var(--surface-soft); border: 1px solid var(--color-border); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.op-log { margin: 0; max-height: 140px; overflow-y: auto; padding: 8px; border-radius: var(--radius-chip); background: var(--surface-soft); border: 1px solid var(--color-border); font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; color: var(--color-text); white-space: pre-wrap; overflow-wrap: anywhere; }
 .npm-footnote { margin: 0; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.5; }
 /* 原 .mono 同名 scoped 副本已删净：落回全局 .mono（--text-sm + break-all） */
 /* 原 .link-button 同名 scoped 副本改名 .retry-link：本面板保持常下划线 + 不换行的小字语境，

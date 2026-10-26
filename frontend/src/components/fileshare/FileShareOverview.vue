@@ -102,7 +102,7 @@ defineProps<{
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
   border-radius: 13px;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: transform var(--motion-slow) ease, border-color var(--motion-slow) ease, box-shadow var(--motion-slow) ease;
 }
 
 .overview-card:hover {

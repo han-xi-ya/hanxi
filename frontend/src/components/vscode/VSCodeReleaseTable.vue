@@ -103,12 +103,12 @@ function stepOf(progress: NormalizedProgress): number {
 
 <style scoped>
 .badge-hash { margin-left: 6px; background: var(--state-positive-soft); color: var(--state-positive); }
-/* N13 形态 chip：密度与排位对齐 ManagedVersionPanel.form-chip */
-.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; margin-left: 4px; vertical-align: middle; }
+/* N13 形态 chip：核心形已上收全局 .form-chip 原子，此处只留 4px 前置间距补差 */
+.form-chip { margin-left: 4px; }
 .vc-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .vc-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .vc-ver-status.installed::before { background: var(--state-positive); }
-.vc-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1s infinite; }
+.vc-ver-status.downloading::before { background: var(--state-information); animation: hx-pulse 1.8s ease-in-out infinite; }
 .vc-ver-status.error::before { background: var(--state-danger); }
 .vc-ver-status.idle::before { background: var(--color-text-subtle); }
 .dl-meta-text { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

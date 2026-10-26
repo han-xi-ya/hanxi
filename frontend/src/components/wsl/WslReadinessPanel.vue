@@ -353,12 +353,12 @@ async function doShutdown(alreadyConfirmed = false) {
 }
 .move-input-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .input {
-  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: var(--radius-chip);
   padding: 6px 10px; font-size: var(--text-sm); color: var(--color-text); font-family: inherit; flex: 1 1 240px; min-width: 0;
 }
 .input:focus { border-color: var(--color-primary); }
 /* 焦点环不再被 outline:none 掐灭：键盘聚焦（:focus-visible）恢复清晰焦点环 */
-.input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .input:disabled { opacity: 0.6; }
 .conf-textarea { resize: vertical; min-height: 120px; line-height: 1.6; font-size: var(--text-sm); }
 .retry-inline { margin-left: 10px; }
@@ -378,7 +378,7 @@ async function doShutdown(alreadyConfirmed = false) {
    信息一项不藏（不做 line-clamp 截尾），只压行距与字级；宽屏零回退。 */
 @media (max-width: 640px) {
   .control-btns { gap: 5px; }
-  .control-btns .btn { min-height: var(--control-h-sm); padding: 2px 8px; font-size: var(--text-xs); border-radius: 6px; }
+  .control-btns .btn { min-height: var(--control-h-sm); padding: 2px 8px; font-size: var(--text-xs); border-radius: var(--radius-chip); }
   .check-row { padding: 5px 8px; }
   .check-detail { font-size: var(--text-xs); line-height: 1.5; }
   .check-label { font-size: var(--text-sm); }

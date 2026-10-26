@@ -147,12 +147,12 @@ onMounted(() => loadNetworkInfo(false))
   background: transparent;
   border: 1px solid transparent;
   padding: 6px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-base);
   font-weight: 500;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: all var(--motion-base) ease;
+  transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
 }
 .tab-item:hover {
   background: var(--surface-hover);

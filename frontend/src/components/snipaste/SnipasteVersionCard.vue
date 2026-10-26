@@ -44,7 +44,6 @@ const emit = defineEmits<{
 .installed-card { display: grid; gap: 10px; min-width: 0; padding: 14px; border-radius: var(--radius-element); }
 .inst-card-top { align-items: flex-start; gap: 10px; }
 .badge-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ver-tag { font-variant-numeric: tabular-nums; }
 .path-value { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.5; }
 .inst-meta { margin: 0; color: var(--color-text-muted); }
 .inst-actions { align-items: center; flex-wrap: wrap; margin-top: auto; }

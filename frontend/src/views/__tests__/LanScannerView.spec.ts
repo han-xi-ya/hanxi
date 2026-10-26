@@ -134,6 +134,31 @@ describe('LanScannerView 装载与扫描', () => {
     w.unmount()
   })
 
+  it('终止后按钮不提前落回可扫态：在飞 Scan 收口前重扫无路，撞不到后端单飞闸', async () => {
+    // 后端 Cancel 只掐 context，worker 手头 ping（≤1.2s）落定后 Scan 才返回部分结果
+    // （lan/service.go）；前端提前摘 scanning 旗会让「停止→立刻重扫」吃
+    // ErrScanInProgress 报错并让旧结果晚点倒灌。scanning 收口唯一路径=startScan finally。
+    stubDefaults()
+    let resolveScan: (v: unknown) => void = () => {}
+    svc.Scan.mockReturnValue(new Promise((r) => (resolveScan = r)))
+    const w = mountView()
+    await flushMicrotasks()
+    await w.find('button.btn-primary').trigger('click')
+    await nextTick()
+    const stopBtn = w.findAll('button').find((b) => b.text() === '停止扫描')!
+    await stopBtn.trigger('click')
+    expect(svc.Cancel).toHaveBeenCalled()
+    await nextTick()
+    expect(w.findAll('button').some((b) => b.text() === '开始扫描')).toBe(false)
+    expect(svc.Scan).toHaveBeenCalledTimes(1)
+    resolveScan(devices) // 排空完成，旧扫描带部分结果收口
+    await flushMicrotasks()
+    expect(w.findAll('button').some((b) => b.text() === '开始扫描')).toBe(true)
+    const rows = w.findAll('.tbl tbody tr')
+    expect(rows).toHaveLength(3)
+    w.unmount()
+  })
+
   it('lan:progress 事件即时改写进度文本', async () => {
     stubDefaults()
     svc.Scan.mockReturnValue(new Promise(() => {})) // 永挂起：保持 scanning

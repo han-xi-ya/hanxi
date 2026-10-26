@@ -140,11 +140,26 @@ export function useEverythingSearch(busy: Ref<boolean>) {
   }
 
   // 'everything:download' 事件的 es 组件分支：独立进度态，不进版本 map（视图统一订阅后分发至此）
+  // done 票据驻留 800ms 后清（对齐 useSnipasteDownloadTickets 的 cleanupTimers 纪律：
+  // 定时器登记在册，新票据/错误票据到达即撤旧定时器，卸载清尽——防迟到清零写回已销毁实例，
+  // 防陈旧定时器把 done 之后新落位的独立进度态抹掉）。
+  let esRetireTimer: ReturnType<typeof setTimeout> | null = null
+  function cancelEsRetire(): void {
+    if (esRetireTimer) {
+      clearTimeout(esRetireTimer)
+      esRetireTimer = null
+    }
+  }
+
   function handleEsTicket(t: DownloadTicket) {
+    cancelEsRetire()
     esProgress.value = t
     if (t.stage === 'done') {
       esReady.value = true
-      setTimeout(() => { esProgress.value = null }, 800)
+      esRetireTimer = setTimeout(() => {
+        esRetireTimer = null
+        esProgress.value = null
+      }, 800)
     }
     if (t.stage === 'error') esProgress.value = null
   }
@@ -152,6 +167,7 @@ export function useEverythingSearch(busy: Ref<boolean>) {
   onUnmounted(() => {
     disposed = true
     ++searchSeq
+    cancelEsRetire()
     debouncedSearch.cancel() // 卸载清待触发（与原 clearTimeout 路径等价，防卸载后搜索复活）
   })
 

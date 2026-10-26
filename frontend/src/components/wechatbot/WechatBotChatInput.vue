@@ -111,7 +111,7 @@ function formatFileSize(bytes: number): string {
 .chat-input-area { min-height: 155px; background: var(--surface-panel); border-top: 1px solid var(--color-border); display: flex; flex-direction: column; flex-shrink: 0; }
 .chat-input-area.has-attachment { min-height: 235px; }
 .input-toolbar-row { padding: 6px 14px 2px; display: flex; align-items: center; gap: 8px; }
-.toolbar-btn { background: transparent; border: none; font-size: var(--text-sm); color: var(--color-text); padding: 5px 8px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; transition: background .15s ease; }
+.toolbar-btn { background: transparent; border: none; font-size: var(--text-sm); color: var(--color-text); padding: 5px 8px; border-radius: var(--radius-chip); cursor: pointer; display: flex; align-items: center; gap: 4px; transition: background var(--motion-base) ease; }
 .toolbar-btn:hover:not(:disabled) { background: var(--surface-hover); }
 .toolbar-btn:disabled { color: var(--color-text-subtle); cursor: not-allowed; }
 .attachment-btn { border: 1px solid var(--color-border); background: var(--surface-soft); }
@@ -123,12 +123,12 @@ function formatFileSize(bytes: number): string {
 .attachment-loading, .attachment-error, .attachment-preview-card { min-height: 58px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--surface-soft); }
 .attachment-loading { display: flex; align-items: center; padding: 10px 12px; color: var(--color-text-muted); font-size: var(--text-sm); }
 .attachment-preview-card { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 9px; }
-.attachment-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 6px; border: 1px solid var(--color-border); }
-.attachment-file-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 6px; background: var(--surface-hover); color: var(--color-text-muted); font: 600 10px ui-monospace, Consolas, monospace; }
+.attachment-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: var(--radius-chip); border: 1px solid var(--color-border); }
+.attachment-file-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: var(--radius-chip); background: var(--surface-hover); color: var(--color-text-muted); font: 600 10px ui-monospace, Consolas, monospace; }
 .attachment-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .attachment-meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); color: var(--color-text); }
 .attachment-meta span { font-size: var(--text-xs); color: var(--color-text-subtle); }
-.attachment-remove, .attachment-send, .attachment-error button { border-radius: 6px; padding: 6px 10px; font-size: var(--text-sm); cursor: pointer; }
+.attachment-remove, .attachment-send, .attachment-error button { border-radius: var(--radius-chip); padding: 6px 10px; font-size: var(--text-sm); cursor: pointer; }
 .attachment-remove { border: 1px solid var(--color-border); color: var(--color-text-muted); background: transparent; }
 /* 配色交全局 .btn-positive（底/前景/hover 一处标准），形制自留：本钮未挂 .btn 基座，
  * border 与 min-width 必须自己声明，否则露出 UA 默认边框。 */
@@ -143,14 +143,14 @@ function formatFileSize(bytes: number): string {
 .input-footer-row { padding: 4px 14px 8px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .shortcut-tip { font-size: var(--text-xs); color: var(--color-text-subtle); }
 /* 配色交 .btn-positive；border/尺寸自留（未挂 .btn 基座，同 .attachment-send 理由）。 */
-.btn-send-message { border: none; padding: 5px 16px; border-radius: 4px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: all .15s ease; }
+.btn-send-message { border: none; padding: 5px 16px; border-radius: 4px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: background var(--motion-base) ease; }
 /* 旧写法自行换成"灰底+subtle 字"，与 .attachment-send 的 opacity 口径又是第三套——
  * 统一落回 N38 grayscale，绿钮禁用即去饱和灰，观感与全族一致。 */
 .btn-send-message:disabled { opacity: .75; filter: grayscale(1); cursor: not-allowed; }
 /* 去掉 `, #0f8b8d` 兜底：那是 N37 案 A 判定"白字仅 4.12 不达标"而**已废弃**的旧 teal
  * 值，藏在 scoped 的 var() 兜底里躲过了全局裸色守卫（守卫 a 只管 components.css）；
  * --color-primary 由 tokens.css 十块必存契约保证，兜底永不相见到，留着只会误导。 */
-button:focus-visible, .wechat-textarea:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+button:focus-visible, .wechat-textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 @media (max-width: 640px) { .paste-tip { display: none; } .attachment-preview-card { grid-template-columns: 46px minmax(0, 1fr); } .attachment-remove, .attachment-send { grid-row: 2; } .attachment-send { grid-column: 2; } .shortcut-tip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
 @media (pointer: coarse) { .toolbar-btn, .attachment-remove, .attachment-send, .attachment-error button, .btn-send-message { min-height: 44px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }

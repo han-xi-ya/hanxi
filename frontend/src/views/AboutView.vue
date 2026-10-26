@@ -84,7 +84,7 @@ onMounted(async () => {
           <div v-for="module in modules" :key="module.id" class="module-row">
             <div class="module-main">
               <strong>{{ module.name }}</strong>
-              <span>{{ module.description }}</span>
+              <span :title="module.description">{{ module.description }}</span>
             </div>
             <div class="module-meta">
               <code>v{{ module.version }}</code>

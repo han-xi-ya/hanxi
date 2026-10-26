@@ -79,10 +79,6 @@ const MAIN_TABS = [
 .guoheview-view { display: flex; flex-direction: column; gap: 10px; }
 .tab-body { display: flex; flex-direction: column; gap: 10px; }
 
-/* 补差 against 全局原子 .ver-pill：版本胶囊数字等宽（渲染在 ManagedControlBar
-   子件内部，父级 scoped 穿不过去，:deep 维持逐字同形） */
-.guoheview-view :deep(.ver-pill) { font-variant-numeric: tabular-nums; }
-
 /* ---------- 提示与说明卡（hint-line 原 line-height:1.6 散差按标准形定档删除；
    info-details/info-body p 由全局原子接管；本视图折叠标题为自名 .summary-text，非原子选择器，留局部） ---------- */
 .summary-text { padding: 7px 12px; font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); cursor: pointer; list-style: none; display: flex; align-items: center; user-select: none; }

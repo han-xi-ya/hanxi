@@ -108,7 +108,7 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
   font-weight: 500;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: transform var(--motion-base) ease, border-color var(--motion-base) ease, background var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }
 
 .tab-item:hover {

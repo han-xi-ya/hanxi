@@ -167,7 +167,7 @@ onUnmounted(() => {
 .qr-canvas-img {
   width: 170px;
   height: 170px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   border: 1px solid var(--color-border);
 }
 

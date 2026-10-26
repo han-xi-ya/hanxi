@@ -71,13 +71,16 @@ async function startScan() {
   }
 }
 
+// 终止不在这里置 scanning=false：后端 Cancel 只掐 context，在飞 Scan 要等 worker
+// 手头的 ping（≤1.2s）落定才返回；提前摘旗会让「停止→立刻重扫」撞进后端单飞闸，
+// 弹出「已有扫描任务正在进行」并让旧扫描的结果晚点倒灌新扫描的列表。
+// scanning 的收口只有一条路：在飞 startScan 的 finally（后端 Scan 取消时返回
+// 部分结果、不报错，见 lan/service.go Scan 的 ctx 排空路径）。
 async function stopScan() {
   try {
     await LanAPI.LanService.Cancel()
   } catch (err: unknown) {
     console.error('Cancel failed', err)
-  } finally {
-    scanning.value = false
   }
 }
 
@@ -304,21 +307,21 @@ onMounted(() => {
 .input-box {
   padding: 6px 12px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-base);
   background: var(--surface-panel);
   flex: 1;
   font-family: var(--font-mono);
 }
 .input-box:focus {
+  /* 样式审计 C10（2026-10-27）：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环。 */
   border-color: var(--color-primary);
-  outline: none;
 }
 
 .select-addon {
   padding: 6px 10px;
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   font-size: var(--text-sm);
   background: var(--surface-panel);
   max-width: 220px;
@@ -347,7 +350,7 @@ onMounted(() => {
   color: var(--color-text-muted);
   cursor: pointer;
   font-family: var(--font-mono);
-  transition: all var(--motion-base) ease;
+  transition: background var(--motion-base) ease, border-color var(--motion-base) ease;
 }
 .helper-tag:hover {
   background: var(--surface-hover);
@@ -493,7 +496,7 @@ onMounted(() => {
   background: var(--surface-panel);
   cursor: pointer;
   font-size: var(--text-sm);
-  transition: all var(--motion-base) ease;
+  transition: background var(--motion-base) ease, border-color var(--motion-base) ease, color var(--motion-base) ease;
 }
 .btn-action:hover {
   border-color: var(--color-primary);

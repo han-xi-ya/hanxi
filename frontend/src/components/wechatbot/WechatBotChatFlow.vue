@@ -311,7 +311,7 @@ defineExpose({ scrollToBottom })
 .msg-avatar-icon {
   width: 34px;
   height: 34px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   color: #ffffff; /* 功能例外：数据值头像底上恒白不随主题 */
   display: flex;
   align-items: center;
@@ -381,7 +381,7 @@ defineExpose({ scrollToBottom })
   gap: 8px;
   background: rgba(0, 0, 0, 0.04); /* 功能例外：气泡上中性深度覆层 */
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
 }
 
 .file-card-preview.out {
@@ -495,7 +495,7 @@ defineExpose({ scrollToBottom })
 .bubble-thumb {
   max-width: 220px;
   max-height: 220px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   border: 1px solid var(--color-border);
   cursor: pointer;
   display: block;
@@ -509,7 +509,7 @@ defineExpose({ scrollToBottom })
   justify-content: center;
   text-align: center;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   border: 1px dashed var(--color-border-strong);
   background: var(--surface-soft);
   color: var(--color-text-subtle);

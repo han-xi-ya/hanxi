@@ -335,12 +335,12 @@ defineExpose({
 .move-input-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .move-label { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); white-space: nowrap; }
 .input {
-  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: var(--radius-chip);
   padding: 6px 10px; font-size: var(--text-sm); color: var(--color-text); font-family: inherit; flex: 1 1 240px; min-width: 0;
 }
 .input:focus { border-color: var(--color-primary); }
 /* 焦点环不再被 outline:none 掐灭：键盘聚焦（:focus-visible）恢复清晰焦点环 */
-.input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .input:disabled { opacity: 0.6; }
 /* .btn.active 为"开关钮选中态"补差（全局 .btn 家族无此态）——非副本 */
 .btn.active { border-color: var(--color-primary); color: var(--color-primary); }

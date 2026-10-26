@@ -70,8 +70,7 @@ const emit = defineEmits<{
 .table-container .tbl { min-width: 830px; }
 .action-col { width: 170px; }
 .release-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* N13 形态 chip 密度对齐 ManagedVersionPanel.form-chip；行内容器已带 gap，不再加 margin */
-.form-chip { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
+/* N13 形态 chip：核心形已上收全局 .form-chip 原子，本视图行内容器带 gap 无需补差，副本删净 */
 .mono-meta { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .snipaste-ver-status { display: inline-flex; align-items: center; width: fit-content; padding: 3px 7px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
 .snipaste-ver-status.installed { color: var(--state-positive); background: color-mix(in srgb, var(--state-positive) 10%, transparent); }

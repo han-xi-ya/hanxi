@@ -90,13 +90,18 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
 .resizable th { position: relative; }
 .col-resizer {
   position: absolute; top: 0; right: 0; width: 6px; height: 100%;
-  cursor: col-resize; transition: background 0.1s ease;
+  cursor: col-resize; transition: background var(--motion-fast) ease;
 }
 .col-resizer:hover { background: color-mix(in srgb, var(--color-primary) 35%, transparent); }
 .result-tbl td { font-size: var(--text-sm); }
 .result-name { font-weight: 500; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-name.is-dir { color: var(--color-primary); }
-.result-path { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; color: var(--color-text-subtle); }
+/* 样式审计 Q1（2026-10-27，规格推演级修复、非浏览器实证）：删除原 `display:block`——
+   thead/tbody 是两个独立 display:table 的 fixed 布局盒，td 转 block 后按 CSS 匿名表对象规则
+   被包进无宽度的匿名单元格，首行绑定的 path 列宽脱靶成 auto，与表头五列全 px 的分配规则分叉
+   （容器宽 ≠ 列宽和时表头/表体全线错位）。截断语义本就由内层 .copy-cell 完整承载，td 上的
+   overflow/ellipsis 是冗余面。 */
+.result-path { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-subtle); }
 .result-time { font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; }
 .row-actions { display: flex; gap: 4px; }
 .copy-cell {
@@ -105,6 +110,6 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .copy-cell:hover { background: var(--surface-hover); }
-.copy-cell:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; border-radius: 3px; }
+.copy-cell:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: 3px; }
 .idle-hint { color: var(--color-text-subtle); }
 </style>

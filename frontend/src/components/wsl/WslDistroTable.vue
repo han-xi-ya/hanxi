@@ -1031,7 +1031,7 @@ onBeforeUnmount(() => {
   width: 15px; height: 15px; margin: 0; accent-color: var(--color-primary); cursor: pointer; vertical-align: middle;
 }
 .check-th input:disabled, .check-cell input:disabled { cursor: not-allowed; opacity: 0.6; }
-.check-th input:focus-visible, .check-cell input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.check-th input:focus-visible, .check-cell input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .tbl tbody tr.row-selected > td { background: var(--surface-selected); }
 /* 批量条：勾选非空才出现的浮出工具条，与 .control-bar 同族表面语言，纵向压扁（一行流） */
 .batch-bar {
@@ -1068,18 +1068,18 @@ onBeforeUnmount(() => {
   /* fixed + 直挂 body：逃离 .table-container(overflow-x:auto) 与 .content-area(overflow-y:auto)
      两层裁剪；left/top|bottom 由 placeRowMenu 写进内联样式。z 低于弹层家族（≥950/1000）
      与 Toast(999999)，压过一切内容层与粘性头。视口极矮时面板自身可滚，不再要求翻转位。 */
-  position: fixed; z-index: 900; min-width: 150px; max-height: calc(100vh - 16px); overflow-y: auto;
+  position: fixed; z-index: var(--z-flyout); min-width: 150px; max-height: calc(100vh - 16px); overflow-y: auto;
   display: flex; flex-direction: column; gap: 2px; padding: 4px;
   background: var(--surface-panel); border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-control); box-shadow: var(--shadow-panel);
 }
 .row-menu-item {
   display: flex; align-items: center; gap: 6px; text-align: left; width: 100%;
-  background: none; border: none; border-radius: 6px; padding: 6px 10px;
+  background: none; border: none; border-radius: var(--radius-chip); padding: 6px 10px;
   font-size: var(--text-sm); color: var(--color-text); cursor: pointer; white-space: nowrap;
 }
 .row-menu-item:hover:not(:disabled) { background: var(--surface-hover); }
-.row-menu-item:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: -2px; }
+.row-menu-item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .row-menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
 .row-menu-item.active { color: var(--color-primary); }
 
@@ -1107,12 +1107,12 @@ onBeforeUnmount(() => {
 .move-input-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .move-label { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); white-space: nowrap; }
 .input {
-  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--surface-page); border: 1px solid var(--color-border); border-radius: var(--radius-chip);
   padding: 6px 10px; font-size: var(--text-sm); color: var(--color-text); font-family: inherit; flex: 1 1 240px; min-width: 0;
 }
 .input:focus { border-color: var(--color-primary); }
 /* 焦点环不再被 outline:none 掐灭：键盘聚焦（:focus-visible）恢复清晰焦点环 */
-.input:focus-visible { outline: 2px solid var(--focus-ring, var(--color-primary)); outline-offset: 1px; }
+.input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .input:disabled { opacity: 0.6; }
 
 /* 知识卡（导出记录抽屉壳）：info-details/info-summary 全家族（含 ::after/marker/[open] 两条）
