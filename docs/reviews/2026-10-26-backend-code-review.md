@@ -435,3 +435,22 @@ rustdesk / mangodisk（其 `versionCompare` 先 `normalizeToken` 剥 v 再比）
 3. **各家 `version/` 包内部的只认小写入口**（本批边界是"service 层收口"，故未动；`mangodisk/version/manager.go:442`、`snipaste/version/manager.go:371` 与病灶逐字相同，优先级最高）：windterm `:188/:385`、termora `:199/:364`、paseo `:186/:316/:395`+`semver.go:51`、quicklook `:268/:324`、rustdesk `:205/:252/:491`、subnetdesk `:204/:251/:490`、mangodisk `:211/:293/:421/:446/:501`。若要"包内自洽"（家族可独立拆走的口径），可再开一批。
 4. `ocr/hosted.go:144 parseHostedSemver` 只剥小写 v（入参来自私发组件清单，非用户手输，风险低）。
 5. **约 25 个包仍用裸 `cmd.exe` 做真进程冒烟**（mangodisk 已修，bcu 早已用耐久夹具）：其"running 持续"类断言在 `go test` 的管道 stdin 下都属运气——若 CI 再现同型红，直接照 `bd7df64` 移植耐久夹具，**不要**放大超时或加 skip。
+
+## 22. supervisor 偶发红：定性为测试替身不忠实（非产品缺陷，亦非本批引入）
+
+`TestStartAssignFail` 在 `-count=1` 单跑形态下 20 次红 15 次，全量并行反而绿。定位结论：
+
+- **根因在 fake**：`fakeJob.Close` 不分成员一律 `exitWith` 模拟 `KILL_ON_JOB_CLOSE`；真实 Windows 上
+  Assign 失败的进程从未入 Job，关句柄不会触动它。fake 凭空抽走进程，使 `wait()` 收口清 `e.h` 与
+  `killSequence` 读 `e.h` 抢锁，wait 赢 → 句柄为 nil → 不断言的 Kill 未发起 → `wasKilled()` 假阴性。
+- **不是本批引入**：把首发 `3a367f4` 的包文件抽到临时目录同法连跑 ×15 → 10 红同断言，属包胎疾。
+  本批 `4f11ec6` 未触碰 Assign 失败分支、`abortStart`、`killSequence`、wait 收口段与该用例。
+- **产品无野进程**：真实路径下要么进程在世被引擎按句柄确定性 Kill，要么已自退由 wait 收殓并落 failed。
+- 修复仅测试侧（`c8671ae`）：fake 增加成员判定与收口驻留；新增两条**确定性交错用例**覆盖
+  "abortStart 先终止"与"wait 先收口"，其中前者在成员闸被拆时**确定变红**（兼作照妖镜）。
+- 主会话在此更正自己先前的两句话：① 曾判"用例间顺序耦合"——被 `-count=1` 单跑大量复现推翻；
+  ② 曾疑"很可能与本批 supervisor 改动有关"——被旧快照复现推翻。两条均已按证据改口。
+
+**方法论沉淀（本会话第 N 次验证）**：偶发红必须用"同命令多次 + 旧快照复跑 + 插桩但注意海森堡效应"
+三种手段交叉定性，任何单一观测都不足以下结论；测试替身的保真度（尤其是模拟 OS 语义处）本身
+就是被测对象的一部分。

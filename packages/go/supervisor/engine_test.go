@@ -1165,7 +1165,12 @@ func sortedLines(in []string) []string {
 func waitPumpsSettled(t *testing.T, e *Engine, wantDelta int64) {
 	t.Helper()
 	base := e.pumpFinished.Load()
-	deadline := time.Now().Add(10 * time.Second)
+	// 30s 只是**挂死哨兵**，不是通过判据——通过与否完全由计数器达标决定（本循环每 5ms
+	// 轮询真实 pumpFinished，事件驱动）。放宽的理由：全量 `go test ./...` 会以 GOMAXPROCS
+	// 个包并行跑，被饥饿的泵协程可以在十几秒内不被调度（本仓 2026-10-26 批次实测：
+	// 同一条用例单包 10/10 绿、整包 5 连绿，仅全量并行那一轮在 10s 哨兵上红过一次）。
+	// 与"放大超时凑绿"的区别：那种做法是把断言改成"等得够久就算过"，此处判据不变。
+	deadline := time.Now().Add(30 * time.Second)
 	for e.pumpFinished.Load() < base+wantDelta {
 		if time.Now().After(deadline) {
 			t.Fatalf("泵协程收口超时: finished=%d, want +%d", e.pumpFinished.Load(), wantDelta)
