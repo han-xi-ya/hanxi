@@ -23,7 +23,7 @@ const (
 	exeName     = "Paseo.exe"                                           // electron-builder executableName 固定
 	asarRelPath = "resources" + string(filepath.Separator) + "app.asar" // Electron 主包，布局自检依据
 	// treeEntryName 版本树目录前缀（<root>/paseo_<version>，与历史布局
-	// paseo_0.8.0 / paseo_imported-时间戳 一致）。
+	// paseo_0.8.0 / paseo_imported-兜底 tag 一致）。
 	treeEntryName = "paseo"
 	// dirPrefix 导入链直造目录时的版本隔离目录前缀（与 Tree 的 entry 命名同源）。
 	dirPrefix = treeEntryName + "_"
@@ -36,9 +36,10 @@ const (
 var canonicalVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.\-]*)?$`)
 
 // tokenVersionRe 版本令牌白名单（目录名形状判定，与原 versionDirRe 去前缀
-// 等价）：规范 semver，或版本探测失败收纳的 imported-YYYYMMDD-HHMMSS 兜底
-// （vscode 同规则）。
-var tokenVersionRe = regexp.MustCompile(`^(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.\-]*)?|imported-\d{8}-\d{6})$`)
+// 等价）：规范 semver，或版本探测失败收纳的 imported- 兜底（现行
+// imported-<sha256 前 12 hex>；历史 imported-YYYYMMDD-HHMMSS 继续收纳以
+// 兼容存量目录；vscode 同规则）。
+var tokenVersionRe = regexp.MustCompile(`^(?:\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.\-]*)?|imported-(?:[0-9a-f]{12}|\d{8}-\d{6}))$`)
 
 // fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
 // 流式上限），失败注入测试替换为模拟中断/坏摘要源。
@@ -48,7 +49,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // 解包 → 落位"主流程委托 Wave 4 共享内核 packages/go/artifact（Fetch +
 // UnpackZip + Tree）；本包只保留 Paseo 领域知识：electron-builder win zip 便携
 // 资产筛选（含 mac zip 炸弹排除）、镜像 URL 模板、版本目录形状（semver 含预发布 /
-// imported-时间戳）、Electron 双锚点（Paseo.exe + resources/app.asar）布局自检、
+// imported-兜底 tag）、Electron 双锚点（Paseo.exe + resources/app.asar）布局自检、
 // 本地导入整套迁移与既有进度词表映射。
 //
 // 多版本隔离目录设计（vscode 便携同款，与 recordly 的 NSIS 单目录相反）：
@@ -309,7 +310,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 }
 
 // resolveVersionDir 定位版本隔离目录（paseo_0.8.0 / paseo_0.8.0-beta.1 /
-// paseo_imported-时间戳；接受带/不带 v 前缀输入）。
+// paseo_imported-兜底 tag；接受带/不带 v 前缀输入）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -397,7 +398,15 @@ func (m *Manager) ImportLocal(srcDir string) (PaseoVersionInfo, error) {
 		}
 	}
 	if version == "" {
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取被导入 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻由账本
+		// installedAt 承载，不再进版本串。
+		sum, hErr := fileSHA256(srcExe)
+		if hErr != nil {
+			return PaseoVersionInfo{}, fmt.Errorf("计算导入主程序摘要失败: %w", hErr)
+		}
+		version = "imported-" + sum[:12]
 	}
 	if err := artifact.ValidateVersionToken(version); err != nil {
 		return PaseoVersionInfo{}, err

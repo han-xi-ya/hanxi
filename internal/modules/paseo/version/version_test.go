@@ -371,7 +371,7 @@ func TestImportLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportLocal: %v", err)
 	}
-	// 假 PE 无法读版本信息 → 时间戳兜底（真实 exe 会得到 FileVersion）
+	// 假 PE 无法读版本信息 → 内容哈希兜底（真实 exe 会得到 FileVersion）
 	if !strings.HasPrefix(info.Version, "imported-") {
 		t.Errorf("版本号格式异常: %q", info.Version)
 	}
@@ -397,12 +397,11 @@ func TestImportLocal(t *testing.T) {
 		t.Errorf("兜底版本应可解析: %v", err)
 	}
 
-	// 重复导入同版本应被拒绝；若二次导入跨入新时间戳秒（目录名不同）则属
-	// 合法新收纳，断言其目录与首次不同即可。
-	if info2, err := m.ImportLocal(src); err == nil && info2.Dir == info.Dir {
-		t.Error("命中同名目标目录时重复导入应报错")
-	} else if err != nil && !strings.Contains(err.Error(), "已存在") {
-		t.Errorf("重复导入错误口径异常: %v", err)
+	// B1：内容哈希兜底后同内容必同版本，重复导入确定性拒绝——
+	// 旧秒级兜底跨秒会另起目录静默装成第二份（此处曾容忍"跨秒即合法"），
+	// 本断言即该缺陷的回归锁：无论调度落在整秒哪一侧都必须报「已存在」。
+	if _, err := m.ImportLocal(src); err == nil || !strings.Contains(err.Error(), "已存在") {
+		t.Errorf("重复导入同一源应报「已存在」，got %v", err)
 	}
 
 	// 缺 exe / 缺 app.asar 的源目录应报错

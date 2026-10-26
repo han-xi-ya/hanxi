@@ -317,7 +317,7 @@ func TestImportLocalWholeDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportLocal: %v", err)
 	}
-	// 假 PE 无法读版本信息 → 时间戳兜底（真实 exe 会得到 FileVersion "3.2.7.98"）
+	// 假 PE 无法读版本信息 → 内容哈希兜底（真实 exe 会得到 FileVersion "3.2.7.98"）
 	if !strings.HasPrefix(info.Version, "vimported-") {
 		t.Errorf("版本号格式异常: %q", info.Version)
 	}
@@ -345,10 +345,11 @@ func TestImportLocalWholeDirectory(t *testing.T) {
 		t.Errorf("导入版本列表账本异常: %+v %v", list, lerr)
 	}
 
-	// 重复导入同一目录（兜底版本含秒级时间戳，同秒内重复必冲突；跨秒则目录不同）
-	if _, err := m.ImportLocal(src); err == nil {
-		// 时间戳兜底跨秒时目录名不同，不视为缺陷——只有同版本才强制拒绝，
-		// 这里验证真实版本路径的拒绝语义（见下方）
+	// B1：内容哈希兜底后同内容必同版本，重复导入确定性拒绝——
+	// 旧秒级兜底跨秒会另起目录静默装成第二份（此处曾以放行注释掩盖），
+	// 本断言即该缺陷的回归锁：无论调度落在整秒哪一侧都必须报「已安装」。
+	if _, err := m.ImportLocal(src); err == nil || !strings.Contains(err.Error(), "已安装") {
+		t.Errorf("重复导入同一源应报「已安装」，got %v", err)
 	}
 
 	// 源目录不含 exe → 报错

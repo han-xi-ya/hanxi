@@ -26,11 +26,12 @@ const (
 // plainVersionRe 纯版本号（如 1.3.0），用于目录名校验
 var plainVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
-// dirNameRe 版本目录名（subnetdesk_1.3.0）；imported- 分支收纳探测失败的时间戳兜底
-var dirNameRe = regexp.MustCompile(`^` + dirPrefix + `(?:[0-9][0-9a-zA-Z.]+|imported-\d{8}-\d{6})$`)
+// dirNameRe 版本目录名（subnetdesk_1.3.0）；imported- 分支收纳探测失败的哈希兜底与历史时间戳目录
+var dirNameRe = regexp.MustCompile(`^` + dirPrefix + `(?:[0-9][0-9a-zA-Z.]+|imported-(?:[0-9a-f]{12}|\d{8}-\d{6}))$`)
 
 // assetVerRe 官方资产文件名中的版本号段（subnetdesk-1.3.0-x86_64.exe → 1.3.0）
 var assetVerRe = regexp.MustCompile(`(?i)^subnetdesk-?v?(\d+\.\d+\.\d+)`)
@@ -232,7 +233,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（subnetdesk_X.Y.Z 或 subnetdesk_imported-时间戳）
+// resolveVersionDir 定位版本隔离目录（subnetdesk_X.Y.Z 或 subnetdesk_imported-兜底 tag）
 func (m *Manager) resolveVersionDir(version string) (string, error) {
 	ver := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if !plainVersionRe.MatchString(ver) && !importedDirRe.MatchString(ver) {
@@ -269,11 +270,17 @@ func (m *Manager) ImportLocal(path string) (SDVersionInfo, error) {
 
 	version := versionFromImportName(fi.Name())
 	if version == "" {
-		// 文件名无版本段（用户改名）：读 PE 版本资源；再失败时间戳兜底（与 frpc 同构）
+		// 文件名无版本段（用户改名）：读 PE 版本资源；再失败内容哈希兜底——取源
+		// 文件 sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级
+		// 时间戳兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）
 		if fv, vErr := versioninfo.FileVersion(srcExe); vErr == nil && plainVersionRe.MatchString(fv) {
 			version = fv
 		} else {
-			version = "imported-" + time.Now().Format("20060102-150405")
+			sum := fileSHA256(srcExe)
+			if sum == "" {
+				return SDVersionInfo{}, fmt.Errorf("计算导入源摘要失败，导入中止: %s", srcExe)
+			}
+			version = "imported-" + sum[:12]
 		}
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)

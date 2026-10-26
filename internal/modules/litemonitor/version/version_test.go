@@ -411,7 +411,7 @@ func TestImportLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportLocal: %v", err)
 	}
-	// 假 PE 无法读版本信息 → 时间戳兜底（真实 exe 会得到 FileVersion）
+	// 假 PE 无法读版本信息 → 内容哈希兜底（真实 exe 会得到 FileVersion）
 	if !strings.HasPrefix(info.Version, "vimported-") {
 		t.Errorf("版本号格式异常: %q", info.Version)
 	}

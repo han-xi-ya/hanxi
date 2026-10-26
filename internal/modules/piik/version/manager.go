@@ -54,8 +54,9 @@ var (
 // plainVersionRe 纯版本号（如 1.2.0），用于目录名与 FileVersion 校验
 var plainVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
 // 流式上限），失败注入测试替换为模拟中断/坏摘要源。
@@ -64,7 +65,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // Manager Piik 版本管理引擎：远程列表（GitHub 元数据）与"下载 → 校验 →
 // 解包 → 落位"主流程委托 Wave 4 共享内核 packages/go/artifact（Fetch +
 // UnpackZip + Tree）；本包只保留 Piik 领域知识：裸名便携资产筛选、镜像 URL
-// 模板、版本目录形状（x.y.z / imported-时间戳）、平铺自管目录的布局不变式
+// 模板、版本目录形状（x.y.z / imported-兜底 tag）、平铺自管目录的布局不变式
 // 自检（五关键条目在场 + runtime 双 exe 在位——兄弟路径解析令目录结构不可
 // 拆，判定比 ccswitch 双锚点、DBX 单标记更宽）、REVISION 记账、账外漂移
 // 护栏（落位 sha256 记账 + mtime 闸控复算，照 everything/DBX 实作）、本地
@@ -408,7 +409,7 @@ func driftCheck(exe string, fi os.FileInfo, meta artifact.Meta) (bool, string) {
 	return false, "复算一致：改动迹象经全量哈希排除"
 }
 
-// resolveVersionDir 定位版本隔离目录（piik_X.Y.Z 或 piik_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（piik_X.Y.Z 或 piik_imported-兜底 tag，含历史时间戳形态）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与家族一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -421,9 +422,10 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 	return "", "", fmt.Errorf("版本 %s 未安装，请先在下方版本管理下载或导入", version)
 }
 
-// versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z / vimported-<时间戳>
+// versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z / vimported-<兜底 tag>
 // （目录名不带 v、展示带 v，与 ccswitch/DBX 同口径）。仅接受纯 x.y.z 或
-// imported-时间戳形状，piik_v1.2.0 之类带 v 前缀的历史/外来目录名不列入。
+// imported-兜底形状（哈希现行 / 时间戳历史），piik_v1.2.0 之类带 v 前缀的
+// 历史/外来目录名不列入。
 func versionFromToken(token string) (string, bool) {
 	if plainVersionRe.MatchString(token) || importedDirRe.MatchString(token) {
 		return "v" + token, true

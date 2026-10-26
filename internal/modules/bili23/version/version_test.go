@@ -405,7 +405,7 @@ func TestImportLocalFullTree(t *testing.T) {
 	}
 }
 
-// TestImportLocalVersionFallback config.py 缺失/变更时走时间戳兜底目录。
+// TestImportLocalVersionFallback config.py 缺失/变更时走内容哈希兜底目录。
 func TestImportLocalVersionFallback(t *testing.T) {
 	m := NewManager(t.TempDir())
 	src := t.TempDir()
@@ -420,7 +420,7 @@ func TestImportLocalVersionFallback(t *testing.T) {
 		t.Fatalf("ImportLocal: %v", err)
 	}
 	if !strings.HasPrefix(info.Version, "vimported-") {
-		t.Errorf("应走时间戳兜底: %q", info.Version)
+		t.Errorf("应走内容哈希兜底: %q", info.Version)
 	}
 	if _, err := m.ResolveExe(info.Version); err != nil {
 		t.Errorf("兜底版本应可解析: %v", err)

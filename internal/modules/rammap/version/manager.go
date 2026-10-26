@@ -250,7 +250,7 @@ func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, on
 
 // ImportLocal 收纳本机已有 RAMMap 目录（三架构 exe 平铺，按当前体系结构取
 // 载荷；Eula.txt 一并保留）。版本令牌优先取 PE FileVersion（如 1.63），取不到
-// 回落 imported-时间戳。
+// 回落 imported-<内容 sha256 前 12 hex>（同内容必同令牌，查重与时钟无关）。
 func (m *Manager) ImportLocal(srcDir string) (RammapVersionInfo, error) {
 	srcDir = filepath.Clean(strings.TrimSpace(srcDir))
 	srcExe := filepath.Join(srcDir, payloadExeName())
@@ -261,6 +261,11 @@ func (m *Manager) ImportLocal(srcDir string) (RammapVersionInfo, error) {
 	token := importToken(srcExe)
 	if err := artifact.ValidateVersionToken(token); err != nil {
 		return RammapVersionInfo{}, err
+	}
+	// 重复导入闸（哈希兜底后同内容必同令牌；原实现无闸，同令牌会穿透到
+	// Kernel Commit 的同版本幂等合并，静默盖旧账）：命中即拒，家族口径一致。
+	if _, rerr := m.tree.Resolve(token); rerr == nil {
+		return RammapVersionInfo{}, fmt.Errorf("版本 %s 已安装，请先卸载再导入", token)
 	}
 	stagingID := "import-" + token + "-" + time.Now().Format("150405")
 	staging, discard, err := m.tree.StageDir(stagingID)
@@ -278,7 +283,7 @@ func (m *Manager) ImportLocal(srcDir string) (RammapVersionInfo, error) {
 	if err := writeModuleMeta(staging, moduleMeta{Source: srcDir, IsImport: true}); err != nil {
 		return RammapVersionInfo{}, fmt.Errorf("写入导入账目失败: %v", err)
 	}
-	meta := artifact.Meta{Entry: payloadExeName(), AssetSHA256: fileSHA256(dstExe), Source: artifact.SourceImported}
+	meta := artifact.Meta{Entry: payloadExeName(), AssetSHA256: fileSHA256(dstExe), Source: artifact.SourceImported, InstalledAt: time.Now()}
 	if err := m.tree.Commit(staging, token, meta); err != nil {
 		return RammapVersionInfo{}, err
 	}
@@ -336,8 +341,11 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 
 // ---------- 领域工具 ----------
 
-// importToken 导入版本令牌：PE FileVersion（形如 1.63）优先，取不到按
-// imported-时间戳兜底（不与日期令牌冲突）。
+// importToken 导入版本令牌：PE FileVersion（形如 1.63）优先，取不到按内容哈希
+// 兜底——取被导入 exe 的 sha256 前 12 hex，同内容必同令牌，重复导入判定与
+// 时钟无关（历史秒级时间戳兜底 imported-YYYYMMDDHHMMSS 仅同秒内互斥，跨秒会把
+// 同一份文件静默装成两份；不与日期令牌冲突的口径不变）。导入时刻由账本
+// installedAt 承载，不再进令牌。
 func importToken(exe string) string {
 	if fv, err := versioninfo.FileVersion(exe); err == nil {
 		ver := strings.TrimRight(strings.TrimSpace(fv), ".")
@@ -345,7 +353,13 @@ func importToken(exe string) string {
 			return "v" + ver
 		}
 	}
-	return "imported-" + time.Now().Format("20060102150405")
+	sum := fileSHA256(exe)
+	if len(sum) < 12 {
+		// 摘要计算失败（源文件消失/不可读）：返回非法令牌，由调用方
+		// ValidateVersionToken 闸拒入（不得静默造钟点目录）。
+		return "imported-"
+	}
+	return "imported-" + sum[:12]
 }
 
 // looksLikeVersion 宽松版本形（1~4 段点分数字，允许 RAMMap 的两段 "1.63"）。

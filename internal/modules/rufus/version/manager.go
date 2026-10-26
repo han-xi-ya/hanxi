@@ -44,8 +44,9 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // plainVersionRe 纯版本号（如 4.15）：Rufus 上游自 1.x 起恒为两段式，用于目录校验
 var plainVersionRe = regexp.MustCompile(`^\d+\.\d+$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // assetVerRe 官方资产文件名中的版本号段（rufus-4.15p.exe → 4.15）
 var assetVerRe = regexp.MustCompile(`(?i)^rufus-?v?(\d+\.\d+)`)
@@ -91,7 +92,7 @@ func (m *Manager) ListRemote() ([]RufusRelease, error) {
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描）。
 // 目录命名 rufus_X.Y（当前落位格式）兼容 rufus_vX.Y（v 前缀历史形状）；
-// 版本令牌仅接受 x.y 与 imported-时间戳 两种形状（外来目录不列入）；
+// 版本令牌仅接受 x.y 与 imported-兜底 tag 两种形状（外来目录不列入）；
 // exe 缺失/为空视为损坏安装跳过。排序：数值分段降序，imported 兜底目录沉底。
 func (m *Manager) ListInstalled() ([]RufusVersionInfo, error) {
 	vers, err := m.tree.Versions()
@@ -324,7 +325,7 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 }
 
 // versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y（4.15/v4.15 → v4.15，
-// imported-… → vimported-…）。仅接受 x.y 两段式与 imported-时间戳 两种形状，
+// imported-… → vimported-…）。仅接受 x.y 两段式与 imported-兜底 tag 两种形状，
 // 与历史目录名解析口径一致（外来目录名被拒）。
 func versionFromToken(token string) (string, bool) {
 	rest := strings.TrimPrefix(strings.TrimSpace(token), "v")
@@ -354,12 +355,18 @@ func (m *Manager) ImportLocal(path string) (RufusVersionInfo, error) {
 
 	version := versionFromImportName(fi.Name())
 	if version == "" {
-		// 文件名无版本段（用户改名）：读 PE 版本资源；再失败时间戳兜底（与 rustdesk 同构）
+		// 文件名无版本段（用户改名）：读 PE 版本资源；再失败内容哈希兜底——取源
+		// 文件 sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级
+		// 时间戳兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）
 		if fv, vErr := versioninfo.FileVersion(srcExe); vErr == nil {
 			version = firstTwoSegments(fv)
 		}
 		if !plainVersionRe.MatchString(version) {
-			version = "imported-" + time.Now().Format("20060102-150405")
+			sum := fileSHA256(srcExe)
+			if sum == "" {
+				return RufusVersionInfo{}, fmt.Errorf("计算导入源摘要失败，导入中止: %s", srcExe)
+			}
+			version = "imported-" + sum[:12]
 		}
 	}
 	if _, rerr := m.tree.Resolve(version); rerr == nil {
@@ -389,6 +396,7 @@ func (m *Manager) ImportLocal(path string) (RufusVersionInfo, error) {
 		Entry:       exeName,
 		AssetSHA256: fileSHA256(filepath.Join(staging, exeName)),
 		Source:      artifact.SourceImported,
+		InstalledAt: time.Now(), // 导入时刻入账（版本串不再携时）
 	}
 	if err := m.tree.Commit(staging, version, meta); err != nil {
 		return RufusVersionInfo{}, err

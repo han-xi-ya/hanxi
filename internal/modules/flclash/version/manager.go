@@ -33,8 +33,9 @@ const (
 	fetchBudget = 15 * time.Minute
 )
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
 // 流式上限），失败注入测试替换为模拟中断/坏摘要源。
@@ -43,7 +44,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // Manager FlClash 版本管理引擎：远程列表（GitHub 元数据）与"下载 → 校验 →
 // 解包 → 落位"主流程委托 Wave 4 共享内核 packages/go/artifact（Fetch +
 // UnpackZip + Tree）；本包只保留 FlClash 领域知识：Windows x64 便携资产筛选、
-// 镜像 URL 模板（tag 带 v 前缀拼路径）、版本目录形状（x.y[.z…] / imported-时间戳）、
+// 镜像 URL 模板（tag 带 v 前缀拼路径）、版本目录形状（x.y[.z…] / imported-兜底 tag）、
 // FlClash.exe 锚点布局自检、本地导入黑名单与既有进度词表映射。
 type Manager struct {
 	versionsDir string
@@ -277,7 +278,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（flclash_X.Y.Z 或 flclash_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（flclash_X.Y.Z 或 flclash_imported-兜底 tag）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimSpace(version)
@@ -291,7 +292,7 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 }
 
 // versionFromToken 把 Tree 扫出的版本令牌规范化为展示版本号（flclash 版本无
-// v 前缀，令牌即版本）。仅接受 2~4 段纯数字或 imported-时间戳形状，与
+// v 前缀，令牌即版本）。仅接受 2~4 段纯数字或 imported-兜底 tag形状，与
 // resolveVersionDir 的白名单口径一致；其余形状令牌（外来目录名）不列入。
 func versionFromToken(token string) (string, bool) {
 	if plainVersionRe.MatchString(token) || importedDirRe.MatchString(token) {
@@ -345,8 +346,15 @@ func (m *Manager) ImportLocal(srcDir string) (FlClashVersionInfo, error) {
 
 	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !plainVersionRe.MatchString(version) {
-		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与其他模块 ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取被导入 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻由账本
+		// installedAt 承载，不再进版本串。
+		sum, hErr := fileSHA256(srcExe)
+		if hErr != nil {
+			return FlClashVersionInfo{}, fmt.Errorf("计算导入主程序摘要失败: %w", hErr)
+		}
+		version = "imported-" + sum[:12]
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {

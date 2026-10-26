@@ -43,8 +43,9 @@ const fetchBudget = 10 * time.Minute
 // plainVersionRe 正规版本令牌形状（与上游 tag 同形：纯三段数字，无 v 前缀）。
 var plainVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）。
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录。
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // Manager HEU 版本管理引擎：远程列表（GitHub 元数据）+ "下载 → 校验 → RAR5 解包
 // → 落位"主流程（下载与原子落位委托 Wave 4 共享内核 packages/go/artifact）
@@ -59,7 +60,7 @@ var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
 //     "目录内唯一 *.exe"定位，两处都不拼死文件名。
 //
 // 领域知识留在本包：托管资产筛选、镜像 URL 模板、rar 条目审阅与解包闸门、
-// 版本目录形状 heukms_64.0.0 / heukms_imported-时间戳、PE FileVersion 与
+// 版本目录形状 heukms_64.0.0 / heukms_imported-兜底 tag、PE FileVersion 与
 // FileDescription 核账、本地导入（挂载 iso 或解压后手取 exe 的收纳路径）。
 type Manager struct {
 	versionsDir string
@@ -346,20 +347,28 @@ func (m *Manager) ImportLocal(srcDir string) (HeuVersionInfo, error) {
 		return HeuVersionInfo{}, fmt.Errorf("该文件的 FileDescription 不是 %s，拒绝导入（请确认选择的是 HEU KMS Activator 主程序）", productHint)
 	}
 
-	rawVer, vErr := m.fileVersion(srcExe)
-	version := normalizeFileVersion(rawVer)
-	if vErr != nil || !plainVersionRe.MatchString(version) {
-		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与 litemonitor 同构。
-		version = "imported-" + time.Now().Format("20060102-150405")
-	} else if _, statErr := os.Stat(filepath.Join(m.versionsDir, dirPrefix+version)); statErr == nil {
-		// 先于人话自查：Kernel 的"已装"分支文案是防同版本内容漂移设计的，
-		// 对"重复导入同一个 exe"场景太吓人，这里给出可执行的下一步。
-		return HeuVersionInfo{}, fmt.Errorf("版本 %s 已安装，请先卸载再导入", version)
-	}
-
+	// 摘要先行：既作内容哈希兜底的版本源，也进落位账本（AssetSHA256），
+	// 一次流式哈希两处复用，不再对源 exe 二次开句柄。
 	assetSHA, shaErr := fileSHA256(srcExe)
 	if shaErr != nil {
 		return HeuVersionInfo{}, fmt.Errorf("计算主程序摘要失败: %w", shaErr)
+	}
+
+	rawVer, vErr := m.fileVersion(srcExe)
+	version := normalizeFileVersion(rawVer)
+	if vErr != nil || !plainVersionRe.MatchString(version) {
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取源主程序
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级
+		// 时间戳兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻
+		// 由账本 installedAt 承载，不再进版本串。
+		version = "imported-" + assetSHA[:12]
+	}
+	// 查重对正规版本与兜底版本一视同仁（原 else-if 只挡正规形状，兜底形态
+	// 落到 Kernel Commit 的"内容漂移"话术，重复导入语义不统一）。
+	if _, statErr := os.Stat(filepath.Join(m.versionsDir, dirPrefix+version)); statErr == nil {
+		// 先于人话自查：Kernel 的"已装"分支文案是防同版本内容漂移设计的，
+		// 对"重复导入同一个 exe"场景太吓人，这里给出可执行的下一步。
+		return HeuVersionInfo{}, fmt.Errorf("版本 %s 已安装，请先卸载再导入", version)
 	}
 
 	// txnID 取 UnixNano 而非秒/毫秒时间串：StageDir 是独占语义（同名即拒），
@@ -384,6 +393,7 @@ func (m *Manager) ImportLocal(srcDir string) (HeuVersionInfo, error) {
 		Entry:       exeName,
 		AssetSHA256: assetSHA,
 		Source:      artifact.SourceImported,
+		InstalledAt: time.Now(), // 导入时刻入账（版本串不再携时）
 	}
 	if err := m.tree.Commit(staging, version, meta); err != nil {
 		return HeuVersionInfo{}, fmt.Errorf("落位失败: %w", err)
@@ -426,7 +436,7 @@ func (m *Manager) Remove(version string) error {
 	return m.tree.Remove(token, nil)
 }
 
-// resolveVersionDir 定位版本隔离目录（heukms_64.0.0 或 heukms_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（heukms_64.0.0 或 heukms_imported-兜底 tag）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒；容忍前端回传的 v 前缀形态。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimPrefix(strings.TrimSpace(version), "v")

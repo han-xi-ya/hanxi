@@ -36,8 +36,9 @@ const (
 // plainVersionRe 纯版本号（如 4.5.0），用于目录名与 FileVersion 校验（上游 tag 无 v 前缀）
 var plainVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
 // 流式上限），失败注入测试替换为模拟中断/坏摘要源。
@@ -48,7 +49,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // 走 Tree 的 staging + 原子 rename 链；本包保留两类 QuickLook 领域知识与一处
 // bespoke 段：
 //   - 便携资产筛选（QuickLook-<ver>.zip 精确比对）、镜像 URL 模板、版本目录
-//     形状（x.y.z / imported-时间戳）、便携双锚点（exe + portable.lock +
+//     形状（x.y.z / imported-兜底 tag）、便携双锚点（exe + portable.lock +
 //     QuickLook.Native64.dll）布局自检与既有进度词表映射；
 //   - 解包段留本包 extractAll（不委托 artifact.UnpackZip，ADR-0003 单家特例，
 //     按 ADR-0002 §3 不入内核）：上游官方 zip 有两处内核 UnpackZip 不兼容的
@@ -316,7 +317,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（quicklook_X.Y.Z 或 quicklook_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（quicklook_X.Y.Z 或 quicklook_imported-兜底 tag）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -331,7 +332,7 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 
 // versionFromToken 把 Tree 扫出的版本令牌规范化为展示版本号（4.5.0 → 4.5.0，
 // 上游 tag 无 v 前缀，展示口径与迁移前"目录名剥前缀"一致）。仅接受纯 x.y.z 或
-// imported-时间戳形状，quicklook_v4.5.0 之类带 v 前缀的历史/外来目录名不列入。
+// imported-兜底 tag形状，quicklook_v4.5.0 之类带 v 前缀的历史/外来目录名不列入。
 func versionFromToken(token string) (string, bool) {
 	if plainVersionRe.MatchString(token) || importedDirRe.MatchString(token) {
 		return token, true
@@ -375,8 +376,15 @@ func (m *Manager) ImportLocal(srcDir string) (QuickLookVersionInfo, error) {
 
 	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !plainVersionRe.MatchString(version) {
-		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与 frpc/keyviz ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取被导入 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻由账本
+		// installedAt 承载，不再进版本串。
+		sum := fileSHA256(srcExe)
+		if sum == "" {
+			return QuickLookVersionInfo{}, fmt.Errorf("计算导入主程序摘要失败，导入中止: %s", srcExe)
+		}
+		version = "imported-" + sum[:12]
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {

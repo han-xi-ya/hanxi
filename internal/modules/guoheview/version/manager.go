@@ -32,12 +32,13 @@ const (
 	dirPrefix = treeEntryName + "_"
 )
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // dirNameRe 版本令牌形状（guoheview_3.2.7.98 四段构建号；imported- 分支收纳
-// 版本探测失败时间戳兜底的导入——无 FileVersion 资源时）
-var dirNameRe = regexp.MustCompile(`^` + dirPrefix + `(?:[0-9][0-9a-zA-Z.]+|imported-\d{8}-\d{6})$`)
+// 版本探测失败哈希兜底的导入与历史时间戳形态存量目录）
+var dirNameRe = regexp.MustCompile(`^` + dirPrefix + `(?:[0-9][0-9a-zA-Z.]+|imported-(?:[0-9a-f]{12}|\d{8}-\d{6}))$`)
 
 // Manager 果核看图版本管理引擎："解包 → 落位"主流程委托 Wave 4 共享内核
 // packages/go/artifact（UnpackZip + Tree），"下载 + 官方哈希校验"段按
@@ -306,7 +307,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（guoheview_3.2.7.98 或 guoheview_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（guoheview_3.2.7.98 或 guoheview_imported-兜底 tag）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -319,9 +320,9 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 	return "", "", fmt.Errorf("版本 %s 未安装，请先在下方版本管理下载或导入", version)
 }
 
-// versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z.W / vimported-<时间戳>
+// versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z.W / vimported-<兜底 tag>
 // （3.2.7.98 → v3.2.7.98，与原目录名剥离前缀的口径一致）。仅接受四段
-// x.y.z.w 或 imported-时间戳形状，guoheview_v3.2.7.98 之类带 v 前缀的
+// x.y.z.w 或 imported-兜底 tag形状，guoheview_v3.2.7.98 之类带 v 前缀的
 // 历史/外来目录名不列入。
 func versionFromToken(token string) (string, bool) {
 	if dirNameRe.MatchString(dirPrefix + token) {
@@ -463,8 +464,15 @@ func (m *Manager) ImportLocal(srcDir string) (ViewVersionInfo, error) {
 
 	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !fourSegVersion.MatchString(version) {
-		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与 frpc ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取被导入 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻由账本
+		// installedAt 承载，不再进版本串。
+		sum := fileSHA256(srcExe)
+		if sum == "" {
+			return ViewVersionInfo{}, fmt.Errorf("计算导入主程序摘要失败，导入中止: %s", srcExe)
+		}
+		version = "imported-" + sum[:12]
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {

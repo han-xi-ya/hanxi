@@ -377,7 +377,7 @@ func TestVerifyLedger(t *testing.T) {
 	}
 }
 
-// TestImportLocal 导入链：假 exe 无 PE 版本资源 → imported-时间戳兜底；
+// TestImportLocal 导入链：假 exe 无 PE 版本资源 → imported-内容哈希兜底；
 // exe+LICENSE+NOTICE 白名单搬运（副本携带许可文本），噪声文件不搬；
 // 落位账本记实测摘要（漂移锚点）、verifiedHash 如实 false；
 // 可解析、可卸载、重复导入与无 exe 目录报错。

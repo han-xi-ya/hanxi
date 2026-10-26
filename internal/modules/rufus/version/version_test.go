@@ -260,7 +260,7 @@ func TestImportLocal(t *testing.T) {
 	if _, err := m.ImportLocal(filepath.Join(dir, "notes.txt")); err == nil {
 		t.Error("非 exe 应拒收")
 	}
-	// 用户改名（rufus.exe）：假 PE 读不到版本 → 时间戳兜底可安装
+	// 用户改名（rufus.exe）：假 PE 读不到版本 → 内容哈希兜底可安装
 	renamed := filepath.Join(t.TempDir(), exeName)
 	os.WriteFile(renamed, []byte("MZx"), 0644)
 	info, err = m.ImportLocal(renamed)
@@ -268,7 +268,7 @@ func TestImportLocal(t *testing.T) {
 		t.Fatalf("ImportLocal(rufus.exe): %v", err)
 	}
 	if !strings.HasPrefix(info.Version, "vimported-") {
-		t.Errorf("改名导入应走时间戳兜底，实际 %q", info.Version)
+		t.Errorf("改名导入应走内容哈希兜底，实际 %q", info.Version)
 	}
 }
 

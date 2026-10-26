@@ -294,7 +294,8 @@ func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, on
 // ImportLocal 把本机已有 WindTerm 目录（官方便携解压目录或旧托管搬运件）
 // 收纳为托管版本：整树复制保数据（会话/密钥索引随目录走，导入即"你的文件
 // 还是你的"），剥离运行噪声（logs/）与旧账本文件。版本令牌取主程序 PE 文件
-// 版本（形如 2.7.0），取不到按 imported-时间戳 落目录。复制进树根 staging
+// 版本（形如 2.7.0），取不到按 imported-<内容 sha256 前 12 hex> 落目录
+// （同内容必同令牌，查重与时钟无关）。复制进树根 staging
 // 后走 Tree.Commit 原子落位（与远程安装同一账本通道，不留"有内容无账"黑户）。
 func (m *Manager) ImportLocal(srcDir string) (WindTermVersionInfo, error) {
 	srcDir = filepath.Clean(strings.TrimSpace(srcDir))
@@ -311,6 +312,11 @@ func (m *Manager) ImportLocal(srcDir string) (WindTermVersionInfo, error) {
 	token := importToken(exe)
 	if err := artifact.ValidateVersionToken(token); err != nil {
 		return WindTermVersionInfo{}, err
+	}
+	// 重复导入闸（哈希兜底后同内容必同令牌；原实现无闸，同令牌会穿透到
+	// Kernel Commit 的同版本幂等合并，静默盖旧账）：命中即拒，家族口径一致。
+	if _, rerr := m.tree.Resolve(token); rerr == nil {
+		return WindTermVersionInfo{}, fmt.Errorf("版本 %s 已安装，请先卸载再导入", token)
 	}
 	stagingID := "import-" + token + "-" + time.Now().Format("150405")
 	staging, discard, err := m.tree.StageDir(stagingID)
@@ -332,6 +338,7 @@ func (m *Manager) ImportLocal(srcDir string) (WindTermVersionInfo, error) {
 		Entry:       exeName,
 		AssetSHA256: fileSHA256(dstExe),
 		Source:      artifact.SourceImported,
+		InstalledAt: time.Now(), // 导入时刻入账（版本串不再携时）
 	}
 	if err := m.tree.Commit(staging, token, meta); err != nil {
 		return WindTermVersionInfo{}, err
@@ -415,15 +422,24 @@ func regular(path string) bool {
 	return err == nil && fi.Mode().IsRegular() && fi.Size() > 0
 }
 
-// importToken 导入版本令牌：PE 文件版本（2.7.0.0 归一 2.7.0）优先，
-// 兜底 imported-时间戳（不猜版本，绝不与真实版本号撞令牌）。
+// importToken 导入版本令牌：PE 文件版本（2.7.0.0 归一 2.7.0）优先，兜底按
+// 内容哈希——取被导入 exe 的 sha256 前 12 hex（不猜版本，绝不与真实版本号
+// 撞令牌；同内容必同令牌，重复导入判定与时钟无关，历史秒级时间戳兜底
+// imported-YYYYMMDDHHMMSS 跨秒会把同一份文件静默装成两份）。导入时刻由账本
+// installedAt 承载，不再进令牌。
 func importToken(exe string) string {
 	if fv, err := versioninfo.FileVersion(exe); err == nil {
 		if ver, ok := normalizeFileVersion(fv); ok {
 			return ver
 		}
 	}
-	return "imported-" + time.Now().Format("20060102150405")
+	sum := fileSHA256(exe)
+	if len(sum) < 12 {
+		// 摘要计算失败（源文件消失/不可读）：返回非法令牌，由调用方
+		// ValidateVersionToken 闸拒入（不得静默造钟点目录）。
+		return "imported-"
+	}
+	return "imported-" + sum[:12]
 }
 
 // normalizeFileVersion PE 版本串（可能带空白/尾点，段数 3~4）归一为

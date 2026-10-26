@@ -109,7 +109,7 @@ func TestImportTokenFallback(t *testing.T) {
 	}
 	tok := importToken(junk)
 	if !strings.HasPrefix(tok, "imported-") {
-		t.Fatalf("PE 版本读不出必须 imported-时间戳 兜底: %q", tok)
+		t.Fatalf("PE 版本读不出必须 imported-内容哈希兜底: %q", tok)
 	}
 	if err := artifact.ValidateVersionToken(tok); err != nil {
 		t.Fatalf("兜底令牌必须过白名单: %v", err)

@@ -477,7 +477,7 @@ func TestListInstalledAndRemove(t *testing.T) {
 	}
 }
 
-// TestImportLocal 导入链（无内核对应物）：白名单搬运、时间戳兜底、重复拒绝。
+// TestImportLocal 导入链（无内核对应物）：白名单搬运、内容哈希兜底、重复拒绝。
 func TestImportLocal(t *testing.T) {
 	m := NewManager(t.TempDir())
 
@@ -489,7 +489,7 @@ func TestImportLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportLocal: %v", err)
 	}
-	// 假 PE 无法读版本信息 → 时间戳兜底（真实 exe 会得到 FileVersion）
+	// 假 PE 无法读版本信息 → 内容哈希兜底（真实 exe 会得到 FileVersion）
 	if !strings.HasPrefix(info.Version, "vimported-") {
 		t.Errorf("版本号格式异常: %q", info.Version)
 	}

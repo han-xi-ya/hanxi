@@ -42,8 +42,9 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // plainVersionRe 纯版本号（如 6.17.6），用于目录名与 FileVersion 校验
 var plainVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // wideTokenRe 历史目录名宽口径（与迁移前 dirNameRe 的宽松分支同构：数字起头 +
 // [0-9a-zA-Z.] 续）——"ddnsgo_6.17.6.bak" 这类手工杂物目录会被收纳扫描，
@@ -307,7 +308,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（ddnsgo_X.Y.Z 或 ddnsgo_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（ddnsgo_X.Y.Z 或 ddnsgo_imported-兜底 tag）。
 // 白名单形状校验保持迁移前口径（非法版本号与未安装的引导文案逐字不变）。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	ver := strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -323,7 +324,7 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 
 // versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z（6.17.6 → v6.17.6，
 // imported-… → vimported-…）。仅接受历史 dirNameRe 的两支形状
-// （纯语义/宽数字起头 与 imported-时间戳），markeron_ 等外来目录不列入。
+// （纯语义/宽数字起头 与 imported-兜底 tag），markeron_ 等外来目录不列入。
 func versionFromToken(token string) (string, bool) {
 	if plainVersionRe.MatchString(token) || importedDirRe.MatchString(token) || wideTokenRe.MatchString(token) {
 		return "v" + token, true
@@ -346,8 +347,15 @@ func (m *Manager) ImportLocal(srcDir string) (DdnsVersionInfo, error) {
 
 	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !plainVersionRe.MatchString(version) {
-		// 版本探测失败（资源缺失或非 Windows）：时间戳兜底，与 frpc ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（资源缺失或非 Windows）：内容哈希兜底——取被导入 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级
+		// 时间戳兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻
+		// 由落位账本 installedAt 承载，不再进版本串。
+		sum := fileSHA256(srcExe)
+		if sum == "" {
+			return DdnsVersionInfo{}, fmt.Errorf("计算导入主程序摘要失败，导入中止: %s", srcExe)
+		}
+		version = "imported-" + sum[:12]
 	}
 	if _, rerr := m.tree.Resolve(version); rerr == nil {
 		return DdnsVersionInfo{}, fmt.Errorf("版本 v%s 已安装，请先卸载再导入", version)
@@ -368,6 +376,7 @@ func (m *Manager) ImportLocal(srcDir string) (DdnsVersionInfo, error) {
 		Entry:       exeName,
 		AssetSHA256: fileSHA256(filepath.Join(staging, exeName)),
 		Source:      artifact.SourceImported,
+		InstalledAt: time.Now(), // 导入时刻入账（版本串不再携时）
 	}
 	if err := m.tree.Commit(staging, version, meta); err != nil {
 		return DdnsVersionInfo{}, err

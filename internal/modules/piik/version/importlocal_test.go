@@ -54,7 +54,7 @@ func TestImportLocalFullTree(t *testing.T) {
 		t.Fatalf("ImportLocal: %v", err)
 	}
 	if !strings.HasPrefix(info.Version, "vimported-") {
-		t.Errorf("非 PE 假件应走 imported-时间戳兜底: %s", info.Version)
+		t.Errorf("非 PE 假件应走 imported-内容哈希兜底: %s", info.Version)
 	}
 	if !info.IsImport || info.Source != src || info.VerifiedHash {
 		t.Errorf("导入投影漂移: %+v", info)

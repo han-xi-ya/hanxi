@@ -422,7 +422,7 @@ func TestImportLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ImportLocal: %v", err)
 	}
-	// 假 PE 无法读版本信息 → 时间戳兜底
+	// 假 PE 无法读版本信息 → 内容哈希兜底
 	if !strings.HasPrefix(info.Version, "imported-") && !plainVersionRe.MatchString(info.Version) {
 		t.Errorf("版本号格式异常: %q", info.Version)
 	}
@@ -459,7 +459,7 @@ func TestImportLocal(t *testing.T) {
 	src2 := t.TempDir()
 	os.WriteFile(filepath.Join(src2, exeName), []byte("fake"), 0644)
 	if _, err := m.ImportLocal(src2); err != nil {
-		t.Fatalf("不同版本（不同兜底时间戳）导入应成功: %v", err)
+		t.Fatalf("不同版本（不同内容→不同哈希兜底版本）导入应成功: %v", err)
 	}
 
 	// 源目录不含 exe → 报错

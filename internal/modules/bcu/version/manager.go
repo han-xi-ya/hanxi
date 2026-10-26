@@ -31,8 +31,9 @@ const (
 	fetchBudget = 15 * time.Minute
 )
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // listingTokenRe ListInstalled 收纳的版本令牌形状（原 dirNameRe 非导入分支：
 // 数字起头的点/字母数字串，如 6.2.0 / 6.1.0.1）。
@@ -61,7 +62,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // 解包 → 落位"主流程委托 Wave 4 共享内核 packages/go/artifact（Fetch +
 // UnpackZip + Tree）；本包只保留 BCU 领域知识：双变体（portable/fdd）资产
 // 选择、镜像 URL 模板（tag 与版本不同形）、版本目录形状（3~4 段 /
-// imported-时间戳）、win-x64 双层布局自检与内层真身账本锚点、本地导入
+// imported-兜底 tag）、win-x64 双层布局自检与内层真身账本锚点、本地导入
 // 黑名单整搬与既有进度词表映射。
 type Manager struct {
 	versionsDir string
@@ -329,7 +330,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return "", fmt.Errorf("版本 %s 未找到可用可执行文件（%s / %s 均缺失）", version, innerExeRel, exeName)
 }
 
-// resolveVersionDir 定位版本隔离目录（bcu_X.Y.Z(.W) 或 bcu_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（bcu_X.Y.Z(.W) 或 bcu_imported-兜底 tag）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimSpace(version)
@@ -344,7 +345,7 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 
 // versionFromToken 把 Tree 扫出的版本令牌原样规范化为展示版本号（6.2.0 →
 // 6.2.0，BCU 无 v 前缀惯例，与远程列表口径一致）。仅收纳原 dirNameRe 的
-// 两种形状（数字起头 x.y.z(.w) / imported-时间戳），其余目录名不列入。
+// 两种形状（数字起头 x.y.z(.w) / imported-兜底 tag），其余目录名不列入。
 func versionFromToken(token string) (string, bool) {
 	if listingTokenRe.MatchString(token) || importedDirRe.MatchString(token) {
 		return token, true
@@ -414,8 +415,15 @@ func (m *Manager) ImportLocal(srcDir string) (BCUVersionInfo, error) {
 
 	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !plainVersionRe.MatchString(version) {
-		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与其他模块 ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取被导入 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻由 meta.json
+		// 的 installedAt 承载，不再进版本串。
+		sum, hErr := fileSHA256(srcExe)
+		if hErr != nil {
+			return BCUVersionInfo{}, fmt.Errorf("计算导入主程序摘要失败: %w", hErr)
+		}
+		version = "imported-" + sum[:12]
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {

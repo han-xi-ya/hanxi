@@ -204,12 +204,25 @@ func (m *Manager) ImportLocal(srcExe string) (FrpVersionInfo, error) {
 
 	version, vErr := detectVersion(srcExe)
 	if vErr != nil || version == "" {
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（-v 运行失败/输出不可解析）：内容哈希兜底——取被导入 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻由 meta.json
+		// 的 installedAt 承载，不再进版本串。
+		sum := fileSHA256(srcExe)
+		if sum == "" {
+			return FrpVersionInfo{}, fmt.Errorf("计算导入源摘要失败，导入中止: %s", srcExe)
+		}
+		version = "imported-" + sum[:12]
 	}
 	if err := validateVersion(version); err != nil {
 		return FrpVersionInfo{}, err
 	}
 	targetDir := filepath.Join(m.versionsDir, "frp_"+version)
+	// 查重闸（原实现没有：同版本二次导入会静默覆盖旧目录内容并重写 meta）：
+	// 命中即拒，给出可执行的下一步，与家族其余模块 ImportLocal 口径一致。
+	if _, err := os.Stat(targetDir); err == nil {
+		return FrpVersionInfo{}, fmt.Errorf("版本 %s 已安装，请先卸载再导入", version)
+	}
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return FrpVersionInfo{}, err
 	}

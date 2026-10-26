@@ -524,7 +524,7 @@ func TestVerifyLedger(t *testing.T) {
 	}
 }
 
-// TestImportLocal 导入链：假 exe 无 PE 版本资源 → imported-时间戳兜底；
+// TestImportLocal 导入链：假 exe 无 PE 版本资源 → imported-内容哈希兜底；
 // 白名单五条目全搬（portable.dbx 副本必须在场，否则落位即损坏），噪声文件
 // （数据文件）不搬；落位账本记实测摘要（漂移锚点）、verifiedHash 如实 false；
 // 可解析、可卸载、重复导入、无 exe 目录与非便携形态（缺 portable.dbx）报错。

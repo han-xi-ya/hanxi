@@ -468,7 +468,7 @@ func TestListInstalledLegacyMetaCompat(t *testing.T) {
 }
 
 // TestImportLocalViaTree 导入本地 exe：PE 版本资源不可得（伪 exe）→
-// imported-时间戳 目录、内核账本 Source=imported、来源明细记模块账；
+// imported-哈希目录、内核账本 Source=imported、来源明细记模块账；
 // 同目录重复导入拒绝；ListInstalled 双轨回读字段齐备。
 func TestImportLocalViaTree(t *testing.T) {
 	srcDir := t.TempDir()
@@ -488,10 +488,11 @@ func TestImportLocalViaTree(t *testing.T) {
 		t.Errorf("导入 exe 未落位: %v", err)
 	}
 
-	if _, err := m.ImportLocal(srcDir); err == nil {
-		// FileVersion 探测失败 → 同秒时间戳同名冲突被拒；跨秒则新目录——
-		// 两种结果都必须保证不覆盖既有安装，此处只验证不报错路径不存在覆盖。
-		t.Log("重复导入未被拒绝（跨秒新时间戳），核对不覆盖语义")
+	// B1：内容哈希兜底后同内容必同版本，第二次导入确定性拒绝——
+	// 旧秒级兜底跨秒会另起目录静默装成第二份（此处曾以 t.Log 放行），
+	// 本断言即该缺陷的回归锁：无论调度落在整秒哪一侧都必须报「已安装」。
+	if _, err := m.ImportLocal(srcDir); err == nil || !strings.Contains(err.Error(), "已安装") {
+		t.Errorf("重复导入同一源应报「已安装」，got %v", err)
 	}
 
 	installed, err := m.ListInstalled()

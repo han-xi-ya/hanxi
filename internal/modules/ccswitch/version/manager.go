@@ -35,8 +35,10 @@ const (
 // plainVersionRe 纯版本号（如 3.20.0），用于目录名与 FileVersion 校验
 var plainVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态为
+// imported-<被导入 exe 的 sha256 前 12 hex>（同内容必同版本，查重与时钟无关）；
+// imported-YYYYMMDD-HHMMSS 为历史秒级时间戳形态，继续收纳以兼容存量导入目录。
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
 // 流式上限），失败注入测试替换为模拟中断/坏摘要源。
@@ -45,7 +47,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // Manager CC Switch 版本管理引擎：远程列表（GitHub 元数据）与"下载 → 校验 →
 // 解包 → 落位"主流程委托 Wave 4 共享内核 packages/go/artifact（Fetch +
 // UnpackZip + Tree）；本包只保留 CC Switch 领域知识：便携资产筛选、镜像 URL
-// 模板、版本目录形状（x.y.z / imported-时间戳）、绿色版锚点（exe +
+// 模板、版本目录形状（x.y.z / imported-兜底 tag）、绿色版锚点（exe +
 // portable.ini）布局自检、本地导入白名单与既有进度词表映射。
 type Manager struct {
 	versionsDir string
@@ -78,9 +80,9 @@ func (m *Manager) ListRemote() ([]CCRelease, error) {
 }
 
 // ListInstalled 扫描本地已安装版本目录（委托 Tree 扫描，按版本号降序）。
-// 目录命名 ccswitch_X.Y.Z（下载/导入的正规版本）或
-// ccswitch_imported-YYYYMMDD-HHMMSS（版本探测失败的导入兜底）；
-// 其余形状的版本令牌不列入；exe 缺失/为空或便携标记缺失均视为损坏安装跳过。
+// 目录命名 ccswitch_X.Y.Z（下载/导入的正规版本）或 ccswitch_imported-兜底
+// tag（现行 imported-<sha256 前 12 hex>；历史 imported-YYYYMMDD-HHMMSS
+// 继续收纳）；其余形状的版本令牌不列入；exe 缺失/为空或便携标记缺失均视为损坏安装跳过。
 func (m *Manager) ListInstalled() ([]CCVersionInfo, error) {
 	vers, err := m.tree.Versions()
 	if err != nil {
@@ -286,7 +288,8 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（ccswitch_X.Y.Z 或 ccswitch_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（ccswitch_X.Y.Z 或 ccswitch_imported-兜底 tag，
+// 含历史时间戳形态目录）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -299,9 +302,10 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 	return "", "", fmt.Errorf("版本 %s 未安装，请先在下方版本管理下载或导入", version)
 }
 
-// versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z / vimported-<时间戳>
+// versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z / vimported-<兜底 tag>
 // （3.20.0 → v3.20.0，与原目录名剥离前缀的口径一致）。仅接受纯 x.y.z 或
-// imported-时间戳形状，ccswitch_vX.Y.Z 之类带 v 前缀的历史/外来目录名不列入。
+// imported-兜底形状（现行哈希 / 历史时间戳），ccswitch_vX.Y.Z 之类带 v 前缀的
+// 历史/外来目录名不列入。
 func versionFromToken(token string) (string, bool) {
 	if plainVersionRe.MatchString(token) || importedDirRe.MatchString(token) {
 		return "v" + token, true
@@ -356,8 +360,15 @@ func (m *Manager) ImportLocal(srcDir string) (CCVersionInfo, error) {
 
 	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !plainVersionRe.MatchString(version) {
-		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与 frpc ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取被导入
+		// exe 的 sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关
+		// （历史秒级时间戳兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。
+		// 导入时刻改由 meta.json 的 installedAt 承载，不再进版本串。
+		sum, hErr := fileSHA256(srcExe)
+		if hErr != nil {
+			return CCVersionInfo{}, fmt.Errorf("计算导入主程序摘要失败: %w", hErr)
+		}
+		version = "imported-" + sum[:12]
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {

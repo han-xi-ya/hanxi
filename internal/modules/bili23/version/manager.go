@@ -38,8 +38,9 @@ var plainVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 // 恒为 Python 版本号，不可用作应用版本依据（与 ccswitch 单 exe 导入的关键差异）。
 var appVersionRe = regexp.MustCompile(`app_version\s*=\s*["'](\d+\.\d+\.\d+)["']`)
 
-// importedDirRe 版本探测失败时的兜底目录后缀（imported-YYYYMMDD-HHMMSS）
-var importedDirRe = regexp.MustCompile(`^imported-\d{8}-\d{6}$`)
+// importedDirRe 版本探测失败时的导入兜底目录后缀：现行形态 imported-<sha256 前 12 hex>
+// （同内容必同版本，查重与时钟无关）；imported-YYYYMMDD-HHMMSS 为历史时间戳形态，继续收纳以兼容存量目录
+var importedDirRe = regexp.MustCompile(`^imported-(?:[0-9a-f]{12}|\d{8}-\d{6})$`)
 
 // fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 镜像回退 +
 // 流式上限），失败注入测试替换为模拟中断/坏摘要源。
@@ -51,7 +52,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // Bili23-Downloader 各版 windows_x64_portable.zip 资产全量携带 GitHub
 // asset.digest（SHA-256），无需走 snipaste/guoheview 的弱摘要薄适配器路线，
 // 下载校验段可整体委托内核。本包只保留 Bili23 领域知识：便携资产筛选、
-// 镜像 URL 模板、版本目录形状（x.y.z 含前导零变体 / imported-时间戳）、
+// 镜像 URL 模板、版本目录形状（x.y.z 含前导零变体 / imported-兜底 tag）、
 // 顶层 Bili23-Downloader/ 包装目录收割、三锚点（Bili23.exe +
 // _pystand_static.int + script/main.py）布局自检、导入版本探测
 // （PE 版本不可信、版本藏 config.py）与既有进度词表映射。
@@ -302,7 +303,7 @@ func (m *Manager) ResolveExe(version string) (string, error) {
 	return filepath.Join(dir, exeName), nil
 }
 
-// resolveVersionDir 定位版本隔离目录（bili23_X.Y.Z 或 bili23_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（bili23_X.Y.Z 或 bili23_imported-兜底 tag）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -317,7 +318,7 @@ func (m *Manager) resolveVersionDir(version string) (dir, token string, err erro
 
 // versionFromToken 把 Tree 扫出的版本令牌规范化为 vX.Y.Z 展示形式
 // （2.15.0 → v2.15.0、2.00.7 → v2.00.7，与原目录名剥前缀加 v 的口径一致）。
-// 仅接受纯 x.y.z（含前导零变体）或 imported-时间戳形状，
+// 仅接受纯 x.y.z（含前导零变体）或 imported-兜底 tag形状，
 // bili23_v2.15.0 之类带 v 前缀的历史/外来目录名不列入。
 func versionFromToken(token string) (string, bool) {
 	if plainVersionRe.MatchString(token) || importedDirRe.MatchString(token) {
@@ -477,8 +478,16 @@ func (m *Manager) ImportLocal(srcDir string) (Bili23VersionInfo, error) {
 
 	version := detectAppVersion(srcDir)
 	if !plainVersionRe.MatchString(version) {
-		// 版本探测失败（config.py 缺失/格式变更）：时间戳兜底，与 ccswitch ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（config.py 缺失/格式变更）：内容哈希兜底——取源目录主 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份安装静默装成两份）。注意 bili23 的 exe 是
+		// pythonw 改名壳，若两个不同版本都缺 config.py 会被判为同一兜底版本——宁可
+		// 多拒一次也不静默装两份。导入时刻由账本 installedAt 承载，不再进版本串。
+		sum := fileSHA256(filepath.Join(srcDir, exeName))
+		if sum == "" {
+			return Bili23VersionInfo{}, fmt.Errorf("计算导入主程序摘要失败，导入中止: %s", srcDir)
+		}
+		version = "imported-" + sum[:12]
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {

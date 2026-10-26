@@ -38,7 +38,7 @@ const (
 
 // portableDirRe 版本目录名（vscode_1.136.1；imported- 收纳版本探测失败的导入）。
 // 与 Tree 的通用令牌白名单取交集使用：目录形状判定保留本模块历史口径。
-var portableDirRe = regexp.MustCompile(`^(?:[0-9][0-9a-zA-Z.]+|imported-\d{8}-\d{6})$`)
+var portableDirRe = regexp.MustCompile(`^(?:[0-9][0-9a-zA-Z.]+|imported-(?:[0-9a-f]{12}|\d{8}-\d{6}))$`)
 
 // fetcher 受控下载接缝：默认为内核 artifact.Fetch（官方摘要必检 + 字节双核 +
 // 流式上限），失败注入测试替换为模拟中断/坏摘要源。
@@ -49,7 +49,7 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // 本包保留领域知识：官方更新网关直链解析、双形态资产策略（安装版 Inno 交互
 // 安装留模块 bespoke）、便携布局锚点自检（exe + bin/code.cmd +
 // */resources/app/product.json + data\ 激活器）、版本目录形状
-// （x.y.z / imported-时间戳）、本地导入整套迁移与既有进度词表映射。
+// （x.y.z / imported-兜底 tag）、本地导入整套迁移与既有进度词表映射。
 //
 // 完整性策略（上游官方 sha256 仅最新版可查，见 remote.go，ADR-0002 §5 同款
 // 分治）：
@@ -223,7 +223,7 @@ func (m *Manager) Remove(version string) error {
 	return m.tree.Remove(token, nil)
 }
 
-// resolveVersionDir 定位版本隔离目录（vscode_X.Y.Z 或 vscode_imported-时间戳）。
+// resolveVersionDir 定位版本隔离目录（vscode_X.Y.Z 或 vscode_imported-兜底 tag）。
 // 形状外令牌（含路径穿越）先于任何磁盘访问被拒，错误口径与原实现一致。
 func (m *Manager) resolveVersionDir(version string) (dir, token string, err error) {
 	token = strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -252,7 +252,15 @@ func (m *Manager) ImportLocal(srcDir string) (VersionInfo, error) {
 	srcExe := filepath.Join(srcDir, exeName)
 	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !plainSemver.MatchString(version) {
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取 Code.exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份安装静默装成两份）。导入时刻由账本
+		// installedAt 承载，不再进版本串。
+		sum := fileSHA256(srcExe)
+		if sum == "" {
+			return VersionInfo{}, fmt.Errorf("计算导入主程序摘要失败，导入中止: %s", srcExe)
+		}
+		version = "imported-" + sum[:12]
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {

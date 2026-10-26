@@ -20,7 +20,8 @@ import (
 // --config/--log-dir 改道托管目录，与源目录无涉）。
 // 源必须满足与下载链同一布局不变式（checkPiikLayout 门口即拒，宁可导入
 // 失败也不收进残缺安装）。版本探测：主 exe PE FileVersion，非 x.y.z 形状
-// 或探测失败（非 Windows/资源缺失）时时间戳兜底，与家族 ImportLocal 同构。
+// 或探测失败（非 Windows/资源缺失）时内容哈希兜底（源 exe sha256 前 12 hex，
+// 同内容必同版本、查重与时钟无关），与家族 ImportLocal 同构。
 // 调用方需先确保源实例未运行（运行中的 exe 被 Windows 独占，拷贝必然失败）。
 func (m *Manager) ImportLocal(srcDir string) (PiikVersionInfo, error) {
 	srcDir = filepath.Clean(strings.TrimSpace(srcDir))
@@ -35,8 +36,15 @@ func (m *Manager) ImportLocal(srcDir string) (PiikVersionInfo, error) {
 
 	version, vErr := versioninfo.FileVersion(srcExe)
 	if vErr != nil || !plainVersionRe.MatchString(version) {
-		// 版本探测失败（非 Windows 平台或资源缺失）：时间戳兜底，与 frpc/DBX ImportLocal 同构
-		version = "imported-" + time.Now().Format("20060102-150405")
+		// 版本探测失败（非 Windows 平台或资源缺失）：内容哈希兜底——取被导入主 exe 的
+		// sha256 前 12 hex，同内容必同版本，重复导入判定与时钟无关（历史秒级时间戳
+		// 兜底仅同秒内互斥，跨秒会把同一份文件静默装成两份）。导入时刻由账本
+		// installedAt 承载，不再进版本串。
+		sum, hErr := fileSHA256(srcExe)
+		if hErr != nil {
+			return PiikVersionInfo{}, fmt.Errorf("计算导入主程序摘要失败: %w", hErr)
+		}
+		version = "imported-" + sum[:12]
 	}
 	targetDir := filepath.Join(m.versionsDir, dirPrefix+version)
 	if _, err := os.Stat(targetDir); err == nil {
@@ -71,7 +79,7 @@ func (m *Manager) ImportLocal(srcDir string) (PiikVersionInfo, error) {
 	}); err != nil {
 		return PiikVersionInfo{}, err
 	}
-	meta := artifact.Meta{Entry: exeName, AssetSHA256: assetSHA, Source: artifact.SourceImported}
+	meta := artifact.Meta{Entry: exeName, AssetSHA256: assetSHA, Source: artifact.SourceImported, InstalledAt: time.Now()}
 	if err := m.tree.Commit(staging, version, meta); err != nil {
 		return PiikVersionInfo{}, err
 	}

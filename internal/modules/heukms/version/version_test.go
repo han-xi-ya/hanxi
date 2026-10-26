@@ -801,7 +801,7 @@ func TestImportLocalFallbackTokenWhenVersionUnreadable(t *testing.T) {
 
 	info, err := m.ImportLocal(src)
 	if err != nil {
-		t.Fatalf("版本探测失败应走时间戳兜底而非拒绝导入: %v", err)
+		t.Fatalf("版本探测失败应走内容哈希兜底而非拒绝导入: %v", err)
 	}
 	if !strings.HasPrefix(info.Version, "imported-") {
 		t.Fatalf("兜底令牌形状不符: %q", info.Version)
