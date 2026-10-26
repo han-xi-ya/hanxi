@@ -65,8 +65,19 @@ type releaseCache struct {
 	fetchedAt time.Time
 }
 
-// headClient 元数据探测客户端（12s 超时，HEAD 无正文）。
-func headClient() *http.Client { return netx.NewClient(12*time.Second, nil) }
+// headClient 元数据探测客户端（12s 超时，HEAD 无正文；进程级共享实例）。
+// 此前每次调用新建 Transport：上一轮的 keep-alive 连接随旧 Transport 一并弃用。
+// 共享后外网镜像照旧走 netx 代理链（env→WinINET→直连，踩坑 #35 收口）；
+// 回环恒定直连（httptest 靶不被本机 7890 型代理接管，与 gonavi/piik 同规）。
+var headClientShared = newSharedHeadClient()
+
+func newSharedHeadClient() *http.Client {
+	tr := netx.Transport()
+	tr.Proxy = netx.LoopbackAwareProxyFunc()
+	return &http.Client{Timeout: 12 * time.Second, Transport: tr}
+}
+
+func headClient() *http.Client { return headClientShared }
 
 // get 返回单条"最新版"列表。size 供降级链字节数核对（Content-Length 实测）。
 func (c *releaseCache) get() ([]RammapRelease, int64, error) {

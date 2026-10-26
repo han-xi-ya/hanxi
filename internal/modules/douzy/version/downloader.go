@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,17 +27,38 @@ func assetMirrors(version, assetName string) []string {
 
 // downloadTo 依次尝试候选 URL 下载到目标文件，支持重试与镜像故障转移。
 // 无断点续传：每轮每源均从头重下（Setup 单文件 ~147MB，中途断连即该源本轮作废）。
-func downloadTo(client *http.Client, urls []string, dest string, onProgress func(done int64)) error {
+//
+// ctx 贯穿（与 guoheview/rustdesk 同谱的 P0 批 2b 生命周期）：取消在**重试退避间隙、
+// 每个候选源之前、以及传输读循环内**（经 http.NewRequestWithContext 断流）均即时响应。
+// 此前这里用裸 time.Sleep 做退避：模块停用/退出时 drain 门只能干等退避秒数走完，
+// 而 147MB 的包一旦开下，取消根本传不进下载体。
+func downloadTo(ctx context.Context, client *http.Client, urls []string, dest string, onProgress func(done int64)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	const maxRetries = 2
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if attempt > 0 {
-			time.Sleep(time.Duration(attempt) * time.Second)
+			select {
+			case <-time.After(time.Duration(attempt) * time.Second):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 		for _, u := range urls {
-			err := tryDownloadSingle(client, u, dest, onProgress)
+			if err := ctx.Err(); err != nil {
+				return err // 换源之前先验取消：已取消就别再去敲下一个镜像
+			}
+			err := tryDownloadSingle(ctx, client, u, dest, onProgress)
 			if err == nil {
 				return nil
+			}
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr // 取消优先于"源失败"，避免把断流当故障再重试一轮
 			}
 			lastErr = err
 		}
@@ -47,8 +69,8 @@ func downloadTo(client *http.Client, urls []string, dest string, onProgress func
 	return fmt.Errorf("所有下载源均失败")
 }
 
-func tryDownloadSingle(client *http.Client, url, dest string, onProgress func(done int64)) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func tryDownloadSingle(ctx context.Context, client *http.Client, url, dest string, onProgress func(done int64)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}

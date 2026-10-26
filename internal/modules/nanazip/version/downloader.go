@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -16,25 +17,49 @@ func assetMirrors(version, assetName string) []string {
 	return []string{direct, "https://ghfast.top/" + direct, "https://gh-proxy.com/" + direct, "https://mirror.ghproxy.com/" + direct}
 }
 
-func downloadTo(client *http.Client, urls []string, dest string, onProgress func(int64)) error {
+// downloadTo 依次尝试直连与各镜像源。
+//
+// ctx 贯穿（与 douzy/guoheview/rustdesk 同谱）：取消在**换源之前、重试退避间隙、
+// 传输读循环内**（经 http.NewRequestWithContext 断流）均即时响应。旧形态既没有 ctx，
+// 又用裸 time.Sleep 做退避，模块停用/退出时这轮下载与 1s 退避都只能干等。
+func downloadTo(ctx context.Context, client *http.Client, urls []string, dest string, onProgress func(int64)) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		for _, url := range urls {
-			if err := tryDownload(client, url, dest, onProgress); err == nil {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if err := tryDownload(ctx, client, url, dest, onProgress); err == nil {
 				return nil
 			} else {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return ctxErr // 取消优先于"源失败"，别把断流当故障再重试一轮
+				}
 				lastErr = err
 			}
 		}
 		if attempt == 0 {
-			time.Sleep(time.Second)
+			select {
+			case <-time.After(time.Second):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return fmt.Errorf("所有下载源均失败: %w", lastErr)
 }
 
-func tryDownload(client *http.Client, url, dest string, onProgress func(int64)) error {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func tryDownload(ctx context.Context, client *http.Client, url, dest string, onProgress func(int64)) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}

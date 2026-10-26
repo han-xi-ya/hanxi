@@ -183,17 +183,27 @@ func notesOf(html, version, chosen string) []hostfeed.AssetNote {
 	return out
 }
 
+// probeClient 版本页/资产探测共享客户端（进程级单例）。probeAssets 对 N 个
+// release 发 2N+ 个请求、fetchPage 逐 release 取清单——此前逐请求新建
+// Transport，keep-alive 全弃且每套闲置连接池各挂满 IdleConnTimeout 才散。
+// 外网走 netx 代理链（env→WinINET→直连，踩坑 #35 收口）；回环恒定直连
+// （httptest 靶不被本机 7890 型代理接管，与 gonavi/piik 家族新谱同规）。
+var probeClient = func() *http.Client {
+	tr := netx.Transport()
+	tr.Proxy = netx.LoopbackAwareProxyFunc()
+	return &http.Client{Timeout: probeTimeout, Transport: tr}
+}()
+
 // probeAssets 逐资产 HEAD 探测补充 Size/Published，并拉取官方 sha256 清单。
 // 任一探测失败只清空对应字段（降级校验），不整体失败。
 func probeAssets(list []EverythingRelease) {
-	client := netx.NewClient(probeTimeout, nil)
 	for i := range list {
 		rel := &list[i]
 		// 1. HEAD 补大小与发布时间
 		req, err := http.NewRequest(http.MethodHead, rel.AssetURL, nil)
 		if err == nil {
 			req.Header.Set("User-Agent", userAgent)
-			if resp, derr := client.Do(req); derr == nil {
+			if resp, derr := probeClient.Do(req); derr == nil {
 				_ = resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
 					if n, perr := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64); perr == nil {
@@ -228,13 +238,12 @@ func findSHAInManifest(manifest, assetName string) string {
 
 // fetchPage GET 指定 URL 并限制响应体大小（防异常响应撑爆内存）。
 func fetchPage(url string, limit int64) ([]byte, error) {
-	client := netx.NewClient(probeTimeout, nil)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", userAgent)
-	resp, err := client.Do(req)
+	resp, err := probeClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
