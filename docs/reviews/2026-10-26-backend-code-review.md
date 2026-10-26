@@ -411,3 +411,27 @@ rustdesk / mangodisk（其 `versionCompare` 先 `normalizeToken` 剥 v 再比）
 | D4 | **subnetdesk 后台下载/安装完全不入 drain 账**，且 `manager.Download` 无 ctx（rustdesk 同文件已带租约） | 代码核对 | 停用/退出的有界 drain 数不到它，且取消不了（ADR-0001 §1.4） |
 | D5 | rustdesk / subnetdesk 同版本连点**无在飞去重**（`downloadMu` 只圈同步段） | 代码核对；windterm/termora/mangodisk 已有名册/单飞锁可作样板 | 两路并发下载同一资产、两路 rename 同目标、双 done 双通知 |
 | D6 | rustdesk/subnetdesk 导入令牌显示为 `vimported-<hash>`，与 windterm/termora 的 `imported-*` 原样口径不一 | 用例观察 | 家族内展示形状不一致（`resolve` 会剥回，功能无碍） |
+
+---
+
+## 19. 追加修复批次（2026-10-27 凌晨，机主授权"按建议来"后落地）
+
+| 提交 | 内容 | 验证 |
+|---|---|---|
+| `67f3bd3` | 15 家 43 处"只认小写 v"的版本入参归一 → 包内私有 `normalizeVersion`（大小写一律认），每家配词表 + 已装四形态去重（断"下载接缝被调 0 次/名册零登记/目录零新增"）+ 三入口一致性 | rufus 变异检验：改回只剥小写 → 四例红，红样与原缺陷逐字吻合 |
+| `8336d60` | 余下 8 家补齐（含 windterm/termora 的 `HasPrefix(v,"v")` 式门禁——**旧词表未钉大写 V 所以从未暴露**） | 三枪变异（补 v 家族 / HasPrefix 家族 / 剥 v 家族）均红后还原复绿 |
+| `0855d45` | rustdesk/subnetdesk/mangodisk：首装 done 事件先行于 active 落账（照 termora `2ac9b3b` 样板）、subnetdesk 后台任务纳入 drain 门 + ctx 贯穿、rustdesk/subnetdesk 同版本在飞去重 | 四轮变异（换序/摘租约/名册判据失效/ctx 脱钩）均红；还原 cmp 字节一致 |
+| `bd7df64` | mangodisk 生命周期冒烟改用耐久辅助子进程（移植 bcu 样板） | 8 连跑绿 |
+| `c9a038d`+`6189b58`→`c9a038d` 收口 | 版本比较器统一"忽略前导 v/V + 非规范形态恒劣后"，`artifact.Tree` 重复档位删除（单一真相） | 双样本回归（markeron 便携 zip + rufus 单 exe）+ 全量门禁 |
+
+**两处刻意不照派单执行的偏离（判断正确，予以保留）**：`quicklook`/`snipaste`/`paseo` 的既有规范形是"剥 v 取裸号"（上游 tag 无 v、snipaste 的 v 由 `dirPrefix` 承载、paseo 令牌形如 `0.8.0-beta.1`），强改成"补 v"会翻转 `GetActiveVersion` 对外展示形并牵动前端渲染——那是 API 变更不是修 bug。`windterm`/`termora` 的 version 包明确不给 `imported-*` 补 v（有真实 ImportLocal 令牌用例钉着），按其口径保持裸形。
+
+**我派单里的两处错误，被子 agent 顶回**：① "windterm/termora 已是正确样板"（实为同病灶，只是词表没测大写）；② 把 mangodisk 的恒红定性为"并行负载假红"（实为单包 12/12 恒红，根因是 `go test` 的 stdin 是管道 → 无参 cmd.exe 数毫秒自退）。两条都已按实况订正，见 `bd7df64` 与本节。
+
+## 20. 仍存留的同病灶站点（已点名，未动）
+
+1. **`frpc`（并行会话主战场，全程未碰）**：`service.go:181-182` 只剥小写 v 且再补 v（`V7.9.0`→`vV7.9.0`）→ `:194` 去重比对落空 → `:218` 起一路注定失败的后台下载并在 `:200` 占住名册（用户看到"在下载"却永远装不上）；`:254-260 RemoveVersion` 完全不归一，同一值在 Download 回 `started`、在 Remove 报"非法 frpc 版本标识"，两入口互异。修法与 `67f3bd3` 同形，须等该线收口。
+2. **`heukms`（第 9 家漏网）**：`store.go:86-88 normalizeToken` 只剥小写 v，9 处调用位（`service.go:161/170/309/311/331/509/577`、`store.go:45/65`，active 落账也过它）。
+3. **各家 `version/` 包内部的只认小写入口**（本批边界是"service 层收口"，故未动；`mangodisk/version/manager.go:442`、`snipaste/version/manager.go:371` 与病灶逐字相同，优先级最高）：windterm `:188/:385`、termora `:199/:364`、paseo `:186/:316/:395`+`semver.go:51`、quicklook `:268/:324`、rustdesk `:205/:252/:491`、subnetdesk `:204/:251/:490`、mangodisk `:211/:293/:421/:446/:501`。若要"包内自洽"（家族可独立拆走的口径），可再开一批。
+4. `ocr/hosted.go:144 parseHostedSemver` 只剥小写 v（入参来自私发组件清单，非用户手输，风险低）。
+5. **约 25 个包仍用裸 `cmd.exe` 做真进程冒烟**（mangodisk 已修，bcu 早已用耐久夹具）：其"running 持续"类断言在 `go test` 的管道 stdin 下都属运气——若 CI 再现同型红，直接照 `bd7df64` 移植耐久夹具，**不要**放大超时或加 skip。

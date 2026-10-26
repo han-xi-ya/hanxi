@@ -264,7 +264,7 @@ func TestStartEmptyExeRejected(t *testing.T) {
 func TestStartCreateJobFail(t *testing.T) {
 	rec := &eventRecorder{}
 	e := NewEngine(&fakeJobAPI{createErr: errors.New("boom")}, &fakeProbe{}, rec.cb())
-	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustSmokeHelper(t)})
+	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)})
 	if err == nil {
 		t.Fatal("Create 失败应返回错误")
 	}
@@ -277,7 +277,7 @@ func TestStartAssignFail(t *testing.T) {
 	rec := &eventRecorder{}
 	api := &fakeJobAPI{job: &fakeJob{assignErr: errors.New("boom")}}
 	e := NewEngine(api, &fakeProbe{}, rec.cb())
-	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustSmokeHelper(t)})
+	err := e.Start(StartOptions{Version: "v1.0.7", Exe: mustCmdExe(t)})
 	if err == nil {
 		t.Fatal("Assign 失败应返回错误")
 	}
@@ -459,7 +459,7 @@ func TestOpenWindowMessengerFailurePropagates(t *testing.T) {
 // TestOpenWindowMessenger 信使拉起冒烟：真实 cmd.exe 短命进程，仅验证不阻塞不报错。
 func TestOpenWindowMessenger(t *testing.T) {
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
-	if opened, err := e.OpenWindow(mustSmokeHelper(t)); err != nil || !opened {
+	if opened, err := e.OpenWindow(mustCmdExe(t)); err != nil || !opened {
 		t.Fatalf("OpenWindow = %v, %v; want true, nil", opened, err)
 	}
 }
