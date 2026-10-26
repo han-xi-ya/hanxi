@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // WSL 本体版本页签（「🧩 本体版本」：GitHub 官方 Releases × 本机关系 × MSI 应用内下载，
-// Phase 6 式自 WSLView 拆分）。内置 MSI 下载走 wsl:msi-download 事件回推——订阅随本组件挂载，
-// 与拆分前同帧（页签为 v-show 常驻）；「🔄 立即更新」意图上抛视图走 runOp 白名单（与就绪页共用编排）。
-// 行为逐字迁出：bindings 调用与确认/toast 序列未做任何改动。
+// 拆分自 WSLView）。内置 MSI 下载走 wsl:msi-download 事件回推——订阅随本组件挂载期建立
+// （页签 v-show 常驻，首帧即在听）；「🔄 立即更新」意图上抛视图走 runOp 白名单（与就绪页共用编排）。
+// bindings 调用与确认/toast 序列为特征测试锁定的契约。
 import { onMounted, ref } from 'vue'
 import * as WSLAPI from '../../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { Report } from '../../../bindings/hanxi/internal/modules/wsl/readiness/models'
@@ -237,18 +237,18 @@ onMounted(() => {
 <style scoped>
 /* 全局原子落 components.css；以下为本页签独有或有意补差（注释注明）。 */
 
-/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）在
    components.css :where(.wsl-view) 原子区，六面板共用，本页签不再自持副本。 */
-/* .banner.slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
+/* .banner.slim 不挂等值副本：UiBanner 根元素挂 .banner + .slim，走全局 :where(.banner.slim) */
 /* .dim 非全局原子名，本控制台独有 */
 .dim { color: var(--color-text-muted); font-size: var(--text-sm); }
 
-/* 版本面板：底色/边框/内距/圆角/弹性布局落回全局 .control-panel；
-   此处仅留 WSL 档补差（gap 与换行，全局标准形无——定档候选，见收编报告） */
+/* 版本面板：底色/边框/内距/圆角/弹性布局走全局 .control-panel；
+   此处仅留 WSL 档补差（gap 与换行，全局标准形无——入册 docs/FRONTEND.md「下轮候选」②） */
 .control-panel { gap: 10px; flex-wrap: wrap; }
-/* 字号/颜色/列布局落回全局 .meta-info（strong 反色同为全局原子）；此处仅留收缩补差 */
+/* 字号/颜色/列布局走全局 .meta-info（strong 反色同为全局原子）；此处仅留收缩补差 */
 .meta-info { min-width: 0; }
-/* display/gap 落回全局 .btn-group；此处仅留换行补差 */
+/* display/gap 走全局 .btn-group；此处仅留换行补差 */
 .btn-group { flex-wrap: wrap; }
 .update-inline { margin-left: 10px; }
 
@@ -257,6 +257,6 @@ onMounted(() => {
 .plat-chip.current { color: var(--color-on-primary); background: var(--color-primary); border-color: var(--color-primary); }
 .badge-current { font-size: var(--text-micro); font-weight: 700; color: var(--color-primary); }
 .dl-bar { width: 110px; display: inline-flex; }
-/* 色与字号落回全局 .dl-error；此处仅留加粗补差 */
+/* 色与字号走全局 .dl-error；此处仅留加粗补差 */
 .dl-error { font-weight: 600; }
 </style>

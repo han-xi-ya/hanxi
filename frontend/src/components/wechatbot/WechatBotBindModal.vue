@@ -1,11 +1,9 @@
 <script setup lang="ts">
-// 扫码绑定微信机器人模态框：备注名输入 + 二维码渲染/状态胶囊 + 重试与提示。
-// 自 WechatBotView.vue 随 DOM 逐字迁出的纯展示壳——取码/轮询/关窗等业务动作仍由
-// useWechatBot 编排（本组件仅渲染 qr 状态并上抛 close/retry 与备注名回写）。
-// 显隐开关（showBindModal）留在视图编排层 v-if，与原模板条件位置等价。
+// 扫码绑定微信机器人模态框（拆自 WechatBotView 的纯展示壳）：备注名输入 + 二维码渲染/状态胶囊 + 重试与提示。
+// 取码/轮询/关窗等业务动作仍由 useWechatBot 编排，本组件只渲染 qr 状态并上抛 close/retry 与备注名回写；
+// 显隐开关（showBindModal）留在视图编排层 v-if。
 // 注：模态壳层 CSS（.custom-modal-backdrop/.custom-modal-card/@keyframes modalIn/
-// .cmodal-*/.form-* 家族）与重命名模态的 11 条逐字副本已上收 components.css 共享原子
-// （§9.6-8 治理完成），本组件 scoped 块只留二维码区私有样式。
+// .cmodal-*/.form-* 家族）系 components.css 共享原子（§9.6-8），本组件 scoped 块只留二维码区私有样式。
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 const props = defineProps<{
@@ -27,7 +25,7 @@ const emit = defineEmits<{
   'update:bindRemarkName': [value: string]
 }>()
 
-// 受控输入：读写均代理父级 ref（等价于拆分前模板直接 v-model="bindRemarkName"）。
+// 受控输入：读写均代理父级 ref（宿主经 v-model:bindRemarkName 接线）。
 const remarkModel = computed({
   get: () => props.bindRemarkName,
   set: (v: string) => emit('update:bindRemarkName', v),
@@ -129,8 +127,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 模态壳层家族（custom-modal、cmodal、form 系列与 @keyframes modalIn）
-   已上收 components.css（§9.6-8），以下仅二维码渲染区私有样式。 */
+/* 模态壳层家族（custom-modal、cmodal、form 系列与 @keyframes modalIn）走
+   components.css 共享原子（§9.6-8），以下仅二维码渲染区私有样式。 */
 .qr-render-container {
   display: flex;
   flex-direction: column;

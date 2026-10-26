@@ -253,8 +253,8 @@ onBeforeUnmount(() => openMore(false))
 }
 .ct-chip:hover { background: var(--surface-hover); color: var(--color-text); }
 .ct-chip.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
-/* 样式审计 C5：环内收 -2px——本钮在 .ct-chips 横向滚容器内（padding 2px 0，overflow-x auto
-   使纵向同为 auto），外扩环会被裁半；同 AppNavRail 轨道既有内收口径（色源不动，归 H 线 A1）。 */
+/* 环内收 -2px：本钮在 .ct-chips 横向滚容器内（padding 2px 0，overflow-x auto
+   使纵向同为 auto），外扩环会被裁半；同 AppNavRail 轨道既有内收口径（样式审计 C5）。 */
 .ct-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 
 .ct-pause {
@@ -271,9 +271,9 @@ onBeforeUnmount(() => openMore(false))
 .ct-dot-live { background: var(--state-positive); }
 .ct-dot-paused { background: var(--state-warning); }
 
-/* 溢出菜单（容器皮肤与开合纪律照 MemoToolbar 同谱；菜单条目留本件——
-   低频面只有设置与清空两件，不借道视图插槽。v1.8 起两项：记录设置
-   （toggle 语义，在场态打点）+ 清空（danger）） */
+/* 溢出菜单（容器皮肤与开合纪律照 MemoToolbar 同谱；菜单条目留本件，
+   不借道视图插槽）：记录设置（toggle 语义，在场态打点）+ 清空粘贴队列
+   （v1.8，余数>0 才可点）+ 清空全部历史（danger）三件 */
 .ct-more { position: relative; flex: none; }
 .ct-caret { font-size: var(--text-micro); }
 .ct-menu {

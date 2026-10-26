@@ -1,14 +1,14 @@
 <script setup lang="ts">
-// 果核看图控制台（Wave 5 · 批 1 收敛件，波 2E 版本区回迁收口）：共享面全部进
+// 果核看图控制台：共享面全部进
 // 托管控制台家族——adapter（src/adapters/guoheview）承载业务投影（RPC/事件/文案），
 // useManagedConsole 单源状态轮询/uptime/进度 map/busy 闩，ManagedControlBar 管
 // 状态头与启停钮（多实例 OpenWindow 聚焦/唤回/另开三分支在 adapter.control.primary
 // run 内部消化，UI 恒为一钮），ManagedVersionPanel 管版本区，ManagedExtrasCard
 // 管随关与官网联动卡。
-// 官方发布接口方言的承接位（波 2E 审计实证，词面全部逐字保留）：stable/beta
+// 官方发布接口方言的承接位（审计实证，词面全部入契约）：stable/beta
 // 「通道列」走面板 #release-extra-col(+head) 槽；「↻ 刷新发布接口」钮词走面板
 // refreshLabel 位；「官方便携」「安装中」「MD5 校验…/解压安装…」等在 adapter.copy
-// 声明——整表重画自此退役，发布时间/上游发布两列随六列标准形收敛（空值如实「—」）。
+// 声明——不整表重画，发布时间/上游发布两列即六列标准形（空值如实「—」）。
 import { ref } from 'vue'
 import { createGuoheViewAdapter } from '../adapters/guoheview'
 import { useManagedConsole } from '../components/managed/store'
@@ -57,9 +57,9 @@ const MAIN_TABS = [
     <!-- 联动与官网设置卡（随关 + 官网行，条目文案在 adapter） -->
     <ManagedExtrasCard :adapter="adapter" />
 
-    <!-- 版本管理 Tab：共享面板接管（波 2E 回迁）——「通道」方言列经
-         #release-extra-col(+head) 槽承接（th 词面逐字），刷新钮词走 refreshLabel 位，
-         其余词面在 adapter.copy；gv-ver-status 锚点族随手抄表退役 -->
+    <!-- 版本管理 Tab：共享面板接管——「通道」方言列经
+         #release-extra-col(+head) 槽承接，刷新钮词走 refreshLabel 位，
+         其余词面在 adapter.copy；本视图不手抄版本表 -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
       <ManagedVersionPanel :adapter="adapter" :store="store" refresh-label="↻ 刷新发布接口">
         <template #release-extra-col-head>通道</template>
@@ -74,8 +74,8 @@ const MAIN_TABS = [
 
 <style scoped>
 /* 页头/控制条/提示条/版本面板/联动卡由 managed 组件 + components.css 全局原子接管
-   （原 .gv-status-light 复制体已由 .status-light 标准形替代）；
-   波 2E 后本页仅余控制台 Tab 私有形（折叠说明卡/胶囊补差）。 */
+   （状态灯即 .status-light 标准形，不落本地复制体）；
+   本页仅余控制台 Tab 私有形（折叠说明卡/胶囊补差）。 */
 .guoheview-view { display: flex; flex-direction: column; gap: 10px; }
 .tab-body { display: flex; flex-direction: column; gap: 10px; }
 
@@ -87,7 +87,7 @@ const MAIN_TABS = [
 .info-details[open] .summary-text { border-bottom: 1px solid var(--color-border); }
 .info-details[open] .summary-text::after { transform: rotate(90deg); }
 
-/* 版本区（含通道列槽）全部渲染在 ManagedVersionPanel 子件内（波 2E 回迁：
-   手抄表与其 control-panel、inst- 系列及表格补差随迁移删净，本视图 scoped 不再
+/* 版本区（含通道列槽）全部渲染在 ManagedVersionPanel 子件内（手抄表与其
+   control-panel、inst- 系列及表格补差已删净，本视图 scoped 不再
    触版本区 DOM）；联动与官网设置卡家族由全局原子接管 */
 </style>

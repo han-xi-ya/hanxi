@@ -9,7 +9,8 @@
 /** 条目类别：文本 / 图片 / 文件列表（CF_HDROP）。 */
 export type ClipKind = 'text' | 'image' | 'file'
 
-/** 一条剪贴板历史（wire 形态；落盘 Text 为 DPAPI 密由后端处理，前端不见）。 */
+/** 一条剪贴板历史（wire 形态；落盘 Text 为明文——契约 §12 v1.6 机主裁决取消
+ *  DPAPI，明文只随本机数据根携带——List/事件不带正文，前端明文仅 Get 回填可见）。 */
 export interface ClipEntry {
   id: string
   hash: string
@@ -84,7 +85,7 @@ export interface ClipPaused {
  * 用户偏好（GetPrefs/SetPrefs 往返面；契约 §12 v1.8）。
  * 整表替换语义：SetPrefs 必须发全量——漏发域=回落默认，前端本地持全表，
  * 改一项发全表。maxEntries/maxBlobMB 回显的是**钳制后的生效值**。
- * queueHotkey 只读回显（写路径在 SetQueueHotkey 域，提交 2 激活）。
+ * queueHotkey 只读回显（SetPrefs 忽略该字段保留旧值，改键只走 SetQueueHotkey）。
  */
 export interface ClipPrefs {
   maxEntries: number

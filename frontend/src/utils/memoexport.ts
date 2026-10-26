@@ -1,8 +1,8 @@
-// 随手记导出面（N16 C 批）：单条 .md 导出 + 全库 .md 汇总，纯前端零新后端。
-// 通道选型实证：bindings 里 DialogManager 是空 typedef（无可调用方法）；
-// @wailsio/runtime 的 Dialogs.SaveFile 能弹原生"另存"框但只回路径、beta.10
-// 无配套写字节流（无 FileWritingHandler），且现面没有任何可写任意路径的
-// Go 绑定——"对话框+落盘"闭环必须等新后端签名（见交付报告清单）。本轮走
+// 随手记导出面：单条 .md 导出 + 全库 .md 汇总，纯前端零新后端。
+// 通道选型实证（为何不用原生"另存"框）：bindings 里 DialogManager 是空
+// typedef（无可调用方法）；@wailsio/runtime 的 Dialogs.SaveFile 能弹原生框但
+// 只回路径、beta.10 无配套写字节流（无 FileWritingHandler），现面也没有任何
+// 可写任意路径的 Go 绑定——"对话框+落盘"闭环需等新后端签名。故走
 // 浏览器原生 Blob 下载（Wails examples/web-apis/blob 证实该 Web API 在
 // WebView 窗内可用），下载不可用时调用方降级为复制原文。
 // 敏感纪律：本模块不感知过滤决策——masked 条目的排除发生在调用方取数后、

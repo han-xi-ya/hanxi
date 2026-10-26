@@ -188,7 +188,7 @@ watch(proxyUrl, () => {
 // 后端流式进度推送（setup 期订阅 + 自动注销；开放端口增量去重、按端口号升序）
 useWailsEvent<ScanProgress>('portscan:progress', (p) => {
   if (!p) return
-  // 逐字保留原实现：字段无条件覆盖（不做 ?? 旧值兜底）
+  // 进度字段无条件覆盖（不做 ?? 旧值兜底：0 值也必须如实落地）
   currentTaskId.value = p.taskId
   progressScanned.value = p.scanned
   progressTotal.value = p.total
@@ -447,13 +447,12 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* 页头/错误提示(UiBanner)/.btn 家族/.tbl 基样式由 PageHeader、全局原子接管。
-   本视图 .btn-primary 原硬编码 GitHub 蓝 #0969da（Phase 1 转青时的"漏色户"）随删除归一为青绿。
-   （原 .toast 死代码已删——模板从未引用） */
+/* 页头/错误提示(UiBanner)/.btn 家族/.tbl 基样式由 PageHeader、全局原子承担，
+   本视图不挂本地色档覆盖（历史硬编码主色与 .toast 死档均已除）。 */
 .portscan-page { display: flex; flex-direction: column; gap: 14px; height: 100%; }
 
 /* .section-card/.card-header/.header-left/.badge-tag/.param-item/.checkbox-label/.unit
-   已上收家族共享件 portscanPanels.css（本文件末尾以 scoped src 引入），此处不留第二份 */
+   在家族共享件 portscanPanels.css（本文件末尾以 scoped src 引入），此处不留第二份 */
 
 .input-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
@@ -465,7 +464,7 @@ onUnmounted(() => {
   padding: 8px 12px; font-size: var(--text-base); color: var(--color-text); font-family: inherit; width: 100%;
 }
 .select-input { width: auto; font-size: var(--text-sm); padding: 6px 10px; cursor: pointer; }
-/* 样式审计 C10（2026-10-27）：删 `outline: none`，键盘焦点交还全局 :focus-visible 环，换色边保留。 */
+/* 勿恢复 `outline: none`：scoped 会压死全局 :focus-visible 键盘焦点环；:focus 只留换色边。 */
 .input:focus, .select-input:focus { border-color: var(--color-primary); }
 .num-input { width: 70px; text-align: center; }
 .proxy-input { width: 230px; font-size: var(--text-sm); padding: 5px 8px; }
@@ -509,11 +508,11 @@ onUnmounted(() => {
 .mode-selector { display: flex; align-items: center; gap: 6px; }
 .proxy-item { display: flex; align-items: center; gap: 6px; }
 
-/* display 落回全局 .btn-group；仅 gap 散差（10 vs 全局 8）暂留——定档候选，见收编报告 */
+/* display 走全局 .btn-group；仅 gap 散差（10 vs 全局 8）暂留本地，定档候选 */
 .btn-group { gap: 10px; }
 
-/* 实心红"终止扫描"scoped 副本删净，落回全局 :where(.btn-danger) 标准形（N38 已收编实心危险档；
-   旧副本把 border-color 钉成同红底无界感、hover 用自调 brightness(0.92)，均换为标准深边 + 深底档）。 */
+/* 「终止扫描」走全局 :where(.btn-danger) 实心危险标准形，不挂 scoped 覆盖档
+   （旧副本自钉 border 同红底、hover 自调 brightness，均已换为标准深边 + 深底档）。 */
 
 /* 进度卡片 */
 .progress-card {
@@ -523,10 +522,10 @@ onUnmounted(() => {
 .progress-info { display: flex; justify-content: space-between; font-size: var(--text-sm); color: var(--color-text-muted); }
 .highlight-open { color: var(--state-positive); font-size: var(--text-base); }
 .duration-tag { color: var(--color-text-subtle); }
-/* 进度条轨/填充两行 scoped 副本已删净（波 1a），落回公共件 UiProgressBar 标准形 */
+/* 进度条轨/填充形制由公共件 UiProgressBar 承担，本视图不挂副本 */
 
-/* 结果表格（.tbl 基样式与 th 内距落回全局；此处仅真差异：表头 sticky + page 色底。
-   原 .tbl td 的 color 覆盖系冗余——body 已 --color-text，删落回） */
+/* 结果表格（.tbl 基样式与 th 内距走全局；此处仅真差异：表头 sticky + page 色底。
+   .tbl td 不挂 color 覆盖——body 已 --color-text，挂了即冗余） */
 .result-card { flex: 1; min-height: 280px; }
 
 .source-tag { color: var(--color-primary); border: 1px solid var(--color-primary); font-family: var(--font-mono); }
@@ -542,14 +541,14 @@ onUnmounted(() => {
 .banner-text { font-size: var(--text-sm); color: var(--color-text); font-family: var(--font-mono); }
 .fp-badge { font-size: var(--text-micro); background: var(--surface-hover); color: var(--color-text-subtle); padding: 1px 6px; border-radius: 4px; }
 .latency-tag { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-muted); }
-/* .text-muted 与全局原子逐字等值，副本删净落回（§9.6-10 muted 派定档） */
+/* .text-muted 走全局原子（§9.6-10 muted 派定档），本视图不挂副本 */
 
 .empty-cell { text-align: center; padding: 40px 10px !important; }
 /* 表格内嵌空态与全局 .empty-state（虚线卡）形制不同：视图变体保留 scoped */
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--color-text-muted); font-size: var(--text-base); }
 .empty-icon { font-size: var(--text-2xl); }
 
-/* 行内微操作钮收编全局 .btn-micro（padding/字号逐字同形），原私有 .btn-xs 副本删除 */
+/* 行内微操作钮走全局 .btn-micro（padding/字号同形），不另挂 .btn-xs 私有档 */
 
 </style>
 

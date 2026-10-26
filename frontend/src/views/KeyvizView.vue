@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// Keyviz 键显托管工作台（Wave 5 · 批 1 · MSI 提取族收敛件）：
+// Keyviz 键显托管工作台（MSI 提取族，托管控制台标准形）：
 // 业务投影全部收进 src/adapters/keyviz（RPC/事件/文案），本页仅剩装配与
 // 业务说明卡（默认槽内容）；状态轮询/uptime/下载进度/启停/版本区/联动卡
-// 由 components/managed 托管控制台家族单源承载（照抄 ccswitch 黄金样本形）。
-// MSI 特殊安装文案走 adapter copy 钩子；表内标准词按批 0 契约定档。
+// 由 components/managed 托管控制台家族单源承载。
+// MSI 特殊安装文案走 adapter copy 钩子；表内标准词按共享契约定档。
 // 键显特有：主钮为「▶ 启动可视化」（StartKeyviz 非唤窗），上游无桌面快捷方式。
 import { createKeyvizAdapter } from '../adapters/keyviz'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'

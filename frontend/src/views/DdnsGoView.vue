@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// ddns-go 控制台（Wave 5 · 批 0 共享契约收敛件；模式照抄 ccswitch 黄金样本）：
+// ddns-go 控制台（托管控制台标准形）：
 // 共享面全部收敛进 components/managed 托管控制台家族——adapter（src/adapters/ddnsgo）
 // 承载业务投影（启停/版本/联动 RPC + log/port 数据面），ManagedConsoleShell 管页头
 // 与页签骨架，store 单源轮询/uptime/进度 map/busy 闩。本视图仅剩装配与
@@ -24,7 +24,7 @@ function addrOf(snap: unknown): string {
   return (snap as Snapshot | null | undefined)?.listenAddr ?? ''
 }
 
-// ---------- 进程输出日志面板（log 槽首个实战：数据面经 adapter.log，UI 在本视图） ----------
+// ---------- 进程输出日志面板（log 槽消费点：数据面经 adapter.log，UI 在本视图） ----------
 const MAX_LOG_LINES = 400
 const logLines = ref<string[]>([])
 const logAutoScroll = ref(true)
@@ -71,7 +71,7 @@ adapter.log.subscribe(appendLog)
 // 状态从非运行切到 running 时重取日志历史（引擎环形缓冲随新进程重启）。
 // instance-state 的快照订阅已被 store 占用，这里另起一个独立订阅只看该边沿——
 // Wails runtime 支持同事件多监听器，互不影响；切换以事件推送为准（2.5s 轮询
-// 仅是快照兜底，非迁移前 watch(snap) 的同义，实际转移恒有事件到达）。
+// 仅是快照兜底，实际转移恒有事件到达）。
 let lastState = ''
 useWailsEvent<Snapshot>('ddnsgo:instance-state', (s) => {
   if (!s) return
@@ -102,8 +102,8 @@ async function applyPort() {
 }
 
 // ---------- 第三钮「打开控制台」（#primary-action 槽注入） ----------
-// P0 批 3·4.5 单飞收编 + 波 2D 归一：runExclusive→settle→toast 整链交
-// store.runSlotVerb——参数位逐字锚定本视图现形制（对账表实据）：失败裸错误串
+// 单飞收编（P0 批 3·4.5 口径）：runExclusive→settle→toast 整链交
+// store.runSlotVerb——参数位逐字锚定本视图现形制：失败裸错误串
 // （errorPrefix:''），成败两分支均不刷快照（refreshAfter:'never'），成功后的
 // 状态回写由 instance-state 事件与 2.5s 轮询兜底；回执 message 经 settle 弹串。
 function openConsole(store: ManagedConsoleStore) {
@@ -194,9 +194,7 @@ onMounted(async () => {
 
 <style scoped>
 /* 页头/控制条/提示条/联动卡/版本区/页签与 flex 骨架全部由 managed 组件 +
-   components.css 全局原子接管（原 .control-bar/.ver-pill 小圆角方片私有覆写
-   与 .dd-status-light 复制体随迁入共享件而废止，落回标准形）；
-   本页仅余 #console-extra 业务件样式。 */
+   components.css 全局原子接管；本页仅余 #console-extra 业务件样式。 */
 
 /* 监听地址行：状态头无模块字段位，addr-tag 迁入控制台槽顶行 */
 .dd-addr-line { display: flex; align-items: center; gap: 8px; }

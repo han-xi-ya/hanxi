@@ -1,5 +1,5 @@
 // ============================================================================
-// Piik → 托管控制台 adapter（五路并行 · piik 前端线 C，服务型骨架首个消费件）
+// Piik → 托管控制台 adapter（服务型骨架首个消费件）
 //
 // 上游定位（PLAN_PIIK_HOSTING ①/②裁决）：TNTcraftHIM/Piik，headless 屏幕分享
 // 服务——无自有窗口、无托盘，操作界面在用户系统浏览器（http://127.0.0.1:<port>/，
@@ -19,11 +19,10 @@
 //   对位的账目话术单点收口在后端——前端零自造，取回经 ref+getter 供面板响应式
 //   消费，端口/使用版本变动后重取一次）。
 //
-// 类型注记：绑定面（piikservice + models 生成物）随 A/B 线合入后统一
-// regenerate（总闸批次），此前 vue-tsc 报缺符号属预期。本文件不 import 绑定
-// models，PiikStatus 为**冻结契约的本地结构投影**（JSON 字段名与
-// internal/modules/piik/models.go 的 tag 逐字对齐；口令结构性不落前端——
-// gateViewFromSnapshot 只可能给出 passwordSet 布尔，值无处可取）。
+// 类型注记：本文件不 import 绑定 models，PiikStatus 为**冻结契约的本地结构
+// 投影**（JSON 字段名与 internal/modules/piik/models.go 的 tag 逐字对齐；
+// 口令结构性不落前端——gateViewFromSnapshot 只可能给出 passwordSet 布尔，
+// 值无处可取）。
 //
 // 语义纪律（档案①#7/#11）：启动失败文案直取后端原话（恒点名端口与
 // portkill 处置指引）；本页任何措辞不得出现 WebView2/窗口模板话术。

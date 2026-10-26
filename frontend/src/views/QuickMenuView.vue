@@ -1,14 +1,14 @@
 <script setup lang="ts">
 // 快捷菜单模块页：全局右键长按唤出能力的状态、条目预览与就地编辑。
-// v3 布局批（机主授权整页重排，功能零增删）：主角是「条目编辑 ⟷ 轮盘舱」闭环——
+// 页面主角是「条目编辑 ⟷ 轮盘舱」闭环——
 //   页头一行状态条（chip 全绑确认值 refs）→ 双栏主区（左=TrayItemsEditor 编辑主场，
 //   自动保存状态条 sticky 沉底；右=轮盘舱 sticky：预览 + 皮肤，「当前条目」镜像面板已删）
 //   → 行为设置与使用说明沉底并排折叠原位。
-//   断点一律容器查询（页容器实测宽：宽档 C/D 双栏，<840 单列编辑在前+舱紧凑横条，
-//   机主 628 截图批复），页面容器升 wide 1440 档。
-// N5-C1：条目编辑面与托盘右键菜单同挂共享组件 TrayItemsEditor；轮盘独立批后本页
-// 传 scope="wheel" 打轮盘专属账（settings.WheelMenu ⇄ Get/SetWheelMenu），与设置页
-// 托盘账各改各的、互不影响，改动实时自动保存无需按钮。
+//   断点一律容器查询（按页容器实测宽：宽档 C/D 双栏，<840 单列编辑在前+舱紧凑横条），
+//   页面容器挂 wide 1440 档。
+// 条目编辑面与托盘右键菜单同挂共享组件 TrayItemsEditor；本页传 scope="wheel" 打轮盘
+// 专属账（settings.WheelMenu ⇄ Get/SetWheelMenu），与设置页托盘账各改各的、互不影响，
+// 改动实时自动保存无需按钮。
 import { computed, ref, shallowRef, onMounted, onUnmounted } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
 import type { MenuItem } from '../../bindings/hanxi/internal/modules/quickmenu/models'
@@ -181,7 +181,7 @@ const capacityWarn = computed(() => {
     : ''
 })
 
-// ---- 轮盘皮肤（机主拍板 2026-09-26"轮盘皮肤做"；后端化收权批）----
+// ---- 轮盘皮肤 ----
 // 真相账在后端 quickmenu（GetSkin/SetSkin，随 hanxidata 数据目录走 NAS），
 // 读写封装在 wheelSkin 模块双源函数；localStorage 退为镜像缓存（降级兜底 +
 // 跨窗即时）。拨杆/勾选即时生效——本页预览靠响应式 skin 换皮，挂出的轮盘经
@@ -279,7 +279,7 @@ onMounted(async () => {
           <p class="sec-note">
             轮盘专属配置，与「设置→托盘右键菜单」各记各账、互不影响：此处勾选、排序、分组只改轮盘。改动实时自动保存，无需按保存钮；分组未补全（无名或零子条目）时该笔暂缓落盘，补全或移除后自动续存。
           </p>
-          <!-- 轮盘独立批：同挂共享编辑面但 scope='wheel' 打轮盘专属账（Get/SetWheelMenu），每次落盘上抛 saved 刷预览 -->
+          <!-- 同挂共享编辑面但 scope='wheel' 打轮盘专属账（Get/SetWheelMenu），每次落盘上抛 saved 刷预览 -->
           <TrayItemsEditor ref="editorRef" scope="wheel" @saved="reloadAfterSave" />
           <div class="qm-edit-foot">
             <!-- 重设计：编辑已内嵌后"前往设置页配置"大钮属冗余入口，降为页脚等效链接（navigate 契约保留） -->
@@ -435,7 +435,7 @@ onMounted(async () => {
 
 <style scoped>
 /* 页级纵堆节奏：状态条 → 双栏主区 → 次级折叠区。
-   v3 换形枢纽：本元素即容器查询的容器（查询名 qm，容器回调 scale 也测它），
+   本元素即容器查询的容器（查询名 qm，容器回调 scale 也测它），
    断点全部按页容器实测宽走，与 wide 1440 上限自洽；老内核 @container 失效时
    自动落回下方单列基架，即窄端降级形态。 */
 .qm-page {
@@ -452,9 +452,9 @@ onMounted(async () => {
 .qm-param-k { color: var(--color-text-muted); }
 .qm-param-v { font-size: var(--text-xs); color: var(--color-text); }
 
-/* ② 主区基架=窄档（<840 及老内核 @container 失效降级）：单列，DOM 序编辑主场
-   在前、轮盘舱在后——机主 628 批复：工作台首屏主角是编辑列表，舱不再置顶。
-   窄档的紧凑横条换形与 C/D 双栏见文末容器组；390px 门禁靠 minmax(0,…)。 */
+/* 主区基架=窄档（<840 及老内核 @container 失效降级）：单列，DOM 序编辑主场
+   在前、轮盘舱在后——首屏主角是编辑列表，舱不置顶。
+   窄档的紧凑横条与 C/D 双栏见文末容器组；390px 门禁靠 minmax(0,…)。 */
 .qm-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
 .qm-edit-col { min-width: 0; }
 .qm-side-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -548,10 +548,10 @@ kbd {
   color: var(--color-text);
 }
 
-/* ---------- v3 换形容器组（查询名 qm = .qm-page 实测宽） ----------
+/* ---------- 容器查询换形组（查询名 qm = .qm-page 实测宽） ----------
    窄档 <840：舱降级为一条紧凑横条——条身自披卡面（padding/border/底一律用
    既有档位值），两块 section 卸卡面只留内容；盘居左一格（180px 格吃 scale
-   0.56 的 179px trim 满格盘，机主"≤180 居左"批复），皮肤控件挤右侧纵列收进
+   0.56 的 179px trim 满格盘，≤180 居左），皮肤控件挤右侧纵列收进
    ~6 行；一切长说明退流（同文案挂 .qm-preview-box 与盘格 title 悬浮可达，宽档
    全量在场）。编辑主场按 DOM 序稳在条前，首屏主角=条目列表。 */
 @container qm (max-width: 839.98px) {

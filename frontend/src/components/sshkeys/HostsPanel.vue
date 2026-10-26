@@ -661,8 +661,8 @@ function rowToggleAria(h: HostEntry): string {
 
 <style scoped>
 /* 只补布局，一切色彩/形制走全局原子。
-   .card-top 与 KeyringPanel 的 scoped 副本同形——components.css 的收编不归本轮
-   （并行会话在改），这里按现状各留一份，不做跨组件私有样式引用。 */
+   .card-top 与 KeyringPanel 的 scoped 副本同形，上收 components.css 未在册——两家各留
+   一份本地档，不做跨组件私有样式引用。 */
 .card-top {
   display: flex;
   align-items: flex-start;

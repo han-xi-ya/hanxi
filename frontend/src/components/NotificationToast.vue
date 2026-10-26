@@ -8,7 +8,7 @@ const emit = defineEmits<{
 
 const { activeToasts, removeToast, markAsRead } = useNotification()
 
-// 严重度指示灯：emoji 已退役（AppIcon 纪律）——色点仅作冗余强调，语义由模块标签/标题
+// 严重度指示灯（AppIcon 纪律：emoji 不作图标）：色点仅作冗余强调，语义由模块标签/标题
 // 文本承载。档位映射取 constants/status.ts levelTone 单源，.sev-* 色板在 components.css。
 
 function handleToastClick(toast: ToastItem) {
@@ -111,8 +111,8 @@ function handleClose(e: MouseEvent, toast: ToastItem) {
   align-items: flex-start;
   margin-top: 5px;
 }
-/* .sev-dot / .sev-{success,warning,error} 四条与 NotificationDrawer 逐字同形，
-   已上收 components.css 全局原子区（本组件与 Drawer 两份 scoped 副本同步删净）。 */
+/* .sev-dot / .sev-{success,warning,error} 四条样式在 components.css 全局原子区
+   （本组件与 Drawer 的同形 scoped 副本已删净）。 */
 
 .toast-body {
   flex: 1;

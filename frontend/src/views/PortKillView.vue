@@ -26,9 +26,8 @@ const errorMsg = ref('')
 // 快捷端口预设
 const QUICK_PORTS = [80, 443, 3000, 5173, 8080, 8000, 3306, 6379, 27017]
 
-// 查杀串行门禁：一次查杀（含 UAC 提权等待）未完成前不再受理新的释放。
-// 波 2B：门禁态迁 useAsyncAction（busy 名位保留，:disabled="killing" 零改动）；
-// requestKill 的静默预检与 doKill 的提权编排体逐字保留，重入分支由预检+禁用不可达。
+// 查杀串行门禁：一次查杀（含 UAC 提权等待）未完成前不再受理新的释放——
+// requestKill 预检 + 按钮 disabled 双闸；门禁态由 useAsyncAction.busy 供给。
 const { busy: killing, run: runKill } = useAsyncAction()
 
 function sortReleasableFirst(list: PortOccupant[]) {
@@ -84,8 +83,8 @@ function selectQuickPort(port: number) {
   searchPort(port)
 }
 
-// 释放端口：危险确认经全局 useConfirm 单例（原视图自挂 ConfirmDialog 已收编）；
-// 确认后弹层落定，查杀期由 killing 门禁全页释放按钮（含 UAC 提权等待窗口）。
+// 释放端口：危险确认经全局 useConfirm 单例；确认后弹层落定，
+// 查杀期由 killing 门禁禁用全页释放按钮（含 UAC 提权等待窗口）。
 async function requestKill(occ: PortOccupant) {
   if (killing.value) return
   const accepted = await confirm({
@@ -134,7 +133,7 @@ async function doKill(occ: PortOccupant) {
   }
 }
 
-// 确认框明细（原手搓 modal 的信息行逐字迁移到标准 ConfirmDialog details）
+// 确认框明细（标准 ConfirmDialog details 形制）
 function killDetails(occ: PortOccupant) {
   const rows = [
     { label: '目标端口', value: `:${occ.port} (${occ.protocol})` },
@@ -155,7 +154,7 @@ function formatTime(timeStr: string) {
   }
 }
 
-// ---------- 历史记录（弹窗；应用回填端口并触发查询，Q6 行内数据直用） ----------
+// ---------- 历史记录（弹窗；应用回填端口并触发查询，行内数据直用不再回查） ----------
 const showHistory = ref(false)
 
 function applyHistoryPort(rec: HistoryRecord) {
@@ -170,7 +169,7 @@ function applyHistoryPort(rec: HistoryRecord) {
 
 
 
-// ---------- 输出区复制（PLAN_CLIPBOARD §3.2C：PortKill 整页零复制的缺口补齐） ----------
+// ---------- 输出区复制（PLAN_CLIPBOARD §3.2C 在册的 PortKill 输出侧缺口，已补齐） ----------
 // 整表导出按"一行一条、Tab 分隔"，粘进表格/文档即可对齐。
 function occupantLines(list: PortOccupant[]): string {
   return list
@@ -356,8 +355,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 页头/表格/按钮族/错误框/徽章已由全局原子与 UiStatusChip 接管；
-   死代码 .toast/@keyframes fadeIn 与查杀 modal 族（收编进 ConfirmDialog）一并清除。 */
+/* 页头/表格/按钮族/错误框/徽章由全局原子与 UiStatusChip 承担；
+   .toast/fadeIn 死档与查杀 modal 专属档（确认框归全局 useConfirm）不再回挂。 */
 .portkill-page {
   display: flex;
   flex-direction: column;
@@ -387,7 +386,7 @@ onMounted(() => {
   font-size: var(--text-md);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  /* 样式审计 C10（2026-10-27）：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环。 */
+  /* 勿恢复 `outline: none`：本档会压死全局 :focus-visible 键盘焦点环，:focus 只留换色边。 */
   background: var(--surface-soft);
   color: var(--color-text);
 }
@@ -494,10 +493,10 @@ tr:hover .col-path .link-button,
   color: var(--color-primary);
 }
 
-/* 行内"释放端口"危险微钮收编全局 .btn .btn-danger-outline .btn-micro 标准形，
-   原私有软底 .btn-kill（含 hover 实底反白变体）删净落回（目视项）。 */
+/* 行内「释放端口」危险微钮走全局 .btn .btn-danger-outline .btn-micro 标准形，
+   不挂私有软底 .btn-kill 档（形制归一系目视项）。 */
 
-/* 裸文字 32px 档副本删净，落回全局 .empty-hint 标准虚线卡形（§9.6-10 定档裁决——目视项；
-   挂点为 <td colspan>，虚线卡染进单元格为预期收编效果） */
+/* 空态行走全局 :where(.empty-hint) 虚线卡形（§9.6-10 定档，目视项）：挂点为 <td colspan>，
+   虚线卡染进单元格即预期效果，不另挂裸文字档 */
 
 </style>

@@ -1,9 +1,10 @@
-// 局域网文件快传（FileShare）家族专属的字节/速率格式化。
-// Phase 6 结构拆分时自 FileShareView.vue 逐字抽出，供概览卡与传输审计页签共用。
+// 局域网文件快传（FileShare）家族专属的字节/速率格式化（自 FileShareView.vue 拆出，
+// 供概览卡与传输审计页签共用）。
 
 // 字节格式化: 1536 -> "1.5 KB"。
-// 有意保留本地实现而非 utils/format.fmtSize：本视图口径为"0 B 起点 + 千进制对数进位 +
-// 三位有效数字 + B/GB/TB 档"，与家族两档口径（'—'/KB-MB）语义不同，属业务差异非胶水副本。
+// 有意保留本地实现而非 utils/format.fmtSize：本家族口径为"0 B 起点 + 千进制对数进位 +
+// 三位有效数字 + B/KB/MB/GB/TB 档"；fmtSize 则 0/空值显 '—' 且无裸 B 档——语义不同，
+// 属业务差异非胶水副本。
 export function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']

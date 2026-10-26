@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// BoardFullscreen：牌面全屏预览浮层（N30，v4 从 MsgBoardView 内联收编）。
+// BoardFullscreen：牌面全屏预览浮层（N30，现由 MsgBoardView 以 v-if 宿主）。
 //
 // 纪律照旧，逐条锁死：
 //   Teleport 到 body——躲开页面滚动容器与层叠上下文；
@@ -7,11 +7,11 @@
 //   零后端调用：刻意不走挂牌链路（Toggle 是翻转语义，"预览"不该能撤真牌，
 //   瞬时挂撤还会惊动 KeepAwake 登记与 N29 窗组账）；
 //   关闭交互：点击任意处或 Esc，都只 emit('close')——开合态归宿主（v-if），
-//   组件不自杀不藏态，宿主断言链路因此与旧内联版逐字等价（类名 .mbp-full
-//   家族原样沿用，选择器零迁移）。
+//   组件不自杀不藏态；类名 .mbp-full 家族是宿主断言锁点（MsgBoardView.spec
+//   按此断言，勿改名）。
 //
-// Esc 监听生命周期（审查 #20，与 UiHistoryDialog #5 同族）：KeepAlive 四斩
-// 挂摘收编为公共件 useWindowKeyListener——切页失活期 window 监听在场会让
+// Esc 监听生命周期（审查 #20，UiHistoryDialog 同族教训）：KeepAlive 四斩
+// 挂摘走公共件 useWindowKeyListener——切页失活期 window 监听在场会让
 // 异页按 Esc 幽灵收起隐藏预览。
 import { useWindowKeyListener } from '../../composables/useWindowKeyListener'
 import BoardCard from './BoardCard.vue'

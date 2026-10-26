@@ -1,5 +1,5 @@
 // ============================================================================
-// Termora → 托管控制台 adapter（W4 托管批 · N9，模式照抄 windterm 姊妹件）
+// Termora → 托管控制台 adapter（模式照抄 windterm 姊妹件）
 //
 // 事件面：`termora:instance-state` / `termora:version-download`（单键=version）。
 // 方言注记：

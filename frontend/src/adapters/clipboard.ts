@@ -1,10 +1,11 @@
 // ============================================================================
-// 剪贴板内置模块 · 前端服务门面（多 agent 并行 kernel，所有实现 agent 只读）
+// 剪贴板内置模块 · 前端服务门面（视图层访问后端唯一入口）
 //
 // 纪律：视图层**只经本文件**访问后端，方法名与 Go ClipboardService 冻结面
-// 一致（契约 §4/§7）。真实 transport（生成绑定桥）由收口阶段注入；在此之前
-// 任何调用抛可读错误——视图测试一律 setClipboardTransport(fake) 注假件，
-// 不 import bindings/（尚未生成，静态 import 会炸解析）。
+// 一致（契约 §4/§7）。真实 transport 由 adapters/clipboardBridge 在启动期
+// 注入（main.ts，createApp 前）；transport 未注入时调用抛可读错误；
+// 测试一律 setClipboardTransport(fake) 注假件。本门面不静态 import
+// bindings/（绑定面唯一合法 import 点在桥）。
 // 事件订阅不走本文件：直接用既有 useWailsEvent + 下方事件名常量。
 // ============================================================================
 
@@ -57,7 +58,7 @@ export const CLIP_EV = {
 
 let transport: ClipboardTransport | null = null
 
-/** 注入/摘除后端桥（收口阶段与测试专用）。 */
+/** 注入/摘除后端桥（clipboardBridge 启动注入与测试专用）。 */
 export function setClipboardTransport(t: ClipboardTransport | null): void {
   transport = t
 }

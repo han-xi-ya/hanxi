@@ -1,8 +1,8 @@
 // ============================================================================
-// CC Switch → 托管控制台 adapter（Wave 5 · 批 0 黄金样本）
+// CC Switch → 托管控制台 adapter
 //
-// 逐字迁移自 CCSwitchView 原编排段（启停/版本/联动/仓库全部 RPC 与文案零变化），
-// 作为「如何把一份现有 service 绑定适配成 ManagedModuleAdapter」的参考实现。
+// 本件是「如何把一份现有 service 绑定适配成 ManagedModuleAdapter」的参考实现
+// （托管家族黄金样本）。
 // 事件面：`ccswitch:instance-state` / `ccswitch:version-download`（进度键=version，
 // 单键最简形态）；动词面：OpenWindow→control.primary、Quit→control.quit。
 // ============================================================================
@@ -40,7 +40,7 @@ export function createCCSwitchAdapter(): ManagedModuleAdapter {
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载 CC Switch ${v.version}？`,
           description: '该版本隔离目录将被删除，不可恢复。\n（你的 ~/.cc-switch 供应商配置不受影响，后续版本继续共用）',
@@ -52,7 +52,7 @@ export function createCCSwitchAdapter(): ManagedModuleAdapter {
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '导入本地 CC Switch',
           description: '提示：供应商配置恒在 ~/.cc-switch，与安装位置无关',
@@ -91,7 +91,7 @@ export function createCCSwitchAdapter(): ManagedModuleAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 CC Switch 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 CC Switch 托盘操作。' }

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// 悬浮速记卡（N16 B 批，牌面重做批）：后端 MemoService 按全局热键唤出的独立
-// frameless 透明置顶小窗内容（main.ts 按 #memosheet hash 分流挂载并打 .popup-shell，
-// 卡体由本页自绘，透明窗纪律见踩坑 #50——窗口本体不允许有任何实底露出）。
+// 悬浮速记卡：后端 MemoService 按全局热键唤出的独立 frameless 透明置顶小窗内容
+// （main.ts 按 #memosheet hash 分流挂载并打 .popup-shell，卡体由本页自绘，
+// 透明窗纪律见踩坑 #50——窗口本体不允许有任何实底露出）。
 //
-// 交互契约（刻意做窄，重做只动呈现不动保存主路径）：
+// 交互契约（刻意做窄，只动呈现不动保存主路径）：
 //   - 一行正文 + 可选标签：回车即存（走既有 Create 链路，空正文回车 = 收起）；
 //   - Ctrl+Enter = 存并收起：成功创建后才关卡，失败保稿保窗（绝不吞数据）；
 //   - Esc / 失焦 / Alt+F4 收起（Go 侧统一收口，收起后空闲 TTL 真销毁）；
@@ -12,9 +12,9 @@
 //   - 连续速记：保存成功不关窗，清行保焦点，接着敲下一条；
 //   - 粘贴含换行的多行文本：就地并为一条（行间以空格相连，已有草稿前置保留）
 //     并轻提示行数；单行粘贴零干预走原生路径。速记卡是一行面，不做拆条；
-//     接线收口轮（2026-09-26）本条与标签分词、Ctrl+Enter 保存语义同迁主窗速记行
-//     （memoMetrics 单源共享），M3 遗留的两面漂移就此封死；
-//   - 动效三件皆为 transform/opacity 微动效（≤10px、≤180ms，N37 纪律零 glow）：
+//     本条与标签分词、Ctrl+Enter 保存语义同主窗速记行共吃 memoMetrics 单源，
+//     两面不分叉；
+//   - 动效三件皆为 transform/opacity 微动效（≤10px、≤180ms，零 glow 纪律）：
 //     opening 重播入场（is-enter 类钩子，窗口隐藏期挂载不白烧动画）、保存成功
 //     原句化作 .sheet-ghost 飞走残影、提示行常驻占位防跳动；
 //     prefers-reduced-motion 经组件级 + base.css 全局双兜底归零。
@@ -39,7 +39,7 @@ const inputEl = ref<HTMLInputElement | null>(null)
 
 // 残影/入场都是"看一眼就走"的瞬时钩子，定时器只负责收尾拆除；
 // 组件卸载统一 clear，不留悬空回调。
-const FLY_MS = 220 // 与 CSS ghost-fly/sheet-in（180ms）留 ~40ms 余量
+const FLY_MS = 220 // 盖过 ghost-fly 180ms（--motion-slow）与 sheet-in 160ms 各留 ~40ms 余量
 let flyTimer: number | undefined
 let enterTimer: number | undefined
 
@@ -69,10 +69,6 @@ function replayEnter() {
   })
 }
 
-// 标签解析走 memoMetrics.parseTagTokens 单源（接线收口轮删去与主窗速记行的
-// 逐字重复第二份）：空白/逗号顿号分词，自动补 #（后端 cleanTags 还有一道归一，
-// 这里是所见即所得的第一道）。
-
 async function dismiss() {
   try {
     await MemoAPI.MemoService.HideQuickSheet()
@@ -90,6 +86,8 @@ async function commit(closeAfter = false) {
   if (saving.value) return
   saving.value = true
   try {
+    // 标签解析走 memoMetrics.parseTagTokens 单源（与主窗速记行同一分词器）：
+    // 空白/逗号顿号分词，自动补 #（后端 cleanTags 还有一道归一，这里是所见即所得的第一道）。
     await MemoAPI.MemoService.Create('', v, parseTagTokens(tagsInput.value), 'blue')
     text.value = ''
     tagsInput.value = ''
@@ -109,7 +107,7 @@ async function commit(closeAfter = false) {
 }
 
 function onEnter(e: KeyboardEvent) {
-  // 中文输入法组字中的回车只结束选词，不该触发保存（主窗速记条同款豁免）
+  // 中文输入法组字中的回车只结束选词，不该触发保存（主窗速记行同款豁免）
   if (e.isComposing) return
   void commit(e.ctrlKey || e.metaKey) // Ctrl/Cmd+Enter = 存并收起
 }
@@ -118,8 +116,8 @@ function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') void dismiss()
 }
 
-// 多行粘贴并条的判定与拼接走 memoMetrics.flattenPastedLines 单源（接线收口轮
-// 主窗速记行对齐此语义，两面从此不分叉）；卡内反馈仍走轻提示槽位。
+// 多行粘贴并条的判定与拼接走 memoMetrics.flattenPastedLines 单源（与主窗速记行
+// 同源不分叉）；卡内反馈仍走轻提示槽位。
 function onPaste(e: ClipboardEvent) {
   const merged = flattenPastedLines(e.clipboardData?.getData('text/plain') ?? '')
   if (!merged) return // 单行：零干预，走原生插入
@@ -195,7 +193,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* 透明窗边距容纳卡体投影（窗口几何 620×196 DIP，Go 侧 sheetWidth/Height 同源，
-   本轮重排全部在既有高度预算内完成）；卡体外观本页自绘，配色一律走全局 token。
+   排版在既有高度预算内完成）；卡体外观本页自绘，配色一律走全局 token。
    层次策略：正文行是主角（下划线式轻量边框、primary 光标、半档升字号），标签行
    降为胶囊副角（soft 底、透明描边、focus-within 才亮边），提示行是脚注。 */
 .sheet {
@@ -222,7 +220,7 @@ onBeforeUnmount(() => {
   transition: border-color var(--motion-base) ease;
 }
 /* 唤出/卡内任一处获得焦点：描边向 primary 混 30%（design-system 强调描边配方，
-   实底+描边表达状态，按 N37 零 glow） */
+   实底+描边表达状态，零 glow 纪律） */
 .sheet-card:focus-within {
   border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
 }

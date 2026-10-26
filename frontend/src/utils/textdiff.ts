@@ -1,4 +1,4 @@
-// 行级文本 diff 公共件（N33 §4 / 批 B）：后端 DiffFile 只回 old/new 原样文本
+// 行级文本 diff 公共件：后端 DiffFile 只回 old/new 原样文本
 // （≤512KB 各截断），行对比在前端算——git 模式后端已有 show 双读，diff 属观感
 // 计算，不进 RPC 超时预算，也不给双引擎各写一份。零第三方依赖。
 //
@@ -29,7 +29,7 @@ export const FOLD_THRESHOLD = 6
 /** 折叠段前后各保留的 ctx 锚点行数。 */
 export const FOLD_KEEP = 3
 
-/** 单次渲染行数上限：超过只出前 N 行 + 「展开完整对比」（§4 大文件保护）。 */
+/** 单次渲染行数上限：超过只出前 N 行 + 「展开完整对比」（大文件保护）。 */
 export const MAX_RENDER_LINES = 2000
 
 /** 按行切分：空串视为无行；CRLF 原样保留在行内（不悄悄改写用户文本）。 */

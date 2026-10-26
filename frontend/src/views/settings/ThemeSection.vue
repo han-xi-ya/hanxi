@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 设置分区·外观主题：明暗三分段（跟随系统 / 浅色 / 深色）+ 色板五分段 + 界面字体三分段（N40，§7.2）。
-// 拆分自原 SettingsView 单页：主题持久化走 useTheme 单例（后端 SetTheme/SetAccent/SetFont +
+// 设置分区·外观主题：明暗三分段（跟随系统 / 浅色 / 深色）+ 色板五分段 + 界面字体三分段。
+// 主题持久化走 useTheme 单例（后端 SetTheme/SetAccent/SetFont +
 // DOM data-theme/data-accent/data-font + 原生标题栏联动），本视图只做选择器，不碰持久化细节。
 import { computed } from 'vue'
 import { useTheme, type AccentMode, type FontMode } from '../../composables/useTheme'
@@ -26,7 +26,7 @@ const ACCENTS: ReadonlyArray<{ key: AccentMode; label: string; dot: string }> = 
   { key: 'onyx', label: '曜石', dot: '#0649b8' },
 ]
 
-// 界面字体三档（N40）：栈字面只在 fonts.css 档位覆写块单源定义，本表只管键与文案。
+// 界面字体三档：栈字面只在 fonts.css 档位覆写块单源定义，本表只管键与文案。
 const FONTS: ReadonlyArray<{ key: FontMode; label: string; desc: string }> = [
   { key: 'kai', label: '默认·文楷', desc: '霞鹜文楷 GB 屏幕版正文 + 思源缺字回落（当前标定）' },
   { key: 'plain', label: '系统朴素', desc: '整体回落系统字链，无随仓字体加载，N36 前旧观感' },

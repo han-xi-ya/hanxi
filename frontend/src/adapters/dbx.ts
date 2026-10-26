@@ -1,16 +1,14 @@
 // ============================================================================
-// DBX → 托管控制台 adapter（三线并行 · dbx 前端线，形制照 ccswitch/gonavi 家族）
+// DBX → 托管控制台 adapter（形制照 ccswitch/gonavi 家族）
 //
 // 事件面：`dbx:instance-state` / `dbx:version-download`（单键=version，与
 // release 行按版本对齐）；动词面：OpenWindow→control.primary、Quit→control.quit。
 // 远程行 form='portable' 由后端逐行回填，共享面板经 releaseFormWord 自动出
 // 「便携」chip——adapter 纯透传，零干预（N13 契约）。
 //
-// 类型注记：绑定面（service + 各 models 生成物）由主会话在三线并流后统一
-// regenerate，此前 vue-tsc 报缺符号属预期。本文件不 import 绑定 models，
-// DbxStatus/DbxProgress 为**冻结契约的本地结构投影**（JSON 字段名与后端 tag
-// 逐字对齐）——再生成后与绑定类型自然互认，若后端字段有更宽事实（如逐版本
-// drifted），经此一处收口扩接。
+// 类型注记：本文件不 import 绑定 models，DbxStatus/DbxProgress 为**冻结契约的
+// 本地结构投影**（JSON 字段名与后端 tag 逐字对齐），与绑定类型自然互认；
+// 后端字段有更宽事实时经此一处收口扩接。
 //
 // 语义要点（全部如实入文案，见 banner/hint/metaHints，不夸大不隐瞒）：
 //  - 数据统一留存 hanxi 数据根（启动注入 DBX_DATA_DIR），卸载版本不删数据；
@@ -23,7 +21,7 @@
 //    本托管不验证（如实一句，不含糊）；
 //  - 关窗驻托盘不退出：「退出」先优雅投递，可能被托盘弹问挂住，宽限后强杀
 //    兜底；若用户开启应用自带「托管备份」，计划任务可能重新拉起进程——
-//    hanxi 不追杀外部同名进程；下载无 confirm 闸（末版卸载放行新口径）。
+//    hanxi 不追杀外部同名进程；下载无 confirm 闸（末版卸载放行口径）。
 // ============================================================================
 
 import * as DBXAPI from '../../bindings/hanxi/internal/modules/dbx/dbxservice'
@@ -40,9 +38,10 @@ import {
 import { bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /**
- * GetStatus 组合快照（冻结契约）：instance.Snapshot 投影面 + 账目四字段。
+ * GetStatus 组合快照（冻结契约）：instance.Snapshot 投影面 + 账目字段。
  * drifted/driftNote 供漂移警示（banner/状态灯/页头徽标三处同源）；使用版本
- * 走 store.getActive 单源不在本快照（绑定 DBXStatus 同形）；dataDir
+ * 走 store.getActive 单源不在本快照（绑定 DBXStatus 同此）；绑定另有
+ * dataDirInjected（注入启动落账事实）前端暂无消费位，不接进投影；dataDir
  * 为数据目录钮的展示直读位（联动卡「数据目录」行经 OpenDir 打开）。
  */
 export interface DbxStatus extends ManagedSnapshot {
@@ -67,7 +66,7 @@ export function createDbxAdapter(): ManagedModuleAdapter<DbxStatus> {
   const { confirm } = useConfirm()
   const { prompt } = usePrompt()
 
-  // 账目事实（drifted/note/dataDir/activeVersion）只随 GetStatus 组合快照
+  // 账目事实（drifted/driftNote/dataDir）只随 GetStatus 组合快照
   // 回带；instance-state 事件按引擎惯例可能只发基础 Snapshot——事件现值缺
   // 字段时沿用最近轮询事实，防漂移警示与数据目录在事件轮次闪失（后端事件
   // 若已携全量字段则以现值为准）。
@@ -105,12 +104,12 @@ export function createDbxAdapter(): ManagedModuleAdapter<DbxStatus> {
       },
 
       async download(rel): Promise<ManagedActionResult> {
-        // 无 confirm 闸（冻结契约新口径）：新版本写独立目录，不碰在用目录。
+        // 无 confirm 闸（冻结契约）：新版本写独立目录，不碰在用目录。
         return downloadOutcome(await DBXAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 末版放行清账新模块口径：后端 guard 已放行唯一版本卸载（成功后清账），
+        // 末版放行清账口径：后端 guard 已放行唯一版本卸载（成功后清账），
         // 确认框先行探测并如实预告；数据留存 hanxi 数据根，不随版本目录删除。
         const soleNote = await soleVersionUninstallNote(() => DBXAPI.ListInstalledVersions())
         const accepted = await confirm({

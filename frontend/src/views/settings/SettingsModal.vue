@@ -1,10 +1,8 @@
 <script setup lang="ts">
-// 设置分区弹窗骨架（合并批 2026-10-26）：AiSection（MCP 接入向导）与
-// SnapshotSection（历史版本预览）的弹窗皮合并前两份逐字同构（AiSection 原注释
-// 亦自证"皮对齐 SnapshotSection 的 .modal-* 家族"），此处收口遮罩、卡片壳与
-// head/body/actions 三段及 ✕ 钮于一处；标题、正文与动作按钮全部由宿主经插槽
-// 自撰——插槽内容归宿主作用域，宿主 scoped 样式（含 .modal-head h3 各自的字族）
-// 照常命中，DOM 形制零改动（拆分不动相）。
+// 设置分区弹窗骨架：AiSection（MCP 接入向导）与 SnapshotSection（历史版本预览）
+// 两家的弹窗皮逐字同构，此处收口遮罩、卡片壳与 head/body/actions 三段及 ✕ 钮；
+// 标题、正文与动作按钮全部由宿主经插槽自撰——插槽内容归宿主作用域，宿主 scoped
+// 样式（含 .modal-head h3 各自的字族）照常命中。
 // 除宽度两档（640/680）外其余口径两处一致；modal-actions 的 surface-panel 底色
 // 与卡片底同值，统一起见对两宿主皆无观感差。
 // 不含 Esc 关闭：两个来源分区原本皆无该行为，此处不添行为（纪律）。

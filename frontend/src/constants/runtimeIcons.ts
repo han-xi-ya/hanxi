@@ -1,6 +1,6 @@
-// 红线图标第三来源（N27 尾巴）：`rt:<moduleId>` 的运行期本机提取通道前端侧。
+// 红线图标第三来源（品牌许可红线运行期提取）：`rt:<moduleId>` 的运行期本机提取通道前端侧。
 //
-// 后端集中服务（internal/app runtimeicon_service.go IconPNG）从机主本机已装
+// 后端集中服务（internal/app runtimeicon_service.go IconPNG）从本机已装
 // 官方 exe 就地提取最大画幅 PNG（许可红线：不入库、不分发、结果只存进程与
 // 本页内存）；本模块负责"每模块取一次、成败各缓存、永不抛扰渲染面"：
 //   - resolved：moduleID → data URL（Wails 把 Go []byte 出货为 base64 字符串）；

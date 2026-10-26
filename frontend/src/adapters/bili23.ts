@@ -1,8 +1,7 @@
 // ============================================================================
-// Bili23 Downloader → 托管控制台 adapter（Wave 5 · 批 0 契约迁万件）
+// Bili23 Downloader → 托管控制台 adapter
 //
-// 模式照抄 ccswitch 黄金样本：Bili23View 原编排段逐字迁移（启停/版本/联动全部
-// RPC 与文案零变化）。Bili23 的 bespoke 差异面全部在本 adapter 内吃掉：
+// 模式照抄 ccswitch 黄金样本，Bili23 的 bespoke 差异面全部在本 adapter 内吃掉：
 //
 // ① 退出三态如实回执（本模块的核心语义）：后端 QuitOutcome 按
 //    stopped（真退）/ hidden（收入其托盘，进程仍托管）/ asked（弹窗询问中）
@@ -10,20 +9,18 @@
 //    control.quit 原样返回 { message: out.message }，经 store.settle 弹 toast
 //    上墙——禁止合并成单一"已退出"、禁止吞态；hidden/asked 后界面现态
 //    （运行中 · 已收入托盘 / 窗口在前的询问态）由动作后统一 refresh 的
-//    statusText/banner 投影补全。布尔分叉字段前端无第二消费方（原视图亦仅
-//    透出 message），ManagedActionResult.message 即其等价表达。
+//    statusText/banner 投影补全。布尔分叉字段前端无第二消费方，
+//    ManagedActionResult.message 即其等价表达。
 //
 // ② 「强制结束」（ForceStop）不属于共享启停动词：经 danger 私有槽交给视图，
 //    由 ManagedConsoleShell 的 #danger-extra 契约位渲染；强杀回执
-//    （stopped/external 两态 message）同样如实上墙。增强批⑦收编：
-//    钮现态改由槽作用域 {snap,state,busy,store} 提供、在途闩经 adapter.dangerBusy
-//    并进共享 busy（强杀进行中启停/导入钮一并闩住）——视图自绘的现态镜像与
-//    并行 busy 自此退役，disabledFor/titleFor 降维为 state 纯函数。
+//    （stopped/external 两态 message）同样如实上墙。钮现态由槽作用域
+//    {snap,state,busy,store} 提供、在途闩经 adapter.dangerBusy 并进共享 busy
+//    （强杀进行中启停/导入钮一并闩住），disabledFor/titleFor 为 state 纯函数。
 //
 // ③ 事件面归一在订阅层完成：`bili23:instance-state` 推的是引擎
 //    instance.Snapshot（不带 windowVisible——那是 service 聚合视图字段），
-//    故收到迁移信号一律回读 GetStatus 以聚合 Status 为单一状态源（原视图
-//    "无类型 handler 只当信号用"的语义在此定型为带类型订阅 + 回读归一）；
+//    故收到迁移信号一律回读 GetStatus，以聚合 Status 为单一状态源；
 //    `bili23:version-download` 进度键 = version（单键，与 ccswitch 同形）。
 // ============================================================================
 
@@ -42,15 +39,15 @@ import { toolStateMeta } from '../constants/status'
 import type { ManagedActionResult, ManagedModuleAdapter } from '../components/managed/adapter'
 
 /**
- * 危险动作私有槽（#danger-extra 的 bili23 落形；增强批⑦收编版）：
- * ForceStop 族动词不在共享七动词内，钮体由视图自绘；钮现态/在途改由
- * 槽作用域 {snap,state,busy,store} + adapter.dangerBusy 提供（视图不再
- * 自持快照镜像与并行 busy 源），disabledFor/titleFor 降维为 state 纯函数。
+ * 危险动作私有槽（#danger-extra 的 bili23 落形）：
+ * ForceStop 族动词不在共享七动词内，钮体由视图自绘；钮现态/在途由
+ * 槽作用域 {snap,state,busy,store} + adapter.dangerBusy 提供，
+ * disabledFor/titleFor 为 state 纯函数。
  * run() 返回 true=已实际执行（调用方经 scoped store.refresh 回读现态），
  * false=未裁决/在途闩拒入（确认框取消或强杀进行中）。
  */
 export interface Bili23DangerSpec {
-  /** 钮面完整文案（含图标 emoji），逐字沿用视图原词。 */
+  /** 钮面完整文案（含图标 emoji）。 */
   label: string
   run(): Promise<boolean>
   /** 模块级禁用条件：running/starting/external 可点（external 点了也只得到"不强制执行"的回执）。 */
@@ -78,7 +75,7 @@ export function createBili23Adapter(): Bili23Adapter {
     busy.value = true
     try {
       // 危险操作经全局确认框（useConfirm 单例）：下载器强杀必须让用户知道代价
-      // （在途下载中断，可靠续传兜底），文案逐字保留
+      // （在途下载中断，可靠续传兜底）
       const accepted = await confirm({
         title: '强制结束 Bili23？',
         description:
@@ -131,7 +128,7 @@ export function createBili23Adapter(): Bili23Adapter {
       },
 
       async remove(v): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载 Bili23 ${v.version}？`,
           description: '该版本隔离目录（含内置 Python 运行时）将被删除，不可恢复。\n（你的下载任务与配置存于 %APPDATA%\\Bili23 Downloader，不受影响，后续版本继续共用）',
@@ -143,7 +140,7 @@ export function createBili23Adapter(): Bili23Adapter {
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '导入本地 Bili23 Downloader',
           description: '提示：安装版（Program Files）或手动解压的便携版均可；整目录复制约 108MB，导入前请先退出正在运行的 Bili23',
@@ -201,7 +198,7 @@ export function createBili23Adapter(): Bili23Adapter {
     // ⑧色档覆写：running+hidden 状态灯转琥珀（warn）——五态灯位语义不吞，仅灯色如实
     statusTone: (s) => (s.state === 'running' && !s.windowVisible ? 'warn' : s.state),
 
-    // 条件提示条（四个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（四个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 Bili23 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 Bili23 窗口或其托盘操作。' }
@@ -236,8 +233,8 @@ export function createBili23Adapter(): Bili23Adapter {
       remoteUnavailable: '无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试',
       uninstallRunningHint: '请先退出 Bili23',
 
-      // ⑨：「托管位置」数据行回契约（迁移批被删的联动卡行）——优先运行版本目录、
-      // 其次 active 版本、最后任一已装；打开走 OpenDir 族（与「打开位置」同源）。
+      // ⑨：「托管位置」数据行——优先运行版本目录、其次 active 版本、最后任一
+      // 已装；打开走 OpenDir 族（与「打开位置」同源）。
       dataDirRow: {
         dirFor: (ctx) => {
           const running = ctx.snap?.state === 'running' && ctx.snap.version ? ctx.snap.version : ctx.active

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// RAMMap 控制台（W4 · N4，共享壳形态照抄 WindTermView）：业务投影全部收进
-// src/adapters/rammap（RPC/事件/文案/提权预告），本视图仅剩装配与说明卡。
+// RAMMap 控制台（N4，托管控制台标准形）：业务投影全部收进
+// src/adapters/rammap（RPC/事件/文案/提权预告），本视图仅剩装配、
+// #console-extra 的 A/B 提权选择条与说明卡。
 import { createRAMMapAdapter } from '../adapters/rammap'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import ElevateRestart from '../components/ElevateRestart.vue'
@@ -9,11 +10,11 @@ import type { ManagedConsoleStore } from '../components/managed/store'
 const adapter = createRAMMapAdapter()
 
 /**
- * A 路提权启动走共享编排（波 2G，ddnsgo openConsole 同形制）：runExclusive
- * 单飞闩（确认框在途不再能连点第二发 UAC）、回执经 settle 弹串、RPC 拒绝
- * 裸错误串上屏——此前视图直调 runElevationChoice() 并**丢弃回执**（「已取消
- * 启动 RAMMap」/提权结果 message 静默失踪，与主钮引向 A 时的 toast 分叉），
- * 失败更是无人接管的 unhandled rejection。刷新档保持现状：事件与轮询兜底。
+ * A 路提权启动走共享编排 store.runSlotVerb（ddnsgo openConsole 同形制）：
+ * runExclusive 单飞闩（确认框在途不再能连点第二发 UAC）、回执经 settle 弹串、
+ * RPC 拒绝裸错误串上屏——此前视图直调并**丢弃回执**（「已取消启动 RAMMap」/
+ * 提权结果 message 静默失踪，与主钮引向 A 时的 toast 分叉），失败更是无人接管
+ * 的 unhandled rejection；勿改回直调。刷新档：成败均不刷快照，事件与轮询兜底。
  */
 function runElevChoice(store: ManagedConsoleStore) {
   void store.runSlotVerb(() => adapter.runElevationChoice(), { errorPrefix: '', refreshAfter: 'never' })

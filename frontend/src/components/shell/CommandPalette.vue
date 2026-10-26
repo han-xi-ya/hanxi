@@ -249,10 +249,10 @@ function isRegistered(name: string): boolean {
 
 // 导航项图标：登记 `i:` 矢量与 `app:` 真图标走 AppIcon，其余（未登记 i:/裸文本）
 // 渲染空 .p-ic 占位保持行对齐——当前后端 nav.icon 恒为 i:/app: 形态，文本轨
-// 仅防御性存在；若未来要真回退 emoji 需补模板分支（审查 shell#2 注记，勿再
-// 声称未实现的回退）。解析单点在 constants/appIcons。
+// 仅防御性存在；若未来要真回退 emoji 需先补模板分支，勿在此声称未实现的回退。
+// 解析单点在 constants/appIcons。
 
-// 面板 chrome 图标（search/goto）依赖 icons.ts 阶段 2 登记，缺失时优雅降级为不渲染
+// 面板 chrome 图标（search/goto）依赖 icons.ts 登记，缺失时优雅降级为不渲染
 // （禁止散写 svg / emoji 兜底），登记后自动启用。
 const hasSearchIcon = computed(() => isRegistered('search'))
 const hasGotoIcon = computed(() => isRegistered('goto'))

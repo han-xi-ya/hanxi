@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Everything 控制台顶部整合条：状态灯 + 启停按钮 + 搜索行（输入即搜/搜索按钮/ES 组件态），
-// 自 EverythingView 随 DOM 逐字迁出。纯展示 + 事件上抛：业务动作（bindings 调用、防抖搜索、
-// ES 就绪）全部回视图编排；isRunningOrStarting/isExternal 由 state 就地派生（原视图同款定义）。
+// Everything 控制台顶部整合条：状态灯 + 启停按钮 + 搜索行（输入即搜/搜索按钮/ES 组件态）。
+// 纯展示 + 事件上抛：业务动作（bindings 调用、防抖搜索、ES 就绪）全部回视图编排；
+// isRunningOrStarting/isExternal 由 state 就地派生。
 import { computed } from 'vue'
 import type { DownloadTicket } from '../../../bindings/hanxi/internal/modules/everything/models'
 import { fmtDuration } from '../../utils/format'
@@ -36,8 +36,8 @@ const emit = defineEmits<{
 const isRunningOrStarting = computed(() => props.state === 'running' || props.state === 'starting')
 const isExternal = computed(() => props.state === 'external')
 
-// 受控输入：先回写父级 keyword（同步），再通知父级跑防抖逻辑——
-// 保持与原视图 v-model + @input 同帧「先更新值、后读值」的时序逐字一致。
+// 受控输入：先 emit update:keyword 同步回写父级值，再 emit keyword-input 交父级跑防抖——
+// 时序须「先更新值、后读值」，反序则防抖侧读到旧值。
 function onInput(e: Event) {
   emit('update:keyword', (e.target as HTMLInputElement).value)
   emit('keyword-input')

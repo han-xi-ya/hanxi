@@ -1,18 +1,14 @@
-// 随手记 · 度量与纯函数单源模块（组件库四路之四，模式照抄留言板 boardMetrics 先例）。
+// 随手记 · 度量与纯函数单源模块（模式照抄留言板 boardMetrics 先例）。
 //
-// 收编动机：时间分组切桶（dayBucket/置顶档）、相对时间（fmtAgo）、摘要行提取
-// （cardPreview）、速记标签解析（parseTagTokens）、色彩标识换色（memoColorHex）
-// 此前内联在 MemoView 的 script 里。本模块只收编满足「真被两处以上需要或有独立
-// 测试价值」的函数：
-//   - groupMemoItems/dayBucket/fmtAgo/cardPreview：MemoCard 呈现件与 M2 主视图
-//     分组标题两处消费，且日期边界（7/30 天切点、跨午夜、非法 ISO 串）有独立
-//     测试价值；
-//   - parseTagTokens：MemoView.parseQuickTags 与 QuickMemoSheet.parseTags 曾
-//     逐字重复两份，接线收口轮（2026-09-26）两视图已删重切此单源；
-//   - flattenPastedLines：多行粘贴并条曾是速记卡独有语义（M3 牌面重做批），
-//     收口轮按「M3 遗留防漂移」主窗速记行对齐补齐，纯逻辑上收本模块两面共用；
-//   - memoColorHex：MemoCard 左封边取色需要，色板与视图 COLOR_OPTIONS 逐字
-//     同源——色彩标识是用户数据值（colorTag 持久化进后端），非主题表面，
+// 收录门槛：真被两处以上需要，或有独立测试价值；MemoView/QuickMemoSheet/
+// MemoCard/MemoEditorPane 等消费方不留内联副本。
+//   - groupMemoItems/dayBucket/fmtAgo/cardPreview：MemoCard 呈现件与主视图分组
+//     标题两处消费，日期边界（7/30 天切点、跨午夜、非法 ISO 串）有独立测试价值；
+//   - parseTagTokens：主窗速记行（MemoView.parseQuickTags）与速记卡
+//     （QuickMemoSheet.commit）共用，曾两份逐字重复、已删重；
+//   - flattenPastedLines：多行粘贴并条为速记卡与主窗速记行两面共用；
+//   - memoColorHex/MEMO_COLOR_HEX：MemoCard 左封边与 MemoEditorPane 色板圆点
+//     皆吃此单源——色彩标识是用户数据值（colorTag 持久化进后端），非主题表面，
 //     五个十六进制色沿用视图治理注记的豁免口径，不算新色值。
 // 刻意不收编的：「高亮分段」在现视图与 markdown.ts 中都不存在（搜索命中
 // 目前后端过滤、前端不高亮），为不存在的第二消费方抽函数即"为抽而抽"，不预造。
@@ -21,7 +17,7 @@
 
 import { fmtDate } from '../../utils/format'
 
-/** 分组顺序与桶名（与 MemoView 现实现逐字一致的六档口径） */
+/** 分组顺序与桶名（六档口径单源，主视图档头文案锚此） */
 export const MEMO_GROUP_ORDER = ['置顶', '今天', '昨天', '7 天内', '30 天内', '更早'] as const
 
 /** 色彩标识 → 十六进制（用户数据色板：blue/emerald/amber/rose/purple） */
@@ -32,7 +28,7 @@ export const MEMO_COLOR_HEX: Record<string, string> = {
   rose: '#f43f5e',
   purple: '#8b5cf6',
 }
-/** 未知/缺省色彩标识的兜底档（视图现行为：colorTag || 'blue'） */
+/** 未知/缺省色彩标识的兜底档（主视图页面板同口径：colorTag || 'blue'） */
 export const MEMO_COLOR_FALLBACK = 'blue'
 
 /** 便签色彩标识换十六进制色；未知值（含历史 green 等）与空串一律回落 blue。 */
@@ -41,10 +37,10 @@ export function memoColorHex(color?: string | null): string {
 }
 
 /**
- * 自然日档切桶（与 MemoView.dayBucket 逐位同式）：按本地日历日零点差取整——
- * 今天（含未来/同日，days<=0）、昨天、7 天内、30 天内、更早；非法时间串落
- * 「更早」（不给渲染层抛 NaN）。now 可注入（测试钉边界；分组一次遍历共用同一
- * now，杜绝旧实现每条各取 new Date() 可能跨午夜分裂的隐患）。
+ * 自然日档切桶：按本地日历日零点差取整——今天（含未来/同日，days<=0）、昨天、
+ * 7 天内、30 天内、更早；非法时间串落「更早」（不给渲染层抛 NaN）。
+ * now 可注入（测试钉边界；分组一次遍历共用同一 now，杜绝逐条各取
+ * new Date() 可能跨午夜分裂的隐患）。
  */
 export function dayBucket(iso: string, now: Date = new Date()): string {
   const d = new Date(iso)
@@ -72,8 +68,8 @@ export interface MemoGroup<T> {
 }
 
 /**
- * 置顶→今天→昨天→7 天内→30 天内→更早 的分桶遍历（与 MemoView.groupedMemos
- * 同行为：置顶条目不论日期先进「置顶」桶；空桶不出现在结果里）。
+ * 置顶→今天→昨天→7 天内→30 天内→更早 的分桶遍历：置顶条目不论日期先进
+ * 「置顶」桶；空桶不出现在结果里。
  * 输入顺序即桶内顺序（后端 sortBy=updated 的降序直传即保序）。
  */
 export function groupMemoItems<T extends MemoLike>(
@@ -92,8 +88,8 @@ export function groupMemoItems<T extends MemoLike>(
 }
 
 /**
- * 相对时间（与 MemoView.fmtAgo 逐位同式）：刚刚 / N 分钟前 / N 小时前，
- * 超过 24 小时回落 fmtDate 的 yyyy-MM-dd；非法串给「—」。now 可注入测试。
+ * 相对时间：刚刚 / N 分钟前 / N 小时前，超过 24 小时回落 fmtDate 的
+ * yyyy-MM-dd；非法串给「—」。now 可注入测试。
  */
 export function fmtAgo(iso: string, now: Date = new Date()): string {
   const t = new Date(iso).getTime()
@@ -105,12 +101,12 @@ export function fmtAgo(iso: string, now: Date = new Date()): string {
   return fmtDate(iso)
 }
 
-/** 卡片摘要行数上限（与 MemoView.cardPreview 现行为一致的默认档） */
+/** 卡片摘要行数上限（默认档） */
 export const CARD_PREVIEW_LINES = 5
 
 /**
- * 摘要行提取（与 MemoView.cardPreview 逐位同式）：剔除空白行后取前 maxLines
- * 行、换行拼接；被截断时尾部补「\n…」。全空白正文得空串（呈现层负责占位文案）。
+ * 卡片摘要行提取：剔除空白行后取前 maxLines 行、换行拼接；被截断时尾部补
+ * 「\n…」。全空白正文得空串（呈现层负责占位文案）。
  */
 export function cardPreview(content: string, maxLines: number = CARD_PREVIEW_LINES): string {
   const lines = content.split('\n').filter((l) => l.trim() !== '')
@@ -127,8 +123,8 @@ export function firstMeaningfulLine(content: string): string {
 }
 
 /**
- * 速记标签解析（收编 MemoView.parseQuickTags 与 QuickMemoSheet.parseTags 的
- * 两份逐字重复实现）：空白/逗号/顿号/分号（中英）分词、自动补 #、去重保序。
+ * 速记标签解析（主窗速记行与速记卡共用）：空白/逗号/顿号/分号（中英）分词、
+ * 自动补 #、去重保序。
  * 当前激活标签的附加逻辑（仅主窗有过滤态）留在视图侧组合，这里保持纯函数。
  */
 export function parseTagTokens(raw: string): string[] {
@@ -139,7 +135,7 @@ export function parseTagTokens(raw: string): string[] {
 }
 
 /**
- * 多行粘贴并条（速记卡 M3 语义，收口轮主窗速记行对齐共用）：粘贴文本含换行
+ * 多行粘贴并条（速记卡与主窗速记行共用）：粘贴文本含换行
  * 时逐行 trim、剔空行、以空格并成一行，并如实报行数供轻提示；单行/无有效行
  * 返回 null——消费方据此零干预放行原生插入路径。DOM 侧的 preventDefault 与
  * 提示落点（卡内 tip / 主窗 toast）归各视图，这里保持纯函数。

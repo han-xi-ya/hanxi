@@ -1,14 +1,14 @@
 <script setup lang="ts">
-// MangoDisk 工作台（Wave 5 · 批 0 共享契约迁入件；增强批收编版）：
+// MangoDisk 工作台（托管控制台契约的自绘版式消费件）：
 // adapter（src/adapters/mangodisk）承载 RPC/事件/文案；useManagedConsole 单源接管
 // 快照轮询/事件订阅/下载进度 map/busy 闩/版本区加载/动作回执与失败前缀。
 // 本视图版式超出托管控制台通用形（页头状态徽标、方言完整性版本表、自绘退出联动
-// 开关），故不套 ManagedConsoleShell/ControlBar/VersionPanel 皮，DOM 逐字保留现状、
-// 数据动作全部换接共享 store——「共享件零模块知识」的另一半契约：方言面自留，编排面单源。
-// 增强批收编：动态主钮词经 label 纯函数（store.primaryLabel 同源取词）；启动双复刷
-// 经 primary.run 的 reloadVersions 回执由 runControl 消费（视图手写编排退役）；
+// 开关），故不套 ManagedConsoleShell/ControlBar/VersionPanel 皮，DOM 保留现状、
+// 数据动作全部走共享 store——「共享件零模块知识」的另一半契约：方言面自留，编排面单源。
+// 编排对接：动态主钮词经 label 纯函数（store.primaryLabel 同源取词）；启动双复刷
+// 经 primary.run 的 reloadVersions 回执由 runControl 消费（视图不自拼刷新）；
 // 完整性优先级横幅经 banner 投影上下文回 adapter（store.banner 直渲）；integrity 族
-// 方言字段经 ManagedVersionRecord<V> 泛型直读（结构断言退役）。
+// 方言字段经 ManagedVersionRecord<V> 泛型直读（免结构断言）。
 import { computed, onMounted, ref } from 'vue'
 import { createMangoDiskAdapter } from '../adapters/mangodisk'
 import { useManagedConsole } from '../components/managed/store'
@@ -28,7 +28,7 @@ const follow = adapter.extras!.followOnExit!
 const shortcut = adapter.extras!.shortcut!
 const repo = adapter.extras!.repo!
 
-// 版本区/状态数据取自共享 store；方言列（integrity 族）随泛型 V 直接成键（③）
+// 版本区/状态数据取自共享 store；方言列（integrity 族）随泛型 V 直接成键
 const rows = computed(() => store.installed)
 const followOnExit = ref(false)
 const activeMainTab = ref<'console' | 'versions'>('console')
@@ -44,16 +44,16 @@ const isRunningOrStarting = computed(() => state.value === 'running' || state.va
 // 文案口径保留本视图现状（"运行中"）；store.stateText 即 constants/status 单一来源
 const stateText = computed(() => store.stateText)
 const currentVersion = computed(() => store.snap?.version || store.activeVersion || '自动选择')
-// ②：banner 判定（含完整性优先级）在 adapter 投影内完成，本处直渲
+// banner 判定（含完整性优先级）在 adapter 投影内完成，本处直渲
 const banner = computed(() => store.banner)
 
 function integrityLabel(value: string): string {
   return ({ verified: '官方校验', 'local-baseline': '本地基线', drifted: '文件已漂移', invalid: '安装无效' } as Record<string, string>)[value] || '未知'
 }
 function shortHash(value?: string): string { return value ? `${value.slice(0, 10)}…${value.slice(-6)}` : '—' }
-// 原 progressOf 系 stepOf 的分支并写等义体（全输入域同值，波 1a 逐条比对后并入单一来源）
+// 进度换算吃 stepOf 单源（原视图 progressOf 系其分支并写等义体，全输入域同值）
 
-// 波 2D：三动作改经 store.runSlotVerb 派生——单飞闩/message 回执/失败前缀
+// 三动作经 store.runSlotVerb 派生——单飞闩/message 回执/失败前缀
 // 归一共享编排；参数位逐字锚定本视图现形制：成败两分支均不刷快照
 // （refreshAfter:'never'），失败前缀沿用现词（openRepository 为裸错误串）。
 async function toggleFollow() {
@@ -76,7 +76,7 @@ function openRepository() {
   void store.runSlotVerb(() => repo.open(), { errorPrefix: '', refreshAfter: 'never' })
 }
 
-// 联动开关初值读取（原随版本加载并发，迁后独立拉取、失败静默不挡版本区）
+// 联动开关初值读取：独立拉取、失败静默不挡版本区
 onMounted(() => {
   Promise.resolve(follow.get())
     .then((v) => { followOnExit.value = v })
@@ -105,8 +105,8 @@ onMounted(() => {
           </div>
         </div>
         <div class="md-actions">
-          <!-- ①⑥：钮词 store.primaryLabel（label 纯函数解析）、编排 store.runControl
-               （reloadVersions 回执双复刷在 store 消费）——本视图不再自算词与自拼刷新 -->
+          <!-- 钮词 store.primaryLabel（label 纯函数解析）、编排 store.runControl
+               （reloadVersions 回执双复刷在 store 消费）——本视图不自算词与自拼刷新 -->
           <UiButton variant="primary" :disabled="store.busy" @click="store.runControl('primary')">{{ store.primaryLabel }}</UiButton>
           <UiButton
             variant="danger"

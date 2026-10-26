@@ -6,11 +6,11 @@
 // 本模块把它们抽成零 Vue、零 DOM 的纯函数：BoardCard/BoardStage 从这里
 // 取数，宿主（A 路舞台）接线同一函数，数值口径单源。
 //
-// 两套缩放口径并存在此（都是纯函数、都可测）：
-//   stageScale——v3 grow/fit/cap 旧档，数值与 v3 视图实现逐位一致
-//     （scale(0.34)/scale(0.18461538461538463) 逐字复现）；
-//   stageScaleMeasured——v4"量实测不猜 ×13"的牌桌档，与 A 路 v4 重写的
-//     内联式逐位一致（64px/300 盒＝288/832＝0.34615…，封顶 1.0）。
+// 两套缩放口径并存在此（都是纯函数、都可测、数值都由 boardMetrics.spec 锁死）：
+//   stageScale——v3 grow/fit/cap 旧档，生产面无消费方，只为锁住历史字面量
+//     （scale(0.34)/scale(0.18461538461538463) 由 spec 逐字对账）而保留；
+//   stageScaleMeasured——"量实测不猜 ×13"的 v4 牌桌档，生产面唯一缩放出口
+//     （64px/300 盒＝288/832＝0.34615…，封顶 1.0）。
 // BoardStage 默认走 measured；宿主想沿用哪档都从同一模块取数。
 
 /** 卡宽上限＝字号 ×13（"约 13 个标题字宽"的定标契约，BoardCard 与防裁换算共用） */
@@ -33,8 +33,7 @@ export const STAGE_SCALE_CAP = 1.0
 export const CARD_MIN_MAX_H = 48
 /**
  * 缩放地板：真实宿主（盒宽 CSS 有下限）永远碰不到，只防 degenerate 入参
- * 把负数/零 scale 漏进 transform（镜像翻转事故）。与视图内联式的逐位一致
- * 口径只在正常值域成立——视图现实现同样没有这道闸，靠 CSS 下限兜底。
+ * 把负数/零 scale 漏进 transform（镜像翻转事故）。
  */
 export const MIN_SCALE = 0.001
 
@@ -58,7 +57,7 @@ export function boardTitleOf(text: string): string {
   return text.split('\n', 1)[0] ?? ''
 }
 
-/** 牌面副行＝其余行；trailing 空行不产生空气副行（与收编前 BoardCard 逐字同行为） */
+/** 牌面副行＝其余行；trailing 空行不产生空气副行（BoardCard 经此取数） */
 export function boardSubOf(text: string): string {
   const rest = text.split('\n').slice(1)
   while (rest.length && rest[rest.length - 1].trim() === '') rest.pop()
@@ -79,7 +78,7 @@ export interface StageScaleInput {
 }
 
 /**
- * 自适应缩放（grow/fit/cap 三值取小，与 MsgBoardView v3 previewScale 逐位同式）：
+ * 自适应缩放（grow/fit/cap 三值取小；v3 视图 previewScale 口径，历史字面量由 spec 锁）：
  *   grow = 基准 × (盒宽/基准盒宽) —— 盒越宽牌越大；
  *   fit  = (盒宽−12)/(字号×13)     —— 卡宽上限防横向裁切，越界自动收缩；
  *   cap  = 封顶（默认 1.0，即"输出 1:1 大预览"的舞台上限契约）。
@@ -107,11 +106,10 @@ export interface StageScaleMeasuredInput {
 }
 
 /**
- * v4 牌桌口径（A 路 MsgBoardView v4 重写现用公式的逐位镜像）：
+ * v4 牌桌口径（MsgBoardView 舞台现用公式——v4 重写内联式收编于此后唯一出口）：
  *   scale = min(cap, (盒宽 − pad) / 卡片实际宽)
- * "能 1:1 就 1:1"——短文案在宽舞台原大呈现；防裁切从"猜 字号×13"升级为
- * "量实测自然宽 ×13 线只作首帧/测不到时的兜底"。与视图内联式同式，
- * 差异仅 MIN_SCALE 地板（真实值域不可达，见上注）。
+ * "能 1:1 就 1:1"——短文案在宽舞台原大呈现；防裁切是"量实测自然宽，
+ * 字号×13 线只作首帧/测不到时的兜底"，不是猜。
  */
 export function stageScaleMeasured(input: StageScaleMeasuredInput): number {
   const cap = input.cap ?? STAGE_SCALE_CAP

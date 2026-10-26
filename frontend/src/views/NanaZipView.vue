@@ -46,7 +46,7 @@ const progressPercent = computed(() => {
   return item.total > 0 ? Math.min(100, Math.round(item.done * 100 / item.total)) : null
 })
 
-// 比较器上收 utils/version 单源（版本比较器统一波）：旧本地 compareVersion 全长
+// 比较器上收 utils/version 单源：旧本地 compareVersion 全长
 // 补零但 NaN 段静默判旧（非数输入自反比较也恒 -1，反对称性被破坏——缺陷）。
 // 换 compareStrict 后非规范输入回 null：NanaZip 后端对远程与包内版本强校验严格
 // 四段纯数才收纳，null 分支现网路径不可达，属防御性显式出口而非在途场景。
@@ -93,7 +93,7 @@ async function openRepo() {
   catch (error) { showToast(`打开仓库失败：${getErrorMessage(error)}`) }
 }
 
-// 危险/降级确认全部经全局 useConfirm 单例发出（原视图自挂的三态 ConfirmDialog 已收编）；
+// 危险/降级确认全部经全局 useConfirm 单例发出（不自挂三态 ConfirmDialog）；
 // 确认后动作直接发起，失败以 toast/行内错误回执，可重新点击再次走确认流。
 async function install(release: Release, allowDowngrade = false) {
   if (operationBusy.value || relation(release) === 'installed') return

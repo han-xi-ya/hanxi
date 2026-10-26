@@ -1,17 +1,16 @@
 // ============================================================================
-// Paseo → 托管控制台 adapter（Wave 5 · 批 0 真实消费件；共享契约增强批收编件）
+// Paseo → 托管控制台 adapter
 //
-// 逐字迁移自 PaseoView 原编排段（启停/版本/通道/仓库全部 RPC 与文案零变化）。
-// 增强批收编（批 0 四处「adapter 内吃掉/留视图」差异的回迁）：
-//  ①「active 为空=自动最新已装」：契约新增 versions.implicitActive 位（⑤）——
+// 本模块四处方言差异全部以契约表达（编号见 components/managed/adapter.ts
+// 「增强批」条目表）：
+//  ①「active 为空=自动最新已装」：经 versions.implicitActive 位（⑤）——
 //     最新已装卡由共享面板亮隐式「使用版本」徽标（copy.activeBadge）且不显
-//     「设为使用」钮；引导行经 hint 上下文（②）引用将启版本，视图方言表退役。
-//  ② 动词词面「安装」+ 失败现词 '安装失败: '：不再自捕获，download 直接抛错，
+//     「设为使用」钮；引导行经 hint 上下文（②）引用将启版本。
+//  ② 动词词面「安装」+ 失败现词 '安装失败: '：download 直接抛错，
 //     前缀经 copy.errorPrefix.download 回 store 词源（⑥）。
-//  ③ 设定版本失败后重拉核对：失败抛错走 store 统一 '设置失败: ' 前缀；
-//     失败后不 reload 与共享件口径一致——activeVersion 现值本就以成功回执
-//     settle 为准，重拉属过度防御，收编后视图不再互抄。
-//  ④ 双数据目录入口不变：Electron 数据走 extras.dataDir，daemon 数据钮经
+//  ③ 设定版本失败后不重拉：失败抛错走 store 统一 '设置失败: ' 前缀——
+//     activeVersion 现值本就以成功回执 settle 为准，重拉属过度防御。
+//  ④ 双数据目录入口：Electron 数据走 extras.dataDir，daemon 数据钮经
 //     视图 #extras-action 槽（⑦ 已带作用域）。
 // 另：verifiedHash 方言徽标——ManagedVersionRecord<V> 泛型化（③）后
 //     store.installed 直接带该字段，面板 #version-row-extra 槽渲染免 cast。
@@ -39,7 +38,7 @@ export type PaseoVersionDialect = Pick<PaseoVersionInfo, 'verifiedHash'>
 
 /**
  * 规范版本目录名（后端已新→旧排序；imported- 等非常规目录不参与隐式判定）。
- * 前缀三段正则逐字保留、不并入 utils/version 的 isCanonical——两者语义不同族：
+ * 前缀三段正则刻意保留本地、不并入 utils/version 的 isCanonical——两者语义不同族：
  * 本判据要容纳 `0.8.0-beta.N` 目录（前缀命中即候选）且排除两段年式，isCanonical
  * 是归一后全串纯数值；且冻结视图 PaseoView 的 latestInstalled 以此正则逐字复刻，
  * 改动即漂移。核心比较（数值大小）才是 utils/version 的地盘。
@@ -50,16 +49,16 @@ function canonicalVersion(v: string): boolean {
 
 /**
  * 升级谓词（视图升级警告条唯一入口）：最新已装核心 < 当前通道最新核心。
- * 比较器上收 utils/version 单源（版本比较器统一波）：本模块三段真实数据
- * （0.8.0 / 0.8.0-beta.N 型，恒不带 v 前缀）上新旧口径逐格等值；旧实现的
- * 「不剥 v」漂移与「字典序退化」伪序（imported-* 永新）在册修正，见 utils 头注。
+ * 比较器为 utils/version 单源：本模块三段真实数据（0.8.0 / 0.8.0-beta.N 型，
+ * 恒不带 v 前缀）上新旧口径逐格等值；旧实现的「不剥 v」漂移与「字典序退化」
+ * 伪序（imported-* 永新）由上收修正，见 utils 头注。
  */
 export function paseoUpgradeAvailable(installedVersion: string, latestVersion: string): boolean {
   return upgradeAvailableCore(installedVersion, latestVersion)
 }
 
 /**
- * 「🐾 daemon 数据」钮的 RPC（OpenDaemonHome 族）：extras.dataDir 槽批 0 只有一位
+ * 「🐾 daemon 数据」钮的 RPC（OpenDaemonHome 族）：extras.dataDir 槽只有一位
  * （差异④），第二枚数据目录钮经视图 #extras-action 槽渲染，调用面随本 adapter
  * 家族承载——视图不直碰 bindings。失败经消费方统一 toast '打开目录失败: '。
  */
@@ -87,20 +86,20 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
       implicitActive: (installedList) => installedList.find((v) => canonicalVersion(v.version))?.version ?? '',
 
       async setActive(version): Promise<ManagedActionResult> {
-        // ③收编：失败直接抛错，store 统一 '设置失败: ' 前缀；不再自捕获重拉
+        // ③：失败直接抛错，store 统一 '设置失败: ' 前缀（不自捕获、不重拉）
         const ver = await PaseoAPI.SetActiveVersion(version)
         return { message: `下次启动将使用 Paseo ${version}`, activeVersion: ver }
       },
 
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
         // 运行中不拒绝（解压目标是独立新版本目录）：现视图无禁用钮、忽略返回值。
-        // ②收编：失败抛错走词源表（copy.errorPrefix.download = '安装失败: '）。
+        // ②：失败抛错走词源表（copy.errorPrefix.download = '安装失败: '）。
         await PaseoAPI.DownloadVersion(rel.version)
         return {}
       },
 
       async remove(v: ManagedVersionRecord<PaseoVersionDialect>): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载 Paseo ${v.version}？`,
           description: '仅删除该托管版本目录。\n（%APPDATA%\\Paseo 与 ~/.paseo 中的设置、会话与手机配对数据为共享用户数据，不受影响）',
@@ -112,7 +111,7 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '导入本地安装',
           description: '常见位置：安装版 %LOCALAPPDATA%\\Programs\\Paseo 或自定义目录\n提示：数据恒在 %APPDATA%\\Paseo 与 ~/.paseo，与程序目录无关，导入不搬数据',
@@ -152,7 +151,7 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
       },
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到非 Hanxi 启动的 Paseo 实例（共享数据下同一锁组全局仅一个主进程，同一主进程可开多窗）。「打开窗口」仅聚焦唤起其既有窗口，不会新拉实例或代开新窗；如需退出请在 Paseo 窗口内关闭。' }
@@ -166,8 +165,8 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
       return null
     },
 
-    // ②收编：stopped 引导行引用「将启动的版本」（active 空回退隐式自动最新）——
-    // 第二参版本区投影携带已装列表，原视图模板的三态引导行逐字迁回 hint 槽。
+    // ②：stopped 引导行引用「将启动的版本」（active 空回退隐式自动最新）——
+    // 第二参版本区投影携带已装列表，三态引导行在 hint 槽单源。
     hint: (s, ctx: ManagedProjection<PaseoVersionDialect>) => {
       if (s.state === 'stopped') {
         const launch = ctx.active || (ctx.installed.find((v) => canonicalVersion(v.version))?.version ?? '')
@@ -194,7 +193,7 @@ export function createPaseoAdapter(): ManagedModuleAdapter<Snapshot, PaseoVersio
       },
     },
 
-    // ④收编：共享面板词面覆写（视图方言表退役后逐字现词全部回本表）。
+    // ④：共享面板词面覆写（本模块现词全部入本表，缺省即标准词）。
     copy: {
       metaLead: (ctx) => {
         const implicit = ctx.installed.find((v) => canonicalVersion(v.version))?.version ?? ''

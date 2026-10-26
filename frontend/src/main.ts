@@ -19,15 +19,15 @@ import { getErrorMessage } from './utils/errors'
 // 主题首帧同步应用（localStorage 缓存先行，后端 Settings 异步校正）
 initTheme()
 
-// 剪贴板 transport 真桥副作用注入（createApp 前，覆盖工作台与浮层全部窗——
-// 契约 §7 收口位；绑定面唯一 import 点收敛在 adapters/clipboardBridge.ts）
+// 剪贴板 transport 真桥副作用注入（createApp 前，覆盖工作台与浮层全部窗；
+// 绑定面唯一 import 点在 adapters/clipboardBridge.ts，勿在他处直引剪贴板绑定）
 installClipboardBridge()
 
 // 独立 frameless 顶层窗口按 hash 分流（同一前端产物多窗复用，不加载工作台外壳）：
 //   #quickmenu → 右键长按轮盘；#ocrcard → 框选截屏识别悬浮结果卡；
 //   #msgboard → 全屏留言牌（透明全屏窗，牌体由视图自绘）；
-//   #memosheet → 悬浮速记卡（N16 全局热键唤出，卡体由视图自绘）；
-//   #clipboardoverlay → 剪贴板浮层（N45 Ctrl+Alt+V 唤出，列表由视图自绘）。
+//   #memosheet → 悬浮速记卡（全局热键唤出，卡体由视图自绘）；
+//   #clipboardoverlay → 剪贴板浮层（Ctrl+Alt+V 唤出，列表由视图自绘）。
 const hash = window.location.hash
 const rootComponent = hash.startsWith('#quickmenu')
   ? QuickMenuPopup

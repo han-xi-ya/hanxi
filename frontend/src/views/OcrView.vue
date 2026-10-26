@@ -28,7 +28,8 @@ const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
 
-// DropResult 的新增字段由本次 Go DTO 提供；绑定产物按协作约定由协调者统一生成。
+// 绑定已含 engine/activated/shouldStart 三字段（ocr/models.js DropResult），本局部交截型
+// 系再生前遗留、与绑定型已无差，可删回落 GeneratedDropResult。
 type DropResult = GeneratedDropResult & {
   engine: string
   activated: boolean
@@ -509,16 +510,16 @@ async function copyLine(text: string) {
   await copyWithToast(text, '已复制该行')
 }
 
-// ---------- 历史记录（Teleport 弹窗；双击行经 InspectImage 回填图片，Q6 行内数据直用） ----------
-// 面板本体走公共 HistoryPanel（自取数），本视图只管遮罩壳与回填出口。N20（2026-09-25）
-// 对"弹窗里再弹确认"场景做了两处契约适配（ConfirmDialog 是同层 1000 的 App 单例）：
+// ---------- 历史记录（Teleport 弹窗；双击行经 InspectImage 回填图片，行内数据直用） ----------
+// 面板本体走公共 HistoryPanel（自取数），本视图只管遮罩壳与回填出口。
+// "弹窗里再弹确认"场景的两处契约适配（ConfirmDialog 是同层 z1000 的 App 单例）：
 //   1) Esc 在 confirmState.open 时让位——「清空本桶」确认盖在本弹窗上，一次 Esc
 //      不得同时关掉两层（document 级监听与 ConfirmDialog 自身监听同场竞走）；
 //   2) 本弹窗 z-index 低于 ConfirmDialog——视图经 KeepAlive 懒挂载，本 Teleport 的
 //      DOM 位置天然晚于 App 单例确认框，同层拼 DOM 序不能保证确认框反而在上。
 const showHistory = ref(false)
 
-// 历史行→识别区回填（Q6 行内数据直用；InspectImage 重读本机图片，失败中文 toast）
+// 历史行→识别区回填（行内数据直用；InspectImage 重读本机图片，失败中文 toast）
 async function applyHistoryImage(rec: HistoryRecord) {
   try {
     image.value = await OcrAPI.InspectImage(rec.input)

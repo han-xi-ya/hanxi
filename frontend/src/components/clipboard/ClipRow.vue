@@ -18,7 +18,7 @@
 //   - 列表数据来自 List（不带 Text/BlobData），本件只吃列表形态字段，
 //     绝不诱导宿主把明文正文塞进行；
 //   - 相对时间/摘要兜底/图标名/缩略图闸全部走 clipboardFormat 纯函数单源
-//     （computed 一次成型，模板零函数调用——500 条封顶的 v-for 不做重复计算）；
+//     （computed 一次成型，模板零函数调用——≤2000 行的 v-for 不做重复计算）；
 //   - 快操作钮（复制=回填系统剪贴板 / 置顶 / 删除）只发意图，Set/TogglePin
 //     后端调用与删除确认闸全部归视图（危险逻辑不进展示件，MemoCard 同谱）；
 //   - 行动作常驻可见，不做 hover 才现身（skill 红线）。
@@ -148,7 +148,7 @@ const thumb = computed(() => (props.entry.kind === 'image' ? clipThumbSrc(props.
 .cr.is-pinned { border-left-color: var(--color-primary); }
 
 /* 缩略图井：左轨恒 44px 定宽对齐；image 条目才给井底（真图或缺图回落图标），
-   其余类别裸图标居中——不给 500 行的文本账刷一层层底噪 */
+   其余类别裸图标居中——不给上千行的文本账刷一层层底噪 */
 .cr-well { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; color: var(--color-text-muted); min-width: 0; }
 .cr-well-tile {
   border: 1px solid var(--color-border);

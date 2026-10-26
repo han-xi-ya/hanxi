@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 设置分区·工作台入口：日志查看器与关于页直达。
-// 拆分自原 SettingsView 单页：跳转事件上抛宿主 <component @navigate>，
-// 统一走 App.vue navigateTo 的门禁链，本视图不自行编排路由。
+// 跳转事件上抛宿主 <component @navigate>，统一走 App.vue navigateTo 的门禁链，
+// 本视图不自行编排路由。
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
 

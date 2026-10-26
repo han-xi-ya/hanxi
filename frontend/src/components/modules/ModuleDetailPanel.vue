@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 模块详情/诊断面板（Wave 2）：四维逐行 + reason + 入口/能力/权限/owner/compatibility，
+// 模块详情/诊断面板：四维逐行 + reason + 入口/能力/权限/owner/compatibility，
 // 全部文案取自 constants/status 词汇表（含 ENTRYPOINT_META），缺词表值走"状态未知"兜底。
 import { computed } from 'vue'
 import type { ModuleEntry } from '../../composables/useModuleCatalog'

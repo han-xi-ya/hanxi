@@ -4,7 +4,7 @@ import { DIAG_QUICK_TARGETS, rttTier, useDiagFormModel } from './useDiagFormMode
 
 // Ping 连通性测试面板：目标/次数表单 + 常用目标 + 结果汇总表与明细表（纯展示）。
 // 目标与次数经 v-model 上抛由视图持有——网卡芯片的「⚡ 快捷 Ping」需跨 Tab 回填并立即发起。
-// 根节点为多根 fragment（表单条/错误框/结果卡），渲染后仍是 .network-page 的直接子节点，DOM 与拆分前一致。
+// 根节点为多根 fragment（表单条/错误框/结果卡），渲染后仍是 .network-page 的直接子节点，父层间距照常。
 // 表单骨架（v-model 样板/快捷目标动作/禁用式）与 Traceroute 面板共吃 useDiagFormModel 单源。
 const props = defineProps<{
   target: string
@@ -129,10 +129,9 @@ const quickTargets: readonly { label: string; value: string }[] = [
 <style scoped src="./diagRtt.css"></style>
 
 <style scoped>
-/* Phase 6 后续治理（§9.6-1）：诊断工具皮家族（.tool-panel/.diag-card/.table-container/
-   .status-badge 等）已上收 components.css 共享原子，本层只留本面板真差异。
-   .rtt-tag 基形与 .text-danger 已按 §9.6-10 裁决全局定档，等值副本删净落回；
-   fast/medium/slow 色档副本已归家族共享件 diagRtt.css（波 2C）。 */
+/* 诊断工具皮家族共享原子（.tool-panel/.diag-card/.table-container/.status-badge）在
+   components.css（§9.6-1），本层只留本面板真差异；.rtt-tag 基形与 .text-danger 走全局
+   （§9.6-10 定档），不挂等值副本；fast/medium/slow 色档在家族共享件 diagRtt.css。 */
 .val-warn {
   color: var(--state-danger);
 }

@@ -11,7 +11,7 @@
 // 形，所见即所运行）；坏正则整表拒绝，红字逐字上浮（"以为设了其实没设"
 // 不接受——与后端 fail-loud 同谱）。
 //
-// 域覆盖：容量/粘贴后即删/排除表/按应用保留（提交 1）+ 预览遮蔽（提交 3）；
+// 域覆盖：容量/粘贴后即删/排除表/按应用保留/预览遮蔽；
 // 队列键位走独立 SetQueueHotkey 事务域（不进本面板整表写路，见 Prefs 头注）。
 // 草稿字段全量透传（整表语义要求全量回发，未渲染域不丢别人的值）。
 import { computed, onMounted, ref } from 'vue'
@@ -140,7 +140,7 @@ function removeRow(i: number) {
   rows.value.splice(i, 1)
 }
 
-// ---- 预览遮蔽（mask 域，提交 3） ----
+// ---- 预览遮蔽（mask 域） ----
 // 内置 kind 固定序渲染；点击翻 included。后端 normalize 会重排为固定序并
 // 剔未知，本地序只影响点击手感不影响语义。
 const MASK_KIND_ORDER = ['phone', 'idcard', 'email', 'secret'] as const
@@ -260,7 +260,7 @@ function revertAll() {
           <p class="cp-hint">自「最近一次复制或粘贴」起算 N 天后清理（置顶/片段豁免；留空天数=删除该规则）</p>
         </div>
 
-        <!-- 预览遮蔽（提交 3） -->
+        <!-- 预览遮蔽 -->
         <div class="cp-group">
           <h3 class="cp-title">预览遮蔽</h3>
           <div class="cp-kinds" role="group" aria-label="内置遮蔽类别">

@@ -77,7 +77,7 @@ function closeQRModal() {
   qrModal.value.visible = false
 }
 
-// 复制密码到剪贴板（两级回退策略已收编进 useClipboard）
+// 复制密码到剪贴板（两级回退走 useClipboard）
 async function copyPassword(p: Profile) {
   if (!p.password) return
   await copyWithToast(p.password, `已复制密码: ${p.ssid}`)
@@ -250,9 +250,9 @@ onMounted(() => {
   background: var(--surface-hover);
 }
 
-/* .text-muted（色值实为 subtle 档）按 §9.6-10 名实裁决改挂全局 .text-subtle，副本删净；
-   裸文字 32px 档 .empty-hint（含 line-height 1.8）整体删净，落回全局标准虚线卡形
-   （挂点为 <td colspan>，虚线卡染进单元格为预期收编效果——目视项） */
+/* subtle 档走全局 .text-subtle（§9.6-10 名实裁决：原局部 .text-muted 色值实为 subtle 档）；
+   .empty-hint 不挂本地裸文字档，走全局 :where(.empty-hint) 虚线卡形——挂点为 <td colspan>，
+   虚线卡染进单元格系预期效果（目视项） */
 .hint-sub {
   font-size: var(--text-sm);
   color: var(--color-text-subtle);
@@ -281,7 +281,7 @@ onMounted(() => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* 入场动效落回 components.css 全局 modalIn（原私有 popIn 与之仅 scale 0.95/0.96 之差） */
+  /* 入场动效走 components.css 全局 modalIn，不另挂私有 popIn 档 */
   animation: modalIn var(--motion-slow) ease-out;
 }
 

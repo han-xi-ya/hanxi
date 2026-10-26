@@ -1,7 +1,7 @@
-// 真图标注册表（N27 批 A）：托管工具自己的 exe 主图标，作为 AppIcon 的
-// **第二来源**（第一来源是 icons.ts 的 54 枚自绘矢量 `i:`）。
+// 真图标注册表：托管工具自己的 exe 主图标，作为 AppIcon 的
+// **第二来源**（第一来源是 icons.ts 自绘矢量 `i:`，第三来源是 runtimeIcons 的 `rt:` 轨）。
 //
-// 取材纪律（侦查收口 PLAN_N27_ICON.md）：
+// 取材纪律（立项全档 docs/plans/PLAN_N27_ICON.md）：
 //   - 静态入库优于运行时提取——一次性 `scripts/extract_app_icons.ps1` 从已装
 //     托管 exe 的 PE 资源取**最大真实画幅**、等比降采样到 64px 封顶（源不足则
 //     保留真实尺寸、绝不放大凑数）落 `assets/apps/<moduleId>.png`（逐枚出货边长

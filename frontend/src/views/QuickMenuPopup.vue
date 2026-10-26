@@ -10,13 +10,13 @@
 // 迟滞收起（useWheelRingState 纯时序状态机）；点击分组 = 钉住（键盘/触屏通道），
 // 再点解除；指针越过 rCancel=244 进入半透明外甩取消态。子环呈现上限 8 项，
 // 超出截断并在 hub 提示（数据层不限——托盘原生子菜单无数量压力）。
-// 拍平开关（twoTier=off）由后端裁决：前端只见到单层数据，子环代码路径整体休眠。
-// 条目取轮盘专属账（后端 launcher 分发，轮盘独立批后与托盘右键菜单各记各账），每次唤出事件重拉。
+// 拍平开关（twoTier=off）由后端裁定：前端只见到单层数据，子环代码路径整体休眠。
+// 条目取轮盘专属账（后端 launcher 分发，与托盘右键菜单各记各账），每次唤出事件重拉。
 //
 // 几何单一来源在 components/quickmenu/wheelGeometry.ts（纯函数 + 常量），角度
 // 约定 0°=12 点、顺时针；三层结构不变：SVG 画扇区视觉面（楔形绘制留 pad 缝），
 // 命中/高亮不再吃 DOM hover 而是 pointermove 按 wheelGeometry.slotOf 名义角域
-// 几何归属（N40①②,缝隙带零死区、圆心静区清态）；每个条目同时是落在质点上的
+// 几何归属（缝隙带零死区、圆心静区清态）；每个条目同时是落在质点上的
 // 真实 <button>（键盘/ARIA 语义），中心 hub 为读数浮层（点击 = 收起）。
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import * as QuickMenuAPI from '../../bindings/hanxi/internal/modules/quickmenu'
@@ -83,8 +83,8 @@ const TYPE_LABEL: Record<string, string> = {
 }
 const typeLabel = (t: string) => TYPE_LABEL[t] ?? '条目'
 
-// N6 F1 可读性 → N40③ 花瓣盘：图标常显，座径四档各 +2px；名称改单行省略，
-// 全称读数完全交 hub 仪表核（F1"hub 干活"路线执行到底）。档位令牌经 CSS 变量
+// 花瓣盘可读性路线：图标常显，座径四档各 +2px；名称改单行省略，
+// 全称读数完全交 hub 仪表核（hub 主读数路线执行到底）。档位令牌经 CSS 变量
 // 下发给样式层（pop 为径向外顶位移，密盘档位降回 5px 防与邻缝打架）。
 // 密度分档表已归口 wheelGeometry.densityFor（档值逐字锁定见 contract spec）。
 const density = computed(() => densityFor(items.value.length))
@@ -95,7 +95,7 @@ const densityVars = computed(() => ({
   '--d-name': `${density.value.name}px`,
 }))
 
-// —— 皮肤账与图标像素预算（机主反馈 2026-09-26 两条：小图标糊 / 盘面单调）——
+// —— 皮肤账与图标像素预算（对治两条病灶：小图标糊 / 盘面单调）——
 // 真相在后端（GetSkin），localStorage 副本仅作跨窗镜像：本窗首帧用镜像抢即时
 // （不空窗等 RPC），随后 fetch 后端真相覆写；设置页保存经同源 storage 事件秒级
 // 跟皮，后端不可达（模块停用等）如实降级继续用镜像。
@@ -139,7 +139,7 @@ function iconPx(item: MenuItem, base: number): number {
 const activeItem = computed(() => (active.value == null ? null : items.value[active.value] ?? null))
 const ready = computed(() => !loading.value && !errorMsg.value)
 
-// N6 F2 选中反馈 → N40③⑤：激活扇区沿自身中线径向外顶（宽裕档 8px，密盘档降 5，
+// 选中反馈：激活扇区沿自身中线径向外顶（宽裕档 8px，密盘档降 5，
 // 见 density.pop），配主色辉光与全场让位构成"拿起这块"的层级叙事；
 // 按钮层与扇区面吃同一个位移向量，两层严格同步。
 function radialShift(i: number): { x: number; y: number } {
@@ -185,7 +185,7 @@ function keepHalfDeg(i: number): number {
 const HIT_HYST = 4
 
 /**
- * 悬停高亮的几何单点权威（N40①②）：由 pointer 极坐标解析出当前应高亮的主环
+ * 悬停高亮的几何单点权威：由 pointer 极坐标解析出当前应高亮的主环
  * 槽位或子环帽带位,写回 active/activeCap——彻底弃用 SVG `<path>` 的 DOM
  * mouseenter/leave。旧法两大病灶一并根治:①楔形只覆盖绘制扇形(pad 缝隙、盘缘
  * 缝带、hub 缓冲环全是死区);②楔形随外顶动效缩放 + 叠放的 `<button>` 抢命中,
@@ -201,7 +201,7 @@ function resolveHover(r: number, ang: number, opened: number | null) {
     if (Math.abs(rel) <= span / 2) {
       const j = Math.min(capN - 1, Math.max(0, Math.floor((rel + span / 2) / (span / capN))))
       if (activeCap.value !== j) activeCap.value = j
-      // 父锚定（审查 #6）：帽带张角可越父扇区名义角域伸入邻区——指针从邻区楔形
+      // 父锚定：帽带张角可越父扇区名义角域伸入邻区——指针从邻区楔形
       // 直穿帽带时 active 会停在邻扇区，造成"正开环的花瓣被让位降半档、邻瓣反而
       // 辉光顶出、hub 读帽带"三指打架。帽带在场则高亮恒归父组（opened 索引）。
       if (active.value !== opened) active.value = opened
@@ -497,7 +497,7 @@ function onGroupActivate(i: number) {
       <!-- 盘底：真透明窗口上绘制不透明圆盘，边缘天然抗锯齿；缘环即盘缘 -->
       <circle :cx="C" :cy="C" :r="R_DISC" class="disc-face" />
       <circle :cx="C" :cy="C" :r="R_DISC - 1.25" class="disc-edge" />
-      <!-- 盘缘亮环（N40③①）：花瓣收窄到 r158 后，162→176 段留给连续渐变亮环 -->
+      <!-- 盘缘亮环：花瓣收窄到 r158 后，162→176 段留给连续渐变亮环 -->
       <circle :cx="C" :cy="C" :r="RIM_MID" :stroke-width="RIM_W" class="disc-rim" />
 
       <g :key="entrySeq" class="sectors" :class="{ 'has-active': active != null }">
@@ -514,7 +514,7 @@ function onGroupActivate(i: number) {
       </g>
 
       <!-- 外扩子环帽带：常驻主盘之外，角度随父扇区中线展开；
-           底环为两端收圆帽的 primary 软底粗弧（N40③②），圆角花瓣子扇区叠其上 -->
+           底环为两端收圆帽的 primary 软底粗弧，圆角花瓣子扇区叠其上 -->
       <g
         v-if="capItems.length > 0"
         :key="`cap-${ring.openGroup.value}`"
@@ -545,7 +545,7 @@ function onGroupActivate(i: number) {
         :cx="C" :cy="C" :r="(R_SEC_IN + R_SEC_OUT) / 2"
       />
 
-      <!-- hub 仪表核（N40③⑥）：磨砂面浮起于花瓣内圈缝隙之外，虚线环退役；
+      <!-- hub 仪表核：磨砂面浮起于花瓣内圈缝隙之外，虚线环退役；
            槽位刻度环接替盘缘分界语言（点亮当前悬停槽）；
            hub-hit 是中心命中面——点击 hub = 收起轮盘（半径与语义不动） -->
       <circle class="hub-face" :cx="C" :cy="C" :r="VIS.rHubFace" />
@@ -561,7 +561,7 @@ function onGroupActivate(i: number) {
     </svg>
 
     <!-- 扇区图标/名称浮层：真实 button 提供键盘与可访问性语义；悬停高亮统一由
-         pointermove 几何路由驱动（N40），DOM 层不再自持 hover -->
+         pointermove 几何路由驱动，DOM 层不再自持 hover -->
     <button
       v-for="(item, i) in items"
       :id="`qm-sector-${i}`"
@@ -580,7 +580,7 @@ function onGroupActivate(i: number) {
     >
       <span class="sector-icon"><AppIcon :name="wheelIconOf(item)" :size="iconPx(item, density.icon)" /></span>
       <span class="sector-name">{{ item.label }}</span>
-      <!-- 分组计数徽标（N40③④）：▸N 文字角标退役，圆形徽标只报数 -->
+      <!-- 分组计数徽标：▸N 文字角标已退役，圆形徽标只报数 -->
       <span v-if="isGroup(item)" class="sector-caret" aria-hidden="true">{{ item.children?.length ?? 0 }}</span>
     </button>
 
@@ -607,7 +607,7 @@ function onGroupActivate(i: number) {
 
     <!-- 中心 hub：默认标题 / 悬停读数 / 子环面包屑与收起 / 状态与动作；点击盘面外语义：hub=收起 -->
     <!-- hub 浮层全程 pointer-events:none，点击穿到下层 SVG .hub-hit 圆收起
-         （审查 #10：原 @click.self 为死绑定，已删） -->
+         （原 @click.self 为死绑定已删，勿再加回） -->
     <div class="hub" aria-live="polite">
       <template v-if="ready && items.length > 0">
         <template v-if="hubNode">
@@ -637,7 +637,7 @@ function onGroupActivate(i: number) {
           <span class="hub-meta">{{ items.length }} 项 · 方向键选择</span>
           <span class="hub-meta hub-esc">Esc 收起 · 外甩取消</span>
         </template>
-        <!-- 常驻收起提示（N40③⑥）：hub=收起的显性教学，此前只活在 aria-label 里；
+        <!-- 常驻收起提示：hub=收起的显性教学，此前只活在 aria-label 里；
              纯呈现不入命中（pointer-events:none，点击由下层 hub-hit 承接） -->
         <span class="hub-hint" aria-hidden="true">点按中心收起</span>
       </template>
@@ -666,9 +666,9 @@ function onGroupActivate(i: number) {
   background: transparent;
   color: var(--color-text);
   font-family: var(--font-text);
-  /* N40③ 花瓣盘局部配方：花瓣/激活/钉住/帽带底色全部以不透明 panel 为基色
+  /* 花瓣盘局部配方：花瓣/激活/钉住/帽带底色全部以不透明 panel 为基色
      混出（真透明窗上无退路可谈半透叠底），描边同色走膨胀圆角技巧，交叠不显脏；
-     --ease-pop 与 .cap 入场同款弹簧尾（⑤） */
+     --ease-pop 与 .cap 入场同款弹簧尾 */
   --petal: color-mix(in srgb, var(--surface-hover) 70%, var(--surface-panel));
   --petal-on: color-mix(in srgb, var(--color-primary) 14%, var(--surface-panel));
   --petal-pin: color-mix(in srgb, var(--surface-selected) 85%, var(--surface-panel));
@@ -726,9 +726,9 @@ function onGroupActivate(i: number) {
    滑回盘面即复原（transition 在 .disc-edge 未挂，状态切换瞬时更利落） */
 .popup.is-cancel .disc-edge { stroke: color-mix(in srgb, var(--state-danger) 55%, var(--color-border-strong)); }
 
-/* N40③①⑤ 磨砂花瓣盘：连续玻璃面退役，每枚扇区是独立圆角花瓣——
+/* 磨砂花瓣盘：连续玻璃面退役，每枚扇区是独立圆角花瓣——
    stroke-width 6 + linejoin round + paint-order:stroke 的 SVG 膨胀接合技巧做出
-   ≈3px 圆角（零 path 布尔运算）；皮肤批起描边不再与 fill 同色，而是"模块/类型色轨"
+   ≈3px 圆角（零 path 布尔运算）；描边不与 fill 同色，而是"模块/类型色轨"
    （缝内一圈身份色轮廓），膨胀技巧与圆角效果原样保留；大间隙（VIS.padDeg 4.2°）
    即分界语言，刻度线退役。激活 = primary 软底 + 辉光 + 8px 顶出；
    有激活者时其余花瓣 fill/stroke 半透让位（"选中块拿起、全场退后"）。 */
@@ -763,7 +763,7 @@ function onGroupActivate(i: number) {
 .sector.is-active {
   fill: var(--petal-on);
   stroke: color-mix(in srgb, var(--color-primary) 35%, var(--petal-on));
-  /* N37 glow 纪律收尾（N27 波次的挂账两枚之一）：彩色发光此后只许"进行中"脉冲使用，
+  /* glow 纪律：彩色发光只许"进行中"脉冲使用，
    * 而 .is-active 是稳态（命中/选中）——降为中性投影，立体提示保留、彩色光去掉。
    * 用 --color-text 混合而非写死黑/白，故明暗两模式各自取得正确深浅。 */
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-text) 18%, transparent));
@@ -802,7 +802,7 @@ function onGroupActivate(i: number) {
 .cap-rim-accent {
   fill: none;
   stroke: var(--color-primary);
-  stroke-width: 1.5; /* N40③②：提示弧收细，级联归属让位给 primary 软底底环 */
+  stroke-width: 1.5; /* 提示弧收细，级联归属让位给 primary 软底底环 */
   stroke-linecap: round;
   opacity: 0.85;
 }
@@ -909,7 +909,7 @@ function onGroupActivate(i: number) {
 .sector-btn.is-active .sector-icon {
   background: color-mix(in srgb, var(--color-primary) 16%, transparent);
   border-color: var(--color-primary);
-  /* N37 glow 纪律收尾（N27 波次的挂账两枚之一）：彩色发光此后只许"进行中"脉冲使用，
+  /* glow 纪律：彩色发光只许"进行中"脉冲使用，
    * 而 .is-active 是稳态（命中/选中）——降为中性投影，立体提示保留、彩色光去掉。
    * 用 --color-text 混合而非写死黑/白，故明暗两模式各自取得正确深浅。 */
   filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--color-text) 18%, transparent));
@@ -920,14 +920,14 @@ function onGroupActivate(i: number) {
   line-height: 1.3;
   font-weight: 600;
   color: var(--color-text);
-  /* 单行省略（N40③④）：扇区重心归图标座，全称交 hub 大读数 + title 兜底；
-     两行折行（N6 F1 v2）让位给间隙变大后的留白秩序 */
+  /* 单行省略：扇区重心归图标座，全称交 hub 大读数 + title 兜底；
+     两行折行让位给间隙变大后的留白秩序 */
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 分组计数徽标（N6 F3 → N40③④）：▸N 文字改圆形徽标，座外上角只报数 */
+/* 分组计数徽标：▸N 文字形制已退役，圆形徽标在座外上角只报数 */
 .sector-caret {
   position: absolute;
   top: 1px;
@@ -1011,7 +1011,7 @@ function onGroupActivate(i: number) {
 }
 .hub-label {
   max-width: 104px;
-  font-size: 14px; /* N40③⑥：hub 干活的读数字段——全称大字号（14/700） */
+  font-size: 14px; /* hub 主读数字段：全称大字号（14/700） */
   font-weight: 700;
   line-height: 1.35;
   overflow-wrap: break-word;

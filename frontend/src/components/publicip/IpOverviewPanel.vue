@@ -7,7 +7,7 @@ import AdapterCard from './AdapterCard.vue'
 // 概览数据、加载态与错误文案由视图经 props 下传；强制刷新与快捷 Ping / 复制上抛。
 // pingBusy 为 Ping 在飞标记：快捷 ⚡ 探测中禁用，防连点触发重入（守卫本体在 composable run()）。
 // 根节点为多根 fragment（状态栏/错误框/两个小节），渲染后仍是 .network-page 的直接子节点，
-// 故 flex gap 布局与拆分前逐字一致。
+// 父层 flex gap 照常生效——勿包一层单根 div 打破间距。
 withDefaults(defineProps<{
   overview: NetworkOverview | null
   loading: boolean
@@ -137,22 +137,23 @@ function forwardCopyText(text: string, label: string) {
 </template>
 
 <style scoped>
-/* 页头/错误框/.btn 家族/.chip 徽标由 PageHeader 与 components.css 原子接管；
-   以下状态栏、公网 IP 卡与网卡列表容器为本视图独有布局，拆分时随标记整体迁入。
-   （协议标签 .card-tag 为方角小标签、非胶囊 chip 形，按手册§9-4 不硬塞全局） */
-/* 布局/底色/边框/圆角逐值部分落回全局 .control-panel；仅内距散差暂留——定档候选，见收编报告 */
+/* 页头/错误框/.btn 家族/.chip 徽标由 PageHeader 与 components.css 原子承担；
+   以下状态栏、公网 IP 卡与网卡列表容器为本组件独有布局。
+   （协议标签 .card-tag 为方角小标签、非胶囊 chip 形，按手册 §9-4 不硬塞全局） */
+/* 布局/底色/边框/圆角逐值走全局 .control-panel；仅内距散差（12/16 vs 全局 10/14）
+   暂留本地，定档候选（未在册） */
 .control-panel {
   padding: 12px 16px;
 }
 
-/* 字号/颜色/列布局落回全局 .meta-info；单子节点，收编后由全局染及（目视项） */
+/* 字号/颜色/列布局走全局 .meta-info（本组件内单子节点由全局染及，目视项），不挂副本 */
 
 .section-title {
   margin-top: 6px;
 }
 
-/* 字重/颜色/大写/字距落回全局 .section-title h3；仅字号（md）与下外距（0）散差暂留
-   ——同族 WSL 面板裸用全局标准形，本形为定档候选，见收编报告 */
+/* 字重/颜色/大写/字距走全局 :where(.section-title h3)；仅字号（md）与下外距（0）散差暂留
+   ——同族 WSL 面板裸用全局标准形，本形为定档候选（未在册） */
 .section-title h3 {
   font-size: var(--text-md);
   margin: 0;
@@ -262,5 +263,5 @@ function forwardCopyText(text: string, label: string) {
   gap: 14px;
 }
 
-/* 裸文字 32px 档副本删净，落回全局 .empty-hint 标准虚线卡形（§9.6-10 定档裁决——目视项） */
+/* 空态行走全局 :where(.empty-hint) 虚线卡形（§9.6-10 定档，目视项），不另挂裸文字档 */
 </style>

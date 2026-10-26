@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 设置分区·常规偏好：开机自启 / 关窗行为 / 日志保留天数。
-// 拆分自原 SettingsView 单页（逻辑逐字保留）：改动即写后端 SetGeneralSettings，
-// 失败回滚重拉；提示走全局顶层卡片（useToast），本页不挂局部 toast。
+// 改动即写后端 SetGeneralSettings，失败回滚重拉；提示走全局顶层卡片（useToast），
+// 本页不挂局部 toast。
 import { ref, onMounted } from 'vue'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
 import * as HistoryAPI from '../../../bindings/hanxi/internal/history/historyservice'
@@ -15,7 +15,7 @@ const autoStart = ref(false)
 const minimizeToTray = ref(true)
 const logRetainDays = ref(7)
 const saving = ref(false)
-// 历史记录·OCR 全文档位（Q1 裁定：默认开=全文入库；独立于 GeneralSettings DTO，
+// 历史记录·OCR 全文档位（裁定：默认开=全文入库；独立于 GeneralSettings DTO，
 // 走 history 服务的档位读写，避免动共享设置模型面）
 const historyOcrFull = ref(true)
 

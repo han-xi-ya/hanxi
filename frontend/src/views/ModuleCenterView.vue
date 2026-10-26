@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 模块中心（Wave 2 MVP）：完整 Catalog 与管理入口的一级核心页（ADR-0001 §1.8）。
+// 模块中心：完整 Catalog 与管理入口的一级核心页（ADR-0001 §1.8）。
 // 接线纪律：
 //   - 数据全部来自 useModuleCatalog 合并投影（后端 Registry 是唯一真相），
 //     页头计数与筛选分桶只做展示派生，操作成功后不本地 patch state，
@@ -47,7 +47,7 @@ const isRunning = (e: ModuleEntry) => summaryOf(e) === 'running' || summaryOf(e)
 const isFault = (e: ModuleEntry) =>
   ['blocked', 'faulted'].includes(summaryOf(e))
   || ['corrupt', 'revoked'].includes(healthOf(e))
-// 健康维度直读（W2b 更新感知链）：不叠合成分支，标签词与计数都取自真实投影，
+// 健康维度直读：不叠合成分支，标签词与计数都取自真实投影，
 // 文案锚定 HEALTH_META['update-available']（禁自造状态词）。
 const isUpdateAvailable = (e: ModuleEntry) => healthOf(e) === 'update-available'
 const updateAvailableLabel = healthMeta('update-available').text
@@ -176,8 +176,8 @@ function handlePrimary(entry: ModuleEntry) {
     case 'none':
       break // 按钮恒禁用，正常不可达；防御空点
     default: {
-      // update/repair 等操作面属 Wave 4+（后端尚无对应事务），如实告知不虚装
-      //（retry 已于上方接回 open 通道，不再是死路兜底）
+      // update/repair 等操作面后端尚无对应事务、未开放，如实告知不虚装
+      //（retry 已接回 open 通道，不落此兜底）
       const label = ((PRIMARY_ACTION_META as Record<string, { label: string }>)[action ?? '']?.label) || '该操作'
       showErrorToast(`「${name}」的${label}操作将在后续版本开放`)
     }
@@ -282,7 +282,7 @@ function resetFilters() {
         <button type="button" class="state-action" @click="refresh()">重试</button>
       </div>
 
-      <!-- 统一 Operation 呈现（Wave 4）：resumable 恢复条 / 在途进度条，位于错误框之后、筛选之前 -->
+      <!-- 统一 Operation 呈现：resumable 恢复条 / 在途进度条，位于错误框之后、筛选之前 -->
       <OperationBanner @navigate="(route) => emit('navigate', route)" />
 
       <div class="toolbar-row">
@@ -418,7 +418,7 @@ function resetFilters() {
 }
 
 /* 详情抽屉：右缘全高面板，细边框先行、阴影兜底。
-   层序 G-C11 β案（2026-10-26）：本层 Teleport 到 body 末尾，与 App 单例确认框同 1000 档
+   层序定案：本层 Teleport 到 body 末尾，与 App 单例确认框同 1000 档
    并存时叠放只拼 DOM 插入序——视图级弹层一律挂 --z-dialog-under(950)，App 单例恒在上。 */
 .drawer-backdrop {
   position: fixed; inset: 0; z-index: var(--z-dialog-under);
@@ -429,7 +429,7 @@ function resetFilters() {
   width: min(440px, 100%); height: 100%;
   border-left: 1px solid var(--color-border);
   box-shadow: var(--shadow-panel);
-  /* 样式审计 C10（2026-10-27）：删原 `outline: none`——键盘打开抽屉时根节点焦点环是对
+  /* 不加局部 `outline: none`：键盘打开抽屉时根节点焦点环是对
      UiHistoryDialog `.hist-dialog:focus-visible` 既有族形的应有呈现（鼠标打开 :focus-visible
      不命中、无噪）；点开后焦点即刻入内层控件，环只在键盘路径闪现属正确反馈。 */
   animation: drawerIn 160ms ease-out;

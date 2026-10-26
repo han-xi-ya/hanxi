@@ -1,18 +1,18 @@
 <script setup lang="ts">
-// Paseo 控制台（Wave 5 · 批 0 契约收敛件；共享契约增强批收编版；波 2D 迁壳件）：
+// Paseo 控制台（托管控制台共享契约消费件）：
 // 状态/版本加载/进度 map/uptime/busy 闩/启停与设版编排/联动辅助卡全部收进
 // adapters/paseo + components/managed 家族（store 一份，子件共享注入）。
-// 增强批收编后视图方言表退役：多版本卡（隐式「使用版本」徽标 + 自动最新回退
-// 高亮 + 未验证哈希徽标）与精确互认远程表改由共享 ManagedVersionPanel 渲染
-// （词面经 copy 覆写、隐式使用经 versions.implicitActive、徽标经
-// #version-row-extra 槽免 cast）；通道行换用共享 ManagedChannelRow；
-// 引用将启版本的引导行迁回 adapter.hint 投影上下文。
+// 视图无自绘表：多版本卡（隐式「使用版本」徽标 + 自动最新回退高亮 + 未验证
+// 哈希徽标）与精确互认远程表由共享 ManagedVersionPanel 渲染（词面经 copy
+// 覆写、隐式使用经 versions.implicitActive、徽标经 #version-row-extra 槽免
+// cast）；通道行用共享 ManagedChannelRow；引用将启版本的引导行在 adapter.hint
+// 投影上下文内给。
 // 视图仅余：升级警告条 + 常驻自动更新提示条（谓词/文案在 adapter 或本文件常量）、
 // 「什么是 Paseo」说明卡与 daemon 数据钮（#extras-action 槽）。
-// 波 2D 迁壳：页头+页签+error-box+tab-body 手抄壳骨退役——升级判定要 setup 期
-// store 句柄，走「视图自建 useManagedConsole → 传壳 :store」注入通道；版本 Tab
-// 因面板 #version-row-extra 槽位需求走壳的 #versions-body 整体替换位（契约内
-// 逃生门：默认体的 channel 块 + 面板照抄重挂，仅多带方言徽标槽）。
+// 壳接线：升级判定要 setup 期 store 句柄，走「视图自建 useManagedConsole →
+// 传壳 :store」注入通道；版本 Tab 因 #version-row-extra 槽位需求走壳的
+// #versions-body 整体替换位（契约内逃生门：默认体的 channel 块 + 面板照抄
+// 重挂，仅多带方言徽标槽）。
 // 与 CCSwitchView 的结构差异：单设定版本可空（空=自动最新已装）、stable/beta
 // 双通道切换、双数据目录入口（Electron 走 extras.dataDir，daemon 走 #extras-action 槽）。
 import { computed } from 'vue'
@@ -52,9 +52,9 @@ async function openDaemonHome() {
   }
 }
 
-// 「未验证哈希」徽标谓词（③收编）：面板 #version-row-extra 槽作用域的 record
+// 「未验证哈希」徽标谓词：面板 #version-row-extra 槽作用域的 record
 // 随泛型 V 携带 verifiedHash——本函数形参即方言型，全链路零 cast。
-// 导入安装本身无官方 digest，不打此徽标（与批 0 视图现词逐字一致）。
+// 导入安装本身无官方 digest，不打此徽标。
 function unverified(v: ManagedVersionRecord<PaseoVersionDialect>): boolean {
   return !v.verifiedHash && !v.isImport
 }
@@ -106,8 +106,7 @@ function unverified(v: ManagedVersionRecord<PaseoVersionDialect>): boolean {
 
 <style scoped>
 /* 页头/控制条/提示条/页签与 flex 骨架由托管控制台壳 + components.css 全局原子
-   接管（波 2D 迁壳后视图手抄壳骨与 .paseo-view flex 副本退役；
-   hint-line/info-details/info-summary/info-body p 与内联链接由全局原子接管；
+   接管（hint-line/info-details/info-summary/info-body p 与内联链接由全局原子接管；
    control-panel/meta-info/btn-group、channel-row 家族、section-title、
    徽标档位色（含 badge-import——面板 scoped 提供）、inst-* 与表格 dl-* 家族
    全部由共享面板/块承载）。 */

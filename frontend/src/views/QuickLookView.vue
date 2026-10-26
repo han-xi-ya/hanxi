@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// QuickLook 空格预览托管工作台（Wave 5 · 批 0 共享契约迁入件，波 2E 版本区回迁收口）：
+// QuickLook 空格预览托管工作台：
 // adapter（src/adapters/quicklook）承载 RPC/事件/文案；控制台壳位三段共用共享件——
 // ManagedControlBar（状态头 + 启停钮 + banner/hint 投影，slim 档现状保持）、
 // ManagedVersionPanel（版本 Tab 全量接管）、ManagedExtrasCard（随关 + 仓库行）；
 // store（useManagedConsole）单源接管快照轮询/事件订阅/进度 map/busy 闩/版本区加载。
 // zip 解压词形（「导入本地便携目录」「安装最新版」「官方 zip」「安装中」
 // 「哈希校验…/解压安装…」）并非超出面板通用形——全部经 adapter.copy 词面覆写
-// 逐字声明（波 2E 审计实证），视图手抄方言表退役。
+// 声明（审计实证），视图不手抄方言表。
 // 本模块契约形状之外仅剩一处按"共享件零模块知识"纪律留视图：
 //  三钮序「启动托管 · 重载配置 · 退出」——中间的重载钮经 ManagedControlBar 的
 //  #primary-action 具名槽自绘，动词取 adapter.reset（扩展槽，视图侧接线，busy 共用 store）。
@@ -33,7 +33,7 @@ const MAIN_TABS = [
   { key: 'versions', label: '📦 版本管理' },
 ]
 
-// ---------- 重载配置（adapter.reset 扩展槽的视图侧接线：共享件批 0 不消费该槽） ----------
+// ---------- 重载配置（adapter.reset 扩展槽的视图侧接线：成败均不刷快照，busy 闩共用 store） ----------
 async function runReload(): Promise<void> {
   const reset = adapter.reset
   if (!reset) return
@@ -76,7 +76,7 @@ async function runReload(): Promise<void> {
         </template>
       </ManagedControlBar>
 
-      <!-- 说明卡（可折叠，文案逐字保留） -->
+      <!-- 说明卡（可折叠） -->
       <details class="info-details">
         <summary class="info-summary">什么是 QuickLook</summary>
         <div class="info-body">
@@ -89,8 +89,8 @@ async function runReload(): Promise<void> {
     <!-- 联动与辅助设置卡（随关 + 仓库行；本模块无快捷方式/数据目录，自动缺席） -->
     <ManagedExtrasCard :adapter="adapter" />
 
-    <!-- 版本管理 Tab：共享面板全量接管（波 2E 回迁）——zip 解压词形经 adapter.copy
-         逐字声明，本地手抄方言表与 ql-ver-status 锚点族一并退役 -->
+    <!-- 版本管理 Tab：共享面板全量接管——zip 解压词形经 adapter.copy
+         声明，本地无手抄方言表 -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
       <ManagedVersionPanel :adapter="adapter" :store="store" />
     </div>
@@ -99,7 +99,7 @@ async function runReload(): Promise<void> {
 
 <style scoped>
 /* 控制条四件套/版本面板/联动卡/banner/hint-line 由 managed 共享件 + components.css
-   全局原子接管（波 2E：方言版本表随迁移删净，本页不再触版本区 DOM）；
+   全局原子接管（方言版本表已删净，本页不再触版本区 DOM）；
    本页保留：页级 flex 骨架与说明卡内联形。 */
 .quicklook-view { display: flex; flex-direction: column; gap: 10px; }
 .tab-body { display: flex; flex-direction: column; gap: 10px; }

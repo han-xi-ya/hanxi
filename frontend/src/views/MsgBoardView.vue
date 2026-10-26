@@ -1,11 +1,9 @@
 <script setup lang="ts">
-// 桌面留言板模块页（重设计 v4「所见即所得的牌桌」）：v1/v2/v3 的共同病根是
-// "页面里堆卡片"——v3 流体三柱虽然治好了死白与错位，但配重仍然反着：草稿
-// textarea 与配置项合计吃掉大半屏幕，而真正决定桌面的东西（牌）被压在 0.34
-// 基准缩放的预览小样里，只占视口不到 5%。机主诉点很直白：这页本质是一块摆在
-// 桌面上的牌，页面却长得像表单合集。
+// 桌面留言板模块页（v4「所见即所得的牌桌」）：病根史一句话——旧稿"页面里堆
+// 卡片"、配重反着（草稿与配置吃掉大半屏幕，真牌被压在小样预览里），这页本质
+// 是摆在桌面上的那块牌，页面就得长成牌桌。
 //
-// v4 换成"牌桌"骨架——一屏工作台，左右两区，不是卡片堆：
+// 牌桌骨架——一屏工作台，左右两区，不是卡片堆：
 //   左 60%+ 牌面舞台（.mb-hero）：顶部 40px 工具条收纳状态字/异常 chip/挂撤
 //     主操作/全屏预览；主体是桌面模拟底（tokens 派生灰，color-mix 随主题联动，
 //     零新色值）上的大牌 1:1 预览——缩放渲染收编 B 路共享件 BoardStage
@@ -15,12 +13,12 @@
 //     契约保留，兜底线仍是字号×13）；底部一条回显栏说"正在挂出的牌面"（已存
 //     版本真话）+ 脏态。
 //   右 ≤40% 窄长操作栏（.mb-rail）：一行一控件的属性面板形制，全走 setting-row
-//     原子——正文（textarea 收 3 行、可展 8 行，正面回应"草稿太大"）、类型速挂
+//     原子——正文（textarea 常态 3 行、可展 8 行）、类型速挂
 //     一排微钮、字号滑杆、多屏/目标屏、热键、保存行、契约折叠。
 //   ≤840（容器查询看主区实际宽度）：舞台在上（高度压缩档）、操作栏在下。
 // 老内核/首帧/happy-dom 拿不到实测值时回落 300px 基准盒 + 字号×13 兜底线
-// （常数与换算单一真相在 components/msgboard/boardMetrics），数值与 v3 测试
-// 断言口径逐位可推（scale(0.34615…)/scale(0.18461…)）。
+// （常数与换算单一真相在 components/msgboard/boardMetrics），兜底可推：
+// scale(0.34615…)/scale(0.18461…)，字面量由本页 spec 断言锁死。
 //
 // 语义金标准零删减：挂/撤主动作与 Toggle 翻转纪律（已挂态双击只热更不盲调
 // Toggle）、类型单击填词/双击挂出、草稿↔大牌同源联动、字号滑杆 24–200 钳位、
@@ -55,7 +53,6 @@ const FONT_MAX = 200
 const PREVIEW_EMPTY = '（牌面还是空的——挑一张类型或直接输入文字补上）'
 
 // 类型速挂微钮：表情进正文首行（版式契约见 BoardCard），副行自带回时预期。
-// 这是"预设文案 chip 行"的升格形态——旧 4 条预设语义全部保留在内。
 interface BoardType { id: string; emoji: string; label: string; text: string }
 const TYPES: BoardType[] = [
   { id: 'meeting', emoji: '🤝', label: '开会', text: '🤝 开会中\n请勿打扰' },
@@ -128,8 +125,8 @@ function onFormInput() {
   savedTip.value = false
 }
 
-// saveCore 返回是否保存成功；失败语义与旧版逐字一致：错误可见、热键字段以
-// 服务端回滚为准、其余草稿保留。
+// saveCore 返回是否保存成功；失败语义固定：错误可见、热键字段以服务端回滚
+// 为准、其余草稿保留（不私留假状态，回读定脏）。
 async function saveCore(): Promise<boolean> {
   if (textOver.value) {
     errorMsg.value = `留言文案 ${textLen.value} 字，超出上限 ${TEXT_LIMIT} 字——便利贴也贴不下整页作文，请精简`
@@ -197,7 +194,7 @@ const screenMissing = computed(() => {
 const secondaryScreens = computed(() => screens.value.filter((s) => !s.isPrimary))
 const hotkeyMissing = computed(() => !!status.value && status.value.hotkey !== '' && !status.value.hotkeyActive)
 // 异常汇总旗标：热键未在位/屏不在位/防休眠登记失败任一命中都在操作栏头部亮警示
-// （内容再多也先看见病）——v3 挂在"参数配置"折叠标题上，v4 折叠没了，旗标上移到头部。
+// （内容再多也先看见病）。
 const advAlert = computed(() => hotkeyMissing.value || screenMissing.value || (shown.value && !!status.value && !status.value.keepAwake))
 
 function screenLabel(s: ScreenInfo): string {
@@ -220,18 +217,18 @@ const dirtyNote = computed(() => (shown.value
 // v4 口径"能 1:1 就 1:1"：scale = min(1, (舞台实测宽 − 12) / 卡片实际布局宽)，
 // 超高反算 --bc-max-h = (盒高−12)/scale——两条公式与全部常数（12 容纳线、
 // 字号×13 兜底线、48px 高度下限、300 基准盒）的单一真相在 boardMetrics，
-// 舞台渲染与自测由 BoardStage 承担（默认 cap=1.0 与本路口径逐位一致）。
+// 舞台渲染与自测由 BoardStage 承担。
 // 宿主只留两件事：
 //   ①盒外观与盒实测：.mbp-box（背景/边框/高度归宿主面板，BoardStage 职责
 //     边界所定）上的 ResizeObserver 实测盒宽/盒高，经 containerWidth/Height
 //     喂给舞台；卡片自然宽元素已内化进舞台，由舞台同规格自测 RO 量取，
 //     宿主不再重复观测（happy-dom/首帧测不到时双轨都回落 300 基准盒 +
 //     字号×13 兜底线：64px 时 scale=288/832=0.34615…，120px 时 scale=
-//     288/1560=0.18461…，数值口径与 v3/v4 断言逐位一致）。
+//     288/1560=0.18461…，字面量由 MsgBoardView.spec 断言锁死）。
 //   ②接住舞台 scale 事件（immediate 首发）——回显栏大白话文案与之同源。
-// 机主反馈（2026-09-26）：旧口径「实际挂出约 N 倍大」要人拿倍数心算原图多大，
-// 看不懂。改一句大白话：先报预览缩到百分之几（所见直接可验），再报真牌相对
-// 预览大的倍数，数字直给；真实大小的查看引导交给「全屏预览」。
+// 回显文案大白话口径：先报预览缩到百分之几（所见直接可验），再报真牌相对
+// 预览大的倍数——「实际挂出约 N 倍大」那种要人拿倍数心算牌面尺寸的写法不得
+// 回头；真实大小的查看引导交给「全屏预览」。
 const stageEl = ref<HTMLElement | null>(null)
 const boxW = ref(PREVIEW_BASE_BOX_W)
 const boxH = ref(PREVIEW_BASE_BOX_W)
@@ -278,7 +275,7 @@ const previewZoomNote = computed(() => {
 const fullPreview = ref(false)
 
 // 草稿框收展：默认 3 行（属性面板一控件一行），展开 8 行写长草稿——
-// "草稿太大"的正面回应：常态只占一小行，要写再撑开。
+// 常态只占一小行，要写再撑开。
 const draftExpanded = ref(false)
 
 onMounted(refresh)

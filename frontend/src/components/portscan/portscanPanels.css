@@ -1,12 +1,12 @@
 /* portscan 家族共享皮（形制同 components/publicip/diagRtt.css）：
-   PortScanView、ProxyCheckPanel，以及 2026-10-22 起已迁往 sshhosts 模块的 SSHCheckPanel
+   PortScanView、ProxyCheckPanel，以及 2026-10-22 起已迁往 sshkeys 模块的 SSHCheckPanel
    （它以 `../portscan/portscanPanels.css` 跨目录引用）各引入同一份，
-   避免"同一家族的卡片壳在两个文件里各写一遍"。
-   刻意**不动 components.css**——并行会话此刻正在改它，等那轮入库后再议上收。
+   避免"同一家族的卡片壳在多文件里各写一遍"。
+   刻意**不动 components.css**——上收另议，暂无入库账。
    只收本家族真共享的部分；全局 :where 原子（.btn、.tbl、.state-box、.chip 系、.input
    等）一律不在此复制，等值副本是 §9.6-10 明令删净的东西。 */
 
-/* —— 卡片壳家族（逐字取自 PortScanView 原 scoped 定义，未改数值）—— */
+/* —— 卡片壳家族（自 PortScanView 原 scoped 取来，数值未动）—— */
 .section-card {
   background: var(--surface-panel); border: 1px solid var(--color-border);
   border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;

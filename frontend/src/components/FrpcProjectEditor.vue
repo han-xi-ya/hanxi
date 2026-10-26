@@ -836,7 +836,7 @@ function cancel() { emit('cancel') }
 .editor-side { position: sticky; top: 16px; }
 
 /* 同名不同形有意保留：本组件表单分节卡为无阴影紧凑形（全局 .card 带 shadow-small、radius-element），
-   落回会改变编辑器视觉层级，待 §9.6-10 大扫除统一裁决 */
+   落回会改变编辑器视觉层级，暂不落回（统一大扫除时再裁） */
 .card { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 16px; }
 .card-title { font-size: var(--text-md); font-weight: 600; color: var(--color-text-muted); margin: 0 0 12px; }
 .card-desc { font-size: var(--text-sm); color: var(--color-text-subtle); margin: 4px 0 0; }
@@ -897,7 +897,7 @@ function cancel() { emit('cancel') }
 .toml-editor-layout { width: 100%; }
 .toml-edit-card { display: flex; flex-direction: column; height: 620px; }
 .raw-toml-textarea {
-  /* 样式审计 C10（2026-10-27）：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环
+  /* 样式审计 C10：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环
      （深底终端区内环描在边框外，可辨）。 */
   flex: 1; margin-top: 10px; padding: 14px; background: var(--terminal-bg); color: var(--terminal-fg);
   border-radius: var(--radius-control); font-family: var(--font-mono); font-size: var(--text-base); line-height: 1.6;

@@ -16,16 +16,16 @@ const openDirVersion = computed(() => {
   return runtime.installed.find((info) => info.version === preferred) ?? runtime.installed[0] ?? null
 })
 
-// 波 2F：七个手抄「runExclusive→settle→toast」包装收编 store.runSlotVerb
-// （波 2A 编排位）。前缀词面对账（逐字沿用现词，与 store ACTION_ERROR_PREFIX
-// 表值同词者即为「回表」：quitForm 退出失败: / setActive 设置失败: /
-// removeVersion 卸载失败: / importLocal 导入失败: / openDir 打开目录失败: ）；
+// 七个手抄「runExclusive→settle→toast」包装已收编 store.runSlotVerb。
+// 前缀词面对账（逐字沿用现词，与 store ACTION_ERROR_PREFIX 表值同词者即为
+// 「回表」：quitForm 退出失败: / setActive 设置失败: / removeVersion 卸载失败: /
+// importLocal 导入失败: / openDir 打开目录失败: ）；
 // download 的「操作失败: 」为本视图方言（家族 runDownload 标准词为「下载失败: 」，
 // 双表 custom 编排不走 store 票路，不并入表词）。
 // toast 守卫微差留痕：openWindow/quitForm 原为**无条件**弹 outcome.message，
 // runSlotVerb 经 settle 只弹 message!==undefined 者——两动词的 runtime
 // （VSCodeAPI.OpenWindow/Quit 的 ControlOutcome/QuitOutcome）恒回 message，
-// 两口径等价（波 2F 裁决，非静默吞词）。
+// 两口径等价（已裁决，非静默吞词）。
 // 刷新档对位：openWindow/quitForm「成败两分支均刷」= refreshAfter:'always'
 // （toast 先行、刷新随后，原序保持）；download/setActive/openDir/remove/import
 // 原形制不刷快照 = 'never' 缺省；download/remove/import 的 reloadVersions

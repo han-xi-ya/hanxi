@@ -1,9 +1,9 @@
 // ============================================================================
-// WindTerm → 托管控制台 adapter（W4 托管批，模式照抄 flclash 黄金形态）
+// WindTerm → 托管控制台 adapter（模式照抄 flclash 黄金形态）
 //
 // 事件面：`windterm:instance-state` / `windterm:version-download`（单键=version）。
 // 方言注记：
-//  - 外部实例退出为 N3 终裁 confirm-force 档：Quit(false) 首入回执
+//  - 外部实例退出为终裁 confirm-force 档：Quit(false) 首入回执
 //    confirm-required → 全局确认框明示风险 → 同意后 Quit(true) 重入执行
 //    （vscode 安装闸同款往返契约，授权门在后端、UI 只收集同意）；
 //  - 上游 releases 无官方摘要（实测 32 个 release 全量无 digest）：metaHints

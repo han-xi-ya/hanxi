@@ -1,16 +1,15 @@
 // ============================================================================
-// GoNavi → 托管控制台 adapter（三线并行 · gonavi 前端线，形制照 ccswitch/termora 家族）
+// GoNavi → 托管控制台 adapter（形制照 ccswitch/termora 家族）
 //
 // 事件面：`gonavi:instance-state`（引擎裸 Snapshot）/ `gonavi:version-download`
 // （单键=version，与 release 行按版本对齐）；动词面：OpenWindow→control.primary、
 // Quit→control.quit（执行前经 QuitAdvisory 取后端收口的预告话术弹确认）。
 //
-// 类型注记：绑定物（gonaviservice 等）由主会话三线并流后统一 regenerate，此前
-// vue-tsc 报缺符号属预期。本文件不 import 绑定 models，GoNaviStatus/方言包为
-// **骨架线实码 JSON tag 的本地结构投影**（gonavi/models.go、version/models.go
-// 逐字段对齐）——再生成后与绑定类型自然互认。
+// 类型注记：本文件不 import 绑定 models，GoNaviStatus/方言包为**后端实码
+// JSON tag 的本地结构投影**（gonavi/models.go、version/models.go 逐字段对齐），
+// 与绑定类型自然互认。
 //
-// 语义要点（全部如实入文案，见 banner/hint/metaHints；骨架线实面口径）：
+// 语义要点（全部如实入文案，见 banner/hint/metaHints）：
 //  - 上游自带应用内更新器，会在托管目录**原地替换 exe**——version 线 VerifyLedger
 //    只读复查据此标 drifted/driftNote（漂移事实只从 GetStatus 取，instance-state
 //    事件不带）：状态区琥珀警示压过运行态横幅（mangodisk「完整性压过运行态」
@@ -141,7 +140,7 @@ export function createGoNaviAdapter(): ManagedModuleAdapter<GoNaviStatus, GoNavi
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 末版放行清账新模块口径（后端实码）：允许卸到零版本，卸空后 active
+        // 末版放行清账口径（后端实码）：允许卸到零版本，卸空后 active
         // 清空、下次冷启动给「先下载或导入」指引；确认框先行探测并如实预告。
         const soleNote = await soleVersionUninstallNote(() => GoNaviAPI.ListInstalledVersions())
         const accepted = await confirm({
@@ -218,7 +217,7 @@ export function createGoNaviAdapter(): ManagedModuleAdapter<GoNaviStatus, GoNavi
       return null
     },
 
-    // metaHints 四条如实披露（骨架报告口径）：①来源与官方摘要信任根（宁拒不列）
+    // metaHints 四条如实披露：①来源与官方摘要信任根（宁拒不列）
     // ②漂移徽章语义 ③数据目录不随版本隔离、卸载不触碰 ④WebView2 依赖与便携
     // 无单实例——多开属用户自由、托管只甄别，退出宽限强杀兜底。
     copy: {

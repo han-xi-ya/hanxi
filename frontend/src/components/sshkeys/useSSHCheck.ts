@@ -17,9 +17,10 @@
 //      关窗（pagehide、卸载）——**不是在成功回调里顺手补救**；
 //   ③ 不进复制全文、不进结果对象（后端本就没有该字段）、不进 localStorage、
 //      不进 console。
-// ②的一处已知盲区如实记下：SshKeysView 的页签切换用 v-show（有意保留主机/端口
-// 与上次结论），不触发任何组件生命周期，面板内部感知不到"这一页被藏起来了"；
-// 页内切走时若要清口令，须视图侧配合（已随本轮改动上报，非本文件权限）。
+// ②的一处曾经的盲区已双向封死：SshKeysView 页签切换用 v-show（有意保留主机/端口与
+// 上次结论），不触发组件生命周期，面板内部感知不到"这一页被藏起来了"——页内切走时由
+// 宿主 watch activeTab 显式调本面板 expose 的 clearPass 清口令（契约在 SshKeysView 注释），
+// 勿把它退回"生命周期自会处理"。
 import { ref, shallowRef, getCurrentInstance, getCurrentScope, onScopeDispose, onDeactivated } from 'vue'
 import * as SshKeysAPI from '../../../bindings/hanxi/internal/modules/sshkeys'
 import type { HostEntry, SSHAuthResult, SSHCheckResult } from '../../../bindings/hanxi/internal/modules/sshkeys/models'

@@ -1,16 +1,14 @@
 <script setup lang="ts">
-// 托盘/轮盘条目编辑面（N5-C1 抽自设置页 TraySection；轮盘独立批按 scope 分账）：
-// 候选条目勾选 / 外部程序添加 / 二级分组编辑 / 排序与移除 / 点上格互换交互全保留。
+// 托盘/轮盘条目编辑面（共享组件；宿主：设置页 TraySection 挂托盘账、QuickMenuView
+// 挂轮盘账）：候选条目勾选 / 外部程序添加 / 二级分组编辑 / 排序与移除 / 点上格互换。
 //
-// —— 双账（①lane 冻结契约）：scope prop 切换两本独立账——'tray'（默认，设置页
-//   TraySection 一字不改也行为如旧）打 Get/SetTrayMenu；'wheel'（QuickMenuView 宿主
-//   接线属第四 lane）打 Get/SetWheelMenu。Get/Set 一律经 fetchMenu/pushMenu 成对切换，
-//   禁止串账。契约镜像纪律：bindings 尚未随 Go 侧新 RPC 再生（再生归主会话统一收口），
-//   再生前 GetWheelMenu/SetWheelMenu 成员不存在——循 WSLView/translucenttb 先例以本地
-//   交叉型补函数面直调；spec 侧 vi.mock 全顶替；运行期 wheel 面在第四 lane 接线时
-//   绑定必已再生，提前误用只会落失败 toast，护栏自洽。
+// —— 双账（冻结契约）：scope prop 切换两本独立账——'tray'（默认，设置页宿主）
+//   打 Get/SetTrayMenu；'wheel'（QuickMenuView 宿主）打 Get/SetWheelMenu。
+//   Get/Set 一律经 fetchMenu/pushMenu 成对切换，禁止串账。
+//   wheel 面绑定已随 Go 侧 RPC 再生（appservice.js 在案）；本地交叉型声明（见下）
+//   属可退役冗余，删除归代码清理另议。spec 侧 vi.mock 全顶替。
 //
-// —— 实时保存（机主 2026-09-26：候选条目只要改变就实时保存）：保存钮与脏标记整退。
+// —— 实时保存（机主裁决：候选条目只要改变就实时保存）：保存钮与脏标记整退。
 //   结构性操作（勾选候选 / 移除 / 排序 / 互换 / 分组增减 / 外部程序添加）saveNow() 即时落盘；
 //   条目/分组/子条目名称文本走 800ms 防抖 saveDebounced() + blur 即时（saveNow 清防抖头）。
 //   在途写合流：一笔写未回时再改动 → 尾随标记，本轮成功后重新取全量快照再写，绝不丢最后一次；
@@ -21,20 +19,20 @@
 //   的账），页脚状态条如实说明原因，补全后的下一次操作自然重试。
 //   账目代次 epoch：重载/换账递增，写回程后旧账的尾随合流与 saved 上抛作废，防串账。
 //
-// —— 候选目录收口（机主同批）：候选区只供 command 族（模块 TrayCommands「启动/打开 XX」，
+// —— 候选目录收口（机主裁决）：候选区只供 command 族（模块 TrayCommands「启动/打开 XX」，
 //   含 webapp 动态暴露的 webapp/open:<id> 网页应用）；route 族（跳模块 hanxi 界面的页面
 //   导航）整族退出。分类判据实读后端 elevate_tray.go：option.type='command' ⇔
 //   registry.ListTrayCommands（ref "moduleId/commandId"）、'route' ⇔ extapi.GetEnabledNavs
 //   （ref 前端路由）——按 kind 字段判，绝不按 label 字面猜。存量 route 条目照常渲染与管理
-//   （行上标「不再供选」），不自动删除不报错。后端源收口更干净但撞 ①lane，本轮前端做。
+//   （行上标「不再供选」），不自动删除不报错。收口以前端过滤落地。
 //
-// —— 勾选形制（机主同批「多选框不好看」）：候选勾选由原生裸形改自绘方框，hover/checked/
+// —— 勾选形制（机主裁决「多选框不好看」）：候选勾选由原生裸形改自绘方框，hover/checked/
 //   focus-visible 三态 + 勾 pop 动效（--motion-fast）；勾前景走 --color-on-accent 单档
-//   契约（N37：彩底前景禁借 on-primary/text-inverse）；卡片整体选中反馈循 WslUsbPanel
+//   契约（彩底前景禁借 on-primary/text-inverse）；卡片整体选中反馈循 WslUsbPanel
 //   .pick-option:has() 先例。勾选即落盘：checked 先随本地账渲染、写账在途失败时重拉翻转回来。
 //
-// 已知病灶处置在账：isOptionAdded/toggleOption 仍只判顶层——组内判重要求候选勾选具备
-// 「该选项存在于哪个组」的交互语义（取消勾选从哪删？），属交互重设计非小补丁，本轮缓做；
+// 已知在账：isOptionAdded/toggleOption 仍只判顶层——组内判重要求候选勾选具备
+// 「该选项存在于哪个组」的交互语义（取消勾选从哪删？），属交互重设计非小补丁；
 // tray/wheel 两账独立后，判重各自账内顶层语义仍成立、未因分账恶化。
 // 按钮家族不保留 scoped 副本，直接落回 components.css 全局 :where 标准形。
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
@@ -54,8 +52,8 @@ const emit = defineEmits<{
   (e: 'saved'): void
 }>()
 
-// 契约镜像交叉型：GetWheelMenu/SetWheelMenu 与 TrayMenu 面同形；绑定再生后本组
-// 声明可删、直调即天然合法（字段与 settings.TrayMenuItem 逐一对齐）。
+// wheel/Set 面绑定已再生，本组交叉型声明属同形冗余（可删归代码清理另议），
+// 字段与 settings.TrayMenuItem 逐一对齐。
 type WheelMenuAPI = {
   GetWheelMenu(): Promise<TrayMenuItem[]>
   SetWheelMenu(items: TrayMenuItem[]): Promise<void>
@@ -63,7 +61,7 @@ type WheelMenuAPI = {
 const svc = AppAPI.AppService as typeof AppAPI.AppService & WheelMenuAPI
 
 const isWheel = computed(() => props.scope === 'wheel')
-// 文案词头：'托盘'/'轮盘'（空态与加载态沿用旧字面「托盘条目」等，宿主 spec 在册依赖）
+// 文案词头：'托盘'/'轮盘'（空态与加载态文案族与宿主 spec 在册依赖保持一致）
 const scopeWord = computed(() => (isWheel.value ? '轮盘' : '托盘'))
 const menuName = computed(() => `${scopeWord.value}菜单`)
 
@@ -75,7 +73,7 @@ function pushMenu(items: TrayMenuItem[]): Promise<void> {
   return isWheel.value ? svc.SetWheelMenu(items) : svc.SetTrayMenu(items)
 }
 
-// —— N5-C3 点上格互换（读侧：宿主把预览选中扇区的身份喂进来定位行；写侧：行内互换钮）——
+// —— 点上格互换（读侧：宿主把预览选中扇区的身份喂进来定位行；写侧：行内互换钮）——
 // 身份匹配（type+hint / 组按 label）而非下标换算：编辑列里可能存在被后端 wheelView
 // 滤掉的停用模块行，相对序会错位；扁平拍平形态下组子条目占多扇区，也一律归位到
 // 组行。映射逻辑收在本组件（唯一持有 trayItems 的人），宿主只转发"用户点了哪个扇区"。
@@ -338,7 +336,7 @@ function moveItem(i: number, delta: number) {
   if (j < 0 || j >= arr.length) return
   ;[arr[i], arr[j]] = [arr[j], arr[i]]
   openGroup.value = -1 // 下标错位防护：移动后不再认定原展开组
-  selectedRow.value = null // C3 选中同样按位置索引持有，移动后不作废即错指
+  selectedRow.value = null // 选中按位置索引持有，移动后不作废即错指
   saveNow()
 }
 
@@ -533,7 +531,7 @@ function addExe() {
   padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
 }
 .tray-row-group { border-color: var(--color-border-strong); background: var(--surface-panel); }
-/* N5-C3：预览盘选中扇区对应行的双向定位高亮 */
+/* 预览盘选中扇区对应行的双向定位高亮 */
 .tray-selected { border-color: var(--color-primary); box-shadow: inset 3px 0 0 var(--color-primary); }
 .tray-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .tray-tag {

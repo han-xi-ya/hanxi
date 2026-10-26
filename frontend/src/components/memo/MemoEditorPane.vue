@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// MemoEditorPane：随手记页面板的书写态呈现件（MemoView v2 拆分批，自 M4 收口后的
-// 视图单体内原样抽出，语义零改动）。
+// MemoEditorPane：随手记页面板的书写态呈现件（草稿面），宿主为 MemoView 页面板。
 //
 // 职责边界（刻意做窄）：本件只持有「草稿面」——表单回填、标签增删、色彩选择、
 // 书写/预览分段；保存/取消一律整包上抛宿主（payload 校验合格后才发）。
@@ -11,7 +10,7 @@
 // 本件不做组件内二次初始化。
 // Markdown 预览皮肤（.md-preview）单源留在宿主视图（`.memo-pane :deep()` 穿透
 // 命中本件预览分支与阅读页，两份渲染面同源防漂移）；本件自带 pane-write 家族皮，
-// 逐字迁自宿主拆分前的口径（拆分不动相）。
+// 其中 .pane-head/.pane-foot 与宿主阅读态同字面——两处各持 scoped 副本，改形制须同步。
 import { computed, ref } from 'vue'
 import type { MemoItem } from '../../../bindings/hanxi/internal/modules/memo/models'
 import { renderMarkdown } from '../../utils/markdown'
@@ -38,7 +37,7 @@ const emit = defineEmits<{
 const { showToast } = useToast()
 
 // 色板名册（中文名展示归本件），十六进制一律吃 memoMetrics 用户色板单源
-// （色彩标识是用户数据值，非主题表面——接线收口轮消灭了 hex 的第二份逐字副本）。
+// （色彩标识是用户数据值，非主题表面——hex 不留第二份副本）。
 const COLOR_OPTIONS = (
   [
     { name: '蓝色', val: 'blue' },
@@ -170,8 +169,8 @@ const editorPreviewHtml = computed(() =>
 </template>
 
 <style scoped>
-/* 皮逐字迁自宿主 MemoView 拆分前的 pane-write 家族（拆分不动相）；
-   .pane-head/.pane-kind/.pane-foot 与阅读页同字面，两处各持一份 scoped 副本。 */
+/* pane-write 家族皮随本件走；.pane-head/.pane-foot 与宿主 MemoView 阅读态
+   同字面、两处各持一份 scoped 副本——改头尾形制须同步两件。 */
 .pane-write { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
 .pane-head { display: flex; align-items: center; gap: 10px; min-width: 0; flex: none; }
 .pane-kind { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); flex: none; }
@@ -189,7 +188,7 @@ const editorPreviewHtml = computed(() =>
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; flex: 1 1 220px;
   border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 5px 8px; background: var(--surface-soft);
 }
-/* 样式审计 C10（2026-10-27）：删原 `outline: none`——无边框透明内联输入删后无任何焦点呈现，
+/* 不加局部 outline 覆写：无边框透明内联输入若自带 `outline: none` 将无任何焦点呈现，
    交还 base.css 全局 :focus-visible 环。 */
 .tag-entry { flex: 1 1 120px; min-width: 0; border: none; background: transparent; padding: 3px 2px; color: var(--color-text); font-size: var(--text-base); }
 .memo-tag-removable { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-hover); }

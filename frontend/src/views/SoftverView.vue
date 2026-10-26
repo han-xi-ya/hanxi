@@ -232,7 +232,8 @@ function scanRunning(d: DirSlot): ScanProgress | undefined {
   return scanStates.value[d.id]
 }
 
-// fmtSize 上限只到 MB，数据目录常达数十 GB——升一档到 GB 呈现（WslDistroTable 同口径先例）。
+// fmtDirSize：空值 → '—'，≥1GiB 一位小数 GB 呈现。fmtSize 已扩 GB/TB 档（N21①），本档与之
+// 等值——系历史扩档前的升档壳，可并入 fmtSize（待清，先如实标注）。
 function fmtDirSize(bytes?: number | null): string {
   if (!bytes) return '—'
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`

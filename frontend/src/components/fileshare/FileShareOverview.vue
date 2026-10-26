@@ -6,7 +6,7 @@ import { formatBytes, formatSpeed } from '../../composables/fileShareFormat'
 
 defineProps<{
   status: ServerStatus
-  /** 投递箱条数（原模板 dropInbox.length）。 */
+  /** 投递箱条数（视图传 dropInbox.length）。 */
   inboxCount: number
 }>()
 </script>
@@ -54,15 +54,15 @@ defineProps<{
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
+/* 样式自视图拆分迁入；曾并存的两代级联（gen2）覆盖档已并入各基块，生效终值不变 */
 .stat-label {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
-  margin-bottom: 4px; /* gen2 覆盖档（原 6px）并入 */
+  margin-bottom: 4px; /* gen2 生效终值（基块原为 6px） */
 }
 
 .stat-val {
-  font-size: var(--text-xl); /* 原 20px→gen2 18px 生效值并入，收 xl 档 */
+  font-size: var(--text-xl); /* gen2 生效值 18px，收 xl 档 */
   font-weight: 700;
   color: var(--color-text);
   margin-bottom: 3px;
@@ -134,7 +134,6 @@ defineProps<{
 .metric-icon-blue { color: var(--state-information); background: var(--state-information-soft); }
 .metric-icon-amber { color: var(--state-warning); background: var(--state-warning-soft); }
 
-/* 原 gen2 对 .stat-label/.stat-val 的覆盖档已并入上方基块（生效终值不变） */
 .stat-val-compact {
   display: flex;
   flex-wrap: wrap;

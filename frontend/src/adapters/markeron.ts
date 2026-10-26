@@ -1,25 +1,23 @@
 // ============================================================================
-// MarkerOn → 托管控制台 adapter（Wave 5 · 批 0 共享契约 · #primary-action 槽首例实战）
+// MarkerOn → 托管控制台 adapter
 //
-// 逐字迁移自 MarkerOnView 原编排段（启停/版本/联动/仓库全部 RPC 与文案零变化），
 // 模式对齐 src/adapters/ccswitch.ts 黄金样本。
 //
 // 特殊处：标注开关是六态钮（state × drawing × busy × installedCount 四维），
 // ManagedControlVerb 的"label 定值 + state 纯函数"形状装不下 → 钮体不进 control，
-// 按批 0 槽位约定走 adapter.toggle + #primary-action 槽：
+// 按槽位约定走 adapter.toggle + #primary-action 槽：
 //   - 点击编排走 store.runToggle（增强批⑥）：回执 message 裸 toast、成功/失败后
 //     refresh 快照（版本徽标即时）、started 回执 reloadVersions 重拉版本区——
-//     视图钮处理器自此只负责六态矩阵拼装与禁用前置判定；
+//     视图钮处理器只负责六态矩阵拼装与禁用前置判定；
 //   - annotateToggleView()：六态 label/sub/variant/disabled/hint 矩阵纯函数
 //     （契约注释所指"矩阵输入由模块自算"即收在此处，视图只做拼装）；
 //   - annotateBusy：切换进行中闩，视图钮（处理中…文案/禁用）与
-//     control.quit.disabledFor（停止钮交叉禁用）共读，等效原视图单一 busy。
+//     control.quit.disabledFor（停止钮交叉禁用）共读，等效单一 busy 闩。
 // 事件面：`markeron:instance-state` / `markeron:version-download`（进度键=version，
 // 单键最简形态）；快照业务扩展字段 drawing 走 ManagedSnapshot 可选扩展
 // （S=binding Snapshot 直接充当泛型实参，projection 函数里直读，零 cast）。
 // 注意：ToggleAnnotate/StopAnnotate 引发的状态迁移由后端 emit 的 instance-state
-// 事件即时回推；toggle 动作另有 store.runToggle 的事后 refresh（原视图动作后的
-// 显式 refreshStatus 由事件+轮询等价承接，增强批后 toggle 路径单源补齐）。
+// 事件即时回推；toggle 动作另有 store.runToggle 的事后 refresh。
 // ============================================================================
 
 import { ref } from 'vue'
@@ -34,12 +32,12 @@ import type { ManagedActionResult, ManagedModuleAdapter } from '../components/ma
 import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /**
- * 标注切换进行中闩（视图六态钮与 quit.disabledFor 共读；等效原视图 busy 的
- * toggle 半边——钮文案"处理中…"、钮禁用、以及切换期间禁点停止钮）。
+ * 标注切换进行中闩（视图六态钮与 quit.disabledFor 共读）：钮文案"处理中…"、
+ * 钮禁用、以及切换期间禁点停止钮。
  */
 export const annotateBusy = ref(false)
 
-/** 六态矩阵单帧渲染声明（label/sub/variant/disabled/hint 语义与原视图逐字一致）。 */
+/** 六态矩阵单帧渲染声明。 */
 export interface AnnotateToggleView {
   /** 钮面主文案（不含 ✎ 前缀图标）。 */
   label: string
@@ -51,7 +49,7 @@ export interface AnnotateToggleView {
   disabled: boolean
   /** 禁用指引用提示条文案（空串=无）。 */
   hint: string
-  /** title 合成：hint 优先，否则 sub（原 :title="toggleHint || toggleSubLabel"）。 */
+  /** title 合成：hint 优先，否则 sub。 */
   title: string
 }
 
@@ -164,9 +162,9 @@ export function createMarkerOnAdapter(): ManagedModuleAdapter<Snapshot> {
       },
 
       async remove(v): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留。
-        // 展示剥离上收 normalizeVersion 单源（v2.9.4/2.9.4 双形态归一）：相对旧
-        // `^v` 大小写敏感口径，`V2.9.4` 现也剥成 `2.9.4`（现网 tag 恒小写，微差登记）。
+        // 危险操作经全局可访问确认框（useConfirm 单例）。
+        // 展示剥离走 normalizeVersion 单源（v2.9.4/V2.9.4 大小写不敏感归一，
+        // 现网 tag 恒小写）。
         const versionShort = normalizeVersion(v.version)
         const accepted = await confirm({
           title: `确定卸载 MarkerOn ${versionShort}？`,
@@ -194,7 +192,7 @@ export function createMarkerOnAdapter(): ManagedModuleAdapter<Snapshot> {
           return { message: out.message }
         },
         label: '⏻ 停止',
-        // 原 v-if="isRunningOrStarting" 收编为常驻禁用；切换进行中同样禁（原单一 busy 口径）
+        // 停止钮常驻禁用式（取代按态缺席的旧隐没形）；切换进行中同样禁
         disabledFor: (state) => (state !== 'running' && state !== 'starting') || annotateBusy.value,
       },
     },
@@ -229,7 +227,7 @@ export function createMarkerOnAdapter(): ManagedModuleAdapter<Snapshot> {
       }
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 MarkerOn 实例（非 Hanxi 托管）。可切换标注；如需彻底退出请在 MarkerOn 托盘操作。' } as const

@@ -1,12 +1,11 @@
 <script setup lang="ts">
-// PaperTodo 便签托管工作台（Wave 5 · 批 0 · variant 槽实战；波 2D 迁壳件）：
+// PaperTodo 便签托管工作台（variant 槽 + 壳标准件消费件）：
 // 业务投影（RPC/事件/文案/确认输入/变体偏好/运行时探测）全部收进
 // src/adapters/papertodo，本视图仅剩 variant 槽 UI 与少量胶水。
-// 波 2D 迁壳：批 0 壳在版本页签无前置插槽、变体卡只能落壳外手抄壳骨的历史
-// 缺口已由 #versions-prepend 补齐——页头+页签+error-box+tab-body 手抄骨架
-// 退役，视图自建 useManagedConsole（变体切换/换装要 setup 期句柄）传壳 :store；
-// 收拢纸片改走 store.runReset 正主编排，busy 闩从视图本地 hideBusy 归一到
-// store.busy（已批准的闩归一点：钮 disabled 源同步换，单飞真相与启停/下载共栈）。
+// 壳接线：视图自建 useManagedConsole（变体切换/换装要 setup 期句柄）传壳
+// :store；变体卡经 #versions-prepend 落版本 Tab 默认体之前；收拢纸片走
+// store.runReset 正主编排；busy 闩单源 store.busy（视图不持本地闩，
+// 单飞真相与启停/下载共栈——钮 disabled 源同步归一）。
 // 变体折算（详见 adapter 头注）：listInstalled 退化 0/1、双变体表收敛为
 // 「当前变体单列下载 + 变体卡换装入口」；GetRuntimeStatus 经快照扩展字段
 // 回流本视图做可用性注记；收拢纸片（adapter.reset，dismiss 族动词）经
@@ -36,9 +35,9 @@ onMounted(() => {
     .catch((e: unknown) => console.warn('papertodo GetVariant failed:', getErrorMessage(e)))
 })
 
-// ⑥：变体切换交 store.runVariant——回执 toast、reloadVersions 重拉版本区
+// 变体切换交 store.runVariant——回执 toast、reloadVersions 重拉版本区
 // （远程表 size 列按新变体资产重投影）与失败 '设置失败: ' 前缀全部单源；
-// 视图只在成功后翻转本地投影、失败不动（原视图侧手动 load 补丁退役）。
+// 视图只在成功后翻转本地投影、失败不动。
 async function chooseVariant(v: PaperVariant) {
   if (v === variant.value) return
   if (await store.runVariant(v)) variant.value = v
@@ -78,9 +77,8 @@ function splitOptLabel(label: string): [string, string] {
 }
 
 // ---------- 收拢纸片（dismiss 族动词收在 adapter.reset）----------
-// 走 store.runReset 正主编排（波 2A 契约）：缺省档成败两分支均不刷快照、
-// 失败裸错误串（无前缀，迁移前口径逐字）、单飞共用 store.busy 闩——
-// 视图本地 hideBusy 接线器退役。
+// 走 store.runReset 正主编排：缺省档成败两分支均不刷快照、
+// 失败裸错误串（无前缀，现口径逐字保留）、单飞共用 store.busy 闩。
 function hidePapers() {
   void store.runReset()
 }
@@ -105,7 +103,7 @@ async function openReleases() {
     console-tab-label="📄 控制台"
   >
     <!-- #primary-action 既有控制位（壳转发）：唤回(primary)与退出(quit)之间插
-         「收拢纸片」；disabled 的闩源 = store.busy（波 2D 闩归一） -->
+         「收拢纸片」；disabled 的闩源 = store.busy（单源闩） -->
     <template #primary-action>
       <UiButton
         variant="secondary"
@@ -159,8 +157,7 @@ async function openReleases() {
 
 <style scoped>
 /* 页头/控制条/版本区/联动卡/空态/进度格与徽标家族及 flex 骨架全部由托管控制台壳
-   + managed 组件 + components.css 全局原子接管（波 2D 迁壳后手抄壳骨与
-   .papertodo-view/.tab-body flex 副本退役；hint-line/info-details/extras-card/
+   + managed 组件 + components.css 全局原子接管（hint-line/info-details/extras-card/
    repo-row 与内联链接等由全局原子与共享件皮承担）。 */
 
 /* ---------- 变体选择卡（variant 槽的模块私有 UI，经 #versions-prepend 落位） ---------- */

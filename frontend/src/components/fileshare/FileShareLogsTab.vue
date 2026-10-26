@@ -4,7 +4,7 @@ import type { TransferEvent } from '../../../bindings/hanxi/internal/modules/fil
 import { formatBytes } from '../../composables/fileShareFormat'
 
 defineProps<{
-  /** 审计日志（原 transferLogs）。 */
+  /** 审计事件列表（视图侧 transferLogs，最新 50 条封顶）。 */
   logs: TransferEvent[]
 }>()
 </script>
@@ -67,14 +67,11 @@ defineProps<{
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移。
-   §9.6-3 治理：flex-between/tag-pill/tag-blue 与语义色 text-success 已上收 components.css。
-   本表方言 .table 基形与全局 .tbl 同义（th/td 内距 10px 在 ±2px 收拢档），模板改挂 .tbl
-   落回全局基形，scoped 基形删除，仅保留滚动壳与最小宽差异档。 */
-/* .flex-between/.tag-pill/.tag-blue/.text-success 已上收 components.css（§9.6-3）。
-   §9.6-10 text 档裁决落地：.text-danger 等值副本删净落回全局；subtle 派 .text-muted
-   模板改挂全局 .text-subtle，副本删净。
-   原 .py-8 副本被后位 .empty-state padding 级联压死，连同挂点删除（§9.6-10 FileShare 侧清零） */
+/* 原子归一在册（§9.6-3/§9.6-10）：flex-between/tag-pill/tag-blue/text-success/text-danger/
+   text-subtle 均走全局 components.css，本件不挂副本；.py-8 曾被后位 .empty-state padding
+   级联压死、挂点已删（FileShare 侧清零）。
+   本表方言 .table 基形与全局 .tbl 同义（th/td 内距 10px 在 ±2px 收拢档）：模板挂 .tbl，
+   基形走全局，本地只留滚动壳（.table-responsive）与 720px 最小宽差异档。 */
 .tag-success { background: var(--state-positive-soft); color: var(--state-positive); }
 .tag-amber { background: var(--state-warning-soft); color: var(--state-warning); }
 
@@ -99,8 +96,8 @@ defineProps<{
   min-width: 720px; /* 窄窗横滚下限（本表真差异档，保留） */
 }
 
-/* 空态：居中/虚线卡基形落回全局 .empty-state，此处仅保留 44px 大内距档
-   （与全局 24px 差 >±2px，带 icon+h3 结构，待主线裁决全局大档） */
+/* 空态居中/虚线卡基形由全局 .empty-state 承担，本块有效差仅 44px 大内距档
+   （与全局 24px 差 >±2px，带 icon+h3 结构；是否入全局大档待裁） */
 .empty-state {
   padding: 44px 20px;
   background: var(--surface-panel);

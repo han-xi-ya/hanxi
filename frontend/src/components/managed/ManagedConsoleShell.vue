@@ -1,37 +1,36 @@
 <script setup lang="ts">
-// 托管控制台壳（Wave 5 · 批 0 定型件；增强批⑦扩装）：PageHeader + MainTabNav
-// （控制台/版本）+ 版本区错误框 + 状态头 + 联动辅助卡 + 版本面板的固定骨架，
-// 组合 store 一份、子件共享注入（杜绝双轮询/双订阅）。
+// 托管控制台壳：PageHeader + MainTabNav（控制台/版本）+ 版本区错误框 + 状态头
+// + 联动辅助卡 + 版本面板的固定骨架，组合 store 一份、子件共享注入（杜绝双轮询/双订阅）。
 //
-// 插槽契约（批 1-5 迁入各模块时按下表填充）：
+// 插槽契约（各模块按下表填充）：
 //   默认具位=控制台 Tab 主体（说明卡等业务内联内容，渲染于日志位之后）；
 //   #control-bar（作用域 {snap,state,busy,store,selectTab}）=完整替换默认状态头，
 //     用于 VS Code 双形态、Snipaste 本会话所有权等无法压成单状态头的控制面；
-//   #primary-action（作用域 {snap,state,busy,installedCount}）=默认 ManagedControlBar
-//     内的主操作钮区注入位——markeron 六态 toggle 等经此自绘；
-//   #console-extra（作用域 {snap,state,busy,store}，store 为波 2G 补位）=控制台
+//   #primary-action（作用域 {snap,state,busy,installedCount,store}）=默认
+//     ManagedControlBar 内的主操作钮区注入位——markeron 六态 toggle 等经此自绘；
+//   #console-extra（作用域 {snap,state,busy,store}）=控制台
 //     内联大件（进程日志面板、ddns 端口行、rammap A/B 提权选择条等），渲染于
 //     状态头之后、主体之前——槽内动作可经 store 走共享单飞闩；
-//   #danger-extra（作用域 {snap,state,busy,store}，⑦）=强杀/复位等危险动作位
+//   #danger-extra（作用域 {snap,state,busy,store}）=强杀/复位等危险动作位
 //     （渲染于辅助卡之后，恒居控制台尾部）；
-//   #extras-action（作用域 {snap,state,busy,store}，⑦）=联动卡钮位转发；
-//   #header-badge（作用域 {snap,state,busy}，⑦）=页头状态徽标透传位
-//     （bili23/mangodisk 型，渲染于页签钮之前）；
-//   #versions-body（作用域 {snap,state,busy,store}，⑦）=版本 Tab 整体替换位
+//   #extras-action（作用域 {snap,state,busy,store}）=联动卡钮位转发；
+//   #header-badge（作用域 {snap,state,busy}）=页头状态徽标透传位
+//     （dbx/gonavi 的漂移 chip 型，渲染于页签钮之前）；
+//   #versions-body（作用域 {snap,state,busy,store}）=版本 Tab 整体替换位
 //     （vscode 双表 / everything 方言表等面板装不下的形态；缺省=共享 channel
 //     块 + ManagedVersionPanel）；
-//   #release-actions（作用域 {release}，波 2G）=共享面板远程行动作槽的壳转发
-//     位——仅需给远程行加次级动词的模块（heukms「发布页」/ttb「装打包版」）
-//     自此免 #versions-body 整替位照抄默认体（同 #primary-action/#extras-action
+//   #release-actions（作用域 {release}）=共享面板远程行动作槽的壳转发位——
+//     仅需给远程行加次级动词的模块（heukms「发布页」/ttb「装打包版」）走本位，
+//     免 #versions-body 整替位照抄默认体（同 #primary-action/#extras-action
 //     转发先例）；#versions-body 在场时本位不生效（默认体整体让位，契约不变）；
-//   #versions-prepend（作用域 {snap,state,busy,store}，波 2A）=版本 Tab 默认体
-//     前置位（变体卡等须落在 channel 块/版本面板之前的模块自此免绕壳抄骨）；
-//   versionsTabCount（⑦）=版本页签计数后缀（mangodisk「版本管理 N」形制）；
+//   #versions-prepend（作用域 {snap,state,busy,store}）=版本 Tab 默认体
+//     前置位（变体卡等须落在 channel 块/版本面板之前的模块走本位，免绕壳抄骨）；
+//   versionsTabCount=版本页签计数后缀（mangodisk「版本管理 N」形制）；
 //   MainTabNav 的钮位经 PageHeader #actions 已由本壳固定，无需视图干预。
 //
-// 波 2A 地基：store 可外部注入（视图 setup 期 useManagedConsole 自建后经 prop
-// 传入，壳侧不再二次创建——Recordly/Paseo 型"视图需要 store 句柄"自此免绕壳）；
-// showConsoleTab=false 单页签形态（douzy 型"仅版本管理"，控制台 Tab 整段缺席）。
+// store 可外部注入：视图 setup 期 useManagedConsole 自建后经 prop 传入，壳侧
+// 不再二次创建（Recordly/Paseo 型"视图需要 store 句柄"即走此通道）；
+// showConsoleTab=false 为单页签形态（仅版本管理，控制台 Tab 整段缺席）。
 import { computed, ref } from 'vue'
 import type { ManagedModuleAdapter } from './adapter'
 import type { ManagedConsoleStore } from './store'
@@ -52,7 +51,7 @@ const props = withDefaults(
     consoleTabKey?: string
     consoleTabLabel?: string
     versionsTabLabel?: string
-    /** ⑦：版本页签计数（提供时页签词追加「 N」，mangodisk 形制）。 */
+    /** 版本页签计数（提供时页签词追加「 N」，mangodisk 形制）。 */
     versionsTabCount?: number
     /** 状态头提示条紧凑档透传。 */
     bannerSlim?: boolean
@@ -60,9 +59,9 @@ const props = withDefaults(
     tabIdPrefix?: string
     /** tablist 可访问名称。 */
     tabLabel?: string
-    /** 波 2A：外部注入的共享 store（缺省壳自建；注入时视图与壳同一句柄，杜绝双轮询）。 */
+    /** 外部注入的共享 store（缺省壳自建；注入时视图与壳同一句柄，杜绝双轮询）。 */
     store?: ManagedConsoleStore
-    /** 波 2A：控制台页签显隐开关（false=douzy 型仅版本管理，控制台 Tab 整段缺席）。 */
+    /** 控制台页签显隐开关（false=仅版本管理单页签形，控制台 Tab 整段缺席）。 */
     showConsoleTab?: boolean
   }>(),
   {
@@ -89,13 +88,13 @@ function selectTab(key: string) {
 // N43②：未安装态「启动」直落版本管理页——store 单源判定，此处只供接线。
 store.goVersions = () => selectTab('versions')
 
-/** 版本页签词（含⑦计数后缀），单页签/双页签两形态共用。 */
+/** 版本页签词（含计数后缀），单页签/双页签两形态共用。 */
 const versionsTabText = computed(() =>
   props.versionsTabCount === undefined ? props.versionsTabLabel : `${props.versionsTabLabel} ${props.versionsTabCount}`,
 )
 const tabs = computed(() => {
   const versions = { key: 'versions', label: versionsTabText.value }
-  // 波 2A：仅版本管理形态（showConsoleTab=false）单页签——控制台 Tab 与切换钮一并缺席
+  // 仅版本管理形态（showConsoleTab=false）单页签——控制台 Tab 与切换钮一并缺席
   if (!props.showConsoleTab) return [versions]
   return [{ key: props.consoleTabKey, label: props.consoleTabLabel }, versions]
 })
@@ -108,10 +107,10 @@ const tabs = computed(() => {
         <slot name="icon" />
       </template>
       <template #actions>
-        <!-- ⑦：页头徽标透传位（display:contents 不破坏 header-row 的 flex 排布） -->
+        <!-- 页头徽标透传位（display:contents 不破坏 header-row 的 flex 排布） -->
         <div class="shell-header-actions">
           <slot name="header-badge" :snap="store.snap" :state="store.state" :busy="store.busy" />
-          <!-- 波 2A：单页签形态（douzy 型）页签钮整隐——其视图现状即无 MainTabNav/无 ARIA 页签身份 -->
+          <!-- 单页签形态页签钮整隐——「仅版本管理」视图本就无 MainTabNav/无 ARIA 页签身份 -->
           <MainTabNav
             v-if="showConsoleTab"
             v-model="activeMainTab"
@@ -125,7 +124,7 @@ const tabs = computed(() => {
 
     <div v-if="store.listError" class="error-box">{{ store.listError }}</div>
 
-    <!-- 控制台 Tab（波 2A：仅版本管理形态整段缺席） -->
+    <!-- 控制台 Tab（仅版本管理形态整段缺席） -->
     <div
       v-if="showConsoleTab"
       v-show="activeMainTab === consoleTabKey"
@@ -164,10 +163,10 @@ const tabs = computed(() => {
       </template>
     </ManagedExtrasCard>
 
-    <!-- ⑦：危险动作位补作用域（bili23 强杀钮现态/busy 闩回归共享件） -->
+    <!-- 危险动作位（作用域直给现态/busy 闩，视图无需自持 busy 镜像） -->
     <slot name="danger-extra" :snap="store.snap" :state="store.state" :busy="store.busy" :store="store" />
 
-    <!-- 版本管理 Tab（波 2A：单页签形态无 tablist，tabpanel ARIA 身份一并摘除、常显） -->
+    <!-- 版本管理 Tab（单页签形态无 tablist，tabpanel ARIA 身份一并摘除、常显） -->
     <div
       v-show="!showConsoleTab || activeMainTab === 'versions'"
       class="tab-body"
@@ -176,12 +175,12 @@ const tabs = computed(() => {
       :aria-labelledby="showConsoleTab && tabIdPrefix ? `${tabIdPrefix}-versions-tab` : undefined"
     >
       <slot name="versions-body" :snap="store.snap" :state="store.state" :busy="store.busy" :store="store">
-        <!-- 波 2A：默认体前置位（papertodo 型变体卡——须落在 channel 块/面板之前） -->
+        <!-- 默认体前置位（papertodo 型变体卡——须落在 channel 块/面板之前） -->
         <slot name="versions-prepend" :snap="store.snap" :state="store.state" :busy="store.busy" :store="store" />
-        <!-- ⑧：channel 声明即自动渲染面板上方共享块 -->
+        <!-- channel 声明即自动渲染面板上方共享块 -->
         <ManagedChannelRow v-if="adapter.channel" :adapter="adapter" :store="store" />
         <ManagedVersionPanel :adapter="adapter" :store="store">
-          <!-- 波 2G：面板远程行动作槽壳转发（heukms/ttb 免整替版本 Tab 抄默认体） -->
+          <!-- 面板远程行动作槽壳转发（heukms/ttb 免整替版本 Tab 抄默认体） -->
           <template v-if="$slots['release-actions']" #release-actions="scope">
             <slot name="release-actions" v-bind="scope" />
           </template>

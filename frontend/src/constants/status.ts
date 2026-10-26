@@ -1,13 +1,14 @@
-// 托管引擎状态与开发环境检测状态的语义单一表（重构蓝图 §4：constants/status）。
-// tone 词表与 styles/components.css 的 .chip-{tone}/.banner-{tone} 严格对齐，
-// 是 Phase 3/4 迁移时 UiStatusChip / StatePanel 的语义源——视图文案不得再自造。
+// 托管引擎状态与开发环境检测状态的语义单一表。
+// tone 词表与 styles/components.css 的 .chip-{tone} 五档一一对应（UiStatusChip 即薄包装）；
+// 提示条词表另族（.banner-{ok|info|warn|error}，见 UiBanner），不得把 StateTone 直挂 banner。
+// 同一业务状态的文案与色调以此为单一来源——视图文案不得再自造。
 //
-// ── 与四维状态词表的关系（Wave 0 契约冻结）──
+// ── 与四维状态词表的关系 ──
 // 本文件下半部分是模块四维状态（delivery/policy/runtime/health）+ 主操作 + 摘要的
-// 统一词汇表，JSON 字面量与后端 internal/extapi/catalog.go 冻结契约逐字对齐：
-// 同一业务状态在首页/模块中心/详情/导航必须共用此处的文案与色调。
-// 上方 TOOL_STATE_META / ENV_STATUS_META 为历史视图表（icon 仍是 ●◐○ 占位字符），
-// Wave 3 收口时并入四维词表口径，本次不动、不改其消费方。
+// 统一词汇表，JSON 字面量与后端 internal/extapi/catalog.go 冻结契约逐字对齐
+//（contract-enum.spec.ts 焊死两侧）：同一业务状态在首页/模块中心/详情/导航必须共用此处取值。
+// 上方 TOOL_STATE_META / ENV_STATUS_META 为历史两维视图表（icon 仍是 ●◐○ 占位字符，
+// 新四维消费一律走下半部词表，占位字符仅限存量视图）。
 // 纪律：状态不只依赖颜色——词表每项带 icon 语义（icons.ts 注册名）+ 中文文字 + tone。
 
 import type { IconName } from './icons'
@@ -16,7 +17,7 @@ export type StateTone = 'positive' | 'information' | 'warning' | 'danger' | 'neu
 
 export interface StateMeta {
   text: string
-  /** 占位字符图标；将被 AppIcon 内联 SVG 替换（设计纪律：字符/emoji 不作主图标）。 */
+  /** 占位字符图标（仅存量视图表使用；设计纪律：字符/emoji 不作主图标，新词表用 icons.ts 注册名）。 */
   icon: string
   tone: StateTone
 }
@@ -27,7 +28,7 @@ export interface StateMeta {
  * 未识别状态一律回退 stopped——状态不明时宁可报"无"，不误报在跑。
  */
 export const TOOL_STATE_META: Record<string, StateMeta> = {
-  running: { text: '运行中', icon: '●', tone: 'positive' }, // §9.5-5 文案裁决：状态标签统一「运行中」；「已启动」仅存于后端动作回执 toast，不再作状态词
+  running: { text: '运行中', icon: '●', tone: 'positive' }, // 状态标签统一「运行中」；「已启动」仅存于后端动作回执 toast，不作状态词
   starting: { text: '启动中…', icon: '◐', tone: 'information' },
   stopped: { text: '未运行', icon: '○', tone: 'neutral' },
   failed: { text: '异常退出', icon: '!', tone: 'danger' },
@@ -35,8 +36,8 @@ export const TOOL_STATE_META: Record<string, StateMeta> = {
 }
 
 /**
- * envcheck 工具检测状态。text/icon 自 EnvCheckView 内联 STATUS_META 原样移植
- * （Phase 4 收编后删除该视图副本），旧 cls 字段由 tone 取代。
+ * envcheck 工具检测状态。text/icon 承自 EnvCheckView 原内联表（视图现消费本表），
+ * 旧 cls 字段由 tone 取代。
  */
 export const ENV_STATUS_META: Record<string, StateMeta> = {
   installed: { text: '已安装', icon: '✓', tone: 'positive' },
@@ -56,8 +57,8 @@ export function envStatusMeta(status: string): StateMeta {
 }
 
 // ---------------------------------------------------------------------------
-// 模块四维状态统一词表（Wave 0 契约冻结的前端词汇部分）
-// 枚举值全集逐字对齐 internal/extapi/catalog.go 的 JSON 字面量；
+// 模块四维状态统一词表（契约冻结的前端词汇侧）
+// 枚举值全集逐字对齐 internal/extapi/catalog.go 的 JSON 字面量（contract-enum.spec.ts 焊死）；
 // 此处仅登记"值 → 展示语义"的词表，业务状态机仍归后端，绑定类型等
 // wails3 重新生成后另行 import，不在本文件手写。
 // ---------------------------------------------------------------------------
@@ -88,7 +89,7 @@ export type SummaryKeyValue =
   | 'not-installed' | 'installed-disabled' | 'installed-enabled' | 'running'
   | 'running-update' | 'blocked' | 'faulted' | 'in-progress'
 
-/** UiButton 的 variant 词表（与 components/ui/UiButton.vue 私有同名类型保持一致，Wave 3 收口统一为本文件导出源）。 */
+/** UiButton 的 variant 词表（与 components/ui/UiButton.vue 私有同名类型同值双写——改一处必同步另一处）。 */
 export type UiButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost'
 
 /** 四维词表条目的展示语义：icon 必须是 icons.ts 注册名（AppIcon 渲染，非占位字符）。 */
@@ -209,7 +210,7 @@ export function updateAvailableText(version?: string | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// 统一 Operation 观察面词表（Wave 4）
+// 统一 Operation 观察面词表
 // kind/status 两族取值逐字对齐 bindings 的 OperationKind / OperationStatus 枚举；
 // phase 是后端字符串词汇（internal/ops：开账写 "resolve"、事务步骤迁移写步骤名
 // ——由各模块 InstallSteps 清单登记，当前样本为 download/verify/unpack/place、
@@ -295,9 +296,9 @@ export const ENTRYPOINT_META = {
 } satisfies Record<EntrypointValue, { label: string }>
 
 // ---------------------------------------------------------------------------
-// 通知严重度指示灯档位（前端冗余治理 · 波 0 下沉）：NotificationToast.vue 与
-// NotificationDrawer.vue 两份逐字同体本地函数的单一来源；sev-* 色板样式原归两
-// 组件各自 scoped 块，现已上收 components.css 全局原子区（两份 scoped 副本删净）。
+// 通知严重度指示灯档位：NotificationToast.vue 与 NotificationDrawer.vue 曾各持
+// 逐字同形本地函数，单一来源在本文件；sev-* 色板样式归 components.css 全局原子区
+//（其注释说明 .sev-info 刻意无规则）。
 // ---------------------------------------------------------------------------
 
 /** 通知级别 → 指示灯档位类；未知/空一律落 info。 */

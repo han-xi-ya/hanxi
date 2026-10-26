@@ -1,17 +1,16 @@
 // ============================================================================
-// ddns-go → 托管控制台 adapter（Wave 5 · 批 0：log 槽 / port 槽首个实战件）
+// ddns-go → 托管控制台 adapter
 //
-// 逐字迁移自 DdnsGoView 原编排段（启停/版本/联动/仓库全部 RPC 与文案零变化），
-// 模式照抄 src/adapters/ccswitch.ts 黄金样本。与 ccswitch 的差异即批 0 在
-// adapter.ts 槽位清单预留、本模块首次接线的两个扩展槽：
+// 模式照抄 src/adapters/ccswitch.ts 黄金样本。与 ccswitch 的差异即 adapter.ts
+// 槽位清单里的两个可选扩展槽，本模块为首个接线实战：
 //  - log：`ddnsgo:instance-log` 事件流逐行归一（subscribe 需 setup 期调用，
 //    视图侧完成）+ pull() 回补 Logs(200) 历史；面板 UI 由视图渲染在
 //    ManagedConsoleShell #console-extra 槽（共享件只定形状不渲染日志）。
 //  - port：Get/SetListenPort 读写面；端口行 UI 同样留在视图 #console-extra
-//    （批 0 extras 卡未接线端口位，输入态校验/回滚随输入框留在视图）。
+//    （共享 extras 卡未接线端口位，输入态校验/回滚随输入框留在视图）。
 // 动词面：Start→control.primary（钮区首位，保持原三钮 DOM 顺序）、
 // Quit→control.quit；OpenConsole 为契约 control 双位之外的第三钮，经扩展面
-// openConsole 声明、视图以 #primary-action 槽渲染（label/title 逐字沿用现词）。
+// openConsole 声明、视图以 #primary-action 槽渲染。
 // 事件面：`ddnsgo:instance-state` / `ddnsgo:version-download`（进度键=version，
 // 单键最简形态）。
 // ============================================================================
@@ -32,7 +31,7 @@ import type {
 import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
 /**
- * ddns-go 适配总面：批 0 log/port 两个可选扩展槽在本模块收紧为必选
+ * ddns-go 适配总面：log/port 两个可选扩展槽在本模块收紧为必选
  * （视图直接消费，免去非空断言）；openConsole 为 control 双位之外的
  * 模块扩展动词声明位。
  */
@@ -59,7 +58,7 @@ export function createDdnsGoAdapter(): DdnsGoAdapter {
 
     subscribeProgress: (cb) => bindVersionProgress<DownloadProgress>('ddnsgo:version-download', cb),
 
-    // ---------- log 槽（批 0 预留形状的首个实战）----------
+    // ---------- log 槽 ----------
     // 事件流经视图 setup 期 subscribe 接入累积面板；pull 供首屏与
     // "非运行→running" 切换时回补（引擎环形缓冲随新进程重启）。
     log: {
@@ -100,7 +99,7 @@ export function createDdnsGoAdapter(): DdnsGoAdapter {
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `卸载 ddns-go ${v.version}`,
           description: '该版本隔离目录将被删除，不可恢复。',
@@ -114,7 +113,7 @@ export function createDdnsGoAdapter(): DdnsGoAdapter {
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '导入本地安装',
           description: '含 ddns-go.exe 的官方下载解压目录即可。域名配置恒在 ~/.ddns_go_config.yaml，与 exe 位置无关',
@@ -162,13 +161,13 @@ export function createDdnsGoAdapter(): DdnsGoAdapter {
       },
       label: '🖥 打开控制台',
       cssClass: 'btn-primary',
-      // 与原禁用条件逐字一致：五态皆可点，仅快照未载的空态禁用
+      // 五态皆可点，仅快照未载的空态禁用
       disabledFor: (state) =>
         state !== 'running' && state !== 'starting' && state !== 'external' && state !== 'stopped' && state !== 'failed',
       titleFor: () => '打开内嵌 Web 控制台（未运行时先自动启动）',
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s: Snapshot) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 ddns-go 实例（自行启动或 Windows 服务，非 Hanxi 托管）。可直接打开其面板查看；托管启动需先退出外部实例。' }

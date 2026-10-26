@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// Rufus 控制台（Wave 5 · 批 1 收敛件，模式照抄 CCSwitchView）：共享面全部进托管
+// Rufus 控制台（模式照抄 CCSwitchView）：共享面全部进托管
 // 控制台家族——adapter（src/adapters/rufus）承载业务投影（RPC/事件/文案/确认输入），
 // useManagedConsole 单源状态轮询/uptime/进度 map/busy 闩，ManagedControlBar 管
 // 状态头与启停钮，ManagedExtrasCard 管随关与仓库联动卡。Rufus 是一次性工具
 // （写完盘即关窗）：不声明桌面快捷方式等自启类条目，缺项由联动卡自动缺席。
-// 波 2E：版本 Tab 全量回迁 ManagedVersionPanel——单文件版阶段词表含 install 不含
+// 版本 Tab 全量走 ManagedVersionPanel——单文件版阶段词表含 install 不含
 // extract（「校验落位…」非面板缺省「校验解压安装…」），词面差异经 adapter.copy
-// .stageWord 覆写位逐字声明，视图手抄表退役；extras 卡的「打开位置」钮仍经
+// .stageWord 覆写位声明，视图不手抄表；extras 卡的「打开位置」钮仍经
 // #extras-action 具名位注入（title/disabled 依赖已装清单动态解析，静态 dataDir
 // 条目表达不下）。
 import { computed, ref } from 'vue'
@@ -92,8 +92,8 @@ const needsElevate = computed(() => needsElevationRestart(store.snap))
       </template>
     </ManagedExtrasCard>
 
-    <!-- 版本管理 Tab：共享面板全量接管（波 2E 回迁）——「校验落位…」等单文件版
-         词面经 adapter.copy 逐字声明，rf-ver-status 锚点族随手抄表一并退役 -->
+    <!-- 版本管理 Tab：共享面板全量接管——「校验落位…」等单文件版
+         词面经 adapter.copy 声明，视图无手抄表 -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
       <ManagedVersionPanel :adapter="adapter" :store="store" />
     </div>
@@ -102,7 +102,7 @@ const needsElevate = computed(() => needsElevationRestart(store.snap))
 
 <style scoped>
 /* 页头/状态头/提示条/联动卡由 managed 组件 + components.css 全局原子接管
-   （原 .rf-status-light 复制体已由 .status-light 标准形替代），此处只保留本视图业务样式。 */
+   （状态灯即 .status-light 标准形），此处只保留本视图业务样式。 */
 .rufus-view { display: flex; flex-direction: column; gap: 10px; }
 .tab-body { display: flex; flex-direction: column; gap: 10px; }
 
@@ -110,8 +110,8 @@ const needsElevate = computed(() => needsElevationRestart(store.snap))
    info-details/info-summary/info-body p 等由全局原子接管；
    .inline-link 两行 scoped 副本已删净，落回 components.css :where 全局原子） ---------- */
 
-/* 版本区全部渲染在 ManagedVersionPanel 子件内（波 2E 回迁：手抄表与其样式补差
-   一并删净，本页不再触版本区 DOM） */
+/* 版本区全部渲染在 ManagedVersionPanel 子件内（手抄表与其样式补差
+   已删净，本页不再触版本区 DOM） */
 
 /* ---------- 联动与辅助设置卡（extras-card/extras-row/toggle-label/repo-row(.k)/repo-addr 由全局原子接管） ---------- */
 .extras-btns { display: flex; gap: 8px; flex-wrap: wrap; }

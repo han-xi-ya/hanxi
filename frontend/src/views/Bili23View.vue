@@ -1,15 +1,15 @@
 <script setup lang="ts">
-// Bili23 下载控制台（Wave 5 · 批 0 契约迁万件，模式照抄 CCSwitchView）：
+// Bili23 下载控制台（托管控制台标准形）：
 // 共享面全部收敛进 components/managed 托管控制台家族——adapter（src/adapters/bili23）
 // 承载业务投影（RPC/事件归一/文案/退出三态如实回执），ManagedConsoleShell 管
 // 页头与页签骨架，状态头/启停钮/版本区/联动辅助卡全由共享件按声明渲染。
 // 退出语义差异（三态回执 stopped/hidden/asked+message）经 control.quit 的
 // ManagedActionResult.message 原样上墙，禁止吞态；本视图仅余两件私有物：
 // 业务说明卡（默认槽）与「强制结束」危险动作（#danger-extra 契约位）。
-// 增强批⑦：危险钮现态/在途闩全部回归共享件——钮禁用与 title 用槽作用域
-// {state, busy}（busy 已含 adapter.dangerBusy 联动），执行后经 {store} 回读
-// 现态；adapter 内的快照镜像与并行 busy 源自此退役。running+hidden 琥珀灯
-// 经 adapter.statusTone（⑧）、联动卡「托管位置」行经 copy.dataDirRow（⑨）。
+// 危险钮现态/在途闩全部走共享件——钮禁用与 title 用槽作用域 {state, busy}
+// （busy 已含 adapter.dangerBusy 联动），执行后经 {store} 回读现态，视图
+// 不自持 busy 镜像。running+hidden 琥珀灯经 adapter.statusTone、
+// 联动卡「托管位置」行经 copy.dataDirRow。
 import { createBili23Adapter } from '../adapters/bili23'
 import type { ManagedConsoleStore } from '../components/managed/store'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
@@ -48,7 +48,7 @@ async function runDanger(store: ManagedConsoleStore): Promise<void> {
 
     <!-- 危险动作位（契约：联动卡之后、恒居控制台尾部）：强制结束——
          ForceStop 不在共享七动词内，确认/回执收在 adapter.danger 内；
-         现态与在途闩（含 dangerBusy 联动）经 ⑦ 作用域槽直给 -->
+         现态与在途闩（含 dangerBusy 联动）经作用域槽直给 -->
     <template #danger-extra="{ state, busy, store }">
       <div class="control-bar b23-danger-extra">
         <div class="control-top">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// BoardCard：留言牌牌面的唯一画法（N6 重设计）——全屏挂牌弹窗与管理页实时
+// BoardCard：留言牌牌面的唯一画法（N6）——全屏挂牌弹窗与管理页实时
 // 预览共用本组件，"所见即所得"由同源保证，不存在第二套像素。
 //
 // 视觉隐喻是"贴在屏幕上的便利贴"：纸黄底、微旋转、顶部胶带条；纸色与墨色
@@ -11,9 +11,9 @@
 // 溢出策略沿用"牌是看的不是读的"：超高只裁不滚（max-height 由宿主经
 // --bc-max-h 注入：全屏牌给视口比例，预览盒给固定高度）。
 //
-// v4 收编：定标系数（×13 卡宽 / ×0.42 副行）与主题/副行拆分抽进
-// boardMetrics.ts 纯函数模块——宿主预览缩放与本组件共用同一口径，
-// 系数不再两处各写一份；对外 props（text/fontSize）与渲染输出零变化。
+// 定标系数（×13 卡宽 / ×0.42 副行）与主题/副行拆分的单一真相在
+// boardMetrics.ts 纯函数模块——本组件与宿主预览缩放共用同一口径，
+// 系数不得再回嵌本件；对外 props（text/fontSize）与渲染输出零变化。
 import { computed } from 'vue'
 import { boardSubOf, boardTitleOf, cardMaxWidthPx, subFontSizePx } from './boardMetrics'
 

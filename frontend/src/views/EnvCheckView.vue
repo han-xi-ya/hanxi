@@ -1,14 +1,12 @@
 <script setup lang="ts">
-// [perf 观察票处置 2026-09-26] 与 frpc 日志抽屉（3b58e5e 已根治）的同病观察票在此判"不值当改，保留观察"，
-// 未移植 frpc 的 LogRow 预处理 + rAF 帧批量模板。渲染证据（spec「log 事件流 burst」逐言锚定形态）：
-// ① 行内零解析：无 stripAnsi/正则/格式化，日志面是 NpmToolActions 单个 <pre> 的 logLines.join('\n')
-//   一次文本节点 patch——无 v-for、无 :index key，frpc 的满仓裁头整表换键重补丁病灶在此不存在；
-// ② 反应面实测：push 只失效数组 length/索引，本视图模板仅读 npmLogs[toolId] 键引用（不迭代数组），
-//   每条事件不重渲染父视图（复刻验证：50 连推父级 effect 重跑 0 次），只有该卡的子组件重渲一轮；
-// ③ 成本封顶：满仓 200 行（~20KB）join ≈ 23µs/次、原位 splice 裁头 ≈ 0.1µs/次；在途窗口只有装/卸
-//   进行时（全局锁 ≤1 操作、数秒级）。可批未批的真实成本仅剩子组件 watch 每事件一次 nextTick→
-//   scrollHeight 强制布局，被 200 顶与短窗口双重有界。复议触发线：封顶调高（>1000 行）或行内开始
-//   加着色/解析（届时按 LogRow 形制入表前一次性预处理 + 行号 key + 帧批量，照 frpc 抄）。
+// 日志渲染刻意不移植 frpc 的 LogRow 预处理 + rAF 帧批量（同病票在此判"不值当改"，渲染形态由
+// spec「log 事件流 burst」锚定）：① 行内零解析——日志面是 NpmToolActions 单个 <pre> 的
+// logLines.join('\n') 一次文本节点 patch，无 v-for、无 :index key；② 反应有界——push 只失效
+// 数组索引，模板仅按 npmLogs[toolId] 键读取，每条事件不重渲染父视图，只有该卡子组件重渲一轮；
+// ③ 成本封顶——满仓 200 行（~20KB），在途窗口只有装/卸进行时（全局锁 ≤1 操作、数秒级），
+// 残余成本仅子组件每事件一次 scrollHeight 强制布局，被 200 顶与短窗口双重有界。
+// 复议触发线：封顶调高（>1000 行）或行内开始加着色/解析——届时按 LogRow 形制入表前一次性
+// 预处理 + 行号 key + 帧批量，照 frpc 抄。
 import { computed, onMounted, reactive, ref } from 'vue'
 import * as EnvCheckAPI from '../../bindings/hanxi/internal/modules/envcheck/envcheckservice'
 import * as BCUAPI from '../../bindings/hanxi/internal/modules/bcu/bcuservice'
@@ -57,7 +55,7 @@ const { showToast } = useToast()
 const { confirm } = useConfirm()
 const { copyWithToast } = useClipboard()
 
-// ---------- 空间家底（N14）----------
+// ---------- 空间家底 ----------
 // 按需测量（按钮触发，服务端 30s 整场预算）：本体安装目录 + 依赖/缓存目录
 // 逐行呈现；Partial 行标"≥"下限，推导在场但磁盘缺席的行灰显"未落地"。
 const usageRows = ref<ToolUsage[]>([])
@@ -68,7 +66,8 @@ const usageAnyPartial = computed(() =>
   usageRows.value.some((tu) => (tu.dirs ?? []).some((d) => d.partial)),
 )
 
-// 删留徽章（W3-c）：后端 verdict 词表的前端投影——纯静态建议，不提供删除动作。
+// 删留徽章：后端 diskusage verdict 词表（keep/recommended/redownload/caution）的前端投影——
+// 纯静态建议，不提供删除动作。
 const VERDICTS: Record<string, { word: string; tone: string; tip: string }> = {
   keep: { word: '保留', tone: 'chip-neutral', tip: '本体安装/数据目录，删了=拆软件' },
   recommended: { word: '推荐删', tone: 'chip-positive', tip: '纯构建缓存，删后自动重建（只是下次构建变慢）' },
@@ -178,9 +177,8 @@ const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: stri
   dotnet: { heading: '.NET 官方支持线', downloadLabel: '打开 .NET 官网下载页' },
 }
 
-// 官网版本对照派发表（波 1b 表驱动）：refreshOfficial 与 openDownloadPage 原有的
-// 两条同序同对象六分支 if/else 链合一——每行自带「查询 + 打开下载页」动词对，
-// 调用词面逐字不变，错误处理仍留各调用方。
+// 官网版本对照派发表：每行自带「查询 + 打开下载页」动词对，refreshOfficial 与
+// openDownloadPage 只查表转发、不各自分支；错误处理留各调用方。
 const OFFICIAL_REMOTE: Record<OfficialTool, { fetch: () => Promise<PanelOverview>; open: () => Promise<unknown> }> = {
   git: { fetch: async () => adaptGitOverview(await EnvCheckAPI.GetGitForWindowsOverview()), open: () => EnvCheckAPI.OpenGitForWindowsDownloadPage() },
   go: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetGoOverview()), open: () => EnvCheckAPI.OpenGoDownloadPage() },
@@ -253,8 +251,7 @@ async function startNpmAction(kind: 'install' | 'upgrade', tool: ToolOverview) {
   }
 }
 
-// 卸载先经全局 useConfirm 单例二次确认（原视图自挂 ConfirmDialog 已收编）；
-// 受理成功后由事件流推进度，失败以 toast 回执、可重新发起。
+// 卸载先经全局 useConfirm 单例二次确认；受理成功后由事件流推进度，失败以 toast 回执、可重新发起。
 async function requestUninstall(tool: ToolOverview) {
   if (npmBusyOperation.value) return
   const accepted = await confirm({
@@ -358,7 +355,7 @@ async function openDownloadPage(tool: OfficialTool) {
   }
 }
 
-// 状态语义表已上收 constants/status（ENV_STATUS_META text/icon 逐字同源，cls 由 tone 取代）
+// 状态语义统一在 constants/status 的 envStatusMeta，本视图只转发、不另存词表。
 
 // joinVersions 并列展示 .NET 并排安装的版本列表（后端已按版本升序去重）。
 function joinVersions(versions?: string[] | null) {
@@ -384,8 +381,7 @@ function metaOf(tool: ToolInfo) {
   return envStatusMeta(tool.status)
 }
 
-// 复制环境报告本体（PLAN_CLIPBOARD §2.2：报告此前无复制入口，仅子组件有"复制升级
-// 命令"）：一行一工具，Tab 分隔"名称/版本/路径"，未安装如实标注。
+// 复制环境报告本体：一行一工具，Tab 分隔"名称/版本/路径"，未安装如实标注。
 function copyReport() {
   if (!everLoaded.value || tools.value.length === 0) {
     showToast('尚未完成本机检测，暂无报告可复制')
@@ -660,8 +656,8 @@ onMounted(() => {
       </section>
     </div>
 
-    <!-- 历史记录（Q2 口径：本模块只记 npm 装升卸动作终态，版本查询不入库；
-         无自由输入框故关"应用"，回填语义=定位对应工具卡自行查看） -->
+    <!-- 历史记录：本模块只记 npm 装升卸动作终态，版本查询不入库（与后端 recordOutcome 口径一致）；
+         无自由输入框故关"应用"，回填语义=定位对应工具卡自行查看 -->
     <div
       id="envcheck-history-panel"
       v-show="activeMainTab === 'history'"
@@ -734,10 +730,10 @@ onMounted(() => {
 /* .inst-meta 与托管家族上收的全局原子逐字等值，副本删净落回 */
 /* display/gap/色/基线落回全局 .meta-line；此处仅留收缩补差 */
 .meta-line { min-width: 0; }
-/* 色与收缩落回全局 .meta-line .k；仅标签列宽散差（36 vs 全局 44）暂留本地——定档候选，见收编报告 */
+/* 色与收缩落回全局 .meta-line .k；仅标签列宽散差（36 vs 全局 44）暂留本地，定档候选在册
+   docs/FRONTEND.md「下轮候选」② */
 .meta-line .k { width: 36px; }
-/* 原 .mono 同名 scoped 副本（11px + overflow-wrap）已删净：落回全局 .mono（--text-sm +
-   word-break: break-all），字号差一档为设计归一（登记 §9.6 式微差，真机目视项） */
+/* .mono 不另挂同名 scoped 副本：落回全局 .mono，字号差一档系设计归一（§9.6 式微差，真机目视项） */
 .tool-path { min-width: 0; }
 .path-link { display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font: inherit; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--color-border); text-underline-offset: 2px; }
 .path-link:hover { text-decoration-color: var(--color-primary); color: var(--color-primary); }
@@ -748,7 +744,7 @@ onMounted(() => {
 .tool-details { display: flex; flex-direction: column; gap: 2px; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.45; }
 .hint-warn { background: var(--state-warning-soft); color: var(--state-warning); }
 .hint-error { background: var(--state-danger-soft); color: var(--state-danger); }
-/* .btn-accent-outline 等值副本删净落回全局 :where(.btn-accent-outline)（含 hover 行，2026-09 治理裁决） */
+/* .btn-accent-outline 不挂 scoped 副本（含 hover）：落回全局 :where(.btn-accent-outline) */
 .tool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .extra-lines { margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-size: var(--text-micro); }
 @media (max-width: 768px) {

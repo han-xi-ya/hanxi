@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// MemoGlyph：随手记页内私有矢量图标基座（MemoView v2 拆分批自视图内联
-// defineComponent+h 渲染件原样抽出为 SFC，路径名册与描边口径零改动）。
-// 描边件与 AppIcon 注册表同血统；注册表缺 pin/eye/search/copy 等名，全局层
-// 收编前私有件先行（M4/图标线收编后可整块替换为注册表件）。
+// MemoGlyph：随手记页内私有矢量图标基座（独立 SFC，宿主为 MemoView 与
+// MemoSheetSettings）。描边件与 AppIcon 注册表同血统；注册表仍缺本件所需名
+// （eye/eye-off/copy/sheet/chevron，pen/trash 在注册表为 pen-line/trash-2
+// 别档）——若图标线收编进注册表，本件可整块替换退役。
 // 皮肤随本件自带（.memo-glyph 描边/基线随 currentColor）——宿主透传类
 // （如 sheet-disc-chevron）经单根节点 fallthrough 落在 svg 上，各宿主 scoped 层
 // 只写变换/间距类，不再依赖宿主对 svg 本体的着色规则。

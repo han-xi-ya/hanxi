@@ -5,7 +5,7 @@ import type { ServerStatus } from '../../../bindings/hanxi/internal/modules/file
 
 defineProps<{
   status: ServerStatus
-  /** 服务未运行时展示的兜底端口（原模板 configForm.port）。 */
+  /** 服务未运行时展示的兜底端口（视图传 configForm.port）。 */
   fallbackPort: number
   loading: boolean
 }>()
@@ -47,11 +47,9 @@ const emit = defineEmits<{ toggle: [] }>()
 </template>
 
 <style scoped>
-/* 原私有 .btn-primary 全形（含 :disabled 降透明）与全局 :where(.btn)/.btn-primary 同语义，
-   模板补挂 .btn 基座后 scoped 副本删净落回；hero 仅保留 CTA 尺寸档（.hero-action）。
-   "运行中变红"的 scoped .btn-danger 覆盖档已删净：N38 收编 :where(.btn-danger) 实心危险标准形后，
-   源码序位于 :where(.btn-primary) 之后同特异性后来者胜，底/前景/描边/字重与 hover 深一档
-   全由全局接管——旧副本"hover 钉死红底防吃 primary-hover"的守护使命就此退役。 */
+/* .btn/.btn-primary/.btn-danger 全走全局原子，本组件不挂副本：hero 钮同时带 primary 与
+   danger 两 class，:where(.btn-danger) 源码序在 :where(.btn-primary) 之后、同特异性后来者胜，
+   运行态即实心危险标准形（hover 也深一档，不会回吃 primary-hover）；本地仅留 .hero-action 尺寸档。 */
 
 .status-indicator {
   width: 10px;
@@ -60,8 +58,7 @@ const emit = defineEmits<{ toggle: [] }>()
   background: var(--state-danger);
 }
 
-/* 运行灯为稳态非"进行中"，N37 A 类灯点降级：原 inset color-mix 45%/white 自拼提亮环删净，
-   落回 token 实色扁点，与熄灭态同构。 */
+/* 运行灯为稳态非"进行中"：token 实色扁点、与熄灭态同构，不挂自拼提亮环。 */
 .status-indicator.online {
   background: var(--state-positive);
 }
@@ -95,7 +92,7 @@ const emit = defineEmits<{ toggle: [] }>()
   letter-spacing: 0.16em;
 }
 
-/* hero 标题（原两代级联 22px→27px 死重声明已并为生效终值；27→--text-3xl 阶梯顶档） */
+/* hero 标题取 --text-3xl 阶梯顶档 */
 .page-title {
   margin: 0 0 8px;
   gap: 10px;
@@ -107,8 +104,8 @@ const emit = defineEmits<{ toggle: [] }>()
   letter-spacing: -0.02em;
 }
 
-/* 前景白色系渐变底（primary→information）两态对比度实测 ≥4.62 / ≥5.17 达标
-   （N37 §1a#7 转正入册）；N37 降级：彩色投影换中性 shadow-small，保留图标块浮起语义 */
+/* 前景白 + primary→information 渐变底：两态对比度实测 ≥4.62 / ≥5.17 达标（在册 N37 §1a#7）；
+   投影用中性 shadow-small（彩色外发光系机主主诉，已降级），保留图标块浮起语义 */
 .title-icon {
   display: inline-flex;
   align-items: center;
@@ -157,11 +154,11 @@ const emit = defineEmits<{ toggle: [] }>()
   border-color: var(--state-positive-soft);
 }
 
-/* hero CTA 差异档：全局 .btn 基座之上的大尺寸与悬浮微抬（radius 9→全局 8 落回） */
+/* hero CTA 差异档：全局 .btn 基座之上的大尺寸与悬浮微抬，圆角落回全局档 */
 .hero-action {
   min-width: 150px;
   padding: 10px 17px;
-  /* N37 降级（主诉本尊）：彩色外发光投影→中性层次影；如需彻底扁平可改 none */
+  /* 投影取中性层次影（彩色外发光系主诉已降级；如需彻底扁平可改 none） */
   box-shadow: var(--shadow-small);
   transition: transform var(--motion-base) ease, background var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }

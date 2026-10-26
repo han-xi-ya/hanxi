@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// 托管控制台状态头（Wave 5 · 批 0）：control-bar 四件套（状态灯 + 状态词 +
-// ver-pill/PID/uptime）+ 声明式启停钮区 + 条件 UiBanner/引导行。
-// 自 ccswitch/everything 等视图的逐字同构段收编；样式类挂 components.css
-// 全局原子（control-bar 家族），状态灯/表格徽标的前缀复制体自此标准形为
-// .status-light（组件 scoped，无全局撞名风险——components.css §托管家族皮注记）。
+// 托管控制台状态头：control-bar 四件套（状态灯 + 状态词 + ver-pill/PID/uptime）
+// + 声明式启停钮区 + 条件 UiBanner/引导行。
+// 各视图逐字同构段收编于此；样式类挂 components.css 全局原子（control-bar
+// 家族），状态灯标准形为 .status-light（组件 scoped，无全局撞名风险——
+// components.css §托管家族皮注记）。
 //
 // 输入契约：store 缺省时本组件在 setup 期自建控制台 store（独立挂载/测试用）；
 // 组合进 ManagedConsoleShell 时由壳注入共享 store，杜绝双份轮询。
@@ -54,7 +54,7 @@ const staleTip = computed(() =>
   <div class="control-bar">
     <div class="control-top">
       <div class="control-status">
-        <!-- 色档（⑧）：缺省随五态；adapter.statusTone 覆写（bili23 running+hidden→warn 琥珀）；
+        <!-- 色档：缺省随五态；adapter.statusTone 覆写（bili23 running+hidden→warn 琥珀）；
              状态 RPC 失败时降灰为"暂不可确认"（P0 批 3·4.1），旧快照不冒充实时灯色 -->
         <span class="status-light" :class="store.statusError ? 'stale' : store.statusTone"></span>
         <span class="status-word">{{ store.stateText }}</span>
@@ -113,7 +113,7 @@ const staleTip = computed(() =>
 .status-light.starting { background: var(--color-primary); animation: hx-pulse 1.8s ease-in-out infinite; }
 .status-light.external { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
 .status-light.failed { background: var(--state-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-danger) 45%, white); }
-/* 自定义色档「warn」（⑧）：adapter.statusTone 返回 'warn' 时压过五态——
+/* 自定义色档「warn」：adapter.statusTone 返回 'warn' 时压过五态——
    bili23 running+hidden（窗口收入托盘）琥珀，语义同 external 档 */
 .status-light.warn { background: var(--state-warning); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-warning) 45%, white); }
 </style>

@@ -615,7 +615,7 @@ function entryLive(entry: USBShareEntry): { tone: 'positive' | 'information' | '
 <style scoped>
 /* 全局原子落 components.css（.tbl/.control-panel/.empty-state/.error-box/.btn 等）；
    此处只留本 tab 独有或有意补差（对齐端口转发页的注释纪律）。 */
-/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）在
    components.css :where(.wsl-view) 原子区，六面板共用，本 tab 不再自持副本。
    保留的只是本 tab 的字色方言：注记字色比其余五面板深一档（muted 而非全局 subtle），
    系六份副本里的唯一散差，按"逐字不变"留在局部（待裁决：认可六面板统一取 subtle

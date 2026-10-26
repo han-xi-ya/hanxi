@@ -75,8 +75,8 @@ export function fmtClipAgo(ms?: number | null, now: Date = new Date()): string {
 /**
  * 浮层两行密档相对时间：刚刚 / N 分钟前 / N 小时前，超过 24 小时回落月日
  * （MM-DD，跨年带年份）——与 fmtClipAgo 的 yyyy-MM-dd 档刻意不同形：浮层行宽
- * 只容得下 MM-DD。入参域是 epoch 毫秒 number，0/非法值给 '—'（原 A5 视图内联
- * fmtAgoMs 收编至此，浮层模板回归零内联格式化纪律）。now 可注入测试。
+ * 只容得下 MM-DD。入参域是 epoch 毫秒 number，0/非法值给 '—'
+ * （浮层专用档，模板零内联格式化）。now 可注入测试。
  */
 export function fmtClipAgoCompact(ms?: number | null, now: number = Date.now()): string {
   if (!ms) return '—'

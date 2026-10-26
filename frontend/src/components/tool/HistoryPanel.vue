@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 通用历史记录面板（自取数组件，仿 FrpcVersionsTab）：按 funcType 桶自拉自刷新，
+// 通用历史记录面板（自取数组件）：按 funcType 桶自拉自刷新，
 // 宿主视图只管挂载与接 apply 事件。契约与口径见 docs/plans/PLAN_HISTORY.md §2.3：
 // 行内数据直用（Q6，应用/复制不回查）、清空仅作用当前桶（Q5）、删除走 ID。
 // 搜索 350ms 防抖 + seq 过期丢弃（useEverythingSearch 同款），历史损坏时给只读降级提示。
@@ -13,7 +13,7 @@ import { getErrorMessage } from '../../utils/errors'
 import { fmtDateTimeSmart } from '../../utils/format'
 import { debounce } from '../../utils/debounce'
 
-// —— N20b 标记列中文化 ——
+// —— 标记列中文化 ——
 // extra 是各模块记录点写入的机器 token（竖线连拼，见 ocr/portkill/npmtool
 // recordHistory），展示层翻成人话；词表外的未知 token **原样露出**——宁显机器串，
 // 不瞎猜语义。title 恒留原始串供诊断/搜索对账。
@@ -93,8 +93,8 @@ async function load() {
   }
 }
 
-// keyword 350ms 防抖（useEverythingSearch 同款节奏）：改用 utils/debounce 正源，
-// trailing 语义与手写版逐字一致；卸载时 cancel 未触发的待执行，防止面板已拆仍补发一次 List。
+// keyword 350ms 防抖（useEverythingSearch 同款节奏）：走 utils/debounce 正源
+// （trailing 语义）；卸载时 cancel 未触发的待执行，防止面板已拆仍补发一次 List。
 const debouncedLoad = debounce(load, 350)
 watch(keyword, () => debouncedLoad())
 onBeforeUnmount(debouncedLoad.cancel)
@@ -221,7 +221,7 @@ defineExpose({ reload: load })
 .history-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 
 .hp-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* 样式审计 C10（2026-10-27）：删原 `outline: none`——scoped 声明压死了 base.css 全局
+/* 样式审计 C10：删原 `outline: none`——scoped 声明压死了 base.css 全局
    :focus-visible 环，键盘焦点只剩 1px 换色边（N38 要防的退化残留）；删除后全局环接管，
    下方 border 换色保留给鼠标态。 */
 .hp-search {
@@ -235,13 +235,13 @@ defineExpose({ reload: load })
 .hp-list table { margin: 0; }
 .hp-row-active { background: var(--surface-selected); }
 .hp-list tr { cursor: pointer; }
-/* 样式审计 C5（2026-10-27）：.hp-list 是 overflow:auto 滚动壳，行盒横跨表宽=容器内容宽，
+/* 样式审计 C5：.hp-list 是 overflow:auto 滚动壳，行盒横跨表宽=容器内容宽，
    base.css 全局环（offset 2px）左右两弧必被裁——键盘环内收，同 ClipToolbar/AppNavRail 口径。 */
 .hp-list tr:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .hp-sum { max-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--text-sm); }
 .hp-time { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-xs); color: var(--color-text-muted); white-space: nowrap; }
 .hp-extra { font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* N20b 标记 chips：中性灰底，失败/拒绝升警示色（颜色之外字面已自明） */
+/* 标记 chips：中性灰底，失败/拒绝升警示色（颜色之外字面已自明） */
 .hp-tag { display: inline-block; margin-right: 4px; padding: 0 6px; border: 1px solid var(--color-border); border-radius: var(--radius-pill, 999px); font-size: var(--text-micro, 10px); color: var(--color-text-muted); background: var(--surface-soft); }
 .hp-tag-danger { color: var(--state-warning); border-color: var(--state-warning); }
 .hp-empty { border: none; }

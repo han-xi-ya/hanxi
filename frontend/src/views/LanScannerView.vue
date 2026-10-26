@@ -85,7 +85,7 @@ async function stopScan() {
 }
 
 async function copyIP(ip: string) {
-  // 剪贴板两级策略收编进 useClipboard；失败不再"谎报成功 toast"（原实现不 await，reject 时 toast 仍弹已复制）
+  // 剪贴板走 useClipboard 两级策略并 await 结果——失败不再谎报"已复制"
   await copyWithToast(ip, `已复制 IP: ${ip}`)
 }
 
@@ -93,9 +93,8 @@ function startEditRemark(dev: DeviceInfo) {
   editingKey.value = dev.ip
   editingValue.value = dev.remark || ''
   nextTick(() => {
-    // 修复注记（组 G2）：ref 位于 v-for 子树内，Vue 语义下收集为数组——
-    // 原实现 .focus() 直接调用必抛 TypeError（自动聚焦从未生效、线上静默报错）。
-    // 此处按作者本意恢复"进入编辑即聚焦并全选"；若主线判定该行为属变更，回退本段即可。
+    // remarkInputRef 位于 v-for 子树内，Vue 语义下模板 ref 收集为数组——直接 .focus() 必抛
+    // TypeError，故先解包；语义 = 进入编辑即聚焦并全选。
     const el = Array.isArray(remarkInputRef.value) ? remarkInputRef.value[0] : remarkInputRef.value
     if (el) {
       el.focus()
@@ -269,16 +268,17 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 页头/错误框/.btn 家族/.tbl 基样式/badge→chip/空态等由 PageHeader 与 components.css 全局原子接管；
-   下方仅保留本视图独有布局与"与全局原子的差异覆盖"（行内备注编辑、进度卡、RTT 分级等）。
-   （原 .toast 死代码 + fadeIn keyframes 已删——模板从未引用） */
+/* 页头/错误框/.btn 家族/.tbl 基样式/badge→chip/空态由 PageHeader 与 components.css 全局原子承担，
+   下方只留本视图独有布局与对全局原子的差异覆盖（行内备注编辑、进度卡、RTT 分级等）；
+   .toast/fadeIn 一类模板从未引用的死档不再回挂。 */
 .lan-page {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* 布局/底色/边框/圆角逐值部分落回全局 .control-panel；仅内距散差暂留——定档候选，见收编报告 */
+/* 布局/底色/边框/圆角逐值走全局 .control-panel；仅内距散差（12/16 vs 全局 10/14）
+   暂留本地，定档候选（未在册） */
 .control-panel {
   padding: 12px 16px;
 }
@@ -314,7 +314,7 @@ onMounted(() => {
   font-family: var(--font-mono);
 }
 .input-box:focus {
-  /* 样式审计 C10（2026-10-27）：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环。 */
+  /* 勿恢复 `outline: none`：scoped 会压死全局 :focus-visible 键盘焦点环；:focus 只留换色边。 */
   border-color: var(--color-primary);
 }
 
@@ -358,11 +358,10 @@ onMounted(() => {
   border-color: var(--color-primary);
 }
 
-/* .btn-group 等值副本删净落回全局 :where(.btn-group) */
+/* .btn-group 走全局 :where(.btn-group)，不挂等值副本 */
 
-/* 实心红"停止扫描"scoped 副本删净，落回全局 :where(.btn-danger) 标准形（N38 已收编实心危险档：
-   底 --state-danger / 前景 --color-on-accent / 深色描边 / 字重 600 / hover 换 --btn-danger-fill-hover
-   实底加深档，替代本视图旧自调 filter: brightness(0.92)——同色加深语义归全局，此处零保留差异）。 */
+/* 「停止扫描」走全局 :where(.btn-danger) 实心危险标准形（深描边 + hover 加深档归全局），
+   本视图零保留差异——不挂 scoped 副本，也不自调 brightness。 */
 
 /* 进度条 */
 .progress-section {
@@ -387,11 +386,11 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
-/* 进度条轨/填充两行 scoped 副本已删净（波 1a），落回公共件 UiProgressBar 标准形 */
+/* 进度条轨/填充形制由公共件 UiProgressBar 承担，本视图不挂副本 */
 
-/* 表格展示：.tbl 基样式与 th/td 内距、表头底色全部落回 components.css 全局标准形
-   （原 10px 14px 宽内距与 page 色表头为 ±2px 内差异，已删）；
-   外壳 .table-container 为全局仅锚定于 .diag-card 的裸形缺口，保留本地。 */
+/* 表格展示：.tbl 基样式与 th/td 内距、表头底色走 components.css 全局标准形
+   （旧 10px 14px 宽内距与 page 色表头系 ±2px 内差异，已删）；
+   外壳本地只留 overflow:hidden 真差（全局 :where(.table-container) 为 overflow-x:auto）。 */
 .table-container {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
@@ -470,8 +469,7 @@ onMounted(() => {
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
-/* .rtt-tag 基形（mono + 600 + sm）已全局定档（§9.6-10 裁决落地），副本删净落回；
-   本视图色块档（padding/圆角）为合法局部补差保留 */
+/* .rtt-tag 基形（mono + 600 + sm）在全局定档（§9.6-10）；本视图只留色块档补差（padding/圆角） */
 .rtt-tag {
   padding: 2px 6px;
   border-radius: 4px;
@@ -503,6 +501,6 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
-/* 裸文字 32px 档副本删净，落回全局 .empty-hint 标准虚线卡形（§9.6-10 定档裁决——目视项；
-   本处挂点为 <td colspan>，虚线卡染进单元格为预期收编效果） */
+/* 空态行走全局 :where(.empty-hint) 虚线卡形（§9.6-10 定档，目视项）：挂点是 <td colspan>，
+   虚线卡染进单元格即预期效果，本视图不再挂裸文字档 */
 </style>

@@ -3,7 +3,7 @@
 import type { DropItem } from '../../../bindings/hanxi/internal/modules/fileshare/models'
 
 defineProps<{
-  /** 投递条目（原 dropInbox）。 */
+  /** 移动端投递的文本/链接条目列表（视图侧 dropInbox）。 */
   items: DropItem[]
 }>()
 
@@ -66,11 +66,9 @@ const emit = defineEmits<{ copy: [content: string]; remove: [id: string]; clear:
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动。
-   §9.6-3 治理：跨页签逐字同形方言原子（flex-between/gap-2/ml-2/btn-sm/tag-pill/tag-blue）
-   已上收 components.css；.btn-secondary 家族/.empty-state/.py-8/.mb-1/.empty-icon
-   按裁决保留局部（同名不同形或单份副本）。§9.6-10 text 档裁决落地：
-   .text-danger 等值副本删净落回，.text-muted（subtle 派）改挂全局 .text-subtle。 */
+/* 原子归一在册（§9.6-3/§9.6-10）：跨页签逐字同形方言原子（flex-between/gap-2/ml-2/
+   btn-sm/tag-pill/tag-blue）与 .btn-secondary 家族、.text-danger/.text-subtle 均走全局，
+   本件不挂副本；按裁决保留局部的只有 .empty-state/.mb-1/.empty-icon（同名不同形或单份副本）。 */
 .inbox-list {
   display: flex;
   flex-direction: column;
@@ -105,15 +103,9 @@ const emit = defineEmits<{ copy: [content: string]; remove: [id: string]; clear:
   overflow-y: auto;
 }
 
-/* .flex-between/.gap-2/.ml-2 已上收 components.css（§9.6-3）；.mb-1 本目录仅此一份保留。
-   原 .py-8 副本被后位 .empty-state padding 级联压死，已连同模板挂点删除（§9.6-10 在 FileShare 侧清零）。 */
+/* .mb-1 本目录仅此一份，留局；.py-8 副本曾被后位 .empty-state padding 级联压死，
+   挂点已删（§9.6-10 在 FileShare 侧清零）。 */
 .mb-1 { margin-bottom: 4px; }
-
-/* .btn-secondary 家族 scoped 副本删净落回全局 .btn .btn-secondary .btn-small 标准三件套
-   （与 EndpointsTab 同一处置；悬浮微抬与自绘焦点环弃用）。.btn-sm 已无模板挂点。 */
-
-/* §9.6-10 text 档裁决落地：.text-danger 等值副本删净落回全局；
-   subtle 派 .text-muted 模板改挂全局 .text-subtle，副本删净 */
 
 .empty-icon {
   font-size: var(--text-3xl);
@@ -129,8 +121,8 @@ const emit = defineEmits<{ copy: [content: string]; remove: [id: string]; clear:
   border-radius: 10px;
 }
 
-/* 空态：居中/虚线卡基形落回全局 .empty-state，此处仅保留本家族加大号 44px 内距档
-   （与全局 24px 差 >±2px，且带 icon+h3 结构，待主线裁决是否入全局 .empty-state-lg） */
+/* 空态居中/虚线卡基形由全局 .empty-state 承担，本块有效差仅加大号 44px 内距档
+   （与全局 24px 差 >±2px，且带 icon+h3 结构；是否入全局 .empty-state-lg 待裁） */
 .empty-state {
   padding: 44px 20px;
   background: var(--surface-panel);

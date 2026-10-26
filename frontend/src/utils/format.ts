@@ -1,12 +1,10 @@
-// 托管家族与工具视图共用的标准格式化（重构蓝图 §4：utils/format）。
-// Phase 4/5 迁移时替换各视图内联副本
-// （采纳率实况 2026-09-27 grep：fmtSize×25、fmtDate×13、fmtDuration×7、fmtDateTimeSmart×1 处 import）。
-// 各分支行为与 MarkerOnView 现实现严格逐字一致，保证迁移当天可见输出零变化。
+// 托管家族与工具视图共用的标准格式化（单一正源）：各分支行为与原视图实现
+// 严格逐字一致（含刻意保留的怪癖，见各函数注），视图不再持有内联副本。
 
-/** 字节大小格式化：0/空值 → '—'；>1MB → 一位小数 MB；否则整数 KB（四舍五入）。 */
-// N21①（2026-09-24）补 GB/TB 档：原上限 MB 令 16GB 内存显示成 "16384.0 MB"；
-// 既有 KB/MB 分支逐字节不动（含"恰好 1MB 走 KB 档"的锁定怪癖），纯高位扩档，
-// 26 家消费视图自动受益。
+/** 字节大小格式化：0/空值 → '—'；≥TB/≥GB → 一位小数高档；>1MB → 一位小数 MB；
+ *  否则整数 KB（四舍五入）。 */
+// GB/TB 档为纯高位扩档（原上限 MB 令 16GB 内存显示成 "16384.0 MB"），判档含等号；
+// 既有 KB/MB 分支逐字节不动——含"恰好 1MB 走 KB 档"（> 不含等号）的锁定怪癖。
 export function fmtSize(bytes?: number | null): string {
   if (!bytes) return '—'
   if (bytes >= 1024 ** 4) return `${(bytes / 1024 ** 4).toFixed(1)} TB`
@@ -18,9 +16,9 @@ export function fmtSize(bytes?: number | null): string {
 /**
  * 字节大小 IEC 二进制档：0/空值 → '0 B'；≥1GiB 两位小数 GiB；≥1MiB/≥1KiB 一位小数
  * MiB/KiB；其余裸 B（无 TiB 档，封顶 GiB）。与上方 fmtSize 刻意分叉——本档服务磁盘
- * 占用/存储统计类展示，'0 B' 实词比占位符 '—' 更如实。逐字抄自 EnvCheckView.vue:82-88
- * 与 views/settings/StorageSection.vue:134-140 的两份逐字符全同内联副本（波 0 上收，
- * 消费点替换由后续波次执行）。
+ * 占用/存储统计类展示，'0 B' 实词比占位符 '—' 更如实。口径原样承自
+ * EnvCheckView 与 StorageSection 曾持的内联副本（两份逐字符全同，现已改吃本函数）；
+ * 扩 TiB 档须连同消费视图一起核。
  */
 export function fmtSizeIec(bytes: number): string {
   if (!bytes) return '0 B'
@@ -37,9 +35,9 @@ export function fmtDate(iso?: string | null): string {
 }
 
 /**
- * 智能日期时间（N20b）：同一天的多条记录必须靠时分秒区分（"同图重识两遍
- * 两行完全一样"病灶），跨范围逐级带日期——今天只给时间、本年补月日、
- * 往年退全日期。解析失败原样回传（不吞机器值）。
+ * 智能日期时间：同一天的多条记录必须靠时分秒区分（"同图重识两遍两行完全一样"病灶），
+ * 跨范围逐级带日期——今天只给时间、本年补月日、往年退全日期。
+ * 解析失败原样回传（不吞机器值）。
  */
 export function fmtDateTimeSmart(iso?: string | null, now: Date = new Date()): string {
   if (!iso) return '—'

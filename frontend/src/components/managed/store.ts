@@ -1,36 +1,37 @@
 // ============================================================================
-// 托管控制台运行时 store（Wave 5 · 批 0；共享契约增强批扩装）
+// 托管控制台运行时 store
 //
 // 由 ManagedConsoleShell（或单独挂载的控制条/版本面板）在组件 setup 期内调用
 // useManagedConsole(adapter) 创建：集中持有快照/版本区/下载进度 map/busy 闩，
 // 并完成四类接线——实例态订阅、进度订阅、2.5s 状态轮询、1s uptime ticker。
-// 各视图此前逐字同构的 ~120 行"状态+编排"段自此单源。
+// 托管视图们曾逐字同构的"状态+编排"段自此单源。
 //
-// 增强批新增编排（全部向后兼容）：
+// 编排契约（全部经 adapter 声明驱动，向后兼容）：
 //  - runControl/runToggle/runDownload/runChannel/runVariant 统一消费
 //    ManagedActionResult 的 message/reloadVersions/activeVersion——控制动词
 //    成功回执带 reloadVersions 时并列复刷版本区（mangodisk 启动双复刷、
-//    markeron toggle 版本徽标即时、papertodo 变体切换列表刷新自此回归 store，
-//    视图侧补丁退役）；
-//  - busy 闩 = 动作在途 OR adapter.dangerBusy（⑦ 强制结束联动）；
-//  - banner/hint 新增第二参版本区投影（②：{installed, releases, active}，
-//    store 单源直填，少收第二参的旧 adapter 零改动）；
-//  - primaryLabel/quitLabel 解析 label 联合词形（① 动态主钮）；
-//  - statusTone 色档覆写（⑧）；
-//  - 轮询停止（KeepAlive 停用/卸载）→ uptime 归零（⑨，recordly 现案收编）。
+//    markeron toggle 版本徽标即时、papertodo 变体切换列表刷新皆走此路）；
+//  - busy 闩 = 动作在途 OR adapter.dangerBusy（强制结束/打包动词联动）；
+//  - banner/hint 第二参为版本区投影 {installed, releases, active}，
+//    store 单源直填，少收第二参的旧 adapter 零改动；
+//  - primaryLabel/quitLabel 解析 label 联合词形（字符串或 (state, snap) 纯函数）；
+//  - statusTone 色档覆写（缺省随 state）；
+//  - 轮询停止（KeepAlive 停用/卸载）→ uptime 归零。
 //
-// 波 2A 新增编排（全部向后兼容，视图侧接线器收编前置件）：
-//  - runSlotVerb：扩展槽动词通用「runExclusive→settle→toast」链（VSCode 七包装、
-//    ddnsgo openConsole、mangodisk createShortcut 手抄形的单源化承接位）——
-//    前缀/快照刷新档/版本区重拉通道全经 ManagedSlotVerbOptions 参数位逐字对位；
-//  - runReset：adapter.reset 槽正主编排（TTB/QuickLook/PaperTodo 三份视图侧
-//    接线器自此退役）——缺省成败两分支均不刷快照（三手抄版逐字现形制，
-//    TTBView 头注「两分支均不刷快照」为据），refreshSnapshot:true 显式开启。
+// 扩展槽动词编排：
+//  - runSlotVerb：「runExclusive→settle→toast」通用链（VSCode 七包装、
+//    ddnsgo openConsole、piik openUI、mangodisk 三动作、rammap A 路提权等
+//    手抄形的单源化承接位）——前缀/快照刷新档/版本区重拉通道全经
+//    ManagedSlotVerbOptions 参数位对位；
+//  - runReset：adapter.reset 槽正主编排——缺省成败两分支均不刷快照
+//    （TTBView/PaperTodoView 头注「两分支均不刷快照」为据；QuickLook 的
+//    「重载失败: 」方言前缀链仍在视图自持，经 opts 可迁），
+//    refreshSnapshot:true 显式开启。
 //
 // 纪律：
 //  - 本文件只编排，不解读业务：状态词/按钮声明/文案全部来自 adapter 投影。
-//  - 失败 toast 前缀是跨模块逐字同形词（自 ccswitch/markeron 等视图原样收编），
-//    集中于此单一来源，且支持 copy.errorPrefix 逐动词覆写（⑥，「安装失败: 」
+//  - 失败 toast 前缀是跨模块同形词（自 ccswitch/markeron 等视图原样收编），
+//    集中于此单一来源，且支持 copy.errorPrefix 逐动词覆写（「安装失败: 」
 //    词表回契约）；成功回执文案经 ManagedActionResult.message 上抛。
 //  - 控制动词成功后恒刷一次状态快照（对齐现状 openWindow/quit 的双分支刷新）。
 // ============================================================================
@@ -65,7 +66,7 @@ const ACTION_ERROR_PREFIX = {
   openDir: '打开目录失败: ',
   channel: '切换通道失败: ',
   variant: '设置失败: ',
-  // 波 2A：reset 族（dismiss/重设/收拢）三手抄版现词均为裸错误串（TTB/PaperTodo），
+  // reset 族（dismiss/重设/收拢）现词均为裸错误串（TTB/PaperTodo），
   // 「重载失败: 」（QuickLook 现词）不入表——非跨模块同形词，经 opts/覆写位逐模块给。
   reset: '',
 } as const
@@ -73,17 +74,17 @@ const ACTION_ERROR_PREFIX = {
 /** 状态轮询间隔（全托管视图现状统一 2500ms；uptime 每秒从 startedAt 重算）。 */
 const STATUS_POLL_MS = 2500
 const UPTIME_TICK_MS = 1000
-/** 下载完成票据的表内驻留时长（现状 800ms 后清除并重拉版本列表）。 */
+/** 下载完成票据的表内驻留时长（800ms 后清除并重拉版本列表）。 */
 const DONE_TICK_RETIRE_MS = 800
 
 /**
  * 控制条/版本面板消费的控制台共享状态与动作面（reactive 解包后的现值视图）。
- * V 为已装版本记录方言字段包（增强批③，缺省纯基型）；宽型消费方
- * （ControlBar/Shell 等）按默认实例化，typed store 传入宽 prop 处协变兼容。
+ * V 为已装版本记录方言字段包（缺省纯基型）；宽型消费方（ControlBar/Shell 等）
+ * 按默认实例化，typed store 传入宽 prop 处协变兼容。
  */
 export interface ManagedConsoleStore<V = ManagedVersionDialect> {
   readonly snap: ManagedSnapshot | null
-  /** busy 闩：声明式动作在途 OR adapter.dangerBusy 联动（⑦）。 */
+  /** busy 闩：声明式动作在途 OR adapter.dangerBusy 联动。 */
   readonly busy: boolean
   readonly uptimeSec: number
   readonly releases: ManagedReleaseRecord[]
@@ -111,14 +112,14 @@ export interface ManagedConsoleStore<V = ManagedVersionDialect> {
   /** 未安装态「启动」直落版本页的接线钩子（Shell 赋值；runControl 消费）。 */
   goVersions: (() => void) | null
   readonly stateText: string
-  /** 状态灯色档词（⑧，缺省 = state）。 */
+  /** 状态灯色档词（缺省 = state）。 */
   readonly statusTone: string
   readonly runningVersion: string
   readonly isRunningOrStarting: boolean
   readonly isExternal: boolean
   readonly banner: { tone: 'ok' | 'info' | 'warn' | 'error'; text: string } | null
   readonly hint: string | null
-  /** 启停钮面词（①：label 字符串或 (state, snap) 纯函数的统一解析结果）。 */
+  /** 启停钮面词（label 字符串或 (state, snap) 纯函数的统一解析结果）。 */
   readonly primaryLabel: string
   readonly quitLabel: string
 
@@ -144,7 +145,7 @@ export interface ManagedConsoleStore<V = ManagedVersionDialect> {
   runImport(): Promise<void>
   runOpenDir(info: ManagedVersionRecord<V>): Promise<void>
   /**
-   * 扩展槽动词通用编排（波 2A）：runExclusive 单飞 → settle（message 弹串/
+   * 扩展槽动词通用编排：runExclusive 单飞 → settle（message 弹串/
    * activeVersion 迁移/reloadVersions 重拉）→ 失败前缀 toast。参数位逐字对位
    * 各视图手抄接线器现形制（详见 ManagedSlotVerbOptions 注记）；返回值同
    * runExclusive——闩占用中被丢弃时为 undefined。
@@ -154,9 +155,9 @@ export interface ManagedConsoleStore<V = ManagedVersionDialect> {
     opts?: ManagedSlotVerbOptions,
   ): Promise<ManagedActionResult | void | undefined>
   /**
-   * adapter.reset 槽动词正主编排（波 2A；TTB/QuickLook/PaperTodo 三份视图侧
-   * 接线器退役位）：缺省成败两分支均不刷快照（三手抄版逐字现形制，TTBView
-   * 注释「两分支均不刷快照（runControl 恒刷不适用）」为据）；
+   * adapter.reset 槽动词正主编排（TTB/PaperTodo 已接入；QuickLook 的
+   * 「重载失败: 」方言链仍视图自持）：缺省成败两分支均不刷快照（现形制
+   * 以 TTBView 注释「成败两分支均不刷快照」为据）；
    * refreshSnapshot:true 两分支恒刷（runControl 形制）；errorPrefix 覆走
    * copy.errorPrefix.reset 词表位，缺省裸错误串（「重载失败: 」类方言词由
    * 调用方显式传入）。
@@ -177,8 +178,8 @@ function resolveVerbLabel(
 /**
  * 在组件 setup 同步期内创建控制台 store（内部含 usePolling/useWailsEvent
  * 接线与 onMounted 首拉；宿主卸载自动停轮询、注销订阅）。
- * V 为已装版本记录方言字段包（增强批③）：自 adapter 泛型推断，store.installed
- * 直接携带方言字段类型（paseo verifiedHash / mangodisk integrity 族视图去 cast）。
+ * V 为已装版本记录方言字段包：自 adapter 泛型推断，store.installed 直接携带
+ * 方言字段类型（paseo verifiedHash / mangodisk integrity 族视图免 cast）。
  */
 export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V = ManagedVersionDialect>(
   adapter: ManagedModuleAdapter<S, V>,
@@ -215,7 +216,7 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
   const narrowSnap = computed(() => snap.value as S | null)
   // N43：安装维度先于运行维度——未装任何版本且无在跑实例（running/starting/
   // external/quitting/failed 各有自己的事实要讲）时，"stopped/空"不得渲染成
-  // "未运行"。判定收在共享契约层单点，21+ 视图零方言受益。
+  // "未运行"。判定收在共享契约层单点，全部托管视图零方言受益。
   const notInstalled = computed(
     () =>
       localResolved.value &&
@@ -226,17 +227,17 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     if (notInstalled.value) return SUMMARY_META['not-installed'] // 与四维摘要冻结词表同源
     return narrowSnap.value && adapter.stateText ? adapter.stateText(narrowSnap.value) : toolStateMeta(state.value).text
   })
-  /** 状态灯色档（⑧）：缺省随 state 五态；adapter.statusTone 覆写（bili23 running+hidden→warn）。 */
+  /** 状态灯色档：缺省随 state 五态；adapter.statusTone 覆写（bili23 running+hidden→warn）。 */
   const statusTone = computed(() =>
     narrowSnap.value && adapter.statusTone ? adapter.statusTone(narrowSnap.value) : state.value,
   )
   const runningVersion = computed(() => snap.value?.version ?? '')
   const isRunningOrStarting = computed(() => state.value === 'running' || state.value === 'starting')
   const isExternal = computed(() => state.value === 'external')
-  /** busy 闩（⑦）：声明式动作在途 OR 危险动作 dangerBusy 联动。 */
+  /** busy 闩：声明式动作在途 OR 危险动作 dangerBusy 联动。 */
   const busy = computed(() => actionBusy.value || adapter.dangerBusy?.value === true)
 
-  // ②：banner/hint 第二参版本区投影（store 单源直填，少收第二参的旧 adapter 零感知）
+  // banner/hint 第二参版本区投影（store 单源直填，少收第二参的旧 adapter 零感知）
   const versionCtx = computed(() => ({
     installed: installed.value,
     releases: releases.value,
@@ -251,7 +252,7 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     }
     return narrowSnap.value && adapter.hint ? adapter.hint(narrowSnap.value, versionCtx.value) : null
   })
-  /** 启停钮面词（①）：label 联合词形统一解析，声明式控制条与自定义视图同源。 */
+  /** 启停钮面词：label 联合词形统一解析，声明式控制条与自定义视图同源。 */
   const primaryLabel = computed(() => resolveVerbLabel(adapter.control?.primary, state.value, snap.value))
   const quitLabel = computed(() => resolveVerbLabel(adapter.control?.quit, state.value, snap.value))
 
@@ -286,7 +287,7 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
   async function refresh(): Promise<void> {
     try {
       const next = (await adapter.getStatus()) ?? snap.value
-      // 空转归零（perf）：内容级无差异的轮询回包不替换快照引用——21+ 托管视图
+      // 空转归零（perf）：内容级无差异的轮询回包不替换快照引用——托管视图
       // 由此在"一切如旧"时整轮零渲染批；有差异（含 RPC 交回 null 后的清空）照常替换。
       if (!sameSnapshot(snap.value, next)) snap.value = next
       statusError.value = false
@@ -368,7 +369,7 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     }
   }
 
-  /** channel 槽切换（⑧ 共享块/视图单选卡共用）：返回 true=切换成功（调用方翻转选中态）。 */
+  /** channel 槽切换（共享块/视图单选卡共用）：返回 true=切换成功（调用方翻转选中态）。 */
   async function runChannel(next: string): Promise<boolean> {
     const channel = adapter.channel
     if (!channel || busy.value) return false
@@ -418,7 +419,7 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
       if (reload) {
         await load()
         // already-installed 等同步终态无进度事件，以重拉后的已装事实收票。
-        // 4.3：比较走版本互认唯一口径（sameVersionOf）——预发布 tag 与核心
+        // P0 批 3·4.3：比较走版本互认唯一口径（sameVersionOf）——预发布 tag 与核心
         // 版本判等的模块（recordly/paseo 方言）不再"远程行已装、票据永挂"。
         if (installed.value.some((v) => sameVersionOf(adapter.versions, v.version, rel.version))) {
           const next = { ...downloading.value }
@@ -446,8 +447,8 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
       if (settle(res)) await load()
     } catch (e) {
       showToast(`${errorPrefix('setActive')}${getErrorMessage(e)}`)
-      // ⑥：设版失败恒重拉版本区核对后端真实值（原 paseo 差异③「自捕获重拉」
-      // 的契约化表达——词源单源 + 安全网通用化，不再由 adapter 逐模块抄写）。
+      // 设版失败恒重拉版本区核对后端真实值（paseo「自捕获重拉」差异的契约化
+      // 表达——词源单源 + 安全网通用化，不再由 adapter 逐模块抄写）。
       await load()
     } finally {
       actionBusy.value = false
@@ -494,9 +495,9 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
   }
 
   /**
-   * 扩展槽动词通用编排（波 2A）：收编 VSCode 七包装/ddnsgo openConsole/
-   * mangodisk createShortcut 等「runExclusive→settle→toast」手抄链。
-   * 单飞走 runExclusive（共享 busy 闩——视图自持 busy 的分叉自此归一，
+   * 扩展槽动词通用编排：收编 VSCode 七包装/ddnsgo openConsole/mangodisk
+   * createShortcut/piik openUI/rammap A 路等「runExclusive→settle→toast」手抄链。
+   * 单飞走 runExclusive（共享 busy 闩——视图自持 busy 的分叉归一，
    * ddnsgo P0 批 3·4.5 收编先例同口径）；reloadVersions 通道可注入
    * （custom 编排模块自有重拉函数，缺省 store.load）。
    */
@@ -512,8 +513,8 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
           if (opts?.reloadVersionsVia) await opts.reloadVersionsVia()
           else await load()
         }
-        // settle 语义注记：三手抄版均不消费 reloadVersions——现契约内 reset/
-        // 快捷方式族回执无此真值，消费属安全超集（声明即生效，未声明零变化）。
+        // settle 语义注记：reset/快捷方式族回执现均不携带 reloadVersions——
+        // 消费属安全超集（声明即生效，未声明零变化）。
         if (opts?.refreshAfter && opts.refreshAfter !== 'never') await refresh()
         return res
       } catch (e) {
@@ -523,7 +524,7 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     })
   }
 
-  /** adapter.reset 槽动词正主编排（波 2A，缺省逐字保 TTB/QL/PaperTodo 不刷快照现形制）。 */
+  /** adapter.reset 槽动词正主编排（缺省逐字保 TTB/PaperTodo 不刷快照现形制）。 */
   async function runReset(opts?: { errorPrefix?: string; refreshSnapshot?: boolean }): Promise<void> {
     const reset = adapter.reset
     if (!reset) return
@@ -572,9 +573,8 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
       }
     }
   }, UPTIME_TICK_MS)
-  // ⑨：轮询停止（KeepAlive 停用/卸载）即 uptime 归零——对齐 recordly 迁移前
-  // stopTimers 语义。用停用/卸载钩子而非 watch(isPolling)：失活组件的 watch
-  // 回调被暂停，归零要同步发生在停用当下。
+  // 轮询停止（KeepAlive 停用/卸载）即 uptime 归零。用停用/卸载钩子而非
+  // watch(isPolling)：失活组件的 watch 回调被暂停，归零要同步发生在停用当下。
   onDeactivated(() => {
     uptimeSec.value = 0
   })

@@ -1,13 +1,12 @@
 // ============================================================================
-// LiteMonitor → 托管控制台 adapter（Wave 5 · 批 1）
+// LiteMonitor → 托管控制台 adapter
 //
-// 逐字迁移自 LiteMonitorView 原编排段（启停/版本/联动全部 RPC 与文案零变化），
-// 参照实现见 src/adapters/ccswitch.ts（批 0 黄金样本）。
+// 参照实现见 src/adapters/ccswitch.ts（黄金样本）。
 // 第三路数据特化：GetRuntimeStatus（.NET 8 桌面运行时探测）收进 adapter——
 // 视图生命周期内仅首拉一次（与原 onMounted 单发等价），结果以**快照扩展
 // 字段** hasDesktop8 并入 LmConsoleSnapshot（ManagedSnapshot 业务附加形），
 // 经状态头之后 #console-extra 槽消费；缺运行库警示与 740 提权重启按钮
-// 同槽渲染（原文案逐字保留）。
+// 同槽渲染。
 // 辅助卡「📂 打开位置」为便携目录直达钮（无独立数据目录）：adapter 镜像
 // 已装/活动/快照三源，open 时按原优先级（运行版本 → 活动版本 → 任一已装）
 // 解析目标目录。
@@ -26,14 +25,14 @@ import { getErrorMessage } from '../utils/errors'
 import type { ManagedActionResult, ManagedModuleAdapter, ManagedReleaseRecord, ManagedVersionRecord } from '../components/managed/adapter'
 import { bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
 
-/** 托管快照 + .NET 8 运行时探测业务附加（批 0 契约的 S extends ManagedSnapshot 扩展位）。 */
+/** 托管快照 + .NET 8 运行时探测业务附加（S extends ManagedSnapshot 扩展位）。 */
 export type LmConsoleSnapshot = Snapshot & { hasDesktop8?: boolean }
 
 export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapshot> {
   const { confirm } = useConfirm()
   const { prompt } = usePrompt()
 
-  // ---- 第三路数据：GetRuntimeStatus 视图生命周期内单发（原 onMounted 单拉语义），
+  // ---- 第三路数据：GetRuntimeStatus 视图生命周期内单发，
   // 结果缓存并随快照回流（getStatus 首拉与 instance-state 事件两路都并入）----
   let runtime: RuntimeStatus | null = null
   let runtimeFetched = false
@@ -43,14 +42,14 @@ export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapsh
     try {
       runtime = (await LiteMonitorAPI.GetRuntimeStatus()) ?? null
     } catch (e) {
-      // 探测失败静默：hasDesktop8 缺席则不警示（迁移前 loadRuntime 口径）
+      // 探测失败静默：hasDesktop8 缺席则不警示、不谎报
       console.warn('litemonitor GetRuntimeStatus failed:', getErrorMessage(e))
     }
   }
   const withRuntime = (s: Snapshot): LmConsoleSnapshot => ({ ...s, hasDesktop8: runtime?.hasDesktop8 })
 
   // ---- 「打开位置」三源镜像：已装列表 / 活动版本 / 最新快照（各在既有
-  // 加载点同步，open 时按原视图优先级解析，与原 reactive computed 等价）----
+  // 加载点同步，open 时按头注既载优先级解析）----
   let installedMirror: LMVersionInfo[] = []
   let activeMirror = ''
   let snapMirror: LmConsoleSnapshot | null = null
@@ -102,7 +101,7 @@ export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapsh
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载 LiteMonitor ${v.version}？`,
           description: '该版本隔离目录将被删除（其中的 settings.json 设置、主题与插件一并移除），不可恢复。',
@@ -114,7 +113,7 @@ export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapsh
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '请输入 LiteMonitor 便携目录完整路径（含 LiteMonitor.exe；可带一层解压目录）',
           description: '提示：settings.json、themes、plugins 随该目录走，将整套迁入 Hanxi 托管',
@@ -153,8 +152,8 @@ export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapsh
       },
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）。
-    // 注意：.NET 8 缺运行时警示是**独立常驻**提示（原视图双 banner 并列），
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义。
+    // 注意：.NET 8 缺运行时警示是**独立常驻**提示（双 banner 并列），
     // 不并入本投影——经 #console-extra 槽按快照扩展字段渲染，见视图。
     banner: (s) => {
       if (s.state === 'external') {
@@ -215,7 +214,7 @@ export function createLiteMonitorAdapter(): ManagedModuleAdapter<LmConsoleSnapsh
         title: '打开便携目录（settings.json/主题/插件所在处）',
         async open(): Promise<ManagedActionResult> {
           const target = preferredInstalled()
-          // 原钮无版本时禁用并以 title 指引；共享卡无禁用位，转为失败回执（toast 前缀统一）
+          // 共享 extras 卡无禁用位：无版本时转失败回执（toast 前缀统一）
           if (!target) throw new Error('尚未安装任何版本')
           await LiteMonitorAPI.OpenDir(target.dir)
           return {}

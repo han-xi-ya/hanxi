@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// WSL 本机发行版管理控制台（「💻 本机发行版」页签主体，Phase 6 式自 WSLView 拆分）。
+// WSL 本机发行版管理控制台（「💻 本机发行版」页签主体，拆分自 WSLView）。
 // 状态归一列表 + 行内操作 + 「⋯ 更多」下拉（机主 2026-09-26 起面板常驻：点操作项执行但不收）
 // + 复选列与批量启停条（启停可多选串行执行，聚合如实回执）
 // + 迁移/导出/克隆/瘦身/wsl.conf/详情六种行内编辑器
 // 与导出记录抽屉归本组件；busy 分级登记（activeOps）、发行版列表复采（loadInstances）、
 // 安装基目录（installDir）留视图——克隆/瘦身进度（cloneProg/compProg）经 v-model 上抛，
-// 供跨页签进度横幅文案与页签 label「·运行中」互锁使用。行为逐字迁出，调用序列未动。
+// 供跨页签进度横幅文案与页签 label「·运行中」互锁使用。调用序列为特征测试锁定的契约。
 import { computed, nextTick, onMounted, ref, watch, onBeforeUnmount } from 'vue'
 import * as WSLAPI from '../../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { Report } from '../../../bindings/hanxi/internal/modules/wsl/readiness/models'
@@ -335,7 +335,7 @@ async function loadForensics(name: string) {
   }
 }
 
-// df 值以 MB 计，根盘常见数十 GB——fmtSize 上限只到 MB，这里升一档到 GB 呈现。
+// df 值以 MB 计（源单位非字节，不能直接喂 fmtSize）——根盘常见数十 GB，就地升档到 GB 呈现。
 function mb(v: number): string {
   return v >= 1024 ? `${(v / 1024).toFixed(1)} GB` : `${v} MB`
 }
@@ -578,7 +578,7 @@ const MENU_EDGE = 8
 
 const rowMenuDistro = computed(() => props.instances.find(i => i.name === rowMenuName.value) ?? null)
 
-// 面板项单一来源：模板 v-for 消费，行为与原八个手写钮逐字一致。
+// 面板项单一来源：模板 v-for 消费，替代原八个手写钮的收拢档。
 const rowMenuItems = computed(() => {
   const d = rowMenuDistro.value
   if (!d) return []
@@ -1006,13 +1006,13 @@ onBeforeUnmount(() => {
 /* 全局原子（.btn 家族/.tbl/.chip/.error-box/.empty-state/.mono/.link-button/.hint-dim/.banner*）
    落 components.css；以下为本控制台独有或有意补差（注释注明）。 */
 
-/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）在
    components.css :where(.wsl-view) 原子区，六面板共用，本控制台不再自持副本。 */
-/* .banner.slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
+/* .banner.slim 不挂等值副本：UiBanner 根元素挂 .banner + .slim，走全局 :where(.banner.slim) */
 /* .dim 非全局原子名，本控制台独有 */
 .dim { color: var(--color-text-muted); font-size: var(--text-sm); }
 .retry-inline { margin-left: 10px; }
-/* display/gap 落回全局 .btn-group；此处仅留换行补差 */
+/* display/gap 走全局 .btn-group；此处仅留换行补差 */
 .btn-group { flex-wrap: wrap; }
 
 /* 发行版管理控制台 */
@@ -1116,5 +1116,5 @@ onBeforeUnmount(() => {
 .input:disabled { opacity: 0.6; }
 
 /* 知识卡（导出记录抽屉壳）：info-details/info-summary 全家族（含 ::after/marker/[open] 两条）
-   与托管家族上收的全局原子逐字等值，副本已删净落回 components.css。 */
+   走 components.css 托管家族全局原子，本组件不挂等值副本。 */
 </style>

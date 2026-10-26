@@ -4,10 +4,10 @@
 import type { NetworkEndpoint } from '../../../bindings/hanxi/internal/modules/fileshare/models'
 
 defineProps<{
-  /** 原 status.isRunning。 */
+  /** 快传服务是否在运行（停止态页签只出空态）。 */
   isRunning: boolean
   endpoints: NetworkEndpoint[]
-  /** 端点二维码 SVG 缓存 (url -> svg)，原模板 v-html 注入点不变。 */
+  /** 端点二维码 SVG 缓存 (url -> svg)，模板经 v-html 注入。 */
   qrMap: Record<string, string>
 }>()
 
@@ -54,11 +54,9 @@ const emit = defineEmits<{ copy: [url: string] }>()
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动。
-   §9.6-3 治理：与兄弟页签逐字同形的方言原子（flex-between/gap-2/ml-2/btn-sm/tag-pill/
-   tag-blue）已上收 components.css；.btn-secondary 家族/.empty-state/.py-8/.empty-icon
-   因同名不同形或有未定义使用点，按裁决保留局部。§9.6-10 text 档裁决落地：
-   本件 .text-muted（色值实为 subtle 档）已改挂全局 .text-subtle 并删净副本。 */
+/* 原子归一在册（§9.6-3/§9.6-10）：与兄弟页签逐字同形的方言原子
+   （flex-between/gap-2/ml-2/btn-sm/tag-pill/tag-blue）走全局 components.css；
+   .empty-state/.empty-icon 系同名不同形或有未定义使用点，按裁决保留局部。 */
 .endpoint-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
@@ -118,17 +116,17 @@ const emit = defineEmits<{ copy: [url: string] }>()
   line-height: 1.4;
 }
 
-/* .flex-between/.gap-2/.ml-2 已上收 components.css（§9.6-3）；
-   原 .py-8 副本已被后位 .empty-state 的 padding 级联压死（32→44px 生效后即死码），
-   连同模板挂点一并删除——§9.6-10 冻结项 .py-8 在 FileShare 侧清零 */
+/* .flex-between/.gap-2/.ml-2 走全局 components.css 原子（§9.6-3）；
+   .py-8 副本曾被后位 .empty-state 的 padding 级联压死（32→44px，生效即死码），挂点已删
+   ——§9.6-10 的 .py-8 冻结项在 FileShare 侧清零 */
 
-/* .btn-secondary 家族 scoped 全形副本删净落回：模板改挂全局 .btn .btn-secondary .btn-small
-   标准三件套（radius 6→8、悬浮 translateY 微抬与自绘焦点环弃用，hover 落回 surface-hover），
-   §9.6-10 冻结项在 FileShare 侧就此解除；全库冻结标记待 MemoView 等外组同形收编后整删。
-   .btn-sm/.tag-pill 已上收 components.css（§9.6-3），本行内按钮不再需要尺寸档。 */
+/* 行内钮走全局 .btn .btn-secondary .btn-small 标准三件套，不挂 scoped 全形副本
+   （radius 6→8、悬浮微抬与自绘焦点环弃用、hover 落回 surface-hover，§9.6-10 冻结项
+   FileShare 侧已解除；全库冻结标记待 MemoView 等外组同形收编后整删）。 */
 .tag-primary { background: var(--state-information-soft); color: var(--color-primary-hover); }
 
-/* subtle 派 .text-muted 按 §9.6-10 名实裁决：模板改挂全局 .text-subtle，局部副本删净 */
+/* subtle 档走全局 .text-subtle（§9.6-10 名实裁决：原局部 .text-muted 色值实为 subtle 档），
+   本文件不挂副本 */
 
 .empty-icon {
   font-size: var(--text-3xl);

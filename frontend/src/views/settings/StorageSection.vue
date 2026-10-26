@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 设置分区·存储目录：当前数据根（同级默认 / 显式绑定）+ 日志/版本仓/运行时目录直达。
-// F6 数据根策略收口后"便携/标准模式"概念退役：本页只回答"家在哪、能不能改"，
+// 数据根策略收口后"便携/标准模式"概念退役：本页只回答"家在哪、能不能改"，
 // 绑定指针是 exe 同级 hanxi.bind，"绑定哪个用哪个"，换绑/解绑重启后生效。
 import { ref, computed, onMounted } from 'vue'
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
@@ -19,16 +19,15 @@ const { prompt } = usePrompt()
 const { confirm } = useConfirm()
 
 const appInfo = ref<AppInfo | null>(null)
-// 波 2B：换绑/解绑单飞件迁 run 通道（busy 名位保留，模板零改动；原实现两钮共享
-// 同一 busy 互斥，故合用同一个实例——在飞时另一钮由 disabled 挡住，run 的
-// 「操作进行中」重入分支不可达）。
+// 换绑/解绑单飞件走 run 通道（busy 名位；两钮共享同一实例互斥——在飞时另一钮
+// 由 disabled 挡住，run 的「操作进行中」重入分支不可达）。
 const { busy, run: runBindDir } = useAsyncAction()
 
-// mode 为 F6 内部来源标记（sibling/bound），仅用于呈现"家从哪来"，不再是运行模式
+// mode 为后端内部来源标记（sibling/bound），仅用于呈现"家从哪来"，不是运行模式
 const bound = computed(() => appInfo.value?.mode === 'bound')
 
 // 技术子目录行（数据根之外的派生目录；配置随根走，根行单列于顶部）。
-// intent 为机主反馈二要求的用途简介，逐条对照后端代码实证（paths.go / 各模块写盘点）。
+// intent 为机主要求的用途简介，逐条对照后端代码实证（paths.go / 各模块写盘点）。
 const dirs = computed(() => [
   {
     name: '日志存储目录', badge: '脱敏运行日志', path: appInfo.value?.logsDir,
@@ -44,7 +43,7 @@ const dirs = computed(() => [
   },
 ])
 
-// 数据根一级目录用途词表（前端静态，机主反馈二）：文案逐条对过生成代码——
+// 数据根一级目录用途词表（前端静态，机主要求）：文案逐条对过生成代码——
 // logs=脱敏滚动日志；state=history/各模块状态 JSON 与模块台账（paths.go
 // StateDir，updatewatch/bcu/everything 等 NewStore(StateDir)）；versions=托管
 // 版本仓（<模块>_<版本> 目录，DataRootSubUsage 聚合源）；runtime=动态 TOML/PID
@@ -123,7 +122,7 @@ async function unbind() {
   }
 }
 
-// ---------- 数据根占用一览（N11）----------
+// ---------- 数据根占用一览 ----------
 // 每个一级子目录 = 一块家底（便携软件/数据类目）。后端 15s 预算截断 + 3 分钟
 // 缓存：进页即测走缓存/快速测量；巨目录超时不谎报——Partial 行标"≥"下限。
 const usage = ref<StorageUsageItem[]>([])
@@ -158,7 +157,7 @@ const usageSummary = computed(() => [
   { label: '已测文件', value: usageKnownFiles.value.toLocaleString(), suffix: ' 个' },
 ])
 
-// ---------- versions 按软件展开（W3-b）----------
+// ---------- versions 按软件展开 ----------
 // 后端把 `<模块>_<版本>` 子目录聚合成每软件一行（Entries 携版本目录清单）。
 const versionsOpen = ref(false)
 const subUsage = ref<StorageSubUsageItem[]>([])
@@ -184,7 +183,7 @@ function toggleVersions() {
   if (versionsOpen.value && !subUsage.value.length) void loadSub()
 }
 
-// 单版本软件行的版本号 chip（机主反馈三）：从版本目录名 `<模块>_<版本>` 取
+// 单版本软件行的版本号 chip（机主要求）：从版本目录名 `<模块>_<版本>` 取
 // 后缀；多版本行沿用既有「N 个版本」计数 chip 承载，不重复铺版本号。
 function singleVersionOf(g: StorageSubUsageItem): string {
   const entries = g.entries ?? []
@@ -194,7 +193,7 @@ function singleVersionOf(g: StorageSubUsageItem): string {
   return i > 0 ? name.slice(i + 1) : ''
 }
 
-// 数据根级删留徽章（W3-c）：仅静态建议不提供删除钮；未列名的目录不戴章——宁缺毋滥。
+// 数据根级删留徽章：仅静态建议不提供删除钮；未列名的目录不戴章——宁缺毋滥。
 const ROOT_VERDICTS: Record<string, { word: string; tone: string; tip: string }> = {
   versions: { word: '保留', tone: 'chip-neutral', tip: '托管软件本体所在；腾容量请到各托管页按版本卸载' },
   memo: { word: '保留', tone: 'chip-warning', tip: '随手记数据，删了=丢笔记' },
@@ -329,9 +328,9 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* 数据根测量卡（N19）：头部、摘要、资源行三层结构；摘要只报已测下限，
+/* 数据根测量卡：头部、摘要、资源行三层结构；摘要只报已测下限，
    不冒充磁盘总占用。 */
-/* 归属色条 token（机主反馈三）：展开子行左缘的从属信号，primary 30% 混透明，
+/* 归属色条 token（机主要求）：展开子行左缘的从属信号，primary 30% 混透明，
    明暗双主题皆由 --color-primary 派生，不用裸色。 */
 .usage-card {
   gap: 0;
@@ -370,7 +369,7 @@ onMounted(() => {
 @keyframes storage-spin { to { transform: rotate(360deg); } }
 
 .dir-badge { margin-left: 6px; vertical-align: 1px; }
-/* 用途简介行（机主反馈二）：名字与路径之间的次级说明，静态词表前端渲染 */
+/* 用途简介行（机主要求）：名字与路径之间的次级说明，静态词表前端渲染 */
 .dir-intent { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.5; }
 .dir-path {
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
@@ -383,7 +382,7 @@ onMounted(() => {
 }
 .usage-partial { color: var(--state-warning); }
 .usage-subrow { padding-left: 34px; }
-/* 归属标记（机主反馈三）：展开子行左缘 2px primary 混色条，覆掉行框左边框，
+/* 归属标记（机主要求）：展开子行左缘 2px primary 混色条，覆掉行框左边框，
    一眼看清"这几行归上面 versions 管"；单独成 class 而非压在 .usage-subrow 上，
    结构断言与语义都更明确。 */
 .subrow-attributed { border-left: 2px solid var(--attribution-line); }

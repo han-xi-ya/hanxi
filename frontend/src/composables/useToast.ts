@@ -3,8 +3,8 @@ import { ref } from 'vue'
 /**
  * 失败类 toast 的默认保活时长（ms）。
  *
- * 契约（TROUBLESHOOTING #49 的收口升级）：长错误串需要留时间阅读/复制，
- * 失败提示统一经 showErrorToast 走本默认值；各视图不再逐个传 { duration: 8000 }。
+ * 契约（缘由见 TROUBLESHOOTING #49）：长错误串需要留时间阅读/复制，
+ * 失败提示统一经 showErrorToast 走本默认值；视图侧禁逐个传 { duration: 8000 }。
  * 调参只改这一处。
  */
 export const ERROR_TOAST_DURATION = 8000

@@ -1,21 +1,20 @@
-// 历史版本中文名映射账本（N33 批 B，§2 表尾行 + §5 v1 边界）：
-// config.json 顶层键 → 中文名（与 internal/settings AppSettings 的 json tag 逐键
-// 对齐，约 17 个）；state/<file>.json → 模块中文名（含 §2 实扫例外表）。
-// 嵌套对象/数组一律计数化（"网络配置 (3 项)"），不做逐项字段级名（P5-A 裁决）。
+// 历史版本中文名映射账本：config.json 顶层键 → 中文名（与 internal/settings
+// AppSettings 的 json tag 逐键对齐）；state/<file>.json → 模块中文名（含实扫例外表）。
+// 嵌套对象/数组一律计数化（"网络配置 (3 项)"），不做逐项字段级名。
 // 诚实边界：查不到的键/文件一律原样回落显示，绝不瞎猜兜一个相近中文名。
 // memo 文件走后端已注入的标题 resolver（Display），不在此表。
-// 批 C 追加：观察窗/份数口径常量为全前端唯一数字源（散落裸数字一律经此插值），
-// 计数整句与恢复生效语义徽标也单源在此（清单行与时间线行共用同一判组口径）。
-// 批 D 追加：旧摘要显示回改（decorateLegacySummary/backupSummaryNote）与
-// 两模式版本容量整句（revisionCapNote）——只动呈现、不动账本原文。
+// 本文件同时是快照呈现的单一来源：容量口径常量（REVISION_WINDOW/BACKUP_KEEP，
+// 前端裸数字一律经此插值）、计数整句、恢复生效语义徽标、旧摘要显示回改
+//（decorateLegacySummary/backupSummaryNote）与两模式容量整句（revisionCapNote）——
+// 清单行与时间线行共用同一判组口径，只动呈现、不动账本原文。
 
 import type { TrackedFile } from '../../bindings/hanxi/internal/snapshot/models'
 
 /**
  * git 版本观察窗上限：后端 `internal/snapshot/capacity.go` 的 maxListRevisions
  * 的前端镜像（ListRevisions/FileHistory 截断、前端拉取 limit、超窗文案插值共用
- * 此一处）。绑定现面（GetStatus→StatusInfo）无容量出口且裁决不为其新开 Wails
- * 导出，双写漂移由 __tests__/snapshotCapacity.contract.spec.ts 源文本对账焊死。
+ * 此一处）。绑定现面（GetStatus→StatusInfo）无容量出口，且约定不为其新开 Wails
+ * 导出——同值双写漂移由 __tests__/snapshotCapacity.contract.spec.ts 源文本对账焊死。
  */
 export const REVISION_WINDOW = 50
 
@@ -37,7 +36,7 @@ export const statusLabels: Record<string, string> = {
   R: '改名',
 }
 
-// ---------- 恢复生效语义（N33 §0.3-C，批 C 常驻徽标单源） ----------
+// ---------- 恢复生效语义（常驻徽标单源） ----------
 
 /** 恢复生效组：热=写回即换装内存，冷=进 pending 链下次启动生效。 */
 export type RestoreScope = 'hot' | 'cold'
@@ -59,7 +58,7 @@ export const restoreScopeLabels: Record<RestoreScope, { text: string; chip: stri
   cold: { text: '重启生效', chip: 'chip-warning' },
 }
 
-// ---------- 计数整句（批 C §5：两口径不硬统一数字，各自说人话） ----------
+// ---------- 计数整句（两口径不硬统一数字，各自说人话） ----------
 
 /**
  * 清单行版本数整句——窗内摊平口径（ListFiles 按观察窗逐版累计，改名文件
@@ -84,12 +83,12 @@ export function windowCapNote(): string {
   return `仅展示最近 ${REVISION_WINDOW} 版`
 }
 
-/** 版本列表卡头容量整句（批 D：两模式容量本就不同，git 观察窗 / 备份滚动份数）。 */
+/** 版本列表卡头容量整句（两模式容量本就不同：git 观察窗 / 备份滚动保留）。 */
 export function revisionCapNote(backup: boolean): string {
   return backup ? `最多展示最近 ${BACKUP_KEEP} 份` : `最多展示最近 ${REVISION_WINDOW} 版`
 }
 
-// ---------- 旧摘要回改（N33 批 D，P7-A：如实回落、能推则推、推不出不伪造） ----------
+// ---------- 旧摘要回改（如实回落、能推则推、推不出不伪造） ----------
 
 /** 旧式摘要 token 字符集：文件名/相对路径形态；句子常见的空格、；《》+− 等一概不认。 */
 const legacySummaryTokenRe = /^[\p{L}\p{N}_.\-/]+$/u
@@ -97,7 +96,7 @@ const legacySummaryTokenRe = /^[\p{L}\p{N}_.\-/]+$/u
 /**
  * 旧式「文件名串」摘要的显示回改（只动呈现，不篡改账本——悬停 tooltip 永远给原文）：
  * git 模式历史提交摘要写死为 `a.json, b.md 等 N 个文件`（整句化只惠及新 commit，
- * 旧账不换脸是 §5/P7-A 既定口径），渲染期按**现有账**能推则推——config/state 查
+ * 旧账不换脸是既定口径），渲染期按**现有账**能推则推——config/state 查
  * 中文名表、memo/其余按受保清单尾段命中后端标题；推不出的 token 原样保留。
  * 绝不伪造"删除了/修改了"等变化语义与行数计数（旧账里没有那一位）。
  * 非文件名形态（新式整句、备份 `N 个文件` 计数句）不命中模式，原样返回。
@@ -169,10 +168,10 @@ export const CONFIG_KEY_LABELS: Record<string, string> = {
 
 /**
  * state 目录文件名（含相对 config 根的路径尾段）→ 模块中文名。
- * 常规 `<id>.json` 直接命中；下表显式登记 §2 例外清单（不可纯约定推导）。
+ * 常规 `<id>.json` 直接命中；下表显式登记例外清单（不可纯约定推导）。
  */
 export const STATE_NAME_LABELS: Record<string, string> = {
-  'projects.json': 'frpc 项目配置', // frpc store 落盘名不是模块 ID（§2 例外）
+  'projects.json': 'frpc 项目配置', // frpc store 落盘名不是模块 ID（显式登记例外）
   'wsl-portproxy.json': 'WSL2 端口映射',
   'wsl-install-pref.json': 'WSL2 安装偏好',
   'wsl-usbipd.json': 'WSL2 USB 直通',

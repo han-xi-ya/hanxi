@@ -257,8 +257,8 @@ function handleItemClick(item: Notification) {
   min-width: 0;
 }
 
-/* .sev-dot / .sev-{success,warning,error} 四条上收 components.css（与 NotificationToast
-   的逐字同形副本一并删净）；.level-icon 为抽屉列表行独有的收缩补差，留本组件。 */
+/* .sev-dot / .sev-{success,warning,error} 四条样式在 components.css（本抽屉的同形
+   scoped 副本已删净）；.level-icon 为抽屉列表行独有的收缩补差，留本组件。 */
 .level-icon { flex: none; }
 
 .mod-tag {

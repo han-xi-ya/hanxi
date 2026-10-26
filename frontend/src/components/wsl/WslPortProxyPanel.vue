@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// WSL 端口转发页签（「🔀 端口映射」：NAT netsh portproxy 规则清单账本，Phase 6 式自 WSLView 拆分）。
+// WSL 端口转发页签（「🔀 端口映射」：NAT netsh portproxy 规则清单账本，拆分自 WSLView）。
 // 首刷懒加载由视图页签 watch 调 ensureLoaded()；「🌑 停止全部」后的现态复采由视图经
-// loadProxy 句柄回拨（doShutdown 收尾序列与拆分前一致）；应用/清理走视图 runOp 白名单编排
-//（提权单批脚本 + 操作后流式复查）。行为逐字迁出，调用序列未动。
+// loadProxy 句柄回拨（doShutdown 收尾序列由特征测试锁定）；应用/清理走视图 runOp 白名单编排
+//（提权单批脚本 + 操作后流式复查）。
 import { reactive, ref } from 'vue'
 import * as WSLAPI from '../../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { DistroInstance, PortProxyView, PortRule, PortRuleView } from '../../../bindings/hanxi/internal/modules/wsl/models'
@@ -275,19 +275,19 @@ defineExpose({
 <style scoped>
 /* 全局原子落 components.css；以下为本页签独有或有意补差（注释注明）。 */
 
-/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）在
    components.css :where(.wsl-view) 原子区，六面板共用，本页签不再自持副本。 */
-/* .banner.slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
+/* .banner.slim 不挂等值副本：UiBanner 根元素挂 .banner + .slim，走全局 :where(.banner.slim) */
 /* .dim 非全局原子名，本控制台独有 */
 .dim { color: var(--color-text-muted); font-size: var(--text-sm); }
 .retry-inline { margin-left: 10px; }
 
-/* 控制条：底色/边框/内距/圆角/弹性布局落回全局 .control-panel；
-   此处仅留 WSL 档补差（gap 与换行，全局标准形无——定档候选，见收编报告） */
+/* 控制条：底色/边框/内距/圆角/弹性布局走全局 .control-panel；
+   此处仅留 WSL 档补差（gap 与换行，全局标准形无——入册 docs/FRONTEND.md「下轮候选」②） */
 .control-panel { gap: 10px; flex-wrap: wrap; }
-/* 字号/颜色/列布局落回全局 .meta-info；此处仅留收缩补差 */
+/* 字号/颜色/列布局走全局 .meta-info；此处仅留收缩补差 */
 .meta-info { min-width: 0; }
-/* display/gap 落回全局 .btn-group；此处仅留换行补差 */
+/* display/gap 走全局 .btn-group；此处仅留换行补差 */
 .btn-group { flex-wrap: wrap; }
 
 /* 规则表单面板 */

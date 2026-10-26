@@ -1,6 +1,6 @@
 // Everything 结果表列宽：表头拖拽调宽 + localStorage 记忆（仅结果面板 EverythingResultsPanel 消费）。
-// 语义与原 EverythingView 内实现逐字一致：拖拽挂 document 级 move/up，松手防抖 300ms 落盘；
-// 装载即读取记忆值；卸载清理防抖计时器与半途拖拽的 document 监听，防句柄泄漏。
+// 拖拽挂 document 级 move/up，松手防抖 300ms 落盘；装载即读取记忆值；卸载清理防抖计时器
+// 与半途拖拽的 document 监听，防句柄泄漏。
 // 记忆值经合法性校验（60~900px）后覆盖默认值；存储损坏/不可用时静默回退默认。
 import { computed, onMounted, onUnmounted, reactive } from 'vue'
 import type { ComputedRef } from 'vue'

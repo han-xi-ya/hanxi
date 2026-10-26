@@ -4,7 +4,7 @@ import * as AppAPI from '../../bindings/hanxi/internal/app'
 import type { AppInfo } from '../../bindings/hanxi/internal/app'
 import type { ModuleInfo } from '../../bindings/hanxi/internal/extapi/models'
 import { getErrorMessage } from '../utils/errors'
-// N36 OFL「随副本分发」义务 App 内侧（与 vite.config 的 dist 静态拷贝双保险）：
+// OFL「随副本分发」义务 App 内侧（与 vite.config 的 dist 静态拷贝双保险）：
 // ?raw 把许可全文内联进构建产物，EXE 内可查全文；纯静态内容，不依赖绑定就绪。
 import oflLXGW from '../assets/fonts/licenses/OFL-LXGW-WenKai.txt?raw'
 import oflNotoSC from '../assets/fonts/licenses/OFL-NotoSansSC.txt?raw'
@@ -30,7 +30,7 @@ onMounted(async () => {
     info.value = appInfo
     modules.value = moduleList ?? []
   } catch (error: unknown) {
-    // 错误归一入口全站统一（原 instanceof 手写分支语义等价，收编进 getErrorMessage）
+    // 错误归一入口全站统一（getErrorMessage 即 instanceof 手写分支的等价收编）
     loadError.value = getErrorMessage(error)
   } finally {
     loading.value = false
@@ -64,7 +64,7 @@ onMounted(async () => {
           <span>平台</span>
           <code>{{ info.goos }}/{{ info.goarch }}</code>
         </div>
-        <!-- F6 后"运行模式"概念退役：关于页只呈现数据目录，家从哪去存储分区看 -->
+        <!-- "运行模式"概念已退役：关于页只呈现数据目录，家从哪去存储分区看 -->
         <div class="info-item info-path">
           <span>数据目录</span>
           <code>{{ info.baseDir }}</code>

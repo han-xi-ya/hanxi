@@ -1,4 +1,4 @@
-// 全局确认对话框单例：把 ConfirmDialog 包成 Promise 风格，收编 window.confirm。
+// 全局确认对话框单例：把 ConfirmDialog 包成 Promise 风格，替代原生 window.confirm。
 // 对话框实例由 App.vue 顶层挂载唯一一份（复用现有可访问性标杆 ConfirmDialog），
 // 视图侧只需 `if (!(await confirm({...}))) return`。
 // 注意：ConfirmDialog 的 open 监听是 watch 非 immediate（见 TROUBLESHOOTING §25.4），

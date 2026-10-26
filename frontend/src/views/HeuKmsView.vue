@@ -5,12 +5,12 @@
 //
 // 本模块的两处特化：
 //  1. 远程表**追加**一行「↗ 发布页」动作位（后端 OpenReleasePage 走系统浏览器）
-//     ——经壳的 #release-actions 槽转发位直落共享面板（波 2G 前需 #versions-body
-//     整替照抄默认体，自此退役）。主安装路径是共享面板自带的「下载并安装」
-//     （rar 通道），发布页是拿免密 iso、看该版说明、或取"上游未发布摘要而
-//     不可自动安装"旧版的备援入口。
-//  2. 740 提权直拒后的一键提权重启入口走 #console-extra 槽（与 litemonitor
-//     同判据：后端 elevateHint 文案统一含"管理员"关键词）。
+//     ——经壳的 #release-actions 槽转发位直落共享面板。主安装路径是共享面板
+//     自带的「下载并安装」（rar 通道），发布页是拿免密 iso、看该版说明、或取
+//     "上游未发布摘要而不可自动安装"旧版的备援入口。
+//  2. 740 提权直拒后的一键提权重启入口走 #console-extra 槽——判据经共享件
+//     needsElevationRestart（单源，与 litemonitor/bcu/rufus 同款：后端 elevateHint
+//     文案统一含"管理员"关键词）。
 import { createHeuKmsAdapter, openHeuReleasePage } from '../adapters/heukms'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import ElevateRestart from '../components/ElevateRestart.vue'
@@ -18,9 +18,6 @@ import { needsElevationRestart } from '../components/managed/adapter'
 import { getErrorMessage } from '../utils/errors'
 
 const adapter = createHeuKmsAdapter()
-
-// 740 提权直拒判据走共享件 needsElevationRestart（单源，区外 bcu/rufus 同款）→
-// 追加一键提权重启入口。
 
 // 逐版打开上游发布页（备援入口）：浏览器拉不起来属边缘场景，失败只记控制台、
 // 不打一条 toast 挡用户的路（与"下载并安装"的失败回执区分开，后者由共享件统一弹）。

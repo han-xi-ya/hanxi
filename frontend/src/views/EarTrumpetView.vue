@@ -17,8 +17,8 @@ const snapshot = ref<PackageSnapshot | null>(null)
 const remoteVersion = ref('')
 const loading = ref(false)
 const error = ref('')
-// 波 2B：原单令牌 busy（''|'launch'|…+finally 复位）拆为逐动作 useAsyncAction 实例——
-// 整页互斥门禁由 anyBusy 聚合承载，行内标签态吃各自 busy，防重入仍靠模板 disabled。
+// busy 为逐动作 useAsyncAction 实例（非单令牌页级互斥）——
+// 整页互斥门禁由 anyBusy 聚合承载，行内标签态吃各自 busy，防重入靠模板 disabled。
 const { busy: launchBusy, run: runLaunch } = useAsyncAction()
 const { busy: exitBusy, run: runExit } = useAsyncAction()
 const { busy: installBusy, run: runInstall } = useAsyncAction()
@@ -94,7 +94,7 @@ async function install() {
   await refresh()
 }
 
-// 卸载：危险确认经全局 useConfirm 单例（原视图自挂 ConfirmDialog 已收编）；
+// 卸载：危险确认经全局 useConfirm 单例（不自挂 ConfirmDialog）；
 // 确认后动作期由 uninstallBusy 门禁全页按钮（anyBusy），成败均以 toast 回执。
 async function requestUninstall() {
   const accepted = await confirm({
@@ -167,8 +167,8 @@ onActivated(() => {
 </template>
 
 <style scoped>
-/* 迁移说明：原视图本地 --et-primary:#2f6fed（蓝）已删，统一语义 token；
-   头部/状态胶囊/概览面板孪生样式上收 components/tool/Msix*（§9.5-5）。 */
+/* 本页不自设本地主色（--et-primary 类），统一语义 token；
+   头部/状态胶囊/概览面板孪生样式在 components/tool/Msix*（§9.5-5）。 */
 .et-page{max-width:1120px;margin:0 auto;padding-bottom:28px;color:var(--color-text)}
 .et-banner{margin-bottom:14px;display:flex;align-items:center;gap:10px}.et-banner span{color:inherit;opacity:.9}.et-retry{margin-left:auto}
 @media(max-width:460px){.et-page{padding-bottom:16px}.et-banner{align-items:flex-start;flex-direction:column}}

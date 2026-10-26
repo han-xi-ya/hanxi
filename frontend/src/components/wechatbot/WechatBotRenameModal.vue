@@ -1,10 +1,9 @@
 <script setup lang="ts">
-// 账号重命名模态框（mini 卡）：新备注名输入 + 取消/确定。
-// 自 WechatBotView.vue 随 DOM 逐字迁出的纯展示壳——保存动作（saveAccountRename）与
-// 显隐开关（showRenameModal）留在视图编排层；备注名经受控 v-model 与父级 renameNewVal
-// 同一 ref 双向代理，语义与拆分前模板直接 v-model 逐字等价。
-// 注：模态壳层 CSS 家族与扫码绑定模态的 11 条逐字副本已上收 components.css 共享原子
-// （§9.6-8 治理完成），本组件 scoped 块只留 mini 卡与动作条真差异。
+// 账号重命名模态框（mini 卡，拆自 WechatBotView 的纯展示壳）：新备注名输入 + 取消/确定。
+// 保存动作（saveAccountRename）与显隐开关（showRenameModal）留在视图编排层；备注名经
+// 受控 v-model 与父级 renameNewVal 同一 ref 双向代理。
+// 注：模态壳层 CSS 家族系 components.css 共享原子（§9.6-8，与扫码绑定模态同源），
+// 本组件 scoped 块只留 mini 卡与动作条真差异。
 import { computed } from 'vue'
 
 const props = defineProps<{
@@ -18,7 +17,7 @@ const emit = defineEmits<{
   'update:renameNewVal': [value: string]
 }>()
 
-// 受控输入：读写均代理父级 ref（等价于拆分前模板直接 v-model="renameNewVal"）。
+// 受控输入：读写均代理父级 ref（宿主经 v-model:renameNewVal 接线）。
 const nameModel = computed({
   get: () => props.renameNewVal,
   set: (v: string) => emit('update:renameNewVal', v),
@@ -58,8 +57,8 @@ const nameModel = computed({
 </template>
 
 <style scoped>
-/* 模态壳层家族（custom-modal、cmodal、form 系列与 @keyframes modalIn）
-   已上收 components.css（§9.6-8），以下仅本模态真差异。 */
+/* 模态壳层家族（custom-modal、cmodal、form 系列与 @keyframes modalIn）走
+   components.css 共享原子（§9.6-8），以下仅本模态真差异。 */
 .custom-modal-card.mini {
   width: 300px;
 }

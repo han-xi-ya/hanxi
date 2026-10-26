@@ -1,10 +1,9 @@
 <script setup lang="ts">
-// 微信机器人主控台——Phase 6 巨型孤本拆分后的编排层（原 2176 行）。
-// 业务状态、操作、事件订阅与扫码轮询的单一来源在 composables/useWechatBot.ts；
-// 界面标记与 scoped 样式随 DOM 逐字迁出至 components/wechatbot/ 七个纯展示壳
-// （Sidebar 账号栏 / ChatHeader 聊天头部 / RulesStrip 规则条 / ChatFlow 消息流 /
+// 微信机器人主控台——编排层：业务状态、操作、事件订阅与扫码轮询的单一来源在
+// composables/useWechatBot.ts；界面标记与 scoped 样式在 components/wechatbot/
+// 七个纯展示壳（Sidebar 账号栏 / ChatHeader 聊天头部 / RulesStrip 规则条 / ChatFlow 消息流 /
 // ChatInput 输入区 / BindModal 扫码模态 / RenameModal 重命名模态）。
-// 本体只保留：composable 解构、props/事件接线与纯 UI 折叠、横幅开关。
+// 本视图只保留：composable 解构、props/事件接线与纯 UI 折叠、横幅开关。
 import { ref } from 'vue'
 import { useWechatBot } from '../composables/useWechatBot'
 import WechatBotSidebar from '../components/wechatbot/WechatBotSidebar.vue'
@@ -220,6 +219,6 @@ const showRulesBanner = ref(true)
   margin: 0;
 }
 
-/* .btn-bind-account 家族（含 .large 档）scoped 逐字副本删净落回 components.css 全局原子
-   （§9.6-8 冻结标记就此可整删：全库仅剩全局一份定义，模板挂点不变） */
+/* .btn-bind-account 家族（含 .large 档）走 components.css 全局原子，本视图不挂副本；
+   模板挂点不变（§9.6-8 全库仅剩全局一份定义） */
 </style>

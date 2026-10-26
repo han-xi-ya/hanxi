@@ -1,8 +1,8 @@
-// 模块目录投影单一来源 composable（Wave 2，ADR-0001 §1.2）：
+// 模块目录投影单一来源 composable（ADR-0001 §1.2）：
 // 并发拉取 ListCatalog（静态身份 + description 描述文案）+ ListModuleStates
 // （四维事实）两源，按 moduleId 合并为 ModuleEntry[] 后进程内共享。
-// 描述文案自 ModuleCatalogItem 契约收编后不再借道 ListModules（第三源已移除，
-// 其 enabled/installed 状态字段本就与投影真相重叠，属双写面）。
+// 描述文案单源 ModuleCatalogItem.description，不借道 ListModules（其
+// enabled/installed 状态字段与投影真相重叠，属双写面，勿作第三源）。
 //
 // 纪律：只缓存投影副本，不写任何持久状态、不打补丁推导第二份真相；
 // ext:changed / updates:checked 到达只重拉、不本地改 entries

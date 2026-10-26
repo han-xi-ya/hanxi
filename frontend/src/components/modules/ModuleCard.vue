@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 模块中心卡片（Wave 2）：静态身份（catalog）+ 四维投影（state）的展示单元。
+// 模块中心卡片：静态身份（catalog）+ 四维投影（state）的展示单元。
 // 契约纪律（ADR-0001 §1.2）：主操作只读 state.primaryAction、原因只读 state.reason，
 // 卡片零 if/else 状态推断；文案全部取自 constants/status 词汇表。唯一例外是
 // builtin-logical 的"安装"措辞收口（§1.5：交付形态强制"加入工作台，不释放宿主体积"），
@@ -33,7 +33,7 @@ const props = withDefaults(defineProps<{
   /** 后端事务在途：全部动作钮禁用（维度稳定，不跳字）。 */
   busy?: boolean
   /**
-   * 该模块的在途 Operation（Wave 4，来自 useOperations.activeOf，无则 null）。
+   * 该模块的在途 Operation（来自 useOperations.activeOf，无则 null）。
    * 呈现复用：badge-row 增"在途操作"徽标 + busy 并入（操作期间动作钮禁用），
    * 不新增状态真相——activeOf 只是 useOperations 投影的只读筛选。
    */
@@ -90,7 +90,7 @@ const primaryTitle = computed(() => {
 const locked = computed(() => props.busy || !!props.operation)
 const primaryDisabled = computed(() => actionMeta.value.disabled || locked.value)
 
-// 精致化收口（机主反馈"蓝色长条太大"）：卡片墙内实心 primary 一律降档为
+// 机主裁决（"蓝色长条太大"）：卡片墙内实心 primary 一律降档为
 // 次级描边 + .btn-micro（全站密集场景既定档，同 PortScan/FileShare 行内钮）。
 // 主操作分量改由位置（动作行首位）与词表文字承载，不再以色块压过状态徽标。
 // 仅呈现层降档：PRIMARY_ACTION_META 词表 variant 语义不动，首页/详情面板不受牵连。
@@ -129,7 +129,7 @@ const healthBadge = computed(() => {
 })
 const reasonText = computed(() => state.value?.reason || '')
 
-// —— 在途操作徽标（Wave 4）：有 active Operation → phase 短语 + 进度百分比，文字承载 ——
+// —— 在途操作徽标：有 active Operation → phase 短语 + 进度百分比，文字承载 ——
 const operationBadge = computed(() => {
   const op = props.operation
   if (!op) return null
@@ -262,8 +262,8 @@ const categoryLabel = computed(() =>
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mod-category { font-size: var(--text-xs); color: var(--color-text-subtle); }
-/* 2026-10-26 机主裁决（卡头 chip 不再硬占挤名）：chip 可收缩、超长省略，
-   全文走 title；名字侧 flex-basis 55% 保底。审查报告 §四-C8。 */
+/* 机主裁决（卡头 chip 不硬占挤名）：chip 可收缩、超长省略，
+   全文走 title；名字侧 flex-basis 55% 保底。 */
 .summary-chip { flex: 0 1 auto; min-width: 0; overflow: hidden; margin-left: auto; }
 .chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

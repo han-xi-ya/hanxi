@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// 工作台首页（Wave 2，UI 专项 §7.2/§7.4 + ADR-0001 §1.8）：
+// 工作台首页（职责边界见 ADR-0001 §1.8）：
 // 职责 = 运行摘要 + 常用入口 + 最近任务，不再承担完整模块目录与启停（归模块中心）。
 // 数据铁律：全部区块只消费后端真实投影，无来源的分区隐藏并注释说明，禁止样例数据。
 //   · 正在运行   AppService.ListModules()，initialized ∧ enabled = 已分配运行资源；
-//   · 摘要四项   ListModules 真实计数 + 可用更新计数（W2b 点亮：useModuleCatalog
+//   · 摘要四项   ListModules 真实计数 + 可用更新计数（useModuleCatalog
 //                健康维度 health==='update-available' 真实投影；「待处理」仍无独立
 //                来源，继续隐藏不占位）；
 //   · 可用更新   update-available 条目合并列表行（有则显示、无则整区隐藏）；页头
@@ -12,7 +12,7 @@
 //   · 常用入口   固定常用（navGrouping.FAV_MODULE_IDS 单一来源）+ 最近使用（loadRecentRoutes），
 //                经后端 navs 实时过滤可见性（模块停用即消失），最多 4 个直达；
 //   · 最近任务   HistoryService.List 三桶（ocr/portkill/envcheck）+ 统一 Operation
-//                recentFinished 两源合并、按时间降序取最近 5 条，无数据整区隐藏（Wave 4）。
+//                recentFinished 两源合并、按时间降序取最近 5 条，无数据整区隐藏。
 import { ref, shallowRef, computed, onMounted } from 'vue'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 import * as HistoryAPI from '../../bindings/hanxi/internal/history/historyservice'
@@ -117,8 +117,8 @@ async function loadCore() {
 const runningModules = computed(() => modules.value.filter((m) => m.enabled && m.initialized))
 const enabledCount = computed(() => modules.value.filter((m) => m.enabled).length)
 
-// ── 可用更新（W2b 更新感知链点亮）：唯一口径 = useModuleCatalog（ListModuleStates）
-// 健康维度 health==='update-available' 真实投影（updatewatch 调度器裁决写入，
+// ── 可用更新：唯一口径 = useModuleCatalog（ListModuleStates）
+// 健康维度 health==='update-available' 真实投影（updatewatch 调度器写入，
 // 无真实来源时计数为 0、列表区整区隐藏，不放占位）。文案全部取自 status 词表。
 const { entries: catalogEntries } = useModuleCatalog()
 const updateEntries = computed(() =>
@@ -161,7 +161,7 @@ async function checkUpdates() {
 
 // ── 最近任务：历史服务分桶 RPC（后端 Save 的 FuncType 与模块注册 ID 对齐，
 // 当前写入方为识别 ocr / 查杀 portkill / 环境检测 npm envcheck 三桶）。
-// TODO(Wave 4+)：后端统一 Operation 投影（PLAN_OFFICIAL_MODULE_DISTRIBUTION）落地后
+// TODO：后端统一 Operation 投影（docs/plans/PLAN_OFFICIAL_MODULE_DISTRIBUTION.md）落地后
 // 改接统一真相源，新增历史桶需同步本清单（RPC 无跨桶列取方法，只能逐桶合并）。
 const HISTORY_BUCKETS = ['ocr', 'portkill', 'envcheck']
 const RECENT_TASKS_MAX = 5
@@ -198,7 +198,7 @@ function fmtTaskTime(iso: string): string {
   return d.getFullYear() === now.getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md}`
 }
 
-// ── 最近任务合并呈现（Wave 4）：历史三桶 + 统一 Operation 终态记录两源，
+// ── 最近任务合并呈现：历史三桶 + 统一 Operation 终态记录两源，
 // 按时间降序取 5。历史行为不动；operation 行如实取后端投影（模块名回落 ID、
 // 错误回落阶段短语），error.message 原文透出，不本地推断成败。
 interface TaskRow {
@@ -309,7 +309,7 @@ onMounted(async () => {
       </header>
 
       <!-- 摘要区：三项 ListModules 真实计数 + 可用更新计数（useModuleCatalog
-           健康维度 update-available 真实投影，W2b 更新感知链点亮）。
+           健康维度 update-available 真实投影）。
            「待处理」仍无独立真实来源，继续隐藏不占位（UI 专项 §7.4）。 -->
       <div class="summary-grid" role="group" aria-label="工作台摘要">
         <div class="summary-card">
@@ -395,8 +395,8 @@ onMounted(async () => {
         </section>
       </div>
 
-      <!-- 可用更新（W2b 点亮）：条目 = useModuleCatalog 中 health==='update-available'
-           的真实投影（updatewatch 感知链裁决，updates:checked 驱动重拉）。
+      <!-- 可用更新：条目 = useModuleCatalog 中 health==='update-available'
+           的真实投影（updatewatch 感知链写入，updates:checked 驱动重拉）。
            行=模块名+派生摘要合并短语（SUMMARY_META：正在运行/有更新等口径）+健康徽标
            （投影带 remoteVersion 时含"→ 新版本号"短语，与卡片同口径）+直达；
            无条目整区隐藏，不放占位。 -->
@@ -436,7 +436,7 @@ onMounted(async () => {
         </ul>
       </section>
 
-      <!-- 最近任务（Wave 4）：历史三桶 + 统一 Operation 终态两源按时间降序合并取 5；
+      <!-- 最近任务：历史三桶 + 统一 Operation 终态两源按时间降序合并取 5；
            无数据（两源皆空或全部不可用）时整区隐藏，不放占位样例。
            完整任务历史与诊断归模块中心/各模块页。 -->
       <section v-if="taskRows.length > 0" class="wb-panel tasks-panel" aria-labelledby="tasks-title">

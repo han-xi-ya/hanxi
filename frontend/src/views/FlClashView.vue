@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// FlClash 控制台（Wave 5 · 批 0 共享契约迁入件）：
+// FlClash 控制台（托管控制台标准形）：
 // 共享面全部收敛进 components/managed 托管控制台家族——adapter（src/adapters/flclash）
 // 承载业务投影（RPC/事件/文案），ManagedConsoleShell 管页头与页签骨架，
 // ManagedControlBar 管状态头与启停钮，ManagedVersionPanel 管版本区，
 // ManagedExtrasCard 管联动辅助卡。本视图仅剩装配与业务说明卡（插槽内容）。
-// 现状差异位：提示条非 slim 档（页内横幅恒为全高形），经 banner-slim=false 声明。
+// 本模块差异位：提示条非 slim 档（页内横幅恒为全高形），经 banner-slim=false 声明。
 import { createFlClashAdapter } from '../adapters/flclash'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 

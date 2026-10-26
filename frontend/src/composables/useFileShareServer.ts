@@ -1,6 +1,6 @@
-// 局域网文件快传（FileShare）业务状态与操作单一来源。
-// Phase 6 巨型孤本结构拆分时自 FileShareView.vue 逐字抽出：bindings 调用序列、
-// 事件名、toast 文案、轮询参数与停止态空转保护等业务契约均未改动。
+// 局域网文件快传（FileShare）业务状态与操作单一来源（拆分期自 FileShareView.vue 抽出）。
+// bindings 调用序列、事件名、toast 文案、轮询参数与停止态空转保护均属契约面，
+// 由特征测试 FileShareView.spec.ts 锁定。
 //
 // 必须在组件 setup 同步期内调用：内部经 useWailsEvent 注册三个事件订阅、经 usePolling
 // 注册运行态轮询（onMounted/onActivated/onDeactivated/onUnmounted 与 KeepAlive 耦合的
@@ -66,7 +66,7 @@ export function useFileShareServer() {
   const canOpenShareDirectory = computed(() => {
     return Boolean(savedSharePath.value) && normalizedSharePath.value === savedSharePath.value
   })
-  // 「当前路径尚未保存」提示位——原模板表达式 normalizedSharePath && !canOpenShareDirectory 的等价收拢。
+  // 「当前路径尚未保存」提示位：路径非空且与已保存值不一致时为真。
   const unsavedPathHint = computed(
     () => Boolean(normalizedSharePath.value) && !canOpenShareDirectory.value,
   )
@@ -212,7 +212,7 @@ export function useFileShareServer() {
     showToast(`收到来自移动端的文本投递: ${item.content.slice(0, 24)}...`)
   })
 
-  // 运行中才拉状态（停止态空转保护逐字保留）；不立即首跑——进页数据由 loadData 负责
+  // 运行中才拉状态（停止态空转保护）；不立即首跑——进页数据由 loadData 负责
   usePolling(async () => {
     if (!status.value.isRunning) return
     status.value = await FileShareAPI.FileShareService.GetServerStatus()

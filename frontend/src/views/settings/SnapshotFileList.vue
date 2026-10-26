@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// 历史版本·左栏受保文件清单（N33 批 B 自 SnapshotSection 拆出，批 C 补徽标与窄屏）：
+// 历史版本·左栏受保文件清单（SnapshotSection 的两栏子件之一）：
 // 按 memo/config/state 三分组渲染 ListFiles 结果（组序信任后端），每行
 // 中文名（前端映射表优先→后端 Display→文件名回落，见 snapshotLabels）、
-// 已删除徽标、恢复生效语义常驻徽标（§0.3-C：memo=即时、config/state=重启）
+// 已删除徽标、恢复生效语义常驻徽标（memo=即时、config/state=重启）
 // 与"最近 N 次变化"窗内口径整句；点选向父级抛 select。
 // DOM 刻意保持「组标签 + 行按钮」同层平铺（无分组包裹盒）：≤640px 纯 CSS
 // 即可把同一容器折成横向滚动 chip 条，恢复入口保持一步可达。
@@ -62,8 +62,8 @@ const grouped = computed(() => {
 </template>
 
 <style scoped>
-/* 皮与 SnapshotSection 批 A 语系逐字同构（拆分不动相）；批 C：行宽按整句+双徽标
-   重排，≤640px 同一容器折成横向滚动 chip 条（平铺 DOM 是前提，勿加包裹盒） */
+/* 行宽按整句+双徽标排布，≤640px 同一容器折成横向滚动 chip 条
+   （平铺 DOM 是前提，勿加包裹盒） */
 .fa-list {
   flex: none; width: 300px; max-height: 380px; overflow: auto;
   display: flex; flex-direction: column; gap: 2px;
@@ -92,8 +92,8 @@ const grouped = computed(() => {
     border-bottom: 1px solid var(--color-border); padding-bottom: 6px;
   }
 }
-/* 批 C 窄屏档：清单收成横向滚动 chip 条——恢复入口保持"点一下 chip 即出时间线"，
-   不折叠进 details（折叠会把入口埋回两步深，违背重做初衷） */
+/* 窄屏档：清单收成横向滚动 chip 条——恢复入口保持"点一下 chip 即出时间线"，
+   不折叠进 details（折叠会把入口埋回两步深） */
 @media (max-width: 640px) {
   .fa-list {
     flex-direction: row; align-items: center; gap: 6px;

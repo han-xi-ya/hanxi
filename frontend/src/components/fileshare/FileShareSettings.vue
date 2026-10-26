@@ -1,17 +1,16 @@
 <script setup lang="ts">
 // 共享服务设置卡：共享位置 / 网络与容量 / 访问权限三面板 + 保存动作入口。
-// 注：form 是视图层 configForm 同一响应式对象的引用——面板字段深绑定（v-model）与原
-// 单文件实现「模板直接改写 configForm.value.*」逐字等价，保存/选目录/打开目录等
-// 业务动作 emit 回视图编排层（useFileShareServer）执行。
+// 注：form 是视图层 configForm 同一响应式对象的引用——面板字段 v-model 深绑定直改原件，
+// 不做本地拷贝；保存/选目录/打开目录等业务动作 emit 回视图编排层（useFileShareServer）执行。
 import type { ShareConfig } from '../../../bindings/hanxi/internal/modules/fileshare/models'
 
 const props = defineProps<{
   form: ShareConfig
-  /** 服务运行中（原 status.isRunning，热应用提示位）。 */
+  /** 服务运行中——保存后热应用提示位的依据。 */
   isRunning: boolean
-  /** 打开目录门禁（原 canOpenShareDirectory：与已保存路径一致才可用）。 */
+  /** 打开目录门禁：当前路径与已保存路径一致才可用。 */
   canOpen: boolean
-  /** 「当前路径尚未保存」提示位（原 normalizedSharePath && !canOpenShareDirectory）。 */
+  /** 「当前路径尚未保存」提示位：路径非空且与已保存值不一致。 */
   unsaved: boolean
 }>()
 
@@ -150,9 +149,8 @@ function setQuickPort(port: number) {
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移。
-   refined 两代级联已按生效终值合并（原 gen1 .config-card 小圆角浅内距档、独立
-   .quick-ports 无 display 死规则、chip 方角 1px 档均被 gen2 覆盖，已并入或删除）。 */
+/* 样式自视图拆分迁入；曾并存的两代级联（refined gen1/gen2）已按生效终值并为单源，
+   被覆盖的死档（gen1 .config-card 小圆角浅内距、.quick-ports 无 display、chip 方角档）已除。 */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -201,8 +199,8 @@ function setQuickPort(port: number) {
   padding: 8px 12px;
   font-size: var(--text-base);
   color: var(--color-text);
-  /* 样式审计 C10（2026-10-27）：删原 `outline: none`——scoped 压死 base.css 全局 :focus-visible 环，
-     原 :focus 的 2px soft 影底对比不足当键盘焦点指示；删除后全局环接管，换色边保留。 */
+  /* 勿恢复 `outline: none`：scoped 会压死 base.css 全局 :focus-visible 环，而本类 :focus 的
+     2px soft 影底不足以充当键盘焦点指示——焦点环交全局，:focus 只留换色边与影底装饰。 */
   transition: border-color var(--motion-slow);
 }
 
@@ -216,7 +214,7 @@ function setQuickPort(port: number) {
   color: var(--color-text-subtle);
 }
 
-/* .btn-secondary 全形副本删净落回全局 .btn .btn-secondary .btn-small（与页签同处置） */
+/* 按钮走全局 .btn .btn-secondary .btn-small 标准三件套，不挂 scoped 全形副本 */
 .setting-icon {
   display: inline-flex;
   flex: 0 0 auto;
@@ -431,9 +429,8 @@ function setQuickPort(port: number) {
   margin-top: 14px;
 }
 
-/* 按钮族装饰（自绘悬浮微抬/降透明/焦点环）随 .btn-secondary 全形副本一并删除，
-   disabled 0.45→全局 .btn:disabled 0.5、hover 落回 surface-hover（±档设计收敛）；
-   仅私有 chip/输入框保留自绘焦点环 */
+/* 按钮族悬浮微抬/降透明/焦点环全归全局 .btn 原子（disabled 档、hover 档系设计收敛）；
+   私有 chip 与输入框不属按钮族，保留自绘焦点环 */
 .quick-port-chip {
   transition: transform var(--motion-base) ease, border-color var(--motion-base) ease, background var(--motion-base) ease, box-shadow var(--motion-base) ease;
 }

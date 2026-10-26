@@ -1,7 +1,7 @@
 <!--
-  更新通道共享块（增强批⑧）：adapter.channel（options/get/set 批 0 已定形）的
-  统一渲染位——recordly/paseo 视图互抄的 channel-row 段自此收编。渲染于版本面板
-  上方；选中项为带 warn 注记的通道时行尾追加琥珀警示（beta 尝鲜话术逐字沿用）。
+  更新通道共享块：adapter.channel（options/get/set）的统一渲染位——recordly/paseo
+  视图互抄的 channel-row 段收编于此。渲染于版本面板上方；选中项为带 warn 注记的
+  通道时行尾追加琥珀警示（beta 尝鲜话术逐字沿用）。
   编排全部走 store.runChannel（settle/reloadVersions/失败前缀单源）；组件只持
   当前通道值一份本地 ref：首屏 get() 失败保留现词 '读取本地版本失败: ' 写进
   store.listError（recordly 原 localTask 错误面逐字），切换成功才翻转选中态。

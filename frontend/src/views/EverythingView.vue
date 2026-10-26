@@ -4,20 +4,17 @@
 // 控制台整合条 / 结果区拆至 components/everything/* 子组件；
 // DOM 结构、文案与 bindings 调用契约逐字保持，业务动作仍由本视图编排接线。
 //
-// 波 2F 供体回迁：版本管理 Tab（概览 + 已装卡 + 远程表）换装 components/managed/
-// ManagedVersionPanel——本视图正是共享面板当年「以 components/everything/
-// {VersionCard,ReleaseTable} 的拆分语义为供体」的原主，方言件退役回共享件：
-//   - 通道徽标 + 快照降级标记 → #release-extra-col 方言列槽（波 2A 通道列承接位）；
-//   - 随关联动开关 → #meta-extra 槽（波 2E meta 行族尾部承接位）；
-//   - meta 概览/双空态/导入刷新钮 → copy 词面钩子逐字覆写（remoteSummary/metaHints/
+// 版本管理 Tab（概览 + 已装卡 + 远程表）由 components/managed/ManagedVersionPanel
+// 共享面板直挂，本模块方言经具名槽与词面钩子承接：
+//   - 通道徽标 + 快照降级标记 → #release-extra-col 方言列槽；随关联动开关 → #meta-extra 槽；
+//   - meta 概览/双空态/导入刷新钮 → adapter.copy 词面钩子覆写（remoteSummary/metaHints/
 //     firstUseEmpty/firstUseDownloadLabel/remoteUnavailable/uninstallRunningHint）；
 //   - 版本区数据面与写动作编排归共享 store（useManagedConsole），状态轮询/双事件
 //     订阅/请求代次/下载票据随之单源化；
-//   - 控制台整合条（EverythingConsoleBar）与内嵌搜索、结果区方言一律不动，
-//     其控制动词仍走视图 useAsyncAction——与搜索防抖共享单飞闩（P0 批 3·4.5
-//     契约，store.busy 不横跨控制台钮面）。
-// 适配器暂驻视图文件：托管共享契约要求 adapter 注入，而 adapters/everything.ts
-// 的建档不在本轮可改面（波 2F 编辑白名单）；待主线平移进 adapters/ 即成标准形。
+//   - 控制台整合条（EverythingConsoleBar）与内嵌搜索、结果区方言走视图自有
+//     useAsyncAction——控制钮与搜索防抖共享单飞闩（store.busy 不横跨控制台钮面）。
+// 适配器暂驻本文件：托管共享契约要求 adapter 注入，adapters/everything.ts 尚未建档，
+// 待平移进 adapters/ 即成标准形。
 import { ref, computed, onMounted } from 'vue'
 import * as EverythingAPI from '../../bindings/hanxi/internal/modules/everything/everythingservice'
 import type { EverythingRelease } from '../../bindings/hanxi/internal/modules/everything/version/models'
@@ -52,11 +49,11 @@ const {
   openResult, revealResult, copyResult, handleEsTicket,
 } = useEverythingSearch(busy)
 
-// ---------- 托管共享契约（波 2F） ----------
+// ---------- 托管共享契约 ----------
 /**
- * 状态快照代次（P0 批 3·4.4 原视图口径保真）：store.refresh 不自带请求代次，
- * 闸口前移到 adapter.getStatus——旧响应晚到交回上一份新鲜快照，store 的
- * sameSnapshot 内容判等随即弃写，「慢回的旧状态不倒灌新状态」逐字等价。
+ * 状态快照代次：store.refresh 不自带请求代次，闸口前移到 adapter.getStatus——
+ * 旧响应晚到交回上一份新鲜快照，store 的 sameSnapshot 内容判等随即弃写，
+ * 保证「慢回的旧状态不倒灌新状态」。
  */
 let statusSeq = 0
 let lastSnap: Snapshot | null = null
@@ -65,7 +62,7 @@ let lastSnap: Snapshot | null = null
  *  store.releases 的成员运行时即 EverythingRelease，断言只补类型视角。 */
 const releaseRow = (rel: ManagedReleaseRecord) => rel as EverythingRelease
 
-/** 通道徽标词（逐字沿自原方言表）。 */
+/** 通道徽标词。 */
 function channelLabel(channel: string): string {
   if (channel === 'stable') return '稳定'
   if (channel === 'beta') return '1.5 测试'
@@ -87,8 +84,8 @@ const adapter: ManagedModuleAdapter<Snapshot> = {
     })
   },
 
-  // 单订阅双分发（铁律③）：es 组件票据交 useEverythingSearch 独立成态、
-  // 不进版本 map；app 版本票据归一后交共享 downloading；缺 component/空票据守卫逐字保留。
+  // 单订阅双分发（adapter 铁律③）：es 组件票据交 useEverythingSearch 独立成态、
+  // 不进版本 map；app 版本票据归一后交共享 downloading；缺 component/空票据先挡。
   subscribeProgress(cb) {
     useWailsEvent<DownloadTicket>('everything:download', (t) => {
       if (!t || !t.component) return
@@ -168,14 +165,13 @@ const mainTabs = [
   { key: 'versions', label: '📦 版本管理' },
 ]
 
-// ---------- 控制台方言投影（真相取共享 store，词面与判定逐字沿自波 2F 前现状） ----------
+// ---------- 控制台方言投影（真相取共享 store，词面为本视图方言） ----------
 const snap = computed(() => store.snap as Snapshot | null)
 const state = computed(() => store.state)
 const runningVersion = computed(() => store.runningVersion)
 
-// §9.5-5 文案评审结论：通用五态接单一来源（running=「运行中」）；
-// Everything 的 running 按托管模式细分「后台/窗口运行中」，属业务扩展话术，保留局部覆写。
-// 不取 store.stateText：N43 未安装降档词（「未安装」）不入本视图控制台方言现状口径。
+// running 按托管模式细分「后台/窗口运行中」，属本视图业务扩展话术，故保留局部覆写；
+// 不取 store.stateText 的未安装降档词（「未安装」不入本视图控制台方言口径）。
 const stateText = computed(() => {
   switch (state.value) {
     case 'running':
@@ -255,9 +251,9 @@ async function onFollowToggle() {
 }
 
 onMounted(async () => {
-  // 版本三源加载已归 store（onMounted 自动 load）；状态首拉沿用迁移前双路形制
-  // （轮询 immediate 首跑之外，挂载显式再拉一次——P0 批 3·4.4 请求代次口径的
-  // 前提就是挂载期两发并发）。联动开关读取与 ES 搜索组件预就绪留在视图。
+  // 版本三源加载已归 store（onMounted 自动 load）；状态首拉保留双路形制——轮询
+  // immediate 首跑之外挂载显式再拉一次，代次闸正是为挂载期两发并发而设。
+  // 联动开关读取与 ES 搜索组件预就绪留在视图。
   void store.refresh()
   await Promise.all([loadExtras(), ensureTool()])
 })
@@ -324,17 +320,17 @@ onMounted(async () => {
       />
     </div>
 
-    <!-- 版本管理 Tab（波 2F：共享面板直挂，方言经具名槽承接） -->
+    <!-- 版本管理 Tab：共享面板直挂，方言经具名槽承接 -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
       <ManagedVersionPanel :adapter="adapter" :store="store">
-        <!-- 随关联动开关（原 meta-info 位形制不变，波 2E #meta-extra 承接位） -->
+        <!-- 随关联动开关（#meta-extra 槽，形制与原 meta 行一致） -->
         <template #meta-extra>
           <label class="toggle-label">
             <input type="checkbox" :checked="followOnExit" @change="onFollowToggle" />
             <span>随 Hanxi 一起关闭 <span class="hint-dim">（默认关闭：Hanxi 退出不影响该工具；开启后退出时经 -quit 优雅收尾并落盘索引库）</span></span>
           </label>
         </template>
-        <!-- 通道列（波 2A 方言列槽）：通道徽标 + 快照降级标记，画法逐字沿自原方言表 -->
+        <!-- 通道列（#release-extra-col 方言列槽）：通道徽标 + 快照降级标记 -->
         <template #release-extra-col-head>通道</template>
         <template #release-extra-col="{ release }">
           <div class="channel-cell">
@@ -351,10 +347,9 @@ onMounted(async () => {
 
 <style scoped>
 /* 共享层已接管：.page/.header-row/.subtitle/.error-box/.btn 家族/.tbl/.mono/.link-button/
-   .empty-state/.banner(UiBanner)/.main-tab-nav(MainTabNav)；搜索控制台/结果表的业务样式
-   随 DOM 迁入 components/everything/* 子组件 scoped；版本区样式随波 2F 面板化一并出清——
-   .control-panel/.meta-info/.btn-group/.section-title/.installed-grid 留回全局原子家族，
-   .toggle-label 本视图方言行仍消费。 */
+   .empty-state/.banner(UiBanner)/.main-tab-nav(MainTabNav)；搜索控制台/结果表的业务样式在
+   components/everything/* 子组件 scoped；版本管理 Tab 换装共享面板后本视图不再有版本区样式，
+   .toggle-label 为 #meta-extra 槽方言仍留本视图。 */
 .everything-view { display: flex; flex-direction: column; gap: 14px; }
 .tab-body { display: flex; flex-direction: column; gap: 16px; }
 .hint-line { font-size: var(--text-sm); color: var(--color-text-subtle); padding-left: 2px; }
@@ -363,11 +358,11 @@ onMounted(async () => {
 .toggle-label { display: flex; align-items: center; gap: 8px; font-size: var(--text-base); color: var(--color-text); cursor: pointer; margin-top: 4px; }
 .toggle-label input { width: 15px; height: 15px; cursor: pointer; }
 
-/* ---------- #release-extra-col 通道列（逐字沿自 EverythingReleaseTable，随槽位移居本视图） ---------- */
+/* ---------- #release-extra-col 通道列（方言样式随槽位移居本视图） ---------- */
 .channel-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .channel-badge { font-size: var(--text-xs); font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); }
 .ch-stable { background: var(--state-positive-soft); color: var(--state-positive); }
 .ch-beta { background: var(--state-warning-soft); color: var(--state-warning); }
-/* .badge 基形由 components.css 全局原子接管，此处仅快照档位色（原方言表同词同色） */
+/* .badge 基形由 components.css 全局原子接管，此处仅快照档位色 */
 .badge-pre { background: var(--state-warning-soft); color: var(--state-warning); }
 </style>

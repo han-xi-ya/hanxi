@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// 联动与辅助设置卡（Wave 5 · 批 0；增强批扩装）：随 Hanxi 关闭勾选 + 桌面快捷方式 +
-// 数据目录直达 + 仓库地址行（复制/浏览器打开）+「托管位置」数据行（⑨）。条目全部可选：
+// 联动与辅助设置卡：随 Hanxi 关闭勾选 + 桌面快捷方式 + 数据目录直达 +
+// 仓库地址行（复制/浏览器打开）+「托管位置」数据行。条目全部可选：
 // adapter.extras 缺项自动隐藏，整卡无任何条目时由父级（Shell）不渲染本组件。
 // 首屏 GetFollowOnExit/RepositoryURL 并发拉取（视图原 loadExtras 语义收编）；
 // 勾选失败回滚到后端真实值（ref 变化驱动 checkbox 复位，现状口径）。
-// 增强批⑦：#extras-action 槽补作用域 {snap,state,busy,store}；dataDirRow 行
+// #extras-action 槽作用域 {snap,state,busy,store}；dataDirRow 行
 // 需注入 store（缺 store 时该行自动缺席，不炸独立挂载）。
 import { computed, onMounted, ref } from 'vue'
 import type { ManagedModuleAdapter } from './adapter'
@@ -16,7 +16,7 @@ import { getErrorMessage } from '../../utils/errors'
 const props = withDefaults(
   defineProps<{
     adapter: ManagedModuleAdapter
-    /** 控制台共享 store（⑦/⑨：槽作用域与「托管位置」行的现态来源；缺省行自动缺席）。 */
+    /** 控制台共享 store（槽作用域与「托管位置」行的现态来源；缺省行自动缺席）。 */
     store?: ManagedConsoleStore
   }>(),
   { store: undefined },
@@ -122,7 +122,7 @@ async function openRepo() {
   })
 }
 
-// ---- 「托管位置」数据行（增强批⑨）：copy.dataDirRow × store 现态联合驱动 ----
+// ---- 「托管位置」数据行：copy.dataDirRow × store 现态联合驱动 ----
 const hostDirSpec = computed(() => props.adapter.copy?.dataDirRow)
 const hostDir = computed(() => {
   const spec = hostDirSpec.value
@@ -167,7 +167,7 @@ onMounted(() => {
         :title="adapter.extras.dataDir.title"
         @click="openDataDir"
       >{{ adapter.extras.dataDir.label }}</button>
-      <!-- ⑦：模块注入钮位补作用域（store 缺省时各项为 undefined，视图自兜底） -->
+      <!-- 模块注入钮位作用域（store 缺省时各项为 undefined，视图自兜底） -->
       <slot
         name="extras-action"
         :snap="store?.snap"
@@ -182,7 +182,7 @@ onMounted(() => {
       <button class="link-button" @click="copyRepo">复制</button>
       <button class="link-button" @click="openRepo">浏览器打开</button>
     </div>
-    <!-- ⑨：「托管位置」数据行（copy.dataDirRow + store 联合驱动；缺任一自动缺席） -->
+    <!-- 「托管位置」数据行（copy.dataDirRow + store 联合驱动；缺任一自动缺席） -->
     <div v-if="hostDirSpec && hostDir" class="repo-row">
       <span class="k">{{ hostDirSpec.label ?? '托管位置' }}</span>
       <code class="mono repo-addr">{{ hostDir }}</code>

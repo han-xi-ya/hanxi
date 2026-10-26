@@ -347,11 +347,9 @@ function toggleExpanded() {
   line-height: 12px;
 }
 
-/* 组内运行绿点（左上）。
-   样式审计 C6（2026-10-27，N37② 收尾）：原 `2.5px chrome 光环 + 6px positive-glow` 属稳态
-   彩色 halo——AppSidebar 的 .status-dot.online 与 .mod-run 两枚同语义绿点已按纪律收敛为
-   "实底 + inset 1px 提亮描边"，本枚是全库漏网的第三枚（"两枚口径归一"注释所指的同族），
-   现逐字对齐同一形制。 */
+/* 组内运行绿点（左上）：形制 = 实底 + inset 1px 提亮描边，与 AppSidebar
+   .status-dot.online / .mod-run 两枚同语义绿点逐字同形——稳态彩色 halo 禁回流
+  （发光只许「进行中」脉冲，口径见 tokens.css glow 条目）。 */
 .rail-dot {
   position: absolute;
   left: 4px;

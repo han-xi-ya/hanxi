@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// 设置分区·AI 接入（F4b MCP 安装向导 + R6 授权开关，PLAN_MCP §2.5/§6/§8 拍板）：
-// 2026-09-18 文案重设计（用户反馈"太专业差点没搞明白"）：页面收束为两步心智——
+// 设置分区·AI 接入（MCP 安装向导 + 授权开关）：
+// 文案重设计（用户反馈"太专业差点没搞明白"）后收束为两步心智——
 // ① 接入（把 hanxi 登记进 AI 软件配置）② 开放哪些内容（工具授权开关），
 // 术语（MCP/stdio/工具名/路径）全部退入「技术细节」折叠区；三态红线流与写链不变：
 // 预览（before/after 差异；JSONC/冲突给手动片段）→ 确认写入（备份→原子写→复验→失败回滚）。
-// access.json 自 R6 起是本分区的写入口：开关拨动即整档原子回写、保存即生效（读者每次重读盘）；
+// access.json 是本分区的写入口：开关拨动即整档原子回写、保存即生效（读者每次重读盘）；
 // 损坏/超纲档拒绝盲写，只经「修复（覆盖重置）」二次确认链（旧档另存 .bak 再重写全关）。卸载走对称逆向链。
 import { ref, computed, onMounted } from 'vue'
 import * as McpWizardAPI from '../../../bindings/hanxi/internal/mcpwizard'
@@ -24,7 +24,7 @@ const status = ref<WizardStatus | null>(null)
 const loading = ref(false)
 
 // 向导弹窗态：预览 → 结果两段（result 非空即进入结果态，不再可确认）。
-// check/checkBusy 为安装前自检（R2，PLAN §2.5）的本地态：Go 侧短 TTL 缓存，
+// check/checkBusy 为安装前自检的本地态：Go 侧短 TTL 缓存，
 // 同一次向导会话只真 spawn 一次；失败只警示不阻断（惰性条目 + access 门兜底）。
 const modal = ref<{
   client: ClientState
@@ -62,7 +62,7 @@ const accessCorrupt = computed(() => {
 })
 
 // 九行工具开关（键名=access.json 契约十键之九：portkill 破坏键刻意不呈现，
-// 开启=机主手动两文件；N32/N34 扩充批 + AI 接入批扫描族 + 剪贴板检索批）：
+// 开启=机主手动两文件）：
 // 主文案说人话——AI 将看到什么、敏感级直书；MCP 工具名退入行内「技术细节」。
 // 扫描两行是诚实口径：它们是主动网络探测而非查询，风险直书"主动出网/暴露拓扑"。
 const accessTools = computed(() => {
@@ -321,7 +321,7 @@ onMounted(refresh)
       </div>
     </div>
 
-    <!-- ② 开放内容（access.json · 本分区即写入口，R6）：八开关保存即生效；损坏档锁死并给修复链 -->
+    <!-- ② 开放内容（access.json · 本分区即写入口）：九开关保存即生效；损坏档锁死并给修复链 -->
     <div class="card">
       <div class="card-head">
         <span class="card-title"><span class="step-no">②</span> 允许 AI 查询哪些内容</span>
@@ -386,8 +386,8 @@ onMounted(refresh)
       </div>
     </details>
 
-    <!-- 向导弹窗：预览(diff/手动片段) → 确认 → 结果三态。骨架收口 SettingsModal
-         （合并批 2026-10-26），点外遮罩收与 ✕ 钮语义原样，内容三段全宿主自撰 -->
+    <!-- 向导弹窗：预览(diff/手动片段) → 确认 → 结果三态。骨架收口 SettingsModal，
+         点外遮罩收与 ✕ 钮语义原样，内容三段全宿主自撰 -->
     <SettingsModal v-if="modal" @close="closeWizard">
         <template #head>
           <h3>{{ actionWord(modal.mode) }} · {{ modal.client.name }}</h3>
@@ -401,7 +401,7 @@ onMounted(refresh)
                 <span v-if="modal.preview.zeroDiff" class="chip chip-neutral">零改动（幂等）</span>
               </div>
               <template v-if="modal.preview.allowed">
-                <!-- 接入前自检（R2）：spawn 自家 hanxi mcp 走 initialize→tools/list -->
+                <!-- 接入前自检：spawn 自家 hanxi mcp 走 initialize→tools/list -->
                 <div v-if="modal.mode === 'install'" class="check-row">
                   <span class="check-label">接入前自检</span>
                   <span v-if="modal.checkBusy && !modal.check" class="chip chip-neutral">握手中…</span>
@@ -527,7 +527,7 @@ onMounted(refresh)
 .tech-table th, .tech-table td { text-align: left; padding: 3px 12px 3px 0; border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); }
 .tech-table code { font-family: var(--font-mono); color: var(--color-text); }
 
-/* 向导弹窗骨架（backdrop/卡片壳/三段/✕ 钮）归 SettingsModal（合并批 2026-10-26）；
+/* 向导弹窗骨架（backdrop/卡片壳/三段/✕ 钮）归 SettingsModal；
    本层只留插槽自撰标题的字族 */
 .modal-head h3 { margin: 0; font-size: var(--text-base); color: var(--color-text); font-weight: 600; }
 
@@ -535,7 +535,7 @@ onMounted(refresh)
 .pv-path code { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }
 .pv-reason { font-size: var(--text-sm); color: var(--color-text-muted); }
 
-/* 接入前自检行（R2）：一行结论徽章 + 原因 + 重检按钮；失败时追加指引段 */
+/* 接入前自检行：一行结论徽章 + 原因 + 重检按钮；失败时追加指引段 */
 .check-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .check-label { font-size: var(--text-sm); color: var(--color-text-muted); flex: none; }
 .check-msg { font-size: var(--text-sm); color: var(--color-text-muted); min-width: 0; }

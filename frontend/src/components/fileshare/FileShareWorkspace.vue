@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 「访问与传输中心」工作区卡：页签导航（接入点/投递箱/传输审计）与面板切换容器。
-// 激活页签属工作区自身 UI 状态（原视图 activeTab，不外显）；三个页签面板组件的
-// 复制/删除/清空等业务动作经 emit 逐层回传视图编排层处理。
+// 激活页签是本组件局部 UI 状态，不外显到视图；三个页签面板的复制/删除/清空等业务动作
+// 经 emit 逐层回传视图编排层处理。
 import { ref } from 'vue'
 import type {
   NetworkEndpoint,
@@ -13,14 +13,14 @@ import FileShareInboxTab from './FileShareInboxTab.vue'
 import FileShareLogsTab from './FileShareLogsTab.vue'
 
 defineProps<{
-  /** 原 status.isRunning——接入点页签停止态空态判定。 */
+  /** 服务是否运行——接入点页签停止态空态判定。 */
   isRunning: boolean
   endpoints: NetworkEndpoint[]
   /** 端点二维码 SVG 缓存 (url -> svg)。 */
   qrMap: Record<string, string>
-  /** 投递箱条目（原 dropInbox）。 */
+  /** 投递箱条目（视图侧 dropInbox）。 */
   inbox: DropItem[]
-  /** 传输审计日志（原 transferLogs）。 */
+  /** 传输审计事件（视图侧 transferLogs，最新 50 条）。 */
   logs: TransferEvent[]
 }>()
 
@@ -80,9 +80,8 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
 </template>
 
 <style scoped>
-/* 以下样式自 FileShareView.vue 原 scoped 块随标记逐字迁移。
-   §9.6"refined dashboard"两代级联已按生效终值合并（原 gen1 的 tab-nav 下边线/
-   8px 大内距与蓝色实底 .active 被 gen2 覆盖为死码，合并时删除）。 */
+/* 样式自视图拆分迁入；§9.6 在册的两代级联已按生效终值并为单源，
+   被后代压死的 gen1 档（tab-nav 下边线/8px 内距、蓝色实底 .active）已除。 */
 .tab-nav {
   display: flex;
   gap: 4px;
@@ -146,14 +145,14 @@ const activeTab = ref<'endpoints' | 'inbox' | 'logs'>('endpoints')
 
 .workspace-header {
   display: flex;
-  align-items: flex-end; /* gen2 覆盖档合并进基块（原 center→flex-end 生效值） */
+  align-items: flex-end;
   justify-content: space-between;
   gap: 20px;
   padding: 20px 22px;
   border-bottom: 1px solid var(--color-border);
 }
 
-/* 区块标题（原两代级联 18px 单一生效值，token 化保留） */
+/* 区块标题：18px 终值 token 化为 --text-xl */
 .section-title {
   margin: 0;
   color: var(--color-text);

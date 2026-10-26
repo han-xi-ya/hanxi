@@ -1,10 +1,10 @@
 // ============================================================================
-// Keyviz → 托管控制台 adapter（Wave 5 · 批 1 · MSI 提取族）
+// Keyviz → 托管控制台 adapter（MSI 提取族，与 piclite 同族）
 //
-// 逐字迁移自 KeyvizView 原编排段（启停/版本/联动全部 RPC 与文案零变化），
-// 参照实现见 src/adapters/ccswitch.ts（批 0 黄金样本）；与 piclite 同族——
+// 参照实现见 src/adapters/ccswitch.ts（黄金样本）——
 // MSI 提取族特殊安装文案全部经 copy 钩子与 adapter 动词回执承载，表内
-// 「下载中/校验解压安装…」等共享面板标准词按批 0 契约定档。
+// 「下载中/校验解压安装…」等共享面板标准词按契约定档（缺省见
+// components/managed/adapter.ts）。
 // 差异点：主钮为 StartKeyviz（▶ 启动可视化，btn-primary，运行中禁用——
 // 非唤窗语义）；上游无 CreateDesktopShortcut，extras 无快捷方式条目。
 // 事件面：`keyviz:instance-state` / `keyviz:version-download`
@@ -44,7 +44,7 @@ export function createKeyvizAdapter(): ManagedModuleAdapter {
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载 Keyviz ${v.version}？`,
           description: '该版本托管目录将被删除，不可恢复。\n（你的 %APPDATA%\\org.keyviz 样式配置不受影响，后续版本继续共用）',
@@ -56,7 +56,7 @@ export function createKeyvizAdapter(): ManagedModuleAdapter {
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '请输入本机 Keyviz 安装目录完整路径（含 keyviz.exe，如 C:\\Program Files\\keyviz）',
           description: '提示：配置恒在 %APPDATA%\\org.keyviz，与安装位置无关',
@@ -96,7 +96,7 @@ export function createKeyvizAdapter(): ManagedModuleAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return {

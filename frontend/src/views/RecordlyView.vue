@@ -1,16 +1,14 @@
 <script setup lang="ts">
-// Recordly 控制台（Wave 5 · 批 0 契约收敛件；共享契约增强批收编版；波 2D 迁壳件）：
+// Recordly 控制台（托管控制台全壳默认件消费样本）：
 // 状态/版本加载/安装进度 map/时长 ticker/busy 闩/启停与安装编排/联动辅助卡
 // 全部收进 adapters/recordly + components/managed 家族（store 一份，控制条/
 // 通道行/版本面板/辅助卡共享注入）。
-// 增强批收编：方言「托管安装」表退役——单目录卡与核心互认远程表由共享
+// 方言「托管安装」表不进视图——单目录卡与核心互认远程表由共享
 // ManagedVersionPanel 渲染（词面/封锁/阶段词经 copy+versions 钩子声明）；
-// stable/beta 通道行换用 ManagedChannelRow；stopped/starting 引导行迁回
+// stable/beta 通道行用 ManagedChannelRow；stopped/starting 引导行在
 // adapter.hint（投影上下文）。视图仅余升级警告条与「什么是 Recordly」说明卡。
-// 波 2D 迁壳：本视图结构 100% 壳兼容（控制条/通道行/面板/辅助卡全是壳默认件），
-// 页头+页签+error-box+tab-body 的手抄壳骨退役——升级判定仍要 setup 期 store
-// 句柄，走「视图自建 useManagedConsole → 传壳 :store」的波 2A 注入通道，
-// 编排零改动直吃同一句柄。
+// 壳接线：升级判定要 setup 期 store 句柄，走「视图自建 useManagedConsole →
+// 传壳 :store」注入通道，编排直吃同一句柄。
 // 与 CCSwitchView 的结构差异：单版本托管目录（NSIS oneClick 语义，无"设为使用"）、
 // stable/beta 双通道切换、安装器未签名风险文案。
 import { computed } from 'vue'
@@ -57,5 +55,5 @@ const upgradeAvailable = computed(() => {
 
 <style scoped>
 /* 页头/控制条/提示条/联动卡/页签与 flex 骨架由托管控制台壳 + components.css
-   全局原子接管（波 2D 迁壳后视图手抄壳骨与 .recordly-view flex 副本退役）。 */
+   全局原子接管，视图零皮层副本。 */
 </style>

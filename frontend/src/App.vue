@@ -24,9 +24,9 @@ const { unreadCount, toggleDrawer, loadHistory, pushToast } = useNotification()
 const { confirmState, settleConfirm } = useConfirm()
 const { promptState, settlePrompt } = usePrompt()
 
-// 路由→组件与模块门禁清单已外移至 constants/navigation.ts（单一来源 + 视图异步化）。
-// 侧栏展示层（导航分组/高亮/通知徽标/状态条）已组件化至 components/shell/AppSidebar.vue，
-// 本文件只保留路由与门禁编排。（原侧栏主题钮已下线，主题切换唯一入口在设置页「外观主题」。）
+// 路由→组件与模块门禁清单单一来源在 constants/navigation.ts（视图异步化）；
+// 侧栏展示层（导航分组/高亮/通知徽标/状态条）在 components/shell/AppSidebar.vue，
+// 本文件只保留路由与门禁编排。主题切换唯一入口在设置页「外观主题」，侧栏不设主题钮。
 
 const navs = ref<NavEntry[]>([])
 const activeRoute = ref('/')
@@ -81,8 +81,8 @@ const currentExt = computed(() => navs.value.find(n => n.route === activeRoute.v
 
 // 顶层事件订阅（useWailsEvent：setup 同步期注册、组件作用域卸载自动注销；
 // 载荷已由 composable 统一拆 {data} 包装，handler 直收后端 emit 载荷本体。
-// 相比旧「onMounted 内注册」，早期事件不再因挂载竞态丢失——handler 只触 ref/API，
-// ext:changed 早到对 GetNavs 幂等无害，不加新闩保持现语义面）。
+// setup 期注册早于挂载，早期事件不因挂载竞态丢失——handler 只触 ref/API，
+// ext:changed 早到对 GetNavs 幂等无害）。
 // 后端模块开关与导航热更新事件
 useWailsEvent('ext:changed', () => {
   void refreshNavs()
@@ -193,7 +193,7 @@ onMounted(async () => {
 
 <style scoped>
 /* 应用外壳样式（设计 token 见 styles/tokens.css；原子工具类见 styles/components.css）。
-   .page 等页面骨架已上收到全局 components.css，不在本文件重复定义。
+   .page 等页面骨架统一在全局 components.css 定义，不在本文件重复。
    侧栏布局类样式已随标记迁至 components/shell/AppSidebar.vue 的 scoped 块。 */
 .layout {
   display: flex;
@@ -212,19 +212,17 @@ onMounted(async () => {
   overflow-y: auto;
   padding: 24px 32px;
   background: var(--surface-page);
-  /* 样式审计 C3（2026-10-27）：滚动条常驻槽位——Windows/WebView2 经典滚动条占布局宽，
-     短页↔长页切换时内容整体横抖一格（网格换列、模态瞬时跳位）的根治。 */
+  /* 滚动条常驻槽位：Windows/WebView2 经典滚动条占布局宽，
+     短页↔长页切换时内容会整体横抖一格（网格换列、模态瞬时跳位），此处根治。 */
   scrollbar-gutter: stable;
 }
 
-/* 全局轻量 Toast 提示（深底浮层为刻意设计，两种主题下均成立）
-   允许选中复制：错误串常含路径/报错文本，需可拖选；pointer-events:auto 为有意开放交互
-   样式审计 C1（2026-10-27）：锚位由右上改右下——右上角是通知浮层栈（NotificationToast
-   .toast-stack，宽 320、贴 top16/right20）的专属领地，两族同角必叠；global-toast 改挂
-   右下（snackbar 位）后与通知栈在任意视口宽垂直分离。z 序与交互语义不动（批复约束：
-   不造层级戏法；useNotification 现行"同 id 顶置重计时"契约不触碰）。
-   登记残留：通知抽屉（遮罩 10001 > 本件 9999）打开时本条仍在遮罩之下——属层阶
-   治理面（审计 §6 案 β），本条不在此解。 */
+/* 全局轻量 Toast（snackbar 位，右下）：深底浮层为刻意设计，两种主题下均成立。
+   允许选中复制：错误串常含路径/报错文本，需可拖选；pointer-events:auto 为有意开放交互。
+   锚位在右下：右上是通知浮层栈（NotificationToast .toast-stack）的专属领地，
+   两族同角必叠，右下位与通知栈在任意视口宽垂直分离。
+   既知关系：通知抽屉遮罩（10001）打开时本条在遮罩之下（--z-snackbar 9999 < 抽屉档，
+   登记于 tokens.css 层序册，属既定关系非此处解）。 */
 .global-toast {
   position: fixed;
   bottom: 20px;

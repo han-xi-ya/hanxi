@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// Everything 单个已安装版本卡片：版本徽标组 + 元信息 + 操作按钮，自 EverythingView 随 DOM
-// 逐字迁出。「使用中/运行中」判定与卸载禁用条件由视图算好经 isActive/isRunning 传入；
-// 设为使用/打开位置/卸载三个动作回视图执行（卸载确认 useConfirm 等业务逻辑不在此层）。
+// Everything 单个已安装版本卡片：版本徽标组 + 元信息 + 操作按钮。「使用中/运行中」判定与
+// 卸载禁用条件由调用视图算好经 isActive/isRunning 传入；设为使用/打开位置/卸载三个动作
+// 回视图执行（卸载确认 useConfirm 等业务逻辑不在此层）。
+// 版本区换装 managed/ManagedVersionPanel 后本卡片不再挂应用视图，当前仅其 spec 引用（供体留存）。
 import type { EverythingVersionInfo } from '../../../bindings/hanxi/internal/modules/everything/version/models'
 import { fmtSize } from '../../utils/format'
 
@@ -56,7 +57,7 @@ const emit = defineEmits<{
 .inst-card-top { display: flex; justify-content: space-between; align-items: center; }
 .ver-tag { font-family: var(--font-mono); font-size: var(--text-md); font-weight: 700; color: var(--color-text); }
 .inst-badges { display: flex; gap: 6px; }
-/* .badge 基形与 .hint-dim 已上收 components.css（§9.6-2），以下仅本卡片档位色 */
+/* .badge 基形与 .hint-dim 在 components.css 全局原子（§9.6-2），以下仅本卡片档位色 */
 .badge-active { background: var(--state-positive-soft); color: var(--state-positive); }
 .badge-running { background: var(--state-information-soft); color: var(--state-information); }
 .badge-import { background: var(--state-information-soft); color: var(--state-information); }

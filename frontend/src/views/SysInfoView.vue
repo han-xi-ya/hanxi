@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 系统信息（N10，借鉴 MooTool 机制）：本机软硬件静态档案一屏。
+// 系统信息（借鉴 MooTool 机制）：本机软硬件静态档案一屏。
 // 数据源为后端 sysinfo 模块单次只读采集（注册表 + WinAPI + 标准库）；
 // 内存/磁盘占用是快照值，页头明示采集时刻；段级采集告警如实呈现（banner）。
 import { onMounted, ref } from 'vue'
@@ -23,9 +23,8 @@ const purgeKind = ref<'standby' | 'workingsets' | ''>('')
 const { showToast } = useToast()
 const { confirm } = useConfirm()
 
-// Go 侧 PurgeResult 本轮新增的逐项链账字段 + EmptyWorkingSets 新 RPC。bindings
-// 目录由主会话统一再生，再生前生成物不含二者，故视图侧以超集类型 + 显式桥接
-// 过渡（再生后可原地收敛删除这两处过渡代码）。
+// PurgeResult 逐项链账字段 + EmptyWorkingSets RPC：bindings 再生后生成物已含
+// 二者，本视图的超集类型与显式桥接属过渡遗存（待后续收敛删除，直接用绑定类型）。
 type PurgeLedgerResult = PurgeResult &
   Partial<{
     beforeTotalBytes: number
@@ -309,7 +308,7 @@ const VOL_TYPES: Record<string, string> = {
 .sys-bar-wrap { height: 6px; background: var(--surface-hover); border-radius: 3px; overflow: hidden; margin: 6px 0 4px; }
 .sys-bar-inner { height: 100%; background: var(--color-primary); transition: width var(--motion-base) ease; }
 .sys-bar-inner.warn { background: var(--state-warning); }
-/* 状态点复用托管家族 ver-status 语义在本页缺失（scoped 隔离），本地最小实现 */
+/* 状态点借用托管家族 .ver-status 选择器语义；scoped 隔离看不到别处样式，本页最小实现 */
 .ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
 .ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .ver-status.installed::before { background: var(--state-positive); }

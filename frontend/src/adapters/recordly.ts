@@ -1,13 +1,13 @@
 // ============================================================================
-// Recordly → 托管控制台 adapter（Wave 5 · 批 0 真实消费件；共享契约增强批收编件）
+// Recordly → 托管控制台 adapter
 //
-// 逐字迁移自 RecordlyView 原编排段（启停/版本/通道/仓库全部 RPC 与文案零变化）。
-// 增强批收编（批 0 三处「adapter 内吃掉」的差异全部回契约表达）：
-//  ① NSIS 单目录覆盖式托管：versions 省略 getActive/setActive（不变，契约特性）；
-//  ② 动词词面「安装」：不再自捕获自弹 toast——声明 copy.errorPrefix.download
-//     「安装失败: 」（⑥ 前缀覆写位），download 失败直接抛错走 store 统一词源；
-//  ③ hint 引用已装版本号：投影入参升级为上下文（②），引导行自视图模板迁回
-//     adapter.hint——视图不再互抄引导话术。
+// 本模块三处方言差异全部以契约表达（编号见 components/managed/adapter.ts
+// 「增强批」条目表）：
+//  ① NSIS 单目录覆盖式托管：versions 省略 getActive/setActive（契约特性）；
+//  ② 动词词面「安装」：download 失败直接抛错走 store 统一词源，前缀经
+//     copy.errorPrefix.download 声明「安装失败: 」（⑥ 前缀覆写位）；
+//  ③ hint 引用已装版本号：投影入参为上下文（②），三态引导行以
+//     adapter.hint 单源。
 // 版本互认（核心版本对比）经 versions.sameVersion 钩子进共享面板（⑤），
 // 远程表「已安装」判定与「运行中」徽标互认自此由面板执行；视图仅余升级检测
 // （banner 第二行）一处，经导出的 recordlyUpgradeAvailable 谓词复用同一份比较器。
@@ -31,7 +31,7 @@ import { bindInstanceState, bindVersionProgress, downloadOutcome, uninstalledRes
 
 /**
  * 核心互认同一性：精确 tag 命中或数值核心一致（PE 版本抹掉 -beta 后缀的互认场）。
- * 比较器上收 utils/version 单源（版本比较器统一波），a===b 短路逐字保留。
+ * 比较器上收 utils/version 单源，a===b 短路保留。
  * 本模块三段真实数据（v1.3.5 / 1.2.0-beta.N 型）上新旧口径逐格等值；两处有意
  * 修正仅在册防御面：≥4 段不再被旧 3 段截断抹平成互认（漏报消除），imported-*
  * 由旧字典序伪判「永新」改判不可比（互认结论同为 false，词面不再出于巧合）。
@@ -70,17 +70,17 @@ export function createRecordlyAdapter(): ManagedModuleAdapter {
       /** 核心版本互认进面板（⑤）：已装卡「运行中」与远程表「已安装」共用。 */
       sameVersion,
 
-      /** NSIS 覆盖式安装：运行中/启动中禁覆写，title 逐字沿用视图现词（⑤ downloadBlock）。 */
+      /** NSIS 覆盖式安装：运行中/启动中禁覆写，title 沿用现词（⑤ downloadBlock）。 */
       downloadBlock: (state) => (state === 'running' || state === 'starting' ? '请先退出运行中的 Recordly' : null),
 
       async download(rel: ManagedReleaseRecord): Promise<ManagedActionResult> {
-        // ⑥收编：不再自捕获——失败直接抛错，'安装失败: ' 前缀经 copy.errorPrefix
-        // 回 store 词源表，toast 词面逐字不变、无双弹。
+        // ⑥：失败直接抛错，'安装失败: ' 前缀经 copy.errorPrefix 回 store
+        // 词源表（toast 词面不变、无双弹）。
         return downloadOutcome(await RecordlyAPI.DownloadVersion(rel.version), rel.version)
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载 Recordly ${v.version}？`,
           description: '托管安装目录将被删除。\n（%APPDATA%\\Recordly 中的配置与录像不受影响）',
@@ -92,7 +92,7 @@ export function createRecordlyAdapter(): ManagedModuleAdapter {
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '导入本地安装',
           description: '默认安装位置：%LOCALAPPDATA%\\Programs\\Recordly\n提示：配置与录像恒在 %APPDATA%\\Recordly，与安装位置无关',
@@ -132,7 +132,7 @@ export function createRecordlyAdapter(): ManagedModuleAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 Recordly 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 Recordly 窗口内关闭。' }
@@ -146,8 +146,8 @@ export function createRecordlyAdapter(): ManagedModuleAdapter {
       return null
     },
 
-    // ③收编：stopped 引导行引用已装版本号——第二参版本区投影（②），
-    // 原视图模板内的三态引导行逐字迁回 hint 槽。
+    // ③：stopped 引导行引用已装版本号——第二参版本区投影（②），
+    // 三态引导行以本 hint 槽为单源。
     hint: (s, ctx) => {
       if (s.state === 'stopped') {
         const installedInfo = ctx.installed[0] ?? null
@@ -174,8 +174,8 @@ export function createRecordlyAdapter(): ManagedModuleAdapter {
       },
     },
 
-    // 面板词面/色档全量覆写（④）：视图方言表迁入共享 ManagedVersionPanel 后，
-    // recordly 现词逐字保留于本表——默认值即 ccswitch 标准词，此处只落差异。
+    // 面板词面/色档覆写（④）：recordly 现词全入本表——缺省即 ccswitch
+    // 标准词，此处只落差异。
     copy: {
       metaLead: (ctx) => `当前托管 ${ctx.installed[0] ? ctx.installed[0].version : '未安装'}`,
       remoteSummary: (n) => `远程版本 ${n} 个`,

@@ -1,9 +1,8 @@
 <script setup lang="ts">
 // 微信机器人聊天窗口顶部导航栏：账号头像/名称/监听徽章 + 目标用户内联编辑条 + 右侧
-// 刷新凭据与监听开关按钮。自 WechatBotView.vue 随 DOM 逐字迁出的纯展示壳——
-// 目标用户保存、Token 刷新、监听切换等业务动作全部上抛视图编排层（useWechatBot）执行；
-// 折叠态与编辑态为视图本地 UI 状态，经 props 传入、动作上抛；受控输入回写父级 ref，
-// 与原 v-model 指向同一 ref 的语义逐字等价。
+// 刷新凭据与监听开关按钮（拆自 WechatBotView 的纯展示壳）。目标用户保存、Token 刷新、
+// 监听切换等业务动作全部上抛视图编排层（useWechatBot）执行；折叠态与编辑态为视图本地
+// UI 状态，经 props 传入、动作上抛；受控输入回写父级 ref。
 import { computed } from 'vue'
 import type { WechatAccountState } from '../../../bindings/hanxi/internal/modules/wechat/models'
 import { getAvatarColor } from '../../composables/useWechatBot'
@@ -31,7 +30,7 @@ const emit = defineEmits<{
   'update:targetUserInput': [value: string]
 }>()
 
-// 受控输入：读写均代理父级 ref（等价于拆分前模板直接 v-model="toUserIdInput"）。
+// 受控输入：读写均代理父级 ref（宿主经 v-model:target-user-input 接线）。
 const targetUserModel = computed({
   get: () => props.targetUserInput,
   set: (v: string) => emit('update:targetUserInput', v),
@@ -109,7 +108,7 @@ const targetUserModel = computed({
 </template>
 
 <style scoped>
-/* 以下样式自 WechatBotView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
+/* 样式自视图拆分迁入，token 引用不动 */
 .btn-expand-header {
   background: transparent;
   border: 1px solid var(--color-border);
@@ -228,7 +227,7 @@ const targetUserModel = computed({
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   width: 200px;
-  /* 样式审计 C10（2026-10-27）：删原 `outline: none`，键盘焦点交还全局 :focus-visible 环。 */
+  /* 勿恢复 `outline: none`：scoped 会压死全局 :focus-visible 键盘焦点环 */
 }
 
 .target-input-inline:focus {

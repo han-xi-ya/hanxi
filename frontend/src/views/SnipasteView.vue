@@ -12,12 +12,12 @@ import SnipasteControlPanel from '../components/snipaste/SnipasteControlPanel.vu
 import SnipasteVersionsPanel from '../components/snipaste/SnipasteVersionsPanel.vue'
 
 const { showToast } = useToast()
-// 波 2F 注记（真相源收口止步点）：installed/releases/activeVersion 仍为视图侧
-// 平行数据面——snipaste 的 custom 票据流（useSnipasteDownloadTickets）要求
-// 本地/远程**分通道刷新与分通道报错**（refreshLocal 回布尔供 done 票核验、
+// 真相源收口止步点：installed/releases/activeVersion 为视图侧平行数据面（刻意，
+// 非疏漏）——snipaste 的 custom 票据流（useSnipasteDownloadTickets）要求本地/远程
+// **分通道刷新与分通道报错**（refreshLocal 回布尔供 done 票核验、
 // 「读取本地版本失败：」「获取 Snipaste 官网版本失败：」全角方言词、各自重试钮），
-// 共享 store.load() 只有合并单通道与标准词，替换即静默改词面与核验语义。
-// 消解须待 store 侧补分通道加载位（波 2F 缺口清单第 1 条），本轮不动数据面。
+// 而共享 store.load() 只有合并单通道与标准词，直接替换会静默改词面与核验语义。
+// 消解前须先给 store 补分通道加载位。
 const installed = ref<SnipasteVersionInfo[]>([])
 const releases = ref<SnipasteRelease[]>([])
 const activeVersion = ref('')
@@ -33,9 +33,9 @@ const tickets = useSnipasteDownloadTickets()
 const adapter = createSnipasteAdapter((progress) => {
   void tickets.handleProgress(progress, refreshLocal, isInstalled)
 })
-// 波 2F（壳反模式消解）：store 句柄走「视图自建 useManagedConsole → 传壳
-// :store」的波 2A 注入通道（Recordly/Paseo 同型）——原 :ref="() => bindStore(store)"
-// 槽域回抽与 storeRef 全局句柄退役；壳/控制条/面板与视图共享同一句柄，无双轮询。
+// store 句柄走「视图自建 useManagedConsole → 传壳 :store」注入通道
+// （Recordly/Paseo 同型）：壳/控制条/面板与视图共享同一句柄，无双轮询，
+// 无需 ref 回抽或全局句柄那类反模式。
 const store = useManagedConsole(adapter)
 
 const selected = computed(() => installed.value.find((item) => item.version === activeVersion.value) ?? installed.value[0] ?? null)

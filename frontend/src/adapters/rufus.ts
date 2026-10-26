@@ -1,15 +1,13 @@
 // ============================================================================
-// Rufus → 托管控制台 adapter（Wave 5 · 批 1 迁移件，模式照抄 ccswitch）
+// Rufus → 托管控制台 adapter（模式照抄 ccswitch）
 //
-// 逐字迁移自 RufusView 原编排段（启停/版本/联动/仓库全部 RPC 与文案零变化）。
 // 事件面：`rufus:instance-state` / `rufus:version-download`（单键=version）。
 // 方言注记：Rufus 为一次性工具（写盘完即关窗），无常驻/自启类辅助——
 // extras 仅提供随关与仓库两条目，桌面快捷方式等缺项由 ManagedExtrasCard
 // 自动缺席；「打开位置」钮依赖已装版本清单（running > active > 任一），
 // 属状态相关钮，留在视图 extras 卡的 #extras-action 位经 store.runOpenDir 走。
-// 波 2E：版本区全量回迁 ManagedVersionPanel——单文件版阶段词表含 install 不含
-// extract（「校验落位…」非面板缺省「校验解压安装…」），词面差异全部落本件
-// copy.stageWord 覆写位，视图手抄表退役。
+// 单文件版方言：阶段词表含 install 不含 extract（单文件落位而非解压），
+// 词面差异全部落本件 copy 覆写位（面板缺省即标准词）。
 // ============================================================================
 
 import * as RufusAPI from '../../bindings/hanxi/internal/modules/rufus/rufusservice'
@@ -45,7 +43,7 @@ export function createRufusAdapter(): ManagedModuleAdapter {
       },
 
       async remove(v: ManagedVersionRecord) {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const ok = await confirm({
           title: `确定卸载 Rufus ${v.version}？`,
           description: '该版本隔离目录将被删除（其中的 rufus.ini 便携设置一并移除），不可恢复。',
@@ -57,7 +55,7 @@ export function createRufusAdapter(): ManagedModuleAdapter {
       },
 
       async importLocal() {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '请输入 Rufus 便携 exe 完整路径或所在目录（如 rufus.exe / rufus-4.15p.exe）',
           description: '提示：源旁若随行 rufus.ini（便携配置），将一并迁入 Hanxi 托管',
@@ -98,7 +96,7 @@ export function createRufusAdapter(): ManagedModuleAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥；running 态承载写盘不可中断的真实契约，逐字保留）
+    // 条件提示条（三个变体互斥；running 态承载写盘不可中断的真实契约）
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 Rufus 实例（非 Hanxi 托管，可能是浏览器下载的原名版）。可唤起其窗口；如需退出请直接关窗。' }
@@ -122,9 +120,8 @@ export function createRufusAdapter(): ManagedModuleAdapter {
       return null
     },
 
-    // 波 2E：版本区回迁面板——单文件版方言词表逐字入本表；阶段词含 install 不含
-    // extract（单文件落位而非解压），「校验落位…」覆盖 resolve/verify/install 三档，
-    // 其余进行态回空串走面板 message 透出（与原方言表兜底分支逐字同形）。
+    // 单文件版方言词表：阶段词「校验落位…」覆盖 resolve/verify/install 三档
+    // （含 install 不含 extract），其余进行态回空串走面板 message 透出。
     copy: {
       importLabel: '⇥ 导入本地 exe',
       metaHints: [

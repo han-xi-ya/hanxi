@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// 设置分区·系统管理（原名"系统直达"，机主反馈一归一命名）：hosts / 网络 /
+// 设置分区·系统管理（机主裁决归一命名）：hosts / 网络 /
 // 环境变量 / 控制面板等 Windows 组件一键调起，外加统一通知通道诊断（前台卡片 +
 // 后台原生气泡）。目录/空间治理的「存储目录」分区紧随本分区之后（同属系统管理语境）。
-// 拆分自原 SettingsView 单页：系统管理工具统一走后端白名单 OpenSystemTool，
+// 系统管理工具统一走后端白名单 OpenSystemTool，
 // 注册表/计算机管理会触发系统 UAC 确认（行为不变）。
 import * as AppAPI from '../../../bindings/hanxi/internal/app'
 import { getErrorMessage } from '../../utils/errors'

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // BoardStage：牌面舞台——"能 1:1 就 1:1"的自适应大预览（v4 牌桌口径，收编）。
 //
-// 缩放语义与 A 路 MsgBoardView v4 重写逐位同式：
+// 缩放语义（与 MsgBoardView v4 内联式逐位同式收编而来，本件现为该视图唯一缩放出口）：
 //   scale = min(cap, (盒宽 − 12) / 卡片实际布局宽)
 // 卡片实际宽优先实测（RO 量 .mbp-scaled——transform 不影响布局盒，测得的
 // 就是未缩放真实宽；宿主已自测时直接传 cardWidth 覆盖），测不到回落
@@ -12,8 +12,9 @@
 // 边框/高度）归宿主面板；--bc-max-h 超高裁剪反算只在盒高可测/可传时注入
 // 到缩放容器上，靠 CSS 变量继承进牌体。
 //
-// 类名沿用：内层缩放容器保持 .mbp-scaled——视图现网选择器迁移期零断言
-// 改写（scoped 样式自带 transform-origin 规则，不依赖宿主 CSS）。
+// 类名沿用：内层缩放容器保持 .mbp-scaled——视图与 spec 的选择器都按这条
+// 断言，属零迁移锁点，勿改名（scoped 样式自带 transform-origin 规则，
+// 不依赖宿主 CSS）。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import BoardCard from './BoardCard.vue'
 import { cardMaxHeightPx, STAGE_SCALE_CAP, stageScaleMeasured } from './boardMetrics'
@@ -86,7 +87,7 @@ const scale = computed(() => stageScaleMeasured({
   fontSize: props.fontSize,
   cap: props.cap,
 }))
-// 超高裁剪反算与收编前视图同式：(盒高−12)/缩放，cardMaxHeightPx 自带 48px 下限
+// 超高裁剪反算：(盒高−12)/缩放，口径在 boardMetrics.cardMaxHeightPx（自带 48px 下限）
 const cardMaxH = computed(() =>
   effBoxH.value > 0 ? cardMaxHeightPx(effBoxH.value, scale.value) : 0,
 )

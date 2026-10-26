@@ -8,8 +8,8 @@ import IpOverviewPanel from '../components/publicip/IpOverviewPanel.vue'
 import PingPanel from '../components/publicip/PingPanel.vue'
 import TraceroutePanel from '../components/publicip/TraceroutePanel.vue'
 
-// Phase 6 结构拆分后的编排层：只留三 Tab 状态机、跨 Tab 快捷联动与复制反馈；
-// 领域状态见 composables/publicIp{Overview,Diagnostics}.ts，区块 DOM 见 components/publicip/*。
+// 编排层：本视图只管三 Tab 状态机、跨 Tab 快捷联动与复制反馈；
+// 领域状态在 composables/usePublicIpOverview.ts、usePublicIpDiagnostics.ts，区块 DOM 在 components/publicip/*。
 const { copyWithToast } = useClipboard()
 
 const activeTab = ref<'ip' | 'ping' | 'traceroute'>('ip')
@@ -39,13 +39,12 @@ const {
 
 async function copyText(text: string, label: string) {
   if (!text) return
-  // 剪贴板两级策略收编进 useClipboard；失败不再谎报成功
+  // 剪贴板两级回退走 useClipboard；失败不谎报成功
   await copyWithToast(text, `已复制 ${label}: ${text}`)
 }
 
 // 快捷 Ping：回填目标并跨 Tab 立即发起；探测经 runPing()（即 composable 的 run()），
-// 与面板按钮共用同一在飞单飞守卫，连点 ⚡ 不会并发重入。
-// （Phase 6 曾登记的同族死码 quickTrace 已于本次交互整改删除。）
+// 与面板按钮共用同一在飞单飞守卫，连点 ⚡ 不会并发重入（同族 quickTrace 死码已除不回挂）。
 function quickPing(ip: string) {
   pingTargetInput.value = ip
   activeTab.value = 'ping'
@@ -125,11 +124,10 @@ onMounted(() => loadNetworkInfo(false))
 </template>
 
 <style scoped>
-/* 页头/错误框/按钮家族/表格基样式/徽标(badge→全局 chip)由 PageHeader 与 components.css 原子接管。
-   nav-tabs 为下划线形变体（非 MainTabNav 胶囊形），按手册§9-4 不硬塞、保留视图独有样式并语义 token 化。
-   （原 .toast/.header-row/.subtitle 死代码与重复原子已删；status-badge 因承载动态错误文本、
-   避免 chip 的 nowrap 截断，保留为变体并随区块迁入 PingPanel/TraceroutePanel；
-   Phase 6 拆分后本层只留页面骨架与 Tab 栏，其余 scoped 样式随标记迁往 components/publicip/*） */
+/* 页头/错误框/按钮家族/表格基样式/徽标(badge→全局 chip)由 PageHeader 与 components.css 原子承担，
+   .toast/.header-row/.subtitle 一类死档不再回挂。
+   nav-tabs 为下划线形变体（非 MainTabNav 胶囊形），按手册 §9-4 不硬塞全局，留视图独有并 token 化。
+   status-badge（承载动态错误文本、避开 chip 的 nowrap 截断）随区块住在 PingPanel/TraceroutePanel。 */
 .network-page {
   display: flex;
   flex-direction: column;

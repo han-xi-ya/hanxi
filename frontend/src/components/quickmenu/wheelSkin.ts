@@ -1,5 +1,4 @@
-// 轮盘皮肤账（机主拍板 2026-09-26"轮盘皮肤做"；后端化收权批）：预设 × 盘面
-// 透明度 × 描边强度 × 跟随模块色开关的模型、缺省兼容与双源持久化。
+// 轮盘皮肤账：预设 × 盘面透明度 × 描边强度 × 跟随模块色开关的模型、缺省兼容与双源持久化。
 //
 // 双源口径（真相在 backend，本模块是唯一读写封装）：
 //  - **真相 = quickmenu 后端账**（AppSettings.QuickMenuSkin，GetSkin/SetSkin）：
@@ -7,8 +6,8 @@
 //  - **localStorage（键 hanxi.wheelSkin）= 同源镜像缓存**：① 后端不可达
 //    （模块停用/RPC 失败）时的降级兜底；② 弹窗与主窗两 webview 的跨窗即时性
 //    （主窗写镜像触发弹窗 storage 事件秒级跟皮，不必等下次唤出重读）。
-//  - 不做"本地旧账一次性上收"：面板落地当日即后端为真，localStorage 里的旧稿
-//    在首次成功读后自然被后端真相覆写镜像（论证见交付报告）。
+//  - 不做"本地旧账一次性迁移"：后端即真相，localStorage 里的旧稿在首次成功读后
+//    自然被后端真相覆写镜像。
 //
 // 缺省兼容红线（两侧同源）：旧设置无此账 = 出厂素瓷盘；JSON 坏值/越界/未知预设
 // 一律归一（前端 normalizeWheelSkin 与 Go normalizeSkin 语义一致），任何输入都
@@ -20,7 +19,7 @@ export const WHEEL_SKIN_PRESETS = ['frost', 'veil', 'ink'] as const
 export type WheelSkinPreset = (typeof WHEEL_SKIN_PRESETS)[number]
 
 export const WHEEL_SKIN_PRESET_LABEL: Record<WheelSkinPreset, string> = {
-  frost: '素瓷', // 现 N40③ 皮批基线：面板浅盘 + 浅纱花瓣
+  frost: '素瓷', // 基线皮相：面板浅盘 + 浅纱花瓣
   veil: '雾青', // 盘面/花瓣染主色薄雾，随色板轴联动
   ink: '玄影', // 墨纱盘：文字 token 混深的暗盘，明暗主题皆可玄
 }

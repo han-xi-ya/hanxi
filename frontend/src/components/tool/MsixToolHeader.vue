@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// MSIX 管理型孪生壳·头部（components/tool 层首落点，§9.5-5 自 NanaZip/EarTrumpet 抽取）：
+// MSIX 管理型孪生壳·头部（§9.5-5）：
 // 字标徽 + 标题/副题 + 状态胶囊。状态点语义：installed=绿点，active=主色呼吸灯
 // （操作进行中/进程运行中；动效复用全局 hx-pulse，不造局部 keyframes）。
 defineProps<{

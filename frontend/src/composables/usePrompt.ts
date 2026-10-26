@@ -1,4 +1,4 @@
-// 全局输入对话框单例：Promise 风格收编 14 处 window.prompt（输路径/备注名等）。
+// 全局输入对话框单例：window.prompt 的 Promise 风格唯一替代（输路径/备注名等；全库已无直触 window.prompt）。
 // UiPromptDialog 实例由 App.vue 顶层挂载唯一一份；空串按取消处理由调用方自行判断
 // （部分场景允许清空值），本层只区分"提交/取消"。
 import { reactive } from 'vue'

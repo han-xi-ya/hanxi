@@ -1,13 +1,10 @@
 // 内联 SVG 图标注册表（设计纪律：emoji 不作主图标，docs/FRONTEND.md 铁律 6 / §8 AppIcon）。
 // 规范：24×24 viewBox，纯 <path> stroke 几何，currentColor 描边、无填充；
 // 新增图标必须走本表集中登记，禁止在视图里散写 <svg>（Snipaste 字标等品牌图形例外）。
-//
-// 分批迁移计划（§8 清单落地）：
-//   阶段1 ✅ 壳与状态：home/file-text/gear/info/bell/sun/moon/monitor + 通知严重度改 CSS 色点；
-//   阶段2 ✅ 双栏外壳：模块/分组矢量图标池（N27 后真图标走 app: 第二来源，矢量池随批瘦身——
-//          N3 审查清死名 10 枚；globe 复用 publicip、code 复用 vscode；与后端 Nav().Icon 的 i: 名
-//          及 navigation.ts GROUP_META 对应关系由 composition fixture 双端对拍锁死）；
-//   阶段3 ⏳ 家族视图 MAIN_TABS 前缀 emoji 与控制按钮 emoji（📂🖥⚡ 等 ≈40 处）。
+// 名实纪律：本表名与 navigation.ts GROUP_META / MODULE_PRESENTATION 的一致性由
+// navigation.spec 锁死（全部可解析，否则红）；与后端 Nav().Icon 的 i: 名对应关系
+// 靠人工同步，改名两侧同改。死名即删（globe 归 publicip、code 归 vscode 复用）。
+// 未竟项：家族视图 MAIN_TABS 前缀与控制按钮的 emoji（📂🖥⚡ 等）尚未矢量名化，勿新增同类。
 
 /** 图标名 → path d 列表（stroke 渲染，圆/环用双弧 path 表达）。 */
 export const ICON_PATHS = {
@@ -17,14 +14,14 @@ export const ICON_PATHS = {
   info: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18', 'M12 11v5', 'M12 8v.01'],
   bell: ['M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6', 'M10.3 20a2 2 0 0 0 3.4 0'],
   inbox: ['M4 13l2-8h12l2 8v6H4z', 'M4 13h5l1 2h4l1-2h5'],
-  // clipboard（N45 剪贴板历史）：夹头小方块 + 大背板两段 path 起于 y=4.5 让位
+  // clipboard（剪贴板历史浮层）：夹头小方块 + 大背板两段 path 起于 y=4.5 让位
   // 夹头，与 sticky-note/file-text 形距足够；后端 Nav 硬约束 i:clipboard 同名。
   clipboard: ['M9 3h6v3H9z', 'M17 4.5h1.5a2 2 0 0 1 2 2V20a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2H7', 'M8 12h8', 'M8 16h5'],
   sun: ['M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8', 'M12 2v2', 'M12 20v2', 'M2 12h2', 'M20 12h2', 'M4.9 4.9l1.4 1.4', 'M17.7 17.7l1.4 1.4', 'M19.1 4.9l-1.4 1.4', 'M6.3 17.7l-1.4 1.4'],
   moon: ['M20 13.5A8.5 8.5 0 1 1 10.5 4a6.5 6.5 0 0 0 9.5 9.5'],
   monitor: ['M3 5h18v11H3z', 'M9 20h6', 'M12 16v4'],
 
-  // ── 阶段2：模块图标（MODULE_PRESENTATION 的 i: 名，与后端 Nav().Icon 同步）──
+  // ── 模块图标（MODULE_PRESENTATION 的 i: 名，与后端 Nav().Icon 同步）──
   zap: ['M13 2L3 14h9l-1 8 10-12h-9l1-8z'],
   'share-2': ['M15 5a3 3 0 1 0 6 0 3 3 0 1 0-6 0', 'M3 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0', 'M15 19a3 3 0 1 0 6 0 3 3 0 1 0-6 0', 'M8.6 13.5l6.8 4', 'M15.4 6.5l-6.8 4'],
   'sticky-note': ['M4 4h16v11l-5 5H4z', 'M15 20v-5h5'],
@@ -49,20 +46,20 @@ export const ICON_PATHS = {
   layers: ['M12 2L2 7l10 5 10-5z', 'M2 12l10 5 10-5', 'M2 17l10 5 10-5'],
   terminal: ['M4 17l6-6-6-6', 'M12 19h8'],
   server: ['M5 4h14a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M5 13h14a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2z', 'M7 7h.01', 'M7 16h.01'],
-  // 曾作 gonavi 占位徽标（骨架 Nav 期）；2026-09-27 上游真图标 app:gonavi 入库后在册留档备用
+  // 曾作 gonavi 占位徽标；上游真图标 app:gonavi 入库后在册留档备用
   database: ['M3 5a9 3 0 1 0 18 0 9 3 0 1 0-18 0', 'M3 5v14a9 3 0 0 0 18 0V5', 'M3 12a9 3 0 0 0 18 0a9 3 0 0 0-18 0'],
   'mouse-pointer': ['M3 3l7.5 17.5 3-7 7-3z'],
   wrench: ['M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z'],
   tag: ['M20.6 13.4L13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z', 'M7.5 7.5h.01'],
 
-  // ── 阶段2：分组图标（navigation.ts GROUP_META；globe/code 复用上方）──
+  // ── 分组图标（navigation.ts GROUP_META；globe/code 复用上方）──
   cpu: ['M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M9 9h6v6H9z', 'M8 2v2', 'M16 2v2', 'M8 20v2', 'M16 20v2', 'M2 8h2', 'M2 16h2', 'M20 8h2', 'M20 16h2'],
   layout: ['M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z', 'M3 9h18', 'M9 21V9'],
   'check-square': ['M9 11l3 3 8-8', 'M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'],
   film: ['M5 2h14a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3z', 'M7 2v20', 'M17 2v20', 'M2 12h20', 'M2 7h5', 'M2 17h5', 'M17 17h5', 'M17 7h5'],
   box: ['M12 3l8.5 4.8v9.6L12 22l-8.5-4.6V7.8z', 'M3.5 7.8L12 12.6l8.5-4.8', 'M12 22v-9.4'],
 
-  // ── 阶段2收尾（集成时补登）：命令面板行尾跳转箭头、≤760px 抽屉把手、rail 展开/收起 ──
+  // ── 外壳辅助图标：命令面板行尾跳转箭头、≤760px 抽屉把手、rail 展开/收起 ──
   goto: ['M4 12h15', 'M13 6l6 6-6 6'],
   menu: ['M4 6h16', 'M4 12h16', 'M4 18h16'],
   'rail-expand': ['M4 4h16v16H4z', 'M10 4v16', 'm13.5 9 3 3-3 3'],
@@ -70,7 +67,7 @@ export const ICON_PATHS = {
   'chevrons-left': ['m11 7-5 5 5 5', 'm18 7-5 5 5 5'],
   'chevrons-right': ['m13 7 5 5-5 5', 'm6 7 5 5-5 5'],
 
-  // ── 设置页拆分（分区菜单 + 操作钮去 emoji 化，阶段3先咬掉设置页一角）──
+  // ── 设置页分区菜单 + 操作钮（去 emoji 化）──
   sliders: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M1 14h6', 'M9 8h6', 'M17 16h6'],
   palette: ['M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.2 0-1.1.9-2 2-2h1.5A4.5 4.5 0 0 0 21 10c0-3.9-4-7-9-7z', 'M7.5 11.5h.01', 'M10 8h.01', 'M14.5 7.5h.01'],
   folder: ['M4 5h5l2 2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z'],
@@ -81,7 +78,7 @@ export const ICON_PATHS = {
   clock: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18', 'M12 7v5l3 2'],
   bot: ['M12 8V4H8', 'M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z', 'M2 14h2', 'M20 14h2', 'M15 13v2', 'M9 13v2'],
 
-  // ── Wave 0 契约冻结（constants/status 四维状态词表）追加 ──
+  // ── 四维状态词表（constants/status）配套 ──
   circle: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18'],
   'help-circle': ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18', 'M9.2 9.2a3 3 0 0 1 5.7 1.2c0 2-2.9 2.7-2.9 4.4', 'M12 17.2h.01'],
   download: ['M12 3v13', 'm7 11 5 5 5-5', 'M4 20h16'],
@@ -94,23 +91,23 @@ export const ICON_PATHS = {
   'wifi-off': ['m3 3 18 18', 'M12 20h.01', 'M8.5 16.4a5 5 0 0 1 7 0', 'M5 12.9a10 10 0 0 1 5.2-2.7', 'M16.9 11.2a10 10 0 0 1 2.2 1.7', 'M2 9.4a15 15 0 0 1 4.2-2.6', 'M10.7 5.1a15 15 0 0 1 11.3 4.3'],
   gauge: ['m12 14 4-4', 'M3.3 19a10 10 0 1 1 17.3 0'],
 
-  // ── Wave 1 模块中心：rail 一级核心入口钮 ──
+  // ── 模块中心：rail 一级核心入口钮 ──
   grid: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M14 14h7v7h-7z', 'M3 14h7v7H3z'],
 } as const
 
 export type IconName = keyof typeof ICON_PATHS
 
 /**
- * 真图标第二来源（N27 批 A）：`app:<moduleId>` 形态名，AppIcon 据此渲染
+ * 真图标第二来源：`app:<moduleId>` 形态名，AppIcon 据此渲染
  * assets/apps/<moduleId>.png 位图（缺图自动回落通用徽标，见 constants/appIcons.ts）。
  * 与 `i:` 矢量并立：矢量是 hanxi 自绘语言，`app:` 是上游软件自己的脸面。
  */
 export type AppIconName = `app:${string}`
 
 /**
- * 真图标第三来源（N27 红线运行期提取）：`rt:<moduleId>|<fallback>` 形态名。
- * rammap/recordly/vscode 因品牌许可红线永不入仓，改由后端运行期从机主本机
- * 已装官方 exe 就地提取（constants/runtimeIcons.ts 通道）；提取成功前/失败后
+ * 真图标第三来源（品牌许可红线运行期提取）：`rt:<moduleId>|<fallback>` 形态名。
+ * rammap/recordly/vscode 因品牌许可红线永不入仓，改由后端运行期从本机已装
+ * 官方 exe 就地提取（constants/runtimeIcons.ts 通道）；提取成功前/失败后
  * AppIcon 自动回落 `|` 后的 `<fallback>` 声明（通常即现 `i:` 矢量），观感零损。
  */
 export type RuntimeIconName = `rt:${string}`

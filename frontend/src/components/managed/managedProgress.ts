@@ -1,24 +1,22 @@
 // ============================================================================
-// 托管进度/版本行状态共享纯函数（前端冗余治理 · 波 0，只增不删）
+// 托管进度/版本行状态共享纯函数
 //
-// stepOf：10 份逐字相同副本的单一来源（函数体逐字符一致，仅形参名与入参类型标注
-//   有差）——views/{BCU,Douzy,GuoheView,QuickLook,Rufus,RustDesk,SubnetDesk}View.vue、
-//   components/managed/ManagedVersionPanel.vue、components/FrpcVersionsTab.vue、
-//   components/everything/EverythingReleaseTable.vue；components/vscode/
-//   VSCodeReleaseTable.vue 语义等价但分支写法合并（`!==downloading || !total` 并档），
-//   不并入逐字口径。入参实况（NormalizedProgress / DownloadProgress / DownloadTicket /
+// stepOf：各视图逐字相同进度换算副本的单一来源（views/{BCU,Douzy,MangoDisk,
+//   RustDesk,SubnetDesk}View、managed/ManagedVersionPanel、FrpcVersionsTab、
+//   everything/EverythingReleaseTable 消费；components/vscode/VSCodeReleaseTable
+//   语义等价但分支写法合并（`!==downloading || !total` 并档），不并入逐字口径）。
+//   入参实况（NormalizedProgress / DownloadProgress / DownloadTicket /
 //   面板内联结构 { stage; done; total }）均为 { stage; done; total } 的结构超集，
 //   统一签名后各消费点直接可传；Math.min(99, …) 封顶怪癖逐字保留——
 //   进行中永不显示满格，满格由 done 档判 100。
 //
-// versionRowState：guoheview/quicklook/rufus 三视图 statusOf 逐字相同内核的纯函数化
-//   （票据先行：error 档 → 'error'，其余档一律 'downloading'；无票据 → 版本串精确
-//   匹配判已装；DouzyView 的 some 写法在本内核下同真值，可按此接线）。
-//   其余 statusOf 副本语义分叉、本波不收——Panel（adapter.versions.statusOf 钩子 +
+// versionRowState：远程行四态判定内核的纯函数化（票据先行：error 档 → 'error'，
+//   其余档一律 'downloading'；无票据 → 版本串精确匹配判已装；DouzyView 消费）。
+//   语义分叉的 statusOf 副本刻意不收——Panel（adapter.versions.statusOf 钩子 +
 //   sameVersion 口径）、BCU（`${version}|${variant}` 复合键 + statusOverall 双变体
 //   汇总）、Frpc（去 v 前缀互认）、RustDesk/SubnetDesk（form==='installed' 排除）、
 //   VSCode（portable/installer 分形态判定）、Snipaste/Everything（自有票据/已装数据源
-//   与词面），留待后续波次逐视图评估。
+//   与词面）——各属合法分叉，硬并反失口径。
 // ============================================================================
 
 /** 版本行状态四档（字面量与 Panel/各视图 statusOf 返回联合逐字一致）。 */
@@ -35,8 +33,8 @@ export function stepOf(p: { stage: string; done: number; total: number }): numbe
 /**
  * 远程行四态判定（进度票据先行）：有票据时 error 档 → 'error'、其余档一律
  * 'downloading'（done 票据清票驻留瞬间仍算进行中，与各视图现行为一致）；
- * 无票据回退版本串精确匹配判已装。逐字源：GuoheViewView.vue:39-44 ≡
- * QuickLookView.vue:46-51 ≡ RufusView.vue:50-55。
+ * 无票据回退版本串精确匹配判已装。逐字源于 guoheview/quicklook/rufus 三视图
+ * 同构 statusOf 内核（三视图后改吃共享面板，本地副本已出清）。
  */
 export function versionRowState(
   p: { stage: string } | undefined | null,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// 通用图标壳：constants/icons.ts 注册表的内联 SVG 渲染器（§8 AppIcon 阶段1）；
-// N27 批 A 起支持第二来源——`app:<moduleId>` 名渲染真图标位图（缺图回落通用徽标）；
-// N27 红线尾巴起支持第三来源——`rt:<moduleId>|<fallback>` 名走运行期本机提取通道
+// 通用图标壳：constants/icons.ts 注册表的内联 SVG 渲染器（docs/FRONTEND.md §8 AppIcon）；
+// 第二来源——`app:<moduleId>` 名渲染真图标位图（缺图回落通用徽标）；
+// 第三来源——`rt:<moduleId>|<fallback>` 名走运行期本机提取通道
 // （constants/runtimeIcons.ts）：提取成功画厂商真图标，未就绪/失败画 fallback
 // 矢量（即该模块提取通道上线前的原徽标），观感零损零打扰。
 // 装饰性图标默认 aria-hidden；需要独立可访问名时传 label（role=img + aria-label）。

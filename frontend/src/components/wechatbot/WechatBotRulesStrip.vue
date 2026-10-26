@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 微信协议限制规则提示条（可折叠）：纯静态文案壳，关闭动作上抛视图编排层
-// （折叠开关 showRulesBanner 为视图本地 UI 状态）。自 WechatBotView.vue 逐字迁出。
+// 微信协议限制规则提示条（可折叠）：纯静态文案壳（拆自 WechatBotView），关闭动作上抛视图编排层
+//（折叠开关 showRulesBanner 为视图本地 UI 状态）。
 defineEmits<{ 'close': [] }>()
 </script>
 
@@ -20,7 +20,7 @@ defineEmits<{ 'close': [] }>()
 </template>
 
 <style scoped>
-/* 以下样式自 WechatBotView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
+/* 样式自视图拆分迁入，声明与 token 引用不动 */
 .clawbot-rules-strip {
   background: var(--state-warning-soft);
   border-bottom: 1px solid var(--state-warning-soft);

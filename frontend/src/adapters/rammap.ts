@@ -1,5 +1,5 @@
 // ============================================================================
-// RAMMap → 托管控制台 adapter（W4 · N4，机主拍板"托管本体"路线）
+// RAMMap → 托管控制台 adapter（机主拍板"托管本体"路线）
 //
 // 方言注记：
 //  - 上游"同址覆盖式最新版"：远程列表恒一条（Last-Modified 日期版），
@@ -7,7 +7,7 @@
 //  - 提权三重契约之③：stopped 引导行与启动钮 title 经 ElevationStatus 预告
 //    "需管理员"；未提权启动的 740 指引走状态广播（引擎改写层含"管理员"
 //    关键词，ElevateRestart 一键通道自动挂载）；
-//  - external 退出 force-free 档（N3 终裁低损类：零状态观察工具，优雅不生效
+//  - external 退出 force-free 档（终裁低损类：零状态观察工具，优雅不生效
 //    直接强杀不弹确认）；
 //  - 无官方摘要：metaHints 如实披露降级三层与"未验官方哈希"语义。
 // ============================================================================
@@ -98,7 +98,7 @@ export function createRAMMapAdapter(): RAMMapAdapter {
       },
 
       async download(rel): Promise<ManagedActionResult> {
-        // 回执词单源 downloadOutcome（2026-10-26 机主裁决：安装回执统一「版本 X 已安装」）
+        // 回执词单源 downloadOutcome（机主裁决：安装回执统一「版本 X 已安装」）
         return downloadOutcome(await RAMMapAPI.DownloadVersion(rel.version), rel.version)
       },
 

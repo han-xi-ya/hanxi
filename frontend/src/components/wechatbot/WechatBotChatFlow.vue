@@ -2,12 +2,12 @@
 // 微信机器人气泡消息流：系统胶囊 / 入站（含附件卡与图片缩略预览）/ 出站（含本地图片
 // 缩略预览与打开图片/打开目录动作）三类消息的纯展示壳。图片预览 Data URL 由编排层
 // （useWechatBot.attachImagePreview）异步回填，本壳只按 previewUrl/previewState 呈现。
-// 自 WechatBotView.vue 随 DOM 逐字迁出——formatFileSize 为本区专属呈现函数（语义与
+// （拆自 WechatBotView 的纯展示壳）formatFileSize 为本区专属呈现函数（语义与
 // utils/format.fmtSize 不同：空值文案"微信接收附件"、独立 B 档、KB/MB 一位小数、
-// 阈值 >=1MB，强并会改界面文案，拆分时有意保留本地实现随消费组件就近安放）；
+// 阈值 >=1MB，强并会改界面文案，有意保留本地实现随消费组件就近安放）；
 // getAvatarColor 为跨组件共用呈现函数（自 useWechatBot 引纯函数）。
 // 附件打开/保存动作上抛视图编排层（useWechatBot）执行；滚动容器经 defineExpose
-// 的 scrollToBottom 句柄供编排层触达（拆分前 ref 直挂同一 div，nextTick 时序逐字等价）。
+// 的 scrollToBottom 句柄供编排层触达（ref 直挂同一 div，nextTick 时序即契约）。
 import { ref } from 'vue'
 import type { WechatAccountState } from '../../../bindings/hanxi/internal/modules/wechat/models'
 import { getAvatarColor, type ChatMessage } from '../../composables/useWechatBot'
@@ -221,7 +221,7 @@ defineExpose({ scrollToBottom })
 </template>
 
 <style scoped>
-/* 以下样式自 WechatBotView.vue 原 scoped 块随标记逐字迁移，声明与 token 引用不动 */
+/* 样式自视图拆分迁入，声明与 token 引用不动 */
 /* 消息流主体 */
 .chat-flow-scroll {
   flex: 1;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// 页内私有矢量图标（描边件与 AppIcon 注册表同血统；注册表缺 copy/pause/play/
-// image 等剪贴板必备名，全局层本轮禁碰，私有件先行——口径照 MemoView 的
-// MemoGlyph 先例，图标线收编后可整块替换为注册表件）。
+// 页内私有矢量图标（描边件与 AppIcon 注册表同血统；注册表尚缺 copy/pause/play/
+// image 等剪贴板必备名，私有件先行——口径照 MemoView 的 MemoGlyph 先例，
+// 注册表补齐后可整块替换为注册表件）。
 const GLYPH_PATHS: Record<string, readonly string[]> = {
   // 类别图标
   text: ['M4 5.5h16', 'M4 10.5h12', 'M4 15.5h14', 'M4 20.5h8'],

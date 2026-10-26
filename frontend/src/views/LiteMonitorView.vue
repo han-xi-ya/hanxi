@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// LiteMonitor 托管工作台（Wave 5 · 批 1 收敛件）：
+// LiteMonitor 托管工作台（托管控制台标准形）：
 // 共享面全部收敛进 components/managed 托管控制台家族——adapter（src/adapters/litemonitor）
 // 承载业务投影（RPC/事件/文案），ManagedConsoleShell 管页头与页签骨架。
 // 本模块特化：GetRuntimeStatus 第三路数据经 adapter 以快照扩展字段 hasDesktop8
@@ -16,7 +16,7 @@ import { needsElevationRestart } from '../components/managed/adapter'
 
 const adapter = createLiteMonitorAdapter()
 
-// 环境提示现态（迁移前 runtimeMissing computed 的投影形）：仅在探测明确报缺时警示
+// 环境提示现态：仅在探测明确报缺（hasDesktop8 === false）时警示
 function isRuntimeMissing(snap: ManagedSnapshot | null): boolean {
   return (snap as LmConsoleSnapshot | null)?.hasDesktop8 === false
 }

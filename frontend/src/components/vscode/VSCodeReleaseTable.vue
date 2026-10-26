@@ -103,7 +103,7 @@ function stepOf(progress: NormalizedProgress): number {
 
 <style scoped>
 .badge-hash { margin-left: 6px; background: var(--state-positive-soft); color: var(--state-positive); }
-/* N13 形态 chip：核心形已上收全局 .form-chip 原子，此处只留 4px 前置间距补差 */
+/* 形态 chip：核心形走全局 .form-chip 原子，此处只留 4px 前置间距补差 */
 .form-chip { margin-left: 4px; }
 .vc-ver-status { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); white-space: nowrap; }
 .vc-ver-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }

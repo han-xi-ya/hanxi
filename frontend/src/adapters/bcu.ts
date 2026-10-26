@@ -1,15 +1,14 @@
 // ============================================================================
-// BCUninstaller → 托管控制台 adapter（Wave 5 · 批 1 迁移件，模式照抄 ccswitch）
+// BCUninstaller → 托管控制台 adapter（模式照抄 ccswitch）
 //
-// 逐字迁移自 BCUView 原编排段（启停/版本/联动/仓库全部 RPC 与文案零变化）。
 // 事件面：`bcu:instance-state` / `bcu:version-download`。
-// 波 2E 回迁裁决：meta 行族/已装卡/首用空态三段纯抄全部换面板默认体；
+// 裁决：meta 行族/已装卡/首用空态三段纯抄走面板默认体；
 // 双变体远程表为实证超纲方言——每行两把下载钮、version|variant 复合进度键
 // （铁律②：防同版本双变体互相覆盖）、按变体独立票行与变体前缀阶段词，面板
 // progressKey/statusOf 均为「行→单键」判定（statusOf 仅在无票据时回调且签名
 // 不携 downloading map），行级双票聚合不可硬套——表体经面板 #remote-table
-// 整表替换槽留视图，词面与判定逐字原形。
-// GetDotnetEnvironment 诊断态（.NET 环境徽标与推荐变体）自本波起收编进 adapter
+// 整表替换槽留视图，词面与判定保原形。
+// GetDotnetEnvironment 诊断态（.NET 环境徽标与推荐变体）收编进 adapter
 // 闭包：copy.firstUseDownloadLabel 推荐词与 download 缺省变体需同源投影，
 // 视图 #meta-extra 徽标读同一 ref；进度票据仍经 store.runDownload 统一回执，
 // 视图以 variantRelease() 给行注入 variant。
@@ -30,7 +29,7 @@ import { bindInstanceState, bindVersionProgress, downloadOutcome, setActiveResul
 /** BCU 下载变体（与后端 DownloadVersion 的 variant 词一致）。 */
 export type BCUVariant = 'portable' | 'fdd'
 
-/** 变体短词（波 2E 起视图方言表与 copy 首用推荐词族共用单源，免互抄）。 */
+/** 变体短词（视图方言表与 copy 首用推荐词族共用单源，免互抄）。 */
 export function variantLabel(variant: string): string {
   return variant === 'fdd' ? '精简版' : '便携版'
 }
@@ -62,8 +61,8 @@ export function createBCUAdapter(): BCUAdapter {
   const { confirm } = useConfirm()
   const { prompt } = usePrompt()
 
-  // .NET 环境诊断态（波 2E 收编 adapter 闭包）：面板 copy 的推荐词族与 download
-  // 缺省变体、视图 #meta-extra 徽标三处同源，视图不再自持状态。
+  // .NET 环境诊断态（收编 adapter 闭包）：面板 copy 的推荐词族与 download
+  // 缺省变体、视图 #meta-extra 徽标三处同源，视图不自持状态。
   const dotnetEnv = ref<DotnetEnv | null>(null)
   const envLoading = ref(false)
   const recommendedVariant = computed<BCUVariant | null>(() => {
@@ -102,13 +101,13 @@ export function createBCUAdapter(): BCUAdapter {
 
       async download(rel) {
         // variant 由方言视图经 variantRelease() 注入；面板首用一键下载无注入位，
-        // 缺省回落推荐变体（环境未测毕回自包含便携版——与原方言空态双分支逐字同语义）
+        // 缺省回落推荐变体（环境未测毕回自包含便携版）
         const variant = (rel as BCUReleaseRow).variant ?? recommendedVariant.value ?? 'portable'
         return downloadOutcome(await BCUAPI.DownloadVersion(rel.version, variant), rel.version)
       },
 
       async remove(v: ManagedVersionRecord) {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const ok = await confirm({
           title: `确定卸载 BCU ${v.version}？`,
           description: '该版本隔离目录（含卸载历史与设置数据）将被删除，不可恢复。',
@@ -120,7 +119,7 @@ export function createBCUAdapter(): BCUAdapter {
       },
 
       async importLocal() {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '导入本地安装',
           label: '请输入 BCU 便携目录完整路径（含 BCUninstaller.exe）',
@@ -137,7 +136,7 @@ export function createBCUAdapter(): BCUAdapter {
         return {}
       },
 
-      // 铁律②复合键反查（波 2E 起同时供面板首用一键下载取票）：与 download 的
+      // 铁律②复合键反查（同时供面板首用一键下载取票）：与 download 的
       // 变体解析严格同源——行无注入 variant 时回推荐变体再回便携版，保证
       // 「预挂票据→事件回流→done 清票」全程同键不永挂（方言表按变体直读，
       // 本位缺省口径即其 `${version}|${variant}` 键形）。
@@ -166,7 +165,7 @@ export function createBCUAdapter(): BCUAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥；文案逐字保留）
+    // 条件提示条（三个变体互斥）
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 BCUninstaller 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 BCU 窗口内关闭。' }
@@ -190,7 +189,7 @@ export function createBCUAdapter(): BCUAdapter {
       return null
     },
 
-    // 波 2E：meta 行族/已装卡/首用空态回迁面板默认体，原方言区纯抄词面逐字入本表。
+    // meta 行族/已装卡/首用空态走面板默认体，纯抄词面不入本表；
     // 导入钮/刷新钮/区节标题/「使用中」等恰为面板缺省词，不落覆写位。
     copy: {
       metaHints: [
@@ -199,7 +198,6 @@ export function createBCUAdapter(): BCUAdapter {
       ],
       firstUseEmpty: '尚未安装 BCU —— 下载官方便携版，或「导入本地安装」把现有 BCU 收纳进来',
       // 推荐变体已测毕走「（便携版/精简版，推荐）」词形，未测毕回朴素词
-      // （原方言空态 v-if/v-else-if 双分支词面逐字对位）
       firstUseDownloadLabel: (rel) =>
         recommendedVariant.value
           ? `下载最新版 ${rel.version}（${variantLabel(recommendedVariant.value)}，推荐）`

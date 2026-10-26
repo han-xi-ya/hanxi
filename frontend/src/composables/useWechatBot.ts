@@ -1,13 +1,12 @@
-// 微信机器人（WechatBot）业务状态与操作单一来源。
-// Phase 6 巨型孤本结构拆分时自 WechatBotView.vue 逐字抽出：bindings 调用序列、事件名、
-// toast/系统消息文案、扫码轮询手管语义、消息环形缓冲（>300 裁至 200）与离线补拉顺序均未改动。
+// 微信机器人（WechatBot）业务状态与操作单一来源（拆分期自 WechatBotView 抽出）。
+// bindings 调用序列、事件名、toast/系统消息文案、扫码轮询手管语义、消息环形缓冲
+//（>300 裁至 200）与离线补拉顺序均属契约面，由特征测试锁定。
 // 纯 UI 折叠/横幅开关（isSidebarCollapsed/showRulesBanner）留在视图本体；
 // getAvatarColor/formatFileSize 属呈现函数，随消费组件就近安放（getAvatarColor 跨组件共用，
 // 因 §9.6 拆分边界禁止新建非 useWechatBot 前缀的 composables 文件，故以纯函数名义 export 于本模块）。
 //
-// 唯一非逐字适配点：原 messageContainer 元素 ref 随气泡消息流迁出至
-// WechatBotChatFlow.vue，本模块改以 chatFlowRef（组件 defineExpose 的 scrollToBottom
-// 句柄）触达同一滚动容器；nextTick 时序与原实现逐字等价。
+// 滚动触达形制：消息流容器随 WechatBotChatFlow 拆出，本模块经 chatFlowRef 的
+// scrollToBottom 句柄（defineExpose）触达同一容器，nextTick 时序即契约。
 //
 // 必须在组件 setup 同步期内调用：内部经 useWailsEvent 注册两个事件订阅
 // （wechat:context-token-updated / wechat:message-received，2 订阅/2 注销配对，勿增删改同名订阅），
@@ -21,7 +20,7 @@ import { useToast } from './useToast'
 import { useWailsEvent } from './useWailsEvent'
 import { useConfirm } from './useConfirm'
 
-// WechatBotChatFlow 对外暴露的最小句柄契约（替代拆分前的 messageContainer 元素 ref）。
+// WechatBotChatFlow 对外暴露的最小句柄契约（滚动经此触达，不直挂元素 ref）。
 export interface ChatFlowHandle {
   scrollToBottom(smooth?: boolean): void
 }
@@ -128,7 +127,7 @@ export function useWechatBot() {
   // 刷新状态
   const isRefreshingToken = ref(false)
 
-  // 自动平滑滚动到底部（经 ChatFlow 组件句柄触达滚动容器，nextTick 时序逐字保留）
+  // 自动平滑滚动到底部（经 ChatFlow 组件句柄触达滚动容器，nextTick 时序即契约）
   function scrollToBottom(smooth = false) {
     nextTick(() => {
       chatFlowRef.value?.scrollToBottom(smooth)

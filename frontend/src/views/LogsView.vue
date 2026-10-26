@@ -65,7 +65,7 @@ async function fetchContent(scrollBottom = false) {
 
 async function copyLogs() {
   if (!logContent.value) return
-  // 修复说明：原实现 writeText 失败也谎报"已复制"（fire-and-forget），收编 useClipboard 后如实回执
+  // 复制走 useClipboard 如实回执：writeText 失败不谎报"已复制"（不允许 fire-and-forget）
   await copyWithToast(logContent.value, '日志内容已复制到剪贴板')
 }
 
@@ -99,7 +99,7 @@ const filteredLines = computed(() => {
   return lines.filter(l => l.toLowerCase().includes(kw))
 })
 
-// 自动刷新轮询（usePolling 内置 KeepAlive 契约；immediateFirstRun:false 对齐原"2.5s 后才首次周期拉取"节奏）
+// 自动刷新轮询（usePolling 内置 KeepAlive 契约；immediateFirstRun:false 保持"2.5s 后才首次周期拉取"节奏）
 usePolling(() => {
   if (autoRefresh.value && selectedFile.value) {
     fetchContent(false)
@@ -216,8 +216,8 @@ onMounted(async () => {
   width: 240px;
 }
 .input-search:focus-visible {
-  /* 样式审计 C10（2026-10-27）：删原 `outline: none`（本规则专打 :focus-visible，把全局环
-     按死在键盘态）；换色边保留为附加强调。 */
+  /* 样式审计 C10 判定：此处 `outline: none` 已删——本规则专打 :focus-visible，
+     留着会把全局焦点环按死在键盘态；换色边保留为附加强调。 */
   border-color: var(--color-primary);
 }
 

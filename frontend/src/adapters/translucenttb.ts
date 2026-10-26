@@ -1,49 +1,48 @@
 // ============================================================================
-// TranslucentTB → 托管控制台 adapter（Wave 5 · 批 1 迁移件，模式照抄 ccswitch）
+// TranslucentTB → 托管控制台 adapter（模式照抄 ccswitch）
 //
-// 逐字迁移自 TranslucentTBView 原编排段（启停/重设/版本/联动/仓库全部 RPC 与
-// 文案零变化）。事件面：`translucenttb:instance-state` /
-// `translucenttb:version-download`（单键=version）。版本 Tab 与共享
-// ManagedVersionPanel 逐字同形，本件也是四件中版本区全量走共享面板的样本。
+// 事件面：`translucenttb:instance-state` /
+// `translucenttb:version-download`（单键=version）；版本区全量走共享
+// ManagedVersionPanel，无方言表。
 // 方言注记：
 //  - 启动钮禁用条件含「无任何已装版本」——超出 ManagedControlVerb.disabledFor
 //    (state) 的纯状态签名，故 adapter 自持 hasInstalled ref（listInstalled 旁路
 //    更新：store.load() 恒调本回调，导入/卸载/下载完成等清单变化后自动刷新），
-//    disabledFor/titleFor 读该 ref 复刻原视图 openDirTarget 判据；
-//  - 「🪄 重设任务栏状态」按批 0 槽位清单走 adapter.reset 形状，钮体留在控制条
-//    #primary-action 位自绘（原 DOM 位逐字等价；其执行器不复用 runControl——
-//    现状 reset 成功后不刷快照，与 quit/primary 的恒刷语义不同）；
+//    disabledFor/titleFor 读该 ref 落实 openDirTarget 判据；
+//  - 「🪄 重设任务栏状态」走 adapter.reset 槽形状，钮体留在控制条
+//    #primary-action 位自绘；其执行器不复用 runControl——
+//    reset 成功后不刷快照，与 quit/primary 的恒刷语义不同；
 //  - 「🗂 安装目录」钮按 running > active > 任一已装解析目标目录，依赖版本清单，
 //    亦走 #primary-action 位，点击复用 versions.openDir（store.runOpenDir，
-//    与现状同为无 busy 闩的目录直达）；
-//  - 崩溃处置升级（2026-09-26）：failed+AV(0xC0000005) 语境两件套——
+//    无 busy 闩的目录直达）；
+//  - 崩溃处置两件套：failed+AV(0xC0000005) 语境——
 //    B1 banner 挂上后异步经 SysInfoAPI.GetReport 体检一次，命中虚拟显卡/
 //    空壳监视器名单即点名（sysinfo 停用/RPC 失败/无命中一律静默回通用文案）；
 //    C-迷你 视图 #primary-action 位按 pickDowngradeTarget 出「⬇ 装 X 试」
 //    单动作钮（只走既有 runDownload 链，无编排状态机）；
-//  - 双形态 Wave（2026-09-26）打包版（Windows 包/MSIX）线：冻结契约五动词
+//  - 双形态之打包版（Windows 包/MSIX）线：冻结契约五动词
 //    GetMsixState/InstallMsix/UninstallMsix/RemoveMsixCache/LaunchMsix 收编为
-//    adapter.msix（TBMsixSurface：状态 refs + 动词回执，确认框照旧在 adapter 内）；
-//    bindings 待主会话统一再生——调用失败（含再生缺席）一律静默落 unavailable，
-//    区块降级单行、便携线零感知。AV 鉴别钮升级为双语义（pickAVProbe）：打包线
+//    adapter.msix（TBMsixSurface：状态 refs + 动词回执，确认框在 adapter 内）；
+//    GetMsixState 调用失败一律静默落 unavailable，
+//    区块降级单行、便携线零感知。AV 鉴别钮双语义（pickAVProbe）：打包线
 //    预读可用且崩溃版本有 .msixbundle 资产 → 优先「⬇ 装打包版对照（#85 鉴别）」，
-//    否则逐字回退原「⬇ 装 X 试」降级候选，两语义共存一位；
-//  - 2026-09-27 机主实证三件套（本批追加）：①安装进度事件
+//    否则回退「⬇ 装 X 试」便携降级候选，两语义共存一位；
+//  - 打包安装链三件套：①安装进度事件
 //    translucenttb:msix-progress（{stage,percent,message}，仅喂 UI，同步 RPC
 //    语义与 busy 单飞闩不变）；②打包安装失败回执孤儿档（归因短语同文钉
 //    MSIX_ORPHAN_MARKER）× 服务端 orphans 探测双闸 → 打包区块追加
 //    「🧹 清理后重试」钮（danger 确认点名精确路径，后端动作=改名隔离非删除）；
-//    ③external banner 分形态——打包版在册时不再喊"外部实例（非托管）"，
+//    ③external banner 分形态——打包版在册时不喊"外部实例（非托管）"，
 //    改发"已由 Hanxi 唤起、生命周期归 Windows"ok 档（预读缺席保守回原文案）；
-//  - 2026-09-27 批次二（机主裁决"即使判 external 也要允许强制结束"+ 托管控制台
-//    缺陷收口）：①后端 P1-8 归属收编——打包实例（WindowsApps 部署位镜像）快照
-//    改呈托管 running，external 语义收窄为真外部，本件 warn 文案同步改口并点名
-//    「⛔ 强制结束」（forceQuitExternal 新 RPC，bindings 待再生引用为预期红）；
-//    ②P1-5 dangerBusy——打包动词与强制结束共用的危险动作在途闩经契约 dangerBusy
-//    位并入共享 busy（msix.busy 与之为同一 ref，进度行/打包钮读法不变）；
-//    ③P1-10 三态闸——msixProbeOf 把预读分成 未知/检出/未见，「未知」灰化安装
+//  - 机主裁决"即使判 external 也要允许强制结束"+ 归属收编（P1-8）：
+//    打包实例（WindowsApps 部署位镜像）快照呈托管 running，external 语义
+//    收窄为真外部，本件 warn 文案点名「⛔ 强制结束」（forceQuitExternal）；
+//    P1-5 dangerBusy——打包动词与强制结束共用的危险动作在途闩经契约
+//    dangerBusy 位并入共享 busy（msix.busy 与之为同一 ref，进度行/打包钮
+//    读法不变）；
+//  - P1-10 三态闸——msixProbeOf 把预读分成 未知/检出/未见，「未知」灰化安装
 //    引导钮（远程行装打包版 + 对照钮出 disabled 占位防闪现），检出/预读失败两态
-//    的对照区逐字回退便携降级链语义不变（2026-09-26 冻结契约）。
+//    的对照区回退便携降级链语义不变（冻结契约保守口径）。
 // ============================================================================
 
 import { computed, ref } from 'vue'
@@ -118,10 +117,10 @@ export function virtualArtifactWording(arts: TBVirtualArtifacts): string {
 
 /**
  * YYYY.N 数值分段比较（与后端 versioncmp 同域）；任一侧非纯数字段版本回 null=不可比。
- * 版本比较器统一波收编为 utils/version compareStrict 薄包装：本件语义本就同形
- * （全长补零 + 非规范 null），null 纪律自此升格为全局标准；归一化新增的 trim 与
- * `^v(?=\d)/i` 剥离对 TB 目录名（恒裸数字起头、无预发布 v 形态）是恒等变换。
- * pickDowngradeTarget 的 null 消费（`?? 0` / `?? -1` 两向兜底）逐字不动。
+ * utils/version compareStrict 薄包装（本件语义与其同形：全长补零 + 非规范
+ * null，null 纪律即全局标准）；compareStrict 的 trim 与 `^v(?=\d)/i` 剥离
+ * 对 TB 目录名（恒裸数字起头、无预发布 v 形态）是恒等变换。
+ * pickDowngradeTarget 的 null 消费有 `?? 0` / `?? -1` 两向兜底。
  */
 export function cmpTBVersion(a: string, b: string): number | null {
   return compareStrict(a, b)
@@ -151,12 +150,12 @@ export function pickDowngradeTarget(
   return best
 }
 
-// ---------- 打包版（Windows 包/MSIX）契约面（双形态 Wave，冻结契约镜像） ----------
+// ---------- 打包版（Windows 包/MSIX）契约面（冻结契约镜像） ----------
 
 /**
- * 契约镜像声明纪律：GetMsixState 返回形按冻结契约在此结构声明（不 import
- * bindings 类型——MsixState 的再生落点未定，函数面走 TBAPI 命名空间直调，
- * 再生后只需删除本组 interface 换成绑定导入，字段名逐一对齐 JSON 小驼峰）。
+ * 契约镜像声明纪律：GetMsixState 返回形在此结构声明（不 import bindings 类型，
+ * 函数面走 TBAPI 命名空间直调；字段名与 JSON 小驼峰/bindings MsixState
+ * typedef 逐一对齐，后端字段有更宽事实时同步本处镜像）。
  */
 export interface TBMsixCacheEntry {
   version: string
@@ -203,8 +202,8 @@ export function isMsixOrphanAttribution(message: string): boolean {
 /**
  * 打包线预读三态（P1-10 三态闸的判据面）：unknown=未读回（首读在途/刷新未归），
  * installed=检出已注册，absent=未见（预读成功且未装）。GetMsixState 失败降级态
- * （unavailable ref）不在三态之内——那是"确认读不了"的既成事实，走 2026-09-26
- * 冻结的保守回退链（对照区逐字回便携降级），与"事实未定"的 unknown 分流。
+ * （unavailable ref）不在三态之内——那是"确认读不了"的既成事实，走冻结的
+ * 保守回退链（对照区回便携降级），与"事实未定"的 unknown 分流。
  */
 export type TBMsixProbe = 'unknown' | 'installed' | 'absent'
 
@@ -217,7 +216,7 @@ export function msixProbeOf(state: TBMsixState | null): TBMsixProbe {
 export interface TBMsixSurface {
   /** 预读成功交回的事实（null=未读回或已降级）。 */
   readonly state: Ref<TBMsixState | null>
-  /** GetMsixState 失败（含再生前绑定缺席——同路）：true=全块降级单行提示。 */
+  /** GetMsixState 失败（含函数缺席态——同路降级）：true=全块降级单行提示。 */
   readonly unavailable: Ref<boolean>
   /** 在途单飞闩（InstallMsix 含下载校验可数十秒；与 store.busy 并列禁点）。 */
   readonly busy: Ref<boolean>
@@ -247,7 +246,7 @@ export interface TBMsixSurface {
   /** 移除指定版本安装包缓存；运行中被后端拦截时错误原样上抛（视图裸串 toast）。 */
   removeCache(version: string): Promise<ManagedActionResult>
   /**
-   * 孤儿数据清理（2026-09-27 机主事故改判件）：danger 确认点名服务端给的
+   * 孤儿数据清理（机主事故改判件）：danger 确认点名服务端给的
    * 精确路径 → CleanMsixOrphan（后端实际动作=改名隔离非删除）→ 成功回执
    * 指引再点安装；后端三道闸拒动时错误原样上抛。
    */
@@ -324,10 +323,10 @@ export function createTBAdapter(): TBAdapter {
     }
   }
 
-  // ---------- 打包版（Windows 包/MSIX）线（双形态 Wave） ----------
-  // GetMsixState 是区块唯一事实源：失败（含 bindings 再生前函数缺席）不抛不
+  // ---------- 打包版（Windows 包/MSIX）线 ----------
+  // GetMsixState 是区块唯一事实源：失败不抛不
   // toast，一律静默落 unavailable——视图据此整块降级单行提示，AV 对照门自此恒
-  // false，便携线（含既有 36 例锁定行为）零感知。动词失败上抛裸错误串由视图
+  // false，便携线零感知。动词失败上抛裸错误串由视图
   // toast（缓存运行中拦截等后端文案如实透传，不加词表）。
   const msixState = ref<TBMsixState | null>(null)
   const msixUnavailable = ref(false)
@@ -339,7 +338,7 @@ export function createTBAdapter(): TBAdapter {
 
   // 打包安装进度通道（机主撞账"全程无反馈"补线）：事件仅喂 UI，动词同步
   // 语义与单飞闩不变；createTBAdapter 恒在视图 setup 同步期执行，
-  // useWailsEvent 随作用域自动注销（绑定再生缺席时事件本就不来，静默无感）。
+  // useWailsEvent 随作用域自动注销。
   const msixProgress = ref<TBMsixProgress | null>(null)
   useWailsEvent<TBMsixProgress>('translucenttb:msix-progress', (p) => {
     if (!p || typeof p.stage !== 'string') return
@@ -400,10 +399,10 @@ export function createTBAdapter(): TBAdapter {
   }
 
   /**
-   * external 态强制结束（机主裁决 2026-09-27"即使判 external 也要允许强制结束"）：
+   * external 态强制结束（机主裁决"即使判 external 也要允许强制结束"）：
    * danger 确认如实预告"非 Hanxi 拉起、不保存其未落盘设置、成败由系统权限决定"；
    * RPC 走 msixExclusive（dangerBusy 在途闩）——被系统拒绝时后端错误原样上抛，
-   * 由视图裸串 toast，不粉饰成成功回执。bindings 待再生前本调用即抛（同路如实报错）。
+   * 由视图裸串 toast，不粉饰成成功回执。
    */
   async function forceQuitExternal(): Promise<ManagedActionResult> {
     const accepted = await confirm({
@@ -509,7 +508,7 @@ export function createTBAdapter(): TBAdapter {
 
     // 契约 reset 槽：清态/复位类动词（任务栏外观异常时重放配置，等价上游托盘
     // 菜单 Reset dynamic state）。成功回执透出后端 message；失败为裸错误串——
-    // 与原视图 resetState 词表逐字一致，由视图走槽钮的执行器承载 busy 闩。
+    // 失败裸串由视图槽钮执行器承载 busy 闩。
     reset: {
       async run() {
         const out = await TBAPI.ResetState()
@@ -523,8 +522,8 @@ export function createTBAdapter(): TBAdapter {
     dangerBusy: msixBusy,
     forceQuitExternal,
 
-    // 条件提示条（三个变体互斥；文案逐字保留）。external 档内再分形态
-    // （2026-09-27 机主实拍改判）：打包版在册时检到的 external 极可能就是
+    // 条件提示条（三个变体互斥）。external 档内再分形态
+    // （机主实拍改判）：打包版在册时检到的 external 极可能就是
     // 本页刚唤起的打包实例——"外部/非托管"话术是便携实例语义，照抄会误导
     // 用户去找不存在的"退出托管"义务；合成判据只用已有事实（msix 预读的
     // installed × 引擎快照 state），服务端零改动；预读未回/失败回原话术

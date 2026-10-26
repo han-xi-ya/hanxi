@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// WSL 子系统视图编排层（原 2209 行巨型孤本，Phase 6 式按五页签拆分后的骨架）。
-// 界面标记与 scoped 样式已随 DOM 逐字迁出至 components/wsl/*：
+// WSL 子系统视图编排层（巨型孤本按页签拆分后的骨架，一页一面板）。
+// 界面标记与 scoped 样式在 components/wsl/*：
 //   WslReadinessPanel（🐧 就绪体检：流式骨架逐项点亮 + .wslconfig 编辑器 + 停止全部）
 //   WslDistroTable（💻 本机发行版控制台：行内操作/「⋯ 更多」/迁移/导出/克隆/瘦身/wsl.conf/详情/导出记录）
 //   WslAddInstancePanel（➕ 添加实例：商店/rootfs/VHDX 三源统一入口）
@@ -12,7 +12,7 @@
 // busy 分级在飞登记（activeOps → 常驻进度横幅 + 页签 label「·运行中」互锁）、
 // 白名单提权操作 runOp 链、发行版列表复采通道、安装基目录后端持久化、
 // 页签懒加载 watch（经子组件 defineExpose 回拨）与克隆/瘦身为跨页签可见的进度态（v-model 上抛）。
-// 行为逐字不变：bindings 调用、事件订阅、confirm/toast 调用序列一律未动。
+// bindings 调用、事件订阅、confirm/toast 调用序列是特征测试锁定的契约，改动须对账 WSLView.spec.ts。
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as WSLAPI from '../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { CheckItem, Report } from '../../bindings/hanxi/internal/modules/wsl/readiness/models'
@@ -35,8 +35,8 @@ const { showToast } = useToast()
 const { confirm } = useConfirm()
 
 const activeMainTab = ref<'console' | 'distros' | 'add' | 'versions' | 'proxy' | 'usb'>('console')
-// 页签 6→5：原「📦 官方发行版」整页与「添加实例·商店源」是同清单双入口，已并入商店源面板。
-// F9 起为六页：追加「🔌 USB 直通」（usbipd-win 集成）。
+// 六页签：原「📦 官方发行版」与「添加实例·商店源」系同清单双入口已并入后者；
+// 「🔌 USB 直通」为 F9（usbipd-win 集成）追加。
 // mainTabs 为 computed：distros 页签在克隆/瘦身重任务在飞时 label 追加「·运行中」——跨页签进度可见。
 const mainTabs = computed<Array<{ key: string; label: string }>>(() => {
   const heavy = cloneBusy.value || (!!compProg.value && !compTerm.value)
@@ -310,8 +310,7 @@ const installDir = ref('')
 // 只有真正的用户改动经防抖才 SetDistroInstallDir。
 let installDirSynced: string | null = null
 let installDirTimer: ReturnType<typeof setTimeout> | null = null
-// 落位偏好 RPC 已正式接线（波 1d 验证，bindings 6dd61ed 大再生时生成）：直调 WSLAPI，
-// 早期 (WSLAPI as any)?.() 的"绑定未生成"过渡兜底已随生成落地拆除。
+// 落位偏好 RPC 直调 WSLAPI（绑定已生成，早期"绑定未生成"的 as any 过渡兜底已拆）。
 async function loadInstallDir() {
   let next = DEFAULT_INSTALL_DIR
   try {
@@ -347,13 +346,13 @@ watch(activeMainTab, (tab) => {
   if (tab === 'proxy') proxyPanelRef.value?.ensureLoaded()
 })
 
-// 「🌑 停止全部」收尾复采端口转发现态（就绪页 doShutdown 经 props 回拨，序列同拆分前）。
+// 「🌑 停止全部」收尾复采端口转发现态（就绪页 doShutdown 经 props 回拨宿主）。
 const reloadProxy = async () => { await proxyPanelRef.value?.loadProxy() }
 
 onMounted(() => {
   startCheck()
   loadInstances() // 与体检并行的独立通道：未装 WSL 时后端返回空列表，不报错
-  loadInstallDir() // 安装基目录持久化以后端为准（W1，替代旧 localStorage）
+  loadInstallDir() // 安装基目录持久化以后端为准（localStorage 旧法已废，缘由见上）
 })
 
 onBeforeUnmount(() => {
@@ -445,7 +444,7 @@ onBeforeUnmount(() => {
 .tab-body { display: flex; flex-direction: column; gap: 10px; }
 /* 常驻进度条高度锚定：换文案不抖页 */
 .busy-banner { min-height: 34px; }
-/* .slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
+/* .slim 不挂 scoped 等值副本：UiBanner 根元素继承挂 .banner + .slim，由全局 :where(.banner.slim) 承担 */
 /* 窄屏档（机主 2026-09-26"一屏容不下两屏高"）：页签体内卡片间隙 10→6，
    与 WslDistroTable/WslReadinessPanel 各自的纵向收紧同向叠加；宽屏零回退。 */
 @media (max-width: 640px) {

@@ -1,7 +1,8 @@
 // ============================================================================
 // 剪贴板内置模块 · transport 真桥（wiring-checklist §6.4 / 契约 §7 收口件）
 //
-// 唯一职责：把 bindings 生成的 ClipboardService 十法逐字映射进 kernel 门面
+// 唯一职责：把 bindings 生成的 ClipboardService 二十法（数据面方法，不含
+// SetWailsApp 平台注入函数）逐字映射进 kernel 门面
 // （adapters/clipboard.ts 的 setClipboardTransport），视图层零改动即从
 // "未接线可读错误"切到真后端。main.ts 副作用注入（createApp 前），工作台
 // 主窗与 #clipboardoverlay 浮层窗共用同一份 transport。

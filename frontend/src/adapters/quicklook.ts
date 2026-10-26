@@ -1,16 +1,14 @@
 // ============================================================================
-// QuickLook → 托管控制台 adapter（Wave 5 · 批 0 共享契约迁入件）
+// QuickLook → 托管控制台 adapter
 //
-// 逐字迁移自 QuickLookView 原编排段（启停/重载/版本/联动/仓库全部 RPC 与文案零变化）。
 // 事件面：`quicklook:instance-state` / `quicklook:version-download`（进度键=version，
 // 单键最简形态）；动词面：StartQuickLook→control.primary、Quit→control.quit。
 // 模块特例：本模块无「打开窗口」语义（样式设置走托盘菜单），主钮是「启动托管」，
 // 另有第三个钮「↻ 重载配置」（Reload 命名管道动词）——契约的 control 只有
-// primary/quit 两个声明位，reload 走扩展槽 adapter.reset（批 0 预留形状），
+// primary/quit 两个声明位，reload 走扩展槽 adapter.reset，
 // 视图把钮体经 ManagedControlBar 的 #primary-action 槽自绘并接线（三钮序不变）。
-// 波 2E：版本区全量回迁 ManagedVersionPanel——zip 解压词形（「官方 zip」「安装中」
-// 「哈希校验…/解压安装…」等）逐字声明于本件 copy 词表（下表即原方言表词源），
-// 视图侧手抄表与「超出通用形」旧注记一并退役。
+// zip 解压词形（「官方 zip」「安装中」「哈希校验…/解压安装…」等）
+// 全部声明于本件 copy 词表（面板缺省即标准词，只落差异）。
 // ============================================================================
 
 import * as QuickLookAPI from '../../bindings/hanxi/internal/modules/quicklook/quicklookservice'
@@ -46,7 +44,7 @@ export function createQuickLookAdapter(): ManagedModuleAdapter {
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载 QuickLook ${v.version}？`,
           description: '该版本托管目录将被删除，不可恢复。\n（便携目录内的设置一并删除，不影响其它版本）',
@@ -58,7 +56,7 @@ export function createQuickLookAdapter(): ManagedModuleAdapter {
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '请输入本机 QuickLook 便携目录完整路径（含 QuickLook.exe 与 portable.lock，如手动解压的 QuickLook-4.5.0 文件夹）',
           description: '提示：整个目录会被收纳进托管，配置随便携标记存于目录内',
@@ -97,7 +95,7 @@ export function createQuickLookAdapter(): ManagedModuleAdapter {
     },
 
     // 扩展槽 reset：运行中实例的配置重载动词（best-effort 命名管道，成功不改快照）。
-    // 共享件批 0 不接线；视图自绘「↻ 重载配置」钮消费本槽（busy 闩共用 store）。
+    // 视图自绘「↻ 重载配置」钮消费本槽（busy 闩共用 store，两分支均不刷快照）。
     reset: {
       async run(): Promise<ManagedActionResult> {
         const msg = await QuickLookAPI.Reload()
@@ -105,7 +103,7 @@ export function createQuickLookAdapter(): ManagedModuleAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 QuickLook 实例（非 Hanxi 托管）。空格预览正在生效；退出与样式设置都在其托盘图标菜单中完成。' }
@@ -129,8 +127,8 @@ export function createQuickLookAdapter(): ManagedModuleAdapter {
       return null
     },
 
-    // 波 2E：版本区回迁面板——原方言表全部词面逐字入本表（缺省值即标准词，
-    // 只落差异：导入钮/首用引导与一键下载词/官方徽标词/进行词/阶段词族…）
+    // 方言词面全入本表（面板缺省即标准词，只落差异：导入钮/首用引导与
+    // 一键下载词/官方徽标词/进行词/阶段词族…）
     copy: {
       importLabel: '⇥ 导入本地便携目录',
       metaHints: [
@@ -142,7 +140,7 @@ export function createQuickLookAdapter(): ManagedModuleAdapter {
       remoteUnavailable: '无法加载远程版本列表（GitHub API 不可达）——可稍后点击「↻ 刷新远程列表」重试',
       downloadingWord: '安装中',
       // zip 解压链阶段词：verify=sha256 哈希校验、extract=保布局解压；其余进行态
-      // 回空串走面板 message 透出（与原方言表兜底分支逐字同形）
+      // 回空串走面板 message 透出
       stageWord: (stage) => (stage === 'verify' ? '哈希校验…' : stage === 'extract' ? '解压安装…' : ''),
       officialBadge: '官方 zip',
       uninstallRunningHint: '请先退出 QuickLook',

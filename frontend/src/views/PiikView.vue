@@ -1,15 +1,15 @@
 <script setup lang="ts">
-// Piik 控制台：ManagedConsoleShell 标准壳装配（服务型骨架首个消费件，PLAN_PIIK
+// Piik 控制台：ManagedConsoleShell 标准壳装配（服务型骨架，PLAN_PIIK
 // _HOSTING ②/⑥ 裁决对位）——业务 RPC/事件/文案投影全部收在 src/adapters/piik，
 // 本页仅剩三件事：装配、#primary-action 第三钮「打开界面」（后端 OpenWindow
-// 负裁决——绝不冷启动，钮位形制照 ddnsgo openConsole 先例）、专属「邀请面板」
+// 负裁决——绝不冷启动，钮位形制照 ddnsgo openConsole）、专属「邀请面板」
 // 区块（读 GetStatus 组合快照投影：本机界面地址 + LAN/公网邀请链接 + 访问口令
 // 徽标）。
 //
-// 安全红线（models.go gateViewFromSnapshot 结构性纪律）：LocalAccess 访问口令
-// 只呈现「已设访问口令」布尔徽标，**永不渲染口令值**——本视图只读 PiikStatus
-// 声明的投影字段，即便后端快照意外回带口令原文也无任何渲染路径触达它
-// （spec 有 not.toContain 反证锁）。
+// 安全红线（models.go PiikStatus 内嵌快照联编纪律：口令只以 PasswordSet 布尔
+// 出场，快照不得携带秘密值）：访问口令只呈现「已设访问口令」布尔徽标，
+// **永不渲染口令值**——本视图只读 PiikStatus 声明的投影字段，即便后端快照
+// 意外回带口令原文也无任何渲染路径触达它（spec 有 not.toContain 反证锁）。
 import type { PiikStatus } from '../adapters/piik'
 import { createPiikAdapter } from '../adapters/piik'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
@@ -43,12 +43,12 @@ const EMPTY_STATUS: PiikStatus = {
   driftNote: '',
 }
 
-// 「打开界面」单飞走共享 store.runSlotVerb（P0 批 3·4.5 口径 + 波 2A 编排位，
+// 「打开界面」单飞走共享 store.runSlotVerb（P0 批 3·4.5 口径，
 // ddnsgo openConsole 同形制）：runExclusive→settle→toast 整链单源——在途时
 // 启停/退出钮一并闩住，杜绝多份 busy 真相；失败裸错误串（errorPrefix:''）、
-// 成败均不刷快照（refreshAfter:'never'，状态回写由 instance-state 事件与轮询兜底），
-// 与原视图手抄链逐字同形制（原 openUI 回执恒为 {message}、无 reloadVersions/
-// activeVersion，成功仅弹 message，失败弹裸错误串，本收编行为零差）。
+// 成败均不刷快照（refreshAfter:'never'，状态回写由 instance-state 事件与轮询
+// 兜底）。openUI 回执恒为 {message}、无 reloadVersions/activeVersion——
+// 成功仅弹 message、失败弹裸错误串，行为与收编前零差。
 function openUI(store: ManagedConsoleStore) {
   void store.runSlotVerb(adapter.openUI, { errorPrefix: '', refreshAfter: 'never' })
 }

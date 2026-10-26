@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 模块中心顶部操作条（Wave 4）：恢复条（resumable）与在途条（active）两用。
+// 模块中心顶部操作条：恢复条（resumable）与在途条（active）两用。
 // 消费纪律：只读 useOperations 投影，文案全取 constants/status 词表，零本地状态推断；
 // 观察面刷新失败时保留旧投影并如实标注（stale），不清空、不假装新鲜。
 // 「忽略残留」会把该事务以 failed 收口进账本（审计单收口、不可翻案）且清理托管现场，
@@ -34,7 +34,7 @@ const { showToast, showErrorToast } = useToast()
 /** 正在发起忽略的事务 ID：RPC 在途期间禁用该行按钮（维稳定、防重复翻案）。 */
 const dismissing = ref<Record<string, boolean>>({})
 
-/** N26 取消信号在途的事务 ID：按钮防连点（取消是信号不是结果——worker
+/** 取消信号在途的事务 ID：按钮防连点（取消是信号不是结果——worker
  *  收口后经 operation:changed 广播回流，本组件只负责把信号发出去）。 */
 const cancelling = ref<Record<string, boolean>>({})
 

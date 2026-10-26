@@ -1,35 +1,33 @@
 <script setup lang="ts">
-// TranslucentTB 控制台（Wave 5 · 批 1 收敛件，模式照抄 CCSwitchView；波 2D 迁壳件）：
+// TranslucentTB 控制台（托管控制台标准形 + MSIX 双形态扩展）：
 // 共享面全部进托管控制台家族——adapter（src/adapters/translucenttb）承载业务投影
 // （RPC/事件/文案/确认输入），useManagedConsole 单源状态轮询/uptime/进度 map/busy 闩，
 // ManagedControlBar 管状态头与启停钮，ManagedExtrasCard 管随关与仓库联动卡，
-// 版本 Tab 与共享 ManagedVersionPanel 逐字同形、全量接管（本模块为四件中最完整
-// 的共享面板消费样本，原方言表格徽标样式随之下线）。
-// 波 2D 迁壳：页头+页签+error-box+tab-body 手抄壳骨退役——打包线动作与崩溃鉴别
-// 都要 setup 期 store 句柄，走「视图自建 useManagedConsole → 传壳 :store」注入通道；
-// 远程行 #release-actions 槽走壳的转发位直落共享面板（波 2G 前经 #versions-body
-// 整替位照抄重挂，该抄骨形制自此退役）。
+// 版本 Tab 全量走共享 ManagedVersionPanel（标准形，视图零方言表）。
+// 壳接线：打包线动作与崩溃鉴别都要 setup 期 store 句柄，走「视图自建
+// useManagedConsole → 传壳 :store」注入通道；远程行动作经壳的 #release-actions
+// 转发位直落共享面板。
 // 方言位（见 adapter 头注记）：「🪄 重设任务栏状态」动词走契约 reset 槽、钮体经
-// #primary-action 位留在控制条钮区（原 DOM 位逐字等价；其成败两分支均不刷快照的
-// 现状语义即 store.runReset 缺省档 refreshSnapshot=false，视图本地接线器退役）；
-// 「🗂 安装目录」按 running > active > 任一已装解析目标，点击走
-// store.runOpenDir；「🌫️ 启动」为声明式 control.primary（含无已装版本的禁用与
-// title 分支，adapter 以 hasInstalled ref 表达）。
-// 双形态 Wave（打包版/MSIX）：控制台 Tab 挂「打包版（系统管理）」区块（状态行 +
+// #primary-action 位留在控制条钮区（其成败两分支均不刷快照的现状语义即
+// store.runReset 缺省档 refreshSnapshot=false）；「🗂 安装目录」按
+// running > active > 任一已装解析目标，点击走 store.runOpenDir；「🌫️ 启动」
+// 为声明式 control.primary（含无已装版本的禁用与 title 分支，adapter 以
+// hasInstalled ref 表达）。
+// 双形态（打包版/MSIX）：控制台 Tab 挂「打包版（系统管理）」区块（状态行 +
 // 安装包缓存列表，adapter.msix 单源，GetMsixState 失败整块降级单行）；版本 Tab
 // 远程行经共享面板 #release-actions 槽挂「可装打包版」chip 与「装打包版」次级
 // 钮（词表走 releaseFormWord 共享件，无 assets 数据静默缺席）；崩溃鉴别直钮双
 // 语义取位（pickAVProbe）：打包对照优先、便携降级回退，二者永不并排。
-// 2026-09-27 机主实证三件套：msix-progress 事件驱动的进度行（busy 期显形）、
-// 打包安装失败孤儿档横幅+「🧹 清理后重试」钮（双闸判据在 adapter）、external
-// banner 打包版在册时分形态话术（adapter.banner 内合成）。
-// 2026-09-27 批次二（托管控制台缺陷收口，见 adapter 头注记）：
+// 机主实证三件套：msix-progress 事件驱动的进度行（busy 期显形）、打包安装
+// 失败孤儿档横幅+「🧹 清理后重试」钮（双闸判据在 adapter）、external banner
+// 打包版在册时分形态话术（adapter.banner 内合成）。
+// 缺陷收口件（P1/P0 编号为审查锚点，详见 adapter 头注记）：
 //  - 「⛔ 强制结束」钮（external 态条件出现，机主裁决件）；
 //  - P1-10 三态闸：预读"未知"（在途未归）灰化安装引导钮——行「装打包版」disabled
 //    + 指路 title，对照区出 disabled 占位防"降级钮先闪现、对照钮后顶替"抖动；
 //    已装/读失败两态逐字走既有回退链（2026-09-26 冻结契约零变化）；
-//  - P1-5：打包钮的在途禁用改读共享 store.busy（adapter.dangerBusy 已把 msix.busy
-//    并入契约⑦），不再各钮手抄 `store.busy || msixBusy` 双读；msixBusy 只留
+//  - P1-5：打包钮的在途禁用读共享 store.busy（adapter.dangerBusy 已把 msix.busy
+//    并入 busy 契约），各钮不手抄 `store.busy || msixBusy` 双读；msixBusy 只留
 //    进度行显隐一用；
 //  - P0-3：KeepAlive 回访 onActivated 重取 MSIX 状态与发布表（首挂载连发档跳过）。
 import { computed, onActivated, onMounted } from 'vue'
@@ -154,7 +152,7 @@ async function runAVProbe(): Promise<void> {
          （钮序：启动 → 重设 → 安装目录 → [AV 对照/降级/占位直钮] → [external 态
          ⛔ 强制结束] → 退出；前三位与现状逐字同位，后二位条件出现）；重设钮走
          store.runReset() 正主编排（缺省档=成败两分支均不刷快照、失败裸错误串，
-         与本视图原手抄接线器逐字同形制） -->
+         与本视图现形制逐字一致） -->
     <template #primary-action>
       <button
         class="btn btn-secondary btn-small"
@@ -191,7 +189,7 @@ async function runAVProbe(): Promise<void> {
         :title="`降级鉴别：安装比当前崩溃版本更旧的最近稳定版 ${avProbe.version}，完成后到「版本管理」设为使用，再点启动观察`"
         @click="runAVProbe"
       >⬇ 装 {{ avProbe.version }} 试</button>
-      <!-- external 态强制结束（机主裁决 2026-09-27"即使判 external 也要允许强制
+      <!-- external 态强制结束（机主裁决："即使判 external 也要允许强制
            结束"）：danger 确认在 adapter 内，被系统拒绝时错误裸串上抛 toast 不粉饰；
            打包实例经 P1-8 归属收编显示 running，不会走到本钮 -->
       <button
@@ -211,7 +209,7 @@ async function runAVProbe(): Promise<void> {
         <span class="tb-msix-title">📦 打包版（系统管理）</span>
         <button class="btn btn-ghost btn-small" :disabled="store.busy" title="重读 Windows 包状态" @click="msix.refresh()">↻ 刷新</button>
       </div>
-      <!-- 打包安装进度行（2026-09-27 机主撞账补线）：busy 期间随事件滚动，
+      <!-- 打包安装进度行（机主实证补线）：busy 期间随事件滚动，
            downloading 显百分比，preparing/verify-sha256/deploying 显后端文案+
            不确定动画；动词落定（成败皆然）即收 -->
       <div v-if="msixBusy && msixProgress" class="tb-msix-progress" aria-live="polite">
@@ -269,10 +267,9 @@ async function runAVProbe(): Promise<void> {
     </details>
 
     <!-- 远程行动作位经壳转发的 #release-actions 直落共享面板（本模块无 channel
-         块，壳默认版本体即纯 ManagedVersionPanel，波 2G 前须整替位照抄重挂，
-         自此退役）：按 N13 资产矩阵标注打包形态可用性（词表走共享件，无
-         form/assets 数据静默缺席 = 既有行零变化）；「装打包版」钮受 P1-10
-         三态闸：预读未知（在途/不可读）灰化并给指路 title -->
+         块，壳默认版本体即纯 ManagedVersionPanel）：按 N13 资产矩阵标注打包
+         形态可用性（词表走共享件，无 form/assets 数据静默缺席 = 既有行零变化）；
+         「装打包版」钮受 P1-10 三态闸：预读未知（在途/不可读）灰化并给指路 title -->
     <template #release-actions="{ release }">
       <template v-if="hasMsixBundleAsset(release)">
         <span
@@ -294,9 +291,8 @@ async function runAVProbe(): Promise<void> {
 
 <style scoped>
 /* 页头/状态头/提示条/版本区/联动卡与 flex 骨架由托管控制台壳 + managed 组件 +
-   components.css 全局原子接管（波 2D 迁壳后手抄壳骨与 .ttb-view/.tab-body flex
-   副本退役；原 .tb-status-light/.tb-ver-status/.badge-* 复制体已由 .status-light
-   标准形与 ManagedVersionPanel 的 scoped 徽标替代）；
+   components.css 全局原子接管（状态灯走 .status-light 标准形、徽标走
+   ManagedVersionPanel scoped 家族）；
    本页仅余打包版区块（tb- 前缀）私有形——面板壳走全局 .extras-card，
    此处只补行排布与截断。 */
 .tb-msix { gap: 8px; }

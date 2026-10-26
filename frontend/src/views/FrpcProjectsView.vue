@@ -30,7 +30,7 @@ const projects = shallowRef<Project[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
 
-// 编辑器状态：null = 关闭；{project: null} = 新建；{project} = 编辑
+// 编辑器状态：editorOpen 开关；打开时 editingProject null=新建、非 null=编辑
 const editorOpen = ref(false)
 const editingProject = ref<Project | null>(null)
 const installedVersions = shallowRef<string[]>([])
@@ -221,7 +221,7 @@ function exportProjectShareLink(p: Project) {
   const jsonStr = JSON.stringify(sharePayload)
   const b64 = btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode(parseInt(p1, 16))))
   const link = `frp://${b64}`
-  // 剪贴板收编 useClipboard（两级回退）；分享链接编码逻辑不变
+  // 剪贴板走 useClipboard 单源（两级回退）
   void copyWithToast(link, `已复制「${p.name}」分享链接 (frp://...)`)
 }
 
@@ -428,9 +428,8 @@ function scheduleLogFlush() {
   })
 }
 
-// 签名收 projectId 字符串（波 1d 过渡桥拆除）：抽屉「刷新」钮此前为凑类型
-// 现场 `projects.find(...) as any` 反查 Project 再取回 id，属纯二跳浪费——
-// openLogs 实际只消费 id 一个字段。
+// 签名只收 projectId 字符串：openLogs 实际只消费 id 一个字段，
+// 无需为凑类型现场反查 Project 对象再取回 id（纯二跳）。
 /**
  * 日志拉取请求代次（对齐 store.load 的 loadGeneration 口径）：快速切换项目/
  * 连点「刷新」会并发多个 GetProjectLogs，后发请求拥有唯一写权——旧请求迟到
@@ -800,7 +799,7 @@ onMounted(async () => {
 
 .proj-actions { display: flex; gap: 6px; border-top: 1px solid var(--color-border); padding-top: 12px; flex-wrap: wrap; }
 
-/* 导入 Modal 弹窗（富内容手搓件，二次收编 UiModal 在跟进清单；颜色已 token 化） */
+/* 导入 Modal 弹窗（富内容手搓件，UiModal 收编属 §9.7-下轮候选；颜色已 token 化） */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 100;
   background: var(--overlay-mask);
@@ -829,7 +828,7 @@ onMounted(async () => {
 }
 .tab-btn.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
 
-/* .textarea 副本随导入框换装 UiClipboardField 退役（粘贴/复制样式由组件自带 token 化） */
+/* textarea 样式由 UiClipboardField 自带 token 化，本文件无 .textarea 副本 */
 .form-item { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 
 /* "停止"钮的 scoped 色形副本（.btn-stop）删净改挂全局 .btn-danger-outline 标准形：

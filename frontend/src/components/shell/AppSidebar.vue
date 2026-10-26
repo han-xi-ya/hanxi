@@ -227,13 +227,13 @@ function onSelectGroup(group: NavGroup) {
   }
 }
 
-// 行内图标三轨（N27 批 B）：`i:` 走 AppIcon 矢量、`app:` 走真图标、
+// 行内图标三轨：`i:` 走 AppIcon 矢量、`app:` 走真图标、
 // 其余文本回退（解析单点在 constants/appIcons，各消费面共用）。
 function iconSvg(icon: string | undefined): RenderableIcon | null {
   return appIconName(icon) ?? null
 }
 
-// 文本轨三分（审查 shell#1）：appIconName 把"未登记 i:"与"裸 emoji"双双折叠
+// 文本轨三分：appIconName 把"未登记 i:"与"裸 emoji"双双折叠
 // 为 undefined，旧模板直出 {{ n.icon }} 会把 "i:xxx" 字面量写上屏。改走
 // resolveIcon 四分：text→裸文本、blank（未登记 i:/空）→静默占位不上字面量。
 function iconText(icon: string | undefined): string {
@@ -594,10 +594,9 @@ function iconText(icon: string | undefined): string {
   text-overflow: ellipsis;
 }
 
-/* 行内运行绿点（状态嗅探接线前一般不出现）。
-   N37②：原 `0 0 0 2.5px --surface-selected` 光环环系常态彩色 halo 同族（借
-   surface token 兼职 halo 色，躲过 glow 关键词清查），按纪律废除——与
-   .status-dot.online 同款收敛为实底 + inset 1px 提亮描边，两枚绿点口径归一。 */
+/* 行内运行绿点（状态嗅探接线前一般不出现）：稳态彩色 halo 已废——原光环借
+   --surface-selected 兼职 halo 色，同样属发光；形制 = 实底 + inset 1px 提亮描边，
+   与 .status-dot.online 口径归一（禁再借 surface token 造 halo）。 */
 .mod-run {
   margin-left: auto;
   flex: none;

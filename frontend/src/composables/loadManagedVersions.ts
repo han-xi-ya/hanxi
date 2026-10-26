@@ -14,7 +14,7 @@ type ManagedVersionSources<Remote, Local> = {
 /**
  * 起调数据源并把**同步抛出**（如非 Wails 环境绑定缺席）归一为 Promise 拒绝：
  * 裸调用在求值位抛出会穿透本函数，loading 永挂 true、两侧错误都不落账。
- * 非抛出路径经 Promise.resolve 原样透传，链上 hop 数与旧实现逐字相同。
+ * 非抛出路径经 Promise.resolve 原样透传。
  */
 function attempt<T>(run: () => PromiseLike<T> | T): Promise<T> {
   try {

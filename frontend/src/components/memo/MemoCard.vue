@@ -1,29 +1,28 @@
 <script setup lang="ts">
-// MemoCard：一条便签的行/卡双形态呈现件（随手记重设计 · 组件库四路之四）。
+// MemoCard：一条便签的行/卡双形态呈现件（纯呈现、零后端依赖）。
 //
-// 形态契约：variant='grid' 是现在的卡片形态（多行摘要块），variant='list' 是
+// 形态契约：variant='grid' 是卡片形态（多行摘要块），variant='list' 是
 // 单行摊列形态（行高紧凑、摘要只吃首非空行、超长交给 CSS ellipsis）——两形态
 // 共用同一 DOM 结构（head/preview/foot/tools 四区），差异全在 CSS grid 模板
 // 区域重排，呈现逻辑零分叉。
 //
 // 敏感遮罩纪律【硬编码进组件，消费方无从旁路】：masked 态下
 //   ① title/text 两个明文面一律不渲染（title 换成固定文案「敏感便签」、正文
-//      换成圆点占位）——比 M2 之前的视图（masked 仍显示标题）更严。接线收口
-//      裁决（2026-09-26）：此从严口径定稿为全链统一——主视图行/页面板 masked
-//      分支改吃本口径（标题也不渲染），与 MCP 线「masked 整条不下发」同谱；
+//      换成圆点占位）。收口裁决：此从严口径全链统一——主视图行/页面板 masked
+//      分支同吃本口径（标题也不渲染），与 MCP 线「masked 整条不下发」同谱；
 //   ② HTML title 属性也是泄漏面：masked 态不给任何元素挂含明文的 title 提示
 //      （hover 弹提示同样是"渲染"）；
 //   ③ MD 徽标随之熄灭——暴露"正文含 Markdown 结构"本身就是结构泄漏。
 // 撤遮罩出口（toggleMask 钮）刻意常驻：遮罩纪律是"不给人看"，不是"不给解"，
-// 现 UI 的揭示功能（卡片 👁️ 与详情浮层「揭示明文」）实证在位，emit 保留。
+// 宿主行的 👁️ 钮与页面板「揭示明文」钮实证在位，emit 保留。
 //
 // 交互契约：标题区是键盘可达的 select 入口（role=button + Enter/Space），
-// 摘要块同挂 click→select（鼠标侧与现视图"点内容开详情"一致）；标签丸可点
-// 发 tagSelect（复刻现卡"点标签即过滤"，丸体键盘 Enter/Space 同发）。
+// 摘要块同挂 click→select（鼠标侧与主视图"点行翻页"一致）；标签丸可点
+// 发 tagSelect（"点标签即过滤"，丸体键盘 Enter/Space 同发）。
 // 编辑/复制/删除不进组件 emits——那些是视图侧动作（含确认框与剪贴板策略），
 // 经 #actions 插槽注入本件右上角操作区，危险逻辑留视图。
 //
-// 色板治理注记（沿用现视图裁决）：左封边色来自 colorTag 用户数据
+// 色板治理注记（沿用主视图裁决）：左封边色来自 colorTag 用户数据
 // （memoColorHex 单源五色），非主题表面，不算 scoped 层新色值；除此之外
 // 全部吃 token 与全局原子类（mono / chip / tag-pill 家族）。
 import { computed } from 'vue'
@@ -39,7 +38,7 @@ const props = withDefaults(
     text: string
     /** 标签数组（MemoItem.tags 可为 null，此处一并容忍） */
     tags?: string[] | null
-    /** 色彩标识（blue/emerald/amber/rose/purple；未知值回落 blue，与现视图同口径） */
+    /** 色彩标识（blue/emerald/amber/rose/purple；未知值回落 blue，与主视图同口径） */
     color?: string
     pinned: boolean
     masked: boolean
@@ -48,8 +47,8 @@ const props = withDefaults(
     /** 形态：grid=卡片（多行摘要）/ list=单行摊列 */
     variant: 'list' | 'grid'
     /**
-     * MD 徽标开关（默认亮，维持 M4 契约）：M2 v2 主视图已裁决「徽标退役防回潮」
-     * ——能否渲染由页面板自动分流，不再向每一行剧透，行式索引接线方传 false。
+     * MD 徽标开关（默认亮，grid 卡形态用）：主视图已裁决「徽标退役防回潮」
+     * ——能否渲染由页面板自动分流，不再向每一行剧透，行式索引宿主传 false。
      */
     mdFlag?: boolean
   }>(),
@@ -66,7 +65,7 @@ const emit = defineEmits<{
 }>()
 
 // 遮罩态固定文案：不含任何条目明文，圆点位数单源 constants/masking
-// （与剪贴板详情浮层遮罩档一致，同值双写于 2026-10-26 审查收编）
+// （与剪贴板线遮罩档同源，曾同值双写、已收编单源）
 const MASK_TITLE = '敏感便签'
 
 const isList = computed(() => props.variant === 'list')

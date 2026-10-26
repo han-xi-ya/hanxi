@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Termora 控制台（W4 托管批 · N9，共享契约形态照抄 WindTermView 姊妹件）：
+// Termora 控制台（N9，与 WindTermView 同形的托管控制台标准件）：
 // 业务投影全部收进 src/adapters/termora（RPC/事件/文案/confirm-force 往返），
 // ManagedConsoleShell 管页头页签骨架，ManagedControlBar 管状态头与启停钮区，
 // ManagedVersionPanel 管版本区（标准远程表：版本/状态/大小/发布时间）。

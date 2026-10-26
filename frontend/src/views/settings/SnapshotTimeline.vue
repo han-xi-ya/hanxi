@@ -1,13 +1,13 @@
 <script setup lang="ts">
-// 历史版本·右栏文件时间线（N33 批 B 自 SnapshotSection 拆出 + §4 行级 diff 上体）：
+// 历史版本·右栏文件时间线（SnapshotSection 的两栏子件之一，行级 diff 上体于时间线）：
 // 每行一个"该文件有变化的版本"，行上直挂 对比/恢复（D 行=恢复被删内容）；
 // 展开对比为 GitHub 式统一单栏（textdiff LCS 行级，删红加绿全 token），
 // 连续未变段折叠为「… 省略 K 行 · 展开」（纯呈现层，不吞增删行），
 // 超 2000 行只渲染前段 + 展开完整对比；截断态如实标注"仅对比现有部分"。
 // 数据与恢复动作全在父级（SnapshotSection 编排），本件只管呈现与抛事件。
-// 批 C：行上常驻恢复生效徽标（memo=即时 / config·state=重启，与清单行同源判组）；
+// 行上常驻恢复生效徽标（memo=即时 / config·state=重启，与清单行同源判组）；
 // 头部给"共 M 条版本事件（跨改名沿用）"沿链口径整句（与清单窗内口径不硬统一）；
-// 批 D：事件行旧式文件名串摘要按现有账回改显示（父级喂受保清单与模式标志），
+// 事件行旧式文件名串摘要按现有账回改显示（父级喂受保清单与模式标志），
 // 账本原文常驻 tooltip，推不出一律原样，不伪造变化语义。
 // ≤640px 事件行折行、说明行整行——动作钮与徽标同带，恢复入口一步可达。
 import { computed, ref, watch } from 'vue'
@@ -26,7 +26,7 @@ const props = withDefaults(defineProps<{
   diffOpen: string
   diffData: FileDiff | null
   diffLoading: boolean
-  /** 受保清单（批 D 旧摘要回改的 memo 标题账来源；缺省空表=只走静态名表） */
+  /** 受保清单（旧摘要回改的 memo 标题账来源；缺省空表=只走静态名表） */
   files?: TrackedFile[]
   /** 备份模式：摘要"N 个文件"补整拷贝限定语而非按文件名串回改 */
   backupMode?: boolean
@@ -35,7 +35,7 @@ const props = withDefaults(defineProps<{
   backupMode: false,
 })
 
-/** 事件行摘要呈现（批 D 旧摘要回改）：能按现有账推则推，推不出原样；tooltip 留原文。 */
+/** 事件行摘要呈现（旧摘要回改）：能按现有账推则推，推不出原样；tooltip 留原文。 */
 function rowSummary(raw: string): string {
   return props.backupMode ? backupSummaryNote(raw) : decorateLegacySummary(raw, props.files)
 }
@@ -84,7 +84,7 @@ const sideNote = computed(() => {
   if (!d.old) return '该版本新增了此文件'
   return ''
 })
-/** config.json 的顶层键变化标注（§5 v1 粒度：键名+计数，嵌套不逐项）。 */
+/** config.json 的顶层键变化标注（v1 粒度：键名+计数，嵌套不逐项）。 */
 const configNote = computed(() => {
   const d = props.diffData
   if (!d || d.path !== 'config.json') return ''
@@ -114,7 +114,7 @@ function expandFold(idx: number) {
           <span class="mono fa-time">{{ fmtTime(row.time) }}</span>
           <span class="fa-sum" :title="row.summary">{{ rowSummary(row.summary) }}</span>
           <span class="row-actions">
-            <!-- 生效语义常驻在恢复钮旁（批 C）：点了才在确认框里读到，晚了 -->
+            <!-- 生效语义常驻在恢复钮旁：点了才在确认框里读到，晚了 -->
             <span v-if="scopeBadge" class="chip fa-scope" :class="scopeBadge.chip">{{ scopeBadge.text }}</span>
             <button class="btn btn-ghost btn-small" @click="emit('toggleDiff', row)">{{ diffOpen === row.revisionId ? '收起对比' : '对比' }}</button>
             <button class="btn btn-secondary btn-small" @click="emit('restore', row)">{{ row.status === 'D' ? '恢复被删内容' : '恢复' }}</button>
@@ -155,7 +155,7 @@ function expandFold(idx: number) {
 </template>
 
 <style scoped>
-/* 皮与 SnapshotSection 批 A 语系逐字同构（拆分不动相）；diff 单栏为 §4 新增 */
+/* 时间线行与 diff 单栏（唯一形态）皮随本件走 */
 .fa-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .fa-detail-head {
   display: flex; align-items: center; gap: 8px;
@@ -217,7 +217,7 @@ function expandFold(idx: number) {
 }
 .dl-fold:hover { background: var(--surface-chrome-hover); color: var(--color-text); }
 
-/* 批 C 窄屏档（≤640px，依托父级 .fa-body 720px 起的纵排）：头部与事件行折行，
+/* 窄屏档（≤640px，依托父级 .fa-body 720px 起的纵排）：头部与事件行折行，
    说明行让位整行、生效徽标与恢复钮同带留在首行——恢复入口一步可达；
    diff 长行由 .dl-text pre-wrap+break-all 消化，内容盒 min-width:0 链保持，
    390px 不撑爆页面；本档不加 transition，动效归零走 base.css 全局 reduced-motion 块 */

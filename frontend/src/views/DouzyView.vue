@@ -48,8 +48,7 @@ async function loadVersions() {
   })
 }
 
-// stepOf/四态内核已收编 managedProgress 单一来源（波 1a）；本视图原 some 写法
-// 在公共 find 内核下同真值，判定逐字等价。
+// stepOf/四态判定单一来源在 managedProgress，本视图只转发。
 function statusOf(rel: DouzyRelease): 'installed' | 'downloading' | 'error' | 'idle' {
   return versionRowState(downloading.value[rel.version], installed.value, rel.version)
 }
@@ -120,8 +119,8 @@ async function openRepo() {
 // ---------- 事件与生命周期 ----------
 // done 票据表内驻留时长（命名与取值对齐 store.ts DONE_TICK_RETIRE_MS 先例）
 const DONE_TICK_RETIRE_MS = 800
-// 清票定时器登记表：卸载统一清理，防迟到的清票写回已销毁组件；
-// 本波只做最小治理（登记+清理），手抄编排整体迁壳留波 2
+// 清票定时器登记表：卸载统一清理，防迟到的清票写回已销毁组件
+// （三处同形的摘票编排收进 managed 共享壳，账目见 docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md §五）
 const retireTimers = ref(new Set<ReturnType<typeof setTimeout>>())
 
 useWailsEvent<DownloadProgress>('douzy:version-download', (t) => {
@@ -200,11 +199,9 @@ onUnmounted(() => {
           <div class="dz-line"><span class="k">大小</span><span>{{ fmtSize(v.size) }} · 下载于 {{ v.installedAt }}</span></div>
         </div>
         <div class="dz-card-actions">
-          <!-- 2026-10-19 机主嫌这两颗蓝底钮突兀，降为 accent-outline 描边档（形制对齐
-               envcheck OfficialVersionsPanel 行内下载先例）。注意本档**不是**全站规则：
-               10-20 起 .btn-primary 已整体重定为蓝洗一档，"行内不挂主操作档"的旧理由随之
-               消失；此处保留青描边只因机主当时明确"Douzy 已经改好了"。与全族的形制分叉
-               连同回退方案登记在 docs/plans/PLAN_REMAINING_WORK.md 待决清单 ⚑1。 -->
+          <!-- 有意分叉、非全站规则：这两颗留 .btn-accent-outline 青描边，不跟进全站蓝洗一档
+               .btn-primary（机主裁决"Douzy 已经改好了"）。分叉账目与回退方案唯一在册处：
+               docs/FRONTEND.md「按钮变体语义」条（PLAN_REMAINING_WORK.md 待决清单 ⚑1 同位引）。 -->
           <button class="btn btn-accent-outline btn-small" :disabled="busy" title="拉起上游 NSIS 安装向导；UAC 与向导步骤由你完成" @click="launchInstaller(v)">▶ 运行安装程序</button>
           <button class="btn btn-secondary btn-small" @click="openDir(v.dir)">📂 打开位置</button>
           <button class="btn btn-danger-outline btn-small" @click="removeInstaller(v)">删除安装包</button>
@@ -316,8 +313,8 @@ onUnmounted(() => {
 .dz-table-wrap { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
 .dz-ver-name { font-family: var(--font-mono); }
 
-/* 状态圆点形制已由 ManagedVersionDot 自带 scoped 标准形接管（.dz-status 复制体删净，
-   类名仅存模板锚点位）；dz- 岛其余（进度条/徽标/词表）本波不动，整体迁壳留波 2 */
+/* 状态圆点形制由 ManagedVersionDot 自带 scoped 标准形承担，.dz-status 类仅存模板锚点位；
+   dz- 岛其余（进度条/徽标/词表）收编共享壳的账目见 docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md §五 */
 
 .dz-dl-cell { display: flex; align-items: center; gap: 8px; width: 140px; }
 .dz-bar-wrap { flex: 1; height: 6px; background: var(--surface-hover); border-radius: var(--radius-pill); overflow: hidden; }

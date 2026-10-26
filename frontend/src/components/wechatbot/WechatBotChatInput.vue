@@ -133,8 +133,8 @@ function formatFileSize(bytes: number): string {
 /* 配色交全局 .btn-positive（底/前景/hover 一处标准），形制自留：本钮未挂 .btn 基座，
  * border 与 min-width 必须自己声明，否则露出 UA 默认边框。 */
 .attachment-send { border: 0; min-width: 74px; }
-/* 禁用口径落回 N38 裁决（grayscale 先去饱和）：旧 opacity:.55 会把底色与文字按同
- * 一比例一起洗向页面底色，正是"灰压成一片"的病根。 */
+/* 禁用口径=grayscale 先去饱和 + opacity .75（按钮族全局统一裁决）：旧 opacity:.55
+ * 会把底色与文字按同一比例一起洗向页面底色，正是"灰压成一片"的病根。 */
 .attachment-remove:disabled, .attachment-send:disabled { opacity: .75; filter: grayscale(1); cursor: not-allowed; }
 .attachment-error { padding: 9px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--state-danger); font-size: var(--text-sm); }
 .attachment-error button { border: 1px solid var(--color-border); background: var(--surface-panel); color: var(--color-text); }
@@ -144,8 +144,8 @@ function formatFileSize(bytes: number): string {
 .shortcut-tip { font-size: var(--text-xs); color: var(--color-text-subtle); }
 /* 配色交 .btn-positive；border/尺寸自留（未挂 .btn 基座，同 .attachment-send 理由）。 */
 .btn-send-message { border: none; padding: 5px 16px; border-radius: 4px; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: background var(--motion-base) ease; }
-/* 旧写法自行换成"灰底+subtle 字"，与 .attachment-send 的 opacity 口径又是第三套——
- * 统一落回 N38 grayscale，绿钮禁用即去饱和灰，观感与全族一致。 */
+/* 旧写法自行换成"灰底+subtle 字"，与 .attachment-send 的口径成第三套——
+ * 统一走 grayscale 去饱和，绿钮禁用即去饱和灰，观感与全族一致。 */
 .btn-send-message:disabled { opacity: .75; filter: grayscale(1); cursor: not-allowed; }
 /* 去掉 `, #0f8b8d` 兜底：那是 N37 案 A 判定"白字仅 4.12 不达标"而**已废弃**的旧 teal
  * 值，藏在 scoped 的 var() 兜底里躲过了全局裸色守卫（守卫 a 只管 components.css）；

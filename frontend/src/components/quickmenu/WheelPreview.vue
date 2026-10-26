@@ -56,8 +56,8 @@ const isGroup = (item: MenuItem): boolean => (item.children?.length ?? 0) > 0
 
 const n = computed(() => props.items.length)
 const wedge = (i: number) => {
-  // 审查 #9：预览绘制喂 VIS 观感常量（花瓣缝/收窄环带）——与真盘 N40③
-  // 皮批观感同源；命中语义常量 WHEEL 不参与（预览无命中，纪律同指针侧）。
+  // 预览绘制喂 VIS 观感常量（花瓣缝/收窄环带）——与真盘观感同源；
+  // 命中语义常量 WHEEL 不参与（预览无命中，纪律同指针侧）。
   const a = mainSectorAngles(i, n.value, VIS.padDeg)
   return wedgePath(VIS.rSecIn, VIS.rSecOut, a.a0, a.a1)
 }
@@ -180,8 +180,8 @@ const typeClass = (item: MenuItem) => `t-${wheelTypeTint(item.type)}`
 }
 .wp-slot.is-active .wp-name { color: var(--color-primary); }
 .wp-caret { position: absolute; top: -3px; right: 2px; font-size: 8px; color: var(--color-primary); }
-/* v3 trim 紧凑档：满格小盘下 9px×scale 的名字缩成噪点（机主 628 截图点名"盘面
-   文字与卡缘打架"），标签退到 title/aria，盘面只留图标点选。 */
+/* trim 紧凑档：满格小盘下 9px×scale 的名字缩成噪点、盘面文字与卡缘打架，
+   标签退到 title/aria，盘面只留图标点选。 */
 .wp-trim .wp-name, .wp-trim .wp-caret { display: none; }
 .wp-empty {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;

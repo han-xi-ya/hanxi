@@ -2,19 +2,18 @@
  * 全局原子工具类（docs/FRONTEND.md §4）
  *
  * 全部规则用 :where() 写成零特异性（0,0,0）：
- *   —— 未迁移视图的 scoped 副本（特异性 ≥ 0,1,0）永远压过全局，
- *      因此本文件落地当天所有旧视图视觉零变化；
+ *   —— 视图的 scoped 副本（特异性 ≥ 0,1,0）永远压过全局，落回过程逐视图零风险；
  *   —— 迁移一个视图 = 删掉它的 scoped 副本，自动落回本文件的标准形。
  * 新组件优先组合这里的类，禁止在视图里再造同名原子。
  *
- * 字号一律引用 --text-* 阶梯、按钮高度引用 --control-h-* 三档（tokens.css §7.3），
+ * 字号一律引用 --text-* 阶梯、按钮高度引用 --control-h-* 三档（定义见 tokens.css），
  * 本文件内禁止再出现裸 px 字号。
  * ============================================================ */
 
-/* ---------- 页面骨架（容器三档 --container-*，UI 专项 §8.5） ----------
+/* ---------- 页面骨架（容器三档 --container-*） ----------
  * 页面容器只管宽度与水平居中；视口安全边距归 Shell（App.vue .content-area padding），禁止双重 padding。
- * workbench/wide 两档为过渡期原子：旧页删私有 max-width 副本后直接换挂本类即可落回标准形
- *（几何/标题/正文规则与 .page 逐字同形，仅宽度档不同）；PageContainer.vue 即映射本组类。 */
+ * 视图禁写私有 max-width：删副本换挂 .page / .page-workbench / .page-wide 即落回标准形
+ *（三档几何/标题/正文规则逐字同形，仅宽度档不同）；PageContainer.vue 即映射本组类。 */
 :where(.page) {
   max-width: var(--container-standard);
   margin: 0 auto;
@@ -57,31 +56,30 @@
 }
 
 /* ---------- 按钮家族（高度三档 --control-h-lg/md/sm）----------
- * N38 按钮配色治理（2026-09-26）：层级定档——primary 实底加深色描边（"主"）、
- * secondary/accent-outline 用 --btn-outline-edge 立细边（次级可辨）、danger 描边/
- * 实心双档一眼危险、disabled 全族去饱和（灰掉但不消失）、:active 全族下沉 1px 反馈。
+ * 层级定档：primary 实底加深色描边（"主"）、secondary/accent-outline 用
+ * --btn-outline-edge 立细边（次级可辨）、danger 描边/实心双档一眼危险、
+ * disabled 全族去饱和（灰掉但不消失）、:active 全族下沉 1px 反馈。
  * 色值单一真相在 tokens.css 派生档，本文件只挂语义引用。
  *
- * N37② glow 降级落地形制（PLAN_N37_ONCOLOR §4）：本层按钮/胶囊**零彩色外发光**——
- * 家族内不存在任何 box-shadow，实心档一律"实底 + 1px 描边"（primary/danger 实心吃
- * --btn-solid-edge / --btn-danger-edge，次级吃 --btn-outline-edge）；彩色投影此后
- * 只许"进行中"脉冲使用（指路见下方 .live-pulse 块），稳态发光不得回流本层。
+ * 零发光纪律：本层按钮/胶囊**零彩色外发光**——家族内不存在任何 box-shadow，
+ * 实心档一律"实底 + 1px 描边"（primary/danger 实心吃 --btn-solid-edge /
+ * --btn-danger-edge，次级吃 --btn-outline-edge）；彩色投影只许"进行中"脉冲
+ * （指路见下方 .live-pulse 块），稳态发光不得回流本层。
  *
- * N37① 字色契约（组件禁自取）：彩底实底前景一律显式取 on-* token——primary 底用
+ * 字色契约（组件禁自取）：彩底实底前景一律显式取 on-* token——primary 底用
  * --color-on-primary，danger/positive 等状态彩底用 --color-on-accent（十板×明暗
- * 逐对实测过 AA，见 PLAN §4 矩阵）。禁用 --color-text / --color-text-inverse /
- * 裸色值充当彩底前景；on-* 为每板每模式的成对定义，hover/active 换底与 disabled
- * 去饱和均自动跟随同一前景，各态无需（也禁止）单独覆写 color。 */
+ * 逐对实测过 AA）。禁用 --color-text / --color-text-inverse / 裸色值充当彩底
+ * 前景；on-* 为每板每模式的成对定义，hover/active 换底与 disabled 去饱和均
+ * 自动跟随同一前景，各态无需（也禁止）单独覆写 color。 */
 :where(.btn) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px; /* 图标 + 中文之间 6px 显挤（"新增网址"那类带钮件的间距投诉点之一） */
+  gap: 7px; /* 图标+文字间距 6px 显挤 */
   min-height: var(--control-h-lg);
-  /* 刻意不用 line-height:1：中文字形常超出 em box，行高 1 会裁掉上下笔画，机主反馈
-   * "按钮颜色看不清楚"实为字被切。此处给 1.2 保住 CJK 完整字形；钮内垂直居中由基座
-   * 的 align-items:center 负责，不靠压行高（上一轮我用 line-height:1 求解图标共线，
-   * 是判断不全，已回退）。 */
+  /* 刻意不用 line-height:1：中文字形常超出 em box，行高 1 会裁掉上下笔画（"字看不清"
+   * 的实因是字被切而非色对比）。1.2 保住 CJK 完整字形；钮内垂直居中由基座
+   * align-items:center 负责，不靠压行高换取。 */
   line-height: 1.2;
   padding: 6px 14px;
   border-radius: var(--radius-control);
@@ -97,13 +95,11 @@
   transition: background var(--motion-base) ease, border-color var(--motion-base) ease,
     color var(--motion-base) ease, filter var(--motion-base) ease, transform var(--motion-fast) ease;
 }
-/* 禁用态统一口径（N38 修案，替代 2026-09"纯 opacity"裁决）：旧方案单靠 opacity .5
- * 会把实底钮的文字与底色按同一比例洗向页面底色，白字/teal 底对比度实测跌到 2.04:1，
- * 且各变体灰度趋同——即机主截图"灰压成一片"的根因。新口径 = grayscale(1) 去饱和
- * 优先（实底变灰但钮内文字/底色对比度保留 ≈5.6:1）+ opacity .75 轻压一档表"不可点"。
- * filter 写在基座上，对任意底色/色板等效，视图 scoped 变体副本（如三处 .btn-danger
- * 只覆写 background/color）同样被整体去饱和，无漏网；hover/active 均带 :not(:disabled)
- * 天然不吃。--surface-disabled 仍只承担大面积禁用底（见下方输入档）。 */
+/* 禁用态统一口径 = grayscale(1) 去饱和 + opacity .75：钮内文字/底色对比保留（≈5.6:1），
+ * 只轻压一档表"不可点"。单靠低 opacity 会把字与底同比例洗向页面底色（实测跌到 2.04:1、
+ * 各变体灰度趋同糊成一片），故弃用。filter 写在基座上，对任意底色/色板等效，视图
+ * scoped 变体副本同样被整体去饱和，无漏网；hover/active 均带 :not(:disabled) 天然不吃。
+ * --surface-disabled 仍只承担大面积禁用底（见下方输入档）。 */
 :where(.btn:disabled) {
   opacity: 0.75;
   filter: grayscale(1);
@@ -113,15 +109,14 @@
 :where(.btn:active:not(:disabled)) {
   transform: translateY(1px);
 }
-/* 主操作钮档——形制为"蓝洗"（底=蓝洗、字=中蓝/亮蓝、边=蓝细），四轮返工的完整
- * 演进与逐板对比度实算全在 tokens.css `--btn-primary-hue` 上方注释在册，此处不复述。
- * 三条要点留在此地：① **全站唯一主钮档**，密集行内与整页唯一 CTA 同形，不再分实心/
- * 淡洗两档（10-19 曾按"行内另立子档"做过一版 .btn-primary-tint，只收托管面板三处，
- * 因定性被推翻而未随本笔入库，全库不存在该档，勿去寻它的定义）；
+/* 主操作钮档——形制为"蓝洗"（底=蓝洗、字=中蓝/亮蓝、边=蓝细），逐板对比度实算
+ * 在 tokens.css `--btn-primary-hue` 上方注释在册，此处不复述。三条要点：
+ * ① **全站唯一主钮档**，密集行内与整页唯一 CTA 同形，不分实心/淡洗两档
+ *（曾试过的 .btn-primary-tint 子档已整删，全库不存在，勿去寻它的定义）；
  * ② 主/次之分由"蓝味底 + 蓝字"承担，字重 500 不加粗；③ hover/active 只换底，前景
- * 恒随 --btn-primary-fg，各态禁止单独覆写 color（N37 on-color 契约的同一族规）。
+ * 恒随 --btn-primary-fg，各态禁止单独覆写 color（on-color 契约的同一族规）。
  * 该档刻意不随四块 accent 色板换色相（色板表达留在链接/选中态/软底强调），只随
- * --surface-panel 合成明度——这是 2026-10-13 起沿用的成文决定，不是漏接色板的欠账。 */
+ * --surface-panel 合成明度——这是成文决定，不是漏接色板的欠账。 */
 :where(.btn-primary) {
   background: var(--btn-primary-bg);
   color: var(--btn-primary-fg);
@@ -132,10 +127,9 @@
   background: var(--btn-primary-bg-hover);
 }
 :where(.btn-secondary) {
-  /* a 案（2026-10-15 机主定）：底由 surface-panel 改 surface-soft——原先白钮放在白
-   * 面板上只剩一层淡边，机主点名的日志工具栏（复制/清屏/刷新/收起）与"刷新网卡"
-   * 就是这个状态，近乎看不见按钮实体。改浅灰一档后钮身可辨，描边继续用
-   * --btn-outline-edge（旧 --color-border 在白底上仅 1.27:1 的教训不变）。 */
+  /* 底取 surface-soft 而非 surface-panel：白钮放白面板上只剩一层淡边，近乎看不见
+   * 实体（日志工具栏、"刷新网卡"皆此症）；浅灰一档后钮身可辨。描边用
+   * --btn-outline-edge——--color-border 在白底上仅 1.27:1，撑不起边界。 */
   background: var(--surface-soft);
   border-color: var(--btn-outline-edge);
   color: var(--color-text);
@@ -144,15 +138,12 @@
   background: var(--surface-hover);
   border-color: var(--btn-outline-edge-strong);
 }
-/* 实心危险（停止/强制中断类）：描边形见 .btn-danger-outline。本档收编为全局标准形，
- * 消掉"类名在用、形制只活在 3 份视图 scoped 副本"的孤儿态（scoped 副本特异性更高，
- * 在途视图视觉零变化，落回时自动接标准形）。 */
-/* 绿色实心档（确认/发送/绑定类动作）。全局族一直没有这一档，后果是视图各自造轮子：
- * btn-save-inline / btn-submit / btn-empty-bind / btn-send-message / attachment-send
- * 五处各写一遍实底，各自漏掉 hover、按压下沉与统一禁用口径——2026-10-13 把守卫
- * 第 e 则扩到 .vue scoped 后一次性现形（首版只扫 components.css 全都看不见）。
- * hover 复用 tokens.css 既有的 --btn-positive-fill-hover（当初就为 positive 预留了
- * 派生档，却一直没有对应的 .btn-* 形制可用）。 */
+/* 实心危险（停止/强制中断类）：描边形见 .btn-danger-outline。本档即全局标准形；
+ * 视图禁止 scoped 整抄形制（buttonColorContract 锁只降不升零容忍），换挂本类落回。 */
+/* 绿色实心档（确认/发送/绑定类动作）。此档曾缺位，视图各自造轮子（btn-save-inline /
+ * btn-submit / btn-empty-bind / btn-send-message / attachment-send 各写实底，且漏掉
+ * hover、按压下沉与统一禁用口径）——本档是统一去处，存量私有档删副本落回。
+ * hover 复用 tokens.css 既有的 --btn-positive-fill-hover 派生档。 */
 :where(.btn-positive) {
   background: var(--state-positive);
   color: var(--color-on-accent);
@@ -223,7 +214,7 @@
   color: var(--color-primary);
   font-size: var(--text-sm);
   cursor: pointer;
-  /* C9（G 线移交）：行内链接钮禁逐字折行，与 .btn 基座同一族规 */
+  /* 行内链接钮禁逐字折行，与 .btn 基座同一族规 */
   white-space: nowrap;
 }
 :where(.link-button:hover) {
@@ -246,7 +237,7 @@
   border-collapse: collapse;
   font-size: var(--text-base);
   text-align: left;
-  /* C7：表格继承本档等宽数字，覆盖各版本表大小/日期裸 td（G 线移交，随原子层收口） */
+  /* 表格继承本档等宽数字，覆盖各版本表大小/日期裸 td */
   font-variant-numeric: tabular-nums;
 }
 :where(.tbl th) {
@@ -266,12 +257,12 @@
   border-bottom: none;
 }
 
-/* ---------- 托管家族控制台皮（2026-09 字号/按钮体系化治理·上收波：控制条/状态字组/下载行/
-   已装卡/联动卡/知识折叠卡等 ~40 条，MarkerOn 等 19–21 份 scoped 副本逐字同形，标准形取
-   模板视图 MarkerOnView 值；散差按多数派定档（installed-grid minmax 320、control-bar gap 8、
-   dl-bar-inner base ease、retry-link ml8、hint-line 无行距档），逐视图删副本落回即完成收编。
-   同名不同名的前缀复制体（dz-/md- 家族、各视图 {前缀}-status-light/{前缀}-ver-status 状态灯）
-   属 ManagedConsoleShell 后续专项（§4），本波不收。
+/* ---------- 托管家族控制台皮（控制条/状态字组/下载行/已装卡/联动卡/知识折叠卡等原子）
+   标准形取模板视图 MarkerOnView 值，各视图逐字同形的 scoped 副本逐视图删净落回；
+   散差按多数派定档（installed-grid minmax 320、control-bar gap 8、dl-bar-inner base ease、
+   retry-link ml8、hint-line 无行距档）。
+   托管壳家族的带前缀复制体（dz-/md- 等、各视图 {前缀}-status-light/{前缀}-ver-status
+   状态灯）属 ManagedConsoleShell 一条线，不并入本组原子。
    位置注记：本块须先于 .diag-card 锚定块（源码序 = 同特异性裁决序）。 ---------- */
 :where(.control-bar) {
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-element);
@@ -311,11 +302,9 @@
 }
 :where(.meta-info) { font-size: var(--text-base); color: var(--color-text-muted); display: flex; flex-direction: column; gap: 2px; }
 :where(.meta-info strong) { color: var(--color-text); }
-/* flex-wrap 必备：本容器横排按钮，机主实测窄窗下「刷新网卡」被整颗顶出窗口。
- * 直接诱因是基座新增的 white-space:nowrap（治"字竖排"的代价是钮变宽），而
- * .btn-group 原本 display:flex 不换行 → 溢出的只能是被挤出去的那颗。Snipaste
- * 视图早有 scoped 补丁（align-items:center; flex-wrap:wrap）正是同一坑的局部
- * 绕过，全局档一直缺，故在此补齐并统一。 */
+/* flex-wrap 必备：本容器横排按钮，基座 nowrap 使钮变宽后，窄窗下不换行会把末颗
+ * 钮整颗顶出窗口（「刷新网卡」实测踩过）。Snipaste 视图曾有同坑局部补丁，
+ * 本档为全局统一去处。 */
 :where(.btn-group) { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 :where(.section-title h3) { font-size: var(--text-base); font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 6px; }
 :where(.empty-hint) { text-align: center; padding: 20px; color: var(--color-text-subtle); font-size: var(--text-base); background: var(--surface-panel); border-radius: var(--radius-control); border: 1px dashed var(--color-border); }
@@ -338,8 +327,8 @@
 :where(.table-container) { background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow-x: auto; }
 :where(.ver-name) { font-family: var(--font-mono); }
 
-/* ---------- 设置分区行（设置页拆分后跨六个分区视图共用，自 SettingsView scoped 副本上收；
-   命名 .setting-* 全库唯一，零特异性落回即可用） ---------- */
+/* ---------- 设置分区行（各设置分区视图共用，命名 .setting-* 全库唯一；
+   样式归全局原子层，视图不再持私有 scoped 副本） ---------- */
 :where(.setting-row) {
   background: var(--surface-page);
   border: 1px solid var(--color-border);
@@ -376,7 +365,7 @@
 :where(.chip-neutral) { background: var(--surface-hover); color: var(--color-text-muted); }
 
 /* ---------- 状态面板（虚线 inline 面板：加载/空/错/警，可挂右侧动作按钮）
-   §9.5-3 Snipaste 二次收编上收；强语义色经 state token，动作钮复用 link 语义 ---------- */
+   强语义色经 state token，动作钮复用 link 语义 ---------- */
 :where(.state-box) {
   display: flex;
   gap: 8px;
@@ -398,7 +387,7 @@
   color: var(--color-primary);
   cursor: pointer;
   font-weight: 600;
-  /* C9（G 线移交）：状态框右侧动作钮文字禁逐字折行，与 .btn 基座同一族规 */
+  /* 状态框右侧动作钮文字禁逐字折行，与 .btn 基座同一族规 */
   white-space: nowrap;
 }
 
@@ -414,7 +403,7 @@
 :where(.banner-info) { background: var(--state-information-soft); border-color: var(--state-information-glow); color: var(--state-information); }
 :where(.banner-warn) { background: var(--state-warning-soft); border-color: var(--state-warning-glow); color: var(--state-warning); }
 :where(.banner-error) { background: var(--state-danger-soft); border-color: var(--state-danger-glow); color: var(--state-danger); }
-/* slim 档（§9.5-6 已接受微差）：页签内/控制条下紧凑提示条，四写归一（.slim/.banner.slim/.tab-body .banner/.dz-slim 消费面收拢中） */
+/* slim 档：页签内/控制条下紧凑提示条的标准档；视图私有同值副本（如 .dz-slim）应删净落回本档 */
 :where(.banner.slim) { padding: 8px 12px; font-size: var(--text-sm); }
 
 /* ---------- 空态 / 错误框 ---------- */
@@ -457,20 +446,19 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-/* N37② 指路：本类是全库"进行中"脉冲的标准形（opacity 呼吸、零投影）。
- * 按拍板点 6 现行口径，彩色投影/光晕**只许**挂在"进行中"语义上——视图侧唯一
- * 带光合法件为 SnipCardView .snip-pulse（primary 点 + glow 呼吸）；托管家族
- * *-status-light.starting 六族为无投影 opacity 脉冲，同为合法件。按钮、胶囊、
- * 状态灯稳态（running/external/online 等）的常态发光已按②降级为实底+提亮描边，
- * 新增稳态 glow 一律视为违规回流。 */
+/* 本类是全库"进行中"脉冲的标准形（opacity 呼吸、零投影）。口径：彩色投影**只许**
+ * 挂在"进行中"语义上——全库唯一带光合法件为 SnipCardView .snip-pulse（primary 点 +
+ * glow 呼吸），托管家族 *-status-light.starting 为无投影 opacity 脉冲，同为合法件。
+ * 按钮、胶囊、状态灯稳态（running/external/online 等）一律无发光，形制 = 实底 + 提亮描边；
+ * 新增稳态 glow 引用视为违规回流（banner/error-box 的 border-color 借值例外见 tokens.css）。 */
 :where(.live-pulse) {
   animation: hx-pulse 1.8s ease-in-out infinite;
 }
 
-/* ---------- 诊断工具皮（§9.6-1：publicip Ping ⇄ Traceroute 双面板逐字副本上收）
-   .table-container 与 .tbl th 表头底色两条按 .diag-card 祖先锚定收编：
-   同名原子在全库有 18+ 份不同形副本（overflow/radius 各表不一），裸收会按属性漏染
-   未迁移视图（overflow-y/背景/边框等逐属性覆盖差异），锚定后仅在诊断卡内生效，零外溢。 ---------- */
+/* ---------- 诊断工具皮（publicip Ping ⇄ Traceroute 双面板逐字同形副本上收）
+   .table-container 与 .tbl th 表头底色两条按 .diag-card 祖先锚定：
+   同名原子全库存在多份形制差异副本（overflow/radius 各表不一），裸收会按属性漏染
+   未迁移视图，锚定后仅在诊断卡内生效，零外溢。 ---------- */
 :where(.tool-panel) {
   background: var(--surface-panel);
   border: 1px solid var(--color-border);
@@ -515,8 +503,8 @@
   font-size: var(--text-base);
   background: var(--surface-panel);
 }
-/* 输入类禁用底：--surface-disabled 首个锚定消费（大面积底走实底 token，
- * 与 .btn:disabled 的 opacity 口径互补；只新增禁用态视觉，常态零变化） */
+/* 输入类禁用底：大面积禁用底走 --surface-disabled 实底 token，
+ * 与 .btn:disabled 的 grayscale+opacity 口径互补（钮用压暗、面用换底） */
 :where(.text-input:disabled),
 :where(.select-input:disabled) {
   background: var(--surface-disabled);
@@ -533,7 +521,7 @@
 }
 :where(.btn-quick) {
   background: var(--surface-panel);
-  border: 1px solid var(--btn-outline-edge); /* N38：与次级钮边框同档，浅底可见 */
+  border: 1px solid var(--btn-outline-edge); /* 与次级钮边框同档，浅底可见 */
   border-radius: var(--radius-chip);
   padding: 2px 8px;
   font-size: var(--text-xs);
@@ -596,16 +584,16 @@
   background: var(--state-positive-soft);
   color: var(--state-positive);
 }
-/* RTT 值标签基形（2026-09 治理裁决，§9.6-10 冻结件就此解除：三方基形已收拢一致；
-   LanScanner 的 padding/radius 档与 Ping/Traceroute 的 fast/medium/slow 色档为合法补差，留局部。
-   波 2C 注记：Ping/Traceroute 的色档副本已归家族共享件 components/publicip/diagRtt.css
-   （两面板 scoped src 吃入）；不上收本文件——LanScannerView 对同名 .rtt-tag.fast/.slow
-   持另一档语义（色块底/slow=muted/自有 .normal），同名不同义不进全局兜底，消费面锁 publicip 两面板。 */
+/* RTT 值标签基形：LanScanner 的 padding/radius 档与 Ping/Traceroute 的 fast/medium/slow
+   色档为合法补差，留局部。Ping/Traceroute 的色档副本在家族共享件
+   components/publicip/diagRtt.css（两面板 scoped src 吃入），不上收本文件——
+   LanScannerView 对同名 .rtt-tag.fast/.slow 持另一档语义（色块底/slow=muted/自有 .normal），
+   同名不同义不进全局兜底，消费面锁 publicip 两面板。 */
 :where(.rtt-tag) { font-family: var(--font-mono); font-weight: 600; font-size: var(--text-sm); }
 
-/* ---------- 语义色文本原子（publicip ×2、fileshare LogsTab、HomeView 逐字同形副本上收；
-   2026-09 冻结六项裁决落地：.text-muted/.text-danger 按名实一致定档全局，
-   subtle 派局部件改挂 .text-subtle；.text-warn 全库零消费不设） ---------- */
+/* ---------- 语义色文本原子（.text-success/muted/subtle/danger）：
+   次要/弱化/危险文本一律挂本组类，视图禁私有同名定义；
+   .text-warn 全库零消费，刻意不设，勿自行补位 ---------- */
 :where(.text-success) {
   color: var(--state-positive);
 }
@@ -613,19 +601,16 @@
 :where(.text-subtle) { color: var(--color-text-subtle); }
 :where(.text-danger) { color: var(--state-danger); }
 
-/* ---------- 内联链接原子（前端冗余治理 · 波 0 上收：全库 21 份 scoped 逐字同形副本——
-   20 个托管/工具视图（CCSwitch/Bili23/BCU/DdnsGo/FlClash/PicLite/Paseo/PaperTodo/
-   LiteMonitor/Keyviz/SubnetDesk/Recordly/RAMMap/QuickLook/RustDesk/Rufus/WindTerm/
-   VSCode/TranslucentTB/Termora）+ components/wsl/WslReadinessPanel，两条规则体
-   21/21 全同；:where 零特异性且 scoped 副本词面相同，逐视图删副本前渲染零变化） ---------- */
+/* ---------- 内联链接原子：托管/工具视图与 wsl/WslReadinessPanel 曾各有 21 份
+   逐字同形 scoped 副本，已删净落回本标准形；视图禁私有同名定义 ---------- */
 :where(.inline-link) { color: var(--color-primary); text-decoration: none; }
 :where(.inline-link:hover) { text-decoration: underline; }
 
-/* ---------- 微信机器人模态壳（§9.6-8：Bind ⇄ Rename 双模态 11 条逐字副本上收） ----------
-   层序 G-C11 β案（2026-10-26）：本皮肤消费方全数核查为视图级弹层——wechatbot Bind/Rename
-   （WechatBotView 内联、无 Teleport）与 sshkeys KeyOpsModal（自带 .keyops-backdrop 本地 950
-   覆盖，:where 零特异性必被压过，皮肤改动前后其取值不变）。皮肤随之降 --z-dialog-under(950)，
-   --z-dialog(1000) 只留 App 单例（ConfirmDialog / UiPromptDialog，Teleport 到 body 恒在上）。 */
+/* ---------- 微信机器人模态壳（Bind ⇄ Rename 双模态 11 条逐字同形副本上收） ----------
+   本皮肤消费方均为视图级弹层（wechatbot Bind/Rename、sshkeys KeyOpsModal），
+   故挂 --z-dialog-under(950)：视图级弹层叠在 App 单例对话框之下；
+   --z-dialog(1000) 只留 App 单例（ConfirmDialog / UiPromptDialog，Teleport 到 body 恒在上）。
+   层序口径见 tokens.css 层序登记册，档位改动须 JS/CSS 两侧同改。 */
 :where(.custom-modal-backdrop) {
   position: fixed;
   top: 0;
@@ -685,8 +670,8 @@
   font-weight: 500;
   color: var(--color-text);
 }
-/* C10 残留处置：删 outline:none——键盘焦点由 base.css 全局 --focus-ring 环接管
-   （G 判定原则"删后必须仍有焦点呈现"成立）；鼠标点按仍只吃下方换边规则。 */
+/* 禁写 outline:none——键盘焦点由 base.css 全局 --focus-ring 环接管
+   （任何"清理"都不得删掉焦点呈现本身）；鼠标点按只吃下方换边规则。 */
 :where(.form-text-input) {
   padding: 6px 10px;
   border: 1px solid var(--color-border);
@@ -695,8 +680,8 @@
   transition: border-color var(--motion-base) ease;
 }
 :where(.form-text-input:focus) {
-  /* 2026-10-26 机主裁决：焦点边随全库主流形制取 --color-primary；
-     原 --state-positive 绿系成功状态色挪用，属副本渗漏，非设计。 */
+  /* 焦点边取 --color-primary，与全库主流焦点形制一致；
+     --state-positive 是成功状态色，禁挪用作焦点边色 */
   border-color: var(--color-primary);
 }
 @keyframes modalIn {
@@ -709,7 +694,8 @@
     transform: scale(1);
   }
 }
-/* 绑定账号钮家族（Sidebar ⇄ WechatBotView 占位大按钮逐字同形；视图副本在途，暂冻结） */
+/* 绑定账号钮家族：AppSidebar ⇄ WechatBotView/WechatBotSidebar 的同形 scoped 副本
+   已删净落回本标准形，视图禁私有副本 */
 :where(.btn-bind-account) {
   background: var(--state-positive);
   color: var(--color-on-accent);
@@ -724,7 +710,7 @@
   gap: 3px;
   transition: background var(--motion-base) ease;
 }
-/* N38：旧 hover 与常态同色系死规则（无任何反馈），改深一档；补 :not(:disabled) */
+/* hover 深一档给可点反馈（同色系死规则等于无反馈）；:not(:disabled) 必带 */
 :where(.btn-bind-account:hover:not(:disabled)) {
   background: var(--btn-positive-fill-hover);
 }
@@ -734,9 +720,9 @@
   margin-top: 14px;
 }
 
-/* ---------- FileShare 方言原子（§9.6-3：endpoints/inbox/logs 就近复制、跨文件逐字同形且
-   不与既有全局原子冲突者上收；.btn-secondary 家族/.empty-state/.py-8/.text-muted/.empty-icon
-   等同名不同形或有未定义使用点，全部保留局部，见 §9.6 报告） ---------- */
+/* ---------- FileShare 方言原子（endpoints/inbox/logs 跨文件逐字同形且不与既有
+   全局原子冲突者上收；.btn-secondary 家族/.empty-state/.py-8/.text-muted/.empty-icon
+   等同名不同形或有未定义使用点，保留局部、不收全局） ---------- */
 :where(.flex-between) { display: flex; justify-content: space-between; align-items: center; }
 :where(.gap-2) { gap: 8px; }
 :where(.ml-2) { margin-left: 8px; }
@@ -748,48 +734,39 @@
   color: var(--color-text);
 }
 :where(.tag-blue) { background: var(--state-information-soft); color: var(--state-information); }
-/* 可点标签丸交互档（2026-09 收编，纯增量）：叠在 :where(.tag-pill) 外观基座之上的
- * cursor / hover 加深 / 键盘焦点三差，基座外观不动。hover 底 --surface-hover 比基座
- * --surface-soft 深一档；焦点环与 base.css 全局 :focus-visible 契约同源（--focus-ring），
- * 供页面自挂 role/tabindex 使 span 丸键盘可达后兑现。消费面：MemoView 卡脚/详情浮层
- * 过滤丸（原 .memo-tag 私有 cursor/hover 差已删净落回）；FileShare 系 tag-pill 均为
- * 资讯徽标无点击诉求，不挂本档。 */
+/* 可点标签丸交互档：叠在 :where(.tag-pill) 外观基座之上的 cursor / hover 加深 /
+ * 键盘焦点三差，基座外观不动。hover 底 --surface-hover 比基座 --surface-soft 深一档；
+ * 焦点环与 base.css 全局 :focus-visible 契约同源（--focus-ring），供页面自挂
+ * role/tabindex 使 span 丸键盘可达后兑现。消费面：MemoView 卡脚/详情浮层过滤丸；
+ * FileShare 系 tag-pill 均为资讯徽标无点击诉求，不挂本档。 */
 :where(.tag-pill-clickable) { cursor: pointer; }
 :where(.tag-pill-clickable:hover) { background: var(--surface-hover); }
 :where(.tag-pill-clickable:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
-/* ---------- Everything 小工具（§9.6-2：hint-dim/badge 多组件逐字同形副本上收；
-   .empty-hint 全库 20+ 份存在 padding/border 不同形变体，暂留局部，见 §9.6 报告） ---------- */
+/* ---------- Everything 小工具：hint-dim/badge 多组件逐字同形副本上收；
+   .empty-hint 全库存在 padding/border 不同形变体，暂留局部不进全局兜底 ---------- */
 :where(.hint-dim) { color: var(--color-text-subtle); }
 :where(.badge) { font-size: var(--text-xs); padding: 2px 8px; border-radius: var(--radius-pill); font-weight: 500; }
-/* A6 形态 chip 四份逐字副本上收（snipaste/vscode/everything 三份核心逐字同形；
-   ManagedVersionPanel 与 VSCodeReleaseTable 的 margin-left:4px 排位差留各自 scoped，
-   EverythingReleaseTable 原同文件双定义就此合一） */
+/* 形态 chip：snipaste/vscode/everything 三份逐字同形副本合一上收；
+   ManagedVersionPanel 与 VSCodeReleaseTable 的 margin-left:4px 排位差留各自 scoped */
 :where(.form-chip) { font-size: var(--text-xs); padding: 1px 7px; white-space: nowrap; vertical-align: middle; }
 
-/* ---------- WSL 六件套补差（前端冗余治理 · 波 1c：六面板 scoped 三条副本上收）
-   三条规则体在 WslReadinessPanel/WslDistroTable/WslAddInstancePanel/WslVersionsPanel/
-   WslPortProxyPanel 五份副本里逐字一致（前言注释亦同形）；第六份 WslUsbPanel 同含这三条
-   但另带字色方言，见下方"例外"。
+/* ---------- WSL 六件套补差（六面板 scoped 三条同形副本上收）
    锚定口径：六面板均为多根 fragment，无统一根类可挂 `.wsl-panel`（补挂会撞 Vue 碎片根
    的 attr 继承限制且需动 DOM），故按既有锚定惯例（参上方 .diag-card 块）锚到视图容器
-   `.wsl-view`（views/WSLView.vue:369 现有类，视图零改动）。外溢核查：`.wsl-view` 子树内
-   这三名的消费面仅六面板自身——WSLView 自身不用、UiBanner/UiStatusChip/UiProgressBar/
-   UiClipboardField/PageHeader/MainTabNav 均不含这三名、两处 Teleport 子树（DistroTable
-   行菜单 / UsbPanel 直通选择框）亦不含 → 零外溢。
-   例外：WslUsbPanel 的 .hint-line/.hint-dim 比其余五面板深一档字色（muted 而非全局
-   subtle），属有意方言，该色差留在其 scoped 块内，本块只收六份逐字相同的三条。
+   `.wsl-view`。外溢核查：`.wsl-view` 子树内这三名消费面仅六面板自身，两处 Teleport 子树
+   （DistroTable 行菜单 / UsbPanel 直通选择框）亦不含——零外溢。
+   例外：WslUsbPanel 的 .hint-line/.hint-dim 比其余面板深一档字色（muted 而非全局 subtle），
+   属有意方言，留在其 scoped 块内，本块只收逐字相同的三条。
    位置注记：必须晚于 :where(.hint-line)/:where(.error-box)/:where(.hint-dim) 基础原子
    （源码序 = 同特异性裁决序），故置于文件末尾。 ---------- */
 :where(.wsl-view .error-box) { white-space: pre-line; }
 :where(.wsl-view .hint-line) { line-height: 1.7; white-space: pre-line; }
 :where(.wsl-view .hint-dim) { font-size: var(--text-sm); }
 
-/* ---------- 通知严重度指示灯（波 1c：NotificationToast ⇄ NotificationDrawer 两份 scoped
-   逐字同形副本上收；档位名由 constants/status.ts levelTone 单源产出，样式归本层）
-   全 src 查重：.sev-dot/.sev-success/.sev-warning/.sev-error 四名除这两组件与 status.ts
-   （及其 spec 的字面断言）外零消费，无撞名。`.sev-info` 无规则是两组件既有现状——
-   info 档底色由 .sev-dot 基色 --state-information 兜住，收编后口径不变，不补新规则。 ---------- */
+/* ---------- 通知严重度指示灯：档位名由 constants/status.ts levelTone 单源产出，样式归本层
+   （消费方面仅 NotificationToast / NotificationDrawer）。
+   `.sev-info` 刻意无规则——info 档底色由 .sev-dot 基色 --state-information 兜住，勿补新规则。 ---------- */
 :where(.sev-dot) { width: 9px; height: 9px; border-radius: var(--radius-pill); background: var(--state-information); }
 :where(.sev-success) { background: var(--state-positive); }
 :where(.sev-warning) { background: var(--state-warning); }

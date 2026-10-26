@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// MarkerOn 控制台（Wave 5 · 批 0 共享契约迁移，#primary-action 槽首个实战件）：
+// MarkerOn 控制台（#primary-action 槽自绘钮形态）：
 // 业务投影全部收进 src/adapters/markeron（RPC/事件/六态矩阵/文案），
 // ManagedConsoleShell 管页头页签骨架，ManagedControlBar 管状态头与启停钮区，
 // 标注开关钮体经 #primary-action 槽自绘——钮序按 Shell 约定：
 // 声明主钮（本模块空置）→ 槽内 toggle → 退出钮「⏻ 停止」恒居末位。
 // 状态轮询/uptime/下载进度 map/busy 闩等编排由 store 单源；标注开关点击经
-// store.runToggle（增强批⑥）：裸串失败 toast、成功后 refresh（版本徽标即时）、
+// store.runToggle：裸串失败 toast、成功后 refresh（版本徽标即时）、
 // started 回执 reloadVersions 重拉版本区——视图只余六态矩阵拼装与禁用前置判定。
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import type { ManagedSnapshot } from '../components/managed/adapter'
@@ -44,7 +44,7 @@ function onToggle(store: ManagedConsoleStore, view: AnnotateToggleView) {
          动词编排经槽内 store.runToggle 走共享单源） -->
     <template #primary-action="scope">
       <!-- 单帧一次投影：v-for 单元别名是 Vue 模板局部变量惯用法，
-           原 annotateToggleView 同帧 5 次重复调用自此归一（纯函数无副作用，结果逐字同） -->
+           钮体各绑定位共用这一次计算结果（纯函数无副作用，勿拆回多次调用） -->
       <button
         v-for="view in [toggleViewOf(scope)]"
         :key="0"
@@ -95,7 +95,7 @@ function onToggle(store: ManagedConsoleStore, view: AnnotateToggleView) {
 .btn-toggle-warn { background: var(--state-warning-soft); border-color: var(--state-warning); color: var(--state-warning); }
 .btn-toggle-danger { background: var(--surface-panel); border-color: var(--state-danger); color: var(--state-danger); }
 
-/* ---------- 状态说明行（原 control-bar 内联位，现渲染于状态头之后） ---------- */
+/* ---------- 状态说明行（渲染于状态头之后） ---------- */
 .control-detail { font-size: var(--text-sm); color: var(--color-text-subtle); }
 /* info-* 折叠卡家族与 hint-dim 由 components.css 全局原子接管 */
 .kbd-row { font-size: var(--text-sm); color: var(--color-text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

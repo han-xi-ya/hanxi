@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// BCU 控制台（Wave 5 · 批 1 收敛件，波 2E 版本区回迁收口）：共享面全部进托管
+// BCU 控制台：共享面全部进托管
 // 控制台家族——adapter（src/adapters/bcu）承载业务投影（RPC/事件/文案/确认输入 +
 // .NET 环境诊断态），useManagedConsole 单源状态轮询/uptime/下载进度 map/busy 闩编排，
 // ManagedControlBar 管状态头与启停钮，ManagedExtrasCard 管联动辅助卡，
 // ManagedVersionPanel 管版本区三段默认体（meta 行族/已装卡/首用空态——纯抄段
-// 全数换面板，词面经 adapter.copy 与 #meta-extra 槽逐字承接）。
+// 全走面板，词面经 adapter.copy 与 #meta-extra 槽承接）。
 // 方言保留区（实证超纲，不硬套）：双变体下载表经面板 #remote-table 整表替换槽
 // 留在本视图——每行「便携版/精简版」两把下载钮、version|variant 复合进度键、
 // 按变体独立票行与变体前缀阶段词，超出面板「行→单键」的 progressKey/statusOf
@@ -35,7 +35,7 @@ const MAIN_TABS = [
   { key: 'versions', label: '📦 版本管理' },
 ]
 
-// ---------- .NET 环境诊断态（波 2E 起收编 adapter 闭包，视图与 copy 词族同源直读） ----------
+// ---------- .NET 环境诊断态（收编 adapter 闭包，视图与 copy 词族同源直读） ----------
 const { dotnetEnv, envLoading, recommendedVariant } = adapter
 
 // 740 提权直拒（后端 elevateHint 文案统一含"管理员"）→ 追加一键提权重启入口
@@ -46,8 +46,8 @@ const needsElevate = computed(() => needsElevationRestart(store.snap))
 const releases = computed(() => store.releases as BCURelease[])
 const installed = computed(() => store.installed)
 
-// stepOf 已收编 managedProgress 单一来源（波 1a）；statusOf/statusOverall 系本视图
-// 方言分叉（version|variant 复合键 + 双变体汇总），不并入公共四态内核，保留本地。
+// stepOf 走 managedProgress 单一来源；statusOf/statusOverall 系本视图
+// 方言分叉（version|variant 复合键 + 双变体汇总），刻意不并入公共四态内核，保留本地。
 function statusOf(rel: BCURelease, variant: BCUVariant): 'installed' | 'downloading' | 'error' | 'idle' {
   const p = store.downloading[`${rel.version}|${variant}`]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
@@ -109,10 +109,10 @@ onMounted(() => {
     <!-- 联动与辅助设置卡（随关/桌面快捷方式/GitHub 仓库，条目文案在 adapter） -->
     <ManagedExtrasCard :adapter="adapter" />
 
-    <!-- 版本管理 Tab：面板接管三段默认体（meta 行族/已装卡/首用空态，波 2E）——
+    <!-- 版本管理 Tab：面板接管三段默认体（meta 行族/已装卡/首用空态）——
          .NET 环境徽标为动态诊断行走 #meta-extra 槽；双变体远程表超面板单键能力，
-         经 #remote-table 整表替换槽留本视图方言原形（词面与判定零改动，
-         bcu-ver-status 锚点类随波 2E 退役，spec 选择器走 .ver-status 标准形） -->
+         经 #remote-table 整表替换槽留本视图方言原形（词面与判定不改动，
+         spec 选择器走 .ver-status 标准形） -->
     <div v-show="activeMainTab === 'versions'" class="tab-body">
       <ManagedVersionPanel :adapter="adapter" :store="store">
         <template #meta-extra>
@@ -144,8 +144,8 @@ onMounted(() => {
                 <span v-if="rel.isPre" class="badge badge-pre">预发布</span>
               </td>
               <td>
-                <!-- 状态圆点直挂 ManagedVersionDot 标准形（波 2E：bcu-ver-status
-                     零样式锚点类退役，spec 选择器迁 .ver-status；词面逐字传现词） -->
+                <!-- 状态圆点直挂 ManagedVersionDot 标准形（spec 选择器即
+                     .ver-status；词面传现词） -->
                 <ManagedVersionDot v-if="statusOverall(rel) === 'installed'" status="installed" text="已安装" />
                 <ManagedVersionDot v-else-if="statusOverall(rel) === 'downloading'" status="downloading" text="下载中" />
                 <ManagedVersionDot v-else-if="statusOverall(rel) === 'error'" status="error" text="失败" />

@@ -4,7 +4,7 @@
 // 徽标（#header-badge 扩展点）与说明卡（默认槽）。
 //
 // 漂移展示接法（共享壳无现成 drifted 槽位，按既有扩展点接入，三处同源）：
-//  ① adapter.statusTone → 状态灯琥珀（warn 档，⑧ 色档覆写通道）；
+//  ① adapter.statusTone → 状态灯琥珀（warn 档，色档覆写通道）；
 //  ② adapter.banner → 状态区漂移警示横幅压过运行态横幅（failed 恒先）；
 //  ③ 本页 #header-badge 槽 → 页头常驻「账本漂移」chip（failed 态横幅让位故障
 //     文案时，徽标不受影响，警示不丢）。

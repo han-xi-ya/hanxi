@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// Everything 内嵌搜索结果区：结果计数行 + 列宽可拖拽结果表 + 三种空态提示，
-// 自 EverythingView 随 DOM 逐字迁出。列宽拖拽/localStorage 记忆经 useEverythingColumns
-// 内聚在本组件（存储键与钳位语义不变）；打开/定位/复制三种行操作回视图执行业务调用。
+// Everything 内嵌搜索结果区：结果计数行 + 列宽可拖拽结果表 + 三种空态提示。
+// 列宽拖拽/localStorage 记忆经 useEverythingColumns 内聚在本组件；打开/定位/复制
+// 三种行操作回视图执行业务调用。
 import type { Result } from '../../../bindings/hanxi/internal/modules/everything/search/models'
 import { useEverythingColumns } from '../../composables/useEverythingColumns'
 import { resultFullPath } from '../../composables/useEverythingSearch'
@@ -83,7 +83,7 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
 .results-wrap { display: flex; flex-direction: column; gap: 8px; }
 .results-meta { font-size: var(--text-sm); color: var(--color-text-muted); display: flex; gap: 12px; align-items: center; }
 .warn-text { color: var(--state-warning); }
-/* .hint-dim 已上收 components.css（§9.6-2，全库 19 份逐字同形副本的公共形） */
+/* .hint-dim 落回 components.css 全局原子（§9.6-2），本组件不挂副本 */
 .result-scroll { overflow-x: auto; }
 .result-tbl { max-height: 428px; display: block; overflow-y: auto; }
 .result-tbl thead, .result-tbl tbody { display: table; width: 100%; table-layout: fixed; }
@@ -96,11 +96,11 @@ const { colWidths, totalColWidth, startResize } = useEverythingColumns()
 .result-tbl td { font-size: var(--text-sm); }
 .result-name { font-weight: 500; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-name.is-dir { color: var(--color-primary); }
-/* 样式审计 Q1（2026-10-27，规格推演级修复、非浏览器实证）：删除原 `display:block`——
-   thead/tbody 是两个独立 display:table 的 fixed 布局盒，td 转 block 后按 CSS 匿名表对象规则
-   被包进无宽度的匿名单元格，首行绑定的 path 列宽脱靶成 auto，与表头五列全 px 的分配规则分叉
-   （容器宽 ≠ 列宽和时表头/表体全线错位）。截断语义本就由内层 .copy-cell 完整承载，td 上的
-   overflow/ellipsis 是冗余面。 */
+/* 勿给 .result-path 挂 display:block（修复在册 docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md Q1，
+   规格推演级、浏览器实证待真机目检）：thead/tbody 是两个独立 display:table 的 fixed 布局盒，
+   td 转 block 按 CSS 匿名表对象规则被包进无宽度的匿名单元格，首行绑定的 path 列宽脱靶成
+   auto，与表头五列全 px 的分配规则分叉（容器宽 ≠ 列宽和时表头/表体全线错位）；截断语义
+   本就由内层 .copy-cell 完整承载，td 上的 overflow/ellipsis 是冗余面。 */
 .result-path { font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-subtle); }
 .result-time { font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; }
 .row-actions { display: flex; gap: 4px; }

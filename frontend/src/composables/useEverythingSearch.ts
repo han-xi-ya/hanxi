@@ -1,7 +1,7 @@
 // Everything 内嵌搜索：输入即搜防抖（350ms）+ 中文组合输入守卫 + 过期响应丢弃（searchSeq）、
 // 300 条截断警示、结果打开/定位/复制，以及 ES 搜索组件就绪（EnsureSearchTool）与独立下载进度态。
-// 由 EverythingView 在 setup 期实例化并接线到子组件（props/emits），bindings 调用与文案逐字保持；
-// 事件分发（'everything:download' 的 es/app 双分支）仍由视图统一订阅后调用 handleEsTicket。
+// 由 EverythingView 在 setup 期实例化并接线到子组件（props/emits）；'everything:download'
+// 的 es/app 双分支由视图统一订阅后调用 handleEsTicket。
 import { onUnmounted, ref } from 'vue'
 import type { Ref } from 'vue'
 import * as EverythingAPI from '../../bindings/hanxi/internal/modules/everything/everythingservice'
@@ -34,7 +34,7 @@ export function useEverythingSearch(busy: Ref<boolean>) {
   const { showToast } = useToast()
   const { copy } = useClipboard()
 
-  // 手写 setTimeout 收编至 utils/debounce（trailing+cancel，与 HistoryPanel 同源节奏）
+  // 防抖走 utils/debounce（trailing+cancel，与 HistoryPanel 同源节奏）
   const debouncedSearch = debounce(() => { void doSearch() }, 350)
   let searchSeq = 0 // 输入变化立即失效；仅最新查询允许写回
   let disposed = false
@@ -168,7 +168,7 @@ export function useEverythingSearch(busy: Ref<boolean>) {
     disposed = true
     ++searchSeq
     cancelEsRetire()
-    debouncedSearch.cancel() // 卸载清待触发（与原 clearTimeout 路径等价，防卸载后搜索复活）
+    debouncedSearch.cancel() // 卸载清待触发，防卸载后搜索复活
   })
 
   return {

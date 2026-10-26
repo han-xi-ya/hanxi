@@ -1,17 +1,16 @@
 <script setup lang="ts">
-// 设置分区·数据与存储（分区名机主拍板：备份/快照/历史类归数据侧；页面主体
-// 即历史版本，PLAN_SNAPSHOT §3.5 / N33 批 B）：
+// 设置分区·数据与存储（分区名机主拍板：备份/快照/历史类归数据侧；页面主体即历史版本）：
 // 状态行 → 偏好行 → 按文件浏览（左 SnapshotFileList · 右 SnapshotTimeline）
 // → 全部版本列表 → 预览弹窗（文件清单+内容预览+单文件恢复）。
-// 本件退居编排：RPC 拉取、选中态/加载态、恢复确认链全在这里，两栏只管呈现；
+// 本件只管编排：RPC 拉取、选中态/加载态、恢复确认链全在这里，两栏只管呈现；
 // 行级 diff 与 hunk 折叠在 SnapshotTimeline（算法件 utils/textdiff）。
 // 恢复走 useConfirm（danger + 明细）；非便签文件写盘后提示重启生效，便签热生效。
-// 被删文件（status D）恢复的是"最后存在版本"（时间线上第一条非 D 事件）——
-// N33 §0 病灶 A 热修复；备份模式自批 A 起与 git 模式同面可浏览可恢复（P4 解禁）。
-// 批 C：观察窗 50 / 备份 30 两个口径数字全部收进 snapshotLabels 常量单源；
+// 被删文件（status D）恢复的是"最后存在版本"（时间线上第一条非 D 事件）；
+// 备份模式与 git 模式同面，可浏览可恢复。
+// 观察窗 50 / 备份 30 两个口径数字全部收进 snapshotLabels 常量单源；
 // 热/重启生效双语义常驻到清单行与时间线行徽标（确认框文案保留但不再独自教学）。
-// 批 D（代码可做部分）：旧摘要回改=呈现层 decorateLegacySummary/backupSummaryNote
-// （账本原文进 tooltip，不伪造变化语义）；P8-A 收口=Git 退出 chip/卡片正文进悬停；
+// 旧摘要回改=呈现层 decorateLegacySummary/backupSummaryNote（账本原文进 tooltip，
+// 不伪造变化语义）；Git 等技术名退出 chip/卡片正文进悬停；
 // 两模式版本容量在列表卡头分别如实（revisionCapNote）。
 import { ref, computed, onMounted } from 'vue'
 import * as SnapshotAPI from '../../../bindings/hanxi/internal/snapshot'
@@ -36,12 +35,12 @@ const { confirm } = useConfirm()
 const status = ref<StatusInfo | null>(null)
 const revisions = ref<Revision[]>([])
 const loading = ref(false)
-// 波 2B：立即快照与偏好保存两件迁 useAsyncAction（busy 名位保留，模板零改动）；
+// 立即快照与偏好保存两件走 useAsyncAction（busy 名位）；
 // 刷新/清单/时间线/对比/预览等 load 类仍手写。
 const { busy, run: runNow } = useAsyncAction()
 const { busy: savingPrefs, run: runPrefs } = useAsyncAction()
 
-// 文件为轴（N33 批 A/B）：ListFiles 左清单 + FileHistory 右时间线 + DiffFile 内联对比
+// 文件为轴：ListFiles 左清单 + FileHistory 右时间线 + DiffFile 内联对比
 const trackedFiles = ref<TrackedFile[]>([])
 const filesLoading = ref(false)
 const selectedPath = ref('')
@@ -64,9 +63,9 @@ const previewLoading = ref(false)
 
 const backupMode = computed(() => !!status.value && status.value.mode === 'backup')
 
-// §6 两模式同口径 chip：一句话说清"当前是什么引擎 + 容量口径"（P8-A：大白话为主）。
-// 批 C：50/30 裸数字全部走 snapshotLabels 常量单源，措辞不变。
-// 批 D（P8-A 收口）："Git" 等技术名退出 chip 正文进悬停 tooltip；备份侧正文
+// 两模式同口径 chip：一句话说清"当前是什么引擎 + 容量口径"（大白话为主），
+// 50/30 裸数字全部走 snapshotLabels 常量单源。
+// "Git" 等技术名退出 chip 正文进悬停 tooltip；备份侧正文
 // 直书"整份拷贝"这一与 git 模式的本质差异（读时差集后浏览/对比两模式已同面）。
 const modeChip = computed(() => {
   if (!status.value) return '正在读取快照状态…'
@@ -76,7 +75,7 @@ const modeChip = computed(() => {
     : `版本历史（整份拷贝 · 保留最近 ${BACKUP_KEEP} 份）`
 })
 
-/** chip 悬停技术细节（P8-A：大白话为主，引擎名与切回条件收在这里）。 */
+/** chip 悬停技术细节（大白话为主，引擎名与切回条件收在这里）。 */
 const modeChipTip = computed(() => {
   if (!status.value || !status.value.enabled) return ''
   return status.value.mode === 'git'
@@ -85,7 +84,7 @@ const modeChipTip = computed(() => {
 })
 
 /**
- * 版本/事件行摘要呈现（批 D 旧摘要回改）：git 旧账文件名串按现有账推中文名
+ * 版本/事件行摘要呈现（旧摘要回改）：git 旧账文件名串按现有账推中文名
  * （推不出原样，账本原文走 tooltip）；备份"N 个文件"补整拷贝限定语。
  */
 function summaryText(raw: string): string {
@@ -105,7 +104,7 @@ async function refresh() {
     enabled.value = status.value.enabled
     idleSeconds.value = status.value.idleSeconds
     intervalMinutes.value = status.value.intervalMinutes
-    // 两模式统一读面（P4 解禁）：备份模式的 revisions/文件清单为相邻清单差集读时算
+    // 两模式统一读面：备份模式的 revisions/文件清单为相邻清单差集读时算
     revisions.value = (await SnapshotAPI.CheckpointService.ListRevisions()) ?? []
   } catch (e: unknown) {
     showToast(`获取历史版本状态失败: ${getErrorMessage(e)}`)
@@ -205,12 +204,12 @@ async function showFileContent(file: RevisionFile) {
   }
 }
 
-/** 热/冷恢复判据单源 restoreScopeFor（批 D：与常驻徽标同一口径，不再各自 startsWith）。 */
+/** 热/冷恢复判据单源 restoreScopeFor（与常驻徽标同一口径，不各自 startsWith）。 */
 function isHotRestore(path: string): boolean {
   return restoreScopeFor(path) === 'hot'
 }
 
-/** 时间线（新→旧）里第一条非 D 事件 = 该文件的最后存在版本（§0.3-A 恢复目标）。 */
+/** 时间线（新→旧）里第一条非 D 事件 = 该文件的最后存在版本（D 行的恢复目标）。 */
 function resolveRestoreTarget(events: FileRevision[]): FileRevision | null {
   for (const e of events) {
     if (e.status !== 'D') return e
@@ -324,7 +323,7 @@ async function restoreOne(file: RevisionFile) {
   if (!previewRev.value) return
   const rev = previewRev.value
 
-  // 病灶 A 热修复：D 行恢复的不是"本版本"（该版本已无此文件），
+  // D 行恢复的不是"本版本"（该版本已无此文件），
   // 而是时间线上第一条非 D 事件 = 最后存在版本。
   if (file.status === 'D') {
     let hist: FileRevision[]
@@ -426,18 +425,18 @@ onMounted(refresh)
       </div>
     </div>
 
-    <!-- 降级模式说明卡（P4 解禁后不再是唯一动作：下方两模式同面可浏览可恢复） -->
+    <!-- 降级模式说明卡（下方两模式同面可浏览可恢复，本卡不是唯一动作） -->
     <div v-if="backupMode" class="card backup-note">
       <span class="backup-icon"><AppIcon name="hard-drive" :size="18" /></span>
       <div>
-        <!-- P8-A/§6：降级原因（未检测到 Git）退出正文进悬停；§6"打开文件夹找"翻正为
-             有面子的第二通道——文案指向偏好卡常驻的「打开目录」，不另设重复按钮 -->
+        <!-- 降级原因（未检测到 Git）收在悬停；手工翻文件走偏好卡常驻的「打开目录」
+             第二通道，不另设重复按钮 -->
         <div class="backup-title" :title="modeChipTip">当前为本机备份模式</div>
         <div class="backup-desc">每次留整份拷贝，按日期命名滚动保留最近 {{ BACKUP_KEEP }} 份；版本浏览、行级对比与单文件恢复照常可用（没有改名跟踪，改名会如实呈现为独立的新增/删除）。想手工翻文件，点上方「打开目录」即可进入备份文件夹。</div>
       </div>
     </div>
 
-    <!-- 按文件浏览（N33）：左清单右时间线，行内展开行级对比与恢复（两栏为批 B 拆出子件） -->
+    <!-- 按文件浏览：左清单右时间线，行内展开行级对比与恢复（两栏为独立子件） -->
     <div class="card">
       <div class="card-head">
         <span class="card-title">按文件浏览</span>
@@ -482,7 +481,7 @@ onMounted(refresh)
         <tbody>
           <tr v-for="rev in revisions" :key="rev.id">
             <td class="mono">{{ fmtTime(rev.time) }}</td>
-            <!-- 批 D 旧摘要回改：正文能推则推（中文名/标题），tooltip 永留账本原文 -->
+            <!-- 旧摘要回改：正文能推则推（中文名/标题），tooltip 永留账本原文 -->
             <td class="summary-cell" :title="rev.summary">{{ summaryText(rev.summary) }}</td>
             <td>
               <button class="btn btn-ghost btn-small" @click="openPreview(rev)">预览</button>
@@ -493,7 +492,7 @@ onMounted(refresh)
     </div>
 
     <!-- 预览弹窗：版本文件清单 → 点选看内容 → 单文件恢复。骨架收口 SettingsModal
-         （合并批 2026-10-26，与 AiSection 向导同族壳），内容三段宿主自撰 -->
+         （与 AiSection 向导同族壳），内容三段宿主自撰 -->
     <SettingsModal v-if="previewRev" :width="680" @close="closePreview">
         <template #head>
           <h3>版本 {{ previewRev.id.slice(0, 8) }} · {{ fmtTime(previewRev.time) }}</h3>
@@ -505,7 +504,7 @@ onMounted(refresh)
                 <span class="file-st" :class="`st-${f.status}`">{{ statusLabels[f.status] ?? f.status }}</span>
                 <code class="file-path" :title="f.path">{{ f.path }}</code>
                 <span class="row-actions">
-                  <!-- D 行不给"内容"预览：该版本文件已不存在，读了必炸（病灶 A）；
+                  <!-- D 行不给"内容"预览：该版本文件已不存在，读了必炸；
                        "恢复"自动回取最后存在版本 -->
                   <button v-if="f.status !== 'D'" class="btn btn-ghost btn-small" @click="showFileContent(f)">内容</button>
                   <button class="btn btn-secondary btn-small" @click="restoreOne(f)">{{ f.status === 'D' ? '恢复被删内容' : '恢复' }}</button>
@@ -530,7 +529,7 @@ onMounted(refresh)
 
 <style scoped>
 /* 行骨架复用全局 .setting-row / .card / .chip / .tbl / .btn 原子，此处仅节奏与专属皮；
-   两栏（.fa-list/.fa-detail 及其子孙）皮随批 B 拆进 SnapshotFileList/SnapshotTimeline */
+   两栏（.fa-list/.fa-detail 及其子孙）皮随子件 SnapshotFileList/SnapshotTimeline 走 */
 .pref-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
 .input-inline { display: flex; align-items: center; gap: 6px; }
@@ -561,8 +560,8 @@ onMounted(refresh)
 .mono { font-family: var(--font-mono); font-size: var(--text-xs); }
 .summary-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
 
-/* 预览弹窗骨架（backdrop/卡片壳/三段/✕ 钮）归 SettingsModal（合并批 2026-10-26，
-   宽度 680 由 prop 传入）；本层只留插槽自撰标题的 mono 字族 */
+/* 预览弹窗骨架（backdrop/卡片壳/三段/✕ 钮）归 SettingsModal
+   （宽度 680 由 prop 传入）；本层只留插槽自撰标题的 mono 字族 */
 .modal-head h3 { margin: 0; font-size: var(--text-base); color: var(--color-text); font-family: var(--font-mono); font-weight: 500; }
 
 .file-list { display: flex; flex-direction: column; gap: 4px; }

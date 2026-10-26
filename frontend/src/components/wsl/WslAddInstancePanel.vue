@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // WSL「➕ 添加实例」页签：三源统一新增入口（官方商店清单 / 本地 rootfs / 现有 VHDX 盘，
-// Phase 6 式自 WSLView 拆分）。镜像站源刻意不做：第三方 rootfs 的信任链无法在本工具内把关。
+// 拆分自 WSLView）。镜像站源刻意不做：第三方 rootfs 的信任链无法在本工具内把关。
 // 商店清单（online）懒加载经 ensureOnlineLoaded() 由视图页签 watch 触发；
 // 安装基目录（installDir）住视图（跨页签落位预填共享），经 v-model 回填。
-// 行为逐字迁出：bindings 调用、确认文案与 busy 闸门的执行序列未做任何改动。
+// bindings 调用、确认文案与 busy 闸门的执行序列为特征测试锁定的契约。
 import { computed, ref, watch } from 'vue'
 import * as WSLAPI from '../../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { DistroOption, Report } from '../../../bindings/hanxi/internal/modules/wsl/readiness/models'
@@ -177,7 +177,7 @@ async function installDistro(opt: DistroOption) {
 }
 
 defineExpose({
-  // 首次切到本页才拉数据（在线清单依赖本机命令，冷页避免无谓探测）——判据与拆分前逐字一致。
+  // 首次切到本页才拉数据（在线清单依赖本机命令，冷页避免无谓探测）。
   ensureOnlineLoaded() {
     if (online.value.length === 0 && !onlineLoading.value && !onlineError.value) {
       loadOnline()
@@ -313,14 +313,14 @@ defineExpose({
 <style scoped>
 /* 全局原子落 components.css；以下为本页签独有或有意补差（注释注明）。 */
 
-/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）在
    components.css :where(.wsl-view) 原子区，六面板共用，本页签不再自持副本。 */
-/* .banner.slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
+/* .banner.slim 不挂等值副本：UiBanner 根元素挂 .banner + .slim，走全局 :where(.banner.slim) */
 .retry-inline { margin-left: 10px; }
-/* display/gap 落回全局 .btn-group；此处仅留换行补差 */
+/* display/gap 走全局 .btn-group；此处仅留换行补差 */
 .btn-group { flex-wrap: wrap; }
 
-/* 表头行（与本机发行版控制台同形——§③ 上收候选） */
+/* 表头行（与本机发行版控制台同形，家族共享上收候选） */
 .distro-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .distro-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 

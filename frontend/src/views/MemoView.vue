@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 随手记 v2「摊开的笔记本」（2026-09-26 推倒重做，替换同日午间的"速记条+分组卡片群岛+双浮层"版）。
+// 随手记 v2「摊开的笔记本」（推倒重做，替换旧"速记条+分组卡片群岛+双浮层"版）。
 //
 // 病根复盘（旧版定量诊断）：1200×780 窗内内容区实得约 834×701，旧骨架的页头副标题(~105px)
 // +速记条面板(~110px)+过滤条面板(~100px)+三道 14px 间距合计 357px——首屏 51% 还没见到一条便签；
@@ -20,26 +20,24 @@
 //     2560 下整页夹 --container-workbench 档、正文版心再封顶 72ch，笔记本不被拉散。
 //
 // 数据契约零改动：List/GetStats/Create/Update/Delete/TogglePin/ToggleMask/ClearAll +
-// 速记卡三件（GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet）共十一方法面照旧；
-// memo:changed 重拉、搜索 350ms 防抖 + 序号守卫、卸载作废在飞请求等纪律逐字保留；
-// 一键全删/导出全库（919c526 能力）原样，入口退工具条右端溢出菜单，danger 强确认链一字不动。
-// 敏感遮罩纪律（接线收口裁决 2026-09-26，从严定稿）：masked 条目不落【标题】与正文任何明文面——
-// 行式索引吃 MemoCard 严口径（标题位固定「敏感便签」），页面板 masked 分支同谱改吃此严口径
-// （原"标题仍示人"放宽就此收编），与 MCP 线「masked 整条不下发」同谱；HTML title 属性同列
-// 泄漏面；masked 无复制/导出钮；全库导出默认剔除敏感条目且确认框明说排除条数。
-// 组件库 M4（components/memo/MemoCard·MemoToolbar·memoMetrics，f61060c）接线收口已完成：
-// 行式索引 = MemoCard(list variant, :md-flag="false" 守徽标退役防回潮)，顶栏 = MemoToolbar
-// （点外收合统一为其 document click capture 纪律，本文件不再自挂 mousedown 监听），
-// dayBucket/fmtAgo/摘要/parseTagTokens/五色 hex 全切 memoMetrics 单源，本文件零内联副本。
-// 速记行语义与悬浮速记卡（M3）对齐防漂移：标签解析共用 parseTagTokens 单源，
+// 速记卡三件（GetQuickSheetState/SetQuickSheetHotkey/ShowQuickSheet）共十一方法面；
+// memo:changed 重拉、搜索 350ms 防抖 + 序号守卫、卸载作废在飞请求等纪律不动；
+// 一键全删/导出全库入口在工具条右端溢出菜单，danger 强确认链一字不动。
+// 敏感遮罩纪律（机主裁决，从严定稿）：masked 条目不落【标题】与正文任何明文面——
+// 行式索引吃 MemoCard 严口径（标题位固定「敏感便签」），页面板 masked 分支同谱吃
+// 此严口径，与 MCP 线「masked 整条不下发」同谱；HTML title 属性同列泄漏面；
+// masked 无复制/导出钮；全库导出默认剔除敏感条目且确认框明说排除条数。
+// 组件接线（现状）：行式索引 = MemoCard（list variant，:md-flag="false" 守徽标退役
+// 防回潮），顶栏 = MemoToolbar（点外收合统一为其 document click capture 纪律，本文件
+// 不自挂 mousedown 监听），分组/相对时间/摘要/标签解析/五色 hex 全吃 memoMetrics
+// 单源，本文件零内联副本。
+// 速记行语义与悬浮速记卡对齐防漂移：标签解析共用 parseTagTokens 单源，
 // 多行粘贴并条共用 flattenPastedLines 单源，Ctrl+Enter = "存并收"（主窗等价语义：
-// 存下但不翻页抢阅读位；裸回车保持"存并翻到该条"）。
+// 存下但不翻页抢阅读位；裸回车保持"存并翻到该条"原语义）。
 // 命名口径：本视图一律自称「随手记」。
-// 拆分批（2026-10-26，质量审查轮）：页面板书写态抽 components/memo/MemoEditorPane、
-// 栏底速记卡热键配置抽 components/memo/MemoSheetSettings、页内图标件 MemoGlyph
-// 由内联 h() 渲染件升为独立 SFC（皮肤随件自带，两宿主共吃）。契约与皮逐字随迁
-// （拆分不动相）：拆分落地时金标准 spec 原有 39 例一字未改全绿；本轮另收 1 例
-// （保存事务在飞重入守卫），现册 40 例。
+// 页面件归属：书写态草稿面 = components/memo/MemoEditorPane，栏底速记卡热键配置 =
+// components/memo/MemoSheetSettings，页内图标 = components/memo/MemoGlyph
+// （皮肤随件自带，MemoView 与 MemoSheetSettings 两宿主共吃）。
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
 import type {
@@ -95,9 +93,9 @@ const quickText = ref('')
 const quickTagsInput = ref('')
 const quickSaving = ref(false)
 
-// ---- 悬浮速记卡（N16 B 批：全局热键配置与唤出）----
-// 热键配置块（实况/改键/回滚/未在位横幅）拆至 components/memo/MemoSheetSettings
-// 自治（拆分批 2026-10-26）；本视图只留菜单「浮窗速记」唤出通道（不依赖热键）。
+// ---- 悬浮速记卡（全局热键配置与唤出）----
+// 热键配置块（实况/改键/回滚/未在位横幅）由 components/memo/MemoSheetSettings
+// 自治、挂在栏底；本视图只留菜单「浮窗速记」唤出通道（不依赖热键）。
 async function openQuickSheet() {
   try {
     await MemoAPI.MemoService.ShowQuickSheet()
@@ -107,8 +105,8 @@ async function openQuickSheet() {
 }
 
 // ---- 页面板：阅读/书写同页合并（旧"详情浮层+编辑模态"双壳就此归一）----
-// 书写态草稿面（表单/分段/色标/标签丸）拆至 components/memo/MemoEditorPane，
-// 本视图只持"开的是哪一条 + 页开关"；:key 每次打开重挂载＝旧"关窗弃稿"口径。
+// 书写态草稿面（表单/分段/色标/标签丸）在 components/memo/MemoEditorPane，
+// 本视图只持"开的是哪一条 + 页开关"；:key 每次打开重挂载＝"关窗弃稿"口径。
 const currentId = ref('') // 正在看/写的一条（空=闲页/新建）
 const showEditor = ref(false)
 const editorEditing = ref(false) // 页面板书写态：编辑既有 or 新建
@@ -116,15 +114,15 @@ const editorTarget = ref<MemoItem | null>(null) // 编辑态回填源（新建�
 const editorKey = ref(0) // 每次打开 +1：重挂载弃旧稿（selectRow 关页同权语义随 v-if）
 
 // 页面板内容声明式跟随列表账本：条目被别端改/删，computed 自动换身或收空，
-// 不留陈旧明文（与旧版 loadMemos 里 imperative 同步 detailItem 同语义）。
+// 不留陈旧明文（声明式取代旧版 imperative 同步，无需换身补丁）。
 const currentItem = computed<MemoItem | null>(
   () => memos.value.find((m) => m.id === currentId.value) ?? null,
 )
 
 // 溢出菜单（导出全库/一键全删/浮窗速记退居次级入口，破坏性动作离主动线远一格，
 // 确认链与禁用律一字不动）开合归 MemoToolbar：点外（document click capture）/
-// 按 Esc/选中项即收，本视图不再自挂 mousedown 监听（M2 注明的收合口径差异按
-// MemoToolbar 纪律统一收口）。这里只跟读 moreChange 供全局 Esc 阶梯判级——
+// 按 Esc/选中项即收，收合口径一律以 MemoToolbar 纪律为准，本视图不再自挂
+// mousedown 监听。这里只跟读 moreChange 供全局 Esc 阶梯判级——
 // 菜单在场时 Esc 只收菜单，不得连降书写态/当前页两级。
 const toolbarMoreOpen = ref(false)
 
@@ -195,23 +193,22 @@ const hasFilter = computed(
 )
 
 // ---- 时间分组（置顶由后端排序保证在前，这里按 updatedAt 再切自然日档）----
-// 接线收口（M4 清单）：六档口径/dayBucket/fmtAgo/行摘要的逐字副本全部删除，
-// 切 memoMetrics 单源——groupMemoItems 一次遍历共用同一 now，杜绝旧内联版
-// 每条各取 new Date() 可能跨午夜分裂的隐患；行摘要（首非空行）由 MemoCard
-// list 形态内部吃 firstMeaningfulLine，视图不再自切。
+// 六档口径/相对时间/行摘要都在 memoMetrics 单源（本视图零内联副本）——
+// groupMemoItems 一次遍历共用同一 now，杜绝逐条各取 new Date() 跨午夜分裂的
+// 隐患；行摘要（首非空行）由 MemoCard list 形态内部吃 firstMeaningfulLine。
 const groupedMemos = computed(() => groupMemoItems(memos.value))
 
 // ---- 索引选择 ----
 function selectRow(item: MemoItem) {
   currentId.value = item.id
-  showEditor.value = false // 换看下一条时，书写草稿按旧模态关窗口径丢弃（Esc 同权）
+  showEditor.value = false // 换看下一条时，书写草稿即弃（"关窗弃稿"口径，Esc 同权）
 }
 
-// ---- 速记（与悬浮速记卡 M3 语义对齐防漂移：分词/并条全走 memoMetrics 单源）----
+// ---- 速记（与悬浮速记卡语义对齐防漂移：分词/并条全走 memoMetrics 单源）----
 function parseQuickTags(): string[] {
   const tags = parseTagTokens(quickTagsInput.value)
-  // 当前过滤标签自动带入是主窗独有组合（速记卡无过滤态），去重保序语义与
-  // 收编前的双份逐字实现一致：已手敲过的不挪位、未敲的补在尾部。
+  // 当前过滤标签自动带入是主窗独有组合（速记卡无过滤态）：去重保序，
+  // 已手敲过的不挪位、未敲的补在尾部。
   if (selectedTag.value && !tags.includes(selectedTag.value)) tags.push(selectedTag.value)
   return tags
 }
@@ -274,8 +271,8 @@ function openEditModal(item: MemoItem) {
 }
 
 // 保存事务重入守卫（对齐同文件 commitQuick、MemoSheetSettings 改键与全库导出
-// exporting 的既有纪律，波前独漏此口）：Create 往返期间连点「立即创建」不再发
-// 第二笔事务；失败保稿保页口径原样（守卫只拦在飞重入，不碰成功/失败两路播报与收尾顺序）。
+// exporting 的既有纪律）：Create 往返期间连点「立即创建」不再发第二笔事务；
+// 失败保稿保页口径不变（守卫只拦在飞重入，不碰成功/失败两路播报与收尾顺序）。
 const savingMemo = ref(false)
 
 async function onEditorSave(p: { id: string; title: string; content: string; tags: string[]; colorTag: string }) {
@@ -315,7 +312,7 @@ const paneHtml = computed(() =>
     : '',
 )
 
-// ---- 单条导出（N16 C 批：与文件库同格式的 frontmatter 文档，可回灌）----
+// ---- 单条导出（与文件库同格式的 frontmatter 文档，可回灌）----
 // 通道为浏览器原生下载，不可用时降级"复制原文到剪贴板"（同一份文档，不另做取舍）。
 function exportFromPane() {
   const cur = currentItem.value
@@ -379,9 +376,9 @@ async function handleExportLibrary() {
 }
 
 // ---- 行/页微操作 ----
-// 单 API + toast 四函数走 useAsyncAction run 通道（波 2B）：只取错误双通道返回，
+// 单 API + toast 四函数走 useAsyncAction run 通道：只取错误双通道返回，
 // busy 不接模板（行级钮跨条目共享一个 run 实例会误伤邻行，Toggle 均为本地毫秒级写）；
-// 播报词面、currentId 复位与 loadMemos 收尾顺序逐字保留。
+// 播报词面、currentId 复位与 loadMemos 收尾顺序不变。
 const { run: runTogglePin } = useAsyncAction()
 const { run: runToggleMask } = useAsyncAction()
 const { run: runDelete } = useAsyncAction()
@@ -445,12 +442,12 @@ async function handleClearAll() {
   await loadMemos()
 }
 
-// 剪贴板两级策略已收编进 useClipboard（toast 文案与原实现逐字一致）
+// 剪贴板两级策略在 useClipboard（本视图只给文案），toast 文案不变
 async function copyMemoContent(content: string) {
   await copyWithToast(content, '已复制便签内容到剪贴板')
 }
 
-// Esc 出口纪律（旧"编辑浮层→详情浮层"链的等价降维）：溢出菜单 → 书写态回阅读页 → 收起当前页。
+// Esc 出口纪律（阶梯降维）：溢出菜单 → 书写态回阅读页 → 收起当前页。
 // 菜单档由 MemoToolbar 自收（其 window keydown 与本函数同拍触发），本视图只判级让位。
 function onGlobalKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
@@ -576,11 +573,11 @@ watch(currentId, async () => {
             {{ g.label }}
             <span class="group-count mono">{{ g.items.length }}</span>
           </h2>
-          <!-- 行式索引 = MemoCard list 形态（M4 契约接线）：色彩封边吃 memoColorHex
-               内联单源；masked 严口径由组件硬编码（标题位固定「敏感便签」，title
-               属性同熄——2026-09-26 收口裁决，与 MCP 整条不下发同谱）；
-               :md-flag="false" 守 v2「徽标退役防回潮」——渲染分流归页面板。
-               memo-row/is-current 为宿主贴挂钩子（选中行底色与换选滚动定位共用）。 -->
+          <!-- 行式索引 = MemoCard list 形态：色彩封边吃 memoColorHex 内联单源；
+               masked 严口径由组件硬编码（标题位固定「敏感便签」，title 属性同熄——
+               收口裁决，与 MCP 整条不下发同谱）；:md-flag="false" 守「徽标退役
+               防回潮」——渲染分流归页面板。memo-row/is-current 为宿主贴挂钩子
+               （选中行底色与换选滚动定位共用）。 -->
           <MemoCard
             v-for="item in g.items"
             :key="item.id"
@@ -642,8 +639,8 @@ watch(currentId, async () => {
           </button>
         </div>
 
-        <!-- 书写态（编辑/新建同页展开；阅读态即其背页，双浮层退役）。草稿面拆批
-             归 MemoEditorPane：:key 每次打开重挂载＝"关窗弃稿"口径原样；
+        <!-- 书写态（编辑/新建同页展开；阅读态即其背页，双浮层退役）。草稿面归
+             MemoEditorPane：:key 每次打开重挂载＝"关窗弃稿"口径；
              save/cancel 事务、播报词面与重拉纪律留本视图（确认链不进呈现件）。
              Markdown 预览皮肤由本视图 `.memo-pane :deep(.md-preview …)` 穿透命中。 -->
         <MemoEditorPane
@@ -659,9 +656,9 @@ watch(currentId, async () => {
         <!-- 阅读态（旧详情浮层所得全数搬进本页；MD 自动渲染/等宽原文/遮罩圆点三分支照旧） -->
         <div v-else-if="currentItem" class="pane-read">
           <header class="pane-head">
-            <!-- 接线收口裁决（2026-09-26）：页面板 masked 分支改吃 MemoCard 严口径——
-                 标题也是明文面，不落渲染（固定「敏感便签」），与行式索引、MCP
-                 「masked 整条不下发」同谱；原 v2"标题仍示人"放宽就此收编 -->
+            <!-- 收口裁决：页面板 masked 分支吃 MemoCard 严口径——标题也是明文面，
+                 不落渲染（固定「敏感便签」），与行式索引、MCP「masked 整条
+                 不下发」同谱，「标题仍示人」的放宽不存在 -->
             <h3
               class="pane-title"
               :class="{ 'title-void': !currentItem.isMasked && !currentItem.title.trim() }"
@@ -735,7 +732,7 @@ watch(currentId, async () => {
 </template>
 
 <style scoped>
-/* 治理说明（机主配色裁决 2026-09-26 沿用）：本视图 scoped 层【禁止】重写共享原子类
+/* 治理说明（机主配色裁决，沿用）：本视图 scoped 层【禁止】重写共享原子类
    （components.css :where 家族：btn 全族、text-input、tag-pill、chip、state-box、
    banner、mono、text-muted/text-danger 等）与全局 token 变量——跨页面观感一律
    以共享件为准。页面私有需求全部走 memo-/pane-/quick-/sheet-/menu- 私有类，
@@ -756,8 +753,8 @@ watch(currentId, async () => {
 }
 .tag-chip:hover { background: var(--surface-hover); color: var(--color-text); }
 .tag-chip.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
-/* 样式审计 C5（2026-10-27）：本丸列是横向滚容器（.memo-chips overflow-x auto 纵向同为 auto，
-   padding 2px 0），base.css 全局环外扩 2px 会被裁半——键盘环内收，同 ClipToolbar/AppNavRail 口径。 */
+/* 本列是横向滚动容器（.memo-chips overflow-x auto、padding 2px 0），base.css 全局
+   焦点环外扩 2px 会被裁半——键盘环内收，同 ClipToolbar/AppNavRail 口径。 */
 .tag-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .tag-count { opacity: 0.8; font-size: var(--text-xs); }
 .clear-filter-btn { flex: none; }
@@ -803,7 +800,7 @@ watch(currentId, async () => {
 /* 页面板标签丸选中态私有色差（行内丸归 MemoCard 契约、无此差分——宁少勿滥裁决） */
 .memo-tag-active { background: var(--color-primary-soft); color: var(--color-primary); }
 
-/* 栏底悬浮速记卡折叠配置的 sheet-* 家族皮随 MemoSheetSettings 件走（拆分批）。 */
+/* 栏底悬浮速记卡折叠配置的 sheet-* 家族皮随 MemoSheetSettings 件走，本层无副本。 */
 
 /* ---------- 右页面板 ---------- */
 .memo-pane {
@@ -824,8 +821,8 @@ watch(currentId, async () => {
 }
 .memo-pen-btn:hover { background: var(--surface-hover); color: var(--color-primary); }
 
-/* 页面板头尾（书写态那份 .pane-head/.pane-foot 骨架皮随 MemoEditorPane 件走——
-   拆分不动相的 scoped 副本；本层留阅读态所用）。 */
+/* 页面板头尾（本层是阅读态所用；MemoEditorPane 书写态自带同字面的 scoped 副本，
+   两处不共享样式——改头尾形制须同步两件）。 */
 .pane-head { display: flex; align-items: center; gap: 10px; min-width: 0; flex: none; }
 .pane-title {
   margin: 0; font-size: var(--text-md); font-weight: 700; color: var(--color-text);
@@ -840,7 +837,7 @@ watch(currentId, async () => {
 
 /* 书写态家族皮（pane-write、write-body、色彩圆点、tags-input-box 等）随 MemoEditorPane 件走 */
 
-/* 阅读态正文（遮罩圆点/纯文本兜底两分支与旧详情浮层所得逐字同语义） */
+/* 阅读态正文（遮罩圆点/纯文本兜底两分支，所得即旧详情浮层全部内容） */
 .memo-content-box {
   font-size: var(--text-sm); line-height: 1.55; color: var(--color-text);
   background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control);
@@ -868,9 +865,9 @@ watch(currentId, async () => {
 }
 .idle-note { margin: 0; max-width: 46ch; font-size: var(--text-sm); color: var(--color-text-subtle); line-height: 1.8; }
 
-/* Markdown 阅读/预览皮肤：全走 token，随主题联动。拆分批注：书写态预览面
+/* Markdown 阅读/预览皮肤：全走 token，随主题联动。书写态预览面
    （MemoEditorPane 内的 .md-preview）与阅读页同挂 .memo-pane 之下，选择器一律
-   `.memo-pane :deep(…)` 形态穿透组件边界——两份渲染面继续单源同皮，防漂移。 */
+   `.memo-pane :deep(…)` 形态穿透组件边界——两份渲染面单源同皮，防漂移。 */
 .memo-pane :deep(.md-preview) { font-size: var(--text-base); line-height: 1.65; color: var(--color-text); overflow-wrap: anywhere; }
 .memo-pane :deep(.md-preview h1), .memo-pane :deep(.md-preview h2), .memo-pane :deep(.md-preview h3),
 .memo-pane :deep(.md-preview h4), .memo-pane :deep(.md-preview h5), .memo-pane :deep(.md-preview h6) {

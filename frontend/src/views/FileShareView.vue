@@ -1,9 +1,8 @@
 <script setup lang="ts">
-// 局域网文件快传视图 —— Phase 6 巨型孤本结构拆分后的编排层。
-// 业务状态/操作/事件订阅/轮询收敛于 composables/useFileShareServer（bindings 调用序列、
-// 事件名与 toast 文案逐字未动）；hero/概览/设置/工作区（接入点·投递箱·审计）按职责
-// 拆分至 components/fileshare/*，scoped 样式随标记迁移，本文件只留页面骨架与根级标记
-// （alert-banner 错误横幅、section-gap），特征测试 FileShareView.spec.ts 锁定行为基线。
+// 局域网文件快传视图 —— 编排层：业务状态/操作/事件订阅/轮询全部在
+// composables/useFileShareServer；hero/概览/设置/工作区（接入点·投递箱·审计）按职责
+// 拆分在 components/fileshare/*，本文件只留页面骨架与根级标记（alert-banner 错误横幅
+// 类为 spec 选择器锚点，无样式；section-gap 样式在本层），FileShareView.spec.ts 锁行为基线。
 import FileShareHero from '../components/fileshare/FileShareHero.vue'
 import FileShareOverview from '../components/fileshare/FileShareOverview.vue'
 import FileShareSettings from '../components/fileshare/FileShareSettings.vue'
@@ -72,9 +71,8 @@ const {
 </template>
 
 <style scoped>
-/* 原两块同名 .fileshare-page 声明（24/32+1360 初版与 "Refined dashboard layout"
-   二版）合并为一：级联终值逐字不变——margin:0 auto 为首版独有不参与覆盖，
-   width/padding/max-width/overflow-x 取二版；760px 断点档原样保留。 */
+/* .fileshare-page 单一来源声明（曾并存的两块同名声明已合并，级联终值不变；
+   760px 断点档保留）。 */
 .fileshare-page {
   width: 100%;
   max-width: 1440px;

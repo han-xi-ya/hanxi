@@ -3,11 +3,11 @@
 // main.ts 按 #msgboard hash 分流挂载并打 .popup-shell（html/body 全透明，见
 // 踩坑 #50——牌体观感全部由本页自绘，窗口本体不允许有任何实底）。
 //
-// N6 重设计：整屏黑板 → "贴在屏幕上的便利贴"（牌面画法收进 BoardCard，与
-// 管理页预览同源）；背景只留轻微压暗（既保"牌在屏幕上"的聚焦感，也保住
-// 全屏点击撤牌的命中区）。撤牌提示改为限时淡出——前几秒给操作者看，之后
-// 还给旁观者一张干净的牌；防休眠说明移回管理页，不再印在牌上。
-// 交互契约不变：点击任意处或 Esc 撤牌；正文/字号经 msgboard:changed 热更。
+// 牌面是"贴在屏幕上的便利贴"（N6）：画法收进 BoardCard 与管理页预览同源；
+// 背景只留轻微压暗——既保"牌在屏幕上"的聚焦感，也保住全屏点击撤牌的命中区。
+// 撤牌提示限时淡出：前几秒给操作者看，之后还给旁观者一张干净的牌；
+// 防休眠说明归管理页，不印在牌上。
+// 交互契约：点击任意处或 Esc 撤牌；正文/字号经 msgboard:changed 热更。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as MsgBoardAPI from '../../bindings/hanxi/internal/modules/msgboard'
 import type { BoardContent } from '../../bindings/hanxi/internal/modules/msgboard/models'
@@ -66,7 +66,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   animation: board-in 150ms ease-out;
 }
 .board-card {
-  /* 全屏牌的最大高度：留 18% 视口呼吸，超高裁剪纪律在 BoardCard 内部 */
+  /* 全屏牌的最大高度：74vh——上下合计留 26% 视口呼吸，超高裁剪纪律在 BoardCard 内部 */
   --bc-max-h: 74vh;
 }
 @keyframes board-in {

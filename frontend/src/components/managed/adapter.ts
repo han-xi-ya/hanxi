@@ -1,7 +1,7 @@
 // ============================================================================
-// 托管控制台共享契约（Wave 5 · 批 0）
+// 托管控制台共享契约
 //
-// 定位：纯前端类型层——把 19+ 个托管视图（ccswitch/markeron/ddnsgo/vscode/
+// 定位：纯前端类型层——把各托管视图（ccswitch/markeron/ddnsgo/vscode/
 // recordly/paseo/papertodo/everything…）五花八门的 service 绑定，投影成
 // ManagedConsoleShell 一家组件共同消费的**单一接口面**。不改 Go、不改
 // bindings：每个模块在 `src/adapters/<module>.ts` 里写一个工厂函数，把
@@ -39,7 +39,7 @@
 //      useWailsEvent 注册、随宿主组件卸载自动注销），不要在工厂函数体里就订阅。
 //
 // ---------------------------------------------------------------------------
-// 槽位清单（批 0 定型、后续批次已按需接线）：
+// 槽位清单（定型件，各视图按需接线）：
 //   adapter.toggle          markeron 六态标注开关（钮体走 #primary-action 槽）
 //   adapter.log             ddnsgo/frpc 型进程日志（UI 走 #console-extra 槽）
 //   adapter.channel         recordly/paseo 的 Get/SetReleaseChannel
@@ -100,25 +100,25 @@
 // 通用动作回执 toast（"X 已启动"/"已卸载"等**成功**消息）经 ManagedActionResult
 // 由共享件统一弹出；**失败**前缀（'退出失败: '/'下载失败: '…）是跨模块逐字同形
 // 的固定词，收在 store.ts 的 ACTION_ERROR_PREFIX 单一来源，adapter 只管抛错
-// （增强批⑥起可经 copy.errorPrefix 逐动词覆写，「安装失败: 」方言回表）。
+// （可经 copy.errorPrefix 逐动词覆写，「安装失败: 」方言回表）。
 //
 // ---------------------------------------------------------------------------
-// Wave 5 · 共享契约增强批（本文件全部演进的向后兼容总纲）：
-//   ① ManagedControlVerb.label 可为 (state, snap) 纯函数（mangodisk 动态主钮）；
-//   ② banner/hint 新增第二参版本区投影 ManagedProjection（少收者零改动，
-//      方法位双变；见 ManagedProjection 注记）；
-//   ③ ManagedVersionRecord<V> 泛型化（方言字段包，paseo/mangodisk 视图去 cast）
+// 契约扩展总纲（全部向后兼容，均为可选/联合类型，既有 adapter 与共享件默认
+// 行为零变化）。编号①–⑨是共享契约层的稳定锚点：托管面板/控制条契约测试的
+// describe 分组名以此编号标注消费面，勿改号：
+//   ① ManagedControlVerb.label 可为 (state, snap) 纯函数（动态主钮词）；
+//   ② banner/hint 第二参版本区投影 ManagedProjection（少收者零改动，方法位双变）；
+//   ③ ManagedVersionRecord<V> 泛型化（方言字段包，paseo/mangodisk 视图免 cast）
 //      + 面板 #version-row-extra 具名槽；
 //   ④ ManagedCopySpec 面板词面覆写全集（徽标/钮词/下载词族/阶段词/chip 色调…），
-//      缺省值 = 现 ccswitch 标准词；
+//      缺省值 = ccswitch 标准词；
 //   ⑤ versions.statusOf/sameVersion/implicitActive/downloadBlock 等效钩子；
-//   ⑥ store 动作（runControl/runToggle/runDownload/runChannel/runVariant）
-//      统一消费 reloadVersions/activeVersion + errorPrefix 逐动词覆写；
-//   ⑦ #danger-extra/#extras-action 槽补作用域 + dangerBusy 联动 + Shell
+//   ⑥ store 动作统一消费 reloadVersions/activeVersion + errorPrefix 逐动词覆写；
+//   ⑦ #danger-extra/#extras-action 槽作用域 + dangerBusy 联动 + Shell
 //      #versions-body/页头徽标/页签计数；
-//   ⑧ statusTone 自定义色档 + channel 行收编为 ManagedChannelRow 共享块；
-//   ⑨ 轮询停止→uptime 归零入 store；copy.dataDirRow「托管位置」数据行。
-// 一切新能力均为可选/联合类型，既有 17 个 adapter 与全部共享件默认行为零变化。
+//   ⑧ statusTone 自定义色档 + channel 行共享块 ManagedChannelRow；
+//   ⑨ 轮询停止→uptime 归零入 store；copy.dataDirRow「托管位置」数据行；
+//   （另：runSlotVerb/runReset 扩展槽动词编排，见 ManagedSlotVerb*Options。）
 // ============================================================================
 
 import type { Ref } from 'vue'
@@ -130,7 +130,7 @@ export interface ManagedBanner {
 }
 
 /**
- * 方言扩展缺省位（增强批③）：ManagedVersionRecord<V> 的 V 不传时落此型——
+ * 方言扩展缺省位：ManagedVersionRecord<V> 的 V 不传时落此型——
  * 键集为空的 Record（等价 `{}`，交叉的单位元），与基型交叉即纯基型，旧消费方零感知。
  * 实现纪律：缺省不写 `Record<string, never>`——其字符串索引会把每个字段压成
  * never，任何带字段的绑定/方言型都赋不进；亦不用条件类型折叠缺省——条件类型
@@ -139,8 +139,8 @@ export interface ManagedBanner {
 export type ManagedVersionDialect = Record<never, never>
 
 /**
- * 版本区投影上下文（增强批②）：banner/hint 的第二入参，携带 store 单源版本区。
- * 兼容性铁律：banner/hint 保持**方法双参**（snap, ctx）——既有 17+ 个只写
+ * 版本区投影上下文：banner/hint 的第二入参，携带 store 单源版本区。
+ * 兼容性铁律：banner/hint 保持**方法双参**（snap, ctx）——既有只写
  * `banner: (s) => s.state…` 的 adapter 少收第二参零改动（TS 形参宽度豁免 +
  * 方法位双变），新 adapter 第二参读 installed/releases/active 扩展投影面。
  */
@@ -212,7 +212,7 @@ interface ManagedVersionRecordBase {
 }
 
 /**
- * 已安装版本记录（增强批③：泛型化去 cast）。
+ * 已安装版本记录（泛型化去 cast）。
  * V 为模块方言字段包（如 paseo 的 `{ verifiedHash: boolean }`、mangodisk 的
  * IntegrityState 族）：`ManagedVersionRecord<V>` = 基型 ∩ V，listInstalled
  * 直接回传绑定记录即可（绑定结构 ⊇ V 时逐字段互认）；V 缺省
@@ -251,10 +251,9 @@ export interface ManagedReleaseRecord {
 
 /**
  * 托管形态 chip 统一词表（N13）：hostfeed.Form 词表 → 面板短词。
- * 共享面板与自绘远程行的方言表（vscode 双表 / snipaste / quicklook /
- * everything）同源取词，词表外值如实透传（后端扩词不静默吞标）。
- * （旧注误点 "rammap 自绘版本区"：RAMMap 实吃共享面板，取词天然经
- * ManagedVersionPanel 同源，无须单列；余如 litemonitor 等同理。）
+ * 共享面板与自绘远程行的方言表（vscode 双表 / snipaste / everything）
+ * 同源取词，词表外值如实透传（后端扩词不静默吞标）。吃共享面板的模块
+ * （rammap/litemonitor 等）经 ManagedVersionPanel 天然同源，无须单列。
  */
 export const RELEASE_FORM_WORD: Record<string, string> = {
   portable: '便携',
@@ -283,7 +282,7 @@ export interface ManagedControlVerb {
   run(): PromiseLike<ManagedActionResult | void>
   /**
    * 钮面完整文案（含图标 emoji），逐字沿用各视图现词。
-   * 增强批①：可为状态纯函数（mangodisk 动态主钮词：running/external→「打开窗口」，
+   * 可为状态纯函数（mangodisk 动态主钮词：running/external→「打开窗口」，
    * 其余→「启动 …」）——共享件与自定义视图统一经 store.primaryLabel/quitLabel 取词。
    */
   label: string | ((state: string, snap: ManagedSnapshot | null) => string)
@@ -322,26 +321,26 @@ export interface ManagedVersionsSpec<V = ManagedVersionDialect> {
   /** 进度键反查（铁律②）：release 行 → NormalizedProgress.key，缺省 rel.version。 */
   progressKey?(release: ManagedReleaseRecord): string
   /**
-   * 增强批⑤：版本同一性钩子（recordly 的「核心版本互认」类方言——去预发布
+   * 版本同一性钩子（recordly 的「核心版本互认」类方言——去预发布
    * 后缀的数值核心对比）。缺省逐字符相等；影响已装卡「运行中」徽标、
    * 远程表已装判定（未声明 statusOf 时的缺省口径）与 set 钮高亮迁移。
    */
   sameVersion?(a: string, b: string): boolean
   /**
-   * 增强批⑤：远程行已装状态覆写钩子（面板状态列先行判进度票据后调用；
+   * 远程行已装状态覆写钩子（面板状态列先行判进度票据后调用；
    * recordly/paseo 的 coreOf 版本互认经此进面板，缺省 =
    * installedList 中存在与 rel.version 按 {@link ManagedVersionsSpec.sameVersion}
    * 同一的记录）。
    */
   statusOf?(rel: ManagedReleaseRecord, installedList: ManagedVersionRecord<V>[], active: string): ManagedReleaseRowState
   /**
-   * 增强批⑤：隐式使用版本（「active 为空 = 自动最新已装」的模块，如 paseo）：
+   * 隐式使用版本（「active 为空 = 自动最新已装」的模块，如 paseo）：
    * 返回隐式生效的版本号（'' = 无）。生效时最新已装卡亮「使用中」徽标（词面经
    * copy.activeBadge 覆写，如「使用版本」）且**不显**「设为使用」钮。
    */
   implicitActive?(installedList: ManagedVersionRecord<V>[]): string
   /**
-   * 增强批④：下载钮的运行态封锁（recordly NSIS 语义：安装器运行中禁覆写）——
+   * 下载钮的运行态封锁（recordly NSIS 语义：安装器运行中禁覆写）——
    * 返回非空串即禁用远程表「下载安装」钮并以该串为 title 指引；null=不封锁。
    */
   downloadBlock?(state: string): string | null
@@ -449,7 +448,7 @@ export interface ManagedRepoSpec {
   copyToast?: string
 }
 
-/** 联动卡「托管位置」数据行（增强批⑨）：当前托管版本目录直读+直达。 */
+/** 联动卡「托管位置」数据行：当前托管版本目录直读+直达。 */
 export interface ManagedHostDirRowSpec {
   /** 行标签，缺省「托管位置」。 */
   label?: string
@@ -462,13 +461,13 @@ export interface ManagedHostDirRowSpec {
   open(dir: string): PromiseLike<ManagedActionResult | void>
 }
 
-/** 动作失败 toast 前缀覆写位（增强批⑥；键与 store ACTION_ERROR_PREFIX 对齐）。 */
+/** 动作失败 toast 前缀覆写位（键与 store ACTION_ERROR_PREFIX 对齐）。 */
 export type ManagedErrorPrefixSpec = Partial<
   Record<'quit' | 'download' | 'setActive' | 'remove' | 'import' | 'openDir' | 'channel' | 'variant' | 'reset', string>
 >
 
 /**
- * 槽位动词最小形状（波 2A）：adapter.reset/toggle 一类 `{ run() }` 扩展槽的
+ * 槽位动词最小形状：adapter.reset/toggle 一类 `{ run() }` 扩展槽的
  * 结构并集，也是闭包形态（vscode runtime 包装一类）的替代——store.runSlotVerb
  * 的第一参收形状联合，视图免自写 runExclusive→settle→toast 链。
  */
@@ -477,7 +476,7 @@ export interface ManagedSlotVerb {
 }
 
 /**
- * runSlotVerb 编排参数位（波 2A）——每一位的缺省值都锚定某现存手抄版逐字口径：
+ * runSlotVerb 编排参数位——每一位的缺省值都锚定某现存手抄版逐字口径：
  *  - errorPrefix：失败 toast 前缀字面（缺省裸错误串——ddnsgo openConsole、
  *    vscode openWindow 现词；撞 ACTION_ERROR_PREFIX 表值者由调用方传逐字同词，
  *    如 vscode quitForm 的「退出失败: 」）；
@@ -507,7 +506,7 @@ export interface ManagedCopySpec {
   /** 卸载钮禁用 title（如「请先退出 CC Switch」，含模块名）。 */
   uninstallRunningHint?: string
 
-  // ---- 增强批④：面板词面 copy 覆写全集（缺省值 = 现 ccswitch 标准词）----
+  // ---- 面板词面 copy 覆写全集（缺省值 = ccswitch 标准词）----
   /**
    * meta-info 区首句引导（如 paseo「使用版本 自动最新（0.8.0）」、recordly
    * 「当前托管 1.0.0」）：返回空串=不渲染该行；标准「已安装 N 个版本 · …」行照旧。
@@ -546,7 +545,7 @@ export interface ManagedCopySpec {
   /** 卸载钮常态 title（非运行中版本卡；缺省无 title）。 */
   uninstallIdleHint?: string
 
-  // ---- 增强批⑥/⑨：失败前缀覆写 + 「托管位置」数据行 ----
+  // ---- 失败前缀覆写 + 「托管位置」数据行 ----
   /** 动作失败 toast 前缀覆写（guoheview/recordly/paseo 的「安装失败: 」词表位）。 */
   errorPrefix?: ManagedErrorPrefixSpec
   /** 「托管位置」数据行（联动卡内；缺省不渲染，见 ManagedHostDirRowSpec）。 */
@@ -555,7 +554,7 @@ export interface ManagedCopySpec {
 
 /**
  * 托管模块适配总面。S 为模块快照扩展（可选字段携带业务态，如 markeron
- * drawing?: boolean）；V 为已装版本记录方言字段包（增强批③，如 paseo 的
+ * drawing?: boolean）；V 为已装版本记录方言字段包（如 paseo 的
  * verifiedHash——store.installed/面板行槽随之免 cast）。共享件按基型
  * ManagedSnapshot 消费，模块 adapter 经方法双变直接传入。扩展槽按需由共享 store、
  * Shell 或模块专属组件消费，语义详见各类型旁注与文件头槽位清单。
@@ -579,24 +578,24 @@ export interface ManagedModuleAdapter<S extends ManagedSnapshot = ManagedSnapsho
   /** 覆写状态词（markeron running+drawing 的"标注已开启"类）；缺省 toolStateMeta。 */
   stateText?(snap: S): string
   /**
-   * 增强批⑧：状态灯色档覆写（返回 .status-light 的后缀类词）。缺省 = state 五态；
+   * 状态灯色档覆写（返回 .status-light 的后缀类词）。缺省 = state 五态；
    * bili23 running+hidden 回 'warn'（琥珀）即走本位——色档词表与
    * ManagedControlBar scoped 样式一一对应（running/starting/external/failed/warn）。
    */
   statusTone?(snap: S): string
   /**
-   * 条件提示条（三变体互斥由各模块判定）；null=不渲染。增强批②：新增第二
+   * 条件提示条（三变体互斥由各模块判定）；null=不渲染。第二
    * 参版本区投影（少收者零改动）——mangodisk 的「完整性压过运行态」横幅
-   * 自此可进 adapter。
+   * 即走本位。
    */
   banner?(snap: S, ctx: ManagedProjection<V>): ManagedBanner | null
   /** banner 缺席时的引导行（stopped/starting 态提示）；null=不渲染。入参同 banner。 */
   hint?(snap: S, ctx: ManagedProjection<V>): string | null
 
   /**
-   * 增强批⑦：危险动作（#danger-extra 位）在途闩联动位——声明后共享 busy 闩
-   * OR 上本 ref（强制结束进行中，启停/导入钮一并闩住），钮现态改由槽作用域
-   * {snap,state,busy,store} 提供（bili23 自绘镜像自此退役）。
+   * 危险动作（#danger-extra 位）在途闩联动位——声明后共享 busy 闩
+   * OR 上本 ref（强制结束进行中，启停/导入钮一并闩住），钮现态由槽作用域
+   * {snap,state,busy,store} 提供（视图无需自持 busy 镜像）。
    */
   dangerBusy?: Ref<boolean>
 
@@ -612,11 +611,11 @@ export interface ManagedModuleAdapter<S extends ManagedSnapshot = ManagedSnapsho
   /** 进度事件旁路观察钩子（如 vscode 在 done 时额外刷双形态快照），先于共享处理调用。 */
   onProgress?(progress: NormalizedProgress): void
 
-  // ---- 业务扩展槽（批 0 预留形状，批 1-5 迁入时定型细节）----
+  // ---- 业务扩展槽（形状定型件，各消费件按需接线）----
   /** markeron：标注开关矩阵（钮经 #primary-action 槽渲染，此槽供动词与状态注入）。 */
   toggle?: {
     run(): PromiseLike<ManagedActionResult>
-    /** 六态按钮文案矩阵输入由模块自算（label/sub/variant/disabled/hint），批 1 定型。 */
+    /** 六态按钮文案矩阵输入由模块自算（label/sub/variant/disabled/hint）。 */
   }
   /** ddnsgo/frpc：进程日志位（UI 走 #console-extra 槽；subscribe 需 setup 期调用）。 */
   log?: {
@@ -625,8 +624,8 @@ export interface ManagedModuleAdapter<S extends ManagedSnapshot = ManagedSnapsho
     pull?(): PromiseLike<string[] | null | undefined>
   }
   /**
-   * recordly/paseo：发布通道切换。增强批⑧：UI 收编为面板上方共享块
-   * （ManagedChannelRow.vue，options/get/set 形状自批 0 定形后不变，视图不再互抄）。
+   * recordly/paseo：发布通道切换。UI 为面板上方共享块
+   * （ManagedChannelRow.vue，options/get/set 形状稳定，视图不再互抄）。
    */
   channel?: {
     options: Array<{ value: string; label: string; /** 该通道选中时的琥珀警示注记（beta 尝鲜话术）。 */ warn?: string }>
@@ -646,8 +645,8 @@ export interface ManagedModuleAdapter<S extends ManagedSnapshot = ManagedSnapsho
   }
   /**
    * 清态/复位动词（dismiss/reset 族；UI 走 #danger-extra 位）。
-   * 波 2A 起编排归 store.runReset（缺省成败均不刷快照——TTB 手抄版注释
-   * 「两分支均不刷快照」逐字口径为缺省参数位），视图侧接线器退役。
+   * 编排归 store.runReset（缺省成败均不刷快照——TTB 手抄版注释
+   * 「两分支均不刷快照」逐字口径为缺省参数位），视图无需自持接线器。
    */
   reset?: {
     run(): PromiseLike<ManagedActionResult>

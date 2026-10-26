@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 设置分区·托盘右键菜单：编辑面已抽成共享组件 TrayItemsEditor（N5-C1），轮盘独立批
-// 后本宿主按默认 scope='tray' 挂托盘专属账（settings.TrayMenu），与快捷菜单轮盘页各记
+// 设置分区·托盘右键菜单：编辑面为共享组件 TrayItemsEditor，本宿主按默认
+// scope='tray' 挂托盘专属账（settings.TrayMenu），与快捷菜单轮盘页各记
 // 各账、互不干扰——勾选添加 / 外部程序 / 分组子条目 / 实时自动保存 / 失败回滚等语义
 // 全在组件内，本宿主只保留页面骨架与页头文案。
 import PageHeader from '../../components/ui/PageHeader.vue'

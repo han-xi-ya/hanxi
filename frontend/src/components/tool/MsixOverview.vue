@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// MSIX 管理型孪生壳·概览面板（§9.5-5 自 NanaZip/EarTrumpet 抽取）：
+// MSIX 管理型孪生壳·概览面板（§9.5-5）：
 // 左列眉标/标题/描述 + #actions 动作钮，右列 facts 事实表。
 // 文案由视图计算传入；本壳不含业务判断。
 defineProps<{

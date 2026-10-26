@@ -1,14 +1,13 @@
 <script setup lang="ts">
-// MemoSheetSettings：悬浮速记卡热键配置块（N16 B 批能力，MemoView v2 拆分批
-// 自视图索引栏底原样抽出，语义零改动）。
+// MemoSheetSettings：悬浮速记卡热键配置块（实况/改键/回滚/未在位横幅），
+// 挂在 MemoView 索引栏底折叠收纳。
 //
 // 自治面：实况自拉（GetQuickSheetState）、改键自写（SetQuickSheetHotkey）、
 // 失败回滚对齐与播报全在本件——视图只负责在栏底挂上它。实况拉不到整段收起
 // （不给假配置可编）；热键未在位的警示横幅恒外露（收合态也可见）。
 // 后端事务自带冲突回滚（旧键全程活着、配置不动），失败原文上浮中文指引；
 // 唤出通道（ShowQuickSheet，菜单「浮窗速记」）不归本件，留视图溢出菜单。
-// 皮逐字迁自宿主拆分前口径（拆分不动相）：sheet-* 家族与 memo-sheet-settings
-// 容器、栏底 banner-warn 微调同迁。
+// sheet-* 家族、memo-sheet-settings 容器与栏底 banner-warn 微调的皮随本件自带。
 import { computed, onMounted, ref } from 'vue'
 import * as MemoAPI from '../../../bindings/hanxi/internal/modules/memo'
 import type { QuickSheetState } from '../../../bindings/hanxi/internal/modules/memo/models'
@@ -19,7 +18,7 @@ import MemoGlyph from './MemoGlyph.vue'
 
 const { showToast } = useToast()
 
-// QuickSheetState 用绑定官方型别（生成件已含该 typedef，旧版本地同构声明退役）。
+// QuickSheetState 用绑定官方型别（typedef 由生成件维护，本地不再同构声明）。
 const sheetState = ref<QuickSheetState | null>(null)
 const sheetHotkeyDraft = ref('')
 const sheetSaving = ref(false)
@@ -94,7 +93,7 @@ onMounted(refreshQuickSheet)
 </template>
 
 <style scoped>
-/* 栏底折叠配置（低频件，收起态一行字即够；未在位警示恒外露）——逐字迁自宿主 */
+/* 栏底折叠配置（低频件，收起态一行字即够；未在位警示恒外露） */
 .memo-sheet-settings { margin-top: 8px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 6px; }
 .sheet-disclosure {
   display: flex; align-items: center; gap: 6px; width: 100%;

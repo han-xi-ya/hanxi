@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// 微信机器人左侧账号栏：折叠开关 + 账号卡片列表（头像、监听状态灯、建联徽章、悬浮操作组）。
-// 自 WechatBotView.vue 随 DOM 逐字迁出的纯展示壳——账号数据与全部业务动作
-// （扫码绑定、切换监听、重命名、删除、选中同步）仍由 useWechatBot/视图编排层承担，
-// 本组件只负责渲染与事件上抛；getAvatarColor 为跨组件共用呈现函数（自视图逐字迁入）。
+// 微信机器人左侧账号栏：折叠开关 + 账号卡片列表（头像、监听状态灯、建联徽章、悬浮操作组）
+//（拆自 WechatBotView 的纯展示壳）。账号数据与全部业务动作（扫码绑定、切换监听、重命名、
+// 删除、选中同步）仍由 useWechatBot/视图编排层承担，本组件只负责渲染与事件上抛；
+// getAvatarColor 为跨组件共用呈现函数（由 useWechatBot 导出）。
 import type { WechatAccountState } from '../../../bindings/hanxi/internal/modules/wechat/models'
 import { getAvatarColor } from '../../composables/useWechatBot'
 
@@ -183,8 +183,8 @@ const emit = defineEmits<{
   margin: 0;
 }
 
-/* 注：.btn-bind-account 家族（含 large 档）与视图本体「未选中占位」大按钮的逐字副本
-   已上收 components.css 共享原子（§9.6-8 治理完成），本层不再保留副本。 */
+/* 注：.btn-bind-account 家族（含 large 档）走 components.css 共享原子（§9.6-8），
+   本层与视图「未选中占位」大按钮都不挂副本。 */
 .account-list-scroll {
   flex: 1;
   overflow-y: auto;

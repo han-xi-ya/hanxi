@@ -1,5 +1,5 @@
 // 主题单例 composable（docs/FRONTEND.md §7.2）——明暗轴（theme）、色板轴（accent）与
-// 界面字体档（font，N40）的唯一读写入口。
+// 界面字体档（font）的唯一读写入口。
 // 真相源 = 后端 settings（AppSettings.Theme / AppSettings.Accent，随数据目录迁移）；
 // localStorage 仅作首帧缓存：mount 前同步应用防闪白，启动后以后端为准校正。
 // 标题栏经 AppService.SetWindowDarkMode 桥到 Win32 DWM（前端管不到原生窗框）：
@@ -9,7 +9,7 @@ import { useMediaQuery } from '@vueuse/core'
 import { Events } from '@wailsio/runtime'
 import * as AppAPI from '../../bindings/hanxi/internal/app'
 
-// N39 主题跨窗广播：轮盘/挂牌/OCR 结果卡等浮窗是独立 webview，首帧经
+// 主题跨窗广播：轮盘/挂牌/OCR 结果卡等浮窗是独立 webview，首帧经
 // initTheme 各读各的缓存/后端，但**存活的浮窗**对主窗之后的切换无感（旧深色
 // 残留即此病根）。走 Wails 事件总线——前端 Events.Emit 经内建通道进 Go
 // EventManager 再广播到全部窗口（含发起窗自收，v3 messageprocessor
@@ -21,7 +21,7 @@ const THEME_EVENT = 'theme:changed'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 export type AccentMode = 'teal' | 'sky' | 'iris' | 'jade' | 'onyx'
-// N40 界面字体档：kai 默认文楷 / plain 系统朴素 / mono 等宽极客。
+// 界面字体档：kai 默认文楷 / plain 系统朴素 / mono 等宽极客。
 // 合法域与后端 settings_persist.go、fonts.css 档位覆写块三处字面一致。
 export type FontMode = 'kai' | 'plain' | 'mono'
 
@@ -188,7 +188,7 @@ export function useTheme() {
     })
   }
 
-  /** 切换界面字体档（N40）并持久化到后端（失败仅告警：DOM 已即时换装预览，下次启动以后端为准）。 */
+  /** 切换界面字体档并持久化到后端（失败仅告警：DOM 已即时换装预览，下次启动以后端为准）。 */
   function setFontMode(next: FontMode) {
     if (!VALID_FONTS.includes(next)) return
     font.value = next
@@ -198,8 +198,8 @@ export function useTheme() {
     })
   }
 
-  // 出口面纪律（波 1d 收窄）：cycleThemeMode 已删（侧栏主题钮下线后无消费方）；
-  // systemDark 降为内部（消费统一走 resolvedTheme）。resolvedTheme 保留导出——
-  // SettingsSections.spec 仍在断言「system 档实际生效态」，去导出需先动该 spec（非本波文件面）。
+  // 出口面纪律：cycleThemeMode 已删（侧栏主题钮下线，无消费方）；
+  // systemDark 不导出（消费统一走 resolvedTheme）。resolvedTheme 必须保留导出——
+  // SettingsSections.spec 在断言「system 档实际生效态」，去导出需先同步该 spec。
   return { themeMode, resolvedTheme, accent, font, setThemeMode, setAccent, setFontMode }
 }

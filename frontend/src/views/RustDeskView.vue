@@ -117,8 +117,8 @@ async function refreshStatus() {
   }
 }
 
-// stepOf 已收编 managedProgress 单一来源（波 1a）；statusOf/installStatusOf 系双通道
-// 分叉（form 精确匹配 + 第五档 unavailable），不并入公共四态内核，保留本地。
+// stepOf 走 managedProgress 单一来源；statusOf/installStatusOf 系双通道
+// 分叉（form 精确匹配 + 第五档 unavailable），刻意不并入公共四态内核，保留本地。
 function statusOf(rel: RDRelease): 'installed' | 'downloading' | 'error' | 'idle' {
   const p = downloading.value[rel.version]
   if (p) return p.stage === 'error' ? 'error' : 'downloading'
@@ -279,7 +279,7 @@ usePolling(() => {
   }
 }, 1000)
 
-// 停用即清零运行时长（对齐迁移前 stopTimers 语义）
+// 停用即清零运行时长（与共享 store 轮询停止归零语义一致）
 onDeactivated(() => {
   uptimeSec.value = 0
 })
@@ -648,8 +648,8 @@ onMounted(async () => {
 /* .hint-dim 同名同义 scoped 副本已删除，落回 components.css 全局原子 */
 
 /* ---------- 已安装卡片（installed-grid/installed-card(.card-active)/inst-card-top/inst-badges/ver-tag 由全局原子接管；
-   本视图原 minmax(340px) 散差按标准形 minmax(320px) 定档删除） ---------- */
-/* .badge 基形与 components.css 全局原子逐字同义，scoped 副本已删除；以下仅本视图配色变体 */
+   本视图 minmax 散差已按标准形 minmax(320px) 定档） ---------- */
+/* .badge 基形与 components.css 全局原子同义（不设本地副本）；以下仅本视图配色变体 */
 .badge-active { background: var(--state-positive-soft); color: var(--state-positive); }
 .badge-running { background: var(--state-information-soft); color: var(--state-information); }
 .badge-import { background: var(--state-information-soft); color: var(--state-information); }

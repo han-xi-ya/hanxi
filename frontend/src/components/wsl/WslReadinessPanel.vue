@@ -1,9 +1,9 @@
 <script setup lang="ts">
-// WSL 就绪体检面板（「🐧 就绪检测」页签主体，Phase 6 式自 WSLView 拆分）。
+// WSL 就绪体检面板（「🐧 就绪检测」页签主体，拆分自 WSLView）。
 // 流式骨架清单、结论条、白名单提权操作条、重启引导与 .wslconfig 宿主配置编辑器归本面板；
 // 体检事件流（wsl:readiness）、busy 分级登记与提权命令编排（runOp 白名单）留视图——
 // 跨页签进度可见性（busyBanner / 页签 label）依赖视图状态，本层只做呈现与意图转发。
-// 行为逐字迁出：调用序列、确认文案与事件语义未做任何改动。
+// 调用序列、确认文案与事件语义为 WSLView.spec.ts 特征测试锁定的契约。
 import { computed, ref } from 'vue'
 import * as WSLAPI from '../../../bindings/hanxi/internal/modules/wsl/wslservice'
 import type { CheckItem, Report } from '../../../bindings/hanxi/internal/modules/wsl/readiness/models'
@@ -26,7 +26,7 @@ const props = defineProps<{
   finishOp: (op: string) => void
   startCheck: () => Promise<void>
   loadInstances: () => Promise<void>
-  // 停止全部后复采端口转发现态（视图转调 proxy 页签，保持拆分前 doShutdown 收尾序列）
+  // 停止全部后复采端口转发现态（视图转调 proxy 页签，doShutdown 收尾序列由特征测试锁定）
   reloadProxy: () => Promise<void>
   modeWord: (m?: string | null) => string
   // 白名单提权操作（runOp 编排留视图，本层仅接线）
@@ -305,19 +305,19 @@ async function doShutdown(alreadyConfirmed = false) {
 /* 全局原子（.btn 家族/.chip/.banner/.error-box/.mono/.hint-dim/.link-button/.empty-state）
    落 components.css；以下仅本面板独有或有意补差（注释注明）。 */
 
-/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）已上收
+/* WSL 档三条补差（.error-box 换行保留 / .hint-line 行距+换行 / .hint-dim 小字）在
    components.css :where(.wsl-view) 原子区，六面板共用，本面板不再自持副本。 */
 /* 全局 .banner 内距已是 10px 14px，原 .verdict-banner 重复声明已删；结论条恢复默认内距 */
 .verdict-line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .verdict-detail { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: 2px; }
-/* .banner.slim 等值副本已删净：UiBanner 根元素挂 .banner + .slim，落回全局 :where(.banner.slim) */
+/* .banner.slim 不挂等值副本：UiBanner 根元素挂 .banner + .slim，走全局 :where(.banner.slim) */
 /* .dim 非全局原子名，本控制台独有 */
 .dim { color: var(--color-text-muted); font-size: var(--text-sm); }
 
-/* 操作条：.control-bar 与 .control-top 等值副本删净落回全局
-   （全局形多出 flex 纵向列与 gap 8，单子节点下渲染逐点等值——目视项） */
-.control-status { min-width: 0; } /* 收缩补差；display/gap/换行落回全局 .control-status */
-.control-btns { flex-wrap: wrap; justify-content: flex-end; } /* 补差；display/gap 落回全局 .control-btns */
+/* 操作条：.control-bar/.control-top 不挂等值副本，走全局原子
+   （全局形多出 flex 纵向列与 gap 8，单子节点下渲染等值——目视项） */
+.control-status { min-width: 0; } /* 收缩补差；display/gap/换行走全局 .control-status */
+.control-btns { flex-wrap: wrap; justify-content: flex-end; } /* 补差；display/gap 走全局 .control-btns */
 
 /* 体检清单 */
 .check-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -346,7 +346,7 @@ async function doShutdown(alreadyConfirmed = false) {
 }
 @keyframes hx-spin { to { transform: rotate(360deg); } }
 
-/* 表单行 / 输入 / 面板壳：与其余 WSL 页签同形（§③ 上收候选），本面板先自持 */
+/* 表单行 / 输入 / 面板壳：与其余 WSL 页签同形（家族共享上收候选），本面板先自持 */
 .import-panel {
   display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
   background: var(--surface-panel); border: 1px solid var(--color-border); border-radius: var(--radius-control);
@@ -365,11 +365,9 @@ async function doShutdown(alreadyConfirmed = false) {
 /* .btn.active 为"开关钮选中态"补差（全局 .btn 家族无此态）——非副本 */
 .btn.active { border-color: var(--color-primary); color: var(--color-primary); }
 
-/* 知识卡：info-details/info-summary 全家族（含 ::after/marker/[open] 两条）与 .info-body p
-   均与全局原子逐字等值，副本删净落回；.info-body 同规则散差（gap 4 vs 全局 6）按裁决定档
-   标准形一并落回（段间距 +2px，登记目视项）。
-   .inline-link 两条副本与全局原子（components.css 波 0 上收的 21 份同形标准形）逐字等值，
-   同样删净落回。 */
+/* 知识卡：info-details/info-summary 全家族（含 ::after/marker/[open] 两条）、.info-body p
+   与 .inline-link 均走全局同形原子（components.css），本面板不挂等值副本；
+   .info-body 曾挂 gap 4 vs 全局 6 的散差档，已按裁决定档归一（段间距 +2px，登记目视项）。 */
 
 /* 窄屏档（机主 2026-09-26"一屏容不下两屏高"，与发行版控制台/视图层同向）：
    就绪体检 = 系统 WSL 安装形态与逐项结论的纵向大户（10 行清单 + 9 钮操作条 + 结论条）。

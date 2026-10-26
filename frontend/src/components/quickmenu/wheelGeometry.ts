@@ -32,11 +32,11 @@ export const WHEEL = {
 } as const
 
 /**
- * N40③ 皮批专用绘制观感常量（StarPie 磨砂花瓣盘）——与 WHEEL 命中语义完全解耦，
+ * 皮层专用绘制观感常量（StarPie 磨砂花瓣盘）——与 WHEEL 命中语义完全解耦，
  * 只喂渲染调用（mainWedge/capWedge/帽带底环/hub 刻度）实参，不参与任何极坐标归属：
- * 缝隙变大是"绘制缝"，命中始终按名义角域 slotOf（N40① 设计红利，缝多大都无死区）。
- * 花瓣角向缝由 pad 绘制扣出，楔形另有 stroke-width 6 膨胀（径向 ±3；皮肤批起描边
- * 为模块/类型色轨不再与 fill 同色，膨胀宽度与几何归属不变），
+ * 缝隙变大只是"绘制缝"，命中始终按名义角域 slotOf，缝多大都无死区。
+ * 花瓣角向缝由 pad 绘制扣出，楔形另有 stroke-width 6 膨胀（径向 ±3；描边
+ * 为模块/类型色轨不与 fill 同色，膨胀宽度与几何归属不变），
  * 故 VIS 环带四周恒内缩于 WHEEL 命中带 ≥3 DIP，牌面缝隙像素仍归属邻扇区。
  */
 export const VIS = {
@@ -166,7 +166,7 @@ export function mainSectorAngles(i: number, n: number, padDeg = 0.9): { a0: numb
 /**
  * 极坐标角（0°=12 点、顺时针，任意 [-360,360] 域）→ 主环槽位索引：按名义角域
  * `floor(ang / step)` 归属，缝隙带（pad）像素归入其所属扇区——命中判定与渲染
- * 缝合同源，牌面任意落点都有唯一槽位（N40 全扇面命中的角向依据）。
+ * 缝合同源，牌面任意落点都有唯一槽位（全扇面命中的角向依据）。
  */
 export function slotOf(angDeg: number, n: number): number {
   const step = 360 / n

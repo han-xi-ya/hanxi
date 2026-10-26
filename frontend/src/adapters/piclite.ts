@@ -1,11 +1,10 @@
 // ============================================================================
-// PicLite → 托管控制台 adapter（Wave 5 · 批 1 · MSI 提取族）
+// PicLite → 托管控制台 adapter（MSI 提取族）
 //
-// 逐字迁移自 PicLiteView 原编排段（启停/版本/联动全部 RPC 与文案零变化），
-// 参照实现见 src/adapters/ccswitch.ts（批 0 黄金样本）。
+// 参照实现见 src/adapters/ccswitch.ts（黄金样本）。
 // MSI 提取族特殊安装文案（来源说明/首用空态/卸载指引/确认与输入话术）全部
 // 经 copy 钩子与 adapter 动词回执承载；表内「下载中/校验解压安装…」等
-// 共享面板标准词按批 0 契约定档（差异登记见迁移报告）。
+// 共享面板标准词按契约定档（缺省见 components/managed/adapter.ts）。
 // 事件面：`piclite:instance-state` / `piclite:version-download`
 // （进度键=version，单键最简形态）；动词面：OpenWindow→control.primary、
 // Quit→control.quit。
@@ -44,7 +43,7 @@ export function createPicLiteAdapter(): ManagedModuleAdapter {
       },
 
       async remove(v: ManagedVersionRecord): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载 PicLite ${v.version}？`,
           description: '该版本托管目录将被删除，不可恢复。\n（你的 %APPDATA%\\com.piclite.desktop 配置与图床设置不受影响，后续版本继续共用）',
@@ -56,7 +55,7 @@ export function createPicLiteAdapter(): ManagedModuleAdapter {
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '请输入本机 PicLite 安装目录完整路径（含 piclite.exe，如 C:\\Program Files\\PicLite）',
           description: '提示：配置恒在 %APPDATA%\\com.piclite.desktop，与安装位置无关',
@@ -96,7 +95,7 @@ export function createPicLiteAdapter(): ManagedModuleAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到外部 PicLite 实例（非 Hanxi 托管）。可唤起其窗口；如需彻底退出请在 PicLite 托盘图标菜单操作。' }

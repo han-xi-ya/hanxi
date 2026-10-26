@@ -1,16 +1,16 @@
 // ============================================================================
-// 果核看图 → 托管控制台 adapter（Wave 5 · 批 1 迁移件，模式照抄 ccswitch）
+// 果核看图 → 托管控制台 adapter（模式照抄 ccswitch）
 //
-// 逐字迁移自 GuoheViewView 原编排段（启停/版本/联动/官网全部 RPC 与文案零变化）。
 // 事件面：`guoheview:instance-state` / `guoheview:version-download`（单键=version）。
 // 方言注记：
 //  - 多实例上游的 OpenWindow「聚焦/唤回/另开」三分支由后端裁决，UI 恒为一钮，
 //    钮面 title 按 state 投影指引（control.primary.titleFor），视图零分支；
-//  - 波 2E 版本区回迁面板：stable/beta「通道列」经面板 #release-extra-col(+head)
-//    槽承接（词面逐字），「↻ 刷新发布接口」钮词走面板 refreshLabel 位，
-//    其余方言词面（官方便携/安装中/MD5 校验…/解压安装…/导入本地目录等）
-//    全部入本件 copy 表；ViewRelease 缺 published 字段，按契约以空串占位补齐
-//    （面板发布时间列如实呈现「—」，与上游发布矩阵列「—」同为标准形收敛项）。
+//  - stable/beta「通道列」经面板 #release-extra-col(+head) 槽承接，
+//    「↻ 刷新发布接口」钮词走面板 refreshLabel 位，其余方言词面
+//    （官方便携/安装中/MD5 校验…/解压安装…/导入本地目录等）全部入本件
+//    copy 表（面板缺省即标准词，只落差异）；ViewRelease 缺 published 字段，
+//    按契约以空串占位补齐（面板发布时间列如实呈现「—」，与上游发布矩阵列
+//    「—」同为标准形收敛项）。
 // ============================================================================
 
 import * as GuoheViewAPI from '../../bindings/hanxi/internal/modules/guoheview/guoheviewservice'
@@ -52,7 +52,7 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
       },
 
       async remove(v: ManagedVersionRecord) {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留
+        // 危险操作经全局可访问确认框（useConfirm 单例）
         const accepted = await confirm({
           title: `确定卸载果核看图 ${v.version}？`,
           description: '该版本托管目录（含其 config.ini 设置）将被删除，不可恢复。',
@@ -64,7 +64,7 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
       },
 
       async importLocal() {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '请输入本机果核看图便携目录完整路径（整个解压目录，含 GuoheView.exe）',
           description: '设置（config.ini）随目录一并收纳进托管；安装版目录也可导入，将自动转为便携模式',
@@ -114,7 +114,7 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥；文案承载多实例与更新器两条真实契约，逐字保留）
+    // 条件提示条（三个变体互斥；文案承载多实例与更新器两条真实契约）
     banner: (s) => {
       if (s.state === 'external') {
         return { tone: 'warn', text: '检测到你在 Hanxi 之外打开的看图窗口（双击图片等）。「打开窗口」会唤回它或另开独立新窗口；这类窗口不受 Hanxi 管退。' }
@@ -138,9 +138,9 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
       return null
     },
 
-    // ⑥：本模块下载失败现词「安装失败: 」（官方接口安装语义）经前缀覆写回
-    // store 词源表——视图不再直调 adapter.versions.download 绕行保词表。
-    // 波 2E：版本区回迁面板，原方言表词面逐字入本表（缺省值即标准词，只落差异）。
+    // ⑥：本模块下载失败现词「安装失败: 」（官方接口安装语义）经 errorPrefix
+    // 覆写回 store 词源表（视图不直调 adapter.versions.download 绕行）。
+    // 方言词面全部落本 copy 表（面板缺省即标准词，只落差异）。
     copy: {
       errorPrefix: { download: '安装失败: ' },
       remoteSummary: (n) => `官方当前发布 ${n} 个`,
@@ -155,7 +155,7 @@ export function createGuoheViewAdapter(): ManagedModuleAdapter {
       remoteUnavailable: '官方发布接口暂不可达——可稍后点击「↻ 刷新发布接口」重试，或「导入本地目录」安装你已有的便携版',
       downloadingWord: '安装中',
       // 官方接口链阶段词：verify=MD5 校验、extract=保布局解压；其余进行态回空串
-      // 走面板 message 透出（与原方言表兜底分支逐字同形）
+      // 走面板 message 透出
       stageWord: (stage) => (stage === 'verify' ? 'MD5 校验…' : stage === 'extract' ? '解压安装…' : ''),
       officialBadge: '官方便携',
       uninstallRunningHint: '请先退出托管实例',

@@ -1,13 +1,11 @@
 // ============================================================================
-// PaperTodo → 托管控制台 adapter（Wave 5 · 批 0 · variant 槽实战样本）
+// PaperTodo → 托管控制台 adapter（契约 `adapter.variant` 槽首个接线者）
 //
-// 逐字迁移自 PaperTodoView 原编排段（启停/版本/变体/联动全部 RPC 与文案零变化），
-// 是契约 `adapter.variant` 槽（papertodo Get/SetVariant 预留位）的首个接线者：
 // 单版本双变体（self-contained 完整版 / no-runtime 精简版）——下载变体偏好由
 // adapter 内部单源持有（variant.get/set 与 versions.download 同源），共享件
 // 对"变体"零感知即可正确下载。
 //
-// 单目录覆盖布局相对 ccswitch（多版本隔离）的三处契约折算（批 0 定型口径）：
+// 单目录覆盖布局相对 ccswitch（多版本隔离）的三处契约折算（定型口径）：
 //   ① versions.listInstalled 退化为 0/1：GetInstalledVersion 至多一条记录 →
 //      投影成 0 或 1 项的 ManagedVersionRecord[]。共享已装卡装不下的业务成色
 //      （当前托管变体、便签数据在册、sha256 审计指纹、单目录覆盖升级话术）经
@@ -62,7 +60,7 @@ export interface PaperTodoAdapter extends ManagedModuleAdapter<PaperSnapshot> {
   installedInfo(): PaperVersionInfo | null
 }
 
-/** 变体 → 中文名（逐字沿用视图现词：完整版 / 精简版）。 */
+/** 变体 → 中文名（完整版 / 精简版）。 */
 export function variantName(v: string | null | undefined): string {
   return v === 'no-runtime' ? '精简版' : '完整版'
 }
@@ -95,7 +93,7 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
     return variantLoad
   }
 
-  /** 运行时探测单飞：失败静默为 null（变体注记回退"探测中…"，与迁移前口径一致）。 */
+  /** 运行时探测单飞：失败静默为 null（变体注记回退"探测中…"）。 */
   function loadRuntime(): Promise<void> {
     if (!runtimeLoad) {
       runtimeLoad = PaperAPI.GetRuntimeStatus()
@@ -159,8 +157,8 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
       },
 
       async remove(): Promise<ManagedActionResult> {
-        // 危险操作经全局可访问确认框（useConfirm 单例），文案逐字保留；
-        // "卸载保留数据"的承诺在确认框与回执里原样承载
+        // 危险操作经全局可访问确认框（useConfirm 单例）；
+        // "卸载保留数据"的承诺在确认框与回执里一致承载
         const hadData = installed?.hasData
         const accepted = await confirm({
           title: '确定卸载 PaperTodo？',
@@ -173,7 +171,7 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
       },
 
       async importLocal(): Promise<ManagedActionResult> {
-        // 路径输入经全局输入框（usePrompt 单例），提示文案逐字保留
+        // 路径输入经全局输入框（usePrompt 单例）
         const path = await prompt({
           title: '导入本地副本',
           label: '请输入本机已有 PaperTodo 的目录完整路径（含 PaperTodo.exe）',
@@ -231,7 +229,7 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
       },
     },
 
-    // variant 槽实战（见文件头）：options 为下载变体声明（label 全句逐字），
+    // variant 槽实战（见文件头）：options 为下载变体声明，
     // get 单源缓存、set 成功后同步缓存——versions.download 消费同源偏好
     variant: {
       options: [
@@ -247,7 +245,7 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
         variantPref = next
         variantLoad = Promise.resolve(next) // set 成功即事实，缓存跟进（失败不落缓存）
         // ⑥：变体切换影响远程表 size 列（按变体资产投影）——reloadVersions
-        // 回执交 store.runVariant 统一重拉，视图侧 load() 补丁退役
+        // 回执交 store.runVariant 统一重拉，视图免 load() 补丁
         return {
           message:
             next === 'no-runtime'
@@ -258,7 +256,7 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
       },
     },
 
-    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义（原文案逐字保留）
+    // 条件提示条（三个变体互斥）；tone 对齐 UiBanner 语义
     banner: (s) => {
       if (s.state === 'external') {
         return {
@@ -289,8 +287,8 @@ export function createPaperTodoAdapter(): PaperTodoAdapter {
     },
 
     copy: {
-      // listInstalled 退化 0/1 的渲染成色补齐：meta 首行后半句携"当前托管 版本·变体"
-      // （旧版未装话术逐字保留），方言徽标降级为 hint 行
+      // listInstalled 退化 0/1 的渲染成色补齐：meta 首行后半句携"当前托管 版本·变体"，
+      // 方言徽标降级为 hint 行
       remoteSummary: (releaseCount) =>
         `远程版本 ${releaseCount} 个 · ${installed ? `当前托管 ${installed.version} · ${variantName(installed.variant)}` : '尚未安装托管版本'}`,
       // 动态 getter：共享件每次渲染重估（store.installed 变更必然触发），

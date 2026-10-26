@@ -71,7 +71,7 @@ const files = computed(() => props.entry?.files ?? [])
 const revealed = ref(false)
 watch(() => props.entry?.id, () => { revealed.value = false })
 const isMasked = computed(() => !!props.entry?.sensitive && props.entry?.kind === 'text' && !revealed.value)
-// MASK_DOTS 单源 constants/masking（与 MemoCard 同值双写于 2026-10-26 审查收编）
+// MASK_DOTS 单源 constants/masking（与 MemoCard 共吃同一常数，勿另造点串）
 
 function copyFilePath(path: string) {
   void copyWithToast(path, '路径已复制到剪贴板')

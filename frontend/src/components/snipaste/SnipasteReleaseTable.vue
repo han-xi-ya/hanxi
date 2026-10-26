@@ -28,7 +28,7 @@ const emit = defineEmits<{
       <thead><tr><th>版本</th><th>状态</th><th>大小</th><th>发布时间</th><th>校验</th><th class="action-col">操作</th></tr></thead>
       <tbody>
         <tr v-for="release in props.releases" :key="release.version">
-          <td><div class="release-version"><strong>{{ release.version }}</strong><span v-if="release.isPre" class="chip chip-warning">预发布</span><span v-if="release.stale" class="chip chip-warning">缓存</span><!-- N13 统一形态 chip：本托管资产形态事实（后端 ListRemote 回填，纯展示），画法对齐 ManagedVersionPanel --><span
+          <td><div class="release-version"><strong>{{ release.version }}</strong><span v-if="release.isPre" class="chip chip-warning">预发布</span><span v-if="release.stale" class="chip chip-warning">缓存</span><!-- 形态 chip：本托管资产形态事实（后端 ListRemote 回填，纯展示），画法对齐 ManagedVersionPanel --><span
             v-if="release.form"
             class="chip chip-neutral form-chip"
             :title="`本托管形态（安装链事实）：${releaseFormWord(release.form)}`"
@@ -70,7 +70,7 @@ const emit = defineEmits<{
 .table-container .tbl { min-width: 830px; }
 .action-col { width: 170px; }
 .release-version { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* N13 形态 chip：核心形已上收全局 .form-chip 原子，本视图行内容器带 gap 无需补差，副本删净 */
+/* 形态 chip：核心形走全局 .form-chip 原子，本行内容器带 gap 无需补差，不挂副本 */
 .mono-meta { color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .snipaste-ver-status { display: inline-flex; align-items: center; width: fit-content; padding: 3px 7px; border-radius: var(--radius-pill); font-size: var(--text-xs); font-weight: 700; white-space: nowrap; }
 .snipaste-ver-status.installed { color: var(--state-positive); background: color-mix(in srgb, var(--state-positive) 10%, transparent); }
