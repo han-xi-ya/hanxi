@@ -263,3 +263,23 @@ func TestAccessOverviewReaderViewPresentation(t *testing.T) {
 		t.Errorf("损坏文案不得暗示自动重建: %s", info.Note)
 	}
 }
+
+// TestSetToolAccessUnknownKeyListsAllKeys 拒错指引文案必须与 accessToolKeys 现集
+// 同步：旧文案手打九键清单，clipboard 入册后即漏键（模型照抄指引永远猜不到新键）。
+// 断言的是外部事实——每个在册键名都出现在错误信息里，而不是字符串形状复刻。
+func TestSetToolAccessUnknownKeyListsAllKeys(t *testing.T) {
+	svc, _ := newTestService(t, nil)
+	_, err := svc.SetToolAccess("no_such_key", true)
+	if err == nil {
+		t.Fatal("未知键必须拒绝")
+	}
+	msg := err.Error()
+	for _, key := range accessToolKeys {
+		if !strings.Contains(msg, key) {
+			t.Errorf("指引漏键 %q（现集 %d 键，文案与键集漂移）: %s", key, len(accessToolKeys), msg)
+		}
+	}
+	if !strings.Contains(msg, "10 键") && len(accessToolKeys) == 10 {
+		t.Errorf("键数说明应随键集呈现: %s", msg)
+	}
+}

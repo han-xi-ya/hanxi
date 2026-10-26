@@ -22,13 +22,17 @@ var errTomlSentinels = errors.New("hanxi 托管区块哨兵异常")
 func tomlBlockBody(command string, args []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[mcp_servers.%s]\n", entryName)
-	b.WriteString("command = " + strconv.Quote(command) + "\n")
+	b.WriteString("command = ")
+	b.WriteString(strconv.Quote(command))
+	b.WriteByte('\n')
 	if len(args) > 0 {
 		parts := make([]string, 0, len(args))
 		for _, a := range args {
 			parts = append(parts, strconv.Quote(a))
 		}
-		b.WriteString("args = [" + strings.Join(parts, ", ") + "]\n")
+		b.WriteString("args = [")
+		b.WriteString(strings.Join(parts, ", "))
+		b.WriteString("]\n")
 	}
 	return b.String()
 }
@@ -130,10 +134,10 @@ func removeTomlBlock(data []byte) (newData []byte, changed bool, err error) {
 	}
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	i := strings.Index(text, tomlBegin)
-	j := strings.Index(text, tomlEnd)
-	end := j + len(tomlEnd)
-	if end < len(text) && text[end] == '\n' {
-		end++
+	// 哨兵唯一性已由 extractTomlBlock 把关，Cut 取 end 标记之后 remainder
+	_, afterEnd, _ := strings.Cut(text, tomlEnd)
+	if strings.HasPrefix(afterEnd, "\n") {
+		afterEnd = afterEnd[1:]
 	}
 	// begin 前的换行/空行是我们追加时补的分隔，一并回收（TOML 空白不敏感，
 	// 用户若有自有空行也会被收拢一行，语义无损）；前缀非空时保留单收尾换行。
@@ -141,7 +145,7 @@ func removeTomlBlock(data []byte) (newData []byte, changed bool, err error) {
 	if prefix != "" {
 		prefix += "\n"
 	}
-	out := []byte(prefix + text[end:])
+	out := []byte(prefix + afterEnd)
 	if verr := validateToml(out); verr != nil {
 		return nil, false, verr
 	}

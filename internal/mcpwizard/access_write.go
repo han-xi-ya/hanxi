@@ -30,6 +30,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 )
 
@@ -46,12 +48,7 @@ const (
 var accessToolKeys = []string{"envcheck", "everything", "ocr", "memo", "sysinfo", "logs", "portscan", "lan", "clipboard", "portkill"}
 
 func knownAccessTool(key string) bool {
-	for _, k := range accessToolKeys {
-		if k == key {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(accessToolKeys, key)
 }
 
 // accessStrict 是"读方视角"的严格加载结果：legal=true 当且仅当 reader 会采信此文件
@@ -208,7 +205,10 @@ func accessCorruptErr(reason string) error {
 // 而非本写侧的键名屏蔽。
 func (s *McpWizardService) SetToolAccess(tool string, enabled bool) (AccessInfo, error) {
 	if !knownAccessTool(tool) {
-		return s.accessInfo(), fmt.Errorf("未知授权键 %q——合法键为 envcheck / everything / ocr / memo / sysinfo / logs / portscan / lan / portkill 九者之一", tool)
+		// 键清单从 accessToolKeys 现取拼接：手打清单已因 clipboard 入册而漂移过
+		// 一次（旧文案漏键），扩键时文案随集合自动同步，不再依赖第三处人肉记忆。
+		return s.accessInfo(), fmt.Errorf("未知授权键 %q——合法键为 %s（共 %d 键）",
+			tool, strings.Join(accessToolKeys, " / "), len(accessToolKeys))
 	}
 	accessWriteMu.Lock()
 	defer accessWriteMu.Unlock()

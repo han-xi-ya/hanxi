@@ -51,6 +51,13 @@ func startFakeServer(in io.Reader, out *io.PipeWriter, t *testing.T, handle func
 			}
 			handle(line)
 		}
+		// scanner 出错（读失败/单行超 64KiB 上限）必须红牌：修复前静默走到
+		// out.Close()，客户端只见"stdout EOF（服务早退）"，把假件自身的故障
+		// 伪装成剧本设计的早退形态——归因丢失即漏判。EOF 正常收尾时 Err()==nil，
+		// 不产生新噪音。
+		if err := sc.Err(); err != nil {
+			t.Errorf("fake server 读请求流出错（非剧本预期）: %v", err)
+		}
 	}()
 }
 
@@ -283,25 +290,23 @@ func TestSelfCheckBadProtocolBranch(t *testing.T) {
 
 func TestSelfCheckSerializesConcurrentCallers(t *testing.T) {
 	svc, _ := newTestService(t, nil)
-	var spawns int32
+	var spawns atomic.Int32
 	svc.probe = func(ctx context.Context) ([]string, error) {
-		atomic.AddInt32(&spawns, 1)
+		spawns.Add(1)
 		time.Sleep(80 * time.Millisecond)
 		return []string{"a"}, nil
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			info, err := svc.SelfCheck(false)
 			if err != nil || info.State != checkStateOK {
 				t.Errorf("并发自检异常: %+v %v", info, err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
-	if n := atomic.LoadInt32(&spawns); n != 1 {
+	if n := spawns.Load(); n != 1 {
 		t.Fatalf("并发预览应只 spawn 一次，得 %d", n)
 	}
 }
@@ -359,6 +364,13 @@ func helperServeMCP(delay time.Duration) {
 			_ = os.Stdout.Close()
 			os.Exit(0)
 		}
+	}
+	// 子进程侧同样不许静默吞 scanner 错误（与 startFakeServer 补的 Err 检查同谱）：
+	// 正常 EOF 时 Err()==nil 走原有 os.Exit(2) 收尾；出错（如单行超 64KiB 上限）
+	// 若不显式报出，父测试只能拿"stdout EOF+退出码"反推，真实归因丢失即漏判。
+	if err := sc.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "helper stdin scanner error: %v\n", err)
+		os.Exit(4)
 	}
 }
 
@@ -420,19 +432,40 @@ func TestSpawnProbeHelperTimeoutLeavesNoProcess(t *testing.T) {
 			t.Cleanup(func() { probeCommand = old })
 			svc, _ := newTestService(t, nil)
 			svc.command = os.Args[0]
-			ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+
+			// 【事件驱动改造，2026-10-26 收口轮红定性】旧形态用 150ms 墙钟同时承担
+			// 两个角色：探测预算 + helper 子进程"启动→落 pid 文件"的等待上限。
+			// go test 全量并行编译期 helper 启动可超 150ms，父进程杀掉**尚未落地**的
+			// 子进程后再 ReadFile 必然失败——真实病灶（启动饥饿）被伪装成"文件不存在"，
+			// 且 late-exit 用例的 250ms 存活窗同样靠墙钟撞运气。现在 kill 时机由
+			// "pid 已落地"事件驱动，bootDeadline 只是等待上限、超时后如实归因；
+			// 被测分支不变：仍是 spawnProbe 的 ctx Done → 显式 Kill → 固定收尸窗口，
+			// 放大等待不是修复，判据形态从墙钟换成了事件才是。
+			const bootDeadline = 2 * time.Second
+			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+			go func() {
+				deadline := time.Now().Add(bootDeadline)
+				for time.Now().Before(deadline) {
+					if _, err := os.Stat(pidFile); err == nil {
+						cancel()
+						return
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
+				cancel() // 启动饥饿超上限：照常走超时路径，pid 读取处给出显式归因
+			}()
 			start := time.Now()
 			_, err := svc.spawnProbe(ctx)
 			if err == nil || !strings.Contains(err.Error(), "握手超时") {
 				t.Fatalf("%s helper 应超时: %v", mode, err)
 			}
-			if elapsed := time.Since(start); elapsed > probeReapTimeout+2*time.Second {
+			if elapsed := time.Since(start); elapsed > bootDeadline+probeReapTimeout+3*time.Second {
 				t.Fatalf("超时返回超过固定收尸窗口: %v", elapsed)
 			}
 			data, readErr := os.ReadFile(pidFile)
 			if readErr != nil {
-				t.Fatalf("读取 helper PID: %v", readErr)
+				t.Fatalf("读取 helper PID（helper 未在 %v 内落地=启动饥饿超等待上限）: %v", bootDeadline, readErr)
 			}
 			pid, convErr := strconv.Atoi(strings.TrimSpace(string(data)))
 			if convErr != nil {
