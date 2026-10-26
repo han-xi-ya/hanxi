@@ -31,6 +31,7 @@
 import { computed, ref, watch } from 'vue'
 import type { ClipEntry } from '../../types/clipboard'
 import { useClipboard } from '../../composables/useClipboard'
+import { MASK_DOTS } from '../../constants/masking'
 import ClipGlyph from './ClipGlyph.vue'
 import {
   blobDataUrl,
@@ -70,7 +71,7 @@ const files = computed(() => props.entry?.files ?? [])
 const revealed = ref(false)
 watch(() => props.entry?.id, () => { revealed.value = false })
 const isMasked = computed(() => !!props.entry?.sensitive && props.entry?.kind === 'text' && !revealed.value)
-const MASK_DOTS = '•'.repeat(48)
+// MASK_DOTS 单源 constants/masking（与 MemoCard 同值双写于 2026-10-26 审查收编）
 
 function copyFilePath(path: string) {
   void copyWithToast(path, '路径已复制到剪贴板')

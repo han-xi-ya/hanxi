@@ -36,6 +36,7 @@
 // Esc 阶梯两档：溢出菜单在场只收菜单（ClipToolbar 自收，本视图判级让位，
 // 与随手记 v2 同谱）；否则收起当前详情页。
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { useWindowKeyListener } from '../composables/useWindowKeyListener'
 import type { ClipEntry, ClipPaused, ClipQueueChanged, ClipRemoved, ClipStatus } from '../types/clipboard'
 import {
   CLIP_EV,
@@ -353,9 +354,12 @@ useWailsEvent<ClipEntry>(CLIP_EV.updated, (e) => {
   else mergeTop(e)
   void refreshStatus()
 })
-useWailsEvent<ClipRemoved>(CLIP_EV.removed, ({ id }) => {
-  removeRow(id)
-  if (detailId.value === id) closeDetail()
+// 畸形载荷（无 data / 无 id）忽略不炸——与浮层侧同事件的守卫同谱（overlay
+// spec「removed 摘行；畸形载荷忽略」钉死的是本事件族口径，主窗不吃 error toast）。
+useWailsEvent<ClipRemoved>(CLIP_EV.removed, (p) => {
+  if (!p?.id) return
+  removeRow(p.id)
+  if (detailId.value === p.id) closeDetail()
 })
 useWailsEvent<ClipPaused>(CLIP_EV.paused, (p) => {
   paused.value = !!p?.paused
@@ -374,6 +378,10 @@ function onGlobalKey(e: KeyboardEvent) {
   if (detailId.value) closeDetail()
 }
 
+// KeepAlive 四斩挂摘走 useWindowKeyListener（审查 #20 → 本视图补票 → 2026-10-26
+// 收编成公共件）：失活期间异页按 Esc 不得幽灵收起隐藏页的详情。
+useWindowKeyListener('keydown', onGlobalKey)
+
 // 换选即确保该行在栏内可见（键盘 Tab 流与事件驱动换选都吃这条，随手记同谱）
 watch(detailId, async (id) => {
   if (!id) return
@@ -385,11 +393,9 @@ watch(detailId, async (id) => {
 onMounted(() => {
   void loadList()
   void refreshStatus()
-  window.addEventListener('keydown', onGlobalKey)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onGlobalKey)
   ++loadSeq // 作废在飞请求，卸载后不得回写状态
   ++detailSeq
   if (searchTimer) {

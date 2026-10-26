@@ -20,6 +20,7 @@
 //   ⑤ 危险闸：单条删除过 useConfirm；清空收「更多」溢出菜单后再过强确认
 //      （话术含 blob 与条数）；Esc 阶梯——菜单在场只收菜单，不连降详情；
 //   ⑥ 消费面对位（九法+QueueClear，v1.8）+ sensitive「不进 AI 通道」徽标 + 状态一行。
+import { KeepAlive, defineComponent, h, nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ClipboardView from '../ClipboardView.vue'
@@ -166,18 +167,29 @@ describe('渲染三态与门面纪律', () => {
   })
 
   it('相对时间/来源/敏感徽标随行上屏（⚠ 明写不进 AI 通道）', async () => {
-    const w = await mountView([
-      clip({ sensitive: true, createdAt: NOW - 3 * 3_600_000 }),
-      clip({ id: 'c2', pinned: true, manual: true }),
-    ])
-    const first = w.findAll('.clip-row')[0]
-    expect(first.find('.cr-time').text()).toBe('3 小时前')
-    expect(first.find('.chip-danger').text()).toContain('敏感')
-    expect(first.find('.chip-danger').attributes('title')).toContain('不进 AI')
-    const second = w.findAll('.clip-row')[1]
-    expect(second.find('.cr-pin').text()).toContain('置顶')
-    expect(second.text()).toContain('片段')
-    w.unmount()
+    // 系统时刻锚定到本地正午再断言：本案的「3 小时前」若挂在真实挂钟上，
+    // 每天 00:00–02:59 跑批时该时刻会落进昨日档，日档分组把两行换位、
+    // 断言必红（2026-10-26 01:48 实测踩中）。时钟敏感的呈现断言不吃挂钟摆位。
+    const noon = new Date()
+    noon.setHours(12, 0, 0, 0)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(noon)
+    try {
+      const w = await mountView([
+        clip({ sensitive: true, createdAt: noon.getTime() - 3 * 3_600_000 }),
+        clip({ id: 'c2', pinned: true, manual: true, createdAt: noon.getTime() - 5 * 60_000 }),
+      ])
+      const first = w.findAll('.clip-row')[0]
+      expect(first.find('.cr-time').text()).toBe('3 小时前')
+      expect(first.find('.chip-danger').text()).toContain('敏感')
+      expect(first.find('.chip-danger').attributes('title')).toContain('不进 AI')
+      const second = w.findAll('.clip-row')[1]
+      expect(second.find('.cr-pin').text()).toContain('置顶')
+      expect(second.text()).toContain('片段')
+      w.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -267,6 +279,20 @@ describe('事件驱动增量（不重拉全量为常态）', () => {
     expect(w.findAll('.clip-row')).toHaveLength(1)
     expect(w.find('.cd').exists()).toBe(false)
     expect(w.find('.clip-idle').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('removed 畸形载荷（无 data / 无 id）忽略不炸且不误摘行；随后正常载荷照常摘（浮层同事件守卫同谱）', async () => {
+    const w = await mountView([clip({ id: 'c1' }), clip({ id: 'c2', preview: '第二条' })])
+    expect(() => {
+      events.handlers[CLIP_EV.removed](undefined)
+      events.handlers[CLIP_EV.removed]({})
+    }).not.toThrow()
+    await flush()
+    expect(w.findAll('.clip-row')).toHaveLength(2)
+    events.handlers[CLIP_EV.removed]({ id: 'c1' })
+    await flush()
+    expect(w.findAll('.clip-row')).toHaveLength(1)
     w.unmount()
   })
 
@@ -566,6 +592,42 @@ describe('门面消费面对位与清理', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
       events.handlers[CLIP_EV.updated](clip()) // 孤儿事件不得再改已卸载组件状态
     }).not.toThrow()
+  })
+})
+
+describe('KeepAlive 切页防线（审查 #20 同族：全局 Esc 失活不残留）', () => {
+  it('失活期异页按 Esc 不幽灵收隐藏页的详情；回页 activate 补挂即复活', async () => {
+    defaults()
+    fake.Get.mockResolvedValue(clip({ text: '正文' }))
+    const show = ref(true)
+    const Host = defineComponent({
+      render: () =>
+        h(KeepAlive, null, {
+          default: () => (show.value ? h(ClipboardView) : h('div', { class: 'other-page' }, '别的工作台页')),
+        }),
+    })
+    const wrapper = mount(Host, { attachTo: document.body })
+    await flush()
+    const view = wrapper.findComponent(ClipboardView)
+    await view.find('.cr-preview').trigger('click')
+    await flush()
+    expect(view.find('.cd').exists()).toBe(true)
+
+    // 切页只是 deactivate 不卸载（App.vue 缓存 max=10）：window 级 Esc 必须已摘——
+    // 外部可验事实：异页按 Esc 之后，隐藏页的详情态纹丝不动
+    show.value = false
+    await nextTick()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flush()
+    expect(view.find('.cd').exists()).toBe(true)
+
+    // 回到本页：activate 补挂，Esc 收详情复活
+    show.value = true
+    await nextTick()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flush()
+    expect(view.find('.cd').exists()).toBe(false)
+    wrapper.unmount()
   })
 })
 

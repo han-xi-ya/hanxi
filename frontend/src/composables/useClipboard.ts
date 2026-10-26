@@ -37,18 +37,21 @@ export function useClipboard(): UseClipboardReturn {
     } catch {
       // 落入 execCommand 降级
     }
+    let ta: HTMLTextAreaElement | null = null
     try {
-      const ta = document.createElement('textarea')
+      ta = document.createElement('textarea')
       ta.value = text
       ta.style.position = 'fixed'
       ta.style.opacity = '0'
       document.body.appendChild(ta)
       ta.select()
-      const ok = document.execCommand('copy')
-      document.body.removeChild(ta)
-      return ok
+      return document.execCommand('copy')
     } catch {
       return false
+    } finally {
+      // 对称清理：select/execCommand 抛错也必须摘节点——原先抛在 removeChild
+      // 之前，隐藏 textarea 泄进 body，连续失败会越积越多
+      if (ta?.parentNode) ta.parentNode.removeChild(ta)
     }
   }
 

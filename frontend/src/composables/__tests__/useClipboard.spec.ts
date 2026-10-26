@@ -73,11 +73,15 @@ describe('useClipboard', () => {
     expect(await copy('text-c')).toBe(false)
   })
 
-  it('两路皆不可用：返回 false 且不抛', async () => {
+  it('两路皆不可用：返回 false 且不抛，降级路抛错同样不留残渣 textarea（连续失败不积节点）', async () => {
     stubClipboard(undefined)
     stubExecCommand('throws')
+    const before = document.querySelectorAll('textarea').length
     const { copy } = useClipboard()
     expect(await copy('text-d')).toBe(false)
+    // 外部可验事实：失败后 DOM 里数得着的 textarea 数量不增（原实现 execCommand
+    // 抛在 removeChild 之前，每次失败泄一个隐藏节点）
+    expect(document.querySelectorAll('textarea').length).toBe(before)
   })
 
   it('非安全上下文（如 http 页）：跳过 clipboard 直接降级', async () => {

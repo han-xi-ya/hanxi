@@ -320,6 +320,9 @@ describe('ClipboardOverlay 键盘动线（R-F1：唤起→定位→Paste 三步�
     await nextTick()
     expect((w.find('.clip-search').element as HTMLInputElement).value).toBe('')
     expect(fake.List).toHaveBeenLastCalledWith('', '', 100)
+    // 清稿重拉恰好一发：挂载 1 + 搜索词 watcher 1 + opening 1（残词清成空串由
+    // watch(query) 代发，handler 不再直发 fetchList——双拉白跑一发 List IPC）
+    expect(fake.List).toHaveBeenCalledTimes(3)
     expect(focusSpy).toHaveBeenCalled()
     expect(w.find('.clip-card').classes()).toContain('is-enter')
     w.unmount()

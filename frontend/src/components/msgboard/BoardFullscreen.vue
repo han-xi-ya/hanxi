@@ -10,10 +10,10 @@
 //   组件不自杀不藏态，宿主断言链路因此与旧内联版逐字等价（类名 .mbp-full
 //   家族原样沿用，选择器零迁移）。
 //
-// Esc 监听生命周期（审查 #20，与 UiHistoryDialog #5 同族）：mounted 挂、
-// unmount/deactivate 摘、activate 补挂——KeepAlive 切页时浮层若仍开着，
-// window 级监听在场会让异页按 Esc 幽灵收起隐藏预览。
-import { onActivated, onBeforeUnmount, onDeactivated, onMounted } from 'vue'
+// Esc 监听生命周期（审查 #20，与 UiHistoryDialog #5 同族）：KeepAlive 四斩
+// 挂摘收编为公共件 useWindowKeyListener——切页失活期 window 监听在场会让
+// 异页按 Esc 幽灵收起隐藏预览。
+import { useWindowKeyListener } from '../../composables/useWindowKeyListener'
 import BoardCard from './BoardCard.vue'
 
 defineProps<{
@@ -29,19 +29,9 @@ const emit = defineEmits<{
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close')
 }
-function hookKey() {
-  window.addEventListener('keydown', onKey)
-}
-function unhookKey() {
-  window.removeEventListener('keydown', onKey)
-}
 
-// v-if 挂载即"浮层开着"：mounted/unmount 负责挂摘；KeepAlive 切页时组件
-// 未必卸载，deactivate/activate 再补一道——与收编前视图里的 watch 纪律等价。
-onMounted(hookKey)
-onBeforeUnmount(unhookKey)
-onDeactivated(unhookKey)
-onActivated(hookKey)
+// v-if 挂载即"浮层开着"：四斩纪律见 useWindowKeyListener 头注。
+useWindowKeyListener('keydown', onKey)
 </script>
 
 <template>
@@ -71,7 +61,7 @@ onActivated(hookKey)
 .mbp-full {
   position: fixed;
   inset: 0;
-  z-index: 99998;
+  z-index: var(--z-board-fullscreen);
   display: grid;
   place-items: center;
   background: rgba(6, 10, 14, 0.38);

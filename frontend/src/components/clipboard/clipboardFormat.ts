@@ -1,4 +1,4 @@
-// 剪贴板 · 纯格式化单源模块（A4 主界面私有，模式照 components/memo/memoMetrics 先例）。
+// 剪贴板 · 纯格式化单源模块（A4 主界面与 A5 浮层共用，模式照 components/memo/memoMetrics 先例）。
 //
 // 收编动机：本条目的时间口径是 epoch 毫秒（types/clipboard.ts 注明，与随手记的
 // ISO 串不同谱），utils/format 的 fmtDate/fmtAgo 是 ISO 档不吃毫秒——相对时间、
@@ -70,6 +70,24 @@ export function fmtClipAgo(ms?: number | null, now: Date = new Date()): string {
   if (min < 60) return `${min} 分钟前`
   if (min < 24 * 60) return `${Math.floor(min / 60)} 小时前`
   return fmtClipDate(ms)
+}
+
+/**
+ * 浮层两行密档相对时间：刚刚 / N 分钟前 / N 小时前，超过 24 小时回落月日
+ * （MM-DD，跨年带年份）——与 fmtClipAgo 的 yyyy-MM-dd 档刻意不同形：浮层行宽
+ * 只容得下 MM-DD。入参域是 epoch 毫秒 number，0/非法值给 '—'（原 A5 视图内联
+ * fmtAgoMs 收编至此，浮层模板回归零内联格式化纪律）。now 可注入测试。
+ */
+export function fmtClipAgoCompact(ms?: number | null, now: number = Date.now()): string {
+  if (!ms) return '—'
+  const min = Math.floor((now - ms) / 60000)
+  if (min < 1) return '刚刚'
+  if (min < 60) return `${min} 分钟前`
+  if (min < 24 * 60) return `${Math.floor(min / 60)} 小时前`
+  const d = new Date(ms)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return d.getFullYear() === new Date(now).getFullYear() ? md : `${d.getFullYear()}-${md}`
 }
 
 /**

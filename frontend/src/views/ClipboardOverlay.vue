@@ -53,7 +53,7 @@
 //     键名（文案与 prefs 脱钩防失真）。浮层 ⏎=Paste 选取线，不消费队列。
 // 独立窗没有工作台 toast 宿主（族规同 QuickMemoSheet/SnipCardView）：动作反馈走
 // 卡内轻提示槽位（常驻占位防跳动、错误恒小字），列表级失败走浮层内错误条。
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
   CLIP_EV,
   clipboardCollapseOverlay,
@@ -71,13 +71,16 @@ import type { ClipEntry, ClipKind, ClipPaused, ClipQueueChanged, ClipRemoved } f
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { getErrorMessage } from '../utils/errors'
 import { fmtSize } from '../utils/format'
+import { fmtClipAgoCompact } from '../components/clipboard/clipboardFormat'
 
 /** 取数上限：浮层两行制一屏 9-10 行，滚动到 100 条即免翻找的甜点位（契约 §4 limit≤500 内）。 */
 const LIST_LIMIT = 100
 const FLY_MS = 200 // 入场动画 160ms + 收尾余量（同速记卡钩子定时器口径）
 
 const query = ref('')
-const raw = ref<ClipEntry[]>([])
+// 账本整列只换不磨（fetchList/updated/removed 皆重赋数组）：shallowRef 免把
+// ≤100 条 entry（含 thumb dataURL）逐字段套深层代理——主界面 entries 同谱
+const raw = shallowRef<ClipEntry[]>([])
 const paused = ref(false)
 const loading = ref(false)
 const errorBar = ref('')
@@ -126,23 +129,6 @@ function onThumbFail(id: string) {
   const next = new Set(brokenThumbs.value)
   next.add(id)
   brokenThumbs.value = next
-}
-
-/**
- * epoch 毫秒 → 刚刚 / N 分钟前 / N 小时前 / 月日（跨年带年份）。
- * 与 memoMetrics.fmtAgo 三档进位同式但入参域不同（那边收 ISO 串，剪贴板时间戳
- * 是毫秒 number），不跨模块硬凑；now 可注入测试。
- */
-function fmtAgoMs(ms: number, now: number = Date.now()): string {
-  if (!ms) return '—'
-  const min = Math.floor((now - ms) / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
-  if (min < 24 * 60) return `${Math.floor(min / 60)} 小时前`
-  const d = new Date(ms)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  return d.getFullYear() === new Date(now).getFullYear() ? md : `${d.getFullYear()}-${md}`
 }
 
 /** 展示时间取最近活跃（去重顶置会刷 lastUsedAt，createdAt 恒为首次复制时间）。 */
@@ -214,7 +200,15 @@ async function fetchStatus() {
 // 队列态恒跟 clipboard:queue:changed 全量快照（数组序=贴出序=徽标序）；
 // toggle 成功后的乐观更新只是省一拍闪烁，快照到达即纠偏。
 const queueIds = ref<string[]>([])
-const queuePos = (id: string): number => queueIds.value.indexOf(id)
+// 行渲染每行多次取位（徽标 / 钮文案 / title 合计 ≤6 处），indexOf 直扫是
+// O(行×队)（100 行 × 50 队 × 6 ≈ 3 万次字符串比对/帧）；快照到达时一次
+// 建表，渲染期 O(1)
+const queuePosMap = computed(() => {
+  const m = new Map<string, number>()
+  queueIds.value.forEach((id, i) => m.set(id, i))
+  return m
+})
+const queuePos = (id: string): number => queuePosMap.value.get(id) ?? -1
 
 async function fetchQueue() {
   try {
@@ -315,8 +309,11 @@ async function copyOnly(e: ClipEntry) {
 async function togglePin(e: ClipEntry) {
   try {
     const next = await clipboardTogglePin(e.id)
-    const i = raw.value.findIndex((r) => r.id === e.id)
-    if (i >= 0) raw.value.splice(i, 1, next?.id === e.id ? next : { ...raw.value[i], pinned: !raw.value[i].pinned })
+    // shallowRef 纪律：整列重赋触发更新，不做 splice 原位磨（深层代理已撤，
+    // 原位变异不会惊动 rows computed）
+    raw.value = raw.value.map((r) =>
+      r.id !== e.id ? r : next?.id === e.id ? next : { ...r, pinned: !r.pinned },
+    )
     showTip(next?.pinned ? '已置顶' : '已取消置顶', 'ok')
   } catch (err: unknown) {
     showTip(`置顶失败: ${getErrorMessage(err)}`, 'err')
@@ -412,12 +409,18 @@ useWailsEvent<ClipQueueChanged>(CLIP_EV.queueChanged, (p) => {
   queueIds.value = Array.isArray(p?.ids) ? p.ids : []
 })
 useWailsEvent<void>(CLIP_EV.overlayOpening, () => {
-  query.value = '' // 清稿：每次唤出都是全量新会话，搜索词与残错都是干扰
+  // 清稿：每次唤出都是全量新会话，搜索词与残错都是干扰
+  if (query.value) {
+    // 有残词：清值即触发 watch(query) 重拉（空词全量），watcher 一发就够，
+    // 这里再直发 fetchList 是每次带残词唤出白跑一发 List IPC
+    query.value = ''
+  } else {
+    void fetchList() // 词本就空：watcher 不动火，重拉直发
+  }
   selected.value = 0
   composing.value = false // 上次若断在组字中途，旗标也是残稿
   tip.value = ''
   errorBar.value = ''
-  void fetchList()
   void fetchStatus()
   void fetchQueue()
   replayEnter()
@@ -505,7 +508,7 @@ onBeforeUnmount(() => {
               <span v-if="e.sourceApp || e.sourceExe" class="clip-src">{{ e.sourceApp || e.sourceExe }}</span>
               <span v-if="rowMeta(e)" class="clip-meta mono">{{ rowMeta(e) }}</span>
               <span v-if="e.autoTags?.length" class="clip-tags mono">{{ e.autoTags.join(' · ') }}</span>
-              <span class="clip-time mono">{{ fmtAgoMs(entryTime(e)) }}</span>
+              <span class="clip-time mono">{{ fmtClipAgoCompact(entryTime(e)) }}</span>
             </div>
           </div>
           <span class="clip-acts">
@@ -623,7 +626,7 @@ onBeforeUnmount(() => {
   line-height: 1.5;
   color: var(--state-danger);
   background: var(--state-danger-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   word-break: break-word;
 }
 

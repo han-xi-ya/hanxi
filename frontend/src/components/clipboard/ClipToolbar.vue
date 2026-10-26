@@ -253,7 +253,9 @@ onBeforeUnmount(() => openMore(false))
 }
 .ct-chip:hover { background: var(--surface-hover); color: var(--color-text); }
 .ct-chip.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
-.ct-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* 样式审计 C5：环内收 -2px——本钮在 .ct-chips 横向滚容器内（padding 2px 0，overflow-x auto
+   使纵向同为 auto），外扩环会被裁半；同 AppNavRail 轨道既有内收口径（色源不动，归 H 线 A1）。 */
+.ct-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 
 .ct-pause {
   flex: none; display: inline-flex; align-items: center; gap: 6px;

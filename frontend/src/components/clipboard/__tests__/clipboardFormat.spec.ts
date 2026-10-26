@@ -12,6 +12,7 @@ import {
   filePathDir,
   filePathName,
   fmtClipAgo,
+  fmtClipAgoCompact,
   fmtClipDate,
   fmtClipDateTime,
   groupClipEntries,
@@ -50,6 +51,26 @@ describe('fmtClipAgo 相对时间档', () => {
     expect(fmtClipAgo(Number.NaN, NOW)).toBe('—')
     expect(fmtClipAgo(Number.POSITIVE_INFINITY, NOW)).toBe('—')
     expect(fmtClipAgo('123' as unknown as number, NOW)).toBe('—')
+  })
+})
+
+describe('fmtClipAgoCompact 浮层密档（A5 视图内联函数收编单源）', () => {
+  const N = NOW.getTime()
+  it('前三档与 fmtClipAgo 同式（刚刚/分钟前/小时前）', () => {
+    expect(fmtClipAgoCompact(N - 30_000, N)).toBe('刚刚')
+    expect(fmtClipAgoCompact(N - MIN, N)).toBe('1 分钟前')
+    expect(fmtClipAgoCompact(N - 59 * MIN, N)).toBe('59 分钟前')
+    expect(fmtClipAgoCompact(N - 23 * HOUR - 59 * MIN, N)).toBe('23 小时前')
+  })
+  it('超过 24 小时回落 MM-DD（补零）——与主界面 yyyy-MM-dd 档刻意不同形；跨年带年份', () => {
+    expect(fmtClipAgoCompact(N - 24 * HOUR, N)).toBe('09-25')
+    expect(fmtClipAgoCompact(new Date(2025, 11, 31, 12, 0, 0).getTime(), N)).toBe('2025-12-31')
+  })
+  it('0/undefined/NaN 给 —；未来戳按「刚刚」消化（与 fmtClipAgo 时钟偏移同谱）', () => {
+    expect(fmtClipAgoCompact(0, N)).toBe('—')
+    expect(fmtClipAgoCompact(undefined, N)).toBe('—')
+    expect(fmtClipAgoCompact(Number.NaN, N)).toBe('—')
+    expect(fmtClipAgoCompact(N + 10 * MIN, N)).toBe('刚刚')
   })
 })
 

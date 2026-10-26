@@ -39,7 +39,7 @@ import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import BoardStage from '../components/msgboard/BoardStage.vue'
 import BoardFullscreen from '../components/msgboard/BoardFullscreen.vue'
-import { PREVIEW_BASE_BOX_W, scalePercent, scaleZoomFactor } from '../components/msgboard/boardMetrics'
+import { PREVIEW_BASE_BOX_W, boardTitleOf, scalePercent, scaleZoomFactor } from '../components/msgboard/boardMetrics'
 
 const emit = defineEmits<{
   (e: 'navigate', route: string): void
@@ -207,7 +207,10 @@ function screenLabel(s: ScreenInfo): string {
 // 舞台回显栏报"已存版本"——Toggle 挂出的真身就是服务端配置，
 // 草稿的实时形态交给大牌预览，两个位点各说各的真话，互不冒充。
 const serverText = computed(() => server.value?.text ?? '')
-const echoTitle = computed(() => serverText.value.split('\n', 1)[0]?.trim() ?? '')
+// 主题拆分走 boardMetrics 单源（牌面与回显同一条"第一行＝主题"契约）；
+// echoSub 不复用 boardSubOf——回显是单行流式版式，副行要逐行 trim 后 ' / ' 拼，
+// 与牌面原样换行的呈现口径本就两形，不硬凑
+const echoTitle = computed(() => boardTitleOf(serverText.value).trim())
 const echoSub = computed(() => serverText.value.split('\n').slice(1).map((l) => l.trim()).filter(Boolean).join(' / '))
 const dirtyNote = computed(() => (shown.value
   ? '草稿有改动未保存：眼前的牌面还是旧版，保存即热更。'
