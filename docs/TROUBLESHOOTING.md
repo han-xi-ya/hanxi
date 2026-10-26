@@ -144,6 +144,14 @@
 - [113. Go 的 `filepath.EvalSymlinks` 不解析 Windows junction：目录围栏的第二道判定静默空转](#113-go-的-filepathevalsymlinks-不解析-windows-junction目录围栏的第二道判定静默空转)
 - [114. OpenSSH 私钥的 comment 藏在私钥段内部：按"外层尾部"读恒得空，手工补挂会被系统 `ssh-keygen` 整把拒收](#114-openssh-私钥的-comment-藏在私钥段内部按外层尾部读恒得空手工补挂会被系统-ssh-keygen-整把拒收)
 - [115. `ssh.ParseAuthorizedKey` 会解析 options：部署公钥前不专门拒发，等于把 `command="…"` 后门签进别人机器](#115-sshparseauthorizedkey-会解析-options部署公钥前不专门拒发等于把-command=…-后门签进别人机器)
+- [116. 前端并发扫描的在飞取消：早落旗必须配代次闸，晚落旗必须走单一路径，混用则旧结算倒灌新状态](#116-前端并发扫描的在飞取消早落旗必须配代次闸晚落旗必须走单一路径混用则旧结算倒灌新状态)
+- [117. KeepAlive 失活期的 window 全局监听：只挂 mount/unmount 两斩，异页按键会幽灵操作隐藏视图；四斩已收编 useWindowKeyListener](#117-keepalive-失活期的-window-全局监听只挂-mountunmount-两斩异页按键会幽灵操作隐藏视图四斩已收编-usewindowkeylistener)
+- [118. 前端两条测试与响应式纪律：相对时间断言用真实挂钟则凌晨必红；shallowRef 收编后原位变异静默不渲染](#118-前端两条测试与响应式纪律相对时间断言用真实挂钟则凌晨必红shallowref-收编后原位变异静默不渲染)
+- [119. `go build ./...` 不编译测试文件：build 绿灯不是"可编译"证明，收口门禁最小三件套是 gofmt、vet、test](#119-go-build--不编译测试文件build-绿灯不是可编译证明收口门禁最小三件套是-gofmtvettest)
+- [120. 本机没有 C 工具链，`go test -race` 跑不了：并发结论一律 -count 重复调度并如实标注"未经 race 验证"](#120-本机没有-c-工具链go-test--race-跑不了并发结论一律--count-重复调度并如实标注未经-race-验证)
+- [121. `git grep` 不搜未跟踪文件：普查"引用数 0"对新造符号是假象，但它读的确实是工作区而非 HEAD](#121-git-grep-不搜未跟踪文件普查引用数-0对新造符号是假象但它读的确实是工作区而非-head)
+- [122. 测试把墙钟当判据：全量并行必红、"复跑就绿"也不能当证明，改判据才是修复，放大超时不是](#122-测试把墙钟当判据全量并行必红复跑就绿也不能当证明改判据才是修复放大超时不是)
+- [123. `sync.Map` 键类型不一致恒 miss：顶层窗枚举静默失效一个月，而"seen==0 就 skip"把它掩蔽成"环境不满足"](#123-syncmap-键类型不一致恒-miss顶层窗枚举静默失效一个月而seen0-就-skip把它掩蔽成环境不满足)
 
 ---
 
@@ -1497,3 +1505,77 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **问题现象与错误原因**：`authorized_keys` 的一行想当然地以为只有"算法 + base64 + 注释"三段。实际该版本 x/crypto **已经能解析 options 前缀**——`command="…"` 是**合法可解析**形态。把它原样装到对方机器上，等于签下一条"每次用这把钥匙登录就执行指定命令"的后门。
 - **正确做法与标准修复方案**：部署前在**本地**验货（`loadPubKeyLine`）：单行化、控制字符、`ParseAuthorizedKey` 解不开、**带 options**、拿私钥冒充公钥——任一不合就 `verdict=refused`，**一个字节都不外发，连钉库都不查**。公钥内容只允许经 **stdin** 送给远端固定脚本，绝不拼进命令串：否则公钥文件被动过手脚（内含换行 + `; rm -rf ~`）时，我们就是那个在别人机器上执行注入的人。
 - **避坑防重犯建议**：① 依赖库的能力会变，"它解析不出 X"这类假设必须以**实测**为准，不能凭旧版印象（#111 同一病根）；② 注入不成立这条要有**真 bash 跑起来**的用例（样本注释里放 `; touch PWNED`，断言文件没被创建），只写断言字符串不含分号是假安全；③ TOFU 落钉时点刻意放在**认证成功之后**（与 OpenSSH 写 known_hosts 的时机一致），挡住"连口令都过不了的 MITM 被顺手钉住"。
+
+### 116. 前端并发扫描的在飞取消：早落旗必须配代次闸，晚落旗必须走单一路径，混用则旧结算倒灌新状态
+
+- **问题现象与错误原因**：PortScan 终止后按钮即刻落回可重扫，但被终止扫描的 RPC 仍在途排空，立即重扫时上一轮的 summary/catch/finally 把新扫描的开关与结果表整表写回旧值；反面教材是 LanScanner 在 stop 分支提前 `scanning=false`——后端 Cancel 只掐 context、worker 手头 ping（≤1200ms）排空后 RPC 才返回，这个窗口内「停止→立刻重扫」吃后端单飞闸红字，且旧结果晚点倒灌。根因一个：**前端把"发起取消"当成了"取消完成"**。
+- **排查过程**：对照后端 service.go 的取消语义（lan 取消路径返回部分结果且不报错）确认 RPC 返回才是真实收口信号；PortKill「连点快捷端口」乱序（旧进程行挂新端口标题下，杀错 PID 的诱导面）与 Frpc 日志抽屉跨项目覆盖同族同治。
+- **正确做法与标准修复方案**：只有两种合法形制——① **早落旗 + 代次闸**：落旗图手感，但旧请求的结果写回/catch/finally 三处全过 seq 代次门禁（PortScan 的 scanSeq/egressSeq、FrpcProjectsView 的 logsGeneration、SnapshotSection 的 historySeq/diffSeq 同族）；② **晚落旗单路径**：落旗只走初始 startScan 的 finally，一切终止等 RPC 真返回（LanScanner 现形）。混用或无闸写回都是 bug。
+- **避坑防重犯建议**：任何"长往返 + 可取消"的动作用户侧都要有重入闸（busy 闩或占位票——Frpc 下载双击窗口就是靠 resolve 占位票封的）；第三种形制（如 SnipCard 按下期靠 mouseup 自摘监听）一旦出现即是漂移信号，归位到上述两种之一。
+
+### 117. KeepAlive 失活期的 window 全局监听：只挂 mount/unmount 两斩，异页按键会幽灵操作隐藏视图；四斩已收编 useWindowKeyListener
+
+- **问题现象与错误原因**：在页面 B 按 Esc，被隐藏的页面 A 的详情面板/预览浮层跟着收起（A 的状态被无声改掉）。工作台视图常驻 App.vue 的 KeepAlive(max=10)，切页只是 deactivate 不卸载——挂在 mounted/unmounted 对子上的 window 级监听在失活期仍挂在 window。
+- **排查过程**：BoardFullscreen 审查 #20 钉过本族；2026-10-26 前端审查发现 ClipboardView 同族漏防（Esc 幽灵收起隐藏页详情），其回归测试即「KeepAlive 切页 → 失活页按 Esc → 断言隐藏页详情态纹丝不动」。
+- **正确做法与标准修复方案**：统一走 `frontend/src/composables/useWindowKeyListener.ts`——mounted/activate 挂、deactivate/unmount 摘（同引用 addEventListener 幂等，首进双挂无副作用）；行为类修复做过"临时回退→测试红→恢复→绿"的非空虚验证。条件开合期形态（ClipToolbar 菜单开才挂 document click、关即摘）不归本件管，手动挂摘。
+- **避坑防重犯建议**：写 window/document 级监听前先自问「切页不卸载时会怎样」；KeepAlive 视图里的全局监听一律用 composable，不许再手写四斩。沉淀件 E 区 QuickMenuPopup 的 Esc 冒泡双杀（defaultPrevented 让行）是同页近亲，判例可参照。
+
+### 118. 前端两条测试与响应式纪律：相对时间断言用真实挂钟则凌晨必红；shallowRef 收编后原位变异静默不渲染
+
+- **问题现象与错误原因**：① ClipboardView.spec「相对时间随行上屏」用真实挂钟 NOW−3h——每天 00:00–02:59 跑批该时刻落进昨日档，日档分组换行、断言收到「5 分钟前」，**凌晨必红**（2026-10-26 01:48 实跑踩中，与当轮改动零关系，纯存量雷）。② ClipboardOverlay 的 `raw` 深 ref 改 shallowRef（≤100 条含 thumb dataURL 的账目不再逐字段套代理）后，若有人原位变异（splice/改属性），视图**静默不重渲染**，测试也不报错。
+- **排查过程**：①的复现条件唯一——挑在凌晨跑测试；教训：依赖"运行时刻"真假的时间档断言必须锚死挂钟。
+- **正确做法与标准修复方案**：① `vi.useFakeTimers({ toFake: ['Date'] })` + `vi.setSystemTime(本地正午时刻)`，finally 还原；断言文案逐字不动，只锚时刻构造。② shallowRef 处全部写回走整列重赋（togglePin 的 splice 原位磨同步改 map 整列重赋，改动处注释已立规"后人不许再原位变异"）；降级路径 DOM 残渣（execCommand 抛错跳 removeChild）用 try/finally 对称清理。
+- **避坑防重犯建议**：时间档/日期界/时区敏感断言一律 fake-timers 锚定，此为硬规矩；深 ref 换 shallowRef 时同步 grep 原位变异点并把重赋纪律写进注释。
+
+### 119. `go build ./...` 不编译测试文件：build 绿灯不是"可编译"证明，收口门禁最小三件套是 gofmt、vet、test
+
+- **问题现象与错误原因**：本批（2026-10-26 后端审查）三次测试文件编译中断/语法中断——`scripts/docsfacts` 未使用 import、`portkill` 缺 `log/slog` 导入、`ocr` 的 `loopbackClient` 未定义（逐笔记账见同批 `docs/reviews/2026-10-26-backend-code-review.md` §2.4）——全部发生在 `go build ./...` rc=0 的绿灯之下。原因很直白：**`go build` 根本不编译 `_test.go`**，测试文件只属于测试构建图。现取数（2026-10-26 12:3x 快照）：`git ls-files '*_test.go' | wc -l` = **428**（已跟踪），`git ls-files --others --exclude-standard '*_test.go' | wc -l` = **49**（未跟踪、并行会话仍在追加）——全仓 400 多份测试文件整体在 `go build` 的检查面之外。
+- **排查过程**（仓库外临时模块逐步复现，探针不入源码树是 #109/#111 之后立的规矩）：在 `/tmp` 建最小 module 放三种坏形态，逐一手验：
+  1. 测试文件 import `"os"` 而不用 → `go build ./...` 输出 `rc=0`；`go vet ./...` 报 `vet.exe: .\b1_unused_import_test.go:4:2: "os" imported and not used`（rc=1）；
+  2. 用 `slog.Default()` 不导入 `log/slog` → 又是 `go build rc=0`，vet 报 `vet.exe: .\b2_missing_slog_test.go:6:2: undefined: slog`；
+  3. 同行写 `var x = 1 var y = 2`（缺分隔）→ 还是 `go build rc=0`，vet 报 `b3_syntax_err_test.go:6:12: expected ';', found 'var'`；同形态下 `go test ./...` 报 `FAIL b4demo [setup failed]`，`go test -run '^$' ./...`（一条用例都不跑）同样报 `[setup failed]`。
+  三种形态 `go build` 一律看不见、`go vet`/`go test` 都报。活体侧对照：本批 12:43 实测工作区 `go build ./...` 与 `go vet ./...` 双双 rc=0——vet 绿灯才是"含测试面可编译"的证据，build 绿灯不是。
+- **正确做法与标准修复**：收口门禁最小三件套 = **`gofmt -l cmd internal packages scripts embedassets.go` + `go vet ./...` + `go test -count=1 ./...`**。`task check` 的 gofmt 只扫 `cmd internal packages embedassets.go`（绕 npm 混入的 `frontend/node_modules/flatted/golang`，审查报告 §6 顺带记过），人工收口时把 `scripts` 补上。`go build ./...` 只当"生产面快速可编译"检查用，永远不作为提交门禁的"可编译"论据。CI 早就是按 vet+test 配的（`.github/workflows/ci.yml:75-76`）。
+- **避坑防重犯建议**：① 批量新增/改动 `_test.go` 的会话，收口前至少补跑 `go vet ./...`；只想验编译不想跑用例时用 `go test -run '^$' ./...`（本条经坏件实测）。② "先补 import、后写使用体"的两步窗口会造出 build 全绿、vet 红/绿的时序错觉——本批三起同类中间态泄漏（审查报告 §10-6），纪律是同文件的 import+定义+调用点合并为单次原子写入。③ 审查/验收里凡见"go build 通过，所以可编译"的表述，直接按无效论据打回。
+
+### 120. 本机没有 C 工具链，`go test -race` 跑不了：并发结论一律 -count 重复调度并如实标注"未经 race 验证"
+
+- **问题现象与错误原因**：本机 Windows 11 + go1.26.4 独立安装，`which gcc cc clang` 三者全 miss，而 `-race` 依赖 cgo/C 运行库。两档报错形态都实测在册：
+  - `go test -count=1 -race ./scripts/docsfacts/`（默认 `CGO_ENABLED=0`）→ `go: -race requires cgo; enable cgo by setting CGO_ENABLED=1`；
+  - `CGO_ENABLED=1 go test -count=1 -race ./scripts/docsfacts/` → `# runtime/cgo` / `cgo: C compiler "gcc" not found: exec: "gcc": executable file not found in %PATH%` / `FAIL hanxi/scripts/docsfacts [build failed]`。
+  `go env CGO_ENABLED CC` 现为 `0` 与 `gcc`（CC 只是默认值，程序不存在）。关键落差：**CI 在跑 race**——`.github/workflows/ci.yml:75-76`（Linux runner，`CGO_ENABLED: '1'`）是 `go vet ./...` + `go test -count=1 -race ./...`；本机门禁与 CI 门禁不在同一维度，本机把并发结论写成"含 race 验证"就是伪证。
+- **排查过程**：本批确认工具链不存在后，并发结论一律降级为**重复调度 + 确定性构造**（显式 channel/WaitGroup、`net.Listener` 占位强制拨败这类把窗口造出来的手法）。本段落的复验由我亲手跑（2026-10-26 12:4x，无并行施工窗）：`go test -count=30 ./internal/notify/` → `ok hanxi/internal/notify 0.060s`；`go test -count=5 ./internal/modules/rammap/instance/ ./internal/modules/snipaste/instance/` → 双双 `ok`（2.371s / 1.142s）；`go test -count=20 -run 'TestSpawnProbeHelperTimeoutLeavesNo' ./internal/mcpwizard/` → `ok hanxi/internal/mcpwizard 1.153s`。
+- **正确做法与标准修复**：① 并发用例的本机结论按 `-count=5`（视情形更高）重复调度实测给，并在报告与注释里如实标注"本机未 race 验证，结论属重复调度级而非 happens-before 级，race 归 CI Linux"——本批 A1/A2 的写法是范本（审查报告 §10-10）。② 需要"必然踩到竞态窗口"的证明时，用确定性构造（如占端口强制失败、channel 收发序）而不是指望 race 探测器兜底——race 是 CI 的增强层，不是本机结论的前提。③ 想在本机补 race 需装 C 工具链，那是引入新工具链面，属环境变更另裁——本批未装。
+- **避坑防重犯建议**：① 先 `go env CGO_ENABLED` 再谈 `-race`；Windows 无 gcc 时两档报错不同（缺 cgo 开关 vs 缺编译器），抄错形态会误导排查。② `-count` 复验与墙钟用例互相放大（饥饿概率随重复次数升），挑无并行施工窗跑，见 #122。③ "本地绿 + CI 的 race 没红"合起来才够格写"未发现数据竞争"；单独任何一条都不行。
+
+### 121. `git grep` 不搜未跟踪文件：普查"引用数 0"对新造符号是假象，但它读的确实是工作区而非 HEAD
+
+- **问题现象与错误原因**：本批审查中 A6 用 `git grep` 普查得出"某符号引用数为 0"，随后把成因升级为"`git grep` 在本 worktree 读的是 HEAD 不是工作区"——前一个是真实盲区，后一个是错的（审查报告 §10-5 实测驳回）。`git grep` 读**已跟踪文件的工作区内容**：它既不是读 HEAD，也不含 `??` 未跟踪文件。本批工作区未跟踪 `.go` 实测 **50** 个（49 测试 + 1 生产件 `internal/platform/family_string.go`；`git ls-files --others --exclude-standard | grep -c '\.go$'`，12:3x 快照且仍在漂），拿 git grep 做普查的结论对这些文件一律不可见。
+- **排查过程**（每一步实测）：
+  - 假 0 现场：`git grep -n 'func (f Family) String'` → 无输出、`rc=1`；`grep -rn 'func (f Family) String' --include='*.go' internal/platform/` → `internal/platform/family_string.go:13`。一个生产方法的定义在 git grep 的世界里不存在——照它做死代码判定会杀活件（A7 专项 C 档防误杀清单正是为此而设）。
+  - 半盲现场：`git grep -c 'closeSmokeTerminate'` 只命中两份已跟踪 `instance_test.go`（各 2 处调用）；`grep -rln` 命中 4 份——两份定义文件 `close_smoke_test.go` 未跟踪。调用看得见、定义看不见，比全看不见更容易骗人。
+  - "读 HEAD"错判的反证：`git show HEAD:internal/jsonstore/jsonstore.go | grep -c 'renameAtomic'` → `0`（HEAD 无此函数），而 `git grep -l 'renameAtomic'` → `internal/jsonstore/jsonstore.go`（已跟踪文件的在途修改内容搜得到）。工作区内容、未跟踪排除——两个性质各归各位。
+- **正确做法与标准修复**：普查、死代码判定、引用面盘点一律**双口径并报**："已跟踪面"（`git grep`）与"含未跟踪工作区面"（`grep -rn --include='*.go'` 或 rg），两口径文件清单之差即 `git ls-files --others --exclude-standard` 的输出；符号定义落在未跟踪面时，已跟踪面的"0 引用"无证据力。非要看未跟踪件时可用 `git grep --no-index`（实测 `git grep --no-index 'func (f Family) String' -- '*.go'` 命中，须配 pathspec 防扫全盘）。
+- **避坑防重犯建议**：① 成批新代码之后，以 git grep 为基的普查结论按"已过期"处理，收口后用工作区面复跑一遍再入账。② 文档/注释里写"零引用/无消费方"时带口径限定词（"已跟踪面/工作区面"）——裸写"零引用"就是下一个误归因的引信。③ 未跟踪件也是"自己刚造的件"：删除类判定（A 档可删）前不查 `??` 清单，等于审自己看不见的代码。
+
+### 122. 测试把墙钟当判据：全量并行必红、"复跑就绿"也不能当证明，改判据才是修复，放大超时不是
+
+- **问题现象与错误原因**：本批收口门禁的红一归纳落进同一类（审查报告 §2.5 表列七行），共同根因是**把墙钟当判据**：或等"子进程在某时长内自然退出"而这种退出与被测命题无因果（`rammap`/`snipaste` 旧构造 `TestQuitCloseRequestSmoke` 靠 `ping -n 1/2` 撞 3s 宽限；`bili23/instance TestQuitStopsPollingOnNaturalExit` 拿 `ping -n 2` 断 `elapsed ≤ 4s`），或一个时长兼任"探测预算 + 隐式等待上限"（`mcpwizard` 150ms 等 helper 写 pid 文件）。`go test ./...` 自身并发调度约 160 个测试二进制，CPU 饥饿时 Windows 子进程冷启动可超 150ms——超时先杀掉还没写 pid 的进程，失败伪装成 `读取 helper PID: ... The system cannot find the file specified`；饥饿让 ping 超 3s 才退，归因伪装成 `QuitResult{Stopped:true, Forced:true, Method:"forced-job"}`（两行原文均录于审查报告 §2.1/§2.2）。另有一条不属墙钟却常被混进来：`notify` 断的"并发写入落定即全部已读"**命题本身不成立**（一条 Info 可在最后一次 mark-all 之后落地），它红是逻辑红，不是预算红。
+- **排查过程**（本节实测）：**同一棵树，两轮门禁，两种颜色**——12:43 无并行施工时我跑 `go test -count=1 ./...` 得 **161 ok / 0 FAIL**；审查批次 08:58 轮同口径为 160 ok / 1 FAIL（bili23 那条被拖到 5.12s 破 4s 预算，单跑 10/10 绿、约 1.1s/次）。我自造并行负载（全量 `go test ./...` 风暴中插跑该用例 `-count=5`）：耗时漂至 1.19/1.25/1.26/1.46/1.66s（5/5 绿）——这轮负载没把它推破 4s，但机制当场可见：**该用例的输入是机器负载而不是被测代码**。所以"复跑就绿"什么也证明不了，正如我第一轮的 0 FAIL 证明不了太平。审查批次并实测过：仅把超时放大，`-count=20/30` 下仍复现（报告 §2.5）——放大预算只是把饥饿点后移。定性纪律也吃紧：第二轮风暴里我另逮到 15 个 `*/version` 包**秒级红**（`TestVersionFromToken` 等，0.00~0.07s），那不是墙钟，是并行会话正在把 `ImportLocal` 兜底迁向内容哈希的**在途改码窗口**——有人施工时全量门禁的红连定性都做不得（#40 家族、机主既有记忆"并行负载会让 Go 门禁假红"的又一现场）。`papertodo TestManagedLifecycleSmoke` 的 02:44 红同样被审查批次实测定性为**非墙钟**（0.01s 即失败，包内不存在秒级预算，见报告 §2.3 注）——别把观察项一锅端成墙钟类。
+- **正确做法与标准修复**：**改判据，不改命题**，三条正解均已落地：
+  1. **事件驱动**（mcpwizard）：弃 150ms 墙钟等待，`context.WithCancel` + 子协程 5ms 步长轮询 `os.Stat(pidFile)`，pid 落地即 `cancel()`；`const bootDeadline = 2 * time.Second` 只当上限，超上限走显式归因超时路径。源码注释原话（`selfcheck_test.go:442-443`）："放大等待不是修复，判据形态从墙钟换成了事件才是"。
+  2. **因果驱动**（rammap/snipaste，`close_smoke_test.go`）：`closeByPID` 替身回报"投递成功"的**同时**当场终结子进程，让"宽限内自然退出"由被测动作因果触发；归因命题（`close-request`、`!Forced` 等）一字未放宽。
+  3. **命题修正**（notify）：改为"压力照旧并发跑，收敛判定 = 静默 → 补一次 mark-all → 断全部已读"，这才是产品语义；`-count=30` 实测绿（见 #120 段末数据）。
+  反面平衡一条：`snipaste` 的 `TestQuitGracefulWindowIsBounded` 断 `elapsed < 3s`，命题本身就是"宽限期内必须强杀收口"——**合法的上界断言，不许为消灭饥饿敏感改成因果驱动**（那会改掉要证的东西）；它的处置只能是调度窗管理。
+  **关键不对称性（本批实测）**：做第 2 条时首版用 `os.Process.Kill`，归因过了但终态快照红——Go 的 `Kill` 在 Windows 即 `TerminateProcess(h, 1)`，**退出码 1** 被 supervisor 落 `failed`、渲染"异常退出（退出码 1）"。我在仓库外临时程序实测：`cmd.Process.Kill()` 后 `Wait()` 打印 `Kill 后 Wait 退出码 = 1（err=exit status 1）`。测试要"与自然退出同谱"就必须用 `TerminateProcess(h, 0)`（`close_smoke_test.go:11-12` 注释明载此坑，`:20` 即正解）。
+- **避坑防重犯建议**：① 写测试等待先自问："这个时间是**判据**（命题断的就是它的上界）还是**隐式等待**（事件必然发生、只是不知何时）"？后者一律事件/因果化，前者保留但管理调度窗。② 红了先单跑复现、再查"本轮改没改过这条路径"，两步定性后才许写结论；全量轮的红一律先问"当时谁在动树"。③ 门禁轮排在无并行施工的时段跑（本批 02:44 轮与我的第二轮负载窗都是反例现场）。④ `TestImportLocal` 一族的"同秒才拒"最初被当成测试脆弱，实为**产品缺陷**：秒级时间戳兜底使重复导入检测跨秒失效（审查报告 §9-15），工作区现状已改为 `imported-<sha256 前 12 hex>` 内容哈希（实测 `ccswitch`/`quicklook`/`piclite`/`keyviz` 的 `version/manager.go` 中 `importedDirRe` 同形，时间戳形态仅兼容存量）——测试断的东西是对的，修的是代码，**不许反过来改弱测试**。⑤ 前端同病型（真实挂钟断言凌晨必红）见 #118；超时 panic dump 的归因读法见 #109。
+
+### 123. `sync.Map` 键类型不一致恒 miss：顶层窗枚举静默失效一个月，而"seen==0 就 skip"把它掩蔽成"环境不满足"
+
+- **问题现象与错误原因**：`internal/platform/windows/winfocus_windows.go` 的 `EnumTopWindows` 用"静态回调 + `lParam` 查表"传上下文（`dc45b98` 2026-09-25 立的模板，`git log -S 'wfCtxMap.Load(lParam)'` 实测唯一引入点），但从引入之日起键的**存取两侧类型不同**：`wfCtxSeq atomic.Uint64` → `id := wfCtxSeq.Add(1)` 是 uint64 存进 `sync.Map`，回调里 `wfCtxMap.Load(lParam)` 拿 uintptr 去取。`sync.Map` 的键相等比较要求动态类型一致，uint64 键配 uintptr 查询**恒 miss** → `ok=false` → 回调首窗即 `return 0` 中止枚举 → 唤窗、在窗探测、优雅关窗这些依赖顶层窗枚举的能力**全线静默失效**：不报错、不 panic、日志无痕。故障窗 2026-09-25 至本批修复约一个月，影响面按审查报告 §0/§3 为 20 个模块（本段实测直接口径：`grep -rl 'EnumTopWindows' --include='*.go' internal/modules | grep -o 'internal/modules/[^/]*' | sort -u | wc -l` = **18** 个模块直接调用，其余经 `FocusTopWindowForPID`/`HasFocusableTopWindowForPIDs` 门面同一坏路径间接消费）；真机探针实证 `visited=0`。**注意**：本批纪律不提交——修复现在只在工作区（该文件为 `M` 态），HEAD 至今带病，本条要等主会话入库才算闭环。
+- **排查过程**：一个月里门禁为何零声响——既有压测 `winfocus_stress_windows_test.go:19-21` 写的是 `if i%500 == 0 && seen == 0 { t.Skip("无桌面会话/枚举不可用，压测不适用") }`：**把"观察到 0"当成了"环境不满足"的信号**。恒 miss 时 seen 恒 0、用例恒 skip、CI 恒绿，产品级失效被测试自掩蔽成"不适用"。这是本批两条"多年静默失效"的共同病根（另一条 apppackage 是 mock 掉了唯一能暴露断链的那一层，审查报告 §0）。修复侧取证：
+  - HEAD 侧：`git show HEAD:internal/platform/windows/winfocus_windows.go` 第 68 行 `id := wfCtxSeq.Add(1)`（uint64 存）、第 50 行 `wfCtxMap.Load(lParam)`（uintptr 取）——错配形态原样在 HEAD；
+  - 工作区侧：第 73 行改为 `id := uintptr(wfCtxSeq.Add(1))`，68-70 行加防回归注释（"ctx 键必须统一为 uintptr……Load 恒 miss 使 wfEnumProc 首窗即 return 0 中止枚举……旧压测『seen==0 即 skip』恰好掩盖了它"）；
+  - 新增 `winfocus_enum_windows_test.go`（未跟踪）立了正确的 Skip 纪律：Skip 只由"创建顶层窗口失败（无交互桌面会话）"这一**环境前置探针**触发（`:121`），窗口创建成功而派发为 0 时 `t.Fatal("枚举回调一次都未派发：窗口已创建成功、桌面在场——派发断链复发")`（`:145`）。
+- **正确做法与标准修复**：① 跨"纯 Go 值 → syscall/回调参数"边界传递的键必须**单一类型来源**：本例回调入参是 `uintptr`，键就一律 `uintptr`（`atomic.Uint64` 只许供数值，供值处显式 `uintptr(...)` 转换并注释原因）。② 测试 Skip 条件必须由**环境能力**触发、不许由观测结果触发——"观察到 0 个就跳过"是自掩蔽句式，禁写；正确的形如"先造一个真实锚点（自建窗口），造不出来才 Skip"。③ 静默恒空型失效要配**真锚点断言**（枚举结果必须包含自己刚建的窗），假件与替身层挡不住这类断链。④ 遗留待清：`winfocus_stress_windows_test.go` 的 `seen == 0 → t.Skip` 旧句式实测仍在位（审查报告 §7 亦记"该模式应清"），主会话入库时顺手改判。
+- **避坑防重犯建议**：① 凡往 `sync.Map`/`map[any]any` 塞键、又从另一条路径（回调参数、反序列化字段、跨 ABI 往返值）取键的，写下来先问一句"两侧动态类型由谁保证一致"——数字相等 ≠ 键相等。② "功能没报错但也没生效"（点唤窗无反应、探测恒报无窗、闸恒走保守支）要按**恒空/恒 miss**类第一嫌疑排查：它零错误、零日志，门禁不会替你喊。③ 测试全绿的历史里，看一眼 skip 命中频率——长期全 skip 的用例等于没有用例（本条 #89 假锁、apppackage mock、#118 凌晨红同属"测试把失效过路成绿灯"病族）。
