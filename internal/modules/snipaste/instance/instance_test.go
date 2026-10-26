@@ -410,13 +410,23 @@ func TestStartRejectsWhenActive(t *testing.T) {
 	}
 }
 
-// TestQuitCloseRequestSmoke 真进程冒烟：被投关闭请求后（此处以接缝回报投递成功
-// 并让进程在宽限窗口内自然退出）归因 close-request，终态事件无错误文案。
+// TestQuitCloseRequestSmoke 真进程冒烟：被投关闭请求后进程在宽限窗口内收口，
+// 必须归因 close-request，终态事件无错误文案。
+//
+// 确定性构造（2026-10-26 收口门禁整改，rammap 同型同因）：关闭替身回报"投递
+// 成功"的同时以**退出码 0** 当场终结那个真 cmd 进程（closeSmokeTerminate，
+// 见 close_smoke_test.go 头注释）——模拟"WM_CLOSE 送达窗口→应用自行退出"的
+// 因果，收口由被测动作触发（毫秒级落 settle），不再赌 ping 的自然退出能否在
+// 全量并行 CPU 饥饿下赶完 3s 宽限（旧构造饥饿即漂 → forced-job 误归因红）。
+// 退出形态与旧构造同谱（码 0），终态快照断言不漂移。归因命题原样保留：
+// 不收口→forced-job 由 TestQuitForcedJobSmoke 把守。
 func TestQuitCloseRequestSmoke(t *testing.T) {
 	cmdExe := mustCmdExe(t)
-	// 存活约 2s 的 cmd：自然退出（退出码 0）落在 3s 宽限内。
 	engine := NewEngine(newWindowsJobAPI(), aliveCmdProc(cmdExe), nil, Callbacks{})
-	engine.closeByPID = func(uint32) int { return 1 }
+	engine.closeByPID = func(pid uint32) int {
+		closeSmokeTerminate(pid) // 因果驱动收口：码 0 落终，毫秒级（旧构造系撞 2s/3s 时钟）
+		return 1
+	}
 	origGrace := closeGracePeriod
 	closeGracePeriod = 3 * time.Second
 	defer func() { closeGracePeriod = origGrace }()
