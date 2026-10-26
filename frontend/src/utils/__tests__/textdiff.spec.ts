@@ -152,6 +152,22 @@ describe('foldContext hunk 折叠', () => {
     const segs = foldContext([addLine('a'), delLine('b'), addLine('c')])
     expect(segs.every((s) => s.kind === 'line')).toBe(true)
   })
+
+  it('参数护栏：threshold < 2·keep 的自定义档不折锚点盖不住的段——无重复行、无空 fold', () => {
+    // foldContext(run, 2, 3)：段长 3~6 ≤ 首尾锚点合计 2·keep，修复前按「首 keep
+    // 行 + fold + 尾 keep 行」展开会把同行渲染两遍并挂出一个藏 0 行的空 fold；
+    // 护栏后整段直出。断言外部事实：fold 展开流逐行全等于输入（不重不丢）。
+    for (const n of [3, 4, 6]) {
+      const input = ctxRun(n)
+      const segs = foldContext(input, 2, 3)
+      expect(segs.some((s) => s.kind === 'fold')).toBe(false)
+      expect(segs.flatMap((s) => (s.kind === 'line' ? [s.line] : s.lines))).toEqual(input)
+    }
+    // 默认参数口径零变化：7 行仍恰好一个 fold 藏 1 行（上方既有例逐字锁定）
+    const segs7 = foldContext(ctxRun(7), 2, 3)
+    expect(segs7.filter((s) => s.kind === 'fold')).toHaveLength(1)
+    expect(segs7.flatMap((s) => (s.kind === 'line' ? [s.line] : s.lines))).toEqual(ctxRun(7))
+  })
 })
 
 describe('capRender 大文件渲染保护', () => {

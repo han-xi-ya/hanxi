@@ -121,6 +121,9 @@ export function diffStats(lines: DiffLine[]): { added: number; deleted: number }
 /**
  * 折叠呈现：连续 ctx 行 > threshold 时，保留首尾各 keep 行、中段并为 fold 段
  * （fold 自带被藏行，展开即原样回插——只藏未变行，绝不吞增删行）。
+ * 参数护栏：段长不超过首尾锚点合计（runLen ≤ 2·keep）时直出不折——否则
+ * 锚点重叠会重复渲染同行并产出一个藏 0 行的空 fold（threshold < 2·keep 的
+ * 自定义参数组合才会踩到；默认 6/3 下折叠段必然 runLen ≥ 7 > 6，行为不变）。
  */
 export function foldContext(lines: DiffLine[], threshold = FOLD_THRESHOLD, keep = FOLD_KEEP): DiffSegment[] {
   const out: DiffSegment[] = []
@@ -134,7 +137,7 @@ export function foldContext(lines: DiffLine[], threshold = FOLD_THRESHOLD, keep 
     let j = i
     while (j < lines.length && lines[j].type === 'ctx') j++
     const runLen = j - i
-    if (runLen <= threshold) {
+    if (runLen <= threshold || runLen <= 2 * keep) {
       for (let k = i; k < j; k++) out.push({ kind: 'line', line: lines[k] })
     } else {
       for (let k = 0; k < keep; k++) out.push({ kind: 'line', line: lines[i + k] })

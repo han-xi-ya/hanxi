@@ -115,7 +115,7 @@ const fontHint = computed(() => FONTS.find((f) => f.key === font.value)?.desc ??
 .theme-seg { display: flex; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 3px; gap: 2px; }
 .theme-seg-btn {
   display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent;
-  padding: 6px 14px; border-radius: 6px; font-size: var(--text-base); color: var(--color-text-muted);
+  padding: 6px 14px; border-radius: var(--radius-chip); font-size: var(--text-base); color: var(--color-text-muted);
   cursor: pointer; transition: background var(--motion-base) ease, color var(--motion-base) ease;
 }
 .theme-seg-btn:hover { color: var(--color-text); }

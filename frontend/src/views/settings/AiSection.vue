@@ -15,6 +15,7 @@ import { useToast } from '../../composables/useToast'
 import { useConfirm } from '../../composables/useConfirm'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
+import SettingsModal from './SettingsModal.vue'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
@@ -385,14 +386,12 @@ onMounted(refresh)
       </div>
     </details>
 
-    <!-- 向导弹窗：预览(diff/手动片段) → 确认 → 结果三态 -->
-    <div v-if="modal" class="modal-backdrop" @click.self="closeWizard">
-      <div class="modal-card">
-        <div class="modal-head">
+    <!-- 向导弹窗：预览(diff/手动片段) → 确认 → 结果三态。骨架收口 SettingsModal
+         （合并批 2026-10-26），点外遮罩收与 ✕ 钮语义原样，内容三段全宿主自撰 -->
+    <SettingsModal v-if="modal" @close="closeWizard">
+        <template #head>
           <h3>{{ actionWord(modal.mode) }} · {{ modal.client.name }}</h3>
-          <button class="btn-close" aria-label="关闭" @click="closeWizard">✕</button>
-        </div>
-        <div class="modal-body">
+        </template>
           <div v-if="modal.busy && !modal.preview" class="ai-empty">正在生成预览…</div>
           <template v-else-if="modal.preview">
             <template v-if="!modal.result">
@@ -446,8 +445,7 @@ onMounted(refresh)
               </div>
             </template>
           </template>
-        </div>
-        <div class="modal-actions">
+        <template #actions>
           <button class="btn btn-secondary" @click="closeWizard">{{ modal.result ? '关闭' : '取消' }}</button>
           <button
             v-if="!modal.result && modal.preview?.allowed"
@@ -457,9 +455,8 @@ onMounted(refresh)
           >
             {{ modal.busy ? '写入中…' : `确认${actionWord(modal.mode)}${modal.preview.zeroDiff ? '' : '（自动备份）'}` }}
           </button>
-        </div>
-      </div>
-    </div>
+        </template>
+    </SettingsModal>
   </section>
 </template>
 
@@ -530,27 +527,9 @@ onMounted(refresh)
 .tech-table th, .tech-table td { text-align: left; padding: 3px 12px 3px 0; border-bottom: 1px solid var(--color-border); color: var(--color-text-muted); }
 .tech-table code { font-family: var(--font-mono); color: var(--color-text); }
 
-/* 向导弹窗（皮对齐 SnapshotSection 的 .modal-* 家族） */
-.modal-backdrop {
-  position: fixed; inset: 0; z-index: 100;
-  background: var(--overlay-mask);
-  display: flex; align-items: center; justify-content: center;
-}
-.modal-card {
-  background: var(--surface-panel); border-radius: var(--radius-element); width: 640px; max-width: 92vw;
-  box-shadow: var(--shadow-panel); overflow: hidden; display: flex; flex-direction: column;
-}
-.modal-head {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 14px 20px; border-bottom: 1px solid var(--color-border);
-}
+/* 向导弹窗骨架（backdrop/卡片壳/三段/✕ 钮）归 SettingsModal（合并批 2026-10-26）；
+   本层只留插槽自撰标题的字族 */
 .modal-head h3 { margin: 0; font-size: var(--text-base); color: var(--color-text); font-weight: 600; }
-.btn-close { background: transparent; border: none; font-size: var(--text-lg); cursor: pointer; color: var(--color-text-muted); }
-.modal-body { padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; max-height: 62vh; overflow: auto; }
-.modal-actions {
-  display: flex; justify-content: flex-end; gap: 10px;
-  padding: 12px 20px; border-top: 1px solid var(--color-border);
-}
 
 .pv-path { font-size: var(--text-sm); color: var(--color-text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pv-path code { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); }

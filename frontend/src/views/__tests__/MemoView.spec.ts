@@ -469,6 +469,27 @@ describe('页面板书写态（详情/编辑合并后的唯一书写页）', () 
     w.unmount()
   })
 
+  // 拆分批（2026-10-26）重入守卫：Create 往返期间连点保存只发一笔事务——
+  // 守卫断言外部事实（后端只收到一次写、只播一次成功），不断实现镜像。
+  it('保存事务在途重入：连点「立即创建」只发一笔 Create', async () => {
+    const w = await mountView([])
+    await byText(w, '长便签')!.trigger('click')
+    await w.find('.pane-write .pane-title-input').setValue('防连点')
+    let resolveCreate: (v: unknown) => void = () => {}
+    svc.Create.mockImplementationOnce(() => new Promise((r) => { resolveCreate = r }))
+    const save = w.find('.pane-write .pane-foot .btn-primary')
+    await save.trigger('click')
+    await save.trigger('click') // 在飞第二击：守卫吞下，不得起第二笔 Create
+    await flushMicrotasks()
+    expect(svc.Create).toHaveBeenCalledTimes(1)
+    resolveCreate(memo({ id: 'created1' }))
+    await flushMicrotasks()
+    expect(svc.Create).toHaveBeenCalledTimes(1)
+    expect(useToast().toastMsg.value).toBe('已新建备忘录')
+    expect(w.find('.pane-write').exists()).toBe(false)
+    w.unmount()
+  })
+
   it('新建时预选标签带入当前过滤标签', async () => {
     const w = await mountView([memo()], { '#SQL': 1 })
     await w.findAll('.tag-chip').find((c) => c.text().includes('#SQL'))!.trigger('click')

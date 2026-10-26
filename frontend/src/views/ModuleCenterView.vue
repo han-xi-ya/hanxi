@@ -410,16 +410,18 @@ function resetFilters() {
 }
 .sk-bar { display: block; height: 12px; border-radius: var(--radius-pill); background: var(--surface-hover); }
 /* 骨架动作条对齐真实卡片底行（.btn-micro 档：24px 高/6px 圆角），不再暗示大块按钮形态 */
-.sk-btn { height: var(--control-h-sm); width: 64px; margin-top: 6px; border-radius: 6px; }
+.sk-btn { height: var(--control-h-sm); width: 64px; margin-top: 6px; border-radius: var(--radius-chip); }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* 详情抽屉：右缘全高面板，细边框先行、阴影兜底 */
+/* 详情抽屉：右缘全高面板，细边框先行、阴影兜底。
+   层序 G-C11 β案（2026-10-26）：本层 Teleport 到 body 末尾，与 App 单例确认框同 1000 档
+   并存时叠放只拼 DOM 插入序——视图级弹层一律挂 --z-dialog-under(950)，App 单例恒在上。 */
 .drawer-backdrop {
-  position: fixed; inset: 0; z-index: 1000;
+  position: fixed; inset: 0; z-index: var(--z-dialog-under);
   background: var(--overlay-mask);
   display: flex; justify-content: flex-end;
 }
@@ -427,7 +429,9 @@ function resetFilters() {
   width: min(440px, 100%); height: 100%;
   border-left: 1px solid var(--color-border);
   box-shadow: var(--shadow-panel);
-  outline: none;
+  /* 样式审计 C10（2026-10-27）：删原 `outline: none`——键盘打开抽屉时根节点焦点环是对
+     UiHistoryDialog `.hist-dialog:focus-visible` 既有族形的应有呈现（鼠标打开 :focus-visible
+     不命中、无噪）；点开后焦点即刻入内层控件，环只在键盘路径闪现属正确反馈。 */
   animation: drawerIn 160ms ease-out;
 }
 @keyframes drawerIn {

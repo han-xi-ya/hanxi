@@ -27,6 +27,7 @@
 // （memoColorHex 单源五色），非主题表面，不算 scoped 层新色值；除此之外
 // 全部吃 token 与全局原子类（mono / chip / tag-pill 家族）。
 import { computed } from 'vue'
+import { MASK_DOTS } from '../../constants/masking'
 import { looksLikeMarkdown } from '../../utils/markdown'
 import { cardPreview, firstMeaningfulLine, fmtAgo, memoColorHex } from './memoMetrics'
 
@@ -64,9 +65,9 @@ const emit = defineEmits<{
   (e: 'tagSelect', tag: string): void
 }>()
 
-// 遮罩态固定文案：不含任何条目明文，圆点位数与现视图详情浮层遮罩档一致
+// 遮罩态固定文案：不含任何条目明文，圆点位数单源 constants/masking
+// （与剪贴板详情浮层遮罩档一致，同值双写于 2026-10-26 审查收编）
 const MASK_TITLE = '敏感便签'
-const MASK_DOTS = '•'.repeat(48)
 
 const isList = computed(() => props.variant === 'list')
 const shownTitle = computed(() => {

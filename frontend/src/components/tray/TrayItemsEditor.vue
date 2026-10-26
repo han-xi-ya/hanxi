@@ -550,7 +550,7 @@ function addExe() {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
 }
 .tray-input {
-  padding: 5px 8px; border: 1px solid var(--color-border); border-radius: 6px;
+  padding: 5px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-chip);
   background: var(--surface-panel); color: var(--color-text); font-size: var(--text-sm);
 }
 .tray-name { width: 170px; flex-shrink: 0; }
@@ -619,7 +619,7 @@ function addExe() {
   transform: rotate(-45deg) translate(0.5px, -1px);
   animation: option-check-pop var(--motion-fast) ease-out;
 }
-.switch:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.switch:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 @keyframes option-check-pop {
   from { transform: rotate(-45deg) translate(0.5px, -1px) scale(0.4); opacity: 0; }
 }

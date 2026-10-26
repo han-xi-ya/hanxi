@@ -244,6 +244,59 @@ describe('历史版本分区', () => {
     expect(w.text()).not.toContain('旧内容A')
   })
 
+  it('换选竞态：旧文件迟到的慢响应不得覆盖新选中文件的时间线（序号守卫）', async () => {
+    stubGitStatus()
+    snapSvc.ListRevisions.mockResolvedValue([])
+    snapSvc.ListFiles.mockResolvedValue(tracked)
+    let resolveMemo: (v: unknown) => void = () => {}
+    snapSvc.FileHistory.mockImplementation((path: string) => {
+      if (path === 'memo/memo_9.md') return new Promise((r) => { resolveMemo = r })
+      return Promise.resolve([
+        { revisionId: 'cfg1111122223333', time: '2026-09-17T14:00:00+08:00', status: 'M', summary: 'config.json' },
+      ])
+    })
+    const w = await mountView()
+    const rows = w.findAll('.fa-file')
+    await rows[0].trigger('click') // memo：请求在飞（故意挂起）
+    await rows[1].trigger('click') // config：即时返回
+    await flushPromises()
+    expect(w.find('.fa-detail-head').text()).toContain('工作台设置')
+    expect(w.findAll('.fa-ev')).toHaveLength(1)
+    resolveMemo(goneHistory) // memo 慢响应迟到：不得回写
+    await flushPromises()
+    expect(w.find('.fa-detail-head').text()).toContain('工作台设置')
+    expect(w.findAll('.fa-ev')).toHaveLength(1)
+    // 迟到数据的特征文案（memo 时间线 D 行才有的「恢复被删内容」钮）全程不出现
+    expect(w.text()).not.toContain('恢复被删内容')
+  })
+
+  it('对比竞态：先发行迟到的慢响应不得混入后开的对比面板（序号守卫）', async () => {
+    stubGitStatus()
+    snapSvc.ListRevisions.mockResolvedValue([])
+    snapSvc.ListFiles.mockResolvedValue(tracked)
+    snapSvc.FileHistory.mockResolvedValue(goneHistory)
+    let resolveStale: (v: unknown) => void = () => {}
+    snapSvc.DiffFile.mockImplementationOnce(() => new Promise((r) => { resolveStale = r })) // D 行请求在飞
+    snapSvc.DiffFile.mockResolvedValue({
+      path: 'memo/memo_9.md', status: 'M', old: '最新對比', new: '最新對比B',
+      oldTruncated: false, newTruncated: false, summary: '',
+    })
+    const w = await mountView()
+    await w.findAll('.fa-file')[0].trigger('click')
+    await flushPromises()
+    await w.findAll('.fa-ev-row')[0].findAll('button')[0].trigger('click') // D 行「对比」——挂起
+    await w.findAll('.fa-ev-row')[1].findAll('button')[0].trigger('click') // M 行「对比」——即时返回
+    await flushPromises()
+    expect(w.text()).toContain('最新對比')
+    resolveStale({
+      path: 'memo/memo_9.md', status: 'D', old: 'STALE-舊行對比', new: '',
+      oldTruncated: false, newTruncated: false, summary: '',
+    }) // D 行慢响应迟到：作废，不得顶掉 M 行面板
+    await flushPromises()
+    expect(w.text()).toContain('最新對比')
+    expect(w.text()).not.toContain('STALE-舊行對比')
+  })
+
   it('弹窗 D 行只出「恢复被删内容」不出「内容」，恢复经解算（病灶 A）', async () => {
     stubGitStatus()
     snapSvc.ListRevisions.mockResolvedValue(revisions)

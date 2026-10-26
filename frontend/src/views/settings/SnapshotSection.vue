@@ -26,6 +26,7 @@ import {
 } from '../../constants/snapshotLabels'
 import PageHeader from '../../components/ui/PageHeader.vue'
 import AppIcon from '../../components/ui/AppIcon.vue'
+import SettingsModal from './SettingsModal.vue'
 import SnapshotFileList from './SnapshotFileList.vue'
 import SnapshotTimeline from './SnapshotTimeline.vue'
 
@@ -219,39 +220,55 @@ function resolveRestoreTarget(events: FileRevision[]): FileRevision | null {
 
 // ---------- 文件为轴：清单选择 / 时间线数据 / 对比拉取 / 恢复链 ----------
 
+// 拉取带序号守卫（模式同 MemoView loadSeq）：连点两个文件 / 连开两行对比时，
+// 先发起后返回的慢响应不得覆盖新选中文件的时间线、不得混入新行的对比面板；
+// 换选/收起/重开都会作废在飞请求，loading 标志也只由最新请求收口。
+let historySeq = 0
+let diffSeq = 0
+
 const selectedFile = computed(() => trackedFiles.value.find((f) => f.path === selectedPath.value) ?? null)
 
 async function selectFile(path: string) {
+  const seq = ++historySeq
+  ++diffSeq // 换文件即作废在飞对比（旧文件的 DiffFile 回程不得写进新面的 diffData）
   selectedPath.value = path
   diffOpen.value = ''
   diffData.value = null
   history.value = []
   historyLoading.value = true
   try {
-    history.value = (await SnapshotAPI.CheckpointService.FileHistory(path, REVISION_WINDOW)) ?? []
+    const list = (await SnapshotAPI.CheckpointService.FileHistory(path, REVISION_WINDOW)) ?? []
+    if (seq !== historySeq) return
+    history.value = list
   } catch (e: unknown) {
+    if (seq !== historySeq) return
     showToast(`读取文件历史失败: ${getErrorMessage(e)}`)
   } finally {
-    historyLoading.value = false
+    if (seq === historySeq) historyLoading.value = false
   }
 }
 
 async function toggleDiff(row: FileRevision) {
   if (diffOpen.value === row.revisionId) {
+    ++diffSeq // 收起同样作废在飞请求：迟到的旧对比不得在下次展开时冒头
     diffOpen.value = ''
     diffData.value = null
     return
   }
+  const seq = ++diffSeq
   diffOpen.value = row.revisionId
   diffData.value = null
   diffLoading.value = true
   try {
-    diffData.value = await SnapshotAPI.CheckpointService.DiffFile(row.revisionId, selectedPath.value)
+    const d = await SnapshotAPI.CheckpointService.DiffFile(row.revisionId, selectedPath.value)
+    if (seq !== diffSeq) return
+    diffData.value = d
   } catch (e: unknown) {
+    if (seq !== diffSeq) return
     showToast(`读取对比失败: ${getErrorMessage(e)}`)
     diffOpen.value = ''
   } finally {
-    diffLoading.value = false
+    if (seq === diffSeq) diffLoading.value = false
   }
 }
 
@@ -475,14 +492,12 @@ onMounted(refresh)
       </table>
     </div>
 
-    <!-- 预览弹窗：版本文件清单 → 点选看内容 → 单文件恢复 -->
-    <div v-if="previewRev" class="modal-backdrop" @click.self="closePreview">
-      <div class="modal-card">
-        <div class="modal-head">
+    <!-- 预览弹窗：版本文件清单 → 点选看内容 → 单文件恢复。骨架收口 SettingsModal
+         （合并批 2026-10-26，与 AiSection 向导同族壳），内容三段宿主自撰 -->
+    <SettingsModal v-if="previewRev" :width="680" @close="closePreview">
+        <template #head>
           <h3>版本 {{ previewRev.id.slice(0, 8) }} · {{ fmtTime(previewRev.time) }}</h3>
-          <button class="btn-close" aria-label="关闭" @click="closePreview">✕</button>
-        </div>
-        <div class="modal-body">
+        </template>
           <div v-if="previewLoading" class="hist-empty">读取中…</div>
           <template v-else>
             <div class="file-list">
@@ -506,12 +521,10 @@ onMounted(refresh)
               <pre class="preview-body">{{ previewDetail.content }}</pre>
             </div>
           </template>
-        </div>
-        <div class="modal-actions">
+        <template #actions>
           <button class="btn btn-secondary" @click="closePreview">关闭</button>
-        </div>
-      </div>
-    </div>
+        </template>
+    </SettingsModal>
   </section>
 </template>
 
@@ -548,27 +561,9 @@ onMounted(refresh)
 .mono { font-family: var(--font-mono); font-size: var(--text-xs); }
 .summary-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
 
-/* 预览弹窗（皮照 FrpcProjectEditor batch modal，宽度按文件+内容双栏放宽） */
-.modal-backdrop {
-  position: fixed; inset: 0; z-index: 100;
-  background: var(--overlay-mask);
-  display: flex; align-items: center; justify-content: center;
-}
-.modal-card {
-  background: var(--surface-panel); border-radius: var(--radius-element); width: 680px; max-width: 92vw;
-  box-shadow: var(--shadow-panel); overflow: hidden;
-}
-.modal-head {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 14px 20px; border-bottom: 1px solid var(--color-border);
-}
+/* 预览弹窗骨架（backdrop/卡片壳/三段/✕ 钮）归 SettingsModal（合并批 2026-10-26，
+   宽度 680 由 prop 传入）；本层只留插槽自撰标题的 mono 字族 */
 .modal-head h3 { margin: 0; font-size: var(--text-base); color: var(--color-text); font-family: var(--font-mono); font-weight: 500; }
-.btn-close { background: transparent; border: none; font-size: var(--text-lg); cursor: pointer; color: var(--color-text-muted); }
-.modal-body { padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; max-height: 62vh; overflow: auto; }
-.modal-actions {
-  display: flex; justify-content: flex-end; gap: 10px;
-  padding: 12px 20px; border-top: 1px solid var(--color-border); background: var(--surface-panel);
-}
 
 .file-list { display: flex; flex-direction: column; gap: 4px; }
 .file-row {

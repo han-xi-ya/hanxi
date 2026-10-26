@@ -181,7 +181,7 @@ const categoryLabel = computed(() =>
         <h3 class="mod-name" :title="entry.catalog.name">{{ entry.catalog.name }}</h3>
         <span class="mod-category">{{ categoryLabel }}</span>
       </div>
-      <UiStatusChip class="summary-chip" :tone="summaryTone">{{ summaryText }}</UiStatusChip>
+      <UiStatusChip class="summary-chip" :tone="summaryTone" :title="summaryText"><span class="chip-text">{{ summaryText }}</span></UiStatusChip>
     </div>
 
     <p class="mod-desc" :title="entry.catalog.description || entry.catalog.name">
@@ -256,13 +256,16 @@ const categoryLabel = computed(() =>
   display: flex; align-items: center; justify-content: center;
   color: var(--color-primary);
 }
-.head-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.head-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 55%; }
 .mod-name {
   margin: 0; font-size: var(--text-md); font-weight: 600; color: var(--color-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mod-category { font-size: var(--text-xs); color: var(--color-text-subtle); }
-.summary-chip { flex: none; margin-left: auto; }
+/* 2026-10-26 机主裁决（卡头 chip 不再硬占挤名）：chip 可收缩、超长省略，
+   全文走 title；名字侧 flex-basis 55% 保底。审查报告 §四-C8。 */
+.summary-chip { flex: 0 1 auto; min-width: 0; overflow: hidden; margin-left: auto; }
+.chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .mod-desc {
   margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); line-height: 1.5;

@@ -35,13 +35,17 @@
 // 多行粘贴并条共用 flattenPastedLines 单源，Ctrl+Enter = "存并收"（主窗等价语义：
 // 存下但不翻页抢阅读位；裸回车保持"存并翻到该条"）。
 // 命名口径：本视图一律自称「随手记」。
-import { computed, defineComponent, h, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+// 拆分批（2026-10-26，质量审查轮）：页面板书写态抽 components/memo/MemoEditorPane、
+// 栏底速记卡热键配置抽 components/memo/MemoSheetSettings、页内图标件 MemoGlyph
+// 由内联 h() 渲染件升为独立 SFC（皮肤随件自带，两宿主共吃）。契约与皮逐字随迁
+// （拆分不动相）：拆分落地时金标准 spec 原有 39 例一字未改全绿；本轮另收 1 例
+// （保存事务在飞重入守卫），现册 40 例。
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import * as MemoAPI from '../../bindings/hanxi/internal/modules/memo'
 import type {
   MemoItem,
   MemoFilter,
   MemoStats,
-  QuickSheetState,
 } from '../../bindings/hanxi/internal/modules/memo/models'
 import { getErrorMessage } from '../utils/errors'
 import { fmtDate } from '../utils/format'
@@ -53,18 +57,20 @@ import {
   safeExportFileName,
   safeLibraryFileName,
 } from '../utils/memoexport'
+import { MASK_DOTS } from '../constants/masking'
 import { useToast } from '../composables/useToast'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
 import { useAsyncAction } from '../composables/useAsyncAction'
-import UiClipboardField from '../components/ui/UiClipboardField.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import PageHeader from '../components/ui/PageHeader.vue'
 import MemoCard from '../components/memo/MemoCard.vue'
 import MemoToolbar from '../components/memo/MemoToolbar.vue'
+import MemoEditorPane from '../components/memo/MemoEditorPane.vue'
+import MemoSheetSettings from '../components/memo/MemoSheetSettings.vue'
+import MemoGlyph from '../components/memo/MemoGlyph.vue'
 import {
-  MEMO_COLOR_HEX,
   flattenPastedLines,
   groupMemoItems,
   parseTagTokens,
@@ -73,37 +79,6 @@ import {
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
-
-// ---- 页内私有矢量图标（描边件与 AppIcon 注册表同血统；注册表缺 pin/eye/search/copy 等名，
-// 全局层本轮禁碰，私有件先行——M4/图标线收编后可整块替换为注册表件）----
-const GLYPH_PATHS: Record<string, readonly string[]> = {
-  pin: ['M8 2.5h8', 'M9.5 2.5v5L6 12.5h12L14.5 7.5v-5', 'M12 12.5v6'],
-  eye: ['M2.5 12s3.7-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.7 6.5-9.5 6.5S2.5 12 2.5 12z', 'M12 9.6a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8z'],
-  'eye-off': ['M4 4l16 16', 'M9.9 5.8a9.8 9.8 0 0 1 2.1-.3c5.8 0 9.5 6.5 9.5 6.5a19 19 0 0 1-3 3.7', 'M6.4 7.6A19 19 0 0 0 2.5 12s3.7 6.5 9.5 6.5c1.2 0 2.3-.2 3.3-.6', 'M9.8 9.9a2.4 2.4 0 0 0 3.4 3.4'],
-  copy: ['M11 9h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'],
-  download: ['M12 3.5v11', 'M7 10l5 5 5-5', 'M4 20.5h16'],
-  trash: ['M3.5 6h17', 'M8.5 6V3.5h7V6', 'M5.5 6l1.2 14h10.6L18.5 6', 'M10 10v6.5', 'M14 10v6.5'],
-  pen: ['M16.5 3.5a2.6 2.6 0 0 1 3.7 3.7L7.5 19.9 2.8 21.2l1.3-4.7z'],
-  sheet: ['M3.5 5.5h13v10h-13z', 'M8.5 19.5h12v-10h-4'],
-  chevron: ['M6.5 9.5l5.5 5.5 5.5-5.5'],
-}
-const MemoGlyph = defineComponent({
-  name: 'MemoGlyph',
-  props: { name: { type: String, required: true }, size: { type: [Number, String], default: 15 } },
-  setup(props) {
-    return () =>
-      h(
-        'svg',
-        {
-          class: 'memo-glyph',
-          viewBox: '0 0 24 24',
-          style: { width: `${props.size}px`, height: `${props.size}px` },
-          'aria-hidden': 'true',
-        },
-        (GLYPH_PATHS[props.name] ?? []).map((d) => h('path', { d })),
-      )
-  },
-})
 
 // ---- 数据与过滤状态 ----
 const memos = shallowRef<MemoItem[]>([])
@@ -120,46 +95,9 @@ const quickText = ref('')
 const quickTagsInput = ref('')
 const quickSaving = ref(false)
 
-// ---- 悬浮速记卡（N16 B 批：全局热键配置与唤出；配置收索引栏底折叠区）----
-// QuickSheetState 用绑定官方型别（生成件已含该 typedef，旧版本地同构声明退役）。
-const sheetState = ref<QuickSheetState | null>(null)
-const sheetHotkeyDraft = ref('')
-const sheetSaving = ref(false)
-const sheetOpen = ref(false)
-
-async function refreshQuickSheet() {
-  try {
-    const st = await MemoAPI.MemoService.GetQuickSheetState()
-    sheetState.value = st
-    sheetHotkeyDraft.value = st?.hotkey ?? ''
-  } catch {
-    sheetState.value = null // 拉不到实况就收整段，不给假配置可编
-  }
-}
-
-// 速记热键未在位（开机被抢注等）：如实横幅提示改键或走菜单唤出（msgboard 先例语义）。
-const sheetHotkeyMissing = computed(
-  () => !!sheetState.value && sheetState.value.hotkey !== '' && !sheetState.value.hotkeyActive,
-)
-
-async function saveQuickHotkey() {
-  if (sheetSaving.value || !sheetState.value) return
-  sheetSaving.value = true
-  try {
-    // 后端事务自带冲突回滚（旧键全程活着、配置不动），失败原文上浮中文指引
-    await MemoAPI.MemoService.SetQuickSheetHotkey(sheetHotkeyDraft.value.trim())
-    await refreshQuickSheet()
-    showToast('速记热键已更新')
-  } catch (err: unknown) {
-    const msg = getErrorMessage(err)
-    showToast(`热键设置失败: ${msg}`)
-    sheetHotkeyDraft.value = sheetState.value.hotkey // 回滚后草稿对齐生效值
-    await refreshQuickSheet()
-  } finally {
-    sheetSaving.value = false
-  }
-}
-
+// ---- 悬浮速记卡（N16 B 批：全局热键配置与唤出）----
+// 热键配置块（实况/改键/回滚/未在位横幅）拆至 components/memo/MemoSheetSettings
+// 自治（拆分批 2026-10-26）；本视图只留菜单「浮窗速记」唤出通道（不依赖热键）。
 async function openQuickSheet() {
   try {
     await MemoAPI.MemoService.ShowQuickSheet()
@@ -169,36 +107,19 @@ async function openQuickSheet() {
 }
 
 // ---- 页面板：阅读/书写同页合并（旧"详情浮层+编辑模态"双壳就此归一）----
+// 书写态草稿面（表单/分段/色标/标签丸）拆至 components/memo/MemoEditorPane，
+// 本视图只持"开的是哪一条 + 页开关"；:key 每次打开重挂载＝旧"关窗弃稿"口径。
 const currentId = ref('') // 正在看/写的一条（空=闲页/新建）
 const showEditor = ref(false)
-const isEditing = ref(false)
-const editMode = ref<'write' | 'preview'>('write')
-const editForm = ref({
-  id: '',
-  title: '',
-  content: '',
-  tagInput: '',
-  tags: [] as string[],
-  colorTag: 'blue',
-})
+const editorEditing = ref(false) // 页面板书写态：编辑既有 or 新建
+const editorTarget = ref<MemoItem | null>(null) // 编辑态回填源（新建态 null）
+const editorKey = ref(0) // 每次打开 +1：重挂载弃旧稿（selectRow 关页同权语义随 v-if）
 
 // 页面板内容声明式跟随列表账本：条目被别端改/删，computed 自动换身或收空，
 // 不留陈旧明文（与旧版 loadMemos 里 imperative 同步 detailItem 同语义）。
 const currentItem = computed<MemoItem | null>(
   () => memos.value.find((m) => m.id === currentId.value) ?? null,
 )
-
-// 色板名册留本视图（选色器需要中文名），十六进制一律吃 memoMetrics 用户色板单源
-// （色彩标识是用户数据值，非主题表面——接线收口轮消灭了 hex 的第二份逐字副本）。
-const COLOR_OPTIONS = (
-  [
-    { name: '蓝色', val: 'blue' },
-    { name: '翡翠绿', val: 'emerald' },
-    { name: '琥珀橙', val: 'amber' },
-    { name: '玫瑰红', val: 'rose' },
-    { name: '紫罗兰', val: 'purple' },
-  ] as const
-).map((c) => ({ ...c, hex: MEMO_COLOR_HEX[c.val] }))
 
 // 溢出菜单（导出全库/一键全删/浮窗速记退居次级入口，破坏性动作离主动线远一格，
 // 确认链与禁用律一字不动）开合归 MemoToolbar：点外（document click capture）/
@@ -335,80 +256,38 @@ async function commitQuick(openPage = true) {
   }
 }
 
-// ---- 页面板书写态 ----
+// ---- 页面板书写态（草稿面在 MemoEditorPane，本视图持开关与事务）----
 function openCreateModal() {
-  isEditing.value = false
-  editMode.value = 'write'
+  editorEditing.value = false
+  editorTarget.value = null
+  editorKey.value++
   currentId.value = ''
-  editForm.value = {
-    id: '',
-    title: '',
-    content: '',
-    tagInput: '',
-    tags: selectedTag.value ? [selectedTag.value] : [],
-    colorTag: 'blue',
-  }
   showEditor.value = true
 }
 
 function openEditModal(item: MemoItem) {
-  isEditing.value = true
-  editMode.value = 'write'
+  editorEditing.value = true
+  editorTarget.value = item
+  editorKey.value++
   currentId.value = item.id
-  editForm.value = {
-    id: item.id,
-    title: item.title,
-    content: item.content,
-    tagInput: '',
-    tags: item.tags ? [...item.tags] : [],
-    colorTag: item.colorTag || 'blue',
-  }
   showEditor.value = true
 }
 
-function cancelEdit() {
-  showEditor.value = false
-}
+// 保存事务重入守卫（对齐同文件 commitQuick、MemoSheetSettings 改键与全库导出
+// exporting 的既有纪律，波前独漏此口）：Create 往返期间连点「立即创建」不再发
+// 第二笔事务；失败保稿保页口径原样（守卫只拦在飞重入，不碰成功/失败两路播报与收尾顺序）。
+const savingMemo = ref(false)
 
-function addTagFromInput() {
-  const val = editForm.value.tagInput.trim()
-  if (!val) return
-  const formatted = val.startsWith('#') ? val : '#' + val
-  if (!editForm.value.tags.includes(formatted)) {
-    editForm.value.tags.push(formatted)
-  }
-  editForm.value.tagInput = ''
-}
-
-function removeTag(tag: string) {
-  editForm.value.tags = editForm.value.tags.filter((t) => t !== tag)
-}
-
-async function handleSaveMemo() {
-  addTagFromInput()
-  if (!editForm.value.title.trim() && !editForm.value.content.trim()) {
-    showToast('标题或内容至少填写一项')
-    return
-  }
-
+async function onEditorSave(p: { id: string; title: string; content: string; tags: string[]; colorTag: string }) {
+  if (savingMemo.value) return
+  savingMemo.value = true
   try {
-    if (isEditing.value) {
-      await MemoAPI.MemoService.Update(
-        editForm.value.id,
-        editForm.value.title,
-        editForm.value.content,
-        editForm.value.tags,
-        editForm.value.colorTag,
-      )
+    if (p.id) {
+      await MemoAPI.MemoService.Update(p.id, p.title, p.content, p.tags, p.colorTag)
       showToast('备忘录已更新')
       showEditor.value = false
     } else {
-      const created = await MemoAPI.MemoService.Create(
-        editForm.value.title,
-        editForm.value.content,
-        editForm.value.tags,
-        editForm.value.colorTag,
-      )
+      const created = await MemoAPI.MemoService.Create(p.title, p.content, p.tags, p.colorTag)
       showToast('已新建备忘录')
       showEditor.value = false
       if (created?.id) currentId.value = created.id
@@ -416,11 +295,10 @@ async function handleSaveMemo() {
     await loadMemos()
   } catch (err: unknown) {
     showToast(`保存失败: ${getErrorMessage(err)}`)
+  } finally {
+    savingMemo.value = false
   }
 }
-
-// 书写态预览：所见即阅读态所得（同一渲染器同源）
-const editorPreviewHtml = computed(() => renderMarkdown(editForm.value.content))
 
 // ---- 页面板阅读态 ----
 function maskFromPane() {
@@ -588,7 +466,6 @@ useWailsEvent('memo:changed', () => {
 
 onMounted(() => {
   loadMemos()
-  refreshQuickSheet()
   window.addEventListener('keydown', onGlobalKey)
 })
 
@@ -725,35 +602,9 @@ watch(currentId, async () => {
           />
         </section>
 
-        <!-- 悬浮速记卡热键配置（低频件收栏底折叠；实况拉不到整段收起不给假配置） -->
-        <section v-if="sheetState" class="memo-sheet-settings" aria-label="悬浮速记卡">
-          <button class="sheet-disclosure" :aria-expanded="sheetOpen" @click="sheetOpen = !sheetOpen">
-            <span class="sheet-disc-name">悬浮速记卡 · 全局热键</span>
-            <span class="sheet-disc-now mono">{{ sheetState.hotkey || '—' }}</span>
-            <span v-if="sheetState.hotkey === ''" class="chip chip-neutral memo-hotkey-off">热键已停用</span>
-            <MemoGlyph name="chevron" :size="13" class="sheet-disc-chevron" />
-          </button>
-          <div v-show="sheetOpen" class="sheet-body">
-            <p class="sheet-desc">
-              随处唤出极简速记小窗：回车即存、失焦即收。留空 = 停用（菜单「浮窗速记」不受影响）；改键即时注册，被占用会报错并保旧键。
-            </p>
-            <div class="sheet-row">
-              <input
-                v-model="sheetHotkeyDraft"
-                class="text-input memo-hotkey-input mono"
-                type="text"
-                placeholder="Ctrl+Alt+N"
-                aria-label="速记卡全局热键"
-              />
-              <UiButton variant="secondary" small :disabled="sheetSaving" @click="saveQuickHotkey">
-                {{ sheetSaving ? '保存中…' : '保存热键' }}
-              </UiButton>
-            </div>
-          </div>
-          <div v-if="sheetHotkeyMissing" class="banner banner-warn" role="note">
-            热键「{{ sheetState.hotkey }}」未在位：多半已被其它程序抢占。换个组合保存，或留空停用——期间可用菜单「浮窗速记」唤出。
-          </div>
-        </section>
+        <!-- 悬浮速记卡热键配置（低频件收栏底折叠；实况/改键/横幅全在件内自治，
+             拉不到实况整段收起不给假配置） -->
+        <MemoSheetSettings />
       </nav>
 
       <section class="memo-pane" aria-label="当前页">
@@ -791,73 +642,19 @@ watch(currentId, async () => {
           </button>
         </div>
 
-        <!-- 书写态（编辑/新建同页展开；阅读态即其背页，双浮层退役） -->
-        <div v-if="showEditor" class="pane-write" @keydown.ctrl.enter.prevent="handleSaveMemo">
-          <div class="pane-head">
-            <span class="pane-kind">{{ isEditing ? '编辑便签' : '新建便签' }}</span>
-            <div class="seg" role="group" aria-label="编辑/预览切换">
-              <button class="seg-btn" :class="{ active: editMode === 'write' }" @click="editMode = 'write'">书写</button>
-              <button class="seg-btn" :class="{ active: editMode === 'preview' }" @click="editMode = 'preview'">预览</button>
-            </div>
-          </div>
-
-          <div v-show="editMode === 'write'" class="write-body">
-            <input
-              v-model="editForm.title"
-              type="text"
-              class="text-input pane-title-input"
-              placeholder="标题（可留空，正文首行示人）"
-              aria-label="便签标题"
-            />
-            <UiClipboardField
-              v-model="editForm.content"
-              mono
-              :rows="10"
-              placeholder="在此粘贴文本、命令行、cURL、SQL 或 JWT…（支持 Markdown 子集：标题/粗斜体/代码块/列表/链接/引用）"
-            />
-            <div class="pane-color-tags">
-              <span class="pane-block-label">色彩</span>
-              <div class="color-row">
-                <div
-                  v-for="c in COLOR_OPTIONS"
-                  :key="c.val"
-                  class="color-circle"
-                  :style="{ background: c.hex }"
-                  :class="{ selected: editForm.colorTag === c.val }"
-                  :title="c.name"
-                  @click="editForm.colorTag = c.val"
-                ></div>
-              </div>
-              <span class="pane-block-label">标签</span>
-              <div class="tags-input-box">
-                <span v-for="t in editForm.tags" :key="t" class="tag-pill memo-tag memo-tag-removable">
-                  {{ t }} <span class="memo-tag-x" title="移除标签" @click="removeTag(t)">✕</span>
-                </span>
-                <input
-                  v-model="editForm.tagInput"
-                  type="text"
-                  class="text-input tag-entry"
-                  placeholder="例如 SQL, Token, 常用（回车添加，自动补 #）"
-                  aria-label="添加标签"
-                  @keydown.enter.prevent="addTagFromInput"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div v-show="editMode === 'preview'" class="write-body">
-            <div v-if="editForm.content.trim()" class="md-preview" v-html="editorPreviewHtml" />
-            <p v-else class="state-box preview-void">正文还是空的——先回「书写」写点东西。</p>
-          </div>
-
-          <footer class="pane-foot">
-            <span class="foot-hint">Ctrl+Enter 保存 · Esc 放弃草稿</span>
-            <UiButton variant="secondary" small @click="cancelEdit">取消</UiButton>
-            <UiButton variant="primary" small @click="handleSaveMemo">
-              {{ isEditing ? '保存修改' : '立即创建' }}
-            </UiButton>
-          </footer>
-        </div>
+        <!-- 书写态（编辑/新建同页展开；阅读态即其背页，双浮层退役）。草稿面拆批
+             归 MemoEditorPane：:key 每次打开重挂载＝"关窗弃稿"口径原样；
+             save/cancel 事务、播报词面与重拉纪律留本视图（确认链不进呈现件）。
+             Markdown 预览皮肤由本视图 `.memo-pane :deep(.md-preview …)` 穿透命中。 -->
+        <MemoEditorPane
+          v-if="showEditor"
+          :key="editorKey"
+          :editing="editorEditing"
+          :item="editorTarget"
+          :preset-tag="selectedTag"
+          @save="onEditorSave"
+          @cancel="showEditor = false"
+        />
 
         <!-- 阅读态（旧详情浮层所得全数搬进本页；MD 自动渲染/等宽原文/遮罩圆点三分支照旧） -->
         <div v-else-if="currentItem" class="pane-read">
@@ -880,7 +677,7 @@ watch(currentId, async () => {
           </div>
           <div class="pane-body">
             <div v-if="currentItem.isMasked" class="memo-content-box masked mono" aria-label="敏感信息已遮罩">
-              ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+              {{ MASK_DOTS }}
             </div>
             <!-- v-html 安全前提：renderMarkdown 先整体转义再结构替换，链接 http/https 白名单，
                  spec 锁 XSS 用例；masked 条目永不进渲染分支 -->
@@ -959,6 +756,9 @@ watch(currentId, async () => {
 }
 .tag-chip:hover { background: var(--surface-hover); color: var(--color-text); }
 .tag-chip.active { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
+/* 样式审计 C5（2026-10-27）：本丸列是横向滚容器（.memo-chips overflow-x auto 纵向同为 auto，
+   padding 2px 0），base.css 全局环外扩 2px 会被裁半——键盘环内收，同 ClipToolbar/AppNavRail 口径。 */
+.tag-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .tag-count { opacity: 0.8; font-size: var(--text-xs); }
 .clear-filter-btn { flex: none; }
 /* 溢出菜单条目皮肤随 #more 插槽留在本视图（菜单容器与开合归 MemoToolbar） */
@@ -1003,24 +803,7 @@ watch(currentId, async () => {
 /* 页面板标签丸选中态私有色差（行内丸归 MemoCard 契约、无此差分——宁少勿滥裁决） */
 .memo-tag-active { background: var(--color-primary-soft); color: var(--color-primary); }
 
-/* 栏底：悬浮速记卡折叠配置（低频件，收起态一行字即够；未在位警示恒外露） */
-.memo-sheet-settings { margin-top: 8px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 6px; }
-.sheet-disclosure {
-  display: flex; align-items: center; gap: 6px; width: 100%;
-  background: none; border: none; cursor: pointer; padding: 8px 2px 6px;
-  font-size: var(--text-xs); color: var(--color-text-muted);
-}
-.sheet-disclosure:hover { color: var(--color-text); }
-.sheet-disc-name { font-weight: 600; }
-.sheet-disc-now { margin-left: auto; }
-.sheet-disc-chevron { transition: transform var(--motion-fast) ease; }
-.sheet-disclosure[aria-expanded="true"] .sheet-disc-chevron { transform: rotate(180deg); }
-.sheet-body { display: flex; flex-direction: column; gap: 6px; padding: 0 2px 4px; }
-.sheet-desc { margin: 0; font-size: var(--text-xs); color: var(--color-text-subtle); line-height: 1.6; }
-.sheet-row { display: flex; align-items: center; gap: 8px; }
-.memo-hotkey-input { width: 150px; flex: none; }
-.memo-hotkey-off { flex: none; }
-.memo-sheet-settings .banner-warn { padding: 8px 10px; font-size: var(--text-xs); }
+/* 栏底悬浮速记卡折叠配置的 sheet-* 家族皮随 MemoSheetSettings 件走（拆分批）。 */
 
 /* ---------- 右页面板 ---------- */
 .memo-pane {
@@ -1041,9 +824,9 @@ watch(currentId, async () => {
 }
 .memo-pen-btn:hover { background: var(--surface-hover); color: var(--color-primary); }
 
-/* 页面板头尾（书写/阅读共用骨架） */
+/* 页面板头尾（书写态那份 .pane-head/.pane-foot 骨架皮随 MemoEditorPane 件走——
+   拆分不动相的 scoped 副本；本层留阅读态所用）。 */
 .pane-head { display: flex; align-items: center; gap: 10px; min-width: 0; flex: none; }
-.pane-kind { font-size: var(--text-sm); font-weight: 600; color: var(--color-text-muted); flex: none; }
 .pane-title {
   margin: 0; font-size: var(--text-md); font-weight: 700; color: var(--color-text);
   flex: 1; min-width: 0; overflow-wrap: anywhere;
@@ -1054,27 +837,8 @@ watch(currentId, async () => {
 .pane-tags { display: flex; flex-wrap: wrap; gap: 6px; flex: none; }
 .pane-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; flex: none; }
 .foot-spacer { flex: 1; }
-.foot-hint { margin-right: auto; font-size: var(--text-xs); color: var(--color-text-subtle); }
 
-/* 书写态 */
-.pane-write { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
-.write-body { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; max-width: 72ch; flex: 1; }
-.pane-title-input { min-height: var(--control-h-md); font-size: var(--text-md); font-weight: 600; }
-.pane-color-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; margin-top: 4px; }
-.pane-block-label { font-size: var(--text-xs); color: var(--color-text-muted); flex: none; }
-.color-row { display: flex; gap: 10px; padding: 2px 0; flex: none; }
-.color-circle { width: 22px; height: 22px; border-radius: 50%; cursor: pointer; transition: transform var(--motion-fast) ease; }
-.color-circle:hover { transform: scale(1.15); }
-.color-circle.selected { outline: 2px solid var(--color-text); outline-offset: 2px; }
-.tags-input-box {
-  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; flex: 1 1 220px;
-  border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 5px 8px; background: var(--surface-soft);
-}
-.tag-entry { flex: 1 1 120px; min-width: 0; border: none; background: transparent; padding: 3px 2px; outline: none; color: var(--color-text); font-size: var(--text-base); }
-.memo-tag-removable { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-hover); }
-.memo-tag-x { cursor: pointer; font-size: var(--text-micro); color: var(--color-text-subtle); }
-.memo-tag-x:hover { color: var(--state-danger); }
-.preview-void { background: transparent; border-style: dashed; }
+/* 书写态家族皮（pane-write、write-body、色彩圆点、tags-input-box 等）随 MemoEditorPane 件走 */
 
 /* 阅读态正文（遮罩圆点/纯文本兜底两分支与旧详情浮层所得逐字同语义） */
 .memo-content-box {
@@ -1104,54 +868,45 @@ watch(currentId, async () => {
 }
 .idle-note { margin: 0; max-width: 46ch; font-size: var(--text-sm); color: var(--color-text-subtle); line-height: 1.8; }
 
-/* 页内矢量图标基座（私有件；描边随 currentColor，明暗与色板零特判） */
-.memo-glyph { display: inline-block; vertical-align: -0.125em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-
-.seg { display: flex; border: 1px solid var(--color-border); border-radius: var(--radius-control); overflow: hidden; flex: none; margin-left: auto; }
-.seg-btn {
-  background: var(--surface-soft); border: none; color: var(--color-text-muted);
-  padding: 3px 12px; font-size: var(--text-sm); cursor: pointer;
-  transition: background var(--motion-fast) ease, color var(--motion-fast) ease;
-}
-.seg-btn:hover { background: var(--surface-hover); color: var(--color-text); }
-.seg-btn.active { background: var(--color-primary); color: var(--color-on-primary); }
-
-/* Markdown 阅读/预览皮肤：全走 token，随主题联动 */
-.md-preview { font-size: var(--text-base); line-height: 1.65; color: var(--color-text); overflow-wrap: anywhere; }
-.md-preview :deep(h1), .md-preview :deep(h2), .md-preview :deep(h3),
-.md-preview :deep(h4), .md-preview :deep(h5), .md-preview :deep(h6) {
+/* Markdown 阅读/预览皮肤：全走 token，随主题联动。拆分批注：书写态预览面
+   （MemoEditorPane 内的 .md-preview）与阅读页同挂 .memo-pane 之下，选择器一律
+   `.memo-pane :deep(…)` 形态穿透组件边界——两份渲染面继续单源同皮，防漂移。 */
+.memo-pane :deep(.md-preview) { font-size: var(--text-base); line-height: 1.65; color: var(--color-text); overflow-wrap: anywhere; }
+.memo-pane :deep(.md-preview h1), .memo-pane :deep(.md-preview h2), .memo-pane :deep(.md-preview h3),
+.memo-pane :deep(.md-preview h4), .memo-pane :deep(.md-preview h5), .memo-pane :deep(.md-preview h6) {
   margin: 12px 0 6px; line-height: 1.4; color: var(--color-text);
 }
-.md-preview :deep(h1) { font-size: var(--text-lg); }
-.md-preview :deep(h2) { font-size: var(--text-md); }
-.md-preview :deep(h3), .md-preview :deep(h4), .md-preview :deep(h5), .md-preview :deep(h6) { font-size: var(--text-base); }
-.md-preview :deep(h1:first-child), .md-preview :deep(h2:first-child), .md-preview :deep(h3:first-child) { margin-top: 0; }
-.md-preview :deep(p) { margin: 6px 0; }
-.md-preview :deep(ul), .md-preview :deep(ol) { margin: 6px 0; padding-left: 22px; }
-.md-preview :deep(li) { margin: 2px 0; }
-.md-preview :deep(code) {
+.memo-pane :deep(.md-preview h1) { font-size: var(--text-lg); }
+.memo-pane :deep(.md-preview h2) { font-size: var(--text-md); }
+.memo-pane :deep(.md-preview h3), .memo-pane :deep(.md-preview h4), .memo-pane :deep(.md-preview h5), .memo-pane :deep(.md-preview h6) { font-size: var(--text-base); }
+.memo-pane :deep(.md-preview h1:first-child), .memo-pane :deep(.md-preview h2:first-child), .memo-pane :deep(.md-preview h3:first-child) { margin-top: 0; }
+.memo-pane :deep(.md-preview p) { margin: 6px 0; }
+.memo-pane :deep(.md-preview ul), .memo-pane :deep(.md-preview ol) { margin: 6px 0; padding-left: 22px; }
+.memo-pane :deep(.md-preview li) { margin: 2px 0; }
+.memo-pane :deep(.md-preview code) {
   font-family: var(--font-mono); font-size: var(--text-sm); background: var(--surface-hover);
   border: 1px solid var(--color-border); border-radius: var(--radius-micro); padding: 1px 5px;
 }
-.md-preview :deep(pre) {
+.memo-pane :deep(.md-preview pre) {
   background: var(--surface-soft); border: 1px solid var(--color-border); border-radius: var(--radius-control);
   padding: 10px 12px; overflow-x: auto; margin: 8px 0;
 }
-.md-preview :deep(pre code) { background: none; border: none; padding: 0; line-height: 1.55; }
-.md-preview :deep(blockquote) {
+.memo-pane :deep(.md-preview pre code) { background: none; border: none; padding: 0; line-height: 1.55; }
+.memo-pane :deep(.md-preview blockquote) {
   margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--color-border-strong);
   color: var(--color-text-muted); background: var(--surface-soft); border-radius: 0 var(--radius-control) var(--radius-control) 0;
 }
-.md-preview :deep(hr) { border: none; border-top: 1px solid var(--color-border); margin: 12px 0; }
-.md-preview :deep(a) { color: var(--color-primary); }
-.md-preview :deep(table) { border-collapse: collapse; }
-.md-preview :deep(del) { color: var(--color-text-subtle); }
+.memo-pane :deep(.md-preview hr) { border: none; border-top: 1px solid var(--color-border); margin: 12px 0; }
+.memo-pane :deep(.md-preview a) { color: var(--color-primary); }
+.memo-pane :deep(.md-preview table) { border-collapse: collapse; }
+.memo-pane :deep(.md-preview del) { color: var(--color-text-subtle); }
 
-/* 叠放档（容器查询看主区实际宽度）：页面板在上、索引在下——"先落笔，再翻账" */
+/* 叠放档（容器查询看主区实际宽度）：页面板在上、索引在下——"先落笔，再翻账"。
+   write-body 的 72ch 解除随 MemoEditorPane 件内同档规则走。 */
 @container memo (max-width: 760px) {
   .memo-desk { grid-template-columns: minmax(0, 1fr); }
   .memo-pane { order: -1; max-height: none; }
   .memo-index { max-height: 40dvh; }
-  .pane-body, .write-body { max-width: none; }
+  .pane-body { max-width: none; }
 }
 </style>
