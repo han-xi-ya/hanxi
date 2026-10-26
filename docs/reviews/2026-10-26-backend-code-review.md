@@ -352,3 +352,62 @@ B3 做了**纯注释级**清扫（零行为变更、未碰任何断言/签名/�
 ## 附录：分区原始报告
 
 A1 内核 / A2 平台基础设施 / A3 装配根 / A4 对外接口与运维 / A5 重型模块 / A6 跨模块普查 / A7 死代码 / A8 P0 下游影响面 —— 八份原文（含各自 file:line 证据表、跑测输出、未动手理由）留存于本次会话记录，本报告为汇总与复核结果。凡本报告与分区原文冲突处，以**主会话实测复核**为准（已在 §10 逐条标注谁错谁对）。
+
+---
+
+## 15. 追加核查：`imported-` 兜底目录冒充最新版的全仓暴露面（2026-10-27）
+
+内核序已在 `6189b58` 收口，但**各模块 `service.go` 普遍会对"自己列出的已装版本"再排一次序**，
+比较器仍是退化字典序的 `versioncmp`/包内 `versionCompare`，于是同一个坑被原地挖回。
+判据三条同时成立才算暴露：能产生 `imported-` 兜底目录 + 对已装列表本地排序 + 无档位闸。
+
+- **已装闸 4 家**：`rufus`、`ddnsgo`、`heukms`、`litemonitor`（后两家为本批 `6c2f59b` 新补）
+- **暴露 20 家**（均为 `service.go` 单点，行号为本次核查现取）：
+  `bcu:531`、`bili23:544`、`ccswitch:595`、`dbx:643`、`everything:775`、`flclash:512`、
+  `gonavi:592`、`guoheview:507`、`keyviz:515`、`paseo:620(sortInstalled)`、`piclite:585`、
+  `piik:1014`、`quicklook:527`、`rammap:610`、`rustdesk:555`、`subnetdesk:532`、`termora:566`、
+  `translucenttb:700`、`vscode:593`、`windterm:560`
+- **已证实为真实行为**（非推断）：`vscode` 并存 `1.106.0` 与 `imported-0a1b2c3d4e5f` 时
+  `resolveStartTarget()` 实返回后者；`piclite` 同构。后果是冷启动"打开窗口"/快捷方式会启动
+  那个"版本没读出来"的导入件，而非真正的最新版；用户卸载真实最新版后更易静默固化。
+- **建议修法**：照 rufus 既有形态在比较前先过档位（或直接信任内核序、删本地排序），
+  一并配"兜底目录不得被选为最新"的外部事实用例——`rufus/service_flow_test.go` 的
+  `TestResolveActiveVersionNeverSelectsImportedFallback` 是可复制的样板，其变异检验
+  （把 rank 置 0 → 立刻红）已证明该断言能抓到本坑。
+
+---
+
+## 17. 追加核查（二）：`6189b58` 的内核档位对**带 v 前缀的令牌族无效**（重要收口缺口）
+
+T2 取证时发现第二类退化，比 §15 那类更普遍：
+
+- `versioncmp.split()` 判"段以数字开头"为规范，故 **`v2.16.1` 本身就是非规范形态**；
+- windterm / termora 等家族把 `ListInstalled` 的 **v 前缀展示令牌直接喂给比较器**（未先剥 v），
+  于是两侧同为非规范 → `IsCanonical` 档位判等 → 落回 `strings.Compare` 整串字典序；
+- 实测：`2.9.0 + 2.16.1 → 选中 v2.9.0`、`2.9.0 + 2.10.0 → 选中 v2.9.0`。
+  Termora 真实版本线已到 2.16，**两位数段已在流通**，属现行缺陷而非隐患。
+
+**结论：`6189b58` 只修好了"令牌为裸数字"的那批模块**（vscode、everything 等）；
+对"令牌带 v"的家族，档位判据一视同仁地认为它们非规范，坑仍在。已正确剥 v 的有
+rustdesk / mangodisk（其 `versionCompare` 先 `normalizeToken` 剥 v 再比），可作样板。
+
+两条收口路径（择一，需机主裁）：
+
+1. **在 `versioncmp` 内统一剥前导 `v`/`V`**（一处修完全家族）。代价：改掉
+   `compare_test.go:28` 钉住的既有契约 `Compare("v1.2.3","1.2.3")==1`——而那条断言恰恰把
+   "带 v 前缀串被当成更新"这一错误行为固化成了测试；改它需同步订正该测试并说明理由。
+   注意与 voidtools 惯例不冲突（`1422b > 1422` 是段内字母后缀，与前导 v 无关）。
+2. **各模块在喂比较器前自行剥 v**（rustdesk 样板，零契约变更）。代价：这是 §15 那 20 处
+   本地排序之外的又一批重复闸，与"家族可整体拆走"的裁决相容但噪音更大。
+
+我的建议：**走 1**，并把 §15 的 20 处本地排序一并改为信任内核序（一处修完两类问题），
+随行的双样本回归按 ADR-0002 §2 的 markeron（便携 zip）+ rufus（单 exe）各跑一遍。
+
+## 18. T2 取证坐实的其余缺陷（§15/§17 之外）
+
+| 编号 | 缺陷 | 证据形态 | 影响 |
+|---|---|---|---|
+| D3 | rustdesk / mangodisk / subnetdesk 首装时 **done 事件先行于 active 落账**（termora `2ac9b3b` 同根修未覆盖这三家） | 静态实证：manager 在 `DownloadContext` 内 emit done，service 的 `SetActive` 在其返回之后 | 前端共享 store 收 done 瞬时复刷 `GetActiveVersion` 读空，即"首个版本下载完不显示使用中"家族复发 |
+| D4 | **subnetdesk 后台下载/安装完全不入 drain 账**，且 `manager.Download` 无 ctx（rustdesk 同文件已带租约） | 代码核对 | 停用/退出的有界 drain 数不到它，且取消不了（ADR-0001 §1.4） |
+| D5 | rustdesk / subnetdesk 同版本连点**无在飞去重**（`downloadMu` 只圈同步段） | 代码核对；windterm/termora/mangodisk 已有名册/单飞锁可作样板 | 两路并发下载同一资产、两路 rename 同目标、双 done 双通知 |
+| D6 | rustdesk/subnetdesk 导入令牌显示为 `vimported-<hash>`，与 windterm/termora 的 `imported-*` 原样口径不一 | 用例观察 | 家族内展示形状不一致（`resolve` 会剥回，功能无碍） |
