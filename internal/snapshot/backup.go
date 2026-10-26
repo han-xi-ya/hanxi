@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -307,10 +308,10 @@ func (b *backupEngine) fileChanges(ctx context.Context, window int) ([]versionCh
 		evts = evts[len(evts)-window:]
 	}
 	out := make([]versionChanges, 0, len(evts))
-	for i := len(evts) - 1; i >= 0; i-- {
+	for _, e := range slices.Backward(evts) {
 		out = append(out, versionChanges{
-			ID: evts[i].id, Time: evts[i].time.Format(time.RFC3339),
-			Summary: evts[i].summary, Changes: evts[i].changes,
+			ID: e.id, Time: e.time.Format(time.RFC3339),
+			Summary: e.summary, Changes: e.changes,
 		})
 	}
 	return out, nil
@@ -558,7 +559,8 @@ func syncFile(path string) error {
 	return f.Sync()
 }
 
-// prune 滚动修剪：字典序倒排（新在前），保留最近 backupKeepCount 份。
+// prune 滚动修剪：字典序升排（时间戳目录名字典序即时间序，旧在前），
+// 删除头部超出保留份数的旧件，留下最近 backupKeepCount 份。
 func (b *backupEngine) prune() error {
 	dirs, err := b.backupDirs()
 	if err != nil {

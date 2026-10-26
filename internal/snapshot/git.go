@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -270,7 +271,7 @@ func (g *gitEngine) revisionFiles(ctx context.Context, id string) ([]RevisionFil
 // parseNameStatus 拆 `git show --name-status` 行（R 记录取新路径，独立供 fixture 测）。
 func parseNameStatus(out string) []RevisionFile {
 	var files []RevisionFile
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -340,8 +341,8 @@ func parseFileLog(out string) []versionChanges {
 		last := &recs[len(recs)-1]
 		last.Changes = append(last.Changes, c)
 	}
-	for _, tok := range strings.Split(out, "\x00") {
-		if i := strings.IndexByte(tok, '\x1f'); i >= 0 {
+	for tok := range strings.SplitSeq(out, "\x00") {
+		if strings.ContainsRune(tok, '\x1f') {
 			fields := strings.SplitN(strings.TrimPrefix(tok, "\n"), "\x1f", 3)
 			pending, pendingOrig, want = "", "", 0
 			if len(fields) < 2 {
@@ -581,20 +582,72 @@ func (g *gitEngine) file(ctx context.Context, id, relPath string) ([]byte, error
 
 // heal 连续失败自愈：现仓库整体改名保留（尽力不丢历史），重 init 空仓库再战
 // （PLAN §6.2：不再静默烧 tick）。
+//
+// 无提交仓库例外（防垃圾放大）：失败根因若在数据根内容侧（如白名单目录混入
+// symlink 令 changes() 恒报错），重 init 后仍会三连失败再 heal——每次都改名
+// 就多一个 .broken-* 残骸且永无终止。空仓库没有任何历史可保全，直接删除重建，
+// 轮次同数、磁盘不再堆积。有提交时维持"改名尽力保留"原语义不变。
 func (g *gitEngine) heal(ctx context.Context) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if _, err := os.Stat(g.gitDir); err == nil {
-		quarantined := g.gitDir + ".broken-" + time.Now().Format(backupTimeLayout)
-		if rerr := os.Rename(g.gitDir, quarantined); rerr != nil {
-			slog.Error("snapshot: 自愈改名失败，放弃本轮重建", "err", rerr)
-			return
+		if repoHasHistory(g.gitDir) {
+			quarantined := g.gitDir + ".broken-" + time.Now().Format(backupTimeLayout)
+			if rerr := os.Rename(g.gitDir, quarantined); rerr != nil {
+				slog.Error("snapshot: 自愈改名失败，放弃本轮重建", "err", rerr)
+				return
+			}
+			slog.Warn("snapshot: 损坏仓库已隔离保留，重建新仓库", "kept_at", quarantined)
+		} else {
+			if rerr := os.RemoveAll(g.gitDir); rerr != nil {
+				slog.Error("snapshot: 空仓库删除失败，放弃本轮重建", "err", rerr)
+				return
+			}
+			slog.Warn("snapshot: 待自愈仓库无任何提交（无可保全历史），删除后重建，不再生成隔离残骸")
 		}
-		slog.Warn("snapshot: 损坏仓库已隔离保留，重建新仓库", "kept_at", quarantined)
 	}
 	if err := g.ensureRepo(ctx); err != nil {
 		slog.Error("snapshot: 仓库重建失败", "err", err)
 	}
+}
+
+// repoHasHistory 纯文件系统保守判定：能**确证**是"git init 后从未提交"的空仓库
+// （无 HEAD 指向的 ref、refs/ 下无任何文件、无 packed-refs、无 reftable 目录）才返回
+// false——此时删除零损失。一切可疑形态（HEAD 被删/refs 目录不可读等）一律 true：
+// 宁可多留一个隔离残骸，也不冒丢历史的风险（原 heal 语义就是无条件改名保留）。
+// 刻意走文件系统而非 git 命令：HEAD 缺失时 git 直接拒认仓库，命令判据会把
+// "有历史但 HEAD 被毁"的仓库误判成空件删除，恰是 heal 要救的场景。
+func repoHasHistory(gitDir string) bool {
+	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	if err != nil {
+		return true
+	}
+	// detached 形态（HEAD 直接写 hash）即存在所指版本；非常规内容保守放行改名。
+	if !strings.HasPrefix(strings.TrimSpace(string(head)), "ref:") {
+		return true
+	}
+	for _, marker := range []string{"packed-refs", "reftable"} {
+		if _, err := os.Stat(filepath.Join(gitDir, marker)); err == nil {
+			return true
+		}
+	}
+	refsDir := filepath.Join(gitDir, "refs")
+	if _, err := os.Stat(refsDir); err != nil {
+		return true // refs 布局异常（git init 恒建 refs/）：保守视为有历史
+	}
+	has := false
+	_ = filepath.WalkDir(refsDir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			has = true
+			return filepath.SkipAll
+		}
+		if !d.IsDir() {
+			has = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return has
 }
 
 // summarizeFiles 人话摘要：变更文件名列表（恢复 UI 直接展示，PLAN §3.3）。

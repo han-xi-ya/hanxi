@@ -417,3 +417,128 @@ func statusSeq(revs []FileRevision) string {
 	}
 	return b.String()
 }
+
+// TestRepoHasHistoryBoundary heal 的"可确证空仓库"边界判定（纯文件系统，无需
+// git 可执行件）：只有"git init 后从未提交"的确证形态判 false（删除零损失），
+// 一切可疑形态必须判 true——误判 true 只是多留一份隔离残骸（旧行为），误判
+// false 则是把有历史的仓库直接删掉（不可逆丢数据）。
+func TestRepoHasHistoryBoundary(t *testing.T) {
+	mk := func(t *testing.T, name string, build func(dir string)) string {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), name)
+		if err := os.MkdirAll(filepath.Join(dir, "refs", "heads"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, "refs", "tags"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, "objects"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if build != nil {
+			build(dir)
+		}
+		return dir
+	}
+	writeFile := func(p, content string) func(string) {
+		return func(dir string) {
+			full := filepath.Join(dir, p)
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	t.Run("新鲜init空仓库判无历史", func(t *testing.T) {
+		dir := mk(t, "fresh", writeFile("HEAD", "ref: refs/heads/master\n"))
+		if repoHasHistory(dir) {
+			t.Error("无 ref 文件的 init 态应判空（heal 可安全删除重建）")
+		}
+	})
+	t.Run("有loose_ref判有历史", func(t *testing.T) {
+		dir := mk(t, "loose", func(d string) {
+			writeFile("HEAD", "ref: refs/heads/master\n")(d)
+			writeFile("refs/heads/master", strings.Repeat("a", 40)+"\n")(d)
+		})
+		if !repoHasHistory(dir) {
+			t.Error("refs/heads/master 在位必须判有历史")
+		}
+	})
+	t.Run("packed_refs判有历史", func(t *testing.T) {
+		dir := mk(t, "packed", func(d string) {
+			writeFile("HEAD", "ref: refs/heads/master\n")(d)
+			writeFile("packed-refs", strings.Repeat("a", 40)+" refs/heads/master\n")(d)
+		})
+		if !repoHasHistory(dir) {
+			t.Error("packed-refs 在位必须判有历史")
+		}
+	})
+	t.Run("detached_HEAD判有历史", func(t *testing.T) {
+		dir := mk(t, "detached", writeFile("HEAD", strings.Repeat("b", 40)+"\n"))
+		if !repoHasHistory(dir) {
+			t.Error("HEAD 直指 hash 必须判有历史")
+		}
+	})
+	t.Run("HEAD缺失保守判有历史", func(t *testing.T) {
+		dir := mk(t, "nohead", nil) // 无 HEAD（TestGitEngineHeal 的毁库形态）
+		if !repoHasHistory(dir) {
+			t.Error("HEAD 不可读属可疑形态，必须保守判有历史（改名保留）")
+		}
+	})
+}
+
+// TestGitEngineHealEmptyRepoNoGarbage 持久性失败下的垃圾放大防线（真实 git）：
+// heal 对"init 后从未提交"的空仓库删除重建而非改名保留——连续多轮 heal 后
+// .snapshots 下不得堆积任何 .broken-* 残骸（修复前每三连失败就多一个目录，
+// 数据根混入 symlink 这类恒态失败会无终止增殖）；有提交仓库的改名保留语义
+// 由 TestGitEngineHeal 守住，两半合起来才是完整契约。
+func TestGitEngineHealEmptyRepoNoGarbage(t *testing.T) {
+	eng, _ := newTestGitEngine(t)
+	ctx := context.Background()
+	// 此刻仓库刚 init、零提交：heal 两轮模拟"连续失败→自愈→又失败→再自愈"。
+	eng.heal(ctx)
+	eng.heal(ctx)
+	if _, err := os.Stat(filepath.Join(eng.gitDir, "HEAD")); err != nil {
+		t.Fatalf("heal 后仓库应可用（HEAD 在位）: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(eng.gitDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), gitRepoDirName+".broken-") {
+			t.Fatalf("空仓库自愈不得产生隔离残骸，发现 %s", e.Name())
+		}
+	}
+	// 重建后的仓库必须仍是"活"的：能拍能读（外部事实，不是目录存在性）。
+	write(t, eng.workTree, "config.json", `{"heal":true}`)
+	files, err := eng.changes(ctx)
+	if err != nil {
+		t.Fatalf("heal 重建后 changes 应可用: %v", err)
+	}
+	if err := eng.commit(ctx, files); err != nil {
+		t.Fatalf("heal 重建后应能提交: %v", err)
+	}
+	revs, err := eng.revisions(ctx, 10)
+	if err != nil || len(revs) != 1 {
+		t.Fatalf("重建仓库提交读回 = %+v err=%v", revs, err)
+	}
+	// 如今有了历史：再 heal 必须回到"改名保留"语义（防把上面的修复反向做过头）。
+	eng.heal(ctx)
+	entries, err = os.ReadDir(filepath.Dir(eng.gitDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), gitRepoDirName+".broken-") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("有提交仓库 heal 仍须隔离保留历史（删除语义仅限空仓库）")
+	}
+}
