@@ -83,6 +83,11 @@ func CreateDesktopShortcut(name, target, workDir string) error {
 	if err != nil {
 		return fmt.Errorf("WScript.Shell 转 IDispatch 失败: %w", err)
 	}
+	// 审查修复（A2 2026-10-26）：IDispatch() 走 QueryInterface，返回的是
+	// **新引用**（QI 自带 AddRef），与 unknown 非同一指针——只 Release
+	// unknown 会让 WScript.Shell 对象每次调用净泄露一次引用，进程内永不
+	// 归零（快捷方式建得越多驻留 COM 对象越多）。补齐 shell 的 Release。
+	defer shell.Release()
 
 	// CreateShortcut 返回的对象已是 IDispatch（返回值 VARIANT 内含）
 	ret, err := shell.CallMethod("CreateShortcut", lnkPath)
