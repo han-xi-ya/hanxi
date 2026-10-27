@@ -92,9 +92,9 @@
 3. ~~敏感遮罩常量~~ **波次二已落**：`constants/masking.ts` 单源 48 点；60 档分叉见呈裁 #9。
 4. QR 码 SVG **波次二已落** `utils/qr.ts` makeQrSvg（公共形制合一；两档墨色 #1f2328/#1e293b 与宽度按"归一属视觉裁决"原样保留随调用方，呈裁连带）。
 5. 字节口径三套（fmtSize 封顶 MB / formatBytes 千进制 / GB 升档内联×2）→ utils/format 增 GB 封顶档。
-6. 下载票据驻留 800ms 摘票编排三处三份 + done 票 setTimeout 同形 → 收进 managed 共享壳"波 2"（勿再各自补洞）。
-7. 日志面板家族（Frpc 抽屉 / DdnsGo dd-log / LogsView）ANSI 剥离+warn 着色+40px 自动滚阈值逐字三份 → `useLogTails` 或 ManagedLogPanel。
-8. 设置区 `.switch`/`.input-inline`/`.input-number`/`.card-head` 三份逐字 → 升格 components.css 全局原子。
+6. ~~票据驻留编排~~ **M4 已落**：五处手抄收编 `useDoneTicketRetire`（参数化登记/清尽/复核三维真差分；历史洞不借机补、以测试锚为"现形制"）；adapters/vscode 依 custom-orchestration 成文契约判"不迁"留账。
+7. ~~日志面板~~ **M1 已落 + 台账勘误**：原判"逐字三份"不成立（对账实况：ANSI 仅 Frpc 一家、40px 阈值两处、LogsView 只共用落底动作）；useLogTails 只收真同形，不硬塞改行为。三处既有 spec 零 diff 为等值证明。
+8. ~~设置控件升原子~~ **M2 已落**：10 类上收（值逐字、源码序约束注释在案）；`.input-inline`/`.card-head`/`.row-actions`/`.mono` 四类因**同名异形**判死不收（级联漏染实锤）；`.input-number` 赢法由声明转继承，目检第一优先项。
 9. frpc 两件 modal 尺寸漂移（480/460）→ UiModal 收编波（先定标准宽）；SettingsModal 可作参照系。
 10. ManagedConsoleShell 泛型携带面板 V（免整替）——涉 20+ 视图与壳 spec 基线，破坏性风险级，单独评审。
 11. wire null→契约形归一化 spec 模板（clipboardBridge.spec 形制）推广至 bcu/piik 等投影家族。
