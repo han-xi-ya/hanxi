@@ -68,7 +68,7 @@ Hanxi 对 PaperTodo 采用用户侧按需下载与独立进程托管：exe 直�
 - 许可证：Apache-2.0
 - 发行方式：官方 GitHub Releases（Hanxi 集成国内加速镜像通道），SHA256 完整性校验、指数退避重试，支持本地 `frpc.exe` 导入。
 
-Hanxi 对 frpc 采用多实例独立进程托管：二进制按需从上游获取，实例经 Windows JobObject 绑定启停，Token 经 DPAPI 加密落盘；Hanxi 不修改、不静态链接、不内嵌 frp 源码或二进制，穿透能力均由原版 frpc 提供。当前 Hanxi 仓库和安装包不包含 frpc.exe。若未来改为预装或随 Hanxi 再分发，须随附 Apache-2.0 许可证文本与 NOTICE、声明修改情况并履行相应义务。
+Hanxi 对 frpc 采用多实例独立进程托管：二进制按需从上游获取，实例经 Windows JobObject 绑定启停，Token 明文随数据根落盘（ADR-0004 已撤销原 DPAPI 本机绑定加密，换取整目录搬到另一台机器即可续用）；Hanxi 不修改、不静态链接、不内嵌 frp 源码或二进制，穿透能力均由原版 frpc 提供。当前 Hanxi 仓库和安装包不包含 frpc.exe。若未来改为预装或随 Hanxi 再分发，须随附 Apache-2.0 许可证文本与 NOTICE、声明修改情况并履行相应义务。
 
 ## Bulk Crap Uninstaller (BCU)
 

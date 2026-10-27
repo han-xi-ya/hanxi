@@ -47,7 +47,7 @@ Hanxi 的差异化不在于“内置多少按钮”，而在于以下五项控�
 - **可信获取**：来源识别、资产选择、完整性校验、安全解压和隔离安装；
 - **可控运行**：JobObject、进程指纹、实例探测、唤窗、优雅退出和强制回收；
 - **统一生命周期**：启用、初始化、运行、失败、停用、退出状态可观察；
-- **Windows 深度集成**：DPAPI、UAC、注册表、IP Helper、Appx/MSIX、快捷方式；
+- **Windows 深度集成**：UAC、注册表、IP Helper、Appx/MSIX、快捷方式；
 - **本地优先**：便携数据目录、离线导入、本地配置和可恢复的版本资产。
 
 ### 1.4 战略优先级
@@ -72,7 +72,7 @@ Hanxi 的差异化不在于“内置多少按钮”，而在于以下五项控�
 - `internal/app` 是明确的 Composition Root；
 - `internal/extapi` 提供统一模块元数据、导航、服务与生命周期契约；
 - `internal/modules/<tool>` 采用纵向模块切片，复杂托管工具基本形成 `module + version + instance` 结构；
-- `internal/platform/windows` 已沉淀 JobObject、DPAPI、进程指纹、端口/网卡、快捷方式和 Appx 等原语；
+- `internal/platform/windows` 已沉淀 JobObject、进程指纹、端口/网卡、快捷方式和 Appx 等原语（原 DPAPI 凭据加密原语已按 ADR-0004 撤销，凭据改明文随数据根携带）；
 - Wails 类型化绑定将 Vue 视图与 Go Service 连接起来；
 - 后端测试资产较丰富，**386 个 Go 测试文件**（`internal/` 下，2026-10-12 实测 `git ls-files`；全仓含 `packages/cmd/scripts` 为 403），前端 **167 个 spec / 2111 用例**全绿——原记「163 个（2026-09-16 对表）」是时点值，两个多月内翻了 2.4 倍；覆盖版本、实例、存储、平台和网络边界；
 - CI、Release、便携包和 SHA256 清单已有基本骨架。
@@ -111,7 +111,7 @@ Hanxi 当前准确的架构定义是：
 
 未来战略周期内继续保持 Windows-only，不以跨平台作为目标：
 
-- JobObject、DPAPI、UAC、注册表和 IP Helper 是产品能力，不是偶然的实现细节；
+- JobObject、UAC、注册表和 IP Helper 是产品能力，不是偶然的实现细节；
 - 跨平台会迫使项目退化为最小公分母式启动器；
 - Go/Vue 可跨平台，不代表产品必须跨平台；
 - 非 Windows 代码仅承担编译隔离或测试桩职责，不承诺一致体验。
@@ -158,7 +158,7 @@ Hanxi 当前准确的架构定义是：
 | 版本获取与隔离 | 负责 | Release 发现、活动版本、离线导入、回滚 |
 | 下载与安装完整性 | 负责 | 官方 digest/签名、哈希、大小、CRC、布局与安全解压 |
 | 进程生命周期 | 负责 | JobObject、探测、就绪、唤窗、退出和外部实例区分 |
-| Windows 系统能力 | 负责 | DPAPI、UAC、注册表、IP Helper、Appx/MSIX |
+| Windows 系统能力 | 负责 | UAC、注册表、IP Helper、Appx/MSIX |
 | 工具专有业务 UI | 条件负责 | 仅在能形成明显协同或上游缺少适用界面时内嵌 |
 | 上游配置修改 | 条件负责 | 必须有公开契约、备份、回滚和风险说明 |
 | 成熟上游 GUI 重做 | 不负责 | 不为品牌统一复制完整业务界面 |

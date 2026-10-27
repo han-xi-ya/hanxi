@@ -2,7 +2,7 @@
 
 // Package windows 是 platform 抽象接口的 Windows 实现：iphlpapi/advapi32 等
 // 系统 DLL 的直接调用（网卡、端口表、进程、Job Object、应用包、快捷方式、提权、
-// DPAPI、托盘辅助能力）。仅在 windows 构建标签下编译，业务侧一律经 platform.Platform 获取。
+// 托盘辅助能力）。仅在 windows 构建标签下编译，业务侧一律经 platform.Platform 获取。
 package windows
 
 import (

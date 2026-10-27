@@ -58,7 +58,7 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
                             │
 ┌───────────────────────────▼────────────────────────────┐
 │  internal/platform (Windows 原生底层原语)               │
-│  - windows: JobObject 进程树保护 · DPAPI 凭据硬件加密  │
+│  - windows: JobObject 进程树保护 · 提权与托盘          │
 │    注册表开机自启 · IP Helper 端口/网卡表 · 进程指纹   │
 │    桌面快捷方式 · Appx 包操作                          │
 │  - apppackage: MSIX/AppxBundle 当前用户安装管理        │
@@ -113,11 +113,12 @@ type Module interface {
 
 1. **Windows JobObject 绑定**：每个启动的 `frpc.exe` 进程均关联到作业对象，设置 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`。即使 Hanxi 异常退出，操作系统内核也会强制清理所有子进程。
 2. **连接状态嗅探**：`Instance` 在读取标准输出/错误流时实时分析特征词（如 `login to server success`, `authorization failed`, `connect to server error`），实时更新 `ConnState` 并通过 Wails Event 推送到前端。
-3. **DPAPI 凭据加密与临时文件治理**：
-   - 存储持久化时，Token 经 DPAPI 加密为密文落盘；
+3. **凭据明文落盘与临时文件治理**（ADR-0004，撤销原 DPAPI 方案）：
+   - 存储持久化时，Token 明文落盘——DPAPI 密文绑定"当前 Windows 用户 + 当前机器"，与"数据根整目录搬去另一台机器继续用"直接冲突，故仓内既不留加密也不留解密通道；
+   - 读到带 `dpapi:` 历史前缀的值一律判失效并清空待重填（不驻留：没有解密能力后还让它占着 Token 位，用户看到的是"认证失败"而不是"这里没填"，更难查）；
    - 停止项目实例时，立即清理 `runtime/frpc/frpc-<id>.toml` 临时配置文件。
 4. **版本子包**：官方 GitHub Releases（`fatedier/frp`）+ 国内镜像加速下载、SHA256 校验、指数退避重试、本地 `frpc.exe` 导入，附 TOML 文档生成器（docgen）。
-5. **内核豁免**：frpc 的多实例 map、连接嗅探与 DPAPI 脱敏日志使差异大于共性，version/instance 全程 bespoke，不套 `packages/go` 内核（ADR-0002 §3：豁免即终点，不得反向扩内核迁它）。
+5. **内核豁免**：frpc 的多实例 map、连接嗅探与脱敏日志使差异大于共性，version/instance 全程 bespoke，不套 `packages/go` 内核（ADR-0002 §3：豁免即终点，不得反向扩内核迁它）。
 
 ### 2.3 外部工具托管架构（Managed Integration）
 
@@ -159,12 +160,11 @@ Wave 4 从 25 份 version 下载链、24 份 instance 进程治理主流程中�
 - **`operation`（事务账本与观察面）**：`Journal` 落盘 schema v1 固定 **15 字段**（schema/transactionId/operation/deliveryKind/moduleId/fromVersion/toVersion/phase/state/createdAt/updatedAt/activeBefore/dataPolicy/steps/error），绝不记录 Secret、用户文件内容或敏感完整命令行；`Store` 记账面 Begin/Advance/Complete/Get/Pending/AbandonedDirs——**journal 先落盘并 fsync 再执行副作用**，更新走 tmp+rename，每个 moduleId 同时只允许一笔未收口写事务（`ErrTxnActive`）；`Recover` 背书法崩溃恢复（Report 四桶：resumed/rolledBack/orphaned/quarantined，损坏文件改名隔离取证），恢复收口前不开放业务调用；`Hub` 在途操作观察面输出 `extapi.Operation`（journal 词汇 uninstall↔remove 映射收敛在 hub.go），未收口事务回灌为 `failed + error.code="resumable" + recoverable=true`（合成记录 ID `"resumed-"+txnID`，收口通道一律消费 `TxnID` 裸字段），`ForgetResumable` 支持宿主代收口摘除。`internal/ops` 为装配根与模块间接线层：`SetKernel` 注入（未注入时 BeginTxn 全方法安全退化为 no-op，无账模式不阻断业务）、`operation:changed` 事件广播、残骸清理工具面（`CleanTxnResidue`/`ListUnbackedTxnDirs`/`CleanStaleDownloadParts`）。
 - **`netx`（代理出网与拨号内核）**：两条语义不同的链刻意分治、勿互相拿错——① **系统代理链**（`client.go`，"跟随浏览器"）：`Transport`/`NewClient` 按「环境变量优先 → WinINET 系统代理兜底 → 直连」链接，全仓出网 HTTP 与用户浏览器同路（坑 #35 的根治面；2026-10-21 实扫 39 个模块引用，内核 `artifact.Fetch` 亦经此），纯 PAC 不解析 JS、如实回落直连，链上任一环取不到都是直连而非 error，系统链不接 `socks=` 项（net/http Transport 不认 SOCKS）；回环/LAN 探测必须显式走 `DirectClient`/`LoopbackAwareProxyFunc`，禁止裸 client 碰本机服务。② **显式代理拨号链**（`proxydial.go`，"明知要用这条代理"）：`ParseProxy` 解析 HTTP/SOCKS5 方言、`DialProxy` 同时产出 `ContextDialer` 与 `http.Client`（`ContextDialer` 原 portscan 类型定义上收、portscan 侧改类型别名），供 portscan 代理中继扫描与代理连通性体检复用；SOCKS 分支的 forward dialer 包一层 `deadlineDialer`，在交付 conn 前设死线，封顶 x/net SOCKS5 greeting 同步读不听 ctx 的永久悬挂（坑 #110）；`QueryEgress` 出口核验多源降级同受死线约束（响应体封顶、重定向关闭）。
 - **后续批公共件（不在 ADR-0002 冻结表内）**：`hostfeed`——发布物平台/形态机械分类器，只服务展示、绝不反向指挥各家 remote.go 选包；`dirstats`——目录占用只读统计（时间预算截断如实标"下限估算"、junction/符号链接恒不计数）；`externalquit`——外部实例退出分档执行器（低损档直接强杀、打扰档强杀前必经用户确认，强杀原语复用 `platform.KillVerified` 复核链）；`peicon`——纯标准库解析 PE 内嵌图标、运行期从本机已装 exe 就地提取（许可受限三枚图标不入库的对位通道）。
-- **范围裁剪（ADR-0003）**：官方 Catalog 签名链/密钥基建/撤回演练不实施——供应链完整性的实际承担者为 HTTPS + 上游官方摘要必检（`artifact.Fetch` 全线强制）；Wave 6 物理拆包缓行无排期；DPAPI 凭据保持本机绑定（搬家语义由数据根整体同步覆盖）。
+- **范围裁剪（ADR-0003）**：官方 Catalog 签名链/密钥基建/撤回演练不实施——供应链完整性的实际承担者为 HTTPS + 上游官方摘要必检（`artifact.Fetch` 全线强制）；Wave 6 物理拆包缓行无排期；凭据的本机绑定加密已由 ADR-0004 撤销，改为明文随数据根整体携带。
 
 ### 2.5 平台底层实现 (`internal/platform`)
 
 - **`windows/autostart.go`**：管理注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Hanxi` 实现开机静默启动。
-- **`windows/dpapi.go`**：封装 Windows `CryptProtectData` 与 `CryptUnprotectData`。
 - **`windows/job.go`**：封装 Windows JobObject 作业对象原语（进程树兜底清理）。
 - **`windows/process.go`**：基于 `OpenProcess` 与 `QueryFullProcessImageNameW` 获取进程路径与启动时间，用于防误杀校验。
 - **`windows/net.go` & `windows/port.go`**：封装 `iphlpapi.dll` 获取网卡、ARP 表、TCP/UDP 扩展连接表。

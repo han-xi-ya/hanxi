@@ -11,10 +11,9 @@ import (
 
 	"hanxi/internal/domain"
 	"hanxi/internal/jsonstore"
-	"hanxi/internal/platform/windows"
 )
 
-const dpapiPrefix = "dpapi:"
+const legacyDPAPIPrefix = "dpapi:" // 历史密文标记，仅用于识别并作废（ADR-0004）
 
 // frpcStore 项目存储：以单 JSON 文件原子读写持久化全部 frpc 项目
 // （原子写公共核 internal/jsonstore；本项目刻意取"损坏即报错、禁止以空库覆盖落盘文件"的严格策略）。
@@ -50,24 +49,20 @@ func (s *frpcStore) load() error {
 	if err != nil || !ok {
 		return err // 读失败原样上抛；不存在（ok=false 且 err=nil）按空库继续
 	}
-	// 兼容与解密：自动解密 DPAPI 加密的 Token，无 ID 的项目自动补 ID
+	// 兼容：无 ID 的项目自动补 ID；历史 DPAPI 密文一律判为失效凭据。
 	for _, p := range data.Projects {
 		if p.ID == "" {
 			p.ID = newProjectID()
 		}
-		// 若 Token 使用 DPAPI 加密，则在内存中解密为明文。
-		// 解密失败（如文件拷自另一 Windows 用户/机器）时保留 dpapi: 前缀形态原样驻留：
-		// saveLocked 对带前缀的值直通不再二次加密，避免"密文当明文再包一层"把原 Token
-		// 永久锁死；此时连接认证会失败，属预期，日志已点名根因。
-		if strings.HasPrefix(p.Server.Token, dpapiPrefix) {
-			cipher := strings.TrimPrefix(p.Server.Token, dpapiPrefix)
-			plain, err := windows.DPAPIDecrypt(cipher)
-			if err != nil {
-				slog.Error("frpc: DPAPI 解密失败，Token 维持密文形态（可能属另一 Windows 用户/机器），请重新录入",
-					"project", p.ID, "name", p.Name, "err", err)
-			} else {
-				p.Server.Token = string(plain)
-			}
+		// ADR-0004：数据根要能整目录搬去另一台机器继续用，而 DPAPI 密文绑定"当前
+		// Windows 用户 + 当前机器"，搬过去必然解不开，故仓内已无解密能力。带历史前缀
+		// 的值**清空而非原样驻留**——没有解密能力之后还把它留在 Token 位上，等于让一个
+		// 非空却无意义的字符串去连服务器，用户看到的是"认证失败"，而不是"这里没填"；
+		// 清空后该格为空，前端引导重填，根因也在日志里点名。
+		if strings.HasPrefix(p.Server.Token, legacyDPAPIPrefix) {
+			slog.Warn("frpc: Token 为历史 DPAPI 密文，已按失效处理并清空，请重新录入",
+				"project", p.ID, "name", p.Name)
+			p.Server.Token = ""
 		}
 		s.projects[p.ID] = p
 	}
@@ -75,21 +70,11 @@ func (s *frpcStore) load() error {
 }
 
 func (s *frpcStore) saveLocked(projects map[string]domain.Project) error {
+	// 明文落盘（ADR-0004）：便携性优先于本机绑定加密。风险（数据根若被 NAS/网盘同步，
+	// Token 即明文可读）由该 ADR 承担并如实记录，与 clipboard v1.6、Memo 库同谱口径。
 	list := make([]domain.Project, 0, len(projects))
 	for _, p := range projects {
-		// 落盘保护：克隆对象并将敏感 Token 加密为 DPAPI 密文。
-		// 已带 dpapi: 前缀的值（load 解密失败的密文驻留态）直通写回，绝不再包一层；
-		// 加密失败拒绝以明文落盘并让整次保存报错——明文泄露比保存失败严重得多，
-		// 且 DPAPI 异常通常持续存在，静默降级只会把旧明文重新引回磁盘。
-		item := p
-		if item.Server.Token != "" && !strings.HasPrefix(item.Server.Token, dpapiPrefix) {
-			cipher, err := windows.DPAPIEncrypt([]byte(item.Server.Token))
-			if err != nil {
-				return fmt.Errorf("项目 %s 的 Token DPAPI 加密失败，拒绝明文落盘: %w", item.ID, err)
-			}
-			item.Server.Token = dpapiPrefix + cipher
-		}
-		list = append(list, item)
+		list = append(list, p)
 	}
 	data := struct {
 		Projects  []domain.Project `json:"projects"`

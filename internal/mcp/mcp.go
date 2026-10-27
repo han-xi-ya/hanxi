@@ -231,7 +231,11 @@ func Run() error {
 	}
 
 	// 剪贴板检索 hook 通道（A3 交付形）：零落盘直读 reader（DataDir/clipboard/
-	// index.json + windows.DPAPIDecrypt），与 Memo 的 newMemoDiskReader 同谱；
+	// index.json，正文为明文落盘——v1.6 起本包无加解密语义，见 ADR-0004；
+	// ⚠ 历史 `dpapi:` 密文**未实现"判失效/跳过"**，decrypt 缝是恒等透传，
+	// 故旧密文会以 base64 原文参与展示与关键词匹配。此处不写"如实跳过"，
+	// 因为代码没做（审查报告 §9-1 待裁：补启发式判失效，或维持现状但撤掉承诺）。
+	// 与 Memo 的 newMemoDiskReader 同谱；
 	// handler 每次调用重读 hook，装配时序无硬约束。
 	SetClipboardSource(newClipboardDiskReader())
 

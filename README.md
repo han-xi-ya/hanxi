@@ -27,7 +27,7 @@
 - **穿透项目与版本管理统一工作台**：单入口 Tab 自由切换穿透项目与版本管理，官方 GitHub Releases / 国内镜像加速一键下载、SHA256 完整性校验、指数退避重试与本地 `frpc.exe` 快速导入。
 - **Windows JobObject 隔离**：利用操作系统内核级作业对象（JobObject），主程序退出或崩溃时所有子进程一并被内核强制清理，**彻底告别孤儿进程与端口残留占用**。
 - **连接状态实时嗅探**：实时分析 `frpc` 控制台日志特征词，毫秒级感知服务端连接状态（已连接 / 认证失败 / 重连中 / 异常），告别“进程存活但穿透未通”的假绿状态。
-- **Windows DPAPI 硬件级凭据加密**：服务端连接 Token 采用 Windows 原生 `CryptProtectData` (DPAPI) 绑定当前用户凭据安全加密落盘，杜绝明文凭证泄露；停止实例时自动擦除运行时生成的临时 TOML 配置文件。
+- **凭据随数据根同行（明文，便携优先）**：服务端连接 Token 明文存于 `hanxidata/`，配合数据根整体同步——拷到另一台机器即可继续用，不需要重新录入；这是 ADR-0004 的明示取舍（曾用的 DPAPI 本机绑定加密已撤销，代价是备份位置可读明文，见该 ADR「代价」节）。停止实例时自动擦除运行时生成的临时 TOML 配置文件。
 - **配置一键分享与导入**：支持 `frp://<base64>` 协议链接一键复制分享，支持多端一键导入 `frp://` 链接或原始 `frpc.toml` 文件内容。
 - **代理规则批量端口区间导入**：支持 `8080-8085`、`8080,8081,8082` 等离散/连续端口范围批量映射生成规则。
 - **实时日志与脱敏流**：单实例独立日志抽屉，自动脱敏 Token/Secret，ANSI 彩色终端日志过滤。
@@ -183,7 +183,7 @@ Hanxi 将 32 款常用开源/免费桌面工具纳入统一管理（"款"的口�
 |---|---|---|---|
 | **技术底座** | **Go + Wails v3 + Vue 3** | Electron + Node.js | Go + IMGUI / Fyne |
 | **内存占用** | **~20 MB ~ 25 MB**（极低资源消耗） | 150MB ~ 300MB+ | 30MB ~ 50MB |
-| **凭据安全** | **Windows DPAPI 硬件级加密** | 明文 JSON/TOML 落盘 | 明文存储 |
+| **凭据落地** | **明文随数据根同行，换机即可续用**（ADR-0004，已撤 DPAPI） | 明文 JSON/TOML 落盘 | 明文存储 |
 | **进程治理** | **Windows JobObject 绑定**（零孤儿进程） | Node 子进程（易残留） | 简单 Process Kill |
 | **连接感知** | **日志特征词嗅探（毫秒级细粒度状态）** | 仅根据进程存活判定 | 仅根据进程存活判定 |
 | **多实例支持** | **原生支持多项目独立并行运行** | 仅单配置单运行 | 仅单配置运行 |
@@ -259,7 +259,7 @@ hanxi/
 │  │                            #   （含 eartrumpet、frpc 归自建列），后者按 catalog hosted-versions 能力
 │  │                            #   计数（含 frpc、不含 eartrumpet）。核对时以
 │  │                            #   `go run ./scripts/cataloggen` 的产物为准，勿拿两把尺互证。）
-│  ├─ platform/                 # 平台底层（Windows JobObject / DPAPI / 注册表自启 / IP Helper / Appx 包管理 / Shell 提权）
+│  ├─ platform/                 # 平台底层（Windows JobObject / 注册表自启 / IP Helper / Appx 包管理 / Shell 提权）
 │  ├─ logging/                  # slog 结构化日志与凭据自动脱敏
 │  └─ settings/                 # 便携化路径解析与通用设置持久化
 ├─ frontend/                    # Vue 3 + TypeScript + Vite 前端（自研样式层，无第三方 UI 框架）
