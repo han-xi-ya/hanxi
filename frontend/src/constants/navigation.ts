@@ -41,7 +41,7 @@ const SettingsAi = defineAsyncComponent(() => import('@/views/settings/AiSection
 
 export const ROUTES: Record<string, RouteDef> = {
   '/': { component: defineAsyncComponent(() => import('@/views/HomeView.vue')) },
-  // 模块中心：一级核心入口（Wave 1 占位骨架，Wave 2 接真实目录投影）。
+  // 模块中心：一级核心入口，投影真实模块目录（后端 Registry 为唯一真相）。
   // 无 moduleId：不进 EnsureModuleActive 门禁，也不受"模块停用弹回首页"拦截。
   '/modules': { component: defineAsyncComponent(() => import('@/views/ModuleCenterView.vue')) },
   '/frpc': { component: defineAsyncComponent(() => import('@/views/FrpcProjectsView.vue')), moduleId: 'frpc' },
@@ -132,11 +132,10 @@ export interface SettingsSection {
 }
 
 /**
- * 分区序（机主反馈一 + 消歧批）：偏好簇（常规/外观/托盘）→ 系统管理簇
- * （系统管理 + 存储目录：目录/空间治理归此语境）→ 数据与存储（备份/快照/
- * 历史类留守数据侧，分区名按机主拍板）→ 工作台/AI。图标消歧（机主截图批）：
- * 目录空间类走文件夹系（folder），系统性能类走仪表系（gauge），不再与
- * rail「系统管理」分组（cpu）/旧 hard-drive 机箱形撞脸。
+ * 分区序：偏好簇（常规/外观/托盘）→ 系统管理簇（系统管理 + 存储目录：
+ * 目录/空间治理归此语境）→ 数据与存储（备份/快照/历史类留守数据侧）→
+ * 工作台/AI。图标消歧：目录空间类走文件夹系（folder），系统性能类走仪表系
+ *（gauge），不与 rail「系统管理」分组（cpu）撞脸。
  */
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'general', title: '常规偏好', desc: '启动 · 窗口 · 日志保留', icon: 'sliders', route: '/settings/general' },
@@ -152,8 +151,8 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
 /**
  * route → 设置分区 id；'/settings' 与未注册子段回落 general；非设置路由返回 null。
  *
- * N35：运行日志/关于是「工作台入口」分区（8708953）的直达辅助页，归属 workbench
- * 语境——入口跳转只换内容区，第二栏设置分区菜单保持稳定、分区高亮跟随；
+ * 运行日志/关于是「工作台入口」分区的直达辅助页，归属 workbench 语境——
+ * 入口跳转只换内容区，第二栏设置分区菜单保持稳定、分区高亮跟随；
  * 否则 routeGroup/settingsSection 双双回落空，左侧面板整个跳去首页态。
  */
 export function settingsSectionOf(route: string): string | null {
@@ -247,8 +246,8 @@ export function groupOfModule(id: string): NavGroup | undefined {
 }
 
 /**
- * 模块展示元数据（图标 + 首选路由）：自 HomeView 的 MODULE_META 收编，
- * 终结"三份并行清单"（App.vue 两张表已并入 ROUTES）。后端注册表仍是
+ * 模块展示元数据（图标 + 首选路由）：首页卡片渲染的单一清单
+ *（旧 HomeView MODULE_META 与 App.vue 两张表已并入本表与 ROUTES）。后端注册表仍是
  * "模块存在/启用"的真相，本表只供首页卡片渲染；缺省模块走 fallbackIcon。
  * icon 统一 `i:` 前缀引用 constants/icons 注册表（与后端 Nav().Icon 同名），
  * 消费端（HomeView）经 AppIcon 渲染 SVG；无前缀值按文本回退。红线三枚
@@ -283,7 +282,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   recordly: { icon: 'rt:recordly|i:video', route: '/ext/recordly' },
   papertodo: { icon: 'app:papertodo', route: '/ext/papertodo' },
   piclite: { icon: 'app:piclite', route: '/ext/piclite' },
-  // i:cast：图标池无 i:share（仅 share-2 已属 fileshare），投屏矢量在册零占用（装配线裁定）。
+  // i:cast：图标池无 i:share（仅 share-2 已属 fileshare），投屏矢量在册零占用（与后端同名在册）。
   piik: { icon: 'i:cast', route: '/ext/piik' },
   keyviz: { icon: 'app:keyviz', route: '/ext/keyviz' },
   quicklook: { icon: 'app:quicklook', route: '/ext/quicklook' },
