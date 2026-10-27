@@ -109,8 +109,6 @@ const fontHint = computed(() => FONTS.find((f) => f.key === font.value)?.desc ??
 </template>
 
 <style scoped>
-.pref-list { display: flex; flex-direction: column; gap: 8px; }
-
 /* 分段控件：语义 token 直引 */
 .theme-seg { display: flex; background: var(--surface-hover); border: 1px solid var(--color-border); border-radius: var(--radius-control); padding: 3px; gap: 2px; }
 .theme-seg-btn {

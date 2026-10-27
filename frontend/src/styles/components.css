@@ -347,6 +347,41 @@
 :where(.setting-desc) { font-size: var(--text-xs); color: var(--color-text-muted); }
 :where(.setting-actions) { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
+/* ---------- 设置分区控件与卡头原子（settings 各 section scoped 逐字同形副本上收，
+   值照搬未改一字；宿主：GeneralSection / SnapshotSection / AiSection /
+   SnapshotTimeline / SnapshotFileList / SnapshotSection 预览 / StorageSection。
+   局部差分留 scoped 不随收：.input-number 宽度两档（General 64 天档 /
+   Snapshot 72 秒分档）、.pref-list 的 margin-bottom:16px（SnapshotSection）、
+   .dir-path 截断三差（SnapshotSection）、.preview-cut 字号档（SnapshotTimeline）、
+   .switch:disabled（AiSection，全库仅 1 份未达上收门槛）。
+   同名不同形未收（各宿主 scoped 原样保留，防按属性漏染未迁移宿主）：
+   .input-inline（LanScannerView 同名系行内编辑框本体，display:flex 漏染风险）、
+   .card-head/.card-title（ModuleCard 异形且漏 justify/margin、FileShare 两 tab
+   无定义 h3 会被染色）、.row-actions（EverythingResultsPanel gap4 异形会漏
+   flex:none）、.mono（全局 .mono 已占 sm+break-all 异形档，局部 xs 落回即改值）。
+   级联注记：本块必须晚于 :where(.setting-desc)——code.setting-desc.dir-path 上
+   两枚零特异性规则同抢 color，subtle 压 muted 全靠源码序（源码序=同特异性裁决序）；
+   .file-st 变体档同理必须晚于其基形。 ---------- */
+:where(.switch) { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
+/* 数值微编辑框公共形；width 差分留各分区 scoped（见上方注记） */
+:where(.input-number) {
+  padding: 5px 8px; border: 1px solid var(--color-border);
+  border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text); font-size: var(--text-base);
+}
+:where(.input-unit) { font-size: var(--text-sm); color: var(--color-text-muted); }
+:where(.pref-list) { display: flex; flex-direction: column; gap: 8px; }
+:where(.card-meta) { font-size: var(--text-xs); color: var(--color-text-subtle); }
+:where(.hist-empty) { padding: 18px 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
+:where(.file-st) { flex: none; width: 40px; font-size: var(--text-xs); color: var(--color-text-muted); }
+:where(.file-st.st-A) { color: var(--state-positive); }
+:where(.file-st.st-D) { color: var(--state-danger); }
+/* 截断徽标基座形：宿主均挂 chip，chip 不设 flex，无源码序纠缠；字号差留 SnapshotTimeline */
+:where(.preview-cut) { flex: none; }
+:where(.dir-path) {
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* ---------- 徽标 / 状态 chip ---------- */
 :where(.chip) {
   display: inline-flex;
@@ -363,6 +398,9 @@
 :where(.chip-warning) { background: var(--state-warning-soft); color: var(--state-warning); }
 :where(.chip-danger) { background: var(--state-danger-soft); color: var(--state-danger); }
 :where(.chip-neutral) { background: var(--surface-hover); color: var(--color-text-muted); }
+/* 微 chip 迷你档（SnapshotFileList ⇄ SnapshotTimeline"恢复生效"徽标两份逐字同形
+   副本上收）。必须晚于 :where(.chip)：padding 0 5px 压基座 2px 8px 全靠源码序。 */
+:where(.fa-scope) { flex: none; font-size: var(--text-xs); padding: 0 5px; }
 
 /* ---------- 状态面板（虚线 inline 面板：加载/空/错/警，可挂右侧动作按钮）
    强语义色经 state token，动作钮复用 link 语义 ---------- */

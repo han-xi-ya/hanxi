@@ -530,17 +530,14 @@ onMounted(refresh)
 <style scoped>
 /* 行骨架复用全局 .setting-row / .card / .chip / .tbl / .btn 原子，此处仅节奏与专属皮；
    两栏（.fa-list/.fa-detail 及其子孙）皮随子件 SnapshotFileList/SnapshotTimeline 走 */
-.pref-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-.switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
+/* .switch / .input-unit / .input-number 公共形 / .pref-list 公共形已落回全局原子；
+   此处只留差分：pref-list 段底距、秒/分框 72px 宽档；.input-inline 因 LanScannerView
+   同名异形未上收，.row-actions 因 Everything 面板异形（gap4 且无 flex 档）未上收 */
+.pref-list { margin-bottom: 16px; }
 .input-inline { display: flex; align-items: center; gap: 6px; }
-.input-number {
-  width: 72px; padding: 5px 8px; border: 1px solid var(--color-border);
-  border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text); font-size: var(--text-base);
-}
-.input-unit { font-size: var(--text-sm); color: var(--color-text-muted); }
+.input-number { width: 72px; }
 .dir-path {
-  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 520px; display: inline-block; vertical-align: middle;
+  max-width: 520px; display: inline-block; vertical-align: middle;
 }
 .row-actions { display: flex; gap: 6px; flex: none; }
 
@@ -553,10 +550,11 @@ onMounted(refresh)
 .backup-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); }
 .backup-desc { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: 2px; }
 
+/* .card-meta / .hist-empty 已落回全局原子；.card-head/.card-title 因
+   ModuleCard/FrpcProjectEditor/FileShare 系同名异形未上收，副本留此；
+   .mono 系局部 xs 档（全局 .mono 已占 sm+break-all 异形档），勿删换落回 */
 .card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .card-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); }
-.card-meta { font-size: var(--text-xs); color: var(--color-text-subtle); }
-.hist-empty { padding: 18px 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 .mono { font-family: var(--font-mono); font-size: var(--text-xs); }
 .summary-cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
 
@@ -570,9 +568,7 @@ onMounted(refresh)
   border: 1px solid transparent; border-radius: var(--radius-control);
 }
 .file-row.active { background: var(--surface-hover); border-color: var(--color-border); }
-.file-st { flex: none; width: 40px; font-size: var(--text-xs); color: var(--color-text-muted); }
-.file-st.st-A { color: var(--state-positive); }
-.file-st.st-D { color: var(--state-danger); }
+/* .file-st 基形与 st-A/st-D 色档、.preview-cut 基座形已落回全局原子 */
 .file-path {
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;
@@ -583,7 +579,6 @@ onMounted(refresh)
   padding: 8px 12px; background: var(--surface-chrome); border-bottom: 1px solid var(--color-border);
 }
 .preview-head code { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text); overflow: hidden; text-overflow: ellipsis; }
-.preview-cut { flex: none; }
 .preview-body {
   margin: 0; padding: 10px 12px; max-height: 240px; overflow: auto;
   font-family: var(--font-mono); font-size: var(--text-xs); line-height: 1.5; color: var(--color-text);

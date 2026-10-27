@@ -83,8 +83,7 @@ const grouped = computed(() => {
 .fa-file.active { background: var(--surface-hover); border-color: var(--color-border); }
 .fa-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fa-dead { flex: none; font-size: var(--text-xs); padding: 0 5px; }
-/* 恢复生效常驻徽标：micro chip（.fa-st 语系的迷你档），色走全局 chip token */
-.fa-scope { flex: none; font-size: var(--text-xs); padding: 0 5px; }
+/* 恢复生效常驻徽标 .fa-scope（micro chip 迷你档，色走全局 chip token）已落回全局原子 */
 .fa-count { flex: none; font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; }
 @media (max-width: 720px) {
   .fa-list {

@@ -473,9 +473,10 @@ onMounted(refresh)
   padding: 3px 8px; max-width: 560px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* .card-meta 已落回全局原子；.card-head/.card-title 因 ModuleCard/FrpcProjectEditor/
+   FileShare 系同名异形未上收，副本留此（本区 head 比 SnapshotSection 多一道 gap 差） */
 .card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px; }
 .card-title { font-size: var(--text-base); font-weight: 600; color: var(--color-text); }
-.card-meta { font-size: var(--text-xs); color: var(--color-text-subtle); }
 .ai-empty { padding: 18px 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 
 .client-list { display: flex; flex-direction: column; gap: 8px; }
@@ -511,7 +512,7 @@ onMounted(refresh)
 .tool-name { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); font-weight: 600; color: var(--color-text); flex-wrap: wrap; }
 .tool-desc { font-size: var(--text-sm); color: var(--color-text-muted); }
 .tool-id { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle); }
-.switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
+/* .switch 基形已落回全局原子；:disabled 全库仅本区一份，未达上收门槛，留此 */
 .switch:disabled { cursor: not-allowed; }
 .access-note { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: 8px; }
 .access-note.note-danger { color: var(--state-danger); }

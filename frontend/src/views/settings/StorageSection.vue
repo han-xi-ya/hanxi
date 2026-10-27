@@ -371,10 +371,7 @@ onMounted(() => {
 .dir-badge { margin-left: 6px; vertical-align: 1px; }
 /* 用途简介行（机主要求）：名字与路径之间的次级说明，静态词表前端渲染 */
 .dir-intent { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.5; }
-.dir-path {
-  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-subtle);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+/* .dir-path 全份逐字同形已落回 components.css 全局原子（截断差档在 SnapshotSection） */
 .root-actions { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .usage-size {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-sm);

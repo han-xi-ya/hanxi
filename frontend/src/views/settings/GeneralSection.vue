@@ -111,14 +111,10 @@ onMounted(refresh)
 </template>
 
 <style scoped>
-/* 行骨架复用全局 .setting-row / .card 原子（components.css），此处仅布局微调与控件皮 */
-.pref-list { display: flex; flex-direction: column; gap: 8px; }
-
-.switch { width: 18px; height: 18px; cursor: pointer; accent-color: var(--color-primary); flex: none; }
+/* 行骨架与控件皮（.setting-row / .card / .switch / .input-number / .input-unit /
+   .pref-list）均已落回 components.css 全局原子；此处只留本区差分：
+   天数框 64px 窄档，以及 .input-inline——后者因 LanScannerView 同名异形
+   （行内编辑框本体）未上收全局，收了的漏染风险见 components.css 同段注记 */
 .input-inline { display: flex; align-items: center; gap: 6px; }
-.input-number {
-  width: 64px; padding: 5px 8px; border: 1px solid var(--color-border);
-  border-radius: var(--radius-control); background: var(--surface-panel); color: var(--color-text); font-size: var(--text-base);
-}
-.input-unit { font-size: var(--text-sm); color: var(--color-text-muted); }
+.input-number { width: 64px; }
 </style>

@@ -169,18 +169,16 @@ function expandFold(idx: number) {
 .fa-evcount { flex: none; font-size: var(--text-xs); color: var(--color-text-subtle); white-space: nowrap; }
 .fa-ev-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; min-width: 0; }
 .fa-time { flex: none; }
-/* 恢复生效常驻徽标：micro chip，与清单行同款语系，色走全局 chip token */
-.fa-scope { flex: none; font-size: var(--text-xs); padding: 0 5px; }
+/* 恢复生效常驻徽标 .fa-scope（micro chip 迷你档，与清单行同款语系）已落回全局原子 */
 .fa-sum {
   flex: 1; min-width: 0; font-size: var(--text-sm); color: var(--color-text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* .hist-empty 与 .file-st 基形/st-A/st-D 色档已落回全局原子；.row-actions 因
+   EverythingResultsPanel 同名异形（gap4 且无 flex 档）未上收，副本留此；
+   .mono 系局部 xs 档（全局 .mono 已占 sm+break-all 异形档），勿删换落回 */
 .row-actions { display: flex; gap: 6px; flex: none; }
-.hist-empty { padding: 18px 4px; font-size: var(--text-sm); color: var(--color-text-muted); }
 .mono { font-family: var(--font-mono); font-size: var(--text-xs); }
-.file-st { flex: none; width: 40px; font-size: var(--text-xs); color: var(--color-text-muted); }
-.file-st.st-A { color: var(--state-positive); }
-.file-st.st-D { color: var(--state-danger); }
 
 .fa-diff { padding: 2px 4px 10px; }
 .diff-panel {
@@ -195,7 +193,9 @@ function expandFold(idx: number) {
 .diff-stat-add { color: var(--state-positive); }
 .diff-stat-del { color: var(--state-danger); }
 .diff-note-chip { font-size: var(--text-xs); padding: 0 6px; }
-.preview-cut { flex: none; font-size: var(--text-xs); }
+/* .preview-cut 基座形 flex:none 已落回全局原子；本区徽标挂 chip 基座上，
+   chip 已带 --text-xs——此声明值与 chip 同档，留作宿主原值不外溢 */
+.preview-cut { font-size: var(--text-xs); }
 .diff-keys {
   padding: 5px 10px; font-size: var(--text-xs); color: var(--color-text-muted);
   border-bottom: 1px solid var(--color-border); background: var(--surface-soft);
