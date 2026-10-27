@@ -6,6 +6,7 @@ import { getErrorMessage } from '../utils/errors'
 import { useToast } from '../composables/useToast'
 import { usePolling } from '../composables/usePolling'
 import { useClipboard } from '../composables/useClipboard'
+import { pinToBottom } from '../composables/useLogTails'
 
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
@@ -46,10 +47,11 @@ async function fetchContent(scrollBottom = false) {
     }
     logContent.value = text ?? ''
     if (scrollBottom) {
+      // 本视图无自动滚动闩（刷新即无条件贴底），与 frpc 抽屉/ddns-go dd-log 的
+      // 闩控 scrollToBottom 系形制分叉——台账 §五-7 对账记录，此处仅共用落底动作
       nextTick(() => {
-        if (logContainerRef.value) {
-          logContainerRef.value.scrollTop = logContainerRef.value.scrollHeight
-        }
+        const el = logContainerRef.value
+        if (el) pinToBottom(el)
       })
     }
   } catch (err: unknown) {

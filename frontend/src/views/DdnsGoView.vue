@@ -5,13 +5,14 @@
 // 与页签骨架，store 单源轮询/uptime/进度 map/busy 闩。本视图仅剩装配与
 // #primary-action 第三钮、#console-extra 业务大件（监听地址行、进程日志面板、
 // Web 监听端口行）与说明卡。
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/ddnsgo/instance/models'
 import { createDdnsGoAdapter } from '../adapters/ddnsgo'
 import ManagedConsoleShell from '../components/managed/ManagedConsoleShell.vue'
 import { useWailsEvent } from '../composables/useWailsEvent'
 import type { ManagedConsoleStore } from '../components/managed/store'
 import { useToast } from '../composables/useToast'
+import { createWarnMatcher, DDNS_LOG_WARN_EXCLUDE_RE, DDNS_LOG_WARN_RE, useLogTails } from '../composables/useLogTails'
 import { getErrorMessage } from '../utils/errors'
 
 const adapter = createDdnsGoAdapter()
@@ -24,22 +25,27 @@ function addrOf(snap: unknown): string {
   return (snap as Snapshot | null | undefined)?.listenAddr ?? ''
 }
 
-// ---------- 进程输出日志面板（log 槽消费点：数据面经 adapter.log，UI 在本视图） ----------
+// ---------- 进程输出日志面板（log 槽消费点：数据面经 adapter.log，UI 在本视图；
+// 自动滚动闩/贴底阈值/裁头公式/落底滚动等机构收编 useLogTails 单源，台账 §五-7） ----------
 const MAX_LOG_LINES = 400
 const logLines = ref<string[]>([])
-const logAutoScroll = ref(true)
-const logBodyRef = ref<HTMLElement | null>(null)
+const {
+  autoScroll: logAutoScroll,
+  bodyRef: logBodyRef,
+  onBodyScroll,
+  trimHead,
+  keepLast,
+  scrollToBottom,
+} = useLogTails({ maxLines: MAX_LOG_LINES })
 
-// DDNS 更新日志的成败着色（上游输出含中英文两种语言）
-function logWarnish(line: string): boolean {
-  return /失败|错误|异常|error|fail|refused|timeout/i.test(line) && !/未变化|no change/i.test(line)
-}
+// DDNS 更新日志的成败着色（上游输出含中英文两种语言；词表分叉保留为参数，结构单源）
+const logWarnish = createWarnMatcher(DDNS_LOG_WARN_RE, DDNS_LOG_WARN_EXCLUDE_RE)
 
 async function loadLogHistory() {
   try {
     const lines = await adapter.log.pull()
     if (Array.isArray(lines) && lines.length) {
-      logLines.value = lines.slice(-MAX_LOG_LINES)
+      logLines.value = keepLast(lines)
       scrollToBottom()
     }
   } catch (e) {
@@ -49,16 +55,8 @@ async function loadLogHistory() {
 
 function appendLog(line: string) {
   logLines.value.push(line)
-  if (logLines.value.length > MAX_LOG_LINES) {
-    logLines.value.splice(0, logLines.value.length - MAX_LOG_LINES)
-  }
+  trimHead(logLines.value)
   void scrollToBottom()
-}
-
-async function scrollToBottom() {
-  await nextTick()
-  const el = logBodyRef.value
-  if (el && logAutoScroll.value) el.scrollTop = el.scrollHeight
 }
 
 function clearLogs() {
@@ -159,7 +157,7 @@ onMounted(async () => {
         <div
           ref="logBodyRef"
           class="dd-log-body"
-          @scroll.passive="logAutoScroll = ($event.target as HTMLElement).scrollTop + ($event.target as HTMLElement).clientHeight >= ($event.target as HTMLElement).scrollHeight - 40"
+          @scroll.passive="onBodyScroll"
         >
           <template v-if="logLines.length">
             <div v-for="(line, i) in logLines" :key="i" class="dd-log-line" :class="{ 'dd-log-warn': logWarnish(line) }">{{ line }}</div>

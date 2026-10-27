@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, nextTick } from 'vue'
+import { ref, shallowRef, computed, onMounted } from 'vue'
 import * as FrpcAPI from '../../bindings/hanxi/internal/modules/frpc/frpcservice'
 import type { Project } from '../../bindings/hanxi/internal/domain/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/frpc/instance/models'
@@ -14,6 +14,7 @@ import { useWailsEvent } from '../composables/useWailsEvent'
 import { usePolling } from '../composables/usePolling'
 import { useConfirm } from '../composables/useConfirm'
 import { useClipboard } from '../composables/useClipboard'
+import { createWarnMatcher, FRPC_LOG_WARN_RE, stripAnsi, useLogTails } from '../composables/useLogTails'
 
 const { showToast } = useToast()
 const { confirm } = useConfirm()
@@ -45,18 +46,24 @@ const importType = ref<'link' | 'toml'>('link')
 const importContent = ref('')
 const importError = ref('')
 
-// 日志抽屉（perf 改造：接收期预处理 + 按帧批量入表，见 flushLogPending 注记）
+// 日志抽屉（perf 改造：接收期预处理 + 按帧批量入表，见 flushLogPending 注记；
+// 自动滚动闩/贴底阈值/裁头公式/落底滚动等机构收编 useLogTails 单源，台账 §五-7）
 const drawerOpen = ref(false)
 const drawerProjectId = ref('')
 const logLoading = ref(false)
 const logError = ref('')
-const logAutoScroll = ref(true)
-const logBodyRef = ref<HTMLElement | null>(null)
+const LOG_MAX_LINES = 2000
+const {
+  autoScroll: logAutoScroll,
+  bodyRef: logBodyRef,
+  onBodyScroll,
+  trimHead: trimLogRows,
+  scrollToBottom,
+} = useLogTails({ maxLines: LOG_MAX_LINES })
 
 /** 抽屉日志行（接收期即完成 ANSI 剥离与 warn 着色判定，渲染路径零解析）。 */
 interface LogRow { id: number; text: string; warn: boolean }
-const LOG_MAX_LINES = 2000
-const LOG_WARN_RE = /\[W\]|WARN|error|fail/i
+const warnOf = createWarnMatcher(FRPC_LOG_WARN_RE)
 /** 行号单调递增：v-for 稳定 key，溢出裁剪只动头尾节点，不整表换键重补丁。 */
 let logRowSeq = 0
 const logRows = shallowRef<LogRow[]>([])
@@ -73,14 +80,10 @@ function projectName(id: string): string {
   return projects.value.find(p => p.id === id)?.name ?? id
 }
 
-// stripAnsi 剥离 frpc 输出的 ANSI 色码（\x1b[1;34m 等）
-function stripAnsi(s: string): string {
-  return s.replace(/\x1b\[[\d;]*m/g, '')
-}
-
+// frpc 输出的 ANSI 色码（\x1b[1;34m 等）经 useLogTails.stripAnsi 单源剥离
 function toLogRow(line: string): LogRow {
   const text = stripAnsi(line)
-  return { id: ++logRowSeq, text, warn: LOG_WARN_RE.test(text) }
+  return { id: ++logRowSeq, text, warn: warnOf(text) }
 }
 
 function stateOf(p: Project): Snapshot | undefined {
@@ -411,9 +414,7 @@ function copyEndpoint(ep: ProxyEndpoint) {
 /** 把 pending 缓冲合并进渲染表（含溢出裁头）；返回是否真的有新增。 */
 function flushLogPending(): boolean {
   if (logPending.length === 0) return false
-  const next = logRows.value.concat(logPending)
-  if (next.length > LOG_MAX_LINES) next.splice(0, next.length - LOG_MAX_LINES)
-  logRows.value = next
+  logRows.value = trimLogRows(logRows.value.concat(logPending))
   logPending = []
   return true
 }
@@ -450,9 +451,7 @@ async function openLogs(projectId: string) {
   try {
     const initial = (await FrpcAPI.GetProjectLogs(projectId, 500)) ?? []
     if (generation !== logsGeneration) return // 迟到的旧请求回包：无写权，静默丢弃
-    const merged = initial.map(toLogRow).concat(logPending)
-    if (merged.length > LOG_MAX_LINES) merged.splice(0, merged.length - LOG_MAX_LINES)
-    logRows.value = merged
+    logRows.value = trimLogRows(initial.map(toLogRow).concat(logPending))
     logPending = []
   } catch (err: unknown) {
     if (generation !== logsGeneration) return // 旧请求的失败同样不污染现抽屉与冻结旗
@@ -472,12 +471,6 @@ async function openLogs(projectId: string) {
 function closeLogs() {
   drawerOpen.value = false
   drawerProjectId.value = ''
-}
-
-async function scrollToBottom() {
-  await nextTick()
-  const el = logBodyRef.value
-  if (el && logAutoScroll.value) el.scrollTop = el.scrollHeight
 }
 
 function clearLogs() {
@@ -689,7 +682,7 @@ onMounted(async () => {
         </div>
       </div>
       <div v-if="logError" class="log-error">{{ logError }}</div>
-      <div ref="logBodyRef" class="log-body" @scroll.passive="logAutoScroll = ($event.target as HTMLElement).scrollTop + ($event.target as HTMLElement).clientHeight >= ($event.target as HTMLElement).scrollHeight - 40">
+      <div ref="logBodyRef" class="log-body" @scroll.passive="onBodyScroll">
         <template v-if="logRows.length">
           <div v-for="row in logRows" :key="row.id" class="log-line" :class="{ 'log-warn': row.warn }">{{ row.text }}</div>
         </template>
