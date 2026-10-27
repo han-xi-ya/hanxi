@@ -69,7 +69,7 @@ export function Delete(id) {
 }
 
 /**
- * Get 单条全文：含解密 Text 与图片 BlobData（PNG 原始字节），并记一次使用
+ * Get 单条全文：含完整正文 Text 与图片 BlobData（PNG 原始字节），并记一次使用
  * （useCount++/lastUsedAt）。blob 回读失败如实上浮（元数据页仍可走 List）。
  * @param {string} id
  * @returns {$CancellablePromise<$models.Entry>}
@@ -205,7 +205,7 @@ export function SetPaused(paused) {
  * → 换排除表活表。失败（坏正则/超数量闸/落盘败）整表不动、错误如实上浮，
  * 运行态保持旧值——"以为设了其实没设"不接受。QueueHotkey 域外：入参忽略、
  * 现值保留（改键只走 SetQueueHotkey，校验即绑定事务在热键域）。
- * mask 域本轮仅校验入库，展示应用随遮蔽提交激活。
+ * mask 域同调用内经 rebuildMask 热换生效（坏正则已在 normalize 拒掉，不入库）。
  * @param {$models.Prefs} $in
  * @returns {$CancellablePromise<$models.Prefs>}
  */

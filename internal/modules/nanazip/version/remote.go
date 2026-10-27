@@ -2,6 +2,7 @@ package version
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -88,6 +89,39 @@ func (c *releaseCache) get() ([]Release, error) {
 	return append([]Release(nil), list...), nil
 }
 
+// maxFeedBytes releases 列表响应体读取上限。
+//
+// 与同模块 bundle.go 的 readZipEntry 是同一套"limit+1 截断识别"纪律（机主
+// 裁决：两处刻意各自保留一份、不抽公共件）——**超限的响应绝不交给解析层**：
+// 半截 JSON 只会得到 "unexpected end of JSON input"，把"响应太大/被劫持"
+// 伪装成"上游格式变了"（dbx 刚踩过并入库 ed53f90，就是这个坑）。
+//
+// 取值 8 MiB 的依据：NanaZip releases?per_page=60 实测仅 0.61 MB（约 13.7 倍
+// 余量），这是**防异常而非防正常**的上限——正常响应永远撞不到，撞到的只可能是
+// 代理劫持塞大 payload。没有数据支持动 per_page，本闸只做截断识别。
+//
+// 声明成 var 而非 const 是留测试接缝（dbx maxFeedBytes、keyops.writeNewFile
+// 同型做法）：压低上限才能在单测里覆盖"超限 → 继续下一镜像"路径。生产不改它。
+var maxFeedBytes = 8 << 20
+
+// errResponseTooLarge 响应体超过读取上限的哨兵，把"超限"与"连不上/非 200"分开。
+var errResponseTooLarge = errors.New("响应体超过上限")
+
+// readCapped 最多读 limit+1 字节，返回 (内容, 是否超限, 读错误)。与同模块
+// bundle.go 的 readZipEntry 同型（多读 1 字节专用于分辨"正好读完"与"被切断"）。
+// io.LimitReader 被切断时不报错，半截响应与完整响应长得一模一样——"读到上限"
+// 只能靠"还能再读到字节"判定，不能指望读操作自己失败。
+func readCapped(r io.Reader, limit int) ([]byte, bool, error) {
+	b, err := io.ReadAll(io.LimitReader(r, int64(limit)+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(b) > limit {
+		return b[:limit], true, nil
+	}
+	return b, false, nil
+}
+
 func fetchReleases() ([]byte, error) {
 	client := netx.NewClient(15*time.Second, nil)
 	var lastErr error
@@ -105,14 +139,19 @@ func fetchReleases() ([]byte, error) {
 			lastErr = err
 			continue
 		}
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		body, over, readErr := readCapped(resp.Body, maxFeedBytes)
 		resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
 			continue
 		}
 		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("GitHub API status %d", resp.StatusCode)
+			lastErr = fmt.Errorf("GitHub API %s: status %d", url, resp.StatusCode)
+			continue
+		}
+		if over {
+			// 截断响应**不往下交给解析层**：交下去只会得到 "unexpected end of JSON input"。
+			lastErr = fmt.Errorf("%w: %s 的响应超过 %d MiB", errResponseTooLarge, url, maxFeedBytes>>20)
 			continue
 		}
 		return body, nil

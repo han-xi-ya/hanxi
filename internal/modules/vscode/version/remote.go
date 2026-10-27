@@ -1,8 +1,10 @@
 package version
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -87,7 +89,41 @@ type manifest struct {
 // downloadClient HEAD/GET 官方端点客户端（12s 超时，与 apiClient 同档）。
 func downloadClient() *http.Client { return netx.NewClient(12*time.Second, nil) }
 
-// fetchJSON 拉取 JSON 响应体（错误带 URL 上下文）。
+// maxJSONBytes fetchJSON 响应体读取上限，**防异常而非防正常**。
+//
+// 依据（实测 2026-10-24）：本函数只服务官方更新网关的两个 KB 级端点——
+// /api/releases/stable 返回 3,492 字节（约 60 个版本串），/api/update feed
+// 返回 476 字节。取 256 KiB ≈ 最大实测值的 75 倍：上游把列表条目翻几倍、
+// feed 多带几个字段都撞不到；真撞到的只可能是异常响应（代理劫持塞大 payload、
+// 错误页带附件之类），到那一步宁可明确报错也不让半截/伪造内容进解析层。
+// 不照抄 dbx 的 8 MiB——那是 GitHub releases 全量列表（实测 13 MB 级）的体量，
+// 搬到这里等于没有闸。
+//
+// 声明成 var 而非 const 是留测试接缝：压低上限才能在单测里覆盖"正好等于
+// 上限 / 超限"边界路径（dbx maxFeedBytes 同型做法）。生产不改它。
+var maxJSONBytes = 256 << 10
+
+// readCapped 最多读 limit+1 字节，返回 (内容, 是否超限, 读错误)。
+//
+// 与 dbx/version 的同名件同型、刻意不抽公共件（机主裁决：重复家族保持独立）。
+// **多读那 1 字节是重点**：io.LimitReader 被切断时不报任何错，半截响应和完整
+// 响应在它手里长得一模一样——"读到上限"必须靠"还能再读到字节"来判定，而不是
+// 指望读操作自己失败。
+func readCapped(r io.Reader, limit int) ([]byte, bool, error) {
+	b, err := io.ReadAll(io.LimitReader(r, int64(limit)+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(b) > limit {
+		return b[:limit], true, nil
+	}
+	return b, false, nil
+}
+
+// fetchJSON 拉取 JSON 响应体（错误一律带 URL 与真实状态码上下文）。
+// 闸门次序照 dbx fetchReleasesPage：读错误 > 状态码 > 超限——**被切断的响应
+// 绝不交给解析层**，交下去只会得到一句 "unexpected end of JSON input"，把
+// "响应太大/被劫持"伪装成"上游格式变了"。
 func fetchJSON(client *http.Client, url string, out any) error {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -99,10 +135,22 @@ func fetchJSON(client *http.Client, url string, out any) error {
 		return err
 	}
 	defer resp.Body.Close()
+	body, over, readErr := readCapped(resp.Body, maxJSONBytes)
+	if readErr != nil {
+		return fmt.Errorf("GET %s: 读取响应体失败: %w", url, readErr)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: status %d", url, resp.StatusCode)
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	if over {
+		return fmt.Errorf("GET %s: 响应体超过 %d 字节上限，截断响应不交解析层", url, maxJSONBytes)
+	}
+	// 先在读取上限内取齐响应体，再喂给原语义的流式 Decoder（Decode 只读一个
+	// JSON 值、容忍尾随字节——刻意不换成 Unmarshal，保持既有解析行为不变）。
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(out); err != nil {
+		return fmt.Errorf("GET %s: status %d 响应体无法解析: %w", url, resp.StatusCode, err)
+	}
+	return nil
 }
 
 // resolveRelease HEAD 版本化下载端点（跟随 302）解析出最终 CDN 直链、

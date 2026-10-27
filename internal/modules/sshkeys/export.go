@@ -67,7 +67,7 @@ func (l *ledger) exportConf() (ExportSummary, error) {
 		return summary, nil
 	}
 
-	backup, err := writeConfAtomic(confPath, content)
+	backup, err := writeConfAtomic(confPath, content, false)
 	if err != nil {
 		return summary, err
 	}
@@ -224,17 +224,28 @@ func renderForExport(items []HostEntry) (ExportSummary, string, error) {
 	return summary, content, nil
 }
 
-// writeConfAtomic 备份 → 临时文件 → 改名 → 读回复核。返回备份路径（原文件不存在则空）。
-func writeConfAtomic(path, content string) (string, error) {
+// writeConfAtomic 原子写：（按 keepBackup 决定是否备份）→ 临时文件 → 改名 → 读回复核。
+// 返回实际留下的备份路径（未备份或原文件不存在则空串）。
+func writeConfAtomic(path, content string, keepBackup bool) (string, error) {
 	if dirErr := os.MkdirAll(filepath.Dir(path), 0o700); dirErr != nil {
 		return "", fmt.Errorf("无法准备 %s 所在目录: %w", filepath.Dir(path), dirErr)
 	}
+	// keepBackup 的分界是**这份文件是不是只有 hanxi 自己造得出**：
+	//   - 产物 hanxi.conf 传 false —— 它是账本的渲染结果，随时可重生成。给它留 .bak 只是在
+	//     用户的 ~/.ssh 里多放一份清单副本（别名/地址/用户/密钥路径都在里面），既不是退路、
+	//     又是可能外泄的东西。机主 2026-10-24 实测到"撤销后还留着 .bak"正是这条的产物。
+	//   - 用户的 ~/.ssh/config 传 true —— 里面有别人手写的段，改砸了必须能还原。
 	backup := ""
-	if old, rerr := os.ReadFile(path); rerr == nil {
-		backup = path + backupSuffix
-		if werr := os.WriteFile(backup, old, 0o600); werr != nil {
-			return "", fmt.Errorf("备份原产物失败，写入中止: %w", werr)
+	if keepBackup {
+		if old, rerr := os.ReadFile(path); rerr == nil {
+			backup = path + backupSuffix
+			if werr := os.WriteFile(backup, old, 0o600); werr != nil {
+				return "", fmt.Errorf("备份原文件失败，写入中止: %w", werr)
+			}
 		}
+	} else if _, statErr := os.Stat(path + backupSuffix); statErr == nil {
+		// 旧版本会给产物留 .bak；这次写顺带清掉，否则升级到新版后那份垃圾永远躺在那儿。
+		_ = os.Remove(path + backupSuffix)
 	}
 
 	tmp, err := os.CreateTemp(filepath.Dir(path), confFileName+".tmp-*")
@@ -265,7 +276,7 @@ func writeConfAtomic(path, content string) (string, error) {
 func ensureInclude(configPath string) (bool, error) {
 	raw, err := os.ReadFile(configPath)
 	if errors.Is(err, os.ErrNotExist) {
-		_, wErr := writeConfAtomic(configPath, includeBlock())
+		_, wErr := writeConfAtomic(configPath, includeBlock(), true)
 		return wErr == nil, wErr
 	}
 	if err != nil {
@@ -275,7 +286,7 @@ func ensureInclude(configPath string) (bool, error) {
 		return true, nil
 	}
 	next := strings.TrimRight(string(raw), "\n") + "\n\n" + includeBlock()
-	_, wErr := writeConfAtomic(configPath, next)
+	_, wErr := writeConfAtomic(configPath, next, true)
 	return wErr == nil, wErr
 }
 
@@ -313,7 +324,7 @@ func stripInclude(configPath string) (bool, error) {
 	if next != "" {
 		next += "\n"
 	}
-	_, wErr := writeConfAtomic(configPath, next)
+	_, wErr := writeConfAtomic(configPath, next, true)
 	return wErr == nil, wErr
 }
 

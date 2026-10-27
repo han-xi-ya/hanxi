@@ -310,3 +310,115 @@ func TestImportLocalRejects(t *testing.T) {
 		t.Error("安装版目录应被拒绝导入")
 	}
 }
+
+// --- fetchJSON 限幅与截断识别（readCapped 边界 + 闸门次序诚实性） ---
+
+// withMaxJSONBytes 临时压低读取上限（测试接缝，见 remote.go maxJSONBytes 注释）。
+func withMaxJSONBytes(t *testing.T, n int) {
+	t.Helper()
+	old := maxJSONBytes
+	maxJSONBytes = n
+	t.Cleanup(func() { maxJSONBytes = old })
+}
+
+// padJSONList 把版本列表 JSON 体补白到恰好 n 字节（数组记号间空白合法），
+// 用于精确命中 readCapped 的"正好等于上限 / 超限 1 字节"边界。
+func padJSONList(t *testing.T, n int) []byte {
+	t.Helper()
+	const item = `"1.136.1"`
+	pad := n - len("[]") - len(item)
+	if pad < 0 {
+		t.Fatalf("目标长度 %d 小于 JSON 本体", n)
+	}
+	return []byte("[" + strings.Repeat(" ", pad) + item + "]")
+}
+
+func TestFetchJSONCapped(t *testing.T) {
+	const limit = 64
+	withMaxJSONBytes(t, limit)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/under", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(padJSONList(t, limit-8)) })
+	mux.HandleFunc("/exact", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(padJSONList(t, limit)) })
+	mux.HandleFunc("/over", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(padJSONList(t, limit+1)) })
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	var got []string
+	if err := fetchJSON(srv.Client(), srv.URL+"/under", &got); err != nil {
+		t.Fatalf("小于上限应正常解析: %v", err)
+	}
+	got = nil
+	if err := fetchJSON(srv.Client(), srv.URL+"/exact", &got); err != nil {
+		t.Fatalf("正好等于上限不得报超限: %v", err)
+	}
+	if len(got) != 1 || got[0] != "1.136.1" {
+		t.Errorf("正好等于上限的响应应完整可用: %+v", got)
+	}
+	got = nil
+	err := fetchJSON(srv.Client(), srv.URL+"/over", &got)
+	if err == nil {
+		t.Fatal("超过上限必须报错")
+	}
+	if !strings.Contains(err.Error(), "超过") || !strings.Contains(err.Error(), "上限") {
+		t.Errorf("超限错误应说破体积超限: %v", err)
+	}
+	if strings.Contains(err.Error(), "无法解析") {
+		t.Errorf("超限响应被交给了解析层（伪装成格式问题）: %v", err)
+	}
+}
+
+func TestFetchJSONErrorHonesty(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/proxy-502", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("<html>proxy blew up</html>"))
+	})
+	mux.HandleFunc("/html-200", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<!doctype html><html>hijacked</html>"))
+	})
+	mux.HandleFunc("/empty-200", func(w http.ResponseWriter, _ *http.Request) {})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	var got []string
+	err := fetchJSON(srv.Client(), srv.URL+"/proxy-502", &got)
+	if err == nil || !strings.Contains(err.Error(), "status 502") {
+		t.Errorf("5xx 应报真实状态码: %v", err)
+	}
+	if err != nil && strings.Contains(err.Error(), "无法解析") {
+		t.Errorf("5xx 不该被伪装成 JSON 解析失败: %v", err)
+	}
+	err = fetchJSON(srv.Client(), srv.URL+"/html-200", &got)
+	if err == nil || !strings.Contains(err.Error(), "status 200") || !strings.Contains(err.Error(), "'<'") {
+		t.Errorf("200+HTML 错误应带状态码 200 与非法字符线索: %v", err)
+	}
+	err = fetchJSON(srv.Client(), srv.URL+"/empty-200", &got)
+	if err == nil || !strings.Contains(err.Error(), "status 200") || !strings.Contains(err.Error(), "EOF") {
+		t.Errorf("200 空体错误应带状态码 200 与 EOF: %v", err)
+	}
+}
+
+func TestFetchJSONReadError(t *testing.T) {
+	// 服务端声明 Content-Length 后连接提前掐断：读错误必须原样上报，
+	// 不能静默降级成"解析失败"或空结果。
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		_, _ = conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 512\r\n\r\n[\"1.136.1\""))
+		_ = conn.Close()
+	}))
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	var got []string
+	err := fetchJSON(srv.Client(), srv.URL+"/x", &got)
+	if err == nil {
+		t.Fatal("连接提前断开应报错")
+	}
+	if !strings.Contains(err.Error(), "读取响应体失败") || !strings.Contains(err.Error(), "EOF") {
+		t.Errorf("读错误应原样上报（带 EOF 痕迹）: %v", err)
+	}
+}

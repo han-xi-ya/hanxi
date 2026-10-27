@@ -42,6 +42,10 @@ export function CreateDesktopShortcut() {
 
 /**
  * DownloadVersion 后台下载指定版本：立即返回，全程经事件 subnetdesk:version-download 推送进度。
+ * 回执词表：started（已受理）/ already-installed（已装免下）/ in-progress（同版本
+ * 名册在飞，连点去重不起第二路；前端视图对未知词静默，与 started 同路）。
+ * 后台协程全程持 drain 租约（ADR-0001 §1.4，rustdesk 同族样板），门拒即不启动、
+ * 以 error 事件如实回执。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */
@@ -96,7 +100,9 @@ export function ImportLocal(srcPath) {
  * InstallVersion 下载并安装指定版本的安装版（MSI，后台编排）：进度经事件
  * subnetdesk:version-download（kind=installer）推送；安装本体是 Windows Installer
  * 前台向导（含 UAC），全程由用户操作，Hanxi 只等待结果并以注册表探测做事实核验。
- * 与 DownloadVersion 共用下载锁：Windows Installer 同一时刻只允许一个装机任务。
+ * 与 DownloadVersion 同用"通道+版本"名册去重（安装版通道独立键）：同版本连点
+ * 不起第二路 MSI 下载、不弹第二个向导；后台协程全程持 drain 租约（rustdesk
+ * 同族样板）。Windows Installer 的系统级单任务互斥仍由 msiexec 退出码 1618 兜底。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */

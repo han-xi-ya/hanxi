@@ -2,6 +2,7 @@ package version
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,9 +24,17 @@ import (
 var userAgent = product.UserAgent()
 
 const (
-	repoOwner  = "Syngnat"
-	repoName   = "GoNavi"
-	releaseURL = "https://api.github.com/repos/" + repoOwner + "/" + repoName + "/releases?per_page=100"
+	repoOwner = "Syngnat"
+	repoName  = "GoNavi"
+
+	// perPageFirst release 列表首页页数（原 100）：列表只用于挑最近版本，取
+	// 若干条即可，与 frpc/douzy/markeron 等家族模块同为 60 档。信息损失如实记：
+	// 上游 release 总数 2026-10-24 经 API Link 头实测为 88 条，降到 60 会舍弃最早
+	// 的 28 条——"挑最近版本"的消费用途下可接受（dbx 同理由降到 30），确需远古
+	// 版本走导入本地通道兜底。总数随上游发布继续增长，本注释只对本日实测负责。
+	perPageFirst = 60
+	// perPageSmall 仍超限时的降级页（dbx 同型取首页约 1/3）。
+	perPageSmall = 20
 
 	// cacheTTL 远程 Release 列表内存缓存时长（规避 GitHub 未认证 60 次/小时限流）
 	cacheTTL = 10 * time.Minute
@@ -74,19 +83,61 @@ type asset struct {
 	Digest string `json:"digest"` // 官方 sha256（格式 "sha256:<hex>"）
 }
 
-// apiClient GitHub API 请求客户端（12s 超时）
+// apiClient GitHub API 请求客户端（12s 超时）。传输层挂 netx 混合闸
+// LoopbackAwareProxyFunc：外网 GitHub 镜像照旧跟随系统代理（踩坑 #35 的
+// 收口），回环恒定直连——单测的 httptest 靶（127.0.0.1）若被本机 7890 型
+// 代理接管即成 502（netx 纪律与 artifact.Fetch 下载内核同规；本模块
+// downloader.go 亦是同一闸）。
 func apiClient() *http.Client {
-	return netx.NewClient(12*time.Second, nil)
+	tr := netx.Transport()
+	tr.Proxy = netx.LoopbackAwareProxyFunc()
+	return &http.Client{Timeout: 12 * time.Second, Transport: tr}
 }
 
-// fetchJSON 按候选地址逐个尝试，成功返回响应体
+// maxFeedBytes 响应体读取上限。
+//
+// 原来这里是"LimitReader 读满 8 MiB 就当正常结果返回"，而 io.LimitReader 被切断时
+// 不报任何错——半截 JSON 与完整响应同形，于是把"响应太大"伪装成"上游格式变了"
+// （同族 dbx 已因此炸过，实测 13.3 MB）。gonavi 当前 per_page=60 首页约 1.5 MB，
+// 距 8 MiB 上限余量充足（原 100 档实测 2.54 MB 同样不炸），但截断识别必须补上：
+// 下次上游 changelog 变长，报出来的才是真话而非误导。声明成 var 而非 const 是为了
+// 留一个测试接缝——把上限压低才能在单测里覆盖"超限 → 降页重试"整条路径（仓内 dbx
+// 同型做法）。生产不改它。
+var maxFeedBytes = 8 << 20
+
+// errResponseTooLarge 响应体超过读取上限。单独一个哨兵，是为了把它与"网络失败"
+// "非 200"分开处理——只有前者值得换更小的页重试。
+var errResponseTooLarge = errors.New("响应体超过上限")
+
+// fetchJSON 取 release 列表。两层重试各管一件事，不混在一起：
+//   - 镜像回退（fetchReleasesPage 内部）：某个源连不上或返回非 200，换下一个源；
+//   - 页面降级（本函数）：所有源都报"响应过大"，说明不是源的问题而是这一页本身
+//     太大，换小页再来一轮。
+//
+// 若所有源是因别的原因失败，直接上报、不降级重试：拿小页去重试网络故障只会把
+// 真实原因（限流、断网、UA 被封）掩盖成"试了两轮都不行"，那句错误对排查毫无帮助。
 func fetchJSON(urls []string) ([]byte, error) {
+	var tooLarge error
+	for _, perPage := range []int{perPageFirst, perPageSmall} {
+		body, err := fetchReleasesPage(urls, perPage)
+		switch {
+		case err == nil:
+			return body, nil
+		case errors.Is(err, errResponseTooLarge):
+			tooLarge = err
+		default:
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("release 列表响应体始终超过 %d MiB 上限（per_page 已从 %d 降到 %d）：%w",
+		maxFeedBytes>>20, perPageFirst, perPageSmall, tooLarge)
+}
+
+// fetchReleasesPage 在候选镜像上依次尝试同一 per_page 的 release 列表。
+func fetchReleasesPage(urls []string, perPage int) ([]byte, error) {
 	var lastErr error
 	for _, base := range urls {
-		url := releaseURL
-		if !strings.HasPrefix(base, "https://api.github.com") {
-			url = base + "/repos/" + repoOwner + "/" + repoName + "/releases?per_page=100"
-		}
+		url := fmt.Sprintf("%s/repos/%s/%s/releases?per_page=%d", base, repoOwner, repoName, perPage)
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			lastErr = err
@@ -100,7 +151,7 @@ func fetchJSON(urls []string) ([]byte, error) {
 			lastErr = err
 			continue
 		}
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+		body, over, readErr := readCapped(resp.Body, maxFeedBytes)
 		resp.Body.Close()
 		if readErr != nil {
 			lastErr = readErr
@@ -110,9 +161,31 @@ func fetchJSON(urls []string) ([]byte, error) {
 			lastErr = fmt.Errorf("GitHub API %s: status %d", url, resp.StatusCode)
 			continue
 		}
+		if over {
+			// 截断的响应绝不往下交给解析层：交下去只会得到一句
+			// "unexpected end of JSON input"，把排查整个带偏（dbx 的故障就是这么来的）。
+			lastErr = fmt.Errorf("%w: %s 的响应超过 %d MiB", errResponseTooLarge, url, maxFeedBytes>>20)
+			continue
+		}
 		return body, nil
 	}
 	return nil, fmt.Errorf("all GitHub API mirrors failed: %w", lastErr)
+}
+
+// readCapped 最多读 limit+1 字节，返回 (内容, 是否超限, 读错误)。
+//
+// 多读那 1 字节是重点：io.LimitReader 被切断时不报任何错，半截响应和完整响应
+// 在它手里长得一模一样——所以"读到上限"必须靠"还能再读到字节"来判定，而不是指望
+// 读操作自己失败。
+func readCapped(r io.Reader, limit int) ([]byte, bool, error) {
+	b, err := io.ReadAll(io.LimitReader(r, int64(limit)+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if len(b) > limit {
+		return b[:limit], true, nil
+	}
+	return b, false, nil
 }
 
 // findPortableAsset 从 release 资产中筛选 Windows x64 便携 zip：资产名须过

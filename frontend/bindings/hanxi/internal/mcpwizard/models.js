@@ -16,8 +16,9 @@
  */
 
 /**
- * AccessTools 授权九开关（PLAN §6 固定键名 + N32/N34 扩充批 + AI 接入批扫描族
- * portscan/lan + 端口查杀批 portkill）。扫描键授权的是"有界主动网络探测"（见
+ * AccessTools 授权开关（PLAN §6 固定键名起步，N32/N34 扩充批、AI 接入批扫描族
+ * portscan/lan、端口查杀批 portkill、剪贴板批 clipboard 逐批入册；键集与键序以
+ * access_write.go 的 accessToolKeys 为准，本结构须随其同步扩字段）。扫描键授权的是"有界主动网络探测"（见
  * internal/mcp/tools_scan.go 的收口口径），与纯查询工具分键、默认关。
  * Portkill 是破坏族授权键（MCP 四道闸之 A1）：**「设置 → AI 接入」面板刻意不
  * 为它呈现开关行**（基建既定决策——破坏性键不进逐键 UI 防误操作，开启=机主

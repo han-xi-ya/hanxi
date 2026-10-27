@@ -49,7 +49,7 @@
  * @property {string} sharePath - 挂载共享的本地物理绝对路径
  * @property {boolean} allowUpload - 是否允许访客上传文件
  * @property {boolean} allowTextDrop - 是否允许文本/链接投递
- * @property {boolean} autoSaveToMemo - 投递的文本是否自动存入 DevMemo 备忘录
+ * @property {boolean} autoSaveToMemo - 投递的文本是否自动存入随手记（memo）
  * @property {number} maxUploadSizeMB - 单文件最大上传限制 (MB，0 为不限制)
  * @property {string} authToken - 可选访问口令 (为空表示免密局域网共享)
  */

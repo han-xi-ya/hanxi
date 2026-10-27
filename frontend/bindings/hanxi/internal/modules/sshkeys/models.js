@@ -124,7 +124,7 @@
  * @property {boolean} guarded
  * @property {boolean} guardKnown - false=判不出来，**绝不把未知当成无口令**
  * @property {number} mtimeUnix
- * @property {string} suggestPath - SuggestPath 给主机清单的下拉当值：**有私钥时是 `~/<名字>`，仅公钥时为空**。 为什么由后端给而不是前端拼：本台账只扫 `~/.ssh`（见 scanKeyDir），所以凡是列出来的 私钥必然在这台机器的 `~/.ssh` 下，`~/` 形态一定成立；换成真身绝对路径会让清单跟着 用户名漂（换机/换账户即失效），而 `~` 是 ssh 与后端 expandHome 都认的稳定写法。 这个判断的依据在扫描侧才完整，放前端就成了第二次猜测——清单里已经因为"拿台账猜 钥匙在不在"误标过一次，不再制造第二处。
+ * @property {string} suggestPath - SuggestPath 给主机清单的下拉当值：**有私钥时是 `~/.ssh/<名字>`，仅公钥时为空**。 为什么由后端给而不是前端拼：本台账只扫 `~/.ssh`（见 scanKeyDir），所以凡列出来的 私钥必然在这台机器的 `~/.ssh` 下；用 `~/.ssh/名字` 既避开真身绝对路径"跟着用户名 漂"的问题，又不像裸名字那样被 ssh 按当前目录解析（实测：裸名在 ~/.ssh 里偶然能用、 换目录即 `no such identity`）。 ⚠️ 这里曾经写成 `~/<名字>` —— 那是**漏了 `.ssh` 一层**，展开后指向用户主目录下 一个不存在的路径，清单里存了它就永远连不上。更糟的是当时的测试断言写的也是 `"~/id_used"`，**实现与测试同错所以全绿**。故本字段的行为由两条独立锁钉住： 一是这里的期望值，二是对 `expandHome` 结果与真实私钥文件的比对（keyring_test.go 的 TestListKeysAnnotatesUsedBy）——后者才真正抓住"少一层目录"这类形状错误。
  * @property {string[] | null} usedBy - UsedBy 是主机清单里引用这把钥匙的别名。**这条存在的理由是防误删**： 私钥文件被删而清单还指着它，后果是"那条永远连不上而人看不出为什么"。
  * @property {boolean} usedByKnown - UsedByKnown 说清 UsedBy 到底是"判过、没人用"还是**根本没判**。 不能只靠"空数组"表达：引用判定要靠私钥路径做 SameFile 比对，所以 ① 孤儿 .pub 行（没有私钥可比）、② 清单读不动时，都只能得到空名单。 若前端把它渲染成"清单里没有主机用它"，就是**把未判说成没人用**——而这句 正是删除决策现场最常被引用的一句，等于给误删发通行证。
  */

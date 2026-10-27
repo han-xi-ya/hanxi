@@ -98,7 +98,8 @@ export function ImportLocal(srcDir) {
 }
 
 /**
- * ListInstalledVersions 获取本地已安装版本列表。
+ * ListInstalledVersions 获取本地已安装版本列表（按版本降序，最新在前，
+ * imported- 兜底目录由 ListInstalled 的 importedRank 闸沉底）。
  * @returns {$CancellablePromise<version$0.LMVersionInfo[] | null>}
  */
 export function ListInstalledVersions() {

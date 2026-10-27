@@ -18,7 +18,7 @@
  * @property {PortStatus} status
  * @property {string} service - 识别出的服务名称 (如 http, ssh, mysql, redis)
  * @property {string} banner - 抓取到的响应特征或标题 (如 nginx/1.24.0, OpenSSH 8.9)
- * @property {string} fingerprint - 原始指纹或证书等详情
+ * @property {string} fingerprint - wire 兼容保留位：现行探测链不填充（恒空）
  * @property {number} latencyMs - 响应延迟 (ms)
  */
 

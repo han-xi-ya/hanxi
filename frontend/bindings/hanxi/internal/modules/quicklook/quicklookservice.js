@@ -33,6 +33,8 @@ import * as $models from "./models.js";
  * 追加版本，managed-declarative 资产形态）——journal 先落盘再副作用，进度阶段
  * 迁移逐步 Advance，收口经观察面 Handle 自动落账并广播 operation:changed
  * （与既有模块事件双通道并行，Wave 4-B 接线，ccswitch/markeron 同构）。
+ * 回执词表：started（已受理）/ already-installed（已装免下）/ in-progress（同版本
+ * 名册在飞，连点去重不起第二路；前端 downloadOutcome 对未知词静默，与 started 同路）。
  * @param {string} targetVersion
  * @returns {$CancellablePromise<string>}
  */

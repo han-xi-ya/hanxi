@@ -485,3 +485,40 @@ func TestSuggestAliasRPCMatchesLedger(t *testing.T) {
 		t.Error("派生不出时应报错要求显式命名，前端据此提示")
 	}
 }
+
+// TestExportDoesNotLitterProductBackup 钉 2026-10-24 那条：产物是可重生成的渲染结果，
+// 给它留 .bak 只是在用户 ~/.ssh 里多放一份清单副本（别名/地址/用户/密钥路径都在里面），
+// 既不是退路又可能外泄。新版写完还要顺带清掉旧版留下的那份。
+func TestExportDoesNotLitterProductBackup(t *testing.T) {
+	home := useFakeHome(t)
+	l := newLedger(t.TempDir())
+	if err := l.add(goodHost("srv-a")); err != nil {
+		t.Fatalf("新增失败: %v", err)
+	}
+	if _, err := l.exportConf(); err != nil {
+		t.Fatalf("首次导出失败: %v", err)
+	}
+
+	// 伪造旧版本留下的产物备份，验证新版写入时会一并清掉。
+	stale := filepath.Join(home, confFileName+backupSuffix)
+	if err := os.WriteFile(stale, []byte("旧版留下的产物备份"), 0o600); err != nil {
+		t.Fatalf("伪造残留失败: %v", err)
+	}
+
+	// 改账本逼一次真实写入（内容一致时 exportConf 会短路，不产文件动作）。
+	updated := goodHost("srv-a")
+	updated.Note = "改过"
+	if err := l.update(updated); err != nil {
+		t.Fatalf("更新失败: %v", err)
+	}
+	sum, err := l.exportConf()
+	if err != nil {
+		t.Fatalf("二次导出失败: %v", err)
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Error("旧版残留的产物 .bak 应被清掉")
+	}
+	if sum.BackupPath != "" {
+		t.Errorf("产物不该再产生备份，实得 %q", sum.BackupPath)
+	}
+}
