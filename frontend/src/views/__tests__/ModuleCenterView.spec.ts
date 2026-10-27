@@ -132,7 +132,7 @@ describe('ModuleCenterView', () => {
     w.unmount()
   })
 
-  it('健康维度筛选档「有可用更新 N」：读 state.health 分桶，卡片呈现词表健康徽标（W2b）', async () => {
+  it('健康维度筛选档「有可用更新 N」：读 state.health 分桶，卡片呈现词表健康徽标', async () => {
     appSvc.ListCatalog.mockResolvedValue([cat('memo'), cat('wifi'), cat('frpc')])
     appSvc.ListModuleStates.mockResolvedValue([
       st('memo', { health: 'update-available', summary: 'running-update', remoteVersion: '1.2.3' }),

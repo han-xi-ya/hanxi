@@ -46,7 +46,7 @@ const svc = vi.hoisted(() => ({
   RemoveMsixCache: vi.fn(),
   LaunchMsix: vi.fn(),
   CleanMsixOrphan: vi.fn(),
-  // 批次二新 RPC（bindings 待再生，spec 全 mock 顶替）
+  // 强制结束/三态闸等新 RPC（bindings 已生成，spec 全 mock 顶替）
   ForceQuitExternal: vi.fn(),
 }))
 
@@ -744,7 +744,7 @@ describe('TranslucentTBView AV 打包对照联动（优先语义，降级钮共�
     wrapper.unmount()
   })
 
-  it('打包线预读失败（不可用）→ 对照钮缺席、降级钮零变化（既有 36 例口径）', async () => {
+  it('打包线预读失败（不可用）→ 对照钮缺席、降级钮零变化', async () => {
     stubDefaults(
       avFailed,
       { installed: [installed20262], releases: [release20262Msix, release20261] },
@@ -915,7 +915,7 @@ describe('TranslucentTBView external banner 分形态（打包版在册改判）
   })
 })
 
-// ---------- 2026-09-27 批次二：强制结束钮 / P1-10 三态闸 / P0-3 回访重取 ----------
+// ---------- 强制结束钮 / P1-10 三态闸 / P0-3 回访重取 ----------
 
 describe('TranslucentTBView external 强制结束钮（机主裁决件）', () => {
   it('external 态钮序含「⛔ 强制结束」（退出前位）；danger 确认→RPC→成功 toast；取消零 RPC；非 external 态无此钮', async () => {

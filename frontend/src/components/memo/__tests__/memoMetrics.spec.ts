@@ -142,7 +142,7 @@ describe('parseTagTokens 速记标签解析', () => {
   })
 })
 
-describe('flattenPastedLines 多行粘贴并条（速记卡 M3 语义，收口轮两面共用）', () => {
+describe('flattenPastedLines 多行粘贴并条（速记卡语义，收口轮两面共用）', () => {
   it('单行与全空行返回 null——消费方零干预放行原生插入', () => {
     expect(flattenPastedLines('本就一行')).toBeNull()
     expect(flattenPastedLines('')).toBeNull()

@@ -576,7 +576,7 @@ describe('banner external 分形态（2026-09-27 机主实拍改判）', () => {
     expect(b?.text).not.toContain('非 Hanxi 托管')
   })
 
-  it('external + 打包版未装 → warn 话术点名「⛔ 强制结束」（批次二改口）', async () => {
+  it('external + 打包版未装 → warn 话术点名「⛔ 强制结束」', async () => {
     svc.GetMsixState.mockResolvedValue({ installed: false, version: '', packageFamily: 'f', cache: [] })
     const a = createTBAdapter()
     await a.msix.refresh()

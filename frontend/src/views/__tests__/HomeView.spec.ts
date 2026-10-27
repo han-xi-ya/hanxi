@@ -1,5 +1,5 @@
 // 工作台首页特征测试（Wave 2 重构，UI 专项 §7.2/§7.4 + ADR-0001 §1.8；
-// W2b 更新感知链点亮后改动态导入模式——useModuleCatalog 为模块级单例，
+// 更新感知链点亮后改动态导入模式——useModuleCatalog 为模块级单例，
 // 须经 vi.resetModules 逐例隔离）：
 // 锁死"数据铁律"——运行列表只来自 initialized∧enabled（不再渲染完整目录/启停钮）、
 // 摘要为真实计数 + 可用更新卡 = ListModuleStates 健康投影（update-available）计数、
@@ -312,7 +312,7 @@ describe('HomeView（工作台首页）', () => {
     w.unmount()
   })
 
-  // ── W2b：更新感知链点亮 ──
+  // ── 更新感知链点亮 ──
 
   it('可用更新摘要卡常亮真实计数：无 update-available 投影时计数 0，更新列表区整区隐藏不占位', async () => {
     stubCore([mod('memo', '随手记', { initialized: true })], [nav('memo', '/ext/memo', '随手记')])

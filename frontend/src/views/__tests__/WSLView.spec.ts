@@ -690,7 +690,7 @@ describe('WSLView 官方发行版清单并入添加实例·商店源（W4）', (
     expect(api.InstallDistroTo).toHaveBeenCalledWith('Ubuntu-24.04', 'D:\\wsl')
   })
 
-  it('清单空态自带「↻ 重新查询」（P1-1：修复空态指向不存在的刷新钮）', async () => {
+  it('清单空态自带「↻ 重新查询」（修复空态指向不存在的刷新钮）', async () => {
     const w = await setup()
     api.ListOnlineDistros.mockResolvedValue([])
     await w.findAll('.main-tab-btn')[2].trigger('click')
