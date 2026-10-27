@@ -66,7 +66,7 @@ export function buildLibraryDigest(
     `- 便签条数：${items.length}`,
     `- 敏感遮罩条目：${excluded > 0 ? `${excluded} 条已排除，明文未写入本文件` : '无'}`,
     '',
-    '> 本文件为只读汇总稿；需要可回灌的单条文件请用详情浮层的「导出 .md」。',
+    '> 本文件为只读汇总稿；需要可回灌的单条文件请用阅读页的「导出 .md」。',
   ]
   const sections = items.map((item) => {
     const meta = [

@@ -18,28 +18,10 @@ const loadError = ref('')
 const collectedAt = ref('')
 // purgeBusy 两清理动作共享：UI 层单飞（后端 purgeMu 同锁互斥，同一时刻至多一种在飞）
 const purgeBusy = ref(false)
-const purgeResult = ref<PurgeLedgerResult | null>(null)
+const purgeResult = ref<PurgeResult | null>(null)
 const purgeKind = ref<'standby' | 'workingsets' | ''>('')
 const { showToast } = useToast()
 const { confirm } = useConfirm()
-
-// PurgeResult 逐项链账字段 + EmptyWorkingSets RPC：bindings 再生后生成物已含
-// 二者，本视图的超集类型与显式桥接属过渡遗存（待后续收敛删除，直接用绑定类型）。
-type PurgeLedgerResult = PurgeResult &
-  Partial<{
-    beforeTotalBytes: number
-    pagesMeasured: boolean
-    beforeStandbyBytes: number
-    afterStandbyBytes: number
-    beforeModifiedBytes: number
-    afterModifiedBytes: number
-    processesEmptied: number
-    processesSkipped: number
-  }>
-
-const SysInfoExtAPI = SysInfoAPI as unknown as {
-  EmptyWorkingSets(): Promise<PurgeLedgerResult>
-}
 
 async function refresh() {
   loading.value = true
@@ -63,7 +45,7 @@ async function runPurge(kind: 'standby' | 'workingsets') {
   purgeResult.value = null
   purgeKind.value = kind
   try {
-    const result = kind === 'standby' ? ((await SysInfoAPI.PurgeStandby()) as PurgeLedgerResult) : await SysInfoExtAPI.EmptyWorkingSets()
+    const result = kind === 'standby' ? await SysInfoAPI.PurgeStandby() : await SysInfoAPI.EmptyWorkingSets()
     purgeResult.value = result
     if (result.success) {
       showToast(purgeReceiptText(result))
@@ -104,7 +86,7 @@ function fmtBytes(v?: number): string {
   return v && v > 0 ? fmtSize(v) : '0 B'
 }
 
-function purgeReceiptText(r: PurgeLedgerResult): string {
+function purgeReceiptText(r: PurgeResult): string {
   if (purgeKind.value === 'workingsets') {
     return `已收 ${r.processesEmptied ?? 0} 个进程工作集（跳过 ${r.processesSkipped ?? 0} 个打不开/受保护），可用内存 +${fmtBytes(r.availableDeltaBytes)}`
   }
@@ -113,7 +95,7 @@ function purgeReceiptText(r: PurgeLedgerResult): string {
 
 // purgeLedgerText 逐项链账：把"这按钮管哪一格"讲透——待机前后、可用增量；
 // 页列表拿不到实测时如实降级（后端禁编数，前端禁装懂）。
-function purgeLedgerText(r: PurgeLedgerResult): string {
+function purgeLedgerText(r: PurgeResult): string {
   const parts: string[] = []
   if (r.pagesMeasured) {
     parts.push(`清理前待机 ${fmtBytes(r.beforeStandbyBytes)} → 后 ${fmtBytes(r.afterStandbyBytes)}`)

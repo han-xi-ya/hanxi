@@ -6,7 +6,7 @@
 // 边界：识别能力全部在上游服务，本视图不做任何本地推理（与后端口径一致）。
 import { computed, onMounted, ref, watch } from 'vue'
 import * as OcrAPI from '../../bindings/hanxi/internal/modules/ocr/ocrservice'
-import type { DropResult as GeneratedDropResult, EngineInfo, HostedVersion, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
+import type { DropResult, EngineInfo, HostedVersion, ImageRef, OcrOutcome, ServiceState, SnipHotkeyState } from '../../bindings/hanxi/internal/modules/ocr/models'
 import type { Record as HistoryRecord } from '../../bindings/hanxi/internal/history/models'
 import { useToast } from '../composables/useToast'
 import { useClipboard } from '../composables/useClipboard'
@@ -27,14 +27,6 @@ import UiHistoryDialog from '../components/ui/UiHistoryDialog.vue'
 const { showToast } = useToast()
 const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
-
-// 绑定已含 engine/activated/shouldStart 三字段（ocr/models.js DropResult），本局部交截型
-// 系再生前遗留、与绑定型已无差，可删回落 GeneratedDropResult。
-type DropResult = GeneratedDropResult & {
-  engine: string
-  activated: boolean
-  shouldStart: boolean
-}
 
 // ---------- 状态 ----------
 const state = ref<ServiceState | null>(null) // null = 首帧尚未取得

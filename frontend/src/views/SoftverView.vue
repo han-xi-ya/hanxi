@@ -189,9 +189,9 @@ const downloaded = computed(() => snap.value?.downloaded ?? null)
 function dlText(p: InstallerProgress): string {
   if (!p.fileName && !p.done) return '下载进行中…'
   if (p.total > 0) {
-    return `下载中 ${Math.floor((p.done / p.total) * 100)}% · ${fmtDirSize(p.done)} / ${fmtDirSize(p.total)}`
+    return `下载中 ${Math.floor((p.done / p.total) * 100)}% · ${fmtSize(p.done)} / ${fmtSize(p.total)}`
   }
-  return `下载中 ${fmtDirSize(p.done)}`
+  return `下载中 ${fmtSize(p.done)}`
 }
 
 const installs = computed(() => snap.value?.installs ?? [])
@@ -232,13 +232,6 @@ function scanRunning(d: DirSlot): ScanProgress | undefined {
   return scanStates.value[d.id]
 }
 
-// fmtDirSize：空值 → '—'，≥1GiB 一位小数 GB 呈现。fmtSize 已扩 GB/TB 档（N21①），本档与之
-// 等值——系历史扩档前的升档壳，可并入 fmtSize（待清，先如实标注）。
-function fmtDirSize(bytes?: number | null): string {
-  if (!bytes) return '—'
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
-  return fmtSize(bytes)
-}
 function originText(o: string): string {
   const map: Record<string, string> = {
     registry: '注册表', hkcu: 'HKCU 登记', default: '默认路径',
@@ -317,18 +310,18 @@ onActivated(async () => {
               <span class="dir-name">安装目录</span>
               <span class="chip chip-neutral">{{ originText(iv.slot.origin) }}</span>
               <span class="mono cell-path" :title="iv.slot.path">{{ iv.slot.path }}</span>
-              <span v-if="iv.install.estimatedSizeKb > 0" class="dim">安装器估计 {{ fmtDirSize(iv.install.estimatedSizeKb * 1024) }}</span>
+              <span v-if="iv.install.estimatedSizeKb > 0" class="dim">安装器估计 {{ fmtSize(iv.install.estimatedSizeKb * 1024) }}</span>
             </span>
             <span class="dir-ops">
               <template v-if="scanRunning(iv.slot)">
                 <span class="scan-live mono">
-                  {{ fmtDirSize(scanRunning(iv.slot)!.bytes) }} · {{ scanRunning(iv.slot)!.files }} 文件
+                  {{ fmtSize(scanRunning(iv.slot)!.bytes) }} · {{ scanRunning(iv.slot)!.files }} 文件
                 </span>
                 <UiButton small @click="cancelScan(iv.slot)">取消</UiButton>
               </template>
               <template v-else>
                 <span v-if="iv.slot.size" class="size-text">
-                  实占 <b class="mono">{{ fmtDirSize(iv.slot.size.bytes) }}</b>
+                  实占 <b class="mono">{{ fmtSize(iv.slot.size.bytes) }}</b>
                   · {{ iv.slot.size.files }} 文件
                   <span v-if="iv.slot.size.skipped > 0" class="field-warn-inline">（{{ iv.slot.size.skipped }} 项不可读，偏小）</span>
                   · {{ fmtDate(iv.slot.size.scannedAt) }}
@@ -379,7 +372,7 @@ onActivated(async () => {
               <span class="dir-name">已下载安装包</span>
               <span class="chip chip-neutral">官方 {{ downloaded.version }}</span>
               <span class="mono cell-path" :title="downloaded.path">{{ downloaded.fileName }}</span>
-              <span class="size-text">{{ fmtDirSize(downloaded.bytes) }} · {{ fmtDate(downloaded.downloadedAt) }}</span>
+              <span class="size-text">{{ fmtSize(downloaded.bytes) }} · {{ fmtDate(downloaded.downloadedAt) }}</span>
             </span>
             <span class="dir-ops">
               <UiButton small @click="revealInstaller">打开位置</UiButton>
@@ -413,14 +406,14 @@ onActivated(async () => {
           <span class="dir-ops">
             <template v-if="scanRunning(d)">
               <span class="scan-live mono">
-                {{ fmtDirSize(scanRunning(d)!.bytes) }} · {{ scanRunning(d)!.files }} 文件 ·
+                {{ fmtSize(scanRunning(d)!.bytes) }} · {{ scanRunning(d)!.files }} 文件 ·
                 <span class="cell-path" :title="scanRunning(d)!.current">{{ scanRunning(d)!.current }}</span>
               </span>
               <UiButton small @click="cancelScan(d)">取消</UiButton>
             </template>
             <template v-else>
               <span v-if="d.size" class="size-text">
-                <b class="mono">{{ fmtDirSize(d.size.bytes) }}</b> · {{ d.size.files }} 文件
+                <b class="mono">{{ fmtSize(d.size.bytes) }}</b> · {{ d.size.files }} 文件
                 <span v-if="d.size.skipped > 0" class="field-warn-inline">（{{ d.size.skipped }} 项不可读，偏小）</span>
                 · {{ fmtDate(d.size.scannedAt) }}
               </span>

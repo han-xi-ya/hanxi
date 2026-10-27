@@ -29,7 +29,7 @@ const ACCENTS: ReadonlyArray<{ key: AccentMode; label: string; dot: string }> = 
 // 界面字体三档：栈字面只在 fonts.css 档位覆写块单源定义，本表只管键与文案。
 const FONTS: ReadonlyArray<{ key: FontMode; label: string; desc: string }> = [
   { key: 'kai', label: '默认·文楷', desc: '霞鹜文楷 GB 屏幕版正文 + 思源缺字回落（当前标定）' },
-  { key: 'plain', label: '系统朴素', desc: '整体回落系统字链，无随仓字体加载，N36 前旧观感' },
+  { key: 'plain', label: '系统朴素', desc: '整体回落系统字链，不加载随仓字体' },
   { key: 'mono', label: '等宽极客', desc: 'JetBrains Mono 主理拉丁/数字，汉字仍回落文楷' },
 ]
 

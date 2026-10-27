@@ -52,13 +52,8 @@ const emit = defineEmits<{
   (e: 'saved'): void
 }>()
 
-// wheel/Set 面绑定已再生，本组交叉型声明属同形冗余（可删归代码清理另议），
-// 字段与 settings.TrayMenuItem 逐一对齐。
-type WheelMenuAPI = {
-  GetWheelMenu(): Promise<TrayMenuItem[]>
-  SetWheelMenu(items: TrayMenuItem[]): Promise<void>
-}
-const svc = AppAPI.AppService as typeof AppAPI.AppService & WheelMenuAPI
+// 轮盘面（Get/SetWheelMenu）与托盘面同走生成绑定，无须本地交叉型桥接。
+const svc = AppAPI.AppService
 
 const isWheel = computed(() => props.scope === 'wheel')
 // 文案词头：'托盘'/'轮盘'（空态与加载态文案族与宿主 spec 在册依赖保持一致）

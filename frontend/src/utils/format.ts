@@ -52,9 +52,10 @@ export function fmtDateTimeSmart(iso?: string | null, now: Date = new Date()): s
 
 /** 时长格式化：h>0 时 `h:mm:ss`，否则 `mm:ss`（运行时长/耗时共用）。 */
 export function fmtDuration(sec: number): string {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
+  const total = Math.floor(sec) // 入参可能含小数（毫秒换算），先取整再分档
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
   const pad = (n: number) => String(n).padStart(2, '0')
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
 }

@@ -75,7 +75,7 @@ const {
    760px 断点档保留）。 */
 .fileshare-page {
   width: 100%;
-  max-width: 1440px;
+  max-width: var(--container-wide);
   margin: 0 auto;
   padding: 28px 36px 40px;
   overflow-x: hidden;

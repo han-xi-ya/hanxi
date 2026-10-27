@@ -266,7 +266,8 @@ export const RELEASE_FORM_WORD: Record<string, string> = {
 /** 形态短词解析：空/未定义回空串（无 chip 可画）；词表外原样透传。 */
 export function releaseFormWord(form?: string | null): string {
   if (!form) return ''
-  return RELEASE_FORM_WORD[form] ?? form
+  // 仅自有键命中词表：防原型成员（如 constructor）逃逸成函数值
+  return Object.prototype.hasOwnProperty.call(RELEASE_FORM_WORD, form) ? RELEASE_FORM_WORD[form] : form
 }
 
 /** 发布物展示元数据（与 packages/go/hostfeed.AssetNote 的 JSON 契约同形）。 */

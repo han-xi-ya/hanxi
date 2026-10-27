@@ -10,12 +10,9 @@ import { stepOf, type ManagedRowState } from '../managed/managedProgress'
 import ManagedVersionDot from '../managed/ManagedVersionDot.vue'
 import { fmtSize, fmtDate } from '../../utils/format'
 
-// 绑定已随 Go 侧 Form 字段再生（EverythingRelease 自带可选 form，hostfeed.Form 即字符串枚举）；
-// 本 ReleaseRow 别名系再生前遗留的局部交截，与现绑定型已无差，可删回落绑定型。
-type ReleaseRow = EverythingRelease & { form?: string }
 
 const props = defineProps<{
-  releases: ReleaseRow[]
+  releases: EverythingRelease[]
   installed: EverythingVersionInfo[]
   downloading: Record<string, DownloadTicket>
   loading: boolean
