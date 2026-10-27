@@ -55,6 +55,7 @@ import { usePolling } from '../../composables/usePolling'
 import { useToast } from '../../composables/useToast'
 import { getErrorMessage } from '../../utils/errors'
 import { SUMMARY_META, toolStateMeta } from '../../constants/status'
+import { useDoneTicketRetire } from './useDoneTicketRetire'
 
 /** 动作失败 toast 前缀（逐字沿用视图现词；primary/toggle 失败为裸错误串，无前缀）。 */
 const ACTION_ERROR_PREFIX = {
@@ -74,8 +75,6 @@ const ACTION_ERROR_PREFIX = {
 /** 状态轮询间隔（全托管视图现状统一 2500ms；uptime 每秒从 startedAt 重算）。 */
 const STATUS_POLL_MS = 2500
 const UPTIME_TICK_MS = 1000
-/** 下载完成票据的表内驻留时长（800ms 后清除并重拉版本列表）。 */
-const DONE_TICK_RETIRE_MS = 800
 
 /**
  * 控制条/版本面板消费的控制台共享状态与动作面（reactive 解包后的现值视图）。
@@ -208,6 +207,10 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
 
   // Shell 接线钩子（见 ManagedConsoleStore.goVersions）：局部可变 + 访问器外露。
   let goVersionsFn: (() => void) | null = null
+
+  // done 票据驻留摘除调度器（标准面形制：800ms、摘除不复核、计时器一次性自灭
+  // 不随卸载清——逐字对齐迁移前现形制，差分参数详见 useDoneTicketRetire 头注）。
+  const scheduleDoneRetire = useDoneTicketRetire()
 
   // ---------- 派生投影（只读 adapter/快照，零本地状态推断） ----------
   const state = computed(() => snap.value?.state ?? '')
@@ -554,11 +557,11 @@ export function useManagedConsole<S extends ManagedSnapshot = ManagedSnapshot, V
     if (adapter.versions.orchestration === 'custom') return
     downloading.value = { ...downloading.value, [p.key]: p }
     if (p.stage === 'done') {
-      setTimeout(() => {
+      scheduleDoneRetire(() => {
         const next = { ...downloading.value }
         delete next[p.key]
         downloading.value = next
-      }, DONE_TICK_RETIRE_MS)
+      })
       void load()
     }
   })

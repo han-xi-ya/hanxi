@@ -9,6 +9,7 @@ import { fmtSize, fmtDate } from '../utils/format'
 import { getErrorMessage } from '../utils/errors'
 import { normalizeVersion } from '../utils/version'
 import { stepOf } from './managed/managedProgress'
+import { useDoneTicketRetire } from './managed/useDoneTicketRetire'
 import ManagedVersionDot from './managed/ManagedVersionDot.vue'
 
 const emit = defineEmits<{ (e: 'version-changed'): void }>()
@@ -146,15 +147,20 @@ async function removeVersion(v: FrpVersionInfo) {
 }
 
 // 事件订阅走 useWailsEvent（setup 期注册、卸载自动注销）；toast 经全局 useToast 单源
+// done 票据驻留摘除编排收编 managed/useDoneTicketRetire（M4 归一，账见
+// docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md §五-6）；形制取迁移前逐字现值：
+// 800ms 一次性自灭、摘除不复核（登记/清尽/复核属 Douzy/SubnetDesk 形制，不擅加）。
+const scheduleDoneRetire = useDoneTicketRetire()
+
 useWailsEvent<DownloadProgress>('frpc:version-download', (p) => {
   if (!p || !p.version) return
   downloading.value = { ...downloading.value, [p.version]: p }
   if (p.stage === 'done') {
-    setTimeout(() => {
+    scheduleDoneRetire(() => {
       const next = { ...downloading.value }
       delete next[p.version]
       downloading.value = next
-    }, 800)
+    })
     loadAll()
   }
 })

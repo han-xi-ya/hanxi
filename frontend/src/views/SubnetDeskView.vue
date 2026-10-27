@@ -2,7 +2,7 @@
 // 状态 / 版本管理 / 下载进度 / 时长 ticker / 生命周期（骨架基于重构共享层：
 // usePolling/useWailsEvent/useAsyncAction/useConfirm/usePrompt/useClipboard + utils/format）
 // 与 RustDeskView 同源孪生（LAN fork），刻意保持独立：文案/端口/配置目录不同，不合并。
-import { ref, computed, onMounted, onDeactivated, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onDeactivated } from 'vue'
 import * as SubnetDeskAPI from '../../bindings/hanxi/internal/modules/subnetdesk/subnetdeskservice'
 import type { SDRelease, SDVersionInfo } from '../../bindings/hanxi/internal/modules/subnetdesk/version/models'
 import type { Snapshot } from '../../bindings/hanxi/internal/modules/subnetdesk/instance/models'
@@ -17,6 +17,7 @@ import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import { sameSnapshot } from '../components/managed/adapter'
 import { stepOf } from '../components/managed/managedProgress'
+import { useDoneTicketRetire } from '../components/managed/useDoneTicketRetire'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
 import { toolStateMeta } from '../constants/status'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -333,12 +334,13 @@ async function openRepo() {
 }
 
 // ---------- 事件订阅（自动注销）与装载 ----------
-// done 票据表内驻留 800ms 再摘（对齐 DouzyView DONE_TICK_RETIRE_MS 先例）；
-// 驻留定时器统一登记、卸载即清尽（防迟到摘除落进销毁后的组件，Douzy 同族已做），
-// 摘除前再核对当前票据仍是 done（useSnipasteDownloadTickets 的 cancelCleanup 同源
-// 纪律）：「done 后同版本 800ms 内票据被新状态取代」时，上一轮的陈旧定时器不得
-// 误删在飞进度。
-const retireTimers = new Set<ReturnType<typeof setTimeout>>()
+// done 票据驻留摘除编排收编 managed/useDoneTicketRetire（M4 归一，账见
+// docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md §五-6）；形制取本视图迁移前逐字
+// 现值——track（驻留定时器统一登记、卸载即清尽，防迟到摘除落进销毁后的组件）
+// + 摘除时刻 guard（核对当前票据仍是 done：「done 后同版本 800ms 内票据被新
+// 状态取代」时，上一轮的陈旧定时器不得误删在飞进度；
+// useSnipasteDownloadTickets 的 cancelCleanup 同源纪律的本地等价形制）。
+const scheduleDoneRetire = useDoneTicketRetire({ track: true })
 
 useWailsEvent<DownloadProgress>('subnetdesk:version-download', (t) => {
   if (!t || !t.version) return
@@ -352,14 +354,14 @@ useWailsEvent<DownloadProgress>('subnetdesk:version-download', (t) => {
   cur[t.version] = t
   commit(cur)
   if (t.stage === 'done') {
-    const timer = setTimeout(() => {
-      retireTimers.delete(timer)
-      if (map()[t.version]?.stage !== 'done') return // 已被新票据取代：本轮驻留作废
-      const next = { ...map() }
-      delete next[t.version]
-      commit(next)
-    }, 800)
-    retireTimers.add(timer)
+    scheduleDoneRetire(
+      () => {
+        const next = { ...map() }
+        delete next[t.version]
+        commit(next)
+      },
+      () => map()[t.version]?.stage === 'done', // 已被新票据取代：本轮驻留作废
+    )
     loadVersions()
   }
 })
@@ -370,12 +372,8 @@ useWailsEvent<Snapshot>('subnetdesk:instance-state', (s) => {
   if (s.state !== 'running') uptimeSec.value = 0
 })
 
-// 卸载清尽未达期的 done 驻留定时器（对齐 DouzyView 先例；驻留观感系在途体验，
-// 组件销毁后无需兑现，更不许把摘除写回已销毁的 map）
-onUnmounted(() => {
-  retireTimers.forEach(clearTimeout)
-  retireTimers.clear()
-})
+// 卸载清尽未达期的 done 驻留定时器已由 useDoneTicketRetire({ track: true }) 承接
+// （驻留观感系在途体验，组件销毁后无需兑现，更不许把摘除写回已销毁的 map）。
 
 onMounted(async () => {
   await Promise.all([refreshStatus(), loadVersions(), loadExtras()])

@@ -2,7 +2,7 @@
 // 「Douzy 全能下载器」（多平台：抖音/TikTok/YouTube/Telegram/X）：仅版本管理与安装包下载——列远程版本、下载官方
 // Windows 安装包（sha256+字节数+PE 魔数校验）、拉起上游安装向导、管理已下载包。
 // 刻意无控制台 Tab / 状态灯 / 启停：本模块不托管进程（上游内测 + 壳闭源）。
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import * as DouzyAPI from '../../bindings/hanxi/internal/modules/douzy/douzyservice'
 import type { DouzyRelease, DouzyVersionInfo } from '../../bindings/hanxi/internal/modules/douzy/version/models'
 import type { DownloadProgress } from '../../bindings/hanxi/internal/modules/douzy/version/models'
@@ -15,6 +15,7 @@ import { useClipboard } from '../composables/useClipboard'
 import { fmtSize, fmtDate } from '../utils/format'
 import ManagedVersionDot from '../components/managed/ManagedVersionDot.vue'
 import { stepOf, versionRowState } from '../components/managed/managedProgress'
+import { useDoneTicketRetire } from '../components/managed/useDoneTicketRetire'
 import PageHeader from '../components/ui/PageHeader.vue'
 import UiBanner from '../components/ui/UiBanner.vue'
 
@@ -117,23 +118,22 @@ async function openRepo() {
 }
 
 // ---------- 事件与生命周期 ----------
-// done 票据表内驻留时长（命名与取值对齐 store.ts DONE_TICK_RETIRE_MS 先例）
-const DONE_TICK_RETIRE_MS = 800
-// 清票定时器登记表：卸载统一清理，防迟到的清票写回已销毁组件
-// （三处同形的摘票编排收进 managed 共享壳，账目见 docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md §五）
-const retireTimers = ref(new Set<ReturnType<typeof setTimeout>>())
+// done 票据驻留摘除编排收编 managed/useDoneTicketRetire（母本自记"迁壳留波 2"
+// 兑现，账见 docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md §五-6）；形制取迁移前
+// 逐字现值——track（清票定时器登记、卸载统一清尽，防迟到清票写回已销毁组件；
+// 原 ref(Set) 包裹无响应式读取，按零可观测差异归一为共享件内部裸 Set），
+// 摘除不复核（本视图母本形制无 guard，勿擅加）。
+const scheduleDoneRetire = useDoneTicketRetire({ track: true })
 
 useWailsEvent<DownloadProgress>('douzy:version-download', (t) => {
   if (!t || !t.version) return
   downloading.value = { ...downloading.value, [t.version]: t }
   if (t.stage === 'done') {
-    const timer = setTimeout(() => {
-      retireTimers.value.delete(timer)
+    scheduleDoneRetire(() => {
       const next = { ...downloading.value }
       delete next[t.version]
       downloading.value = next
-    }, DONE_TICK_RETIRE_MS)
-    retireTimers.value.add(timer)
+    })
     loadVersions()
   }
 })
@@ -147,11 +147,8 @@ onMounted(async () => {
   }
 })
 
-// 卸载清尽未达期的 done 清票定时器（驻留观感系在途体验，组件销毁后无需兑现）
-onUnmounted(() => {
-  retireTimers.value.forEach(clearTimeout)
-  retireTimers.value.clear()
-})
+// 卸载清尽未达期的 done 清票定时器已由 useDoneTicketRetire({ track: true }) 承接
+// （驻留观感系在途体验，组件销毁后无需兑现）。
 </script>
 
 <template>

@@ -16,6 +16,7 @@ import { usePrompt } from '../composables/usePrompt'
 import { getErrorMessage } from '../utils/errors'
 import { sameSnapshot } from '../components/managed/adapter'
 import { stepOf } from '../components/managed/managedProgress'
+import { useDoneTicketRetire } from '../components/managed/useDoneTicketRetire'
 import { fmtSize, fmtDate, fmtDuration } from '../utils/format'
 import { toolStateMeta } from '../constants/status'
 import PageHeader from '../components/ui/PageHeader.vue'
@@ -332,6 +333,11 @@ async function openRepo() {
 }
 
 // ---------- 事件订阅（自动注销）与装载 ----------
+// done 票据驻留摘除编排收编 managed/useDoneTicketRetire（M4 归一，账见
+// docs/FRONTEND_QUALITY_REVIEW_2026-10-26.md §五-6）；形制取迁移前逐字现值：
+// 800ms 一次性自灭、摘除不复核（双表分流 map/commit 留本视图，与迁移前同构）。
+const scheduleDoneRetire = useDoneTicketRetire()
+
 useWailsEvent<DownloadProgress>('rustdesk:version-download', (t) => {
   if (!t || !t.version) return
   const isInstaller = t.kind === 'installer'
@@ -344,11 +350,11 @@ useWailsEvent<DownloadProgress>('rustdesk:version-download', (t) => {
   cur[t.version] = t
   commit(cur)
   if (t.stage === 'done') {
-    setTimeout(() => {
+    scheduleDoneRetire(() => {
       const next = { ...map() }
       delete next[t.version]
       commit(next)
-    }, 800)
+    })
     loadVersions()
   }
 })
