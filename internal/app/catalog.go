@@ -208,6 +208,18 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
+		ID:            "jsonfmt",
+		Name:          "JSON 美化",
+		Description:   "粘贴即格式化：从终端输出里抽取多段 JSON 逐段美化、剔除行首日志前缀、展开被字符串化的嵌套 JSON；数字与键序原样保留（大整数不改值）；附键路径频次统计、只读查找与按路径的显式替换；宽松写法与尾部截断自动修复并逐类声明",
+		Category:      "developer",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "keyviz",
 		Name:          "Keyviz",
 		Description:   "开源按键/鼠标可视化工具 Keyviz：MSI 托管安装、JobObject 启停与运行状态探测",

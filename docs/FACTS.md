@@ -12,9 +12,9 @@
 
 | 事实 | 现值 | 权威来源 | 复核命令（仓库根执行） |
 |---|:---:|---|---|
-| 业务模块总数 | **51** | `internal/app/catalog.go` 生成物 | `grep -c 'ID:' internal/app/catalog.go` |
-| 自建侧模块数 | **19** | `moduleTotal − hostedVersions`（叙述列与能力口径在此互换对齐，见 §二） | `go run ./scripts/docsfacts -emit` 的 `selfBuiltModules` |
-| 注册构成 | **49 常驻 + 2 条件**（`memo` / `clipboard`） | `internal/app/app.go` `modulesToRegister` | 读 `app.go` 装配段 |
+| 业务模块总数 | **52** | `internal/app/catalog.go` 生成物 | `grep -c 'ID:' internal/app/catalog.go` |
+| 自建侧模块数 | **20** | `moduleTotal − hostedVersions`（叙述列与能力口径在此互换对齐，见 §二） | `go run ./scripts/docsfacts -emit` 的 `selfBuiltModules` |
+| 注册构成 | **50 常驻 + 2 条件**（`memo` / `clipboard`） | `internal/app/app.go` `modulesToRegister` | 读 `app.go` 装配段 |
 | 托管款数 | **32** | catalog `hosted-versions` 能力 = 模块存在 `version/` 子包 | `for d in internal/modules/*/; do [ -d "$d/version" ] && basename $d; done \| wc -l` |
 | 进程托管数 | **31** | catalog `managed-process` 能力 = 存在 `instance/` 子包 | 同上换 `instance` |
 | 版本面内核委托 | **27** | `import hanxi/packages/go/artifact` 的模块数 | `grep -rl 'hanxi/packages/go/artifact' internal/modules/ \| sed 's\|internal/modules/\|\|\;s\|/.*\|\|\' \| sort -u \| wc -l` |
@@ -31,7 +31,7 @@
 1. **两把尺，勿互证**：托管叙述列（README/PRD 的表）与 catalog `hosted-versions` 计数**恰好同为 32，但集合不同**——前者含 `eartrumpet`、`frpc` 归自建列；后者含 `frpc`、不含 `eartrumpet`（它 `version/`、`instance/` 皆无）。任何一处改动都可能让两个 32 不再相等，**不要把它们当同一个数**来引用。（2026-10-12 两把尺同为 31；`heukms` 入库后同为 32——巧合延续，仍不可互证。）
 2. **图标数 ≠ 托管款数**：28 枚是"图标资产入库"口径（含 `frpc`/`ddnsgo` 两件 48px 源天花板件，与 `eartrumpet`——它在托管叙述列却既无 `version/` 亦无 `instance/`）。32 托管款与 28 枚的差集已逐名核对（2026-10-21）：`rammap`（Sysinternals 条款禁再分发二进制资产）、`vscode`（同属红线件）、`recordly`（AGPL 附加条款 + 安装器未签名）三件走「红线图标运行期本机提取」通道不落仓库（见 `docs/THIRD_PARTY_NOTICES.md` 该节与 `internal/app/runtimeicon_service.go`）；`heukms` 无开源许可证可过审、主程序名带 ™，**连运行期提取通道也不进**，界面永久回落 `generic.png`；`piik` 未入台账（headless 服务型，PRD §2.2 骨架例外④）。故 32 − 5 + 1 = 28 成立，台账键集与内嵌 PNG 由 `sources_test.go` 双向锁死。
 3. **版本号的三处硬编码**：权威是 `internal/product/identity.go`；`build/config.yml`、`build/windows/info.json`、`build/windows/msix/app_manifest.xml` 需人工同步；`frontend/package.json` 的 `0.0.0` 是 npm 占位，**不是**版本源。git tag 目前只到 `v0.2.0`——这是发布节奏事实，**不是**文档错误，任何文档笔都不得把 0.3.0 改掉。
-4. **`internal/modules/` 目录数 ≠ 模块总数**：目录 **52** 个、catalog 条目 **51** 条，差的那个仍是 `modpath`——它是公共样板件（只解析托管工具用户数据目录），无 `module.go` 注册、无 `version/`、无 `instance/`，因此既不入 `moduleTotal` 也不入托管/进程两把尺（2026-10-22 实测：`ls internal/modules \| wc -l` 得 52，`grep -c 'ID:' internal/app/catalog.go` 得 51；本次新增的第 52 个目录 `sshkeys` 有 `module.go`、已入条目，差额不变）。**别拿目录数当模块数**，那会 +1；`DeriveFacts` 的 `moduleTotal` 取 catalog 的 `ID:` 行，`hostedVersions`/`managedProcess` 取目录子包存在性，两把尺混用即本表前言点名的病根。
+4. **`internal/modules/` 目录数 ≠ 模块总数**：目录 **53** 个、catalog 条目 **52** 条，差的那个仍是 `modpath`——它是公共样板件（只解析托管工具用户数据目录），无 `module.go` 注册、无 `version/`、无 `instance/`，因此既不入 `moduleTotal` 也不入托管/进程两把尺（2026-10-22 实测：`ls internal/modules \| wc -l` 得 52，`grep -c 'ID:' internal/app/catalog.go` 得 51；本次新增的第 52 个目录 `sshkeys` 有 `module.go`、已入条目，差额不变）。**别拿目录数当模块数**，那会 +1；`DeriveFacts` 的 `moduleTotal` 取 catalog 的 `ID:` 行，`hostedVersions`/`managedProcess` 取目录子包存在性，两把尺混用即本表前言点名的病根。
 5. **显示名 ≠ 模块 ID**：`portscan` 的显示名自 `f40385b`（2026-10-20）起为「网络测试」（该页当时并标签页化为端口扫描 / 代理连通性 / SSH 三页；2026-10-22 SSH 主动检查 RPC 搬出为新模块 `sshkeys`，本页现余端口扫描 / 代理连通性两页签），但模块 ID `portscan`、目录 `internal/modules/portscan/`、MCP 授权键 `knownModuleIDs["portscan"]`、前端 `components/portscan/` 全部**不随之改名**。写「端口扫描与指纹」是旧显示名（2026-10-21 记账时：`HEAD` 上 `catalog.go`/`module_catalog.json` 两份生成物仍是该旧名，`cataloggen` 再生挂在并行会话工作区未入库；权威源 `module.go` 已随 `f40385b` 入库——此句是带日期快照，两份产物入库后即过期，按 §四 那条"状态头抓不住"由人工销）；引用 ID 或路径时 `portscan` 依旧正确。同理，`netx` 是包名不是模块 ID。
 6. **`packages/go/netx` 是第三个公共内核件，且不在闸门锁内**：`469e3e1`（2026-10-20）把显式代理拨号内核自 `portscan` 上收为 `hanxi/packages/go/netx`，现被 `internal/modules/` 下 **39** 个模块引用（2026-10-21 现取：`grep -rl 'hanxi/packages/go/netx' internal/modules/ --include=*.go \| sed 's\|internal/modules/\|\|\;s\|/.*\|\|\' \| sort -u \| wc -l`）。§一 的「版本面/实例面内核委托」两行只管 `artifact`/`supervisor`，`netx` **没有**对应的 `facts` 键——给它加锁须改 `scripts/docsfacts/main.go` 的 `DeriveFacts`（属取数逻辑变更，须与基线同批走），本表暂不新增数值行，引用此数前必重跑上面那条命令。
 

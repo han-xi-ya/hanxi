@@ -2,7 +2,7 @@
 
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
-> **更新日期**：2026-10-22（sshkeys 独立模块入库——SSH 主动检查自 portscan 拆出，模块计数 50→51；上轮 2026-10-21：netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）
+> **更新日期**：2026-10-26（jsonfmt 内置模块入库——JSON 美化，模块计数 51→52；上轮 2026-10-22：sshkeys 独立模块入库——SSH 主动检查自 portscan 拆出，模块计数 50→51；再上轮 2026-10-21：netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）
 > **技术基线**：Go ≥1.26 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration) + 共享托管内核 (packages/go) + 统一状态契约与调用门 (ADR-0001/0002/0003)
 
@@ -23,12 +23,12 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │  internal/app/  Composition Root (应用唯一装配点)       │
 │  - 生命周期管理、系统托盘 (Systray)、关闭拦截、优雅退出│
 │  - AppService (设置/目录与状态投影/操作观察面/关于)    │
-│  - 51 模块注册与调用门注入、receipt 补建、journal 恢复 │
+│  - 52 模块注册与调用门注入、receipt 补建、journal 恢复 │
 └──────┬────────────────────┬────────────────────┬───────┘
        │                    │                    │
 ┌──────▼───────────┐ ┌──────▼───────────┐ ┌──────▼───────┐
 │ internal/modules │ │ internal/extapi  │ │ internal/    │
-│ 51 个业务模块    │ │ 模块契约：生命周 │ │ settings     │
+│ 52 个业务模块    │ │ 模块契约：生命周 │ │ settings     │
 │ 自建: frpc 网络  │ │ 期 + 四维状态目  │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ 录/安装凭据/调用 │ │ 与配置持久化 │
 │ 快传 随手记等    │ │ 门/更新感知契约  │ │ ReceiptStore │
@@ -90,10 +90,10 @@ type Module interface {
 
 可选契约族（实现即接入，保持向后兼容）：`TrayCommandsProvider`（托盘命令）、`GateAware`（调用门注入，`gate.go`）、`UpdateChecker`（更新感知，`update.go`）。
 
-- **模块级别现状**：`LevelBuiltin` 为编译进主程序的内建模块；`LevelExternal` 仅是未来外部子进程扩展的枚举预留。当前 51 个模块全部为 `LevelBuiltin`，没有动态安装或加载第三方 Hanxi 插件的运行时；模块中心的"安装/卸载"是 **逻辑安装态**（见下），不涉及第三方插件的物理装卸。
+- **模块级别现状**：`LevelBuiltin` 为编译进主程序的内建模块；`LevelExternal` 仅是未来外部子进程扩展的枚举预留。当前 52 个模块全部为 `LevelBuiltin`，没有动态安装或加载第三方 Hanxi 插件的运行时；模块中心的"安装/卸载"是 **逻辑安装态**（见下），不涉及第三方插件的物理装卸。
 - **权限现状**：`Permission` 类型及 `kill-process` / `lan-scan` / `network` 常量仍保留供未来外部扩展能力握手复用，但 `Permissions()` 已从 `Module` 接口移除，当前内建模块没有统一的 Permission Gateway。模块启停、各业务服务的安全校验，以及 MCP 接入面的 `access.json` 授权是不同层次，不能表述为通用插件权限隔离。**MCP 现状（2026-10-12 按 `internal/mcp/` 实数核，原文"四个只读工具"严重低估已废）**：`toolDefs` 共 **12 件**工具、授权键共 **10 枚**（`knownModuleIDs`；memo 键下 2 工具、portkill 键下 prepare/execute 2 工具），按风险分三档——①查询只读族 8 件（envcheck/file_search/ocr/memo×2/sysinfo/log_read/clipboard_search）；②主动出网探测族 2 件（portscan/lan：只对网络做可达性探测、不改任何设备状态，但属出网动作且结果含网络拓扑）；③破坏族 2 件（portkill prepare/execute：需 `access.json` 的 portkill 键**与** `mcp/destructive.json` 机主总闸**双闸齐开**才放行，prepare 仅发放 120 秒一次性令牌、execute 复核 pid+可执行路径+启动时间三指纹后动手，系统关键进程与 hanxi 自身永久拒杀）。portkill 键刻意不进「设置 → AI 接入」面板，须机主手动改两文件开启。
 - **状态契约（Wave 0 冻结，`catalog.go` + `receipt.go`）**：`ModuleContractSchema = 1` 随投影下发，破坏性变更必须递增 schema 并在 `docs/adr/` 立案（ADR-0001）。
-  - `ModuleCatalogItem`：静态身份与能力目录（交付形态字段为 **`deliveryKind`**——2026-09-19 修订自 `delivery`，与 `ModuleState.delivery` 生命周期维度语义正交、永久异名，ADR-0001 修订记录；含 `Entrypoint` 八值入口、`capabilities`、`owner`），由 `scripts/cataloggen` 从源码证据与 composition 契约推导生成物表 `internal/app/catalog.go`（51 项，与 `scripts/fixture/module_catalog.json`、前端 `contract-enum.spec.ts` 三层同锁），基线冻结于 `scripts/fixture/module_catalog.json`，漂移由契约测试守护；
+  - `ModuleCatalogItem`：静态身份与能力目录（交付形态字段为 **`deliveryKind`**——2026-09-19 修订自 `delivery`，与 `ModuleState.delivery` 生命周期维度语义正交、永久异名，ADR-0001 修订记录；含 `Entrypoint` 八值入口、`capabilities`、`owner`），由 `scripts/cataloggen` 从源码证据与 composition 契约推导生成物表 `internal/app/catalog.go`（52 项，与 `scripts/fixture/module_catalog.json`、前端 `contract-enum.spec.ts` 三层同锁），基线冻结于 `scripts/fixture/module_catalog.json`，漂移由契约测试守护；
   - `ModuleState`：四维事实投影——Delivery(7 值) / Policy(5 值) / Runtime(7 值) / Health(9 值)，`StateInput.Project()` 按冻结优先级计算 `primaryAction` / `reason` / `summary`（八个 SummaryKey 族），页面禁止自行堆叠 if/else 推断；纯展示附加字段 `remoteVersion`（health=update-available 时的上游新版本号，由更新感知链写入、其余健康值下清空 omitempty，**不参与状态机裁决**）；`Visible()` = installed ∧ (enabled ∨ mandatory)；`CanDeliveryTransition` / `CanPolicyTransition` / `CanRuntimeTransition` 提供转换合法性门（非法转换为 0 的 DoD 守卫）；
   - `Operation`：统一表达安装、启停、更新、回滚、修复、卸载与业务调用租约（kind 8 值、queued/running/succeeded/failed/cancelled 状态机、`TxnID` 关联 journal 事务、结构化 `OperationError{code,message,recoverable}`）；
   - `receipt.go` 定义 `ReceiptStorage` 抽象与 `Receipt` 落盘 schema（字段变更须递增 Schema 并立案 ADR）。
@@ -101,7 +101,7 @@ type Module interface {
 - **逻辑安装态（Wave 1，ADR-0001 §1.5）**：`settings.ReceiptStore` 落 `<数据根>/modules/receipts/<id>.json`（tmp+rename 原子写、损坏按未安装处理并告警、同 ID 异 kind 漂移拒写）；`Registry.Install` = 登记凭据 + 默认启用（幂等、保留首次 InstalledAt），`Registry.Uninstall` = 先 SetEnabled(false) 完成 drain/析构收口、再移除凭据，用户数据默认保留。**builtin-logical 的卸载只移除逻辑凭据与入口，不释放宿主（hanxi.exe）体积——UI 文案与文档必须如实表达**。装配根在每次启动 `Register` 成功后调用 `ReceiptStore.EnsureSeen`（`known-modules.json` 已见名单账本）：**首次运行**对全部注册模块一次性补建凭据（老用户 Enabled=true→installed+enabled、false→installed+disabled，入口与数据零丢失）；**名单内模块永不补建**——用户卸载过的模块重启不复活，卸载是永久的；此后版本升级新增的模块（名单外）才自动安装（失败仅告警不阻断启动，缺凭据模块按未安装呈现、可在模块中心一键找回）。
 - **生命周期状态现状**：Registry 以 `ModuleWrapper` 的 `initialized/initializing/stopping/inFlight/failed` 标志经 `runtimeStateLocked()` 折算 Runtime 维度投影（enabled=false→inactive；init 失败滞留 failed 直到重试/收口）；`IsInitialized()` 仍是接口成员，但 Registry 当前不读取它。
 - **懒激活链路**：前端进入模块路由 → `AppService.EnsureModuleActive(id)` → `Registry.EnsureActive`（**前置 receipt 门**，未安装拒绝激活）→ 首次触发 `OnInit()`。启动预激活例外（常驻/唤出语义所需）：`wechat`（入站消息监听）、`quickmenu` / `msgboard`（全局弹窗入口）、`wsl`（USB 自动共享账本重放）。
-- **统一调用门（Wave 3）**：`Registry.Acquire(moduleID)` 是全部入口共用的唯一裁决实现，检查顺序冻结为 **blocked → receipt 已安装 → 懒激活（并发初始化一次）→ enabled/非 stopping → operation lease 入账**（安全裁决优先于安装呈现，与 `Project()` 状态机同序）；release 幂等（`defer` 即可），停用与退出的有界 drain 以租约归零为门——`SetEnabled(false)` 预算 30s、`ShutdownAll` 预算 60s，超时强制收口并 `slog.Error` 显式告警绝不静默（在途调用由模块内部锁兜底，JobObject 保证进程侧无孤儿）。模块侧注入模式（`gate.go`）：`Module` 实现可选契约 `GateAware`（`Register` 时在 Registry 锁外注入 `Gate`），service 内嵌 `LeaseHolder`，业务方法入口一行 `holder.Enter()` 接门——带 error 的方法拒则回传、纯 void 方法拒即早退、单值无 error 的方法必须先扩为 `(T, error)`，禁止"拒则回空值"的静默消化。**51 模块 RPC 全接门由 AST 穷举门守护**：`internal/app/rpc_gate_matrix_test.go` 逐模块校验 GateAware 实现、New 构造持有 LeaseHolder、持户结构体每个导出方法（= Wails 绑定面）调用 `Enter()`；豁免表只收"装配布线 setter"（`SetWailsApp`/`SetHistory`/`SetMemoHook`/`SetMainWindow`/`SetHotkeyRegistry`/`SetSnipHotkeyBinding`——Go 直调时序先于 gate 注入）。
+- **统一调用门（Wave 3）**：`Registry.Acquire(moduleID)` 是全部入口共用的唯一裁决实现，检查顺序冻结为 **blocked → receipt 已安装 → 懒激活（并发初始化一次）→ enabled/非 stopping → operation lease 入账**（安全裁决优先于安装呈现，与 `Project()` 状态机同序）；release 幂等（`defer` 即可），停用与退出的有界 drain 以租约归零为门——`SetEnabled(false)` 预算 30s、`ShutdownAll` 预算 60s，超时强制收口并 `slog.Error` 显式告警绝不静默（在途调用由模块内部锁兜底，JobObject 保证进程侧无孤儿）。模块侧注入模式（`gate.go`）：`Module` 实现可选契约 `GateAware`（`Register` 时在 Registry 锁外注入 `Gate`），service 内嵌 `LeaseHolder`，业务方法入口一行 `holder.Enter()` 接门——带 error 的方法拒则回传、纯 void 方法拒即早退、单值无 error 的方法必须先扩为 `(T, error)`，禁止"拒则回空值"的静默消化。**52 模块 RPC 全接门由 AST 穷举门守护**：`internal/app/rpc_gate_matrix_test.go` 逐模块校验 GateAware 实现、New 构造持有 LeaseHolder、持户结构体每个导出方法（= Wails 绑定面）调用 `Enter()`；豁免表只收"装配布线 setter"（`SetWailsApp`/`SetHistory`/`SetMemoHook`/`SetMainWindow`/`SetHotkeyRegistry`/`SetSnipHotkeyBinding`——Go 直调时序先于 gate 注入）。
 - **入口按投影收口（Wave 3，与 `Visible()` 同一裁决）**：导航 `Registry.GetEnabledNavs` 仅输出 installed∧enabled 模块的条目；托盘命令候选 `ListTrayCommands` 同口径过滤、执行 `RunTrayCommand` 经 `Acquire` 取租约，菜单中引用停用/卸载模块的条目随启停热重建（`AppService.SetModuleInstalled`/`SetModuleEnabled` → `broadcastModuleChange`：广播无载荷事件 `ext:changed` + `SetTrayRebuilder` 注入的托盘重建回调）；全局热键期望绑定态 = 模块启用 × 用户开关（`snipHotkeyGate` 挂 `Registry.OnLifecycle`，停用即注销 OS 键位不留按键黑洞；回调复用 `RunTrayCommand` 命令派发链，同过调用门）；MCP 无头模式 `registryGate.Check` 为取租约式（`headlessReceipts` 与 GUI 同账，无头在途调用纳入 drain 门；memo 因构造带迁移写盘不进无头 registry，特例直读 config enabled 位 + receipt 保持同语义拒绝）；独立窗口与后台预激活走 `EnsureActive`（自带 receipt 门）。**未安装或停用模块不得从任一入口旁路执行。**
 - **更新感知（Wave 4+，健康维度真实来源）**：`extapi.UpdateChecker` 可选契约——`CheckUpdate(ctx) (local, remote, hasUpdate, err)` 必须廉价（只读本地安装账目 + 带 10 分钟 TTL 缓存的远程列表）、可并发重入、不得触发懒激活或写盘；判定失败必须保持原健康值（"无可比事实"≠"有更新"，不谎报）。`internal/updatewatch.Scheduler` 由装配根从注册模块类型断言收集实现并调度：启动后一次性延迟 60s 首检（**无常驻 ticker**，让路启动风暴、避免 GitHub 匿名限流配额成本）+ `AppService.RefreshUpdates` 手动一轮（`updates_service.go`）；单轮并发 ≤3、全局预算 5 分钟、单模块预算 60 秒、同轮 in-flight 合并（single-flight）；裁决写 `registry.SetHealth(moduleID, health, remoteVersion)`（update-available 时随记上游新版本号、current 清空），结果缓存 `state/updates.json`（`checkedAt` + `available: moduleID→remoteVersion`，仅存"有更新"一侧）且启动时 `Restore` 回灌供前端首帧即时点亮；每轮收口广播 `updates:checked` 事件提示前端重拉投影。前端零新 RPC——状态与 `remoteVersion` 均随 `ListModuleStates` 既有投影携带。
 - **动态回收**：设置页停用模块时先阻止新命令并有界 drain，再调用 `OnDestroy()` 清空对象，随后在 goroutine 中触发 `runtime.GC()` 与 `debug.FreeOSMemory()` 将内存彻底归还操作系统；启用状态经 `Registry` 持久化（Store）。

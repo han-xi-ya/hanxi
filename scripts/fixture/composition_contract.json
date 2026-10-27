@@ -206,6 +206,11 @@
       "group": "network"
     },
     {
+      "id": "jsonfmt",
+      "route": "/ext/jsonfmt",
+      "group": "developer"
+    },
+    {
       "id": "subnetdesk",
       "route": "/ext/subnetdesk",
       "group": "network"
@@ -446,7 +451,7 @@
     ]
   },
   "counts": {
-    "modules": 51,
+    "modules": 52,
     "events": 99
   }
 }

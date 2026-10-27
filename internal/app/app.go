@@ -55,6 +55,7 @@ import (
 	"hanxi/internal/modules/heukms"
 	heukmsinstance "hanxi/internal/modules/heukms/instance"
 	heukmsversion "hanxi/internal/modules/heukms/version"
+	"hanxi/internal/modules/jsonfmt"
 	"hanxi/internal/modules/keyviz"
 	keyvizinstance "hanxi/internal/modules/keyviz/instance"
 	keyvizversion "hanxi/internal/modules/keyviz/version"
@@ -542,6 +543,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		portscan.New(),
 		publicip.New(plat),
 		sshkeys.New(),
+		jsonfmt.New(),
 		wifi.New(),
 		envcheck.New(plat),
 		softver.New(plat),

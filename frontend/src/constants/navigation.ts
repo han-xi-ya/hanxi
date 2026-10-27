@@ -53,6 +53,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/piik': { component: defineAsyncComponent(() => import('@/views/PiikView.vue')), moduleId: 'piik' },
   '/ext/portscan': { component: defineAsyncComponent(() => import('@/views/PortScanView.vue')), moduleId: 'portscan' },
   '/ext/sshkeys': { component: defineAsyncComponent(() => import('@/views/SshKeysView.vue')), moduleId: 'sshkeys' },
+  '/ext/jsonfmt': { component: defineAsyncComponent(() => import('@/views/JsonFmtView.vue')), moduleId: 'jsonfmt' },
   '/ext/wechat': { component: defineAsyncComponent(() => import('@/views/WechatBotView.vue')), moduleId: 'wechat' },
   '/ext/publicip': { component: defineAsyncComponent(() => import('@/views/PublicIpView.vue')), moduleId: 'publicip' },
   '/ext/portkill': { component: defineAsyncComponent(() => import('@/views/PortKillView.vue')), moduleId: 'portkill' },
@@ -191,6 +192,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   lan: 'network',
   portscan: 'network',
   sshkeys: 'network',
+  jsonfmt: 'developer',
   piik: 'network',
   publicip: 'network',
   wifi: 'network',
@@ -257,13 +259,14 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   frpc: { icon: 'app:frpc', route: '/frpc' },
   fileshare: { icon: 'i:share-2', route: '/ext/fileshare' },
   memo: { icon: 'i:sticky-note', route: '/ext/memo' },
-  // i:clipboard：A2 后端 Nav 已声明该名，矢量在册新增（N45 装配线，勿换名）。
+  // i:clipboard：与后端 Nav().Icon 同名在册，勿换名。
   clipboard: { icon: 'i:clipboard', route: '/ext/clipboard' },
   webapp: { icon: 'i:monitor', route: '/ext/webapp' },
   lan: { icon: 'i:radar', route: '/ext/lan' },
   portscan: { icon: 'i:search', route: '/ext/portscan' },
   // i:server：与后端 sshkeys Nav().Icon 同名；矢量在册（icons.ts ICON_PATHS）。
   sshkeys: { icon: 'i:server', route: '/ext/sshkeys' },
+  jsonfmt: { icon: 'i:code', route: '/ext/jsonfmt' },
   wechat: { icon: 'i:message-circle', route: '/ext/wechat' },
   publicip: { icon: 'i:globe', route: '/ext/publicip' },
   portkill: { icon: 'i:x-octagon', route: '/ext/portkill' },
