@@ -283,7 +283,7 @@ onMounted(() => {
 <style scoped>
 .versions-tab-content { display: flex; flex-direction: column; gap: 14px; }
 /* .header-row/.subtitle/.btn 家族/.tbl/.mono/.error-box，连同曾有本地复制体的
-   .control-panel/.btn-group/.inst-*/.ver-tag/.meta-line/.section-title h3 等，
+   .control-panel/.btn-group/.inst-家族/.ver-tag/.meta-line/.section-title h3 等，
    均由 components.css 全局 :where 原子承担（对拍证实同形后方删，渲染零变化）。 */
 
 /* 真散差留局部（与全局标准形有差，不可落回）： */

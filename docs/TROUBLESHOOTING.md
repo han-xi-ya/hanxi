@@ -219,7 +219,7 @@
 - **问题现象**：将包含敏感 Token 的 TOML 配置文件存盘后，遗留在磁盘被其他程序读取，或明文存储存在安全合规风险。
 - **错误根源**：直接明文保存配置文件到 AppData 目录，且实例停止后未清理临时文件。
 - **正确做法**：
-  - 敏感 Token 使用 Windows 原生 `CryptProtectData` (DPAPI) 绑定当前登录用户密钥加密存储。
+  - 敏感 Token 使用 Windows 原生 `CryptProtectData` (DPAPI) 绑定当前登录用户密钥加密存储。（**2026-10-24 已按 ADR-0004 撤销**：DPAPI 绑定"当前用户+本机"与"数据根整目录换机续用"冲突，改明文落盘，历史密文读到即判失效清空待重填。本节保留为当时的排查记录，勿照抄为现状。）
   - 运行时动态生成临时 TOML 启动 `frpc.exe`，进程结束/停止时立即擦除临时文件。
 - **避坑建议**：绝不落盘明文 Token，临时运行配置用完即删。
 
@@ -1579,3 +1579,26 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
   - 新增 `winfocus_enum_windows_test.go`（未跟踪）立了正确的 Skip 纪律：Skip 只由"创建顶层窗口失败（无交互桌面会话）"这一**环境前置探针**触发（`:121`），窗口创建成功而派发为 0 时 `t.Fatal("枚举回调一次都未派发：窗口已创建成功、桌面在场——派发断链复发")`（`:145`）。
 - **正确做法与标准修复**：① 跨"纯 Go 值 → syscall/回调参数"边界传递的键必须**单一类型来源**：本例回调入参是 `uintptr`，键就一律 `uintptr`（`atomic.Uint64` 只许供数值，供值处显式 `uintptr(...)` 转换并注释原因）。② 测试 Skip 条件必须由**环境能力**触发、不许由观测结果触发——"观察到 0 个就跳过"是自掩蔽句式，禁写；正确的形如"先造一个真实锚点（自建窗口），造不出来才 Skip"。③ 静默恒空型失效要配**真锚点断言**（枚举结果必须包含自己刚建的窗），假件与替身层挡不住这类断链。④ 遗留待清：`winfocus_stress_windows_test.go` 的 `seen == 0 → t.Skip` 旧句式实测仍在位（审查报告 §7 亦记"该模式应清"），主会话入库时顺手改判。
 - **避坑防重犯建议**：① 凡往 `sync.Map`/`map[any]any` 塞键、又从另一条路径（回调参数、反序列化字段、跨 ABI 往返值）取键的，写下来先问一句"两侧动态类型由谁保证一致"——数字相等 ≠ 键相等。② "功能没报错但也没生效"（点唤窗无反应、探测恒报无窗、闸恒走保守支）要按**恒空/恒 miss**类第一嫌疑排查：它零错误、零日志，门禁不会替你喊。③ 测试全绿的历史里，看一眼 skip 命中频率——长期全 skip 的用例等于没有用例（本条 #89 假锁、apppackage mock、#118 凌晨红同属"测试把失效过路成绿灯"病族）。
+
+### 124. windterm/termora 的 TestQuitCloseRequestSmoke 仍是 #122 旧构造：受控加压当场复现 forced-job 假红，定性为负载假红待整改
+
+- **问题现象与错误原因**：收口门禁全量 `go test -count=1 -timeout 500s ./...`（约 160 包并发）红出 `--- FAIL: TestQuitCloseRequestSmoke (3.01s) instance_test.go:545: 归因异常: instance.QuitResult{Stopped:true, Forced:true, CloseRequested:true, Method:"forced-job"}`（现树同一 `t.Fatalf` 在 :539，行漂移系用户日志取自整改前快照，不影响定性）；单包 `-count=3` 复跑全绿。**定性：#122 同族"墙钟当判据"的负载假红，不是实现竞态**。用例构造是真实子进程 `cmd /C PING.EXE -n 2 127.0.0.1`（自然寿命约 1~2s）对 `closeGracePeriod=3s`——成功分支要求"ping 自然退出 → supervisor `wait` 收口 → `onSupState` 关 settle"整条链在 3 秒墙钟预算内赶完；全量并发 CPU 饥饿时 ping 或其收口链漂过 3s，宽限定时器先赢 select，`finishQuitWith`（windterm instance.go:334-349）走 not-settled 支：`aliveCmdProc` 假 ProcessAPI 恒报在世 → verify 通过 → `sup.Stop(0)` 整树终止成功 → 确定性输出 forced-job。实现侧归因链本身是事件驱动（Quit 先捕 settle 通道、select 等待、超时后才动强杀），`CloseRequested` 与 job kill 先后**不存在未定义竞态**；红的是测试把"自然退出"押给 CPU 调度——用例的输入是机器负载，不是被测代码。
+- **排查过程**（本轮每步实测，16 核机）：
+  - 静态读归因链：`Quit`（windterm instance.go:283）→ `finishQuitWith` 决策表——`{Forced:true, CloseRequested:true, Method:"forced-job"}` 只能来自"宽限定时器先到期"一个前提，单包复跑永不复现，负载才是变量。
+  - 串行基线：`go test -count=10 -v` **10/10 绿**、每次 1.01~1.03s；再 `-count=30` **30/30 绿**、1.01~1.13s——空负载对 3s 宽限有约 2s 余量。
+  - **受控加压**（刻意不开全仓并发，避免"以病验病"）：20 个纯算 burner 协程占满 16 核，插跑同命令 `-count=10`：耗时整体翻倍至 1.97~2.53s，**9 绿 1 红**——红的那条 3.17s、`instance_test.go:539: 归因异常: QuitResult{Stopped:true, Forced:true, CloseRequested:true, Method:"forced-job"}`，与门禁日志形制一致。负载→耗时漂移→红形制对应确定，坐实"负载/墙钟敏感"类（机主记忆"并行负载会让 Go 门禁假红"又一现场）。
+  - 家族普查（工作区面 grep，口径见 #121）：`TestQuitCloseRequestSmoke` 全仓四份——rammap/snipaste 已在 2026-10-26 收口整改为因果构造（`close_smoke_test.go`：`closeByPID` 替身回报投递成功的**同时**以 `TerminateProcess(h, 0)` 当场终结子进程，毫秒级落 settle）；**windterm（instance_test.go:525）与 termora（instance_test.go:544）仍是旧构造逐字副本**，同样暴露。另 #122 点名的 `bili23/instance TestQuitStopsPollingOnNaturalExit`（instance_test.go:331）现仍在位（`ping -n 2` 对 `elapsed ≤ 4s` 墙钟断言），本轮实测未压其红但同属饥饿敏感形制。
+- **正确做法与标准修复方案**：实现不改（本轮纪律边界，亦无缺陷可改）。整改照抄族内已验证配方，不必新造：① windterm/termora 各自 instance 包新增 `close_smoke_test.go`（与 rammap/snipaste 同形），把 `engine.closeByPID = func(uint32) int { return 1 }` 改为 `closeSmokeTerminate(pid); return 1`——归因命题一字不放宽（settled→close-request），强杀支仍由 `TestQuitForcedJobSmoke` 把守；**关键不对称性照抄 #122：必须 `TerminateProcess(h, 0)` 而非 `os.Process.Kill`**（后者退出码 1 被内核落 failed，终态快照断言即红）。② bili23 那条换同款"因果驱动自然退出"形态。③ 整改落地前的调度窗纪律：全量轮此用例红了先做两步定性（本轮改没改过这条路径 + 单包串行 `-count` 复跑），命中"没改 + 全绿"即按负载假红处理，不得下"退出归因竞态"结论；门禁轮排无并行施工时段。
+- **避坑防重犯建议**：① "同名冒烟测试家族"整改落地一支后立刻全仓 grep 其余同名副本（跨模块复制粘贴是本仓惯例形态，本条四份即证据）——"改了的半边绿灯、没改的半边躺在同一负载窗里红"就是本条复发形态；本轮 windterm 正是 #122 整改 rammap/snipaste 时的漏网副本。② "真实子进程 + 固定宽限期"构造自检：子进程自然寿命对宽限期的余量是否在**负载态**仍成立——空载 1s 对 3s 有余量、饱和负载 2.5s+ 就没了；"只有空载才成立"的余量就是赌运气，改事件/因果驱动（让被测动作或显式信号终结子进程，宽限期只当上限不当赛跑对手）。③ "单包复跑全绿"只是负载假红定性的必要条件，必须再补"受控负载复现红"一侧（本条：串行 40/40 绿 + burner 负载 9 绿 1 红且形制与日志一致）；双侧证据齐了才许写定性结论（#122"复跑就绿不能当证明"的对偶——复跑不绿也要能指认负载变量）。
+
+### 125. CSS 块注释里出现 `*/` 序列会提前闭合注释：vite build 炸在选择器解析上，而 vitest 与 vue-tsc 全都看不见
+
+- **问题现象与错误原因**：PostCSS 的块注释以**第一个** `*/` 结束。写注释时列举类名家族，很容易顺手写出 `.chip-*/`、`.inst-*/` 这类形态——其中 `*/` 正是注释终止符，于是注释后半段连同后续 CSS 全被当成**选择器**解析，报 `Error: Unexpected '/'. Escaping special characters with \ may help.`。
+  本仓两处独立复发：① 2026-10-20 我新建 `components/portscan/portscanPanels.css` 时写了"全局 :where 原子（.btn/.tbl/.state-box/**.chip-*/**/.input 等）"；② 已入库的 `fc8ad87` 在 `components/FrpcVersionsTab.vue` 的 scoped 注释里写了 `.inst-*/`，把 `vite build` 直接打死（HEAD 状态下 `task check` 因此必红）。
+- **排查过程**：报错只给 `?vue&type=style&index=0&scoped=…` 与一个**相对 style 块**的行号（`4:38`），不是文件绝对行号，容易在 `<script>` 里瞎找。定位法：`awk '/<style/{f=1} f&&c<=8{print NR": "$0; c++}'` 打样式块前几行，再 `git status --short <文件>` 区分"别人在途"还是"HEAD 里就坏"（后者更要紧：说明提交时没跑前端构建）。
+- **正确做法与标准修复方案**：注释里**不出现** `*/` 序列——类名家族改写成"`.chip` 系"、"`.inst-家族"`，或把该行挪出注释。两处均已如此修掉，并在 `portscanPanels.css` 里留了同因注释。
+- **避坑防重犯建议**：
+  1. **`<style>` 块里的语法错误只有 `vite build` 能抓**：vitest 不编译样式，`vue-tsc` 也不解析 `<style>`。所以"测试全绿 + 类型零错"绝不等于能出包——交付前必须跑一次前端 build（本次两处都是这么漏过去/被抓回来的）。
+  2. 写 CSS 注释列举带连字符的类名通配时，宁可用"某某系/某某家族"这种说法，别写 `-*/`。
+  3. 怀疑同类地雷时可全仓扫一遍：`grep -rn '\.\w+-\*/' --include=*.vue --include=*.css frontend/src`（本次扫完无第三处）。
+  4. 提交前的最小门禁里应含"前端 build"；本次 HEAD 里那条坏注释是**已提交**状态被发现的，说明那一笔没走 `task check`。
