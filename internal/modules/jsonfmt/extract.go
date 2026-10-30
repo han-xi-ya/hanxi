@@ -39,12 +39,44 @@ func extractSegments(src []byte) (segs []extracted, attempts int) {
 			i++
 			continue
 		}
+		if !worthExtracting(n) {
+			// 假阳性防护：`oilStationV2.linux[31735]:` 里的 `[31735]`、数组下标 `[0]`
+			// 都是**合法 JSON 数组**。照单全收的话，用户会看到"成功抽出 N 段"而内容
+			// 全是日志里的计数碎片——那比老实报错更坏。
+			i++
+			continue
+		}
 		line, _ := lineCol(src, i)
 		segs = append(segs, extracted{n: n, line: line})
 		i = end
 	}
 	return segs, attempts
 }
+
+// worthExtracting 决定一个候选值算不算"值得交给用户的 JSON 段"。
+//
+// 取舍写明白：空容器与"单个标量的数组"（`[31735]`、`[0]`）不算——它们在日志里
+// 几乎都是进程 pid、下标、计数,照收就会把一堆碎片当成果端出去；而真实业务日志里
+// 的数组通常是对象列表（`[{...}]`）或多元素（`[1,2]`），这两类都放行。
+// 代价是"只含一个数字的数组"这种真 JSON 会被漏抽——宁可漏,不可假。
+func worthExtracting(n node) bool {
+	switch n.kind {
+	case kObject:
+		return len(n.members) > 0
+	case kArray:
+		if len(n.items) == 0 {
+			return false
+		}
+		if len(n.items) == 1 && isScalarNode(n.items[0]) {
+			return false
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func isScalarNode(n node) bool { return n.kind != kObject && n.kind != kArray }
 
 // aggregateStats 把多段的统计并成一份顶层数字（顶层 Stats 与 Segments 必须同源，
 // 不能各算各的——否则汇总行与分段明细会对不上，那是最容易骗人的两处数字）。

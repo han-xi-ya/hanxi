@@ -15,9 +15,10 @@ import (
 //  1. **只在行首匹配**已知前缀形态，绝不碰行中/行尾（值里出现 "INFO" 不受影响）；
 //  2. 括号型规则**排除** JSON 内容字符（引号、逗号、冒号、花括号），于是 `[1,2]`、
 //     `["a"]`、`{"k"` 都不会被当成前缀段；
-//  3. **剥空即回退**：某行一旦剥到只剩空白，判定为误伤（`[true]` 这类整行就是数组），
-//     该行原样保留。这条比"行首是 { 或 [ 就整行不碰"精确得多——后者会把
-//     `[2026-10-26 10:11:12] [INFO] {"a":1}` 这种以方括号时间开头、确实该剥的行一起放过。
+//  3. **两道停止条件**：a) 某行去空白后已经从 JSON 内容开头（`"` `{` `[` `}` `]` 数字 `-`）
+//     就立即停手；b) 万一剥到只剩空白，判定误伤、该行原样回退。有了 a)，
+//     `[2026-10-26 10:11:12] [INFO] {"a":1}` 这类"方括号时间开头"的行能正常剥，
+//     而 `[true]`、`[1,2]` 这种整行就是数组的行不会被削尖。
 //
 // 最后一道兜底在 service 层：**清洗后的文本仍解析不过，就退回原文报错**——
 // 宁可承认"我剥不动"，也不能把用户的数据洗坏之后交付一个漂亮但错的东西。
@@ -29,6 +30,12 @@ var prefixRules = []*regexp.Regexp{
 	regexp.MustCompile(`^\[[^\[\]{}":,]{1,64}\][\s,|>*-]*`),
 	regexp.MustCompile(`^\([^\[\]{}":,]{1,64}\)[\s,|>*-]*`),
 	regexp.MustCompile(`^<[^<>\[\]{}":,]{1,64}>[\s,|>*-]*`),
+	// syslog / journald 三段：`Oct 28 10:56:34` + 主机名 + `进程名[pid]:`。
+	// 机主的真实日志就是这形态（systemd journal 转发出来的 oilStationV2.linux[31735]: ），
+	// 早先规则族里没有它，于是"每行都带前缀的多行 JSON"两道都救不回来。
+	regexp.MustCompile(`^[A-Z][a-z]{2} {1,2}[0-9]{1,2} [0-9]{2}:[0-9]{2}:[0-9]{2}[ ]*[+-]?[0-9:]*[ ]+`),
+	regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}[ ]+`),
+	regexp.MustCompile(`^[A-Za-z0-9._/-]{1,64}\[[0-9]+\]:[ ]*`),
 	// ISO8601 / 常见 Go 日志时间，含带括号的形态
 	regexp.MustCompile(`^\[?\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:?\d{2})?\]?[\s,|>*-]*`),
 	regexp.MustCompile(`^\d{4}/\d{2}/\d{2}[ T]?\d{1,2}:\d{2}:\d{2}[\s,|>*-]*`),
@@ -59,14 +66,20 @@ func cleanLogPrefixes(src string) (cleaned string, stripped int) {
 				break
 			}
 			cur = next
-			changed = true
-			// 剥过头了：整行空掉说明这行本来就只是内容（或全行是前缀噪声）。
-			// 全行是前缀的情况交回上层按"噪声行"处理；这里先不制造空行误删。
+			// 剥到只剩空白 = 这行本身就是内容（`[true]` 这类整行数组）或纯前缀噪声，
+			// 前者绝不能削，一律原样回退。
 			if strings.TrimSpace(cur) == "" {
-				cur = line
-				changed = false
+				cur, changed = line, false
 				break
 			}
+			changed = true
+		}
+		// 判据放在**剥完之后**：只有"剩余确实从 JSON 内容开头"才承认这次剥离成功，
+		// 否则回退原行。放错一侧就废了——曾把它放在剥之前判首字符，而 syslog 的
+		// `Oct 28 10:56:34` 与 ISO 的 `2026-10-26T…` 都以数字/字母开头，于是
+		// 整行被认成"已是 JSON"，一个前缀都没剥掉（回归当场被用例抓到）。
+		if changed && !looksLikeJSONStart(cur) {
+			cur, changed = line, false
 		}
 		if changed {
 			stripped++
@@ -74,6 +87,21 @@ func cleanLogPrefixes(src string) (cleaned string, stripped int) {
 		out = append(out, cur)
 	}
 	return strings.Join(out, "\n"), stripped
+}
+
+// looksLikeJSONStart 判断（去空白后）是否已经从 JSON 内容开头：值行 `"`、对象 `{`、
+// 数组 `[`、收尾 `}`/`]`、裸值是数字或 `-`。只在剥离**之后**用它决定取舍。
+func looksLikeJSONStart(s string) bool {
+	s = strings.TrimLeft(s, " 	")
+	if s == "" {
+		return false
+	}
+	switch c := s[0]; {
+	case c == '{' || c == '}' || c == '[' || c == ']' || c == '"' || c == '-' || (c >= '0' && c <= '9'):
+		return true
+	default:
+		return false
+	}
 }
 
 // stripOnce 套一轮规则；返回新行与"是否真的剥掉了非空白内容"。

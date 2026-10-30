@@ -401,7 +401,8 @@ func TestExtractMultipleSegments(t *testing.T) {
 // TestExtractDoesNotSplitNestedJSON 外层能整体解析时，不许把它的子对象再抽成独立段
 // ——那是把一份数据切成四份，比不美化更糟。
 func TestExtractDoesNotSplitNestedJSON(t *testing.T) {
-	r := beautify(JsonFmtRequest{Text: `log line {"a":{"b":{"c":1}}}`, Indent: 2, ExtractAll: true})
+	// 两侧都带噪声：剥前缀道救不了（尾部还有杂词），只能靠抽取——这才是本用例要测的形态
+	r := beautify(JsonFmtRequest{Text: `noise here {"a":{"b":{"c":1}}} tail noise`, Indent: 2, ExtractAll: true})
 	if !r.OK {
 		t.Fatalf("应成功: %+v | %v", r, r.Warnings)
 	}
@@ -567,6 +568,10 @@ func TestFailureHintsPointRight(t *testing.T) {
 	}{
 		{"尾部截断且救不了", `{"a":"bc`, "尾部被截断", false}, // 断在字符串里：补引号等于编数据，只能报错并指方向
 		{"开头没复制全", `],"x":1}`, "开头没复制全", false},
+		// 前导文字（`请求参数 = `）：解析器在第 1 个字符就撞墙，光报"意外的字符"会让人
+		// 以为是自己 JSON 写错。这里连行列都写死——"第 8 列"是按 rune 数出来的真实位置
+		// （请求参数=7 个 rune + 1），数字错了就是位置算错，不是文案差异。
+		{"开头有前导文字", `请求参数 = {"a": 1}`, "第 1 行第 8 列", false},
 		{"纯语法错不乱猜", `{"a":tru}`, "", true},
 	}
 	for _, c := range cases {
@@ -771,6 +776,39 @@ func TestStatsAcrossExtractedSegments(t *testing.T) {
 	}
 	if r.Matches[0].Line != 1 || r.Matches[1].Line != 2 {
 		t.Errorf("命中应带原文行号: %+v", r.Matches)
+	}
+}
+
+// TestStatsLineCountsAreRealLines 行数统计数的是真的换行符。
+//
+// 期望值取自渲染形态本身而不是取自实现：2 空格缩进下单键对象就是 3 行
+// （`{`、一行键、`}`），跟单键对象 JSON.stringify(x, null, 2) 的行数一致。
+// 本轮这里恒报 1 行——那处把换行写成了"反斜杠加 n"两个字符的字面量，数不到东西
+// 又不报错，是典型的静默撒谎，所以数字要写死在测试里钉住。
+func TestStatsLineCountsAreRealLines(t *testing.T) {
+	in := "noise {\"traceId\":\"a-x\"}\nmore noise {\"traceId\":\"b-y\"}"
+	r := beautify(JsonFmtRequest{Text: in, Indent: 2, ExtractAll: true})
+	if !r.OK || len(r.Segments) != 2 {
+		t.Fatalf("应抽出 2 段: %+v | %v", r, r.Warnings)
+	}
+	for _, sg := range r.Segments {
+		if sg.Stats.LinesOut != 3 {
+			t.Errorf("单键对象缩进 2 应是 3 行，实得 %d：\n%s", sg.Stats.LinesOut, sg.Output)
+		}
+	}
+	if r.Stats.LinesOut != 6 {
+		t.Errorf("两段的行数应聚合成 6，实得 %d", r.Stats.LinesOut)
+	}
+
+	// 整段解析路径（非抽取）也要同一口径
+	s := beautify(JsonFmtRequest{Text: `{"a":1,"b":2}`, Indent: 2})
+	if !s.OK || s.Stats.LinesOut != 4 {
+		t.Errorf("两键对象缩进 2 应是 4 行，实得 %+v", s.Stats)
+	}
+	// 压缩输出只有一行
+	m := beautify(JsonFmtRequest{Text: `{"a":1,"b":2}`, Indent: 0})
+	if !m.OK || m.Stats.LinesOut != 1 {
+		t.Errorf("压缩输出应为 1 行，实得 %+v", m.Stats)
 	}
 }
 

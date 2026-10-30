@@ -89,6 +89,18 @@ func classifyFailure(msg string, off, srcLen int, src string) string {
 		return "看起来是开头没复制全：第一个实字符是 " + string(head[0]) +
 			"，说明它前面那段（含起始的 { 或 [）漏在外面。回源头把开头一起选中再复制。"
 	}
+	// 第三种方向：开头夹着说明性文字（`请求参数 = {…}`、剥不动的日志前缀行），解析器在
+	// 第一个字符就撞墙。只报"意外的字符 'O'"会把人引向"我 JSON 写错了"，而实情是
+	// "你贴进来的这段开头不是 JSON"——后面明明有完整对象。位置要给出来，让人知道往哪儿截。
+	if off <= 2 && strings.Contains(msg, "意外的字符") {
+		if i := strings.IndexAny(src, "{["); i > 2 {
+			line, col := lineCol([]byte(src), i)
+			return fmt.Sprintf("开头不是 JSON：第一个 { 或 [ 在第 %d 行第 %d 列，它前面那些"+
+				"（日志说明、`key = ` 这类前导文字）本地剥不动、也不敢硬剥（怕误伤本来就是 JSON 的行）。"+
+				"把那几行单独截出来贴一次，或者按「让 AI 提取」试——那条路会把原文交给本机模型认结构，"+
+				"返回仍要过本地校验。", line, col)
+		}
+	}
 	return ""
 }
 
