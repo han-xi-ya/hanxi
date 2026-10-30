@@ -67,7 +67,7 @@ type runtime struct {
 }
 
 // Service 暴露给前端的 AI 聊天服务。
-type Service struct {
+type AiChatService struct {
 	holder    *extapi.LeaseHolder
 	store     *store
 	workDir   string
@@ -89,7 +89,7 @@ type Service struct {
 // NewService 装配：账本落 stateDir，WorkDir 固定在 dataDir 下派生（transcript
 // 归档依赖它，见头注）。签名收目录字符串而不是 *settings.Paths：单测不需要
 // 伪造整个装配根——这也是"状态机全家可测"的前提之一。
-func NewService(holder *extapi.LeaseHolder, stateDir, dataDir string) (*Service, error) {
+func NewService(holder *extapi.LeaseHolder, stateDir, dataDir string) (*AiChatService, error) {
 	st, err := newStore(filepath.Join(stateDir, "aichat"))
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func NewService(holder *extapi.LeaseHolder, stateDir, dataDir string) (*Service,
 	if err := os.MkdirAll(wd, 0o755); err != nil {
 		return nil, fmt.Errorf("创建聊天工作目录失败: %w", err)
 	}
-	return &Service{
+	return &AiChatService{
 		holder:   holder,
 		store:    st,
 		workDir:  wd,
@@ -118,10 +118,12 @@ func NewService(holder *extapi.LeaseHolder, stateDir, dataDir string) (*Service,
 
 // CreateSession 只落账本，**不起进程**：起进程推迟到第一条消息（按下才外发，
 // 建会话不产生任何网络行为——jsonfmt 三道闸里"显式触发"的同一条纪律）。
-func (s *Service) CreateSession(title string) (*SessionRow, error) {
-	if err := s.admit(); err != nil {
+func (s *AiChatService) CreateSession(title string) (*SessionRow, error) {
+	release, err := s.holder.Enter()
+	if err != nil {
 		return nil, err
 	}
+	release()
 	if strings.TrimSpace(title) == "" {
 		title = "新会话"
 	}
@@ -136,10 +138,12 @@ func (s *Service) CreateSession(title string) (*SessionRow, error) {
 	return row, nil
 }
 
-func (s *Service) ListSessions() ([]SessionRow, error) {
-	if err := s.admit(); err != nil {
+func (s *AiChatService) ListSessions() ([]SessionRow, error) {
+	release, err := s.holder.Enter()
+	if err != nil {
 		return nil, err
 	}
+	release()
 	rows := s.store.list()
 	out := make([]SessionRow, 0, len(rows))
 	for _, r := range rows {
@@ -149,10 +153,12 @@ func (s *Service) ListSessions() ([]SessionRow, error) {
 }
 
 // RenameSession 改名只动账本。
-func (s *Service) RenameSession(id, title string) error {
-	if err := s.admit(); err != nil {
+func (s *AiChatService) RenameSession(id, title string) error {
+	release, err := s.holder.Enter()
+	if err != nil {
 		return err
 	}
+	release()
 	if strings.TrimSpace(title) == "" {
 		return errors.New("会话名不能为空")
 	}
@@ -166,10 +172,12 @@ func (s *Service) RenameSession(id, title string) error {
 }
 
 // CloseSession 结束会话进程并标记封存（transcript 保留，可复进）。
-func (s *Service) CloseSession(id string) error {
-	if err := s.admit(); err != nil {
+func (s *AiChatService) CloseSession(id string) error {
+	release, err := s.holder.Enter()
+	if err != nil {
 		return err
 	}
+	release()
 	s.teardown(id, "会话已封存（下一条消息会自动复进）")
 	row, ok := s.store.get(id)
 	if !ok {
@@ -182,10 +190,12 @@ func (s *Service) CloseSession(id string) error {
 // DeleteSession 只从账本除名并杀进程。**不删 CLI 的 transcript**——那是
 // claude 自己数据根里的文件，hanxi 越界删除等于制造第二套归档语义；
 // 需要彻底灭迹请在 claude 侧处置（此边界写在这，不让用户误会账本=全部数据）。
-func (s *Service) DeleteSession(id string) error {
-	if err := s.admit(); err != nil {
+func (s *AiChatService) DeleteSession(id string) error {
+	release, err := s.holder.Enter()
+	if err != nil {
 		return err
 	}
+	release()
 	s.teardown(id, "")
 	ok, err := s.store.remove(id)
 	if err != nil {
@@ -202,10 +212,12 @@ func (s *Service) DeleteSession(id string) error {
 // 模板同款分法：判定即归还 + 后台租约）。用户气泡由前端按 TurnID 乐观渲染，
 // 后端不回推 user 回声（实测协议里 user 类型是 tool_result 回填位，v1 无工具，
 // 造第二种"用户消息"事件等于给对账添第二个裁判）。
-func (s *Service) SendMessage(id, text string) (*SendResult, error) {
-	if err := s.admit(); err != nil {
+func (s *AiChatService) SendMessage(id, text string) (*SendResult, error) {
+	release, err := s.holder.Enter()
+	if err != nil {
 		return nil, err
 	}
+	release()
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("没有要发送的内容")
@@ -248,21 +260,10 @@ type SendResult struct {
 	TurnID string `json:"turnId"`
 }
 
-// admit 统一调用门：只做起落判定，不抱着（jsonfmt 两步门同款；
-// rpc_gate_matrix 要求导出方法全接门）。
-func (s *Service) admit() error {
-	release, err := s.holder.Enter()
-	if err != nil {
-		return err
-	}
-	release()
-	return nil
-}
-
 // ensureRuntime 拿到活的会话进程；懒起，含崩溃后的自动复进。
 // resume 与否以 started 账为准（见字段注释——两向都是实测过的形态，未验证的
 // 组合一次都不发）。租约 ctx 直接透传：停用/退出 → ctx 取消 → watcher 杀树。
-func (s *Service) ensureRuntime(id string) (*runtime, error) {
+func (s *AiChatService) ensureRuntime(id string) (*runtime, error) {
 	s.mu.Lock()
 	if rt, ok := s.runtimes[id]; ok {
 		s.mu.Unlock()
@@ -308,7 +309,7 @@ func (s *Service) ensureRuntime(id string) (*runtime, error) {
 
 // pumpEvents 内核事件 → 前端事件的翻译泵。单消费者模型（Events 只许一个
 // goroutine 读）——本函数就是那个消费者，会话活着期间不退出。
-func (s *Service) pumpEvents(id string, rt *runtime) {
+func (s *AiChatService) pumpEvents(id string, rt *runtime) {
 	for ev := range rt.session.Events() {
 		switch ev.Kind {
 		case aiagent.EventText:
@@ -356,7 +357,7 @@ func (s *Service) pumpEvents(id string, rt *runtime) {
 }
 
 // teardown 拆进程（幂等；不碰 started——复进账要留着）。
-func (s *Service) teardown(id, note string) {
+func (s *AiChatService) teardown(id, note string) {
 	s.mu.Lock()
 	rt, ok := s.runtimes[id]
 	if ok {
@@ -378,7 +379,7 @@ func (s *Service) teardown(id, note string) {
 	rt.lease.Release()
 }
 
-func (s *Service) resetReap(id string, rt *runtime) {
+func (s *AiChatService) resetReap(id string, rt *runtime) {
 	if rt.reap != nil {
 		rt.reap.Reset(s.idleReap)
 		return
@@ -398,6 +399,6 @@ func abbrevTitle(text string) string {
 
 // 事件出口三件套经 s.emitEvent（注入位定义处有口径说明）。事件名与
 // app.go RegisterEvents、composition_contract.json 三处同改，漏一处闸门红。
-func (s *Service) emitTimeline(item TimelineItem) { s.emitEvent("aichat:timeline", item) }
-func (s *Service) emitState(st SessionState)      { s.emitEvent("aichat:session-state", st) }
-func (s *Service) emitStats(ts TurnStats)         { s.emitEvent("aichat:turn-stats", ts) }
+func (s *AiChatService) emitTimeline(item TimelineItem) { s.emitEvent("aichat:timeline", item) }
+func (s *AiChatService) emitState(st SessionState)      { s.emitEvent("aichat:session-state", st) }
+func (s *AiChatService) emitStats(ts TurnStats)         { s.emitEvent("aichat:turn-stats", ts) }

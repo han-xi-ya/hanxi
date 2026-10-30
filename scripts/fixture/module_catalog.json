@@ -2,6 +2,27 @@
   "schema": 1,
   "items": [
     {
+      "id": "aichat",
+      "name": "AI 聊天",
+      "description": "驱动本机 Claude Code 的聊天窗口：一个会话一个常驻进程、上下文连续，回答按块流式上屏（单轮实测 2.5~8 秒）；空闲自动回收、再发自动复进（跨进程记忆实测成立）；内容会离开本机，每个会话首条消息需确认；未装 CLI 的机器上如实报错，其余模块不受影响",
+      "category": "developer",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
       "id": "bcu",
       "name": "BC 卸载工具",
       "description": "收纳批量卸载工具 Bulk Crap Uninstaller：版本管理、JobObject 托管启停与窗口唤起",

@@ -73,7 +73,7 @@ func waitFor(t *testing.T, cond func() bool, why string) {
 	t.Fatalf("等待超时: %s", why)
 }
 
-func newTestService(t *testing.T) (*Service, *fakeStream, *capture, *[]aiagent.SessionOptions) {
+func newTestService(t *testing.T) (*AiChatService, *fakeStream, *capture, *[]aiagent.SessionOptions) {
 	t.Helper()
 	holder := extapi.NewLeaseHolder(ID) // 未注入门 = 纯内存判定（extapi 三档口径），单测直过
 	svc, err := NewService(holder, filepath.Join(t.TempDir(), "state"), filepath.Join(t.TempDir(), "data"))

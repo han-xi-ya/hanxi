@@ -7,6 +7,9 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as aichat$0 from "../../../../../hanxi/internal/modules/aichat/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as instance$0 from "../../../../../hanxi/internal/modules/bcu/instance/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -228,6 +231,9 @@ import type * as notify$0 from "../../../../../hanxi/internal/notify/models.js";
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "aichat:session-state": aichat$0.SessionState;
+            "aichat:timeline": aichat$0.TimelineItem;
+            "aichat:turn-stats": aichat$0.TurnStats;
             "bcu:instance-state": instance$0.Snapshot;
             "bcu:version-download": version$0.DownloadProgress;
             "bili23:instance-state": instance$1.Snapshot;

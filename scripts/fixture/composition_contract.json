@@ -259,9 +259,17 @@
       "id": "wsl",
       "route": "/ext/wsl",
       "group": "developer"
+    },
+    {
+      "id": "aichat",
+      "route": "/ext/aichat",
+      "group": "developer"
     }
   ],
   "events": [
+    "aichat:session-state",
+    "aichat:timeline",
+    "aichat:turn-stats",
     "bcu:instance-state",
     "bcu:version-download",
     "bili23:instance-state",
@@ -448,10 +456,18 @@
       "SetUsbShare",
       "SetUsbShareEnabled",
       "StartReadiness"
+    ],
+    "modules/aichat/aichatservice.js": [
+      "CreateSession",
+      "ListSessions",
+      "RenameSession",
+      "CloseSession",
+      "DeleteSession",
+      "SendMessage"
     ]
   },
   "counts": {
-    "modules": 52,
-    "events": 99
+    "modules": 53,
+    "events": 102
   }
 }

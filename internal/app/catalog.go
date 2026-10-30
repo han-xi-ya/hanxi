@@ -16,6 +16,18 @@ import "hanxi/internal/extapi"
 // catalogItems 是模块目录静态表，按 ID 升序生成。
 var catalogItems = []extapi.ModuleCatalogItem{
 	{
+		ID:            "aichat",
+		Name:          "AI 聊天",
+		Description:   "驱动本机 Claude Code 的聊天窗口：一个会话一个常驻进程、上下文连续，回答按块流式上屏（单轮实测 2.5~8 秒）；空闲自动回收、再发自动复进（跨进程记忆实测成立）；内容会离开本机，每个会话首条消息需确认；未装 CLI 的机器上如实报错，其余模块不受影响",
+		Category:      "developer",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "bcu",
 		Name:          "BC 卸载工具",
 		Description:   "收纳批量卸载工具 Bulk Crap Uninstaller：版本管理、JobObject 托管启停与窗口唤起",

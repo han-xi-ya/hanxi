@@ -175,7 +175,7 @@ Hanxi 将 32 款常用开源/免费桌面工具纳入统一管理（"款"的口�
 - **全局通知中心**：模块下载/实例状态/扫描进度等事件汇聚为分级通知（信息/成功/警告/错误），抽屉式查看与已读管理。
 - **内置运行日志查看器**：提供应用全局运行日志文件列表检索、多行日志实时分页查看与历史日志一键清理（凭据自动脱敏）。
 - **系统快捷直达 (Quick Launch)**：一键打开系统 `hosts` 文件、环境变量配置、网络适配器（`ncpa.cpl`）等。
-- **按需懒加载模块架构**：全部 52 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
+- **按需懒加载模块架构**：全部 53 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
 
 ---
 
@@ -238,12 +238,12 @@ hanxi/
 ├─ cmd/
 │  └─ hanxi/                    # 应用入口（Main 装配与 UAC 提权模式分流）
 ├─ internal/
-│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、52 模块统一注册)
+│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、53 模块统一注册)
 │  ├─ product/                  # 品牌身份常量（名称/标识/版本/数据目录单一真相源）
 │  ├─ domain/                   # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                   # 模块插件化抽象（Module 契约 / 懒加载注册中心 / 导航与启用状态）
 │  ├─ notify/                   # 全局通知中心（分级通知 Hub 与前端事件推送）
-│  ├─ modules/                  # 52 个功能模块（自建能力 20 + 工具托管 32，按 catalog 权威计数对账）
+│  ├─ modules/                  # 53 个功能模块（自建能力 21 + 工具托管 32，按 catalog 权威计数对账）
 │  │  ├─ 自建能力               # frpc / wechat / portscan / sshkeys / portkill / lan / publicip
 │  │  │                         # / wifi / envcheck / wsl / fileshare / memo / quickmenu
 │  │  │                         # / sysinfo / ocr / softver / webapp / msgboard / clipboard / jsonfmt

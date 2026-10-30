@@ -14,7 +14,7 @@ const ID = "aichat"
 
 // Module 是 extapi.Module 契约载体。
 type Module struct {
-	svc *Service
+	svc *AiChatService
 	// initErr 构造期失败（账本损坏/目录不可建）不 panic、不装死：Info 照常、
 	// OnInit 如实上抛，让装配根与调用门的既有报错通道去呈现。
 	initErr error
