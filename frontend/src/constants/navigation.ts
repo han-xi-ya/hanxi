@@ -54,6 +54,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/portscan': { component: defineAsyncComponent(() => import('@/views/PortScanView.vue')), moduleId: 'portscan' },
   '/ext/sshkeys': { component: defineAsyncComponent(() => import('@/views/SshKeysView.vue')), moduleId: 'sshkeys' },
   '/ext/jsonfmt': { component: defineAsyncComponent(() => import('@/views/JsonFmtView.vue')), moduleId: 'jsonfmt' },
+  '/ext/aichat': { component: defineAsyncComponent(() => import('@/views/AiChatView.vue')), moduleId: 'aichat' },
   '/ext/wechat': { component: defineAsyncComponent(() => import('@/views/WechatBotView.vue')), moduleId: 'wechat' },
   '/ext/publicip': { component: defineAsyncComponent(() => import('@/views/PublicIpView.vue')), moduleId: 'publicip' },
   '/ext/portkill': { component: defineAsyncComponent(() => import('@/views/PortKillView.vue')), moduleId: 'portkill' },
@@ -192,6 +193,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   portscan: 'network',
   sshkeys: 'network',
   jsonfmt: 'developer',
+  aichat: 'developer',
   piik: 'network',
   publicip: 'network',
   wifi: 'network',
@@ -266,6 +268,9 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   // i:server：与后端 sshkeys Nav().Icon 同名；矢量在册（icons.ts ICON_PATHS）。
   sshkeys: { icon: 'i:server', route: '/ext/sshkeys' },
   jsonfmt: { icon: 'i:code', route: '/ext/jsonfmt' },
+  // i:bot：矢量在册（icons.ts，设置页 AI 接入分区同用）；后端 Nav().Icon 已
+  // 同源改为 i:bot——侧栏与首页卡片一名一池，不留第二口径。
+  aichat: { icon: 'i:bot', route: '/ext/aichat' },
   wechat: { icon: 'i:message-circle', route: '/ext/wechat' },
   publicip: { icon: 'i:globe', route: '/ext/publicip' },
   portkill: { icon: 'i:x-octagon', route: '/ext/portkill' },
