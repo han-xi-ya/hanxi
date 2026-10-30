@@ -60,7 +60,7 @@ func (m *Module) Nav() []extapi.NavEntry {
 		ID:      ID,
 		Title:   "AI 聊天",
 		Route:   "/ext/aichat",
-		Icon:    "i:chat",
+		Icon:    "i:bot",
 		Section: extapi.SectionExt,
 		Order:   97,
 		Group:   extapi.GroupDeveloper,
