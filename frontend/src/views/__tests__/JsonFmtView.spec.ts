@@ -11,9 +11,15 @@ import { useToast } from '../../composables/useToast'
 
 const svc = vi.hoisted(() => ({
   Beautify: vi.fn(),
+  ExtractByAI: vi.fn(),
 }))
 
 vi.mock('../../../bindings/hanxi/internal/modules/jsonfmt', () => ({ JsonFmtService: svc }))
+
+// 外发确认：视图用全局 useConfirm 单例，而 ConfirmDialog 由 App.vue 顶层挂载——
+// 本测试只挂视图，对话框不存在，不 mock 就会等一个永远不会来的 settle。
+const confirmBox = vi.hoisted(() => ({ confirm: vi.fn() }))
+vi.mock('../../composables/useConfirm', () => ({ useConfirm: () => confirmBox }))
 
 async function flushMicrotasks(times = 20) {
   for (let i = 0; i < times; i++) await Promise.resolve()
@@ -65,6 +71,14 @@ afterEach(() => {
   vi.restoreAllMocks()
   useToast().clearToast()
 })
+
+// 三块内容合进一条工具栏（默认停在「查找」）：要用替换/统计得先切过去
+async function openTool(w: any, label: string) {
+  const btn = w.findAll('.jfmt-switch button').find((b: any) => b.text().includes(label))
+  expect(btn).toBeTruthy()
+  await btn!.trigger('click')
+  await flushMicrotasks()
+}
 
 describe('JsonFmtView 粘贴即出结果', () => {
   it('输入变化 300ms 防抖自动 Beautify，入参逐字等于契约（含默认开关）', async () => {
@@ -149,10 +163,14 @@ describe('JsonFmtView 结果如实上屏', () => {
     expect(meta).toContain('300')
     expect(meta).toContain('420')
     expect(meta).toContain('对象') // kind 走中文标签；后端原值由 mock 侧保证
-    // 输出区 = UiClipboardField 只读态，内容原样为后端 output
-    const out = w.findAll('textarea')[1]
-    expect(out.attributes('readonly')).toBeDefined()
-    expect(out.element.value).toBe('{\n  "a": 1,\n  "b": [1, 2]\n}')
+    // 输出区已换成着色渲染的 <pre>：只读 textarea 既不能上色，也标不出命中位置
+    const out = w.find('.jfmt-out')
+    expect(out.text()).toContain('"a": 1')
+    // 这份 mock 的值全是数字与数组，所以只断键/数字/标点三档；
+    // 字符串色档由下面那条含字符串值的用例覆盖（别在这份 mock 上断不存在的东西）
+    expect(out.find('.jf-k').exists()).toBe(true)
+    expect(out.find('.jf-n').exists()).toBe(true)
+    expect(out.find('.jf-p').exists()).toBe(true)
     w.unmount()
   })
 
@@ -229,8 +247,9 @@ describe('JsonFmtView 结果如实上屏', () => {
     expect(segs[1].text()).toContain('原第 7 行')
     expect(segs[1].text()).toContain('数组')
     expect(w.text()).toContain('共 2 段')
-    // 每段有自己的只读输出区（textarea 数 = 1 输入 + 2 段）
-    expect(w.findAll('textarea')).toHaveLength(3)
+    // 每段各自一块着色输出；textarea 只剩输入那一个
+    expect(w.findAll('.jfmt-out')).toHaveLength(2)
+    expect(w.findAll('textarea')).toHaveLength(1)
     w.unmount()
   })
   it('自动修复无需勾选：入参不带 repairTail，修复处数与明细都上屏', async () => {
@@ -299,6 +318,7 @@ describe('JsonFmtView 结果如实上屏', () => {
     await w.findAll('textarea')[0].setValue(LOG_TEXT)
     await vi.advanceTimersByTimeAsync(300)
     await flushMicrotasks()
+    await openTool(w, '统计')
     const tables = w.findAll('.jfmt-find table')
     const statsRows = tables[tables.length - 1].findAll('tbody tr')
     expect(statsRows).toHaveLength(2)
@@ -319,6 +339,7 @@ describe('JsonFmtView 结果如实上屏', () => {
     // 自动那次绝不能带 replace：改数据必须是用户按下去的
     expect(svc.Beautify.mock.calls.at(-1)![0].replace).toBeUndefined()
 
+    await openTool(w, '替换')
     const pathBox = w.findAll('.jfmt-path-input')
     expect(pathBox.length).toBeGreaterThanOrEqual(2)
     await pathBox[0].setValue('data.items[].ok')
@@ -342,6 +363,7 @@ describe('JsonFmtView 结果如实上屏', () => {
     await w.findAll('textarea')[0].setValue(LOG_TEXT)
     await vi.advanceTimersByTimeAsync(300)
     await flushMicrotasks()
+    await openTool(w, '替换')
     await w.findAll('.jfmt-path-input')[0].setValue('a.b')
     await w.findAll('.jfmt-path-input')[1].setValue('1')
     await w.findAll('button').find((b) => b.text().includes('执行替换'))!.trigger('click')
@@ -374,6 +396,7 @@ describe('JsonFmtView 结果如实上屏', () => {
     await vi.advanceTimersByTimeAsync(300)
     await flushMicrotasks()
     const before = svc.Beautify.mock.calls.length
+    await openTool(w, '替换')
     const run = w.findAll('button').find((b) => b.text().includes('执行替换'))
     await run!.trigger('click')
     await vi.advanceTimersByTimeAsync(50)
@@ -398,9 +421,303 @@ describe('JsonFmtView 结果如实上屏', () => {
     expect(use).toBeTruthy()
     await use!.trigger('click')
     await flushMicrotasks()
+    // 填进的是替换框，而替换框属「替换」档：切过去才看得见
+    await openTool(w, '替换')
     expect((w.findAll('.jfmt-path-input')[0].element as HTMLInputElement).value).toBe('data.items[].traceId')
     w.unmount()
   })
 
+
+  it('查找词在输出里原地高亮，并给出命中数与上下跳转', async () => {
+    vi.useFakeTimers()
+    svc.Beautify.mockResolvedValue({
+      ...okResult(),
+      output: '{"traceId":"abc","span":{"traceId":"abc"}}',
+      matches: [{ path: 'traceId', value: 'abc', kind: 'string' }],
+    })
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+    await w.find('.jfmt-find-input').setValue('traceId')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+
+    expect(w.findAll('.jfmt-out')[0].find('.jf-s').exists()).toBe(true) // 值字符串有色档
+    const hits = w.findAll('.jf-hit')
+    expect(hits.length).toBeGreaterThanOrEqual(2) // 键名出现两次都要标出来，不是只标第一个
+    expect(w.text()).toContain('输出内命中')
+    const next = w.findAll('button').find((b) => b.text().includes('下一个'))
+    expect(next).toBeTruthy()
+    await next!.trigger('click')
+    await next!.trigger('click')
+    expect(w.find('.jf-hit-cur').exists()).toBe(true)
+    w.unmount()
+  })
 })
 
+// ---------- AI 提取（外发路径） ----------
+// 这一族的要点不在"能不能调通"，而在**什么时候不许调**：粘贴、改开关、点美化都不许
+// 把用户内容送出机器；只有按下那个钮、并且确认过，才允许外发一次。
+describe('JsonFmtView AI 提取只在按下钮时外发', () => {
+  function aiResult() {
+    return okResult({
+      warnings: ['由本机 AI 提取：外发 1234 字节、模型返回 567 字节、耗时 3210ms（内容已经过本地 JSON 校验）'],
+    })
+  }
+
+  it('粘贴与开关变化只走本地 Beautify，ExtractByAI 一次都不调', async () => {
+    vi.useFakeTimers()
+    svc.Beautify.mockResolvedValue(okResult())
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+    // 改缩进会立刻重算——那也是"自动"路径，同样不许外发
+    await w.find('select').setValue('4')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+
+    expect(svc.Beautify.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(svc.ExtractByAI).not.toHaveBeenCalled()
+    expect(confirmBox.confirm).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('点「让 AI 提取」先要过一次外发确认，确认后才调用并把返回的交代上屏', async () => {
+    vi.useFakeTimers()
+    confirmBox.confirm.mockResolvedValue(true)
+    svc.ExtractByAI.mockResolvedValue(aiResult())
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+
+    const btn = w.findAll('button').find((b) => b.text().includes('让 AI 提取'))
+    expect(btn).toBeTruthy()
+    await btn!.trigger('click')
+    await flushMicrotasks()
+
+    expect(confirmBox.confirm).toHaveBeenCalledTimes(1)
+    // 确认文案必须把"会离开这台机器"说出来，而不是含糊的"使用 AI 处理"
+    const desc = String(confirmBox.confirm.mock.calls[0][0].description)
+    expect(desc).toContain('离开这台机器')
+    expect(desc).toContain('87 字节') // LOG_TEXT 的 UTF-8 长度；字节数要说得出具体量，不是"部分内容"
+    expect(svc.ExtractByAI).toHaveBeenCalledTimes(1)
+    expect(svc.ExtractByAI.mock.calls[0][0]).toMatchObject({
+      text: LOG_TEXT, indent: 2, sortKeys: false, unescape: true, extractAll: true, query: '',
+    })
+    // 后端那句"外发多少字节 / 耗时多久"要原样可见，一条不吞
+    expect(w.find('.jfmt-warns').text()).toContain('由本机 AI 提取')
+    expect(w.find('.jfmt-warns').text()).toContain('外发 1234 字节')
+    w.unmount()
+  })
+
+  it('取消确认就一次都不外发（也不留任何在途态）', async () => {
+    vi.useFakeTimers()
+    confirmBox.confirm.mockResolvedValue(false)
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+
+    const btn = w.findAll('button').find((b) => b.text().includes('让 AI 提取'))
+    await btn!.trigger('click')
+    await flushMicrotasks()
+
+    expect(confirmBox.confirm).toHaveBeenCalledTimes(1)
+    expect(svc.ExtractByAI).not.toHaveBeenCalled()
+    expect(w.text()).not.toContain('AI 提取中')
+    w.unmount()
+  })
+
+  it('AI 在途期间改了原文：成果不采用，但要把"为什么屏上没动静"说出来', async () => {
+    vi.useFakeTimers()
+    confirmBox.confirm.mockResolvedValue(true)
+    // 手动掌控返回时机：几十秒的在途，"什么时候回"本身就是被测行为
+    let release: (v: unknown) => void = () => {}
+    svc.ExtractByAI.mockImplementation(() => new Promise((resolve) => { release = resolve }))
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+
+    const btn = w.findAll('button').find((b) => b.text().includes('让 AI 提取'))
+    await btn!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.ExtractByAI).toHaveBeenCalledTimes(1)
+
+    // 用户等不及改了原文（这会另起一发本地 Beautify）
+    svc.Beautify.mockResolvedValue(okResult())
+    await w.findAll('textarea')[0].setValue('{"changed":1}')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+
+    release(okResult({ output: '{"STALE":1}' }))
+    await flushMicrotasks()
+
+    expect(w.text()).toContain('未采用')
+    expect(w.text()).not.toContain('STALE') // 过期成果不得倒灌上屏
+    expect(w.text()).not.toContain('AI 提取中') // 在途帽照样要摘，否则界面看着还在等
+    w.unmount()
+  })
+
+  it('按下 AI 不吃掉待发的防抖：到点本地那一发照常发出', async () => {
+    vi.useFakeTimers()
+    confirmBox.confirm.mockResolvedValue(true)
+    svc.ExtractByAI.mockImplementation(() => new Promise(() => {})) // 永不返回，只看这一发有没有被清掉
+    svc.Beautify.mockResolvedValue(okResult())
+    const w = mountView()
+    await flushMicrotasks()
+
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(svc.Beautify).not.toHaveBeenCalled() // 防抖未到期
+
+    await w.findAll('button').find((b) => b.text().includes('让 AI 提取'))!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.ExtractByAI).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(200)
+    expect(svc.Beautify).toHaveBeenCalledTimes(1) // AI 无权清防抖
+    expect(svc.Beautify.mock.calls[0][0]).toMatchObject({ text: LOG_TEXT })
+    w.unmount()
+  })
+
+  it('本地那一发在飞时按下 AI：它先回来照样上屏，AI 的成果随后也照样采用', async () => {
+    vi.useFakeTimers()
+    confirmBox.confirm.mockResolvedValue(true)
+    let releaseAI: (v: unknown) => void = () => {}
+    let releaseLocal: (v: unknown) => void = () => {}
+    svc.ExtractByAI.mockImplementation(() => new Promise((resolve) => { releaseAI = resolve }))
+    svc.Beautify.mockImplementation(() => new Promise((resolve) => { releaseLocal = resolve }))
+    const w = mountView()
+    await flushMicrotasks()
+
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(svc.Beautify).toHaveBeenCalledTimes(1) // 已在飞，尚未返回
+    await flushMicrotasks()
+
+    await w.findAll('button').find((b) => b.text().includes('让 AI 提取'))!.trigger('click')
+    await flushMicrotasks()
+    expect(svc.ExtractByAI).toHaveBeenCalledTimes(1)
+
+    // 在飞的本地发不得因为按下 AI 而作废（旧写法借用 ++reqSeq 会把它判成过期）。
+    // AI 的成果按「原文还对不对」判，两件事不能捆在一起。
+    releaseLocal(okResult())
+    await flushMicrotasks()
+    expect(w.find('.jfmt-out').text()).toContain('"a": 1')
+    expect(w.text()).not.toContain('正在格式化')
+
+    releaseAI(okResult({ output: '{"kept":1}' }))
+    await flushMicrotasks()
+    expect(w.text()).toContain('kept')
+    expect(w.text()).not.toContain('未采用')
+    w.unmount()
+  })
+
+  it('确认文案要按实测说清耗时量级（写"几秒"会让人以为卡死）', async () => {
+    vi.useFakeTimers()
+    confirmBox.confirm.mockResolvedValue(false)
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+    await w.findAll('button').find((b) => b.text().includes('让 AI 提取'))!.trigger('click')
+    await flushMicrotasks()
+    expect(String(confirmBox.confirm.mock.calls[0][0].description)).toContain('几十秒')
+    w.unmount()
+  })
+
+  it('AI 失败只说 AI 这条路，上一轮本地结果与输入都不砸掉', async () => {
+    vi.useFakeTimers()
+    confirmBox.confirm.mockResolvedValue(true)
+    svc.Beautify.mockResolvedValue(okResult())
+    svc.ExtractByAI.mockRejectedValue(new Error('本机未找到 Claude Code 命令行（claude）'))
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+    expect(w.findAll('.jfmt-out').length).toBe(1) // 本地结果已在屏
+
+    const btn = w.findAll('button').find((b) => b.text().includes('让 AI 提取'))
+    await btn!.trigger('click')
+    await flushMicrotasks()
+
+    expect(w.text()).toContain('本机未找到 Claude Code 命令行')
+    expect(w.text()).toContain('这只影响 AI 这条路')
+    expect(w.findAll('.jfmt-out').length).toBe(1) // 结果没被清空
+    expect(w.findAll('textarea')[0].element.value).toBe(LOG_TEXT) // 输入原样保留
+    expect(w.text()).not.toContain('AI 提取中') // 在途帽已摘
+    w.unmount()
+  })
+
+  it('确认框开着时连点两下，也只许外发一次', async () => {
+    vi.useFakeTimers()
+    // 故意让确认悬着不返回：弹窗那几十秒就是双击的窗口期
+    confirmBox.confirm.mockImplementation(() => new Promise(() => {}))
+    svc.ExtractByAI.mockImplementation(() => new Promise(() => {}))
+    const w = mountView()
+    await flushMicrotasks()
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    await flushMicrotasks()
+
+    const btn = w.findAll('button').find((b) => b.text().includes('让 AI 提取'))!
+    await btn.trigger('click')
+    await flushMicrotasks()
+    await btn.trigger('click') // 第二次：确认框还悬着，按钮此时必须已禁用
+    await flushMicrotasks()
+
+    expect(confirmBox.confirm).toHaveBeenCalledTimes(1)
+    expect(svc.ExtractByAI).not.toHaveBeenCalled() // 还没确认，一发都不该外发
+    w.unmount()
+  })
+
+  it('AI 成果上屏后，晚到的本地旧发不得把它顶掉', async () => {
+    vi.useFakeTimers()
+    confirmBox.confirm.mockResolvedValue(true)
+    let releaseLocal: (v: unknown) => void = () => {}
+    let releaseAI: (v: unknown) => void = () => {}
+    svc.Beautify.mockImplementation(() => new Promise((resolve) => { releaseLocal = resolve }))
+    svc.ExtractByAI.mockImplementation(() => new Promise((resolve) => { releaseAI = resolve }))
+    const w = mountView()
+    await flushMicrotasks()
+
+    await w.findAll('textarea')[0].setValue(LOG_TEXT)
+    await vi.advanceTimersByTimeAsync(300)
+    expect(svc.Beautify).toHaveBeenCalledTimes(1) // 本地发起，尚未返回
+    await flushMicrotasks()
+
+    await w.findAll('button').find((b) => b.text().includes('让 AI 提取'))!.trigger('click')
+    await flushMicrotasks()
+    releaseAI(okResult({ output: '{"fromAI":1}' }))
+    await flushMicrotasks()
+    expect(w.text()).toContain('fromAI')
+
+    // 几十毫秒前发出的那一发现在才回来（内容是"解析失败"）：不能顶掉已到手的成绩
+    releaseLocal(okResult({ ok: false, output: '', error: 'JSON 语法错误：本地这发才回来' }))
+    await flushMicrotasks()
+    expect(w.text()).toContain('fromAI')
+    expect(w.text()).not.toContain('本地这发才回来')
+
+    // 用户主动重算是**新意图**，不受"旧发优先"约束：这一发返回就该顶掉 AI 成果。
+    // （releaseLocal 这个变量在每次调用时被重新赋值，此刻指向第二发的放行口）
+    await w.find('select').setValue('4')
+    await flushMicrotasks()
+    expect(svc.Beautify).toHaveBeenCalledTimes(2)
+    releaseLocal(okResult({ output: '{"rerun":1}' }))
+    await flushMicrotasks()
+    expect(w.text()).toContain('rerun')
+    expect(w.text()).not.toContain('fromAI')
+    w.unmount()
+  })
+})

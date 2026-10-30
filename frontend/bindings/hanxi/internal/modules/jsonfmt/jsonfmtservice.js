@@ -5,8 +5,10 @@
 /**
  * JsonFmtService 暴露给前端的 JSON 美化服务。
  * 
- * 无状态、纯计算：一次调用一次返回，不发事件、不留任务。全部逻辑在 beautify 这个
- * 纯函数里，JsonFmtService 只负责接调用门——这样清洗/解析/渲染的行为不必启动 Wails 就能逐条断言。
+ * 本地路径是无状态纯计算：一次调用一次返回，不发事件、不留任务，全部逻辑在 beautify
+ * 这个纯函数里，JsonFmtService 只负责接调用门——这样清洗/解析/渲染的行为不必启动 Wails
+ * 就能逐条断言。**唯一的例外是 AI 那条**：它一次要占几十秒、还拉起一个子进程，
+ * 于是这里必须有并发状态（见 aiRunning），"无状态"这句话不能再原样说下去了。
  * @module
  */
 
@@ -20,6 +22,7 @@ import * as $models from "./models.js";
 
 /**
  * Beautify 清洗并格式化一段 JSON。
+ * 
  * Wave 3 口径：门拒绝时如实上抛，禁止回空结果冒充"解析失败"（那会让用户以为是自己的
  * JSON 有问题）。
  * @param {$models.JsonFmtRequest} req
@@ -27,4 +30,16 @@ import * as $models from "./models.js";
  */
 export function Beautify(req) {
     return $Call.ByID(1031545916, req);
+}
+
+/**
+ * ExtractByAI 把本地四道都救不了的脏文本交给模型提取，再走一遍**本地**校验与格式化。
+ * 
+ * 顺序不能反：AI 只负责"从任意文本里认出结构"，输出是否合法、数值有没有被改写，
+ * 一律由本地解析器裁决。让模型的返回直接上屏，等于把 hallucination 当成用户数据。
+ * @param {$models.JsonFmtRequest} req
+ * @returns {$CancellablePromise<$models.JsonFmtResult | null>}
+ */
+export function ExtractByAI(req) {
+    return $Call.ByID(1408248985, req);
 }
