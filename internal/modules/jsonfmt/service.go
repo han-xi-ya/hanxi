@@ -120,6 +120,9 @@ func (s *JsonFmtService) ExtractByAI(req JsonFmtRequest) (*JsonFmtResult, error)
 	// 外发字节数/返回字节数/耗时原样上屏：用户要看得见自己刚送出多少东西。
 	warns := []string{fmt.Sprintf("由本机 AI 提取：外发 %d 字节、模型返回 %d 字节、耗时 %dms",
 		aiRes.BytesIn, aiRes.BytesOut, aiRes.ElapsedMs)}
+	// 契约只放开过一格"引号最小转义"（ai.go 规则 2b）——本地验收只保证
+	// 解析得过，证明不了"除引号外一字未动"，核对义务如实交回给用户。
+	warns = append(warns, "AI 仅被允许做字符串引号的最小转义闭合，其余一字照抄；关键内容请与原文核对一遍")
 	if note != "" {
 		warns = append(warns, note)
 	}
@@ -202,13 +205,17 @@ func classifyFailure(msg string, off int, src string) string {
 		return "看起来是开头没复制全：第一个实字符是 " + string(head[0]) +
 			"，说明它前面那段（含起始的 { 或 [）漏在外面。回源头把开头一起选中再复制。"
 	}
-	if off <= 2 && strings.Contains(msg, "意外的字符") {
-		if i := strings.IndexAny(src, "{["); i > 2 {
-			line, col := lineCol([]byte(src), i)
-			return fmt.Sprintf("开头不是 JSON：第一个 { 或 [ 在第 %d 行第 %d 列，它前面那些"+
-				"（日志说明、`key = ` 这类前导文字）本模块不猜也不剥——按「AI 一键美化」处理，"+
-				"或自己把那几行截掉再贴一次。", line, col)
-		}
+	// 通用判据：错误发生在第一个 {/[ **之前**。样本矩阵抓出两连雷：
+	// ① 旧条件 off<=2 只盖得住 `key = {...}`；② 放宽成"意外的字符"仍漏——
+	// ISO 时间戳"2026-..."会被当**合法数字标量**解析成功，报的是"之后还有
+	// 多余内容"（探针实测 col=5），根本不走"意外的字符"文案。两种报错形态
+	// 在这一分支下语义相同：消化掉的"值"只是真 JSON 前面的残头。
+	if i := strings.IndexAny(src, "{["); i > 2 && off < i &&
+		(strings.Contains(msg, "意外的字符") || strings.Contains(msg, "之后还有多余内容")) {
+		line, col := lineCol([]byte(src), i)
+		return fmt.Sprintf("开头不是 JSON：第一个 { 或 [ 在第 %d 行第 %d 列，它前面那些"+
+			"（日志时间戳、`key = ` 这类前导文字）本模块不猜也不剥——按「AI 一键美化」处理，"+
+			"或自己把那几行截掉再贴一次。", line, col)
 	}
 	return ""
 }
