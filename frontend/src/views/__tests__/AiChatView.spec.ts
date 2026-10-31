@@ -17,6 +17,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import AiChatView from '../AiChatView.vue'
+import { EXTRACT_JSON_PROMPT, handOff, peekForChat, takeForChat, takeForFmt } from '../../composables/useJsonChatBridge'
 
 const svc = vi.hoisted(() => ({
   CreateSession: vi.fn(),
@@ -126,6 +127,8 @@ function bubbleTexts(wrapper: Awaited<ReturnType<typeof mountView>>, sel: string
 
 beforeEach(() => {
   idSeq = 0
+  takeForChat() // 排空 JSON 桥（模块级单例跨用例存活，防上一用例的货弹进本用例）
+  takeForFmt()
   confirmBox.confirm.mockResolvedValue(true)
   promptBox.prompt.mockResolvedValue(null)
   svc.CreateSession.mockImplementation((title: string) => Promise.resolve(makeRow({ title })))
@@ -784,3 +787,101 @@ describe('AiChatView 名录通道（listError 与流通道分家）', () => {
     w.unmount()
   })
 })
+
+// —— JSON 美化器双向桥（2026-10-31 jsonfmt 收纳裁决的对口）——
+// 入向：toChat 文本按编排模板预填，**发送仍由人按下**（外发确认链原样复用）；
+// 出向：收口回合的合法 ```json 块挂卡，按下写桥 (toFmt) + emit navigate。
+// 本地 JSON.parse 只当判卷：非法块无卡——卡一钓就砸。
+describe('AiChatView ↔ JSON 美化器桥', () => {
+  it('「提取 JSON」快捷钮：无待发文本禁用且 title 说明；有草稿按下逐字预填编排模板、零自动发送', async () => {
+    const w = await mountView([makeRow({ id: 'k1' })])
+    await selectRow(w)
+    // 桥空 + 输入空 → 禁用，禁用理由要说得出
+    expect(w.find('.ac-extract').attributes('disabled')).toBeDefined()
+    expect(w.find('.ac-extract').attributes('title')).toContain('没有待提取文本')
+    await w.find('#ac-draft').setValue('2026-10-31 INFO {"a":1')
+    expect(w.find('.ac-extract').attributes('disabled')).toBeUndefined()
+    await w.find('.ac-extract').trigger('click')
+    await flushMicrotasks()
+    const expected = '请从下面文本里提取所有 JSON 值（对象或数组），数字逐字符照抄不许改精度、不许科学计数法，每个结果单独放一个 ```json 代码块，除代码块外不要写任何说明：\n\n2026-10-31 INFO {"a":1'
+    expect((w.find('#ac-draft').element as HTMLTextAreaElement).value).toBe(expected)
+    expect(svc.SendMessage).not.toHaveBeenCalled()
+    expect(confirmBox.confirm).not.toHaveBeenCalled()
+    // 再按一次不叠第二层模板（包装幂等）
+    await w.find('.ac-extract').trigger('click')
+    await flushMicrotasks()
+    expect((w.find('#ac-draft').element as HTMLTextAreaElement).value).toBe(expected)
+    w.unmount()
+  })
+
+  it('带桥文本进会话：模板逐字预填 + 来源条说明出处；不自动发送，按下发送才走外发确认链', async () => {
+    handOff('{"broken":')
+    const w = await mountView([makeRow({ id: 'k1' })])
+    await flushMicrotasks()
+    const expected = EXTRACT_JSON_PROMPT + '\n\n' + '{"broken":'
+    expect((w.find('#ac-draft').element as HTMLTextAreaElement).value).toBe(expected)
+    expect(w.find('.ac-bridge-banner').text()).toContain('来自 JSON 美化器')
+    expect(svc.SendMessage).not.toHaveBeenCalled()
+    expect(confirmBox.confirm).not.toHaveBeenCalled()
+    expect(peekForChat()).toBeNull() // 读后即清：同一份不二次弹入
+    await selectRow(w)
+    await w.find('.ac-send').trigger('click')
+    await flushMicrotasks()
+    expect(confirmBox.confirm).toHaveBeenCalledTimes(1) // 确认链在"按下"那一刻照常触发
+    expect(svc.SendMessage).toHaveBeenCalledWith('k1', expected)
+    w.unmount()
+  })
+
+  it('桥文本优先于草稿：快捷钮按下时交的是美化器送来的原文（已知取舍，见桥文件头注）', async () => {
+    handOff('第一段')
+    const w = await mountView([makeRow({ id: 'k1' })])
+    await flushMicrotasks() // 挂载即消费带入——为验证按钮的桥优先，这里再造一份
+    handOff('桥里的新段 {"x":1')
+    await w.find('#ac-draft').setValue('我自己打的草稿')
+    await w.find('.ac-extract').trigger('click')
+    await flushMicrotasks()
+    expect((w.find('#ac-draft').element as HTMLTextAreaElement).value).toBe(
+      EXTRACT_JSON_PROMPT + '\n\n桥里的新段 {"x":1',
+    )
+    expect(peekForChat()).toBeNull()
+    w.unmount()
+  })
+
+  it('回程卡判定：合法 ```json 块出卡、非法块无卡、回合未收口不出卡', async () => {
+    const w = await mountView([makeRow({ id: 's1' })])
+    await selectRow(w)
+    await typeAndEnter(w, '帮我提 JSON')
+    await flushMicrotasks() // turn1 在途
+    fireTimeline('s1', 'turn1', '好的：\n```json\n{"a":1}\n```\n另一个：\n```json\n{坏掉的,}\n```')
+    await settleFrame()
+    expect(w.findAll('.ac-json-card')).toHaveLength(0) // 未收口：卡不钓人
+    fireStats('s1', 'turn1')
+    await settleFrame()
+    const cards = w.findAll('.ac-json-card')
+    expect(cards).toHaveLength(1) // 非法块静默不挂卡
+    expect(cards[0].text()).toContain('在 JSON 美化器中打开')
+    w.unmount()
+  })
+
+  it('卡按下：handToFmt(块原文) + emit navigate /ext/jsonfmt；多块逐块列、各开各的', async () => {
+    const w = await mountView([makeRow({ id: 's1' })])
+    await selectRow(w)
+    await typeAndEnter(w, '两段都要')
+    await flushMicrotasks()
+    fireTimeline('s1', 'turn1', '```json\n{"a":1}\n```\n```json\n[1,2]\n```')
+    fireStats('s1', 'turn1')
+    await settleFrame()
+    const cards = w.findAll('.ac-json-card')
+    expect(cards).toHaveLength(2)
+    expect(cards[0].text()).toContain('第 1 块')
+    expect(cards[1].text()).toContain('第 2 块')
+    await cards[1].trigger('click')
+    await flushMicrotasks()
+    expect(takeForFmt()).toBe('[1,2]') // 消费即取——顺带钉死读后即清
+    expect(w.emitted('navigate')).toEqual([['/ext/jsonfmt']])
+    w.unmount()
+  })
+})
+
+// 注：出向的 handToFmt 由卡片点击路径覆盖（上一条用例），不在这里直调预置——
+// 桥的 toFmt 消费面已由 JsonFmtView.spec 的「回程桥消费」族钉死。

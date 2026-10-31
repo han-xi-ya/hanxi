@@ -16,9 +16,18 @@
 // 呈现函数就近安放（§9.6 口径）：fmtTime / formatTurnStats 只服务本模板。
 // turn-stats 行原样取后端字段做单位换算（毫秒/字节/$），前端零二次统计。
 // 文本粒度是 content 块快照不是逐 token：流内不装打字机，块出现即整块上屏。
+//
+// JSON 回程小卡（2026-10-31 jsonfmt 收纳裁决的入向对口）：assistant 回合收口后
+// 扫描该轮文本里的 ```json 块，本地 JSON.parse 只当判卷（collectOpenableJsonBlocks），
+// 过了才挂「在 JSON 美化器中打开」卡——按下上抛 open-json(块原文)，交接与跳页归视图；
+// 本件不当第二个渲染器，真美化回 jsonfmt 后端做（大整数保真在那边）。
+// 收口信号取 statsByTurn 在场：turn-stats（EventTurnDone）是回合终态唯一权威；
+// dead 轮无 stats、文本本就可能残缺，不钓用户去打开半成品——是如实，不是遗漏。
 import { computed, watch } from 'vue'
 import UiBanner from '../ui/UiBanner.vue'
+import UiButton from '../ui/UiButton.vue'
 import { useLogTails } from '../../composables/useLogTails'
+import { collectOpenableJsonBlocks } from '../../composables/useJsonChatBridge'
 import { FLOW_CAP } from '../../composables/useAiChat'
 import type { TimelineItem, TurnStats } from '../../composables/useAiChat'
 
@@ -35,6 +44,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 闩重新咬合（滚回底部）：编排层据此清未读计数。 */
   'reached-bottom': []
+  /** 「在 JSON 美化器中打开」按下：交块原文给视图写桥并导航，本件不碰桥。 */
+  'open-json': [text: string]
 }>()
 
 const tails = useLogTails({ maxLines: FLOW_CAP })
@@ -81,6 +92,23 @@ const statsAnchorIds = computed(() => {
   return new Set(lastByTurn.values())
 })
 
+/** 收口回合的 assistant 项 → 可打开的 JSON 块（判卷即过滤，非法块不入表）。 */
+const jsonBlocksByItem = computed(() => {
+  const m = new Map<number, string[]>()
+  for (const it of props.items) {
+    if (it.kind !== 'assistant' || !it.turnId || !props.statsByTurn.has(it.turnId)) continue
+    const blocks = collectOpenableJsonBlocks(it.text)
+    if (blocks.length > 0) m.set(it.id, blocks)
+  }
+  return m
+})
+
+/** 卡 title 的内容预览：压平空白取前 60 字，只当"这是哪块"的指认，不是渲染。 */
+function blockPreview(b: string): string {
+  const flat = b.replace(/\s+/g, ' ').trim()
+  return flat.length > 60 ? `${flat.slice(0, 60)}…` : flat
+}
+
 </script>
 
 <template>
@@ -113,6 +141,20 @@ const statsAnchorIds = computed(() => {
         <div v-else class="ac-note-pill">
           <span>{{ item.text }}</span>
           <span class="ac-note-time">{{ fmtTime(item.ts) }}</span>
+        </div>
+        <!-- 回程小卡：该轮收口且块能 parse 才在场；多块逐块列，逐块可开 -->
+        <div v-if="jsonBlocksByItem.has(item.id)" class="ac-json-bar">
+          <UiButton
+            v-for="(b, i) in jsonBlocksByItem.get(item.id)!"
+            :key="`${item.id}-${i}`"
+            variant="secondary"
+            small
+            class="ac-json-card"
+            :title="`解析通过：${blockPreview(b)}`"
+            @click="emit('open-json', b)"
+          >
+            在 JSON 美化器中打开<span v-if="jsonBlocksByItem.get(item.id)!.length > 1">（第 {{ i + 1 }} 块）</span>
+          </UiButton>
         </div>
         <div v-if="statsAnchorIds.has(item.id)" class="ac-stats" role="note">
           {{ formatTurnStats(statsByTurn.get(item.turnId)!) }}
@@ -201,6 +243,16 @@ const statsAnchorIds = computed(() => {
   overflow-wrap: anywhere;
 }
 .ac-note-time { font-family: var(--font-mono); font-size: var(--text-micro); color: var(--color-text-subtle); }
+
+/* JSON 回程小卡行：贴左跟随气泡、多块换行不撑破；细边框成组不与气泡抢体块 */
+.ac-json-bar {
+  align-self: flex-start;
+  max-width: 80%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 
 /* 回合账目行：数字全 mono + tabular-nums，单位换算即止 */
 .ac-stats {

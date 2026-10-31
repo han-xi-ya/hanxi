@@ -16,6 +16,11 @@
 // 有意不加「从剪贴板粘贴」钮（component-patterns 该条自限"短结构输入不加=噪音"），
 // 后来者勿"补一致性"。
 // 草稿不持久化（无后端）：KeepAlive 停用再回，文本仍在组件实例内存里，可接受。
+//
+// 「提取 JSON」快捷钮（2026-10-31 jsonfmt 收纳裁决的出向对口）：纯展示壳——
+// 有没有待发文本（桥里 toChat ∪ 输入框内容）由视图判定经 canExtract 传入，
+// 禁用理由进 title（状态不靠颜色单传）；按下只上抛 extract-json，
+// 预填/消费桥归视图，发送仍走既有 send 闸链与外发确认，本件不越权。
 import { computed } from 'vue'
 import UiButton from '../ui/UiButton.vue'
 
@@ -32,6 +37,10 @@ const props = defineProps<{
   showStop: boolean
   /** rows 8 档展开态（视图本地持有的纯 UI 位）。 */
   expanded: boolean
+  /** 「提取 JSON」快捷钮可用位（桥文本或输入框内容至少有一样）。 */
+  canExtract: boolean
+  /** 快捷钮禁用理由（进 title；可用时空串=不挂 title）。 */
+  extractHint: string
 }>()
 
 const emit = defineEmits<{
@@ -39,6 +48,7 @@ const emit = defineEmits<{
   send: []
   stop: []
   'toggle-expand': []
+  'extract-json': []
 }>()
 
 const textModel = computed({
@@ -79,6 +89,16 @@ function handleKeydown(e: KeyboardEvent) {
       <button type="button" class="btn btn-ghost btn-small ac-expand" :aria-pressed="expanded" @click="emit('toggle-expand')">
         {{ expanded ? '收起' : '展开' }}
       </button>
+      <UiButton
+        variant="secondary"
+        small
+        class="ac-extract"
+        :disabled="!canExtract"
+        :title="extractHint || undefined"
+        @click="emit('extract-json')"
+      >
+        提取 JSON
+      </UiButton>
       <span class="ac-tip">Enter 发送 · Shift+Enter 换行</span>
       <span class="ac-spacer"></span>
       <UiButton
@@ -135,6 +155,6 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 @media (pointer: coarse) {
-  .ac-send, .ac-stop, .ac-input .btn-ghost { min-height: 44px; }
+  .ac-send, .ac-stop, .ac-extract, .ac-input .btn-ghost { min-height: 44px; }
 }
 </style>
