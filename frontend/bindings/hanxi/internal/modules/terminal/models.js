@@ -15,6 +15,7 @@
  * @property {string} id
  * @property {string} title
  * @property {string} profileId
+ * @property {string} dir - Dir 会话工作目录；空=继承 hanxi 进程的 cwd（老行为，UI 要如实标"继承"）。 claude 档尤其需要显式目录：项目上下文、信任提示、CLAUDE.md 读取都跟着 cwd 走。
  * @property {number} pid
  * @property {number} createdAt
  * @property {boolean} alive

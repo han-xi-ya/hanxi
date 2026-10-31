@@ -44,6 +44,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -96,6 +97,9 @@ type TermSessionRow struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	ProfileID string `json:"profileId"`
+	// Dir 会话工作目录；空=继承 hanxi 进程的 cwd（老行为，UI 要如实标"继承"）。
+	// claude 档尤其需要显式目录：项目上下文、信任提示、CLAUDE.md 读取都跟着 cwd 走。
+	Dir       string `json:"dir"`
 	Pid       uint32 `json:"pid"`
 	CreatedAt int64  `json:"createdAt"`
 	Alive     bool   `json:"alive"`
@@ -128,6 +132,9 @@ type TerminalService struct {
 	holder *extapi.LeaseHolder
 	// spawnFn 伪控制台起爆点注入位（默认真 conpty）。
 	spawnFn func(command string, args []string, opts conpty.Options) (ptyLike, error)
+	// mainWindow 装配根回填（SetMainWindow，quickmenu 同法）：目录选择器要
+	// AttachToWindow 才模态挂主窗——nil 时 PickDirectory 如实拒，不假装有窗。
+	mainWindow *application.WebviewWindow
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -157,7 +164,9 @@ func (s *TerminalService) Profiles() ([]TermProfile, error) {
 }
 
 // OpenTerminal 起一个伪控制台会话（RPC 快返回；刷屏全在字节通道里）。
-func (s *TerminalService) OpenTerminal(profileID string, cols, rows int) (*TermSessionRow, error) {
+// dir 空=继承 hanxi 的 cwd（老行为）；非空必须已是存在的目录——在源头拒，
+// 不交给 CreateProcess 报一句"找不到路径"让人猜（错误面同款纪律）。
+func (s *TerminalService) OpenTerminal(profileID string, cols, rows int, dir string) (*TermSessionRow, error) {
 	release, err := s.holder.Enter()
 	if err != nil {
 		return nil, err
@@ -171,9 +180,16 @@ func (s *TerminalService) OpenTerminal(profileID string, cols, rows int) (*TermS
 	if cols < 2 || cols > 999 || rows < 2 || rows > 999 {
 		return nil, fmt.Errorf("终端尺寸 %dx%d 不在 2..999 内", cols, rows)
 	}
+	dir = strings.TrimSpace(dir)
+	if dir != "" {
+		info, serr := os.Stat(dir)
+		if serr != nil || !info.IsDir() {
+			return nil, fmt.Errorf("工作目录不存在或不是目录：%s", dir)
+		}
+	}
 
 	pty, err := s.spawnFn(command, args, conpty.Options{
-		Cols: uint16(cols), Rows: uint16(rows),
+		Cols: uint16(cols), Rows: uint16(rows), Dir: dir,
 	})
 	if err != nil {
 		return nil, err
@@ -185,6 +201,7 @@ func (s *TerminalService) OpenTerminal(profileID string, cols, rows int) (*TermS
 		ID:        fmt.Sprintf("term-%d-%d", time.Now().UnixMilli(), s.seq),
 		Title:     fmt.Sprintf("%s #%d", title, s.seq),
 		ProfileID: profileID,
+		Dir:       dir,
 		Pid:       pty.Pid(),
 		CreatedAt: time.Now().UnixMilli(),
 		Alive:     true,
@@ -219,6 +236,41 @@ func (s *TerminalService) ListTerminals() ([]TermSessionRow, error) {
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// setMainWindow 装配根回填主窗引用（包内方法：曾命名 SetMainWindow 会被
+// bindings 导出——#139 同族，模块面的 SetMainWindow 保留导出是装配契约，
+// 服务面必须包内；rpc_gate_matrix 的
+// gateExemptMethods 在册豁免——装配布线通道，时序先于门）。
+func (s *TerminalService) setMainWindow(win *application.WebviewWindow) { s.mainWindow = win }
+
+// PickDirectory 弹原生"选择文件夹"对话框，返回所选路径；用户取消返回空串。
+//
+// 为什么在 Go 侧开对话框而不是前端 Dialogs API：JS→Go 的对话框参数线格式
+// 本仓无先例、官方样例也未逐字核实——未验证不进主链（全仓纪律）；Go 侧
+// OpenFile().CanChooseFiles(false).CanChooseDirectories(true) 是读源码核实的
+// 现成形态。准入判定拿到即归还再弹**人机等待**的模态窗——租约绝不陪着
+// 等人手，停用 drain 不能被人道主义取消窗拖满（#132 同一口径的对话框版）。
+func (s *TerminalService) PickDirectory() (string, error) {
+	release, err := s.holder.Enter()
+	if err != nil {
+		return "", err
+	}
+	release()
+	app := application.Get()
+	if app == nil || s.mainWindow == nil {
+		return "", errors.New("目录选择需要主窗在场（无头环境不可用）")
+	}
+	selection, err := app.Dialog.OpenFile().
+		SetTitle("选择终端工作目录").
+		CanChooseFiles(false).
+		CanChooseDirectories(true).
+		AttachToWindow(s.mainWindow).
+		PromptForSingleSelection()
+	if err != nil {
+		return "", fmt.Errorf("打开目录选择器失败: %w", err)
+	}
+	return strings.TrimSpace(selection), nil // 取消 = 空串，不是错误
 }
 
 // RenameTerminal 只动内存账（v0 无持久化，改名不留盘是语义的一部分）。

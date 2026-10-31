@@ -475,7 +475,8 @@
       "OpenTerminal",
       "ListTerminals",
       "RenameTerminal",
-      "KillTerminal"
+      "KillTerminal",
+      "PickDirectory"
     ]
   },
   "counts": {

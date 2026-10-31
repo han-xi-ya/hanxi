@@ -18,8 +18,16 @@ type Module struct {
 
 // New 装配期构造。终端服务是纯内存态（v0 语义：会话与 hanxi 同生命周期，
 // 不落账本——见 service.go 头注），不需要 paths。
-func New() extapi.Module {
+// 返回具体 *Module（quickmenu 同法）：装配根需要 SetMainWindow 回填主窗引用。
+func New() *Module {
 	return &Module{svc: NewService(extapi.NewLeaseHolder(ID))}
+}
+
+// SetMainWindow 透传装配根注入的主窗引用（目录选择对话框模态挂载用）。
+func (m *Module) SetMainWindow(win *application.WebviewWindow) {
+	if m.svc != nil {
+		m.svc.setMainWindow(win)
+	}
 }
 
 // SetGate 实现 extapi.GateAware。

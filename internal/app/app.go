@@ -489,6 +489,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	fileShareModule := fileshare.New(plat)
 	ocrModule := ocr.New(plat)                  // 类型断言取服务实例，接主窗文件拖放（组件导入）
 	portkillModule := portkill.New(plat)        // 类型断言取服务实例，注入统一历史
+	terminalModule := terminal.New()            // 持有引用：主窗随装配根回填（目录选择对话框模态挂载）
 	msgboardModule := msgboard.New(plat, paths) // 持有引用：热键注册器随装配根注入（R1 收编）
 	memoModule, err := memo.New(paths)
 	if err != nil {
@@ -552,7 +553,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		sshkeys.New(),
 		jsonfmt.New(),
 		aichat.New(paths),
-		terminal.New(),
+		terminalModule,
 		wifi.New(),
 		envcheck.New(plat),
 		softver.New(plat),
@@ -746,6 +747,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 
 	// quickmenu：注入主窗引用供 route 条目唤窗，并随启动常驻激活全局鼠标钩子
 	//（右键长按识别与 wechat 入站监听同属常驻监听型能力；设置页关模块即可停用）。
+	terminalModule.SetMainWindow(win)
 	quickMenuModule.SetMainWindow(win)
 	if err := registry.EnsureActive("quickmenu"); err != nil {
 		slog.Error("激活 quickmenu 模块失败，全局鼠标钩子不可用（不影响启动）", "err", err)

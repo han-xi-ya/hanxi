@@ -185,7 +185,7 @@ func newTestService(t *testing.T) (*TerminalService, *fakePty, *denyGate) {
 
 func TestOpenKillLifecycle(t *testing.T) {
 	svc, f, _ := newTestService(t)
-	row, err := svc.OpenTerminal("cmd", 100, 30)
+	row, err := svc.OpenTerminal("cmd", 100, 30, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,10 +212,10 @@ func TestOpenKillLifecycle(t *testing.T) {
 
 func TestOpenGuards(t *testing.T) {
 	svc, _, _ := newTestService(t)
-	if _, err := svc.OpenTerminal("cmd", 0, 30); err == nil {
+	if _, err := svc.OpenTerminal("cmd", 0, 30, ""); err == nil {
 		t.Fatal("非法尺寸应拒")
 	}
-	if _, err := svc.OpenTerminal("nope", 80, 24); err == nil {
+	if _, err := svc.OpenTerminal("nope", 80, 24, ""); err == nil {
 		t.Fatal("未知档应拒")
 	}
 }
@@ -225,8 +225,8 @@ func TestOpenGuards(t *testing.T) {
 // 门一拒就"一个都不杀、账一项不清"还显示已停用。
 func TestKillAllUnderStoppingGate(t *testing.T) {
 	svc, f, gate := newTestService(t)
-	r1, _ := svc.OpenTerminal("cmd", 80, 24)
-	r2, _ := svc.OpenTerminal("powershell", 80, 24)
+	r1, _ := svc.OpenTerminal("cmd", 80, 24, "")
+	r2, _ := svc.OpenTerminal("powershell", 80, 24, "")
 	gate.deny.Store(true) // 进入停用态
 	svc.killAll()
 	if f.closed != 2 {
@@ -246,7 +246,7 @@ func TestKillAllUnderStoppingGate(t *testing.T) {
 // 拒（带原因），不得 attach；连接本身不作乱。
 func TestServeConnOpenAdmissionDenied(t *testing.T) {
 	svc, _, gate := newTestService(t)
-	row, _ := svc.OpenTerminal("cmd", 80, 24)
+	row, _ := svc.OpenTerminal("cmd", 80, 24, "")
 	gate.deny.Store(true)
 	c := newFakeConn()
 	c.in <- ctlFrame(t, controlFrame{Op: "open", SessionID: row.ID})
@@ -260,7 +260,7 @@ func TestServeConnOpenAdmissionDenied(t *testing.T) {
 
 func TestServeConnHappyHandshakeAndStream(t *testing.T) {
 	svc, f, _ := newTestService(t)
-	row, _ := svc.OpenTerminal("cmd", 80, 24)
+	row, _ := svc.OpenTerminal("cmd", 80, 24, "")
 	c := newFakeConn()
 	go svc.serveConn(c)
 	c.in <- ctlFrame(t, controlFrame{Op: "open", SessionID: row.ID})
@@ -343,7 +343,7 @@ func TestRouteChunkDecisionTable(t *testing.T) {
 // 已上位的 B（Load+Store 的旧写法在窄窗里会造成"B 黑屏但输入通"）。
 func TestDeferDoesNotWipeCurrentOwner(t *testing.T) {
 	svc, _, _ := newTestService(t)
-	row, _ := svc.OpenTerminal("cmd", 80, 24)
+	row, _ := svc.OpenTerminal("cmd", 80, 24, "")
 	var sess *session
 	svc.mu.Lock()
 	sess = svc.sessions[row.ID]
@@ -373,7 +373,7 @@ func TestDeferDoesNotWipeCurrentOwner(t *testing.T) {
 // pty 字节（否则 4KB 管道写满、claude 被反压冻死，"断线不杀进程"成假话）。
 func TestDrainKeepsChildFlowing(t *testing.T) {
 	svc, f, _ := newTestService(t)
-	row, _ := svc.OpenTerminal("claude", 80, 24)
+	row, _ := svc.OpenTerminal("claude", 80, 24, "")
 	_ = row
 	var sess *session
 	svc.mu.Lock()
@@ -410,7 +410,7 @@ func TestDrainKeepsChildFlowing(t *testing.T) {
 // 回执，只断言闸本身的决策。
 func TestResizeAfterSessionDeadRejected(t *testing.T) {
 	svc, _, _ := newTestService(t)
-	row, _ := svc.OpenTerminal("cmd", 80, 24)
+	row, _ := svc.OpenTerminal("cmd", 80, 24, "")
 	c := newFakeConn()
 	go svc.serveConn(c)
 	c.in <- ctlFrame(t, controlFrame{Op: "open", SessionID: row.ID})
@@ -469,5 +469,37 @@ func TestResolveProfileStatic(t *testing.T) {
 		}
 	} else if c != "cmd.exe" || len(a) != 2 || a[0] != "/c" {
 		t.Fatalf("claude 档必须是 cmd.exe /c <绝对路径>（探针 run3 姿势），得: %s %v", c, a)
+	}
+}
+
+// ---- 工作目录（v0.x 增量）----
+
+// TestOpenTerminalDirValidation 钉三格：坏目录源头拒、好目录透传进
+// conpty.Options.Dir 且记账进 row.Dir、空目录=继承不造字段假象。
+func TestOpenTerminalDirValidation(t *testing.T) {
+	holder := extapi.NewLeaseHolder(ID)
+	holder.SetGate(&denyGate{})
+	var last conpty.Options
+	f := newFakePty()
+	svc := NewService(holder)
+	svc.spawnFn = func(_ string, _ []string, o conpty.Options) (ptyLike, error) { last = o; return f, nil }
+
+	if _, err := svc.OpenTerminal("cmd", 80, 24, `Q:\没有这个\目录`); err == nil ||
+		!strings.Contains(err.Error(), "工作目录") {
+		t.Fatalf("坏目录应源头拒且说人话: %v", err)
+	}
+	good := t.TempDir()
+	row, err := svc.OpenTerminal("cmd", 80, 24, good)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Dir != good || last.Dir != good {
+		t.Fatalf("目录应同时进账本与 spawn 参数: row=%q opt=%q", row.Dir, last.Dir)
+	}
+	if _, err := svc.OpenTerminal("powershell", 80, 24, "   "); err != nil {
+		t.Fatal(err)
+	}
+	if last.Dir != "" {
+		t.Fatalf("空白目录=继承，不得把空格传下去: %q", last.Dir)
 	}
 }

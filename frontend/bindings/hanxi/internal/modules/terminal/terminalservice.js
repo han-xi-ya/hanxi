@@ -16,7 +16,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * KillTerminal 杀会话（进程树收口在 conpty.Close 内）并除账。
+ * KillTerminal 杀会话（进程树收口在 conpty.Close 内）并除账——带门的 RPC 面。
  * @param {string} id
  * @returns {$CancellablePromise<void>}
  */
@@ -33,13 +33,30 @@ export function ListTerminals() {
 
 /**
  * OpenTerminal 起一个伪控制台会话（RPC 快返回；刷屏全在字节通道里）。
+ * dir 空=继承 hanxi 的 cwd（老行为）；非空必须已是存在的目录——在源头拒，
+ * 不交给 CreateProcess 报一句"找不到路径"让人猜（错误面同款纪律）。
  * @param {string} profileID
  * @param {number} cols
  * @param {number} rows
+ * @param {string} dir
  * @returns {$CancellablePromise<$models.TermSessionRow | null>}
  */
-export function OpenTerminal(profileID, cols, rows) {
-    return $Call.ByID(2936885901, profileID, cols, rows);
+export function OpenTerminal(profileID, cols, rows, dir) {
+    return $Call.ByID(2936885901, profileID, cols, rows, dir);
+}
+
+/**
+ * PickDirectory 弹原生"选择文件夹"对话框，返回所选路径；用户取消返回空串。
+ * 
+ * 为什么在 Go 侧开对话框而不是前端 Dialogs API：JS→Go 的对话框参数线格式
+ * 本仓无先例、官方样例也未逐字核实——未验证不进主链（全仓纪律）；Go 侧
+ * OpenFile().CanChooseFiles(false).CanChooseDirectories(true) 是读源码核实的
+ * 现成形态。准入判定拿到即归还再弹**人机等待**的模态窗——租约绝不陪着
+ * 等人手，停用 drain 不能被人道主义取消窗拖满（#132 同一口径的对话框版）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function PickDirectory() {
+    return $Call.ByID(4246753963);
 }
 
 /**
