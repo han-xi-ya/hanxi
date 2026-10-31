@@ -3,12 +3,9 @@
 // Package conpty 的非 Windows 桩：本仓产品目标是 Windows，但类型必须可跨平台
 // 编译（CI Linux 的 go vet/test 全仓跑不能因构建标签炸包）。与 aiagent 的
 // child_other.go 同姿势——平台差异只收在这对最小文件里，主流程不见构建标签。
+// 注意：Linux 全仓 vet 能否走到这里受 wails beta.10 自身 cgo 依赖限制，
+// 本包的跨平台由**按包** `GOOS=linux go vet ./packages/go/conpty` 保证。
 package conpty
-
-import "errors"
-
-// ErrUnsupportedPlatform 非 Windows 系统没有 ConPTY。
-var ErrUnsupportedPlatform = errors.New("conpty: 伪控制台仅 Windows 可用")
 
 // Options 与 Windows 侧同形（见 conpty_windows.go）。
 type Options struct {

@@ -76,3 +76,65 @@ func TestLiveConPTYRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestLiveConPTYEnvBlock 审计 P0 的回归钉：旧写法（StringToUTF16Ptr 拼接
+// 含 NUL 串）对任何非 nil Env 100% panic，且 Env 恰是探针没走过的侧巷。
+// 本用例传真实 Env 并断言子进程**读得到值**——panic 修复与块格式正确
+// 一次钉死（外部事实断言：值由子进程在伪控制台里回显，不是本地拼出来的）。
+func TestLiveConPTYEnvBlock(t *testing.T) {
+	if os.Getenv("HANXI_CONPTY_LIVE") == "" {
+		t.Skip("未设 HANXI_CONPTY_LIVE=1：跳过 ConPTY 环境块真机用例")
+	}
+	marker := fmt.Sprintf("HX-%d", time.Now().UnixNano())
+	p, err := Spawn("powershell.exe",
+		[]string{"-NoProfile", "-NonInteractive", "-Command", "$env:HANXI_CONPTY_PROBE"},
+		conptyOptionsWithEnv(t, marker))
+	if err != nil {
+		t.Fatalf("带 Env 的 Spawn 失败（panic 修复破了？）: %v", err)
+	}
+	defer p.Close()
+
+	frames := make(chan []byte, 64)
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := p.Read(buf)
+			if n > 0 {
+				cp := make([]byte, n)
+				copy(cp, buf[:n])
+				frames <- cp
+			}
+			if err != nil {
+				close(frames)
+				return
+			}
+		}
+	}()
+	re := regexp.MustCompile(regexp.QuoteMeta(marker))
+	var acc bytes.Buffer
+	deadline := time.After(30 * time.Second)
+	for {
+		select {
+		case f, ok := <-frames:
+			if !ok {
+				t.Fatalf("流结束仍未见环境值回显；样本 %q", acc.String())
+			}
+			acc.Write(f)
+			if re.Match(acc.Bytes()) {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("30s 未见环境值；样本 %q", acc.String())
+		}
+	}
+}
+
+func conptyOptionsWithEnv(t *testing.T, marker string) Options {
+	t.Helper()
+	// 完整环境 = 现进程环境 + 探针项（Env 是"完整供给"语义，不能只给一条）。
+	base := os.Environ()
+	return Options{
+		Cols: 100, Rows: 30, Dir: t.TempDir(),
+		Env: append(base, "HANXI_CONPTY_PROBE="+marker),
+	}
+}
