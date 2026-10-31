@@ -2,7 +2,7 @@
 
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
-> **更新日期**：2026-10-26（jsonfmt 内置模块入库——JSON 美化，模块计数 51→52；上轮 2026-10-22：sshkeys 独立模块入库——SSH 主动检查自 portscan 拆出，模块计数 50→51；再上轮 2026-10-21：netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）
+> **更新日期**：2026-10-31（jsonfmt 简化为基础美化器、AI 提取链并入 aichat；aiagent 消费方口径同步。上一轮 2026-10-26（jsonfmt 内置模块入库——JSON 美化，模块计数 51→52；上轮 2026-10-22：sshkeys 独立模块入库——SSH 主动检查自 portscan 拆出，模块计数 50→51；再上轮 2026-10-21：netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）)
 > **技术基线**：Go ≥1.26 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration) + 共享托管内核 (packages/go) + 统一状态契约与调用门 (ADR-0001/0002/0003)
 
@@ -153,7 +153,7 @@ internal/modules/<tool>/
 
 ### 2.4 共享托管内核 (`packages/go/`)
 
-Wave 4 从 25 份 version 下载链、24 份 instance 进程治理主流程中收口出三个零框架依赖的共享包（升版规则、稳定门判定与逃生钩子白名单由 `docs/adr/ADR-0002` 冻结：zip 族 + 单 exe 族两差异样本全程走内核、失败注入矩阵通过、≥3 家需求才入内核）。后续批次又同址沉入七件——`netx`（代理出网与显式拨号，N25 自 wsl 孤例泛型化下沉、`469e3e1` 将 portscan 拨号内核上收）、`hostfeed`、`dirstats`、`externalquit`、`peicon`、`sshconf`（`sshkeys` 自 portscan 拆出时随该模块下沉；**2026-10-28 对账补列**，此前本行落后于实扫）、`aiagent`（本机 Claude Code 无头调用外壳，`jsonfmt` 的显式 AI 提取是第一个消费方），`packages/go/` 现共 **10 包**；其中 artifact/supervisor/operation 三包公开面仍按 ADR-0002 冻结表执行，后七件不在该表内、纪律由各包注释钉守：
+Wave 4 从 25 份 version 下载链、24 份 instance 进程治理主流程中收口出三个零框架依赖的共享包（升版规则、稳定门判定与逃生钩子白名单由 `docs/adr/ADR-0002` 冻结：zip 族 + 单 exe 族两差异样本全程走内核、失败注入矩阵通过、≥3 家需求才入内核）。后续批次又同址沉入七件——`netx`（代理出网与显式拨号，N25 自 wsl 孤例泛型化下沉、`469e3e1` 将 portscan 拨号内核上收）、`hostfeed`、`dirstats`、`externalquit`、`peicon`、`sshconf`（`sshkeys` 自 portscan 拆出时随该模块下沉；**2026-10-28 对账补列**，此前本行落后于实扫）、`aiagent`（本机 Claude Code 无头调用与常驻会话外壳；现消费方为 `aichat` / `terminal`——首个消费方曾是 `jsonfmt` 的显式 AI 提取，已随 2026-10-31 机主裁决退役并入 AI 聊天，史述），`packages/go/` 现共 **10 包**；其中 artifact/supervisor/operation 三包公开面仍按 ADR-0002 冻结表执行，后七件不在该表内、纪律由各包注释钉守：
 
 - **`artifact`（交付链）**：`Fetch` 受控下载——官方 SHA-256 必检（缺失即拒，"托管下载不允许无校验安装"）、Content-Length 与实收双核、流式大小断言、落盘后全量重读复核；HTTPS-only（http 仅限回环且强制绕过代理）、重定向不跨 scheme、错误/进度不回显带 query 的 URL。`UnpackZip` 安全解包闸门——ZipSlip（反斜杠归一 + 组件级清洗 + Clean 前后双查）、炸弹预算 `Limits`（条目数/单文件/总解压量/压缩比）、`allowFiles` 清单白名单逐文件摘要复核、大小写占位冲突检测、反斜杠结尾目录条目（不带 ModeDir 位）修复；`Tree` 版本树——`OpenTree(root, entryName)` 的 `<entryName>_<version>/` 布局、`StageDir` 独占 `.tmp-<txnID>` 中转（不覆盖、不执行任何内容）、`Commit` 原子落位（同摘要幂等复用 / 异摘要**防同版本内容漂移拒覆** / 无账本目录拒覆盖 / rename 优先、meta.json 写失败搬回回退）、`Remove` 先 rename 隔离到 `.removing-*` 再删（文件被占用时留下可恢复状态）、`Versions/Resolve/CleanupAbandoned/InstallZip`；`CleanStaleParts` 超龄 `.part-*` 残件受控清理；版本令牌白名单（`ValidateVersionToken`）防目录名注入。
 - **`supervisor`（进程治理）**：`Probe.Inspect` 单一事实源（外部性 + `ProcInfo`，取代各蓝本 IsRunning/PortOpen/WaitForReady 碎片接口）；`Spec` 受控字段（Exe/Args 原样 argv 无 shell、`DetachFromJob`、`ReadyTimeout`、`HideWindow`（Windows 经 CREATE_NO_WINDOW 注入、其他平台 no-op）、`Env` 键值白名单注入）；`Engine` 生命周期（Start/Stop/Snapshot，状态锁与操作锁分离、`cmd.Wait` 单所有者、上一代未收口拒新启）；`SetQuitHook` 优雅退出通道（管道命令/WM_CLOSE/HTTP shutdown）；`ErrExternal`（外部实例只甄别指引）/`ErrBusy`；`Callbacks.OnState/OnLog`（OnLog 逐行透传 stdout/stderr，脱敏/缓冲策略留模块层）；PID 复用防护（VerifyToken 身份 + KillVerified 复核）；停止三段：QuitHook grace → Job Terminate → 指纹复核强杀。
