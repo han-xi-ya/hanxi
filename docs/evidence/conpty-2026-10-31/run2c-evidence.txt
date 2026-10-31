@@ -1,0 +1,49 @@
+=== conpty-spike evidence tag=run2c child=powershell start=2026-10-31T10:35:57+08:00 ===
+exe=C:\tmp\conpty-spike\spike.exe pid=19996 go=go1.26.4 subsystem=3(CUI) GetConsoleWindow=0x0
+
+-- 时间戳日志 --
+[10:35:57.096 elapsed=  0.01s] ==== conpty-spike 开始 child=powershell tag=run2c ====
+[10:35:57.104 elapsed=  0.01s] 自身 PE 子系统: 3(CUI)（2=GUI/windowsgui 3=CUI/console）；GetConsoleWindow=0x0
+[10:35:57.104 elapsed=  0.01s] exe=C:\tmp\conpty-spike\spike.exe pid=19996 go=go1.26.4 GetConsoleWindow=0x0（注意：harness 基座本身无控制台窗口，此项 0 不足以证明子系统，以 PE 子系统字段为准）
+[10:35:57.104 elapsed=  0.01s] creationFlags 首选=0x80010
+[10:35:57.104 elapsed=  0.01s] OK   pipes: inR=492 inW=496 outR=500 outW=504（不依赖继承位）
+[10:35:57.105 elapsed=  0.01s] OK   CreatePseudoConsole: hPC=0x1B194882570 (100x30)
+[10:35:57.105 elapsed=  0.01s] startupinfo 配方: portable-pty(USESTDHANDLES+三端 INVALID)，ptyFlags=0x0
+[10:35:57.106 elapsed=  0.01s] OK   CreateProcess: flags=0x80010 child_pid=23544 inheritHandles=false cmdline="powershell.exe -NoLogo -NoProfile"
+[10:35:58.609 elapsed=  1.51s] FAIL startup-output: 启动期收到 0 字节（banner/提示符）；creationFlags=0x80010
+[10:35:58.609 elapsed=  1.51s] WARN 0 字节且用了 CREATE_NEW_CONSOLE——疑似子进程挂到了真控制台窗口而非 ConPTY
+[10:35:58.910 elapsed=  1.81s] 已写入: \r\n
+[10:36:01.914 elapsed=  4.82s] WARN 首写 "" 后 3s 输出零动静——ConPTY 吞输入，补发一次
+[10:36:01.914 elapsed=  4.82s] 已写入: \r\n
+[10:36:03.116 elapsed=  6.02s] 输入预热(空回车) 首写生效=false
+[10:36:03.416 elapsed=  6.32s] 已写入: Get-Date\r\n
+[10:36:06.428 elapsed=  9.33s] WARN 首写 "Get-Date" 后 3s 输出零动静——ConPTY 吞输入，补发一次
+[10:36:06.428 elapsed=  9.33s] 已写入: Get-Date\r\n
+[10:36:06.428 elapsed=  9.33s] Get-Date 首写生效=false
+[10:36:07.931 elapsed= 10.84s] FAIL Get-Date→输出: out1-run2c.log=0B 含标记"202"=false；可读摘录: ""
+[10:36:07.931 elapsed= 10.84s] OK   ResizePseudoConsole(120x40): HRESULT=0
+[10:36:08.231 elapsed= 11.14s] 已写入: cmd /c mode\r\n
+[10:36:11.236 elapsed= 14.14s] WARN 首写 "cmd /c mode" 后 3s 输出零动静——ConPTY 吞输入，补发一次
+[10:36:11.236 elapsed= 14.14s] 已写入: cmd /c mode\r\n
+[10:36:12.737 elapsed= 15.64s] FAIL resize 后存活且 mode 有输出: exitcode=259(259=运行中) out2-run2c.log=0B 含120列痕迹=false；摘录: ""
+[10:36:13.038 elapsed= 15.94s] 已写入: exit\r\n
+[10:36:16.041 elapsed= 18.95s] WARN 首写 "exit" 后 3s 输出零动静——ConPTY 吞输入，补发一次
+[10:36:16.041 elapsed= 18.95s] 已写入: exit\r\n
+[10:36:24.055 elapsed= 26.96s] FAIL powershell exit: exit(首写生效=false) 补等 8s 仍未退出 WaitForSingleObject=258
+[10:36:24.110 elapsed= 27.01s] taskkill 兜底: SUCCESS: The process with PID 5920 (child process of PID 23544) has been terminated. SUCCESS: The process with PID 23544…
+[10:36:24.110 elapsed= 27.01s] 功能序列未全绿（详见判定表）
+[10:36:24.111 elapsed= 27.01s] ClosePseudoConsole(hPC=0x1B194882570) 完成
+[10:36:24.111 elapsed= 27.01s] 输出读取结束: EOF（累计 0 字节）
+[10:36:24.111 elapsed= 27.02s] ==== 结束 seqOK=false ====
+
+-- 步骤判定 --
+[PASS] pipes: inR=492 inW=496 outR=500 outW=504（不依赖继承位）
+[PASS] CreatePseudoConsole: hPC=0x1B194882570 (100x30)
+[PASS] CreateProcess: flags=0x80010 child_pid=23544 inheritHandles=false cmdline="powershell.exe -NoLogo -NoProfile"
+[FAIL] startup-output: 启动期收到 0 字节（banner/提示符）；creationFlags=0x80010
+[FAIL] Get-Date→输出: out1-run2c.log=0B 含标记"202"=false；可读摘录: ""
+[PASS] ResizePseudoConsole(120x40): HRESULT=0
+[FAIL] resize 后存活且 mode 有输出: exitcode=259(259=运行中) out2-run2c.log=0B 含120列痕迹=false；摘录: ""
+[FAIL] powershell exit: exit(首写生效=false) 补等 8s 仍未退出 WaitForSingleObject=258
+VERDICT=FAIL EXITCODE=5
+DONE 2026-10-31T10:36:24.1133834+08:00

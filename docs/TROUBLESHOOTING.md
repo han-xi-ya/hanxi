@@ -6,9 +6,9 @@
 
 ## 目录
 
-> **编号与索引说明（2026-10-21 结构整理）**：本日志只追加不改写正文，编号因此存在三种合法形态；以下按正文出现顺序补全**全量索引**（共 138 条；2026-10-26 追加 #119–#123 后同步；#113–#118 入库时条目计数未同步，本次实测目录条目由 133 起算）。
-> 1. **重号**：托管系列与平台系列在 8–17 段各自编号，同号不同条目；正文、代码注释与提交历史大量以「#35」「#40」「#79」「#110」这类编号互相引用，**禁止重编号**，新条目一律从最大编号之后续编（现至 123）。
-> 2. **连续性核查结论**：主序列 1–123 无缺号（2026-10-26 续编 #119–#123 时按正文标题逐号核对，#113–#118 入库时序列本已连续）；另有小数编号（0.1、58.1）与两条无编号条目（「iOS Safari 大文件上传」「前后端默认上传上限」，物理位置在第 6、7 条之间），索引如实按正文顺序收录。
+> **编号与索引说明（2026-10-21 结构整理）**：本日志只追加不改写正文，编号因此存在三种合法形态；以下按正文出现顺序补全**全量索引**（共 138 条；2026-10-26 追加 #119–#123 后同步；#113–#118 入库时条目计数未同步，本次实测目录条目由 133 起算；2026-10-31 实测 `grep -c '^- \['` 为 157——上一计数在 #125–#136 两批追加时未同步，本行起每批追加随改）。
+> 1. **重号**：托管系列与平台系列在 8–17 段各自编号，同号不同条目；正文、代码注释与提交历史大量以「#35」「#40」「#79」「#110」这类编号互相引用，**禁止重编号**，新条目一律从最大编号之后续编（现至 142）。
+> 2. **连续性核查结论**：主序列 1–123 无缺号（2026-10-26 续编 #119–#123 时按正文标题逐号核对，#113–#118 入库时序列本已连续）；2026-10-31 复核续编段 #124–#142 逐号连续无缺；另有小数编号（0.1、58.1）与两条无编号条目（「iOS Safari 大文件上传」「前后端默认上传上限」，物理位置在第 6、7 条之间），索引如实按正文顺序收录。
 > 3. **乱序**：25 号条目物理上排在 27 之后（追加时未插位），保留原位不移动，以免搅动相邻锚点。
 > 4. **锚点口径**：以下索引按 GitHub slug 规则由正文标题现推（转小写、剥标点、空格转连字符、连字符保留原序列——如 `var(--shadow-panel)` → `var--shadow-panel`）；早期目录里「UPX 标 6 实 7」「WiFi 标 7 实 8 且尾词旧措辞」等悬空锚已全部纠掉。个别渲染器对全角括号折叠规则或有 ±1 连字符差异，以 GitHub 口径为准。
 >
@@ -165,6 +165,12 @@
 - [134. `defineExpose` 交出 Ref 会在公开代理被自动解包：编排层拿 `handle.autoScroll.value` 得 undefined，滚动脱锁永远走未读分支，不报错只是行为不对](#134-defineexpose-交出-ref-会在公开代理被自动解包编排层拿-handleautoscrollvalue-得-undefined滚动脱锁永远走未读分支不报错只是行为不对)
 - [135. Map/Set 原地 set + version++ 的 computed 链不重算：中间 computed 返回同一引用时下游按 Object.is 判等整段停更，统计行静默不渲染](#135-mapset-原地-set--version-的-computed-链不重算中间-computed-返回同一引用时下游按-objectis-判等整段停更统计行静默不渲染)
 - [136. 后端 Nav().Icon 用了前端图标池里没有的名字：侧栏静默走回退图标，前后端各持一份"看起来都对"的名册](#136-后端-navicon-用了前端图标池里没有的名字侧栏静默走回退图标前后端各持一份看起来都对的名册)
+- [137. CREATE_NEW_CONSOLE 与 PSEUDOCONSOLE 互斥而 CreateProcess **不报错**：子进程静默挂真控制台，ConPTY 管道全程 0 字节、输入全吞](#137-create_new_console-与-pseudoconsole-互斥而-createprocess-不报错子进程静默挂真控制台conpty-管道全程-0-字节输入全吞)
+- [138. 照 MSDN 样例借句继承把真实管道传进 STARTUPINFO，宿主 stdio 本身可继承时被子进程抢挂：字形漏父 stdout、ConPTY 只见转义噪音、"首写被吞"假象](#138-照-msdn-样例借句继承把真实管道传进-startupinfo宿主-stdio-本身可继承时被子进程抢挂字形漏父-stdoutconpty-只见转义噪音首写被吞假象)
+- [139. 服务结构体的内部接线方法被 Wails bindings 原样导出成前端 API：RPC 面即契约面，挂在 Services() 注册的结构体上不得有内部方法](#139-服务结构体的内部接线方法被-wails-bindings-原样导出成前端-apirpc-面即契约面挂在-services-注册的结构体上不得有内部方法)
+- [140. x/sys ProcThreadAttributeListContainer.Update 的签名逼出 uintptr 转 unsafe.Pointer，触发 go vet unsafeptr：句柄本是整数，直走原生 proc.Call 传 uintptr 才是诚实写法](#140-xsys-procthreadattributelistcontainerupdate-的签名逼出-uintptr-转-unsafepointer触发-go-vet-unsafeptr句柄本是整数直走原生-proccall-传-uintptr-才是诚实写法)
+- [141. proc.Call 少传一个参数：脏寄存器平时侥幸、偶发以无意义 errcode 翻车——syscall 的实参个数没有编译器兜底，逐个数是纪律](#141-proccall-少传一个参数脏寄存器平时侥幸偶发以无意义-errcode-翻车syscall-的实参个数没有编译器兜底逐个数是纪律)
+- [142. 停用/退出的收口代码过自家调用门，被门在 stopping 态拒绝而**完全空转**；GoStream 数据面又是 rpc_gate_matrix 的盲区——不在 RPC 面上的入口与收口，门的语义要单独设计](#142-停用退出的收口代码过自家调用门被门在-stopping-态拒绝而完全空转gostream-数据面又是-rpc_gate_matrix-的盲区不在-rpc-面上的入口与收口门的语义要单独设计)
 
 ---
 
@@ -1773,3 +1779,65 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
 - **避坑防重犯建议**：
   1. 新增模块登记 Nav 时，Icon 值必须先在 `icons.ts` 里 grep 到同名键再落码——"回退不报错"意味着写错名的代价是用户看到占位图而没人知道。
   2. 跨端名册（图标、事件名、类别字符串）要指定**唯一权威文件**并在引用侧注释指路；两份"各自都对"的表就是本条病根（N25 的另一面）。
+
+### 137. CREATE_NEW_CONSOLE 与 PSEUDOCONSOLE 互斥而 CreateProcess **不报错**：子进程静默挂真控制台，ConPTY 管道全程 0 字节、输入全吞
+
+- **问题现象与错误原因**：conpty 内核探针（手写 FFI 路线，验证 hanxi 内嵌终端的生死前提）把 creationFlags 加上了 `CREATE_NEW_CONSOLE`（0x10，实跑值 0x80010）。链路上**每一环都"成功"**：管道成对、`CreatePseudoConsole` 拿到 hPC、属性表挂上 PSEUDOCONSOLE、`CreateProcess` 返回 TRUE、连 `ResizePseudoConsole` 都 HRESULT=0——但 ConPTY 输出管道**全程 0 字节**：启动期无 banner、`Get-Date\r\n` 写了 3 秒零动静、`exit` 发了进程不退，最后靠 `taskkill /T /F` 收树（run2c 判定表：3 项 PASS + 4 项 FAIL，VERDICT=FAIL）。根因：CREATE_NEW_CONSOLE 与 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE 互斥，而 **CreateProcess 不报这个冲突**——子进程被静默挂到另起的新真控制台，ConPTY 管道整体旁路。更阴的是它连容错设计都能骗过：探针的回退逻辑只在首选 flags **返回 error** 时才重试——而现实是无错失败，回退永不触发。
+- **排查过程**：run2c（portable-pty 配方 + 0x80010）与 run2a（同配方去掉 CREATE_NEW_CONSOLE，flags=0x80400）逐项对照：run2a 全绿（banner 181B、Get-Date 167B、正常退出，累计 968B），差异只在 creationFlags 一个位——锁定互斥而非配方错。证据已归档仓内 `docs/evidence/conpty-2026-10-31/`（run2a/run2c/run3/guievidence/探针源码；原始易失目录 C:/tmp/conpty-spike/ 同日留存）。
+- **正确做法与标准修复方案**：creationFlags = `EXTENDED_STARTUPINFO_PRESENT|CREATE_UNICODE_ENVIRONMENT`（0x80400），CREATE_NEW_CONSOLE/DETACHED_PROCESS 一类"给子进程定控制台"的位与 PSEUDOCONSOLE 属性一律不能并立——配方钉在 `packages/go/conpty/conpty_windows.go` 头注。判定必须建在**通道层**：真机夹具让子进程自己现生成一个命令行里不存在的 GUID（`[guid]::NewGuid()`），输出流 grep 到它才算字节真的流回——"反例断言写在源头"的落点。
+- **避坑防重犯建议**：
+  1. Windows FFI 里"每个 API 返回值都成功"不是"接线正确"的证据：静默失败要在**必然流经的终点**断言字节，不是在调用点核对 HRESULT。"API 成功 + 通道全空"的形态，第一反应查互斥的创建标志。
+  2. `err != nil` 触发的回退/容错对不报错的冲突完全失效——互斥型标志要在探针里做正反两向的字节级复现，别指望运行时自纠。
+  3. 文档记"什么不能做"与"做什么是对的"同权重：只记"正确 flags=0x80400"，下轮仍会"加个 NEW_CONSOLE 试试"。
+
+### 138. 照 MSDN 样例借句继承把真实管道传进 STARTUPINFO，宿主 stdio 本身可继承时被子进程抢挂：字形漏父 stdout、ConPTY 只见转义噪音、"首写被吞"假象
+
+- **问题现象与错误原因**：探针初版照 MSDN ConsolePTY 样例走"句继承"路——管道（Windows 下默认可继承）、STARTUPINFO 三端指向真实管道端、`bInheritHandles=TRUE`。三连环炸相（run1b/run1i，证据归档 `docs/evidence/conpty-2026-10-31/`）：① ConPTY 只收到转义噪音（标题切换/清屏/`[K`），**没有一个字形**——真实字形漏进了父进程 stdout：宿主 stdio 本身是可继承管道时（被测试基座/其它程序拉起），子进程 std 抢挂到宿主管道上（portable-pty 原话：*"Explicitly set the stdio handles as invalid handles otherwise we can end up with a weird state where the spawned process can inherit the explicitly redirected output handles from its parent"*）；② 每次首写"3 秒零动静要补发"的假象——补发掩盖的是竞态不是 ConPTY 吞输入；③ 同族配方多 run 红绿不一（run1c 时好时坏）——竞态指纹，不是"有时能用"。
+- **排查过程**：run1b→run1c（明设 USESTDHANDLES）→run1i（对照组关旗标）三连同型红；读 portable-pty(wezterm) 生产配方原文，改为 **STARTF_USESTDHANDLES + 三端 INVALID_HANDLE_VALUE + bInheritHandles=FALSE** → run2a 全绿：首写直通、无需补发、正常退出。
+- **正确做法与标准修复方案**：见 `conpty_windows.go` Spawn——`Flags |= STARTF_USESTDHANDLES`（**旗标必须亮，否则三端 INVALID 根本不生效**）；三端 `^windows.Handle(0)`；`bInheritHandles=FALSE`。管道端交 `CreatePseudoConsole` 根本不需要继承位。
+- **避坑防重犯建议**：
+  1. MSDN 样例描述内核机制，不描述生产边界：样例隐含"宿主 stdio 环境干净"的前提，被测试基座/程序拉起时前提即破。移植样例前先问"这段依赖宿主什么"。
+  2. "首写被吞"类症状**不要先补发**——补发把竞态伪装成"能用"；先查子进程 std 挂在谁身上（对照组：父 stdout 是否出现字形、ConPTY 流是否只剩转义噪音）。
+  3. 继承位、USESTDHANDLES、三端值是**一组联动语义**，不存在"只关旗标就好"。
+  4. 同一配方多 run 红绿不一时按竞态定性，不得以"这次绿了"收口。
+
+### 139. 服务结构体的内部接线方法被 Wails bindings 原样导出成前端 API：RPC 面即契约面，挂在 Services() 注册的结构体上不得有内部方法
+
+- **问题现象与错误原因**：terminal 模块的 GoStream 泵入口 `TerminalService.HandleStream`（供 `OnInit` 注册用）写成了**导出方法**。Wails bindings 以"注册进 Services() 的结构体导出方法"为前端契约面逐个生成——于是 `terminalservice.js` 里冒出一个前端根本没法用、也从未打算给的伪 API（参数是后端流连接）。不报错，但契约面已被污染。根因口径：**挂在 Services() 注册结构体上的每个导出方法都是公开 API**；同包注册点引用方法**不需要导出**。
+- **排查过程**：装配注册批重新生成 bindings 后，人工核对导出函数清单时发现多出 `HandleStream`（这一步"生成后对账"就是本条的发现渠道）。修复已入库于 `6856353`：降为不可导出 `handleStream`，注册点走包内引用；入库 bindings 导出恰为 5 项，与 `composition_contract.json` 白名单逐字一致。
+- **正确做法与标准修复方案**：降为不可导出 + 包内引用注册。同时看清现有闸门的形状：`bindings.spec.ts:17` 用 `arrayContaining`——**白名单是单向的**（漏导出红、多导出不红），本类外溢闸门拦不住，必须生成后**人工双向 diff**：契约→bindings 齐不齐、bindings→契约有没有多出来的。
+- **避坑防重犯建议**：
+  1. 给 Services() 注册的结构体写方法先自问"这是 RPC 还是接线/泵/回调"：非契约方法从第一行就用不可导出名，别等 bindings 替你公开。
+  2. 每次重新生成 bindings 后与契约白名单双向对一遍；事实多于期望不是"闸门没配置"，是缺陷信号。
+  3. 若要自动反向断言（实际导出 ⊆ 白名单），改动 spec 形状先过主会话/机主裁定。
+
+### 140. x/sys ProcThreadAttributeListContainer.Update 的签名逼出 uintptr 转 unsafe.Pointer，触发 go vet unsafeptr：句柄本是整数，直走原生 proc.Call 传 uintptr 才是诚实写法
+
+- **问题现象与错误原因**：属性表挂 PSEUDOCONSOLE 要传 **HPCON 句柄本身**而不是 `&hPC`（探针实证）。x/sys v0.47.0 的容器方法 `Update(attribute uintptr, value unsafe.Pointer, size uintptr)`（exec_windows.go:232）第二参强制 unsafe.Pointer，把 `windows.Handle`（底层 uintptr）传进去必经 **uintptr→unsafe.Pointer** 伪造指针转换，`go vet` unsafeptr 拦红（本仓门禁三件套含 `go vet ./...`）。更深一层是语义失真：句柄就是整数，背后无对象可指；容器内部 `al.pointers` 保活簿记对整数值句柄无意义（其生命周期归 ClosePseudoConsole 管）——为过签名造假指针就是把类型关系撒谎给编译器。
+- **排查过程**：探针阶段本无容器可用，走 `proc.Call(…, uintptr(hpc), …)` 直传整数并验证成功；入库沿用原生路。顺带查实：`List()` 返回的指针走 `uintptr(unsafe.Pointer(p))` 是**指针→uintptr** 方向，vet 接受，与禁忌方向恰好相反。
+- **正确做法与标准修复方案**：`conpty_windows.go` 声明 `windows.NewLazySystemDLL("kernel32.dll").NewProc("UpdateProcThreadAttribute")` 直调七参（个数之辨见 #141）；原生路没有 x/sys 收尾，`ret==0` 手工看 errcode、失败路径 `attr.Delete()`+`ClosePseudoConsole` 清场，两处义务都在调用点补齐并留注释。
+- **避坑防重犯建议**：
+  1. unsafeptr 方向不对称：pointer→uintptr 合法；uintptr→pointer 禁忌。包装 API 的签名逼你走禁忌方向时，先怀疑签名不适配该属性，而不是想怎么糊过 vet（`//nolint` 硬转=埋雷）。
+  2. 传"句柄值本身"类属性先读封装对 value 参数的用法（指其所指还是值本身、有无保活簿记），语义不符就直走原生。
+  3. 原生路换 vet 清白的代价是清场归自己，注释要指路，否则下轮审查会把原生路当野路。
+
+### 141. proc.Call 少传一个参数：脏寄存器平时侥幸、偶发以无意义 errcode 翻车——syscall 的实参个数没有编译器兜底，逐个数是纪律
+
+- **问题现象与错误原因**：conpty 内核入库版把 `UpdateProcThreadAttribute`（7 个形参）只传了 6 个实参——`LazyProc.Call` 收变参，编译器不检查个数，缺的那个参数取**当时刻字器的残留值**。多数运行侥幸通过（残留恰无害），换一条调用路径（新增带 Env 的真机用例）就翻车：`ret==0`、errcode 打出 `2665982758416`——那不是一个错误码，是脏寄存器（一个地址形状的值）。探针阶段传足了 7 个（归档 main.go:103-105），转写生产码时丢掉一个——**转写过程本身是新代码，同样需要逐参对账**。
+- **排查过程**：新用例首跑失败先怀疑 Env（新变量），但断点在 Update 而非 Env 组装；对照归档探针源码逐参数数数，发现 6≠7。复现的偶然性（旧用例屡试屡绿）正是脏寄存器定性证据。
+- **正确做法与标准修复方案**：七参逐一对位并给最后两个 out 参数显式 `0`（lpPreviousValue/lpSizeReturn），注释留"参数个数没有编译器兜底，逐个数是纪律"（`conpty_windows.go`，随 `6162f5b` 入库；双 live 用例全绿）。
+- **避坑防重犯建议**：
+  1. 凡 `proc.Call` 处，注释直接列出 Win32 签名与参数个数（本条后 conpty 已照此办理）；MSDN 页面标题就写着参数表，对照成本是一次 grep。
+  2. "同一 API 换个输入才炸"且错误值是地址形状的巨数——先数参数，再怀疑宇宙。
+  3. 从探针/示例转写生产码时，把原调用逐参数 diff 一遍，转写≠改写。
+
+### 142. 停用/退出的收口代码过自家调用门，被门在 stopping 态拒绝而**完全空转**；GoStream 数据面又是 rpc_gate_matrix 的盲区——不在 RPC 面上的入口与收口，门的语义要单独设计
+
+- **问题现象与错误原因**：terminal 模块 v0 的停用收口 `killAll` 逐会话调用**带门的** `KillTerminal`（内部先 `holder.Enter()`）。而 registry 在 stopping 态对所有 `Acquire` 返回拒绝（registry.go:813——这本是调用门的正确语义：停用中不放新活进来）——于是 `OnDestroy → killAll → 每个 Enter 被拒 → 提前 return`：**一个会话都不杀、账一项不清**，模块却显示"已停用"；残留连接无限期继续收 pty 输出喂输入，hanxi 退出后 cmd/powershell/claude 成孤儿。头注宣称"应用重启进程即清账"当场为假。第二面：GoStream 端点不走 rpc 面，`rpc_gate_matrix_test` 只扫**导出方法**（ast.IsExported）——把 `handleStream` 降为包内方法（#139 的修复）恰好使它同时脱离 bindings 面和 AST 穷举面，而它仍是任意 webview 页 `Stream("terminal:io")` 可达的第二入口。
+- **排查过程**：第二路只读审计（GoStream 接缝专项）沿"停用链怎么走"实读 registry/gate 交叉引用发现；定性关键一步是发现既有单测全部跑在**未注入门**的 holder 上（Enter 恒放行）——B1 类缺陷结构上测不到，"测试口径告"与"断言抄实现等于没测"同族。
+- **正确做法与标准修复方案**：两刀分开修（随 `091b4ca` 入库）：① 收口走**无门**内部路径 `killSession`（摘账→标记退场→关连接→杀树），`KillTerminal`（RPC 面）保留接门并委托它；回归钉=可编程 denyGate 下 `killAll` 照样全杀。② 数据面入口自接门：`serveConn` 的 open 帧单独 `holder.Enter()` 准入，停用态拒绝接入并说明原因。
+- **避坑防重犯建议**：
+  1. **收口代码永远不要经过"拒绝新工作"的那道门**——stopping 态的门把收口也当新工作拒掉是门的正确行为、调用方的设计错误；OnDestroy/清理路径必须无门或有专门的放行通道（对照：keyviz 的 lease.Release 也在门外）。
+  2. 门与测试矩阵都按"导出方法==前端可直调面"划界，凡是**绕过这条等式的通道**（GoStream 端点、包内注册回调、全局 socket）要单独设计准入，并把"注册即终身有效、无注销 API"（wails stream.go:719 事实）写进设计约束。
+  3. 生命周期类缺陷要用"注入拒绝态门"的测试兜（本批已补 denyGate 用例）；在未注入门 holder 上测出的收口绿，恰好是生产不会发生的那条。
+  4. 后续待办（在册不隐匿）：rpc_gate_matrix 尚不覆盖 GoStream 入口的穷举校验，排期单独做。

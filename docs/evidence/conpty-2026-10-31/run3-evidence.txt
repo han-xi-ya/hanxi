@@ -1,0 +1,29 @@
+=== conpty-spike evidence tag=run3 child=claude start=2026-10-31T10:35:01+08:00 ===
+exe=C:\tmp\conpty-spike\spike-gui.exe pid=15408 go=go1.26.4 subsystem=2(GUI) GetConsoleWindow=0x0
+
+-- 时间戳日志 --
+[10:35:01.556 elapsed=  0.00s] ==== conpty-spike 开始 child=claude tag=run3 ====
+[10:35:01.563 elapsed=  0.01s] 自身 PE 子系统: 2(GUI)（2=GUI/windowsgui 3=CUI/console）；GetConsoleWindow=0x0
+[10:35:01.563 elapsed=  0.01s] exe=C:\tmp\conpty-spike\spike-gui.exe pid=15408 go=go1.26.4 GetConsoleWindow=0x0（注意：harness 基座本身无控制台窗口，此项 0 不足以证明子系统，以 PE 子系统字段为准）
+[10:35:01.563 elapsed=  0.01s] creationFlags 首选=0x80400
+[10:35:01.563 elapsed=  0.01s] OK   pipes: inR=428 inW=488 outR=492 outW=496（不依赖继承位）
+[10:35:01.564 elapsed=  0.01s] OK   CreatePseudoConsole: hPC=0x1C0FB2A2CC0 (100x30)
+[10:35:01.565 elapsed=  0.01s] startupinfo 配方: portable-pty(USESTDHANDLES+三端 INVALID)，ptyFlags=0x0
+[10:35:01.565 elapsed=  0.01s] OK   CreateProcess: flags=0x80400 child_pid=21240 inheritHandles=false cmdline="cmd.exe /c \"C:\\Users\\Administrator\\AppData\\Roaming\\npm\\claude.cmd\""
+[10:35:01.566 elapsed=  0.01s] claude 模式：观察 10s（不发任何输入）
+[10:35:11.567 elapsed= 10.01s] OK   claude TUI 字节: claude-out-run3.log=1702B 1b5b(ESC[)首现@0 存在=true
+[10:35:11.567 elapsed= 10.01s] ESC 前 64 字节 hex: 1b5b3f32356c1b5b324a1b5b6d1b5b481b5d303b636c61756465071b5b3f3235681b5b33336d5065726d697373696f6e20616c6c6f772072756c652028433a5c
+[10:35:11.652 elapsed= 10.10s] taskkill /T /F /PID 21240 → err=<nil> 输出="SUCCESS: The process with PID 23992 (child process of PID 21240) has been terminated. SUCCESS: The process with PID 21240 (child process of PID 15408) has been terminated."
+[10:35:11.652 elapsed= 10.10s] OK   claude 清理后退出: Wait=0 exitcode=1（1/0xC000013A 等=被强杀属预期）
+[10:35:12.653 elapsed= 11.10s] ClosePseudoConsole(hPC=0x1C0FB2A2CC0) 完成
+[10:35:12.655 elapsed= 11.10s] 输出读取结束: EOF（累计 1702 字节）
+[10:35:12.655 elapsed= 11.10s] ==== 结束 seqOK=true ====
+
+-- 步骤判定 --
+[PASS] pipes: inR=428 inW=488 outR=492 outW=496（不依赖继承位）
+[PASS] CreatePseudoConsole: hPC=0x1C0FB2A2CC0 (100x30)
+[PASS] CreateProcess: flags=0x80400 child_pid=21240 inheritHandles=false cmdline="cmd.exe /c \"C:\\Users\\Administrator\\AppData\\Roaming\\npm\\claude.cmd\""
+[PASS] claude TUI 字节: claude-out-run3.log=1702B 1b5b(ESC[)首现@0 存在=true
+[PASS] claude 清理后退出: Wait=0 exitcode=1（1/0xC000013A 等=被强杀属预期）
+VERDICT=PASS EXITCODE=0
+DONE 2026-10-31T10:35:12.6576732+08:00

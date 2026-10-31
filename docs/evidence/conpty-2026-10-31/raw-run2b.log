@@ -1,0 +1,55 @@
+[?25l[2J[m[H]0;C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe[?25h]0;管理员: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exePS C:\tmp\conpty-spike> [?25l
+PS C:\tmp\conpty-spike> 
+>> [2;25H[?25h[93mGet-Date[m
+>> 
+[?25l
+2026年10月31日 10:33:45[8;1H[?25h[?25lPS C:\tmp\conpty-spike> 
+>> [8;25H[?25h[?25l[HPS C:\tmp\conpty-spike>[K
+PS C:\tmp\conpty-spike> [93mGet-Date[K[m
+>>[K
+[K
+2026年10月31日 10:33:45[K
+[K
+[K
+PS C:\tmp\conpty-spike>[K
+>>[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K[9;25H[?25h[?25l[93mcmd [m/c mode
+>> [12;1HStatus for device CON:
+----------------------
+    Lines:          40
+    Columns:        120
+    Keyboard rate:  31
+    Keyboard delay: 1
+    Code page:      65001[20;1HPS C:\tmp\conpty-spike> 
+>> [20;25H[?25h[92mexit[m
+>> 

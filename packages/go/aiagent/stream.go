@@ -1,7 +1,8 @@
 package aiagent
 
 // 常驻 stream-json 会话。本文件的每一个设计决定都钉在 2026-10-30 真机探测的
-// 实测记录上（probe 原始帧存于仓外 C:/tmp/aichat-probe/logs/，非参考推测）：
+// 实测记录上（probe 原始帧已归档 docs/evidence/aichat-stream-probe-2026-10-30/，
+// 易失原址 C:/tmp/aichat-probe/ 仅历史脚注；帧样本另见册 #137–#141 与提交说明）：
 //
 //   - argv（实测命中 claude.cmd 直传，Go 无需包 cmd /C）：
 //     claude --input-format stream-json --output-format stream-json --verbose

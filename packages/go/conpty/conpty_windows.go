@@ -3,9 +3,10 @@
 // Package conpty 封装 Windows 伪控制台（ConPTY）这一件事：起一个"以为自己在
 // 真终端里"的子进程，宿主拿到的只是三条管道 + 一个 resize 按钮。
 //
-// 本包的每条配方都有 2026-10-31 实弹探针背书（证据与失败复现存仓外
-// C:/tmp/conpty-spike/：guievidence.txt / run2c-evidence.txt / run3-evidence.txt），
-// 并经第二双眼睛的只读审计补严（C:/tmp/conpty-audit-check/：Env 块 panic
+// 本包的每条配方都有 2026-10-31 实弹探针背书（证据与失败复现**已归档仓内**
+// docs/evidence/conpty-2026-10-31/：guievidence.txt / run2c-evidence.txt /
+// run3-evidence.txt / 探针源码；易失原址 C:/tmp/conpty-spike/ 仅历史脚注），
+// 并经第二双眼睛的只读审计补严（docs/evidence/conpty-audit-2026-10-31/：Env 块 panic
 // 复现 A 组、Read‖Close 并发 2000 轮 B 组、挂等待关句柄 C 组）：
 //
 //   - **CREATE_NEW_CONSOLE 与 PSEUDOCONSOLE 互斥且 CreateProcess 不报错**——

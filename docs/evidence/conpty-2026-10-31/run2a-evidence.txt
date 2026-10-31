@@ -1,0 +1,37 @@
+=== conpty-spike evidence tag=run2a child=powershell start=2026-10-31T10:31:44+08:00 ===
+exe=C:\tmp\conpty-spike\spike.exe pid=13672 go=go1.26.4 GetConsoleWindow=0x0
+
+-- 时间戳日志 --
+[10:31:44.196 elapsed=  0.00s] ==== conpty-spike 开始 child=powershell tag=run2a ====
+[10:31:44.200 elapsed=  0.00s] exe=C:\tmp\conpty-spike\spike.exe pid=13672 go=go1.26.4 GetConsoleWindow=0x0（0=未挂控制台，GUI 子系统特征）
+[10:31:44.200 elapsed=  0.00s] creationFlags 首选=0x80400
+[10:31:44.200 elapsed=  0.00s] OK   pipes: inR=436 inW=440 outR=452 outW=444（不依赖继承位）
+[10:31:44.201 elapsed=  0.01s] OK   CreatePseudoConsole: hPC=0x205B86C1100 (100x30)
+[10:31:44.201 elapsed=  0.01s] startupinfo 配方: portable-pty(USESTDHANDLES+三端 INVALID)，ptyFlags=0x0
+[10:31:44.202 elapsed=  0.01s] OK   CreateProcess: flags=0x80400 child_pid=10684 inheritHandles=false cmdline="powershell.exe -NoLogo -NoProfile"
+[10:31:47.207 elapsed=  3.01s] OK   startup-output: 启动期收到 181 字节（banner/提示符）；creationFlags=0x80400
+[10:31:47.507 elapsed=  3.31s] 已写入: \r\n
+[10:31:49.009 elapsed=  4.81s] 输入预热(空回车) 首写生效=true
+[10:31:49.309 elapsed=  5.11s] 已写入: Get-Date\r\n
+[10:31:49.609 elapsed=  5.41s] Get-Date 首写生效=true
+[10:31:51.112 elapsed=  6.92s] OK   Get-Date→输出: out1-run2a.log=167B 含标记"202"=true；可读摘录: "PS C:\\tmp\\conpty-spike> >> Get-Date >> 2026年10月31日 10:31:49PS C:\\tmp\\conpty-spike> >>"
+[10:31:51.112 elapsed=  6.92s] OK   ResizePseudoConsole(120x40): HRESULT=0
+[10:31:51.412 elapsed=  7.22s] 已写入: cmd /c mode\r\n
+[10:31:53.215 elapsed=  9.02s] OK   resize 后存活且 mode 有输出: exitcode=259(259=运行中) out2-run2a.log=601B 含120列痕迹=true；摘录: "PS C:\\tmp\\conpty-spike> PS C:\\tmp\\conpty-spike> Get-Date >> 2026年10月31日 10:31:49 PS C:\\tmp\\conpty-spike> >> cmd /c mode >> Status for device CON: ---------------------- Lines: 40 Columns: 120 Ke…"
+[10:31:53.523 elapsed=  9.33s] 已写入: exit\r\n
+[10:31:53.824 elapsed=  9.63s] OK   powershell exit: 正常退出 exitcode=0（首写生效=true）
+[10:31:53.824 elapsed=  9.63s] ClosePseudoConsole(hPC=0x205B86C1100) 完成
+[10:31:53.826 elapsed=  9.63s] 输出读取结束: EOF（累计 968 字节）
+[10:31:53.826 elapsed=  9.63s] ==== 结束 seqOK=true ====
+
+-- 步骤判定 --
+[PASS] pipes: inR=436 inW=440 outR=452 outW=444（不依赖继承位）
+[PASS] CreatePseudoConsole: hPC=0x205B86C1100 (100x30)
+[PASS] CreateProcess: flags=0x80400 child_pid=10684 inheritHandles=false cmdline="powershell.exe -NoLogo -NoProfile"
+[PASS] startup-output: 启动期收到 181 字节（banner/提示符）；creationFlags=0x80400
+[PASS] Get-Date→输出: out1-run2a.log=167B 含标记"202"=true；可读摘录: "PS C:\\tmp\\conpty-spike> >> Get-Date >> 2026年10月31日 10:31:49PS C:\\tmp\\conpty-spike> >>"
+[PASS] ResizePseudoConsole(120x40): HRESULT=0
+[PASS] resize 后存活且 mode 有输出: exitcode=259(259=运行中) out2-run2a.log=601B 含120列痕迹=true；摘录: "PS C:\\tmp\\conpty-spike> PS C:\\tmp\\conpty-spike> Get-Date >> 2026年10月31日 10:31:49 PS C:\\tmp\\conpty-spike> >> cmd /c mode >> Status for device CON: ---------------------- Lines: 40 Columns: 120 Ke…"
+[PASS] powershell exit: 正常退出 exitcode=0（首写生效=true）
+VERDICT=PASS EXITCODE=0
+DONE 2026-10-31T10:31:53.8269006+08:00
