@@ -8,9 +8,11 @@
 // 两处校验迟早漂移，后端是唯一真相，其 error/hint/line/col/snippet/warnings
 // 原样上屏、一行不吞。
 // 曾经长出来的规则族（日志清洗、宽松修复、多段抽取、展开转义、查找、替换、
-// 统计、AI 提取按钮）已整体退役进 git 历史——别在这里凭记忆复活。
-// 脏文本的统一出路是「带去 AI 聊天」：只经 useJsonChatBridge 交接文本并跳页，
-// 不在此处弹外发确认——真正外发发生在聊天侧按下「发送」那一刻，确认链归那里复用。
+// 统计）已整体退役进 git 历史——别在这里凭记忆复活。
+// 脏文本的出路是就地「AI 一键美化」（2026-10-31 机主澄清：不是把人赶去聊天模块）：
+// 按下先弹外发确认（内容离开本机 + 耗时按几十秒算）→ 后端 ExtractByAI 过契约
+// 验收与本地排版 → 结果就地替换失败块。在途/失败/过期未采用三通道分列，
+// 纪律从 ExtractByAI 一代逐条继承（#126 哨兵、#128 有效性判定、#132 单飞、#133 严验收）。
 import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as JsonFmtAPI from '../../bindings/hanxi/internal/modules/jsonfmt'
 import type { JsonFmtRequest, JsonFmtResult } from '../../bindings/hanxi/internal/modules/jsonfmt/models'
@@ -21,12 +23,21 @@ import UiStatusChip from '../components/ui/UiStatusChip.vue'
 import UiClipboardField from '../components/ui/UiClipboardField.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import { useClipboard } from '../composables/useClipboard'
+import { useConfirm } from '../composables/useConfirm'
 import { handOff, takeForFmt } from '../composables/useJsonChatBridge'
 
 const { copyWithToast } = useClipboard()
+const { confirm } = useConfirm()
 
-// 视图间导航：App.vue 对动态视图统一监听 @navigate（HomeView 先例形制）
+// 视图间导航：App.vue 对动态视图统一监听 @navigate（HomeView 先例形制）。
+// 只服务于次要链接「带到 AI 聊天细聊」——主出路是就地「AI 一键美化」，
+// 这条留给"想反复追问模型"的场景，也让桥的 toChat 通道有真实生产者。
 const emit = defineEmits<{ navigate: [route: string] }>()
+
+function takeToChat(): void {
+  handOff(inputText.value)
+  emit('navigate', '/ext/aichat')
+}
 
 // 自动节拍：快过用户贴完回看的间隔，慢过连续击键的抖动
 const DEBOUNCE_MS = 300
@@ -46,6 +57,14 @@ const lastResult = ref<JsonFmtResult | null>(null)
 const transportError = ref('')
 // 回程来源条：聊天侧「在 JSON 美化器中打开」送来的块，自动美化后要说明出处
 const bridgeNote = ref('')
+// —— AI 一键美化三通道（ExtractByAI 一代的 aiBusy/aiAsking/aiError/aiNote 分列
+// 纪律原样继承）：失败与"过期未采用"都不砸已在屏上的结果。 ——
+const aiBusy = ref(false)
+// 确认待决期另设一闸：aiBusy 是 await confirm 之后才置的，只靠它禁钮，
+// 弹窗期间按钮一直可点——双击就是两发并发外发（aiAsking 教训在册）。
+const aiAsking = ref(false)
+const aiError = ref('')
+const aiNote = ref('')
 
 // 输入框收展：纯 UI 位（rows 8 ↔ 16，照 AiChatInput/MsgBoardView draftExpanded 先例）
 const draftExpanded = ref(false)
@@ -84,16 +103,60 @@ async function beautifyNow(): Promise<void> {
   }
 }
 
-// 带去 AI 聊天：本地读不动的脏文本的统一出路（后端 classifyFailure 指路文案的落点）。
-// 只交接原文 + 跳页：不弹确认、不发外发 RPC——离开这台机器发生在聊天侧按下发送时，
-// 那里的每会话首条确认链原样复用，不在两处各问一遍。
-function takeToChat(): void {
-  handOff(inputText.value)
-  emit('navigate', '/ext/aichat')
+// AI 一键美化：本地主干读不动的脏文本，就地交本机模型认结构（后端
+// classifyFailure 的指路文案落点）。三道闸一件不少：按下 → 外发确认 → 才发
+// （粘贴/防抖/开关永不触发它）；耗时按几十秒算的期望在点之前建立，不让人
+// 在第 20 秒认定界面卡死（#128）。
+async function aiBeautify(): Promise<void> {
+  const text = inputText.value
+  if (isBlank(text) || aiBusy.value || aiAsking.value) return
+  const bytes = new TextEncoder().encode(text).length
+  aiAsking.value = true // 先闸后问：弹窗期间也不许第二下点进来
+  const accepted = await confirm({
+    title: '把这段原文交给本机 AI 美化？',
+    description:
+      `将把输入框里的全部 ${bytes} 字节原文交给本机 Claude Code——内容会离开这台机器` +
+      '（进入模型会话），不只是本机处理。返回结果会先过本地契约验收（不扫描不修复不猜）' +
+      '并由本地渲染器排版后才上屏。耗时按几十秒算（实测一次提取约一分钟量级），' +
+      '期间可以继续编辑，但改过输入这一发结果就不再采用。',
+    confirmLabel: '交给 AI 美化',
+    tone: 'warning',
+  })
+  aiAsking.value = false
+  if (!accepted) return
+
+  aiBusy.value = true
+  aiError.value = ''
+  aiNote.value = ''
+  try {
+    const res = await JsonFmtAPI.JsonFmtService.ExtractByAI({
+      text, indent: indent.value, sortKeys: sortKeys.value,
+    } as JsonFmtRequest)
+    if (inputText.value !== text) {
+      // 过期不等于失败：几十秒后屏上没动静又不说原因，用户只会觉得工具没反应。
+      aiNote.value = 'AI 已返回，但未采用：输入在这期间被改过，那份结果对应的不是现在这段文本。要的话再按一次。'
+      return
+    }
+    // 采用即摘掉更早本地发的覆盖权（aiAdopted 纪律的 reqSeq 等价实现）：
+    // 本地一发只要几十毫秒、AI 一发几十秒——不设这道闸，晚到的"解析失败"
+    // 会把刚到手的结果顶掉，用户看到的是成果凭空消失。
+    reqSeq++
+    running.value = false
+    transportError.value = ''
+    lastResult.value = res
+  } catch (err: unknown) {
+    // 失败不砸屏：上一轮结果（含失败块）原样留着，AI 的错误单通道播报——
+    // "AI 不行"不该把用户已经拿在手里的东西一起砸掉。
+    aiError.value = getErrorMessage(err)
+  } finally {
+    aiBusy.value = false
+  }
 }
 
 watch(inputText, () => {
   bridgeNote.value = '' // 文本已被用户动过，来源条的使命完成
+  aiNote.value = '' // "过期未采用"说的就是"你改了输入"——改后使命完成
+  aiError.value = '' // 上一发的失败原因对新文本不再成立，不留着误导
   if (debounceTimer) {
     clearTimeout(debounceTimer)
     debounceTimer = null
@@ -146,10 +209,21 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
   <section class="page-fluid jfmt-page">
     <PageHeader
       title="JSON 美化"
-      subtitle="标准 JSON 的格式化 / 压缩 / 键排序：数字原样搬运不改精度、键序默认保留；失败报行列与原文片段并给方向判断，读不动的脏文本一键带去 AI 聊天。"
+      subtitle="标准 JSON 的格式化 / 压缩 / 键排序：数字原样搬运不改精度、键序默认保留；失败报行列与原文片段并给方向判断，读不动的可就地「AI 一键美化」（需确认，内容会离开本机）。"
     />
 
     <UiBanner v-if="bridgeNote" tone="info">{{ bridgeNote }}</UiBanner>
+    <!-- AI 三通道分列（ExtractByAI 一代纪律）：在途播报、失败不砸屏、过期未采用
+         单列说明为什么屏上没动静——三者各一条，混写会让用户查错方向 -->
+    <UiBanner v-if="aiBusy" tone="info" role="status">
+      AI 正在从原文里认结构：一次往返几十秒属正常（实测约一分钟量级），期间可继续编辑，
+      但改过输入这一发结果就不再采用。
+    </UiBanner>
+    <UiBanner v-if="aiError" tone="error">
+      <div>{{ aiError }}</div>
+      <div class="jfmt-err-hint">AI 美化失败不影响上面的结果；「未装命令行/未登录」类错误修好环境再按一次即可。</div>
+    </UiBanner>
+    <UiBanner v-if="aiNote" tone="info">{{ aiNote }}</UiBanner>
 
     <!-- 主干三件套纵排：输入 → 工具条 → 输出（DOM 序即阅读序，零 order 戏法） -->
     <div class="jfmt-desk">
@@ -235,14 +309,23 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
               <div class="jfmt-err-hint">输入原样保留，修正后自动重算。</div>
               <div class="jfmt-err-actions">
                 <UiButton
-                  class="jfmt-chat-btn"
+                  class="jfmt-ai-btn"
                   variant="secondary"
                   small
-                  title="内容将发给本机 AI，会离开这台机器"
+                  :disabled="aiBusy || aiAsking"
+                  title="内容将发给本机 AI（会离开这台机器）；先确认再发，返回过本地验收与排版；一次往返几十秒"
+                  @click="aiBeautify"
+                >
+                  {{ aiAsking ? '等待确认…' : aiBusy ? 'AI 认结构中…' : '✨ AI 一键美化' }}
+                </UiButton>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-small jfmt-chat-link"
+                  title="把原文带进 AI 聊天并预填提取指令（适合想反复追问的场景）；发送与确认仍在聊天侧"
                   @click="takeToChat"
                 >
-                  带去 AI 聊天
-                </UiButton>
+                  或带到 AI 聊天细聊
+                </button>
               </div>
             </div>
           </UiBanner>
