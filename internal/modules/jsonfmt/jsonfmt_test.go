@@ -74,7 +74,7 @@ func TestDuplicateKeyWarnedNotMerged(t *testing.T) {
 }
 
 func TestFailureLocationAndHints(t *testing.T) {
-	// 尾部截断：错在末尾 + 未闭合语汇 → 截断判断，指路补全或 AI 聊天。
+	// 尾部截断：错在末尾 + 未闭合语汇 → 截断判断，指路复制全或一键美化。
 	r := run(JsonFmtRequest{Text: "{\"a\": [1, 2"})
 	if r.OK {
 		t.Fatal("未闭合必须失败")
@@ -92,13 +92,13 @@ func TestFailureLocationAndHints(t *testing.T) {
 		t.Fatalf("头部缺失判断缺失: %q", r2.Hint)
 	}
 
-	// 开头混说明文字：指出第一个 { 的位置并指路 AI 聊天（不承诺本地剥）。
+	// 开头混说明文字：指出第一个 { 的位置并指路一键美化（不承诺本地剥）。
 	r3 := run(JsonFmtRequest{Text: "请求参数 = {\"a\":1}"})
 	if r3.OK {
 		t.Fatal("带前导说明文字必须失败（本模块不猜）")
 	}
-	if !strings.Contains(r3.Hint, "AI 聊天") || !strings.Contains(r3.Hint, "第 1 行") {
-		t.Fatalf("第三分支应给位置并指路 AI 聊天: %q", r3.Hint)
+	if !strings.Contains(r3.Hint, "一键美化") || !strings.Contains(r3.Hint, "第 1 行") {
+		t.Fatalf("第三分支应给位置并指路一键美化: %q", r3.Hint)
 	}
 
 	// 判不出来宁可闭嘴：错误方向三选一都不沾。

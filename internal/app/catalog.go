@@ -222,7 +222,7 @@ var catalogItems = []extapi.ModuleCatalogItem{
 	{
 		ID:            "jsonfmt",
 		Name:          "JSON 美化",
-		Description:   "粘贴即美化：标准 JSON 格式化/压缩/排序，数字与键序原样保留（19 位大整数不改值），失败报行列与原文片段并给方向判断；脏文本不猜不修——一键带去 AI 聊天处理",
+		Description:   "粘贴即美化：标准 JSON 格式化/压缩/排序，数字与键序原样保留（19 位大整数不改值），失败报行列与原文片段并给方向判断；读不动的可按「AI 一键美化」交本机 Claude Code 提取（需确认、内容离开本机，返回过本地契约验收与本地排版）",
 		Category:      "developer",
 		DeliveryKind:  extapi.DeliveryBuiltinLogical,
 		Capabilities:  []string{},
