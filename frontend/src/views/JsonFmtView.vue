@@ -66,8 +66,6 @@ const aiAsking = ref(false)
 const aiError = ref('')
 const aiNote = ref('')
 
-// 输入框收展：纯 UI 位（rows 8 ↔ 16，照 AiChatInput/MsgBoardView draftExpanded 先例）
-const draftExpanded = ref(false)
 
 // 防抖定时器：自管 + 卸载清理（PortScanView.debounceTimer 同姿势）
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -203,6 +201,17 @@ onUnmounted(() => {
 const isEmptyInput = computed(() => isBlank(inputText.value))
 const failedResult = computed(() => lastResult.value !== null && !lastResult.value.ok)
 const warnings = computed(() => lastResult.value?.warnings ?? [])
+
+// 面板头的机器值（mono/tabular 是设计语言对"数值型信息"的规定形态）：
+// 输入字节与输出字节/行数都由**当前实际内容**现算，不是后端回执的第二口径——
+// 只作体量提示，判卷权仍在后端（错误、超限文案均以后端为准）。
+const inputBytes = computed(() => (inputText.value ? new TextEncoder().encode(inputText.value).length : 0))
+const outBytes = computed(() => (lastResult.value?.output ? new TextEncoder().encode(lastResult.value.output).length : 0))
+const outLines = computed(() => {
+  const out = lastResult.value?.output
+  if (!out) return 0
+  return out.split('\n').length
+})
 </script>
 
 <template>
@@ -225,43 +234,23 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
     </UiBanner>
     <UiBanner v-if="aiNote" tone="info">{{ aiNote }}</UiBanner>
 
-    <!-- 主干三件套纵排：输入 → 工具条 → 输出（DOM 序即阅读序，零 order 戏法） -->
+    <!-- 主任务双栏（工作台 2→1 形态）：左=贴入，右=结果与出路；窄屏自动堆叠。
+         输入/输出并排是这个工具的原生形状——对照着看才用得顺。 -->
     <div class="jfmt-desk">
-      <div class="card jfmt-pane">
+      <section class="card jfmt-pane jfmt-in-pane" aria-label="输入 JSON">
         <UiClipboardField
           v-model="inputText"
           label="输入"
           mono
-          :rows="draftExpanded ? 16 : 8"
+          :rows="16"
           paste-mode="replace"
           placeholder="把 JSON 贴进来，或在此按 Ctrl+V…"
         />
-        <button
-          type="button"
-          class="btn btn-ghost btn-small jfmt-expand"
-          :aria-pressed="draftExpanded"
-          :title="draftExpanded ? '收窄输入框' : '拉高输入框'"
-          @click="draftExpanded = !draftExpanded"
-        >
-          {{ draftExpanded ? '收起' : '展开' }}
-        </button>
-      </div>
-
-      <!-- 工具条：缩进档（含压缩档=indent 0）/ 键排序 / 美化兜底 / 复制 -->
-      <div class="card jfmt-toolbar">
-        <div class="btn-group jfmt-opts">
-          <label class="jfmt-opt-item">
-            缩进
-            <select v-model.number="indent" class="select-input jfmt-select" title="输出缩进；「压缩」= 单行无空白">
-              <option :value="2">2 空格</option>
-              <option :value="4">4 空格</option>
-              <option :value="0">压缩</option>
-            </select>
-          </label>
-          <label class="toggle-label" title="把键按字母序重排；默认关，保留原顺序">
-            <input v-model="sortKeys" type="checkbox" />
-            <span>键排序</span>
-          </label>
+        <!-- 面板脚注：左说明右动作（模式规范）；字节是本地现算的体量提示，判卷权在后端 -->
+        <div class="jfmt-pane-foot">
+          <span class="jfmt-foot-hint">
+            <span class="mono">{{ inputBytes }}</span> 字节 · 贴入约 0.3 秒后自动美化
+          </span>
           <UiButton
             class="jfmt-run-btn"
             variant="secondary"
@@ -272,88 +261,108 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
           >
             美化
           </UiButton>
-          <UiButton
-            class="jfmt-copy-btn"
-            variant="secondary"
-            small
-            :disabled="!lastResult || !lastResult.ok"
-            title="复制格式化结果"
-            @click="copyWithToast(lastResult!.output, '已复制格式化结果')"
-          >
-            📋 复制
-          </UiButton>
         </div>
-      </div>
+      </section>
 
-      <!-- 输出区 -->
-      <div class="card jfmt-pane">
-        <!-- 在途态：在册 .state-box + .live-pulse（opacity 呼吸、零投影），明显但不吵；
-             重算时上一轮结果保留在下方，不做整块闪断 -->
-        <div v-if="running" class="state-box" role="status">
-          <span class="jfmt-pulse live-pulse" aria-hidden="true"></span>
-          <span>正在格式化…</span>
+      <section class="card jfmt-pane jfmt-out-pane" aria-label="美化结果">
+        <!-- 控制带贴在作用对象上：缩进/排序/复制都只作用于输出 -->
+        <div class="jfmt-out-head">
+          <span class="jfmt-out-title">输出</span>
+          <div v-if="lastResult && !failedResult" class="jfmt-meta">
+            <UiStatusChip v-if="lastResult.kind" tone="neutral">类型 {{ kindLabel(lastResult.kind) }}</UiStatusChip>
+            <span class="jfmt-foot-hint"><span class="mono">{{ outBytes }}</span> 字节 · <span class="mono">{{ outLines }}</span> 行</span>
+          </div>
+          <span v-else class="jfmt-foot-hint">
+            <template v-if="running">● 格式化中…</template>
+            <template v-else-if="failedResult">▲ 待修正</template>
+            <template v-else>○ 等待输入</template>
+          </span>
+          <div class="jfmt-out-ctrls">
+            <label class="jfmt-opt-item">
+              缩进
+              <select v-model.number="indent" class="select-input jfmt-select" title="输出缩进；「压缩」= 单行无空白">
+                <option :value="2">2 空格</option>
+                <option :value="4">4 空格</option>
+                <option :value="0">压缩</option>
+              </select>
+            </label>
+            <label class="toggle-label" title="把键按字母序重排；默认关，保留原顺序">
+              <input v-model="sortKeys" type="checkbox" />
+              <span>键排序</span>
+            </label>
+            <UiButton
+              class="jfmt-copy-btn"
+              variant="secondary"
+              small
+              :disabled="!lastResult || !lastResult.ok"
+              title="复制格式化结果"
+              @click="copyWithToast(lastResult!.output, '已复制格式化结果')"
+            >
+              复制
+            </UiButton>
+          </div>
         </div>
 
-        <template v-if="lastResult">
-          <!-- 失败块：错误 + 行列 + snippet + hint 一件不丢（后端 classifyFailure 的
-               指路文案原样显示），外加「带去 AI 聊天」——脏文本的出路由文案说到做到 -->
-          <UiBanner v-if="failedResult" tone="error">
-            <div class="jfmt-err">
-              <div>{{ lastResult.error }}</div>
-              <div v-if="lastResult.line > 0">
-                位置：第 <span class="mono">{{ lastResult.line }}</span> 行<template v-if="lastResult.col > 0">
-                  第 <span class="mono">{{ lastResult.col }}</span> 列</template>
+        <div class="jfmt-out-body">
+          <!-- 在途态：在册 .state-box + .live-pulse（opacity 呼吸、零投影）；
+               重算时上一轮结果保留在下方，不做整块闪断 -->
+          <div v-if="running" class="state-box" role="status">
+            <span class="jfmt-pulse live-pulse" aria-hidden="true"></span>
+            <span>正在格式化…</span>
+          </div>
+
+          <template v-if="lastResult">
+            <!-- 失败块：错误 + 行列 + snippet + hint 一件不丢（后端 classifyFailure
+                 的指路文案原样显示）；出路两钮——就地一键为主、带去聊天为辅 -->
+            <UiBanner v-if="failedResult" tone="error">
+              <div class="jfmt-err">
+                <div>{{ lastResult.error }}</div>
+                <div v-if="lastResult.line > 0">
+                  位置：第 <span class="mono">{{ lastResult.line }}</span> 行<template v-if="lastResult.col > 0">
+                    第 <span class="mono">{{ lastResult.col }}</span> 列</template>
+                </div>
+                <div v-if="lastResult.snippet" class="mono jfmt-err-snip">{{ lastResult.snippet }}</div>
+                <div v-if="lastResult.hint" class="jfmt-err-hint">{{ lastResult.hint }}</div>
+                <div class="jfmt-err-hint">输入原样保留，修正后自动重算。</div>
+                <div class="jfmt-err-actions">
+                  <UiButton
+                    class="jfmt-ai-btn"
+                    variant="secondary"
+                    small
+                    :disabled="aiBusy || aiAsking"
+                    title="内容将发给本机 AI（会离开这台机器）；先确认再发，返回过本地验收与本地排版；一次往返几十秒"
+                    @click="aiBeautify"
+                  >
+                    {{ aiAsking ? '等待确认…' : aiBusy ? 'AI 认结构中…' : '✨ AI 一键美化' }}
+                  </UiButton>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-small jfmt-chat-link"
+                    title="把原文带进 AI 聊天并预填提取指令（适合想反复追问的场景）；发送与确认仍在聊天侧"
+                    @click="takeToChat"
+                  >
+                    或带到 AI 聊天细聊
+                  </button>
+                </div>
               </div>
-              <div v-if="lastResult.snippet" class="mono jfmt-err-snip">{{ lastResult.snippet }}</div>
-              <div v-if="lastResult.hint" class="jfmt-err-hint">{{ lastResult.hint }}</div>
-              <div class="jfmt-err-hint">输入原样保留，修正后自动重算。</div>
-              <div class="jfmt-err-actions">
-                <UiButton
-                  class="jfmt-ai-btn"
-                  variant="secondary"
-                  small
-                  :disabled="aiBusy || aiAsking"
-                  title="内容将发给本机 AI（会离开这台机器）；先确认再发，返回过本地验收与排版；一次往返几十秒"
-                  @click="aiBeautify"
-                >
-                  {{ aiAsking ? '等待确认…' : aiBusy ? 'AI 认结构中…' : '✨ AI 一键美化' }}
-                </UiButton>
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-small jfmt-chat-link"
-                  title="把原文带进 AI 聊天并预填提取指令（适合想反复追问的场景）；发送与确认仍在聊天侧"
-                  @click="takeToChat"
-                >
-                  或带到 AI 聊天细聊
-                </button>
-              </div>
-            </div>
-          </UiBanner>
-          <template v-else>
-            <!-- 如实交代行：kind 取后端原值翻中文标签，前端零二次计算 -->
-            <div class="jfmt-meta">
-              <UiStatusChip v-if="lastResult.kind" tone="neutral">类型 {{ kindLabel(lastResult.kind) }}</UiStatusChip>
-            </div>
-            <div class="jfmt-out-bar">
-              <span class="jfmt-out-label">输出</span>
-            </div>
-            <pre class="jfmt-out mono">{{ lastResult.output }}</pre>
+            </UiBanner>
+            <pre v-else class="jfmt-out mono" tabindex="0">{{ lastResult.output }}</pre>
           </template>
-        </template>
 
-        <UiBanner v-if="transportError" tone="error">
-          调用格式化服务失败：{{ transportError }}。稍后可点「美化」重试。
-        </UiBanner>
+          <UiBanner v-if="transportError" tone="error">
+            调用格式化服务失败：{{ transportError }}。稍后可点左下「美化」重试。
+          </UiBanner>
 
-        <!-- 清洗警告逐条上屏，一条不吞（超限文案也由后端经 error 通道原样呈现） -->
-        <div v-if="warnings.length > 0" class="jfmt-warns">
-          <UiBanner v-for="(w, i) in warnings" :key="i" tone="warn" class="slim">{{ w }}</UiBanner>
+          <!-- 清洗警告逐条上屏，一条不吞（超限文案也由后端经 error 通道原样呈现） -->
+          <div v-if="warnings.length > 0" class="jfmt-warns">
+            <UiBanner v-for="(w, i) in warnings" :key="i" tone="warn" class="slim">{{ w }}</UiBanner>
+          </div>
+
+          <div v-if="!lastResult && !transportError && !running" class="empty-hint">
+            把 JSON 贴进左侧输入框（或点「从剪贴板粘贴」），约 0.3 秒后结果自动出现在这里。
+          </div>
         </div>
-
-        <div v-if="!lastResult && !transportError && !running" class="empty-hint">
-          把 JSON 贴进上方输入框（或点「从剪贴板粘贴」），约 0.3 秒后结果自动出现在这里。
-        </div>
-      </div>
+      </section>
     </div>
   </section>
 </template>
@@ -367,29 +376,64 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
   flex-direction: column;
   gap: 14px;
   height: 100%;
+  min-height: 0;
 }
+
+/* 主任务双栏：宽屏左右对照（JSON 工具的原生形状），窄于 ~760px 自动堆叠。
+   auto-fit 自救宽度，不造第二套断点体系。 */
 .jfmt-desk {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
   gap: 14px;
+  align-items: stretch;
   min-width: 0;
+  flex: 1;
+  min-height: 0;
 }
 .jfmt-pane {
-  /* 边框与内距都是装饰成本：这个页面要的是展示面积 */
-  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  min-height: 0;
+  padding: 10px 12px;
 }
-.jfmt-toolbar {
-  padding: 6px 10px;
-}
-.jfmt-expand { align-self: flex-start; }
 
-/* 开关行：横排拉开到 14、换行行距维持原子档 */
-.jfmt-opts {
-  gap: 8px 14px;
+/* 面板脚注 / 输出头：左标题右控制的单行密排，窄时整组换行不挤压 */
+.jfmt-pane-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.jfmt-foot-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.jfmt-out-head {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.jfmt-out-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.jfmt-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: var(--text-sm);
+}
+.jfmt-out-ctrls {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 .jfmt-opt-item {
   display: flex;
@@ -403,36 +447,19 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
   width: auto;
 }
 
-.jfmt-pulse {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: var(--radius-pill);
-  background: var(--color-primary);
-}
-
-.jfmt-meta {
+/* 输出主体吃满剩余高度，pre 在自己的容器里滚（页体不出横滚） */
+.jfmt-out-body {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  font-size: var(--text-sm);
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
 }
-.jfmt-out-bar {
-  display: flex;
-  align-items: baseline;
-}
-.jfmt-out-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-}
-
-/* 输出只读区：无查找就没有着色需求，pre 原样呈现后端 output，可勾选可滚动 */
 .jfmt-out {
   margin: 0;
   padding: 8px 10px;
+  flex: 1;
   min-height: 120px;
-  max-height: 62vh;
   overflow: auto;
   background: var(--surface-page);
   border: 1px solid var(--color-border);
@@ -441,6 +468,19 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
   font-size: var(--text-sm);
   line-height: 1.5;
   white-space: pre;
+  tab-size: 4;
+}
+.jfmt-out:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--color-primary));
+  outline-offset: -1px;
+}
+
+.jfmt-pulse {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
 }
 
 .jfmt-err {
@@ -459,6 +499,7 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
   display: flex;
   gap: 8px;
   margin-top: 4px;
+  flex-wrap: wrap;
 }
 
 .jfmt-warns {
@@ -468,6 +509,6 @@ const warnings = computed(() => lastResult.value?.warnings ?? [])
 }
 
 @media (pointer: coarse) {
-  .jfmt-expand, .jfmt-opts .btn { min-height: 44px; }
+  .jfmt-out-ctrls .btn, .jfmt-pane-foot .btn { min-height: 44px; }
 }
 </style>
