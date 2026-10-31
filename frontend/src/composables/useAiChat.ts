@@ -386,6 +386,11 @@ export function useAiChat() {
     if (currentId.value && !out.some((r) => r.id === currentId.value)) {
       currentId.value = out[0]?.id ?? ''
       if (currentId.value) selectSession(currentId.value)
+    } else if (!currentId.value && out.length > 0) {
+      // 进门即聊：首装/刷新后没有选中项时自动采纳最新会话（降序表的 out[0]）。
+      // 此前首屏 currentId 恒空，带着文本从美化器跳来的用户会被"先新建会话"
+      // 闸卡在门口（机主实测报障"无法发送"的根因之一）。
+      selectSession(out[0].id)
     }
   }
 
@@ -416,22 +421,34 @@ export function useAiChat() {
   }
 
   // —— 会话账本操作 ——
-  async function createSession(): Promise<void> {
-    const name = await prompt({ title: '新建会话', label: '会话名称', placeholder: '一句话说给 AI 的第一件事（留空即取消）', confirmLabel: '新建' })
-    if (name === null) return // 取消/Esc：不建（后端有"新会话"缺省名，但误触弹窗不该白造一个会话）
-    const title = name.trim()
-    if (!title) return // 空串按取消：不允许无名会话
+  /**
+   * 静默建会话：不弹命名框。后端 CreateSession 只落账本**零网络行为**，
+   * 缺省名"新会话"会被首条消息本地升格——所以"发送前按需建号"没有代价，
+   * 而"先建会话才能说话"这道闸只会把带文本跳进来的用户卡在门口（机主实测报障）。
+   */
+  async function createSessionQuietly(title = ''): Promise<boolean> {
     try {
       const row = await AiChatAPI.CreateSession(title)
-      if (!row) return
+      if (!row) return false
       const local = toLocalRow(row as WireSessionRow)
       openStore(local.id)
       // 后端列表按 createdAt 降序（store.list 实测口径）：新会话插到最前
       sessions.value = [local, ...sessions.value.filter((s) => s.id !== local.id)]
       selectSession(local.id)
+      return true
     } catch (err: unknown) {
       listError.value = getErrorMessage(err)
+      return false
     }
+  }
+
+  /** 手动新建（走 usePrompt 命名）：取消与空串仍不建号——误触弹窗不白造会话。 */
+  async function createSession(): Promise<void> {
+    const name = await prompt({ title: '新建会话', label: '会话名称', placeholder: '一句话说给 AI 的第一件事（留空即取消）', confirmLabel: '新建' })
+    if (name === null) return
+    const title = name.trim()
+    if (!title) return
+    await createSessionQuietly(title)
   }
 
   async function renameSession(id: string): Promise<void> {
@@ -519,13 +536,16 @@ export function useAiChat() {
     return !!row && (row.sending || row.turnInFlight)
   })
 
-  /** 禁发原因的单一 computed（矩阵行序即优先级）；空串 = 可发送。 */
+  /**
+   * 禁发原因的单一 computed（矩阵行序即优先级）；空串 = 可发送。
+   * "无会话"不再是禁发原因：send() 会在发送前静默建号（建号零网络，
+   * 见 createSessionQuietly 注释）——闸只拦真问题（在途/空文本）。
+   */
   const sendDisabledReason = computed(() => {
     const row = currentRow.value
-    if (!row) return '先新建会话'
-    if (row.asking) return '等待确认中'
-    if (row.sending) return '发送中'
-    if (row.turnInFlight) return 'AI 回复中'
+    if (row?.asking) return '等待确认中'
+    if (row?.sending) return '发送中'
+    if (row?.turnInFlight) return 'AI 回复中'
     if (!inputText.value.trim()) return '请输入内容'
     return ''
   })
@@ -556,10 +576,15 @@ export function useAiChat() {
   })
 
   async function send(): Promise<void> {
-    const row = currentRow.value
-    if (!row) return
+    let row = currentRow.value
     const text = inputText.value.trim()
     if (!canSend.value || !text) return
+    if (!row) {
+      // 按需建号：只在真要发送的那一刻发生（"按下才外发"同款纪律的本地半段）
+      if (!(await createSessionQuietly())) return
+      row = currentRow.value
+      if (!row) return
+    }
     const sid = row.id
 
     if (!row.confirmedSend) {

@@ -153,13 +153,52 @@ describe('AiChatView 会话列表与门禁', () => {
     expect(svc.CreateSession).not.toHaveBeenCalled()
     expect(w.find('.ac-sessions-empty').text()).toContain('还没有会话')
     expect(w.find('.ac-no-session').exists()).toBe(true)
-    expect(w.find('.ac-pane-title').text()).toBe('未选择会话')
-    expect(w.find('.ac-send').attributes('title')).toBe('先新建会话')
+    // 空态文案必须说清"直接输入即可，自动建号"——旧版"先新建会话"闸把带文本
+    // 跳进来的用户卡在门口（机主实测报障），文案随行为一起翻案
+    expect(w.find('.ac-no-session').text()).toContain('直接输入并发送')
+    expect(w.find('.ac-send').attributes('title')).toBe('请输入内容')
     // 无会话时 Enter 与点击都不造任何外发
     await w.find('#ac-draft').trigger('keydown', { key: 'Enter', shiftKey: false })
     await w.find('.ac-send').trigger('click')
     expect(svc.SendMessage).not.toHaveBeenCalled()
     expect(confirmBox.confirm).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('无会话直接发送：静默建号（CreateSession 传空名、零弹命名框）→确认后才 SendMessage，乐观气泡进新会话流', async () => {
+    const w = await mountView([])
+    confirmBox.confirm.mockResolvedValueOnce(true)
+    svc.CreateSession.mockResolvedValueOnce(makeRow({ id: 'auto1', title: '新会话' }))
+    svc.SendMessage.mockResolvedValueOnce({ turnId: 't1' })
+    await w.find('#ac-draft').setValue('这段日志帮我提取 JSON')
+    await w.find('.ac-send').trigger('click')
+    await flushMicrotasks()
+    expect(svc.CreateSession).toHaveBeenCalledWith('') // 静默建号：不走命名 prompt
+    expect(promptBox.prompt).not.toHaveBeenCalled()
+    expect(svc.SendMessage).toHaveBeenCalledWith('auto1', '这段日志帮我提取 JSON')
+    // 确认框在建号之后仍要弹（每会话首条外发确认不因自动建号而旁路）
+    expect(confirmBox.confirm).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  it('无会话发送但确认被拒：静默号已建（零网络的账本位）但 SendMessage 零调用、文本回得到', async () => {
+    const w = await mountView([])
+    confirmBox.confirm.mockResolvedValueOnce(false)
+    svc.CreateSession.mockResolvedValueOnce(makeRow({ id: 'auto2', title: '新会话' }))
+    await w.find('#ac-draft').setValue('先试试')
+    await w.find('.ac-send').trigger('click')
+    await flushMicrotasks()
+    expect(svc.CreateSession).toHaveBeenCalledTimes(1)
+    expect(svc.SendMessage).not.toHaveBeenCalled()
+    // 取消不吞用户文本：草稿原样在输入框（外发未遂的代价只能是零，不能是丢）
+    expect((w.find('#ac-draft').element as HTMLTextAreaElement).value).toBe('先试试')
+    w.unmount()
+  })
+
+  it('进门即聊：装载后未选过项时自动采纳最新会话（带文本跳来的用户不该先找芯片点一下）', async () => {
+    const w = await mountView([makeRow({ id: 'n1', title: '最新' }), makeRow({ id: 'n2', title: '次新' })])
+    await flushMicrotasks()
+    expect(w.find('.ac-pane-title').text()).toBe('最新')
     w.unmount()
   })
 

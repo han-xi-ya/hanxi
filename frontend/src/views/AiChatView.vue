@@ -131,7 +131,7 @@ function chipTone(r: SessionRow): 'positive' | 'information' | 'warning' | 'dang
 }
 
 const inputPlaceholder = computed(() => {
-  if (!currentRow.value) return '先新建一个会话，再在这里输入…'
+  if (!currentRow.value) return '想问什么？直接输入即可——发送前会自动为你开一个新会话…'
   if (currentRow.value.archived) return '该会话已封存——发送下一条会自动复进（复用模型侧对话档案）'
   return '想问什么？内容将发送给本机常驻 AI…'
 })
@@ -190,7 +190,7 @@ function stopCurrent(): void {
           @open-json="openInJsonFmt"
         />
         <div v-else class="state-box ac-no-session">
-          先新建一个会话——只记名录、不起进程；第一条消息发出前，内容不会离开这台机器。
+          还没有会话——直接输入并发送即可，会自动为你开一个（建会话只记名录、不起进程，第一条消息发出前内容不会离开这台机器）。
         </div>
 
         <UiBanner v-if="currentRow?.sendError" tone="error" slim class="ac-send-banner">
