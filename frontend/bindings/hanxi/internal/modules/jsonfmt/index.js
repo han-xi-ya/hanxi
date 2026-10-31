@@ -16,46 +16,5 @@ import * as $models from "./models.js";
 
 /**
  * JsonFmtResult 一次美化的结果。
- * 
- * 清洗动作（剔了几行前缀、解开几层转义）一律如实回报而不是默默改数据：用户贴进来
- * 的东西被改过，他必须看得见改了什么，否则"美化"就成了"悄悄丢数据"的借口。
  * @typedef {$models.JsonFmtResult} JsonFmtResult
- */
-
-/**
- * JsonFmtStats 结果的结构统计，全部在解析时一次算出，不由前端二次统计。
- * @typedef {$models.JsonFmtStats} JsonFmtStats
- */
-
-/**
- * KeyStat 一个规范化路径的出现次数与值类型分布。
- * @typedef {$models.KeyStat} KeyStat
- */
-
-/**
- * Match 一条查找命中。Path 是可照着改的规范化路径，Segment/Line 只在多段时有值。
- * @typedef {$models.Match} Match
- */
-
-/**
- * RepairStat 一类自动修复及其次数。Kind 直接是人话标签，UI 原样显示。
- * @typedef {$models.RepairStat} RepairStat
- */
-
-/**
- * Replace 一条替换规则。NewValue 与 NewKey 至少给一个；都给则先改名再改值。
- * @typedef {$models.Replace} Replace
- */
-
-/**
- * Segment 一段被抽取并格式化出来的 JSON。
- * 
- * Line 是它在**实际被解析的那份文本**里的 1 基行号，供用户回对原日志；
- * Index 从 1 起——给人看的编号不该从 0 开始。
- * @typedef {$models.Segment} Segment
- */
-
-/**
- * TypeCount 某类型出现的次数（string / number / boolean / null / object / array）。
- * @typedef {$models.TypeCount} TypeCount
  */

@@ -315,20 +315,8 @@ func (p *parser) scanString() (string, *parseErr) {
 	return "", p.errAt(start, "字符串未闭合")
 }
 
-// parseValueAt 从 off 起解析**一个** JSON 值，返回结束偏移（失败时返回已扫到的位置）。
-// 抽取模式的地基：analyze 要求"解析完恰好到文本尾"，而日志里 JSON 后面必然还跟着别的。
-//
-// **收 []byte 而非 string**：抽取会对每个 `{`/`[` 候选调一次本函数，若在函数里
-// []byte(src) 就是"每次试解析都重抄整份输入"——实测 20 万个左花括号跑 57 秒、
-// 2 万个 0.85 秒（教科书级平方曲线）。字节切片由调用方转一次、全程共享。
-func parseValueAt(src []byte, off int) (node, int, *parseErr) {
-	p := &parser{src: src, pos: off, warned: map[string]bool{}}
-	n, err := p.parseValue(0)
-	if err != nil {
-		return node{}, p.pos, err
-	}
-	return n, p.pos, nil
-}
+// parseValueAt（抽取模式地基）随 extract.go 于 2026-10-31 一并退役——
+// "死码不留堂"，需要时从 git 历史找回（其平方曲线教训见 #121 族）。
 
 // ---------- 渲染 ----------
 
