@@ -36,5 +36,14 @@ export default defineConfig({
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
   },
+  // 防崩护栏，别当死代码删：xterm 6.0.0 出厂即预压缩 ESM，Vite 生产构建的 esbuild
+  // 再压缩一轮会毁 requestMode 闭包（xtermjs/xterm.js#5800），此行为防崩护栏，
+  // 别当死代码删。⚠️ 现状实测备案（2026-10-31）：Vite 8.3.4（rolldown+oxc 管线）
+  // 已不带 esbuild（--minify esbuild 直接报"requires esbuild to be installed
+  // separately"），本行在 Vite 8 下不产生压缩效果——现管 minifier 是 oxc，它把
+  // 已压缩产物重新 parse 成 AST 再改名，#5800 那类"预压缩文本二次压缩"的病根
+  // 在 AST 级重命名下不存在；终端真机回归（vim/DCS 生产构建）是第一道真闸门。
+  // 若工具链回退 Vite ≤7（esbuild 管线）本行立即恢复效力，故保留不删。
+  esbuild: { minifyIdentifiers: false },
   plugins: [vue(), wails("./bindings"), fontLicenseCopy],
 });

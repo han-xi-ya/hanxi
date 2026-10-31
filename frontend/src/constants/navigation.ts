@@ -95,6 +95,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/envcheck': { component: defineAsyncComponent(() => import('@/views/EnvCheckView.vue')), moduleId: 'envcheck' },
   '/ext/softver': { component: defineAsyncComponent(() => import('@/views/SoftverView.vue')), moduleId: 'softver' },
   '/ext/wsl': { component: defineAsyncComponent(() => import('@/views/WSLView.vue')), moduleId: 'wsl' },
+  '/ext/terminal': { component: defineAsyncComponent(() => import('@/views/TerminalView.vue')), moduleId: 'terminal' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
   '/ext/msgboard': { component: defineAsyncComponent(() => import('@/views/MsgBoardView.vue')), moduleId: 'msgboard' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
@@ -240,6 +241,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   gonavi: 'developer',
   dbx: 'developer',
   wsl: 'developer',
+  terminal: 'developer',
 }
 
 /** 模块所属分组；未登记模块返回 undefined（由外壳决定归入"其他"或隐藏）。 */
@@ -313,6 +315,10 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   rammap: { icon: 'rt:rammap|i:gauge', route: '/ext/rammap' },
   douzy: { icon: 'app:douzy', route: '/ext/douzy' },
   wsl: { icon: 'i:terminal', route: '/ext/wsl' },
+  // i:terminal：图标池在册真名（ICON_PATHS.terminal），与 wsl 共用一枚（先例：
+  // i:message-circle 由 wechat/msgboard 共用）；后端 terminal 模块 Nav().Icon 需
+  // 同名（改名两侧同改的既有纪律，主会话装配时对齐）。
+  terminal: { icon: 'i:terminal', route: '/ext/terminal' },
   quickmenu: { icon: 'i:mouse-pointer', route: '/ext/quickmenu' },
   msgboard: { icon: 'i:message-circle', route: '/ext/msgboard' },
   envcheck: { icon: 'i:wrench', route: '/ext/envcheck' },
