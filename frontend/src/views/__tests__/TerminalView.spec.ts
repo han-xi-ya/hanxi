@@ -43,6 +43,7 @@ const svc = vi.hoisted(() => ({
   ListTerminals: vi.fn(),
   RenameTerminal: vi.fn(),
   KillTerminal: vi.fn(),
+  PickDirectory: vi.fn(),
 }))
 vi.mock('../../../bindings/hanxi/internal/modules/terminal/terminalservice', () => svc)
 
@@ -241,6 +242,7 @@ function makeWireRow(over: Record<string, unknown> = {}) {
     id: `t${++seq}`,
     title: '命令行',
     profileId: 'cmd',
+    dir: '',
     pid: 4000 + seq,
     createdAt: 1730000000000 + seq,
     alive: true,
@@ -502,7 +504,8 @@ describe('TerminalView 名录三通道与入口', () => {
       expect(items.map((n) => n.text())).toEqual(['命令行', 'PowerShell', 'Claude Code'])
       await items[idx].trigger('click')
       await flushMicrotasks()
-      expect(svc.OpenTerminal).toHaveBeenLastCalledWith(id, 80, 24) // 建号即带当前尺寸（fake term 80×24）
+      // 直开档第 4 参=空目录（继承 hanxi cwd，后端如实不造字段假象）
+      expect(svc.OpenTerminal).toHaveBeenLastCalledWith(id, 80, 24, '')
       expect(lastSocket().sent).toHaveLength(0) // 新会话等 onopen
       lastSocket().fireOpen()
       lastSocket().fireMessage(controlPayload({ op: 'ready' }))
@@ -512,6 +515,57 @@ describe('TerminalView 名录三通道与入口', () => {
     }
     expect(svc.OpenTerminal).toHaveBeenCalledTimes(3)
     expect(w.findAll('.tc-title').map((n) => n.text())).toEqual(['命令行', 'PowerShell', 'Claude Code'])
+  })
+
+  it('📁 选目录流：PickDirectory 返回路径→OpenTerminal 带该 dir；取消(空串)静默不建；选择器抛→只砸 openError 不建号', async () => {
+    const w = await mountView([])
+    // 选到一个真目录
+    svc.PickDirectory.mockResolvedValueOnce('E:\\proj\\demo')
+    svc.OpenTerminal.mockImplementationOnce((profileId: string, _c: number, _r: number, dir: string) =>
+      Promise.resolve(makeWireRow({ id: 'withdir', profileId, dir })))
+    await openMenu(w)
+    await w.findAll('.tc-menu-dir')[2].trigger('click') // claude 档的 📁
+    await flushMicrotasks()
+    expect(svc.OpenTerminal).toHaveBeenLastCalledWith('claude', 80, 24, 'E:\\proj\\demo')
+    expect(w.find('.tm-banner').exists()).toBe(false)
+
+    // 取消：PickDirectory 返回空串 → 不调 OpenTerminal、不报错
+    const before = svc.OpenTerminal.mock.calls.length
+    svc.PickDirectory.mockResolvedValueOnce('')
+    await openMenu(w)
+    await w.findAll('.tc-menu-dir')[0].trigger('click')
+    await flushMicrotasks()
+    expect(svc.OpenTerminal).toHaveBeenCalledTimes(before) // 取消不是故障，静默
+    expect(w.find('.tm-banner').exists()).toBe(false)
+
+    // 选择器本身抛 → openError 通道、不建号
+    svc.PickDirectory.mockRejectedValueOnce(new Error('无头环境不可用'))
+    await openMenu(w)
+    await w.findAll('.tc-menu-dir')[1].trigger('click')
+    await flushMicrotasks()
+    expect(svc.OpenTerminal).toHaveBeenCalledTimes(before)
+    expect(w.find('.tm-banner').text()).toContain('打开目录选择器失败')
+  })
+
+  it('目录选择待决期 picking 闸：新建钮禁用+「选目录中」，菜单开不了、不发第二发 PickDirectory', async () => {
+    const w = await mountView([])
+    const d = deferred<string>()
+    svc.PickDirectory.mockReturnValueOnce(d.promise)
+    await openMenu(w)
+    await w.findAll('.tc-menu-dir')[0].trigger('click')
+    await flushMicrotasks()
+    expect(svc.PickDirectory).toHaveBeenCalledTimes(1)
+    // picking 在途：新建钮禁用（trigger 对 disabled 不发事件 → 菜单开不了）
+    expect(w.find('.tc-create').attributes('disabled')).toBeDefined()
+    expect(w.find('.tc-create').text()).toContain('选目录中')
+    await openMenu(w)
+    expect(w.findAll('.tc-menu-dir')).toHaveLength(0)
+    expect(svc.PickDirectory).toHaveBeenCalledTimes(1) // 闸挡住第二发
+    expect(svc.OpenTerminal).not.toHaveBeenCalled()
+    d.resolve('') // 收尾：取消态，不建号
+    await flushMicrotasks()
+    expect(w.find('.tc-create').attributes('disabled')).toBeUndefined()
+    expect(svc.OpenTerminal).not.toHaveBeenCalled()
   })
 
   it('新建在途连点只许一发（钮禁用+creating 双闸），落账挂尾并自动接入', async () => {

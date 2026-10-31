@@ -4,8 +4,12 @@
 //
 // 后端契约事实（主会话按此实现，勿改形状）：
 //  - RPC（bindings/hanxi/internal/modules/terminal/terminalservice）：
-//    OpenTerminal(profileId, cols, rows) → TermSessionRow{id,title,profileId,pid,createdAt,alive}
+//    OpenTerminal(profileId, cols, rows, dir) → TermSessionRow{id,title,profileId,dir,pid,createdAt,alive}
+//    （dir 空=继承 hanxi 的 cwd；非空后端已校验是存在的目录，claude 档的
+//    项目上下文/信任提示跟着这个目录走）。
 //    ListTerminals() → TermSessionRow[]；RenameTerminal(id, title)；KillTerminal(id)（杀会话并除账）。
+//    PickDirectory() → string：Go 侧原生"选择文件夹"对话框（模态挂主窗），
+//    取消=空串不是错误；JS→Go 的对话框参数线格式未验证，不自走前端 Dialogs。
 //    Profile 固定三档：cmd / powershell / claude（展示名 命令行 / PowerShell / Claude Code）。
 //  - 字节通道：`Stream("terminal:io")`（@wailsio/runtime GoStream），每个终端页一条连接。
 //    **帧协议：首字节标签：0x00=JSON 控制帧，0x01=原始终端字节。**
@@ -75,6 +79,8 @@ export interface TermRow {
   id: string
   title: string
   profileId: string
+  /** 会话工作目录；空串=继承 hanxi 的 cwd（UI 如实标"继承"，不装显式选择）。 */
+  dir: string
   pid: number
   createdAt: number
   alive: boolean
@@ -197,6 +203,7 @@ interface WireTermRow {
   id?: string
   title?: string
   profileId?: string
+  dir?: string
   pid?: number
   createdAt?: number
   alive?: boolean
@@ -207,6 +214,7 @@ function rowFromWire(w: WireTermRow): TermRow {
     id: String(w?.id ?? ''),
     title: String(w?.title ?? ''),
     profileId: String(w?.profileId ?? ''),
+    dir: String(w?.dir ?? ''),
     pid: Number(w?.pid ?? 0),
     createdAt: Number(w?.createdAt ?? 0),
     alive: !!w?.alive,
@@ -238,6 +246,9 @@ export function useTerminal() {
   const reconnectDelayMs = ref(0)
 
   const creating = ref(false)
+  // picking：目录选择对话框在途（模态窗等人手，按钮禁双开；与 creating 分档——
+  // "在挑目录"和"在开终端"是两件没做完的事，UI 文案各报各的）。
+  const picking = ref(false)
 
   const connNote = computed(() => {
     if (!currentRow.value) return ''
@@ -485,13 +496,13 @@ export function useTerminal() {
     if (row?.alive) openStream() // 已退出的会话：留名录可清账，不再拉显示通道
   }
 
-  async function createSession(profileId: TermProfileId): Promise<void> {
+  async function createSession(profileId: TermProfileId, dir = ''): Promise<void> {
     if (creating.value) return // 建号在途连点只许一次（先闸后问同族纪律）
     openError.value = ''
     const { cols, rows } = termDims()
     creating.value = true
     try {
-      const w = (await TerminalAPI.OpenTerminal(profileId, cols, rows)) as WireTermRow | null
+      const w = (await TerminalAPI.OpenTerminal(profileId, cols, rows, dir)) as WireTermRow | null
       if (!w?.id) return
       const row = rowFromWire(w)
       // 新会话挂尾（tab 条心智）；名录顺序以后端为准，下次 refresh 自然对齐
@@ -503,6 +514,28 @@ export function useTerminal() {
     } finally {
       creating.value = false
     }
+  }
+
+  /**
+   * 选目录后建会话：Go 侧原生对话框（PickDirectory），取消=静默无事发生
+   * （人点了"取消"不是错误，弹红条是把人的操作当故障）；选择器本身抛了
+   * 才走 openError 通道如实报。
+   */
+  async function createSessionWithDir(profileId: TermProfileId): Promise<void> {
+    if (creating.value || picking.value) return // 双闸：挑目录期间也不许第二发
+    picking.value = true
+    openError.value = ''
+    let dir = ''
+    try {
+      dir = String((await TerminalAPI.PickDirectory()) ?? '')
+    } catch (err: unknown) {
+      openError.value = '打开目录选择器失败：' + getErrorMessage(err)
+      return
+    } finally {
+      picking.value = false
+    }
+    if (!dir) return
+    await createSession(profileId, dir)
   }
 
   async function renameSession(id: string): Promise<void> {
@@ -686,9 +719,11 @@ export function useTerminal() {
     listError,
     openError,
     creating,
+    picking,
     refresh,
     selectSession,
     createSession,
+    createSessionWithDir,
     renameSession,
     killSession,
     // 通道状态

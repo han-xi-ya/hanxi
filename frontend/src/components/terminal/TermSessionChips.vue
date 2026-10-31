@@ -17,11 +17,14 @@ defineProps<{
   connStatus: ConnStatus
   /** OpenTerminal 在途：新建钮禁用+文案换档，连点只许一发。 */
   creating: boolean
+  /** 目录选择对话框在途（模态等人手）：菜单双开禁止。 */
+  picking: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'select', id: string): void
   (e: 'create', profileId: TermProfileId): void
+  (e: 'create-dir', profileId: TermProfileId): void
   (e: 'rename', id: string): void
   (e: 'kill', id: string): void
   (e: 'refresh'): void
@@ -32,6 +35,17 @@ const menuOpen = ref(false)
 function pickProfile(profileId: TermProfileId): void {
   menuOpen.value = false
   emit('create', profileId)
+}
+
+function pickProfileWithDir(profileId: TermProfileId): void {
+  menuOpen.value = false
+  emit('create-dir', profileId)
+}
+
+/** 目录段显示名：取路径末段（盘符/共享路径不装精确，hover title 给全串）。 */
+function dirLeaf(dir: string): string {
+  const parts = dir.split(/[\\/]+/).filter((p) => p.length > 0)
+  return parts[parts.length - 1] ?? dir
 }
 
 function onNewKeydown(e: KeyboardEvent): void {
@@ -58,10 +72,11 @@ function onGroupFocusout(e: FocusEvent): void {
           type="button"
           class="tc-chip"
           :aria-current="row.id === currentId ? 'true' : undefined"
-          :title="`${profileLabel(row.profileId)} · pid ${row.pid}｜v0：连接即断、进程活着，切回需重新接入`"
+          :title="`${profileLabel(row.profileId)} · pid ${row.pid} · ${row.dir ? '目录 ' + row.dir : '继承 hanxi 目录'}｜v0：连接即断、进程活着，切回需重新接入`"
           @click="emit('select', row.id)"
         >
           <span class="tc-title">{{ row.title || profileLabel(row.profileId) }}</span>
+          <span v-if="row.dir" class="tc-dir" aria-hidden="true">{{ dirLeaf(row.dir) }}</span>
           <UiStatusChip :tone="rowStatusTone(row, row.id === currentId, connStatus)">
             {{ rowStatusText(row, row.id === currentId, connStatus) }}
           </UiStatusChip>
@@ -92,26 +107,34 @@ function onGroupFocusout(e: FocusEvent): void {
           class="tc-create"
           small
           variant="primary"
-          :disabled="creating"
+          :disabled="creating || picking"
           aria-haspopup="true"
           :aria-expanded="menuOpen"
-          title="新建终端会话（命令行 / PowerShell / Claude Code 三档固定）"
+          title="新建终端会话（三档；每档可直开或📁选目录后开）"
           @click="menuOpen = !menuOpen"
         >
-          <span class="tc-create-label">{{ creating ? '创建中…' : '新建' }}</span>
+          <span class="tc-create-label">{{ picking ? '选目录中…' : creating ? '创建中…' : '新建' }}</span>
           <span aria-hidden="true">▾</span>
         </UiButton>
         <div v-if="menuOpen" class="tc-menu" role="menu" aria-label="选择 Shell">
-          <button
-            v-for="p in TERM_PROFILES"
-            :key="p.id"
-            type="button"
-            role="menuitem"
-            class="tc-menu-item"
-            :disabled="creating"
-            :title="p.hint"
-            @click="pickProfile(p.id)"
-          >{{ p.label }}</button>
+          <div v-for="p in TERM_PROFILES" :key="p.id" class="tc-menu-row">
+            <button
+              type="button"
+              role="menuitem"
+              class="tc-menu-item"
+              :disabled="creating || picking"
+              :title="`${p.hint}｜工作目录继承 hanxi 所在目录`"
+              @click="pickProfile(p.id)"
+            >{{ p.label }}</button>
+            <button
+              type="button"
+              role="menuitem"
+              class="tc-menu-dir"
+              :disabled="creating || picking"
+              :title="`在指定目录新建 ${p.label}（弹原生选择器；claude 档的项目上下文随之定）`"
+              @click="pickProfileWithDir(p.id)"
+            >📁 目录</button>
+          </div>
         </div>
       </div>
       <button type="button" class="btn btn-secondary btn-small tc-refresh" title="重拉终端名录（不新建进程）" @click="emit('refresh')">刷新</button>
@@ -194,6 +217,33 @@ function onGroupFocusout(e: FocusEvent): void {
 /* busy 文案换档尺寸不动（checklist：控件不跳宽） */
 .tc-create { min-width: 88px; }
 .tc-create-label { margin-right: 4px; }
+
+/* 菜单一栏=主档按钮 + 目录副按钮；副按钮窄、同一 token 体系。 */
+.tc-menu-row { display: flex; gap: 4px; align-items: stretch; }
+.tc-menu-row .tc-menu-item { flex: 1; }
+.tc-menu-dir {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tc-menu-dir:hover:not(:disabled) { color: var(--text); background: var(--surface-hi); }
+.tc-menu-dir:disabled { opacity: var(--disabled-opacity); cursor: default; }
+
+/* 芯片上的目录末段：弱信号，hover title 给全串。 */
+.tc-dir {
+  margin-left: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  max-width: 9ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tc-menu {
   position: absolute;
   top: calc(100% + 4px);

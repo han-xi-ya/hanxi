@@ -29,9 +29,11 @@ const {
   listError,
   openError,
   creating,
+  picking,
   refresh,
   selectSession,
   createSession,
+  createSessionWithDir,
   renameSession,
   killSession,
   connStatus,
@@ -61,6 +63,10 @@ onBeforeUnmount(disposeTerminal)
 
 function onCreate(profileId: TermProfileId): void {
   void createSession(profileId)
+}
+
+function onCreateDir(profileId: TermProfileId): void {
+  void createSessionWithDir(profileId)
 }
 
 const overlay = computed<'loading' | 'error' | 'empty' | 'dead' | null>(() => {
@@ -104,8 +110,10 @@ const overlayMessage = computed(() => {
         :current-id="currentId"
         :conn-status="connStatus"
         :creating="creating"
+        :picking="picking"
         @select="selectSession"
         @create="onCreate"
+        @create-dir="onCreateDir"
         @rename="renameSession"
         @kill="killSession"
         @refresh="refresh"
