@@ -599,6 +599,12 @@ export function useTerminal() {
       fontFamily: monoFontFamily(),
       scrollback: 5000,
       theme: readTermTheme(),
+      // unicode11 addon 走 term.unicode.activeVersion 设定 CJK 宽度；该属性在
+      // xterm 6.0.0 仍属 proposed API，不开此开关直接抛
+      // "You must set the allowProposedApi option to true to use proposed API"
+      // 使整模块渲染失败（真机首跑即炸，测试因整体替桩 xterm 而没接住）。
+      // 我们只碰 unicode 这一项，不开任何其它 proposed 行为。
+      allowProposedApi: true,
     })
     fitAddon = new FitAddon()
     term.loadAddon(fitAddon)

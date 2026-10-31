@@ -87,9 +87,17 @@ vi.mock('@xterm/xterm', () => ({
     resets = 0
     focusCount = 0
     disposed = false
-    unicode = { activeVersion: '' }
     onDataCb: ((s: string) => void) | null = null
     onResizeCb: ((d: { cols: number; rows: number }) => void) | null = null
+    // 复刻真 xterm 6.0.0 的 proposed 门禁：unicode.activeVersion 未开
+    // allowProposedApi 即抛（真机首跑炸过整模块渲染，宽容桩正是漏雷根因）。
+    #unicode = { activeVersion: '' }
+    get unicode(): { activeVersion: string } {
+      if (this.options.allowProposedApi !== true) {
+        throw new Error('You must set the allowProposedApi option to true to use proposed API')
+      }
+      return this.#unicode
+    }
     constructor(opts: Record<string, unknown>) {
       this.options = { ...opts }
       h.terms.push(this)
@@ -652,6 +660,9 @@ describe('TerminalView xterm 引擎装配（DOM 渲染器与 CJK 宽度）', () 
   it('装配四件套：unicode11 激活 11.0、fit/web-links/search 挂上、scrollback 5000；搜索条 Enter=findNext/Shift+Enter=findPrevious/Esc 收起', async () => {
     const w = await mountLive([makeWireRow()])
     const t = term()
+    // unicode 读取本身经复刻门禁的 getter——没开 allowProposedApi 时这一行
+    // 就抛（真机炸相原样），显式断言是给读用例的人看的账。
+    expect(t.options.allowProposedApi).toBe(true)
     expect(t.unicode.activeVersion).toBe('11.0')
     expect(t.addons).toHaveLength(4)
     expect(t.options.scrollback).toBe(5000)
