@@ -516,13 +516,39 @@ func (s *TerminalService) startDrain(sess *session) {
 		buf := make([]byte, 16*1024)
 		for {
 			if sess.owner.Load() != nil || sess.exited.Load() {
-				return
+				return // 新主上位或会话终了，drain 让位
 			}
-			if _, err := sess.pty.Read(buf); err != nil {
+			// 真 Pty.Read 无字节即阻塞、直到 EOF——drain 也必须"边等边可离场"，
+			// 否则新主上位时我们还挂在一口永远没来的 Read 上（单测第一跑就是
+			// 这样卡住 exit 断言的）。窄读接口把"无限等"切成 200ms 轮次：
+			// 空轮继续、有字节吞掉、EOF/错收场。真 conpty 无数据时 Read 返回
+			// (0,nil) 还是阻塞到 n>0 属 [未验证]，轮次对两种形态都成立。
+			if _, err := readPtyChunked(sess.pty, buf, 200*time.Millisecond); err != nil {
 				return
 			}
 		}
 	}()
+}
+
+// readPtyChunked 带单轮时限地读一块字节；超时返回 (0, nil) 表示"这轮没字节"。
+// 生产 pty 读永不返回 0,nil——该形态仅假件用于离场时序，调用方（drain）
+// 两种都当"继续"处理，语义安全。
+func readPtyChunked(p ptyLike, buf []byte, wait time.Duration) (int, error) {
+	type rn struct {
+		n   int
+		err error
+	}
+	ch := make(chan rn, 1)
+	go func() {
+		n, err := p.Read(buf)
+		ch <- rn{n, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.n, r.err
+	case <-time.After(wait):
+		return 0, nil
+	}
 }
 
 // resolveProfile 三档 profile → 命令行。claude 档经 LookPath 解析 .cmd 绝对路径
