@@ -264,6 +264,11 @@
       "id": "aichat",
       "route": "/ext/aichat",
       "group": "developer"
+    },
+    {
+      "id": "terminal",
+      "route": "/ext/terminal",
+      "group": "developer"
     }
   ],
   "events": [
@@ -464,10 +469,17 @@
       "CloseSession",
       "DeleteSession",
       "SendMessage"
+    ],
+    "modules/terminal/terminalservice.js": [
+      "Profiles",
+      "OpenTerminal",
+      "ListTerminals",
+      "RenameTerminal",
+      "KillTerminal"
     ]
   },
   "counts": {
-    "modules": 53,
+    "modules": 54,
     "events": 102
   }
 }

@@ -28,7 +28,7 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
        │                    │                    │
 ┌──────▼───────────┐ ┌──────▼───────────┐ ┌──────▼───────┐
 │ internal/modules │ │ internal/extapi  │ │ internal/    │
-│ 53 个业务模块    │ │ 模块契约：生命周 │ │ settings     │
+│ 54 个业务模块    │ │ 模块契约：生命周 │ │ settings     │
 │ 自建: frpc 网络  │ │ 期 + 四维状态目  │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ 录/安装凭据/调用 │ │ 与配置持久化 │
 │ 快传 随手记等    │ │ 门/更新感知契约  │ │ ReceiptStore │
@@ -93,7 +93,7 @@ type Module interface {
 - **模块级别现状**：`LevelBuiltin` 为编译进主程序的内建模块；`LevelExternal` 仅是未来外部子进程扩展的枚举预留。当前 52 个模块全部为 `LevelBuiltin`，没有动态安装或加载第三方 Hanxi 插件的运行时；模块中心的"安装/卸载"是 **逻辑安装态**（见下），不涉及第三方插件的物理装卸。
 - **权限现状**：`Permission` 类型及 `kill-process` / `lan-scan` / `network` 常量仍保留供未来外部扩展能力握手复用，但 `Permissions()` 已从 `Module` 接口移除，当前内建模块没有统一的 Permission Gateway。模块启停、各业务服务的安全校验，以及 MCP 接入面的 `access.json` 授权是不同层次，不能表述为通用插件权限隔离。**MCP 现状（2026-10-12 按 `internal/mcp/` 实数核，原文"四个只读工具"严重低估已废）**：`toolDefs` 共 **12 件**工具、授权键共 **10 枚**（`knownModuleIDs`；memo 键下 2 工具、portkill 键下 prepare/execute 2 工具），按风险分三档——①查询只读族 8 件（envcheck/file_search/ocr/memo×2/sysinfo/log_read/clipboard_search）；②主动出网探测族 2 件（portscan/lan：只对网络做可达性探测、不改任何设备状态，但属出网动作且结果含网络拓扑）；③破坏族 2 件（portkill prepare/execute：需 `access.json` 的 portkill 键**与** `mcp/destructive.json` 机主总闸**双闸齐开**才放行，prepare 仅发放 120 秒一次性令牌、execute 复核 pid+可执行路径+启动时间三指纹后动手，系统关键进程与 hanxi 自身永久拒杀）。portkill 键刻意不进「设置 → AI 接入」面板，须机主手动改两文件开启。
 - **状态契约（Wave 0 冻结，`catalog.go` + `receipt.go`）**：`ModuleContractSchema = 1` 随投影下发，破坏性变更必须递增 schema 并在 `docs/adr/` 立案（ADR-0001）。
-  - `ModuleCatalogItem`：静态身份与能力目录（交付形态字段为 **`deliveryKind`**——2026-09-19 修订自 `delivery`，与 `ModuleState.delivery` 生命周期维度语义正交、永久异名，ADR-0001 修订记录；含 `Entrypoint` 八值入口、`capabilities`、`owner`），由 `scripts/cataloggen` 从源码证据与 composition 契约推导生成物表 `internal/app/catalog.go`（53 项，与 `scripts/fixture/module_catalog.json`、前端 `contract-enum.spec.ts` 三层同锁），基线冻结于 `scripts/fixture/module_catalog.json`，漂移由契约测试守护；
+  - `ModuleCatalogItem`：静态身份与能力目录（交付形态字段为 **`deliveryKind`**——2026-09-19 修订自 `delivery`，与 `ModuleState.delivery` 生命周期维度语义正交、永久异名，ADR-0001 修订记录；含 `Entrypoint` 八值入口、`capabilities`、`owner`），由 `scripts/cataloggen` 从源码证据与 composition 契约推导生成物表 `internal/app/catalog.go`（54 项，与 `scripts/fixture/module_catalog.json`、前端 `contract-enum.spec.ts` 三层同锁），基线冻结于 `scripts/fixture/module_catalog.json`，漂移由契约测试守护；
   - `ModuleState`：四维事实投影——Delivery(7 值) / Policy(5 值) / Runtime(7 值) / Health(9 值)，`StateInput.Project()` 按冻结优先级计算 `primaryAction` / `reason` / `summary`（八个 SummaryKey 族），页面禁止自行堆叠 if/else 推断；纯展示附加字段 `remoteVersion`（health=update-available 时的上游新版本号，由更新感知链写入、其余健康值下清空 omitempty，**不参与状态机裁决**）；`Visible()` = installed ∧ (enabled ∨ mandatory)；`CanDeliveryTransition` / `CanPolicyTransition` / `CanRuntimeTransition` 提供转换合法性门（非法转换为 0 的 DoD 守卫）；
   - `Operation`：统一表达安装、启停、更新、回滚、修复、卸载与业务调用租约（kind 8 值、queued/running/succeeded/failed/cancelled 状态机、`TxnID` 关联 journal 事务、结构化 `OperationError{code,message,recoverable}`）；
   - `receipt.go` 定义 `ReceiptStorage` 抽象与 `Receipt` 落盘 schema（字段变更须递增 Schema 并立案 ADR）。

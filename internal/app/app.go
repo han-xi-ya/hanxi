@@ -114,6 +114,7 @@ import (
 	subnetdeskinstance "hanxi/internal/modules/subnetdesk/instance"
 	subnetdeskversion "hanxi/internal/modules/subnetdesk/version"
 	"hanxi/internal/modules/sysinfo"
+	"hanxi/internal/modules/terminal"
 	"hanxi/internal/modules/termora"
 	terminstance "hanxi/internal/modules/termora/instance"
 	termoraversion "hanxi/internal/modules/termora/version"
@@ -551,6 +552,7 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		sshkeys.New(),
 		jsonfmt.New(),
 		aichat.New(paths),
+		terminal.New(),
 		wifi.New(),
 		envcheck.New(plat),
 		softver.New(plat),

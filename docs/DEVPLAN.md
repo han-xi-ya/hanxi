@@ -53,7 +53,7 @@
 - [x] 关闭主窗口自动最小化到托盘配置
 - [x] Windows 注册表开机自启动管理
 - [x] 数据根策略：同级默认 + 绑定（F6）——默认落 exe 同级 `hanxidata/`（无则自动创建），可经 exe 同级 `hanxi.bind` 显式绑定其他位置；不可用时 fail loud 引导绑定，`%APPDATA%` 兜底与旧 `data/` 兼容均已退役（定稿见 `docs/plans/PLAN_PATHS.md`）
-- [x] `extapi` 按需懒加载架构（未启用模块 0 内存与 0 协程占用。**现值断言：53 模块统一注册 = 51 常驻 + `memo`/`clipboard` 两条件项**，2026-10-30 `aichat` 入库后构成（上一构成 52/50 系 2026-10-26 `jsonfmt` 入库后，再上一构成 51/49 系 2026-10-22 `sshkeys` 自 portscan 拆出入库后），出处 `docs/FACTS.md` §一「注册构成」行——本行数字随 FACTS 走，改构成先改 FACTS 再改这里。史链留档（非现状）：2026-10-12 曾按 `internal/app/app.go` `modulesToRegister` 与 `catalog.go` 双口径核得 49/47 常驻；更早「41 模块：40 常驻 + memo 条件项（2026-09-18 按 app.go 实数核）」为九件套时点值，此后 clipboard/piik/dbx/gonavi/heukms/sshkeys/jsonfmt 陆续入册）
+- [x] `extapi` 按需懒加载架构（未启用模块 0 内存与 0 协程占用。**现值断言：54 模块统一注册 = 52 常驻 + `memo`/`clipboard` 两条件项**，2026-10-31 `terminal` 入库后构成（上一构成 53/51 系 2026-10-30 `aichat` 入库后，再上一构成 52/50 系 2026-10-26 `jsonfmt` 入库后），出处 `docs/FACTS.md` §一「注册构成」行——本行数字随 FACTS 走，改构成先改 FACTS 再改这里。史链留档（非现状）：2026-10-12 曾按 `internal/app/app.go` `modulesToRegister` 与 `catalog.go` 双口径核得 49/47 常驻；更早「41 模块：40 常驻 + memo 条件项（2026-09-18 按 app.go 实数核）」为九件套时点值，此后 clipboard/piik/dbx/gonavi/heukms/sshkeys/jsonfmt 陆续入册）
 - [x] 全局分级通知中心（事件汇聚、历史查询、已读管理）
 - [x] 局域网零客户端文件快传（扫码投递、文本联动随手记）
 

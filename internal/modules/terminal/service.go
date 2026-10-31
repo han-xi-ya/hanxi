@@ -281,9 +281,9 @@ func (s *TerminalService) sendControl(c *application.StreamConn, ctl controlFram
 	return c.Send(frame)
 }
 
-// HandleStream GoStream 入口（module.go OnInit 注册）。每个连接一条 goroutine，
+// handleStream GoStream 入口(包内方法——曾同名导出被 bindings 生成成前端 API,污染契约面,降为不可导出)（module.go OnInit 注册）。每个连接一条 goroutine，
 // 生命周期由 c.Context() 兜住（页面刷新/窗口关闭都会到这里取消）。
-func (s *TerminalService) HandleStream(c *application.StreamConn) {
+func (s *TerminalService) handleStream(c *application.StreamConn) {
 	defer c.Close()
 	ctx := c.Context()
 

@@ -556,6 +556,18 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
+		ID:            "terminal",
+		Name:          "内嵌终端",
+		Description:   "在 hanxi 里开真终端：Windows 伪控制台（ConPTY）直连，命令行/PowerShell/Claude Code 三档入口；输出流走 Wails GoStream 二进制通道直达 xterm 渲染（非画面转译），断线不杀进程、刷新即重连；会话与 hanxi 同生命周期，退出全清不留孤儿",
+		Category:      "developer",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "termora",
 		Name:          "Termora",
 		Description:   "托管 Termora SSH/Sftp 终端：版本管理、JobObject 启停与外部实例分档治理",

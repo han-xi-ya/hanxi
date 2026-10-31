@@ -64,7 +64,7 @@ func (m *Module) Services() []extapi.Service {
 // （wails 文档原文），无副作用。
 func (m *Module) OnInit(context.Context) error {
 	if app := application.Get(); app != nil {
-		app.HandleStream(StreamName, m.svc.HandleStream)
+		app.HandleStream(StreamName, m.svc.handleStream)
 	}
 	return nil
 }
