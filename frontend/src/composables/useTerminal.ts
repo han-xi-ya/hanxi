@@ -609,7 +609,10 @@ export function useTerminal() {
     fitAddon = new FitAddon()
     term.loadAddon(fitAddon)
     term.loadAddon(new Unicode11Addon())
-    term.unicode.activeVersion = '11.0' // CJK 宽度按 Unicode 11（中文对齐的地基，不是装饰）
+    // CJK 宽度按 Unicode 11（中文对齐的地基，不是装饰）。版本串是 addon
+    // 注册的 '11'——写成 '11.0' 会被真 xterm 判 unknown Unicode version
+    // （真机第二炸；README 口径也是 '11'）。
+    term.unicode.activeVersion = '11'
     searchAddon = new SearchAddon()
     term.loadAddon(searchAddon)
     // URL 可点：走 Wails Browser 出外部浏览器（webview 里 window.open 不承诺可用）

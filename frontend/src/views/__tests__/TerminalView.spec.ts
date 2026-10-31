@@ -89,14 +89,26 @@ vi.mock('@xterm/xterm', () => ({
     disposed = false
     onDataCb: ((s: string) => void) | null = null
     onResizeCb: ((d: { cols: number; rows: number }) => void) | null = null
-    // 复刻真 xterm 6.0.0 的 proposed 门禁：unicode.activeVersion 未开
-    // allowProposedApi 即抛（真机首跑炸过整模块渲染，宽容桩正是漏雷根因）。
-    #unicode = { activeVersion: '' }
+    // 复刻真 xterm 6.0.0 的 unicode 语义两层：
+    // ① proposed 门禁——未开 allowProposedApi 访问即抛（真机第一炸）；
+    // ② 版本名校验——写入未注册的版本抛 unknown Unicode version（真机第二炸
+    //    把 '11' 写成 '11.0'，宽容桩两次都放行，两层现在都长牙）。
+    unicodeVersions = new Set(['1']) // 真 xterm 内置 v1
+    #unicodeActive = '1'
     get unicode(): { activeVersion: string } {
       if (this.options.allowProposedApi !== true) {
         throw new Error('You must set the allowProposedApi option to true to use proposed API')
       }
-      return this.#unicode
+      const self = this
+      return {
+        get activeVersion(): string { return self.#unicodeActive },
+        set activeVersion(v: string) {
+          if (!self.unicodeVersions.has(v)) {
+            throw new Error(`unknown Unicode version "${v}"`)
+          }
+          self.#unicodeActive = v
+        },
+      }
     }
     constructor(opts: Record<string, unknown>) {
       this.options = { ...opts }
@@ -104,6 +116,10 @@ vi.mock('@xterm/xterm', () => ({
     }
     loadAddon(a: unknown): void {
       this.addons.push(a)
+      // 真 xterm 在 loadAddon 时回调 addon.activate(terminal)——桩必须同样调，
+      // 否则 unicode11 的版本注册不会被模拟，②的门禁就成了死代码。
+      const withAct = a as { activate?: (t: unknown) => void }
+      if (withAct && typeof withAct.activate === 'function') withAct.activate(this)
       const maybe = a as { findNext?: unknown }
       if (maybe && typeof maybe.findNext === 'function') {
         this.search = a as { nextQ: string[]; prevQ: string[] }
@@ -139,7 +155,12 @@ vi.mock('@xterm/addon-search', () => ({
   },
 }))
 vi.mock('@xterm/addon-unicode11', () => ({
-  Unicode11Addon: class { activate(): void {} dispose(): void {} },
+  // 真 addon 注册的版本串是 '11'（UnicodeV11.version）——不是 '11.0'。
+  // 桩照真注册进 FakeTerminal 的版本表，拼错版本串的用例即炸。
+  Unicode11Addon: class {
+    activate(term: { unicodeVersions: Set<string> }): void { term.unicodeVersions.add('11') }
+    dispose(): void {}
+  },
 }))
 vi.mock('@xterm/addon-web-links', () => ({
   WebLinksAddon: class {
@@ -663,7 +684,7 @@ describe('TerminalView xterm 引擎装配（DOM 渲染器与 CJK 宽度）', () 
     // unicode 读取本身经复刻门禁的 getter——没开 allowProposedApi 时这一行
     // 就抛（真机炸相原样），显式断言是给读用例的人看的账。
     expect(t.options.allowProposedApi).toBe(true)
-    expect(t.unicode.activeVersion).toBe('11.0')
+    expect(t.unicode.activeVersion).toBe('11')
     expect(t.addons).toHaveLength(4)
     expect(t.options.scrollback).toBe(5000)
     await w.find('.tm-search-toggle').trigger('click')
