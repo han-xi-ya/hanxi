@@ -16,7 +16,7 @@
  * @property {boolean} ok
  * @property {string} output
  * @property {string} [error]
- * @property {string} [hint] - Hint 是失败时"下一步该干什么"的可操作判断（尾部截断 / 开头没复制全 / 开头混入说明文字——指路 AI 聊天）。判不出来就留空，宁可少说不说反。
+ * @property {string} [hint] - Hint 是失败时"下一步该干什么"的可操作判断（尾部截断 / 开头没复制全 / 开头混入说明文字——指路「AI 一键美化」）。判不出来就留空，宁可少说不说反。
  * @property {number} line - 失败定位：Line/Col 均 1 基，0 表示给不出位置；Snippet 是出错附近原文片段。
  * @property {number} col
  * @property {string} [snippet]

@@ -1,6 +1,6 @@
 // 内嵌终端（TerminalView）编排单源：会话名录 RPC、字节通道（GoStream "terminal:io"）
 // 生命周期、标签帧编解码、xterm 引擎装配与三通道状态位全在这里（视图薄接线、
-// TermSessionChips 纯展示，形制照 useAiChat/useWechatBot 的编排壳分离）。
+// TermSessionChips 纯展示，形制照 useWechatBot 的编排壳分离）。
 //
 // 后端契约事实（主会话按此实现，勿改形状）：
 //  - RPC（bindings/hanxi/internal/modules/terminal/terminalservice）：
@@ -27,7 +27,7 @@
 //    仅在主动切换会话时调用：画面归属"这一条连接"是 v0 的诚实口径）。
 //  - exit 帧后不再自动重连（进程死了，续它没有意义）；Kill 清账或新建同型会话是出路。
 //
-// 状态位分通道（JsonFmtView/AiChat 同款纪律，混写会让用户查错的地方）：
+// 状态位分通道（JsonFmtView 同款纪律，混写会让用户查错的地方）：
 //  - listError：名录 RPC 族（List/Rename/Kill 抛）——页级 state-box / slim 横幅；
 //  - openError：OpenTerminal 抛——"没开出这一页终端"，slim 横幅，不砸已有画面；
 //  - connStatus + connNote：显示通道状态（连接中/握手/重连中 n/N/已断）——状态条播报，
@@ -47,7 +47,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 // xterm 样式表随引擎模块一并引入（无第三方 UI 框架，视图 scoped 只排布页面，
 // 单元格/滚动条等终端内部样式归 xterm.css 全局管——构建实测可解析，勿改成 :deep 仿写）。
 import '@xterm/xterm/css/xterm.css'
-// 绑定生成物由主会话落盘（假定路径/函数式导出形制照 aichat 的 aichatservice.js）。
+// 绑定生成物由主会话落盘（假定路径/函数式导出形制照 jsonfmtservice.js 先例）。
 // 生成物名若与假定不符，改动面就是这一行 import + spec 的 vi.mock 路径，架构不动。
 import * as TerminalAPI from '../../bindings/hanxi/internal/modules/terminal/terminalservice'
 import { getErrorMessage } from '../utils/errors'
@@ -582,7 +582,7 @@ export function useTerminal() {
     if (wasCurrent) teardownStream()
     sessions.value = rest
     if (wasCurrent) {
-      // 选中回落规则（照 AiChat 定死）：被删项前一项，无前项取新首项，空列表回无选中态
+      // 选中回落规则：被删项前一项，无前项取新首项，空列表回无选中态
       const fallback = rest[Math.max(index - 1, 0)] ?? rest[0]
       currentId.value = ''
       if (fallback) selectSession(fallback.id)

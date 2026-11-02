@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 终端会话 chips 栏（纯展示 + 事件上抛，编排全在 useTerminal）：
 // 横向滚动的会话芯片条 + 新建下拉（三档 Shell 固定）+ 刷新。
-// 形制对位 AiChatSessionList：常显微动作钮（动作不得只随 hover 出现）、
-// 状态字恒带文字不单靠颜色、窄屏横滚不折行（component-patterns 纪律）。
+// 在册纪律（component-patterns）：常显微动作钮（动作不得只随 hover 出现）、
+// 状态字恒带文字不单靠颜色、窄屏横滚不折行。
 // 芯片即选择器：点谁接谁（v0 单通道语义——每个终端页一条连接，切页即断）。
 import { ref } from 'vue'
 import UiButton from '../ui/UiButton.vue'

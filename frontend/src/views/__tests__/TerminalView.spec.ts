@@ -9,13 +9,13 @@
 //    输入 0x01 帧上行、resize 0x00 帧 {"op":"resize","cols","rows"}。
 //  - v0 语义：页卸载/切会话只断通道不杀进程（KillTerminal 永不隐式调用）；断线自动
 //    Stream() 重开并重发 open 帧；exit 后不再自动重连。
-// 打桩形制：绑定 vi.mock（missingBindingSeam 为未落盘生成物解析空壳，AiChat/JsonFmt
+// 打桩形制：绑定 vi.mock（missingBindingSeam 为未落盘生成物解析空壳，JsonFmt
 // spec 头注在册同一条路）；@wailsio/runtime 的 Stream 用自造可控 FakeSocket（h.sockets
 // 收编）；@xterm/xterm 与四个 addon 整体替换为可记桩（h.terms 收编：写序/reset/focus
 // 全是可断言账目）；useConfirm/usePrompt hoisted mock（JsonFmtView.spec 同法）。
 // fake timers 下排干 await 一律 flushMicrotasks（JsonFmtView.spec 头注纪律）；
 // 组件统一经 mountView 登记、afterEach 兜底卸载——**残件带重连定时器会活到下一用例**，
-// 这是本套件比 AiChat 多一道收口的原因（重连退避是本模块的一等公民）。
+// 这是本套件多一道收口的原因（重连退避是本模块的一等公民）。
 import { mount } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -619,7 +619,7 @@ describe('TerminalView 名录三通道与入口', () => {
     expect(writeAt(t, t.writes.length - 1)).toBe('照常在流')
   })
 
-  it('名录连发两发晚到的旧一代不得整表回灌（reqSeq 门禁，PortScan/AiChat 同族）', async () => {
+  it('名录连发两发晚到的旧一代不得整表回灌（reqSeq 门禁，PortScan 同族）', async () => {
     const w = await mountLive([makeWireRow({ id: 'm1', title: '初始' })])
     const d1 = deferred<ReturnType<typeof makeWireRow>[]>()
     const d2 = deferred<ReturnType<typeof makeWireRow>[]>()

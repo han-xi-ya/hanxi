@@ -13,7 +13,7 @@
 // 按下先弹外发确认（内容离开本机 + 耗时按几十秒算）→ 后端 ExtractByAI 过契约
 // 验收与本地排版 → 结果就地替换失败块。在途/失败/过期未采用三通道分列，
 // 纪律从 ExtractByAI 一代逐条继承（#126 哨兵、#128 有效性判定、#132 单飞、#133 严验收）。
-import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import * as JsonFmtAPI from '../../bindings/hanxi/internal/modules/jsonfmt'
 import type { JsonFmtRequest, JsonFmtResult } from '../../bindings/hanxi/internal/modules/jsonfmt/models'
 import { getErrorMessage } from '../utils/errors'
@@ -24,20 +24,9 @@ import UiClipboardField from '../components/ui/UiClipboardField.vue'
 import UiButton from '../components/ui/UiButton.vue'
 import { useClipboard } from '../composables/useClipboard'
 import { useConfirm } from '../composables/useConfirm'
-import { handOff, takeForFmt } from '../composables/useJsonChatBridge'
 
 const { copyWithToast } = useClipboard()
 const { confirm } = useConfirm()
-
-// 视图间导航：App.vue 对动态视图统一监听 @navigate（HomeView 先例形制）。
-// 只服务于次要链接「带到 AI 聊天细聊」——主出路是就地「AI 一键美化」，
-// 这条留给"想反复追问模型"的场景，也让桥的 toChat 通道有真实生产者。
-const emit = defineEmits<{ navigate: [route: string] }>()
-
-function takeToChat(): void {
-  handOff(inputText.value)
-  emit('navigate', '/ext/aichat')
-}
 
 // 自动节拍：快过用户贴完回看的间隔，慢过连续击键的抖动
 const DEBOUNCE_MS = 300
@@ -55,8 +44,6 @@ const lastResult = ref<JsonFmtResult | null>(null)
 // RPC 调用本身失败（传输层）与后端"解析了说不对"（ok=false）两件事分开：
 // 前者是服务不可用（如模块未就绪），后者是内容问题——行/列/snippet 走错误横幅。
 const transportError = ref('')
-// 回程来源条：聊天侧「在 JSON 美化器中打开」送来的块，自动美化后要说明出处
-const bridgeNote = ref('')
 // —— AI 一键美化三通道（ExtractByAI 一代的 aiBusy/aiAsking/aiError/aiNote 分列
 // 纪律原样继承）：失败与"过期未采用"都不砸已在屏上的结果。 ——
 const aiBusy = ref(false)
@@ -152,7 +139,6 @@ async function aiBeautify(): Promise<void> {
 }
 
 watch(inputText, () => {
-  bridgeNote.value = '' // 文本已被用户动过，来源条的使命完成
   aiNote.value = '' // "过期未采用"说的就是"你改了输入"——改后使命完成
   aiError.value = '' // 上一发的失败原因对新文本不再成立，不留着误导
   if (debounceTimer) {
@@ -174,22 +160,6 @@ watch(inputText, () => {
 watch([indent, sortKeys], () => {
   if (!isBlank(inputText.value)) void beautifyNow()
 })
-
-// 回程消费：聊天侧「在 JSON 美化器中打开」送来的块填入输入并直接跑一次美化。
-// onMounted + onActivated 双挂：App.vue 的 KeepAlive 让二次导航只走 activated，
-// 只挂 onMounted 会把回程文本永远晾在桥里（首次挂载两钩子先后触发，读后即清天然幂等）。
-// await nextTick 不是客套：赋值先让 watch 走完（它会清来源条并排一发防抖），
-// 随后 beautifyNow 吃掉那发防抖——顺序反了就是"双发美化 + 来源条被吞"。
-async function consumeInbound(): Promise<void> {
-  const text = takeForFmt()
-  if (text === null) return
-  inputText.value = text
-  await nextTick()
-  bridgeNote.value = '来自 AI 聊天的 JSON 块，已带入并自动美化。'
-  void beautifyNow()
-}
-onMounted(() => { void consumeInbound() })
-onActivated(() => { void consumeInbound() })
 
 onUnmounted(() => {
   if (debounceTimer) {
@@ -221,7 +191,6 @@ const outLines = computed(() => {
       subtitle="标准 JSON 的格式化 / 压缩 / 键排序：数字原样搬运不改精度、键序默认保留；失败报行列与原文片段并给方向判断，读不动的可就地「AI 一键美化」（需确认，内容会离开本机）。"
     />
 
-    <UiBanner v-if="bridgeNote" tone="info">{{ bridgeNote }}</UiBanner>
     <!-- AI 三通道分列（ExtractByAI 一代纪律）：在途播报、失败不砸屏、过期未采用
          单列说明为什么屏上没动静——三者各一条，混写会让用户查错方向 -->
     <UiBanner v-if="aiBusy" tone="info" role="status">
@@ -313,7 +282,7 @@ const outLines = computed(() => {
 
           <template v-if="lastResult">
             <!-- 失败块：错误 + 行列 + snippet + hint 一件不丢（后端 classifyFailure
-                 的指路文案原样显示）；出路两钮——就地一键为主、带去聊天为辅 -->
+                 的指路文案原样显示）；唯一出路是就地「AI 一键美化」 -->
             <UiBanner v-if="failedResult" tone="error">
               <div class="jfmt-err">
                 <div>{{ lastResult.error }}</div>
@@ -335,14 +304,6 @@ const outLines = computed(() => {
                   >
                     {{ aiAsking ? '等待确认…' : aiBusy ? 'AI 认结构中…' : '✨ AI 一键美化' }}
                   </UiButton>
-                  <button
-                    type="button"
-                    class="btn btn-ghost btn-small jfmt-chat-link"
-                    title="把原文带进 AI 聊天并预填提取指令（适合想反复追问的场景）；发送与确认仍在聊天侧"
-                    @click="takeToChat"
-                  >
-                    或带到 AI 聊天细聊
-                  </button>
                 </div>
               </div>
             </UiBanner>

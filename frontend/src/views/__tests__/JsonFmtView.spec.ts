@@ -6,23 +6,18 @@
 //    ExtractByAI 吃同一份三字段契约（req 同 Beautify，开关跟工具条现值）；
 //  - 失败块四件齐（error/行列/snippet/hint）一件不丢、输入不清空；
 //  - warnings 逐条上屏（成功与失败路径都不吞）；
-//  - 脏文本的主出路是就地「✨ AI 一键美化」（.jfmt-ai-btn）：按下先弹外发确认
+//  - 脏文本的出路唯一是就地「✨ AI 一键美化」（.jfmt-ai-btn）：按下先弹外发确认
 //    （取消则零 RPC 零外发），在途/待决双闸防双击并发，失败与"过期未采用"各走
 //    独立通道且不砸已在屏上的结果，采用即摘掉更早本地发的覆盖权（reqSeq 门禁）；
-//  - 「或带到 AI 聊天细聊」降级为次要 ghost 链接（.jfmt-chat-link）：只写桥
-//    （direction=toChat）+ emit navigate，本地零确认零外发——确认归聊天侧，
-//    这里弹第二次确认就是两处各问一遍的反面教材；
-//  - 回程桥消费：toFmt 有货即填入并立即美化（不等防抖、不双发），读后即清，
-//    方向不互串（toChat 的货美化器不接）。
+//    跨模块去 AI 聊天的桥与「或带到 AI 聊天细聊」次要链接已随聊天模块整体删除
+//    （2026-11-02 机主裁决）退役——失败块不得再长第二条指路链接。
 // 后端绑定经 vi.mock 打桩（missingBindingSeam 兜底在册）；useConfirm hoisted
-// mock（AiChatView.spec 同法）——confirm 可控才谈得上钉"待决期双击"与"取消零发"；
-// fake timers 下排干 await 一律走 flushMicrotasks（JsonFmtView.spec 头注纪律自旧版
-// 沿用）；桥是模块级单例，每条用例前后 take* 双向排空，防跨用例弹入。
+// mock——confirm 可控才谈得上钉"待决期双击"与"取消零发"；fake timers 下排干
+// await 一律走 flushMicrotasks（JsonFmtView.spec 头注纪律自旧版沿用）。
 import { mount } from '@vue/test-utils'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import JsonFmtView from '../JsonFmtView.vue'
 import { useToast } from '../../composables/useToast'
-import { handOff, handToFmt, peekForChat, takeForChat, takeForFmt } from '../../composables/useJsonChatBridge'
 
 const svc = vi.hoisted(() => ({
   Beautify: vi.fn(),
@@ -31,8 +26,8 @@ const svc = vi.hoisted(() => ({
 
 vi.mock('../../../bindings/hanxi/internal/modules/jsonfmt', () => ({ JsonFmtService: svc }))
 
-// confirm 桩（AiChatView.spec 形制）：mock 成可控——返回 Promise 让用例能停在
-// 「弹窗待决」这一拍上，双击与取消两条分支才钉得住。
+// confirm 桩 mock 成可控：返回 Promise 让用例能停在「弹窗待决」这一拍上，
+// 双击与取消两条分支才钉得住。
 const confirmBox = vi.hoisted(() => ({ confirm: vi.fn() }))
 vi.mock('../../composables/useConfirm', () => ({ useConfirm: () => confirmBox }))
 
@@ -109,17 +104,10 @@ async function mountFailure() {
   return w
 }
 
-beforeEach(() => {
-  takeForChat() // 排空桥（模块级单例跨用例存活）
-  takeForFmt()
-})
-
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   useToast().clearToast()
-  takeForChat()
-  takeForFmt()
 })
 
 describe('JsonFmtView 主干三件套', () => {
@@ -227,7 +215,7 @@ describe('JsonFmtView 主干三件套', () => {
   })
 })
 
-describe('JsonFmtView 失败块与次要聊天链接', () => {
+describe('JsonFmtView 失败块', () => {
   it('ok=false：error/第 line 行 第 col 列/snippet/hint 四件齐上屏，原始输入不被清空', async () => {
     vi.useFakeTimers()
     svc.Beautify.mockResolvedValue(errResult())
@@ -292,41 +280,19 @@ describe('JsonFmtView 失败块与次要聊天链接', () => {
     w2.unmount()
   })
 
-  it('次要链接「或带到 AI 聊天细聊」：写桥 (toChat 原文) + emit navigate，本地零确认零外发零 RPC 加发', async () => {
+  // 传输层失败用例原挂在「回程桥消费」describe 下，与桥无关（断言对象是
+  // transportError 横幅）；桥随聊天模块删除后，本族用例收编进失败块 describe。
+  it('传输层失败（RPC 抛）走独立横幅：结果区复位、提示可点「美化」重试', async () => {
     vi.useFakeTimers()
-    svc.Beautify.mockResolvedValue(errResult())
+    svc.Beautify.mockRejectedValue(new Error('模块未就绪'))
     const w = mountView()
     await flushMicrotasks()
     await w.find('textarea').setValue(RAW_JSON)
     await vi.advanceTimersByTimeAsync(300)
     await flushMicrotasks()
-    const link = w.find('.jfmt-chat-link')
-    expect(link.exists()).toBe(true)
-    // title 把分工说出来：发送与确认仍在聊天侧——这条链接这里再弹一次确认，
-    // 就是同一件事问两遍的反面教材
-    expect(link.attributes('title')).toContain('发送与确认仍在聊天侧')
-    await link.trigger('click')
-    await flushMicrotasks()
-    expect(peekForChat()).toBe(RAW_JSON) // 交的是原文，不是残块
-    expect(w.emitted('navigate')).toEqual([['/ext/aichat']])
-    expect(confirmBox.confirm).not.toHaveBeenCalled() // 本地零确认（确认归聊天侧）
-    expect(svc.ExtractByAI).not.toHaveBeenCalled() // 交接不是外发
-    expect(svc.Beautify).toHaveBeenCalledTimes(1) // 交接不加发任何美化调用
-    w.unmount()
-  })
-
-  it('成功结果在场时 AI 钮与聊天链接都不在场（出路只在读不动时指，不钓成功的人）', async () => {
-    vi.useFakeTimers()
-    svc.Beautify.mockResolvedValue(okResult())
-    const w = mountView()
-    await flushMicrotasks()
-    await w.find('textarea').setValue(RAW_JSON)
-    await vi.advanceTimersByTimeAsync(300)
-    await flushMicrotasks()
-    expect(w.find('.jfmt-ai-btn').exists()).toBe(false) // 就地主出路只属于失败块
-    expect(w.find('.jfmt-chat-link').exists()).toBe(false)
-    expect(peekForChat()).toBeNull()
-    expect(svc.ExtractByAI).not.toHaveBeenCalled()
+    expect(w.find('.banner.banner-error').text()).toContain('调用格式化服务失败')
+    expect(w.find('.banner.banner-error').text()).toContain('模块未就绪')
+    expect(w.find('.jfmt-out').exists()).toBe(false)
     w.unmount()
   })
 })
@@ -345,8 +311,6 @@ describe('JsonFmtView AI 一键美化（失败块主动作）', () => {
     expect(arg.description).toContain('离开这台机器')
     expect(arg.description).toContain('几十秒')
     expect(svc.ExtractByAI).not.toHaveBeenCalled()
-    expect(peekForChat()).toBeNull()
-    expect(w.emitted('navigate')).toBeUndefined()
     expect(svc.Beautify).toHaveBeenCalledTimes(1) // 取消也不加发本地重算
     expect(w.find('.jfmt-ai-btn').exists()).toBe(true) // 失败块原样，出路还指着
     w.unmount()
@@ -487,65 +451,6 @@ describe('JsonFmtView AI 一键美化（失败块主动作）', () => {
     expect(w.find('.jfmt-out').element.textContent).toBe('AI 的结果') // 一字不动
     expect(w.text()).not.toContain('迟到的旧发倒灌')
     expect(w.find('.banner.banner-error').exists()).toBe(false) // 旧发即便是失败也不许顶掉成果
-    w.unmount()
-  })
-})
-
-describe('JsonFmtView 回程桥消费', () => {
-  it('onMounted 时桥里有 toFmt 货：填入输入并立即美化一次（不等防抖、不双发）', async () => {
-    vi.useFakeTimers()
-    svc.Beautify.mockResolvedValue(okResult())
-    const INBOUND = '{\n"from":"chat","n":[1,2,3]\n}'
-    handToFmt(INBOUND)
-    const w = mountView()
-    await flushMicrotasks()
-    expect(w.find('textarea').element.value).toBe(INBOUND)
-    expect(svc.Beautify).toHaveBeenCalledTimes(1)
-    expect(svc.Beautify).toHaveBeenCalledWith({ text: INBOUND, indent: 2, sortKeys: false })
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(svc.Beautify).toHaveBeenCalledTimes(1) // 消费那发吃掉了 watch 排的防抖
-    expect(w.text()).toContain('来自 AI 聊天') // 来源条说出文本出处（不是用户自己打的）
-    w.unmount()
-  })
-
-  it('takeForFmt 一次性：消费后桥清空，再次挂载不二次弹入', async () => {
-    vi.useFakeTimers()
-    svc.Beautify.mockResolvedValue(okResult())
-    handToFmt('{"once":true}')
-    const w = mountView()
-    await flushMicrotasks()
-    expect(takeForFmt()).toBeNull() // 已被挂载消费
-    w.unmount()
-    const w2 = mountView()
-    await flushMicrotasks()
-    expect(w2.find('textarea').element.value).toBe('')
-    expect(svc.Beautify).toHaveBeenCalledTimes(1) // 第二次挂载零加发
-    w2.unmount()
-  })
-
-  it('方向不互串：桥里是 toChat 的货时美化器不接、也不清它（留给聊天侧消费）', async () => {
-    vi.useFakeTimers()
-    svc.Beautify.mockResolvedValue(okResult())
-    handOff('带日志前缀的脏文本 {"a":1…')
-    const w = mountView()
-    await flushMicrotasks()
-    expect(svc.Beautify).not.toHaveBeenCalled()
-    expect(w.find('textarea').element.value).toBe('')
-    expect(peekForChat()).toBe('带日志前缀的脏文本 {"a":1…') // 原样还在桥里
-    w.unmount()
-  })
-
-  it('传输层失败（RPC 抛）走独立横幅：结果区复位、提示可点「美化」重试', async () => {
-    vi.useFakeTimers()
-    svc.Beautify.mockRejectedValue(new Error('模块未就绪'))
-    const w = mountView()
-    await flushMicrotasks()
-    await w.find('textarea').setValue(RAW_JSON)
-    await vi.advanceTimersByTimeAsync(300)
-    await flushMicrotasks()
-    expect(w.find('.banner.banner-error').text()).toContain('调用格式化服务失败')
-    expect(w.find('.banner.banner-error').text()).toContain('模块未就绪')
-    expect(w.find('.jfmt-out').exists()).toBe(false)
     w.unmount()
   })
 })
