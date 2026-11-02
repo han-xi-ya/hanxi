@@ -52,7 +52,9 @@ cd ..
 go mod tidy
 ```
 
-> **锁文件纪律**：CI 只认 `frontend/package-lock.json`（npm 口径，见 `.github/workflows/ci.yml`）；用 pnpm 干活产生的 `frontend/pnpm-lock.yaml` **不得入库**——留两份锁等于两套依赖真相。
+> **锁文件纪律**：CI 只认 `frontend/package-lock.json`（npm 口径，见 `.github/workflows/ci.yml`）；用 pnpm 干活产生的 `frontend/pnpm-lock.yaml` **不得入库**——留两份锁等于两套依赖真相。该条目已登记在根 `.gitignore`（`frontend/pnpm-lock.yaml`），由机制兜底，无须每次手工删除。
+>
+> **改依赖的连带义务**：走 pnpm 通道不会更新 `package-lock.json`，而 `npm ci` 遇到它与 `package.json` 不一致会直接报错退出（不回退成安装）。因此改动 `package.json` 依赖后补一步 `npm --prefix frontend install --package-lock-only`（只更锁、不动 `node_modules`，不撞本机 `npm run` 坏 shim）。
 
 > **本机已知坑（机主环境，2026-10-12 记录在案；本轮未真机复跑，标注未复核）**：机主机器上 `npm run` 的脚本 shim 损坏，直接 `npm run <script>` 会失败，而依赖安装（`npm install`）不受影响。绕行两条路：
 > 1. **经 task 入口**一律加变量 `PACKAGE_MANAGER=pnpm`（Taskfile 的 `frontend:run:pnpm` 通道实测可用，如 `task build PACKAGE_MANAGER=pnpm`）；`task check`/`task dev`/`task package` 走同一 `common:frontend:run` 分发，预期同样适用（未逐一复跑）。
