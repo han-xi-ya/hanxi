@@ -14,7 +14,7 @@ import (
 
 // Asker 是"问一次外部模型"的能力接口。刻意留成接口而不是直接调 aiagent：
 // 否则这些分支（AI 没装、超时、返回的不是 JSON）就只能靠真装 CLI + 真联网才能测
-// （与 aichat 的 agentStream 同一条理由）。
+// （与已删除的聊天模块 agentStream 同款口径，理由不为它而活）。
 type Asker interface {
 	Ask(ctx context.Context, req aiagent.Request) (*aiagent.Result, error)
 }

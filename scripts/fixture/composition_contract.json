@@ -261,20 +261,12 @@
       "group": "developer"
     },
     {
-      "id": "aichat",
-      "route": "/ext/aichat",
-      "group": "developer"
-    },
-    {
       "id": "terminal",
       "route": "/ext/terminal",
       "group": "developer"
     }
   ],
   "events": [
-    "aichat:session-state",
-    "aichat:timeline",
-    "aichat:turn-stats",
     "bcu:instance-state",
     "bcu:version-download",
     "bili23:instance-state",
@@ -462,14 +454,6 @@
       "SetUsbShareEnabled",
       "StartReadiness"
     ],
-    "modules/aichat/aichatservice.js": [
-      "CreateSession",
-      "ListSessions",
-      "RenameSession",
-      "CloseSession",
-      "DeleteSession",
-      "SendMessage"
-    ],
     "modules/terminal/terminalservice.js": [
       "Profiles",
       "OpenTerminal",
@@ -480,7 +464,7 @@
     ]
   },
   "counts": {
-    "modules": 54,
-    "events": 102
+    "modules": 53,
+    "events": 99
   }
 }

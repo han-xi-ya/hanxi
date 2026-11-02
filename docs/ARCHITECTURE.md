@@ -2,7 +2,7 @@
 
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
-> **更新日期**：2026-10-31（jsonfmt 简化为基础美化器、AI 提取链并入 aichat；aiagent 消费方口径同步。上一轮 2026-10-26（jsonfmt 内置模块入库——JSON 美化，模块计数 51→52；上轮 2026-10-22：sshkeys 独立模块入库——SSH 主动检查自 portscan 拆出，模块计数 50→51；再上轮 2026-10-21：netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）)
+> **更新日期**：2026-11-02（`aichat` 模块整体删除——与内嵌终端重叠，jsonfmt 脏文本出路收敛为就地「AI 一键美化」；aiagent 消费方回落为仅 `jsonfmt`。上一轮 2026-10-31：jsonfmt 简化为基础美化器、AI 提取链并入 aichat。上一轮 2026-10-26（jsonfmt 内置模块入库——JSON 美化，模块计数 51→52；上轮 2026-10-22：sshkeys 独立模块入库——SSH 主动检查自 portscan 拆出，模块计数 50→51；再上轮 2026-10-21：netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）)
 > **技术基线**：Go ≥1.26 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration) + 共享托管内核 (packages/go) + 统一状态契约与调用门 (ADR-0001/0002/0003)
 
@@ -28,7 +28,7 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
        │                    │                    │
 ┌──────▼───────────┐ ┌──────▼───────────┐ ┌──────▼───────┐
 │ internal/modules │ │ internal/extapi  │ │ internal/    │
-│ 54 个业务模块    │ │ 模块契约：生命周 │ │ settings     │
+│ 53 个业务模块    │ │ 模块契约：生命周 │ │ settings     │
 │ 自建: frpc 网络  │ │ 期 + 四维状态目  │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ 录/安装凭据/调用 │ │ 与配置持久化 │
 │ 快传 随手记等    │ │ 门/更新感知契约  │ │ ReceiptStore │
@@ -93,7 +93,7 @@ type Module interface {
 - **模块级别现状**：`LevelBuiltin` 为编译进主程序的内建模块；`LevelExternal` 仅是未来外部子进程扩展的枚举预留。当前 52 个模块全部为 `LevelBuiltin`，没有动态安装或加载第三方 Hanxi 插件的运行时；模块中心的"安装/卸载"是 **逻辑安装态**（见下），不涉及第三方插件的物理装卸。
 - **权限现状**：`Permission` 类型及 `kill-process` / `lan-scan` / `network` 常量仍保留供未来外部扩展能力握手复用，但 `Permissions()` 已从 `Module` 接口移除，当前内建模块没有统一的 Permission Gateway。模块启停、各业务服务的安全校验，以及 MCP 接入面的 `access.json` 授权是不同层次，不能表述为通用插件权限隔离。**MCP 现状（2026-10-12 按 `internal/mcp/` 实数核，原文"四个只读工具"严重低估已废）**：`toolDefs` 共 **12 件**工具、授权键共 **10 枚**（`knownModuleIDs`；memo 键下 2 工具、portkill 键下 prepare/execute 2 工具），按风险分三档——①查询只读族 8 件（envcheck/file_search/ocr/memo×2/sysinfo/log_read/clipboard_search）；②主动出网探测族 2 件（portscan/lan：只对网络做可达性探测、不改任何设备状态，但属出网动作且结果含网络拓扑）；③破坏族 2 件（portkill prepare/execute：需 `access.json` 的 portkill 键**与** `mcp/destructive.json` 机主总闸**双闸齐开**才放行，prepare 仅发放 120 秒一次性令牌、execute 复核 pid+可执行路径+启动时间三指纹后动手，系统关键进程与 hanxi 自身永久拒杀）。portkill 键刻意不进「设置 → AI 接入」面板，须机主手动改两文件开启。
 - **状态契约（Wave 0 冻结，`catalog.go` + `receipt.go`）**：`ModuleContractSchema = 1` 随投影下发，破坏性变更必须递增 schema 并在 `docs/adr/` 立案（ADR-0001）。
-  - `ModuleCatalogItem`：静态身份与能力目录（交付形态字段为 **`deliveryKind`**——2026-09-19 修订自 `delivery`，与 `ModuleState.delivery` 生命周期维度语义正交、永久异名，ADR-0001 修订记录；含 `Entrypoint` 八值入口、`capabilities`、`owner`），由 `scripts/cataloggen` 从源码证据与 composition 契约推导生成物表 `internal/app/catalog.go`（54 项，与 `scripts/fixture/module_catalog.json`、前端 `contract-enum.spec.ts` 三层同锁），基线冻结于 `scripts/fixture/module_catalog.json`，漂移由契约测试守护；
+  - `ModuleCatalogItem`：静态身份与能力目录（交付形态字段为 **`deliveryKind`**——2026-09-19 修订自 `delivery`，与 `ModuleState.delivery` 生命周期维度语义正交、永久异名，ADR-0001 修订记录；含 `Entrypoint` 八值入口、`capabilities`、`owner`），由 `scripts/cataloggen` 从源码证据与 composition 契约推导生成物表 `internal/app/catalog.go`（53 项，与 `scripts/fixture/module_catalog.json`、前端 `contract-enum.spec.ts` 三层同锁），基线冻结于 `scripts/fixture/module_catalog.json`，漂移由契约测试守护；
   - `ModuleState`：四维事实投影——Delivery(7 值) / Policy(5 值) / Runtime(7 值) / Health(9 值)，`StateInput.Project()` 按冻结优先级计算 `primaryAction` / `reason` / `summary`（八个 SummaryKey 族），页面禁止自行堆叠 if/else 推断；纯展示附加字段 `remoteVersion`（health=update-available 时的上游新版本号，由更新感知链写入、其余健康值下清空 omitempty，**不参与状态机裁决**）；`Visible()` = installed ∧ (enabled ∨ mandatory)；`CanDeliveryTransition` / `CanPolicyTransition` / `CanRuntimeTransition` 提供转换合法性门（非法转换为 0 的 DoD 守卫）；
   - `Operation`：统一表达安装、启停、更新、回滚、修复、卸载与业务调用租约（kind 8 值、queued/running/succeeded/failed/cancelled 状态机、`TxnID` 关联 journal 事务、结构化 `OperationError{code,message,recoverable}`）；
   - `receipt.go` 定义 `ReceiptStorage` 抽象与 `Receipt` 落盘 schema（字段变更须递增 Schema 并立案 ADR）。
@@ -153,7 +153,7 @@ internal/modules/<tool>/
 
 ### 2.4 共享托管内核 (`packages/go/`)
 
-Wave 4 从 25 份 version 下载链、24 份 instance 进程治理主流程中收口出三个零框架依赖的共享包（升版规则、稳定门判定与逃生钩子白名单由 `docs/adr/ADR-0002` 冻结：zip 族 + 单 exe 族两差异样本全程走内核、失败注入矩阵通过、≥3 家需求才入内核）。后续批次又同址沉入七件——`netx`（代理出网与显式拨号，N25 自 wsl 孤例泛型化下沉、`469e3e1` 将 portscan 拨号内核上收）、`hostfeed`、`dirstats`、`externalquit`、`peicon`、`sshconf`（`sshkeys` 自 portscan 拆出时随该模块下沉；**2026-10-28 对账补列**，此前本行落后于实扫）、`aiagent`（本机 Claude Code 无头调用与常驻会话外壳；现消费方为 `aichat` / `terminal`——首个消费方曾是 `jsonfmt` 的显式 AI 提取，已随 2026-10-31 机主裁决退役并入 AI 聊天，史述），`packages/go/` 现共 **10 包**；其中 artifact/supervisor/operation 三包公开面仍按 ADR-0002 冻结表执行，后七件不在该表内、纪律由各包注释钉守：
+Wave 4 从 25 份 version 下载链、24 份 instance 进程治理主流程中收口出三个零框架依赖的共享包（升版规则、稳定门判定与逃生钩子白名单由 `docs/adr/ADR-0002` 冻结：zip 族 + 单 exe 族两差异样本全程走内核、失败注入矩阵通过、≥3 家需求才入内核）。后续批次又同址沉入七件——`netx`（代理出网与显式拨号，N25 自 wsl 孤例泛型化下沉、`469e3e1` 将 portscan 拨号内核上收）、`hostfeed`、`dirstats`、`externalquit`、`peicon`、`sshconf`（`sshkeys` 自 portscan 拆出时随该模块下沉；**2026-10-28 对账补列**，此前本行落后于实扫）、`aiagent`（本机 Claude Code 无头一次性调用外壳；**现唯一消费方为 `jsonfmt` 的「AI 一键美化」**。史述：2026-10-30 曾并入 `aichat` 聊天、`terminal` 走 conpty 不经此包；2026-11-02 `aichat` 删除后消费方回落为仅 `jsonfmt`），`packages/go/` 现共 **10 包**；其中 artifact/supervisor/operation 三包公开面仍按 ADR-0002 冻结表执行，后七件不在该表内、纪律由各包注释钉守：
 
 - **`artifact`（交付链）**：`Fetch` 受控下载——官方 SHA-256 必检（缺失即拒，"托管下载不允许无校验安装"）、Content-Length 与实收双核、流式大小断言、落盘后全量重读复核；HTTPS-only（http 仅限回环且强制绕过代理）、重定向不跨 scheme、错误/进度不回显带 query 的 URL。`UnpackZip` 安全解包闸门——ZipSlip（反斜杠归一 + 组件级清洗 + Clean 前后双查）、炸弹预算 `Limits`（条目数/单文件/总解压量/压缩比）、`allowFiles` 清单白名单逐文件摘要复核、大小写占位冲突检测、反斜杠结尾目录条目（不带 ModeDir 位）修复；`Tree` 版本树——`OpenTree(root, entryName)` 的 `<entryName>_<version>/` 布局、`StageDir` 独占 `.tmp-<txnID>` 中转（不覆盖、不执行任何内容）、`Commit` 原子落位（同摘要幂等复用 / 异摘要**防同版本内容漂移拒覆** / 无账本目录拒覆盖 / rename 优先、meta.json 写失败搬回回退）、`Remove` 先 rename 隔离到 `.removing-*` 再删（文件被占用时留下可恢复状态）、`Versions/Resolve/CleanupAbandoned/InstallZip`；`CleanStaleParts` 超龄 `.part-*` 残件受控清理；版本令牌白名单（`ValidateVersionToken`）防目录名注入。
 - **`supervisor`（进程治理）**：`Probe.Inspect` 单一事实源（外部性 + `ProcInfo`，取代各蓝本 IsRunning/PortOpen/WaitForReady 碎片接口）；`Spec` 受控字段（Exe/Args 原样 argv 无 shell、`DetachFromJob`、`ReadyTimeout`、`HideWindow`（Windows 经 CREATE_NO_WINDOW 注入、其他平台 no-op）、`Env` 键值白名单注入）；`Engine` 生命周期（Start/Stop/Snapshot，状态锁与操作锁分离、`cmd.Wait` 单所有者、上一代未收口拒新启）；`SetQuitHook` 优雅退出通道（管道命令/WM_CLOSE/HTTP shutdown）；`ErrExternal`（外部实例只甄别指引）/`ErrBusy`；`Callbacks.OnState/OnLog`（OnLog 逐行透传 stdout/stderr，脱敏/缓冲策略留模块层）；PID 复用防护（VerifyToken 身份 + KillVerified 复核）；停止三段：QuitHook grace → Job Terminate → 指纹复核强杀。

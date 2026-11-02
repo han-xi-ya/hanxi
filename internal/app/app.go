@@ -15,7 +15,6 @@ import (
 	"hanxi/internal/hotkey"
 	"hanxi/internal/logging"
 	"hanxi/internal/mcpwizard"
-	"hanxi/internal/modules/aichat"
 	"hanxi/internal/modules/bcu"
 	bcuinstance "hanxi/internal/modules/bcu/instance"
 	bcuversion "hanxi/internal/modules/bcu/version"
@@ -273,10 +272,6 @@ func RegisterEvents() {
 	application.RegisterEvent[softver.ScanProgress]("softver:dir-scan")
 	application.RegisterEvent[softver.InstallerProgress]("softver:installer-download")
 
-	// aichat 三事件（模块侧经 emitEvent 出口，事件名/载荷三处同改口径见 service.go）。
-	application.RegisterEvent[aichat.TimelineItem]("aichat:timeline")
-	application.RegisterEvent[aichat.SessionState]("aichat:session-state")
-	application.RegisterEvent[aichat.TurnStats]("aichat:turn-stats")
 }
 
 // Options 控制应用启动时行为。
@@ -552,7 +547,6 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		publicip.New(plat),
 		sshkeys.New(),
 		jsonfmt.New(),
-		aichat.New(paths),
 		terminalModule,
 		wifi.New(),
 		envcheck.New(plat),

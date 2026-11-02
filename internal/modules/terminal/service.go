@@ -2,8 +2,8 @@ package terminal
 
 // TerminalService：内嵌终端的调用面（v0 竖切）。
 //
-// 与 aichat 的分野说清楚：aichat 是"协议对话"（hanxi 懂内容），这里是
-// "字节管道"（hanxi 完全不懂内容，也不装懂）。画面归前端的 xterm.js，
+// 与协议对话式前端的分野（原 aichat 模块 2026-11-02 已删，口径仍成立）：对话是"懂内容"，这里是
+// 纯字节管道（hanxi 完全不懂内容，也不装懂）。画面归前端的 xterm.js，
 // 本层只做四件事：起伪控制台、双向搬字节、resize、收尸。
 //
 // 字节通道用 Wails v3 beta.10 内置 GoStream（本仓首例，注册点在 module.go
@@ -105,7 +105,7 @@ type TermSessionRow struct {
 	Alive     bool   `json:"alive"`
 }
 
-// ptyLike 是 conpty.Pty 的窄接口——与 aichat.agentStream、jsonfmt.Asker 同一条
+// ptyLike 是 conpty.Pty 的窄接口——与 jsonfmt.Asker、已删的 aichat.agentStream 同一条
 // 理由：不注入就只能真起伪控制台才能测状态机（CI 与并行门禁都赔不起）。
 type ptyLike interface {
 	Read(b []byte) (int, error)
