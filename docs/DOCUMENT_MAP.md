@@ -13,7 +13,7 @@
 | 文件 | 一句话职责 | 行数 | 末改 | 初判状态 |
 |---|---|--:|---|---|
 | `README.md` | 对外产品门户：定位、自建模块+32 款托管名单、构建入口 | 259 | 2026-10-21 | 活 |
-| `CLAUDE.md` | 项目规范：Git 提交/原子化/代码质量/安全守则（与 `.claude/CLAUDE.md` **逐字节相同**，见 §3.1） | 49 | 2026-09-14 | 活（双份并存） |
+| `CLAUDE.md` | 项目规范：Git 提交/原子化/代码质量/安全守则/协作模式（规范唯一源；`.claude/CLAUDE.md` 副本已于 2026-11-02 摘除，见 §3.1） | 60 | 2026-10-31 | 活 |
 
 ### `docs/`（23）
 
@@ -112,11 +112,10 @@
 |---|---|--:|---|---|
 | `frontend/README.md` | 前端工程薄层说明（技术栈声明，权威指回 docs/FRONTEND.md 与 design-system.md） | 63 | 2026-09-14 | 活 |
 
-### `.claude/`（6）
+### `.claude/`（5）
 
 | 文件 | 一句话职责 | 行数 | 末改 | 初判状态 |
 |---|---|--:|---|---|
-| `.claude/CLAUDE.md` | 同根 `CLAUDE.md`（逐字节相同的副本，见 §3.1） | 49 | 2026-09-14 | 活（双份并存） |
 | `.claude/skills/hanxi-workbench-ui/SKILL.md` | 工作台 UI 设计技能入口（触发条件+三份 references 索引） | 92 | 2026-08-29 | 活 |
 | `.claude/skills/hanxi-workbench-ui/references/component-patterns.md` | 工作台组件模式库（英文） | 231 | 2026-09-17 | 活 |
 | `.claude/skills/hanxi-workbench-ui/references/design-system.md` | 视觉设计语言/色板 token 权威（FRONTEND.md 自认视觉冲突时让位于此） | 187 | 2026-09-25 | 活 |
@@ -152,8 +151,8 @@
 
 ## 3. 版图层面问题与归并建议（供机主裁决，本路不动手）
 
-### 3.1 CLAUDE.md 双份逐字节相同
-`CLAUDE.md` 与 `.claude/CLAUDE.md` 经 `diff` 确认内容完全一致（各 49 行，同 2026-09-14 末改）。两份独立编辑迟早漂移。**建议**：定一处为源（按 harness 加载优先级说明），另一处生成或改为一行指路；具体机制涉及 Claude Code 加载语义，需机主先确认双份是否都必需。
+### 3.1 CLAUDE.md 双份并存——已定案并落地（2026-11-02）
+本节原判定为"两份独立编辑迟早漂移，需机主先确认双份是否都必需"。漂移已如期发生并证实危害：根 `CLAUDE.md` 在副本末改（`1fd4454`，2026-09-14）之后又走两笔——`80d1015`（撤销 DPAPI，凭据改明文随数据根携带，见 `docs/adr/ADR-0004-portable-plaintext-credentials.md`）与 `c77217e`（多任务并行三条硬约束入规）——副本停在 09-14，既缺整节「协作模式」，又仍宣传**已被撤销的 DPAPI 结论**。harness 双份齐读，等于向每次会话注入过期规范，故它不是无害冗余。**定案（机主 2026-11-02 授权）**：摘除 `.claude/CLAUDE.md`，规范单源留仓库根；不留 `> 参见` 指路桩——harness 本就加载根文件，加桩等于制造第三个漂移源。`.claude/skills/` 与 `settings.json` 不受影响。
 
 ### 3.2 `docs/` 根混放活文档与历史快照，无归档区
 22 份中至少 8 份是明确历史件（BUG_AUDIT、CODE_QUALITY_PROGRESS_2026-09-19、WSL_REDESIGN_PROGRESS_2026-09-08、PROJECT_REVIEW_2026-09-08、FEATURES_OVERVIEW、FUTURE_FEATURE_RECOMMENDATIONS、MOOTOOL_ANALYSIS、PLUGINS_ARCHITECTURE），其中 3 份还把日期烧进了文件名。它们与 FACTS/ARCHITECTURE/PRD 等活文档平级混放，进门者难辨现行与存档。**处置进展（2026-10-21 机主授权删除）**：前四份——BUG_AUDIT、CODE_QUALITY_PROGRESS_2026-09-19、WSL_REDESIGN_PROGRESS_2026-09-08、PROJECT_REVIEW_2026-09-08——**已删除**，孤本结论存底于 [`docs/archive/KEY-NUGGETS.md`](archive/KEY-NUGGETS.md)，外部引用行（PRW P0 段、P0 三档依据行）已同步改指存底；同批另删 `themes/README-v1.md` + `preview-v1.html` + `gen-palettes-v1.mjs`（v1 全族）与 `frontend/public/Inter-Medium.ttf` + `frontend/Inter Font License.txt`（零消费方死重，T4 实测）。剩余 FEATURES_OVERVIEW / FUTURE / MOOTOOL / PLUGINS_ARCHITECTURE 四份判为仍有效或活文档，未删。**仍待裁**：`docs/archive/` 已开设但历史件大部队迁移未执行（plans 甲类 15 份建议"移不是删"）；同步修正各文件互引链接（本地图已列全引主）。PLUGINS_ARCHITECTURE 与 ARCHITECTURE 文件名一字之差、性质迥异（现行 vs 留档），迁移时可顺带改名消歧。
@@ -174,7 +173,7 @@
 
 | 主题组 | 现存文件 | 建议去向（待裁） |
 |---|---|---|
-| 项目规范 | `CLAUDE.md` + `.claude/CLAUDE.md` | 单源化（§3.1） |
+| 项目规范 | `CLAUDE.md`（唯一源） | 已落地：副本 `.claude/CLAUDE.md` 已于 2026-11-02 摘除（§3.1） |
 | 现行权威五件套 | README / ARCHITECTURE / PRD / FRONTEND / FACTS | 留 `docs/` 根，不动 |
 | 进度/排期 | PLAN_REMAINING_WORK（复入口）、BACKLOG、DEVPLAN、PROGRESS | 职责不动；DEVPLAN 标题或改名消歧（§3.4） |
 | 战略/动机/评估 | PROJECT_STRATEGY、MOTIVATION、PLUGINIZATION…、FUTURE_FEATURE…、MOOTOOL… | 战略与动机留根；两份带帽评估+借鉴分析入 archive |
