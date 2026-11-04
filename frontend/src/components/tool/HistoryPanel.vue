@@ -14,7 +14,7 @@ import { fmtDateTimeSmart } from '../../utils/format'
 import { debounce } from '../../utils/debounce'
 
 // —— 标记列中文化 ——
-// extra 是各模块记录点写入的机器 token（竖线连拼，见 ocr/portkill/npmtool
+// extra 是各模块记录点写入的机器 token（竖线连拼，见 ocr/portkill
 // recordHistory），展示层翻成人话；词表外的未知 token **原样露出**——宁显机器串，
 // 不瞎猜语义。title 恒留原始串供诊断/搜索对账。
 const EXTRA_LABELS: Record<string, string> = {
@@ -23,9 +23,6 @@ const EXTRA_LABELS: Record<string, string> = {
   query: '端口查询',
   kill: '终止进程',
   elevated: '提权终止',
-  'npm-install': 'npm 安装',
-  'npm-update': 'npm 升级',
-  'npm-remove': 'npm 卸载',
   nofull: '未存全文',
   fail: '失败',
   denied: '已拒绝',
@@ -42,16 +39,15 @@ function extraChips(extra: string): { key: string; label: string; danger: boolea
 const EMPTY_HINTS: Record<string, string> = {
   ocr: '还没有识别记录——页面上「识别」、右键长按轮盘框选、热键剪贴板识图都会留档（成败同记）；每桶最多保留最近的记录，「清空本桶」只影响这里。',
   portkill: '还没有查询/终止记录——端口查询与进程终止都留档，被红线或 UAC 拒绝的终止也会记下并标「已拒绝」，方便回看当时为什么没杀掉。',
-  envcheck: '还没有 npm 工具操作记录——环境体检页对 claude/codex 等受管工具的装、升、卸会留在这里。',
 }
 
 const props = withDefaults(
   defineProps<{
-    /** 分桶键（"ocr" / "portkill" / "envcheck" …，对齐模块注册 ID） */
+    /** 分桶键（"ocr" / "portkill" …，对齐模块注册 ID） */
     funcType: string
     /** 列表区最大高度 */
     maxHeight?: string
-    /** 是否显示"应用"动作（宿主无回填目标时置 false，envcheck 用） */
+    /** 是否显示"应用"动作（宿主无回填目标时置 false） */
     showApply?: boolean
   }>(),
   { maxHeight: '320px', showApply: true },

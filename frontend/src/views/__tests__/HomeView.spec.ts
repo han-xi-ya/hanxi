@@ -244,7 +244,7 @@ describe('HomeView（工作台首页）', () => {
     w.unmount()
   })
 
-  it('最近任务：三桶合并按 id 降序取最近，行含图标+标题+时间', async () => {
+  it('最近任务：两桶合并按 id 降序取最近，行含图标+标题+时间', async () => {
     stubCore([], [])
     stubTasks({
       ocr: [histRec(3, 'ocr', '识别 c.png'), histRec(1, 'ocr', '识别 a.png')],
@@ -253,7 +253,7 @@ describe('HomeView（工作台首页）', () => {
     const w = await mountView()
     expect(histSvc.List).toHaveBeenCalledWith('ocr', '')
     expect(histSvc.List).toHaveBeenCalledWith('portkill', '')
-    expect(histSvc.List).toHaveBeenCalledWith('envcheck', '')
+    expect(histSvc.List).not.toHaveBeenCalledWith('envcheck', '')
     const rows = w.findAll('.task-row')
     expect(rows).toHaveLength(3)
     expect(rows.map((r) => r.find('.task-title').text())).toEqual(['识别 c.png', '查杀 8080', '识别 a.png'])
@@ -275,12 +275,12 @@ describe('HomeView（工作台首页）', () => {
     w2.unmount()
   })
 
-  it('最近任务（Wave 4）：统一 Operation 终态与历史三桶按时间降序合并取 5，operation 行取词表文案', async () => {
+  it('最近任务（Wave 4）：统一 Operation 终态与历史两桶按时间降序合并取 5，operation 行取词表文案', async () => {
     const { useOperations } = await import('../../composables/useOperations')
     stubCore([mod('markeron', 'MarkerOn 标注')], [])
     stubTasks({
-      ocr: [histRec(3, 'ocr', '识别 c.png')], // 10:00
-      envcheck: [{ ...histRec(4, 'envcheck', '环境检测'), createdAt: '2026-09-17T10:30:00+08:00' }],
+      ocr: [histRec(3, 'ocr', '识别 c.png'), // 10:00
+        { ...histRec(4, 'ocr', '识别 d.png'), createdAt: '2026-09-17T10:10:00+08:00' }],
       portkill: [{ ...histRec(2, 'portkill', '查杀 8080'), createdAt: '2026-09-17T09:00:00+08:00' }],
     })
     appSvc.ListOperations.mockResolvedValue([
@@ -293,14 +293,14 @@ describe('HomeView（工作台首页）', () => {
     await useOperations().refresh() // 单例投影先行，模拟观察面已有现态
     const w = await mountView()
     const rows = w.findAll('.task-row')
-    // 两源 7 条 → 降序截 5（最旧的 portkill 与 cancelled 出局）
+    // 两源 6 条 → 降序截 5（最旧的 cancelled 出局，13:00 running 本就不入列）
     expect(rows).toHaveLength(5)
     expect(rows.map((r) => r.find('.task-title').text())).toEqual([
       'MarkerOn 标注 · 安装', // 12:00 succeeded
       'MarkerOn 标注 · 更新', // 11:45 failed
-      '环境检测', // 10:30 history
+      '识别 d.png', // 10:10 history
       '识别 c.png', // 10:00 history
-      '查杀 8080', // 09:00 history（08:05 的 cancelled 与 13:00 的 running 出局）
+      '查杀 8080', // 09:00 history（08:05 的 cancelled 出局）
     ])
     // operation 行摘要：error.message 原文优先，无错误回落阶段短语
     expect(rows[1].find('.task-meta').text()).toBe('磁盘空间不足')

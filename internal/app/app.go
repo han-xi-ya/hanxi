@@ -582,8 +582,8 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		slog.Warn("逻辑安装凭据迁移未完成，部分模块可能呈现未安装（可在模块中心安装找回）", "err", err)
 	}
 
-	// 统一历史记录：公共 Store 挂 state/history.json，装配根注入首批三处接缝
-	//（ocr 识别 / portkill 查询与查杀 / npmtool 装升卸）。记录点与口径见各模块接入提交。
+	// 统一历史记录：公共 Store 挂 state/history.json，装配根注入首批两处接缝
+	//（ocr 识别 / portkill 查询与查杀）。记录点与口径见各模块接入提交。
 	historyStore := history.NewStore(paths.StateDir())
 	historySvc := history.NewHistoryService(historyStore, store)
 	if ocrMod, ok := ocrModule.(*ocr.Module); ok && ocrMod != nil {
@@ -592,7 +592,6 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	if pkMod, ok := portkillModule.(*portkill.Module); ok && pkMod != nil {
 		pkMod.Service().SetHistory(historyStore)
 	}
-	npmtool.SetHistory(historyStore)
 
 	appSvc := NewAppService(registry, store)
 	// Wave 4-B 操作观察面 RPC：在途/近期事务查询与 resumable 残留忽略

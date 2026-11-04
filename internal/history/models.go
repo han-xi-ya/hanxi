@@ -17,7 +17,7 @@
 //   - Extra 刻意做成纯字符串而非 map：防被塞任意大对象撑爆单文件。
 //
 // 依赖纪律：本包不 import 任何业务模块（防环）；funcType 取值由各模块自己传入
-// （约定用模块注册 ID 字符串，如 "ocr"/"portkill"/"envcheck"）。
+// （约定用模块注册 ID 字符串，如 "ocr"/"portkill"）。
 package history
 
 // Record 一条历史记录。四文本字段（Summary/Input/Output/Extra）在 Save 入口
@@ -26,7 +26,7 @@ type Record struct {
 	// ID 全局单调递增：时间戳毫秒*1000 起步，与桶内已见最大值取严格递增，
 	// 重启后天然续接（时钟回拨也单调）。
 	ID int64 `json:"id"`
-	// FuncType 分桶键："ocr" / "portkill" / "envcheck" …（对齐模块注册 ID）。
+	// FuncType 分桶键："ocr" / "portkill" …（对齐模块注册 ID）。
 	FuncType string `json:"funcType"`
 	// Summary 一行摘要；留空则 Save 时取 Input 前 40 字（对齐 MooTool 口径）。
 	Summary string `json:"summary"`

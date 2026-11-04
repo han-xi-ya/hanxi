@@ -7,7 +7,7 @@
  * 统一过脱敏与截断，调用方直接传原文即可。
  * @typedef {Object} Record
  * @property {number} id - ID 全局单调递增：时间戳毫秒*1000 起步，与桶内已见最大值取严格递增， 重启后天然续接（时钟回拨也单调）。
- * @property {string} funcType - FuncType 分桶键："ocr" / "portkill" / "envcheck" …（对齐模块注册 ID）。
+ * @property {string} funcType - FuncType 分桶键："ocr" / "portkill" …（对齐模块注册 ID）。
  * @property {string} summary - Summary 一行摘要；留空则 Save 时取 Input 前 40 字（对齐 MooTool 口径）。
  * @property {string} input - Input 输入侧留档（如图片路径、端口号、工具 ID），截断上限 4000 rune。
  * @property {string} output - Output 输出侧留档（如识别全文、错误信息），截断上限 4000 rune。

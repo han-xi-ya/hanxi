@@ -23,7 +23,7 @@ func TestServiceForwardListDeleteClear(t *testing.T) {
 	if err := store.Save(Record{FuncType: "portkill", Input: "8080"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Save(Record{FuncType: "envcheck", Input: "claude"}); err != nil {
+	if err := store.Save(Record{FuncType: "ocr", Input: "c.png"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -37,10 +37,10 @@ func TestServiceForwardListDeleteClear(t *testing.T) {
 	if got, _ := svc.List("portkill", ""); len(got) != 0 {
 		t.Fatal("Delete 未透传到桶")
 	}
-	if err := svc.Clear("envcheck"); err != nil {
+	if err := svc.Clear("ocr"); err != nil {
 		t.Fatalf("Clear 转发失败: %v", err)
 	}
-	if got, _ := svc.List("envcheck", ""); len(got) != 0 {
+	if got, _ := svc.List("ocr", ""); len(got) != 0 {
 		t.Fatal("Clear 未透传到桶")
 	}
 }
