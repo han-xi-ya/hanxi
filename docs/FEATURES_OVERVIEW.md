@@ -76,7 +76,7 @@
 - **bcu**：portable/fdd 双变体、.NET 运行时探测、单实例协议唤窗。风险：shouldIdleQuit 恒 false 死代码。
 - **litemonitor**：托管模板 + 独有 GetRuntimeStatus 条件提示条；Win32 直操作唤窗（上游无信使）。
 - **rufus**：单 exe 三重校验、预置 ini 关上游更新检查。风险：要求 Hanxi 本身提权；托管组唯一无桌面快捷方式（理由未写明）。
-- **envcheck**：git/go/node/java/python/dotnet 本机×官方版本对比、npm 全局 CLI 白名单装升卸。唯一 0.5.0 版本号、20+ 测试含官方接口冒烟。风险：`probe_tmp/` 目录留在模块树。
+- **envcheck**：git/go/node/java/python/dotnet/omp 本机×官方版本对比（omp 走 GitHub Releases 通道，主流装法为官方脚本自更新，不入 npm 受管区）、npm 全局 CLI 白名单装升卸。唯一 0.5.0 版本号、20+ 测试含官方接口冒烟。风险：`probe_tmp/` 目录留在模块树。
 
 ### 3.3 桌面增强（10，复核 +msgboard）
 

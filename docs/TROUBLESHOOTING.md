@@ -1843,3 +1843,37 @@ WSL2 模块一键开机会话之后，用户在版本页点发行版"⬇ 安装"
   2. 门与测试矩阵都按"导出方法==前端可直调面"划界，凡是**绕过这条等式的通道**（GoStream 端点、包内注册回调、全局 socket）要单独设计准入，并把"注册即终身有效、无注销 API"（wails stream.go:719 事实）写进设计约束。
   3. 生命周期类缺陷要用"注入拒绝态门"的测试兜（本批已补 denyGate 用例）；在未注入门 holder 上测出的收口绿，恰好是生产不会发生的那条。
   4. 后续待办（在册不隐匿）：rpc_gate_matrix 尚不覆盖 GoStream 入口的穷举校验，排期单独做。
+
+### 143. 上游"第二实例唤起已有实例"是**它自己没实现的死代码**，而 PostMessage 返 true 在 UIPI 丢弃时依旧 true——外部命令通道的送达判据必须是"窗真出现"，不是 API 返回值
+
+- **问题现象与错误原因**：集成 AirSnip（bd-dxg/airsnip，托盘常驻、无主窗口）时，"打开窗口/截图"这类动作没有 CLI、没有命名管道，表面上只剩两条路：① 照 markeron/ccswitch 先例二次拉起信使进程；② 直接给它的窗口投消息。读源码才发现①是陷阱——上游 `acquire_single_instance` 在抢锁失败时确实向隐藏消息窗 `PostMessage(WM_APP+2)`，但 `wndproc` 的 match 分支里**没有任何 WM_APP+2 处理**，消息落进 `DefWindowProcW` 什么都不会发生；照信使先例写出来的"打开窗口"按钮会 100% 静默失灵，而且**返回值全程成功**，三层调用链没有一环会说谎被揭穿。②可用（上游托盘菜单 `handle_command` 认 40001 截图/40002 贴图/40003 设置/40004 退出），但 AirSnip 的 release manifest 是 `requireAdministrator`：Hanxi 未提权时消息被 UIPI **静默丢弃**，`PostMessage` 仍返回非 0——"投了"与"做到了"是两件事，拿返回值当送达就等于自证成功。
+- **排查过程**：先按 skill 侦查清单读上游 `src/app/mod.rs`（MUTEX_NAME/WINDOW_CLASS/IDM_*）与 `src/app/wndproc.rs` 全 match 分支，确认 WM_APP+2 无人处理、并逐名拿到四个窗口类名（`airsnip.hidden`/`airsnip.overlay`/`airsnip.pin`/`airsnip.settings`）；再写真机夹具（`instance/realhost_windows_test.go`，env 门控默认 skip）用**已下载的真 airsnip.exe** 跑一遍。夹具第一次真跑就红了：`未找到 airsnip.hidden 消息窗`——不是类名错，而是**"进程在场≠窗已建"**：`WaitForReady` 只等进程枚举命中，上游 spawn 之后才注册窗口类并建窗，瞬时判定撞上这个空窗期。改成按类名轮询（10s）后全链通过：设置面板与截图覆盖层两个窗都真出现，WM_CLOSE 退出也真收口。
+- **正确做法与标准修复方案**：① 截图以 `airsnip.overlay` 顶层窗在场、唤设置以 `airsnip.settings` 在场为**送达判据**，窗不在场就报失败并给出"以管理员身份重启 Hanxi"指引（`instance.ShowSettings`/`Shot` + `waitForWindowByClass`）；② 贴图（40002）没有可独立对账的窗（剪贴板无位图时上游本就不建贴图窗，属正常语义），维持"尽力投递"口径并在包注释里写明这条为何例外；③ 退出走上游托盘"退出"项逐字等价的 `WM_CLOSE → PostQuitMessage`，只按**自有 PID** 收窄投递，绝不投给外部实例；④ 三个 Win32 入口都做成 Engine 字段接缝（postCmd/waitWin/focusWin），单测注入假实现断言"投了哪个 ID、窗不在场时必须报 false"，真机链路交给 env 门控夹具；⑤ 用例 `TestDeliveryNotAssertedWithoutWindow` 专门钉死"投递返 true 但窗不在场 ⇒ 必须报失败"。
+- **避坑防重犯建议**：
+  1. **托管前先读上游消息处理分支的落地码**，不要看到"有单实例互斥体 + 二次启动转发"就认定信使可用——上游自己写了发送端却没写接收端的情况真实存在（本例即如是）。
+  2. 跨进程 `PostMessage` 的返回值只表示"消息入队"。**凡控制面走消息投递的模块，送达判据都要落在可见外部事实**（窗/互斥体/端口/文件），UIPI 与提权不对称会让所有返回值一起说谎。
+  3. **进程在场 ≠ 窗在场**：任何"启动后立即投消息/查窗"的路径都要有按目标的轮询等待与超时，别用瞬时判定；轮询上限做包级变量以便单测压缩。
+  4. 真机夹具首轮红掉的价值就在这里——静态源码推断全对的通道，运行时仍可能因时序与权限差异失效；环境门控的夹具（默认 skip）值得作为托管模块的标配随批入库。
+  5. 依赖上游未公开的内部约定（菜单 ID、窗口类名）必须在包注释、前端说明卡与本条踩坑里**三处同源留痕**，并写出"改版可能漂移"的失败形态与人工替代路径（本项目即：直接用全局热键 F1/F3 与托盘菜单）。
+
+### 144. 启动前接管写的是**用户真实 %APPDATA%**：用例不重定向就把配置写进机主目录；同一形态在 CI/本机跑一次就留一份脏文件
+
+- **问题现象与错误原因**：airsnip 的 `Engine.Start` 在 spawn 前调用 `takeoverUpdateCheck(configPath())`，把上游 `config.toml` 的 `auto_check_update` 压成 false（否则上游自动更新会原地覆盖 Hanxi 版本目录里被账本摘要锁定的 exe）。`configPath()` 读的是**进程环境的 APPDATA**。`TestStartCreateJobFail` 只是要验"Job 创建失败"，却经 `e.Start` 顺带跑了这段接管——环境没重定向，于是本机 `C:\Users\<me>\AppData\Roaming\airsnip\config.toml` 被创建出来（26 字节，内容正是接管写入的最小键）。生产语义没错，**错在测试把它跑到了真实用户目录**：任何"启动前有副作用"的模块策略，只要用例调了 Start，就会写真实家目录。
+- **排查过程**：写夹具前用 `Get-Item` 查该文件的 mtime（14:15:12）与本轮首跑 `go test ./internal/modules/airsnip/...` 的时刻对上，内容又恰是接管的最小形态；再 `grep -n "e.Start("` 逐条看哪些用例调 Start，定位到未设 APPDATA 的 `TestStartCreateJobFail`（`TestStartTakesOverUpdateCheck` 本来就有 `t.Setenv`，正是它提示了正确姿势）。清理经机主点头后执行。
+- **正确做法与标准修复方案**：① 用例侧——所有会走 `Engine.Start` 的测试**一律先 `t.Setenv("APPDATA", t.TempDir())`**（`t.Setenv` 自动在用例结束还原，且并行安全，本包不并行）；真机夹具同法重定向，顺带把"接管后配置确为关闭态"变成可断言的现场证据。② 生产侧保持"接管失败不阻断启动"（最坏回到上游默认行为），与 litemonitor 的 settings.json 播种同纪律。③ 文档与页面话术把"改的是上游全局单文件、同样作用于你自己另装的 AirSnip"这条边界写明（`instance/config.go` 头部注释 + 视图说明卡），不做静默越界。
+- **避坑防重犯建议**：
+  1. **测试碰到"启动前干预"类逻辑，就把相关环境变量重定向**：APPDATA / HOME / LOCALAPPDATA / TEMP 都属于"默认指向真实用户目录"的隐式入参，不重定向就是拿机主的环境跑单测。
+  2. 新增托管模块时，把"哪些操作用例一跑就会写真实目录"列进自查表（配置文件、任务计划、注册表、快捷方式、截图目录）；litemonitor 把播种落在**版本隔离目录**内天然安全，airsnip 落全局 APPDATA 就必须显式隔离——同一族模板抄过来时，**落点差异**是必须重新核一遍的点，不是照抄注释就完事。
+  3. 事后发现污染：先取证（mtime + 内容 + 复现时刻），再按红线流程请机主确认删除，不自行删文件。
+
+### 145. npm 上有工具同名的无关占名包，自更新 CLI 的主流装法也不是 npm——"目录加一行"接进 envcheck npm 受管框架连踩两坑
+
+- **问题现象与错误原因**：给开发环境检测加入 omp（oh-my-pi）编码代理 CLI 时踩两坑：
+  1. **占名包**：npm 裸名 `oh-my-pi`（第三方"增强框架"，0.2.0）与 `omp`（1.0.0 空壳，描述就一个 "new "）都是无关包；正主是 scoped 的 `@oh-my-pi/pi-coding-agent`（GitHub Actions trusted publisher 发布，`dist-tags.latest` 与上游 GitHub Release tag 同步同版本）。npmtool 框架把包名作为 `npm install -g` 参数的唯一真源——包名认错等于以工具名义安装任意代码。
+  2. **装法错配**：omp 官方主流装法是脚本装的**单文件自更新版**（Bun 编译产物，本机实测 232MB、落点 `%LOCALAPPDATA%\omp`、更新走内置 `omp update`，还有 brew/nix/mise 等形态），npm 只是五种入口之一。塞进 npm 受管目录的后果：探测命中脚本拷贝触发"npm 全局目录之外的拷贝"降级提醒，页内升级/卸载按钮只作用 npm 拷贝——对多数用户是"点了没效果但看着像能点"的功能。
+- **排查过程**：五源交叉核对（上游 README 安装清单、`install.ps1` 真实落点与 PATH 工艺、brew formula 下载 URL、npm manifest 的 engines/bin/依赖树、本机二进制 VersionInfo 与 ADS 取证）；实测 `omp --version` 输出 `omp/18.16.0`——斜杠不在 `defaultVersionPattern` 词类内，需覆盖解析式（同 default 注释里 claude/codex 两类形态的教训）；实测 `releases?per_page=5` 响应约 241KB（body 是大头，#15 教训照办：真实测量后定 per_page 与 maxBody）。
+- **正确做法与标准修复方案**：按**升级通道归属**切位——自更新原生 CLI 走标准"本机×官方 GitHub Releases"对照通道（`detect/omp.go` + `ompversion` 包，`Channel.Detail` 写明"脚本装 `omp update`；npm/bun 装走各自包管理器"的指路文案）；只有真正以 npm 为管理面的工具（claude/codex）留在 npmtool 目录。摘出时给 `catalog_test.go` 加**反向断言**（`Spec("omp")` 必须不存在）防"看起来同构"的直觉回填。
+- **避坑防重犯建议**：
+  1. 往 npm 受管目录加条目先回答："这个工具的日常升级到底走哪条通道？"官方自带 self-update / brew / nix / mise 一类版本管理式升级的，npm 受管天然错位，标准对照通道才是正位。
+  2. npm 包名不信裸名：核对发布者身份（trusted publisher / maintainer 与仓库作者一致）、版本线与上游 Releases 是否同步、`engines`/`bin` 实际内容——三项对不上就是李鬼。
+  3. 新工具必实测 `--version` 输出形态再写解析式，禁止按"工具名+空格+版本"的想当然正则一把梭。
