@@ -77,7 +77,6 @@ import (
 	"hanxi/internal/modules/nanazip"
 	"hanxi/internal/modules/ocr"
 	"hanxi/internal/modules/omp"
-	ompversion "hanxi/internal/modules/omp/version"
 	"hanxi/internal/modules/papertodo"
 	papertodoinstance "hanxi/internal/modules/papertodo/instance"
 	papertodoversion "hanxi/internal/modules/papertodo/version"
@@ -261,7 +260,6 @@ func RegisterEvents() {
 	application.RegisterEvent[paseoversion.DownloadProgress]("paseo:version-download")
 	application.RegisterEvent[paseoinstance.Snapshot]("paseo:instance-state")
 	application.RegisterEvent[douzyversion.DownloadProgress]("douzy:version-download")
-	application.RegisterEvent[ompversion.DownloadProgress]("omp:version-download")
 	application.RegisterEvent[omp.OfficialOpProgress]("omp:official-op")
 	// piik 托管两事件按装配线冻结命名接线（值类型 piikversion.DownloadProgress /
 	// piikinstance.Snapshot）；A 线若改名，以此两行与 fixture 为准收口。
@@ -408,7 +406,6 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		litemonitor.ID:   litemonitorversion.OpenTree(paths.VersionsDir()),
 		heukms.ID:        heukmsversion.OpenTree(paths.VersionsDir()),
 		airsnip.ID:       airsnipversion.OpenTree(paths.VersionsDir()),
-		omp.ID:           ompversion.OpenTree(paths.VersionsDir()),
 		vscode.ID:        vscodeversion.OpenTree(paths.VersionsDir()),
 		guoheview.ID:     guoheviewversion.OpenTree(paths.VersionsDir()),
 		quicklook.ID:     quicklookversion.OpenTree(paths.VersionsDir()),

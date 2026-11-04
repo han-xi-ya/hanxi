@@ -702,12 +702,10 @@
     {
       "id": "omp",
       "name": "Oh My Pi 代理",
-      "description": "终端 TUI 编码代理 Oh My Pi (omp) 的托管版本树：官方 Releases 列表、sha256 校验下载、本地导入、激活切换（版本树面）；另有「官方安装方式」一键装/更/卸——直接跑官方 install.ps1 落 %LOCALAPPDATA%\\omp（机主主用通道，见 official.go）；两条路都只装文件不接管进程运行，负裁决详见包注释",
+      "description": "终端 TUI 编码代理 Oh My Pi (omp) 的官方安装通道：一键装/更/卸（代跑官方 install.ps1，含 PATH 打理与卸载回收，~/.omp 数据保留）；不接管进程运行、不自建版本树（追更感知归 envcheck 对照卡），负裁决详见包注释",
       "category": "developer",
       "deliveryKind": "builtin-logical",
-      "capabilities": [
-        "hosted-versions"
-      ],
+      "capabilities": [],
       "entrypoints": [
         "rpc",
         "navigation",

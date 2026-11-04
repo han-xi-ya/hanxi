@@ -15,7 +15,7 @@ import * as $models from "./models.js";
  */
 
 /**
- * OmpStatus 模块整体状态快照（前端一次拉全）。
- * ActiveVersion 为空表示尚未指定激活版本，冷启动回退"最新已装"。
+ * OmpStatus 模块整体状态快照（前端一次拉全）。纯官方通道形态：无自建版本树、
+ * 无激活记账——全部状态现场探测，本模块零持久化。
  * @typedef {$models.OmpStatus} OmpStatus
  */

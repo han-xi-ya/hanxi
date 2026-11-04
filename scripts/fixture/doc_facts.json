@@ -11,10 +11,10 @@
   ],
   "facts": {
     "moduleTotal": 55,
-    "selfBuiltModules": 21,
-    "hostedVersions": 34,
+    "selfBuiltModules": 22,
+    "hostedVersions": 33,
     "managedProcess": 32,
-    "artifactDelegators": 29,
+    "artifactDelegators": 28,
     "supervisorDelegators": 25,
     "mcpTools": 12,
     "mcpAccessKeys": 10,

@@ -378,7 +378,6 @@
     "wsl:compact",
     "wsl:msi-download",
     "wsl:readiness",
-    "omp:version-download",
     "omp:official-op"
   ],
   "wiring": {
@@ -479,6 +478,6 @@
   },
   "counts": {
     "modules": 55,
-    "events": 103
+    "events": 102
   }
 }

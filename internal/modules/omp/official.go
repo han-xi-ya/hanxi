@@ -130,3 +130,6 @@ func splitPathValue(v string) []string { return strings.Split(v, ";") }
 
 // joinPathValue 片段列表 → 注册表串。
 func joinPathValue(parts []string) string { return strings.Join(parts, ";") }
+
+// officialRepoURL 上游仓库地址（版本包拆除后由本件自持，页面仓库行使用）。
+func officialRepoURL() string { return "https://github.com/can1357/oh-my-pi" }

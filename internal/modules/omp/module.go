@@ -1,23 +1,26 @@
-// Package omp 内置模块：「Oh My Pi (omp)」托管版本管理。
+// Package omp 内置模块：「Oh My Pi (omp)」官方安装通道。
 //
 // omp 是 Stencil Labs 的终端 TUI 编码代理（pi-mono 血统，Bun 自包含单文件
-// exe + 约 8 万行 Rust 原生核）。本模块做到"从官方 GitHub Releases 拉版本
-// 列表 → 下载 Windows 单文件 exe（官方 sha256 + 字节上限 + MZ 魔数三层校验，
-// 事务化落位 versions/omp_<ver>/）→ 导入本地已有 exe → 激活切换"。
+// exe + 约 8 万行 Rust 原生核）。本模块做到"一键代跑官方 install.ps1 完成
+// 安装/更新（下载、自校验、落位 %LOCALAPPDATA%\omp、PATH 打理、Git Bash
+// 接线全部由官方脚本自理），一键卸载（删官方目录+剔 PATH，~/.omp 数据根
+// 保留）"——即机主要的那条命令脚本路线，装完新开终端直接敲 omp。
 //
-// **本模块不做进程托管，负裁决两条**（domain 事实记录在 version 包注释）：
-//  1. 不启停/不探测/不唤窗——omp 是纯 TUI，必须附着控制台终端才能交互，
-//     JobObject 静默拉起只会得到一个秒退的无终端进程；运行入口是用户
-//     PATH 里的 omp、hanxi 嵌入终端或 Paseo 驱动，本模块只保证"版本树里
-//     有校验过的最新 exe"。
+// 历史决策留痕：本模块曾自建版本树（Releases 列表/校验下载/导入/激活切换，
+// artifact 内核事务落位），机主 2026-11-04 拍板"安装=跑官方脚本"后整体拆除
+// ——两套入口并存会把人绕晕，官方件是唯一日常通道。omp 的版本追更感知由
+// envcheck 的官方 Releases 对照卡负责（detect/omp.go + ompversion 包），
+// 本模块不再重复实现 CheckUpdate（不是遗漏，是分工，勿当缺失补一遍）。
+//
+// **负裁决两条**：
+//  1. 不接管进程运行——omp 是纯 TUI，必须附着控制台终端交互，JobObject
+//     静默拉起只会得到秒退的无终端进程；运行入口是用户 PATH 里的 omp、
+//     hanxi 嵌入终端或 Paseo 驱动。
 //  2. 不挂托盘/轮盘候选（TrayCommands 结构性缺席）——无主窗口可唤，
-//     "启动"语义不成立；这是刻意裁决，勿当遗漏补一遍。
+//     "启动"语义不成立。
 //
-// 凭据边界：omp 的登录凭据/会话/记忆全部在 ~/.omp（数据不随版本树走，
-// 也不经 Hanxi），本模块不读写该目录内容，仅在状态里展示其路径。
-//
-// 上游纪律实测（2026-11-04）：近 30 个 release 全带 omp-windows-x64.exe 且
-// GitHub digest 官方 sha256 全量可得，tag 恒为 vX.Y.Z——完整性第一层不缺位。
+// 凭据边界：omp 的登录凭据/会话/记忆全部在 ~/.omp（官方脚本装件与裸跑都落
+// 这里），本模块不读写该目录内容，仅在状态里展示其路径；卸载保留不删。
 package omp
 
 import (
@@ -48,7 +51,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "Oh My Pi 代理",
 		Version:     "0.1.0",
-		Description: "终端 TUI 编码代理 Oh My Pi (omp) 的托管版本树：官方 Releases 列表、sha256 校验下载、本地导入、激活切换（版本树面）；另有「官方安装方式」一键装/更/卸——直接跑官方 install.ps1 落 %LOCALAPPDATA%\\omp（机主主用通道，见 official.go）；两条路都只装文件不接管进程运行，负裁决详见包注释",
+		Description: "终端 TUI 编码代理 Oh My Pi (omp) 的官方安装通道：一键装/更/卸（代跑官方 install.ps1，含 PATH 打理与卸载回收，~/.omp 数据保留）；不接管进程运行、不自建版本树（追更感知归 envcheck 对照卡），负裁决详见包注释",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}
@@ -73,10 +76,3 @@ func (e *Module) OnInit(ctx context.Context) error { return nil }
 func (e *Module) OnDestroy() error { return nil }
 
 func (e *Module) IsInitialized() bool { return true }
-
-// CheckUpdate 实现 extapi.UpdateChecker 可选契约：宿主更新感知调度器直调
-// （不经懒激活与统一调用门），转发版本引擎比较，返回语义见
-// version.Manager.CheckUpdate 注释。
-func (e *Module) CheckUpdate(ctx context.Context) (local, remote string, hasUpdate bool, err error) {
-	return e.svc.manager.CheckUpdate(ctx)
-}
