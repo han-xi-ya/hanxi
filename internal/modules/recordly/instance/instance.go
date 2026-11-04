@@ -107,11 +107,14 @@ func NewEngine(jobAPI platform.JobAPI, probe RecordlyProbe, cb Callbacks) *Engin
 		spawnMessenger: spawnMessenger,
 	}
 	e.sup = sup.NewEngine(jobAPI, supProbe{probe: probe, e: e}, sup.Callbacks{OnState: e.onSupState})
-	// 优雅退出通道：Quit 的 grace 窗口内向 Recordly 可见窗口投递 WM_CLOSE
+	// 优雅退出通道：Quit 的 grace 窗口内向自有受管 PID 的可见窗口投递 WM_CLOSE
 	// （上游 Windows 无托盘，主窗口关闭 → window-all-closed → app.quit()，
 	// before-quit 完成采集子进程清理），超时由内核 JobObject 强杀兜底。
+	// 投递刻意按自有 PID 收敛而非按进程名广播：外部实例按 ErrExternal 只感知
+	// 不管辖，绝不代关其窗口（误伤用户窗口是事故，见 close_windows.go 注释与
+	// TROUBLESHOOTING #148）。
 	e.sup.SetQuitHook(func(context.Context) error {
-		postClose()
+		postCloseFn(e.ownPID())
 		return nil
 	})
 	return e
@@ -228,6 +231,16 @@ func (e *Engine) RunningDuration() time.Duration {
 		return 0
 	}
 	return time.Since(s.Since)
+}
+
+// ownPID 返回当前受管进程的 PID：仅内核确认自有进程在世（Managed 态）时有效，
+// 其余返回 0——WM_CLOSE 钩子据此收敛投递目标，绝不按进程名广播误伤外部实例。
+func (e *Engine) ownPID() uint32 {
+	s := e.sup.Snapshot()
+	if s.Managed {
+		return s.PID
+	}
+	return 0
 }
 
 // ---------- 内核 → recordly 形状映射 ----------

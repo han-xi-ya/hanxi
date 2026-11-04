@@ -22,8 +22,9 @@ import (
 // packages/go/supervisor 的引擎测试矩阵覆盖（fake opener，全路径不依赖真进程）。
 // 本文件聚焦 recordly 适配层：内核快照 → 本包 Snapshot 的形状/词表映射、
 // ErrExternal 契约映射、"已手动停止"文案折回、异常退出话术逐字还原、
-// 信使拉起接缝、externalSettle 受管在途静默、RECORDLY_DISABLE_AUTO_UPDATES
-// 的 Spec.Env 注入通道，以及维持既有环境口径的真进程冒烟。
+// 信使拉起接缝、WM_CLOSE 投递目标按自有 PID 收敛、externalSettle 受管在途
+// 静默、RECORDLY_DISABLE_AUTO_UPDATES 的 Spec.Env 注入通道，以及维持既有
+// 环境口径的真进程冒烟。
 
 // ---------- 测试用 fake（探针与 Job 注入） ----------
 
@@ -407,15 +408,29 @@ func TestInspectSettlesOnlyWhenManaged(t *testing.T) {
 	}
 }
 
-// TestQuitGraceFallback 冒烟：Quit 经内核 grace 通道——WM_CLOSE（cmd.exe 无
-// Recordly 窗口，postClose 静默 no-op）→ 宽限内未自然退（specArgs 纯 CPU 循环
-// 保活，确定性走强杀兜底分支）→ JobObject 强杀收口，归 stopped 且不带话术。
-func TestQuitGraceFallback(t *testing.T) {
+// TestQuitHookPostsOwnPidAndForceKillFallback 冒烟 + 红线：Quit 经内核 grace
+// 通道，QuitHook 按自有 PID 投递 WM_CLOSE（接缝打桩断言投递目标，绝不触发
+// 真实投递——旧版按进程名广播，cmd.exe 替身无 Recordly 窗时投递会命中机主
+// 本机真实运行的 Recordly 并当场关掉它，事故待登记 #148）→ 宽限内未自然退
+// （specArgs 纯 CPU 循环保活，确定性走强杀兜底分支）→ JobObject 强杀收口，
+// 归 stopped 且不带话术。
+func TestQuitHookPostsOwnPidAndForceKillFallback(t *testing.T) {
 	compressSettle(t)
 	// 压缩宽限：单测不能等生产 3s
 	old := closeGracePeriod
 	closeGracePeriod = 200 * time.Millisecond
 	defer func() { closeGracePeriod = old }()
+
+	// WM_CLOSE 投递接缝打桩：记录目标 PID，不触碰真实窗口
+	var closePids []uint32
+	var cpMu sync.Mutex
+	oldPost := postCloseFn
+	postCloseFn = func(pid uint32) {
+		cpMu.Lock()
+		closePids = append(closePids, pid)
+		cpMu.Unlock()
+	}
+	defer func() { postCloseFn = oldPost }()
 
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
 	e.specArgs = []string{"/c", `for /l %i in (1,1,1500000) do @set x=%i`}
@@ -424,11 +439,19 @@ func TestQuitGraceFallback(t *testing.T) {
 	}
 	defer func() { _ = e.Stop() }()
 	waitState(t, e, StateRunning)
+	ownPID := e.Snapshot().PID
 
 	if err := e.Quit(); err != nil {
 		t.Fatalf("Quit: %v", err)
 	}
 	waitState(t, e, StateStopped)
+
+	cpMu.Lock()
+	pids := append([]uint32(nil), closePids...)
+	cpMu.Unlock()
+	if len(pids) != 1 || pids[0] != ownPID || ownPID == 0 {
+		t.Fatalf("WM_CLOSE 应恰好按自有 PID 投递一次: pids = %v, ownPID = %d", pids, ownPID)
+	}
 	if snap := e.Snapshot(); snap.Error != "" {
 		t.Errorf("Quit 收口文案应为空, got %q", snap.Error)
 	}

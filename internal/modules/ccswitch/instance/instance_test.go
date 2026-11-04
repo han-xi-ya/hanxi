@@ -300,13 +300,26 @@ func TestManagedLifecycleSmoke(t *testing.T) {
 	}
 }
 
-// TestQuitGraceFallback 冒烟：Quit 经内核 grace 通道——WM_CLOSE（窗口不存在，
-// 静默 no-op）→ 宽限内未自然退 → JobObject 强杀兜底，收口归 stopped。
+// TestQuitGraceFallback 冒烟 + 红线：Quit 经内核 grace 通道——WM_CLOSE 只投给
+// **属主为自有实例**的窗口（接缝打桩记录投递目标；旧版按全局唯一类名"找到就投"，
+// 机主手动启动的 CC Switch 也持有该窗口，跑一次本用例就会替他关掉实例，见 #148）
+// → 宽限内未自然退 → JobObject 强杀兜底，收口归 stopped。
 func TestQuitGraceFallback(t *testing.T) {
 	// 压缩宽限：单测不能等生产 2s
 	old := closeGracePeriod
 	closeGracePeriod = 200 * time.Millisecond
 	defer func() { closeGracePeriod = old }()
+
+	// WM_CLOSE 投递接缝打桩：记录目标 PID，不触碰真实窗口。
+	var closePids []uint32
+	var cpMu sync.Mutex
+	oldPost := postCloseFn
+	postCloseFn = func(pid uint32) {
+		cpMu.Lock()
+		closePids = append(closePids, pid)
+		cpMu.Unlock()
+	}
+	defer func() { postCloseFn = oldPost }()
 
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
 	e.specArgs = smokeCmdArgs
@@ -315,11 +328,19 @@ func TestQuitGraceFallback(t *testing.T) {
 	}
 	defer func() { _ = e.Stop() }()
 	waitState(t, e, StateRunning)
+	ownPID := e.Snapshot().PID
 
 	if err := e.Quit(); err != nil {
 		t.Fatalf("Quit: %v", err)
 	}
 	waitState(t, e, StateStopped)
+
+	cpMu.Lock()
+	pids := append([]uint32(nil), closePids...)
+	cpMu.Unlock()
+	if len(pids) != 1 || pids[0] != ownPID || ownPID == 0 {
+		t.Fatalf("WM_CLOSE 应恰好按自有 PID 投递一次: pids = %v, ownPID = %d", pids, ownPID)
+	}
 	if snap := e.Snapshot(); snap.Error != "" {
 		t.Errorf("Quit 收口文案应为空, got %q", snap.Error)
 	}

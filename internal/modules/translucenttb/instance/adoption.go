@@ -92,13 +92,15 @@ func (e *Engine) Adopted() bool {
 }
 
 // quitAdopted 打包收编实例的三段退出链（对齐托管 Quit 语义）：
-//  1. 优雅：postClose 向托盘消息窗口投 WM_CLOSE（上游 Exit() 保存 settings.json
-//     后自退；属主校验链与便携同款，见 close_windows.go）；
+//  1. 优雅：向**收编实例 PID** 的托盘消息窗口投 WM_CLOSE（上游 Exit() 保存
+//     settings.json 后自退；按 PID 收敛不按类名连坐——机主自启的同名实例绝不
+//     代关，见 close_windows.go；目标窗判据不中即静默，落第 3 段兜底）；
 //  2. 宽限：closeGracePeriod 内观察互斥体释放（无自有句柄可 Wait）；
 //  3. 兜底：KillVerified 身份复核后 TerminateProcess——被系统权限拒绝如实
 //     报错（打包实例不在 JobObject 内，终结受系统权限约束），绝不假装已退。
 func (e *Engine) quitAdopted(info platform.ProcInfo) error {
-	postClose()
+	// 按退出目标（探针交回的收编实例）PID 投递，不按类名连坐机主自启的同名实例。
+	postCloseFn(info.PID)
 	if e.waitGone(closeGracePeriod) {
 		e.RefreshExternal()
 		return nil

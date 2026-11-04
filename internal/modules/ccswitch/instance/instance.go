@@ -92,10 +92,12 @@ func NewEngine(jobAPI platform.JobAPI, probe CCSwitchProbe, cb Callbacks) *Engin
 		spawnMessenger: spawnMessenger,
 	}
 	e.sup = sup.NewEngine(jobAPI, supProbe{probe}, sup.Callbacks{OnState: e.onSupState})
-	// 优雅退出通道：Quit 的 grace 窗口内先向单实例消息窗口投递 WM_CLOSE
-	// （tauri CloseRequested 按用户托盘设置 exit(0) 或 hide），超时由内核强杀兜底。
+	// 优雅退出通道：Quit 的 grace 窗口内先向**自有实例**的单实例消息窗口投递
+	// WM_CLOSE（tauri CloseRequested 按用户托盘设置 exit(0) 或 hide），超时由内核
+	// 强杀兜底。刻意按自有 PID 复核归属：该窗口类名全局唯一，机主手动启动的
+	// CC Switch 也持有同名窗口，"找到就投"会替他关掉自启实例（见 #148）。
 	e.sup.SetQuitHook(func(context.Context) error {
-		postClose()
+		postCloseFn(e.ownPID())
 		return nil
 	})
 	return e
@@ -201,6 +203,16 @@ func (e *Engine) RunningDuration() time.Duration {
 		return 0
 	}
 	return time.Since(s.Since)
+}
+
+// ownPID 返回当前受管进程的 PID：仅内核确认自有进程在世（Managed 态）时有效，
+// 其余返回 0——WM_CLOSE 钩子据此复核窗口归属，绝不投递给非自有实例。
+func (e *Engine) ownPID() uint32 {
+	s := e.sup.Snapshot()
+	if s.Managed {
+		return s.PID
+	}
+	return 0
 }
 
 // ---------- 内核 → ccswitch 形状映射 ----------

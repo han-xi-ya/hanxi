@@ -107,12 +107,15 @@ func NewEngine(jobAPI platform.JobAPI, probe TBProbe, cb Callbacks) *Engine {
 		spawnMessenger: spawnMessenger,
 	}
 	e.sup = sup.NewEngine(jobAPI, supProbe{probe}, sup.Callbacks{OnState: e.onSupState})
-	// 优雅退出通道：Quit 的 grace 窗口内向托盘消息窗口投递 WM_CLOSE
+	// 优雅退出通道：Quit 的 grace 窗口内向自有 PID 的托盘消息窗口投递 WM_CLOSE
 	// （上游处理器 Exit()：保存 settings.json + PostQuitMessage 自退），
 	// 超时由内核 JobObject 强杀兜底（settings.json 临时文件 + ReplaceFile
 	// 原子落盘，进程级终止不会写坏配置）。
+	// 刻意按自有 PID 收敛投递目标而非类名+窗名全局匹配：同名实例的映像名校验
+	// 分不出"哪个进程是我托管的"，误伤机主自启实例是事故（见 close_windows.go，
+	// TROUBLESHOOTING #148 待登记）。
 	e.sup.SetQuitHook(func(context.Context) error {
-		postClose()
+		postCloseFn(e.ownPID())
 		return nil
 	})
 	return e
@@ -275,6 +278,17 @@ func (e *Engine) RunningDuration() time.Duration {
 		return 0
 	}
 	return time.Since(s.Since)
+}
+
+// ownPID 返回当前受管进程的 PID：仅内核确认自有进程在世（Managed 态）时有效，
+// 其余返回 0——WM_CLOSE 钩子据此收敛投递目标，绝不按类名广播误伤机主自启的
+// 同名实例（形状同 guoheview 标杆）。
+func (e *Engine) ownPID() uint32 {
+	s := e.sup.Snapshot()
+	if s.Managed {
+		return s.PID
+	}
+	return 0
 }
 
 // ---------- 内核 → translucenttb 形状映射 ----------

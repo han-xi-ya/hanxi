@@ -169,6 +169,28 @@ func mustCmdExe(t *testing.T) string {
 	return ""
 }
 
+// stubPostClose 打桩 WM_CLOSE 投递接缝并记录投递目标，t.Cleanup 自动还原。
+// 红线：真投递绝不许在单测里执行——机主自启的 TranslucentTB 在场时按类名命中
+// 的就是它，WM_CLOSE 即静默退出真实例（TROUBLESHOOTING #148 待登记）；投递
+// 目标的账目必须可断言。
+func stubPostClose(t *testing.T) func() []uint32 {
+	t.Helper()
+	var mu sync.Mutex
+	var pids []uint32
+	old := postCloseFn
+	postCloseFn = func(pid uint32) {
+		mu.Lock()
+		pids = append(pids, pid)
+		mu.Unlock()
+	}
+	t.Cleanup(func() { postCloseFn = old })
+	return func() []uint32 {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]uint32(nil), pids...)
+	}
+}
+
 // waitState 轮询直至引擎达到目标状态（或超时）。
 func waitState(t *testing.T, e *Engine, want State) {
 	t.Helper()
@@ -460,26 +482,37 @@ func TestWaitExternalTaken(t *testing.T) {
 	}
 }
 
-// TestQuitGraceFallback 冒烟：Quit 经内核 grace 通道——WM_CLOSE（窗口不存在/
-// 属主校验不命中，静默 no-op）→ 宽限内未自然退 → JobObject 强杀兜底，收口归
-// stopped 且不带话术。
+// TestQuitGraceFallback 冒烟 + 红线：Quit 经内核 grace 通道——QuitHook 按自有
+// PID 投递 WM_CLOSE（接缝打桩断言投递目标，cmd.exe 替身无 TrayWindow；旧版按
+// 类名+映像名全局匹配，机主自启的真实例在场时打的正是它——静默退出真实例是
+// 事故，"静默 no-op"只在机器上没跑真实 TranslucentTB 时侥幸成立）→ 宽限内未
+// 自然退 → JobObject 强杀兜底，收口归 stopped 且不带话术。
 func TestQuitGraceFallback(t *testing.T) {
 	// 压缩宽限：单测不能等生产 2s
 	old := closeGracePeriod
 	closeGracePeriod = 200 * time.Millisecond
 	defer func() { closeGracePeriod = old }()
 
+	targets := stubPostClose(t)
+
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
+	// 替身稳定存活注入（同 TestManagedLifecycleSmoke）：精简 stdin 环境下裸
+	// cmd.exe 秒退，会在 Quit 前把自有进程耗尽 → 钩子不执行 → 投递断言假红。
+	e.specArgs = []string{"/c", `for /l %i in (1,1,1500000) do @set x=%i`}
 	if err := e.Start(StartOptions{Version: "2026.2", Exe: mustCmdExe(t)}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer func() { _ = e.Stop() }()
 	waitState(t, e, StateRunning)
+	ownPID := e.Snapshot().PID
 
 	if err := e.Quit(); err != nil {
 		t.Fatalf("Quit: %v", err)
 	}
 	waitState(t, e, StateStopped)
+	if pids := targets(); len(pids) != 1 || pids[0] != ownPID || ownPID == 0 {
+		t.Fatalf("WM_CLOSE 应恰好按自有 PID 投递一次: pids = %v, ownPID = %d", pids, ownPID)
+	}
 	if snap := e.Snapshot(); snap.Error != "" {
 		t.Errorf("Quit 收口文案应为空, got %q", snap.Error)
 	}
@@ -488,8 +521,10 @@ func TestQuitGraceFallback(t *testing.T) {
 // 注：宽限窗口内自然退出的优雅路径（QuitHook 投递成功 → done 先收口）由内核
 // supervisor 引擎测试矩阵覆盖（fake opener）；本层不重复造带参数进程的桩。
 
-// TestStopIdempotent 停止幂等且覆盖 Quit：静止态调用无副作用。
+// TestStopIdempotent 停止幂等且覆盖 Quit：静止态调用无副作用——静止态无受管
+// 进程，钩子根本不执行，WM_CLOSE 零投递（接缝打桩锁死这条账目）。
 func TestStopIdempotent(t *testing.T) {
+	targets := stubPostClose(t)
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
 	if err := e.Stop(); err != nil {
 		t.Fatalf("Stop(stopped) = %v, want nil", err)
@@ -497,11 +532,16 @@ func TestStopIdempotent(t *testing.T) {
 	if err := e.Quit(); err != nil {
 		t.Fatalf("Quit(stopped) = %v, want nil", err)
 	}
+	if pids := targets(); len(pids) != 0 {
+		t.Errorf("静止态不得有任何 WM_CLOSE 投递: %v", pids)
+	}
 }
 
 // TestStopExternalKeepsNilContract 外部实例不归本引擎管辖：内核回 ErrExternal，
-// 按 translucenttb 既有契约映射为成功无操作，状态校正为 external。
+// 按 translucenttb 既有契约映射为成功无操作，状态校正为 external；机主自启的
+// 真实例绝不代关——WM_CLOSE 零投递（接缝打桩锁死这条红线）。
 func TestStopExternalKeepsNilContract(t *testing.T) {
+	targets := stubPostClose(t)
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{running: true}, Callbacks{})
 	if err := e.Quit(); err != nil {
 		t.Fatalf("external 下 Quit 应映射为 nil, got %v", err)
@@ -512,6 +552,9 @@ func TestStopExternalKeepsNilContract(t *testing.T) {
 	e2 := NewEngine(newWindowsJobAPI(), &fakeProbe{running: true}, Callbacks{})
 	if err := e2.Stop(); err != nil {
 		t.Fatalf("external 下 Stop 应映射为 nil, got %v", err)
+	}
+	if pids := targets(); len(pids) != 0 {
+		t.Errorf("external 态不得有任何 WM_CLOSE 投递: %v", pids)
 	}
 }
 
@@ -702,12 +745,18 @@ func TestQuitAdoptedThreeStage(t *testing.T) {
 	started := time.Now().Add(-time.Hour)
 
 	t.Run("宽限内优雅落位：不碰强杀通道", func(t *testing.T) {
+		targets := stubPostClose(t)
 		rec := &eventRecorder{}
 		proc := &fakeProcAPI{}
 		e := withAdoptedPackaged(t, 4242, started, proc, rec)
 		e.probe.(*fakeProbe).running = false // WM_CLOSE 生效：互斥体先落
 		if err := e.Quit(); err != nil {
 			t.Fatalf("优雅收口应成功: %v", err)
+		}
+		// 红线：WM_CLOSE 恰好按收编实例 PID 投递一次（旧版按类名全局投，命中的
+		// 可能是机主自启的同名实例——误伤是事故，投递目标必须可断言）。
+		if pids := targets(); len(pids) != 1 || pids[0] != 4242 {
+			t.Fatalf("应恰好按收编实例 PID 投递一次: %v", pids)
 		}
 		if len(proc.killedPIDs()) != 0 {
 			t.Errorf("优雅路径不得强杀: %v", proc.killedPIDs())
@@ -718,12 +767,16 @@ func TestQuitAdoptedThreeStage(t *testing.T) {
 	})
 
 	t.Run("宽限超时：强杀兜底且身份复核", func(t *testing.T) {
+		targets := stubPostClose(t)
 		rec := &eventRecorder{}
 		proc := &fakeProcAPI{}
 		e := withAdoptedPackaged(t, 4242, started, proc, rec)
 		proc.onKill = func(uint32) { e.probe.(*fakeProbe).running = false } // 强杀后互斥体释放
 		if err := e.Quit(); err != nil {
 			t.Fatalf("强杀兜底应成功: %v", err)
+		}
+		if pids := targets(); len(pids) != 1 || pids[0] != 4242 {
+			t.Fatalf("优雅段应恰好按收编实例 PID 投递一次: %v", pids)
 		}
 		if got := proc.killedPIDs(); len(got) != 1 || got[0] != 4242 {
 			t.Fatalf("应恰强杀收编实例一次: %v", got)
@@ -738,12 +791,16 @@ func TestQuitAdoptedThreeStage(t *testing.T) {
 	})
 
 	t.Run("被系统拒绝：如实报错不吞，显示保持收编", func(t *testing.T) {
+		targets := stubPostClose(t)
 		rec := &eventRecorder{}
 		proc := &fakeProcAPI{errOf: map[uint32]error{4242: platform.ErrAccessDenied}}
 		e := withAdoptedPackaged(t, 4242, started, proc, rec)
 		err := e.Quit()
 		if err == nil || !strings.Contains(err.Error(), "被系统拒绝") || !strings.Contains(err.Error(), "系统权限") {
 			t.Fatalf("access denied 必须中文如实上抛: %v", err)
+		}
+		if pids := targets(); len(pids) != 1 || pids[0] != 4242 {
+			t.Fatalf("优雅段投递账目不受兜底失败影响: %v", pids)
 		}
 		if s := e.Snapshot(); s.State != StateRunning {
 			t.Errorf("实例仍在场，收编显示不得假报已停: %+v", s)

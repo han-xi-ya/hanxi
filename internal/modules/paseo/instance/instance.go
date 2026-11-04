@@ -99,11 +99,13 @@ func NewEngine(jobAPI platform.JobAPI, probe PaseoProbe, cb Callbacks) *Engine {
 		spawnMessenger: spawnMessenger,
 	}
 	e.sup = sup.NewEngine(jobAPI, supProbe{probe: probe, e: e}, sup.Callbacks{OnState: e.onSupState})
-	// 优雅退出通道：Quit 的 grace 窗口内向 Paseo 可见窗口投递 WM_CLOSE
+	// 优雅退出通道：Quit 的 grace 窗口内向**自有实例**的可见窗口投递 WM_CLOSE
 	// （上游 Windows 无托盘，主窗口关闭 → window-all-closed → app.quit()，
 	// before-quit 完成 daemon 清理），超时由内核 JobObject 强杀兜底。
+	// 刻意按自有 PID 收敛而非按进程名广播：机主日常挂着的 Paseo 正是本机同名
+	// 实例，按名广播会把它一起关掉（guoheview/bcu 同纪律，见 #148）。
 	e.sup.SetQuitHook(func(context.Context) error {
-		postClose()
+		postCloseFn(e.ownPID())
 		return nil
 	})
 	return e
@@ -225,6 +227,17 @@ func (e *Engine) RunningDuration() time.Duration {
 		return 0
 	}
 	return time.Since(s.Since)
+}
+
+// ownPID 返回当前受管进程的 PID：仅内核确认自有进程在世（Managed 态）时有效，
+// 其余返回 0——WM_CLOSE 钩子据此收敛投递目标，绝不按进程名广播误伤机主自启的
+// 同名实例。
+func (e *Engine) ownPID() uint32 {
+	s := e.sup.Snapshot()
+	if s.Managed {
+		return s.PID
+	}
+	return 0
 }
 
 // ---------- 内核 → paseo 形状映射 ----------

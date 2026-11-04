@@ -455,9 +455,11 @@ func TestFocusWindowPassthrough(t *testing.T) {
 	}
 }
 
-// TestQuitGraceFallback 冒烟：Quit 经内核 grace 通道——WM_CLOSE（cmd.exe 无
-// Paseo 窗口，postClose 静默 no-op）→ 宽限内未自然退 → JobObject 强杀兜底
-// （整树收口），归 stopped 且文案为空。
+// TestQuitGraceFallback 冒烟 + 红线：Quit 经内核 grace 通道——WM_CLOSE 只按
+// **自有实例 PID** 投递（接缝打桩记录目标，cmd.exe 替身没有窗口，真实投递本就是
+// 静默 no-op；打桩是为了把"绝不按 Paseo.exe 名字广播"这条钉成断言——机主日常挂着
+// Paseo，旧实现跑一次此用例就关掉他整个会话，见 #148）→ 宽限内未自然退 →
+// JobObject 强杀兜底（整树收口），归 stopped 且文案为空。
 func TestQuitGraceFallback(t *testing.T) {
 	// 压缩宽限与静默期：单测不能等生产 8s/500ms
 	oldGrace, oldSettle := closeGracePeriod, externalSettle
@@ -465,17 +467,36 @@ func TestQuitGraceFallback(t *testing.T) {
 	externalSettle = 10 * time.Millisecond
 	defer func() { closeGracePeriod, externalSettle = oldGrace, oldSettle }()
 
+	// WM_CLOSE 投递接缝打桩：记录目标 PID，不触碰真实窗口。
+	var closePids []uint32
+	var cpMu sync.Mutex
+	oldPost := postCloseFn
+	postCloseFn = func(pid uint32) {
+		cpMu.Lock()
+		closePids = append(closePids, pid)
+		cpMu.Unlock()
+	}
+	defer func() { postCloseFn = oldPost }()
+
 	e := NewEngine(newWindowsJobAPI(), &fakeProbe{}, Callbacks{})
 	if err := e.Start(StartOptions{Version: "0.8.0", Exe: mustCmdExe(t)}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer func() { _ = e.Stop() }()
 	waitState(t, e, StateRunning)
+	ownPID := e.Snapshot().PID
 
 	if err := e.Quit(); err != nil {
 		t.Fatalf("Quit: %v", err)
 	}
 	waitState(t, e, StateStopped)
+
+	cpMu.Lock()
+	pids := append([]uint32(nil), closePids...)
+	cpMu.Unlock()
+	if len(pids) != 1 || pids[0] != ownPID || ownPID == 0 {
+		t.Fatalf("WM_CLOSE 应恰好按自有 PID 投递一次: pids = %v, ownPID = %d", pids, ownPID)
+	}
 	if snap := e.Snapshot(); snap.Error != "" {
 		t.Errorf("Quit 收口文案应为空, got %q", snap.Error)
 	}
