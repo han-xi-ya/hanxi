@@ -31,12 +31,12 @@ type OmpService struct {
 	manager *version.Manager
 	store   *ompStore
 	holder  *extapi.LeaseHolder
-	launch  *launcher
-	binDir  string // 稳定命令入口目录 <BaseDir>/bin/omp（见 launcher.go 设计注释）
-	baseDir string // 便携根，供前端展示入口位置
+	ops     *officialOps // 官方安装方式操作集（探测/脚本/PATH 回收，见 official.go）
 
-	downloadMu sync.Mutex
-	downloads  map[string]struct{}
+	downloadMu   sync.Mutex
+	downloads    map[string]struct{}
+	officialMu   sync.Mutex
+	officialBusy bool // 同一时刻只允许一趟官方脚本（install/update 共用槽位）
 }
 
 // NewOmpService 装配版本管理器与激活 store；构造无 IO 副作用之外的开销
@@ -48,43 +48,10 @@ func NewOmpService(plat platform.Platform, holder *extapi.LeaseHolder) *OmpServi
 		manager:   version.NewManager(paths.VersionsDir()),
 		store:     newOmpStore(paths.StateDir()),
 		holder:    holder,
-		launch:    newWindowsLauncher(),
-		binDir:    filepath.Join(paths.BaseDir(), "bin", "omp"),
-		baseDir:   paths.BaseDir(),
+		ops:       newOfficialOps(),
 		downloads: make(map[string]struct{}),
 	}
 }
-
-// InstallLauncher 一键"命令入口安装"（复刻官方脚本装完即敲 omp 的体验，归属 hanxi 版本树）：
-// 把激活版本的 exe 硬链接到稳定入口 `<BaseDir>\bin\omp\omp.exe`，首次安装幂等写入
-// 用户 PATH 并广播 WM_SETTINGCHANGE；此后升级/切换只需再点一次（只换链接不动注册表）。
-func (s *OmpService) InstallLauncher() (LauncherOutcome, error) {
-	release, gateErr := s.holder.Enter()
-	if gateErr != nil {
-		return LauncherOutcome{}, gateErr
-	}
-	defer release()
-	activeExe, err := s.manager.ResolveExe(strings.TrimPrefix(s.store.GetActive(), "v"))
-	if err != nil {
-		if activeExe, err = s.manager.ResolveExe(""); err != nil {
-			return LauncherOutcome{}, fmt.Errorf("版本树尚无可用 omp——请先下载或导入一个版本: %v", err)
-		}
-	}
-	return s.launch.install(s.binDir, activeExe)
-}
-
-// UninstallLauncher 回收命令入口：删本模块建的入口文件与自己那条 PATH；
-// 官方脚本装的 %LOCALAPPDATA%\omp 条目与目录不属本模块，原样不动。
-func (s *OmpService) UninstallLauncher() (LauncherOutcome, error) {
-	release, gateErr := s.holder.Enter()
-	if gateErr != nil {
-		return LauncherOutcome{}, gateErr
-	}
-	defer release()
-	return s.launch.uninstall(s.binDir)
-}
-
-// ---------- 版本管理 ----------
 
 // ListReleases 获取远程可用版本列表（多镜像回退，10 分钟缓存，按上游发布顺序新在前）。
 func (s *OmpService) ListReleases() ([]version.OmpRelease, error) {
@@ -126,8 +93,8 @@ func (s *OmpService) GetStatus() (OmpStatus, error) {
 	}
 	defer release()
 
-	st := OmpStatus{ActiveVersion: s.store.GetActive(), BinDir: s.binDir}
-	st.LauncherInstalled, st.OnPath = s.launch.status(s.binDir)
+	st := OmpStatus{ActiveVersion: s.store.GetActive()}
+	st.OfficialDir, st.OfficialPresent, st.OfficialVersion, st.OnPath = s.ops.probe()
 	exe, err := s.manager.ResolveExe(strings.TrimPrefix(st.ActiveVersion, "v"))
 	if err != nil {
 		// 未指定或指定版本已不可用：回退"最新已装"如实展示
@@ -274,6 +241,94 @@ func (s *OmpService) DeleteVersion(targetVersion string) error {
 		return s.store.SetActive("")
 	}
 	return nil
+}
+
+// ---------- 官方安装方式（机主拍板的主通道）----------
+
+// InstallOfficial 一键安装=后台跑官方 install.ps1 -Binary（下载最新单文件、
+// 官方自校验、落 %LOCALAPPDATA%\omp、写 PATH、Git Bash 接线全套官方行为）。
+// 进度经事件 omp:official-op 回流；已在跑则报 in-progress（同一时刻只允许一趟官方脚本）。
+func (s *OmpService) InstallOfficial() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return s.startOfficial("install")
+}
+
+// UpdateOfficial 一键更新=再跑一遍官方脚本（脚本语义即"拉最新覆盖装"，幂等）。
+func (s *OmpService) UpdateOfficial() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return s.startOfficial("update")
+}
+
+// startOfficial install/update 共用编排（调用门由两个导出 RPC 各自持有，本私有件
+// 承接已放行路径；互斥 officialMu 槽位）。
+func (s *OmpService) startOfficial(op string) (string, error) {
+	s.officialMu.Lock()
+	if s.officialBusy {
+		s.officialMu.Unlock()
+		return "in-progress", nil
+	}
+	s.officialBusy = true
+	s.officialMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.officialMu.Lock()
+			s.officialBusy = false
+			s.officialMu.Unlock()
+		}()
+		emit := func(stage, msg string) {
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("omp:official-op", OfficialOpProgress{Op: op, Stage: stage, Message: msg})
+			}
+		}
+		emit("running", "正在执行官方安装脚本（下载校验全程由脚本自理）…")
+		lease, leaseErr := s.holder.EnterBackground(context.Background())
+		if leaseErr != nil {
+			emit("error", leaseErr.Error())
+			return
+		}
+		defer lease.Release()
+		out, err := s.ops.runOfficialScript(lease.Context())
+		if err != nil {
+			emit("error", fmt.Sprintf("%s: %v", firstLineFallback(out, "脚本无输出"), err))
+			notify.Error("omp", "官方脚本失败", err.Error(), "/ext/omp")
+			return
+		}
+		verb := "安装"
+		if op == "update" {
+			verb = "更新"
+		}
+		emit("done", fmt.Sprintf("omp 已%s：%s", verb, s.ops.probeVer(s.ops.exePath())))
+		notify.Success("omp", "官方"+verb+"完成", "新开终端敲 omp 即可使用（凭据与数据在 ~/.omp 未动）", "/ext/omp")
+	}()
+	return "started", nil
+}
+
+// UninstallOfficial 一键卸载=删官方目录 + 从用户 PATH 剔除该条目 + 广播；
+// ~/.omp 数据根（凭据/会话/记忆）按官方口径保留。危险确认在前端适配层。
+func (s *OmpService) UninstallOfficial() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return s.ops.uninstall()
+}
+
+// firstLineFallback 取脚本输出首行做错误简报，空则用兜底文案。
+func firstLineFallback(out, fallback string) string {
+	if line := strings.SplitN(strings.TrimSpace(out), "\n", 2)[0]; line != "" {
+		return line
+	}
+	return fallback
 }
 
 // ---------- 目录与仓库导航 ----------

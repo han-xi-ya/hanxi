@@ -4,7 +4,7 @@
 // 刻意无控制台 Tab / 状态灯 / 启停 / 唤窗：本模块不托管进程，TUI 由用户在自己的
 // 终端启动激活版本 exe。RPC 接线经 adapters/omp 收编（危险确认/路径输入闸门
 // 在 adapter 内，回执词面单源 managedCommon），视图保持 DouzyView 同族自绘形制。
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import type { OmpRelease, OmpVersionInfo } from '../../bindings/hanxi/internal/modules/omp/version/models'
 import { createOmpAdapter } from '../adapters/omp'
 import type { NormalizedProgress } from '../components/managed/adapter'
@@ -27,10 +27,13 @@ const installed = ref<OmpVersionInfo[]>([])
 // 逐条 active 标注由 ListInstalledVersions 给出，卡片高亮吃该布尔）。
 const active = ref('')
 const dataDir = ref('')
-// 命令入口三事实（GetStatus 一次 RPC 同批回填；见 adapters/omp.ts install/uninstallLauncher）
-const launcherBin = ref('')
-const launcherInstalled = ref(false)
+// 官方安装方式四事实（GetStatus 一次 RPC 同批回填；见 adapters/omp.ts official 族）
+const officialDir = ref('')
+const officialPresent = ref(false)
+const officialVersion = ref('')
 const onPath = ref(false)
+// 官方脚本进度（事件 'omp:official-op' 直存，running 时按钮禁用）
+const officialOp = ref<{ op: string; stage: string; message: string } | null>(null)
 const loading = ref(false)
 const listError = ref('')
 const busy = ref(false)
@@ -52,8 +55,9 @@ async function loadVersions() {
     active: async () => {
       const status = await omp.getStatus()
       dataDir.value = status?.dataDir ?? ''
-      launcherBin.value = status?.binDir ?? ''
-      launcherInstalled.value = !!status?.launcherInstalled
+      officialDir.value = status?.officialDir ?? ''
+      officialPresent.value = !!status?.officialPresent
+      officialVersion.value = status?.officialVersion ?? ''
       onPath.value = !!status?.onPath
       return status?.activeVersion ?? ''
     },
@@ -101,29 +105,20 @@ async function download(rel: OmpRelease) {
   }
 }
 
-async function installEntry() {
+async function runOfficialAction(kind: 'install' | 'update' | 'uninstall') {
   if (busy.value) return
   busy.value = true
   try {
-    const out = await omp.installLauncher()
+    const out = kind === 'install'
+      ? await omp.installOfficial()
+      : kind === 'update'
+        ? await omp.updateOfficial()
+        : await omp.uninstallOfficial()
     if (out.message) showToast(out.message)
-    await loadVersions()
+    // 卸载为同步回执（后端跑完才返回）；装/更为后台起跑，终态由事件流复刷。
+    if (out.reloadVersions) await loadVersions()
   } catch (e) {
-    showToast(`安装命令入口失败: ${getErrorMessage(e)}`)
-  } finally {
-    busy.value = false
-  }
-}
-
-async function uninstallEntry() {
-  if (busy.value) return
-  busy.value = true
-  try {
-    const out = await omp.uninstallLauncher()
-    if (out.message) showToast(out.message)
-    await loadVersions()
-  } catch (e) {
-    showToast(`回收命令入口失败: ${getErrorMessage(e)}`)
+    showToast({ install: '安装失败', update: '更新失败', uninstall: '卸载失败' }[kind] + `: ${getErrorMessage(e)}`)
   } finally {
     busy.value = false
   }
@@ -208,6 +203,12 @@ omp.subscribeProgress((t) => {
   }
 })
 
+// 官方脚本进度：running/done/error 直存展示位；done/error 后复刷事实（版本/PATH 态）。
+const unlistenOfficialOp = omp.subscribeOfficialOp((p) => {
+  officialOp.value = p
+  if (p.stage === 'done' || p.stage === 'error') loadVersions()
+})
+
 onMounted(async () => {
   loadVersions()
   try {
@@ -216,6 +217,8 @@ onMounted(async () => {
     console.warn('omp RepositoryURL failed:', getErrorMessage(e))
   }
 })
+
+onBeforeUnmount(() => unlistenOfficialOp())
 </script>
 
 <template>
@@ -224,27 +227,29 @@ onMounted(async () => {
 
     <!-- 常驻诚实横幅：TUI 语义与运行边界声明 -->
     <UiBanner tone="warn" class="omp-slim">
-      omp 是<strong>纯 TUI</strong> 编码代理，Hanxi 只做版本管理（下载校验 / 激活切换 / 导入本地），不托管其运行——请在终端中启动「激活中」版本的 omp.exe（exe 路径见对应版本卡片）。
+      omp 是<strong>纯 TUI</strong> 编码代理，Hanxi 不托管其运行。本页面两条独立路线：<strong>官方安装</strong>（下方一键装/更/卸，装完新开终端直接敲 <code>omp</code>——日常用这条）；<strong>版本树</strong>（下载校验 / 导入 / 激活，产物供嵌入终端或 Paseo 按路径取用）。
     </UiBanner>
 
-    <!-- 命令入口：hanxi 复刻官方安装脚本体验（装完新开终端直接敲 omp）——稳定目录硬链接到激活版，
-         PATH 只首装写一次、升级切版不再动注册表；只回收自己建的条目，官方脚本装目录不碰 -->
-    <div v-if="installed.length" class="omp-panel">
+    <!-- 官方安装方式（机主主用通道）：一键跑官方 install.ps1 装/更，卸载删其目录+剔 PATH。
+         与上方版本树是两条独立路线——这里装的是 %LOCALAPPDATA%\omp 的官方件，命令行 omp 走的就是它 -->
+    <div class="omp-panel">
       <div class="omp-meta">
         <span>
-          命令入口：
-          <span v-if="launcherInstalled && onPath" class="omp-badge active">已就绪</span>
-          <span v-else-if="launcherInstalled" class="omp-badge installed">入口文件在场，PATH 未含</span>
+          官方安装：
+          <span v-if="officialPresent && onPath" class="omp-badge active">已装 · {{ officialVersion || '版本未知' }} · 命令行可用</span>
+          <span v-else-if="officialPresent" class="omp-badge installed">已装 · {{ officialVersion || '版本未知' }}（PATH 未含）</span>
           <span v-else class="omp-badge installed">未安装</span>
-          <span class="omp-dim">{{ launcherBin }}</span>
+          <span class="omp-dim">{{ officialDir }}</span>
         </span>
-        <span class="omp-dim">安装即在上述目录建硬链接 <code>omp.exe</code> 指向当前激活版本，并（仅首次）把目录写入用户 PATH——<strong>新开的</strong>终端可直接敲 <code>omp</code>。升级或换激活版后重点「修复入口」只重指硬链接，注册表不动。官方脚本装的 omp（%LOCALAPPDATA%\omp）互不影响、本模块不碰。</span>
+        <span class="omp-dim">「安装 / 更新」= hanxi 替你跑官方脚本（下载最新、自校验、落位、配 PATH 全套官方行为，无需你动环境变量）；「卸载」删该目录并从 PATH 剔除。你的凭据 / 会话在 <code>~/.omp</code>，卸载不动它。</span>
+        <span v-if="officialOp && officialOp.stage !== 'done'" :class="['omp-official-progress', officialOp.stage === 'error' ? 'omp-error' : '']">
+          {{ officialOp.stage === 'error' ? '✗ ' : officialOp.stage === 'done' ? '✓ ' : '⏳ ' }}{{ officialOp.message }}
+        </span>
       </div>
       <div class="omp-btns">
-        <button class="btn btn-secondary btn-small" :disabled="busy" @click="installEntry">
-          {{ launcherInstalled && onPath ? '🔧 修复命令入口' : '⚡ 安装命令入口' }}
-        </button>
-        <button v-if="launcherInstalled || onPath" class="link-button" :disabled="busy" title="删除入口文件并从用户 PATH 剔除本目录（危险确认在适配层）" @click="uninstallEntry">回收</button>
+        <button v-if="!officialPresent" class="btn btn-primary btn-small" :disabled="busy || officialOp?.stage === 'running'" @click="runOfficialAction('install')">⚡ 安装（官方脚本）</button>
+        <button v-else class="btn btn-secondary btn-small" :disabled="busy || officialOp?.stage === 'running'" @click="runOfficialAction('update')">↑ 更新到最新版</button>
+        <button v-if="officialPresent || onPath" class="link-button" :disabled="busy" @click="runOfficialAction('uninstall')">卸载</button>
       </div>
     </div>
 
@@ -370,6 +375,7 @@ onMounted(async () => {
 .omp-view { display: flex; flex-direction: column; gap: 10px; }
 /* UiBanner 紧凑变体（词面同族纪律：自定义类一律 omp- 前缀，防全局压扁事故） */
 .omp-slim { padding: 8px 12px; font-size: var(--text-sm); }
+.omp-official-progress { font-size: var(--text-sm); color: var(--color-text-muted); }
 
 .omp-panel {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;

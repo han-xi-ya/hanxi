@@ -2,7 +2,7 @@ package omp
 
 import "strings"
 
-// envpath.go：用户 PATH 的纯集合运算（注册表读写在 launcher_windows.go）。
+// envpath.go：用户 PATH 的纯集合运算（注册表读写在 official_windows.go）。
 // 与注册表解耦成本包可单测——插入/剔除的幂等性、大小写折叠、空段压缩
 // （omp 官方脚本同款纪律：装机只动一个目录，重复安装不多写一份）。
 

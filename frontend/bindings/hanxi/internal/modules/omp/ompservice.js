@@ -65,13 +65,13 @@ export function ImportLocalVersion(srcPath) {
 }
 
 /**
- * InstallLauncher 一键"命令入口安装"（复刻官方脚本装完即敲 omp 的体验，归属 hanxi 版本树）：
- * 把激活版本的 exe 硬链接到稳定入口 `<BaseDir>\bin\omp\omp.exe`，首次安装幂等写入
- * 用户 PATH 并广播 WM_SETTINGCHANGE；此后升级/切换只需再点一次（只换链接不动注册表）。
- * @returns {$CancellablePromise<$models.LauncherOutcome>}
+ * InstallOfficial 一键安装=后台跑官方 install.ps1 -Binary（下载最新单文件、
+ * 官方自校验、落 %LOCALAPPDATA%\omp、写 PATH、Git Bash 接线全套官方行为）。
+ * 进度经事件 omp:official-op 回流；已在跑则报 in-progress（同一时刻只允许一趟官方脚本）。
+ * @returns {$CancellablePromise<string>}
  */
-export function InstallLauncher() {
-    return $Call.ByID(2609996360);
+export function InstallOfficial() {
+    return $Call.ByID(808098577);
 }
 
 /**
@@ -128,10 +128,18 @@ export function SetActiveVersion(targetVersion) {
 }
 
 /**
- * UninstallLauncher 回收命令入口：删本模块建的入口文件与自己那条 PATH；
- * 官方脚本装的 %LOCALAPPDATA%\omp 条目与目录不属本模块，原样不动。
- * @returns {$CancellablePromise<$models.LauncherOutcome>}
+ * UninstallOfficial 一键卸载=删官方目录 + 从用户 PATH 剔除该条目 + 广播；
+ * ~/.omp 数据根（凭据/会话/记忆）按官方口径保留。危险确认在前端适配层。
+ * @returns {$CancellablePromise<string>}
  */
-export function UninstallLauncher() {
-    return $Call.ByID(2095338797);
+export function UninstallOfficial() {
+    return $Call.ByID(2822776268);
+}
+
+/**
+ * UpdateOfficial 一键更新=再跑一遍官方脚本（脚本语义即"拉最新覆盖装"，幂等）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function UpdateOfficial() {
+    return $Call.ByID(189918981);
 }

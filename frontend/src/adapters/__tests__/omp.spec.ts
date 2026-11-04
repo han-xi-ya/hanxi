@@ -28,8 +28,9 @@ const svc = vi.hoisted(() => ({
   OpenDir: vi.fn(),
   RepositoryURL: vi.fn(),
   OpenRepository: vi.fn(),
-  InstallLauncher: vi.fn(),
-  UninstallLauncher: vi.fn(),
+  InstallOfficial: vi.fn(),
+  UpdateOfficial: vi.fn(),
+  UninstallOfficial: vi.fn(),
 }))
 
 const events = vi.hoisted(() => [] as Array<{ name: string; handler: (data: unknown) => void }>)
@@ -173,37 +174,47 @@ describe('omp · 下载进度事件通道', () => {
   })
 })
 
-describe('omp · 命令入口（安装/回收）', () => {
-  it('installLauncher：直接打 InstallLauncher、透传后端 message、带 reloadVersions', async () => {
-    svc.InstallLauncher.mockResolvedValue({ message: '已写入用户 PATH 并广播', binDir: 'D:\\bin\\omp' })
+describe('omp · 官方安装方式（装/更/卸）', () => {
+  it('installOfficial：started 回执带"后台进行"词面且不触发复刷（终态归事件流）', async () => {
+    svc.InstallOfficial.mockResolvedValue('started')
     const adapter = createOmpAdapter()
-    const out = await adapter.installLauncher()
-    expect(svc.InstallLauncher).toHaveBeenCalledTimes(1)
-    expect(out).toEqual({ message: '已写入用户 PATH 并广播', reloadVersions: true })
+    const out = await adapter.installOfficial()
+    expect(svc.InstallOfficial).toHaveBeenCalledTimes(1)
+    expect(out.reloadVersions).toBeFalsy()
+    expect(out.message).toContain('后台')
   })
 
-  it('installLauncher：后端空 message 回落默认词（视图不显空 toast）', async () => {
-    svc.InstallLauncher.mockResolvedValue({ message: '', binDir: '' })
+  it('install/update 撞车：后端报 in-progress 时如实转告"已有一趟在跑"，不是静默', async () => {
+    svc.UpdateOfficial.mockResolvedValue('in-progress')
     const adapter = createOmpAdapter()
-    const out = await adapter.installLauncher()
-    expect(out.message).toBe('命令入口已就绪')
+    const out = await adapter.updateOfficial()
+    expect(out.message).toContain('已有一趟')
   })
 
-  it('uninstallLauncher：确认框否决时零 RPC（PATH 变更是危险动作，取消不得落注册表）', async () => {
+  it('uninstallOfficial：确认框否决时零 RPC（删目录+改 PATH 是危险动作，取消不得落地）', async () => {
     ui.confirm.mockResolvedValue(false)
     const adapter = createOmpAdapter()
-    const out = await adapter.uninstallLauncher()
+    const out = await adapter.uninstallOfficial()
     expect(ui.confirm).toHaveBeenCalled()
-    expect(svc.UninstallLauncher).not.toHaveBeenCalled()
+    expect(svc.UninstallOfficial).not.toHaveBeenCalled()
     expect(out).toEqual({})
   })
 
-  it('uninstallLauncher：确认后打 UninstallLauncher、透传 message、带 reloadVersions', async () => {
+  it('uninstallOfficial：确认后透传后端中文回执并触发复刷（同步卸载跑完才返回）', async () => {
     ui.confirm.mockResolvedValue(true)
-    svc.UninstallLauncher.mockResolvedValue({ message: '入口文件与 PATH 条目已回收', binDir: 'D:\\bin\\omp' })
+    svc.UninstallOfficial.mockResolvedValue('已删除 C:/Users/x/AppData/Local/omp；已从用户 PATH 剔除该目录并广播')
     const adapter = createOmpAdapter()
-    const out = await adapter.uninstallLauncher()
-    expect(svc.UninstallLauncher).toHaveBeenCalledTimes(1)
-    expect(out).toEqual({ message: '入口文件与 PATH 条目已回收', reloadVersions: true })
+    const out = await adapter.uninstallOfficial()
+    expect(out.message).toContain('PATH')
+    expect(out.reloadVersions).toBe(true)
+  })
+
+  it('官方进度事件名逐字锁定 omp:official-op，订阅即透传载荷', () => {
+    const adapter = createOmpAdapter()
+    const cb = vi.fn()
+    adapter.subscribeOfficialOp(cb)
+    expect(events[events.length - 1]!.name).toBe('omp:official-op')
+    events[events.length - 1]!.handler({ op: 'install', stage: 'running', message: 'x' })
+    expect(cb).toHaveBeenCalled()
   })
 })

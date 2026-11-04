@@ -124,6 +124,9 @@ import type * as nanazip$0 from "../../../../../hanxi/internal/modules/nanazip/m
 import type * as ocr$0 from "../../../../../hanxi/internal/modules/ocr/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as omp$0 from "../../../../../hanxi/internal/modules/omp/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as version$16 from "../../../../../hanxi/internal/modules/omp/version/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -293,6 +296,7 @@ declare module "@wailsio/runtime" {
             "ocr:file-drop-result": ocr$0.DropResult;
             "ocr:service-state": ocr$0.ServiceState;
             "ocr:snip-result": ocr$0.SnipResult;
+            "omp:official-op": omp$0.OfficialOpProgress;
             "omp:version-download": version$16.DownloadProgress;
             "operation:changed": void;
             "papertodo:instance-state": instance$16.Snapshot;

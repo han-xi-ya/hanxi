@@ -10,8 +10,8 @@ export {
 import * as $models from "./models.js";
 
 /**
- * LauncherOutcome 安装/卸载命令入口的结果如实回传。
- * @typedef {$models.LauncherOutcome} LauncherOutcome
+ * OfficialOpProgress 官方路线长动作的进度事件（'omp:official-op'）。
+ * @typedef {$models.OfficialOpProgress} OfficialOpProgress
  */
 
 /**

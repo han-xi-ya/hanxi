@@ -27,10 +27,22 @@
 
 import * as OmpAPI from '../../bindings/hanxi/internal/modules/omp/ompservice'
 import type { OmpVersionInfo, DownloadProgress } from '../../bindings/hanxi/internal/modules/omp/version/models'
+import type { OfficialOpProgress } from '../../bindings/hanxi/internal/modules/omp/models'
 import { useConfirm } from '../composables/useConfirm'
 import { usePrompt } from '../composables/usePrompt'
+import { useWailsEvent } from '../composables/useWailsEvent'
 import type { ManagedActionResult, NormalizedProgress } from '../components/managed/adapter'
 import { bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResult } from './managedCommon'
+
+// officialOutcome 官方 RPC 回执词表（"started"/"in-progress" 两态，
+// 与 DownloadVersion 的三态刻意不同——官方脚本全局互斥一趟，无 already-installed 档：
+// 重复跑正是"更新"语义，不该被拒）。
+function officialOutcome(rpcReturn: string, startedMessage: string): ManagedActionResult {
+  if (rpcReturn === 'in-progress') {
+    return { message: '已有一趟官方脚本在跑，请等它结束' }
+  }
+  return { message: startedMessage, reloadVersions: false }
+}
 
 /**
  * omp 版本管理动作面（仅 OmpView 消费；命名与 ManagedVersionsSpec 动词位
@@ -40,12 +52,16 @@ import { bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResul
 export interface OmpVersionAdapter {
   listReleases(): ReturnType<typeof OmpAPI.ListReleases>
   listInstalled(): ReturnType<typeof OmpAPI.ListInstalledVersions>
-  /** GetStatus 直传（activeVersion/exePath/dataDir/binDir/launcherInstalled/onPath；视图的 active 通道、页脚目录行与命令入口区同源本件）。 */
+  /** GetStatus 直传（activeVersion/exePath/dataDir/officialDir/officialPresent/officialVersion/onPath；视图 active 通道、页脚目录行与官方安装区同源本件）。 */
   getStatus(): ReturnType<typeof OmpAPI.GetStatus>
-  /** 安装/修复命令入口：稳定目录 bin\omp\omp.exe 硬链接到激活版本 + 幂等写入用户 PATH（复刻官方安装脚本"装完即敲 omp"的体验，归属 hanxi 版本树）。 */
-  installLauncher(): Promise<ManagedActionResult>
-  /** 回收命令入口（危险确认在本件；只删本模块建的入口文件与自己的 PATH 条目，官方脚本装目录不动）。 */
-  uninstallLauncher(): Promise<ManagedActionResult>
+  /** 官方方式一键安装（后台跑 install.ps1 -Binary；进度经 subscribeOfficialOp）。 */
+  installOfficial(): Promise<ManagedActionResult>
+  /** 官方方式一键更新（再跑一遍脚本拉最新，幂等）。 */
+  updateOfficial(): Promise<ManagedActionResult>
+  /** 官方方式一键卸载（危险确认在本件：删 %LOCALAPPDATA%\omp + 剔 PATH 条目；~/.omp 数据根保留）。 */
+  uninstallOfficial(): Promise<ManagedActionResult>
+  /** 官方装件状态事件订阅（setup 期内调用；事件名 'omp:official-op'）。 */
+  subscribeOfficialOp(cb: (progress: OfficialOpProgress) => void): () => void
   /** 下载进度订阅（setup 期内调用；事件名 'omp:version-download' 在此吃掉）。 */
   subscribeProgress(cb: (progress: NormalizedProgress) => void): void
   /** 下载指定版本（后台起跑，进度经事件回流）；'already-installed' 回执带重拉标记。 */
@@ -113,21 +129,28 @@ export function createOmpAdapter(): OmpVersionAdapter {
       return { message: `已导入 omp ${info.version}`, reloadVersions: true }
     },
 
-    async installLauncher() {
-      const out = await OmpAPI.InstallLauncher()
-      return { message: out?.message || '命令入口已就绪', reloadVersions: true }
+    subscribeOfficialOp: (cb) => useWailsEvent<OfficialOpProgress>('omp:official-op', cb),
+
+    async installOfficial() {
+      const out = await OmpAPI.InstallOfficial()
+      return officialOutcome(out, '安装已在后台进行，进度见下方')
     },
 
-    async uninstallLauncher() {
+    async updateOfficial() {
+      const out = await OmpAPI.UpdateOfficial()
+      return officialOutcome(out, '更新已在后台进行，进度见下方')
+    },
+
+    async uninstallOfficial() {
       const accepted = await confirm({
-        title: '回收命令入口？',
+        title: '卸载官方 omp？',
         description:
-          '将删除稳定入口文件 bin\\omp\\omp.exe 并从用户 PATH 剔除该目录条目——版本树与官方脚本装的 omp（%LOCALAPPDATA%\\omp）都不受影响。回收后新开终端敲 omp 将不可用，再点一次「安装命令入口」即可恢复。',
+          '将删除官方安装目录 %LOCALAPPDATA%\\omp 并从用户 PATH 剔除该条目。你的配置 / 会话 / 记忆（在 ~/.omp）不受影响，保留原样。若有终端正在运行 omp，先退出再卸载。',
         tone: 'danger',
       })
       if (!accepted) return {}
-      const out = await OmpAPI.UninstallLauncher()
-      return { message: out?.message || '命令入口已回收', reloadVersions: true }
+      const msg = await OmpAPI.UninstallOfficial()
+      return { message: msg || '已卸载', reloadVersions: true }
     },
 
     async openDir(dir) {

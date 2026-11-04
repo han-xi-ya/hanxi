@@ -262,6 +262,7 @@ func RegisterEvents() {
 	application.RegisterEvent[paseoinstance.Snapshot]("paseo:instance-state")
 	application.RegisterEvent[douzyversion.DownloadProgress]("douzy:version-download")
 	application.RegisterEvent[ompversion.DownloadProgress]("omp:version-download")
+	application.RegisterEvent[omp.OfficialOpProgress]("omp:official-op")
 	// piik 托管两事件按装配线冻结命名接线（值类型 piikversion.DownloadProgress /
 	// piikinstance.Snapshot）；A 线若改名，以此两行与 fixture 为准收口。
 	application.RegisterEvent[piikversion.DownloadProgress]("piik:version-download")
