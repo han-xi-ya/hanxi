@@ -4,7 +4,7 @@
 >
 > **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **33 款**（2026-11-04 `omp` 版本树方案整体拆除、退出能力列——官方安装通道仍在本节留告知条目，叙述列保留；同日曾短暂为 34；2026-11-03 `airsnip` 入库后曾为 33、原写 32；`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 33。
 >
-> 注意别把两把尺混用：下方「托管工具真图标」一节的 **30 枚**是 appicons **台账内嵌 PNG** 口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件；2026-11-04 起含 `omp.png` 一枚**自绘** π 徽标——上游图标未随单文件 exe 以可提取画幅出货，识别性自绘件入台账与 `sources.go` 双向锁死，非上游美术资产），与本段托管款数无对应关系。
+> 注意别把两把尺混用：下方「托管工具真图标」一节的 **29 枚**是 appicons **台账内嵌 PNG** 口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件；2026-11-04 曾入 `omp.png` 自绘徽标一枚、随 omp 并入 envcheck 撤出，台账回 29 枚），与本段托管款数无对应关系。
 >
 > Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
 
@@ -343,7 +343,6 @@ ddnsgo/frpc favicon 源天花板 48 保持 48）。逐枚出货边长单一来�
 | dbx.png | DBX (t8y2/dbx) | Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证） | 识别性使用；来源=上游仓库 github.com/t8y2/dbx `src-tauri/icons/icon.png`（Tauri 桌面工程官方主图 512×512 RGBA，等比缩 64 出货不上采样；同目录 icon.ico 含 16–256 同源画幅佐证，icns 未取），图标资产随上游同许可；权利方异议即摘回落 generic（2026-09-27 托管新模块补录批） |
 | gonavi.png | GoNavi (Syngnat/GoNavi) | Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证；**非**排期稿所称 MIT，以实查为据） | 识别性使用；来源=上游仓库 github.com/Syngnat/GoNavi `build/appicon.png`（Wails 工程官方主图 1024×1024 RGBA，等比缩 64 出货不上采样；build/windows/icon.ico 含 16–256 同源画幅佐证），图标资产随上游同许可；权利方异议即摘回落 generic（2026-09-27 托管新模块补录批） |
 | airsnip.png | AirSnip 轻截 (bd-dxg/airsnip) | GPL-3.0-only（见上节） | 识别性使用；来源=上游官方发行 exe（`airsnip.exe`）PE `RT_ICON` 最大 256² 画幅等比缩 64 出货、不上采样凑数；双副本入库（`frontend/src/assets/apps/airsnip.png` + `internal/app/appicons/airsnip.png`）另配 `menus/airsnip.png` 16px 托盘菜单变体；图标资产随上游同 GPL-3.0 条款（2026-11-03 托管新模块补录） |
-| omp.png | Oh My Pi（omp） | MIT（见上节） | **Hanxi 自绘 π 徽标**（非上游美术资产、非 PE 提取件——上游单文件 exe 无可提取图标画幅；识别性展示；双副本 + `menus/omp.png` 16px 变体；`sources.go` 台账登记，2026-11-04 托管新模块补录） |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
 | ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不随发布物分发：默认矢量 `i:gauge`，装有机主本机官方 RAMMap64.exe 时走「红线图标运行期本机提取」节通道 |
 
