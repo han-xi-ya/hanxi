@@ -36,6 +36,8 @@
 4. **heukms 真机验收(2026-10-21 入库新托管,按托管先例开单)**:RAR5 下载→GitHub digest 校验→PE 身份核对→安装/启动/唤窗/退出、「导入本地」兜底(仅 iso/无 rar 件与 62.0.0 及更早)、740 直拒后一键提权重启路径、被 Defender 拦截删除场景如实显形(UI 已预写,系激活工具常态)。
 6. **airsnip 真机验收（2026-11-03 入库新托管，按托管先例开单）**：真机夹具已跑通一轮（提权会话内：JobObject 启动→进程枚举→「airsnip.hidden」消息窗在场→投 40003 见「airsnip.settings」→投 40001 见「airsnip.overlay」→WM_CLOSE 收口），遗留人工项：① 非提权 Hanxi 下点「启动/截图」应报含「管理员」的 740 文案并出现一键提权重启钮；② 用户自行启动的外部实例应进 external 态且退出不越权；③ 上游 exe 无 VERSIONINFO，已装版本与导入件版本令牌（目录名嗅探 / imported- 哈希兜底）在 UI 上是否自洽；④ SmartScreen 未签名提示与「仍要运行」路径；⑤ 与 Snipaste 同时运行抢 F1 的实际表现与提示条是否够用；⑥ 接管后重开 Hanxi 托管启动，config.toml 的 auto_check_update 应保持 false（上游写回 true 后应再被压回）。夹具跑法见 `internal/modules/airsnip/instance/realhost_windows_test.go` 文件头。
 
+7. **omp 真机验收（2026-11-04 入库新托管，按托管先例开单——本模块不做进程托管，验收集中在版本树面）**：① 页面下载当前版（v18.16.0）：进度事件流、done 票据、首装自动激活（store 空→done 前落账）；② 导入官方脚本装件 `AppData\Local\omp\omp.exe`：哈希嗅探应命中官方摘要采纳 v18.16.0 令牌（若 ① 已下载同版，观察内核 Commit 幂等口径与 UI 报错可读性）；③ 设激活后 `GetStatus.exePath` 与版本目录一致（激活标记供嵌入终端/Paseo 取用，与 PATH 是两本账，页面文案是否讲清）；④ `~/.omp` 数据根行展示与「打开」按钮（RevealDir 语义）；⑤ 删除激活版本→清空回退最新已装、列表即时刷新；⑥ 更新徽标只在远程稳定通道更新时亮（pre 通道与 imported- 兜底不点亮——CheckUpdate 负口径两处）；⑦ 244MB 下载中途停用 Hanxi：模块收口即时取消且不留 `.tmp-` 残件（事务背书清理）。
+
 5. **portscan 代理检查与 sshkeys SSH 检查真机验收(10-20 功能线收尾,夹具已备未实跑)**:`2c3fa57` 的真机代理连通性验证夹具默认 skip——开着 Clash 系统代理与不带代理两态各跑一次,核 `469e3e1` 显式拨号内核在真实链路下的分态如实性;SSH 检查已于 2026-10-22 自 portscan 搬出为独立模块 `sshkeys`,「试登录」(x/crypto/ssh 真实握手)的验收入口自此另属新模块,重出包后两处分别验。
 
 ## P2:文档与工程卫生

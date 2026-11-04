@@ -2,9 +2,9 @@
 
 > 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部托管桌面工具。
 >
-> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **33 款**（2026-11-03 `airsnip` 入库后现推、原写 32；`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 33。
+> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **34 款**（2026-11-04 `omp` 入库后现推；2026-11-03 `airsnip` 入库后曾为 33、原写 32；`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 34。
 >
-> 注意别把两把尺混用：下方「托管工具真图标」一节的 **29 枚**是**图标资产**口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件），与本段托管款数无对应关系。
+> 注意别把两把尺混用：下方「托管工具真图标」一节的 **30 枚**是 appicons **台账内嵌 PNG** 口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件；2026-11-04 起含 `omp.png` 一枚**自绘** π 徽标——上游图标未随单文件 exe 以可提取画幅出货，识别性自绘件入台账与 `sources.go` 双向锁死，非上游美术资产），与本段托管款数无对应关系。
 >
 > Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
 
@@ -202,10 +202,10 @@ Hanxi 对 Douzy 采用降级托管形态——**仅版本管理 + 安装包下�
 
 - 项目：Piik
 - 上游仓库：https://github.com/TNTcraftHIM/Piik
-- 许可证：MIT（上游仓库 LICENSE；其发布包内另自带 `THIRD-PARTY-NOTICES`）
+- 许可证：MIT（上游仓库 LICENSE；其发布包内另自带 `THIRD-PARTY-NOTICES.txt`，条目名经 v1.6.5–v2.5.3 五版中央目录实测，`runtime/tunnel/` 下还有一份同名件）
 - 发行方式：官方 GitHub Releases 按需下载，Hanxi 不搬运、不打包进自身发布物。
 
-Hanxi 采用**服务型骨架**纯托管：headless 形态（无窗口、无托盘、无提权），JobObject 生命周期 + 端口试绑分配（8787 起被占则 +1，候选上限 8796），界面即用户系统浏览器打开的本机 HTTP 页面；钉版本手动追更，**刻意不挂更新雷达**——上游是日更级风暴发布节奏（22 版/14 天实登账），挂上等于「可用更新」红点每天重亮，与本模块「追不追由机主在版本管理页逐条手点」的设计自相矛盾（该负裁决在 `internal/modules/piik/module.go` 包注释显式记账，后人勿当遗漏顺手补 `CheckUpdate`）。其包内自带的 `THIRD-PARTY-NOTICES` 随版本目录原样保留，卸载即随版本目录一并消失，不产生额外处置义务（参照 DBX/CC Switch 口径）。
+Hanxi 采用**服务型骨架**纯托管：headless 形态（无窗口、无托盘、无提权），JobObject 生命周期 + 端口试绑分配（8787 起被占则 +1，候选上限 8796），界面即用户系统浏览器打开的本机 HTTP 页面；钉版本手动追更，**刻意不挂更新雷达**——上游是日更级风暴发布节奏（22 版/14 天实登账），挂上等于「可用更新」红点每天重亮，与本模块「追不追由机主在版本管理页逐条手点」的设计自相矛盾（该负裁决在 `internal/modules/piik/module.go` 包注释显式记账，后人勿当遗漏顺手补 `CheckUpdate`）。其包内自带的 `THIRD-PARTY-NOTICES.txt` 随版本目录原样保留，卸载即随版本目录一并消失，不产生额外处置义务（参照 DBX/CC Switch 口径）。
 
 当前 Hanxi 仓库和安装包不包含 Piik 二进制。若未来改为预装或随 Hanxi 再分发，须随附 MIT 许可证文本与版权声明，并保留其自带的第三方告知文件。
 
@@ -288,6 +288,15 @@ Hanxi 对 AirSnip 采用用户侧按需下载与独立进程托管：JobObject �
 
 GPL-3.0-only 合规红线为**不捆绑、不再分发**：下载行为全部由用户本机直连上游发起。若未来改为预装或随 Hanxi 二进制再分发，发布流程必须落实 GPL-3.0 完整许可证文本与对应完整源代码提供义务（或按 GPL-3.0 §6 附书面源码要约）。
 
+## Oh My Pi（omp，终端 TUI 编码代理）
+
+- 项目：Oh My Pi（omp）——Stencil Labs（Can Bölük/can1357）的终端编码代理，Mario Zechner `badlogic/pi-mono` 的 fork；TypeScript 装配层 + 约 8 万行 Rust 原生核心，Windows 发行形态为 Bun 编译的**自包含单文件 exe**（约 244 MB，运行时与依赖全部内嵌，免安装）
+- 上游仓库：<https://github.com/can1357/oh-my-pi>
+- 许可证：**MIT**（GitHub API license 字段与仓库 LICENSE 双实证，2026-11-04 核）
+- 发行方式：Hanxi 代下载官方 GitHub Releases 的 `omp-windows-x64.exe` 进本机托管版本树（GitHub 资产 `digest` 官方 sha256 + 字节上限 + MZ 魔数三层校验，落位走共享内核 `artifact` 事务）；**二进制不入库、不打包进发布物**（与 GitHub 托管家族同口径，代下载自用边界内）
+- Hanxi 边界：**仅版本树托管、不做进程托管**——omp 是纯 TUI，必须附着控制台终端交互，启停/探测/唤窗的负裁决见 `internal/modules/omp` 包注释；omp 运行期直连各模型供应商 API，其凭据/会话/记忆全部存于用户本机 `~/.omp`，Hanxi 不收集、不含凭据分发
+- 上游 exe 内嵌的第三方 crate（ripgrep、ast-grep 等）为上游自身的宽松条款打包义务，随上游产物一体分发，Hanxi 不再拆分转述；若未来改为捆绑/预装再分发，须附 omp 的 MIT 许可证全文
+
 ## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行 + 开源上游仓库取材入库件 + 托管新模块补录二枚）
 
 Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**。
@@ -334,6 +343,7 @@ ddnsgo/frpc favicon 源天花板 48 保持 48）。逐枚出货边长单一来�
 | dbx.png | DBX (t8y2/dbx) | Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证） | 识别性使用；来源=上游仓库 github.com/t8y2/dbx `src-tauri/icons/icon.png`（Tauri 桌面工程官方主图 512×512 RGBA，等比缩 64 出货不上采样；同目录 icon.ico 含 16–256 同源画幅佐证，icns 未取），图标资产随上游同许可；权利方异议即摘回落 generic（2026-09-27 托管新模块补录批） |
 | gonavi.png | GoNavi (Syngnat/GoNavi) | Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证；**非**排期稿所称 MIT，以实查为据） | 识别性使用；来源=上游仓库 github.com/Syngnat/GoNavi `build/appicon.png`（Wails 工程官方主图 1024×1024 RGBA，等比缩 64 出货不上采样；build/windows/icon.ico 含 16–256 同源画幅佐证），图标资产随上游同许可；权利方异议即摘回落 generic（2026-09-27 托管新模块补录批） |
 | airsnip.png | AirSnip 轻截 (bd-dxg/airsnip) | GPL-3.0-only（见上节） | 识别性使用；来源=上游官方发行 exe（`airsnip.exe`）PE `RT_ICON` 最大 256² 画幅等比缩 64 出货、不上采样凑数；双副本入库（`frontend/src/assets/apps/airsnip.png` + `internal/app/appicons/airsnip.png`）另配 `menus/airsnip.png` 16px 托盘菜单变体；图标资产随上游同 GPL-3.0 条款（2026-11-03 托管新模块补录） |
+| omp.png | Oh My Pi（omp） | MIT（见上节） | **Hanxi 自绘 π 徽标**（非上游美术资产、非 PE 提取件——上游单文件 exe 无可提取图标画幅；识别性展示；双副本 + `menus/omp.png` 16px 变体；`sources.go` 台账登记，2026-11-04 托管新模块补录） |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
 | ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不随发布物分发：默认矢量 `i:gauge`，装有机主本机官方 RAMMap64.exe 时走「红线图标运行期本机提取」节通道 |
 

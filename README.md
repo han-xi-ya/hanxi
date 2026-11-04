@@ -1,7 +1,7 @@
 # Hanxi
 
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
-> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、剪贴板历史、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、Piik 屏幕分享、DBX/GoNavi 数据库客户端、抖音下载器、HEU KMS 激活工具、AirSnip 轻截等 33 款——原写 32，2026-11-03 `airsnip` 入库后现推），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
+> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、剪贴板历史、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、Piik 屏幕分享、DBX/GoNavi 数据库客户端、抖音下载器、HEU KMS 激活工具、AirSnip 轻截、Oh My Pi 终端编码代理等 34 款——原写 32/33，2026-11-04 `omp` 入库后现推），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
 > **v0.3.0 品牌断代**：产品标识、进程名和数据之家已切换为 Hanxi，不读取旧版数据、自启项或单实例标识（数据根现行模型：exe 同级 `hanxidata/` 默认 + `hanxi.bind` 显式绑定，**"便携/标准"双模式判定已整体退役**，权威语义见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 持久化一节与 [docs/PRD.md](docs/PRD.md)）。
 
@@ -120,7 +120,7 @@
 
 ### 二、第三方桌面工具托管（托管模式）
 
-Hanxi 将 33 款常用开源/免费桌面工具纳入统一管理（原写 32，2026-11-03 `airsnip` 入库后现推；"款"的口径 = catalog `hosted-versions` 能力计数，判据为模块存在 `version/` 子包，详见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) 头部说明；EarTrumpet 属纳管特例不计入）。除 frpc 等特例外，托管模块共享同一套标准骨架：
+Hanxi 将 34 款常用开源/免费桌面工具纳入统一管理（原写 32/33，2026-11-04 `omp` 入库后现推；"款"的口径 = catalog `hosted-versions` 能力计数，判据为模块存在 `version/` 子包，详见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) 头部说明；EarTrumpet 属纳管特例不计入）。除 frpc 等特例外，托管模块共享同一套标准骨架：
 
 - **版本管理**：上游 Releases / 官网清单侦查 → 多层完整性校验（GitHub digest / SHA256SUMS / 官方哈希清单 / 字节数 + PE 版本核对）→ 下载、本地导入与版本删除；
 - **进程托管**：Windows JobObject 绑定的启停引擎、进程枚举/互斥体探测运行态、Win32 唤窗 / 官方单实例命令通道唤起窗口、"跟随 Hanxi 退出"开关（**默认关闭**：Hanxi 退出不影响已托管工具独立运行）、桌面快捷方式创建；
@@ -160,6 +160,7 @@ Hanxi 将 33 款常用开源/免费桌面工具纳入统一管理（原写 32，
 | **DBX 数据库客户端** | t8y2/dbx | Apache-2.0 | Tauri 便携 zip 纯托管：注入 `DBX_DATA_DIR` 把数据改道 Hanxi 数据根（跨版本共享、删版本不丢数据），信使无参二次拉起唤窗；完整性只认 GitHub API digest，上游 minisign `.sig` **不消费**（宁拒不猜） |
 | **GoNavi 数据库管理** | Syngnat/GoNavi | Apache-2.0 | Wails 便携 zip 纯托管：数据恒在 `~/.gonavi`，**不**改道、**不**随版本目录隔离（与 DBX 方案相反，各自遵上游形态）；便携态无单实例互斥体，二次拉起即多开，故按进程名 + EnumWindows 直唤，信使路线不存在；摘要双源俱缺的 release 宁拒不猜不入列表 |
 | **HEU KMS 激活工具** | zbezj/HEU_KMS_Activator（上游后期闭源，仓库无 LICENSE 文件） | 无开源许可（GitHub API `license: null` 实测） | **解包器特例（RAR5 而非 zip）**：同版双发的 `.iso` 真实内容在 UDF 侧（纯 Go 读不到）故不解析，改走 `nwaples/rardecode` 纯 Go 解 `.rar`——本仓首个第三方归档解析依赖；GitHub digest 整包校验 + 落位前核 PE 身份，仅"有 rar 且挂官方摘要"的版本可自动安装，62.0.0 及更早走「导入本地」兜底；主程序 NotSigned 且属激活工具，"被 Defender 拦截删除"的真实故障写进 UI 而非藏进文档 |
+| **Oh My Pi（omp）** | can1357/oh-my-pi | MIT | 终端 TUI 编码代理（pi-mono 血统，TS+Rust 核，Bun 自包含单文件 exe 约 244 MB）：**仅版本树托管、不做进程托管**（纯 TUI 无窗可管，负裁决见模块包注释）——官方 Releases `omp-windows-x64.exe` 代下载，GitHub 资产 digest 官方 sha256 + 字节上限 + MZ 魔数三层校验走 `artifact` 事务落位；支持导入官方脚本装件（哈希嗅探版本令牌）；激活切换供 PATH/嵌入终端/Paseo 取用；运行期凭据全在用户本机 `~/.omp`，Hanxi 不经手 |
 | **AirSnip 轻截** | bd-dxg/airsnip | GPL-3.0-only | Rust 原生 1.2 MB 单 exe 纯托管：GitHub Releases 便携 zip digest 四层校验、JobObject 启停；上游托盘常驻**无主窗无 CLI**，截图/从剪贴板贴图/设置经上游托盘菜单命令 ID（WM_COMMAND）驱动，退出走与上游托盘「退出」逐字等价的 WM_CLOSE；manifest `requireAdministrator` 走提权三重契约；托管启动前压闭上游自动更新防版本库原地覆盖；默认热键与 Snipaste 同为 F1，并跑抢占页面如实预告 |
 
 ### 三、桌面系统体验与通用设置
@@ -169,7 +170,7 @@ Hanxi 将 33 款常用开源/免费桌面工具纳入统一管理（原写 32，
 - **全局通知中心**：模块下载/实例状态/扫描进度等事件汇聚为分级通知（信息/成功/警告/错误），抽屉式查看与已读管理。
 - **内置运行日志查看器**：提供应用全局运行日志文件列表检索、多行日志实时分页查看与历史日志一键清理（凭据自动脱敏）。
 - **系统快捷直达 (Quick Launch)**：一键打开系统 `hosts` 文件、环境变量配置、网络适配器（`ncpa.cpl`）等。
-- **按需懒加载模块架构**：全部 54 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
+- **按需懒加载模块架构**：全部 55 个功能模块支持在设置页按需启停，未启用模块 0 内存与 0 协程常驻；模块导航由后端注册表动态驱动前端渲染。
 
 ---
 
@@ -232,7 +233,7 @@ hanxi/
 ├─ cmd/
 │  └─ hanxi/                    # 应用入口（Main 装配与 UAC 提权模式分流）
 ├─ internal/
-│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、54 模块统一注册)
+│  ├─ app/                      # Composition Root (Wails 窗口、托盘、生命周期与服务注入、55 模块统一注册)
 │  ├─ product/                  # 品牌身份常量（名称/标识/版本/数据目录单一真相源）
 │  ├─ domain/                   # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                   # 模块插件化抽象（Module 契约 / 懒加载注册中心 / 导航与启用状态）

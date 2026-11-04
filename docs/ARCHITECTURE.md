@@ -2,7 +2,7 @@
 
 > **产品定位**：开源工具工作台
 > **产品版本**：v0.3.0
-> **更新日期**：2026-11-03（`airsnip` 托管模块入库——模块 53→54、托管 32→33、版本/实例面内核委托 27→28 / 24→25，§1.1 catalog 项数、框图与 §2.3 计数行同步；现值一律以 `docs/FACTS.md` 为出处。上一轮 2026-11-02：`aichat` 模块整体删除——与内嵌终端重叠，jsonfmt 脏文本出路收敛为就地「AI 一键美化」；aiagent 消费方回落为仅 `jsonfmt`。上一轮 2026-10-31：jsonfmt 简化为基础美化器、AI 提取链并入 aichat。上一轮 2026-10-26（jsonfmt 内置模块入库——JSON 美化，模块计数 51→52；上轮 2026-10-22：sshkeys 独立模块入库——SSH 主动检查自 portscan 拆出，模块计数 50→51；再上轮 2026-10-21：netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）)
+> **更新日期**：2026-11-04（`omp` 托管模块入库——模块 54→55、托管 33→34、版本面内核委托 28→29（`omp` 单文件形态 Fetch+Tree 全量委托，无解包段），§1.1 catalog 项数、框图与 §2.3 计数行同步；实例面委托 25 不变——omp 无 `instance/`。上一轮 2026-11-03（`airsnip` 托管模块入库——模块 53→54、托管 32→33、版本/实例面内核委托 27→28 / 24→25，§1.1 catalog 项数、框图与 §2.3 计数行同步；现值一律以 `docs/FACTS.md` 为出处。上一轮 2026-11-02：`aichat` 模块整体删除——与内嵌终端重叠，jsonfmt 脏文本出路收敛为就地「AI 一键美化」；aiagent 消费方回落为仅 `jsonfmt`。上一轮 2026-10-31：jsonfmt 简化为基础美化器、AI 提取链并入 aichat。上一轮 2026-10-26（jsonfmt 内置模块入库——JSON 美化，模块计数 51→52；上轮 2026-10-22：sshkeys 独立模块入库——SSH 主动检查自 portscan 拆出，模块计数 50→51；再上轮 2026-10-21：netx 代理拨号内核上收 `469e3e1` 与 heukms 托管入库 `3bc27ec` 后的口径对齐）)
 > **技术基线**：Go ≥1.26 + Wails v3 + Vue 3 + TypeScript + Vite  
 > **设计模式**：单体分层架构 + 单体内建按需懒加载 (On-demand Lifecycle Architecture) + 外部工具托管集成 (Managed Integration) + 共享托管内核 (packages/go) + 统一状态契约与调用门 (ADR-0001/0002/0003)
 
@@ -32,7 +32,7 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │ 自建: frpc 网络  │ │ 期 + 四维状态目  │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ 录/安装凭据/调用 │ │ 与配置持久化 │
 │ 快传 随手记等    │ │ 门/更新感知契约  │ │ ReceiptStore │
-│ 托管: 33 款桌面  ├──────────────────┤ │ 安装凭据存储 │ （框宽等宽 32→33；原写 32，airsnip 入库后现推 33）
+│ 托管: 34 款桌面  ├──────────────────┤ │ 安装凭据存储 │ （框宽等宽 32→33→34；原写 32/33，2026-11-04 `omp` 入库后现推 34）
 │ 工具 version+    │ │ internal/product │ ├──────────────┤
 │ instance 子包    │ │ 品牌身份常量     │ │ internal/    │
 │ （资产与进程主流 │ ├──────────────────┤ │ notify 通知  │
@@ -122,7 +122,7 @@ type Module interface {
 
 ### 2.3 外部工具托管架构（Managed Integration）
 
-33 款第三方桌面工具按同一标准骨架纳管（原写 31，2026-10-16 `heukms` 入库后按同一判据现推 32，2026-11-03 `airsnip` 入库后现推 33）（"款"= catalog `hosted-versions` 能力计数，判据为存在 `version/` 子包，2026-10-12 按 `internal/modules/*/version` 实扫核得；原写 25 系 piik/dbx/gonavi/windterm/termora/rammap 六款入库前的时点值），每模块三件套（例外：`douzy` 上游尚处内测期、无便携形态，刻意止步于 `version/` 版本管理 + 安装包下载，不做进程托管、无 `instance/` 子包；`nanazip` 为 MSIX Bundle 形态，同样止步 `version/` 验签拆包，无 instance 面；`eartrumpet` 反之——无 `version/` 亦无 `instance/`，只经 AUMID 纳管官方直装渠道，故不入本计数但仍在托管叙述列）：
+34 款第三方桌面工具按同一标准骨架纳管（原写 31/32/33，2026-11-04 `omp` 入库后现推 34）（"款"= catalog `hosted-versions` 能力计数，判据为存在 `version/` 子包，2026-10-12 按 `internal/modules/*/version` 实扫核得；原写 25 系 piik/dbx/gonavi/windterm/termora/rammap 六款入库前的时点值），每模块三件套（例外：`douzy` 上游尚处内测期、无便携形态，刻意止步于 `version/` 版本管理 + 安装包下载，不做进程托管、无 `instance/` 子包；`nanazip` 为 MSIX Bundle 形态，同样止步 `version/` 验签拆包，无 instance 面；`eartrumpet` 反之——无 `version/` 亦无 `instance/`，只经 AUMID 纳管官方直装渠道，故不入本计数但仍在托管叙述列；`omp` 与 `douzy` 同止步形态——有 `version/` 无 `instance/`，纯 TUI 编码代理仅版本树托管，但版本段全量委托内核而非 bespoke）：
 
 ```text
 internal/modules/<tool>/
@@ -134,7 +134,7 @@ internal/modules/<tool>/
 
 **版本管理子包（`version/`）**
 
-- **共享内核委托（Wave 4/5S）**：下载→校验→安全解包→版本树落位主流程已收口 `packages/go/artifact`（详见 §2.4）——版本面委托共 **28 个模块**（2026-10-21 实扫 `import hanxi/packages/go/artifact` 得 27 为当时值；2026-11-03 复扫现推 28——`airsnip` 版本段委托入列——33 家具备 `version/` 能力者中 `frpc`/`nanazip`/`rustdesk`/`subnetdesk`/`douzy` 五家版本段 bespoke 未委托），其中 **25 个**连 instance 进程治理一并委托 supervisor（见下），`quicklook`/`bili23` 仅版本段委托、instance 留 bespoke（ADR-0003 §4）；28 家之中 `snipaste`（官网仅 SHA-1）/`guoheview`（官方仅 MD5）/`vscode`（历史版无官方摘要）为**薄适配器**——"下载+官方哈希校验"段留模块 bespoke（弱摘要/缺摘要上游不放宽 `Fetch` 的 SHA-256 唯一信任根，ADR-0002 §5 内核边界裁定；vscode 降级理由登记于迁移分类账"信任根缺位第 3 家"），解包落位仍走 `UnpackZip`/`Tree` 闸门；`recordly` 为 NSIS 覆盖式单目录、无 Tree 可登记（版本面偏离 zip 模板）；`heukms` 是"下载校验+落位走内核、解包自筑"的唯一形态——上游只发 RAR5，内核 `UnpackZip` 只建在标准库 zip 上，共享包不为单一消费者背第三方归档依赖，模块自有 `version/unpack_rar.go` 通道（踩坑 #108）；
+- **共享内核委托（Wave 4/5S）**：下载→校验→安全解包→版本树落位主流程已收口 `packages/go/artifact`（详见 §2.4）——版本面委托共 **29 个模块**（2026-10-21 实扫 `import hanxi/packages/go/artifact` 得 27 为当时值、2026-11-03 复扫现推 28——`airsnip` 版本段委托入列、2026-11-04 复扫现推 29——`omp` 单文件 Fetch+Tree 全量委托入列；34 家具备 `version/` 能力者中 `frpc`/`nanazip`/`rustdesk`/`subnetdesk`/`douzy` 五家版本段 bespoke 未委托），其中 **25 个**连 instance 进程治理一并委托 supervisor（见下），`quicklook`/`bili23` 仅版本段委托、instance 留 bespoke（ADR-0003 §4）；28 家之中 `snipaste`（官网仅 SHA-1）/`guoheview`（官方仅 MD5）/`vscode`（历史版无官方摘要）为**薄适配器**——"下载+官方哈希校验"段留模块 bespoke（弱摘要/缺摘要上游不放宽 `Fetch` 的 SHA-256 唯一信任根，ADR-0002 §5 内核边界裁定；vscode 降级理由登记于迁移分类账"信任根缺位第 3 家"），解包落位仍走 `UnpackZip`/`Tree` 闸门；`recordly` 为 NSIS 覆盖式单目录、无 Tree 可登记（版本面偏离 zip 模板）；`heukms` 是"下载校验+落位走内核、解包自筑"的唯一形态——上游只发 RAR5，内核 `UnpackZip` 只建在标准库 zip 上，共享包不为单一消费者背第三方归档依赖，模块自有 `version/unpack_rar.go` 通道（踩坑 #108）；
 - **完整性四层兜底链**（按上游能力择优组合，为各家取证来源）：GitHub API 资产 `digest` → 官方 `SHA256SUMS.txt` 双源比对 → 官方站哈希清单（如 Snipaste sha-1、voidtools sha256、果核看图官方接口 MD5）→ 字节数 + MZ/PE `versioninfo` 版本核对 + sha256 下载指纹存档；委托 `artifact.Fetch` 的模块以官方 SHA-256 必检为硬线（缺摘要一律拒装，镜像只是搬运工）；
 - **安装布局适配**（免提权优先）：便携 zip 直解 / 顶层包装目录收割（zip 内 exe 深一层，如果核看图 `GuoheViewPortable/`）/ `msiexec /a` 管理提取（MSI 无 zip 形态，如 PicLite、Keyviz）/ NSIS `/S /D=` 静默安装（Recordly）/ 当前用户 MSIX（`platform/apppackage`，NanaZip）/ AppInstaller 官方直装清单交叉校验（EarTrumpet）/ 单文件 exe 下载即安装（含 rust-portable packer 内层自解压形态，Rufus、RustDesk/SubnetDesk）/ MSI 安装版双形态纳管（Hanxi 取包校验+发起上游向导+注册表探测安装位，RustDesk/SubnetDesk 与 VS Code User Installer）；
 - 统一支持本地导入、版本删除与 `*:version-download` 进度事件。
