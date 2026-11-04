@@ -173,8 +173,23 @@ func newTestGoNaviService(t *testing.T, fm *fakeManager) (*GoNaviService, *stubP
 // 免 cmd.exe 在精简 stdin 环境秒退的环境红口径），且**不是** GoNavi.exe——
 // 假探针按 GoNavi 进程名给外部事实，托管实例自身存活/终止判定全走内核句柄，
 // 替身进程名不干扰状态机。Quit 的 WM_CLOSE 对干净的 notepad 窗可优雅收口。
+//
+// **桌面门控（默认 skip，HANXI_TEST_DESKTOP=1 才跑）**：这个替身是 GUI 程序，
+// 用例经生产引擎把它真拉起来，机主桌面上就一定出现一个记事本窗（引擎对 GUI
+// 子系统程序刻意不做任何窗口干预——零 fork 承诺，`instance/instance.go:126`），
+// 而"跑测试时弹窗口"是机主明令禁止的桌面副作用（snipaste/rufus/papertodo 的
+// 测试注释里那条红线同口径）。
+//
+// 为什么这里不改成假进程或接缝注入：本用例要钉的正是"WM_CLOSE 打在**真窗口**上、
+// 应用自行优雅退出"这条外部事实；换成无窗替身（cmd.exe）后 WM_CLOSE 必然落空、
+// 收口走强杀兜底，测出来的绿恰好是生产不会发生的那条（airsnip #143 的教训）。
+// 要在无桌面环境覆盖同一链路，得先给引擎的投递通道做三接缝注入（airsnip 的
+// postCmd/waitWin/focusWin 形制），那是生产面重构，不在本批顺手做。
 func mustStandInExe(t *testing.T) string {
 	t.Helper()
+	if os.Getenv("HANXI_TEST_DESKTOP") != "1" {
+		t.Skip("默认档不弹真窗口：真记事本窗 + 真 WM_CLOSE 需 HANXI_TEST_DESKTOP=1")
+	}
 	if path, err := exec.LookPath("notepad.exe"); err == nil {
 		return path
 	}
