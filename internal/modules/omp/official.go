@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // official.go：官方安装方式的探测/安装/更新/卸载编排（Windows 原语在
@@ -83,18 +84,52 @@ func (o *officialOps) probe() (dir string, present bool, version string, onPath 
 	return dir, present, version, o.onPath()
 }
 
+// officialScriptAttempts 官方脚本瞬时失败的重试上限。依据：脚本第一步
+// `irm https://omp.sh/install.ps1` 是单次拉取零重试，本机代理混连环境
+// 下"基础连接已经关闭"类瞬时 reset 在册复发（TROUBLESHOOTING #35 同族）；
+// 脚本整体幂等（重复跑=重取覆盖装），失败重跑无副作用，故整脚本级重试安全。
+const officialScriptAttempts = 3
+
+// officialRetryBackoff 重试退避时长（包级变量：单测压缩、生产恢复，托管族
+// closeGracePeriod 同规——否则重试用例真实吃满 4s+8s 拖慢门禁）。
+var officialRetryBackoff = func(attempt int) time.Duration {
+	return time.Duration(attempt*4) * time.Second
+}
+
 // runOfficialScript 执行官方安装/更新脚本（install 与 update 同一动作——脚本
-// 本身幂等取最新；调用方以 op 标签区分语义）。返回脚本输出（截尾供展示）。
+// 本身幂等取最新；调用方以 op 标签区分语义）。瞬时失败自动重跑（退避递增、
+// 取消立停）；返回脚本输出（截尾供展示）。
 func (o *officialOps) runOfficialScript(ctx context.Context) (string, error) {
-	out, err := o.runScript(ctx)
-	if err != nil {
-		return out, err
+	var out string
+	var err error
+	for attempt := 1; attempt <= officialScriptAttempts; attempt++ {
+		if cerr := ctx.Err(); cerr != nil {
+			return out, cerr
+		}
+		out, err = o.runScript(ctx)
+		if err == nil {
+			// 脚本成功后机器态兜底核对：exe 必须真的在场（防"脚本说成功但文件没落"）。
+			// 注意此项不重试——重试只治传输瞬时错，"跑完没落盘"是硬故障。
+			if !o.present() {
+				return out, fmt.Errorf("官方脚本执行完毕但未在 %s 发现 omp.exe，请查看输出", o.dir)
+			}
+			if attempt > 1 {
+				out = out + fmt.Sprintf("\n（第 %d 次尝试成功，前 %d 次为瞬时网络失败已自动重试）", attempt, attempt-1)
+			}
+			return out, nil
+		}
+		if ctx.Err() != nil {
+			return out, ctx.Err() // 取消优先于重试判断（模块停用即停，别硬吃退避）
+		}
+		if attempt < officialScriptAttempts {
+			select {
+			case <-time.After(officialRetryBackoff(attempt)):
+			case <-ctx.Done():
+				return out, ctx.Err()
+			}
+		}
 	}
-	// 脚本成功后机器态兜底核对：exe 必须真的在场（防"脚本说成功但文件没落"）
-	if !o.present() {
-		return out, fmt.Errorf("官方脚本执行完毕但未在 %s 发现 omp.exe，请查看输出", o.dir)
-	}
-	return out, nil
+	return out, fmt.Errorf("官方脚本连试 %d 次仍失败（多为网络瞬断，可稍后再点一次更新）: %w", officialScriptAttempts, err)
 }
 
 // uninstall 卸载官方装件：删目录 + 剔除 PATH 条目 + 广播。

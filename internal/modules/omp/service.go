@@ -139,7 +139,8 @@ func (s *OmpService) UninstallOfficial() (string, error) {
 
 // firstLineFallback 取脚本输出首行做错误简报，空则用兜底文案。
 func firstLineFallback(out, fallback string) string {
-	if line := strings.SplitN(strings.TrimSpace(out), "\n", 2)[0]; line != "" {
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	if line != "" {
 		return line
 	}
 	return fallback

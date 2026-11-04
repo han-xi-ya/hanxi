@@ -115,8 +115,10 @@ func broadcastEnvChange() {
 func runOfficialScriptImpl(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, officialRunTimeout)
 	defer cancel()
+	// 前置 TLS 协商强化：PS 5.1 的 irm 默认跟随系统旧协商栈，omp.sh→raw 的
+	// 302 链路对 TLS1.0/1.1 已拒服——显式钉 Tls12/13 消除一类 reset（2026-11-04 实测）。
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
-		"-Command", officialScriptCommand)
+		"-Command", "[Net.ServicePointManager]::SecurityProtocol='Tls12,Tls13'; "+officialScriptCommand)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.CombinedOutput()
 	text := tailOutput(string(out), 600)

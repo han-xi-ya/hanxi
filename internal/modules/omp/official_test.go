@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeOps 假官方路线：内存 PATH + 可控脚本执行，绝不碰真注册表/真跑脚本/真目录。
@@ -117,5 +118,43 @@ func TestEnvpathPureFunctions(t *testing.T) {
 	}
 	if !pathContains([]string{`C:\Windows`}, `c:\windows`) || pathContains([]string{`C:\Windows`}, `D:\x`) {
 		t.Errorf("pathContains 判同失准")
+	}
+}
+
+func TestRunOfficialScriptRetriesTransientFailure(t *testing.T) {
+	officialRetryBackoff = func(int) time.Duration { return time.Millisecond }
+	dir := filepath.Join(t.TempDir(), "omp")
+	withPresent(t, dir)
+	calls := 0
+	o := &officialOps{dir: dir,
+		readPath: func() (string, error) { return "", nil }, writePath: func(string) error { return nil },
+		broadcast: func() {},
+		runScript: func(ctx context.Context) (string, error) {
+			calls++
+			if calls < 3 {
+				return "irm : 基础连接已经关闭", errors.New("connection closed")
+			}
+			return "installed", nil
+		},
+		probeVer: func(string) string { return "omp/18.16.0" }}
+
+	out, err := o.runOfficialScript(context.Background())
+	if err != nil || calls != 3 {
+		t.Fatalf("应自动重试至第 3 次成功：%v calls=%d", err, calls)
+	}
+	if !strings.Contains(out, "第 3 次尝试成功") {
+		t.Errorf("回执须如实注记重试次数：%q", out)
+	}
+}
+
+func TestRunOfficialScriptCancelBeatsRetry(t *testing.T) {
+	o := &officialOps{dir: filepath.Join(t.TempDir(), "omp"),
+		readPath: func() (string, error) { return "", nil }, writePath: func(string) error { return nil },
+		broadcast: func() {}, probeVer: func(string) string { return "" },
+		runScript: func(ctx context.Context) (string, error) { return "", errors.New("transient") }}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := o.runOfficialScript(ctx); err == nil {
+		t.Fatalf("已取消的 ctx 必须立即失败，不进重试")
 	}
 }
