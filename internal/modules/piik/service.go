@@ -949,6 +949,13 @@ func (s *PiikService) OpenDir(dir string) error {
 	return windows.RevealDir(dir)
 }
 
+// revealInExplorer 资源管理器打开目录（包级变量，单测替换）：explorer 拉起在
+// 机主桌面留一个真窗口，默认档测试绝不该产生这种副作用——envcheck/softver/wsl
+// 同一接缝纪律，snipaste/rufus/papertodo 的测试注释里也写明了这条红线。
+var revealInExplorer = func(path string) error {
+	return windows.RevealDir(path)
+}
+
 // OpenDataDir 打开 Hanxi 数据根下的 piik 托管数据目录（配置与日志所在）——
 // 纯托管下用户想看"我的数据在哪"的直达入口。只读导航，不改写；目录尚未
 // 创建（从未托管启动过）时如实报错不静默。
@@ -961,7 +968,7 @@ func (s *PiikService) OpenDataDir() error {
 	if _, err := os.Stat(s.dataDir); err != nil {
 		return fmt.Errorf("piik 托管数据目录尚未创建（还未托管启动过）: %s", s.dataDir)
 	}
-	return windows.RevealDir(s.dataDir)
+	return revealInExplorer(s.dataDir)
 }
 
 // Shutdown（RPC 导出版，纯 void）：取得调用门租约后转发内部 shutdown()，

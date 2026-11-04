@@ -949,9 +949,23 @@ func TestOpenDataDirHonestWhenAbsent(t *testing.T) {
 	if err := svc.ensureDataDir(); err != nil {
 		t.Fatalf("ensureDataDir: %v", err)
 	}
-	// 目录就位后走平台层 explorer（本机可能不可用），错误须如实透传不静默。
+	// 目录就位后必须把**托管数据目录**交给 explorer。接缝打桩：真 explorer 会在
+	// 机主桌面开一个资源管理器窗，默认档测试不该有这种副作用（snipaste/rufus/
+	// papertodo 同纪律——"成功分支会真起 explorer，不在默认档验证"）。
+	var revealed string
+	old := revealInExplorer
+	t.Cleanup(func() { revealInExplorer = old })
+	revealInExplorer = func(path string) error { revealed = path; return nil }
 	if err := svc.OpenDataDir(); err != nil {
-		t.Logf("OpenDataDir 平台层回执（本机 explorer 不可用属预期）: %v", err)
+		t.Fatalf("OpenDataDir: %v", err)
+	}
+	if revealed != svc.dataDir {
+		t.Errorf("打开目标应为托管数据目录: got %q want %q", revealed, svc.dataDir)
+	}
+	// 平台层失败如实透传，不静默成成功
+	revealInExplorer = func(string) error { return errors.New("explorer unavailable") }
+	if err := svc.OpenDataDir(); err == nil || !strings.Contains(err.Error(), "explorer unavailable") {
+		t.Errorf("explorer 失败应如实透传: %v", err)
 	}
 }
 
