@@ -34,6 +34,8 @@
 2. **F6(存储目录)、F3(快照)、F4/F4b(MCP 与向导,含 C9 三客户端红队)、F7(OCR 托管)、F9(WSL USB)**:按 [REAL_DEVICE_ACCEPTANCE_2026-09-25](REAL_DEVICE_ACCEPTANCE_2026-09-25.md) 归总验收工单补跑(2026-10-21 指针改口:原引 [PROGRESS.md](../PROGRESS.md) 人工清单已退回史账,其条目被该工单逐条吸收);**随 F6 加测批 3 人工余项**——共享托管面板/版本表在 390px 宽 + 200% 缩放下无溢出、TabNav 纯键盘(←/→/Home/End/Tab)可完成换选、NVDA/讲述人可读进度与"暂不可确认"标注。
 3. **A 机 → NAS → 干净 B 机黄金路径**:先完整走一次手工验收(建立模块迁移等级:可携带/需重建缓存/需系统注册/需重填凭据/不适合临时电脑),据结果再决定机器绑定恢复提示与临时电脑模式是否立项。
 4. **heukms 真机验收(2026-10-21 入库新托管,按托管先例开单)**:RAR5 下载→GitHub digest 校验→PE 身份核对→安装/启动/唤窗/退出、「导入本地」兜底(仅 iso/无 rar 件与 62.0.0 及更早)、740 直拒后一键提权重启路径、被 Defender 拦截删除场景如实显形(UI 已预写,系激活工具常态)。
+6. **airsnip 真机验收（2026-11-03 入库新托管，按托管先例开单）**：真机夹具已跑通一轮（提权会话内：JobObject 启动→进程枚举→「airsnip.hidden」消息窗在场→投 40003 见「airsnip.settings」→投 40001 见「airsnip.overlay」→WM_CLOSE 收口），遗留人工项：① 非提权 Hanxi 下点「启动/截图」应报含「管理员」的 740 文案并出现一键提权重启钮；② 用户自行启动的外部实例应进 external 态且退出不越权；③ 上游 exe 无 VERSIONINFO，已装版本与导入件版本令牌（目录名嗅探 / imported- 哈希兜底）在 UI 上是否自洽；④ SmartScreen 未签名提示与「仍要运行」路径；⑤ 与 Snipaste 同时运行抢 F1 的实际表现与提示条是否够用；⑥ 接管后重开 Hanxi 托管启动，config.toml 的 auto_check_update 应保持 false（上游写回 true 后应再被压回）。夹具跑法见 `internal/modules/airsnip/instance/realhost_windows_test.go` 文件头。
+
 5. **portscan 代理检查与 sshkeys SSH 检查真机验收(10-20 功能线收尾,夹具已备未实跑)**:`2c3fa57` 的真机代理连通性验证夹具默认 skip——开着 Clash 系统代理与不带代理两态各跑一次,核 `469e3e1` 显式拨号内核在真实链路下的分态如实性;SSH 检查已于 2026-10-22 自 portscan 搬出为独立模块 `sshkeys`,「试登录」(x/crypto/ssh 真实握手)的验收入口自此另属新模块,重出包后两处分别验。
 
 ## P2:文档与工程卫生

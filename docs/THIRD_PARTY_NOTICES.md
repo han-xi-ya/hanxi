@@ -2,9 +2,9 @@
 
 > 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部托管桌面工具。
 >
-> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **32 款**（`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 32。
+> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **33 款**（2026-11-03 `airsnip` 入库后现推、原写 32；`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 33。
 >
-> 注意别把两把尺混用：下方「托管工具真图标」一节的 **28 枚**是**图标资产**口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件），与本段托管款数无对应关系。
+> 注意别把两把尺混用：下方「托管工具真图标」一节的 **29 枚**是**图标资产**口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件），与本段托管款数无对应关系。
 >
 > Hanxi 对所有第三方工具的默认合规基线是：**用户侧按需下载、不捆绑、不再分发、不修改上游二进制**；各条目末尾标注若未来改为捆绑/预装分发时需履行的额外义务。
 
@@ -276,6 +276,18 @@ Hanxi 托管本体（N4 机主 2026-09-23 拍板路线 A）：上游分发形态
 - 风险如实告知（写进 UI 而非藏进文档）：主程序 `Get-AuthenticodeSignature` 实测 **NotSigned**，且属激活工具，Windows Defender 一类实时保护大概率拦截删除——「已装版本突然消失」是该模块最常见的真实故障，异常退出文案与首用提示条都直接说明这一点。Hanxi 不代为修改任何安全软件设置。
 - 若未来改为预装或随 Hanxi 安装包分发：**必须先取得作者（微信公众号 heu168）明确授权**并补记于此；当前「本机按需代下载到托管目录、不入库不随包」形态不触发该问题。
 
+## AirSnip 轻截（截图标注工具）
+
+- 项目：AirSnip 轻截（Windows 轻量截图标注工具，单 exe 约 1.2 MB）
+- 上游仓库：<https://github.com/bd-dxg/airsnip>
+- 许可证：**GPL-3.0-only**（仓库 LICENSE 全文与 `Cargo.toml` `license = "GPL-3.0-only"` 双实证）
+- 实现形态：Rust 原生（tiny-skia CPU 渲染 / DirectWrite / GDI；**无 Electron、无 WebView、无自带运行时**，适合核显迷你机/虚拟机/远程桌面形态机器）；依赖均为宽松许可证，且由上游 `cargo deny` 白名单自管。
+- 发行方式：官方 GitHub Releases 按需下载 Windows x64 便携 zip（GitHub API digest 四层校验，下载与解包落位走共享内核 `artifact`）；zip 内含 `LICENSE` / `README.md` / `THIRD-PARTY.md` 三份说明文档，本模块将其**原样落进版本隔离目录随版本保留**，卸载即随版本目录一并消失，不产生额外处置义务（照 Piik 包内自带告知文件的口径）。
+
+Hanxi 对 AirSnip 采用用户侧按需下载与独立进程托管：JobObject 绑定启停（进程治理面走共享内核 `supervisor`）；上游为托盘常驻型、**无主窗口、无 CLI**，「截图 / 从剪贴板贴图 / 设置」经上游托盘菜单自身的命令 ID（`WM_COMMAND`）驱动，退出为与上游托盘「退出」项逐字等价的 `WM_CLOSE`；上游 manifest 为 `requireAdministrator`（覆盖管理员窗口所需），未提权的 Hanxi 拉起直得 740，指引与一键提权重启走 house 通道（提权三重契约）；上游内置自动更新会在托管目录原地覆盖 exe，故每次托管启动前把 `config.toml` 的 `auto_check_update` 压为 `false`（单键就地改写，理由与边界见 `internal/modules/airsnip/instance/config.go`）。截图覆盖层、标注、长截图、贴图窗、改键等全部在上游本体完成（纯托管决策）。Hanxi 不修改、不静态链接、不内嵌 AirSnip 源码或二进制。当前 Hanxi 仓库和安装包不包含 AirSnip EXE（真图标位图按「托管工具真图标」节以识别性展示入库，见下表）。
+
+GPL-3.0-only 合规红线为**不捆绑、不再分发**：下载行为全部由用户本机直连上游发起。若未来改为预装或随 Hanxi 二进制再分发，发布流程必须落实 GPL-3.0 完整许可证文本与对应完整源代码提供义务（或按 GPL-3.0 §6 附书面源码要约）。
+
 ## 托管工具真图标（N27 批 A + 批 B-2 + 尾巴放行 + 开源上游仓库取材入库件 + 托管新模块补录二枚）
 
 Hanxi 前端 `src/assets/apps/*.png` 内嵌以下上游软件的**主图标位图**。
@@ -321,6 +333,7 @@ ddnsgo/frpc favicon 源天花板 48 保持 48）。逐枚出货边长单一来�
 | eartrumpet.png | EarTrumpet | MIT + Excluded Entities 前言（见上节） | 识别性使用；来源=上游仓库 github.com/File-New-Project/EarTrumpet `EarTrumpet.Package/Assets/Square44x44Logo.altform-unplated_targetsize-256.png`（升切：改取官方 256px 无底版原生画幅等比缩 64 出货，替代原 32px targetsize 小件）；Excluded Entities 条款仅点名排除三家商事主体，Hanxi 非排除对象，MIT 授权照常成立 |
 | dbx.png | DBX (t8y2/dbx) | Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证） | 识别性使用；来源=上游仓库 github.com/t8y2/dbx `src-tauri/icons/icon.png`（Tauri 桌面工程官方主图 512×512 RGBA，等比缩 64 出货不上采样；同目录 icon.ico 含 16–256 同源画幅佐证，icns 未取），图标资产随上游同许可；权利方异议即摘回落 generic（2026-09-27 托管新模块补录批） |
 | gonavi.png | GoNavi (Syngnat/GoNavi) | Apache-2.0（仓库根 LICENSE 全文即 Apache-2.0，GitHub API spdx 实证；**非**排期稿所称 MIT，以实查为据） | 识别性使用；来源=上游仓库 github.com/Syngnat/GoNavi `build/appicon.png`（Wails 工程官方主图 1024×1024 RGBA，等比缩 64 出货不上采样；build/windows/icon.ico 含 16–256 同源画幅佐证），图标资产随上游同许可；权利方异议即摘回落 generic（2026-09-27 托管新模块补录批） |
+| airsnip.png | AirSnip 轻截 (bd-dxg/airsnip) | GPL-3.0-only（见上节） | 识别性使用；来源=上游官方发行 exe（`airsnip.exe`）PE `RT_ICON` 最大 256² 画幅等比缩 64 出货、不上采样凑数；双副本入库（`frontend/src/assets/apps/airsnip.png` + `internal/app/appicons/airsnip.png`）另配 `menus/airsnip.png` 16px 托盘菜单变体；图标资产随上游同 GPL-3.0 条款（2026-11-03 托管新模块补录） |
 | generic.png | —— | hanxi 自绘 | 取不到真图标/许可受限的统一回落徽标 |
 | ——（不入库） | RAMMap (Sysinternals) | 微软 Sysinternals 软件许可条款：禁再分发其二进制资产 | 位图不落仓库、不随发布物分发：默认矢量 `i:gauge`，装有机主本机官方 RAMMap64.exe 时走「红线图标运行期本机提取」节通道 |
 
