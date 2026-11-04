@@ -2,7 +2,7 @@
 
 > 本文档登记 Hanxi 集成或托管的第三方上游软件及其许可证义务，覆盖 frpc（上游 fatedier/frp）与全部托管桌面工具。
 >
-> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **34 款**（2026-11-04 `omp` 入库后现推；2026-11-03 `airsnip` 入库后曾为 33、原写 32；`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 34。
+> **托管款数口径（2026-10-12 对账订正）**：以 catalog `hosted-versions` 能力计数为准 = **33 款**（2026-11-04 `omp` 版本树方案整体拆除、退出能力列——官方安装通道仍在本节留告知条目，叙述列保留；同日曾短暂为 34；2026-11-03 `airsnip` 入库后曾为 33、原写 32；`internal/app/catalog.go`，判据为模块存在 `version/` 子包，由 `go run ./scripts/cataloggen` 确定性再生）。此前本文首段长期写「全部 25 款」——那是 piik/dbx/gonavi/windterm/termora/rammap 六款入库**之前**的时点值，六款许可证节直到本批才补齐（piik 一笔在 `docs/plans/PLAN_PIIK_HOSTING.md` §条目 13 与 `docs/plans/PLAN_REMAINING_WORK.md` 落账中被明令写入并注「实际写入留总闸」，总闸 `0a400de`/`6fc61b6` 已入库而告知文档始终未同步，属被计划点名却漏执行的合规债）。另 **EarTrumpet** 属纳管特例（只纳管官方直装渠道、不属 `hosted-versions` 口径），故它有节但不计入 33。
 >
 > 注意别把两把尺混用：下方「托管工具真图标」一节的 **30 枚**是 appicons **台账内嵌 PNG** 口径（含 frpc/ddnsgo 等 48px 封顶件、不含 recordly/vscode/rammap 等许可受限不入库件；2026-11-04 起含 `omp.png` 一枚**自绘** π 徽标——上游图标未随单文件 exe 以可提取画幅出货，识别性自绘件入台账与 `sources.go` 双向锁死，非上游美术资产），与本段托管款数无对应关系。
 >

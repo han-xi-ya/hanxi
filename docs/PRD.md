@@ -14,7 +14,7 @@
 Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装、管理与运行常用开源软件。产品由两条主线构成：
 
 1. **自建功能模块**：frpc 内网穿透、微信机器人、网络测试（端口扫描/代理）/SSH 密钥管理/查杀、局域网发现、公网诊断、WiFi 密码、开发环境检测、软件版本跟踪、系统信息、WSL2 就绪体检、局域网文件快传、文字识别（OCR）、随手记、**剪贴板历史**、网页应用、右键快捷菜单、桌面留言板、JSON 美化 / 内嵌终端等 21 项（另 EarTrumpet 纳管特例按 catalog 能力口径落在本侧），能力原生内置于单二进制；
-2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、WindTerm、Termora、RAMMap、**Piik 屏幕分享、DBX、GoNavi 数据库客户端**、抖音下载器（Douzy）、HEU KMS 激活工具、AirSnip 轻截、Oh My Pi（omp）等 34 款工具（原写 32/33，2026-11-04 `omp` 入库后现推），以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；骨架例外六条如实见 §2.2 前言——Douzy 仅"版本 + 下载"、NanaZip 为 MSIX 安装管理型、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型、HEU KMS 解包器特例（RAR5 而非 zip，可安装集更窄）、Oh My Pi 纯 TUI 仅版本树托管）。
+2. **第三方桌面工具托管**：Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、CCSwitch、MarkerOn、FlClash、NanaZip、EarTrumpet、BCU、MangoDisk、Recordly、PaperTodo、PicLite、果核看图、ddns-go、RustDesk/SubnetDesk 远程桌面、Rufus、Bili23 Downloader、VS Code、TranslucentTB、Paseo、WindTerm、Termora、RAMMap、**Piik 屏幕分享、DBX、GoNavi 数据库客户端**、抖音下载器（Douzy）、HEU KMS 激活工具、AirSnip 轻截、Oh My Pi（omp）等 34 款工具（原写 32/33，2026-11-04 `omp` 入库后现推），以统一"托管模式"纳管（版本管理 + 完整性校验 + 进程监管 + 前端控制台；骨架例外六条如实见 §2.2 前言——Douzy 仅"版本 + 下载"、NanaZip 为 MSIX 安装管理型、EarTrumpet 只纳管官方直装渠道、Piik 为 headless 服务型、HEU KMS 解包器特例（RAR5 而非 zip，可安装集更窄）、Oh My Pi 走官方安装通道特例）。
 
 所有能力以平等模块身份注册到统一入口，按需懒加载启停。
 
@@ -33,7 +33,7 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 
 ## 2. 模块能力矩阵
 
-### 2.1 自建功能模块（21）
+### 2.1 自建功能模块（22）
 
 | 模块名称 | 模块标识 | 核心能力说明 | 安全与特权机制 |
 | :--- | :--- | :--- | :--- |
@@ -59,13 +59,13 @@ Hanxi 是一个面向 Windows 的**开源工具工作台**，用于集中安装�
 | **桌面留言板** | `msgboard` | 离开工位一键全屏挂出离岗告示牌（内置预设模板 + 自定义文案字号、可选副屏单屏挂牌），托盘/轮盘/全局热键三通道唤出 | frameless 真透明置顶窗按需创建、撤牌即真销毁；挂牌期间经 KeepAwake 引用计数聚合器阻止系统/显示器休眠，撤牌即释放 |
 | **剪贴板历史** | `clipboard` | 系统剪贴板全量历史：文本/图片/文件三类持续捕获入档、关键词与类型/标签检索、去重置顶、条目与体积上限自动淘汰（容量自钳制，常驻内存有界）、全局热键唤起独立浮层随处选取并支持"粘回原窗"（首版回填能力限**文本**，图片/文件条目供检索查看）、缩略图内联预览、MCP 只读检索接入 | 本机明文落盘——按 v1.6 机主裁决**不引 DPAPI 绑定、不作"加密"承诺**（旧 DPAPI 口径已随裁决作废），同时对敏感来源做排除；MCP 出机面为硬约束口径：命中密钥启发式的条目整条不下发且不计入命中数、图片条目只给元数据不经通道传内容、所有文本面统一行级脱敏（IPv4/邮箱/`token=`/`sk-` 类密钥掩码） |
 
-### 2.2 第三方工具托管模块（34）
+### 2.2 第三方工具托管模块（33）
 
 统一骨架：`version/` 版本管理子包（ListReleases / DownloadVersion / RemoveVersion / 本地导入）+ `instance/` 实例引擎子包（JobObject 启停、状态探测、唤窗、跟随退出）+ 前端托管控制台视图。
 
-**骨架例外（2026-10-12 按仓内子包实扫订正，原只列 douzy 一条、漏两条；2026-10-21 随 heukms 入库补列第五条，其骨架齐备、特例在解包器与可安装集；2026-11-04 随 omp 入库补列第六条）**：①`douzy` 上游尚处内测期且 Windows 仅 NSIS 安装版，止步于 `version/` 版本管理与安装包下载拉起，不做进程托管（**无 `instance/`**）；②`nanazip` 属 MSIX 安装管理型，交 Windows 为当前用户安装/卸载、不绑 JobObject（**无 `instance/`**）；③`eartrumpet` 只纳管官方直装渠道（AUMID 激活 + AppInstaller 清单校验），**既无 `version/` 亦无 `instance/`**，因此它出现在本表却**不计入** catalog `hosted-versions` 能力计数；④`frpc` 反向——它在 §2.1 自建叙述列，但具备 `version/` 能力，故计入 `hosted-versions` 34；⑤`heukms` 骨架齐备（`version/` + `instance/`）但**解包器不同**：上游当前双发 UDF 镜像 iso 与 rar，iso 侧真实内容在 UDF（纯 Go 与系统 bsdtar 都读不到）故不解析，改由 `nwaples/rardecode` 解 RAR5；可安装集也更窄——只有"有 rar 资产且 GitHub 挂官方 digest"的版本入列（内核 Fetch 强制摘要校验），62.0.0 及更早走「导入本地」兜底；⑥`omp`——**纯 TUI 编码代理仅版本树托管**：有 `version/` 无 `instance/`（与 douzy 同族止步形态，但下载/校验/落位全量委托 `artifact` 内核非 bespoke），omp 必须附着控制台终端交互，启停/探测/唤窗为负裁决（见 `internal/modules/omp` 包注释）；「激活版本」语义=标记版本树中哪个 exe 供用户 PATH/嵌入终端/Paseo 取用，本模块不拉起；页面同时提供「官方安装方式」一键通道（代跑官方 install.ps1 落 %LOCALAPPDATA%\omp 并打理 PATH，装/更/卸三键），与版本树并存、各管各产物。
+**骨架例外（2026-10-12 按仓内子包实扫订正，原只列 douzy 一条、漏两条；2026-10-21 随 heukms 入库补列第五条，其骨架齐备、特例在解包器与可安装集；2026-11-04 随 omp 入库补列第六条）**：①`douzy` 上游尚处内测期且 Windows 仅 NSIS 安装版，止步于 `version/` 版本管理与安装包下载拉起，不做进程托管（**无 `instance/`**）；②`nanazip` 属 MSIX 安装管理型，交 Windows 为当前用户安装/卸载、不绑 JobObject（**无 `instance/`**）；③`eartrumpet` 只纳管官方直装渠道（AUMID 激活 + AppInstaller 清单校验），**既无 `version/` 亦无 `instance/`**，因此它出现在本表却**不计入** catalog `hosted-versions` 能力计数；④`frpc` 反向——它在 §2.1 自建叙述列，但具备 `version/` 能力，故计入 `hosted-versions` 34；⑤`heukms` 骨架齐备（`version/` + `instance/`）但**解包器不同**：上游当前双发 UDF 镜像 iso 与 rar，iso 侧真实内容在 UDF（纯 Go 与系统 bsdtar 都读不到）故不解析，改由 `nwaples/rardecode` 解 RAR5；可安装集也更窄——只有"有 rar 资产且 GitHub 挂官方 digest"的版本入列（内核 Fetch 强制摘要校验），62.0.0 及更早走「导入本地」兜底；⑥`omp`——**官方安装通道特例（2026-11-04 版本树方案整体拆除后改判）**：`version/` 与 `instance/` 皆无，既不入 catalog 能力计数、也不接管进程；页面一键装/更/卸=代跑官方 `install.ps1`（落 `%LOCALAPPDATA%\omp` 并打理 PATH，卸载保留 `~/.omp` 数据根）；追更感知归 envcheck 的 omp 对照卡，本模块刻意不实现 CheckUpdate（分工裁决见包注释，勿当遗漏补）。
 
-⚠ 两把尺勿互证：本表 **34 行**按叙述归类（含 eartrumpet、frpc 归 §2.1），catalog `hosted-versions` **34 款**按能力计数（含 frpc、不含 eartrumpet）——同数不同集合（原写 32/32、33/33，2026-11-04 `omp` 入库同进两列后现推 34/34，巧合延续仍不可互证），权威口径由 `go run ./scripts/cataloggen` 产物锁定。
+⚠ 两把尺勿互证：本表 **34 行**按叙述归类（含 eartrumpet、`omp`；frpc 归 §2.1），catalog `hosted-versions` **33 款**按能力计数（含 frpc，不含 eartrumpet 与 `omp`）——数值与集合皆不同（2026-11-04 `omp` 版本树拆除后能力列自 34 回落 33，此前同数巧合终结，严禁互证），权威口径由 `go run ./scripts/cataloggen` 产物锁定。
 
 | 模块名称 | 模块标识 | 上游项目 | 许可证 | 托管形态与差异点 |
 | :--- | :--- | :--- | :--- | :--- |

@@ -32,7 +32,7 @@ Hanxi 严格遵循整洁架构原则，分层自上而下单向依赖，禁止�
 │ 自建: frpc 网络  │ │ 期 + 四维状态目  │ │ 便携路径解析 │
 │ 诊断 环境检测    │ │ 录/安装凭据/调用 │ │ 与配置持久化 │
 │ 快传 随手记等    │ │ 门/更新感知契约  │ │ ReceiptStore │
-│ 托管: 34 款桌面  ├──────────────────┤ │ 安装凭据存储 │ （框宽等宽 32→33→34；原写 32/33，2026-11-04 `omp` 入库后现推 34）
+│ 托管: 33 款桌面  ├──────────────────┤ │ 安装凭据存储 │ （框宽等宽 32→33→34→33；2026-11-04 `omp` 入库曾至 34、版本树拆除后回落 33）
 │ 工具 version+    │ │ internal/product │ ├──────────────┤
 │ instance 子包    │ │ 品牌身份常量     │ │ internal/    │
 │ （资产与进程主流 │ ├──────────────────┤ │ notify 通知  │
@@ -122,7 +122,7 @@ type Module interface {
 
 ### 2.3 外部工具托管架构（Managed Integration）
 
-34 款第三方桌面工具按同一标准骨架纳管（原写 31/32/33，2026-11-04 `omp` 入库后现推 34）（"款"= catalog `hosted-versions` 能力计数，判据为存在 `version/` 子包，2026-10-12 按 `internal/modules/*/version` 实扫核得；原写 25 系 piik/dbx/gonavi/windterm/termora/rammap 六款入库前的时点值），每模块三件套（例外：`douzy` 上游尚处内测期、无便携形态，刻意止步于 `version/` 版本管理 + 安装包下载，不做进程托管、无 `instance/` 子包；`nanazip` 为 MSIX Bundle 形态，同样止步 `version/` 验签拆包，无 instance 面；`eartrumpet` 反之——无 `version/` 亦无 `instance/`，只经 AUMID 纳管官方直装渠道，故不入本计数但仍在托管叙述列；`omp` 与 `douzy` 同止步形态——有 `version/` 无 `instance/`，纯 TUI 编码代理仅版本树托管，但版本段全量委托内核而非 bespoke）：
+33 款第三方桌面工具按同一标准骨架纳管（原写 31/32/33；2026-11-04 `omp` 版本树曾入列至 34、当日拆除回落 33——`omp` 改按官方安装通道特例，见下）（"款"= catalog `hosted-versions` 能力计数，判据为存在 `version/` 子包，2026-10-12 按 `internal/modules/*/version` 实扫核得；原写 25 系 piik/dbx/gonavi/windterm/termora/rammap 六款入库前的时点值），每模块三件套（例外：`douzy` 上游尚处内测期、无便携形态，刻意止步于 `version/` 版本管理 + 安装包下载，不做进程托管、无 `instance/` 子包；`nanazip` 为 MSIX Bundle 形态，同样止步 `version/` 验签拆包，无 instance 面；`eartrumpet` 反之——无 `version/` 亦无 `instance/`，只经 AUMID 纳管官方直装渠道，故不入本计数但仍在托管叙述列；`omp` 为官方安装通道特例——`version/` 与 `instance/` 皆无（版本树方案 2026-11-04 整体拆除），不入本计数、不接管进程，页面代跑官方 install.ps1 完成装/更/卸）：
 
 ```text
 internal/modules/<tool>/

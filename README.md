@@ -1,7 +1,7 @@
 # Hanxi
 
 > **开源工具工作台**（Go + Wails v3 + Vue 3）
-> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、剪贴板历史、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、Piik 屏幕分享、DBX/GoNavi 数据库客户端、抖音下载器、HEU KMS 激活工具、AirSnip 轻截、Oh My Pi 终端编码代理等 34 款——原写 32/33，2026-11-04 `omp` 入库后现推），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
+> 集中安装、管理与运行常用开源软件。Hanxi 以两条主线组织能力：**自建功能模块**（frpc 内网穿透、网络诊断、端口查杀、开发环境检测、WSL2、局域网快传、随手记、剪贴板历史、右键快捷菜单等）与**第三方桌面工具托管**（Snipaste、Everything、QuickLook、Keyviz、LiteMonitor、NanaZip、EarTrumpet、果核看图、ddns-go、VS Code、TranslucentTB、Rufus、RustDesk / SubnetDesk 远程桌面、Bili23 Downloader、Paseo 编排器、WindTerm/Termora 终端、RAMMap 内存观察、Piik 屏幕分享、DBX/GoNavi 数据库客户端、抖音下载器、HEU KMS 激活工具、AirSnip 轻截、Oh My Pi 终端编码代理等 33 款入能力计数（叙述列另含 eartrumpet/omp 两特例；原写 32/33，2026-11-04 `omp` 版本树拆除后自 34 回落），统一提供版本管理、完整性校验、JobObject 进程托管、系统托盘与本地数据管理能力。
 >
 > **v0.3.0 品牌断代**：产品标识、进程名和数据之家已切换为 Hanxi，不读取旧版数据、自启项或单实例标识（数据根现行模型：exe 同级 `hanxidata/` 默认 + `hanxi.bind` 显式绑定，**"便携/标准"双模式判定已整体退役**，权威语义见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 持久化一节与 [docs/PRD.md](docs/PRD.md)）。
 
@@ -120,7 +120,7 @@
 
 ### 二、第三方桌面工具托管（托管模式）
 
-Hanxi 将 34 款常用开源/免费桌面工具纳入统一管理（原写 32/33，2026-11-04 `omp` 入库后现推；"款"的口径 = catalog `hosted-versions` 能力计数，判据为模块存在 `version/` 子包，详见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) 头部说明；EarTrumpet 属纳管特例不计入）。除 frpc 等特例外，托管模块共享同一套标准骨架：
+Hanxi 将 33 款常用开源/免费桌面工具纳入统一管理（原写 32/33/34；2026-11-04 `omp` 版本树方案拆除后退出能力计数，其官方安装通道叙述行保留；"款"的口径 = catalog `hosted-versions` 能力计数，判据为模块存在 `version/` 子包，详见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) 头部说明；EarTrumpet 与 `omp`（官方安装通道）属特例不计入）。除 frpc 等特例外，托管模块共享同一套标准骨架：
 
 - **版本管理**：上游 Releases / 官网清单侦查 → 多层完整性校验（GitHub digest / SHA256SUMS / 官方哈希清单 / 字节数 + PE 版本核对）→ 下载、本地导入与版本删除；
 - **进程托管**：Windows JobObject 绑定的启停引擎、进程枚举/互斥体探测运行态、Win32 唤窗 / 官方单实例命令通道唤起窗口、"跟随 Hanxi 退出"开关（**默认关闭**：Hanxi 退出不影响已托管工具独立运行）、桌面快捷方式创建；
@@ -238,7 +238,7 @@ hanxi/
 │  ├─ domain/                   # 纯领域模型 (Project, ServerConfig, ProxyRule, Snapshot 等)
 │  ├─ extapi/                   # 模块插件化抽象（Module 契约 / 懒加载注册中心 / 导航与启用状态）
 │  ├─ notify/                   # 全局通知中心（分级通知 Hub 与前端事件推送）
-│  ├─ modules/                  # 54 个功能模块（自建能力 21 + 工具托管 33，按 catalog 权威计数对账）
+│  ├─ modules/                  # 55 个功能模块（自建能力 22 + 工具托管 33，按 catalog 权威计数对账）
 │  │  ├─ 自建能力               # frpc / wechat / portscan / sshkeys / portkill / lan / publicip
 │  │  │                         # / wifi / envcheck / wsl / fileshare / memo / quickmenu
 │  │  │                         # / sysinfo / ocr / softver / webapp / msgboard / clipboard / jsonfmt / terminal
