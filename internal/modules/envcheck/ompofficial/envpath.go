@@ -1,4 +1,4 @@
-package omp
+package ompofficial
 
 import "strings"
 

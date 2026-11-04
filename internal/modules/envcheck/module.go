@@ -37,7 +37,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "开发环境检测",
 		Version:     "0.7.0",
-		Description: "检测本机开发工具链（含 git 全局配置脱敏查看），查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载",
+		Description: "检测本机开发工具链（含 git 全局配置脱敏查看），查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载；另含 Oh My Pi (omp) 官方安装通道——一键装/更/卸代跑官方 install.ps1（卸载保留 ~/.omp 数据根）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

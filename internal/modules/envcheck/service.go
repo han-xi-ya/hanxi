@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wailsapp/wails/v3/pkg/application"
+
 	"hanxi/internal/extapi"
 	"hanxi/internal/modules/envcheck/detect"
 	"hanxi/internal/modules/envcheck/diskusage"
@@ -18,9 +20,12 @@ import (
 	"hanxi/internal/modules/envcheck/javaversion"
 	"hanxi/internal/modules/envcheck/nodeversion"
 	"hanxi/internal/modules/envcheck/npmtool"
+	"hanxi/internal/modules/envcheck/ompofficial"
 	"hanxi/internal/modules/envcheck/ompversion"
 	"hanxi/internal/modules/envcheck/pythonversion"
 	"hanxi/internal/modules/envcheck/remoteversion"
+	"hanxi/internal/notify"
+	"hanxi/internal/platform/windows"
 )
 
 // urlOpener 是 EnvCheckService 打开固定官网地址所需的最小平台能力。
@@ -45,6 +50,11 @@ type EnvCheckService struct {
 	ompChannels     func() ([]remoteversion.Channel, bool, time.Time, error)
 	npmOverview     func(context.Context) (npmtool.Overview, error)
 	collectUsage    func(context.Context, []detect.ToolInfo) []diskusage.ToolUsage
+
+	// omp 官方安装通道（装/更/卸，见 ompofficial 包）：同一时刻只允许一趟官方脚本。
+	ompOfficial     *ompofficial.Manager
+	ompOfficialMu   sync.Mutex
+	ompOfficialBusy bool
 }
 
 // NewEnvCheckService 装配探测与各官网版本源。字段全部为函数值注入（而非直连包函数），
@@ -64,6 +74,7 @@ func NewEnvCheckService(opener urlOpener, holder *extapi.LeaseHolder) *EnvCheckS
 		ompChannels:     ompversion.Channels,
 		npmOverview:     npmtool.BuildOverview,
 		collectUsage:    diskusage.Collect,
+		ompOfficial:     ompofficial.New(),
 	}
 }
 
@@ -394,6 +405,121 @@ func (s *EnvCheckService) OpenOmpDownloadPage() error {
 	}
 	defer release()
 	return s.openURL("Oh My Pi", ompversion.DownloadPageURL())
+}
+
+// ---------- Oh My Pi 官方安装通道（自 internal/modules/omp 并入，2026-11-04）----------
+
+// GetOmpOfficialStatus 官方装件现场探测（目录/在场/实探版本/PATH 收录/数据根）。
+func (s *EnvCheckService) GetOmpOfficialStatus() (ompofficial.Status, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ompofficial.Status{}, gateErr
+	}
+	defer release()
+	return s.ompOfficial.Probe(), nil
+}
+
+// InstallOmpOfficial 一键安装=后台跑官方 install.ps1 -Binary（下载最新单文件、
+// 官方自校验、落 %LOCALAPPDATA%\omp、写 PATH、Git Bash 接线全套官方行为；
+// 瞬时网络失败自动重试，见 ompofficial.RunScript）。进度经事件
+// envcheck:omp-official-op 回流；已在跑则报 in-progress。
+func (s *EnvCheckService) InstallOmpOfficial() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return s.startOmpOfficial("install")
+}
+
+// UpdateOmpOfficial 一键更新=再跑一遍官方脚本（脚本语义即"拉最新覆盖装"，幂等）。
+func (s *EnvCheckService) UpdateOmpOfficial() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return s.startOmpOfficial("update")
+}
+
+// startOmpOfficial install/update 共用编排（调用门由两个导出 RPC 各自持有，本私有件
+// 承接已放行路径；互斥 ompOfficialBusy 槽位）。
+func (s *EnvCheckService) startOmpOfficial(op string) (string, error) {
+	s.ompOfficialMu.Lock()
+	if s.ompOfficialBusy {
+		s.ompOfficialMu.Unlock()
+		return "in-progress", nil
+	}
+	s.ompOfficialBusy = true
+	s.ompOfficialMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.ompOfficialMu.Lock()
+			s.ompOfficialBusy = false
+			s.ompOfficialMu.Unlock()
+		}()
+		emit := func(stage, msg string) {
+			if app := application.Get(); app != nil && app.Event != nil {
+				app.Event.Emit("envcheck:omp-official-op", ompofficial.OpProgress{Op: op, Stage: stage, Message: msg})
+			}
+		}
+		emit("running", "正在执行官方安装脚本（下载校验全程由脚本自理）…")
+		lease, leaseErr := s.holder.EnterBackground(context.Background())
+		if leaseErr != nil {
+			emit("error", leaseErr.Error())
+			return
+		}
+		defer lease.Release()
+		out, err := s.ompOfficial.RunScript(lease.Context())
+		if err != nil {
+			emit("error", fmt.Sprintf("%s: %v", firstLineFallback(out, "脚本无输出"), err))
+			notify.Error("envcheck", "omp 官方脚本失败", err.Error(), "/ext/envcheck")
+			return
+		}
+		verb := "安装"
+		if op == "update" {
+			verb = "更新"
+		}
+		emit("done", fmt.Sprintf("omp 已%s：%s", verb, s.ompOfficial.Probe().OfficialVersion))
+		notify.Success("envcheck", "omp 官方"+verb+"完成", "新开终端敲 omp 即可使用（凭据与数据在 ~/.omp 未动）", "/ext/envcheck")
+	}()
+	return "started", nil
+}
+
+// OpenOmpDataDir 在资源管理器中 reveal omp 数据根 ~/.omp（windows.RevealDir
+// 仅目录语义；markeron「打开安装目录」事故教训，绝不对文件路径调用）。
+func (s *EnvCheckService) OpenOmpDataDir() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	dir := s.ompOfficial.Probe().DataDir
+	if dir == "" {
+		return fmt.Errorf("无法定位用户主目录（omp 数据根 ~/.omp）")
+	}
+	return windows.RevealDir(dir)
+}
+
+// UninstallOmpOfficial 一键卸载=删官方目录 + 从用户 PATH 剔除该条目 + 广播；
+// ~/.omp 数据根（凭据/会话/记忆）按官方口径保留。危险确认在前端。
+func (s *EnvCheckService) UninstallOmpOfficial() (string, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return "", gateErr
+	}
+	defer release()
+	return s.ompOfficial.Uninstall()
+}
+
+// firstLineFallback 取脚本输出首行做错误简报，空则用兜底文案。
+func firstLineFallback(out, fallback string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	if line != "" {
+		return line
+	}
+	return fallback
 }
 
 func (s *EnvCheckService) getChannelOverview(

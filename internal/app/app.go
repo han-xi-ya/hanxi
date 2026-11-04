@@ -39,6 +39,7 @@ import (
 	"hanxi/internal/modules/eartrumpet"
 	"hanxi/internal/modules/envcheck"
 	"hanxi/internal/modules/envcheck/npmtool"
+	"hanxi/internal/modules/envcheck/ompofficial"
 	"hanxi/internal/modules/everything"
 	everythinginstance "hanxi/internal/modules/everything/instance"
 	evversion "hanxi/internal/modules/everything/version"
@@ -76,7 +77,6 @@ import (
 	"hanxi/internal/modules/msgboard"
 	"hanxi/internal/modules/nanazip"
 	"hanxi/internal/modules/ocr"
-	"hanxi/internal/modules/omp"
 	"hanxi/internal/modules/papertodo"
 	papertodoinstance "hanxi/internal/modules/papertodo/instance"
 	papertodoversion "hanxi/internal/modules/papertodo/version"
@@ -260,7 +260,7 @@ func RegisterEvents() {
 	application.RegisterEvent[paseoversion.DownloadProgress]("paseo:version-download")
 	application.RegisterEvent[paseoinstance.Snapshot]("paseo:instance-state")
 	application.RegisterEvent[douzyversion.DownloadProgress]("douzy:version-download")
-	application.RegisterEvent[omp.OfficialOpProgress]("omp:official-op")
+	application.RegisterEvent[ompofficial.OpProgress]("envcheck:omp-official-op")
 	// piik 托管两事件按装配线冻结命名接线（值类型 piikversion.DownloadProgress /
 	// piikinstance.Snapshot）；A 线若改名，以此两行与 fixture 为准收口。
 	application.RegisterEvent[piikversion.DownloadProgress]("piik:version-download")
@@ -532,7 +532,6 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 		litemonitor.New(plat),
 		heukms.New(plat),
 		airsnip.New(plat),
-		omp.New(plat),
 		gonavi.New(plat),
 		dbx.New(plat),
 		guoheview.New(plat),

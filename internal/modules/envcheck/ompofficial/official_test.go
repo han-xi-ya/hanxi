@@ -1,4 +1,4 @@
-package omp
+package ompofficial
 
 import (
 	"context"
@@ -20,8 +20,8 @@ type fakeOps struct {
 	present    bool
 }
 
-func (f *fakeOps) hooks(dir string) *officialOps {
-	return &officialOps{
+func (f *fakeOps) hooks(dir string) *Manager {
+	return &Manager{
 		dir:       dir,
 		readPath:  func() (string, error) { return f.path, nil },
 		writePath: func(v string) error { f.writes++; f.path = v; return nil },
@@ -50,11 +50,11 @@ func TestRunOfficialScriptSuccessAndExistenceGuard(t *testing.T) {
 	o := f.hooks(dir)
 
 	// 脚本"成功"但文件没落位——兜底核对必须拦下（防信错脚本自报）
-	if _, err := o.runOfficialScript(context.Background()); err == nil {
+	if _, err := o.RunScript(context.Background()); err == nil {
 		t.Fatalf("缺文件兜底核对必须报错")
 	}
 	withPresent(t, dir)
-	out, err := o.runOfficialScript(context.Background())
+	out, err := o.RunScript(context.Background())
 	if err != nil || out != "" {
 		t.Errorf("在场后应通过：%q/%v", out, err)
 	}
@@ -67,7 +67,7 @@ func TestOfficialUninstallReclaimsAndPreservesData(t *testing.T) {
 	f := &fakeOps{path: `C:\Windows;` + elsewhere + `;` + dir}
 	o := f.hooks(dir)
 
-	msg, err := o.uninstall()
+	msg, err := o.Uninstall()
 	if err != nil {
 		t.Fatalf("uninstall: %v", err)
 	}
@@ -92,14 +92,17 @@ func TestOfficialProbeFourFacts(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "omp")
 	f := &fakeOps{path: `C:\Windows;` + dir}
 	o := f.hooks(dir)
-	_, present, ver, onPath := o.probe()
-	if present || ver != "" || !onPath {
-		t.Errorf("无文件应 present=false/ver 空、PATH 命中：%v/%q/%v", present, ver, onPath)
+	st := o.Probe()
+	if st.OfficialPresent || st.OfficialVersion != "" || !st.OnPath {
+		t.Errorf("无文件应 present=false/ver 空、PATH 命中：%+v", st)
 	}
 	withPresent(t, dir)
-	_, present, ver, _ = o.probe()
-	if !present || ver != "omp/18.16.0" {
-		t.Errorf("在场应探出实版：%v/%q", present, ver)
+	st = o.Probe()
+	if !st.OfficialPresent || st.OfficialVersion != "omp/18.16.0" {
+		t.Errorf("在场应探出实版：%+v", st)
+	}
+	if st.DataDir == "" || st.OfficialDir != dir {
+		t.Errorf("数据根/目录字段缺失：%+v", st)
 	}
 }
 
@@ -122,11 +125,11 @@ func TestEnvpathPureFunctions(t *testing.T) {
 }
 
 func TestRunOfficialScriptRetriesTransientFailure(t *testing.T) {
-	officialRetryBackoff = func(int) time.Duration { return time.Millisecond }
+	retryBackoff = func(int) time.Duration { return time.Millisecond }
 	dir := filepath.Join(t.TempDir(), "omp")
 	withPresent(t, dir)
 	calls := 0
-	o := &officialOps{dir: dir,
+	o := &Manager{dir: dir,
 		readPath: func() (string, error) { return "", nil }, writePath: func(string) error { return nil },
 		broadcast: func() {},
 		runScript: func(ctx context.Context) (string, error) {
@@ -138,7 +141,7 @@ func TestRunOfficialScriptRetriesTransientFailure(t *testing.T) {
 		},
 		probeVer: func(string) string { return "omp/18.16.0" }}
 
-	out, err := o.runOfficialScript(context.Background())
+	out, err := o.RunScript(context.Background())
 	if err != nil || calls != 3 {
 		t.Fatalf("应自动重试至第 3 次成功：%v calls=%d", err, calls)
 	}
@@ -148,13 +151,13 @@ func TestRunOfficialScriptRetriesTransientFailure(t *testing.T) {
 }
 
 func TestRunOfficialScriptCancelBeatsRetry(t *testing.T) {
-	o := &officialOps{dir: filepath.Join(t.TempDir(), "omp"),
+	o := &Manager{dir: filepath.Join(t.TempDir(), "omp"),
 		readPath: func() (string, error) { return "", nil }, writePath: func(string) error { return nil },
 		broadcast: func() {}, probeVer: func(string) string { return "" },
 		runScript: func(ctx context.Context) (string, error) { return "", errors.New("transient") }}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := o.runOfficialScript(ctx); err == nil {
+	if _, err := o.RunScript(ctx); err == nil {
 		t.Fatalf("已取消的 ctx 必须立即失败，不进重试")
 	}
 }

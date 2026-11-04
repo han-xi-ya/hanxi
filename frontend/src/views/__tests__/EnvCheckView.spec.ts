@@ -597,13 +597,15 @@ describe('EnvCheckView 空间家底区块', () => {
 })
 
 describe('EnvCheckView 订阅生命周期', () => {
-  it('卸载后两个事件订阅全部注销', async () => {
+  it('卸载后三个事件订阅全部注销（2026-11-04 起含 omp 官方通道进度流）', async () => {
     stubHappy()
     const w = await mountView()
     await flush()
-    expect(Object.keys(runtime.handlers).sort()).toEqual(['envcheck:npm-tool-log', 'envcheck:npm-tool-operation'])
+    expect(Object.keys(runtime.handlers).sort()).toEqual(
+      ['envcheck:npm-tool-log', 'envcheck:npm-tool-operation', 'envcheck:omp-official-op'],
+    )
     w.unmount()
     await nextTick()
-    expect(runtime.unlisten).toHaveBeenCalledTimes(2)
+    expect(runtime.unlisten).toHaveBeenCalledTimes(3)
   })
 })

@@ -1,6 +1,6 @@
 //go:build windows
 
-package omp
+package ompofficial
 
 import (
 	"context"
@@ -14,10 +14,9 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// official_windows.go：官方路线的 Windows 原语落地——用户 PATH 注册表读写
+// official_windows.go：官方安装通道的 Windows 原语落地——用户 PATH 注册表读写
 // （HKCU\Environment，RRF_NOEXPAND 保原文回写，不把 %USERPROFILE% 烧成展开串）、
-// WM_SETTINGCHANGE 广播、官方 install.ps1 执行、装件版本实探。
-// 单测走 official.go 接缝假件，本件只在真机装配（仿 airsnip 构造注入）。
+// WM_SETTINGCHANGE 广播、官方 install.ps1 执行、装件版本实探。单测走接缝假件。
 
 var (
 	advapi32                = syscall.NewLazyDLL("advapi32.dll")
@@ -154,9 +153,9 @@ func tailOutput(s string, n int) string {
 	return "…" + s[len(s)-n:]
 }
 
-// newOfficialOps 组装真实 Windows 官方路线操作集。
-func newOfficialOps() *officialOps {
-	return &officialOps{
+// New 组装真实 Windows 官方安装通道编排器。
+func New() *Manager {
+	return &Manager{
 		dir:       officialDir(),
 		readPath:  readUserPathRaw,
 		writePath: writeUserPathRaw,

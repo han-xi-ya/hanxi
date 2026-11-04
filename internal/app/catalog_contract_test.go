@@ -54,10 +54,10 @@ func TestModuleCatalogCoversComposition(t *testing.T) {
 	if diff := diffLines(want, got); diff != "" {
 		t.Fatalf("Catalog ID 集合与 composition contract modules 不一致 (-want +got):\n%s", diff)
 	}
-	// 55：内建模块总数硬闸——增删模块必须同改此处与 composition contract，
+	// 54：内建模块总数硬闸——增删模块必须同改此处与 composition contract，
 	// 数字本身即"有人真的数过"的凭证（旧文案写死"期望 51"曾是滞后标本）。
-	if len(got) != contract.Counts.Modules || contract.Counts.Modules != 55 {
-		t.Fatalf("Catalog 覆盖数量辅助断言: got %d, contract.counts.modules %d（期望 55）", len(got), contract.Counts.Modules)
+	if len(got) != contract.Counts.Modules || contract.Counts.Modules != 54 {
+		t.Fatalf("Catalog 覆盖数量辅助断言: got %d, contract.counts.modules %d（期望 54）", len(got), contract.Counts.Modules)
 	}
 }
 

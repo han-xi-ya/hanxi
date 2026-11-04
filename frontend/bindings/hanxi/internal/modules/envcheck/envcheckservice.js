@@ -42,6 +42,9 @@ import * as nodeversion$0 from "./nodeversion/models.js";
 import * as npmtool$0 from "./npmtool/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as ompofficial$0 from "./ompofficial/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as ompversion$0 from "./ompversion/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -126,6 +129,14 @@ export function GetNpmToolsOverview() {
 }
 
 /**
+ * GetOmpOfficialStatus 官方装件现场探测（目录/在场/实探版本/PATH 收录/数据根）。
+ * @returns {$CancellablePromise<ompofficial$0.Status>}
+ */
+export function GetOmpOfficialStatus() {
+    return $Call.ByID(3157201744);
+}
+
+/**
  * GetOmpOverview 并发查询本机 Oh My Pi 与官方 GitHub Releases 稳定版。
  * omp 走标准对照通道而非 npm 受管区：主流装法是官方脚本单文件（自更新 omp update），
  * npm 只是五种安装形态之一，装升卸按钮对脚本装无效，故只对比版本并指路更新。
@@ -164,6 +175,17 @@ export function GitGlobalConfig() {
  */
 export function InstallNpmTool(id) {
     return $Call.ByID(3774688029, id);
+}
+
+/**
+ * InstallOmpOfficial 一键安装=后台跑官方 install.ps1 -Binary（下载最新单文件、
+ * 官方自校验、落 %LOCALAPPDATA%\omp、写 PATH、Git Bash 接线全套官方行为；
+ * 瞬时网络失败自动重试，见 ompofficial.RunScript）。进度经事件
+ * envcheck:omp-official-op 回流；已在跑则报 in-progress。
+ * @returns {$CancellablePromise<string>}
+ */
+export function InstallOmpOfficial() {
+    return $Call.ByID(1876048043);
 }
 
 /**
@@ -207,6 +229,15 @@ export function OpenNodeDownloadPage() {
 }
 
 /**
+ * OpenOmpDataDir 在资源管理器中 reveal omp 数据根 ~/.omp（windows.RevealDir
+ * 仅目录语义；markeron「打开安装目录」事故教训，绝不对文件路径调用）。
+ * @returns {$CancellablePromise<void>}
+ */
+export function OpenOmpDataDir() {
+    return $Call.ByID(4225971508);
+}
+
+/**
  * OpenOmpDownloadPage 使用系统默认浏览器打开固定 omp 官网。
  * @returns {$CancellablePromise<void>}
  */
@@ -239,6 +270,23 @@ export function RevealToolPath(name) {
  */
 export function UninstallNpmTool(id) {
     return $Call.ByID(2315520918, id);
+}
+
+/**
+ * UninstallOmpOfficial 一键卸载=删官方目录 + 从用户 PATH 剔除该条目 + 广播；
+ * ~/.omp 数据根（凭据/会话/记忆）按官方口径保留。危险确认在前端。
+ * @returns {$CancellablePromise<string>}
+ */
+export function UninstallOmpOfficial() {
+    return $Call.ByID(1278481040);
+}
+
+/**
+ * UpdateOmpOfficial 一键更新=再跑一遍官方脚本（脚本语义即"拉最新覆盖装"，幂等）。
+ * @returns {$CancellablePromise<string>}
+ */
+export function UpdateOmpOfficial() {
+    return $Call.ByID(4097269403);
 }
 
 /**

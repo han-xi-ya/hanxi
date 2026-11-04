@@ -241,7 +241,7 @@
     {
       "id": "envcheck",
       "name": "开发环境检测",
-      "description": "检测本机开发工具链（含 git 全局配置脱敏查看），查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载",
+      "description": "检测本机开发工具链（含 git 全局配置脱敏查看），查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载；另含 Oh My Pi (omp) 官方安装通道——一键装/更/卸代跑官方 install.ps1（卸载保留 ~/.omp 数据根）",
       "category": "system",
       "deliveryKind": "builtin-logical",
       "capabilities": [
@@ -689,27 +689,6 @@
         "hotkey",
         "mcp",
         "window"
-      ],
-      "compatibility": {
-        "hostRange": "*",
-        "platform": [
-          "windows"
-        ]
-      },
-      "permissions": [],
-      "owner": "hanxi"
-    },
-    {
-      "id": "omp",
-      "name": "Oh My Pi 代理",
-      "description": "终端 TUI 编码代理 Oh My Pi (omp) 的官方安装通道：一键装/更/卸（代跑官方 install.ps1，含 PATH 打理与卸载回收，~/.omp 数据保留）；不接管进程运行、不自建版本树（追更感知归 envcheck 对照卡），负裁决详见包注释",
-      "category": "developer",
-      "deliveryKind": "builtin-logical",
-      "capabilities": [],
-      "entrypoints": [
-        "rpc",
-        "navigation",
-        "search"
       ],
       "compatibility": {
         "hostRange": "*",

@@ -52,6 +52,9 @@ import type * as version$6 from "../../../../../hanxi/internal/modules/douzy/ver
 import type * as npmtool$0 from "../../../../../hanxi/internal/modules/envcheck/npmtool/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as ompofficial$0 from "../../../../../hanxi/internal/modules/envcheck/ompofficial/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as everything$0 from "../../../../../hanxi/internal/modules/everything/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -122,9 +125,6 @@ import type * as nanazip$0 from "../../../../../hanxi/internal/modules/nanazip/m
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as ocr$0 from "../../../../../hanxi/internal/modules/ocr/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import type * as omp$0 from "../../../../../hanxi/internal/modules/omp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as instance$16 from "../../../../../hanxi/internal/modules/papertodo/instance/models.js";
@@ -258,6 +258,7 @@ declare module "@wailsio/runtime" {
             "douzy:version-download": version$6.DownloadProgress;
             "envcheck:npm-tool-log": npmtool$0.OperationLog;
             "envcheck:npm-tool-operation": npmtool$0.OperationProgress;
+            "envcheck:omp-official-op": ompofficial$0.OpProgress;
             "everything:download": everything$0.DownloadTicket;
             "everything:instance-state": instance$6.Snapshot;
             "ext:changed": void;
@@ -293,7 +294,6 @@ declare module "@wailsio/runtime" {
             "ocr:file-drop-result": ocr$0.DropResult;
             "ocr:service-state": ocr$0.ServiceState;
             "ocr:snip-result": ocr$0.SnipResult;
-            "omp:official-op": omp$0.OfficialOpProgress;
             "operation:changed": void;
             "papertodo:instance-state": instance$16.Snapshot;
             "papertodo:version-download": version$16.DownloadProgress;

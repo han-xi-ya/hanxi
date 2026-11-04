@@ -52,6 +52,62 @@ const loadError = ref('')
 const everLoaded = ref(false)
 const { showToast } = useToast()
 const { confirm } = useConfirm()
+
+// ---------- Oh My Pi 官方安装通道（omp 独立模块并入，2026-11-04）----------
+// 装/更/卸代跑官方 install.ps1（后端含瞬时失败自动重试）；状态全部现场探测零记账。
+const ompOfficial = ref<{ officialDir: string; officialPresent: boolean; officialVersion: string; onPath: boolean; dataDir: string } | null>(null)
+const ompOp = ref<{ op: string; stage: string; message: string } | null>(null)
+const ompBusy = ref(false)
+
+async function loadOmpOfficial() {
+  try {
+    ompOfficial.value = await EnvCheckAPI.GetOmpOfficialStatus()
+  } catch (e) {
+    console.warn('omp official status failed:', e)
+  }
+}
+
+async function runOmpOfficial(kind: 'install' | 'update' | 'uninstall') {
+  if (ompBusy.value) return
+  if (kind === 'uninstall') {
+    const accepted = await confirm({
+      title: '卸载官方 omp？',
+      description:
+        '将删除官方安装目录 %LOCALAPPDATA%\omp 并从用户 PATH 剔除该条目。你的配置 / 会话 / 记忆（在 ~/.omp）不受影响，保留原样。若有终端正在运行 omp，先退出再卸载。',
+      tone: 'danger',
+    })
+    if (!accepted) return
+  }
+  ompBusy.value = true
+  try {
+    const rpc = kind === 'install' ? EnvCheckAPI.InstallOmpOfficial : kind === 'update' ? EnvCheckAPI.UpdateOmpOfficial : EnvCheckAPI.UninstallOmpOfficial
+    const res = await (rpc() as Promise<unknown>)
+    if (kind === 'uninstall') {
+      showToast(typeof res === 'string' && res ? res : '已卸载')
+      await loadOmpOfficial()
+    } else {
+      const ret = res as string
+      showToast(ret === 'in-progress' ? '已有一趟官方脚本在跑，请等它结束' : '已在后台进行，进度见卡片')
+    }
+  } catch (e) {
+    showToast({ install: '安装失败', update: '更新失败', uninstall: '卸载失败' }[kind] + ': ' + String(e))
+  } finally {
+    ompBusy.value = false
+  }
+}
+
+async function openOmpDataDir() {
+  try {
+    await EnvCheckAPI.OpenOmpDataDir()
+  } catch (e) {
+    showToast('打开数据根失败: ' + String(e))
+  }
+}
+
+useWailsEvent<{ op: string; stage: string; message: string }>('envcheck:omp-official-op', (p) => {
+  ompOp.value = p
+  if (p.stage === 'done' || p.stage === 'error') loadOmpOfficial()
+})
 const { copyWithToast } = useClipboard()
 
 // ---------- 空间家底 ----------
@@ -402,6 +458,7 @@ useWailsEvent<OperationProgress>('envcheck:npm-tool-operation', (p) => p && hand
 useWailsEvent<OperationLog>('envcheck:npm-tool-log', (entry) => entry && handleNpmLog(entry))
 
 onMounted(() => {
+  loadOmpOfficial()
   void refresh()
 })
 </script>
@@ -602,6 +659,38 @@ onMounted(() => {
       <section class="workspace-section">
         <div class="section-heading">
           <div>
+            <h2>Oh My Pi 官方安装</h2>
+            <p>纯 TUI 编码代理 omp：一键代跑官方脚本装/更/卸（含 PATH 打理，瞬时网络失败自动重试）；装完新开终端直接敲 <code>omp</code>。追更对照见上方 Oh My Pi 卡片。</p>
+          </div>
+        </div>
+        <div class="management-grid compact-grid">
+          <article class="management-card">
+            <div class="local-summary">
+              <div>
+                <span class="tool-name">Oh My Pi (omp)</span>
+                <span v-if="ompOfficial?.officialPresent && ompOfficial?.onPath" class="chip status-chip chip-positive">已装 · {{ ompOfficial?.officialVersion || '版本未知' }} · 命令行可用</span>
+                <span v-else-if="ompOfficial?.officialPresent" class="chip status-chip chip-warning">已装（PATH 未含）</span>
+                <span v-else class="chip status-chip chip-neutral">未安装</span>
+              </div>
+              <code class="mono">{{ ompOfficial?.officialDir || '探测中…' }}</code>
+            </div>
+            <div v-if="ompOp" class="omp-op-line" :class="{ 'omp-op-error': ompOp.stage === 'error' }">
+              {{ ompOp.stage === 'error' ? '✗ ' : ompOp.stage === 'done' ? '✓ ' : '⏳ ' }}{{ ompOp.message }}
+            </div>
+            <div class="omp-op-actions">
+              <button v-if="!ompOfficial?.officialPresent" class="btn btn-primary btn-small" :disabled="ompBusy || ompOp?.stage === 'running'" @click="runOmpOfficial('install')">⚡ 安装（官方脚本）</button>
+              <button v-else class="btn btn-secondary btn-small" :disabled="ompBusy || ompOp?.stage === 'running'" @click="runOmpOfficial('update')">↑ 更新到最新版</button>
+              <button class="link-button" :disabled="ompBusy || ompOp?.stage === 'running' || !ompOfficial?.officialPresent" title="重跑官方脚本原地修复（幂等）" @click="runOmpOfficial('update')">修复/重装</button>
+              <button v-if="ompOfficial?.officialPresent || ompOfficial?.onPath" class="btn btn-ghost btn-small text-danger" :disabled="ompBusy" @click="runOmpOfficial('uninstall')">卸载</button>
+              <button class="link-button" :disabled="!ompOfficial?.dataDir" title="打开 ~/.omp（配置、凭据、会话与记忆库）" @click="openOmpDataDir()">打开数据根</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="workspace-section">
+        <div class="section-heading">
+          <div>
             <h2>包管理器升级指引</h2>
             <p>只提供可复制的安全指引，不在 Hanxi 内代为执行 npm 或 pnpm 自升级。</p>
           </div>
@@ -738,6 +827,11 @@ onMounted(() => {
 /* .btn-accent-outline 不挂 scoped 副本（含 hover）：落回全局 :where(.btn-accent-outline) */
 .tool-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .extra-lines { margin-left: auto; flex-shrink: 0; padding: 1px 7px; border-radius: var(--radius-pill); background: var(--state-information-soft); color: var(--state-information); font-size: var(--text-micro); }
+/* omp 官方安装通道局部（类名带模块前缀，house 纪律） */
+.omp-op-line { font-size: var(--text-sm); color: var(--color-text-muted); }
+.omp-op-error { color: var(--state-danger); }
+.omp-op-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
 @media (max-width: 768px) {
   .status-toolbar { align-items: stretch; flex-direction: column; gap: 10px; }
   .refresh-button { width: 100%; }

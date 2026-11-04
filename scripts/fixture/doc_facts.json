@@ -10,15 +10,15 @@
     "这类带帽史述，闸门必须放行「如实记录历史」，否则会把勘误本身报成漂移。"
   ],
   "facts": {
-    "moduleTotal": 55,
-    "selfBuiltModules": 22,
+    "moduleTotal": 54,
+    "selfBuiltModules": 21,
     "hostedVersions": 33,
     "managedProcess": 32,
     "artifactDelegators": 28,
     "supervisorDelegators": 25,
     "mcpTools": 12,
     "mcpAccessKeys": 10,
-    "appIcons": 30
+    "appIcons": 29
   },
   "activeDocs": [
     "README.md",

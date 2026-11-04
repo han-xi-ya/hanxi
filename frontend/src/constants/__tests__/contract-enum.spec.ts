@@ -111,9 +111,9 @@ describe('catalog.go 常量与 bindings enum 值一致（Go→TS 单向锁）', 
 // ── 第 3 层：fixture 基线 ──
 
 describe('module_catalog.json 契约基线', () => {
-  it('顶层 schema==1 且共 55 个模块项（2026-11-04 omp 入库）', () => {
+  it('顶层 schema==1 且共 54 个模块项（2026-11-04 omp 独立模块并入 envcheck 后回落）', () => {
     expect(moduleCatalog.schema).toBe(1)
-    expect(moduleCatalog.items).toHaveLength(55)
+    expect(moduleCatalog.items).toHaveLength(54)
   })
 
   it('每个模块项的 deliveryKind/entrypoints 取值均落在 bindings 枚举值集内', () => {
