@@ -31,6 +31,9 @@ type OmpService struct {
 	manager *version.Manager
 	store   *ompStore
 	holder  *extapi.LeaseHolder
+	launch  *launcher
+	binDir  string // 稳定命令入口目录 <BaseDir>/bin/omp（见 launcher.go 设计注释）
+	baseDir string // 便携根，供前端展示入口位置
 
 	downloadMu sync.Mutex
 	downloads  map[string]struct{}
@@ -45,8 +48,40 @@ func NewOmpService(plat platform.Platform, holder *extapi.LeaseHolder) *OmpServi
 		manager:   version.NewManager(paths.VersionsDir()),
 		store:     newOmpStore(paths.StateDir()),
 		holder:    holder,
+		launch:    newWindowsLauncher(),
+		binDir:    filepath.Join(paths.BaseDir(), "bin", "omp"),
+		baseDir:   paths.BaseDir(),
 		downloads: make(map[string]struct{}),
 	}
+}
+
+// InstallLauncher 一键"命令入口安装"（复刻官方脚本装完即敲 omp 的体验，归属 hanxi 版本树）：
+// 把激活版本的 exe 硬链接到稳定入口 `<BaseDir>\bin\omp\omp.exe`，首次安装幂等写入
+// 用户 PATH 并广播 WM_SETTINGCHANGE；此后升级/切换只需再点一次（只换链接不动注册表）。
+func (s *OmpService) InstallLauncher() (LauncherOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return LauncherOutcome{}, gateErr
+	}
+	defer release()
+	activeExe, err := s.manager.ResolveExe(strings.TrimPrefix(s.store.GetActive(), "v"))
+	if err != nil {
+		if activeExe, err = s.manager.ResolveExe(""); err != nil {
+			return LauncherOutcome{}, fmt.Errorf("版本树尚无可用 omp——请先下载或导入一个版本: %v", err)
+		}
+	}
+	return s.launch.install(s.binDir, activeExe)
+}
+
+// UninstallLauncher 回收命令入口：删本模块建的入口文件与自己那条 PATH；
+// 官方脚本装的 %LOCALAPPDATA%\omp 条目与目录不属本模块，原样不动。
+func (s *OmpService) UninstallLauncher() (LauncherOutcome, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return LauncherOutcome{}, gateErr
+	}
+	defer release()
+	return s.launch.uninstall(s.binDir)
 }
 
 // ---------- 版本管理 ----------
@@ -91,7 +126,8 @@ func (s *OmpService) GetStatus() (OmpStatus, error) {
 	}
 	defer release()
 
-	st := OmpStatus{ActiveVersion: s.store.GetActive()}
+	st := OmpStatus{ActiveVersion: s.store.GetActive(), BinDir: s.binDir}
+	st.LauncherInstalled, st.OnPath = s.launch.status(s.binDir)
 	exe, err := s.manager.ResolveExe(strings.TrimPrefix(st.ActiveVersion, "v"))
 	if err != nil {
 		// 未指定或指定版本已不可用：回退"最新已装"如实展示

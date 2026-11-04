@@ -40,8 +40,12 @@ import { bindVersionProgress, downloadOutcome, setActiveResult, uninstalledResul
 export interface OmpVersionAdapter {
   listReleases(): ReturnType<typeof OmpAPI.ListReleases>
   listInstalled(): ReturnType<typeof OmpAPI.ListInstalledVersions>
-  /** GetStatus 直传（activeVersion/exePath/dataDir 三字段；视图的 active 通道与页脚目录行同源本件）。 */
+  /** GetStatus 直传（activeVersion/exePath/dataDir/binDir/launcherInstalled/onPath；视图的 active 通道、页脚目录行与命令入口区同源本件）。 */
   getStatus(): ReturnType<typeof OmpAPI.GetStatus>
+  /** 安装/修复命令入口：稳定目录 bin\omp\omp.exe 硬链接到激活版本 + 幂等写入用户 PATH（复刻官方安装脚本"装完即敲 omp"的体验，归属 hanxi 版本树）。 */
+  installLauncher(): Promise<ManagedActionResult>
+  /** 回收命令入口（危险确认在本件；只删本模块建的入口文件与自己的 PATH 条目，官方脚本装目录不动）。 */
+  uninstallLauncher(): Promise<ManagedActionResult>
   /** 下载进度订阅（setup 期内调用；事件名 'omp:version-download' 在此吃掉）。 */
   subscribeProgress(cb: (progress: NormalizedProgress) => void): void
   /** 下载指定版本（后台起跑，进度经事件回流）；'already-installed' 回执带重拉标记。 */
@@ -107,6 +111,23 @@ export function createOmpAdapter(): OmpVersionAdapter {
       if (!trimmed) return {}
       const info: OmpVersionInfo = await OmpAPI.ImportLocalVersion(trimmed)
       return { message: `已导入 omp ${info.version}`, reloadVersions: true }
+    },
+
+    async installLauncher() {
+      const out = await OmpAPI.InstallLauncher()
+      return { message: out?.message || '命令入口已就绪', reloadVersions: true }
+    },
+
+    async uninstallLauncher() {
+      const accepted = await confirm({
+        title: '回收命令入口？',
+        description:
+          '将删除稳定入口文件 bin\\omp\\omp.exe 并从用户 PATH 剔除该目录条目——版本树与官方脚本装的 omp（%LOCALAPPDATA%\\omp）都不受影响。回收后新开终端敲 omp 将不可用，再点一次「安装命令入口」即可恢复。',
+        tone: 'danger',
+      })
+      if (!accepted) return {}
+      const out = await OmpAPI.UninstallLauncher()
+      return { message: out?.message || '命令入口已回收', reloadVersions: true }
     },
 
     async openDir(dir) {

@@ -48,7 +48,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 		ID:          ID,
 		Name:        "Oh My Pi 代理",
 		Version:     "0.1.0",
-		Description: "终端 TUI 编码代理 Oh My Pi (omp) 的托管版本树：官方 Releases 列表、sha256 校验下载、本地导入与激活切换（仅版本管理，不接管进程运行，负裁决详见包注释）",
+		Description: "终端 TUI 编码代理 Oh My Pi (omp) 的托管版本树：官方 Releases 列表、sha256 校验下载、本地导入、激活切换与命令入口一键安装（硬链接稳定目录+用户 PATH 幂等写入，复刻官方脚本体验；仅版本管理与入口装配，不接管进程运行，负裁决详见包注释）",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,
 	}

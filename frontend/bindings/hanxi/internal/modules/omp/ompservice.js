@@ -65,6 +65,16 @@ export function ImportLocalVersion(srcPath) {
 }
 
 /**
+ * InstallLauncher 一键"命令入口安装"（复刻官方脚本装完即敲 omp 的体验，归属 hanxi 版本树）：
+ * 把激活版本的 exe 硬链接到稳定入口 `<BaseDir>\bin\omp\omp.exe`，首次安装幂等写入
+ * 用户 PATH 并广播 WM_SETTINGCHANGE；此后升级/切换只需再点一次（只换链接不动注册表）。
+ * @returns {$CancellablePromise<$models.LauncherOutcome>}
+ */
+export function InstallLauncher() {
+    return $Call.ByID(2609996360);
+}
+
+/**
  * ListInstalledVersions 获取本地版本树已落位列表（版本数值降序，内核单点负责），
  * 并标注激活位：store 为空时按"最新已装"回退高亮（与 ResolveExe 兜底口径一致）。
  * @returns {$CancellablePromise<version$0.OmpVersionInfo[] | null>}
@@ -115,4 +125,13 @@ export function RepositoryURL() {
  */
 export function SetActiveVersion(targetVersion) {
     return $Call.ByID(646039671, targetVersion);
+}
+
+/**
+ * UninstallLauncher 回收命令入口：删本模块建的入口文件与自己那条 PATH；
+ * 官方脚本装的 %LOCALAPPDATA%\omp 条目与目录不属本模块，原样不动。
+ * @returns {$CancellablePromise<$models.LauncherOutcome>}
+ */
+export function UninstallLauncher() {
+    return $Call.ByID(2095338797);
 }

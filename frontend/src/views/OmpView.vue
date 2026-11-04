@@ -27,6 +27,10 @@ const installed = ref<OmpVersionInfo[]>([])
 // 逐条 active 标注由 ListInstalledVersions 给出，卡片高亮吃该布尔）。
 const active = ref('')
 const dataDir = ref('')
+// 命令入口三事实（GetStatus 一次 RPC 同批回填；见 adapters/omp.ts install/uninstallLauncher）
+const launcherBin = ref('')
+const launcherInstalled = ref(false)
+const onPath = ref(false)
 const loading = ref(false)
 const listError = ref('')
 const busy = ref(false)
@@ -48,6 +52,9 @@ async function loadVersions() {
     active: async () => {
       const status = await omp.getStatus()
       dataDir.value = status?.dataDir ?? ''
+      launcherBin.value = status?.binDir ?? ''
+      launcherInstalled.value = !!status?.launcherInstalled
+      onPath.value = !!status?.onPath
       return status?.activeVersion ?? ''
     },
     setRemote: value => { releases.value = value },
@@ -91,6 +98,34 @@ async function download(rel: OmpRelease) {
     if (out.reloadVersions) await loadVersions()
   } catch (e) {
     showToast(`下载失败: ${getErrorMessage(e)}`)
+  }
+}
+
+async function installEntry() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const out = await omp.installLauncher()
+    if (out.message) showToast(out.message)
+    await loadVersions()
+  } catch (e) {
+    showToast(`安装命令入口失败: ${getErrorMessage(e)}`)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function uninstallEntry() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const out = await omp.uninstallLauncher()
+    if (out.message) showToast(out.message)
+    await loadVersions()
+  } catch (e) {
+    showToast(`回收命令入口失败: ${getErrorMessage(e)}`)
+  } finally {
+    busy.value = false
   }
 }
 
@@ -191,6 +226,27 @@ onMounted(async () => {
     <UiBanner tone="warn" class="omp-slim">
       omp 是<strong>纯 TUI</strong> 编码代理，Hanxi 只做版本管理（下载校验 / 激活切换 / 导入本地），不托管其运行——请在终端中启动「激活中」版本的 omp.exe（exe 路径见对应版本卡片）。
     </UiBanner>
+
+    <!-- 命令入口：hanxi 复刻官方安装脚本体验（装完新开终端直接敲 omp）——稳定目录硬链接到激活版，
+         PATH 只首装写一次、升级切版不再动注册表；只回收自己建的条目，官方脚本装目录不碰 -->
+    <div v-if="installed.length" class="omp-panel">
+      <div class="omp-meta">
+        <span>
+          命令入口：
+          <span v-if="launcherInstalled && onPath" class="omp-badge active">已就绪</span>
+          <span v-else-if="launcherInstalled" class="omp-badge installed">入口文件在场，PATH 未含</span>
+          <span v-else class="omp-badge installed">未安装</span>
+          <span class="omp-dim">{{ launcherBin }}</span>
+        </span>
+        <span class="omp-dim">安装即在上述目录建硬链接 <code>omp.exe</code> 指向当前激活版本，并（仅首次）把目录写入用户 PATH——<strong>新开的</strong>终端可直接敲 <code>omp</code>。升级或换激活版后重点「修复入口」只重指硬链接，注册表不动。官方脚本装的 omp（%LOCALAPPDATA%\omp）互不影响、本模块不碰。</span>
+      </div>
+      <div class="omp-btns">
+        <button class="btn btn-secondary btn-small" :disabled="busy" @click="installEntry">
+          {{ launcherInstalled && onPath ? '🔧 修复命令入口' : '⚡ 安装命令入口' }}
+        </button>
+        <button v-if="launcherInstalled || onPath" class="link-button" :disabled="busy" title="删除入口文件并从用户 PATH 剔除本目录（危险确认在适配层）" @click="uninstallEntry">回收</button>
+      </div>
+    </div>
 
     <div v-if="listError" class="error-box">{{ listError }}</div>
 

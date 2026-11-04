@@ -10,6 +10,11 @@ export {
 import * as $models from "./models.js";
 
 /**
+ * LauncherOutcome 安装/卸载命令入口的结果如实回传。
+ * @typedef {$models.LauncherOutcome} LauncherOutcome
+ */
+
+/**
  * OmpStatus 模块整体状态快照（前端一次拉全）。
  * ActiveVersion 为空表示尚未指定激活版本，冷启动回退"最新已装"。
  * @typedef {$models.OmpStatus} OmpStatus

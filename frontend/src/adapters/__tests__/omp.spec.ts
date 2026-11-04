@@ -28,6 +28,8 @@ const svc = vi.hoisted(() => ({
   OpenDir: vi.fn(),
   RepositoryURL: vi.fn(),
   OpenRepository: vi.fn(),
+  InstallLauncher: vi.fn(),
+  UninstallLauncher: vi.fn(),
 }))
 
 const events = vi.hoisted(() => [] as Array<{ name: string; handler: (data: unknown) => void }>)
@@ -168,5 +170,40 @@ describe('omp · 下载进度事件通道', () => {
     lastHandler().handler(null)
     lastHandler().handler({ stage: 'error', done: 0, total: 0, message: '炸了' } as never) // 缺 version
     expect(cb).not.toHaveBeenCalled()
+  })
+})
+
+describe('omp · 命令入口（安装/回收）', () => {
+  it('installLauncher：直接打 InstallLauncher、透传后端 message、带 reloadVersions', async () => {
+    svc.InstallLauncher.mockResolvedValue({ message: '已写入用户 PATH 并广播', binDir: 'D:\\bin\\omp' })
+    const adapter = createOmpAdapter()
+    const out = await adapter.installLauncher()
+    expect(svc.InstallLauncher).toHaveBeenCalledTimes(1)
+    expect(out).toEqual({ message: '已写入用户 PATH 并广播', reloadVersions: true })
+  })
+
+  it('installLauncher：后端空 message 回落默认词（视图不显空 toast）', async () => {
+    svc.InstallLauncher.mockResolvedValue({ message: '', binDir: '' })
+    const adapter = createOmpAdapter()
+    const out = await adapter.installLauncher()
+    expect(out.message).toBe('命令入口已就绪')
+  })
+
+  it('uninstallLauncher：确认框否决时零 RPC（PATH 变更是危险动作，取消不得落注册表）', async () => {
+    ui.confirm.mockResolvedValue(false)
+    const adapter = createOmpAdapter()
+    const out = await adapter.uninstallLauncher()
+    expect(ui.confirm).toHaveBeenCalled()
+    expect(svc.UninstallLauncher).not.toHaveBeenCalled()
+    expect(out).toEqual({})
+  })
+
+  it('uninstallLauncher：确认后打 UninstallLauncher、透传 message、带 reloadVersions', async () => {
+    ui.confirm.mockResolvedValue(true)
+    svc.UninstallLauncher.mockResolvedValue({ message: '入口文件与 PATH 条目已回收', binDir: 'D:\\bin\\omp' })
+    const adapter = createOmpAdapter()
+    const out = await adapter.uninstallLauncher()
+    expect(svc.UninstallLauncher).toHaveBeenCalledTimes(1)
+    expect(out).toEqual({ message: '入口文件与 PATH 条目已回收', reloadVersions: true })
   })
 })
