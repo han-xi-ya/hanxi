@@ -24,7 +24,7 @@ export const APP_ICON_SRC_PX = 64
 export const ICON_SRC_LEDGER: Record<string, number> = {
   ...Object.fromEntries(
     [
-      'bcu', 'bili23', 'ccswitch', 'dbx', 'douzy', 'eartrumpet', 'everything', 'flclash',
+      'airsnip', 'bcu', 'bili23', 'ccswitch', 'dbx', 'douzy', 'eartrumpet', 'everything', 'flclash',
       'gonavi', 'guoheview', 'keyviz', 'litemonitor', 'mangodisk', 'markeron', 'nanazip',
       'papertodo', 'paseo', 'piclite', 'quicklook', 'rufus', 'rustdesk', 'snipaste',
       'subnetdesk', 'termora', 'translucenttb', 'windterm',

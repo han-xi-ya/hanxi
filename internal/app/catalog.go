@@ -16,6 +16,18 @@ import "hanxi/internal/extapi"
 // catalogItems 是模块目录静态表，按 ID 升序生成。
 var catalogItems = []extapi.ModuleCatalogItem{
 	{
+		ID:            "airsnip",
+		Name:          "AirSnip 轻截",
+		Description:   "托管 1 MB 原生截图标注工具 AirSnip：版本管理、JobObject 启停与截图/贴图/设置命令通道（全局热键 F1 截图、F3 贴图，含标注/长截图/贴图/另存；需以管理员运行）",
+		Category:      "desktop",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{"hosted-versions", "managed-process", "tray-commands"},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch, extapi.EntryTray},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "bcu",
 		Name:          "BC 卸载工具",
 		Description:   "收纳批量卸载工具 Bulk Crap Uninstaller：版本管理、JobObject 托管启停与窗口唤起",

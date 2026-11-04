@@ -2,6 +2,32 @@
   "schema": 1,
   "items": [
     {
+      "id": "airsnip",
+      "name": "AirSnip 轻截",
+      "description": "托管 1 MB 原生截图标注工具 AirSnip：版本管理、JobObject 启停与截图/贴图/设置命令通道（全局热键 F1 截图、F3 贴图，含标注/长截图/贴图/另存；需以管理员运行）",
+      "category": "desktop",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "hosted-versions",
+        "managed-process",
+        "tray-commands"
+      ],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search",
+        "tray"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
       "id": "bcu",
       "name": "BC 卸载工具",
       "description": "收纳批量卸载工具 Bulk Crap Uninstaller：版本管理、JobObject 托管启停与窗口唤起",

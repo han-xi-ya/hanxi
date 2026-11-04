@@ -1,6 +1,11 @@
 {
   "modules": [
     {
+      "id": "airsnip",
+      "route": "/ext/airsnip",
+      "group": "desktop"
+    },
+    {
       "id": "bcu",
       "route": "/ext/bcu",
       "group": "system"
@@ -267,6 +272,8 @@
     }
   ],
   "events": [
+    "airsnip:instance-state",
+    "airsnip:version-download",
     "bcu:instance-state",
     "bcu:version-download",
     "bili23:instance-state",
@@ -464,7 +471,7 @@
     ]
   },
   "counts": {
-    "modules": 53,
-    "events": 99
+    "modules": 54,
+    "events": 101
   }
 }

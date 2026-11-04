@@ -19,6 +19,7 @@ package appicons
 // 防漂移：sources_test.go 逐枚解码内嵌 PNG 比对边长，且键集与内嵌件双向锁死——
 // 任何人单侧换图/漏登记都会变红。
 var sourcePx = map[string]int{
+	"airsnip":       64, // 源天花板：exe 内嵌 RT_ICON 最大 256²，等比缩至 64
 	"bcu":           64,
 	"bili23":        64,
 	"ccswitch":      64,
