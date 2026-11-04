@@ -700,6 +700,29 @@
       "owner": "hanxi"
     },
     {
+      "id": "omp",
+      "name": "Oh My Pi 代理",
+      "description": "终端 TUI 编码代理 Oh My Pi (omp) 的托管版本树：官方 Releases 列表、sha256 校验下载、本地导入与激活切换（仅版本管理，不接管进程运行，负裁决详见包注释）",
+      "category": "developer",
+      "deliveryKind": "builtin-logical",
+      "capabilities": [
+        "hosted-versions"
+      ],
+      "entrypoints": [
+        "rpc",
+        "navigation",
+        "search"
+      ],
+      "compatibility": {
+        "hostRange": "*",
+        "platform": [
+          "windows"
+        ]
+      },
+      "permissions": [],
+      "owner": "hanxi"
+    },
+    {
       "id": "papertodo",
       "name": "PaperTodo",
       "description": "托管桌面便签 PaperTodo：双变体版本管理与 JobObject 启停，唤窗/收拢/退出走官方命令信使",

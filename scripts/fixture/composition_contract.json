@@ -269,6 +269,11 @@
       "id": "terminal",
       "route": "/ext/terminal",
       "group": "developer"
+    },
+    {
+      "id": "omp",
+      "route": "/ext/omp",
+      "group": "developer"
     }
   ],
   "events": [
@@ -372,7 +377,8 @@
     "wsl:clone",
     "wsl:compact",
     "wsl:msi-download",
-    "wsl:readiness"
+    "wsl:readiness",
+    "omp:version-download"
   ],
   "wiring": {
     "preactivatedModules": [
@@ -471,7 +477,7 @@
     ]
   },
   "counts": {
-    "modules": 54,
-    "events": 101
+    "modules": 55,
+    "events": 102
   }
 }

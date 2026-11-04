@@ -340,6 +340,18 @@ var catalogItems = []extapi.ModuleCatalogItem{
 		Owner:         "hanxi",
 	},
 	{
+		ID:            "omp",
+		Name:          "Oh My Pi 代理",
+		Description:   "终端 TUI 编码代理 Oh My Pi (omp) 的托管版本树：官方 Releases 列表、sha256 校验下载、本地导入与激活切换（仅版本管理，不接管进程运行，负裁决详见包注释）",
+		Category:      "developer",
+		DeliveryKind:  extapi.DeliveryBuiltinLogical,
+		Capabilities:  []string{"hosted-versions"},
+		Entrypoints:   []extapi.Entrypoint{extapi.EntryRPC, extapi.EntryNavigation, extapi.EntrySearch},
+		Compatibility: extapi.Compatibility{HostRange: "*", Platform: []string{"windows"}},
+		Permissions:   []extapi.Permission{},
+		Owner:         "hanxi",
+	},
+	{
 		ID:            "papertodo",
 		Name:          "PaperTodo",
 		Description:   "托管桌面便签 PaperTodo：双变体版本管理与 JobObject 启停，唤窗/收拢/退出走官方命令信使",

@@ -37,6 +37,7 @@ var sourcePx = map[string]int{
 	"mangodisk":     64,
 	"markeron":      64,
 	"nanazip":       64,
+	"omp":           64, // 自绘徽标（π 字形 256² 超采样降切；非上游资产，配色取 developer 组实测底）
 	"papertodo":     64,
 	"paseo":         64,
 	"piclite":       64,

@@ -98,6 +98,7 @@ export const ROUTES: Record<string, RouteDef> = {
   '/ext/terminal': { component: defineAsyncComponent(() => import('@/views/TerminalView.vue')), moduleId: 'terminal' },
   '/ext/quickmenu': { component: defineAsyncComponent(() => import('@/views/QuickMenuView.vue')), moduleId: 'quickmenu' },
   '/ext/msgboard': { component: defineAsyncComponent(() => import('@/views/MsgBoardView.vue')), moduleId: 'msgboard' },
+  '/ext/omp': { component: defineAsyncComponent(() => import('@/views/OmpView.vue')), moduleId: 'omp' },
   '/logs': { component: defineAsyncComponent(() => import('@/views/LogsView.vue')) },
   '/settings': { component: SettingsGeneral },
   '/settings/general': { component: SettingsGeneral },
@@ -242,6 +243,7 @@ export const MODULE_GROUP: Record<string, NavGroup> = {
   dbx: 'developer',
   wsl: 'developer',
   terminal: 'developer',
+  omp: 'developer',
 }
 
 /** 模块所属分组；未登记模块返回 undefined（由外壳决定归入"其他"或隐藏）。 */
@@ -322,6 +324,7 @@ export const MODULE_PRESENTATION: Record<string, { icon: string; route: string }
   envcheck: { icon: 'i:wrench', route: '/ext/envcheck' },
   softver: { icon: 'i:tag', route: '/ext/softver' },
   ocr: { icon: 'i:scan-text', route: '/ext/ocr' },
+  omp: { icon: 'app:omp', route: '/ext/omp' },
 }
 
 export const FALLBACK_MODULE_ICON = 'i:box'
