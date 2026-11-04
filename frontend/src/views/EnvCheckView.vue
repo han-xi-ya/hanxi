@@ -18,6 +18,7 @@ import type { Overview as GitOverview } from '../../bindings/hanxi/internal/modu
 import type { Overview as GoOverview } from '../../bindings/hanxi/internal/modules/envcheck/goversion/models'
 import type { Overview as JavaOverview } from '../../bindings/hanxi/internal/modules/envcheck/javaversion/models'
 import type { Overview as NodeOverview } from '../../bindings/hanxi/internal/modules/envcheck/nodeversion/models'
+import type { Overview as OmpOverview } from '../../bindings/hanxi/internal/modules/envcheck/ompversion/models'
 import type { Overview as PythonOverview } from '../../bindings/hanxi/internal/modules/envcheck/pythonversion/models'
 import type { Channel } from '../../bindings/hanxi/internal/modules/envcheck/remoteversion/models'
 import type { Overview as NpmOverview, ToolOverview, OperationProgress, OperationLog } from '../../bindings/hanxi/internal/modules/envcheck/npmtool/models'
@@ -35,8 +36,8 @@ import { getErrorMessage } from '../utils/errors'
 import { fmtSizeIec } from '../utils/format'
 import { envStatusMeta } from '../constants/status'
 
-type OfficialTool = 'git' | 'go' | 'node' | 'java' | 'python' | 'dotnet'
-type NativeOverview = GoOverview | NodeOverview | JavaOverview | PythonOverview | DotNetOverview
+type OfficialTool = 'git' | 'go' | 'node' | 'java' | 'python' | 'dotnet' | 'omp'
+type NativeOverview = GoOverview | NodeOverview | JavaOverview | PythonOverview | DotNetOverview | OmpOverview
 interface PanelOverview { channels: Channel[]; isStale: boolean; fetchedAt?: string }
 interface RemoteState { overview: PanelOverview | null; loading: boolean; error: string }
 
@@ -47,7 +48,7 @@ const MAIN_TABS = [
   { key: 'versions', label: '版本与工具' },
   { key: 'history', label: '历史记录' },
 ]
-const OFFICIAL_TOOLS: OfficialTool[] = ['git', 'go', 'node', 'java', 'python', 'dotnet']
+const OFFICIAL_TOOLS: OfficialTool[] = ['git', 'go', 'node', 'java', 'python', 'dotnet', 'omp']
 const localLoading = ref(false)
 const loadError = ref('')
 const everLoaded = ref(false)
@@ -143,6 +144,7 @@ const remoteStates = reactive<Record<OfficialTool, RemoteState>>({
   java: { overview: null, loading: false, error: '' },
   python: { overview: null, loading: false, error: '' },
   dotnet: { overview: null, loading: false, error: '' },
+  omp: { overview: null, loading: false, error: '' },
 })
 
 // npm 全局工具目录状态：后端按目录回传工具集合，前端不写死 claude/codex。
@@ -175,6 +177,7 @@ const OFFICIAL_META: Record<OfficialTool, { heading: string; downloadLabel: stri
   java: { heading: 'Eclipse Temurin 参考版本', downloadLabel: '打开 Temurin 下载页' },
   python: { heading: 'Python.org 官方版本', downloadLabel: '打开 Python 官网下载页' },
   dotnet: { heading: '.NET 官方支持线', downloadLabel: '打开 .NET 官网下载页' },
+  omp: { heading: 'Oh My Pi 官方稳定版', downloadLabel: '打开 Oh My Pi 官网' },
 }
 
 // 官网版本对照派发表：每行自带「查询 + 打开下载页」动词对，refreshOfficial 与
@@ -186,6 +189,7 @@ const OFFICIAL_REMOTE: Record<OfficialTool, { fetch: () => Promise<PanelOverview
   java: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetJavaOverview()), open: () => EnvCheckAPI.OpenJavaDownloadPage() },
   python: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetPythonOverview()), open: () => EnvCheckAPI.OpenPythonDownloadPage() },
   dotnet: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetDotNetOverview()), open: () => EnvCheckAPI.OpenDotNetDownloadPage() },
+  omp: { fetch: async () => adaptChannelOverview(await EnvCheckAPI.GetOmpOverview()), open: () => EnvCheckAPI.OpenOmpDownloadPage() },
 }
 
 const TOOL_LABELS: Record<OfficialTool | 'npm' | 'pnpm', string> = {
@@ -195,6 +199,7 @@ const TOOL_LABELS: Record<OfficialTool | 'npm' | 'pnpm', string> = {
   java: 'Java',
   python: 'Python',
   dotnet: '.NET',
+  omp: 'Oh My Pi',
   npm: 'npm',
   pnpm: 'pnpm',
 }

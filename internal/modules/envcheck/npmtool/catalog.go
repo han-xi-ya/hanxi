@@ -18,6 +18,10 @@ type ToolSpec struct {
 }
 
 // specs 目录：当前接入 Claude Code 与 Codex CLI，后续加工具在此追加一行即可。
+// 注意：Oh My Pi（omp）不走本目录——它的主流安装是官方脚本单文件自更新版
+// （omp update），npm 只是五种安装形态之一，塞进 npm 受管区会触发"命中的
+// 是 npm 目录之外的拷贝"降级、按钮对主流装法无效；改走 detect+ompversion
+// 标准"本机×官方 GitHub Releases"通道（见 detect/omp.go）。
 var specs = []ToolSpec{
 	{Command: "claude", Display: "Claude Code", Package: "@anthropic-ai/claude-code", VersionArgs: []string{"--version"}},
 	{Command: "codex", Display: "Codex CLI", Package: "@openai/codex", VersionArgs: []string{"--version"}},

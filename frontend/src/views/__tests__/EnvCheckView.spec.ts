@@ -23,6 +23,7 @@ const env = vi.hoisted(() => ({
   GetJavaOverview: vi.fn(),
   GetPythonOverview: vi.fn(),
   GetDotNetOverview: vi.fn(),
+  GetOmpOverview: vi.fn(),
   RevealToolPath: vi.fn(),
   OpenGitForWindowsDownloadPage: vi.fn(),
   OpenGoDownloadPage: vi.fn(),
@@ -30,6 +31,7 @@ const env = vi.hoisted(() => ({
   OpenJavaDownloadPage: vi.fn(),
   OpenPythonDownloadPage: vi.fn(),
   OpenDotNetDownloadPage: vi.fn(),
+  OpenOmpDownloadPage: vi.fn(),
 }))
 
 const bcu = vi.hoisted(() => ({ OpenWindow: vi.fn() }))
@@ -66,10 +68,10 @@ const BASE_TOOLS = [
   tool({ name: 'pnpm', display: 'pnpm', status: 'missing', version: '', path: '' }),
   tool({ name: 'java', display: 'Java', status: 'store-stub', version: '', path: 'WindowsApps 存根', hint: '微软商店存根会吞掉 java 调用，请安装真实 JDK' }),
   tool({ name: 'python', display: 'Python', status: 'error', version: '', path: '', hint: '注册表读取失败' }),
-  tool({
-    name: 'dotnet', display: '.NET', version: '10.0.400', path: 'C:\\Program Files\\dotnet\\dotnet.exe',
+  tool({ name: 'dotnet', display: '.NET', version: '10.0.400', path: 'C:\\Program Files\\dotnet\\dotnet.exe',
     details: { dotnet: { sdks: ['10.0.400'], runtimes: ['10.0.8', '8.0.19'], desktops: [], aspnet: [] } },
   }),
+  tool({ name: 'omp', display: 'Oh My Pi', version: '18.16.0', path: 'C:\\Users\\u\\AppData\\Local\\omp\\omp.exe' }),
   tool({ name: 'claude', display: 'Claude Code', version: '2.1.260', path: 'C:\\nvm\\claude.cmd' }),
 ]
 
@@ -109,7 +111,7 @@ function stubHappy() {
   env.DetectAll.mockResolvedValue(BASE_TOOLS as never)
   env.GetNpmToolsOverview.mockResolvedValue(npmOverview() as never)
   env.GitGlobalConfig.mockResolvedValue(gitConfigPayload() as never)
-  for (const fn of [env.GetGitForWindowsOverview, env.GetGoOverview, env.GetNodeOverview, env.GetJavaOverview, env.GetPythonOverview, env.GetDotNetOverview]) {
+  for (const fn of [env.GetGitForWindowsOverview, env.GetGoOverview, env.GetNodeOverview, env.GetJavaOverview, env.GetPythonOverview, env.GetDotNetOverview, env.GetOmpOverview]) {
     fn.mockResolvedValue({ channels: [{ key: 'stable', label: 'Stable', detail: '', relation: 'update-available', releases: [{ version: '1.2.3', published: '2026-08-01T00:00:00Z' }], relationDetail: '' }], isStale: false, fetchedAt: '2026-09-05 10:00' } as never)
   }
   env.RevealToolPath.mockResolvedValue(undefined)
@@ -163,16 +165,37 @@ describe('EnvCheckView 检测卡渲染', () => {
     w.unmount()
   })
 
-  it('首屏并发拉取本机清单 + 6 官网通道 + npm overview', async () => {
+  it('首屏并发拉取本机清单 + 7 官网通道 + npm overview', async () => {
     stubHappy()
     const w = await mountView()
     await flush()
     expect(env.DetectAll).toHaveBeenCalled()
     expect(env.GetGitForWindowsOverview).toHaveBeenCalled()
     expect(env.GetDotNetOverview).toHaveBeenCalled()
+    expect(env.GetOmpOverview).toHaveBeenCalled()
     expect(env.GetNpmToolsOverview).toHaveBeenCalled()
     expect(w.findAll('.tool-card')).toHaveLength(BASE_TOOLS.length)
-    expect(w.find('.status-summary').text()).toContain('本机已安装 6 / 9 项')
+    expect(w.find('.status-summary').text()).toContain('本机已安装 7 / 10 项')
+    w.unmount()
+  })
+
+  it('Oh My Pi 走官方 GitHub Releases 对照通道，非受管 npm 区', async () => {
+    stubHappy()
+    env.GetOmpOverview.mockResolvedValue({
+      channels: [{ key: 'stable', label: 'Stable', detail: '更新指路：官方脚本装用 omp update', relation: 'update-available', releases: [{ version: '18.17.0', published: '2026-11-04' }], relationDetail: '' }],
+      isStale: false, fetchedAt: '2026-11-04 13:00',
+    } as never)
+    const w = await mountView()
+    await flush()
+    await openVersions(w)
+    const card = w.findAll('.management-card').find(c => c.text().includes('Oh My Pi 官方稳定版'))!
+    expect(card.text()).toContain('18.17.0')
+    expect(card.text()).toContain('该通道有可用更新')
+    expect(card.text()).toContain('更新指路：官方脚本装用 omp update')
+    expect(env.OpenOmpDownloadPage).not.toHaveBeenCalled()
+    const openBtn = card.findAll('button').find(b => b.text().includes('打开 Oh My Pi 官网'))!
+    await openBtn.trigger('click')
+    expect(env.OpenOmpDownloadPage).toHaveBeenCalledTimes(1)
     w.unmount()
   })
 
@@ -209,7 +232,7 @@ describe('EnvCheckView 检测卡渲染', () => {
   it('本机检测失败 → 错误横幅文案逐字', async () => {
     env.DetectAll.mockRejectedValue(new Error('WMI 不可用'))
     env.GetNpmToolsOverview.mockRejectedValue(new Error('down'))
-    for (const fn of [env.GetGitForWindowsOverview, env.GetGoOverview, env.GetNodeOverview, env.GetJavaOverview, env.GetPythonOverview, env.GetDotNetOverview]) fn.mockRejectedValue(new Error('offline'))
+    for (const fn of [env.GetGitForWindowsOverview, env.GetGoOverview, env.GetNodeOverview, env.GetJavaOverview, env.GetPythonOverview, env.GetDotNetOverview, env.GetOmpOverview]) fn.mockRejectedValue(new Error('offline'))
     const w = await mountView()
     await flush()
     expect(w.find('.banner-error').exists()).toBe(true)

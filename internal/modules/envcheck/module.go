@@ -1,6 +1,6 @@
 // Package envcheck 内置模块：开发环境检测。
-// 探测本机开发工具链，只读查询 Git、Go、Node.js、Java、Python 与 .NET 官方版本，
-// 并对目录内 npm 全局 CLI 工具（Claude Code、Codex 等）提供一键安装/升级/卸载。
+// 探测本机开发工具链，只读查询 Git、Go、Node.js、Java、Python、.NET 与 Oh My Pi
+// 官方版本，并对目录内 npm 全局 CLI 工具（Claude Code、Codex）提供一键安装/升级/卸载。
 package envcheck
 
 import (
@@ -36,7 +36,7 @@ func (e *Module) Info() extapi.ModuleInfo {
 	return extapi.ModuleInfo{
 		ID:          ID,
 		Name:        "开发环境检测",
-		Version:     "0.6.0",
+		Version:     "0.7.0",
 		Description: "检测本机开发工具链（含 git 全局配置脱敏查看），查询官网版本，并对 Claude Code、Codex 等 npm 全局工具一键安装/升级/卸载",
 		Author:      "Hanxi",
 		Level:       extapi.LevelBuiltin,

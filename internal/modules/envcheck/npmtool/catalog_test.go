@@ -50,6 +50,9 @@ func TestSpecLookup(t *testing.T) {
 	if _, ok := Spec("codex"); !ok {
 		t.Fatal("codex should be in catalog")
 	}
+	if _, ok := Spec("omp"); ok {
+		t.Fatal("omp must NOT be in npm catalog: it is a self-updating native CLI (see detect/omp.go)")
+	}
 	if _, ok := Spec("nope"); ok {
 		t.Fatal("unknown id should not resolve")
 	}

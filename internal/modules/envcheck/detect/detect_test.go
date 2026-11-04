@@ -134,13 +134,32 @@ func TestIsStoreStub(t *testing.T) {
 	}
 }
 
-// TestRegistry 注册表完整性：9 个探测器、Name 无重复、按字典序排序。
+// TestOmpParse 锁定 omp 版本式对真实输出的提取与拒绝面。
+func TestOmpParse(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"omp/18.16.0", "18.16.0"},
+		{"omp/18.16.0\n", "18.16.0"},
+		{"omp/v15.12.3", "15.12.3"},
+		{"pi/1.0.0", ""},
+		{"not a version", ""},
+	}
+	for _, c := range cases {
+		if got := (ompDetector{}).Parse(c.in); got != c.want {
+			t.Errorf("Parse(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestRegistry 注册表完整性：10 个探测器、Name 无重复、按字典序排序。
 func TestRegistry(t *testing.T) {
 	ds := Detectors()
-	if len(ds) != 9 {
-		t.Fatalf("Detectors() len = %d, want 9", len(ds))
+	if len(ds) != 10 {
+		t.Fatalf("Detectors() len = %d, want 10", len(ds))
 	}
-	want := []string{"dotnet", "git", "go", "java", "node", "npm", "pnpm", "protoc-gen-go-grpc", "python"}
+	want := []string{"dotnet", "git", "go", "java", "node", "npm", "omp", "pnpm", "protoc-gen-go-grpc", "python"}
 	for i, d := range ds {
 		if d.Name() != want[i] {
 			t.Errorf("Detectors()[%d] = %s, want %s", i, d.Name(), want[i])
@@ -162,8 +181,8 @@ func TestRunAll(t *testing.T) {
 		},
 	)
 	results := RunAll(context.Background())
-	if len(results) != 9 {
-		t.Fatalf("RunAll len = %d, want 9", len(results))
+	if len(results) != 10 {
+		t.Fatalf("RunAll len = %d, want 10", len(results))
 	}
 	byName := map[string]ToolInfo{}
 	for _, r := range results {

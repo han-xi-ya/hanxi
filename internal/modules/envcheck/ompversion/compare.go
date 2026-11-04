@@ -1,0 +1,63 @@
+package ompversion
+
+import (
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+// versionPattern 三段稳定 semver（可带 v 前缀）：omp 发布 tag 实测为 v18.16.0 形态，
+// 预发布/canary 不进对比。
+var versionPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)$`)
+
+type parsedVersion struct {
+	major uint64
+	minor uint64
+	patch uint64
+}
+
+func parseVersion(raw string) (parsedVersion, bool) {
+	matches := versionPattern.FindStringSubmatch(strings.TrimSpace(raw))
+	if matches == nil {
+		return parsedVersion{}, false
+	}
+	values := [3]uint64{}
+	for i := 1; i <= 3; i++ {
+		value, err := strconv.ParseUint(matches[i], 10, 64)
+		if err != nil {
+			return parsedVersion{}, false
+		}
+		values[i-1] = value
+	}
+	return parsedVersion{major: values[0], minor: values[1], patch: values[2]}, true
+}
+
+// VersionLine 返回版本的 major.minor 版本线标识（如 "18.16"），无法解析时返回空串。
+func VersionLine(raw string) string {
+	parsed, ok := parseVersion(raw)
+	if !ok {
+		return ""
+	}
+	return strconv.FormatUint(parsed.major, 10) + "." + strconv.FormatUint(parsed.minor, 10)
+}
+
+// Compare 按 major.minor.patch 数值序比较，返回 -1/0/1；任一侧不可解析返回 (0,false)，
+// 调用方据此降级为 unknown，不做字符串字典序兜底。
+func Compare(a, b string) (int, bool) {
+	left, okLeft := parseVersion(a)
+	right, okRight := parseVersion(b)
+	if !okLeft || !okRight {
+		return 0, false
+	}
+	lv := [...]uint64{left.major, left.minor, left.patch}
+	rv := [...]uint64{right.major, right.minor, right.patch}
+	for i := range lv {
+		if lv[i] < rv[i] {
+			return -1, true
+		}
+		if lv[i] > rv[i] {
+			return 1, true
+		}
+	}
+	return 0, true
+}

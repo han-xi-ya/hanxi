@@ -18,6 +18,7 @@ import (
 	"hanxi/internal/modules/envcheck/javaversion"
 	"hanxi/internal/modules/envcheck/nodeversion"
 	"hanxi/internal/modules/envcheck/npmtool"
+	"hanxi/internal/modules/envcheck/ompversion"
 	"hanxi/internal/modules/envcheck/pythonversion"
 	"hanxi/internal/modules/envcheck/remoteversion"
 )
@@ -27,8 +28,8 @@ type urlOpener interface {
 	OpenURL(url string) error
 }
 
-// EnvCheckService Wails 绑定服务：本机开发工具链探测、Git/Go/Node.js/Java/Python/.NET
-// 官网版本查询，以及目录内 npm 全局 CLI 工具（Claude Code、Codex 等）的一键安装/升级/卸载。
+// EnvCheckService Wails 绑定服务：本机开发工具链探测、Git/Go/Node.js/Java/Python/.NET/
+// Oh My Pi 官网版本查询，以及目录内 npm 全局 CLI 工具（Claude Code、Codex）的一键安装/升级/卸载。
 // 全部业务 RPC 方法经 holder.Enter() 接入统一调用门（Wave 3）。
 type EnvCheckService struct {
 	holder          *extapi.LeaseHolder
@@ -41,6 +42,7 @@ type EnvCheckService struct {
 	javaChannels    func() ([]remoteversion.Channel, bool, time.Time, error)
 	pythonChannels  pythonversion.MinorChannel
 	dotnetChannels  func() ([]remoteversion.Channel, bool, time.Time, error)
+	ompChannels     func() ([]remoteversion.Channel, bool, time.Time, error)
 	npmOverview     func(context.Context) (npmtool.Overview, error)
 	collectUsage    func(context.Context, []detect.ToolInfo) []diskusage.ToolUsage
 }
@@ -59,6 +61,7 @@ func NewEnvCheckService(opener urlOpener, holder *extapi.LeaseHolder) *EnvCheckS
 		javaChannels:    javaversion.Channels,
 		pythonChannels:  pythonversion.ChannelsForLocal,
 		dotnetChannels:  dotnetversion.Channels,
+		ompChannels:     ompversion.Channels,
 		npmOverview:     npmtool.BuildOverview,
 		collectUsage:    diskusage.Collect,
 	}
@@ -363,6 +366,34 @@ func (s *EnvCheckService) OpenDotNetDownloadPage() error {
 	}
 	defer release()
 	return s.openURL(".NET", dotnetversion.DownloadPageURL())
+}
+
+// GetOmpOverview 并发查询本机 Oh My Pi 与官方 GitHub Releases 稳定版。
+// omp 走标准对照通道而非 npm 受管区：主流装法是官方脚本单文件（自更新 omp update），
+// npm 只是五种安装形态之一，装升卸按钮对脚本装无效，故只对比版本并指路更新。
+func (s *EnvCheckService) GetOmpOverview() (ompversion.Overview, error) {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return ompversion.Overview{}, gateErr
+	}
+	defer release()
+	local, channels, stale, fetchedAt, err := s.getChannelOverview("omp", s.ompChannels, ompversion.Compare, ompversion.VersionLine)
+	if err != nil {
+		return ompversion.Overview{Local: local}, err
+	}
+	return ompversion.Overview{
+		Local: local, Channels: channels, IsStale: stale, FetchedAt: formatFetchedAt(fetchedAt),
+	}, nil
+}
+
+// OpenOmpDownloadPage 使用系统默认浏览器打开固定 omp 官网。
+func (s *EnvCheckService) OpenOmpDownloadPage() error {
+	release, gateErr := s.holder.Enter()
+	if gateErr != nil {
+		return gateErr
+	}
+	defer release()
+	return s.openURL("Oh My Pi", ompversion.DownloadPageURL())
 }
 
 func (s *EnvCheckService) getChannelOverview(
