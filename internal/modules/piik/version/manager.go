@@ -21,9 +21,25 @@ const (
 	// 目录相对解析——目录结构不可拆，本包一切布局判定都以此为前提）。
 	exeName = "piik-app.exe"
 
-	// revisionFileName 根平铺关键条目之一：REVISION（上游构建标识），
-	// 内容读取记账见 readRevision。
+	// revisionFileName 根平铺条目之一：REVISION（上游构建标识），内容读取记账
+	// 见 readRevision；缺位只把账记成空串，不参与拒装判定。
 	revisionFileName = "REVISION"
+
+	// 说明文档族条目名（**只看不拒**，DBX 同纪律：拒装面收敛在"能不能跑"上）。
+	// 名字来自 2026-11-04 的上游实测——用 HTTP Range 只取 zip 中央目录，v1.6.5 /
+	// v2.0.0 / v2.2.0 / v2.4.0 / v2.5.3 五版逐字一致：根平铺 LICENSE、REVISION、
+	// THIRD-PARTY-NOTICES.txt、piik-app.exe，另有 runtime/ 三目录与两 exe、
+	// runtime/tunnel/THIRD-PARTY-NOTICES.txt（完整条目清单与探测法见
+	// docs/TROUBLESHOOTING.md #146）。
+	//
+	// 历史教训（本条即该事故的回树证据，勿删）：这三个名字曾被写成
+	// LICENSE/REVISION/NOTICES 并**全部钉成拒装硬条件**，而上游从来没有过
+	// NOTICES 这个条目——结果是远程下载链自 v1.6.5 起没有任何一个版本装得起来
+	// （zip 校验、解包全成功，最后一步被一句"根平铺关键条目 NOTICES 不在场"
+	// 永久拒掉）。条目名属上游文档惯例，会随版漂移；字节完整性已由 GitHub
+	// 官方 digest 收口，文档缺位不等于布局残缺，故一律降为观察项。
+	licenseFileName = "LICENSE"
+	noticesFileName = "THIRD-PARTY-NOTICES.txt"
 
 	// treeEntryName 版本树目录前缀（<root>/piik_<version>，布局 piik_1.2.0 /
 	// piik_imported-<兜底 tag>（现行内容哈希，历史时间戳）与家族一致：
@@ -67,8 +83,9 @@ type fetcher func(ctx context.Context, src artifact.Source, destPath string, pro
 // 解包 → 落位"主流程委托 Wave 4 共享内核 packages/go/artifact（Fetch +
 // UnpackZip + Tree）；本包只保留 Piik 领域知识：裸名便携资产筛选、镜像 URL
 // 模板、版本目录形状（x.y.z / imported-兜底 tag）、平铺自管目录的布局不变式
-// 自检（五关键条目在场 + runtime 双 exe 在位——兄弟路径解析令目录结构不可
-// 拆，判定比 ccswitch 双锚点、DBX 单标记更宽）、REVISION 记账、账外漂移
+// 自检（拒装面只钉"能不能跑"：主 exe + runtime 目录 + runtime 双 exe，
+// 兄弟路径解析令目录结构不可拆；说明文档族与 REVISION 为观察项，硬/软分界
+// 见 checkPiikLayout）、REVISION 记账、账外漂移
 // 护栏（落位 sha256 记账 + mtime 闸控复算，照 everything/DBX 实作）、本地
 // 整套导入与既有进度词表映射。
 type Manager struct {
@@ -285,8 +302,8 @@ func (m *Manager) DownloadContext(ctx context.Context, txnID, version string, on
 		emit("error", 0, 0, fmt.Sprintf("解压失败: %v", err))
 		return err
 	}
-	// 4. 平铺布局不变式自检（模块策略，内核不感知）：五关键条目在场 +
-	// runtime 双 exe 在位。不符即判定安装无效，调用方丢弃 staging。
+	// 4. 平铺布局不变式自检（模块策略，内核不感知）：主 exe + runtime 目录 +
+	// runtime 双 exe 四条硬条件。不符即判定安装无效，调用方丢弃 staging。
 	if err := checkPiikLayout(staging); err != nil {
 		emit("error", 0, 0, err.Error())
 		return err
@@ -435,26 +452,25 @@ func versionFromToken(token string) (string, bool) {
 	return "", false
 }
 
-// checkPiikLayout 平铺布局不变式自检（模块策略，拒装面按契约钉死）：
-// 根平铺五关键条目在场（piik-app.exe / LICENSE / REVISION / NOTICES /
-// runtime 目录）且 runtime 双 exe 在位（native/piik-capture.exe +
-// tunnel/cloudflared.exe，均非空普通文件）。兄弟路径 exe 按目录相对解析，
-// 目录结构不可拆——runtime 双件缺一即运行必炸，主 exe 空即入口损坏。
-// 与 DBX"许可文本只看不拒"不同：Piik 上游 19 连版实测条目名稳定，许可
-// 文本族（MIT 随附义务）与 REVISION（漂移取证锚）一并入不变式；若未来
-// 上游改名条目导致拒装，属 fail-closed 的正确姿态，由人工裁决而非静默放行。
+// checkPiikLayout 平铺布局不变式自检（模块策略，拒装面按"能不能跑"划界）：
+//   - **硬不变式（缺即拒装）**：主 exe piik-app.exe 为非空普通文件；runtime
+//     目录在场；runtime 双 exe（native/piik-capture.exe + tunnel/
+//     cloudflared.exe）均为非空普通文件。兄弟路径 exe 按目录相对解析，目录
+//     结构不可拆——runtime 双件缺一即运行必炸，主 exe 空即入口损坏。
+//   - **观察项（缺只记日志不拒装）**：说明文档族 LICENSE /
+//     THIRD-PARTY-NOTICES.txt 与构建标识 REVISION，见 observeDocEntries。
+//     DBX 同纪律：文档条目名属上游惯例、会随版漂移，而字节完整性已由 GitHub
+//     官方 digest 双核收口（无摘要的 release 在列表层就出局），把文档名钉进
+//     拒装条件只会把可用版本挡在门外——#146 那条"NOTICES 不在场"的拒装文案
+//     就是这样让 piik 远程下载安装一个版本都没装成过。
+//
 // 不符即判定安装无效，调用方丢弃 staging。
 func checkPiikLayout(dir string) error {
 	fi, err := os.Stat(filepath.Join(dir, exeName))
 	if err != nil || fi.IsDir() || !fi.Mode().IsRegular() || fi.Size() == 0 {
 		return fmt.Errorf("zip 布局无效：缺少可用的 %s", exeName)
 	}
-	for _, name := range []string{"LICENSE", revisionFileName, "NOTICES"} {
-		s, serr := os.Stat(filepath.Join(dir, name))
-		if serr != nil || s.IsDir() {
-			return fmt.Errorf("zip 布局无效：根平铺关键条目 %s 不在场", name)
-		}
-	}
+	observeDocEntries(dir)
 	if d, derr := os.Stat(filepath.Join(dir, "runtime")); derr != nil || !d.IsDir() {
 		return fmt.Errorf("zip 布局无效：runtime 目录不在场（兄弟路径解析依赖整目录结构）")
 	}
@@ -465,6 +481,22 @@ func checkPiikLayout(dir string) error {
 		}
 	}
 	return nil
+}
+
+// observeDocEntries 说明文档族在场性观察（只记日志，绝不返错）：LICENSE 与
+// THIRD-PARTY-NOTICES.txt 承载 MIT 随附义务、REVISION 是漂移取证旁证，缺位
+// 需要留痕以便人工核对上游发布物，但它不是"这份安装能不能跑"的判据——
+// 把它写成拒装条件已经造成过一次全版本装不上的事故（#146）。
+func observeDocEntries(dir string) {
+	var missing []string
+	for _, name := range []string{licenseFileName, noticesFileName, revisionFileName} {
+		if s, err := os.Stat(filepath.Join(dir, name)); err != nil || s.IsDir() || s.Size() == 0 {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		slog.Debug("piik 说明文档族条目缺位（观察项，不拒装）", "dir", dir, "missing", strings.Join(missing, "、"))
+	}
 }
 
 // readRevision 读取 staging/落位目录内 REVISION 内容（上游构建标识），

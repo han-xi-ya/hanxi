@@ -23,7 +23,7 @@ func installFakeVersion(t *testing.T, m *Manager, token string) {
 		t.Fatal(err)
 	}
 	defer discard()
-	for _, rel := range []string{exeName, "LICENSE", revisionFileName, "NOTICES", captureExeRel, cloudflaredExeRel} {
+	for _, rel := range []string{exeName, licenseFileName, revisionFileName, noticesFileName, captureExeRel, cloudflaredExeRel} {
 		p := filepath.Join(staging, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 			t.Fatal(err)

@@ -370,7 +370,7 @@ func TestDriftGuardPaths(t *testing.T) {
 	writeExe(t, filepath.Join(orphan, exeName), "no-ledger")
 	writeExe(t, filepath.Join(orphan, captureExeRel), "c")
 	writeExe(t, filepath.Join(orphan, cloudflaredExeRel), "f")
-	for _, n := range []string{"LICENSE", revisionFileName, "NOTICES"} {
+	for _, n := range []string{licenseFileName, revisionFileName, noticesFileName} {
 		writeExe(t, filepath.Join(orphan, n), "x")
 	}
 	if drifted, note := m.VerifyLedger("v9.9.9"); drifted || !strings.Contains(note, "无法比对") {

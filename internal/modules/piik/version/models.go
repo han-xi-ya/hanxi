@@ -9,18 +9,27 @@
 //   - 信任根唯一：GitHub API 资产 digest（sha256）。上游 .sha256 sidecar 自
 //     v1.2.0 起停发，任何校验链不得依赖它——digest 缺失的 release 不入列表、
 //     拒无校验安装，宁拒不猜；
-//   - zip 根平铺十条目：piik-app.exe（约 46MB）+ LICENSE/REVISION/NOTICES +
-//     runtime/native/piik-capture.exe + runtime/tunnel/cloudflared.exe 等。
-//     兄弟路径 exe 按"exe 所在目录"相对解析，目录结构不可拆——布局自检
-//     因此钉死五关键条目在场 + runtime 双 exe 在位；
+//   - zip 根平铺十条目（2026-11-04 用 HTTP Range 只取中央目录实测
+//     v1.6.5/v2.0.0/v2.2.0/v2.4.0/v2.5.3 五版，条目名逐字一致）：
+//     piik-app.exe（v2.5.3 实测 48,063,488 字节 ≈46 MiB）、LICENSE、REVISION、
+//     THIRD-PARTY-NOTICES.txt、runtime/ 与 runtime/{native,tunnel}/ 三个目录条目、
+//     runtime/native/piik-capture.exe、runtime/tunnel/cloudflared.exe、
+//     runtime/tunnel/THIRD-PARTY-NOTICES.txt。兄弟路径 exe 按"exe 所在目录"
+//     相对解析，目录结构不可拆——布局自检因此硬钉主 exe + runtime 目录 +
+//     runtime 双 exe 四条"能不能跑"；文档族与 REVISION 只观察不拒装（本包曾把
+//     告知文件写成 NOTICES 并把它钉成拒装条件，而上游从来没有这个条目名，
+//     结果是远程下载安装一个版本都没装成过，见 docs/TROUBLESHOOTING.md #146）；
+//   - 自 v2.2.2 起同发布另挂 `piik-<shortsha>-windows-amd64-runtime.zip` 等
+//     runtime 附件（内含 piik-server.exe，是 server 侧运行时分发，与本托管
+//     形态无关）：裸名精确比对天然不选它，资产矩阵里按 archive 如实展示；
 //   - 无单实例 mutex（8787 端口绑定即事实互斥）、无托盘、无 quit CLI；提权
 //     manifest asInvoker；数据默认 %APPDATA%\Piik\client.json——托管改道经
 //     CLI --config/--log-dir 注入（instance 引擎组参），本包只管资产不管运行。
 //
 // 完整性策略（四层，DBX 同构）：①GitHub API digest 官方摘要（唯一信任根）
 // ②声明字节数与流式上限双核（内核 artifact.Fetch）③ZipSlip/炸弹/CRC32 全量
-// 解包闸门（内核 artifact.UnpackZip）④落位布局自检（五关键条目 + runtime
-// 双 exe，模块策略内核不感知）+ 落位 exe sha256 记账 + mtime 闸控复算的
+// 解包闸门（内核 artifact.UnpackZip）④落位布局自检（主 exe + runtime 目录 +
+// runtime 双 exe，模块策略内核不感知）+ 落位 exe sha256 记账 + mtime 闸控复算的
 // 账外漂移护栏（照 everything/DBX 实作；上游无自更新器，漂移属旁证性护栏）。
 package version
 

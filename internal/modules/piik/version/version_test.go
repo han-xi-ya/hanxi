@@ -202,17 +202,25 @@ func makeTestZip(t *testing.T, entries map[string]string) string {
 	return path
 }
 
-// piikZipEntries 实证根平铺形状（含两条 runtime 孙件与许可文本族）。
+// piikZipEntries 上游根平铺形状，条目名**逐字取自外部实测**而非按实现反推：
+// 2026-11-04 用 HTTP Range 只拉 zip 中央目录，比过 v1.6.5 / v2.0.0 / v2.2.0 /
+// v2.4.0 / v2.5.3 五版，十条目名完全一致（探测法与清单见
+// docs/TROUBLESHOOTING.md #146）。
+//
+// 这条夹具曾经就是事故的共犯：实现把告知文件写成 NOTICES，夹具照抄 NOTICES，
+// 于是"全绿"与"上游从来没有这个条目名"同时成立——断言抄实现等于没测。现在
+// 夹具的来源是上游包本身，改名前必须先重新实测一次中央目录。
 func piikZipEntries() map[string]string {
 	return map[string]string{
-		exeName:                "fake-piik-app-bytes",
-		"LICENSE":              "MIT License TNTcraftHIM",
-		revisionFileName:       "cafe1234deadbeef",
-		"NOTICES":              "third-party notices",
-		"README.md":            "piik readme",
-		captureExeRel:          "fake-capture-bytes",
-		cloudflaredExeRel:      "fake-cloudflared-bytes",
-		"runtime/native/extra": "sibling asset",
+		exeName:                             "fake-piik-app-bytes",
+		licenseFileName:                     "MIT License TNTcraftHIM",
+		revisionFileName:                    "cafe1234deadbeef",
+		noticesFileName:                     "third-party notices",
+		captureExeRel:                       "fake-capture-bytes",
+		cloudflaredExeRel:                   "fake-cloudflared-bytes",
+		"runtime/tunnel/" + noticesFileName: "tunnel notices",
+		"runtime/native/extra":              "sibling asset",
+		"junk.txt":                          "包内杂物不得影响判定",
 	}
 }
 
@@ -248,13 +256,13 @@ func materializeZip(t *testing.T, entries map[string]string) string {
 }
 
 func TestCheckPiikLayout(t *testing.T) {
-	good := piikZipEntries()
-	dir := materializeZip(t, good)
+	dir := materializeZip(t, piikZipEntries())
 	if err := checkPiikLayout(dir); err != nil {
-		t.Fatalf("完整布局应通过: %v", err)
+		t.Fatalf("上游实测形状应通过: %v", err)
 	}
 
-	// 逐项缺失/置空/占位都必须拒（fail-closed 面逐条钉死）
+	// 硬不变式＝"这份安装能不能跑"：主 exe 与 runtime 双 exe 缺失/置空都必须拒
+	// （fail-closed 面逐条钉死）。
 	cases := []struct {
 		name   string
 		mutate func(map[string]string)
@@ -262,9 +270,6 @@ func TestCheckPiikLayout(t *testing.T) {
 	}{
 		{"主 exe 缺失", func(m map[string]string) { delete(m, exeName) }, exeName},
 		{"主 exe 空件", func(m map[string]string) { m[exeName] = "" }, exeName},
-		{"LICENSE 缺失", func(m map[string]string) { delete(m, "LICENSE") }, "LICENSE"},
-		{"REVISION 缺失", func(m map[string]string) { delete(m, revisionFileName) }, revisionFileName},
-		{"NOTICES 缺失", func(m map[string]string) { delete(m, "NOTICES") }, "NOTICES"},
 		{"capture 缺失", func(m map[string]string) { delete(m, captureExeRel) }, captureExeRel},
 		{"capture 空件", func(m map[string]string) { m[captureExeRel] = "" }, captureExeRel},
 		{"cloudflared 缺失", func(m map[string]string) { delete(m, cloudflaredExeRel) }, cloudflaredExeRel},
@@ -277,6 +282,34 @@ func TestCheckPiikLayout(t *testing.T) {
 		err := checkPiikLayout(bad)
 		if err == nil || !strings.Contains(err.Error(), filepath.Base(c.want)) {
 			t.Errorf("%s: 应拒装且点名 %s，得 %v", c.name, c.want, err)
+		}
+	}
+
+	// 软面＝说明文档族：缺失/空件/改名一律**不得**拒装。#146 的回归钉——
+	// 本包曾把告知文件按 NOTICES 钉成拒装条件（上游从来没这个名），结果是
+	// 远程下载链一个版本都没装成过；文档条目属上游惯例，改名不应砖化功能，
+	// 完整性已由 GitHub 官方 digest 在解包前收口。
+	softCases := []struct {
+		name   string
+		mutate func(map[string]string)
+	}{
+		{"LICENSE 缺失", func(m map[string]string) { delete(m, licenseFileName) }},
+		{"REVISION 缺失", func(m map[string]string) { delete(m, revisionFileName) }},
+		{"REVISION 空件", func(m map[string]string) { m[revisionFileName] = "" }},
+		{"告知文件缺失", func(m map[string]string) { delete(m, noticesFileName) }},
+		{"告知文件空件", func(m map[string]string) { m[noticesFileName] = "" }},
+		{"告知文件改名（上游漂移样本）", func(m map[string]string) {
+			m["THIRD-PARTY-NOTICES"] = m[noticesFileName]
+			delete(m, noticesFileName)
+		}},
+		{"tunnel 内告知文件缺失", func(m map[string]string) { delete(m, "runtime/tunnel/"+noticesFileName) }},
+	}
+	for _, c := range softCases {
+		entries := piikZipEntries()
+		c.mutate(entries)
+		soft := materializeZip(t, entries)
+		if err := checkPiikLayout(soft); err != nil {
+			t.Errorf("%s: 文档族缺位不得拒装，得 %v", c.name, err)
 		}
 	}
 

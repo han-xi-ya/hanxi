@@ -17,9 +17,9 @@ func buildImportSource(t *testing.T, extra map[string]string) string {
 	root := t.TempDir()
 	files := map[string]string{
 		exeName:           "imported-piik-app-bytes",
-		"LICENSE":         "MIT License",
+		licenseFileName:   "MIT License",
 		revisionFileName:  "beef1234import",
-		"NOTICES":         "notices text",
+		noticesFileName:   "notices text",
 		captureExeRel:     "cap bytes",
 		cloudflaredExeRel: "cfd bytes",
 	}
@@ -68,7 +68,7 @@ func TestImportLocalFullTree(t *testing.T) {
 		t.Errorf("目录漂移: %s vs %s", info.Dir, dest)
 	}
 	// 整套迁移：兄弟路径双件与用户杂项都在
-	for _, rel := range []string{exeName, captureExeRel, cloudflaredExeRel, "junk.txt", "client.json", "LICENSE", "NOTICES", revisionFileName} {
+	for _, rel := range []string{exeName, captureExeRel, cloudflaredExeRel, "junk.txt", "client.json", licenseFileName, noticesFileName, revisionFileName} {
 		if _, err := os.Stat(filepath.Join(dest, filepath.FromSlash(rel))); err != nil {
 			t.Errorf("导入缺件 %s: %v", rel, err)
 		}
