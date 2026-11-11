@@ -145,7 +145,7 @@
 | vscode | 编辑器 | 双形态托管（便携+User Installer） | 成熟 |
 | paseo | Agent 编排器 | 全托管（数据共享用户目录） | 成熟 |
 | windterm | WindTerm 终端 | 全托管（官方便携 zip） | 复核登记（未深审） |
-| termora | Termora 终端 | 全托管（jpackage 自带 JRE） | 复核登记（未深审） |
+| termora | Termora 终端 | 全托管（jpackage 自带 JRE；**数据默认共享 `~/.termora`**，页内「数据模式」可切独立 `data\`） | 复核登记（未深审） |
 | dbx | DBX 数据库 | 全托管（DBX_DATA_DIR 数据改道） | 复核登记（未深审） |
 | gonavi | GoNavi 数据库 | 全托管（数据不改道，与 DBX 方案相反） | 复核登记（未深审） |
 | wsl | WSL2 工作台 | **纯原生**，全仓最重工程 | 成熟（离线层面） |
