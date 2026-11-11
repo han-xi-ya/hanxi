@@ -295,3 +295,51 @@ func TestCancelModuleTxnRegistry(t *testing.T) {
 		t.Fatal("t2 收口后再取消应报无在途")
 	}
 }
+
+// TestVersionSettledNotifierFiresOnDoneOnly 版本落位联动钩子：只有**成功收口**把
+// moduleID 交给感知链定向重判（本机版本真变了，上一轮"有可用更新"即失去依据）；
+// 失败收口不触发（版本没落地，清账=谎报）；幂等重复收口不得二次通知；撤注后静默。
+func TestVersionSettledNotifierFiresOnDoneOnly(t *testing.T) {
+	store, _ := freshStore(t)
+	SetKernel(store, operation.NewHub(store))
+	t.Cleanup(func() { SetKernel(nil, nil) })
+
+	var notified []string
+	SetVersionSettledNotifier(func(id string) { notified = append(notified, id) })
+	t.Cleanup(func() { SetVersionSettledNotifier(nil) })
+
+	txn, err := BeginTxn("dbx", extapi.OpUpdate, extapi.DeliveryManagedDeclarative, "v0.6.69", "txn-settle-1", []string{"download", "install"})
+	if err != nil {
+		t.Fatalf("BeginTxn: %v", err)
+	}
+	if err := txn.Done(); err != nil {
+		t.Fatalf("Done: %v", err)
+	}
+	if err := txn.Done(); !errors.Is(err, context.Canceled) {
+		t.Errorf("重复 Done = %v, want context.Canceled（已收口事务的幂等语义）", err)
+	}
+	if len(notified) != 1 || notified[0] != "dbx" {
+		t.Fatalf("成功收口通知 = %v, want [dbx]（幂等收口不得二次通知）", notified)
+	}
+
+	bad, err := BeginTxn("termora", extapi.OpInstall, extapi.DeliveryManagedDeclarative, "v9.9.9", "txn-settle-2", []string{"download"})
+	if err != nil {
+		t.Fatalf("BeginTxn: %v", err)
+	}
+	bad.Fail("download-failed", "模拟下载失败")
+	if len(notified) != 1 {
+		t.Fatalf("失败收口不得通知感知链, got %v", notified)
+	}
+
+	SetVersionSettledNotifier(nil) // 未注入（无账/单测）路径：收口照常成功、静默无副作用
+	okTxn, err := BeginTxn("paseo", extapi.OpInstall, extapi.DeliveryManagedDeclarative, "0.16.0", "txn-settle-3", []string{"download"})
+	if err != nil {
+		t.Fatalf("BeginTxn: %v", err)
+	}
+	if err := okTxn.Done(); err != nil {
+		t.Fatalf("撤注后 Done: %v", err)
+	}
+	if len(notified) != 1 {
+		t.Fatalf("撤注后仍产生通知: %v", notified)
+	}
+}

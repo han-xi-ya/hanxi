@@ -614,6 +614,10 @@ func New(assets application.AssetOptions, options Options) (*application.App, fu
 	updateWatcher := updatewatch.New(registry, collectUpdateCheckers(modulesToRegister), paths.StateDir())
 	updateWatcher.Restore()
 	appSvc.SetUpdateWatcher(updateWatcher)
+	// 托管版本落位（资产事务成功收口）→ 定向重判该模块：本机版本一变，上一轮
+	// "有可用更新"的事实基础即失效，而感知链无常驻 ticker，不联动就是把过时红点
+	// 挂在用户眼前（2026-11-11 dbx 实证，见 TROUBLESHOOTING #149）。
+	ops.SetVersionSettledNotifier(updateWatcher.Recheck)
 	// 历史版本（自动快照平台底座）：非 extapi 模块，服务面与 AppService 同级；
 	// 触发接线在主窗创建后（见下方窗口事件钩子），退出补拍挂 OnShutdown 链。
 	snapSvc := snapshot.New(paths, store)

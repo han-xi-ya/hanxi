@@ -129,6 +129,34 @@ func BroadcastChanged() {
 	}
 }
 
+// 版本落位联动回调：装配根把"可用更新"感知链的定向重判注进来（照
+// operation.Hub.SetChangeNotifier 的装配缝先例）。本包不认识 updatewatch，
+// 只在资产事务**成功收口**后把 moduleID 交出去。
+var (
+	versionSettledMu sync.RWMutex
+	versionSettled   func(moduleID string)
+)
+
+// SetVersionSettledNotifier 注入"某模块托管版本已落位"的联动回调。重复调用以
+// 最后一次为准；传 nil 撤注（单测复位用）。未注入时 notifyVersionSettled 静默。
+func SetVersionSettledNotifier(fn func(moduleID string)) {
+	versionSettledMu.Lock()
+	defer versionSettledMu.Unlock()
+	versionSettled = fn
+}
+
+// notifyVersionSettled 事务成功收口后通知感知链重判该模块。本机版本一变，
+// 上一轮"有可用更新"的判定基础即失效，而感知链无常驻 ticker（等下一次手动
+// 刷新等于把过时红点挂在用户眼前），故收口点必须联动一次。
+func notifyVersionSettled(moduleID string) {
+	versionSettledMu.RLock()
+	fn := versionSettled
+	versionSettledMu.RUnlock()
+	if fn != nil && moduleID != "" {
+		fn(moduleID)
+	}
+}
+
 // BeginTxn 开一笔托管资产安装/更新事务：
 //
 //  1. txnID 为调用方生成的事务 ID（同时派生 artifact.Tree 的 staging 目录名
@@ -381,6 +409,7 @@ func (t *Txn) Done() error {
 	t.mu.Unlock()
 	t.closeLifecycle()
 	BroadcastChanged()
+	notifyVersionSettled(t.moduleID)
 	return nil
 }
 

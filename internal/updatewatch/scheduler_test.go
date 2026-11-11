@@ -542,3 +542,120 @@ func TestStopCancelsStartupRound(t *testing.T) {
 		t.Errorf("Stop 后延迟首检仍执行了 %d 次", calls)
 	}
 }
+
+// TestRecheckAfterVersionSettled 版本落位后的定向重判（装配根把 Scheduler.Recheck
+// 接到 ops 资产事务成功收口）：本机追平即刻熄账（内存覆盖 + 磁盘快照同步），
+// 又出新版则保持点亮并刷新版本号，判定失败保持原账（失败≠无更新），卸载后不写
+// 幽灵账只清盘账，未接雷达的模块静默无副作用。
+//
+// 缺陷本体（2026-11-11 机主实报"可用更新 3 个但实际已追更"）：感知链无常驻 ticker，
+// 装完新版不发手动刷新就永远停在上一轮结论——dbx 实证 11:46:43 判出
+// local v0.6.68/remote v0.6.69，11:47:08 v0.6.69 落盘，账面原样挂着。
+func TestRecheckAfterVersionSettled(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "updates.json")
+	alpha := &fakeModule{id: "alpha", fn: staticResult("1.0.0", "1.1.0", true, nil)}
+	sched, registry, _ := newSched(t, dir, alpha)
+	registry.SetReceiptStorage(newFakeReceipts("alpha"))
+
+	if _, err := sched.CheckNow(context.Background()); err != nil {
+		t.Fatalf("CheckNow: %v", err)
+	}
+	if got := healthOf(t, registry, "alpha"); got != extapi.HealthUpdateAvailable {
+		t.Fatalf("一轮感知后 health = %q, want update-available", got)
+	}
+
+	t.Run("本机追平=内存账与盘账同时熄", func(t *testing.T) {
+		alpha.fn = staticResult("1.1.0", "1.1.0", false, nil)
+		if err := sched.checkModule(context.Background(), "alpha"); err != nil {
+			t.Fatalf("checkModule: %v", err)
+		}
+		if got := healthOf(t, registry, "alpha"); got != extapi.HealthCurrent {
+			t.Errorf("重判后 health = %q, want current（红点即装即灭）", got)
+		}
+		if got := remoteVersionOf(t, registry, "alpha"); got != "" {
+			t.Errorf("重判后 remoteVersion = %q, want 清空", got)
+		}
+		if snap := loadSnapshotFor(t, path); len(snap.Available) != 0 {
+			t.Errorf("重判后盘账 = %v, want 空（回灌不得复活熄掉的账）", snap.Available)
+		}
+	})
+
+	t.Run("又出新版=保持点亮并刷新版本号", func(t *testing.T) {
+		alpha.fn = staticResult("1.1.0", "1.2.0", true, nil)
+		if err := sched.checkModule(context.Background(), "alpha"); err != nil {
+			t.Fatalf("checkModule: %v", err)
+		}
+		if got := remoteVersionOf(t, registry, "alpha"); got != "1.2.0" {
+			t.Errorf("remoteVersion = %q, want 1.2.0", got)
+		}
+		if snap := loadSnapshotFor(t, path); !reflect.DeepEqual(snap.Available, map[string]string{"alpha": "1.2.0"}) {
+			t.Errorf("盘账 = %v, want {alpha:1.2.0}", snap.Available)
+		}
+	})
+
+	t.Run("判定失败=原账不动", func(t *testing.T) {
+		alpha.fn = staticResult("", "", false, os.ErrDeadlineExceeded)
+		if err := sched.checkModule(context.Background(), "alpha"); err == nil {
+			t.Error("失败必须如实上抛（调用方日志用）")
+		}
+		if got := healthOf(t, registry, "alpha"); got != extapi.HealthUpdateAvailable {
+			t.Errorf("health = %q, want 保持 update-available（失败≠无更新）", got)
+		}
+		if got := remoteVersionOf(t, registry, "alpha"); got != "1.2.0" {
+			t.Errorf("remoteVersion = %q, want 保持 1.2.0", got)
+		}
+	})
+
+	t.Run("卸载后重判=不写健康账只清盘账", func(t *testing.T) {
+		alpha.fn = staticResult("1.1.0", "1.2.0", true, nil)
+		registry.SetReceiptStorage(newFakeReceipts()) // alpha 已卸载
+		if err := sched.checkModule(context.Background(), "alpha"); err != nil {
+			t.Fatalf("checkModule: %v", err)
+		}
+		if got := healthOf(t, registry, "alpha"); got != extapi.HealthCurrent {
+			t.Errorf("health = %q, want current（不得写幽灵账）", got)
+		}
+		if snap := loadSnapshotFor(t, path); len(snap.Available) != 0 {
+			t.Errorf("盘账 = %v, want 空", snap.Available)
+		}
+	})
+
+	t.Run("未接雷达的模块静默无副作用", func(t *testing.T) {
+		if err := sched.checkModule(context.Background(), "ghost"); err != nil {
+			t.Errorf("checkModule(ghost) = %v, want nil", err)
+		}
+	})
+}
+
+// TestRecheckSkippedWhileRoundInFlight 全量感知轮在飞时定向重判让位：那一轮本就
+// 覆盖本模块，重复调用检查器只会放大网络请求，并与在飞轮的落账交错。
+func TestRecheckSkippedWhileRoundInFlight(t *testing.T) {
+	block := make(chan struct{})
+	slow := &fakeModule{id: "slow", fn: func(context.Context) (string, string, bool, error) {
+		<-block
+		return "1.0.0", "2.0.0", true, nil
+	}}
+	sched, registry, byID := newSched(t, "", slow)
+	registry.SetReceiptStorage(newFakeReceipts("slow"))
+
+	round := make(chan struct{})
+	go func() {
+		defer close(round)
+		_, _ = sched.CheckNow(context.Background())
+	}()
+	time.Sleep(20 * time.Millisecond) // 让全量轮进入 in-flight（slow 阻塞在检查器内）
+
+	if err := sched.checkModule(context.Background(), "slow"); err != nil {
+		t.Fatalf("checkModule: %v", err)
+	}
+	if calls, _ := byID["slow"].snapshot(); calls != 1 {
+		t.Errorf("检查器调用 %d 次, want 1（在飞轮之外不得重复判定）", calls)
+	}
+
+	close(block)
+	<-round
+	if got := healthOf(t, registry, "slow"); got != extapi.HealthUpdateAvailable {
+		t.Errorf("在飞轮收口后 health = %q, want update-available", got)
+	}
+}

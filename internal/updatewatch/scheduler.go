@@ -11,7 +11,9 @@
 //   - 启动后一次性延迟首检（默认 60s，让路启动风暴），不建常驻 ticker——
 //     远程列表各有 10 分钟 TTL 缓存，周期性重查的收益低于常驻 IO 与
 //     GitHub 匿名限流（60 次/小时/IP）的配额成本；用户主动刷新经
-//     AppService.RefreshUpdates RPC 触发，随开随查；
+//     AppService.RefreshUpdates RPC 触发，随开随查；托管版本落位（ops 资产事务
+//     成功收口）后经 Scheduler.Recheck 定向重判该模块——本机版本一变，既有
+//     "有可用更新"结论即失去事实基础，不许把红点挂到用户下次点按钮为止；
 //   - 全轮并发 ≤3（镜像回退链最坏单模块 ~48s，避免同时压满出口带宽与
 //     GitHub API），全局超时兜底（默认 5 分钟），单模块超时/失败静默：
 //     保持该模块原健康值不清除、不谎报（失败≠无更新）；
@@ -58,6 +60,9 @@ type Scheduler struct {
 
 	mu      sync.Mutex
 	running *round // in-flight 合并：并发 CheckNow 共享同一轮结果
+
+	// recheckMu 串行化定向重判（Recheck）：同模块两次连续落位的读账/写账不许交错。
+	recheckMu sync.Mutex
 }
 
 // round 单轮感知：done 关闭后 checked 可读（同轮 join 者等待该通道）。
@@ -272,4 +277,81 @@ func (s *Scheduler) checkOne(ctx context.Context, id string, checker extapi.Upda
 	case <-cctx.Done():
 		return "", "", false, cctx.Err()
 	}
+}
+
+// Recheck 定向重判单个模块的可用更新，fire-and-forget：装配根把它接到
+// ops 的事务收口挂钩上，托管版本一落位就立刻重算该模块的健康账。
+//
+// 为什么需要它：update-available 的事实基础是"判定那一刻的本机版本"，本机版本一变
+// 旧结论就失去依据；而本包无常驻 ticker（调度策略见包注释），"下一轮"实际等于
+// "下次手动刷新或重启"——2026-11-11 实证 dbx 装完 v0.6.69 后首页仍挂"有可用更新
+// → v0.6.69"，即 #93 那条"角标停留到下一轮感知"的残留窗口在无常驻 ticker 后病灶化。
+//
+// 口径与全轮完全一致：远程复用各模块 10 分钟 TTL 缓存（成本≈一次本地版本树扫描），
+// 判定失败/超时保持原健康值不清账（失败≠无更新）；全量轮在飞时直接放弃——那一轮
+// 本就覆盖本模块，重跑只会放大网络请求与账目交错。
+func (s *Scheduler) Recheck(moduleID string) {
+	if _, ok := s.checkers[moduleID]; !ok {
+		return // 未实现 extapi.UpdateChecker 的模块不在感知面内
+	}
+	go func() {
+		select {
+		case <-s.stopCh:
+			return // 已进退出链，不再发起新判定
+		default:
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), s.checkBudget)
+		defer cancel()
+		if err := s.checkModule(ctx, moduleID); err != nil {
+			slog.Info("updatewatch: 版本落位后的定向重判未收口", "module", moduleID, "err", err)
+		}
+	}()
+}
+
+// checkModule 单模块判定 + 落账 + 落盘 + 广播（Recheck 的同步内核，测试直调）。
+// 同一模块的定向重判串行（recheckMu）：两次连续落位若并发判定，读账与写账可能交错，
+// 后写者未必是后读者，会把旧结论盖回新账。
+func (s *Scheduler) checkModule(ctx context.Context, moduleID string) error {
+	s.mu.Lock()
+	roundInFlight := s.running != nil
+	s.mu.Unlock()
+	if roundInFlight {
+		slog.Info("updatewatch: 全量感知轮在飞，跳过本轮定向重判", "module", moduleID)
+		return nil
+	}
+	checker, ok := s.checkers[moduleID]
+	if !ok {
+		return nil
+	}
+	s.recheckMu.Lock()
+	defer s.recheckMu.Unlock()
+
+	local, remote, hasUpdate, err := s.checkOne(ctx, moduleID, checker)
+	if err != nil {
+		slog.Info("updatewatch: 定向重判失败，保持原健康值", "module", moduleID, "err", err)
+		return err
+	}
+	installed := func(id string) bool { return s.registry.IsInstalled(id) }
+	if !installed(moduleID) {
+		// 判定在飞期间被卸载：不写健康覆盖，但按"无更新"结论清掉磁盘旧条目
+		// （与 sweep 的幽灵状态并发门同形）。
+		s.cache.merge(map[string]verdict{moduleID: {hasUpdate: false}}, installed)
+		slog.Info("updatewatch: 定向重判时模块已卸载，本轮不为其写账", "module", moduleID)
+		return nil
+	}
+	health := extapi.HealthCurrent
+	if hasUpdate {
+		health = extapi.HealthUpdateAvailable
+	}
+	s.registry.SetHealth(moduleID, health, remote)
+	s.cache.merge(map[string]verdict{moduleID: {hasUpdate: hasUpdate, remote: remote}}, installed)
+	if app := application.Get(); app != nil && app.Event != nil {
+		app.Event.Emit(EventChecked)
+	}
+	if hasUpdate {
+		slog.Info("updatewatch: 定向重判仍有可用更新", "module", moduleID, "local", local, "remote", remote)
+	} else {
+		slog.Info("updatewatch: 定向重判已追平，清掉可用更新账", "module", moduleID, "local", local, "remote", remote)
+	}
+	return nil
 }
