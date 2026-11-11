@@ -27,10 +27,14 @@ type fixture struct {
 	svc         *AirsnipService
 	versionsDir string
 	stateDir    string
+	commands    []string // 仅 newEngineFixture 起效：dispatch 投过哪些内部命令
+	posted      bool     // command 接缝的投递结果（默认 true）
 }
 
-// newFixture 引擎留 nil：本文件用例全部走静止语义（版本区、账本、话术、门）。
-// 需要引擎真实语义的（dispatch 冷启动失败）另用 newEngineFixture 挂真引擎。
+// newFixture 引擎与 command 接缝都留 nil：本文件用例全部走静止语义（版本区、账本、
+// 话术、门），而 dispatch 在 `s.engine == nil` 处即回 errNoEngine，不会走到命令投递。
+// 需要引擎真实语义的（dispatch 冷启动失败 / 外部实例在场）另用 newEngineFixture，
+// 它把探针与命令通道都换成确定性假件。
 // 与 snipaste 的 newSnipFixture 同纪律：所有触碰引擎的 RPC 都有显式 nil 防护，
 // 拿 nil 引擎跑出 panic 是不合格实现。
 func newFixture(t *testing.T) *fixture {
@@ -48,13 +52,36 @@ func newFixture(t *testing.T) *fixture {
 	}
 }
 
-// newEngineFixture 挂真 Job + 真进程探针的引擎（本机未运行 AirSnip 时恒静止态），
+// stubProbe 确定性进程探针：默认"这台机器上没有 airsnip.exe"。真实探针会把用例
+// 结论交给运气——机主正在用 AirSnip 时同一用例走的是 external 分支（#148 避坑第
+// 3 条：判据不许依赖机器现场状态）。在场态由 pids 显式注入。
+type stubProbe struct{ pids []uint32 }
+
+func (p *stubProbe) FindPIDs() []uint32              { return p.pids }
+func (p *stubProbe) IsRunning() bool                 { return len(p.pids) > 0 }
+func (p *stubProbe) WaitForReady(time.Duration) bool { return len(p.pids) > 0 }
+
+// newEngineFixture 挂真 Job + 确定性探针（默认无 airsnip 进程）+ 命令投递记录器，
 // 用来验冷启动编排的失败路径——这条路径不 spawn 任何进程，却覆盖了
 // "解析版本 → 拒装 → 人话指引"的完整链路。
 func newEngineFixture(t *testing.T) *fixture {
 	t.Helper()
 	f := newFixture(t)
-	f.svc.engine = instance.NewEngine(realJobAPI(), instance.NewAirsnipProbe(), instance.Callbacks{})
+	f.posted = true
+	f.svc.command = func(kind string) (bool, bool) {
+		f.commands = append(f.commands, kind)
+		return f.posted, f.posted
+	}
+	f.svc.engine = instance.NewEngine(realJobAPI(), &stubProbe{}, instance.Callbacks{})
+	return f
+}
+
+// newExternalEngineFixture 模拟"机主自己开着 AirSnip、Hanxi 没托管任何版本"：
+// 探针报一个非自有 PID → 引擎分类为 external，dispatch 跳过冷启动直接投命令。
+func newExternalEngineFixture(t *testing.T) *fixture {
+	t.Helper()
+	f := newEngineFixture(t)
+	f.svc.engine = instance.NewEngine(realJobAPI(), &stubProbe{pids: []uint32{424242}}, instance.Callbacks{})
 	return f
 }
 
@@ -312,6 +339,31 @@ func TestDispatchColdStartWithoutInstall(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "下载") {
 			t.Errorf("%s 应给出\"先下载/导入\"指引，got %v", name, err)
 		}
+	}
+}
+
+// TestDispatchWithExternalInstance 机主自己开着 AirSnip、Hanxi 一侧没装任何版本：
+// 这条 external 分支在真机上随时可达（本机 airsnip.exe 在场即命中）。旧夹具用**真进程
+// 探针**，于是"机主没开 AirSnip"时用例走冷启动失败路径、开着时直落命令投递——同一
+// 用例两种结论（#148 避坑第 3 条点名的正是这种"依赖机器现场状态的前提"）。现在两条
+// 分支各自钉死：external 态不许报"先下载/导入"，而要把命令投出去，判据落在
+// "投了哪个 kind"上；投递失败必须给送达指引，不含糊成启动失败。
+func TestDispatchWithExternalInstance(t *testing.T) {
+	f := newExternalEngineFixture(t)
+	out, err := f.svc.Shot()
+	if err != nil {
+		t.Fatalf("外部实例在场应直接投命令，got %v", err)
+	}
+	if out.Action != "shot" || !out.External || !strings.Contains(out.Message, "冻结") {
+		t.Errorf("外部态回执不符: %+v", out)
+	}
+	if got := strings.Join(f.commands, ","); got != "shot" {
+		t.Errorf("投递记录 = %q, want shot（且不得先冷启动拉起自有实例）", got)
+	}
+
+	f.posted = false
+	if _, err := f.svc.Pin(); err == nil || !strings.Contains(err.Error(), "未能把命令送达") {
+		t.Fatalf("投递失败应给送达指引: %v", err)
 	}
 }
 
